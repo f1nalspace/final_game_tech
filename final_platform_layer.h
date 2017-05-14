@@ -416,7 +416,7 @@ fpl_api void fpl_ClearMemory(void *mem, size_t size) {
 	}
 }
 
-#define FPL_MAX_EVENT_COUNT 4096
+#define FPL_MAX_EVENT_COUNT 32768
 struct fpl_EventQueue {
 	fpl_Event events[FPL_MAX_EVENT_COUNT];
 	volatile uint32_t index;
@@ -850,17 +850,11 @@ int WINAPI WinMain(HINSTANCE appInstance, HINSTANCE prevInstance, LPSTR cmdLine,
 	return(result);
 }
 #elif defined(FPL_PLATFORM_LINUX) // FPL_PLATFORM_WINDOWS
-int main(int argc, char **args) {
-
-}
 //
 // Linux platform implementation
 //
 #	error "Please define at least the entry point for the linux platform!"
 #elif defined(FPL_PLATFORM_UNIX) // FPL_PLATFORM_LINUX
-int main(int argc, char **args) {
-
-}
 //
 // Unix platform implementation
 //
