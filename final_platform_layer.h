@@ -1,6 +1,6 @@
 /*
 final_platform_layer.h - FPL -  v0.1
-Public Domain Single-File Library by Torsten Spaete
+Open-Source Single-File Header-Library by Torsten Spaete
 
 This library is designed to abstract the underlying platform
 to a very simple and easy to understand api
