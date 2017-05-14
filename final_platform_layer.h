@@ -18,9 +18,7 @@ release the library when you are done.
 
 PREPROCESSOR OVERRIDES:
 
-- FPL_PLATFORM_INIT
-- FPL_PLATFORM_DESTROY
-- FPL_PLATFORM_UPDATEFRAME
+- FPL_API_AS_PRIVATE
 
 - FPL_DEFAULT_WINDOW_WIDTH
 - FPL_DEFAULT_WINDOW_HEIGHT
@@ -53,6 +51,7 @@ SUPPORTED PLATFORMS:
 [x] Win32
 [ ] Linux (Planned)
 [ ] Unix/Posix (Planned)
+[ ] OSX (Not sure)
 
 LICENSE:
 
@@ -180,15 +179,14 @@ typedef int32_t fpl_b32;
 #endif
 
 //
-// Static/Extern
+// Static/Inline/Extern
 //
-#define fpl_internal static
-#define fpl_global static
+#define fpl_globalvar static
 #define fpl_inline inline
-#if FPL_EXTERN_AS_PRIVATE
-#	define fpl_extern fpl_internal
+#if FPL_API_AS_PRIVATE
+#	define fpl_api static
 #else
-#	define fpl_extern extern
+#	define fpl_api extern
 #endif
 
 #ifdef __cplusplus
@@ -267,10 +265,6 @@ extern "C" {
 		fpl_InitFlag_All = fpl_InitFlag_VideoOpenGL,
 	} fpl_InitFlag;
 
-#define FPL_PLATFORM_INIT_FUNCTION(name) fpl_b32 name(fpl_WindowConfiguration *windowConfiguration)
-#define FPL_PLATFORM_DESTROY_FUNCTION(name) void name()
-#define FPL_PLATFORM_UPDATEFRAME_FUNCTION(name) void name()
-
 #if defined(_MSC_VER)
 	// Inline Atomics for Visual C Compiler
 	fpl_inline uint32_t fpl_AtomicExchangeU32(volatile uint32_t *target, uint32_t value) {
@@ -303,32 +297,32 @@ extern "C" {
 
 #if defined(FPL_PLATFORM_WINDOWS)
 	// @NOTE(final): Required for access "main" from the actual win32 entry point
-	fpl_extern int main(int argc, char **args);
+	fpl_api int main(int argc, char **args);
 #endif
 
 	// Core
-	fpl_extern fpl_b32 fpl_Init(fpl_InitFlag initFlags);
-	fpl_extern void fpl_Release();
-	fpl_extern fpl_b32 fpl_IsRunning();
-	fpl_extern fpl_b32 fpl_Update();
-	fpl_extern fpl_b32 fpl_PollEvent(struct fpl_Event *event);
-	fpl_extern void fpl_Flip();
+	fpl_api fpl_b32 fpl_Init(fpl_InitFlag initFlags);
+	fpl_api void fpl_Release();
+	fpl_api fpl_b32 fpl_IsRunning();
+	fpl_api fpl_b32 fpl_Update();
+	fpl_api fpl_b32 fpl_PollEvent(struct fpl_Event *event);
+	fpl_api void fpl_Flip();
 
 	// Memory
-	fpl_extern void fpl_ClearMemory(void *mem, size_t size);
-	fpl_extern void *fpl_AllocateMemory(size_t size);
-	fpl_extern void fpl_FreeMemory(void *ptr);
-	fpl_extern void *fpl_AllocateAlignedMemory(size_t size, size_t alignment);
-	fpl_extern void fpl_FreeAlignedMemory(void *ptr);
+	fpl_api void fpl_ClearMemory(void *mem, size_t size);
+	fpl_api void *fpl_AllocateMemory(size_t size);
+	fpl_api void fpl_FreeMemory(void *ptr);
+	fpl_api void *fpl_AllocateAlignedMemory(size_t size, size_t alignment);
+	fpl_api void fpl_FreeAlignedMemory(void *ptr);
 
 	// Timing
-	fpl_extern double fpl_GetHighResolutionTimeInSeconds();
+	fpl_api double fpl_GetHighResolutionTimeInSeconds();
 
 	// Strings
-	fpl_extern uint32_t __fpl_GetStringLength(const char *str);
-	fpl_extern uint32_t __fpl_GetWideStringLength(const wchar_t *str);
-	fpl_extern void fpl_CopyString(const char *source, char *dest, uint32_t maxDestLen);
-	fpl_extern void fpl_CopyWideString(const wchar_t *source, wchar_t *dest, uint32_t maxDestLen);
+	fpl_api uint32_t __fpl_GetStringLength(const char *str);
+	fpl_api uint32_t __fpl_GetWideStringLength(const wchar_t *str);
+	fpl_api void fpl_CopyString(const char *source, char *dest, uint32_t maxDestLen);
+	fpl_api void fpl_CopyWideString(const wchar_t *source, wchar_t *dest, uint32_t maxDestLen);
 
 #ifdef __cplusplus
 }
@@ -348,7 +342,7 @@ extern "C" {
 #	else
 #		define FPL_IMPLEMENTED
 
-fpl_extern void *fpl_AllocateAlignedMemory(size_t size, size_t alignment) {
+fpl_api void *fpl_AllocateAlignedMemory(size_t size, size_t alignment) {
 	FPL_Assert(size > 0);
 	FPL_Assert((alignment > 0) && !(alignment & (alignment - 1)));
 
@@ -373,7 +367,7 @@ fpl_extern void *fpl_AllocateAlignedMemory(size_t size, size_t alignment) {
 	return(alignedPtr);
 }
 
-fpl_extern void fpl_FreeAlignedMemory(void *ptr) {
+fpl_api void fpl_FreeAlignedMemory(void *ptr) {
 	FPL_Assert(ptr != NULL);
 
 	// Free the base pointer which is stored to the left from the given pointer
@@ -394,7 +388,7 @@ fpl_extern void fpl_FreeAlignedMemory(void *ptr) {
 	} \
 } while (0)
 
-fpl_extern void fpl_ClearMemory(void *mem, size_t size) {
+fpl_api void fpl_ClearMemory(void *mem, size_t size) {
 	// @TODO(final): This can be more efficient: Clear by 8 than 4 than 2 then the rest
 	if (size % 8 == 0) {
 		__FPL_MemoryBlockClear(uint64_t, mem, size, 3, 0x00000007);
@@ -418,9 +412,9 @@ typedef struct fpl_EventQueue {
 	volatile uint32_t count;
 } fpl_EventQueue;
 
-fpl_global fpl_EventQueue *__fpl_GlobalEventQueue = 0;
+fpl_globalvar fpl_EventQueue *__fpl_GlobalEventQueue = 0;
 
-fpl_extern fpl_b32 fpl_PollEvent(struct fpl_Event *event) {
+fpl_api fpl_b32 fpl_PollEvent(struct fpl_Event *event) {
 	fpl_EventQueue *eventQueue = __fpl_GlobalEventQueue;
 	FPL_Assert(eventQueue != NULL);
 	if (eventQueue->count > 0 && (eventQueue->index < eventQueue->count)) {
@@ -434,7 +428,7 @@ fpl_extern fpl_b32 fpl_PollEvent(struct fpl_Event *event) {
 	return 0;
 }
 
-fpl_internal void __fpl_PushEvent(struct fpl_EventQueue *eventQueue, struct fpl_Event *event) {
+fpl_inline void __fpl_PushEvent(struct fpl_EventQueue *eventQueue, struct fpl_Event *event) {
 	FPL_Assert(eventQueue != NULL);
 	uint32_t eventIndex = fpl_AtomicAddU32(&eventQueue->count, 1);
 	FPL_Assert(eventIndex < FPL_MAX_EVENT_COUNT);
@@ -504,11 +498,11 @@ typedef struct fpl_Win32State {
 	fpl_b32 isRunning;
 } fpl_Win32State;
 
-fpl_global fpl_Win32State __fpl_GlobalWin32State = { 0 };
+fpl_globalvar fpl_Win32State __fpl_GlobalWin32State = { 0 };
 
 #define WGL_SWAP_INTERVAL_FUNCTION(name) BOOL WINAPI name(int value)
 typedef WGL_SWAP_INTERVAL_FUNCTION(wgl_swap_interval);
-fpl_global wgl_swap_interval *wglSwapIntervalEXT = NULL;
+fpl_globalvar wgl_swap_interval *wglSwapIntervalEXT = NULL;
 
 #undef WNDCLASSEX
 #undef RegisterClassEx
@@ -547,12 +541,6 @@ fpl_global wgl_swap_interval *wglSwapIntervalEXT = NULL;
 #define fpl_Win32StringCopy fpl_CopyString
 #endif // defined(UNICODE)
 
-fpl_inline LARGE_INTEGER __fpl_Win32GetWallClock() {
-	LARGE_INTEGER result;
-	QueryPerformanceCounter(&result);
-	return(result);
-}
-
 void *fpl_AllocateMemory(size_t size) {
 	FPL_Assert(size > 0);
 	void *result = VirtualAlloc(0, size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
@@ -564,6 +552,11 @@ void fpl_FreeMemory(void *ptr) {
 	VirtualFree(ptr, 0, MEM_FREE);
 }
 
+fpl_inline LARGE_INTEGER __fpl_Win32GetWallClock() {
+	LARGE_INTEGER result;
+	QueryPerformanceCounter(&result);
+	return(result);
+}
 double fpl_GetHighResolutionTimeInSeconds() {
 	LARGE_INTEGER clock = __fpl_Win32GetWallClock();
 	double result = clock.QuadPart / (double)__fpl_GlobalWin32State.performanceFrequency.QuadPart;
@@ -597,7 +590,7 @@ LRESULT CALLBACK __fpl_Win32MessageProc(HWND hwnd, UINT msg, WPARAM wParam, LPAR
 	return 0;
 }
 
-fpl_internal void __fpl_Win32PushMouseEvent(fpl_MouseEventType mouseEventType, fpl_MouseButtonType mouseButton, LPARAM lParam, WPARAM wParam) {
+static void __fpl_Win32PushMouseEvent(fpl_MouseEventType mouseEventType, fpl_MouseButtonType mouseButton, LPARAM lParam, WPARAM wParam) {
 	fpl_Event newEvent = { 0 };
 	newEvent.type = fpl_EventType_Mouse;
 	newEvent.mouse.type = mouseEventType;
@@ -610,7 +603,7 @@ fpl_internal void __fpl_Win32PushMouseEvent(fpl_MouseEventType mouseEventType, f
 	__fpl_PushEvent(__fpl_GlobalEventQueue, &newEvent);
 }
 
-fpl_internal void __fpl_Win32PushKeyboardEvent(fpl_KeyboardEventType keyboardEventType, uint64_t keyCode, fpl_b32 isDown) {
+static void __fpl_Win32PushKeyboardEvent(fpl_KeyboardEventType keyboardEventType, uint64_t keyCode, fpl_b32 isDown) {
 	fpl_Event newEvent = { 0 };
 	newEvent.type = fpl_EventType_Keyboard;
 	newEvent.keyboard.keyCode = keyCode;
@@ -618,7 +611,7 @@ fpl_internal void __fpl_Win32PushKeyboardEvent(fpl_KeyboardEventType keyboardEve
 	__fpl_PushEvent(__fpl_GlobalEventQueue, &newEvent);
 }
 
-fpl_extern fpl_b32 fpl_Update() {
+fpl_api fpl_b32 fpl_Update() {
 	fpl_Win32State *win32State = &__fpl_GlobalWin32State;
 
 	MSG msg;
@@ -701,12 +694,12 @@ fpl_extern fpl_b32 fpl_Update() {
 	return win32State->isRunning;
 }
 
-fpl_extern fpl_b32 fpl_IsRunning() {
+fpl_api fpl_b32 fpl_IsRunning() {
 	fpl_b32 result = __fpl_GlobalWin32State.isRunning;
 	return(result);
 }
 
-fpl_internal fpl_b32 __fpl_Win32CreateOpenGL() {
+static fpl_b32 __fpl_Win32CreateOpenGL() {
 	fpl_Win32State *win32State = &__fpl_GlobalWin32State;
 
 	PIXELFORMATDESCRIPTOR pfd = { 0 };
@@ -749,7 +742,7 @@ fpl_internal fpl_b32 __fpl_Win32CreateOpenGL() {
 	return 1;
 }
 
-fpl_extern fpl_b32 fpl_Init(fpl_InitFlag initFlags) {
+fpl_api fpl_b32 fpl_Init(fpl_InitFlag initFlags) {
 	fpl_Win32State *win32State = &__fpl_GlobalWin32State;
 	FPL_Assert(win32State != NULL);
 
@@ -803,7 +796,7 @@ fpl_extern fpl_b32 fpl_Init(fpl_InitFlag initFlags) {
 	return 1;
 }
 
-fpl_extern void fpl_Release() {
+fpl_api void fpl_Release() {
 	fpl_Win32State *win32State = &__fpl_GlobalWin32State;
 	FPL_Assert(win32State != NULL);
 
