@@ -2,4 +2,5 @@
 # This .gitignore file was automatically created by Microsoft(R) Visual Studio.
 ################################################################################
 
-/final_platform_layer/.vs
+.vs
+/demos/.vs
