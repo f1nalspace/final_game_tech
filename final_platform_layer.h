@@ -196,74 +196,85 @@ extern "C" {
 	//
 	// API
 	//
-	typedef struct {
+	struct fpl_WindowConfiguration {
 		char windowTitle[128];
 		uint32_t windowWidth;
 		uint32_t windowHeight;
 		fpl_b32 vsyncEnabled;
-	} fpl_WindowConfiguration;
+	};
+	typedef struct fpl_WindowConfiguration fpl_WindowConfiguration;
 
-	typedef enum {
+	enum fpl_WindowEventType {
 		fpl_WindowEventType_Resize = 1,
-	} fpl_WindowEventType;
+	};
+	typedef enum fpl_WindowEventType fpl_WindowEventType;
 
-	typedef struct {
+	struct fpl_WindowEvent {
 		fpl_WindowEventType type;
 		int32_t width;
 		int32_t height;
-	} fpl_WindowEvent;
+	};
+	typedef struct fpl_WindowEvent fpl_WindowEvent;
 
-	typedef enum {
+	enum fpl_KeyboardEventType {
 		fpl_KeyboardEventType_KeyDown = 1,
 		fpl_KeyboardEventType_KeyUp,
-	} fpl_KeyboardEventType;
+	};
+	typedef enum fpl_KeyboardEventType fpl_KeyboardEventType;
 
-	typedef struct {
+	struct fpl_KeyboardEvent {
 		fpl_KeyboardEventType type;
 		uint64_t keyCode;
-	} fpl_KeyboardEvent;
+	};
+	typedef struct fpl_KeyboardEvent fpl_KeyboardEvent;
 
-	typedef enum {
+	enum fpl_MouseEventType {
 		fpl_MouseEventType_Move = 1,
 		fpl_MouseEventType_ButtonDown,
 		fpl_MouseEventType_ButtonUp,
 		fpl_MouseEventType_Wheel,
-	} fpl_MouseEventType;
+	};
+	typedef enum fpl_MouseEventType fpl_MouseEventType;
 
-	typedef enum {
+	enum fpl_MouseButtonType {
 		fpl_MouseButtonType_Left = 1,
 		fpl_MouseButtonType_Right,
 		fpl_MouseButtonType_Middle,
-	} fpl_MouseButtonType;
+	};
+	typedef enum fpl_MouseButtonType fpl_MouseButtonType;
 
-	typedef struct {
+	struct fpl_MouseEvent {
 		fpl_MouseEventType type;
 		fpl_MouseButtonType mouseButton;
 		int32_t mouseX;
 		int32_t mouseY;
 		float wheelDelta;
 		int32_t _padding;
-	} fpl_MouseEvent;
+	};
+	typedef struct fpl_MouseEvent fpl_MouseEvent;
 
-	typedef enum {
+	enum fpl_EventType {
 		fpl_EventType_Window = 1,
 		fpl_EventType_Keyboard,
 		fpl_EventType_Mouse,
-	} fpl_EventType;
+	};
+	typedef enum fpl_EventType fpl_EventType;
 
-	typedef struct fpl_Event {
+	struct fpl_Event {
 		fpl_EventType type;
 		union {
 			fpl_WindowEvent window;
 			fpl_KeyboardEvent keyboard;
 			fpl_MouseEvent mouse;
 		};
-	} fpl_Event;
+	};
+	typedef struct fpl_Event fpl_Event;
 
-	typedef enum {
+	enum fpl_InitFlag {
 		fpl_InitFlag_VideoOpenGL = 1 << 0,
 		fpl_InitFlag_All = fpl_InitFlag_VideoOpenGL,
-	} fpl_InitFlag;
+	};
+	typedef enum fpl_InitFlag fpl_InitFlag;
 
 #if defined(_MSC_VER)
 	// Inline Atomics for Visual C Compiler
@@ -305,7 +316,7 @@ extern "C" {
 	fpl_api void fpl_Release();
 	fpl_api fpl_b32 fpl_IsRunning();
 	fpl_api fpl_b32 fpl_Update();
-	fpl_api fpl_b32 fpl_PollEvent(struct fpl_Event *event);
+	fpl_api fpl_b32 fpl_PollEvent(fpl_Event *event);
 	fpl_api void fpl_Flip();
 
 	// Memory
@@ -406,15 +417,16 @@ fpl_api void fpl_ClearMemory(void *mem, size_t size) {
 }
 
 #define FPL_MAX_EVENT_COUNT 4096
-typedef struct fpl_EventQueue {
+struct fpl_EventQueue {
 	fpl_Event events[FPL_MAX_EVENT_COUNT];
 	volatile uint32_t index;
 	volatile uint32_t count;
-} fpl_EventQueue;
+};
+typedef struct fpl_EventQueue fpl_EventQueue;
 
 fpl_globalvar fpl_EventQueue *__fpl_GlobalEventQueue = 0;
 
-fpl_api fpl_b32 fpl_PollEvent(struct fpl_Event *event) {
+fpl_api fpl_b32 fpl_PollEvent(fpl_Event *event) {
 	fpl_EventQueue *eventQueue = __fpl_GlobalEventQueue;
 	FPL_Assert(eventQueue != NULL);
 	if (eventQueue->count > 0 && (eventQueue->index < eventQueue->count)) {
@@ -428,7 +440,7 @@ fpl_api fpl_b32 fpl_PollEvent(struct fpl_Event *event) {
 	return 0;
 }
 
-fpl_inline void __fpl_PushEvent(struct fpl_EventQueue *eventQueue, struct fpl_Event *event) {
+fpl_inline void __fpl_PushEvent(fpl_EventQueue *eventQueue, fpl_Event *event) {
 	FPL_Assert(eventQueue != NULL);
 	uint32_t eventIndex = fpl_AtomicAddU32(&eventQueue->count, 1);
 	FPL_Assert(eventIndex < FPL_MAX_EVENT_COUNT);
@@ -488,7 +500,7 @@ typedef wchar_t fpl_win32_char;
 typedef char fpl_win32_char;
 #endif
 
-typedef struct fpl_Win32State {
+struct fpl_Win32State {
 	HINSTANCE appInstance;
 	LARGE_INTEGER performanceFrequency;
 	HWND windowHandle;
@@ -496,7 +508,8 @@ typedef struct fpl_Win32State {
 	HDC deviceContext;
 	HGLRC renderingContext;
 	fpl_b32 isRunning;
-} fpl_Win32State;
+};
+typedef struct fpl_Win32State fpl_Win32State;
 
 fpl_globalvar fpl_Win32State __fpl_GlobalWin32State = { 0 };
 
@@ -742,7 +755,7 @@ static fpl_b32 __fpl_Win32CreateOpenGL() {
 	return 1;
 }
 
-fpl_api fpl_b32 fpl_Init(fpl_InitFlag initFlags) {
+fpl_api fpl_b32 fpl_Init(enum fpl_InitFlag initFlags) {
 	fpl_Win32State *win32State = &__fpl_GlobalWin32State;
 	FPL_Assert(win32State != NULL);
 
