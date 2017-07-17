@@ -6,6 +6,9 @@ This library is designed to abstract the underlying platform
 to a very simple and easy to understand api
 without requiring any external dependencies.
 
+The main focus is game development, so the default settings
+will create a window and setup a rendering context.
+
 HOW TO USE:
 
 In one of your C or C++ translation unit define this:
@@ -192,14 +195,6 @@ typedef int32_t bool32;
 #	define fpl_api extern
 #endif
 
-#ifndef __cplusplus
-#	define FPL_STRUCT_TYPE(name) typedef struct name name;
-#	define FPL_ENUM_TYPE(name) typedef enum name name;
-#else
-#	define FPL_STRUCT_TYPE(name)
-#	define FPL_ENUM_TYPE(name)
-#endif
-
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -354,7 +349,6 @@ extern "C" {
 //
 // ****************************************************************************
 #if defined(FPL_IMPLEMENTATION)
-
 #	if defined(FPL_IMPLEMENTED)
 #		error "FPL_IMPLEMENTATION can only be defined once!"
 #	else
@@ -363,6 +357,7 @@ extern "C" {
 #	if defined(_MSC_VER)
 #		include <intrin.h>
 #		include <windows.h>
+
 // Inline Atomics for Visual C Compiler
 uint32_t fpl_AtomicExchangeU32(volatile uint32_t *target, uint32_t value) {
 	uint32_t result = _InterlockedExchange((volatile long *)target, value);
@@ -557,8 +552,6 @@ void fpl_UTF8StringToWideString(const char *utf8Source, uint32_t utf8SourceLen, 
 
 #define FPL_CLEARSTRUCT(value) \
 	fpl_ClearMemory(value, sizeof(*value))
-
-#include <stdio.h>
 
 //
 // ----------------------------------------------------------------------------
@@ -836,7 +829,7 @@ LRESULT CALLBACK fpl_Win32MessageProc_Internal(HWND hwnd, UINT msg, WPARAM wPara
 				fpl_Win32PushKeyboardEvent_Internal(fpl_KeyboardEventType_Char, keyCode, modifiers, 0);
 			}
 #else
-			// @TODO: Map keycode to fpl owns keycode table - but only for special keys like return and such.
+			// @TODO: Map keycode to fpl owns keycode table - but only for special keys like return and such. So we can map keys platform-indenpendent for libraries like imGUI!
 			uint64_t keyCode = wParam;
 			fpl_KeyboardModifierType modifiers = { 0 };
 			fpl_Win32PushKeyboardEvent_Internal(fpl_KeyboardEventType_Char, keyCode, modifiers, 0);
