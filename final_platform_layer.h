@@ -232,14 +232,14 @@ extern "C" {
 		fpl_KeyboardEventType_Char,
 	} fpl_KeyboardEventType;
 
-	typedef struct fpl_KeyboardModifierType {
-		uint32_t value;
-	} fpl_KeyboardModifierType;
-
-	const uint32_t fpl_KeyboardModifierType_Alt = 1 << 0;
-	const uint32_t fpl_KeyboardModifierType_Ctrl = 1 << 1;
-	const uint32_t fpl_KeyboardModifierType_Shift = 1 << 2;
-	const uint32_t fpl_KeyboardModifierType_Super = 1 << 3;
+	enum {
+		fpl_KeyboardModifierType_None = 0,
+		fpl_KeyboardModifierType_Alt = 1 << 0,
+		fpl_KeyboardModifierType_Ctrl = 1 << 1,
+		fpl_KeyboardModifierType_Shift = 1 << 2,
+		fpl_KeyboardModifierType_Super = 1 << 3,
+	};
+	typedef uint32_t fpl_KeyboardModifierType;
 
 	typedef struct fpl_KeyboardEvent {
 		fpl_KeyboardEventType type;
@@ -285,12 +285,12 @@ extern "C" {
 		};
 	} fpl_Event;
 
-	typedef struct fpl_InitFlag {
-		uint32_t value;
-	} fpl_InitFlag;
-
-	const uint32_t fpl_InitFlag_Window = 1 << 0;
-	const uint32_t fpl_InitFlag_VideoOpenGL = 1 << 1;
+	enum {
+		fpl_InitFlag_None = 0,
+		fpl_InitFlag_Window = 1 << 0,
+		fpl_InitFlag_VideoOpenGL = 1 << 1,
+	};
+	typedef uint32_t fpl_InitFlag;
 
 #define FPL_ARRAYCOUNT(arr) (sizeof(arr) / sizeof((arr)[0]))
 
@@ -308,7 +308,7 @@ extern "C" {
 	fpl_api uint64_t fpl_AtomicCompareExchangeU64(volatile uint64_t *dest, uint64_t exchange, uint64_t comparand);
 
 	// Core
-	fpl_api bool32 fpl_Init(struct fpl_InitFlag initFlags);
+	fpl_api bool32 fpl_Init(fpl_InitFlag initFlags);
 	fpl_api void fpl_Release();
 
 	// Window
@@ -798,18 +798,18 @@ LRESULT CALLBACK fpl_Win32MessageProc_Internal(HWND hwnd, UINT msg, WPARAM wPara
 			bool32 superKeyWasDown = fpl_Win32IsKeyDown(VK_LMENU);
 
 			fpl_KeyboardEventType keyEventType = isDown ? fpl_KeyboardEventType_KeyDown : fpl_KeyboardEventType_KeyUp;
-			fpl_KeyboardModifierType modifiers = { 0 };
+			fpl_KeyboardModifierType modifiers = fpl_KeyboardModifierType_None;
 			if (altKeyWasDown) {
-				modifiers.value |= fpl_KeyboardModifierType_Alt;
+				modifiers |= fpl_KeyboardModifierType_Alt;
 			}
 			if (shiftKeyWasDown) {
-				modifiers.value |= fpl_KeyboardModifierType_Shift;
+				modifiers |= fpl_KeyboardModifierType_Shift;
 			}
 			if (ctrlKeyWasDown) {
-				modifiers.value |= fpl_KeyboardModifierType_Ctrl;
+				modifiers |= fpl_KeyboardModifierType_Ctrl;
 			}
 			if (superKeyWasDown) {
-				modifiers.value |= fpl_KeyboardModifierType_Super;
+				modifiers |= fpl_KeyboardModifierType_Super;
 			}
 			fpl_Win32PushKeyboardEvent_Internal(keyEventType, keyCode, modifiers, isDown);
 
@@ -972,9 +972,9 @@ static bool32 fpl_Win32CreateOpenGL_Internal() {
 
 #endif // FPL_ENABLE_WINDOW
 
-bool32 fpl_Init(struct fpl_InitFlag initFlags) {
-	if (initFlags.value & fpl_InitFlag_VideoOpenGL) {
-		initFlags.value |= fpl_InitFlag_Window;
+bool32 fpl_Init(fpl_InitFlag initFlags) {
+	if (initFlags & fpl_InitFlag_VideoOpenGL) {
+		initFlags |= fpl_InitFlag_Window;
 	}
 
 	fpl_Win32State *win32State = &fpl_GlobalWin32State_Internal;
@@ -984,7 +984,7 @@ bool32 fpl_Init(struct fpl_InitFlag initFlags) {
 	QueryPerformanceFrequency(&win32State->performanceFrequency);
 
 #	if FPL_ENABLE_WINDOW
-	if (initFlags.value & fpl_InitFlag_Window) {
+	if (initFlags & fpl_InitFlag_Window) {
 		// Register window class
 		WNDCLASSEX windowClass = { 0 };
 		windowClass.hInstance = win32State->appInstance;
@@ -1015,7 +1015,7 @@ bool32 fpl_Init(struct fpl_InitFlag initFlags) {
 
 #	if FPL_ENABLE_OPENGL
 		// Create opengl rendering context if required
-		if (initFlags.value & fpl_InitFlag_VideoOpenGL) {
+		if (initFlags & fpl_InitFlag_VideoOpenGL) {
 			bool32 openglResult = fpl_Win32CreateOpenGL_Internal();
 			if (!openglResult) {
 				// @TODO: Log error
