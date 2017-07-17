@@ -12,3 +12,6 @@
 /demos/FPL_OpenGL/x86
 /demos/x64
 /demos/x86
+/demos/build
+*.db
+*.opendb

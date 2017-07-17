@@ -4,10 +4,12 @@ Open-Source Single-File Header-Library by Torsten Spaete
 
 This library is designed to abstract the underlying platform
 to a very simple and easy to understand api
-without requiring any external dependencies.
+with requiring just built-in operatoring system dependencies only.
 
 The main focus is game development, so the default settings
 will create a window and setup a rendering context.
+
+It is fully C-89 compatible and will compile in C++ as well.
 
 HOW TO USE:
 
@@ -58,6 +60,12 @@ SUPPORTED ARCHITECTURES:
 [x] x86
 [x] x86_64
 
+SUPPORTED COMPILERS:
+
+[X] Compiles in Visual Studio 2015+
+[ ] Compiles in GCC
+[ ] Compiles in Clang
+
 SUPPORTED PLATFORMS:
 
 [x] Win32
@@ -67,27 +75,27 @@ SUPPORTED PLATFORMS:
 
 LICENSE:
 
-	MIT License
+MIT License
 
-	Copyright (c) 2017 Torsten Spaete
-	Permission is hereby granted, free of charge, to any person obtaining a copy of
-	this software and associated documentation files (the "Software"), to deal in
-	the Software without restriction, including without limitation the rights to
-	use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies
-	of the Software, and to permit persons to whom the Software is furnished to do
-	so, subject to the following conditions:
-	The above copyright notice and this permission notice shall be included in all
-	copies or substantial portions of the Software.
-	THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-	IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-	FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-	AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-	LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-	OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-	SOFTWARE.
+Copyright (c) 2017 Torsten Spaete
+Permission is hereby granted, free of charge, to any person obtaining a copy of
+this software and associated documentation files (the "Software"), to deal in
+the Software without restriction, including without limitation the rights to
+use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies
+of the Software, and to permit persons to whom the Software is furnished to do
+so, subject to the following conditions:
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
 
 VERSION HISTORY:
-	v0.1 (2017-05-10) Initial version
+v0.1 (2017-05-10) Initial version
 */
 
 #ifndef FPL_INCLUDE_H
