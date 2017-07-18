@@ -91,6 +91,25 @@ static void InitImGUI() {
 	ImGuiIO& io = ImGui::GetIO();
 
 	io.RenderDrawListsFn = ImGUIRenderDrawLists;
+	io.KeyMap[ImGuiKey_Tab] = fpl_Key_Tab;
+	io.KeyMap[ImGuiKey_LeftArrow] = fpl_Key_Left;
+	io.KeyMap[ImGuiKey_RightArrow] = fpl_Key_Right;
+	io.KeyMap[ImGuiKey_UpArrow] = fpl_Key_Up;
+	io.KeyMap[ImGuiKey_DownArrow] = fpl_Key_Down;
+	io.KeyMap[ImGuiKey_PageUp] = fpl_Key_PageUp;
+	io.KeyMap[ImGuiKey_PageDown] = fpl_Key_PageDown;
+	io.KeyMap[ImGuiKey_Home] = fpl_Key_Home;
+	io.KeyMap[ImGuiKey_End] = fpl_Key_End;
+	io.KeyMap[ImGuiKey_Delete] = fpl_Key_Delete;
+	io.KeyMap[ImGuiKey_Backspace] = fpl_Key_Backspace;
+	io.KeyMap[ImGuiKey_Enter] = fpl_Key_Enter;
+	io.KeyMap[ImGuiKey_Escape] = fpl_Key_Escape;
+	io.KeyMap[ImGuiKey_A] = fpl_Key_A;
+	io.KeyMap[ImGuiKey_C] = fpl_Key_C;
+	io.KeyMap[ImGuiKey_V] = fpl_Key_V;
+	io.KeyMap[ImGuiKey_X] = fpl_Key_X;
+	io.KeyMap[ImGuiKey_Y] = fpl_Key_Y;
+	io.KeyMap[ImGuiKey_Z] = fpl_Key_Z;
 
 	io.Fonts->AddFontDefault();
 
@@ -122,17 +141,17 @@ static void ReleaseImGUI() {
 	}
 }
 
-static void ImGUIKeyEvent(uint64_t key, bool down) {
+static void ImGUIKeyEvent(uint64_t keyCode, fpl_Key mappedKey, bool down) {
 	ImGuiIO& io = ImGui::GetIO();
-	io.KeysDown[key] = down;
-
-#if 0
-	(void)mods; // Modifiers are not reliable across systems
-	io.KeyCtrl = io.KeysDown[GLFW_KEY_LEFT_CONTROL] || io.KeysDown[GLFW_KEY_RIGHT_CONTROL];
-	io.KeyShift = io.KeysDown[GLFW_KEY_LEFT_SHIFT] || io.KeysDown[GLFW_KEY_RIGHT_SHIFT];
-	io.KeyAlt = io.KeysDown[GLFW_KEY_LEFT_ALT] || io.KeysDown[GLFW_KEY_RIGHT_ALT];
-	io.KeySuper = io.KeysDown[GLFW_KEY_LEFT_SUPER] || io.KeysDown[GLFW_KEY_RIGHT_SUPER];
-#endif
+	if (mappedKey != fpl_Key_None) {
+		io.KeysDown[mappedKey] = down;
+	} else {
+		io.KeysDown[keyCode] = down;
+	}
+	io.KeyCtrl = io.KeysDown[fpl_Key_LeftControl] || io.KeysDown[fpl_Key_RightControl];
+	io.KeyShift = io.KeysDown[fpl_Key_LeftShift] || io.KeysDown[fpl_Key_RightShift];
+	io.KeyAlt = io.KeysDown[fpl_Key_LeftAlt] || io.KeysDown[fpl_Key_RightAlt];
+	io.KeySuper = io.KeysDown[fpl_Key_LeftWin] || io.KeysDown[fpl_Key_RightWin];
 }
 
 static bool show_test_window = true;
@@ -209,11 +228,11 @@ int main(int argc, char **args) {
 						switch (event.keyboard.type) {
 							case fpl_KeyboardEventType_KeyDown:
 							{
-								ImGUIKeyEvent(event.keyboard.keyCode, true);
+								ImGUIKeyEvent(event.keyboard.keyCode, event.keyboard.mappedKey, true);
 							} break;
 							case fpl_KeyboardEventType_KeyUp:
 							{
-								ImGUIKeyEvent(event.keyboard.keyCode, false);
+								ImGUIKeyEvent(event.keyboard.keyCode, event.keyboard.mappedKey, false);
 							} break;
 							case fpl_KeyboardEventType_Char:
 							{

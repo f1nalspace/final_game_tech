@@ -133,14 +133,30 @@ v0.1 (2017-05-10) Initial version
 #endif
 
 //
-// Build configuration
+// Build configuration and compilers
 //
+// Based on:
+// http://beefchunk.com/documentation/lang/c/pre-defined-c/precomp.html
+// http://nadeausoftware.com/articles/2012/10/c_c_tip_how_detect_compiler_name_and_version_using_compiler_predefined_macros
 #if defined(_MSC_VER)
+#	define FPL_COMPILER_MSVC
 #	if defined(_DEBUG) || (!defined(NDEBUG))
 #		define FPL_DEBUG
 #	else
 #		define FPL_RELEASE
 #	endif
+#elif defined(__llvm__)
+#	define FPL_COMPILER_LLVM
+#elif defined(__clang__)
+#	define FPL_COMPILER_CLANG
+#elif defined(__GNUC__) || defined(__GNUG__)
+#	define FPL_COMPILER_GCC
+#elif defined(__MINGW32__)
+#	define FPL_COMPILER_MINGW
+#elif defined(__INTEL_COMPILER) || defined(__ICC)
+#	define FPL_COMPILER_INTEL
+#else
+#	define FPL_COMPILER_UNKNOWN
 #endif
 
 //
@@ -204,11 +220,168 @@ typedef int32_t bool32;
 #endif
 
 #ifdef __cplusplus
-extern "C" {
+extern
+"C" {
 #endif
 	//
 	// API
 	//
+	// @NOTE: Based on MS Virtual-Key-Codes, mostly directly mappable to US-ASCII
+	enum {
+		fpl_Key_None = 0,
+
+		// 0x07: Undefined
+
+		fpl_Key_Backspace = 0x08,
+		fpl_Key_Tab = 0x09,
+
+		// 0x0A-0x0B: Reserved
+
+		fpl_Key_Clear = 0x0C,
+		fpl_Key_Enter = 0x0D,
+
+		// 0x0E-0x0F: Undefined
+
+		fpl_Key_Shift = 0x10,
+		fpl_Key_Control = 0x11,
+		fpl_Key_Alt = 0x12,
+		fpl_Key_Pause = 0x13,
+		fpl_Key_CapsLock = 0x14,
+
+		// 0x15: IME-Keys
+		// 0x16: Undefined
+		// 0x17-0x19 IME-Keys
+		// 0x1A: Undefined
+
+		fpl_Key_Escape = 0x1B,
+
+		// 0x1C - 0x1F: IME-Keys
+
+		fpl_Key_Space = 0x20,
+		fpl_Key_PageUp = 0x21,
+		fpl_Key_PageDown = 0x22,
+		fpl_Key_End = 0x23,
+		fpl_Key_Home = 0x24,
+		fpl_Key_Left = 0x25,
+		fpl_Key_Up = 0x26,
+		fpl_Key_Right = 0x27,
+		fpl_Key_Down = 0x28,
+		fpl_Key_Select = 0x29,
+		fpl_Key_Print = 0x2A,
+		fpl_Key_Execute = 0x2B,
+		fpl_Key_Snapshot = 0x2C,
+		fpl_Key_Insert = 0x2D,
+		fpl_Key_Delete = 0x2E,
+		fpl_Key_Help = 0x2F,
+
+		fpl_Key_0 = 0x30,
+		fpl_Key_1 = 0x31,
+		fpl_Key_2 = 0x32,
+		fpl_Key_3 = 0x33,
+		fpl_Key_4 = 0x34,
+		fpl_Key_5 = 0x35,
+		fpl_Key_6 = 0x36,
+		fpl_Key_7 = 0x37,
+		fpl_Key_8 = 0x38,
+		fpl_Key_9 = 0x39,
+
+		// 0x3A-0x40: Undefined
+
+		fpl_Key_A = 0x41,
+		fpl_Key_B = 0x42,
+		fpl_Key_C = 0x43,
+		fpl_Key_D = 0x44,
+		fpl_Key_E = 0x45,
+		fpl_Key_F = 0x46,
+		fpl_Key_G = 0x47,
+		fpl_Key_H = 0x48,
+		fpl_Key_I = 0x49,
+		fpl_Key_J = 0x4A,
+		fpl_Key_K = 0x4B,
+		fpl_Key_L = 0x4C,
+		fpl_Key_M = 0x4D,
+		fpl_Key_N = 0x4E,
+		fpl_Key_O = 0x4F,
+		fpl_Key_P = 0x50,
+		fpl_Key_Q = 0x51,
+		fpl_Key_R = 0x52,
+		fpl_Key_S = 0x53,
+		fpl_Key_T = 0x54,
+		fpl_Key_U = 0x55,
+		fpl_Key_V = 0x56,
+		fpl_Key_W = 0x57,
+		fpl_Key_X = 0x58,
+		fpl_Key_Y = 0x59,
+		fpl_Key_Z = 0x5A,
+
+		fpl_Key_LeftWin = 0x5B,
+		fpl_Key_RightWin = 0x5C,
+		fpl_Key_Apps = 0x5D,
+
+		// 0x5E: Reserved
+
+		fpl_Key_Sleep = 0x5F,
+		fpl_Key_NumPad0 = 0x60,
+		fpl_Key_NumPad1 = 0x61,
+		fpl_Key_NumPad2 = 0x62,
+		fpl_Key_NumPad3 = 0x63,
+		fpl_Key_NumPad4 = 0x64,
+		fpl_Key_NumPad5 = 0x65,
+		fpl_Key_NumPad6 = 0x66,
+		fpl_Key_NumPad7 = 0x67,
+		fpl_Key_NumPad8 = 0x68,
+		fpl_Key_NumPad9 = 0x69,
+		fpl_Key_Multiply = 0x6A,
+		fpl_Key_Add = 0x6B,
+		fpl_Key_Separator = 0x6C,
+		fpl_Key_Substract = 0x6D,
+		fpl_Key_Decimal = 0x6E,
+		fpl_Key_Divide = 0x6F,
+		fpl_Key_F1 = 0x70,
+		fpl_Key_F2 = 0x71,
+		fpl_Key_F3 = 0x72,
+		fpl_Key_F4 = 0x73,
+		fpl_Key_F5 = 0x74,
+		fpl_Key_F6 = 0x75,
+		fpl_Key_F7 = 0x76,
+		fpl_Key_F8 = 0x77,
+		fpl_Key_F9 = 0x78,
+		fpl_Key_F10 = 0x79,
+		fpl_Key_F11 = 0x7A,
+		fpl_Key_F12 = 0x7B,
+		fpl_Key_F13 = 0x7C,
+		fpl_Key_F14 = 0x7D,
+		fpl_Key_F15 = 0x7E,
+		fpl_Key_F16 = 0x7F,
+		fpl_Key_F17 = 0x80,
+		fpl_Key_F18 = 0x81,
+		fpl_Key_F19 = 0x82,
+		fpl_Key_F20 = 0x83,
+		fpl_Key_F21 = 0x84,
+		fpl_Key_F22 = 0x85,
+		fpl_Key_F23 = 0x86,
+		fpl_Key_F24 = 0x87,
+
+		// 0x88-8F: Unassigned
+
+		fpl_Key_NumLock = 0x90,
+		fpl_Key_Scroll = 0x91,
+
+		// 0x92-9x96: OEM specific
+		// 0x97-0x9F: Unassigned
+
+		fpl_Key_LeftShift = 0xA0,
+		fpl_Key_RightShift = 0xA1,
+		fpl_Key_LeftControl = 0xA2,
+		fpl_Key_RightControl = 0xA3,
+		fpl_Key_LeftAlt = 0xA4,
+		fpl_Key_RightAlt = 0xA5,
+
+		// 0xA6-0xFE: Dont care
+	};
+
+	typedef uint64_t fpl_Key;
+
 	typedef struct fpl_WindowConfiguration {
 		char windowTitle[128];
 		uint32_t windowWidth;
@@ -244,6 +417,7 @@ extern "C" {
 	typedef struct fpl_KeyboardEvent {
 		fpl_KeyboardEventType type;
 		uint64_t keyCode;
+		fpl_Key mappedKey;
 		fpl_KeyboardModifierType modifiers;
 	} fpl_KeyboardEvent;
 
@@ -356,45 +530,8 @@ extern "C" {
 // Implementation
 //
 // ****************************************************************************
-#if defined(FPL_IMPLEMENTATION)
-#	if defined(FPL_IMPLEMENTED)
-#		error "FPL_IMPLEMENTATION can only be defined once!"
-#	else
+#if defined(FPL_IMPLEMENTATION) && !defined(FPL_IMPLEMENTED)
 #		define FPL_IMPLEMENTED
-
-#	if defined(_MSC_VER)
-#		include <intrin.h>
-#		include <windows.h>
-
-// Inline Atomics for Visual C Compiler
-uint32_t fpl_AtomicExchangeU32(volatile uint32_t *target, uint32_t value) {
-	uint32_t result = _InterlockedExchange((volatile long *)target, value);
-	return (result);
-}
-uint64_t fpl_AtomicExchangeU64(volatile uint64_t *target, uint64_t value) {
-	uint64_t result = InterlockedExchange64((volatile long long *)target, value);
-	return (result);
-}
-uint32_t fpl_AtomicAddU32(volatile uint32_t *value, uint32_t addend) {
-	uint32_t result = _InterlockedExchangeAdd((volatile long *)value, addend);
-	return (result);
-}
-uint64_t fpl_AtomicAddU64(volatile uint64_t *value, uint64_t addend) {
-	uint64_t result = InterlockedExchangeAdd64((volatile long long *)value, addend);
-	return (result);
-}
-uint32_t fpl_AtomicCompareExchangeU32(volatile uint32_t *dest, uint32_t exchange, uint32_t comparand) {
-	uint32_t result = _InterlockedCompareExchange((volatile long *)dest, exchange, comparand);
-	return (result);
-}
-uint64_t fpl_AtomicCompareExchangeU64(volatile uint64_t *dest, uint64_t exchange, uint64_t comparand) {
-	uint64_t result = InterlockedCompareExchange64((volatile long long *)dest, exchange, comparand);
-	return (result);
-}
-#	else
-#		error "Implement intrinsics for other platforms/compilers!"
-#	endif // defined(_MSC_VER)
-
 void *fpl_AllocateAlignedMemory(size_t size, size_t alignment) {
 	FPL_ASSERT(size > 0);
 	FPL_ASSERT((alignment > 0) && !(alignment & (alignment - 1)));
@@ -529,35 +666,6 @@ void fpl_CopyWideString(const wchar_t *source, uint32_t sourceLen, wchar_t *dest
 	dest[sourceLen] = 0;
 }
 
-void fpl_WideStringToOEMString(const wchar_t *wideSource, uint32_t maxWideSourceLen, char *oemDest, uint32_t maxOemDestLen) {
-	uint32_t requiredSize = WideCharToMultiByte(CP_ACP, 0, wideSource, maxWideSourceLen, NULL, 0, NULL, NULL);
-	uint32_t requiredLen = requiredSize / sizeof(char);
-	FPL_ASSERT(maxOemDestLen >= (requiredLen + 1));
-	WideCharToMultiByte(CP_ACP, 0, wideSource, maxWideSourceLen, oemDest, maxOemDestLen, NULL, NULL);
-	oemDest[requiredLen] = 0;
-}
-void fpl_WideStringToUTF8String(const wchar_t *wideSource, uint32_t maxWideSourceLen, char *utf8Dest, uint32_t maxUtf8DestLen) {
-	uint32_t requiredSize = WideCharToMultiByte(CP_UTF8, 0, wideSource, maxWideSourceLen, NULL, 0, NULL, NULL);
-	uint32_t requiredLen = requiredSize / sizeof(char);
-	FPL_ASSERT(maxUtf8DestLen >= (requiredSize + 1));
-	WideCharToMultiByte(CP_UTF8, 0, wideSource, maxWideSourceLen, utf8Dest, maxUtf8DestLen, NULL, NULL);
-	utf8Dest[requiredLen] = 0;
-}
-void fpl_OEMStringToWideString(const char *oemSource, uint32_t oemSourceLen, wchar_t *wideDest, uint32_t maxWideDestLen) {
-	uint32_t requiredSize = MultiByteToWideChar(CP_ACP, 0, oemSource, oemSourceLen, NULL, 0);
-	uint32_t requiredLen = requiredSize / sizeof(wchar_t);
-	FPL_ASSERT(maxWideDestLen >= (requiredLen + 1));
-	MultiByteToWideChar(CP_ACP, 0, oemSource, oemSourceLen, wideDest, maxWideDestLen);
-	wideDest[requiredLen] = 0;
-}
-void fpl_UTF8StringToWideString(const char *utf8Source, uint32_t utf8SourceLen, wchar_t *wideDest, uint32_t maxWideDestLen) {
-	uint32_t requiredSize = MultiByteToWideChar(CP_UTF8, 0, utf8Source, utf8SourceLen, NULL, 0);
-	uint32_t requiredLen = requiredSize / sizeof(wchar_t);
-	FPL_ASSERT(maxWideDestLen >= (requiredLen + 1));
-	MultiByteToWideChar(CP_UTF8, 0, utf8Source, utf8SourceLen, wideDest, maxWideDestLen);
-	wideDest[requiredLen] = 0;
-}
-
 #define FPL_CLEARSTRUCT(value) \
 	fpl_ClearMemory(value, sizeof(*value))
 
@@ -568,6 +676,9 @@ void fpl_UTF8StringToWideString(const char *utf8Source, uint32_t utf8SourceLen, 
 //
 #if defined(FPL_PLATFORM_WINDOWS)
 
+#	include <intrin.h>
+	// @NOTE(final): windef.h defines min/max macros defined in lowerspace, this will break std::min/max so we have to tell the header we dont want this!
+#	define NOMINMAX
 #	include <windows.h>
 #	include <windowsx.h>
 #	if FPL_ENABLE_WINDOW
@@ -575,19 +686,44 @@ void fpl_UTF8StringToWideString(const char *utf8Source, uint32_t utf8SourceLen, 
 #		if FPL_ENABLE_OPENGL
 #			include <gl\gl.h>
 #			pragma comment( lib, "opengl32.lib" )
-#		endif
-#	endif
+#		endif // FPL_ENABLE_OPENGL
+#	endif // FPL_ENABLE_WINDOW
 
 #define FPL_WIN32_PATH_SEPARATOR '\\'
 
-//
-// Windows platform implementation
-//
+// Intrinsics
+#if defined(FPL_COMPILER_MSVC)
+uint32_t fpl_AtomicExchangeU32(volatile uint32_t *target, uint32_t value) {
+	uint32_t result = _InterlockedExchange((volatile long *)target, value);
+	return (result);
+}
+uint64_t fpl_AtomicExchangeU64(volatile uint64_t *target, uint64_t value) {
+	uint64_t result = InterlockedExchange64((volatile long long *)target, value);
+	return (result);
+}
+uint32_t fpl_AtomicAddU32(volatile uint32_t *value, uint32_t addend) {
+	uint32_t result = _InterlockedExchangeAdd((volatile long *)value, addend);
+	return (result);
+}
+uint64_t fpl_AtomicAddU64(volatile uint64_t *value, uint64_t addend) {
+	uint64_t result = InterlockedExchangeAdd64((volatile long long *)value, addend);
+	return (result);
+}
+uint32_t fpl_AtomicCompareExchangeU32(volatile uint32_t *dest, uint32_t exchange, uint32_t comparand) {
+	uint32_t result = _InterlockedCompareExchange((volatile long *)dest, exchange, comparand);
+	return (result);
+}
+uint64_t fpl_AtomicCompareExchangeU64(volatile uint64_t *dest, uint64_t exchange, uint64_t comparand) {
+	uint64_t result = InterlockedCompareExchange64((volatile long long *)dest, exchange, comparand);
+	return (result);
+}
+#endif // defined(FPL_COMPILER_MSVC)
+
 #if defined(UNICODE)
 typedef wchar_t fpl_win32_char;
 #else
 typedef char fpl_win32_char;
-#endif
+#endif // defined(UNICODE)
 
 typedef struct fpl_Win32State {
 	HINSTANCE appInstance;
@@ -605,12 +741,14 @@ typedef struct fpl_Win32State {
 
 fpl_globalvar fpl_Win32State fpl_GlobalWin32State_Internal = { 0 };
 
+// @TODO: Remove this entirely
 #if FPL_ENABLE_OPENGL && FPL_ENABLE_WINDOW
 #	define WGL_SWAP_INTERVAL_FUNCTION(name) BOOL WINAPI name(int value)
 typedef WGL_SWAP_INTERVAL_FUNCTION(wgl_swap_interval);
 fpl_globalvar wgl_swap_interval *wglSwapIntervalEXT = NULL;
 #endif // FPL_ENABLE_OPENGL && FPL_ENABLE_WINDOW
 
+// @TODO: Dont like this overwritting the defines like that
 #undef WNDCLASSEX
 #undef RegisterClassEx
 #undef UnregisterClass
@@ -620,7 +758,6 @@ fpl_globalvar wgl_swap_interval *wglSwapIntervalEXT = NULL;
 #undef SetWindowLongPtr
 #undef DispatchMessage
 #undef GetModuleFileName
-
 #if defined(UNICODE)
 #	define WIN32_CLASSNAME L"FPLWindowClass"
 #	define WIN32_UNNAMED_WINDOW L"Unnamed FPL Window"
@@ -653,6 +790,9 @@ fpl_globalvar wgl_swap_interval *wglSwapIntervalEXT = NULL;
 #	define MapVirtualKey MapVirtualKeyA
 #endif // defined(UNICODE)
 
+//
+// Memory
+//
 void *fpl_AllocateMemory(size_t size) {
 	FPL_ASSERT(size > 0);
 	void *result = VirtualAlloc(0, size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
@@ -664,6 +804,9 @@ void fpl_FreeMemory(void *ptr) {
 	VirtualFree(ptr, 0, MEM_FREE);
 }
 
+//
+// File/Path IO
+//
 void fpl_GetExecutableFilePath(char *dest, uint32_t maxDestLen) {
 	FPL_ASSERT(maxDestLen >= (MAX_PATH + 1));
 #if defined(UNICODE)
@@ -699,6 +842,9 @@ char *fpl_ExtractFilePath(const char *sourcePath, char *destPath, uint32_t maxDe
 	return(result);
 }
 
+//
+// Timing
+//
 fpl_inline LARGE_INTEGER fpl_Win32GetWallClock_Internal() {
 	LARGE_INTEGER result;
 	QueryPerformanceCounter(&result);
@@ -710,6 +856,41 @@ double fpl_GetHighResolutionTimeInSeconds() {
 	return(result);
 }
 
+//
+// String
+//
+void fpl_WideStringToOEMString(const wchar_t *wideSource, uint32_t maxWideSourceLen, char *oemDest, uint32_t maxOemDestLen) {
+	uint32_t requiredSize = WideCharToMultiByte(CP_ACP, 0, wideSource, maxWideSourceLen, NULL, 0, NULL, NULL);
+	uint32_t requiredLen = requiredSize / sizeof(char);
+	FPL_ASSERT(maxOemDestLen >= (requiredLen + 1));
+	WideCharToMultiByte(CP_ACP, 0, wideSource, maxWideSourceLen, oemDest, maxOemDestLen, NULL, NULL);
+	oemDest[requiredLen] = 0;
+}
+void fpl_WideStringToUTF8String(const wchar_t *wideSource, uint32_t maxWideSourceLen, char *utf8Dest, uint32_t maxUtf8DestLen) {
+	uint32_t requiredSize = WideCharToMultiByte(CP_UTF8, 0, wideSource, maxWideSourceLen, NULL, 0, NULL, NULL);
+	uint32_t requiredLen = requiredSize / sizeof(char);
+	FPL_ASSERT(maxUtf8DestLen >= (requiredSize + 1));
+	WideCharToMultiByte(CP_UTF8, 0, wideSource, maxWideSourceLen, utf8Dest, maxUtf8DestLen, NULL, NULL);
+	utf8Dest[requiredLen] = 0;
+}
+void fpl_OEMStringToWideString(const char *oemSource, uint32_t oemSourceLen, wchar_t *wideDest, uint32_t maxWideDestLen) {
+	uint32_t requiredSize = MultiByteToWideChar(CP_ACP, 0, oemSource, oemSourceLen, NULL, 0);
+	uint32_t requiredLen = requiredSize / sizeof(wchar_t);
+	FPL_ASSERT(maxWideDestLen >= (requiredLen + 1));
+	MultiByteToWideChar(CP_ACP, 0, oemSource, oemSourceLen, wideDest, maxWideDestLen);
+	wideDest[requiredLen] = 0;
+}
+void fpl_UTF8StringToWideString(const char *utf8Source, uint32_t utf8SourceLen, wchar_t *wideDest, uint32_t maxWideDestLen) {
+	uint32_t requiredSize = MultiByteToWideChar(CP_UTF8, 0, utf8Source, utf8SourceLen, NULL, 0);
+	uint32_t requiredLen = requiredSize / sizeof(wchar_t);
+	FPL_ASSERT(maxWideDestLen >= (requiredLen + 1));
+	MultiByteToWideChar(CP_UTF8, 0, utf8Source, utf8SourceLen, wideDest, maxWideDestLen);
+	wideDest[requiredLen] = 0;
+}
+
+//
+// Window
+//
 #if FPL_ENABLE_WINDOW
 void fpl_WindowFlip() {
 	SwapBuffers(fpl_GlobalWin32State_Internal.deviceContext);
@@ -746,17 +927,258 @@ static void fpl_Win32PushMouseEvent_Internal(fpl_MouseEventType mouseEventType, 
 	fpl_PushEvent_Internal(fpl_GlobalEventQueue_Internal, &newEvent);
 }
 
+static fpl_Key fpl_Win32MapVirtualKey_Internal(uint64_t keyCode) {
+	switch (keyCode) {
+		case VK_BACK:
+			return fpl_Key_Backspace;
+		case VK_TAB:
+			return fpl_Key_Tab;
+
+		case VK_CLEAR:
+			return fpl_Key_Clear;
+		case VK_RETURN:
+			return fpl_Key_Enter;
+
+		case VK_SHIFT:
+			return fpl_Key_Shift;
+		case VK_CONTROL:
+			return fpl_Key_Control;
+		case VK_MENU:
+			return fpl_Key_Alt;
+		case VK_PAUSE:
+			return fpl_Key_Pause;
+		case VK_CAPITAL:
+			return fpl_Key_CapsLock;
+
+		case VK_ESCAPE:
+			return fpl_Key_Escape;
+		case VK_SPACE:
+			return fpl_Key_Space;
+		case VK_PRIOR:
+			return fpl_Key_PageUp;
+		case VK_NEXT:
+			return fpl_Key_PageDown;
+		case VK_END:
+			return fpl_Key_End;
+		case VK_HOME:
+			return fpl_Key_Home;
+		case VK_LEFT:
+			return fpl_Key_Left;
+		case VK_UP:
+			return fpl_Key_Up;
+		case VK_RIGHT:
+			return fpl_Key_Right;
+		case VK_DOWN:
+			return fpl_Key_Down;
+		case VK_SELECT:
+			return fpl_Key_Select;
+		case VK_PRINT:
+			return fpl_Key_Print;
+		case VK_EXECUTE:
+			return fpl_Key_Execute;
+		case VK_SNAPSHOT:
+			return fpl_Key_Snapshot;
+		case VK_INSERT:
+			return fpl_Key_Insert;
+		case VK_DELETE:
+			return fpl_Key_Delete;
+		case VK_HELP:
+			return fpl_Key_Help;
+
+		case 0x30:
+			return fpl_Key_0;
+		case 0x31:
+			return fpl_Key_1;
+		case 0x32:
+			return fpl_Key_2;
+		case 0x33:
+			return fpl_Key_3;
+		case 0x34:
+			return fpl_Key_4;
+		case 0x35:
+			return fpl_Key_5;
+		case 0x36:
+			return fpl_Key_6;
+		case 0x37:
+			return fpl_Key_7;
+		case 0x38:
+			return fpl_Key_8;
+		case 0x39:
+			return fpl_Key_9;
+
+		case 0x41:
+			return fpl_Key_A;
+		case 0x42:
+			return fpl_Key_B;
+		case 0x43:
+			return fpl_Key_C;
+		case 0x44:
+			return fpl_Key_D;
+		case 0x45:
+			return fpl_Key_E;
+		case 0x46:
+			return fpl_Key_F;
+		case 0x47:
+			return fpl_Key_G;
+		case 0x48:
+			return fpl_Key_H;
+		case 0x49:
+			return fpl_Key_I;
+		case 0x4A:
+			return fpl_Key_J;
+		case 0x4B:
+			return fpl_Key_K;
+		case 0x4C:
+			return fpl_Key_L;
+		case 0x4D:
+			return fpl_Key_M;
+		case 0x4E:
+			return fpl_Key_N;
+		case 0x4F:
+			return fpl_Key_O;
+		case 0x50:
+			return fpl_Key_P;
+		case 0x51:
+			return fpl_Key_Q;
+		case 0x52:
+			return fpl_Key_R;
+		case 0x53:
+			return fpl_Key_S;
+		case 0x54:
+			return fpl_Key_T;
+		case 0x55:
+			return fpl_Key_U;
+		case 0x56:
+			return fpl_Key_V;
+		case 0x57:
+			return fpl_Key_W;
+		case 0x58:
+			return fpl_Key_X;
+		case 0x59:
+			return fpl_Key_Y;
+		case 0x5A:
+			return fpl_Key_Z;
+
+		case VK_LWIN:
+			return fpl_Key_LeftWin;
+		case VK_RWIN:
+			return fpl_Key_RightWin;
+		case VK_APPS:
+			return fpl_Key_Apps;
+
+		case VK_SLEEP:
+			return fpl_Key_Sleep;
+		case VK_NUMPAD0:
+			return fpl_Key_NumPad0;
+		case VK_NUMPAD1:
+			return fpl_Key_NumPad1;
+		case VK_NUMPAD2:
+			return fpl_Key_NumPad2;
+		case VK_NUMPAD3:
+			return fpl_Key_NumPad3;
+		case VK_NUMPAD4:
+			return fpl_Key_NumPad4;
+		case VK_NUMPAD5:
+			return fpl_Key_NumPad5;
+		case VK_NUMPAD6:
+			return fpl_Key_NumPad6;
+		case VK_NUMPAD7:
+			return fpl_Key_NumPad7;
+		case VK_NUMPAD8:
+			return fpl_Key_NumPad8;
+		case VK_NUMPAD9:
+			return fpl_Key_NumPad9;
+		case VK_MULTIPLY:
+			return fpl_Key_Multiply;
+		case VK_ADD:
+			return fpl_Key_Add;
+		case VK_SEPARATOR:
+			return fpl_Key_Separator;
+		case VK_SUBTRACT:
+			return fpl_Key_Substract;
+		case VK_DECIMAL:
+			return fpl_Key_Decimal;
+		case VK_DIVIDE:
+			return fpl_Key_Divide;
+		case VK_F1:
+			return fpl_Key_F1;
+		case VK_F2:
+			return fpl_Key_F2;
+		case VK_F3:
+			return fpl_Key_F3;
+		case VK_F4:
+			return fpl_Key_F4;
+		case VK_F5:
+			return fpl_Key_F5;
+		case VK_F6:
+			return fpl_Key_F6;
+		case VK_F7:
+			return fpl_Key_F7;
+		case VK_F8:
+			return fpl_Key_F8;
+		case VK_F9:
+			return fpl_Key_F9;
+		case VK_F10:
+			return fpl_Key_F10;
+		case VK_F11:
+			return fpl_Key_F11;
+		case VK_F12:
+			return fpl_Key_F12;
+		case VK_F13:
+			return fpl_Key_F13;
+		case VK_F14:
+			return fpl_Key_F14;
+		case VK_F15:
+			return fpl_Key_F15;
+		case VK_F16:
+			return fpl_Key_F16;
+		case VK_F17:
+			return fpl_Key_F17;
+		case VK_F18:
+			return fpl_Key_F18;
+		case VK_F19:
+			return fpl_Key_F19;
+		case VK_F20:
+			return fpl_Key_F20;
+		case VK_F21:
+			return fpl_Key_F21;
+		case VK_F22:
+			return fpl_Key_F22;
+		case VK_F23:
+			return fpl_Key_F23;
+		case VK_F24:
+			return fpl_Key_F24;
+
+		case VK_LSHIFT:
+			return fpl_Key_LeftShift;
+		case VK_RSHIFT:
+			return fpl_Key_RightShift;
+		case VK_LCONTROL:
+			return fpl_Key_LeftControl;
+		case VK_RCONTROL:
+			return fpl_Key_RightControl;
+		case VK_LMENU:
+			return fpl_Key_LeftAlt;
+		case VK_RMENU:
+			return fpl_Key_RightAlt;
+
+		default:
+			return fpl_Key_None;
+	}
+}
+
 static void fpl_Win32PushKeyboardEvent_Internal(fpl_KeyboardEventType keyboardEventType, uint64_t keyCode, fpl_KeyboardModifierType modifiers, bool32 isDown) {
 	fpl_Event newEvent;
 	FPL_CLEARSTRUCT(&newEvent);
 	newEvent.type = fpl_EventType_Keyboard;
 	newEvent.keyboard.keyCode = keyCode;
+	newEvent.keyboard.mappedKey = fpl_Win32MapVirtualKey_Internal(keyCode);
 	newEvent.keyboard.type = keyboardEventType;
 	newEvent.keyboard.modifiers = modifiers;
 	fpl_PushEvent_Internal(fpl_GlobalEventQueue_Internal, &newEvent);
 }
 
-static bool32 fpl_Win32IsKeyDown(uint64_t keyCode) {
+static bool32 fpl_Win32IsKeyDown_Internal(uint64_t keyCode) {
 	bool32 result = GetAsyncKeyState((int)keyCode) & 0x8000;
 	return(result);
 }
@@ -792,10 +1214,10 @@ LRESULT CALLBACK fpl_Win32MessageProc_Internal(HWND hwnd, UINT msg, WPARAM wPara
 			bool32 wasDown = ((lParam & (1 << 30)) != 0);
 			bool32 isDown = ((lParam & (1 << 31)) == 0);
 
-			bool32 altKeyWasDown = fpl_Win32IsKeyDown(VK_MENU);
-			bool32 shiftKeyWasDown = fpl_Win32IsKeyDown(VK_LSHIFT);
-			bool32 ctrlKeyWasDown = fpl_Win32IsKeyDown(VK_LCONTROL);
-			bool32 superKeyWasDown = fpl_Win32IsKeyDown(VK_LMENU);
+			bool32 altKeyWasDown = fpl_Win32IsKeyDown_Internal(VK_MENU);
+			bool32 shiftKeyWasDown = fpl_Win32IsKeyDown_Internal(VK_LSHIFT);
+			bool32 ctrlKeyWasDown = fpl_Win32IsKeyDown_Internal(VK_LCONTROL);
+			bool32 superKeyWasDown = fpl_Win32IsKeyDown_Internal(VK_LMENU);
 
 			fpl_KeyboardEventType keyEventType = isDown ? fpl_KeyboardEventType_KeyDown : fpl_KeyboardEventType_KeyUp;
 			fpl_KeyboardModifierType modifiers = fpl_KeyboardModifierType_None;
@@ -807,7 +1229,7 @@ LRESULT CALLBACK fpl_Win32MessageProc_Internal(HWND hwnd, UINT msg, WPARAM wPara
 			}
 			if (ctrlKeyWasDown) {
 				modifiers |= fpl_KeyboardModifierType_Ctrl;
-			}
+		}
 			if (superKeyWasDown) {
 				modifiers |= fpl_KeyboardModifierType_Super;
 			}
@@ -821,7 +1243,7 @@ LRESULT CALLBACK fpl_Win32MessageProc_Internal(HWND hwnd, UINT msg, WPARAM wPara
 				}
 			}
 			result = 1;
-		} break;
+	} break;
 
 		case WM_CHAR:
 		{
@@ -894,7 +1316,7 @@ LRESULT CALLBACK fpl_Win32MessageProc_Internal(HWND hwnd, UINT msg, WPARAM wPara
 
 		default:
 			return DefWindowProc(hwnd, msg, wParam, lParam);
-	}
+}
 	return (result);
 }
 
@@ -1067,24 +1489,22 @@ void fpl_Release() {
 #	endif // FPL_ENABLE_WINDOW
 }
 
+//
+// Entry-Point
+//
 #if FPL_ENABLE_WINDOW
-
 #if defined(UNICODE)
 int WINAPI wWinMain(HINSTANCE appInstance, HINSTANCE prevInstance, LPWSTR cmdLine, int cmdShow) {
 #else
 int WINAPI WinMain(HINSTANCE appInstance, HINSTANCE prevInstance, LPSTR cmdLine, int cmdShow) {
 #endif // defined(UNICODE)
-
 	fpl_GlobalWin32State_Internal.appInstance = appInstance;
-
 	// @TODO: Parse command line parameters
 	int result = main(0, 0);
 	return(result);
 }
 #else
-
 // The main() entry point is used directly
-
 #endif // FPL_ENABLE_WINDOW
 
 #elif defined(FPL_PLATFORM_LINUX) // FPL_PLATFORM_WINDOWS
@@ -1099,8 +1519,6 @@ int WINAPI WinMain(HINSTANCE appInstance, HINSTANCE prevInstance, LPSTR cmdLine,
 #	error "Please define at least the entry point for the unix platform!"
 #else // defined(FPL_PLATFORM_UNIX)
 #	error "Unsupported Platform!"
-#endif // defined(FPL_PLATFORM_xxx)
+#endif // !defined(FPL_PLATFORM_UNIX)
 
-#endif // defined(FPL_IMPLEMENTED)
-
-#endif // defined(FPL_IMPLEMENTATION)
+#endif // defined(FPL_IMPLEMENTATION) && !defined(FPL_IMPLEMENTED)
