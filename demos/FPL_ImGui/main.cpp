@@ -7,6 +7,8 @@
 #define IMGUI_DISABLE_OBSOLETE_FUNCTIONS 1
 #include "imgui\imgui.h"
 
+#include <math.h>
+
 static int currentMousePosition[2] = { -1, -1 };
 static bool currentMouseStates[3] = { 0 };
 static float currentMouseWheelDelta = 0.0f;
@@ -171,8 +173,14 @@ static void UpdateAndRender(const float deltaTime) {
 	for (int mouseButton = 0; mouseButton < 3; ++mouseButton) {
 		io.MouseDown[mouseButton] = currentMouseStates[mouseButton];
 	}
-	io.MouseWheel = currentMouseWheelDelta;
+	if (fabsf(currentMouseWheelDelta) > 0.0f) {
+		io.MouseWheel = currentMouseWheelDelta > 0.0f ? 1.0f : -1.0f;
+	} else {
+		io.MouseWheel = 0.0f;
+	}
 	currentMouseWheelDelta = 0.0f;
+
+	fpl_ShowWindowMouseCursor(!io.MouseDrawCursor);
 
 	ImGui::NewFrame();
 

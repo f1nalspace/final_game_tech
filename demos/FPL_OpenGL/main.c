@@ -4,8 +4,7 @@
 
 int main(int argc, char **args) {
 	int result = 0;
-	fpl_InitFlag initFlags = { fpl_InitFlag_VideoOpenGL };
-	if (fpl_Init(initFlags)) {
+	if (fpl_Init(fpl_InitFlag_VideoOpenGL)) {
 		glEnable(GL_DEPTH_TEST);
 		glEnable(GL_TEXTURE_2D);
 		glDepthFunc(GL_LEQUAL);
