@@ -6,15 +6,15 @@
 #include <stdio.h>
 
 int main(int argc, char **args) {
-	fpl_InitFlag initFlags = { 0 };
-	fpl_Init(initFlags);
+	fpl_Init(fpl_InitFlag_None);
 
 	char exeFilePath[1024];
 	fpl_GetExecutableFilePath(exeFilePath, FPL_ARRAYCOUNT(exeFilePath));
+	fpl_ConsoleFormatOut("%s\n", exeFilePath);
 
 	char exePath[1024];
 	fpl_ExtractFilePath(exeFilePath, exePath, FPL_ARRAYCOUNT(exePath));
-	printf(exePath);
+	fpl_ConsoleFormatOut("%s\n", exePath);
 
 	fpl_Release();
 }

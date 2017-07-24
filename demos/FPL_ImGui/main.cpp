@@ -9,11 +9,10 @@
 
 #include <math.h>
 
-static int currentMousePosition[2] = { -1, -1 };
-static bool currentMouseStates[3] = { 0 };
-static float currentMouseWheelDelta = 0.0f;
-
-static GLuint fontTextureId = 0;
+fpl_globalvar int currentMousePosition[2] = { -1, -1 };
+fpl_globalvar bool currentMouseStates[3] = { 0 };
+fpl_globalvar float currentMouseWheelDelta = 0.0f;
+fpl_globalvar GLuint fontTextureId = 0;
 
 static void ImGUIRenderDrawLists(ImDrawData* draw_data) {
 	// Avoid rendering when minimized, scale coordinates for retina displays (screen coordinates != framebuffer coordinates)
@@ -93,6 +92,7 @@ static void InitImGUI() {
 	ImGuiIO& io = ImGui::GetIO();
 
 	io.RenderDrawListsFn = ImGUIRenderDrawLists;
+	io.IniFilename = nullptr;
 	io.KeyMap[ImGuiKey_Tab] = fpl_Key_Tab;
 	io.KeyMap[ImGuiKey_LeftArrow] = fpl_Key_Left;
 	io.KeyMap[ImGuiKey_RightArrow] = fpl_Key_Right;
