@@ -1,5 +1,4 @@
 #define FPL_IMPLEMENTATION
-#define FPL_ENABLE_CLIB_ASSERTIONS 1
 #include "final_platform_layer.h"
 
 int main(int argc, char **args) {

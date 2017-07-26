@@ -3,11 +3,11 @@ final_platform_layer.h - FPL -  v0.1 alpha
 Open-Source Single-File Header-Library by Torsten Spaete
 
 This library is designed to abstract the underlying platform to a very simple and easy to understand api.
-The only dependencies are built-in operatoring system libraries and nothing else.
+The only dependencies are built-in operatoring system libraries and thats it - even the C-Runtime-Library is not required.
 
 The main focus is game development, so the default settings will create a window and setup some rendering.
 
-It is fully C-89 compatible but support up to C++ as well.
+It is fully C-89 compatible but support C++ as well.
 
 Some features can be fully compiled out as needed.
 
@@ -25,7 +25,7 @@ int main(int argc, char **args) {
 
 - Initialize the library and release it when you are done
 
-fpl_Init();
+fpl_Init(fpl_InitFlag_All);
 fpl_Release();
 
 USE CASE [OpenGL-Window]:
@@ -59,6 +59,7 @@ PREPROCESSOR OVERRIDES:
 
 - FPL_ENABLE_WINDOW 0 or 1
 - FPL_ENABLE_OPENGL 0 or 1
+- FPL_ENABLE_C_RUNTIME_LIBRARY 0 or 1
 
 FEATURES:
 
@@ -68,7 +69,6 @@ FEATURES:
 [ ] Clipboard string reading and writing
 
 [p] Creating a opengl rendering context
-[ ] Loading opengl extensions as needed
 [ ] Creating modern opengl 3+ rendering context
 
 [ ] Audio playback using OS native libraries
@@ -114,14 +114,17 @@ CODE-GUIDELINES:
 
 - Dont rely on compilers, define/declare it explicitly always
 
-- Defines must be properly indented
-	* Header and Implementation guards are treated as not-existing
+- Preprocessor directives must be properly indented
+	* Header and Implementation guards are treated as non-existing
+	* There is no preprocessor directives allowed inside code blocks
+	* Definitions must be formatted logically, first non directives than directives.
 
 - Tab identations with windows \r\n linefeeds only
 
 - All api definitions + definition must use function statement fpl_api
 
 - Constants:
+	* Simple defines in uppercase
 	* Explicit type cast
 
 	Good:
@@ -174,7 +177,7 @@ CODE-GUIDELINES:
 		typedef int32_t fpl_s32;
 
 - Enums:
-	* Enum values must be manually always
+	* Enum values must be set always
 	* Anonymous enums only
 	* C-Style
 
@@ -273,10 +276,9 @@ v0.1 (2017-05-10) Initial version
 
 //
 // Build configuration and compilers
+// See: http://beefchunk.com/documentation/lang/c/pre-defined-c/precomp.html
+// See: http://nadeausoftware.com/articles/2012/10/c_c_tip_how_detect_compiler_name_and_version_using_compiler_predefined_macros
 //
-// Based on:
-// http://beefchunk.com/documentation/lang/c/pre-defined-c/precomp.html
-// http://nadeausoftware.com/articles/2012/10/c_c_tip_how_detect_compiler_name_and_version_using_compiler_predefined_macros
 #if defined(_MSC_VER)
 #	define FPL_COMPILER_MSVC
 #	if defined(_DEBUG) || (!defined(NDEBUG))
@@ -320,6 +322,9 @@ v0.1 (2017-05-10) Initial version
 #if !defined(FPL_ENABLE_WINDOW)
 #	define FPL_ENABLE_WINDOW 1
 #endif
+#if !defined(FPL_ENABLE_C_RUNTIME_LIBRARY)
+#	define FPL_ENABLE_C_RUNTIME_LIBRARY 1
+#endif
 
 //
 // Types
@@ -362,6 +367,24 @@ enum {
 // Macro functions
 //
 #define FPL_ARRAYCOUNT(arr) (sizeof(arr) / sizeof((arr)[0]))
+#define FPL_OFFSETOF(type, field) ((type *)((void *)0)->field)
+
+//
+// Disabled C-Runtime-Support
+//
+// @TODO: This is a pain in the ass to get it compile without CRT, so we may require C-Runtime as a dependency always
+#if	!FPL_ENABLE_C_RUNTIME_LIBRARY
+#	if defined(FPL_COMPILER_MSVC)
+#		ifdef __cplusplus
+extern "C" {
+#		endif // __cplusplus
+
+	int _fltused;
+#		ifdef __cplusplus
+}
+#		endif // __cplusplus
+#	endif // defined(FPL_COMPILER_MSVC)
+#endif // !FPL_ENABLE_C_RUNTIME_LIBRARY
 
 //
 // API
@@ -370,6 +393,97 @@ enum {
 extern
 "C" {
 #endif
+	typedef struct fpl_LibraryHandle {
+		void *internalHandle;
+		fpl_bool32 isValid;
+	} fpl_LibraryHandle;
+
+	typedef struct fpl_FileHandle {
+		void *internalHandle;
+		fpl_bool32 isValid;
+	} fpl_FileHandle;
+
+	enum {
+		fpl_FileType_Binary = 0,
+		fpl_FileType_Text = 1,
+	};
+	typedef uint32_t fpl_FileType;
+
+	enum {
+		fpl_FilePositionMode_Beginning,
+		fpl_FilePositionMode_Current,
+		fpl_FilePositionMode_End,
+	};
+	typedef uint32_t fpl_FilePositionMode;
+
+	enum {
+		fpl_InitFlag_None = 0,
+		fpl_InitFlag_Window = 1 << 0,
+		fpl_InitFlag_VideoOpenGL = 1 << 1,
+		fpl_InitFlag_All = fpl_InitFlag_Window | fpl_InitFlag_VideoOpenGL,
+	};
+	typedef uint32_t fpl_InitFlag;
+
+	// Atomics
+	fpl_api void fpl_AtomicReadFence();
+	fpl_api void fpl_AtomicWriteFence();
+	fpl_api void fpl_AtomicReadWriteFence();
+	fpl_api uint32_t fpl_AtomicExchangeU32(volatile uint32_t *target, const uint32_t value);
+	fpl_api uint64_t fpl_AtomicExchangeU64(volatile uint64_t *target, const uint64_t value);
+	fpl_api uint32_t fpl_AtomicAddU32(volatile uint32_t *value, const uint32_t addend);
+	fpl_api uint64_t fpl_AtomicAddU64(volatile uint64_t *value, const uint64_t addend);
+	fpl_api uint32_t fpl_AtomicCompareExchangeU32(volatile uint32_t *dest, const uint32_t exchange, const uint32_t comparand);
+	fpl_api uint64_t fpl_AtomicCompareExchangeU64(volatile uint64_t *dest, const uint64_t exchange, const uint64_t comparand);
+
+	// Core
+	fpl_api fpl_bool32 fpl_Init(const fpl_InitFlag initFlags);
+	fpl_api void fpl_Release();
+	fpl_api fpl_LibraryHandle fpl_LoadLibrary(const char *libraryFilePath);
+	fpl_api void *fpl_GetLibraryProcAddress(fpl_LibraryHandle *handle, const char *name);
+	fpl_api void fpl_ReleaseLibrary(fpl_LibraryHandle *handle);
+
+	// Console
+	fpl_api void fpl_ConsoleOut(const char *text);
+	fpl_api void fpl_ConsoleFormatOut(const char *format, ...);
+
+	// Memory
+	fpl_api void fpl_ClearMemory(void *mem, const size_t size);
+	fpl_api void *fpl_AllocateMemory(const size_t size);
+	fpl_api void fpl_FreeMemory(void *ptr);
+	fpl_api void *fpl_AllocateAlignedMemory(const size_t size, const size_t alignment);
+	fpl_api void fpl_FreeAlignedMemory(void *ptr);
+
+	// Timing
+	fpl_api double fpl_GetHighResolutionTimeInSeconds();
+
+	// Strings
+	fpl_api uint32_t fpl_GetStringLength(const char *str);
+	fpl_api uint32_t fpl_GetWideStringLength(const wchar_t *str);
+	fpl_api void fpl_CopyString(const char *source, const uint32_t sourceLen, char *dest, const uint32_t maxDestLen);
+	fpl_api void fpl_CopyWideString(const wchar_t *source, const uint32_t sourceLen, wchar_t *dest, const uint32_t maxDestLen);
+	fpl_api void fpl_WideStringToOEMString(const wchar_t *wideSource, const uint32_t maxWideSourceLen, char *oemDest, const uint32_t maxOemDestLen);
+	fpl_api void fpl_WideStringToUTF8String(const wchar_t *wideSource, const uint32_t maxWideSourceLen, char *utf8Dest, const uint32_t maxUtf8DestLen);
+	fpl_api void fpl_OEMStringToWideString(const char *oemSource, const uint32_t oemSourceLen, wchar_t *wideDest, const uint32_t maxWideDestLen);
+	fpl_api void fpl_UTF8StringToWideString(const char *utf8Source, const uint32_t utf8SourceLen, wchar_t *wideDest, const uint32_t maxWideDestLen);
+
+	// Files, Directories and Paths
+	fpl_api fpl_FileHandle fpl_OpenBinaryFile(const char *filePath);
+	fpl_api fpl_FileHandle fpl_CreateBinaryFile(const char *filePath);
+	fpl_api uint32_t fpl_ReadFileBlock32(fpl_FileHandle *fileHandle, const uint32_t sizeToRead, void *targetBuffer, const uint32_t maxTargetBufferSize);
+	fpl_api uint32_t fpl_WriteFileBlock32(fpl_FileHandle *fileHandle, void *sourceBuffer, const uint32_t sourceSize);
+	fpl_api void fpl_SetFilePosition32(fpl_FileHandle *fileHandle, const uint32_t position, const fpl_FilePositionMode mode);
+	fpl_api uint32_t fpl_GetFilePosition32(fpl_FileHandle *fileHandle);
+
+	// @TODO: Add 64-bit file methods as well!
+
+	fpl_api void fpl_CloseFile(fpl_FileHandle *fileHandle);
+
+	fpl_api void fpl_GetExecutableFilePath(char *destPath, const uint32_t maxDestLen);
+	fpl_api char *fpl_ExtractFilePath(char *destPath, const uint32_t maxDestLen, const char *sourcePath);
+	fpl_api char *fpl_ExtractFileExtension(char *destPath, const uint32_t maxDestLen, const char *sourcePath);
+	fpl_api char *fpl_ExtractFileName(char *destPath, const uint32_t maxDestLen, const char *sourcePath);
+	fpl_api char *fpl_ChangeFileExtension(char *destPath, const uint32_t maxDestLen, const char *sourcePath);
+	fpl_api void fpl_CombinePath(char *destPath, const uint32_t maxDestPathLen, ...);
 
 #if FPL_ENABLE_WINDOW
 	// @NOTE: Based on MS Virtual-Key-Codes, mostly directly mappable to ASCII
@@ -603,79 +717,24 @@ extern
 			fpl_MouseEvent mouse;
 		};
 	} fpl_Event;
-#endif
 
-	enum {
-		fpl_InitFlag_None = 0,
-		fpl_InitFlag_Window = 1 << 0,
-		fpl_InitFlag_VideoOpenGL = 1 << 1,
-	};
-	typedef uint32_t fpl_InitFlag;
-
-#if defined(FPL_PLATFORM_WINDOWS)
-	// @NOTE(final): Required for access "main" from the actual win32 entry point
-	fpl_api int main(int argc, char **args);
-#endif
-
-	// Atomics
-	fpl_api void fpl_AtomicReadFence();
-	fpl_api void fpl_AtomicWriteFence();
-	fpl_api void fpl_AtomicReadWriteFence();
-	fpl_api uint32_t fpl_AtomicExchangeU32(volatile uint32_t *target, uint32_t value);
-	fpl_api uint64_t fpl_AtomicExchangeU64(volatile uint64_t *target, uint64_t value);
-	fpl_api uint32_t fpl_AtomicAddU32(volatile uint32_t *value, uint32_t addend);
-	fpl_api uint64_t fpl_AtomicAddU64(volatile uint64_t *value, uint64_t addend);
-	fpl_api uint32_t fpl_AtomicCompareExchangeU32(volatile uint32_t *dest, uint32_t exchange, uint32_t comparand);
-	fpl_api uint64_t fpl_AtomicCompareExchangeU64(volatile uint64_t *dest, uint64_t exchange, uint64_t comparand);
-
-	// Core
-	fpl_api fpl_bool32 fpl_Init(fpl_InitFlag initFlags);
-	fpl_api void fpl_Release();
-
-	// Console
-	fpl_api void fpl_ConsoleOut(const char *text);
-	fpl_api void fpl_ConsoleFormatOut(const char *format, ...);
-
-#if FPL_ENABLE_WINDOW
 	// Window
 	fpl_api fpl_bool32 fpl_IsWindowRunning();
 	fpl_api fpl_bool32 fpl_WindowUpdate();
 	fpl_api void fpl_WindowFlip();
 	fpl_api int32_t fpl_GetWindowWidth();
 	fpl_api int32_t fpl_GetWindowHeight();
-	fpl_api void fpl_ShowWindowMouseCursor(fpl_bool32 value);
+	fpl_api void fpl_ShowWindowMouseCursor(const fpl_bool32 value);
 
 	// Events
 	fpl_api fpl_bool32 fpl_PollEvent(fpl_Event *event);
 #endif
 
-	// Memory
-	fpl_api void fpl_ClearMemory(void *mem, size_t size);
-	fpl_api void *fpl_AllocateMemory(size_t size);
-	fpl_api void fpl_FreeMemory(void *ptr);
-	fpl_api void *fpl_AllocateAlignedMemory(size_t size, size_t alignment);
-	fpl_api void fpl_FreeAlignedMemory(void *ptr);
+#if defined(FPL_PLATFORM_WINDOWS)
+	// @NOTE(final): Required for access "main" from the actual win32 entry point
+	fpl_api int main(int argc, char **args);
+#endif
 
-	// Timing
-	fpl_api double fpl_GetHighResolutionTimeInSeconds();
-
-	// Strings
-	fpl_api uint32_t fpl_GetStringLength(const char *str);
-	fpl_api uint32_t fpl_GetWideStringLength(const wchar_t *str);
-	fpl_api void fpl_CopyString(const char *source, uint32_t sourceLen, char *dest, uint32_t maxDestLen);
-	fpl_api void fpl_CopyWideString(const wchar_t *source, uint32_t sourceLen, wchar_t *dest, uint32_t maxDestLen);
-	fpl_api void fpl_WideStringToOEMString(const wchar_t *wideSource, uint32_t maxWideSourceLen, char *oemDest, uint32_t maxOemDestLen);
-	fpl_api void fpl_WideStringToUTF8String(const wchar_t *wideSource, uint32_t maxWideSourceLen, char *utf8Dest, uint32_t maxUtf8DestLen);
-	fpl_api void fpl_OEMStringToWideString(const char *oemSource, uint32_t oemSourceLen, wchar_t *wideDest, uint32_t maxWideDestLen);
-	fpl_api void fpl_UTF8StringToWideString(const char *utf8Source, uint32_t utf8SourceLen, wchar_t *wideDest, uint32_t maxWideDestLen);
-
-	// Files, Directories and Paths
-	fpl_api void fpl_GetExecutableFilePath(char *dest, uint32_t maxDestLen);
-	fpl_api char *fpl_ExtractFilePath(const char *sourcePath, char *destPath, uint32_t maxDestLen);
-	fpl_api char *fpl_ExtractFileExtension(const char *sourcePath, char *destPath, uint32_t maxDestLen);
-	fpl_api char *fpl_ExtractFileName(const char *sourcePath, char *destPath, uint32_t maxDestLen);
-	fpl_api char *fpl_ChangeFileExtension(const char *sourcePath, char *destPath, uint32_t maxDestLen);
-	fpl_api void fpl_CombinePath(char *destPath, uint32_t maxDestPathLen, const char *basePath, ...);
 #ifdef __cplusplus
 }
 #endif
@@ -688,10 +747,10 @@ extern
 //
 // ****************************************************************************
 #if defined(FPL_IMPLEMENTATION) && !defined(FPL_IMPLEMENTED)
-#	define FPL_IMPLEMENTED
+#define FPL_IMPLEMENTED
 
 // Internal types and functions
-#	define FPL_CLEARMEMORY_INTERNAL(type, mem, size, shift, mask) do { \
+#define FPL_CLEARMEMORY_INTERNAL(type, mem, size, shift, mask) do { \
 	type *dataBlock = (type *)mem; \
 	type *dataBlockEnd = (type *)dataBlock + (size >> shift); \
 	uint8_t *data8 = (uint8_t *)dataBlockEnd; \
@@ -704,13 +763,13 @@ extern
 	} \
 } while (0)
 
-#	define FPL_MAX_LAST_ERROR_STRING_LENGTH_INTERNAL (uint32_t)256
+#define FPL_MAX_LAST_ERROR_STRING_LENGTH_INTERNAL (uint32_t)256
 typedef struct fpl_ErrorState_Internal {
 	char lastError[FPL_MAX_LAST_ERROR_STRING_LENGTH_INTERNAL];
 } fpl_ErrorState_Internal;
 
-#	if FPL_ENABLE_WINDOW
-#		define FPL_MAX_EVENT_COUNT_INTERNAL (uint32_t)32768
+#if FPL_ENABLE_WINDOW
+#	define FPL_MAX_EVENT_COUNT_INTERNAL (uint32_t)32768
 typedef struct fpl_EventQueue_Internal {
 	fpl_Event events[FPL_MAX_EVENT_COUNT_INTERNAL];
 	volatile uint32_t pollIndex;
@@ -728,9 +787,9 @@ fpl_internal void fpl_PushEvent_Internal(fpl_Event *event) {
 		eventQueue->events[eventIndex] = *event;
 	}
 }
-#	endif
+#endif
 
-#	define FPL_CLEARSTRUCT_INTERNAL(value) \
+#define FPL_CLEARSTRUCT_INTERNAL(value) \
 	fpl_ClearMemory(value, sizeof(*value))
 
 //
@@ -756,7 +815,7 @@ fpl_api uint32_t fpl_GetWideStringLength(const wchar_t *str) {
 	return(result);
 }
 
-fpl_api void fpl_CopyString(const char *source, uint32_t sourceLen, char *dest, uint32_t maxDestLen) {
+fpl_api void fpl_CopyString(const char *source, const uint32_t sourceLen, char *dest, const uint32_t maxDestLen) {
 	FPL_ASSERT(source && dest);
 	FPL_ASSERT((sourceLen + 1) <= maxDestLen);
 	uint32_t index = 0;
@@ -766,7 +825,7 @@ fpl_api void fpl_CopyString(const char *source, uint32_t sourceLen, char *dest, 
 	*dest = 0;
 }
 
-fpl_api void fpl_CopyWideString(const wchar_t *source, uint32_t sourceLen, wchar_t *dest, uint32_t maxDestLen) {
+fpl_api void fpl_CopyWideString(const wchar_t *source, const uint32_t sourceLen, wchar_t *dest, const uint32_t maxDestLen) {
 	FPL_ASSERT(source && dest);
 	FPL_ASSERT((sourceLen + 1) <= maxDestLen);
 	uint32_t index = 0;
@@ -779,7 +838,7 @@ fpl_api void fpl_CopyWideString(const wchar_t *source, uint32_t sourceLen, wchar
 //
 // All Public Memory
 //
-fpl_api void *fpl_AllocateAlignedMemory(size_t size, size_t alignment) {
+fpl_api void *fpl_AllocateAlignedMemory(const size_t size, const size_t alignment) {
 	FPL_ASSERT(size > 0);
 	FPL_ASSERT((alignment > 0) && !(alignment & (alignment - 1)));
 
@@ -805,14 +864,14 @@ fpl_api void *fpl_AllocateAlignedMemory(size_t size, size_t alignment) {
 }
 
 fpl_api void fpl_FreeAlignedMemory(void *ptr) {
-	FPL_ASSERT(ptr != NULL);
+	FPL_ASSERT(ptr != FPL_NULL);
 
 	// Free the base pointer which is stored to the left from the given pointer
 	void *basePtr = (void *)((void **)((uintptr_t)ptr - sizeof(void *)));
 	fpl_FreeMemory(basePtr);
 }
 
-fpl_api void fpl_ClearMemory(void *mem, size_t size) {
+fpl_api void fpl_ClearMemory(void *mem, const size_t size) {
 	if (size % 8 == 0) {
 		FPL_CLEARMEMORY_INTERNAL(uint64_t, mem, size, 3, 0x00000007);
 	} else if (size % 4 == 0) {
@@ -831,7 +890,7 @@ fpl_api void fpl_ClearMemory(void *mem, size_t size) {
 //
 // All Public Window
 //
-#	if FPL_ENABLE_WINDOW
+#if FPL_ENABLE_WINDOW
 fpl_api fpl_bool32 fpl_PollEvent(fpl_Event *event) {
 	fpl_bool32 result = fpl_false;
 	fpl_EventQueue_Internal *eventQueue = fpl_GlobalEventQueue_Internal;
@@ -846,103 +905,118 @@ fpl_api fpl_bool32 fpl_PollEvent(fpl_Event *event) {
 	}
 	return result;
 }
-#	endif
+#endif
 
 //
 // ----------------------------------------------------------------------------
 // WIN32 Platform
 // ----------------------------------------------------------------------------
 //
-#	if defined(FPL_PLATFORM_WINDOWS)
-#		include <intrin.h>
-		// @NOTE(final): windef.h defines min/max macros defined in lowerspace, this will break for example std::min/max so we have to tell the header we dont want this!
-#		define NOMINMAX
-#		include <windows.h>
-#		include <windowsx.h> // macros for window messages
-#		include <varargs.h>  // va_start, va_end, va_list
-#		include <stdio.h> // fprintf
-#		if FPL_ENABLE_WINDOW
-#			pragma comment(linker, "/subsystem:windows")
-#			if FPL_ENABLE_OPENGL
-#				include <gl\gl.h>
-#				pragma comment( lib, "opengl32.lib" )
-#			endif // FPL_ENABLE_OPENGL
-#		endif // FPL_ENABLE_WINDOW
+#if defined(FPL_PLATFORM_WINDOWS)
+#	include <intrin.h>
+	// @NOTE(final): windef.h defines min/max macros defined in lowerspace, this will break for example std::min/max so we have to tell the header we dont want this!
+#	define NOMINMAX
+#	include <windows.h>
+#	include <windowsx.h> // macros for window messages
+#	include <varargs.h>  // va_start, va_end, va_list
+#	include <stdio.h> // fprintf
+#	pragma comment(lib, "kernel32.lib")
+#	pragma comment(lib, "user32.lib")
+#	if FPL_ENABLE_WINDOW
+#		pragma comment(linker, "/subsystem:windows")
+#		if FPL_ENABLE_OPENGL
+#			include <gl\gl.h>
+#			pragma comment( lib, "opengl32.lib" )
+#		endif // FPL_ENABLE_OPENGL
+#	else
+#		pragma comment(linker, "/subsystem:console")
+#	endif // FPL_ENABLE_WINDOW
 
-#		define FPL_PATH_SEPARATOR '\\'
+#	define FPL_PATH_SEPARATOR '\\'
 
 // Win32 internal functions
-#		if defined(UNICODE)
+#	if defined(UNICODE)
 typedef wchar_t fpl_win32_char_internal;
-#		else
+#	else
 typedef char fpl_win32_char_internal;
-#		endif // defined(UNICODE)
+#	endif // defined(UNICODE)
 
-typedef struct fpl_Win32State_Internal {
-	fpl_bool32 isInitialized;
-	HINSTANCE appInstance;
-	LARGE_INTEGER performanceFrequency;
-
-#		if FPL_ENABLE_WINDOW
+#	if FPL_ENABLE_WINDOW
+typedef struct fpl_Win32WindowState_Internal {
 	HWND windowHandle;
 	fpl_win32_char_internal windowClass[256];
 	HDC deviceContext;
 	fpl_bool32 isCursorActive;
 	HCURSOR defaultCursor;
 	fpl_bool32 isRunning;
-#			if FPL_ENABLE_OPENGL
+} fpl_Win32WindowState_Internal;
+#	else
+typedef void *fpl_Win32WindowState_Internal;
+#	endif // FPL_ENABLE_WINDOW
+
+#	if FPL_ENABLE_WINDOW && FPL_ENABLE_OPENGL
+typedef struct fpl_Win32OpenGLState_Internal {
 	HGLRC renderingContext;
-#			endif
-#		endif // FPL_ENABLE_WINDOW
+} fpl_Win32OpenGLState_Internal;
+#	else
+typedef void *fpl_Win32OpenGLState_Internal;
+#	endif // FPL_ENABLE_WINDOW && FPL_ENABLE_OPENGL
+
+typedef struct fpl_Win32State_Internal {
+	fpl_bool32 isInitialized;
+	HINSTANCE appInstance;
+	LARGE_INTEGER performanceFrequency;
+	fpl_Win32WindowState_Internal window;
+	fpl_Win32OpenGLState_Internal opengl;
 } fpl_Win32State_Internal;
 
 fpl_globalvar fpl_Win32State_Internal fpl_GlobalWin32State_Internal = { 0 };
 
 // @TODO: Dont overwrite defines like that, just have one path for unicode and one for ansi
-#		undef WNDCLASSEX
-#		undef RegisterClassEx
-#		undef UnregisterClass
-#		undef CreateWindowEx
-#		undef DefWindowProc
-#		undef GetWindowLongPtr
-#		undef SetWindowLongPtr
-#		undef DispatchMessage
-#		if defined(UNICODE)
-#			define WIN32_CLASSNAME L"FPLWindowClass"
-#			define WIN32_UNNAMED_WINDOW L"Unnamed FPL Window"
-#			define WNDCLASSEX WNDCLASSEXW
-#			define RegisterClassEx RegisterClassExW
-#			define UnregisterClass UnregisterClassW
-#			define CreateWindowEx CreateWindowExW
-#			define DefWindowProc DefWindowProcW
-#			define GetWindowLongPtr GetWindowLongPtrW
-#			define SetWindowLongPtr SetWindowLongPtrW
-#			define PeekMessage PeekMessageW
-#			define DispatchMessage DispatchMessageW
-#			define fpl_Win32StringCopy fpl_CopyWideString
-#			define fpl_Win32GetStringLength fpl_GetWideStringLength
-#			define MapVirtualKey MapVirtualKeyW
-#		else
-#			define WIN32_CLASSNAME "FPLWindowClass"
-#			define WIN32_UNNAMED_WINDOW "Unnamed FPL Window"
-#			define WNDCLASSEX WNDCLASSEXA
-#			define RegisterClassEx RegisterClassExA
-#			define UnregisterClass UnregisterClassA
-#			define CreateWindowEx CreateWindowExA
-#			define DefWindowProc DefWindowProcA
-#			define GetWindowLongPtr GetWindowLongPtrA
-#			define SetWindowLongPtr SetWindowLongPtrA
-#			define PeekMessage PeekMessageA
-#			define DispatchMessage DispatchMessageA
-#			define fpl_Win32StringCopy fpl_CopyString
-#			define fpl_Win32GetStringLength fpl_GetStringLength
-#			define MapVirtualKey MapVirtualKeyA
-#		endif // defined(UNICODE)
+#	undef WNDCLASSEX
+#	undef RegisterClassEx
+#	undef UnregisterClass
+#	undef CreateWindowEx
+#	undef DefWindowProc
+#	undef GetWindowLongPtr
+#	undef SetWindowLongPtr
+#	undef DispatchMessage
+#	if defined(UNICODE)
+#		define WIN32_CLASSNAME L"FPLWindowClass"
+#		define WIN32_UNNAMED_WINDOW L"Unnamed FPL Window"
+#		define WNDCLASSEX WNDCLASSEXW
+#		define RegisterClassEx RegisterClassExW
+#		define UnregisterClass UnregisterClassW
+#		define CreateWindowEx CreateWindowExW
+#		define DefWindowProc DefWindowProcW
+#		define GetWindowLongPtr GetWindowLongPtrW
+#		define SetWindowLongPtr SetWindowLongPtrW
+#		define PeekMessage PeekMessageW
+#		define DispatchMessage DispatchMessageW
+#		define fpl_Win32StringCopy fpl_CopyWideString
+#		define fpl_Win32GetStringLength fpl_GetWideStringLength
+#		define MapVirtualKey MapVirtualKeyW
+#	else
+#		define WIN32_CLASSNAME "FPLWindowClass"
+#		define WIN32_UNNAMED_WINDOW "Unnamed FPL Window"
+#		define WNDCLASSEX WNDCLASSEXA
+#		define RegisterClassEx RegisterClassExA
+#		define UnregisterClass UnregisterClassA
+#		define CreateWindowEx CreateWindowExA
+#		define DefWindowProc DefWindowProcA
+#		define GetWindowLongPtr GetWindowLongPtrA
+#		define SetWindowLongPtr SetWindowLongPtrA
+#		define PeekMessage PeekMessageA
+#		define DispatchMessage DispatchMessageA
+#		define fpl_Win32StringCopy fpl_CopyString
+#		define fpl_Win32GetStringLength fpl_GetStringLength
+#		define MapVirtualKey MapVirtualKeyA
+#	endif // defined(UNICODE)
 
 //
 // Win32 Public Intrinsics
 //
-#		if defined(FPL_COMPILER_MSVC)
+#	if defined(FPL_COMPILER_MSVC)
 fpl_api void fpl_AtomicReadFence() {
 	_ReadBarrier();
 }
@@ -952,48 +1026,50 @@ fpl_api void fpl_AtomicWriteFence() {
 fpl_api void fpl_AtomicReadWriteFence() {
 	_ReadWriteBarrier();
 }
-fpl_api uint32_t fpl_AtomicExchangeU32(volatile uint32_t *target, uint32_t value) {
+fpl_api uint32_t fpl_AtomicExchangeU32(volatile uint32_t *target, const uint32_t value) {
 	uint32_t result = _InterlockedExchange((volatile long *)target, value);
 	return (result);
 }
-fpl_api uint64_t fpl_AtomicExchangeU64(volatile uint64_t *target, uint64_t value) {
+fpl_api uint64_t fpl_AtomicExchangeU64(volatile uint64_t *target, const uint64_t value) {
 	uint64_t result = InterlockedExchange64((volatile long long *)target, value);
 	return (result);
 }
-fpl_api uint32_t fpl_AtomicAddU32(volatile uint32_t *value, uint32_t addend) {
+fpl_api uint32_t fpl_AtomicAddU32(volatile uint32_t *value, const uint32_t addend) {
 	uint32_t result = _InterlockedExchangeAdd((volatile long *)value, addend);
 	return (result);
 }
-fpl_api uint64_t fpl_AtomicAddU64(volatile uint64_t *value, uint64_t addend) {
+fpl_api uint64_t fpl_AtomicAddU64(volatile uint64_t *value, const uint64_t addend) {
 	uint64_t result = InterlockedExchangeAdd64((volatile long long *)value, addend);
 	return (result);
 }
-fpl_api uint32_t fpl_AtomicCompareExchangeU32(volatile uint32_t *dest, uint32_t exchange, uint32_t comparand) {
+fpl_api uint32_t fpl_AtomicCompareExchangeU32(volatile uint32_t *dest, const uint32_t exchange, const uint32_t comparand) {
 	uint32_t result = _InterlockedCompareExchange((volatile long *)dest, exchange, comparand);
 	return (result);
 }
-fpl_api uint64_t fpl_AtomicCompareExchangeU64(volatile uint64_t *dest, uint64_t exchange, uint64_t comparand) {
+fpl_api uint64_t fpl_AtomicCompareExchangeU64(volatile uint64_t *dest, const uint64_t exchange, const uint64_t comparand) {
 	uint64_t result = InterlockedCompareExchange64((volatile long long *)dest, exchange, comparand);
 	return (result);
 }
-#		endif // defined(FPL_COMPILER_MSVC)
+#	endif // defined(FPL_COMPILER_MSVC)
 
 // Win32 public console
 fpl_api void fpl_ConsoleOut(const char *text) {
-	printf(text);
+	// @TODO: Implement this!
 }
 
 fpl_api void fpl_ConsoleFormatOut(const char *format, ...) {
 	va_list vaList;
 	va_start(vaList, format);
-	vprintf(format, vaList);
+
+	// @TODO: Implement this!
+
 	va_end(vaList);
 }
 
 //
 // Win32 Public Memory
 //
-fpl_api void *fpl_AllocateMemory(size_t size) {
+fpl_api void *fpl_AllocateMemory(const size_t size) {
 	FPL_ASSERT(size > 0);
 	void *result = VirtualAlloc(0, size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
 	return(result);
@@ -1007,24 +1083,109 @@ fpl_api void fpl_FreeMemory(void *ptr) {
 //
 // Win32 Public File/Path IO
 //
-fpl_api void fpl_GetExecutableFilePath(char *dest, uint32_t maxDestLen) {
-	FPL_ASSERT(maxDestLen >= (MAX_PATH + 1));
-#		if defined(UNICODE)
-	wchar_t modulePath[MAX_PATH + 1];
-	GetModuleFileNameW(NULL, modulePath, MAX_PATH + 1);
-	fpl_WideStringToOEMString(modulePath, fpl_GetWideStringLength(modulePath), dest, maxDestLen);
-#		else
-	char modulePath[MAX_PATH + 1];
-	GetModuleFileNameA(NULL, modulePath, MAX_PATH + 1);
-	fpl_CopyString(modulePath, fpl_GetStringLength(modulePath), dest, maxDestLen);
-#		endif
+fpl_api fpl_FileHandle fpl_OpenBinaryFile(const char *filePath) {
+	fpl_FileHandle result = { 0 };
+	HANDLE win32FileHandle = CreateFileA(filePath, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+	if (win32FileHandle != INVALID_HANDLE_VALUE) {
+		result.isValid = fpl_true;
+		result.internalHandle = (void *)win32FileHandle;
+	}
+	return(result);
 }
 
-fpl_api void fpl_CombinePath(char *destPath, uint32_t maxDestPathLen, const char *basePath, ...) {
+fpl_api fpl_FileHandle fpl_CreateBinaryFile(const char *filePath) {
+	fpl_FileHandle result = { 0 };
+	HANDLE win32FileHandle = CreateFileA(filePath, GENERIC_WRITE, FILE_SHARE_WRITE, NULL, CREATE_NEW, FILE_ATTRIBUTE_NORMAL, NULL);
+	if (win32FileHandle != INVALID_HANDLE_VALUE) {
+		result.isValid = fpl_true;
+		result.internalHandle = (void *)win32FileHandle;
+	}
+	return(result);
+}
+
+fpl_api uint32_t fpl_ReadFileBlock32(fpl_FileHandle *fileHandle, const uint32_t sizeToRead, void *targetBuffer, const uint32_t maxTargetBufferSize) {
+	uint32_t result = 0;
+	if ((fileHandle != FPL_NULL) && (fileHandle->isValid)) {
+		FPL_ASSERT(fileHandle->internalHandle != INVALID_HANDLE_VALUE);
+		HANDLE win32FileHandle = (void *)fileHandle->internalHandle;
+		DWORD bytesRead = 0;
+		if (ReadFile(win32FileHandle, targetBuffer, (DWORD)sizeToRead, &bytesRead, NULL) == TRUE) {
+			result = bytesRead;
+		}
+	}
+	return(result);
+}
+
+fpl_api uint32_t fpl_WriteFileBlock32(fpl_FileHandle *fileHandle, void *sourceBuffer, const uint32_t sourceSize) {
+	uint32_t result = 0;
+	if ((fileHandle != FPL_NULL) && (fileHandle->isValid)) {
+		FPL_ASSERT(fileHandle->internalHandle != INVALID_HANDLE_VALUE);
+		HANDLE win32FileHandle = (void *)fileHandle->internalHandle;
+		DWORD bytesWritten = 0;
+		if (WriteFile(win32FileHandle, sourceBuffer, (DWORD)sourceSize, &bytesWritten, NULL) == TRUE) {
+			result = bytesWritten;
+		}
+	}
+	return(result);
+}
+
+fpl_api void fpl_SetFilePosition32(fpl_FileHandle *fileHandle, const uint32_t position, const fpl_FilePositionMode mode) {
+	if ((fileHandle != FPL_NULL) && (fileHandle->isValid)) {
+		FPL_ASSERT(fileHandle->internalHandle != INVALID_HANDLE_VALUE);
+		HANDLE win32FileHandle = (void *)fileHandle->internalHandle;
+		DWORD moveMethod = FILE_BEGIN;
+		if (mode == fpl_FilePositionMode_Current) {
+			moveMethod = FILE_CURRENT;
+		} else if (mode == fpl_FilePositionMode_End) {
+			moveMethod = FILE_END;
+		}
+		SetFilePointer(win32FileHandle, (LONG)position, NULL, moveMethod);
+	}
+}
+
+fpl_api uint32_t fpl_GetFilePosition32(fpl_FileHandle *fileHandle) {
+	uint32_t result = 0;
+	if ((fileHandle != FPL_NULL) && (fileHandle->isValid)) {
+		FPL_ASSERT(fileHandle->internalHandle != INVALID_HANDLE_VALUE);
+		HANDLE win32FileHandle = (void *)fileHandle->internalHandle;
+		DWORD filePosition = SetFilePointer(win32FileHandle, 0L, NULL, FILE_CURRENT);
+		if (filePosition != INVALID_SET_FILE_POINTER) {
+			result = filePosition;
+		}
+	}
+	return(result);
+}
+
+fpl_api void fpl_CloseFile(fpl_FileHandle *fileHandle) {
+	if ((fileHandle != FPL_NULL) && (fileHandle->isValid)) {
+		FPL_ASSERT(fileHandle->internalHandle != INVALID_HANDLE_VALUE);
+		HANDLE win32FileHandle = (void *)fileHandle->internalHandle;
+		CloseHandle(win32FileHandle);
+	}
+	FPL_CLEARSTRUCT_INTERNAL(fileHandle);
+}
+
+#	if defined(UNICODE)
+fpl_api void fpl_GetExecutableFilePath(char *destPath, const uint32_t maxDestLen) {
+	FPL_ASSERT(maxDestLen >= (MAX_PATH + 1));
+	wchar_t modulePath[MAX_PATH + 1];
+	GetModuleFileNameW(NULL, modulePath, MAX_PATH + 1);
+	fpl_WideStringToOEMString(modulePath, fpl_GetWideStringLength(modulePath), destPath, maxDestLen);
+}
+#	else
+fpl_api void fpl_GetExecutableFilePath(char *destPath, const uint32_t maxDestLen) {
+	FPL_ASSERT(maxDestLen >= (MAX_PATH + 1));
+	char modulePath[MAX_PATH + 1];
+	GetModuleFileNameA(NULL, modulePath, MAX_PATH + 1);
+	fpl_CopyString(modulePath, fpl_GetStringLength(modulePath), destPath, maxDestLen);
+}
+#	endif
+
+fpl_api void fpl_CombinePath(char *destPath, const uint32_t maxDestPathLen, ...) {
 	// @TODO: Implement fpl_CombinePath!
 }
 
-fpl_api char *fpl_ExtractFilePath(const char *sourcePath, char *destPath, uint32_t maxDestLen) {
+fpl_api char *fpl_ExtractFilePath(char *destPath, const uint32_t maxDestLen, const char *sourcePath) {
 	char *result = 0;
 	if (sourcePath) {
 		int copyLen = 0;
@@ -1042,23 +1203,23 @@ fpl_api char *fpl_ExtractFilePath(const char *sourcePath, char *destPath, uint32
 	return(result);
 }
 
-fpl_api char *fpl_ExtractFileExtension(const char *sourcePath, char *destPath, uint32_t maxDestLen) {
+fpl_api char *fpl_ExtractFileExtension(char *destPath, const uint32_t maxDestLen, const char *sourcePath) {
 	// @TODO: Implement fpl_ExtractFileExtension!
 	return FPL_NULL;
 }
 
-fpl_api char *fpl_ExtractFileName(const char *sourcePath, char *destPath, uint32_t maxDestLen) {
+fpl_api char *fpl_ExtractFileName(char *destPath, const uint32_t maxDestLen, const char *sourcePath) {
 	// @TODO: Implement fpl_ExtractFileName!
 	return FPL_NULL;
 }
 
-fpl_api char *fpl_ChangeFileExtension(const char *sourcePath, char *destPath, uint32_t maxDestLen) {
+fpl_api char *fpl_ChangeFileExtension(char *destPath, const uint32_t maxDestLen, const char *sourcePath) {
 	// @TODO: Implement fpl_ChangeFileExtension!
 	return FPL_NULL;
 }
 
 //
-// Public win32 timing
+// Win32 Public Timing
 //
 fpl_internal LARGE_INTEGER fpl_Win32GetWallClock_Internal() {
 	LARGE_INTEGER result;
@@ -1072,30 +1233,30 @@ fpl_api double fpl_GetHighResolutionTimeInSeconds() {
 }
 
 //
-// String
+// Win32 Public String
 //
-fpl_api void fpl_WideStringToOEMString(const wchar_t *wideSource, uint32_t maxWideSourceLen, char *oemDest, uint32_t maxOemDestLen) {
+fpl_api void fpl_WideStringToOEMString(const wchar_t *wideSource, const uint32_t maxWideSourceLen, char *oemDest, const uint32_t maxOemDestLen) {
 	uint32_t requiredSize = WideCharToMultiByte(CP_ACP, 0, wideSource, maxWideSourceLen, NULL, 0, NULL, NULL);
 	uint32_t requiredLen = requiredSize / sizeof(char);
 	FPL_ASSERT(maxOemDestLen >= (requiredLen + 1));
 	WideCharToMultiByte(CP_ACP, 0, wideSource, maxWideSourceLen, oemDest, maxOemDestLen, NULL, NULL);
 	oemDest[requiredLen] = 0;
 }
-fpl_api void fpl_WideStringToUTF8String(const wchar_t *wideSource, uint32_t maxWideSourceLen, char *utf8Dest, uint32_t maxUtf8DestLen) {
+fpl_api void fpl_WideStringToUTF8String(const wchar_t *wideSource, const uint32_t maxWideSourceLen, char *utf8Dest, const uint32_t maxUtf8DestLen) {
 	uint32_t requiredSize = WideCharToMultiByte(CP_UTF8, 0, wideSource, maxWideSourceLen, NULL, 0, NULL, NULL);
 	uint32_t requiredLen = requiredSize / sizeof(char);
 	FPL_ASSERT(maxUtf8DestLen >= (requiredSize + 1));
 	WideCharToMultiByte(CP_UTF8, 0, wideSource, maxWideSourceLen, utf8Dest, maxUtf8DestLen, NULL, NULL);
 	utf8Dest[requiredLen] = 0;
 }
-fpl_api void fpl_OEMStringToWideString(const char *oemSource, uint32_t oemSourceLen, wchar_t *wideDest, uint32_t maxWideDestLen) {
+fpl_api void fpl_OEMStringToWideString(const char *oemSource, const uint32_t oemSourceLen, wchar_t *wideDest, const uint32_t maxWideDestLen) {
 	uint32_t requiredSize = MultiByteToWideChar(CP_ACP, 0, oemSource, oemSourceLen, NULL, 0);
 	uint32_t requiredLen = requiredSize / sizeof(wchar_t);
 	FPL_ASSERT(maxWideDestLen >= (requiredLen + 1));
 	MultiByteToWideChar(CP_ACP, 0, oemSource, oemSourceLen, wideDest, maxWideDestLen);
 	wideDest[requiredLen] = 0;
 }
-fpl_api void fpl_UTF8StringToWideString(const char *utf8Source, uint32_t utf8SourceLen, wchar_t *wideDest, uint32_t maxWideDestLen) {
+fpl_api void fpl_UTF8StringToWideString(const char *utf8Source, const uint32_t utf8SourceLen, wchar_t *wideDest, const uint32_t maxWideDestLen) {
 	uint32_t requiredSize = MultiByteToWideChar(CP_UTF8, 0, utf8Source, utf8SourceLen, NULL, 0);
 	uint32_t requiredLen = requiredSize / sizeof(wchar_t);
 	FPL_ASSERT(maxWideDestLen >= (requiredLen + 1));
@@ -1104,17 +1265,57 @@ fpl_api void fpl_UTF8StringToWideString(const char *utf8Source, uint32_t utf8Sou
 }
 
 //
-// Window
+// Win32 Public Core
 //
-#		if FPL_ENABLE_WINDOW
-fpl_api void fpl_WindowFlip() {
-	SwapBuffers(fpl_GlobalWin32State_Internal.deviceContext);
+fpl_api fpl_LibraryHandle fpl_LoadLibrary(const char *libraryFilePath) {
+	fpl_LibraryHandle result = { 0 };
+	HMODULE libModule = LoadLibraryA(libraryFilePath);
+	if (libModule != FPL_NULL) {
+		result.internalHandle = (void *)libModule;
+		result.isValid = fpl_true;
+	}
+	return(result);
 }
+fpl_api void *fpl_GetLibraryProcAddress(fpl_LibraryHandle *handle, const char *name) {
+	void *result = FPL_NULL;
+	if (handle != FPL_NULL) {
+		if (handle->isValid) {
+			FPL_ASSERT(handle->internalHandle != FPL_NULL);
+			HMODULE libModule = (HMODULE)handle;
+			result = GetProcAddress(libModule, name);
+		}
+	}
+	return(result);
+}
+fpl_api void fpl_ReleaseLibrary(fpl_LibraryHandle *handle) {
+	if (handle != FPL_NULL) {
+		if (handle->isValid) {
+			FPL_ASSERT(handle->internalHandle != FPL_NULL);
+			HMODULE libModule = (HMODULE)handle->internalHandle;
+			FreeLibrary(libModule);
+		}
+		FPL_CLEARSTRUCT_INTERNAL(handle);
+	}
+}
+
+//
+// Win32 Public Window
+//
+#	if FPL_ENABLE_WINDOW
+
+#		if FPL_ENABLE_OPENGL
+fpl_api void fpl_WindowFlip() {
+	SwapBuffers(fpl_GlobalWin32State_Internal.window.deviceContext);
+}
+#		else
+fpl_api void fpl_WindowFlip() {
+}
+#		endif // FPL_ENABLE_OPENGL
 
 fpl_api int32_t fpl_GetWindowWidth() {
 	int32_t result = 0;
 	RECT windowRect;
-	if (GetClientRect(fpl_GlobalWin32State_Internal.windowHandle, &windowRect)) {
+	if (GetClientRect(fpl_GlobalWin32State_Internal.window.windowHandle, &windowRect)) {
 		result = (windowRect.right - windowRect.left) + 1;
 	}
 	return(result);
@@ -1122,19 +1323,19 @@ fpl_api int32_t fpl_GetWindowWidth() {
 fpl_api int32_t fpl_GetWindowHeight() {
 	int32_t result = 0;
 	RECT windowRect;
-	if (GetClientRect(fpl_GlobalWin32State_Internal.windowHandle, &windowRect)) {
+	if (GetClientRect(fpl_GlobalWin32State_Internal.window.windowHandle, &windowRect)) {
 		result = (windowRect.bottom - windowRect.top) + 1;
 	}
 	return(result);
 }
 
-fpl_api void fpl_ShowWindowMouseCursor(fpl_bool32 value) {
+fpl_api void fpl_ShowWindowMouseCursor(const fpl_bool32 value) {
 	fpl_Win32State_Internal *win32State = &fpl_GlobalWin32State_Internal;
 	FPL_ASSERT(win32State != NULL);
-	win32State->isCursorActive = value;
+	win32State->window.isCursorActive = value;
 }
 
-fpl_internal void fpl_Win32PushMouseEvent_Internal(fpl_MouseEventType mouseEventType, fpl_MouseButtonType mouseButton, LPARAM lParam, WPARAM wParam) {
+fpl_internal void fpl_Win32PushMouseEvent_Internal(const fpl_MouseEventType mouseEventType, const fpl_MouseButtonType mouseButton, const LPARAM lParam, const WPARAM wParam) {
 	fpl_Event newEvent;
 	FPL_CLEARSTRUCT_INTERNAL(&newEvent);
 	newEvent.type = fpl_EventType_Mouse;
@@ -1149,7 +1350,7 @@ fpl_internal void fpl_Win32PushMouseEvent_Internal(fpl_MouseEventType mouseEvent
 	fpl_PushEvent_Internal(&newEvent);
 }
 
-fpl_internal fpl_Key fpl_Win32MapVirtualKey_Internal(uint64_t keyCode) {
+fpl_internal fpl_Key fpl_Win32MapVirtualKey_Internal(const uint64_t keyCode) {
 	switch (keyCode) {
 		case VK_BACK:
 			return fpl_Key_Backspace;
@@ -1389,7 +1590,7 @@ fpl_internal fpl_Key fpl_Win32MapVirtualKey_Internal(uint64_t keyCode) {
 	}
 }
 
-fpl_internal void fpl_Win32PushKeyboardEvent_Internal(fpl_KeyboardEventType keyboardEventType, uint64_t keyCode, fpl_KeyboardModifierType modifiers, fpl_bool32 isDown) {
+fpl_internal void fpl_Win32PushKeyboardEvent_Internal(const fpl_KeyboardEventType keyboardEventType, const uint64_t keyCode, const fpl_KeyboardModifierType modifiers, const fpl_bool32 isDown) {
 	fpl_Event newEvent;
 	FPL_CLEARSTRUCT_INTERNAL(&newEvent);
 	newEvent.type = fpl_EventType_Keyboard;
@@ -1400,7 +1601,7 @@ fpl_internal void fpl_Win32PushKeyboardEvent_Internal(fpl_KeyboardEventType keyb
 	fpl_PushEvent_Internal(&newEvent);
 }
 
-fpl_internal fpl_bool32 fpl_Win32IsKeyDown_Internal(uint64_t keyCode) {
+fpl_internal fpl_bool32 fpl_Win32IsKeyDown_Internal(const uint64_t keyCode) {
 	fpl_bool32 result = GetAsyncKeyState((int)keyCode) & 0x8000;
 	return(result);
 }
@@ -1413,7 +1614,7 @@ LRESULT CALLBACK fpl_Win32MessageProc_Internal(HWND hwnd, UINT msg, WPARAM wPara
 		case WM_DESTROY:
 		case WM_CLOSE:
 		{
-			win32State->isRunning = fpl_false;
+			win32State->window.isRunning = fpl_false;
 		} break;
 
 		case WM_SIZE:
@@ -1460,7 +1661,7 @@ LRESULT CALLBACK fpl_Win32MessageProc_Internal(HWND hwnd, UINT msg, WPARAM wPara
 			if (wasDown != isDown) {
 				if (isDown) {
 					if (keyCode == VK_F4 && altKeyWasDown) {
-						win32State->isRunning = 0;
+						win32State->window.isRunning = 0;
 					}
 				}
 			}
@@ -1524,8 +1725,8 @@ LRESULT CALLBACK fpl_Win32MessageProc_Internal(HWND hwnd, UINT msg, WPARAM wPara
 
 		case WM_SETCURSOR:
 		{
-			if (win32State->isCursorActive) {
-				SetCursor(win32State->defaultCursor);
+			if (win32State->window.isCursorActive) {
+				SetCursor(win32State->window.defaultCursor);
 			} else {
 				SetCursor(NULL);
 			}
@@ -1541,26 +1742,25 @@ LRESULT CALLBACK fpl_Win32MessageProc_Internal(HWND hwnd, UINT msg, WPARAM wPara
 fpl_api fpl_bool32 fpl_WindowUpdate() {
 	fpl_bool32 result = fpl_false;
 	fpl_Win32State_Internal *win32State = &fpl_GlobalWin32State_Internal;
-	if (win32State->windowHandle != 0) {
+	if (win32State->window.windowHandle != 0) {
 		MSG msg;
 		while (PeekMessage(&msg, NULL, 0, 0, PM_REMOVE) != 0) {
 			TranslateMessage(&msg);
 			DispatchMessage(&msg);
 		}
-		result = win32State->isRunning;
+		result = win32State->window.isRunning;
 	}
 	return(result);
 }
 
 fpl_api fpl_bool32 fpl_IsWindowRunning() {
-	fpl_bool32 result = fpl_GlobalWin32State_Internal.isRunning;
+	fpl_bool32 result = fpl_GlobalWin32State_Internal.window.isRunning;
 	return(result);
 }
+#	endif // FPL_ENABLE_WINDOW
 
-#			if FPL_ENABLE_OPENGL
-fpl_internal fpl_bool32 fpl_Win32CreateOpenGL_Internal() {
-	fpl_Win32State_Internal *win32State = &fpl_GlobalWin32State_Internal;
-
+#	if FPL_ENABLE_WINDOW && FPL_ENABLE_OPENGL
+fpl_internal fpl_bool32 fpl_Win32CreateOpenGLContext_Internal(fpl_Win32State_Internal *win32State) {
 	PIXELFORMATDESCRIPTOR pfd = { 0 };
 	pfd.nSize = sizeof(pfd);
 	pfd.nVersion = 1;
@@ -1571,171 +1771,225 @@ fpl_internal fpl_bool32 fpl_Win32CreateOpenGL_Internal() {
 	pfd.cAlphaBits = 8;
 	pfd.iLayerType = PFD_MAIN_PLANE;
 
-	int pixelFormat = ChoosePixelFormat(win32State->deviceContext, &pfd);
+	int pixelFormat = ChoosePixelFormat(win32State->window.deviceContext, &pfd);
 	if (pixelFormat == 0) {
 		// @TODO: Log error
-		return -1;
+		return fpl_false;
 	}
-	if (!SetPixelFormat(win32State->deviceContext, pixelFormat, &pfd)) {
+	if (!SetPixelFormat(win32State->window.deviceContext, pixelFormat, &pfd)) {
 		// @TODO: Log error
-		return -1;
+		return fpl_false;
 	}
 
-	win32State->renderingContext = wglCreateContext(win32State->deviceContext);
-	if (!win32State->renderingContext) {
+	win32State->opengl.renderingContext = wglCreateContext(win32State->window.deviceContext);
+	if (!win32State->opengl.renderingContext) {
 		// @TODO: Log error
-		return -1;
+		return fpl_false;
 	}
 
-	if (!wglMakeCurrent(win32State->deviceContext, win32State->renderingContext)) {
+	if (!wglMakeCurrent(win32State->window.deviceContext, win32State->opengl.renderingContext)) {
 		// @TODO: Log error
-		return -1;
+		return fpl_false;
 	}
 
-	return 1;
+	return fpl_true;
 }
-#			endif // FPL_ENABLE_OPENGL
 
-#		endif // FPL_ENABLE_WINDOW
+fpl_internal void fpl_Win32ReleaseOpenGLContext_Internal(fpl_Win32State_Internal *win32State) {
+	if (win32State->opengl.renderingContext) {
+		wglMakeCurrent(0, 0);
+		wglDeleteContext(win32State->opengl.renderingContext);
+		win32State->opengl.renderingContext = NULL;
+	}
+}
+#	else
+#		define fpl_Win32CreateOpenGLContext_Internal(win32State) (fpl_true)
+#		define fpl_Win32ReleaseOpenGLContext_Internal(win32State)
+#	endif // FPL_ENABLE_WINDOW && FPL_ENABLE_OPENGL
 
-fpl_api fpl_bool32 fpl_Init(fpl_InitFlag initFlags) {
+#	if FPL_ENABLE_WINDOW
+fpl_internal fpl_bool32 fpl_InitWindow_Internal(fpl_Win32State_Internal *win32State, const fpl_InitFlag initFlags) {
+	// Register window class
+	WNDCLASSEX windowClass;
+	FPL_CLEARSTRUCT_INTERNAL(&windowClass);
+	windowClass.hInstance = win32State->appInstance;
+	windowClass.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
+	windowClass.cbSize = sizeof(windowClass);
+	windowClass.style = CS_HREDRAW | CS_VREDRAW | CS_OWNDC;
+	windowClass.hCursor = LoadCursor(NULL, IDC_ARROW);
+	windowClass.hIcon = LoadIcon(NULL, IDI_APPLICATION);
+	windowClass.hIconSm = LoadIcon(NULL, IDI_APPLICATION);
+	windowClass.lpszClassName = WIN32_CLASSNAME;
+	windowClass.lpfnWndProc = fpl_Win32MessageProc_Internal;
+	if (RegisterClassEx(&windowClass) == 0) {
+		// @TODO: Log error
+		return fpl_false;
+	}
+	fpl_Win32StringCopy(windowClass.lpszClassName, fpl_Win32GetStringLength(windowClass.lpszClassName), win32State->window.windowClass, FPL_ARRAYCOUNT(win32State->window.windowClass));
+
+	// Create window
+	win32State->window.windowHandle = CreateWindowEx(WS_EX_OVERLAPPEDWINDOW, windowClass.lpszClassName, WIN32_UNNAMED_WINDOW, WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT, FPL_DEFAULT_WINDOW_WIDTH, FPL_DEFAULT_WINDOW_HEIGHT, NULL, NULL, windowClass.hInstance, NULL);
+	if (win32State->window.windowHandle == NULL) {
+		// @TODO: Log error
+		return fpl_false;
+	}
+
+	// Get device context so we can swap the back and front buffer
+	win32State->window.deviceContext = GetDC(win32State->window.windowHandle);
+	if (win32State->window.deviceContext == NULL) {
+		// @TODO: Log error
+		return fpl_false;
+	}
+
+	// Create opengl rendering context if required
+	if (initFlags & fpl_InitFlag_VideoOpenGL) {
+		fpl_bool32 openglResult = fpl_Win32CreateOpenGLContext_Internal(win32State);
+		if (!openglResult) {
+			// @TODO: Log error
+			return fpl_false;
+		}
+	}
+
+	void *eventQueueMemory = fpl_AllocateAlignedMemory(sizeof(fpl_EventQueue_Internal), 16);
+	fpl_GlobalEventQueue_Internal = (fpl_EventQueue_Internal *)eventQueueMemory;
+
+	// Show window
+	ShowWindow(win32State->window.windowHandle, SW_SHOW);
+	UpdateWindow(win32State->window.windowHandle);
+
+	// Cursor is visible at start
+	win32State->window.defaultCursor = windowClass.hCursor;
+	win32State->window.isCursorActive = fpl_true;
+	win32State->window.isRunning = fpl_true;
+
+	return fpl_true;
+}
+
+fpl_internal void fpl_ReleaseWindow_Internal(fpl_Win32State_Internal *win32State) {
+	fpl_Win32ReleaseOpenGLContext_Internal(win32State);
+
+	if (win32State->window.deviceContext != NULL) {
+		ReleaseDC(win32State->window.windowHandle, win32State->window.deviceContext);
+		win32State->window.deviceContext = NULL;
+	}
+
+	if (win32State->window.windowHandle != NULL) {
+		DestroyWindow(win32State->window.windowHandle);
+		win32State->window.windowHandle = NULL;
+		UnregisterClass(win32State->window.windowClass, win32State->appInstance);
+	}
+
+	fpl_FreeAlignedMemory(fpl_GlobalEventQueue_Internal);
+}
+#	else
+#		define fpl_InitWindow_Internal(win32State, initFlags) (fpl_true)
+#		define fpl_ReleaseWindow_Internal(void)
+#	endif // FPL_ENABLE_WINDOW
+
+fpl_api fpl_bool32 fpl_Init(const fpl_InitFlag initFlags) {
 	fpl_Win32State_Internal *win32State = &fpl_GlobalWin32State_Internal;
 	FPL_ASSERT(win32State != NULL);
 	FPL_ASSERT(!win32State->isInitialized);
 
-	if (initFlags & fpl_InitFlag_VideoOpenGL) {
-		initFlags |= fpl_InitFlag_Window;
-	}
-
 	// Timing
 	QueryPerformanceFrequency(&win32State->performanceFrequency);
 
-#		if FPL_ENABLE_WINDOW
-	if (initFlags & fpl_InitFlag_Window) {
-		// Register window class
-		WNDCLASSEX windowClass = { 0 };
-		windowClass.hInstance = win32State->appInstance;
-		windowClass.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
-		windowClass.cbSize = sizeof(windowClass);
-		windowClass.style = CS_HREDRAW | CS_VREDRAW | CS_OWNDC;
-		windowClass.hCursor = LoadCursor(NULL, IDC_ARROW);
-		windowClass.hIcon = LoadIcon(NULL, IDI_APPLICATION);
-		windowClass.hIconSm = LoadIcon(NULL, IDI_APPLICATION);
-		windowClass.lpszClassName = WIN32_CLASSNAME;
-		windowClass.lpfnWndProc = fpl_Win32MessageProc_Internal;
-		if (RegisterClassEx(&windowClass) == 0) {
-			// @TODO: Log error
-			return 0;
-		}
-		fpl_Win32StringCopy(windowClass.lpszClassName, fpl_Win32GetStringLength(windowClass.lpszClassName), win32State->windowClass, FPL_ARRAYCOUNT(win32State->windowClass));
-
-		// Create window
-		win32State->windowHandle = CreateWindowEx(WS_EX_OVERLAPPEDWINDOW, windowClass.lpszClassName, WIN32_UNNAMED_WINDOW, WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT, FPL_DEFAULT_WINDOW_WIDTH, FPL_DEFAULT_WINDOW_HEIGHT, NULL, NULL, windowClass.hInstance, NULL);
-		if (win32State->windowHandle == NULL) {
-			// @TODO: Log error
-			return 0;
-		}
-
-		// Get device context so we can swap the back and front buffer
-		win32State->deviceContext = GetDC(win32State->windowHandle);
-		if (win32State->deviceContext == NULL) {
-			// @TODO: Log error
-			return 0;
-		}
-
-#			if FPL_ENABLE_OPENGL
-		// Create opengl rendering context if required
-		if (initFlags & fpl_InitFlag_VideoOpenGL) {
-			fpl_bool32 openglResult = fpl_Win32CreateOpenGL_Internal();
-			if (!openglResult) {
-				// @TODO: Log error
-				return 0;
-			}
-		}
-#			endif // FPL_ENABLE_OPENGL
-
-		void *eventQueueMemory = fpl_AllocateAlignedMemory(sizeof(fpl_EventQueue_Internal), 16);
-		fpl_GlobalEventQueue_Internal = (fpl_EventQueue_Internal *)eventQueueMemory;
-
-		// Show window
-		ShowWindow(win32State->windowHandle, SW_SHOW);
-		UpdateWindow(win32State->windowHandle);
-
-		// Cursor is visible at start
-		win32State->defaultCursor = windowClass.hCursor;
-		win32State->isCursorActive = fpl_true;
-
-		win32State->isRunning = fpl_true;
+	fpl_InitFlag usedInitFlags = initFlags;
+	if (usedInitFlags & fpl_InitFlag_VideoOpenGL) {
+		usedInitFlags |= fpl_InitFlag_Window;
 	}
-#		endif // FPL_ENABLE_WINDOW
+
+	if (usedInitFlags & fpl_InitFlag_Window) {
+		if (!fpl_InitWindow_Internal(win32State, usedInitFlags)) {
+			return fpl_false;
+		}
+	}
 
 	win32State->isInitialized = fpl_true;
 
-	return 1;
+	return (fpl_true);
 }
 
 fpl_api void fpl_Release() {
 	fpl_Win32State_Internal *win32State = &fpl_GlobalWin32State_Internal;
 	FPL_ASSERT(win32State != NULL);
 	FPL_ASSERT(win32State->isInitialized);
-
-#		if FPL_ENABLE_WINDOW
-
-#			if FPL_ENABLE_OPENGL
-	if (win32State->renderingContext) {
-		wglMakeCurrent(0, 0);
-		wglDeleteContext(win32State->renderingContext);
-		win32State->renderingContext = NULL;
-	}
-#			endif // FPL_ENABLE_OPENGL
-
-	if (win32State->deviceContext != NULL) {
-		ReleaseDC(win32State->windowHandle, win32State->deviceContext);
-		win32State->deviceContext = NULL;
-	}
-
-	if (win32State->windowHandle != NULL) {
-		DestroyWindow(win32State->windowHandle);
-		win32State->windowHandle = NULL;
-		UnregisterClass(win32State->windowClass, win32State->appInstance);
-	}
-
-	fpl_FreeAlignedMemory(fpl_GlobalEventQueue_Internal);
-#		endif // FPL_ENABLE_WINDOW
-
+	fpl_ReleaseWindow_Internal(win32State);
 	win32State->isInitialized = fpl_false;
 }
 
 //
-// Entry-Point
+// Win32 Entry-Point
+// This is a bit ugly because:
+// - Support for Window and Console application
+// - Support for Unicode and Ansi
+// - Support for disabled C-Runtime-Library
+// @NOTE: If possible clean this up
 //
-#		if FPL_ENABLE_WINDOW
-#			if defined(UNICODE)
+#	if FPL_ENABLE_WINDOW
+
+#		if defined(UNICODE)
 int WINAPI wWinMain(HINSTANCE appInstance, HINSTANCE prevInstance, LPWSTR cmdLine, int cmdShow) {
-#			else
-int WINAPI WinMain(HINSTANCE appInstance, HINSTANCE prevInstance, LPSTR cmdLine, int cmdShow) {
-#			endif // defined(UNICODE)
 	fpl_GlobalWin32State_Internal.appInstance = appInstance;
 	// @TODO: Parse command line parameters
 	int result = main(0, 0);
 	return(result);
 }
+#if			!FPL_ENABLE_C_RUNTIME_LIBRARY
+void __stdcall WinMainCRTStartup() {
+	int result = wWinMain(GetModuleHandleW(0), 0, 0, 0);
+	ExitProcess(result);
+}
+#			endif // !FPL_ENABLE_C_RUNTIME_LIBRARY
 #		else
-	// The main() entry point is used directly
-#		endif // FPL_ENABLE_WINDOW
+int WINAPI WinMain(HINSTANCE appInstance, HINSTANCE prevInstance, LPSTR cmdLine, int cmdShow) {
+	fpl_GlobalWin32State_Internal.appInstance = appInstance;
+	// @TODO: Parse command line parameters
+	int result = main(0, 0);
+	return(result);
+}
+#if			!FPL_ENABLE_C_RUNTIME_LIBRARY
+void __stdcall WinMainCRTStartup() {
+	int result = WinMain(GetModuleHandleA(0), 0, 0, 0);
+	ExitProcess(result);
+}
+#			endif // !FPL_ENABLE_C_RUNTIME_LIBRARY
+#		endif // defined(UNICODE)
 
-#	elif defined(FPL_PLATFORM_LINUX) // FPL_PLATFORM_WINDOWS
+#	else
+
+#if		!FPL_ENABLE_C_RUNTIME_LIBRARY
+#			if defined(UNICODE)
+void __stdcall mainCRTStartup() {
+	// @TODO: Parse command line parameters
+	int result = main(0, 0);
+	ExitProcess(result);
+}
+#			else
+void __stdcall mainCRTStartup() {
+	// @TODO: Parse command line parameters
+	int result = main(0, 0);
+	ExitProcess(result);
+}
+#			endif
+#		else
+// The main() entry point is used directly
+#		endif // !FPL_ENABLE_C_RUNTIME_LIBRARY	
+
+#	endif // FPL_ENABLE_WINDOW
+
+#elif defined(FPL_PLATFORM_LINUX) // FPL_PLATFORM_WINDOWS
 	//
 	// Linux platform implementation
 	//
-#		error "Please define at least the entry point for the linux platform!"
-#	elif defined(FPL_PLATFORM_UNIX) // FPL_PLATFORM_LINUX
+#	error "Please define at least the entry point for the linux platform!"
+#elif defined(FPL_PLATFORM_UNIX) // FPL_PLATFORM_LINUX
 	//
 	// Unix platform implementation
 	//
-#		error "Please define at least the entry point for the unix platform!"
-#	else // defined(FPL_PLATFORM_UNIX)
-#		error "Unsupported Platform!"
-#	endif // !defined(FPL_PLATFORM_UNIX)
+#	error "Please define at least the entry point for the unix platform!"
+#else // defined(FPL_PLATFORM_UNIX)
+#	error "Unsupported Platform!"
+#endif // !defined(FPL_PLATFORM_UNIX)
 
 #endif // defined(FPL_IMPLEMENTATION) && !defined(FPL_IMPLEMENTED)
