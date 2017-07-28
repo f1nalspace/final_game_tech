@@ -7,11 +7,11 @@
 int main(int argc, char **args) {
 	int result = 0;
 #if FPL_ENABLE_WINDOW
-	if (fpl_Init(fpl_InitFlag_Window)) {
+	if (fpl_Init(fpl_InitFlags_Window)) {
 		while (fpl_WindowUpdate()) {
 		}
 #else
-	if (fpl_Init(fpl_InitFlag_None)) {
+	if (fpl_Init(fpl_InitFlags_None)) {
 #endif
 		fpl_Release();
 		result = 0;

@@ -3,7 +3,10 @@
 
 int main(int argc, char **args) {
 	int result = 0;
-	if (fpl_Init(fpl_InitFlag_VideoOpenGL)) {
+	if (fpl_Init(fpl_InitFlags_VideoOpenGL)) {
+		fpl_SetWindowArea(640, 480);
+		fpl_SetWindowPosition(0, 0);
+
 		glEnable(GL_DEPTH_TEST);
 		glEnable(GL_TEXTURE_2D);
 		glDepthFunc(GL_LEQUAL);
@@ -35,6 +38,10 @@ int main(int argc, char **args) {
 
 		float rot = 0.0f;
 		while (fpl_WindowUpdate()) {
+			fpl_WindowSize windowArea = fpl_GetWindowArea();
+
+			glViewport(0, 0, windowArea.width, windowArea.height);
+
 			glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
 			glBindTexture(GL_TEXTURE_2D, textureId);

@@ -162,11 +162,10 @@ static ImVec4 clear_color = ImColor(114, 144, 154);
 
 static void UpdateAndRender(const float deltaTime) {
 	ImGuiIO& io = ImGui::GetIO();
-	int32_t windowWidth = fpl_GetWindowWidth();
-	int32_t windowHeight = fpl_GetWindowHeight();
+	fpl_WindowSize windowArea = fpl_GetWindowArea();
 	io.DeltaTime = deltaTime;
-	io.DisplaySize.x = (float)windowWidth;
-	io.DisplaySize.y = (float)windowHeight;
+	io.DisplaySize.x = (float)windowArea.width;
+	io.DisplaySize.y = (float)windowArea.height;
 	io.DisplayFramebufferScale = ImVec2(1, 1);
 
 	io.MousePos = ImVec2((float)currentMousePosition[0], (float)currentMousePosition[1]);
@@ -180,7 +179,7 @@ static void UpdateAndRender(const float deltaTime) {
 	}
 	currentMouseWheelDelta = 0.0f;
 
-	fpl_ShowWindowMouseCursor(!io.MouseDrawCursor);
+	fpl_SetWindowCursorEnabled(!io.MouseDrawCursor);
 
 	ImGui::NewFrame();
 
@@ -209,7 +208,7 @@ static void UpdateAndRender(const float deltaTime) {
 		ImGui::ShowTestWindow(&show_test_window);
 	}
 
-	glViewport(0, 0, windowWidth, windowHeight);
+	glViewport(0, 0, windowArea.width, windowArea.height);
 	glClearColor(clear_color.x, clear_color.y, clear_color.z, clear_color.w);
 	glClear(GL_COLOR_BUFFER_BIT);
 	ImGui::Render();
@@ -217,7 +216,7 @@ static void UpdateAndRender(const float deltaTime) {
 
 int main(int argc, char **args) {
 	int result = 0;
-	if (fpl_Init({ fpl_InitFlag_VideoOpenGL })) {
+	if (fpl_Init({ fpl_InitFlags_VideoOpenGL })) {
 		InitImGUI();
 
 		ImGuiIO& io = ImGui::GetIO();
