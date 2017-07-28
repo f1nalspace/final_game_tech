@@ -15,3 +15,4 @@
 /demos/build
 *.db
 *.opendb
+/demos/FPL_NoRuntime/x64/Debug
