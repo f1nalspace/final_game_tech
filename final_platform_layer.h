@@ -928,13 +928,13 @@ extern
 	} fpl_Event;
 
 	/* Window size in screen coordinates */
-	typedef union fpl_WindowSize {
+	typedef struct fpl_WindowSize {
 		uint32_t width;
 		uint32_t height;
 	} fpl_WindowSize;
 
 	/* Window position in screen coordinates */
-	typedef union fpl_WindowPosition {
+	typedef struct fpl_WindowPosition {
 		int32_t left;
 		int32_t top;
 	} fpl_WindowPosition;
