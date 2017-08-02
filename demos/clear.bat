@@ -2,6 +2,7 @@ del /q *.opendb
 del /q *.db
 del /q *.ghostdoc*
 del /q *.sdf
+rmdir /q /s .vs
 rmdir /q /s x64
 rmdir /q /s FPL_Console\debug
 rmdir /q /s FPL_Console\release

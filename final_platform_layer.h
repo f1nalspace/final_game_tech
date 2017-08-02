@@ -408,7 +408,13 @@ enum {
 	fpl_False = 0,
 	fpl_True = 1,
 };
-#define FPL_NULL 0
+
+// Use nullptr when C++/11 are available
+#if __cplusplus && (__cplusplus >= 201103L)
+#	define FPL_NULLPTR nullptr
+#else
+#	define FPL_NULLPTR (void *)0
+#endif
 
 //
 // Assertions
@@ -1115,7 +1121,7 @@ fpl_api void *fpl_AllocateAlignedMemory(const size_t size, const size_t alignmen
 }
 
 fpl_api void fpl_FreeAlignedMemory(void *ptr) {
-	FPL_ASSERT(ptr != FPL_NULL);
+	FPL_ASSERT(ptr != FPL_NULLPTR);
 
 	// Free the base pointer which is stored to the left from the given pointer
 	void *basePtr = (void *)((void **)((uintptr_t)ptr - sizeof(void *)));
@@ -1162,7 +1168,7 @@ fpl_api fpl_bool32 fpl_PollEvent(fpl_Event *event) {
 // All Public Path, Directories
 //
 fpl_api char *fpl_ExtractFilePath(char *destPath, const uint32_t maxDestLen, const char *sourcePath) {
-	char *result = FPL_NULL;
+	char *result = (char *)FPL_NULLPTR;
 	if (sourcePath) {
 		int copyLen = 0;
 		char *chPtr = (char *)sourcePath;
@@ -1180,12 +1186,12 @@ fpl_api char *fpl_ExtractFilePath(char *destPath, const uint32_t maxDestLen, con
 }
 
 fpl_api char *fpl_ExtractFileExtension(const char *sourcePath) {
-	char *result = FPL_NULL;
-	if (sourcePath != FPL_NULL) {
+	char *result = (char *)FPL_NULLPTR;
+	if (sourcePath != FPL_NULLPTR) {
 		char *filename = fpl_ExtractFileName(sourcePath);
 		if (filename) {
 			char *chPtr = filename;
-			char *firstSeparatorPtr = FPL_NULL;
+			char *firstSeparatorPtr = (char *)FPL_NULLPTR;
 			while (*chPtr) {
 				if (*chPtr == FPL_FILE_EXT_SEPARATOR) {
 					firstSeparatorPtr = chPtr;
@@ -1193,7 +1199,7 @@ fpl_api char *fpl_ExtractFileExtension(const char *sourcePath) {
 				}
 				++chPtr;
 			}
-			if (firstSeparatorPtr != FPL_NULL) {
+			if (firstSeparatorPtr != FPL_NULLPTR) {
 				result = firstSeparatorPtr;
 			}
 		}
@@ -1202,18 +1208,18 @@ fpl_api char *fpl_ExtractFileExtension(const char *sourcePath) {
 }
 
 fpl_api char *fpl_ExtractFileName(const char *sourcePath) {
-	char *result = FPL_NULL;
+	char *result = (char *)FPL_NULLPTR;
 	if (sourcePath) {
 		result = (char *)sourcePath;
 		char *chPtr = (char *)sourcePath;
-		char *lastPtr = FPL_NULL;
+		char *lastPtr = (char *)FPL_NULLPTR;
 		while (*chPtr) {
 			if (*chPtr == FPL_PATH_SEPARATOR) {
 				lastPtr = chPtr;
 			}
 			++chPtr;
 		}
-		if (lastPtr != FPL_NULL) {
+		if (lastPtr != FPL_NULLPTR) {
 			result = lastPtr + 1;
 		}
 	}
@@ -1221,11 +1227,11 @@ fpl_api char *fpl_ExtractFileName(const char *sourcePath) {
 }
 
 fpl_api char *fpl_ChangeFileExtension(char *destPath, const uint32_t maxDestLen, const char *filePath, const char *newFileExtension) {
-	char *result = FPL_NULL;
-	if (filePath != FPL_NULL) {
+	char *result = (char *)FPL_NULLPTR;
+	if (filePath != FPL_NULLPTR) {
 		// Find last path
 		char *chPtr = (char *)filePath;
-		char *lastPathSeparatorPtr = FPL_NULL;
+		char *lastPathSeparatorPtr = (char *)FPL_NULLPTR;
 		while (*chPtr) {
 			if (*chPtr == FPL_PATH_SEPARATOR) {
 				lastPathSeparatorPtr = chPtr;
@@ -1234,12 +1240,12 @@ fpl_api char *fpl_ChangeFileExtension(char *destPath, const uint32_t maxDestLen,
 		}
 
 		// Find last ext separator
-		if (lastPathSeparatorPtr != FPL_NULL) {
+		if (lastPathSeparatorPtr != FPL_NULLPTR) {
 			chPtr = lastPathSeparatorPtr + 1;
 		} else {
 			chPtr = (char *)filePath;
 		}
-		char *lastExtSeparatorPtr = FPL_NULL;
+		char *lastExtSeparatorPtr = (char *)FPL_NULLPTR;
 		while (*chPtr) {
 			if (*chPtr == FPL_FILE_EXT_SEPARATOR) {
 				lastExtSeparatorPtr = chPtr;
@@ -1249,7 +1255,7 @@ fpl_api char *fpl_ChangeFileExtension(char *destPath, const uint32_t maxDestLen,
 
 		uint32_t pathLen = fpl_GetAnsiStringLength(filePath);
 		uint32_t copyLen;
-		if (lastExtSeparatorPtr != FPL_NULL) {
+		if (lastExtSeparatorPtr != FPL_NULLPTR) {
 			copyLen = (uint32_t)((uintptr_t)lastExtSeparatorPtr - (uintptr_t)filePath);
 		} else {
 			copyLen = pathLen;
@@ -1404,32 +1410,32 @@ fpl_api void fpl_AtomicReadWriteFence(void) {
 	_ReadWriteBarrier();
 }
 fpl_api uint32_t fpl_AtomicExchangeU32(volatile uint32_t *target, const uint32_t value) {
-	FPL_ASSERT(target != FPL_NULL);
+	FPL_ASSERT(target != FPL_NULLPTR);
 	uint32_t result = _InterlockedExchange((volatile long *)target, value);
 	return (result);
 }
 fpl_api uint64_t fpl_AtomicExchangeU64(volatile uint64_t *target, const uint64_t value) {
-	FPL_ASSERT(target != FPL_NULL);
+	FPL_ASSERT(target != FPL_NULLPTR);
 	uint64_t result = InterlockedExchange64((volatile long long *)target, value);
 	return (result);
 }
 fpl_api uint32_t fpl_AtomicAddU32(volatile uint32_t *value, const uint32_t addend) {
-	FPL_ASSERT(value != FPL_NULL);
+	FPL_ASSERT(value != FPL_NULLPTR);
 	uint32_t result = _InterlockedExchangeAdd((volatile long *)value, addend);
 	return (result);
 }
 fpl_api uint64_t fpl_AtomicAddU64(volatile uint64_t *value, const uint64_t addend) {
-	FPL_ASSERT(value != FPL_NULL);
+	FPL_ASSERT(value != FPL_NULLPTR);
 	uint64_t result = InterlockedExchangeAdd64((volatile long long *)value, addend);
 	return (result);
 }
 fpl_api uint32_t fpl_AtomicCompareExchangeU32(volatile uint32_t *dest, const uint32_t exchange, const uint32_t comparand) {
-	FPL_ASSERT(dest != FPL_NULL);
+	FPL_ASSERT(dest != FPL_NULLPTR);
 	uint32_t result = _InterlockedCompareExchange((volatile long *)dest, exchange, comparand);
 	return (result);
 }
 fpl_api uint64_t fpl_AtomicCompareExchangeU64(volatile uint64_t *dest, const uint64_t exchange, const uint64_t comparand) {
-	FPL_ASSERT(dest != FPL_NULL);
+	FPL_ASSERT(dest != FPL_NULLPTR);
 	uint64_t result = InterlockedCompareExchange64((volatile long long *)dest, exchange, comparand);
 	return (result);
 }
@@ -1438,22 +1444,22 @@ fpl_api uint64_t fpl_AtomicCompareExchangeU64(volatile uint64_t *dest, const uin
 // Win32 public console
 #if FPL_ENABLE_C_RUNTIME_LIBRARY
 fpl_api void fpl_ConsoleOut(const char *text) {
-	FPL_ASSERT(text != FPL_NULL);
+	FPL_ASSERT(text != FPL_NULLPTR);
 	fprintf(stdout, text);
 }
 fpl_api void fpl_ConsoleFormatOut(const char *format, ...) {
-	FPL_ASSERT(format != FPL_NULL);
+	FPL_ASSERT(format != FPL_NULLPTR);
 	va_list vaList;
 	va_start(vaList, format);
 	vfprintf(stdout, format, vaList);
 	va_end(vaList);
 }
 fpl_api void fpl_ConsoleError(const char *text) {
-	FPL_ASSERT(text != FPL_NULL);
+	FPL_ASSERT(text != FPL_NULLPTR);
 	fprintf(stderr, text);
 }
 fpl_api void fpl_ConsoleFormatError(const char *format, ...) {
-	FPL_ASSERT(format != FPL_NULL);
+	FPL_ASSERT(format != FPL_NULLPTR);
 	va_list vaList;
 	va_start(vaList, format);
 	vfprintf(stderr, format, vaList);
@@ -1492,7 +1498,7 @@ fpl_api void fpl_FreeMemory(void *ptr) {
 // Win32 Public File
 //
 fpl_api fpl_FileHandle fpl_OpenBinaryFile(const char *filePath) {
-	FPL_ASSERT(filePath != FPL_NULL);
+	FPL_ASSERT(filePath != FPL_NULLPTR);
 	fpl_FileHandle result = { 0 };
 	HANDLE win32FileHandle = CreateFileA(filePath, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
 	if (win32FileHandle != INVALID_HANDLE_VALUE) {
@@ -1503,7 +1509,7 @@ fpl_api fpl_FileHandle fpl_OpenBinaryFile(const char *filePath) {
 }
 
 fpl_api fpl_FileHandle fpl_CreateBinaryFile(const char *filePath) {
-	FPL_ASSERT(filePath != FPL_NULL);
+	FPL_ASSERT(filePath != FPL_NULLPTR);
 	fpl_FileHandle result = { 0 };
 	HANDLE win32FileHandle = CreateFileA(filePath, GENERIC_WRITE, FILE_SHARE_WRITE, NULL, CREATE_NEW, FILE_ATTRIBUTE_NORMAL, NULL);
 	if (win32FileHandle != INVALID_HANDLE_VALUE) {
@@ -1514,8 +1520,8 @@ fpl_api fpl_FileHandle fpl_CreateBinaryFile(const char *filePath) {
 }
 
 fpl_api uint32_t fpl_ReadFileBlock32(fpl_FileHandle *fileHandle, const uint32_t sizeToRead, void *targetBuffer, const uint32_t maxTargetBufferSize) {
-	FPL_ASSERT(fileHandle != FPL_NULL);
-	FPL_ASSERT(targetBuffer != FPL_NULL);
+	FPL_ASSERT(fileHandle != FPL_NULLPTR);
+	FPL_ASSERT(targetBuffer != FPL_NULLPTR);
 	FPL_ASSERT(sizeToRead > 0);
 	uint32_t result = 0;
 	if (fileHandle->isValid) {
@@ -1530,8 +1536,8 @@ fpl_api uint32_t fpl_ReadFileBlock32(fpl_FileHandle *fileHandle, const uint32_t 
 }
 
 fpl_api uint32_t fpl_WriteFileBlock32(fpl_FileHandle *fileHandle, void *sourceBuffer, const uint32_t sourceSize) {
-	FPL_ASSERT(fileHandle != FPL_NULL);
-	FPL_ASSERT(sourceBuffer != FPL_NULL);
+	FPL_ASSERT(fileHandle != FPL_NULLPTR);
+	FPL_ASSERT(sourceBuffer != FPL_NULLPTR);
 	FPL_ASSERT(sourceSize > 0);
 	uint32_t result = 0;
 	if (fileHandle->isValid) {
@@ -1546,7 +1552,7 @@ fpl_api uint32_t fpl_WriteFileBlock32(fpl_FileHandle *fileHandle, void *sourceBu
 }
 
 fpl_api void fpl_SetFilePosition32(fpl_FileHandle *fileHandle, const uint32_t position, const fpl_FilePositionMode mode) {
-	FPL_ASSERT(fileHandle != FPL_NULL);
+	FPL_ASSERT(fileHandle != FPL_NULLPTR);
 	if (fileHandle->isValid) {
 		FPL_ASSERT(fileHandle->internalHandle != INVALID_HANDLE_VALUE);
 		HANDLE win32FileHandle = (void *)fileHandle->internalHandle;
@@ -1561,7 +1567,7 @@ fpl_api void fpl_SetFilePosition32(fpl_FileHandle *fileHandle, const uint32_t po
 }
 
 fpl_api uint32_t fpl_GetFilePosition32(fpl_FileHandle *fileHandle) {
-	FPL_ASSERT(fileHandle != FPL_NULL);
+	FPL_ASSERT(fileHandle != FPL_NULLPTR);
 	uint32_t result = 0;
 	if (fileHandle->isValid) {
 		FPL_ASSERT(fileHandle->internalHandle != INVALID_HANDLE_VALUE);
@@ -1575,7 +1581,7 @@ fpl_api uint32_t fpl_GetFilePosition32(fpl_FileHandle *fileHandle) {
 }
 
 fpl_api void fpl_CloseFile(fpl_FileHandle *fileHandle) {
-	FPL_ASSERT(fileHandle != FPL_NULL);
+	FPL_ASSERT(fileHandle != FPL_NULLPTR);
 	if (fileHandle->isValid) {
 		FPL_ASSERT(fileHandle->internalHandle != INVALID_HANDLE_VALUE);
 		HANDLE win32FileHandle = (void *)fileHandle->internalHandle;
@@ -1660,8 +1666,8 @@ fpl_internal void fpl_Win32FillFileEntry(WIN32_FIND_DATAA *findData, fpl_FileEnt
 	}
 }
 fpl_api fpl_bool32 fpl_ListFilesBegin(const char *pathAndFilter, fpl_FileEntry *firstEntry) {
-	FPL_ASSERT(pathAndFilter != FPL_NULL);
-	FPL_ASSERT(firstEntry != FPL_NULL);
+	FPL_ASSERT(pathAndFilter != FPL_NULLPTR);
+	FPL_ASSERT(firstEntry != FPL_NULLPTR);
 	fpl_bool32 result = fpl_False;
 	WIN32_FIND_DATAA findData;
 	HANDLE searchHandle = FindFirstFileA(pathAndFilter, &findData);
@@ -1674,7 +1680,7 @@ fpl_api fpl_bool32 fpl_ListFilesBegin(const char *pathAndFilter, fpl_FileEntry *
 	return(result);
 }
 fpl_api fpl_bool32 fpl_ListFilesNext(fpl_FileEntry *nextEntry) {
-	FPL_ASSERT(nextEntry != FPL_NULL);
+	FPL_ASSERT(nextEntry != FPL_NULLPTR);
 	fpl_bool32 result = fpl_False;
 	if (nextEntry->internalHandle != INVALID_HANDLE_VALUE) {
 		HANDLE searchHandle = (HANDLE)nextEntry->internalHandle;
@@ -1687,7 +1693,7 @@ fpl_api fpl_bool32 fpl_ListFilesNext(fpl_FileEntry *nextEntry) {
 	return(result);
 }
 fpl_api void fpl_ListFilesEnd(fpl_FileEntry *lastEntry) {
-	FPL_ASSERT(lastEntry != FPL_NULL);
+	FPL_ASSERT(lastEntry != FPL_NULLPTR);
 	if (lastEntry->internalHandle != INVALID_HANDLE_VALUE) {
 		HANDLE searchHandle = (HANDLE)lastEntry->internalHandle;
 		FindClose(searchHandle);
@@ -1701,7 +1707,7 @@ fpl_api void fpl_ListFilesEnd(fpl_FileEntry *lastEntry) {
 
 #	if defined(UNICODE)
 fpl_api void fpl_GetExecutableFilePath(char *destPath, const uint32_t maxDestLen) {
-	FPL_ASSERT(destPath != FPL_NULL);
+	FPL_ASSERT(destPath != FPL_NULLPTR);
 	FPL_ASSERT(maxDestLen >= (MAX_PATH + 1));
 	wchar_t modulePath[MAX_PATH];
 	GetModuleFileNameW(NULL, modulePath, MAX_PATH);
@@ -1709,7 +1715,7 @@ fpl_api void fpl_GetExecutableFilePath(char *destPath, const uint32_t maxDestLen
 }
 #	else
 fpl_api void fpl_GetExecutableFilePath(char *destPath, const uint32_t maxDestLen) {
-	FPL_ASSERT(destPath != FPL_NULL);
+	FPL_ASSERT(destPath != FPL_NULLPTR);
 	FPL_ASSERT(maxDestLen >= (MAX_PATH + 1));
 	char modulePath[MAX_PATH];
 	GetModuleFileNameA(NULL, modulePath, MAX_PATH);
@@ -1718,7 +1724,7 @@ fpl_api void fpl_GetExecutableFilePath(char *destPath, const uint32_t maxDestLen
 #	endif
 
 fpl_api void fpl_GetHomePath(char *destPath, const uint32_t maxDestLen) {
-	FPL_ASSERT(destPath != FPL_NULL);
+	FPL_ASSERT(destPath != FPL_NULLPTR);
 	FPL_ASSERT(maxDestLen >= (MAX_PATH + 1));
 	char homePath[MAX_PATH];
 	SHGetFolderPathA(NULL, CSIDL_PROFILE, NULL, 0, homePath);
@@ -1778,7 +1784,7 @@ fpl_api fpl_LibraryHandle fpl_LoadLibrary(const char *libraryFilePath) {
 	FPL_ASSERT(libraryFilePath != NULL);
 	fpl_LibraryHandle result = { 0 };
 	HMODULE libModule = LoadLibraryA(libraryFilePath);
-	if (libModule != FPL_NULL) {
+	if (libModule != FPL_NULLPTR) {
 		result.internalHandle = (void *)libModule;
 		result.isValid = fpl_True;
 	}
@@ -1786,9 +1792,9 @@ fpl_api fpl_LibraryHandle fpl_LoadLibrary(const char *libraryFilePath) {
 }
 fpl_api void *fpl_GetLibraryProc(const fpl_LibraryHandle *handle, const char *name) {
 	FPL_ASSERT(handle != NULL);
-	void *result = FPL_NULL;
+	void *result = FPL_NULLPTR;
 	if (handle->isValid) {
-		FPL_ASSERT(handle->internalHandle != FPL_NULL);
+		FPL_ASSERT(handle->internalHandle != FPL_NULLPTR);
 		HMODULE libModule = (HMODULE)handle;
 		result = GetProcAddress(libModule, name);
 	}
@@ -1797,7 +1803,7 @@ fpl_api void *fpl_GetLibraryProc(const fpl_LibraryHandle *handle, const char *na
 fpl_api void fpl_ReleaseLibrary(fpl_LibraryHandle *handle) {
 	FPL_ASSERT(handle != NULL);
 	if (handle->isValid) {
-		FPL_ASSERT(handle->internalHandle != FPL_NULL);
+		FPL_ASSERT(handle->internalHandle != FPL_NULLPTR);
 		HMODULE libModule = (HMODULE)handle->internalHandle;
 		FreeLibrary(libModule);
 	}
