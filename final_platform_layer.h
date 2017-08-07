@@ -77,16 +77,16 @@ FEATURES:
 [ ] Polling gamepad informations
 [ ] Clipboard string reading and writing
 
-[p] Creating a 1.x opengl rendering context
+[x] Creating a 1.x opengl rendering context
 [ ] Creating a 3.x + opengl rendering context
 
 [ ] Audio playback using OS native libraries
 
 [x] Memory allocation and de-allocation with custom alignment support
 [x] Atomic operations
-[ ] String manipulation functions
-[ ] File functions
-[ ] Path functions
+[x] Path functions
+[x] File functions
+[x] String conversion functions
 [ ] Thread, mutex, condition handling
 
 SUPPORTED ARCHITECTURES:
@@ -303,7 +303,7 @@ SOFTWARE.
 
 VERSION HISTORY:
 
-- v0.1:
+- v0.1 alpha:
 	* Initial version
 
 */
@@ -410,7 +410,7 @@ enum {
 };
 
 // Use nullptr when C++/11 are available
-#if __cplusplus && (__cplusplus >= 201103L)
+#if defined(__cplusplus) && (__cplusplus >= 201103L)
 #	define FPL_NULLPTR nullptr
 #else
 #	define FPL_NULLPTR (void *)0
@@ -430,7 +430,7 @@ enum {
 			int fpl_static_assert_##line(int static_assert_failed[(exp)?1:-1])
 #		define FPL_STATICASSERT(exp) \
 			FPL_STATICASSERT_INTERNAL(exp, __LINE__)
-#	endif // FPL_ENABLE_C_ASSERT
+#	endif // FPL_ENABLE_C_ASSERT && FPL_ENABLE_C_RUNTIME_LIBRARY
 #else
 #	define FPL_ASSERT(exp)
 #	define FPL_STATICASSERT(exp)
