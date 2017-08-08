@@ -51,7 +51,7 @@ static void FilesTest() {
 	FPL_ASSERT(emptySize == 0);
 	uint32_t notepadSize = fpl_GetFileSize32("C:\\Windows\\notepad.exe");
 	FPL_ASSERT(notepadSize > 0);
-	fpl_FileEntry fileEntry = { 0 };
+	fpl_FileEntry fileEntry;
 	if (fpl_ListFilesBegin("C:\\*", &fileEntry)) {
 		fpl_ConsoleFormatOut("%s\n", fileEntry.path);
 		while (fpl_ListFilesNext(&fileEntry)) {

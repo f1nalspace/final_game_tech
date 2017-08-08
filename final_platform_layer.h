@@ -398,6 +398,9 @@ VERSION HISTORY:
 #		define FPL_ENABLE_C_ASSERT 1
 #	endif
 #endif
+#if !defined(FPL_API_AS_PRIVATE)
+#	define FPL_API_AS_PRIVATE 0
+#endif
 
 //
 // Types
@@ -684,7 +687,7 @@ extern
 
 #if FPL_ENABLE_WINDOW
 	// @NOTE(final): Based on MS Virtual-Key-Codes, mostly directly mappable to ASCII
-	enum {
+	typedef enum fpl_Key {
 		fpl_Key_None = 0,
 
 		// 0x07: Undefined
@@ -835,10 +838,7 @@ extern
 		fpl_Key_RightAlt = 0xA5,
 
 		// 0xA6-0xFE: Dont care
-	};
-
-	/* Mapped key */
-	typedef uint64_t fpl_Key;
+	} fpl_Key;
 
 	/* Window configuration (Title, Size, etc.) */
 	typedef struct fpl_WindowConfiguration {
@@ -1303,9 +1303,9 @@ fpl_api char *fpl_CombinePath(char *destPath, const uint32_t maxDestPathLen, con
 #	include <intrin.h>
 	// @NOTE(final): windef.h defines min/max macros defined in lowerspace, this will break for example std::min/max so we have to tell the header we dont want this!
 #	define NOMINMAX
-#	include <windows.h> // Win32 api
+#	include <Windows.h> // Win32 api
 #	include <windowsx.h> // macros for window messages
-#	include <shlobj.h> // SHGetFolderPath
+#	include <ShlObj.h> // SHGetFolderPath
 #	if FPL_ENABLE_WINDOW && FPL_ENABLE_OPENGL
 #		include <gl\gl.h>
 #	endif // FPL_ENABLE_WINDOW
@@ -1445,7 +1445,7 @@ fpl_api uint64_t fpl_AtomicCompareExchangeU64(volatile uint64_t *dest, const uin
 #if FPL_ENABLE_C_RUNTIME_LIBRARY
 fpl_api void fpl_ConsoleOut(const char *text) {
 	FPL_ASSERT(text != FPL_NULLPTR);
-	fprintf(stdout, text);
+	fprintf(stdout, "%s", text);
 }
 fpl_api void fpl_ConsoleFormatOut(const char *format, ...) {
 	FPL_ASSERT(format != FPL_NULLPTR);
@@ -1456,7 +1456,7 @@ fpl_api void fpl_ConsoleFormatOut(const char *format, ...) {
 }
 fpl_api void fpl_ConsoleError(const char *text) {
 	FPL_ASSERT(text != FPL_NULLPTR);
-	fprintf(stderr, text);
+	fprintf(stderr, "%s", text);
 }
 fpl_api void fpl_ConsoleFormatError(const char *format, ...) {
 	FPL_ASSERT(format != FPL_NULLPTR);
@@ -1796,7 +1796,7 @@ fpl_api void *fpl_GetLibraryProc(const fpl_LibraryHandle *handle, const char *na
 	if (handle->isValid) {
 		FPL_ASSERT(handle->internalHandle != FPL_NULLPTR);
 		HMODULE libModule = (HMODULE)handle;
-		result = GetProcAddress(libModule, name);
+		result = (void *)GetProcAddress(libModule, name);
 	}
 	return(result);
 }
