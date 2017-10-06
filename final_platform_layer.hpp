@@ -32,12 +32,13 @@ USE CASE [OpenGL-Window]:
 
 int main(int argc, char **args) {
 	using namespace fpl;
-	if (core::InitPlatform(InitFlags::VideoOpenGL)) {
-		while (window::WindowUpdate()) {
+	using namespace fpl::window;
+	if (InitPlatform(InitFlags::VideoOpenGL)) {
+		while (WindowUpdate()) {
 			glClear(GL_COLOR_BUFFER_BIT);
-			window::WindowFlip();
+			WindowFlip();
 		}
-		core::ReleasePlatform();
+		ReleasePlatform();
 	}
 }
 
