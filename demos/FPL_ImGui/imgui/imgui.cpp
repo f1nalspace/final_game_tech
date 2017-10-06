@@ -490,7 +490,7 @@
  - widgets: display mode: widget-label, label-widget (aligned on column or using fixed size), label-newline-tab-widget etc.
  - widgets: clean up widgets internal toward exposing everything.
  - widgets: add disabled and read-only modes (#211)
- - main: considering adding an Init() function? some constructs are awkward in the implementation because of the lack of them.
+ - main: considering adding an InitPlatform() function? some constructs are awkward in the implementation because of the lack of them.
 !- main: make it so that a frame with no window registered won't refocus every window on subsequent frames (~bump LastFrameActive of all windows).
  - main: IsItemHovered() make it more consistent for various type of widgets, widgets with multiple components, etc. also effectively IsHovered() region sometimes differs from hot region, e.g tree nodes
  - main: IsItemHovered() info stored in a stack? so that 'if TreeNode() { Text; TreePop; } if IsHovered' return the hover state of the TreeNode?
@@ -6420,7 +6420,7 @@ bool ImGui::InputScalarAsWidgetReplacement(const ImRect& aabb, const char* label
     }
     else if (g.ActiveId != g.ScalarAsInputTextId)
     {
-        // Release
+        // ReleasePlatform
         g.ScalarAsInputTextId = 0;
     }
     if (text_value_changed)
@@ -7796,7 +7796,7 @@ bool ImGui::InputTextEx(const char* label, char* buf, int buf_size, const ImVec2
     }
     else if (io.MouseClicked[0])
     {
-        // Release focus when we click outside
+        // ReleasePlatform focus when we click outside
         if (g.ActiveId == id)
             ClearActiveID();
     }

@@ -1,11 +1,15 @@
 #define FPL_IMPLEMENTATION
-#include "final_platform_layer.h"
+#include "final_platform_layer.hpp"
+
+using namespace fpl;
+using namespace fpl::window;
+using namespace fpl::memory;
 
 int main(int argc, char **args) {
 	int result = 0;
-	if (fpl_Init(fpl_InitFlags_VideoOpenGL)) {
-		fpl_SetWindowArea(640, 480);
-		fpl_SetWindowPosition(0, 0);
+	if (InitPlatform(InitFlags::VideoOpenGL)) {
+		SetWindowArea(640, 480);
+		SetWindowPosition(0, 0);
 
 		glEnable(GL_DEPTH_TEST);
 		glEnable(GL_TEXTURE_2D);
@@ -14,7 +18,7 @@ int main(int argc, char **args) {
 
 		uint32_t textureWidth = 128;
 		uint32_t textureHeight = 128;
-		uint8_t *textureData = (uint8_t *)fpl_AllocateMemory(textureWidth * textureHeight * 4);
+		uint8_t *textureData = (uint8_t *)AllocateMemory(textureWidth * textureHeight * 4);
 		uint32_t *pixelPtr = (uint32_t *)textureData;
 		for (uint32_t pixelIndex = 0; pixelIndex < textureWidth * textureHeight; ++pixelIndex) {
 			uint8_t r = 255;
@@ -34,11 +38,11 @@ int main(int argc, char **args) {
 		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, textureWidth, textureHeight, 0, GL_RGBA, GL_UNSIGNED_BYTE, textureData);
 		glBindTexture(GL_TEXTURE_2D, 0);
 
-		fpl_FreeMemory(textureData);
+		FreeMemory(textureData);
 
 		float rot = 0.0f;
-		while (fpl_WindowUpdate()) {
-			fpl_WindowSize windowArea = fpl_GetWindowArea();
+		while (WindowUpdate()) {
+			WindowSize windowArea = GetWindowArea();
 
 			glViewport(0, 0, windowArea.width, windowArea.height);
 
@@ -59,14 +63,14 @@ int main(int argc, char **args) {
 
 			glBindTexture(GL_TEXTURE_2D, 0);
 
-			fpl_WindowFlip();
+			WindowFlip();
 
 			rot += 0.5f;
 		}
 
 		glDeleteTextures(1, &textureId);
 
-		fpl_Release();
+		ReleasePlatform();
 		result = 0;
 	} else {
 		result = -1;

@@ -13,7 +13,6 @@
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="..\..\final_platform_layer.h" />
     <ClInclude Include="imgui\imconfig.h">
       <Filter>imgui</Filter>
     </ClInclude>
@@ -32,6 +31,7 @@
     <ClInclude Include="imgui\stb_truetype.h">
       <Filter>imgui</Filter>
     </ClInclude>
+    <ClInclude Include="..\..\final_platform_layer.hpp" />
   </ItemGroup>
   <ItemGroup>
     <Filter Include="imgui">

@@ -1,18 +1,22 @@
 #define FPL_IMPLEMENTATION
-#define FPL_ENABLE_CLIB_ASSERTIONS 1
+#define FPL_ENABLE_C_ASSERT 1
 #define FPL_DEFAULT_WINDOW_WIDTH 1280
 #define FPL_DEFAULT_WINDOW_HEIGHT 720
-#include <final_platform_layer.h>
+#include <final_platform_layer.hpp>
 
 #define IMGUI_DISABLE_OBSOLETE_FUNCTIONS 1
 #include "imgui\imgui.h"
 
 #include <math.h>
 
-fpl_globalvar int currentMousePosition[2] = { -1, -1 };
-fpl_globalvar bool currentMouseStates[3] = { 0 };
-fpl_globalvar float currentMouseWheelDelta = 0.0f;
-fpl_globalvar GLuint fontTextureId = 0;
+using namespace fpl;
+using namespace fpl::window;
+using namespace fpl::timings;
+
+static int currentMousePosition[2] = { -1, -1 };
+static bool currentMouseStates[3] = { 0 };
+static float currentMouseWheelDelta = 0.0f;
+static GLuint fontTextureId = 0;
 
 static void ImGUIRenderDrawLists(ImDrawData* draw_data) {
 	// Avoid rendering when minimized, scale coordinates for retina displays (screen coordinates != framebuffer coordinates)
@@ -93,25 +97,25 @@ static void InitImGUI() {
 
 	io.RenderDrawListsFn = ImGUIRenderDrawLists;
 	io.IniFilename = nullptr;
-	io.KeyMap[ImGuiKey_Tab] = fpl_Key_Tab;
-	io.KeyMap[ImGuiKey_LeftArrow] = fpl_Key_Left;
-	io.KeyMap[ImGuiKey_RightArrow] = fpl_Key_Right;
-	io.KeyMap[ImGuiKey_UpArrow] = fpl_Key_Up;
-	io.KeyMap[ImGuiKey_DownArrow] = fpl_Key_Down;
-	io.KeyMap[ImGuiKey_PageUp] = fpl_Key_PageUp;
-	io.KeyMap[ImGuiKey_PageDown] = fpl_Key_PageDown;
-	io.KeyMap[ImGuiKey_Home] = fpl_Key_Home;
-	io.KeyMap[ImGuiKey_End] = fpl_Key_End;
-	io.KeyMap[ImGuiKey_Delete] = fpl_Key_Delete;
-	io.KeyMap[ImGuiKey_Backspace] = fpl_Key_Backspace;
-	io.KeyMap[ImGuiKey_Enter] = fpl_Key_Enter;
-	io.KeyMap[ImGuiKey_Escape] = fpl_Key_Escape;
-	io.KeyMap[ImGuiKey_A] = fpl_Key_A;
-	io.KeyMap[ImGuiKey_C] = fpl_Key_C;
-	io.KeyMap[ImGuiKey_V] = fpl_Key_V;
-	io.KeyMap[ImGuiKey_X] = fpl_Key_X;
-	io.KeyMap[ImGuiKey_Y] = fpl_Key_Y;
-	io.KeyMap[ImGuiKey_Z] = fpl_Key_Z;
+	io.KeyMap[ImGuiKey_Tab] = (uint32_t)Key::Key_Tab;
+	io.KeyMap[ImGuiKey_LeftArrow] = (uint32_t)Key::Key_Left;
+	io.KeyMap[ImGuiKey_RightArrow] = (uint32_t)Key::Key_Right;
+	io.KeyMap[ImGuiKey_UpArrow] = (uint32_t)Key::Key_Up;
+	io.KeyMap[ImGuiKey_DownArrow] = (uint32_t)Key::Key_Down;
+	io.KeyMap[ImGuiKey_PageUp] = (uint32_t)Key::Key_PageUp;
+	io.KeyMap[ImGuiKey_PageDown] = (uint32_t)Key::Key_PageDown;
+	io.KeyMap[ImGuiKey_Home] = (uint32_t)Key::Key_Home;
+	io.KeyMap[ImGuiKey_End] = (uint32_t)Key::Key_End;
+	io.KeyMap[ImGuiKey_Delete] = (uint32_t)Key::Key_Delete;
+	io.KeyMap[ImGuiKey_Backspace] = (uint32_t)Key::Key_Backspace;
+	io.KeyMap[ImGuiKey_Enter] = (uint32_t)Key::Key_Enter;
+	io.KeyMap[ImGuiKey_Escape] = (uint32_t)Key::Key_Escape;
+	io.KeyMap[ImGuiKey_A] = (uint32_t)Key::Key_A;
+	io.KeyMap[ImGuiKey_C] = (uint32_t)Key::Key_C;
+	io.KeyMap[ImGuiKey_V] = (uint32_t)Key::Key_V;
+	io.KeyMap[ImGuiKey_X] = (uint32_t)Key::Key_X;
+	io.KeyMap[ImGuiKey_Y] = (uint32_t)Key::Key_Y;
+	io.KeyMap[ImGuiKey_Z] = (uint32_t)Key::Key_Z;
 
 	io.Fonts->AddFontDefault();
 
@@ -143,17 +147,17 @@ static void ReleaseImGUI() {
 	}
 }
 
-static void ImGUIKeyEvent(uint64_t keyCode, fpl_Key mappedKey, bool down) {
+static void ImGUIKeyEvent(uint64_t keyCode, Key mappedKey, bool down) {
 	ImGuiIO& io = ImGui::GetIO();
-	if (mappedKey != fpl_Key_None) {
-		io.KeysDown[mappedKey] = down;
+	if (mappedKey != Key::Key_None) {
+		io.KeysDown[(uint32_t)mappedKey] = down;
 	} else {
 		io.KeysDown[keyCode] = down;
 	}
-	io.KeyCtrl = io.KeysDown[fpl_Key_LeftControl] || io.KeysDown[fpl_Key_RightControl];
-	io.KeyShift = io.KeysDown[fpl_Key_LeftShift] || io.KeysDown[fpl_Key_RightShift];
-	io.KeyAlt = io.KeysDown[fpl_Key_LeftAlt] || io.KeysDown[fpl_Key_RightAlt];
-	io.KeySuper = io.KeysDown[fpl_Key_LeftWin] || io.KeysDown[fpl_Key_RightWin];
+	io.KeyCtrl = io.KeysDown[(uint32_t)Key::Key_LeftControl] || io.KeysDown[(uint32_t)Key::Key_RightControl];
+	io.KeyShift = io.KeysDown[(uint32_t)Key::Key_LeftShift] || io.KeysDown[(uint32_t)Key::Key_RightShift];
+	io.KeyAlt = io.KeysDown[(uint32_t)Key::Key_LeftAlt] || io.KeysDown[(uint32_t)Key::Key_RightAlt];
+	io.KeySuper = io.KeysDown[(uint32_t)Key::Key_LeftWin] || io.KeysDown[(uint32_t)Key::Key_RightWin];
 }
 
 static bool show_test_window = true;
@@ -162,7 +166,7 @@ static ImVec4 clear_color = ImColor(114, 144, 154);
 
 static void UpdateAndRender(const float deltaTime) {
 	ImGuiIO& io = ImGui::GetIO();
-	fpl_WindowSize windowArea = fpl_GetWindowArea();
+	WindowSize windowArea = GetWindowArea();
 	io.DeltaTime = deltaTime;
 	io.DisplaySize.x = (float)windowArea.width;
 	io.DisplaySize.y = (float)windowArea.height;
@@ -179,7 +183,7 @@ static void UpdateAndRender(const float deltaTime) {
 	}
 	currentMouseWheelDelta = 0.0f;
 
-	fpl_SetWindowCursorEnabled(!io.MouseDrawCursor);
+	SetWindowCursorEnabled(!io.MouseDrawCursor);
 
 	ImGui::NewFrame();
 
@@ -216,32 +220,32 @@ static void UpdateAndRender(const float deltaTime) {
 
 int main(int argc, char **args) {
 	int result = 0;
-	if (fpl_Init({ fpl_InitFlags_VideoOpenGL })) {
+	if (InitPlatform(InitFlags::VideoOpenGL)) {
 		InitImGUI();
 
 		ImGuiIO& io = ImGui::GetIO();
 
-		double lastTime = fpl_GetHighResolutionTimeInSeconds();
+		double lastTime = GetHighResolutionTimeInSeconds();
 		float lastDeltaTime = 1.0f / 60.0f;
 
-		while (fpl_IsWindowRunning()) {
-			fpl_WindowUpdate();
+		while (IsWindowRunning()) {
+			WindowUpdate();
 
-			fpl_Event event;
-			while (fpl_PollEvent(&event)) {
+			Event event;
+			while (PollWindowEvent(&event)) {
 				switch (event.type) {
-					case fpl_EventType_Keyboard:
+					case EventType::Keyboard:
 					{
 						switch (event.keyboard.type) {
-							case fpl_KeyboardEventType_KeyDown:
+							case KeyboardEventType::KeyDown:
 							{
 								ImGUIKeyEvent(event.keyboard.keyCode, event.keyboard.mappedKey, true);
 							} break;
-							case fpl_KeyboardEventType_KeyUp:
+							case KeyboardEventType::KeyUp:
 							{
 								ImGUIKeyEvent(event.keyboard.keyCode, event.keyboard.mappedKey, false);
 							} break;
-							case fpl_KeyboardEventType_Char:
+							case KeyboardEventType::Char:
 							{
 								if (event.keyboard.keyCode > 0 && event.keyboard.keyCode < 0x10000) {
 									io.AddInputCharacter(ImWchar(event.keyboard.keyCode));
@@ -249,29 +253,29 @@ int main(int argc, char **args) {
 							} break;
 						}
 					} break;
-					case fpl_EventType_Mouse:
+					case EventType::Mouse:
 					{
 						switch (event.mouse.type) {
-							case fpl_MouseEventType_Move:
+							case MouseEventType::Move:
 							{
 								currentMousePosition[0] = event.mouse.mouseX;
 								currentMousePosition[1] = event.mouse.mouseY;
 							} break;
-							case fpl_MouseEventType_Wheel:
+							case MouseEventType::Wheel:
 							{
 								currentMouseWheelDelta += event.mouse.wheelDelta;
 								currentMousePosition[0] = event.mouse.mouseX;
 								currentMousePosition[1] = event.mouse.mouseY;
 							} break;
-							case fpl_MouseEventType_ButtonDown:
+							case MouseEventType::ButtonDown:
 							{
-								currentMouseStates[event.mouse.mouseButton] = true;
+								currentMouseStates[(int32_t)event.mouse.mouseButton] = true;
 								currentMousePosition[0] = event.mouse.mouseX;
 								currentMousePosition[1] = event.mouse.mouseY;
 							} break;
-							case fpl_MouseEventType_ButtonUp:
+							case MouseEventType::ButtonUp:
 							{
-								currentMouseStates[event.mouse.mouseButton] = false;
+								currentMouseStates[(int32_t)event.mouse.mouseButton] = false;
 								currentMousePosition[0] = event.mouse.mouseX;
 								currentMousePosition[1] = event.mouse.mouseY;
 							} break;
@@ -282,9 +286,9 @@ int main(int argc, char **args) {
 
 			UpdateAndRender(lastDeltaTime);
 
-			fpl_WindowFlip();
+			WindowFlip();
 
-			double currentTime = fpl_GetHighResolutionTimeInSeconds();
+			double currentTime = GetHighResolutionTimeInSeconds();
 			lastDeltaTime = lastTime > 0.0 ? (float)(currentTime - lastTime) : (float)(1.0f / 60.0f);
 			lastTime = currentTime;
 		}
@@ -292,7 +296,7 @@ int main(int argc, char **args) {
 		ReleaseImGUI();
 		ImGui::Shutdown();
 
-		fpl_Release();
+		ReleasePlatform();
 		result = 0;
 	} else {
 		result = -1;
