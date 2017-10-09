@@ -55,9 +55,6 @@ PREPROCESSOR OVERRIDES:
 
 - FPL_API_AS_PRIVATE 0 or 1
 
-- FPL_DEFAULT_WINDOW_WIDTH 1 or greater
-- FPL_DEFAULT_WINDOW_HEIGHT 1 or greater
-
 - FPL_ENABLE_ASSERTIONS 0 or 1
 - FPL_ENABLE_C_ASSERT
 
@@ -198,12 +195,6 @@ VERSION HISTORY:
 //
 // Default preprocessor overrides
 //
-#if !defined(FPL_DEFAULT_WINDOW_WIDTH)
-#	define FPL_DEFAULT_WINDOW_WIDTH 800
-#endif
-#if !defined(FPL_DEFAULT_WINDOW_HEIGHT)
-#	define FPL_DEFAULT_WINDOW_HEIGHT 600
-#endif
 #if !defined(FPL_ENABLE_ASSERTIONS)
 #	if defined(FPL_DEBUG)
 #		define FPL_ENABLE_ASSERTIONS 1
@@ -302,7 +293,7 @@ namespace fpl {
 	//
 	// Core
 	//
-		/* Initialization flags (Window, Video, All, etc.) */
+	/* Initialization flags (Window, Video, All, etc.) */
 	enum class InitFlags : uint32_t {
 		None = 0,
 		Window = 1 << 0,
@@ -319,8 +310,37 @@ namespace fpl {
 		lhs = (InitFlags)(static_cast<uint32_t>(lhs) | static_cast<uint32_t>(rhs));
 		return lhs;
 	}
+
+#if FPL_ENABLE_WINDOW
+	/* Window settings (Size, Title etc.) */
+	struct WindowSettings {
+		uint32_t width;
+		uint32_t height;
+
+		WindowSettings() {
+			width = 800;
+			height = 600;
+		}
+	};
+#endif
+
+	/* Initialization settings contains (Window, etc) */
+	struct InitSettings {
+		union {
+#if FPL_ENABLE_WINDOW
+			WindowSettings window;
+#endif
+		};
+
+		InitSettings() {
+#if FPL_ENABLE_WINDOW
+			window = WindowSettings();
+#endif
+		}
+	};
+
 	/* Initialize the platform layer. */
-	fpl_api bool32 InitPlatform(const InitFlags initFlags);
+	fpl_api bool32 InitPlatform(const InitFlags initFlags, const InitSettings &initSettings = InitSettings());
 	/* Releases the platform layer and resets all structures to zero. */
 	fpl_api void ReleasePlatform(void);
 
@@ -2242,7 +2262,7 @@ namespace fpl {
 #	endif // FPL_ENABLE_WINDOW && FPL_ENABLE_OPENGL
 
 #	if FPL_ENABLE_WINDOW
-	fpl_internal bool32 fpl_Win32InitWindow_Internal(fpl_Win32State_Internal *win32State, const InitFlags initFlags) {
+	fpl_internal bool32 fpl_Win32InitWindow_Internal(fpl_Win32State_Internal *win32State, const InitFlags initFlags, const InitSettings &initSettings) {
 		using namespace memory;
 
 		// Register window class
@@ -2263,7 +2283,7 @@ namespace fpl {
 		fpl_Win32StringCopy(windowClass.lpszClassName, fpl_Win32GetStringLength(windowClass.lpszClassName), win32State->window.windowClass, FPL_ARRAYCOUNT(win32State->window.windowClass));
 
 		// Create window
-		win32State->window.windowHandle = CreateWindowEx(WS_EX_OVERLAPPEDWINDOW, windowClass.lpszClassName, WIN32_UNNAMED_WINDOW, WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT, FPL_DEFAULT_WINDOW_WIDTH, FPL_DEFAULT_WINDOW_HEIGHT, NULL, NULL, windowClass.hInstance, NULL);
+		win32State->window.windowHandle = CreateWindowEx(WS_EX_OVERLAPPEDWINDOW, windowClass.lpszClassName, WIN32_UNNAMED_WINDOW, WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT, initSettings.window.width, initSettings.window.height, NULL, NULL, windowClass.hInstance, NULL);
 		if (win32State->window.windowHandle == NULL) {
 			// @TODO(final): Log error
 			return false;
@@ -2316,7 +2336,7 @@ namespace fpl {
 	}
 #	endif // FPL_ENABLE_WINDOW
 
-	fpl_api bool32 InitPlatform(const InitFlags initFlags) {
+	fpl_api bool32 InitPlatform(const InitFlags initFlags, const InitSettings &initSettings) {
 		fpl_Win32State_Internal *win32State = &fpl_GlobalWin32State_Internal;
 		FPL_ASSERT(win32State != NULL);
 		FPL_ASSERT(!win32State->isInitialized);
@@ -2334,7 +2354,7 @@ namespace fpl {
 #	endif
 
 		if (usedInitFlags & InitFlags::Window) {
-			if (!fpl_Win32InitWindow_Internal(win32State, usedInitFlags)) {
+			if (!fpl_Win32InitWindow_Internal(win32State, usedInitFlags, initSettings)) {
 				return false;
 			}
 		}
