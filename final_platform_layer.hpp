@@ -824,6 +824,14 @@ namespace fpl {
 };
 
 #if defined(FPL_PLATFORM_WINDOWS)
+// @NOTE(final): windef.h defines min/max macros defined in lowerspace, this will break for example std::min/max so we have to tell the header we dont want this!
+#	define NOMINMAX
+#	include <Windows.h> // Win32 api
+
+#	if FPL_ENABLE_WINDOW && FPL_ENABLE_OPENGL
+#		include <gl\gl.h>
+#	endif // FPL_ENABLE_WINDOW
+
 // @NOTE(final): Required for access "main" from the actual win32 entry point
 fpl_api int main(int argc, char **args);
 #endif
@@ -838,8 +846,8 @@ fpl_api int main(int argc, char **args);
 #if defined(FPL_IMPLEMENTATION) && !defined(FPL_IMPLEMENTED)
 #	define FPL_IMPLEMENTED
 
-//
-// Non-Platform includes
+// 
+// Non-Platform specific includes
 //
 #include <stdarg.h>  // va_start, va_end, va_list, va_arg
 #include <stdio.h> // fprintf, vfprintf
@@ -1216,14 +1224,8 @@ namespace fpl {
 //
 #if defined(FPL_PLATFORM_WINDOWS)
 // @NOTE(final): windef.h defines min/max macros defined in lowerspace, this will break for example std::min/max so we have to tell the header we dont want this!
-#	define NOMINMAX
-#	include <Windows.h> // Win32 api
 #	include <windowsx.h> // macros for window messages
 #	include <ShlObj.h> // SHGetFolderPath
-
-#	if FPL_ENABLE_WINDOW && FPL_ENABLE_OPENGL
-#		include <gl\gl.h>
-#	endif // FPL_ENABLE_WINDOW
 
 // @TODO(final): Dont overwrite defines like that, just have one path for unicode and one for ansi
 #	undef WNDCLASSEX
