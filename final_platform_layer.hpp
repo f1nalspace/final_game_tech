@@ -694,6 +694,8 @@ namespace fpl {
 		/* Window event type (Resized, PositionChanged, etc.) */
 		enum class WindowEventType {
 			Resized = 1,
+			GotFocus = 2,
+			LostFocus = 3,
 		};
 
 		/* Window event (Size, Position, etc.) */
@@ -2150,6 +2152,18 @@ namespace fpl {
 				KeyboardModifierFlags modifiers = KeyboardModifierFlags::None;
 				fpl_Win32PushKeyboardEvent_Internal(KeyboardEventType::Char, keyCode, modifiers, 0);
 				result = 1;
+			} break;
+
+			case WM_ACTIVATE:
+			{
+				Event newEvent = {};
+				newEvent.type = EventType::Window;
+				if (wParam == WA_INACTIVE) {
+					newEvent.window.type = WindowEventType::LostFocus;
+				} else {
+					newEvent.window.type = WindowEventType::GotFocus;
+				}
+				PushEvent_Internal(newEvent);
 			} break;
 
 			case WM_LBUTTONDOWN:
