@@ -814,6 +814,8 @@ namespace fpl {
 		fpl_api WindowPosition GetWindowPosition(void);
 		/* Sets the window absolut position to the given coordinates. */
 		fpl_api void SetWindowPosition(const int32_t left, const int32_t top);
+		/* Sets the window title */
+		fpl_api void SetWindowTitle(const char *title);
 
 		//
 		// Events
@@ -1762,6 +1764,11 @@ namespace fpl {
 				}
 			}
 			return(result);
+		}
+
+		fpl_api void SetWindowTitle(const char *title) {
+			HWND handle = fpl_GlobalWin32State_Internal.window.windowHandle;
+			SetWindowTextA(handle, title);
 		}
 
 		fpl_api void SetWindowPosition(const int32_t left, const int32_t top) {
