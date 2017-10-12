@@ -16,7 +16,3 @@ rmdir /q /s FPL_OpenGL\debug
 rmdir /q /s FPL_OpenGL\release
 rmdir /q /s FPL_OpenGL\x64
 rmdir /q /s FPL_OpenGL\x86
-rmdir /q /s FPL_NoRuntime\debug
-rmdir /q /s FPL_NoRuntime\release
-rmdir /q /s FPL_NoRuntime\x64
-rmdir /q /s FPL_NoRuntime\x86
