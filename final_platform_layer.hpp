@@ -67,7 +67,7 @@ FEATURES:
 [x] Handling window, keyboard, mouse events
 [ ] Enable/Disable window border
 [ ] Change/Reset screen resolution
-[ ] Polling gamepad informations
+[x] Polling gamepad informations
 [ ] Clipboard string reading and writing
 
 [x] Creating a 1.x opengl rendering context
@@ -132,6 +132,8 @@ VERSION HISTORY:
 - v0.2.1 alpha:
 	* Changed a lot of pointer arguments to reference
 	* Added gamepad event structures
+- v0.2.2 alpha:
+	* Added XInput support
 
 */
 
@@ -332,15 +334,15 @@ namespace fpl {
 	/* Initialization settings contains (Window, etc) */
 	struct InitSettings {
 		union {
-		#if FPL_ENABLE_WINDOW
+#if FPL_ENABLE_WINDOW
 			WindowSettings window;
-		#endif
+#endif
 		};
 
 		InitSettings() {
-		#if FPL_ENABLE_WINDOW
+#if FPL_ENABLE_WINDOW
 			window = WindowSettings();
-		#endif
+#endif
 		}
 	};
 
@@ -1247,8 +1249,8 @@ namespace fpl {
 	// Compiler Intrinsics
 	//
 	namespace atomics {
-	#	if defined(FPL_COMPILER_MSVC)
-	#		include <intrin.h>
+#	if defined(FPL_COMPILER_MSVC)
+#		include <intrin.h>
 		fpl_api void AtomicReadFence(void) {
 			_ReadBarrier();
 		}
@@ -1288,9 +1290,9 @@ namespace fpl {
 			uint64_t result = _InterlockedCompareExchange64((volatile long long *)dest, exchange, comparand);
 			return (result);
 		}
-	#		else
-	#			error "Unsupported win32 compiler for intrinsics"
-	#		endif // defined(FPL_COMPILER_MSVC)
+#		else
+#			error "Unsupported win32 compiler for intrinsics"
+#		endif // defined(FPL_COMPILER_MSVC)
 	}
 }
 
@@ -1302,8 +1304,20 @@ namespace fpl {
 #if defined(FPL_PLATFORM_WINDOWS)
 // @NOTE(final): windef.h defines min/max macros defined in lowerspace, this will break for example std::min/max so we have to tell the header we dont want this!
 #	include <windowsx.h> // macros for window messages
-#	include <ShlObj.h> // SHGetFolderPath
-#	include <Xinput.h>
+#	include <shlobj.h> // SHGetFolderPath
+#	include <xinput.h> // XInputGetState
+#	include <math.h> // abs
+
+//
+// XInputGetState
+#define X_INPUT_GET_STATE(name) DWORD WINAPI name(DWORD dwUserIndex, XINPUT_STATE *pState)
+typedef X_INPUT_GET_STATE(x_input_get_state);
+X_INPUT_GET_STATE(XInputGetStateStub)
+{
+	return(ERROR_DEVICE_NOT_CONNECTED);
+}
+static x_input_get_state *XInputGetState_ = XInputGetStateStub;
+#define XInputGetState XInputGetState_
 
 // @TODO(final): Dont overwrite defines like that, just have one path for unicode and one for ansi
 #	undef WNDCLASSEX
@@ -1362,7 +1376,7 @@ namespace fpl {
 #	endif // defined(UNICODE)
 
 #	if FPL_ENABLE_WINDOW
-	struct fpl_Win32WindowState_Internal {
+	struct Win32WindowState_Internal {
 		HWND windowHandle;
 		fpl_win32_char_internal windowClass[256];
 		HDC deviceContext;
@@ -1371,23 +1385,29 @@ namespace fpl {
 		bool32 isRunning;
 	};
 #	else
-	typedef void *fpl_Win32WindowState_Internal;
+	typedef void *Win32WindowState_Internal;
 #	endif // FPL_ENABLE_WINDOW
 
 #	if FPL_ENABLE_WINDOW && FPL_ENABLE_OPENGL
-	struct fpl_Win32OpenGLState_Internal {
+	struct Win32OpenGLState_Internal {
 		HGLRC renderingContext;
 	};
 #	else
-	typedef void *fpl_Win32OpenGLState_Internal;
+	typedef void *Win32OpenGLState_Internal;
 #	endif // FPL_ENABLE_WINDOW && FPL_ENABLE_OPENGL
+
+	struct Win32XInputState_Internal {
+		HMODULE xinputLibrary;
+		bool32 isConnected[XUSER_MAX_COUNT];
+	};
 
 	struct fpl_Win32State_Internal {
 		bool32 isInitialized;
 		HINSTANCE appInstance;
 		LARGE_INTEGER performanceFrequency;
-		fpl_Win32WindowState_Internal window;
-		fpl_Win32OpenGLState_Internal opengl;
+		Win32WindowState_Internal window;
+		Win32OpenGLState_Internal opengl;
+		Win32XInputState_Internal xinput;
 	};
 
 	fpl_globalvar fpl_Win32State_Internal fpl_GlobalWin32State_Internal = { 0 };
@@ -1654,7 +1674,7 @@ namespace fpl {
 	// Win32 Public Path/Directories
 	//
 	namespace paths {
-	#	if defined(UNICODE)
+#	if defined(UNICODE)
 		fpl_api void GetExecutableFilePath(char *destPath, const uint32_t maxDestLen) {
 			using namespace strings;
 			FPL_ASSERT(destPath != nullptr);
@@ -1663,7 +1683,7 @@ namespace fpl {
 			GetModuleFileNameW(NULL, modulePath, MAX_PATH);
 			WideStringToAnsiString(modulePath, GetWideStringLength(modulePath), destPath, maxDestLen);
 		}
-	#	else
+#	else
 		fpl_api void GetExecutableFilePath(char *destPath, const uint32_t maxDestLen) {
 			using namespace strings;
 			FPL_ASSERT(destPath != nullptr);
@@ -1672,7 +1692,7 @@ namespace fpl {
 			GetModuleFileNameA(NULL, modulePath, MAX_PATH);
 			CopyAnsiString(modulePath, GetAnsiStringLength(modulePath), destPath, maxDestLen);
 		}
-	#	endif
+#	endif
 
 		fpl_api void GetHomePath(char *destPath, const uint32_t maxDestLen) {
 			using namespace strings;
@@ -1773,14 +1793,14 @@ namespace fpl {
 #	if FPL_ENABLE_WINDOW
 	namespace window {
 
-	#		if FPL_ENABLE_OPENGL
+#		if FPL_ENABLE_OPENGL
 		fpl_api void WindowFlip(void) {
 			SwapBuffers(fpl_GlobalWin32State_Internal.window.deviceContext);
 		}
-	#		else
+#		else
 		fpl_api void WindowFlip(void) {
 		}
-	#		endif // FPL_ENABLE_OPENGL
+#		endif // FPL_ENABLE_OPENGL
 
 		fpl_api WindowSize GetWindowArea(void) {
 			WindowSize result = { 0 };
@@ -1875,9 +1895,105 @@ namespace fpl {
 			win32State->window.isCursorActive = value;
 		}
 
+		fpl_internal float Win32XInputProcessStickValue(SHORT value, SHORT deadZoneThreshold) {
+			float result = 0;
+			if (value < -deadZoneThreshold)
+			{
+				result = (float)((value + deadZoneThreshold) / (32768.0f - deadZoneThreshold));
+			} else if (value > deadZoneThreshold)
+			{
+				result = (float)((value - deadZoneThreshold) / (32767.0f - deadZoneThreshold));
+			}
+			return(result);
+		}
+
 		fpl_api bool32 WindowUpdate(void) {
 			bool32 result = false;
 			fpl_Win32State_Internal *win32State = &fpl_GlobalWin32State_Internal;
+
+			// Poll gamepad controller states
+			const DWORD MaxControllerCount = XUSER_MAX_COUNT;
+			for (DWORD controllerIndex = 0; controllerIndex < MaxControllerCount; ++controllerIndex) {
+				XINPUT_STATE controllerState = {};
+				if (XInputGetState(controllerIndex, &controllerState) == ERROR_SUCCESS)
+				{
+					if (!win32State->xinput.isConnected[controllerIndex]) {
+						// Connected
+						win32State->xinput.isConnected[controllerIndex] = true;
+
+						Event ev = {};
+						ev.type = EventType::Gamepad;
+						ev.gamepad.type = GamepadEventType::Connected;
+						ev.gamepad.deviceIndex = controllerIndex;
+						PushEvent_Internal(ev);
+					} else {
+						// State changed
+						Event ev = {};
+						ev.type = EventType::Gamepad;
+						ev.gamepad.type = GamepadEventType::StateChanged;
+						ev.gamepad.deviceIndex = controllerIndex;
+
+						XINPUT_GAMEPAD *pad = &controllerState.Gamepad;
+
+						// Analog sticks
+						ev.gamepad.state.leftStickX = Win32XInputProcessStickValue(pad->sThumbLX, XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE);
+						ev.gamepad.state.leftStickY = Win32XInputProcessStickValue(pad->sThumbLY, XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE);
+						ev.gamepad.state.rightStickX = Win32XInputProcessStickValue(pad->sThumbRX, XINPUT_GAMEPAD_RIGHT_THUMB_DEADZONE);
+						ev.gamepad.state.rightStickY = Win32XInputProcessStickValue(pad->sThumbRY, XINPUT_GAMEPAD_RIGHT_THUMB_DEADZONE);
+
+						// Triggers
+						ev.gamepad.state.leftTrigger = (float)pad->bLeftTrigger / 255.0f;
+						ev.gamepad.state.rightTrigger = (float)pad->bRightTrigger / 255.0f;
+
+						// Digital pad buttons
+						if (pad->wButtons & XINPUT_GAMEPAD_DPAD_UP)
+							ev.gamepad.state.dpadUp = { true };
+						if (pad->wButtons & XINPUT_GAMEPAD_DPAD_DOWN)
+							ev.gamepad.state.dpadDown = { true };
+						if (pad->wButtons & XINPUT_GAMEPAD_DPAD_LEFT)
+							ev.gamepad.state.dpadLeft = { true };
+						if (pad->wButtons & XINPUT_GAMEPAD_DPAD_RIGHT)
+							ev.gamepad.state.dpadRight = { true };
+
+						// Action buttons
+						if (pad->wButtons & XINPUT_GAMEPAD_A)
+							ev.gamepad.state.actionA = { true };
+						if (pad->wButtons & XINPUT_GAMEPAD_B)
+							ev.gamepad.state.actionB = { true };
+						if (pad->wButtons & XINPUT_GAMEPAD_X)
+							ev.gamepad.state.actionX = { true };
+						if (pad->wButtons & XINPUT_GAMEPAD_Y)
+							ev.gamepad.state.actionY = { true };
+
+						// Center buttons
+						if (pad->wButtons & XINPUT_GAMEPAD_START)
+							ev.gamepad.state.start = { true };
+						if (pad->wButtons & XINPUT_GAMEPAD_BACK)
+							ev.gamepad.state.back = { true };
+
+						// Shoulder buttons
+						if (pad->wButtons & XINPUT_GAMEPAD_LEFT_SHOULDER)
+							ev.gamepad.state.leftShoulder = { true };
+						if (pad->wButtons & XINPUT_GAMEPAD_RIGHT_SHOULDER)
+							ev.gamepad.state.rightShoulder = { true };
+
+						PushEvent_Internal(ev);
+					}
+				} else {
+					if (win32State->xinput.isConnected[controllerIndex]) {
+						// Disonnected
+						win32State->xinput.isConnected[controllerIndex] = false;
+
+						Event ev = {};
+						ev.type = EventType::Gamepad;
+						ev.gamepad.type = GamepadEventType::Disconnected;
+						ev.gamepad.deviceIndex = controllerIndex;
+						PushEvent_Internal(ev);
+					}
+				}
+			}
+
+			// Poll window events
 			if (win32State->window.windowHandle != 0) {
 				MSG msg;
 				while (PeekMessage(&msg, NULL, 0, 0, PM_REMOVE) != 0) {
@@ -1886,6 +2002,7 @@ namespace fpl {
 				}
 				result = win32State->window.isRunning;
 			}
+
 			return(result);
 		}
 
@@ -2422,7 +2539,7 @@ namespace fpl {
 		return true;
 	}
 
-	fpl_internal void fpl_Win32ReleaseWindow_Internal(fpl_Win32State_Internal *win32State) {
+	fpl_internal void Win32ReleaseWindow_Internal(fpl_Win32State_Internal *win32State) {
 		if (win32State->window.deviceContext != NULL) {
 			ReleaseDC(win32State->window.windowHandle, win32State->window.deviceContext);
 			win32State->window.deviceContext = NULL;
@@ -2438,6 +2555,34 @@ namespace fpl {
 	}
 #	endif // FPL_ENABLE_WINDOW
 
+	fpl_internal HMODULE Win32LoadXInput_Internal() {
+		// Windows 8
+		HMODULE result = LoadLibraryA("xinput1_4.dll");
+		if (!result)
+		{
+			// Windows 7
+			result = LoadLibraryA("xinput1_3.dll");
+		}
+		if (!result)
+		{
+			// Windows Generic
+			result = LoadLibraryA("xinput9_1_0.dll");
+		}
+		if (result)
+		{
+			XInputGetState = (x_input_get_state *)GetProcAddress(result, "XInputGetState");
+			if (!XInputGetState) { XInputGetState = XInputGetStateStub; }
+		}
+		return(result);
+	}
+
+	fpl_internal void Win32UnloadXInput_Internal(HMODULE &module) {
+		if (module) {
+			FreeLibrary(module);
+			module = nullptr;
+		}
+	}
+
 	fpl_api bool32 InitPlatform(const InitFlags initFlags, const InitSettings &initSettings) {
 		fpl_Win32State_Internal *win32State = &fpl_GlobalWin32State_Internal;
 		FPL_ASSERT(win32State != NULL);
@@ -2446,21 +2591,24 @@ namespace fpl {
 		// Timing
 		QueryPerformanceFrequency(&win32State->performanceFrequency);
 
-	#if FPL_ENABLE_WINDOW
+		// XInput
+		win32State->xinput.xinputLibrary = Win32LoadXInput_Internal();
+
+#if FPL_ENABLE_WINDOW
 		InitFlags usedInitFlags = initFlags;
 
-	#	if FPL_ENABLE_OPENGL
+#	if FPL_ENABLE_OPENGL
 		if (usedInitFlags & InitFlags::VideoOpenGL) {
 			usedInitFlags |= InitFlags::Window;
 		}
-	#	endif
+#	endif
 
 		if (usedInitFlags & InitFlags::Window) {
 			if (!fpl_Win32InitWindow_Internal(win32State, usedInitFlags, initSettings)) {
 				return false;
 			}
 		}
-	#endif // FPL_ENABLE_WINDOW
+#endif // FPL_ENABLE_WINDOW
 
 		win32State->isInitialized = true;
 
@@ -2471,12 +2619,13 @@ namespace fpl {
 		fpl_Win32State_Internal *win32State = &fpl_GlobalWin32State_Internal;
 		FPL_ASSERT(win32State != NULL);
 		FPL_ASSERT(win32State->isInitialized);
-	#if FPL_ENABLE_WINDOW
-	#	if FPL_ENABLE_OPENGL
+		Win32UnloadXInput_Internal(win32State->xinput.xinputLibrary);
+#if FPL_ENABLE_WINDOW
+#	if FPL_ENABLE_OPENGL
 		fpl_Win32ReleaseOpenGLContext_Internal(win32State);
-	#	endif
-		fpl_Win32ReleaseWindow_Internal(win32State);
-	#endif
+#	endif
+		Win32ReleaseWindow_Internal(win32State);
+#endif
 		win32State->isInitialized = false;
 	}
 }

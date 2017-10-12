@@ -17,3 +17,5 @@
 /demos/build
 *.db
 *.opendb
+/demos/FPLDocumentationCreator/bin/Debug
+/demos/FPLDocumentationCreator/obj/Debug

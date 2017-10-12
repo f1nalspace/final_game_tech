@@ -40,28 +40,108 @@ int main(int argc, char **args) {
 
 		FreeMemory(textureData);
 
+		float xpos = 0.0f;
+		float ypos = 0.0f;
+
+		int blink = 0;
+
 		float rot = 0.0f;
 		while (WindowUpdate()) {
+			Event ev;
+			while (PollWindowEvent(ev)) {
+				switch (ev.type) {
+					case EventType::Gamepad:
+					{
+						switch (ev.gamepad.type) {
+							case GamepadEventType::Connected:
+								printf("Gamepad connected.\n");
+								break;
+							case GamepadEventType::Disconnected:
+								printf("Gamepad disconnected.\n");
+								break;
+							case GamepadEventType::StateChanged:
+							{
+								if (ev.gamepad.state.dpadLeft.isDown) {
+									xpos -= 0.01f;
+								} else if (ev.gamepad.state.dpadRight.isDown) {
+									xpos += 0.01f;
+								}
+								if (ev.gamepad.state.dpadDown.isDown) {
+									ypos -= 0.01f;
+								} else if (ev.gamepad.state.dpadUp.isDown) {
+									ypos += 0.01f;
+								}
+
+								if (ev.gamepad.state.leftStickX != 0) {
+									xpos += ev.gamepad.state.leftStickX *  0.01f;
+								}
+								if (ev.gamepad.state.leftStickY != 0) {
+									ypos += ev.gamepad.state.leftStickY *  0.01f;
+								}
+
+								blink = 0;
+								if (ev.gamepad.state.actionA.isDown) {
+									blink = 1;
+								}
+								if (ev.gamepad.state.actionB.isDown) {
+									blink = 2;
+								}
+								if (ev.gamepad.state.actionX.isDown) {
+									blink = 3;
+								}
+								if (ev.gamepad.state.actionY.isDown) {
+									blink = 4;
+								}
+							} break;
+						}
+					} break;
+				}
+			}
+
 			WindowSize windowArea = GetWindowArea();
 
 			glViewport(0, 0, windowArea.width, windowArea.height);
 
+			glMatrixMode(GL_PROJECTION);
+			glLoadIdentity();
+			glOrtho(-4.0f, 4.0f, -3.0f, 3.0f, 0.0f, 1.0f);
+			glMatrixMode(GL_MODELVIEW);
+			glLoadIdentity();
+
 			glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-			glBindTexture(GL_TEXTURE_2D, textureId);
-			glColor3f(1.0f, 1.0f, 1.0f);
+			//glBindTexture(GL_TEXTURE_2D, textureId);
+
+			switch (blink) {
+				case 0:
+					glColor3f(1.0f, 1.0f, 1.0f);
+					break;
+				case 1:
+					glColor3f(0.0f, 1.0f, 0.0f);
+					break;
+				case 2:
+					glColor3f(1.0f, 0.0f, 0.0f);
+					break;
+				case 3:
+					glColor3f(0.0f, 0.0f, 1.0f);
+					break;
+				case 4:
+					glColor3f(1.0f, 1.0f, 0.0f);
+					break;
+			}
 
 			glPushMatrix();
+			glTranslatef(xpos, ypos, 0.0f);
 			glRotatef(rot, 0, 0, 1);
 			glBegin(GL_QUADS);
-			glVertex2f(0.5f, 0.5f);
-			glVertex2f(-0.5f, 0.5f);
-			glVertex2f(-0.5f, -0.5f);
-			glVertex2f(0.5f, -0.5f);
+			glTexCoord2f(1.0f, 1.0f); glVertex2f(0.5f, 0.5f);
+			glTexCoord2f(0.0f, 1.0f); glVertex2f(-0.5f, 0.5f);
+			glTexCoord2f(0.0f, 0.0f); glVertex2f(-0.5f, -0.5f);
+			glTexCoord2f(1.0f, 0.0f); glVertex2f(0.5f, -0.5f);
 			glEnd();
 			glPopMatrix();
 
-			glBindTexture(GL_TEXTURE_2D, 0);
+			//glBindTexture(GL_TEXTURE_2D, 0);
 
 			WindowFlip();
 
