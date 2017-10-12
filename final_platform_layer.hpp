@@ -129,6 +129,9 @@ VERSION HISTORY:
 - v0.2 alpha:
 	* Dropped C support and moved to a more C++ ish api
 	* Dropped no C-Runtime support
+- v0.2.1 alpha:
+	* Changed a lot of pointer arguments to reference
+	* Added gamepad event structures
 
 */
 
@@ -259,6 +262,8 @@ VERSION HISTORY:
 //
 #include <stdint.h>
 
+/* @REFERENCE_START */
+
 //
 // API
 //
@@ -327,15 +332,15 @@ namespace fpl {
 	/* Initialization settings contains (Window, etc) */
 	struct InitSettings {
 		union {
-#if FPL_ENABLE_WINDOW
+		#if FPL_ENABLE_WINDOW
 			WindowSettings window;
-#endif
+		#endif
 		};
 
 		InitSettings() {
-#if FPL_ENABLE_WINDOW
+		#if FPL_ENABLE_WINDOW
 			window = WindowSettings();
-#endif
+		#endif
 		}
 	};
 
@@ -354,9 +359,9 @@ namespace fpl {
 		/* Loads a dynamic library and returns the loaded handle for it. */
 		fpl_api DynamicLibraryHandle LoadDynamicLibrary(const char *libraryFilePath);
 		/* Returns the dynamic library procedure address for the given procedure name. */
-		fpl_api void *GetDynamicLibraryProc(const DynamicLibraryHandle *handle, const char *name);
+		fpl_api void *GetDynamicLibraryProc(const DynamicLibraryHandle &handle, const char *name);
 		/* Releases the loaded library and resets the handle to zero. */
-		fpl_api void ReleaseDynamicLibrary(DynamicLibraryHandle *handle);
+		fpl_api void ReleaseDynamicLibrary(DynamicLibraryHandle &handle);
 	};
 
 	//
@@ -475,20 +480,22 @@ namespace fpl {
 		/* Creates a binary file and returns the handle of it. */
 		fpl_api FileHandle CreateBinaryFile(const char *filePath);
 		/* Reads a block from the given file handle and returns the number of bytes readed. Operation is limited to a 2 GB byte boundary. */
-		fpl_api uint32_t ReadFileBlock32(FileHandle *fileHandle, const uint32_t sizeToRead, void *targetBuffer, const uint32_t maxTargetBufferSize);
+		fpl_api uint32_t ReadFileBlock32(const FileHandle &fileHandle, const uint32_t sizeToRead, void *targetBuffer, const uint32_t maxTargetBufferSize);
 		/* Writes a block to the given file handle and returns the number of bytes written. Operation is limited to a 2 GB byte boundary. */
-		fpl_api uint32_t WriteFileBlock32(FileHandle *fileHandle, void *sourceBuffer, const uint32_t sourceSize);
+		fpl_api uint32_t WriteFileBlock32(const FileHandle &fileHandle, void *sourceBuffer, const uint32_t sourceSize);
 		/* Sets the current file position by the given position, depending on the mode its absolute or relative. Position is limited to a 2 GB byte boundary. */
-		fpl_api void SetFilePosition32(FileHandle *fileHandle, const uint32_t position, const FilePositionMode mode);
+		fpl_api void SetFilePosition32(const FileHandle &fileHandle, const uint32_t position, const FilePositionMode mode);
 		/* Returns the current file position. Position is limited to a 2 GB byte boundary. */
-		fpl_api uint32_t GetFilePosition32(FileHandle *fileHandle);
+		fpl_api uint32_t GetFilePosition32(const FileHandle &fileHandle);
 		/* Closes the given file handle and resets the handle to zero. */
-		fpl_api void CloseFile2(FileHandle *fileHandle);
+		fpl_api void CloseFile2(FileHandle &fileHandle);
 
 		// @TODO(final): Add 64-bit file operations as well!
 
 		/* Returns the 32-bit file size in bytes for the given file. Its limited to files < 2 GB. */
 		fpl_api uint32_t GetFileSize32(const char *filePath);
+		/* Returns the 32-bit file size in bytes for a opened file. Its limited to files < 2 GB. */
+		fpl_api uint32_t GetFileSize32(const FileHandle &fileHandle);
 		/* Returns true when the given file path physically exists. */
 		fpl_api bool32 FileExists(const char *filePath);
 		/* Copies the given source file to the target path and returns truwe when copy was successful. Target path must include the full path to the file. When overwrite is set, the target file path will always be overwritten. */
@@ -762,11 +769,74 @@ namespace fpl {
 			int32_t _padding;
 		};
 
+		/* Gamepad event type (Connected, Disconnected, StateChanged, etc.) */
+		enum class GamepadEventType {
+			None = 0,
+			Connected = 1,
+			Disconnected = 2,
+			StateChanged = 3,
+		};
+
+		/* Gamepad button (IsDown, etc.) */
+		struct GamepadButton {
+			bool32 isDown;
+		};
+
+		/* Full game pad state */
+		struct GamepadState {
+			union {
+				struct {
+					// Digital pad buttons
+					GamepadButton dpadUp;
+					GamepadButton dpadRight;
+					GamepadButton dpadDown;
+					GamepadButton dpadLeft;
+
+					// Face buttons
+					GamepadButton actionA;
+					GamepadButton actionB;
+					GamepadButton actionX;
+					GamepadButton actionY;
+
+					// Center buttons
+					GamepadButton start;
+					GamepadButton back;
+
+					// Analog thumb buttons
+					GamepadButton leftThumb;
+					GamepadButton rightThumb;
+
+					// Shoulder buttons
+					GamepadButton leftShoulder;
+					GamepadButton rightShoulder;
+				};
+				GamepadButton buttons[8];
+			};
+
+			// Analog thumb directions in range (-1.0 to 1.0f)
+			float leftStickX;
+			float leftStickY;
+			float rightStickX;
+			float rightStickY;
+
+			// Analog trigger buttons in range (-1.0 to 1.0f)
+			float leftTrigger;
+			float rightTrigger;
+		};
+
+		/* Gamepad event (Type, Device, State, etc.) */
+		struct GamepadEvent {
+			GamepadEventType type;
+			uint32_t deviceIndex;
+			GamepadState state;
+		};
+
 		/* Event type (Window, Keyboard, Mouse, ...) */
 		enum class EventType {
 			Window = 1,
 			Keyboard = 2,
 			Mouse = 3,
+			Gamepad = 4,
 		};
 
 		/* Event (Type, Window, Keyboard, Mouse, etc.) */
@@ -776,6 +846,7 @@ namespace fpl {
 				WindowEvent window;
 				KeyboardEvent keyboard;
 				MouseEvent mouse;
+				GamepadEvent gamepad;
 			};
 		};
 
@@ -821,11 +892,13 @@ namespace fpl {
 		// Events
 		//
 		/* Gets and removes the top event from the internal queue and fills out the "event" argument. Returns false when there are no events left, otherwise true. */
-		fpl_api bool32 PollWindowEvent(Event *event);
+		fpl_api bool32 PollWindowEvent(Event &ev);
 	};
 #endif
 
 };
+
+/* @REFERENCE_END */
 
 #if defined(FPL_PLATFORM_WINDOWS)
 // @NOTE(final): windef.h defines min/max macros defined in lowerspace, this will break for example std::min/max so we have to tell the header we dont want this!
@@ -1018,13 +1091,13 @@ namespace fpl {
 	}
 
 	namespace window {
-		fpl_api bool32 PollWindowEvent(Event *event) {
+		fpl_api bool32 PollWindowEvent(Event &ev) {
 			bool32 result = false;
 			fpl_EventQueue_Internal *eventQueue = fpl_GlobalEventQueue_Internal;
 			FPL_ASSERT(eventQueue != NULL);
 			if (eventQueue->pushCount > 0 && (eventQueue->pollIndex < eventQueue->pushCount)) {
 				uint32_t eventIndex = atomics::AtomicAddU32(&eventQueue->pollIndex, 1);
-				*event = eventQueue->events[eventIndex];
+				ev = eventQueue->events[eventIndex];
 				result = true;
 			} else if (fpl_GlobalEventQueue_Internal->pushCount > 0) {
 				atomics::AtomicExchangeU32(&eventQueue->pollIndex, 0);
@@ -1174,8 +1247,8 @@ namespace fpl {
 	// Compiler Intrinsics
 	//
 	namespace atomics {
-#	if defined(FPL_COMPILER_MSVC)
-#		include <intrin.h>
+	#	if defined(FPL_COMPILER_MSVC)
+	#		include <intrin.h>
 		fpl_api void AtomicReadFence(void) {
 			_ReadBarrier();
 		}
@@ -1215,9 +1288,9 @@ namespace fpl {
 			uint64_t result = _InterlockedCompareExchange64((volatile long long *)dest, exchange, comparand);
 			return (result);
 		}
-#		else
-#			error "Unsupported win32 compiler for intrinsics"
-#		endif // defined(FPL_COMPILER_MSVC)
+	#		else
+	#			error "Unsupported win32 compiler for intrinsics"
+	#		endif // defined(FPL_COMPILER_MSVC)
 	}
 }
 
@@ -1230,6 +1303,7 @@ namespace fpl {
 // @NOTE(final): windef.h defines min/max macros defined in lowerspace, this will break for example std::min/max so we have to tell the header we dont want this!
 #	include <windowsx.h> // macros for window messages
 #	include <ShlObj.h> // SHGetFolderPath
+#	include <Xinput.h>
 
 // @TODO(final): Dont overwrite defines like that, just have one path for unicode and one for ansi
 #	undef WNDCLASSEX
@@ -1239,10 +1313,14 @@ namespace fpl {
 #	undef DefWindowProc
 #	undef GetWindowLongPtr
 #	undef SetWindowLongPtr
+#	undef PeekMessage
 #	undef DispatchMessage
+#	undef MapVirtualKey
 #	if defined(UNICODE)
 #		define WIN32_CLASSNAME L"FPLWindowClassW"
 #		define WIN32_UNNAMED_WINDOW L"Unnamed FPL Unicode Window"
+#		define WIN32_STRINGCOPY strings::CopyWideString
+#		define WIN32_GETSTRINGLENGTH strings::GetWideStringLength
 #		define WNDCLASSEX WNDCLASSEXW
 #		define RegisterClassEx RegisterClassExW
 #		define UnregisterClass UnregisterClassW
@@ -1254,12 +1332,12 @@ namespace fpl {
 #		define SetWindowLong SetWindowLongW
 #		define PeekMessage PeekMessageW
 #		define DispatchMessage DispatchMessageW
-#		define fpl_Win32StringCopy strings::CopyWideString
-#		define fpl_Win32GetStringLength strings::GetWideStringLength
 #		define MapVirtualKey MapVirtualKeyW
 #	else
 #		define WIN32_CLASSNAME "FPLWindowClassA"
 #		define WIN32_UNNAMED_WINDOW "Unnamed FPL Ansi Window"
+#		define WIN32_STRINGCOPY strings::CopyAnsiString
+#		define WIN32_GETSTRINGLENGTH strings::GetAnsiStringLength
 #		define WNDCLASSEX WNDCLASSEXA
 #		define RegisterClassEx RegisterClassExA
 #		define UnregisterClass UnregisterClassA
@@ -1271,8 +1349,6 @@ namespace fpl {
 #		define SetWindowLong SetWindowLongA
 #		define PeekMessage PeekMessageA
 #		define DispatchMessage DispatchMessageA
-#		define fpl_Win32StringCopy strings::CopyAnsiString
-#		define fpl_Win32GetStringLength strings::GetAnsiStringLength
 #		define MapVirtualKey MapVirtualKeyA
 #	endif // defined(UNICODE)
 
@@ -1384,14 +1460,13 @@ namespace fpl {
 			return(result);
 		}
 
-		fpl_api uint32_t ReadFileBlock32(FileHandle *fileHandle, const uint32_t sizeToRead, void *targetBuffer, const uint32_t maxTargetBufferSize) {
-			FPL_ASSERT(fileHandle != nullptr);
+		fpl_api uint32_t ReadFileBlock32(const FileHandle &fileHandle, const uint32_t sizeToRead, void *targetBuffer, const uint32_t maxTargetBufferSize) {
 			FPL_ASSERT(targetBuffer != nullptr);
 			FPL_ASSERT(sizeToRead > 0);
 			uint32_t result = 0;
-			if (fileHandle->isValid) {
-				FPL_ASSERT(fileHandle->internalHandle != INVALID_HANDLE_VALUE);
-				HANDLE win32FileHandle = (void *)fileHandle->internalHandle;
+			if (fileHandle.isValid) {
+				FPL_ASSERT(fileHandle.internalHandle != INVALID_HANDLE_VALUE);
+				HANDLE win32FileHandle = (void *)fileHandle.internalHandle;
 				DWORD bytesRead = 0;
 				if (ReadFile(win32FileHandle, targetBuffer, (DWORD)sizeToRead, &bytesRead, NULL) == TRUE) {
 					result = bytesRead;
@@ -1400,14 +1475,13 @@ namespace fpl {
 			return(result);
 		}
 
-		fpl_api uint32_t WriteFileBlock32(FileHandle *fileHandle, void *sourceBuffer, const uint32_t sourceSize) {
-			FPL_ASSERT(fileHandle != nullptr);
+		fpl_api uint32_t WriteFileBlock32(const FileHandle &fileHandle, void *sourceBuffer, const uint32_t sourceSize) {
 			FPL_ASSERT(sourceBuffer != nullptr);
 			FPL_ASSERT(sourceSize > 0);
 			uint32_t result = 0;
-			if (fileHandle->isValid) {
-				FPL_ASSERT(fileHandle->internalHandle != INVALID_HANDLE_VALUE);
-				HANDLE win32FileHandle = (void *)fileHandle->internalHandle;
+			if (fileHandle.isValid) {
+				FPL_ASSERT(fileHandle.internalHandle != INVALID_HANDLE_VALUE);
+				HANDLE win32FileHandle = (void *)fileHandle.internalHandle;
 				DWORD bytesWritten = 0;
 				if (WriteFile(win32FileHandle, sourceBuffer, (DWORD)sourceSize, &bytesWritten, NULL) == TRUE) {
 					result = bytesWritten;
@@ -1416,11 +1490,10 @@ namespace fpl {
 			return(result);
 		}
 
-		fpl_api void SetFilePosition32(FileHandle *fileHandle, const uint32_t position, const FilePositionMode mode) {
-			FPL_ASSERT(fileHandle != nullptr);
-			if (fileHandle->isValid) {
-				FPL_ASSERT(fileHandle->internalHandle != INVALID_HANDLE_VALUE);
-				HANDLE win32FileHandle = (void *)fileHandle->internalHandle;
+		fpl_api void SetFilePosition32(const FileHandle &fileHandle, const uint32_t position, const FilePositionMode mode) {
+			if (fileHandle.isValid) {
+				FPL_ASSERT(fileHandle.internalHandle != INVALID_HANDLE_VALUE);
+				HANDLE win32FileHandle = (void *)fileHandle.internalHandle;
 				DWORD moveMethod = FILE_BEGIN;
 				if (mode == FilePositionMode::Current) {
 					moveMethod = FILE_CURRENT;
@@ -1431,12 +1504,11 @@ namespace fpl {
 			}
 		}
 
-		fpl_api uint32_t GetFilePosition32(FileHandle *fileHandle) {
-			FPL_ASSERT(fileHandle != nullptr);
+		fpl_api uint32_t GetFilePosition32(const FileHandle &fileHandle) {
 			uint32_t result = 0;
-			if (fileHandle->isValid) {
-				FPL_ASSERT(fileHandle->internalHandle != INVALID_HANDLE_VALUE);
-				HANDLE win32FileHandle = (void *)fileHandle->internalHandle;
+			if (fileHandle.isValid) {
+				FPL_ASSERT(fileHandle.internalHandle != INVALID_HANDLE_VALUE);
+				HANDLE win32FileHandle = (void *)fileHandle.internalHandle;
 				DWORD filePosition = SetFilePointer(win32FileHandle, 0L, NULL, FILE_CURRENT);
 				if (filePosition != INVALID_SET_FILE_POINTER) {
 					result = filePosition;
@@ -1445,14 +1517,13 @@ namespace fpl {
 			return(result);
 		}
 
-		fpl_api void CloseFile2(FileHandle *fileHandle) {
-			FPL_ASSERT(fileHandle != nullptr);
-			if (fileHandle->isValid) {
-				FPL_ASSERT(fileHandle->internalHandle != INVALID_HANDLE_VALUE);
-				HANDLE win32FileHandle = (void *)fileHandle->internalHandle;
+		fpl_api void CloseFile2(FileHandle &fileHandle) {
+			if (fileHandle.isValid) {
+				FPL_ASSERT(fileHandle.internalHandle != INVALID_HANDLE_VALUE);
+				HANDLE win32FileHandle = (void *)fileHandle.internalHandle;
 				CloseHandle(win32FileHandle);
 			}
-			*fileHandle = {};
+			fileHandle = {};
 		}
 
 		fpl_api uint32_t GetFileSize32(const char *filePath) {
@@ -1462,6 +1533,16 @@ namespace fpl {
 				DWORD fileSize = GetFileSize(win32FileHandle, NULL);
 				result = fileSize;
 				CloseHandle(win32FileHandle);
+			}
+			return(result);
+		}
+		fpl_api uint32_t GetFileSize32(const FileHandle &fileHandle) {
+			uint32_t result = 0;
+			if (fileHandle.isValid) {
+				FPL_ASSERT(fileHandle.internalHandle != INVALID_HANDLE_VALUE);
+				HANDLE win32FileHandle = (void *)fileHandle.internalHandle;
+				DWORD fileSize = GetFileSize(win32FileHandle, NULL);
+				result = fileSize;
 			}
 			return(result);
 		}
@@ -1573,7 +1654,7 @@ namespace fpl {
 	// Win32 Public Path/Directories
 	//
 	namespace paths {
-#	if defined(UNICODE)
+	#	if defined(UNICODE)
 		fpl_api void GetExecutableFilePath(char *destPath, const uint32_t maxDestLen) {
 			using namespace strings;
 			FPL_ASSERT(destPath != nullptr);
@@ -1582,7 +1663,7 @@ namespace fpl {
 			GetModuleFileNameW(NULL, modulePath, MAX_PATH);
 			WideStringToAnsiString(modulePath, GetWideStringLength(modulePath), destPath, maxDestLen);
 		}
-#	else
+	#	else
 		fpl_api void GetExecutableFilePath(char *destPath, const uint32_t maxDestLen) {
 			using namespace strings;
 			FPL_ASSERT(destPath != nullptr);
@@ -1591,7 +1672,7 @@ namespace fpl {
 			GetModuleFileNameA(NULL, modulePath, MAX_PATH);
 			CopyAnsiString(modulePath, GetAnsiStringLength(modulePath), destPath, maxDestLen);
 		}
-#	endif
+	#	endif
 
 		fpl_api void GetHomePath(char *destPath, const uint32_t maxDestLen) {
 			using namespace strings;
@@ -1667,24 +1748,22 @@ namespace fpl {
 			}
 			return(result);
 		}
-		fpl_api void *GetDynamicLibraryProc(const DynamicLibraryHandle *handle, const char *name) {
-			FPL_ASSERT(handle != NULL);
+		fpl_api void *GetDynamicLibraryProc(const DynamicLibraryHandle &handle, const char *name) {
 			void *result = nullptr;
-			if (handle->isValid) {
-				FPL_ASSERT(handle->internalHandle != nullptr);
-				HMODULE libModule = (HMODULE)handle;
+			if (handle.isValid) {
+				FPL_ASSERT(handle.internalHandle != nullptr);
+				HMODULE libModule = (HMODULE)handle.internalHandle;
 				result = (void *)GetProcAddress(libModule, name);
 			}
 			return(result);
 		}
-		fpl_api void ReleaseDynamicLibrary(DynamicLibraryHandle *handle) {
-			FPL_ASSERT(handle != NULL);
-			if (handle->isValid) {
-				FPL_ASSERT(handle->internalHandle != nullptr);
-				HMODULE libModule = (HMODULE)handle->internalHandle;
+		fpl_api void ReleaseDynamicLibrary(DynamicLibraryHandle &handle) {
+			if (handle.isValid) {
+				FPL_ASSERT(handle.internalHandle != nullptr);
+				HMODULE libModule = (HMODULE)handle.internalHandle;
 				FreeLibrary(libModule);
 			}
-			*handle = {};
+			handle = {};
 		}
 	}
 
@@ -1694,14 +1773,14 @@ namespace fpl {
 #	if FPL_ENABLE_WINDOW
 	namespace window {
 
-#		if FPL_ENABLE_OPENGL
+	#		if FPL_ENABLE_OPENGL
 		fpl_api void WindowFlip(void) {
 			SwapBuffers(fpl_GlobalWin32State_Internal.window.deviceContext);
 		}
-#		else
+	#		else
 		fpl_api void WindowFlip(void) {
 		}
-#		endif // FPL_ENABLE_OPENGL
+	#		endif // FPL_ENABLE_OPENGL
 
 		fpl_api WindowSize GetWindowArea(void) {
 			WindowSize result = { 0 };
@@ -2303,7 +2382,7 @@ namespace fpl {
 			// @TODO(final): Log error
 			return false;
 		}
-		fpl_Win32StringCopy(windowClass.lpszClassName, fpl_Win32GetStringLength(windowClass.lpszClassName), win32State->window.windowClass, FPL_ARRAYCOUNT(win32State->window.windowClass));
+		WIN32_STRINGCOPY(windowClass.lpszClassName, WIN32_GETSTRINGLENGTH(windowClass.lpszClassName), win32State->window.windowClass, FPL_ARRAYCOUNT(win32State->window.windowClass));
 
 		// Create window
 		win32State->window.windowHandle = CreateWindowEx(WS_EX_OVERLAPPEDWINDOW, windowClass.lpszClassName, WIN32_UNNAMED_WINDOW, WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT, initSettings.window.width, initSettings.window.height, NULL, NULL, windowClass.hInstance, NULL);
@@ -2367,21 +2446,21 @@ namespace fpl {
 		// Timing
 		QueryPerformanceFrequency(&win32State->performanceFrequency);
 
-#if FPL_ENABLE_WINDOW
+	#if FPL_ENABLE_WINDOW
 		InitFlags usedInitFlags = initFlags;
 
-#	if FPL_ENABLE_OPENGL
+	#	if FPL_ENABLE_OPENGL
 		if (usedInitFlags & InitFlags::VideoOpenGL) {
 			usedInitFlags |= InitFlags::Window;
 		}
-#	endif
+	#	endif
 
 		if (usedInitFlags & InitFlags::Window) {
 			if (!fpl_Win32InitWindow_Internal(win32State, usedInitFlags, initSettings)) {
 				return false;
 			}
 		}
-#endif // FPL_ENABLE_WINDOW
+	#endif // FPL_ENABLE_WINDOW
 
 		win32State->isInitialized = true;
 
@@ -2392,12 +2471,12 @@ namespace fpl {
 		fpl_Win32State_Internal *win32State = &fpl_GlobalWin32State_Internal;
 		FPL_ASSERT(win32State != NULL);
 		FPL_ASSERT(win32State->isInitialized);
-#if FPL_ENABLE_WINDOW
-#	if FPL_ENABLE_OPENGL
+	#if FPL_ENABLE_WINDOW
+	#	if FPL_ENABLE_OPENGL
 		fpl_Win32ReleaseOpenGLContext_Internal(win32State);
-#	endif
+	#	endif
 		fpl_Win32ReleaseWindow_Internal(win32State);
-#endif
+	#endif
 		win32State->isInitialized = false;
 	}
 }

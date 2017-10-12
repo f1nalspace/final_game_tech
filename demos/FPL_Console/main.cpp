@@ -3,13 +3,10 @@
 #define FPL_ENABLE_OPENGL 0
 #include "final_platform_layer.hpp"
 
-using namespace fpl;
-using namespace fpl::paths;
-using namespace fpl::console;
-using namespace fpl::files;
-
 static void PathTests() {
 	using namespace fpl;
+	using namespace fpl::console;
+	using namespace fpl::paths;
 
 	char homePathBuffer[1024];
 	GetHomePath(homePathBuffer, FPL_ARRAYCOUNT(homePathBuffer));
@@ -50,6 +47,8 @@ static void PathTests() {
 
 static void FilesTest() {
 	using namespace fpl;
+	using namespace fpl::console;
+	using namespace fpl::files;
 
 	bool32 nonExisting = FileExists("C:\\Windows\\i_am_not_existing.lib");
 	FPL_ASSERT(!nonExisting);
@@ -70,6 +69,8 @@ static void FilesTest() {
 }
 
 int main(int argc, char **args) {
+	using namespace fpl;
+
 	InitPlatform(InitFlags::None);
 	PathTests();
 	FilesTest();

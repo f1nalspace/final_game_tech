@@ -232,7 +232,7 @@ int main(int argc, char **args) {
 			WindowUpdate();
 
 			Event event;
-			while (PollWindowEvent(&event)) {
+			while (PollWindowEvent(event)) {
 				switch (event.type) {
 					case EventType::Keyboard:
 					{

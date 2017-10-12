@@ -1,11 +1,11 @@
 #define FPL_IMPLEMENTATION
 #include "final_platform_layer.hpp"
 
-using namespace fpl;
-using namespace fpl::window;
-using namespace fpl::memory;
-
 int main(int argc, char **args) {
+	using namespace fpl;
+	using namespace fpl::memory;
+	using namespace fpl::window;
+
 	int result = 0;
 	if (InitPlatform(InitFlags::VideoOpenGL)) {
 		SetWindowArea(640, 480);
