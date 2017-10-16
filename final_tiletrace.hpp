@@ -32,8 +32,12 @@ It will try to create as less chain shapes as possible.
 
 # FEATURES
 
-[ ] Block tile contour tracing
-[ ] Creating optimized chain segments
+[X] Block tile contour tracing
+[X] Creating optimized chain segments
+
+# TODO
+
+[ ] Finish algorythmn documentation
 
 # LICENSE
 
@@ -195,13 +199,13 @@ namespace ftt {
 
 	A tile and its vertices and edge indices (Winding order is important!):
 
-	e1
+	       e1
 	v1 |--------| v2
-	|        |
+	   |        |
 	e0 |        | e2
-	|        |
+	   |        |
 	v0 |--------| v3
-	e3
+	       e3
 
 	- Loop through all 4 edges and remove edges which overlaps any edge in the Main-Edge-List:
 	A overlap edge is detected when the follow criteria are met: (MainEdge->Index1 == CurrentEdge->Index0) and (MainEdge->Index0 == CurrentEdge->Index1)
@@ -517,31 +521,6 @@ namespace ftt {
 		return(result);
 	}
 
-	ftt_api TileTracer CreateTileTracer(const Vec2u &tileCount, uint8_t *mapTiles) {
-		TileTracer result = TileTracer();
-		result.tileCount = tileCount;
-		result.tiles.resize(tileCount.x  * tileCount.y);
-		for (uint32_t tileY = 0; tileY < tileCount.h; ++tileY) {
-			for (uint32_t tileX = 0; tileX < tileCount.w; ++tileX) {
-				uint32_t tileIndex = ComputeTileIndex(tileCount, tileX, tileY);
-				int32_t isSolid = mapTiles[tileIndex];
-				Tile *tile = &result.tiles[tileIndex];
-				*tile = MakeTile(tileX, tileY, isSolid);
-			}
-		}
-
-		result.curStep = Step::FindStart;
-		result.openList.clear();
-		result.startTile = nullptr;
-		result.mainVertices.clear();
-		result.mainEdges.clear();
-		result.chainSegments.clear();
-
-		result.curTile = nullptr;
-		result.nextTile = nullptr;
-		return(result);
-	}
-
 	static void GetNextOpenTile(TileTracer *traceState) {
 		if (traceState->openList.size() > 0) {
 			traceState->curTile = traceState->openList[traceState->openList.size() - 1];
@@ -578,6 +557,31 @@ namespace ftt {
 		for (uint32_t tileEdgeIndex = 0; tileEdgeIndex < tileEdges.count; ++tileEdgeIndex) {
 			traceState->mainEdges.push_back(tileEdges.edges[tileEdgeIndex]);
 		}
+	}
+
+	ftt_api TileTracer CreateTileTracer(const Vec2u &tileCount, uint8_t *mapTiles) {
+		TileTracer result = TileTracer();
+		result.tileCount = tileCount;
+		result.tiles.resize(tileCount.x  * tileCount.y);
+		for (uint32_t tileY = 0; tileY < tileCount.h; ++tileY) {
+			for (uint32_t tileX = 0; tileX < tileCount.w; ++tileX) {
+				uint32_t tileIndex = ComputeTileIndex(tileCount, tileX, tileY);
+				int32_t isSolid = mapTiles[tileIndex];
+				Tile *tile = &result.tiles[tileIndex];
+				*tile = MakeTile(tileX, tileY, isSolid);
+			}
+		}
+
+		result.curStep = Step::FindStart;
+		result.openList.clear();
+		result.startTile = nullptr;
+		result.mainVertices.clear();
+		result.mainEdges.clear();
+		result.chainSegments.clear();
+
+		result.curTile = nullptr;
+		result.nextTile = nullptr;
+		return(result);
 	}
 
 	ftt_api bool NextTileTraceStep(TileTracer *traceState) {
