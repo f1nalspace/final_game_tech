@@ -19,3 +19,4 @@
 *.opendb
 /demos/FPLDocumentationCreator/bin/Debug
 /demos/FPLDocumentationCreator/obj/Debug
+/demos/FTT_TileTracingDemo/x64/Debug
