@@ -105,10 +105,10 @@ int main(int argc, char **args) {
 		glEnable(GL_DEPTH_TEST);
 		glDepthFunc(GL_LEQUAL);
 		glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
-		
+
 		bool doNextStep = false;
 
-		ftt::TileTracer tracer = ftt::CreateTileTracer({ TileMapCountW, TileMapCountH }, &TileMap[0]);
+		ftt::TileTracer tracer({ TileMapCountW, TileMapCountH }, &TileMap[0]);
 
 		while (WindowUpdate()) {
 			Event ev;
@@ -134,12 +134,14 @@ int main(int argc, char **args) {
 				}
 			}
 
-			ftt::NextTileTraceStep(&tracer);
-
+		#if 1
+			tracer.Next();
+		#else
 			if (doNextStep) {
-
+				tracer.Next();
 				doNextStep = false;
 			}
+		#endif
 
 			WindowSize windowArea = GetWindowArea();
 
@@ -174,7 +176,7 @@ int main(int argc, char **args) {
 				for (int x = 0; x < TileMapCountW; ++x) {
 					uint8_t tileValue = TileMap[y * TileMapCountW + x];
 					if (tileValue) {
-						ftt::Tile tile = tracer.tiles[y * TileMapCountW + x];
+						const ftt::Tile &tile = tracer.GetTile(x, y);
 						if (tile.isSolid == -1) {
 							glColor3f(0.75f, 0.775f, 0.75f);
 						} else {
@@ -202,16 +204,17 @@ int main(int argc, char **args) {
 			}
 
 			// Draw start
-			if (tracer.startTile != nullptr) {
+			ftt::Tile *startTile = tracer.GetStartTile();
+			if (startTile != nullptr) {
 				glColor3f(1.0f, 0.5f, 1.0f);
-				DrawTile(tracer.startTile->x, tracer.startTile->y, true);
+				DrawTile(startTile->x, startTile->y, true);
 			}
 
 			// Draw open list
 			glColor3f(0.0f, 0.0f, 0.0f);
 			glLineWidth(2.0f);
-			for (int index = 0; index < tracer.openList.size(); ++index) {
-				ftt::Tile *openTile = tracer.openList[index];
+			for (uint32_t index = 0, count = (uint32_t)tracer.GetOpenTileCount(); index < count; ++index) {
+				ftt::Tile *openTile = tracer.GetOpenTile(index);
 				DrawTile(openTile->x, openTile->y, false);
 			}
 			glLineWidth(1.0f);
@@ -219,10 +222,11 @@ int main(int argc, char **args) {
 			// Draw edges
 			glColor3f(1.0f, 0.0f, 0.0f);
 			glLineWidth(3.0f);
-			for (int index = 0; index < tracer.mainEdges.size(); ++index) {
-				if (!tracer.mainEdges[index].isInvalid) {
-					ftt::Vec2i v0 = tracer.mainVertices[tracer.mainEdges[index].vertIndex0];
-					ftt::Vec2i v1 = tracer.mainVertices[tracer.mainEdges[index].vertIndex1];
+			for (uint32_t index = 0, count = (uint32_t)tracer.GetEdgeCount(); index < count; ++index) {
+				const ftt::Edge &edge = tracer.GetEdge(index);
+				if (!edge.isInvalid) {
+					const ftt::Vec2i &v0 = tracer.GetVertex(edge.vertIndex0);
+					const ftt::Vec2i &v1 = tracer.GetVertex(edge.vertIndex1);
 					glBegin(GL_LINES);
 					glVertex2f(-halfAreaWidth + v0.x * TileSize, -halfAreaHeight + v0.y * TileSize);
 					glVertex2f(-halfAreaWidth + v1.x * TileSize, -halfAreaHeight + v1.y * TileSize);
@@ -234,11 +238,11 @@ int main(int argc, char **args) {
 			// Draw chain segments
 			glColor3f(0.0f, 1.0f, 0.0f);
 			glLineWidth(3.0f);
-			for (int segmentIndex = 0; segmentIndex < tracer.chainSegments.size(); ++segmentIndex) {
-				ftt::ChainSegment *segment = &tracer.chainSegments[segmentIndex];
+			for (uint32_t segmentIndex = 0, count = (uint32_t)tracer.GetChainSegmentCount(); segmentIndex < count; ++segmentIndex) {
+				const ftt::ChainSegment &segment = tracer.GetChainSegment(segmentIndex);
 				glBegin(GL_LINE_LOOP);
-				for (int vertexIndex = 0; vertexIndex < segment->vertices.size(); ++vertexIndex) {
-					ftt::Vec2i v = segment->vertices[vertexIndex];
+				for (uint32_t vertexIndex = 0; vertexIndex < segment.vertices.size(); ++vertexIndex) {
+					const ftt::Vec2i &v = segment.vertices[vertexIndex];
 					glVertex2f(-halfAreaWidth + v.x * TileSize, -halfAreaHeight + v.y * TileSize);
 				}
 				glEnd();
@@ -246,10 +250,11 @@ int main(int argc, char **args) {
 			glLineWidth(1.0f);
 
 			// Draw current tile
-			if (tracer.curTile != nullptr) {
+			ftt::Tile *curTile = tracer.GetCurrentTile();
+			if (curTile != nullptr) {
 				glColor3f(1.0f, 1.0f, 0.0f);
 				glLineWidth(2.0f);
-				DrawTile(tracer.curTile->x, tracer.curTile->y, false);
+				DrawTile(curTile->x, curTile->y, false);
 				glLineWidth(1.0f);
 			}
 
