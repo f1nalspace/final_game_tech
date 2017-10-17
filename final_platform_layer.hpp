@@ -2022,7 +2022,7 @@ namespace fpl {
 		}
 	}
 
-	fpl_internal void fpl_Win32PushMouseEvent_Internal(const window::MouseEventType &mouseEventType, const window::MouseButtonType mouseButton, const LPARAM lParam, const WPARAM wParam) {
+	fpl_internal void Win32PushMouseEvent_Internal(const window::MouseEventType &mouseEventType, const window::MouseButtonType mouseButton, const LPARAM lParam, const WPARAM wParam) {
 		using namespace window;
 
 		Event newEvent = {};
@@ -2038,7 +2038,7 @@ namespace fpl {
 		PushEvent_Internal(newEvent);
 	}
 
-	fpl_internal window::Key fpl_Win32MapVirtualKey_Internal(const uint64_t keyCode) {
+	fpl_internal window::Key Win32MapVirtualKey_Internal(const uint64_t keyCode) {
 		using namespace window;
 		switch (keyCode) {
 			case VK_BACK:
@@ -2279,27 +2279,31 @@ namespace fpl {
 		}
 	}
 
-	fpl_internal void fpl_Win32PushKeyboardEvent_Internal(const window::KeyboardEventType keyboardEventType, const uint64_t keyCode, const window::KeyboardModifierFlags modifiers, const bool32 isDown) {
+	fpl_internal void Win32PushKeyboardEvent_Internal(const window::KeyboardEventType keyboardEventType, const uint64_t keyCode, const window::KeyboardModifierFlags modifiers, const bool32 isDown) {
 		using namespace window;
 		Event newEvent = {};
 		newEvent.type = EventType::Keyboard;
 		newEvent.keyboard.keyCode = keyCode;
-		newEvent.keyboard.mappedKey = fpl_Win32MapVirtualKey_Internal(keyCode);
+		newEvent.keyboard.mappedKey = Win32MapVirtualKey_Internal(keyCode);
 		newEvent.keyboard.type = keyboardEventType;
 		newEvent.keyboard.modifiers = modifiers;
 		PushEvent_Internal(newEvent);
 	}
 
-	fpl_internal bool32 fpl_Win32IsKeyDown_Internal(const uint64_t keyCode) {
+	fpl_internal bool32 Win32IsKeyDown_Internal(const uint64_t keyCode) {
 		bool32 result = GetAsyncKeyState((int)keyCode) & 0x8000;
 		return(result);
 	}
 
-	LRESULT CALLBACK fpl_Win32MessageProc_Internal(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+	LRESULT CALLBACK Win32MessageProc_Internal(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 		using namespace window;
 
-		LRESULT result = 0;
 		fpl_Win32State_Internal *win32State = &fpl_GlobalWin32State_Internal;
+		if (win32State == NULL) {
+			return DefWindowProc(hwnd, msg, wParam, lParam);
+		}
+
+		LRESULT result = 0;
 		FPL_ASSERT(win32State != NULL);
 		switch (msg) {
 			case WM_DESTROY:
@@ -2327,10 +2331,10 @@ namespace fpl {
 				bool32 wasDown = ((lParam & (1 << 30)) != 0);
 				bool32 isDown = ((lParam & (1 << 31)) == 0);
 
-				bool32 altKeyWasDown = fpl_Win32IsKeyDown_Internal(VK_MENU);
-				bool32 shiftKeyWasDown = fpl_Win32IsKeyDown_Internal(VK_LSHIFT);
-				bool32 ctrlKeyWasDown = fpl_Win32IsKeyDown_Internal(VK_LCONTROL);
-				bool32 superKeyWasDown = fpl_Win32IsKeyDown_Internal(VK_LMENU);
+				bool32 altKeyWasDown = Win32IsKeyDown_Internal(VK_MENU);
+				bool32 shiftKeyWasDown = Win32IsKeyDown_Internal(VK_LSHIFT);
+				bool32 ctrlKeyWasDown = Win32IsKeyDown_Internal(VK_LCONTROL);
+				bool32 superKeyWasDown = Win32IsKeyDown_Internal(VK_LMENU);
 
 				KeyboardEventType keyEventType = isDown ? KeyboardEventType::KeyDown : KeyboardEventType::KeyUp;
 				KeyboardModifierFlags modifiers = KeyboardModifierFlags::None;
@@ -2346,7 +2350,7 @@ namespace fpl {
 				if (superKeyWasDown) {
 					modifiers |= KeyboardModifierFlags::Super;
 				}
-				fpl_Win32PushKeyboardEvent_Internal(keyEventType, keyCode, modifiers, isDown);
+				Win32PushKeyboardEvent_Internal(keyEventType, keyCode, modifiers, isDown);
 
 				if (wasDown != isDown) {
 					if (isDown) {
@@ -2355,16 +2359,13 @@ namespace fpl {
 						}
 					}
 				}
-
-				result = 0;
 			} break;
 
 			case WM_CHAR:
 			{
 				uint64_t keyCode = wParam;
 				KeyboardModifierFlags modifiers = KeyboardModifierFlags::None;
-				fpl_Win32PushKeyboardEvent_Internal(KeyboardEventType::Char, keyCode, modifiers, 0);
-				result = 1;
+				Win32PushKeyboardEvent_Internal(KeyboardEventType::Char, keyCode, modifiers, 0);
 			} break;
 
 			case WM_ACTIVATE:
@@ -2388,8 +2389,7 @@ namespace fpl {
 				} else {
 					mouseEventType = MouseEventType::ButtonUp;
 				}
-				fpl_Win32PushMouseEvent_Internal(mouseEventType, MouseButtonType::Left, lParam, wParam);
-				result = 1;
+				Win32PushMouseEvent_Internal(mouseEventType, MouseButtonType::Left, lParam, wParam);
 			} break;
 			case WM_RBUTTONDOWN:
 			case WM_RBUTTONUP:
@@ -2400,8 +2400,7 @@ namespace fpl {
 				} else {
 					mouseEventType = MouseEventType::ButtonUp;
 				}
-				fpl_Win32PushMouseEvent_Internal(mouseEventType, MouseButtonType::Right, lParam, wParam);
-				result = 1;
+				Win32PushMouseEvent_Internal(mouseEventType, MouseButtonType::Right, lParam, wParam);
 			} break;
 			case WM_MBUTTONDOWN:
 			case WM_MBUTTONUP:
@@ -2412,41 +2411,40 @@ namespace fpl {
 				} else {
 					mouseEventType = MouseEventType::ButtonUp;
 				}
-				fpl_Win32PushMouseEvent_Internal(mouseEventType, MouseButtonType::Middle, lParam, wParam);
-				result = 1;
+				Win32PushMouseEvent_Internal(mouseEventType, MouseButtonType::Middle, lParam, wParam);
 			} break;
 			case WM_MOUSEMOVE:
 			{
-				fpl_Win32PushMouseEvent_Internal(MouseEventType::Move, MouseButtonType::None, lParam, wParam);
-				result = 1;
+				Win32PushMouseEvent_Internal(MouseEventType::Move, MouseButtonType::None, lParam, wParam);
 			} break;
 			case WM_MOUSEWHEEL:
 			{
-				fpl_Win32PushMouseEvent_Internal(MouseEventType::Wheel, MouseButtonType::None, lParam, wParam);
-				result = 1;
+				Win32PushMouseEvent_Internal(MouseEventType::Wheel, MouseButtonType::None, lParam, wParam);
 			} break;
 
 			case WM_SETCURSOR:
 			{
 				// @TODO(final): This is not right to assume default cursor always, because the size cursor does not work this way!
 				if (win32State->window.isCursorActive) {
-					SetCursor(win32State->window.defaultCursor);
+					HCURSOR cursor = GetCursor();
+					SetCursor(cursor);
 				} else {
 					SetCursor(NULL);
+					return 1;
 				}
-				result = 1;
 			} break;
 
 			default:
-				result = DefWindowProc(hwnd, msg, wParam, lParam);
+				break;
 		}
+		result = DefWindowProc(hwnd, msg, wParam, lParam);
 		return (result);
 	}
 
 #	endif // FPL_ENABLE_WINDOW
 
 #	if FPL_ENABLE_WINDOW && FPL_ENABLE_OPENGL
-	fpl_internal bool32 fpl_Win32CreateOpenGLContext_Internal(fpl_Win32State_Internal *win32State) {
+	fpl_internal bool32 Win32CreateOpenGLContext_Internal(fpl_Win32State_Internal *win32State) {
 		PIXELFORMATDESCRIPTOR pfd = { 0 };
 		pfd.nSize = sizeof(pfd);
 		pfd.nVersion = 1;
@@ -2481,7 +2479,7 @@ namespace fpl {
 		return true;
 	}
 
-	fpl_internal void fpl_Win32ReleaseOpenGLContext_Internal(fpl_Win32State_Internal *win32State) {
+	fpl_internal void Win32ReleaseOpenGLContext_Internal(fpl_Win32State_Internal *win32State) {
 		if (win32State->opengl.renderingContext) {
 			wglMakeCurrent(0, 0);
 			wglDeleteContext(win32State->opengl.renderingContext);
@@ -2491,28 +2489,46 @@ namespace fpl {
 #	endif // FPL_ENABLE_WINDOW && FPL_ENABLE_OPENGL
 
 #	if FPL_ENABLE_WINDOW
-	fpl_internal bool32 fpl_Win32InitWindow_Internal(fpl_Win32State_Internal *win32State, const InitFlags initFlags, const InitSettings &initSettings) {
+	fpl_internal bool32 Win32InitWindow_Internal(fpl_Win32State_Internal *win32State, const InitFlags initFlags, const InitSettings &initSettings) {
 		using namespace memory;
 
 		// Register window class
 		WNDCLASSEX windowClass = {};
+		windowClass.cbSize = sizeof(WNDCLASSEX);
 		windowClass.hInstance = win32State->appInstance;
 		windowClass.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
 		windowClass.cbSize = sizeof(windowClass);
-		windowClass.style = CS_HREDRAW | CS_VREDRAW | CS_OWNDC;
+		windowClass.style = CS_HREDRAW | CS_VREDRAW;
 		windowClass.hCursor = LoadCursor(NULL, IDC_ARROW);
 		windowClass.hIcon = LoadIcon(NULL, IDI_APPLICATION);
 		windowClass.hIconSm = LoadIcon(NULL, IDI_APPLICATION);
 		windowClass.lpszClassName = WIN32_CLASSNAME;
-		windowClass.lpfnWndProc = fpl_Win32MessageProc_Internal;
+		windowClass.lpfnWndProc = Win32MessageProc_Internal;
 		if (RegisterClassEx(&windowClass) == 0) {
 			// @TODO(final): Log error
 			return false;
 		}
 		WIN32_STRINGCOPY(windowClass.lpszClassName, WIN32_GETSTRINGLENGTH(windowClass.lpszClassName), win32State->window.windowClass, FPL_ARRAYCOUNT(win32State->window.windowClass));
 
+		// Allocate event queue
+		void *eventQueueMemory = AllocateAlignedMemory(sizeof(fpl_EventQueue_Internal), 16);
+		fpl_GlobalEventQueue_Internal = (fpl_EventQueue_Internal *)eventQueueMemory;
+
 		// Create window
-		win32State->window.windowHandle = CreateWindowEx(WS_EX_OVERLAPPEDWINDOW, windowClass.lpszClassName, WIN32_UNNAMED_WINDOW, WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT, initSettings.window.width, initSettings.window.height, NULL, NULL, windowClass.hInstance, NULL);
+		DWORD exStyle = 0;
+		DWORD style = 0;
+		style |= WS_VISIBLE;
+		style |= WS_THICKFRAME | WS_MAXIMIZEBOX;
+		style |= WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX;
+
+		RECT windowRect;
+		windowRect.left = 0;
+		windowRect.top = 0;
+		windowRect.right = initSettings.window.width;
+		windowRect.bottom = initSettings.window.height;
+		AdjustWindowRect(&windowRect, style, false);
+
+		win32State->window.windowHandle = CreateWindowEx(exStyle, windowClass.lpszClassName, WIN32_UNNAMED_WINDOW, style, CW_USEDEFAULT, CW_USEDEFAULT, windowRect.right - windowRect.left, windowRect.bottom - windowRect.top, NULL, NULL, windowClass.hInstance, NULL);
 		if (win32State->window.windowHandle == NULL) {
 			// @TODO(final): Log error
 			return false;
@@ -2527,15 +2543,12 @@ namespace fpl {
 
 		// Create opengl rendering context if required
 		if (initFlags & InitFlags::VideoOpenGL) {
-			bool32 openglResult = fpl_Win32CreateOpenGLContext_Internal(win32State);
+			bool32 openglResult = Win32CreateOpenGLContext_Internal(win32State);
 			if (!openglResult) {
 				// @TODO(final): Log error
 				return false;
 			}
 		}
-
-		void *eventQueueMemory = AllocateAlignedMemory(sizeof(fpl_EventQueue_Internal), 16);
-		fpl_GlobalEventQueue_Internal = (fpl_EventQueue_Internal *)eventQueueMemory;
 
 		// Show window
 		ShowWindow(win32State->window.windowHandle, SW_SHOW);
@@ -2613,7 +2626,7 @@ namespace fpl {
 	#	endif
 
 		if (usedInitFlags & InitFlags::Window) {
-			if (!fpl_Win32InitWindow_Internal(win32State, usedInitFlags, initSettings)) {
+			if (!Win32InitWindow_Internal(win32State, usedInitFlags, initSettings)) {
 				return false;
 			}
 		}
@@ -2631,7 +2644,7 @@ namespace fpl {
 	#if FPL_ENABLE_WINDOW
 		Win32UnloadXInput_Internal(win32State->xinput.xinputLibrary);
 	#	if FPL_ENABLE_OPENGL
-		fpl_Win32ReleaseOpenGLContext_Internal(win32State);
+		Win32ReleaseOpenGLContext_Internal(win32State);
 	#	endif
 		Win32ReleaseWindow_Internal(win32State);
 	#endif
