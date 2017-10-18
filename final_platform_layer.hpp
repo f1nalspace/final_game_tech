@@ -153,6 +153,10 @@
  - v0.2.4 alpha:
 	 * Changed to a doxygen + vc complaint documentation style
 	 * CopyFile2, DeleteFile2 and CloseFile2 are now CopyFile, DeleteFile, CloseFile
+ - v0.2.5 alpha:
+	 * Added CreateDirectories
+	 * Returns char * for all path get like functions
+	 * Fixed CreateBinaryFile was never able to overwrite the file.
 
  */
 
@@ -522,6 +526,8 @@ namespace fpl {
 		//! Deletes the given file without confirmation and returns true when the deletion was successful.
 		fpl_api bool32 DeleteFile(const char *filePath);
 
+		//! Creates all the directories in the path when not exists.
+		fpl_api bool32 CreateDirectories(const char *path);
 		//! Returns true when the given directory path physically exists.
 		fpl_api bool32 DirectoryExists(const char *path);
 		//! Deletes the given directory without confirmation and returns true when the deletion was successful. When recursive is set, all files and folders in sub-directories will be deleted as well.
@@ -537,9 +543,9 @@ namespace fpl {
 	//! Directory and paths functions
 	namespace paths {
 		//! Returns the full path to this executable, including the executable file name.
-		fpl_api void GetExecutableFilePath(char *destPath, const uint32_t maxDestLen);
+		fpl_api char *GetExecutableFilePath(char *destPath, const uint32_t maxDestLen);
 		//! Returns the full path to your home directory.
-		fpl_api void GetHomePath(char *destPath, const uint32_t maxDestLen);
+		fpl_api char *GetHomePath(char *destPath, const uint32_t maxDestLen);
 		//! Returns the path from the given source path.
 		fpl_api char *ExtractFilePath(char *destPath, const uint32_t maxDestLen, const char *sourcePath);
 		//! Returns the file extension from the given source path.
@@ -1485,7 +1491,7 @@ namespace fpl {
 		fpl_api FileHandle CreateBinaryFile(const char *filePath) {
 			FPL_ASSERT(filePath != nullptr);
 			FileHandle result = { 0 };
-			HANDLE win32FileHandle = CreateFileA(filePath, GENERIC_WRITE, FILE_SHARE_WRITE, NULL, CREATE_NEW, FILE_ATTRIBUTE_NORMAL, NULL);
+			HANDLE win32FileHandle = CreateFileA(filePath, GENERIC_WRITE, FILE_SHARE_WRITE, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
 			if (win32FileHandle != INVALID_HANDLE_VALUE) {
 				result.isValid = true;
 				result.internalHandle = (void *)win32FileHandle;
@@ -1607,6 +1613,10 @@ namespace fpl {
 			}
 			return(result);
 		}
+		fpl_api bool32 CreateDirectories(const char *path) {
+			BOOL result = CreateDirectoryA(path, nullptr);
+			return(result > 0 ? 1 : 0);
+		}
 		fpl_api bool32 RemoveEmptyDirectory(const char *path) {
 			bool32 result = RemoveDirectoryA(path);
 			return(result);
@@ -1688,32 +1698,35 @@ namespace fpl {
 	//
 	namespace paths {
 	#	if defined(UNICODE)
-		fpl_api void GetExecutableFilePath(char *destPath, const uint32_t maxDestLen) {
+		fpl_api char *GetExecutableFilePath(char *destPath, const uint32_t maxDestLen) {
 			using namespace strings;
 			FPL_ASSERT(destPath != nullptr);
 			FPL_ASSERT(maxDestLen >= (MAX_PATH + 1));
 			wchar_t modulePath[MAX_PATH];
 			GetModuleFileNameW(NULL, modulePath, MAX_PATH);
 			WideStringToAnsiString(modulePath, GetWideStringLength(modulePath), destPath, maxDestLen);
+			return(destPath);
 		}
 	#	else
-		fpl_api void GetExecutableFilePath(char *destPath, const uint32_t maxDestLen) {
+		fpl_api char *GetExecutableFilePath(char *destPath, const uint32_t maxDestLen) {
 			using namespace strings;
 			FPL_ASSERT(destPath != nullptr);
 			FPL_ASSERT(maxDestLen >= (MAX_PATH + 1));
 			char modulePath[MAX_PATH];
 			GetModuleFileNameA(NULL, modulePath, MAX_PATH);
 			CopyAnsiString(modulePath, GetAnsiStringLength(modulePath), destPath, maxDestLen);
+			return(destPath);
 		}
 	#	endif
 
-		fpl_api void GetHomePath(char *destPath, const uint32_t maxDestLen) {
+		fpl_api char *GetHomePath(char *destPath, const uint32_t maxDestLen) {
 			using namespace strings;
 			FPL_ASSERT(destPath != nullptr);
 			FPL_ASSERT(maxDestLen >= (MAX_PATH + 1));
 			char homePath[MAX_PATH];
 			SHGetFolderPathA(NULL, CSIDL_PROFILE, NULL, 0, homePath);
 			CopyAnsiString(homePath, GetAnsiStringLength(homePath), destPath, maxDestLen);
+			return(destPath);
 		}
 	}
 
