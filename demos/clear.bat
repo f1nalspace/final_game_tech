@@ -16,3 +16,7 @@ rmdir /q /s FPL_OpenGL\debug
 rmdir /q /s FPL_OpenGL\release
 rmdir /q /s FPL_OpenGL\x64
 rmdir /q /s FPL_OpenGL\x86
+rmdir /q /s FTT_TileTracingDemo\debug
+rmdir /q /s FTT_TileTracingDemo\release
+rmdir /q /s FTT_TileTracingDemo\x64
+rmdir /q /s FTT_TileTracingDemo\x86

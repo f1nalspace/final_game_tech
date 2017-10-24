@@ -3,20 +3,28 @@
 #define FPL_ENABLE_OPENGL 0
 #include "final_platform_layer.hpp"
 
+static void MemoryTests() {
+	using namespace fpl;
+	using namespace fpl::memory;
+
+	uint8_t *mem8 = (uint8_t *)AllocateMemory(sizeof(uint8_t) * 2048);
+}
+
 static void PathTests() {
 	using namespace fpl;
 	using namespace fpl::console;
 	using namespace fpl::paths;
+	using namespace fpl::hardware;
 
-	char homePathBuffer[1024];
+	char homePathBuffer[1024] = {};
 	GetHomePath(homePathBuffer, FPL_ARRAYCOUNT(homePathBuffer));
 	ConsoleFormatOut("Home Path:\n%s\n", homePathBuffer);
 
-	char exeFilePathBuffer[1024];
+	char exeFilePathBuffer[1024] = {};
 	GetExecutableFilePath(exeFilePathBuffer, FPL_ARRAYCOUNT(exeFilePathBuffer));
 	ConsoleFormatOut("Executable file Path:\n%s\n", exeFilePathBuffer);
 
-	char extractedPathBuffer[1024];
+	char extractedPathBuffer[1024] = {};
 	ExtractFilePath(extractedPathBuffer, FPL_ARRAYCOUNT(extractedPathBuffer), exeFilePathBuffer);
 	ConsoleFormatOut("Extracted path:\n%s\n", extractedPathBuffer);
 
@@ -26,11 +34,11 @@ static void PathTests() {
 	char *exeFileExt = ExtractFileExtension(exeFilePathBuffer);
 	ConsoleFormatOut("Extracted extension:\n%s\n", exeFileExt);
 
-	char combinedPathBuffer[1024 * 10] = { 0 };
+	char combinedPathBuffer[1024 * 10] = {};
 	CombinePath(combinedPathBuffer, FPL_ARRAYCOUNT(combinedPathBuffer), 4, "Hallo", "Welt", "der", "Programmierer");
 	ConsoleFormatOut("Combined path:\n%s\n", combinedPathBuffer);
 
-	char changedFileExtBuffer[1024] = { 0 };
+	char changedFileExtBuffer[1024] = {};
 	ChangeFileExtension(changedFileExtBuffer, FPL_ARRAYCOUNT(changedFileExtBuffer), exeFilePathBuffer, ".obj");
 	ConsoleFormatOut("Changed file ext 1:\n%s\n", changedFileExtBuffer);
 	ChangeFileExtension(changedFileExtBuffer, FPL_ARRAYCOUNT(changedFileExtBuffer), exeFileName, ".obj");
@@ -43,6 +51,10 @@ static void PathTests() {
 	ConsoleFormatOut("Changed file ext 5:\n%s\n", changedFileExtBuffer);
 	ChangeFileExtension(changedFileExtBuffer, FPL_ARRAYCOUNT(changedFileExtBuffer), "", "");
 	ConsoleFormatOut("Changed file ext 5:\n%s\n", changedFileExtBuffer);
+
+	char cpuNameBuffer[1024] = {};
+	GetProcessorName(cpuNameBuffer, FPL_ARRAYCOUNT(cpuNameBuffer));
+	ConsoleFormatOut("Processor name:\n%s\n", cpuNameBuffer);
 }
 
 static void FilesTest() {
@@ -50,9 +62,9 @@ static void FilesTest() {
 	using namespace fpl::console;
 	using namespace fpl::files;
 
-	bool32 nonExisting = FileExists("C:\\Windows\\i_am_not_existing.lib");
+	bool nonExisting = FileExists("C:\\Windows\\i_am_not_existing.lib");
 	FPL_ASSERT(!nonExisting);
-	bool32 notepadExists = FileExists("C:\\Windows\\notepad.exe");
+	bool notepadExists = FileExists("C:\\Windows\\notepad.exe");
 	FPL_ASSERT(notepadExists);
 	uint32_t emptySize = GetFileSize32("C:\\Windows\\i_am_not_existing.lib");
 	FPL_ASSERT(emptySize == 0);
