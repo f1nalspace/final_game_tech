@@ -439,10 +439,8 @@ namespace fpl {
 
 	//! Initialization settings contains (Window, etc)
 	struct InitSettings {
-		union {
-			WindowSettings window;
-			VideoSettings video;
-		};
+		WindowSettings window;
+		VideoSettings video;
 
 		InitSettings() {
 			window = WindowSettings();
@@ -2017,7 +2015,7 @@ namespace fpl {
 	// Win32 Public Path/Directories
 	//
 	namespace paths {
-	#	if defined(UNICODE)
+#	if defined(UNICODE)
 		fpl_api char *GetExecutableFilePath(char *destPath, const uint32_t maxDestLen) {
 			using namespace strings;
 			FPL_ASSERT(destPath != nullptr);
@@ -2027,7 +2025,7 @@ namespace fpl {
 			WideStringToAnsiString(modulePath, GetWideStringLength(modulePath), destPath, maxDestLen);
 			return(destPath);
 		}
-	#	else
+#	else
 		fpl_api char *GetExecutableFilePath(char *destPath, const uint32_t maxDestLen) {
 			using namespace strings;
 			FPL_ASSERT(destPath != nullptr);
@@ -2037,7 +2035,7 @@ namespace fpl {
 			CopyAnsiString(modulePath, GetAnsiStringLength(modulePath), destPath, maxDestLen);
 			return(destPath);
 		}
-	#	endif
+#	endif
 
 		fpl_api char *GetHomePath(char *destPath, const uint32_t maxDestLen) {
 			using namespace strings;
@@ -2139,14 +2137,14 @@ namespace fpl {
 #	if FPL_ENABLE_WINDOW
 	namespace window {
 
-	#	if FPL_ENABLE_OPENGL
+#	if FPL_ENABLE_OPENGL
 		fpl_api void WindowFlip() {
 			SwapBuffers(globalWin32State_Internal.window.deviceContext);
 		}
-	#	else
+#	else
 		fpl_api void WindowFlip() {
 		}
-	#	endif // FPL_ENABLE_OPENGL
+#	endif // FPL_ENABLE_OPENGL
 
 		struct Win32WindowStyle_Internal {
 			DWORD style;
@@ -2953,7 +2951,7 @@ namespace fpl {
 					return false;
 				}
 
-			#if 0
+#if 0
 				// @TODO(final): This seems not to work at all (http://rastertek.com/gl40tut03.html)
 				int colorBits = 24;
 				int depthBits = 24;
@@ -2985,14 +2983,14 @@ namespace fpl {
 					PushError_Internal("Failed setting Win32 RGBA Modern Pixelformat '%d' for Color/Depth/Alpha (%d,%d,%d and DC '%d')", pixelFormat, pfd.cColorBits, pfd.cDepthBits, pfd.cAlphaBits, dc);
 					return false;
 				}
-			#endif
+#endif
 
 				int contextAttribList[] = {
 					WGL_CONTEXT_MAJOR_VERSION_ARB, (int)videoSettings.minMajor,
 					WGL_CONTEXT_MINOR_VERSION_ARB, (int)videoSettings.minMinor,
 					WGL_CONTEXT_FLAGS_ARB, 0,
 					0,
-				};
+			};
 
 				HGLRC newContext = globalWGLExtensions.createContextAttribsArb(dc, 0, contextAttribList);
 				if (newContext) {
@@ -3003,7 +3001,7 @@ namespace fpl {
 				} else {
 					PushError_Internal("Warning: Failed creating Win32 Modern OpenGL Rendering Context for version (%d.%d) and DC '%d')", dc, videoSettings.minMajor, videoSettings.minMinor);
 				}
-			}
+		}
 
 			FPL_ASSERT(rc != nullptr);
 
@@ -3020,7 +3018,7 @@ namespace fpl {
 			}
 
 			return true;
-		}
+	}
 
 		fpl_internal void Win32ReleaseOpenGLContext_Internal(Win32State_Internal &win32State) {
 			if (win32State.opengl.renderingContext) {
@@ -3030,7 +3028,7 @@ namespace fpl {
 				win32State.opengl.renderingContext = nullptr;
 			}
 		}
-			};
+};
 #	endif // FPL_ENABLE_WINDOW && FPL_ENABLE_OPENGL
 
 #	if FPL_ENABLE_WINDOW
@@ -3104,7 +3102,7 @@ namespace fpl {
 			int windowWidth = windowRect.right - windowRect.left;
 			int windowHeight = windowRect.bottom - windowRect.top;
 
-			win32State.window.windowHandle = CreateWindowEx(exStyle, windowClass.lpszClassName, WIN32_UNNAMED_WINDOW, style, windowX, windowY, windowWidth, windowHeight, nullptr, nullptr, windowClass.hInstance, nullptr);
+			win32State.window.windowHandle = CreateWindowEx(exStyle, windowClass.lpszClassName, windowTitle, style, windowX, windowY, windowWidth, windowHeight, nullptr, nullptr, windowClass.hInstance, nullptr);
 			if (win32State.window.windowHandle == nullptr) {
 				PushError_Internal("Failed creating Win32 window for class '%s' and position (%d x %d) with size (%d x %d)", win32State.window.windowClass, windowWidth, windowHeight, windowWidth, windowHeight);
 				return false;
@@ -3199,17 +3197,17 @@ namespace fpl {
 		// Timing
 		QueryPerformanceFrequency(&win32State.performanceFrequency);
 
-	#if FPL_ENABLE_WINDOW
+#if FPL_ENABLE_WINDOW
 		// XInput
 		win32State.xinput.xinputLibrary = window::Win32LoadXInput_Internal();
 
 		InitFlags usedInitFlags = initFlags;
 
-	#	if FPL_ENABLE_OPENGL
+#	if FPL_ENABLE_OPENGL
 		if (usedInitFlags & InitFlags::VideoOpenGL) {
 			usedInitFlags |= InitFlags::Window;
 		}
-	#	endif
+#	endif
 
 		if (usedInitFlags & InitFlags::Window) {
 			if (!window::Win32InitWindow_Internal(win32State, usedInitFlags, initSettings)) {
@@ -3217,7 +3215,7 @@ namespace fpl {
 				return false;
 			}
 		}
-	#endif // FPL_ENABLE_WINDOW
+#endif // FPL_ENABLE_WINDOW
 
 		win32State.isInitialized = true;
 
@@ -3228,16 +3226,16 @@ namespace fpl {
 		Win32State_Internal &win32State = globalWin32State_Internal;
 		FPL_ASSERT(win32State.isInitialized);
 
-	#if FPL_ENABLE_WINDOW
+#if FPL_ENABLE_WINDOW
 		if (win32State.window.currentSettings.isFullscreen) {
 			window::Win32LeaveFullscreen_Internal();
 		}
 		window::Win32UnloadXInput_Internal(win32State.xinput.xinputLibrary);
-	#	if FPL_ENABLE_OPENGL
+#	if FPL_ENABLE_OPENGL
 		window::Win32ReleaseOpenGLContext_Internal(win32State);
-	#	endif
+#	endif
 		window::Win32ReleaseWindow_Internal(win32State);
-	#endif
+#endif
 
 		memory::FreeAlignedMemory(globalLastError_Internal);
 		globalLastError_Internal = nullptr;
@@ -3248,45 +3246,45 @@ namespace fpl {
 	fpl_api const char *GetLastError(const size_t index) {
 		const char *result = nullptr;
 		if (globalLastError_Internal != nullptr) {
-		#if FPL_ENABLE_ERRORSTATES
+#if FPL_ENABLE_ERRORSTATES
 			if (index > -1 && index < (int32_t)globalLastError_Internal->count) {
 				result = globalLastError_Internal->errors[index];
 			} else {
 				result = globalLastError_Internal->errors[globalLastError_Internal->count - 1];
 			}
-		#else
+#else
 			result = globalLastError_Internal->error;
-		#endif
-			}
+#endif
+		}
 		return (result);
 		}
 
 	fpl_api const char *GetLastError() {
 		const char *result = nullptr;
 		if (globalLastError_Internal != nullptr) {
-		#if FPL_ENABLE_ERRORSTATES
+#if FPL_ENABLE_ERRORSTATES
 			if (globalLastError_Internal->count > 0) {
 				size_t index = globalLastError_Internal->count - 1;
 				result = GetLastError(index);
 			}
-		#else
+#else
 			result = globalLastError_Internal->error;
-		#endif
-			}
+#endif
+		}
 		return (result);
 		}
 
 	fpl_api size_t GetLastErrorCount() {
 		size_t result = 0;
 		if (globalLastError_Internal != nullptr) {
-		#if FPL_ENABLE_ERRORSTATES
+#if FPL_ENABLE_ERRORSTATES
 			result = globalLastError_Internal->count;
-		#else
+#else
 			result = strings::GetAnsiStringLength(globalLastError_Internal->error) > 0 ? 1 : 0;
-		#endif
+#endif
 		}
 		return (result);
-	}
+		}
 
 	}
 
@@ -3305,7 +3303,7 @@ int WINAPI wWinMain(HINSTANCE appInstance, HINSTANCE prevInstance, LPWSTR cmdLin
 	// @TODO(final): Parse command line parameters
 	int result = main(0, 0);
 	return(result);
-	}
+}
 #		else
 int WINAPI WinMain(HINSTANCE appInstance, HINSTANCE prevInstance, LPSTR cmdLine, int cmdShow) {
 	fpl::globalWin32State_Internal.appInstance = appInstance;

@@ -5,7 +5,7 @@
 #include <final_platform_layer.hpp>
 
 #define IMGUI_DISABLE_OBSOLETE_FUNCTIONS 1
-#include <imgui.h>
+#include <imgui\imgui.h>
 
 #include <math.h>
 

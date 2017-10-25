@@ -71,19 +71,19 @@
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <LinkIncremental>true</LinkIncremental>
-    <IncludePath>$(ProjectDir)dependencies\imgui\;..\..\;$(IncludePath)</IncludePath>
+    <IncludePath>$(ProjectDir)dependencies\imgui\include\;..\..\;$(IncludePath)</IncludePath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <LinkIncremental>true</LinkIncremental>
-    <IncludePath>$(ProjectDir)dependencies\imgui\;..\..\;$(IncludePath)</IncludePath>
+    <IncludePath>$(ProjectDir)dependencies\imgui\include\;..\..\;$(IncludePath)</IncludePath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <LinkIncremental>false</LinkIncremental>
-    <IncludePath>$(ProjectDir)dependencies\imgui\;..\..\;$(IncludePath)</IncludePath>
+    <IncludePath>$(ProjectDir)dependencies\imgui\include\;..\..\;$(IncludePath)</IncludePath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <LinkIncremental>false</LinkIncremental>
-    <IncludePath>$(ProjectDir)dependencies\imgui\;..\..\;$(IncludePath)</IncludePath>
+    <IncludePath>$(ProjectDir)dependencies\imgui\include\;..\..\;$(IncludePath)</IncludePath>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ClCompile>
@@ -164,19 +164,19 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="dependencies\imgui\imgui.cpp" />
-    <ClCompile Include="dependencies\imgui\imgui_demo.cpp" />
-    <ClCompile Include="dependencies\imgui\imgui_draw.cpp" />
+    <ClCompile Include="dependencies\imgui\include\imgui\imgui.cpp" />
+    <ClCompile Include="dependencies\imgui\include\imgui\imgui_demo.cpp" />
+    <ClCompile Include="dependencies\imgui\include\imgui\imgui_draw.cpp" />
     <ClCompile Include="main.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\..\final_platform_layer.hpp" />
-    <ClInclude Include="dependencies\imgui\imconfig.h" />
-    <ClInclude Include="dependencies\imgui\imgui.h" />
-    <ClInclude Include="dependencies\imgui\imgui_internal.h" />
-    <ClInclude Include="dependencies\imgui\stb_rect_pack.h" />
-    <ClInclude Include="dependencies\imgui\stb_textedit.h" />
-    <ClInclude Include="dependencies\imgui\stb_truetype.h" />
+    <ClInclude Include="dependencies\imgui\include\imgui\imconfig.h" />
+    <ClInclude Include="dependencies\imgui\include\imgui\imgui.h" />
+    <ClInclude Include="dependencies\imgui\include\imgui\imgui_internal.h" />
+    <ClInclude Include="dependencies\imgui\include\imgui\stb_rect_pack.h" />
+    <ClInclude Include="dependencies\imgui\include\imgui\stb_textedit.h" />
+    <ClInclude Include="dependencies\imgui\include\imgui\stb_truetype.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
