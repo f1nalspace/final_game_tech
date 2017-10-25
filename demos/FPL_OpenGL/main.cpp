@@ -1,5 +1,4 @@
 #define FPL_IMPLEMENTATION
-#define FPL_DEBUG_INTERNAL 0
 #include "final_platform_layer.hpp"
 
 #define MODERN_OPENGL 0
