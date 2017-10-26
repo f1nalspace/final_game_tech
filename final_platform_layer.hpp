@@ -105,6 +105,7 @@ int main(int argc, char **args) {
 	* FPL_ENABLE_OPENGL 0 or 1 (Default 1) -> Enable/Disable opengl support entirely
 
 	* FPL_ENABLE_ERRORSTATES 0 or 1 (Default 1) -> Enable multiple error states instead of a single last one
+	* FPL_ENABLE_ERROR_IN_CONSOLE 0 or 1 (Default 1) -> Enable writing out errors in the error console as well
 
 # FEATURES
 
@@ -301,6 +302,9 @@ SOFTWARE.
 #endif
 #if !defined(FPL_ENABLE_ERRORSTATES)
 #	define FPL_ENABLE_ERRORSTATES 1
+#endif
+#if !defined(FPL_ENABLE_ERROR_IN_CONSOLE)
+#	define FPL_ENABLE_ERROR_IN_CONSOLE 1
 #endif
 
 //
@@ -1210,7 +1214,9 @@ namespace fpl {
 			FPL_ASSERT(state->count < MAX_ERRORSTATE_COUNT);
 			size_t errorIndex = state->count++;
 			strings::CopyAnsiString(buffer, messageLen, state->errors[errorIndex], MAX_LAST_ERROR_STRING_LENGTH_INTERNAL);
+#if FPL_ENABLE_ERROR_IN_CONSOLE
 			console::ConsoleError(buffer);
+#endif
 		}
 	}
 #else
@@ -1228,6 +1234,9 @@ namespace fpl {
 			vsprintf_s(buffer, FPL_ARRAYCOUNT(buffer), format, argList);
 			uint32_t messageLen = strings::GetAnsiStringLength(buffer);
 			strings::CopyAnsiString(buffer, messageLen, state->error, MAX_LAST_ERROR_STRING_LENGTH_INTERNAL);
+#if FPL_ENABLE_ERROR_IN_CONSOLE
+			console::ConsoleError(buffer);
+#endif
 		}
 	}
 #endif
