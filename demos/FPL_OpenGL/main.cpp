@@ -37,13 +37,13 @@ static GLuint CreateShaderType(GLenum type, const char *source) {
 
 	GLint compileResult;
 	glGetShaderiv(shaderId, GL_COMPILE_STATUS, &compileResult);
-	if (compileResult == GL_FALSE) {
+	if (!compileResult) {
 		GLint infoLen;
 		glGetShaderiv(shaderId, GL_INFO_LOG_LENGTH, &infoLen);
-
 		char *info = (char *)alloca(infoLen);
 		glGetShaderInfoLog(shaderId, infoLen, &infoLen, info);
-		console::ConsoleFormatError("Failed compiling %s shader: %s\n", (type == GL_VERTEX_SHADER ? "vertex" : "fragment"), info);
+		console::ConsoleFormatError("Failed compiling %s shader!\n", (type == GL_VERTEX_SHADER ? "vertex" : "fragment"));
+		console::ConsoleFormatError("%s\n", info);
 	}
 
 	return(shaderId);
@@ -62,13 +62,14 @@ static GLuint CreateShaderProgram(const char *name, const char *vertexSource, co
 
 	GLint linkResult;
 	glGetProgramiv(programId, GL_LINK_STATUS, &linkResult);
-	if (linkResult == GL_FALSE) {
+	if (!linkResult) {
 		GLint infoLen;
 		glGetProgramiv(programId, GL_INFO_LOG_LENGTH, &infoLen);
 
 		char *info = (char *)alloca(infoLen);
 		glGetProgramInfoLog(programId, infoLen, &infoLen, info);
-		console::ConsoleFormatError("Failed linking shader '%s': %s\n", name, info);
+		console::ConsoleFormatError("Failed linking '%s' shader!\n", name);
+		console::ConsoleFormatError("%s\n", info);
 	}
 
 	glDeleteShader(fragmentShader);
@@ -83,6 +84,18 @@ static bool RunModern() {
 		console::ConsoleFormatError("Failed initializing glew: %s\n", (const char *)glewGetErrorString(glewErr));
 		return false;
 	}
+
+	const char *glslVersion = (const char *)glGetString(GL_SHADING_LANGUAGE_VERSION);
+	console::ConsoleFormatOut("OpenGL GLSL Version %s:\n", glslVersion);
+
+	int profileMask;
+	int contextFlags;
+	glGetIntegerv(GL_CONTEXT_PROFILE_MASK, &profileMask);
+	glGetIntegerv(GL_CONTEXT_FLAGS, &contextFlags);
+	console::ConsoleFormatOut("OpenGL supported profiles:\n");
+	console::ConsoleFormatOut("\tCore: %s\n", ((profileMask & GL_CONTEXT_CORE_PROFILE_BIT) ? "yes" : "no"));
+	console::ConsoleFormatOut("\tCompability: %s\n", ((profileMask & GL_CONTEXT_COMPATIBILITY_PROFILE_BIT) ? "yes" : "no"));
+	console::ConsoleFormatOut("\tForward compatible: %s\n", ((contextFlags & GL_CONTEXT_FLAG_FORWARD_COMPATIBLE_BIT) ? "yes" : "no"));
 
 	float vertices[] = {
 		0.0f, 0.5f,
@@ -136,7 +149,7 @@ static bool RunModern() {
 	}
 
 	return true;
-	}
+}
 
 int main(int argc, char **args) {
 	using namespace fpl;
@@ -146,9 +159,9 @@ int main(int argc, char **args) {
 	InitSettings settings = InitSettings();
 #if MODERN_OPENGL
 	strings::CopyAnsiString("FPL Modern OpenGL", settings.window.windowTitle, FPL_ARRAYCOUNT(settings.window.windowTitle));
-	settings.video.profile = VideoCompabilityProfile::Any;
-	settings.video.minMajor = 3;
-	settings.video.minMinor = 1;
+	settings.video.profile = VideoCompabilityProfile::Core;
+	settings.video.majorVersion = 3;
+	settings.video.minorVersion = 3;
 #else
 	strings::CopyAnsiString("FPL Legacy OpenGL", settings.window.windowTitle, FPL_ARRAYCOUNT(settings.window.windowTitle));
 	settings.video.profile = VideoCompabilityProfile::Legacy;
@@ -162,11 +175,11 @@ int main(int argc, char **args) {
 		console::ConsoleFormatOut("OpenGL vendor: %s\n", vendor);
 		console::ConsoleFormatOut("OpenGL renderer: %s\n", renderer);
 
-#if MODERN_OPENGL
+	#if MODERN_OPENGL
 		RunModern();
-#else
+	#else
 		RunLegacy();
-#endif
+	#endif
 
 		ReleasePlatform();
 		result = 0;

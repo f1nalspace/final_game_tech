@@ -2,7 +2,7 @@
  * @file final_platform_layer.hpp
  * @version v0.2.6 alpha
  * @author Torsten Spaete
- * @brief Final Platform Layer (FPL) - a open source single file header platform abstraction layer library.
+ * @brief Final Platform Layer (FPL) - A Open source C++ single file header platform abstraction layer library.
  *
  * This library is designed to abstract the underlying platform to a very simple and easy to use api.
  * The only dependencies are built-in operatoring system libraries and the C runtime library.
@@ -12,43 +12,57 @@
  * @mainpage
  * Summary of the Final Platform Layer (FPL) project.
  * Please see @ref final_platform_layer.hpp for more details.
- */
+**/
 
- /*
- final_platform_layer.hpp
- Open-Source Single-File Header-Library by Torsten Spaete
+/*
+final_platform_layer.hpp
+Open-Source C++ Single-File Header-Library by Torsten Spaete
 
- This library is designed to abstract the underlying platform to a very simple and easy to use api.
- The only dependencies are built-in operatoring system libraries and the C runtime library.
+This library is designed to abstract the underlying platform to a very simple and easy to use api.
+The only dependencies are built-in operatoring system libraries and the C runtime library.
 
- The main focus is game development, so the default settings will create a window and setup a opengl rendering context.
+The main focus is game development, so the default settings will create a window and setup a opengl rendering context.
 
- # HOW TO USE
+It works very well with other libraries like for example:
 
- // In one of your C++ translation units include this:
- #define FPL_IMPLEMENTATION
- #include "final_platform_layer.hpp"
+- STB Libraries
+- Standard C++ Library (STL)
+- Glew
+- Glad
+- Box2D
+- GLM
+- ImGUI
+- etc.
 
- // Provide the typical main entry point
- int main(int argc, char **args) {
- }
+But it wont work with other platform abstraction libraries like SDL/SFML/GLUT/GLFW etc.
 
- // Initialize the library and release it when you are done
- fpl::InitPlatform(fpl::InitFlags::All);
- ...
- fpl::ReleasePlatform();
+# HOW TO USE
 
- # EXAMPLES
+// In one of your C++ translation units include this:
+#define FPL_IMPLEMENTATION
+#include "final_platform_layer.hpp"
 
- ## Simple OpenGL 1.x Triangle
+// Provide the typical main entry point
+int main(int argc, char **args) {
+}
 
- #define FPL_IMPLEMENTATION
- #include "final_platform_layer.hpp"
+// Initialize the library and release it when you are done
+fpl::InitPlatform(fpl::InitFlags::All);
+...
+fpl::ReleasePlatform();
 
- int main(int argc, char **args) {
-	using namespace fpl;
-	using namespace fpl::memory;
-	using namespace fpl::window;
+# EXAMPLES
+
+## Simple OpenGL 1.x Triangle
+
+#define FPL_IMPLEMENTATION
+#include "final_platform_layer.hpp"
+
+using namespace fpl;
+using namespace fpl::memory;
+using namespace fpl::window;
+
+int main(int argc, char **args) {
 	int result = 0;
 	if (InitPlatform(InitFlags::VideoOpenGL)) {
 		glClearColor(0.39f, 0.58f, 0.93f, 1.0f);
@@ -71,128 +85,130 @@
 	return(result);
 }
 
- # HOW TO COMPILE
+# HOW TO COMPILE
 
- - Win32:
+- Win32:
 
-	 * Link to kernel32.lib
-	 * Link to user32.lib
-	 * Link to shell32.lib
-	 * Link to opengl32.lib (Only needed if you use opengl)
+	* Link to kernel32.lib
+	* Link to user32.lib
+	* Link to shell32.lib
+	* Link to opengl32.lib (Only needed if you use opengl)
 
- # PREPROCESSOR OVERRIDES
+# PREPROCESSOR OVERRIDES
 
- - FPL_API_AS_PRIVATE 0 or 1 (Default 0)
+	* FPL_API_AS_PRIVATE 0 or 1 (Default 0) -> Exports the functions as private (static) or not (export)
 
- - FPL_ENABLE_ASSERTIONS 0 or 1 (Default 1)
- - FPL_ENABLE_C_ASSERT (Default 1)
+	* FPL_ENABLE_ASSERTIONS 0 or 1 (Default 1) -> Enable assertions
+	* FPL_ENABLE_C_ASSERT (Default 1) -> Enable C-Runtime assertions or use simple 'write to zero ptr' macro
 
- - FPL_ENABLE_WINDOW 0 or 1 (Default 1)
- - FPL_ENABLE_OPENGL 0 or 1 (Default 1)
+	* FPL_ENABLE_WINDOW 0 or 1 (Default 1) -> Enable/Disable window support entirely
+	* FPL_ENABLE_OPENGL 0 or 1 (Default 1) -> Enable/Disable opengl support entirely
 
- - FPL_ENABLE_ERRORSTATES 0 or 1 (Default 1)
+	* FPL_ENABLE_ERRORSTATES 0 or 1 (Default 1) -> Enable multiple error states instead of a single last one
 
- # FEATURES
+# FEATURES
 
- [x] Creating a fixed or resizeable window
- [x] Handling window, keyboard, mouse events
- [x] Enable/Disable fullscreen
- [x] Polling gamepad informations
- [ ] Clipboard string reading and writing
+	[x] Creating a fixed or resizeable window
+	[x] Handling window, keyboard, mouse events
+	[x] Enable/Disable fullscreen
+	[x] Polling gamepad informations
+	[ ] Clipboard string reading and writing
 
- [x] Creating a 1.x opengl rendering context
- [x] Creating a 3.x + opengl rendering context
+	[x] Creating a 1.x opengl rendering context
+	[x] Creating a 3.x + opengl rendering context
+	[ ] Audio playback using OS native libraries
+	[x] Memory allocation and de-allocation with custom alignment support
+	[x] Atomic operations
+	[x] Path functions
+	[x] File functions
+	[x] Hardware functions
+	[x] String conversion functions
+	[ ] Thread, mutex, condition handling
 
- [ ] Audio playback using OS native libraries
+# SUPPORTED ARCHITECTURES
 
- [x] Memory allocation and de-allocation with custom alignment support
- [x] Atomic operations
- [x] Path functions
- [x] File functions
- [x] Hardware functions
- [x] String conversion functions
- [ ] Thread, mutex, condition handling
+	[x] x86
+	[x] x86_64
 
- # SUPPORTED ARCHITECTURES
+# SUPPORTED COMPILERS
 
- [x] x86
- [x] x86_64
+	[X] Compiles with MSVC
+	[ ] Compiles with MingW
+	[ ] Compiles with GCC/G++
+	[ ] Compiles with Clang
+	[ ] Compiles with Intel C/C++ Compiler
 
- # SUPPORTED COMPILERS
+# SUPPORTED PLATFORMS
 
- [X] Compiles with MSVC
- [ ] Compiles with MingW
- [ ] Compiles with GCC/G++
- [ ] Compiles with Clang
- [ ] Compiles with Intel C/C++ Compiler
+[x] Win32
+[ ] Linux
+[ ] Unix/Posix
+[ ] OSX (Not sure)
 
- # SUPPORTED PLATFORMS
+# LICENSE
 
- [x] Win32
- [ ] Linux
- [ ] Unix/Posix
- [ ] OSX (Not sure)
+MIT License
 
- # LICENSE
+Copyright (c) 2017 Torsten Spaete
+Permission is hereby granted, free of charge, to any person obtaining a copy of
+this software and associated documentation files (the "Software"), to deal in
+the Software without restriction, including without limitation the rights to
+use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies
+of the Software, and to permit persons to whom the Software is furnished to do
+so, subject to the following conditions:
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
 
- MIT License
+# TODO
 
- Copyright (c) 2017 Torsten Spaete
- Permission is hereby granted, free of charge, to any person obtaining a copy of
- this software and associated documentation files (the "Software"), to deal in
- the Software without restriction, including without limitation the rights to
- use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies
- of the Software, and to permit persons to whom the Software is furnished to do
- so, subject to the following conditions:
- The above copyright notice and this permission notice shall be included in all
- copies or substantial portions of the Software.
- THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
- AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
- OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
- SOFTWARE.
+	* REFERENCE.MD generation using doxygen
+	* Push only memory block for making any dest-buffer not required at all.
+	  Allocated in InitPlatform() and freed in ReleasePlatform().
 
- # TODO
+# VERSION HISTORY
 
- - Push only memory block for making any dest-buffer not required at all.
-   Allocated in InitPlatform() and freed in ReleasePlatform().
-
- # VERSION HISTORY
-
- - v0.2.6 alpha:
-	 * Added memory::CopyMemory
-	 * Added fpl::GetLastError and fpl::GetLastErrorCount for proper error handling
-	 * Added files::CreateBinaryFile and files::OpenBinaryFile for wide file paths
-	 * Added basic support for creating a modern opengl rendering context, see VideoCompabilityProfile in VideoSettings
-	 * Added support for enabling opengl vsync through WGL
-	 * Returns char * for all paths:: get like functions
-	 * Returns char/wchar_t * for all strings:: functions
-	 * Fixed files::CreateBinaryFile was never able to overwrite the file.
-	 * Fixed #include was in some namespaces defined
-	 * Fixed files::ClearMemory was wrong
-	 * Replaced all const constants with constexpr
-	 * Removed template code / Replaced it with macros
- - v0.2.5 alpha:
-	 * Added CreateDirectories
-	 * Returns char * for all path get like functions
-	 * Fixed CreateBinaryFile was never able to overwrite the file.
- - v0.2.4 alpha:
-	 * Changed to a doxygen + vc complaint documentation style
-	 * CopyFile2, DeleteFile2 and CloseFile2 are now CopyFile, DeleteFile, CloseFile
- - v0.2.3 alpha:
-	 * Support for doxygen in documentations
- - v0.2.2 alpha:
-	 * Added XInput support
- - v0.2.1 alpha:
-	 * Changed a lot of pointer arguments to reference
-	 * Added gamepad event structures
- - v0.2 alpha:
-	 * Dropped C support and moved to a more C++ ish api
-	 * Dropped no C-Runtime support
- - v0.1 alpha:
-	 * Initial version
+- v0.2.7 alpha:
+	* Updated documentation a lot
+	* Support for WGL opengl profile selection
+- v0.2.6 alpha:
+	* Added memory::CopyMemory
+	* Added fpl::GetLastError and fpl::GetLastErrorCount for proper error handling
+	* Added files::CreateBinaryFile and files::OpenBinaryFile for wide file paths
+	* Added basic support for creating a modern opengl rendering context, see VideoCompabilityProfile in VideoSettings
+	* Added support for enabling opengl vsync through WGL
+	* Returns char * for all paths:: get like functions
+	* Returns char/wchar_t * for all strings:: functions
+	* Fixed files::CreateBinaryFile was never able to overwrite the file.
+	* Fixed #include was in some namespaces defined
+	* Fixed files::ClearMemory was wrong
+	* Replaced all const constants with constexpr
+	* Removed template code / Replaced it with macros
+- v0.2.5 alpha:
+	* Added CreateDirectories
+	* Returns char * for all path get like functions
+	* Fixed CreateBinaryFile was never able to overwrite the file.
+- v.2.4 alpha:
+	* Changed to a doxygen + vc complaint documentation style
+	* CopyFile2, DeleteFile2 and CloseFile2 are now CopyFile, DeleteFile, CloseFile
+- v0.2.3 alpha:
+	* Support for doxygen in documentations
+- v0.2.2 alpha:
+	* Added XInput support
+- v0.2.1 alpha:
+	* Changed a lot of pointer arguments to reference
+	* Added gamepad event structures
+- v0.2 alpha:
+	* Dropped C support and moved to a more C++ ish api
+	* Dropped no C-Runtime support
+- v0.1 alpha:
+	* Initial version
 
  */
 
@@ -210,10 +226,13 @@
  //
 #if defined(_WIN32)
 #	define FPL_PLATFORM_WINDOWS
+#	define FPL_PLATFORM_NAME "Win32"
 #elif defined(__linux__) || defined(__gnu_linux__) || defined(linux)
 #	define FPL_PLATFORM_LINUX
+#	define FPL_PLATFORM_NAME "Linux"
 #elif defined(__unix__) || defined(_POSIX_VERSION)
 #	define FPL_PLATFORM_UNIX
+#	define FPL_PLATFORM_NAME "Unix"
 #else
 #	error "This platform/compiler is not supported!"
 #endif
@@ -416,22 +435,23 @@ namespace fpl {
 	};
 
 	enum class VideoCompabilityProfile {
-		Legacy = 0,
-		Any,
+		None = 0,
+		Legacy,
 		Core,
-		Compat,
+		ForwardCompatible,
+		BackwardCompatible,
 	};
 
 	struct VideoSettings {
 		VideoCompabilityProfile profile;
-		uint32_t minMajor;
-		uint32_t minMinor;
+		uint32_t majorVersion;
+		uint32_t minorVersion;
 		bool isDebug;
 		bool isVSync;
 
 		VideoSettings() {
 			profile = VideoCompabilityProfile::Legacy;
-			minMajor = minMinor = 0;
+			majorVersion = minorVersion = 0;
 			isDebug = false;
 			isVSync = false;
 		}
@@ -1169,10 +1189,10 @@ namespace fpl {
 	//
 	// Internal types and functions
 	//
+	constexpr uint32_t MAX_LAST_ERROR_STRING_LENGTH_INTERNAL = 1024;
 #if FPL_ENABLE_ERRORSTATES
 	// @NOTE(final): 1024 errors are more than enough
 	constexpr size_t MAX_ERRORSTATE_COUNT = 1024;
-	constexpr uint32_t MAX_LAST_ERROR_STRING_LENGTH_INTERNAL = 128;
 	struct ErrorState_Internal {
 		char errors[MAX_ERRORSTATE_COUNT][MAX_LAST_ERROR_STRING_LENGTH_INTERNAL];
 		size_t count;
@@ -1190,10 +1210,10 @@ namespace fpl {
 			FPL_ASSERT(state->count < MAX_ERRORSTATE_COUNT);
 			size_t errorIndex = state->count++;
 			strings::CopyAnsiString(buffer, messageLen, state->errors[errorIndex], MAX_LAST_ERROR_STRING_LENGTH_INTERNAL);
+			console::ConsoleError(buffer);
 		}
 	}
 #else
-	constexpr uint32_t MAX_LAST_ERROR_STRING_LENGTH_INTERNAL = 256;
 	struct ErrorState_Internal {
 		char error[MAX_LAST_ERROR_STRING_LENGTH_INTERNAL];
 	};
@@ -1650,9 +1670,28 @@ typedef WGL_CREATE_CONTEXT_ATTRIBS_ARB(wgl_create_context_attribs_arb);
 #define WGL_SWAP_INTERVAL_EXT(name) BOOL WINAPI name(int interval)
 typedef WGL_SWAP_INTERVAL_EXT(wgl_swap_interval_ext);
 
+#if !defined(GL_CONTEXT_FLAG_FORWARD_COMPATIBLE_BIT)
+#	define GL_CONTEXT_FLAG_FORWARD_COMPATIBLE_BIT 0x0001
+#	define GL_CONTEXT_FLAG_DEBUG_BIT 0x00000002
+#	define GL_CONTEXT_FLAG_ROBUST_ACCESS_BIT 0x00000004
+#	define GL_CONTEXT_FLAG_NO_ERROR_BIT 0x00000008
+#	define GL_CONTEXT_CORE_PROFILE_BIT 0x00000001
+#	define GL_CONTEXT_COMPATIBILITY_PROFILE_BIT 0x00000002
+#endif
+
+#if !defined(WGL_CONTEXT_DEBUG_BIT_ARB)
+#	define WGL_CONTEXT_DEBUG_BIT_ARB 0x0001
+#	define WGL_CONTEXT_FORWARD_COMPATIBLE_BIT_ARB 0x0002
+#	define WGL_CONTEXT_CORE_PROFILE_BIT_ARB 0x00000001
+#	define WGL_CONTEXT_COMPATIBILITY_PROFILE_BIT_ARB 0x00000002
+#	define WGL_CONTEXT_PROFILE_MASK_ARB 0x9126
+#	define WGL_CONTEXT_MAJOR_VERSION_ARB 0x2091
+#	define WGL_CONTEXT_MINOR_VERSION_ARB 0x2092
+#	define WGL_CONTEXT_LAYER_PLANE_ARB 0x2093
+#	define WGL_CONTEXT_FLAGS_ARB 0x2094
+#endif
+
 #if !defined(WGL_DRAW_TO_WINDOW_ARB)
-#define WGL_CONTEXT_DEBUG_BIT_ARB 0x0001
-#define WGL_CONTEXT_FORWARD_COMPATIBLE_BIT_ARB 0x0002
 #define WGL_DRAW_TO_WINDOW_ARB 0x2001
 #define WGL_ACCELERATION_ARB 0x2003
 #define WGL_SWAP_METHOD_ARB 0x2007
@@ -1665,10 +1704,6 @@ typedef WGL_SWAP_INTERVAL_EXT(wgl_swap_interval_ext);
 #define WGL_FULL_ACCELERATION_ARB 0x2027
 #define WGL_SWAP_EXCHANGE_ARB 0x2028
 #define WGL_TYPE_RGBA_ARB 0x202B
-#define WGL_CONTEXT_MAJOR_VERSION_ARB 0x2091
-#define WGL_CONTEXT_MINOR_VERSION_ARB 0x2092
-#define WGL_CONTEXT_LAYER_PLANE_ARB 0x2093
-#define WGL_CONTEXT_FLAGS_ARB 0x2094
 #endif
 
 struct wgl_extensions {
@@ -2015,7 +2050,7 @@ namespace fpl {
 	// Win32 Public Path/Directories
 	//
 	namespace paths {
-#	if defined(UNICODE)
+	#	if defined(UNICODE)
 		fpl_api char *GetExecutableFilePath(char *destPath, const uint32_t maxDestLen) {
 			using namespace strings;
 			FPL_ASSERT(destPath != nullptr);
@@ -2025,7 +2060,7 @@ namespace fpl {
 			WideStringToAnsiString(modulePath, GetWideStringLength(modulePath), destPath, maxDestLen);
 			return(destPath);
 		}
-#	else
+	#	else
 		fpl_api char *GetExecutableFilePath(char *destPath, const uint32_t maxDestLen) {
 			using namespace strings;
 			FPL_ASSERT(destPath != nullptr);
@@ -2035,7 +2070,7 @@ namespace fpl {
 			CopyAnsiString(modulePath, GetAnsiStringLength(modulePath), destPath, maxDestLen);
 			return(destPath);
 		}
-#	endif
+	#	endif
 
 		fpl_api char *GetHomePath(char *destPath, const uint32_t maxDestLen) {
 			using namespace strings;
@@ -2137,14 +2172,14 @@ namespace fpl {
 #	if FPL_ENABLE_WINDOW
 	namespace window {
 
-#	if FPL_ENABLE_OPENGL
+	#	if FPL_ENABLE_OPENGL
 		fpl_api void WindowFlip() {
 			SwapBuffers(globalWin32State_Internal.window.deviceContext);
 		}
-#	else
+	#	else
 		fpl_api void WindowFlip() {
 		}
-#	endif // FPL_ENABLE_OPENGL
+	#	endif // FPL_ENABLE_OPENGL
 
 		struct Win32WindowStyle_Internal {
 			DWORD style;
@@ -2901,7 +2936,7 @@ namespace fpl {
 		}
 
 		fpl_internal bool Win32CreateOpenGL_Internal(Win32State_Internal &win32State, const VideoSettings &videoSettings) {
-			HDC dc = win32State.window.deviceContext;
+			HDC deviceContext = win32State.window.deviceContext;
 			HWND handle = win32State.window.windowHandle;
 
 			PIXELFORMATDESCRIPTOR pfd = {};
@@ -2914,44 +2949,48 @@ namespace fpl {
 			pfd.cAlphaBits = 8;
 			pfd.iLayerType = PFD_MAIN_PLANE;
 
-			int pixelFormat = ChoosePixelFormat(dc, &pfd);
+			int pixelFormat = ChoosePixelFormat(deviceContext, &pfd);
 			if (!pixelFormat) {
-				PushError_Internal("Failed choosing Win32 RGBA Legacy Pixelformat for Color/Depth/Alpha (%d,%d,%d) and DC '%d'", pfd.cColorBits, pfd.cDepthBits, pfd.cAlphaBits, dc);
+				PushError_Internal("[Win32] Failed choosing RGBA Legacy Pixelformat for Color/Depth/Alpha (%d,%d,%d) and DC '%x'\n", pfd.cColorBits, pfd.cDepthBits, pfd.cAlphaBits, deviceContext);
 				return false;
 			}
 
-			if (!SetPixelFormat(dc, pixelFormat, &pfd)) {
-				PushError_Internal("Failed setting Win32 RGBA Pixelformat '%d' for Color/Depth/Alpha (%d,%d,%d and DC '%d')", pixelFormat, pfd.cColorBits, pfd.cDepthBits, pfd.cAlphaBits, dc);
+			if (!SetPixelFormat(deviceContext, pixelFormat, &pfd)) {
+				PushError_Internal("[Win32] Failed setting RGBA Pixelformat '%d' for Color/Depth/Alpha (%d,%d,%d and DC '%x')\n", pixelFormat, pfd.cColorBits, pfd.cDepthBits, pfd.cAlphaBits, deviceContext);
 				return false;
 			}
 
-			HGLRC tempRenderingContext = wglCreateContext(dc);
-			if (!tempRenderingContext) {
-				PushError_Internal("Failed creating Win32 Legacy OpenGL Rendering Context for DC '%d')", dc);
+			HGLRC legacyRenderingContext = wglCreateContext(deviceContext);
+			if (!legacyRenderingContext) {
+				PushError_Internal("[Win32] Failed creating Legacy OpenGL Rendering Context for DC '%x')\n", deviceContext);
 				return false;
 			}
 
-			if (!wglMakeCurrent(dc, tempRenderingContext)) {
-				PushError_Internal("Failed activating Win32 OpenGL Rendering Context for DC '%d' and RC '%d')", dc, tempRenderingContext);
-				wglDeleteContext(tempRenderingContext);
+			if (!wglMakeCurrent(deviceContext, legacyRenderingContext)) {
+				PushError_Internal("[Win32] Failed activating Legacy OpenGL Rendering Context for DC '%x' and RC '%x')\n", deviceContext, legacyRenderingContext);
+				wglDeleteContext(legacyRenderingContext);
 				return false;
 			}
 
 			Win32LoadOpenGLExtensions_Internal(win32State);
 
-			HGLRC rc = tempRenderingContext;
-			if ((videoSettings.profile != VideoCompabilityProfile::Legacy) &&
-				(videoSettings.minMajor > 0 && videoSettings.minMinor >= 0)) {
-				if (!globalWGLExtensions.choosePixelFormatArb) {
-					PushError_Internal("wglChoosePixelFormatARB is not available, please select a different video profile!");
-					return false;
-				}
-				if (!globalWGLExtensions.createContextAttribsArb) {
-					PushError_Internal("wglCreateContextAttribsARB is not available, please select a different video profile!");
+			HGLRC activeRenderingContext = legacyRenderingContext;
+			if (videoSettings.profile != VideoCompabilityProfile::Legacy) {
+				if (!(videoSettings.majorVersion >= 3 && videoSettings.minorVersion >= 0)) {
+					PushError_Internal("[Win32] You have not specified the 'majorVersion' and 'minorVersion' in the VideoSettings!\n");
 					return false;
 				}
 
-#if 0
+				if (!globalWGLExtensions.choosePixelFormatArb) {
+					PushError_Internal("[Win32] wglChoosePixelFormatARB is not available, please select a different video profile!\n");
+					return false;
+				}
+				if (!globalWGLExtensions.createContextAttribsArb) {
+					PushError_Internal("[Win32] wglCreateContextAttribsARB is not available, please select a different video profile!\n");
+					return false;
+				}
+
+			#if 0
 				// @TODO(final): This seems not to work at all (http://rastertek.com/gl40tut03.html)
 				int colorBits = 24;
 				int depthBits = 24;
@@ -2971,64 +3010,93 @@ namespace fpl {
 
 				int pixelFormats[1] = {};
 				unsigned int formatCount = 0;
-				int choosePixelResult = globalWGLExtensions.choosePixelFormatArb(dc, pixelAttributeList, nullptr, 1, pixelFormats, &formatCount);
+				int choosePixelResult = globalWGLExtensions.choosePixelFormatArb(deviceContext, pixelAttributeList, nullptr, 1, pixelFormats, &formatCount);
 				if (choosePixelResult != 1) {
-					PushError_Internal("Failed choosing Win32 RGBA Modern Pixelformat for Color/Depth/Alpha (%d,%d,%d) and DC '%d'", colorBits, depthBits, alphaBits, dc);
+					PushError_Internal("[Win32] Failed choosing RGBA Modern Pixelformat for Color/Depth/Alpha (%d,%d,%d) and DC '%x'\n", colorBits, depthBits, alphaBits, deviceContext);
 					return false;
 				}
 
 				int pixelFormat = pixelFormats[0];
 				PIXELFORMATDESCRIPTOR pfd;
-				if (SetPixelFormat(dc, pixelFormat, &pfd) != 1) {
-					PushError_Internal("Failed setting Win32 RGBA Modern Pixelformat '%d' for Color/Depth/Alpha (%d,%d,%d and DC '%d')", pixelFormat, pfd.cColorBits, pfd.cDepthBits, pfd.cAlphaBits, dc);
+				if (SetPixelFormat(deviceContext, pixelFormat, &pfd) != 1) {
+					PushError_Internal("[Win32] Failed setting RGBA Modern Pixelformat '%d' for Color/Depth/Alpha (%d,%d,%d) and DC '%x'\n", pixelFormat, pfd.cColorBits, pfd.cDepthBits, pfd.cAlphaBits, deviceContext);
 					return false;
 				}
-#endif
+			#endif
 
-				int contextAttribList[] = {
-					WGL_CONTEXT_MAJOR_VERSION_ARB, (int)videoSettings.minMajor,
-					WGL_CONTEXT_MINOR_VERSION_ARB, (int)videoSettings.minMinor,
-					WGL_CONTEXT_FLAGS_ARB, 0,
-					0,
-			};
+				int contextAttribList[32 + 1] = {};
+				int contextAttribCount = 0;
+				int contextFlags = 0;
+				int profileMask = 0;
 
-				HGLRC newContext = globalWGLExtensions.createContextAttribsArb(dc, 0, contextAttribList);
-				if (newContext) {
-					// Destroy old rendering context
-					wglMakeCurrent(nullptr, nullptr);
-					wglDeleteContext(tempRenderingContext);
-					rc = newContext;
-				} else {
-					PushError_Internal("Warning: Failed creating Win32 Modern OpenGL Rendering Context for version (%d.%d) and DC '%d')", dc, videoSettings.minMajor, videoSettings.minMinor);
+				// @TODO(final): This entire profile thingy confuses me a lot, make it right!
+			#if 0
+				switch (videoSettings.profile) {
+					case VideoCompabilityProfile::Core:
+					{
+						profileMask = WGL_CONTEXT_CORE_PROFILE_BIT_ARB;
+					} break;
+					case VideoCompabilityProfile::ForwardCompatible:
+					{
+						contextFlags = WGL_CONTEXT_FORWARD_COMPATIBLE_BIT_ARB;
+						profileMask = WGL_CONTEXT_CORE_PROFILE_BIT_ARB;
+					} break;
+					case VideoCompabilityProfile::BackwardCompatible:
+					{
+						profileMask = WGL_CONTEXT_COMPATIBILITY_PROFILE_BIT_ARB;
+					} break;
 				}
-		}
+			#endif
 
-			FPL_ASSERT(rc != nullptr);
+				contextAttribList[contextAttribCount++] = WGL_CONTEXT_MAJOR_VERSION_ARB;
+				contextAttribList[contextAttribCount++] = (int)videoSettings.majorVersion;
+				contextAttribList[contextAttribCount++] = WGL_CONTEXT_MINOR_VERSION_ARB;
+				contextAttribList[contextAttribCount++] = (int)videoSettings.minorVersion;
+				contextAttribList[contextAttribCount++] = WGL_CONTEXT_FLAGS_ARB;
+				contextAttribList[contextAttribCount++] = contextFlags;
+				contextAttribList[contextAttribCount++] = WGL_CONTEXT_PROFILE_MASK_ARB;
+				contextAttribList[contextAttribCount++] = profileMask;
+				contextAttribList[contextAttribCount++] = 0;
 
-			if (!wglMakeCurrent(dc, rc)) {
-				PushError_Internal("Failed activating Win32 OpenGL Rendering Context for DC '%d' and RC '%d')", dc, tempRenderingContext);
-				wglDeleteContext(rc);
-				return false;
+				HGLRC newContext = globalWGLExtensions.createContextAttribsArb(deviceContext, 0, contextAttribList);
+				if (newContext) {
+					if (!wglMakeCurrent(deviceContext, newContext)) {
+						PushError_Internal("[Win32] Warning: Failed activating Modern OpenGL Rendering Context for version (%llu.%llu) and DC '%x') -> Fallback to legacy context.\n", videoSettings.majorVersion, videoSettings.minorVersion, deviceContext);
+						wglDeleteContext(newContext);
+						newContext = nullptr;
+					} else {
+						// Destroy legacy rendering context
+						wglMakeCurrent(nullptr, nullptr);
+						wglDeleteContext(legacyRenderingContext);
+						activeRenderingContext = newContext;
+					}
+				} else {
+					PushError_Internal("[Win32] Warning: Failed creating Modern OpenGL Rendering Context for version (%llu.%llu) and DC '%x') -> Fallback to legacy context.\n", videoSettings.majorVersion, videoSettings.minorVersion, deviceContext);
+				}
 			}
 
-			win32State.opengl.renderingContext = rc;
+			FPL_ASSERT(activeRenderingContext != nullptr);
 
+			win32State.opengl.renderingContext = activeRenderingContext;
+
+			// Set vertical syncronisation if available
 			if (globalWGLExtensions.swapIntervalExt != nullptr) {
-				globalWGLExtensions.swapIntervalExt(videoSettings.isVSync ? 1 : 0);
+				int swapInterval = videoSettings.isVSync ? 1 : 0;
+				globalWGLExtensions.swapIntervalExt(swapInterval);
 			}
 
 			return true;
-	}
+		}
 
 		fpl_internal void Win32ReleaseOpenGLContext_Internal(Win32State_Internal &win32State) {
 			if (win32State.opengl.renderingContext) {
 				globalWGLExtensions = {};
-				wglMakeCurrent(0, 0);
+				wglMakeCurrent(nullptr, nullptr);
 				wglDeleteContext(win32State.opengl.renderingContext);
 				win32State.opengl.renderingContext = nullptr;
 			}
 		}
-};
+	};
 #	endif // FPL_ENABLE_WINDOW && FPL_ENABLE_OPENGL
 
 #	if FPL_ENABLE_WINDOW
@@ -3050,7 +3118,7 @@ namespace fpl {
 			windowClass.lpfnWndProc = Win32MessageProc_Internal;
 			WIN32_STRINGCOPY(windowClass.lpszClassName, WIN32_GETSTRINGLENGTH(windowClass.lpszClassName), win32State.window.windowClass, FPL_ARRAYCOUNT(win32State.window.windowClass));
 			if (RegisterClassEx(&windowClass) == 0) {
-				PushError_Internal("Failed Registering Win32 Window Class '%s'", win32State.window.windowClass);
+				PushError_Internal("[Win32] Failed Registering Window Class '%s'", win32State.window.windowClass);
 				return false;
 			}
 
@@ -3058,7 +3126,7 @@ namespace fpl {
 			size_t eventQueueMemorySize = sizeof(EventQueue_Internal);
 			void *eventQueueMemory = AllocateAlignedMemory(eventQueueMemorySize, 16);
 			if (eventQueueMemory == nullptr) {
-				PushError_Internal("Failed Allocating Win32 Event Queue Memory with size '%llu'!", eventQueueMemorySize);
+				PushError_Internal("[Win32] Failed Allocating Event Queue Memory with size '%llu'!", eventQueueMemorySize);
 				return false;
 			}
 			globalEventQueue_Internal = (EventQueue_Internal *)eventQueueMemory;
@@ -3104,14 +3172,14 @@ namespace fpl {
 
 			win32State.window.windowHandle = CreateWindowEx(exStyle, windowClass.lpszClassName, windowTitle, style, windowX, windowY, windowWidth, windowHeight, nullptr, nullptr, windowClass.hInstance, nullptr);
 			if (win32State.window.windowHandle == nullptr) {
-				PushError_Internal("Failed creating Win32 window for class '%s' and position (%d x %d) with size (%d x %d)", win32State.window.windowClass, windowWidth, windowHeight, windowWidth, windowHeight);
+				PushError_Internal("[Win32] Failed creating window for class '%s' and position (%d x %d) with size (%d x %d)", win32State.window.windowClass, windowWidth, windowHeight, windowWidth, windowHeight);
 				return false;
 			}
 
 			// Get device context so we can swap the back and front buffer
 			win32State.window.deviceContext = GetDC(win32State.window.windowHandle);
 			if (win32State.window.deviceContext == nullptr) {
-				PushError_Internal("Failed aquiring Win32 device context from window '%d'", win32State.window.windowHandle);
+				PushError_Internal("[Win32] Failed aquiring device context from window '%d'", win32State.window.windowHandle);
 				return false;
 			}
 
@@ -3124,7 +3192,7 @@ namespace fpl {
 			if (initFlags & InitFlags::VideoOpenGL) {
 				bool openglResult = Win32CreateOpenGL_Internal(win32State, initSettings.video);
 				if (!openglResult) {
-					PushError_Internal("Failed creating a Win32 OpenGL rendering context for window '%d'", win32State.window.windowHandle);
+					PushError_Internal("[Win32] Failed initializing OpenGL for window '%d'/'%s'", win32State.window.windowHandle, win32State.window.windowClass);
 					return false;
 				}
 			}
@@ -3197,25 +3265,25 @@ namespace fpl {
 		// Timing
 		QueryPerformanceFrequency(&win32State.performanceFrequency);
 
-#if FPL_ENABLE_WINDOW
+	#if FPL_ENABLE_WINDOW
 		// XInput
 		win32State.xinput.xinputLibrary = window::Win32LoadXInput_Internal();
 
 		InitFlags usedInitFlags = initFlags;
 
-#	if FPL_ENABLE_OPENGL
+	#	if FPL_ENABLE_OPENGL
 		if (usedInitFlags & InitFlags::VideoOpenGL) {
 			usedInitFlags |= InitFlags::Window;
 		}
-#	endif
+	#	endif
 
 		if (usedInitFlags & InitFlags::Window) {
 			if (!window::Win32InitWindow_Internal(win32State, usedInitFlags, initSettings)) {
-				PushError_Internal("Failed creating a Win32 window with flags '%d' and settings (Width=%d, Height=%d)", usedInitFlags, initSettings.window.windowWidth, initSettings.window.windowHeight);
+				PushError_Internal("[Win32] Failed creating a window with flags '%d' and settings (Width=%d, Height=%d, Videoprofile=%d)", usedInitFlags, initSettings.window.windowWidth, initSettings.window.windowHeight, initSettings.video.profile);
 				return false;
 			}
 		}
-#endif // FPL_ENABLE_WINDOW
+	#endif // FPL_ENABLE_WINDOW
 
 		win32State.isInitialized = true;
 
@@ -3226,16 +3294,16 @@ namespace fpl {
 		Win32State_Internal &win32State = globalWin32State_Internal;
 		FPL_ASSERT(win32State.isInitialized);
 
-#if FPL_ENABLE_WINDOW
+	#if FPL_ENABLE_WINDOW
 		if (win32State.window.currentSettings.isFullscreen) {
 			window::Win32LeaveFullscreen_Internal();
 		}
 		window::Win32UnloadXInput_Internal(win32State.xinput.xinputLibrary);
-#	if FPL_ENABLE_OPENGL
+	#	if FPL_ENABLE_OPENGL
 		window::Win32ReleaseOpenGLContext_Internal(win32State);
-#	endif
+	#	endif
 		window::Win32ReleaseWindow_Internal(win32State);
-#endif
+	#endif
 
 		memory::FreeAlignedMemory(globalLastError_Internal);
 		globalLastError_Internal = nullptr;
@@ -3246,47 +3314,47 @@ namespace fpl {
 	fpl_api const char *GetLastError(const size_t index) {
 		const char *result = nullptr;
 		if (globalLastError_Internal != nullptr) {
-#if FPL_ENABLE_ERRORSTATES
+		#if FPL_ENABLE_ERRORSTATES
 			if (index > -1 && index < (int32_t)globalLastError_Internal->count) {
 				result = globalLastError_Internal->errors[index];
 			} else {
 				result = globalLastError_Internal->errors[globalLastError_Internal->count - 1];
 			}
-#else
+		#else
 			result = globalLastError_Internal->error;
-#endif
+		#endif
 		}
 		return (result);
-		}
+	}
 
 	fpl_api const char *GetLastError() {
 		const char *result = nullptr;
 		if (globalLastError_Internal != nullptr) {
-#if FPL_ENABLE_ERRORSTATES
+		#if FPL_ENABLE_ERRORSTATES
 			if (globalLastError_Internal->count > 0) {
 				size_t index = globalLastError_Internal->count - 1;
 				result = GetLastError(index);
 			}
-#else
+		#else
 			result = globalLastError_Internal->error;
-#endif
+		#endif
 		}
 		return (result);
-		}
+	}
 
 	fpl_api size_t GetLastErrorCount() {
 		size_t result = 0;
 		if (globalLastError_Internal != nullptr) {
-#if FPL_ENABLE_ERRORSTATES
+		#if FPL_ENABLE_ERRORSTATES
 			result = globalLastError_Internal->count;
-#else
+		#else
 			result = strings::GetAnsiStringLength(globalLastError_Internal->error) > 0 ? 1 : 0;
-#endif
+		#endif
 		}
 		return (result);
-		}
-
 	}
+
+}
 
 //
 // Win32 Entry-Point
