@@ -4,6 +4,9 @@ del /q *.ghostdoc*
 del /q *.sdf
 rmdir /q /s .vs
 rmdir /q /s debug
+rmdir /q /s release
+rmdir /q /s win32
+rmdir /q /s x64
 rmdir /q /s FPL_Console\debug
 rmdir /q /s FPL_Console\release
 rmdir /q /s FPL_Console\x64

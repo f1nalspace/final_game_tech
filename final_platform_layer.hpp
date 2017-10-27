@@ -1,6 +1,6 @@
 /**
  * @file final_platform_layer.hpp
- * @version v0.2.6 alpha
+ * @version v0.3.0 beta
  * @author Torsten Spaete
  * @brief Final Platform Layer (FPL) - A Open source C++ single file header platform abstraction layer library.
  *
@@ -96,16 +96,26 @@ int main(int argc, char **args) {
 
 # PREPROCESSOR OVERRIDES
 
-	* FPL_API_AS_PRIVATE 0 or 1 (Default 0) -> Exports the functions as private (static) or not (export)
+	* FPL_API_AS_PRIVATE 0 or 1 (Default 0)
+	-> Exports the functions as private (static) or not (export)
 
-	* FPL_ENABLE_ASSERTIONS 0 or 1 (Default 1) -> Enable assertions
-	* FPL_ENABLE_C_ASSERT (Default 1) -> Enable C-Runtime assertions or use simple 'write to zero ptr' macro
+	* FPL_ENABLE_ASSERTIONS 0 or 1 (Default 1)
+	-> Enable assertions
+	
+	* FPL_ENABLE_C_ASSERT (Default 1)
+	-> Enable C-Runtime assertions or use simple 'write to zero ptr' macro
 
-	* FPL_ENABLE_WINDOW 0 or 1 (Default 1) -> Enable/Disable window support entirely
-	* FPL_ENABLE_OPENGL 0 or 1 (Default 1) -> Enable/Disable opengl support entirely
+	* FPL_ENABLE_WINDOW 0 or 1 (Default 1)
+	-> Enable/Disable window support entirely
+	
+	* FPL_ENABLE_OPENGL 0 or 1 (Default 1)
+	-> Enable/Disable opengl support entirely
 
-	* FPL_ENABLE_ERRORSTATES 0 or 1 (Default 1) -> Enable multiple error states instead of a single last one
-	* FPL_ENABLE_ERROR_IN_CONSOLE 0 or 1 (Default 1) -> Enable writing out errors in the error console as well
+	* FPL_ENABLE_ERRORSTATES 0 or 1 (Default 1)
+	-> Enable multiple error states instead of a single last one
+	
+	* FPL_ENABLE_ERROR_IN_CONSOLE 0 or 1 (Default 1)
+	-> Enable writing out errors in the error console as well
 
 # FEATURES
 
@@ -175,9 +185,9 @@ SOFTWARE.
 
 # VERSION HISTORY
 
-- v0.2.7 alpha:
+- v0.3.0 alpha:
 	* Updated documentation a lot
-	* Support for WGL opengl profile selection
+	* [Win32] Support for WGL opengl profile selection
 - v0.2.6 alpha:
 	* Added memory::CopyMemory
 	* Added fpl::GetLastError and fpl::GetLastErrorCount for proper error handling
@@ -439,24 +449,20 @@ namespace fpl {
 	};
 
 	enum class VideoCompabilityProfile {
-		None = 0,
 		Legacy,
 		Core,
-		ForwardCompatible,
-		BackwardCompatible,
+		Forward,
 	};
 
 	struct VideoSettings {
 		VideoCompabilityProfile profile;
 		uint32_t majorVersion;
 		uint32_t minorVersion;
-		bool isDebug;
 		bool isVSync;
 
 		VideoSettings() {
 			profile = VideoCompabilityProfile::Legacy;
 			majorVersion = minorVersion = 0;
-			isDebug = false;
 			isVSync = false;
 		}
 	};
@@ -1214,9 +1220,9 @@ namespace fpl {
 			FPL_ASSERT(state->count < MAX_ERRORSTATE_COUNT);
 			size_t errorIndex = state->count++;
 			strings::CopyAnsiString(buffer, messageLen, state->errors[errorIndex], MAX_LAST_ERROR_STRING_LENGTH_INTERNAL);
-#if FPL_ENABLE_ERROR_IN_CONSOLE
+		#if FPL_ENABLE_ERROR_IN_CONSOLE
 			console::ConsoleError(buffer);
-#endif
+		#endif
 		}
 	}
 #else
@@ -1234,9 +1240,9 @@ namespace fpl {
 			vsprintf_s(buffer, FPL_ARRAYCOUNT(buffer), format, argList);
 			uint32_t messageLen = strings::GetAnsiStringLength(buffer);
 			strings::CopyAnsiString(buffer, messageLen, state->error, MAX_LAST_ERROR_STRING_LENGTH_INTERNAL);
-#if FPL_ENABLE_ERROR_IN_CONSOLE
+		#if FPL_ENABLE_ERROR_IN_CONSOLE
 			console::ConsoleError(buffer);
-#endif
+		#endif
 		}
 	}
 #endif
@@ -2954,7 +2960,7 @@ namespace fpl {
 			pfd.dwFlags = PFD_DOUBLEBUFFER | PFD_SUPPORT_OPENGL | PFD_DRAW_TO_WINDOW;
 			pfd.iPixelType = PFD_TYPE_RGBA;
 			pfd.cColorBits = 32;
-			pfd.cDepthBits = 32;
+			pfd.cDepthBits = 24;
 			pfd.cAlphaBits = 8;
 			pfd.iLayerType = PFD_MAIN_PLANE;
 
@@ -2968,6 +2974,8 @@ namespace fpl {
 				PushError_Internal("[Win32] Failed setting RGBA Pixelformat '%d' for Color/Depth/Alpha (%d,%d,%d and DC '%x')\n", pixelFormat, pfd.cColorBits, pfd.cDepthBits, pfd.cAlphaBits, deviceContext);
 				return false;
 			}
+
+			DescribePixelFormat(deviceContext, pixelFormat, sizeof(pfd), &pfd);
 
 			HGLRC legacyRenderingContext = wglCreateContext(deviceContext);
 			if (!legacyRenderingContext) {
@@ -2983,8 +2991,11 @@ namespace fpl {
 
 			Win32LoadOpenGLExtensions_Internal(win32State);
 
+			wglMakeCurrent(nullptr, nullptr);
+
 			HGLRC activeRenderingContext = legacyRenderingContext;
 			if (videoSettings.profile != VideoCompabilityProfile::Legacy) {
+				// @NOTE(final): This is only available in OpenGL 3.0+
 				if (!(videoSettings.majorVersion >= 3 && videoSettings.minorVersion >= 0)) {
 					PushError_Internal("[Win32] You have not specified the 'majorVersion' and 'minorVersion' in the VideoSettings!\n");
 					return false;
@@ -2999,88 +3010,44 @@ namespace fpl {
 					return false;
 				}
 
-			#if 0
-				// @TODO(final): This seems not to work at all (http://rastertek.com/gl40tut03.html)
-				int colorBits = 24;
-				int depthBits = 24;
-				int alphaBits = 8;
-				int pixelAttributeList[] = {
-					WGL_SUPPORT_OPENGL_ARB, TRUE,
-					WGL_DRAW_TO_WINDOW_ARB, TRUE,
-					WGL_ACCELERATION_ARB, WGL_FULL_ACCELERATION_ARB,
-					WGL_DOUBLE_BUFFER_ARB, TRUE,
-					WGL_SWAP_METHOD_ARB, WGL_SWAP_EXCHANGE_ARB,
-					WGL_PIXEL_TYPE_ARB, WGL_TYPE_RGBA_ARB,
-					WGL_COLOR_BITS_ARB, colorBits,
-					WGL_DEPTH_BITS_ARB, depthBits,
-					WGL_STENCIL_BITS_ARB, alphaBits,
-					0
-				};
-
-				int pixelFormats[1] = {};
-				unsigned int formatCount = 0;
-				int choosePixelResult = globalWGLExtensions.choosePixelFormatArb(deviceContext, pixelAttributeList, nullptr, 1, pixelFormats, &formatCount);
-				if (choosePixelResult != 1) {
-					PushError_Internal("[Win32] Failed choosing RGBA Modern Pixelformat for Color/Depth/Alpha (%d,%d,%d) and DC '%x'\n", colorBits, depthBits, alphaBits, deviceContext);
-					return false;
+				int contextAttribIndex = 0;
+				int contextAttribList[20 + 1] = {};
+				contextAttribList[contextAttribIndex++] = WGL_CONTEXT_MAJOR_VERSION_ARB;
+				contextAttribList[contextAttribIndex++] = (int)videoSettings.majorVersion;
+				contextAttribList[contextAttribIndex++] = WGL_CONTEXT_MINOR_VERSION_ARB;
+				contextAttribList[contextAttribIndex++] = (int)videoSettings.minorVersion;
+				if (videoSettings.profile == VideoCompabilityProfile::Core) {
+					contextAttribList[contextAttribIndex++] = WGL_CONTEXT_PROFILE_MASK_ARB;
+					contextAttribList[contextAttribIndex++] = WGL_CONTEXT_CORE_PROFILE_BIT_ARB;
+				} else {
+					FPL_ASSERT(videoSettings.profile == VideoCompabilityProfile::Forward);
+					contextAttribList[contextAttribIndex++] = WGL_CONTEXT_FLAGS_ARB;
+					contextAttribList[contextAttribIndex++] = WGL_CONTEXT_FORWARD_COMPATIBLE_BIT_ARB;
 				}
-
-				int pixelFormat = pixelFormats[0];
-				PIXELFORMATDESCRIPTOR pfd;
-				if (SetPixelFormat(deviceContext, pixelFormat, &pfd) != 1) {
-					PushError_Internal("[Win32] Failed setting RGBA Modern Pixelformat '%d' for Color/Depth/Alpha (%d,%d,%d) and DC '%x'\n", pixelFormat, pfd.cColorBits, pfd.cDepthBits, pfd.cAlphaBits, deviceContext);
-					return false;
-				}
-			#endif
-
-				int contextAttribList[32 + 1] = {};
-				int contextAttribCount = 0;
-				int contextFlags = 0;
-				int profileMask = 0;
-
-				// @TODO(final): This entire profile thingy confuses me a lot, make it right!
-			#if 0
-				switch (videoSettings.profile) {
-					case VideoCompabilityProfile::Core:
-					{
-						profileMask = WGL_CONTEXT_CORE_PROFILE_BIT_ARB;
-					} break;
-					case VideoCompabilityProfile::ForwardCompatible:
-					{
-						contextFlags = WGL_CONTEXT_FORWARD_COMPATIBLE_BIT_ARB;
-						profileMask = WGL_CONTEXT_CORE_PROFILE_BIT_ARB;
-					} break;
-					case VideoCompabilityProfile::BackwardCompatible:
-					{
-						profileMask = WGL_CONTEXT_COMPATIBILITY_PROFILE_BIT_ARB;
-					} break;
-				}
-			#endif
-
-				contextAttribList[contextAttribCount++] = WGL_CONTEXT_MAJOR_VERSION_ARB;
-				contextAttribList[contextAttribCount++] = (int)videoSettings.majorVersion;
-				contextAttribList[contextAttribCount++] = WGL_CONTEXT_MINOR_VERSION_ARB;
-				contextAttribList[contextAttribCount++] = (int)videoSettings.minorVersion;
-				contextAttribList[contextAttribCount++] = WGL_CONTEXT_FLAGS_ARB;
-				contextAttribList[contextAttribCount++] = contextFlags;
-				contextAttribList[contextAttribCount++] = WGL_CONTEXT_PROFILE_MASK_ARB;
-				contextAttribList[contextAttribCount++] = profileMask;
-				contextAttribList[contextAttribCount++] = 0;
 
 				HGLRC newContext = globalWGLExtensions.createContextAttribsArb(deviceContext, 0, contextAttribList);
 				if (newContext) {
 					if (!wglMakeCurrent(deviceContext, newContext)) {
 						PushError_Internal("[Win32] Warning: Failed activating Modern OpenGL Rendering Context for version (%llu.%llu) and DC '%x') -> Fallback to legacy context.\n", videoSettings.majorVersion, videoSettings.minorVersion, deviceContext);
+
 						wglDeleteContext(newContext);
 						newContext = nullptr;
+
+						// Fallback to legacy context
+						wglMakeCurrent(deviceContext, legacyRenderingContext);
+						activeRenderingContext = legacyRenderingContext;
 					} else {
 						// Destroy legacy rendering context
-						wglMakeCurrent(nullptr, nullptr);
 						wglDeleteContext(legacyRenderingContext);
+						legacyRenderingContext = nullptr;
 						activeRenderingContext = newContext;
 					}
 				} else {
 					PushError_Internal("[Win32] Warning: Failed creating Modern OpenGL Rendering Context for version (%llu.%llu) and DC '%x') -> Fallback to legacy context.\n", videoSettings.majorVersion, videoSettings.minorVersion, deviceContext);
+
+					// Fallback to legacy context
+					wglMakeCurrent(deviceContext, legacyRenderingContext);
+					activeRenderingContext = legacyRenderingContext;
 				}
 			}
 
@@ -3105,7 +3072,7 @@ namespace fpl {
 				win32State.opengl.renderingContext = nullptr;
 			}
 		}
-	};
+			};
 #	endif // FPL_ENABLE_WINDOW && FPL_ENABLE_OPENGL
 
 #	if FPL_ENABLE_WINDOW
@@ -3332,9 +3299,9 @@ namespace fpl {
 		#else
 			result = globalLastError_Internal->error;
 		#endif
-		}
+			}
 		return (result);
-	}
+		}
 
 	fpl_api const char *GetLastError() {
 		const char *result = nullptr;
@@ -3347,9 +3314,9 @@ namespace fpl {
 		#else
 			result = globalLastError_Internal->error;
 		#endif
-		}
+			}
 		return (result);
-	}
+		}
 
 	fpl_api size_t GetLastErrorCount() {
 		size_t result = 0;
@@ -3363,7 +3330,7 @@ namespace fpl {
 		return (result);
 	}
 
-}
+	}
 
 //
 // Win32 Entry-Point
@@ -3380,7 +3347,7 @@ int WINAPI wWinMain(HINSTANCE appInstance, HINSTANCE prevInstance, LPWSTR cmdLin
 	// @TODO(final): Parse command line parameters
 	int result = main(0, 0);
 	return(result);
-}
+	}
 #		else
 int WINAPI WinMain(HINSTANCE appInstance, HINSTANCE prevInstance, LPSTR cmdLine, int cmdShow) {
 	fpl::globalWin32State_Internal.appInstance = appInstance;
