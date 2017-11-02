@@ -1,6 +1,6 @@
 /**
  * @file final_platform_layer.hpp
- * @version v0.3.0 beta
+ * @version v0.3.1 beta
  * @author Torsten Spaete
  * @brief Final Platform Layer (FPL) - A Open source C++ single file header platform abstraction layer library.
  *
@@ -27,8 +27,7 @@ It works very well with other libraries like for example:
 
 - STB Libraries
 - Standard C++ Library (STL)
-- Glew
-- Glad
+- Glew/Glad
 - Box2D
 - GLM
 - ImGUI
@@ -101,19 +100,19 @@ int main(int argc, char **args) {
 
 	* FPL_ENABLE_ASSERTIONS 0 or 1 (Default 1)
 	-> Enable assertions
-	
+
 	* FPL_ENABLE_C_ASSERT (Default 1)
 	-> Enable C-Runtime assertions or use simple 'write to zero ptr' macro
 
 	* FPL_ENABLE_WINDOW 0 or 1 (Default 1)
 	-> Enable/Disable window support entirely
-	
+
 	* FPL_ENABLE_OPENGL 0 or 1 (Default 1)
 	-> Enable/Disable opengl support entirely
 
 	* FPL_ENABLE_ERRORSTATES 0 or 1 (Default 1)
 	-> Enable multiple error states instead of a single last one
-	
+
 	* FPL_ENABLE_ERROR_IN_CONSOLE 0 or 1 (Default 1)
 	-> Enable writing out errors in the error console as well
 
@@ -185,6 +184,9 @@ SOFTWARE.
 
 # VERSION HISTORY
 
+- v0.3.1 alpha:
+	* All types/structs/fields/functions documented
+	* [Win32] Fixed legacy opengl (GL_INVALID_OPERATION)
 - v0.3.0 alpha:
 	* Updated documentation a lot
 	* [Win32] Support for WGL opengl profile selection
@@ -266,23 +268,32 @@ SOFTWARE.
 // See: http://nadeausoftware.com/articles/2012/10/c_c_tip_how_detect_compiler_name_and_version_using_compiler_predefined_macros
 //
 #if defined(_MSC_VER)
+	//! Visual studio compiler detected
 #	define FPL_COMPILER_MSVC
 #	if defined(_DEBUG) || (!defined(NDEBUG))
+		//! Debug mode detected
 #		define FPL_DEBUG
 #	else
+		//! Non-debug (Release) mode detected
 #		define FPL_RELEASE
 #	endif
 #elif defined(__llvm__)
+	//! LLVM compiler detected
 #	define FPL_COMPILER_LLVM
 #elif defined(__clang__)
+	//! CLANG compiler detected
 #	define FPL_COMPILER_CLANG
 #elif defined(__GNUC__) || defined(__GNUG__)
+	//! GCC compiler detected
 #	define FPL_COMPILER_GCC
 #elif defined(__MINGW32__)
+	//! MingW compiler detected
 #	define FPL_COMPILER_MINGW
 #elif defined(__INTEL_COMPILER) || defined(__ICC)
+	//! Intel compiler detected
 #	define FPL_COMPILER_INTEL
 #else
+	//! No compiler detected
 #	define FPL_COMPILER_UNKNOWN
 #endif
 
@@ -291,29 +302,37 @@ SOFTWARE.
 //
 #if !defined(FPL_ENABLE_ASSERTIONS)
 #	if defined(FPL_DEBUG)
+	//! Assertions enabled in debug mode by default
 #		define FPL_ENABLE_ASSERTIONS 1
 #	else
+	//! Assertions disabled in non-debug mode by default
 #		define FPL_ENABLE_ASSERTIONS 0
 #	endif
 #endif
 #if !defined(FPL_ENABLE_WINDOW)
+	//! Window support enabled by default
 #	define FPL_ENABLE_WINDOW 1
 #endif
 #if !defined(FPL_ENABLE_OPENGL)
+	//! OpenGL support enabled by default
 #	define FPL_ENABLE_OPENGL 1
 #endif
 #if FPL_ENABLE_ASSERTIONS
 #	if !defined(FPL_ENABLE_C_ASSERT)
+	//! C-Runtime assertions enabled by default
 #		define FPL_ENABLE_C_ASSERT 1
 #	endif
 #endif
 #if !defined(FPL_API_AS_PRIVATE)
+	//! Public API calls by default
 #	define FPL_API_AS_PRIVATE 0
 #endif
 #if !defined(FPL_ENABLE_ERRORSTATES)
+	//! Multiple error states enabled by default
 #	define FPL_ENABLE_ERRORSTATES 1
 #endif
 #if !defined(FPL_ENABLE_ERROR_IN_CONSOLE)
+	//! Write errors in console by default
 #	define FPL_ENABLE_ERROR_IN_CONSOLE 1
 #endif
 
@@ -325,8 +344,10 @@ SOFTWARE.
 //! Private/Internal function
 #define fpl_internal static
 #if FPL_API_AS_PRIVATE
+	//! Private api call
 #	define fpl_api static
 #else
+	//! Public api call
 #	define fpl_api extern
 #endif // FPL_API_AS_PRIVATE
 
@@ -336,17 +357,23 @@ SOFTWARE.
 #if FPL_ENABLE_ASSERTIONS
 #	if FPL_ENABLE_C_ASSERT
 #		include <assert.h>
+		//! Runtime assert (C Runtime)
 #		define FPL_ASSERT(exp) assert(exp)
+		//! Compile error assert (C Runtime)
 #		define FPL_STATICASSERT(exp) static_assert(exp, "static_assert")
 #	else
+		//! Runtime assert
 #		define FPL_ASSERT(exp) if(!(exp)) {*(int *)0 = 0;}
+		//! Compile error assert
 #		define FPL_STATICASSERT_INTERNAL(exp, line) \
 			int fpl_static_assert_##line(int static_assert_failed[(exp)?1:-1])
 #		define FPL_STATICASSERT(exp) \
 			FPL_STATICASSERT_INTERNAL(exp, __LINE__)
 #	endif // FPL_ENABLE_C_ASSERT
 #else
+	//! Runtime assertions disabled
 #	define FPL_ASSERT(exp)
+	//! Compile time assertions disabled
 #	define FPL_STATICASSERT(exp)
 #endif // FPL_ENABLE_ASSERTIONS
 
@@ -420,21 +447,33 @@ namespace fpl {
 
 	//! Initialization flags (Window, Video, All, etc.)
 	enum class InitFlags : uint32_t {
+		//! No init flags
 		None = 0,
+		//! Create a single window
 		Window = 1 << 0,
+		//! Create a rendering context
 		VideoOpenGL = 1 << 1,
+		//! Default init flags for a window + opengl
 		All = Window | VideoOpenGL,
 	};
+	//! Operator support for InitFlags
 	FPL_ENUM_AS_FLAGS_OPERATORS_INTERNAL(InitFlags);
 
 	//! Window settings (Size, Title etc.)
 	struct WindowSettings {
+		//! Window title
 		char windowTitle[256];
+		//! Window width in screen coordinates
 		uint32_t windowWidth;
+		//! Window height in screen coordinates
 		uint32_t windowHeight;
+		//! Fullscreen width in screen coordinates
 		uint32_t fullscreenWidth;
+		//! Fullscreen height in screen coordinates
 		uint32_t fullscreenHeight;
+		//! Is window resizable
 		bool isResizable;
+		//! Is window in fullscreen mode
 		bool isFullscreen;
 
 		WindowSettings() {
@@ -448,16 +487,25 @@ namespace fpl {
 		}
 	};
 
+	//! Video compability profile
 	enum class VideoCompabilityProfile {
+		//! Use legacy context
 		Legacy,
+		//! Use core context with backwards compability
 		Core,
+		//! Use foward context without backwards compability
 		Forward,
 	};
 
+	//! Video settings container (Compability Profile, Version, VSync, etc.)
 	struct VideoSettings {
+		//! Compability profile
 		VideoCompabilityProfile profile;
+		//! Desired major version
 		uint32_t majorVersion;
+		//! Desired minor version
 		uint32_t minorVersion;
+		//! Vertical syncronisation is wanted
 		bool isVSync;
 
 		VideoSettings() {
@@ -467,9 +515,11 @@ namespace fpl {
 		}
 	};
 
-	//! Initialization settings contains (Window, etc)
+	//! Initialization settings container (Window, etc)
 	struct InitSettings {
+		//! Window settings
 		WindowSettings window;
+		//! Video settings
 		VideoSettings video;
 
 		InitSettings() {
@@ -493,7 +543,9 @@ namespace fpl {
 	namespace library {
 		//! Handle to a loaded dynamic library
 		struct DynamicLibraryHandle {
+			//! Internal library handle
 			void *internalHandle;
+			//! Library opened successfully
 			bool isValid;
 		};
 
@@ -567,7 +619,9 @@ namespace fpl {
 	namespace files {
 		//! Handle to a loaded/created file
 		struct FileHandle {
+			//! Internal file handle
 			void *internalHandle;
+			//! File opened successfully
 			bool isValid;
 		};
 
@@ -583,20 +637,30 @@ namespace fpl {
 
 		//! File entry type (File, Directory, etc.)
 		enum class FileEntryType {
+			//! Unknown entry type
 			Unknown = 0,
+			//! Entry is a file
 			File = 1,
+			//! Entry is a directory
 			Directory = 2,
 		};
 
 		//! File attribute flags (Normal, Readonly, Hidden, etc.)
 		enum class FileAttributeFlags : uint32_t {
+			//! No attributes
 			None = 0,
+			//! Normal
 			Normal = 1 << 0,
+			//! Readonly
 			ReadOnly = 1 << 1,
+			//! Hidden
 			Hidden = 1 << 2,
+			//! Archive
 			Archive = 1 << 3,
+			//! System
 			System = 1 << 4,
 		};
+		//! Operator support for FileAttributeFlags
 		FPL_ENUM_AS_FLAGS_OPERATORS_INTERNAL(FileAttributeFlags);
 
 		//! Maximum length of a file entry path
@@ -604,9 +668,13 @@ namespace fpl {
 
 		//! Entry for storing current file informations (path, type, attributes, etc.)
 		struct FileEntry {
+			//! Entry type
 			FileEntryType type;
+			//! File attributes
 			FileAttributeFlags attributes;
+			//! File path
 			char path[MAX_FILEENTRY_PATH_LENGTH];
+			//! Internal file handle
 			void *internalHandle;
 		};
 
@@ -833,79 +901,115 @@ namespace fpl {
 
 		//! Window event type (Resized, PositionChanged, etc.)
 		enum class WindowEventType {
+			//! Window has been resized
 			Resized = 1,
+			//! Window got focus
 			GotFocus = 2,
+			//! Window lost focus
 			LostFocus = 3,
 		};
 
 		//! Window event data (Size, Position, etc.)
 		struct WindowEvent {
+			//! Window event type
 			WindowEventType type;
+			//! Window width in screen coordinates
 			uint32_t width;
+			//! Window height in screen coordinates
 			uint32_t height;
 		};
 
 		//! Keyboard event type (KeyDown, KeyUp, Char, ...)
 		enum class KeyboardEventType {
+			//! Key is down
 			KeyDown = 1,
+			//! Key was released
 			KeyUp = 2,
+			//! Character was entered
 			Char = 3,
 		};
 
 		//! Keyboard modifier flags (Alt, Ctrl, ...)
 		enum class KeyboardModifierFlags : uint32_t {
+			//! No modifiers
 			None = 0,
+			//! Alt key is down
 			Alt = 1 << 0,
+			//! Ctrl key is down
 			Ctrl = 1 << 1,
+			//! Shift key is down
 			Shift = 1 << 2,
+			//! Super key is down
 			Super = 1 << 3,
 		};
+		//! Operator support for KeyboardModifierFlags
 		FPL_ENUM_AS_FLAGS_OPERATORS_INTERNAL(KeyboardModifierFlags);
 
 		//! Keyboard event data (Type, Keycode, Mapped key, etc.)
 		struct KeyboardEvent {
+			//! Keyboard event type
 			KeyboardEventType type;
+			//! Raw key code
 			uint64_t keyCode;
+			//! Mapped key
 			Key mappedKey;
+			//! Keyboard modifiers
 			KeyboardModifierFlags modifiers;
 		};
 
 		//! Mouse event type (Move, ButtonDown, ...)
 		enum class MouseEventType {
+			//! Mouse position has been changed
 			Move = 1,
+			//! Mouse button is down
 			ButtonDown = 2,
+			//! Mouse button was released
 			ButtonUp = 3,
+			//! Mouse wheel up/down
 			Wheel = 4,
 		};
 
 		//! Mouse button type (Left, Right, ...)
 		enum class MouseButtonType : int32_t {
+			//! No mouse button
 			None = -1,
+			//! Left mouse button
 			Left = 0,
+			//! Right mouse button
 			Right = 1,
+			//! Middle mouse button
 			Middle = 2,
 		};
 
 		//! Mouse event data (Type, Button, Position, etc.)
 		struct MouseEvent {
+			//! Mouse event type
 			MouseEventType type;
+			//! Mouse button
 			MouseButtonType mouseButton;
+			//! Mouse X-Position
 			int32_t mouseX;
+			//! Mouse Y-Position
 			int32_t mouseY;
+			//! Mouse wheel delta
 			float wheelDelta;
-			int32_t _padding;
 		};
 
 		//! Gamepad event type (Connected, Disconnected, StateChanged, etc.)
 		enum class GamepadEventType {
+			//! No gamepad event
 			None = 0,
+			//! Gamepad connected
 			Connected = 1,
+			//! Gamepad disconnected
 			Disconnected = 2,
+			//! Gamepad state updated
 			StateChanged = 3,
 		};
 
 		//! Gamepad button (IsDown, etc.)
 		struct GamepadButton {
+			//! Is button down
 			bool isDown;
 		};
 
@@ -913,79 +1017,110 @@ namespace fpl {
 		struct GamepadState {
 			union {
 				struct {
-					// Digital pad buttons
+					//! Digital button up
 					GamepadButton dpadUp;
+					//! Digital button right
 					GamepadButton dpadRight;
+					//! Digital button down
 					GamepadButton dpadDown;
+					//! Digital button left
 					GamepadButton dpadLeft;
 
-					// Face buttons
+					//! Action button A
 					GamepadButton actionA;
+					//! Action button B
 					GamepadButton actionB;
+					//! Action button X
 					GamepadButton actionX;
+					//! Action button Y
 					GamepadButton actionY;
 
-					// Center buttons
+					//! Start button
 					GamepadButton start;
+					//! Back button
 					GamepadButton back;
 
-					// Analog thumb buttons
+					//! Analog left thumb button
 					GamepadButton leftThumb;
+					//! Analog right thumb button
 					GamepadButton rightThumb;
 
-					// Shoulder buttons
+					//! Left shoulder button
 					GamepadButton leftShoulder;
+					//! Right shoulder button
 					GamepadButton rightShoulder;
 				};
-				GamepadButton buttons[8];
+
+				//! All gamepad buttons
+				GamepadButton buttons[14];
 			};
 
-			// Analog thumb directions in range (-1.0 to 1.0f)
+			//! Analog left thumb X in range (-1.0 to 1.0f)
 			float leftStickX;
+			//! Analog left thumb Y in range (-1.0 to 1.0f)
 			float leftStickY;
+			//! Analog right thumb X in range (-1.0 to 1.0f)
 			float rightStickX;
+			//! Analog right thumb Y in range (-1.0 to 1.0f)
 			float rightStickY;
 
-			// Analog trigger buttons in range (-1.0 to 1.0f)
+			//! Analog left trigger in range (-1.0 to 1.0f)
 			float leftTrigger;
+			//! Analog right trigger in range (-1.0 to 1.0f)
 			float rightTrigger;
 		};
 
 		//! Gamepad event data (Type, Device, State, etc.)
 		struct GamepadEvent {
+			//! Gamepad event type
 			GamepadEventType type;
+			//! Gamepad device index
 			uint32_t deviceIndex;
+			//! Full gamepad state
 			GamepadState state;
 		};
 
 		//! Event type (Window, Keyboard, Mouse, ...)
 		enum class EventType {
+			//! Window event
 			Window = 1,
+			//! Keyboard event
 			Keyboard = 2,
+			//! Mouse event
 			Mouse = 3,
+			//! Gamepad event
 			Gamepad = 4,
 		};
 
 		//! Event data (Type, Window, Keyboard, Mouse, etc.)
 		struct Event {
+			//! Event type
 			EventType type;
 			union {
+				//! Window event data
 				WindowEvent window;
+				//! Keyboard event data
 				KeyboardEvent keyboard;
+				//! Mouse event data
 				MouseEvent mouse;
+				//! Gamepad event data
 				GamepadEvent gamepad;
 			};
 		};
 
 		//! Window size in screen coordinates
 		struct WindowSize {
+			//! Width in screen coordinates
 			uint32_t width;
+			//! Height in screen coordinates
 			uint32_t height;
 		};
 
 		//! Window position in screen coordinates
 		struct WindowPosition {
+			//! Left position in screen coordinates
 			int32_t left;
+			//! Top position in screen coordinates
 			int32_t top;
 		};
 
@@ -2993,7 +3128,7 @@ namespace fpl {
 
 			wglMakeCurrent(nullptr, nullptr);
 
-			HGLRC activeRenderingContext = legacyRenderingContext;
+			HGLRC activeRenderingContext;
 			if (videoSettings.profile != VideoCompabilityProfile::Legacy) {
 				// @NOTE(final): This is only available in OpenGL 3.0+
 				if (!(videoSettings.majorVersion >= 3 && videoSettings.minorVersion >= 0)) {
@@ -3049,6 +3184,9 @@ namespace fpl {
 					wglMakeCurrent(deviceContext, legacyRenderingContext);
 					activeRenderingContext = legacyRenderingContext;
 				}
+			} else {
+				wglMakeCurrent(deviceContext, legacyRenderingContext);
+				activeRenderingContext = legacyRenderingContext;
 			}
 
 			FPL_ASSERT(activeRenderingContext != nullptr);
@@ -3072,7 +3210,7 @@ namespace fpl {
 				win32State.opengl.renderingContext = nullptr;
 			}
 		}
-			};
+	};
 #	endif // FPL_ENABLE_WINDOW && FPL_ENABLE_OPENGL
 
 #	if FPL_ENABLE_WINDOW
@@ -3299,9 +3437,9 @@ namespace fpl {
 		#else
 			result = globalLastError_Internal->error;
 		#endif
-			}
-		return (result);
 		}
+		return (result);
+	}
 
 	fpl_api const char *GetLastError() {
 		const char *result = nullptr;
@@ -3314,9 +3452,9 @@ namespace fpl {
 		#else
 			result = globalLastError_Internal->error;
 		#endif
-			}
-		return (result);
 		}
+		return (result);
+	}
 
 	fpl_api size_t GetLastErrorCount() {
 		size_t result = 0;
@@ -3330,7 +3468,7 @@ namespace fpl {
 		return (result);
 	}
 
-	}
+}
 
 //
 // Win32 Entry-Point
@@ -3347,7 +3485,7 @@ int WINAPI wWinMain(HINSTANCE appInstance, HINSTANCE prevInstance, LPWSTR cmdLin
 	// @TODO(final): Parse command line parameters
 	int result = main(0, 0);
 	return(result);
-	}
+}
 #		else
 int WINAPI WinMain(HINSTANCE appInstance, HINSTANCE prevInstance, LPSTR cmdLine, int cmdShow) {
 	fpl::globalWin32State_Internal.appInstance = appInstance;

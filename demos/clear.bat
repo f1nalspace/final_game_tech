@@ -3,6 +3,7 @@ del /q *.db
 del /q *.ghostdoc*
 del /q *.sdf
 rmdir /q /s .vs
+rmdir /q /s build
 rmdir /q /s debug
 rmdir /q /s release
 rmdir /q /s win32
