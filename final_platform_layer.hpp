@@ -1,6 +1,6 @@
 /**
  * @file final_platform_layer.hpp
- * @version v0.3.1 beta
+ * @version v0.3.2 alpha
  * @author Torsten Spaete
  * @brief Final Platform Layer (FPL) - A Open source C++ single file header platform abstraction layer library.
  *
@@ -116,17 +116,30 @@ int main(int argc, char **args) {
 	* FPL_ENABLE_ERROR_IN_CONSOLE 0 or 1 (Default 1)
 	-> Enable writing out errors in the error console as well
 
-# FEATURES
+	* FPL_AUTO_NAMESPACE 0 or 1 (Default 0)
+	-> When enabled all namespaces are expanded by default
+
+	* FPL_ENABLE_PUSHMEMORY 0 or 1 (Default 1)
+	-> When enabled, destination buffers gets created automatically when null is passed.
+
+	* FPL_ENABLE_STACK_PUSHMEMORY 0 or 1 (Default 1)
+	-> When enabled all push memory will be allocated by the stack only, otherwise all memory will be allocated in a arena based system and released in ReleasePlatform()
+
+	# FEATURES
 
 	[x] Creating a fixed or resizeable window
 	[x] Handling window, keyboard, mouse events
 	[x] Enable/Disable fullscreen
+	[x] Full event buffering
 	[x] Polling gamepad informations
 	[ ] Clipboard string reading and writing
 
 	[x] Creating a 1.x opengl rendering context
 	[x] Creating a 3.x + opengl rendering context
+	[ ] Software rendering context
+
 	[ ] Audio playback using OS native libraries
+
 	[x] Memory allocation and de-allocation with custom alignment support
 	[x] Atomic operations
 	[x] Path functions
@@ -178,12 +191,19 @@ SOFTWARE.
 
 # TODO
 
+	* Feature completeness for Win32 (Threading, Audio, Clipboard)
 	* REFERENCE.MD generation using doxygen
-	* Push only memory block for making any dest-buffer not required at all.
-	  Allocated in InitPlatform() and freed in ReleasePlatform().
 
 # VERSION HISTORY
 
+- v0.3.2 alpha:
+	* Introduced automatic namespace inclusion (FPL_AUTO_NAMESPACE)
+	* Introduced push memory (FPL_ENABLE_PUSHMEMORY)
+	* Signature changed for: ExtractFilePath/ChangeFileExtension (source first, destination second)
+	* Window features not not compiled out anymore when FPL_ENABLE_WINDOW is 0
+	* New overloaded CombinePath without any destination arguments
+	* Optional destination arguments for: GetExecutableFilePath/GetHomePath/ChangeFileExtension/CombinePath
+	* Fixed strings::CopyAnsiString/CopyWideString was not returning the correct value
 - v0.3.1 alpha:
 	* All types/structs/fields/functions documented
 	* [Win32] Fixed legacy opengl (GL_INVALID_OPERATION)
@@ -302,10 +322,10 @@ SOFTWARE.
 //
 #if !defined(FPL_ENABLE_ASSERTIONS)
 #	if defined(FPL_DEBUG)
-	//! Assertions enabled in debug mode by default
+		//! Assertions enabled in debug mode by default
 #		define FPL_ENABLE_ASSERTIONS 1
 #	else
-	//! Assertions disabled in non-debug mode by default
+		//! Assertions disabled in non-debug mode by default
 #		define FPL_ENABLE_ASSERTIONS 0
 #	endif
 #endif
@@ -319,7 +339,7 @@ SOFTWARE.
 #endif
 #if FPL_ENABLE_ASSERTIONS
 #	if !defined(FPL_ENABLE_C_ASSERT)
-	//! C-Runtime assertions enabled by default
+		//! C-Runtime assertions enabled by default
 #		define FPL_ENABLE_C_ASSERT 1
 #	endif
 #endif
@@ -334,6 +354,20 @@ SOFTWARE.
 #if !defined(FPL_ENABLE_ERROR_IN_CONSOLE)
 	//! Write errors in console by default
 #	define FPL_ENABLE_ERROR_IN_CONSOLE 1
+#endif
+#if !defined(FPL_AUTO_NAMESPACE)
+	//! Expand namespaces by default
+#	define FPL_AUTO_NAMESPACE 0
+#endif
+#if !defined(FPL_ENABLE_PUSHMEMORY)
+	//! Enable push memory by default
+#	define FPL_ENABLE_PUSHMEMORY 1
+#endif
+#if FPL_ENABLE_PUSHMEMORY
+#	if !defined(FPL_ENABLE_STACK_PUSHMEMORY)
+		//! Use direct stack allocation for any push memory operation
+#		define FPL_ENABLE_STACK_PUSHMEMORY 1
+#	endif
 #endif
 
 //
@@ -384,6 +418,14 @@ SOFTWARE.
 #define FPL_ARRAYCOUNT(arr) (sizeof(arr) / sizeof((arr)[0]))
 //! Returns the offset in bytes to a field in a structure
 #define FPL_OFFSETOF(type, field) ((type *)((void *)0)->field)
+//! Returns the number of bytes for the given kilobytes
+#define FPL_KILOBYTES(value) (value * 1024)
+//! Returns the number of bytes for the given megabytes
+#define FPL_MEGABYTES(value) (FPL_KILOBYTES() * 1024)
+//! Returns the number of bytes for the given gigabytes
+#define FPL_GIGABYTES(value) (FPL_MEGABYTES() * 1024)
+//! Returns the number of bytes for the given terrabytes
+#define FPL_TERRABYTES(value) (FPL_GIGABYTES() * 1024)
 
 //! Defines the operator overloads for a enum used as flags
 #define FPL_ENUM_AS_FLAGS_OPERATORS_INTERNAL(type) \
@@ -411,6 +453,7 @@ SOFTWARE.
 
 //! Core namespace
 namespace fpl {
+
 	//! Atomic functions, like CompareAndExchange etc.
 	namespace atomics {
 		//! Insert a atomic read fence. This may be just a compiler optimization for some configurations only.
@@ -438,7 +481,7 @@ namespace fpl {
 		//! Returns the total number of processor cores
 		fpl_api uint32_t GetProcessorCoreCount();
 		//! Returns the processor name/identifier
-		fpl_api char *GetProcessorName(char *destBuffer, const uint32_t maxDestBufferLen);
+		fpl_api char *GetProcessorName(char *destBuffer = nullptr, const uint32_t maxDestBufferLen = 0);
 	};
 
 	//
@@ -579,6 +622,8 @@ namespace fpl {
 		fpl_api void *AllocateMemory(const size_t size);
 		//! Releases the memory allocated from the operating system.
 		fpl_api void FreeMemory(void *ptr);
+		//! Allocates memory on the current stack. Use this very carefully!
+		fpl_api void *AllocateStackMemory(const size_t size);
 		//! Allocates aligned memory from the operating system by the given alignment.
 		fpl_api void *AllocateAlignedMemory(const size_t size, const size_t alignment);
 		//! Releases aligned memory from the operating system.
@@ -727,22 +772,23 @@ namespace fpl {
 	//! Directory and paths functions
 	namespace paths {
 		//! Returns the full path to this executable, including the executable file name.
-		fpl_api char *GetExecutableFilePath(char *destPath, const uint32_t maxDestLen);
+		fpl_api char *GetExecutableFilePath(char *destPath = nullptr, const uint32_t maxDestLen = 0);
 		//! Returns the full path to your home directory.
-		fpl_api char *GetHomePath(char *destPath, const uint32_t maxDestLen);
+		fpl_api char *GetHomePath(char *destPath = nullptr, const uint32_t maxDestLen = 0);
 		//! Returns the path from the given source path.
-		fpl_api char *ExtractFilePath(char *destPath, const uint32_t maxDestLen, const char *sourcePath);
+		fpl_api char *ExtractFilePath(const char *sourcePath, char *destPath = nullptr, const uint32_t maxDestLen = 0);
 		//! Returns the file extension from the given source path.
 		fpl_api char *ExtractFileExtension(const char *sourcePath);
 		//! Returns the file name including the file extension from the given source path.
 		fpl_api char *ExtractFileName(const char *sourcePath);
 		//! Changes the file extension on the given source path and writes the result into the destination path. Returns the pointer of the destination path.
-		fpl_api char *ChangeFileExtension(char *destPath, const uint32_t maxDestLen, const char *filePath, const char *newFileExtension);
+		fpl_api char *ChangeFileExtension(const char *filePath, const char *newFileExtension, char *destPath = nullptr, const uint32_t maxDestLen = 0);
 		//! Combines all included path by the systems path separator. Returns the pointer of the destination path.
 		fpl_api char *CombinePath(char *destPath, const uint32_t maxDestPathLen, const uint32_t pathCount, ...);
+		//! Combines all included path by the systems path separator. Returns a pointer to the first path. This will actually allocate memory for that string, which will be freed automatically.
+		fpl_api char *CombinePath(const uint32_t pathCount, ...);
 	};
 
-#if FPL_ENABLE_WINDOW
 	//! Window based functions and types
 	namespace window {
 		//! Mapped key (Based on MS Virtual-Key-Codes, mostly directly mapped from ASCII)
@@ -1162,7 +1208,6 @@ namespace fpl {
 		//! Gets and removes the top event from the internal queue and fills out the "event" argument. Returns false when there are no events left, otherwise true.
 		fpl_api bool PollWindowEvent(Event &ev);
 	};
-#endif
 
 };
 
@@ -1229,12 +1274,27 @@ namespace fpl {
 #		define MapVirtualKey MapVirtualKeyA
 #	endif // defined(UNICODE)
 
-#	if FPL_ENABLE_WINDOW && FPL_ENABLE_OPENGL
+#	if FPL_ENABLE_OPENGL
 #		include <gl\gl.h>
-#	endif // FPL_ENABLE_WINDOW
+#	endif // FPL_ENABLE_OPENGL
 
 // @NOTE(final): Required for access "main" from the actual win32 entry point
 fpl_api int main(int argc, char **args);
+#endif
+
+// Expand all namespaces if needed
+#if FPL_AUTO_NAMESPACE
+using namespace fpl;
+using namespace fpl::window;
+using namespace fpl::atomics;
+using namespace fpl::hardware;
+using namespace fpl::memory;
+using namespace fpl::timings;
+using namespace fpl::paths;
+using namespace fpl::files;
+using namespace fpl::library;
+using namespace fpl::strings;
+using namespace fpl::console;
 #endif
 
 #endif // FPL_INCLUDE_HPP
@@ -1337,9 +1397,9 @@ namespace fpl {
 	constexpr uint32_t MAX_LAST_ERROR_STRING_LENGTH_INTERNAL = 1024;
 #if FPL_ENABLE_ERRORSTATES
 	// @NOTE(final): 1024 errors are more than enough
-	constexpr size_t MAX_ERRORSTATE_COUNT = 1024;
+	constexpr size_t MAX_ERRORSTATE_COUNT_INTERNAL = 1024;
 	struct ErrorState_Internal {
-		char errors[MAX_ERRORSTATE_COUNT][MAX_LAST_ERROR_STRING_LENGTH_INTERNAL];
+		char errors[MAX_ERRORSTATE_COUNT_INTERNAL][MAX_LAST_ERROR_STRING_LENGTH_INTERNAL];
 		size_t count;
 	};
 
@@ -1352,7 +1412,7 @@ namespace fpl {
 			char buffer[MAX_LAST_ERROR_STRING_LENGTH_INTERNAL];
 			vsprintf_s(buffer, FPL_ARRAYCOUNT(buffer), format, argList);
 			uint32_t messageLen = strings::GetAnsiStringLength(buffer);
-			FPL_ASSERT(state->count < MAX_ERRORSTATE_COUNT);
+			FPL_ASSERT(state->count < MAX_ERRORSTATE_COUNT_INTERNAL);
 			size_t errorIndex = state->count++;
 			strings::CopyAnsiString(buffer, messageLen, state->errors[errorIndex], MAX_LAST_ERROR_STRING_LENGTH_INTERNAL);
 		#if FPL_ENABLE_ERROR_IN_CONSOLE
@@ -1389,7 +1449,99 @@ namespace fpl {
 		va_end(valist);
 	}
 
-#if FPL_ENABLE_WINDOW
+	namespace memory {
+	#if FPL_ENABLE_PUSHMEMORY
+
+	#	if !FPL_ENABLE_STACK_PUSHMEMORY
+		// @NOTE: 4 KB per block
+		constexpr size_t PUSH_MEMORY_BLOCK_SIZE = FPL_KILOBYTES(4);
+		struct PushMemoryBlock_Internal {
+			size_t total;
+			size_t used;
+			void *mem;
+			PushMemoryBlock_Internal *next;
+		};
+		struct PushMemoryState_Internal {
+			PushMemoryBlock_Internal *first;
+			PushMemoryBlock_Internal *current;
+		};
+		fpl_globalvar PushMemoryState_Internal globalPushMemoryState_Internal = {};
+
+		PushMemoryBlock_Internal *AddPushMemoryBlock_Internal(const size_t size) {
+			FPL_ASSERT(size > 0);
+			size_t totalSize = (size_t)((sizeof(PushMemoryBlock_Internal) + size) / PUSH_MEMORY_BLOCK_SIZE) + 1;
+			void *newMemoryForBlock = memory::AllocateAlignedMemory(totalSize, 16);
+			PushMemoryBlock_Internal *newBlock = (PushMemoryBlock_Internal *)newMemoryForBlock;
+			*newBlock = {};
+			newBlock->mem = (uint8_t *)newMemoryForBlock + sizeof(PushMemoryBlock_Internal);
+			newBlock->total = totalSize - sizeof(PushMemoryBlock_Internal);
+			return(newBlock);
+		}
+
+		PushMemoryBlock_Internal *FindFirstMemoryBlockWhichFits_Internal(const size_t size) {
+			PushMemoryBlock_Internal *result = nullptr;
+			PushMemoryBlock_Internal *block = globalPushMemoryState_Internal.first;
+			while (block != nullptr) {
+				if ((block->used + size) <= block->total) {
+					result = block;
+					break;
+				}
+				block = block->next;
+			}
+			return(result);
+		}
+
+		void ReleaseAllPushMemoryBlocks_Internal() {
+			PushMemoryBlock_Internal *block = globalPushMemoryState_Internal.first;
+			while (block != nullptr) {
+				PushMemoryBlock_Internal *next = block->next;
+				FreeAlignedMemory(block);
+				block = next;
+			}
+			globalPushMemoryState_Internal = {};
+		}
+	#	endif
+
+		void *PushMemory_Internal(const size_t size) {
+			FPL_ASSERT(size > 0);
+
+			void *result = nullptr;
+
+		#	if !FPL_ENABLE_STACK_PUSHMEMORY
+			PushMemoryBlock_Internal *block = FindFirstMemoryBlockWhichFits_Internal(size);
+			if (block == nullptr) {
+				// No block or size does not fit within any existing ones
+				PushMemoryBlock_Internal *newBlock = AddPushMemoryBlock_Internal(size);
+				if (globalPushMemoryState_Internal.current == nullptr) {
+					globalPushMemoryState_Internal.current = newBlock;
+					globalPushMemoryState_Internal.first = newBlock;
+				} else {
+					FPL_ASSERT(block != nullptr);
+					FPL_ASSERT(block->next == nullptr);
+					block->next = newBlock;
+					globalPushMemoryState_Internal.current = newBlock;
+				}
+				block = newBlock;
+			}
+
+			FPL_ASSERT(block != nullptr);
+			FPL_ASSERT((block->used + size) <= block->total);
+			result = (uint8_t *)block->mem + block->used;
+			block->used += size;
+		#	else
+			result = memory::AllocateStackMemory(size);
+		#	endif
+
+			return(result);
+		}
+	#else
+		void *PushMemory_Internal(const size_t size) {
+			return nullptr;
+		}
+	#endif
+
+	}
+
 	namespace window {
 		constexpr uint32_t MAX_EVENT_COUNT_INTERNAL = 32768;
 		struct EventQueue_Internal {
@@ -1397,10 +1549,8 @@ namespace fpl {
 			volatile uint32_t pollIndex;
 			volatile uint32_t pushCount;
 		};
-
 		fpl_globalvar EventQueue_Internal *globalEventQueue_Internal = nullptr;
-	};
-#endif
+	}
 
 	//
 	// All Public String
@@ -1408,7 +1558,7 @@ namespace fpl {
 	namespace strings {
 		fpl_api uint32_t GetAnsiStringLength(const char *str) {
 			uint32_t result = 0;
-			if (str) {
+			if (str != nullptr) {
 				while (*str++) {
 					result++;
 				}
@@ -1418,7 +1568,7 @@ namespace fpl {
 
 		fpl_api uint32_t GetWideStringLength(const wchar_t *str) {
 			uint32_t result = 0;
-			if (str) {
+			if (str != nullptr) {
 				while (*str++) {
 					result++;
 				}
@@ -1429,12 +1579,13 @@ namespace fpl {
 		fpl_api char *CopyAnsiString(const char *source, const uint32_t sourceLen, char *dest, const uint32_t maxDestLen) {
 			FPL_ASSERT(source && dest);
 			FPL_ASSERT((sourceLen + 1) <= maxDestLen);
+			char *result = dest;
 			uint32_t index = 0;
 			while (index++ < sourceLen) {
 				*dest++ = *source++;
 			}
 			*dest = 0;
-			return(dest);
+			return(result);
 		}
 
 		fpl_api char *CopyAnsiString(const char *source, char *dest, const uint32_t maxDestLen) {
@@ -1447,12 +1598,13 @@ namespace fpl {
 		fpl_api wchar_t *CopyWideString(const wchar_t *source, const uint32_t sourceLen, wchar_t *dest, const uint32_t maxDestLen) {
 			FPL_ASSERT(source && dest);
 			FPL_ASSERT((sourceLen + 1) <= maxDestLen);
+			wchar_t *result = dest;
 			uint32_t index = 0;
 			while (index++ < sourceLen) {
 				*dest++ = *source++;
 			}
 			*dest = 0;
-			return(dest);
+			return(result);
 		}
 
 		fpl_api wchar_t *CopyWideString(const wchar_t *source, wchar_t *dest, const uint32_t maxDestLen) {
@@ -1535,7 +1687,6 @@ namespace fpl {
 	//
 	// All Public Window
 	//
-#if FPL_ENABLE_WINDOW
 	namespace window {
 		fpl_internal void PushEvent_Internal(const Event &event) {
 			EventQueue_Internal *eventQueue = globalEventQueue_Internal;
@@ -1562,15 +1713,22 @@ namespace fpl {
 			return result;
 		}
 	};
-#endif
 
 	//
 	// All Public Path, Directories
 	//
 	namespace paths {
-		fpl_api char *ExtractFilePath(char *destPath, const uint32_t maxDestLen, const char *sourcePath) {
-			using namespace strings;
-			char *result = (char *)nullptr;
+		fpl_api char *ExtractFilePath(const char *sourcePath, char *destPath, const uint32_t maxDestLen) {
+			uint32_t destLen = maxDestLen;
+			uint32_t sourceLen = strings::GetAnsiStringLength(sourcePath);
+			if (destPath == nullptr) {
+				destLen = sourceLen + 1;
+				destPath = (char *)memory::PushMemory_Internal(destLen);
+			}
+			FPL_ASSERT(destPath != nullptr);
+			FPL_ASSERT(destLen >= (sourceLen + 1));
+
+			char *result = nullptr;
 			if (sourcePath) {
 				int copyLen = 0;
 				char *chPtr = (char *)sourcePath;
@@ -1581,7 +1739,7 @@ namespace fpl {
 					++chPtr;
 				}
 				if (copyLen) {
-					CopyAnsiString(sourcePath, copyLen, destPath, maxDestLen);
+					result = strings::CopyAnsiString(sourcePath, copyLen, destPath, destLen);
 				}
 			}
 			return(result);
@@ -1628,8 +1786,20 @@ namespace fpl {
 			return(result);
 		}
 
-		fpl_api char *ChangeFileExtension(char *destPath, const uint32_t maxDestLen, const char *filePath, const char *newFileExtension) {
-			using namespace strings;
+		fpl_api char *ChangeFileExtension(const char *filePath, const char *newFileExtension, char *destPath, const uint32_t maxDestLen) {
+			uint32_t destLen = maxDestLen;
+			uint32_t pathLen = strings::GetAnsiStringLength(filePath);
+			uint32_t extLen = strings::GetAnsiStringLength(newFileExtension);
+
+			// @NOTE: Put one additional character for the extension which may not contain a dot
+			uint32_t sourceLen = pathLen + (extLen + 1);
+			if (destPath == nullptr) {
+				destLen = sourceLen + 1;
+				destPath = (char *)memory::PushMemory_Internal(destLen);
+			}
+			FPL_ASSERT(destPath != nullptr);
+			FPL_ASSERT(destLen >= (sourceLen + 1));
+
 			char *result = (char *)nullptr;
 			if (filePath != nullptr) {
 				// Find last path
@@ -1656,7 +1826,6 @@ namespace fpl {
 					++chPtr;
 				}
 
-				uint32_t pathLen = GetAnsiStringLength(filePath);
 				uint32_t copyLen;
 				if (lastExtSeparatorPtr != nullptr) {
 					copyLen = (uint32_t)((uintptr_t)lastExtSeparatorPtr - (uintptr_t)filePath);
@@ -1665,28 +1834,64 @@ namespace fpl {
 				}
 
 				// Copy parts
-				uint32_t extLen = GetAnsiStringLength(newFileExtension);
-				CopyAnsiString(filePath, copyLen, destPath, maxDestLen);
+				strings::CopyAnsiString(filePath, copyLen, destPath, destLen);
 				char *destExtPtr = destPath + copyLen;
-				CopyAnsiString(newFileExtension, extLen, destExtPtr, maxDestLen - copyLen);
+				strings::CopyAnsiString(newFileExtension, extLen, destExtPtr, destLen - copyLen);
 				result = destPath;
 			}
 			return(result);
 		}
 
 		fpl_api char *CombinePath(char *destPath, const uint32_t maxDestPathLen, const uint32_t pathCount, ...) {
-			using namespace strings;
 			uint32_t curDestPosition = 0;
 			char *currentDestPtr = destPath;
 			va_list vargs;
 			va_start(vargs, pathCount);
 			for (uint32_t pathIndex = 0; pathIndex < pathCount; ++pathIndex) {
 				char *path = va_arg(vargs, char *);
-				uint32_t pathLen = GetAnsiStringLength(path);
+				uint32_t pathLen = strings::GetAnsiStringLength(path);
 				bool requireSeparator = pathIndex < (pathCount - 1);
 				uint32_t requiredPathLen = requireSeparator ? pathLen + 1 : pathLen;
 				FPL_ASSERT(curDestPosition + requiredPathLen <= maxDestPathLen);
-				CopyAnsiString(path, pathLen, currentDestPtr, maxDestPathLen - curDestPosition);
+				strings::CopyAnsiString(path, pathLen, currentDestPtr, maxDestPathLen - curDestPosition);
+				currentDestPtr += pathLen;
+				if (requireSeparator) {
+					*currentDestPtr++ = PATH_SEPARATOR;
+				}
+				curDestPosition += requiredPathLen;
+			}
+			*currentDestPtr = 0;
+			va_end(vargs);
+			return destPath;
+		}
+
+		fpl_api char *CombinePath(const uint32_t pathCount, ...) {
+			va_list vargs;
+
+			uint32_t totalLen = 0;
+			va_start(vargs, pathCount);
+			for (uint32_t pathIndex = 0; pathIndex < pathCount; ++pathIndex) {
+				char *path = va_arg(vargs, char *);
+				totalLen += strings::GetAnsiStringLength(path);
+				if (pathIndex < (pathCount - 1)) {
+					totalLen += PATH_SEPARATOR;
+				}
+			}
+			va_end(vargs);
+
+			uint32_t maxDestPathLen = totalLen + 1;
+			char *destPath = (char *)memory::PushMemory_Internal(maxDestPathLen);
+
+			uint32_t curDestPosition = 0;
+			char *currentDestPtr = destPath;
+			va_start(vargs, pathCount);
+			for (uint32_t pathIndex = 0; pathIndex < pathCount; ++pathIndex) {
+				char *path = va_arg(vargs, char *);
+				uint32_t pathLen = strings::GetAnsiStringLength(path);
+				bool requireSeparator = pathIndex < (pathCount - 1);
+				uint32_t requiredPathLen = requireSeparator ? pathLen + 1 : pathLen;
+				FPL_ASSERT(curDestPosition + requiredPathLen <= maxDestPathLen);
+				strings::CopyAnsiString(path, pathLen, currentDestPtr, maxDestPathLen - curDestPosition);
 				currentDestPtr += pathLen;
 				if (requireSeparator) {
 					*currentDestPtr++ = PATH_SEPARATOR;
@@ -1703,6 +1908,7 @@ namespace fpl {
 	// Compiler Intrinsics (This are platform/compiler dependend)
 	//
 #if defined(FPL_COMPILER_MSVC)
+
 	namespace atomics {
 		fpl_api void AtomicReadFence() {
 			_ReadBarrier();
@@ -1753,8 +1959,13 @@ namespace fpl {
 		fpl_api char *GetProcessorName(char *destBuffer, const uint32_t maxDestBufferLen) {
 			constexpr uint32_t cpuBrandBufferSize = 0x40;
 
+			uint32_t destLen = maxDestBufferLen;
+			if (destBuffer == nullptr) {
+				destLen = cpuBrandBufferSize + 1;
+				destBuffer = (char *)memory::PushMemory_Internal(destLen);
+			}
 			FPL_ASSERT(destBuffer != nullptr);
-			FPL_ASSERT(maxDestBufferLen >= cpuBrandBufferSize);
+			FPL_ASSERT(destLen >= (cpuBrandBufferSize + 1));
 
 			int cpuInfo[4] = { -1 };
 			char cpuBrandBuffer[cpuBrandBufferSize] = {};
@@ -1776,7 +1987,7 @@ namespace fpl {
 
 			// Copy result back to the dest buffer
 			uint32_t sourceLen = strings::GetAnsiStringLength(cpuBrandBuffer);
-			strings::CopyAnsiString(cpuBrandBuffer, sourceLen, destBuffer, maxDestBufferLen);
+			strings::CopyAnsiString(cpuBrandBuffer, sourceLen, destBuffer, destLen);
 
 			return(destBuffer);
 		}
@@ -1873,7 +2084,6 @@ namespace fpl {
 	typedef char win32_char_internal;
 #	endif // defined(UNICODE)
 
-#	if FPL_ENABLE_WINDOW
 	struct Win32WindowState_Internal {
 		HWND windowHandle;
 		win32_char_internal windowClass[256];
@@ -1886,17 +2096,14 @@ namespace fpl {
 		uint32_t lastWindowWidth;
 		uint32_t lastWindowHeight;
 	};
-#	else
-	typedef void *Win32WindowState_Internal;
-#	endif // FPL_ENABLE_WINDOW
 
-#	if FPL_ENABLE_WINDOW && FPL_ENABLE_OPENGL
+#	if FPL_ENABLE_OPENGL
 	struct Win32OpenGLState_Internal {
 		HGLRC renderingContext;
 	};
 #	else
 	typedef void *Win32OpenGLState_Internal;
-#	endif // FPL_ENABLE_WINDOW && FPL_ENABLE_OPENGL
+#	endif // FPL_ENABLE_OPENGL
 
 	struct Win32XInputState_Internal {
 		HMODULE xinputLibrary;
@@ -1953,6 +2160,13 @@ namespace fpl {
 		fpl_api void FreeMemory(void *ptr) {
 			FPL_ASSERT(ptr != nullptr);
 			VirtualFree(ptr, 0, MEM_FREE);
+		}
+
+		fpl_api void *AllocateStackMemory(const size_t size) {
+			FPL_ASSERT(size > 0);
+			// @TODO: Is this safe not to include <malloc.h>?
+			void *result = _malloca(size);
+			return(result);
 		}
 	}
 
@@ -2202,35 +2416,63 @@ namespace fpl {
 	namespace paths {
 	#	if defined(UNICODE)
 		fpl_api char *GetExecutableFilePath(char *destPath, const uint32_t maxDestLen) {
-			using namespace strings;
-			FPL_ASSERT(destPath != nullptr);
-			FPL_ASSERT(maxDestLen >= (MAX_PATH + 1));
 			wchar_t modulePath[MAX_PATH];
 			GetModuleFileNameW(nullptr, modulePath, MAX_PATH);
-			WideStringToAnsiString(modulePath, GetWideStringLength(modulePath), destPath, maxDestLen);
+			uint32_t destLen = maxDestLen;
+			if (destPath == nullptr) {
+				destLen = MAX_PATH + 1;
+				destPath = (char *)memory::PushMemory_Internal(sizeof(char) * destLen);
+			}
+			FPL_ASSERT(destPath != nullptr);
+			FPL_ASSERT(destLen >= (MAX_PATH + 1));
+			strings::WideStringToAnsiString(modulePath, strings::GetWideStringLength(modulePath), destPath, destLen);
 			return(destPath);
 		}
 	#	else
 		fpl_api char *GetExecutableFilePath(char *destPath, const uint32_t maxDestLen) {
-			using namespace strings;
-			FPL_ASSERT(destPath != nullptr);
-			FPL_ASSERT(maxDestLen >= (MAX_PATH + 1));
 			char modulePath[MAX_PATH];
 			GetModuleFileNameA(nullptr, modulePath, MAX_PATH);
-			CopyAnsiString(modulePath, GetAnsiStringLength(modulePath), destPath, maxDestLen);
+			uint32_t destLen = maxDestLen;
+			if (destPath == nullptr) {
+				destLen = MAX_PATH + 1;
+				destPath = (char *)memory::PushMemory_Internal(sizeof(char) * destLen);
+			}
+			FPL_ASSERT(destPath != nullptr);
+			FPL_ASSERT(destLen >= (MAX_PATH + 1));
+			strings::CopyAnsiString(modulePath, strings::GetAnsiStringLength(modulePath), destPath, destLen);
 			return(destPath);
 		}
 	#	endif
 
+	#	if defined(UNICODE)
 		fpl_api char *GetHomePath(char *destPath, const uint32_t maxDestLen) {
-			using namespace strings;
+			wchar_t homePath[MAX_PATH];
+			SHGetFolderPathW(nullptr, CSIDL_PROFILE, nullptr, 0, homePath);
+			uint32_t destLen = maxDestLen;
+			if (destPath == nullptr) {
+				destLen = MAX_PATH + 1;
+				destPath = (char *)memory::PushMemory_Internal(sizeof(char) * destLen);
+			}
 			FPL_ASSERT(destPath != nullptr);
-			FPL_ASSERT(maxDestLen >= (MAX_PATH + 1));
-			char homePath[MAX_PATH];
-			SHGetFolderPathA(nullptr, CSIDL_PROFILE, nullptr, 0, homePath);
-			CopyAnsiString(homePath, GetAnsiStringLength(homePath), destPath, maxDestLen);
+			FPL_ASSERT(destLen >= (MAX_PATH + 1));
+			strings::WideStringToAnsiString(homePath, strings::GetWideStringLength(homePath), destPath, destLen);
 			return(destPath);
 		}
+	#else
+		fpl_api char *GetHomePath(char *destPath, const uint32_t maxDestLen) {
+			char homePath[MAX_PATH];
+			SHGetFolderPathA(nullptr, CSIDL_PROFILE, nullptr, 0, homePath);
+			uint32_t destLen = maxDestLen;
+			if (destPath == nullptr) {
+				destLen = MAX_PATH + 1;
+				destPath = (char *)memory::PushMemory_Internal(sizeof(char) * destLen);
+			}
+			FPL_ASSERT(destPath != nullptr);
+			FPL_ASSERT(destLen >= (MAX_PATH + 1));
+			strings::CopyAnsiString(homePath, strings::GetAnsiStringLength(homePath), destPath, destLen);
+			return(destPath);
+		}
+	#endif
 	}
 
 	//
@@ -2319,7 +2561,6 @@ namespace fpl {
 	//
 	// Win32 Public Window
 	//
-#	if FPL_ENABLE_WINDOW
 	namespace window {
 
 	#	if FPL_ENABLE_OPENGL
@@ -3075,9 +3316,7 @@ namespace fpl {
 		}
 	}
 
-#	endif // FPL_ENABLE_WINDOW
-
-#	if FPL_ENABLE_WINDOW && FPL_ENABLE_OPENGL
+#	if FPL_ENABLE_OPENGL
 	namespace window {
 		fpl_internal void Win32LoadOpenGLExtensions_Internal(const Win32State_Internal &win32State) {
 			globalWGLExtensions.choosePixelFormatArb = (wgl_choose_pixel_format_arb *)wglGetProcAddress("wglChoosePixelFormatARB");
@@ -3211,9 +3450,8 @@ namespace fpl {
 			}
 		}
 	};
-#	endif // FPL_ENABLE_WINDOW && FPL_ENABLE_OPENGL
+#	endif // FPL_ENABLE_OPENGL
 
-#	if FPL_ENABLE_WINDOW
 	namespace window {
 		fpl_internal bool Win32InitWindow_Internal(Win32State_Internal &win32State, const InitFlags initFlags, const InitSettings &initSettings) {
 			using namespace memory;
@@ -3303,6 +3541,7 @@ namespace fpl {
 			}
 
 			// Create opengl rendering context if required
+		#	if FPL_ENABLE_OPENGL
 			if (initFlags & InitFlags::VideoOpenGL) {
 				bool openglResult = Win32CreateOpenGL_Internal(win32State, initSettings.video);
 				if (!openglResult) {
@@ -3310,6 +3549,7 @@ namespace fpl {
 					return false;
 				}
 			}
+		#	endif
 
 			// Show window
 			ShowWindow(win32State.window.windowHandle, SW_SHOW);
@@ -3366,7 +3606,6 @@ namespace fpl {
 			}
 		}
 	};
-#	endif // FPL_ENABLE_WINDOW
 
 	fpl_api bool InitPlatform(const InitFlags initFlags, const InitSettings &initSettings) {
 		Win32State_Internal &win32State = globalWin32State_Internal;
@@ -3383,14 +3622,13 @@ namespace fpl {
 		// XInput
 		win32State.xinput.xinputLibrary = window::Win32LoadXInput_Internal();
 
+		// Window
 		InitFlags usedInitFlags = initFlags;
-
 	#	if FPL_ENABLE_OPENGL
 		if (usedInitFlags & InitFlags::VideoOpenGL) {
 			usedInitFlags |= InitFlags::Window;
 		}
 	#	endif
-
 		if (usedInitFlags & InitFlags::Window) {
 			if (!window::Win32InitWindow_Internal(win32State, usedInitFlags, initSettings)) {
 				PushError_Internal("[Win32] Failed creating a window with flags '%d' and settings (Width=%d, Height=%d, Videoprofile=%d)", usedInitFlags, initSettings.window.windowWidth, initSettings.window.windowHeight, initSettings.video.profile);
@@ -3413,10 +3651,16 @@ namespace fpl {
 			window::Win32LeaveFullscreen_Internal();
 		}
 		window::Win32UnloadXInput_Internal(win32State.xinput.xinputLibrary);
+
 	#	if FPL_ENABLE_OPENGL
 		window::Win32ReleaseOpenGLContext_Internal(win32State);
 	#	endif
+
 		window::Win32ReleaseWindow_Internal(win32State);
+	#endif // FPL_ENABLE_WINDOW
+
+	#if FPL_ENABLE_PUSHMEMORY && !FPL_ENABLE_STACK_PUSHMEMORY
+		memory::ReleaseAllPushMemoryBlocks_Internal();
 	#endif
 
 		memory::FreeAlignedMemory(globalLastError_Internal);
@@ -3472,11 +3716,7 @@ namespace fpl {
 
 //
 // Win32 Entry-Point
-// This is a bit ugly because:
-// - Support for Window and Console application
-// - Support for Unicode and Ansi
 //
-// @TODO(final): If possible clean this up
 #	if FPL_ENABLE_WINDOW
 
 #		if defined(UNICODE)

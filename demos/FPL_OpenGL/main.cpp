@@ -1,4 +1,5 @@
 #define FPL_IMPLEMENTATION
+#define FPL_AUTO_NAMESPACE 1
 #include "final_platform_layer.hpp"
 
 #ifndef APIENTRY
@@ -103,12 +104,8 @@ static void LoadGLExtensions() {
 #define OPENGL_MINOR 3
 #define VIDEO_PROFILE VideoCompabilityProfile::Core
 
-using namespace fpl;
-using namespace fpl::memory;
-using namespace fpl::window;
-
 static void RunLegacy() {
-	console::ConsoleOut("Running legacy opengl\n");
+	ConsoleOut("Running legacy opengl\n");
 
 	glClearColor(0.39f, 0.58f, 0.93f, 1.0f);
 	while (WindowUpdate()) {
@@ -139,8 +136,8 @@ static GLuint CreateShaderType(GLenum type, const char *source) {
 		glGetShaderiv(shaderId, GL_INFO_LOG_LENGTH, &infoLen);
 		char *info = (char *)alloca(infoLen);
 		glGetShaderInfoLog(shaderId, infoLen, &infoLen, info);
-		console::ConsoleFormatError("Failed compiling %s shader!\n", (type == GL_VERTEX_SHADER ? "vertex" : "fragment"));
-		console::ConsoleFormatError("%s\n", info);
+		ConsoleFormatError("Failed compiling %s shader!\n", (type == GL_VERTEX_SHADER ? "vertex" : "fragment"));
+		ConsoleFormatError("%s\n", info);
 	}
 
 	return(shaderId);
@@ -165,8 +162,8 @@ static GLuint CreateShaderProgram(const char *name, const char *vertexSource, co
 
 		char *info = (char *)alloca(infoLen);
 		glGetProgramInfoLog(programId, infoLen, &infoLen, info);
-		console::ConsoleFormatError("Failed linking '%s' shader!\n", name);
-		console::ConsoleFormatError("%s\n", info);
+		ConsoleFormatError("Failed linking '%s' shader!\n", name);
+		ConsoleFormatError("%s\n", info);
 	}
 
 	glDeleteShader(fragmentShader);
@@ -183,17 +180,17 @@ static bool RunModern() {
 	glBindVertexArray(vertexArrayID);
 
 	const char *glslVersion = (const char *)glGetString(GL_SHADING_LANGUAGE_VERSION);
-	console::ConsoleFormatOut("OpenGL GLSL Version %s:\n", glslVersion);
+	ConsoleFormatOut("OpenGL GLSL Version %s:\n", glslVersion);
 
 	int profileMask;
 	int contextFlags;
 	glGetIntegerv(GL_CONTEXT_PROFILE_MASK, &profileMask);
 	glGetIntegerv(GL_CONTEXT_FLAGS, &contextFlags);
-	console::ConsoleFormatOut("OpenGL supported profiles:\n");
-	console::ConsoleFormatOut("\tCore: %s\n", ((profileMask & GL_CONTEXT_CORE_PROFILE_BIT) ? "yes" : "no"));
-	console::ConsoleFormatOut("\tForward: %s\n", ((contextFlags & GL_CONTEXT_FLAG_FORWARD_COMPATIBLE_BIT) ? "yes" : "no"));
+	ConsoleFormatOut("OpenGL supported profiles:\n");
+	ConsoleFormatOut("\tCore: %s\n", ((profileMask & GL_CONTEXT_CORE_PROFILE_BIT) ? "yes" : "no"));
+	ConsoleFormatOut("\tForward: %s\n", ((contextFlags & GL_CONTEXT_FLAG_FORWARD_COMPATIBLE_BIT) ? "yes" : "no"));
 
-	console::ConsoleOut("Running modern opengl\n");
+	ConsoleOut("Running modern opengl\n");
 
 	const char vertexSource[] = {
 		"#version 330 core\n"
@@ -256,18 +253,15 @@ static bool RunModern() {
 }
 
 int main(int argc, char **args) {
-	using namespace fpl;
-	using namespace fpl::memory;
-	using namespace fpl::window;
 	int result = 0;
 	InitSettings settings = InitSettings();
 #if MODERN_OPENGL
-	strings::CopyAnsiString("FPL Modern OpenGL", settings.window.windowTitle, FPL_ARRAYCOUNT(settings.window.windowTitle));
+	CopyAnsiString("FPL Modern OpenGL", settings.window.windowTitle, FPL_ARRAYCOUNT(settings.window.windowTitle));
 	settings.video.profile = VIDEO_PROFILE;
 	settings.video.majorVersion = OPENGL_MAJOR;
 	settings.video.minorVersion = OPENGL_MINOR;
 #else
-	strings::CopyAnsiString("FPL Legacy OpenGL", settings.window.windowTitle, FPL_ARRAYCOUNT(settings.window.windowTitle));
+	CopyAnsiString("FPL Legacy OpenGL", settings.window.windowTitle, FPL_ARRAYCOUNT(settings.window.windowTitle));
 	settings.video.profile = VideoCompabilityProfile::Legacy;
 #endif
 	if (InitPlatform(InitFlags::VideoOpenGL, settings)) {
@@ -275,9 +269,9 @@ int main(int argc, char **args) {
 		const char *version = (const char *)glGetString(GL_VERSION);
 		const char *vendor = (const char *)glGetString(GL_VENDOR);
 		const char *renderer = (const char *)glGetString(GL_RENDERER);
-		console::ConsoleFormatOut("OpenGL version: %s\n", version);
-		console::ConsoleFormatOut("OpenGL vendor: %s\n", vendor);
-		console::ConsoleFormatOut("OpenGL renderer: %s\n", renderer);
+		ConsoleFormatOut("OpenGL version: %s\n", version);
+		ConsoleFormatOut("OpenGL vendor: %s\n", vendor);
+		ConsoleFormatOut("OpenGL renderer: %s\n", renderer);
 
 	#if MODERN_OPENGL
 		RunModern();
