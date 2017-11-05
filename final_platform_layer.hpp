@@ -1,11 +1,11 @@
 /**
  * @file final_platform_layer.hpp
- * @version v0.3.2 alpha
+ * @version v0.3.3 alpha
  * @author Torsten Spaete
  * @brief Final Platform Layer (FPL) - A Open source C++ single file header platform abstraction layer library.
  *
  * This library is designed to abstract the underlying platform to a very simple and easy to use api.
- * The only dependencies are built-in operatoring system libraries and the C runtime library.
+ * The only dependencies are built-in operatoring system libraries and the C++ runtime library.
  *
  * The main focus is game/simulation development, so the default settings will create a window and setup a opengl rendering context.
  *
@@ -196,6 +196,8 @@ SOFTWARE.
 
 # VERSION HISTORY
 
+- v0.3.3 alpha:
+	* Basic threading creation and handling
 - v0.3.2 alpha:
 	* Introduced automatic namespace inclusion (FPL_AUTO_NAMESPACE)
 	* Introduced push memory (FPL_ENABLE_PUSHMEMORY)
@@ -610,6 +612,44 @@ namespace fpl {
 		fpl_api void ConsoleError(const char *text);
 		//! Writes the given formatted text to the console error output
 		fpl_api void ConsoleFormatError(const char *format, ...);
+	};
+
+	//! Threading functions
+	namespace threading {
+		enum class ThreadState {
+			//! Thread is stopped
+			Stopped,
+			//! Thread is still running
+			Running,
+			// Thread is suspended
+			Suspended,
+			// Thread is in waiting state until it gets waked up
+			Waiting,
+		};
+		struct ThreadContext;
+		typedef void (run_thread_function)(const ThreadContext &context, void *data);
+		struct ThreadContext {
+			uint64_t id;
+			run_thread_function *runFunc;
+			void *data;
+			void *internalHandle;
+			ThreadState state;
+		};
+	
+		//! Create a thread and return the context for it. When autoStart is set to true, it will start immediatly. 
+		fpl_api const ThreadContext &ThreadCreate(run_thread_function *runFunc, void *data, const bool autoStart = true);
+		//! Let the current thread sleep for the number of given milliseconds
+		fpl_api void ThreadSleep(const uint32_t milliseconds);
+		//! Suspend the given thread, so any user code will not be freezed at the current point. Returns true when the thread was successfully suspended.
+		fpl_api bool ThreadSuspend(const ThreadContext &context);
+		//! Resume a suspended thread, so any user code will continue to run. Returns true when the thread was successfully resumed.
+		fpl_api bool ThreadResume(const ThreadContext &context);
+		//! Fully stop the given thread and release all underlying resources 
+		fpl_api void ThreadStop(const ThreadContext &context);
+		//! Wait until the given thread is done running.
+		fpl_api void WaitForThread(const ThreadContext &context, const uint32_t maxMilliseconds = UINT32_MAX);
+		//! Wait until all given threads are done running.
+		fpl_api void WaitForThreads(const ThreadContext *contexts, const uint32_t count, const uint32_t maxMilliseconds = UINT32_MAX);
 	};
 
 	//! Memory allocation functions
@@ -1223,37 +1263,29 @@ namespace fpl {
 #	include <math.h> // abs
 
 // @TODO(final): Dont overwrite defines like that, just have one path for unicode and one for ansi
-#	undef WNDCLASSEX
-#	undef RegisterClassEx
-#	undef UnregisterClass
-#	undef CreateWindowEx
-#	undef DefWindowProc
-#	undef GetWindowLongPtr
-#	undef SetWindowLongPtr
-#	undef PeekMessage
-#	undef DispatchMessage
-#	undef MapVirtualKey
 #	undef CopyFile
 #	undef DeleteFile
 #	undef CopyMemory
+#	undef CreateThread
+
 #	if defined(UNICODE)
 #		define WIN32_CLASSNAME L"FPLWindowClassW"
 #		define WIN32_UNNAMED_WINDOW L"Unnamed FPL Unicode Window"
 #		define WIN32_STRINGCOPY strings::CopyWideString
 #		define WIN32_GETSTRINGLENGTH strings::GetWideStringLength
 #		define WIN32_ANSI_TO_STRING strings::AnsiStringToWideString
-#		define WNDCLASSEX WNDCLASSEXW
-#		define RegisterClassEx RegisterClassExW
-#		define UnregisterClass UnregisterClassW
-#		define CreateWindowEx CreateWindowExW
-#		define DefWindowProc DefWindowProcW
-#		define GetWindowLongPtr GetWindowLongPtrW
-#		define SetWindowLongPtr SetWindowLongPtrW
-#		define GetWindowLong GetWindowLongW
-#		define SetWindowLong SetWindowLongW
-#		define PeekMessage PeekMessageW
-#		define DispatchMessage DispatchMessageW
-#		define MapVirtualKey MapVirtualKeyW
+#		define WIN32_WNDCLASSEX WNDCLASSEXW
+#		define WIN32_REGISTER_CLASS_EX RegisterClassExW
+#		define WIN32_UNREGISTER_CLASS UnregisterClassW
+#		define WIN32_CREATE_WINDOW_EX CreateWindowExW
+#		define WIN32_DEF_WINDOW_PROC DefWindowProcW
+#		define WIN32_GET_WINDOW_LONG_PTR GetWindowLongPtrW
+#		define WIN32_SET_WINDOW_LONG_PTR SetWindowLongPtrW
+#		define WIN32_GET_WINDOW_LONG GetWindowLongW
+#		define WIN32_SET_WINDOW_LONG SetWindowLongW
+#		define WIN32_PEEK_MESSAGE PeekMessageW
+#		define WIN32_DISPATCH_MESSAGE DispatchMessageW
+#		define WIN32_MAP_VIRTUAL_KEY MapVirtualKeyW
 #	else
 #		define WIN32_CLASSNAME "FPLWindowClassA"
 #		define WIN32_UNNAMED_WINDOW "Unnamed FPL Ansi Window"
@@ -1261,17 +1293,17 @@ namespace fpl {
 #		define WIN32_GETSTRINGLENGTH strings::GetAnsiStringLength
 #		define WIN32_ANSI_TO_STRING strings::CopyAnsiString
 #		define WNDCLASSEX WNDCLASSEXA
-#		define RegisterClassEx RegisterClassExA
-#		define UnregisterClass UnregisterClassA
-#		define CreateWindowEx CreateWindowExA
-#		define DefWindowProc DefWindowProcA
-#		define GetWindowLongPtr GetWindowLongPtrA
-#		define SetWindowLongPtr SetWindowLongPtrA
-#		define GetWindowLong GetWindowLongA
-#		define SetWindowLong SetWindowLongA
-#		define PeekMessage PeekMessageA
-#		define DispatchMessage DispatchMessageA
-#		define MapVirtualKey MapVirtualKeyA
+#		define WIN32_REGISTER_CLASS_EX RegisterClassExA
+#		define WIN32_UNREGISTER_CLASS UnregisterClassA
+#		define WIN32_CREATE_WINDOW_EX CreateWindowExA
+#		define WIN32_DEF_WINDOW_PROC DefWindowProcA
+#		define WIN32_GET_WINDOW_LONG_PTR GetWindowLongPtrA
+#		define WIN32_SET_WINDOW_LONG_PTR SetWindowLongPtrA
+#		define WIN32_GET_WINDOW_LONG GetWindowLongA
+#		define WIN32_SET_WINDOW_LONG SetWindowLongA
+#		define WIN32_PEEK_MESSAGE PeekMessageA
+#		define WIN32_DISPATCH_MESSAGE DispatchMessageA
+#		define WIN32_MAP_VIRTUAL_KEY MapVirtualKeyA
 #	endif // defined(UNICODE)
 
 #	if FPL_ENABLE_OPENGL
@@ -1295,6 +1327,7 @@ using namespace fpl::files;
 using namespace fpl::library;
 using namespace fpl::strings;
 using namespace fpl::console;
+using namespace fpl::threading;
 #endif
 
 #endif // FPL_INCLUDE_HPP
@@ -1415,9 +1448,9 @@ namespace fpl {
 			FPL_ASSERT(state->count < MAX_ERRORSTATE_COUNT_INTERNAL);
 			size_t errorIndex = state->count++;
 			strings::CopyAnsiString(buffer, messageLen, state->errors[errorIndex], MAX_LAST_ERROR_STRING_LENGTH_INTERNAL);
-		#if FPL_ENABLE_ERROR_IN_CONSOLE
+#if FPL_ENABLE_ERROR_IN_CONSOLE
 			console::ConsoleError(buffer);
-		#endif
+#endif
 		}
 	}
 #else
@@ -1435,9 +1468,9 @@ namespace fpl {
 			vsprintf_s(buffer, FPL_ARRAYCOUNT(buffer), format, argList);
 			uint32_t messageLen = strings::GetAnsiStringLength(buffer);
 			strings::CopyAnsiString(buffer, messageLen, state->error, MAX_LAST_ERROR_STRING_LENGTH_INTERNAL);
-		#if FPL_ENABLE_ERROR_IN_CONSOLE
+#if FPL_ENABLE_ERROR_IN_CONSOLE
 			console::ConsoleError(buffer);
-		#endif
+#endif
 		}
 	}
 #endif
@@ -1450,9 +1483,9 @@ namespace fpl {
 	}
 
 	namespace memory {
-	#if FPL_ENABLE_PUSHMEMORY
+#if FPL_ENABLE_PUSHMEMORY
 
-	#	if !FPL_ENABLE_STACK_PUSHMEMORY
+#	if !FPL_ENABLE_STACK_PUSHMEMORY
 		// @NOTE: 4 KB per block
 		constexpr size_t PUSH_MEMORY_BLOCK_SIZE = FPL_KILOBYTES(4);
 		struct PushMemoryBlock_Internal {
@@ -1500,14 +1533,14 @@ namespace fpl {
 			}
 			globalPushMemoryState_Internal = {};
 		}
-	#	endif
+#	endif
 
 		void *PushMemory_Internal(const size_t size) {
 			FPL_ASSERT(size > 0);
 
 			void *result = nullptr;
 
-		#	if !FPL_ENABLE_STACK_PUSHMEMORY
+#	if !FPL_ENABLE_STACK_PUSHMEMORY
 			PushMemoryBlock_Internal *block = FindFirstMemoryBlockWhichFits_Internal(size);
 			if (block == nullptr) {
 				// No block or size does not fit within any existing ones
@@ -1528,17 +1561,17 @@ namespace fpl {
 			FPL_ASSERT((block->used + size) <= block->total);
 			result = (uint8_t *)block->mem + block->used;
 			block->used += size;
-		#	else
+#	else
 			result = memory::AllocateStackMemory(size);
-		#	endif
+#	endif
 
 			return(result);
 		}
-	#else
+#else
 		void *PushMemory_Internal(const size_t size) {
 			return nullptr;
 		}
-	#endif
+#endif
 
 	}
 
@@ -1550,6 +1583,30 @@ namespace fpl {
 			volatile uint32_t pushCount;
 		};
 		fpl_globalvar EventQueue_Internal *globalEventQueue_Internal = nullptr;
+	}
+
+	namespace threading {
+		constexpr uint32_t MAX_THREAD_COUNT = 64;
+		struct ThreadState_Internal {
+			ThreadContext mainThread;
+			ThreadContext threads[MAX_THREAD_COUNT];
+			uint32_t threadCount;
+		};
+
+		static ThreadState_Internal globalThreadState_Internal = {};
+
+		static ThreadContext *GetThreadContext_Internal(const uint64_t id) {
+			// @NOTE: We have just a few handful of max threads, so looping over all it not that slow.
+			ThreadContext *result = nullptr;
+			for (uint32_t index = 0; index < globalThreadState_Internal.threadCount; ++index) {
+				ThreadContext *thread = globalThreadState_Internal.threads + index;
+				if (thread->id == id) {
+					result = thread;
+					break;
+				}
+			}
+			return(result);
+		}
 	}
 
 	//
@@ -2148,6 +2205,99 @@ namespace fpl {
 	}
 
 	//
+	// Win32 Public Threading
+	//
+	namespace threading {
+
+		fpl_internal DWORD WINAPI Win32ThreadProc_Internal(void *data) {
+			DWORD result = 0;
+			ThreadContext *context = (ThreadContext *)data;
+			FPL_ASSERT(context != nullptr);
+			if (context->runFunc != nullptr) {
+				context->runFunc(*context, context->data);
+			}
+			return(result);
+		}
+
+		fpl_api const ThreadContext &ThreadCreate(run_thread_function *runFunc, void *data, const bool autoStart) {
+			FPL_ASSERT(globalThreadState_Internal.threadCount < MAX_THREAD_COUNT);
+			ThreadContext *result = &globalThreadState_Internal.threads[globalThreadState_Internal.threadCount++];
+			*result = {};
+			DWORD creationFlags = 0;
+			if (!autoStart) {
+				creationFlags |= CREATE_SUSPENDED;
+			}
+			DWORD threadId = 0;
+			HANDLE handle = CreateThread(nullptr, 0, Win32ThreadProc_Internal, result, creationFlags, &threadId);
+			result->id = threadId;
+			result->internalHandle = (void *)handle;
+			result->runFunc = runFunc;
+			result->data = data;
+			return(*result);
+		}
+
+		fpl_api void ThreadSleep(const uint32_t milliseconds) {
+			Sleep((DWORD)milliseconds);
+		}
+
+		fpl_api bool ThreadSuspend(const ThreadContext &context) {
+			FPL_ASSERT(context.id > 0);
+			ThreadContext *thread = GetThreadContext_Internal(context.id);
+			FPL_ASSERT(thread != nullptr);
+			FPL_ASSERT(thread->internalHandle != nullptr);
+			HANDLE handle = (HANDLE)thread->internalHandle;
+			DWORD err = SuspendThread(handle);
+			bool result = err != -1;
+			return(result);
+		}
+
+		fpl_api bool ThreadResume(const ThreadContext &context) {
+			FPL_ASSERT(context.id > 0);
+			ThreadContext *thread = GetThreadContext_Internal(context.id);
+			FPL_ASSERT(thread != nullptr);
+			FPL_ASSERT(thread->internalHandle != nullptr);
+			HANDLE handle = (HANDLE)thread->internalHandle;
+			DWORD err = ResumeThread(handle);
+			bool result = err != -1;
+			return(result);
+		}
+
+		fpl_api void ThreadStop(const ThreadContext &context) {
+			FPL_ASSERT(context.id > 0);
+			ThreadContext *thread = GetThreadContext_Internal(context.id);
+			FPL_ASSERT(thread != nullptr);
+			FPL_ASSERT(thread->internalHandle != nullptr);
+			HANDLE handle = (HANDLE)thread->internalHandle;
+			TerminateThread(handle, 0);
+		}
+
+		fpl_api void WaitForThread(const ThreadContext &context, const uint32_t maxMilliseconds) {
+			FPL_ASSERT(context.id > 0);
+			ThreadContext *thread = GetThreadContext_Internal(context.id);
+			FPL_ASSERT(thread != nullptr);
+			FPL_ASSERT(thread->internalHandle != nullptr);
+			HANDLE handle = (HANDLE)thread->internalHandle;
+			WaitForSingleObject(handle, maxMilliseconds < UINT32_MAX ? maxMilliseconds : INFINITE);
+		}
+
+		fpl_api void WaitForThreads(const ThreadContext *contexts, const uint32_t count, const uint32_t maxMilliseconds) {
+			FPL_ASSERT(contexts != nullptr);
+			FPL_ASSERT(count <= MAX_THREAD_COUNT);
+			HANDLE threadHandles[MAX_THREAD_COUNT];
+			for (uint32_t index = 0; index < count; ++index) {
+				const ThreadContext &context = contexts[index];
+				FPL_ASSERT(context.id > 0);
+				ThreadContext *thread = GetThreadContext_Internal(context.id);
+				FPL_ASSERT(thread != nullptr);
+				FPL_ASSERT(thread->internalHandle != nullptr);
+				HANDLE handle = (HANDLE)thread->internalHandle;
+				threadHandles[index] = handle;
+			}
+			WaitForMultipleObjects(count, threadHandles, TRUE, maxMilliseconds < UINT32_MAX ? maxMilliseconds : INFINITE);
+		}
+	}
+
+	//
 	// Win32 Public Memory
 	//
 	namespace memory {
@@ -2414,7 +2564,7 @@ namespace fpl {
 	// Win32 Public Path/Directories
 	//
 	namespace paths {
-	#	if defined(UNICODE)
+#	if defined(UNICODE)
 		fpl_api char *GetExecutableFilePath(char *destPath, const uint32_t maxDestLen) {
 			wchar_t modulePath[MAX_PATH];
 			GetModuleFileNameW(nullptr, modulePath, MAX_PATH);
@@ -2428,7 +2578,7 @@ namespace fpl {
 			strings::WideStringToAnsiString(modulePath, strings::GetWideStringLength(modulePath), destPath, destLen);
 			return(destPath);
 		}
-	#	else
+#	else
 		fpl_api char *GetExecutableFilePath(char *destPath, const uint32_t maxDestLen) {
 			char modulePath[MAX_PATH];
 			GetModuleFileNameA(nullptr, modulePath, MAX_PATH);
@@ -2442,9 +2592,9 @@ namespace fpl {
 			strings::CopyAnsiString(modulePath, strings::GetAnsiStringLength(modulePath), destPath, destLen);
 			return(destPath);
 		}
-	#	endif
+#	endif
 
-	#	if defined(UNICODE)
+#	if defined(UNICODE)
 		fpl_api char *GetHomePath(char *destPath, const uint32_t maxDestLen) {
 			wchar_t homePath[MAX_PATH];
 			SHGetFolderPathW(nullptr, CSIDL_PROFILE, nullptr, 0, homePath);
@@ -2458,7 +2608,7 @@ namespace fpl {
 			strings::WideStringToAnsiString(homePath, strings::GetWideStringLength(homePath), destPath, destLen);
 			return(destPath);
 		}
-	#else
+#else
 		fpl_api char *GetHomePath(char *destPath, const uint32_t maxDestLen) {
 			char homePath[MAX_PATH];
 			SHGetFolderPathA(nullptr, CSIDL_PROFILE, nullptr, 0, homePath);
@@ -2472,7 +2622,7 @@ namespace fpl {
 			strings::CopyAnsiString(homePath, strings::GetAnsiStringLength(homePath), destPath, destLen);
 			return(destPath);
 		}
-	#endif
+#endif
 	}
 
 	//
@@ -2563,14 +2713,14 @@ namespace fpl {
 	//
 	namespace window {
 
-	#	if FPL_ENABLE_OPENGL
+#	if FPL_ENABLE_OPENGL
 		fpl_api void WindowFlip() {
 			SwapBuffers(globalWin32State_Internal.window.deviceContext);
 		}
-	#	else
+#	else
 		fpl_api void WindowFlip() {
 		}
-	#	endif // FPL_ENABLE_OPENGL
+#	endif // FPL_ENABLE_OPENGL
 
 		struct Win32WindowStyle_Internal {
 			DWORD style;
@@ -2592,11 +2742,11 @@ namespace fpl {
 			HWND handle = globalWin32State_Internal.window.windowHandle;
 
 			if (settings.isResizable) {
-				SetWindowLongPtr(handle, GWL_STYLE, Win32ResizeableWindowStyle);
-				SetWindowLongPtr(handle, GWL_EXSTYLE, Win32ResizeableWindowExtendedStyle);
+				WIN32_SET_WINDOW_LONG_PTR(handle, GWL_STYLE, Win32ResizeableWindowStyle);
+				WIN32_SET_WINDOW_LONG_PTR(handle, GWL_EXSTYLE, Win32ResizeableWindowExtendedStyle);
 			} else {
-				SetWindowLongPtr(handle, GWL_STYLE, Win32NonResizableWindowStyle);
-				SetWindowLongPtr(handle, GWL_EXSTYLE, Win32NonResizableWindowExtendedStyle);
+				WIN32_SET_WINDOW_LONG_PTR(handle, GWL_STYLE, Win32NonResizableWindowStyle);
+				WIN32_SET_WINDOW_LONG_PTR(handle, GWL_EXSTYLE, Win32NonResizableWindowExtendedStyle);
 			}
 
 			SetWindowPos(handle, HWND_NOTOPMOST, 0, 0, globalWin32State_Internal.window.lastWindowWidth, globalWin32State_Internal.window.lastWindowHeight, SWP_SHOWWINDOW | SWP_NOMOVE);
@@ -3157,9 +3307,9 @@ namespace fpl {
 			// Poll window events
 			if (win32State->window.windowHandle != 0) {
 				MSG msg;
-				while (PeekMessage(&msg, nullptr, 0, 0, PM_REMOVE) != 0) {
+				while (WIN32_PEEK_MESSAGE(&msg, nullptr, 0, 0, PM_REMOVE) != 0) {
 					TranslateMessage(&msg);
-					DispatchMessage(&msg);
+					WIN32_DISPATCH_MESSAGE(&msg);
 				}
 				result = win32State->window.isRunning;
 			}
@@ -3175,7 +3325,7 @@ namespace fpl {
 		LRESULT CALLBACK Win32MessageProc_Internal(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 			Win32State_Internal &win32State = globalWin32State_Internal;
 			if (!win32State.window.windowHandle) {
-				return DefWindowProc(hwnd, msg, wParam, lParam);
+				return WIN32_DEF_WINDOW_PROC(hwnd, msg, wParam, lParam);
 			}
 
 			LRESULT result = 0;
@@ -3311,10 +3461,10 @@ namespace fpl {
 				default:
 					break;
 			}
-			result = DefWindowProc(hwnd, msg, wParam, lParam);
+			result = WIN32_DEF_WINDOW_PROC(hwnd, msg, wParam, lParam);
 			return (result);
 		}
-	}
+		}
 
 #	if FPL_ENABLE_OPENGL
 	namespace window {
@@ -3469,7 +3619,7 @@ namespace fpl {
 			windowClass.lpszClassName = WIN32_CLASSNAME;
 			windowClass.lpfnWndProc = Win32MessageProc_Internal;
 			WIN32_STRINGCOPY(windowClass.lpszClassName, WIN32_GETSTRINGLENGTH(windowClass.lpszClassName), win32State.window.windowClass, FPL_ARRAYCOUNT(win32State.window.windowClass));
-			if (RegisterClassEx(&windowClass) == 0) {
+			if (WIN32_REGISTER_CLASS_EX(&windowClass) == 0) {
 				PushError_Internal("[Win32] Failed Registering Window Class '%s'", win32State.window.windowClass);
 				return false;
 			}
@@ -3522,7 +3672,7 @@ namespace fpl {
 			int windowWidth = windowRect.right - windowRect.left;
 			int windowHeight = windowRect.bottom - windowRect.top;
 
-			win32State.window.windowHandle = CreateWindowEx(exStyle, windowClass.lpszClassName, windowTitle, style, windowX, windowY, windowWidth, windowHeight, nullptr, nullptr, windowClass.hInstance, nullptr);
+			win32State.window.windowHandle = WIN32_CREATE_WINDOW_EX(exStyle, windowClass.lpszClassName, windowTitle, style, windowX, windowY, windowWidth, windowHeight, nullptr, nullptr, windowClass.hInstance, nullptr);
 			if (win32State.window.windowHandle == nullptr) {
 				PushError_Internal("[Win32] Failed creating window for class '%s' and position (%d x %d) with size (%d x %d)", win32State.window.windowClass, windowWidth, windowHeight, windowWidth, windowHeight);
 				return false;
@@ -3541,7 +3691,7 @@ namespace fpl {
 			}
 
 			// Create opengl rendering context if required
-		#	if FPL_ENABLE_OPENGL
+#	if FPL_ENABLE_OPENGL
 			if (initFlags & InitFlags::VideoOpenGL) {
 				bool openglResult = Win32CreateOpenGL_Internal(win32State, initSettings.video);
 				if (!openglResult) {
@@ -3549,7 +3699,7 @@ namespace fpl {
 					return false;
 				}
 			}
-		#	endif
+#	endif
 
 			// Show window
 			ShowWindow(win32State.window.windowHandle, SW_SHOW);
@@ -3561,7 +3711,7 @@ namespace fpl {
 			win32State.window.isRunning = true;
 
 			return true;
-		}
+			}
 
 		fpl_internal void Win32ReleaseWindow_Internal(Win32State_Internal &win32State) {
 			if (win32State.window.deviceContext != nullptr) {
@@ -3572,7 +3722,7 @@ namespace fpl {
 			if (win32State.window.windowHandle != nullptr) {
 				DestroyWindow(win32State.window.windowHandle);
 				win32State.window.windowHandle = nullptr;
-				UnregisterClass(win32State.window.windowClass, win32State.appInstance);
+				WIN32_UNREGISTER_CLASS(win32State.window.windowClass, win32State.appInstance);
 			}
 
 			memory::FreeAlignedMemory(globalEventQueue_Internal);
@@ -3605,7 +3755,7 @@ namespace fpl {
 				module = nullptr;
 			}
 		}
-	};
+		};
 
 	fpl_api bool InitPlatform(const InitFlags initFlags, const InitSettings &initSettings) {
 		Win32State_Internal &win32State = globalWin32State_Internal;
@@ -3618,24 +3768,24 @@ namespace fpl {
 		// Timing
 		QueryPerformanceFrequency(&win32State.performanceFrequency);
 
-	#if FPL_ENABLE_WINDOW
+#if FPL_ENABLE_WINDOW
 		// XInput
 		win32State.xinput.xinputLibrary = window::Win32LoadXInput_Internal();
 
 		// Window
 		InitFlags usedInitFlags = initFlags;
-	#	if FPL_ENABLE_OPENGL
+#	if FPL_ENABLE_OPENGL
 		if (usedInitFlags & InitFlags::VideoOpenGL) {
 			usedInitFlags |= InitFlags::Window;
 		}
-	#	endif
+#	endif
 		if (usedInitFlags & InitFlags::Window) {
 			if (!window::Win32InitWindow_Internal(win32State, usedInitFlags, initSettings)) {
 				PushError_Internal("[Win32] Failed creating a window with flags '%d' and settings (Width=%d, Height=%d, Videoprofile=%d)", usedInitFlags, initSettings.window.windowWidth, initSettings.window.windowHeight, initSettings.video.profile);
 				return false;
 			}
 		}
-	#endif // FPL_ENABLE_WINDOW
+#endif // FPL_ENABLE_WINDOW
 
 		win32State.isInitialized = true;
 
@@ -3646,73 +3796,73 @@ namespace fpl {
 		Win32State_Internal &win32State = globalWin32State_Internal;
 		FPL_ASSERT(win32State.isInitialized);
 
-	#if FPL_ENABLE_WINDOW
+#if FPL_ENABLE_WINDOW
 		if (win32State.window.currentSettings.isFullscreen) {
 			window::Win32LeaveFullscreen_Internal();
 		}
 		window::Win32UnloadXInput_Internal(win32State.xinput.xinputLibrary);
 
-	#	if FPL_ENABLE_OPENGL
+#	if FPL_ENABLE_OPENGL
 		window::Win32ReleaseOpenGLContext_Internal(win32State);
-	#	endif
+#	endif
 
 		window::Win32ReleaseWindow_Internal(win32State);
-	#endif // FPL_ENABLE_WINDOW
+#endif // FPL_ENABLE_WINDOW
 
-	#if FPL_ENABLE_PUSHMEMORY && !FPL_ENABLE_STACK_PUSHMEMORY
+#if FPL_ENABLE_PUSHMEMORY && !FPL_ENABLE_STACK_PUSHMEMORY
 		memory::ReleaseAllPushMemoryBlocks_Internal();
-	#endif
+#endif
 
 		memory::FreeAlignedMemory(globalLastError_Internal);
 		globalLastError_Internal = nullptr;
 
 		win32State.isInitialized = false;
-	}
+		}
 
 	fpl_api const char *GetLastError(const size_t index) {
 		const char *result = nullptr;
 		if (globalLastError_Internal != nullptr) {
-		#if FPL_ENABLE_ERRORSTATES
+#if FPL_ENABLE_ERRORSTATES
 			if (index > -1 && index < (int32_t)globalLastError_Internal->count) {
 				result = globalLastError_Internal->errors[index];
 			} else {
 				result = globalLastError_Internal->errors[globalLastError_Internal->count - 1];
 			}
-		#else
+#else
 			result = globalLastError_Internal->error;
-		#endif
+#endif
 		}
 		return (result);
-	}
+		}
 
 	fpl_api const char *GetLastError() {
 		const char *result = nullptr;
 		if (globalLastError_Internal != nullptr) {
-		#if FPL_ENABLE_ERRORSTATES
+#if FPL_ENABLE_ERRORSTATES
 			if (globalLastError_Internal->count > 0) {
 				size_t index = globalLastError_Internal->count - 1;
 				result = GetLastError(index);
 			}
-		#else
+#else
 			result = globalLastError_Internal->error;
-		#endif
+#endif
 		}
 		return (result);
-	}
+		}
 
 	fpl_api size_t GetLastErrorCount() {
 		size_t result = 0;
 		if (globalLastError_Internal != nullptr) {
-		#if FPL_ENABLE_ERRORSTATES
+#if FPL_ENABLE_ERRORSTATES
 			result = globalLastError_Internal->count;
-		#else
+#else
 			result = strings::GetAnsiStringLength(globalLastError_Internal->error) > 0 ? 1 : 0;
-		#endif
+#endif
 		}
 		return (result);
-	}
+		}
 
-}
+	}
 
 //
 // Win32 Entry-Point

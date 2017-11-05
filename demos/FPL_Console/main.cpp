@@ -79,8 +79,24 @@ static void FilesTest() {
 	}
 }
 
+static void TestThreadProc(const ThreadContext &context, void *data) {
+	uint32_t ms = (uint32_t)(intptr_t)(data) * 1000;
+	ConsoleFormatOut("Thread '%llu' started\n", context.id);
+	ThreadSleep(ms);
+	ConsoleFormatOut("Thread '%llu' finished\n", context.id);
+}
+
+static void ThreadingTest() {
+	ThreadContext threads[3];
+	threads[0] = ThreadCreate(TestThreadProc, (void *)1);
+	threads[1] = ThreadCreate(TestThreadProc, (void *)2);
+	threads[2] = ThreadCreate(TestThreadProc, (void *)3);
+	WaitForThreads(threads, FPL_ARRAYCOUNT(threads));
+}
+
 int main(int argc, char **args) {
 	InitPlatform(InitFlags::None);
+	ThreadingTest();
 	PathTests();
 	FilesTest();
 	ReleasePlatform();
