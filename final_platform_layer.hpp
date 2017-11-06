@@ -1,17 +1,17 @@
 /**
- * @file final_platform_layer.hpp
- * @version v0.3.3 alpha
- * @author Torsten Spaete
- * @brief Final Platform Layer (FPL) - A Open source C++ single file header platform abstraction layer library.
- *
- * This library is designed to abstract the underlying platform to a very simple and easy to use api.
- * The only dependencies are built-in operatoring system libraries and the C++ runtime library.
- *
- * The main focus is game/simulation development, so the default settings will create a window and setup a opengl rendering context.
- *
- * @mainpage
- * Summary of the Final Platform Layer (FPL) project.
- * Please see @ref final_platform_layer.hpp for more details.
+* @file final_platform_layer.hpp
+* @version v0.3.3 alpha
+* @author Torsten Spaete
+* @brief Final Platform Layer (FPL) - A Open source C++ single file header platform abstraction layer library.
+*
+* This library is designed to abstract the underlying platform to a very simple and easy to use api.
+* The only dependencies are built-in operatoring system libraries and the C++ runtime library.
+*
+* The main focus is game/simulation development, so the default settings will create a window and setup a opengl rendering context.
+*
+* @mainpage
+* Summary of the Final Platform Layer (FPL) project.
+* Please see @ref final_platform_layer.hpp for more details.
 **/
 
 /*
@@ -62,104 +62,104 @@ using namespace fpl::memory;
 using namespace fpl::window;
 
 int main(int argc, char **args) {
-	int result = 0;
-	if (InitPlatform(InitFlags::VideoOpenGL)) {
-		glClearColor(0.39f, 0.58f, 0.93f, 1.0f);
-		while (WindowUpdate()) {
-			WindowSize windowArea = GetWindowArea();
-			glViewport(0, 0, windowArea.width, windowArea.height);
-			glClear(GL_COLOR_BUFFER_BIT);
-			glBegin(GL_TRIANGLES);
-			glVertex2f(0.0f, 0.5f);
-			glVertex2f(-0.5f, -0.5f);
-			glVertex2f(0.5f, -0.5f);
-			glEnd();
-			WindowFlip();
-		}
-		ReleasePlatform();
-		result = 0;
-	} else {
-		result = -1;
-	}
-	return(result);
+int result = 0;
+if (InitPlatform(InitFlags::VideoOpenGL)) {
+glClearColor(0.39f, 0.58f, 0.93f, 1.0f);
+while (WindowUpdate()) {
+WindowSize windowArea = GetWindowArea();
+glViewport(0, 0, windowArea.width, windowArea.height);
+glClear(GL_COLOR_BUFFER_BIT);
+glBegin(GL_TRIANGLES);
+glVertex2f(0.0f, 0.5f);
+glVertex2f(-0.5f, -0.5f);
+glVertex2f(0.5f, -0.5f);
+glEnd();
+WindowFlip();
+}
+ReleasePlatform();
+result = 0;
+} else {
+result = -1;
+}
+return(result);
 }
 
 # HOW TO COMPILE
 
 - Win32:
 
-	* Link to kernel32.lib
-	* Link to user32.lib
-	* Link to shell32.lib
-	* Link to opengl32.lib (Only needed if you use opengl)
+* Link to kernel32.lib
+* Link to user32.lib
+* Link to shell32.lib
+* Link to opengl32.lib (Only needed if you use opengl)
 
 # PREPROCESSOR OVERRIDES
 
-	* FPL_API_AS_PRIVATE 0 or 1 (Default 0)
-	-> Exports the functions as private (static) or not (export)
+* FPL_API_AS_PRIVATE 0 or 1 (Default 0)
+-> Exports the functions as private (static) or not (export)
 
-	* FPL_ENABLE_ASSERTIONS 0 or 1 (Default 1)
-	-> Enable assertions
+* FPL_ENABLE_ASSERTIONS 0 or 1 (Default 1)
+-> Enable assertions
 
-	* FPL_ENABLE_C_ASSERT (Default 1)
-	-> Enable C-Runtime assertions or use simple 'write to zero ptr' macro
+* FPL_ENABLE_C_ASSERT (Default 1)
+-> Enable C-Runtime assertions or use simple 'write to zero ptr' macro
 
-	* FPL_ENABLE_WINDOW 0 or 1 (Default 1)
-	-> Enable/Disable window support entirely
+* FPL_ENABLE_WINDOW 0 or 1 (Default 1)
+-> Enable/Disable window support entirely
 
-	* FPL_ENABLE_OPENGL 0 or 1 (Default 1)
-	-> Enable/Disable opengl support entirely
+* FPL_ENABLE_OPENGL 0 or 1 (Default 1)
+-> Enable/Disable opengl support entirely
 
-	* FPL_ENABLE_ERRORSTATES 0 or 1 (Default 1)
-	-> Enable multiple error states instead of a single last one
+* FPL_ENABLE_ERRORSTATES 0 or 1 (Default 1)
+-> Enable multiple error states instead of a single last one
 
-	* FPL_ENABLE_ERROR_IN_CONSOLE 0 or 1 (Default 1)
-	-> Enable writing out errors in the error console as well
+* FPL_ENABLE_ERROR_IN_CONSOLE 0 or 1 (Default 1)
+-> Enable writing out errors in the error console as well
 
-	* FPL_AUTO_NAMESPACE 0 or 1 (Default 0)
-	-> When enabled all namespaces are expanded by default
+* FPL_AUTO_NAMESPACE 0 or 1 (Default 0)
+-> When enabled all namespaces are expanded by default
 
-	* FPL_ENABLE_PUSHMEMORY 0 or 1 (Default 1)
-	-> When enabled, destination buffers gets created automatically when null is passed.
+* FPL_ENABLE_PUSHMEMORY 0 or 1 (Default 1)
+-> When enabled, destination buffers gets created automatically when null is passed.
 
-	* FPL_ENABLE_STACK_PUSHMEMORY 0 or 1 (Default 1)
-	-> When enabled all push memory will be allocated by the stack only, otherwise all memory will be allocated in a arena based system and released in ReleasePlatform()
+* FPL_ENABLE_STACK_PUSHMEMORY 0 or 1 (Default 1)
+-> When enabled all push memory will be allocated by the stack only, otherwise all memory will be allocated in a arena based system and released in ReleasePlatform()
 
-	# FEATURES
+# FEATURES
 
-	[x] Creating a fixed or resizeable window
-	[x] Handling window, keyboard, mouse events
-	[x] Enable/Disable fullscreen
-	[x] Full event buffering
-	[x] Polling gamepad informations
-	[ ] Clipboard string reading and writing
+[x] Creating a fixed or resizeable window
+[x] Handling window, keyboard, mouse events
+[x] Enable/Disable fullscreen
+[x] Full event buffering
+[x] Polling gamepad informations
+[ ] Clipboard string reading and writing
 
-	[x] Creating a 1.x opengl rendering context
-	[x] Creating a 3.x + opengl rendering context
-	[ ] Software rendering context
+[x] Creating a 1.x opengl rendering context
+[x] Creating a 3.x + opengl rendering context
+[ ] Software rendering context
 
-	[ ] Audio playback using OS native libraries
+[ ] Audio playback using OS native libraries
 
-	[x] Memory allocation and de-allocation with custom alignment support
-	[x] Atomic operations
-	[x] Path functions
-	[x] File functions
-	[x] Hardware functions
-	[x] String conversion functions
-	[ ] Thread, mutex, condition handling
+[x] Memory allocation and de-allocation with custom alignment support
+[x] Atomic operations
+[x] Path functions
+[x] File functions
+[x] Hardware functions
+[x] String conversion functions
+[ ] Thread, mutex, condition handling
 
 # SUPPORTED ARCHITECTURES
 
-	[x] x86
-	[x] x86_64
+[x] x86
+[x] x86_64
 
 # SUPPORTED COMPILERS
 
-	[X] Compiles with MSVC
-	[ ] Compiles with MingW
-	[ ] Compiles with GCC/G++
-	[ ] Compiles with Clang
-	[ ] Compiles with Intel C/C++ Compiler
+[X] Compiles with MSVC
+[ ] Compiles with MingW
+[ ] Compiles with GCC/G++
+[ ] Compiles with Clang
+[ ] Compiles with Intel C/C++ Compiler
 
 # SUPPORTED PLATFORMS
 
@@ -191,75 +191,75 @@ SOFTWARE.
 
 # TODO
 
-	* Feature completeness for Win32 (Threading, Audio, Clipboard)
-	* REFERENCE.MD generation using doxygen
+* Feature completeness for Win32 (Threading, Audio, Clipboard)
+* REFERENCE.MD generation using doxygen
 
 # VERSION HISTORY
 
 - v0.3.3 alpha:
-	* Basic threading creation and handling
-	* Fixed strings::All Wide convertions was not working properly
+* Basic threading creation and handling
+* Fixed strings::All Wide convertions was not working properly
 - v0.3.2 alpha:
-	* Introduced automatic namespace inclusion (FPL_AUTO_NAMESPACE)
-	* Introduced push memory (FPL_ENABLE_PUSHMEMORY)
-	* Signature changed for: ExtractFilePath/ChangeFileExtension (source first, destination second)
-	* Window features not not compiled out anymore when FPL_ENABLE_WINDOW is 0
-	* New overloaded CombinePath without any destination arguments
-	* Optional destination arguments for: GetExecutableFilePath/GetHomePath/ChangeFileExtension/CombinePath
-	* Fixed strings::CopyAnsiString/CopyWideString was not returning the correct value
+* Introduced automatic namespace inclusion (FPL_AUTO_NAMESPACE)
+* Introduced push memory (FPL_ENABLE_PUSHMEMORY)
+* Signature changed for: ExtractFilePath/ChangeFileExtension (source first, destination second)
+* Window features not not compiled out anymore when FPL_ENABLE_WINDOW is 0
+* New overloaded CombinePath without any destination arguments
+* Optional destination arguments for: GetExecutableFilePath/GetHomePath/ChangeFileExtension/CombinePath
+* Fixed strings::CopyAnsiString/CopyWideString was not returning the correct value
 - v0.3.1 alpha:
-	* All types/structs/fields/functions documented
-	* [Win32] Fixed legacy opengl (GL_INVALID_OPERATION)
+* All types/structs/fields/functions documented
+* [Win32] Fixed legacy opengl (GL_INVALID_OPERATION)
 - v0.3.0 alpha:
-	* Updated documentation a lot
-	* [Win32] Support for WGL opengl profile selection
+* Updated documentation a lot
+* [Win32] Support for WGL opengl profile selection
 - v0.2.6 alpha:
-	* Added memory::CopyMemory
-	* Added fpl::GetLastError and fpl::GetLastErrorCount for proper error handling
-	* Added files::CreateBinaryFile and files::OpenBinaryFile for wide file paths
-	* Added basic support for creating a modern opengl rendering context, see VideoCompabilityProfile in VideoSettings
-	* Added support for enabling opengl vsync through WGL
-	* Returns char * for all paths:: get like functions
-	* Returns char/wchar_t * for all strings:: functions
-	* Fixed files::CreateBinaryFile was never able to overwrite the file.
-	* Fixed #include was in some namespaces defined
-	* Fixed files::ClearMemory was wrong
-	* Replaced all const constants with constexpr
-	* Removed template code / Replaced it with macros
+* Added memory::CopyMemory
+* Added fpl::GetLastError and fpl::GetLastErrorCount for proper error handling
+* Added files::CreateBinaryFile and files::OpenBinaryFile for wide file paths
+* Added basic support for creating a modern opengl rendering context, see VideoCompabilityProfile in VideoSettings
+* Added support for enabling opengl vsync through WGL
+* Returns char * for all paths:: get like functions
+* Returns char/wchar_t * for all strings:: functions
+* Fixed files::CreateBinaryFile was never able to overwrite the file.
+* Fixed #include was in some namespaces defined
+* Fixed files::ClearMemory was wrong
+* Replaced all const constants with constexpr
+* Removed template code / Replaced it with macros
 - v0.2.5 alpha:
-	* Added CreateDirectories
-	* Returns char * for all path get like functions
-	* Fixed CreateBinaryFile was never able to overwrite the file.
+* Added CreateDirectories
+* Returns char * for all path get like functions
+* Fixed CreateBinaryFile was never able to overwrite the file.
 - v.2.4 alpha:
-	* Changed to a doxygen + vc complaint documentation style
-	* CopyFile2, DeleteFile2 and CloseFile2 are now CopyFile, DeleteFile, CloseFile
+* Changed to a doxygen + vc complaint documentation style
+* CopyFile2, DeleteFile2 and CloseFile2 are now CopyFile, DeleteFile, CloseFile
 - v0.2.3 alpha:
-	* Support for doxygen in documentations
+* Support for doxygen in documentations
 - v0.2.2 alpha:
-	* Added XInput support
+* Added XInput support
 - v0.2.1 alpha:
-	* Changed a lot of pointer arguments to reference
-	* Added gamepad event structures
+* Changed a lot of pointer arguments to reference
+* Added gamepad event structures
 - v0.2 alpha:
-	* Dropped C support and moved to a more C++ ish api
-	* Dropped no C-Runtime support
+* Dropped C support and moved to a more C++ ish api
+* Dropped no C-Runtime support
 - v0.1 alpha:
-	* Initial version
+* Initial version
 
- */
+*/
 
 #ifndef FPL_INCLUDE_HPP
 #define FPL_INCLUDE_HPP
 
- // ****************************************************************************
- //
- // Header
- //
- // ****************************************************************************
+// ****************************************************************************
+//
+// Header
+//
+// ****************************************************************************
 
- //
- // Platform detection
- //
+//
+// Platform detection
+//
 #if defined(_WIN32)
 #	define FPL_PLATFORM_WINDOWS
 #	define FPL_PLATFORM_NAME "Win32"
@@ -291,32 +291,32 @@ SOFTWARE.
 // See: http://nadeausoftware.com/articles/2012/10/c_c_tip_how_detect_compiler_name_and_version_using_compiler_predefined_macros
 //
 #if defined(_MSC_VER)
-	//! Visual studio compiler detected
+//! Visual studio compiler detected
 #	define FPL_COMPILER_MSVC
 #	if defined(_DEBUG) || (!defined(NDEBUG))
-		//! Debug mode detected
+//! Debug mode detected
 #		define FPL_DEBUG
 #	else
-		//! Non-debug (Release) mode detected
+//! Non-debug (Release) mode detected
 #		define FPL_RELEASE
 #	endif
 #elif defined(__llvm__)
-	//! LLVM compiler detected
+//! LLVM compiler detected
 #	define FPL_COMPILER_LLVM
 #elif defined(__clang__)
-	//! CLANG compiler detected
+//! CLANG compiler detected
 #	define FPL_COMPILER_CLANG
 #elif defined(__GNUC__) || defined(__GNUG__)
-	//! GCC compiler detected
+//! GCC compiler detected
 #	define FPL_COMPILER_GCC
 #elif defined(__MINGW32__)
-	//! MingW compiler detected
+//! MingW compiler detected
 #	define FPL_COMPILER_MINGW
 #elif defined(__INTEL_COMPILER) || defined(__ICC)
-	//! Intel compiler detected
+//! Intel compiler detected
 #	define FPL_COMPILER_INTEL
 #else
-	//! No compiler detected
+//! No compiler detected
 #	define FPL_COMPILER_UNKNOWN
 #endif
 
@@ -325,50 +325,50 @@ SOFTWARE.
 //
 #if !defined(FPL_ENABLE_ASSERTIONS)
 #	if defined(FPL_DEBUG)
-		//! Assertions enabled in debug mode by default
+//! Assertions enabled in debug mode by default
 #		define FPL_ENABLE_ASSERTIONS 1
 #	else
-		//! Assertions disabled in non-debug mode by default
+//! Assertions disabled in non-debug mode by default
 #		define FPL_ENABLE_ASSERTIONS 0
 #	endif
 #endif
 #if !defined(FPL_ENABLE_WINDOW)
-	//! Window support enabled by default
+//! Window support enabled by default
 #	define FPL_ENABLE_WINDOW 1
 #endif
 #if !defined(FPL_ENABLE_OPENGL)
-	//! OpenGL support enabled by default
+//! OpenGL support enabled by default
 #	define FPL_ENABLE_OPENGL 1
 #endif
 #if FPL_ENABLE_ASSERTIONS
 #	if !defined(FPL_ENABLE_C_ASSERT)
-		//! C-Runtime assertions enabled by default
+//! C-Runtime assertions enabled by default
 #		define FPL_ENABLE_C_ASSERT 1
 #	endif
 #endif
 #if !defined(FPL_API_AS_PRIVATE)
-	//! Public API calls by default
+//! Public API calls by default
 #	define FPL_API_AS_PRIVATE 0
 #endif
 #if !defined(FPL_ENABLE_ERRORSTATES)
-	//! Multiple error states enabled by default
+//! Multiple error states enabled by default
 #	define FPL_ENABLE_ERRORSTATES 1
 #endif
 #if !defined(FPL_ENABLE_ERROR_IN_CONSOLE)
-	//! Write errors in console by default
+//! Write errors in console by default
 #	define FPL_ENABLE_ERROR_IN_CONSOLE 1
 #endif
 #if !defined(FPL_AUTO_NAMESPACE)
-	//! Expand namespaces by default
+//! Expand namespaces by default
 #	define FPL_AUTO_NAMESPACE 0
 #endif
 #if !defined(FPL_ENABLE_PUSHMEMORY)
-	//! Enable push memory by default
+//! Enable push memory by default
 #	define FPL_ENABLE_PUSHMEMORY 1
 #endif
 #if FPL_ENABLE_PUSHMEMORY
 #	if !defined(FPL_ENABLE_STACK_PUSHMEMORY)
-		//! Use direct stack allocation for any push memory operation
+//! Use direct stack allocation for any push memory operation
 #		define FPL_ENABLE_STACK_PUSHMEMORY 1
 #	endif
 #endif
@@ -381,10 +381,10 @@ SOFTWARE.
 //! Private/Internal function
 #define fpl_internal static
 #if FPL_API_AS_PRIVATE
-	//! Private api call
+//! Private api call
 #	define fpl_api static
 #else
-	//! Public api call
+//! Public api call
 #	define fpl_api extern
 #endif // FPL_API_AS_PRIVATE
 
@@ -394,23 +394,23 @@ SOFTWARE.
 #if FPL_ENABLE_ASSERTIONS
 #	if FPL_ENABLE_C_ASSERT
 #		include <assert.h>
-		//! Runtime assert (C Runtime)
+//! Runtime assert (C Runtime)
 #		define FPL_ASSERT(exp) assert(exp)
-		//! Compile error assert (C Runtime)
+//! Compile error assert (C Runtime)
 #		define FPL_STATICASSERT(exp) static_assert(exp, "static_assert")
 #	else
-		//! Runtime assert
+//! Runtime assert
 #		define FPL_ASSERT(exp) if(!(exp)) {*(int *)0 = 0;}
-		//! Compile error assert
+//! Compile error assert
 #		define FPL_STATICASSERT_INTERNAL(exp, line) \
 			int fpl_static_assert_##line(int static_assert_failed[(exp)?1:-1])
 #		define FPL_STATICASSERT(exp) \
 			FPL_STATICASSERT_INTERNAL(exp, __LINE__)
 #	endif // FPL_ENABLE_C_ASSERT
 #else
-	//! Runtime assertions disabled
+//! Runtime assertions disabled
 #	define FPL_ASSERT(exp)
-	//! Compile time assertions disabled
+//! Compile time assertions disabled
 #	define FPL_STATICASSERT(exp)
 #endif // FPL_ENABLE_ASSERTIONS
 
@@ -636,7 +636,7 @@ namespace fpl {
 			void *internalHandle;
 			ThreadState state;
 		};
-	
+
 		//! Create a thread and return the context for it. When autoStart is set to true, it will start immediatly. 
 		fpl_api const ThreadContext &ThreadCreate(run_thread_function *runFunc, void *data, const bool autoStart = true);
 		//! Let the current thread sleep for the number of given milliseconds
@@ -2643,32 +2643,28 @@ namespace fpl {
 	//
 	namespace strings {
 		fpl_api char *WideStringToAnsiString(const wchar_t *wideSource, const uint32_t maxWideSourceLen, char *ansiDest, const uint32_t maxAnsiDestLen) {
-			uint32_t requiredSize = WideCharToMultiByte(CP_ACP, 0, wideSource, maxWideSourceLen, nullptr, 0, nullptr, nullptr);
-			uint32_t requiredLen = requiredSize * sizeof(char);
+			uint32_t requiredLen = WideCharToMultiByte(CP_ACP, 0, wideSource, maxWideSourceLen, nullptr, 0, nullptr, nullptr);
 			FPL_ASSERT(maxAnsiDestLen >= (requiredLen + 1));
 			WideCharToMultiByte(CP_ACP, 0, wideSource, maxWideSourceLen, ansiDest, maxAnsiDestLen, nullptr, nullptr);
 			ansiDest[requiredLen] = 0;
 			return(ansiDest);
 		}
 		fpl_api char *WideStringToUTF8String(const wchar_t *wideSource, const uint32_t maxWideSourceLen, char *utf8Dest, const uint32_t maxUtf8DestLen) {
-			uint32_t requiredSize = WideCharToMultiByte(CP_UTF8, 0, wideSource, maxWideSourceLen, nullptr, 0, nullptr, nullptr);
-			uint32_t requiredLen = requiredSize * sizeof(char);
-			FPL_ASSERT(maxUtf8DestLen >= (requiredSize + 1));
+			uint32_t requiredLen = WideCharToMultiByte(CP_UTF8, 0, wideSource, maxWideSourceLen, nullptr, 0, nullptr, nullptr);
+			FPL_ASSERT(maxUtf8DestLen >= (requiredLen + 1));
 			WideCharToMultiByte(CP_UTF8, 0, wideSource, maxWideSourceLen, utf8Dest, maxUtf8DestLen, nullptr, nullptr);
 			utf8Dest[requiredLen] = 0;
 			return(utf8Dest);
 		}
 		fpl_api wchar_t *AnsiStringToWideString(const char *ansiSource, const uint32_t ansiSourceLen, wchar_t *wideDest, const uint32_t maxWideDestLen) {
-			uint32_t requiredSize = MultiByteToWideChar(CP_ACP, 0, ansiSource, ansiSourceLen, nullptr, 0);
-			uint32_t requiredLen = requiredSize * sizeof(wchar_t);
+			uint32_t requiredLen = MultiByteToWideChar(CP_ACP, 0, ansiSource, ansiSourceLen, nullptr, 0);
 			FPL_ASSERT(maxWideDestLen >= (requiredLen + 1));
 			MultiByteToWideChar(CP_ACP, 0, ansiSource, ansiSourceLen, wideDest, maxWideDestLen);
 			wideDest[requiredLen] = 0;
 			return(wideDest);
 		}
 		fpl_api wchar_t *UTF8StringToWideString(const char *utf8Source, const uint32_t utf8SourceLen, wchar_t *wideDest, const uint32_t maxWideDestLen) {
-			uint32_t requiredSize = MultiByteToWideChar(CP_UTF8, 0, utf8Source, utf8SourceLen, nullptr, 0);
-			uint32_t requiredLen = requiredSize * sizeof(wchar_t);
+			uint32_t requiredLen = MultiByteToWideChar(CP_UTF8, 0, utf8Source, utf8SourceLen, nullptr, 0);
 			FPL_ASSERT(maxWideDestLen >= (requiredLen + 1));
 			MultiByteToWideChar(CP_UTF8, 0, utf8Source, utf8SourceLen, wideDest, maxWideDestLen);
 			wideDest[requiredLen] = 0;
@@ -3465,7 +3461,7 @@ namespace fpl {
 			result = WIN32_DEF_WINDOW_PROC(hwnd, msg, wParam, lParam);
 			return (result);
 		}
-		}
+	}
 
 #	if FPL_ENABLE_OPENGL
 	namespace window {
@@ -3712,7 +3708,7 @@ namespace fpl {
 			win32State.window.isRunning = true;
 
 			return true;
-			}
+		}
 
 		fpl_internal void Win32ReleaseWindow_Internal(Win32State_Internal &win32State) {
 			if (win32State.window.deviceContext != nullptr) {
@@ -3756,7 +3752,7 @@ namespace fpl {
 				module = nullptr;
 			}
 		}
-		};
+	};
 
 	fpl_api bool InitPlatform(const InitFlags initFlags, const InitSettings &initSettings) {
 		Win32State_Internal &win32State = globalWin32State_Internal;
@@ -3818,7 +3814,7 @@ namespace fpl {
 		globalLastError_Internal = nullptr;
 
 		win32State.isInitialized = false;
-		}
+	}
 
 	fpl_api const char *GetLastError(const size_t index) {
 		const char *result = nullptr;
@@ -3834,7 +3830,7 @@ namespace fpl {
 #endif
 		}
 		return (result);
-		}
+	}
 
 	fpl_api const char *GetLastError() {
 		const char *result = nullptr;
@@ -3849,7 +3845,7 @@ namespace fpl {
 #endif
 		}
 		return (result);
-		}
+	}
 
 	fpl_api size_t GetLastErrorCount() {
 		size_t result = 0;
@@ -3861,9 +3857,9 @@ namespace fpl {
 #endif
 		}
 		return (result);
-		}
-
 	}
+
+}
 
 //
 // Win32 Entry-Point
