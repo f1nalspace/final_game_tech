@@ -198,6 +198,7 @@ SOFTWARE.
 
 - v0.3.3 alpha:
 	* Basic threading creation and handling
+	* Fixed strings::All Wide convertions was not working properly
 - v0.3.2 alpha:
 	* Introduced automatic namespace inclusion (FPL_AUTO_NAMESPACE)
 	* Introduced push memory (FPL_ENABLE_PUSHMEMORY)
@@ -2643,7 +2644,7 @@ namespace fpl {
 	namespace strings {
 		fpl_api char *WideStringToAnsiString(const wchar_t *wideSource, const uint32_t maxWideSourceLen, char *ansiDest, const uint32_t maxAnsiDestLen) {
 			uint32_t requiredSize = WideCharToMultiByte(CP_ACP, 0, wideSource, maxWideSourceLen, nullptr, 0, nullptr, nullptr);
-			uint32_t requiredLen = requiredSize / sizeof(char);
+			uint32_t requiredLen = requiredSize * sizeof(char);
 			FPL_ASSERT(maxAnsiDestLen >= (requiredLen + 1));
 			WideCharToMultiByte(CP_ACP, 0, wideSource, maxWideSourceLen, ansiDest, maxAnsiDestLen, nullptr, nullptr);
 			ansiDest[requiredLen] = 0;
@@ -2651,7 +2652,7 @@ namespace fpl {
 		}
 		fpl_api char *WideStringToUTF8String(const wchar_t *wideSource, const uint32_t maxWideSourceLen, char *utf8Dest, const uint32_t maxUtf8DestLen) {
 			uint32_t requiredSize = WideCharToMultiByte(CP_UTF8, 0, wideSource, maxWideSourceLen, nullptr, 0, nullptr, nullptr);
-			uint32_t requiredLen = requiredSize / sizeof(char);
+			uint32_t requiredLen = requiredSize * sizeof(char);
 			FPL_ASSERT(maxUtf8DestLen >= (requiredSize + 1));
 			WideCharToMultiByte(CP_UTF8, 0, wideSource, maxWideSourceLen, utf8Dest, maxUtf8DestLen, nullptr, nullptr);
 			utf8Dest[requiredLen] = 0;
@@ -2659,7 +2660,7 @@ namespace fpl {
 		}
 		fpl_api wchar_t *AnsiStringToWideString(const char *ansiSource, const uint32_t ansiSourceLen, wchar_t *wideDest, const uint32_t maxWideDestLen) {
 			uint32_t requiredSize = MultiByteToWideChar(CP_ACP, 0, ansiSource, ansiSourceLen, nullptr, 0);
-			uint32_t requiredLen = requiredSize / sizeof(wchar_t);
+			uint32_t requiredLen = requiredSize * sizeof(wchar_t);
 			FPL_ASSERT(maxWideDestLen >= (requiredLen + 1));
 			MultiByteToWideChar(CP_ACP, 0, ansiSource, ansiSourceLen, wideDest, maxWideDestLen);
 			wideDest[requiredLen] = 0;
@@ -2667,7 +2668,7 @@ namespace fpl {
 		}
 		fpl_api wchar_t *UTF8StringToWideString(const char *utf8Source, const uint32_t utf8SourceLen, wchar_t *wideDest, const uint32_t maxWideDestLen) {
 			uint32_t requiredSize = MultiByteToWideChar(CP_UTF8, 0, utf8Source, utf8SourceLen, nullptr, 0);
-			uint32_t requiredLen = requiredSize / sizeof(wchar_t);
+			uint32_t requiredLen = requiredSize * sizeof(wchar_t);
 			FPL_ASSERT(maxWideDestLen >= (requiredLen + 1));
 			MultiByteToWideChar(CP_UTF8, 0, utf8Source, utf8SourceLen, wideDest, maxWideDestLen);
 			wideDest[requiredLen] = 0;
