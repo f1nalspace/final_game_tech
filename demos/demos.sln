@@ -11,6 +11,8 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "FPL_ImGui", "FPL_ImGui\FPL_
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "FTT_TileTracingDemo", "FTT_TileTracingDemo\FTT_TileTracingDemo.vcxproj", "{860278D2-7E35-41E8-A950-ADB53236C37F}"
 EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "FOGL_Test", "FOGL_Test\FOGL_Test.vcxproj", "{559B02CC-DCF3-4AF1-80BC-78C78D04E197}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x64 = Debug|x64
@@ -51,6 +53,14 @@ Global
 		{860278D2-7E35-41E8-A950-ADB53236C37F}.Release|x64.Build.0 = Release|x64
 		{860278D2-7E35-41E8-A950-ADB53236C37F}.Release|x86.ActiveCfg = Release|Win32
 		{860278D2-7E35-41E8-A950-ADB53236C37F}.Release|x86.Build.0 = Release|Win32
+		{559B02CC-DCF3-4AF1-80BC-78C78D04E197}.Debug|x64.ActiveCfg = Debug|x64
+		{559B02CC-DCF3-4AF1-80BC-78C78D04E197}.Debug|x64.Build.0 = Debug|x64
+		{559B02CC-DCF3-4AF1-80BC-78C78D04E197}.Debug|x86.ActiveCfg = Debug|Win32
+		{559B02CC-DCF3-4AF1-80BC-78C78D04E197}.Debug|x86.Build.0 = Debug|Win32
+		{559B02CC-DCF3-4AF1-80BC-78C78D04E197}.Release|x64.ActiveCfg = Release|x64
+		{559B02CC-DCF3-4AF1-80BC-78C78D04E197}.Release|x64.Build.0 = Release|x64
+		{559B02CC-DCF3-4AF1-80BC-78C78D04E197}.Release|x86.ActiveCfg = Release|Win32
+		{559B02CC-DCF3-4AF1-80BC-78C78D04E197}.Release|x86.Build.0 = Release|Win32
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

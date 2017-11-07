@@ -24,3 +24,7 @@ rmdir /q /s FTT_TileTracingDemo\debug
 rmdir /q /s FTT_TileTracingDemo\release
 rmdir /q /s FTT_TileTracingDemo\x64
 rmdir /q /s FTT_TileTracingDemo\x86
+rmdir /q /s FOGL_Test\debug
+rmdir /q /s FOGL_Test\release
+rmdir /q /s FOGL_Test\x64
+rmdir /q /s FOGL_Test\x86

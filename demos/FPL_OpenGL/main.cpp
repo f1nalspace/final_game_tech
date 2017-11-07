@@ -187,8 +187,8 @@ static bool RunModern() {
 	glGetIntegerv(GL_CONTEXT_PROFILE_MASK, &profileMask);
 	glGetIntegerv(GL_CONTEXT_FLAGS, &contextFlags);
 	ConsoleFormatOut("OpenGL supported profiles:\n");
-	ConsoleFormatOut("\tCore: %s\n", ((profileMask & GL_CONTEXT_CORE_PROFILE_BIT) ? "yes" : "no"));
-	ConsoleFormatOut("\tForward: %s\n", ((contextFlags & GL_CONTEXT_FLAG_FORWARD_COMPATIBLE_BIT) ? "yes" : "no"));
+	ConsoleFormatOut("\tCore: %s\n", ((profileMask & FPL_GL_CONTEXT_CORE_PROFILE_BIT) ? "yes" : "no"));
+	ConsoleFormatOut("\tForward: %s\n", ((contextFlags & FPL_GL_CONTEXT_FLAG_FORWARD_COMPATIBLE_BIT) ? "yes" : "no"));
 
 	ConsoleOut("Running modern opengl\n");
 

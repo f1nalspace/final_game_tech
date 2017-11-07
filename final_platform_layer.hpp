@@ -197,8 +197,11 @@ SOFTWARE.
 # VERSION HISTORY
 
 - v0.3.4 alpha:
-* CopyFile/DeleteFile are now CopyAFile/DeleteAFile (Stupid win32!)
-* Fixed strings::All Wide convertions was not working properly
+* Renamed: CopyFile/DeleteFile/All memory functions (Stupid win32!)
+* Renamed: All internal opengl defines, so that it wont conflict with other libraries
+* Fixed: [Win32] strings::All Wide convertions was not working properly
+* Removed: [Win32] Undefs for CopyFile
+* Changed: [Win32/OpenGL] Test for already included gl.h
 - v0.3.3 alpha:
 * Basic threading creation and handling
 * Fixed strings::All Wide convertions was not working properly
@@ -663,15 +666,15 @@ namespace fpl {
 		//! Copies the given source memory with its length to the target memory
 		fpl_api void CopyMem(void *sourceMem, const size_t sourceSize, void *targetMem);
 		//! Allocates memory from the operating system by the given size
-		fpl_api void *AllocateMemory(const size_t size);
+		fpl_api void *AllocateMem(const size_t size);
 		//! Releases the memory allocated from the operating system.
-		fpl_api void FreeMemory(void *ptr);
+		fpl_api void FreeMem(void *ptr);
 		//! Allocates memory on the current stack. Use this very carefully!
-		fpl_api void *AllocateStackMemory(const size_t size);
+		fpl_api void *AllocateStackMem(const size_t size);
 		//! Allocates aligned memory from the operating system by the given alignment.
-		fpl_api void *AllocateAlignedMemory(const size_t size, const size_t alignment);
+		fpl_api void *AllocateAlignedMem(const size_t size, const size_t alignment);
 		//! Releases aligned memory from the operating system.
-		fpl_api void FreeAlignedMemory(void *ptr);
+		fpl_api void FreeAlignedMem(void *ptr);
 	};
 
 	//! Timing and measurement functions
@@ -1562,7 +1565,7 @@ namespace fpl {
 			result = (uint8_t *)block->mem + block->used;
 			block->used += size;
 #	else
-			result = memory::AllocateStackMemory(size);
+			result = memory::AllocateStackMem(size);
 #	endif
 
 			return(result);
@@ -1676,13 +1679,13 @@ namespace fpl {
 	// All Public Memory
 	//
 	namespace memory {
-		fpl_api void *AllocateAlignedMemory(const size_t size, const size_t alignment) {
+		fpl_api void *AllocateAlignedMem(const size_t size, const size_t alignment) {
 			FPL_ASSERT(size > 0);
 			FPL_ASSERT((alignment > 0) && !(alignment & (alignment - 1)));
 
 			// Allocate empty memory to hold a size of a pointer + the actual size + alignment padding 
 			size_t newSize = sizeof(void *) + size + (alignment << 1);
-			void *basePtr = AllocateMemory(newSize);
+			void *basePtr = AllocateMem(newSize);
 			ClearMem(basePtr, newSize);
 
 			// The resulting address starts after the stored base pointer
@@ -1701,12 +1704,12 @@ namespace fpl {
 			return(alignedPtr);
 		}
 
-		fpl_api void FreeAlignedMemory(void *ptr) {
+		fpl_api void FreeAlignedMem(void *ptr) {
 			FPL_ASSERT(ptr != nullptr);
 
 			// Free the base pointer which is stored to the left from the given pointer
 			void *basePtr = (void *)((void **)((uintptr_t)ptr - sizeof(void *)));
-			FreeMemory(basePtr);
+			FreeMem(basePtr);
 		}
 
 		constexpr size_t MemShift64 = 3;
@@ -2301,18 +2304,18 @@ namespace fpl {
 	// Win32 Public Memory
 	//
 	namespace memory {
-		fpl_api void *AllocateMemory(const size_t size) {
+		fpl_api void *AllocateMem(const size_t size) {
 			FPL_ASSERT(size > 0);
 			void *result = VirtualAlloc(0, size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
 			return(result);
 		}
 
-		fpl_api void FreeMemory(void *ptr) {
+		fpl_api void FreeMem(void *ptr) {
 			FPL_ASSERT(ptr != nullptr);
 			VirtualFree(ptr, 0, MEM_FREE);
 		}
 
-		fpl_api void *AllocateStackMemory(const size_t size) {
+		fpl_api void *AllocateStackMem(const size_t size) {
 			FPL_ASSERT(size > 0);
 			// @TODO: Is this safe not to include <malloc.h>?
 			void *result = _malloca(size);
@@ -3622,7 +3625,7 @@ namespace fpl {
 
 			// Allocate event queue
 			size_t eventQueueMemorySize = sizeof(EventQueue_Internal);
-			void *eventQueueMemory = AllocateAlignedMemory(eventQueueMemorySize, 16);
+			void *eventQueueMemory = AllocateAlignedMem(eventQueueMemorySize, 16);
 			if (eventQueueMemory == nullptr) {
 				PushError_Internal("[Win32] Failed Allocating Event Queue Memory with size '%llu'!", eventQueueMemorySize);
 				return false;
@@ -3721,7 +3724,7 @@ namespace fpl {
 				WIN32_UNREGISTER_CLASS(win32State.window.windowClass, win32State.appInstance);
 			}
 
-			memory::FreeAlignedMemory(globalEventQueue_Internal);
+			memory::FreeAlignedMem(globalEventQueue_Internal);
 			globalEventQueue_Internal = nullptr;
 		}
 
@@ -3758,7 +3761,7 @@ namespace fpl {
 		FPL_ASSERT(!win32State.isInitialized);
 
 		// Allocate last error state
-		void *lastErrorState = memory::AllocateAlignedMemory(sizeof(ErrorState_Internal), 16);
+		void *lastErrorState = memory::AllocateAlignedMem(sizeof(ErrorState_Internal), 16);
 		globalLastError_Internal = (ErrorState_Internal *)lastErrorState;
 
 		// Timing
@@ -3809,7 +3812,7 @@ namespace fpl {
 		memory::ReleaseAllPushMemoryBlocks_Internal();
 #endif
 
-		memory::FreeAlignedMemory(globalLastError_Internal);
+		memory::FreeAlignedMem(globalLastError_Internal);
 		globalLastError_Internal = nullptr;
 
 		win32State.isInitialized = false;
