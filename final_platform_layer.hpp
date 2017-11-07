@@ -196,6 +196,9 @@ SOFTWARE.
 
 # VERSION HISTORY
 
+- v0.3.4 alpha:
+* CopyFile/DeleteFile are now CopyAFile/DeleteAFile (Stupid win32!)
+* Fixed strings::All Wide convertions was not working properly
 - v0.3.3 alpha:
 * Basic threading creation and handling
 * Fixed strings::All Wide convertions was not working properly
@@ -656,9 +659,9 @@ namespace fpl {
 	//! Memory allocation functions
 	namespace memory {
 		//! Resets the given memory pointer by the given size to zero.
-		fpl_api void ClearMemory(void *mem, const size_t size);
+		fpl_api void ClearMem(void *mem, const size_t size);
 		//! Copies the given source memory with its length to the target memory
-		fpl_api void CopyMemory(void *sourceMem, const size_t sourceSize, void *targetMem);
+		fpl_api void CopyMem(void *sourceMem, const size_t sourceSize, void *targetMem);
 		//! Allocates memory from the operating system by the given size
 		fpl_api void *AllocateMemory(const size_t size);
 		//! Releases the memory allocated from the operating system.
@@ -792,9 +795,9 @@ namespace fpl {
 		//! Returns true when the given file path physically exists.
 		fpl_api bool FileExists(const char *filePath);
 		//! Copies the given source file to the target path and returns truwe when copy was successful. Target path must include the full path to the file. When overwrite is set, the target file path will always be overwritten.
-		fpl_api bool CopyFile(const char *sourceFilePath, const char *targetFilePath, const bool overwrite);
+		fpl_api bool CopyAFile(const char *sourceFilePath, const char *targetFilePath, const bool overwrite);
 		//! Deletes the given file without confirmation and returns true when the deletion was successful.
-		fpl_api bool DeleteFile(const char *filePath);
+		fpl_api bool DeleteAFile(const char *filePath);
 
 		//! Creates all the directories in the path when not exists.
 		fpl_api bool CreateDirectories(const char *path);
@@ -1263,12 +1266,6 @@ namespace fpl {
 #	include <xinput.h> // XInputGetState
 #	include <math.h> // abs
 
-// @TODO(final): Dont overwrite defines like that, just have one path for unicode and one for ansi
-#	undef CopyFile
-#	undef DeleteFile
-#	undef CopyMemory
-#	undef CreateThread
-
 #	if defined(UNICODE)
 #		define WIN32_CLASSNAME L"FPLWindowClassW"
 #		define WIN32_UNNAMED_WINDOW L"Unnamed FPL Unicode Window"
@@ -1308,7 +1305,9 @@ namespace fpl {
 #	endif // defined(UNICODE)
 
 #	if FPL_ENABLE_OPENGL
-#		include <gl\gl.h>
+#		ifndef GL_VERSION_1_1
+#			include <gl\gl.h>
+#		endif
 #	endif // FPL_ENABLE_OPENGL
 
 // @NOTE(final): Required for access "main" from the actual win32 entry point
@@ -1357,7 +1356,7 @@ using namespace fpl::threading;
 //
 // Internal macros
 //
-#define FPL_CLEARMEMORY_INTERNAL(T, memory, size, shift, mask) \
+#define FPL_CLEARMEM_INTERNAL(T, memory, size, shift, mask) \
 	do { \
 		size_t clearedBytes = 0; \
 		if (sizeof(T) > sizeof(uint8_t)) { \
@@ -1375,7 +1374,7 @@ using namespace fpl::threading;
 		} \
 	} while (0);
 
-#define FPL_COPYMEMORY_INTERNAL(T, source, sourceSize, dest, shift, mask) \
+#define FPL_COPYMEM_INTERNAL(T, source, sourceSize, dest, shift, mask) \
 	do { \
 		size_t copiedBytes = 0; \
 		if (sizeof(T) > sizeof(uint8_t)) { \
@@ -1398,18 +1397,18 @@ using namespace fpl::threading;
 
 #if FPL_DEBUG_INTERNAL
 template <typename T>
-fpl_internal void ClearMemory_Internal_T(void *memory, const size_t size, const uint32_t shift, const uint32_t mask) {
-	FPL_CLEARMEMORY_INTERNAL(T, memory, size, shift, mask);
+fpl_internal void ClearMem_Internal_T(void *memory, const size_t size, const uint32_t shift, const uint32_t mask) {
+	FPL_CLEARMEM_INTERNAL(T, memory, size, shift, mask);
 }
-#undef FPL_CLEARMEMORY_INTERNAL
-#define FPL_CLEARMEMORY_INTERNAL(T, memory, size, shift, mask) ClearMemory_Internal_T<T>(memory, size, shift, mask)
+#undef FPL_CLEARMEM_INTERNAL
+#define FPL_CLEARMEM_INTERNAL(T, memory, size, shift, mask) ClearMem_Internal_T<T>(memory, size, shift, mask)
 
 template <typename T>
-fpl_internal void CopyMemory_Internal_T(void *source, size_t sourceSize, void *dest, uint32_t shift, uint32_t mask) {
-	FPL_COPYMEMORY_INTERNAL(T, source, sourceSize, dest, shift, mask);
+fpl_internal void CopyMem_Internal_T(void *source, size_t sourceSize, void *dest, uint32_t shift, uint32_t mask) {
+	FPL_COPYMEM_INTERNAL(T, source, sourceSize, dest, shift, mask);
 }
-#undef FPL_COPYMEMORY_INTERNAL
-#define FPL_COPYMEMORY_INTERNAL(T, source, sourceSize, dest, shift, mask) CopyMemory_Internal_T<T>(source, sourceSize, dest, shift, mask)
+#undef FPL_COPYMEM_INTERNAL
+#define FPL_COPYMEM_INTERNAL(T, source, sourceSize, dest, shift, mask) CopyMemory_Internal_T<T>(source, sourceSize, dest, shift, mask)
 #endif
 
 
@@ -1684,7 +1683,7 @@ namespace fpl {
 			// Allocate empty memory to hold a size of a pointer + the actual size + alignment padding 
 			size_t newSize = sizeof(void *) + size + (alignment << 1);
 			void *basePtr = AllocateMemory(newSize);
-			ClearMemory(basePtr, newSize);
+			ClearMem(basePtr, newSize);
 
 			// The resulting address starts after the stored base pointer
 			void *alignedPtr = (void *)((uintptr_t)basePtr + sizeof(void *));
@@ -1717,27 +1716,27 @@ namespace fpl {
 		constexpr size_t MemShift16 = 1;
 		constexpr size_t MemMask16 = 0x00000001;
 
-		fpl_api void ClearMemory(void *mem, const size_t size) {
+		fpl_api void ClearMem(void *mem, const size_t size) {
 			if (size % 8 == 0) {
-				FPL_CLEARMEMORY_INTERNAL(uint64_t, mem, size, MemShift64, MemMask64);
+				FPL_CLEARMEM_INTERNAL(uint64_t, mem, size, MemShift64, MemMask64);
 			} else if (size % 4 == 0) {
-				FPL_CLEARMEMORY_INTERNAL(uint32_t, mem, size, MemShift32, MemMask32);
+				FPL_CLEARMEM_INTERNAL(uint32_t, mem, size, MemShift32, MemMask32);
 			} else if (size % 2 == 0) {
-				FPL_CLEARMEMORY_INTERNAL(uint16_t, mem, size, MemShift16, MemMask16);
+				FPL_CLEARMEM_INTERNAL(uint16_t, mem, size, MemShift16, MemMask16);
 			} else {
-				FPL_CLEARMEMORY_INTERNAL(uint8_t, mem, size, 0, 0);
+				FPL_CLEARMEM_INTERNAL(uint8_t, mem, size, 0, 0);
 			}
 		}
 
-		fpl_api void CopyMemory(void *sourceMem, const size_t sourceSize, void *targetMem) {
+		fpl_api void CopyMem(void *sourceMem, const size_t sourceSize, void *targetMem) {
 			if (sourceSize % 8 == 0) {
-				FPL_COPYMEMORY_INTERNAL(uint64_t, sourceMem, sourceSize, targetMem, MemShift64, MemMask64);
+				FPL_COPYMEM_INTERNAL(uint64_t, sourceMem, sourceSize, targetMem, MemShift64, MemMask64);
 			} else if (sourceSize % 4 == 0) {
-				FPL_COPYMEMORY_INTERNAL(uint32_t, sourceMem, sourceSize, targetMem, MemShift32, MemMask32);
+				FPL_COPYMEM_INTERNAL(uint32_t, sourceMem, sourceSize, targetMem, MemShift32, MemMask32);
 			} else if (sourceSize % 2 == 0) {
-				FPL_COPYMEMORY_INTERNAL(uint16_t, sourceMem, sourceSize, targetMem, MemShift32, MemMask32);
+				FPL_COPYMEM_INTERNAL(uint16_t, sourceMem, sourceSize, targetMem, MemShift32, MemMask32);
 			} else {
-				FPL_COPYMEMORY_INTERNAL(uint8_t, sourceMem, sourceSize, targetMem, 0, 0);
+				FPL_COPYMEM_INTERNAL(uint8_t, sourceMem, sourceSize, targetMem, 0, 0);
 			}
 		}
 	}
@@ -2035,11 +2034,11 @@ namespace fpl {
 			for (uint32_t i = 0x80000000; i <= extendedIds; ++i) {
 				__cpuid(cpuInfo, i);
 				if (i == 0x80000002) {
-					memory::CopyMemory(cpuInfo, sizeof(cpuInfo), cpuBrandBuffer);
+					memory::CopyMem(cpuInfo, sizeof(cpuInfo), cpuBrandBuffer);
 				} else if (i == 0x80000003) {
-					memory::CopyMemory(cpuInfo, sizeof(cpuInfo), cpuBrandBuffer + 16);
+					memory::CopyMem(cpuInfo, sizeof(cpuInfo), cpuBrandBuffer + 16);
 				} else if (i == 0x80000004) {
-					memory::CopyMemory(cpuInfo, sizeof(cpuInfo), cpuBrandBuffer + 32);
+					memory::CopyMem(cpuInfo, sizeof(cpuInfo), cpuBrandBuffer + 32);
 				}
 			}
 
@@ -2089,40 +2088,40 @@ typedef WGL_CREATE_CONTEXT_ATTRIBS_ARB(wgl_create_context_attribs_arb);
 #define WGL_SWAP_INTERVAL_EXT(name) BOOL WINAPI name(int interval)
 typedef WGL_SWAP_INTERVAL_EXT(wgl_swap_interval_ext);
 
-#if !defined(GL_CONTEXT_FLAG_FORWARD_COMPATIBLE_BIT)
-#	define GL_CONTEXT_FLAG_FORWARD_COMPATIBLE_BIT 0x0001
-#	define GL_CONTEXT_FLAG_DEBUG_BIT 0x00000002
-#	define GL_CONTEXT_FLAG_ROBUST_ACCESS_BIT 0x00000004
-#	define GL_CONTEXT_FLAG_NO_ERROR_BIT 0x00000008
-#	define GL_CONTEXT_CORE_PROFILE_BIT 0x00000001
-#	define GL_CONTEXT_COMPATIBILITY_PROFILE_BIT 0x00000002
+#if !defined(FPL_GL_CONTEXT_FLAG_FORWARD_COMPATIBLE_BIT)
+#	define FPL_GL_CONTEXT_FLAG_FORWARD_COMPATIBLE_BIT 0x0001
+#	define FPL_GL_CONTEXT_FLAG_DEBUG_BIT 0x00000002
+#	define FPL_GL_CONTEXT_FLAG_ROBUST_ACCESS_BIT 0x00000004
+#	define FPL_GL_CONTEXT_FLAG_NO_ERROR_BIT 0x00000008
+#	define FPL_GL_CONTEXT_CORE_PROFILE_BIT 0x00000001
+#	define FPL_GL_CONTEXT_COMPATIBILITY_PROFILE_BIT 0x00000002
 #endif
 
-#if !defined(WGL_CONTEXT_DEBUG_BIT_ARB)
-#	define WGL_CONTEXT_DEBUG_BIT_ARB 0x0001
-#	define WGL_CONTEXT_FORWARD_COMPATIBLE_BIT_ARB 0x0002
-#	define WGL_CONTEXT_CORE_PROFILE_BIT_ARB 0x00000001
-#	define WGL_CONTEXT_COMPATIBILITY_PROFILE_BIT_ARB 0x00000002
-#	define WGL_CONTEXT_PROFILE_MASK_ARB 0x9126
-#	define WGL_CONTEXT_MAJOR_VERSION_ARB 0x2091
-#	define WGL_CONTEXT_MINOR_VERSION_ARB 0x2092
-#	define WGL_CONTEXT_LAYER_PLANE_ARB 0x2093
-#	define WGL_CONTEXT_FLAGS_ARB 0x2094
+#if !defined(FPL_WGL_CONTEXT_DEBUG_BIT_ARB)
+#	define FPL_WGL_CONTEXT_DEBUG_BIT_ARB 0x0001
+#	define FPL_WGL_CONTEXT_FORWARD_COMPATIBLE_BIT_ARB 0x0002
+#	define FPL_WGL_CONTEXT_CORE_PROFILE_BIT_ARB 0x00000001
+#	define FPL_WGL_CONTEXT_COMPATIBILITY_PROFILE_BIT_ARB 0x00000002
+#	define FPL_WGL_CONTEXT_PROFILE_MASK_ARB 0x9126
+#	define FPL_WGL_CONTEXT_MAJOR_VERSION_ARB 0x2091
+#	define FPL_WGL_CONTEXT_MINOR_VERSION_ARB 0x2092
+#	define FPL_WGL_CONTEXT_LAYER_PLANE_ARB 0x2093
+#	define FPL_WGL_CONTEXT_FLAGS_ARB 0x2094
 #endif
 
-#if !defined(WGL_DRAW_TO_WINDOW_ARB)
-#define WGL_DRAW_TO_WINDOW_ARB 0x2001
-#define WGL_ACCELERATION_ARB 0x2003
-#define WGL_SWAP_METHOD_ARB 0x2007
-#define WGL_SUPPORT_OPENGL_ARB 0x2010
-#define WGL_DOUBLE_BUFFER_ARB 0x2011
-#define WGL_PIXEL_TYPE_ARB 0x2013
-#define WGL_COLOR_BITS_ARB 0x2014
-#define WGL_DEPTH_BITS_ARB 0x2022
-#define WGL_STENCIL_BITS_ARB 0x2023
-#define WGL_FULL_ACCELERATION_ARB 0x2027
-#define WGL_SWAP_EXCHANGE_ARB 0x2028
-#define WGL_TYPE_RGBA_ARB 0x202B
+#if !defined(FPL_WGL_DRAW_TO_WINDOW_ARB)
+#define FPL_WGL_DRAW_TO_WINDOW_ARB 0x2001
+#define FPL_WGL_ACCELERATION_ARB 0x2003
+#define FPL_WGL_SWAP_METHOD_ARB 0x2007
+#define FPL_WGL_SUPPORT_OPENGL_ARB 0x2010
+#define FPL_WGL_DOUBLE_BUFFER_ARB 0x2011
+#define FPL_WGL_PIXEL_TYPE_ARB 0x2013
+#define FPL_WGL_COLOR_BITS_ARB 0x2014
+#define FPL_WGL_DEPTH_BITS_ARB 0x2022
+#define FPL_WGL_STENCIL_BITS_ARB 0x2023
+#define FPL_WGL_FULL_ACCELERATION_ARB 0x2027
+#define FPL_WGL_SWAP_EXCHANGE_ARB 0x2028
+#define FPL_WGL_TYPE_RGBA_ARB 0x202B
 #endif
 
 struct wgl_extensions {
@@ -2463,11 +2462,11 @@ namespace fpl {
 			}
 			return(result);
 		}
-		fpl_api bool CopyFile(const char *sourceFilePath, const char *targetFilePath, const bool overwrite) {
+		fpl_api bool CopyAFile(const char *sourceFilePath, const char *targetFilePath, const bool overwrite) {
 			bool result = (CopyFileA(sourceFilePath, targetFilePath, !overwrite) == TRUE);
 			return(result);
 		}
-		fpl_api bool DeleteFile(const char *filePath) {
+		fpl_api bool DeleteAFile(const char *filePath) {
 			bool result = (DeleteFileA(filePath) == TRUE);
 			return(result);
 		}
@@ -3533,17 +3532,17 @@ namespace fpl {
 
 				int contextAttribIndex = 0;
 				int contextAttribList[20 + 1] = {};
-				contextAttribList[contextAttribIndex++] = WGL_CONTEXT_MAJOR_VERSION_ARB;
+				contextAttribList[contextAttribIndex++] = FPL_WGL_CONTEXT_MAJOR_VERSION_ARB;
 				contextAttribList[contextAttribIndex++] = (int)videoSettings.majorVersion;
-				contextAttribList[contextAttribIndex++] = WGL_CONTEXT_MINOR_VERSION_ARB;
+				contextAttribList[contextAttribIndex++] = FPL_WGL_CONTEXT_MINOR_VERSION_ARB;
 				contextAttribList[contextAttribIndex++] = (int)videoSettings.minorVersion;
 				if (videoSettings.profile == VideoCompabilityProfile::Core) {
-					contextAttribList[contextAttribIndex++] = WGL_CONTEXT_PROFILE_MASK_ARB;
-					contextAttribList[contextAttribIndex++] = WGL_CONTEXT_CORE_PROFILE_BIT_ARB;
+					contextAttribList[contextAttribIndex++] = FPL_WGL_CONTEXT_PROFILE_MASK_ARB;
+					contextAttribList[contextAttribIndex++] = FPL_WGL_CONTEXT_CORE_PROFILE_BIT_ARB;
 				} else {
 					FPL_ASSERT(videoSettings.profile == VideoCompabilityProfile::Forward);
-					contextAttribList[contextAttribIndex++] = WGL_CONTEXT_FLAGS_ARB;
-					contextAttribList[contextAttribIndex++] = WGL_CONTEXT_FORWARD_COMPATIBLE_BIT_ARB;
+					contextAttribList[contextAttribIndex++] = FPL_WGL_CONTEXT_FLAGS_ARB;
+					contextAttribList[contextAttribIndex++] = FPL_WGL_CONTEXT_FORWARD_COMPATIBLE_BIT_ARB;
 				}
 
 				HGLRC newContext = globalWGLExtensions.createContextAttribsArb(deviceContext, 0, contextAttribList);
