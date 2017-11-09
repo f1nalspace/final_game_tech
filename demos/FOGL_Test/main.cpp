@@ -2,8 +2,9 @@
 #define FPL_AUTO_NAMESPACE 1
 #include "final_platform_layer.hpp"
 
-#define FOGL_IMPLEMENTATION
-#include "final_opengl.hpp"
+#define FDYNGL_STATIC
+#define FDYNGL_IMPLEMENTATION
+#include "final_dynamic_opengl.hpp"
 
 static GLuint CreateShaderType(GLenum type, const char *source) {
 	GLuint shaderId = glCreateShader(type);
@@ -55,7 +56,7 @@ static GLuint CreateShaderProgram(const char *name, const char *vertexSource, co
 }
 
 static bool RunModern() {
-	fogl::LoadOpenGLExtensions();
+	fdyngl::LoadOpenGLExtensions();
 
 	GLuint vertexArrayID;
 	glGenVertexArrays(1, &vertexArrayID);

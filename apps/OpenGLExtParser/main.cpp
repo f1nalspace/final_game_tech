@@ -11,6 +11,13 @@
 
 using namespace std;
 
+static const string HeaderIdent = "\t";
+static const string BodyIdent = "\t";
+static const string StaticDefineName = "FDYNGL_STATIC";
+static const string GLApiDefineName = "FDYNGL_GLAPI";
+static const string APIEntryDefineName = "FDYNGL_APIENTRY";
+static const string GetProcAddressName = "GetOpenGLProcAddress_Internal";
+
 struct GLConstant {
 	string name;
 	string value;
@@ -342,7 +349,7 @@ static vector<string> InitGLVersionTypes(const string &version) {
 		result.push_back(string("typedef uint64_t GLuint64;"));
 		result.push_back(string("typedef int64_t GLint64;"));
 	} else if (version.compare("GL_VERSION_4_3") == 0) {
-		result.push_back(string("typedef void (APIENTRY *GLDEBUGPROC)(GLenum source, GLenum type, GLuint id, GLenum severity, GLsizei length, const GLchar *message, const void *userParam);"));
+		result.push_back(string("typedef void (" + APIEntryDefineName + " *GLDEBUGPROC)(GLenum source, GLenum type, GLuint id, GLenum severity, GLsizei length, const GLchar *message, const void *userParam);"));
 	}
 	return(result);
 }
@@ -440,20 +447,21 @@ int main(int argc, char *args[]) {
 
 	cout << "Write header '" << headerOutputFilePath << "'" << endl;
 
+
 	ofstream headerOutStream = ofstream(headerOutputFilePath, std::ios::out | std::ios::binary);
 
-#define OUTPUT_EXPORT_AS_WELL 1
+#define OUTPUT_EXPORT_AS_WELL 0
 
 	for (auto it : prototypes) {
 		string version = Trim(it.first);
 
-		headerOutStream << "#ifndef " << version << endl;
-		headerOutStream << "#\tdefine " << version << " 1" << endl;
+		headerOutStream << "#" << HeaderIdent << "ifndef " << version << endl;
+		headerOutStream << "#" << HeaderIdent << "\tdefine " << version << " 1" << endl;
 
 		// Typedefs
 		const vector<string> initTypeList = initTypes[it.first];
 		for (auto initType : initTypeList) {
-			headerOutStream << "\t" << initType << endl;
+			headerOutStream << HeaderIdent << "\t" << initType << endl;
 		}
 
 		// Constants
@@ -467,12 +475,12 @@ int main(int argc, char *args[]) {
 						ctype = string("uint64_t");
 					}
 				}
-				headerOutStream << "\tstatic constexpr " << ctype << " " << constant.name << " = " << constant.value << ";" << endl;
+				headerOutStream << HeaderIdent << "\tstatic constexpr " << ctype << " " << constant.name << " = " << constant.value << ";" << endl;
 			}
 		}
 
 	#if OUTPUT_EXPORT_AS_WELL
-		headerOutStream << "#\tifdef FOGL_STATIC" << endl;
+		headerOutStream << "#" << HeaderIdent << "\tifdef " << StaticDefineName << endl;
 	#endif
 
 		const vector<GLPrototype> prototypeList = it.second;
@@ -490,11 +498,11 @@ int main(int argc, char *args[]) {
 				returnString += r;
 			}
 			string argString = Join(prototype.arguments, ", ", true);
-			headerOutStream << "\t\ttypedef " << returnString << " (FOGL_APIENTRY " << funcPtrName << ")(" << argString << ");" << endl;
-			headerOutStream << "\t\tFOGL_STATIC " << funcPtrName << "* " << name << ";" << endl;
+			headerOutStream << HeaderIdent << "\t\ttypedef " << returnString << " (" << APIEntryDefineName << " " << funcPtrName << ")(" << argString << ");" << endl;
+			headerOutStream << HeaderIdent << "\t\tstatic " << funcPtrName << "* " << name << ";" << endl;
 		}
 	#if OUTPUT_EXPORT_AS_WELL
-		headerOutStream << "#\telse" << endl;
+		headerOutStream << "#" << HeaderIdent << "\telse" << endl;
 		for (auto prototype : prototypeList) {
 			string name = Trim(prototype.name);
 			string funcPtrName = MakeFunctionPtrName(name);
@@ -509,12 +517,12 @@ int main(int argc, char *args[]) {
 				returnString += r;
 			}
 			string argString = Join(prototype.arguments, ", ", true);
-			headerOutStream << "\t\tFOGL_GLAPI " << returnString << " FOGL_APIENTRY " << name << "(" << argString << ");" << endl;
+			headerOutStream << HeaderIdent << "\t\t" << GLApiDefineName << " " << returnString << " " << APIEntryDefineName << " " << name << "(" << argString << ");" << endl;
 		}
-		headerOutStream << "#\tendif // FOGL_STATIC" << endl;
+		headerOutStream << "#" << HeaderIdent << "\tendif // " << StaticDefineName << endl;
 	#endif
 
-		headerOutStream << "#endif // " << version << endl;
+		headerOutStream << "#" << HeaderIdent << "endif // " << version << endl;
 	}
 
 	headerOutStream.flush();
@@ -524,55 +532,24 @@ int main(int argc, char *args[]) {
 
 	ofstream bodyOutStream = ofstream(bodyOutputFilePath, std::ios::out | std::ios::binary);
 
-#if 0
-
-	bodyOutStream << "//" << endl;
-	bodyOutStream << "// Exports Initialization" << endl;
-	bodyOutStream << "//" << endl;
-	bodyOutStream << endl;
-	for (auto funcName : exportFunctions) {
-		bodyOutStream << exportName << " " << funcName << " = nullptr;" << endl;
-	}
-
-	bodyOutStream << endl;
-
-	bodyOutStream << "//" << endl;
-	bodyOutStream << "// Version loader" << endl;
-	bodyOutStream << "//" << endl;
-	bodyOutStream << "namespace fgll {" << endl;
-	vector<string> versionFunctions;
 	for (auto it : prototypes) {
 		string version = Trim(it.first);
 
-		headerOutStream << "#if " << version << endl;
+		bodyOutStream << "#" << BodyIdent << "if " << version << endl;
 
 		const string VersionString = "GL_VERSION_";
 		string versionNumber = version.substr(VersionString.size());
 
-		string versionFuncName = "LoadGLVersion" + versionNumber;
-		versionFunctions.emplace_back(versionFuncName);
-		bodyOutStream << '\t' << exportName << " void " << versionFuncName << "() {" << endl;
 		const vector<GLPrototype> prototypeList = it.second;
 		for (auto prototype : prototypeList) {
 			string name = Trim(prototype.name);
 			string funcPtrName = MakeFunctionPtrName(name);
-			bodyOutStream << "\t\t" << name << " = (" << funcPtrName << " *)LoadGLFunction(\"" << name << "\");" << endl;
+			bodyOutStream << BodyIdent << "\t" << name << " = (" << funcPtrName << " *)" << GetProcAddressName  << "(\"" << name << "\");" << endl;
 		}
-		bodyOutStream << '\t' << "}" << endl;
 
-		headerOutStream << "#if " << version << endl;
+		bodyOutStream << "#" << BodyIdent << "endif //" << version << endl;
 		bodyOutStream << endl;
 	}
-
-	bodyOutStream << '\t' << exportName << " void LoadAllGLVersions() {" << endl;
-	for (auto versionFuncName : versionFunctions) {
-		bodyOutStream << "\t\t" << "" << versionFuncName << "();" << endl;
-	}
-	bodyOutStream << '\t' << "}" << endl;
-
-	bodyOutStream << "};" << endl;
-
-#endif
 
 	bodyOutStream.flush();
 	bodyOutStream.close();

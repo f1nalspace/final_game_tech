@@ -9,10 +9,10 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="..\..\final_opengl.hpp">
+    <ClInclude Include="..\..\final_platform_layer.hpp">
       <Filter>dependencies</Filter>
     </ClInclude>
-    <ClInclude Include="..\..\final_platform_layer.hpp">
+    <ClInclude Include="..\..\final_dynamic_opengl.hpp">
       <Filter>dependencies</Filter>
     </ClInclude>
   </ItemGroup>
