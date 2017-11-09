@@ -5,24 +5,21 @@
 #include "final_platform_layer.hpp"
 
 static void MemoryTests() {
-	uint8_t *mem8 = (uint8_t *)AllocateMemory(sizeof(uint8_t) * 2048);
+	uint8_t *mem8 = (uint8_t *)MemoryAllocate(sizeof(uint8_t) * 2048);
 }
 
 static void PathTests() {
 	char homePathBuffer[1024] = {};
 	GetHomePath(homePathBuffer, FPL_ARRAYCOUNT(homePathBuffer));
 	ConsoleFormatOut("Home Path:\n%s\n", homePathBuffer);
-	ConsoleFormatOut("Home Path (Direct):\n%s\n", GetHomePath());
 
 	char exeFilePathBuffer[1024] = {};
 	GetExecutableFilePath(exeFilePathBuffer, FPL_ARRAYCOUNT(exeFilePathBuffer));
 	ConsoleFormatOut("Executable file Path:\n%s\n", exeFilePathBuffer);
-	ConsoleFormatOut("Executable file Path (Direct):\n%s\n", GetExecutableFilePath());
 
 	char extractedPathBuffer[1024] = {};
 	ExtractFilePath(exeFilePathBuffer, extractedPathBuffer, FPL_ARRAYCOUNT(extractedPathBuffer));
 	ConsoleFormatOut("Extracted path:\n%s\n", extractedPathBuffer);
-	ConsoleFormatOut("Extracted path (Direct):\n%s\n", ExtractFilePath(exeFilePathBuffer));
 
 	char *exeFileName = ExtractFileName(exeFilePathBuffer);
 	ConsoleFormatOut("Extracted filename:\n%s\n", exeFileName);
@@ -33,31 +30,27 @@ static void PathTests() {
 	char combinedPathBuffer[1024 * 10] = {};
 	CombinePath(combinedPathBuffer, FPL_ARRAYCOUNT(combinedPathBuffer), 4, "Hallo", "Welt", "der", "Programmierer");
 	ConsoleFormatOut("Combined path:\n%s\n", combinedPathBuffer);
-	ConsoleFormatOut("Combined path (Direct):\n%s\n", CombinePath(4, "Hallo", "Welt", "der", "Programmierer"));
 
 	char changedFileExtBuffer[1024] = {};
 	ChangeFileExtension(exeFilePathBuffer, ".obj", changedFileExtBuffer, FPL_ARRAYCOUNT(changedFileExtBuffer));
 	ConsoleFormatOut("Changed file ext 1:\n%s\n", changedFileExtBuffer);
-	ConsoleFormatOut("Changed file ext 1 (Direct):\n%s\n", ChangeFileExtension(exeFilePathBuffer, ".obj"));
 	ChangeFileExtension(exeFileName, ".obj", changedFileExtBuffer, FPL_ARRAYCOUNT(changedFileExtBuffer));
 	ConsoleFormatOut("Changed file ext 2:\n%s\n", changedFileExtBuffer);
-	ConsoleFormatOut("Changed file ext 2 (Direct):\n%s\n", ChangeFileExtension(exeFileName, ".obj"));
 	ChangeFileExtension(".dll", ".obj", changedFileExtBuffer, FPL_ARRAYCOUNT(changedFileExtBuffer));
 	ConsoleFormatOut("Changed file ext 3:\n%s\n", changedFileExtBuffer);
-	ConsoleFormatOut("Changed file ext 3 (Direct):\n%s\n", ChangeFileExtension(".dll", ".obj"));
 	ChangeFileExtension("", ".obj", changedFileExtBuffer, FPL_ARRAYCOUNT(changedFileExtBuffer));
 	ConsoleFormatOut("Changed file ext 4:\n%s\n", changedFileExtBuffer);
-	ConsoleFormatOut("Changed file ext 4 (Direct):\n%s\n", ChangeFileExtension("", ".obj"));
 	ChangeFileExtension(".dll", "", changedFileExtBuffer, FPL_ARRAYCOUNT(changedFileExtBuffer));
 	ConsoleFormatOut("Changed file ext 5:\n%s\n", changedFileExtBuffer);
-	ConsoleFormatOut("Changed file ext 5 (Direct):\n%s\n", ChangeFileExtension(".dll", ""));
 	ChangeFileExtension("", "", changedFileExtBuffer, FPL_ARRAYCOUNT(changedFileExtBuffer));
 	ConsoleFormatOut("Changed file ext 5:\n%s\n", changedFileExtBuffer);
-	ConsoleFormatOut("Changed file ext 5 (Direct):\n%s\n", ChangeFileExtension("", ""));
+}
 
+static void HardwareTest() {
 	char cpuNameBuffer[1024] = {};
 	GetProcessorName(cpuNameBuffer, FPL_ARRAYCOUNT(cpuNameBuffer));
 	ConsoleFormatOut("Processor name:\n%s\n", cpuNameBuffer);
+	ConsoleFormatOut("Processor name (Direct):\n%s\n", GetProcessorName());
 }
 
 static void FilesTest() {
@@ -91,12 +84,13 @@ static void ThreadingTest() {
 	threads[0] = ThreadCreate(TestThreadProc, (void *)1);
 	threads[1] = ThreadCreate(TestThreadProc, (void *)2);
 	threads[2] = ThreadCreate(TestThreadProc, (void *)3);
-	WaitForThreads(threads, FPL_ARRAYCOUNT(threads));
+	ThreadWaitForMultiple(threads, FPL_ARRAYCOUNT(threads));
 }
 
 int main(int argc, char **args) {
 	InitPlatform(InitFlags::None);
 	ThreadingTest();
+	HardwareTest();
 	PathTests();
 	FilesTest();
 	ReleasePlatform();
