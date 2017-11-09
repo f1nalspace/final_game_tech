@@ -50,7 +50,6 @@ static void HardwareTest() {
 	char cpuNameBuffer[1024] = {};
 	GetProcessorName(cpuNameBuffer, FPL_ARRAYCOUNT(cpuNameBuffer));
 	ConsoleFormatOut("Processor name:\n%s\n", cpuNameBuffer);
-	ConsoleFormatOut("Processor name (Direct):\n%s\n", GetProcessorName());
 }
 
 static void FilesTest() {

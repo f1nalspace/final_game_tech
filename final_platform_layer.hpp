@@ -480,7 +480,7 @@ namespace fpl {
 		//! Returns the total number of processor cores
 		fpl_api uint32_t GetProcessorCoreCount();
 		//! Returns the processor name/identifier
-		fpl_api char *GetProcessorName(char *destBuffer = nullptr, const uint32_t maxDestBufferLen = 0);
+		fpl_api char *GetProcessorName(char *destBuffer, const uint32_t maxDestBufferLen);
 	};
 
 	//
