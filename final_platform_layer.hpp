@@ -423,8 +423,8 @@ SOFTWARE.
 #define FPL_MEGABYTES(value) (FPL_KILOBYTES() * 1024)
 //! Returns the number of bytes for the given gigabytes
 #define FPL_GIGABYTES(value) (FPL_MEGABYTES() * 1024)
-//! Returns the number of bytes for the given terrabytes
-#define FPL_TERRABYTES(value) (FPL_GIGABYTES() * 1024)
+//! Returns the number of bytes for the given terabytes
+#define FPL_TERABYTES(value) (FPL_GIGABYTES() * 1024)
 
 //! Defines the operator overloads for a enum used as flags
 #define FPL_ENUM_AS_FLAGS_OPERATORS_INTERNAL(type) \
