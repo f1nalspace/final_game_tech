@@ -187,7 +187,7 @@ SOFTWARE.
 # TODO
 
 * Feature completeness for Win32 (Mutex/Condition, Audio, Clipboard)
-* Linux platform support
+* Linux platform support (Look out for .DS_Store and . files/folders, handle it properly)
 * REFERENCE.MD generation using doxygen
 
 # VERSION HISTORY
