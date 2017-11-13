@@ -1,3 +1,6 @@
+/*
+@TODO(final): Disable all libs like kernel32.lib and user32.lib, so we cacn test the win32 api runtime loading of libraries.
+*/
 #define FPL_IMPLEMENTATION
 #define FPL_ENABLE_WINDOW 0
 #define FPL_ENABLE_OPENGL 0
@@ -6,6 +9,7 @@
 
 static void MemoryTests() {
 	uint8_t *mem8 = (uint8_t *)MemoryAllocate(sizeof(uint8_t) * 2048);
+	MemoryFree(mem8);
 }
 
 static void PathTests() {
@@ -86,8 +90,10 @@ static void ThreadingTest() {
 	ThreadWaitForMultiple(threads, FPL_ARRAYCOUNT(threads));
 }
 
+
 int main(int argc, char **args) {
 	InitPlatform(InitFlags::None);
+	MemoryTests();
 	ThreadingTest();
 	HardwareTest();
 	PathTests();

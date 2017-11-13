@@ -220,7 +220,10 @@ static void UpdateAndRender(const float deltaTime) {
 
 int main(int argc, char **args) {
 	int result = 0;
-	if (InitPlatform(InitFlags::VideoOpenGL)) {
+	InitSettings settings = InitSettings();
+	settings.window.windowWidth = 1280;
+	settings.window.windowHeight = 720;
+	if (InitPlatform(InitFlags::VideoOpenGL, settings)) {
 		InitImGUI();
 
 		ImGuiIO& io = ImGui::GetIO();

@@ -5,22 +5,5 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\..\final_platform_layer.hpp" />
-    <ClInclude Include="dependencies\glew\include\GL\eglew.h">
-      <Filter>glew</Filter>
-    </ClInclude>
-    <ClInclude Include="dependencies\glew\include\GL\glew.h">
-      <Filter>glew</Filter>
-    </ClInclude>
-    <ClInclude Include="dependencies\glew\include\GL\glxew.h">
-      <Filter>glew</Filter>
-    </ClInclude>
-    <ClInclude Include="dependencies\glew\include\GL\wglew.h">
-      <Filter>glew</Filter>
-    </ClInclude>
-  </ItemGroup>
-  <ItemGroup>
-    <Filter Include="glew">
-      <UniqueIdentifier>{2cc978d8-dc32-4603-8594-b67dedaa0f75}</UniqueIdentifier>
-    </Filter>
   </ItemGroup>
 </Project>

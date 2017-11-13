@@ -171,10 +171,6 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\..\final_platform_layer.hpp" />
-    <ClInclude Include="dependencies\glew\include\GL\eglew.h" />
-    <ClInclude Include="dependencies\glew\include\GL\glew.h" />
-    <ClInclude Include="dependencies\glew\include\GL\glxew.h" />
-    <ClInclude Include="dependencies\glew\include\GL\wglew.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
