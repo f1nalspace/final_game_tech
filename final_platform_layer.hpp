@@ -220,10 +220,10 @@ SOFTWARE.
 	* Added: SetClipboardText with [Win32] implementation for ansi and wide strings
 	* Added [MSVC]: AtomicExchangeS32 (Signed integer)
 	* Added [MSVC]: AtomicExchangeS64 (Signed integer)
-	* Fixed [MSVC]: AtomicAddS32 (Signed integer)
-	* Fixed [MSVC]: AtomicAddS64 (Signed integer)
-	* Fixed [MSVC]: AtomicCompareExchangeS32 (Signed integer)
-	* Fixed [MSVC]: AtomicCompareExchangeS64 (Signed integer)
+	* Added [MSVC]: AtomicAddS32 (Signed integer)
+	* Added [MSVC]: AtomicAddS64 (Signed integer)
+	* Added [MSVC]: AtomicCompareExchangeS32 (Signed integer)
+	* Added [MSVC]: AtomicCompareExchangeS64 (Signed integer)
 	* Fixed [MSVC]: AtomicExchangeU32 was not using unsigned intrinsic
 	* Fixed [MSVC]: AtomicExchangeU64 was not using unsigned intrinsic
 	* Fixed [MSVC]: AtomicAddU32 was not using unsigned intrinsic
