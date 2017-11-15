@@ -2,9 +2,9 @@
 @TODO(final): Disable all libs like kernel32.lib and user32.lib, so we cacn test the win32 api runtime loading of libraries.
 */
 #define FPL_IMPLEMENTATION
-#define FPL_ENABLE_WINDOW 0
-#define FPL_ENABLE_OPENGL 0
-#define FPL_AUTO_NAMESPACE 1
+#define FPL_NO_WINDOW
+#define FPL_NO_OPENGL
+#define FPL_AUTO_NAMESPACE
 #include "final_platform_layer.hpp"
 
 static void MemoryTests() {
@@ -54,6 +54,9 @@ static void HardwareTest() {
 	char cpuNameBuffer[1024] = {};
 	GetProcessorName(cpuNameBuffer, FPL_ARRAYCOUNT(cpuNameBuffer));
 	ConsoleFormatOut("Processor name:\n%s\n", cpuNameBuffer);
+
+	uint32_t coreCount = GetProcessorCoreCount();
+	ConsoleFormatOut("Processor cores:%d\n", coreCount);
 }
 
 static void FilesTest() {

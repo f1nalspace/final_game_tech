@@ -1,5 +1,4 @@
 #define FPL_IMPLEMENTATION
-#define FPL_ENABLE_C_ASSERT 1
 #define FPL_DEFAULT_WINDOW_WIDTH 1280
 #define FPL_DEFAULT_WINDOW_HEIGHT 720
 #include <final_platform_layer.hpp>
@@ -92,9 +91,20 @@ static void ImGUIRenderDrawLists(ImDrawData* draw_data) {
 	glScissor(last_scissor_box[0], last_scissor_box[1], (GLsizei)last_scissor_box[2], (GLsizei)last_scissor_box[3]);
 }
 
+static char clipboardBuffer[1024];
+static const char *ClipboardGetFunc(void *user) {
+	char *result = GetClipboardAnsiText(clipboardBuffer, FPL_ARRAYCOUNT(clipboardBuffer));
+	return(result);
+}
+static void ClipboardSetFunc(void *user, const char *text) {
+	SetClipboardText(text);
+}
+
 static void InitImGUI() {
 	ImGuiIO& io = ImGui::GetIO();
 
+	io.GetClipboardTextFn = ClipboardGetFunc;
+	io.SetClipboardTextFn = ClipboardSetFunc;
 	io.RenderDrawListsFn = ImGUIRenderDrawLists;
 	io.IniFilename = nullptr;
 	io.KeyMap[ImGuiKey_Tab] = (uint32_t)Key::Key_Tab;
@@ -147,17 +157,17 @@ static void ReleaseImGUI() {
 	}
 }
 
-static void ImGUIKeyEvent(uint64_t keyCode, Key mappedKey, bool down) {
+static void ImGUIKeyEvent(uint64_t keyCode, Key mappedKey, KeyboardModifierFlags modifiers, bool down) {
 	ImGuiIO& io = ImGui::GetIO();
 	if (mappedKey != Key::Key_None) {
 		io.KeysDown[(uint32_t)mappedKey] = down;
 	} else {
 		io.KeysDown[keyCode] = down;
 	}
-	io.KeyCtrl = io.KeysDown[(uint32_t)Key::Key_LeftControl] || io.KeysDown[(uint32_t)Key::Key_RightControl];
-	io.KeyShift = io.KeysDown[(uint32_t)Key::Key_LeftShift] || io.KeysDown[(uint32_t)Key::Key_RightShift];
-	io.KeyAlt = io.KeysDown[(uint32_t)Key::Key_LeftAlt] || io.KeysDown[(uint32_t)Key::Key_RightAlt];
-	io.KeySuper = io.KeysDown[(uint32_t)Key::Key_LeftWin] || io.KeysDown[(uint32_t)Key::Key_RightWin];
+	io.KeyCtrl = modifiers & KeyboardModifierFlags::Ctrl;
+	io.KeyShift = modifiers & KeyboardModifierFlags::Shift;
+	io.KeyAlt = modifiers & KeyboardModifierFlags::Alt;
+	io.KeySuper = modifiers & KeyboardModifierFlags::Super;
 }
 
 static bool show_test_window = true;
@@ -220,10 +230,12 @@ static void UpdateAndRender(const float deltaTime) {
 
 int main(int argc, char **args) {
 	int result = 0;
-	InitSettings settings = InitSettings();
+	Settings settings = Settings();
+	strings::CopyAnsiString("ImGUI Example", settings.window.windowTitle, FPL_ARRAYCOUNT(settings.window.windowTitle) - 1);
 	settings.window.windowWidth = 1280;
 	settings.window.windowHeight = 720;
-	if (InitPlatform(InitFlags::VideoOpenGL, settings)) {
+	settings.video.driverType = VideoDriverType::OpenGL;
+	if (InitPlatform(InitFlags::Video, settings)) {
 		InitImGUI();
 
 		ImGuiIO& io = ImGui::GetIO();
@@ -242,11 +254,11 @@ int main(int argc, char **args) {
 						switch (event.keyboard.type) {
 							case KeyboardEventType::KeyDown:
 							{
-								ImGUIKeyEvent(event.keyboard.keyCode, event.keyboard.mappedKey, true);
+								ImGUIKeyEvent(event.keyboard.keyCode, event.keyboard.mappedKey, event.keyboard.modifiers, true);
 							} break;
 							case KeyboardEventType::KeyUp:
 							{
-								ImGUIKeyEvent(event.keyboard.keyCode, event.keyboard.mappedKey, false);
+								ImGUIKeyEvent(event.keyboard.keyCode, event.keyboard.mappedKey, event.keyboard.modifiers, false);
 							} break;
 							case KeyboardEventType::Char:
 							{

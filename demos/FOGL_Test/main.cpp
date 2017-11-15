@@ -1,5 +1,5 @@
 #define FPL_IMPLEMENTATION
-#define FPL_AUTO_NAMESPACE 1
+#define FPL_AUTO_NAMESPACE
 #include "final_platform_layer.hpp"
 
 #define FDYNGL_STATIC
@@ -137,7 +137,8 @@ static bool RunModern() {
 
 int main(int argc, char **args) {
 	int result = 0;
-	InitSettings settings = InitSettings();
+	Settings settings = Settings();
+	settings.video.driverType = VideoDriverType::OpenGL;
 #if MODERN_OPENGL
 	CopyAnsiString("FPL Modern OpenGL", settings.window.windowTitle, FPL_ARRAYCOUNT(settings.window.windowTitle));
 	settings.video.profile = VIDEO_PROFILE;
@@ -147,7 +148,7 @@ int main(int argc, char **args) {
 	CopyAnsiString("FPL Legacy OpenGL", settings.window.windowTitle, FPL_ARRAYCOUNT(settings.window.windowTitle));
 	settings.video.profile = VideoCompabilityProfile::Legacy;
 #endif
-	if (InitPlatform(InitFlags::VideoOpenGL, settings)) {
+	if (InitPlatform(InitFlags::Video, settings)) {
 
 		const char *version = (const char *)glGetString(GL_VERSION);
 		const char *vendor = (const char *)glGetString(GL_VENDOR);

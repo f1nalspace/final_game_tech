@@ -98,7 +98,10 @@ int main(int argc, char **args) {
 	using namespace fpl::window;
 
 	int result = 0;
-	if (InitPlatform(InitFlags::VideoOpenGL)) {
+	Settings settings = Settings();
+	fpl::strings::CopyAnsiString("Tile-Tracing Example", settings.window.windowTitle, FPL_ARRAYCOUNT(settings.window.windowTitle) - 1);
+	settings.video.driverType = VideoDriverType::OpenGL;
+	if (InitPlatform(InitFlags::Video, settings)) {
 		SetWindowArea(640, 480);
 		SetWindowPosition(0, 0);
 
