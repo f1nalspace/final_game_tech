@@ -1,6 +1,6 @@
 /**
 * @file final_platform_layer.hpp
-* @version v0.4.0 alpha
+* @version v0.4.1 alpha
 * @author Torsten Spaete
 * @brief Final Platform Layer (FPL) - A Open source C++ single file header platform abstraction layer library.
 *
@@ -64,67 +64,70 @@ using namespace fpl::memory;
 using namespace fpl::window;
 
 int main(int argc, char **args) {
-	int result = 0;
-	if (InitPlatform(InitFlags::Video)) {
-		glClearColor(0.39f, 0.58f, 0.93f, 1.0f);
-		while (WindowUpdate()) {
-			WindowSize windowArea = GetWindowArea();
-			glViewport(0, 0, windowArea.width, windowArea.height);
-			glClear(GL_COLOR_BUFFER_BIT);
-			glBegin(GL_TRIANGLES);
-			glVertex2f(0.0f, 0.5f);
-			glVertex2f(-0.5f, -0.5f);
-			glVertex2f(0.5f, -0.5f);
-			glEnd();
-			WindowFlip();
-		}
-		ReleasePlatform();
-		result = 0;
-	} else {
-		result = -1;
-	}
-	return(result);
+int result = 0;
+if (InitPlatform(InitFlags::Video)) {
+glClearColor(0.39f, 0.58f, 0.93f, 1.0f);
+while (WindowUpdate()) {
+WindowSize windowArea = GetWindowArea();
+glViewport(0, 0, windowArea.width, windowArea.height);
+glClear(GL_COLOR_BUFFER_BIT);
+glBegin(GL_TRIANGLES);
+glVertex2f(0.0f, 0.5f);
+glVertex2f(-0.5f, -0.5f);
+glVertex2f(0.5f, -0.5f);
+glEnd();
+WindowFlip();
+}
+ReleasePlatform();
+result = 0;
+} else {
+result = -1;
+}
+return(result);
 }
 
 # HOW TO COMPILE
 
 ## Win32
 
-	* Link to kernel32.lib
-	* Link to user32.lib
-	* Link to shell32.lib
-	* Link to opengl32.lib (Only needed if you use opengl)
+* Link to kernel32.lib
+* Link to user32.lib
+* Link to shell32.lib
+* Link to opengl32.lib (Only needed if you use opengl)
 
 # OPTIONS
 
 Define these options before including this file.
 
 // #define FPL_API_AS_PRIVATE
-	Define this to make all functions be private (static)
+Define this to make all functions be private (static)
 
 // #define FPL_NO_ASSERTIONS
-	Define this to disable assertions.
+Define this to disable assertions.
 
 // #define FPL_NO_C_ASSERT
-	Define this to disable C runtime assert.
+Define this to disable C runtime assert.
+
+// #define FPL_FORCE_ASSERTIONS
+Define this to enable assertions always, even in debug builds.
 
 // #define FPL_NO_WINDOW
-	Define this to disable window support entirely.
+Define this to disable window support entirely.
 
 // #define FPL_NO_VIDEO_OPENGL
-	Define this to disable opengl rendering support entirely.
+Define this to disable opengl rendering support entirely.
 
 // #define FPL_NO_VIDEO_SOFTWARE
-	Define this to disable software rendering support entirely.
+Define this to disable software rendering support entirely.
 
 // #define FPL_NO_MULTIPLE_ERRORSTATES
-	Define this to use a single error state for GetPlatformLastError() instead of multiple ones.
+Define this to use a single error state for GetPlatformLastError() instead of multiple ones.
 
 // #define FPL_NO_ERROR_IN_CONSOLE
-	Define this to disable printing any platform specific errors to the console.
+Define this to disable printing any platform specific errors to the console.
 
 // #define FPL_AUTO_NAMESPACE
-	Define this to include all required namespaces automatically.
+Define this to include all required namespaces automatically.
 
 # FEATURES
 
@@ -193,6 +196,13 @@ SOFTWARE.
 
 # VERSION HISTORY
 
+- v0.4.1 alpha:
+	* Cleanup: Internal cleanup
+	* Changed: All the settings constructors removed and replaced by a simple inline function.
+	* Added: Added native C++ unit test project to demos solution
+	* Fixed: FPL_OFFSETOF was not working
+	* Fixed: All file size macros like FPL_MEGABYTES was returning invalid results.
+	* Removed: FPL_PETABYTES and higher are removed, just because its useless.
 - v0.4.0 alpha:
 	* Changed: All FPL_ENABLE_ defines are internal now, the caller must use FPL_NO_ or FPL_YES_ respectivily.
 	* Changed: AtomicCompareExchange* is now AtomicCompareAndExchange*
@@ -302,21 +312,20 @@ SOFTWARE.
 	* Change most assertions to normal comparisons and make it rock solid, so it wont crash for the most part. Returning nullptr or empty is much more preferred.
 	* Make linking to opengl32 not required at all (Replace wgl and gdi calls with macro calls)
 	* Make linking to user32 and shell32 not required at all (Load the functions directly from the libraries, but still require kernel32)
-	* Feature completeness for Win32 (Clipboard, Audio)
-	* Support/Test other compilers (MingW, Clang, Intel)
+	* Feature completeness for Win32 (Audio, Multimonitor)
+	* Test other compilers for Win32 (MingW, Clang, Intel)
 	* Linux/Unix platform support (Look out for .DS_Store and . files/folders, handle it properly)
 	* REFERENCE.MD generation using doxygen
 
 */
-
-#ifndef FPL_INCLUDE_HPP
-#define FPL_INCLUDE_HPP
 
 // ****************************************************************************
 //
 // Header
 //
 // ****************************************************************************
+#ifndef FPL_INCLUDE_HPP
+#define FPL_INCLUDE_HPP
 
 //
 // Platform detection
@@ -353,35 +362,35 @@ SOFTWARE.
 //
 #if defined(_MSC_VER)
 
-	// Disable noexcept compiler warning for C++
+// Disable noexcept compiler warning for C++
 #	pragma warning( disable : 4577 )
 
-	//! Visual studio compiler detected
+//! Visual studio compiler detected
 #	define FPL_COMPILER_MSVC
 #	if defined(_DEBUG) || (!defined(NDEBUG))
-		//! Debug mode detected
+//! Debug mode detected
 #		define FPL_DEBUG
 #	else
-		//! Non-debug (Release) mode detected
+//! Non-debug (Release) mode detected
 #		define FPL_RELEASE
 #	endif
 #elif defined(__llvm__)
-	//! LLVM compiler detected
+//! LLVM compiler detected
 #	define FPL_COMPILER_LLVM
 #elif defined(__clang__)
-	//! CLANG compiler detected
+//! CLANG compiler detected
 #	define FPL_COMPILER_CLANG
 #elif defined(__GNUC__) || defined(__GNUG__)
-	//! GCC compiler detected
+//! GCC compiler detected
 #	define FPL_COMPILER_GCC
 #elif defined(__MINGW32__)
-	//! MingW compiler detected
+//! MingW compiler detected
 #	define FPL_COMPILER_MINGW
 #elif defined(__INTEL_COMPILER) || defined(__ICC)
-	//! Intel compiler detected
+//! Intel compiler detected
 #	define FPL_COMPILER_INTEL
 #else
-	//! No compiler detected
+//! No compiler detected
 #	define FPL_COMPILER_UNKNOWN
 #endif
 
@@ -389,29 +398,34 @@ SOFTWARE.
 // Options & Feature detection
 //
 #if !defined(FPL_NO_ASSERTIONS)
-#	if defined(FPL_DEBUG)
-		//! Assertions enabled in debug mode by default
+#	if !defined(FPL_FORCE_ASSERTIONS)
+#		if defined(FPL_DEBUG)
+//! Assertions enabled in debug mode by default
+#			define FPL_ENABLE_ASSERTIONS
+#		endif
+#	else
+//! Assertions enabled always
 #		define FPL_ENABLE_ASSERTIONS
 #	endif
 #endif
 #if defined(FPL_ENABLE_ASSERTIONS)
 #	if !defined(FPL_NO_C_ASSERT)
-		//! C-Runtime assertions enabled by default
+//! C-Runtime assertions enabled by default
 #		define FPL_ENABLE_C_ASSERT
 #	endif
 #endif
 
 #if !defined(FPL_NO_WINDOW)
-	//! Window support enabled by default
+//! Window support enabled by default
 #	define FPL_SUPPORT_WINDOW
 #endif
 
 #if !defined(FPL_NO_VIDEO_OPENGL)
-	//! OpenGL support enabled by default
+//! OpenGL support enabled by default
 #	define FPL_SUPPORT_VIDEO_OPENGL
 #endif
 #if !defined(FPL_NO_VIDEO_SOFTWARE)
-	//! Software rendering support enabled by default
+//! Software rendering support enabled by default
 #	define FPL_SUPPORT_VIDEO_SOFTWARE
 #endif
 
@@ -425,28 +439,28 @@ SOFTWARE.
 #endif
 
 #if defined(FPL_SUPPORT_WINDOW)
-	//! Enable window
+//! Enable window
 #	define FPL_ENABLE_WINDOW
 #endif
 #if defined(FPL_SUPPORT_VIDEO_OPENGL)
-	//! Enable opengl hardware rendering
+//! Enable opengl hardware rendering
 #	define FPL_ENABLE_VIDEO_OPENGL
 #endif
 #if defined(FPL_SUPPORT_VIDEO_SOFTWARE)
-	//! Enable software rendering
+//! Enable software rendering
 #	define FPL_ENABLE_VIDEO_SOFTWARE
 #endif
 
 #if !defined(FPL_NO_ERROR_IN_CONSOLE)
-	//! Write errors in console
+//! Write errors in console
 #	define FPL_ENABLE_ERROR_IN_CONSOLE
 #endif
 #if !defined(FPL_NO_MULTIPLE_ERRORSTATES)
-	//! Allow multiple error states
-#	define FPL_ENABLE_MULTIPLE_ERRORSTATES
+//! Allow multiple error states
+//#	define FPL_ENABLE_MULTIPLE_ERRORSTATES
 #endif
 #if defined(FPL_AUTO_NAMESPACE)
-	//! Expand namespaces
+//! Expand namespaces
 #	define FPL_ENABLE_AUTO_NAMESPACE
 #endif
 
@@ -458,10 +472,10 @@ SOFTWARE.
 //! Private/Internal function
 #define fpl_internal static
 #if defined(FPL_API_AS_PRIVATE)
-	//! Private api call
+//! Private api call
 #	define fpl_api static
 #else
-	//! Public api call
+//! Public api call
 #	define fpl_api extern
 #endif // defined(FPL_API_AS_PRIVATE)
 
@@ -471,23 +485,23 @@ SOFTWARE.
 #if defined(FPL_ENABLE_ASSERTIONS)
 #	if defined(FPL_ENABLE_C_ASSERT)
 #		include <assert.h>
-		//! Runtime assert (C Runtime)
+//! Runtime assert (C Runtime)
 #		define FPL_ASSERT(exp) assert(exp)
-		//! Compile error assert (C Runtime)
+//! Compile error assert (C Runtime)
 #		define FPL_STATICASSERT(exp) static_assert(exp, "static_assert")
 #	else
-		//! Runtime assert
+//! Runtime assert
 #		define FPL_ASSERT(exp) if(!(exp)) {*(int *)0 = 0;}
-		//! Compile error assert
+//! Compile error assert
 #		define FPL_STATICASSERT_INTERNAL(exp, line) \
 			int fpl_static_assert_##line(int static_assert_failed[(exp)?1:-1])
 #		define FPL_STATICASSERT(exp) \
 			FPL_STATICASSERT_INTERNAL(exp, __LINE__)
 #	endif // defined(FPL_ENABLE_C_ASSERT)
 #else
-	//! Runtime assertions disabled
+//! Runtime assertions disabled
 #	define FPL_ASSERT(exp)
-	//! Compile time assertions disabled
+//! Compile time assertions disabled
 #	define FPL_STATICASSERT(exp)
 #endif // defined(FPL_ENABLE_ASSERTIONS)
 
@@ -498,7 +512,7 @@ SOFTWARE.
 #define FPL_ARRAYCOUNT(arr) (sizeof(arr) / sizeof((arr)[0]))
 
 //! Returns the offset in bytes to a field in a structure
-#define FPL_OFFSETOF(type, field) ((type *)((void *)0)->field)
+#define FPL_OFFSETOF(type, field) ((size_t)(&(((type*)(0))->field)))
 
 //! Returns the smallest value
 #define FPL_MIN(a, b) ((a) < (b)) ? (a) : (b)
@@ -506,21 +520,13 @@ SOFTWARE.
 #define FPL_MAX(a, b) ((a) > (b)) ? (a) : (b)
 
 //! Returns the number of bytes for the given kilobytes
-#define FPL_KILOBYTES(value) (value * 1024)
+#define FPL_KILOBYTES(value) (((value) * 1024ull))
 //! Returns the number of bytes for the given megabytes
-#define FPL_MEGABYTES(value) (FPL_KILOBYTES() * 1024)
+#define FPL_MEGABYTES(value) ((FPL_KILOBYTES(value) * 1024ull))
 //! Returns the number of bytes for the given gigabytes
-#define FPL_GIGABYTES(value) (FPL_MEGABYTES() * 1024)
+#define FPL_GIGABYTES(value) ((FPL_MEGABYTES(value) * 1024ull))
 //! Returns the number of bytes for the given terabytes
-#define FPL_TERABYTES(value) (FPL_GIGABYTES() * 1024)
-//! Returns the number of bytes for the given petabytes
-#define FPL_PETABYTES(value) (FPL_TERABYTES() * 1024)
-//! Returns the number of bytes for the given exabytes
-#define FPL_EXABYTES(value) (FPL_PETABYTES() * 1024)
-//! Returns the number of bytes for the given exabytes
-#define FPL_ZETTABYTES(value) (FPL_EXABYTES() * 1024)
-//! Returns the number of bytes for the given exabytes
-#define FPL_YOTTABYTES(value) (FPL_ZETTABYTES() * 1024)
+#define FPL_TERABYTES(value) ((FPL_GIGABYTES(value) * 1024ull))
 
 //! Defines the operator overloads for a enum used as flags
 #define FPL_ENUM_AS_FLAGS_OPERATORS_INTERNAL(type) \
@@ -551,11 +557,11 @@ namespace fpl {
 
 	//! Atomic functions, like CompareAndExchange etc.
 	namespace atomics {
-		//! Insert a atomic read fence. (Complete current writes before future reads)
+		//! Insert a atomic read fence. (Complete current writes before next reads)
 		fpl_api void AtomicReadFence();
-		//! Insert a atomic write fence. (Complete current reads before future writes)
+		//! Insert a atomic write fence. (Complete current reads before next writes)
 		fpl_api void AtomicWriteFence();
-		//! Insert a atomic read/write fence. (Complete current reads and writes before future reads and writes)
+		//! Insert a atomic read/write fence. (Complete current reads and writes next future reads and writes)
 		fpl_api void AtomicReadWriteFence();
 		//! Replace a 32-bit unsigned integer with the given value atomically. Returns the target before the replacement.
 		fpl_api uint32_t AtomicExchangeU32(volatile uint32_t *target, const uint32_t value);
@@ -631,17 +637,19 @@ namespace fpl {
 		bool isResizable;
 		//! Is window in fullscreen mode
 		bool isFullscreen;
-
-		WindowSettings() {
-			windowTitle[0] = 0;
-			windowWidth = 800;
-			windowHeight = 600;
-			fullscreenWidth = 0;
-			fullscreenHeight = 0;
-			isResizable = true;
-			isFullscreen = false;
-		}
 	};
+
+	inline WindowSettings DefaultWindowSettings() {
+		WindowSettings result = {};
+		result.windowTitle[0] = 0;
+		result.windowWidth = 800;
+		result.windowHeight = 600;
+		result.fullscreenWidth = 0;
+		result.fullscreenHeight = 0;
+		result.isResizable = true;
+		result.isFullscreen = false;
+		return(result);
+	}
 
 	//! Video compability profile
 	enum class VideoCompabilityProfile {
@@ -667,21 +675,23 @@ namespace fpl {
 		bool isVSync;
 		//! Backbuffer size is automatically resized. Useable only for software rendering!
 		bool isAutoSize;
-
-		VideoSettings() {
-			profile = VideoCompabilityProfile::Legacy;
-			majorVersion = minorVersion = 0;
-			isVSync = false;
-			isAutoSize = true;
-		#if defined(FPL_ENABLE_VIDEO_OPENGL)
-			driverType = VideoDriverType::OpenGL;
-		#elif defined(FPL_ENABLE_VIDEO_SOFTWARE)
-			driverType = VideoDriverType::Software;
-		#else
-			driverType = VideoDriverType::None;
-		#endif
-		}
 	};
+
+	inline VideoSettings DefaultVideoSettings() {
+		VideoSettings result = {};
+		result.profile = VideoCompabilityProfile::Legacy;
+		result.majorVersion = result.minorVersion = 0;
+		result.isVSync = false;
+		result.isAutoSize = true;
+	#if defined(FPL_ENABLE_VIDEO_OPENGL)
+		result.driverType = VideoDriverType::OpenGL;
+	#elif defined(FPL_ENABLE_VIDEO_SOFTWARE)
+		result.driverType = VideoDriverType::Software;
+	#else
+		result.driverType = VideoDriverType::None;
+	#endif
+		return(result);
+	}
 
 	//! Settings container (Window, Video, etc)
 	struct Settings {
@@ -689,15 +699,17 @@ namespace fpl {
 		WindowSettings window;
 		//! Video settings
 		VideoSettings video;
-
-		Settings() {
-			window = WindowSettings();
-			video = VideoSettings();
-		}
 	};
 
+	inline Settings DefaultSettings() {
+		Settings result = {};
+		result.window = DefaultWindowSettings();
+		result.video = DefaultVideoSettings();
+		return(result);
+	}
+
 	//! Initialize the platform layer.
-	fpl_api bool InitPlatform(const InitFlags initFlags, const Settings &initSettings = Settings());
+	fpl_api bool InitPlatform(const InitFlags initFlags, const Settings &initSettings = DefaultSettings());
 	//! Releases the platform layer and resets all structures to zero.
 	fpl_api void ReleasePlatform();
 	//! Returns last error string
@@ -1565,30 +1577,33 @@ namespace fpl {
 	// Platform constants
 	//
 #	if defined(FPL_PLATFORM_WIN32)
-	constexpr char PATH_SEPARATOR = '\\';
-	constexpr char FILE_EXT_SEPARATOR = '.';
+	constexpr char PATH_SEPARATOR_INTERNAL = '\\';
+	constexpr char FILE_EXT_SEPARATOR_INTERNAL = '.';
 #	else
-	constexpr char PATH_SEPARATOR = '/';
-	constexpr char FILE_EXT_SEPARATOR = '.';
+	constexpr char PATH_SEPARATOR_INTERNAL = '/';
+	constexpr char FILE_EXT_SEPARATOR_INTERNAL = '.';
 #	endif
 
 	//
 	// Internal types and functions
 	//
 	constexpr uint32_t MAX_LAST_ERROR_STRING_LENGTH_INTERNAL = 1024;
-
 #if defined(FPL_ENABLE_MULTIPLE_ERRORSTATES)
-	// @NOTE(final): 1024 errors are more than enough
 	constexpr size_t MAX_ERRORSTATE_COUNT_INTERNAL = 1024;
+#else
+	constexpr size_t MAX_ERRORSTATE_COUNT_INTERNAL = 1;
+#endif
+
 	struct ErrorState_Internal {
 		char errors[MAX_ERRORSTATE_COUNT_INTERNAL][MAX_LAST_ERROR_STRING_LENGTH_INTERNAL];
 		size_t count;
 	};
 
-	fpl_globalvar ErrorState_Internal *globalLastError_Internal = nullptr;
+	fpl_globalvar ErrorState_Internal *global__LastErrorState__Internal = nullptr;
 
-	fpl_internal void PushError_Internal_Formatted(const char *format, va_list &argList) {
-		ErrorState_Internal *state = globalLastError_Internal;
+#if defined(FPL_ENABLE_MULTIPLE_ERRORSTATES)
+	fpl_internal void PushError_Formatted_Internal(const char *format, va_list &argList) {
+		ErrorState_Internal *state = global__LastErrorState__Internal;
 		if (state != nullptr) {
 			FPL_ASSERT(format != nullptr);
 			char buffer[MAX_LAST_ERROR_STRING_LENGTH_INTERNAL];
@@ -1603,21 +1618,15 @@ namespace fpl {
 		}
 	}
 #else
-	struct ErrorState_Internal {
-		char error[MAX_LAST_ERROR_STRING_LENGTH_INTERNAL];
-	};
-
-	fpl_globalvar ErrorState_Internal *globalLastError_Internal = nullptr;
-
-	fpl_internal void PushError_Internal_Formatted(const char *format, va_list &argList) {
-		ErrorState_Internal *state = globalLastError_Internal;
+	fpl_internal void PushError_Formatted_Internal(const char *format, va_list &argList) {
+		ErrorState_Internal *state = global__LastErrorState__Internal;
 		if (state != nullptr) {
 			FPL_ASSERT(format != nullptr);
 			char buffer[MAX_LAST_ERROR_STRING_LENGTH_INTERNAL];
 			vsprintf_s(buffer, FPL_ARRAYCOUNT(buffer), format, argList);
 			uint32_t messageLen = strings::GetAnsiStringLength(buffer);
-			strings::CopyAnsiString(buffer, messageLen, state->error, MAX_LAST_ERROR_STRING_LENGTH_INTERNAL);
-		#if FPL_ENABLE_ERROR_IN_CONSOLE
+			strings::CopyAnsiString(buffer, messageLen, state->errors[0], MAX_LAST_ERROR_STRING_LENGTH_INTERNAL);
+		#if defined(FPL_ENABLE_ERROR_IN_CONSOLE)
 			console::ConsoleError(buffer);
 		#endif
 		}
@@ -1627,36 +1636,34 @@ namespace fpl {
 	fpl_internal void PushError_Internal(const char *format, ...) {
 		va_list valist;
 		va_start(valist, format);
-		PushError_Internal_Formatted(format, valist);
+		PushError_Formatted_Internal(format, valist);
 		va_end(valist);
 	}
 
-	namespace threading {
-		constexpr uint32_t MAX_THREAD_COUNT = 64;
-		struct ThreadState_Internal {
-			ThreadContext mainThread;
-			ThreadContext threads[MAX_THREAD_COUNT];
-			uint32_t threadCount;
-		};
+	constexpr uint32_t MAX_THREAD_COUNT_INTERNAL = 64;
+	struct ThreadState_Internal {
+		threading::ThreadContext mainThread;
+		threading::ThreadContext threads[MAX_THREAD_COUNT_INTERNAL];
+		uint32_t threadCount;
+	};
 
-		static ThreadState_Internal globalThreadState_Internal = {};
+	static ThreadState_Internal global__ThreadState__Internal = {};
 
-		static ThreadContext *GetThreadContext_Internal(const uint64_t id) {
-			// @NOTE: We have just a few handful of max threads, so looping over all it not that slow.
-			ThreadContext *result = nullptr;
-			for (uint32_t index = 0; index < globalThreadState_Internal.threadCount; ++index) {
-				ThreadContext *thread = globalThreadState_Internal.threads + index;
-				if (thread->id == id) {
-					result = thread;
-					break;
-				}
+	static threading::ThreadContext *GetThreadContext_Internal(const uint64_t id) {
+		// @NOTE: We have just a few handful of max threads, so looping over all is not that slow.
+		threading::ThreadContext *result = nullptr;
+		for (uint32_t index = 0; index < global__ThreadState__Internal.threadCount; ++index) {
+			threading::ThreadContext *thread = global__ThreadState__Internal.threads + index;
+			if (thread->id == id) {
+				result = thread;
+				break;
 			}
-			return(result);
 		}
+		return(result);
 	}
 
 	//
-	// All Public String
+	// All String
 	//
 	namespace strings {
 		fpl_api uint32_t GetAnsiStringLength(const char *str) {
@@ -1719,7 +1726,7 @@ namespace fpl {
 	}
 
 	//
-	// All Public Memory
+	// All Memory
 	//
 	namespace memory {
 		fpl_api void *MemoryAlignedAllocate(const size_t size, const size_t alignment) {
@@ -1754,20 +1761,20 @@ namespace fpl {
 			MemoryFree(basePtr);
 		}
 
-		constexpr size_t MemShift64 = 3;
-		constexpr size_t MemMask64 = 0x00000007;
-		constexpr size_t MemShift32 = 2;
-		constexpr size_t MemMask32 = 0x00000003;
-		constexpr size_t MemShift16 = 1;
-		constexpr size_t MemMask16 = 0x00000001;
+		constexpr size_t MEM_SHIFT_64_INTERNAL = 3;
+		constexpr size_t MEM_MASK_64_INTERNAL = 0x00000007;
+		constexpr size_t MEM_SHIFT_32_INTERNAL = 2;
+		constexpr size_t MEM_MASK_32_INTERNAL = 0x00000003;
+		constexpr size_t MEM_SHIFT_16_INTERNAL = 1;
+		constexpr size_t MEM_MASK_16_INTERNAL = 0x00000001;
 
 		fpl_api void MemoryClear(void *mem, const size_t size) {
 			if (size % 8 == 0) {
-				FPL_CLEARMEM_INTERNAL(uint64_t, mem, size, MemShift64, MemMask64);
+				FPL_CLEARMEM_INTERNAL(uint64_t, mem, size, MEM_SHIFT_64_INTERNAL, MEM_MASK_64_INTERNAL);
 			} else if (size % 4 == 0) {
-				FPL_CLEARMEM_INTERNAL(uint32_t, mem, size, MemShift32, MemMask32);
+				FPL_CLEARMEM_INTERNAL(uint32_t, mem, size, MEM_SHIFT_32_INTERNAL, MEM_MASK_32_INTERNAL);
 			} else if (size % 2 == 0) {
-				FPL_CLEARMEM_INTERNAL(uint16_t, mem, size, MemShift16, MemMask16);
+				FPL_CLEARMEM_INTERNAL(uint16_t, mem, size, MEM_SHIFT_16_INTERNAL, MEM_MASK_16_INTERNAL);
 			} else {
 				FPL_CLEARMEM_INTERNAL(uint8_t, mem, size, 0, 0);
 			}
@@ -1775,11 +1782,11 @@ namespace fpl {
 
 		fpl_api void MemoryCopy(void *sourceMem, const size_t sourceSize, void *targetMem) {
 			if (sourceSize % 8 == 0) {
-				FPL_COPYMEM_INTERNAL(uint64_t, sourceMem, sourceSize, targetMem, MemShift64, MemMask64);
+				FPL_COPYMEM_INTERNAL(uint64_t, sourceMem, sourceSize, targetMem, MEM_SHIFT_64_INTERNAL, MEM_MASK_64_INTERNAL);
 			} else if (sourceSize % 4 == 0) {
-				FPL_COPYMEM_INTERNAL(uint32_t, sourceMem, sourceSize, targetMem, MemShift32, MemMask32);
+				FPL_COPYMEM_INTERNAL(uint32_t, sourceMem, sourceSize, targetMem, MEM_SHIFT_32_INTERNAL, MEM_MASK_32_INTERNAL);
 			} else if (sourceSize % 2 == 0) {
-				FPL_COPYMEM_INTERNAL(uint16_t, sourceMem, sourceSize, targetMem, MemShift32, MemMask32);
+				FPL_COPYMEM_INTERNAL(uint16_t, sourceMem, sourceSize, targetMem, MEM_SHIFT_32_INTERNAL, MEM_MASK_32_INTERNAL);
 			} else {
 				FPL_COPYMEM_INTERNAL(uint8_t, sourceMem, sourceSize, targetMem, 0, 0);
 			}
@@ -1787,7 +1794,7 @@ namespace fpl {
 	}
 
 	//
-	// All Public Path, Directories
+	// All Paths
 	//
 	namespace paths {
 		fpl_api char *ExtractFilePath(const char *sourcePath, char *destPath, const uint32_t maxDestLen) {
@@ -1800,7 +1807,7 @@ namespace fpl {
 				int copyLen = 0;
 				char *chPtr = (char *)sourcePath;
 				while (*chPtr) {
-					if (*chPtr == PATH_SEPARATOR) {
+					if (*chPtr == PATH_SEPARATOR_INTERNAL) {
 						copyLen = (int)(chPtr - sourcePath);
 					}
 					++chPtr;
@@ -1820,7 +1827,7 @@ namespace fpl {
 					char *chPtr = filename;
 					char *firstSeparatorPtr = (char *)nullptr;
 					while (*chPtr) {
-						if (*chPtr == FILE_EXT_SEPARATOR) {
+						if (*chPtr == FILE_EXT_SEPARATOR_INTERNAL) {
 							firstSeparatorPtr = chPtr;
 							break;
 						}
@@ -1841,7 +1848,7 @@ namespace fpl {
 				char *chPtr = (char *)sourcePath;
 				char *lastPtr = (char *)nullptr;
 				while (*chPtr) {
-					if (*chPtr == PATH_SEPARATOR) {
+					if (*chPtr == PATH_SEPARATOR_INTERNAL) {
 						lastPtr = chPtr;
 					}
 					++chPtr;
@@ -1868,7 +1875,7 @@ namespace fpl {
 				char *chPtr = (char *)filePath;
 				char *lastPathSeparatorPtr = (char *)nullptr;
 				while (*chPtr) {
-					if (*chPtr == PATH_SEPARATOR) {
+					if (*chPtr == PATH_SEPARATOR_INTERNAL) {
 						lastPathSeparatorPtr = chPtr;
 					}
 					++chPtr;
@@ -1882,7 +1889,7 @@ namespace fpl {
 				}
 				char *lastExtSeparatorPtr = (char *)nullptr;
 				while (*chPtr) {
-					if (*chPtr == FILE_EXT_SEPARATOR) {
+					if (*chPtr == FILE_EXT_SEPARATOR_INTERNAL) {
 						lastExtSeparatorPtr = chPtr;
 					}
 					++chPtr;
@@ -1918,7 +1925,7 @@ namespace fpl {
 				strings::CopyAnsiString(path, pathLen, currentDestPtr, maxDestPathLen - curDestPosition);
 				currentDestPtr += pathLen;
 				if (requireSeparator) {
-					*currentDestPtr++ = PATH_SEPARATOR;
+					*currentDestPtr++ = PATH_SEPARATOR_INTERNAL;
 				}
 				curDestPosition += requiredPathLen;
 			}
@@ -1928,122 +1935,13 @@ namespace fpl {
 		}
 
 	}
-
-	//
-	// Compiler Intrinsics (These are platform/compiler dependent)
-	//
-#if defined(FPL_COMPILER_MSVC)
-	namespace atomics {
-		fpl_api void AtomicReadFence() {
-			_ReadBarrier();
-		}
-		fpl_api void AtomicWriteFence() {
-			_WriteBarrier();
-		}
-		fpl_api void AtomicReadWriteFence() {
-			_ReadWriteBarrier();
-		}
-		fpl_api uint32_t AtomicExchangeU32(volatile uint32_t *target, const uint32_t value) {
-			FPL_ASSERT(target != nullptr);
-			uint32_t result = _InterlockedExchange((volatile unsigned long *)target, value);
-			return (result);
-		}
-		fpl_api int32_t AtomicExchangeS32(volatile int32_t *target, const int32_t value) {
-			FPL_ASSERT(target != nullptr);
-			int32_t result = _InterlockedExchange((volatile long *)target, value);
-			return (result);
-		}
-		fpl_api uint64_t AtomicExchangeU64(volatile uint64_t *target, const uint64_t value) {
-			FPL_ASSERT(target != nullptr);
-			uint64_t result = _InterlockedExchange((volatile unsigned __int64 *)target, value);
-			return (result);
-		}
-		fpl_api int64_t AtomicExchangeS64(volatile int64_t *target, const int64_t value) {
-			FPL_ASSERT(target != nullptr);
-			int64_t result = _InterlockedExchange64((volatile long long *)target, value);
-			return (result);
-		}
-		fpl_api uint32_t AtomicAddU32(volatile uint32_t *value, const uint32_t addend) {
-			FPL_ASSERT(value != nullptr);
-			uint32_t result = _InterlockedExchangeAdd((volatile unsigned long *)value, addend);
-			return (result);
-		}
-		fpl_api int32_t AtomicAddS32(volatile int32_t *value, const int32_t addend) {
-			FPL_ASSERT(value != nullptr);
-			int32_t result = _InterlockedExchangeAdd((volatile long *)value, addend);
-			return (result);
-		}
-		fpl_api uint64_t AtomicAddU64(volatile uint64_t *value, const uint64_t addend) {
-			FPL_ASSERT(value != nullptr);
-			uint64_t result = _InterlockedExchangeAdd((volatile unsigned __int64 *)value, addend);
-			return (result);
-		}
-		fpl_api int64_t AtomicAddS64(volatile int64_t *value, const int64_t addend) {
-			FPL_ASSERT(value != nullptr);
-			int64_t result = _InterlockedExchangeAdd64((volatile long long *)value, addend);
-			return (result);
-		}
-		fpl_api uint32_t AtomicCompareAndExchangeU32(volatile uint32_t *dest, const uint32_t exchange, const uint32_t comparand) {
-			FPL_ASSERT(dest != nullptr);
-			uint32_t result = _InterlockedCompareExchange((volatile unsigned long *)dest, exchange, comparand);
-			return (result);
-		}
-		fpl_api int32_t AtomicCompareAndExchangeS32(volatile int32_t *dest, const int32_t exchange, const int32_t comparand) {
-			FPL_ASSERT(dest != nullptr);
-			int32_t result = _InterlockedCompareExchange((volatile long *)dest, exchange, comparand);
-			return (result);
-		}
-		fpl_api uint64_t AtomicAndCompareExchangeU64(volatile uint64_t *dest, const uint64_t exchange, const uint64_t comparand) {
-			FPL_ASSERT(dest != nullptr);
-			uint64_t result = _InterlockedCompareExchange((volatile unsigned __int64 *)dest, exchange, comparand);
-			return (result);
-		}
-		fpl_api int64_t AtomicCompareAndExchangeS64(volatile int64_t *dest, const int64_t exchange, const int64_t comparand) {
-			FPL_ASSERT(dest != nullptr);
-			int64_t result = _InterlockedCompareExchange64((volatile long long *)dest, exchange, comparand);
-			return (result);
-		}
-	}
-
-	namespace hardware {
-		fpl_api char *GetProcessorName(char *destBuffer, const uint32_t maxDestBufferLen) {
-			constexpr uint32_t cpuBrandBufferSize = 0x40;
-
-			FPL_ASSERT(destBuffer != nullptr);
-			FPL_ASSERT(maxDestBufferLen >= (cpuBrandBufferSize + 1));
-
-			int cpuInfo[4] = { -1 };
-			char cpuBrandBuffer[cpuBrandBufferSize] = {};
-			__cpuid(cpuInfo, 0x80000000);
-			uint32_t extendedIds = cpuInfo[0];
-
-			// Get the information associated with each extended ID. Interpret CPU brand string.
-			uint32_t max = FPL_MIN(extendedIds, 0x80000004);
-			for (uint32_t i = 0x80000002; i <= max; ++i) {
-				__cpuid(cpuInfo, i);
-				uint32_t shift = (i - 0x80000002) << 4;
-				memory::MemoryCopy(cpuInfo, sizeof(cpuInfo), cpuBrandBuffer + shift);
-			}
-
-			// Copy result back to the dest buffer
-			uint32_t sourceLen = strings::GetAnsiStringLength(cpuBrandBuffer);
-			FPL_ASSERT(sourceLen <= maxDestBufferLen);
-			strings::CopyAnsiString(cpuBrandBuffer, sourceLen, destBuffer, maxDestBufferLen);
-
-			return(destBuffer);
-		}
-	}
-
-#else
-#error "Unsupported compiler for intrinsics"
-#endif // defined(FPL_COMPILER_MSVC)
 }
 
+// ****************************************************************************
 //
-// ----------------------------------------------------------------------------
 // WIN32 Platform
-// ----------------------------------------------------------------------------
 //
+// ****************************************************************************
 #if defined(FPL_PLATFORM_WIN32)
 
 #	include <windowsx.h>	// Macros for window messages
@@ -2176,40 +2074,38 @@ namespace fpl {
 #		define FPL_WIN32_SH_GET_FOLDER_PATH SHGetFolderPathA
 #	endif // defined(UNICODE)
 
-//
-// XInputGetState
-//
-#define XINPUT_GET_STATE(name) DWORD WINAPI name(DWORD dwUserIndex, XINPUT_STATE *pState)
-typedef XINPUT_GET_STATE(xinput_get_state);
-XINPUT_GET_STATE(Win32XInputGetStateStub) {
-	return(ERROR_DEVICE_NOT_CONNECTED);
-}
+namespace fpl {
+	//
+	// XInputGetState
+	//
+#	define XINPUT_GET_STATE(name) DWORD WINAPI name(DWORD dwUserIndex, XINPUT_STATE *pState)
+	typedef XINPUT_GET_STATE(xinput_get_state);
+	XINPUT_GET_STATE(Win32XInputGetStateStub) {
+		return(ERROR_DEVICE_NOT_CONNECTED);
+	}
 
-//
-// WGL non-legacy types
-//
-#undef WGL_CHOOSE_PIXEL_FORMAT_ARB
-#define WGL_CHOOSE_PIXEL_FORMAT_ARB(name) BOOL WINAPI name(HDC hdc, const int *piAttribIList, const FLOAT *pfAttribFList, UINT nMaxFormats, int *piFormats, UINT *nNumFormats)
-typedef WGL_CHOOSE_PIXEL_FORMAT_ARB(wgl_choose_pixel_format_arb);
+	//
+	// WGL non-legacy types
+	//
+#	undef WGL_CHOOSE_PIXEL_FORMAT_ARB
+#	define WGL_CHOOSE_PIXEL_FORMAT_ARB(name) BOOL WINAPI name(HDC hdc, const int *piAttribIList, const FLOAT *pfAttribFList, UINT nMaxFormats, int *piFormats, UINT *nNumFormats)
+	typedef WGL_CHOOSE_PIXEL_FORMAT_ARB(wgl_choose_pixel_format_arb);
 
-#undef WGL_CREATE_CONTEXT_ATTRIBS_ARB
-#define WGL_CREATE_CONTEXT_ATTRIBS_ARB(name) HGLRC WINAPI name(HDC hDC, HGLRC hShareContext, const int *attribList)
-typedef WGL_CREATE_CONTEXT_ATTRIBS_ARB(wgl_create_context_attribs_arb);
+#	undef WGL_CREATE_CONTEXT_ATTRIBS_ARB
+#	define WGL_CREATE_CONTEXT_ATTRIBS_ARB(name) HGLRC WINAPI name(HDC hDC, HGLRC hShareContext, const int *attribList)
+	typedef WGL_CREATE_CONTEXT_ATTRIBS_ARB(wgl_create_context_attribs_arb);
 
-#undef WGL_SWAP_INTERVAL_EXT
-#define WGL_SWAP_INTERVAL_EXT(name) BOOL WINAPI name(int interval)
-typedef WGL_SWAP_INTERVAL_EXT(wgl_swap_interval_ext);
+#	undef WGL_SWAP_INTERVAL_EXT
+#	define WGL_SWAP_INTERVAL_EXT(name) BOOL WINAPI name(int interval)
+	typedef WGL_SWAP_INTERVAL_EXT(wgl_swap_interval_ext);
 
-#if !defined(FPL_GL_CONTEXT_FLAG_FORWARD_COMPATIBLE_BIT)
 #	define FPL_GL_CONTEXT_FLAG_FORWARD_COMPATIBLE_BIT 0x0001
 #	define FPL_GL_CONTEXT_FLAG_DEBUG_BIT 0x00000002
 #	define FPL_GL_CONTEXT_FLAG_ROBUST_ACCESS_BIT 0x00000004
 #	define FPL_GL_CONTEXT_FLAG_NO_ERROR_BIT 0x00000008
 #	define FPL_GL_CONTEXT_CORE_PROFILE_BIT 0x00000001
 #	define FPL_GL_CONTEXT_COMPATIBILITY_PROFILE_BIT 0x00000002
-#endif
 
-#if !defined(FPL_WGL_CONTEXT_DEBUG_BIT_ARB)
 #	define FPL_WGL_CONTEXT_DEBUG_BIT_ARB 0x0001
 #	define FPL_WGL_CONTEXT_FORWARD_COMPATIBLE_BIT_ARB 0x0002
 #	define FPL_WGL_CONTEXT_CORE_PROFILE_BIT_ARB 0x00000001
@@ -2219,37 +2115,32 @@ typedef WGL_SWAP_INTERVAL_EXT(wgl_swap_interval_ext);
 #	define FPL_WGL_CONTEXT_MINOR_VERSION_ARB 0x2092
 #	define FPL_WGL_CONTEXT_LAYER_PLANE_ARB 0x2093
 #	define FPL_WGL_CONTEXT_FLAGS_ARB 0x2094
-#endif
 
-#if !defined(FPL_WGL_DRAW_TO_WINDOW_ARB)
-#define FPL_WGL_DRAW_TO_WINDOW_ARB 0x2001
-#define FPL_WGL_ACCELERATION_ARB 0x2003
-#define FPL_WGL_SWAP_METHOD_ARB 0x2007
-#define FPL_WGL_SUPPORT_OPENGL_ARB 0x2010
-#define FPL_WGL_DOUBLE_BUFFER_ARB 0x2011
-#define FPL_WGL_PIXEL_TYPE_ARB 0x2013
-#define FPL_WGL_COLOR_BITS_ARB 0x2014
-#define FPL_WGL_DEPTH_BITS_ARB 0x2022
-#define FPL_WGL_STENCIL_BITS_ARB 0x2023
-#define FPL_WGL_FULL_ACCELERATION_ARB 0x2027
-#define FPL_WGL_SWAP_EXCHANGE_ARB 0x2028
-#define FPL_WGL_TYPE_RGBA_ARB 0x202B
-#endif
+#	define FPL_WGL_DRAW_TO_WINDOW_ARB 0x2001
+#	define FPL_WGL_ACCELERATION_ARB 0x2003
+#	define FPL_WGL_SWAP_METHOD_ARB 0x2007
+#	define FPL_WGL_SUPPORT_OPENGL_ARB 0x2010
+#	define FPL_WGL_DOUBLE_BUFFER_ARB 0x2011
+#	define FPL_WGL_PIXEL_TYPE_ARB 0x2013
+#	define FPL_WGL_COLOR_BITS_ARB 0x2014
+#	define FPL_WGL_DEPTH_BITS_ARB 0x2022
+#	define FPL_WGL_STENCIL_BITS_ARB 0x2023
+#	define FPL_WGL_FULL_ACCELERATION_ARB 0x2027
+#	define FPL_WGL_SWAP_EXCHANGE_ARB 0x2028
+#	define FPL_WGL_TYPE_RGBA_ARB 0x202B
 
-struct wgl_extensions {
-	wgl_choose_pixel_format_arb *choosePixelFormatArb;
-	wgl_create_context_attribs_arb *createContextAttribsArb;
-	wgl_swap_interval_ext *swapIntervalExt;
-};
+	struct Win32WGLExtensions_Internal {
+		wgl_choose_pixel_format_arb *choosePixelFormatArb;
+		wgl_create_context_attribs_arb *createContextAttribsArb;
+		wgl_swap_interval_ext *swapIntervalExt;
+	};
 
-struct win32_functions {
-	xinput_get_state *xinputGetState = Win32XInputGetStateStub;
-};
+	struct Win32Functions_Internal {
+		xinput_get_state *xinputGetState = Win32XInputGetStateStub;
+	};
 
-fpl_globalvar wgl_extensions globalWGLExtensions = {};
-fpl_globalvar win32_functions globalWin32Functions = {};
-
-namespace fpl {
+	fpl_globalvar Win32WGLExtensions_Internal global__Win32__WGLExtensions__Internal = {};
+	fpl_globalvar Win32Functions_Internal global__Win32__Functions__Internal = {};
 
 	// Win32 internal functions
 #	if defined(UNICODE)
@@ -2279,7 +2170,7 @@ namespace fpl {
 #	else
 	typedef void *Win32WindowState_Internal;
 	typedef void *Win32XInputState_Internal;
-#	endif
+#	endif // defined(FPL_ENABLE_WINDOW)
 
 #	if defined(FPL_ENABLE_VIDEO_OPENGL)
 	struct Win32VideoOpenGLState_Internal {
@@ -2304,10 +2195,13 @@ namespace fpl {
 		Win32VideoSoftwareState_Internal software;
 	};
 
-	struct Win32State_Internal {
+	struct Win32ApplicationState_Internal {
 		bool isInitialized;
 		HINSTANCE appInstance;
 		LARGE_INTEGER performanceFrequency;
+	};
+
+	struct Win32State_Internal {
 		InitFlags initFlags;
 		Settings initSettings;
 		Settings currentSettings;
@@ -2317,10 +2211,87 @@ namespace fpl {
 		Win32XInputState_Internal xinput;
 	};
 
-	fpl_globalvar Win32State_Internal *globalWin32State_Internal = nullptr;
-	fpl_globalvar HINSTANCE globalWin32AppInstance_Internal = nullptr;
+	fpl_globalvar Win32ApplicationState_Internal global__Win32__AppState__Internal = {};
+	fpl_globalvar Win32State_Internal *global__Win32__State__Internal = nullptr;
 
-	// Win32 public hardware
+	// Win32 Atomics
+	namespace atomics {
+	#if defined(FPL_COMPILER_MSVC)
+		fpl_api void AtomicReadFence() {
+			_ReadBarrier();
+		}
+		fpl_api void AtomicWriteFence() {
+			_WriteBarrier();
+		}
+		fpl_api void AtomicReadWriteFence() {
+			_ReadWriteBarrier();
+		}
+		fpl_api uint32_t AtomicExchangeU32(volatile uint32_t *target, const uint32_t value) {
+			FPL_ASSERT(target != nullptr);
+			uint32_t result = _InterlockedExchange((volatile unsigned long *)target, value);
+			return (result);
+		}
+		fpl_api int32_t AtomicExchangeS32(volatile int32_t *target, const int32_t value) {
+			FPL_ASSERT(target != nullptr);
+			int32_t result = _InterlockedExchange((volatile long *)target, value);
+			return (result);
+		}
+		fpl_api uint64_t AtomicExchangeU64(volatile uint64_t *target, const uint64_t value) {
+			FPL_ASSERT(target != nullptr);
+			uint64_t result = _InterlockedExchange((volatile unsigned __int64 *)target, value);
+			return (result);
+		}
+		fpl_api int64_t AtomicExchangeS64(volatile int64_t *target, const int64_t value) {
+			FPL_ASSERT(target != nullptr);
+			int64_t result = _InterlockedExchange64((volatile long long *)target, value);
+			return (result);
+		}
+		fpl_api uint32_t AtomicAddU32(volatile uint32_t *value, const uint32_t addend) {
+			FPL_ASSERT(value != nullptr);
+			uint32_t result = _InterlockedExchangeAdd((volatile unsigned long *)value, addend);
+			return (result);
+		}
+		fpl_api int32_t AtomicAddS32(volatile int32_t *value, const int32_t addend) {
+			FPL_ASSERT(value != nullptr);
+			int32_t result = _InterlockedExchangeAdd((volatile long *)value, addend);
+			return (result);
+		}
+		fpl_api uint64_t AtomicAddU64(volatile uint64_t *value, const uint64_t addend) {
+			FPL_ASSERT(value != nullptr);
+			uint64_t result = _InterlockedExchangeAdd((volatile unsigned __int64 *)value, addend);
+			return (result);
+		}
+		fpl_api int64_t AtomicAddS64(volatile int64_t *value, const int64_t addend) {
+			FPL_ASSERT(value != nullptr);
+			int64_t result = _InterlockedExchangeAdd64((volatile long long *)value, addend);
+			return (result);
+		}
+		fpl_api uint32_t AtomicCompareAndExchangeU32(volatile uint32_t *dest, const uint32_t exchange, const uint32_t comparand) {
+			FPL_ASSERT(dest != nullptr);
+			uint32_t result = _InterlockedCompareExchange((volatile unsigned long *)dest, exchange, comparand);
+			return (result);
+		}
+		fpl_api int32_t AtomicCompareAndExchangeS32(volatile int32_t *dest, const int32_t exchange, const int32_t comparand) {
+			FPL_ASSERT(dest != nullptr);
+			int32_t result = _InterlockedCompareExchange((volatile long *)dest, exchange, comparand);
+			return (result);
+		}
+		fpl_api uint64_t AtomicAndCompareExchangeU64(volatile uint64_t *dest, const uint64_t exchange, const uint64_t comparand) {
+			FPL_ASSERT(dest != nullptr);
+			uint64_t result = _InterlockedCompareExchange((volatile unsigned __int64 *)dest, exchange, comparand);
+			return (result);
+		}
+		fpl_api int64_t AtomicCompareAndExchangeS64(volatile int64_t *dest, const int64_t exchange, const int64_t comparand) {
+			FPL_ASSERT(dest != nullptr);
+			int64_t result = _InterlockedCompareExchange64((volatile long long *)dest, exchange, comparand);
+			return (result);
+		}
+	#else
+	#	error "Win32 compiler for atomics not supported!"
+	#endif
+	}
+
+	// Win32 Hardware
 	namespace hardware {
 		fpl_api uint32_t GetProcessorCoreCount() {
 			SYSTEM_INFO sysInfo = {};
@@ -2329,9 +2300,40 @@ namespace fpl {
 			uint32_t result = sysInfo.dwNumberOfProcessors;
 			return(result);
 		}
+
+	#if defined(FPL_COMPILER_MSVC)
+		fpl_api char *GetProcessorName(char *destBuffer, const uint32_t maxDestBufferLen) {
+			constexpr uint32_t CPU_BRAND_BUFFER_SIZE = 0x40;
+
+			FPL_ASSERT(destBuffer != nullptr);
+			FPL_ASSERT(maxDestBufferLen >= (CPU_BRAND_BUFFER_SIZE + 1));
+
+			int cpuInfo[4] = { -1 };
+			char cpuBrandBuffer[CPU_BRAND_BUFFER_SIZE] = {};
+			__cpuid(cpuInfo, 0x80000000);
+			uint32_t extendedIds = cpuInfo[0];
+
+			// Get the information associated with each extended ID. Interpret CPU brand string.
+			uint32_t max = FPL_MIN(extendedIds, 0x80000004);
+			for (uint32_t i = 0x80000002; i <= max; ++i) {
+				__cpuid(cpuInfo, i);
+				uint32_t offset = (i - 0x80000002) << 4;
+				memory::MemoryCopy(cpuInfo, sizeof(cpuInfo), cpuBrandBuffer + offset);
+			}
+
+			// Copy result back to the dest buffer
+			uint32_t sourceLen = strings::GetAnsiStringLength(cpuBrandBuffer);
+			FPL_ASSERT(sourceLen <= maxDestBufferLen);
+			strings::CopyAnsiString(cpuBrandBuffer, sourceLen, destBuffer, maxDestBufferLen);
+
+			return(destBuffer);
+		}
+	#else
+	#	error "Win32 compiler for hardware not supported!"
+	#endif
 	}
 
-	// Win32 public console
+	// Win32 Console
 	namespace console {
 		fpl_api void ConsoleOut(const char *text) {
 			FPL_ASSERT(text != nullptr);
@@ -2358,7 +2360,7 @@ namespace fpl {
 	}
 
 	//
-	// Win32 Public Threading
+	// Win32 Threading
 	//
 	namespace threading {
 
@@ -2373,8 +2375,8 @@ namespace fpl {
 		}
 
 		fpl_api ThreadContext &ThreadCreate(run_thread_function *runFunc, void *data, const bool autoStart) {
-			FPL_ASSERT(globalThreadState_Internal.threadCount < MAX_THREAD_COUNT);
-			ThreadContext *result = &globalThreadState_Internal.threads[globalThreadState_Internal.threadCount++];
+			FPL_ASSERT(global__ThreadState__Internal.threadCount < MAX_THREAD_COUNT_INTERNAL);
+			ThreadContext *result = &global__ThreadState__Internal.threads[global__ThreadState__Internal.threadCount++];
 			*result = {};
 
 			DWORD creationFlags = 0;
@@ -2439,8 +2441,8 @@ namespace fpl {
 
 		fpl_api void ThreadWaitForMultiple(const ThreadContext *contexts, const uint32_t count, const uint32_t maxMilliseconds) {
 			FPL_ASSERT(contexts != nullptr);
-			FPL_ASSERT(count <= MAX_THREAD_COUNT);
-			HANDLE threadHandles[MAX_THREAD_COUNT];
+			FPL_ASSERT(count <= MAX_THREAD_COUNT_INTERNAL);
+			HANDLE threadHandles[MAX_THREAD_COUNT_INTERNAL];
 			for (uint32_t index = 0; index < count; ++index) {
 				const ThreadContext &context = contexts[index];
 				FPL_ASSERT(context.id > 0);
@@ -2519,7 +2521,7 @@ namespace fpl {
 	}
 
 	//
-	// Win32 Public Memory
+	// Win32 Memory
 	//
 	namespace memory {
 		fpl_api void *MemoryAllocate(const size_t size) {
@@ -2542,7 +2544,7 @@ namespace fpl {
 	}
 
 	//
-	// Win32 Public File
+	// Win32 Files
 	//
 	namespace files {
 		fpl_api FileHandle OpenBinaryFile(const char *filePath) {
@@ -2808,7 +2810,7 @@ namespace fpl {
 			FPL_ASSERT(maxDestLen >= (MAX_PATH + 1));
 			strings::CopyAnsiString(modulePath, strings::GetAnsiStringLength(modulePath), destPath, maxDestLen);
 			return(destPath);
-		}
+	}
 	#	endif
 
 	#	if defined(UNICODE)
@@ -2828,7 +2830,7 @@ namespace fpl {
 			FPL_ASSERT(maxDestLen >= (MAX_PATH + 1));
 			strings::CopyAnsiString(homePath, strings::GetAnsiStringLength(homePath), destPath, maxDestLen);
 			return(destPath);
-		}
+	}
 	#endif
 	}
 
@@ -2837,10 +2839,9 @@ namespace fpl {
 	//
 	namespace timings {
 		fpl_api double GetHighResolutionTimeInSeconds() {
-			FPL_ASSERT(globalWin32State_Internal != nullptr);
 			LARGE_INTEGER time;
 			FPL_WIN32_QUERY_PERFORMANCE_COUNTER(&time);
-			double result = time.QuadPart / (double)globalWin32State_Internal->performanceFrequency.QuadPart;
+			double result = time.QuadPart / (double)global__Win32__AppState__Internal.performanceFrequency.QuadPart;
 			return(result);
 		}
 	};
@@ -2961,9 +2962,9 @@ namespace fpl {
 			}
 
 			// Load extensions
-			globalWGLExtensions.choosePixelFormatArb = (wgl_choose_pixel_format_arb *)wglGetProcAddress("wglChoosePixelFormatARB");
-			globalWGLExtensions.createContextAttribsArb = (wgl_create_context_attribs_arb *)wglGetProcAddress("wglCreateContextAttribsARB");
-			globalWGLExtensions.swapIntervalExt = (wgl_swap_interval_ext *)wglGetProcAddress("wglSwapIntervalEXT");
+			global__Win32__WGLExtensions__Internal.choosePixelFormatArb = (wgl_choose_pixel_format_arb *)wglGetProcAddress("wglChoosePixelFormatARB");
+			global__Win32__WGLExtensions__Internal.createContextAttribsArb = (wgl_create_context_attribs_arb *)wglGetProcAddress("wglCreateContextAttribsARB");
+			global__Win32__WGLExtensions__Internal.swapIntervalExt = (wgl_swap_interval_ext *)wglGetProcAddress("wglSwapIntervalEXT");
 
 			FPL_WIN32_WGL_MAKE_CURRENT(nullptr, nullptr);
 
@@ -2975,11 +2976,11 @@ namespace fpl {
 					return false;
 				}
 
-				if (!globalWGLExtensions.choosePixelFormatArb) {
+				if (!global__Win32__WGLExtensions__Internal.choosePixelFormatArb) {
 					PushError_Internal("[Win32] wglChoosePixelFormatARB is not available, please select a different video profile!\n");
 					return false;
 				}
-				if (!globalWGLExtensions.createContextAttribsArb) {
+				if (!global__Win32__WGLExtensions__Internal.createContextAttribsArb) {
 					PushError_Internal("[Win32] wglCreateContextAttribsARB is not available, please select a different video profile!\n");
 					return false;
 				}
@@ -2999,7 +3000,7 @@ namespace fpl {
 					contextAttribList[contextAttribIndex++] = FPL_WGL_CONTEXT_FORWARD_COMPATIBLE_BIT_ARB;
 				}
 
-				HGLRC newContext = globalWGLExtensions.createContextAttribsArb(deviceContext, 0, contextAttribList);
+				HGLRC newContext = global__Win32__WGLExtensions__Internal.createContextAttribsArb(deviceContext, 0, contextAttribList);
 				if (newContext) {
 					if (!FPL_WIN32_WGL_MAKE_CURRENT(deviceContext, newContext)) {
 						PushError_Internal("[Win32] Warning: Failed activating Modern OpenGL Rendering Context for version (%llu.%llu) and DC '%x') -> Fallback to legacy context.\n", videoSettings.majorVersion, videoSettings.minorVersion, deviceContext);
@@ -3033,9 +3034,9 @@ namespace fpl {
 			win32State.video.opengl.renderingContext = activeRenderingContext;
 
 			// Set vertical syncronisation if available
-			if (globalWGLExtensions.swapIntervalExt != nullptr) {
+			if (global__Win32__WGLExtensions__Internal.swapIntervalExt != nullptr) {
 				int swapInterval = videoSettings.isVSync ? 1 : 0;
-				globalWGLExtensions.swapIntervalExt(swapInterval);
+				global__Win32__WGLExtensions__Internal.swapIntervalExt(swapInterval);
 			}
 
 			return true;
@@ -3043,7 +3044,7 @@ namespace fpl {
 
 		fpl_internal void Win32ReleaseVideoOpenGLContext_Internal(Win32State_Internal &win32State) {
 			if (win32State.video.opengl.renderingContext) {
-				globalWGLExtensions = {};
+				global__Win32__WGLExtensions__Internal = {};
 				FPL_WIN32_WGL_MAKE_CURRENT(nullptr, nullptr);
 				FPL_WIN32_WGL_DELETE_CONTEXT(win32State.video.opengl.renderingContext);
 				win32State.video.opengl.renderingContext = nullptr;
@@ -3103,10 +3104,10 @@ namespace fpl {
 
 		fpl_api VideoBackBuffer *GetVideoBackBuffer() {
 			VideoBackBuffer *result = nullptr;
-			FPL_ASSERT(globalWin32State_Internal != nullptr);
-			if (globalWin32State_Internal->videoDriverType == VideoDriverType::Software) {
+			FPL_ASSERT(global__Win32__State__Internal != nullptr);
+			if (global__Win32__State__Internal->videoDriverType == VideoDriverType::Software) {
 			#if defined(FPL_ENABLE_VIDEO_SOFTWARE)
-				Win32VideoSoftwareState_Internal software = globalWin32State_Internal->video.software;
+				Win32VideoSoftwareState_Internal software = global__Win32__State__Internal->video.software;
 				result = &software.context;
 			#endif
 			}
@@ -3115,11 +3116,11 @@ namespace fpl {
 
 		fpl_api bool ResizeVideoBackBuffer(const uint32_t width, const uint32_t height) {
 			bool result = false;
-			FPL_ASSERT(globalWin32State_Internal != nullptr);
-			if (globalWin32State_Internal->videoDriverType == VideoDriverType::Software) {
+			FPL_ASSERT(global__Win32__State__Internal != nullptr);
+			if (global__Win32__State__Internal->videoDriverType == VideoDriverType::Software) {
 			#	if defined(FPL_ENABLE_VIDEO_SOFTWARE)
-				Win32ReleaseVideoSoftwareContext_Internal(*globalWin32State_Internal);
-				result = Win32CreateVideoSoftware_Internal(*globalWin32State_Internal, width, height);
+				Win32ReleaseVideoSoftwareContext_Internal(*global__Win32__State__Internal);
+				result = Win32CreateVideoSoftware_Internal(*global__Win32__State__Internal, width, height);
 			#	endif
 			}
 			return (result);
@@ -3133,11 +3134,11 @@ namespace fpl {
 	//
 	namespace window {
 		fpl_api void WindowFlip() {
-			FPL_ASSERT(globalWin32State_Internal != nullptr);
-			if (globalWin32State_Internal->videoDriverType == VideoDriverType::OpenGL) {
-				FPL_WIN32_SWAP_BUFFERS(globalWin32State_Internal->window.deviceContext);
-			} else if (globalWin32State_Internal->videoDriverType == VideoDriverType::Software) {
-				FPL_WIN32_POST_MESSAGE(globalWin32State_Internal->window.windowHandle, WM_PAINT, 0, 0);
+			FPL_ASSERT(global__Win32__State__Internal != nullptr);
+			if (global__Win32__State__Internal->videoDriverType == VideoDriverType::OpenGL) {
+				FPL_WIN32_SWAP_BUFFERS(global__Win32__State__Internal->window.deviceContext);
+			} else if (global__Win32__State__Internal->videoDriverType == VideoDriverType::Software) {
+				FPL_WIN32_POST_MESSAGE(global__Win32__State__Internal->window.windowHandle, WM_PAINT, 0, 0);
 			}
 		}
 
@@ -3147,10 +3148,10 @@ namespace fpl {
 			volatile uint32_t pollIndex;
 			volatile uint32_t pushCount;
 		};
-		fpl_globalvar EventQueue_Internal *globalEventQueue_Internal = nullptr;
+		fpl_globalvar EventQueue_Internal *global__EventQueue__Internal = nullptr;
 
 		fpl_internal void PushEvent_Internal(const Event &event) {
-			EventQueue_Internal *eventQueue = globalEventQueue_Internal;
+			EventQueue_Internal *eventQueue = global__EventQueue__Internal;
 			FPL_ASSERT(eventQueue != nullptr);
 			if (eventQueue->pushCount < MAX_EVENT_COUNT_INTERNAL) {
 				uint32_t eventIndex = atomics::AtomicAddU32(&eventQueue->pushCount, 1);
@@ -3164,49 +3165,49 @@ namespace fpl {
 			DWORD exStyle;
 		};
 
-		constexpr DWORD Win32ResizeableWindowStyle = WS_THICKFRAME | WS_SYSMENU | WS_MINIMIZEBOX | WS_MAXIMIZEBOX | WS_VISIBLE;
-		constexpr DWORD Win32ResizeableWindowExtendedStyle = WS_EX_LEFT;
+		constexpr DWORD Win32ResizeableWindowStyle_Internal = WS_THICKFRAME | WS_SYSMENU | WS_MINIMIZEBOX | WS_MAXIMIZEBOX | WS_VISIBLE;
+		constexpr DWORD Win32ResizeableWindowExtendedStyle_Internal = WS_EX_LEFT;
 
-		constexpr DWORD Win32NonResizableWindowStyle = WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX | WS_VISIBLE;
-		constexpr DWORD Win32NonResizableWindowExtendedStyle = WS_EX_LEFT;
+		constexpr DWORD Win32NonResizableWindowStyle_Internal = WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX | WS_VISIBLE;
+		constexpr DWORD Win32NonResizableWindowExtendedStyle_Internal = WS_EX_LEFT;
 
-		constexpr DWORD Win32FullscreenWindowStyle = WS_POPUP | WS_VISIBLE;
-		constexpr DWORD Win32FullscreenWindowExtendedStyle = WS_EX_APPWINDOW | WS_EX_TOPMOST;
+		constexpr DWORD Win32FullscreenWindowStyle_Internal = WS_POPUP | WS_VISIBLE;
+		constexpr DWORD Win32FullscreenWindowExtendedStyle_Internal = WS_EX_APPWINDOW | WS_EX_TOPMOST;
 
 		fpl_internal bool Win32LeaveFullscreen_Internal() {
-			FPL_ASSERT(globalWin32State_Internal != nullptr);
-			WindowSettings &settings = globalWin32State_Internal->currentSettings.window;
+			FPL_ASSERT(global__Win32__State__Internal != nullptr);
+			WindowSettings &settings = global__Win32__State__Internal->currentSettings.window;
 			FPL_ASSERT(settings.isFullscreen);
-			HWND handle = globalWin32State_Internal->window.windowHandle;
+			HWND handle = global__Win32__State__Internal->window.windowHandle;
 
 			if (settings.isResizable) {
-				FPL_WIN32_SET_WINDOW_LONG_PTR(handle, GWL_STYLE, Win32ResizeableWindowStyle);
-				FPL_WIN32_SET_WINDOW_LONG_PTR(handle, GWL_EXSTYLE, Win32ResizeableWindowExtendedStyle);
+				FPL_WIN32_SET_WINDOW_LONG_PTR(handle, GWL_STYLE, Win32ResizeableWindowStyle_Internal);
+				FPL_WIN32_SET_WINDOW_LONG_PTR(handle, GWL_EXSTYLE, Win32ResizeableWindowExtendedStyle_Internal);
 			} else {
-				FPL_WIN32_SET_WINDOW_LONG_PTR(handle, GWL_STYLE, Win32NonResizableWindowStyle);
-				FPL_WIN32_SET_WINDOW_LONG_PTR(handle, GWL_EXSTYLE, Win32NonResizableWindowExtendedStyle);
+				FPL_WIN32_SET_WINDOW_LONG_PTR(handle, GWL_STYLE, Win32NonResizableWindowStyle_Internal);
+				FPL_WIN32_SET_WINDOW_LONG_PTR(handle, GWL_EXSTYLE, Win32NonResizableWindowExtendedStyle_Internal);
 			}
 
-			FPL_WIN32_SET_WINDOW_POS(handle, HWND_NOTOPMOST, 0, 0, globalWin32State_Internal->window.lastWindowWidth, globalWin32State_Internal->window.lastWindowHeight, SWP_SHOWWINDOW | SWP_NOMOVE);
-			FPL_WIN32_SET_WINDOW_PLACEMENT(handle, &globalWin32State_Internal->window.lastWindowPlacement);
+			FPL_WIN32_SET_WINDOW_POS(handle, HWND_NOTOPMOST, 0, 0, global__Win32__State__Internal->window.lastWindowWidth, global__Win32__State__Internal->window.lastWindowHeight, SWP_SHOWWINDOW | SWP_NOMOVE);
+			FPL_WIN32_SET_WINDOW_PLACEMENT(handle, &global__Win32__State__Internal->window.lastWindowPlacement);
 			bool result = (FPL_WIN32_CHANGE_DISPLAY_SETTINGS_A(nullptr, CDS_RESET) == DISP_CHANGE_SUCCESSFUL);
 			FPL_WIN32_SHOW_WINDOW(handle, SW_RESTORE);
 
 			settings.isFullscreen = false;
-			globalWin32State_Internal->window.lastWindowPlacement = {};
-			globalWin32State_Internal->window.lastWindowWidth = globalWin32State_Internal->window.lastWindowHeight = 0;
+			global__Win32__State__Internal->window.lastWindowPlacement = {};
+			global__Win32__State__Internal->window.lastWindowWidth = global__Win32__State__Internal->window.lastWindowHeight = 0;
 
 			return(result);
 		}
 
 		fpl_internal bool Win32EnterFullscreen_Internal(const uint32_t fullscreenWidth, const uint32_t fullscreenHeight, const uint32_t refreshRate, const uint32_t colorBits) {
 			// @TODO(final): Support for multi-monitor!
-			FPL_ASSERT(globalWin32State_Internal != nullptr);
-			WindowSettings &settings = globalWin32State_Internal->currentSettings.window;
+			FPL_ASSERT(global__Win32__State__Internal != nullptr);
+			WindowSettings &settings = global__Win32__State__Internal->currentSettings.window;
 			FPL_ASSERT(!settings.isFullscreen);
 
-			HWND windowHandle = globalWin32State_Internal->window.windowHandle;
-			HDC deviceContext = globalWin32State_Internal->window.deviceContext;
+			HWND windowHandle = global__Win32__State__Internal->window.windowHandle;
+			HDC deviceContext = global__Win32__State__Internal->window.deviceContext;
 
 			DWORD useRefreshRate = refreshRate;
 			if (!useRefreshRate) {
@@ -3225,8 +3226,8 @@ namespace fpl {
 				useFullscreenHeight = FPL_WIN32_GET_DEVICE_CAPS(deviceContext, VERTRES);
 			}
 
-			FPL_WIN32_SET_WINDOW_LONG(windowHandle, GWL_STYLE, Win32FullscreenWindowStyle);
-			FPL_WIN32_SET_WINDOW_LONG(windowHandle, GWL_EXSTYLE, Win32FullscreenWindowExtendedStyle);
+			FPL_WIN32_SET_WINDOW_LONG(windowHandle, GWL_STYLE, Win32FullscreenWindowStyle_Internal);
+			FPL_WIN32_SET_WINDOW_LONG(windowHandle, GWL_EXSTYLE, Win32FullscreenWindowExtendedStyle_Internal);
 
 			FPL_WIN32_SET_WINDOW_POS(windowHandle, HWND_TOPMOST, 0, 0, useFullscreenWidth, useFullscreenHeight, SWP_SHOWWINDOW);
 
@@ -3257,11 +3258,11 @@ namespace fpl {
 		}
 
 		fpl_internal void Win32PollControllers_Internal(Win32State_Internal *win32State) {
-			FPL_ASSERT(globalWin32Functions.xinputGetState != nullptr);
-			constexpr DWORD MaxControllerCount = XUSER_MAX_COUNT;
-			for (DWORD controllerIndex = 0; controllerIndex < MaxControllerCount; ++controllerIndex) {
+			FPL_ASSERT(global__Win32__Functions__Internal.xinputGetState != nullptr);
+			constexpr DWORD MAX_CONTROLLER_COUNT = XUSER_MAX_COUNT;
+			for (DWORD controllerIndex = 0; controllerIndex < MAX_CONTROLLER_COUNT; ++controllerIndex) {
 				XINPUT_STATE controllerState = {};
-				if (globalWin32Functions.xinputGetState(controllerIndex, &controllerState) == ERROR_SUCCESS) {
+				if (global__Win32__Functions__Internal.xinputGetState(controllerIndex, &controllerState) == ERROR_SUCCESS) {
 					if (!win32State->xinput.isConnected[controllerIndex]) {
 						// Connected
 						win32State->xinput.isConnected[controllerIndex] = true;
@@ -3609,10 +3610,10 @@ namespace fpl {
 		}
 
 		fpl_api WindowSize GetWindowArea() {
-			FPL_ASSERT(globalWin32State_Internal != nullptr);
+			FPL_ASSERT(global__Win32__State__Internal != nullptr);
 			WindowSize result = {};
 			RECT windowRect;
-			if (FPL_WIN32_GET_CLIENT_RECT(globalWin32State_Internal->window.windowHandle, &windowRect)) {
+			if (FPL_WIN32_GET_CLIENT_RECT(global__Win32__State__Internal->window.windowHandle, &windowRect)) {
 				result.width = windowRect.right - windowRect.left;
 				result.height = windowRect.bottom - windowRect.top;
 			}
@@ -3620,64 +3621,64 @@ namespace fpl {
 		}
 
 		fpl_api void SetWindowArea(const uint32_t width, const uint32_t height) {
-			FPL_ASSERT(globalWin32State_Internal != nullptr);
+			FPL_ASSERT(global__Win32__State__Internal != nullptr);
 			RECT clientRect, windowRect;
-			if (FPL_WIN32_GET_CLIENT_RECT(globalWin32State_Internal->window.windowHandle, &clientRect) && FPL_WIN32_GET_WINDOW_RECT(globalWin32State_Internal->window.windowHandle, &windowRect)) {
+			if (FPL_WIN32_GET_CLIENT_RECT(global__Win32__State__Internal->window.windowHandle, &clientRect) && FPL_WIN32_GET_WINDOW_RECT(global__Win32__State__Internal->window.windowHandle, &windowRect)) {
 				int borderWidth = (windowRect.right - windowRect.left) - (clientRect.right - clientRect.left);
 				int borderHeight = (windowRect.bottom - windowRect.top) - (clientRect.bottom - clientRect.top);
 				int newWidth = width + borderWidth;
 				int newHeight = height + borderHeight;
-				FPL_WIN32_SET_WINDOW_POS(globalWin32State_Internal->window.windowHandle, 0, 0, 0, newWidth, newHeight, SWP_NOZORDER | SWP_NOMOVE | SWP_NOACTIVATE);
+				FPL_WIN32_SET_WINDOW_POS(global__Win32__State__Internal->window.windowHandle, 0, 0, 0, newWidth, newHeight, SWP_NOZORDER | SWP_NOMOVE | SWP_NOACTIVATE);
 			}
 		}
 
 		fpl_api bool IsWindowResizable() {
-			FPL_ASSERT(globalWin32State_Internal != nullptr);
-			DWORD style = FPL_WIN32_GET_WINDOW_LONG(globalWin32State_Internal->window.windowHandle, GWL_STYLE);
+			FPL_ASSERT(global__Win32__State__Internal != nullptr);
+			DWORD style = FPL_WIN32_GET_WINDOW_LONG(global__Win32__State__Internal->window.windowHandle, GWL_STYLE);
 			bool result = (style & WS_THICKFRAME) > 0;
 			return(result);
 		}
 
 		fpl_api void SetWindowResizeable(const bool value) {
-			FPL_ASSERT(globalWin32State_Internal != nullptr);
-			if (!globalWin32State_Internal->currentSettings.window.isFullscreen) {
+			FPL_ASSERT(global__Win32__State__Internal != nullptr);
+			if (!global__Win32__State__Internal->currentSettings.window.isFullscreen) {
 				DWORD style;
 				DWORD exStyle;
 				if (value) {
-					style = Win32ResizeableWindowStyle;
-					exStyle = Win32ResizeableWindowExtendedStyle;
+					style = Win32ResizeableWindowStyle_Internal;
+					exStyle = Win32ResizeableWindowExtendedStyle_Internal;
 				} else {
-					style = Win32NonResizableWindowStyle;
-					exStyle = Win32NonResizableWindowExtendedStyle;
+					style = Win32NonResizableWindowStyle_Internal;
+					exStyle = Win32NonResizableWindowExtendedStyle_Internal;
 				}
-				FPL_WIN32_SET_WINDOW_LONG(globalWin32State_Internal->window.windowHandle, GWL_STYLE, style);
-				FPL_WIN32_SET_WINDOW_LONG(globalWin32State_Internal->window.windowHandle, GWL_EXSTYLE, exStyle);
-				globalWin32State_Internal->currentSettings.window.isResizable = value;
+				FPL_WIN32_SET_WINDOW_LONG(global__Win32__State__Internal->window.windowHandle, GWL_STYLE, style);
+				FPL_WIN32_SET_WINDOW_LONG(global__Win32__State__Internal->window.windowHandle, GWL_EXSTYLE, exStyle);
+				global__Win32__State__Internal->currentSettings.window.isResizable = value;
 			}
 		}
 
 		fpl_api bool IsWindowFullscreen() {
-			FPL_ASSERT(globalWin32State_Internal != nullptr);
-			HWND windowHandle = globalWin32State_Internal->window.windowHandle;
+			FPL_ASSERT(global__Win32__State__Internal != nullptr);
+			HWND windowHandle = global__Win32__State__Internal->window.windowHandle;
 			DWORD style = FPL_WIN32_GET_WINDOW_LONG(windowHandle, GWL_STYLE);
-			bool result = (style & Win32FullscreenWindowStyle) > 0;
+			bool result = (style & Win32FullscreenWindowStyle_Internal) > 0;
 			return(result);
 		}
 
 		fpl_api void SetWindowFullscreen(const bool value, const uint32_t fullscreenWidth, const uint32_t fullscreenHeight, const uint32_t refreshRate) {
-			FPL_ASSERT(globalWin32State_Internal != nullptr);
+			FPL_ASSERT(global__Win32__State__Internal != nullptr);
 			if (value) {
-				WindowSettings& windowSettings = globalWin32State_Internal->currentSettings.window;
+				WindowSettings& windowSettings = global__Win32__State__Internal->currentSettings.window;
 
 				// Save window placement and size
-				HWND windowHandle = globalWin32State_Internal->window.windowHandle;
-				globalWin32State_Internal->window.lastWindowPlacement = {};
-				FPL_WIN32_GET_WINDOW_PLACEMENT(windowHandle, &globalWin32State_Internal->window.lastWindowPlacement);
+				HWND windowHandle = global__Win32__State__Internal->window.windowHandle;
+				global__Win32__State__Internal->window.lastWindowPlacement = {};
+				FPL_WIN32_GET_WINDOW_PLACEMENT(windowHandle, &global__Win32__State__Internal->window.lastWindowPlacement);
 
 				RECT windowRect = {};
 				FPL_WIN32_GET_WINDOW_RECT(windowHandle, &windowRect);
-				globalWin32State_Internal->window.lastWindowWidth = windowRect.right - windowRect.left;
-				globalWin32State_Internal->window.lastWindowHeight = windowRect.bottom - windowRect.top;
+				global__Win32__State__Internal->window.lastWindowWidth = windowRect.right - windowRect.left;
+				global__Win32__State__Internal->window.lastWindowHeight = windowRect.bottom - windowRect.top;
 
 				// Enter fullscreen mode or fallback to window mode
 				windowSettings.isFullscreen = Win32EnterFullscreen_Internal(fullscreenWidth, fullscreenHeight, refreshRate, 0);
@@ -3690,11 +3691,11 @@ namespace fpl {
 		}
 
 		fpl_api WindowPosition GetWindowPosition() {
-			FPL_ASSERT(globalWin32State_Internal != nullptr);
+			FPL_ASSERT(global__Win32__State__Internal != nullptr);
 			WindowPosition result = {};
 			WINDOWPLACEMENT placement = {};
 			placement.length = sizeof(WINDOWPLACEMENT);
-			if (FPL_WIN32_GET_WINDOW_PLACEMENT(globalWin32State_Internal->window.windowHandle, &placement) == TRUE) {
+			if (FPL_WIN32_GET_WINDOW_PLACEMENT(global__Win32__State__Internal->window.windowHandle, &placement) == TRUE) {
 				switch (placement.showCmd) {
 					case SW_MAXIMIZE:
 					{
@@ -3717,18 +3718,18 @@ namespace fpl {
 		}
 
 		fpl_api void SetWindowTitle(const char *title) {
-			FPL_ASSERT(globalWin32State_Internal != nullptr);
-			HWND handle = globalWin32State_Internal->window.windowHandle;
+			FPL_ASSERT(global__Win32__State__Internal != nullptr);
+			HWND handle = global__Win32__State__Internal->window.windowHandle;
 			// @FIXME(final): This is not correct to set a ansi text, in unicode we have to use the Wide version!
 			FPL_WIN32_SET_WINDOW_TEXT_A(handle, title);
 		}
 
 		fpl_api void SetWindowPosition(const int32_t left, const int32_t top) {
-			FPL_ASSERT(globalWin32State_Internal != nullptr);
+			FPL_ASSERT(global__Win32__State__Internal != nullptr);
 			WINDOWPLACEMENT placement = {};
 			placement.length = sizeof(WINDOWPLACEMENT);
 			RECT windowRect;
-			if (FPL_WIN32_GET_WINDOW_PLACEMENT(globalWin32State_Internal->window.windowHandle, &placement) && FPL_WIN32_GET_WINDOW_RECT(globalWin32State_Internal->window.windowHandle, &windowRect)) {
+			if (FPL_WIN32_GET_WINDOW_PLACEMENT(global__Win32__State__Internal->window.windowHandle, &placement) && FPL_WIN32_GET_WINDOW_RECT(global__Win32__State__Internal->window.windowHandle, &windowRect)) {
 				switch (placement.showCmd) {
 					case SW_NORMAL:
 					case SW_SHOW:
@@ -3737,52 +3738,52 @@ namespace fpl {
 						placement.rcNormalPosition.top = top;
 						placement.rcNormalPosition.right = placement.rcNormalPosition.left + (windowRect.right - windowRect.left);
 						placement.rcNormalPosition.bottom = placement.rcNormalPosition.top + (windowRect.bottom - windowRect.top);
-						FPL_WIN32_SET_WINDOW_PLACEMENT(globalWin32State_Internal->window.windowHandle, &placement);
+						FPL_WIN32_SET_WINDOW_PLACEMENT(global__Win32__State__Internal->window.windowHandle, &placement);
 					} break;
 				}
 			}
 		}
 
 		fpl_api void SetWindowCursorEnabled(const bool value) {
-			FPL_ASSERT(globalWin32State_Internal != nullptr);
-			globalWin32State_Internal->window.isCursorActive = value;
+			FPL_ASSERT(global__Win32__State__Internal != nullptr);
+			global__Win32__State__Internal->window.isCursorActive = value;
 		}
 
 		fpl_api bool WindowUpdate() {
-			FPL_ASSERT(globalWin32State_Internal != nullptr);
+			FPL_ASSERT(global__Win32__State__Internal != nullptr);
 			bool result = false;
 
 			// Poll gamepad controller states
-			Win32PollControllers_Internal(globalWin32State_Internal);
+			Win32PollControllers_Internal(global__Win32__State__Internal);
 
 			// Poll window events
-			if (globalWin32State_Internal->window.windowHandle != 0) {
+			if (global__Win32__State__Internal->window.windowHandle != 0) {
 				MSG msg;
 				while (FPL_WIN32_PEEK_MESSAGE(&msg, nullptr, 0, 0, PM_REMOVE) != 0) {
 					FPL_WIN32_TRANSLATE_MESSAGE(&msg);
 					FPL_WIN32_DISPATCH_MESSAGE(&msg);
 				}
-				result = globalWin32State_Internal->window.isRunning;
+				result = global__Win32__State__Internal->window.isRunning;
 			}
 
 			return(result);
 		}
 
 		fpl_api bool IsWindowRunning() {
-			FPL_ASSERT(globalWin32State_Internal != nullptr);
-			bool result = globalWin32State_Internal->window.isRunning;
+			FPL_ASSERT(global__Win32__State__Internal != nullptr);
+			bool result = global__Win32__State__Internal->window.isRunning;
 			return(result);
 		}
 
 		fpl_api bool PollWindowEvent(Event &ev) {
-			EventQueue_Internal *eventQueue = globalEventQueue_Internal;
+			EventQueue_Internal *eventQueue = global__EventQueue__Internal;
 			FPL_ASSERT(eventQueue != nullptr);
 			bool result = false;
 			if (eventQueue->pushCount > 0 && (eventQueue->pollIndex < eventQueue->pushCount)) {
 				uint32_t eventIndex = atomics::AtomicAddU32(&eventQueue->pollIndex, 1);
 				ev = eventQueue->events[eventIndex];
 				result = true;
-			} else if (globalEventQueue_Internal->pushCount > 0) {
+			} else if (global__EventQueue__Internal->pushCount > 0) {
 				atomics::AtomicExchangeU32(&eventQueue->pollIndex, 0);
 				atomics::AtomicExchangeU32(&eventQueue->pushCount, 0);
 			}
@@ -3791,8 +3792,8 @@ namespace fpl {
 
 		fpl_api char *GetClipboardAnsiText(char *dest, const uint32_t maxDestLen) {
 			char *result = nullptr;
-			FPL_ASSERT(globalWin32State_Internal != nullptr);
-			if (OpenClipboard(globalWin32State_Internal->window.windowHandle)) {
+			FPL_ASSERT(global__Win32__State__Internal != nullptr);
+			if (OpenClipboard(global__Win32__State__Internal->window.windowHandle)) {
 				if (IsClipboardFormatAvailable(CF_TEXT)) {
 					HGLOBAL dataHandle = GetClipboardData(CF_TEXT);
 					if (dataHandle != nullptr) {
@@ -3808,8 +3809,8 @@ namespace fpl {
 
 		fpl_api wchar_t *GetClipboardWideText(wchar_t *dest, const uint32_t maxDestLen) {
 			wchar_t *result = nullptr;
-			FPL_ASSERT(globalWin32State_Internal != nullptr);
-			if (OpenClipboard(globalWin32State_Internal->window.windowHandle)) {
+			FPL_ASSERT(global__Win32__State__Internal != nullptr);
+			if (OpenClipboard(global__Win32__State__Internal->window.windowHandle)) {
 				if (IsClipboardFormatAvailable(CF_UNICODETEXT)) {
 					HGLOBAL dataHandle = GetClipboardData(CF_UNICODETEXT);
 					if (dataHandle != nullptr) {
@@ -3825,8 +3826,8 @@ namespace fpl {
 
 		fpl_api bool SetClipboardText(const char *ansiSource) {
 			bool result = false;
-			FPL_ASSERT(globalWin32State_Internal != nullptr);
-			if (OpenClipboard(globalWin32State_Internal->window.windowHandle)) {
+			FPL_ASSERT(global__Win32__State__Internal != nullptr);
+			if (OpenClipboard(global__Win32__State__Internal->window.windowHandle)) {
 				const uint32_t ansiLen = strings::GetAnsiStringLength(ansiSource);
 				const uint32_t ansiBufferLen = ansiLen + 1;
 				HGLOBAL handle = GlobalAlloc(GMEM_MOVEABLE, (SIZE_T)ansiBufferLen * sizeof(char));
@@ -3845,8 +3846,8 @@ namespace fpl {
 
 		fpl_api bool SetClipboardText(const wchar_t *wideSource) {
 			bool result = false;
-			FPL_ASSERT(globalWin32State_Internal != nullptr);
-			if (OpenClipboard(globalWin32State_Internal->window.windowHandle)) {
+			FPL_ASSERT(global__Win32__State__Internal != nullptr);
+			if (OpenClipboard(global__Win32__State__Internal->window.windowHandle)) {
 				const uint32_t wideLen = strings::GetWideStringLength(wideSource);
 				const uint32_t wideBufferLen = wideLen + 1;
 				HGLOBAL handle = GlobalAlloc(GMEM_MOVEABLE, (SIZE_T)wideBufferLen * sizeof(wchar_t));
@@ -3864,8 +3865,8 @@ namespace fpl {
 		}
 
 		LRESULT CALLBACK Win32MessageProc_Internal(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
-			FPL_ASSERT(globalWin32State_Internal != nullptr);
-			Win32State_Internal &win32State = *globalWin32State_Internal;
+			FPL_ASSERT(global__Win32__State__Internal != nullptr);
+			Win32State_Internal &win32State = *global__Win32__State__Internal;
 			if (!win32State.window.windowHandle) {
 				return FPL_WIN32_DEF_WINDOW_PROC(hwnd, msg, wParam, lParam);
 			}
@@ -4051,7 +4052,7 @@ namespace fpl {
 			// Register window class
 			FPL_WIN32_WNDCLASSEX windowClass = {};
 			windowClass.cbSize = sizeof(FPL_WIN32_WNDCLASSEX);
-			windowClass.hInstance = win32State.appInstance;
+			windowClass.hInstance = global__Win32__AppState__Internal.appInstance;
 			windowClass.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
 			windowClass.cbSize = sizeof(windowClass);
 			windowClass.style = CS_HREDRAW | CS_VREDRAW;
@@ -4076,7 +4077,7 @@ namespace fpl {
 				PushError_Internal("[Win32] Failed Allocating Event Queue Memory with size '%llu'!", eventQueueMemorySize);
 				return false;
 			}
-			globalEventQueue_Internal = (EventQueue_Internal *)eventQueueMemory;
+			global__EventQueue__Internal = (EventQueue_Internal *)eventQueueMemory;
 
 			// @TODO(final): Additional memory block for temporary buffers, so its not needed to pass in a destBuffer
 
@@ -4096,12 +4097,12 @@ namespace fpl {
 			DWORD style;
 			DWORD exStyle;
 			if (initSettings.window.isResizable) {
-				style = Win32ResizeableWindowStyle;
-				exStyle = Win32ResizeableWindowExtendedStyle;
+				style = Win32ResizeableWindowStyle_Internal;
+				exStyle = Win32ResizeableWindowExtendedStyle_Internal;
 				currentSettings.isResizable = true;
 			} else {
-				style = Win32NonResizableWindowStyle;
-				exStyle = Win32NonResizableWindowExtendedStyle;
+				style = Win32NonResizableWindowStyle_Internal;
+				exStyle = Win32NonResizableWindowExtendedStyle_Internal;
 				currentSettings.isResizable = false;
 			}
 
@@ -4184,11 +4185,11 @@ namespace fpl {
 			if (win32State.window.windowHandle != nullptr) {
 				FPL_WIN32_DESTROY_WINDOW(win32State.window.windowHandle);
 				win32State.window.windowHandle = nullptr;
-				FPL_WIN32_UNREGISTER_CLASS(win32State.window.windowClass, win32State.appInstance);
+				FPL_WIN32_UNREGISTER_CLASS(win32State.window.windowClass, global__Win32__AppState__Internal.appInstance);
 			}
 
-			memory::MemoryAlignedFree(globalEventQueue_Internal);
-			globalEventQueue_Internal = nullptr;
+			memory::MemoryAlignedFree(global__EventQueue__Internal);
+			global__EventQueue__Internal = nullptr;
 		}
 
 		fpl_internal HMODULE Win32LoadXInput_Internal() {
@@ -4203,10 +4204,10 @@ namespace fpl {
 				result = FPL_WIN32_LOAD_LIBRARY("xinput9_1_0.dll");
 			}
 			if (result) {
-				globalWin32Functions.xinputGetState = (xinput_get_state *)FPL_WIN32_GET_PROC_ADDRESS(result, "XInputGetState");
+				global__Win32__Functions__Internal.xinputGetState = (xinput_get_state *)FPL_WIN32_GET_PROC_ADDRESS(result, "XInputGetState");
 			}
-			if (!globalWin32Functions.xinputGetState) {
-				globalWin32Functions.xinputGetState = Win32XInputGetStateStub;
+			if (!global__Win32__Functions__Internal.xinputGetState) {
+				global__Win32__Functions__Internal.xinputGetState = Win32XInputGetStateStub;
 			}
 			return(result);
 		}
@@ -4221,18 +4222,18 @@ namespace fpl {
 #endif
 
 	fpl_api bool InitPlatform(const InitFlags initFlags, const Settings &initSettings) {
-		if (fpl::globalWin32State_Internal != nullptr) {
+		if (global__Win32__AppState__Internal.isInitialized) {
 			PushError_Internal("[Win32] Platform is already initialized!");
 			return false;
 		}
 
 		// Allocate win32 state
-		void *win32StateMemory = fpl::memory::MemoryAlignedAllocate(sizeof(fpl::Win32State_Internal), 16);
+		FPL_ASSERT(global__Win32__State__Internal == nullptr);
+		void *win32StateMemory = fpl::memory::MemoryAlignedAllocate(sizeof(Win32State_Internal), 16);
 		FPL_ASSERT(win32StateMemory != nullptr);
-		fpl::globalWin32State_Internal = (fpl::Win32State_Internal *)win32StateMemory;
-		new(fpl::globalWin32State_Internal) fpl::Win32State_Internal();
-		Win32State_Internal &win32State = *globalWin32State_Internal;
-		win32State.appInstance = globalWin32AppInstance_Internal;
+		global__Win32__State__Internal = (Win32State_Internal *)win32StateMemory;
+		new(global__Win32__State__Internal) Win32State_Internal();
+		Win32State_Internal &win32State = *global__Win32__State__Internal;
 		win32State.initSettings = initSettings;
 		win32State.initFlags = initFlags;
 		win32State.currentSettings = initSettings;
@@ -4241,18 +4242,15 @@ namespace fpl {
 		// Allocate last error state
 		void *lastErrorStateMemory = memory::MemoryAlignedAllocate(sizeof(ErrorState_Internal), 16);
 		FPL_ASSERT(lastErrorStateMemory != nullptr);
-		globalLastError_Internal = (ErrorState_Internal *)lastErrorStateMemory;
-
-		// Expect it to be not initialized!
-		FPL_ASSERT(!win32State.isInitialized);
+		global__LastErrorState__Internal = (ErrorState_Internal *)lastErrorStateMemory;
 
 		// Timing
-		FPL_WIN32_QUERY_PERFORMANCE_FREQUENCY(&win32State.performanceFrequency);
+		FPL_WIN32_QUERY_PERFORMANCE_FREQUENCY(&global__Win32__AppState__Internal.performanceFrequency);
 
 		// Get main thread infos
 		HANDLE mainThreadHandle = GetCurrentThread();
 		DWORD mainThreadHandleId = GetCurrentThreadId();
-		threading::ThreadContext *context = &threading::globalThreadState_Internal.mainThread;
+		threading::ThreadContext *context = &global__ThreadState__Internal.mainThread;
 		*context = {};
 		context->id = mainThreadHandleId;
 		context->internalHandle = (void *)mainThreadHandle;
@@ -4275,16 +4273,16 @@ namespace fpl {
 		}
 	#endif // defined(FPL_ENABLE_WINDOW)
 
-		win32State.isInitialized = true;
+		global__Win32__AppState__Internal.isInitialized = true;
 
 		return (true);
 	}
 
 	fpl_api void ReleasePlatform() {
-		FPL_ASSERT(globalWin32State_Internal != nullptr);
-		Win32State_Internal &win32State = *globalWin32State_Internal;
+		FPL_ASSERT(global__Win32__AppState__Internal.isInitialized);
 
-		FPL_ASSERT(win32State.isInitialized);
+		FPL_ASSERT(global__Win32__State__Internal != nullptr);
+		Win32State_Internal &win32State = *global__Win32__State__Internal;
 
 	#if defined(FPL_ENABLE_WINDOW)
 		if (win32State.currentSettings.window.isFullscreen) {
@@ -4310,64 +4308,64 @@ namespace fpl {
 		window::Win32ReleaseWindow_Internal(win32State);
 	#endif // defined(FPL_ENABLE_WINDOW)
 
-		memory::MemoryAlignedFree(globalLastError_Internal);
-		globalLastError_Internal = nullptr;
+		memory::MemoryAlignedFree(global__LastErrorState__Internal);
+		global__LastErrorState__Internal = nullptr;
 
-		win32State.isInitialized = false;
+		fpl::memory::MemoryAlignedFree(fpl::global__Win32__State__Internal);
+		fpl::global__Win32__State__Internal = nullptr;
 
-		fpl::memory::MemoryAlignedFree(fpl::globalWin32State_Internal);
-		fpl::globalWin32State_Internal = nullptr;
+		global__Win32__AppState__Internal.isInitialized = false;
 	}
 
 	fpl_api const char *GetPlatformLastError(const size_t index) {
 		const char *result = nullptr;
-		if (globalLastError_Internal != nullptr) {
+		if (global__LastErrorState__Internal != nullptr) {
 		#if defined(FPL_ENABLE_MULTIPLE_ERRORSTATES)
-			if (index > -1 && index < (int32_t)globalLastError_Internal->count) {
-				result = globalLastError_Internal->errors[index];
+			if (index > -1 && index < (int32_t)global__LastErrorState__Internal->count) {
+				result = global__LastErrorState__Internal->errors[index];
 			} else {
-				result = globalLastError_Internal->errors[globalLastError_Internal->count - 1];
+				result = global__LastErrorState__Internal->errors[global__LastErrorState__Internal->count - 1];
 			}
 		#else
-			result = globalLastError_Internal->error;
+			result = global__LastErrorState__Internal->errors[0];
 		#endif // defined(FPL_ENABLE_MULTIPLE_ERRORSTATES)
 		}
 		return (result);
-		}
+	}
 
 	fpl_api const char *GetPlatformLastError() {
 		const char *result = nullptr;
-		if (globalLastError_Internal != nullptr) {
+		if (global__LastErrorState__Internal != nullptr) {
 		#if defined(FPL_ENABLE_MULTIPLE_ERRORSTATES)
-			if (globalLastError_Internal->count > 0) {
-				size_t index = globalLastError_Internal->count - 1;
+			if (global__LastErrorState__Internal->count > 0) {
+				size_t index = global__LastErrorState__Internal->count - 1;
 				result = GetPlatformLastError(index);
 			}
 		#else
-			result = globalLastError_Internal->error;
+			result = global__LastErrorState__Internal->errors[0];
 		#endif // defined(FPL_ENABLE_MULTIPLE_ERRORSTATES)
 		}
 		return (result);
-		}
+	}
 
 	fpl_api size_t GetPlatformLastErrorCount() {
 		size_t result = 0;
-		if (globalLastError_Internal != nullptr) {
+		if (global__LastErrorState__Internal != nullptr) {
 		#if defined(FPL_ENABLE_MULTIPLE_ERRORSTATES)
-			result = globalLastError_Internal->count;
+			result = global__LastErrorState__Internal->count;
 		#else
-			result = strings::GetAnsiStringLength(globalLastError_Internal->error) > 0 ? 1 : 0;
+			result = strings::GetAnsiStringLength(global__LastErrorState__Internal->errors[0]) > 0 ? 1 : 0;
 		#endif
 		}
 		return (result);
-		}
+	}
 
 	fpl_api const Settings &GetCurrentSettings() {
-		FPL_ASSERT(globalWin32State_Internal != nullptr);
-		const Win32State_Internal &win32State = *globalWin32State_Internal;
+		FPL_ASSERT(global__Win32__State__Internal != nullptr);
+		const Win32State_Internal &win32State = *global__Win32__State__Internal;
 		return (win32State.currentSettings);
 	}
-	}
+}
 
 //
 // Win32 Entry-Point
@@ -4376,14 +4374,14 @@ namespace fpl {
 
 #		if defined(UNICODE)
 int WINAPI wWinMain(HINSTANCE appInstance, HINSTANCE prevInstance, LPWSTR cmdLine, int cmdShow) {
-	fpl::globalWin32AppInstance_Internal = appInstance;
+	fpl::global__Win32__AppState__Internal.appInstance = appInstance;
 	// @TODO(final): Parse command line parameters
 	int result = main(0, 0);
 	return(result);
 }
 #		else
 int WINAPI WinMain(HINSTANCE appInstance, HINSTANCE prevInstance, LPSTR cmdLine, int cmdShow) {
-	fpl::globalWin32AppInstance_Internal = appInstance;
+	fpl::global__Win32__AppState__Internal.appInstance = appInstance;
 	// @TODO(final): Parse command line parameters
 	int result = main(0, 0);
 	return(result);
