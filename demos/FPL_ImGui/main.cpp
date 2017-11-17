@@ -1,16 +1,11 @@
 #define FPL_IMPLEMENTATION
-#define FPL_DEFAULT_WINDOW_WIDTH 1280
-#define FPL_DEFAULT_WINDOW_HEIGHT 720
+#define FPL_AUTO_NAMESPACE
 #include <final_platform_layer.hpp>
 
 #define IMGUI_DISABLE_OBSOLETE_FUNCTIONS 1
 #include <imgui\imgui.h>
 
 #include <math.h>
-
-using namespace fpl;
-using namespace fpl::window;
-using namespace fpl::timings;
 
 static int currentMousePosition[2] = { -1, -1 };
 static bool currentMouseStates[3] = { 0 };
@@ -231,7 +226,7 @@ static void UpdateAndRender(const float deltaTime) {
 int main(int argc, char **args) {
 	int result = 0;
 	Settings settings = Settings();
-	strings::CopyAnsiString("ImGUI Example", settings.window.windowTitle, FPL_ARRAYCOUNT(settings.window.windowTitle) - 1);
+	CopyAnsiString("ImGUI Example", settings.window.windowTitle, FPL_ARRAYCOUNT(settings.window.windowTitle) - 1);
 	settings.window.windowWidth = 1280;
 	settings.window.windowHeight = 720;
 	settings.video.driverType = VideoDriverType::OpenGL;

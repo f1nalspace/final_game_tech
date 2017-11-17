@@ -1,4 +1,5 @@
 #define FPL_IMPLEMENTATION
+#define FPL_AUTO_NAMESPACE
 #include "final_platform_layer.hpp"
 
 #define FTT_IMPLEMENTATION
@@ -93,13 +94,9 @@ static void DrawTile(const int32_t x, const int32_t y, bool filled) {
 }
 
 int main(int argc, char **args) {
-	using namespace fpl;
-	using namespace fpl::memory;
-	using namespace fpl::window;
-
 	int result = 0;
 	Settings settings = Settings();
-	fpl::strings::CopyAnsiString("Tile-Tracing Example", settings.window.windowTitle, FPL_ARRAYCOUNT(settings.window.windowTitle) - 1);
+	CopyAnsiString("Tile-Tracing Example", settings.window.windowTitle, FPL_ARRAYCOUNT(settings.window.windowTitle) - 1);
 	settings.video.driverType = VideoDriverType::OpenGL;
 	if (InitPlatform(InitFlags::Video, settings)) {
 		SetWindowArea(640, 480);

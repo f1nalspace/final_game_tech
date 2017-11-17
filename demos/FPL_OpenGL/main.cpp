@@ -15,6 +15,13 @@ typedef char GLchar;
 #define GL_CONTEXT_PROFILE_MASK           0x9126
 #define GL_CONTEXT_FLAGS                  0x821E
 
+#define GL_CONTEXT_FLAG_FORWARD_COMPATIBLE_BIT	0x0001
+#define GL_CONTEXT_FLAG_DEBUG_BIT				0x00000002
+#define GL_CONTEXT_FLAG_ROBUST_ACCESS_BIT		0x00000004
+#define GL_CONTEXT_FLAG_NO_ERROR_BIT			0x00000008
+#define GL_CONTEXT_CORE_PROFILE_BIT				0x00000001
+#define GL_CONTEXT_COMPATIBILITY_PROFILE_BIT	0x00000002
+
 #define GL_COMPILE_STATUS                 0x8B81
 #define GL_INFO_LOG_LENGTH                0x8B84
 #define GL_FRAGMENT_SHADER                0x8B30
@@ -134,7 +141,7 @@ static GLuint CreateShaderType(GLenum type, const char *source) {
 	if (!compileResult) {
 		GLint infoLen;
 		glGetShaderiv(shaderId, GL_INFO_LOG_LENGTH, &infoLen);
-		char *info = (char *)alloca(infoLen);
+		char *info = (char *)MemoryStackAllocate(infoLen);
 		glGetShaderInfoLog(shaderId, infoLen, &infoLen, info);
 		ConsoleFormatError("Failed compiling %s shader!\n", (type == GL_VERTEX_SHADER ? "vertex" : "fragment"));
 		ConsoleFormatError("%s\n", info);
@@ -160,7 +167,7 @@ static GLuint CreateShaderProgram(const char *name, const char *vertexSource, co
 		GLint infoLen;
 		glGetProgramiv(programId, GL_INFO_LOG_LENGTH, &infoLen);
 
-		char *info = (char *)alloca(infoLen);
+		char *info = (char *)MemoryStackAllocate(infoLen);
 		glGetProgramInfoLog(programId, infoLen, &infoLen, info);
 		ConsoleFormatError("Failed linking '%s' shader!\n", name);
 		ConsoleFormatError("%s\n", info);
@@ -187,8 +194,8 @@ static bool RunModern() {
 	glGetIntegerv(GL_CONTEXT_PROFILE_MASK, &profileMask);
 	glGetIntegerv(GL_CONTEXT_FLAGS, &contextFlags);
 	ConsoleFormatOut("OpenGL supported profiles:\n");
-	ConsoleFormatOut("\tCore: %s\n", ((profileMask & FPL_GL_CONTEXT_CORE_PROFILE_BIT) ? "yes" : "no"));
-	ConsoleFormatOut("\tForward: %s\n", ((contextFlags & FPL_GL_CONTEXT_FLAG_FORWARD_COMPATIBLE_BIT) ? "yes" : "no"));
+	ConsoleFormatOut("\tCore: %s\n", ((profileMask & GL_CONTEXT_CORE_PROFILE_BIT) ? "yes" : "no"));
+	ConsoleFormatOut("\tForward: %s\n", ((contextFlags & GL_CONTEXT_FLAG_FORWARD_COMPATIBLE_BIT) ? "yes" : "no"));
 
 	ConsoleOut("Running modern opengl\n");
 
