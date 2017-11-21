@@ -1,6 +1,6 @@
 /**
 * @file final_platform_layer.hpp
-* @version v0.4.3 alpha
+* @version v0.4.2 alpha
 * @author Torsten Spaete
 * @brief Final Platform Layer (FPL) - A Open source C++ single file header platform abstraction layer library.
 *
@@ -201,17 +201,14 @@ SOFTWARE.
 
 # VERSION HISTORY
 
-- v0.4.3 alpha:
-	* Changed: AtomicCompareAndExchange argument "comparand" and "exchange" flipped.
-	* Fixed: [Linux] Always returning the previous value in AtomicCompareAndExchange
-	* Added: &= operator overloading for enums
-
 - v0.4.2 alpha:
 	* Added: [Linux] Started linux implementation
 	* Added: [Linux] Memory allocations
 	* Added: [Linux] Atomic operations
 	* Added: Check for C++/11 compiler and fail if not supported
 	* Added: Nasty vstudio 2015+ workaround to detect C++/11
+	* Added: &= operator overloading for enums
+	* Changed: AtomicCompareAndExchange argument "comparand" and "exchange" flipped.
 	* Changed: constexpr is now fpl_constant to make clear what is a constant
 	* Removed: [Win32] CreateDIBSection is not needed for a software backbuffer
 	* Fixed: [Win32] Software rendering was not working properly.
