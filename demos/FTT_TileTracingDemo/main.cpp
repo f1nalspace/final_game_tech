@@ -95,7 +95,7 @@ static void DrawTile(const int32_t x, const int32_t y, bool filled) {
 
 int main(int argc, char **args) {
 	int result = 0;
-	Settings settings = Settings();
+	Settings settings = DefaultSettings();
 	CopyAnsiString("Tile-Tracing Example", settings.window.windowTitle, FPL_ARRAYCOUNT(settings.window.windowTitle) - 1);
 	settings.video.driverType = VideoDriverType::OpenGL;
 	if (InitPlatform(InitFlags::Video, settings)) {

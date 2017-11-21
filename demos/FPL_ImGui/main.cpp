@@ -225,7 +225,7 @@ static void UpdateAndRender(const float deltaTime) {
 
 int main(int argc, char **args) {
 	int result = 0;
-	Settings settings = Settings();
+	Settings settings = DefaultSettings();
 	CopyAnsiString("ImGUI Example", settings.window.windowTitle, FPL_ARRAYCOUNT(settings.window.windowTitle) - 1);
 	settings.window.windowWidth = 1280;
 	settings.window.windowHeight = 720;

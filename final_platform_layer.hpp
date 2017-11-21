@@ -1,6 +1,6 @@
 /**
 * @file final_platform_layer.hpp
-* @version v0.4.1 alpha
+* @version v0.4.3 alpha
 * @author Torsten Spaete
 * @brief Final Platform Layer (FPL) - A Open source C++ single file header platform abstraction layer library.
 *
@@ -21,7 +21,7 @@ Open-Source C++ Single-File Header-Library by Torsten Spaete
 # ABOUT
 
 This library is designed to abstract the underlying platform to a very simple and easy to use api.
-The only dependencies are built-in operatoring system libraries and the C runtime library.
+The only dependencies are built-in operatoring system libraries and the C++ runtime library.
 
 The main focus is game development, so the default settings will create a window and setup a opengl rendering context.
 
@@ -60,33 +60,34 @@ fpl::ReleasePlatform();
 #include "final_platform_layer.hpp"
 
 using namespace fpl;
-using namespace fpl::memory;
 using namespace fpl::window;
 
 int main(int argc, char **args) {
 int result = 0;
 if (InitPlatform(InitFlags::Video)) {
-glClearColor(0.39f, 0.58f, 0.93f, 1.0f);
-while (WindowUpdate()) {
-WindowSize windowArea = GetWindowArea();
-glViewport(0, 0, windowArea.width, windowArea.height);
-glClear(GL_COLOR_BUFFER_BIT);
-glBegin(GL_TRIANGLES);
-glVertex2f(0.0f, 0.5f);
-glVertex2f(-0.5f, -0.5f);
-glVertex2f(0.5f, -0.5f);
-glEnd();
-WindowFlip();
-}
-ReleasePlatform();
-result = 0;
+	glClearColor(0.39f, 0.58f, 0.93f, 1.0f);
+	while (WindowUpdate()) {
+		WindowSize windowArea = GetWindowArea();
+		glViewport(0, 0, windowArea.width, windowArea.height);
+		glClear(GL_COLOR_BUFFER_BIT);
+		glBegin(GL_TRIANGLES);
+		glVertex2f(0.0f, 0.5f);
+		glVertex2f(-0.5f, -0.5f);
+		glVertex2f(0.5f, -0.5f);
+		glEnd();
+		WindowFlip();
+	}
+	ReleasePlatform();
+	result = 0;
 } else {
-result = -1;
+	result = -1;
 }
 return(result);
 }
 
 # HOW TO COMPILE
+
+You need a C++/11 complaint compiler for enum class and constexpr.
 
 ## Win32
 
@@ -94,6 +95,10 @@ return(result);
 * Link to user32.lib
 * Link to shell32.lib
 * Link to opengl32.lib (Only needed if you use opengl)
+
+## Linux
+
+* Link to ld.so
 
 # OPTIONS
 
@@ -162,9 +167,9 @@ Define this to include all required namespaces automatically.
 
 [X] Compiles with MSVC
 [ ] Compiles with MingW
-[ ] Compiles with GCC/G++
+[ ] Compiles with G++
 [ ] Compiles with Clang
-[ ] Compiles with Intel C/C++ Compiler
+[ ] Compiles with Intel C++ Compiler
 
 # SUPPORTED PLATFORMS
 
@@ -196,6 +201,22 @@ SOFTWARE.
 
 # VERSION HISTORY
 
+- v0.4.3 alpha:
+	* Changed: AtomicCompareAndExchange argument "comparand" and "exchange" flipped.
+	* Fixed: [Linux] Always returning the previous value in AtomicCompareAndExchange
+	* Added: &= operator overloading for enums
+
+- v0.4.2 alpha:
+	* Added: [Linux] Started linux implementation
+	* Added: [Linux] Memory allocations
+	* Added: [Linux] Atomic operations
+	* Added: Check for C++/11 compiler and fail if not supported
+	* Added: Nasty vstudio 2015+ workaround to detect C++/11
+	* Changed: constexpr is now fpl_constant to make clear what is a constant
+	* Removed: [Win32] CreateDIBSection is not needed for a software backbuffer
+	* Fixed: [Win32] Software rendering was not working properly.
+	* Fixed: Some AtomicCompareAndExchange signatures was still AtomicAndCompareExchange
+
 - v0.4.1 alpha:
 	* Cleanup: Internal cleanup
 	* Changed: All the settings constructors removed and replaced by a simple inline function.
@@ -203,6 +224,7 @@ SOFTWARE.
 	* Fixed: FPL_OFFSETOF was not working
 	* Fixed: All file size macros like FPL_MEGABYTES was returning invalid results.
 	* Removed: FPL_PETABYTES and higher are removed, just because its useless.
+
 - v0.4.0 alpha:
 	* Changed: All FPL_ENABLE_ defines are internal now, the caller must use FPL_NO_ or FPL_YES_ respectivily.
 	* Changed: AtomicCompareExchange* is now AtomicCompareAndExchange*
@@ -243,21 +265,26 @@ SOFTWARE.
 	* Implemented [Win32]: GetProcessorCoreCount
 	* Implemented [Win32]: Main thread infos
 	* Performance [Win32]: GetProcessorName (3 loop iterations at max)
+
 - v0.3.6 alpha:
 	* Cleanup: All win32 functions are macro calls now (prepare for dynamic function loading)
 	* Fixed: FPL_ENABLE_WINDOW was enabling window features even when it was deactivated by the caller
+
 - v0.3.5 alpha:
 	* Renamed: All memory/library/threading functions
 	* Removed: FPL_ENABLE_PUSHMEMORY removed entirely
+
 - v0.3.4 alpha:
 	* Renamed: CopyFile/DeleteFile/All memory functions renamed (Stupid win32!)
 	* Renamed: All internal opengl defines renamed, so that it wont conflict with other libraries
 	* Fixed: [Win32] strings::All Wide conversions was not working properly
 	* Removed: [Win32] Undefs for CopyFile
 	* Changed: [Win32/OpenGL] Test for already included gl.h
+
 - v0.3.3 alpha:
 	* Basic threading creation and handling
 	* Fixed strings::All Wide convertions was not working properly
+
 - v0.3.2 alpha:
 	* Introduced: Automatic namespace inclusion (FPL_AUTO_NAMESPACE)
 	* Introduced: Push memory (FPL_ENABLE_PUSHMEMORY)
@@ -267,12 +294,15 @@ SOFTWARE.
 	* New: AllocateStackMemory function
 	* Optional destination arguments for: GetExecutableFilePath/GetHomePath/ChangeFileExtension/CombinePath
 	* Fixed strings::CopyAnsiString/CopyWideString was not returning the correct value
+
 - v0.3.1 alpha:
 	* All types/structs/fields/functions documented
 	* [Win32] Fixed legacy opengl (GL_INVALID_OPERATION)
+
 - v0.3.0 alpha:
 	* Updated documentation a lot
 	* [Win32] Support for WGL opengl profile selection
+
 - v0.2.6 alpha:
 	* Added memory::CopyMemory
 	* Added fpl::GetLastError and fpl::GetLastErrorCount for proper error handling
@@ -284,31 +314,40 @@ SOFTWARE.
 	* Fixed files::CreateBinaryFile was never able to overwrite the file.
 	* Fixed #include was in some namespaces defined
 	* Fixed files::ClearMemory was wrong
-	* Replaced all const constants with constexpr
+	* Replaced all const constants with fpl_constant
 	* Removed template code / Replaced it with macros
+
 - v0.2.5 alpha:
 	* Added CreateDirectories
 	* Returns char * for all path get like functions
 	* Fixed CreateBinaryFile was never able to overwrite the file.
+
 - v.2.4 alpha:
 	* Changed to a doxygen + vc complaint documentation style
 	* CopyFile2, DeleteFile2 and CloseFile2 are now CopyFile, DeleteFile, CloseFile
+
 - v0.2.3 alpha:
 	* Support for doxygen in documentations
+
 - v0.2.2 alpha:
 	* Added XInput support
+
 - v0.2.1 alpha:
 	* Changed a lot of pointer arguments to reference
 	* Added gamepad event structures
+
 - v0.2 alpha:
 	* Dropped C support and moved to a more C++ ish api
 	* Dropped no C-Runtime support
+
 - v0.1 alpha:
 	* Initial version
 
 # TODO
 
-	* Compress namespaces down to one for the api and one for implementation.
+	* Replace argument order of AtomicCompareAndExchange for comparand and exchange!
+	* Use __sync for linux atomics, right now using __atomic works but the api is not great: __atomic_compare_exchange_n :-(
+	
 	* Change most assertions to normal comparisons and make it rock solid, so it wont crash for the most part. Returning nullptr or empty is much more preferred.
 	* Make linking to opengl32 not required at all (Replace wgl and gdi calls with macro calls)
 	* Make linking to user32 and shell32 not required at all (Load the functions directly from the libraries, but still require kernel32)
@@ -326,6 +365,16 @@ SOFTWARE.
 // ****************************************************************************
 #ifndef FPL_INCLUDE_HPP
 #define FPL_INCLUDE_HPP
+
+// Unfortunatly C++/11 is required for this library (constexpr, enum class, overloading, namespaces)
+#if defined(__cplusplus) && (__cplusplus >= 201103L)
+	// Everything is fine
+#elif defined(_MSC_VER) && _MSC_VER >= 1900
+	// @NOTE(final): This is visual studio for you, __cplusplus always returns 199711L -.-
+	// See: https://connect.microsoft.com/VisualStudio/feedback/details/763051/a-value-of-predefined-macro-cplusplus-is-still-199711l
+#else
+#	error "You need a C++/11 complaint compiler for this library!"
+#endif
 
 //
 // Platform detection
@@ -479,6 +528,9 @@ SOFTWARE.
 #	define fpl_api extern
 #endif // defined(FPL_API_AS_PRIVATE)
 
+//! Constant value
+#define fpl_constant constexpr
+
 //
 // Assertions
 //
@@ -504,6 +556,9 @@ SOFTWARE.
 //! Compile time assertions disabled
 #	define FPL_STATICASSERT(exp)
 #endif // defined(FPL_ENABLE_ASSERTIONS)
+
+//! This will full-on crash when something is not implemented always.
+#define FPL_NOT_IMPLEMENTED {*(int *)0 = 0xBAD;}
 
 //
 // Macro functions
@@ -539,12 +594,17 @@ SOFTWARE.
 		inline type& operator |= (type &lhs, type rhs) { \
 			lhs = (type)(static_cast<uint32_t>(lhs) | static_cast<uint32_t>(rhs)); \
 			return lhs; \
+		} \
+		inline type& operator &= (type &lhs, type rhs) { \
+			lhs = (type)(static_cast<uint32_t>(lhs) & static_cast<uint32_t>(rhs)); \
+			return lhs; \
 		}
 
 //
 // Types
 //
-#include <stdint.h>
+#include <stdint.h> // uint64_t, uint32_t, uint8_t, etc.
+#include <stdlib.h> // size_t
 
 // ****************************************************************************
 //
@@ -580,13 +640,13 @@ namespace fpl {
 		//! Adds a 64-bit signed integer atomatically. Returns the value before the addition.
 		fpl_api int64_t AtomicAddS64(volatile int64_t *value, const int64_t addend);
 		//! Compares a 32-bit unsigned integer with a comparand and exchange it when comparand and matches destination. Returns the dest before the exchange.
-		fpl_api uint32_t AtomicCompareAndExchangeU32(volatile uint32_t *dest, const uint32_t exchange, const uint32_t comparand);
+		fpl_api uint32_t AtomicCompareAndExchangeU32(volatile uint32_t *dest, const uint32_t comparand, const uint32_t exchange);
 		//! Compares a 32-bit signed integer with a comparand and exchange it when comparand and matches destination. Returns the dest before the exchange.
-		fpl_api int32_t AtomicCompareAndExchangeS32(volatile int32_t *dest, const int32_t exchange, const int32_t comparand);
+		fpl_api int32_t AtomicCompareAndExchangeS32(volatile int32_t *dest, const int32_t comparand, const int32_t exchange);
 		//! Compares a 64-bit unsigned integer with a comparand and exchange it when comparand and matches destination. Returns the dest before the exchange.
-		fpl_api uint64_t AtomicAndCompareExchangeU64(volatile uint64_t *dest, const uint64_t exchange, const uint64_t comparand);
+		fpl_api uint64_t AtomicCompareAndExchangeU64(volatile uint64_t *dest, const uint64_t comparand, const uint64_t exchange);
 		//! Compares a 64-bit signed integer with a comparand and exchange it when comparand and matches destination. Returns the dest before the exchange.
-		fpl_api int64_t AtomicCompareAndExchangeS64(volatile int64_t *dest, const int64_t exchange, const int64_t comparand);
+		fpl_api int64_t AtomicCompareAndExchangeS64(volatile int64_t *dest, const int64_t comparand, const int64_t exchange);
 	};
 
 	//! Hardware functions, like GetProcessorCoreCount, GetProcessorName, etc.
@@ -639,6 +699,7 @@ namespace fpl {
 		bool isFullscreen;
 	};
 
+	//! Make default settings for the window
 	inline WindowSettings DefaultWindowSettings() {
 		WindowSettings result = {};
 		result.windowTitle[0] = 0;
@@ -677,6 +738,7 @@ namespace fpl {
 		bool isAutoSize;
 	};
 
+	//! Make default settings for video
 	inline VideoSettings DefaultVideoSettings() {
 		VideoSettings result = {};
 		result.profile = VideoCompabilityProfile::Legacy;
@@ -701,6 +763,7 @@ namespace fpl {
 		VideoSettings video;
 	};
 
+	//! Default settings for video, window, etc.
 	inline Settings DefaultSettings() {
 		Settings result = {};
 		result.window = DefaultWindowSettings();
@@ -930,7 +993,7 @@ namespace fpl {
 		FPL_ENUM_AS_FLAGS_OPERATORS_INTERNAL(FileAttributeFlags);
 
 		//! Maximum length of a file entry path
-		constexpr uint32_t MAX_FILEENTRY_PATH_LENGTH = 1024;
+		fpl_constant uint32_t MAX_FILEENTRY_PATH_LENGTH = 1024;
 
 		//! Entry for storing current file informations (path, type, attributes, etc.)
 		struct FileEntry {
@@ -1577,21 +1640,21 @@ namespace fpl {
 	// Platform constants
 	//
 #	if defined(FPL_PLATFORM_WIN32)
-	constexpr char PATH_SEPARATOR_INTERNAL = '\\';
-	constexpr char FILE_EXT_SEPARATOR_INTERNAL = '.';
+	fpl_constant char PATH_SEPARATOR_INTERNAL = '\\';
+	fpl_constant char FILE_EXT_SEPARATOR_INTERNAL = '.';
 #	else
-	constexpr char PATH_SEPARATOR_INTERNAL = '/';
-	constexpr char FILE_EXT_SEPARATOR_INTERNAL = '.';
+	fpl_constant char PATH_SEPARATOR_INTERNAL = '/';
+	fpl_constant char FILE_EXT_SEPARATOR_INTERNAL = '.';
 #	endif
 
 	//
 	// Internal types and functions
 	//
-	constexpr uint32_t MAX_LAST_ERROR_STRING_LENGTH_INTERNAL = 1024;
+	fpl_constant uint32_t MAX_LAST_ERROR_STRING_LENGTH_INTERNAL = 1024;
 #if defined(FPL_ENABLE_MULTIPLE_ERRORSTATES)
-	constexpr size_t MAX_ERRORSTATE_COUNT_INTERNAL = 1024;
+	fpl_constant size_t MAX_ERRORSTATE_COUNT_INTERNAL = 1024;
 #else
-	constexpr size_t MAX_ERRORSTATE_COUNT_INTERNAL = 1;
+	fpl_constant size_t MAX_ERRORSTATE_COUNT_INTERNAL = 1;
 #endif
 
 	struct ErrorState_Internal {
@@ -1607,7 +1670,7 @@ namespace fpl {
 		if (state != nullptr) {
 			FPL_ASSERT(format != nullptr);
 			char buffer[MAX_LAST_ERROR_STRING_LENGTH_INTERNAL];
-			vsprintf_s(buffer, FPL_ARRAYCOUNT(buffer), format, argList);
+			vsnprintf(buffer, FPL_ARRAYCOUNT(buffer), format, argList);
 			uint32_t messageLen = strings::GetAnsiStringLength(buffer);
 			FPL_ASSERT(state->count < MAX_ERRORSTATE_COUNT_INTERNAL);
 			size_t errorIndex = state->count++;
@@ -1623,7 +1686,7 @@ namespace fpl {
 		if (state != nullptr) {
 			FPL_ASSERT(format != nullptr);
 			char buffer[MAX_LAST_ERROR_STRING_LENGTH_INTERNAL];
-			vsprintf_s(buffer, FPL_ARRAYCOUNT(buffer), format, argList);
+			vsnprintf(buffer, FPL_ARRAYCOUNT(buffer), format, argList);
 			uint32_t messageLen = strings::GetAnsiStringLength(buffer);
 			strings::CopyAnsiString(buffer, messageLen, state->errors[0], MAX_LAST_ERROR_STRING_LENGTH_INTERNAL);
 		#if defined(FPL_ENABLE_ERROR_IN_CONSOLE)
@@ -1640,7 +1703,7 @@ namespace fpl {
 		va_end(valist);
 	}
 
-	constexpr uint32_t MAX_THREAD_COUNT_INTERNAL = 64;
+	fpl_constant uint32_t MAX_THREAD_COUNT_INTERNAL = 64;
 	struct ThreadState_Internal {
 		threading::ThreadContext mainThread;
 		threading::ThreadContext threads[MAX_THREAD_COUNT_INTERNAL];
@@ -1761,12 +1824,12 @@ namespace fpl {
 			MemoryFree(basePtr);
 		}
 
-		constexpr size_t MEM_SHIFT_64_INTERNAL = 3;
-		constexpr size_t MEM_MASK_64_INTERNAL = 0x00000007;
-		constexpr size_t MEM_SHIFT_32_INTERNAL = 2;
-		constexpr size_t MEM_MASK_32_INTERNAL = 0x00000003;
-		constexpr size_t MEM_SHIFT_16_INTERNAL = 1;
-		constexpr size_t MEM_MASK_16_INTERNAL = 0x00000001;
+		fpl_constant size_t MEM_SHIFT_64_INTERNAL = 3;
+		fpl_constant size_t MEM_MASK_64_INTERNAL = 0x00000007;
+		fpl_constant size_t MEM_SHIFT_32_INTERNAL = 2;
+		fpl_constant size_t MEM_MASK_32_INTERNAL = 0x00000003;
+		fpl_constant size_t MEM_SHIFT_16_INTERNAL = 1;
+		fpl_constant size_t MEM_MASK_16_INTERNAL = 0x00000001;
 
 		fpl_api void MemoryClear(void *mem, const size_t size) {
 			if (size % 8 == 0) {
@@ -1955,7 +2018,6 @@ namespace fpl {
 #	define FPL_WIN32_BEGIN_PAINT BeginPaint
 #	define FPL_WIN32_END_PAINT EndPaint
 #	define FPL_WIN32_STRETCH_DIBITS StretchDIBits
-#	define FPL_WIN32_CREATE_DIBSECTION CreateDIBSection
 #	define FPL_WIN32_DELETE_OBJECT DeleteObject
 #	define FPL_WIN32_CHOOSE_PIXEL_FORMAT ChoosePixelFormat
 #	define FPL_WIN32_SET_PIXEL_FORMAT SetPixelFormat
@@ -2184,7 +2246,6 @@ namespace fpl {
 	struct Win32VideoSoftwareState_Internal {
 		video::VideoBackBuffer context;
 		BITMAPINFO bitmapInfo;
-		HBITMAP deviceBitmap;
 	};
 #	else
 	typedef void *Win32VideoSoftwareState_Internal;
@@ -2266,22 +2327,22 @@ namespace fpl {
 			int64_t result = _InterlockedExchangeAdd64((volatile long long *)value, addend);
 			return (result);
 		}
-		fpl_api uint32_t AtomicCompareAndExchangeU32(volatile uint32_t *dest, const uint32_t exchange, const uint32_t comparand) {
+		fpl_api uint32_t AtomicCompareAndExchangeU32(volatile uint32_t *dest, const uint32_t comparand, const uint32_t exchange) {
 			FPL_ASSERT(dest != nullptr);
 			uint32_t result = _InterlockedCompareExchange((volatile unsigned long *)dest, exchange, comparand);
 			return (result);
 		}
-		fpl_api int32_t AtomicCompareAndExchangeS32(volatile int32_t *dest, const int32_t exchange, const int32_t comparand) {
+		fpl_api int32_t AtomicCompareAndExchangeS32(volatile int32_t *dest, const int32_t comparand, const int32_t exchange) {
 			FPL_ASSERT(dest != nullptr);
 			int32_t result = _InterlockedCompareExchange((volatile long *)dest, exchange, comparand);
 			return (result);
 		}
-		fpl_api uint64_t AtomicAndCompareExchangeU64(volatile uint64_t *dest, const uint64_t exchange, const uint64_t comparand) {
+		fpl_api uint64_t AtomicCompareAndExchangeU64(volatile uint64_t *dest, const uint64_t comparand, const uint64_t exchange) {
 			FPL_ASSERT(dest != nullptr);
 			uint64_t result = _InterlockedCompareExchange((volatile unsigned __int64 *)dest, exchange, comparand);
 			return (result);
 		}
-		fpl_api int64_t AtomicCompareAndExchangeS64(volatile int64_t *dest, const int64_t exchange, const int64_t comparand) {
+		fpl_api int64_t AtomicCompareAndExchangeS64(volatile int64_t *dest, const int64_t comparand, const int64_t exchange) {
 			FPL_ASSERT(dest != nullptr);
 			int64_t result = _InterlockedCompareExchange64((volatile long long *)dest, exchange, comparand);
 			return (result);
@@ -2303,7 +2364,7 @@ namespace fpl {
 
 	#if defined(FPL_COMPILER_MSVC)
 		fpl_api char *GetProcessorName(char *destBuffer, const uint32_t maxDestBufferLen) {
-			constexpr uint32_t CPU_BRAND_BUFFER_SIZE = 0x40;
+			fpl_constant uint32_t CPU_BRAND_BUFFER_SIZE = 0x40;
 
 			FPL_ASSERT(destBuffer != nullptr);
 			FPL_ASSERT(maxDestBufferLen >= (CPU_BRAND_BUFFER_SIZE + 1));
@@ -2810,7 +2871,7 @@ namespace fpl {
 			FPL_ASSERT(maxDestLen >= (MAX_PATH + 1));
 			strings::CopyAnsiString(modulePath, strings::GetAnsiStringLength(modulePath), destPath, maxDestLen);
 			return(destPath);
-	}
+		}
 	#	endif
 
 	#	if defined(UNICODE)
@@ -2830,7 +2891,7 @@ namespace fpl {
 			FPL_ASSERT(maxDestLen >= (MAX_PATH + 1));
 			strings::CopyAnsiString(homePath, strings::GetAnsiStringLength(homePath), destPath, maxDestLen);
 			return(destPath);
-	}
+		}
 	#endif
 	}
 
@@ -3056,9 +3117,6 @@ namespace fpl {
 		fpl_internal void Win32ReleaseVideoSoftwareContext_Internal(Win32State_Internal &win32State) {
 			Win32VideoSoftwareState_Internal &software = win32State.video.software;
 
-			FPL_ASSERT(software.deviceBitmap != nullptr);
-			FPL_WIN32_DELETE_OBJECT(software.deviceBitmap);
-
 			FPL_ASSERT(software.context.pixels != nullptr);
 			memory::MemoryAlignedFree(software.context.pixels);
 
@@ -3077,7 +3135,7 @@ namespace fpl {
 			software.context.pixels = (uint32_t *)memory::MemoryAlignedAllocate(size, 16);
 
 			// Clear to black by default
-			// @NOTE(final): Its a x,y by intention, so i can test if top-down is working.
+			// @NOTE(final): Bitmap is top-down, 0xAABBGGRR
 			uint32_t *p = software.context.pixels;
 			for (uint32_t y = 0; y < software.context.height; ++y) {
 				uint32_t color = 0xFF000000;
@@ -3096,8 +3154,6 @@ namespace fpl {
 			software.bitmapInfo.bmiHeader.biPlanes = 1;
 			software.bitmapInfo.bmiHeader.biSizeImage = (DWORD)size;
 
-			software.deviceBitmap = FPL_WIN32_CREATE_DIBSECTION(win32State.window.deviceContext, &software.bitmapInfo, DIB_RGB_COLORS, (void **)software.context.pixels, nullptr, 0);
-
 			return true;
 		}
 	#	endif // defined(FPL_ENABLE_VIDEO_SOFTWARE)
@@ -3107,8 +3163,8 @@ namespace fpl {
 			FPL_ASSERT(global__Win32__State__Internal != nullptr);
 			if (global__Win32__State__Internal->videoDriverType == VideoDriverType::Software) {
 			#if defined(FPL_ENABLE_VIDEO_SOFTWARE)
-				Win32VideoSoftwareState_Internal software = global__Win32__State__Internal->video.software;
-				result = &software.context;
+				Win32VideoSoftwareState_Internal *software = &global__Win32__State__Internal->video.software;
+				result = &software->context;
 			#endif
 			}
 			return(result);
@@ -3138,11 +3194,17 @@ namespace fpl {
 			if (global__Win32__State__Internal->videoDriverType == VideoDriverType::OpenGL) {
 				FPL_WIN32_SWAP_BUFFERS(global__Win32__State__Internal->window.deviceContext);
 			} else if (global__Win32__State__Internal->videoDriverType == VideoDriverType::Software) {
-				FPL_WIN32_POST_MESSAGE(global__Win32__State__Internal->window.windowHandle, WM_PAINT, 0, 0);
+				Win32VideoSoftwareState_Internal &software = global__Win32__State__Internal->video.software;
+				WindowSize area = GetWindowArea();
+				uint32_t targetWidth = area.width;
+				uint32_t targetHeight = area.height;
+				uint32_t sourceWidth = software.context.width;
+				uint32_t sourceHeight = software.context.height;
+				FPL_WIN32_STRETCH_DIBITS(global__Win32__State__Internal->window.deviceContext, 0, 0, targetWidth, targetHeight, 0, 0, sourceWidth, sourceHeight, software.context.pixels, &software.bitmapInfo, DIB_RGB_COLORS, SRCCOPY);
 			}
 		}
 
-		constexpr uint32_t MAX_EVENT_COUNT_INTERNAL = 32768;
+		fpl_constant uint32_t MAX_EVENT_COUNT_INTERNAL = 32768;
 		struct EventQueue_Internal {
 			Event events[MAX_EVENT_COUNT_INTERNAL];
 			volatile uint32_t pollIndex;
@@ -3165,14 +3227,14 @@ namespace fpl {
 			DWORD exStyle;
 		};
 
-		constexpr DWORD Win32ResizeableWindowStyle_Internal = WS_THICKFRAME | WS_SYSMENU | WS_MINIMIZEBOX | WS_MAXIMIZEBOX | WS_VISIBLE;
-		constexpr DWORD Win32ResizeableWindowExtendedStyle_Internal = WS_EX_LEFT;
+		fpl_constant DWORD Win32ResizeableWindowStyle_Internal = WS_THICKFRAME | WS_SYSMENU | WS_MINIMIZEBOX | WS_MAXIMIZEBOX | WS_VISIBLE;
+		fpl_constant DWORD Win32ResizeableWindowExtendedStyle_Internal = WS_EX_LEFT;
 
-		constexpr DWORD Win32NonResizableWindowStyle_Internal = WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX | WS_VISIBLE;
-		constexpr DWORD Win32NonResizableWindowExtendedStyle_Internal = WS_EX_LEFT;
+		fpl_constant DWORD Win32NonResizableWindowStyle_Internal = WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX | WS_VISIBLE;
+		fpl_constant DWORD Win32NonResizableWindowExtendedStyle_Internal = WS_EX_LEFT;
 
-		constexpr DWORD Win32FullscreenWindowStyle_Internal = WS_POPUP | WS_VISIBLE;
-		constexpr DWORD Win32FullscreenWindowExtendedStyle_Internal = WS_EX_APPWINDOW | WS_EX_TOPMOST;
+		fpl_constant DWORD Win32FullscreenWindowStyle_Internal = WS_POPUP | WS_VISIBLE;
+		fpl_constant DWORD Win32FullscreenWindowExtendedStyle_Internal = WS_EX_APPWINDOW | WS_EX_TOPMOST;
 
 		fpl_internal bool Win32LeaveFullscreen_Internal() {
 			FPL_ASSERT(global__Win32__State__Internal != nullptr);
@@ -3259,7 +3321,7 @@ namespace fpl {
 
 		fpl_internal void Win32PollControllers_Internal(Win32State_Internal *win32State) {
 			FPL_ASSERT(global__Win32__Functions__Internal.xinputGetState != nullptr);
-			constexpr DWORD MAX_CONTROLLER_COUNT = XUSER_MAX_COUNT;
+			fpl_constant DWORD MAX_CONTROLLER_COUNT = XUSER_MAX_COUNT;
 			for (DWORD controllerIndex = 0; controllerIndex < MAX_CONTROLLER_COUNT; ++controllerIndex) {
 				XINPUT_STATE controllerState = {};
 				if (global__Win32__Functions__Internal.xinputGetState(controllerIndex, &controllerState) == ERROR_SUCCESS) {
@@ -4020,12 +4082,13 @@ namespace fpl {
 					// @TODO(final): No erase the background when opengl is active!
 				} break;
 
+			#if 0
 				case WM_PAINT:
 				{
 					// @TODO(final): Full ignore WM_PAINT when opengl is active
 					if (win32State.videoDriverType == VideoDriverType::Software) {
 						Win32VideoSoftwareState_Internal &software = win32State.video.software;
-						PAINTSTRUCT ps = {};
+						PAINTSTRUCT ps;
 						HDC dc = FPL_WIN32_BEGIN_PAINT(hwnd, &ps);
 						uint32_t targetWidth = ps.rcPaint.right - ps.rcPaint.left;
 						uint32_t targetHeight = ps.rcPaint.bottom - ps.rcPaint.top;
@@ -4036,6 +4099,7 @@ namespace fpl {
 						return 1;
 					}
 				} break;
+			#endif
 
 				default:
 					break;
@@ -4079,19 +4143,15 @@ namespace fpl {
 			}
 			global__EventQueue__Internal = (EventQueue_Internal *)eventQueueMemory;
 
-			// @TODO(final): Additional memory block for temporary buffers, so its not needed to pass in a destBuffer
-
 			// Create window
 			win32_char_internal windowTitleBuffer[1024];
 			win32_char_internal *windowTitle = FPL_WIN32_UNNAMED_WINDOW;
-			WindowSettings &currentSettings = win32State.currentSettings.window;
-			currentSettings.isFullscreen = false;
-			currentSettings.windowWidth = initSettings.window.windowWidth;
-			currentSettings.windowHeight = initSettings.window.windowHeight;
+			WindowSettings &currentWindowSettings = win32State.currentSettings.window;
+			currentWindowSettings.isFullscreen = false;
 			if (strings::GetAnsiStringLength(initSettings.window.windowTitle) > 0) {
 				FPL_WIN32_ANSI_TO_STRING(initSettings.window.windowTitle, strings::GetAnsiStringLength(initSettings.window.windowTitle), windowTitleBuffer, FPL_ARRAYCOUNT(windowTitleBuffer));
 				windowTitle = windowTitleBuffer;
-				strings::CopyAnsiString(initSettings.window.windowTitle, strings::GetAnsiStringLength(initSettings.window.windowTitle), currentSettings.windowTitle, FPL_ARRAYCOUNT(currentSettings.windowTitle));
+				strings::CopyAnsiString(initSettings.window.windowTitle, strings::GetAnsiStringLength(initSettings.window.windowTitle), currentWindowSettings.windowTitle, FPL_ARRAYCOUNT(currentWindowSettings.windowTitle));
 			}
 
 			DWORD style;
@@ -4099,29 +4159,48 @@ namespace fpl {
 			if (initSettings.window.isResizable) {
 				style = Win32ResizeableWindowStyle_Internal;
 				exStyle = Win32ResizeableWindowExtendedStyle_Internal;
-				currentSettings.isResizable = true;
+				currentWindowSettings.isResizable = true;
 			} else {
 				style = Win32NonResizableWindowStyle_Internal;
 				exStyle = Win32NonResizableWindowExtendedStyle_Internal;
-				currentSettings.isResizable = false;
+				currentWindowSettings.isResizable = false;
 			}
-
-			RECT windowRect;
-			windowRect.left = 0;
-			windowRect.top = 0;
-			windowRect.right = initSettings.window.windowWidth;
-			windowRect.bottom = initSettings.window.windowHeight;
-			FPL_WIN32_ADJUST_WINDOW_RECT(&windowRect, style, false);
 
 			int windowX = CW_USEDEFAULT;
 			int windowY = CW_USEDEFAULT;
-			int windowWidth = windowRect.right - windowRect.left;
-			int windowHeight = windowRect.bottom - windowRect.top;
+			int windowWidth;
+			int windowHeight;
+			if ((initSettings.window.windowWidth > 0) &&
+				(initSettings.window.windowHeight > 0)) {
+				RECT windowRect;
+				windowRect.left = 0;
+				windowRect.top = 0;
+				windowRect.right = initSettings.window.windowWidth;
+				windowRect.bottom = initSettings.window.windowHeight;
+				FPL_WIN32_ADJUST_WINDOW_RECT(&windowRect, style, false);
+				windowWidth = windowRect.right - windowRect.left;
+				windowHeight = windowRect.bottom - windowRect.top;
+			} else {
+				// @NOTE(final): Operating system decide how big the window should be.
+				windowWidth = CW_USEDEFAULT;
+				windowHeight = CW_USEDEFAULT;
+			}
 
+
+			// Create window
 			win32State.window.windowHandle = FPL_WIN32_CREATE_WINDOW_EX(exStyle, windowClass.lpszClassName, windowTitle, style, windowX, windowY, windowWidth, windowHeight, nullptr, nullptr, windowClass.hInstance, nullptr);
 			if (win32State.window.windowHandle == nullptr) {
 				PushError_Internal("[Win32] Failed creating window for class '%s' and position (%d x %d) with size (%d x %d)", win32State.window.windowClass, windowWidth, windowHeight, windowWidth, windowHeight);
 				return false;
+			}
+
+			// Get actual window size and store results
+			currentWindowSettings.windowWidth = windowWidth;
+			currentWindowSettings.windowHeight = windowHeight;
+			RECT clientRect;
+			if (FPL_WIN32_GET_CLIENT_RECT(global__Win32__State__Internal->window.windowHandle, &clientRect)) {
+				currentWindowSettings.windowWidth = clientRect.right - clientRect.left;
+				currentWindowSettings.windowHeight = clientRect.bottom - clientRect.top;
 			}
 
 			// Get device context so we can swap the back and front buffer
@@ -4390,5 +4469,157 @@ int WINAPI WinMain(HINSTANCE appInstance, HINSTANCE prevInstance, LPSTR cmdLine,
 #	endif // defined(FPL_ENABLE_WINDOW)
 
 #endif // defined(FPL_PLATFORM_WIN32)
+
+// ****************************************************************************
+//
+// Linux Platform
+//
+// ****************************************************************************
+#if defined(FPL_PLATFORM_LINUX)
+
+#	include <sys/mman.h> // mmap, munmap
+
+namespace fpl {
+	// Linux Atomics
+	namespace atomics {
+		// @NOTE(final): See: https://gcc.gnu.org/onlinedocs/gcc/_005f_005fatomic-Builtins.html#g_t_005f_005fatomic-Builtins
+		// @TODO(final): __atomic_compare_exchange_n cannot return the previous value.
+
+		fpl_api void AtomicReadFence() {
+			// @TODO(final): Wrong to ensure a full memory fence here!
+			__sync_synchronize();
+		}
+		fpl_api void AtomicWriteFence() {
+			// @TODO(final): Wrong to ensure a full memory fence here!
+			__sync_synchronize();
+		}
+		fpl_api void AtomicReadWriteFence() {
+			__sync_synchronize();
+		}
+		fpl_api uint32_t AtomicExchangeU32(volatile uint32_t *target, const uint32_t value) {
+			uint32_t result = __atomic_exchange_n(target, value, __ATOMIC_SEQ_CST);
+			return(result);
+		}
+		fpl_api int32_t AtomicExchangeS32(volatile int32_t *target, const int32_t value) {
+			int32_t result = __atomic_exchange_n(target, value, __ATOMIC_SEQ_CST);
+			return(result);
+		}
+		fpl_api uint64_t AtomicExchangeU64(volatile uint64_t *target, const uint64_t value) {
+			uint64_t result = __atomic_exchange_n(target, value, __ATOMIC_SEQ_CST);
+			return(result);
+		}
+		fpl_api int64_t AtomicExchangeS64(volatile int64_t *target, const int64_t value) {
+			int64_t result = __atomic_exchange_n(target, value, __ATOMIC_SEQ_CST);
+			return(result);
+		}
+		fpl_api uint32_t AtomicAddU32(volatile uint32_t *value, const uint32_t addend) {
+			FPL_ASSERT(value != nullptr);
+			uint32_t result = __atomic_fetch_add(value, addend, __ATOMIC_SEQ_CST);
+			return (result);
+		}
+		fpl_api int32_t AtomicAddS32(volatile int32_t *value, const int32_t addend) {
+			FPL_ASSERT(value != nullptr);
+			uint32_t result = __atomic_fetch_add(value, addend, __ATOMIC_SEQ_CST);
+			return (result);
+		}
+		fpl_api uint64_t AtomicAddU64(volatile uint64_t *value, const uint64_t addend) {
+			FPL_ASSERT(value != nullptr);
+			uint32_t result = __atomic_fetch_add(value, addend, __ATOMIC_SEQ_CST);
+			return (result);
+		}
+		fpl_api int64_t AtomicAddS64(volatile int64_t *value, const int64_t addend) {
+			FPL_ASSERT(value != nullptr);
+			uint32_t result = __atomic_fetch_add(value, addend, __ATOMIC_SEQ_CST);
+			return (result);
+		}
+		fpl_api uint32_t AtomicCompareAndExchangeU32(volatile uint32_t *dest, const uint32_t comparand, const uint32_t exchange) {
+			FPL_ASSERT(dest != nullptr);
+			uint32_t tmp = comparand;
+			uint32_t result = __atomic_load_n(dest, __ATOMIC_SEQ_CST);
+			__atomic_compare_exchange_n(dest, &tmp, exchange, false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST);
+			return (result);
+		}
+		fpl_api int32_t AtomicCompareAndExchangeS32(volatile int32_t *dest, const int32_t comparand, const int32_t exchange) {
+			FPL_ASSERT(dest != nullptr);
+			int32_t tmp = comparand;
+			int32_t result = __atomic_load_n(dest, __ATOMIC_SEQ_CST);
+			__atomic_compare_exchange_n(dest, &tmp, exchange, false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST);
+			return (result);
+		}
+		fpl_api uint64_t AtomicCompareAndExchangeU64(volatile uint64_t *dest, const uint64_t comparand, const uint64_t exchange) {
+			FPL_ASSERT(dest != nullptr);
+			uint64_t tmp = comparand;
+			uint64_t result = __atomic_load_n(dest, __ATOMIC_SEQ_CST);
+			__atomic_compare_exchange_n(dest, &tmp, exchange, false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST);
+			return (result);
+		}
+		fpl_api int64_t AtomicCompareAndExchangeS64(volatile int64_t *dest, const int64_t comparand, const int64_t exchange) {
+			FPL_ASSERT(dest != nullptr);
+			int64_t tmp = comparand;
+			int64_t result = __atomic_load_n(dest, __ATOMIC_SEQ_CST);
+			__atomic_compare_exchange_n(dest, &tmp, exchange, false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST);
+			return (result);
+		}
+	}
+
+	// Linux Console
+	namespace console {
+		fpl_api void ConsoleOut(const char *text) {
+			FPL_ASSERT(text != nullptr);
+			fprintf(stdout, "%s", text);
+		}
+		fpl_api void ConsoleFormatOut(const char *format, ...) {
+			FPL_ASSERT(format != nullptr);
+			va_list vaList;
+			va_start(vaList, format);
+			vfprintf(stdout, format, vaList);
+			va_end(vaList);
+		}
+		fpl_api void ConsoleError(const char *text) {
+			FPL_ASSERT(text != nullptr);
+			fprintf(stderr, "%s", text);
+		}
+		fpl_api void ConsoleFormatError(const char *format, ...) {
+			FPL_ASSERT(format != nullptr);
+			va_list vaList;
+			va_start(vaList, format);
+			vfprintf(stderr, format, vaList);
+			va_end(vaList);
+		}
+	}
+
+	// Linux Memory
+	namespace memory {
+		fpl_api void *MemoryAllocate(const size_t size) {
+			// @NOTE(final): MAP_ANONYMOUS ensures that the memory is cleared to zero.
+
+			// Allocate empty memory to hold the size + some arbitary padding + the actual data
+			size_t newSize = sizeof(size_t) + sizeof(uintptr_t) + size;
+			void *basePtr = mmap(nullptr, newSize, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+
+			// Write the size at the beginning
+			*(size_t *)basePtr = newSize;
+
+			// The resulting address starts after the arbitary padding
+			void *result = (uint8_t *)basePtr + sizeof(size_t) + sizeof(uintptr_t);
+			return(result);
+		}
+
+		fpl_api void MemoryFree(void *ptr) {
+			// Free the base pointer which is stored to the left at the start of the size_t
+			void *basePtr = (void *)((uint8_t *)ptr - (sizeof(uintptr_t) + sizeof(size_t)));
+			size_t storedSize = *(size_t *)basePtr;
+			munmap(basePtr, storedSize);
+		}
+	}
+
+	fpl_api bool InitPlatform(const InitFlags initFlags, const Settings &initSettings) {
+		return true;
+	}
+
+	fpl_api void ReleasePlatform() {
+	}
+}
+#endif
 
 #endif // defined(FPL_IMPLEMENTATION) && !defined(FPL_IMPLEMENTED)

@@ -363,6 +363,79 @@ public:
 			Assert::AreEqual(expectedAfter, (int64_t)t, L"", LINE_INFO());
 		}
 
+		Msg("Test AtomicCompareAndExchangeU32 with exchange\n");
+		{
+			volatile uint32_t value = 3;
+			uint32_t comparand = 3;
+			uint32_t exchange = 11;
+			uint32_t after = AtomicCompareAndExchangeU32(&value, comparand, exchange);
+			Assert::AreEqual((uint32_t)11, (uint32_t)value, L"", LINE_INFO());
+			Assert::AreEqual((uint32_t)3, after, L"", LINE_INFO());
+		}
+		Msg("Test AtomicCompareAndExchangeU32 no exchange\n");
+		{
+			volatile uint32_t value = 5;
+			uint32_t comparand = 3;
+			uint32_t exchange = 11;
+			uint32_t after = AtomicCompareAndExchangeU32(&value, comparand, exchange);
+			Assert::AreEqual((uint32_t)5, (uint32_t)value, L"", LINE_INFO());
+			Assert::AreEqual((uint32_t)5, after, L"", LINE_INFO());
+		}
+		Msg("Test AtomicCompareAndExchangeS32 with exchange\n");
+		{
+			volatile int32_t value = -3;
+			int32_t comparand = -3;
+			int32_t exchange = 11;
+			int32_t after = AtomicCompareAndExchangeS32(&value, comparand, exchange);
+			Assert::AreEqual((int32_t)11, (int32_t)value, L"", LINE_INFO());
+			Assert::AreEqual((int32_t)-3, after, L"", LINE_INFO());
+		}
+		Msg("Test AtomicCompareAndExchangeS32 no exchange\n");
+		{
+			volatile int32_t value = -5;
+			int32_t comparand = -3;
+			int32_t exchange = 11;
+			int32_t after = AtomicCompareAndExchangeS32(&value, comparand, exchange);
+			Assert::AreEqual((int32_t)-5, (int32_t)value, L"", LINE_INFO());
+			Assert::AreEqual((int32_t)-5, after, L"", LINE_INFO());
+		}
+		Msg("Test AtomicCompareAndExchangeU64 with exchange\n");
+		{
+			volatile uint64_t value = 3;
+			uint64_t comparand = 3;
+			uint64_t exchange = 11;
+			uint64_t after = AtomicCompareAndExchangeU64(&value, comparand, exchange);
+			Assert::AreEqual((uint64_t)11, (uint64_t)value, L"", LINE_INFO());
+			Assert::AreEqual((uint64_t)3, after, L"", LINE_INFO());
+		}
+		Msg("Test AtomicCompareAndExchangeU64 no exchange\n");
+		{
+			volatile uint64_t value = 5;
+			uint64_t comparand = 3;
+			uint64_t exchange = 11;
+			uint64_t after = AtomicCompareAndExchangeU64(&value, comparand, exchange);
+			Assert::AreEqual((uint64_t)5, (uint64_t)value, L"", LINE_INFO());
+			Assert::AreEqual((uint64_t)5, after, L"", LINE_INFO());
+		}
+		Msg("Test AtomicCompareAndExchangeS64 with exchange\n");
+		{
+			volatile int64_t value = -3;
+			int64_t comparand = -3;
+			int64_t exchange = 11;
+			int64_t after = AtomicCompareAndExchangeS64(&value, comparand, exchange);
+			Assert::AreEqual((int64_t)11, (int64_t)value, L"", LINE_INFO());
+			Assert::AreEqual((int64_t)-3, after, L"", LINE_INFO());
+		}
+		Msg("Test AtomicCompareAndExchangeS64 no exchange\n");
+		{
+			volatile int64_t value = -5;
+			int64_t comparand = -3;
+			int64_t exchange = 11;
+			int64_t after = AtomicCompareAndExchangeS64(&value, comparand, exchange);
+			Assert::AreEqual((int64_t)-5, (int64_t)value, L"", LINE_INFO());
+			Assert::AreEqual((int64_t)-5, after, L"", LINE_INFO());
+		}
+
 	}
 
 	};

@@ -261,7 +261,7 @@ static bool RunModern() {
 
 int main(int argc, char **args) {
 	int result = 0;
-	Settings settings = Settings();
+	Settings settings = DefaultSettings();
 	settings.video.driverType = VideoDriverType::OpenGL;
 #if MODERN_OPENGL
 	CopyAnsiString("FPL Modern OpenGL", settings.window.windowTitle, FPL_ARRAYCOUNT(settings.window.windowTitle));
