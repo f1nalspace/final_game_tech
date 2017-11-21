@@ -342,15 +342,13 @@ SOFTWARE.
 
 # TODO
 
-	* Replace argument order of AtomicCompareAndExchange for comparand and exchange!
 	* Use __sync for linux atomics, right now using __atomic works but the api is not great: __atomic_compare_exchange_n :-(
-	
 	* Change most assertions to normal comparisons and make it rock solid, so it wont crash for the most part. Returning nullptr or empty is much more preferred.
-	* Make linking to opengl32 not required at all (Replace wgl and gdi calls with macro calls)
 	* Make linking to user32 and shell32 not required at all (Load the functions directly from the libraries, but still require kernel32)
+	* Make linking to opengl32 not required at all (Replace wgl and gdi calls with macro calls)
 	* Feature completeness for Win32 (Audio, Multimonitor)
 	* Test other compilers for Win32 (MingW, Clang, Intel)
-	* Linux/Unix platform support (Look out for .DS_Store and . files/folders, handle it properly)
+	* Finish Linux Platform (Look out for .DS_Store and . files/folders, handle it properly)
 	* REFERENCE.MD generation using doxygen
 
 */
