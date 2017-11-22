@@ -2,6 +2,8 @@
 #define FPL_AUTO_NAMESPACE
 #include "final_platform_layer.hpp"
 
+#include <GL\GL.h>
+
 #define FTT_IMPLEMENTATION
 #include "final_tiletrace.hpp"
 

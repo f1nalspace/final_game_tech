@@ -2,6 +2,8 @@
 #define FPL_AUTO_NAMESPACE 1
 #include "final_platform_layer.hpp"
 
+#include <GL\GL.h>
+
 #ifndef APIENTRY
 #define APIENTRY
 #endif
