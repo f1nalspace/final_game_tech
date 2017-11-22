@@ -4643,7 +4643,6 @@ namespace fpl {
 		}
 		fpl_api void AtomicWriteFence() {
 			// @TODO(final): Wrong to ensure a full memory fence here!
-			FPL_ATOMIC_MEMORY_BARRIER();
 			__sync_synchronize();
 		}
 		fpl_api void AtomicReadWriteFence() {
