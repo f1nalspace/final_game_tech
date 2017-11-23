@@ -1,6 +1,6 @@
 /**
 * @file final_platform_layer.hpp
-* @version v0.4.3 alpha
+* @version v0.4.4 alpha
 * @author Torsten Spaete
 * @brief Final Platform Layer (FPL) - A Open source C++ single file header platform abstraction layer library.
 *
@@ -200,6 +200,12 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 # VERSION HISTORY
+
+- v0.4.4 alpha:
+	*     New: [Win32] Implemented argument parsing for WinMain and wWinMain
+	*   Fixed: Corrected small things for doxygen
+	* Changed: Renamed CopyAFile to FileCopy
+	* Changed: Renamed DeleteAFile to FileDelete
 
 - v0.4.3 alpha:
 	*     New: Introduced IsAtomicCompareAndExchange
@@ -649,7 +655,7 @@ namespace fpl {
 		fpl_api void AtomicReadFence();
 		//! Insert a atomic write fence/barrier. This will complete previous writes before future writes and prevents the compiler from reordering memory writes across this fence.
 		fpl_api void AtomicWriteFence();
-		//! Insert a atomic read/write fence/barrier. This will previous reads/writes before future reads/writes and prevents the compiler from reordering memory access across this fence.
+		//! Insert a atomic read/write fence/barrier. This will complete previous reads/writes before future reads/writes and prevents the compiler from reordering memory access across this fence.
 		fpl_api void AtomicReadWriteFence();
 		//! Replace a 32-bit unsigned integer with the given value atomically. Returns the target before the replacement. (This does not ensure memory order, use a fence for that!)
 		fpl_api uint32_t AtomicExchangeU32(volatile uint32_t *target, const uint32_t value);
@@ -898,7 +904,7 @@ namespace fpl {
 			bool isValid;
 		};
 
-		//! Create a thread and return the context for it. When @autoStart is set to true, it will start immediatly. 
+		//! Create a thread and return the context for it. When autoStart is set to true, it will start immediatly. 
 		fpl_api ThreadContext &ThreadCreate(run_thread_function *runFunc, void *data, const bool autoStart = true);
 		//! Let the current thread sleep for the number of given milliseconds
 		fpl_api void ThreadSleep(const uint32_t milliseconds);
@@ -908,16 +914,16 @@ namespace fpl {
 		fpl_api bool ThreadResume(ThreadContext &context);
 		//! Stop the given thread and release all underlying resources.
 		fpl_api void ThreadStop(ThreadContext &context);
-		//! Wait until the given thread is done running. When @maxMilliseconds is set to @UINT32_MAX it will wait infinitly.
+		//! Wait until the given thread is done running. When maxMilliseconds is set to UINT32_MAX it will wait infinitly.
 		fpl_api void ThreadWaitForSingle(const ThreadContext &context, const uint32_t maxMilliseconds = UINT32_MAX);
-		//! Wait until all given threads are done running. When @maxMilliseconds is set to @UINT32_MAX it will wait infinitly.
+		//! Wait until all given threads are done running. When maxMilliseconds is set to UINT32_MAX it will wait infinitly.
 		fpl_api void ThreadWaitForMultiple(const ThreadContext *contexts, const uint32_t count, const uint32_t maxMilliseconds = UINT32_MAX);
 
 		//! Creates a mutex
 		fpl_api ThreadMutex MutexCreate();
 		//! Destroys the given mutex
 		fpl_api void MutexDestroy(ThreadMutex &mutex);
-		//! Locks the given mutex and waits until it gets unlocked. When @maxMilliseconds is set to @UINT32_MAX it will wait infinitly.
+		//! Locks the given mutex and waits until it gets unlocked. When maxMilliseconds is set to UINT32_MAX it will wait infinitly.
 		fpl_api void MutexLock(ThreadMutex &mutex, const uint32_t maxMilliseconds = UINT32_MAX);
 		//! Unlocks the given mutex
 		fpl_api void MutexUnlock(ThreadMutex &mutex);
@@ -926,13 +932,13 @@ namespace fpl {
 		fpl_api ThreadSignal SignalCreate();
 		//! Destroys the given signal
 		fpl_api void SignalDestroy(ThreadSignal &signal);
-		//! Waits until the given signal are waked up. When @maxMilliseconds is set to @UINT32_MAX it will wait infinitly.
+		//! Waits until the given signal are waked up. When maxMilliseconds is set to UINT32_MAX it will wait infinitly.
 		fpl_api bool SignalWait(ThreadSignal &signal, const uint32_t maxMilliseconds = UINT32_MAX);
 		//! Wakes up the given signal
 		fpl_api bool SignalWakeUp(ThreadSignal &signal);
 	};
 
-	//! Memory allocation functions
+	//! Memory allocation, clearing and copy functions
 	namespace memory {
 		//! Clears the given memory by the given size to zero.
 		fpl_api void MemoryClear(void *mem, const size_t size);
@@ -1071,9 +1077,9 @@ namespace fpl {
 		//! Returns true when the given file path physically exists.
 		fpl_api bool FileExists(const char *filePath);
 		//! Copies the given source file to the target path and returns truwe when copy was successful. Target path must include the full path to the file. When overwrite is set, the target file path will always be overwritten.
-		fpl_api bool CopyAFile(const char *sourceFilePath, const char *targetFilePath, const bool overwrite);
+		fpl_api bool FileCopy(const char *sourceFilePath, const char *targetFilePath, const bool overwrite);
 		//! Deletes the given file without confirmation and returns true when the deletion was successful.
-		fpl_api bool DeleteAFile(const char *filePath);
+		fpl_api bool FileDelete(const char *filePath);
 
 		//! Creates all the directories in the path when not exists.
 		fpl_api bool CreateDirectories(const char *path);
@@ -1545,7 +1551,7 @@ namespace fpl {
 	namespace video {
 		//! Video backbuffer container. Use this for accessing the pixels directly. Use with care!
 		struct VideoBackBuffer {
-			//! The 32-bit pixel top-down array, format: 0xAABBGGRR. Do not modify before @WindowUpdate
+			//! The 32-bit pixel top-down array, format: 0xAABBGGRR. Do not modify before WindowUpdate
 			uint32_t *pixels;
 			//! The width of the backbuffer in pixels. Do not modify, it will be set automatically.
 			uint32_t width;
@@ -2088,6 +2094,7 @@ namespace fpl {
 #		define FPL_WIN32_SET_WINDOW_TEXT SetWindowTextW
 
 #		define FPL_WIN32_GET_MODULE_FILENAME GetModuleFileNameW
+#		define FPL_WIN32_GET_MODULE_HANDLE GetModuleHandleW
 
 #		define FPL_WIN32_SH_GET_FOLDER_PATH SHGetFolderPathW
 #	else
@@ -2113,6 +2120,7 @@ namespace fpl {
 #		define FPL_WIN32_SET_WINDOW_TEXT SetWindowTextA
 
 #		define FPL_WIN32_GET_MODULE_FILENAME GetModuleFileNameA
+#		define FPL_WIN32_GET_MODULE_HANDLE GetModuleHandleA
 
 #		define FPL_WIN32_SH_GET_FOLDER_PATH SHGetFolderPathA
 #	endif // UNICODE
@@ -2662,6 +2670,9 @@ namespace fpl {
 		fpl_api void *MemoryAllocate(const size_t size) {
 			FPL_ASSERT(size > 0);
 			void *result = VirtualAlloc(0, size, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+			if (result == nullptr) {
+				PushError_Internal("[Win32] Failed allocating memory of %xu bytes!", size);
+			}
 			return(result);
 		}
 
@@ -2822,12 +2833,12 @@ namespace fpl {
 			return(result);
 		}
 
-		fpl_api bool CopyAFile(const char *sourceFilePath, const char *targetFilePath, const bool overwrite) {
+		fpl_api bool FileCopy(const char *sourceFilePath, const char *targetFilePath, const bool overwrite) {
 			bool result = (CopyFileA(sourceFilePath, targetFilePath, !overwrite) == TRUE);
 			return(result);
 		}
 
-		fpl_api bool DeleteAFile(const char *filePath) {
+		fpl_api bool FileDelete(const char *filePath) {
 			bool result = (DeleteFileA(filePath) == TRUE);
 			return(result);
 		}
@@ -4219,7 +4230,7 @@ namespace fpl {
 			// Register window class
 			FPL_WIN32_WNDCLASSEX windowClass = {};
 			windowClass.cbSize = sizeof(FPL_WIN32_WNDCLASSEX);
-			windowClass.hInstance = global__Win32__AppState__Internal.appInstance;
+			windowClass.hInstance = FPL_WIN32_GET_MODULE_HANDLE(nullptr);
 			windowClass.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
 			windowClass.cbSize = sizeof(windowClass);
 			windowClass.style = CS_HREDRAW | CS_VREDRAW;
@@ -4446,6 +4457,8 @@ namespace fpl {
 			return false;
 		}
 
+		global__Win32__AppState__Internal.appInstance = FPL_WIN32_GET_MODULE_HANDLE(nullptr);
+
 		// @NOTE(final): Expect kernel32.lib to be linked always, so VirtualAlloc and LoadLibrary will always work.
 
 		// Allocate win32 state
@@ -4561,9 +4574,9 @@ namespace fpl {
 		#else
 			result = global__LastErrorState__Internal->errors[0];
 		#endif // FPL_ENABLE_MULTIPLE_ERRORSTATES
-	}
+		}
 		return (result);
-}
+	}
 
 	fpl_api const char *GetPlatformLastError() {
 		const char *result = nullptr;
@@ -4576,9 +4589,9 @@ namespace fpl {
 		#else
 			result = global__LastErrorState__Internal->errors[0];
 		#endif // defined(FPL_ENABLE_MULTIPLE_ERRORSTATES)
-	}
-		return (result);
 		}
+		return (result);
+	}
 
 	fpl_api size_t GetPlatformLastErrorCount() {
 		size_t result = 0;
@@ -4588,7 +4601,7 @@ namespace fpl {
 		#else
 			result = strings::GetAnsiStringLength(global__LastErrorState__Internal->errors[0]) > 0 ? 1 : 0;
 		#endif
-	}
+		}
 		return (result);
 	}
 
@@ -4597,7 +4610,185 @@ namespace fpl {
 		const Win32State_Internal &win32State = *global__Win32__State__Internal;
 		return (win32State.currentSettings);
 	}
+
+	// @NOTE(final): How the command line parsing in WinMain, wWinMain work:
+	// Scan how many arguments there are.
+	// Get application executable path string len
+	// Determine how many characters the total command line string is and add a null terminator for every argument + executable path
+	// Allocate a block of memory [UTF8 string for the entire command line without spaces but including the null terminator][arbitary padding][array of UTF8 strings pointing to the start of the actual string]
+	// Parse and store the actual string into the first block of memory and store the pointer into the proper slot of the UTF8 array
+	// Each argument may assume worst case UTF8 of 32 bytes (4x1 byte).
+	// - Memory is cleaned up in WinMain or wWinMain before the function returns
+	// - There is always one argument and it is the executable file path.
+	struct Win32CommandLineUTF8Arguments_Internal {
+		void *mem;
+		char **args;
+		uint32_t count;
+	};
+
+#if !defined(UNICODE)
+	fpl_internal uint32_t Win32GetArgumentCount_Internal(char *sourceAnsiArgs) {
+		// @TODO(final): Support quoted arguments like: "my argment with spaces" as well.
+		uint32_t result = 0;
+		if (sourceAnsiArgs != nullptr) {
+			char *p = sourceAnsiArgs;
+			if (*p) {
+				++result;
+				char c;
+				while ((c = *p)) {
+					if (c == ' ') {
+						++result;
+					}
+					++p;
+				}
+			}
+		}
+		return(result);
 	}
+	fpl_internal void Win32ParseArguments_Internal(char *sourceAnsiArgs, const uint32_t argCount, char *destArgsString, char **destArgArray) {
+		// @TODO(final): Support quoted arguments like: "my argment with spaces" as well.
+		if ((sourceAnsiArgs != nullptr) && (argCount > 0)) {
+			FPL_ASSERT(destArgsString != nullptr);
+			FPL_ASSERT(destArgArray != nullptr);
+			uint32_t argIndex = 0;
+			uint32_t currentLength = 0;
+			char *s = sourceAnsiArgs;
+			if (*s) {
+				char *d = destArgsString;
+				char *currentArgStart = d;
+				char c;
+				while ((c = *s)) {
+					if (c == ' ') {
+						FPL_ASSERT(argIndex < argCount);
+						destArgArray[argIndex++] = currentArgStart;
+						*d++ = 0;
+						currentArgStart = d;
+					} else {
+						*d++ = c;
+					}
+					++s;
+				}
+
+				// Last argument
+				FPL_ASSERT(argIndex < argCount);
+				destArgArray[argIndex] = currentArgStart;
+				*d = 0;
+			}
+		}
+	}
+	fpl_internal Win32CommandLineUTF8Arguments_Internal ParseCommandLineAnsiArguments_Internal(HINSTANCE appInstance, char *sourceArgsString) {
+		Win32CommandLineUTF8Arguments_Internal result = {};
+
+		uint32_t commandLineArgCount = Win32GetArgumentCount_Internal(sourceArgsString);
+		result.count = 1 + commandLineArgCount;
+
+		char moduleFilePath[MAX_PATH + 1];
+		GetModuleFileNameA(appInstance, moduleFilePath, MAX_PATH);
+
+		uint32_t moduleFilePathLen = strings::GetAnsiStringLength(moduleFilePath);
+		uint32_t sourceArgsLen = strings::GetAnsiStringLength(sourceArgsString);
+		uint32_t argsStringLen = moduleFilePathLen + sourceArgsLen;
+
+		size_t singleArgStringSize = sizeof(char) * (argsStringLen + result.count);
+		size_t arbitaryPadding = sizeof(char) * 8;
+		size_t argArraySize = sizeof(char **) * result.count;
+		size_t totalArgSize = singleArgStringSize + arbitaryPadding + argArraySize;
+
+		result.mem = (uint8_t *)memory::MemoryAllocate(totalArgSize);
+		char *argsString = (char *)result.mem;
+		result.args = (char **)((uint8_t *)result.mem + singleArgStringSize + arbitaryPadding);
+		result.args[0] = strings::CopyAnsiString(moduleFilePath, moduleFilePathLen, argsString, moduleFilePathLen + 1);
+
+		Win32ParseArguments_Internal(sourceArgsString, result.count - 1, argsString + moduleFilePathLen + 1, result.args + 1);
+
+		return(result);
+	}
+#else
+	fpl_internal uint32_t Win32GetArgumentCount_Internal(wchar_t *sourceWideArgs) {
+		// @TODO(final): Support quoted arguments like: "my argment with spaces" as well.
+		uint32_t result = 0;
+		if (sourceWideArgs != nullptr) {
+			wchar_t *p = sourceWideArgs;
+			if (*p) {
+				++result;
+				wchar_t c;
+				while ((c = *p)) {
+					if (c == ' ') {
+						++result;
+					}
+					++p;
+				}
+			}
+		}
+		return(result);
+	}
+	fpl_internal void Win32ParseArguments_Internal(wchar_t *sourceWideArgs, const uint32_t argCount, char *destArgsString, char **destArgArray) {
+		// @TODO(final): Support quoted arguments like: "my argment with spaces" as well.
+		if ((sourceWideArgs != nullptr) && (argCount > 0)) {
+			FPL_ASSERT(destArgsString != nullptr);
+			FPL_ASSERT(destArgArray != nullptr);
+			uint32_t argIndex = 0;
+			uint32_t currentLength = 0;
+			wchar_t *s = sourceWideArgs;
+			if (*s) {
+				wchar_t *currentSourceArgStart = s;
+				char *destPtr = destArgsString;
+				char *currentDestArgStart = destPtr;
+				wchar_t c;
+				while ((c = *s)) {
+					if (c == L' ') {
+						FPL_ASSERT(argIndex < argCount);
+						WideCharToMultiByte(CP_UTF8, 0, currentSourceArgStart, currentLength, currentDestArgStart, currentLength * 4, nullptr, nullptr);
+						destArgArray[argIndex++] = currentDestArgStart;
+						*destPtr++ = 0;
+						currentDestArgStart = destPtr;
+						currentSourceArgStart = s + 1;
+						currentLength = 0;
+					} else {
+						destPtr++;
+						++currentLength;
+					}
+					++s;
+				}
+
+				// Last argument
+				FPL_ASSERT(argIndex < argCount);
+				WideCharToMultiByte(CP_UTF8, 0, currentSourceArgStart, currentLength, currentDestArgStart, currentLength * 4, nullptr, nullptr);
+				destArgArray[argIndex] = currentDestArgStart;
+				*destPtr = 0;
+			}
+		}
+	}
+	fpl_internal Win32CommandLineUTF8Arguments_Internal ParseCommandLineWideArguments_Internal(HINSTANCE appInstance, wchar_t *sourceArgsString) {
+		Win32CommandLineUTF8Arguments_Internal result = {};
+
+		uint32_t commandLineArgCount = Win32GetArgumentCount_Internal(sourceArgsString);
+		result.count = 1 + commandLineArgCount;
+
+		wchar_t moduleFilePath[MAX_PATH + 1];
+		GetModuleFileNameW(appInstance, moduleFilePath, MAX_PATH);
+
+		uint32_t moduleFilePathLen = strings::GetWideStringLength(moduleFilePath);
+		uint32_t sourceArgsLen = strings::GetWideStringLength(sourceArgsString);
+		uint32_t argsStringLen = moduleFilePathLen + sourceArgsLen;
+
+		size_t singleArgStringSize = sizeof(char) * (argsStringLen * 4 + result.count);
+		size_t arbitaryPadding = sizeof(char) * 8;
+		size_t argArraySize = sizeof(char **) * result.count;
+		size_t totalArgSize = singleArgStringSize + arbitaryPadding + argArraySize;
+
+		result.mem = (uint8_t *)memory::MemoryAllocate(totalArgSize);
+		char *argsString = (char *)result.mem;
+		result.args = (char **)((uint8_t *)result.mem + singleArgStringSize + arbitaryPadding);
+		WideCharToMultiByte(CP_UTF8, 0, moduleFilePath, moduleFilePathLen, argsString, moduleFilePathLen + 1, nullptr, nullptr);
+		result.args[0] = argsString;
+
+		Win32ParseArguments_Internal(sourceArgsString, result.count - 1, argsString + moduleFilePathLen + 1, result.args + 1);
+
+		return(result);
+	}
+#endif // !UNICODE
+}
 
 //
 // Win32 Entry-Point
@@ -4606,16 +4797,16 @@ namespace fpl {
 
 #		if defined(UNICODE)
 int WINAPI wWinMain(HINSTANCE appInstance, HINSTANCE prevInstance, LPWSTR cmdLine, int cmdShow) {
-	fpl::global__Win32__AppState__Internal.appInstance = appInstance;
-	// @TODO(final): Parse command line parameters
-	int result = main(0, 0);
+	fpl::Win32CommandLineUTF8Arguments_Internal args = fpl::ParseCommandLineWideArguments_Internal(appInstance, cmdLine);
+	int result = main(args.count, args.args);
+	fpl::memory::MemoryFree(args.mem);
 	return(result);
 }
 #		else
 int WINAPI WinMain(HINSTANCE appInstance, HINSTANCE prevInstance, LPSTR cmdLine, int cmdShow) {
-	fpl::global__Win32__AppState__Internal.appInstance = appInstance;
-	// @TODO(final): Parse command line parameters
-	int result = main(0, 0);
+	fpl::Win32CommandLineUTF8Arguments_Internal args = fpl::ParseCommandLineAnsiArguments_Internal(appInstance, cmdLine);
+	int result = main(args.count, args.args);
+	fpl::memory::MemoryFree(args.mem);
 	return(result);
 }
 #		endif // defined(UNICODE)
@@ -4643,7 +4834,6 @@ namespace fpl {
 		}
 		fpl_api void AtomicWriteFence() {
 			// @TODO(final): Wrong to ensure a full memory fence here!
-			FPL_ATOMIC_MEMORY_BARRIER();
 			__sync_synchronize();
 		}
 		fpl_api void AtomicReadWriteFence() {
