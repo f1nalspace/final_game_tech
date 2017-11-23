@@ -41,7 +41,7 @@ int main(int argc, char **) {
 			uint64_t exchange = 42;
 			uint64_t comparand = 3;
 			fpl::console::ConsoleFormatOut("AtomicAndCompareExchangeU64: %llu to %llu when %llu", value, exchange, comparand);
-			uint64_t oldValue = fpl::atomics::AtomicAndCompareExchangeU64(&value, exchange, comparand);
+			uint64_t oldValue = fpl::atomics::AtomicCompareAndExchangeU64(&value, comparand, exchange);
 			fpl::console::ConsoleFormatOut(" -> %llu, %llu\n", oldValue, value);
 			assert(oldValue == 3);
 			assert(value == 42);
