@@ -1,15 +1,114 @@
-/*
-@TODO(final): Disable all libs like kernel32.lib and user32.lib, so we cacn test the win32 api runtime loading of libraries.
-*/
+/**
+ * This contains all the "unit"-tests for making sure that everything works.
+ */
+
 #define FPL_IMPLEMENTATION
 #define FPL_NO_WINDOW
-#define FPL_NO_OPENGL
 #define FPL_AUTO_NAMESPACE
+
+// @NOTE(final): Any assert should fire immediatly, regardless of the configuration
+#define FPL_FORCE_ASSERTIONS
 #include "final_platform_layer.hpp"
 
+// @NOTE(final): C++ Standard Library (We dont want to use fpl here, because we want to test it from independent systems)
+#include <iostream> // cout
+#include <string> // string
+#include <varargs.h> // va_list, va_start, va_end
+
+#define ASSERTION_CRASH() {*(int *)0 = 0xBAD;}
+
+struct TestLineAssertionInfo {
+	char *filename;
+	char *functionName;
+	int line;
+};
+
+template <typename T>
+static void TestAssert(const T &expected, const T &actual, const TestLineAssertionInfo &lineInfo, const std::string &message = "") {
+	bool success = (expected == actual);
+	if (!success) {
+		std::cerr << "Failed assertion in file '" << lineInfo.filename << "', function '" << lineInfo.functionName << "', line " << lineInfo.line;
+		if (message.size() > 0) {
+			std::cerr << " -> " << message;
+		}
+		std::cerr << std::endl;
+		std::cerr << "Expected type '" << typeid(T).name() << "' of '" << expected << "' but got '" << actual << "'!" << std::endl;
+		ASSERTION_CRASH();
+	}
+}
+
+template <typename T>
+static void TestNotAssert(const T &notExpected, const T &actual, const TestLineAssertionInfo &lineInfo, const std::string &message = "") {
+	bool success = (notExpected != actual);
+	if (!success) {
+		std::cerr << "Failed assertion in file '" << lineInfo.filename << "', function '" << lineInfo.functionName << "', line " << lineInfo.line;
+		if (message.size() > 0) {
+			std::cerr << " -> " << message;
+		}
+		std::cerr << std::endl;
+		std::cerr << "Expected type '" << typeid(T).name() << "' of not '" << notExpected << "' but got '" << actual << "'!" << std::endl;
+		ASSERTION_CRASH();
+	}
+}
+
+static void TestLog(const char *section, const char *format, ...) {
+	char buffer[2048];
+	va_list argList;
+	va_start(argList, format);
+	vsprintf_s(buffer, 2048, format, argList);
+	va_end(argList);
+	std::cout << "[" << section << "] " << buffer << std::endl;
+}
+
+#define LAI {__FILE__, __FUNCTION__, __LINE__}
+#define FN __FUNCTION__
+
 static void MemoryTests() {
-	uint8_t *mem8 = (uint8_t *)MemoryAllocate(sizeof(uint8_t) * 2048);
-	MemoryFree(mem8);
+	TestLog(FN, "Test size macros");
+	{
+		TestAssert<size_t>(0ull, FPL_KILOBYTES(0), LAI, "0 KB");
+		TestAssert<size_t>(0ull, FPL_MEGABYTES(0), LAI, "0 MB");
+		TestAssert<size_t>(0ull, FPL_GIGABYTES(0), LAI, "0 GB");
+		TestAssert<size_t>(0ull, FPL_TERABYTES(0), LAI, "0 TB");
+		TestAssert<size_t>(13ull * 1024ull, FPL_KILOBYTES(13), LAI, "13 KB");
+		TestAssert<size_t>(137ull * 1024ull * 1024ull, FPL_MEGABYTES(137), LAI, "137 MB");
+		TestAssert<size_t>(813ull * 1024ull * 1024ull * 1024ull, FPL_GIGABYTES(813), LAI, "813 GB");
+		TestAssert<size_t>(2ull * 1024ull * 1024ull * 1024ull * 1024ull, FPL_TERABYTES(2), LAI, "2 TB");
+	}
+
+	TestLog(FN, "Test normal allocation and deallocation");
+	{
+		size_t memSize = FPL_KILOBYTES(42);
+		uint8_t *mem = (uint8_t *)MemoryAllocate(memSize);
+		for (size_t i = 0; i < memSize; ++i) {
+			uint8_t value = *mem++;
+			TestAssert<uint8_t>(0, value, LAI, "42 KB must be zero");
+		}
+		MemoryFree(mem);
+	}
+	{
+		size_t memSize = FPL_MEGABYTES(512);
+		void *mem = MemoryAllocate(memSize);
+		TestNotAssert<void *>(mem, nullptr, LAI, "512 MB of memory must be allocatd");
+		MemoryFree(mem);
+	}
+
+	TestLog(FN, "Test aligned allocation and deallocation");
+	{
+		size_t memSize = FPL_KILOBYTES(42);
+		uint8_t *mem = (uint8_t *)MemoryAlignedAllocate(memSize, 16);
+		for (size_t i = 0; i < memSize; ++i) {
+			uint8_t value = *mem++;
+			TestAssert<uint8_t>(0, value, LAI, "42 KB must be zero");
+		}
+		MemoryFree(mem);
+	}
+	{
+		size_t memSize = FPL_MEGABYTES(512);
+		void *mem = MemoryAllocate(memSize);
+		TestNotAssert<void *>(mem, nullptr, LAI, "512 MB of memory must be allocatd");
+		MemoryFree(mem);
+	}
 }
 
 static void PathTests() {
