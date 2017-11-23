@@ -1,6 +1,6 @@
 /**
 * @file final_tiletrace.hpp
-* @version v1.0
+* @version v1.01
 * @author Torsten Spaete
 * @brief Final TileTrace (FTT) - a open source single file header c++ contour tile tracing library.
 *
@@ -62,10 +62,10 @@ SOFTWARE.
 
 # VERSION HISTORY
 
-- v1.0:
-	* Initial version
 - v1.01:
 	* Added additional C++ api
+- v1.0:
+	* Initial version
 
 */
 #ifndef FTT_INCLUDE_HPP
