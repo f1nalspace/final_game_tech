@@ -1,6 +1,6 @@
 /**
 * @file final_platform_layer.hpp
-* @version v0.4.4 alpha
+* @version v0.4.5 alpha
 * @author Torsten Spaete
 * @brief Final Platform Layer (FPL) - A Open source C++ single file header platform abstraction layer library.
 *
@@ -200,6 +200,9 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 # VERSION HISTORY
+
+- v0.4.5 alpha:
+	* Changed: [Win32] Use CommandLineToArgvW for command line parsing
 
 - v0.4.4 alpha:
 	*     New: [Win32] Implemented argument parsing for WinMain and wWinMain
@@ -2220,6 +2223,11 @@ namespace fpl {
 	typedef FPL_FUNC_DELETE_OBJECT(fpl_delete_object);
 #	define FPL_FUNC_SWAP_BUFFERS(name) BOOL WINAPI name(HDC)
 	typedef FPL_FUNC_SWAP_BUFFERS(fpl_swap_buffers);
+
+	// ShellAPI
+#	define FPL_FUNC_COMMAND_LINE_TO_ARGV_W(name) LPWSTR* WINAPI name(LPCWSTR lpCmdLine, int *pNumArgs)
+	typedef FPL_FUNC_COMMAND_LINE_TO_ARGV_W(fpl_command_line_to_argv_w);
+
 
 	struct Win32APIFunctions_Internal {
 		struct {
@@ -4611,183 +4619,113 @@ namespace fpl {
 		return (win32State.currentSettings);
 	}
 
-	// @NOTE(final): How the command line parsing in WinMain, wWinMain work:
-	// Scan how many arguments there are.
-	// Get application executable path string len
-	// Determine how many characters the total command line string is and add a null terminator for every argument + executable path
-	// Allocate a block of memory [UTF8 string for the entire command line without spaces but including the null terminator][arbitary padding][array of UTF8 strings pointing to the start of the actual string]
-	// Parse and store the actual string into the first block of memory and store the pointer into the proper slot of the UTF8 array
-	// Each argument may assume worst case UTF8 of 32 bytes (4x1 byte).
-	// - Memory is cleaned up in WinMain or wWinMain before the function returns
-	// - There is always one argument and it is the executable file path.
 	struct Win32CommandLineUTF8Arguments_Internal {
 		void *mem;
 		char **args;
 		uint32_t count;
 	};
+	fpl_internal fpl::Win32CommandLineUTF8Arguments_Internal Win32ParseWideArguments_Internal(LPWSTR cmdLine) {
+		Win32CommandLineUTF8Arguments_Internal args = {};
 
-#if !defined(UNICODE)
-	fpl_internal uint32_t Win32GetArgumentCount_Internal(char *sourceAnsiArgs) {
-		// @TODO(final): Support quoted arguments like: "my argment with spaces" as well.
-		uint32_t result = 0;
-		if (sourceAnsiArgs != nullptr) {
-			char *p = sourceAnsiArgs;
-			if (*p) {
-				++result;
-				char c;
-				while ((c = *p)) {
-					if (c == ' ') {
-						++result;
+		// @NOTE(final): Temporary load and unload shell32 for parsing the arguments
+		HMODULE shellapiLibrary = LoadLibraryA("shell32.dll");
+		if (shellapiLibrary != nullptr) {
+			fpl_command_line_to_argv_w *commandLineToArgvW = (fpl_command_line_to_argv_w *)GetProcAddress(shellapiLibrary, "CommandLineToArgvW");
+			if (commandLineToArgvW != nullptr) {
+				// Parse arguments and compute total UTF8 string length
+				int executableFilePathArgumentCount = 0;
+				wchar_t **executableFilePathArgs = commandLineToArgvW(L"", &executableFilePathArgumentCount);
+				uint32_t executableFilePathLen = 0;
+				for (int i = 0; i < executableFilePathArgumentCount; ++i) {
+					if (i > 0) {
+						// Include whitespace
+						executableFilePathLen++;
 					}
-					++p;
+					uint32_t sourceLen = strings::GetWideStringLength(executableFilePathArgs[i]);
+					uint32_t destLen = WideCharToMultiByte(CP_UTF8, 0, executableFilePathArgs[i], sourceLen, nullptr, 0, 0, 0);
+					executableFilePathLen += destLen;
+				}
+
+				// @NOTE(final): Do not parse the arguments when there are no actual arguments, otherwise we will get back the executable arguments again.
+				int actualArgumentCount = 0;
+				wchar_t **actualArgs = nullptr;
+				uint32_t actualArgumentsLen = 0;
+				if (cmdLine != nullptr && strings::GetWideStringLength(cmdLine) > 0) {
+					actualArgs = commandLineToArgvW(cmdLine, &actualArgumentCount);
+					for (int i = 0; i < actualArgumentCount; ++i) {
+						uint32_t sourceLen = strings::GetWideStringLength(actualArgs[i]);
+						uint32_t destLen = WideCharToMultiByte(CP_UTF8, 0, actualArgs[i], sourceLen, nullptr, 0, 0, 0);
+						actualArgumentsLen += destLen;
+					}
+				}
+
+				// Calculate argument 
+				args.count = 1 + actualArgumentCount;
+				uint32_t totalStringLen = executableFilePathLen + actualArgumentsLen + args.count;
+				size_t singleArgStringSize = sizeof(char) * (totalStringLen);
+				size_t arbitaryPadding = sizeof(char) * 8;
+				size_t argArraySize = sizeof(char **) * args.count;
+				size_t totalArgSize = singleArgStringSize + arbitaryPadding + argArraySize;
+
+				args.mem = (uint8_t *)memory::MemoryAllocate(totalArgSize);
+				char *argsString = (char *)args.mem;
+				args.args = (char **)((uint8_t *)args.mem + singleArgStringSize + arbitaryPadding);
+
+				// Convert executable path to UTF8
+				char *destArg = argsString;
+				{
+					args.args[0] = argsString;
+					for (int i = 0; i < executableFilePathArgumentCount; ++i) {
+						if (i > 0) {
+							*destArg++ = ' ';
+						}
+						wchar_t *sourceArg = executableFilePathArgs[i];
+						uint32_t sourceArgLen = strings::GetWideStringLength(sourceArg);
+						uint32_t destArgLen = WideCharToMultiByte(CP_UTF8, 0, sourceArg, sourceArgLen, nullptr, 0, 0, 0);
+						WideCharToMultiByte(CP_UTF8, 0, sourceArg, sourceArgLen, destArg, destArgLen, 0, 0);
+						destArg += destArgLen;
+					}
+					*destArg++ = 0;
+					LocalFree(executableFilePathArgs);
+				}
+
+				// Convert actual arguments to UTF8
+				if (actualArgumentCount > 0) {
+					FPL_ASSERT(actualArgs != nullptr);
+					for (int i = 0; i < actualArgumentCount; ++i) {
+						args.args[1 + i] = destArg;
+						wchar_t *sourceArg = actualArgs[i];
+						uint32_t sourceArgLen = strings::GetWideStringLength(sourceArg);
+						uint32_t destArgLen = WideCharToMultiByte(CP_UTF8, 0, sourceArg, sourceArgLen, nullptr, 0, 0, 0);
+						WideCharToMultiByte(CP_UTF8, 0, sourceArg, sourceArgLen, destArg, destArgLen, 0, 0);
+						destArg += destArgLen;
+						*destArg++ = 0;
+					}
+					LocalFree(actualArgs);
 				}
 			}
+			FreeLibrary(shellapiLibrary);
+			shellapiLibrary = nullptr;
+		}
+		return(args);
+	}
+
+	fpl_internal Win32CommandLineUTF8Arguments_Internal Win32ParseAnsiArguments_Internal(LPSTR cmdLine) {
+		Win32CommandLineUTF8Arguments_Internal result;
+		if (cmdLine != nullptr) {
+			uint32_t ansiSourceLen = strings::GetAnsiStringLength(cmdLine);
+			uint32_t wideDestLen = MultiByteToWideChar(CP_ACP, 0, cmdLine, ansiSourceLen, nullptr, 0);
+			// @TODO(final): Can we use a stack allocation here?
+			wchar_t *wideCmdLine = (wchar_t *)memory::MemoryAllocate(sizeof(wchar_t) * (wideDestLen + 1));
+			MultiByteToWideChar(CP_ACP, 0, cmdLine, ansiSourceLen, wideCmdLine, wideDestLen);
+			wideCmdLine[wideDestLen] = 0;
+			result = Win32ParseWideArguments_Internal(wideCmdLine);
+			memory::MemoryFree(wideCmdLine);
+		} else {
+			result = Win32ParseWideArguments_Internal(L"");
 		}
 		return(result);
 	}
-	fpl_internal void Win32ParseArguments_Internal(char *sourceAnsiArgs, const uint32_t argCount, char *destArgsString, char **destArgArray) {
-		// @TODO(final): Support quoted arguments like: "my argment with spaces" as well.
-		if ((sourceAnsiArgs != nullptr) && (argCount > 0)) {
-			FPL_ASSERT(destArgsString != nullptr);
-			FPL_ASSERT(destArgArray != nullptr);
-			uint32_t argIndex = 0;
-			uint32_t currentLength = 0;
-			char *s = sourceAnsiArgs;
-			if (*s) {
-				char *d = destArgsString;
-				char *currentArgStart = d;
-				char c;
-				while ((c = *s)) {
-					if (c == ' ') {
-						FPL_ASSERT(argIndex < argCount);
-						destArgArray[argIndex++] = currentArgStart;
-						*d++ = 0;
-						currentArgStart = d;
-					} else {
-						*d++ = c;
-					}
-					++s;
-				}
-
-				// Last argument
-				FPL_ASSERT(argIndex < argCount);
-				destArgArray[argIndex] = currentArgStart;
-				*d = 0;
-			}
-		}
-	}
-	fpl_internal Win32CommandLineUTF8Arguments_Internal ParseCommandLineAnsiArguments_Internal(HINSTANCE appInstance, char *sourceArgsString) {
-		Win32CommandLineUTF8Arguments_Internal result = {};
-
-		uint32_t commandLineArgCount = Win32GetArgumentCount_Internal(sourceArgsString);
-		result.count = 1 + commandLineArgCount;
-
-		char moduleFilePath[MAX_PATH + 1];
-		GetModuleFileNameA(appInstance, moduleFilePath, MAX_PATH);
-
-		uint32_t moduleFilePathLen = strings::GetAnsiStringLength(moduleFilePath);
-		uint32_t sourceArgsLen = strings::GetAnsiStringLength(sourceArgsString);
-		uint32_t argsStringLen = moduleFilePathLen + sourceArgsLen;
-
-		size_t singleArgStringSize = sizeof(char) * (argsStringLen + result.count);
-		size_t arbitaryPadding = sizeof(char) * 8;
-		size_t argArraySize = sizeof(char **) * result.count;
-		size_t totalArgSize = singleArgStringSize + arbitaryPadding + argArraySize;
-
-		result.mem = (uint8_t *)memory::MemoryAllocate(totalArgSize);
-		char *argsString = (char *)result.mem;
-		result.args = (char **)((uint8_t *)result.mem + singleArgStringSize + arbitaryPadding);
-		result.args[0] = strings::CopyAnsiString(moduleFilePath, moduleFilePathLen, argsString, moduleFilePathLen + 1);
-
-		Win32ParseArguments_Internal(sourceArgsString, result.count - 1, argsString + moduleFilePathLen + 1, result.args + 1);
-
-		return(result);
-	}
-#else
-	fpl_internal uint32_t Win32GetArgumentCount_Internal(wchar_t *sourceWideArgs) {
-		// @TODO(final): Support quoted arguments like: "my argment with spaces" as well.
-		uint32_t result = 0;
-		if (sourceWideArgs != nullptr) {
-			wchar_t *p = sourceWideArgs;
-			if (*p) {
-				++result;
-				wchar_t c;
-				while ((c = *p)) {
-					if (c == ' ') {
-						++result;
-					}
-					++p;
-				}
-			}
-		}
-		return(result);
-	}
-	fpl_internal void Win32ParseArguments_Internal(wchar_t *sourceWideArgs, const uint32_t argCount, char *destArgsString, char **destArgArray) {
-		// @TODO(final): Support quoted arguments like: "my argment with spaces" as well.
-		if ((sourceWideArgs != nullptr) && (argCount > 0)) {
-			FPL_ASSERT(destArgsString != nullptr);
-			FPL_ASSERT(destArgArray != nullptr);
-			uint32_t argIndex = 0;
-			uint32_t currentLength = 0;
-			wchar_t *s = sourceWideArgs;
-			if (*s) {
-				wchar_t *currentSourceArgStart = s;
-				char *destPtr = destArgsString;
-				char *currentDestArgStart = destPtr;
-				wchar_t c;
-				while ((c = *s)) {
-					if (c == L' ') {
-						FPL_ASSERT(argIndex < argCount);
-						WideCharToMultiByte(CP_UTF8, 0, currentSourceArgStart, currentLength, currentDestArgStart, currentLength * 4, nullptr, nullptr);
-						destArgArray[argIndex++] = currentDestArgStart;
-						*destPtr++ = 0;
-						currentDestArgStart = destPtr;
-						currentSourceArgStart = s + 1;
-						currentLength = 0;
-					} else {
-						destPtr++;
-						++currentLength;
-					}
-					++s;
-				}
-
-				// Last argument
-				FPL_ASSERT(argIndex < argCount);
-				WideCharToMultiByte(CP_UTF8, 0, currentSourceArgStart, currentLength, currentDestArgStart, currentLength * 4, nullptr, nullptr);
-				destArgArray[argIndex] = currentDestArgStart;
-				*destPtr = 0;
-			}
-		}
-	}
-	fpl_internal Win32CommandLineUTF8Arguments_Internal ParseCommandLineWideArguments_Internal(HINSTANCE appInstance, wchar_t *sourceArgsString) {
-		Win32CommandLineUTF8Arguments_Internal result = {};
-
-		uint32_t commandLineArgCount = Win32GetArgumentCount_Internal(sourceArgsString);
-		result.count = 1 + commandLineArgCount;
-
-		wchar_t moduleFilePath[MAX_PATH + 1];
-		GetModuleFileNameW(appInstance, moduleFilePath, MAX_PATH);
-
-		uint32_t moduleFilePathLen = strings::GetWideStringLength(moduleFilePath);
-		uint32_t sourceArgsLen = strings::GetWideStringLength(sourceArgsString);
-		uint32_t argsStringLen = moduleFilePathLen + sourceArgsLen;
-
-		size_t singleArgStringSize = sizeof(char) * (argsStringLen * 4 + result.count);
-		size_t arbitaryPadding = sizeof(char) * 8;
-		size_t argArraySize = sizeof(char **) * result.count;
-		size_t totalArgSize = singleArgStringSize + arbitaryPadding + argArraySize;
-
-		result.mem = (uint8_t *)memory::MemoryAllocate(totalArgSize);
-		char *argsString = (char *)result.mem;
-		result.args = (char **)((uint8_t *)result.mem + singleArgStringSize + arbitaryPadding);
-		WideCharToMultiByte(CP_UTF8, 0, moduleFilePath, moduleFilePathLen, argsString, moduleFilePathLen + 1, nullptr, nullptr);
-		result.args[0] = argsString;
-
-		Win32ParseArguments_Internal(sourceArgsString, result.count - 1, argsString + moduleFilePathLen + 1, result.args + 1);
-
-		return(result);
-	}
-#endif // !UNICODE
 }
 
 //
@@ -4797,14 +4735,14 @@ namespace fpl {
 
 #		if defined(UNICODE)
 int WINAPI wWinMain(HINSTANCE appInstance, HINSTANCE prevInstance, LPWSTR cmdLine, int cmdShow) {
-	fpl::Win32CommandLineUTF8Arguments_Internal args = fpl::ParseCommandLineWideArguments_Internal(appInstance, cmdLine);
+	fpl::Win32CommandLineUTF8Arguments_Internal args = fpl::Win32ParseWideArguments_Internal(cmdLine);
 	int result = main(args.count, args.args);
 	fpl::memory::MemoryFree(args.mem);
 	return(result);
 }
 #		else
 int WINAPI WinMain(HINSTANCE appInstance, HINSTANCE prevInstance, LPSTR cmdLine, int cmdShow) {
-	fpl::Win32CommandLineUTF8Arguments_Internal args = fpl::ParseCommandLineAnsiArguments_Internal(appInstance, cmdLine);
+	fpl::Win32CommandLineUTF8Arguments_Internal args = fpl::Win32ParseAnsiArguments_Internal(cmdLine);
 	int result = main(args.count, args.args);
 	fpl::memory::MemoryFree(args.mem);
 	return(result);
