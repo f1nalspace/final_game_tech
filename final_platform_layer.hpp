@@ -1,6 +1,6 @@
 /**
 * @file final_platform_layer.hpp
-* @version v0.4.5 alpha
+* @version v0.4.6 alpha
 * @author Torsten Spaete
 * @brief Final Platform Layer (FPL) - A Open source C++ single file header platform abstraction layer library.
 *
@@ -200,6 +200,9 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 # VERSION HISTORY
+
+- v0.4.6 alpha:
+	*   Fixed: [Win32] Crash when window is not set in the InitFlags but FPL_USE_WINDOW is set.
 
 - v0.4.5 alpha:
 	* Changed: [Win32] Use CommandLineToArgvW for command line parsing
@@ -4389,8 +4392,10 @@ namespace fpl {
 				FPL_WIN32_UNREGISTER_CLASS(win32State.window.windowClass, global__Win32__AppState__Internal.appInstance);
 			}
 
-			memory::MemoryAlignedFree(global__EventQueue__Internal);
-			global__EventQueue__Internal = nullptr;
+			if (global__EventQueue__Internal != nullptr) {
+				memory::MemoryAlignedFree(global__EventQueue__Internal);
+				global__EventQueue__Internal = nullptr;
+			}
 		}
 
 		fpl_internal void Win32LoadXInput_Internal() {
