@@ -3513,11 +3513,6 @@ namespace fpl {
 
 		fpl_internal bool Win32LeaveFullscreen_Internal() {
 			Win32APIFunctions_Internal &api = global__Win32__API__Functions__Internal;
-		#if UNICODE
-		#	define setWindowLongPtr global__Win32__API__Functions__Internal.user.setWindowLongPtrA
-		#else
-		#	define setWindowLongPtr global__Win32__API__Functions__Internal.user.setWindowLongPtrW
-		#endif
 
 			FPL_ASSERT(global__Win32__State__Internal != nullptr);
 			WindowSettings &settings = global__Win32__State__Internal->currentSettings.window;
