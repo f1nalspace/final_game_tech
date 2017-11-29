@@ -98,16 +98,16 @@ static void MemoryTests() {
 		size_t memSize = FPL_KILOBYTES(42);
 		uint8_t *mem = (uint8_t *)MemoryAlignedAllocate(memSize, 16);
 		for (size_t i = 0; i < memSize; ++i) {
-			uint8_t value = *mem++;
+			uint8_t value = *(mem + i);
 			TestAssert<uint8_t>(0, value, LAI, "42 KB must be zero");
 		}
-		MemoryFree(mem);
+		MemoryAlignedFree(mem);
 	}
 	{
 		size_t memSize = FPL_MEGABYTES(512);
-		void *mem = MemoryAllocate(memSize);
+		void *mem = MemoryAlignedAllocate(memSize, 16);
 		TestNotAssert<void *>(mem, nullptr, LAI, "512 MB of memory must be allocatd");
-		MemoryFree(mem);
+		MemoryAlignedFree(mem);
 	}
 }
 
