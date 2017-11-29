@@ -1,6 +1,6 @@
 /**
 * @file final_platform_layer.hpp
-* @version v0.4.6 alpha
+* @version v0.4.7 alpha
 * @author Torsten Spaete
 * @brief Final Platform Layer (FPL) - A Open source C++ single file header platform abstraction layer library.
 *
@@ -87,13 +87,11 @@ return(result);
 
 # HOW TO COMPILE
 
-You need a C++/11 complaint compiler for enum class and constexpr.
+You need a C++/11 complaint compiler and link to the platform kernel/core library.
 
 ## Win32
 
 * Link to kernel32.lib
-* Link to user32.lib
-* Link to shell32.lib
 
 ## Linux
 
@@ -200,6 +198,12 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 # VERSION HISTORY
+
+- v0.4.7 alpha:
+	* Changed: [Win32] Load all user32 and shell32 functions dynamically
+	* Changed: FPL_ENUM_AS_FLAGS_OPERATORS_INTERNAL requires a int type as well
+	*   Fixed: MemoryAlignedAllocate and MemoryAlignedFree was broken
+	*   Added: FPL_IS_ALIGNED macro
 
 - v0.4.6 alpha:
 	*   Fixed: [Win32] Crash when window is not set in the InitFlags but FPL_USE_WINDOW is set.
@@ -366,21 +370,44 @@ SOFTWARE.
 - v0.1 alpha:
 	* Initial version
 
-# TODO
+# TODO (Top priority order)
+
+	* Remove placement new (We have no constructors anymore, so this is not required at all)
+
+	* Solidify file/path system:
+		Decide to a fixed encoding, either unicode 16 bit or UTF8 or
+
+		Leave it as it is, but give the caller informations about the platform (which separator, what character encoding for files/path etc.)
+		And use a custom main entry point for every platform so we can ensure that the arguments come in as native always
+
+		Reason: I want unicode support for arguments in win32 and UTF8 for the other platforms.
 
 	* Change most assertions to normal comparisons and make it rock solid, so it wont crash for the most part. Returning nullptr or empty is much more preferred.
-	* Make linking to user32 and shell32 not required at all (Load the functions directly from the libraries, but still require kernel32)
+
+	* REFERENCE.MD generation using doxygen
+
 	* Feature completeness for Win32 (Audio, Multimonitor)
+
 	* Test other compilers for Win32 (Clang, MingW, Intel)
+
 	* Finish Linux Platform:
-		* Library
+		* Library (ld.so)
 		* Timings
 		* Strings
 		* Files & Path (Look out for .DS_Store and . files/folders, handle it properly)
 		* Hardware
-		* Threading
-		* Window & Video
-	* REFERENCE.MD generation using doxygen
+		* Threading (pthread)
+		* Window (X11, Wayland)
+		* Video opengl (GLX)
+		* Video software
+		* Audio (Alsa)
+
+	* Write a tool to convert final_platform_layer.hpp into final_platform_layer.h (C89)
+
+	* Optional C-Runtime
+
+	* Additional features for later:
+		* Open/Save file/folder dialog
 
 */
 
@@ -601,6 +628,12 @@ SOFTWARE.
 #define FPL_NOT_IMPLEMENTED {*(int *)0 = 0xBAD;}
 
 //
+// Types
+//
+#include <stdint.h> // uint64_t, uint32_t, uint8_t, etc.
+#include <stdlib.h> // size_t
+
+//
 // Macro functions
 //
 //! Returns the element count from a static array,
@@ -623,28 +656,25 @@ SOFTWARE.
 //! Returns the number of bytes for the given terabytes
 #define FPL_TERABYTES(value) ((FPL_GIGABYTES(value) * 1024ull))
 
+//! Returns true when the given pointer address is aligned to the given alignment
+#define FPL_IS_ALIGNED(ptr, alignment) (((uintptr_t)(const void *)(ptr)) % (alignment) == 0)
+
 //! Defines the operator overloads for a enum used as flags
-#define FPL_ENUM_AS_FLAGS_OPERATORS_INTERNAL(type) \
-		inline type operator | (type lhs, type rhs) { \
-			return (type)(static_cast<uint32_t>(lhs) | static_cast<uint32_t>(rhs)); \
+#define FPL_ENUM_AS_FLAGS_OPERATORS_INTERNAL(etype, itype) \
+		inline etype operator | (etype lhs, etype rhs) { \
+			return (etype)(static_cast<itype>(lhs) | static_cast<itype>(rhs)); \
 		} \
-		inline bool operator & (const type lhs, const type rhs) { \
-			return (static_cast<uint32_t>(lhs) & static_cast<uint32_t>(rhs)) == static_cast<uint32_t>(rhs); \
+		inline bool operator & (const etype lhs, const etype rhs) { \
+			return (static_cast<itype>(lhs) & static_cast<itype>(rhs)) == static_cast<itype>(rhs); \
 		} \
-		inline type& operator |= (type &lhs, type rhs) { \
-			lhs = (type)(static_cast<uint32_t>(lhs) | static_cast<uint32_t>(rhs)); \
+		inline etype& operator |= (etype &lhs, etype rhs) { \
+			lhs = (etype)(static_cast<itype>(lhs) | static_cast<itype>(rhs)); \
 			return lhs; \
 		} \
-		inline type& operator &= (type &lhs, type rhs) { \
-			lhs = (type)(static_cast<uint32_t>(lhs) & static_cast<uint32_t>(rhs)); \
+		inline etype& operator &= (etype &lhs, etype rhs) { \
+			lhs = (etype)(static_cast<itype>(lhs) & static_cast<itype>(rhs)); \
 			return lhs; \
 		}
-
-//
-// Types
-//
-#include <stdint.h> // uint64_t, uint32_t, uint8_t, etc.
-#include <stdlib.h> // size_t
 
 // ****************************************************************************
 //
@@ -654,7 +684,6 @@ SOFTWARE.
 
 //! Core namespace
 namespace fpl {
-
 	//! Atomic functions, like AtomicCompareAndExchange, AtomicReadFence, etc.
 	namespace atomics {
 		//! Insert a atomic read fence/barrier. This will complete previous reads before future reads and prevents the compiler from reordering memory reads across this fence.
@@ -717,7 +746,7 @@ namespace fpl {
 		All = Window | Video,
 	};
 	//! Operator support for InitFlags
-	FPL_ENUM_AS_FLAGS_OPERATORS_INTERNAL(InitFlags);
+	FPL_ENUM_AS_FLAGS_OPERATORS_INTERNAL(InitFlags, uint32_t);
 
 	//! Video driver type
 	enum class VideoDriverType : uint32_t {
@@ -1038,7 +1067,7 @@ namespace fpl {
 			System = 1 << 4,
 		};
 		//! Operator support for FileAttributeFlags
-		FPL_ENUM_AS_FLAGS_OPERATORS_INTERNAL(FileAttributeFlags);
+		FPL_ENUM_AS_FLAGS_OPERATORS_INTERNAL(FileAttributeFlags, uint32_t);
 
 		//! Maximum length of a file entry path
 		fpl_constant uint32_t MAX_FILEENTRY_PATH_LENGTH = 1024;
@@ -1320,7 +1349,7 @@ namespace fpl {
 			Super = 1 << 3,
 		};
 		//! Operator support for KeyboardModifierFlags
-		FPL_ENUM_AS_FLAGS_OPERATORS_INTERNAL(KeyboardModifierFlags);
+		FPL_ENUM_AS_FLAGS_OPERATORS_INTERNAL(KeyboardModifierFlags, uint32_t);
 
 		//! Keyboard event data (Type, Keycode, Mapped key, etc.)
 		struct KeyboardEvent {
@@ -1612,9 +1641,6 @@ using namespace fpl::threading;
 #if defined(FPL_IMPLEMENTATION) && !defined(FPL_IMPLEMENTED)
 #	define FPL_IMPLEMENTED
 
-// Typedef get proc address trick
-typedef void(*fpl_proc)();
-
 // 
 // Non-Platform specific includes
 //
@@ -1829,24 +1855,28 @@ namespace fpl {
 	namespace memory {
 		fpl_api void *MemoryAlignedAllocate(const size_t size, const size_t alignment) {
 			FPL_ASSERT(size > 0);
-			FPL_ASSERT((alignment > 0) && !(alignment & (alignment - 1)));
+			FPL_ASSERT(alignment > 0);
+			FPL_ASSERT(!(alignment & (alignment - 1)));
 
 			// Allocate empty memory to hold a size of a pointer + the actual size + alignment padding 
 			size_t newSize = sizeof(void *) + size + (alignment << 1);
 			void *basePtr = MemoryAllocate(newSize);
 
 			// The resulting address starts after the stored base pointer
-			void *alignedPtr = (void *)((uintptr_t)basePtr + sizeof(void *));
+			void *alignedPtr = (void *)((uint8_t *)basePtr + sizeof(void *));
 
 			// Move the resulting address to a aligned one when not aligned
-			// @TODO(final): This seems to do nothing on a typical i7 machine, regardless of the target - test with other architectures!
 			uintptr_t mask = alignment - 1;
 			if ((alignment > 1) && (((uintptr_t)alignedPtr & mask) != 0)) {
-				*(uintptr_t *)alignedPtr += ((uintptr_t)alignment - ((uintptr_t)alignedPtr & mask));
+				uintptr_t offset = ((uintptr_t)alignment - ((uintptr_t)alignedPtr & mask));
+				alignedPtr = (uint8_t *)alignedPtr + offset;
 			}
 
 			// Write the base pointer before the alignment pointer
-			*(void **)((void *)((uintptr_t)alignedPtr - sizeof(void *))) = basePtr;
+			*(void **)((void *)((uint8_t *)alignedPtr - sizeof(void *))) = basePtr;
+
+			// Ensure alignment
+			FPL_ASSERT(FPL_IS_ALIGNED(alignedPtr, alignment));
 
 			return(alignedPtr);
 		}
@@ -1855,7 +1885,7 @@ namespace fpl {
 			FPL_ASSERT(ptr != nullptr);
 
 			// Free the base pointer which is stored to the left from the given pointer
-			void *basePtr = (void *)((void **)((uintptr_t)ptr - sizeof(void *)));
+			void *basePtr = *(void **)((void *)((uint8_t *)ptr - sizeof(void *)));
 			MemoryFree(basePtr);
 		}
 
@@ -2056,88 +2086,13 @@ namespace fpl {
 #	include <shlobj.h>		// SHGetFolderPath
 #	include <xinput.h>		// XInputGetState
 
-// User32
-#	define FPL_WIN32_RELEASE_DC ReleaseDC
-#	define FPL_WIN32_GET_DC GetDC
-#	define FPL_WIN32_SHOW_WINDOW ShowWindow
-#	define FPL_WIN32_UPDATE_WINDOW UpdateWindow
-#	define FPL_WIN32_DESTROY_WINDOW DestroyWindow
-#	define FPL_WIN32_SET_WINDOW_POS SetWindowPos
-#	define FPL_WIN32_GET_WINDOW_PLACEMENT GetWindowPlacement
-#	define FPL_WIN32_SET_WINDOW_PLACEMENT SetWindowPlacement
-#	define FPL_WIN32_GET_ASYNC_KEY_STATE GetAsyncKeyState
-#	define FPL_WIN32_GET_CLIENT_RECT GetClientRect
-#	define FPL_WIN32_GET_WINDOW_RECT GetWindowRect
-#	define FPL_WIN32_ADJUST_WINDOW_RECT AdjustWindowRect
-#	define FPL_WIN32_SET_CURSOR SetCursor
-#	define FPL_WIN32_GET_CURSOR GetCursor
-#	define FPL_WIN32_CHANGE_DISPLAY_SETTINGS_A ChangeDisplaySettingsA
-#	define FPL_WIN32_ENUM_DISPLAY_SETTINGS_A EnumDisplaySettingsA
-#	define FPL_WIN32_TRANSLATE_MESSAGE TranslateMessage
-#	define FPL_WIN32_SET_WINDOW_TEXT_A SetWindowTextA
-#	define FPL_WIN32_SET_WINDOW_TEXT_W SetWindowTextW
-
-#	if defined(UNICODE)
-#		define FPL_WIN32_CLASSNAME L"FPLWindowClassW"
-#		define FPL_WIN32_UNNAMED_WINDOW L"Unnamed FPL Unicode Window"
-#		define FPL_WIN32_STRINGCOPY strings::CopyWideString
-#		define FPL_WIN32_GETSTRINGLENGTH strings::GetWideStringLength
-#		define FPL_WIN32_ANSI_TO_STRING strings::AnsiStringToWideString
-
-#		define FPL_WIN32_WNDCLASSEX WNDCLASSEXW
-#		define FPL_WIN32_REGISTER_CLASS_EX RegisterClassExW
-#		define FPL_WIN32_UNREGISTER_CLASS UnregisterClassW
-#		define FPL_WIN32_CREATE_WINDOW_EX CreateWindowExW
-#		define FPL_WIN32_DEF_WINDOW_PROC DefWindowProcW
-#		define FPL_WIN32_GET_WINDOW_LONG_PTR GetWindowLongPtrW
-#		define FPL_WIN32_SET_WINDOW_LONG_PTR SetWindowLongPtrW
-#		define FPL_WIN32_GET_WINDOW_LONG GetWindowLongW
-#		define FPL_WIN32_SET_WINDOW_LONG SetWindowLongW
-#		define FPL_WIN32_PEEK_MESSAGE PeekMessageW
-#		define FPL_WIN32_POST_MESSAGE PostMessageW
-#		define FPL_WIN32_DISPATCH_MESSAGE DispatchMessageW
-#		define FPL_WIN32_MAP_VIRTUAL_KEY MapVirtualKeyW
-#		define FPL_WIN32_SET_WINDOW_TEXT SetWindowTextW
-
-#		define FPL_WIN32_GET_MODULE_FILENAME GetModuleFileNameW
-#		define FPL_WIN32_GET_MODULE_HANDLE GetModuleHandleW
-
-#		define FPL_WIN32_SH_GET_FOLDER_PATH SHGetFolderPathW
-#	else
-#		define FPL_WIN32_CLASSNAME "FPLWindowClassA"
-#		define FPL_WIN32_UNNAMED_WINDOW "Unnamed FPL Ansi Window"
-#		define FPL_WIN32_STRINGCOPY strings::CopyAnsiString
-#		define FPL_WIN32_GETSTRINGLENGTH strings::GetAnsiStringLength
-#		define FPL_WIN32_ANSI_TO_STRING strings::CopyAnsiString
-
-#		define FPL_WIN32_WNDCLASSEX WNDCLASSEXA
-#		define FPL_WIN32_REGISTER_CLASS_EX RegisterClassExA
-#		define FPL_WIN32_UNREGISTER_CLASS UnregisterClassA
-#		define FPL_WIN32_CREATE_WINDOW_EX CreateWindowExA
-#		define FPL_WIN32_DEF_WINDOW_PROC DefWindowProcA
-#		define FPL_WIN32_GET_WINDOW_LONG_PTR GetWindowLongPtrA
-#		define FPL_WIN32_SET_WINDOW_LONG_PTR SetWindowLongPtrA
-#		define FPL_WIN32_GET_WINDOW_LONG GetWindowLongA
-#		define FPL_WIN32_SET_WINDOW_LONG SetWindowLongA
-#		define FPL_WIN32_PEEK_MESSAGE PeekMessageA
-#		define FPL_WIN32_POST_MESSAGE PostMessageA
-#		define FPL_WIN32_DISPATCH_MESSAGE DispatchMessageA
-#		define FPL_WIN32_MAP_VIRTUAL_KEY MapVirtualKeyA
-#		define FPL_WIN32_SET_WINDOW_TEXT SetWindowTextA
-
-#		define FPL_WIN32_GET_MODULE_FILENAME GetModuleFileNameA
-#		define FPL_WIN32_GET_MODULE_HANDLE GetModuleHandleA
-
-#		define FPL_WIN32_SH_GET_FOLDER_PATH SHGetFolderPathA
-#	endif // UNICODE
-
 namespace fpl {
 	//
 	// XInputGetState
 	//
-#	define XINPUT_GET_STATE(name) DWORD WINAPI name(DWORD dwUserIndex, XINPUT_STATE *pState)
-	typedef XINPUT_GET_STATE(xinput_get_state);
-	XINPUT_GET_STATE(Win32XInputGetStateStub) {
+#	define FPL_XINPUT_GET_STATE(name) DWORD WINAPI name(DWORD dwUserIndex, XINPUT_STATE *pState)
+	typedef FPL_XINPUT_GET_STATE(win32_func_XInputGetState);
+	FPL_XINPUT_GET_STATE(Win32XInputGetStateStub) {
 		return(ERROR_DEVICE_NOT_CONNECTED);
 	}
 
@@ -2175,36 +2130,36 @@ namespace fpl {
 #	define FPL_WGL_TYPE_RGBA_ARB 0x202B
 
 #	define FPL_FUNC_WGL_MAKE_CURRENT(name) BOOL WINAPI name(HDC deviceContext, HGLRC renderingContext)
-	typedef FPL_FUNC_WGL_MAKE_CURRENT(fpl_wgl_make_current);
+	typedef FPL_FUNC_WGL_MAKE_CURRENT(win32_func_wglMakeCurrent);
 #	define FPL_FUNC_WGL_GET_PROC_ADDRESS(name) PROC WINAPI name(LPCSTR procedure)
-	typedef FPL_FUNC_WGL_GET_PROC_ADDRESS(fpl_wgl_get_proc_address);
+	typedef FPL_FUNC_WGL_GET_PROC_ADDRESS(win32_func_wglGetProcAddress);
 #	define FPL_FUNC_WGL_DELETE_CONTEXT(name) BOOL WINAPI name(HGLRC renderingContext)
-	typedef FPL_FUNC_WGL_DELETE_CONTEXT(fpl_wgl_delete_context);
+	typedef FPL_FUNC_WGL_DELETE_CONTEXT(win32_func_wglDeleteContext);
 #	define FPL_FUNC_WGL_CREATE_CONTEXT(name) HGLRC WINAPI name(HDC deviceContext)
-	typedef FPL_FUNC_WGL_CREATE_CONTEXT(fpl_wgl_create_context);
+	typedef FPL_FUNC_WGL_CREATE_CONTEXT(win32_func_wglCreateContext);
 
 #	define FPL_FUNC_WGL_CHOOSE_PIXEL_FORMAT_ARB(name) BOOL WINAPI name(HDC hdc, const int *piAttribIList, const FLOAT *pfAttribFList, UINT nMaxFormats, int *piFormats, UINT *nNumFormats)
-	typedef FPL_FUNC_WGL_CHOOSE_PIXEL_FORMAT_ARB(wgl_choose_pixel_format_arb);
+	typedef FPL_FUNC_WGL_CHOOSE_PIXEL_FORMAT_ARB(win32_func_wglChoosePixelFormatARB);
 #	define FPL_FUNC_WGL_CREATE_CONTEXT_ATTRIBS_ARB(name) HGLRC WINAPI name(HDC hDC, HGLRC hShareContext, const int *attribList)
-	typedef FPL_FUNC_WGL_CREATE_CONTEXT_ATTRIBS_ARB(wgl_create_context_attribs_arb);
+	typedef FPL_FUNC_WGL_CREATE_CONTEXT_ATTRIBS_ARB(win32_func_wglCreateContextAttribsARB);
 #	define FPL_FUNC_WGL_SWAP_INTERVAL_EXT(name) BOOL WINAPI name(int interval)
-	typedef FPL_FUNC_WGL_SWAP_INTERVAL_EXT(wgl_swap_interval_ext);
+	typedef FPL_FUNC_WGL_SWAP_INTERVAL_EXT(win32_func_wglSwapIntervalEXT);
 
 	struct Win32OpenGLFunctions_Internal {
-		fpl_wgl_make_current *wglMakeCurrent;
-		fpl_wgl_get_proc_address *wglGetProcAddress;
-		fpl_wgl_delete_context *wglDeleteContext;
-		fpl_wgl_create_context *wglCreateContext;
+		win32_func_wglMakeCurrent *wglMakeCurrent;
+		win32_func_wglGetProcAddress *wglGetProcAddress;
+		win32_func_wglDeleteContext *wglDeleteContext;
+		win32_func_wglCreateContext *wglCreateContext;
 
-		wgl_choose_pixel_format_arb *wglChoosePixelFormatArb;
-		wgl_create_context_attribs_arb *wglCreateContextAttribsArb;
-		wgl_swap_interval_ext *wglSwapIntervalExt;
+		win32_func_wglChoosePixelFormatARB *wglChoosePixelFormatArb;
+		win32_func_wglCreateContextAttribsARB *wglCreateContextAttribsArb;
+		win32_func_wglSwapIntervalEXT *wglSwapIntervalExt;
 	};
 
 	struct Win32InputFunctions_Internal {
 		HMODULE xinputLibrary;
 
-		xinput_get_state *xInputSetState = Win32XInputGetStateStub;
+		win32_func_XInputGetState *xInputSetState = Win32XInputGetStateStub;
 	};
 
 	//
@@ -2213,47 +2168,238 @@ namespace fpl {
 
 	// GDI32
 #	define FPL_FUNC_CHOOSE_PIXEL_FORMAT(name) int WINAPI name(HDC hdc, CONST PIXELFORMATDESCRIPTOR *ppfd)
-	typedef FPL_FUNC_CHOOSE_PIXEL_FORMAT(fpl_choose_pixel_format);
+	typedef FPL_FUNC_CHOOSE_PIXEL_FORMAT(win32_func_ChoosePixelFormat);
 #	define FPL_FUNC_SET_PIXEL_FORMAT(name) BOOL WINAPI name(HDC hdc, int format, CONST PIXELFORMATDESCRIPTOR *ppfd)
-	typedef FPL_FUNC_SET_PIXEL_FORMAT(fpl_set_pixel_format);
+	typedef FPL_FUNC_SET_PIXEL_FORMAT(win32_func_SetPixelFormat);
 #	define FPL_FUNC_DESCRIPE_PIXEL_FORMAT(name) int WINAPI name(HDC hdc, int iPixelFormat, UINT nBytes, LPPIXELFORMATDESCRIPTOR ppfd)
-	typedef FPL_FUNC_DESCRIPE_PIXEL_FORMAT(fpl_describe_pixel_format);
+	typedef FPL_FUNC_DESCRIPE_PIXEL_FORMAT(win32_func_DescribePixelFormat);
 #	define FPL_FUNC_GET_DEVICE_CAPS(name) int WINAPI name(HDC hdc, int index)
-	typedef FPL_FUNC_GET_DEVICE_CAPS(fpl_get_device_caps);
+	typedef FPL_FUNC_GET_DEVICE_CAPS(win32_func_GetDeviceCaps);
 #	define FPL_FUNC_STRETCH_DIBITS(name) int WINAPI name(HDC hdc, int xDest, int yDest, int DestWidth, int DestHeight, int xSrc, int ySrc, int SrcWidth, int SrcHeight, CONST VOID *lpBits, CONST BITMAPINFO *lpbmi, UINT iUsage, DWORD rop)
-	typedef FPL_FUNC_STRETCH_DIBITS(fpl_stretch_dibits);
+	typedef FPL_FUNC_STRETCH_DIBITS(win32_func_StretchDIBits);
 #	define FPL_FUNC_DELETE_OBJECT(name) BOOL WINAPI name( _In_ HGDIOBJ ho)
-	typedef FPL_FUNC_DELETE_OBJECT(fpl_delete_object);
+	typedef FPL_FUNC_DELETE_OBJECT(win32_func_DeleteObject);
 #	define FPL_FUNC_SWAP_BUFFERS(name) BOOL WINAPI name(HDC)
-	typedef FPL_FUNC_SWAP_BUFFERS(fpl_swap_buffers);
+	typedef FPL_FUNC_SWAP_BUFFERS(win32_func_SwapBuffers);
 
 	// ShellAPI
 #	define FPL_FUNC_COMMAND_LINE_TO_ARGV_W(name) LPWSTR* WINAPI name(LPCWSTR lpCmdLine, int *pNumArgs)
-	typedef FPL_FUNC_COMMAND_LINE_TO_ARGV_W(fpl_command_line_to_argv_w);
+	typedef FPL_FUNC_COMMAND_LINE_TO_ARGV_W(win32_func_CommandLineToArgvW);
+#	define FPL_FUNC_SH_GET_FOLDER_PATH_A(name) HRESULT name(HWND hwnd, int csidl, HANDLE hToken, DWORD dwFlags, LPSTR pszPath)
+	typedef FPL_FUNC_SH_GET_FOLDER_PATH_A(win32_func_SHGetFolderPathA);
+#	define FPL_FUNC_SH_GET_FOLDER_PATH_W(name) HRESULT name(HWND hwnd, int csidl, HANDLE hToken, DWORD dwFlags, LPWSTR pszPath)
+	typedef FPL_FUNC_SH_GET_FOLDER_PATH_W(win32_func_SHGetFolderPathW);
 
+	// User32
+#	define FPL_FUNC_REGISTER_CLASS_EX_A(name) ATOM WINAPI name(CONST WNDCLASSEXA *)
+	typedef FPL_FUNC_REGISTER_CLASS_EX_A(win32_func_RegisterClassExA);
+#	define FPL_FUNC_REGISTER_CLASS_EX_W(name) ATOM WINAPI name(CONST WNDCLASSEXW *)
+	typedef FPL_FUNC_REGISTER_CLASS_EX_W(win32_func_RegisterClassExW);
+#	define FPL_FUNC_UNREGISTER_CLASS_EX_A(name) BOOL WINAPI name(LPCSTR lpClassName, HINSTANCE hInstance)
+	typedef FPL_FUNC_UNREGISTER_CLASS_EX_A(win32_func_UnregisterClassA);
+#	define FPL_FUNC_UNREGISTER_CLASS_EX_W(name) BOOL WINAPI name(LPCWSTR lpClassName, HINSTANCE hInstance)
+	typedef FPL_FUNC_UNREGISTER_CLASS_EX_W(win32_func_UnregisterClassW);
+#	define FPL_FUNC_SHOW_WINDOW(name) BOOL WINAPI name(HWND hWnd, int nCmdShow)
+	typedef FPL_FUNC_SHOW_WINDOW(win32_func_ShowWindow);
+#	define FPL_FUNC_DESTROY_WINDOW(name) BOOL WINAPI name(HWND hWnd)
+	typedef FPL_FUNC_DESTROY_WINDOW(win32_func_DestroyWindow);
+#	define FPL_FUNC_UPDATE_WINDOW(name) BOOL WINAPI name(HWND hWnd)
+	typedef FPL_FUNC_UPDATE_WINDOW(win32_func_UpdateWindow);
+#	define FPL_FUNC_TRANSLATE_MESSAGE(name) BOOL WINAPI name(CONST MSG *lpMsg)
+	typedef FPL_FUNC_TRANSLATE_MESSAGE(win32_func_TranslateMessage);
+#	define FPL_FUNC_DISPATCH_MESSAGE_A(name) LRESULT WINAPI name(CONST MSG *lpMsg)
+	typedef FPL_FUNC_DISPATCH_MESSAGE_A(win32_func_DispatchMessageA);
+#	define FPL_FUNC_DISPATCH_MESSAGE_W(name) LRESULT WINAPI name(CONST MSG *lpMsg)
+	typedef FPL_FUNC_DISPATCH_MESSAGE_W(win32_func_DispatchMessageW);
+#	define FPL_FUNC_PEEK_MESSAGE_A(name) BOOL WINAPI name(LPMSG lpMsg, HWND hWnd, UINT wMsgFilterMin, UINT wMsgFilterMax, UINT wRemoveMsg)
+	typedef FPL_FUNC_PEEK_MESSAGE_A(win32_func_PeekMessageA);
+#	define FPL_FUNC_PEEK_MESSAGE_W(name) BOOL WINAPI name(LPMSG lpMsg, HWND hWnd, UINT wMsgFilterMin, UINT wMsgFilterMax, UINT wRemoveMsg)
+	typedef FPL_FUNC_PEEK_MESSAGE_W(win32_func_PeekMessageW);
+#	define FPL_FUNC_DEF_WINDOW_PROC_A(name) LRESULT WINAPI name(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam)
+	typedef FPL_FUNC_DEF_WINDOW_PROC_A(win32_func_DefWindowProcA);
+#	define FPL_FUNC_DEF_WINDOW_PROC_W(name) LRESULT WINAPI name(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam)
+	typedef FPL_FUNC_DEF_WINDOW_PROC_W(win32_func_DefWindowProcW);
+#	define FPL_FUNC_CREATE_WINDOW_EX_W(name) HWND WINAPI name(DWORD dwExStyle, LPCWSTR lpClassName, LPCWSTR lpWindowName, DWORD dwStyle, int X, int Y, int nWidth, int nHeight, HWND hWndParent, HMENU hMenu, HINSTANCE hInstance, LPVOID lpParam)
+	typedef FPL_FUNC_CREATE_WINDOW_EX_W(win32_func_CreateWindowExW);
+#	define FPL_FUNC_CREATE_WINDOW_EX_A(name) HWND WINAPI name(DWORD dwExStyle, LPCSTR lpClassName, PCSTR lpWindowName, DWORD dwStyle, int X, int Y, int nWidth, int nHeight, HWND hWndParent, HMENU hMenu, HINSTANCE hInstance, LPVOID lpParam)
+	typedef FPL_FUNC_CREATE_WINDOW_EX_A(win32_func_CreateWindowExA);
+#	define FPL_FUNC_SET_WINDOW_POS(name) BOOL WINAPI name(HWND hWnd, HWND hWndInsertAfter, int X, int Y, int cx, int cy, UINT uFlags)
+	typedef FPL_FUNC_SET_WINDOW_POS(win32_func_SetWindowPos);
+#	define FPL_FUNC_GET_WINDOW_PLACEMENT(name) BOOL WINAPI name(HWND hWnd, WINDOWPLACEMENT *lpwndpl)
+	typedef FPL_FUNC_GET_WINDOW_PLACEMENT(win32_func_GetWindowPlacement);
+#	define FPL_FUNC_SET_WINDOW_PLACEMENT(name) BOOL WINAPI name(HWND hWnd, CONST WINDOWPLACEMENT *lpwndpl)
+	typedef FPL_FUNC_SET_WINDOW_PLACEMENT(win32_func_SetWindowPlacement);
+#	define FPL_FUNC_GET_CLIENT_RECT(name) BOOL WINAPI name(HWND hWnd, LPRECT lpRect)
+	typedef FPL_FUNC_GET_CLIENT_RECT(win32_func_GetClientRect);
+#	define FPL_FUNC_GET_WINDOW_RECT(name) BOOL WINAPI name(HWND hWnd, LPRECT lpRect)
+	typedef FPL_FUNC_GET_WINDOW_RECT(win32_func_GetWindowRect);
+#	define FPL_FUNC_ADJUST_WINDOW_RECT(name) BOOL WINAPI name(LPRECT lpRect, DWORD dwStyle, BOOL bMenu)
+	typedef FPL_FUNC_ADJUST_WINDOW_RECT(win32_func_AdjustWindowRect);
+#	define FPL_FUNC_GET_ASYNC_KEY_STATE(name) SHORT WINAPI name(int vKey)
+	typedef FPL_FUNC_GET_ASYNC_KEY_STATE(win32_func_GetAsyncKeyState);
+#	define FPL_FUNC_MAP_VIRTUAL_KEY_A(name) UINT WINAPI name(UINT uCode, UINT uMapType)
+	typedef FPL_FUNC_MAP_VIRTUAL_KEY_A(win32_func_MapVirtualKeyA);
+#	define FPL_FUNC_MAP_VIRTUAL_KEY_W(name) UINT WINAPI name(UINT uCode, UINT uMapType)
+	typedef FPL_FUNC_MAP_VIRTUAL_KEY_W(win32_func_MapVirtualKeyW);
+#	define FPL_FUNC_SET_CURSOR(name) HCURSOR WINAPI name(HCURSOR hCursor)
+	typedef FPL_FUNC_SET_CURSOR(win32_func_SetCursor);
+#	define FPL_FUNC_GET_CURSOR(name) HCURSOR WINAPI name(VOID)
+	typedef FPL_FUNC_GET_CURSOR(win32_func_GetCursor);
+#	define FPL_FUNC_LOAD_CURSOR_A(name) HCURSOR WINAPI name(HINSTANCE hInstance, LPCSTR lpCursorName)
+	typedef FPL_FUNC_LOAD_CURSOR_A(win32_func_LoadCursorA);
+#	define FPL_FUNC_LOAD_CURSOR_W(name) HCURSOR WINAPI name(HINSTANCE hInstance, LPCWSTR lpCursorName)
+	typedef FPL_FUNC_LOAD_CURSOR_W(win32_func_LoadCursorW);
+#	define FPL_FUNC_LOAD_ICON_A(name) HICON WINAPI name(HINSTANCE hInstance, LPCSTR lpIconName)
+	typedef FPL_FUNC_LOAD_ICON_A(win32_func_LoadIconA);
+#	define FPL_FUNC_LOAD_ICON_W(name) HICON WINAPI name(HINSTANCE hInstance, LPCWSTR lpIconName)
+	typedef FPL_FUNC_LOAD_ICON_W(win32_func_LoadIconW);
+#	define FPL_FUNC_SET_WINDOW_TEXT_A(name) BOOL WINAPI name(HWND hWnd, LPCSTR lpString)
+	typedef FPL_FUNC_SET_WINDOW_TEXT_A(win32_func_SetWindowTextA);
+#	define FPL_FUNC_SET_WINDOW_TEXT_W(name) BOOL WINAPI name(HWND hWnd, LPCWSTR lpString)
+	typedef FPL_FUNC_SET_WINDOW_TEXT_W(win32_func_SetWindowTextW);
+#	define FPL_FUNC_SET_WINDOW_LONG_A(name) LONG WINAPI name(HWND hWnd, int nIndex, LONG dwNewLong)
+	typedef FPL_FUNC_SET_WINDOW_LONG_A(win32_func_SetWindowLongA);
+#	define FPL_FUNC_SET_WINDOW_LONG_W(name) LONG WINAPI name(HWND hWnd, int nIndex, LONG dwNewLong)
+	typedef FPL_FUNC_SET_WINDOW_LONG_W(win32_func_SetWindowLongW);
+#	define FPL_FUNC_GET_WINDOW_LONG_A(name) LONG WINAPI name(HWND hWnd, int nIndex)
+	typedef FPL_FUNC_GET_WINDOW_LONG_A(win32_func_GetWindowLongA);
+#	define FPL_FUNC_GET_WINDOW_LONG_W(name) LONG WINAPI name(HWND hWnd, int nIndex)
+	typedef FPL_FUNC_GET_WINDOW_LONG_W(win32_func_GetWindowLongW);
+#	define FPL_FUNC_SET_WINDOW_LONG_PTR_A(name) LONG_PTR WINAPI name(HWND hWnd, int nIndex, LONG_PTR dwNewLong)
+	typedef FPL_FUNC_SET_WINDOW_LONG_PTR_A(win32_func_SetWindowLongPtrA);
+#	define FPL_FUNC_SET_WINDOW_LONG_PTR_W(name) LONG_PTR WINAPI name(HWND hWnd, int nIndex, LONG_PTR dwNewLong)
+	typedef FPL_FUNC_SET_WINDOW_LONG_PTR_W(win32_func_SetWindowLongPtrW);
+#	define FPL_FUNC_GET_WINDOW_LONG_PTR_A(name) LONG_PTR WINAPI name(HWND hWnd, int nIndex)
+	typedef FPL_FUNC_GET_WINDOW_LONG_PTR_A(win32_func_GetWindowLongPtrA);
+#	define FPL_FUNC_GET_WINDOW_LONG_PTR_W(name) LONG_PTR WINAPI name(HWND hWnd, int nIndex)
+	typedef FPL_FUNC_GET_WINDOW_LONG_PTR_W(win32_func_GetWindowLongPtrW);
+#	define FPL_FUNC_RELEASE_DC(name) int WINAPI name(HWND hWnd, HDC hDC)
+	typedef FPL_FUNC_RELEASE_DC(win32_func_ReleaseDC);
+#	define FPL_FUNC_GET_DC(name) HDC WINAPI name(HWND hWnd)
+	typedef FPL_FUNC_GET_DC(win32_func_GetDC);
+#	define FPL_FUNC_CHANGE_DISPLAY_SETTINGS_A(name) LONG WINAPI name(DEVMODEA* lpDevMode, DWORD dwFlags)
+	typedef FPL_FUNC_CHANGE_DISPLAY_SETTINGS_A(win32_func_ChangeDisplaySettingsA);
+#	define FPL_FUNC_CHANGE_DISPLAY_SETTINGS_W(name) LONG WINAPI name(DEVMODEW* lpDevMode, DWORD dwFlags)
+	typedef FPL_FUNC_CHANGE_DISPLAY_SETTINGS_W(win32_func_ChangeDisplaySettingsW);
+#	define FPL_FUNC_ENUM_DISPLAY_SETTINGS_A(name) BOOL WINAPI name(LPCSTR lpszDeviceName, DWORD iModeNum, DEVMODEA* lpDevMode)
+	typedef FPL_FUNC_ENUM_DISPLAY_SETTINGS_A(win32_func_EnumDisplaySettingsA);
+#	define FPL_FUNC_ENUM_DISPLAY_SETTINGS_W(name) BOOL WINAPI name(LPCWSTR lpszDeviceName, DWORD iModeNum, DEVMODEW* lpDevMode)
+	typedef FPL_FUNC_ENUM_DISPLAY_SETTINGS_W(win32_func_EnumDisplaySettingsW);
 
 	struct Win32APIFunctions_Internal {
 		struct {
 			HMODULE gdiLibrary;
-			fpl_choose_pixel_format *choosePixelFormat;
-			fpl_set_pixel_format *setPixelFormat;
-			fpl_describe_pixel_format *describePixelFormat;
-			fpl_get_device_caps *getDeviceCaps;
-			fpl_stretch_dibits *stretchDIBits;
-			fpl_delete_object *deleteObject;
-			fpl_swap_buffers *swapBuffers;
+			win32_func_ChoosePixelFormat *choosePixelFormat;
+			win32_func_SetPixelFormat *setPixelFormat;
+			win32_func_DescribePixelFormat *describePixelFormat;
+			win32_func_GetDeviceCaps *getDeviceCaps;
+			win32_func_StretchDIBits *stretchDIBits;
+			win32_func_DeleteObject *deleteObject;
+			win32_func_SwapBuffers *swapBuffers;
 		} gdi;
+
+		struct {
+			HMODULE shellLibrary;
+			win32_func_CommandLineToArgvW *commandLineToArgvW;
+			win32_func_SHGetFolderPathA *shGetFolderPathA;
+			win32_func_SHGetFolderPathW *shGetFolderPathW;
+		} shell;
+
+		struct {
+			HMODULE userLibrary;
+			win32_func_RegisterClassExA *registerClassExA;
+			win32_func_RegisterClassExW *registerClassExW;
+			win32_func_UnregisterClassA *unregisterClassA;
+			win32_func_UnregisterClassW *unregisterClassW;
+			win32_func_ShowWindow *showWindow;
+			win32_func_DestroyWindow *destroyWindow;
+			win32_func_UpdateWindow *updateWindow;
+			win32_func_TranslateMessage *translateMessage;
+			win32_func_DispatchMessageA *dispatchMessageA;
+			win32_func_DispatchMessageW *dispatchMessageW;
+			win32_func_PeekMessageA *peekMessageA;
+			win32_func_PeekMessageW *peekMessageW;
+			win32_func_DefWindowProcA *defWindowProcA;
+			win32_func_DefWindowProcW *defWindowProcW;
+			win32_func_CreateWindowExA *createWindowExA;
+			win32_func_CreateWindowExW *createWindowExW;
+			win32_func_SetWindowPos *setWindowPos;
+			win32_func_GetWindowPlacement *getWindowPlacement;
+			win32_func_SetWindowPlacement *setWindowPlacement;
+			win32_func_GetClientRect *getClientRect;
+			win32_func_GetWindowRect *getWindowRect;
+			win32_func_AdjustWindowRect *adjustWindowRect;
+			win32_func_GetAsyncKeyState *getAsyncKeyState;
+			win32_func_MapVirtualKeyA *mapVirtualKeyA;
+			win32_func_MapVirtualKeyW *mapVirtualKeyW;
+			win32_func_SetCursor *setCursor;
+			win32_func_GetCursor *getCursor;
+			win32_func_LoadCursorA *loadCursorA;
+			win32_func_LoadCursorW *loadCursorW;
+			win32_func_LoadIconA *loadIconA;
+			win32_func_LoadIconW *loadIconW;
+			win32_func_SetWindowTextA *setWindowTextA;
+			win32_func_SetWindowTextW *setWindowTextW;
+			win32_func_SetWindowLongA *setWindowLongA;
+			win32_func_SetWindowLongW *setWindowLongW;
+			win32_func_GetWindowLongA *getWindowLongA;
+			win32_func_GetWindowLongW *getWindowLongW;
+			win32_func_SetWindowLongPtrA *setWindowLongPtrA;
+			win32_func_SetWindowLongPtrW *setWindowLongPtrW;
+			win32_func_GetWindowLongPtrA *getWindowLongPtrA;
+			win32_func_GetWindowLongPtrW *getWindowLongPtrW;
+			win32_func_ReleaseDC *releaseDC;
+			win32_func_GetDC *getDC;
+			win32_func_ChangeDisplaySettingsA *changeDisplaySettingsA;
+			win32_func_ChangeDisplaySettingsW *changeDisplaySettingsW;
+			win32_func_EnumDisplaySettingsA *enumDisplaySettingsA;
+			win32_func_EnumDisplaySettingsW *enumDisplaySettingsW;
+		} user;
 	};
 
 	fpl_globalvar Win32InputFunctions_Internal global__Win32__Input__Functions__Internal = {};
 	fpl_globalvar Win32OpenGLFunctions_Internal global__Win32__OpenGL_Functions__Internal = {};
 	fpl_globalvar Win32APIFunctions_Internal global__Win32__API__Functions__Internal = {};
 
-	// Win32 internal functions
-#	if defined(UNICODE)
-	typedef wchar_t win32_char_internal;
-#	else
+	// Unicode dependent function calls and types
+#	if !defined(UNICODE)
+#		define FPL_WIN32_CLASSNAME "FPLWindowClassA"
+#		define FPL_WIN32_UNNAMED_WINDOW "Unnamed FPL Ansi Window"
 	typedef char win32_char_internal;
+#		define win32_copyString strings::CopyAnsiString
+#		define win32_getStringLength strings::GetAnsiStringLength
+#		define win32_ansiToString strings::CopyAnsiString
+#		define win32_wndclassex WNDCLASSEXA
+#		define win32_setWindowLongPtr global__Win32__API__Functions__Internal.user.setWindowLongPtrA
+#		define win32_setWindowLong global__Win32__API__Functions__Internal.user.setWindowLongA
+#		define win32_getWindowLong global__Win32__API__Functions__Internal.user.getWindowLongA
+#		define win32_peekMessage global__Win32__API__Functions__Internal.user.peekMessageA
+#		define win32_dispatchMessage global__Win32__API__Functions__Internal.user.dispatchMessageA
+#		define win32_defWindowProc global__Win32__API__Functions__Internal.user.defWindowProcA
+#		define win32_registerClassEx global__Win32__API__Functions__Internal.user.registerClassExA
+#		define win32_unregisterClass global__Win32__API__Functions__Internal.user.unregisterClassA
+#		define win32_createWindowEx global__Win32__API__Functions__Internal.user.createWindowExA
+#		define win32_loadIcon global__Win32__API__Functions__Internal.user.loadIconA
+#		define win32_loadCursor global__Win32__API__Functions__Internal.user.loadCursorA
+#	else
+#		define FPL_WIN32_CLASSNAME L"FPLWindowClassW"
+#		define FPL_WIN32_UNNAMED_WINDOW L"Unnamed FPL Unicode Window"
+	typedef wchar_t win32_char_internal;
+#		define win32_copyString strings::CopyWideString
+#		define win32_getStringLength strings::GetWideStringLength
+#		define win32_ansiToString strings::AnsiStringToWideString
+#		define win32_wndclassex WNDCLASSEXW
+#		define win32_setWindowLongPtr global__Win32__API__Functions__Internal.user.setWindowLongPtrW
+#		define win32_setWindowLong global__Win32__API__Functions__Internal.user.setWindowLongW
+#		define win32_getWindowLong global__Win32__API__Functions__Internal.user.getWindowLongW
+#		define win32_peekMessage global__Win32__API__Functions__Internal.user.peekMessageW
+#		define win32_dispatchMessage global__Win32__API__Functions__Internal.user.dispatchMessageW
+#		define win32_defWindowProc global__Win32__API__Functions__Internal.user.defWindowProcW
+#		define win32_registerClassEx global__Win32__API__Functions__Internal.user.registerClassExW
+#		define win32_unregisterClass global__Win32__API__Functions__Internal.user.unregisterClassW
+#		define win32_createWindowEx global__Win32__API__Functions__Internal.user.createWindowExW
+#		define win32_loadIcon global__Win32__API__Functions__Internal.user.loadIconW
+#		define win32_loadCursor global__Win32__API__Functions__Internal.user.loadCursorW
 #	endif // UNICODE
 
 #	if defined(FPL_ENABLE_WINDOW)
@@ -2952,7 +3098,7 @@ namespace fpl {
 	#	if defined(UNICODE)
 		fpl_api char *GetExecutableFilePath(char *destPath, const uint32_t maxDestLen) {
 			wchar_t modulePath[MAX_PATH];
-			FPL_WIN32_GET_MODULE_FILENAME(nullptr, modulePath, MAX_PATH);
+			GetModuleFileNameW(nullptr, modulePath, MAX_PATH);
 			FPL_ASSERT(destPath != nullptr);
 			FPL_ASSERT(maxDestLen >= (MAX_PATH + 1));
 			strings::WideStringToAnsiString(modulePath, strings::GetWideStringLength(modulePath), destPath, maxDestLen);
@@ -2961,7 +3107,7 @@ namespace fpl {
 	#	else
 		fpl_api char *GetExecutableFilePath(char *destPath, const uint32_t maxDestLen) {
 			char modulePath[MAX_PATH];
-			FPL_WIN32_GET_MODULE_FILENAME(nullptr, modulePath, MAX_PATH);
+			GetModuleFileNameA(nullptr, modulePath, MAX_PATH);
 			FPL_ASSERT(destPath != nullptr);
 			FPL_ASSERT(maxDestLen >= (MAX_PATH + 1));
 			strings::CopyAnsiString(modulePath, strings::GetAnsiStringLength(modulePath), destPath, maxDestLen);
@@ -2971,8 +3117,9 @@ namespace fpl {
 
 	#	if defined(UNICODE)
 		fpl_api char *GetHomePath(char *destPath, const uint32_t maxDestLen) {
+			Win32APIFunctions_Internal &api = global__Win32__API__Functions__Internal;
 			wchar_t homePath[MAX_PATH];
-			FPL_WIN32_SH_GET_FOLDER_PATH(nullptr, CSIDL_PROFILE, nullptr, 0, homePath);
+			api.shell.shGetFolderPathW(nullptr, CSIDL_PROFILE, nullptr, 0, homePath);
 			FPL_ASSERT(destPath != nullptr);
 			FPL_ASSERT(maxDestLen >= (MAX_PATH + 1));
 			strings::WideStringToAnsiString(homePath, strings::GetWideStringLength(homePath), destPath, maxDestLen);
@@ -2980,8 +3127,9 @@ namespace fpl {
 		}
 	#else
 		fpl_api char *GetHomePath(char *destPath, const uint32_t maxDestLen) {
+			Win32APIFunctions_Internal &api = global__Win32__API__Functions__Internal;
 			char homePath[MAX_PATH];
-			FPL_WIN32_SH_GET_FOLDER_PATH(nullptr, CSIDL_PROFILE, nullptr, 0, homePath);
+			api.shell.shGetFolderPathA(nullptr, CSIDL_PROFILE, nullptr, 0, homePath);
 			FPL_ASSERT(destPath != nullptr);
 			FPL_ASSERT(maxDestLen >= (MAX_PATH + 1));
 			strings::CopyAnsiString(homePath, strings::GetAnsiStringLength(homePath), destPath, maxDestLen);
@@ -3087,10 +3235,10 @@ namespace fpl {
 
 			Win32OpenGLFunctions_Internal &glFuncs = global__Win32__OpenGL_Functions__Internal;
 
-			FPL_WIN32_GET_FUNCTION_ADDRESS(openglLibrary, openglLibraryName, glFuncs.wglGetProcAddress, fpl_wgl_get_proc_address, "wglGetProcAddress");
-			FPL_WIN32_GET_FUNCTION_ADDRESS(openglLibrary, openglLibraryName, glFuncs.wglCreateContext, fpl_wgl_create_context, "wglCreateContext");
-			FPL_WIN32_GET_FUNCTION_ADDRESS(openglLibrary, openglLibraryName, glFuncs.wglDeleteContext, fpl_wgl_delete_context, "wglDeleteContext");
-			FPL_WIN32_GET_FUNCTION_ADDRESS(openglLibrary, openglLibraryName, glFuncs.wglMakeCurrent, fpl_wgl_make_current, "wglMakeCurrent");
+			FPL_WIN32_GET_FUNCTION_ADDRESS(openglLibrary, openglLibraryName, glFuncs.wglGetProcAddress, win32_func_wglGetProcAddress, "wglGetProcAddress");
+			FPL_WIN32_GET_FUNCTION_ADDRESS(openglLibrary, openglLibraryName, glFuncs.wglCreateContext, win32_func_wglCreateContext, "wglCreateContext");
+			FPL_WIN32_GET_FUNCTION_ADDRESS(openglLibrary, openglLibraryName, glFuncs.wglDeleteContext, win32_func_wglDeleteContext, "wglDeleteContext");
+			FPL_WIN32_GET_FUNCTION_ADDRESS(openglLibrary, openglLibraryName, glFuncs.wglMakeCurrent, win32_func_wglMakeCurrent, "wglMakeCurrent");
 
 			FreeLibrary(openglLibrary);
 
@@ -3146,9 +3294,9 @@ namespace fpl {
 			}
 
 			// Load WGL Extensions
-			glFuncs.wglChoosePixelFormatArb = (wgl_choose_pixel_format_arb *)glFuncs.wglGetProcAddress("wglChoosePixelFormatARB");
-			glFuncs.wglCreateContextAttribsArb = (wgl_create_context_attribs_arb *)glFuncs.wglGetProcAddress("wglCreateContextAttribsARB");
-			glFuncs.wglSwapIntervalExt = (wgl_swap_interval_ext *)glFuncs.wglGetProcAddress("wglSwapIntervalEXT");
+			glFuncs.wglChoosePixelFormatArb = (win32_func_wglChoosePixelFormatARB *)glFuncs.wglGetProcAddress("wglChoosePixelFormatARB");
+			glFuncs.wglCreateContextAttribsArb = (win32_func_wglCreateContextAttribsARB *)glFuncs.wglGetProcAddress("wglCreateContextAttribsARB");
+			glFuncs.wglSwapIntervalExt = (win32_func_wglSwapIntervalEXT *)glFuncs.wglGetProcAddress("wglSwapIntervalEXT");
 
 			// Disable legacy context
 			glFuncs.wglMakeCurrent(nullptr, nullptr);
@@ -3364,23 +3512,30 @@ namespace fpl {
 		fpl_constant DWORD Win32FullscreenWindowExtendedStyle_Internal = WS_EX_APPWINDOW | WS_EX_TOPMOST;
 
 		fpl_internal bool Win32LeaveFullscreen_Internal() {
+			Win32APIFunctions_Internal &api = global__Win32__API__Functions__Internal;
+		#if UNICODE
+		#	define setWindowLongPtr global__Win32__API__Functions__Internal.user.setWindowLongPtrA
+		#else
+		#	define setWindowLongPtr global__Win32__API__Functions__Internal.user.setWindowLongPtrW
+		#endif
+
 			FPL_ASSERT(global__Win32__State__Internal != nullptr);
 			WindowSettings &settings = global__Win32__State__Internal->currentSettings.window;
 			FPL_ASSERT(settings.isFullscreen);
 			HWND handle = global__Win32__State__Internal->window.windowHandle;
 
 			if (settings.isResizable) {
-				FPL_WIN32_SET_WINDOW_LONG_PTR(handle, GWL_STYLE, Win32ResizeableWindowStyle_Internal);
-				FPL_WIN32_SET_WINDOW_LONG_PTR(handle, GWL_EXSTYLE, Win32ResizeableWindowExtendedStyle_Internal);
+				win32_setWindowLongPtr(handle, GWL_STYLE, Win32ResizeableWindowStyle_Internal);
+				win32_setWindowLongPtr(handle, GWL_EXSTYLE, Win32ResizeableWindowExtendedStyle_Internal);
 			} else {
-				FPL_WIN32_SET_WINDOW_LONG_PTR(handle, GWL_STYLE, Win32NonResizableWindowStyle_Internal);
-				FPL_WIN32_SET_WINDOW_LONG_PTR(handle, GWL_EXSTYLE, Win32NonResizableWindowExtendedStyle_Internal);
+				win32_setWindowLongPtr(handle, GWL_STYLE, Win32NonResizableWindowStyle_Internal);
+				win32_setWindowLongPtr(handle, GWL_EXSTYLE, Win32NonResizableWindowExtendedStyle_Internal);
 			}
 
-			FPL_WIN32_SET_WINDOW_POS(handle, HWND_NOTOPMOST, 0, 0, global__Win32__State__Internal->window.lastWindowWidth, global__Win32__State__Internal->window.lastWindowHeight, SWP_SHOWWINDOW | SWP_NOMOVE);
-			FPL_WIN32_SET_WINDOW_PLACEMENT(handle, &global__Win32__State__Internal->window.lastWindowPlacement);
-			bool result = (FPL_WIN32_CHANGE_DISPLAY_SETTINGS_A(nullptr, CDS_RESET) == DISP_CHANGE_SUCCESSFUL);
-			FPL_WIN32_SHOW_WINDOW(handle, SW_RESTORE);
+			api.user.setWindowPos(handle, HWND_NOTOPMOST, 0, 0, global__Win32__State__Internal->window.lastWindowWidth, global__Win32__State__Internal->window.lastWindowHeight, SWP_SHOWWINDOW | SWP_NOMOVE);
+			api.user.setWindowPlacement(handle, &global__Win32__State__Internal->window.lastWindowPlacement);
+			bool result = (api.user.changeDisplaySettingsA(nullptr, CDS_RESET) == DISP_CHANGE_SUCCESSFUL);
+			api.user.showWindow(handle, SW_RESTORE);
 
 			settings.isFullscreen = false;
 			global__Win32__State__Internal->window.lastWindowPlacement = {};
@@ -3390,6 +3545,8 @@ namespace fpl {
 		}
 
 		fpl_internal bool Win32EnterFullscreen_Internal(const uint32_t fullscreenWidth, const uint32_t fullscreenHeight, const uint32_t refreshRate, const uint32_t colorBits) {
+			Win32APIFunctions_Internal &api = global__Win32__API__Functions__Internal;
+
 			// @TODO(final): Support for multi-monitor!
 			FPL_ASSERT(global__Win32__State__Internal != nullptr);
 			WindowSettings &settings = global__Win32__State__Internal->currentSettings.window;
@@ -3416,21 +3573,21 @@ namespace fpl {
 				useFullscreenHeight = wapi.gdi.getDeviceCaps(deviceContext, VERTRES);
 			}
 
-			FPL_WIN32_SET_WINDOW_LONG(windowHandle, GWL_STYLE, Win32FullscreenWindowStyle_Internal);
-			FPL_WIN32_SET_WINDOW_LONG(windowHandle, GWL_EXSTYLE, Win32FullscreenWindowExtendedStyle_Internal);
+			win32_setWindowLong(windowHandle, GWL_STYLE, Win32FullscreenWindowStyle_Internal);
+			win32_setWindowLong(windowHandle, GWL_EXSTYLE, Win32FullscreenWindowExtendedStyle_Internal);
 
-			FPL_WIN32_SET_WINDOW_POS(windowHandle, HWND_TOPMOST, 0, 0, useFullscreenWidth, useFullscreenHeight, SWP_SHOWWINDOW);
+			api.user.setWindowPos(windowHandle, HWND_TOPMOST, 0, 0, useFullscreenWidth, useFullscreenHeight, SWP_SHOWWINDOW);
 
 			DEVMODEA fullscreenSettings = {};
-			FPL_WIN32_ENUM_DISPLAY_SETTINGS_A(nullptr, 0, &fullscreenSettings);
+			api.user.enumDisplaySettingsA(nullptr, 0, &fullscreenSettings);
 			fullscreenSettings.dmPelsWidth = useFullscreenWidth;
 			fullscreenSettings.dmPelsHeight = useFullscreenHeight;
 			fullscreenSettings.dmBitsPerPel = useColourBits;
 			fullscreenSettings.dmDisplayFrequency = useRefreshRate;
 			fullscreenSettings.dmFields = DM_PELSWIDTH | DM_PELSHEIGHT | DM_BITSPERPEL | DM_DISPLAYFREQUENCY;
-			bool result = (FPL_WIN32_CHANGE_DISPLAY_SETTINGS_A(&fullscreenSettings, CDS_FULLSCREEN) == DISP_CHANGE_SUCCESSFUL);
+			bool result = (api.user.changeDisplaySettingsA(&fullscreenSettings, CDS_FULLSCREEN) == DISP_CHANGE_SUCCESSFUL);
 
-			FPL_WIN32_SHOW_WINDOW(windowHandle, SW_MAXIMIZE);
+			api.user.showWindow(windowHandle, SW_MAXIMIZE);
 
 			settings.isFullscreen = result;
 
@@ -3796,15 +3953,17 @@ namespace fpl {
 		}
 
 		fpl_internal bool Win32IsKeyDown_Internal(const uint64_t keyCode) {
-			bool result = (FPL_WIN32_GET_ASYNC_KEY_STATE((int)keyCode) & 0x8000) > 0;
+			Win32APIFunctions_Internal &api = global__Win32__API__Functions__Internal;
+			bool result = (api.user.getAsyncKeyState((int)keyCode) & 0x8000) > 0;
 			return(result);
 		}
 
 		fpl_api WindowSize GetWindowArea() {
 			FPL_ASSERT(global__Win32__State__Internal != nullptr);
+			Win32APIFunctions_Internal &api = global__Win32__API__Functions__Internal;
 			WindowSize result = {};
 			RECT windowRect;
-			if (FPL_WIN32_GET_CLIENT_RECT(global__Win32__State__Internal->window.windowHandle, &windowRect)) {
+			if (api.user.getClientRect(global__Win32__State__Internal->window.windowHandle, &windowRect)) {
 				result.width = windowRect.right - windowRect.left;
 				result.height = windowRect.bottom - windowRect.top;
 			}
@@ -3813,19 +3972,20 @@ namespace fpl {
 
 		fpl_api void SetWindowArea(const uint32_t width, const uint32_t height) {
 			FPL_ASSERT(global__Win32__State__Internal != nullptr);
+			Win32APIFunctions_Internal &api = global__Win32__API__Functions__Internal;
 			RECT clientRect, windowRect;
-			if (FPL_WIN32_GET_CLIENT_RECT(global__Win32__State__Internal->window.windowHandle, &clientRect) && FPL_WIN32_GET_WINDOW_RECT(global__Win32__State__Internal->window.windowHandle, &windowRect)) {
+			if (api.user.getClientRect(global__Win32__State__Internal->window.windowHandle, &clientRect) && api.user.getWindowRect(global__Win32__State__Internal->window.windowHandle, &windowRect)) {
 				int borderWidth = (windowRect.right - windowRect.left) - (clientRect.right - clientRect.left);
 				int borderHeight = (windowRect.bottom - windowRect.top) - (clientRect.bottom - clientRect.top);
 				int newWidth = width + borderWidth;
 				int newHeight = height + borderHeight;
-				FPL_WIN32_SET_WINDOW_POS(global__Win32__State__Internal->window.windowHandle, 0, 0, 0, newWidth, newHeight, SWP_NOZORDER | SWP_NOMOVE | SWP_NOACTIVATE);
+				api.user.setWindowPos(global__Win32__State__Internal->window.windowHandle, 0, 0, 0, newWidth, newHeight, SWP_NOZORDER | SWP_NOMOVE | SWP_NOACTIVATE);
 			}
 		}
 
 		fpl_api bool IsWindowResizable() {
 			FPL_ASSERT(global__Win32__State__Internal != nullptr);
-			DWORD style = FPL_WIN32_GET_WINDOW_LONG(global__Win32__State__Internal->window.windowHandle, GWL_STYLE);
+			DWORD style = win32_getWindowLong(global__Win32__State__Internal->window.windowHandle, GWL_STYLE);
 			bool result = (style & WS_THICKFRAME) > 0;
 			return(result);
 		}
@@ -3842,8 +4002,8 @@ namespace fpl {
 					style = Win32NonResizableWindowStyle_Internal;
 					exStyle = Win32NonResizableWindowExtendedStyle_Internal;
 				}
-				FPL_WIN32_SET_WINDOW_LONG(global__Win32__State__Internal->window.windowHandle, GWL_STYLE, style);
-				FPL_WIN32_SET_WINDOW_LONG(global__Win32__State__Internal->window.windowHandle, GWL_EXSTYLE, exStyle);
+				win32_setWindowLong(global__Win32__State__Internal->window.windowHandle, GWL_STYLE, style);
+				win32_setWindowLong(global__Win32__State__Internal->window.windowHandle, GWL_EXSTYLE, exStyle);
 				global__Win32__State__Internal->currentSettings.window.isResizable = value;
 			}
 		}
@@ -3851,7 +4011,7 @@ namespace fpl {
 		fpl_api bool IsWindowFullscreen() {
 			FPL_ASSERT(global__Win32__State__Internal != nullptr);
 			HWND windowHandle = global__Win32__State__Internal->window.windowHandle;
-			DWORD style = FPL_WIN32_GET_WINDOW_LONG(windowHandle, GWL_STYLE);
+			DWORD style = win32_getWindowLong(windowHandle, GWL_STYLE);
 			bool result = (style & Win32FullscreenWindowStyle_Internal) > 0;
 			return(result);
 		}
@@ -3859,15 +4019,16 @@ namespace fpl {
 		fpl_api void SetWindowFullscreen(const bool value, const uint32_t fullscreenWidth, const uint32_t fullscreenHeight, const uint32_t refreshRate) {
 			FPL_ASSERT(global__Win32__State__Internal != nullptr);
 			if (value) {
-				WindowSettings& windowSettings = global__Win32__State__Internal->currentSettings.window;
+				WindowSettings &windowSettings = global__Win32__State__Internal->currentSettings.window;
+				Win32APIFunctions_Internal &api = global__Win32__API__Functions__Internal;
 
 				// Save window placement and size
 				HWND windowHandle = global__Win32__State__Internal->window.windowHandle;
 				global__Win32__State__Internal->window.lastWindowPlacement = {};
-				FPL_WIN32_GET_WINDOW_PLACEMENT(windowHandle, &global__Win32__State__Internal->window.lastWindowPlacement);
+				api.user.getWindowPlacement(windowHandle, &global__Win32__State__Internal->window.lastWindowPlacement);
 
 				RECT windowRect = {};
-				FPL_WIN32_GET_WINDOW_RECT(windowHandle, &windowRect);
+				api.user.getWindowRect(windowHandle, &windowRect);
 				global__Win32__State__Internal->window.lastWindowWidth = windowRect.right - windowRect.left;
 				global__Win32__State__Internal->window.lastWindowHeight = windowRect.bottom - windowRect.top;
 
@@ -3883,10 +4044,11 @@ namespace fpl {
 
 		fpl_api WindowPosition GetWindowPosition() {
 			FPL_ASSERT(global__Win32__State__Internal != nullptr);
+			Win32APIFunctions_Internal &api = global__Win32__API__Functions__Internal;
 			WindowPosition result = {};
 			WINDOWPLACEMENT placement = {};
 			placement.length = sizeof(WINDOWPLACEMENT);
-			if (FPL_WIN32_GET_WINDOW_PLACEMENT(global__Win32__State__Internal->window.windowHandle, &placement) == TRUE) {
+			if (api.user.getWindowPlacement(global__Win32__State__Internal->window.windowHandle, &placement) == TRUE) {
 				switch (placement.showCmd) {
 					case SW_MAXIMIZE:
 					{
@@ -3910,17 +4072,20 @@ namespace fpl {
 
 		fpl_api void SetWindowTitle(const char *title) {
 			FPL_ASSERT(global__Win32__State__Internal != nullptr);
+			Win32APIFunctions_Internal &api = global__Win32__API__Functions__Internal;
 			HWND handle = global__Win32__State__Internal->window.windowHandle;
+
 			// @FIXME(final): This is not correct to set a ansi text, in unicode we have to use the Wide version!
-			FPL_WIN32_SET_WINDOW_TEXT_A(handle, title);
+			api.user.setWindowTextA(handle, title);
 		}
 
 		fpl_api void SetWindowPosition(const int32_t left, const int32_t top) {
 			FPL_ASSERT(global__Win32__State__Internal != nullptr);
+			Win32APIFunctions_Internal &api = global__Win32__API__Functions__Internal;
 			WINDOWPLACEMENT placement = {};
 			placement.length = sizeof(WINDOWPLACEMENT);
 			RECT windowRect;
-			if (FPL_WIN32_GET_WINDOW_PLACEMENT(global__Win32__State__Internal->window.windowHandle, &placement) && FPL_WIN32_GET_WINDOW_RECT(global__Win32__State__Internal->window.windowHandle, &windowRect)) {
+			if (api.user.getWindowPlacement(global__Win32__State__Internal->window.windowHandle, &placement) && api.user.getWindowRect(global__Win32__State__Internal->window.windowHandle, &windowRect)) {
 				switch (placement.showCmd) {
 					case SW_NORMAL:
 					case SW_SHOW:
@@ -3929,7 +4094,7 @@ namespace fpl {
 						placement.rcNormalPosition.top = top;
 						placement.rcNormalPosition.right = placement.rcNormalPosition.left + (windowRect.right - windowRect.left);
 						placement.rcNormalPosition.bottom = placement.rcNormalPosition.top + (windowRect.bottom - windowRect.top);
-						FPL_WIN32_SET_WINDOW_PLACEMENT(global__Win32__State__Internal->window.windowHandle, &placement);
+						api.user.setWindowPlacement(global__Win32__State__Internal->window.windowHandle, &placement);
 					} break;
 				}
 			}
@@ -3942,6 +4107,7 @@ namespace fpl {
 
 		fpl_api bool WindowUpdate() {
 			FPL_ASSERT(global__Win32__State__Internal != nullptr);
+			Win32APIFunctions_Internal &api = global__Win32__API__Functions__Internal;
 			bool result = false;
 
 			// Poll gamepad controller states
@@ -3950,9 +4116,9 @@ namespace fpl {
 			// Poll window events
 			if (global__Win32__State__Internal->window.windowHandle != 0) {
 				MSG msg;
-				while (FPL_WIN32_PEEK_MESSAGE(&msg, nullptr, 0, 0, PM_REMOVE) != 0) {
-					FPL_WIN32_TRANSLATE_MESSAGE(&msg);
-					FPL_WIN32_DISPATCH_MESSAGE(&msg);
+				while (win32_peekMessage(&msg, nullptr, 0, 0, PM_REMOVE) != 0) {
+					api.user.translateMessage(&msg);
+					win32_dispatchMessage(&msg);
 				}
 				result = global__Win32__State__Internal->window.isRunning;
 			}
@@ -4058,8 +4224,9 @@ namespace fpl {
 		LRESULT CALLBACK Win32MessageProc_Internal(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 			FPL_ASSERT(global__Win32__State__Internal != nullptr);
 			Win32State_Internal &win32State = *global__Win32__State__Internal;
+			Win32APIFunctions_Internal &api = global__Win32__API__Functions__Internal;
 			if (!win32State.window.windowHandle) {
-				return FPL_WIN32_DEF_WINDOW_PROC(hwnd, msg, wParam, lParam);
+				return win32_defWindowProc(hwnd, msg, wParam, lParam);
 			}
 
 			LRESULT result = 0;
@@ -4199,9 +4366,9 @@ namespace fpl {
 					// @TODO(final): This is not right to assume default cursor always, because the size cursor does not work this way!
 					if (win32State.window.isCursorActive) {
 						HCURSOR cursor = GetCursor();
-						FPL_WIN32_SET_CURSOR(cursor);
+						api.user.setCursor(cursor);
 					} else {
-						FPL_WIN32_SET_CURSOR(nullptr);
+						api.user.setCursor(nullptr);
 						return 1;
 					}
 				} break;
@@ -4233,28 +4400,30 @@ namespace fpl {
 				default:
 					break;
 			}
-			result = FPL_WIN32_DEF_WINDOW_PROC(hwnd, msg, wParam, lParam);
+			result = win32_defWindowProc(hwnd, msg, wParam, lParam);
 			return (result);
 		}
 
 		fpl_internal bool Win32InitWindow_Internal(Win32State_Internal &win32State, const Settings &initSettings) {
+			Win32APIFunctions_Internal &api = global__Win32__API__Functions__Internal;
+
 			// Register window class
-			FPL_WIN32_WNDCLASSEX windowClass = {};
-			windowClass.cbSize = sizeof(FPL_WIN32_WNDCLASSEX);
-			windowClass.hInstance = FPL_WIN32_GET_MODULE_HANDLE(nullptr);
+			win32_wndclassex windowClass = {};
+			windowClass.cbSize = sizeof(win32_wndclassex);
+			windowClass.hInstance = GetModuleHandleA(nullptr);
 			windowClass.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
 			windowClass.cbSize = sizeof(windowClass);
 			windowClass.style = CS_HREDRAW | CS_VREDRAW;
-			windowClass.hCursor = LoadCursor(nullptr, IDC_ARROW);
-			windowClass.hIcon = LoadIcon(nullptr, IDI_APPLICATION);
-			windowClass.hIconSm = LoadIcon(nullptr, IDI_APPLICATION);
+			windowClass.hCursor = win32_loadCursor(nullptr, IDC_ARROW);
+			windowClass.hIcon = win32_loadIcon(nullptr, IDI_APPLICATION);
+			windowClass.hIconSm = win32_loadIcon(nullptr, IDI_APPLICATION);
 			windowClass.lpszClassName = FPL_WIN32_CLASSNAME;
 			windowClass.lpfnWndProc = Win32MessageProc_Internal;
 			if (initSettings.video.driverType == VideoDriverType::OpenGL) {
 				windowClass.style |= CS_OWNDC;
 			}
-			FPL_WIN32_STRINGCOPY(windowClass.lpszClassName, FPL_WIN32_GETSTRINGLENGTH(windowClass.lpszClassName), win32State.window.windowClass, FPL_ARRAYCOUNT(win32State.window.windowClass));
-			if (FPL_WIN32_REGISTER_CLASS_EX(&windowClass) == 0) {
+			win32_copyString(windowClass.lpszClassName, win32_getStringLength(windowClass.lpszClassName), win32State.window.windowClass, FPL_ARRAYCOUNT(win32State.window.windowClass));
+			if (win32_registerClassEx(&windowClass) == 0) {
 				PushError_Internal("[Win32] Failed Registering Window Class '%s'", win32State.window.windowClass);
 				return false;
 			}
@@ -4274,7 +4443,7 @@ namespace fpl {
 			WindowSettings &currentWindowSettings = win32State.currentSettings.window;
 			currentWindowSettings.isFullscreen = false;
 			if (strings::GetAnsiStringLength(initSettings.window.windowTitle) > 0) {
-				FPL_WIN32_ANSI_TO_STRING(initSettings.window.windowTitle, strings::GetAnsiStringLength(initSettings.window.windowTitle), windowTitleBuffer, FPL_ARRAYCOUNT(windowTitleBuffer));
+				win32_ansiToString(initSettings.window.windowTitle, strings::GetAnsiStringLength(initSettings.window.windowTitle), windowTitleBuffer, FPL_ARRAYCOUNT(windowTitleBuffer));
 				windowTitle = windowTitleBuffer;
 				strings::CopyAnsiString(initSettings.window.windowTitle, strings::GetAnsiStringLength(initSettings.window.windowTitle), currentWindowSettings.windowTitle, FPL_ARRAYCOUNT(currentWindowSettings.windowTitle));
 			}
@@ -4302,7 +4471,7 @@ namespace fpl {
 				windowRect.top = 0;
 				windowRect.right = initSettings.window.windowWidth;
 				windowRect.bottom = initSettings.window.windowHeight;
-				FPL_WIN32_ADJUST_WINDOW_RECT(&windowRect, style, false);
+				api.user.adjustWindowRect(&windowRect, style, false);
 				windowWidth = windowRect.right - windowRect.left;
 				windowHeight = windowRect.bottom - windowRect.top;
 			} else {
@@ -4313,7 +4482,7 @@ namespace fpl {
 
 
 			// Create window
-			win32State.window.windowHandle = FPL_WIN32_CREATE_WINDOW_EX(exStyle, windowClass.lpszClassName, windowTitle, style, windowX, windowY, windowWidth, windowHeight, nullptr, nullptr, windowClass.hInstance, nullptr);
+			win32State.window.windowHandle = win32_createWindowEx(exStyle, windowClass.lpszClassName, windowTitle, style, windowX, windowY, windowWidth, windowHeight, nullptr, nullptr, windowClass.hInstance, nullptr);
 			if (win32State.window.windowHandle == nullptr) {
 				PushError_Internal("[Win32] Failed creating window for class '%s' and position (%d x %d) with size (%d x %d)", win32State.window.windowClass, windowWidth, windowHeight, windowWidth, windowHeight);
 				return false;
@@ -4323,13 +4492,13 @@ namespace fpl {
 			currentWindowSettings.windowWidth = windowWidth;
 			currentWindowSettings.windowHeight = windowHeight;
 			RECT clientRect;
-			if (FPL_WIN32_GET_CLIENT_RECT(global__Win32__State__Internal->window.windowHandle, &clientRect)) {
+			if (api.user.getClientRect(global__Win32__State__Internal->window.windowHandle, &clientRect)) {
 				currentWindowSettings.windowWidth = clientRect.right - clientRect.left;
 				currentWindowSettings.windowHeight = clientRect.bottom - clientRect.top;
 			}
 
 			// Get device context so we can swap the back and front buffer
-			win32State.window.deviceContext = FPL_WIN32_GET_DC(win32State.window.windowHandle);
+			win32State.window.deviceContext = api.user.getDC(win32State.window.windowHandle);
 			if (win32State.window.deviceContext == nullptr) {
 				PushError_Internal("[Win32] Failed aquiring device context from window '%d'", win32State.window.windowHandle);
 				return false;
@@ -4369,8 +4538,8 @@ namespace fpl {
 			}
 
 			// Show window
-			FPL_WIN32_SHOW_WINDOW(win32State.window.windowHandle, SW_SHOW);
-			FPL_WIN32_UPDATE_WINDOW(win32State.window.windowHandle);
+			api.user.showWindow(win32State.window.windowHandle, SW_SHOW);
+			api.user.updateWindow(win32State.window.windowHandle);
 
 			// Cursor is visible at start
 			win32State.window.defaultCursor = windowClass.hCursor;
@@ -4381,15 +4550,17 @@ namespace fpl {
 		}
 
 		fpl_internal void Win32ReleaseWindow_Internal(Win32State_Internal &win32State) {
+			Win32APIFunctions_Internal &api = global__Win32__API__Functions__Internal;
+
 			if (win32State.window.deviceContext != nullptr) {
-				FPL_WIN32_RELEASE_DC(win32State.window.windowHandle, win32State.window.deviceContext);
+				api.user.releaseDC(win32State.window.windowHandle, win32State.window.deviceContext);
 				win32State.window.deviceContext = nullptr;
 			}
 
 			if (win32State.window.windowHandle != nullptr) {
-				FPL_WIN32_DESTROY_WINDOW(win32State.window.windowHandle);
+				api.user.destroyWindow(win32State.window.windowHandle);
 				win32State.window.windowHandle = nullptr;
-				FPL_WIN32_UNREGISTER_CLASS(win32State.window.windowClass, global__Win32__AppState__Internal.appInstance);
+				win32_unregisterClass(win32State.window.windowClass, global__Win32__AppState__Internal.appInstance);
 			}
 
 			if (global__EventQueue__Internal != nullptr) {
@@ -4412,7 +4583,7 @@ namespace fpl {
 			Win32InputFunctions_Internal &inputFuncs = global__Win32__Input__Functions__Internal;
 			if (xinputLibrary) {
 				inputFuncs.xinputLibrary = xinputLibrary;
-				inputFuncs.xInputSetState = (xinput_get_state *)GetProcAddress(xinputLibrary, "XInputGetState");
+				inputFuncs.xInputSetState = (win32_func_XInputGetState *)GetProcAddress(xinputLibrary, "XInputGetState");
 			}
 			if (inputFuncs.xInputSetState == nullptr) {
 				inputFuncs.xInputSetState = Win32XInputGetStateStub;
@@ -4433,23 +4604,96 @@ namespace fpl {
 	fpl_api bool Win32LoadAPI_Internal(Win32State_Internal &win32State) {
 		Win32APIFunctions_Internal &wapi = global__Win32__API__Functions__Internal;
 
-	#if defined(FPL_ENABLE_WINDOW)
-		// GDI
-		if (win32State.initFlags & InitFlags::Window) {
-			const char *gdiLibraryName = "gdi32.dll";
-			HMODULE library = wapi.gdi.gdiLibrary = LoadLibraryA(gdiLibraryName);
+		// Shell32
+		{
+			const char *shellLibraryName = "shell32.dll";
+			HMODULE library = wapi.shell.shellLibrary = LoadLibraryA(shellLibraryName);
 			if (library == nullptr) {
-				PushError_Internal("[Win32] Failed loading win32 library '%s'!", gdiLibraryName);
+				PushError_Internal("[Win32] Failed loading win32 library '%s'!", shellLibraryName);
 				return false;
 			}
+			FPL_WIN32_GET_FUNCTION_ADDRESS(library, shellLibraryName, wapi.shell.commandLineToArgvW, win32_func_CommandLineToArgvW, "CommandLineToArgvW");
+			FPL_WIN32_GET_FUNCTION_ADDRESS(library, shellLibraryName, wapi.shell.shGetFolderPathA, win32_func_SHGetFolderPathA, "SHGetFolderPathA");
+			FPL_WIN32_GET_FUNCTION_ADDRESS(library, shellLibraryName, wapi.shell.shGetFolderPathW, win32_func_SHGetFolderPathW, "SHGetFolderPathW");
+		}
 
-			FPL_WIN32_GET_FUNCTION_ADDRESS(library, gdiLibraryName, wapi.gdi.choosePixelFormat, fpl_choose_pixel_format, "ChoosePixelFormat");
-			FPL_WIN32_GET_FUNCTION_ADDRESS(library, gdiLibraryName, wapi.gdi.setPixelFormat, fpl_set_pixel_format, "SetPixelFormat");
-			FPL_WIN32_GET_FUNCTION_ADDRESS(library, gdiLibraryName, wapi.gdi.describePixelFormat, fpl_describe_pixel_format, "DescribePixelFormat");
-			FPL_WIN32_GET_FUNCTION_ADDRESS(library, gdiLibraryName, wapi.gdi.stretchDIBits, fpl_stretch_dibits, "StretchDIBits");
-			FPL_WIN32_GET_FUNCTION_ADDRESS(library, gdiLibraryName, wapi.gdi.deleteObject, fpl_delete_object, "DeleteObject");
-			FPL_WIN32_GET_FUNCTION_ADDRESS(library, gdiLibraryName, wapi.gdi.swapBuffers, fpl_swap_buffers, "SwapBuffers");
-			FPL_WIN32_GET_FUNCTION_ADDRESS(library, gdiLibraryName, wapi.gdi.getDeviceCaps, fpl_get_device_caps, "GetDeviceCaps");
+	#if defined(FPL_ENABLE_WINDOW)
+		if (win32State.initFlags & InitFlags::Window) {
+			// User32
+			{
+				const char *userLibraryName = "user32.dll";
+				HMODULE library = wapi.user.userLibrary = LoadLibraryA(userLibraryName);
+				if (library == nullptr) {
+					PushError_Internal("[Win32] Failed loading win32 library '%s'!", userLibraryName);
+					return false;
+				}
+
+				FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.registerClassExA, win32_func_RegisterClassExA, "RegisterClassExA");
+				FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.registerClassExW, win32_func_RegisterClassExW, "RegisterClassExW");
+				FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.unregisterClassA, win32_func_UnregisterClassA, "UnregisterClassA");
+				FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.unregisterClassW, win32_func_UnregisterClassW, "UnregisterClassW");
+				FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.showWindow, win32_func_ShowWindow, "ShowWindow");
+				FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.destroyWindow, win32_func_DestroyWindow, "DestroyWindow");
+				FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.updateWindow, win32_func_UpdateWindow, "UpdateWindow");
+				FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.translateMessage, win32_func_TranslateMessage, "TranslateMessage");
+				FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.dispatchMessageA, win32_func_DispatchMessageA, "DispatchMessageA");
+				FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.dispatchMessageW, win32_func_DispatchMessageW, "DispatchMessageW");
+				FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.peekMessageA, win32_func_PeekMessageA, "PeekMessageA");
+				FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.peekMessageW, win32_func_PeekMessageW, "PeekMessageW");
+				FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.defWindowProcA, win32_func_DefWindowProcA, "DefWindowProcA");
+				FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.defWindowProcW, win32_func_DefWindowProcW, "DefWindowProcW");
+				FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.createWindowExA, win32_func_CreateWindowExA, "CreateWindowExA");
+				FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.createWindowExW, win32_func_CreateWindowExW, "CreateWindowExW");
+				FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.setWindowPos, win32_func_SetWindowPos, "SetWindowPos");
+				FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.getWindowPlacement, win32_func_GetWindowPlacement, "GetWindowPlacement");
+				FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.setWindowPlacement, win32_func_SetWindowPlacement, "SetWindowPlacement");
+				FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.getClientRect, win32_func_GetClientRect, "GetClientRect");
+				FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.getWindowRect, win32_func_GetWindowRect, "GetWindowRect");
+				FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.adjustWindowRect, win32_func_AdjustWindowRect, "AdjustWindowRect");
+				FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.getAsyncKeyState, win32_func_GetAsyncKeyState, "GetAsyncKeyState");
+				FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.mapVirtualKeyA, win32_func_MapVirtualKeyA, "MapVirtualKeyA");
+				FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.mapVirtualKeyW, win32_func_MapVirtualKeyW, "MapVirtualKeyW");
+				FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.setCursor, win32_func_SetCursor, "SetCursor");
+				FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.getCursor, win32_func_GetCursor, "GetCursor");
+				FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.loadCursorA, win32_func_LoadCursorA, "LoadCursorA");
+				FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.loadCursorW, win32_func_LoadCursorW, "LoadCursorW");
+				FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.loadIconA, win32_func_LoadIconA, "LoadCursorA");
+				FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.loadIconW, win32_func_LoadIconW, "LoadIconW");
+				FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.setWindowTextA, win32_func_SetWindowTextA, "SetWindowTextA");
+				FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.setWindowTextW, win32_func_SetWindowTextW, "SetWindowTextW");
+				FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.setWindowLongA, win32_func_SetWindowLongA, "SetWindowLongA");
+				FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.setWindowLongW, win32_func_SetWindowLongW, "SetWindowLongW");
+				FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.getWindowLongA, win32_func_GetWindowLongA, "GetWindowLongA");
+				FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.getWindowLongW, win32_func_GetWindowLongW, "GetWindowLongW");
+				FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.setWindowLongPtrA, win32_func_SetWindowLongPtrA, "SetWindowLongPtrA");
+				FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.setWindowLongPtrW, win32_func_SetWindowLongPtrW, "SetWindowLongPtrW");
+				FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.getWindowLongPtrA, win32_func_GetWindowLongPtrA, "GetWindowLongPtrA");
+				FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.getWindowLongPtrW, win32_func_GetWindowLongPtrW, "GetWindowLongPtrW");
+				FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.releaseDC, win32_func_ReleaseDC, "ReleaseDC");
+				FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.getDC, win32_func_GetDC, "GetDC");
+				FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.changeDisplaySettingsA, win32_func_ChangeDisplaySettingsA, "ChangeDisplaySettingsA");
+				FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.changeDisplaySettingsW, win32_func_ChangeDisplaySettingsW, "ChangeDisplaySettingsW");
+				FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.enumDisplaySettingsA, win32_func_EnumDisplaySettingsA, "EnumDisplaySettingsA");
+				FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.enumDisplaySettingsW, win32_func_EnumDisplaySettingsW, "EnumDisplaySettingsW");
+			}
+
+			// GDI32
+			{
+				const char *gdiLibraryName = "gdi32.dll";
+				HMODULE library = wapi.gdi.gdiLibrary = LoadLibraryA(gdiLibraryName);
+				if (library == nullptr) {
+					PushError_Internal("[Win32] Failed loading win32 library '%s'!", gdiLibraryName);
+					return false;
+				}
+
+				FPL_WIN32_GET_FUNCTION_ADDRESS(library, gdiLibraryName, wapi.gdi.choosePixelFormat, win32_func_ChoosePixelFormat, "ChoosePixelFormat");
+				FPL_WIN32_GET_FUNCTION_ADDRESS(library, gdiLibraryName, wapi.gdi.setPixelFormat, win32_func_SetPixelFormat, "SetPixelFormat");
+				FPL_WIN32_GET_FUNCTION_ADDRESS(library, gdiLibraryName, wapi.gdi.describePixelFormat, win32_func_DescribePixelFormat, "DescribePixelFormat");
+				FPL_WIN32_GET_FUNCTION_ADDRESS(library, gdiLibraryName, wapi.gdi.stretchDIBits, win32_func_StretchDIBits, "StretchDIBits");
+				FPL_WIN32_GET_FUNCTION_ADDRESS(library, gdiLibraryName, wapi.gdi.deleteObject, win32_func_DeleteObject, "DeleteObject");
+				FPL_WIN32_GET_FUNCTION_ADDRESS(library, gdiLibraryName, wapi.gdi.swapBuffers, win32_func_SwapBuffers, "SwapBuffers");
+				FPL_WIN32_GET_FUNCTION_ADDRESS(library, gdiLibraryName, wapi.gdi.getDeviceCaps, win32_func_GetDeviceCaps, "GetDeviceCaps");
+			}
 		}
 	#endif
 
@@ -4462,6 +4706,14 @@ namespace fpl {
 			FreeLibrary(api.gdi.gdiLibrary);
 			api.gdi = {};
 		}
+		if (api.user.userLibrary != nullptr) {
+			FreeLibrary(api.user.userLibrary);
+			api.user = {};
+		}
+		if (api.shell.shellLibrary != nullptr) {
+			FreeLibrary(api.shell.shellLibrary);
+			api.shell = {};
+		}
 	}
 
 	fpl_api bool InitPlatform(const InitFlags initFlags, const Settings &initSettings) {
@@ -4470,7 +4722,7 @@ namespace fpl {
 			return false;
 		}
 
-		global__Win32__AppState__Internal.appInstance = FPL_WIN32_GET_MODULE_HANDLE(nullptr);
+		global__Win32__AppState__Internal.appInstance = GetModuleHandleA(nullptr);
 
 		// @NOTE(final): Expect kernel32.lib to be linked always, so VirtualAlloc and LoadLibrary will always work.
 
@@ -4635,7 +4887,7 @@ namespace fpl {
 		// @NOTE(final): Temporary load and unload shell32 for parsing the arguments
 		HMODULE shellapiLibrary = LoadLibraryA("shell32.dll");
 		if (shellapiLibrary != nullptr) {
-			fpl_command_line_to_argv_w *commandLineToArgvW = (fpl_command_line_to_argv_w *)GetProcAddress(shellapiLibrary, "CommandLineToArgvW");
+			win32_func_CommandLineToArgvW *commandLineToArgvW = (win32_func_CommandLineToArgvW *)GetProcAddress(shellapiLibrary, "CommandLineToArgvW");
 			if (commandLineToArgvW != nullptr) {
 				// Parse arguments and compute total UTF8 string length
 				int executableFilePathArgumentCount = 0;
