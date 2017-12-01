@@ -27,3 +27,4 @@
 /demos/immediates
 /demos/compile_log.txt
 /generated_docs
+/demos/FPL_FFMpeg/dependencies/ffmpeg/bin/*.dll
