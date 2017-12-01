@@ -281,6 +281,8 @@ SOFTWARE.
 - New: [Win32] Implementation for AtomicStoreU32, AtomicStoreU64, AtomicStoreS32, AtomicStoreS64, AtomicStorePtr
 - New: [Linux] Implementation for AtomicLoadU32, AtomicLoadU64, AtomicLoadS32, AtomicLoadS64, AtomicLoadPtr
 - New: [Linux] Implementation for AtomicStoreU32, AtomicStoreU64, AtomicStoreS32, AtomicStoreS64, AtomicStorePtr
+- New: [Win32] Loading of DirectSound (Prepare for audio output support)
+- Draft: Added first audio output api
 - Fixed: Threading context determination
 - Fixed: [Win32] Fixed all thread implementations
 - Fixed: [Win32] SetWindowLongPtrA does not exists on X86
@@ -288,6 +290,7 @@ SOFTWARE.
 - Changed: Improved header documentation (More examples, better descriptions, proper markdown syntax, etc.)
 - Changed: All threading functions uses pointer instead of reference
 - Changed: [Linux] Atomic* uses __sync instead of __atomic
+- Changed: A bit of internal cleanup
 
 ## v0.4.7 alpha:
 - Changed: [Win32] Load all user32 and shell32 functions dynamically
@@ -576,26 +579,28 @@ SOFTWARE.
 #endif
 
 //
-// Compiler depend stuff we do to detect something else
+// Compiler depended settings and detections
 //
 #if defined(FPL_COMPILER_MSVC)
-// Disable noexcept compiler warning for C++
+	//! Disable noexcept compiler warning for C++
 #	pragma warning( disable : 4577 )
+	//! Disable "switch statement contains 'default' but no 'case' labels" compiler warning for C++
+#	pragma warning( disable : 4065 )
 
 #	if defined(_DEBUG) || (!defined(NDEBUG))
-//! Debug mode detected
+		//! Debug mode detected
 #		define FPL_ENABLE_DEBUG
 #	else
-//! Non-debug (Release) mode detected
+		//! Non-debug (Release) mode detected
 #		define FPL_ENABLE_RELEASE
 #	endif
 #else
 // @NOTE(final): Expect all other compilers to pass in FPL_DEBUG manually
 #	if defined(FPL_DEBUG)
-//! Debug mode detected
+		//! Debug mode detected
 #		define FPL_ENABLE_DEBUG
 #	else
-//! Non-debug (Release) mode detected
+		//! Non-debug (Release) mode detected
 #		define FPL_ENABLE_RELEASE
 #	endif
 #endif
@@ -603,38 +608,38 @@ SOFTWARE.
 //
 // Options & Feature detection
 //
+// Assertions
 #if !defined(FPL_NO_ASSERTIONS)
 #	if !defined(FPL_FORCE_ASSERTIONS)
 #		if defined(FPL_ENABLE_DEBUG)
-//! Assertions enabled in debug mode by default
+			//! Enable Assertions in Debug Mode by default
 #			define FPL_ENABLE_ASSERTIONS
 #		endif
 #	else
-//! Assertions enabled always
+		//! Enable Assertions always
 #		define FPL_ENABLE_ASSERTIONS
 #	endif
 #endif
 #if defined(FPL_ENABLE_ASSERTIONS)
 #	if !defined(FPL_NO_C_ASSERT)
-//! C-Runtime assertions enabled by default
+		//! Enable C-Runtime Assertions by default
 #		define FPL_ENABLE_C_ASSERT
 #	endif
 #endif
-
+// Window
 #if !defined(FPL_NO_WINDOW)
-//! Window support enabled by default
+	//! Window support enabled by default
 #	define FPL_SUPPORT_WINDOW
 #endif
-
+// Video
 #if !defined(FPL_NO_VIDEO_OPENGL)
-//! OpenGL support enabled by default
+	//! OpenGL support enabled by default
 #	define FPL_SUPPORT_VIDEO_OPENGL
 #endif
 #if !defined(FPL_NO_VIDEO_SOFTWARE)
-//! Software rendering support enabled by default
+	//! Software rendering support enabled by default
 #	define FPL_SUPPORT_VIDEO_SOFTWARE
 #endif
-
 #if !defined(FPL_SUPPORT_WINDOW)
 #	if defined(FPL_SUPPORT_VIDEO_OPENGL)
 #		undef FPL_SUPPORT_VIDEO_OPENGL
@@ -643,30 +648,72 @@ SOFTWARE.
 #		undef FPL_SUPPORT_VIDEO_SOFTWARE
 #	endif
 #endif
+// Audio
+#if !defined(FPL_NO_AUDIO)
+	//! Enable Audio Support
+#	define FPL_SUPPORT_AUDIO
+#endif
+#if defined(FPL_PLATFORM_WIN32)
+#	if !defined(FPL_NO_AUDIO_DIRECTSOUND)
+		//! Enable Support for DirectSound Audio Driver
+#		define FPL_SUPPORT_AUDIO_DIRECTSOUND
+#	endif
+#elif defined(FPL_PLATFORM_LINUX)
+	// @TODO(final): Defines for linux audio drivers (ALSA)
+#else
+	// @TODO(final): Defines for other audio drivers
+#endif // FPL_PLATFORM_*
+#if !defined(FPL_NO_AUDIO_NULL)
+	//! Enable Support for NULL Audio Driver
+#	define FPL_SUPPORT_AUDIO_NULL
+#endif
+#if !defined(FPL_SUPPORT_AUDIO)
+#	if defined(FPL_SUPPORT_AUDIO_DIRECTSOUND)
+#		undef FPL_SUPPORT_AUDIO_DIRECTSOUND
+#	endif
+#	if defined(FPL_SUPPORT_AUDIO_NULL)
+#		undef FPL_SUPPORT_AUDIO_NULL
+#	endif
+#endif
 
+//
+// Enable supports (FPL uses _ENABLE_ internally only)
+//
 #if defined(FPL_SUPPORT_WINDOW)
-//! Enable window
+	//! Enable Window
 #	define FPL_ENABLE_WINDOW
 #endif
 #if defined(FPL_SUPPORT_VIDEO_OPENGL)
-//! Enable opengl hardware rendering
+	//! Enable OpenGL Video Driver
 #	define FPL_ENABLE_VIDEO_OPENGL
 #endif
 #if defined(FPL_SUPPORT_VIDEO_SOFTWARE)
-//! Enable software rendering
+	//! Enable Software Rendering Video Driver
 #	define FPL_ENABLE_VIDEO_SOFTWARE
+#endif
+#if defined(FPL_SUPPORT_AUDIO)
+	//! Enable Audio
+#	define FPL_ENABLE_AUDIO
+#endif
+#if defined(FPL_SUPPORT_AUDIO_DIRECTSOUND)
+	//! Enable DirectSound Audio Driver
+#	define FPL_ENABLE_AUDIO_DIRECTSOUND
+#endif
+#if defined(FPL_SUPPORT_AUDIO_NULL)
+	//! Enable Null Audio Driver
+#	define FPL_ENABLE_AUDIO_NULL
 #endif
 
 #if !defined(FPL_NO_ERROR_IN_CONSOLE)
-//! Write errors in console
+	//! Write errors in console
 #	define FPL_ENABLE_ERROR_IN_CONSOLE
 #endif
 #if !defined(FPL_NO_MULTIPLE_ERRORSTATES)
-//! Allow multiple error states
-//#	define FPL_ENABLE_MULTIPLE_ERRORSTATES
+	//! Allow multiple error states
+#	define FPL_ENABLE_MULTIPLE_ERRORSTATES
 #endif
 #if defined(FPL_AUTO_NAMESPACE)
-//! Expand namespaces
+	//! Expand namespaces
 #	define FPL_ENABLE_AUTO_NAMESPACE
 #endif
 
@@ -684,7 +731,6 @@ SOFTWARE.
 //! Public api call
 #	define fpl_api extern
 #endif // FPL_API_AS_PRIVATE
-
 //! Constant value
 #define fpl_constant constexpr
 
@@ -782,7 +828,7 @@ namespace fpl {
 		fpl_api void AtomicWriteFence();
 		//! Insert a atomic read/write fence/barrier. This will complete previous reads/writes before future reads/writes and prevents the compiler from reordering memory access across this fence.
 		fpl_api void AtomicReadWriteFence();
-		
+
 		//! Replace a 32-bit unsigned integer with the given value atomically. Returns the target before the replacement.
 		fpl_api uint32_t AtomicExchangeU32(volatile uint32_t *target, const uint32_t value);
 		//! Replace a 32-bit signed integer with the given value atomically. Returns the target before the replacement.
@@ -835,7 +881,7 @@ namespace fpl {
 		fpl_api int64_t AtomicLoadS64(volatile int64_t *source);
 		//! Loads the 64-bit signed value atomically and returns the result.
 		fpl_api void *AtomicLoadPtr(volatile void **source);
-		
+
 		//! Stores the 32-bit unsigned value atomically into the target.
 		fpl_api void AtomicStoreU32(volatile uint32_t *dest, const uint32_t value);
 		//! Stores the 64-bit unsigned value atomically into the target.
@@ -854,30 +900,6 @@ namespace fpl {
 		fpl_api uint32_t GetProcessorCoreCount();
 		//! Returns the processor name/identifier. Result is written in the required destination buffer.
 		fpl_api char *GetProcessorName(char *destBuffer, const uint32_t maxDestBufferLen);
-	};
-
-	//! Initialization flags (Window, Video, All, etc.)
-	enum class InitFlags : uint32_t {
-		//! No init flags
-		None = 0,
-		//! Create a single window
-		Window = 1 << 0,
-		//! Create a video context
-		Video = 1 << 1,
-		//! Default init flags for a window + video
-		All = Window | Video,
-	};
-	//! Operator support for InitFlags
-	FPL_ENUM_AS_FLAGS_OPERATORS_INTERNAL(InitFlags, uint32_t);
-
-	//! Video driver type
-	enum class VideoDriverType : uint32_t {
-		//! No video driver
-		None = 0,
-		//! OpenGL
-		OpenGL,
-		//! Software
-		Software,
 	};
 
 	//! Window settings (Size, Title etc.)
@@ -910,6 +932,32 @@ namespace fpl {
 		result.isFullscreen = false;
 		return(result);
 	}
+
+	//! Initialization flags (Window, Video, Audio, etc.)
+	enum class InitFlags : uint32_t {
+		//! No init flags
+		None = 0,
+		//! Create a single window
+		Window = 1 << 0,
+		//! Use a video backbuffer (A window without video is pretty much useless)
+		Video = 1 << 1,
+		//! Use audio
+		Audio = 1 << 2,
+		//! Default init flags for a window + video + audio
+		All = Window | Video | Audio,
+	};
+	//! Operator support for InitFlags
+	FPL_ENUM_AS_FLAGS_OPERATORS_INTERNAL(InitFlags, uint32_t);
+
+	//! Video driver type
+	enum class VideoDriverType : uint32_t {
+		//! No video driver
+		None = 0,
+		//! OpenGL
+		OpenGL,
+		//! Software
+		Software,
+	};
 
 	//! Video compability profile
 	enum class VideoCompabilityProfile {
@@ -954,12 +1002,67 @@ namespace fpl {
 		return(result);
 	}
 
+	//! Audio driver type
+	enum class AudioDriverType : uint32_t {
+		//! No audio driver
+		None = 0,
+		//! Null audio driver
+		Null,
+		//! DirectSound audio driver
+		DirectSound,
+	};
+
+	//! Audio format type
+	enum class AudioFormatType {
+		//! No audio format set
+		None,
+		// 16-bit signed integer
+		S16,
+		// 24-bit signed integer
+		S24,
+		// 32-bit signed integer
+		S32,
+		// IEEE 32-bit floating point
+		F32,
+	};
+
+	//! Audio settings container (Audio driver, Format, Channels, Samples per second, etc.)
+	struct AudioSettings {
+		//! Audio driver
+		AudioDriverType driverType;
+		//! Audio format
+		AudioFormatType formatType;
+		//! Number of channels (1 = Mono, 2 = Stereo, etc.)
+		uint32_t channelCount;
+		//! Samples per second (Hz)
+		uint32_t sampleRate;
+	};
+
+	//! Make default settings for audio
+	inline AudioSettings DefaultAudioSettings() {
+		AudioSettings result = {};
+		// @NOTE(final): Audio driver auto detection
+		result.channelCount = 2;
+		result.formatType = AudioFormatType::S16;
+		result.sampleRate = 44100;
+	#if defined(FPL_ENABLE_AUDIO_DIRECTSOUND)
+		result.driverType = AudioDriverType::DirectSound;
+	#elif defined(FPL_ENABLE_AUDIO_NULL)
+		result.driverType = AudioDriverType::Null;
+	#else
+		result.driverType = AudioDriverType::None;
+	#endif
+		return(result);
+	}
+
 	//! Settings container (Window, Video, etc)
 	struct Settings {
 		//! Window settings
 		WindowSettings window;
 		//! Video settings
 		VideoSettings video;
+		//! Audio settings
+		AudioSettings audio;
 	};
 
 	//! Default settings for video, window, etc.
@@ -967,6 +1070,7 @@ namespace fpl {
 		Settings result = {};
 		result.window = DefaultWindowSettings();
 		result.video = DefaultVideoSettings();
+		result.audio = DefaultAudioSettings();
 		return(result);
 	}
 
@@ -1722,6 +1826,25 @@ namespace fpl {
 		fpl_api bool ResizeVideoBackBuffer(const uint32_t width, const uint32_t height);
 	};
 #endif // FPL_ENABLE_WINDOW
+
+#if defined(FPL_ENABLE_AUDIO)
+	//! Audio devices and buffers
+	namespace audio {
+		union AudioDeviceID {
+		#if defined(FPL_ENABLE_AUDIO_DIRECTSOUND)
+			// @NOTE(final): GUID as identifier
+			uint8_t directSoundGUID[16];
+		#endif
+		};
+
+		struct AudioDeviceInfo {
+			AudioDeviceID id;
+			char name[256];
+		};
+
+		fpl_api uint32_t GetAudioOutputDevices(AudioDeviceInfo *outputDeviceInfos, const uint32_t maxOutputDeviceInfoCount);
+	};
+#endif // FPL_ENABLE_AUDIO
 };
 
 //
@@ -1738,6 +1861,9 @@ using namespace fpl;
 #	if defined(FPL_ENABLE_WINDOW)
 using namespace fpl::window;
 using namespace fpl::video;
+#	endif
+#	if defined(FPL_ENABLE_AUDIO)
+using namespace fpl::audio;
 #	endif
 using namespace fpl::atomics;
 using namespace fpl::hardware;
@@ -2267,6 +2393,11 @@ namespace fpl {
 #	include <shlobj.h>		// SHGetFolderPath
 #	include <xinput.h>		// XInputGetState
 
+#	if defined(FPL_ENABLE_AUDIO_DIRECTSOUND)
+#		include <mmreg.h> // WAVEFORMATEX
+#		include <dsound.h>
+#	endif
+
 namespace fpl {
 	//
 	// XInputGetState
@@ -2276,6 +2407,23 @@ namespace fpl {
 	FPL_XINPUT_GET_STATE(Win32XInputGetStateStub) {
 		return(ERROR_DEVICE_NOT_CONNECTED);
 	}
+
+	//
+	// DirectSound
+	//
+#	if defined(FPL_ENABLE_AUDIO_DIRECTSOUND)
+	fpl_constant GUID DirectSound_IID_DirectSoundNotify = { 0xb0210783, 0x89cd, 0x11d0,{ 0xaf, 0x08, 0x00, 0xa0, 0xc9, 0x25, 0xcd, 0x16 } };
+#	define FPL_FUNC_DIRECT_SOUND_CREATE(name) HRESULT WINAPI name(const GUID* pcGuidDevice, LPDIRECTSOUND *ppDS8, LPUNKNOWN pUnkOuter)
+	typedef FPL_FUNC_DIRECT_SOUND_CREATE(win32_func_DirectSoundCreate);
+#	define FPL_FUNC_DIRECT_SOUND_ENUMERATE_A(name) HRESULT WINAPI name(LPDSENUMCALLBACKA pDSEnumCallback, LPVOID pContext)
+	typedef FPL_FUNC_DIRECT_SOUND_ENUMERATE_A(win32_func_DirectSoundEnumerateA);
+	struct Win32DirectSoundFunctions_Internal {
+		HMODULE dsoundLibrary;
+		win32_func_DirectSoundCreate *directSoundCreate;
+		win32_func_DirectSoundEnumerateA *directSoundEnumerateA;
+	};
+	fpl_globalvar Win32DirectSoundFunctions_Internal global__Win32__DirectSound__Functions__Internal = {};
+#	endif // FPL_ENABLE_AUDIO_DIRECTSOUND
 
 	//
 	// WGL and Extensions
@@ -2646,13 +2794,14 @@ namespace fpl {
 	};
 
 	struct Win32State_Internal {
-		InitFlags initFlags;
 		Settings initSettings;
 		Settings currentSettings;
-		VideoDriverType videoDriverType;
 		Win32WindowState_Internal window;
 		Win32VideoState_Internal video;
 		Win32XInputState_Internal xinput;
+		VideoDriverType activeVideoDriver;
+		AudioDriverType activeAudioDriver;
+		InitFlags initFlags;
 	};
 
 	fpl_globalvar Win32ApplicationState_Internal global__Win32__AppState__Internal = {};
@@ -3673,24 +3822,24 @@ namespace fpl {
 		fpl_api VideoBackBuffer *GetVideoBackBuffer() {
 			VideoBackBuffer *result = nullptr;
 			FPL_ASSERT(global__Win32__State__Internal != nullptr);
-			if (global__Win32__State__Internal->videoDriverType == VideoDriverType::Software) {
-			#if defined(FPL_ENABLE_VIDEO_SOFTWARE)
+		#if defined(FPL_ENABLE_VIDEO_SOFTWARE)
+			if (global__Win32__State__Internal->activeVideoDriver == VideoDriverType::Software) {
 				Win32VideoSoftwareState_Internal *software = &global__Win32__State__Internal->video.software;
 				result = &software->context;
-			#endif
 			}
+		#endif
 			return(result);
 		}
 
 		fpl_api bool ResizeVideoBackBuffer(const uint32_t width, const uint32_t height) {
 			bool result = false;
 			FPL_ASSERT(global__Win32__State__Internal != nullptr);
-			if (global__Win32__State__Internal->videoDriverType == VideoDriverType::Software) {
-			#	if defined(FPL_ENABLE_VIDEO_SOFTWARE)
+		#if defined(FPL_ENABLE_VIDEO_SOFTWARE)
+			if (global__Win32__State__Internal->activeVideoDriver == VideoDriverType::Software) {
 				Win32ReleaseVideoSoftwareContext_Internal(*global__Win32__State__Internal);
 				result = Win32CreateVideoSoftware_Internal(*global__Win32__State__Internal, width, height);
-			#	endif
 			}
+		#endif
 			return (result);
 		}
 	}
@@ -3704,16 +3853,27 @@ namespace fpl {
 		fpl_api void WindowFlip() {
 			FPL_ASSERT(global__Win32__State__Internal != nullptr);
 			Win32APIFunctions_Internal &wapi = global__Win32__API__Functions__Internal;
-			if (global__Win32__State__Internal->videoDriverType == VideoDriverType::OpenGL) {
-				wapi.gdi.swapBuffers(global__Win32__State__Internal->window.deviceContext);
-			} else if (global__Win32__State__Internal->videoDriverType == VideoDriverType::Software) {
-				Win32VideoSoftwareState_Internal &software = global__Win32__State__Internal->video.software;
-				WindowSize area = GetWindowArea();
-				uint32_t targetWidth = area.width;
-				uint32_t targetHeight = area.height;
-				uint32_t sourceWidth = software.context.width;
-				uint32_t sourceHeight = software.context.height;
-				wapi.gdi.stretchDIBits(global__Win32__State__Internal->window.deviceContext, 0, 0, targetWidth, targetHeight, 0, 0, sourceWidth, sourceHeight, software.context.pixels, &software.bitmapInfo, DIB_RGB_COLORS, SRCCOPY);
+			switch (global__Win32__State__Internal->activeVideoDriver) {
+			#if defined(FPL_ENABLE_VIDEO_SOFTWARE)
+				case VideoDriverType::Software:
+				{
+					Win32VideoSoftwareState_Internal &software = global__Win32__State__Internal->video.software;
+					WindowSize area = GetWindowArea();
+					uint32_t targetWidth = area.width;
+					uint32_t targetHeight = area.height;
+					uint32_t sourceWidth = software.context.width;
+					uint32_t sourceHeight = software.context.height;
+					wapi.gdi.stretchDIBits(global__Win32__State__Internal->window.deviceContext, 0, 0, targetWidth, targetHeight, 0, 0, sourceWidth, sourceHeight, software.context.pixels, &software.bitmapInfo, DIB_RGB_COLORS, SRCCOPY);
+				} break;
+			#endif
+			#if defined(FPL_ENABLE_VIDEO_OPENGL)
+				case VideoDriverType::OpenGL:
+				{
+					wapi.gdi.swapBuffers(global__Win32__State__Internal->window.deviceContext);
+				} break;
+			#endif
+				default:
+					break;
 			}
 		}
 
@@ -4472,8 +4632,8 @@ namespace fpl {
 
 				case WM_SIZE:
 				{
-					if (win32State.videoDriverType == VideoDriverType::Software) {
-					#	if defined(FPL_ENABLE_VIDEO_SOFTWARE)
+				#if defined(FPL_ENABLE_VIDEO_SOFTWARE)
+					if (win32State.activeVideoDriver == VideoDriverType::Software) {
 						if (win32State.initSettings.video.isAutoSize) {
 							uint32_t w = LOWORD(lParam);
 							uint32_t h = HIWORD(lParam);
@@ -4483,8 +4643,8 @@ namespace fpl {
 								video::Win32CreateVideoSoftware_Internal(win32State, w, h);
 							}
 						}
-					#	endif
 					}
+				#endif
 
 					Event newEvent = {};
 					newEvent.type = EventType::Window;
@@ -4743,31 +4903,32 @@ namespace fpl {
 			}
 
 			// Create opengl rendering context if required
-			win32State.videoDriverType = VideoDriverType::None;
+			win32State.activeVideoDriver = VideoDriverType::None;
 			switch (initSettings.video.driverType) {
+			#if defined(FPL_ENABLE_VIDEO_OPENGL)
 				case VideoDriverType::OpenGL:
 				{
-				#	if defined(FPL_ENABLE_VIDEO_OPENGL)
 					bool openglResult = video::Win32CreateVideoOpenGL_Internal(win32State, initSettings.video);
 					if (!openglResult) {
 						PushError_Internal("[Win32] Failed initializing OpenGL for window '%d'/'%s'", win32State.window.windowHandle, win32State.window.windowClass);
 						return false;
 					}
-					win32State.videoDriverType = VideoDriverType::OpenGL;
-				#	endif // FPL_ENABLE_VIDEO_OPENGL
+					win32State.activeVideoDriver = VideoDriverType::OpenGL;
 				} break;
+			#endif // FPL_ENABLE_VIDEO_OPENGL
 
+			#if defined(FPL_ENABLE_VIDEO_SOFTWARE)
 				case VideoDriverType::Software:
 				{
-				#	if defined(FPL_ENABLE_VIDEO_SOFTWARE)
 					bool softwareResult = video::Win32CreateVideoSoftware_Internal(win32State, windowWidth, windowHeight);
 					if (!softwareResult) {
 						PushError_Internal("[Win32] Failed creating software rendering buffer for window '%d'/'%s'", win32State.window.windowHandle, win32State.window.windowClass);
 						return false;
 					}
-					win32State.videoDriverType = VideoDriverType::Software;
-				#	endif // FPL_ENABLE_VIDEO_SOFTWARE
+					win32State.activeVideoDriver = VideoDriverType::Software;
 				} break;
+			#endif // FPL_ENABLE_VIDEO_SOFTWARE
+
 			}
 
 			// Show window
@@ -4834,6 +4995,40 @@ namespace fpl {
 	}
 #	endif // FPL_ENABLE_WINDOW
 
+#	if defined(FPL_ENABLE_AUDIO)
+	namespace audio {
+	#	if defined(FPL_ENABLE_AUDIO_DIRECTSOUND)
+		fpl_internal bool Win32LoadDirectSound_Internal() {
+			bool result = false;
+			HMODULE dsoundLibrary = LoadLibraryA("dsound.dll");
+			Win32DirectSoundFunctions_Internal &dsound = global__Win32__DirectSound__Functions__Internal;
+			if (dsoundLibrary) {
+				dsound.dsoundLibrary = dsoundLibrary;
+				dsound.directSoundCreate = (win32_func_DirectSoundCreate *)GetProcAddress(dsoundLibrary, "DirectSoundCreate");
+				dsound.directSoundEnumerateA = (win32_func_DirectSoundEnumerateA *)GetProcAddress(dsoundLibrary, "DirectSoundEnumerateA");
+			}
+			return(result);
+		}
+
+		fpl_internal void Win32UnloadDirectSound_Internal() {
+			Win32DirectSoundFunctions_Internal &dsound = global__Win32__DirectSound__Functions__Internal;
+			if (dsound.dsoundLibrary != nullptr) {
+				FreeLibrary(dsound.dsoundLibrary);
+				dsound = {};
+			}
+		}
+	#	endif
+
+		fpl_api uint32_t GetAudioOutputDevices(AudioDeviceInfo *outputDeviceInfos, const uint32_t maxOutputDeviceInfoCount) {
+			uint32_t result = 0;
+
+
+
+			return(result);
+		}
+	}
+#	endif
+	
 	fpl_api bool Win32LoadAPI_Internal(Win32State_Internal &win32State) {
 		Win32APIFunctions_Internal &wapi = global__Win32__API__Functions__Internal;
 
@@ -4933,7 +5128,7 @@ namespace fpl {
 	#endif
 
 		return true;
-	}
+		}
 
 	fpl_api void Win32UnloadAPI_Internal() {
 		Win32APIFunctions_Internal &api = global__Win32__API__Functions__Internal;
@@ -4971,7 +5166,8 @@ namespace fpl {
 		win32State.initSettings = initSettings;
 		win32State.initFlags = initFlags;
 		win32State.currentSettings = initSettings;
-		win32State.videoDriverType = VideoDriverType::None;
+		win32State.activeVideoDriver = VideoDriverType::None;
+		win32State.activeAudioDriver = AudioDriverType::None;
 
 		// Allocate last error state
 		void *lastErrorStateMemory = memory::MemoryAlignedAllocate(sizeof(ErrorState_Internal), 16);
@@ -5015,6 +5211,28 @@ namespace fpl {
 		}
 	#endif // FPL_ENABLE_WINDOW
 
+		//
+		// Load audio driver
+		//
+		if (win32State.initFlags & InitFlags::Audio) {
+			// @TODO(final): I want to provide fallback options, when a audio driver fails
+			switch (initSettings.audio.driverType) {
+			#if defined(FPL_ENABLE_AUDIO_DIRECTSOUND)
+				case AudioDriverType::DirectSound:
+				{
+					// Load DirectSound
+					if (!audio::Win32LoadDirectSound_Internal()) {
+						PushError_Internal("[Win32] Failed loading directsound!");
+						return false;
+					}
+					win32State.activeAudioDriver = AudioDriverType::DirectSound;
+				} break;
+			#endif
+				default:
+					break;
+			}
+		}
+
 		global__Win32__AppState__Internal.isInitialized = true;
 
 		return (true);
@@ -5026,24 +5244,41 @@ namespace fpl {
 		FPL_ASSERT(global__Win32__State__Internal != nullptr);
 		Win32State_Internal &win32State = *global__Win32__State__Internal;
 
+		//
+		// Unload audio driver
+		//
+		switch (win32State.activeAudioDriver) {
+		#if defined(FPL_ENABLE_AUDIO_DIRECTSOUND)
+			case AudioDriverType::DirectSound:
+			{
+				// Unload DirectSound
+				audio::Win32UnloadDirectSound_Internal();
+			} break;
+		#endif
+			default:
+				break;
+		}
+
 	#if defined(FPL_ENABLE_WINDOW)
 		if (win32State.currentSettings.window.isFullscreen) {
 			window::Win32LeaveFullscreen_Internal();
 		}
 
-		switch (win32State.videoDriverType) {
+		switch (win32State.activeVideoDriver) {
+		#if defined(FPL_ENABLE_VIDEO_OPENGL)
 			case VideoDriverType::OpenGL:
 			{
-			#	if defined(FPL_ENABLE_VIDEO_OPENGL)
 				video::Win32ReleaseVideoOpenGLContext_Internal(win32State);
-			#	endif
 			} break;
+		#endif
+		#if defined(FPL_ENABLE_VIDEO_SOFTWARE)
 			case VideoDriverType::Software:
 			{
-			#	if defined(FPL_ENABLE_VIDEO_SOFTWARE)
 				video::Win32ReleaseVideoSoftwareContext_Internal(win32State);
-			#	endif
 			} break;
+		#endif
+			default:
+				break;
 		}
 
 		window::Win32ReleaseWindow_Internal(win32State);
@@ -5060,7 +5295,7 @@ namespace fpl {
 		fpl::global__Win32__State__Internal = nullptr;
 
 		global__Win32__AppState__Internal.isInitialized = false;
-	}
+		}
 
 	fpl_api const char *GetPlatformLastError(const size_t index) {
 		const char *result = nullptr;
@@ -5076,7 +5311,7 @@ namespace fpl {
 		#endif // FPL_ENABLE_MULTIPLE_ERRORSTATES
 		}
 		return (result);
-	}
+		}
 
 	fpl_api const char *GetPlatformLastError() {
 		const char *result = nullptr;
@@ -5091,7 +5326,7 @@ namespace fpl {
 		#endif // defined(FPL_ENABLE_MULTIPLE_ERRORSTATES)
 		}
 		return (result);
-	}
+		}
 
 	fpl_api size_t GetPlatformLastErrorCount() {
 		size_t result = 0;
@@ -5103,7 +5338,7 @@ namespace fpl {
 		#endif
 		}
 		return (result);
-	}
+		}
 
 	fpl_api const Settings &GetCurrentSettings() {
 		FPL_ASSERT(global__Win32__State__Internal != nullptr);
@@ -5218,11 +5453,11 @@ namespace fpl {
 		}
 		return(result);
 	}
-}
+	}
 
-//
-// Win32 Entry-Point
-//
+	//
+	// Win32 Entry-Point
+	//
 #	if defined(FPL_ENABLE_WINDOW)
 
 #		if defined(UNICODE)
