@@ -281,8 +281,12 @@ SOFTWARE.
 - New: [Win32] Implementation for AtomicStoreU32, AtomicStoreU64, AtomicStoreS32, AtomicStoreS64, AtomicStorePtr
 - New: [Linux] Implementation for AtomicLoadU32, AtomicLoadU64, AtomicLoadS32, AtomicLoadS64, AtomicLoadPtr
 - New: [Linux] Implementation for AtomicStoreU32, AtomicStoreU64, AtomicStoreS32, AtomicStoreS64, AtomicStorePtr
+- Fixed: Threading context determination
+- Fixed: [Win32] Fixed all thread implementations
 - Fixed: [Win32] SetWindowLongPtrA does not exists on X86
+- Fixed: [Win32] Missing call convention in SHGetFolderPathA and SHGetFolderPathW
 - Changed: Improved header documentation (More examples, better descriptions, proper markdown syntax, etc.)
+- Changed: All threading functions uses pointer instead of reference
 - Changed: [Linux] Atomic* uses __sync instead of __atomic
 
 ## v0.4.7 alpha:
@@ -1012,15 +1016,13 @@ namespace fpl {
 	//! Threading functions
 	namespace threading {
 		//! Thread state type
-		enum class ThreadState {
+		enum class ThreadState : uint32_t {
 			//! Thread is stopped
-			Stopped,
+			Stopped = 0,
 			//! Thread is still running
 			Running,
 			// Thread is suspended
 			Suspended,
-			// Thread is in waiting state until it gets waked up
-			Waiting,
 		};
 
 		struct ThreadContext;
@@ -1037,8 +1039,8 @@ namespace fpl {
 			void *data;
 			//! The internal handle
 			void *internalHandle;
-			//! The current state
-			ThreadState state;
+			//! Thread state
+			volatile ThreadState currentState;
 		};
 
 		//! Mutex context
@@ -1058,19 +1060,19 @@ namespace fpl {
 		};
 
 		//! Create a thread and return the context for it. When autoStart is set to true, it will start immediatly. 
-		fpl_api ThreadContext &ThreadCreate(run_thread_function *runFunc, void *data, const bool autoStart = true);
+		fpl_api ThreadContext *ThreadCreate(run_thread_function *runFunc, void *data, const bool autoStart = true);
 		//! Let the current thread sleep for the number of given milliseconds
 		fpl_api void ThreadSleep(const uint32_t milliseconds);
 		//! Suspend the given thread, so any user code will get be freezed at the current point. Returns true when the thread was successfully suspended.
-		fpl_api bool ThreadSuspend(ThreadContext &context);
+		fpl_api bool ThreadSuspend(ThreadContext *context);
 		//! Resume a suspended thread, so any user code will continue to run. Returns true when the thread was successfully resumed.
-		fpl_api bool ThreadResume(ThreadContext &context);
+		fpl_api bool ThreadResume(ThreadContext *context);
 		//! Stop the given thread and release all underlying resources.
-		fpl_api void ThreadStop(ThreadContext &context);
+		fpl_api void ThreadStop(ThreadContext *context);
 		//! Wait until the given thread is done running. When maxMilliseconds is set to UINT32_MAX it will wait infinitly.
-		fpl_api void ThreadWaitForSingle(const ThreadContext &context, const uint32_t maxMilliseconds = UINT32_MAX);
+		fpl_api void ThreadWaitForSingle(ThreadContext *context, const uint32_t maxMilliseconds = UINT32_MAX);
 		//! Wait until all given threads are done running. When maxMilliseconds is set to UINT32_MAX it will wait infinitly.
-		fpl_api void ThreadWaitForMultiple(const ThreadContext *contexts, const uint32_t count, const uint32_t maxMilliseconds = UINT32_MAX);
+		fpl_api void ThreadWaitForMultiple(ThreadContext **contexts, const uint32_t count, const uint32_t maxMilliseconds = UINT32_MAX);
 
 		//! Creates a mutex
 		fpl_api ThreadMutex MutexCreate();
@@ -1886,17 +1888,16 @@ namespace fpl {
 	struct ThreadState_Internal {
 		threading::ThreadContext mainThread;
 		threading::ThreadContext threads[MAX_THREAD_COUNT_INTERNAL];
-		uint32_t threadCount;
 	};
 
 	static ThreadState_Internal global__ThreadState__Internal = {};
 
-	static threading::ThreadContext *GetThreadContext_Internal(const uint64_t id) {
-		// @NOTE: We have just a few handful of max threads, so looping over all is not that slow.
+	static threading::ThreadContext *GetThreadContext_Internal() {
 		threading::ThreadContext *result = nullptr;
-		for (uint32_t index = 0; index < global__ThreadState__Internal.threadCount; ++index) {
+		for (uint32_t index = 0; index < MAX_THREAD_COUNT_INTERNAL; ++index) {
 			threading::ThreadContext *thread = global__ThreadState__Internal.threads + index;
-			if (thread->id == id) {
+			uint32_t state = atomics::AtomicLoadU32((volatile uint32_t *)&thread->currentState);
+			if (state == (uint32_t)threading::ThreadState::Stopped) {
 				result = thread;
 				break;
 			}
@@ -2365,9 +2366,9 @@ namespace fpl {
 	// ShellAPI
 #	define FPL_FUNC_COMMAND_LINE_TO_ARGV_W(name) LPWSTR* WINAPI name(LPCWSTR lpCmdLine, int *pNumArgs)
 	typedef FPL_FUNC_COMMAND_LINE_TO_ARGV_W(win32_func_CommandLineToArgvW);
-#	define FPL_FUNC_SH_GET_FOLDER_PATH_A(name) HRESULT name(HWND hwnd, int csidl, HANDLE hToken, DWORD dwFlags, LPSTR pszPath)
+#	define FPL_FUNC_SH_GET_FOLDER_PATH_A(name) HRESULT WINAPI name(HWND hwnd, int csidl, HANDLE hToken, DWORD dwFlags, LPSTR pszPath)
 	typedef FPL_FUNC_SH_GET_FOLDER_PATH_A(win32_func_SHGetFolderPathA);
-#	define FPL_FUNC_SH_GET_FOLDER_PATH_W(name) HRESULT name(HWND hwnd, int csidl, HANDLE hToken, DWORD dwFlags, LPWSTR pszPath)
+#	define FPL_FUNC_SH_GET_FOLDER_PATH_W(name) HRESULT WINAPI name(HWND hwnd, int csidl, HANDLE hToken, DWORD dwFlags, LPWSTR pszPath)
 	typedef FPL_FUNC_SH_GET_FOLDER_PATH_W(win32_func_SHGetFolderPathW);
 
 	// User32
@@ -2889,91 +2890,102 @@ namespace fpl {
 	// Win32 Threading
 	//
 	namespace threading {
-
 		fpl_internal DWORD WINAPI Win32ThreadProc_Internal(void *data) {
-			DWORD result = 0;
 			ThreadContext *context = (ThreadContext *)data;
 			FPL_ASSERT(context != nullptr);
+			atomics::AtomicStoreU32((volatile uint32_t *)&context->currentState, (uint32_t)ThreadState::Running);
+			DWORD result = 0;
 			if (context->runFunc != nullptr) {
 				context->runFunc(*context, context->data);
 			}
+			atomics::AtomicStoreU32((volatile uint32_t *)&context->currentState, (uint32_t)ThreadState::Stopped);
 			return(result);
 		}
 
-		fpl_api ThreadContext &ThreadCreate(run_thread_function *runFunc, void *data, const bool autoStart) {
-			FPL_ASSERT(global__ThreadState__Internal.threadCount < MAX_THREAD_COUNT_INTERNAL);
-			ThreadContext *result = &global__ThreadState__Internal.threads[global__ThreadState__Internal.threadCount++];
-			*result = {};
-
-			DWORD creationFlags = 0;
-			if (!autoStart) {
-				creationFlags |= CREATE_SUSPENDED;
-			}
-			DWORD threadId = 0;
-			HANDLE handle = CreateThread(nullptr, 0, Win32ThreadProc_Internal, result, creationFlags, &threadId);
-			result->id = threadId;
-			result->internalHandle = (void *)handle;
-			result->runFunc = runFunc;
-			result->data = data;
-			if (autoStart) {
-				result->state = ThreadState::Running;
+		fpl_api ThreadContext *ThreadCreate(run_thread_function *runFunc, void *data, const bool autoStart) {
+			ThreadContext *result = nullptr;
+			ThreadContext *context = GetThreadContext_Internal();
+			if (context != nullptr) {
+				DWORD creationFlags = 0;
+				DWORD threadId = 0;
+				HANDLE handle = CreateThread(nullptr, 0, Win32ThreadProc_Internal, context, CREATE_SUSPENDED, &threadId);
+				if (handle != nullptr) {
+					// @TODO(final): Is this really needed to use a atomic store for setting the thread state?
+					atomics::AtomicStoreU32((volatile uint32_t *)&context->currentState, (uint32_t)ThreadState::Suspended);
+					context->data = data;
+					context->id = threadId;
+					context->internalHandle = (void *)handle;
+					context->runFunc = runFunc;
+					if (autoStart) {
+						ResumeThread(handle);
+					}
+					result = context;
+				} else {
+					PushError_Internal("[Win32] Failed creating thread, error code: %d!", GetLastError());
+				}
 			} else {
-				result->state = ThreadState::Stopped;
+				PushError_Internal("[Win32] All %d threads are in use, you cannot create until you free one!", MAX_THREAD_COUNT_INTERNAL);
 			}
-			return(*result);
+			return(result);
 		}
 
 		fpl_api void ThreadSleep(const uint32_t milliseconds) {
 			Sleep((DWORD)milliseconds);
 		}
 
-		fpl_api bool ThreadSuspend(ThreadContext &context) {
-			FPL_ASSERT(context.internalHandle != nullptr);
-			HANDLE handle = (HANDLE)context.internalHandle;
+		fpl_api bool ThreadSuspend(ThreadContext *context) {
+			FPL_ASSERT(context != nullptr);
+			FPL_ASSERT(context->internalHandle != nullptr);
+			HANDLE handle = (HANDLE)context->internalHandle;
 			DWORD err = SuspendThread(handle);
 			bool result = err != -1;
 			if (result) {
-				context.state = ThreadState::Suspended;
+				// @TODO(final): Is this really needed to use a atomic store for setting the thread state?
+				atomics::AtomicStoreU32((volatile uint32_t *)&context->currentState, (uint32_t)ThreadState::Suspended);
 			}
 			return(result);
 		}
 
-		fpl_api bool ThreadResume(ThreadContext &context) {
-			FPL_ASSERT(context.internalHandle != nullptr);
-			HANDLE handle = (HANDLE)context.internalHandle;
+		fpl_api bool ThreadResume(ThreadContext *context) {
+			FPL_ASSERT(context != nullptr);
+			FPL_ASSERT(context->internalHandle != nullptr);
+			HANDLE handle = (HANDLE)context->internalHandle;
 			DWORD err = ResumeThread(handle);
 			bool result = err != -1;
 			if (result) {
-				context.state = ThreadState::Running;
+				// @TODO(final): Is this really needed to use a atomic store for setting the thread state?
+				atomics::AtomicStoreU32((volatile uint32_t *)&context->currentState, (uint32_t)ThreadState::Running);
 			}
 			return(result);
 		}
 
-		fpl_api void ThreadStop(ThreadContext &context) {
-			FPL_ASSERT(context.internalHandle != nullptr);
-			HANDLE handle = (HANDLE)context.internalHandle;
+		fpl_api void ThreadStop(ThreadContext *context) {
+			FPL_ASSERT(context != nullptr);
+			FPL_ASSERT(context->internalHandle != nullptr);
+			HANDLE handle = (HANDLE)context->internalHandle;
 			TerminateThread(handle, 0);
-			context = {};
-
-			// @TODO(final): Decrease thread count and move thread to the end (Use a free list or something)
+			// @TODO(final): Is this really needed to use a atomic store for setting the thread state?
+			atomics::AtomicStoreU32((volatile uint32_t *)&context->currentState, (uint32_t)ThreadState::Stopped);
+			*context = {};
 		}
 
-		fpl_api void ThreadWaitForSingle(const ThreadContext &context, const uint32_t maxMilliseconds) {
-			FPL_ASSERT(context.id > 0);
-			FPL_ASSERT(context.internalHandle != nullptr);
-			HANDLE handle = (HANDLE)context.internalHandle;
+		fpl_api void ThreadWaitForSingle(ThreadContext *context, const uint32_t maxMilliseconds) {
+			FPL_ASSERT(context != nullptr);
+			FPL_ASSERT(context->id > 0);
+			FPL_ASSERT(context->internalHandle != nullptr);
+			HANDLE handle = (HANDLE)context->internalHandle;
 			WaitForSingleObject(handle, maxMilliseconds < UINT32_MAX ? maxMilliseconds : INFINITE);
 		}
 
-		fpl_api void ThreadWaitForMultiple(const ThreadContext *contexts, const uint32_t count, const uint32_t maxMilliseconds) {
+		fpl_api void ThreadWaitForMultiple(ThreadContext **contexts, const uint32_t count, const uint32_t maxMilliseconds) {
 			FPL_ASSERT(contexts != nullptr);
 			FPL_ASSERT(count <= MAX_THREAD_COUNT_INTERNAL);
 			HANDLE threadHandles[MAX_THREAD_COUNT_INTERNAL];
 			for (uint32_t index = 0; index < count; ++index) {
-				const ThreadContext &context = contexts[index];
-				FPL_ASSERT(context.id > 0);
-				FPL_ASSERT(context.internalHandle != nullptr);
-				HANDLE handle = (HANDLE)context.internalHandle;
+				ThreadContext *context = contexts[index];
+				FPL_ASSERT(context->id > 0);
+				FPL_ASSERT(context->internalHandle != nullptr);
+				HANDLE handle = (HANDLE)context->internalHandle;
 				threadHandles[index] = handle;
 			}
 			WaitForMultipleObjects(count, threadHandles, TRUE, maxMilliseconds < UINT32_MAX ? maxMilliseconds : INFINITE);
@@ -4976,7 +4988,7 @@ namespace fpl {
 		*context = {};
 		context->id = mainThreadHandleId;
 		context->internalHandle = (void *)mainThreadHandle;
-		context->state = threading::ThreadState::Running;
+		context->currentState = threading::ThreadState::Running;
 
 	#if defined(FPL_ENABLE_WINDOW)
 			// Window is required for video always
