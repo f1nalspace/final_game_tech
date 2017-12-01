@@ -1,13 +1,13 @@
 /**
 * @file final_platform_layer.hpp
-* @version v0.4.7 alpha
+* @version v0.4.8 alpha
 * @author Torsten Spaete
 * @brief Final Platform Layer (FPL) - A Open source C++ single file header platform abstraction layer library.
 *
 * This library is designed to abstract the underlying platform to a very simple and easy to use api.
-* The only dependencies are built-in operatoring system libraries and the C++ runtime library.
+* The only dependencies are built-in operating system libraries and the C++ runtime library.
 *
-* The main focus is game/simulation development, so the default settings will create a window and setup a opengl rendering context.
+* The main focus is game/simulation development, so the default settings will create a window and setup a opengl rendering context on any platform.
 *
 * @mainpage
 * Summary of the Final Platform Layer (FPL) project.
@@ -15,15 +15,15 @@
 **/
 
 /*
-final_platform_layer.hpp
-Open-Source C++ Single-File Header-Library by Torsten Spaete
+# final_platform_layer.hpp
+A Open source C++ single file header platform abstraction layer library by Torsten Spaete.
 
-# ABOUT
+# About
 
 This library is designed to abstract the underlying platform to a very simple and easy to use api.
-The only dependencies are built-in operatoring system libraries and the C++ runtime library.
+The only dependencies are built-in operating system libraries and the C++ runtime library.
 
-The main focus is game development, so the default settings will create a window and setup a opengl rendering context.
+The main focus is game/simulation development, so the default settings will create a window and setup a opengl rendering context on any platform.
 
 It works very well with other libraries like for example:
 
@@ -35,84 +35,152 @@ It works very well with other libraries like for example:
 - ImGUI
 - etc.
 
-# HOW TO USE
+# How to Use
+	// In one of your C++ translation units include this:
+	#define FPL_IMPLEMENTATION
+	#include "final_platform_layer.hpp"
 
-// In one of your C++ translation units include this:
-#define FPL_IMPLEMENTATION
-#include "final_platform_layer.hpp"
+	// You can then #include this file in any other C++ source or header file as you would with any other header file.
 
-// You can then #include this file in any other C++ source or header file as you would with any other header file.
-
-// Provide the typical main entry point
-int main(int argc, char **args) {
-}
-
-// Initialize the library and release it when you are done
-fpl::InitPlatform(fpl::InitFlags::All);
-...
-fpl::ReleasePlatform();
-
-# EXAMPLES
-
-## Simple OpenGL 1.x Triangle
-
-#define FPL_IMPLEMENTATION
-#include "final_platform_layer.hpp"
-
-using namespace fpl;
-using namespace fpl::window;
-
-int main(int argc, char **args) {
-int result = 0;
-if (InitPlatform(InitFlags::Video)) {
-	glClearColor(0.39f, 0.58f, 0.93f, 1.0f);
-	while (WindowUpdate()) {
-		WindowSize windowArea = GetWindowArea();
-		glViewport(0, 0, windowArea.width, windowArea.height);
-		glClear(GL_COLOR_BUFFER_BIT);
-		glBegin(GL_TRIANGLES);
-		glVertex2f(0.0f, 0.5f);
-		glVertex2f(-0.5f, -0.5f);
-		glVertex2f(0.5f, -0.5f);
-		glEnd();
-		WindowFlip();
+	// Provide the typical main entry point
+	int main(int argc, char **args) {
 	}
-	ReleasePlatform();
-	result = 0;
-} else {
-	result = -1;
-}
-return(result);
-}
+
+	// Initialize the library and release it when you are done
+	fpl::InitPlatform(fpl::InitFlags::All);
+	...
+	fpl::ReleasePlatform();
+
+# Getting started
+
+## Hello World Console Application
+	#define FPL_IMPLEMENTATION
+	#include "final_platform_layer.hpp"
+
+	using namespace fpl;
+
+	int main(int argc, char **args) {
+		int result = 0;
+		if (InitPlatform(InitFlags::None)) {
+
+			ConsoleOut("Hello world!\n");
+
+			ReleasePlatform();
+			result = 0;
+		} else {
+			result = -1;
+		}
+		return(result);
+	}
+## Simple OpenGL 1.x Triangle
+	#define FPL_IMPLEMENTATION
+	#include "final_platform_layer.hpp"
+
+	// You have to include GL.h yourself or use any other opengl loader you want.
+	// This library just creates a opengl rendering context for you, but nothing more.
+	// But GL.h will be included when FPL_IMPLEMENTATION is set always.
+	#include <GL\GL.h>
+
+	using namespace fpl;
+	using namespace fpl::window;
+
+	int main(int argc, char **args) {
+		int result = 0;
+		if (InitPlatform(InitFlags::Video)) {
+			glClearColor(0.39f, 0.58f, 0.93f, 1.0f);
+			while (WindowUpdate()) {
+				WindowSize windowArea = GetWindowArea();
+				glViewport(0, 0, windowArea.width, windowArea.height);
+				glClear(GL_COLOR_BUFFER_BIT);
+				glBegin(GL_TRIANGLES);
+				glVertex2f(0.0f, 0.5f);
+				glVertex2f(-0.5f, -0.5f);
+				glVertex2f(0.5f, -0.5f);
+				glEnd();
+				WindowFlip();
+			}
+			ReleasePlatform();
+			result = 0;
+		} else {
+			result = -1;
+		}
+		return(result);
+	}
+
+## Modern OpenGL 3.3+
+	#define FPL_IMPLEMENTATION
+	#include "final_platform_layer.hpp"
+
+	// You have to include GL.h yourself or use any other opengl loader you want.
+	// This library just creates a opengl rendering context for you, but nothing more.
+	// But GL.h will be included when FPL_IMPLEMENTATION is set always.
+	#include <GL\GL.h>
+
+	using namespace fpl;
+	using namespace fpl::window;
+
+	int main(int argc, char **args) {
+		int result = 0;
+
+		// Legacy opengl is default, so we force it to be forward or backward compability
+		Settings settings = DefaultSettings();
+		settings.video.driverType = VideoDriverType::OpenGL;
+		settings.video.profile = VideoCompabilityProfile::ForwardCompability;
+		settings.video.majorVersion = 3;
+		settings.video.minorVersion = 3;
+		if (InitPlatform(InitFlags::Video, settings)) {
+			glClearColor(0.39f, 0.58f, 0.93f, 1.0f);
+			while (WindowUpdate()) {
+				WindowSize windowArea = GetWindowArea();
+				glViewport(0, 0, windowArea.width, windowArea.height);
+				glClear(GL_COLOR_BUFFER_BIT);
+
+				// Your code using modern opengl (VBO, IBO, VAO, GLSL, etc.)
+
+				WindowFlip();
+			}
+			ReleasePlatform();
+			result = 0;
+		} else {
+			result = -1;
+		}
+		return(result);
+	}
 
 # HOW TO COMPILE
 
-You need a C++/11 complaint compiler and link to the platform kernel/core library.
+You need a C++/11 complaint compiler like MSVC, GCC, Clang, etc.
 
 ## Win32
 
-* Link to kernel32.lib
+- Link against kernel32.lib (Most compilers does this automatically.)
 
 ## Linux
 
-* Link to ld.so
+- Link against ld.so
 
 # OPTIONS
 
 Define these options before including this file.
 
+// #define FPL_IMPLEMENTATION
+Define this to include the actual implementation code as well.
+Set this only once per translation unit, otherwise you will get linking errors.
+
 // #define FPL_API_AS_PRIVATE
-Define this to make all functions be private (static)
+Define this to make all functions be private "static".
+Default is "export".
 
 // #define FPL_NO_ASSERTIONS
-Define this to disable assertions.
+Define this to disable all internal assertions.
+
+// #define FPL_FORCE_ASSERTIONS
+Define this to enable internal assertions always, even in debug builds.
+NOTE: When enabled, all assertions wont use the C-Assert at all, because it may be compiled out!
 
 // #define FPL_NO_C_ASSERT
 Define this to disable C runtime assert.
-
-// #define FPL_FORCE_ASSERTIONS
-Define this to enable assertions always, even in debug builds.
-NOTE: When enabled, all assertions wont use the C-Assert at all, because it may be compiled out!
+Has no effect when FPL_FORCE_ASSERTIONS is set!
 
 // #define FPL_NO_WINDOW
 Define this to disable window support entirely.
@@ -122,6 +190,12 @@ Define this to disable opengl rendering support entirely.
 
 // #define FPL_NO_VIDEO_SOFTWARE
 Define this to disable software rendering support entirely.
+
+// #define FPL_NO_AUDIO
+Define this to disable audio support entirely.
+
+// #define FPL_NO_AUDIO_DIRECTSOUND
+Define this to disable directsound driver entirely.
 
 // #define FPL_NO_MULTIPLE_ERRORSTATES
 Define this to use a single error state for GetPlatformLastError() instead of multiple ones.
@@ -144,7 +218,7 @@ Define this to include all required namespaces automatically.
 
 [x] Creating a 1.x opengl rendering context
 [x] Creating a 3.x + opengl rendering context
-[x] Software rendering context
+[x] Creating a software backbuffer
 
 [ ] Audio playback using OS native libraries
 
@@ -159,22 +233,22 @@ Define this to include all required namespaces automatically.
 # SUPPORTED ARCHITECTURES
 
 [x] x86
-[x] x86_64
+[x] x64
 
 # SUPPORTED COMPILERS
 
 [X] Compiles with MSVC
-[ ] Compiles with MingW
-[o] Compiles with G++ (Partially)
+[X] Compiles with GCC (Partially)
 [ ] Compiles with Clang
+[ ] Compiles with MingW
 [ ] Compiles with Intel C++ Compiler
 
 # SUPPORTED PLATFORMS
 
 [x] Win32
-[o] Linux (Partially)
+[X] Linux (Partially)
 [ ] Unix/Posix
-[ ] OSX (Not sure)
+[ ] Mac OSX (Not sure)
 
 # LICENSE
 
@@ -199,216 +273,220 @@ SOFTWARE.
 
 # VERSION HISTORY
 
-- v0.4.7 alpha:
-	* Changed: [Win32] Load all user32 and shell32 functions dynamically
-	* Changed: FPL_ENUM_AS_FLAGS_OPERATORS_INTERNAL requires a int type as well
-	*   Fixed: MemoryAlignedAllocate and MemoryAlignedFree was broken
-	*   Added: FPL_IS_ALIGNED macro
+## v0.4.8 alpha:
+- Fixed: [Win32] SetWindowLongPtrA does not exists on X86
+- Changed: Improved header documentation (More examples, better descriptions, proper markdown syntax, etc.)
 
-- v0.4.6 alpha:
-	*   Fixed: [Win32] Crash when window is not set in the InitFlags but FPL_USE_WINDOW is set.
+## v0.4.7 alpha:
+- Changed: [Win32] Load all user32 and shell32 functions dynamically
+- Changed: FPL_ENUM_AS_FLAGS_OPERATORS_INTERNAL requires a int type as well
+- Fixed: MemoryAlignedAllocate and MemoryAlignedFree was broken
+- Added: FPL_IS_ALIGNED macro
 
-- v0.4.5 alpha:
-	* Changed: [Win32] Use CommandLineToArgvW for command line parsing
+## v0.4.6 alpha:
+- Fixed: [Win32] Crash when window is not set in the InitFlags but FPL_USE_WINDOW is set.
 
-- v0.4.4 alpha:
-	*     New: [Win32] Implemented argument parsing for WinMain and wWinMain
-	*   Fixed: Corrected small things for doxygen
-	* Changed: Renamed CopyAFile to FileCopy
-	* Changed: Renamed DeleteAFile to FileDelete
+## v0.4.5 alpha:
+- Changed: [Win32] Use CommandLineToArgvW for command line parsing
 
-- v0.4.3 alpha:
-	*     New: Introduced IsAtomicCompareAndExchange
-	*   Added: [Linux] Implemented IsAtomicCompareAndExchange for all 32 and 64 bit integer types
-	*   Added: [Win32] Implemented IsAtomicCompareAndExchange for all 32 and 64 bit integer types
-	*   Added: [Win32] Loading gdi32.dll dynamically for ChoosePixelFormat, etc.
-	*   Added: [Win32] Loading opengl32.dll dynamically for wglGetProcAddress, wglMakeCurrent, etc.
-	*   Fixed: [Win32] Adding memory fence for AtomicReadWriteFence on non-x64 architectures
-	*   Fixed: [Win32] Adding memory fence for AtomicReadFence on non-x64 architectures
-	*   Fixed: [Win32] Adding memory fence for AtomicWriteFence on non-x64 architectures
-	*   Fixed: Solidified descriptions for all Atomic*Fence
-	* Changed: Enabled FPL_FORCE_ASSERTIONS will ensure that C asserts are never used, because it may be compiled out.
-	* Changed: Removed all FPL_WIN32_ kernel32 macros and replaced it with normal calls.
-	* Changed: [Win32] Changed a lof ot the internals
+## v0.4.4 alpha:
+- New: [Win32] Implemented argument parsing for WinMain and wWinMain
+- Fixed: Corrected small things for doxygen
+- Changed: Renamed CopyAFile to FileCopy
+- Changed: Renamed DeleteAFile to FileDelete
 
-- v0.4.2 alpha:
-	* Added: [Linux] Started linux implementation
-	* Added: [Linux] Memory allocations
-	* Added: [Linux] Atomic operations
-	* Added: Check for C++/11 compiler and fail if not supported
-	* Added: Nasty vstudio 2015+ workaround to detect C++/11
-	* Added: &= operator overloading for enums
-	* Changed: AtomicCompareAndExchange argument "comparand" and "exchange" flipped.
-	* Changed: constexpr is now fpl_constant to make clear what is a constant
-	* Removed: [Win32] CreateDIBSection is not needed for a software backbuffer
-	* Fixed: [Win32] Software rendering was not working properly.
-	* Fixed: Some AtomicCompareAndExchange signatures was still AtomicAndCompareExchange
+## v0.4.3 alpha:
+- New: Introduced IsAtomicCompareAndExchange
+- Added: [Linux] Implemented IsAtomicCompareAndExchange for all 32 and 64 bit integer types
+- Added: [Win32] Implemented IsAtomicCompareAndExchange for all 32 and 64 bit integer types
+- Added: [Win32] Loading gdi32.dll dynamically for ChoosePixelFormat, etc.
+- Added: [Win32] Loading opengl32.dll dynamically for wglGetProcAddress, wglMakeCurrent, etc.
+- Fixed: [Win32] Adding memory fence for AtomicReadWriteFence on non-x64 architectures
+- Fixed: [Win32] Adding memory fence for AtomicReadFence on non-x64 architectures
+- Fixed: [Win32] Adding memory fence for AtomicWriteFence on non-x64 architectures
+- Fixed: Solidified descriptions for all Atomic*Fence
+- Changed: Enabled FPL_FORCE_ASSERTIONS will ensure that C asserts are never used, because it may be compiled out.
+- Changed: Removed all FPL_WIN32_ kernel32 macros and replaced it with normal calls.
+- Changed: [Win32] Changed a lof ot the internals
 
-- v0.4.1 alpha:
-	* Cleanup: Internal cleanup
-	* Changed: All the settings constructors removed and replaced by a simple inline function.
-	* Added: Added native C++ unit test project to demos solution
-	* Fixed: FPL_OFFSETOF was not working
-	* Fixed: All file size macros like FPL_MEGABYTES was returning invalid results.
-	* Removed: FPL_PETABYTES and higher are removed, just because its useless.
+## v0.4.2 alpha:
+- Added: [Linux] Started linux implementation
+- Added: [Linux] Memory allocations
+- Added: [Linux] Atomic operations
+- Added: Check for C++/11 compiler and fail if not supported
+- Added: Nasty vstudio 2015+ workaround to detect C++/11
+- Added: &= operator overloading for enums
+- Changed: AtomicCompareAndExchange argument "comparand" and "exchange" flipped.
+- Changed: constexpr is now fpl_constant to make clear what is a constant
+- Removed: [Win32] CreateDIBSection is not needed for a software backbuffer
+- Fixed: [Win32] Software rendering was not working properly.
+- Fixed: Some AtomicCompareAndExchange signatures was still AtomicAndCompareExchange
 
-- v0.4.0 alpha:
-	* Changed: All FPL_ENABLE_ defines are internal now, the caller must use FPL_NO_ or FPL_YES_ respectivily.
-	* Changed: AtomicCompareExchange* is now AtomicCompareAndExchange*
-	* Changed: InitFlags::VideoOpenGL is now InitFlags::Video
-	* Added: Software rendering support
-	* Added: VideoDriverType enumeration for selecting the active video driver
-	* Added: video::GetVideoBackBuffer with [Win32] implementation
-	* Added: video::ResizeVideoBackBuffer with [Win32] implementation
-	* Added: FPL_PETABYTES macro
-	* Added: FPL_EXABYTES macro
-	* Added: FPL_ZETTABYTES macro
-	* Added: FPL_YOTTABYTES macro
-	* Added: FPL_MIN macro
-	* Added: FPL_MAX macro
-	* Added: MutexCreate with [Win32] implementation
-	* Added: MutexDestroy with [Win32] implementation
-	* Added: MutexLock with [Win32] implementation
-	* Added: MutexUnlock with [Win32] implementation
-	* Added: SignalCreate with [Win32] implementation
-	* Added: SignalDestroy with [Win32] implementation
-	* Added: SignalWait with [Win32] implementation
-	* Added: SignalWakeUp with [Win32] implementation
-	* Added: GetClipboardAnsiText with [Win32] implementation
-	* Added: GetClipboardWideText with [Win32] implementation
-	* Added: SetClipboardText with [Win32] implementation for ansi and wide strings
-	* Added [MSVC]: AtomicExchangeS32 (Signed integer)
-	* Added [MSVC]: AtomicExchangeS64 (Signed integer)
-	* Added [MSVC]: AtomicAddS32 (Signed integer)
-	* Added [MSVC]: AtomicAddS64 (Signed integer)
-	* Added [MSVC]: AtomicCompareExchangeS32 (Signed integer)
-	* Added [MSVC]: AtomicCompareExchangeS64 (Signed integer)
-	* Fixed [MSVC]: AtomicExchangeU32 was not using unsigned intrinsic
-	* Fixed [MSVC]: AtomicExchangeU64 was not using unsigned intrinsic
-	* Fixed [MSVC]: AtomicAddU32 was not using unsigned intrinsic
-	* Fixed [MSVC]: AtomicAddU64 was not using unsigned intrinsic
-	* Fixed [MSVC]: AtomicCompareExchangeU32 was not using unsigned intrinsic
-	* Fixed [MSVC]: AtomicCompareExchangeU64 was not using unsigned intrinsic
-	* Implemented [Win32]: GetProcessorCoreCount
-	* Implemented [Win32]: Main thread infos
-	* Performance [Win32]: GetProcessorName (3 loop iterations at max)
+## v0.4.1 alpha:
+- Cleanup: Internal cleanup
+- Changed: All the settings constructors removed and replaced by a simple inline function.
+- Added: Added native C++ unit test project to demos solution
+- Fixed: FPL_OFFSETOF was not working
+- Fixed: All file size macros like FPL_MEGABYTES was returning invalid results.
+- Removed: FPL_PETABYTES and higher are removed, just because its useless.
 
-- v0.3.6 alpha:
-	* Cleanup: All win32 functions are macro calls now (prepare for dynamic function loading)
-	* Fixed: FPL_ENABLE_WINDOW was enabling window features even when it was deactivated by the caller
+## v0.4.0 alpha:
+- Changed: All FPL_ENABLE_ defines are internal now, the caller must use FPL_NO_ or FPL_YES_ respectivily.
+- Changed: AtomicCompareExchange* is now AtomicCompareAndExchange*
+- Changed: InitFlags::VideoOpenGL is now InitFlags::Video
+- Added: Software rendering support
+- Added: VideoDriverType enumeration for selecting the active video driver
+- Added: video::GetVideoBackBuffer with [Win32] implementation
+- Added: video::ResizeVideoBackBuffer with [Win32] implementation
+- Added: FPL_PETABYTES macro
+- Added: FPL_EXABYTES macro
+- Added: FPL_ZETTABYTES macro
+- Added: FPL_YOTTABYTES macro
+- Added: FPL_MIN macro
+- Added: FPL_MAX macro
+- Added: MutexCreate with [Win32] implementation
+- Added: MutexDestroy with [Win32] implementation
+- Added: MutexLock with [Win32] implementation
+- Added: MutexUnlock with [Win32] implementation
+- Added: SignalCreate with [Win32] implementation
+- Added: SignalDestroy with [Win32] implementation
+- Added: SignalWait with [Win32] implementation
+- Added: SignalWakeUp with [Win32] implementation
+- Added: GetClipboardAnsiText with [Win32] implementation
+- Added: GetClipboardWideText with [Win32] implementation
+- Added: SetClipboardText with [Win32] implementation for ansi and wide strings
+- Added [MSVC]: AtomicExchangeS32 (Signed integer)
+- Added [MSVC]: AtomicExchangeS64 (Signed integer)
+- Added [MSVC]: AtomicAddS32 (Signed integer)
+- Added [MSVC]: AtomicAddS64 (Signed integer)
+- Added [MSVC]: AtomicCompareExchangeS32 (Signed integer)
+- Added [MSVC]: AtomicCompareExchangeS64 (Signed integer)
+- Fixed [MSVC]: AtomicExchangeU32 was not using unsigned intrinsic
+- Fixed [MSVC]: AtomicExchangeU64 was not using unsigned intrinsic
+- Fixed [MSVC]: AtomicAddU32 was not using unsigned intrinsic
+- Fixed [MSVC]: AtomicAddU64 was not using unsigned intrinsic
+- Fixed [MSVC]: AtomicCompareExchangeU32 was not using unsigned intrinsic
+- Fixed [MSVC]: AtomicCompareExchangeU64 was not using unsigned intrinsic
+- Implemented [Win32]: GetProcessorCoreCount
+- Implemented [Win32]: Main thread infos
+- Performance [Win32]: GetProcessorName (3 loop iterations at max)
 
-- v0.3.5 alpha:
-	* Renamed: All memory/library/threading functions
-	* Removed: FPL_ENABLE_PUSHMEMORY removed entirely
+## v0.3.6 alpha:
+- Cleanup: All win32 functions are macro calls now (prepare for dynamic function loading)
+- Fixed: FPL_ENABLE_WINDOW was enabling window features even when it was deactivated by the caller
 
-- v0.3.4 alpha:
-	* Renamed: CopyFile/DeleteFile/All memory functions renamed (Stupid win32!)
-	* Renamed: All internal opengl defines renamed, so that it wont conflict with other libraries
-	* Fixed: [Win32] strings::All Wide conversions was not working properly
-	* Removed: [Win32] Undefs for CopyFile
-	* Changed: [Win32/OpenGL] Test for already included gl.h
+## v0.3.5 alpha:
+- Renamed: All memory/library/threading functions
+- Removed: FPL_ENABLE_PUSHMEMORY removed entirely
 
-- v0.3.3 alpha:
-	* Basic threading creation and handling
-	* Fixed strings::All Wide convertions was not working properly
+## v0.3.4 alpha:
+- Renamed: CopyFile/DeleteFile/All memory functions renamed (Stupid win32!)
+- Renamed: All internal opengl defines renamed, so that it wont conflict with other libraries
+- Fixed: [Win32] strings::All Wide conversions was not working properly
+- Removed: [Win32] Undefs for CopyFile
+- Changed: [Win32/OpenGL] Test for already included gl.h
 
-- v0.3.2 alpha:
-	* Introduced: Automatic namespace inclusion (FPL_AUTO_NAMESPACE)
-	* Introduced: Push memory (FPL_ENABLE_PUSHMEMORY)
-	* Signature changed for: ExtractFilePath/ChangeFileExtension (source first, destination second)
-	* Window features not not compiled out anymore when FPL_ENABLE_WINDOW is 0
-	* New overloaded CombinePath without any destination arguments
-	* New: AllocateStackMemory function
-	* Optional destination arguments for: GetExecutableFilePath/GetHomePath/ChangeFileExtension/CombinePath
-	* Fixed strings::CopyAnsiString/CopyWideString was not returning the correct value
+## v0.3.3 alpha:
+- Basic threading creation and handling
+- Fixed strings::All Wide convertions was not working properly
 
-- v0.3.1 alpha:
-	* All types/structs/fields/functions documented
-	* [Win32] Fixed legacy opengl (GL_INVALID_OPERATION)
+## v0.3.2 alpha:
+- Introduced: Automatic namespace inclusion (FPL_AUTO_NAMESPACE)
+- Introduced: Push memory (FPL_ENABLE_PUSHMEMORY)
+- Signature changed for: ExtractFilePath/ChangeFileExtension (source first, destination second)
+- Window features not not compiled out anymore when FPL_ENABLE_WINDOW is 0
+- New overloaded CombinePath without any destination arguments
+- New: AllocateStackMemory function
+- Optional destination arguments for: GetExecutableFilePath/GetHomePath/ChangeFileExtension/CombinePath
+- Fixed strings::CopyAnsiString/CopyWideString was not returning the correct value
 
-- v0.3.0 alpha:
-	* Updated documentation a lot
-	* [Win32] Support for WGL opengl profile selection
+## v0.3.1 alpha:
+- All types/structs/fields/functions documented
+- [Win32] Fixed legacy opengl (GL_INVALID_OPERATION)
 
-- v0.2.6 alpha:
-	* Added memory::CopyMemory
-	* Added fpl::GetLastError and fpl::GetLastErrorCount for proper error handling
-	* Added files::CreateBinaryFile and files::OpenBinaryFile for wide file paths
-	* Added basic support for creating a modern opengl rendering context, see VideoCompabilityProfile in VideoSettings
-	* Added support for enabling opengl vsync through WGL
-	* Returns char * for all paths:: get like functions
-	* Returns char/wchar_t * for all strings:: functions
-	* Fixed files::CreateBinaryFile was never able to overwrite the file.
-	* Fixed #include was in some namespaces defined
-	* Fixed files::ClearMemory was wrong
-	* Replaced all const constants with fpl_constant
-	* Removed template code / Replaced it with macros
+## v0.3.0 alpha:
+- Updated documentation a lot
+- [Win32] Support for WGL opengl profile selection
 
-- v0.2.5 alpha:
-	* Added CreateDirectories
-	* Returns char * for all path get like functions
-	* Fixed CreateBinaryFile was never able to overwrite the file.
+## v0.2.6 alpha:
+- Added memory::CopyMemory
+- Added fpl::GetLastError and fpl::GetLastErrorCount for proper error handling
+- Added files::CreateBinaryFile and files::OpenBinaryFile for wide file paths
+- Added basic support for creating a modern opengl rendering context, see VideoCompabilityProfile in VideoSettings
+- Added support for enabling opengl vsync through WGL
+- Returns char * for all paths:: get like functions
+- Returns char/wchar_t * for all strings:: functions
+- Fixed files::CreateBinaryFile was never able to overwrite the file.
+- Fixed #include was in some namespaces defined
+- Fixed files::ClearMemory was wrong
+- Replaced all const constants with fpl_constant
+- Removed template code / Replaced it with macros
 
-- v.2.4 alpha:
-	* Changed to a doxygen + vc complaint documentation style
-	* CopyFile2, DeleteFile2 and CloseFile2 are now CopyFile, DeleteFile, CloseFile
+## v0.2.5 alpha:
+- Added CreateDirectories
+- Returns char * for all path get like functions
+- Fixed CreateBinaryFile was never able to overwrite the file.
 
-- v0.2.3 alpha:
-	* Support for doxygen in documentations
+## v.2.4 alpha:
+- Changed to a doxygen + vc complaint documentation style
+- CopyFile2, DeleteFile2 and CloseFile2 are now CopyFile, DeleteFile, CloseFile
 
-- v0.2.2 alpha:
-	* Added XInput support
+## v0.2.3 alpha:
+- Support for doxygen in documentations
 
-- v0.2.1 alpha:
-	* Changed a lot of pointer arguments to reference
-	* Added gamepad event structures
+## v0.2.2 alpha:
+- Added XInput support
 
-- v0.2 alpha:
-	* Dropped C support and moved to a more C++ ish api
-	* Dropped no C-Runtime support
+## v0.2.1 alpha:
+- Changed a lot of pointer arguments to reference
+- Added gamepad event structures
 
-- v0.1 alpha:
-	* Initial version
+## v0.2 alpha:
+- Dropped C support and moved to a more C++ ish api
+- Dropped no C-Runtime support
+
+## v0.1 alpha:
+- Initial version
 
 # TODO (Top priority order)
 
-	* Remove placement new (We have no constructors anymore, so this is not required at all)
+- Feature completeness for Win32 (Audio, Multimonitor)
 
-	* Solidify file/path system:
-		Decide to a fixed encoding, either unicode 16 bit or UTF8 or
+- Test other compilers for Win32 (Clang, MingW, Intel)
+
+- Remove placement new (We have no constructors anymore, so this is not required at all)
+
+- Solidify file/path system:
+	- Decide to a fixed encoding, either unicode 16 bit or UTF8 or
 
 		Leave it as it is, but give the caller informations about the platform (which separator, what character encoding for files/path etc.)
 		And use a custom main entry point for every platform so we can ensure that the arguments come in as native always
 
 		Reason: I want unicode support for arguments in win32 and UTF8 for the other platforms.
 
-	* Change most assertions to normal comparisons and make it rock solid, so it wont crash for the most part. Returning nullptr or empty is much more preferred.
+- Change most assertions to normal comparisons and make it rock solid, so it wont crash for the most part. Returning nullptr or empty is much more preferred.
 
-	* REFERENCE.MD generation using doxygen
+- REFERENCE.MD generation using doxygen
 
-	* Feature completeness for Win32 (Audio, Multimonitor)
+- Finish Linux Platform:
+	- Library (ld.so)
+	- Timings
+	- Strings
+	- Files & Path (Look out for .DS_Store and . files/folders, handle it properly)
+	- Hardware
+	- Threading (pthread)
+	- Window (X11, Wayland)
+	- Video opengl (GLX)
+	- Video software
+	- Audio (Alsa)
 
-	* Test other compilers for Win32 (Clang, MingW, Intel)
+- Write a tool to convert final_platform_layer.hpp into final_platform_layer.h (C89 complaint code)
 
-	* Finish Linux Platform:
-		* Library (ld.so)
-		* Timings
-		* Strings
-		* Files & Path (Look out for .DS_Store and . files/folders, handle it properly)
-		* Hardware
-		* Threading (pthread)
-		* Window (X11, Wayland)
-		* Video opengl (GLX)
-		* Video software
-		* Audio (Alsa)
+- Optional C-Runtime
 
-	* Write a tool to convert final_platform_layer.hpp into final_platform_layer.h (C89)
-
-	* Optional C-Runtime
-
-	* Additional features for later:
-		* Open/Save file/folder dialog
-
+- Additional features for later:
+	- Open/Save file/folder dialog
+	- Networking (UDP, TCP)
 */
 
 // ****************************************************************************
@@ -2265,6 +2343,7 @@ namespace fpl {
 	typedef FPL_FUNC_GET_WINDOW_LONG_A(win32_func_GetWindowLongA);
 #	define FPL_FUNC_GET_WINDOW_LONG_W(name) LONG WINAPI name(HWND hWnd, int nIndex)
 	typedef FPL_FUNC_GET_WINDOW_LONG_W(win32_func_GetWindowLongW);
+#	if defined(FPL_ARCH_X64)
 #	define FPL_FUNC_SET_WINDOW_LONG_PTR_A(name) LONG_PTR WINAPI name(HWND hWnd, int nIndex, LONG_PTR dwNewLong)
 	typedef FPL_FUNC_SET_WINDOW_LONG_PTR_A(win32_func_SetWindowLongPtrA);
 #	define FPL_FUNC_SET_WINDOW_LONG_PTR_W(name) LONG_PTR WINAPI name(HWND hWnd, int nIndex, LONG_PTR dwNewLong)
@@ -2273,6 +2352,7 @@ namespace fpl {
 	typedef FPL_FUNC_GET_WINDOW_LONG_PTR_A(win32_func_GetWindowLongPtrA);
 #	define FPL_FUNC_GET_WINDOW_LONG_PTR_W(name) LONG_PTR WINAPI name(HWND hWnd, int nIndex)
 	typedef FPL_FUNC_GET_WINDOW_LONG_PTR_W(win32_func_GetWindowLongPtrW);
+#	endif
 #	define FPL_FUNC_RELEASE_DC(name) int WINAPI name(HWND hWnd, HDC hDC)
 	typedef FPL_FUNC_RELEASE_DC(win32_func_ReleaseDC);
 #	define FPL_FUNC_GET_DC(name) HDC WINAPI name(HWND hWnd)
@@ -2344,10 +2424,12 @@ namespace fpl {
 			win32_func_SetWindowLongW *setWindowLongW;
 			win32_func_GetWindowLongA *getWindowLongA;
 			win32_func_GetWindowLongW *getWindowLongW;
+		#	if defined(FPL_ARCH_X64)
 			win32_func_SetWindowLongPtrA *setWindowLongPtrA;
 			win32_func_SetWindowLongPtrW *setWindowLongPtrW;
 			win32_func_GetWindowLongPtrA *getWindowLongPtrA;
 			win32_func_GetWindowLongPtrW *getWindowLongPtrW;
+		#	endif
 			win32_func_ReleaseDC *releaseDC;
 			win32_func_GetDC *getDC;
 			win32_func_ChangeDisplaySettingsA *changeDisplaySettingsA;
@@ -2370,7 +2452,11 @@ namespace fpl {
 #		define win32_getStringLength strings::GetAnsiStringLength
 #		define win32_ansiToString strings::CopyAnsiString
 #		define win32_wndclassex WNDCLASSEXA
-#		define win32_setWindowLongPtr global__Win32__API__Functions__Internal.user.setWindowLongPtrA
+#		if defined(FPL_ARCH_X64)
+#			define win32_setWindowLongPtr global__Win32__API__Functions__Internal.user.setWindowLongPtrA
+#		else
+#			define win32_setWindowLongPtr global__Win32__API__Functions__Internal.user.setWindowLongA
+#		endif
 #		define win32_setWindowLong global__Win32__API__Functions__Internal.user.setWindowLongA
 #		define win32_getWindowLong global__Win32__API__Functions__Internal.user.getWindowLongA
 #		define win32_peekMessage global__Win32__API__Functions__Internal.user.peekMessageA
@@ -2389,7 +2475,11 @@ namespace fpl {
 #		define win32_getStringLength strings::GetWideStringLength
 #		define win32_ansiToString strings::AnsiStringToWideString
 #		define win32_wndclassex WNDCLASSEXW
-#		define win32_setWindowLongPtr global__Win32__API__Functions__Internal.user.setWindowLongPtrW
+#		if defined(FPL_ARCH_X64)
+#			define win32_setWindowLongPtr global__Win32__API__Functions__Internal.user.setWindowLongPtrW
+#		else
+#			define win32_setWindowLongPtr global__Win32__API__Functions__Internal.user.setWindowLongW
+#		endif
 #		define win32_setWindowLong global__Win32__API__Functions__Internal.user.setWindowLongW
 #		define win32_getWindowLong global__Win32__API__Functions__Internal.user.getWindowLongW
 #		define win32_peekMessage global__Win32__API__Functions__Internal.user.peekMessageW
@@ -4660,10 +4750,12 @@ namespace fpl {
 				FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.setWindowLongW, win32_func_SetWindowLongW, "SetWindowLongW");
 				FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.getWindowLongA, win32_func_GetWindowLongA, "GetWindowLongA");
 				FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.getWindowLongW, win32_func_GetWindowLongW, "GetWindowLongW");
+			#if defined(FPL_ARCH_X64)
 				FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.setWindowLongPtrA, win32_func_SetWindowLongPtrA, "SetWindowLongPtrA");
 				FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.setWindowLongPtrW, win32_func_SetWindowLongPtrW, "SetWindowLongPtrW");
 				FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.getWindowLongPtrA, win32_func_GetWindowLongPtrA, "GetWindowLongPtrA");
 				FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.getWindowLongPtrW, win32_func_GetWindowLongPtrW, "GetWindowLongPtrW");
+			#endif
 				FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.releaseDC, win32_func_ReleaseDC, "ReleaseDC");
 				FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.getDC, win32_func_GetDC, "GetDC");
 				FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.changeDisplaySettingsA, win32_func_ChangeDisplaySettingsA, "ChangeDisplaySettingsA");
@@ -4751,20 +4843,20 @@ namespace fpl {
 		context->state = threading::ThreadState::Running;
 
 	#if defined(FPL_ENABLE_WINDOW)
-		// Window is required for video always
+			// Window is required for video always
 		if (win32State.initFlags & InitFlags::Video) {
 			win32State.initFlags |= InitFlags::Window;
 		}
 	#endif
 
-		// Load windows api library
+			// Load windows api library
 		if (!Win32LoadAPI_Internal(win32State)) {
 			// @NOTE(final): Assume that errors are pushed on already.
 			return false;
 		}
 
 	#if defined(FPL_ENABLE_WINDOW)
-		// Load XInput
+			// Load XInput
 		window::Win32LoadXInput_Internal();
 
 		if (win32State.initFlags & InitFlags::Window) {
@@ -5017,7 +5109,7 @@ namespace fpl {
 	// Linux Atomics
 	namespace atomics {
 	#if defined(FPL_COMPILER_GCC)
-		// @NOTE(final): See: https://gcc.gnu.org/onlinedocs/gcc/_005f_005fsync-Builtins.html#g_t_005f_005fsync-Builtins
+			// @NOTE(final): See: https://gcc.gnu.org/onlinedocs/gcc/_005f_005fsync-Builtins.html#g_t_005f_005fsync-Builtins
 		fpl_api void AtomicReadFence() {
 			// @TODO(final): Wrong to ensure a full memory fence here!
 			__sync_synchronize();
