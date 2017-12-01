@@ -72,8 +72,11 @@ static void MemoryTests() {
 		TestAssert<size_t>(0ull, FPL_TERABYTES(0), LAI, "0 TB");
 		TestAssert<size_t>(13ull * 1024ull, FPL_KILOBYTES(13), LAI, "13 KB");
 		TestAssert<size_t>(137ull * 1024ull * 1024ull, FPL_MEGABYTES(137), LAI, "137 MB");
+		TestAssert<size_t>(3ull * 1024ull * 1024ull * 1024ull, FPL_GIGABYTES(3), LAI, "3 GB");
+#if defined(FPL_ARCH_X64)
 		TestAssert<size_t>(813ull * 1024ull * 1024ull * 1024ull, FPL_GIGABYTES(813), LAI, "813 GB");
 		TestAssert<size_t>(2ull * 1024ull * 1024ull * 1024ull * 1024ull, FPL_TERABYTES(2), LAI, "2 TB");
+#endif
 	}
 
 	TestLog(FN, "Test normal allocation and deallocation");
