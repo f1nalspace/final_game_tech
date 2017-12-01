@@ -274,8 +274,16 @@ SOFTWARE.
 # VERSION HISTORY
 
 ## v0.4.8 alpha:
+- New: AtomicLoadU32, AtomicLoadU64, AtomicLoadS32, AtomicLoadS64, AtomicLoadPtr
+- New: AtomicStoreU32, AtomicStoreU64, AtomicStoreS32, AtomicStoreS64, AtomicStorePtr
+- New: AtomicExchangePtr, AtomicCompareAndExchangePtr, IsAtomicCompareAndExchangePtr
+- New: [Win32] Implementation for AtomicLoadU32, AtomicLoadU64, AtomicLoadS32, AtomicLoadS64, AtomicLoadPtr
+- New: [Win32] Implementation for AtomicStoreU32, AtomicStoreU64, AtomicStoreS32, AtomicStoreS64, AtomicStorePtr
+- New: [Linux] Implementation for AtomicLoadU32, AtomicLoadU64, AtomicLoadS32, AtomicLoadS64, AtomicLoadPtr
+- New: [Linux] Implementation for AtomicStoreU32, AtomicStoreU64, AtomicStoreS32, AtomicStoreS64, AtomicStorePtr
 - Fixed: [Win32] SetWindowLongPtrA does not exists on X86
 - Changed: Improved header documentation (More examples, better descriptions, proper markdown syntax, etc.)
+- Changed: [Linux] Atomic* uses __sync instead of __atomic
 
 ## v0.4.7 alpha:
 - Changed: [Win32] Load all user32 and shell32 functions dynamically
@@ -770,38 +778,70 @@ namespace fpl {
 		fpl_api void AtomicWriteFence();
 		//! Insert a atomic read/write fence/barrier. This will complete previous reads/writes before future reads/writes and prevents the compiler from reordering memory access across this fence.
 		fpl_api void AtomicReadWriteFence();
-		//! Replace a 32-bit unsigned integer with the given value atomically. Returns the target before the replacement. (This does not ensure memory order, use a fence for that!)
+		
+		//! Replace a 32-bit unsigned integer with the given value atomically. Returns the target before the replacement.
 		fpl_api uint32_t AtomicExchangeU32(volatile uint32_t *target, const uint32_t value);
-		//! Replace a 32-bit signed integer with the given value atomically. Returns the target before the replacement. (This does not ensure memory order, use a fence for that!)
+		//! Replace a 32-bit signed integer with the given value atomically. Returns the target before the replacement.
 		fpl_api int32_t AtomicExchangeS32(volatile int32_t *target, const int32_t value);
-		//! Replace a 64-bit unsigned integer with the given value atomically. Returns the target before the replacement. (This does not ensure memory order, use a fence for that!)
+		//! Replace a 64-bit unsigned integer with the given value atomically. Returns the target before the replacement.
 		fpl_api uint64_t AtomicExchangeU64(volatile uint64_t *target, const uint64_t value);
-		//! Replace a 64-bit signed integer with the given value atomically. Returns the target before the replacement. (This does not ensure memory order, use a fence for that!)
+		//! Replace a 64-bit signed integer with the given value atomically. Returns the target before the replacement.
 		fpl_api int64_t AtomicExchangeS64(volatile int64_t *target, const int64_t value);
-		//! Adds a 32-bit unsigned integer atomatically. Returns the value before the addition. (This does not ensure memory order, use a fence for that!)
+		//! Replace a pointer with the given value atomically. Returns the target before the replacement.
+		fpl_api void *AtomicExchangePtr(volatile void **target, const void *value);
+
+		//! Adds a 32-bit unsigned integer atomatically. Returns the value before the addition.
 		fpl_api uint32_t AtomicAddU32(volatile uint32_t *value, const uint32_t addend);
-		//! Adds a 32-bit signed integer atomatically. Returns the value before the addition. (This does not ensure memory order, use a fence for that!)
+		//! Adds a 32-bit signed integer atomatically. Returns the value before the addition.
 		fpl_api int32_t AtomicAddS32(volatile int32_t *value, const int32_t addend);
-		//! Adds a 64-bit unsigned integer atomatically. Returns the value before the addition. (This does not ensure memory order, use a fence for that!)
+		//! Adds a 64-bit unsigned integer atomatically. Returns the value before the addition.
 		fpl_api uint64_t AtomicAddU64(volatile uint64_t *value, const uint64_t addend);
-		//! Adds a 64-bit signed integer atomatically. Returns the value before the addition. (This does not ensure memory order, use a fence for that!)
+		//! Adds a 64-bit signed integer atomatically. Returns the value before the addition.
 		fpl_api int64_t AtomicAddS64(volatile int64_t *value, const int64_t addend);
-		//! Compares a 32-bit unsigned integer with a comparand and exchange it when comparand and matches destination. Returns the dest before the exchange. (This does not ensure memory order, use a fence for that!)
+
+		//! Compares a 32-bit unsigned integer with a comparand and exchange it when comparand and matches destination. Returns the dest before the exchange.
 		fpl_api uint32_t AtomicCompareAndExchangeU32(volatile uint32_t *dest, const uint32_t comparand, const uint32_t exchange);
-		//! Compares a 32-bit signed integer with a comparand and exchange it when comparand and matches destination. Returns the dest before the exchange. (This does not ensure memory order, use a fence for that!)
+		//! Compares a 32-bit signed integer with a comparand and exchange it when comparand and matches destination. Returns the dest before the exchange.
 		fpl_api int32_t AtomicCompareAndExchangeS32(volatile int32_t *dest, const int32_t comparand, const int32_t exchange);
-		//! Compares a 64-bit unsigned integer with a comparand and exchange it when comparand and matches destination. Returns the dest before the exchange. (This does not ensure memory order, use a fence for that!)
+		//! Compares a 64-bit unsigned integer with a comparand and exchange it when comparand and matches destination. Returns the dest before the exchange.
 		fpl_api uint64_t AtomicCompareAndExchangeU64(volatile uint64_t *dest, const uint64_t comparand, const uint64_t exchange);
-		//! Compares a 64-bit signed integer with a comparand and exchange it when comparand and matches destination. Returns the dest before the exchange. (This does not ensure memory order, use a fence for that!)
+		//! Compares a 64-bit signed integer with a comparand and exchange it when comparand and matches destination. Returns the dest before the exchange.
 		fpl_api int64_t AtomicCompareAndExchangeS64(volatile int64_t *dest, const int64_t comparand, const int64_t exchange);
-		//! Returns true when a 32-bit unsigned integer equals the comparand. In addition dest will be changed to the exchange when the result is true as well. (This does not ensure memory order, use a fence for that!)
+		//! Compares a pointer with a comparand and exchange it when comparand and matches destination. Returns the dest before the exchange.
+		fpl_api void *AtomicCompareAndExchangePtr(volatile void **dest, const void *comparand, const void *exchange);
+
+		//! Returns true when a 32-bit unsigned integer equals the comparand. In addition dest will be changed to the exchange when the result is true as well.
 		fpl_api bool IsAtomicCompareAndExchangeU32(volatile uint32_t *dest, const uint32_t comparand, const uint32_t exchange);
-		//! Returns true when a 32-bit signed integer equals the comparand. In addition dest will be changed to the exchange when the result is true as well. (This does not ensure memory order, use a fence for that!)
+		//! Returns true when a 32-bit signed integer equals the comparand. In addition dest will be changed to the exchange when the result is true as well.
 		fpl_api bool IsAtomicCompareAndExchangeS32(volatile int32_t *dest, const int32_t comparand, const int32_t exchange);
-		//! Returns true when a 64-bit unsigned integer equals the comparand. In addition dest will be changed to the exchange when the result is true as well. (This does not ensure memory order, use a fence for that!)
+		//! Returns true when a 64-bit unsigned integer equals the comparand. In addition dest will be changed to the exchange when the result is true as well.
 		fpl_api bool IsAtomicCompareAndExchangeU64(volatile uint64_t *dest, const uint64_t comparand, const uint64_t exchange);
-		//! Returns true when a 64-bit signed integer equals the comparand. In addition dest will be changed to the exchange when the result is true as well. (This does not ensure memory order, use a fence for that!)
+		//! Returns true when a 64-bit signed integer equals the comparand. In addition dest will be changed to the exchange when the result is true as well.
 		fpl_api bool IsAtomicCompareAndExchangeS64(volatile int64_t *dest, const int64_t comparand, const int64_t exchange);
+		//! Returns true when a pointer equals the comparand. In addition dest will be changed to the exchange when the result is true as well.
+		fpl_api bool IsAtomicCompareAndExchangePtr(volatile void **dest, const void *comparand, const void *exchange);
+
+		//! Loads the 32-bit unsigned value atomically and returns the result.
+		fpl_api uint32_t AtomicLoadU32(volatile uint32_t *source);
+		//! Loads the 64-bit unsigned value atomically and returns the result.
+		fpl_api uint64_t AtomicLoadU64(volatile uint64_t *source);
+		//! Loads the 32-bit signed value atomically and returns the result.
+		fpl_api int32_t AtomicLoadS32(volatile int32_t *source);
+		//! Loads the 64-bit signed value atomically and returns the result.
+		fpl_api int64_t AtomicLoadS64(volatile int64_t *source);
+		//! Loads the 64-bit signed value atomically and returns the result.
+		fpl_api void *AtomicLoadPtr(volatile void **source);
+		
+		//! Stores the 32-bit unsigned value atomically into the target.
+		fpl_api void AtomicStoreU32(volatile uint32_t *dest, const uint32_t value);
+		//! Stores the 64-bit unsigned value atomically into the target.
+		fpl_api void AtomicStoreU64(volatile uint64_t *dest, const uint64_t value);
+		//! Stores the 32-bit signed value atomically into the target.
+		fpl_api void AtomicStoreS32(volatile int32_t *dest, const int32_t value);
+		//! Stores the 64-bit signed value atomically into the target.
+		fpl_api void AtomicStoreS64(volatile int64_t *dest, const int64_t value);
+		//! Stores the pointer value atomically into the target.
+		fpl_api void AtomicStorePtr(volatile void **dest, const void *value);
 	};
 
 	//! Hardware functions, like GetProcessorCoreCount, GetProcessorName, etc.
@@ -2000,6 +2040,68 @@ namespace fpl {
 	}
 
 	//
+	// All Atomics
+	//
+	namespace atomics {
+		fpl_api void *AtomicExchangePtr(volatile void **target, const void *value) {
+			FPL_ASSERT(target != nullptr);
+		#if defined(FPL_ARCH_X64)
+			void *result = (void *)AtomicExchangeU64((volatile uint64_t *)target, (uint64_t)value);
+		#elif defined(FPL_ARCH_X86)
+			void *result = (void *)AtomicExchangeU32((volatile uint32_t *)target, (uint32_t)value);
+		#else
+		#	error "Unsupported architecture/platform!"
+		#endif
+			return (result);
+		}
+
+		fpl_api void *AtomicCompareAndExchangePtr(volatile void **dest, const void *comparand, const void *exchange) {
+			FPL_ASSERT(dest != nullptr);
+		#if defined(FPL_ARCH_X64)
+			void *result = (void *)AtomicCompareAndExchangeU64((volatile uint64_t *)dest, (uint64_t)comparand, (uint64_t)exchange);
+		#elif defined(FPL_ARCH_X86)
+			void *result = (void *)AtomicCompareAndExchangeU32((volatile uint32_t *)dest, (uint32_t)comparand, (uint32_t)exchange);
+		#else
+		#	error "Unsupported architecture/platform!"
+		#endif
+			return (result);
+		}
+
+		fpl_api bool IsAtomicCompareAndExchangePtr(volatile void **dest, const void *comparand, const void *exchange) {
+			FPL_ASSERT(dest != nullptr);
+		#if defined(FPL_ARCH_X64)
+			bool result = IsAtomicCompareAndExchangeU64((volatile uint64_t *)dest, (uint64_t)comparand, (uint64_t)exchange);
+		#elif defined(FPL_ARCH_X86)
+			bool result = IsAtomicCompareAndExchangeU32((volatile uint32_t *)dest, (uint32_t)comparand, (uint32_t)exchange);
+		#else
+		#	error "Unsupported architecture/platform!"
+		#endif
+			return (result);
+		}
+
+		fpl_api void *AtomicLoadPtr(volatile void **source) {
+		#if defined(FPL_ARCH_X64)
+			void *result = (void *)AtomicLoadU64((volatile uint64_t *)source);
+		#elif defined(FPL_ARCH_X86)
+			void *result = (void *)AtomicLoadU32((volatile uint32_t *)source);
+		#else
+		#	error "Unsupported architecture/platform!"
+		#endif
+			return(result);
+		}
+
+		fpl_api void AtomicStorePtr(volatile void **dest, const void *value) {
+		#if defined(FPL_ARCH_X64)
+			AtomicStoreU64((volatile uint64_t *)dest, (uint64_t)value);
+		#elif defined(FPL_ARCH_X86)
+			AtomicStoreU32((volatile uint32_t *)dest, (uint32_t)value);
+		#else
+		#	error "Unsupported architecture/platform!"
+		#endif
+		}
+	}
+
+	//
 	// All Paths
 	//
 	namespace paths {
@@ -2592,6 +2694,7 @@ namespace fpl {
 			FPL_MEMORY_BARRIER();
 			_ReadWriteBarrier();
 		}
+
 		fpl_api uint32_t AtomicExchangeU32(volatile uint32_t *target, const uint32_t value) {
 			FPL_ASSERT(target != nullptr);
 			uint32_t result = _InterlockedExchange((volatile unsigned long *)target, value);
@@ -2612,6 +2715,7 @@ namespace fpl {
 			int64_t result = _InterlockedExchange64((volatile long long *)target, value);
 			return (result);
 		}
+
 		fpl_api uint32_t AtomicAddU32(volatile uint32_t *value, const uint32_t addend) {
 			FPL_ASSERT(value != nullptr);
 			uint32_t result = _InterlockedExchangeAdd((volatile unsigned long *)value, addend);
@@ -2632,6 +2736,7 @@ namespace fpl {
 			int64_t result = _InterlockedExchangeAdd64((volatile long long *)value, addend);
 			return (result);
 		}
+
 		fpl_api uint32_t AtomicCompareAndExchangeU32(volatile uint32_t *dest, const uint32_t comparand, const uint32_t exchange) {
 			FPL_ASSERT(dest != nullptr);
 			uint32_t result = _InterlockedCompareExchange((volatile unsigned long *)dest, exchange, comparand);
@@ -2652,6 +2757,7 @@ namespace fpl {
 			int64_t result = _InterlockedCompareExchange64((volatile long long *)dest, exchange, comparand);
 			return (result);
 		}
+
 		fpl_api bool IsAtomicCompareAndExchangeU32(volatile uint32_t *dest, const uint32_t comparand, const uint32_t exchange) {
 			FPL_ASSERT(dest != nullptr);
 			uint32_t value = _InterlockedCompareExchange((volatile unsigned long *)dest, exchange, comparand);
@@ -2675,6 +2781,36 @@ namespace fpl {
 			int64_t value = _InterlockedCompareExchange64((volatile long long *)dest, exchange, comparand);
 			bool result = (value == comparand);
 			return (result);
+		}
+
+		fpl_api uint32_t AtomicLoadU32(volatile uint32_t *source) {
+			uint32_t result = _InterlockedCompareExchange((volatile unsigned long *)source, 0, 0);
+			return(result);
+		}
+		fpl_api uint64_t AtomicLoadU64(volatile uint64_t *source) {
+			uint64_t result = _InterlockedCompareExchange((volatile unsigned __int64 *)source, 0, 0);
+			return(result);
+		}
+		fpl_api int32_t AtomicLoadS32(volatile int32_t *source) {
+			int32_t result = _InterlockedCompareExchange((volatile long *)source, 0, 0);
+			return(result);
+		}
+		fpl_api int64_t AtomicLoadS64(volatile int64_t *source) {
+			int64_t result = _InterlockedCompareExchange64((volatile __int64 *)source, 0, 0);
+			return(result);
+		}
+
+		fpl_api void AtomicStoreU32(volatile uint32_t *dest, const uint32_t value) {
+			_InterlockedExchange((volatile unsigned long *)dest, value);
+		}
+		fpl_api void AtomicStoreU64(volatile uint64_t *dest, const uint64_t value) {
+			_InterlockedExchange((volatile unsigned __int64 *)dest, value);
+		}
+		fpl_api void AtomicStoreS32(volatile int32_t *dest, const int32_t value) {
+			_InterlockedExchange((volatile long *)dest, value);
+		}
+		fpl_api void AtomicStoreS64(volatile int64_t *dest, const int64_t value) {
+			_InterlockedExchange64((volatile __int64 *)dest, value);
 		}
 	#else
 	#	error "Win32 compiler for atomics not supported!"
@@ -5121,93 +5257,123 @@ namespace fpl {
 		fpl_api void AtomicReadWriteFence() {
 			__sync_synchronize();
 		}
+
 		fpl_api uint32_t AtomicExchangeU32(volatile uint32_t *target, const uint32_t value) {
-			uint32_t result = __atomic_exchange_n(target, value, __ATOMIC_SEQ_CST);
+			uint32_t result = __sync_lock_test_and_set(target, value);
+			__sync_synchronize();
 			return(result);
 		}
 		fpl_api int32_t AtomicExchangeS32(volatile int32_t *target, const int32_t value) {
-			int32_t result = __atomic_exchange_n(target, value, __ATOMIC_SEQ_CST);
+			int32_t result = __sync_lock_test_and_set(target, value);
+			__sync_synchronize();
 			return(result);
 		}
 		fpl_api uint64_t AtomicExchangeU64(volatile uint64_t *target, const uint64_t value) {
-			uint64_t result = __atomic_exchange_n(target, value, __ATOMIC_SEQ_CST);
+			uint64_t result = __sync_lock_test_and_set(target, value);
+			__sync_synchronize();
 			return(result);
 		}
 		fpl_api int64_t AtomicExchangeS64(volatile int64_t *target, const int64_t value) {
-			int64_t result = __atomic_exchange_n(target, value, __ATOMIC_SEQ_CST);
+			int64_t result = __sync_lock_test_and_set(target, value);
+			__sync_synchronize();
 			return(result);
 		}
+
 		fpl_api uint32_t AtomicAddU32(volatile uint32_t *value, const uint32_t addend) {
 			FPL_ASSERT(value != nullptr);
-			uint32_t result = __atomic_fetch_add(value, addend, __ATOMIC_SEQ_CST);
+			uint32_t result = __sync_fetch_and_add(value, addend);
 			return (result);
 		}
 		fpl_api int32_t AtomicAddS32(volatile int32_t *value, const int32_t addend) {
 			FPL_ASSERT(value != nullptr);
-			uint32_t result = __atomic_fetch_add(value, addend, __ATOMIC_SEQ_CST);
+			uint32_t result = __sync_fetch_and_add(value, addend);
 			return (result);
 		}
 		fpl_api uint64_t AtomicAddU64(volatile uint64_t *value, const uint64_t addend) {
 			FPL_ASSERT(value != nullptr);
-			uint32_t result = __atomic_fetch_add(value, addend, __ATOMIC_SEQ_CST);
+			uint32_t result = __sync_fetch_and_add(value, addend);
 			return (result);
 		}
 		fpl_api int64_t AtomicAddS64(volatile int64_t *value, const int64_t addend) {
 			FPL_ASSERT(value != nullptr);
-			uint32_t result = __atomic_fetch_add(value, addend, __ATOMIC_SEQ_CST);
+			uint32_t result = __sync_fetch_and_add(value, addend);
 			return (result);
 		}
+
 		fpl_api uint32_t AtomicCompareAndExchangeU32(volatile uint32_t *dest, const uint32_t comparand, const uint32_t exchange) {
 			FPL_ASSERT(dest != nullptr);
-			uint32_t tmp = comparand;
-			uint32_t result = __atomic_load_n(dest, __ATOMIC_SEQ_CST);
-			__atomic_compare_exchange_n(dest, &tmp, exchange, false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST);
+			uint32_t result = __sync_val_compare_and_swap(dest, comparand, exchange);
 			return (result);
 		}
 		fpl_api int32_t AtomicCompareAndExchangeS32(volatile int32_t *dest, const int32_t comparand, const int32_t exchange) {
 			FPL_ASSERT(dest != nullptr);
-			int32_t tmp = comparand;
-			int32_t result = __atomic_load_n(dest, __ATOMIC_SEQ_CST);
-			__atomic_compare_exchange_n(dest, &tmp, exchange, false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST);
+			int32_t result = __sync_val_compare_and_swap(dest, comparand, exchange);
 			return (result);
 		}
 		fpl_api uint64_t AtomicCompareAndExchangeU64(volatile uint64_t *dest, const uint64_t comparand, const uint64_t exchange) {
 			FPL_ASSERT(dest != nullptr);
-			uint64_t tmp = comparand;
-			uint64_t result = __atomic_load_n(dest, __ATOMIC_SEQ_CST);
-			__atomic_compare_exchange_n(dest, &tmp, exchange, false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST);
+			uint64_t result = __sync_val_compare_and_swap(dest, comparand, exchange);
 			return (result);
 		}
 		fpl_api int64_t AtomicCompareAndExchangeS64(volatile int64_t *dest, const int64_t comparand, const int64_t exchange) {
 			FPL_ASSERT(dest != nullptr);
-			int64_t tmp = comparand;
-			int64_t result = __atomic_load_n(dest, __ATOMIC_SEQ_CST);
-			__atomic_compare_exchange_n(dest, &tmp, exchange, false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST);
+			int64_t result = __sync_val_compare_and_swap(dest, comparand, exchange);
 			return (result);
 		}
+
 		fpl_api bool IsAtomicCompareAndExchangeU32(volatile uint32_t *dest, const uint32_t comparand, const uint32_t exchange) {
 			FPL_ASSERT(dest != nullptr);
-			uint32_t tmp = comparand;
-			bool result = __atomic_compare_exchange_n(dest, &tmp, exchange, false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST);
+			bool result = __sync_bool_compare_and_swap(dest, comparand, exchange);
 			return (result);
 		}
 		fpl_api bool IsAtomicCompareAndExchangeS32(volatile int32_t *dest, const int32_t comparand, const int32_t exchange) {
 			FPL_ASSERT(dest != nullptr);
-			int32_t tmp = comparand;
-			bool result = __atomic_compare_exchange_n(dest, &tmp, exchange, false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST);
+			bool result = __sync_bool_compare_and_swap(dest, comparand, exchange);
 			return (result);
 		}
 		fpl_api bool IsAtomicCompareAndExchangeU64(volatile uint64_t *dest, const uint64_t comparand, const uint64_t exchange) {
 			FPL_ASSERT(dest != nullptr);
-			uint64_t tmp = comparand;
-			bool result = __atomic_compare_exchange_n(dest, &tmp, exchange, false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST);
+			bool result = __sync_bool_compare_and_swap(dest, comparand, exchange);
 			return (result);
 		}
 		fpl_api bool IsAtomicCompareAndExchangeS64(volatile int64_t *dest, const int64_t comparand, const int64_t exchange) {
 			FPL_ASSERT(dest != nullptr);
-			int64_t tmp = comparand;
-			bool result = __atomic_compare_exchange_n(dest, &tmp, exchange, false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST);
+			bool result = __sync_bool_compare_and_swap(dest, comparand, exchange);
 			return (result);
+		}
+
+		fpl_api uint32_t AtomicLoadU32(volatile uint32_t *source) {
+			uint32_t result = __sync_fetch_and_or(source, 0);
+			return(result);
+		}
+		fpl_api uint64_t AtomicLoadU64(volatile uint64_t *source) {
+			uint64_t result = __sync_fetch_and_or(source, 0);
+			return(result);
+		}
+		fpl_api int32_t AtomicLoadS32(volatile int32_t *source) {
+			int32_t result = __sync_fetch_and_or(source, 0);
+			return(result);
+		}
+		fpl_api int64_t AtomicLoadS64(volatile int64_t *source) {
+			int64_t result = __sync_fetch_and_or(source, 0);
+			return(result);
+		}
+
+		fpl_api void AtomicStoreU32(volatile uint32_t *dest, const uint32_t value) {
+			__sync_lock_test_and_set(dest, value);
+			__sync_synchronize();
+		}
+		fpl_api void AtomicStoreU64(volatile uint64_t *dest, const uint64_t value) {
+			__sync_lock_test_and_set(dest, value);
+			__sync_synchronize();
+		}
+		fpl_api void AtomicStoreS32(volatile int32_t *dest, const int32_t value) {
+			__sync_lock_test_and_set(dest, value);
+			__sync_synchronize();
+		}
+		fpl_api void AtomicStoreS64(volatile int64_t *dest, const int64_t value) {
+			__sync_lock_test_and_set(dest, value);
+			__sync_synchronize();
 		}
 	#else
 	#	error "This linux compiler/platform is supported!"
