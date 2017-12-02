@@ -1,6 +1,6 @@
 /**
 * @file final_platform_layer.hpp
-* @version v0.4.8 alpha
+* @version v0.4.9 alpha
 * @author Torsten Spaete
 * @brief Final Platform Layer (FPL) - A Open source C++ single file header platform abstraction layer library.
 *
@@ -272,6 +272,10 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 # VERSION HISTORY
+
+## v0.4.9 alpha:
+- New: [Win32] Disable screen saver and context menu activation. (WM_SYSCOMMAND)
+- Fixed: [Win32] Ensure that the window is never be cleared by GDI. (WM_ERASEBKGN)
 
 ## v0.4.8 alpha:
 - New: AtomicLoadU32, AtomicLoadU64, AtomicLoadS32, AtomicLoadS64, AtomicLoadPtr
@@ -4768,27 +4772,21 @@ namespace fpl {
 
 				case WM_ERASEBKGND:
 				{
-					// @TODO(final): No erase the background when opengl is active!
+					return 1;
 				} break;
 
-			#if 0
-				case WM_PAINT:
+				case WM_SYSCOMMAND:
 				{
-					// @TODO(final): Full ignore WM_PAINT when opengl is active
-					if (win32State.videoDriverType == VideoDriverType::Software) {
-						Win32VideoSoftwareState_Internal &software = win32State.video.software;
-						PAINTSTRUCT ps;
-						HDC dc = FPL_WIN32_BEGIN_PAINT(hwnd, &ps);
-						uint32_t targetWidth = ps.rcPaint.right - ps.rcPaint.left;
-						uint32_t targetHeight = ps.rcPaint.bottom - ps.rcPaint.top;
-						uint32_t sourceWidth = software.context.width;
-						uint32_t sourceHeight = software.context.height;
-						FPL_WIN32_STRETCH_DIBITS(dc, 0, 0, targetWidth, targetHeight, 0, 0, sourceWidth, sourceHeight, software.context.pixels, &software.bitmapInfo, DIB_RGB_COLORS, SRCCOPY);
-						FPL_WIN32_END_PAINT(hwnd, &ps);
-						return 1;
+					// @NOTE(final): Dont allow screen saver or window menu activation 
+					switch (wParam)
+					{
+						case SC_SCREENSAVE:
+							return 0;
+						case SC_KEYMENU:
+							return 0;
 					}
-				} break;
-			#endif
+					break;
+				}
 
 				default:
 					break;
@@ -5028,7 +5026,7 @@ namespace fpl {
 		}
 	}
 #	endif
-	
+
 	fpl_api bool Win32LoadAPI_Internal(Win32State_Internal &win32State) {
 		Win32APIFunctions_Internal &wapi = global__Win32__API__Functions__Internal;
 
@@ -5128,7 +5126,7 @@ namespace fpl {
 	#endif
 
 		return true;
-		}
+	}
 
 	fpl_api void Win32UnloadAPI_Internal() {
 		Win32APIFunctions_Internal &api = global__Win32__API__Functions__Internal;
@@ -5295,7 +5293,7 @@ namespace fpl {
 		fpl::global__Win32__State__Internal = nullptr;
 
 		global__Win32__AppState__Internal.isInitialized = false;
-		}
+	}
 
 	fpl_api const char *GetPlatformLastError(const size_t index) {
 		const char *result = nullptr;
@@ -5324,7 +5322,7 @@ namespace fpl {
 		#else
 			result = global__LastErrorState__Internal->errors[0];
 		#endif // defined(FPL_ENABLE_MULTIPLE_ERRORSTATES)
-		}
+			}
 		return (result);
 		}
 
@@ -5338,7 +5336,7 @@ namespace fpl {
 		#endif
 		}
 		return (result);
-		}
+	}
 
 	fpl_api const Settings &GetCurrentSettings() {
 		FPL_ASSERT(global__Win32__State__Internal != nullptr);
@@ -5453,11 +5451,11 @@ namespace fpl {
 		}
 		return(result);
 	}
-	}
+}
 
-	//
-	// Win32 Entry-Point
-	//
+//
+// Win32 Entry-Point
+//
 #	if defined(FPL_ENABLE_WINDOW)
 
 #		if defined(UNICODE)
@@ -5675,8 +5673,8 @@ namespace fpl {
 			void *basePtr = (void *)((uint8_t *)ptr - (sizeof(uintptr_t) + sizeof(size_t)));
 			size_t storedSize = *(size_t *)basePtr;
 			munmap(basePtr, storedSize);
+}
 		}
-	}
 
 	fpl_api bool InitPlatform(const InitFlags initFlags, const Settings &initSettings) {
 		return true;
@@ -5684,7 +5682,7 @@ namespace fpl {
 
 	fpl_api void ReleasePlatform() {
 	}
-}
+	}
 #endif // defined(FPL_PLATFORM_LINUX)
 
 #endif // defined(FPL_IMPLEMENTATION) && !defined(FPL_IMPLEMENTED)
