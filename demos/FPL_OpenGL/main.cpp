@@ -1,5 +1,6 @@
 #define FPL_IMPLEMENTATION
-#define FPL_AUTO_NAMESPACE 1
+#define FPL_NO_VIDEO_SOFTWARE
+#define FPL_AUTO_NAMESPACE
 #include "final_platform_layer.hpp"
 
 #include <GL\GL.h>
