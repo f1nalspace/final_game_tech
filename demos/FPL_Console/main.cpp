@@ -13,9 +13,14 @@
 // @NOTE(final): C++ Standard Library (We dont want to use fpl here, because we want to test it from independent systems)
 #include <iostream> // cout
 #include <string> // string
-#include <varargs.h> // va_list, va_start, va_end
+#include <stdarg.h> // va_list, va_start, va_end
+#include <typeinfo> // typeid
 
 #define ASSERTION_CRASH() {*(int *)0 = 0xBAD;}
+
+#if defined(FPL_COMPILER_GCC)
+#	define __FUNCTION__ ""
+#endif
 
 struct TestLineAssertionInfo {
 	char *filename;
@@ -55,7 +60,11 @@ static void TestLog(const char *section, const char *format, ...) {
 	char buffer[2048];
 	va_list argList;
 	va_start(argList, format);
-	vsprintf_s(buffer, 2048, format, argList);
+#if __STDC_WANT_SECURE_LIB__
+	vsprintf_s(buffer, FPL_ARRAYCOUNT(buffer), format, argList);
+#else
+	vsprintf(buffer, format, argList);
+#endif
 	va_end(argList);
 	std::cout << "[" << section << "] " << buffer << std::endl;
 }
