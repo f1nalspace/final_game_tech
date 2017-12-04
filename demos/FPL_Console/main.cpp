@@ -60,11 +60,7 @@ static void TestLog(const char *section, const char *format, ...) {
 	char buffer[2048];
 	va_list argList;
 	va_start(argList, format);
-#if __STDC_WANT_SECURE_LIB__
-	vsprintf_s(buffer, FPL_ARRAYCOUNT(buffer), format, argList);
-#else
 	vsprintf(buffer, format, argList);
-#endif
 	va_end(argList);
 	std::cout << "[" << section << "] " << buffer << std::endl;
 }
