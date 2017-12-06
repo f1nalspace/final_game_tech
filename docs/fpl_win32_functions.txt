@@ -52,6 +52,16 @@ WINUSERAPI LONG WINAPI ChangeDisplaySettingsW(DEVMODEW* lpDevMode, DWORD dwFlags
 WINUSERAPI BOOL WINAPI EnumDisplaySettingsA(LPCSTR lpszDeviceName, DWORD iModeNum, DEVMODEA* lpDevMode);
 WINUSERAPI BOOL WINAPI EnumDisplaySettingsW(LPCWSTR lpszDeviceName, DWORD iModeNum, DEVMODEW* lpDevMode);
 
+WINUSERAPI BOOL WINAPI OpenClipboard(HWND hWndNewOwner);
+WINUSERAPI BOOL WINAPI CloseClipboard(VOID);
+WINUSERAPI BOOL WINAPI EmptyClipboard(VOID);
+WINUSERAPI BOOL WINAPI IsClipboardFormatAvailable(UINT format);
+WINUSERAPI HANDLE WINAPI SetClipboardData(UINT uFormat, HANDLE hMem);
+WINUSERAPI HANDLE WINAPI GetClipboardData(UINT uFormat);
+
+WINUSERAPI HWND WINAPI GetDesktopWindow(VOID);
+WINUSERAPI HWND WINAPI GetForegroundWindow(VOID);
+
 // Shellapi
 SHFOLDERAPI HRESULT SHGetFolderPathA(HWND hwnd, int csidl, HANDLE hToken, DWORD dwFlags, LPSTR pszPath);
 SHFOLDERAPI HRESULT SHGetFolderPathW(HWND hwnd, int csidl, HANDLE hToken, DWORD dwFlags, LPWSTR pszPath);
