@@ -100,7 +100,8 @@
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
-      <AdditionalDependencies>%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>
+      </AdditionalDependencies>
     </Link>
     <PostBuildEvent>
       <Command>copy "$(ProjectDir)dependencies\ffmpeg\bin\*.dll" "$(SolutionDir)bin\$(ProjectName)\$(Platform)-$(Configuration)\"</Command>
@@ -114,7 +115,8 @@
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
-      <AdditionalDependencies>%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>
+      </AdditionalDependencies>
     </Link>
     <PostBuildEvent>
       <Command>copy "$(ProjectDir)dependencies\ffmpeg\bin\*.dll" "$(SolutionDir)bin\$(ProjectName)\$(Platform)-$(Configuration)\"</Command>
@@ -132,7 +134,8 @@
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
       <SubSystem>Console</SubSystem>
-      <AdditionalDependencies>%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>
+      </AdditionalDependencies>
     </Link>
     <PostBuildEvent>
       <Command>copy "$(ProjectDir)dependencies\ffmpeg\bin\*.dll" "$(SolutionDir)bin\$(ProjectName)\$(Platform)-$(Configuration)\"</Command>
@@ -150,7 +153,8 @@
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
       <SubSystem>Console</SubSystem>
-      <AdditionalDependencies>%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>
+      </AdditionalDependencies>
     </Link>
     <PostBuildEvent>
       <Command>copy "$(ProjectDir)dependencies\ffmpeg\bin\*.dll" "$(SolutionDir)bin\$(ProjectName)\$(Platform)-$(Configuration)\"</Command>
