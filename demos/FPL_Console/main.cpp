@@ -201,7 +201,7 @@ static void ThreadingTest() {
 	threads[0] = ThreadCreate(TestThreadProc, (void *)1);
 	threads[1] = ThreadCreate(TestThreadProc, (void *)2);
 	threads[2] = ThreadCreate(TestThreadProc, (void *)3);
-	ThreadWaitForMultiple(threads, FPL_ARRAYCOUNT(threads));
+	ThreadWaitForAll(threads, FPL_ARRAYCOUNT(threads));
 }
 
 

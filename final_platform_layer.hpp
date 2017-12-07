@@ -1,6 +1,6 @@
 /**
 * @file final_platform_layer.hpp
-* @version v0.4.10 alpha
+* @version v0.4.11 alpha
 * @author Torsten Spaete
 * @brief Final Platform Layer (FPL) - A Open source C++ single file header platform abstraction layer library.
 *
@@ -183,6 +183,9 @@ Has no effect when FPL_FORCE_ASSERTIONS is set!
 // #define FPL_NO_WINDOW
 Define this to disable window support entirely.
 
+// #define FPL_NO_VIDEO
+Define this to disable any rendering device entirely.
+
 // #define FPL_NO_VIDEO_OPENGL
 Define this to disable opengl rendering support entirely.
 
@@ -264,6 +267,18 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 # VERSION HISTORY
+
+## v0.4.11 alpha:
+- Fixed: [Win32] For now, load all user32 functions always, even when window is not used (This is to prepare for audio playback)
+- Fixed: [Win32] ThreadStop was not releasing the thread handle
+- Added: [Win32] ThreadWaitForAny
+- Added: [Win32] SignalWaitForAll
+- Added: [Win32] SignalWaitForAny
+- Added: [Win32] SignalReset
+- Added: FPL_NO_VIDEO
+- Changed: ThreadWaitForSingle renamed to ThreadWaitForOne
+- Changed: ThreadWaitForMultiple renamed to ThreadWaitForAll
+- Changed: SignalWait renamed to SignalWaitForOne
 
 ## v0.4.10 alpha:
 - Removed: Removed all _internal _INTERNAL postfixes from types, functions and macros
@@ -634,7 +649,12 @@ SOFTWARE.
 	//! Window support enabled by default
 #	define FPL_SUPPORT_WINDOW
 #endif
+
 // Video
+#if !defined(FPL_NO_VIDEO)
+#	define FPL_SUPPORT_VIDEO
+#endif
+#if defined(FPL_SUPPORT_VIDEO)
 #if !defined(FPL_NO_VIDEO_OPENGL)
 	//! OpenGL support enabled by default
 #	define FPL_SUPPORT_VIDEO_OPENGL
@@ -643,7 +663,12 @@ SOFTWARE.
 	//! Software rendering support enabled by default
 #	define FPL_SUPPORT_VIDEO_SOFTWARE
 #endif
+#endif
+
 #if !defined(FPL_SUPPORT_WINDOW)
+#	if defined(FPL_SUPPORT_VIDEO)
+#		undef FPL_SUPPORT_VIDEO
+#	endif
 #	if defined(FPL_SUPPORT_VIDEO_OPENGL)
 #		undef FPL_SUPPORT_VIDEO_OPENGL
 #	endif
@@ -659,13 +684,19 @@ SOFTWARE.
 	//! Enable Window
 #	define FPL_ENABLE_WINDOW
 #endif
+#if defined(FPL_SUPPORT_VIDEO)
+	//! Enable Video
+#	define FPL_ENABLE_VIDEO
+
 #if defined(FPL_SUPPORT_VIDEO_OPENGL)
 	//! Enable OpenGL Video Driver
-#	define FPL_ENABLE_VIDEO_OPENGL
-#endif
-#if defined(FPL_SUPPORT_VIDEO_SOFTWARE)
-	//! Enable Software Rendering Video Driver
-#	define FPL_ENABLE_VIDEO_SOFTWARE
+#		define FPL_ENABLE_VIDEO_OPENGL
+#	endif
+
+#	if defined(FPL_SUPPORT_VIDEO_SOFTWARE)
+		//! Enable Software Rendering Video Driver
+#		define FPL_ENABLE_VIDEO_SOFTWARE
+#	endif
 #endif
 
 #if !defined(FPL_NO_ERROR_IN_CONSOLE)
@@ -1088,9 +1119,11 @@ namespace fpl {
 		//! Stop the given thread and release all underlying resources.
 		fpl_api void ThreadStop(ThreadContext *context);
 		//! Wait until the given thread is done running. When maxMilliseconds is set to UINT32_MAX it will wait infinitly.
-		fpl_api void ThreadWaitForSingle(ThreadContext *context, const uint32_t maxMilliseconds = UINT32_MAX);
+		fpl_api void ThreadWaitForOne(ThreadContext *context, const uint32_t maxMilliseconds = UINT32_MAX);
 		//! Wait until all given threads are done running. When maxMilliseconds is set to UINT32_MAX it will wait infinitly.
-		fpl_api void ThreadWaitForMultiple(ThreadContext **contexts, const uint32_t count, const uint32_t maxMilliseconds = UINT32_MAX);
+		fpl_api void ThreadWaitForAll(ThreadContext **contexts, const uint32_t count, const uint32_t maxMilliseconds = UINT32_MAX);
+		//! Wait until one of given threads are done running. When maxMilliseconds is set to UINT32_MAX it will wait infinitly.
+		fpl_api void ThreadWaitForAny(ThreadContext **contexts, const uint32_t count, const uint32_t maxMilliseconds = UINT32_MAX);
 
 		//! Creates a mutex
 		fpl_api ThreadMutex MutexCreate();
@@ -1106,9 +1139,15 @@ namespace fpl {
 		//! Destroys the given signal
 		fpl_api void SignalDestroy(ThreadSignal &signal);
 		//! Waits until the given signal are waked up. When maxMilliseconds is set to UINT32_MAX it will wait infinitly.
-		fpl_api bool SignalWait(ThreadSignal &signal, const uint32_t maxMilliseconds = UINT32_MAX);
+		fpl_api bool SignalWaitForOne(ThreadSignal &signal, const uint32_t maxMilliseconds = UINT32_MAX);
+		//! Waits until all the given signal are waked up. When maxMilliseconds is set to UINT32_MAX it will wait infinitly.
+		fpl_api bool SignalWaitForAll(ThreadSignal **signal, const uint32_t count, const uint32_t maxMilliseconds = UINT32_MAX);
+		//! Waits until any of the given signals wakes up. When maxMilliseconds is set to UINT32_MAX it will wait infinitly.
+		fpl_api bool SignalWaitForAny(ThreadSignal **signal, const uint32_t count, const uint32_t maxMilliseconds = UINT32_MAX);
 		//! Wakes up the given signal
 		fpl_api bool SignalWakeUp(ThreadSignal &signal);
+		//! Resets the given signal
+		fpl_api bool SignalReset(ThreadSignal &signal);
 	};
 
 	//! Memory allocation, clearing and copy functions
@@ -1720,6 +1759,7 @@ namespace fpl {
 	};
 #endif // FPL_ENABLE_WINDOW
 
+#if defined(FPL_ENABLE_VIDEO)
 	//! Video context access
 	namespace video {
 		//! Video backbuffer container. Use this for accessing the pixels directly. Use with care!
@@ -1739,6 +1779,7 @@ namespace fpl {
 		//! Resizes the current video backbuffer
 		fpl_api bool ResizeVideoBackBuffer(const uint32_t width, const uint32_t height);
 	};
+#endif // FPL_ENABLE_VIDEO
 };
 
 //
@@ -1900,7 +1941,12 @@ namespace fpl {
 			va_end(valist);
 		}
 
+		// Maximum number of threads you can have in your process
 		fpl_constant uint32_t MAX_THREAD_COUNT = 64;
+
+		// Maximum number of signals you can wait for
+		fpl_constant uint32_t MAX_SIGNAL_COUNT = 256;
+
 		struct ThreadState {
 			threading::ThreadContext mainThread;
 			threading::ThreadContext threads[MAX_THREAD_COUNT];
@@ -3697,6 +3743,7 @@ namespace fpl {
 				window::SetWindowFullscreen(true, initSettings.window.fullscreenWidth, initSettings.window.fullscreenHeight);
 			}
 
+#		if defined(FPL_ENABLE_VIDEO)
 			// Create opengl rendering context if required
 			win32State.activeVideoDriver = VideoDriverType::None;
 			switch (initSettings.video.driverType) {
@@ -3726,8 +3773,8 @@ namespace fpl {
 
 				default:
 					break;
-
 			}
+#		endif // FPL_ENABLE_VIDEO
 
 			// Show window
 			wapi.user.showWindow(win32State.window.windowHandle, SW_SHOW);
@@ -3917,98 +3964,94 @@ namespace fpl {
 				FPL_WIN32_GET_FUNCTION_ADDRESS(library, shellLibraryName, wapi.shell.shGetFolderPathW, win32_func_SHGetFolderPathW, "SHGetFolderPathW");
 			}
 
-#		if defined(FPL_ENABLE_WINDOW)
-			if (win32State.initFlags & InitFlags::Window) {
 				// User32
-				{
-					const char *userLibraryName = "user32.dll";
-					HMODULE library = wapi.user.userLibrary = LoadLibraryA(userLibraryName);
-					if (library == nullptr) {
-						common::PushError("[Win32] Failed loading win32 library '%s'!", userLibraryName);
-						return false;
-					}
+			{
+				const char *userLibraryName = "user32.dll";
+				HMODULE library = wapi.user.userLibrary = LoadLibraryA(userLibraryName);
+				if (library == nullptr) {
+					common::PushError("[Win32] Failed loading win32 library '%s'!", userLibraryName);
+					return false;
+				}
 
-					FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.registerClassExA, win32_func_RegisterClassExA, "RegisterClassExA");
-					FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.registerClassExW, win32_func_RegisterClassExW, "RegisterClassExW");
-					FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.unregisterClassA, win32_func_UnregisterClassA, "UnregisterClassA");
-					FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.unregisterClassW, win32_func_UnregisterClassW, "UnregisterClassW");
-					FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.showWindow, win32_func_ShowWindow, "ShowWindow");
-					FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.destroyWindow, win32_func_DestroyWindow, "DestroyWindow");
-					FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.updateWindow, win32_func_UpdateWindow, "UpdateWindow");
-					FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.translateMessage, win32_func_TranslateMessage, "TranslateMessage");
-					FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.dispatchMessageA, win32_func_DispatchMessageA, "DispatchMessageA");
-					FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.dispatchMessageW, win32_func_DispatchMessageW, "DispatchMessageW");
-					FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.peekMessageA, win32_func_PeekMessageA, "PeekMessageA");
-					FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.peekMessageW, win32_func_PeekMessageW, "PeekMessageW");
-					FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.defWindowProcA, win32_func_DefWindowProcA, "DefWindowProcA");
-					FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.defWindowProcW, win32_func_DefWindowProcW, "DefWindowProcW");
-					FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.createWindowExA, win32_func_CreateWindowExA, "CreateWindowExA");
-					FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.createWindowExW, win32_func_CreateWindowExW, "CreateWindowExW");
-					FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.setWindowPos, win32_func_SetWindowPos, "SetWindowPos");
-					FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.getWindowPlacement, win32_func_GetWindowPlacement, "GetWindowPlacement");
-					FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.setWindowPlacement, win32_func_SetWindowPlacement, "SetWindowPlacement");
-					FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.getClientRect, win32_func_GetClientRect, "GetClientRect");
-					FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.getWindowRect, win32_func_GetWindowRect, "GetWindowRect");
-					FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.adjustWindowRect, win32_func_AdjustWindowRect, "AdjustWindowRect");
-					FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.getAsyncKeyState, win32_func_GetAsyncKeyState, "GetAsyncKeyState");
-					FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.mapVirtualKeyA, win32_func_MapVirtualKeyA, "MapVirtualKeyA");
-					FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.mapVirtualKeyW, win32_func_MapVirtualKeyW, "MapVirtualKeyW");
-					FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.setCursor, win32_func_SetCursor, "SetCursor");
-					FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.getCursor, win32_func_GetCursor, "GetCursor");
-					FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.loadCursorA, win32_func_LoadCursorA, "LoadCursorA");
-					FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.loadCursorW, win32_func_LoadCursorW, "LoadCursorW");
-					FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.loadIconA, win32_func_LoadIconA, "LoadCursorA");
-					FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.loadIconW, win32_func_LoadIconW, "LoadIconW");
-					FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.setWindowTextA, win32_func_SetWindowTextA, "SetWindowTextA");
-					FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.setWindowTextW, win32_func_SetWindowTextW, "SetWindowTextW");
-					FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.setWindowLongA, win32_func_SetWindowLongA, "SetWindowLongA");
-					FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.setWindowLongW, win32_func_SetWindowLongW, "SetWindowLongW");
-					FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.getWindowLongA, win32_func_GetWindowLongA, "GetWindowLongA");
-					FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.getWindowLongW, win32_func_GetWindowLongW, "GetWindowLongW");
+				FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.registerClassExA, win32_func_RegisterClassExA, "RegisterClassExA");
+				FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.registerClassExW, win32_func_RegisterClassExW, "RegisterClassExW");
+				FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.unregisterClassA, win32_func_UnregisterClassA, "UnregisterClassA");
+				FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.unregisterClassW, win32_func_UnregisterClassW, "UnregisterClassW");
+				FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.showWindow, win32_func_ShowWindow, "ShowWindow");
+				FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.destroyWindow, win32_func_DestroyWindow, "DestroyWindow");
+				FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.updateWindow, win32_func_UpdateWindow, "UpdateWindow");
+				FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.translateMessage, win32_func_TranslateMessage, "TranslateMessage");
+				FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.dispatchMessageA, win32_func_DispatchMessageA, "DispatchMessageA");
+				FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.dispatchMessageW, win32_func_DispatchMessageW, "DispatchMessageW");
+				FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.peekMessageA, win32_func_PeekMessageA, "PeekMessageA");
+				FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.peekMessageW, win32_func_PeekMessageW, "PeekMessageW");
+				FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.defWindowProcA, win32_func_DefWindowProcA, "DefWindowProcA");
+				FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.defWindowProcW, win32_func_DefWindowProcW, "DefWindowProcW");
+				FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.createWindowExA, win32_func_CreateWindowExA, "CreateWindowExA");
+				FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.createWindowExW, win32_func_CreateWindowExW, "CreateWindowExW");
+				FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.setWindowPos, win32_func_SetWindowPos, "SetWindowPos");
+				FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.getWindowPlacement, win32_func_GetWindowPlacement, "GetWindowPlacement");
+				FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.setWindowPlacement, win32_func_SetWindowPlacement, "SetWindowPlacement");
+				FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.getClientRect, win32_func_GetClientRect, "GetClientRect");
+				FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.getWindowRect, win32_func_GetWindowRect, "GetWindowRect");
+				FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.adjustWindowRect, win32_func_AdjustWindowRect, "AdjustWindowRect");
+				FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.getAsyncKeyState, win32_func_GetAsyncKeyState, "GetAsyncKeyState");
+				FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.mapVirtualKeyA, win32_func_MapVirtualKeyA, "MapVirtualKeyA");
+				FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.mapVirtualKeyW, win32_func_MapVirtualKeyW, "MapVirtualKeyW");
+				FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.setCursor, win32_func_SetCursor, "SetCursor");
+				FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.getCursor, win32_func_GetCursor, "GetCursor");
+				FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.loadCursorA, win32_func_LoadCursorA, "LoadCursorA");
+				FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.loadCursorW, win32_func_LoadCursorW, "LoadCursorW");
+				FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.loadIconA, win32_func_LoadIconA, "LoadCursorA");
+				FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.loadIconW, win32_func_LoadIconW, "LoadIconW");
+				FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.setWindowTextA, win32_func_SetWindowTextA, "SetWindowTextA");
+				FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.setWindowTextW, win32_func_SetWindowTextW, "SetWindowTextW");
+				FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.setWindowLongA, win32_func_SetWindowLongA, "SetWindowLongA");
+				FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.setWindowLongW, win32_func_SetWindowLongW, "SetWindowLongW");
+				FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.getWindowLongA, win32_func_GetWindowLongA, "GetWindowLongA");
+				FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.getWindowLongW, win32_func_GetWindowLongW, "GetWindowLongW");
 
 #				if defined(FPL_ARCH_X64)
-					FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.setWindowLongPtrA, win32_func_SetWindowLongPtrA, "SetWindowLongPtrA");
-					FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.setWindowLongPtrW, win32_func_SetWindowLongPtrW, "SetWindowLongPtrW");
-					FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.getWindowLongPtrA, win32_func_GetWindowLongPtrA, "GetWindowLongPtrA");
-					FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.getWindowLongPtrW, win32_func_GetWindowLongPtrW, "GetWindowLongPtrW");
+				FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.setWindowLongPtrA, win32_func_SetWindowLongPtrA, "SetWindowLongPtrA");
+				FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.setWindowLongPtrW, win32_func_SetWindowLongPtrW, "SetWindowLongPtrW");
+				FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.getWindowLongPtrA, win32_func_GetWindowLongPtrA, "GetWindowLongPtrA");
+				FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.getWindowLongPtrW, win32_func_GetWindowLongPtrW, "GetWindowLongPtrW");
 #				endif
 
-					FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.releaseDC, win32_func_ReleaseDC, "ReleaseDC");
-					FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.getDC, win32_func_GetDC, "GetDC");
-					FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.changeDisplaySettingsA, win32_func_ChangeDisplaySettingsA, "ChangeDisplaySettingsA");
-					FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.changeDisplaySettingsW, win32_func_ChangeDisplaySettingsW, "ChangeDisplaySettingsW");
-					FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.enumDisplaySettingsA, win32_func_EnumDisplaySettingsA, "EnumDisplaySettingsA");
-					FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.enumDisplaySettingsW, win32_func_EnumDisplaySettingsW, "EnumDisplaySettingsW");
+				FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.releaseDC, win32_func_ReleaseDC, "ReleaseDC");
+				FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.getDC, win32_func_GetDC, "GetDC");
+				FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.changeDisplaySettingsA, win32_func_ChangeDisplaySettingsA, "ChangeDisplaySettingsA");
+				FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.changeDisplaySettingsW, win32_func_ChangeDisplaySettingsW, "ChangeDisplaySettingsW");
+				FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.enumDisplaySettingsA, win32_func_EnumDisplaySettingsA, "EnumDisplaySettingsA");
+				FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.enumDisplaySettingsW, win32_func_EnumDisplaySettingsW, "EnumDisplaySettingsW");
 
-					FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.openClipboard, win32_func_OpenClipboard, "OpenClipboard");
-					FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.closeClipboard, win32_func_CloseClipboard, "CloseClipboard");
-					FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.emptyClipboard, win32_func_EmptyClipboard, "EmptyClipboard");
-					FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.setClipboardData, win32_func_SetClipboardData, "SetClipboardData");
-					FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.getClipboardData, win32_func_GetClipboardData, "GetClipboardData");
+				FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.openClipboard, win32_func_OpenClipboard, "OpenClipboard");
+				FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.closeClipboard, win32_func_CloseClipboard, "CloseClipboard");
+				FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.emptyClipboard, win32_func_EmptyClipboard, "EmptyClipboard");
+				FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.setClipboardData, win32_func_SetClipboardData, "SetClipboardData");
+				FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.getClipboardData, win32_func_GetClipboardData, "GetClipboardData");
 
-					FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.getDesktopWindow, win32_func_GetDesktopWindow, "GetDesktopWindow");
-					FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.getForegroundWindow, win32_func_GetForegroundWindow, "GetForegroundWindow");
-				}
-
-				// GDI32
-				{
-					const char *gdiLibraryName = "gdi32.dll";
-					HMODULE library = wapi.gdi.gdiLibrary = LoadLibraryA(gdiLibraryName);
-					if (library == nullptr) {
-						common::PushError("[Win32] Failed loading win32 library '%s'!", gdiLibraryName);
-						return false;
-					}
-
-					FPL_WIN32_GET_FUNCTION_ADDRESS(library, gdiLibraryName, wapi.gdi.choosePixelFormat, win32_func_ChoosePixelFormat, "ChoosePixelFormat");
-					FPL_WIN32_GET_FUNCTION_ADDRESS(library, gdiLibraryName, wapi.gdi.setPixelFormat, win32_func_SetPixelFormat, "SetPixelFormat");
-					FPL_WIN32_GET_FUNCTION_ADDRESS(library, gdiLibraryName, wapi.gdi.describePixelFormat, win32_func_DescribePixelFormat, "DescribePixelFormat");
-					FPL_WIN32_GET_FUNCTION_ADDRESS(library, gdiLibraryName, wapi.gdi.stretchDIBits, win32_func_StretchDIBits, "StretchDIBits");
-					FPL_WIN32_GET_FUNCTION_ADDRESS(library, gdiLibraryName, wapi.gdi.deleteObject, win32_func_DeleteObject, "DeleteObject");
-					FPL_WIN32_GET_FUNCTION_ADDRESS(library, gdiLibraryName, wapi.gdi.swapBuffers, win32_func_SwapBuffers, "SwapBuffers");
-					FPL_WIN32_GET_FUNCTION_ADDRESS(library, gdiLibraryName, wapi.gdi.getDeviceCaps, win32_func_GetDeviceCaps, "GetDeviceCaps");
-				}
+				FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.getDesktopWindow, win32_func_GetDesktopWindow, "GetDesktopWindow");
+				FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.getForegroundWindow, win32_func_GetForegroundWindow, "GetForegroundWindow");
 			}
-#		endif
+
+			// GDI32
+			{
+				const char *gdiLibraryName = "gdi32.dll";
+				HMODULE library = wapi.gdi.gdiLibrary = LoadLibraryA(gdiLibraryName);
+				if (library == nullptr) {
+					common::PushError("[Win32] Failed loading win32 library '%s'!", gdiLibraryName);
+					return false;
+				}
+
+				FPL_WIN32_GET_FUNCTION_ADDRESS(library, gdiLibraryName, wapi.gdi.choosePixelFormat, win32_func_ChoosePixelFormat, "ChoosePixelFormat");
+				FPL_WIN32_GET_FUNCTION_ADDRESS(library, gdiLibraryName, wapi.gdi.setPixelFormat, win32_func_SetPixelFormat, "SetPixelFormat");
+				FPL_WIN32_GET_FUNCTION_ADDRESS(library, gdiLibraryName, wapi.gdi.describePixelFormat, win32_func_DescribePixelFormat, "DescribePixelFormat");
+				FPL_WIN32_GET_FUNCTION_ADDRESS(library, gdiLibraryName, wapi.gdi.stretchDIBits, win32_func_StretchDIBits, "StretchDIBits");
+				FPL_WIN32_GET_FUNCTION_ADDRESS(library, gdiLibraryName, wapi.gdi.deleteObject, win32_func_DeleteObject, "DeleteObject");
+				FPL_WIN32_GET_FUNCTION_ADDRESS(library, gdiLibraryName, wapi.gdi.swapBuffers, win32_func_SwapBuffers, "SwapBuffers");
+				FPL_WIN32_GET_FUNCTION_ADDRESS(library, gdiLibraryName, wapi.gdi.getDeviceCaps, win32_func_GetDeviceCaps, "GetDeviceCaps");
+			}
 
 			// OLE32
 			{
@@ -4048,6 +4091,38 @@ namespace fpl {
 				FreeLibrary(api.shell.shellLibrary);
 				api.shell = {};
 			}
+		}
+
+		fpl_internal bool Win32ThreadWaitForMultiple(threading::ThreadContext **contexts, const uint32_t count, const bool waitForAll, const uint32_t maxMilliseconds) {
+			FPL_ASSERT(contexts != nullptr);
+			FPL_ASSERT(count <= common::MAX_THREAD_COUNT);
+			HANDLE threadHandles[common::MAX_THREAD_COUNT];
+			for (uint32_t index = 0; index < count; ++index) {
+				threading::ThreadContext *context = contexts[index];
+				FPL_ASSERT(context->id > 0);
+				FPL_ASSERT(context->internalHandle != nullptr);
+				HANDLE handle = (HANDLE)context->internalHandle;
+				threadHandles[index] = handle;
+			}
+			DWORD code = WaitForMultipleObjects(count, threadHandles, waitForAll ? TRUE : FALSE, maxMilliseconds < UINT32_MAX ? maxMilliseconds : INFINITE);
+			bool result = (code != WAIT_TIMEOUT) && (code != WAIT_FAILED);
+			return(result);
+		}
+
+		fpl_internal bool Win32SignalWaitForMultiple(threading::ThreadSignal **signals, const uint32_t count, const bool waitForAll, const uint32_t maxMilliseconds) {
+			FPL_ASSERT(signals != nullptr);
+			FPL_ASSERT(count <= common::MAX_SIGNAL_COUNT);
+			HANDLE signalHandles[common::MAX_SIGNAL_COUNT];
+			for (uint32_t index = 0; index < count; ++index) {
+				threading::ThreadSignal *signal = signals[index];
+				FPL_ASSERT(signal->isValid);
+				FPL_ASSERT(signal->internalHandle != nullptr);
+				HANDLE handle = (HANDLE)signal->internalHandle;
+				signalHandles[index] = handle;
+			}
+			DWORD code = WaitForMultipleObjects(count, signalHandles, waitForAll ? TRUE : FALSE, maxMilliseconds < UINT32_MAX ? maxMilliseconds : INFINITE);
+			bool result = (code != WAIT_TIMEOUT) && (code != WAIT_FAILED);
+			return(result);
 		}
 
 	} // platform
@@ -4336,12 +4411,13 @@ namespace fpl {
 			FPL_ASSERT(context->internalHandle != nullptr);
 			HANDLE handle = (HANDLE)context->internalHandle;
 			TerminateThread(handle, 0);
+			CloseHandle(handle);
 			// @TODO(final): Is this really needed to use a atomic store for setting the thread state?
 			atomics::AtomicStoreU32((volatile uint32_t *)&context->currentState, (uint32_t)ThreadState::Stopped);
 			*context = {};
 		}
 
-		fpl_api void ThreadWaitForSingle(ThreadContext *context, const uint32_t maxMilliseconds) {
+		fpl_api void ThreadWaitForOne(ThreadContext *context, const uint32_t maxMilliseconds) {
 			FPL_ASSERT(context != nullptr);
 			FPL_ASSERT(context->id > 0);
 			FPL_ASSERT(context->internalHandle != nullptr);
@@ -4349,18 +4425,12 @@ namespace fpl {
 			WaitForSingleObject(handle, maxMilliseconds < UINT32_MAX ? maxMilliseconds : INFINITE);
 		}
 
-		fpl_api void ThreadWaitForMultiple(ThreadContext **contexts, const uint32_t count, const uint32_t maxMilliseconds) {
-			FPL_ASSERT(contexts != nullptr);
-			FPL_ASSERT(count <= common::MAX_THREAD_COUNT);
-			HANDLE threadHandles[common::MAX_THREAD_COUNT];
-			for (uint32_t index = 0; index < count; ++index) {
-				ThreadContext *context = contexts[index];
-				FPL_ASSERT(context->id > 0);
-				FPL_ASSERT(context->internalHandle != nullptr);
-				HANDLE handle = (HANDLE)context->internalHandle;
-				threadHandles[index] = handle;
-			}
-			WaitForMultipleObjects(count, threadHandles, TRUE, maxMilliseconds < UINT32_MAX ? maxMilliseconds : INFINITE);
+		fpl_api void ThreadWaitForAll(ThreadContext **contexts, const uint32_t count, const uint32_t maxMilliseconds) {
+			platform::Win32ThreadWaitForMultiple(contexts, count, true, maxMilliseconds);
+		}
+
+		fpl_api void ThreadWaitForAny(ThreadContext **contexts, const uint32_t count, const uint32_t maxMilliseconds) {
+			platform::Win32ThreadWaitForMultiple(contexts, count, false, maxMilliseconds);
 		}
 
 		fpl_api ThreadMutex MutexCreate() {
@@ -4413,11 +4483,21 @@ namespace fpl {
 			signal = {};
 		}
 
-		fpl_api bool SignalWait(ThreadSignal &signal, const uint32_t maxMilliseconds) {
+		fpl_api bool SignalWaitForOne(ThreadSignal &signal, const uint32_t maxMilliseconds) {
 			FPL_ASSERT(signal.isValid);
 			FPL_ASSERT(signal.internalHandle != nullptr);
 			HANDLE handle = (HANDLE)signal.internalHandle;
 			bool result = (WaitForSingleObject(handle, maxMilliseconds < UINT32_MAX ? maxMilliseconds : INFINITE) == WAIT_OBJECT_0);
+			return(result);
+		}
+
+		fpl_api bool SignalWaitForAll(ThreadSignal **signals, const uint32_t count, const uint32_t maxMilliseconds) {
+			bool result = platform::Win32SignalWaitForMultiple(signals, count, true, maxMilliseconds);
+			return(result);
+		}
+
+		fpl_api bool SignalWaitForAny(ThreadSignal **signals, const uint32_t count, const uint32_t maxMilliseconds) {
+			bool result = platform::Win32SignalWaitForMultiple(signals, count, false, maxMilliseconds);
 			return(result);
 		}
 
@@ -4428,6 +4508,15 @@ namespace fpl {
 			bool result = SetEvent(handle) == TRUE;
 			return(result);
 		}
+
+		fpl_api bool SignalReset(ThreadSignal &signal) {
+			FPL_ASSERT(signal.isValid);
+			FPL_ASSERT(signal.internalHandle != nullptr);
+			HANDLE handle = (HANDLE)signal.internalHandle;
+			bool result = ResetEvent(handle) == TRUE;
+			return(result);
+		}
+
 	} // threading
 
 	//
@@ -4830,6 +4919,7 @@ namespace fpl {
 	//
 	// Win32 Video
 	//
+#if defined(FPL_ENABLE_VIDEO)
 	namespace video {
 		fpl_api VideoBackBuffer *GetVideoBackBuffer() {
 			VideoBackBuffer *result = nullptr;
@@ -4857,11 +4947,12 @@ namespace fpl {
 			return (result);
 		}
 	} // video
+#endif // FPL_ENABLE_VIDEO
 
-#	if defined(FPL_ENABLE_WINDOW)
-//
-// Win32 Window
-//
+#if defined(FPL_ENABLE_WINDOW)
+	//
+	// Win32 Window
+	//
 	namespace window {
 		fpl_api void WindowFlip() {
 			FPL_ASSERT(platform::global__Win32__State != nullptr);
@@ -5178,7 +5269,7 @@ namespace fpl {
 			return(result);
 		}
 	} // window
-#	endif // FPL_ENABLE_WINDOW
+#endif // FPL_ENABLE_WINDOW
 
 //
 // Core Win32
@@ -5310,6 +5401,7 @@ namespace fpl {
 			platform::Win32LeaveFullscreen();
 		}
 
+#	if defined(FPL_ENABLE_VIDEO)
 		switch (win32State.activeVideoDriver) {
 #		if defined(FPL_ENABLE_VIDEO_OPENGL)
 			case VideoDriverType::OpenGL:
@@ -5328,6 +5420,7 @@ namespace fpl {
 			default:
 				break;
 		}
+#	endif // FPL_ENABLE_VIDEO
 
 		platform::Win32ReleaseWindow(win32State);
 
