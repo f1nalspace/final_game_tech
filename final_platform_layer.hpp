@@ -6365,11 +6365,16 @@ namespace fpl {
 
 // ****************************************************************************
 //
-// Platform Independent
+// Platform Independent (Audio)
+//
+// The audio system is based on a stripped down version of "mini_al.h" by David Reid.
 //
 // ****************************************************************************
 namespace fpl {
 
+//
+// Audio
+//
 #if defined(FPL_ENABLE_AUDIO)
 	namespace audio {
 		enum class AudioDeviceState {
