@@ -1,7 +1,7 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
-# Visual Studio 14
-VisualStudioVersion = 14.0.25420.1
+# Visual Studio 15
+VisualStudioVersion = 15.0.26403.7
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "FPL_OpenGL", "FPL_OpenGL\FPL_OpenGL.vcxproj", "{4D324317-CB24-4B90-AEDA-EA084FF25C2D}"
 EndProject
@@ -23,6 +23,8 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Root", "Root", "{8BC6F705-2
 	ProjectSection(SolutionItems) = preProject
 		..\README.md = ..\README.md
 	EndProjectSection
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "FPL_Audio", "FPL_Audio\FPL_Audio.vcxproj", "{9DD1A3B9-956C-475A-B07C-2F3C5A4C6AD5}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -96,6 +98,14 @@ Global
 		{EA0FE726-7868-4779-9134-17EEBA2F7159}.Release|x64.Build.0 = Release|x64
 		{EA0FE726-7868-4779-9134-17EEBA2F7159}.Release|x86.ActiveCfg = Release|Win32
 		{EA0FE726-7868-4779-9134-17EEBA2F7159}.Release|x86.Build.0 = Release|Win32
+		{9DD1A3B9-956C-475A-B07C-2F3C5A4C6AD5}.Debug|x64.ActiveCfg = Debug|x64
+		{9DD1A3B9-956C-475A-B07C-2F3C5A4C6AD5}.Debug|x64.Build.0 = Debug|x64
+		{9DD1A3B9-956C-475A-B07C-2F3C5A4C6AD5}.Debug|x86.ActiveCfg = Debug|Win32
+		{9DD1A3B9-956C-475A-B07C-2F3C5A4C6AD5}.Debug|x86.Build.0 = Debug|Win32
+		{9DD1A3B9-956C-475A-B07C-2F3C5A4C6AD5}.Release|x64.ActiveCfg = Release|x64
+		{9DD1A3B9-956C-475A-B07C-2F3C5A4C6AD5}.Release|x64.Build.0 = Release|x64
+		{9DD1A3B9-956C-475A-B07C-2F3C5A4C6AD5}.Release|x86.ActiveCfg = Release|Win32
+		{9DD1A3B9-956C-475A-B07C-2F3C5A4C6AD5}.Release|x86.Build.0 = Release|Win32
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

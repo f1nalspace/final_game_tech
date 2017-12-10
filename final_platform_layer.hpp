@@ -1,13 +1,13 @@
 /**
 * @file final_platform_layer.hpp
-* @version v0.4.11 alpha
+* @version v0.5.0 beta
 * @author Torsten Spaete
 * @brief Final Platform Layer (FPL) - A Open source C++ single file header platform abstraction layer library.
 *
 * This library is designed to abstract the underlying platform to a very simple and easy to use api.
 * The only dependencies are built-in operating system libraries and the C++ runtime library.
 *
-* The main focus is game/simulation development, so the default settings will create a window and setup a opengl rendering context on any platform.
+* The main focus is game/simulation development, so the default settings will create a window, setup a opengl rendering context and initialize audio playback on any platform.
 *
 * @mainpage
 * Summary of the Final Platform Layer (FPL) project.
@@ -23,7 +23,7 @@ A Open source C++ single file header platform abstraction layer library by Torst
 This library is designed to abstract the underlying platform to a very simple and easy to use api.
 The only dependencies are built-in operating system libraries and the C++ runtime library.
 
-The main focus is game/simulation development, so the default settings will create a window and setup a opengl rendering context on any platform.
+The main focus is game/simulation development, so the default settings will create a window, setup a opengl rendering context and initialize audio playback on any platform.
 
 It works very well with other libraries like for example:
 
@@ -145,6 +145,71 @@ It works very well with other libraries like for example:
 		return(result);
 	}
 
+## Simple audio playback (Infinite square or sine wave)
+	#define FPL_IMPLEMENTATION
+	#define FPL_AUTO_NAMESPACE
+	#define FPL_NO_WINDOW
+	#include <final_platform_layer.hpp>
+	#include <math.h>
+
+	struct AudioTest {
+		uint32_t toneHz;
+		uint32_t toneVolume;
+		uint32_t runningSampleIndex;
+		uint32_t wavePeriod;
+		bool useSquareWave;
+	};
+
+	static const float PI32 = 3.14159265359f;
+
+	static uint32_t FillAudioBuffer(const AudioDeviceFormat &nativeFormat, const uint32_t frameCount, void *outputSamples, void *userData) {
+		AudioTest *audioTest = (AudioTest *)userData;
+		FPL_ASSERT(audioTest != nullptr);
+		FPL_ASSERT(nativeFormat.type == AudioFormatType::S16);
+		uint32_t result = 0;
+		int16_t *outSamples = (int16_t *)outputSamples;
+		uint32_t halfWavePeriod = audioTest->wavePeriod / 2;
+		for (uint32_t frameIndex = 0; frameIndex < frameCount; ++frameIndex) {
+			int16_t sampleValue;
+			if (audioTest->useSquareWave) {
+				sampleValue = ((audioTest->runningSampleIndex++ / halfWavePeriod) % 2) ? (int16_t)audioTest->toneVolume : -(int16_t)audioTest->toneVolume;
+			} else {
+				float t = 2.0f * PI32 * (float)audioTest->runningSampleIndex++ / (float)audioTest->wavePeriod;
+				sampleValue = (int16_t)(sinf(t) * audioTest->toneVolume);
+			}
+			for (uint32_t channelIndex = 0; channelIndex < nativeFormat.channels; ++channelIndex) {
+				*outSamples++ = sampleValue;
+				++result;
+			}
+		}
+		return result;
+	}
+
+	int main(int argc, char **args) {
+		int result = -1;
+
+		Settings settings = DefaultSettings();
+
+		AudioTest audioTest = {};
+		audioTest.toneHz = 256;
+		audioTest.toneVolume = 1000;
+		audioTest.wavePeriod = settings.audio.desiredFormat.sampleRate / audioTest.toneHz;
+		audioTest.useSquareWave = false;
+
+		settings.audio.clientReadCallback = FillAudioBuffer;
+		settings.audio.userData = &audioTest;
+
+		if (InitPlatform(InitFlags::Audio, settings)) {
+			if (PlayAudio() == AudioResult::Success) {
+				ConsoleOut("Press any key to quit playing...\n");
+				getchar();
+				StopAudio();
+			}
+			ReleasePlatform();
+		}
+		return(result);
+	}
+
 # HOW TO COMPILE
 
 You need a C++/11 complaint compiler like MSVC, GCC, Clang, etc.
@@ -156,6 +221,16 @@ You need a C++/11 complaint compiler like MSVC, GCC, Clang, etc.
 ## Linux
 
 - Link against ld.so
+
+# NOTES
+
+## Audio
+
+This library uses the operating system libraries to initialize a audio device.
+The caller needs to set "AudioSettings.clientReadCallback" to provide audio samples in the nativeFormat.
+To start and stop the playback, you need to call "audio::PlayAudio" and "audio::StopAudio" respectively.
+This library does not do any DSP/Audio conversion! The caller must fill in the samples by the nativeFormat it expects.
+There is no guarantee that you get a audio device with the exact same format you specified back. Audio devices does not support any number of audio formats!
 
 # OPTIONS
 
@@ -192,6 +267,12 @@ Define this to disable opengl rendering support entirely.
 // #define FPL_NO_VIDEO_SOFTWARE
 Define this to disable software rendering support entirely.
 
+// #define FPL_NO_AUDIO
+Define this to disable audio playback entirely.
+
+// #define FPL_NO_AUDIO_DIRECTSOUND
+Define this to disable directsound support entirely.
+
 // #define FPL_NO_MULTIPLE_ERRORSTATES
 Define this to use a single error state for GetPlatformLastError() instead of multiple ones.
 
@@ -215,7 +296,8 @@ Define this to include all required namespaces automatically.
 [x] Creating a modern 3.x + opengl rendering context
 [x] Creating a software backbuffer
 
-[ ] Audio playback using OS native libraries
+[x] Asyncronous audio playback
+	[x] DirectSound
 
 [x] Memory allocation and de-allocation with custom alignment support
 [x] Atomic operations
@@ -266,7 +348,15 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
+# ACKNOWLEDGEMENTS
+
+Thanks to David Reid for the awesome "mini_al.h" single header file audio library.
+
 # VERSION HISTORY
+
+## v0.5.0 beta:
+- Added: [Win32] DirectSound playback support
+- Added: Asyncronous audio playback
 
 ## v0.4.11 alpha:
 - Fixed: [Win32] For now, load all user32 functions always, even when window is not used (This is to prepare for audio playback)
@@ -483,7 +573,7 @@ SOFTWARE.
 
 # TODO (Top priority order)
 
-- Feature completeness for Win32 (Audio, Multimonitor)
+- Feature completeness for Win32 (Multimonitor)
 
 - Test other compilers for Win32 (Clang, MingW, Intel)
 
@@ -655,15 +745,27 @@ SOFTWARE.
 #	define FPL_SUPPORT_VIDEO
 #endif
 #if defined(FPL_SUPPORT_VIDEO)
-#if !defined(FPL_NO_VIDEO_OPENGL)
-	//! OpenGL support enabled by default
-#	define FPL_SUPPORT_VIDEO_OPENGL
+#	if !defined(FPL_NO_VIDEO_OPENGL)
+		//! OpenGL support enabled by default
+#		define FPL_SUPPORT_VIDEO_OPENGL
+#	endif
+#	if !defined(FPL_NO_VIDEO_SOFTWARE)
+		//! Software rendering support enabled by default
+#		define FPL_SUPPORT_VIDEO_SOFTWARE
+#	endif
 #endif
-#if !defined(FPL_NO_VIDEO_SOFTWARE)
-	//! Software rendering support enabled by default
-#	define FPL_SUPPORT_VIDEO_SOFTWARE
+
+// Audio
+#if !defined(FPL_NO_AUDIO)
+#	define FPL_SUPPORT_AUDIO
 #endif
-#endif
+#if defined(FPL_SUPPORT_AUDIO)
+#	if !defined(FPL_NO_AUDIO_DIRECTSOUND) && defined(FPL_PLATFORM_WIN32)
+		//! DirectSound support is only available on Win32
+#		define FPL_SUPPORT_AUDIO_DIRECTSOUND
+#	endif
+#endif // FPL_SUPPORT_AUDIO
+
 
 #if !defined(FPL_SUPPORT_WINDOW)
 #	if defined(FPL_SUPPORT_VIDEO)
@@ -687,15 +789,22 @@ SOFTWARE.
 #if defined(FPL_SUPPORT_VIDEO)
 	//! Enable Video
 #	define FPL_ENABLE_VIDEO
-
-#if defined(FPL_SUPPORT_VIDEO_OPENGL)
-	//! Enable OpenGL Video Driver
+#	if defined(FPL_SUPPORT_VIDEO_OPENGL)
+		//! Enable OpenGL Video Driver
 #		define FPL_ENABLE_VIDEO_OPENGL
 #	endif
 
 #	if defined(FPL_SUPPORT_VIDEO_SOFTWARE)
 		//! Enable Software Rendering Video Driver
 #		define FPL_ENABLE_VIDEO_SOFTWARE
+#	endif
+#endif
+#if defined(FPL_SUPPORT_AUDIO)
+	//! Enable Audio
+#	define FPL_ENABLE_AUDIO
+#	if defined(FPL_SUPPORT_AUDIO_DIRECTSOUND)
+		//! Enable DirectSound Audio
+#		define FPL_ENABLE_AUDIO_DIRECTSOUND
 #	endif
 #endif
 
@@ -902,37 +1011,6 @@ namespace fpl {
 		fpl_api char *GetProcessorName(char *destBuffer, const uint32_t maxDestBufferLen);
 	};
 
-	//! Window settings (Size, Title etc.)
-	struct WindowSettings {
-		//! Window title
-		char windowTitle[256];
-		//! Window width in screen coordinates
-		uint32_t windowWidth;
-		//! Window height in screen coordinates
-		uint32_t windowHeight;
-		//! Fullscreen width in screen coordinates
-		uint32_t fullscreenWidth;
-		//! Fullscreen height in screen coordinates
-		uint32_t fullscreenHeight;
-		//! Is window resizable
-		bool isResizable;
-		//! Is window in fullscreen mode
-		bool isFullscreen;
-	};
-
-	//! Make default settings for the window
-	inline WindowSettings DefaultWindowSettings() {
-		WindowSettings result = {};
-		result.windowTitle[0] = 0;
-		result.windowWidth = 800;
-		result.windowHeight = 600;
-		result.fullscreenWidth = 0;
-		result.fullscreenHeight = 0;
-		result.isResizable = true;
-		result.isFullscreen = false;
-		return(result);
-	}
-
 	//! Initialization flags (Window, Video, etc.)
 	enum class InitFlags : uint32_t {
 		//! No init flags
@@ -941,8 +1019,10 @@ namespace fpl {
 		Window = 1 << 0,
 		//! Use a video backbuffer (A window without video is pretty much useless)
 		Video = 1 << 1,
+		//! Use audio playback
+		Audio = 1 << 2,
 		//! Default init flags for a window + video
-		All = Window | Video
+		All = Window | Video | Audio
 	};
 	//! Operator support for InitFlags
 	FPL_ENUM_AS_FLAGS_OPERATORS(InitFlags, uint32_t);
@@ -1003,12 +1083,117 @@ namespace fpl {
 		return(result);
 	}
 
+	//! Audio driver
+	enum class AudioDriverType : uint32_t {
+		//! No audio driver
+		None = 0,
+		// Auto detection
+		Auto,
+		//! DirectSound
+		DirectSound,
+	};
+
+	//! Audio format
+	enum class AudioFormatType : uint32_t {
+		// No audio format
+		None = 0,
+		// Unsigned 8-bit integer PCM
+		U8,
+		// Signed 16-bit integer PCM
+		S16,
+		// Signed 24-bit integer PCM
+		S24,
+		// Signed 32-bit integer PCM
+		S32,
+		// 32-bit floating point PCM
+		F32
+	};
+
+	//! Audio device format
+	struct AudioDeviceFormat {
+		//! Audio format
+		AudioFormatType type;
+		//! Samples per seconds
+		uint32_t sampleRate;
+		//! Number of channels
+		uint32_t channels;
+	};
+
+	//! Audio Client Read Callback Function
+	typedef uint32_t(AudioClientReadFunction)(const AudioDeviceFormat &nativeFormat, const uint32_t frameCount, void *outputSamples, void *userData);
+
+	//! Audio settings
+	struct AudioSettings {
+		//! The targeted format
+		AudioDeviceFormat desiredFormat;
+		//! The callback for retrieving audio data from the client
+		AudioClientReadFunction *clientReadCallback;
+		//! The targeted driver
+		AudioDriverType driver;
+		//! Audio buffer in milliseconds
+		uint32_t bufferSizeInMilliSeconds;
+		//! Is exclude mode prefered
+		bool preferExclusiveMode;
+		//! User data pointer for client read callback
+		void *userData;
+	};
+
+	inline AudioSettings DefaultAudioSettings() {
+		AudioSettings result = {};
+		result.bufferSizeInMilliSeconds = 25;
+		result.preferExclusiveMode = false;
+		result.desiredFormat.channels = 2;
+		result.desiredFormat.sampleRate = 48000;
+		result.desiredFormat.type = AudioFormatType::S16;
+
+		result.driver = AudioDriverType::None;
+#	if defined(FPL_PLATFORM_WIN32)
+#		if defined(FPL_ENABLE_AUDIO_DIRECTSOUND)
+		result.driver = AudioDriverType::DirectSound;
+#		endif
+#	endif
+		return(result);
+	}
+
+	//! Window settings (Size, Title etc.)
+	struct WindowSettings {
+		//! Window title
+		char windowTitle[256];
+		//! Window width in screen coordinates
+		uint32_t windowWidth;
+		//! Window height in screen coordinates
+		uint32_t windowHeight;
+		//! Fullscreen width in screen coordinates
+		uint32_t fullscreenWidth;
+		//! Fullscreen height in screen coordinates
+		uint32_t fullscreenHeight;
+		//! Is window resizable
+		bool isResizable;
+		//! Is window in fullscreen mode
+		bool isFullscreen;
+	};
+
+	//! Make default settings for the window
+	inline WindowSettings DefaultWindowSettings() {
+		WindowSettings result = {};
+		result.windowTitle[0] = 0;
+		result.windowWidth = 800;
+		result.windowHeight = 600;
+		result.fullscreenWidth = 0;
+		result.fullscreenHeight = 0;
+		result.isResizable = true;
+		result.isFullscreen = false;
+		return(result);
+	}
+
 	//! Settings container (Window, Video, etc)
 	struct Settings {
 		//! Window settings
 		WindowSettings window;
 		//! Video settings
 		VideoSettings video;
+		//! Audio settings
+		AudioSettings audio;
 	};
 
 	//! Default settings for video, window, etc.
@@ -1016,6 +1201,7 @@ namespace fpl {
 		Settings result = {};
 		result.window = DefaultWindowSettings();
 		result.video = DefaultVideoSettings();
+		result.audio = DefaultAudioSettings();
 		return(result);
 	}
 
@@ -1780,6 +1966,27 @@ namespace fpl {
 		fpl_api bool ResizeVideoBackBuffer(const uint32_t width, const uint32_t height);
 	};
 #endif // FPL_ENABLE_VIDEO
+
+#if defined(FPL_ENABLE_AUDIO)
+	//! Audio functions
+	namespace audio {
+		//! Audio result
+		enum class AudioResult : uint32_t {
+			Success = 0,
+			DeviceNotInitialized,
+			DeviceAlreadyStopped,
+			DeviceAlreadyStarted,
+			DeviceBusy,
+			Failed,
+		};
+
+		//! Start playing audio
+		fpl_api AudioResult PlayAudio();
+
+		//! Stop playing audio
+		fpl_api AudioResult StopAudio();
+	};
+#endif
 };
 
 //
@@ -1796,6 +2003,9 @@ using namespace fpl;
 #	if defined(FPL_ENABLE_WINDOW)
 using namespace fpl::window;
 using namespace fpl::video;
+#	endif
+#	if defined(FPL_ENABLE_AUDIO)
+using namespace fpl::audio;
 #	endif
 using namespace fpl::atomics;
 using namespace fpl::hardware;
@@ -1966,7 +2176,86 @@ namespace fpl {
 			}
 			return(result);
 		}
+
 	} // common
+
+	//
+	// Common Audio
+	//
+#if defined(FPL_ENABLE_AUDIO)
+	namespace audio {
+		struct CommonAudioState {
+			AudioDeviceFormat internalFormat;
+			AudioClientReadFunction *clientReadCallback;
+			void *clientUserData;
+			uint32_t periods;
+			uint32_t bufferSizeInFrames;
+			uint32_t bufferSizeInBytes;
+		};
+
+		fpl_internal uint32_t GetAudioSampleSizeInBytes(const AudioFormatType format) {
+			switch (format) {
+				case AudioFormatType::U8:
+					return 1;
+				case AudioFormatType::S16:
+					return 2;
+				case AudioFormatType::S24:
+					return 3;
+				case AudioFormatType::S32:
+				case AudioFormatType::F32:
+					return 4;
+				default:
+					return 0;
+			}
+		}
+
+		fpl_constant const char *AUDIO_FORMAT_TYPE_STRINGS[] = {
+			"None",
+			"U8",
+			"S16",
+			"S24",
+			"S32",
+			"F32",
+		};
+
+		fpl_internal const char *GetAudioFormatString(AudioFormatType format) {
+			uint32_t index = (uint32_t)format;
+			FPL_ASSERT(index < FPL_ARRAYCOUNT(AUDIO_FORMAT_TYPE_STRINGS));
+			const char *result = AUDIO_FORMAT_TYPE_STRINGS[index];
+			return(result);
+		}
+
+		fpl_constant const char *AUDIO_DRIVER_TYPE_STRINGS[] = {
+			"None",
+			"Auto",
+			"DirectSound",
+		};
+
+		fpl_internal const char *GetAudioDriverString(AudioDriverType driver) {
+			uint32_t index = (uint32_t)driver;
+			FPL_ASSERT(index < FPL_ARRAYCOUNT(AUDIO_DRIVER_TYPE_STRINGS));
+			const char *result = AUDIO_DRIVER_TYPE_STRINGS[index];
+			return(result);
+		}
+
+		fpl_internal uint32_t GetAudioBufferSizeInFrames(uint32_t sampleRate, uint32_t bufferSizeInMilliSeconds) {
+			uint32_t result = (sampleRate / 1000) * bufferSizeInMilliSeconds;
+			return(result);
+		}
+
+		fpl_internal uint32_t ReadFramesFromClientDirectSound(const CommonAudioState &commonAudio, uint32_t frameCount, void *pSamples) {
+			uint32_t outputSamplesWritten = 0;
+			if (commonAudio.clientReadCallback != nullptr) {
+				outputSamplesWritten = commonAudio.clientReadCallback(commonAudio.internalFormat, frameCount, pSamples, commonAudio.clientUserData);
+			}
+			return outputSamplesWritten;
+		}
+
+		// Forward declarations
+		fpl_internal void ReleaseAudio();
+		fpl_internal AudioResult InitAudio(const AudioSettings &audioSettings);
+	} // audio
+#endif // FPL_ENABLE_AUDIO
 
 	//
 	// Common Strings
@@ -2117,7 +2406,7 @@ namespace fpl {
 #			error "Unsupported architecture/platform!"
 #		endif
 			return (result);
-		}
+}
 
 		fpl_api void *AtomicCompareAndExchangePtr(volatile void **dest, const void *comparand, const void *exchange) {
 			FPL_ASSERT(dest != nullptr);
@@ -2325,7 +2614,7 @@ namespace fpl {
 #	if !defined(WIN32_LEAN_AND_MEAN)
 #		define WIN32_LEAN_AND_MEAN 1
 #	endif
-#	include <Windows.h>		// Win32 api
+#	include <windows.h>		// Win32 api
 #	include <windowsx.h>	// Macros for window messages
 #	include <shlobj.h>		// SHGetFolderPath
 #	include <intrin.h>		// Interlock*
@@ -2752,18 +3041,21 @@ namespace fpl {
 #	endif // FPL_ENABLE_WINDOW
 
 		struct Win32VideoState {
+			VideoDriverType activeVideoDriver;
+			union {
 #		if defined(FPL_ENABLE_VIDEO_OPENGL)
-			struct {
-				HGLRC renderingContext;
-			} opengl;
+				struct {
+					HGLRC renderingContext;
+				} opengl;
 #		endif
 
 #		if defined(FPL_ENABLE_VIDEO_SOFTWARE)
-			struct {
-				video::VideoBackBuffer context;
-				BITMAPINFO bitmapInfo;
-			} software;
+				struct {
+					video::VideoBackBuffer context;
+					BITMAPINFO bitmapInfo;
+				} software;
 #		endif
+			};
 		};
 
 		struct Win32ApplicationState {
@@ -2779,13 +3071,12 @@ namespace fpl {
 			Win32WindowState window;
 			Win32VideoState video;
 			Win32XInputState xinput;
-			VideoDriverType activeVideoDriver;
 			InitFlags initFlags;
 		};
 		fpl_globalvar Win32State *global__Win32__State = nullptr;
 
 #	if defined(FPL_ENABLE_VIDEO_OPENGL)
-		fpl_internal bool Win32CreateVideoOpenGL(platform::Win32State *state, const VideoSettings &videoSettings) {
+		fpl_internal bool Win32InitVideoOpenGL(platform::Win32State *state, const VideoSettings &videoSettings) {
 			platform::Win32APIFunctions &wapi = platform::global__Win32__API__Functions;
 			platform::Win32OpenGLFunctions &glFuncs = platform::global__Win32__OpenGL_Functions;
 
@@ -2934,7 +3225,7 @@ namespace fpl {
 			return true;
 		}
 
-		fpl_internal void Win32ReleaseVideoOpenGLContext(platform::Win32State *state) {
+		fpl_internal void Win32ReleaseVideoOpenGL(platform::Win32State *state) {
 			platform::Win32OpenGLFunctions &glFuncs = platform::global__Win32__OpenGL_Functions;
 			if (state->video.opengl.renderingContext) {
 				glFuncs.wglMakeCurrent(nullptr, nullptr);
@@ -2949,7 +3240,7 @@ namespace fpl {
 #	endif // FPL_ENABLE_VIDEO_OPENGL
 
 #	if defined(FPL_ENABLE_VIDEO_SOFTWARE)
-		fpl_internal bool Win32CreateVideoSoftware(platform::Win32State *state, const uint32_t width, const uint32_t height) {
+		fpl_internal bool Win32InitVideoSoftware(platform::Win32State *state, const uint32_t width, const uint32_t height) {
 			platform::Win32VideoState &videoState = state->video;
 
 			// Allocate memory/fill context
@@ -2988,7 +3279,7 @@ namespace fpl {
 			FPL_ASSERT(videoState.software.context.pixels != nullptr);
 			memory::MemoryAlignedFree(videoState.software.context.pixels);
 			videoState.software = {};
-		}
+			}
 #	endif // FPL_ENABLE_VIDEO_SOFTWARE
 
 #	if defined(FPL_ENABLE_WINDOW)
@@ -3492,17 +3783,17 @@ namespace fpl {
 				case WM_SIZE:
 				{
 #				if defined(FPL_ENABLE_VIDEO_SOFTWARE)
-					if (win32State->activeVideoDriver == VideoDriverType::Software) {
+					if (win32State->video.activeVideoDriver == VideoDriverType::Software) {
 						if (win32State->initSettings.video.isAutoSize) {
 							uint32_t w = LOWORD(lParam);
 							uint32_t h = HIWORD(lParam);
 							if ((w != win32State->video.software.context.width) ||
 								(h != win32State->video.software.context.height)) {
 								platform::Win32ReleaseVideoSoftware(win32State);
-								platform::Win32CreateVideoSoftware(win32State, w, h);
-							}
-						}
-					}
+								platform::Win32InitVideoSoftware(win32State, w, h);
+				}
+			}
+		}
 #				endif
 
 					Event newEvent = {};
@@ -3511,7 +3802,7 @@ namespace fpl {
 					newEvent.window.width = LOWORD(lParam);
 					newEvent.window.height = HIWORD(lParam);
 					platform::PushEvent(newEvent);
-				} break;
+		} break;
 
 				case WM_SYSKEYDOWN:
 				case WM_SYSKEYUP:
@@ -3633,10 +3924,10 @@ namespace fpl {
 
 				default:
 					break;
-			}
+	}
 			result = win32_defWindowProc(hwnd, msg, wParam, lParam);
 			return (result);
-		}
+}
 
 		fpl_internal bool Win32InitWindow(Win32State &win32State, const Settings &initSettings) {
 			Win32APIFunctions &wapi = global__Win32__API__Functions;
@@ -3745,29 +4036,29 @@ namespace fpl {
 
 #		if defined(FPL_ENABLE_VIDEO)
 			// Create opengl rendering context if required
-			win32State.activeVideoDriver = VideoDriverType::None;
+			win32State.video.activeVideoDriver = VideoDriverType::None;
 			switch (initSettings.video.driverType) {
 #			if defined(FPL_ENABLE_VIDEO_OPENGL)
 				case VideoDriverType::OpenGL:
 				{
-					bool openglResult = platform::Win32CreateVideoOpenGL(&win32State, initSettings.video);
+					bool openglResult = platform::Win32InitVideoOpenGL(&win32State, initSettings.video);
 					if (!openglResult) {
 						common::PushError("[Win32] Failed initializing OpenGL for window '%d'/'%s'", win32State.window.windowHandle, win32State.window.windowClass);
 						return false;
 					}
-					win32State.activeVideoDriver = VideoDriverType::OpenGL;
+					win32State.video.activeVideoDriver = VideoDriverType::OpenGL;
 				} break;
 #			endif // FPL_ENABLE_VIDEO_OPENGL
 
 #			if defined(FPL_ENABLE_VIDEO_SOFTWARE)
 				case VideoDriverType::Software:
 				{
-					bool softwareResult = platform::Win32CreateVideoSoftware(&win32State, windowWidth, windowHeight);
+					bool softwareResult = platform::Win32InitVideoSoftware(&win32State, windowWidth, windowHeight);
 					if (!softwareResult) {
 						common::PushError("[Win32] Failed creating software rendering buffer for window '%d'/'%s'", win32State.window.windowHandle, win32State.window.windowClass);
 						return false;
 					}
-					win32State.activeVideoDriver = VideoDriverType::Software;
+					win32State.video.activeVideoDriver = VideoDriverType::Software;
 				} break;
 #			endif // FPL_ENABLE_VIDEO_SOFTWARE
 
@@ -4926,8 +5217,8 @@ namespace fpl {
 			FPL_ASSERT(platform::global__Win32__State != nullptr);
 			platform::Win32State *state = platform::global__Win32__State;
 #		if defined(FPL_ENABLE_VIDEO_SOFTWARE)
-			if (state->activeVideoDriver == VideoDriverType::Software) {
-				platform::Win32VideoState &video = state->video;
+			platform::Win32VideoState &video = state->video;
+			if (video.activeVideoDriver == VideoDriverType::Software) {
 				result = &video.software.context;
 			}
 #		endif
@@ -4939,9 +5230,9 @@ namespace fpl {
 			FPL_ASSERT(platform::global__Win32__State != nullptr);
 			platform::Win32State *state = platform::global__Win32__State;
 #		if defined(FPL_ENABLE_VIDEO_SOFTWARE)
-			if (state->activeVideoDriver == VideoDriverType::Software) {
+			if (state->video.activeVideoDriver == VideoDriverType::Software) {
 				Win32ReleaseVideoSoftware(state);
-				result = Win32CreateVideoSoftware(state, width, height);
+				result = Win32InitVideoSoftware(state, width, height);
 			}
 #		endif
 			return (result);
@@ -4958,18 +5249,18 @@ namespace fpl {
 			FPL_ASSERT(platform::global__Win32__State != nullptr);
 			platform::Win32State *state = platform::global__Win32__State;
 			platform::Win32APIFunctions &wapi = platform::global__Win32__API__Functions;
-			switch (state->activeVideoDriver) {
+			platform::Win32VideoState &video = state->video;
+			switch (video.activeVideoDriver) {
 #			if defined(FPL_ENABLE_VIDEO_SOFTWARE)
 				case VideoDriverType::Software:
 				{
-					platform::Win32VideoState &video = state->video;
 					WindowSize area = GetWindowArea();
 					uint32_t targetWidth = area.width;
 					uint32_t targetHeight = area.height;
 					uint32_t sourceWidth = video.software.context.width;
 					uint32_t sourceHeight = video.software.context.height;
 					wapi.gdi.stretchDIBits(state->window.deviceContext, 0, 0, targetWidth, targetHeight, 0, 0, sourceWidth, sourceHeight, video.software.context.pixels, &video.software.bitmapInfo, DIB_RGB_COLORS, SRCCOPY);
-				} break;
+		} break;
 #			endif
 
 #			if defined(FPL_ENABLE_VIDEO_OPENGL)
@@ -4981,7 +5272,7 @@ namespace fpl {
 
 				default:
 					break;
-			}
+	}
 		}
 
 		fpl_api WindowSize GetWindowArea() {
@@ -5281,11 +5572,11 @@ namespace fpl {
 			if (common::global__LastErrorState->count > 0) {
 				size_t index = common::global__LastErrorState->count - 1;
 				result = GetPlatformLastError(index);
-			}
+		}
 #		else
 			result = global__LastErrorState->errors[0];
 #		endif // FPL_ENABLE_MULTIPLE_ERRORSTATES
-		}
+	}
 		return (result);
 	}
 
@@ -5295,13 +5586,13 @@ namespace fpl {
 #		if defined(FPL_ENABLE_MULTIPLE_ERRORSTATES)
 			if (index > -1 && index < (int32_t)common::global__LastErrorState->count) {
 				result = common::global__LastErrorState->errors[index];
-			} else {
+		} else {
 				result = common::global__LastErrorState->errors[common::global__LastErrorState->count - 1];
 			}
 #		else
 			result = global__LastErrorState->errors[0];
 #		endif // FPL_ENABLE_MULTIPLE_ERRORSTATES
-		}
+	}
 		return (result);
 	}
 
@@ -5323,6 +5614,57 @@ namespace fpl {
 		return (state->currentSettings);
 	}
 
+	fpl_api void ReleasePlatform() {
+		FPL_ASSERT(platform::global__Win32__AppState.isInitialized);
+		FPL_ASSERT(platform::global__Win32__State != nullptr);
+		platform::Win32State &win32State = *platform::global__Win32__State;
+
+#	if defined(FPL_ENABLE_AUDIO)
+		audio::ReleaseAudio();
+#	endif
+
+#	if defined(FPL_ENABLE_WINDOW)
+		if (win32State.currentSettings.window.isFullscreen) {
+			platform::Win32LeaveFullscreen();
+		}
+
+#	if defined(FPL_ENABLE_VIDEO)
+		switch (win32State.video.activeVideoDriver) {
+#		if defined(FPL_ENABLE_VIDEO_OPENGL)
+			case VideoDriverType::OpenGL:
+			{
+				platform::Win32ReleaseVideoOpenGL(&win32State);
+			} break;
+#		endif
+
+#		if defined(FPL_ENABLE_VIDEO_SOFTWARE)
+			case VideoDriverType::Software:
+			{
+				platform::Win32ReleaseVideoSoftware(&win32State);
+			} break;
+#		endif
+
+			default:
+				break;
+		}
+#	endif // FPL_ENABLE_VIDEO
+
+		platform::Win32ReleaseWindow(win32State);
+
+		platform::Win32UnloadXInput();
+#	endif // FPL_ENABLE_WINDOW
+
+		platform::Win32UnloadAPI();
+
+		memory::MemoryAlignedFree(common::global__LastErrorState);
+		common::global__LastErrorState = nullptr;
+
+		fpl::memory::MemoryAlignedFree(platform::global__Win32__State);
+		platform::global__Win32__State = nullptr;
+
+		platform::global__Win32__AppState.isInitialized = false;
+	}
+
 	fpl_api bool InitPlatform(const InitFlags initFlags, const Settings &initSettings) {
 		if (platform::global__Win32__AppState.isInitialized) {
 			common::PushError("[Win32] Platform is already initialized!");
@@ -5342,7 +5684,7 @@ namespace fpl {
 		win32State.initSettings = initSettings;
 		win32State.initFlags = initFlags;
 		win32State.currentSettings = initSettings;
-		win32State.activeVideoDriver = VideoDriverType::None;
+		win32State.video = {};
 
 		// Allocate last error state
 		void *lastErrorStateMemory = memory::MemoryAlignedAllocate(sizeof(common::ErrorState), 16);
@@ -5386,56 +5728,16 @@ namespace fpl {
 		}
 #	endif // FPL_ENABLE_WINDOW
 
+#	if defined(FPL_ENABLE_AUDIO)
+		if (audio::InitAudio(initSettings.audio) != audio::AudioResult::Success) {
+			common::PushError("[Win32] Failed initialization audio with settings (Driver=%s, Format=%s, SampleRate=%lu, Channels=%lu, BufferSize=%lu)!", audio::GetAudioDriverString(initSettings.audio.driver), audio::GetAudioFormatString(initSettings.audio.desiredFormat.type), initSettings.audio.desiredFormat.sampleRate, initSettings.audio.desiredFormat.channels);
+			return false;
+		}
+#	endif
+
 		platform::global__Win32__AppState.isInitialized = true;
 
 		return (true);
-	}
-
-	fpl_api void ReleasePlatform() {
-		FPL_ASSERT(platform::global__Win32__AppState.isInitialized);
-		FPL_ASSERT(platform::global__Win32__State != nullptr);
-		platform::Win32State &win32State = *platform::global__Win32__State;
-
-#	if defined(FPL_ENABLE_WINDOW)
-		if (win32State.currentSettings.window.isFullscreen) {
-			platform::Win32LeaveFullscreen();
-		}
-
-#	if defined(FPL_ENABLE_VIDEO)
-		switch (win32State.activeVideoDriver) {
-#		if defined(FPL_ENABLE_VIDEO_OPENGL)
-			case VideoDriverType::OpenGL:
-			{
-				platform::Win32ReleaseVideoOpenGLContext(&win32State);
-			} break;
-#		endif
-
-#		if defined(FPL_ENABLE_VIDEO_SOFTWARE)
-			case VideoDriverType::Software:
-			{
-				platform::Win32ReleaseVideoSoftware(&win32State);
-			} break;
-#		endif
-
-			default:
-				break;
-		}
-#	endif // FPL_ENABLE_VIDEO
-
-		platform::Win32ReleaseWindow(win32State);
-
-		platform::Win32UnloadXInput();
-#	endif // FPL_ENABLE_WINDOW
-
-		platform::Win32UnloadAPI();
-
-		memory::MemoryAlignedFree(common::global__LastErrorState);
-		common::global__LastErrorState = nullptr;
-
-		fpl::memory::MemoryAlignedFree(platform::global__Win32__State);
-		platform::global__Win32__State = nullptr;
-
-		platform::global__Win32__AppState.isInitialized = false;
 	}
 
 } // fpl
@@ -5672,5 +5974,872 @@ namespace fpl {
 	}
 }
 #endif // FPL_PLATFORM_LINUX
+
+// ****************************************************************************
+//
+// Audio Drivers
+//
+// ****************************************************************************
+#if defined(FPL_ENABLE_AUDIO_DIRECTSOUND)
+#	include <mmreg.h>
+#	include <dsound.h>
+#endif
+namespace fpl {
+	namespace drivers {
+
+#	if defined(FPL_ENABLE_AUDIO_DIRECTSOUND)
+		//
+		// DirectSound
+		//
+#		define FPL_FUNC_DIRECT_SOUND_CREATE(name) HRESULT WINAPI name(const GUID* pcGuidDevice, LPDIRECTSOUND *ppDS8, LPUNKNOWN pUnkOuter)
+		typedef FPL_FUNC_DIRECT_SOUND_CREATE(func_DirectSoundCreate);
+#		define FPL_FUNC_DIRECT_SOUND_ENUMERATE_A(name) HRESULT WINAPI name(LPDSENUMCALLBACKA pDSEnumCallback, LPVOID pContext)
+		typedef FPL_FUNC_DIRECT_SOUND_ENUMERATE_A(func_DirectSoundEnumerateA);
+
+		static const GUID FPL_IID_IDirectSoundNotify = { 0xb0210783, 0x89cd, 0x11d0, {0xaf, 0x08, 0x00, 0xa0, 0xc9, 0x25, 0xcd, 0x16} };
+
+		fpl_constant uint32_t FPL_DIRECTSOUND_MAX_PERIODS = 4;
+
+		struct DirectSoundState {
+			HMODULE dsoundLibrary;
+			LPDIRECTSOUND directSound;
+			LPDIRECTSOUNDBUFFER primaryBuffer;
+			LPDIRECTSOUNDBUFFER secondaryBuffer;
+			LPDIRECTSOUNDNOTIFY notify;
+			HANDLE notifyEvents[FPL_DIRECTSOUND_MAX_PERIODS];
+			HANDLE stopEvent;
+			uint32_t lastProcessedFrame;
+			bool breakMainLoop;
+		};
+
+		fpl_internal bool ReleaseDirectSound(const audio::CommonAudioState &commonAudio, DirectSoundState &dsoundState) {
+			if (dsoundState.dsoundLibrary != nullptr) {
+				if (dsoundState.stopEvent != nullptr) {
+					CloseHandle(dsoundState.stopEvent);
+				}
+
+				for (uint32_t i = 0; i < commonAudio.periods; ++i) {
+					if (dsoundState.notifyEvents[i]) {
+						CloseHandle(dsoundState.notifyEvents[i]);
+					}
+				}
+
+				if (dsoundState.notify != nullptr) {
+					dsoundState.notify->Release();
+				}
+
+				if (dsoundState.secondaryBuffer != nullptr) {
+					dsoundState.secondaryBuffer->Release();
+				}
+
+				if (dsoundState.primaryBuffer != nullptr) {
+					dsoundState.primaryBuffer->Release();
+				}
+
+				if (dsoundState.directSound != nullptr) {
+					dsoundState.directSound->Release();
+				}
+
+				FreeLibrary(dsoundState.dsoundLibrary);
+				dsoundState = {};
+			}
+
+			return true;
+		}
+
+		fpl_internal audio::AudioResult InitDirectSound(const AudioSettings &audioSettings, audio::CommonAudioState &commonAudio, DirectSoundState &dsoundState) {
+			// Load direct sound library
+			dsoundState.dsoundLibrary = LoadLibraryA("dsound.dll");
+			func_DirectSoundCreate *directSoundCreate = (func_DirectSoundCreate *)GetProcAddress(dsoundState.dsoundLibrary, "DirectSoundCreate");
+			if (directSoundCreate == nullptr) {
+				ReleaseDirectSound(commonAudio, dsoundState);
+				return audio::AudioResult::Failed;
+			}
+
+			// Load direct sound object
+			if (!SUCCEEDED(directSoundCreate(nullptr, &dsoundState.directSound, nullptr))) {
+				ReleaseDirectSound(commonAudio, dsoundState);
+				return audio::AudioResult::Failed;
+			}
+
+			// Setup wave format ex
+			WAVEFORMATEXTENSIBLE wf = {};
+			wf.Format.cbSize = sizeof(wf);
+			wf.Format.wFormatTag = WAVE_FORMAT_EXTENSIBLE;
+			wf.Format.nChannels = (WORD)audioSettings.desiredFormat.channels;
+			wf.Format.nSamplesPerSec = (DWORD)audioSettings.desiredFormat.sampleRate;
+			wf.Format.wBitsPerSample = audio::GetAudioSampleSizeInBytes(audioSettings.desiredFormat.type) * 8;
+			wf.Format.nBlockAlign = (wf.Format.nChannels * wf.Format.wBitsPerSample) / 8;
+			wf.Format.nAvgBytesPerSec = wf.Format.nBlockAlign * wf.Format.nSamplesPerSec;
+			wf.Samples.wValidBitsPerSample = wf.Format.wBitsPerSample;
+			if (audioSettings.desiredFormat.type == AudioFormatType::F32) {
+				wf.SubFormat = KSDATAFORMAT_SUBTYPE_IEEE_FLOAT;
+			} else {
+				wf.SubFormat = KSDATAFORMAT_SUBTYPE_PCM;
+			}
+
+			// Get either local window handle or desktop handle
+			FPL_ASSERT(platform::global__Win32__State != nullptr);
+			HWND windowHandle = nullptr;
+#if defined(FPL_ENABLE_WINDOW)
+			if (platform::global__Win32__State->initFlags & InitFlags::Window) {
+				windowHandle = platform::global__Win32__State->window.windowHandle;
+			}
+#endif
+			if (windowHandle == nullptr) {
+				windowHandle = platform::global__Win32__API__Functions.user.getDesktopWindow();
+			}
+
+			// The cooperative level must be set before doing anything else
+			if (FAILED(dsoundState.directSound->SetCooperativeLevel(windowHandle, (audioSettings.preferExclusiveMode) ? DSSCL_EXCLUSIVE : DSSCL_PRIORITY))) {
+				ReleaseDirectSound(commonAudio, dsoundState);
+				return audio::AudioResult::Failed;
+			}
+
+			// Create primary buffer
+			DSBUFFERDESC descDSPrimary = {};
+			descDSPrimary.dwSize = sizeof(DSBUFFERDESC);
+			descDSPrimary.dwFlags = DSBCAPS_PRIMARYBUFFER | DSBCAPS_CTRLVOLUME;
+			if (FAILED(dsoundState.directSound->CreateSoundBuffer(&descDSPrimary, &dsoundState.primaryBuffer, nullptr))) {
+				ReleaseDirectSound(commonAudio, dsoundState);
+				return audio::AudioResult::Failed;
+			}
+
+			// Set format
+			if (FAILED(dsoundState.primaryBuffer->SetFormat((WAVEFORMATEX*)&wf))) {
+				ReleaseDirectSound(commonAudio, dsoundState);
+				return audio::AudioResult::Failed;
+			}
+
+			// Get the required size in bytes
+			DWORD requiredSize;
+			if (FAILED(dsoundState.primaryBuffer->GetFormat(nullptr, 0, &requiredSize))) {
+				ReleaseDirectSound(commonAudio, dsoundState);
+				return audio::AudioResult::Failed;
+			}
+
+			// Get actual format
+			char rawdata[1024];
+			WAVEFORMATEXTENSIBLE* pActualFormat = (WAVEFORMATEXTENSIBLE*)rawdata;
+			if (FAILED(dsoundState.primaryBuffer->GetFormat((WAVEFORMATEX*)pActualFormat, requiredSize, nullptr))) {
+				ReleaseDirectSound(commonAudio, dsoundState);
+				return audio::AudioResult::Failed;
+			}
+
+			// Set internal format
+			AudioDeviceFormat internalFormat = {};
+			if (IsEqualGUID(pActualFormat->SubFormat, KSDATAFORMAT_SUBTYPE_IEEE_FLOAT)) {
+				internalFormat.type = AudioFormatType::F32;
+			} else {
+				switch (pActualFormat->Format.wBitsPerSample) {
+					case 8:
+						internalFormat.type = AudioFormatType::U8;
+						break;
+					case 16:
+						internalFormat.type = AudioFormatType::S16;
+						break;
+					case 24:
+						internalFormat.type = AudioFormatType::S24;
+						break;
+					case 32:
+						internalFormat.type = AudioFormatType::S32;
+						break;
+				}
+			}
+			internalFormat.channels = pActualFormat->Format.nChannels;
+			internalFormat.sampleRate = pActualFormat->Format.nSamplesPerSec;
+			commonAudio.internalFormat = internalFormat;
+
+			// @NOTE(final): We divide up our playback buffer into this number of periods and let directsound notify us when one of it needs to play.
+			commonAudio.periods = 2;
+			commonAudio.bufferSizeInFrames = audio::GetAudioBufferSizeInFrames(internalFormat.sampleRate, audioSettings.bufferSizeInMilliSeconds);
+			commonAudio.bufferSizeInBytes = commonAudio.bufferSizeInFrames * internalFormat.channels * audio::GetAudioSampleSizeInBytes(internalFormat.type);
+
+			// Create secondary buffer
+			DSBUFFERDESC descDS = {};
+			descDS.dwSize = sizeof(DSBUFFERDESC);
+			descDS.dwFlags = DSBCAPS_CTRLPOSITIONNOTIFY | DSBCAPS_GLOBALFOCUS | DSBCAPS_GETCURRENTPOSITION2;
+			descDS.dwBufferBytes = (DWORD)commonAudio.bufferSizeInBytes;
+			descDS.lpwfxFormat = (WAVEFORMATEX*)&wf;
+			if (FAILED(dsoundState.directSound->CreateSoundBuffer(&descDS, &dsoundState.secondaryBuffer, nullptr))) {
+				ReleaseDirectSound(commonAudio, dsoundState);
+				return audio::AudioResult::Failed;
+			}
+
+			// Notifications are set up via a DIRECTSOUNDNOTIFY object which is retrieved from the buffer.
+			if (FAILED(dsoundState.secondaryBuffer->QueryInterface(FPL_IID_IDirectSoundNotify, (void**)&dsoundState.notify))) {
+				ReleaseDirectSound(commonAudio, dsoundState);
+				return audio::AudioResult::Failed;
+			}
+
+			// Setup notifications
+			uint32_t periodSizeInBytes = commonAudio.bufferSizeInBytes / commonAudio.periods;
+			DSBPOSITIONNOTIFY notifyPoints[FPL_DIRECTSOUND_MAX_PERIODS];
+			for (uint32_t i = 0; i < commonAudio.periods; ++i) {
+				dsoundState.notifyEvents[i] = CreateEventA(nullptr, false, false, nullptr);
+				if (dsoundState.notifyEvents[i] == nullptr) {
+					ReleaseDirectSound(commonAudio, dsoundState);
+					return audio::AudioResult::Failed;
+				}
+
+				// The notification offset is in bytes.
+				notifyPoints[i].dwOffset = i * periodSizeInBytes;
+				notifyPoints[i].hEventNotify = dsoundState.notifyEvents[i];
+			}
+			if (FAILED(dsoundState.notify->SetNotificationPositions(commonAudio.periods, notifyPoints))) {
+				ReleaseDirectSound(commonAudio, dsoundState);
+				return audio::AudioResult::Failed;
+			}
+
+			// Create stop event
+			dsoundState.stopEvent = CreateEventA(nullptr, false, false, nullptr);
+			if (dsoundState.stopEvent == nullptr) {
+				ReleaseDirectSound(commonAudio, dsoundState);
+				return audio::AudioResult::Failed;
+			}
+
+			return audio::AudioResult::Success;
+		}
+
+		fpl_internal void StopMainLoopDirectSound(DirectSoundState &dsoundState) {
+			dsoundState.breakMainLoop = true;
+			SetEvent(dsoundState.stopEvent);
+		}
+
+		fpl_internal bool GetCurrentFrameDirectSound(const audio::CommonAudioState &commonAudio, DirectSoundState &dsoundState, uint32_t* pCurrentPos) {
+			FPL_ASSERT(pCurrentPos != nullptr);
+			*pCurrentPos = 0;
+
+			FPL_ASSERT(dsoundState.secondaryBuffer != nullptr);
+			DWORD dwCurrentPosition;
+			if (FAILED(dsoundState.secondaryBuffer->GetCurrentPosition(nullptr, &dwCurrentPosition))) {
+				return false;
+			}
+
+			FPL_ASSERT(commonAudio.internalFormat.channels > 0);
+			*pCurrentPos = (uint32_t)dwCurrentPosition / audio::GetAudioSampleSizeInBytes(commonAudio.internalFormat.type) / commonAudio.internalFormat.channels;
+			return true;
+		}
+
+		fpl_internal uint32_t GetAvailableFramesDirectSound(const audio::CommonAudioState &commonAudio, DirectSoundState &dsoundState) {
+			// Get current frame from current play position
+			uint32_t currentFrame;
+			if (!GetCurrentFrameDirectSound(commonAudio, dsoundState, &currentFrame)) {
+				return 0;
+			}
+
+			// In a playback device the last processed frame should always be ahead of the current frame. The space between
+			// the last processed and current frame (moving forward, starting from the last processed frame) is the amount
+			// of space available to write.
+			uint32_t totalFrameCount = commonAudio.bufferSizeInFrames;
+			uint32_t committedBeg = currentFrame;
+			uint32_t committedEnd;
+			committedEnd = dsoundState.lastProcessedFrame;
+			if (committedEnd <= committedBeg) {
+				committedEnd += totalFrameCount;
+			}
+
+			uint32_t committedSize = (committedEnd - committedBeg);
+			FPL_ASSERT(committedSize <= totalFrameCount);
+
+			return totalFrameCount - committedSize;
+		}
+
+		fpl_internal uint32_t WaitForFramesDirectSound(const audio::CommonAudioState &commonAudio, DirectSoundState &dsoundState) {
+			FPL_ASSERT(commonAudio.internalFormat.sampleRate > 0);
+			FPL_ASSERT(commonAudio.periods > 0);
+
+			// The timeout to use for putting the thread to sleep is based on the size of the buffer and the period count.
+			DWORD timeoutInMilliseconds = (commonAudio.bufferSizeInFrames / (commonAudio.internalFormat.sampleRate / 1000)) / commonAudio.periods;
+			if (timeoutInMilliseconds < 1) {
+				timeoutInMilliseconds = 1;
+			}
+
+			// Copy event handles so we can wait for each one
+			unsigned int eventCount = commonAudio.periods + 1;
+			HANDLE pEvents[FPL_DIRECTSOUND_MAX_PERIODS + 1]; // +1 for the stop event.
+			memory::MemoryCopy(dsoundState.notifyEvents, sizeof(HANDLE) * commonAudio.periods, pEvents);
+			pEvents[eventCount - 1] = dsoundState.stopEvent;
+
+			while (!dsoundState.breakMainLoop) {
+				// Get available frames from directsound
+				uint32_t framesAvailable = GetAvailableFramesDirectSound(commonAudio, dsoundState);
+				if (framesAvailable > 0) {
+					return framesAvailable;
+				}
+
+				// If we get here it means we weren't able to find any frames. We'll just wait here for a bit.
+				WaitForMultipleObjects(eventCount, pEvents, FALSE, timeoutInMilliseconds);
+			}
+
+			// We'll get here if the loop was terminated. Just return whatever's available.
+			return GetAvailableFramesDirectSound(commonAudio, dsoundState);
+		}
+
+		bool StopDirectSound(DirectSoundState &dsoundState) {
+			FPL_ASSERT(dsoundState.secondaryBuffer != nullptr);
+			if (FAILED(dsoundState.secondaryBuffer->Stop())) {
+				return false;
+			}
+			dsoundState.secondaryBuffer->SetCurrentPosition(0);
+			return true;
+		}
+
+		fpl_internal audio::AudioResult StartDirectSound(const audio::CommonAudioState &commonAudio, DirectSoundState &dsoundState) {
+			FPL_ASSERT(commonAudio.periods > 0);
+			FPL_ASSERT(commonAudio.internalFormat.channels > 0);
+			uint32_t audioSampleSizeBytes = audio::GetAudioSampleSizeInBytes(commonAudio.internalFormat.type);
+			FPL_ASSERT(audioSampleSizeBytes > 0);
+
+			// Before playing anything we need to grab an initial group of samples from the client.
+			uint32_t framesToRead = commonAudio.bufferSizeInFrames / commonAudio.periods;
+			uint32_t desiredLockSize = framesToRead * commonAudio.internalFormat.channels * audioSampleSizeBytes;
+
+			void* pLockPtr;
+			DWORD actualLockSize;
+			void* pLockPtr2;
+			DWORD actualLockSize2;
+			if (SUCCEEDED(dsoundState.secondaryBuffer->Lock(0, desiredLockSize, &pLockPtr, &actualLockSize, &pLockPtr2, &actualLockSize2, 0))) {
+				framesToRead = actualLockSize / audioSampleSizeBytes / commonAudio.internalFormat.channels;
+				audio::ReadFramesFromClientDirectSound(commonAudio, framesToRead, pLockPtr);
+				dsoundState.secondaryBuffer->Unlock(pLockPtr, actualLockSize, pLockPtr2, actualLockSize2);
+				dsoundState.lastProcessedFrame = framesToRead;
+				if (FAILED(dsoundState.secondaryBuffer->Play(0, 0, DSBPLAY_LOOPING))) {
+					return audio::AudioResult::Failed;
+				}
+			} else {
+				return audio::AudioResult::Failed;
+			}
+			return audio::AudioResult::Success;
+		}
+
+		fpl_internal void DirectSoundMainLoop(const audio::CommonAudioState &commonAudio, DirectSoundState &dsoundState) {
+			FPL_ASSERT(commonAudio.internalFormat.channels > 0);
+			uint32_t audioSampleSizeBytes = audio::GetAudioSampleSizeInBytes(commonAudio.internalFormat.type);
+			FPL_ASSERT(audioSampleSizeBytes > 0);
+
+			// Make sure the stop event is not signaled to ensure we don't end up immediately returning from WaitForMultipleObjects().
+			ResetEvent(dsoundState.stopEvent);
+
+			// Main loop
+			dsoundState.breakMainLoop = false;
+			while (!dsoundState.breakMainLoop) {
+				// Wait until we get available frames from directsound
+				uint32_t framesAvailable = WaitForFramesDirectSound(commonAudio, dsoundState);
+				if (framesAvailable == 0) {
+					continue;
+				}
+
+				// Don't bother grabbing more data if the device is being stopped.
+				if (dsoundState.breakMainLoop) {
+					break;
+				}
+
+				// Lock playback buffer
+				DWORD lockOffset = dsoundState.lastProcessedFrame * commonAudio.internalFormat.channels * audioSampleSizeBytes;
+				DWORD lockSize = framesAvailable * commonAudio.internalFormat.channels * audioSampleSizeBytes;
+				{
+					void* pLockPtr;
+					DWORD actualLockSize;
+					void* pLockPtr2;
+					DWORD actualLockSize2;
+					if (FAILED(dsoundState.secondaryBuffer->Lock(lockOffset, lockSize, &pLockPtr, &actualLockSize, &pLockPtr2, &actualLockSize2, 0))) {
+						// @TODO(final): Handle error
+						break;
+					}
+
+					// Read actual frames from user
+					uint32_t frameCount = actualLockSize / audioSampleSizeBytes / commonAudio.internalFormat.channels;
+					audio::ReadFramesFromClientDirectSound(commonAudio, frameCount, pLockPtr);
+					dsoundState.lastProcessedFrame = (dsoundState.lastProcessedFrame + frameCount) % commonAudio.bufferSizeInFrames;
+
+					// Unlock playback buffer
+					dsoundState.secondaryBuffer->Unlock(pLockPtr, actualLockSize, pLockPtr2, actualLockSize2);
+				}
+			}
+		}
+#	endif //FPL_ENABLE_AUDIO_DIRECTSOUND
+
+	} // drivers
+} // fpl
+
+// ****************************************************************************
+//
+// Platform Independent
+//
+// ****************************************************************************
+namespace fpl {
+
+#if defined(FPL_ENABLE_AUDIO)
+	namespace audio {
+		enum class AudioDeviceState {
+			Uninitialized = 0,
+			Stopped,
+			Started,
+			Starting,
+			Stopping,
+		};
+
+		struct AudioState {
+			CommonAudioState common;
+
+			threading::ThreadMutex lock;
+			threading::ThreadContext *workerThread;
+			threading::ThreadSignal startSignal;
+			threading::ThreadSignal stopSignal;
+			threading::ThreadSignal wakeupSignal;
+			volatile AudioDeviceState state;
+			volatile AudioResult workResult;
+
+			AudioDriverType activeDriver;
+			uint32_t periods;
+			uint32_t bufferSizeInFrames;
+			uint32_t bufferSizeInBytes;
+			bool isAsyncDriver;
+
+			union {
+#			if defined(FPL_ENABLE_AUDIO_DIRECTSOUND)
+				drivers::DirectSoundState dsound;
+#			endif
+			};
+		};
+
+		fpl_globalvar AudioState global__Audio__State = {};
+
+		fpl_internal void AudioDeviceStopMainLoop(AudioState &audioState) {
+			FPL_ASSERT(audioState.activeDriver > AudioDriverType::Auto);
+			switch (audioState.activeDriver) {
+
+#			if defined(FPL_ENABLE_AUDIO_DIRECTSOUND)
+				case AudioDriverType::DirectSound:
+				{
+					StopMainLoopDirectSound(audioState.dsound);
+				} break;
+#			endif
+
+				default:
+					break;
+			}
+		}
+
+		fpl_internal bool AudioReleaseDevice(AudioState &audioState) {
+			FPL_ASSERT(audioState.activeDriver > AudioDriverType::Auto);
+			bool result = false;
+			switch (audioState.activeDriver) {
+
+#			if defined(FPL_ENABLE_AUDIO_DIRECTSOUND)
+				case AudioDriverType::DirectSound:
+				{
+					result = ReleaseDirectSound(audioState.common, audioState.dsound);
+				} break;
+#			endif
+
+				default:
+					break;
+			}
+			return (result);
+		}
+
+		fpl_internal bool AudioStopDevice(AudioState &audioState) {
+			FPL_ASSERT(audioState.activeDriver > AudioDriverType::Auto);
+			bool result = false;
+			switch (audioState.activeDriver) {
+
+#			if defined(FPL_ENABLE_AUDIO_DIRECTSOUND)
+				case AudioDriverType::DirectSound:
+				{
+					result = StopDirectSound(audioState.dsound);
+				} break;
+#			endif
+
+				default:
+					break;
+			}
+			return (result);
+		}
+
+		fpl_internal AudioResult AudioStartDevice(AudioState &audioState) {
+			FPL_ASSERT(audioState.activeDriver > AudioDriverType::Auto);
+			AudioResult result = AudioResult::Failed;
+			switch (audioState.activeDriver) {
+
+#			if defined(FPL_ENABLE_AUDIO_DIRECTSOUND)
+				case AudioDriverType::DirectSound:
+				{
+					result = StartDirectSound(audioState.common, audioState.dsound);
+				} break;
+#			endif
+
+				default:
+					break;
+			}
+			return (result);
+		}
+
+		fpl_internal void AudioDeviceMainLoop(AudioState &audioState) {
+			FPL_ASSERT(audioState.activeDriver > AudioDriverType::Auto);
+			switch (audioState.activeDriver) {
+
+#			if defined(FPL_ENABLE_AUDIO_DIRECTSOUND)
+				case AudioDriverType::DirectSound:
+				{
+					DirectSoundMainLoop(audioState.common, audioState.dsound);
+				} break;
+#			endif
+
+				default:
+					break;
+			}
+		}
+
+		fpl_internal bool IsAudioDriverAsync(AudioDriverType audioDriver) {
+			switch (audioDriver) {
+				case AudioDriverType::DirectSound:
+					return false;
+				default:
+					return false;
+			}
+		}
+
+		fpl_internal void AudioSetDeviceState(AudioState &audioState, AudioDeviceState newState) {
+			atomics::AtomicStoreU32((volatile uint32_t *)&audioState.state, (uint32_t)newState);
+		}
+
+		fpl_internal AudioDeviceState AudioGetDeviceState(AudioState &audioState) {
+			AudioDeviceState result = (AudioDeviceState)atomics::AtomicLoadU32((volatile uint32_t *)&audioState.state);
+			return(result);
+		}
+
+		fpl_internal bool IsAudioDeviceInitialized(AudioState *audioState) {
+			if (audioState == nullptr) {
+				return false;
+			}
+			AudioDeviceState state = AudioGetDeviceState(*audioState);
+			return(state != AudioDeviceState::Uninitialized);
+		}
+
+		fpl_internal bool IsAudioDeviceStarted(AudioState *audioState) {
+			if (audioState == nullptr) {
+				return false;
+			}
+			AudioDeviceState state = AudioGetDeviceState(*audioState);
+			return(state == AudioDeviceState::Started);
+		}
+
+		fpl_internal void AudioWorkerThread(const threading::ThreadContext &context, void *data) {
+			AudioState *audioState = (AudioState *)data;
+			FPL_ASSERT(audioState != nullptr);
+			FPL_ASSERT(audioState->activeDriver != AudioDriverType::None);
+
+#		if defined(FPL_PLATFORM_WIN32)
+			platform::global__Win32__API__Functions.ole.coInitializeEx(nullptr, 0);
+#		endif
+
+			// This is only used to prevent posting onStop() when the device is first initialized.
+			bool skipNextStopEvent = true;
+
+			for (;;) {
+				// At the start of iteration the device is stopped - we must explicitly mark it as such.
+				AudioStopDevice(*audioState);
+
+				if (!skipNextStopEvent) {
+					// @TODO(final): Call stop callback to notify client
+				} else {
+					skipNextStopEvent = false;
+				}
+
+
+				// Let the other threads know that the device has stopped.
+				AudioSetDeviceState(*audioState, AudioDeviceState::Stopped);
+				threading::SignalWakeUp(audioState->stopSignal);
+
+				// We use an event to wait for a request to wake up.
+				threading::SignalWaitForOne(audioState->wakeupSignal);
+
+				// Default result code.
+				audioState->workResult = AudioResult::Success;
+
+				// Just break if we're terminating.
+				if (AudioGetDeviceState(*audioState) == AudioDeviceState::Uninitialized) {
+					break;
+				}
+
+				// Getting here means we just started the device and we need to wait for the device to
+				// either deliver us data (recording) or request more data (playback).
+				FPL_ASSERT(AudioGetDeviceState(*audioState) == AudioDeviceState::Starting);
+
+				audioState->workResult = AudioStartDevice(*audioState);
+				if (audioState->workResult != AudioResult::Success) {
+					threading::SignalWakeUp(audioState->startSignal);
+					continue;
+				}
+
+				// The thread that requested the device to start playing is waiting for this thread to start the
+				// device for real, which is now.
+				AudioSetDeviceState(*audioState, AudioDeviceState::Started);
+				threading::SignalWakeUp(audioState->startSignal);
+
+				// Now we just enter the main loop. The main loop can be broken with mal_device__break_main_loop().
+				AudioDeviceMainLoop(*audioState);
+			}
+
+			// Make sure we aren't continuously waiting on a stop event.
+			threading::SignalWakeUp(audioState->stopSignal);
+
+#		if defined(FPL_PLATFORM_WIN32)
+			platform::global__Win32__API__Functions.ole.coUninitialize();
+#		endif
+		}
+
+		fpl_api AudioResult StopAudio() {
+			AudioState *audioState = &global__Audio__State;
+
+			if (AudioGetDeviceState(*audioState) == AudioDeviceState::Uninitialized) {
+				return AudioResult::DeviceNotInitialized;
+			}
+
+			AudioResult result = AudioResult::Failed;
+			MutexLock(audioState->lock);
+			{
+				// Check if the device is already stopped
+				if (AudioGetDeviceState(*audioState) == AudioDeviceState::Stopping) {
+					MutexUnlock(audioState->lock);
+					return AudioResult::DeviceAlreadyStopped;
+				}
+				if (AudioGetDeviceState(*audioState) == AudioDeviceState::Stopped) {
+					MutexUnlock(audioState->lock);
+					return AudioResult::DeviceAlreadyStopped;
+				}
+
+				// The device needs to be in a started state. If it's not, we just let the caller know the device is busy.
+				if (AudioGetDeviceState(*audioState) != AudioDeviceState::Started) {
+					MutexUnlock(audioState->lock);
+					return AudioResult::DeviceBusy;
+				}
+
+				AudioSetDeviceState(*audioState, AudioDeviceState::Stopping);
+
+				if (audioState->isAsyncDriver)
+				{
+					// Asynchronous drivers (Has their own thread)
+					AudioStopDevice(*audioState);
+				} else {
+					// Synchronous drivers
+
+					// When we get here the worker thread is likely in a wait state while waiting for the backend device to deliver or request
+					// audio data. We need to force these to return as quickly as possible.
+					AudioDeviceStopMainLoop(*audioState);
+
+					// We need to wait for the worker thread to become available for work before returning. Note that the worker thread will be
+					// the one who puts the device into the stopped state. Don't call mal_device__set_state() here.
+					SignalWaitForOne(audioState->stopSignal);
+					result = AudioResult::Success;
+				}
+			}
+			MutexUnlock(audioState->lock);
+
+			return result;
+		}
+
+		fpl_api AudioResult PlayAudio() {
+			AudioState *audioState = &global__Audio__State;
+
+			if (!IsAudioDeviceInitialized(audioState)) {
+				return AudioResult::DeviceNotInitialized;
+			}
+
+			AudioResult result = AudioResult::Failed;
+			MutexLock(audioState->lock);
+			{
+				// Be a bit more descriptive if the device is already started or is already in the process of starting. This is likely
+				// a bug with the application.
+				if (AudioGetDeviceState(*audioState) == AudioDeviceState::Starting) {
+					MutexUnlock(audioState->lock);
+					return AudioResult::DeviceAlreadyStarted;
+				}
+				if (AudioGetDeviceState(*audioState) == AudioDeviceState::Started) {
+					MutexUnlock(audioState->lock);
+					return AudioResult::DeviceAlreadyStarted;
+				}
+
+				// The device needs to be in a stopped state. If it's not, we just let the caller know the device is busy.
+				if (AudioGetDeviceState(*audioState) != AudioDeviceState::Stopped) {
+					MutexUnlock(audioState->lock);
+					return AudioResult::DeviceBusy;
+				}
+
+				AudioSetDeviceState(*audioState, AudioDeviceState::Starting);
+
+				if (audioState->isAsyncDriver)
+				{
+					// Asynchronous drivers (Has their own thread)
+					AudioStartDevice(*audioState);
+					AudioSetDeviceState(*audioState, AudioDeviceState::Started);
+				} else {
+					// Synchronous drivers
+					SignalWakeUp(audioState->wakeupSignal);
+
+					// Wait for the worker thread to finish starting the device. Note that the worker thread will be the one
+					// who puts the device into the started state. Don't call mal_device__set_state() here.
+					SignalWaitForOne(audioState->startSignal);
+					result = audioState->workResult;
+				}
+			}
+			MutexUnlock(audioState->lock);
+
+			return result;
+		}
+
+		fpl_internal void ReleaseAudio() {
+			AudioState *audioState = &global__Audio__State;
+
+			if (!IsAudioDeviceInitialized(audioState)) {
+				return;
+			}
+
+			// Make sure the device is stopped first. The backends will probably handle this naturally,
+			// but I like to do it explicitly for my own sanity.
+			if (IsAudioDeviceStarted(audioState)) {
+				while (StopAudio() == AudioResult::DeviceBusy) {
+					threading::ThreadSleep(1);
+				}
+			}
+
+			// Putting the device into an uninitialized state will make the worker thread return.
+			AudioSetDeviceState(*audioState, AudioDeviceState::Uninitialized);
+
+			// Wake up the worker thread and wait for it to properly terminate.
+			SignalWakeUp(audioState->wakeupSignal);
+			ThreadWaitForOne(audioState->workerThread);
+			ThreadStop(audioState->workerThread);
+
+			// Release signals and thread
+			if (audioState->stopSignal.isValid) {
+				threading::SignalDestroy(audioState->stopSignal);
+			}
+			if (audioState->startSignal.isValid) {
+				threading::SignalDestroy(audioState->startSignal);
+			}
+			if (audioState->wakeupSignal.isValid) {
+				threading::SignalDestroy(audioState->wakeupSignal);
+			}
+			if (audioState->lock.isValid) {
+				threading::MutexDestroy(audioState->lock);
+			}
+
+			AudioReleaseDevice(*audioState);
+
+			*audioState = {};
+
+#		if defined(FPL_PLATFORM_WIN32)
+			platform::global__Win32__API__Functions.ole.coUninitialize();
+#		endif
+		}
+
+		fpl_internal AudioResult InitAudio(const AudioSettings &audioSettings) {
+			AudioState *audioState = &global__Audio__State;
+
+			if (audioState->activeDriver != AudioDriverType::None) {
+				return AudioResult::Failed;
+			}
+
+			if (audioSettings.desiredFormat.channels == 0) {
+				return AudioResult::Failed;
+			}
+			if (audioSettings.desiredFormat.sampleRate == 0) {
+				return AudioResult::Failed;
+			}
+			if (audioSettings.bufferSizeInMilliSeconds == 0) {
+				return AudioResult::Failed;
+			}
+
+			*audioState = {};
+			audioState->common.clientReadCallback = audioSettings.clientReadCallback;
+			audioState->common.clientUserData = audioSettings.userData;
+
+#		if defined(FPL_PLATFORM_WIN32)
+			platform::global__Win32__API__Functions.ole.coInitializeEx(nullptr, 0);
+#		endif
+
+			// Create mutex and signals
+			audioState->lock = threading::MutexCreate();
+			if (!audioState->lock.isValid) {
+				ReleaseAudio();
+				return AudioResult::Failed;
+			}
+			audioState->wakeupSignal = threading::SignalCreate();
+			if (!audioState->wakeupSignal.isValid) {
+				ReleaseAudio();
+				return AudioResult::Failed;
+			}
+			audioState->startSignal = threading::SignalCreate();
+			if (!audioState->startSignal.isValid) {
+				ReleaseAudio();
+				return AudioResult::Failed;
+			}
+			audioState->stopSignal = threading::SignalCreate();
+			if (!audioState->stopSignal.isValid) {
+				ReleaseAudio();
+				return AudioResult::Failed;
+			}
+
+			// Prope drivers
+			AudioDriverType propeDrivers[] = {
+				AudioDriverType::DirectSound,
+			};
+			uint32_t driverCount = FPL_ARRAYCOUNT(propeDrivers);
+			AudioResult initResult = AudioResult::Failed;
+			for (uint32_t driverIndex = 0; driverIndex < driverCount; ++driverIndex) {
+				AudioDriverType propeDriver = propeDrivers[driverIndex];
+
+				initResult = AudioResult::Failed;
+				switch (audioSettings.driver) {
+
+#				if defined(FPL_ENABLE_AUDIO_DIRECTSOUND)
+					case AudioDriverType::DirectSound:
+					{
+						initResult = InitDirectSound(audioSettings, audioState->common, audioState->dsound);
+						if (initResult != AudioResult::Success) {
+							ReleaseDirectSound(audioState->common, audioState->dsound);
+						}
+					} break;
+#				endif
+
+					default:
+						break;
+				}
+				if (initResult == AudioResult::Success) {
+					audioState->activeDriver = propeDriver;
+					audioState->isAsyncDriver = IsAudioDriverAsync(propeDriver);
+					break;
+				}
+			}
+
+			if (initResult != AudioResult::Success) {
+				ReleaseAudio();
+				return initResult;
+			}
+
+			if (!audioState->isAsyncDriver) {
+				// Create worker thread
+				audioState->workerThread = threading::ThreadCreate(AudioWorkerThread, audioState, true);
+				if (audioState->workerThread == nullptr) {
+					ReleaseAudio();
+					return AudioResult::Failed;
+				}
+				// Wait for the worker thread to put the device into it's stopped state for real.
+				SignalWaitForOne(audioState->stopSignal);
+			} else {
+				AudioSetDeviceState(*audioState, AudioDeviceState::Stopped);
+			}
+
+			FPL_ASSERT(AudioGetDeviceState(*audioState) == AudioDeviceState::Stopped);
+
+			return(AudioResult::Success);
+		}
+	} // audio
+#endif // FPL_ENABLE_AUDIO
+
+} // fpl
 
 #endif // FPL_IMPLEMENTATION && !FPL_IMPLEMENTED

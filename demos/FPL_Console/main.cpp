@@ -4,6 +4,8 @@
 
 #define FPL_IMPLEMENTATION
 #define FPL_NO_WINDOW
+#define FPL_NO_VIDEO
+#define FPL_NO_AUDIO
 #define FPL_AUTO_NAMESPACE
 
 // @NOTE(final): Any assert should fire immediatly, regardless of the configuration

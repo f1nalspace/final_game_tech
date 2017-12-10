@@ -1,5 +1,6 @@
 #define FPL_IMPLEMENTATION
 #define FPL_AUTO_NAMESPACE
+#define FPL_NO_AUDIO
 #include <final_platform_layer.hpp>
 
 #define IMGUI_DISABLE_OBSOLETE_FUNCTIONS 1

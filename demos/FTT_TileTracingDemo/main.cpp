@@ -1,4 +1,5 @@
 #define FPL_IMPLEMENTATION
+#define FPL_NO_AUDIO
 #define FPL_AUTO_NAMESPACE
 #include "final_platform_layer.hpp"
 

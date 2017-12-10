@@ -1,4 +1,5 @@
 #define FPL_AUTO_NAMESPACE
+#define FPL_NO_AUDIO
 #include "final_platform_layer.hpp"
 
 struct RandomSeries {
