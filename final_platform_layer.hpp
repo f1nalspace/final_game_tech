@@ -6368,6 +6368,7 @@ namespace fpl {
 // Platform Independent (Audio)
 //
 // The audio system is based on a stripped down version of "mini_al.h" by David Reid.
+// See: https://github.com/dr-soft/mini_al
 //
 // ****************************************************************************
 namespace fpl {
