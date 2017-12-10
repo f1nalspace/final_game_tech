@@ -54,7 +54,8 @@ int main(int argc, char **args) {
 
 	if (InitPlatform(InitFlags::Audio, settings)) {
 		if (PlayAudio() == AudioResult::Success) {
-			ConsoleOut("Audio is playing, press any key to stop playback...\n");
+			AudioDeviceFormat nativeFormat = GetAudioNativeFormat();
+			ConsoleFormatOut("Audio with %lu KHz and %lu channels is playing, press any key to stop playback...\n", nativeFormat.sampleRate, nativeFormat.channels);
 			getchar();
 			StopAudio();
 		}

@@ -227,10 +227,10 @@ You need a C++/11 complaint compiler like MSVC, GCC, Clang, etc.
 ## Audio
 
 This library uses the operating system libraries to initialize a audio device.
-The caller needs to set "AudioSettings.clientReadCallback" to provide audio samples in the nativeFormat.
+The caller needs to set "AudioSettings.clientReadCallback" to provide audio samples in the native format the device expects.
 To start and stop the playback, you need to call "audio::PlayAudio" and "audio::StopAudio" respectively.
-This library does not do any DSP/Audio conversion! The caller must fill in the samples by the nativeFormat it expects.
-There is no guarantee that you get a audio device with the exact same format you specified back. Audio devices does not support any number of audio formats!
+This library does not do any DSP/Audio conversion! The caller must fill in the samples in the native format the audio device expects.
+There is no guarantee that you get a audio device with the exact same format you specified back.
 
 # OPTIONS
 
@@ -1982,9 +1982,10 @@ namespace fpl {
 
 		//! Start playing audio
 		fpl_api AudioResult PlayAudio();
-
 		//! Stop playing audio
 		fpl_api AudioResult StopAudio();
+		//! Returns the native format for the current audio device
+		fpl_api const AudioDeviceFormat &GetAudioNativeFormat();
 	};
 #endif
 };
@@ -6842,6 +6843,11 @@ namespace fpl {
 			FPL_ASSERT(AudioGetDeviceState(*audioState) == AudioDeviceState::Stopped);
 
 			return(AudioResult::Success);
+		}
+
+		fpl_api const AudioDeviceFormat &GetAudioNativeFormat() {
+			AudioState *audioState = &global__Audio__State;
+			return audioState->common.internalFormat;
 		}
 	} // audio
 #endif // FPL_ENABLE_AUDIO
