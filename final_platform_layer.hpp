@@ -5730,9 +5730,11 @@ namespace fpl {
 #	endif // FPL_ENABLE_WINDOW
 
 #	if defined(FPL_ENABLE_AUDIO)
-		if (audio::InitAudio(initSettings.audio) != audio::AudioResult::Success) {
-			common::PushError("[Win32] Failed initialization audio with settings (Driver=%s, Format=%s, SampleRate=%lu, Channels=%lu, BufferSize=%lu)!", audio::GetAudioDriverString(initSettings.audio.driver), audio::GetAudioFormatString(initSettings.audio.desiredFormat.type), initSettings.audio.desiredFormat.sampleRate, initSettings.audio.desiredFormat.channels);
-			return false;
+		if (win32State.initFlags & InitFlags::Audio) {
+			if (audio::InitAudio(initSettings.audio) != audio::AudioResult::Success) {
+				common::PushError("[Win32] Failed initialization audio with settings (Driver=%s, Format=%s, SampleRate=%lu, Channels=%lu, BufferSize=%lu)!", audio::GetAudioDriverString(initSettings.audio.driver), audio::GetAudioFormatString(initSettings.audio.desiredFormat.type), initSettings.audio.desiredFormat.sampleRate, initSettings.audio.desiredFormat.channels);
+				return false;
+			}
 		}
 #	endif
 
