@@ -46,6 +46,7 @@ extern "C" {
 #	include <libavutil/avutil.h>
 #	include <libavutil/imgutils.h>
 #	include <libswscale\swscale.h>
+#	include <libswresample\swresample.h>
 }
 
 // av_register_all
@@ -124,6 +125,16 @@ typedef FFMPEG_SWS_SCALE_FUNC(ffmpeg_sws_scale_func);
 #define FFMPEG_SWS_FREE_CONTEXT_FUNC(name) void name(struct SwsContext *swsContext)
 typedef FFMPEG_SWS_FREE_CONTEXT_FUNC(ffmpeg_sws_freeContext_func);
 
+// swr_alloc_set_opts_func
+#define FFMPEG_SWR_ALLOC_SET_OPTS(name) struct SwrContext *name(struct SwrContext *s, int64_t out_ch_layout, enum AVSampleFormat out_sample_fmt, int out_sample_rate, int64_t  in_ch_layout, enum AVSampleFormat  in_sample_fmt, int  in_sample_rate, int log_offset, void *log_ctx)
+typedef FFMPEG_SWR_ALLOC_SET_OPTS(ffmpeg_swr_alloc_set_opts_func);
+// swr_free
+#define FFMPEG_SWR_FREE(name) void name(struct SwrContext **s)
+typedef FFMPEG_SWR_FREE(ffmpeg_swr_free_func);
+// swr_convert
+#define FFMPEG_SWR_CONVERT(name) int name(struct SwrContext *s, uint8_t **out, int out_count, const uint8_t **in , int in_count)
+typedef FFMPEG_SWR_CONVERT(ffmpeg_swr_convert_func);
+
 #define FFMPEG_GET_FUNCTION_ADDRESS(libHandle, libName, target, type, name) \
 	target = (type *)GetDynamicLibraryProc(libHandle, name); \
 	if (target == nullptr) { \
@@ -163,6 +174,11 @@ struct ffmpegFunctions {
 	ffmpeg_sws_getContext_func *swsGetContext;
 	ffmpeg_sws_scale_func *swsScale;
 	ffmpeg_sws_freeContext_func *swsFreeContext;
+
+	// SWR
+	ffmpeg_swr_alloc_set_opts_func *swrAllocSetOpts;
+	ffmpeg_swr_free_func *swrFree;
+	ffmpeg_swr_convert_func *swrConvert;
 };
 
 static ffmpegFunctions *globalFFMPEGFunctions = nullptr;
@@ -579,11 +595,13 @@ int main(int argc, char **argv) {
 		const char *avFormatLibFile = "avformat-58.dll";
 		const char *avCodecLibFile = "avcodec-58.dll";
 		const char *avUtilLibFile = "avutil-56.dll";
-		const char *swsScaleLibFile = "swscale-5.dll";
+		const char *swScaleLibFile = "swscale-5.dll";
+		const char *swResampleLibFile = "swresample-3.dll";
 		DynamicLibraryHandle avFormatLib = DynamicLibraryLoad(avFormatLibFile);
 		DynamicLibraryHandle avCodecLib = DynamicLibraryLoad(avCodecLibFile);
 		DynamicLibraryHandle avUtilLib = DynamicLibraryLoad(avUtilLibFile);
-		DynamicLibraryHandle swsScaleLib = DynamicLibraryLoad(swsScaleLibFile);
+		DynamicLibraryHandle swScaleLib = DynamicLibraryLoad(swScaleLibFile);
+		DynamicLibraryHandle swResampleLib = DynamicLibraryLoad(swResampleLibFile);
 		FFMPEG_GET_FUNCTION_ADDRESS(avFormatLib, avFormatLibFile, ffmpeg.avRegisterAll, ffmpeg_av_register_all_func, "av_register_all");
 		FFMPEG_GET_FUNCTION_ADDRESS(avFormatLib, avFormatLibFile, ffmpeg.avFormatCloseInput, ffmpeg_avformat_close_input_func, "avformat_close_input");
 		FFMPEG_GET_FUNCTION_ADDRESS(avFormatLib, avFormatLibFile, ffmpeg.avFormatOpenInput, ffmpeg_avformat_open_input_func, "avformat_open_input");
@@ -608,9 +626,13 @@ int main(int argc, char **argv) {
 		FFMPEG_GET_FUNCTION_ADDRESS(avUtilLib, avUtilLibFile, ffmpeg.avImageGetLineSize, ffmpeg_av_image_get_linesize_func, "av_image_get_linesize");
 		FFMPEG_GET_FUNCTION_ADDRESS(avUtilLib, avUtilLibFile, ffmpeg.avImageFillArrays, ffmpeg_av_image_fill_arrays_func, "av_image_fill_arrays");
 
-		FFMPEG_GET_FUNCTION_ADDRESS(swsScaleLib, swsScaleLibFile, ffmpeg.swsGetContext, ffmpeg_sws_getContext_func, "sws_getContext");
-		FFMPEG_GET_FUNCTION_ADDRESS(swsScaleLib, swsScaleLibFile, ffmpeg.swsScale, ffmpeg_sws_scale_func, "sws_scale");
-		FFMPEG_GET_FUNCTION_ADDRESS(swsScaleLib, swsScaleLibFile, ffmpeg.swsFreeContext, ffmpeg_sws_freeContext_func, "sws_freeContext");
+		FFMPEG_GET_FUNCTION_ADDRESS(swScaleLib, swScaleLibFile, ffmpeg.swsGetContext, ffmpeg_sws_getContext_func, "sws_getContext");
+		FFMPEG_GET_FUNCTION_ADDRESS(swScaleLib, swScaleLibFile, ffmpeg.swsScale, ffmpeg_sws_scale_func, "sws_scale");
+		FFMPEG_GET_FUNCTION_ADDRESS(swScaleLib, swScaleLibFile, ffmpeg.swsFreeContext, ffmpeg_sws_freeContext_func, "sws_freeContext");
+
+		FFMPEG_GET_FUNCTION_ADDRESS(swResampleLib, swResampleLibFile, ffmpeg.swrAllocSetOpts, ffmpeg_swr_alloc_set_opts_func, "swr_alloc_set_opts");
+		FFMPEG_GET_FUNCTION_ADDRESS(swResampleLib, swResampleLibFile, ffmpeg.swrFree, ffmpeg_swr_free_func, "swr_free");
+		FFMPEG_GET_FUNCTION_ADDRESS(swResampleLib, swResampleLibFile, ffmpeg.swrConvert, ffmpeg_swr_convert_func, "swr_convert");
 
 		// Register all formats and codecs
 		ffmpeg.avRegisterAll();
@@ -718,10 +740,10 @@ int main(int argc, char **argv) {
 		state.frameQueue = CreateFrameQueue(MAX_FRAME_QUEUE_COUNT);
 
 		// Create threads
-		ThreadContext *threads[] = {
-			ThreadCreate(PacketReadThreadProc, &state),
-			ThreadCreate(VideoDecodingThreadProc, &state),
-		};
+		uint32_t threadCount = 0;
+		ThreadContext *threads[3] = {};
+		threads[threadCount++] = ThreadCreate(PacketReadThreadProc, &state);
+		threads[threadCount++] = ThreadCreate(VideoDecodingThreadProc, &state);
 
 		//
 		// App loop
@@ -750,16 +772,18 @@ int main(int argc, char **argv) {
 			WindowFlip();
 		}
 
-		// Stop queues and wait until all threads are finished running
+		// Stop queues
 		state.packetQueue.isStopped = 1;
 		SignalWakeUp(state.packetQueue.stoppedSignal);
 		state.frameQueue.isStopped = 1;
 		SignalWakeUp(state.frameQueue.stoppedSignal);
-		ThreadWaitForAll(threads, FPL_ARRAYCOUNT(threads));
 
-		// Release all threads and queues
-		ThreadDestroy(threads[1]);
-		ThreadDestroy(threads[0]);
+		// wait until all threads are finished running and release all threads
+		ThreadWaitForAll(threads, threadCount);
+		for (uint32_t threadIndex = threadCount - 1; threadIndex > 0; threadIndex--) {
+			ThreadDestroy(threads[threadIndex]);
+		}
+		// Release queues
 		DestroyFrameQueue(state.frameQueue);
 		DestroyPacketQueue(state.packetQueue);
 
