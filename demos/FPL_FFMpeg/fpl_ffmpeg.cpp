@@ -10,7 +10,32 @@
 #include "final_platform_layer.hpp"
 
 #include <assert.h> // assert
-#include <Windows.h> // BITMAPINFOHEADER, BITMAPFILEHEADER
+
+struct BitmapInfoheader {
+	uint32_t biSize;
+	int32_t biWidth;
+	int32_t biHeight;
+	uint16_t biPlanes;
+	uint16_t biBitCount;
+	uint32_t biCompression;
+	uint32_t biSizeImage;
+	int32_t biXPelsPerMeter;
+	int32_t biYPelsPerMeter;
+	uint32_t biClrUsed;
+	uint32_t biClrImportant;
+};
+
+#pragma pack(push,2)
+struct BitmapFileHeader {
+	uint16_t bfType;
+	uint32_t bfSize;
+	uint16_t bfReserved1;
+	uint16_t bfReserved2;
+	uint32_t bfOffBits;
+};
+#pragma pack(pop)
+
+constexpr uint32_t BITMAP_FORMAT_RGB = 0L;
 
 //
 // FFMPEG headers and function prototypes
@@ -66,6 +91,12 @@ typedef FFMPEG_AVCODEC_RECEIVE_FRAME_FUNC(ffmpeg_avcodec_receive_frame_func);
 // avcodec_send_packet
 #define FFMPEG_AVCODEC_SEND_PACKET_FUNC(name) int name(AVCodecContext *avctx, const AVPacket *avpkt)
 typedef FFMPEG_AVCODEC_SEND_PACKET_FUNC(ffmpeg_avcodec_send_packet_func);
+// av_packet_alloc
+#define FFMPEG_AV_PACKET_ALLOC(name) AVPacket *name(void)
+typedef FFMPEG_AV_PACKET_ALLOC(ffmpeg_av_packet_alloc_func);
+// av_packet_free
+#define FFMPEG_AV_PACKET_FREE(name) void name(AVPacket **pkt)
+typedef FFMPEG_AV_PACKET_FREE(ffmpeg_av_packet_free_func);
 
 // av_frame_alloc
 #define FFMPEG_AV_FRAME_ALLOC_FUNC(name) AVFrame *name(void)
@@ -118,6 +149,8 @@ struct ffmpegFunctions {
 	ffmpeg_av_packet_unref_func *avPacketUnref;
 	ffmpeg_avcodec_receive_frame_func *avcodecReceiveFrame;
 	ffmpeg_avcodec_send_packet_func *avcodecSendPacket;
+	ffmpeg_av_packet_alloc_func *avPacketAlloc;
+	ffmpeg_av_packet_free_func *avPacketFree;
 
 	// Util
 	ffmpeg_av_frame_alloc_func *avFrameAlloc;
@@ -142,7 +175,7 @@ static int DecodeVideoPacket(struct AVCodecContext *avctx, struct AVFrame *frame
 	*got_frame = false;
 
 	if (pkt) {
-		// @NOTE(final): I have no idea why i need to "send" the packet -> "push" would be more approriate here.
+		// @NOTE(final): Bad naming convention in ffmpeg "send" is more like "push"
 		ret = ffmpeg.avcodecSendPacket(avctx, pkt);
 		if (ret < 0) {
 			return ret == AVERROR_EOF ? 0 : ret;
@@ -165,31 +198,189 @@ static int DecodeVideoPacket(struct AVCodecContext *avctx, struct AVFrame *frame
 static void SaveBitmapRGB24(uint8_t *source, uint32_t width, uint32_t height, uint32_t scanline, const char *targetFilePath) {
 	assert(scanline == (width * 3));
 
-	BITMAPINFOHEADER bih = {};
+	av_packet_alloc();
+
+	BitmapInfoheader bih = {};
 	bih.biBitCount = 24;
 	bih.biClrImportant = 0;
-	bih.biCompression = BI_RGB;
-	bih.biHeight = -(LONG)height;
+	bih.biCompression = BITMAP_FORMAT_RGB;
+	bih.biHeight = -(int32_t)height;
 	bih.biWidth = width;
 	bih.biPlanes = 1;
-	bih.biSizeImage = DWORD(scanline * height);
-	bih.biSize = sizeof(BITMAPINFOHEADER);
+	bih.biSizeImage = scanline * height;
+	bih.biSize = sizeof(BitmapInfoheader);
 
-	BITMAPFILEHEADER bfh = {};
-	bfh.bfType = ((WORD)('M' << 8) | 'B');
-	bfh.bfSize = (DWORD)(sizeof(BITMAPFILEHEADER) + bih.biSize + bih.biSizeImage);
-	bfh.bfOffBits = (DWORD)(sizeof(BITMAPFILEHEADER) + bih.biSize);
+	BitmapFileHeader bfh = {};
+	bfh.bfType = ((uint16_t)('M' << 8) | 'B');
+	bfh.bfSize = (uint32_t)(sizeof(BitmapFileHeader) + bih.biSize + bih.biSizeImage);
+	bfh.bfOffBits = (uint32_t)(sizeof(BitmapFileHeader) + bih.biSize);
 
 	FileHandle handle = CreateBinaryFile(targetFilePath);
 	if (handle.isValid) {
-		WriteFileBlock32(handle, &bfh, sizeof(BITMAPFILEHEADER));
-		WriteFileBlock32(handle, &bih, sizeof(BITMAPINFOHEADER));
+		WriteFileBlock32(handle, &bfh, sizeof(BitmapFileHeader));
+		WriteFileBlock32(handle, &bih, sizeof(BitmapInfoheader));
 		WriteFileBlock32(handle, source, bih.biSizeImage);
 		CloseFile(handle);
 	}
 }
 
-struct FFMpegState {
+// http://nullprogram.com/blog/2014/09/02/
+
+template <typename T>
+struct ListItem {
+	ListItem<T> *next;
+	ListItem<T> *prev;
+	T value;
+};
+
+template <typename T>
+struct List {
+	ThreadMutex lock;
+	ThreadSignal availableSignal;
+	ListItem<T> *first;
+	ListItem<T> *last;
+};
+
+template <typename T>
+inline void InitList(List<T> &list, ListItem<T> *first = nullptr, ListItem<T> *last = nullptr) {
+	list.lock = MutexCreate();
+	list.availableSignal = SignalCreate();
+	list.first = first;
+	list.last = last;
+}
+
+template <typename T>
+inline void DestroyList(List<T> &list) {
+	SignalDestroy(list.availableSignal);
+	MutexDestroy(list.lock);
+	list = {};
+}
+
+template <typename T>
+static bool TryGetFromList(List<T> &list, ListItem<T> **outValue) {
+	bool result = false;
+	if (list.first != nullptr) {
+		MutexLock(list.lock);
+		{
+			// Get entry from list
+			ListItem<T> *item = list.first;
+			ListItem<T> *next = item->next;
+			list.first = next;
+			if (list.first == nullptr) {
+				list.last = nullptr;
+			}
+			item->next = item->prev = nullptr;
+			*outValue = item;
+			result = true;
+		}
+		MutexUnlock(list.lock);
+	}
+	return(result);
+}
+
+template <typename T>
+static void AddToList(List<T> &list, ListItem<T> *item) {
+	assert(item != nullptr);
+	MutexLock(list.lock);
+	{
+		// Add entry to the list
+		item->next = item->prev = nullptr;
+		if (list.last == nullptr) {
+			list.first = list.last = item;
+		} else {
+			list.last->next = item;
+			item->prev = list.last;
+			list.last = item;
+		}
+	}
+	MutexUnlock(list.lock);
+}
+
+template <typename T>
+struct AvailableFreeQueue {
+	typedef T(CreateListItemValueFunction)();
+	typedef void(FreeListItemValueFunction)(T *value);
+
+	ListItem<T> *items;
+	FreeListItemValueFunction *freeCallback;
+	List<T> freeList;
+	List<T> availableList;
+	ThreadSignal stoppedSignal;
+	volatile uint32_t isStopped;
+	uint32_t capacity;
+
+	static AvailableFreeQueue<T> Create(uint32_t capacity, CreateListItemValueFunction *createCallback, FreeListItemValueFunction freeCallback) {
+		AvailableFreeQueue<T> result = {};
+		result.capacity = capacity;
+		result.items = (ListItem<T> *)memory::MemoryAllocate(sizeof(ListItem<T>) * capacity);
+		result.stoppedSignal = SignalCreate();
+		result.freeCallback = freeCallback;
+		InitList<T>(result.freeList, result.items, result.items + (capacity - 1));
+		InitList<T>(result.availableList);
+		for (uint32_t i = 0; i < result.capacity; ++i) {
+			ListItem<T> *item = result.items + i;
+			item->value = createCallback();
+			if (i < result.capacity - 1) {
+				item->next = result.items + (i + 1);
+			} else {
+				item->next = nullptr;
+			}
+			if (i > 0) {
+				item->prev = result.items + (i - 1);
+			} else {
+				item->prev = nullptr;
+			}
+		}
+		return(result);
+	}
+
+	static void Destroy(AvailableFreeQueue<T> &result) {
+		for (uint32_t i = result.capacity - 1; i > 0; i--) {
+			ListItem<T> *item = result.items + i;
+			result.freeCallback(&item->value);
+		}
+		DestroyList<T>(result.availableList);
+		DestroyList<T>(result.freeList);
+		SignalDestroy(result.stoppedSignal);
+		memory::MemoryFree(result.items);
+		result = {};
+	}
+};
+
+
+constexpr uint32_t MAX_PACKET_QUEUE_COUNT = 16;
+
+typedef AvailableFreeQueue<AVPacket *> PacketQueue;
+typedef ListItem<AVPacket *> PacketItem;
+
+inline AVPacket *AllocatePacket() {
+	ffmpegFunctions &ffmpeg = *globalFFMPEGFunctions;
+	AVPacket *result = ffmpeg.avPacketAlloc();
+	return(result);
+}
+
+inline void FreePacket(AVPacket **packet) {
+	ffmpegFunctions &ffmpeg = *globalFFMPEGFunctions;
+	AVPacket *p = *packet;
+	if (p->data != nullptr) {
+		ffmpeg.avPacketUnref(p);
+	}
+	ffmpeg.avPacketFree(&p);
+	*packet = nullptr;
+}
+
+static PacketQueue CreatePacketQueue(uint32_t capacity) {
+	PacketQueue result = AvailableFreeQueue<AVPacket *>::Create(capacity, AllocatePacket, FreePacket);
+	return(result);
+}
+
+static void DestroyPacketQueue(PacketQueue &queue) {
+	AvailableFreeQueue<AVPacket *>::Destroy(queue);
+}
+
+struct FFMPEGState {
+	PacketQueue packetQueue;
+	ffmpegFunctions *functions;
 	AVFormatContext *formatCtx;
 	AVCodecContext *videoCtx;
 	AVCodec *videoCodec;
@@ -214,17 +405,61 @@ static void ConvertRGB24ToBackBuffer(VideoBackBuffer *backbuffer, int width, int
 	}
 }
 
+static void PacketReadThreadProc(const ThreadContext &thread, void *userData) {
+	FFMPEGState *state = (FFMPEGState *)userData;
+	ffmpegFunctions &ffmpeg = *state->functions;
+
+	bool skipFirstWait = state->packetQueue.freeList.first != nullptr;
+
+	ThreadSignal *waitSignals[2] = {
+		&state->packetQueue.freeList.availableSignal,
+		&state->packetQueue.stoppedSignal,
+	};
+
+	for (;;) {
+		if (skipFirstWait) {
+			skipFirstWait = false;
+		} else {
+			// Wait for either a available signal from the list or an stopped signal from the queue
+			SignalWaitForAny(waitSignals, FPL_ARRAYCOUNT(waitSignals));
+		}
+
+		if (state->packetQueue.isStopped) {
+			// Queue is stopped, exit
+			break;
+		}
+
+		PacketItem *packetItem;
+		if (TryGetFromList(state->packetQueue.freeList, &packetItem)) {
+			assert(packetItem != nullptr);
+			ConsoleOut("Read packet frame\n");
+			int res = ffmpeg.avReadFrame(state->formatCtx, packetItem->value);
+			if (res >= 0) {
+				ConsoleOut("Added packet\n");
+				AddToList(state->packetQueue.availableList, packetItem);
+				SignalWakeUp(state->packetQueue.availableList.availableSignal);
+			} else {
+				// Error or stream is done, exit
+				break;
+			}
+		} else {
+			// Queue is full, we wait on the start of the next iteration for next available signal
+		}
+	}
+}
+
 int main(int argc, char **argv) {
 	int result = 0;
 	Settings settings = DefaultSettings();
 	settings.video.driverType = VideoDriverType::Software;
 	settings.video.isAutoSize = false;
-	if (InitPlatform(InitFlags::Window, settings)) {
+	if (InitPlatform(InitFlags::All, settings)) {
 		globalFFMPEGFunctions = (ffmpegFunctions *)MemoryAlignedAllocate(sizeof(ffmpegFunctions), 16);
 
 		ffmpegFunctions &ffmpeg = *globalFFMPEGFunctions;
 
-		FFMpegState state = {};
+		FFMPEGState state = {};
+		state.functions = &ffmpeg;
 
 		//
 		// Load ffmpeg libraries
@@ -252,6 +487,8 @@ int main(int argc, char **argv) {
 		FFMPEG_GET_FUNCTION_ADDRESS(avCodecLib, avCodecLibFile, ffmpeg.avPacketUnref, ffmpeg_av_packet_unref_func, "av_packet_unref");
 		FFMPEG_GET_FUNCTION_ADDRESS(avCodecLib, avCodecLibFile, ffmpeg.avcodecReceiveFrame, ffmpeg_avcodec_receive_frame_func, "avcodec_receive_frame");
 		FFMPEG_GET_FUNCTION_ADDRESS(avCodecLib, avCodecLibFile, ffmpeg.avcodecSendPacket, ffmpeg_avcodec_send_packet_func, "avcodec_send_packet");
+		FFMPEG_GET_FUNCTION_ADDRESS(avCodecLib, avCodecLibFile, ffmpeg.avPacketAlloc, ffmpeg_av_packet_alloc_func, "av_packet_alloc");
+		FFMPEG_GET_FUNCTION_ADDRESS(avCodecLib, avCodecLibFile, ffmpeg.avPacketFree, ffmpeg_av_packet_free_func, "av_packet_free");
 
 		FFMPEG_GET_FUNCTION_ADDRESS(avUtilLib, avUtilLibFile, ffmpeg.avFrameAlloc, ffmpeg_av_frame_alloc_func, "av_frame_alloc");
 		FFMPEG_GET_FUNCTION_ADDRESS(avUtilLib, avUtilLibFile, ffmpeg.avFrameFree, ffmpeg_av_frame_free_func, "av_frame_free");
@@ -372,36 +609,58 @@ int main(int argc, char **argv) {
 			nullptr
 		);
 
-		// Resize backbuffer
+		// Resize backbuffer to fit the video size
 		ResizeVideoBackBuffer(state.videoCtx->width, state.videoCtx->height);
 		VideoBackBuffer *backBuffer = GetVideoBackBuffer();
+
+		// Initialize packet queue and read thread
+		state.packetQueue = CreatePacketQueue(MAX_PACKET_QUEUE_COUNT);
+		ThreadContext *packetReadThread = ThreadCreate(PacketReadThreadProc, &state);
 
 		//
 		// App loop
 		//
 		while (WindowUpdate()) {
-			// @TODO(final): For now we read one packet for each window update. This is really slow, but works for the time being. Multithread it!
-			{
-				AVPacket packet;
-				if (ffmpeg.avReadFrame(state.formatCtx, &packet) >= 0) {
-					if (packet.stream_index == videoStream) {
-						bool frameDecoded = false;
-						DecodeVideoPacket(state.videoCtx, state.sourceNativeFrame, &packet, &frameDecoded);
-						if (frameDecoded) {
-							// @TODO(final): Decode picture format directly into the backbuffer, without the software scaling!
+			PacketItem *packetItem;
+			if (TryGetFromList(state.packetQueue.availableList, &packetItem)) {
+				AVPacket *packet = packetItem->value;
+				if (packet->stream_index == videoStream) {
+					bool frameDecoded = false;
+					DecodeVideoPacket(state.videoCtx, state.sourceNativeFrame, packet, &frameDecoded);
 
-							// Convert native frame to target RGB24 frame
-							ffmpeg.swsScale(state.softwareCtx, (uint8_t const * const *)state.sourceNativeFrame->data, state.sourceNativeFrame->linesize, 0, state.videoCtx->height, state.targetRGBFrame->data, state.targetRGBFrame->linesize);
-							// Convert RGB24 frame to RGB32 backbuffer
-							ConvertRGB24ToBackBuffer(backBuffer, state.videoCtx->width, state.videoCtx->height, *state.targetRGBFrame->linesize, state.targetRGBBuffer);
-						}
+					// Put packet back to the freelist (Processed)
+					ffmpeg.avPacketUnref(packet);
+					AddToList(state.packetQueue.freeList, packetItem);
+					SignalWakeUp(state.packetQueue.freeList.availableSignal);
+
+					if (frameDecoded) {
+						// @TODO(final): Decode picture format directly into the backbuffer, without the software scaling!
+
+						// Convert native frame to target RGB24 frame
+						ffmpeg.swsScale(state.softwareCtx, (uint8_t const * const *)state.sourceNativeFrame->data, state.sourceNativeFrame->linesize, 0, state.videoCtx->height, state.targetRGBFrame->data, state.targetRGBFrame->linesize);
+						// Convert RGB24 frame to RGB32 backbuffer
+						ConvertRGB24ToBackBuffer(backBuffer, state.videoCtx->width, state.videoCtx->height, *state.targetRGBFrame->linesize, state.targetRGBBuffer);
 					}
+				} else {
+					// Put packet back to the freelist (Dropped)
+					ffmpeg.avPacketUnref(packet);
+					AddToList(state.packetQueue.freeList, packetItem);
+					SignalWakeUp(state.packetQueue.freeList.availableSignal);
 				}
 			}
 
-
+			// Present frame
 			WindowFlip();
 		}
+
+		// Stop packet queue and wait until it is finished
+		state.packetQueue.isStopped = 1;
+		SignalWakeUp(state.packetQueue.stoppedSignal);
+		ThreadWaitForOne(packetReadThread);
+
+		// Release packet read thread and queue
+		ThreadDestroy(packetReadThread);
+		DestroyPacketQueue(state.packetQueue);
 
 	release:
 		// Release media
@@ -430,6 +689,7 @@ int main(int argc, char **argv) {
 		DynamicLibraryUnload(avFormatLib);
 		MemoryAlignedFree(globalFFMPEGFunctions);
 
+		// Release platform
 		ReleasePlatform();
 
 		result = 0;
