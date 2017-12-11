@@ -242,7 +242,7 @@ struct List {
 };
 
 template <typename T>
-inline void InitList(List<T> &list, ListItem<T> *first = nullptr, ListItem<T> *last = nullptr) {
+inline void	InitList(List<T> &list, ListItem<T> *first = nullptr, ListItem<T> *last = nullptr) {
 	list.lock = MutexCreate();
 	list.availableSignal = SignalCreate();
 	list.first = first;
@@ -262,16 +262,19 @@ static bool TryGetFromList(List<T> &list, ListItem<T> **outValue) {
 	if (list.first != nullptr) {
 		MutexLock(list.lock);
 		{
-			// Get entry from list
-			ListItem<T> *item = list.first;
-			ListItem<T> *next = item->next;
-			list.first = next;
-			if (list.first == nullptr) {
-				list.last = nullptr;
+			// We may was in waiting for lock releasing state, so the first could be null.
+			if (list.first != nullptr) {
+				// Get entry from list
+				ListItem<T> *item = list.first;
+				ListItem<T> *next = item->next;
+				list.first = next;
+				if (list.first == nullptr) {
+					list.last = nullptr;
+				}
+				item->next = item->prev = nullptr;
+				*outValue = item;
+				result = true;
 			}
-			item->next = item->prev = nullptr;
-			*outValue = item;
-			result = true;
 		}
 		MutexUnlock(list.lock);
 	}
@@ -281,10 +284,10 @@ static bool TryGetFromList(List<T> &list, ListItem<T> **outValue) {
 template <typename T>
 static void AddToList(List<T> &list, ListItem<T> *item) {
 	assert(item != nullptr);
+	item->next = item->prev = nullptr;
 	MutexLock(list.lock);
 	{
 		// Add entry to the list
-		item->next = item->prev = nullptr;
 		if (list.last == nullptr) {
 			list.first = list.last = item;
 		} else {
@@ -347,6 +350,9 @@ struct AvailableFreeQueue {
 	}
 };
 
+//
+// Packet Queue
+//
 
 constexpr uint32_t MAX_PACKET_QUEUE_COUNT = 16;
 
@@ -365,8 +371,7 @@ inline void FreePacket(AVPacket **packet) {
 	if (p->data != nullptr) {
 		ffmpeg.avPacketUnref(p);
 	}
-	ffmpeg.avPacketFree(&p);
-	*packet = nullptr;
+	ffmpeg.avPacketFree(packet);
 }
 
 static PacketQueue CreatePacketQueue(uint32_t capacity) {
@@ -378,12 +383,46 @@ static void DestroyPacketQueue(PacketQueue &queue) {
 	AvailableFreeQueue<AVPacket *>::Destroy(queue);
 }
 
+//
+// Frame Queue
+//
+
+constexpr uint32_t MAX_FRAME_QUEUE_COUNT = 8;
+
+typedef AvailableFreeQueue<AVFrame *> FrameQueue;
+typedef ListItem<AVFrame *> FrameItem;
+
+inline AVFrame *AllocateFrame() {
+	ffmpegFunctions &ffmpeg = *globalFFMPEGFunctions;
+	AVFrame *result = ffmpeg.avFrameAlloc();
+	return(result);
+}
+
+inline void FreeFrame(AVFrame **frame) {
+	ffmpegFunctions &ffmpeg = *globalFFMPEGFunctions;
+	AVFrame *p = *frame;
+	ffmpeg.avFrameFree(frame);
+}
+
+static FrameQueue CreateFrameQueue(uint32_t capacity) {
+	FrameQueue result = AvailableFreeQueue<AVFrame *>::Create(capacity, AllocateFrame, FreeFrame);
+	return(result);
+}
+
+static void DestroyFrameQueue(FrameQueue &queue) {
+	AvailableFreeQueue<AVFrame *>::Destroy(queue);
+}
+
 struct FFMPEGState {
 	PacketQueue packetQueue;
+	FrameQueue frameQueue;
 	ffmpegFunctions *functions;
 	AVFormatContext *formatCtx;
 	AVCodecContext *videoCtx;
 	AVCodec *videoCodec;
+	int32_t videoStreamIndex;
+	volatile uint32_t readPackets;
+	volatile uint32_t decodedVideoFrames;
 	AVFrame *sourceNativeFrame;
 	AVFrame *targetRGBFrame;
 	uint8_t *targetRGBBuffer;
@@ -401,6 +440,70 @@ static void ConvertRGB24ToBackBuffer(VideoBackBuffer *backbuffer, int width, int
 			uint8_t b = *src++;
 			uint8_t a = 255;
 			*dst++ = (a << 24) | (b << 16) | (g << 8) | r;
+		}
+	}
+}
+
+static void VideoDecodingThreadProc(const ThreadContext &thread, void *userData) {
+	FFMPEGState *state = (FFMPEGState *)userData;
+	ffmpegFunctions &ffmpeg = *state->functions;
+
+	ThreadSignal *waitSignals[] = {
+		&state->packetQueue.availableList.availableSignal,
+		&state->frameQueue.freeList.availableSignal,
+		&state->frameQueue.stoppedSignal,
+	};
+
+	bool frameWasDone = true;
+	FrameItem *frameItem = nullptr;
+	for (;;) {
+		// Wait for either a available signal from the list or an stopped signal from the queue
+		SignalWaitForAny(waitSignals, FPL_ARRAYCOUNT(waitSignals));
+
+		if (state->frameQueue.isStopped) {
+			// Queue is stopped, exit
+			break;
+		}
+
+		// Get native frame if needed
+
+		if (frameWasDone) {
+			frameItem = nullptr;
+			if (!TryGetFromList(state->frameQueue.freeList, &frameItem)) {
+				continue;
+			}
+			frameWasDone = false;
+		}
+		assert(frameItem != nullptr);
+		AVFrame *sourceNativeFrame = frameItem->value;
+
+		// Try to get new packet
+		PacketItem *packetItem;
+		if (TryGetFromList(state->packetQueue.availableList, &packetItem)) {
+			AVPacket *packet = packetItem->value;
+			if (packet->stream_index == state->videoStreamIndex) {
+				// Decode video packet
+				bool frameDecoded = false;
+				DecodeVideoPacket(state->videoCtx, sourceNativeFrame, packet, &frameDecoded);
+
+				// Put packet back to the freelist (Processed)
+				ffmpeg.avPacketUnref(packet);
+				AddToList(state->packetQueue.freeList, packetItem);
+				SignalWakeUp(state->packetQueue.freeList.availableSignal);
+
+				if (frameDecoded) {
+					frameWasDone = true;
+					uint32_t decodedVideoFrameIndex = AtomicAddU32(&state->decodedVideoFrames, 1);
+					ConsoleFormatOut("Decoded video frame %lu\n", decodedVideoFrameIndex);
+					AddToList(state->frameQueue.availableList, frameItem);
+					SignalWakeUp(state->frameQueue.availableList.availableSignal);
+				}
+			} else {
+				// Put packet back to the freelist (Dropped)
+				ffmpeg.avPacketUnref(packet);
+				AddToList(state->packetQueue.freeList, packetItem);
+				SignalWakeUp(state->packetQueue.freeList.availableSignal);
+			}
 		}
 	}
 }
@@ -431,11 +534,12 @@ static void PacketReadThreadProc(const ThreadContext &thread, void *userData) {
 
 		PacketItem *packetItem;
 		if (TryGetFromList(state->packetQueue.freeList, &packetItem)) {
+			uint32_t packetIndex = AtomicAddU32(&state->readPackets, 1);
 			assert(packetItem != nullptr);
-			ConsoleOut("Read packet frame\n");
+			ConsoleFormatOut("Read packet frame %lu\n", packetIndex);
 			int res = ffmpeg.avReadFrame(state->formatCtx, packetItem->value);
 			if (res >= 0) {
-				ConsoleOut("Added packet\n");
+				ConsoleFormatOut("Added packet %lu\n", packetIndex);
 				AddToList(state->packetQueue.availableList, packetItem);
 				SignalWakeUp(state->packetQueue.availableList.availableSignal);
 			} else {
@@ -450,6 +554,14 @@ static void PacketReadThreadProc(const ThreadContext &thread, void *userData) {
 
 int main(int argc, char **argv) {
 	int result = 0;
+
+	if (argc < 2) {
+		ConsoleError("Video file argument missing!");
+		return -1;
+	}
+
+	const char *mediaFilePath = argv[1];
+
 	Settings settings = DefaultSettings();
 	settings.video.driverType = VideoDriverType::Software;
 	settings.video.isAutoSize = false;
@@ -500,19 +612,6 @@ int main(int argc, char **argv) {
 		FFMPEG_GET_FUNCTION_ADDRESS(swsScaleLib, swsScaleLibFile, ffmpeg.swsScale, ffmpeg_sws_scale_func, "sws_scale");
 		FFMPEG_GET_FUNCTION_ADDRESS(swsScaleLib, swsScaleLibFile, ffmpeg.swsFreeContext, ffmpeg_sws_freeContext_func, "sws_freeContext");
 
-		// Get home path
-		char homepathBuffer[512];
-		char *homePath = GetHomePath(homepathBuffer, FPL_ARRAYCOUNT(homepathBuffer));
-
-		// Build output images path and enforce directory
-		char outputImagesPathBuffer[512];
-		char *outputImagesPath = CombinePath(outputImagesPathBuffer, FPL_ARRAYCOUNT(outputImagesPathBuffer), 2, homePath, "FPL_TempImages");
-		files::CreateDirectories(outputImagesPath);
-
-		// Example video: /home/[user]/Videos/Testvideos/Kayaking.mp4
-		char movieFilePathBuffer[512];
-		char *mediaFilePath = CombinePath(movieFilePathBuffer, FPL_ARRAYCOUNT(homepathBuffer), 4, homePath, "Videos", "Testvideos", "Kayaking.mp4");
-
 		// Register all formats and codecs
 		ffmpeg.avRegisterAll();
 
@@ -544,6 +643,7 @@ int main(int argc, char **argv) {
 			ConsoleFormatError("No video stream in media file '%s' found!\n", mediaFilePath);
 			goto release;
 		}
+		state.videoStreamIndex = videoStream;
 
 		// Get a pointer to the video stream
 		AVStream *pVideoStream = state.formatCtx->streams[videoStream];
@@ -613,53 +713,54 @@ int main(int argc, char **argv) {
 		ResizeVideoBackBuffer(state.videoCtx->width, state.videoCtx->height);
 		VideoBackBuffer *backBuffer = GetVideoBackBuffer();
 
-		// Initialize packet queue and read thread
+		// Create queues
 		state.packetQueue = CreatePacketQueue(MAX_PACKET_QUEUE_COUNT);
-		ThreadContext *packetReadThread = ThreadCreate(PacketReadThreadProc, &state);
+		state.frameQueue = CreateFrameQueue(MAX_FRAME_QUEUE_COUNT);
+
+		// Create threads
+		ThreadContext *threads[] = {
+			ThreadCreate(PacketReadThreadProc, &state),
+			ThreadCreate(VideoDecodingThreadProc, &state),
+		};
 
 		//
 		// App loop
 		//
 		while (WindowUpdate()) {
-			PacketItem *packetItem;
-			if (TryGetFromList(state.packetQueue.availableList, &packetItem)) {
-				AVPacket *packet = packetItem->value;
-				if (packet->stream_index == videoStream) {
-					bool frameDecoded = false;
-					DecodeVideoPacket(state.videoCtx, state.sourceNativeFrame, packet, &frameDecoded);
+			// Get available frame in native format from the queue
+			FrameItem *frameItem;
+			if (TryGetFromList(state.frameQueue.availableList, &frameItem)) {
+				AVFrame *sourceNativeFrame = frameItem->value;
 
-					// Put packet back to the freelist (Processed)
-					ffmpeg.avPacketUnref(packet);
-					AddToList(state.packetQueue.freeList, packetItem);
-					SignalWakeUp(state.packetQueue.freeList.availableSignal);
+				// @TODO(final): Decode picture format directly into the backbuffer, without the software scaling!
 
-					if (frameDecoded) {
-						// @TODO(final): Decode picture format directly into the backbuffer, without the software scaling!
+				// Convert native frame to target RGB24 frame
+				ffmpeg.swsScale(state.softwareCtx, (uint8_t const * const *)sourceNativeFrame->data, sourceNativeFrame->linesize, 0, state.videoCtx->height, state.targetRGBFrame->data, state.targetRGBFrame->linesize);
 
-						// Convert native frame to target RGB24 frame
-						ffmpeg.swsScale(state.softwareCtx, (uint8_t const * const *)state.sourceNativeFrame->data, state.sourceNativeFrame->linesize, 0, state.videoCtx->height, state.targetRGBFrame->data, state.targetRGBFrame->linesize);
-						// Convert RGB24 frame to RGB32 backbuffer
-						ConvertRGB24ToBackBuffer(backBuffer, state.videoCtx->width, state.videoCtx->height, *state.targetRGBFrame->linesize, state.targetRGBBuffer);
-					}
-				} else {
-					// Put packet back to the freelist (Dropped)
-					ffmpeg.avPacketUnref(packet);
-					AddToList(state.packetQueue.freeList, packetItem);
-					SignalWakeUp(state.packetQueue.freeList.availableSignal);
-				}
+				// Put native frame back into the freelist of the queue
+				AddToList(state.frameQueue.freeList, frameItem);
+				SignalWakeUp(state.frameQueue.freeList.availableSignal);
+
+				// Convert RGB24 frame to RGB32 backbuffer
+				ConvertRGB24ToBackBuffer(backBuffer, state.videoCtx->width, state.videoCtx->height, *state.targetRGBFrame->linesize, state.targetRGBBuffer);
 			}
+
 
 			// Present frame
 			WindowFlip();
 		}
 
-		// Stop packet queue and wait until it is finished
+		// Stop queues and wait until all threads are finished running
 		state.packetQueue.isStopped = 1;
 		SignalWakeUp(state.packetQueue.stoppedSignal);
-		ThreadWaitForOne(packetReadThread);
+		state.frameQueue.isStopped = 1;
+		SignalWakeUp(state.frameQueue.stoppedSignal);
+		ThreadWaitForAll(threads, FPL_ARRAYCOUNT(threads));
 
-		// Release packet read thread and queue
-		ThreadDestroy(packetReadThread);
+		// Release all threads and queues
+		ThreadDestroy(threads[1]);
+		ThreadDestroy(threads[0]);
+		DestroyFrameQueue(state.frameQueue);
 		DestroyPacketQueue(state.packetQueue);
 
 	release:
