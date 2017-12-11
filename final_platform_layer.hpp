@@ -1,6 +1,6 @@
 /**
 * @file final_platform_layer.hpp
-* @version v0.5.0 beta
+* @version v0.5.1 beta
 * @author Torsten Spaete
 * @brief Final Platform Layer (FPL) - A Open source C++ single file header platform abstraction layer library.
 *
@@ -226,11 +226,11 @@ You need a C++/11 complaint compiler like MSVC, GCC, Clang, etc.
 
 ## Audio
 
-This library uses the operating system libraries to initialize a audio device.
+This library uses the operating system libraries to initialize a playback audio device.
 The caller needs to set "AudioSettings.clientReadCallback" to provide audio samples in the native format the device expects.
+The caller needs to do any DSP yourself! This library does not provide any functionality for that.
 To start and stop the playback, you need to call "audio::PlayAudio" and "audio::StopAudio" respectively.
-This library does not do any DSP/Audio conversion! The caller must fill in the samples in the native format the audio device expects.
-There is no guarantee that you get a audio device with the exact same format you specified back.
+There is no guarantee that you get a audio device with the exact same format you specified back, but S16 with 48 KHz is a common format which almost every card supports.
 
 # OPTIONS
 
@@ -353,6 +353,12 @@ SOFTWARE.
 Thanks to David Reid for the awesome "mini_al.h" single header file audio library.
 
 # VERSION HISTORY
+
+## v0.5.1 beta:
+- New: audio::GetAudioNativeFormat()
+- New: audio::SetAudioClientReadCallback()
+- Fixed: InitFlags::Audio was never tested before InitAudio() was being called.
+- Changed: Renamed ThreadStop to ThreadDestroy
 
 ## v0.5.0 beta:
 - Added: [Win32] DirectSound playback support
@@ -573,11 +579,13 @@ Thanks to David Reid for the awesome "mini_al.h" single header file audio librar
 
 # TODO (Top priority order)
 
+- Change most assertions to normal comparisons and make it rock solid, so it wont crash for the most part. Returning nullptr or empty is much more preferred.
+
+- REFERENCE.MD generation using doxygen
+
 - Feature completeness for Win32 (Multimonitor)
 
 - Test other compilers for Win32 (Clang, MingW, Intel)
-
-- Remove placement new (We have no constructors anymore, so this is not required at all)
 
 - Solidify file/path system:
 	- Decide to a fixed encoding, either unicode 16 bit or UTF8 or
@@ -586,10 +594,6 @@ Thanks to David Reid for the awesome "mini_al.h" single header file audio librar
 		And use a custom main entry point for every platform so we can ensure that the arguments come in as native always
 
 		Reason: I want unicode support for arguments in win32 and UTF8 for the other platforms.
-
-- Change most assertions to normal comparisons and make it rock solid, so it wont crash for the most part. Returning nullptr or empty is much more preferred.
-
-- REFERENCE.MD generation using doxygen
 
 - Finish Linux Platform:
 	- Library (ld.so)
@@ -605,7 +609,7 @@ Thanks to David Reid for the awesome "mini_al.h" single header file audio librar
 
 - Write a tool to convert final_platform_layer.hpp into final_platform_layer.h (C89 complaint code)
 
-- Optional C-Runtime
+- Remove the need of the C/C++ Runtime
 
 - Additional features for later:
 	- Open/Save file/folder dialog
@@ -742,6 +746,7 @@ Thanks to David Reid for the awesome "mini_al.h" single header file audio librar
 
 // Video
 #if !defined(FPL_NO_VIDEO)
+	//! Video support
 #	define FPL_SUPPORT_VIDEO
 #endif
 #if defined(FPL_SUPPORT_VIDEO)
@@ -757,6 +762,7 @@ Thanks to David Reid for the awesome "mini_al.h" single header file audio librar
 
 // Audio
 #if !defined(FPL_NO_AUDIO)
+	//! Audio support
 #	define FPL_SUPPORT_AUDIO
 #endif
 #if defined(FPL_SUPPORT_AUDIO)
@@ -790,12 +796,12 @@ Thanks to David Reid for the awesome "mini_al.h" single header file audio librar
 	//! Enable Video
 #	define FPL_ENABLE_VIDEO
 #	if defined(FPL_SUPPORT_VIDEO_OPENGL)
-		//! Enable OpenGL Video Driver
+		//! Enable OpenGL Video
 #		define FPL_ENABLE_VIDEO_OPENGL
 #	endif
 
 #	if defined(FPL_SUPPORT_VIDEO_SOFTWARE)
-		//! Enable Software Rendering Video Driver
+		//! Enable Software Rendering Video
 #		define FPL_ENABLE_VIDEO_SOFTWARE
 #	endif
 #endif
@@ -817,16 +823,16 @@ Thanks to David Reid for the awesome "mini_al.h" single header file audio librar
 #	define FPL_ENABLE_MULTIPLE_ERRORSTATES
 #endif
 #if defined(FPL_AUTO_NAMESPACE)
-	//! Expand namespaces
+	//! Expand namespaces at the header end always
 #	define FPL_ENABLE_AUTO_NAMESPACE
 #endif
 
 //
 // Static/Inline/Extern/Internal
 //
-//! Global variable
+//! Global persistent variable
 #define fpl_globalvar static
-//! Local variable
+//! Local persistent variable
 #define fpl_localvar static
 //! Private/Internal function
 #define fpl_internal static
@@ -875,7 +881,7 @@ Thanks to David Reid for the awesome "mini_al.h" single header file audio librar
 //
 // Types
 //
-#include <stdint.h> // uint64_t, uint32_t, uint8_t, etc.
+#include <stdint.h> // uint64_t, uint32_t, uint8_t, int16_t, etc.
 #include <stdlib.h> // size_t
 
 //
@@ -927,10 +933,16 @@ Thanks to David Reid for the awesome "mini_al.h" single header file audio librar
 //
 // ****************************************************************************
 
-//! Core namespace
+//! Core
 namespace fpl {
-	//! Atomic functions, like AtomicCompareAndExchange, AtomicReadFence, etc.
+	//! Atomic functions
 	namespace atomics {
+		/**
+		* \defgroup Atomics
+		* \brief Atomic functions, like AtomicCompareAndExchange, AtomicReadFence, etc.
+		*/
+		/*@{*/
+
 		//! Insert a atomic read fence/barrier. This will complete previous reads before future reads and prevents the compiler from reordering memory reads across this fence.
 		fpl_api void AtomicReadFence();
 		//! Insert a atomic write fence/barrier. This will complete previous writes before future writes and prevents the compiler from reordering memory writes across this fence.
@@ -1001,15 +1013,31 @@ namespace fpl {
 		fpl_api void AtomicStoreS64(volatile int64_t *dest, const int64_t value);
 		//! Stores the pointer value atomically into the target.
 		fpl_api void AtomicStorePtr(volatile void **dest, const void *value);
+
+		/*@}*/
 	};
 
-	//! Hardware functions, like GetProcessorCoreCount, GetProcessorName, etc.
+	//! Hardware functions
 	namespace hardware {
+		/**
+		* \defgroup Hardware
+		* \brief Hardware functions, like GetProcessorCoreCount, GetProcessorName, etc.
+		*/
+		/*@{*/
+
 		//! Returns the total number of processor cores
 		fpl_api uint32_t GetProcessorCoreCount();
 		//! Returns the processor name/identifier. Result is written in the required destination buffer.
 		fpl_api char *GetProcessorName(char *destBuffer, const uint32_t maxDestBufferLen);
+
+		/*@}*/
 	};
+
+	/**
+	* \defgroup Settings
+	* \brief Video/audio/window settings
+	*/
+	/*@{*/
 
 	//! Initialization flags (Window, Video, etc.)
 	enum class InitFlags : uint32_t {
@@ -1021,7 +1049,7 @@ namespace fpl {
 		Video = 1 << 1,
 		//! Use audio playback
 		Audio = 1 << 2,
-		//! Default init flags for a window + video
+		//! Default init flags for a window + video + audio
 		All = Window | Video | Audio
 	};
 	//! Operator support for InitFlags
@@ -1106,7 +1134,7 @@ namespace fpl {
 		// Signed 32-bit integer PCM
 		S32,
 		// 32-bit floating point PCM
-		F32
+		F32,
 	};
 
 	//! Audio device format
@@ -1138,6 +1166,7 @@ namespace fpl {
 		void *userData;
 	};
 
+	//! Make default audio settings (S16 PCM, 48 KHz, 2 Channels)
 	inline AudioSettings DefaultAudioSettings() {
 		AudioSettings result = {};
 		result.bufferSizeInMilliSeconds = 25;
@@ -1205,21 +1234,47 @@ namespace fpl {
 		return(result);
 	}
 
+	//! Returns the current settings
+	fpl_api const Settings &GetCurrentSettings();
+
+	/*@}*/
+
+	/**
+	* \defgroup Initialization
+	* \brief Initialization and release functions
+	*/
+	/*@{*/
+
 	//! Initialize the platform layer.
 	fpl_api bool InitPlatform(const InitFlags initFlags, const Settings &initSettings = DefaultSettings());
 	//! Releases the platform layer and resets all structures to zero.
 	fpl_api void ReleasePlatform();
+
+	/*@}*/
+
+	/**
+	* \defgroup ErrorHandling Error Handling
+	* \brief Functions for error handling
+	*/
+	/*@{*/
+
 	//! Returns last error string
 	fpl_api const char *GetPlatformLastError();
 	//! Returns last error string from the given index
 	fpl_api const char *GetPlatformLastError(const size_t index);
 	//! Returns number of last errors
 	fpl_api size_t GetPlatformLastErrorCount();
-	//! Returns the current settings
-	fpl_api const Settings &GetCurrentSettings();
+
+	/*@}*/
 
 	//! Dynamic library functions and types
 	namespace library {
+		/**
+		* \defgroup DynamicLibrary Dynamic library loading
+		* \brief Loading dynamic libraries and retrieving the procedure addresses.
+		*/
+		/*@{*/
+
 		//! Handle to a loaded dynamic library
 		struct DynamicLibraryHandle {
 			//! Internal library handle
@@ -1234,10 +1289,18 @@ namespace fpl {
 		fpl_api void *GetDynamicLibraryProc(const DynamicLibraryHandle &handle, const char *name);
 		//! Releases the loaded library and resets the handle to zero.
 		fpl_api void DynamicLibraryUnload(DynamicLibraryHandle &handle);
+
+		/*@}*/
 	};
 
 	//! Console functions
 	namespace console {
+		/**
+		* \defgroup Console
+		* \brief Console out/in functions
+		*/
+		/*@{*/
+
 		//! Writes the given text to the default console output
 		fpl_api void ConsoleOut(const char *text);
 		//! Writes the given formatted text to the default console output 
@@ -1246,10 +1309,18 @@ namespace fpl {
 		fpl_api void ConsoleError(const char *text);
 		//! Writes the given formatted text to the console error output
 		fpl_api void ConsoleFormatError(const char *format, ...);
+
+		/*@}*/
 	};
 
 	//! Threading functions
 	namespace threading {
+		/**
+		* \defgroup Threading
+		* \brief Tons of functions for multithreading, mutex and signal creation and handling
+		*/
+		/*@{*/
+
 		//! Thread state type
 		enum class ThreadState : uint32_t {
 			//! Thread is stopped
@@ -1303,7 +1374,7 @@ namespace fpl {
 		//! Resume a suspended thread, so any user code will continue to run. Returns true when the thread was successfully resumed.
 		fpl_api bool ThreadResume(ThreadContext *context);
 		//! Stop the given thread and release all underlying resources.
-		fpl_api void ThreadStop(ThreadContext *context);
+		fpl_api void ThreadDestroy(ThreadContext *context);
 		//! Wait until the given thread is done running. When maxMilliseconds is set to UINT32_MAX it will wait infinitly.
 		fpl_api void ThreadWaitForOne(ThreadContext *context, const uint32_t maxMilliseconds = UINT32_MAX);
 		//! Wait until all given threads are done running. When maxMilliseconds is set to UINT32_MAX it will wait infinitly.
@@ -1323,21 +1394,29 @@ namespace fpl {
 		//! Creates a signal
 		fpl_api ThreadSignal SignalCreate();
 		//! Destroys the given signal
-		fpl_api void SignalDestroy(ThreadSignal &signal);
+		fpl_api void SignalDestroy(ThreadSignal &availableSignal);
 		//! Waits until the given signal are waked up. When maxMilliseconds is set to UINT32_MAX it will wait infinitly.
-		fpl_api bool SignalWaitForOne(ThreadSignal &signal, const uint32_t maxMilliseconds = UINT32_MAX);
+		fpl_api bool SignalWaitForOne(ThreadSignal &availableSignal, const uint32_t maxMilliseconds = UINT32_MAX);
 		//! Waits until all the given signal are waked up. When maxMilliseconds is set to UINT32_MAX it will wait infinitly.
-		fpl_api bool SignalWaitForAll(ThreadSignal **signal, const uint32_t count, const uint32_t maxMilliseconds = UINT32_MAX);
+		fpl_api bool SignalWaitForAll(ThreadSignal **availableSignal, const uint32_t count, const uint32_t maxMilliseconds = UINT32_MAX);
 		//! Waits until any of the given signals wakes up. When maxMilliseconds is set to UINT32_MAX it will wait infinitly.
-		fpl_api bool SignalWaitForAny(ThreadSignal **signal, const uint32_t count, const uint32_t maxMilliseconds = UINT32_MAX);
+		fpl_api bool SignalWaitForAny(ThreadSignal **availableSignal, const uint32_t count, const uint32_t maxMilliseconds = UINT32_MAX);
 		//! Wakes up the given signal
-		fpl_api bool SignalWakeUp(ThreadSignal &signal);
+		fpl_api bool SignalWakeUp(ThreadSignal &availableSignal);
 		//! Resets the given signal
-		fpl_api bool SignalReset(ThreadSignal &signal);
+		fpl_api bool SignalReset(ThreadSignal &availableSignal);
+
+		/*@}*/
 	};
 
 	//! Memory allocation, clearing and copy functions
 	namespace memory {
+		/**
+		* \defgroup Memory
+		* \brief Memory allocation, clearing and copy functions
+		*/
+		/*@{*/
+
 		//! Clears the given memory by the given size to zero.
 		fpl_api void MemoryClear(void *mem, const size_t size);
 		//! Copies the given source memory with its length to the target memory
@@ -1352,16 +1431,32 @@ namespace fpl {
 		fpl_api void *MemoryAlignedAllocate(const size_t size, const size_t alignment);
 		//! Releases aligned memory from the operating system.
 		fpl_api void MemoryAlignedFree(void *ptr);
+
+		/*@}*/
 	};
 
 	//! Timing and measurement functions
 	namespace timings {
+		/**
+		* \defgroup Timings
+		* \brief Functions for retrieving timebased informations
+		*/
+		/*@{*/
+
 		//! Returns the current system clock in seconds with the highest precision.
 		fpl_api double GetHighResolutionTimeInSeconds();
+
+		/*@}*/
 	};
 
 	//! String functions
 	namespace strings {
+		/**
+		* \defgroup Strings
+		* \brief Functions for converting/manipulating strings
+		*/
+		/*@{*/
+
 		//! Returns the number of characters of the given 8-bit Ansi string. Null terminator is not included.
 		fpl_api uint32_t GetAnsiStringLength(const char *str);
 		//! Returns the number of characters of the given 16-bit Wide string. Null terminator is not included.
@@ -1382,10 +1477,18 @@ namespace fpl {
 		fpl_api wchar_t *AnsiStringToWideString(const char *ansiSource, const uint32_t ansiSourceLen, wchar_t *wideDest, const uint32_t maxWideDestLen);
 		//! Converts the given 8-bit UTF-8 string in a 16-bit Wide string. Does not allocate any memory.
 		fpl_api wchar_t *UTF8StringToWideString(const char *utf8Source, const uint32_t utf8SourceLen, wchar_t *wideDest, const uint32_t maxWideDestLen);
+
+		/*@}*/
 	};
 
 	//! Files & directory functions and types
 	namespace files {
+		/**
+		* \defgroup Files
+		* \brief Tons of file and directory IO functions
+		*/
+		/*@{*/
+
 		//! Handle to a loaded/created file
 		struct FileHandle {
 			//! Internal file handle
@@ -1491,10 +1594,18 @@ namespace fpl {
 		fpl_api bool ListFilesNext(FileEntry *nextEntry);
 		//! Releases opened resources from iterating through files / directories.
 		fpl_api void ListFilesEnd(FileEntry *lastEntry);
+
+		/*@}*/
 	};
 
 	//! Directory and paths functions
 	namespace paths {
+		/**
+		* \defgroup Paths
+		* \brief Functions for retrieving paths like HomePath, ExecutablePath, etc.
+		*/
+		/*@{*/
+
 		//! Returns the full path to this executable, including the executable file name. Result is written in the required destination buffer.
 		fpl_api char *GetExecutableFilePath(char *destPath, const uint32_t maxDestLen);
 		//! Returns the full path to your home directory. Result is written in the required destination buffer.
@@ -1509,11 +1620,19 @@ namespace fpl {
 		fpl_api char *ChangeFileExtension(const char *filePath, const char *newFileExtension, char *destPath, const uint32_t maxDestLen);
 		//! Combines all included path by the systems path separator. Returns the pointer of the destination path. Result is written in the required destination buffer.
 		fpl_api char *CombinePath(char *destPath, const uint32_t maxDestPathLen, const uint32_t pathCount, ...);
+
+		/*@}*/
 	};
 
 #if defined(FPL_ENABLE_WINDOW)
 	//! Window based functions and types
 	namespace window {
+		/**
+		* \defgroup WindowEvents Window events
+		* \brief Window event structures
+		*/
+		/*@{*/
+
 		//! Mapped key (Based on MS Virtual-Key-Codes, mostly directly mapped from ASCII)
 		enum class Key {
 			Key_None = 0,
@@ -1877,6 +1996,17 @@ namespace fpl {
 			};
 		};
 
+		//! Gets and removes the top event from the internal queue and fills out the "event" argument. Returns false when there are no events left, otherwise true.
+		fpl_api bool PollWindowEvent(Event &ev);
+
+		/*@}*/
+
+		/**
+		* \defgroup WindowBase Window functions
+		* \brief Functions for reading/setting/handling the window
+		*/
+		/*@{*/
+
 		//! Window size in screen coordinates
 		struct WindowSize {
 			//! Width in screen coordinates
@@ -1893,9 +2023,6 @@ namespace fpl {
 			int32_t top;
 		};
 
-		//
-		// Window
-		//
 		//! Returns true when the window is active.
 		fpl_api bool IsWindowRunning();
 		//! Processes the message queue of the window.
@@ -1923,16 +2050,13 @@ namespace fpl {
 		//! Sets the window title
 		fpl_api void SetWindowTitle(const char *title);
 
-		//
-		// Events
-		//
+		/*@}*/
 
-		//! Gets and removes the top event from the internal queue and fills out the "event" argument. Returns false when there are no events left, otherwise true.
-		fpl_api bool PollWindowEvent(Event &ev);
-
-		//
-		// Clipboard
-		//
+		/**
+		* \defgroup WindowClipboard Clipboard
+		* \brief Functions for reading/writting clipboard data
+		*/
+		/*@{*/
 
 		//! Returns the current clipboard ansi text
 		fpl_api char *GetClipboardAnsiText(char *dest, const uint32_t maxDestLen);
@@ -1942,12 +2066,20 @@ namespace fpl {
 		fpl_api bool SetClipboardText(const char *ansiSource);
 		//! Overwrites the current clipboard wide text with the given one.
 		fpl_api bool SetClipboardText(const wchar_t *wideSource);
+
+		/*@}*/
 	};
 #endif // FPL_ENABLE_WINDOW
 
 #if defined(FPL_ENABLE_VIDEO)
 	//! Video context access
 	namespace video {
+		/**
+		* \defgroup Video
+		* \brief Functions for retrieving or resizing the video buffer
+		*/
+		/*@{*/
+
 		//! Video backbuffer container. Use this for accessing the pixels directly. Use with care!
 		struct VideoBackBuffer {
 			//! The 32-bit pixel top-down array, format: 0xAABBGGRR. Do not modify before WindowUpdate
@@ -1964,12 +2096,20 @@ namespace fpl {
 		fpl_api VideoBackBuffer *GetVideoBackBuffer();
 		//! Resizes the current video backbuffer
 		fpl_api bool ResizeVideoBackBuffer(const uint32_t width, const uint32_t height);
+
+		/*@}*/
 	};
 #endif // FPL_ENABLE_VIDEO
 
 #if defined(FPL_ENABLE_AUDIO)
 	//! Audio functions
 	namespace audio {
+		/**
+		* \defgroup Audio
+		* \brief Functions for start/stop playing audio and retrieving/changing some audio related settings.
+		*/
+		/*@{*/
+
 		//! Audio result
 		enum class AudioResult : uint32_t {
 			Success = 0,
@@ -1986,6 +2126,10 @@ namespace fpl {
 		fpl_api AudioResult StopAudio();
 		//! Returns the native format for the current audio device
 		fpl_api const AudioDeviceFormat &GetAudioNativeFormat();
+		//! Overwrites the audio client read callback. This has no effect when audio is already playing, you have to call it when audio is in a stopped state.
+		fpl_api void SetAudioClientReadCallback(AudioClientReadFunction *newCallback, void *userData);
+
+		/*@}*/
 	};
 #endif
 };
@@ -4406,10 +4550,10 @@ namespace fpl {
 			FPL_ASSERT(count <= common::MAX_SIGNAL_COUNT);
 			HANDLE signalHandles[common::MAX_SIGNAL_COUNT];
 			for (uint32_t index = 0; index < count; ++index) {
-				threading::ThreadSignal *signal = signals[index];
-				FPL_ASSERT(signal->isValid);
-				FPL_ASSERT(signal->internalHandle != nullptr);
-				HANDLE handle = (HANDLE)signal->internalHandle;
+				threading::ThreadSignal *availableSignal = signals[index];
+				FPL_ASSERT(availableSignal->isValid);
+				FPL_ASSERT(availableSignal->internalHandle != nullptr);
+				HANDLE handle = (HANDLE)availableSignal->internalHandle;
 				signalHandles[index] = handle;
 			}
 			DWORD code = WaitForMultipleObjects(count, signalHandles, waitForAll ? TRUE : FALSE, maxMilliseconds < UINT32_MAX ? maxMilliseconds : INFINITE);
@@ -4698,7 +4842,7 @@ namespace fpl {
 			return(result);
 		}
 
-		fpl_api void ThreadStop(ThreadContext *context) {
+		fpl_api void ThreadDestroy(ThreadContext *context) {
 			FPL_ASSERT(context != nullptr);
 			FPL_ASSERT(context->internalHandle != nullptr);
 			HANDLE handle = (HANDLE)context->internalHandle;
@@ -4767,18 +4911,18 @@ namespace fpl {
 			return(result);
 		}
 
-		fpl_api void SignalDestroy(ThreadSignal &signal) {
-			FPL_ASSERT(signal.isValid);
-			FPL_ASSERT(signal.internalHandle != nullptr);
-			HANDLE handle = (HANDLE)signal.internalHandle;
+		fpl_api void SignalDestroy(ThreadSignal &availableSignal) {
+			FPL_ASSERT(availableSignal.isValid);
+			FPL_ASSERT(availableSignal.internalHandle != nullptr);
+			HANDLE handle = (HANDLE)availableSignal.internalHandle;
 			CloseHandle(handle);
-			signal = {};
+			availableSignal = {};
 		}
 
-		fpl_api bool SignalWaitForOne(ThreadSignal &signal, const uint32_t maxMilliseconds) {
-			FPL_ASSERT(signal.isValid);
-			FPL_ASSERT(signal.internalHandle != nullptr);
-			HANDLE handle = (HANDLE)signal.internalHandle;
+		fpl_api bool SignalWaitForOne(ThreadSignal &availableSignal, const uint32_t maxMilliseconds) {
+			FPL_ASSERT(availableSignal.isValid);
+			FPL_ASSERT(availableSignal.internalHandle != nullptr);
+			HANDLE handle = (HANDLE)availableSignal.internalHandle;
 			bool result = (WaitForSingleObject(handle, maxMilliseconds < UINT32_MAX ? maxMilliseconds : INFINITE) == WAIT_OBJECT_0);
 			return(result);
 		}
@@ -4793,18 +4937,18 @@ namespace fpl {
 			return(result);
 		}
 
-		fpl_api bool SignalWakeUp(ThreadSignal &signal) {
-			FPL_ASSERT(signal.isValid);
-			FPL_ASSERT(signal.internalHandle != nullptr);
-			HANDLE handle = (HANDLE)signal.internalHandle;
+		fpl_api bool SignalWakeUp(ThreadSignal &availableSignal) {
+			FPL_ASSERT(availableSignal.isValid);
+			FPL_ASSERT(availableSignal.internalHandle != nullptr);
+			HANDLE handle = (HANDLE)availableSignal.internalHandle;
 			bool result = SetEvent(handle) == TRUE;
 			return(result);
 		}
 
-		fpl_api bool SignalReset(ThreadSignal &signal) {
-			FPL_ASSERT(signal.isValid);
-			FPL_ASSERT(signal.internalHandle != nullptr);
-			HANDLE handle = (HANDLE)signal.internalHandle;
+		fpl_api bool SignalReset(ThreadSignal &availableSignal) {
+			FPL_ASSERT(availableSignal.isValid);
+			FPL_ASSERT(availableSignal.internalHandle != nullptr);
+			HANDLE handle = (HANDLE)availableSignal.internalHandle;
 			bool result = ResetEvent(handle) == TRUE;
 			return(result);
 		}
@@ -6720,7 +6864,7 @@ namespace fpl {
 			// Wake up the worker thread and wait for it to properly terminate.
 			SignalWakeUp(audioState->wakeupSignal);
 			ThreadWaitForOne(audioState->workerThread);
-			ThreadStop(audioState->workerThread);
+			ThreadDestroy(audioState->workerThread);
 
 			// Release signals and thread
 			if (audioState->stopSignal.isValid) {
@@ -6850,6 +6994,16 @@ namespace fpl {
 		fpl_api const AudioDeviceFormat &GetAudioNativeFormat() {
 			AudioState *audioState = &global__Audio__State;
 			return audioState->common.internalFormat;
+		}
+
+		fpl_api void SetAudioClientReadCallback(AudioClientReadFunction *newCallback, void *userData) {
+			AudioState *audioState = &global__Audio__State;
+			if (audioState->activeDriver > AudioDriverType::Auto) {
+				if (AudioGetDeviceState(*audioState) == AudioDeviceState::Stopped) {
+					audioState->common.clientReadCallback = newCallback;
+					audioState->common.clientUserData = userData;
+				}
+			}
 		}
 	} // audio
 #endif // FPL_ENABLE_AUDIO
