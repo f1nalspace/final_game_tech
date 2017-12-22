@@ -154,7 +154,7 @@ static void ReleaseImGUI() {
 	}
 }
 
-static void ImGUIKeyEvent(uint64_t keyCode, Key mappedKey, KeyboardModifierFlags modifiers, bool down) {
+static void ImGUIKeyEvent(uint64_t keyCode, Key mappedKey, KeyboardModifierFlag modifiers, bool down) {
 	ImGuiIO& io = ImGui::GetIO();
 	if (mappedKey != Key::Key_None) {
 		io.KeysDown[(uint32_t)mappedKey] = down;

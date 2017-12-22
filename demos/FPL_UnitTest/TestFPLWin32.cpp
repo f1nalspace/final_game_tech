@@ -43,7 +43,7 @@ public:
 			bool result = InitPlatform(InitFlags::All);
 			Assert::IsTrue(result, L"", LINE_INFO());
 			const char *errorStr = GetPlatformLastError();
-			Assert::AreEqual(nullptr, errorStr, L"", LINE_INFO());
+			Assert::AreEqual(fpl_null, errorStr, L"", LINE_INFO());
 			ReleasePlatform();
 		}
 
@@ -52,7 +52,7 @@ public:
 			bool result = InitPlatform(InitFlags::None);
 			Assert::IsTrue(result, L"", LINE_INFO());
 			const char *errorStr = GetPlatformLastError();
-			Assert::AreEqual(nullptr, errorStr, L"", LINE_INFO());
+			Assert::AreEqual(fpl_null, errorStr, L"", LINE_INFO());
 			ReleasePlatform();
 		}
 
@@ -66,7 +66,7 @@ public:
 			size_t errorCount = GetPlatformLastErrorCount();
 			Assert::AreEqual((size_t)0, errorCount, L"", LINE_INFO());
 			const char *errorStr = GetPlatformLastError();
-			Assert::AreEqual(nullptr, errorStr, L"", LINE_INFO());
+			Assert::AreEqual(fpl_null, errorStr, L"", LINE_INFO());
 			// @NOTE(final): This will crash because the memory is corrupted!
 			ReleasePlatform();
 		}
@@ -103,9 +103,9 @@ public:
 		}
 
 		// @NOTE(final): This is a simple/stupid macro, so when you pass a pointer, you basically get 2 always
-		Msg("[FPL_ARRAYCOUNT] Test nullptr\n");
+		Msg("[FPL_ARRAYCOUNT] Test fpl_null\n");
 		{
-			int *emptyArray = nullptr;
+			int *emptyArray = fpl_null;
 			Assert::AreEqual(sizeof(int *) / sizeof(int), FPL_ARRAYCOUNT(emptyArray), L"", LINE_INFO());
 		}
 
@@ -245,8 +245,8 @@ public:
 	TEST_METHOD(TestAtomics) {
 		Msg("Test AtomicExchangeU32 with different values\n");
 		{
-			constexpr uint32_t expectedBefore = 42;
-			constexpr uint32_t expectedAfter = 1337;
+			const uint32_t expectedBefore = 42;
+			const uint32_t expectedAfter = 1337;
 			volatile uint32_t t = expectedBefore;
 			uint32_t r = AtomicExchangeU32(&t, expectedAfter);
 			Assert::AreEqual(expectedBefore, r, L"", LINE_INFO());
@@ -254,9 +254,9 @@ public:
 		}
 		Msg("Test AtomicExchangeU32 with negative value\n");
 		{
-			constexpr uint32_t expectedBefore = 42;
-			constexpr uint32_t exchangeValue = -1;
-			constexpr uint32_t expectedAfter = (uint32_t)UINT32_MAX;
+			const uint32_t expectedBefore = 42;
+			const uint32_t exchangeValue = -1;
+			const uint32_t expectedAfter = (uint32_t)UINT32_MAX;
 			volatile uint32_t t = expectedBefore;
 			uint32_t r = AtomicExchangeU32(&t, exchangeValue);
 			Assert::AreEqual(expectedBefore, r, L"", LINE_INFO());
@@ -264,9 +264,9 @@ public:
 		}
 		Msg("Test AtomicExchangeU32 with same value\n");
 		{
-			constexpr uint32_t expectedBefore = 1;
-			constexpr uint32_t exchangeValue = expectedBefore;
-			constexpr uint32_t expectedAfter = exchangeValue;
+			const uint32_t expectedBefore = 1;
+			const uint32_t exchangeValue = expectedBefore;
+			const uint32_t expectedAfter = exchangeValue;
 			volatile uint32_t t = expectedBefore;
 			uint32_t r = AtomicExchangeU32(&t, exchangeValue);
 			Assert::AreEqual(expectedBefore, r, L"", LINE_INFO());
@@ -274,9 +274,9 @@ public:
 		}
 		Msg("Test AtomicExchangeS32 with different values\n");
 		{
-			constexpr int32_t expectedBefore = 42;
-			constexpr int32_t exchangeValue = 1337;
-			constexpr int32_t expectedAfter = exchangeValue;
+			const int32_t expectedBefore = 42;
+			const int32_t exchangeValue = 1337;
+			const int32_t expectedAfter = exchangeValue;
 			volatile int32_t t = expectedBefore;
 			int32_t r = AtomicExchangeS32(&t, exchangeValue);
 			Assert::AreEqual(expectedBefore, r, L"", LINE_INFO());
@@ -284,9 +284,9 @@ public:
 		}
 		Msg("Test AtomicExchangeS32 with negative value\n");
 		{
-			constexpr int32_t expectedBefore = 42;
-			constexpr uint32_t exchangeValue = -1;
-			constexpr int32_t expectedAfter = exchangeValue;
+			const int32_t expectedBefore = 42;
+			const uint32_t exchangeValue = -1;
+			const int32_t expectedAfter = exchangeValue;
 			volatile int32_t t = expectedBefore;
 			int32_t r = AtomicExchangeS32(&t, exchangeValue);
 			Assert::AreEqual(expectedBefore, r, L"", LINE_INFO());
@@ -294,9 +294,9 @@ public:
 		}
 		Msg("Test AtomicExchangeS32 with same value\n");
 		{
-			constexpr int32_t expectedBefore = 1;
-			constexpr int32_t exchangeValue = expectedBefore;
-			constexpr int32_t expectedAfter = exchangeValue;
+			const int32_t expectedBefore = 1;
+			const int32_t exchangeValue = expectedBefore;
+			const int32_t expectedAfter = exchangeValue;
 			volatile int32_t t = expectedBefore;
 			int32_t r = AtomicExchangeS32(&t, exchangeValue);
 			Assert::AreEqual(expectedBefore, r, L"", LINE_INFO());
@@ -305,8 +305,8 @@ public:
 
 		Msg("Test AtomicExchangeU64 with different values\n");
 		{
-			constexpr uint64_t expectedBefore = 42;
-			constexpr uint64_t expectedAfter = 1337;
+			const uint64_t expectedBefore = 42;
+			const uint64_t expectedAfter = 1337;
 			volatile uint64_t t = expectedBefore;
 			uint64_t r = AtomicExchangeU64(&t, expectedAfter);
 			Assert::AreEqual(expectedBefore, r, L"", LINE_INFO());
@@ -314,9 +314,9 @@ public:
 		}
 		Msg("Test AtomicExchangeU64 with negative value\n");
 		{
-			constexpr uint64_t expectedBefore = 42;
-			constexpr uint64_t exchangeValue = -1;
-			constexpr uint64_t expectedAfter = (uint64_t)UINT64_MAX;
+			const uint64_t expectedBefore = 42;
+			const uint64_t exchangeValue = -1;
+			const uint64_t expectedAfter = (uint64_t)UINT64_MAX;
 			volatile uint64_t t = expectedBefore;
 			uint64_t r = AtomicExchangeU64(&t, exchangeValue);
 			Assert::AreEqual(expectedBefore, r, L"", LINE_INFO());
@@ -324,9 +324,9 @@ public:
 		}
 		Msg("Test AtomicExchangeU64 with same value\n");
 		{
-			constexpr uint64_t expectedBefore = 1;
-			constexpr uint64_t exchangeValue = expectedBefore;
-			constexpr uint64_t expectedAfter = exchangeValue;
+			const uint64_t expectedBefore = 1;
+			const uint64_t exchangeValue = expectedBefore;
+			const uint64_t expectedAfter = exchangeValue;
 			volatile uint64_t t = expectedBefore;
 			uint64_t r = AtomicExchangeU64(&t, exchangeValue);
 			Assert::AreEqual(expectedBefore, r, L"", LINE_INFO());
@@ -334,9 +334,9 @@ public:
 		}
 		Msg("Test AtomicExchangeS64 with different values\n");
 		{
-			constexpr int64_t expectedBefore = 42;
-			constexpr int64_t exchangeValue = 1337;
-			constexpr int64_t expectedAfter = exchangeValue;
+			const int64_t expectedBefore = 42;
+			const int64_t exchangeValue = 1337;
+			const int64_t expectedAfter = exchangeValue;
 			volatile int64_t t = expectedBefore;
 			int64_t r = AtomicExchangeS64(&t, exchangeValue);
 			Assert::AreEqual(expectedBefore, r, L"", LINE_INFO());
@@ -344,9 +344,9 @@ public:
 		}
 		Msg("Test AtomicExchangeS64 with negative value\n");
 		{
-			constexpr int64_t expectedBefore = 42;
-			constexpr uint64_t exchangeValue = -1;
-			constexpr int64_t expectedAfter = exchangeValue;
+			const int64_t expectedBefore = 42;
+			const uint64_t exchangeValue = -1;
+			const int64_t expectedAfter = exchangeValue;
 			volatile int64_t t = expectedBefore;
 			int64_t r = AtomicExchangeS64(&t, exchangeValue);
 			Assert::AreEqual(expectedBefore, r, L"", LINE_INFO());
@@ -354,9 +354,9 @@ public:
 		}
 		Msg("Test AtomicExchangeS64 with same value\n");
 		{
-			constexpr int64_t expectedBefore = 1;
-			constexpr int64_t exchangeValue = expectedBefore;
-			constexpr int64_t expectedAfter = exchangeValue;
+			const int64_t expectedBefore = 1;
+			const int64_t exchangeValue = expectedBefore;
+			const int64_t expectedAfter = exchangeValue;
 			volatile int64_t t = expectedBefore;
 			int64_t r = AtomicExchangeS64(&t, exchangeValue);
 			Assert::AreEqual(expectedBefore, r, L"", LINE_INFO());

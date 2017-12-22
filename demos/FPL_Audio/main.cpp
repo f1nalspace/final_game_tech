@@ -32,7 +32,7 @@ static const float PI32 = 3.14159265359f;
 
 static uint32_t FillAudioBuffer(const AudioDeviceFormat &nativeFormat, const uint32_t frameCount, void *outputSamples, void *userData) {
 	AudioTest *audioTest = (AudioTest *)userData;
-	FPL_ASSERT(audioTest != nullptr);
+	FPL_ASSERT(audioTest != fpl_null);
 	FPL_ASSERT(nativeFormat.type == AudioFormatType::S16);
 	uint32_t result = 0;
 	int16_t *outSamples = (int16_t *)outputSamples;
@@ -79,7 +79,7 @@ int main(int argc, char **args) {
 		// Start audio playback (This will start calling clientReadCallback regulary)
 		if (PlayAudio() == AudioResult::Success) {
 			// Print out the native audio format
-			AudioDeviceFormat nativeFormat = GetAudioNativeFormat();
+			AudioDeviceFormat nativeFormat = GetAudioHardwareFormat();
 			ConsoleFormatOut("Audio with %lu KHz and %lu channels is playing, press any key to stop playback...\n", nativeFormat.sampleRate, nativeFormat.channels);
 			// Wait for any key presses
 			getchar();

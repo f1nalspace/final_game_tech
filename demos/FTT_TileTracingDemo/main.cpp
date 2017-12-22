@@ -8,13 +8,13 @@
 #define FTT_IMPLEMENTATION
 #include "final_tiletrace.hpp"
 
-static constexpr int TileMapCountW = 36;
-static constexpr int TileMapCountH = 62;
+fpl_constant int TileMapCountW = 36;
+fpl_constant int TileMapCountH = 62;
 
-static constexpr float TileSize = 1.0f;
-static constexpr float AreaSizeW = TileMapCountW * TileSize;
-static constexpr float AreaSizeH = TileMapCountH * TileSize;
-static constexpr float AspectRatio = AreaSizeW / AreaSizeH;
+fpl_constant float TileSize = 1.0f;
+fpl_constant float AreaSizeW = TileMapCountW * TileSize;
+fpl_constant float AreaSizeH = TileMapCountH * TileSize;
+fpl_constant float AspectRatio = AreaSizeW / AreaSizeH;
 
 static uint8_t TileMap[TileMapCountW * TileMapCountH] = {
 	1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,
@@ -208,7 +208,7 @@ int main(int argc, char **args) {
 
 			// Draw start
 			ftt::Tile *startTile = tracer.GetStartTile();
-			if (startTile != nullptr) {
+			if (startTile) {
 				glColor3f(1.0f, 0.5f, 1.0f);
 				DrawTile(startTile->x, startTile->y, true);
 			}
@@ -254,7 +254,7 @@ int main(int argc, char **args) {
 
 			// Draw current tile
 			ftt::Tile *curTile = tracer.GetCurrentTile();
-			if (curTile != nullptr) {
+			if (curTile) {
 				glColor3f(1.0f, 1.0f, 0.0f);
 				glLineWidth(2.0f);
 				DrawTile(curTile->x, curTile->y, false);
