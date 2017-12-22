@@ -1107,7 +1107,7 @@ int main(int argc, char **argv) {
 		state.ffmpeg = &ffmpeg;
 
 		VideoBackBuffer *backBuffer = GetVideoBackBuffer();
-		AudioDeviceFormat nativeAudioFormat = GetAudioNativeFormat();
+		AudioDeviceFormat nativeAudioFormat = GetAudioHardwareFormat();
 
 		//
 		// Load ffmpeg libraries
