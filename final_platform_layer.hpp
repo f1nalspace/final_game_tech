@@ -1,6 +1,6 @@
 /**
 * @file final_platform_layer.hpp
-* @version v0.5.1 beta
+* @version v0.5.2 beta
 * @author Torsten Spaete
 * @brief Final Platform Layer (FPL) - A Open source C++ single file header platform abstraction layer library.
 *
@@ -70,6 +70,7 @@ It works very well with other libraries like for example:
 		}
 		return(result);
 	}
+
 ## Simple OpenGL 1.x Triangle
 	#define FPL_IMPLEMENTATION
 	#include "final_platform_layer.hpp"
@@ -164,7 +165,7 @@ It works very well with other libraries like for example:
 
 	static uint32_t FillAudioBuffer(const AudioDeviceFormat &nativeFormat, const uint32_t frameCount, void *outputSamples, void *userData) {
 		AudioTest *audioTest = (AudioTest *)userData;
-		FPL_ASSERT(audioTest != nullptr);
+		FPL_ASSERT(audioTest != fpl_null);
 		FPL_ASSERT(nativeFormat.type == AudioFormatType::S16);
 		uint32_t result = 0;
 		int16_t *outSamples = (int16_t *)outputSamples;
@@ -212,7 +213,7 @@ It works very well with other libraries like for example:
 
 # HOW TO COMPILE
 
-You need a C++/11 complaint compiler like MSVC, GCC, Clang, etc.
+You need a C++/98 compatible compiler like MSVC, GCC, Clang, etc.
 
 ## Win32
 
@@ -353,6 +354,13 @@ SOFTWARE.
 Thanks to David Reid for the awesome "mini_al.h" single header file audio library.
 
 # VERSION HISTORY
+
+## v0.5.2 beta:
+- Changed: Library is now C++/98 complaint
+- Changed: The actual enum type for "flags" has no "s" at the end anymore.
+- Optimization: Changed some internal functions to "static inline"
+- Changed: Renamed audio::GetAudioNativeFormat to audio::GetAudioHardwareFormat
+- New: Added "periods", "bufferSizeInBytes", "bufferSizeInFrames" to AudioDeviceFormat
 
 ## v0.5.1 beta:
 - New: audio::GetAudioNativeFormat()
@@ -579,7 +587,7 @@ Thanks to David Reid for the awesome "mini_al.h" single header file audio librar
 
 # TODO (Top priority order)
 
-- Change most assertions to normal comparisons and make it rock solid, so it wont crash for the most part. Returning nullptr or empty is much more preferred.
+- Change most assertions to normal comparisons and make it rock solid, so it wont crash for the most part. Returning fpl_null or empty is much more preferred.
 
 - REFERENCE.MD generation using doxygen
 
@@ -624,14 +632,9 @@ Thanks to David Reid for the awesome "mini_al.h" single header file audio librar
 #ifndef FPL_INCLUDE_HPP
 #define FPL_INCLUDE_HPP
 
-// Unfortunatly C++/11 is required for this library (constexpr, enum class, overloading, namespaces)
-#if defined(__cplusplus) && (__cplusplus >= 201103L)
-	// Everything is fine
-#elif defined(_MSC_VER) && _MSC_VER >= 1900
-	// @NOTE(final): This is visual studio for you, __cplusplus always returns 199711L -.-
-	// See: https://connect.microsoft.com/VisualStudio/feedback/details/763051/a-value-of-predefined-macro-cplusplus-is-still-199711l
-#else
-#	error "You need a C++/11 complaint compiler for this library!"
+// C++ detection
+#if !defined(__cplusplus)
+#	error "You need a C++/98 compatible compiler for this library!"
 #endif
 
 //
@@ -838,8 +841,20 @@ Thanks to David Reid for the awesome "mini_al.h" single header file audio librar
 #define fpl_internal static
 //! Inline function
 #define fpl_inline inline
-//! Constant value
-#define fpl_constant constexpr
+//! Internal inlined function
+#define fpl_internal_inline fpl_internal fpl_inline
+
+#if (__cplusplus >= 201103L) || (_MSC_VER >= 1900)
+	//! Null pointer (nullptr)
+#	define fpl_null nullptr
+	//! Constant (constexpr)
+#	define fpl_constant constexpr
+#else
+	//! Null pointer (0)
+#	define fpl_null 0
+	// Constant (static const)
+#	define fpl_constant static const
+#endif
 
 #if defined(FPL_API_AS_PRIVATE)
 	//! Private api call
@@ -911,19 +926,19 @@ Thanks to David Reid for the awesome "mini_al.h" single header file audio librar
 #define FPL_IS_ALIGNED(ptr, alignment) (((uintptr_t)(const void *)(ptr)) % (alignment) == 0)
 
 //! Defines the operator overloads for a enum used as flags
-#define FPL_ENUM_AS_FLAGS_OPERATORS(etype, itype) \
+#define FPL_ENUM_AS_FLAGS_OPERATORS(etype) \
 		inline etype operator | (etype lhs, etype rhs) { \
-			return (etype)(static_cast<itype>(lhs) | static_cast<itype>(rhs)); \
+			return (etype)(static_cast<int>(lhs) | static_cast<int>(rhs)); \
 		} \
 		inline bool operator & (const etype lhs, const etype rhs) { \
-			return (static_cast<itype>(lhs) & static_cast<itype>(rhs)) == static_cast<itype>(rhs); \
+			return (static_cast<int>(lhs) & static_cast<int>(rhs)) == static_cast<int>(rhs); \
 		} \
 		inline etype& operator |= (etype &lhs, etype rhs) { \
-			lhs = (etype)(static_cast<itype>(lhs) | static_cast<itype>(rhs)); \
+			lhs = (etype)(static_cast<int>(lhs) | static_cast<int>(rhs)); \
 			return lhs; \
 		} \
 		inline etype& operator &= (etype &lhs, etype rhs) { \
-			lhs = (etype)(static_cast<itype>(lhs) & static_cast<itype>(rhs)); \
+			lhs = (etype)(static_cast<int>(lhs) & static_cast<int>(rhs)); \
 			return lhs; \
 		}
 
@@ -1040,40 +1055,52 @@ namespace fpl {
 	/*@{*/
 
 	//! Initialization flags (Window, Video, etc.)
-	enum class InitFlags : uint32_t {
-		//! No init flags
-		None = 0,
-		//! Create a single window
-		Window = 1 << 0,
-		//! Use a video backbuffer (A window without video is pretty much useless)
-		Video = 1 << 1,
-		//! Use audio playback
-		Audio = 1 << 2,
-		//! Default init flags for a window + video + audio
-		All = Window | Video | Audio
+	namespace InitFlags {
+		//! Initialization flag
+		enum InitFlagEnum {
+			//! No init flags
+			None = 0,
+			//! Create a single window
+			Window = 1 << 0,
+			//! Use a video backbuffer (A window without video is pretty much useless)
+			Video = 1 << 1,
+			//! Use audio playback
+			Audio = 1 << 2,
+			//! Default init flags for a window + video + audio
+			All = Window | Video | Audio
+		};
 	};
-	//! Operator support for InitFlags
-	FPL_ENUM_AS_FLAGS_OPERATORS(InitFlags, uint32_t);
+	typedef InitFlags::InitFlagEnum InitFlag;
+	//! Operator support for InitFlag
+	FPL_ENUM_AS_FLAGS_OPERATORS(InitFlag);
 
-	//! Video driver type
-	enum class VideoDriverType : uint32_t {
-		//! No video driver
-		None = 0,
-		//! OpenGL
-		OpenGL,
-		//! Software
-		Software,
+	//! Video driver types
+	namespace VideoDriverTypes {
+		//! Video driver type
+		enum VideoDriverTypeEnum {
+			//! No video driver
+			None = 0,
+			//! OpenGL
+			OpenGL,
+			//! Software
+			Software,
+		};
 	};
+	typedef VideoDriverTypes::VideoDriverTypeEnum VideoDriverType;
 
-	//! Video compability profile
-	enum class VideoCompabilityProfile {
-		//! Use legacy context
-		Legacy,
-		//! Use core context with backwards compability
-		Core,
-		//! Use foward context without backwards compability
-		Forward,
+	//! Video compability profiles
+	namespace VideoCompabilityProfiles {
+		//! Video compability profile
+		enum VideoCompabilityProfileEnum {
+			//! Use legacy context
+			Legacy,
+			//! Use core context with backwards compability
+			Core,
+			//! Use foward context without backwards compability
+			Forward,
+		};
 	};
+	typedef VideoCompabilityProfiles::VideoCompabilityProfileEnum VideoCompabilityProfile;
 
 	//! Video settings container (Compability Profile, Version, VSync, etc.)
 	struct VideoSettings {
@@ -1092,7 +1119,7 @@ namespace fpl {
 	};
 
 	//! Make default settings for video
-	inline VideoSettings DefaultVideoSettings() {
+	fpl_inline VideoSettings DefaultVideoSettings() {
 		VideoSettings result = {};
 		result.profile = VideoCompabilityProfile::Legacy;
 		result.majorVersion = result.minorVersion = 0;
@@ -1111,31 +1138,39 @@ namespace fpl {
 		return(result);
 	}
 
-	//! Audio driver
-	enum class AudioDriverType : uint32_t {
-		//! No audio driver
-		None = 0,
-		// Auto detection
-		Auto,
-		//! DirectSound
-		DirectSound,
+	//! Audio drivers
+	namespace AudioDriverTypes {
+		//! Audio driver
+		enum AudioDriverTypeEnum {
+			//! No audio driver
+			None = 0,
+			// Auto detection
+			Auto,
+			//! DirectSound
+			DirectSound,
+		};
 	};
+	typedef AudioDriverTypes::AudioDriverTypeEnum AudioDriverType;
 
-	//! Audio format
-	enum class AudioFormatType : uint32_t {
-		// No audio format
-		None = 0,
-		// Unsigned 8-bit integer PCM
-		U8,
-		// Signed 16-bit integer PCM
-		S16,
-		// Signed 24-bit integer PCM
-		S24,
-		// Signed 32-bit integer PCM
-		S32,
-		// 32-bit floating point PCM
-		F32,
+	//! Audio formats
+	namespace AudioFormatTypes {
+		//! Audio format
+		enum AudioFormatTypeEnum {
+			// No audio format
+			None = 0,
+			// Unsigned 8-bit integer PCM
+			U8,
+			// Signed 16-bit integer PCM
+			S16,
+			// Signed 24-bit integer PCM
+			S24,
+			// Signed 32-bit integer PCM
+			S32,
+			// 32-bit floating point PCM
+			F32,
+		};
 	};
+	typedef AudioFormatTypes::AudioFormatTypeEnum AudioFormatType;
 
 	//! Audio device format
 	struct AudioDeviceFormat {
@@ -1145,10 +1180,16 @@ namespace fpl {
 		uint32_t sampleRate;
 		//! Number of channels
 		uint32_t channels;
+		// Number of periods
+		uint32_t periods;
+		// Buffer size for one period
+		uint32_t bufferSizeInBytes;
+		// Buffer size in frames for one period
+		uint32_t bufferSizeInFrames;
 	};
 
 	//! Audio Client Read Callback Function
-	typedef uint32_t(AudioClientReadFunction)(const AudioDeviceFormat &nativeFormat, const uint32_t frameCount, void *outputSamples, void *userData);
+	typedef uint32_t(AudioClientReadFunction)(const AudioDeviceFormat &deviceFormat, const uint32_t frameCount, void *outputSamples, void *userData);
 
 	//! Audio settings
 	struct AudioSettings {
@@ -1167,7 +1208,7 @@ namespace fpl {
 	};
 
 	//! Make default audio settings (S16 PCM, 48 KHz, 2 Channels)
-	inline AudioSettings DefaultAudioSettings() {
+	fpl_inline AudioSettings DefaultAudioSettings() {
 		AudioSettings result = {};
 		result.bufferSizeInMilliSeconds = 25;
 		result.preferExclusiveMode = false;
@@ -1203,7 +1244,7 @@ namespace fpl {
 	};
 
 	//! Make default settings for the window
-	inline WindowSettings DefaultWindowSettings() {
+	fpl_inline WindowSettings DefaultWindowSettings() {
 		WindowSettings result = {};
 		result.windowTitle[0] = 0;
 		result.windowWidth = 800;
@@ -1226,7 +1267,7 @@ namespace fpl {
 	};
 
 	//! Default settings for video, window, etc.
-	inline Settings DefaultSettings() {
+	fpl_inline Settings DefaultSettings() {
 		Settings result = {};
 		result.window = DefaultWindowSettings();
 		result.video = DefaultVideoSettings();
@@ -1246,7 +1287,7 @@ namespace fpl {
 	/*@{*/
 
 	//! Initialize the platform layer.
-	fpl_api bool InitPlatform(const InitFlags initFlags, const Settings &initSettings = DefaultSettings());
+	fpl_api bool InitPlatform(const InitFlag initFlags, const Settings &initSettings = DefaultSettings());
 	//! Releases the platform layer and resets all structures to zero.
 	fpl_api void ReleasePlatform();
 
@@ -1320,16 +1361,20 @@ namespace fpl {
 		* \brief Tons of functions for multithreading, mutex and signal creation and handling
 		*/
 		/*@{*/
-
-		//! Thread state type
-		enum class ThreadState : uint32_t {
-			//! Thread is stopped
-			Stopped = 0,
-			//! Thread is still running
-			Running,
-			// Thread is suspended
-			Suspended,
+	
+		//! Thread state types
+		namespace ThreadStates {
+			//! Thread state type
+			enum ThreadStateEnum {
+				//! Thread is stopped
+				Stopped = 0,
+				//! Thread is still running
+				Running,
+				// Thread is suspended
+				Suspended,
+			};
 		};
+		typedef ThreadStates::ThreadStateEnum ThreadState;
 
 		struct ThreadContext;
 		//! Run function type definition for CreateThread
@@ -1497,43 +1542,55 @@ namespace fpl {
 			bool isValid;
 		};
 
-		//! File position mode (Beginning, Current, End)
-		enum class FilePositionMode {
-			//! Starts from the beginning
-			Beginning = 0,
-			//! Starts from the current position
-			Current = 1,
-			//! Starts from the end
-			End = 2,
+		//! File position modes (Beginning, Current, End)
+		namespace FilePositionModes {
+			//! File position mode
+			enum FilePositionModeEnum {
+				//! Starts from the beginning
+				Beginning = 0,
+				//! Starts from the current position
+				Current = 1,
+				//! Starts from the end
+				End = 2,
+			};
 		};
+		typedef FilePositionModes::FilePositionModeEnum FilePositionMode;
 
-		//! File entry type (File, Directory, etc.)
-		enum class FileEntryType {
-			//! Unknown entry type
-			Unknown = 0,
-			//! Entry is a file
-			File = 1,
-			//! Entry is a directory
-			Directory = 2,
+		//! File entry types (File, Directory, etc.)
+		namespace FileEntryTypes {
+			//! File entry type
+			enum FileEntryTypeEnum {
+				//! Unknown entry type
+				Unknown = 0,
+				//! Entry is a file
+				File = 1,
+				//! Entry is a directory
+				Directory = 2,
+			};
 		};
+		typedef FileEntryTypes::FileEntryTypeEnum FileEntryType;
 
 		//! File attribute flags (Normal, Readonly, Hidden, etc.)
-		enum class FileAttributeFlags : uint32_t {
-			//! No attributes
-			None = 0,
-			//! Normal
-			Normal = 1 << 0,
-			//! Readonly
-			ReadOnly = 1 << 1,
-			//! Hidden
-			Hidden = 1 << 2,
-			//! Archive
-			Archive = 1 << 3,
-			//! System
-			System = 1 << 4,
+		namespace FileAttributeFlags {
+			//! File attribute flag
+			enum FileAttributeFlagEnum {
+				//! No attributes
+				None = 0,
+				//! Normal
+				Normal = 1 << 0,
+				//! Readonly
+				ReadOnly = 1 << 1,
+				//! Hidden
+				Hidden = 1 << 2,
+				//! Archive
+				Archive = 1 << 3,
+				//! System
+				System = 1 << 4,
+			};
 		};
-		//! Operator support for FileAttributeFlags
-		FPL_ENUM_AS_FLAGS_OPERATORS(FileAttributeFlags, uint32_t);
+		typedef FileAttributeFlags::FileAttributeFlagEnum FileAttributeFlag;
+		//! Operator support for FileAttributeFlag
+		FPL_ENUM_AS_FLAGS_OPERATORS(FileAttributeFlag);
 
 		//! Maximum length of a file entry path
 		fpl_constant uint32_t MAX_FILEENTRY_PATH_LENGTH = 1024;
@@ -1543,7 +1600,7 @@ namespace fpl {
 			//! Entry type
 			FileEntryType type;
 			//! File attributes
-			FileAttributeFlags attributes;
+			FileAttributeFlag attributes;
 			//! File path
 			char path[MAX_FILEENTRY_PATH_LENGTH];
 			//! Internal file handle
@@ -1633,169 +1690,177 @@ namespace fpl {
 		*/
 		/*@{*/
 
-		//! Mapped key (Based on MS Virtual-Key-Codes, mostly directly mapped from ASCII)
-		enum class Key {
-			Key_None = 0,
+		//! Mapped keys (Based on MS Virtual-Key-Codes, mostly directly mapped from ASCII)
+		namespace Keys {
+			//! Mapped key
+			enum KeyEnum {
+				Key_None = 0,
 
-			// 0x07: Undefined
+				// 0x07: Undefined
 
-			Key_Backspace = 0x08,
-			Key_Tab = 0x09,
+				Key_Backspace = 0x08,
+				Key_Tab = 0x09,
 
-			// 0x0A-0x0B: Reserved
+				// 0x0A-0x0B: Reserved
 
-			Key_Clear = 0x0C,
-			Key_Enter = 0x0D,
+				Key_Clear = 0x0C,
+				Key_Enter = 0x0D,
 
-			// 0x0E-0x0F: Undefined
+				// 0x0E-0x0F: Undefined
 
-			Key_Shift = 0x10,
-			Key_Control = 0x11,
-			Key_Alt = 0x12,
-			Key_Pause = 0x13,
-			Key_CapsLock = 0x14,
+				Key_Shift = 0x10,
+				Key_Control = 0x11,
+				Key_Alt = 0x12,
+				Key_Pause = 0x13,
+				Key_CapsLock = 0x14,
 
-			// 0x15: IME-Keys
-			// 0x16: Undefined
-			// 0x17-0x19 IME-Keys
-			// 0x1A: Undefined
+				// 0x15: IME-Keys
+				// 0x16: Undefined
+				// 0x17-0x19 IME-Keys
+				// 0x1A: Undefined
 
-			Key_Escape = 0x1B,
+				Key_Escape = 0x1B,
 
-			// 0x1C - 0x1F: IME-Keys
+				// 0x1C - 0x1F: IME-Keys
 
-			Key_Space = 0x20,
-			Key_PageUp = 0x21,
-			Key_PageDown = 0x22,
-			Key_End = 0x23,
-			Key_Home = 0x24,
-			Key_Left = 0x25,
-			Key_Up = 0x26,
-			Key_Right = 0x27,
-			Key_Down = 0x28,
-			Key_Select = 0x29,
-			Key_Print = 0x2A,
-			Key_Execute = 0x2B,
-			Key_Snapshot = 0x2C,
-			Key_Insert = 0x2D,
-			Key_Delete = 0x2E,
-			Key_Help = 0x2F,
+				Key_Space = 0x20,
+				Key_PageUp = 0x21,
+				Key_PageDown = 0x22,
+				Key_End = 0x23,
+				Key_Home = 0x24,
+				Key_Left = 0x25,
+				Key_Up = 0x26,
+				Key_Right = 0x27,
+				Key_Down = 0x28,
+				Key_Select = 0x29,
+				Key_Print = 0x2A,
+				Key_Execute = 0x2B,
+				Key_Snapshot = 0x2C,
+				Key_Insert = 0x2D,
+				Key_Delete = 0x2E,
+				Key_Help = 0x2F,
 
-			Key_0 = 0x30,
-			Key_1 = 0x31,
-			Key_2 = 0x32,
-			Key_3 = 0x33,
-			Key_4 = 0x34,
-			Key_5 = 0x35,
-			Key_6 = 0x36,
-			Key_7 = 0x37,
-			Key_8 = 0x38,
-			Key_9 = 0x39,
+				Key_0 = 0x30,
+				Key_1 = 0x31,
+				Key_2 = 0x32,
+				Key_3 = 0x33,
+				Key_4 = 0x34,
+				Key_5 = 0x35,
+				Key_6 = 0x36,
+				Key_7 = 0x37,
+				Key_8 = 0x38,
+				Key_9 = 0x39,
 
-			// 0x3A-0x40: Undefined
+				// 0x3A-0x40: Undefined
 
-			Key_A = 0x41,
-			Key_B = 0x42,
-			Key_C = 0x43,
-			Key_D = 0x44,
-			Key_E = 0x45,
-			Key_F = 0x46,
-			Key_G = 0x47,
-			Key_H = 0x48,
-			Key_I = 0x49,
-			Key_J = 0x4A,
-			Key_K = 0x4B,
-			Key_L = 0x4C,
-			Key_M = 0x4D,
-			Key_N = 0x4E,
-			Key_O = 0x4F,
-			Key_P = 0x50,
-			Key_Q = 0x51,
-			Key_R = 0x52,
-			Key_S = 0x53,
-			Key_T = 0x54,
-			Key_U = 0x55,
-			Key_V = 0x56,
-			Key_W = 0x57,
-			Key_X = 0x58,
-			Key_Y = 0x59,
-			Key_Z = 0x5A,
+				Key_A = 0x41,
+				Key_B = 0x42,
+				Key_C = 0x43,
+				Key_D = 0x44,
+				Key_E = 0x45,
+				Key_F = 0x46,
+				Key_G = 0x47,
+				Key_H = 0x48,
+				Key_I = 0x49,
+				Key_J = 0x4A,
+				Key_K = 0x4B,
+				Key_L = 0x4C,
+				Key_M = 0x4D,
+				Key_N = 0x4E,
+				Key_O = 0x4F,
+				Key_P = 0x50,
+				Key_Q = 0x51,
+				Key_R = 0x52,
+				Key_S = 0x53,
+				Key_T = 0x54,
+				Key_U = 0x55,
+				Key_V = 0x56,
+				Key_W = 0x57,
+				Key_X = 0x58,
+				Key_Y = 0x59,
+				Key_Z = 0x5A,
 
-			Key_LeftWin = 0x5B,
-			Key_RightWin = 0x5C,
-			Key_Apps = 0x5D,
+				Key_LeftWin = 0x5B,
+				Key_RightWin = 0x5C,
+				Key_Apps = 0x5D,
 
-			// 0x5E: Reserved
+				// 0x5E: Reserved
 
-			Key_Sleep = 0x5F,
-			Key_NumPad0 = 0x60,
-			Key_NumPad1 = 0x61,
-			Key_NumPad2 = 0x62,
-			Key_NumPad3 = 0x63,
-			Key_NumPad4 = 0x64,
-			Key_NumPad5 = 0x65,
-			Key_NumPad6 = 0x66,
-			Key_NumPad7 = 0x67,
-			Key_NumPad8 = 0x68,
-			Key_NumPad9 = 0x69,
-			Key_Multiply = 0x6A,
-			Key_Add = 0x6B,
-			Key_Separator = 0x6C,
-			Key_Substract = 0x6D,
-			Key_Decimal = 0x6E,
-			Key_Divide = 0x6F,
-			Key_F1 = 0x70,
-			Key_F2 = 0x71,
-			Key_F3 = 0x72,
-			Key_F4 = 0x73,
-			Key_F5 = 0x74,
-			Key_F6 = 0x75,
-			Key_F7 = 0x76,
-			Key_F8 = 0x77,
-			Key_F9 = 0x78,
-			Key_F10 = 0x79,
-			Key_F11 = 0x7A,
-			Key_F12 = 0x7B,
-			Key_F13 = 0x7C,
-			Key_F14 = 0x7D,
-			Key_F15 = 0x7E,
-			Key_F16 = 0x7F,
-			Key_F17 = 0x80,
-			Key_F18 = 0x81,
-			Key_F19 = 0x82,
-			Key_F20 = 0x83,
-			Key_F21 = 0x84,
-			Key_F22 = 0x85,
-			Key_F23 = 0x86,
-			Key_F24 = 0x87,
+				Key_Sleep = 0x5F,
+				Key_NumPad0 = 0x60,
+				Key_NumPad1 = 0x61,
+				Key_NumPad2 = 0x62,
+				Key_NumPad3 = 0x63,
+				Key_NumPad4 = 0x64,
+				Key_NumPad5 = 0x65,
+				Key_NumPad6 = 0x66,
+				Key_NumPad7 = 0x67,
+				Key_NumPad8 = 0x68,
+				Key_NumPad9 = 0x69,
+				Key_Multiply = 0x6A,
+				Key_Add = 0x6B,
+				Key_Separator = 0x6C,
+				Key_Substract = 0x6D,
+				Key_Decimal = 0x6E,
+				Key_Divide = 0x6F,
+				Key_F1 = 0x70,
+				Key_F2 = 0x71,
+				Key_F3 = 0x72,
+				Key_F4 = 0x73,
+				Key_F5 = 0x74,
+				Key_F6 = 0x75,
+				Key_F7 = 0x76,
+				Key_F8 = 0x77,
+				Key_F9 = 0x78,
+				Key_F10 = 0x79,
+				Key_F11 = 0x7A,
+				Key_F12 = 0x7B,
+				Key_F13 = 0x7C,
+				Key_F14 = 0x7D,
+				Key_F15 = 0x7E,
+				Key_F16 = 0x7F,
+				Key_F17 = 0x80,
+				Key_F18 = 0x81,
+				Key_F19 = 0x82,
+				Key_F20 = 0x83,
+				Key_F21 = 0x84,
+				Key_F22 = 0x85,
+				Key_F23 = 0x86,
+				Key_F24 = 0x87,
 
-			// 0x88-8F: Unassigned
+				// 0x88-8F: Unassigned
 
-			Key_NumLock = 0x90,
-			Key_Scroll = 0x91,
+				Key_NumLock = 0x90,
+				Key_Scroll = 0x91,
 
-			// 0x92-9x96: OEM specific
-			// 0x97-0x9F: Unassigned
+				// 0x92-9x96: OEM specific
+				// 0x97-0x9F: Unassigned
 
-			Key_LeftShift = 0xA0,
-			Key_RightShift = 0xA1,
-			Key_LeftControl = 0xA2,
-			Key_RightControl = 0xA3,
-			Key_LeftAlt = 0xA4,
-			Key_RightAlt = 0xA5,
+				Key_LeftShift = 0xA0,
+				Key_RightShift = 0xA1,
+				Key_LeftControl = 0xA2,
+				Key_RightControl = 0xA3,
+				Key_LeftAlt = 0xA4,
+				Key_RightAlt = 0xA5,
 
-			// 0xA6-0xFE: Dont care
+				// 0xA6-0xFE: Dont care
+			};
 		};
+		typedef Keys::KeyEnum Key;
 
-		//! Window event type (Resized, PositionChanged, etc.)
-		enum class WindowEventType {
-			//! Window has been resized
-			Resized = 1,
-			//! Window got focus
-			GotFocus = 2,
-			//! Window lost focus
-			LostFocus = 3,
+		//! Window event types (Resized, PositionChanged, etc.)
+		namespace WindowEventTypes {
+			//! Window event type
+			enum WindowEventTypeEnum {
+				//! Window has been resized
+				Resized = 1,
+				//! Window got focus
+				GotFocus = 2,
+				//! Window lost focus
+				LostFocus = 3,
+			};
 		};
+		typedef WindowEventTypes::WindowEventTypeEnum WindowEventType;
 
 		//! Window event data (Size, Position, etc.)
 		struct WindowEvent {
@@ -1807,31 +1872,39 @@ namespace fpl {
 			uint32_t height;
 		};
 
-		//! Keyboard event type (KeyDown, KeyUp, Char, ...)
-		enum class KeyboardEventType {
-			//! Key is down
-			KeyDown = 1,
-			//! Key was released
-			KeyUp = 2,
-			//! Character was entered
-			Char = 3,
+		//! Keyboard event types (KeyDown, KeyUp, Char, ...)
+		namespace KeyboardEventTypes {
+			//! Keyboard event type
+			enum KeyboardEventTypeEnum {
+				//! Key is down
+				KeyDown = 1,
+				//! Key was released
+				KeyUp = 2,
+				//! Character was entered
+				Char = 3,
+			};
 		};
+		typedef KeyboardEventTypes::KeyboardEventTypeEnum KeyboardEventType;
 
 		//! Keyboard modifier flags (Alt, Ctrl, ...)
-		enum class KeyboardModifierFlags : uint32_t {
-			//! No modifiers
-			None = 0,
-			//! Alt key is down
-			Alt = 1 << 0,
-			//! Ctrl key is down
-			Ctrl = 1 << 1,
-			//! Shift key is down
-			Shift = 1 << 2,
-			//! Super key is down
-			Super = 1 << 3,
+		namespace KeyboardModifierFlags {
+			//! Keyboard modifier flag
+			enum KeyboardModifierFlagEnum {
+				//! No modifiers
+				None = 0,
+				//! Alt key is down
+				Alt = 1 << 0,
+				//! Ctrl key is down
+				Ctrl = 1 << 1,
+				//! Shift key is down
+				Shift = 1 << 2,
+				//! Super key is down
+				Super = 1 << 3,
+			};
 		};
-		//! Operator support for KeyboardModifierFlags
-		FPL_ENUM_AS_FLAGS_OPERATORS(KeyboardModifierFlags, uint32_t);
+		typedef KeyboardModifierFlags::KeyboardModifierFlagEnum KeyboardModifierFlag;
+		//! Operator support for KeyboardModifierFlag
+		FPL_ENUM_AS_FLAGS_OPERATORS(KeyboardModifierFlag);
 
 		//! Keyboard event data (Type, Keycode, Mapped key, etc.)
 		struct KeyboardEvent {
@@ -1842,32 +1915,40 @@ namespace fpl {
 			//! Mapped key
 			Key mappedKey;
 			//! Keyboard modifiers
-			KeyboardModifierFlags modifiers;
+			KeyboardModifierFlag modifiers;
 		};
 
-		//! Mouse event type (Move, ButtonDown, ...)
-		enum class MouseEventType {
-			//! Mouse position has been changed
-			Move = 1,
-			//! Mouse button is down
-			ButtonDown = 2,
-			//! Mouse button was released
-			ButtonUp = 3,
-			//! Mouse wheel up/down
-			Wheel = 4,
+		//! Mouse event types (Move, ButtonDown, ...)
+		namespace MouseEventTypes {
+			//! Mouse event type
+			enum MouseEventTypeEnum {
+				//! Mouse position has been changed
+				Move = 1,
+				//! Mouse button is down
+				ButtonDown = 2,
+				//! Mouse button was released
+				ButtonUp = 3,
+				//! Mouse wheel up/down
+				Wheel = 4,
+			};
 		};
+		typedef MouseEventTypes::MouseEventTypeEnum MouseEventType;
 
-		//! Mouse button type (Left, Right, ...)
-		enum class MouseButtonType : int32_t {
-			//! No mouse button
-			None = -1,
-			//! Left mouse button
-			Left = 0,
-			//! Right mouse button
-			Right = 1,
-			//! Middle mouse button
-			Middle = 2,
+		//! Mouse button types (Left, Right, ...)
+		namespace MouseButtonTypes {
+			//! Mouse button type
+			enum MouseButtonTypeEnum {
+				//! No mouse button
+				None = -1,
+				//! Left mouse button
+				Left = 0,
+				//! Right mouse button
+				Right = 1,
+				//! Middle mouse button
+				Middle = 2,
+			};
 		};
+		typedef MouseButtonTypes::MouseButtonTypeEnum MouseButtonType;
 
 		//! Mouse event data (Type, Button, Position, etc.)
 		struct MouseEvent {
@@ -1883,17 +1964,21 @@ namespace fpl {
 			float wheelDelta;
 		};
 
-		//! Gamepad event type (Connected, Disconnected, StateChanged, etc.)
-		enum class GamepadEventType {
-			//! No gamepad event
-			None = 0,
-			//! Gamepad connected
-			Connected = 1,
-			//! Gamepad disconnected
-			Disconnected = 2,
-			//! Gamepad state updated
-			StateChanged = 3,
+		//! Gamepad event types (Connected, Disconnected, StateChanged, etc.)
+		namespace GamepadEventTypes {
+			//! Gamepad event type
+			enum GamepadEventTypeEnum {
+				//! No gamepad event
+				None = 0,
+				//! Gamepad connected
+				Connected = 1,
+				//! Gamepad disconnected
+				Disconnected = 2,
+				//! Gamepad state updated
+				StateChanged = 3,
+			};
 		};
+		typedef GamepadEventTypes::GamepadEventTypeEnum GamepadEventType;
 
 		//! Gamepad button (IsDown, etc.)
 		struct GamepadButton {
@@ -1968,17 +2053,21 @@ namespace fpl {
 			GamepadState state;
 		};
 
-		//! Event type (Window, Keyboard, Mouse, ...)
-		enum class EventType {
-			//! Window event
-			Window = 1,
-			//! Keyboard event
-			Keyboard = 2,
-			//! Mouse event
-			Mouse = 3,
-			//! Gamepad event
-			Gamepad = 4,
+		//! Event types (Window, Keyboard, Mouse, ...)
+		namespace EventTypes {
+			//! Event type
+			enum EventTypeEnum {
+				//! Window event
+				Window = 1,
+				//! Keyboard event
+				Keyboard = 2,
+				//! Mouse event
+				Mouse = 3,
+				//! Gamepad event
+				Gamepad = 4,
+			};
 		};
+		typedef EventTypes::EventTypeEnum EventType;
 
 		//! Event data (Type, Window, Keyboard, Mouse, etc.)
 		struct Event {
@@ -2110,22 +2199,26 @@ namespace fpl {
 		*/
 		/*@{*/
 
-		//! Audio result
-		enum class AudioResult : uint32_t {
-			Success = 0,
-			DeviceNotInitialized,
-			DeviceAlreadyStopped,
-			DeviceAlreadyStarted,
-			DeviceBusy,
-			Failed,
+		//! Audio results
+		namespace AudioResults {
+			//! Audio result
+			enum AudioResultEnum {
+				Success = 0,
+				DeviceNotInitialized,
+				DeviceAlreadyStopped,
+				DeviceAlreadyStarted,
+				DeviceBusy,
+				Failed,
+			};
 		};
+		typedef AudioResults::AudioResultEnum AudioResult;
 
 		//! Start playing audio
 		fpl_api AudioResult PlayAudio();
 		//! Stop playing audio
 		fpl_api AudioResult StopAudio();
 		//! Returns the native format for the current audio device
-		fpl_api const AudioDeviceFormat &GetAudioNativeFormat();
+		fpl_api const AudioDeviceFormat &GetAudioHardwareFormat();
 		//! Overwrites the audio client read callback. This has no effect when audio is already playing, you have to call it when audio is in a stopped state.
 		fpl_api void SetAudioClientReadCallback(AudioClientReadFunction *newCallback, void *userData);
 
@@ -2255,13 +2348,13 @@ namespace fpl {
 			size_t count;
 		};
 
-		fpl_globalvar ErrorState *global__LastErrorState = nullptr;
+		fpl_globalvar ErrorState *global__LastErrorState = fpl_null;
 
 #	if defined(FPL_ENABLE_MULTIPLE_ERRORSTATES)
-		fpl_internal void PushError_Formatted(const char *format, va_list &argList) {
+		fpl_internal_inline void PushError_Formatted(const char *format, va_list &argList) {
 			ErrorState *state = global__LastErrorState;
-			if (state != nullptr) {
-				FPL_ASSERT(format != nullptr);
+			if (state != fpl_null) {
+				FPL_ASSERT(format != fpl_null);
 				char buffer[MAX_LAST_ERROR_STRING_LENGTH];
 				vsnprintf(buffer, FPL_ARRAYCOUNT(buffer), format, argList);
 				uint32_t messageLen = strings::GetAnsiStringLength(buffer);
@@ -2274,10 +2367,10 @@ namespace fpl {
 			}
 		}
 #	else
-		fpl_internal void PushError_Formatted(const char *format, va_list &argList) {
+		fpl_internal_inline void PushError_Formatted(const char *format, va_list &argList) {
 			ErrorState *state = global__LastErrorState;
-			if (state != nullptr) {
-				FPL_ASSERT(format != nullptr);
+			if (state != fpl_null) {
+				FPL_ASSERT(format != fpl_null);
 				char buffer[MAX_LAST_ERROR_STRING_LENGTH];
 				vsnprintf(buffer, FPL_ARRAYCOUNT(buffer), format, argList);
 				uint32_t messageLen = strings::GetAnsiStringLength(buffer);
@@ -2289,7 +2382,7 @@ namespace fpl {
 		}
 #	endif // FPL_ENABLE_MULTIPLE_ERRORSTATES
 
-		fpl_internal void PushError(const char *format, ...) {
+		fpl_internal_inline void PushError(const char *format, ...) {
 			va_list valist;
 			va_start(valist, format);
 			PushError_Formatted(format, valist);
@@ -2309,8 +2402,8 @@ namespace fpl {
 
 		fpl_globalvar ThreadState global__ThreadState = {};
 
-		fpl_internal threading::ThreadContext *GetThreadContext() {
-			threading::ThreadContext *result = nullptr;
+		fpl_internal_inline threading::ThreadContext *GetThreadContext() {
+			threading::ThreadContext *result = fpl_null;
 			for (uint32_t index = 0; index < MAX_THREAD_COUNT; ++index) {
 				threading::ThreadContext *thread = global__ThreadState.threads + index;
 				uint32_t state = atomics::AtomicLoadU32((volatile uint32_t *)&thread->currentState);
@@ -2333,12 +2426,9 @@ namespace fpl {
 			AudioDeviceFormat internalFormat;
 			AudioClientReadFunction *clientReadCallback;
 			void *clientUserData;
-			uint32_t periods;
-			uint32_t bufferSizeInFrames;
-			uint32_t bufferSizeInBytes;
 		};
 
-		fpl_internal uint32_t GetAudioSampleSizeInBytes(const AudioFormatType format) {
+		fpl_internal_inline uint32_t GetAudioSampleSizeInBytes(const AudioFormatType format) {
 			switch (format) {
 				case AudioFormatType::U8:
 					return 1;
@@ -2354,7 +2444,7 @@ namespace fpl {
 			}
 		}
 
-		fpl_constant const char *AUDIO_FORMAT_TYPE_STRINGS[] = {
+		fpl_constant char *AUDIO_FORMAT_TYPE_STRINGS[] = {
 			"None",
 			"U8",
 			"S16",
@@ -2362,35 +2452,33 @@ namespace fpl {
 			"S32",
 			"F32",
 		};
-
-		fpl_internal const char *GetAudioFormatString(AudioFormatType format) {
+		fpl_internal_inline const char *GetAudioFormatString(AudioFormatType format) {
 			uint32_t index = (uint32_t)format;
 			FPL_ASSERT(index < FPL_ARRAYCOUNT(AUDIO_FORMAT_TYPE_STRINGS));
 			const char *result = AUDIO_FORMAT_TYPE_STRINGS[index];
 			return(result);
 		}
 
-		fpl_constant const char *AUDIO_DRIVER_TYPE_STRINGS[] = {
+		fpl_constant char *AUDIO_DRIVER_TYPE_STRINGS[] = {
 			"None",
 			"Auto",
 			"DirectSound",
 		};
-
-		fpl_internal const char *GetAudioDriverString(AudioDriverType driver) {
+		fpl_internal_inline const char *GetAudioDriverString(AudioDriverType driver) {
 			uint32_t index = (uint32_t)driver;
 			FPL_ASSERT(index < FPL_ARRAYCOUNT(AUDIO_DRIVER_TYPE_STRINGS));
 			const char *result = AUDIO_DRIVER_TYPE_STRINGS[index];
 			return(result);
 		}
 
-		fpl_internal uint32_t GetAudioBufferSizeInFrames(uint32_t sampleRate, uint32_t bufferSizeInMilliSeconds) {
+		fpl_internal_inline uint32_t GetAudioBufferSizeInFrames(uint32_t sampleRate, uint32_t bufferSizeInMilliSeconds) {
 			uint32_t result = (sampleRate / 1000) * bufferSizeInMilliSeconds;
 			return(result);
 		}
 
-		fpl_internal uint32_t ReadFramesFromClientDirectSound(const CommonAudioState &commonAudio, uint32_t frameCount, void *pSamples) {
+		fpl_internal_inline uint32_t ReadAudioFramesFromClient(const CommonAudioState &commonAudio, uint32_t frameCount, void *pSamples) {
 			uint32_t outputSamplesWritten = 0;
-			if (commonAudio.clientReadCallback != nullptr) {
+			if (commonAudio.clientReadCallback != fpl_null) {
 				outputSamplesWritten = commonAudio.clientReadCallback(commonAudio.internalFormat, frameCount, pSamples, commonAudio.clientUserData);
 			}
 			return outputSamplesWritten;
@@ -2408,7 +2496,7 @@ namespace fpl {
 	namespace strings {
 		fpl_api uint32_t GetAnsiStringLength(const char *str) {
 			uint32_t result = 0;
-			if (str != nullptr) {
+			if (str != fpl_null) {
 				while (*str++) {
 					result++;
 				}
@@ -2418,7 +2506,7 @@ namespace fpl {
 
 		fpl_api uint32_t GetWideStringLength(const wchar_t *str) {
 			uint32_t result = 0;
-			if (str != nullptr) {
+			if (str != fpl_null) {
 				while (*str++) {
 					result++;
 				}
@@ -2498,7 +2586,7 @@ namespace fpl {
 		}
 
 		fpl_api void MemoryAlignedFree(void *ptr) {
-			FPL_ASSERT(ptr != nullptr);
+			FPL_ASSERT(ptr != fpl_null);
 
 			// Free the base pointer which is stored to the left from the given pointer
 			void *basePtr = *(void **)((void *)((uint8_t *)ptr - sizeof(void *)));
@@ -2542,7 +2630,7 @@ namespace fpl {
 	//
 	namespace atomics {
 		fpl_api void *AtomicExchangePtr(volatile void **target, const void *value) {
-			FPL_ASSERT(target != nullptr);
+			FPL_ASSERT(target != fpl_null);
 #		if defined(FPL_ARCH_X64)
 			void *result = (void *)AtomicExchangeU64((volatile uint64_t *)target, (uint64_t)value);
 #		elif defined(FPL_ARCH_X86)
@@ -2551,10 +2639,10 @@ namespace fpl {
 #			error "Unsupported architecture/platform!"
 #		endif
 			return (result);
-}
+		}
 
 		fpl_api void *AtomicCompareAndExchangePtr(volatile void **dest, const void *comparand, const void *exchange) {
-			FPL_ASSERT(dest != nullptr);
+			FPL_ASSERT(dest != fpl_null);
 #		if defined(FPL_ARCH_X64)
 			void *result = (void *)AtomicCompareAndExchangeU64((volatile uint64_t *)dest, (uint64_t)comparand, (uint64_t)exchange);
 #		elif defined(FPL_ARCH_X86)
@@ -2566,7 +2654,7 @@ namespace fpl {
 		}
 
 		fpl_api bool IsAtomicCompareAndExchangePtr(volatile void **dest, const void *comparand, const void *exchange) {
-			FPL_ASSERT(dest != nullptr);
+			FPL_ASSERT(dest != fpl_null);
 #		if defined(FPL_ARCH_X64)
 			bool result = IsAtomicCompareAndExchangeU64((volatile uint64_t *)dest, (uint64_t)comparand, (uint64_t)exchange);
 #		elif defined(FPL_ARCH_X86)
@@ -2605,10 +2693,10 @@ namespace fpl {
 	namespace paths {
 		fpl_api char *ExtractFilePath(const char *sourcePath, char *destPath, const uint32_t maxDestLen) {
 			uint32_t sourceLen = strings::GetAnsiStringLength(sourcePath);
-			FPL_ASSERT(destPath != nullptr);
+			FPL_ASSERT(destPath != fpl_null);
 			FPL_ASSERT(maxDestLen >= (sourceLen + 1));
 
-			char *result = nullptr;
+			char *result = fpl_null;
 			if (sourcePath) {
 				int copyLen = 0;
 				char *chPtr = (char *)sourcePath;
@@ -2626,12 +2714,12 @@ namespace fpl {
 		}
 
 		fpl_api char *ExtractFileExtension(const char *sourcePath) {
-			char *result = (char *)nullptr;
-			if (sourcePath != nullptr) {
+			char *result = (char *)fpl_null;
+			if (sourcePath != fpl_null) {
 				char *filename = ExtractFileName(sourcePath);
 				if (filename) {
 					char *chPtr = filename;
-					char *firstSeparatorPtr = (char *)nullptr;
+					char *firstSeparatorPtr = (char *)fpl_null;
 					while (*chPtr) {
 						if (*chPtr == platform::FILE_EXT_SEPARATOR) {
 							firstSeparatorPtr = chPtr;
@@ -2639,7 +2727,7 @@ namespace fpl {
 						}
 						++chPtr;
 					}
-					if (firstSeparatorPtr != nullptr) {
+					if (firstSeparatorPtr != fpl_null) {
 						result = firstSeparatorPtr;
 					}
 				}
@@ -2648,18 +2736,18 @@ namespace fpl {
 		}
 
 		fpl_api char *ExtractFileName(const char *sourcePath) {
-			char *result = (char *)nullptr;
+			char *result = (char *)fpl_null;
 			if (sourcePath) {
 				result = (char *)sourcePath;
 				char *chPtr = (char *)sourcePath;
-				char *lastPtr = (char *)nullptr;
+				char *lastPtr = (char *)fpl_null;
 				while (*chPtr) {
 					if (*chPtr == platform::PATH_SEPARATOR) {
 						lastPtr = chPtr;
 					}
 					++chPtr;
 				}
-				if (lastPtr != nullptr) {
+				if (lastPtr != fpl_null) {
 					result = lastPtr + 1;
 				}
 			}
@@ -2672,14 +2760,14 @@ namespace fpl {
 
 			// @NOTE: Put one additional character for the extension which may not contain a dot
 			uint32_t sourceLen = pathLen + (extLen + 1);
-			FPL_ASSERT(destPath != nullptr);
+			FPL_ASSERT(destPath != fpl_null);
 			FPL_ASSERT(maxDestLen >= (sourceLen + 1));
 
-			char *result = (char *)nullptr;
-			if (filePath != nullptr) {
+			char *result = (char *)fpl_null;
+			if (filePath != fpl_null) {
 				// Find last path
 				char *chPtr = (char *)filePath;
-				char *lastPathSeparatorPtr = (char *)nullptr;
+				char *lastPathSeparatorPtr = (char *)fpl_null;
 				while (*chPtr) {
 					if (*chPtr == platform::PATH_SEPARATOR) {
 						lastPathSeparatorPtr = chPtr;
@@ -2688,12 +2776,12 @@ namespace fpl {
 				}
 
 				// Find last ext separator
-				if (lastPathSeparatorPtr != nullptr) {
+				if (lastPathSeparatorPtr != fpl_null) {
 					chPtr = lastPathSeparatorPtr + 1;
 				} else {
 					chPtr = (char *)filePath;
 				}
-				char *lastExtSeparatorPtr = (char *)nullptr;
+				char *lastExtSeparatorPtr = (char *)fpl_null;
 				while (*chPtr) {
 					if (*chPtr == platform::FILE_EXT_SEPARATOR) {
 						lastExtSeparatorPtr = chPtr;
@@ -2702,7 +2790,7 @@ namespace fpl {
 				}
 
 				uint32_t copyLen;
-				if (lastExtSeparatorPtr != nullptr) {
+				if (lastExtSeparatorPtr != fpl_null) {
 					copyLen = (uint32_t)((uintptr_t)lastExtSeparatorPtr - (uintptr_t)filePath);
 				} else {
 					copyLen = pathLen;
@@ -2778,7 +2866,7 @@ namespace fpl {
 	// @NOTE(final): Little macro to not write 5 lines of code all the time
 #	define FPL_WIN32_GET_FUNCTION_ADDRESS(libHandle, libName, target, type, name) \
 	target = (type *)GetProcAddress(libHandle, name); \
-	if (target == nullptr) { \
+	if (target == fpl_null) { \
 		fpl::common::PushError("[Win32] Failed getting '%s' from library '%s'!", name, libName); \
 		return false; \
 	}
@@ -3216,9 +3304,9 @@ namespace fpl {
 			Win32WindowState window;
 			Win32VideoState video;
 			Win32XInputState xinput;
-			InitFlags initFlags;
+			InitFlag initFlags;
 		};
-		fpl_globalvar Win32State *global__Win32__State = nullptr;
+		fpl_globalvar Win32State *global__Win32__State = fpl_null;
 
 #	if defined(FPL_ENABLE_VIDEO_OPENGL)
 		fpl_internal bool Win32InitVideoOpenGL(platform::Win32State *state, const VideoSettings &videoSettings) {
@@ -3231,7 +3319,7 @@ namespace fpl {
 			{
 				const char *openglLibraryName = "opengl32.dll";
 				glFuncs.openglLibrary = LoadLibraryA("opengl32.dll");
-				if (glFuncs.openglLibrary == nullptr) {
+				if (glFuncs.openglLibrary == fpl_null) {
 					common::PushError("[Win32] Failed loading opengl library '%s'!", openglLibraryName);
 					return false;
 				}
@@ -3292,7 +3380,7 @@ namespace fpl {
 			glFuncs.wglCreateContextAttribsArb = (platform::win32_func_wglCreateContextAttribsARB *)glFuncs.wglGetProcAddress("wglCreateContextAttribsARB");
 
 			// Disable legacy context
-			glFuncs.wglMakeCurrent(nullptr, nullptr);
+			glFuncs.wglMakeCurrent(fpl_null, fpl_null);
 
 			HGLRC activeRenderingContext;
 			if (videoSettings.profile != VideoCompabilityProfile::Legacy) {
@@ -3302,11 +3390,11 @@ namespace fpl {
 					return false;
 				}
 
-				if (glFuncs.wglChoosePixelFormatArb == nullptr) {
+				if (glFuncs.wglChoosePixelFormatArb == fpl_null) {
 					common::PushError("[Win32] wglChoosePixelFormatARB is not available, modern OpenGL is not available for your video card!\n");
 					return false;
 				}
-				if (glFuncs.wglCreateContextAttribsArb == nullptr) {
+				if (glFuncs.wglCreateContextAttribsArb == fpl_null) {
 					common::PushError("[Win32] wglCreateContextAttribsARB is not available, modern OpenGL is not available for your video card!\n");
 					return false;
 				}
@@ -3333,7 +3421,7 @@ namespace fpl {
 						common::PushError("[Win32] Warning: Failed activating Modern OpenGL Rendering Context for version (%llu.%llu) and DC '%x') -> Fallback to legacy context.\n", videoSettings.majorVersion, videoSettings.minorVersion, deviceContext);
 
 						glFuncs.wglDeleteContext(modernRenderingContext);
-						modernRenderingContext = nullptr;
+						modernRenderingContext = fpl_null;
 
 						// Fallback to legacy context
 						glFuncs.wglMakeCurrent(deviceContext, legacyRenderingContext);
@@ -3341,7 +3429,7 @@ namespace fpl {
 					} else {
 						// Destroy legacy rendering context
 						glFuncs.wglDeleteContext(legacyRenderingContext);
-						legacyRenderingContext = nullptr;
+						legacyRenderingContext = fpl_null;
 						activeRenderingContext = modernRenderingContext;
 					}
 				} else {
@@ -3357,12 +3445,12 @@ namespace fpl {
 				activeRenderingContext = legacyRenderingContext;
 			}
 
-			FPL_ASSERT(activeRenderingContext != nullptr);
+			FPL_ASSERT(activeRenderingContext != fpl_null);
 
 			state->video.opengl.renderingContext = activeRenderingContext;
 
 			// Set vertical syncronisation if available
-			if (glFuncs.wglSwapIntervalExt != nullptr) {
+			if (glFuncs.wglSwapIntervalExt != fpl_null) {
 				int swapInterval = videoSettings.isVSync ? 1 : 0;
 				glFuncs.wglSwapIntervalExt(swapInterval);
 			}
@@ -3373,11 +3461,11 @@ namespace fpl {
 		fpl_internal void Win32ReleaseVideoOpenGL(platform::Win32State *state) {
 			platform::Win32OpenGLFunctions &glFuncs = platform::global__Win32__OpenGL_Functions;
 			if (state->video.opengl.renderingContext) {
-				glFuncs.wglMakeCurrent(nullptr, nullptr);
+				glFuncs.wglMakeCurrent(fpl_null, fpl_null);
 				glFuncs.wglDeleteContext(state->video.opengl.renderingContext);
-				state->video.opengl.renderingContext = nullptr;
+				state->video.opengl.renderingContext = fpl_null;
 			}
-			if (glFuncs.openglLibrary != nullptr) {
+			if (glFuncs.openglLibrary != fpl_null) {
 				FreeLibrary(glFuncs.openglLibrary);
 				glFuncs = {};
 			}
@@ -3421,10 +3509,10 @@ namespace fpl {
 
 		fpl_internal void Win32ReleaseVideoSoftware(platform::Win32State *state) {
 			platform::Win32VideoState &videoState = state->video;
-			FPL_ASSERT(videoState.software.context.pixels != nullptr);
+			FPL_ASSERT(videoState.software.context.pixels != fpl_null);
 			memory::MemoryAlignedFree(videoState.software.context.pixels);
 			videoState.software = {};
-			}
+		}
 #	endif // FPL_ENABLE_VIDEO_SOFTWARE
 
 #	if defined(FPL_ENABLE_WINDOW)
@@ -3434,11 +3522,11 @@ namespace fpl {
 			volatile uint32_t pollIndex;
 			volatile uint32_t pushCount;
 		};
-		fpl_globalvar EventQueue *global__EventQueue = nullptr;
+		fpl_globalvar EventQueue *global__EventQueue = fpl_null;
 
-		fpl_internal void PushEvent(const window::Event &event) {
+		fpl_internal_inline void PushEvent(const window::Event &event) {
 			EventQueue *eventQueue = global__EventQueue;
-			FPL_ASSERT(eventQueue != nullptr);
+			FPL_ASSERT(eventQueue != fpl_null);
 			if (eventQueue->pushCount < MAX_EVENT_COUNT) {
 				uint32_t eventIndex = atomics::AtomicAddU32(&eventQueue->pushCount, 1);
 				FPL_ASSERT(eventIndex < MAX_EVENT_COUNT);
@@ -3462,7 +3550,7 @@ namespace fpl {
 
 		fpl_internal bool Win32LeaveFullscreen() {
 			// @TODO(final): Support for multi-monitor (Leave)!
-			FPL_ASSERT(global__Win32__State != nullptr);
+			FPL_ASSERT(global__Win32__State != fpl_null);
 			Win32State *state = global__Win32__State;
 			Win32APIFunctions &wapi = global__Win32__API__Functions;
 
@@ -3480,7 +3568,7 @@ namespace fpl {
 
 			wapi.user.setWindowPos(handle, HWND_NOTOPMOST, 0, 0, state->window.lastWindowWidth, state->window.lastWindowHeight, SWP_SHOWWINDOW | SWP_NOMOVE);
 			wapi.user.setWindowPlacement(handle, &state->window.lastWindowPlacement);
-			bool result = (wapi.user.changeDisplaySettingsA(nullptr, CDS_RESET) == DISP_CHANGE_SUCCESSFUL);
+			bool result = (wapi.user.changeDisplaySettingsA(fpl_null, CDS_RESET) == DISP_CHANGE_SUCCESSFUL);
 			wapi.user.showWindow(handle, SW_RESTORE);
 
 			settings.isFullscreen = false;
@@ -3492,7 +3580,7 @@ namespace fpl {
 
 		fpl_internal bool Win32EnterFullscreen(const uint32_t fullscreenWidth, const uint32_t fullscreenHeight, const uint32_t refreshRate, const uint32_t colorBits) {
 			// @TODO(final): Support for multi-monitor (Enter)!
-			FPL_ASSERT(global__Win32__State != nullptr);
+			FPL_ASSERT(global__Win32__State != fpl_null);
 			WindowSettings &settings = global__Win32__State->currentSettings.window;
 			FPL_ASSERT(!settings.isFullscreen);
 
@@ -3523,7 +3611,7 @@ namespace fpl {
 			wapi.user.setWindowPos(windowHandle, HWND_TOPMOST, 0, 0, useFullscreenWidth, useFullscreenHeight, SWP_SHOWWINDOW);
 
 			DEVMODEA fullscreenSettings = {};
-			wapi.user.enumDisplaySettingsA(nullptr, 0, &fullscreenSettings);
+			wapi.user.enumDisplaySettingsA(fpl_null, 0, &fullscreenSettings);
 			fullscreenSettings.dmPelsWidth = useFullscreenWidth;
 			fullscreenSettings.dmPelsHeight = useFullscreenHeight;
 			fullscreenSettings.dmBitsPerPel = useColourBits;
@@ -3538,7 +3626,7 @@ namespace fpl {
 			return(result);
 		}
 
-		fpl_internal float Win32XInputProcessStickValue(SHORT value, SHORT deadZoneThreshold) {
+		fpl_internal_inline float Win32XInputProcessStickValue(SHORT value, SHORT deadZoneThreshold) {
 			float result = 0;
 			if (value < -deadZoneThreshold) {
 				result = (float)((value + deadZoneThreshold) / (32768.0f - deadZoneThreshold));
@@ -3551,7 +3639,7 @@ namespace fpl {
 		fpl_internal void Win32PollControllers(Win32State *win32State) {
 			using namespace window;
 			Win32InputFunctions &inputFuncs = global__Win32__Input__Functions;
-			FPL_ASSERT(inputFuncs.xinput.xInputSetState != nullptr);
+			FPL_ASSERT(inputFuncs.xinput.xInputSetState != fpl_null);
 			fpl_constant DWORD MAX_CONTROLLER_COUNT = XUSER_MAX_COUNT;
 			for (DWORD controllerIndex = 0; controllerIndex < MAX_CONTROLLER_COUNT; ++controllerIndex) {
 				XINPUT_STATE controllerState = {};
@@ -3633,7 +3721,7 @@ namespace fpl {
 			}
 		}
 
-		fpl_internal void Win32PushMouseEvent(const window::MouseEventType &mouseEventType, const window::MouseButtonType mouseButton, const LPARAM lParam, const WPARAM wParam) {
+		fpl_internal_inline void Win32PushMouseEvent(const window::MouseEventType &mouseEventType, const window::MouseButtonType mouseButton, const LPARAM lParam, const WPARAM wParam) {
 			using namespace window;
 			Event newEvent = {};
 			newEvent.type = EventType::Mouse;
@@ -3652,244 +3740,244 @@ namespace fpl {
 			using namespace window;
 			switch (keyCode) {
 				case VK_BACK:
-					return Key::Key_Backspace;
+					return Keys::Key_Backspace;
 				case VK_TAB:
-					return Key::Key_Tab;
+					return Keys::Key_Tab;
 
 				case VK_CLEAR:
-					return Key::Key_Clear;
+					return Keys::Key_Clear;
 				case VK_RETURN:
-					return Key::Key_Enter;
+					return Keys::Key_Enter;
 
 				case VK_SHIFT:
-					return Key::Key_Shift;
+					return Keys::Key_Shift;
 				case VK_CONTROL:
-					return Key::Key_Control;
+					return Keys::Key_Control;
 				case VK_MENU:
-					return Key::Key_Alt;
+					return Keys::Key_Alt;
 				case VK_PAUSE:
-					return Key::Key_Pause;
+					return Keys::Key_Pause;
 				case VK_CAPITAL:
-					return Key::Key_CapsLock;
+					return Keys::Key_CapsLock;
 
 				case VK_ESCAPE:
-					return Key::Key_Escape;
+					return Keys::Key_Escape;
 				case VK_SPACE:
-					return Key::Key_Space;
+					return Keys::Key_Space;
 				case VK_PRIOR:
-					return Key::Key_PageUp;
+					return Keys::Key_PageUp;
 				case VK_NEXT:
-					return Key::Key_PageDown;
+					return Keys::Key_PageDown;
 				case VK_END:
-					return Key::Key_End;
+					return Keys::Key_End;
 				case VK_HOME:
-					return Key::Key_Home;
+					return Keys::Key_Home;
 				case VK_LEFT:
-					return Key::Key_Left;
+					return Keys::Key_Left;
 				case VK_UP:
-					return Key::Key_Up;
+					return Keys::Key_Up;
 				case VK_RIGHT:
-					return Key::Key_Right;
+					return Keys::Key_Right;
 				case VK_DOWN:
-					return Key::Key_Down;
+					return Keys::Key_Down;
 				case VK_SELECT:
-					return Key::Key_Select;
+					return Keys::Key_Select;
 				case VK_PRINT:
-					return Key::Key_Print;
+					return Keys::Key_Print;
 				case VK_EXECUTE:
-					return Key::Key_Execute;
+					return Keys::Key_Execute;
 				case VK_SNAPSHOT:
-					return Key::Key_Snapshot;
+					return Keys::Key_Snapshot;
 				case VK_INSERT:
-					return Key::Key_Insert;
+					return Keys::Key_Insert;
 				case VK_DELETE:
-					return Key::Key_Delete;
+					return Keys::Key_Delete;
 				case VK_HELP:
-					return Key::Key_Help;
+					return Keys::Key_Help;
 
 				case 0x30:
-					return Key::Key_0;
+					return Keys::Key_0;
 				case 0x31:
-					return Key::Key_1;
+					return Keys::Key_1;
 				case 0x32:
-					return Key::Key_2;
+					return Keys::Key_2;
 				case 0x33:
-					return Key::Key_3;
+					return Keys::Key_3;
 				case 0x34:
-					return Key::Key_4;
+					return Keys::Key_4;
 				case 0x35:
-					return Key::Key_5;
+					return Keys::Key_5;
 				case 0x36:
-					return Key::Key_6;
+					return Keys::Key_6;
 				case 0x37:
-					return Key::Key_7;
+					return Keys::Key_7;
 				case 0x38:
-					return Key::Key_8;
+					return Keys::Key_8;
 				case 0x39:
-					return Key::Key_9;
+					return Keys::Key_9;
 
 				case 0x41:
-					return Key::Key_A;
+					return Keys::Key_A;
 				case 0x42:
-					return Key::Key_B;
+					return Keys::Key_B;
 				case 0x43:
-					return Key::Key_C;
+					return Keys::Key_C;
 				case 0x44:
-					return Key::Key_D;
+					return Keys::Key_D;
 				case 0x45:
-					return Key::Key_E;
+					return Keys::Key_E;
 				case 0x46:
-					return Key::Key_F;
+					return Keys::Key_F;
 				case 0x47:
-					return Key::Key_G;
+					return Keys::Key_G;
 				case 0x48:
-					return Key::Key_H;
+					return Keys::Key_H;
 				case 0x49:
-					return Key::Key_I;
+					return Keys::Key_I;
 				case 0x4A:
-					return Key::Key_J;
+					return Keys::Key_J;
 				case 0x4B:
-					return Key::Key_K;
+					return Keys::Key_K;
 				case 0x4C:
-					return Key::Key_L;
+					return Keys::Key_L;
 				case 0x4D:
-					return Key::Key_M;
+					return Keys::Key_M;
 				case 0x4E:
-					return Key::Key_N;
+					return Keys::Key_N;
 				case 0x4F:
-					return Key::Key_O;
+					return Keys::Key_O;
 				case 0x50:
-					return Key::Key_P;
+					return Keys::Key_P;
 				case 0x51:
-					return Key::Key_Q;
+					return Keys::Key_Q;
 				case 0x52:
-					return Key::Key_R;
+					return Keys::Key_R;
 				case 0x53:
-					return Key::Key_S;
+					return Keys::Key_S;
 				case 0x54:
-					return Key::Key_T;
+					return Keys::Key_T;
 				case 0x55:
-					return Key::Key_U;
+					return Keys::Key_U;
 				case 0x56:
-					return Key::Key_V;
+					return Keys::Key_V;
 				case 0x57:
-					return Key::Key_W;
+					return Keys::Key_W;
 				case 0x58:
-					return Key::Key_X;
+					return Keys::Key_X;
 				case 0x59:
-					return Key::Key_Y;
+					return Keys::Key_Y;
 				case 0x5A:
-					return Key::Key_Z;
+					return Keys::Key_Z;
 
 				case VK_LWIN:
-					return Key::Key_LeftWin;
+					return Keys::Key_LeftWin;
 				case VK_RWIN:
-					return Key::Key_RightWin;
+					return Keys::Key_RightWin;
 				case VK_APPS:
-					return Key::Key_Apps;
+					return Keys::Key_Apps;
 
 				case VK_SLEEP:
-					return Key::Key_Sleep;
+					return Keys::Key_Sleep;
 				case VK_NUMPAD0:
-					return Key::Key_NumPad0;
+					return Keys::Key_NumPad0;
 				case VK_NUMPAD1:
-					return Key::Key_NumPad1;
+					return Keys::Key_NumPad1;
 				case VK_NUMPAD2:
-					return Key::Key_NumPad2;
+					return Keys::Key_NumPad2;
 				case VK_NUMPAD3:
-					return Key::Key_NumPad3;
+					return Keys::Key_NumPad3;
 				case VK_NUMPAD4:
-					return Key::Key_NumPad4;
+					return Keys::Key_NumPad4;
 				case VK_NUMPAD5:
-					return Key::Key_NumPad5;
+					return Keys::Key_NumPad5;
 				case VK_NUMPAD6:
-					return Key::Key_NumPad6;
+					return Keys::Key_NumPad6;
 				case VK_NUMPAD7:
-					return Key::Key_NumPad7;
+					return Keys::Key_NumPad7;
 				case VK_NUMPAD8:
-					return Key::Key_NumPad8;
+					return Keys::Key_NumPad8;
 				case VK_NUMPAD9:
-					return Key::Key_NumPad9;
+					return Keys::Key_NumPad9;
 				case VK_MULTIPLY:
-					return Key::Key_Multiply;
+					return Keys::Key_Multiply;
 				case VK_ADD:
-					return Key::Key_Add;
+					return Keys::Key_Add;
 				case VK_SEPARATOR:
-					return Key::Key_Separator;
+					return Keys::Key_Separator;
 				case VK_SUBTRACT:
-					return Key::Key_Substract;
+					return Keys::Key_Substract;
 				case VK_DECIMAL:
-					return Key::Key_Decimal;
+					return Keys::Key_Decimal;
 				case VK_DIVIDE:
-					return Key::Key_Divide;
+					return Keys::Key_Divide;
 				case VK_F1:
-					return Key::Key_F1;
+					return Keys::Key_F1;
 				case VK_F2:
-					return Key::Key_F2;
+					return Keys::Key_F2;
 				case VK_F3:
-					return Key::Key_F3;
+					return Keys::Key_F3;
 				case VK_F4:
-					return Key::Key_F4;
+					return Keys::Key_F4;
 				case VK_F5:
-					return Key::Key_F5;
+					return Keys::Key_F5;
 				case VK_F6:
-					return Key::Key_F6;
+					return Keys::Key_F6;
 				case VK_F7:
-					return Key::Key_F7;
+					return Keys::Key_F7;
 				case VK_F8:
-					return Key::Key_F8;
+					return Keys::Key_F8;
 				case VK_F9:
-					return Key::Key_F9;
+					return Keys::Key_F9;
 				case VK_F10:
-					return Key::Key_F10;
+					return Keys::Key_F10;
 				case VK_F11:
-					return Key::Key_F11;
+					return Keys::Key_F11;
 				case VK_F12:
-					return Key::Key_F12;
+					return Keys::Key_F12;
 				case VK_F13:
-					return Key::Key_F13;
+					return Keys::Key_F13;
 				case VK_F14:
-					return Key::Key_F14;
+					return Keys::Key_F14;
 				case VK_F15:
-					return Key::Key_F15;
+					return Keys::Key_F15;
 				case VK_F16:
-					return Key::Key_F16;
+					return Keys::Key_F16;
 				case VK_F17:
-					return Key::Key_F17;
+					return Keys::Key_F17;
 				case VK_F18:
-					return Key::Key_F18;
+					return Keys::Key_F18;
 				case VK_F19:
-					return Key::Key_F19;
+					return Keys::Key_F19;
 				case VK_F20:
-					return Key::Key_F20;
+					return Keys::Key_F20;
 				case VK_F21:
-					return Key::Key_F21;
+					return Keys::Key_F21;
 				case VK_F22:
-					return Key::Key_F22;
+					return Keys::Key_F22;
 				case VK_F23:
-					return Key::Key_F23;
+					return Keys::Key_F23;
 				case VK_F24:
-					return Key::Key_F24;
+					return Keys::Key_F24;
 
 				case VK_LSHIFT:
-					return Key::Key_LeftShift;
+					return Keys::Key_LeftShift;
 				case VK_RSHIFT:
-					return Key::Key_RightShift;
+					return Keys::Key_RightShift;
 				case VK_LCONTROL:
-					return Key::Key_LeftControl;
+					return Keys::Key_LeftControl;
 				case VK_RCONTROL:
-					return Key::Key_RightControl;
+					return Keys::Key_RightControl;
 				case VK_LMENU:
-					return Key::Key_LeftAlt;
+					return Keys::Key_LeftAlt;
 				case VK_RMENU:
-					return Key::Key_RightAlt;
+					return Keys::Key_RightAlt;
 
 				default:
-					return Key::Key_None;
+					return Keys::Key_None;
 			}
 		}
 
-		fpl_internal void Win32PushKeyboardEvent(const window::KeyboardEventType keyboardEventType, const uint64_t keyCode, const window::KeyboardModifierFlags modifiers, const bool isDown) {
+		fpl_internal_inline void Win32PushKeyboardEvent(const window::KeyboardEventType keyboardEventType, const uint64_t keyCode, const window::KeyboardModifierFlag modifiers, const bool isDown) {
 			using namespace window;
 			Event newEvent = {};
 			newEvent.type = EventType::Keyboard;
@@ -3900,7 +3988,7 @@ namespace fpl {
 			PushEvent(newEvent);
 		}
 
-		fpl_internal bool Win32IsKeyDown(const uint64_t keyCode) {
+		fpl_internal_inline bool Win32IsKeyDown(const uint64_t keyCode) {
 			Win32APIFunctions &api = global__Win32__API__Functions;
 			bool result = (api.user.getAsyncKeyState((int)keyCode) & 0x8000) > 0;
 			return(result);
@@ -3909,7 +3997,7 @@ namespace fpl {
 		LRESULT CALLBACK Win32MessageProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 			using namespace window;
 
-			FPL_ASSERT(platform::global__Win32__State != nullptr);
+			FPL_ASSERT(platform::global__Win32__State != fpl_null);
 			platform::Win32State *win32State = platform::global__Win32__State;
 			platform::Win32APIFunctions &wapi = platform::global__Win32__API__Functions;
 
@@ -3936,9 +4024,9 @@ namespace fpl {
 								(h != win32State->video.software.context.height)) {
 								platform::Win32ReleaseVideoSoftware(win32State);
 								platform::Win32InitVideoSoftware(win32State, w, h);
-				}
-			}
-		}
+							}
+						}
+					}
 #				endif
 
 					Event newEvent = {};
@@ -3947,7 +4035,7 @@ namespace fpl {
 					newEvent.window.width = LOWORD(lParam);
 					newEvent.window.height = HIWORD(lParam);
 					platform::PushEvent(newEvent);
-		} break;
+				} break;
 
 				case WM_SYSKEYDOWN:
 				case WM_SYSKEYUP:
@@ -3964,7 +4052,7 @@ namespace fpl {
 					bool superKeyWasDown = platform::Win32IsKeyDown(VK_LMENU);
 
 					KeyboardEventType keyEventType = isDown ? KeyboardEventType::KeyDown : KeyboardEventType::KeyUp;
-					KeyboardModifierFlags modifiers = KeyboardModifierFlags::None;
+					KeyboardModifierFlag modifiers = KeyboardModifierFlags::None;
 					if (altKeyWasDown) {
 						modifiers |= KeyboardModifierFlags::Alt;
 					}
@@ -3991,7 +4079,7 @@ namespace fpl {
 				case WM_CHAR:
 				{
 					uint64_t keyCode = wParam;
-					KeyboardModifierFlags modifiers = KeyboardModifierFlags::None;
+					KeyboardModifierFlag modifiers = KeyboardModifierFlags::None;
 					platform::Win32PushKeyboardEvent(KeyboardEventType::Char, keyCode, modifiers, 0);
 				} break;
 
@@ -4056,7 +4144,7 @@ namespace fpl {
 						HCURSOR cursor = wapi.user.getCursor();
 						wapi.user.setCursor(cursor);
 					} else {
-						wapi.user.setCursor(nullptr);
+						wapi.user.setCursor(fpl_null);
 						return 1;
 					}
 				} break;
@@ -4069,10 +4157,10 @@ namespace fpl {
 
 				default:
 					break;
-	}
+			}
 			result = win32_defWindowProc(hwnd, msg, wParam, lParam);
 			return (result);
-}
+		}
 
 		fpl_internal bool Win32InitWindow(Win32State &win32State, const Settings &initSettings) {
 			Win32APIFunctions &wapi = global__Win32__API__Functions;
@@ -4080,13 +4168,13 @@ namespace fpl {
 			// Register window class
 			win32_wndclassex windowClass = {};
 			windowClass.cbSize = sizeof(win32_wndclassex);
-			windowClass.hInstance = GetModuleHandleA(nullptr);
+			windowClass.hInstance = GetModuleHandleA(fpl_null);
 			windowClass.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
 			windowClass.cbSize = sizeof(windowClass);
 			windowClass.style = CS_HREDRAW | CS_VREDRAW;
-			windowClass.hCursor = win32_loadCursor(nullptr, IDC_ARROW);
-			windowClass.hIcon = win32_loadIcon(nullptr, IDI_APPLICATION);
-			windowClass.hIconSm = win32_loadIcon(nullptr, IDI_APPLICATION);
+			windowClass.hCursor = win32_loadCursor(fpl_null, IDC_ARROW);
+			windowClass.hIcon = win32_loadIcon(fpl_null, IDI_APPLICATION);
+			windowClass.hIconSm = win32_loadIcon(fpl_null, IDI_APPLICATION);
 			windowClass.lpszClassName = FPL_WIN32_CLASSNAME;
 			windowClass.lpfnWndProc = Win32MessageProc;
 			if (initSettings.video.driverType == VideoDriverType::OpenGL) {
@@ -4101,7 +4189,7 @@ namespace fpl {
 			// Allocate event queue
 			size_t eventQueueMemorySize = sizeof(EventQueue);
 			void *eventQueueMemory = memory::MemoryAlignedAllocate(eventQueueMemorySize, 16);
-			if (eventQueueMemory == nullptr) {
+			if (eventQueueMemory == fpl_null) {
 				common::PushError("[Win32] Failed Allocating Event Queue Memory with size '%llu'!", eventQueueMemorySize);
 				return false;
 			}
@@ -4152,8 +4240,8 @@ namespace fpl {
 
 
 			// Create window
-			win32State.window.windowHandle = win32_createWindowEx(exStyle, windowClass.lpszClassName, windowTitle, style, windowX, windowY, windowWidth, windowHeight, nullptr, nullptr, windowClass.hInstance, nullptr);
-			if (win32State.window.windowHandle == nullptr) {
+			win32State.window.windowHandle = win32_createWindowEx(exStyle, windowClass.lpszClassName, windowTitle, style, windowX, windowY, windowWidth, windowHeight, fpl_null, fpl_null, windowClass.hInstance, fpl_null);
+			if (win32State.window.windowHandle == fpl_null) {
 				common::PushError("[Win32] Failed creating window for class '%s' and position (%d x %d) with size (%d x %d)", win32State.window.windowClass, windowWidth, windowHeight, windowWidth, windowHeight);
 				return false;
 			}
@@ -4169,7 +4257,7 @@ namespace fpl {
 
 			// Get device context so we can swap the back and front buffer
 			win32State.window.deviceContext = wapi.user.getDC(win32State.window.windowHandle);
-			if (win32State.window.deviceContext == nullptr) {
+			if (win32State.window.deviceContext == fpl_null) {
 				common::PushError("[Win32] Failed aquiring device context from window '%d'", win32State.window.windowHandle);
 				return false;
 			}
@@ -4227,20 +4315,20 @@ namespace fpl {
 		fpl_internal void Win32ReleaseWindow(Win32State &win32State) {
 			Win32APIFunctions &api = global__Win32__API__Functions;
 
-			if (win32State.window.deviceContext != nullptr) {
+			if (win32State.window.deviceContext != fpl_null) {
 				api.user.releaseDC(win32State.window.windowHandle, win32State.window.deviceContext);
-				win32State.window.deviceContext = nullptr;
+				win32State.window.deviceContext = fpl_null;
 			}
 
-			if (win32State.window.windowHandle != nullptr) {
+			if (win32State.window.windowHandle != fpl_null) {
 				api.user.destroyWindow(win32State.window.windowHandle);
-				win32State.window.windowHandle = nullptr;
+				win32State.window.windowHandle = fpl_null;
 				win32_unregisterClass(win32State.window.windowClass, global__Win32__AppState.appInstance);
 			}
 
-			if (global__EventQueue != nullptr) {
+			if (global__EventQueue != fpl_null) {
 				memory::MemoryAlignedFree(global__EventQueue);
-				global__EventQueue = nullptr;
+				global__EventQueue = fpl_null;
 			}
 		}
 
@@ -4260,7 +4348,7 @@ namespace fpl {
 				inputFuncs.xinput.xinputLibrary = xinputLibrary;
 				inputFuncs.xinput.xInputSetState = (win32_func_XInputGetState *)GetProcAddress(xinputLibrary, "XInputGetState");
 			}
-			if (inputFuncs.xinput.xInputSetState == nullptr) {
+			if (inputFuncs.xinput.xInputSetState == fpl_null) {
 				inputFuncs.xinput.xInputSetState = Win32XInputGetStateStub;
 			}
 		}
@@ -4269,7 +4357,7 @@ namespace fpl {
 			Win32InputFunctions &inputFuncs = global__Win32__Input__Functions;
 			if (inputFuncs.xinput.xinputLibrary) {
 				FreeLibrary(inputFuncs.xinput.xinputLibrary);
-				inputFuncs.xinput.xinputLibrary = nullptr;
+				inputFuncs.xinput.xinputLibrary = fpl_null;
 				inputFuncs.xinput.xInputSetState = Win32XInputGetStateStub;
 			}
 		}
@@ -4284,9 +4372,9 @@ namespace fpl {
 
 			// @NOTE(final): Temporary load and unload shell32 for parsing the arguments
 			HMODULE shellapiLibrary = LoadLibraryA("shell32.dll");
-			if (shellapiLibrary != nullptr) {
+			if (shellapiLibrary != fpl_null) {
 				win32_func_CommandLineToArgvW *commandLineToArgvW = (win32_func_CommandLineToArgvW *)GetProcAddress(shellapiLibrary, "CommandLineToArgvW");
-				if (commandLineToArgvW != nullptr) {
+				if (commandLineToArgvW != fpl_null) {
 					// Parse arguments and compute total UTF8 string length
 					int executableFilePathArgumentCount = 0;
 					wchar_t **executableFilePathArgs = commandLineToArgvW(L"", &executableFilePathArgumentCount);
@@ -4297,19 +4385,19 @@ namespace fpl {
 							executableFilePathLen++;
 						}
 						uint32_t sourceLen = strings::GetWideStringLength(executableFilePathArgs[i]);
-						uint32_t destLen = WideCharToMultiByte(CP_UTF8, 0, executableFilePathArgs[i], sourceLen, nullptr, 0, 0, 0);
+						uint32_t destLen = WideCharToMultiByte(CP_UTF8, 0, executableFilePathArgs[i], sourceLen, fpl_null, 0, 0, 0);
 						executableFilePathLen += destLen;
 					}
 
 					// @NOTE(final): Do not parse the arguments when there are no actual arguments, otherwise we will get back the executable arguments again.
 					int actualArgumentCount = 0;
-					wchar_t **actualArgs = nullptr;
+					wchar_t **actualArgs = fpl_null;
 					uint32_t actualArgumentsLen = 0;
-					if (cmdLine != nullptr && strings::GetWideStringLength(cmdLine) > 0) {
+					if (cmdLine != fpl_null && strings::GetWideStringLength(cmdLine) > 0) {
 						actualArgs = commandLineToArgvW(cmdLine, &actualArgumentCount);
 						for (int i = 0; i < actualArgumentCount; ++i) {
 							uint32_t sourceLen = strings::GetWideStringLength(actualArgs[i]);
-							uint32_t destLen = WideCharToMultiByte(CP_UTF8, 0, actualArgs[i], sourceLen, nullptr, 0, 0, 0);
+							uint32_t destLen = WideCharToMultiByte(CP_UTF8, 0, actualArgs[i], sourceLen, fpl_null, 0, 0, 0);
 							actualArgumentsLen += destLen;
 						}
 					}
@@ -4336,7 +4424,7 @@ namespace fpl {
 							}
 							wchar_t *sourceArg = executableFilePathArgs[i];
 							uint32_t sourceArgLen = strings::GetWideStringLength(sourceArg);
-							uint32_t destArgLen = WideCharToMultiByte(CP_UTF8, 0, sourceArg, sourceArgLen, nullptr, 0, 0, 0);
+							uint32_t destArgLen = WideCharToMultiByte(CP_UTF8, 0, sourceArg, sourceArgLen, fpl_null, 0, 0, 0);
 							WideCharToMultiByte(CP_UTF8, 0, sourceArg, sourceArgLen, destArg, destArgLen, 0, 0);
 							destArg += destArgLen;
 						}
@@ -4346,12 +4434,12 @@ namespace fpl {
 
 					// Convert actual arguments to UTF8
 					if (actualArgumentCount > 0) {
-						FPL_ASSERT(actualArgs != nullptr);
+						FPL_ASSERT(actualArgs != fpl_null);
 						for (int i = 0; i < actualArgumentCount; ++i) {
 							args.args[1 + i] = destArg;
 							wchar_t *sourceArg = actualArgs[i];
 							uint32_t sourceArgLen = strings::GetWideStringLength(sourceArg);
-							uint32_t destArgLen = WideCharToMultiByte(CP_UTF8, 0, sourceArg, sourceArgLen, nullptr, 0, 0, 0);
+							uint32_t destArgLen = WideCharToMultiByte(CP_UTF8, 0, sourceArg, sourceArgLen, fpl_null, 0, 0, 0);
 							WideCharToMultiByte(CP_UTF8, 0, sourceArg, sourceArgLen, destArg, destArgLen, 0, 0);
 							destArg += destArgLen;
 							*destArg++ = 0;
@@ -4360,16 +4448,16 @@ namespace fpl {
 					}
 				}
 				FreeLibrary(shellapiLibrary);
-				shellapiLibrary = nullptr;
+				shellapiLibrary = fpl_null;
 			}
 			return(args);
 		}
 
 		fpl_internal Win32CommandLineUTF8Arguments Win32ParseAnsiArguments(LPSTR cmdLine) {
 			Win32CommandLineUTF8Arguments result;
-			if (cmdLine != nullptr) {
+			if (cmdLine != fpl_null) {
 				uint32_t ansiSourceLen = strings::GetAnsiStringLength(cmdLine);
-				uint32_t wideDestLen = MultiByteToWideChar(CP_ACP, 0, cmdLine, ansiSourceLen, nullptr, 0);
+				uint32_t wideDestLen = MultiByteToWideChar(CP_ACP, 0, cmdLine, ansiSourceLen, fpl_null, 0);
 				// @TODO(final): Can we use a stack allocation here?
 				wchar_t *wideCmdLine = (wchar_t *)memory::MemoryAllocate(sizeof(wchar_t) * (wideDestLen + 1));
 				MultiByteToWideChar(CP_ACP, 0, cmdLine, ansiSourceLen, wideCmdLine, wideDestLen);
@@ -4391,7 +4479,7 @@ namespace fpl {
 			{
 				const char *shellLibraryName = "shell32.dll";
 				HMODULE library = wapi.shell.shellLibrary = LoadLibraryA(shellLibraryName);
-				if (library == nullptr) {
+				if (library == fpl_null) {
 					common::PushError("[Win32] Failed loading win32 library '%s'!", shellLibraryName);
 					return false;
 				}
@@ -4404,7 +4492,7 @@ namespace fpl {
 			{
 				const char *userLibraryName = "user32.dll";
 				HMODULE library = wapi.user.userLibrary = LoadLibraryA(userLibraryName);
-				if (library == nullptr) {
+				if (library == fpl_null) {
 					common::PushError("[Win32] Failed loading win32 library '%s'!", userLibraryName);
 					return false;
 				}
@@ -4475,7 +4563,7 @@ namespace fpl {
 			{
 				const char *gdiLibraryName = "gdi32.dll";
 				HMODULE library = wapi.gdi.gdiLibrary = LoadLibraryA(gdiLibraryName);
-				if (library == nullptr) {
+				if (library == fpl_null) {
 					common::PushError("[Win32] Failed loading win32 library '%s'!", gdiLibraryName);
 					return false;
 				}
@@ -4493,7 +4581,7 @@ namespace fpl {
 			{
 				const char *oleLibraryName = "ole32.dll";
 				HMODULE library = wapi.ole.oleLibrary = LoadLibraryA(oleLibraryName);
-				if (library == nullptr) {
+				if (library == fpl_null) {
 					common::PushError("[Win32] Failed loading win32 library '%s'!", oleLibraryName);
 					return false;
 				}
@@ -4511,32 +4599,32 @@ namespace fpl {
 
 		fpl_api void Win32UnloadAPI() {
 			Win32APIFunctions &api = global__Win32__API__Functions;
-			if (api.ole.oleLibrary != nullptr) {
+			if (api.ole.oleLibrary != fpl_null) {
 				FreeLibrary(api.ole.oleLibrary);
 				api.ole = {};
 			}
-			if (api.gdi.gdiLibrary != nullptr) {
+			if (api.gdi.gdiLibrary != fpl_null) {
 				FreeLibrary(api.gdi.gdiLibrary);
 				api.gdi = {};
 			}
-			if (api.user.userLibrary != nullptr) {
+			if (api.user.userLibrary != fpl_null) {
 				FreeLibrary(api.user.userLibrary);
 				api.user = {};
 			}
-			if (api.shell.shellLibrary != nullptr) {
+			if (api.shell.shellLibrary != fpl_null) {
 				FreeLibrary(api.shell.shellLibrary);
 				api.shell = {};
 			}
 		}
 
 		fpl_internal bool Win32ThreadWaitForMultiple(threading::ThreadContext **contexts, const uint32_t count, const bool waitForAll, const uint32_t maxMilliseconds) {
-			FPL_ASSERT(contexts != nullptr);
+			FPL_ASSERT(contexts != fpl_null);
 			FPL_ASSERT(count <= common::MAX_THREAD_COUNT);
 			HANDLE threadHandles[common::MAX_THREAD_COUNT];
 			for (uint32_t index = 0; index < count; ++index) {
 				threading::ThreadContext *context = contexts[index];
 				FPL_ASSERT(context->id > 0);
-				FPL_ASSERT(context->internalHandle != nullptr);
+				FPL_ASSERT(context->internalHandle != fpl_null);
 				HANDLE handle = (HANDLE)context->internalHandle;
 				threadHandles[index] = handle;
 			}
@@ -4546,13 +4634,13 @@ namespace fpl {
 		}
 
 		fpl_internal bool Win32SignalWaitForMultiple(threading::ThreadSignal **signals, const uint32_t count, const bool waitForAll, const uint32_t maxMilliseconds) {
-			FPL_ASSERT(signals != nullptr);
+			FPL_ASSERT(signals != fpl_null);
 			FPL_ASSERT(count <= common::MAX_SIGNAL_COUNT);
 			HANDLE signalHandles[common::MAX_SIGNAL_COUNT];
 			for (uint32_t index = 0; index < count; ++index) {
 				threading::ThreadSignal *availableSignal = signals[index];
 				FPL_ASSERT(availableSignal->isValid);
-				FPL_ASSERT(availableSignal->internalHandle != nullptr);
+				FPL_ASSERT(availableSignal->internalHandle != fpl_null);
 				HANDLE handle = (HANDLE)availableSignal->internalHandle;
 				signalHandles[index] = handle;
 			}
@@ -4581,88 +4669,88 @@ namespace fpl {
 		}
 
 		fpl_api uint32_t AtomicExchangeU32(volatile uint32_t *target, const uint32_t value) {
-			FPL_ASSERT(target != nullptr);
+			FPL_ASSERT(target != fpl_null);
 			uint32_t result = _InterlockedExchange((volatile unsigned long *)target, value);
 			return (result);
 		}
 		fpl_api int32_t AtomicExchangeS32(volatile int32_t *target, const int32_t value) {
-			FPL_ASSERT(target != nullptr);
+			FPL_ASSERT(target != fpl_null);
 			int32_t result = _InterlockedExchange((volatile long *)target, value);
 			return (result);
 		}
 		fpl_api uint64_t AtomicExchangeU64(volatile uint64_t *target, const uint64_t value) {
-			FPL_ASSERT(target != nullptr);
+			FPL_ASSERT(target != fpl_null);
 			uint64_t result = _InterlockedExchange((volatile unsigned __int64 *)target, value);
 			return (result);
 		}
 		fpl_api int64_t AtomicExchangeS64(volatile int64_t *target, const int64_t value) {
-			FPL_ASSERT(target != nullptr);
+			FPL_ASSERT(target != fpl_null);
 			int64_t result = _InterlockedExchange64((volatile long long *)target, value);
 			return (result);
 		}
 
 		fpl_api uint32_t AtomicAddU32(volatile uint32_t *value, const uint32_t addend) {
-			FPL_ASSERT(value != nullptr);
+			FPL_ASSERT(value != fpl_null);
 			uint32_t result = _InterlockedExchangeAdd((volatile unsigned long *)value, addend);
 			return (result);
 		}
 		fpl_api int32_t AtomicAddS32(volatile int32_t *value, const int32_t addend) {
-			FPL_ASSERT(value != nullptr);
+			FPL_ASSERT(value != fpl_null);
 			int32_t result = _InterlockedExchangeAdd((volatile long *)value, addend);
 			return (result);
 		}
 		fpl_api uint64_t AtomicAddU64(volatile uint64_t *value, const uint64_t addend) {
-			FPL_ASSERT(value != nullptr);
+			FPL_ASSERT(value != fpl_null);
 			uint64_t result = _InterlockedExchangeAdd((volatile unsigned __int64 *)value, addend);
 			return (result);
 		}
 		fpl_api int64_t AtomicAddS64(volatile int64_t *value, const int64_t addend) {
-			FPL_ASSERT(value != nullptr);
+			FPL_ASSERT(value != fpl_null);
 			int64_t result = _InterlockedExchangeAdd64((volatile long long *)value, addend);
 			return (result);
 		}
 
 		fpl_api uint32_t AtomicCompareAndExchangeU32(volatile uint32_t *dest, const uint32_t comparand, const uint32_t exchange) {
-			FPL_ASSERT(dest != nullptr);
+			FPL_ASSERT(dest != fpl_null);
 			uint32_t result = _InterlockedCompareExchange((volatile unsigned long *)dest, exchange, comparand);
 			return (result);
 		}
 		fpl_api int32_t AtomicCompareAndExchangeS32(volatile int32_t *dest, const int32_t comparand, const int32_t exchange) {
-			FPL_ASSERT(dest != nullptr);
+			FPL_ASSERT(dest != fpl_null);
 			int32_t result = _InterlockedCompareExchange((volatile long *)dest, exchange, comparand);
 			return (result);
 		}
 		fpl_api uint64_t AtomicCompareAndExchangeU64(volatile uint64_t *dest, const uint64_t comparand, const uint64_t exchange) {
-			FPL_ASSERT(dest != nullptr);
+			FPL_ASSERT(dest != fpl_null);
 			uint64_t result = _InterlockedCompareExchange((volatile unsigned __int64 *)dest, exchange, comparand);
 			return (result);
 		}
 		fpl_api int64_t AtomicCompareAndExchangeS64(volatile int64_t *dest, const int64_t comparand, const int64_t exchange) {
-			FPL_ASSERT(dest != nullptr);
+			FPL_ASSERT(dest != fpl_null);
 			int64_t result = _InterlockedCompareExchange64((volatile long long *)dest, exchange, comparand);
 			return (result);
 		}
 
 		fpl_api bool IsAtomicCompareAndExchangeU32(volatile uint32_t *dest, const uint32_t comparand, const uint32_t exchange) {
-			FPL_ASSERT(dest != nullptr);
+			FPL_ASSERT(dest != fpl_null);
 			uint32_t value = _InterlockedCompareExchange((volatile unsigned long *)dest, exchange, comparand);
 			bool result = (value == comparand);
 			return (result);
 		}
 		fpl_api bool IsAtomicCompareAndExchangeS32(volatile int32_t *dest, const int32_t comparand, const int32_t exchange) {
-			FPL_ASSERT(dest != nullptr);
+			FPL_ASSERT(dest != fpl_null);
 			int32_t value = _InterlockedCompareExchange((volatile long *)dest, exchange, comparand);
 			bool result = (value == comparand);
 			return (result);
 		}
 		fpl_api bool IsAtomicCompareAndExchangeU64(volatile uint64_t *dest, const uint64_t comparand, const uint64_t exchange) {
-			FPL_ASSERT(dest != nullptr);
+			FPL_ASSERT(dest != fpl_null);
 			uint64_t value = _InterlockedCompareExchange((volatile unsigned __int64 *)dest, exchange, comparand);
 			bool result = (value == comparand);
 			return (result);
 		}
 		fpl_api bool IsAtomicCompareAndExchangeS64(volatile int64_t *dest, const int64_t comparand, const int64_t exchange) {
-			FPL_ASSERT(dest != nullptr);
+			FPL_ASSERT(dest != fpl_null);
 			int64_t value = _InterlockedCompareExchange64((volatile long long *)dest, exchange, comparand);
 			bool result = (value == comparand);
 			return (result);
@@ -4716,7 +4804,7 @@ namespace fpl {
 
 			fpl_constant uint32_t CPU_BRAND_BUFFER_SIZE = 0x40;
 
-			FPL_ASSERT(destBuffer != nullptr);
+			FPL_ASSERT(destBuffer != fpl_null);
 			FPL_ASSERT(maxDestBufferLen >= (CPU_BRAND_BUFFER_SIZE + 1));
 
 			int cpuInfo[4] = { -1 };
@@ -4746,22 +4834,22 @@ namespace fpl {
 	//
 	namespace console {
 		fpl_api void ConsoleOut(const char *text) {
-			FPL_ASSERT(text != nullptr);
+			FPL_ASSERT(text != fpl_null);
 			fprintf(stdout, "%s", text);
 		}
 		fpl_api void ConsoleFormatOut(const char *format, ...) {
-			FPL_ASSERT(format != nullptr);
+			FPL_ASSERT(format != fpl_null);
 			va_list vaList;
 			va_start(vaList, format);
 			vfprintf(stdout, format, vaList);
 			va_end(vaList);
 		}
 		fpl_api void ConsoleError(const char *text) {
-			FPL_ASSERT(text != nullptr);
+			FPL_ASSERT(text != fpl_null);
 			fprintf(stderr, "%s", text);
 		}
 		fpl_api void ConsoleFormatError(const char *format, ...) {
-			FPL_ASSERT(format != nullptr);
+			FPL_ASSERT(format != fpl_null);
 			va_list vaList;
 			va_start(vaList, format);
 			vfprintf(stderr, format, vaList);
@@ -4775,10 +4863,10 @@ namespace fpl {
 	namespace threading {
 		fpl_internal DWORD WINAPI Win32ThreadProc(void *data) {
 			ThreadContext *context = (ThreadContext *)data;
-			FPL_ASSERT(context != nullptr);
+			FPL_ASSERT(context != fpl_null);
 			atomics::AtomicStoreU32((volatile uint32_t *)&context->currentState, (uint32_t)ThreadState::Running);
 			DWORD result = 0;
-			if (context->runFunc != nullptr) {
+			if (context->runFunc != fpl_null) {
 				context->runFunc(*context, context->data);
 			}
 			atomics::AtomicStoreU32((volatile uint32_t *)&context->currentState, (uint32_t)ThreadState::Stopped);
@@ -4786,13 +4874,13 @@ namespace fpl {
 		}
 
 		fpl_api ThreadContext *ThreadCreate(run_thread_function *runFunc, void *data, const bool autoStart) {
-			ThreadContext *result = nullptr;
+			ThreadContext *result = fpl_null;
 			ThreadContext *context = common::GetThreadContext();
-			if (context != nullptr) {
+			if (context != fpl_null) {
 				DWORD creationFlags = 0;
 				DWORD threadId = 0;
-				HANDLE handle = CreateThread(nullptr, 0, Win32ThreadProc, context, CREATE_SUSPENDED, &threadId);
-				if (handle != nullptr) {
+				HANDLE handle = CreateThread(fpl_null, 0, Win32ThreadProc, context, CREATE_SUSPENDED, &threadId);
+				if (handle != fpl_null) {
 					// @TODO(final): Is this really needed to use a atomic store for setting the thread state?
 					atomics::AtomicStoreU32((volatile uint32_t *)&context->currentState, (uint32_t)ThreadState::Suspended);
 					context->data = data;
@@ -4817,8 +4905,8 @@ namespace fpl {
 		}
 
 		fpl_api bool ThreadSuspend(ThreadContext *context) {
-			FPL_ASSERT(context != nullptr);
-			FPL_ASSERT(context->internalHandle != nullptr);
+			FPL_ASSERT(context != fpl_null);
+			FPL_ASSERT(context->internalHandle != fpl_null);
 			HANDLE handle = (HANDLE)context->internalHandle;
 			DWORD err = SuspendThread(handle);
 			bool result = err != -1;
@@ -4830,8 +4918,8 @@ namespace fpl {
 		}
 
 		fpl_api bool ThreadResume(ThreadContext *context) {
-			FPL_ASSERT(context != nullptr);
-			FPL_ASSERT(context->internalHandle != nullptr);
+			FPL_ASSERT(context != fpl_null);
+			FPL_ASSERT(context->internalHandle != fpl_null);
 			HANDLE handle = (HANDLE)context->internalHandle;
 			DWORD err = ResumeThread(handle);
 			bool result = err != -1;
@@ -4843,8 +4931,8 @@ namespace fpl {
 		}
 
 		fpl_api void ThreadDestroy(ThreadContext *context) {
-			FPL_ASSERT(context != nullptr);
-			FPL_ASSERT(context->internalHandle != nullptr);
+			FPL_ASSERT(context != fpl_null);
+			FPL_ASSERT(context->internalHandle != fpl_null);
 			HANDLE handle = (HANDLE)context->internalHandle;
 			TerminateThread(handle, 0);
 			CloseHandle(handle);
@@ -4854,9 +4942,9 @@ namespace fpl {
 		}
 
 		fpl_api void ThreadWaitForOne(ThreadContext *context, const uint32_t maxMilliseconds) {
-			FPL_ASSERT(context != nullptr);
+			FPL_ASSERT(context != fpl_null);
 			FPL_ASSERT(context->id > 0);
-			FPL_ASSERT(context->internalHandle != nullptr);
+			FPL_ASSERT(context->internalHandle != fpl_null);
 			HANDLE handle = (HANDLE)context->internalHandle;
 			WaitForSingleObject(handle, maxMilliseconds < UINT32_MAX ? maxMilliseconds : INFINITE);
 		}
@@ -4871,8 +4959,8 @@ namespace fpl {
 
 		fpl_api ThreadMutex MutexCreate() {
 			ThreadMutex result = {};
-			HANDLE handle = CreateEventA(nullptr, FALSE, TRUE, nullptr);
-			if (handle != nullptr) {
+			HANDLE handle = CreateEventA(fpl_null, FALSE, TRUE, fpl_null);
+			if (handle != fpl_null) {
 				result.isValid = true;
 				result.internalHandle = (void *)handle;
 			}
@@ -4881,7 +4969,7 @@ namespace fpl {
 
 		fpl_api void MutexDestroy(ThreadMutex &mutex) {
 			FPL_ASSERT(mutex.isValid);
-			FPL_ASSERT(mutex.internalHandle != nullptr);
+			FPL_ASSERT(mutex.internalHandle != fpl_null);
 			HANDLE handle = (HANDLE)mutex.internalHandle;
 			CloseHandle(handle);
 			mutex = {};
@@ -4889,22 +4977,22 @@ namespace fpl {
 
 		fpl_api void MutexLock(ThreadMutex &mutex, const uint32_t maxMilliseconds) {
 			FPL_ASSERT(mutex.isValid);
-			FPL_ASSERT(mutex.internalHandle != nullptr);
+			FPL_ASSERT(mutex.internalHandle != fpl_null);
 			HANDLE handle = (HANDLE)mutex.internalHandle;
 			WaitForSingleObject(handle, maxMilliseconds < UINT32_MAX ? maxMilliseconds : INFINITE);
 		}
 
 		fpl_api void MutexUnlock(ThreadMutex &mutex) {
 			FPL_ASSERT(mutex.isValid);
-			FPL_ASSERT(mutex.internalHandle != nullptr);
+			FPL_ASSERT(mutex.internalHandle != fpl_null);
 			HANDLE handle = (HANDLE)mutex.internalHandle;
 			SetEvent(handle);
 		}
 
 		fpl_api ThreadSignal SignalCreate() {
 			ThreadSignal result = {};
-			HANDLE handle = CreateEventA(nullptr, FALSE, FALSE, nullptr);
-			if (handle != nullptr) {
+			HANDLE handle = CreateEventA(fpl_null, FALSE, FALSE, fpl_null);
+			if (handle != fpl_null) {
 				result.isValid = true;
 				result.internalHandle = (void *)handle;
 			}
@@ -4913,7 +5001,7 @@ namespace fpl {
 
 		fpl_api void SignalDestroy(ThreadSignal &availableSignal) {
 			FPL_ASSERT(availableSignal.isValid);
-			FPL_ASSERT(availableSignal.internalHandle != nullptr);
+			FPL_ASSERT(availableSignal.internalHandle != fpl_null);
 			HANDLE handle = (HANDLE)availableSignal.internalHandle;
 			CloseHandle(handle);
 			availableSignal = {};
@@ -4921,7 +5009,7 @@ namespace fpl {
 
 		fpl_api bool SignalWaitForOne(ThreadSignal &availableSignal, const uint32_t maxMilliseconds) {
 			FPL_ASSERT(availableSignal.isValid);
-			FPL_ASSERT(availableSignal.internalHandle != nullptr);
+			FPL_ASSERT(availableSignal.internalHandle != fpl_null);
 			HANDLE handle = (HANDLE)availableSignal.internalHandle;
 			bool result = (WaitForSingleObject(handle, maxMilliseconds < UINT32_MAX ? maxMilliseconds : INFINITE) == WAIT_OBJECT_0);
 			return(result);
@@ -4939,7 +5027,7 @@ namespace fpl {
 
 		fpl_api bool SignalWakeUp(ThreadSignal &availableSignal) {
 			FPL_ASSERT(availableSignal.isValid);
-			FPL_ASSERT(availableSignal.internalHandle != nullptr);
+			FPL_ASSERT(availableSignal.internalHandle != fpl_null);
 			HANDLE handle = (HANDLE)availableSignal.internalHandle;
 			bool result = SetEvent(handle) == TRUE;
 			return(result);
@@ -4947,7 +5035,7 @@ namespace fpl {
 
 		fpl_api bool SignalReset(ThreadSignal &availableSignal) {
 			FPL_ASSERT(availableSignal.isValid);
-			FPL_ASSERT(availableSignal.internalHandle != nullptr);
+			FPL_ASSERT(availableSignal.internalHandle != fpl_null);
 			HANDLE handle = (HANDLE)availableSignal.internalHandle;
 			bool result = ResetEvent(handle) == TRUE;
 			return(result);
@@ -4962,14 +5050,14 @@ namespace fpl {
 		fpl_api void *MemoryAllocate(const size_t size) {
 			FPL_ASSERT(size > 0);
 			void *result = VirtualAlloc(0, size, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
-			if (result == nullptr) {
+			if (result == fpl_null) {
 				common::PushError("[Win32] Failed allocating memory of %xu bytes!", size);
 			}
 			return(result);
 		}
 
 		fpl_api void MemoryFree(void *ptr) {
-			FPL_ASSERT(ptr != nullptr);
+			FPL_ASSERT(ptr != fpl_null);
 			VirtualFree(ptr, 0, MEM_FREE);
 		}
 
@@ -4985,9 +5073,9 @@ namespace fpl {
 	//
 	namespace files {
 		fpl_api FileHandle OpenBinaryFile(const char *filePath) {
-			FPL_ASSERT(filePath != nullptr);
+			FPL_ASSERT(filePath != fpl_null);
 			FileHandle result = {};
-			HANDLE win32FileHandle = CreateFileA(filePath, GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+			HANDLE win32FileHandle = CreateFileA(filePath, GENERIC_READ, FILE_SHARE_READ, fpl_null, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, fpl_null);
 			if (win32FileHandle != INVALID_HANDLE_VALUE) {
 				result.isValid = true;
 				result.internalHandle = (void *)win32FileHandle;
@@ -4995,9 +5083,9 @@ namespace fpl {
 			return(result);
 		}
 		fpl_api FileHandle OpenBinaryFile(const wchar_t *filePath) {
-			FPL_ASSERT(filePath != nullptr);
+			FPL_ASSERT(filePath != fpl_null);
 			FileHandle result = {};
-			HANDLE win32FileHandle = CreateFileW(filePath, GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+			HANDLE win32FileHandle = CreateFileW(filePath, GENERIC_READ, FILE_SHARE_READ, fpl_null, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, fpl_null);
 			if (win32FileHandle != INVALID_HANDLE_VALUE) {
 				result.isValid = true;
 				result.internalHandle = (void *)win32FileHandle;
@@ -5006,9 +5094,9 @@ namespace fpl {
 		}
 
 		fpl_api FileHandle CreateBinaryFile(const char *filePath) {
-			FPL_ASSERT(filePath != nullptr);
+			FPL_ASSERT(filePath != fpl_null);
 			FileHandle result = {};
-			HANDLE win32FileHandle = CreateFileA(filePath, GENERIC_WRITE, FILE_SHARE_WRITE, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+			HANDLE win32FileHandle = CreateFileA(filePath, GENERIC_WRITE, FILE_SHARE_WRITE, fpl_null, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, fpl_null);
 			if (win32FileHandle != INVALID_HANDLE_VALUE) {
 				result.isValid = true;
 				result.internalHandle = (void *)win32FileHandle;
@@ -5016,9 +5104,9 @@ namespace fpl {
 			return(result);
 		}
 		fpl_api FileHandle CreateBinaryFile(const wchar_t *filePath) {
-			FPL_ASSERT(filePath != nullptr);
+			FPL_ASSERT(filePath != fpl_null);
 			FileHandle result = {};
-			HANDLE win32FileHandle = CreateFileW(filePath, GENERIC_WRITE, FILE_SHARE_WRITE, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+			HANDLE win32FileHandle = CreateFileW(filePath, GENERIC_WRITE, FILE_SHARE_WRITE, fpl_null, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, fpl_null);
 			if (win32FileHandle != INVALID_HANDLE_VALUE) {
 				result.isValid = true;
 				result.internalHandle = (void *)win32FileHandle;
@@ -5027,14 +5115,14 @@ namespace fpl {
 		}
 
 		fpl_api uint32_t ReadFileBlock32(const FileHandle &fileHandle, const uint32_t sizeToRead, void *targetBuffer, const uint32_t maxTargetBufferSize) {
-			FPL_ASSERT(targetBuffer != nullptr);
+			FPL_ASSERT(targetBuffer != fpl_null);
 			FPL_ASSERT(sizeToRead > 0);
 			uint32_t result = 0;
 			if (fileHandle.isValid) {
 				FPL_ASSERT(fileHandle.internalHandle != INVALID_HANDLE_VALUE);
 				HANDLE win32FileHandle = (void *)fileHandle.internalHandle;
 				DWORD bytesRead = 0;
-				if (ReadFile(win32FileHandle, targetBuffer, (DWORD)sizeToRead, &bytesRead, nullptr) == TRUE) {
+				if (ReadFile(win32FileHandle, targetBuffer, (DWORD)sizeToRead, &bytesRead, fpl_null) == TRUE) {
 					result = bytesRead;
 				}
 			}
@@ -5042,14 +5130,14 @@ namespace fpl {
 		}
 
 		fpl_api uint32_t WriteFileBlock32(const FileHandle &fileHandle, void *sourceBuffer, const uint32_t sourceSize) {
-			FPL_ASSERT(sourceBuffer != nullptr);
+			FPL_ASSERT(sourceBuffer != fpl_null);
 			FPL_ASSERT(sourceSize > 0);
 			uint32_t result = 0;
 			if (fileHandle.isValid) {
 				FPL_ASSERT(fileHandle.internalHandle != INVALID_HANDLE_VALUE);
 				HANDLE win32FileHandle = (void *)fileHandle.internalHandle;
 				DWORD bytesWritten = 0;
-				if (WriteFile(win32FileHandle, sourceBuffer, (DWORD)sourceSize, &bytesWritten, nullptr) == TRUE) {
+				if (WriteFile(win32FileHandle, sourceBuffer, (DWORD)sourceSize, &bytesWritten, fpl_null) == TRUE) {
 					result = bytesWritten;
 				}
 			}
@@ -5066,7 +5154,7 @@ namespace fpl {
 				} else if (mode == FilePositionMode::End) {
 					moveMethod = FILE_END;
 				}
-				SetFilePointer(win32FileHandle, (LONG)position, nullptr, moveMethod);
+				SetFilePointer(win32FileHandle, (LONG)position, fpl_null, moveMethod);
 			}
 		}
 
@@ -5075,7 +5163,7 @@ namespace fpl {
 			if (fileHandle.isValid) {
 				FPL_ASSERT(fileHandle.internalHandle != INVALID_HANDLE_VALUE);
 				HANDLE win32FileHandle = (void *)fileHandle.internalHandle;
-				DWORD filePosition = SetFilePointer(win32FileHandle, 0L, nullptr, FILE_CURRENT);
+				DWORD filePosition = SetFilePointer(win32FileHandle, 0L, fpl_null, FILE_CURRENT);
 				if (filePosition != INVALID_SET_FILE_POINTER) {
 					result = filePosition;
 				}
@@ -5094,9 +5182,9 @@ namespace fpl {
 
 		fpl_api uint32_t GetFileSize32(const char *filePath) {
 			uint32_t result = 0;
-			HANDLE win32FileHandle = CreateFileA(filePath, GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+			HANDLE win32FileHandle = CreateFileA(filePath, GENERIC_READ, FILE_SHARE_READ, fpl_null, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, fpl_null);
 			if (win32FileHandle != INVALID_HANDLE_VALUE) {
-				DWORD fileSize = GetFileSize(win32FileHandle, nullptr);
+				DWORD fileSize = GetFileSize(win32FileHandle, fpl_null);
 				result = fileSize;
 				CloseHandle(win32FileHandle);
 			}
@@ -5108,7 +5196,7 @@ namespace fpl {
 			if (fileHandle.isValid) {
 				FPL_ASSERT(fileHandle.internalHandle != INVALID_HANDLE_VALUE);
 				HANDLE win32FileHandle = (void *)fileHandle.internalHandle;
-				DWORD fileSize = GetFileSize(win32FileHandle, nullptr);
+				DWORD fileSize = GetFileSize(win32FileHandle, fpl_null);
 				result = fileSize;
 			}
 			return(result);
@@ -5147,14 +5235,14 @@ namespace fpl {
 		}
 
 		fpl_api bool CreateDirectories(const char *path) {
-			BOOL result = CreateDirectoryA(path, nullptr);
+			BOOL result = CreateDirectoryA(path, fpl_null);
 			return(result > 0 ? 1 : 0);
 		}
 		fpl_api bool RemoveEmptyDirectory(const char *path) {
 			BOOL result = RemoveDirectoryA(path);
 			return(result > 0 ? 1 : 0);
 		}
-		fpl_internal void Win32FillFileEntry(WIN32_FIND_DATAA *findData, FileEntry *entry) {
+		fpl_internal_inline void Win32FillFileEntry(WIN32_FIND_DATAA *findData, FileEntry *entry) {
 			using namespace strings;
 
 			CopyAnsiString(findData->cFileName, GetAnsiStringLength(findData->cFileName), entry->path, FPL_ARRAYCOUNT(entry->path));
@@ -5190,8 +5278,8 @@ namespace fpl {
 			}
 		}
 		fpl_api bool ListFilesBegin(const char *pathAndFilter, FileEntry *firstEntry) {
-			FPL_ASSERT(pathAndFilter != nullptr);
-			FPL_ASSERT(firstEntry != nullptr);
+			FPL_ASSERT(pathAndFilter != fpl_null);
+			FPL_ASSERT(firstEntry != fpl_null);
 			bool result = false;
 			WIN32_FIND_DATAA findData;
 			HANDLE searchHandle = FindFirstFileA(pathAndFilter, &findData);
@@ -5204,7 +5292,7 @@ namespace fpl {
 			return(result);
 		}
 		fpl_api bool ListFilesNext(FileEntry *nextEntry) {
-			FPL_ASSERT(nextEntry != nullptr);
+			FPL_ASSERT(nextEntry != fpl_null);
 			bool result = false;
 			if (nextEntry->internalHandle != INVALID_HANDLE_VALUE) {
 				HANDLE searchHandle = (HANDLE)nextEntry->internalHandle;
@@ -5217,7 +5305,7 @@ namespace fpl {
 			return(result);
 		}
 		fpl_api void ListFilesEnd(FileEntry *lastEntry) {
-			FPL_ASSERT(lastEntry != nullptr);
+			FPL_ASSERT(lastEntry != fpl_null);
 			if (lastEntry->internalHandle != INVALID_HANDLE_VALUE) {
 				HANDLE searchHandle = (HANDLE)lastEntry->internalHandle;
 				FindClose(searchHandle);
@@ -5233,8 +5321,8 @@ namespace fpl {
 #	if defined(UNICODE)
 		fpl_api char *GetExecutableFilePath(char *destPath, const uint32_t maxDestLen) {
 			wchar_t modulePath[MAX_PATH];
-			GetModuleFileNameW(nullptr, modulePath, MAX_PATH);
-			FPL_ASSERT(destPath != nullptr);
+			GetModuleFileNameW(fpl_null, modulePath, MAX_PATH);
+			FPL_ASSERT(destPath != fpl_null);
 			FPL_ASSERT(maxDestLen >= (MAX_PATH + 1));
 			strings::WideStringToAnsiString(modulePath, strings::GetWideStringLength(modulePath), destPath, maxDestLen);
 			return(destPath);
@@ -5242,8 +5330,8 @@ namespace fpl {
 #	else
 		fpl_api char *GetExecutableFilePath(char *destPath, const uint32_t maxDestLen) {
 			char modulePath[MAX_PATH];
-			GetModuleFileNameA(nullptr, modulePath, MAX_PATH);
-			FPL_ASSERT(destPath != nullptr);
+			GetModuleFileNameA(fpl_null, modulePath, MAX_PATH);
+			FPL_ASSERT(destPath != fpl_null);
 			FPL_ASSERT(maxDestLen >= (MAX_PATH + 1));
 			strings::CopyAnsiString(modulePath, strings::GetAnsiStringLength(modulePath), destPath, maxDestLen);
 			return(destPath);
@@ -5254,8 +5342,8 @@ namespace fpl {
 		fpl_api char *GetHomePath(char *destPath, const uint32_t maxDestLen) {
 			platform::Win32APIFunctions &api = platform::global__Win32__API__Functions;
 			wchar_t homePath[MAX_PATH];
-			api.shell.shGetFolderPathW(nullptr, CSIDL_PROFILE, nullptr, 0, homePath);
-			FPL_ASSERT(destPath != nullptr);
+			api.shell.shGetFolderPathW(fpl_null, CSIDL_PROFILE, fpl_null, 0, homePath);
+			FPL_ASSERT(destPath != fpl_null);
 			FPL_ASSERT(maxDestLen >= (MAX_PATH + 1));
 			strings::WideStringToAnsiString(homePath, strings::GetWideStringLength(homePath), destPath, maxDestLen);
 			return(destPath);
@@ -5264,8 +5352,8 @@ namespace fpl {
 		fpl_api char *GetHomePath(char *destPath, const uint32_t maxDestLen) {
 			platform::Win32APIFunctions &api = platform::global__Win32__API__Functions;
 			char homePath[MAX_PATH];
-			api.shell.shGetFolderPathA(nullptr, CSIDL_PROFILE, nullptr, 0, homePath);
-			FPL_ASSERT(destPath != nullptr);
+			api.shell.shGetFolderPathA(fpl_null, CSIDL_PROFILE, fpl_null, 0, homePath);
+			FPL_ASSERT(destPath != fpl_null);
 			FPL_ASSERT(maxDestLen >= (MAX_PATH + 1));
 			strings::CopyAnsiString(homePath, strings::GetAnsiStringLength(homePath), destPath, maxDestLen);
 			return(destPath);
@@ -5290,28 +5378,28 @@ namespace fpl {
 	//
 	namespace strings {
 		fpl_api char *WideStringToAnsiString(const wchar_t *wideSource, const uint32_t maxWideSourceLen, char *ansiDest, const uint32_t maxAnsiDestLen) {
-			uint32_t requiredLen = WideCharToMultiByte(CP_ACP, 0, wideSource, maxWideSourceLen, nullptr, 0, nullptr, nullptr);
+			uint32_t requiredLen = WideCharToMultiByte(CP_ACP, 0, wideSource, maxWideSourceLen, fpl_null, 0, fpl_null, fpl_null);
 			FPL_ASSERT(maxAnsiDestLen >= (requiredLen + 1));
-			WideCharToMultiByte(CP_ACP, 0, wideSource, maxWideSourceLen, ansiDest, maxAnsiDestLen, nullptr, nullptr);
+			WideCharToMultiByte(CP_ACP, 0, wideSource, maxWideSourceLen, ansiDest, maxAnsiDestLen, fpl_null, fpl_null);
 			ansiDest[requiredLen] = 0;
 			return(ansiDest);
 		}
 		fpl_api char *WideStringToUTF8String(const wchar_t *wideSource, const uint32_t maxWideSourceLen, char *utf8Dest, const uint32_t maxUtf8DestLen) {
-			uint32_t requiredLen = WideCharToMultiByte(CP_UTF8, 0, wideSource, maxWideSourceLen, nullptr, 0, nullptr, nullptr);
+			uint32_t requiredLen = WideCharToMultiByte(CP_UTF8, 0, wideSource, maxWideSourceLen, fpl_null, 0, fpl_null, fpl_null);
 			FPL_ASSERT(maxUtf8DestLen >= (requiredLen + 1));
-			WideCharToMultiByte(CP_UTF8, 0, wideSource, maxWideSourceLen, utf8Dest, maxUtf8DestLen, nullptr, nullptr);
+			WideCharToMultiByte(CP_UTF8, 0, wideSource, maxWideSourceLen, utf8Dest, maxUtf8DestLen, fpl_null, fpl_null);
 			utf8Dest[requiredLen] = 0;
 			return(utf8Dest);
 		}
 		fpl_api wchar_t *AnsiStringToWideString(const char *ansiSource, const uint32_t ansiSourceLen, wchar_t *wideDest, const uint32_t maxWideDestLen) {
-			uint32_t requiredLen = MultiByteToWideChar(CP_ACP, 0, ansiSource, ansiSourceLen, nullptr, 0);
+			uint32_t requiredLen = MultiByteToWideChar(CP_ACP, 0, ansiSource, ansiSourceLen, fpl_null, 0);
 			FPL_ASSERT(maxWideDestLen >= (requiredLen + 1));
 			MultiByteToWideChar(CP_ACP, 0, ansiSource, ansiSourceLen, wideDest, maxWideDestLen);
 			wideDest[requiredLen] = 0;
 			return(wideDest);
 		}
 		fpl_api wchar_t *UTF8StringToWideString(const char *utf8Source, const uint32_t utf8SourceLen, wchar_t *wideDest, const uint32_t maxWideDestLen) {
-			uint32_t requiredLen = MultiByteToWideChar(CP_UTF8, 0, utf8Source, utf8SourceLen, nullptr, 0);
+			uint32_t requiredLen = MultiByteToWideChar(CP_UTF8, 0, utf8Source, utf8SourceLen, fpl_null, 0);
 			FPL_ASSERT(maxWideDestLen >= (requiredLen + 1));
 			MultiByteToWideChar(CP_UTF8, 0, utf8Source, utf8SourceLen, wideDest, maxWideDestLen);
 			wideDest[requiredLen] = 0;
@@ -5324,19 +5412,19 @@ namespace fpl {
 	//
 	namespace library {
 		fpl_api DynamicLibraryHandle DynamicLibraryLoad(const char *libraryFilePath) {
-			FPL_ASSERT(libraryFilePath != nullptr);
+			FPL_ASSERT(libraryFilePath != fpl_null);
 			DynamicLibraryHandle result = {};
 			HMODULE libModule = LoadLibraryA(libraryFilePath);
-			if (libModule != nullptr) {
+			if (libModule != fpl_null) {
 				result.internalHandle = (void *)libModule;
 				result.isValid = true;
 			}
 			return(result);
 		}
 		fpl_api void *GetDynamicLibraryProc(const DynamicLibraryHandle &handle, const char *name) {
-			void *result = nullptr;
+			void *result = fpl_null;
 			if (handle.isValid) {
-				FPL_ASSERT(handle.internalHandle != nullptr);
+				FPL_ASSERT(handle.internalHandle != fpl_null);
 				HMODULE libModule = (HMODULE)handle.internalHandle;
 				result = (void *)GetProcAddress(libModule, name);
 			}
@@ -5344,7 +5432,7 @@ namespace fpl {
 		}
 		fpl_api void DynamicLibraryUnload(DynamicLibraryHandle &handle) {
 			if (handle.isValid) {
-				FPL_ASSERT(handle.internalHandle != nullptr);
+				FPL_ASSERT(handle.internalHandle != fpl_null);
 				HMODULE libModule = (HMODULE)handle.internalHandle;
 				FreeLibrary(libModule);
 			}
@@ -5358,8 +5446,8 @@ namespace fpl {
 #if defined(FPL_ENABLE_VIDEO)
 	namespace video {
 		fpl_api VideoBackBuffer *GetVideoBackBuffer() {
-			VideoBackBuffer *result = nullptr;
-			FPL_ASSERT(platform::global__Win32__State != nullptr);
+			VideoBackBuffer *result = fpl_null;
+			FPL_ASSERT(platform::global__Win32__State != fpl_null);
 			platform::Win32State *state = platform::global__Win32__State;
 #		if defined(FPL_ENABLE_VIDEO_SOFTWARE)
 			platform::Win32VideoState &video = state->video;
@@ -5372,7 +5460,7 @@ namespace fpl {
 
 		fpl_api bool ResizeVideoBackBuffer(const uint32_t width, const uint32_t height) {
 			bool result = false;
-			FPL_ASSERT(platform::global__Win32__State != nullptr);
+			FPL_ASSERT(platform::global__Win32__State != fpl_null);
 			platform::Win32State *state = platform::global__Win32__State;
 #		if defined(FPL_ENABLE_VIDEO_SOFTWARE)
 			if (state->video.activeVideoDriver == VideoDriverType::Software) {
@@ -5391,7 +5479,7 @@ namespace fpl {
 	//
 	namespace window {
 		fpl_api void WindowFlip() {
-			FPL_ASSERT(platform::global__Win32__State != nullptr);
+			FPL_ASSERT(platform::global__Win32__State != fpl_null);
 			platform::Win32State *state = platform::global__Win32__State;
 			platform::Win32APIFunctions &wapi = platform::global__Win32__API__Functions;
 			platform::Win32VideoState &video = state->video;
@@ -5405,7 +5493,7 @@ namespace fpl {
 					uint32_t sourceWidth = video.software.context.width;
 					uint32_t sourceHeight = video.software.context.height;
 					wapi.gdi.stretchDIBits(state->window.deviceContext, 0, 0, targetWidth, targetHeight, 0, 0, sourceWidth, sourceHeight, video.software.context.pixels, &video.software.bitmapInfo, DIB_RGB_COLORS, SRCCOPY);
-		} break;
+				} break;
 #			endif
 
 #			if defined(FPL_ENABLE_VIDEO_OPENGL)
@@ -5417,11 +5505,11 @@ namespace fpl {
 
 				default:
 					break;
-	}
+			}
 		}
 
 		fpl_api WindowSize GetWindowArea() {
-			FPL_ASSERT(platform::global__Win32__State != nullptr);
+			FPL_ASSERT(platform::global__Win32__State != fpl_null);
 			platform::Win32State *state = platform::global__Win32__State;
 			platform::Win32APIFunctions &wapi = platform::global__Win32__API__Functions;
 			WindowSize result = {};
@@ -5434,7 +5522,7 @@ namespace fpl {
 		}
 
 		fpl_api void SetWindowArea(const uint32_t width, const uint32_t height) {
-			FPL_ASSERT(platform::global__Win32__State != nullptr);
+			FPL_ASSERT(platform::global__Win32__State != fpl_null);
 			platform::Win32State *state = platform::global__Win32__State;
 			platform::Win32APIFunctions &wapi = platform::global__Win32__API__Functions;
 			RECT clientRect, windowRect;
@@ -5449,7 +5537,7 @@ namespace fpl {
 		}
 
 		fpl_api bool IsWindowResizable() {
-			FPL_ASSERT(platform::global__Win32__State != nullptr);
+			FPL_ASSERT(platform::global__Win32__State != fpl_null);
 			platform::Win32State *state = platform::global__Win32__State;
 			DWORD style = platform::win32_getWindowLong(state->window.windowHandle, GWL_STYLE);
 			bool result = (style & WS_THICKFRAME) > 0;
@@ -5457,7 +5545,7 @@ namespace fpl {
 		}
 
 		fpl_api void SetWindowResizeable(const bool value) {
-			FPL_ASSERT(platform::global__Win32__State != nullptr);
+			FPL_ASSERT(platform::global__Win32__State != fpl_null);
 			platform::Win32State *state = platform::global__Win32__State;
 			if (!state->currentSettings.window.isFullscreen) {
 				DWORD style;
@@ -5476,7 +5564,7 @@ namespace fpl {
 		}
 
 		fpl_api bool IsWindowFullscreen() {
-			FPL_ASSERT(platform::global__Win32__State != nullptr);
+			FPL_ASSERT(platform::global__Win32__State != fpl_null);
 			platform::Win32State *state = platform::global__Win32__State;
 			HWND windowHandle = state->window.windowHandle;
 			DWORD style = platform::win32_getWindowLong(windowHandle, GWL_STYLE);
@@ -5485,7 +5573,7 @@ namespace fpl {
 		}
 
 		fpl_api void SetWindowFullscreen(const bool value, const uint32_t fullscreenWidth, const uint32_t fullscreenHeight, const uint32_t refreshRate) {
-			FPL_ASSERT(platform::global__Win32__State != nullptr);
+			FPL_ASSERT(platform::global__Win32__State != fpl_null);
 			platform::Win32State *state = platform::global__Win32__State;
 			platform::Win32APIFunctions &wapi = platform::global__Win32__API__Functions;
 			if (value) {
@@ -5512,7 +5600,7 @@ namespace fpl {
 		}
 
 		fpl_api WindowPosition GetWindowPosition() {
-			FPL_ASSERT(platform::global__Win32__State != nullptr);
+			FPL_ASSERT(platform::global__Win32__State != fpl_null);
 			platform::Win32State *state = platform::global__Win32__State;
 			platform::Win32APIFunctions &wapi = platform::global__Win32__API__Functions;
 			WindowPosition result = {};
@@ -5541,7 +5629,7 @@ namespace fpl {
 		}
 
 		fpl_api void SetWindowTitle(const char *title) {
-			FPL_ASSERT(platform::global__Win32__State != nullptr);
+			FPL_ASSERT(platform::global__Win32__State != fpl_null);
 			platform::Win32State *state = platform::global__Win32__State;
 			platform::Win32APIFunctions &wapi = platform::global__Win32__API__Functions;
 			HWND handle = state->window.windowHandle;
@@ -5551,7 +5639,7 @@ namespace fpl {
 		}
 
 		fpl_api void SetWindowPosition(const int32_t left, const int32_t top) {
-			FPL_ASSERT(platform::global__Win32__State != nullptr);
+			FPL_ASSERT(platform::global__Win32__State != fpl_null);
 			platform::Win32State *state = platform::global__Win32__State;
 			platform::Win32APIFunctions &wapi = platform::global__Win32__API__Functions;
 			WINDOWPLACEMENT placement = {};
@@ -5574,13 +5662,13 @@ namespace fpl {
 		}
 
 		fpl_api void SetWindowCursorEnabled(const bool value) {
-			FPL_ASSERT(platform::global__Win32__State != nullptr);
+			FPL_ASSERT(platform::global__Win32__State != fpl_null);
 			platform::Win32State *state = platform::global__Win32__State;
 			state->window.isCursorActive = value;
 		}
 
 		fpl_api bool WindowUpdate() {
-			FPL_ASSERT(platform::global__Win32__State != nullptr);
+			FPL_ASSERT(platform::global__Win32__State != fpl_null);
 			platform::Win32State *state = platform::global__Win32__State;
 			platform::Win32APIFunctions &wapi = platform::global__Win32__API__Functions;
 			bool result = false;
@@ -5591,7 +5679,7 @@ namespace fpl {
 			// Poll window events
 			if (state->window.windowHandle != 0) {
 				MSG msg;
-				while (platform::win32_peekMessage(&msg, nullptr, 0, 0, PM_REMOVE) != 0) {
+				while (platform::win32_peekMessage(&msg, fpl_null, 0, 0, PM_REMOVE) != 0) {
 					wapi.user.translateMessage(&msg);
 					platform::win32_dispatchMessage(&msg);
 				}
@@ -5602,7 +5690,7 @@ namespace fpl {
 		}
 
 		fpl_api bool IsWindowRunning() {
-			FPL_ASSERT(platform::global__Win32__State != nullptr);
+			FPL_ASSERT(platform::global__Win32__State != fpl_null);
 			platform::Win32State *state = platform::global__Win32__State;
 			bool result = state->window.isRunning;
 			return(result);
@@ -5610,7 +5698,7 @@ namespace fpl {
 
 		fpl_api bool PollWindowEvent(Event &ev) {
 			platform::EventQueue *eventQueue = platform::global__EventQueue;
-			FPL_ASSERT(eventQueue != nullptr);
+			FPL_ASSERT(eventQueue != fpl_null);
 			bool result = false;
 			if (eventQueue->pushCount > 0 && (eventQueue->pollIndex < eventQueue->pushCount)) {
 				uint32_t eventIndex = atomics::AtomicAddU32(&eventQueue->pollIndex, 1);
@@ -5624,14 +5712,14 @@ namespace fpl {
 		}
 
 		fpl_api char *GetClipboardAnsiText(char *dest, const uint32_t maxDestLen) {
-			FPL_ASSERT(platform::global__Win32__State != nullptr);
+			FPL_ASSERT(platform::global__Win32__State != fpl_null);
 			platform::Win32State *state = platform::global__Win32__State;
 			platform::Win32APIFunctions &wapi = platform::global__Win32__API__Functions;
-			char *result = nullptr;
+			char *result = fpl_null;
 			if (wapi.user.openClipboard(state->window.windowHandle)) {
 				if (wapi.user.isClipboardFormatAvailable(CF_TEXT)) {
 					HGLOBAL dataHandle = wapi.user.getClipboardData(CF_TEXT);
-					if (dataHandle != nullptr) {
+					if (dataHandle != fpl_null) {
 						const char *stringValue = (const char *)GlobalLock(dataHandle);
 						result = strings::CopyAnsiString(stringValue, dest, maxDestLen);
 						GlobalUnlock(dataHandle);
@@ -5643,14 +5731,14 @@ namespace fpl {
 		}
 
 		fpl_api wchar_t *GetClipboardWideText(wchar_t *dest, const uint32_t maxDestLen) {
-			FPL_ASSERT(platform::global__Win32__State != nullptr);
+			FPL_ASSERT(platform::global__Win32__State != fpl_null);
 			platform::Win32State *state = platform::global__Win32__State;
 			platform::Win32APIFunctions &wapi = platform::global__Win32__API__Functions;
-			wchar_t *result = nullptr;
+			wchar_t *result = fpl_null;
 			if (wapi.user.openClipboard(state->window.windowHandle)) {
 				if (wapi.user.isClipboardFormatAvailable(CF_UNICODETEXT)) {
 					HGLOBAL dataHandle = wapi.user.getClipboardData(CF_UNICODETEXT);
-					if (dataHandle != nullptr) {
+					if (dataHandle != fpl_null) {
 						const wchar_t *stringValue = (const wchar_t *)GlobalLock(dataHandle);
 						result = strings::CopyWideString(stringValue, dest, maxDestLen);
 						GlobalUnlock(dataHandle);
@@ -5662,7 +5750,7 @@ namespace fpl {
 		}
 
 		fpl_api bool SetClipboardText(const char *ansiSource) {
-			FPL_ASSERT(platform::global__Win32__State != nullptr);
+			FPL_ASSERT(platform::global__Win32__State != fpl_null);
 			platform::Win32State *state = platform::global__Win32__State;
 			platform::Win32APIFunctions &wapi = platform::global__Win32__API__Functions;
 			bool result = false;
@@ -5670,7 +5758,7 @@ namespace fpl {
 				const uint32_t ansiLen = strings::GetAnsiStringLength(ansiSource);
 				const uint32_t ansiBufferLen = ansiLen + 1;
 				HGLOBAL handle = GlobalAlloc(GMEM_MOVEABLE, (SIZE_T)ansiBufferLen * sizeof(char));
-				if (handle != nullptr) {
+				if (handle != fpl_null) {
 					char *target = (char*)GlobalLock(handle);
 					strings::CopyAnsiString(ansiSource, ansiLen, target, ansiBufferLen);
 					GlobalUnlock(handle);
@@ -5684,7 +5772,7 @@ namespace fpl {
 		}
 
 		fpl_api bool SetClipboardText(const wchar_t *wideSource) {
-			FPL_ASSERT(platform::global__Win32__State != nullptr);
+			FPL_ASSERT(platform::global__Win32__State != fpl_null);
 			platform::Win32State *state = platform::global__Win32__State;
 			platform::Win32APIFunctions &wapi = platform::global__Win32__API__Functions;
 			bool result = false;
@@ -5692,7 +5780,7 @@ namespace fpl {
 				const uint32_t wideLen = strings::GetWideStringLength(wideSource);
 				const uint32_t wideBufferLen = wideLen + 1;
 				HGLOBAL handle = GlobalAlloc(GMEM_MOVEABLE, (SIZE_T)wideBufferLen * sizeof(wchar_t));
-				if (handle != nullptr) {
+				if (handle != fpl_null) {
 					wchar_t *wideTarget = (wchar_t*)GlobalLock(handle);
 					strings::CopyWideString(wideSource, wideLen, wideTarget, wideBufferLen);
 					GlobalUnlock(handle);
@@ -5711,39 +5799,39 @@ namespace fpl {
 // Core Win32
 //
 	fpl_api const char *GetPlatformLastError() {
-		const char *result = nullptr;
-		if (common::global__LastErrorState != nullptr) {
+		const char *result = fpl_null;
+		if (common::global__LastErrorState != fpl_null) {
 #		if defined(FPL_ENABLE_MULTIPLE_ERRORSTATES)
 			if (common::global__LastErrorState->count > 0) {
 				size_t index = common::global__LastErrorState->count - 1;
 				result = GetPlatformLastError(index);
-		}
+			}
 #		else
 			result = global__LastErrorState->errors[0];
 #		endif // FPL_ENABLE_MULTIPLE_ERRORSTATES
-	}
+		}
 		return (result);
 	}
 
 	fpl_api const char *GetPlatformLastError(const size_t index) {
-		const char *result = nullptr;
-		if (common::global__LastErrorState != nullptr) {
+		const char *result = fpl_null;
+		if (common::global__LastErrorState != fpl_null) {
 #		if defined(FPL_ENABLE_MULTIPLE_ERRORSTATES)
 			if (index > -1 && index < (int32_t)common::global__LastErrorState->count) {
 				result = common::global__LastErrorState->errors[index];
-		} else {
+			} else {
 				result = common::global__LastErrorState->errors[common::global__LastErrorState->count - 1];
 			}
 #		else
 			result = global__LastErrorState->errors[0];
 #		endif // FPL_ENABLE_MULTIPLE_ERRORSTATES
-	}
+		}
 		return (result);
 	}
 
 	fpl_api size_t GetPlatformLastErrorCount() {
 		size_t result = 0;
-		if (common::global__LastErrorState != nullptr) {
+		if (common::global__LastErrorState != fpl_null) {
 #		if defined(FPL_ENABLE_MULTIPLE_ERRORSTATES)
 			result = common::global__LastErrorState->count;
 #		else
@@ -5754,14 +5842,14 @@ namespace fpl {
 	}
 
 	fpl_api const Settings &GetCurrentSettings() {
-		FPL_ASSERT(platform::global__Win32__State != nullptr);
+		FPL_ASSERT(platform::global__Win32__State != fpl_null);
 		const platform::Win32State *state = platform::global__Win32__State;
 		return (state->currentSettings);
 	}
 
 	fpl_api void ReleasePlatform() {
 		FPL_ASSERT(platform::global__Win32__AppState.isInitialized);
-		FPL_ASSERT(platform::global__Win32__State != nullptr);
+		FPL_ASSERT(platform::global__Win32__State != fpl_null);
 		platform::Win32State &win32State = *platform::global__Win32__State;
 
 #	if defined(FPL_ENABLE_AUDIO)
@@ -5802,28 +5890,28 @@ namespace fpl {
 		platform::Win32UnloadAPI();
 
 		memory::MemoryAlignedFree(common::global__LastErrorState);
-		common::global__LastErrorState = nullptr;
+		common::global__LastErrorState = fpl_null;
 
 		fpl::memory::MemoryAlignedFree(platform::global__Win32__State);
-		platform::global__Win32__State = nullptr;
+		platform::global__Win32__State = fpl_null;
 
 		platform::global__Win32__AppState.isInitialized = false;
 	}
 
-	fpl_api bool InitPlatform(const InitFlags initFlags, const Settings &initSettings) {
+	fpl_api bool InitPlatform(const InitFlag initFlags, const Settings &initSettings) {
 		if (platform::global__Win32__AppState.isInitialized) {
 			common::PushError("[Win32] Platform is already initialized!");
 			return false;
 		}
 
-		platform::global__Win32__AppState.appInstance = GetModuleHandleA(nullptr);
+		platform::global__Win32__AppState.appInstance = GetModuleHandleA(fpl_null);
 
 		// @NOTE(final): Expect kernel32.lib to be linked always, so VirtualAlloc and LoadLibrary will always work.
 
 		// Allocate win32 state
-		FPL_ASSERT(platform::global__Win32__State == nullptr);
+		FPL_ASSERT(platform::global__Win32__State == fpl_null);
 		void *win32StateMemory = fpl::memory::MemoryAlignedAllocate(sizeof(platform::Win32State), 16);
-		FPL_ASSERT(win32StateMemory != nullptr);
+		FPL_ASSERT(win32StateMemory != fpl_null);
 		platform::global__Win32__State = (platform::Win32State *)win32StateMemory;
 		platform::Win32State &win32State = *platform::global__Win32__State;
 		win32State.initSettings = initSettings;
@@ -5833,7 +5921,7 @@ namespace fpl {
 
 		// Allocate last error state
 		void *lastErrorStateMemory = memory::MemoryAlignedAllocate(sizeof(common::ErrorState), 16);
-		FPL_ASSERT(lastErrorStateMemory != nullptr);
+		FPL_ASSERT(lastErrorStateMemory != fpl_null);
 		common::global__LastErrorState = (common::ErrorState *)lastErrorStateMemory;
 
 		// Timing
@@ -5962,64 +6050,64 @@ namespace fpl {
 		}
 
 		fpl_api uint32_t AtomicAddU32(volatile uint32_t *value, const uint32_t addend) {
-			FPL_ASSERT(value != nullptr);
+			FPL_ASSERT(value != fpl_null);
 			uint32_t result = __sync_fetch_and_add(value, addend);
 			return (result);
 		}
 		fpl_api int32_t AtomicAddS32(volatile int32_t *value, const int32_t addend) {
-			FPL_ASSERT(value != nullptr);
+			FPL_ASSERT(value != fpl_null);
 			uint32_t result = __sync_fetch_and_add(value, addend);
 			return (result);
 		}
 		fpl_api uint64_t AtomicAddU64(volatile uint64_t *value, const uint64_t addend) {
-			FPL_ASSERT(value != nullptr);
+			FPL_ASSERT(value != fpl_null);
 			uint32_t result = __sync_fetch_and_add(value, addend);
 			return (result);
 		}
 		fpl_api int64_t AtomicAddS64(volatile int64_t *value, const int64_t addend) {
-			FPL_ASSERT(value != nullptr);
+			FPL_ASSERT(value != fpl_null);
 			uint32_t result = __sync_fetch_and_add(value, addend);
 			return (result);
 		}
 
 		fpl_api uint32_t AtomicCompareAndExchangeU32(volatile uint32_t *dest, const uint32_t comparand, const uint32_t exchange) {
-			FPL_ASSERT(dest != nullptr);
+			FPL_ASSERT(dest != fpl_null);
 			uint32_t result = __sync_val_compare_and_swap(dest, comparand, exchange);
 			return (result);
 		}
 		fpl_api int32_t AtomicCompareAndExchangeS32(volatile int32_t *dest, const int32_t comparand, const int32_t exchange) {
-			FPL_ASSERT(dest != nullptr);
+			FPL_ASSERT(dest != fpl_null);
 			int32_t result = __sync_val_compare_and_swap(dest, comparand, exchange);
 			return (result);
 		}
 		fpl_api uint64_t AtomicCompareAndExchangeU64(volatile uint64_t *dest, const uint64_t comparand, const uint64_t exchange) {
-			FPL_ASSERT(dest != nullptr);
+			FPL_ASSERT(dest != fpl_null);
 			uint64_t result = __sync_val_compare_and_swap(dest, comparand, exchange);
 			return (result);
 		}
 		fpl_api int64_t AtomicCompareAndExchangeS64(volatile int64_t *dest, const int64_t comparand, const int64_t exchange) {
-			FPL_ASSERT(dest != nullptr);
+			FPL_ASSERT(dest != fpl_null);
 			int64_t result = __sync_val_compare_and_swap(dest, comparand, exchange);
 			return (result);
 		}
 
 		fpl_api bool IsAtomicCompareAndExchangeU32(volatile uint32_t *dest, const uint32_t comparand, const uint32_t exchange) {
-			FPL_ASSERT(dest != nullptr);
+			FPL_ASSERT(dest != fpl_null);
 			bool result = __sync_bool_compare_and_swap(dest, comparand, exchange);
 			return (result);
 		}
 		fpl_api bool IsAtomicCompareAndExchangeS32(volatile int32_t *dest, const int32_t comparand, const int32_t exchange) {
-			FPL_ASSERT(dest != nullptr);
+			FPL_ASSERT(dest != fpl_null);
 			bool result = __sync_bool_compare_and_swap(dest, comparand, exchange);
 			return (result);
 		}
 		fpl_api bool IsAtomicCompareAndExchangeU64(volatile uint64_t *dest, const uint64_t comparand, const uint64_t exchange) {
-			FPL_ASSERT(dest != nullptr);
+			FPL_ASSERT(dest != fpl_null);
 			bool result = __sync_bool_compare_and_swap(dest, comparand, exchange);
 			return (result);
 		}
 		fpl_api bool IsAtomicCompareAndExchangeS64(volatile int64_t *dest, const int64_t comparand, const int64_t exchange) {
-			FPL_ASSERT(dest != nullptr);
+			FPL_ASSERT(dest != fpl_null);
 			bool result = __sync_bool_compare_and_swap(dest, comparand, exchange);
 			return (result);
 		}
@@ -6065,22 +6153,22 @@ namespace fpl {
 	// Linux Console
 	namespace console {
 		fpl_api void ConsoleOut(const char *text) {
-			FPL_ASSERT(text != nullptr);
+			FPL_ASSERT(text != fpl_null);
 			fprintf(stdout, "%s", text);
 		}
 		fpl_api void ConsoleFormatOut(const char *format, ...) {
-			FPL_ASSERT(format != nullptr);
+			FPL_ASSERT(format != fpl_null);
 			va_list vaList;
 			va_start(vaList, format);
 			vfprintf(stdout, format, vaList);
 			va_end(vaList);
 		}
 		fpl_api void ConsoleError(const char *text) {
-			FPL_ASSERT(text != nullptr);
+			FPL_ASSERT(text != fpl_null);
 			fprintf(stderr, "%s", text);
 		}
 		fpl_api void ConsoleFormatError(const char *format, ...) {
-			FPL_ASSERT(format != nullptr);
+			FPL_ASSERT(format != fpl_null);
 			va_list vaList;
 			va_start(vaList, format);
 			vfprintf(stderr, format, vaList);
@@ -6095,7 +6183,7 @@ namespace fpl {
 
 			// Allocate empty memory to hold the size + some arbitary padding + the actual data
 			size_t newSize = sizeof(size_t) + sizeof(uintptr_t) + size;
-			void *basePtr = mmap(nullptr, newSize, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+			void *basePtr = mmap(fpl_null, newSize, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
 
 			// Write the size at the beginning
 			*(size_t *)basePtr = newSize;
@@ -6113,7 +6201,7 @@ namespace fpl {
 		}
 	}
 
-	fpl_api bool InitPlatform(const InitFlags initFlags, const Settings &initSettings) {
+	fpl_api bool InitPlatform(const InitFlag initFlags, const Settings &initSettings) {
 		return true;
 	}
 
@@ -6160,30 +6248,30 @@ namespace fpl {
 		};
 
 		fpl_internal bool ReleaseDirectSound(const audio::CommonAudioState &commonAudio, DirectSoundState &dsoundState) {
-			if (dsoundState.dsoundLibrary != nullptr) {
-				if (dsoundState.stopEvent != nullptr) {
+			if (dsoundState.dsoundLibrary != fpl_null) {
+				if (dsoundState.stopEvent != fpl_null) {
 					CloseHandle(dsoundState.stopEvent);
 				}
 
-				for (uint32_t i = 0; i < commonAudio.periods; ++i) {
+				for (uint32_t i = 0; i < commonAudio.internalFormat.periods; ++i) {
 					if (dsoundState.notifyEvents[i]) {
 						CloseHandle(dsoundState.notifyEvents[i]);
 					}
 				}
 
-				if (dsoundState.notify != nullptr) {
+				if (dsoundState.notify != fpl_null) {
 					dsoundState.notify->Release();
 				}
 
-				if (dsoundState.secondaryBuffer != nullptr) {
+				if (dsoundState.secondaryBuffer != fpl_null) {
 					dsoundState.secondaryBuffer->Release();
 				}
 
-				if (dsoundState.primaryBuffer != nullptr) {
+				if (dsoundState.primaryBuffer != fpl_null) {
 					dsoundState.primaryBuffer->Release();
 				}
 
-				if (dsoundState.directSound != nullptr) {
+				if (dsoundState.directSound != fpl_null) {
 					dsoundState.directSound->Release();
 				}
 
@@ -6198,13 +6286,13 @@ namespace fpl {
 			// Load direct sound library
 			dsoundState.dsoundLibrary = LoadLibraryA("dsound.dll");
 			func_DirectSoundCreate *directSoundCreate = (func_DirectSoundCreate *)GetProcAddress(dsoundState.dsoundLibrary, "DirectSoundCreate");
-			if (directSoundCreate == nullptr) {
+			if (directSoundCreate == fpl_null) {
 				ReleaseDirectSound(commonAudio, dsoundState);
 				return audio::AudioResult::Failed;
 			}
 
 			// Load direct sound object
-			if (!SUCCEEDED(directSoundCreate(nullptr, &dsoundState.directSound, nullptr))) {
+			if (!SUCCEEDED(directSoundCreate(fpl_null, &dsoundState.directSound, fpl_null))) {
 				ReleaseDirectSound(commonAudio, dsoundState);
 				return audio::AudioResult::Failed;
 			}
@@ -6226,14 +6314,14 @@ namespace fpl {
 			}
 
 			// Get either local window handle or desktop handle
-			FPL_ASSERT(platform::global__Win32__State != nullptr);
-			HWND windowHandle = nullptr;
+			FPL_ASSERT(platform::global__Win32__State != fpl_null);
+			HWND windowHandle = fpl_null;
 #if defined(FPL_ENABLE_WINDOW)
 			if (platform::global__Win32__State->initFlags & InitFlags::Window) {
 				windowHandle = platform::global__Win32__State->window.windowHandle;
 			}
 #endif
-			if (windowHandle == nullptr) {
+			if (windowHandle == fpl_null) {
 				windowHandle = platform::global__Win32__API__Functions.user.getDesktopWindow();
 			}
 
@@ -6247,7 +6335,7 @@ namespace fpl {
 			DSBUFFERDESC descDSPrimary = {};
 			descDSPrimary.dwSize = sizeof(DSBUFFERDESC);
 			descDSPrimary.dwFlags = DSBCAPS_PRIMARYBUFFER | DSBCAPS_CTRLVOLUME;
-			if (FAILED(dsoundState.directSound->CreateSoundBuffer(&descDSPrimary, &dsoundState.primaryBuffer, nullptr))) {
+			if (FAILED(dsoundState.directSound->CreateSoundBuffer(&descDSPrimary, &dsoundState.primaryBuffer, fpl_null))) {
 				ReleaseDirectSound(commonAudio, dsoundState);
 				return audio::AudioResult::Failed;
 			}
@@ -6260,7 +6348,7 @@ namespace fpl {
 
 			// Get the required size in bytes
 			DWORD requiredSize;
-			if (FAILED(dsoundState.primaryBuffer->GetFormat(nullptr, 0, &requiredSize))) {
+			if (FAILED(dsoundState.primaryBuffer->GetFormat(fpl_null, 0, &requiredSize))) {
 				ReleaseDirectSound(commonAudio, dsoundState);
 				return audio::AudioResult::Failed;
 			}
@@ -6268,7 +6356,7 @@ namespace fpl {
 			// Get actual format
 			char rawdata[1024];
 			WAVEFORMATEXTENSIBLE* pActualFormat = (WAVEFORMATEXTENSIBLE*)rawdata;
-			if (FAILED(dsoundState.primaryBuffer->GetFormat((WAVEFORMATEX*)pActualFormat, requiredSize, nullptr))) {
+			if (FAILED(dsoundState.primaryBuffer->GetFormat((WAVEFORMATEX*)pActualFormat, requiredSize, fpl_null))) {
 				ReleaseDirectSound(commonAudio, dsoundState);
 				return audio::AudioResult::Failed;
 			}
@@ -6295,20 +6383,21 @@ namespace fpl {
 			}
 			internalFormat.channels = pActualFormat->Format.nChannels;
 			internalFormat.sampleRate = pActualFormat->Format.nSamplesPerSec;
-			commonAudio.internalFormat = internalFormat;
 
 			// @NOTE(final): We divide up our playback buffer into this number of periods and let directsound notify us when one of it needs to play.
-			commonAudio.periods = 2;
-			commonAudio.bufferSizeInFrames = audio::GetAudioBufferSizeInFrames(internalFormat.sampleRate, audioSettings.bufferSizeInMilliSeconds);
-			commonAudio.bufferSizeInBytes = commonAudio.bufferSizeInFrames * internalFormat.channels * audio::GetAudioSampleSizeInBytes(internalFormat.type);
+			internalFormat.periods = 2;
+			internalFormat.bufferSizeInFrames = audio::GetAudioBufferSizeInFrames(internalFormat.sampleRate, audioSettings.bufferSizeInMilliSeconds);
+			internalFormat.bufferSizeInBytes = internalFormat.bufferSizeInFrames * internalFormat.channels * audio::GetAudioSampleSizeInBytes(internalFormat.type);
+
+			commonAudio.internalFormat = internalFormat;
 
 			// Create secondary buffer
 			DSBUFFERDESC descDS = {};
 			descDS.dwSize = sizeof(DSBUFFERDESC);
 			descDS.dwFlags = DSBCAPS_CTRLPOSITIONNOTIFY | DSBCAPS_GLOBALFOCUS | DSBCAPS_GETCURRENTPOSITION2;
-			descDS.dwBufferBytes = (DWORD)commonAudio.bufferSizeInBytes;
+			descDS.dwBufferBytes = (DWORD)internalFormat.bufferSizeInBytes;
 			descDS.lpwfxFormat = (WAVEFORMATEX*)&wf;
-			if (FAILED(dsoundState.directSound->CreateSoundBuffer(&descDS, &dsoundState.secondaryBuffer, nullptr))) {
+			if (FAILED(dsoundState.directSound->CreateSoundBuffer(&descDS, &dsoundState.secondaryBuffer, fpl_null))) {
 				ReleaseDirectSound(commonAudio, dsoundState);
 				return audio::AudioResult::Failed;
 			}
@@ -6320,11 +6409,11 @@ namespace fpl {
 			}
 
 			// Setup notifications
-			uint32_t periodSizeInBytes = commonAudio.bufferSizeInBytes / commonAudio.periods;
+			uint32_t periodSizeInBytes = internalFormat.bufferSizeInBytes / internalFormat.periods;
 			DSBPOSITIONNOTIFY notifyPoints[FPL_DIRECTSOUND_MAX_PERIODS];
-			for (uint32_t i = 0; i < commonAudio.periods; ++i) {
-				dsoundState.notifyEvents[i] = CreateEventA(nullptr, false, false, nullptr);
-				if (dsoundState.notifyEvents[i] == nullptr) {
+			for (uint32_t i = 0; i < internalFormat.periods; ++i) {
+				dsoundState.notifyEvents[i] = CreateEventA(fpl_null, false, false, fpl_null);
+				if (dsoundState.notifyEvents[i] == fpl_null) {
 					ReleaseDirectSound(commonAudio, dsoundState);
 					return audio::AudioResult::Failed;
 				}
@@ -6333,14 +6422,14 @@ namespace fpl {
 				notifyPoints[i].dwOffset = i * periodSizeInBytes;
 				notifyPoints[i].hEventNotify = dsoundState.notifyEvents[i];
 			}
-			if (FAILED(dsoundState.notify->SetNotificationPositions(commonAudio.periods, notifyPoints))) {
+			if (FAILED(dsoundState.notify->SetNotificationPositions(internalFormat.periods, notifyPoints))) {
 				ReleaseDirectSound(commonAudio, dsoundState);
 				return audio::AudioResult::Failed;
 			}
 
 			// Create stop event
-			dsoundState.stopEvent = CreateEventA(nullptr, false, false, nullptr);
-			if (dsoundState.stopEvent == nullptr) {
+			dsoundState.stopEvent = CreateEventA(fpl_null, false, false, fpl_null);
+			if (dsoundState.stopEvent == fpl_null) {
 				ReleaseDirectSound(commonAudio, dsoundState);
 				return audio::AudioResult::Failed;
 			}
@@ -6348,18 +6437,18 @@ namespace fpl {
 			return audio::AudioResult::Success;
 		}
 
-		fpl_internal void StopMainLoopDirectSound(DirectSoundState &dsoundState) {
+		fpl_internal_inline void StopMainLoopDirectSound(DirectSoundState &dsoundState) {
 			dsoundState.breakMainLoop = true;
 			SetEvent(dsoundState.stopEvent);
 		}
 
 		fpl_internal bool GetCurrentFrameDirectSound(const audio::CommonAudioState &commonAudio, DirectSoundState &dsoundState, uint32_t* pCurrentPos) {
-			FPL_ASSERT(pCurrentPos != nullptr);
+			FPL_ASSERT(pCurrentPos != fpl_null);
 			*pCurrentPos = 0;
 
-			FPL_ASSERT(dsoundState.secondaryBuffer != nullptr);
+			FPL_ASSERT(dsoundState.secondaryBuffer != fpl_null);
 			DWORD dwCurrentPosition;
-			if (FAILED(dsoundState.secondaryBuffer->GetCurrentPosition(nullptr, &dwCurrentPosition))) {
+			if (FAILED(dsoundState.secondaryBuffer->GetCurrentPosition(fpl_null, &dwCurrentPosition))) {
 				return false;
 			}
 
@@ -6378,7 +6467,7 @@ namespace fpl {
 			// In a playback device the last processed frame should always be ahead of the current frame. The space between
 			// the last processed and current frame (moving forward, starting from the last processed frame) is the amount
 			// of space available to write.
-			uint32_t totalFrameCount = commonAudio.bufferSizeInFrames;
+			uint32_t totalFrameCount = commonAudio.internalFormat.bufferSizeInFrames;
 			uint32_t committedBeg = currentFrame;
 			uint32_t committedEnd;
 			committedEnd = dsoundState.lastProcessedFrame;
@@ -6394,18 +6483,18 @@ namespace fpl {
 
 		fpl_internal uint32_t WaitForFramesDirectSound(const audio::CommonAudioState &commonAudio, DirectSoundState &dsoundState) {
 			FPL_ASSERT(commonAudio.internalFormat.sampleRate > 0);
-			FPL_ASSERT(commonAudio.periods > 0);
+			FPL_ASSERT(commonAudio.internalFormat.periods > 0);
 
 			// The timeout to use for putting the thread to sleep is based on the size of the buffer and the period count.
-			DWORD timeoutInMilliseconds = (commonAudio.bufferSizeInFrames / (commonAudio.internalFormat.sampleRate / 1000)) / commonAudio.periods;
+			DWORD timeoutInMilliseconds = (commonAudio.internalFormat.bufferSizeInFrames / (commonAudio.internalFormat.sampleRate / 1000)) / commonAudio.internalFormat.periods;
 			if (timeoutInMilliseconds < 1) {
 				timeoutInMilliseconds = 1;
 			}
 
 			// Copy event handles so we can wait for each one
-			unsigned int eventCount = commonAudio.periods + 1;
+			unsigned int eventCount = commonAudio.internalFormat.periods + 1;
 			HANDLE pEvents[FPL_DIRECTSOUND_MAX_PERIODS + 1]; // +1 for the stop event.
-			memory::MemoryCopy(dsoundState.notifyEvents, sizeof(HANDLE) * commonAudio.periods, pEvents);
+			memory::MemoryCopy(dsoundState.notifyEvents, sizeof(HANDLE) * commonAudio.internalFormat.periods, pEvents);
 			pEvents[eventCount - 1] = dsoundState.stopEvent;
 
 			while (!dsoundState.breakMainLoop) {
@@ -6423,8 +6512,8 @@ namespace fpl {
 			return GetAvailableFramesDirectSound(commonAudio, dsoundState);
 		}
 
-		bool StopDirectSound(DirectSoundState &dsoundState) {
-			FPL_ASSERT(dsoundState.secondaryBuffer != nullptr);
+		fpl_internal bool StopDirectSound(DirectSoundState &dsoundState) {
+			FPL_ASSERT(dsoundState.secondaryBuffer != fpl_null);
 			if (FAILED(dsoundState.secondaryBuffer->Stop())) {
 				return false;
 			}
@@ -6433,13 +6522,13 @@ namespace fpl {
 		}
 
 		fpl_internal audio::AudioResult StartDirectSound(const audio::CommonAudioState &commonAudio, DirectSoundState &dsoundState) {
-			FPL_ASSERT(commonAudio.periods > 0);
 			FPL_ASSERT(commonAudio.internalFormat.channels > 0);
+			FPL_ASSERT(commonAudio.internalFormat.periods > 0);
 			uint32_t audioSampleSizeBytes = audio::GetAudioSampleSizeInBytes(commonAudio.internalFormat.type);
 			FPL_ASSERT(audioSampleSizeBytes > 0);
 
 			// Before playing anything we need to grab an initial group of samples from the client.
-			uint32_t framesToRead = commonAudio.bufferSizeInFrames / commonAudio.periods;
+			uint32_t framesToRead = commonAudio.internalFormat.bufferSizeInFrames / commonAudio.internalFormat.periods;
 			uint32_t desiredLockSize = framesToRead * commonAudio.internalFormat.channels * audioSampleSizeBytes;
 
 			void* pLockPtr;
@@ -6448,7 +6537,7 @@ namespace fpl {
 			DWORD actualLockSize2;
 			if (SUCCEEDED(dsoundState.secondaryBuffer->Lock(0, desiredLockSize, &pLockPtr, &actualLockSize, &pLockPtr2, &actualLockSize2, 0))) {
 				framesToRead = actualLockSize / audioSampleSizeBytes / commonAudio.internalFormat.channels;
-				audio::ReadFramesFromClientDirectSound(commonAudio, framesToRead, pLockPtr);
+				audio::ReadAudioFramesFromClient(commonAudio, framesToRead, pLockPtr);
 				dsoundState.secondaryBuffer->Unlock(pLockPtr, actualLockSize, pLockPtr2, actualLockSize2);
 				dsoundState.lastProcessedFrame = framesToRead;
 				if (FAILED(dsoundState.secondaryBuffer->Play(0, 0, DSBPLAY_LOOPING))) {
@@ -6497,8 +6586,8 @@ namespace fpl {
 
 					// Read actual frames from user
 					uint32_t frameCount = actualLockSize / audioSampleSizeBytes / commonAudio.internalFormat.channels;
-					audio::ReadFramesFromClientDirectSound(commonAudio, frameCount, pLockPtr);
-					dsoundState.lastProcessedFrame = (dsoundState.lastProcessedFrame + frameCount) % commonAudio.bufferSizeInFrames;
+					audio::ReadAudioFramesFromClient(commonAudio, frameCount, pLockPtr);
+					dsoundState.lastProcessedFrame = (dsoundState.lastProcessedFrame + frameCount) % commonAudio.internalFormat.bufferSizeInFrames;
 
 					// Unlock playback buffer
 					dsoundState.secondaryBuffer->Unlock(pLockPtr, actualLockSize, pLockPtr2, actualLockSize2);
@@ -6525,13 +6614,16 @@ namespace fpl {
 //
 #if defined(FPL_ENABLE_AUDIO)
 	namespace audio {
-		enum class AudioDeviceState {
-			Uninitialized = 0,
-			Stopped,
-			Started,
-			Starting,
-			Stopping,
+		namespace AudioDeviceStates {
+			enum AudioDeviceStateEnum {
+				Uninitialized = 0,
+				Stopped,
+				Started,
+				Starting,
+				Stopping,
+			};
 		};
+		typedef AudioDeviceStates::AudioDeviceStateEnum AudioDeviceState;
 
 		struct AudioState {
 			CommonAudioState common;
@@ -6645,7 +6737,7 @@ namespace fpl {
 			}
 		}
 
-		fpl_internal bool IsAudioDriverAsync(AudioDriverType audioDriver) {
+		fpl_internal_inline bool IsAudioDriverAsync(AudioDriverType audioDriver) {
 			switch (audioDriver) {
 				case AudioDriverType::DirectSound:
 					return false;
@@ -6654,25 +6746,25 @@ namespace fpl {
 			}
 		}
 
-		fpl_internal void AudioSetDeviceState(AudioState &audioState, AudioDeviceState newState) {
+		fpl_internal_inline void AudioSetDeviceState(AudioState &audioState, AudioDeviceState newState) {
 			atomics::AtomicStoreU32((volatile uint32_t *)&audioState.state, (uint32_t)newState);
 		}
 
-		fpl_internal AudioDeviceState AudioGetDeviceState(AudioState &audioState) {
+		fpl_internal_inline AudioDeviceState AudioGetDeviceState(AudioState &audioState) {
 			AudioDeviceState result = (AudioDeviceState)atomics::AtomicLoadU32((volatile uint32_t *)&audioState.state);
 			return(result);
 		}
 
-		fpl_internal bool IsAudioDeviceInitialized(AudioState *audioState) {
-			if (audioState == nullptr) {
+		fpl_internal_inline bool IsAudioDeviceInitialized(AudioState *audioState) {
+			if (audioState == fpl_null) {
 				return false;
 			}
 			AudioDeviceState state = AudioGetDeviceState(*audioState);
 			return(state != AudioDeviceState::Uninitialized);
 		}
 
-		fpl_internal bool IsAudioDeviceStarted(AudioState *audioState) {
-			if (audioState == nullptr) {
+		fpl_internal_inline bool IsAudioDeviceStarted(AudioState *audioState) {
+			if (audioState == fpl_null) {
 				return false;
 			}
 			AudioDeviceState state = AudioGetDeviceState(*audioState);
@@ -6681,11 +6773,11 @@ namespace fpl {
 
 		fpl_internal void AudioWorkerThread(const threading::ThreadContext &context, void *data) {
 			AudioState *audioState = (AudioState *)data;
-			FPL_ASSERT(audioState != nullptr);
+			FPL_ASSERT(audioState != fpl_null);
 			FPL_ASSERT(audioState->activeDriver != AudioDriverType::None);
 
 #		if defined(FPL_PLATFORM_WIN32)
-			platform::global__Win32__API__Functions.ole.coInitializeEx(nullptr, 0);
+			platform::global__Win32__API__Functions.ole.coInitializeEx(fpl_null, 0);
 #		endif
 
 			// This is only used to prevent posting onStop() when the device is first initialized.
@@ -6717,8 +6809,7 @@ namespace fpl {
 					break;
 				}
 
-				// Getting here means we just started the device and we need to wait for the device to
-				// either deliver us data (recording) or request more data (playback).
+				// Getting here means we just started the device and we need to wait for the device to request more data.
 				FPL_ASSERT(AudioGetDeviceState(*audioState) == AudioDeviceState::Starting);
 
 				audioState->workResult = AudioStartDevice(*audioState);
@@ -6727,12 +6818,11 @@ namespace fpl {
 					continue;
 				}
 
-				// The thread that requested the device to start playing is waiting for this thread to start the
-				// device for real, which is now.
+				// The thread that requested the device to start playing is waiting for this thread to start the device for real, which is now.
 				AudioSetDeviceState(*audioState, AudioDeviceState::Started);
 				threading::SignalWakeUp(audioState->startSignal);
 
-				// Now we just enter the main loop. The main loop can be broken with mal_device__break_main_loop().
+				// Now we just enter the main loop.
 				AudioDeviceMainLoop(*audioState);
 			}
 
@@ -6772,19 +6862,17 @@ namespace fpl {
 
 				AudioSetDeviceState(*audioState, AudioDeviceState::Stopping);
 
-				if (audioState->isAsyncDriver)
-				{
+				if (audioState->isAsyncDriver) {
 					// Asynchronous drivers (Has their own thread)
 					AudioStopDevice(*audioState);
 				} else {
 					// Synchronous drivers
 
-					// When we get here the worker thread is likely in a wait state while waiting for the backend device to deliver or request
-					// audio data. We need to force these to return as quickly as possible.
+					// When we get here the worker thread is likely in a wait state while waiting for the backend device to request audio data. We need to force these to return as quickly as possible.
 					AudioDeviceStopMainLoop(*audioState);
 
-					// We need to wait for the worker thread to become available for work before returning. Note that the worker thread will be
-					// the one who puts the device into the stopped state. Don't call mal_device__set_state() here.
+					// We need to wait for the worker thread to become available for work before returning.
+					// Note that the worker thread will be the one who puts the device into the stopped state.
 					SignalWaitForOne(audioState->stopSignal);
 					result = AudioResult::Success;
 				}
@@ -6804,8 +6892,7 @@ namespace fpl {
 			AudioResult result = AudioResult::Failed;
 			MutexLock(audioState->lock);
 			{
-				// Be a bit more descriptive if the device is already started or is already in the process of starting. This is likely
-				// a bug with the application.
+				// Be a bit more descriptive if the device is already started or is already in the process of starting.
 				if (AudioGetDeviceState(*audioState) == AudioDeviceState::Starting) {
 					MutexUnlock(audioState->lock);
 					return AudioResult::DeviceAlreadyStarted;
@@ -6823,8 +6910,7 @@ namespace fpl {
 
 				AudioSetDeviceState(*audioState, AudioDeviceState::Starting);
 
-				if (audioState->isAsyncDriver)
-				{
+				if (audioState->isAsyncDriver) {
 					// Asynchronous drivers (Has their own thread)
 					AudioStartDevice(*audioState);
 					AudioSetDeviceState(*audioState, AudioDeviceState::Started);
@@ -6832,8 +6918,8 @@ namespace fpl {
 					// Synchronous drivers
 					SignalWakeUp(audioState->wakeupSignal);
 
-					// Wait for the worker thread to finish starting the device. Note that the worker thread will be the one
-					// who puts the device into the started state. Don't call mal_device__set_state() here.
+					// Wait for the worker thread to finish starting the device.
+					// Note that the worker thread will be the one who puts the device into the started state.
 					SignalWaitForOne(audioState->startSignal);
 					result = audioState->workResult;
 				}
@@ -6911,7 +6997,7 @@ namespace fpl {
 			audioState->common.clientUserData = audioSettings.userData;
 
 #		if defined(FPL_PLATFORM_WIN32)
-			platform::global__Win32__API__Functions.ole.coInitializeEx(nullptr, 0);
+			platform::global__Win32__API__Functions.ole.coInitializeEx(fpl_null, 0);
 #		endif
 
 			// Create mutex and signals
@@ -6976,7 +7062,7 @@ namespace fpl {
 			if (!audioState->isAsyncDriver) {
 				// Create worker thread
 				audioState->workerThread = threading::ThreadCreate(AudioWorkerThread, audioState, true);
-				if (audioState->workerThread == nullptr) {
+				if (audioState->workerThread == fpl_null) {
 					ReleaseAudio();
 					return AudioResult::Failed;
 				}
@@ -6991,7 +7077,7 @@ namespace fpl {
 			return(AudioResult::Success);
 		}
 
-		fpl_api const AudioDeviceFormat &GetAudioNativeFormat() {
+		fpl_api const AudioDeviceFormat &GetAudioHardwareFormat() {
 			AudioState *audioState = &global__Audio__State;
 			return audioState->common.internalFormat;
 		}
