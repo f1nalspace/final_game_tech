@@ -84,6 +84,13 @@ SOFTWARE.
 #	define ftt_api extern
 #endif // FTT_API_AS_PRIVATE
 
+//! Null pointer
+#if (__cplusplus >= 201103L) || (_MSC_VER >= 1900)
+#	define ftt_null nullptr
+#else
+#	define ftt_null 0
+#endif
+
 //! Core namespace for final tiletracing
 namespace ftt {
 	//! 2D signed 32-bit integer vector
@@ -112,25 +119,33 @@ namespace ftt {
 		uint32_t e[2];
 	};
 
-	//! Search direction
-	enum class Direction {
-		Up,
-		Right,
-		Down,
-		Left,
+	//! Search directions
+	namespace Directions {
+		//! Search direction
+		enum DirectionEnum {
+			Up,
+			Right,
+			Down,
+			Left,
+		};
 	};
+	typedef Directions::DirectionEnum Direction;
 
-	//! Trace step (FindStart, GetNextOpenTile, RotateForward, etc.)
-	enum class Step {
-		None,
-		FindStart,
-		GetNextOpenTile,
-		FindNextTile,
-		RotateForward,
-		TraverseFindStartingEdge,
-		TraverseNextEdge,
-		Done,
+	//! Trace steps (FindStart, GetNextOpenTile, RotateForward, etc.)
+	namespace Steps {
+		//! Trace step
+		enum StepEnum {
+			None,
+			FindStart,
+			GetNextOpenTile,
+			FindNextTile,
+			RotateForward,
+			TraverseFindStartingEdge,
+			TraverseNextEdge,
+			Done,
+		};
 	};
+	typedef Steps::StepEnum Step;
 
 	//! Tile infos like position, direction and its solid state
 	struct Tile {
@@ -398,7 +413,7 @@ namespace ftt {
 					}
 				}
 			}
-			return nullptr;
+			return ftt_null;
 		}
 
 		static TileVertices CreateTileVertices(Tile *tile) {
@@ -525,7 +540,7 @@ namespace ftt {
 					// If v0 from current edge equals starting edge - then we are finished
 					if (curEdge->vertIndex1 == traceState->startEdge->vertIndex0) {
 						// We are done with this line segment - Set cur step to find next starting edge
-						traceState->lastEdge = nullptr;
+						traceState->lastEdge = ftt_null;
 						traceState->curStep = Step::TraverseFindStartingEdge;
 						// Optimize and finalize shape
 						OptimizeChainSegment(traceState->curChainSegment);
@@ -548,7 +563,7 @@ namespace ftt {
 			// We will come here for a line segment which is not fully closed, may have holes or something
 			if (traceState->curChainSegment->vertices.size() > 0) {
 				// We are done with this line segment - Set cur step to find next starting edge
-				traceState->lastEdge = nullptr;
+				traceState->lastEdge = ftt_null;
 				traceState->curStep = Step::TraverseFindStartingEdge;
 				// Optimize and finalize shape
 				OptimizeChainSegment(traceState->curChainSegment);
@@ -566,7 +581,7 @@ namespace ftt {
 			bool result = false;
 
 			// Find next free starting edge - at the start this is always null
-			traceState->startEdge = nullptr;
+			traceState->startEdge = ftt_null;
 			int32_t startEdgeIndex = -1;
 			for (uint32_t mainEdgeIndex = 0; mainEdgeIndex < traceState->mainEdges.size(); ++mainEdgeIndex) {
 				Edge *mainEdge = &traceState->mainEdges[mainEdgeIndex];
@@ -577,7 +592,7 @@ namespace ftt {
 				}
 			}
 
-			if (traceState->startEdge != nullptr) {
+			if (traceState->startEdge != ftt_null) {
 				// Continue when we found a starting edge and create the actual line segment for it
 				result = true;
 				traceState->lastEdge = traceState->startEdge;
@@ -635,8 +650,8 @@ namespace ftt {
 	};
 
 	ftt_api void InitTileTracer(TileTracerData *tracer, const Vec2u &tileCount, uint8_t *mapTiles) {
-		assert(tracer != nullptr);
-		assert(mapTiles != nullptr);
+		assert(tracer != ftt_null);
+		assert(mapTiles != ftt_null);
 
 		using namespace internals;
 
@@ -653,17 +668,17 @@ namespace ftt {
 
 		tracer->curStep = Step::FindStart;
 		tracer->openList.clear();
-		tracer->startTile = nullptr;
+		tracer->startTile = ftt_null;
 		tracer->mainVertices.clear();
 		tracer->mainEdges.clear();
 		tracer->chainSegments.clear();
 
-		tracer->curTile = nullptr;
-		tracer->nextTile = nullptr;
+		tracer->curTile = ftt_null;
+		tracer->nextTile = ftt_null;
 	}
 
 	ftt_api bool NextTileTraceStep(TileTracerData *tracer) {
-		assert(tracer != nullptr);
+		assert(tracer != ftt_null);
 
 		using namespace internals;
 
@@ -684,9 +699,9 @@ namespace ftt {
 			case Step::FindStart:
 			{
 				tracer->openList.clear();
-				tracer->curTile = nullptr;
+				tracer->curTile = ftt_null;
 				tracer->startTile = GetFirstSolidTile(tracer->tiles, tracer->tileCount);
-				if (tracer->startTile != nullptr) {
+				if (tracer->startTile != ftt_null) {
 					// Add the start tile to the open list and build vertices and edges from it
 					AddTile(tracer, tracer->startTile);
 
@@ -710,14 +725,14 @@ namespace ftt {
 			}; break;
 			case Step::FindNextTile:
 			{
-				assert(tracer->curTile != nullptr);
+				assert(tracer->curTile != ftt_null);
 
 				// Tile in the "forward" direction of the current tile
 				int32_t nx = tracer->curTile->x + TILETRACE_DIRECTIONS[tracer->curTile->traceDirection].x;
 				int32_t ny = tracer->curTile->y + TILETRACE_DIRECTIONS[tracer->curTile->traceDirection].y;
-				tracer->nextTile = IsTileSolid(tracer->tiles, tracer->tileCount, nx, ny) ? GetTile(tracer->tiles, tracer->tileCount, nx, ny) : nullptr;
+				tracer->nextTile = IsTileSolid(tracer->tiles, tracer->tileCount, nx, ny) ? GetTile(tracer->tiles, tracer->tileCount, nx, ny) : ftt_null;
 
-				if (tracer->nextTile != nullptr) {
+				if (tracer->nextTile != ftt_null) {
 					// Create tile vertices for next tile and check if it shares common edges
 					TileVertices tileVertices = CreateTileVertices(tracer->nextTile);
 					bool sharesCommonEdge = IsTileSharesCommonEdges(tracer, tileVertices);
@@ -748,7 +763,7 @@ namespace ftt {
 	}
 
 	ftt_api void RunTileTracer(TileTracerData *tracer) {
-		assert(tracer != nullptr);
+		assert(tracer != ftt_null);
 		while (NextTileTraceStep(tracer)) {
 		}
 	}
