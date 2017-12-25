@@ -1,6 +1,6 @@
 /**
 * @file final_platform_layer.hpp
-* @version v0.5.2 beta
+* @version v0.5.2.1 beta
 * @author Torsten Spaete
 * @brief Final Platform Layer (FPL) - A Open source C++ single file header platform abstraction layer library.
 *
@@ -124,7 +124,7 @@ It works very well with other libraries like for example:
 		// Legacy opengl is default, so we force it to be forward or backward compability
 		Settings settings = DefaultSettings();
 		settings.video.driverType = VideoDriverType::OpenGL;
-		settings.video.profile = VideoCompabilityProfile::ForwardCompability;
+		settings.video.profile = VideoCompabilityProfile::Forward;
 		settings.video.majorVersion = 3;
 		settings.video.minorVersion = 3;
 		if (InitPlatform(InitFlags::Video, settings)) {
@@ -355,12 +355,8 @@ Thanks to David Reid for the awesome "mini_al.h" single header file audio librar
 
 # VERSION HISTORY
 
-## v0.5.2 beta:
-- Changed: Library is now C++/98 complaint
-- Changed: The actual enum type for "flags" has no "s" at the end anymore.
-- Optimization: Changed some internal functions to "static inline"
-- Changed: Renamed audio::GetAudioNativeFormat to audio::GetAudioHardwareFormat
-- New: Added "periods", "bufferSizeInBytes", "bufferSizeInFrames" to AudioDeviceFormat
+## v0.5.1.1 beta:
+- Fixed: Corrected all doxygen statements to match new enum style or added missing exlamation marks.
 
 ## v0.5.1 beta:
 - New: audio::GetAudioNativeFormat()
@@ -852,7 +848,7 @@ Thanks to David Reid for the awesome "mini_al.h" single header file audio librar
 #else
 	//! Null pointer (0)
 #	define fpl_null 0
-	// Constant (static const)
+	//! Constant (static const)
 #	define fpl_constant static const
 #endif
 
@@ -953,7 +949,7 @@ namespace fpl {
 	//! Atomic functions
 	namespace atomics {
 		/**
-		* \defgroup Atomics
+		* \defgroup Atomics Atomic functions
 		* \brief Atomic functions, like AtomicCompareAndExchange, AtomicReadFence, etc.
 		*/
 		/*@{*/
@@ -1035,7 +1031,7 @@ namespace fpl {
 	//! Hardware functions
 	namespace hardware {
 		/**
-		* \defgroup Hardware
+		* \defgroup Hardware Hardware functions
 		* \brief Hardware functions, like GetProcessorCoreCount, GetProcessorName, etc.
 		*/
 		/*@{*/
@@ -1049,14 +1045,14 @@ namespace fpl {
 	};
 
 	/**
-	* \defgroup Settings
+	* \defgroup Settings Settings and configurations
 	* \brief Video/audio/window settings
 	*/
 	/*@{*/
 
-	//! Initialization flags (Window, Video, etc.)
+	//! Initialization flags
 	namespace InitFlags {
-		//! Initialization flag
+		//! Initialization flag enumeration
 		enum InitFlagEnum {
 			//! No init flags
 			None = 0,
@@ -1070,13 +1066,14 @@ namespace fpl {
 			All = Window | Video | Audio
 		};
 	};
+	//! Initialization flags (Window, Video, etc.)
 	typedef InitFlags::InitFlagEnum InitFlag;
 	//! Operator support for InitFlag
 	FPL_ENUM_AS_FLAGS_OPERATORS(InitFlag);
 
 	//! Video driver types
 	namespace VideoDriverTypes {
-		//! Video driver type
+		//! Video driver type enumeration
 		enum VideoDriverTypeEnum {
 			//! No video driver
 			None = 0,
@@ -1086,11 +1083,12 @@ namespace fpl {
 			Software,
 		};
 	};
+	//! Video driver type
 	typedef VideoDriverTypes::VideoDriverTypeEnum VideoDriverType;
 
 	//! Video compability profiles
 	namespace VideoCompabilityProfiles {
-		//! Video compability profile
+		//! Video compability profile enumeration
 		enum VideoCompabilityProfileEnum {
 			//! Use legacy context
 			Legacy,
@@ -1100,6 +1098,7 @@ namespace fpl {
 			Forward,
 		};
 	};
+	//! Video compability profile 
 	typedef VideoCompabilityProfiles::VideoCompabilityProfileEnum VideoCompabilityProfile;
 
 	//! Video settings container (Compability Profile, Version, VSync, etc.)
@@ -1138,9 +1137,9 @@ namespace fpl {
 		return(result);
 	}
 
-	//! Audio drivers
+	//! Audio driver types
 	namespace AudioDriverTypes {
-		//! Audio driver
+		//! Audio driver type enumeration
 		enum AudioDriverTypeEnum {
 			//! No audio driver
 			None = 0,
@@ -1150,11 +1149,12 @@ namespace fpl {
 			DirectSound,
 		};
 	};
+	//! Audio driver type
 	typedef AudioDriverTypes::AudioDriverTypeEnum AudioDriverType;
 
-	//! Audio formats
+	//! Audio format types
 	namespace AudioFormatTypes {
-		//! Audio format
+		//! Audio format type enumeration
 		enum AudioFormatTypeEnum {
 			// No audio format
 			None = 0,
@@ -1170,6 +1170,7 @@ namespace fpl {
 			F32,
 		};
 	};
+	//! Audio format type
 	typedef AudioFormatTypes::AudioFormatTypeEnum AudioFormatType;
 
 	//! Audio device format
@@ -1180,11 +1181,11 @@ namespace fpl {
 		uint32_t sampleRate;
 		//! Number of channels
 		uint32_t channels;
-		// Number of periods
+		//! Number of periods
 		uint32_t periods;
-		// Buffer size for one period
+		//! Buffer size for one period
 		uint32_t bufferSizeInBytes;
-		// Buffer size in frames for one period
+		//! Buffer size in frames for one period
 		uint32_t bufferSizeInFrames;
 	};
 
@@ -1281,7 +1282,7 @@ namespace fpl {
 	/*@}*/
 
 	/**
-	* \defgroup Initialization
+	* \defgroup Initialization Initialization functions
 	* \brief Initialization and release functions
 	*/
 	/*@{*/
@@ -1337,7 +1338,7 @@ namespace fpl {
 	//! Console functions
 	namespace console {
 		/**
-		* \defgroup Console
+		* \defgroup Console Console functions
 		* \brief Console out/in functions
 		*/
 		/*@{*/
@@ -1357,14 +1358,14 @@ namespace fpl {
 	//! Threading functions
 	namespace threading {
 		/**
-		* \defgroup Threading
+		* \defgroup Threading Threading routines
 		* \brief Tons of functions for multithreading, mutex and signal creation and handling
 		*/
 		/*@{*/
 	
-		//! Thread state types
+		//! Thread states
 		namespace ThreadStates {
-			//! Thread state type
+			//! Thread state enumeration
 			enum ThreadStateEnum {
 				//! Thread is stopped
 				Stopped = 0,
@@ -1374,6 +1375,7 @@ namespace fpl {
 				Suspended,
 			};
 		};
+		//! Thread state
 		typedef ThreadStates::ThreadStateEnum ThreadState;
 
 		struct ThreadContext;
@@ -1457,7 +1459,7 @@ namespace fpl {
 	//! Memory allocation, clearing and copy functions
 	namespace memory {
 		/**
-		* \defgroup Memory
+		* \defgroup Memory Memory functions
 		* \brief Memory allocation, clearing and copy functions
 		*/
 		/*@{*/
@@ -1483,7 +1485,7 @@ namespace fpl {
 	//! Timing and measurement functions
 	namespace timings {
 		/**
-		* \defgroup Timings
+		* \defgroup Timings Timing functions
 		* \brief Functions for retrieving timebased informations
 		*/
 		/*@{*/
@@ -1497,7 +1499,7 @@ namespace fpl {
 	//! String functions
 	namespace strings {
 		/**
-		* \defgroup Strings
+		* \defgroup Strings String manipulation functions
 		* \brief Functions for converting/manipulating strings
 		*/
 		/*@{*/
@@ -1529,7 +1531,7 @@ namespace fpl {
 	//! Files & directory functions and types
 	namespace files {
 		/**
-		* \defgroup Files
+		* \defgroup Files Files/IO functions
 		* \brief Tons of file and directory IO functions
 		*/
 		/*@{*/
@@ -1544,7 +1546,7 @@ namespace fpl {
 
 		//! File position modes (Beginning, Current, End)
 		namespace FilePositionModes {
-			//! File position mode
+			//! File position mode enumeratation
 			enum FilePositionModeEnum {
 				//! Starts from the beginning
 				Beginning = 0,
@@ -1554,11 +1556,12 @@ namespace fpl {
 				End = 2,
 			};
 		};
+		//! File position mode
 		typedef FilePositionModes::FilePositionModeEnum FilePositionMode;
 
 		//! File entry types (File, Directory, etc.)
 		namespace FileEntryTypes {
-			//! File entry type
+			//! File entry type enumeration
 			enum FileEntryTypeEnum {
 				//! Unknown entry type
 				Unknown = 0,
@@ -1568,11 +1571,12 @@ namespace fpl {
 				Directory = 2,
 			};
 		};
+		//! File entry type
 		typedef FileEntryTypes::FileEntryTypeEnum FileEntryType;
 
 		//! File attribute flags (Normal, Readonly, Hidden, etc.)
 		namespace FileAttributeFlags {
-			//! File attribute flag
+			//! File attribute flag enumeration
 			enum FileAttributeFlagEnum {
 				//! No attributes
 				None = 0,
@@ -1588,6 +1592,7 @@ namespace fpl {
 				System = 1 << 4,
 			};
 		};
+		//! File attribute flag
 		typedef FileAttributeFlags::FileAttributeFlagEnum FileAttributeFlag;
 		//! Operator support for FileAttributeFlag
 		FPL_ENUM_AS_FLAGS_OPERATORS(FileAttributeFlag);
@@ -1658,7 +1663,7 @@ namespace fpl {
 	//! Directory and paths functions
 	namespace paths {
 		/**
-		* \defgroup Paths
+		* \defgroup Paths Path functions
 		* \brief Functions for retrieving paths like HomePath, ExecutablePath, etc.
 		*/
 		/*@{*/
@@ -1692,7 +1697,7 @@ namespace fpl {
 
 		//! Mapped keys (Based on MS Virtual-Key-Codes, mostly directly mapped from ASCII)
 		namespace Keys {
-			//! Mapped key
+			//! Mapped key enumeration
 			enum KeyEnum {
 				Key_None = 0,
 
@@ -1846,11 +1851,12 @@ namespace fpl {
 				// 0xA6-0xFE: Dont care
 			};
 		};
+		//! Mapped key
 		typedef Keys::KeyEnum Key;
 
 		//! Window event types (Resized, PositionChanged, etc.)
 		namespace WindowEventTypes {
-			//! Window event type
+			//! Window event type enumeration
 			enum WindowEventTypeEnum {
 				//! Window has been resized
 				Resized = 1,
@@ -1860,6 +1866,7 @@ namespace fpl {
 				LostFocus = 3,
 			};
 		};
+		//! Window event type
 		typedef WindowEventTypes::WindowEventTypeEnum WindowEventType;
 
 		//! Window event data (Size, Position, etc.)
@@ -1874,7 +1881,7 @@ namespace fpl {
 
 		//! Keyboard event types (KeyDown, KeyUp, Char, ...)
 		namespace KeyboardEventTypes {
-			//! Keyboard event type
+			//! Keyboard event type enumeration
 			enum KeyboardEventTypeEnum {
 				//! Key is down
 				KeyDown = 1,
@@ -1884,11 +1891,12 @@ namespace fpl {
 				Char = 3,
 			};
 		};
+		//! Keyboard event type
 		typedef KeyboardEventTypes::KeyboardEventTypeEnum KeyboardEventType;
 
 		//! Keyboard modifier flags (Alt, Ctrl, ...)
 		namespace KeyboardModifierFlags {
-			//! Keyboard modifier flag
+			//! Keyboard modifier flag enumeration
 			enum KeyboardModifierFlagEnum {
 				//! No modifiers
 				None = 0,
@@ -1902,6 +1910,7 @@ namespace fpl {
 				Super = 1 << 3,
 			};
 		};
+		//! Keyboard modifier flag
 		typedef KeyboardModifierFlags::KeyboardModifierFlagEnum KeyboardModifierFlag;
 		//! Operator support for KeyboardModifierFlag
 		FPL_ENUM_AS_FLAGS_OPERATORS(KeyboardModifierFlag);
@@ -1920,7 +1929,7 @@ namespace fpl {
 
 		//! Mouse event types (Move, ButtonDown, ...)
 		namespace MouseEventTypes {
-			//! Mouse event type
+			//! Mouse event type enumeration
 			enum MouseEventTypeEnum {
 				//! Mouse position has been changed
 				Move = 1,
@@ -1932,11 +1941,12 @@ namespace fpl {
 				Wheel = 4,
 			};
 		};
+		//! Mouse event type
 		typedef MouseEventTypes::MouseEventTypeEnum MouseEventType;
 
 		//! Mouse button types (Left, Right, ...)
 		namespace MouseButtonTypes {
-			//! Mouse button type
+			//! Mouse button type enumeration
 			enum MouseButtonTypeEnum {
 				//! No mouse button
 				None = -1,
@@ -1948,6 +1958,7 @@ namespace fpl {
 				Middle = 2,
 			};
 		};
+		//! Mouse button type
 		typedef MouseButtonTypes::MouseButtonTypeEnum MouseButtonType;
 
 		//! Mouse event data (Type, Button, Position, etc.)
@@ -1966,7 +1977,7 @@ namespace fpl {
 
 		//! Gamepad event types (Connected, Disconnected, StateChanged, etc.)
 		namespace GamepadEventTypes {
-			//! Gamepad event type
+			//! Gamepad event type enumeration
 			enum GamepadEventTypeEnum {
 				//! No gamepad event
 				None = 0,
@@ -1978,6 +1989,7 @@ namespace fpl {
 				StateChanged = 3,
 			};
 		};
+		//! Gamepad event type
 		typedef GamepadEventTypes::GamepadEventTypeEnum GamepadEventType;
 
 		//! Gamepad button (IsDown, etc.)
@@ -2055,7 +2067,7 @@ namespace fpl {
 
 		//! Event types (Window, Keyboard, Mouse, ...)
 		namespace EventTypes {
-			//! Event type
+			//! Event type enumeration
 			enum EventTypeEnum {
 				//! Window event
 				Window = 1,
@@ -2067,6 +2079,7 @@ namespace fpl {
 				Gamepad = 4,
 			};
 		};
+		//! Event type
 		typedef EventTypes::EventTypeEnum EventType;
 
 		//! Event data (Type, Window, Keyboard, Mouse, etc.)
@@ -2142,7 +2155,7 @@ namespace fpl {
 		/*@}*/
 
 		/**
-		* \defgroup WindowClipboard Clipboard
+		* \defgroup WindowClipboard Clipboard functions
 		* \brief Functions for reading/writting clipboard data
 		*/
 		/*@{*/
@@ -2164,7 +2177,7 @@ namespace fpl {
 	//! Video context access
 	namespace video {
 		/**
-		* \defgroup Video
+		* \defgroup Video Video functions
 		* \brief Functions for retrieving or resizing the video buffer
 		*/
 		/*@{*/
@@ -2194,14 +2207,14 @@ namespace fpl {
 	//! Audio functions
 	namespace audio {
 		/**
-		* \defgroup Audio
+		* \defgroup Audio Audio functions
 		* \brief Functions for start/stop playing audio and retrieving/changing some audio related settings.
 		*/
 		/*@{*/
 
 		//! Audio results
 		namespace AudioResults {
-			//! Audio result
+			//! Audio result enumeration
 			enum AudioResultEnum {
 				Success = 0,
 				DeviceNotInitialized,
@@ -2211,6 +2224,7 @@ namespace fpl {
 				Failed,
 			};
 		};
+		//! Audio result
 		typedef AudioResults::AudioResultEnum AudioResult;
 
 		//! Start playing audio
