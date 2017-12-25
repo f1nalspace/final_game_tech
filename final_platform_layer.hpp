@@ -299,6 +299,7 @@ Define this to include all required namespaces automatically.
 
 [x] Asyncronous audio playback
 	[x] DirectSound
+	[ ] Alsa
 
 [x] Memory allocation and de-allocation with custom alignment support
 [x] Atomic operations
@@ -583,13 +584,16 @@ Thanks to David Reid for the awesome "mini_al.h" single header file audio librar
 
 # TODO (Top priority order)
 
+- Additional parameters for passing pointers instead of returning by value
+
+- Support other compilers for Win32 (Clang, MingW, Intel)
+	- Fix Clang warnings and errors
+
 - Change most assertions to normal comparisons and make it rock solid, so it wont crash for the most part. Returning fpl_null or empty is much more preferred.
 
 - REFERENCE.MD generation using doxygen
 
 - Feature completeness for Win32 (Multimonitor)
-
-- Test other compilers for Win32 (Clang, MingW, Intel)
 
 - Solidify file/path system:
 	- Decide to a fixed encoding, either unicode 16 bit or UTF8 or
@@ -611,9 +615,9 @@ Thanks to David Reid for the awesome "mini_al.h" single header file audio librar
 	- Video software
 	- Audio (Alsa)
 
-- Write a tool to convert final_platform_layer.hpp into final_platform_layer.h (C89 complaint code)
-
 - Remove the need of the C/C++ Runtime
+
+- Write a tool to convert final_platform_layer.hpp into final_platform_layer.h (C89 complaint code)
 
 - Additional features for later:
 	- Open/Save file/folder dialog
