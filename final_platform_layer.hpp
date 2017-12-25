@@ -905,6 +905,7 @@ Thanks to David Reid for the awesome "mini_al.h" single header file audio librar
 //
 #include <stdint.h> // uint64_t, uint32_t, uint8_t, int16_t, etc.
 #include <stdlib.h> // size_t
+#include <limits.h> // UINT32_MAX
 
 //
 // Macro functions
@@ -1037,7 +1038,7 @@ namespace fpl {
 		fpl_api void AtomicStorePtr(volatile void **dest, const void *value);
 
 		/*@}*/
-	};
+	}
 
 	//! Hardware functions
 	namespace hardware {
@@ -1053,7 +1054,7 @@ namespace fpl {
 		fpl_api char *GetProcessorName(char *destBuffer, const uint32_t maxDestBufferLen);
 
 		/*@}*/
-	};
+	}
 
 	/**
 	* \defgroup Settings Settings and configurations
@@ -1076,24 +1077,24 @@ namespace fpl {
 			//! Default init flags for a window + video + audio
 			All = Window | Video | Audio
 		};
-	};
+	}
 	//! Initialization flags (Window, Video, etc.)
 	typedef InitFlags::InitFlagEnum InitFlag;
 	//! Operator support for InitFlag
-	FPL_ENUM_AS_FLAGS_OPERATORS(InitFlag);
+	FPL_ENUM_AS_FLAGS_OPERATORS(InitFlag)
 
 	//! Video driver types
-	namespace VideoDriverTypes {
-		//! Video driver type enumeration
+		namespace VideoDriverTypes {
+			//! Video driver type enumeration
 		enum VideoDriverTypeEnum {
 			//! No video driver
 			None = 0,
 			//! OpenGL
 			OpenGL,
 			//! Software
-			Software,
+			Software
 		};
-	};
+	}
 	//! Video driver type
 	typedef VideoDriverTypes::VideoDriverTypeEnum VideoDriverType;
 
@@ -1106,9 +1107,9 @@ namespace fpl {
 			//! Use core context with backwards compability
 			Core,
 			//! Use foward context without backwards compability
-			Forward,
+			Forward
 		};
-	};
+	}
 	//! Video compability profile 
 	typedef VideoCompabilityProfiles::VideoCompabilityProfileEnum VideoCompabilityProfile;
 
@@ -1131,18 +1132,18 @@ namespace fpl {
 	//! Make default settings for video
 	fpl_inline VideoSettings DefaultVideoSettings() {
 		VideoSettings result = {};
-		result.profile = VideoCompabilityProfile::Legacy;
+		result.profile = VideoCompabilityProfiles::Legacy;
 		result.majorVersion = result.minorVersion = 0;
 		result.isVSync = false;
 		result.isAutoSize = true;
 
 		// @NOTE(final): Auto detect video driver
 #	if defined(FPL_ENABLE_VIDEO_OPENGL)
-		result.driverType = VideoDriverType::OpenGL;
+		result.driverType = VideoDriverTypes::OpenGL;
 #	elif defined(FPL_ENABLE_VIDEO_SOFTWARE)
-		result.driverType = VideoDriverType::Software;
+		result.driverType = VideoDriverTypes::Software;
 #	else
-		result.driverType = VideoDriverType::None;
+		result.driverType = VideoDriverTypes::None;
 #	endif
 
 		return(result);
@@ -1157,9 +1158,9 @@ namespace fpl {
 			// Auto detection
 			Auto,
 			//! DirectSound
-			DirectSound,
+			DirectSound
 		};
-	};
+	}
 	//! Audio driver type
 	typedef AudioDriverTypes::AudioDriverTypeEnum AudioDriverType;
 
@@ -1178,9 +1179,9 @@ namespace fpl {
 			// Signed 32-bit integer PCM
 			S32,
 			// 32-bit floating point PCM
-			F32,
+			F32
 		};
-	};
+	}
 	//! Audio format type
 	typedef AudioFormatTypes::AudioFormatTypeEnum AudioFormatType;
 
@@ -1226,12 +1227,12 @@ namespace fpl {
 		result.preferExclusiveMode = false;
 		result.desiredFormat.channels = 2;
 		result.desiredFormat.sampleRate = 48000;
-		result.desiredFormat.type = AudioFormatType::S16;
+		result.desiredFormat.type = AudioFormatTypes::S16;
 
-		result.driver = AudioDriverType::None;
+		result.driver = AudioDriverTypes::None;
 #	if defined(FPL_PLATFORM_WIN32)
 #		if defined(FPL_ENABLE_AUDIO_DIRECTSOUND)
-		result.driver = AudioDriverType::DirectSound;
+		result.driver = AudioDriverTypes::DirectSound;
 #		endif
 #	endif
 		return(result);
@@ -1344,7 +1345,7 @@ namespace fpl {
 		fpl_api void DynamicLibraryUnload(DynamicLibraryHandle &handle);
 
 		/*@}*/
-	};
+	}
 
 	//! Console functions
 	namespace console {
@@ -1364,7 +1365,7 @@ namespace fpl {
 		fpl_api void ConsoleFormatError(const char *format, ...);
 
 		/*@}*/
-	};
+	}
 
 	//! Threading functions
 	namespace threading {
@@ -1373,7 +1374,7 @@ namespace fpl {
 		* \brief Tons of functions for multithreading, mutex and signal creation and handling
 		*/
 		/*@{*/
-	
+
 		//! Thread states
 		namespace ThreadStates {
 			//! Thread state enumeration
@@ -1383,9 +1384,9 @@ namespace fpl {
 				//! Thread is still running
 				Running,
 				// Thread is suspended
-				Suspended,
+				Suspended
 			};
-		};
+		}
 		//! Thread state
 		typedef ThreadStates::ThreadStateEnum ThreadState;
 
@@ -1465,7 +1466,7 @@ namespace fpl {
 		fpl_api bool SignalReset(ThreadSignal &availableSignal);
 
 		/*@}*/
-	};
+	}
 
 	//! Memory allocation, clearing and copy functions
 	namespace memory {
@@ -1491,7 +1492,7 @@ namespace fpl {
 		fpl_api void MemoryAlignedFree(void *ptr);
 
 		/*@}*/
-	};
+	}
 
 	//! Timing and measurement functions
 	namespace timings {
@@ -1505,7 +1506,7 @@ namespace fpl {
 		fpl_api double GetHighResolutionTimeInSeconds();
 
 		/*@}*/
-	};
+	}
 
 	//! String functions
 	namespace strings {
@@ -1537,7 +1538,7 @@ namespace fpl {
 		fpl_api wchar_t *UTF8StringToWideString(const char *utf8Source, const uint32_t utf8SourceLen, wchar_t *wideDest, const uint32_t maxWideDestLen);
 
 		/*@}*/
-	};
+	}
 
 	//! Files & directory functions and types
 	namespace files {
@@ -1564,9 +1565,9 @@ namespace fpl {
 				//! Starts from the current position
 				Current = 1,
 				//! Starts from the end
-				End = 2,
+				End = 2
 			};
-		};
+		}
 		//! File position mode
 		typedef FilePositionModes::FilePositionModeEnum FilePositionMode;
 
@@ -1579,9 +1580,9 @@ namespace fpl {
 				//! Entry is a file
 				File = 1,
 				//! Entry is a directory
-				Directory = 2,
+				Directory = 2
 			};
-		};
+		}
 		//! File entry type
 		typedef FileEntryTypes::FileEntryTypeEnum FileEntryType;
 
@@ -1600,18 +1601,18 @@ namespace fpl {
 				//! Archive
 				Archive = 1 << 3,
 				//! System
-				System = 1 << 4,
+				System = 1 << 4
 			};
-		};
+		}
 		//! File attribute flag
 		typedef FileAttributeFlags::FileAttributeFlagEnum FileAttributeFlag;
 		//! Operator support for FileAttributeFlag
-		FPL_ENUM_AS_FLAGS_OPERATORS(FileAttributeFlag);
+		FPL_ENUM_AS_FLAGS_OPERATORS(FileAttributeFlag)
 
 		//! Maximum length of a file entry path
-		fpl_constant uint32_t MAX_FILEENTRY_PATH_LENGTH = 1024;
+			fpl_constant uint32_t MAX_FILEENTRY_PATH_LENGTH = 1024;
 
-		//! Entry for storing current file informations (path, type, attributes, etc.)
+			//! Entry for storing current file informations (path, type, attributes, etc.)
 		struct FileEntry {
 			//! Entry type
 			FileEntryType type;
@@ -1669,7 +1670,7 @@ namespace fpl {
 		fpl_api void ListFilesEnd(FileEntry *lastEntry);
 
 		/*@}*/
-	};
+	}
 
 	//! Directory and paths functions
 	namespace paths {
@@ -1695,7 +1696,7 @@ namespace fpl {
 		fpl_api char *CombinePath(char *destPath, const uint32_t maxDestPathLen, const uint32_t pathCount, ...);
 
 		/*@}*/
-	};
+	}
 
 #if defined(FPL_ENABLE_WINDOW)
 	//! Window based functions and types
@@ -1861,7 +1862,7 @@ namespace fpl {
 
 				// 0xA6-0xFE: Dont care
 			};
-		};
+		}
 		//! Mapped key
 		typedef Keys::KeyEnum Key;
 
@@ -2250,7 +2251,7 @@ namespace fpl {
 		/*@}*/
 	};
 #endif
-};
+}
 
 //
 // Platform specific defines/includes and forward declarations
