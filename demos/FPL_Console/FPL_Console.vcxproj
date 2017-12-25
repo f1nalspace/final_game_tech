@@ -97,7 +97,6 @@
       <CompileAs>CompileAsCpp</CompileAs>
       <CompileAsManaged>false</CompileAsManaged>
       <IntrinsicFunctions>true</IntrinsicFunctions>
-      <AdditionalOptions>/std:c++latest %(AdditionalOptions)</AdditionalOptions>
     </ClCompile>
     <Link>
       <AdditionalDependencies>
@@ -112,7 +111,6 @@
       <CompileAs>CompileAsCpp</CompileAs>
       <CompileAsManaged>false</CompileAsManaged>
       <IntrinsicFunctions>true</IntrinsicFunctions>
-      <AdditionalOptions>/std:c++latest %(AdditionalOptions)</AdditionalOptions>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -129,7 +127,6 @@
       <SDLCheck>true</SDLCheck>
       <CompileAs>CompileAsCpp</CompileAs>
       <CompileAsManaged>false</CompileAsManaged>
-      <AdditionalOptions>/std:c++latest %(AdditionalOptions)</AdditionalOptions>
     </ClCompile>
     <Link>
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
@@ -147,7 +144,6 @@
       <SDLCheck>true</SDLCheck>
       <CompileAs>CompileAsCpp</CompileAs>
       <CompileAsManaged>false</CompileAsManaged>
-      <AdditionalOptions>/std:c++latest %(AdditionalOptions)</AdditionalOptions>
     </ClCompile>
     <Link>
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
