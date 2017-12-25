@@ -356,8 +356,15 @@ Thanks to David Reid for the awesome "mini_al.h" single header file audio librar
 
 # VERSION HISTORY
 
-## v0.5.1.1 beta:
+## v0.5.2.1 beta:
 - Fixed: Corrected all doxygen statements to match new enum style or added missing exlamation marks.
+
+## v0.5.2 beta:
+- Changed: Library is now C++/98 complaint
+- Changed: The actual enum type for "flags" has no "s" at the end anymore.
+- Opimization: Changed some internal functions to "static inline"
+- Changed: Renamed audio::GetAudioNativeFormat to audio::GetAudioHardwareFormat
+- New: Added "periods", "bufferSizeInBytes", "bufferSizeInFrames" to AudioDeviceFormat
 
 ## v0.5.1 beta:
 - New: audio::GetAudioNativeFormat()
