@@ -103,7 +103,7 @@ static void MemoryTests() {
 	{
 		size_t memSize = FPL_MEGABYTES(512);
 		void *mem = MemoryAllocate(memSize);
-		TestNotAssert<void *>(mem, nullptr, LAI, "512 MB of memory must be allocatd");
+		TestNotAssert<void *>(mem, fpl_null, LAI, "512 MB of memory must be allocatd");
 		MemoryFree(mem);
 	}
 
@@ -120,7 +120,7 @@ static void MemoryTests() {
 	{
 		size_t memSize = FPL_MEGABYTES(512);
 		void *mem = MemoryAlignedAllocate(memSize, 16);
-		TestNotAssert<void *>(mem, nullptr, LAI, "512 MB of memory must be allocatd");
+		TestNotAssert<void *>(mem, fpl_null, LAI, "512 MB of memory must be allocatd");
 		MemoryAlignedFree(mem);
 	}
 }

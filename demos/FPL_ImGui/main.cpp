@@ -103,7 +103,7 @@ static void InitImGUI() {
 	io.GetClipboardTextFn = ClipboardGetFunc;
 	io.SetClipboardTextFn = ClipboardSetFunc;
 	io.RenderDrawListsFn = ImGUIRenderDrawLists;
-	io.IniFilename = nullptr;
+	io.IniFilename = fpl_null;
 	io.KeyMap[ImGuiKey_Tab] = (uint32_t)Key::Key_Tab;
 	io.KeyMap[ImGuiKey_LeftArrow] = (uint32_t)Key::Key_Left;
 	io.KeyMap[ImGuiKey_RightArrow] = (uint32_t)Key::Key_Right;
