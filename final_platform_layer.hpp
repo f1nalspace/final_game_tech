@@ -1,7 +1,7 @@
 
 /**
 * @file final_platform_layer.hpp
-* @version v0.5.3.0 beta
+* @version v0.5.4.0 beta
 * @author Torsten Spaete
 * @brief Final Platform Layer (FPL) - A Open source C++ single file header platform abstraction layer library.
 *
@@ -202,7 +202,7 @@ It works very well with other libraries like for example:
 		settings.audio.userData = &audioTest;
 
 		if (InitPlatform(InitFlags::Audio, settings)) {
-			if (PlayAudio() == AudioResult::Success) {
+			if (PlayAudio() == AudioResults::Success) {
 				ConsoleOut("Press any key to quit playing...\n");
 				getchar();
 				StopAudio();
@@ -356,6 +356,9 @@ SOFTWARE.
 Thanks to David Reid for the awesome "mini_al.h" single header file audio library.
 
 # VERSION HISTORY
+
+## v0.5.4.0 beta:
+- Fixed: Some enum types was not using the namespace version
 
 ## v0.5.3.0 beta:
 - Changed: Use custom int types because C++/98 has no default types unfortunatly
@@ -2491,7 +2494,7 @@ namespace fpl {
 			for (fpl_u32 index = 0; index < MAX_THREAD_COUNT; ++index) {
 				threading::ThreadContext *thread = global__ThreadState.threads + index;
 				fpl_u32 state = atomics::AtomicLoadU32((volatile fpl_u32 *)&thread->currentState);
-				if (state == (fpl_u32)threading::ThreadState::Stopped) {
+				if (state == (fpl_u32)threading::ThreadStates::Stopped) {
 					result = thread;
 					break;
 				}
@@ -2514,14 +2517,14 @@ namespace fpl {
 
 		fpl_internal_inline fpl_u32 GetAudioSampleSizeInBytes(const AudioFormatType format) {
 			switch (format) {
-				case AudioFormatType::U8:
+				case AudioFormatTypes::U8:
 					return 1;
-				case AudioFormatType::S16:
+				case AudioFormatTypes::S16:
 					return 2;
-				case AudioFormatType::S24:
+				case AudioFormatTypes::S24:
 					return 3;
-				case AudioFormatType::S32:
-				case AudioFormatType::F32:
+				case AudioFormatTypes::S32:
+				case AudioFormatTypes::F32:
 					return 4;
 				default:
 					return 0;
@@ -6047,7 +6050,7 @@ namespace fpl {
 
 #	if defined(FPL_ENABLE_AUDIO)
 		if (win32State.initFlags & InitFlags::Audio) {
-			if (audio::InitAudio(initSettings.audio) != audio::AudioResult::Success) {
+			if (audio::InitAudio(initSettings.audio) != audio::AudioResults::Success) {
 				common::PushError("[Win32] Failed initialization audio with settings (Driver=%s, Format=%s, SampleRate=%lu, Channels=%lu, BufferSize=%lu)!", audio::GetAudioDriverString(initSettings.audio.driver), audio::GetAudioFormatString(initSettings.audio.desiredFormat.type), initSettings.audio.desiredFormat.sampleRate, initSettings.audio.desiredFormat.channels);
 				return false;
 			}
@@ -6372,13 +6375,13 @@ namespace fpl {
 			func_DirectSoundCreate *directSoundCreate = (func_DirectSoundCreate *)GetProcAddress(dsoundState.dsoundLibrary, "DirectSoundCreate");
 			if (directSoundCreate == fpl_null) {
 				ReleaseDirectSound(commonAudio, dsoundState);
-				return audio::AudioResult::Failed;
+				return audio::AudioResults::Failed;
 			}
 
 			// Load direct sound object
 			if (!SUCCEEDED(directSoundCreate(fpl_null, &dsoundState.directSound, fpl_null))) {
 				ReleaseDirectSound(commonAudio, dsoundState);
-				return audio::AudioResult::Failed;
+				return audio::AudioResults::Failed;
 			}
 
 			// Setup wave format ex
@@ -6412,7 +6415,7 @@ namespace fpl {
 			// The cooperative level must be set before doing anything else
 			if (FAILED(dsoundState.directSound->SetCooperativeLevel(windowHandle, (audioSettings.preferExclusiveMode) ? DSSCL_EXCLUSIVE : DSSCL_PRIORITY))) {
 				ReleaseDirectSound(commonAudio, dsoundState);
-				return audio::AudioResult::Failed;
+				return audio::AudioResults::Failed;
 			}
 
 			// Create primary buffer
@@ -6421,20 +6424,20 @@ namespace fpl {
 			descDSPrimary.dwFlags = DSBCAPS_PRIMARYBUFFER | DSBCAPS_CTRLVOLUME;
 			if (FAILED(dsoundState.directSound->CreateSoundBuffer(&descDSPrimary, &dsoundState.primaryBuffer, fpl_null))) {
 				ReleaseDirectSound(commonAudio, dsoundState);
-				return audio::AudioResult::Failed;
+				return audio::AudioResults::Failed;
 			}
 
 			// Set format
 			if (FAILED(dsoundState.primaryBuffer->SetFormat((WAVEFORMATEX*)&wf))) {
 				ReleaseDirectSound(commonAudio, dsoundState);
-				return audio::AudioResult::Failed;
+				return audio::AudioResults::Failed;
 			}
 
 			// Get the required size in bytes
 			DWORD requiredSize;
 			if (FAILED(dsoundState.primaryBuffer->GetFormat(fpl_null, 0, &requiredSize))) {
 				ReleaseDirectSound(commonAudio, dsoundState);
-				return audio::AudioResult::Failed;
+				return audio::AudioResults::Failed;
 			}
 
 			// Get actual format
@@ -6442,7 +6445,7 @@ namespace fpl {
 			WAVEFORMATEXTENSIBLE* pActualFormat = (WAVEFORMATEXTENSIBLE*)rawdata;
 			if (FAILED(dsoundState.primaryBuffer->GetFormat((WAVEFORMATEX*)pActualFormat, requiredSize, fpl_null))) {
 				ReleaseDirectSound(commonAudio, dsoundState);
-				return audio::AudioResult::Failed;
+				return audio::AudioResults::Failed;
 			}
 
 			// Set internal format
@@ -6483,13 +6486,13 @@ namespace fpl {
 			descDS.lpwfxFormat = (WAVEFORMATEX*)&wf;
 			if (FAILED(dsoundState.directSound->CreateSoundBuffer(&descDS, &dsoundState.secondaryBuffer, fpl_null))) {
 				ReleaseDirectSound(commonAudio, dsoundState);
-				return audio::AudioResult::Failed;
+				return audio::AudioResults::Failed;
 			}
 
 			// Notifications are set up via a DIRECTSOUNDNOTIFY object which is retrieved from the buffer.
 			if (FAILED(dsoundState.secondaryBuffer->QueryInterface(FPL_IID_IDirectSoundNotify, (void**)&dsoundState.notify))) {
 				ReleaseDirectSound(commonAudio, dsoundState);
-				return audio::AudioResult::Failed;
+				return audio::AudioResults::Failed;
 			}
 
 			// Setup notifications
@@ -6499,7 +6502,7 @@ namespace fpl {
 				dsoundState.notifyEvents[i] = CreateEventA(fpl_null, false, false, fpl_null);
 				if (dsoundState.notifyEvents[i] == fpl_null) {
 					ReleaseDirectSound(commonAudio, dsoundState);
-					return audio::AudioResult::Failed;
+					return audio::AudioResults::Failed;
 				}
 
 				// The notification offset is in bytes.
@@ -6508,17 +6511,17 @@ namespace fpl {
 			}
 			if (FAILED(dsoundState.notify->SetNotificationPositions(internalFormat.periods, notifyPoints))) {
 				ReleaseDirectSound(commonAudio, dsoundState);
-				return audio::AudioResult::Failed;
+				return audio::AudioResults::Failed;
 			}
 
 			// Create stop event
 			dsoundState.stopEvent = CreateEventA(fpl_null, false, false, fpl_null);
 			if (dsoundState.stopEvent == fpl_null) {
 				ReleaseDirectSound(commonAudio, dsoundState);
-				return audio::AudioResult::Failed;
+				return audio::AudioResults::Failed;
 			}
 
-			return audio::AudioResult::Success;
+			return audio::AudioResults::Success;
 		}
 
 		fpl_internal_inline void StopMainLoopDirectSound(DirectSoundState &dsoundState) {
@@ -6625,12 +6628,12 @@ namespace fpl {
 				dsoundState.secondaryBuffer->Unlock(pLockPtr, actualLockSize, pLockPtr2, actualLockSize2);
 				dsoundState.lastProcessedFrame = framesToRead;
 				if (FAILED(dsoundState.secondaryBuffer->Play(0, 0, DSBPLAY_LOOPING))) {
-					return audio::AudioResult::Failed;
+					return audio::AudioResults::Failed;
 				}
 			} else {
-				return audio::AudioResult::Failed;
+				return audio::AudioResults::Failed;
 			}
-			return audio::AudioResult::Success;
+			return audio::AudioResults::Success;
 		}
 
 		fpl_internal void DirectSoundMainLoop(const audio::CommonAudioState &commonAudio, DirectSoundState &dsoundState) {
@@ -6789,11 +6792,11 @@ namespace fpl {
 
 		fpl_internal AudioResult AudioStartDevice(AudioState &audioState) {
 			FPL_ASSERT(audioState.activeDriver > AudioDriverType::Auto);
-			AudioResult result = AudioResult::Failed;
+			AudioResult result = AudioResults::Failed;
 			switch (audioState.activeDriver) {
 
 #			if defined(FPL_ENABLE_AUDIO_DIRECTSOUND)
-				case AudioDriverType::DirectSound:
+				case AudioDriverTypes::DirectSound:
 				{
 					result = StartDirectSound(audioState.common, audioState.dsound);
 				} break;
@@ -6810,7 +6813,7 @@ namespace fpl {
 			switch (audioState.activeDriver) {
 
 #			if defined(FPL_ENABLE_AUDIO_DIRECTSOUND)
-				case AudioDriverType::DirectSound:
+				case AudioDriverTypes::DirectSound:
 				{
 					DirectSoundMainLoop(audioState.common, audioState.dsound);
 				} break;
@@ -6823,7 +6826,7 @@ namespace fpl {
 
 		fpl_internal_inline bool IsAudioDriverAsync(AudioDriverType audioDriver) {
 			switch (audioDriver) {
-				case AudioDriverType::DirectSound:
+				case AudioDriverTypes::DirectSound:
 					return false;
 				default:
 					return false;
@@ -6844,7 +6847,7 @@ namespace fpl {
 				return false;
 			}
 			AudioDeviceState state = AudioGetDeviceState(*audioState);
-			return(state != AudioDeviceState::Uninitialized);
+			return(state != AudioDeviceStates::Uninitialized);
 		}
 
 		fpl_internal_inline bool IsAudioDeviceStarted(AudioState *audioState) {
@@ -6852,7 +6855,7 @@ namespace fpl {
 				return false;
 			}
 			AudioDeviceState state = AudioGetDeviceState(*audioState);
-			return(state == AudioDeviceState::Started);
+			return(state == AudioDeviceStates::Started);
 		}
 
 		fpl_internal void AudioWorkerThread(const threading::ThreadContext &context, void *data) {
@@ -6879,31 +6882,31 @@ namespace fpl {
 
 
 				// Let the other threads know that the device has stopped.
-				AudioSetDeviceState(*audioState, AudioDeviceState::Stopped);
+				AudioSetDeviceState(*audioState, AudioDeviceStates::Stopped);
 				threading::SignalWakeUp(audioState->stopSignal);
 
 				// We use an event to wait for a request to wake up.
 				threading::SignalWaitForOne(audioState->wakeupSignal);
 
 				// Default result code.
-				audioState->workResult = AudioResult::Success;
+				audioState->workResult = AudioResults::Success;
 
 				// Just break if we're terminating.
-				if (AudioGetDeviceState(*audioState) == AudioDeviceState::Uninitialized) {
+				if (AudioGetDeviceState(*audioState) == AudioDeviceStates::Uninitialized) {
 					break;
 				}
 
 				// Getting here means we just started the device and we need to wait for the device to request more data.
-				FPL_ASSERT(AudioGetDeviceState(*audioState) == AudioDeviceState::Starting);
+				FPL_ASSERT(AudioGetDeviceState(*audioState) == AudioDeviceStates::Starting);
 
 				audioState->workResult = AudioStartDevice(*audioState);
-				if (audioState->workResult != AudioResult::Success) {
+				if (audioState->workResult != AudioResults::Success) {
 					threading::SignalWakeUp(audioState->startSignal);
 					continue;
 				}
 
 				// The thread that requested the device to start playing is waiting for this thread to start the device for real, which is now.
-				AudioSetDeviceState(*audioState, AudioDeviceState::Started);
+				AudioSetDeviceState(*audioState, AudioDeviceStates::Started);
 				threading::SignalWakeUp(audioState->startSignal);
 
 				// Now we just enter the main loop.
@@ -6921,30 +6924,30 @@ namespace fpl {
 		fpl_api AudioResult StopAudio() {
 			AudioState *audioState = &global__Audio__State;
 
-			if (AudioGetDeviceState(*audioState) == AudioDeviceState::Uninitialized) {
-				return AudioResult::DeviceNotInitialized;
+			if (AudioGetDeviceState(*audioState) == AudioDeviceStates::Uninitialized) {
+				return AudioResults::DeviceNotInitialized;
 			}
 
-			AudioResult result = AudioResult::Failed;
+			AudioResult result = AudioResults::Failed;
 			MutexLock(audioState->lock);
 			{
 				// Check if the device is already stopped
-				if (AudioGetDeviceState(*audioState) == AudioDeviceState::Stopping) {
+				if (AudioGetDeviceState(*audioState) == AudioDeviceStates::Stopping) {
 					MutexUnlock(audioState->lock);
-					return AudioResult::DeviceAlreadyStopped;
+					return AudioResults::DeviceAlreadyStopped;
 				}
-				if (AudioGetDeviceState(*audioState) == AudioDeviceState::Stopped) {
+				if (AudioGetDeviceState(*audioState) == AudioDeviceStates::Stopped) {
 					MutexUnlock(audioState->lock);
-					return AudioResult::DeviceAlreadyStopped;
+					return AudioResults::DeviceAlreadyStopped;
 				}
 
 				// The device needs to be in a started state. If it's not, we just let the caller know the device is busy.
-				if (AudioGetDeviceState(*audioState) != AudioDeviceState::Started) {
+				if (AudioGetDeviceState(*audioState) != AudioDeviceStates::Started) {
 					MutexUnlock(audioState->lock);
-					return AudioResult::DeviceBusy;
+					return AudioResults::DeviceBusy;
 				}
 
-				AudioSetDeviceState(*audioState, AudioDeviceState::Stopping);
+				AudioSetDeviceState(*audioState, AudioDeviceStates::Stopping);
 
 				if (audioState->isAsyncDriver) {
 					// Asynchronous drivers (Has their own thread)
@@ -6958,7 +6961,7 @@ namespace fpl {
 					// We need to wait for the worker thread to become available for work before returning.
 					// Note that the worker thread will be the one who puts the device into the stopped state.
 					SignalWaitForOne(audioState->stopSignal);
-					result = AudioResult::Success;
+					result = AudioResults::Success;
 				}
 			}
 			MutexUnlock(audioState->lock);
@@ -6970,34 +6973,34 @@ namespace fpl {
 			AudioState *audioState = &global__Audio__State;
 
 			if (!IsAudioDeviceInitialized(audioState)) {
-				return AudioResult::DeviceNotInitialized;
+				return AudioResults::DeviceNotInitialized;
 			}
 
-			AudioResult result = AudioResult::Failed;
+			AudioResult result = AudioResults::Failed;
 			MutexLock(audioState->lock);
 			{
 				// Be a bit more descriptive if the device is already started or is already in the process of starting.
-				if (AudioGetDeviceState(*audioState) == AudioDeviceState::Starting) {
+				if (AudioGetDeviceState(*audioState) == AudioDeviceStates::Starting) {
 					MutexUnlock(audioState->lock);
-					return AudioResult::DeviceAlreadyStarted;
+					return AudioResults::DeviceAlreadyStarted;
 				}
-				if (AudioGetDeviceState(*audioState) == AudioDeviceState::Started) {
+				if (AudioGetDeviceState(*audioState) == AudioDeviceStates::Started) {
 					MutexUnlock(audioState->lock);
-					return AudioResult::DeviceAlreadyStarted;
+					return AudioResults::DeviceAlreadyStarted;
 				}
 
 				// The device needs to be in a stopped state. If it's not, we just let the caller know the device is busy.
-				if (AudioGetDeviceState(*audioState) != AudioDeviceState::Stopped) {
+				if (AudioGetDeviceState(*audioState) != AudioDeviceStates::Stopped) {
 					MutexUnlock(audioState->lock);
-					return AudioResult::DeviceBusy;
+					return AudioResults::DeviceBusy;
 				}
 
-				AudioSetDeviceState(*audioState, AudioDeviceState::Starting);
+				AudioSetDeviceState(*audioState, AudioDeviceStates::Starting);
 
 				if (audioState->isAsyncDriver) {
 					// Asynchronous drivers (Has their own thread)
 					AudioStartDevice(*audioState);
-					AudioSetDeviceState(*audioState, AudioDeviceState::Started);
+					AudioSetDeviceState(*audioState, AudioDeviceStates::Started);
 				} else {
 					// Synchronous drivers
 					SignalWakeUp(audioState->wakeupSignal);
@@ -7023,13 +7026,13 @@ namespace fpl {
 			// Make sure the device is stopped first. The backends will probably handle this naturally,
 			// but I like to do it explicitly for my own sanity.
 			if (IsAudioDeviceStarted(audioState)) {
-				while (StopAudio() == AudioResult::DeviceBusy) {
+				while (StopAudio() == AudioResults::DeviceBusy) {
 					threading::ThreadSleep(1);
 				}
 			}
 
 			// Putting the device into an uninitialized state will make the worker thread return.
-			AudioSetDeviceState(*audioState, AudioDeviceState::Uninitialized);
+			AudioSetDeviceState(*audioState, AudioDeviceStates::Uninitialized);
 
 			// Wake up the worker thread and wait for it to properly terminate.
 			SignalWakeUp(audioState->wakeupSignal);
@@ -7062,18 +7065,18 @@ namespace fpl {
 		fpl_internal AudioResult InitAudio(const AudioSettings &audioSettings) {
 			AudioState *audioState = &global__Audio__State;
 
-			if (audioState->activeDriver != AudioDriverType::None) {
-				return AudioResult::Failed;
+			if (audioState->activeDriver != AudioDriverTypes::None) {
+				return AudioResults::Failed;
 			}
 
 			if (audioSettings.desiredFormat.channels == 0) {
-				return AudioResult::Failed;
+				return AudioResults::Failed;
 			}
 			if (audioSettings.desiredFormat.sampleRate == 0) {
-				return AudioResult::Failed;
+				return AudioResults::Failed;
 			}
 			if (audioSettings.bufferSizeInMilliSeconds == 0) {
-				return AudioResult::Failed;
+				return AudioResults::Failed;
 			}
 
 			*audioState = {};
@@ -7088,41 +7091,41 @@ namespace fpl {
 			audioState->lock = threading::MutexCreate();
 			if (!audioState->lock.isValid) {
 				ReleaseAudio();
-				return AudioResult::Failed;
+				return AudioResults::Failed;
 			}
 			audioState->wakeupSignal = threading::SignalCreate();
 			if (!audioState->wakeupSignal.isValid) {
 				ReleaseAudio();
-				return AudioResult::Failed;
+				return AudioResults::Failed;
 			}
 			audioState->startSignal = threading::SignalCreate();
 			if (!audioState->startSignal.isValid) {
 				ReleaseAudio();
-				return AudioResult::Failed;
+				return AudioResults::Failed;
 			}
 			audioState->stopSignal = threading::SignalCreate();
 			if (!audioState->stopSignal.isValid) {
 				ReleaseAudio();
-				return AudioResult::Failed;
+				return AudioResults::Failed;
 			}
 
 			// Prope drivers
 			AudioDriverType propeDrivers[] = {
-				AudioDriverType::DirectSound,
+				AudioDriverTypes::DirectSound,
 			};
 			fpl_u32 driverCount = FPL_ARRAYCOUNT(propeDrivers);
-			AudioResult initResult = AudioResult::Failed;
+			AudioResult initResult = AudioResults::Failed;
 			for (fpl_u32 driverIndex = 0; driverIndex < driverCount; ++driverIndex) {
 				AudioDriverType propeDriver = propeDrivers[driverIndex];
 
-				initResult = AudioResult::Failed;
+				initResult = AudioResults::Failed;
 				switch (audioSettings.driver) {
 
 #				if defined(FPL_ENABLE_AUDIO_DIRECTSOUND)
-					case AudioDriverType::DirectSound:
+					case AudioDriverTypes::DirectSound:
 					{
 						initResult = InitDirectSound(audioSettings, audioState->common, audioState->dsound);
-						if (initResult != AudioResult::Success) {
+						if (initResult != AudioResults::Success) {
 							ReleaseDirectSound(audioState->common, audioState->dsound);
 						}
 					} break;
@@ -7131,14 +7134,14 @@ namespace fpl {
 					default:
 						break;
 				}
-				if (initResult == AudioResult::Success) {
+				if (initResult == AudioResults::Success) {
 					audioState->activeDriver = propeDriver;
 					audioState->isAsyncDriver = IsAudioDriverAsync(propeDriver);
 					break;
 				}
 			}
 
-			if (initResult != AudioResult::Success) {
+			if (initResult != AudioResults::Success) {
 				ReleaseAudio();
 				return initResult;
 			}
@@ -7148,17 +7151,17 @@ namespace fpl {
 				audioState->workerThread = threading::ThreadCreate(AudioWorkerThread, audioState, true);
 				if (audioState->workerThread == fpl_null) {
 					ReleaseAudio();
-					return AudioResult::Failed;
+					return AudioResults::Failed;
 				}
 				// Wait for the worker thread to put the device into it's stopped state for real.
 				SignalWaitForOne(audioState->stopSignal);
 			} else {
-				AudioSetDeviceState(*audioState, AudioDeviceState::Stopped);
+				AudioSetDeviceState(*audioState, AudioDeviceStates::Stopped);
 			}
 
-			FPL_ASSERT(AudioGetDeviceState(*audioState) == AudioDeviceState::Stopped);
+			FPL_ASSERT(AudioGetDeviceState(*audioState) == AudioDeviceStates::Stopped);
 
-			return(AudioResult::Success);
+			return(AudioResults::Success);
 		}
 
 		fpl_api const AudioDeviceFormat &GetAudioHardwareFormat() {
@@ -7168,8 +7171,8 @@ namespace fpl {
 
 		fpl_api void SetAudioClientReadCallback(AudioClientReadFunction *newCallback, void *userData) {
 			AudioState *audioState = &global__Audio__State;
-			if (audioState->activeDriver > AudioDriverType::Auto) {
-				if (AudioGetDeviceState(*audioState) == AudioDeviceState::Stopped) {
+			if (audioState->activeDriver > AudioDriverTypes::Auto) {
+				if (AudioGetDeviceState(*audioState) == AudioDeviceStates::Stopped) {
 					audioState->common.clientReadCallback = newCallback;
 					audioState->common.clientUserData = userData;
 				}
