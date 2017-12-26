@@ -3,18 +3,18 @@
 #include "final_platform_layer.hpp"
 
 struct RandomSeries {
-	uint16_t index;
+	fpl_u16 index;
 };
 
-static uint16_t RandomU16(RandomSeries &series) {
+static fpl_u16 RandomU16(RandomSeries &series) {
 	series.index ^= (series.index << 13);
     series.index ^= (series.index >> 9);
 	series.index ^= (series.index << 7);
 	return (series.index);
 }
 
-static uint8_t RandomByte(RandomSeries &series) {
-	uint8_t result = RandomU16(series) % UINT8_MAX;
+static fpl_u8 RandomByte(RandomSeries &series) {
+	fpl_u8 result = RandomU16(series) % FPL_MAX_U8;
 	return(result);
 }
 
@@ -26,13 +26,13 @@ int main(int argc, char **args) {
 		RandomSeries series = {1337};
 		VideoBackBuffer *videoContext = GetVideoBackBuffer();
 		while (WindowUpdate()) {
-			uint32_t *p = videoContext->pixels;
-			for (uint32_t y = 0; y < videoContext->height; ++y) {
-				for (uint32_t x = 0; x < videoContext->width; ++x) {
-					uint8_t r = RandomByte(series);
-					uint8_t g = RandomByte(series);
-					uint8_t b = RandomByte(series);
-					uint32_t color = (0xFF << 24) | (r << 16) | (g << 8) | b;
+			fpl_u32 *p = videoContext->pixels;
+			for (fpl_u32 y = 0; y < videoContext->height; ++y) {
+				for (fpl_u32 x = 0; x < videoContext->width; ++x) {
+					fpl_u8 r = RandomByte(series);
+					fpl_u8 g = RandomByte(series);
+					fpl_u8 b = RandomByte(series);
+					fpl_u32 color = (0xFF << 24) | (r << 16) | (g << 8) | b;
 					*p++ = color;
 				}
 			}

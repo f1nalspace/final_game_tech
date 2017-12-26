@@ -1,6 +1,7 @@
+
 /**
 * @file final_platform_layer.hpp
-* @version v0.5.2.1 beta
+* @version v0.5.3.0 beta
 * @author Torsten Spaete
 * @brief Final Platform Layer (FPL) - A Open source C++ single file header platform abstraction layer library.
 *
@@ -154,31 +155,31 @@ It works very well with other libraries like for example:
 	#include <math.h>
 
 	struct AudioTest {
-		uint32_t toneHz;
-		uint32_t toneVolume;
-		uint32_t runningSampleIndex;
-		uint32_t wavePeriod;
+		fpl_u32 toneHz;
+		fpl_u32 toneVolume;
+		fpl_u32 runningSampleIndex;
+		fpl_u32 wavePeriod;
 		bool useSquareWave;
 	};
 
 	static const float PI32 = 3.14159265359f;
 
-	static uint32_t FillAudioBuffer(const AudioDeviceFormat &nativeFormat, const uint32_t frameCount, void *outputSamples, void *userData) {
+	static fpl_u32 FillAudioBuffer(const AudioDeviceFormat &nativeFormat, const fpl_u32 frameCount, void *outputSamples, void *userData) {
 		AudioTest *audioTest = (AudioTest *)userData;
 		FPL_ASSERT(audioTest != fpl_null);
 		FPL_ASSERT(nativeFormat.type == AudioFormatType::S16);
-		uint32_t result = 0;
-		int16_t *outSamples = (int16_t *)outputSamples;
-		uint32_t halfWavePeriod = audioTest->wavePeriod / 2;
-		for (uint32_t frameIndex = 0; frameIndex < frameCount; ++frameIndex) {
-			int16_t sampleValue;
+		fpl_u32 result = 0;
+		fpl_s16 *outSamples = (fpl_s16 *)outputSamples;
+		fpl_u32 halfWavePeriod = audioTest->wavePeriod / 2;
+		for (fpl_u32 frameIndex = 0; frameIndex < frameCount; ++frameIndex) {
+			fpl_s16 sampleValue;
 			if (audioTest->useSquareWave) {
-				sampleValue = ((audioTest->runningSampleIndex++ / halfWavePeriod) % 2) ? (int16_t)audioTest->toneVolume : -(int16_t)audioTest->toneVolume;
+				sampleValue = ((audioTest->runningSampleIndex++ / halfWavePeriod) % 2) ? (fpl_s16)audioTest->toneVolume : -(fpl_s16)audioTest->toneVolume;
 			} else {
 				float t = 2.0f * PI32 * (float)audioTest->runningSampleIndex++ / (float)audioTest->wavePeriod;
-				sampleValue = (int16_t)(sinf(t) * audioTest->toneVolume);
+				sampleValue = (fpl_s16)(sinf(t) * audioTest->toneVolume);
 			}
-			for (uint32_t channelIndex = 0; channelIndex < nativeFormat.channels; ++channelIndex) {
+			for (fpl_u32 channelIndex = 0; channelIndex < nativeFormat.channels; ++channelIndex) {
 				*outSamples++ = sampleValue;
 				++result;
 			}
@@ -355,6 +356,11 @@ SOFTWARE.
 Thanks to David Reid for the awesome "mini_al.h" single header file audio library.
 
 # VERSION HISTORY
+
+## v0.5.3.0 beta:
+- Changed: Use custom int types because C++/98 has no default types unfortunatly
+- Fixed: Changed compiler detection order, because some non-MSVC compilers define _MSVC
+- Changed: Better C++/11 feature detection for optional nullptr and constexpr
 
 ## v0.5.2.1 beta:
 - Fixed: Corrected all doxygen statements to match new enum style or added missing exlamation marks.
@@ -677,24 +683,24 @@ Thanks to David Reid for the awesome "mini_al.h" single header file audio librar
 // See: http://beefchunk.com/documentation/lang/c/pre-defined-c/precomp.html
 // See: http://nadeausoftware.com/articles/2012/10/c_c_tip_how_detect_compiler_name_and_version_using_compiler_predefined_macros
 //
-#if defined(_MSC_VER)
-	//! Visual studio compiler detected
-#	define FPL_COMPILER_MSVC
+#if defined(__clang__)
+	//! CLANG compiler detected
+#	define FPL_COMPILER_CLANG
 #elif defined(__llvm__)
 	//! LLVM compiler detected
 #	define FPL_COMPILER_LLVM
-#elif defined(__clang__)
-	//! CLANG compiler detected
-#	define FPL_COMPILER_CLANG
+#elif defined(__INTEL_COMPILER) || defined(__ICC)
+	//! Intel compiler detected
+#	define FPL_COMPILER_INTEL
 #elif defined(__GNUC__) || defined(__GNUG__)
 	//! GCC compiler detected
 #	define FPL_COMPILER_GCC
 #elif defined(__MINGW32__)
 	//! MingW compiler detected
 #	define FPL_COMPILER_MINGW
-#elif defined(__INTEL_COMPILER) || defined(__ICC)
-	//! Intel compiler detected
-#	define FPL_COMPILER_INTEL
+#elif defined(_MSC_VER)
+	//! Visual studio compiler detected
+#	define FPL_COMPILER_MSVC
 #else
 	//! No compiler detected
 #	define FPL_COMPILER_UNKNOWN
@@ -726,6 +732,28 @@ Thanks to David Reid for the awesome "mini_al.h" single header file audio librar
 #		define FPL_ENABLE_RELEASE
 #	endif
 #endif
+
+//
+// C++ feature detection
+//
+#if (__cplusplus >= 201103L) || (defined(FPL_COMPILER_MSVC) && _MSC_VER >= 1900)
+#	define FPL_CPP_2011
+#endif
+#if !defined(cxx_constexpr)
+#	define cxx_constexpr 2235
+#endif
+#if !defined(cxx_nullptr)
+#	define cxx_nullptr 2431
+#endif
+#if !defined(__has_feature)
+#	if defined(FPL_CPP_2011)
+#		define __has_feature(x) (((x == cxx_constexpr) || (x == cxx_nullptr)) ? 1 : 0)
+#	else
+#		define __has_feature(x) 0
+#	endif
+#endif
+#define FPL_CPP_CONSTEXPR __has_feature(cxx_constexpr)
+#define FPL_CPP_NULLPTR __has_feature(cxx_nullptr)
 
 //
 // Options & Feature detection
@@ -851,7 +879,7 @@ Thanks to David Reid for the awesome "mini_al.h" single header file audio librar
 //! Internal inlined function
 #define fpl_internal_inline fpl_internal fpl_inline
 
-#if (__cplusplus >= 201103L) || (_MSC_VER >= 1900)
+#if (FPL_CPP_NULLPTR && FPL_CPP_CONSTEXPR)
 	//! Null pointer (nullptr)
 #	define fpl_null nullptr
 	//! Constant (constexpr)
@@ -903,9 +931,39 @@ Thanks to David Reid for the awesome "mini_al.h" single header file audio librar
 //
 // Types
 //
-#include <stdint.h> // uint64_t, uint32_t, uint8_t, int16_t, etc.
-#include <stdlib.h> // size_t
-#include <limits.h> // UINT32_MAX
+typedef unsigned char fpl_u8;
+typedef unsigned short fpl_u16;
+typedef unsigned int fpl_u32;
+typedef unsigned long long fpl_u64;
+typedef signed char fpl_s8;
+typedef signed short fpl_s16;
+typedef signed int fpl_s32;
+typedef signed long long fpl_s64;
+#if defined(FPL_ARCH_X64)
+typedef fpl_s64 fpl_intptr;
+typedef fpl_u64 fpl_uintptr;
+typedef fpl_u64 fpl_size;
+#else
+typedef fpl_s32 fpl_sintptr;
+typedef fpl_u32 fpl_uintptr;
+typedef fpl_u32 fpl_size;
+#endif
+
+//
+// Limits
+//
+#define FPL_MAX_S8 0x7f
+#define FPL_MIN_S8 (-FPL_MAX_S8 - 1)
+#define FPL_MAX_S16 0x7fff
+#define FPL_MIN_S16 (-FPL_MAX_S16 - 1)
+#define FPL_MAX_S32 0x7fffffffL
+#define FPL_MIN_S32 (-FPL_MAX_S32 - 1L)
+#define FPL_MAX_S64 0x7fffffffffffffffLL
+#define FPL_MIN_S64 (-FPL_MAX_S64 - 1LL)
+#define FPL_MAX_U8 0xff
+#define FPL_MAX_U16 0xffff
+#define FPL_MAX_U32 0xffffffffL
+#define FPL_MAX_U64 0xffffffffffffffffLL
 
 //
 // Macro functions
@@ -914,7 +972,7 @@ Thanks to David Reid for the awesome "mini_al.h" single header file audio librar
 #define FPL_ARRAYCOUNT(arr) (sizeof(arr) / sizeof((arr)[0]))
 
 //! Returns the offset in bytes to a field in a structure
-#define FPL_OFFSETOF(type, field) ((size_t)(&(((type*)(0))->field)))
+#define FPL_OFFSETOF(type, field) ((fpl_size)(&(((type*)(0))->field)))
 
 //! Returns the smallest value
 #define FPL_MIN(a, b) ((a) < (b)) ? (a) : (b)
@@ -931,7 +989,7 @@ Thanks to David Reid for the awesome "mini_al.h" single header file audio librar
 #define FPL_TERABYTES(value) ((FPL_GIGABYTES(value) * 1024ull))
 
 //! Returns true when the given pointer address is aligned to the given alignment
-#define FPL_IS_ALIGNED(ptr, alignment) (((uintptr_t)(const void *)(ptr)) % (alignment) == 0)
+#define FPL_IS_ALIGNED(ptr, alignment) (((fpl_uintptr)(const void *)(ptr)) % (alignment) == 0)
 
 //! Defines the operator overloads for a enum used as flags
 #define FPL_ENUM_AS_FLAGS_OPERATORS(etype) \
@@ -974,66 +1032,66 @@ namespace fpl {
 		fpl_api void AtomicReadWriteFence();
 
 		//! Replace a 32-bit unsigned integer with the given value atomically. Returns the target before the replacement.
-		fpl_api uint32_t AtomicExchangeU32(volatile uint32_t *target, const uint32_t value);
+		fpl_api fpl_u32 AtomicExchangeU32(volatile fpl_u32 *target, const fpl_u32 value);
 		//! Replace a 32-bit signed integer with the given value atomically. Returns the target before the replacement.
-		fpl_api int32_t AtomicExchangeS32(volatile int32_t *target, const int32_t value);
+		fpl_api fpl_s32 AtomicExchangeS32(volatile fpl_s32 *target, const fpl_s32 value);
 		//! Replace a 64-bit unsigned integer with the given value atomically. Returns the target before the replacement.
-		fpl_api uint64_t AtomicExchangeU64(volatile uint64_t *target, const uint64_t value);
+		fpl_api fpl_u64 AtomicExchangeU64(volatile fpl_u64 *target, const fpl_u64 value);
 		//! Replace a 64-bit signed integer with the given value atomically. Returns the target before the replacement.
-		fpl_api int64_t AtomicExchangeS64(volatile int64_t *target, const int64_t value);
+		fpl_api fpl_s64 AtomicExchangeS64(volatile fpl_s64 *target, const fpl_s64 value);
 		//! Replace a pointer with the given value atomically. Returns the target before the replacement.
 		fpl_api void *AtomicExchangePtr(volatile void **target, const void *value);
 
 		//! Adds a 32-bit unsigned integer atomatically. Returns the value before the addition.
-		fpl_api uint32_t AtomicAddU32(volatile uint32_t *value, const uint32_t addend);
+		fpl_api fpl_u32 AtomicAddU32(volatile fpl_u32 *value, const fpl_u32 addend);
 		//! Adds a 32-bit signed integer atomatically. Returns the value before the addition.
-		fpl_api int32_t AtomicAddS32(volatile int32_t *value, const int32_t addend);
+		fpl_api fpl_s32 AtomicAddS32(volatile fpl_s32 *value, const fpl_s32 addend);
 		//! Adds a 64-bit unsigned integer atomatically. Returns the value before the addition.
-		fpl_api uint64_t AtomicAddU64(volatile uint64_t *value, const uint64_t addend);
+		fpl_api fpl_u64 AtomicAddU64(volatile fpl_u64 *value, const fpl_u64 addend);
 		//! Adds a 64-bit signed integer atomatically. Returns the value before the addition.
-		fpl_api int64_t AtomicAddS64(volatile int64_t *value, const int64_t addend);
+		fpl_api fpl_s64 AtomicAddS64(volatile fpl_s64 *value, const fpl_s64 addend);
 
 		//! Compares a 32-bit unsigned integer with a comparand and exchange it when comparand and matches destination. Returns the dest before the exchange.
-		fpl_api uint32_t AtomicCompareAndExchangeU32(volatile uint32_t *dest, const uint32_t comparand, const uint32_t exchange);
+		fpl_api fpl_u32 AtomicCompareAndExchangeU32(volatile fpl_u32 *dest, const fpl_u32 comparand, const fpl_u32 exchange);
 		//! Compares a 32-bit signed integer with a comparand and exchange it when comparand and matches destination. Returns the dest before the exchange.
-		fpl_api int32_t AtomicCompareAndExchangeS32(volatile int32_t *dest, const int32_t comparand, const int32_t exchange);
+		fpl_api fpl_s32 AtomicCompareAndExchangeS32(volatile fpl_s32 *dest, const fpl_s32 comparand, const fpl_s32 exchange);
 		//! Compares a 64-bit unsigned integer with a comparand and exchange it when comparand and matches destination. Returns the dest before the exchange.
-		fpl_api uint64_t AtomicCompareAndExchangeU64(volatile uint64_t *dest, const uint64_t comparand, const uint64_t exchange);
+		fpl_api fpl_u64 AtomicCompareAndExchangeU64(volatile fpl_u64 *dest, const fpl_u64 comparand, const fpl_u64 exchange);
 		//! Compares a 64-bit signed integer with a comparand and exchange it when comparand and matches destination. Returns the dest before the exchange.
-		fpl_api int64_t AtomicCompareAndExchangeS64(volatile int64_t *dest, const int64_t comparand, const int64_t exchange);
+		fpl_api fpl_s64 AtomicCompareAndExchangeS64(volatile fpl_s64 *dest, const fpl_s64 comparand, const fpl_s64 exchange);
 		//! Compares a pointer with a comparand and exchange it when comparand and matches destination. Returns the dest before the exchange.
 		fpl_api void *AtomicCompareAndExchangePtr(volatile void **dest, const void *comparand, const void *exchange);
 
 		//! Returns true when a 32-bit unsigned integer equals the comparand. In addition dest will be changed to the exchange when the result is true as well.
-		fpl_api bool IsAtomicCompareAndExchangeU32(volatile uint32_t *dest, const uint32_t comparand, const uint32_t exchange);
+		fpl_api bool IsAtomicCompareAndExchangeU32(volatile fpl_u32 *dest, const fpl_u32 comparand, const fpl_u32 exchange);
 		//! Returns true when a 32-bit signed integer equals the comparand. In addition dest will be changed to the exchange when the result is true as well.
-		fpl_api bool IsAtomicCompareAndExchangeS32(volatile int32_t *dest, const int32_t comparand, const int32_t exchange);
+		fpl_api bool IsAtomicCompareAndExchangeS32(volatile fpl_s32 *dest, const fpl_s32 comparand, const fpl_s32 exchange);
 		//! Returns true when a 64-bit unsigned integer equals the comparand. In addition dest will be changed to the exchange when the result is true as well.
-		fpl_api bool IsAtomicCompareAndExchangeU64(volatile uint64_t *dest, const uint64_t comparand, const uint64_t exchange);
+		fpl_api bool IsAtomicCompareAndExchangeU64(volatile fpl_u64 *dest, const fpl_u64 comparand, const fpl_u64 exchange);
 		//! Returns true when a 64-bit signed integer equals the comparand. In addition dest will be changed to the exchange when the result is true as well.
-		fpl_api bool IsAtomicCompareAndExchangeS64(volatile int64_t *dest, const int64_t comparand, const int64_t exchange);
+		fpl_api bool IsAtomicCompareAndExchangeS64(volatile fpl_s64 *dest, const fpl_s64 comparand, const fpl_s64 exchange);
 		//! Returns true when a pointer equals the comparand. In addition dest will be changed to the exchange when the result is true as well.
 		fpl_api bool IsAtomicCompareAndExchangePtr(volatile void **dest, const void *comparand, const void *exchange);
 
 		//! Loads the 32-bit unsigned value atomically and returns the result.
-		fpl_api uint32_t AtomicLoadU32(volatile uint32_t *source);
+		fpl_api fpl_u32 AtomicLoadU32(volatile fpl_u32 *source);
 		//! Loads the 64-bit unsigned value atomically and returns the result.
-		fpl_api uint64_t AtomicLoadU64(volatile uint64_t *source);
+		fpl_api fpl_u64 AtomicLoadU64(volatile fpl_u64 *source);
 		//! Loads the 32-bit signed value atomically and returns the result.
-		fpl_api int32_t AtomicLoadS32(volatile int32_t *source);
+		fpl_api fpl_s32 AtomicLoadS32(volatile fpl_s32 *source);
 		//! Loads the 64-bit signed value atomically and returns the result.
-		fpl_api int64_t AtomicLoadS64(volatile int64_t *source);
+		fpl_api fpl_s64 AtomicLoadS64(volatile fpl_s64 *source);
 		//! Loads the 64-bit signed value atomically and returns the result.
 		fpl_api void *AtomicLoadPtr(volatile void **source);
 
 		//! Stores the 32-bit unsigned value atomically into the target.
-		fpl_api void AtomicStoreU32(volatile uint32_t *dest, const uint32_t value);
+		fpl_api void AtomicStoreU32(volatile fpl_u32 *dest, const fpl_u32 value);
 		//! Stores the 64-bit unsigned value atomically into the target.
-		fpl_api void AtomicStoreU64(volatile uint64_t *dest, const uint64_t value);
+		fpl_api void AtomicStoreU64(volatile fpl_u64 *dest, const fpl_u64 value);
 		//! Stores the 32-bit signed value atomically into the target.
-		fpl_api void AtomicStoreS32(volatile int32_t *dest, const int32_t value);
+		fpl_api void AtomicStoreS32(volatile fpl_s32 *dest, const fpl_s32 value);
 		//! Stores the 64-bit signed value atomically into the target.
-		fpl_api void AtomicStoreS64(volatile int64_t *dest, const int64_t value);
+		fpl_api void AtomicStoreS64(volatile fpl_s64 *dest, const fpl_s64 value);
 		//! Stores the pointer value atomically into the target.
 		fpl_api void AtomicStorePtr(volatile void **dest, const void *value);
 
@@ -1049,9 +1107,9 @@ namespace fpl {
 		/*@{*/
 
 		//! Returns the total number of processor cores
-		fpl_api uint32_t GetProcessorCoreCount();
+		fpl_api fpl_u32 GetProcessorCoreCount();
 		//! Returns the processor name/identifier. Result is written in the required destination buffer.
-		fpl_api char *GetProcessorName(char *destBuffer, const uint32_t maxDestBufferLen);
+		fpl_api char *GetProcessorName(char *destBuffer, const fpl_u32 maxDestBufferLen);
 
 		/*@}*/
 	}
@@ -1120,9 +1178,9 @@ namespace fpl {
 		//! Compability profile
 		VideoCompabilityProfile profile;
 		//! Desired major version
-		uint32_t majorVersion;
+		fpl_u32 majorVersion;
 		//! Desired minor version
-		uint32_t minorVersion;
+		fpl_u32 minorVersion;
 		//! Vertical syncronisation is wanted
 		bool isVSync;
 		//! Backbuffer size is automatically resized. Useable only for software rendering!
@@ -1190,19 +1248,19 @@ namespace fpl {
 		//! Audio format
 		AudioFormatType type;
 		//! Samples per seconds
-		uint32_t sampleRate;
+		fpl_u32 sampleRate;
 		//! Number of channels
-		uint32_t channels;
+		fpl_u32 channels;
 		//! Number of periods
-		uint32_t periods;
+		fpl_u32 periods;
 		//! Buffer size for one period
-		uint32_t bufferSizeInBytes;
+		fpl_u32 bufferSizeInBytes;
 		//! Buffer size in frames for one period
-		uint32_t bufferSizeInFrames;
+		fpl_u32 bufferSizeInFrames;
 	};
 
 	//! Audio Client Read Callback Function
-	typedef uint32_t(AudioClientReadFunction)(const AudioDeviceFormat &deviceFormat, const uint32_t frameCount, void *outputSamples, void *userData);
+	typedef fpl_u32(AudioClientReadFunction)(const AudioDeviceFormat &deviceFormat, const fpl_u32 frameCount, void *outputSamples, void *userData);
 
 	//! Audio settings
 	struct AudioSettings {
@@ -1213,7 +1271,7 @@ namespace fpl {
 		//! The targeted driver
 		AudioDriverType driver;
 		//! Audio buffer in milliseconds
-		uint32_t bufferSizeInMilliSeconds;
+		fpl_u32 bufferSizeInMilliSeconds;
 		//! Is exclude mode prefered
 		bool preferExclusiveMode;
 		//! User data pointer for client read callback
@@ -1243,13 +1301,13 @@ namespace fpl {
 		//! Window title
 		char windowTitle[256];
 		//! Window width in screen coordinates
-		uint32_t windowWidth;
+		fpl_u32 windowWidth;
 		//! Window height in screen coordinates
-		uint32_t windowHeight;
+		fpl_u32 windowHeight;
 		//! Fullscreen width in screen coordinates
-		uint32_t fullscreenWidth;
+		fpl_u32 fullscreenWidth;
 		//! Fullscreen height in screen coordinates
-		uint32_t fullscreenHeight;
+		fpl_u32 fullscreenHeight;
 		//! Is window resizable
 		bool isResizable;
 		//! Is window in fullscreen mode
@@ -1315,9 +1373,9 @@ namespace fpl {
 	//! Returns last error string
 	fpl_api const char *GetPlatformLastError();
 	//! Returns last error string from the given index
-	fpl_api const char *GetPlatformLastError(const size_t index);
+	fpl_api const char *GetPlatformLastError(const fpl_size index);
 	//! Returns number of last errors
-	fpl_api size_t GetPlatformLastErrorCount();
+	fpl_api fpl_size GetPlatformLastErrorCount();
 
 	/*@}*/
 
@@ -1397,7 +1455,7 @@ namespace fpl {
 		//! Stores all required information for a thread, like its handle and its state, etc.
 		struct ThreadContext {
 			//! The identifier of the thread
-			uint64_t id;
+			fpl_u64 id;
 			//! The stored run function
 			run_thread_function *runFunc;
 			//! The user data passed to the run function
@@ -1427,7 +1485,7 @@ namespace fpl {
 		//! Create a thread and return the context for it. When autoStart is set to true, it will start immediatly. 
 		fpl_api ThreadContext *ThreadCreate(run_thread_function *runFunc, void *data, const bool autoStart = true);
 		//! Let the current thread sleep for the number of given milliseconds
-		fpl_api void ThreadSleep(const uint32_t milliseconds);
+		fpl_api void ThreadSleep(const fpl_u32 milliseconds);
 		//! Suspend the given thread, so any user code will get be freezed at the current point. Returns true when the thread was successfully suspended.
 		fpl_api bool ThreadSuspend(ThreadContext *context);
 		//! Resume a suspended thread, so any user code will continue to run. Returns true when the thread was successfully resumed.
@@ -1435,18 +1493,18 @@ namespace fpl {
 		//! Stop the given thread and release all underlying resources.
 		fpl_api void ThreadDestroy(ThreadContext *context);
 		//! Wait until the given thread is done running. When maxMilliseconds is set to UINT32_MAX it will wait infinitly.
-		fpl_api void ThreadWaitForOne(ThreadContext *context, const uint32_t maxMilliseconds = UINT32_MAX);
+		fpl_api void ThreadWaitForOne(ThreadContext *context, const fpl_u32 maxMilliseconds = FPL_MAX_U32);
 		//! Wait until all given threads are done running. When maxMilliseconds is set to UINT32_MAX it will wait infinitly.
-		fpl_api void ThreadWaitForAll(ThreadContext **contexts, const uint32_t count, const uint32_t maxMilliseconds = UINT32_MAX);
+		fpl_api void ThreadWaitForAll(ThreadContext **contexts, const fpl_u32 count, const fpl_u32 maxMilliseconds = FPL_MAX_U32);
 		//! Wait until one of given threads are done running. When maxMilliseconds is set to UINT32_MAX it will wait infinitly.
-		fpl_api void ThreadWaitForAny(ThreadContext **contexts, const uint32_t count, const uint32_t maxMilliseconds = UINT32_MAX);
+		fpl_api void ThreadWaitForAny(ThreadContext **contexts, const fpl_u32 count, const fpl_u32 maxMilliseconds = FPL_MAX_U32);
 
 		//! Creates a mutex
 		fpl_api ThreadMutex MutexCreate();
 		//! Destroys the given mutex
 		fpl_api void MutexDestroy(ThreadMutex &mutex);
 		//! Locks the given mutex and waits until it gets unlocked. When maxMilliseconds is set to UINT32_MAX it will wait infinitly.
-		fpl_api void MutexLock(ThreadMutex &mutex, const uint32_t maxMilliseconds = UINT32_MAX);
+		fpl_api void MutexLock(ThreadMutex &mutex, const fpl_u32 maxMilliseconds = FPL_MAX_U32);
 		//! Unlocks the given mutex
 		fpl_api void MutexUnlock(ThreadMutex &mutex);
 
@@ -1455,11 +1513,11 @@ namespace fpl {
 		//! Destroys the given signal
 		fpl_api void SignalDestroy(ThreadSignal &availableSignal);
 		//! Waits until the given signal are waked up. When maxMilliseconds is set to UINT32_MAX it will wait infinitly.
-		fpl_api bool SignalWaitForOne(ThreadSignal &availableSignal, const uint32_t maxMilliseconds = UINT32_MAX);
+		fpl_api bool SignalWaitForOne(ThreadSignal &availableSignal, const fpl_u32 maxMilliseconds = FPL_MAX_U32);
 		//! Waits until all the given signal are waked up. When maxMilliseconds is set to UINT32_MAX it will wait infinitly.
-		fpl_api bool SignalWaitForAll(ThreadSignal **availableSignal, const uint32_t count, const uint32_t maxMilliseconds = UINT32_MAX);
+		fpl_api bool SignalWaitForAll(ThreadSignal **availableSignal, const fpl_u32 count, const fpl_u32 maxMilliseconds = FPL_MAX_U32);
 		//! Waits until any of the given signals wakes up. When maxMilliseconds is set to UINT32_MAX it will wait infinitly.
-		fpl_api bool SignalWaitForAny(ThreadSignal **availableSignal, const uint32_t count, const uint32_t maxMilliseconds = UINT32_MAX);
+		fpl_api bool SignalWaitForAny(ThreadSignal **availableSignal, const fpl_u32 count, const fpl_u32 maxMilliseconds = FPL_MAX_U32);
 		//! Wakes up the given signal
 		fpl_api bool SignalWakeUp(ThreadSignal &availableSignal);
 		//! Resets the given signal
@@ -1477,17 +1535,17 @@ namespace fpl {
 		/*@{*/
 
 		//! Clears the given memory by the given size to zero.
-		fpl_api void MemoryClear(void *mem, const size_t size);
+		fpl_api void MemoryClear(void *mem, const fpl_size size);
 		//! Copies the given source memory with its length to the target memory
-		fpl_api void MemoryCopy(void *sourceMem, const size_t sourceSize, void *targetMem);
+		fpl_api void MemoryCopy(void *sourceMem, const fpl_size sourceSize, void *targetMem);
 		//! Allocates memory from the operating system by the given size. The memory is guaranteed to be initialized by zero.
-		fpl_api void *MemoryAllocate(const size_t size);
+		fpl_api void *MemoryAllocate(const fpl_size size);
 		//! Releases the memory allocated from the operating system.
 		fpl_api void MemoryFree(void *ptr);
 		//! Allocates memory on the current stack. Use this very carefully, it will be released then the current scope goes out of scope!
-		fpl_api void *MemoryStackAllocate(const size_t size);
+		fpl_api void *MemoryStackAllocate(const fpl_size size);
 		//! Allocates aligned memory from the operating system by the given alignment. The memory is guaranteed to be initialized by zero.
-		fpl_api void *MemoryAlignedAllocate(const size_t size, const size_t alignment);
+		fpl_api void *MemoryAlignedAllocate(const fpl_size size, const fpl_size alignment);
 		//! Releases aligned memory from the operating system.
 		fpl_api void MemoryAlignedFree(void *ptr);
 
@@ -1517,25 +1575,25 @@ namespace fpl {
 		/*@{*/
 
 		//! Returns the number of characters of the given 8-bit Ansi string. Null terminator is not included.
-		fpl_api uint32_t GetAnsiStringLength(const char *str);
+		fpl_api fpl_u32 GetAnsiStringLength(const char *str);
 		//! Returns the number of characters of the given 16-bit Wide string. Null terminator is not included.
-		fpl_api uint32_t GetWideStringLength(const wchar_t *str);
+		fpl_api fpl_u32 GetWideStringLength(const wchar_t *str);
 		//! Copies the given 8-bit source Ansi string with length into a destination Ansi string. Does not allocate any memory.
-		fpl_api char *CopyAnsiString(const char *source, const uint32_t sourceLen, char *dest, const uint32_t maxDestLen);
+		fpl_api char *CopyAnsiString(const char *source, const fpl_u32 sourceLen, char *dest, const fpl_u32 maxDestLen);
 		//! Copies the given 8-bit source Ansi string into a destination Ansi string. Does not allocate any memory.
-		fpl_api char *CopyAnsiString(const char *source, char *dest, const uint32_t maxDestLen);
+		fpl_api char *CopyAnsiString(const char *source, char *dest, const fpl_u32 maxDestLen);
 		//! Copies the given 16-bit source Wide string with length into a destination Wide string. Does not allocate any memory.
-		fpl_api wchar_t *CopyWideString(const wchar_t *source, const uint32_t sourceLen, wchar_t *dest, const uint32_t maxDestLen);
+		fpl_api wchar_t *CopyWideString(const wchar_t *source, const fpl_u32 sourceLen, wchar_t *dest, const fpl_u32 maxDestLen);
 		//! Copies the given 16-bit source Wide string into a destination Wide string. Does not allocate any memory.
-		fpl_api wchar_t *CopyWideString(const wchar_t *source, wchar_t *dest, const uint32_t maxDestLen);
+		fpl_api wchar_t *CopyWideString(const wchar_t *source, wchar_t *dest, const fpl_u32 maxDestLen);
 		//! Converts the given 16-bit source Wide string with length in a 8-bit Ansi string. Does not allocate any memory.
-		fpl_api char *WideStringToAnsiString(const wchar_t *wideSource, const uint32_t maxWideSourceLen, char *ansiDest, const uint32_t maxAnsiDestLen);
+		fpl_api char *WideStringToAnsiString(const wchar_t *wideSource, const fpl_u32 maxWideSourceLen, char *ansiDest, const fpl_u32 maxAnsiDestLen);
 		//! Converts the given 16-bit Wide string in a 8-bit UTF-8 string. Does not allocate any memory.
-		fpl_api char *WideStringToUTF8String(const wchar_t *wideSource, const uint32_t maxWideSourceLen, char *utf8Dest, const uint32_t maxUtf8DestLen);
+		fpl_api char *WideStringToUTF8String(const wchar_t *wideSource, const fpl_u32 maxWideSourceLen, char *utf8Dest, const fpl_u32 maxUtf8DestLen);
 		//! Converts the given 8-bit Ansi string in a 16-bit Wide string. Does not allocate any memory.
-		fpl_api wchar_t *AnsiStringToWideString(const char *ansiSource, const uint32_t ansiSourceLen, wchar_t *wideDest, const uint32_t maxWideDestLen);
+		fpl_api wchar_t *AnsiStringToWideString(const char *ansiSource, const fpl_u32 ansiSourceLen, wchar_t *wideDest, const fpl_u32 maxWideDestLen);
 		//! Converts the given 8-bit UTF-8 string in a 16-bit Wide string. Does not allocate any memory.
-		fpl_api wchar_t *UTF8StringToWideString(const char *utf8Source, const uint32_t utf8SourceLen, wchar_t *wideDest, const uint32_t maxWideDestLen);
+		fpl_api wchar_t *UTF8StringToWideString(const char *utf8Source, const fpl_u32 utf8SourceLen, wchar_t *wideDest, const fpl_u32 maxWideDestLen);
 
 		/*@}*/
 	}
@@ -1610,7 +1668,7 @@ namespace fpl {
 		FPL_ENUM_AS_FLAGS_OPERATORS(FileAttributeFlag)
 
 		//! Maximum length of a file entry path
-			fpl_constant uint32_t MAX_FILEENTRY_PATH_LENGTH = 1024;
+			fpl_constant fpl_u32 MAX_FILEENTRY_PATH_LENGTH = 1024;
 
 			//! Entry for storing current file informations (path, type, attributes, etc.)
 		struct FileEntry {
@@ -1633,22 +1691,22 @@ namespace fpl {
 		//! Creates a binary file to a wide string path and returns the handle of it.
 		fpl_api FileHandle CreateBinaryFile(const wchar_t *filePath);
 		//! Reads a block from the given file handle and returns the number of bytes readed. Operation is limited to a 2 GB byte boundary.
-		fpl_api uint32_t ReadFileBlock32(const FileHandle &fileHandle, const uint32_t sizeToRead, void *targetBuffer, const uint32_t maxTargetBufferSize);
+		fpl_api fpl_u32 ReadFileBlock32(const FileHandle &fileHandle, const fpl_u32 sizeToRead, void *targetBuffer, const fpl_u32 maxTargetBufferSize);
 		//! Writes a block to the given file handle and returns the number of bytes written. Operation is limited to a 2 GB byte boundary.
-		fpl_api uint32_t WriteFileBlock32(const FileHandle &fileHandle, void *sourceBuffer, const uint32_t sourceSize);
+		fpl_api fpl_u32 WriteFileBlock32(const FileHandle &fileHandle, void *sourceBuffer, const fpl_u32 sourceSize);
 		//! Sets the current file position by the given position, depending on the mode its absolute or relative. Position is limited to a 2 GB byte boundary.
-		fpl_api void SetFilePosition32(const FileHandle &fileHandle, const uint32_t position, const FilePositionMode mode);
+		fpl_api void SetFilePosition32(const FileHandle &fileHandle, const fpl_u32 position, const FilePositionMode mode);
 		//! Returns the current file position. Position is limited to a 2 GB byte boundary.
-		fpl_api uint32_t GetFilePosition32(const FileHandle &fileHandle);
+		fpl_api fpl_u32 GetFilePosition32(const FileHandle &fileHandle);
 		//! Closes the given file handle and resets the handle to zero.
 		fpl_api void CloseFile(FileHandle &fileHandle);
 
 		// @TODO(final): Add 64-bit file operations as well!
 
 		//! Returns the 32-bit file size in bytes for the given file. Its limited to files < 2 GB.
-		fpl_api uint32_t GetFileSize32(const char *filePath);
+		fpl_api fpl_u32 GetFileSize32(const char *filePath);
 		//! Returns the 32-bit file size in bytes for a opened file. Its limited to files < 2 GB.
-		fpl_api uint32_t GetFileSize32(const FileHandle &fileHandle);
+		fpl_api fpl_u32 GetFileSize32(const FileHandle &fileHandle);
 		//! Returns true when the given file path physically exists.
 		fpl_api bool FileExists(const char *filePath);
 		//! Copies the given source file to the target path and returns truwe when copy was successful. Target path must include the full path to the file. When overwrite is set, the target file path will always be overwritten.
@@ -1681,19 +1739,19 @@ namespace fpl {
 		/*@{*/
 
 		//! Returns the full path to this executable, including the executable file name. Result is written in the required destination buffer.
-		fpl_api char *GetExecutableFilePath(char *destPath, const uint32_t maxDestLen);
+		fpl_api char *GetExecutableFilePath(char *destPath, const fpl_u32 maxDestLen);
 		//! Returns the full path to your home directory. Result is written in the required destination buffer.
-		fpl_api char *GetHomePath(char *destPath, const uint32_t maxDestLen);
+		fpl_api char *GetHomePath(char *destPath, const fpl_u32 maxDestLen);
 		//! Returns the path from the given source path. Result is written in the required destination buffer.
-		fpl_api char *ExtractFilePath(const char *sourcePath, char *destPath, const uint32_t maxDestLen);
+		fpl_api char *ExtractFilePath(const char *sourcePath, char *destPath, const fpl_u32 maxDestLen);
 		//! Returns the file extension from the given source path.
 		fpl_api char *ExtractFileExtension(const char *sourcePath);
 		//! Returns the file name including the file extension from the given source path.
 		fpl_api char *ExtractFileName(const char *sourcePath);
 		//! Changes the file extension on the given source path and writes the result into the destination path. Returns the pointer of the destination path. Result is written in the required destination buffer.
-		fpl_api char *ChangeFileExtension(const char *filePath, const char *newFileExtension, char *destPath, const uint32_t maxDestLen);
+		fpl_api char *ChangeFileExtension(const char *filePath, const char *newFileExtension, char *destPath, const fpl_u32 maxDestLen);
 		//! Combines all included path by the systems path separator. Returns the pointer of the destination path. Result is written in the required destination buffer.
-		fpl_api char *CombinePath(char *destPath, const uint32_t maxDestPathLen, const uint32_t pathCount, ...);
+		fpl_api char *CombinePath(char *destPath, const fpl_u32 maxDestPathLen, const fpl_u32 pathCount, ...);
 
 		/*@}*/
 	}
@@ -1886,9 +1944,9 @@ namespace fpl {
 			//! Window event type
 			WindowEventType type;
 			//! Window width in screen coordinates
-			uint32_t width;
+			fpl_u32 width;
 			//! Window height in screen coordinates
-			uint32_t height;
+			fpl_u32 height;
 		};
 
 		//! Keyboard event types (KeyDown, KeyUp, Char, ...)
@@ -1932,7 +1990,7 @@ namespace fpl {
 			//! Keyboard event type
 			KeyboardEventType type;
 			//! Raw key code
-			uint64_t keyCode;
+			fpl_u64 keyCode;
 			//! Mapped key
 			Key mappedKey;
 			//! Keyboard modifiers
@@ -1980,9 +2038,9 @@ namespace fpl {
 			//! Mouse button
 			MouseButtonType mouseButton;
 			//! Mouse X-Position
-			int32_t mouseX;
+			fpl_s32 mouseX;
 			//! Mouse Y-Position
-			int32_t mouseY;
+			fpl_s32 mouseY;
 			//! Mouse wheel delta
 			float wheelDelta;
 		};
@@ -2072,7 +2130,7 @@ namespace fpl {
 			//! Gamepad event type
 			GamepadEventType type;
 			//! Gamepad device index
-			uint32_t deviceIndex;
+			fpl_u32 deviceIndex;
 			//! Full gamepad state
 			GamepadState state;
 		};
@@ -2124,17 +2182,17 @@ namespace fpl {
 		//! Window size in screen coordinates
 		struct WindowSize {
 			//! Width in screen coordinates
-			uint32_t width;
+			fpl_u32 width;
 			//! Height in screen coordinates
-			uint32_t height;
+			fpl_u32 height;
 		};
 
 		//! Window position in screen coordinates
 		struct WindowPosition {
 			//! Left position in screen coordinates
-			int32_t left;
+			fpl_s32 left;
 			//! Top position in screen coordinates
-			int32_t top;
+			fpl_s32 top;
 		};
 
 		//! Returns true when the window is active.
@@ -2148,19 +2206,19 @@ namespace fpl {
 		//! Returns the inner window area.
 		fpl_api WindowSize GetWindowArea();
 		//! Resizes the window to fit the inner area to the given size.
-		fpl_api void SetWindowArea(const uint32_t width, const uint32_t height);
+		fpl_api void SetWindowArea(const fpl_u32 width, const fpl_u32 height);
 		//! Returns true when the window is resizable.
 		fpl_api bool IsWindowResizable();
 		//! Enables or disables the ability to resize the window.
 		fpl_api void SetWindowResizeable(const bool value);
 		//! Enables or disables fullscreen mode
-		fpl_api void SetWindowFullscreen(const bool value, const uint32_t fullscreenWidth = 0, const uint32_t fullscreenHeight = 0, const uint32_t refreshRate = 0);
+		fpl_api void SetWindowFullscreen(const bool value, const fpl_u32 fullscreenWidth = 0, const fpl_u32 fullscreenHeight = 0, const fpl_u32 refreshRate = 0);
 		//! Returns true when the window is in fullscreen mode
 		fpl_api bool IsWindowFullscreen();
 		//! Returns the absolute window position.
 		fpl_api WindowPosition GetWindowPosition();
 		//! Sets the window absolut position to the given coordinates.
-		fpl_api void SetWindowPosition(const int32_t left, const int32_t top);
+		fpl_api void SetWindowPosition(const fpl_s32 left, const fpl_s32 top);
 		//! Sets the window title
 		fpl_api void SetWindowTitle(const char *title);
 
@@ -2173,9 +2231,9 @@ namespace fpl {
 		/*@{*/
 
 		//! Returns the current clipboard ansi text
-		fpl_api char *GetClipboardAnsiText(char *dest, const uint32_t maxDestLen);
+		fpl_api char *GetClipboardAnsiText(char *dest, const fpl_u32 maxDestLen);
 		//! Returns the current clipboard wide text
-		fpl_api wchar_t *GetClipboardWideText(wchar_t *dest, const uint32_t maxDestLen);
+		fpl_api wchar_t *GetClipboardWideText(wchar_t *dest, const fpl_u32 maxDestLen);
 		//! Overwrites the current clipboard ansi text with the given one.
 		fpl_api bool SetClipboardText(const char *ansiSource);
 		//! Overwrites the current clipboard wide text with the given one.
@@ -2197,19 +2255,19 @@ namespace fpl {
 		//! Video backbuffer container. Use this for accessing the pixels directly. Use with care!
 		struct VideoBackBuffer {
 			//! The 32-bit pixel top-down array, format: 0xAABBGGRR. Do not modify before WindowUpdate
-			uint32_t *pixels;
+			fpl_u32 *pixels;
 			//! The width of the backbuffer in pixels. Do not modify, it will be set automatically.
-			uint32_t width;
+			fpl_u32 width;
 			//! The height of the backbuffer in pixels. Do not modify, it will be set automatically.
-			uint32_t height;
+			fpl_u32 height;
 			//! The size of one scanline. Do not modify, it will be set automatically.
-			size_t stride;
+			fpl_size stride;
 		};
 
 		//! Returns the pointer to the video software context.
 		fpl_api VideoBackBuffer *GetVideoBackBuffer();
 		//! Resizes the current video backbuffer
-		fpl_api bool ResizeVideoBackBuffer(const uint32_t width, const uint32_t height);
+		fpl_api bool ResizeVideoBackBuffer(const fpl_u32 width, const fpl_u32 height);
 
 		/*@}*/
 	};
@@ -2308,8 +2366,8 @@ using namespace fpl::threading;
 //
 #define FPL_CLEARMEM(T, memory, size, shift, mask) \
 	do { \
-		size_t clearedBytes = 0; \
-		if (sizeof(T) > sizeof(uint8_t)) { \
+		fpl_size clearedBytes = 0; \
+		if (sizeof(T) > sizeof(fpl_u8)) { \
 			T *dataBlock = static_cast<T *>(memory); \
 			T *dataBlockEnd = static_cast<T *>(memory) + (size >> shift); \
 			while (dataBlock != dataBlockEnd) { \
@@ -2317,8 +2375,8 @@ using namespace fpl::threading;
 				clearedBytes += sizeof(T); \
 			} \
 		} \
-		uint8_t *data8 = (uint8_t *)memory + clearedBytes; \
-		uint8_t *data8End = (uint8_t *)memory + size; \
+		fpl_u8 *data8 = (fpl_u8 *)memory + clearedBytes; \
+		fpl_u8 *data8End = (fpl_u8 *)memory + size; \
 		while (data8 != data8End) { \
 			*data8++ = 0; \
 		} \
@@ -2326,8 +2384,8 @@ using namespace fpl::threading;
 
 #define FPL_COPYMEM(T, source, sourceSize, dest, shift, mask) \
 	do { \
-		size_t copiedBytes = 0; \
-		if (sizeof(T) > sizeof(uint8_t)) { \
+		fpl_size copiedBytes = 0; \
+		if (sizeof(T) > sizeof(fpl_u8)) { \
 			T *sourceDataBlock = static_cast<T *>(source); \
 			T *sourceDataBlockEnd = static_cast<T *>(source) + (sourceSize >> shift); \
 			T *destDataBlock = static_cast<T *>(dest); \
@@ -2336,9 +2394,9 @@ using namespace fpl::threading;
 				copiedBytes += sizeof(T); \
 			} \
 		} \
-		uint8_t *sourceData8 = (uint8_t *)source + copiedBytes; \
-		uint8_t *sourceData8End = (uint8_t *)source + sourceSize; \
-		uint8_t *destData8 = (uint8_t *)dest + copiedBytes; \
+		fpl_u8 *sourceData8 = (fpl_u8 *)source + copiedBytes; \
+		fpl_u8 *sourceData8End = (fpl_u8 *)source + sourceSize; \
+		fpl_u8 *destData8 = (fpl_u8 *)dest + copiedBytes; \
 		while (sourceData8 != sourceData8End) { \
 			*destData8++ = *sourceData8++; \
 		} \
@@ -2362,16 +2420,16 @@ namespace fpl {
 		//
 		// Internal types and functions
 		//
-		fpl_constant uint32_t MAX_LAST_ERROR_STRING_LENGTH = 1024;
+		fpl_constant fpl_u32 MAX_LAST_ERROR_STRING_LENGTH = 1024;
 #	if defined(FPL_ENABLE_MULTIPLE_ERRORSTATES)
-		fpl_constant size_t MAX_ERRORSTATE_COUNT = 1024;
+		fpl_constant fpl_size MAX_ERRORSTATE_COUNT = 1024;
 #	else
-		fpl_constant size_t MAX_ERRORSTATE_COUNT = 1;
+		fpl_constant fpl_size MAX_ERRORSTATE_COUNT = 1;
 #	endif
 
 		struct ErrorState {
 			char errors[MAX_ERRORSTATE_COUNT][MAX_LAST_ERROR_STRING_LENGTH];
-			size_t count;
+			fpl_size count;
 		};
 
 		fpl_globalvar ErrorState *global__LastErrorState = fpl_null;
@@ -2383,9 +2441,9 @@ namespace fpl {
 				FPL_ASSERT(format != fpl_null);
 				char buffer[MAX_LAST_ERROR_STRING_LENGTH];
 				vsnprintf(buffer, FPL_ARRAYCOUNT(buffer), format, argList);
-				uint32_t messageLen = strings::GetAnsiStringLength(buffer);
+				fpl_u32 messageLen = strings::GetAnsiStringLength(buffer);
 				FPL_ASSERT(state->count < MAX_ERRORSTATE_COUNT);
-				size_t errorIndex = state->count++;
+				fpl_size errorIndex = state->count++;
 				strings::CopyAnsiString(buffer, messageLen, state->errors[errorIndex], MAX_LAST_ERROR_STRING_LENGTH);
 #		if defined(FPL_ENABLE_ERROR_IN_CONSOLE)
 				console::ConsoleError(buffer);
@@ -2399,7 +2457,7 @@ namespace fpl {
 				FPL_ASSERT(format != fpl_null);
 				char buffer[MAX_LAST_ERROR_STRING_LENGTH];
 				vsnprintf(buffer, FPL_ARRAYCOUNT(buffer), format, argList);
-				uint32_t messageLen = strings::GetAnsiStringLength(buffer);
+				fpl_u32 messageLen = strings::GetAnsiStringLength(buffer);
 				strings::CopyAnsiString(buffer, messageLen, state->errors[0], MAX_LAST_ERROR_STRING_LENGTH);
 #		if defined(FPL_ENABLE_ERROR_IN_CONSOLE)
 				console::ConsoleError(buffer);
@@ -2416,10 +2474,10 @@ namespace fpl {
 		}
 
 		// Maximum number of threads you can have in your process
-		fpl_constant uint32_t MAX_THREAD_COUNT = 64;
+		fpl_constant fpl_u32 MAX_THREAD_COUNT = 64;
 
 		// Maximum number of signals you can wait for
-		fpl_constant uint32_t MAX_SIGNAL_COUNT = 256;
+		fpl_constant fpl_u32 MAX_SIGNAL_COUNT = 256;
 
 		struct ThreadState {
 			threading::ThreadContext mainThread;
@@ -2430,10 +2488,10 @@ namespace fpl {
 
 		fpl_internal_inline threading::ThreadContext *GetThreadContext() {
 			threading::ThreadContext *result = fpl_null;
-			for (uint32_t index = 0; index < MAX_THREAD_COUNT; ++index) {
+			for (fpl_u32 index = 0; index < MAX_THREAD_COUNT; ++index) {
 				threading::ThreadContext *thread = global__ThreadState.threads + index;
-				uint32_t state = atomics::AtomicLoadU32((volatile uint32_t *)&thread->currentState);
-				if (state == (uint32_t)threading::ThreadState::Stopped) {
+				fpl_u32 state = atomics::AtomicLoadU32((volatile fpl_u32 *)&thread->currentState);
+				if (state == (fpl_u32)threading::ThreadState::Stopped) {
 					result = thread;
 					break;
 				}
@@ -2454,7 +2512,7 @@ namespace fpl {
 			void *clientUserData;
 		};
 
-		fpl_internal_inline uint32_t GetAudioSampleSizeInBytes(const AudioFormatType format) {
+		fpl_internal_inline fpl_u32 GetAudioSampleSizeInBytes(const AudioFormatType format) {
 			switch (format) {
 				case AudioFormatType::U8:
 					return 1;
@@ -2479,7 +2537,7 @@ namespace fpl {
 			"F32",
 		};
 		fpl_internal_inline const char *GetAudioFormatString(AudioFormatType format) {
-			uint32_t index = (uint32_t)format;
+			fpl_u32 index = (fpl_u32)format;
 			FPL_ASSERT(index < FPL_ARRAYCOUNT(AUDIO_FORMAT_TYPE_STRINGS));
 			const char *result = AUDIO_FORMAT_TYPE_STRINGS[index];
 			return(result);
@@ -2491,19 +2549,19 @@ namespace fpl {
 			"DirectSound",
 		};
 		fpl_internal_inline const char *GetAudioDriverString(AudioDriverType driver) {
-			uint32_t index = (uint32_t)driver;
+			fpl_u32 index = (fpl_u32)driver;
 			FPL_ASSERT(index < FPL_ARRAYCOUNT(AUDIO_DRIVER_TYPE_STRINGS));
 			const char *result = AUDIO_DRIVER_TYPE_STRINGS[index];
 			return(result);
 		}
 
-		fpl_internal_inline uint32_t GetAudioBufferSizeInFrames(uint32_t sampleRate, uint32_t bufferSizeInMilliSeconds) {
-			uint32_t result = (sampleRate / 1000) * bufferSizeInMilliSeconds;
+		fpl_internal_inline fpl_u32 GetAudioBufferSizeInFrames(fpl_u32 sampleRate, fpl_u32 bufferSizeInMilliSeconds) {
+			fpl_u32 result = (sampleRate / 1000) * bufferSizeInMilliSeconds;
 			return(result);
 		}
 
-		fpl_internal_inline uint32_t ReadAudioFramesFromClient(const CommonAudioState &commonAudio, uint32_t frameCount, void *pSamples) {
-			uint32_t outputSamplesWritten = 0;
+		fpl_internal_inline fpl_u32 ReadAudioFramesFromClient(const CommonAudioState &commonAudio, fpl_u32 frameCount, void *pSamples) {
+			fpl_u32 outputSamplesWritten = 0;
 			if (commonAudio.clientReadCallback != fpl_null) {
 				outputSamplesWritten = commonAudio.clientReadCallback(commonAudio.internalFormat, frameCount, pSamples, commonAudio.clientUserData);
 			}
@@ -2520,8 +2578,8 @@ namespace fpl {
 	// Common Strings
 	//
 	namespace strings {
-		fpl_api uint32_t GetAnsiStringLength(const char *str) {
-			uint32_t result = 0;
+		fpl_api fpl_u32 GetAnsiStringLength(const char *str) {
+			fpl_u32 result = 0;
 			if (str != fpl_null) {
 				while (*str++) {
 					result++;
@@ -2530,8 +2588,8 @@ namespace fpl {
 			return(result);
 		}
 
-		fpl_api uint32_t GetWideStringLength(const wchar_t *str) {
-			uint32_t result = 0;
+		fpl_api fpl_u32 GetWideStringLength(const wchar_t *str) {
+			fpl_u32 result = 0;
 			if (str != fpl_null) {
 				while (*str++) {
 					result++;
@@ -2540,11 +2598,11 @@ namespace fpl {
 			return(result);
 		}
 
-		fpl_api char *CopyAnsiString(const char *source, const uint32_t sourceLen, char *dest, const uint32_t maxDestLen) {
+		fpl_api char *CopyAnsiString(const char *source, const fpl_u32 sourceLen, char *dest, const fpl_u32 maxDestLen) {
 			FPL_ASSERT(source && dest);
 			FPL_ASSERT((sourceLen + 1) <= maxDestLen);
 			char *result = dest;
-			uint32_t index = 0;
+			fpl_u32 index = 0;
 			while (index++ < sourceLen) {
 				*dest++ = *source++;
 			}
@@ -2552,18 +2610,18 @@ namespace fpl {
 			return(result);
 		}
 
-		fpl_api char *CopyAnsiString(const char *source, char *dest, const uint32_t maxDestLen) {
+		fpl_api char *CopyAnsiString(const char *source, char *dest, const fpl_u32 maxDestLen) {
 			FPL_ASSERT(source);
-			uint32_t sourceLen = GetAnsiStringLength(source);
+			fpl_u32 sourceLen = GetAnsiStringLength(source);
 			char *result = CopyAnsiString(source, sourceLen, dest, maxDestLen);
 			return(result);
 		}
 
-		fpl_api wchar_t *CopyWideString(const wchar_t *source, const uint32_t sourceLen, wchar_t *dest, const uint32_t maxDestLen) {
+		fpl_api wchar_t *CopyWideString(const wchar_t *source, const fpl_u32 sourceLen, wchar_t *dest, const fpl_u32 maxDestLen) {
 			FPL_ASSERT(source && dest);
 			FPL_ASSERT((sourceLen + 1) <= maxDestLen);
 			wchar_t *result = dest;
-			uint32_t index = 0;
+			fpl_u32 index = 0;
 			while (index++ < sourceLen) {
 				*dest++ = *source++;
 			}
@@ -2571,9 +2629,9 @@ namespace fpl {
 			return(result);
 		}
 
-		fpl_api wchar_t *CopyWideString(const wchar_t *source, wchar_t *dest, const uint32_t maxDestLen) {
+		fpl_api wchar_t *CopyWideString(const wchar_t *source, wchar_t *dest, const fpl_u32 maxDestLen) {
 			FPL_ASSERT(source);
-			uint32_t sourceLen = GetWideStringLength(source);
+			fpl_u32 sourceLen = GetWideStringLength(source);
 			wchar_t *result = CopyWideString(source, sourceLen, dest, maxDestLen);
 			return(result);
 		}
@@ -2583,27 +2641,27 @@ namespace fpl {
 	// Common Memory
 	//
 	namespace memory {
-		fpl_api void *MemoryAlignedAllocate(const size_t size, const size_t alignment) {
+		fpl_api void *MemoryAlignedAllocate(const fpl_size size, const fpl_size alignment) {
 			FPL_ASSERT(size > 0);
 			FPL_ASSERT(alignment > 0);
 			FPL_ASSERT(!(alignment & (alignment - 1)));
 
 			// Allocate empty memory to hold a size of a pointer + the actual size + alignment padding 
-			size_t newSize = sizeof(void *) + size + (alignment << 1);
+			fpl_size newSize = sizeof(void *) + size + (alignment << 1);
 			void *basePtr = fpl::memory::MemoryAllocate(newSize);
 
 			// The resulting address starts after the stored base pointer
-			void *alignedPtr = (void *)((uint8_t *)basePtr + sizeof(void *));
+			void *alignedPtr = (void *)((fpl_u8 *)basePtr + sizeof(void *));
 
 			// Move the resulting address to a aligned one when not aligned
-			uintptr_t mask = alignment - 1;
-			if ((alignment > 1) && (((uintptr_t)alignedPtr & mask) != 0)) {
-				uintptr_t offset = ((uintptr_t)alignment - ((uintptr_t)alignedPtr & mask));
-				alignedPtr = (uint8_t *)alignedPtr + offset;
+			fpl_uintptr mask = alignment - 1;
+			if ((alignment > 1) && (((fpl_uintptr)alignedPtr & mask) != 0)) {
+				fpl_uintptr offset = ((fpl_uintptr)alignment - ((fpl_uintptr)alignedPtr & mask));
+				alignedPtr = (fpl_u8 *)alignedPtr + offset;
 			}
 
 			// Write the base pointer before the alignment pointer
-			*(void **)((void *)((uint8_t *)alignedPtr - sizeof(void *))) = basePtr;
+			*(void **)((void *)((fpl_u8 *)alignedPtr - sizeof(void *))) = basePtr;
 
 			// Ensure alignment
 			FPL_ASSERT(FPL_IS_ALIGNED(alignedPtr, alignment));
@@ -2615,38 +2673,38 @@ namespace fpl {
 			FPL_ASSERT(ptr != fpl_null);
 
 			// Free the base pointer which is stored to the left from the given pointer
-			void *basePtr = *(void **)((void *)((uint8_t *)ptr - sizeof(void *)));
+			void *basePtr = *(void **)((void *)((fpl_u8 *)ptr - sizeof(void *)));
 			MemoryFree(basePtr);
 		}
 
-		fpl_constant size_t MEM_SHIFT_64 = 3;
-		fpl_constant size_t MEM_MASK_64 = 0x00000007;
-		fpl_constant size_t MEM_SHIFT_32 = 2;
-		fpl_constant size_t MEM_MASK_32 = 0x00000003;
-		fpl_constant size_t MEM_SHIFT_16 = 1;
-		fpl_constant size_t MEM_MASK_16 = 0x00000001;
+		fpl_constant fpl_size MEM_SHIFT_64 = 3;
+		fpl_constant fpl_size MEM_MASK_64 = 0x00000007;
+		fpl_constant fpl_size MEM_SHIFT_32 = 2;
+		fpl_constant fpl_size MEM_MASK_32 = 0x00000003;
+		fpl_constant fpl_size MEM_SHIFT_16 = 1;
+		fpl_constant fpl_size MEM_MASK_16 = 0x00000001;
 
-		fpl_api void MemoryClear(void *mem, const size_t size) {
+		fpl_api void MemoryClear(void *mem, const fpl_size size) {
 			if (size % 8 == 0) {
-				FPL_CLEARMEM(uint64_t, mem, size, MEM_SHIFT_64, MEM_MASK_64);
+				FPL_CLEARMEM(fpl_u64, mem, size, MEM_SHIFT_64, MEM_MASK_64);
 			} else if (size % 4 == 0) {
-				FPL_CLEARMEM(uint32_t, mem, size, MEM_SHIFT_32, MEM_MASK_32);
+				FPL_CLEARMEM(fpl_u32, mem, size, MEM_SHIFT_32, MEM_MASK_32);
 			} else if (size % 2 == 0) {
-				FPL_CLEARMEM(uint16_t, mem, size, MEM_SHIFT_16, MEM_MASK_16);
+				FPL_CLEARMEM(fpl_u16, mem, size, MEM_SHIFT_16, MEM_MASK_16);
 			} else {
-				FPL_CLEARMEM(uint8_t, mem, size, 0, 0);
+				FPL_CLEARMEM(fpl_u8, mem, size, 0, 0);
 			}
 		}
 
-		fpl_api void MemoryCopy(void *sourceMem, const size_t sourceSize, void *targetMem) {
+		fpl_api void MemoryCopy(void *sourceMem, const fpl_size sourceSize, void *targetMem) {
 			if (sourceSize % 8 == 0) {
-				FPL_COPYMEM(uint64_t, sourceMem, sourceSize, targetMem, MEM_SHIFT_64, MEM_MASK_64);
+				FPL_COPYMEM(fpl_u64, sourceMem, sourceSize, targetMem, MEM_SHIFT_64, MEM_MASK_64);
 			} else if (sourceSize % 4 == 0) {
-				FPL_COPYMEM(uint32_t, sourceMem, sourceSize, targetMem, MEM_SHIFT_32, MEM_MASK_32);
+				FPL_COPYMEM(fpl_u32, sourceMem, sourceSize, targetMem, MEM_SHIFT_32, MEM_MASK_32);
 			} else if (sourceSize % 2 == 0) {
-				FPL_COPYMEM(uint16_t, sourceMem, sourceSize, targetMem, MEM_SHIFT_32, MEM_MASK_32);
+				FPL_COPYMEM(fpl_u16, sourceMem, sourceSize, targetMem, MEM_SHIFT_32, MEM_MASK_32);
 			} else {
-				FPL_COPYMEM(uint8_t, sourceMem, sourceSize, targetMem, 0, 0);
+				FPL_COPYMEM(fpl_u8, sourceMem, sourceSize, targetMem, 0, 0);
 			}
 		}
 	} // memory
@@ -2658,9 +2716,9 @@ namespace fpl {
 		fpl_api void *AtomicExchangePtr(volatile void **target, const void *value) {
 			FPL_ASSERT(target != fpl_null);
 #		if defined(FPL_ARCH_X64)
-			void *result = (void *)AtomicExchangeU64((volatile uint64_t *)target, (uint64_t)value);
+			void *result = (void *)AtomicExchangeU64((volatile fpl_u64 *)target, (fpl_u64)value);
 #		elif defined(FPL_ARCH_X86)
-			void *result = (void *)AtomicExchangeU32((volatile uint32_t *)target, (uint32_t)value);
+			void *result = (void *)AtomicExchangeU32((volatile fpl_u32 *)target, (fpl_u32)value);
 #		else
 #			error "Unsupported architecture/platform!"
 #		endif
@@ -2670,9 +2728,9 @@ namespace fpl {
 		fpl_api void *AtomicCompareAndExchangePtr(volatile void **dest, const void *comparand, const void *exchange) {
 			FPL_ASSERT(dest != fpl_null);
 #		if defined(FPL_ARCH_X64)
-			void *result = (void *)AtomicCompareAndExchangeU64((volatile uint64_t *)dest, (uint64_t)comparand, (uint64_t)exchange);
+			void *result = (void *)AtomicCompareAndExchangeU64((volatile fpl_u64 *)dest, (fpl_u64)comparand, (fpl_u64)exchange);
 #		elif defined(FPL_ARCH_X86)
-			void *result = (void *)AtomicCompareAndExchangeU32((volatile uint32_t *)dest, (uint32_t)comparand, (uint32_t)exchange);
+			void *result = (void *)AtomicCompareAndExchangeU32((volatile fpl_u32 *)dest, (fpl_u32)comparand, (fpl_u32)exchange);
 #		else
 #			error "Unsupported architecture/platform!"
 #		endif
@@ -2682,9 +2740,9 @@ namespace fpl {
 		fpl_api bool IsAtomicCompareAndExchangePtr(volatile void **dest, const void *comparand, const void *exchange) {
 			FPL_ASSERT(dest != fpl_null);
 #		if defined(FPL_ARCH_X64)
-			bool result = IsAtomicCompareAndExchangeU64((volatile uint64_t *)dest, (uint64_t)comparand, (uint64_t)exchange);
+			bool result = IsAtomicCompareAndExchangeU64((volatile fpl_u64 *)dest, (fpl_u64)comparand, (fpl_u64)exchange);
 #		elif defined(FPL_ARCH_X86)
-			bool result = IsAtomicCompareAndExchangeU32((volatile uint32_t *)dest, (uint32_t)comparand, (uint32_t)exchange);
+			bool result = IsAtomicCompareAndExchangeU32((volatile fpl_u32 *)dest, (fpl_u32)comparand, (fpl_u32)exchange);
 #		else
 #			error "Unsupported architecture/platform!"
 #endif
@@ -2693,9 +2751,9 @@ namespace fpl {
 
 		fpl_api void *AtomicLoadPtr(volatile void **source) {
 #		if defined(FPL_ARCH_X64)
-			void *result = (void *)AtomicLoadU64((volatile uint64_t *)source);
+			void *result = (void *)AtomicLoadU64((volatile fpl_u64 *)source);
 #		elif defined(FPL_ARCH_X86)
-			void *result = (void *)AtomicLoadU32((volatile uint32_t *)source);
+			void *result = (void *)AtomicLoadU32((volatile fpl_u32 *)source);
 #		else
 #			error "Unsupported architecture/platform!"
 #		endif
@@ -2704,9 +2762,9 @@ namespace fpl {
 
 		fpl_api void AtomicStorePtr(volatile void **dest, const void *value) {
 #		if defined(FPL_ARCH_X64)
-			AtomicStoreU64((volatile uint64_t *)dest, (uint64_t)value);
+			AtomicStoreU64((volatile fpl_u64 *)dest, (fpl_u64)value);
 #		elif defined(FPL_ARCH_X86)
-			AtomicStoreU32((volatile uint32_t *)dest, (uint32_t)value);
+			AtomicStoreU32((volatile fpl_u32 *)dest, (fpl_u32)value);
 #		else
 #			error "Unsupported architecture/platform!"
 #		endif
@@ -2717,8 +2775,8 @@ namespace fpl {
 	// Common Paths
 	//
 	namespace paths {
-		fpl_api char *ExtractFilePath(const char *sourcePath, char *destPath, const uint32_t maxDestLen) {
-			uint32_t sourceLen = strings::GetAnsiStringLength(sourcePath);
+		fpl_api char *ExtractFilePath(const char *sourcePath, char *destPath, const fpl_u32 maxDestLen) {
+			fpl_u32 sourceLen = strings::GetAnsiStringLength(sourcePath);
 			FPL_ASSERT(destPath != fpl_null);
 			FPL_ASSERT(maxDestLen >= (sourceLen + 1));
 
@@ -2780,12 +2838,12 @@ namespace fpl {
 			return(result);
 		}
 
-		fpl_api char *ChangeFileExtension(const char *filePath, const char *newFileExtension, char *destPath, const uint32_t maxDestLen) {
-			uint32_t pathLen = strings::GetAnsiStringLength(filePath);
-			uint32_t extLen = strings::GetAnsiStringLength(newFileExtension);
+		fpl_api char *ChangeFileExtension(const char *filePath, const char *newFileExtension, char *destPath, const fpl_u32 maxDestLen) {
+			fpl_u32 pathLen = strings::GetAnsiStringLength(filePath);
+			fpl_u32 extLen = strings::GetAnsiStringLength(newFileExtension);
 
 			// @NOTE: Put one additional character for the extension which may not contain a dot
-			uint32_t sourceLen = pathLen + (extLen + 1);
+			fpl_u32 sourceLen = pathLen + (extLen + 1);
 			FPL_ASSERT(destPath != fpl_null);
 			FPL_ASSERT(maxDestLen >= (sourceLen + 1));
 
@@ -2815,9 +2873,9 @@ namespace fpl {
 					++chPtr;
 				}
 
-				uint32_t copyLen;
+				fpl_u32 copyLen;
 				if (lastExtSeparatorPtr != fpl_null) {
-					copyLen = (uint32_t)((uintptr_t)lastExtSeparatorPtr - (uintptr_t)filePath);
+					copyLen = (fpl_u32)((fpl_uintptr)lastExtSeparatorPtr - (fpl_uintptr)filePath);
 				} else {
 					copyLen = pathLen;
 				}
@@ -2831,16 +2889,16 @@ namespace fpl {
 			return(result);
 		}
 
-		fpl_api char *CombinePath(char *destPath, const uint32_t maxDestPathLen, const uint32_t pathCount, ...) {
-			uint32_t curDestPosition = 0;
+		fpl_api char *CombinePath(char *destPath, const fpl_u32 maxDestPathLen, const fpl_u32 pathCount, ...) {
+			fpl_u32 curDestPosition = 0;
 			char *currentDestPtr = destPath;
 			va_list vargs;
 			va_start(vargs, pathCount);
-			for (uint32_t pathIndex = 0; pathIndex < pathCount; ++pathIndex) {
+			for (fpl_u32 pathIndex = 0; pathIndex < pathCount; ++pathIndex) {
 				char *path = va_arg(vargs, char *);
-				uint32_t pathLen = strings::GetAnsiStringLength(path);
+				fpl_u32 pathLen = strings::GetAnsiStringLength(path);
 				bool requireSeparator = pathIndex < (pathCount - 1);
-				uint32_t requiredPathLen = requireSeparator ? pathLen + 1 : pathLen;
+				fpl_u32 requiredPathLen = requireSeparator ? pathLen + 1 : pathLen;
 				FPL_ASSERT(curDestPosition + requiredPathLen <= maxDestPathLen);
 				strings::CopyAnsiString(path, pathLen, currentDestPtr, maxDestPathLen - curDestPosition);
 				currentDestPtr += pathLen;
@@ -3286,8 +3344,8 @@ namespace fpl {
 			HDC deviceContext;
 			HCURSOR defaultCursor;
 			WINDOWPLACEMENT lastWindowPlacement;
-			uint32_t lastWindowWidth;
-			uint32_t lastWindowHeight;
+			fpl_u32 lastWindowWidth;
+			fpl_u32 lastWindowHeight;
 			bool isRunning;
 			bool isCursorActive;
 		};
@@ -3499,23 +3557,23 @@ namespace fpl {
 #	endif // FPL_ENABLE_VIDEO_OPENGL
 
 #	if defined(FPL_ENABLE_VIDEO_SOFTWARE)
-		fpl_internal bool Win32InitVideoSoftware(platform::Win32State *state, const uint32_t width, const uint32_t height) {
+		fpl_internal bool Win32InitVideoSoftware(platform::Win32State *state, const fpl_u32 width, const fpl_u32 height) {
 			platform::Win32VideoState &videoState = state->video;
 
 			// Allocate memory/fill context
 			videoState.software = {};
 			videoState.software.context.width = width;
 			videoState.software.context.height = height;
-			videoState.software.context.stride = videoState.software.context.width * sizeof(uint32_t);
-			size_t size = videoState.software.context.stride * videoState.software.context.height;
-			videoState.software.context.pixels = (uint32_t *)memory::MemoryAlignedAllocate(size, 16);
+			videoState.software.context.stride = videoState.software.context.width * sizeof(fpl_u32);
+			fpl_size size = videoState.software.context.stride * videoState.software.context.height;
+			videoState.software.context.pixels = (fpl_u32 *)memory::MemoryAlignedAllocate(size, 16);
 
 			// Clear to black by default
 			// @NOTE(final): Bitmap is top-down, 0xAABBGGRR
-			uint32_t *p = videoState.software.context.pixels;
-			for (uint32_t y = 0; y < videoState.software.context.height; ++y) {
-				uint32_t color = 0xFF000000;
-				for (uint32_t x = 0; x < videoState.software.context.width; ++x) {
+			fpl_u32 *p = videoState.software.context.pixels;
+			for (fpl_u32 y = 0; y < videoState.software.context.height; ++y) {
+				fpl_u32 color = 0xFF000000;
+				for (fpl_u32 x = 0; x < videoState.software.context.width; ++x) {
 					*p++ = color;
 				}
 			}
@@ -3542,11 +3600,11 @@ namespace fpl {
 #	endif // FPL_ENABLE_VIDEO_SOFTWARE
 
 #	if defined(FPL_ENABLE_WINDOW)
-		fpl_constant uint32_t MAX_EVENT_COUNT = 32768;
+		fpl_constant fpl_u32 MAX_EVENT_COUNT = 32768;
 		struct EventQueue {
 			window::Event events[MAX_EVENT_COUNT];
-			volatile uint32_t pollIndex;
-			volatile uint32_t pushCount;
+			volatile fpl_u32 pollIndex;
+			volatile fpl_u32 pushCount;
 		};
 		fpl_globalvar EventQueue *global__EventQueue = fpl_null;
 
@@ -3554,7 +3612,7 @@ namespace fpl {
 			EventQueue *eventQueue = global__EventQueue;
 			FPL_ASSERT(eventQueue != fpl_null);
 			if (eventQueue->pushCount < MAX_EVENT_COUNT) {
-				uint32_t eventIndex = atomics::AtomicAddU32(&eventQueue->pushCount, 1);
+				fpl_u32 eventIndex = atomics::AtomicAddU32(&eventQueue->pushCount, 1);
 				FPL_ASSERT(eventIndex < MAX_EVENT_COUNT);
 				eventQueue->events[eventIndex] = event;
 			}
@@ -3604,7 +3662,7 @@ namespace fpl {
 			return(result);
 		}
 
-		fpl_internal bool Win32EnterFullscreen(const uint32_t fullscreenWidth, const uint32_t fullscreenHeight, const uint32_t refreshRate, const uint32_t colorBits) {
+		fpl_internal bool Win32EnterFullscreen(const fpl_u32 fullscreenWidth, const fpl_u32 fullscreenHeight, const fpl_u32 refreshRate, const fpl_u32 colorBits) {
 			// @TODO(final): Support for multi-monitor (Enter)!
 			FPL_ASSERT(global__Win32__State != fpl_null);
 			WindowSettings &settings = global__Win32__State->currentSettings.window;
@@ -3762,7 +3820,7 @@ namespace fpl {
 			PushEvent(newEvent);
 		}
 
-		fpl_internal window::Key Win32MapVirtualKey(const uint64_t keyCode) {
+		fpl_internal window::Key Win32MapVirtualKey(const fpl_u64 keyCode) {
 			using namespace window;
 			switch (keyCode) {
 				case VK_BACK:
@@ -4003,7 +4061,7 @@ namespace fpl {
 			}
 		}
 
-		fpl_internal_inline void Win32PushKeyboardEvent(const window::KeyboardEventType keyboardEventType, const uint64_t keyCode, const window::KeyboardModifierFlag modifiers, const bool isDown) {
+		fpl_internal_inline void Win32PushKeyboardEvent(const window::KeyboardEventType keyboardEventType, const fpl_u64 keyCode, const window::KeyboardModifierFlag modifiers, const bool isDown) {
 			using namespace window;
 			Event newEvent = {};
 			newEvent.type = EventType::Keyboard;
@@ -4014,7 +4072,7 @@ namespace fpl {
 			PushEvent(newEvent);
 		}
 
-		fpl_internal_inline bool Win32IsKeyDown(const uint64_t keyCode) {
+		fpl_internal_inline bool Win32IsKeyDown(const fpl_u64 keyCode) {
 			Win32APIFunctions &api = global__Win32__API__Functions;
 			bool result = (api.user.getAsyncKeyState((int)keyCode) & 0x8000) > 0;
 			return(result);
@@ -4044,8 +4102,8 @@ namespace fpl {
 #				if defined(FPL_ENABLE_VIDEO_SOFTWARE)
 					if (win32State->video.activeVideoDriver == VideoDriverType::Software) {
 						if (win32State->initSettings.video.isAutoSize) {
-							uint32_t w = LOWORD(lParam);
-							uint32_t h = HIWORD(lParam);
+							fpl_u32 w = LOWORD(lParam);
+							fpl_u32 h = HIWORD(lParam);
 							if ((w != win32State->video.software.context.width) ||
 								(h != win32State->video.software.context.height)) {
 								platform::Win32ReleaseVideoSoftware(win32State);
@@ -4068,7 +4126,7 @@ namespace fpl {
 				case WM_KEYDOWN:
 				case WM_KEYUP:
 				{
-					uint64_t keyCode = wParam;
+					fpl_u64 keyCode = wParam;
 					bool wasDown = ((lParam & (1 << 30)) != 0);
 					bool isDown = ((lParam & (1 << 31)) == 0);
 
@@ -4104,7 +4162,7 @@ namespace fpl {
 
 				case WM_CHAR:
 				{
-					uint64_t keyCode = wParam;
+					fpl_u64 keyCode = wParam;
 					KeyboardModifierFlag modifiers = KeyboardModifierFlags::None;
 					platform::Win32PushKeyboardEvent(KeyboardEventType::Char, keyCode, modifiers, 0);
 				} break;
@@ -4213,7 +4271,7 @@ namespace fpl {
 			}
 
 			// Allocate event queue
-			size_t eventQueueMemorySize = sizeof(EventQueue);
+			fpl_size eventQueueMemorySize = sizeof(EventQueue);
 			void *eventQueueMemory = memory::MemoryAlignedAllocate(eventQueueMemorySize, 16);
 			if (eventQueueMemory == fpl_null) {
 				common::PushError("[Win32] Failed Allocating Event Queue Memory with size '%llu'!", eventQueueMemorySize);
@@ -4391,7 +4449,7 @@ namespace fpl {
 		struct Win32CommandLineUTF8Arguments {
 			void *mem;
 			char **args;
-			uint32_t count;
+			fpl_u32 count;
 		};
 		fpl_internal Win32CommandLineUTF8Arguments Win32ParseWideArguments(LPWSTR cmdLine) {
 			Win32CommandLineUTF8Arguments args = {};
@@ -4404,41 +4462,41 @@ namespace fpl {
 					// Parse arguments and compute total UTF8 string length
 					int executableFilePathArgumentCount = 0;
 					wchar_t **executableFilePathArgs = commandLineToArgvW(L"", &executableFilePathArgumentCount);
-					uint32_t executableFilePathLen = 0;
+					fpl_u32 executableFilePathLen = 0;
 					for (int i = 0; i < executableFilePathArgumentCount; ++i) {
 						if (i > 0) {
 							// Include whitespace
 							executableFilePathLen++;
 						}
-						uint32_t sourceLen = strings::GetWideStringLength(executableFilePathArgs[i]);
-						uint32_t destLen = WideCharToMultiByte(CP_UTF8, 0, executableFilePathArgs[i], sourceLen, fpl_null, 0, 0, 0);
+						fpl_u32 sourceLen = strings::GetWideStringLength(executableFilePathArgs[i]);
+						fpl_u32 destLen = WideCharToMultiByte(CP_UTF8, 0, executableFilePathArgs[i], sourceLen, fpl_null, 0, 0, 0);
 						executableFilePathLen += destLen;
 					}
 
 					// @NOTE(final): Do not parse the arguments when there are no actual arguments, otherwise we will get back the executable arguments again.
 					int actualArgumentCount = 0;
 					wchar_t **actualArgs = fpl_null;
-					uint32_t actualArgumentsLen = 0;
+					fpl_u32 actualArgumentsLen = 0;
 					if (cmdLine != fpl_null && strings::GetWideStringLength(cmdLine) > 0) {
 						actualArgs = commandLineToArgvW(cmdLine, &actualArgumentCount);
 						for (int i = 0; i < actualArgumentCount; ++i) {
-							uint32_t sourceLen = strings::GetWideStringLength(actualArgs[i]);
-							uint32_t destLen = WideCharToMultiByte(CP_UTF8, 0, actualArgs[i], sourceLen, fpl_null, 0, 0, 0);
+							fpl_u32 sourceLen = strings::GetWideStringLength(actualArgs[i]);
+							fpl_u32 destLen = WideCharToMultiByte(CP_UTF8, 0, actualArgs[i], sourceLen, fpl_null, 0, 0, 0);
 							actualArgumentsLen += destLen;
 						}
 					}
 
 					// Calculate argument 
 					args.count = 1 + actualArgumentCount;
-					uint32_t totalStringLen = executableFilePathLen + actualArgumentsLen + args.count;
-					size_t singleArgStringSize = sizeof(char) * (totalStringLen);
-					size_t arbitaryPadding = sizeof(char) * 8;
-					size_t argArraySize = sizeof(char **) * args.count;
-					size_t totalArgSize = singleArgStringSize + arbitaryPadding + argArraySize;
+					fpl_u32 totalStringLen = executableFilePathLen + actualArgumentsLen + args.count;
+					fpl_size singleArgStringSize = sizeof(char) * (totalStringLen);
+					fpl_size arbitaryPadding = sizeof(char) * 8;
+					fpl_size argArraySize = sizeof(char **) * args.count;
+					fpl_size totalArgSize = singleArgStringSize + arbitaryPadding + argArraySize;
 
-					args.mem = (uint8_t *)memory::MemoryAllocate(totalArgSize);
+					args.mem = (fpl_u8 *)memory::MemoryAllocate(totalArgSize);
 					char *argsString = (char *)args.mem;
-					args.args = (char **)((uint8_t *)args.mem + singleArgStringSize + arbitaryPadding);
+					args.args = (char **)((fpl_u8 *)args.mem + singleArgStringSize + arbitaryPadding);
 
 					// Convert executable path to UTF8
 					char *destArg = argsString;
@@ -4449,8 +4507,8 @@ namespace fpl {
 								*destArg++ = ' ';
 							}
 							wchar_t *sourceArg = executableFilePathArgs[i];
-							uint32_t sourceArgLen = strings::GetWideStringLength(sourceArg);
-							uint32_t destArgLen = WideCharToMultiByte(CP_UTF8, 0, sourceArg, sourceArgLen, fpl_null, 0, 0, 0);
+							fpl_u32 sourceArgLen = strings::GetWideStringLength(sourceArg);
+							fpl_u32 destArgLen = WideCharToMultiByte(CP_UTF8, 0, sourceArg, sourceArgLen, fpl_null, 0, 0, 0);
 							WideCharToMultiByte(CP_UTF8, 0, sourceArg, sourceArgLen, destArg, destArgLen, 0, 0);
 							destArg += destArgLen;
 						}
@@ -4464,8 +4522,8 @@ namespace fpl {
 						for (int i = 0; i < actualArgumentCount; ++i) {
 							args.args[1 + i] = destArg;
 							wchar_t *sourceArg = actualArgs[i];
-							uint32_t sourceArgLen = strings::GetWideStringLength(sourceArg);
-							uint32_t destArgLen = WideCharToMultiByte(CP_UTF8, 0, sourceArg, sourceArgLen, fpl_null, 0, 0, 0);
+							fpl_u32 sourceArgLen = strings::GetWideStringLength(sourceArg);
+							fpl_u32 destArgLen = WideCharToMultiByte(CP_UTF8, 0, sourceArg, sourceArgLen, fpl_null, 0, 0, 0);
 							WideCharToMultiByte(CP_UTF8, 0, sourceArg, sourceArgLen, destArg, destArgLen, 0, 0);
 							destArg += destArgLen;
 							*destArg++ = 0;
@@ -4482,8 +4540,8 @@ namespace fpl {
 		fpl_internal Win32CommandLineUTF8Arguments Win32ParseAnsiArguments(LPSTR cmdLine) {
 			Win32CommandLineUTF8Arguments result;
 			if (cmdLine != fpl_null) {
-				uint32_t ansiSourceLen = strings::GetAnsiStringLength(cmdLine);
-				uint32_t wideDestLen = MultiByteToWideChar(CP_ACP, 0, cmdLine, ansiSourceLen, fpl_null, 0);
+				fpl_u32 ansiSourceLen = strings::GetAnsiStringLength(cmdLine);
+				fpl_u32 wideDestLen = MultiByteToWideChar(CP_ACP, 0, cmdLine, ansiSourceLen, fpl_null, 0);
 				// @TODO(final): Can we use a stack allocation here?
 				wchar_t *wideCmdLine = (wchar_t *)memory::MemoryAllocate(sizeof(wchar_t) * (wideDestLen + 1));
 				MultiByteToWideChar(CP_ACP, 0, cmdLine, ansiSourceLen, wideCmdLine, wideDestLen);
@@ -4643,43 +4701,43 @@ namespace fpl {
 			}
 		}
 
-		fpl_internal bool Win32ThreadWaitForMultiple(threading::ThreadContext **contexts, const uint32_t count, const bool waitForAll, const uint32_t maxMilliseconds) {
+		fpl_internal bool Win32ThreadWaitForMultiple(threading::ThreadContext **contexts, const fpl_u32 count, const bool waitForAll, const fpl_u32 maxMilliseconds) {
 			FPL_ASSERT(contexts != fpl_null);
 			FPL_ASSERT(count <= common::MAX_THREAD_COUNT);
 			HANDLE threadHandles[common::MAX_THREAD_COUNT];
-			for (uint32_t index = 0; index < count; ++index) {
+			for (fpl_u32 index = 0; index < count; ++index) {
 				threading::ThreadContext *context = contexts[index];
 				FPL_ASSERT(context->id > 0);
 				FPL_ASSERT(context->internalHandle != fpl_null);
 				HANDLE handle = (HANDLE)context->internalHandle;
 				threadHandles[index] = handle;
 			}
-			DWORD code = WaitForMultipleObjects(count, threadHandles, waitForAll ? TRUE : FALSE, maxMilliseconds < UINT32_MAX ? maxMilliseconds : INFINITE);
+			DWORD code = WaitForMultipleObjects(count, threadHandles, waitForAll ? TRUE : FALSE, maxMilliseconds < FPL_MAX_U32 ? maxMilliseconds : INFINITE);
 			bool result = (code != WAIT_TIMEOUT) && (code != WAIT_FAILED);
 			return(result);
 		}
 
-		fpl_internal bool Win32SignalWaitForMultiple(threading::ThreadSignal **signals, const uint32_t count, const bool waitForAll, const uint32_t maxMilliseconds) {
+		fpl_internal bool Win32SignalWaitForMultiple(threading::ThreadSignal **signals, const fpl_u32 count, const bool waitForAll, const fpl_u32 maxMilliseconds) {
 			FPL_ASSERT(signals != fpl_null);
 			FPL_ASSERT(count <= common::MAX_SIGNAL_COUNT);
 			HANDLE signalHandles[common::MAX_SIGNAL_COUNT];
-			for (uint32_t index = 0; index < count; ++index) {
+			for (fpl_u32 index = 0; index < count; ++index) {
 				threading::ThreadSignal *availableSignal = signals[index];
 				FPL_ASSERT(availableSignal->isValid);
 				FPL_ASSERT(availableSignal->internalHandle != fpl_null);
 				HANDLE handle = (HANDLE)availableSignal->internalHandle;
 				signalHandles[index] = handle;
 			}
-			DWORD code = WaitForMultipleObjects(count, signalHandles, waitForAll ? TRUE : FALSE, maxMilliseconds < UINT32_MAX ? maxMilliseconds : INFINITE);
+			DWORD code = WaitForMultipleObjects(count, signalHandles, waitForAll ? TRUE : FALSE, maxMilliseconds < FPL_MAX_U32 ? maxMilliseconds : INFINITE);
 			bool result = (code != WAIT_TIMEOUT) && (code != WAIT_FAILED);
 			return(result);
 		}
 
-	} // platform
+		} // platform
 
-	//
-	// Win32 Atomics
-	//
+		//
+		// Win32 Atomics
+		//
 	namespace atomics {
 		fpl_api void AtomicReadFence() {
 			FPL_MEMORY_BARRIER();
@@ -4694,121 +4752,121 @@ namespace fpl {
 			_ReadWriteBarrier();
 		}
 
-		fpl_api uint32_t AtomicExchangeU32(volatile uint32_t *target, const uint32_t value) {
+		fpl_api fpl_u32 AtomicExchangeU32(volatile fpl_u32 *target, const fpl_u32 value) {
 			FPL_ASSERT(target != fpl_null);
-			uint32_t result = _InterlockedExchange((volatile unsigned long *)target, value);
+			fpl_u32 result = _InterlockedExchange((volatile unsigned long *)target, value);
 			return (result);
 		}
-		fpl_api int32_t AtomicExchangeS32(volatile int32_t *target, const int32_t value) {
+		fpl_api fpl_s32 AtomicExchangeS32(volatile fpl_s32 *target, const fpl_s32 value) {
 			FPL_ASSERT(target != fpl_null);
-			int32_t result = _InterlockedExchange((volatile long *)target, value);
+			fpl_s32 result = _InterlockedExchange((volatile long *)target, value);
 			return (result);
 		}
-		fpl_api uint64_t AtomicExchangeU64(volatile uint64_t *target, const uint64_t value) {
+		fpl_api fpl_u64 AtomicExchangeU64(volatile fpl_u64 *target, const fpl_u64 value) {
 			FPL_ASSERT(target != fpl_null);
-			uint64_t result = _InterlockedExchange((volatile unsigned __int64 *)target, value);
+			fpl_u64 result = _InterlockedExchange((volatile unsigned __int64 *)target, value);
 			return (result);
 		}
-		fpl_api int64_t AtomicExchangeS64(volatile int64_t *target, const int64_t value) {
+		fpl_api fpl_s64 AtomicExchangeS64(volatile fpl_s64 *target, const fpl_s64 value) {
 			FPL_ASSERT(target != fpl_null);
-			int64_t result = _InterlockedExchange64((volatile long long *)target, value);
+			fpl_s64 result = _InterlockedExchange64((volatile long long *)target, value);
 			return (result);
 		}
 
-		fpl_api uint32_t AtomicAddU32(volatile uint32_t *value, const uint32_t addend) {
+		fpl_api fpl_u32 AtomicAddU32(volatile fpl_u32 *value, const fpl_u32 addend) {
 			FPL_ASSERT(value != fpl_null);
-			uint32_t result = _InterlockedExchangeAdd((volatile unsigned long *)value, addend);
+			fpl_u32 result = _InterlockedExchangeAdd((volatile unsigned long *)value, addend);
 			return (result);
 		}
-		fpl_api int32_t AtomicAddS32(volatile int32_t *value, const int32_t addend) {
+		fpl_api fpl_s32 AtomicAddS32(volatile fpl_s32 *value, const fpl_s32 addend) {
 			FPL_ASSERT(value != fpl_null);
-			int32_t result = _InterlockedExchangeAdd((volatile long *)value, addend);
+			fpl_s32 result = _InterlockedExchangeAdd((volatile long *)value, addend);
 			return (result);
 		}
-		fpl_api uint64_t AtomicAddU64(volatile uint64_t *value, const uint64_t addend) {
+		fpl_api fpl_u64 AtomicAddU64(volatile fpl_u64 *value, const fpl_u64 addend) {
 			FPL_ASSERT(value != fpl_null);
-			uint64_t result = _InterlockedExchangeAdd((volatile unsigned __int64 *)value, addend);
+			fpl_u64 result = _InterlockedExchangeAdd((volatile unsigned __int64 *)value, addend);
 			return (result);
 		}
-		fpl_api int64_t AtomicAddS64(volatile int64_t *value, const int64_t addend) {
+		fpl_api fpl_s64 AtomicAddS64(volatile fpl_s64 *value, const fpl_s64 addend) {
 			FPL_ASSERT(value != fpl_null);
-			int64_t result = _InterlockedExchangeAdd64((volatile long long *)value, addend);
+			fpl_s64 result = _InterlockedExchangeAdd64((volatile long long *)value, addend);
 			return (result);
 		}
 
-		fpl_api uint32_t AtomicCompareAndExchangeU32(volatile uint32_t *dest, const uint32_t comparand, const uint32_t exchange) {
+		fpl_api fpl_u32 AtomicCompareAndExchangeU32(volatile fpl_u32 *dest, const fpl_u32 comparand, const fpl_u32 exchange) {
 			FPL_ASSERT(dest != fpl_null);
-			uint32_t result = _InterlockedCompareExchange((volatile unsigned long *)dest, exchange, comparand);
+			fpl_u32 result = _InterlockedCompareExchange((volatile unsigned long *)dest, exchange, comparand);
 			return (result);
 		}
-		fpl_api int32_t AtomicCompareAndExchangeS32(volatile int32_t *dest, const int32_t comparand, const int32_t exchange) {
+		fpl_api fpl_s32 AtomicCompareAndExchangeS32(volatile fpl_s32 *dest, const fpl_s32 comparand, const fpl_s32 exchange) {
 			FPL_ASSERT(dest != fpl_null);
-			int32_t result = _InterlockedCompareExchange((volatile long *)dest, exchange, comparand);
+			fpl_s32 result = _InterlockedCompareExchange((volatile long *)dest, exchange, comparand);
 			return (result);
 		}
-		fpl_api uint64_t AtomicCompareAndExchangeU64(volatile uint64_t *dest, const uint64_t comparand, const uint64_t exchange) {
+		fpl_api fpl_u64 AtomicCompareAndExchangeU64(volatile fpl_u64 *dest, const fpl_u64 comparand, const fpl_u64 exchange) {
 			FPL_ASSERT(dest != fpl_null);
-			uint64_t result = _InterlockedCompareExchange((volatile unsigned __int64 *)dest, exchange, comparand);
+			fpl_u64 result = _InterlockedCompareExchange((volatile unsigned __int64 *)dest, exchange, comparand);
 			return (result);
 		}
-		fpl_api int64_t AtomicCompareAndExchangeS64(volatile int64_t *dest, const int64_t comparand, const int64_t exchange) {
+		fpl_api fpl_s64 AtomicCompareAndExchangeS64(volatile fpl_s64 *dest, const fpl_s64 comparand, const fpl_s64 exchange) {
 			FPL_ASSERT(dest != fpl_null);
-			int64_t result = _InterlockedCompareExchange64((volatile long long *)dest, exchange, comparand);
+			fpl_s64 result = _InterlockedCompareExchange64((volatile long long *)dest, exchange, comparand);
 			return (result);
 		}
 
-		fpl_api bool IsAtomicCompareAndExchangeU32(volatile uint32_t *dest, const uint32_t comparand, const uint32_t exchange) {
+		fpl_api bool IsAtomicCompareAndExchangeU32(volatile fpl_u32 *dest, const fpl_u32 comparand, const fpl_u32 exchange) {
 			FPL_ASSERT(dest != fpl_null);
-			uint32_t value = _InterlockedCompareExchange((volatile unsigned long *)dest, exchange, comparand);
+			fpl_u32 value = _InterlockedCompareExchange((volatile unsigned long *)dest, exchange, comparand);
 			bool result = (value == comparand);
 			return (result);
 		}
-		fpl_api bool IsAtomicCompareAndExchangeS32(volatile int32_t *dest, const int32_t comparand, const int32_t exchange) {
+		fpl_api bool IsAtomicCompareAndExchangeS32(volatile fpl_s32 *dest, const fpl_s32 comparand, const fpl_s32 exchange) {
 			FPL_ASSERT(dest != fpl_null);
-			int32_t value = _InterlockedCompareExchange((volatile long *)dest, exchange, comparand);
+			fpl_s32 value = _InterlockedCompareExchange((volatile long *)dest, exchange, comparand);
 			bool result = (value == comparand);
 			return (result);
 		}
-		fpl_api bool IsAtomicCompareAndExchangeU64(volatile uint64_t *dest, const uint64_t comparand, const uint64_t exchange) {
+		fpl_api bool IsAtomicCompareAndExchangeU64(volatile fpl_u64 *dest, const fpl_u64 comparand, const fpl_u64 exchange) {
 			FPL_ASSERT(dest != fpl_null);
-			uint64_t value = _InterlockedCompareExchange((volatile unsigned __int64 *)dest, exchange, comparand);
+			fpl_u64 value = _InterlockedCompareExchange((volatile unsigned __int64 *)dest, exchange, comparand);
 			bool result = (value == comparand);
 			return (result);
 		}
-		fpl_api bool IsAtomicCompareAndExchangeS64(volatile int64_t *dest, const int64_t comparand, const int64_t exchange) {
+		fpl_api bool IsAtomicCompareAndExchangeS64(volatile fpl_s64 *dest, const fpl_s64 comparand, const fpl_s64 exchange) {
 			FPL_ASSERT(dest != fpl_null);
-			int64_t value = _InterlockedCompareExchange64((volatile long long *)dest, exchange, comparand);
+			fpl_s64 value = _InterlockedCompareExchange64((volatile long long *)dest, exchange, comparand);
 			bool result = (value == comparand);
 			return (result);
 		}
 
-		fpl_api uint32_t AtomicLoadU32(volatile uint32_t *source) {
-			uint32_t result = _InterlockedCompareExchange((volatile unsigned long *)source, 0, 0);
+		fpl_api fpl_u32 AtomicLoadU32(volatile fpl_u32 *source) {
+			fpl_u32 result = _InterlockedCompareExchange((volatile unsigned long *)source, 0, 0);
 			return(result);
 		}
-		fpl_api uint64_t AtomicLoadU64(volatile uint64_t *source) {
-			uint64_t result = _InterlockedCompareExchange((volatile unsigned __int64 *)source, 0, 0);
+		fpl_api fpl_u64 AtomicLoadU64(volatile fpl_u64 *source) {
+			fpl_u64 result = _InterlockedCompareExchange((volatile unsigned __int64 *)source, 0, 0);
 			return(result);
 		}
-		fpl_api int32_t AtomicLoadS32(volatile int32_t *source) {
-			int32_t result = _InterlockedCompareExchange((volatile long *)source, 0, 0);
+		fpl_api fpl_s32 AtomicLoadS32(volatile fpl_s32 *source) {
+			fpl_s32 result = _InterlockedCompareExchange((volatile long *)source, 0, 0);
 			return(result);
 		}
-		fpl_api int64_t AtomicLoadS64(volatile int64_t *source) {
-			int64_t result = _InterlockedCompareExchange64((volatile __int64 *)source, 0, 0);
+		fpl_api fpl_s64 AtomicLoadS64(volatile fpl_s64 *source) {
+			fpl_s64 result = _InterlockedCompareExchange64((volatile __int64 *)source, 0, 0);
 			return(result);
 		}
 
-		fpl_api void AtomicStoreU32(volatile uint32_t *dest, const uint32_t value) {
+		fpl_api void AtomicStoreU32(volatile fpl_u32 *dest, const fpl_u32 value) {
 			_InterlockedExchange((volatile unsigned long *)dest, value);
 		}
-		fpl_api void AtomicStoreU64(volatile uint64_t *dest, const uint64_t value) {
+		fpl_api void AtomicStoreU64(volatile fpl_u64 *dest, const fpl_u64 value) {
 			_InterlockedExchange((volatile unsigned __int64 *)dest, value);
 		}
-		fpl_api void AtomicStoreS32(volatile int32_t *dest, const int32_t value) {
+		fpl_api void AtomicStoreS32(volatile fpl_s32 *dest, const fpl_s32 value) {
 			_InterlockedExchange((volatile long *)dest, value);
 		}
-		fpl_api void AtomicStoreS64(volatile int64_t *dest, const int64_t value) {
+		fpl_api void AtomicStoreS64(volatile fpl_s64 *dest, const fpl_s64 value) {
 			_InterlockedExchange64((volatile __int64 *)dest, value);
 		}
 	} // atomics
@@ -4817,18 +4875,18 @@ namespace fpl {
 	// Win32 Hardware
 	//
 	namespace hardware {
-		fpl_api uint32_t GetProcessorCoreCount() {
+		fpl_api fpl_u32 GetProcessorCoreCount() {
 			SYSTEM_INFO sysInfo = {};
 			GetSystemInfo(&sysInfo);
 			// @NOTE(final): For now this returns the number of logical processors, which is the actual core count in most cases.
-			uint32_t result = sysInfo.dwNumberOfProcessors;
+			fpl_u32 result = sysInfo.dwNumberOfProcessors;
 			return(result);
 		}
 
-		fpl_api char *GetProcessorName(char *destBuffer, const uint32_t maxDestBufferLen) {
+		fpl_api char *GetProcessorName(char *destBuffer, const fpl_u32 maxDestBufferLen) {
 			// @TODO(final): __cpuid may not be available on other Win32 Compilers!
 
-			fpl_constant uint32_t CPU_BRAND_BUFFER_SIZE = 0x40;
+			fpl_constant fpl_u32 CPU_BRAND_BUFFER_SIZE = 0x40;
 
 			FPL_ASSERT(destBuffer != fpl_null);
 			FPL_ASSERT(maxDestBufferLen >= (CPU_BRAND_BUFFER_SIZE + 1));
@@ -4836,18 +4894,18 @@ namespace fpl {
 			int cpuInfo[4] = { -1 };
 			char cpuBrandBuffer[CPU_BRAND_BUFFER_SIZE] = {};
 			__cpuid(cpuInfo, 0x80000000);
-			uint32_t extendedIds = cpuInfo[0];
+			fpl_u32 extendedIds = cpuInfo[0];
 
 			// Get the information associated with each extended ID. Interpret CPU brand string.
-			uint32_t max = FPL_MIN(extendedIds, 0x80000004);
-			for (uint32_t i = 0x80000002; i <= max; ++i) {
+			fpl_u32 max = FPL_MIN(extendedIds, 0x80000004);
+			for (fpl_u32 i = 0x80000002; i <= max; ++i) {
 				__cpuid(cpuInfo, i);
-				uint32_t offset = (i - 0x80000002) << 4;
+				fpl_u32 offset = (i - 0x80000002) << 4;
 				memory::MemoryCopy(cpuInfo, sizeof(cpuInfo), cpuBrandBuffer + offset);
 			}
 
 			// Copy result back to the dest buffer
-			uint32_t sourceLen = strings::GetAnsiStringLength(cpuBrandBuffer);
+			fpl_u32 sourceLen = strings::GetAnsiStringLength(cpuBrandBuffer);
 			FPL_ASSERT(sourceLen <= maxDestBufferLen);
 			strings::CopyAnsiString(cpuBrandBuffer, sourceLen, destBuffer, maxDestBufferLen);
 
@@ -4890,12 +4948,12 @@ namespace fpl {
 		fpl_internal DWORD WINAPI Win32ThreadProc(void *data) {
 			ThreadContext *context = (ThreadContext *)data;
 			FPL_ASSERT(context != fpl_null);
-			atomics::AtomicStoreU32((volatile uint32_t *)&context->currentState, (uint32_t)ThreadState::Running);
+			atomics::AtomicStoreU32((volatile fpl_u32 *)&context->currentState, (fpl_u32)ThreadState::Running);
 			DWORD result = 0;
 			if (context->runFunc != fpl_null) {
 				context->runFunc(*context, context->data);
 			}
-			atomics::AtomicStoreU32((volatile uint32_t *)&context->currentState, (uint32_t)ThreadState::Stopped);
+			atomics::AtomicStoreU32((volatile fpl_u32 *)&context->currentState, (fpl_u32)ThreadState::Stopped);
 			return(result);
 		}
 
@@ -4908,7 +4966,7 @@ namespace fpl {
 				HANDLE handle = CreateThread(fpl_null, 0, Win32ThreadProc, context, CREATE_SUSPENDED, &threadId);
 				if (handle != fpl_null) {
 					// @TODO(final): Is this really needed to use a atomic store for setting the thread state?
-					atomics::AtomicStoreU32((volatile uint32_t *)&context->currentState, (uint32_t)ThreadState::Suspended);
+					atomics::AtomicStoreU32((volatile fpl_u32 *)&context->currentState, (fpl_u32)ThreadState::Suspended);
 					context->data = data;
 					context->id = threadId;
 					context->internalHandle = (void *)handle;
@@ -4926,7 +4984,7 @@ namespace fpl {
 			return(result);
 		}
 
-		fpl_api void ThreadSleep(const uint32_t milliseconds) {
+		fpl_api void ThreadSleep(const fpl_u32 milliseconds) {
 			Sleep((DWORD)milliseconds);
 		}
 
@@ -4938,7 +4996,7 @@ namespace fpl {
 			bool result = err != -1;
 			if (result) {
 				// @TODO(final): Is this really needed to use a atomic store for setting the thread state?
-				atomics::AtomicStoreU32((volatile uint32_t *)&context->currentState, (uint32_t)ThreadState::Suspended);
+				atomics::AtomicStoreU32((volatile fpl_u32 *)&context->currentState, (fpl_u32)ThreadState::Suspended);
 			}
 			return(result);
 		}
@@ -4951,7 +5009,7 @@ namespace fpl {
 			bool result = err != -1;
 			if (result) {
 				// @TODO(final): Is this really needed to use a atomic store for setting the thread state?
-				atomics::AtomicStoreU32((volatile uint32_t *)&context->currentState, (uint32_t)ThreadState::Running);
+				atomics::AtomicStoreU32((volatile fpl_u32 *)&context->currentState, (fpl_u32)ThreadState::Running);
 			}
 			return(result);
 		}
@@ -4963,23 +5021,23 @@ namespace fpl {
 			TerminateThread(handle, 0);
 			CloseHandle(handle);
 			// @TODO(final): Is this really needed to use a atomic store for setting the thread state?
-			atomics::AtomicStoreU32((volatile uint32_t *)&context->currentState, (uint32_t)ThreadState::Stopped);
+			atomics::AtomicStoreU32((volatile fpl_u32 *)&context->currentState, (fpl_u32)ThreadState::Stopped);
 			*context = {};
 		}
 
-		fpl_api void ThreadWaitForOne(ThreadContext *context, const uint32_t maxMilliseconds) {
+		fpl_api void ThreadWaitForOne(ThreadContext *context, const fpl_u32 maxMilliseconds) {
 			FPL_ASSERT(context != fpl_null);
 			FPL_ASSERT(context->id > 0);
 			FPL_ASSERT(context->internalHandle != fpl_null);
 			HANDLE handle = (HANDLE)context->internalHandle;
-			WaitForSingleObject(handle, maxMilliseconds < UINT32_MAX ? maxMilliseconds : INFINITE);
+			WaitForSingleObject(handle, maxMilliseconds < FPL_MAX_U32 ? maxMilliseconds : INFINITE);
 		}
 
-		fpl_api void ThreadWaitForAll(ThreadContext **contexts, const uint32_t count, const uint32_t maxMilliseconds) {
+		fpl_api void ThreadWaitForAll(ThreadContext **contexts, const fpl_u32 count, const fpl_u32 maxMilliseconds) {
 			platform::Win32ThreadWaitForMultiple(contexts, count, true, maxMilliseconds);
 		}
 
-		fpl_api void ThreadWaitForAny(ThreadContext **contexts, const uint32_t count, const uint32_t maxMilliseconds) {
+		fpl_api void ThreadWaitForAny(ThreadContext **contexts, const fpl_u32 count, const fpl_u32 maxMilliseconds) {
 			platform::Win32ThreadWaitForMultiple(contexts, count, false, maxMilliseconds);
 		}
 
@@ -5001,11 +5059,11 @@ namespace fpl {
 			mutex = {};
 		}
 
-		fpl_api void MutexLock(ThreadMutex &mutex, const uint32_t maxMilliseconds) {
+		fpl_api void MutexLock(ThreadMutex &mutex, const fpl_u32 maxMilliseconds) {
 			FPL_ASSERT(mutex.isValid);
 			FPL_ASSERT(mutex.internalHandle != fpl_null);
 			HANDLE handle = (HANDLE)mutex.internalHandle;
-			WaitForSingleObject(handle, maxMilliseconds < UINT32_MAX ? maxMilliseconds : INFINITE);
+			WaitForSingleObject(handle, maxMilliseconds < FPL_MAX_U32 ? maxMilliseconds : INFINITE);
 		}
 
 		fpl_api void MutexUnlock(ThreadMutex &mutex) {
@@ -5033,20 +5091,20 @@ namespace fpl {
 			availableSignal = {};
 		}
 
-		fpl_api bool SignalWaitForOne(ThreadSignal &availableSignal, const uint32_t maxMilliseconds) {
+		fpl_api bool SignalWaitForOne(ThreadSignal &availableSignal, const fpl_u32 maxMilliseconds) {
 			FPL_ASSERT(availableSignal.isValid);
 			FPL_ASSERT(availableSignal.internalHandle != fpl_null);
 			HANDLE handle = (HANDLE)availableSignal.internalHandle;
-			bool result = (WaitForSingleObject(handle, maxMilliseconds < UINT32_MAX ? maxMilliseconds : INFINITE) == WAIT_OBJECT_0);
+			bool result = (WaitForSingleObject(handle, maxMilliseconds < FPL_MAX_U32 ? maxMilliseconds : INFINITE) == WAIT_OBJECT_0);
 			return(result);
 		}
 
-		fpl_api bool SignalWaitForAll(ThreadSignal **signals, const uint32_t count, const uint32_t maxMilliseconds) {
+		fpl_api bool SignalWaitForAll(ThreadSignal **signals, const fpl_u32 count, const fpl_u32 maxMilliseconds) {
 			bool result = platform::Win32SignalWaitForMultiple(signals, count, true, maxMilliseconds);
 			return(result);
 		}
 
-		fpl_api bool SignalWaitForAny(ThreadSignal **signals, const uint32_t count, const uint32_t maxMilliseconds) {
+		fpl_api bool SignalWaitForAny(ThreadSignal **signals, const fpl_u32 count, const fpl_u32 maxMilliseconds) {
 			bool result = platform::Win32SignalWaitForMultiple(signals, count, false, maxMilliseconds);
 			return(result);
 		}
@@ -5073,7 +5131,7 @@ namespace fpl {
 	// Win32 Memory
 	//
 	namespace memory {
-		fpl_api void *MemoryAllocate(const size_t size) {
+		fpl_api void *MemoryAllocate(const fpl_size size) {
 			FPL_ASSERT(size > 0);
 			void *result = VirtualAlloc(0, size, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
 			if (result == fpl_null) {
@@ -5087,7 +5145,7 @@ namespace fpl {
 			VirtualFree(ptr, 0, MEM_FREE);
 		}
 
-		fpl_api void *MemoryStackAllocate(const size_t size) {
+		fpl_api void *MemoryStackAllocate(const fpl_size size) {
 			FPL_ASSERT(size > 0);
 			void *result = _malloca(size);
 			return(result);
@@ -5140,10 +5198,10 @@ namespace fpl {
 			return(result);
 		}
 
-		fpl_api uint32_t ReadFileBlock32(const FileHandle &fileHandle, const uint32_t sizeToRead, void *targetBuffer, const uint32_t maxTargetBufferSize) {
+		fpl_api fpl_u32 ReadFileBlock32(const FileHandle &fileHandle, const fpl_u32 sizeToRead, void *targetBuffer, const fpl_u32 maxTargetBufferSize) {
 			FPL_ASSERT(targetBuffer != fpl_null);
 			FPL_ASSERT(sizeToRead > 0);
-			uint32_t result = 0;
+			fpl_u32 result = 0;
 			if (fileHandle.isValid) {
 				FPL_ASSERT(fileHandle.internalHandle != INVALID_HANDLE_VALUE);
 				HANDLE win32FileHandle = (void *)fileHandle.internalHandle;
@@ -5155,10 +5213,10 @@ namespace fpl {
 			return(result);
 		}
 
-		fpl_api uint32_t WriteFileBlock32(const FileHandle &fileHandle, void *sourceBuffer, const uint32_t sourceSize) {
+		fpl_api fpl_u32 WriteFileBlock32(const FileHandle &fileHandle, void *sourceBuffer, const fpl_u32 sourceSize) {
 			FPL_ASSERT(sourceBuffer != fpl_null);
 			FPL_ASSERT(sourceSize > 0);
-			uint32_t result = 0;
+			fpl_u32 result = 0;
 			if (fileHandle.isValid) {
 				FPL_ASSERT(fileHandle.internalHandle != INVALID_HANDLE_VALUE);
 				HANDLE win32FileHandle = (void *)fileHandle.internalHandle;
@@ -5170,7 +5228,7 @@ namespace fpl {
 			return(result);
 		}
 
-		fpl_api void SetFilePosition32(const FileHandle &fileHandle, const uint32_t position, const FilePositionMode mode) {
+		fpl_api void SetFilePosition32(const FileHandle &fileHandle, const fpl_u32 position, const FilePositionMode mode) {
 			if (fileHandle.isValid) {
 				FPL_ASSERT(fileHandle.internalHandle != INVALID_HANDLE_VALUE);
 				HANDLE win32FileHandle = (void *)fileHandle.internalHandle;
@@ -5184,8 +5242,8 @@ namespace fpl {
 			}
 		}
 
-		fpl_api uint32_t GetFilePosition32(const FileHandle &fileHandle) {
-			uint32_t result = 0;
+		fpl_api fpl_u32 GetFilePosition32(const FileHandle &fileHandle) {
+			fpl_u32 result = 0;
 			if (fileHandle.isValid) {
 				FPL_ASSERT(fileHandle.internalHandle != INVALID_HANDLE_VALUE);
 				HANDLE win32FileHandle = (void *)fileHandle.internalHandle;
@@ -5206,8 +5264,8 @@ namespace fpl {
 			fileHandle = {};
 		}
 
-		fpl_api uint32_t GetFileSize32(const char *filePath) {
-			uint32_t result = 0;
+		fpl_api fpl_u32 GetFileSize32(const char *filePath) {
+			fpl_u32 result = 0;
 			HANDLE win32FileHandle = CreateFileA(filePath, GENERIC_READ, FILE_SHARE_READ, fpl_null, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, fpl_null);
 			if (win32FileHandle != INVALID_HANDLE_VALUE) {
 				DWORD fileSize = GetFileSize(win32FileHandle, fpl_null);
@@ -5217,8 +5275,8 @@ namespace fpl {
 			return(result);
 		}
 
-		fpl_api uint32_t GetFileSize32(const FileHandle &fileHandle) {
-			uint32_t result = 0;
+		fpl_api fpl_u32 GetFileSize32(const FileHandle &fileHandle) {
+			fpl_u32 result = 0;
 			if (fileHandle.isValid) {
 				FPL_ASSERT(fileHandle.internalHandle != INVALID_HANDLE_VALUE);
 				HANDLE win32FileHandle = (void *)fileHandle.internalHandle;
@@ -5345,16 +5403,16 @@ namespace fpl {
 	//
 	namespace paths {
 #	if defined(UNICODE)
-		fpl_api char *GetExecutableFilePath(char *destPath, const uint32_t maxDestLen) {
+		fpl_api char *GetExecutableFilePath(char *destPath, const fpl_u32 maxDestLen) {
 			wchar_t modulePath[MAX_PATH];
 			GetModuleFileNameW(fpl_null, modulePath, MAX_PATH);
 			FPL_ASSERT(destPath != fpl_null);
 			FPL_ASSERT(maxDestLen >= (MAX_PATH + 1));
 			strings::WideStringToAnsiString(modulePath, strings::GetWideStringLength(modulePath), destPath, maxDestLen);
 			return(destPath);
-		}
+	}
 #	else
-		fpl_api char *GetExecutableFilePath(char *destPath, const uint32_t maxDestLen) {
+		fpl_api char *GetExecutableFilePath(char *destPath, const fpl_u32 maxDestLen) {
 			char modulePath[MAX_PATH];
 			GetModuleFileNameA(fpl_null, modulePath, MAX_PATH);
 			FPL_ASSERT(destPath != fpl_null);
@@ -5365,7 +5423,7 @@ namespace fpl {
 #	endif // UNICODE
 
 #	if defined(UNICODE)
-		fpl_api char *GetHomePath(char *destPath, const uint32_t maxDestLen) {
+		fpl_api char *GetHomePath(char *destPath, const fpl_u32 maxDestLen) {
 			platform::Win32APIFunctions &api = platform::global__Win32__API__Functions;
 			wchar_t homePath[MAX_PATH];
 			api.shell.shGetFolderPathW(fpl_null, CSIDL_PROFILE, fpl_null, 0, homePath);
@@ -5375,7 +5433,7 @@ namespace fpl {
 			return(destPath);
 		}
 #	else
-		fpl_api char *GetHomePath(char *destPath, const uint32_t maxDestLen) {
+		fpl_api char *GetHomePath(char *destPath, const fpl_u32 maxDestLen) {
 			platform::Win32APIFunctions &api = platform::global__Win32__API__Functions;
 			char homePath[MAX_PATH];
 			api.shell.shGetFolderPathA(fpl_null, CSIDL_PROFILE, fpl_null, 0, homePath);
@@ -5385,11 +5443,11 @@ namespace fpl {
 			return(destPath);
 		}
 #	endif // UNICODE
-	} // paths
+} // paths
 
-	//
-	// Win32 Timings
-	//
+//
+// Win32 Timings
+//
 	namespace timings {
 		fpl_api double GetHighResolutionTimeInSeconds() {
 			LARGE_INTEGER time;
@@ -5403,29 +5461,29 @@ namespace fpl {
 	// Win32 Strings
 	//
 	namespace strings {
-		fpl_api char *WideStringToAnsiString(const wchar_t *wideSource, const uint32_t maxWideSourceLen, char *ansiDest, const uint32_t maxAnsiDestLen) {
-			uint32_t requiredLen = WideCharToMultiByte(CP_ACP, 0, wideSource, maxWideSourceLen, fpl_null, 0, fpl_null, fpl_null);
+		fpl_api char *WideStringToAnsiString(const wchar_t *wideSource, const fpl_u32 maxWideSourceLen, char *ansiDest, const fpl_u32 maxAnsiDestLen) {
+			fpl_u32 requiredLen = WideCharToMultiByte(CP_ACP, 0, wideSource, maxWideSourceLen, fpl_null, 0, fpl_null, fpl_null);
 			FPL_ASSERT(maxAnsiDestLen >= (requiredLen + 1));
 			WideCharToMultiByte(CP_ACP, 0, wideSource, maxWideSourceLen, ansiDest, maxAnsiDestLen, fpl_null, fpl_null);
 			ansiDest[requiredLen] = 0;
 			return(ansiDest);
 		}
-		fpl_api char *WideStringToUTF8String(const wchar_t *wideSource, const uint32_t maxWideSourceLen, char *utf8Dest, const uint32_t maxUtf8DestLen) {
-			uint32_t requiredLen = WideCharToMultiByte(CP_UTF8, 0, wideSource, maxWideSourceLen, fpl_null, 0, fpl_null, fpl_null);
+		fpl_api char *WideStringToUTF8String(const wchar_t *wideSource, const fpl_u32 maxWideSourceLen, char *utf8Dest, const fpl_u32 maxUtf8DestLen) {
+			fpl_u32 requiredLen = WideCharToMultiByte(CP_UTF8, 0, wideSource, maxWideSourceLen, fpl_null, 0, fpl_null, fpl_null);
 			FPL_ASSERT(maxUtf8DestLen >= (requiredLen + 1));
 			WideCharToMultiByte(CP_UTF8, 0, wideSource, maxWideSourceLen, utf8Dest, maxUtf8DestLen, fpl_null, fpl_null);
 			utf8Dest[requiredLen] = 0;
 			return(utf8Dest);
 		}
-		fpl_api wchar_t *AnsiStringToWideString(const char *ansiSource, const uint32_t ansiSourceLen, wchar_t *wideDest, const uint32_t maxWideDestLen) {
-			uint32_t requiredLen = MultiByteToWideChar(CP_ACP, 0, ansiSource, ansiSourceLen, fpl_null, 0);
+		fpl_api wchar_t *AnsiStringToWideString(const char *ansiSource, const fpl_u32 ansiSourceLen, wchar_t *wideDest, const fpl_u32 maxWideDestLen) {
+			fpl_u32 requiredLen = MultiByteToWideChar(CP_ACP, 0, ansiSource, ansiSourceLen, fpl_null, 0);
 			FPL_ASSERT(maxWideDestLen >= (requiredLen + 1));
 			MultiByteToWideChar(CP_ACP, 0, ansiSource, ansiSourceLen, wideDest, maxWideDestLen);
 			wideDest[requiredLen] = 0;
 			return(wideDest);
 		}
-		fpl_api wchar_t *UTF8StringToWideString(const char *utf8Source, const uint32_t utf8SourceLen, wchar_t *wideDest, const uint32_t maxWideDestLen) {
-			uint32_t requiredLen = MultiByteToWideChar(CP_UTF8, 0, utf8Source, utf8SourceLen, fpl_null, 0);
+		fpl_api wchar_t *UTF8StringToWideString(const char *utf8Source, const fpl_u32 utf8SourceLen, wchar_t *wideDest, const fpl_u32 maxWideDestLen) {
+			fpl_u32 requiredLen = MultiByteToWideChar(CP_UTF8, 0, utf8Source, utf8SourceLen, fpl_null, 0);
 			FPL_ASSERT(maxWideDestLen >= (requiredLen + 1));
 			MultiByteToWideChar(CP_UTF8, 0, utf8Source, utf8SourceLen, wideDest, maxWideDestLen);
 			wideDest[requiredLen] = 0;
@@ -5484,7 +5542,7 @@ namespace fpl {
 			return(result);
 		}
 
-		fpl_api bool ResizeVideoBackBuffer(const uint32_t width, const uint32_t height) {
+		fpl_api bool ResizeVideoBackBuffer(const fpl_u32 width, const fpl_u32 height) {
 			bool result = false;
 			FPL_ASSERT(platform::global__Win32__State != fpl_null);
 			platform::Win32State *state = platform::global__Win32__State;
@@ -5514,10 +5572,10 @@ namespace fpl {
 				case VideoDriverType::Software:
 				{
 					WindowSize area = GetWindowArea();
-					uint32_t targetWidth = area.width;
-					uint32_t targetHeight = area.height;
-					uint32_t sourceWidth = video.software.context.width;
-					uint32_t sourceHeight = video.software.context.height;
+					fpl_u32 targetWidth = area.width;
+					fpl_u32 targetHeight = area.height;
+					fpl_u32 sourceWidth = video.software.context.width;
+					fpl_u32 sourceHeight = video.software.context.height;
 					wapi.gdi.stretchDIBits(state->window.deviceContext, 0, 0, targetWidth, targetHeight, 0, 0, sourceWidth, sourceHeight, video.software.context.pixels, &video.software.bitmapInfo, DIB_RGB_COLORS, SRCCOPY);
 				} break;
 #			endif
@@ -5547,7 +5605,7 @@ namespace fpl {
 			return(result);
 		}
 
-		fpl_api void SetWindowArea(const uint32_t width, const uint32_t height) {
+		fpl_api void SetWindowArea(const fpl_u32 width, const fpl_u32 height) {
 			FPL_ASSERT(platform::global__Win32__State != fpl_null);
 			platform::Win32State *state = platform::global__Win32__State;
 			platform::Win32APIFunctions &wapi = platform::global__Win32__API__Functions;
@@ -5598,7 +5656,7 @@ namespace fpl {
 			return(result);
 		}
 
-		fpl_api void SetWindowFullscreen(const bool value, const uint32_t fullscreenWidth, const uint32_t fullscreenHeight, const uint32_t refreshRate) {
+		fpl_api void SetWindowFullscreen(const bool value, const fpl_u32 fullscreenWidth, const fpl_u32 fullscreenHeight, const fpl_u32 refreshRate) {
 			FPL_ASSERT(platform::global__Win32__State != fpl_null);
 			platform::Win32State *state = platform::global__Win32__State;
 			platform::Win32APIFunctions &wapi = platform::global__Win32__API__Functions;
@@ -5664,7 +5722,7 @@ namespace fpl {
 			wapi.user.setWindowTextA(handle, title);
 		}
 
-		fpl_api void SetWindowPosition(const int32_t left, const int32_t top) {
+		fpl_api void SetWindowPosition(const fpl_s32 left, const fpl_s32 top) {
 			FPL_ASSERT(platform::global__Win32__State != fpl_null);
 			platform::Win32State *state = platform::global__Win32__State;
 			platform::Win32APIFunctions &wapi = platform::global__Win32__API__Functions;
@@ -5727,7 +5785,7 @@ namespace fpl {
 			FPL_ASSERT(eventQueue != fpl_null);
 			bool result = false;
 			if (eventQueue->pushCount > 0 && (eventQueue->pollIndex < eventQueue->pushCount)) {
-				uint32_t eventIndex = atomics::AtomicAddU32(&eventQueue->pollIndex, 1);
+				fpl_u32 eventIndex = atomics::AtomicAddU32(&eventQueue->pollIndex, 1);
 				ev = eventQueue->events[eventIndex];
 				result = true;
 			} else if (eventQueue->pushCount > 0) {
@@ -5737,7 +5795,7 @@ namespace fpl {
 			return result;
 		}
 
-		fpl_api char *GetClipboardAnsiText(char *dest, const uint32_t maxDestLen) {
+		fpl_api char *GetClipboardAnsiText(char *dest, const fpl_u32 maxDestLen) {
 			FPL_ASSERT(platform::global__Win32__State != fpl_null);
 			platform::Win32State *state = platform::global__Win32__State;
 			platform::Win32APIFunctions &wapi = platform::global__Win32__API__Functions;
@@ -5756,7 +5814,7 @@ namespace fpl {
 			return(result);
 		}
 
-		fpl_api wchar_t *GetClipboardWideText(wchar_t *dest, const uint32_t maxDestLen) {
+		fpl_api wchar_t *GetClipboardWideText(wchar_t *dest, const fpl_u32 maxDestLen) {
 			FPL_ASSERT(platform::global__Win32__State != fpl_null);
 			platform::Win32State *state = platform::global__Win32__State;
 			platform::Win32APIFunctions &wapi = platform::global__Win32__API__Functions;
@@ -5781,8 +5839,8 @@ namespace fpl {
 			platform::Win32APIFunctions &wapi = platform::global__Win32__API__Functions;
 			bool result = false;
 			if (wapi.user.openClipboard(state->window.windowHandle)) {
-				const uint32_t ansiLen = strings::GetAnsiStringLength(ansiSource);
-				const uint32_t ansiBufferLen = ansiLen + 1;
+				const fpl_u32 ansiLen = strings::GetAnsiStringLength(ansiSource);
+				const fpl_u32 ansiBufferLen = ansiLen + 1;
 				HGLOBAL handle = GlobalAlloc(GMEM_MOVEABLE, (SIZE_T)ansiBufferLen * sizeof(char));
 				if (handle != fpl_null) {
 					char *target = (char*)GlobalLock(handle);
@@ -5803,8 +5861,8 @@ namespace fpl {
 			platform::Win32APIFunctions &wapi = platform::global__Win32__API__Functions;
 			bool result = false;
 			if (wapi.user.openClipboard(state->window.windowHandle)) {
-				const uint32_t wideLen = strings::GetWideStringLength(wideSource);
-				const uint32_t wideBufferLen = wideLen + 1;
+				const fpl_u32 wideLen = strings::GetWideStringLength(wideSource);
+				const fpl_u32 wideBufferLen = wideLen + 1;
 				HGLOBAL handle = GlobalAlloc(GMEM_MOVEABLE, (SIZE_T)wideBufferLen * sizeof(wchar_t));
 				if (handle != fpl_null) {
 					wchar_t *wideTarget = (wchar_t*)GlobalLock(handle);
@@ -5829,21 +5887,21 @@ namespace fpl {
 		if (common::global__LastErrorState != fpl_null) {
 #		if defined(FPL_ENABLE_MULTIPLE_ERRORSTATES)
 			if (common::global__LastErrorState->count > 0) {
-				size_t index = common::global__LastErrorState->count - 1;
+				fpl_size index = common::global__LastErrorState->count - 1;
 				result = GetPlatformLastError(index);
 			}
 #		else
 			result = global__LastErrorState->errors[0];
 #		endif // FPL_ENABLE_MULTIPLE_ERRORSTATES
-		}
+			}
 		return (result);
-	}
+		}
 
-	fpl_api const char *GetPlatformLastError(const size_t index) {
+	fpl_api const char *GetPlatformLastError(const fpl_size index) {
 		const char *result = fpl_null;
 		if (common::global__LastErrorState != fpl_null) {
 #		if defined(FPL_ENABLE_MULTIPLE_ERRORSTATES)
-			if (index > -1 && index < (int32_t)common::global__LastErrorState->count) {
+			if (index > -1 && index < (fpl_s32)common::global__LastErrorState->count) {
 				result = common::global__LastErrorState->errors[index];
 			} else {
 				result = common::global__LastErrorState->errors[common::global__LastErrorState->count - 1];
@@ -5851,12 +5909,12 @@ namespace fpl {
 #		else
 			result = global__LastErrorState->errors[0];
 #		endif // FPL_ENABLE_MULTIPLE_ERRORSTATES
-		}
+			}
 		return (result);
-	}
+		}
 
-	fpl_api size_t GetPlatformLastErrorCount() {
-		size_t result = 0;
+	fpl_api fpl_size GetPlatformLastErrorCount() {
+		fpl_size result = 0;
 		if (common::global__LastErrorState != fpl_null) {
 #		if defined(FPL_ENABLE_MULTIPLE_ERRORSTATES)
 			result = common::global__LastErrorState->count;
@@ -6001,7 +6059,7 @@ namespace fpl {
 		return (true);
 	}
 
-} // fpl
+	} // fpl
 
 #	if defined(FPL_ENABLE_WINDOW)
 
@@ -6012,7 +6070,7 @@ int WINAPI wWinMain(HINSTANCE appInstance, HINSTANCE prevInstance, LPWSTR cmdLin
 	int result = main(args.count, args.args);
 	fpl::memory::MemoryFree(args.mem);
 	return(result);
-}
+	}
 
 #		else
 
@@ -6054,120 +6112,120 @@ namespace fpl {
 			__sync_synchronize();
 		}
 
-		fpl_api uint32_t AtomicExchangeU32(volatile uint32_t *target, const uint32_t value) {
-			uint32_t result = __sync_lock_test_and_set(target, value);
+		fpl_api fpl_u32 AtomicExchangeU32(volatile fpl_u32 *target, const fpl_u32 value) {
+			fpl_u32 result = __sync_lock_test_and_set(target, value);
 			__sync_synchronize();
 			return(result);
 		}
-		fpl_api int32_t AtomicExchangeS32(volatile int32_t *target, const int32_t value) {
-			int32_t result = __sync_lock_test_and_set(target, value);
+		fpl_api fpl_s32 AtomicExchangeS32(volatile fpl_s32 *target, const fpl_s32 value) {
+			fpl_s32 result = __sync_lock_test_and_set(target, value);
 			__sync_synchronize();
 			return(result);
 		}
-		fpl_api uint64_t AtomicExchangeU64(volatile uint64_t *target, const uint64_t value) {
-			uint64_t result = __sync_lock_test_and_set(target, value);
+		fpl_api fpl_u64 AtomicExchangeU64(volatile fpl_u64 *target, const fpl_u64 value) {
+			fpl_u64 result = __sync_lock_test_and_set(target, value);
 			__sync_synchronize();
 			return(result);
 		}
-		fpl_api int64_t AtomicExchangeS64(volatile int64_t *target, const int64_t value) {
-			int64_t result = __sync_lock_test_and_set(target, value);
+		fpl_api fpl_s64 AtomicExchangeS64(volatile fpl_s64 *target, const fpl_s64 value) {
+			fpl_s64 result = __sync_lock_test_and_set(target, value);
 			__sync_synchronize();
 			return(result);
 		}
 
-		fpl_api uint32_t AtomicAddU32(volatile uint32_t *value, const uint32_t addend) {
+		fpl_api fpl_u32 AtomicAddU32(volatile fpl_u32 *value, const fpl_u32 addend) {
 			FPL_ASSERT(value != fpl_null);
-			uint32_t result = __sync_fetch_and_add(value, addend);
+			fpl_u32 result = __sync_fetch_and_add(value, addend);
 			return (result);
 		}
-		fpl_api int32_t AtomicAddS32(volatile int32_t *value, const int32_t addend) {
+		fpl_api fpl_s32 AtomicAddS32(volatile fpl_s32 *value, const fpl_s32 addend) {
 			FPL_ASSERT(value != fpl_null);
-			uint32_t result = __sync_fetch_and_add(value, addend);
+			fpl_u32 result = __sync_fetch_and_add(value, addend);
 			return (result);
 		}
-		fpl_api uint64_t AtomicAddU64(volatile uint64_t *value, const uint64_t addend) {
+		fpl_api fpl_u64 AtomicAddU64(volatile fpl_u64 *value, const fpl_u64 addend) {
 			FPL_ASSERT(value != fpl_null);
-			uint32_t result = __sync_fetch_and_add(value, addend);
+			fpl_u32 result = __sync_fetch_and_add(value, addend);
 			return (result);
 		}
-		fpl_api int64_t AtomicAddS64(volatile int64_t *value, const int64_t addend) {
+		fpl_api fpl_s64 AtomicAddS64(volatile fpl_s64 *value, const fpl_s64 addend) {
 			FPL_ASSERT(value != fpl_null);
-			uint32_t result = __sync_fetch_and_add(value, addend);
+			fpl_u32 result = __sync_fetch_and_add(value, addend);
 			return (result);
 		}
 
-		fpl_api uint32_t AtomicCompareAndExchangeU32(volatile uint32_t *dest, const uint32_t comparand, const uint32_t exchange) {
+		fpl_api fpl_u32 AtomicCompareAndExchangeU32(volatile fpl_u32 *dest, const fpl_u32 comparand, const fpl_u32 exchange) {
 			FPL_ASSERT(dest != fpl_null);
-			uint32_t result = __sync_val_compare_and_swap(dest, comparand, exchange);
+			fpl_u32 result = __sync_val_compare_and_swap(dest, comparand, exchange);
 			return (result);
 		}
-		fpl_api int32_t AtomicCompareAndExchangeS32(volatile int32_t *dest, const int32_t comparand, const int32_t exchange) {
+		fpl_api fpl_s32 AtomicCompareAndExchangeS32(volatile fpl_s32 *dest, const fpl_s32 comparand, const fpl_s32 exchange) {
 			FPL_ASSERT(dest != fpl_null);
-			int32_t result = __sync_val_compare_and_swap(dest, comparand, exchange);
+			fpl_s32 result = __sync_val_compare_and_swap(dest, comparand, exchange);
 			return (result);
 		}
-		fpl_api uint64_t AtomicCompareAndExchangeU64(volatile uint64_t *dest, const uint64_t comparand, const uint64_t exchange) {
+		fpl_api fpl_u64 AtomicCompareAndExchangeU64(volatile fpl_u64 *dest, const fpl_u64 comparand, const fpl_u64 exchange) {
 			FPL_ASSERT(dest != fpl_null);
-			uint64_t result = __sync_val_compare_and_swap(dest, comparand, exchange);
+			fpl_u64 result = __sync_val_compare_and_swap(dest, comparand, exchange);
 			return (result);
 		}
-		fpl_api int64_t AtomicCompareAndExchangeS64(volatile int64_t *dest, const int64_t comparand, const int64_t exchange) {
+		fpl_api fpl_s64 AtomicCompareAndExchangeS64(volatile fpl_s64 *dest, const fpl_s64 comparand, const fpl_s64 exchange) {
 			FPL_ASSERT(dest != fpl_null);
-			int64_t result = __sync_val_compare_and_swap(dest, comparand, exchange);
+			fpl_s64 result = __sync_val_compare_and_swap(dest, comparand, exchange);
 			return (result);
 		}
 
-		fpl_api bool IsAtomicCompareAndExchangeU32(volatile uint32_t *dest, const uint32_t comparand, const uint32_t exchange) {
+		fpl_api bool IsAtomicCompareAndExchangeU32(volatile fpl_u32 *dest, const fpl_u32 comparand, const fpl_u32 exchange) {
 			FPL_ASSERT(dest != fpl_null);
 			bool result = __sync_bool_compare_and_swap(dest, comparand, exchange);
 			return (result);
 		}
-		fpl_api bool IsAtomicCompareAndExchangeS32(volatile int32_t *dest, const int32_t comparand, const int32_t exchange) {
+		fpl_api bool IsAtomicCompareAndExchangeS32(volatile fpl_s32 *dest, const fpl_s32 comparand, const fpl_s32 exchange) {
 			FPL_ASSERT(dest != fpl_null);
 			bool result = __sync_bool_compare_and_swap(dest, comparand, exchange);
 			return (result);
 		}
-		fpl_api bool IsAtomicCompareAndExchangeU64(volatile uint64_t *dest, const uint64_t comparand, const uint64_t exchange) {
+		fpl_api bool IsAtomicCompareAndExchangeU64(volatile fpl_u64 *dest, const fpl_u64 comparand, const fpl_u64 exchange) {
 			FPL_ASSERT(dest != fpl_null);
 			bool result = __sync_bool_compare_and_swap(dest, comparand, exchange);
 			return (result);
 		}
-		fpl_api bool IsAtomicCompareAndExchangeS64(volatile int64_t *dest, const int64_t comparand, const int64_t exchange) {
+		fpl_api bool IsAtomicCompareAndExchangeS64(volatile fpl_s64 *dest, const fpl_s64 comparand, const fpl_s64 exchange) {
 			FPL_ASSERT(dest != fpl_null);
 			bool result = __sync_bool_compare_and_swap(dest, comparand, exchange);
 			return (result);
 		}
 
-		fpl_api uint32_t AtomicLoadU32(volatile uint32_t *source) {
-			uint32_t result = __sync_fetch_and_or(source, 0);
+		fpl_api fpl_u32 AtomicLoadU32(volatile fpl_u32 *source) {
+			fpl_u32 result = __sync_fetch_and_or(source, 0);
 			return(result);
 		}
-		fpl_api uint64_t AtomicLoadU64(volatile uint64_t *source) {
-			uint64_t result = __sync_fetch_and_or(source, 0);
+		fpl_api fpl_u64 AtomicLoadU64(volatile fpl_u64 *source) {
+			fpl_u64 result = __sync_fetch_and_or(source, 0);
 			return(result);
 		}
-		fpl_api int32_t AtomicLoadS32(volatile int32_t *source) {
-			int32_t result = __sync_fetch_and_or(source, 0);
+		fpl_api fpl_s32 AtomicLoadS32(volatile fpl_s32 *source) {
+			fpl_s32 result = __sync_fetch_and_or(source, 0);
 			return(result);
 		}
-		fpl_api int64_t AtomicLoadS64(volatile int64_t *source) {
-			int64_t result = __sync_fetch_and_or(source, 0);
+		fpl_api fpl_s64 AtomicLoadS64(volatile fpl_s64 *source) {
+			fpl_s64 result = __sync_fetch_and_or(source, 0);
 			return(result);
 		}
 
-		fpl_api void AtomicStoreU32(volatile uint32_t *dest, const uint32_t value) {
+		fpl_api void AtomicStoreU32(volatile fpl_u32 *dest, const fpl_u32 value) {
 			__sync_lock_test_and_set(dest, value);
 			__sync_synchronize();
 		}
-		fpl_api void AtomicStoreU64(volatile uint64_t *dest, const uint64_t value) {
+		fpl_api void AtomicStoreU64(volatile fpl_u64 *dest, const fpl_u64 value) {
 			__sync_lock_test_and_set(dest, value);
 			__sync_synchronize();
 		}
-		fpl_api void AtomicStoreS32(volatile int32_t *dest, const int32_t value) {
+		fpl_api void AtomicStoreS32(volatile fpl_s32 *dest, const fpl_s32 value) {
 			__sync_lock_test_and_set(dest, value);
 			__sync_synchronize();
 		}
-		fpl_api void AtomicStoreS64(volatile int64_t *dest, const int64_t value) {
+		fpl_api void AtomicStoreS64(volatile fpl_s64 *dest, const fpl_s64 value) {
 			__sync_lock_test_and_set(dest, value);
 			__sync_synchronize();
 		}
@@ -6204,25 +6262,25 @@ namespace fpl {
 
 	// Linux Memory
 	namespace memory {
-		fpl_api void *MemoryAllocate(const size_t size) {
+		fpl_api void *MemoryAllocate(const fpl_size size) {
 			// @NOTE(final): MAP_ANONYMOUS ensures that the memory is cleared to zero.
 
 			// Allocate empty memory to hold the size + some arbitary padding + the actual data
-			size_t newSize = sizeof(size_t) + sizeof(uintptr_t) + size;
+			fpl_size newSize = sizeof(fpl_size) + sizeof(fpl_uintptr) + size;
 			void *basePtr = mmap(fpl_null, newSize, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
 
 			// Write the size at the beginning
-			*(size_t *)basePtr = newSize;
+			*(fpl_size *)basePtr = newSize;
 
 			// The resulting address starts after the arbitary padding
-			void *result = (uint8_t *)basePtr + sizeof(size_t) + sizeof(uintptr_t);
+			void *result = (fpl_u8 *)basePtr + sizeof(fpl_size) + sizeof(fpl_uintptr);
 			return(result);
 		}
 
 		fpl_api void MemoryFree(void *ptr) {
-			// Free the base pointer which is stored to the left at the start of the size_t
-			void *basePtr = (void *)((uint8_t *)ptr - (sizeof(uintptr_t) + sizeof(size_t)));
-			size_t storedSize = *(size_t *)basePtr;
+			// Free the base pointer which is stored to the left at the start of the fpl_size
+			void *basePtr = (void *)((fpl_u8 *)ptr - (sizeof(fpl_uintptr) + sizeof(fpl_size)));
+			fpl_size storedSize = *(fpl_size *)basePtr;
 			munmap(basePtr, storedSize);
 		}
 	}
@@ -6259,7 +6317,7 @@ namespace fpl {
 
 		static const GUID FPL_IID_IDirectSoundNotify = { 0xb0210783, 0x89cd, 0x11d0, {0xaf, 0x08, 0x00, 0xa0, 0xc9, 0x25, 0xcd, 0x16} };
 
-		fpl_constant uint32_t FPL_DIRECTSOUND_MAX_PERIODS = 4;
+		fpl_constant fpl_u32 FPL_DIRECTSOUND_MAX_PERIODS = 4;
 
 		struct DirectSoundState {
 			HMODULE dsoundLibrary;
@@ -6269,7 +6327,7 @@ namespace fpl {
 			LPDIRECTSOUNDNOTIFY notify;
 			HANDLE notifyEvents[FPL_DIRECTSOUND_MAX_PERIODS];
 			HANDLE stopEvent;
-			uint32_t lastProcessedFrame;
+			fpl_u32 lastProcessedFrame;
 			bool breakMainLoop;
 		};
 
@@ -6279,7 +6337,7 @@ namespace fpl {
 					CloseHandle(dsoundState.stopEvent);
 				}
 
-				for (uint32_t i = 0; i < commonAudio.internalFormat.periods; ++i) {
+				for (fpl_u32 i = 0; i < commonAudio.internalFormat.periods; ++i) {
 					if (dsoundState.notifyEvents[i]) {
 						CloseHandle(dsoundState.notifyEvents[i]);
 					}
@@ -6435,9 +6493,9 @@ namespace fpl {
 			}
 
 			// Setup notifications
-			uint32_t periodSizeInBytes = internalFormat.bufferSizeInBytes / internalFormat.periods;
+			fpl_u32 periodSizeInBytes = internalFormat.bufferSizeInBytes / internalFormat.periods;
 			DSBPOSITIONNOTIFY notifyPoints[FPL_DIRECTSOUND_MAX_PERIODS];
-			for (uint32_t i = 0; i < internalFormat.periods; ++i) {
+			for (fpl_u32 i = 0; i < internalFormat.periods; ++i) {
 				dsoundState.notifyEvents[i] = CreateEventA(fpl_null, false, false, fpl_null);
 				if (dsoundState.notifyEvents[i] == fpl_null) {
 					ReleaseDirectSound(commonAudio, dsoundState);
@@ -6468,7 +6526,7 @@ namespace fpl {
 			SetEvent(dsoundState.stopEvent);
 		}
 
-		fpl_internal bool GetCurrentFrameDirectSound(const audio::CommonAudioState &commonAudio, DirectSoundState &dsoundState, uint32_t* pCurrentPos) {
+		fpl_internal bool GetCurrentFrameDirectSound(const audio::CommonAudioState &commonAudio, DirectSoundState &dsoundState, fpl_u32* pCurrentPos) {
 			FPL_ASSERT(pCurrentPos != fpl_null);
 			*pCurrentPos = 0;
 
@@ -6479,13 +6537,13 @@ namespace fpl {
 			}
 
 			FPL_ASSERT(commonAudio.internalFormat.channels > 0);
-			*pCurrentPos = (uint32_t)dwCurrentPosition / audio::GetAudioSampleSizeInBytes(commonAudio.internalFormat.type) / commonAudio.internalFormat.channels;
+			*pCurrentPos = (fpl_u32)dwCurrentPosition / audio::GetAudioSampleSizeInBytes(commonAudio.internalFormat.type) / commonAudio.internalFormat.channels;
 			return true;
 		}
 
-		fpl_internal uint32_t GetAvailableFramesDirectSound(const audio::CommonAudioState &commonAudio, DirectSoundState &dsoundState) {
+		fpl_internal fpl_u32 GetAvailableFramesDirectSound(const audio::CommonAudioState &commonAudio, DirectSoundState &dsoundState) {
 			// Get current frame from current play position
-			uint32_t currentFrame;
+			fpl_u32 currentFrame;
 			if (!GetCurrentFrameDirectSound(commonAudio, dsoundState, &currentFrame)) {
 				return 0;
 			}
@@ -6493,21 +6551,21 @@ namespace fpl {
 			// In a playback device the last processed frame should always be ahead of the current frame. The space between
 			// the last processed and current frame (moving forward, starting from the last processed frame) is the amount
 			// of space available to write.
-			uint32_t totalFrameCount = commonAudio.internalFormat.bufferSizeInFrames;
-			uint32_t committedBeg = currentFrame;
-			uint32_t committedEnd;
+			fpl_u32 totalFrameCount = commonAudio.internalFormat.bufferSizeInFrames;
+			fpl_u32 committedBeg = currentFrame;
+			fpl_u32 committedEnd;
 			committedEnd = dsoundState.lastProcessedFrame;
 			if (committedEnd <= committedBeg) {
 				committedEnd += totalFrameCount;
 			}
 
-			uint32_t committedSize = (committedEnd - committedBeg);
+			fpl_u32 committedSize = (committedEnd - committedBeg);
 			FPL_ASSERT(committedSize <= totalFrameCount);
 
 			return totalFrameCount - committedSize;
 		}
 
-		fpl_internal uint32_t WaitForFramesDirectSound(const audio::CommonAudioState &commonAudio, DirectSoundState &dsoundState) {
+		fpl_internal fpl_u32 WaitForFramesDirectSound(const audio::CommonAudioState &commonAudio, DirectSoundState &dsoundState) {
 			FPL_ASSERT(commonAudio.internalFormat.sampleRate > 0);
 			FPL_ASSERT(commonAudio.internalFormat.periods > 0);
 
@@ -6525,7 +6583,7 @@ namespace fpl {
 
 			while (!dsoundState.breakMainLoop) {
 				// Get available frames from directsound
-				uint32_t framesAvailable = GetAvailableFramesDirectSound(commonAudio, dsoundState);
+				fpl_u32 framesAvailable = GetAvailableFramesDirectSound(commonAudio, dsoundState);
 				if (framesAvailable > 0) {
 					return framesAvailable;
 				}
@@ -6550,12 +6608,12 @@ namespace fpl {
 		fpl_internal audio::AudioResult StartDirectSound(const audio::CommonAudioState &commonAudio, DirectSoundState &dsoundState) {
 			FPL_ASSERT(commonAudio.internalFormat.channels > 0);
 			FPL_ASSERT(commonAudio.internalFormat.periods > 0);
-			uint32_t audioSampleSizeBytes = audio::GetAudioSampleSizeInBytes(commonAudio.internalFormat.type);
+			fpl_u32 audioSampleSizeBytes = audio::GetAudioSampleSizeInBytes(commonAudio.internalFormat.type);
 			FPL_ASSERT(audioSampleSizeBytes > 0);
 
 			// Before playing anything we need to grab an initial group of samples from the client.
-			uint32_t framesToRead = commonAudio.internalFormat.bufferSizeInFrames / commonAudio.internalFormat.periods;
-			uint32_t desiredLockSize = framesToRead * commonAudio.internalFormat.channels * audioSampleSizeBytes;
+			fpl_u32 framesToRead = commonAudio.internalFormat.bufferSizeInFrames / commonAudio.internalFormat.periods;
+			fpl_u32 desiredLockSize = framesToRead * commonAudio.internalFormat.channels * audioSampleSizeBytes;
 
 			void* pLockPtr;
 			DWORD actualLockSize;
@@ -6577,7 +6635,7 @@ namespace fpl {
 
 		fpl_internal void DirectSoundMainLoop(const audio::CommonAudioState &commonAudio, DirectSoundState &dsoundState) {
 			FPL_ASSERT(commonAudio.internalFormat.channels > 0);
-			uint32_t audioSampleSizeBytes = audio::GetAudioSampleSizeInBytes(commonAudio.internalFormat.type);
+			fpl_u32 audioSampleSizeBytes = audio::GetAudioSampleSizeInBytes(commonAudio.internalFormat.type);
 			FPL_ASSERT(audioSampleSizeBytes > 0);
 
 			// Make sure the stop event is not signaled to ensure we don't end up immediately returning from WaitForMultipleObjects().
@@ -6587,7 +6645,7 @@ namespace fpl {
 			dsoundState.breakMainLoop = false;
 			while (!dsoundState.breakMainLoop) {
 				// Wait until we get available frames from directsound
-				uint32_t framesAvailable = WaitForFramesDirectSound(commonAudio, dsoundState);
+				fpl_u32 framesAvailable = WaitForFramesDirectSound(commonAudio, dsoundState);
 				if (framesAvailable == 0) {
 					continue;
 				}
@@ -6611,7 +6669,7 @@ namespace fpl {
 					}
 
 					// Read actual frames from user
-					uint32_t frameCount = actualLockSize / audioSampleSizeBytes / commonAudio.internalFormat.channels;
+					fpl_u32 frameCount = actualLockSize / audioSampleSizeBytes / commonAudio.internalFormat.channels;
 					audio::ReadAudioFramesFromClient(commonAudio, frameCount, pLockPtr);
 					dsoundState.lastProcessedFrame = (dsoundState.lastProcessedFrame + frameCount) % commonAudio.internalFormat.bufferSizeInFrames;
 
@@ -6663,9 +6721,9 @@ namespace fpl {
 			volatile AudioResult workResult;
 
 			AudioDriverType activeDriver;
-			uint32_t periods;
-			uint32_t bufferSizeInFrames;
-			uint32_t bufferSizeInBytes;
+			fpl_u32 periods;
+			fpl_u32 bufferSizeInFrames;
+			fpl_u32 bufferSizeInBytes;
 			bool isAsyncDriver;
 
 			union {
@@ -6773,11 +6831,11 @@ namespace fpl {
 		}
 
 		fpl_internal_inline void AudioSetDeviceState(AudioState &audioState, AudioDeviceState newState) {
-			atomics::AtomicStoreU32((volatile uint32_t *)&audioState.state, (uint32_t)newState);
+			atomics::AtomicStoreU32((volatile fpl_u32 *)&audioState.state, (fpl_u32)newState);
 		}
 
 		fpl_internal_inline AudioDeviceState AudioGetDeviceState(AudioState &audioState) {
-			AudioDeviceState result = (AudioDeviceState)atomics::AtomicLoadU32((volatile uint32_t *)&audioState.state);
+			AudioDeviceState result = (AudioDeviceState)atomics::AtomicLoadU32((volatile fpl_u32 *)&audioState.state);
 			return(result);
 		}
 
@@ -7052,9 +7110,9 @@ namespace fpl {
 			AudioDriverType propeDrivers[] = {
 				AudioDriverType::DirectSound,
 			};
-			uint32_t driverCount = FPL_ARRAYCOUNT(propeDrivers);
+			fpl_u32 driverCount = FPL_ARRAYCOUNT(propeDrivers);
 			AudioResult initResult = AudioResult::Failed;
-			for (uint32_t driverIndex = 0; driverIndex < driverCount; ++driverIndex) {
+			for (fpl_u32 driverIndex = 0; driverIndex < driverCount; ++driverIndex) {
 				AudioDriverType propeDriver = propeDrivers[driverIndex];
 
 				initResult = AudioResult::Failed;
