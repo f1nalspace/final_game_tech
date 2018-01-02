@@ -671,6 +671,29 @@ static void DestroyFrameQueue(FrameQueue &queue) {
 	}
 }
 
+static void AddToFrameQueue(FrameQueue &queue, Frame *frame) {
+	assert(Enqueue(queue.availableFramesQueue, frame));
+}
+
+static bool TakeFromFrameQueue(FrameQueue &queue, Frame *&frame) {
+	bool result = Dequeue(queue.availableFramesQueue, frame);
+	return(result);
+}
+
+static void BackToFrameQueue(FrameQueue &queue, Frame *frame) {
+	assert(Enqueue(queue.freeListQueue, frame));
+}
+
+static bool AquireFrame(FrameQueue &queue, Frame *&frame) {
+	bool result = Dequeue(queue.freeListQueue, frame);
+	return(result);
+}
+
+static void ReleaseFrame(FrameQueue &queue, Frame *frame) {
+	FreeFrameData(frame);
+	assert(Enqueue(queue.freeListQueue, frame));
+}
+
 struct MediaStream {
 	AVStream *stream;
 	AVCodecContext *codecContext;
@@ -797,13 +820,12 @@ static void AddPacketToDecoder(Decoder &decoder, PacketList *packet) {
 }
 
 static void PutFrameBackToDecoder(Decoder &decoder, Frame *frame) {
-	FreeFrameData(frame);
-	assert(Enqueue(decoder.frameQueue.freeListQueue, frame));
+	ReleaseFrame(decoder.frameQueue, frame);
 	SignalWakeUp(decoder.freeFrameSignal);
 }
 
 static void AddDecodedFrameToDecoder(Decoder &decoder, Frame *frame) {
-	assert(Enqueue(decoder.frameQueue.availableFramesQueue, frame));
+	AddToFrameQueue(decoder.frameQueue, frame);
 	SignalWakeUp(decoder.decodedFrameSignal);
 }
 
@@ -1183,7 +1205,7 @@ static void VideoDecodingThreadProc(const ThreadContext &thread, void *userData)
 		// Get target frame from the free list if needed
 		if (aquireNewTargetFrame) {
 			targetFrame = fpl_null;
-			if (!Dequeue(decoder->frameQueue.freeListQueue, targetFrame)) {
+			if (!AquireFrame(decoder->frameQueue, targetFrame)) {
 				continue;
 			}
 			aquireNewTargetFrame = false;
@@ -1274,7 +1296,7 @@ static void AudioDecodingThreadProc(const ThreadContext &thread, void *userData)
 		// Get target frame from the free list if needed
 		if (aquireNewTargetFrame) {
 			targetFrame = fpl_null;
-			if (!Dequeue(decoder->frameQueue.freeListQueue, targetFrame)) {
+			if (!AquireFrame(decoder->frameQueue, targetFrame)) {
 				continue;
 			}
 			aquireNewTargetFrame = false;
@@ -1408,7 +1430,7 @@ static uint32_t AudioReadCallback(const AudioDeviceFormat &nativeFormat, const u
 
 			if ((audio->pendingAudioFrame == fpl_null) && (audio->conversionAudioFramesRemaining == 0)) {
 				Frame *newAudioFrame;
-				if (Dequeue(decoder.frameQueue.availableFramesQueue, newAudioFrame)) {
+				if (TakeFromFrameQueue(decoder.frameQueue, newAudioFrame)) {
 					audio->pendingAudioFrame = newAudioFrame;
 					audio->conversionAudioFrameIndex = 0;
 					audio->conversionAudioFramesRemaining = 0;
@@ -1659,7 +1681,7 @@ static void VideoRefresh(PlayerState *state, double *remainingTime) {
 		Frame *frame = state->video.waitingFrame;
 		if (state->video.waitingFrame == fpl_null) {
 			frame = fpl_null;
-			if (Dequeue(state->video.decoder.frameQueue.availableFramesQueue, frame)) {
+			if (TakeFromFrameQueue(state->video.decoder.frameQueue, frame)) {
 				state->video.waitingFrame = frame;
 			}
 		}
