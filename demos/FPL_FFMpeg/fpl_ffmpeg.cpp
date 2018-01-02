@@ -851,11 +851,34 @@ typedef AVSyncTypes::AVSyncTypeEnum AVSyncType;
 //
 // Video
 //
+struct Texture {
+	uint32_t id;
+	uint8_t *data;
+	uint32_t width;
+	uint32_t height;
+	uint32_t stride;
+	uint32_t colorBits;
+};
+
+static bool InitTexture(Texture &texture, uint32_t w, uint32_t h, uint32_t colorBits, uint8_t *data) {
+	texture.id = 1;
+	texture.width = w;
+	texture.height = h;
+	texture.data = data;
+	texture.colorBits = colorBits;
+	texture.stride = (colorBits / 8) * w;
+	return true;
+}
+
+static void DestroyTexture(Texture &texture) {
+	texture = {};
+}
+
 struct VideoContext {
 	MediaStream stream;
 	Decoder decoder;
 	Clock clock;
-	VideoBackBuffer *backBuffer;
+	Texture targetTexture;
 	AVFrame *targetRGBFrame;
 	uint8_t *targetRGBBuffer;
 	SwsContext *softwareScaleCtx;
@@ -863,6 +886,15 @@ struct VideoContext {
 	FrameInfo prevFrameInfo;
 	FrameInfo nextFrameInfo;
 };
+
+static void UploadTexture(VideoContext &video, AVFrame *sourceNativeFrame) {
+	assert(video.targetTexture.width == sourceNativeFrame->width);
+	assert(video.targetTexture.height == sourceNativeFrame->height);
+	AVCodecContext *videoCodecCtx = video.stream.codecContext;
+	const FFMPEGContext &ffmpeg = *globalFFMPEGFunctions;
+	ffmpeg.swsScale(video.softwareScaleCtx, (uint8_t const * const *)sourceNativeFrame->data, sourceNativeFrame->linesize, 0, videoCodecCtx->height, video.targetRGBFrame->data, video.targetRGBFrame->linesize);
+	ConvertRGB24ToRGB32(video.targetTexture.data, video.targetTexture.stride, videoCodecCtx->width, videoCodecCtx->height, *video.targetRGBFrame->linesize, video.targetRGBBuffer);
+}
 
 //
 // Audio
@@ -1634,10 +1666,7 @@ static void VideoDisplay(PlayerState *state, Frame *sourceNativeFrame) {
 	assert(state != fpl_null);
 	assert(sourceNativeFrame != fpl_null);
 	VideoContext &video = state->video;
-	AVCodecContext *videoCodecCtx = video.stream.codecContext;
-	const FFMPEGContext &ffmpeg = *globalFFMPEGFunctions;
-	ffmpeg.swsScale(video.softwareScaleCtx, (uint8_t const * const *)sourceNativeFrame->frame->data, sourceNativeFrame->frame->linesize, 0, videoCodecCtx->height, video.targetRGBFrame->data, video.targetRGBFrame->linesize);
-	ConvertRGB24ToBackBuffer(video.backBuffer, videoCodecCtx->width, videoCodecCtx->height, *video.targetRGBFrame->linesize, video.targetRGBBuffer);
+	UploadTexture(video, sourceNativeFrame->frame);
 	WindowFlip();
 }
 
@@ -1745,6 +1774,9 @@ static void ReleaseMedia(PlayerState &state) {
 	}
 	if (state.video.targetRGBFrame != fpl_null) {
 		ffmpeg.avFrameFree(&state.video.targetRGBFrame);
+	}
+	if (state.video.targetTexture.id) {
+		DestroyTexture(state.video.targetTexture);
 	}
 	if (state.video.stream.codecContext != fpl_null) {
 		ffmpeg.avcodecFreeContext(&state.video.stream.codecContext);
@@ -1916,7 +1948,10 @@ static bool LoadMedia(PlayerState &state, const char *mediaFilePath, const Audio
 			goto release;
 		}
 
-		state.video.backBuffer = backBuffer;
+		if (!InitTexture(state.video.targetTexture, backBuffer->width, backBuffer->height, 32, (fpl_u8 *)backBuffer->pixels)) {
+			goto release;
+		}
+
 		state.frameTimer = 0.0;
 		state.frameLastPTS = 0.0;
 		state.frameLastDelay = 40e-3;

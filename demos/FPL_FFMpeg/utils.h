@@ -56,11 +56,11 @@ static void SaveBitmapRGB24(fpl_u8 *source, fpl_u32 width, fpl_u32 height, fpl_u
 	}
 }
 
-static void ConvertRGB24ToBackBuffer(VideoBackBuffer *backbuffer, int width, int height, int sourceScanLine, fpl_u8 *sourceData) {
+static void ConvertRGB24ToRGB32(fpl_u8 *destData, fpl_u32 destScanline, fpl_s32 width, fpl_s32 height, fpl_u32 sourceScanLine, fpl_u8 *sourceData) {
 	for (int y = 0; y < height; ++y) {
 		fpl_u8 *src = sourceData + y * sourceScanLine;
 		int invertY = height - 1 - y;
-		fpl_u32 *dst = (fpl_u32 *)((fpl_u8 *)backbuffer->pixels + invertY * backbuffer->stride);
+		fpl_u32 *dst = (fpl_u32 *)((fpl_u8 *)destData + invertY * destScanline);
 		for (int x = 0; x < width; ++x) {
 			fpl_u8 r = *src++;
 			fpl_u8 g = *src++;
