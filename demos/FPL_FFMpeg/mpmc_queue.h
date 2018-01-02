@@ -130,7 +130,7 @@ static T &PeekReadable(MPMCBoundedQueue<T> &queue, int32_t offset = 1) {
 template <typename T>
 static T &PeekWritable(MPMCBoundedQueue<T> &queue, int32_t offset = 1) {
 	MPMCBoundedQueueCell<T> *cell;
-	uint64_t pos = AtomicLoadU64(&queue.dequeuePos);
+	uint64_t pos = AtomicLoadU64(&queue.enqueuePos);
 	for (;;) {
 		cell = &queue.buffer[pos & queue.bufferMask];
 		uint64_t seq = AtomicLoadU64(&cell->sequence);
@@ -140,7 +140,7 @@ static T &PeekWritable(MPMCBoundedQueue<T> &queue, int32_t offset = 1) {
 		} else if (dif < 0)
 			return false;
 		else
-			pos = AtomicLoadU64(&queue.dequeuePos);
+			pos = AtomicLoadU64(&queue.enqueuePos);
 	}
 	data = cell->data;
 	return true;
@@ -149,5 +149,11 @@ static T &PeekWritable(MPMCBoundedQueue<T> &queue, int32_t offset = 1) {
 template <typename T>
 static T &PeekPrev(MPMCBoundedQueue<T> &queue) {
 	T &result = Peek(queue, data, -1);
+	return(result);
+}
+
+template <typename T>
+static T &PeekNext(MPMCBoundedQueue<T> &queue) {
+	T &result = Peek(queue, data, 1);
 	return(result);
 }
