@@ -523,7 +523,9 @@ static void DestroyPacketQueue(PacketQueue &queue) {
 	if (queue.addedSignal.isValid) {
 		SignalDestroy(queue.addedSignal);
 	}
-	MutexDestroy(queue.lock);
+	if (queue.lock.isValid) {
+		MutexDestroy(queue.lock);
+	}
 }
 
 inline bool InitPacketQueue(PacketQueue &queue) {
@@ -730,13 +732,19 @@ static bool InitReader(ReaderContext &outReader) {
 
 static void DestroyReader(ReaderContext &reader) {
 	DestroyPacketQueue(reader.packetQueue);
-	SignalDestroy(reader.resumeSignal);
-	SignalDestroy(reader.stopSignal);
+	if (reader.resumeSignal.isValid) {
+		SignalDestroy(reader.resumeSignal);
+	}
+	if (reader.stopSignal.isValid) {
+		SignalDestroy(reader.stopSignal);
+	}
 }
 
 static void StopReader(ReaderContext &reader) {
 	reader.stopRequest = 1;
-	SignalWakeUp(reader.stopSignal);
+	if (reader.stopSignal.isValid) {
+		SignalWakeUp(reader.stopSignal);
+	}
 }
 
 struct PlayerState;
@@ -1995,7 +2003,7 @@ int main(int argc, char **argv) {
 
 		PlayerState state = {};
 		RefreshState refresh = {};
-		uint32_t threadCount = 0;
+		int32_t threadCount = 0;
 		ThreadContext *threads[3] = {};
 
 		//
@@ -2079,7 +2087,7 @@ int main(int argc, char **argv) {
 
 		// Wait until all threads are finished running and release all threads
 		ThreadWaitForAll(threads, threadCount);
-		for (uint32_t threadIndex = threadCount - 1; threadIndex > 0; threadIndex--) {
+		for (int32_t threadIndex = threadCount - 1; threadIndex > 0; threadIndex--) {
 			ThreadDestroy(threads[threadIndex]);
 		}
 
