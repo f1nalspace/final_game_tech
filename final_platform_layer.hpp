@@ -1,7 +1,7 @@
 
 /**
 * @file final_platform_layer.hpp
-* @version v0.5.4.0 beta
+* @version v0.5.5.1 beta
 * @author Torsten Spaete
 * @brief Final Platform Layer (FPL) - A Open source C++ single file header platform abstraction layer library.
 *
