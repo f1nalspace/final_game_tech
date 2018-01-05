@@ -2954,12 +2954,11 @@ namespace fpl {
 //
 // ****************************************************************************
 #if defined(FPL_PLATFORM_WIN32)
-// @NOTE(final): Unfortunatly we have to include windows header here, because we want the user have access to the opengl header.
 // @NOTE(final): windef.h defines min/max macros defined in lowerspace, this will break for example std::min/max so we have to tell the header we dont want this!
 #	if !defined(NOMINMAX)
 #		define NOMINMAX
 #	endif
-// @NOTE(final): For now we dont want any network, com or gdi stuff at all, maybe later how knows.
+// @NOTE(final): For now we dont want any network, com or gdi stuff at all, maybe later who knows.
 #	if !defined(WIN32_LEAN_AND_MEAN)
 #		define WIN32_LEAN_AND_MEAN 1
 #	endif
