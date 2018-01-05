@@ -8,6 +8,7 @@ endif
 BUILD_BASE_DIR =../bin/FPL_Linux
 SOURCE_FILES = main.cpp
 EXECUTABLE = FPL_Linux
+LIBS = -ldl
 
 ifeq ($(DEBUG), 1)
 	BUILD_DIR = $(BUILD_BASE_DIR)/x64-debug
@@ -21,7 +22,7 @@ prepare:
 	mkdir -p $(BUILD_DIR)
 
 build:
-	g++ -std=c++98 $(CFLAGS) -I../../ $(SOURCE_FILES) -o $(BUILD_DIR)/$(EXECUTABLE)
+	g++ -std=c++98 $(CFLAGS) -I../../ $(SOURCE_FILES) $(LIBS) -o $(BUILD_DIR)/$(EXECUTABLE)
 
 clean:
 	rm -rf $(BUILD_DIR)

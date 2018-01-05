@@ -319,14 +319,14 @@ Define this to include all required namespaces automatically.
 
 [X] Compiles with MSVC
 [X] Compiles with GCC (Partially)
-[ ] Compiles with Clang
+[ ] Compiles with Clang (Weird win32 bug)
 [ ] Compiles with MingW
 [ ] Compiles with Intel C++ Compiler
 
 # SUPPORTED PLATFORMS
 
 [x] Win32
-[X] Linux (Partially)
+[X] Linux/Posix (Partially)
 [ ] Unix/Posix
 [ ] Mac OSX (Not sure)
 
@@ -356,6 +356,12 @@ SOFTWARE.
 Thanks to David Reid for the awesome "mini_al.h" single header file audio library.
 
 # VERSION HISTORY
+
+## v0.5.5.1 beta:
+- New[POSIX]: Implemented fpl::timings
+- New[POSIX]: Implemented fpl::library
+- New[POSIX]: Implemented fpl::threading::ThreadSleep
+- Changed[POSIX]: Moved Linux fpl::console functions to Posix
 
 ## v0.5.5.0 beta:
 - Changed: All internal handles are now unions now, so can have different sizes of handles
@@ -1402,6 +1408,9 @@ namespace fpl {
 			union {
 #			if defined(FPL_PLATFORM_WIN32)
 				void *win32Handle;
+#			endif
+#			if defined(FPL_PLATFORM_POSIX)
+				void *posixHandle;
 #			endif
 			} internalHandle;
 			//! Library opened successfully
@@ -6123,6 +6132,10 @@ int WINAPI WinMain(HINSTANCE appInstance, HINSTANCE prevInstance, LPSTR cmdLine,
 //
 // ****************************************************************************
 #if defined(FPL_PLATFORM_POSIX)
+
+#include <time.h> // clock_gettime, nanosleep
+#include <dlfcn.h> // dlopen, dlclose
+
 namespace fpl {
 	// POSIX Atomics
 	namespace atomics {
@@ -6261,19 +6274,72 @@ namespace fpl {
 #		error "This POSIX compiler/platform is supported!"
 #	endif
 	}
-}
-#endif // FPL_PLATFORM_POSIX
+	
+	// ṔOSIX Timings
+	namespace timings {
+	  fpl_api double GetHighResolutionTimeInSeconds() {
+	    // @TODO(final): Do we need to take the performance frequency into account?
+	    timespec t;
+	    clock_gettime(CLOCK_MONOTONIC, &t);
+	    double result = (double)t.tv_sec + ((double)t.tv_nsec * 1e-9);
+	    return(result);
+	  }
+	}
+	
+	// ṔOSIX Threading
+	namespace threading {
+	  fpl_api void ThreadSleep(const fpl_u32 milliseconds) {
+	    fpl_u32 ms;
+	    fpl_u32 s;
+	    if (milliseconds > 1000) {
+	      s = milliseconds / 1000;
+	      ms = milliseconds % 1000;
+	    } else {
+	      s = 0;
+	      ms = milliseconds;
+	    }
+	    timespec input, output;
+	    input.tv_sec = s;
+	    input.tv_nsec = ms * 1000000;
+	    nanosleep(&input, &output);
+	  }
+	}
 
-// ****************************************************************************
-//
-// Linux Platform
-//
-// ****************************************************************************
-#if defined(FPL_PLATFORM_LINUX)
-#	include <sys/mman.h> // mmap, munmap
-
-namespace fpl {
-	// Linux Console
+	// POSIX Library
+	namespace library { 
+		fpl_api DynamicLibraryHandle DynamicLibraryLoad(const char *libraryFilePath) {
+			DynamicLibraryHandle result = {};
+			void *p = dlopen(libraryFilePath, RTLD_NOW);
+			if (p != fpl_null) {
+				result.internalHandle.posixHandle = p;
+				result.isValid = true;
+			}
+			return(result);
+		}
+		
+		fpl_api void *GetDynamicLibraryProc(const DynamicLibraryHandle &handle, const char *name) {
+			void *result = fpl_null;
+			if (handle.isValid) {
+				void *p = handle.internalHandle.posixHandle;
+				FPL_ASSERT(p != fpl_null);
+				result = dlsym(p, name);
+			}
+			return(result);
+		}
+		
+		fpl_api void DynamicLibraryUnload(DynamicLibraryHandle &handle) {
+			if (handle.isValid) {
+				void *p = handle.internalHandle.posixHandle;
+				FPL_ASSERT(p != fpl_null);
+				dlclose(p);
+			}
+			handle.isValid = false;
+			handle.internalHandle.posixHandle = fpl_null;
+		}
+	}
+	
+	
+	// ṔOSIX Console
 	namespace console {
 		fpl_api void ConsoleOut(const char *text) {
 			FPL_ASSERT(text != fpl_null);
@@ -6298,7 +6364,22 @@ namespace fpl {
 			va_end(vaList);
 		}
 	}
+	
+	
+  
+}
 
+#endif // FPL_PLATFORM_POSIX
+
+// ****************************************************************************
+//
+// Linux Platform
+//
+// ****************************************************************************
+#if defined(FPL_PLATFORM_LINUX)
+#	include <sys/mman.h> // mmap, munmap
+
+namespace fpl {
 	// Linux Memory
 	namespace memory {
 		fpl_api void *MemoryAllocate(const fpl_size size) {
@@ -7220,3 +7301,4 @@ namespace fpl {
 } // fpl
 
 #endif // FPL_IMPLEMENTATION && !FPL_IMPLEMENTED
+

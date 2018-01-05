@@ -25,3 +25,5 @@
 /demos/immediates
 /demos/compile_log.txt
 /demos/FPL_FFMpeg/dependencies/ffmpeg/bin/*.dll
+/docs/html
+/demos/**/.kdev4
