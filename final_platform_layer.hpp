@@ -357,6 +357,10 @@ Thanks to David Reid for the awesome "mini_al.h" single header file audio librar
 
 # VERSION HISTORY
 
+## v0.5.5.0 beta:
+- Changed: All internal handles are now unions now, so can have different sizes of handles
+- Changed: Introduced POSIX platform and moved linux atomics into it
+
 ## v0.5.4.0 beta:
 - Fixed: Some enum types was not using the namespace version
 
@@ -662,9 +666,11 @@ Thanks to David Reid for the awesome "mini_al.h" single header file audio librar
 #elif defined(__linux__) || defined(__gnu_linux__) || defined(linux)
 #	define FPL_PLATFORM_LINUX
 #	define FPL_PLATFORM_NAME "Linux"
+#	define FPL_PLATFORM_POSIX
 #elif defined(__unix__) || defined(_POSIX_VERSION)
 #	define FPL_PLATFORM_UNIX
 #	define FPL_PLATFORM_NAME "Unix"
+#	define FPL_PLATFORM_POSIX
 #else
 #	error "This platform/compiler is not supported!"
 #endif
@@ -1393,7 +1399,11 @@ namespace fpl {
 		//! Handle to a loaded dynamic library
 		struct DynamicLibraryHandle {
 			//! Internal library handle
-			void *internalHandle;
+			union {
+#			if defined(FPL_PLATFORM_WIN32)
+				void *win32Handle;
+#			endif
+			} internalHandle;
 			//! Library opened successfully
 			bool isValid;
 		};
@@ -1463,24 +1473,35 @@ namespace fpl {
 			run_thread_function *runFunc;
 			//! The user data passed to the run function
 			void *data;
-			//! The internal handle
-			void *internalHandle;
+			//! The internal thread handle
+			union {
+#			if defined(FPL_PLATFORM_WIN32)
+				void *win32Handle;
+#			endif
+			} internalHandle;
 			//! Thread state
 			volatile ThreadState currentState;
 		};
 
 		//! Mutex context
 		struct ThreadMutex {
-			//! The internal handle
-			void *internalHandle;
-			//! Is it valid
+			//! The internal mutex handle
+			union {
+#			if defined(FPL_PLATFORM_WIN32)
+				void *win32Handle;
+#			endif
+			} internalHandle;			//! Is it valid
 			bool isValid;
 		};
 
 		//! Signal context
 		struct ThreadSignal {
-			//! The internal handle
-			void *internalHandle;
+			//! The internal signal handle
+			union {
+#			if defined(FPL_PLATFORM_WIN32)
+				void *win32Handle;
+#			endif
+			} internalHandle;
 			//! Is it valid
 			bool isValid;
 		};
@@ -1612,7 +1633,11 @@ namespace fpl {
 		//! Handle to a loaded/created file
 		struct FileHandle {
 			//! Internal file handle
-			void *internalHandle;
+			union {
+#			if defined(FPL_PLATFORM_WIN32)
+				void *win32Handle;
+#			endif
+			} internalHandle;
 			//! File opened successfully
 			bool isValid;
 		};
@@ -1682,7 +1707,11 @@ namespace fpl {
 			//! File path
 			char path[MAX_FILEENTRY_PATH_LENGTH];
 			//! Internal file handle
-			void *internalHandle;
+			union {
+#			if defined(FPL_PLATFORM_WIN32)
+				void *win32Handle;
+#			endif
+			} internalHandle;
 		};
 
 		//! Opens a binary file from a ansi string path for reading and returns the handle of it.
@@ -4711,8 +4740,8 @@ namespace fpl {
 			for (fpl_u32 index = 0; index < count; ++index) {
 				threading::ThreadContext *context = contexts[index];
 				FPL_ASSERT(context->id > 0);
-				FPL_ASSERT(context->internalHandle != fpl_null);
-				HANDLE handle = (HANDLE)context->internalHandle;
+				FPL_ASSERT(context->internalHandle.win32Handle != fpl_null);
+				HANDLE handle = (HANDLE)context->internalHandle.win32Handle;
 				threadHandles[index] = handle;
 			}
 			DWORD code = WaitForMultipleObjects(count, threadHandles, waitForAll ? TRUE : FALSE, maxMilliseconds < FPL_MAX_U32 ? maxMilliseconds : INFINITE);
@@ -4727,8 +4756,8 @@ namespace fpl {
 			for (fpl_u32 index = 0; index < count; ++index) {
 				threading::ThreadSignal *availableSignal = signals[index];
 				FPL_ASSERT(availableSignal->isValid);
-				FPL_ASSERT(availableSignal->internalHandle != fpl_null);
-				HANDLE handle = (HANDLE)availableSignal->internalHandle;
+				FPL_ASSERT(availableSignal->internalHandle.win32Handle != fpl_null);
+				HANDLE handle = (HANDLE)availableSignal->internalHandle.win32Handle;
 				signalHandles[index] = handle;
 			}
 			DWORD code = WaitForMultipleObjects(count, signalHandles, waitForAll ? TRUE : FALSE, maxMilliseconds < FPL_MAX_U32 ? maxMilliseconds : INFINITE);
@@ -4736,11 +4765,11 @@ namespace fpl {
 			return(result);
 		}
 
-		} // platform
+	} // platform
 
-		//
-		// Win32 Atomics
-		//
+	//
+	// Win32 Atomics
+	//
 	namespace atomics {
 		fpl_api void AtomicReadFence() {
 			FPL_MEMORY_BARRIER();
@@ -4972,7 +5001,7 @@ namespace fpl {
 					atomics::AtomicStoreU32((volatile fpl_u32 *)&context->currentState, (fpl_u32)ThreadState::Suspended);
 					context->data = data;
 					context->id = threadId;
-					context->internalHandle = (void *)handle;
+					context->internalHandle.win32Handle = (void *)handle;
 					context->runFunc = runFunc;
 					if (autoStart) {
 						ResumeThread(handle);
@@ -4993,8 +5022,8 @@ namespace fpl {
 
 		fpl_api bool ThreadSuspend(ThreadContext *context) {
 			FPL_ASSERT(context != fpl_null);
-			FPL_ASSERT(context->internalHandle != fpl_null);
-			HANDLE handle = (HANDLE)context->internalHandle;
+			FPL_ASSERT(context->internalHandle.win32Handle != fpl_null);
+			HANDLE handle = (HANDLE)context->internalHandle.win32Handle;
 			DWORD err = SuspendThread(handle);
 			bool result = err != -1;
 			if (result) {
@@ -5006,8 +5035,8 @@ namespace fpl {
 
 		fpl_api bool ThreadResume(ThreadContext *context) {
 			FPL_ASSERT(context != fpl_null);
-			FPL_ASSERT(context->internalHandle != fpl_null);
-			HANDLE handle = (HANDLE)context->internalHandle;
+			FPL_ASSERT(context->internalHandle.win32Handle != fpl_null);
+			HANDLE handle = (HANDLE)context->internalHandle.win32Handle;
 			DWORD err = ResumeThread(handle);
 			bool result = err != -1;
 			if (result) {
@@ -5019,8 +5048,8 @@ namespace fpl {
 
 		fpl_api void ThreadDestroy(ThreadContext *context) {
 			FPL_ASSERT(context != fpl_null);
-			FPL_ASSERT(context->internalHandle != fpl_null);
-			HANDLE handle = (HANDLE)context->internalHandle;
+			FPL_ASSERT(context->internalHandle.win32Handle != fpl_null);
+			HANDLE handle = (HANDLE)context->internalHandle.win32Handle;
 			TerminateThread(handle, 0);
 			CloseHandle(handle);
 			// @TODO(final): Is this really needed to use a atomic store for setting the thread state?
@@ -5031,8 +5060,8 @@ namespace fpl {
 		fpl_api void ThreadWaitForOne(ThreadContext *context, const fpl_u32 maxMilliseconds) {
 			FPL_ASSERT(context != fpl_null);
 			FPL_ASSERT(context->id > 0);
-			FPL_ASSERT(context->internalHandle != fpl_null);
-			HANDLE handle = (HANDLE)context->internalHandle;
+			FPL_ASSERT(context->internalHandle.win32Handle != fpl_null);
+			HANDLE handle = (HANDLE)context->internalHandle.win32Handle;
 			WaitForSingleObject(handle, maxMilliseconds < FPL_MAX_U32 ? maxMilliseconds : INFINITE);
 		}
 
@@ -5049,30 +5078,30 @@ namespace fpl {
 			HANDLE handle = CreateEventA(fpl_null, FALSE, TRUE, fpl_null);
 			if (handle != fpl_null) {
 				result.isValid = true;
-				result.internalHandle = (void *)handle;
+				result.internalHandle.win32Handle = (void *)handle;
 			}
 			return(result);
 		}
 
 		fpl_api void MutexDestroy(ThreadMutex &mutex) {
 			FPL_ASSERT(mutex.isValid);
-			FPL_ASSERT(mutex.internalHandle != fpl_null);
-			HANDLE handle = (HANDLE)mutex.internalHandle;
+			FPL_ASSERT(mutex.internalHandle.win32Handle != fpl_null);
+			HANDLE handle = (HANDLE)mutex.internalHandle.win32Handle;
 			CloseHandle(handle);
 			mutex = {};
 		}
 
 		fpl_api void MutexLock(ThreadMutex &mutex, const fpl_u32 maxMilliseconds) {
 			FPL_ASSERT(mutex.isValid);
-			FPL_ASSERT(mutex.internalHandle != fpl_null);
-			HANDLE handle = (HANDLE)mutex.internalHandle;
+			FPL_ASSERT(mutex.internalHandle.win32Handle != fpl_null);
+			HANDLE handle = (HANDLE)mutex.internalHandle.win32Handle;
 			WaitForSingleObject(handle, maxMilliseconds < FPL_MAX_U32 ? maxMilliseconds : INFINITE);
 		}
 
 		fpl_api void MutexUnlock(ThreadMutex &mutex) {
 			FPL_ASSERT(mutex.isValid);
-			FPL_ASSERT(mutex.internalHandle != fpl_null);
-			HANDLE handle = (HANDLE)mutex.internalHandle;
+			FPL_ASSERT(mutex.internalHandle.win32Handle != fpl_null);
+			HANDLE handle = (HANDLE)mutex.internalHandle.win32Handle;
 			SetEvent(handle);
 		}
 
@@ -5081,23 +5110,23 @@ namespace fpl {
 			HANDLE handle = CreateEventA(fpl_null, FALSE, FALSE, fpl_null);
 			if (handle != fpl_null) {
 				result.isValid = true;
-				result.internalHandle = (void *)handle;
+				result.internalHandle.win32Handle = (void *)handle;
 			}
 			return(result);
 		}
 
 		fpl_api void SignalDestroy(ThreadSignal &availableSignal) {
 			FPL_ASSERT(availableSignal.isValid);
-			FPL_ASSERT(availableSignal.internalHandle != fpl_null);
-			HANDLE handle = (HANDLE)availableSignal.internalHandle;
+			FPL_ASSERT(availableSignal.internalHandle.win32Handle != fpl_null);
+			HANDLE handle = (HANDLE)availableSignal.internalHandle.win32Handle;
 			CloseHandle(handle);
 			availableSignal = {};
 		}
 
 		fpl_api bool SignalWaitForOne(ThreadSignal &availableSignal, const fpl_u32 maxMilliseconds) {
 			FPL_ASSERT(availableSignal.isValid);
-			FPL_ASSERT(availableSignal.internalHandle != fpl_null);
-			HANDLE handle = (HANDLE)availableSignal.internalHandle;
+			FPL_ASSERT(availableSignal.internalHandle.win32Handle != fpl_null);
+			HANDLE handle = (HANDLE)availableSignal.internalHandle.win32Handle;
 			bool result = (WaitForSingleObject(handle, maxMilliseconds < FPL_MAX_U32 ? maxMilliseconds : INFINITE) == WAIT_OBJECT_0);
 			return(result);
 		}
@@ -5114,16 +5143,16 @@ namespace fpl {
 
 		fpl_api bool SignalWakeUp(ThreadSignal &availableSignal) {
 			FPL_ASSERT(availableSignal.isValid);
-			FPL_ASSERT(availableSignal.internalHandle != fpl_null);
-			HANDLE handle = (HANDLE)availableSignal.internalHandle;
+			FPL_ASSERT(availableSignal.internalHandle.win32Handle != fpl_null);
+			HANDLE handle = (HANDLE)availableSignal.internalHandle.win32Handle;
 			bool result = SetEvent(handle) == TRUE;
 			return(result);
 		}
 
 		fpl_api bool SignalReset(ThreadSignal &availableSignal) {
 			FPL_ASSERT(availableSignal.isValid);
-			FPL_ASSERT(availableSignal.internalHandle != fpl_null);
-			HANDLE handle = (HANDLE)availableSignal.internalHandle;
+			FPL_ASSERT(availableSignal.internalHandle.win32Handle != fpl_null);
+			HANDLE handle = (HANDLE)availableSignal.internalHandle.win32Handle;
 			bool result = ResetEvent(handle) == TRUE;
 			return(result);
 		}
@@ -5165,7 +5194,7 @@ namespace fpl {
 			HANDLE win32FileHandle = CreateFileA(filePath, GENERIC_READ, FILE_SHARE_READ, fpl_null, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, fpl_null);
 			if (win32FileHandle != INVALID_HANDLE_VALUE) {
 				result.isValid = true;
-				result.internalHandle = (void *)win32FileHandle;
+				result.internalHandle.win32Handle = (void *)win32FileHandle;
 			}
 			return(result);
 		}
@@ -5175,7 +5204,7 @@ namespace fpl {
 			HANDLE win32FileHandle = CreateFileW(filePath, GENERIC_READ, FILE_SHARE_READ, fpl_null, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, fpl_null);
 			if (win32FileHandle != INVALID_HANDLE_VALUE) {
 				result.isValid = true;
-				result.internalHandle = (void *)win32FileHandle;
+				result.internalHandle.win32Handle = (void *)win32FileHandle;
 			}
 			return(result);
 		}
@@ -5186,7 +5215,7 @@ namespace fpl {
 			HANDLE win32FileHandle = CreateFileA(filePath, GENERIC_WRITE, FILE_SHARE_WRITE, fpl_null, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, fpl_null);
 			if (win32FileHandle != INVALID_HANDLE_VALUE) {
 				result.isValid = true;
-				result.internalHandle = (void *)win32FileHandle;
+				result.internalHandle.win32Handle = (void *)win32FileHandle;
 			}
 			return(result);
 		}
@@ -5196,7 +5225,7 @@ namespace fpl {
 			HANDLE win32FileHandle = CreateFileW(filePath, GENERIC_WRITE, FILE_SHARE_WRITE, fpl_null, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, fpl_null);
 			if (win32FileHandle != INVALID_HANDLE_VALUE) {
 				result.isValid = true;
-				result.internalHandle = (void *)win32FileHandle;
+				result.internalHandle.win32Handle = (void *)win32FileHandle;
 			}
 			return(result);
 		}
@@ -5206,8 +5235,8 @@ namespace fpl {
 			FPL_ASSERT(sizeToRead > 0);
 			fpl_u32 result = 0;
 			if (fileHandle.isValid) {
-				FPL_ASSERT(fileHandle.internalHandle != INVALID_HANDLE_VALUE);
-				HANDLE win32FileHandle = (void *)fileHandle.internalHandle;
+				FPL_ASSERT(fileHandle.internalHandle.win32Handle != INVALID_HANDLE_VALUE);
+				HANDLE win32FileHandle = (HANDLE)fileHandle.internalHandle.win32Handle;
 				DWORD bytesRead = 0;
 				if (ReadFile(win32FileHandle, targetBuffer, (DWORD)sizeToRead, &bytesRead, fpl_null) == TRUE) {
 					result = bytesRead;
@@ -5221,8 +5250,8 @@ namespace fpl {
 			FPL_ASSERT(sourceSize > 0);
 			fpl_u32 result = 0;
 			if (fileHandle.isValid) {
-				FPL_ASSERT(fileHandle.internalHandle != INVALID_HANDLE_VALUE);
-				HANDLE win32FileHandle = (void *)fileHandle.internalHandle;
+				FPL_ASSERT(fileHandle.internalHandle.win32Handle != INVALID_HANDLE_VALUE);
+				HANDLE win32FileHandle = (HANDLE)fileHandle.internalHandle.win32Handle;
 				DWORD bytesWritten = 0;
 				if (WriteFile(win32FileHandle, sourceBuffer, (DWORD)sourceSize, &bytesWritten, fpl_null) == TRUE) {
 					result = bytesWritten;
@@ -5233,8 +5262,8 @@ namespace fpl {
 
 		fpl_api void SetFilePosition32(const FileHandle &fileHandle, const fpl_u32 position, const FilePositionMode mode) {
 			if (fileHandle.isValid) {
-				FPL_ASSERT(fileHandle.internalHandle != INVALID_HANDLE_VALUE);
-				HANDLE win32FileHandle = (void *)fileHandle.internalHandle;
+				FPL_ASSERT(fileHandle.internalHandle.win32Handle != INVALID_HANDLE_VALUE);
+				HANDLE win32FileHandle = (void *)fileHandle.internalHandle.win32Handle;
 				DWORD moveMethod = FILE_BEGIN;
 				if (mode == FilePositionMode::Current) {
 					moveMethod = FILE_CURRENT;
@@ -5248,8 +5277,8 @@ namespace fpl {
 		fpl_api fpl_u32 GetFilePosition32(const FileHandle &fileHandle) {
 			fpl_u32 result = 0;
 			if (fileHandle.isValid) {
-				FPL_ASSERT(fileHandle.internalHandle != INVALID_HANDLE_VALUE);
-				HANDLE win32FileHandle = (void *)fileHandle.internalHandle;
+				FPL_ASSERT(fileHandle.internalHandle.win32Handle != INVALID_HANDLE_VALUE);
+				HANDLE win32FileHandle = (void *)fileHandle.internalHandle.win32Handle;
 				DWORD filePosition = SetFilePointer(win32FileHandle, 0L, fpl_null, FILE_CURRENT);
 				if (filePosition != INVALID_SET_FILE_POINTER) {
 					result = filePosition;
@@ -5260,8 +5289,8 @@ namespace fpl {
 
 		fpl_api void CloseFile(FileHandle &fileHandle) {
 			if (fileHandle.isValid) {
-				FPL_ASSERT(fileHandle.internalHandle != INVALID_HANDLE_VALUE);
-				HANDLE win32FileHandle = (void *)fileHandle.internalHandle;
+				FPL_ASSERT(fileHandle.internalHandle.win32Handle != INVALID_HANDLE_VALUE);
+				HANDLE win32FileHandle = (void *)fileHandle.internalHandle.win32Handle;
 				CloseHandle(win32FileHandle);
 			}
 			fileHandle = {};
@@ -5281,8 +5310,8 @@ namespace fpl {
 		fpl_api fpl_u32 GetFileSize32(const FileHandle &fileHandle) {
 			fpl_u32 result = 0;
 			if (fileHandle.isValid) {
-				FPL_ASSERT(fileHandle.internalHandle != INVALID_HANDLE_VALUE);
-				HANDLE win32FileHandle = (void *)fileHandle.internalHandle;
+				FPL_ASSERT(fileHandle.internalHandle.win32Handle != INVALID_HANDLE_VALUE);
+				HANDLE win32FileHandle = (void *)fileHandle.internalHandle.win32Handle;
 				DWORD fileSize = GetFileSize(win32FileHandle, fpl_null);
 				result = fileSize;
 			}
@@ -5372,7 +5401,7 @@ namespace fpl {
 			HANDLE searchHandle = FindFirstFileA(pathAndFilter, &findData);
 			*firstEntry = {};
 			if (searchHandle != INVALID_HANDLE_VALUE) {
-				firstEntry->internalHandle = (void *)searchHandle;
+				firstEntry->internalHandle.win32Handle = (void *)searchHandle;
 				Win32FillFileEntry(&findData, firstEntry);
 				result = true;
 			}
@@ -5381,8 +5410,8 @@ namespace fpl {
 		fpl_api bool ListFilesNext(FileEntry *nextEntry) {
 			FPL_ASSERT(nextEntry != fpl_null);
 			bool result = false;
-			if (nextEntry->internalHandle != INVALID_HANDLE_VALUE) {
-				HANDLE searchHandle = (HANDLE)nextEntry->internalHandle;
+			if (nextEntry->internalHandle.win32Handle != INVALID_HANDLE_VALUE) {
+				HANDLE searchHandle = (HANDLE)nextEntry->internalHandle.win32Handle;
 				WIN32_FIND_DATAA findData;
 				if (FindNextFileA(searchHandle, &findData)) {
 					Win32FillFileEntry(&findData, nextEntry);
@@ -5393,8 +5422,8 @@ namespace fpl {
 		}
 		fpl_api void ListFilesEnd(FileEntry *lastEntry) {
 			FPL_ASSERT(lastEntry != fpl_null);
-			if (lastEntry->internalHandle != INVALID_HANDLE_VALUE) {
-				HANDLE searchHandle = (HANDLE)lastEntry->internalHandle;
+			if (lastEntry->internalHandle.win32Handle != INVALID_HANDLE_VALUE) {
+				HANDLE searchHandle = (HANDLE)lastEntry->internalHandle.win32Handle;
 				FindClose(searchHandle);
 			}
 			*lastEntry = {};
@@ -5413,7 +5442,7 @@ namespace fpl {
 			FPL_ASSERT(maxDestLen >= (MAX_PATH + 1));
 			strings::WideStringToAnsiString(modulePath, strings::GetWideStringLength(modulePath), destPath, maxDestLen);
 			return(destPath);
-	}
+		}
 #	else
 		fpl_api char *GetExecutableFilePath(char *destPath, const fpl_u32 maxDestLen) {
 			char modulePath[MAX_PATH];
@@ -5446,11 +5475,11 @@ namespace fpl {
 			return(destPath);
 		}
 #	endif // UNICODE
-} // paths
+	} // paths
 
-//
-// Win32 Timings
-//
+	//
+	// Win32 Timings
+	//
 	namespace timings {
 		fpl_api double GetHighResolutionTimeInSeconds() {
 			LARGE_INTEGER time;
@@ -5503,7 +5532,7 @@ namespace fpl {
 			DynamicLibraryHandle result = {};
 			HMODULE libModule = LoadLibraryA(libraryFilePath);
 			if (libModule != fpl_null) {
-				result.internalHandle = (void *)libModule;
+				result.internalHandle.win32Handle = (void *)libModule;
 				result.isValid = true;
 			}
 			return(result);
@@ -5511,16 +5540,16 @@ namespace fpl {
 		fpl_api void *GetDynamicLibraryProc(const DynamicLibraryHandle &handle, const char *name) {
 			void *result = fpl_null;
 			if (handle.isValid) {
-				FPL_ASSERT(handle.internalHandle != fpl_null);
-				HMODULE libModule = (HMODULE)handle.internalHandle;
+				FPL_ASSERT(handle.internalHandle.win32Handle != fpl_null);
+				HMODULE libModule = (HMODULE)handle.internalHandle.win32Handle;
 				result = (void *)GetProcAddress(libModule, name);
 			}
 			return(result);
 		}
 		fpl_api void DynamicLibraryUnload(DynamicLibraryHandle &handle) {
 			if (handle.isValid) {
-				FPL_ASSERT(handle.internalHandle != fpl_null);
-				HMODULE libModule = (HMODULE)handle.internalHandle;
+				FPL_ASSERT(handle.internalHandle.win32Handle != fpl_null);
+				HMODULE libModule = (HMODULE)handle.internalHandle.win32Handle;
 				FreeLibrary(libModule);
 			}
 			handle = {};
@@ -5896,9 +5925,9 @@ namespace fpl {
 #		else
 			result = global__LastErrorState->errors[0];
 #		endif // FPL_ENABLE_MULTIPLE_ERRORSTATES
-			}
-		return (result);
 		}
+		return (result);
+	}
 
 	fpl_api const char *GetPlatformLastError(const fpl_size index) {
 		const char *result = fpl_null;
@@ -5912,9 +5941,9 @@ namespace fpl {
 #		else
 			result = global__LastErrorState->errors[0];
 #		endif // FPL_ENABLE_MULTIPLE_ERRORSTATES
-			}
-		return (result);
 		}
+		return (result);
+	}
 
 	fpl_api fpl_size GetPlatformLastErrorCount() {
 		fpl_size result = 0;
@@ -6020,7 +6049,7 @@ namespace fpl {
 		threading::ThreadContext *context = &common::global__ThreadState.mainThread;
 		*context = {};
 		context->id = mainThreadHandleId;
-		context->internalHandle = (void *)mainThreadHandle;
+		context->internalHandle.win32Handle = (void *)mainThreadHandle;
 		context->currentState = threading::ThreadState::Running;
 
 #	if defined(FPL_ENABLE_WINDOW)
@@ -6062,7 +6091,7 @@ namespace fpl {
 		return (true);
 	}
 
-	} // fpl
+} // fpl
 
 #	if defined(FPL_ENABLE_WINDOW)
 
@@ -6073,7 +6102,7 @@ int WINAPI wWinMain(HINSTANCE appInstance, HINSTANCE prevInstance, LPWSTR cmdLin
 	int result = main(args.count, args.args);
 	fpl::memory::MemoryFree(args.mem);
 	return(result);
-	}
+}
 
 #		else
 
@@ -6091,18 +6120,15 @@ int WINAPI WinMain(HINSTANCE appInstance, HINSTANCE prevInstance, LPSTR cmdLine,
 
 // ****************************************************************************
 //
-// Linux Platform
+// POSIX Platform (Linux, Unix)
 //
 // ****************************************************************************
-#if defined(FPL_PLATFORM_LINUX)
-
-#	include <sys/mman.h> // mmap, munmap
-
+#if defined(FPL_PLATFORM_POSIX)
 namespace fpl {
-	// Linux Atomics
+	// POSIX Atomics
 	namespace atomics {
 #	if defined(FPL_COMPILER_GCC)
-// @NOTE(final): See: https://gcc.gnu.org/onlinedocs/gcc/_005f_005fsync-Builtins.html#g_t_005f_005fsync-Builtins
+		// @NOTE(final): See: https://gcc.gnu.org/onlinedocs/gcc/_005f_005fsync-Builtins.html#g_t_005f_005fsync-Builtins
 		fpl_api void AtomicReadFence() {
 			// @TODO(final): Wrong to ensure a full memory fence here!
 			__sync_synchronize();
@@ -6233,10 +6259,21 @@ namespace fpl {
 			__sync_synchronize();
 		}
 #	else
-#		error "This linux compiler/platform is supported!"
+#		error "This POSIX compiler/platform is supported!"
 #	endif
 	}
+}
+#endif // FPL_PLATFORM_POSIX
 
+// ****************************************************************************
+//
+// Linux Platform
+//
+// ****************************************************************************
+#if defined(FPL_PLATFORM_LINUX)
+#	include <sys/mman.h> // mmap, munmap
+
+namespace fpl {
 	// Linux Console
 	namespace console {
 		fpl_api void ConsoleOut(const char *text) {
