@@ -27,7 +27,7 @@ struct BitmapFileHeader {
 };
 #pragma pack(pop)
 
-constexpr fpl_u32 BITMAP_FORMAT_RGB = 0L;
+fpl_constant fpl_u32 BITMAP_FORMAT_RGB = 0L;
 
 static void SaveBitmapRGB24(fpl_u8 *source, fpl_u32 width, fpl_u32 height, fpl_u32 scanline, const char *targetFilePath) {
 	assert(scanline == (width * 3));
