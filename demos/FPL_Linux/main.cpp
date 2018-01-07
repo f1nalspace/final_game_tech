@@ -12,16 +12,16 @@ int main(int argc, char **) {
 	// Memory test
 	{		
 		fpl::console::ConsoleOut("Allocate memory of 1024\n");
-		fpl_size size = 1024;
+		size_t size = 1024;
 		void *mem1024 = fpl::memory::MemoryAllocate(size);
 
-		fpl_size storedMemSize = *(fpl_size *)((fpl_u8 *)mem1024 - sizeof(fpl_uintptr) - sizeof(fpl_size));
+		size_t storedMemSize = *(size_t *)((uint8_t *)mem1024 - sizeof(uintptr_t) - sizeof(size_t));
 		fpl::console::ConsoleFormatOut("Stored size: %llu\n", storedMemSize);
-		assert(storedMemSize == (size + sizeof(fpl_uintptr) + sizeof(fpl_size)));
+		assert(storedMemSize == (size + sizeof(uintptr_t) + sizeof(size_t)));
 
 		fpl::console::ConsoleOut("Fill memory of 1024\n");
-		fpl_u32 *mem1024_32 = (fpl_u32 *)mem1024;
-		for (int i = 0; i < (1024 / sizeof(fpl_u32)); ++i) {
+		uint32_t *mem1024_32 = (uint32_t *)mem1024;
+		for (int i = 0; i < (1024 / sizeof(uint32_t)); ++i) {
 			*mem1024_32++ = i * i;
 		}
 		fpl::console::ConsoleOut("Free memory of 1024\n");
@@ -30,20 +30,20 @@ int main(int argc, char **) {
 
 	// Atomics test
 	{
-		volatile fpl_u32 value = 3;
-		fpl_u32 addend = 11;
+		volatile uint32_t value = 3;
+		uint32_t addend = 11;
 		fpl::console::ConsoleFormatOut("AtomicAddU32: %llu -> %llu", value, addend);
-		fpl_u32 oldValue = fpl::atomics::AtomicAddU32(&value, addend);
+		uint32_t oldValue = fpl::atomics::AtomicAddU32(&value, addend);
 		fpl::console::ConsoleFormatOut(" -> %llu, %llu\n", oldValue, value);
 		assert(oldValue == 3);
 		assert(value == 14);
 	}
 	{
-		volatile fpl_u64 value = 3;
-		fpl_u64 exchange = 42;
-		fpl_u64 comparand = 3;
+		volatile uint64_t value = 3;
+		uint64_t exchange = 42;
+		uint64_t comparand = 3;
 		fpl::console::ConsoleFormatOut("AtomicAndCompareExchangeU64: %llu to %llu when %llu", value, exchange, comparand);
-		fpl_u64 oldValue = fpl::atomics::AtomicCompareAndExchangeU64(&value, comparand, exchange);
+		uint64_t oldValue = fpl::atomics::AtomicCompareAndExchangeU64(&value, comparand, exchange);
 		fpl::console::ConsoleFormatOut(" -> %llu, %llu\n", oldValue, value);
 		assert(oldValue == 3);
 		assert(value == 42);
@@ -68,7 +68,7 @@ int main(int argc, char **) {
 		};
 		
 		fpl::library::DynamicLibraryHandle pthreadLibraryHandle;
-		const char *usedLibraryName = fpl_null;
+		const char *usedLibraryName = nullptr;
 		for (size_t i = 0; i < FPL_ARRAYCOUNT(libpthreadFileNames); ++i) {
 			pthreadLibraryHandle = fpl::library::DynamicLibraryLoad(libpthreadFileNames[i]);
 			if (pthreadLibraryHandle.isValid) {
@@ -78,7 +78,7 @@ int main(int argc, char **) {
 		}
 		if (pthreadLibraryHandle.isValid) {
 			void *createFunc = fpl::library::GetDynamicLibraryProc(pthreadLibraryHandle, "pthread_create");
-			assert(createFunc != fpl_null);
+			assert(createFunc != nullptr);
 			fpl::console::ConsoleFormatOut("Successfully loaded pthread from '%s'\n", usedLibraryName);
 			fpl::library::DynamicLibraryUnload(pthreadLibraryHandle);
 		} else {
