@@ -9,7 +9,7 @@
 static GLuint CreateShaderType(GLenum type, const char *source) {
 	GLuint shaderId = glCreateShader(type);
 
-	glShaderSource(shaderId, 1, &source, fpl_null);
+	glShaderSource(shaderId, 1, &source, nullptr);
 	glCompileShader(shaderId);
 
 	GLint compileResult;
@@ -112,7 +112,7 @@ static bool RunModern() {
 
 	glBindBuffer(GL_ARRAY_BUFFER, buffer);
 	glEnableVertexAttribArray(0);
-	glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(float) * 2, fpl_null);
+	glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(float) * 2, nullptr);
 
 	glClearColor(0.39f, 0.58f, 0.93f, 1.0f);
 	while (WindowUpdate()) {

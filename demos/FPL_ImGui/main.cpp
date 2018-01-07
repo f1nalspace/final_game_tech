@@ -103,26 +103,26 @@ static void InitImGUI() {
 	io.GetClipboardTextFn = ClipboardGetFunc;
 	io.SetClipboardTextFn = ClipboardSetFunc;
 	io.RenderDrawListsFn = ImGUIRenderDrawLists;
-	io.IniFilename = fpl_null;
-	io.KeyMap[ImGuiKey_Tab] = (fpl_u32)Key::Key_Tab;
-	io.KeyMap[ImGuiKey_LeftArrow] = (fpl_u32)Key::Key_Left;
-	io.KeyMap[ImGuiKey_RightArrow] = (fpl_u32)Key::Key_Right;
-	io.KeyMap[ImGuiKey_UpArrow] = (fpl_u32)Key::Key_Up;
-	io.KeyMap[ImGuiKey_DownArrow] = (fpl_u32)Key::Key_Down;
-	io.KeyMap[ImGuiKey_PageUp] = (fpl_u32)Key::Key_PageUp;
-	io.KeyMap[ImGuiKey_PageDown] = (fpl_u32)Key::Key_PageDown;
-	io.KeyMap[ImGuiKey_Home] = (fpl_u32)Key::Key_Home;
-	io.KeyMap[ImGuiKey_End] = (fpl_u32)Key::Key_End;
-	io.KeyMap[ImGuiKey_Delete] = (fpl_u32)Key::Key_Delete;
-	io.KeyMap[ImGuiKey_Backspace] = (fpl_u32)Key::Key_Backspace;
-	io.KeyMap[ImGuiKey_Enter] = (fpl_u32)Key::Key_Enter;
-	io.KeyMap[ImGuiKey_Escape] = (fpl_u32)Key::Key_Escape;
-	io.KeyMap[ImGuiKey_A] = (fpl_u32)Key::Key_A;
-	io.KeyMap[ImGuiKey_C] = (fpl_u32)Key::Key_C;
-	io.KeyMap[ImGuiKey_V] = (fpl_u32)Key::Key_V;
-	io.KeyMap[ImGuiKey_X] = (fpl_u32)Key::Key_X;
-	io.KeyMap[ImGuiKey_Y] = (fpl_u32)Key::Key_Y;
-	io.KeyMap[ImGuiKey_Z] = (fpl_u32)Key::Key_Z;
+	io.IniFilename = nullptr;
+	io.KeyMap[ImGuiKey_Tab] = (uint32_t)Key::Key_Tab;
+	io.KeyMap[ImGuiKey_LeftArrow] = (uint32_t)Key::Key_Left;
+	io.KeyMap[ImGuiKey_RightArrow] = (uint32_t)Key::Key_Right;
+	io.KeyMap[ImGuiKey_UpArrow] = (uint32_t)Key::Key_Up;
+	io.KeyMap[ImGuiKey_DownArrow] = (uint32_t)Key::Key_Down;
+	io.KeyMap[ImGuiKey_PageUp] = (uint32_t)Key::Key_PageUp;
+	io.KeyMap[ImGuiKey_PageDown] = (uint32_t)Key::Key_PageDown;
+	io.KeyMap[ImGuiKey_Home] = (uint32_t)Key::Key_Home;
+	io.KeyMap[ImGuiKey_End] = (uint32_t)Key::Key_End;
+	io.KeyMap[ImGuiKey_Delete] = (uint32_t)Key::Key_Delete;
+	io.KeyMap[ImGuiKey_Backspace] = (uint32_t)Key::Key_Backspace;
+	io.KeyMap[ImGuiKey_Enter] = (uint32_t)Key::Key_Enter;
+	io.KeyMap[ImGuiKey_Escape] = (uint32_t)Key::Key_Escape;
+	io.KeyMap[ImGuiKey_A] = (uint32_t)Key::Key_A;
+	io.KeyMap[ImGuiKey_C] = (uint32_t)Key::Key_C;
+	io.KeyMap[ImGuiKey_V] = (uint32_t)Key::Key_V;
+	io.KeyMap[ImGuiKey_X] = (uint32_t)Key::Key_X;
+	io.KeyMap[ImGuiKey_Y] = (uint32_t)Key::Key_Y;
+	io.KeyMap[ImGuiKey_Z] = (uint32_t)Key::Key_Z;
 
 	io.Fonts->AddFontDefault();
 
@@ -154,10 +154,10 @@ static void ReleaseImGUI() {
 	}
 }
 
-static void ImGUIKeyEvent(fpl_u64 keyCode, Key mappedKey, KeyboardModifierFlag modifiers, bool down) {
+static void ImGUIKeyEvent(uint64_t keyCode, Key mappedKey, KeyboardModifierFlags modifiers, bool down) {
 	ImGuiIO& io = ImGui::GetIO();
 	if (mappedKey != Key::Key_None) {
-		io.KeysDown[(fpl_u32)mappedKey] = down;
+		io.KeysDown[(uint32_t)mappedKey] = down;
 	} else {
 		io.KeysDown[keyCode] = down;
 	}
@@ -281,13 +281,13 @@ int main(int argc, char **args) {
 							} break;
 							case MouseEventType::ButtonDown:
 							{
-								currentMouseStates[(fpl_s32)event.mouse.mouseButton] = true;
+								currentMouseStates[(int32_t)event.mouse.mouseButton] = true;
 								currentMousePosition[0] = event.mouse.mouseX;
 								currentMousePosition[1] = event.mouse.mouseY;
 							} break;
 							case MouseEventType::ButtonUp:
 							{
-								currentMouseStates[(fpl_s32)event.mouse.mouseButton] = false;
+								currentMouseStates[(int32_t)event.mouse.mouseButton] = false;
 								currentMousePosition[0] = event.mouse.mouseX;
 								currentMousePosition[1] = event.mouse.mouseY;
 							} break;

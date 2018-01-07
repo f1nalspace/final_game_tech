@@ -77,50 +77,50 @@ static void TestLog(const char *section, const char *format, ...) {
 static void MemoryTests() {
 	TestLog(FN, "Test size macros");
 	{
-		TestAssert<fpl_size>(0ull, FPL_KILOBYTES(0), LAI, "0 KB");
-		TestAssert<fpl_size>(0ull, FPL_MEGABYTES(0), LAI, "0 MB");
-		TestAssert<fpl_size>(0ull, FPL_GIGABYTES(0), LAI, "0 GB");
-		TestAssert<fpl_size>(0ull, FPL_TERABYTES(0), LAI, "0 TB");
-		TestAssert<fpl_size>(13ull * 1024ull, FPL_KILOBYTES(13), LAI, "13 KB");
-		TestAssert<fpl_size>(137ull * 1024ull * 1024ull, FPL_MEGABYTES(137), LAI, "137 MB");
-		TestAssert<fpl_size>(3ull * 1024ull * 1024ull * 1024ull, FPL_GIGABYTES(3), LAI, "3 GB");
+		TestAssert<size_t>(0ull, FPL_KILOBYTES(0), LAI, "0 KB");
+		TestAssert<size_t>(0ull, FPL_MEGABYTES(0), LAI, "0 MB");
+		TestAssert<size_t>(0ull, FPL_GIGABYTES(0), LAI, "0 GB");
+		TestAssert<size_t>(0ull, FPL_TERABYTES(0), LAI, "0 TB");
+		TestAssert<size_t>(13ull * 1024ull, FPL_KILOBYTES(13), LAI, "13 KB");
+		TestAssert<size_t>(137ull * 1024ull * 1024ull, FPL_MEGABYTES(137), LAI, "137 MB");
+		TestAssert<size_t>(3ull * 1024ull * 1024ull * 1024ull, FPL_GIGABYTES(3), LAI, "3 GB");
 #if defined(FPL_ARCH_X64)
-		TestAssert<fpl_size>(813ull * 1024ull * 1024ull * 1024ull, FPL_GIGABYTES(813), LAI, "813 GB");
-		TestAssert<fpl_size>(2ull * 1024ull * 1024ull * 1024ull * 1024ull, FPL_TERABYTES(2), LAI, "2 TB");
+		TestAssert<size_t>(813ull * 1024ull * 1024ull * 1024ull, FPL_GIGABYTES(813), LAI, "813 GB");
+		TestAssert<size_t>(2ull * 1024ull * 1024ull * 1024ull * 1024ull, FPL_TERABYTES(2), LAI, "2 TB");
 #endif
 	}
 
 	TestLog(FN, "Test normal allocation and deallocation");
 	{
-		fpl_size memSize = FPL_KILOBYTES(42);
-		fpl_u8 *mem = (fpl_u8 *)MemoryAllocate(memSize);
-		for (fpl_size i = 0; i < memSize; ++i) {
-			fpl_u8 value = *mem++;
-			TestAssert<fpl_u8>(0, value, LAI, "42 KB must be zero");
+		size_t memSize = FPL_KILOBYTES(42);
+		uint8_t *mem = (uint8_t *)MemoryAllocate(memSize);
+		for (size_t i = 0; i < memSize; ++i) {
+			uint8_t value = *mem++;
+			TestAssert<uint8_t>(0, value, LAI, "42 KB must be zero");
 		}
 		MemoryFree(mem);
 	}
 	{
-		fpl_size memSize = FPL_MEGABYTES(512);
+		size_t memSize = FPL_MEGABYTES(512);
 		void *mem = MemoryAllocate(memSize);
-		TestNotAssert<void *>(mem, fpl_null, LAI, "512 MB of memory must be allocatd");
+		TestNotAssert<void *>(mem, nullptr, LAI, "512 MB of memory must be allocatd");
 		MemoryFree(mem);
 	}
 
 	TestLog(FN, "Test aligned allocation and deallocation");
 	{
-		fpl_size memSize = FPL_KILOBYTES(42);
-		fpl_u8 *mem = (fpl_u8 *)MemoryAlignedAllocate(memSize, 16);
-		for (fpl_size i = 0; i < memSize; ++i) {
-			fpl_u8 value = *(mem + i);
-			TestAssert<fpl_u8>(0, value, LAI, "42 KB must be zero");
+		size_t memSize = FPL_KILOBYTES(42);
+		uint8_t *mem = (uint8_t *)MemoryAlignedAllocate(memSize, 16);
+		for (size_t i = 0; i < memSize; ++i) {
+			uint8_t value = *(mem + i);
+			TestAssert<uint8_t>(0, value, LAI, "42 KB must be zero");
 		}
 		MemoryAlignedFree(mem);
 	}
 	{
-		fpl_size memSize = FPL_MEGABYTES(512);
+		size_t memSize = FPL_MEGABYTES(512);
 		void *mem = MemoryAlignedAllocate(memSize, 16);
-		TestNotAssert<void *>(mem, fpl_null, LAI, "512 MB of memory must be allocatd");
+		TestNotAssert<void *>(mem, nullptr, LAI, "512 MB of memory must be allocatd");
 		MemoryAlignedFree(mem);
 	}
 }
@@ -168,7 +168,7 @@ static void HardwareTest() {
 	GetProcessorName(cpuNameBuffer, FPL_ARRAYCOUNT(cpuNameBuffer));
 	ConsoleFormatOut("Processor name:\n%s\n", cpuNameBuffer);
 
-	fpl_u32 coreCount = GetProcessorCoreCount();
+	uint32_t coreCount = GetProcessorCoreCount();
 	ConsoleFormatOut("Processor cores:%d\n", coreCount);
 }
 
@@ -177,9 +177,9 @@ static void FilesTest() {
 	FPL_ASSERT(!nonExisting);
 	bool notepadExists = FileExists("C:\\Windows\\notepad.exe");
 	FPL_ASSERT(notepadExists);
-	fpl_u32 emptySize = GetFileSize32("C:\\Windows\\i_am_not_existing.lib");
+	uint32_t emptySize = GetFileSize32("C:\\Windows\\i_am_not_existing.lib");
 	FPL_ASSERT(emptySize == 0);
-	fpl_u32 notepadSize = GetFileSize32("C:\\Windows\\notepad.exe");
+	uint32_t notepadSize = GetFileSize32("C:\\Windows\\notepad.exe");
 	FPL_ASSERT(notepadSize > 0);
 	FileEntry fileEntry;
 	if (ListFilesBegin("C:\\*", &fileEntry)) {
@@ -192,7 +192,7 @@ static void FilesTest() {
 }
 
 static void TestThreadProc(const ThreadContext &context, void *data) {
-	fpl_u32 ms = (fpl_u32)(intptr_t)(data) * 1000;
+	uint32_t ms = (uint32_t)(intptr_t)(data) * 1000;
 	ConsoleFormatOut("Thread '%llu' started\n", context.id);
 	ThreadSleep(ms);
 	ConsoleFormatOut("Thread '%llu' finished\n", context.id);

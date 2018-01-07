@@ -21,31 +21,31 @@ This demo plays a contiguous sine or square wave in the expected S16 format.
 #include <stdio.h> // getchar
 
 struct AudioTest {
-	fpl_u32 toneHz;
-	fpl_u32 toneVolume;
-	fpl_u32 runningSampleIndex;
-	fpl_u32 wavePeriod;
+	uint32_t toneHz;
+	uint32_t toneVolume;
+	uint32_t runningSampleIndex;
+	uint32_t wavePeriod;
 	bool useSquareWave;
 };
 
 static const float PI32 = 3.14159265359f;
 
-static fpl_u32 FillAudioBuffer(const AudioDeviceFormat &nativeFormat, const fpl_u32 frameCount, void *outputSamples, void *userData) {
+static uint32_t FillAudioBuffer(const AudioDeviceFormat &nativeFormat, const uint32_t frameCount, void *outputSamples, void *userData) {
 	AudioTest *audioTest = (AudioTest *)userData;
-	FPL_ASSERT(audioTest != fpl_null);
+	FPL_ASSERT(audioTest != nullptr);
 	FPL_ASSERT(nativeFormat.type == AudioFormatType::S16);
-	fpl_u32 result = 0;
-	fpl_s16 *outSamples = (fpl_s16 *)outputSamples;
-	fpl_u32 halfWavePeriod = audioTest->wavePeriod / 2;
-	for (fpl_u32 frameIndex = 0; frameIndex < frameCount; ++frameIndex) {
-		fpl_s16 sampleValue;
+	uint32_t result = 0;
+	int16_t *outSamples = (int16_t *)outputSamples;
+	uint32_t halfWavePeriod = audioTest->wavePeriod / 2;
+	for (uint32_t frameIndex = 0; frameIndex < frameCount; ++frameIndex) {
+		int16_t sampleValue;
 		if (audioTest->useSquareWave) {
-			sampleValue = ((audioTest->runningSampleIndex++ / halfWavePeriod) % 2) ? (fpl_s16)audioTest->toneVolume : -(fpl_s16)audioTest->toneVolume;
+			sampleValue = ((audioTest->runningSampleIndex++ / halfWavePeriod) % 2) ? (int16_t)audioTest->toneVolume : -(int16_t)audioTest->toneVolume;
 		} else {
 			float t = 2.0f * PI32 * (float)audioTest->runningSampleIndex++ / (float)audioTest->wavePeriod;
-			sampleValue = (fpl_s16)(sinf(t) * audioTest->toneVolume);
+			sampleValue = (int16_t)(sinf(t) * audioTest->toneVolume);
 		}
-		for (fpl_u32 channelIndex = 0; channelIndex < nativeFormat.channels; ++channelIndex) {
+		for (uint32_t channelIndex = 0; channelIndex < nativeFormat.channels; ++channelIndex) {
 			*outSamples++ = sampleValue;
 			++result;
 		}

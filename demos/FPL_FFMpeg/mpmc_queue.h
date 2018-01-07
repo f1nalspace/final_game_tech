@@ -1,6 +1,7 @@
 #pragma once
 
-#include <inttypes.h>
+#include <stdint.h>
+#include <limits.h>
 
 //
 // Lock-Free Multiple Procuder Multiple Consumer Queue

@@ -43,7 +43,7 @@ public:
 			bool result = InitPlatform(InitFlags::All);
 			Assert::IsTrue(result, L"", LINE_INFO());
 			const char *errorStr = GetPlatformLastError();
-			Assert::AreEqual(fpl_null, errorStr, L"", LINE_INFO());
+			Assert::AreEqual(nullptr, errorStr, L"", LINE_INFO());
 			ReleasePlatform();
 		}
 
@@ -52,7 +52,7 @@ public:
 			bool result = InitPlatform(InitFlags::None);
 			Assert::IsTrue(result, L"", LINE_INFO());
 			const char *errorStr = GetPlatformLastError();
-			Assert::AreEqual(fpl_null, errorStr, L"", LINE_INFO());
+			Assert::AreEqual(nullptr, errorStr, L"", LINE_INFO());
 			ReleasePlatform();
 		}
 
@@ -66,7 +66,7 @@ public:
 			size_t errorCount = GetPlatformLastErrorCount();
 			Assert::AreEqual((size_t)0, errorCount, L"", LINE_INFO());
 			const char *errorStr = GetPlatformLastError();
-			Assert::AreEqual(fpl_null, errorStr, L"", LINE_INFO());
+			Assert::AreEqual(nullptr, errorStr, L"", LINE_INFO());
 			// @NOTE(final): This will crash because the memory is corrupted!
 			ReleasePlatform();
 		}
@@ -103,9 +103,9 @@ public:
 		}
 
 		// @NOTE(final): This is a simple/stupid macro, so when you pass a pointer, you basically get 2 always
-		Msg("[FPL_ARRAYCOUNT] Test fpl_null\n");
+		Msg("[FPL_ARRAYCOUNT] Test nullptr\n");
 		{
-			int *emptyArray = fpl_null;
+			int *emptyArray = nullptr;
 			Assert::AreEqual(sizeof(int *) / sizeof(int), FPL_ARRAYCOUNT(emptyArray), L"", LINE_INFO());
 		}
 
