@@ -22,7 +22,7 @@ prepare:
 	mkdir -p $(BUILD_DIR)
 
 build:
-	g++ -std=c++98 $(CFLAGS) -I../../ $(SOURCE_FILES) $(LIBS) -o $(BUILD_DIR)/$(EXECUTABLE)
+	g++ -std=c++11 $(CFLAGS) -I../../ $(SOURCE_FILES) $(LIBS) -o $(BUILD_DIR)/$(EXECUTABLE)
 
 clean:
 	rm -rf $(BUILD_DIR)
