@@ -917,8 +917,9 @@ Thanks to David Reid for the awesome "mini_al.h" single header file audio librar
 //
 // Types & Limits
 //
-#include <stdint.h>
-#include <limits.h>
+#include <stdint.h> // uint32_t, ...
+#include <stddef.h> // size_t
+#include <limits.h> // UINT32_MAX, ...
 
 //
 // Macro functions
