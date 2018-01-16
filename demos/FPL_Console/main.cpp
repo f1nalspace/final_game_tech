@@ -170,6 +170,15 @@ static void HardwareTest() {
 
 	uint32_t coreCount = GetProcessorCoreCount();
 	ConsoleFormatOut("Processor cores:%d\n", coreCount);
+
+	MemoryInfos memInfos = GetSystemMemoryInfos();
+	ConsoleFormatOut("Physical total memory (bytes):%zu\n", memInfos.totalPhysicalSize);
+	ConsoleFormatOut("Physical available memory (bytes):%zu\n", memInfos.availablePhysicalSize);
+	ConsoleFormatOut("Physical used memory (bytes):%zu\n", memInfos.usedPhysicalSize);
+	ConsoleFormatOut("Virtual total memory (bytes):%zu\n", memInfos.totalVirtualSize);
+	ConsoleFormatOut("Virtual used memory (bytes):%zu\n", memInfos.usedVirtualSize);
+	ConsoleFormatOut("Page total memory (bytes):%zu\n", memInfos.totalPageSize);
+	ConsoleFormatOut("Page used memory (bytes):%zu\n", memInfos.usedPageSize);
 }
 
 static void FilesTest() {
@@ -182,12 +191,12 @@ static void FilesTest() {
 	uint32_t notepadSize = GetFileSize32("C:\\Windows\\notepad.exe");
 	FPL_ASSERT(notepadSize > 0);
 	FileEntry fileEntry;
-	if (ListFilesBegin("C:\\*", &fileEntry)) {
+	if (ListFilesBegin("C:\\*", fileEntry)) {
 		ConsoleFormatOut("%s\n", fileEntry.path);
-		while (ListFilesNext(&fileEntry)) {
+		while (ListFilesNext(fileEntry)) {
 			ConsoleFormatOut("%s\n", fileEntry.path);
 		}
-		ListFilesEnd(&fileEntry);
+		ListFilesEnd(fileEntry);
 	}
 }
 
@@ -208,6 +217,21 @@ static void ThreadingTest() {
 
 
 int main(int argc, char **args) {
+	volatile int64_t rindex_rindexShown = 0;
+	int64_t r = AtomicLoadS64(&rindex_rindexShown);
+	int32_t rindex = (int32_t)(r & 0xFFFFFFFF00000000);
+	int32_t rindexShown = (r >> 32) & 0xFFFFFFFF00000000;
+
+	rindex_rindexShown = (int64_t)42 | ((int64_t)612 << 32);
+	r = AtomicLoadS64(&rindex_rindexShown);
+	rindex = (int32_t)r;
+	rindexShown = (r & 0xFFFFFFFF00000000) >> 32;
+
+	AtomicAddS64(&rindex_rindexShown, 1);
+	r = AtomicLoadS64(&rindex_rindexShown);
+	rindex = (int32_t)r;
+	rindexShown = (r & 0xFFFFFFFF00000000) >> 32;
+
 	InitPlatform(InitFlags::None);
 	MemoryTests();
 	ThreadingTest();
