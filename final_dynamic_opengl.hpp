@@ -14,8 +14,10 @@ THIS LIBRARY IS FOR TESTING ONLY - DO NOT USE!
 #	define FDYNGL_PLATFORM_WINDOWS
 #elif defined(__linux__) || defined(__gnu_linux__) || defined(linux)
 #	define FDYNGL_PLATFORM_LINUX
+#	define FDYNGL_PLATFORM_POSIX
 #elif defined(__unix__) || defined(_POSIX_VERSION)
 #	define FDYNGL_PLATFORM_UNIX
+#	define FDYNGL_PLATFORM_POSIX
 #else
 #	error "This platform/compiler is not supported!"
 #endif
@@ -72,7 +74,8 @@ THIS LIBRARY IS FOR TESTING ONLY - DO NOT USE!
 // API
 //
 namespace fdyngl {
-	fdyngl_api void LoadOpenGLExtensions();
+	fdyngl_api bool LoadOpenGL();
+	fdyngl_api void UnloadOpenGL();
 };
 
 //
@@ -5191,24 +5194,1210 @@ extern "C" {
 #if defined(FDYNGL_IMPLEMENTATION) && !defined(FDYNGL_IMPLEMENTED)
 #	define FDYNGL_IMPLEMENTED
 
+#	define FDYNGL_ARRAYCOUNT(arr) (sizeof(arr) / sizeof((arr)[0]))
+
 #	if defined(FDYNGL_PLATFORM_WINDOWS)
 #		ifndef WIN32_LEAN_AND_MEAN
 #			define WIN32_LEAN_AND_MEAN 1
 #		endif
 #		include <Windows.h>
-
-namespace fdyngl {
-	static void *GetOpenGLProcAddress_Internal(const char *name) {
-		void *result = wglGetProcAddress(name);
-		return(result);
-	}
-}
-#	else
-#		error "Unsupported Platform!"
 #	endif
 
+
 namespace fdyngl {
-	fdyngl_api void LoadOpenGLExtensions() {
+#	if defined(FDYNGL_PLATFORM_WINDOWS)
+#		define FDYNGL_FUNC_WGL_GET_PROC_ADDRESS(name) PROC WINAPI name(LPCSTR procedure)
+	typedef FDYNGL_FUNC_WGL_GET_PROC_ADDRESS(win32_func_wglGetProcAddress);
+#	elif defined(FDYNGL_PLATFORM_POSIX)
+#		define FDYNGL_FUNC_GLX_GET_PROC_ADDRESS(name) void *name(const char *name)
+	typedef FDYNGL_FUNC_GLX_GET_PROC_ADDRESS(posix_func_glXGetProcAddress);
+#	endif
+
+	struct OpenGLState {
+#	if defined(FDYNGL_PLATFORM_WINDOWS)
+		HMODULE win32LibraryHandle;
+		win32_func_wglGetProcAddress *wglGetProcAddress;
+#	elif defined(FDYNGL_PLATFORM_POSIX)
+		void *posixLibraryHandle;
+		posix_func_glXGetProcAddress *glXGetProcAddress;
+#	endif
+	};
+
+	namespace platform {
+		static void *GetOpenGLProcAddress_Internal(const OpenGLState &state, const char *name) {
+			void *result = nullptr;
+#	if defined(FDYNGL_PLATFORM_WINDOWS)
+			result = GetProcAddress(state.win32LibraryHandle, name);
+			if (result == nullptr) {
+				result = state.wglGetProcAddress(name);
+			}
+#	elif defined(FDYNGL_PLATFORM_POSIX)
+			result = dlsym(state.posixLibraryHandle, name);
+			if (result == nullptr) {
+				result = state.glXGetProcAddress(name);
+			}
+#	endif
+			return(result);
+		}
+
+		static void LoadOpenGLExtensions_Internal(const OpenGLState &state) {
+#	if GL_VERSION_1_1
+		glAccum = (gl_accum_func *)GetOpenGLProcAddress_Internal(state, "glAccum");
+		glAlphaFunc = (gl_alpha_func_func *)GetOpenGLProcAddress_Internal(state, "glAlphaFunc");
+		glAreTexturesResident = (gl_are_textures_resident_func *)GetOpenGLProcAddress_Internal(state, "glAreTexturesResident");
+		glArrayElement = (gl_array_element_func *)GetOpenGLProcAddress_Internal(state, "glArrayElement");
+		glBegin = (gl_begin_func *)GetOpenGLProcAddress_Internal(state, "glBegin");
+		glBindTexture = (gl_bind_texture_func *)GetOpenGLProcAddress_Internal(state, "glBindTexture");
+		glBitmap = (gl_bitmap_func *)GetOpenGLProcAddress_Internal(state, "glBitmap");
+		glBlendFunc = (gl_blend_func_func *)GetOpenGLProcAddress_Internal(state, "glBlendFunc");
+		glCallList = (gl_call_list_func *)GetOpenGLProcAddress_Internal(state, "glCallList");
+		glCallLists = (gl_call_lists_func *)GetOpenGLProcAddress_Internal(state, "glCallLists");
+		glClear = (gl_clear_func *)GetOpenGLProcAddress_Internal(state, "glClear");
+		glClearAccum = (gl_clear_accum_func *)GetOpenGLProcAddress_Internal(state, "glClearAccum");
+		glClearColor = (gl_clear_color_func *)GetOpenGLProcAddress_Internal(state, "glClearColor");
+		glClearDepth = (gl_clear_depth_func *)GetOpenGLProcAddress_Internal(state, "glClearDepth");
+		glClearIndex = (gl_clear_index_func *)GetOpenGLProcAddress_Internal(state, "glClearIndex");
+		glClearStencil = (gl_clear_stencil_func *)GetOpenGLProcAddress_Internal(state, "glClearStencil");
+		glClipPlane = (gl_clip_plane_func *)GetOpenGLProcAddress_Internal(state, "glClipPlane");
+		glColor3b = (gl_color3b_func *)GetOpenGLProcAddress_Internal(state, "glColor3b");
+		glColor3bv = (gl_color3bv_func *)GetOpenGLProcAddress_Internal(state, "glColor3bv");
+		glColor3d = (gl_color3d_func *)GetOpenGLProcAddress_Internal(state, "glColor3d");
+		glColor3dv = (gl_color3dv_func *)GetOpenGLProcAddress_Internal(state, "glColor3dv");
+		glColor3f = (gl_color3f_func *)GetOpenGLProcAddress_Internal(state, "glColor3f");
+		glColor3fv = (gl_color3fv_func *)GetOpenGLProcAddress_Internal(state, "glColor3fv");
+		glColor3i = (gl_color3i_func *)GetOpenGLProcAddress_Internal(state, "glColor3i");
+		glColor3iv = (gl_color3iv_func *)GetOpenGLProcAddress_Internal(state, "glColor3iv");
+		glColor3s = (gl_color3s_func *)GetOpenGLProcAddress_Internal(state, "glColor3s");
+		glColor3sv = (gl_color3sv_func *)GetOpenGLProcAddress_Internal(state, "glColor3sv");
+		glColor3ub = (gl_color3ub_func *)GetOpenGLProcAddress_Internal(state, "glColor3ub");
+		glColor3ubv = (gl_color3ubv_func *)GetOpenGLProcAddress_Internal(state, "glColor3ubv");
+		glColor3ui = (gl_color3ui_func *)GetOpenGLProcAddress_Internal(state, "glColor3ui");
+		glColor3uiv = (gl_color3uiv_func *)GetOpenGLProcAddress_Internal(state, "glColor3uiv");
+		glColor3us = (gl_color3us_func *)GetOpenGLProcAddress_Internal(state, "glColor3us");
+		glColor3usv = (gl_color3usv_func *)GetOpenGLProcAddress_Internal(state, "glColor3usv");
+		glColor4b = (gl_color4b_func *)GetOpenGLProcAddress_Internal(state, "glColor4b");
+		glColor4bv = (gl_color4bv_func *)GetOpenGLProcAddress_Internal(state, "glColor4bv");
+		glColor4d = (gl_color4d_func *)GetOpenGLProcAddress_Internal(state, "glColor4d");
+		glColor4dv = (gl_color4dv_func *)GetOpenGLProcAddress_Internal(state, "glColor4dv");
+		glColor4f = (gl_color4f_func *)GetOpenGLProcAddress_Internal(state, "glColor4f");
+		glColor4fv = (gl_color4fv_func *)GetOpenGLProcAddress_Internal(state, "glColor4fv");
+		glColor4i = (gl_color4i_func *)GetOpenGLProcAddress_Internal(state, "glColor4i");
+		glColor4iv = (gl_color4iv_func *)GetOpenGLProcAddress_Internal(state, "glColor4iv");
+		glColor4s = (gl_color4s_func *)GetOpenGLProcAddress_Internal(state, "glColor4s");
+		glColor4sv = (gl_color4sv_func *)GetOpenGLProcAddress_Internal(state, "glColor4sv");
+		glColor4ub = (gl_color4ub_func *)GetOpenGLProcAddress_Internal(state, "glColor4ub");
+		glColor4ubv = (gl_color4ubv_func *)GetOpenGLProcAddress_Internal(state, "glColor4ubv");
+		glColor4ui = (gl_color4ui_func *)GetOpenGLProcAddress_Internal(state, "glColor4ui");
+		glColor4uiv = (gl_color4uiv_func *)GetOpenGLProcAddress_Internal(state, "glColor4uiv");
+		glColor4us = (gl_color4us_func *)GetOpenGLProcAddress_Internal(state, "glColor4us");
+		glColor4usv = (gl_color4usv_func *)GetOpenGLProcAddress_Internal(state, "glColor4usv");
+		glColorMask = (gl_color_mask_func *)GetOpenGLProcAddress_Internal(state, "glColorMask");
+		glColorMaterial = (gl_color_material_func *)GetOpenGLProcAddress_Internal(state, "glColorMaterial");
+		glColorPointer = (gl_color_pointer_func *)GetOpenGLProcAddress_Internal(state, "glColorPointer");
+		glCopyPixels = (gl_copy_pixels_func *)GetOpenGLProcAddress_Internal(state, "glCopyPixels");
+		glCopyTexImage1D = (gl_copy_tex_image1d_func *)GetOpenGLProcAddress_Internal(state, "glCopyTexImage1D");
+		glCopyTexImage2D = (gl_copy_tex_image2d_func *)GetOpenGLProcAddress_Internal(state, "glCopyTexImage2D");
+		glCopyTexSubImage1D = (gl_copy_tex_sub_image1d_func *)GetOpenGLProcAddress_Internal(state, "glCopyTexSubImage1D");
+		glCopyTexSubImage2D = (gl_copy_tex_sub_image2d_func *)GetOpenGLProcAddress_Internal(state, "glCopyTexSubImage2D");
+		glCullFace = (gl_cull_face_func *)GetOpenGLProcAddress_Internal(state, "glCullFace");
+		glDeleteLists = (gl_delete_lists_func *)GetOpenGLProcAddress_Internal(state, "glDeleteLists");
+		glDeleteTextures = (gl_delete_textures_func *)GetOpenGLProcAddress_Internal(state, "glDeleteTextures");
+		glDepthFunc = (gl_depth_func_func *)GetOpenGLProcAddress_Internal(state, "glDepthFunc");
+		glDepthMask = (gl_depth_mask_func *)GetOpenGLProcAddress_Internal(state, "glDepthMask");
+		glDepthRange = (gl_depth_range_func *)GetOpenGLProcAddress_Internal(state, "glDepthRange");
+		glDisable = (gl_disable_func *)GetOpenGLProcAddress_Internal(state, "glDisable");
+		glDisableClientState = (gl_disable_client_state_func *)GetOpenGLProcAddress_Internal(state, "glDisableClientState");
+		glDrawArrays = (gl_draw_arrays_func *)GetOpenGLProcAddress_Internal(state, "glDrawArrays");
+		glDrawBuffer = (gl_draw_buffer_func *)GetOpenGLProcAddress_Internal(state, "glDrawBuffer");
+		glDrawElements = (gl_draw_elements_func *)GetOpenGLProcAddress_Internal(state, "glDrawElements");
+		glDrawPixels = (gl_draw_pixels_func *)GetOpenGLProcAddress_Internal(state, "glDrawPixels");
+		glEdgeFlag = (gl_edge_flag_func *)GetOpenGLProcAddress_Internal(state, "glEdgeFlag");
+		glEdgeFlagPointer = (gl_edge_flag_pointer_func *)GetOpenGLProcAddress_Internal(state, "glEdgeFlagPointer");
+		glEdgeFlagv = (gl_edge_flagv_func *)GetOpenGLProcAddress_Internal(state, "glEdgeFlagv");
+		glEnable = (gl_enable_func *)GetOpenGLProcAddress_Internal(state, "glEnable");
+		glEnableClientState = (gl_enable_client_state_func *)GetOpenGLProcAddress_Internal(state, "glEnableClientState");
+		glEnd = (gl_end_func *)GetOpenGLProcAddress_Internal(state, "glEnd");
+		glEndList = (gl_end_list_func *)GetOpenGLProcAddress_Internal(state, "glEndList");
+		glEvalCoord1d = (gl_eval_coord1d_func *)GetOpenGLProcAddress_Internal(state, "glEvalCoord1d");
+		glEvalCoord1dv = (gl_eval_coord1dv_func *)GetOpenGLProcAddress_Internal(state, "glEvalCoord1dv");
+		glEvalCoord1f = (gl_eval_coord1f_func *)GetOpenGLProcAddress_Internal(state, "glEvalCoord1f");
+		glEvalCoord1fv = (gl_eval_coord1fv_func *)GetOpenGLProcAddress_Internal(state, "glEvalCoord1fv");
+		glEvalCoord2d = (gl_eval_coord2d_func *)GetOpenGLProcAddress_Internal(state, "glEvalCoord2d");
+		glEvalCoord2dv = (gl_eval_coord2dv_func *)GetOpenGLProcAddress_Internal(state, "glEvalCoord2dv");
+		glEvalCoord2f = (gl_eval_coord2f_func *)GetOpenGLProcAddress_Internal(state, "glEvalCoord2f");
+		glEvalCoord2fv = (gl_eval_coord2fv_func *)GetOpenGLProcAddress_Internal(state, "glEvalCoord2fv");
+		glEvalMesh1 = (gl_eval_mesh1_func *)GetOpenGLProcAddress_Internal(state, "glEvalMesh1");
+		glEvalMesh2 = (gl_eval_mesh2_func *)GetOpenGLProcAddress_Internal(state, "glEvalMesh2");
+		glEvalPoint1 = (gl_eval_point1_func *)GetOpenGLProcAddress_Internal(state, "glEvalPoint1");
+		glEvalPoint2 = (gl_eval_point2_func *)GetOpenGLProcAddress_Internal(state, "glEvalPoint2");
+		glFeedbackBuffer = (gl_feedback_buffer_func *)GetOpenGLProcAddress_Internal(state, "glFeedbackBuffer");
+		glFinish = (gl_finish_func *)GetOpenGLProcAddress_Internal(state, "glFinish");
+		glFlush = (gl_flush_func *)GetOpenGLProcAddress_Internal(state, "glFlush");
+		glFogf = (gl_fogf_func *)GetOpenGLProcAddress_Internal(state, "glFogf");
+		glFogfv = (gl_fogfv_func *)GetOpenGLProcAddress_Internal(state, "glFogfv");
+		glFogi = (gl_fogi_func *)GetOpenGLProcAddress_Internal(state, "glFogi");
+		glFogiv = (gl_fogiv_func *)GetOpenGLProcAddress_Internal(state, "glFogiv");
+		glFrontFace = (gl_front_face_func *)GetOpenGLProcAddress_Internal(state, "glFrontFace");
+		glFrustum = (gl_frustum_func *)GetOpenGLProcAddress_Internal(state, "glFrustum");
+		glGenLists = (gl_gen_lists_func *)GetOpenGLProcAddress_Internal(state, "glGenLists");
+		glGenTextures = (gl_gen_textures_func *)GetOpenGLProcAddress_Internal(state, "glGenTextures");
+		glGetBooleanv = (gl_get_booleanv_func *)GetOpenGLProcAddress_Internal(state, "glGetBooleanv");
+		glGetClipPlane = (gl_get_clip_plane_func *)GetOpenGLProcAddress_Internal(state, "glGetClipPlane");
+		glGetDoublev = (gl_get_doublev_func *)GetOpenGLProcAddress_Internal(state, "glGetDoublev");
+		glGetError = (gl_get_error_func *)GetOpenGLProcAddress_Internal(state, "glGetError");
+		glGetFloatv = (gl_get_floatv_func *)GetOpenGLProcAddress_Internal(state, "glGetFloatv");
+		glGetIntegerv = (gl_get_integerv_func *)GetOpenGLProcAddress_Internal(state, "glGetIntegerv");
+		glGetLightfv = (gl_get_lightfv_func *)GetOpenGLProcAddress_Internal(state, "glGetLightfv");
+		glGetLightiv = (gl_get_lightiv_func *)GetOpenGLProcAddress_Internal(state, "glGetLightiv");
+		glGetMapdv = (gl_get_mapdv_func *)GetOpenGLProcAddress_Internal(state, "glGetMapdv");
+		glGetMapfv = (gl_get_mapfv_func *)GetOpenGLProcAddress_Internal(state, "glGetMapfv");
+		glGetMapiv = (gl_get_mapiv_func *)GetOpenGLProcAddress_Internal(state, "glGetMapiv");
+		glGetMaterialfv = (gl_get_materialfv_func *)GetOpenGLProcAddress_Internal(state, "glGetMaterialfv");
+		glGetMaterialiv = (gl_get_materialiv_func *)GetOpenGLProcAddress_Internal(state, "glGetMaterialiv");
+		glGetPixelMapfv = (gl_get_pixel_mapfv_func *)GetOpenGLProcAddress_Internal(state, "glGetPixelMapfv");
+		glGetPixelMapuiv = (gl_get_pixel_mapuiv_func *)GetOpenGLProcAddress_Internal(state, "glGetPixelMapuiv");
+		glGetPixelMapusv = (gl_get_pixel_mapusv_func *)GetOpenGLProcAddress_Internal(state, "glGetPixelMapusv");
+		glGetPointerv = (gl_get_pointerv_func *)GetOpenGLProcAddress_Internal(state, "glGetPointerv");
+		glGetPolygonStipple = (gl_get_polygon_stipple_func *)GetOpenGLProcAddress_Internal(state, "glGetPolygonStipple");
+		glGetString = (gl_get_string_func *)GetOpenGLProcAddress_Internal(state, "glGetString");
+		glGetTexEnvfv = (gl_get_tex_envfv_func *)GetOpenGLProcAddress_Internal(state, "glGetTexEnvfv");
+		glGetTexEnviv = (gl_get_tex_enviv_func *)GetOpenGLProcAddress_Internal(state, "glGetTexEnviv");
+		glGetTexGendv = (gl_get_tex_gendv_func *)GetOpenGLProcAddress_Internal(state, "glGetTexGendv");
+		glGetTexGenfv = (gl_get_tex_genfv_func *)GetOpenGLProcAddress_Internal(state, "glGetTexGenfv");
+		glGetTexGeniv = (gl_get_tex_geniv_func *)GetOpenGLProcAddress_Internal(state, "glGetTexGeniv");
+		glGetTexImage = (gl_get_tex_image_func *)GetOpenGLProcAddress_Internal(state, "glGetTexImage");
+		glGetTexLevelParameterfv = (gl_get_tex_level_parameterfv_func *)GetOpenGLProcAddress_Internal(state, "glGetTexLevelParameterfv");
+		glGetTexLevelParameteriv = (gl_get_tex_level_parameteriv_func *)GetOpenGLProcAddress_Internal(state, "glGetTexLevelParameteriv");
+		glGetTexParameterfv = (gl_get_tex_parameterfv_func *)GetOpenGLProcAddress_Internal(state, "glGetTexParameterfv");
+		glGetTexParameteriv = (gl_get_tex_parameteriv_func *)GetOpenGLProcAddress_Internal(state, "glGetTexParameteriv");
+		glHint = (gl_hint_func *)GetOpenGLProcAddress_Internal(state, "glHint");
+		glIndexMask = (gl_index_mask_func *)GetOpenGLProcAddress_Internal(state, "glIndexMask");
+		glIndexPointer = (gl_index_pointer_func *)GetOpenGLProcAddress_Internal(state, "glIndexPointer");
+		glIndexd = (gl_indexd_func *)GetOpenGLProcAddress_Internal(state, "glIndexd");
+		glIndexdv = (gl_indexdv_func *)GetOpenGLProcAddress_Internal(state, "glIndexdv");
+		glIndexf = (gl_indexf_func *)GetOpenGLProcAddress_Internal(state, "glIndexf");
+		glIndexfv = (gl_indexfv_func *)GetOpenGLProcAddress_Internal(state, "glIndexfv");
+		glIndexi = (gl_indexi_func *)GetOpenGLProcAddress_Internal(state, "glIndexi");
+		glIndexiv = (gl_indexiv_func *)GetOpenGLProcAddress_Internal(state, "glIndexiv");
+		glIndexs = (gl_indexs_func *)GetOpenGLProcAddress_Internal(state, "glIndexs");
+		glIndexsv = (gl_indexsv_func *)GetOpenGLProcAddress_Internal(state, "glIndexsv");
+		glIndexub = (gl_indexub_func *)GetOpenGLProcAddress_Internal(state, "glIndexub");
+		glIndexubv = (gl_indexubv_func *)GetOpenGLProcAddress_Internal(state, "glIndexubv");
+		glInitNames = (gl_init_names_func *)GetOpenGLProcAddress_Internal(state, "glInitNames");
+		glInterleavedArrays = (gl_interleaved_arrays_func *)GetOpenGLProcAddress_Internal(state, "glInterleavedArrays");
+		glIsEnabled = (gl_is_enabled_func *)GetOpenGLProcAddress_Internal(state, "glIsEnabled");
+		glIsList = (gl_is_list_func *)GetOpenGLProcAddress_Internal(state, "glIsList");
+		glIsTexture = (gl_is_texture_func *)GetOpenGLProcAddress_Internal(state, "glIsTexture");
+		glLightModelf = (gl_light_modelf_func *)GetOpenGLProcAddress_Internal(state, "glLightModelf");
+		glLightModelfv = (gl_light_modelfv_func *)GetOpenGLProcAddress_Internal(state, "glLightModelfv");
+		glLightModeli = (gl_light_modeli_func *)GetOpenGLProcAddress_Internal(state, "glLightModeli");
+		glLightModeliv = (gl_light_modeliv_func *)GetOpenGLProcAddress_Internal(state, "glLightModeliv");
+		glLightf = (gl_lightf_func *)GetOpenGLProcAddress_Internal(state, "glLightf");
+		glLightfv = (gl_lightfv_func *)GetOpenGLProcAddress_Internal(state, "glLightfv");
+		glLighti = (gl_lighti_func *)GetOpenGLProcAddress_Internal(state, "glLighti");
+		glLightiv = (gl_lightiv_func *)GetOpenGLProcAddress_Internal(state, "glLightiv");
+		glLineStipple = (gl_line_stipple_func *)GetOpenGLProcAddress_Internal(state, "glLineStipple");
+		glLineWidth = (gl_line_width_func *)GetOpenGLProcAddress_Internal(state, "glLineWidth");
+		glListBase = (gl_list_base_func *)GetOpenGLProcAddress_Internal(state, "glListBase");
+		glLoadIdentity = (gl_load_identity_func *)GetOpenGLProcAddress_Internal(state, "glLoadIdentity");
+		glLoadMatrixd = (gl_load_matrixd_func *)GetOpenGLProcAddress_Internal(state, "glLoadMatrixd");
+		glLoadMatrixf = (gl_load_matrixf_func *)GetOpenGLProcAddress_Internal(state, "glLoadMatrixf");
+		glLoadName = (gl_load_name_func *)GetOpenGLProcAddress_Internal(state, "glLoadName");
+		glLogicOp = (gl_logic_op_func *)GetOpenGLProcAddress_Internal(state, "glLogicOp");
+		glMap1d = (gl_map1d_func *)GetOpenGLProcAddress_Internal(state, "glMap1d");
+		glMap1f = (gl_map1f_func *)GetOpenGLProcAddress_Internal(state, "glMap1f");
+		glMap2d = (gl_map2d_func *)GetOpenGLProcAddress_Internal(state, "glMap2d");
+		glMap2f = (gl_map2f_func *)GetOpenGLProcAddress_Internal(state, "glMap2f");
+		glMapGrid1d = (gl_map_grid1d_func *)GetOpenGLProcAddress_Internal(state, "glMapGrid1d");
+		glMapGrid1f = (gl_map_grid1f_func *)GetOpenGLProcAddress_Internal(state, "glMapGrid1f");
+		glMapGrid2d = (gl_map_grid2d_func *)GetOpenGLProcAddress_Internal(state, "glMapGrid2d");
+		glMapGrid2f = (gl_map_grid2f_func *)GetOpenGLProcAddress_Internal(state, "glMapGrid2f");
+		glMaterialf = (gl_materialf_func *)GetOpenGLProcAddress_Internal(state, "glMaterialf");
+		glMaterialfv = (gl_materialfv_func *)GetOpenGLProcAddress_Internal(state, "glMaterialfv");
+		glMateriali = (gl_materiali_func *)GetOpenGLProcAddress_Internal(state, "glMateriali");
+		glMaterialiv = (gl_materialiv_func *)GetOpenGLProcAddress_Internal(state, "glMaterialiv");
+		glMatrixMode = (gl_matrix_mode_func *)GetOpenGLProcAddress_Internal(state, "glMatrixMode");
+		glMultMatrixd = (gl_mult_matrixd_func *)GetOpenGLProcAddress_Internal(state, "glMultMatrixd");
+		glMultMatrixf = (gl_mult_matrixf_func *)GetOpenGLProcAddress_Internal(state, "glMultMatrixf");
+		glNewList = (gl_new_list_func *)GetOpenGLProcAddress_Internal(state, "glNewList");
+		glNormal3b = (gl_normal3b_func *)GetOpenGLProcAddress_Internal(state, "glNormal3b");
+		glNormal3bv = (gl_normal3bv_func *)GetOpenGLProcAddress_Internal(state, "glNormal3bv");
+		glNormal3d = (gl_normal3d_func *)GetOpenGLProcAddress_Internal(state, "glNormal3d");
+		glNormal3dv = (gl_normal3dv_func *)GetOpenGLProcAddress_Internal(state, "glNormal3dv");
+		glNormal3f = (gl_normal3f_func *)GetOpenGLProcAddress_Internal(state, "glNormal3f");
+		glNormal3fv = (gl_normal3fv_func *)GetOpenGLProcAddress_Internal(state, "glNormal3fv");
+		glNormal3i = (gl_normal3i_func *)GetOpenGLProcAddress_Internal(state, "glNormal3i");
+		glNormal3iv = (gl_normal3iv_func *)GetOpenGLProcAddress_Internal(state, "glNormal3iv");
+		glNormal3s = (gl_normal3s_func *)GetOpenGLProcAddress_Internal(state, "glNormal3s");
+		glNormal3sv = (gl_normal3sv_func *)GetOpenGLProcAddress_Internal(state, "glNormal3sv");
+		glNormalPointer = (gl_normal_pointer_func *)GetOpenGLProcAddress_Internal(state, "glNormalPointer");
+		glOrtho = (gl_ortho_func *)GetOpenGLProcAddress_Internal(state, "glOrtho");
+		glPassThrough = (gl_pass_through_func *)GetOpenGLProcAddress_Internal(state, "glPassThrough");
+		glPixelMapfv = (gl_pixel_mapfv_func *)GetOpenGLProcAddress_Internal(state, "glPixelMapfv");
+		glPixelMapuiv = (gl_pixel_mapuiv_func *)GetOpenGLProcAddress_Internal(state, "glPixelMapuiv");
+		glPixelMapusv = (gl_pixel_mapusv_func *)GetOpenGLProcAddress_Internal(state, "glPixelMapusv");
+		glPixelStoref = (gl_pixel_storef_func *)GetOpenGLProcAddress_Internal(state, "glPixelStoref");
+		glPixelStorei = (gl_pixel_storei_func *)GetOpenGLProcAddress_Internal(state, "glPixelStorei");
+		glPixelTransferf = (gl_pixel_transferf_func *)GetOpenGLProcAddress_Internal(state, "glPixelTransferf");
+		glPixelTransferi = (gl_pixel_transferi_func *)GetOpenGLProcAddress_Internal(state, "glPixelTransferi");
+		glPixelZoom = (gl_pixel_zoom_func *)GetOpenGLProcAddress_Internal(state, "glPixelZoom");
+		glPointSize = (gl_point_size_func *)GetOpenGLProcAddress_Internal(state, "glPointSize");
+		glPolygonMode = (gl_polygon_mode_func *)GetOpenGLProcAddress_Internal(state, "glPolygonMode");
+		glPolygonOffset = (gl_polygon_offset_func *)GetOpenGLProcAddress_Internal(state, "glPolygonOffset");
+		glPolygonStipple = (gl_polygon_stipple_func *)GetOpenGLProcAddress_Internal(state, "glPolygonStipple");
+		glPopAttrib = (gl_pop_attrib_func *)GetOpenGLProcAddress_Internal(state, "glPopAttrib");
+		glPopClientAttrib = (gl_pop_client_attrib_func *)GetOpenGLProcAddress_Internal(state, "glPopClientAttrib");
+		glPopMatrix = (gl_pop_matrix_func *)GetOpenGLProcAddress_Internal(state, "glPopMatrix");
+		glPopName = (gl_pop_name_func *)GetOpenGLProcAddress_Internal(state, "glPopName");
+		glPrioritizeTextures = (gl_prioritize_textures_func *)GetOpenGLProcAddress_Internal(state, "glPrioritizeTextures");
+		glPushAttrib = (gl_push_attrib_func *)GetOpenGLProcAddress_Internal(state, "glPushAttrib");
+		glPushClientAttrib = (gl_push_client_attrib_func *)GetOpenGLProcAddress_Internal(state, "glPushClientAttrib");
+		glPushMatrix = (gl_push_matrix_func *)GetOpenGLProcAddress_Internal(state, "glPushMatrix");
+		glPushName = (gl_push_name_func *)GetOpenGLProcAddress_Internal(state, "glPushName");
+		glRasterPos2d = (gl_raster_pos2d_func *)GetOpenGLProcAddress_Internal(state, "glRasterPos2d");
+		glRasterPos2dv = (gl_raster_pos2dv_func *)GetOpenGLProcAddress_Internal(state, "glRasterPos2dv");
+		glRasterPos2f = (gl_raster_pos2f_func *)GetOpenGLProcAddress_Internal(state, "glRasterPos2f");
+		glRasterPos2fv = (gl_raster_pos2fv_func *)GetOpenGLProcAddress_Internal(state, "glRasterPos2fv");
+		glRasterPos2i = (gl_raster_pos2i_func *)GetOpenGLProcAddress_Internal(state, "glRasterPos2i");
+		glRasterPos2iv = (gl_raster_pos2iv_func *)GetOpenGLProcAddress_Internal(state, "glRasterPos2iv");
+		glRasterPos2s = (gl_raster_pos2s_func *)GetOpenGLProcAddress_Internal(state, "glRasterPos2s");
+		glRasterPos2sv = (gl_raster_pos2sv_func *)GetOpenGLProcAddress_Internal(state, "glRasterPos2sv");
+		glRasterPos3d = (gl_raster_pos3d_func *)GetOpenGLProcAddress_Internal(state, "glRasterPos3d");
+		glRasterPos3dv = (gl_raster_pos3dv_func *)GetOpenGLProcAddress_Internal(state, "glRasterPos3dv");
+		glRasterPos3f = (gl_raster_pos3f_func *)GetOpenGLProcAddress_Internal(state, "glRasterPos3f");
+		glRasterPos3fv = (gl_raster_pos3fv_func *)GetOpenGLProcAddress_Internal(state, "glRasterPos3fv");
+		glRasterPos3i = (gl_raster_pos3i_func *)GetOpenGLProcAddress_Internal(state, "glRasterPos3i");
+		glRasterPos3iv = (gl_raster_pos3iv_func *)GetOpenGLProcAddress_Internal(state, "glRasterPos3iv");
+		glRasterPos3s = (gl_raster_pos3s_func *)GetOpenGLProcAddress_Internal(state, "glRasterPos3s");
+		glRasterPos3sv = (gl_raster_pos3sv_func *)GetOpenGLProcAddress_Internal(state, "glRasterPos3sv");
+		glRasterPos4d = (gl_raster_pos4d_func *)GetOpenGLProcAddress_Internal(state, "glRasterPos4d");
+		glRasterPos4dv = (gl_raster_pos4dv_func *)GetOpenGLProcAddress_Internal(state, "glRasterPos4dv");
+		glRasterPos4f = (gl_raster_pos4f_func *)GetOpenGLProcAddress_Internal(state, "glRasterPos4f");
+		glRasterPos4fv = (gl_raster_pos4fv_func *)GetOpenGLProcAddress_Internal(state, "glRasterPos4fv");
+		glRasterPos4i = (gl_raster_pos4i_func *)GetOpenGLProcAddress_Internal(state, "glRasterPos4i");
+		glRasterPos4iv = (gl_raster_pos4iv_func *)GetOpenGLProcAddress_Internal(state, "glRasterPos4iv");
+		glRasterPos4s = (gl_raster_pos4s_func *)GetOpenGLProcAddress_Internal(state, "glRasterPos4s");
+		glRasterPos4sv = (gl_raster_pos4sv_func *)GetOpenGLProcAddress_Internal(state, "glRasterPos4sv");
+		glReadBuffer = (gl_read_buffer_func *)GetOpenGLProcAddress_Internal(state, "glReadBuffer");
+		glReadPixels = (gl_read_pixels_func *)GetOpenGLProcAddress_Internal(state, "glReadPixels");
+		glRectd = (gl_rectd_func *)GetOpenGLProcAddress_Internal(state, "glRectd");
+		glRectdv = (gl_rectdv_func *)GetOpenGLProcAddress_Internal(state, "glRectdv");
+		glRectf = (gl_rectf_func *)GetOpenGLProcAddress_Internal(state, "glRectf");
+		glRectfv = (gl_rectfv_func *)GetOpenGLProcAddress_Internal(state, "glRectfv");
+		glRecti = (gl_recti_func *)GetOpenGLProcAddress_Internal(state, "glRecti");
+		glRectiv = (gl_rectiv_func *)GetOpenGLProcAddress_Internal(state, "glRectiv");
+		glRects = (gl_rects_func *)GetOpenGLProcAddress_Internal(state, "glRects");
+		glRectsv = (gl_rectsv_func *)GetOpenGLProcAddress_Internal(state, "glRectsv");
+		glRenderMode = (gl_render_mode_func *)GetOpenGLProcAddress_Internal(state, "glRenderMode");
+		glRotated = (gl_rotated_func *)GetOpenGLProcAddress_Internal(state, "glRotated");
+		glRotatef = (gl_rotatef_func *)GetOpenGLProcAddress_Internal(state, "glRotatef");
+		glScaled = (gl_scaled_func *)GetOpenGLProcAddress_Internal(state, "glScaled");
+		glScalef = (gl_scalef_func *)GetOpenGLProcAddress_Internal(state, "glScalef");
+		glScissor = (gl_scissor_func *)GetOpenGLProcAddress_Internal(state, "glScissor");
+		glSelectBuffer = (gl_select_buffer_func *)GetOpenGLProcAddress_Internal(state, "glSelectBuffer");
+		glShadeModel = (gl_shade_model_func *)GetOpenGLProcAddress_Internal(state, "glShadeModel");
+		glStencilFunc = (gl_stencil_func_func *)GetOpenGLProcAddress_Internal(state, "glStencilFunc");
+		glStencilMask = (gl_stencil_mask_func *)GetOpenGLProcAddress_Internal(state, "glStencilMask");
+		glStencilOp = (gl_stencil_op_func *)GetOpenGLProcAddress_Internal(state, "glStencilOp");
+		glTexCoord1d = (gl_tex_coord1d_func *)GetOpenGLProcAddress_Internal(state, "glTexCoord1d");
+		glTexCoord1dv = (gl_tex_coord1dv_func *)GetOpenGLProcAddress_Internal(state, "glTexCoord1dv");
+		glTexCoord1f = (gl_tex_coord1f_func *)GetOpenGLProcAddress_Internal(state, "glTexCoord1f");
+		glTexCoord1fv = (gl_tex_coord1fv_func *)GetOpenGLProcAddress_Internal(state, "glTexCoord1fv");
+		glTexCoord1i = (gl_tex_coord1i_func *)GetOpenGLProcAddress_Internal(state, "glTexCoord1i");
+		glTexCoord1iv = (gl_tex_coord1iv_func *)GetOpenGLProcAddress_Internal(state, "glTexCoord1iv");
+		glTexCoord1s = (gl_tex_coord1s_func *)GetOpenGLProcAddress_Internal(state, "glTexCoord1s");
+		glTexCoord1sv = (gl_tex_coord1sv_func *)GetOpenGLProcAddress_Internal(state, "glTexCoord1sv");
+		glTexCoord2d = (gl_tex_coord2d_func *)GetOpenGLProcAddress_Internal(state, "glTexCoord2d");
+		glTexCoord2dv = (gl_tex_coord2dv_func *)GetOpenGLProcAddress_Internal(state, "glTexCoord2dv");
+		glTexCoord2f = (gl_tex_coord2f_func *)GetOpenGLProcAddress_Internal(state, "glTexCoord2f");
+		glTexCoord2fv = (gl_tex_coord2fv_func *)GetOpenGLProcAddress_Internal(state, "glTexCoord2fv");
+		glTexCoord2i = (gl_tex_coord2i_func *)GetOpenGLProcAddress_Internal(state, "glTexCoord2i");
+		glTexCoord2iv = (gl_tex_coord2iv_func *)GetOpenGLProcAddress_Internal(state, "glTexCoord2iv");
+		glTexCoord2s = (gl_tex_coord2s_func *)GetOpenGLProcAddress_Internal(state, "glTexCoord2s");
+		glTexCoord2sv = (gl_tex_coord2sv_func *)GetOpenGLProcAddress_Internal(state, "glTexCoord2sv");
+		glTexCoord3d = (gl_tex_coord3d_func *)GetOpenGLProcAddress_Internal(state, "glTexCoord3d");
+		glTexCoord3dv = (gl_tex_coord3dv_func *)GetOpenGLProcAddress_Internal(state, "glTexCoord3dv");
+		glTexCoord3f = (gl_tex_coord3f_func *)GetOpenGLProcAddress_Internal(state, "glTexCoord3f");
+		glTexCoord3fv = (gl_tex_coord3fv_func *)GetOpenGLProcAddress_Internal(state, "glTexCoord3fv");
+		glTexCoord3i = (gl_tex_coord3i_func *)GetOpenGLProcAddress_Internal(state, "glTexCoord3i");
+		glTexCoord3iv = (gl_tex_coord3iv_func *)GetOpenGLProcAddress_Internal(state, "glTexCoord3iv");
+		glTexCoord3s = (gl_tex_coord3s_func *)GetOpenGLProcAddress_Internal(state, "glTexCoord3s");
+		glTexCoord3sv = (gl_tex_coord3sv_func *)GetOpenGLProcAddress_Internal(state, "glTexCoord3sv");
+		glTexCoord4d = (gl_tex_coord4d_func *)GetOpenGLProcAddress_Internal(state, "glTexCoord4d");
+		glTexCoord4dv = (gl_tex_coord4dv_func *)GetOpenGLProcAddress_Internal(state, "glTexCoord4dv");
+		glTexCoord4f = (gl_tex_coord4f_func *)GetOpenGLProcAddress_Internal(state, "glTexCoord4f");
+		glTexCoord4fv = (gl_tex_coord4fv_func *)GetOpenGLProcAddress_Internal(state, "glTexCoord4fv");
+		glTexCoord4i = (gl_tex_coord4i_func *)GetOpenGLProcAddress_Internal(state, "glTexCoord4i");
+		glTexCoord4iv = (gl_tex_coord4iv_func *)GetOpenGLProcAddress_Internal(state, "glTexCoord4iv");
+		glTexCoord4s = (gl_tex_coord4s_func *)GetOpenGLProcAddress_Internal(state, "glTexCoord4s");
+		glTexCoord4sv = (gl_tex_coord4sv_func *)GetOpenGLProcAddress_Internal(state, "glTexCoord4sv");
+		glTexCoordPointer = (gl_tex_coord_pointer_func *)GetOpenGLProcAddress_Internal(state, "glTexCoordPointer");
+		glTexEnvf = (gl_tex_envf_func *)GetOpenGLProcAddress_Internal(state, "glTexEnvf");
+		glTexEnvfv = (gl_tex_envfv_func *)GetOpenGLProcAddress_Internal(state, "glTexEnvfv");
+		glTexEnvi = (gl_tex_envi_func *)GetOpenGLProcAddress_Internal(state, "glTexEnvi");
+		glTexEnviv = (gl_tex_enviv_func *)GetOpenGLProcAddress_Internal(state, "glTexEnviv");
+		glTexGend = (gl_tex_gend_func *)GetOpenGLProcAddress_Internal(state, "glTexGend");
+		glTexGendv = (gl_tex_gendv_func *)GetOpenGLProcAddress_Internal(state, "glTexGendv");
+		glTexGenf = (gl_tex_genf_func *)GetOpenGLProcAddress_Internal(state, "glTexGenf");
+		glTexGenfv = (gl_tex_genfv_func *)GetOpenGLProcAddress_Internal(state, "glTexGenfv");
+		glTexGeni = (gl_tex_geni_func *)GetOpenGLProcAddress_Internal(state, "glTexGeni");
+		glTexGeniv = (gl_tex_geniv_func *)GetOpenGLProcAddress_Internal(state, "glTexGeniv");
+		glTexImage1D = (gl_tex_image1d_func *)GetOpenGLProcAddress_Internal(state, "glTexImage1D");
+		glTexImage2D = (gl_tex_image2d_func *)GetOpenGLProcAddress_Internal(state, "glTexImage2D");
+		glTexParameterf = (gl_tex_parameterf_func *)GetOpenGLProcAddress_Internal(state, "glTexParameterf");
+		glTexParameterfv = (gl_tex_parameterfv_func *)GetOpenGLProcAddress_Internal(state, "glTexParameterfv");
+		glTexParameteri = (gl_tex_parameteri_func *)GetOpenGLProcAddress_Internal(state, "glTexParameteri");
+		glTexParameteriv = (gl_tex_parameteriv_func *)GetOpenGLProcAddress_Internal(state, "glTexParameteriv");
+		glTexSubImage1D = (gl_tex_sub_image1d_func *)GetOpenGLProcAddress_Internal(state, "glTexSubImage1D");
+		glTexSubImage2D = (gl_tex_sub_image2d_func *)GetOpenGLProcAddress_Internal(state, "glTexSubImage2D");
+		glTranslated = (gl_translated_func *)GetOpenGLProcAddress_Internal(state, "glTranslated");
+		glTranslatef = (gl_translatef_func *)GetOpenGLProcAddress_Internal(state, "glTranslatef");
+		glVertex2d = (gl_vertex2d_func *)GetOpenGLProcAddress_Internal(state, "glVertex2d");
+		glVertex2dv = (gl_vertex2dv_func *)GetOpenGLProcAddress_Internal(state, "glVertex2dv");
+		glVertex2f = (gl_vertex2f_func *)GetOpenGLProcAddress_Internal(state, "glVertex2f");
+		glVertex2fv = (gl_vertex2fv_func *)GetOpenGLProcAddress_Internal(state, "glVertex2fv");
+		glVertex2i = (gl_vertex2i_func *)GetOpenGLProcAddress_Internal(state, "glVertex2i");
+		glVertex2iv = (gl_vertex2iv_func *)GetOpenGLProcAddress_Internal(state, "glVertex2iv");
+		glVertex2s = (gl_vertex2s_func *)GetOpenGLProcAddress_Internal(state, "glVertex2s");
+		glVertex2sv = (gl_vertex2sv_func *)GetOpenGLProcAddress_Internal(state, "glVertex2sv");
+		glVertex3d = (gl_vertex3d_func *)GetOpenGLProcAddress_Internal(state, "glVertex3d");
+		glVertex3dv = (gl_vertex3dv_func *)GetOpenGLProcAddress_Internal(state, "glVertex3dv");
+		glVertex3f = (gl_vertex3f_func *)GetOpenGLProcAddress_Internal(state, "glVertex3f");
+		glVertex3fv = (gl_vertex3fv_func *)GetOpenGLProcAddress_Internal(state, "glVertex3fv");
+		glVertex3i = (gl_vertex3i_func *)GetOpenGLProcAddress_Internal(state, "glVertex3i");
+		glVertex3iv = (gl_vertex3iv_func *)GetOpenGLProcAddress_Internal(state, "glVertex3iv");
+		glVertex3s = (gl_vertex3s_func *)GetOpenGLProcAddress_Internal(state, "glVertex3s");
+		glVertex3sv = (gl_vertex3sv_func *)GetOpenGLProcAddress_Internal(state, "glVertex3sv");
+		glVertex4d = (gl_vertex4d_func *)GetOpenGLProcAddress_Internal(state, "glVertex4d");
+		glVertex4dv = (gl_vertex4dv_func *)GetOpenGLProcAddress_Internal(state, "glVertex4dv");
+		glVertex4f = (gl_vertex4f_func *)GetOpenGLProcAddress_Internal(state, "glVertex4f");
+		glVertex4fv = (gl_vertex4fv_func *)GetOpenGLProcAddress_Internal(state, "glVertex4fv");
+		glVertex4i = (gl_vertex4i_func *)GetOpenGLProcAddress_Internal(state, "glVertex4i");
+		glVertex4iv = (gl_vertex4iv_func *)GetOpenGLProcAddress_Internal(state, "glVertex4iv");
+		glVertex4s = (gl_vertex4s_func *)GetOpenGLProcAddress_Internal(state, "glVertex4s");
+		glVertex4sv = (gl_vertex4sv_func *)GetOpenGLProcAddress_Internal(state, "glVertex4sv");
+		glVertexPointer = (gl_vertex_pointer_func *)GetOpenGLProcAddress_Internal(state, "glVertexPointer");
+		glViewport = (gl_viewport_func *)GetOpenGLProcAddress_Internal(state, "glViewport");
+#	endif //GL_VERSION_1_1
+
+#	if GL_VERSION_1_2
+		glDrawRangeElements = (gl_draw_range_elements_func *)GetOpenGLProcAddress_Internal(state, "glDrawRangeElements");
+		glTexImage3D = (gl_tex_image3d_func *)GetOpenGLProcAddress_Internal(state, "glTexImage3D");
+		glTexSubImage3D = (gl_tex_sub_image3d_func *)GetOpenGLProcAddress_Internal(state, "glTexSubImage3D");
+		glCopyTexSubImage3D = (gl_copy_tex_sub_image3d_func *)GetOpenGLProcAddress_Internal(state, "glCopyTexSubImage3D");
+#	endif //GL_VERSION_1_2
+
+#	if GL_VERSION_1_3
+		glActiveTexture = (gl_active_texture_func *)GetOpenGLProcAddress_Internal(state, "glActiveTexture");
+		glSampleCoverage = (gl_sample_coverage_func *)GetOpenGLProcAddress_Internal(state, "glSampleCoverage");
+		glCompressedTexImage3D = (gl_compressed_tex_image3d_func *)GetOpenGLProcAddress_Internal(state, "glCompressedTexImage3D");
+		glCompressedTexImage2D = (gl_compressed_tex_image2d_func *)GetOpenGLProcAddress_Internal(state, "glCompressedTexImage2D");
+		glCompressedTexImage1D = (gl_compressed_tex_image1d_func *)GetOpenGLProcAddress_Internal(state, "glCompressedTexImage1D");
+		glCompressedTexSubImage3D = (gl_compressed_tex_sub_image3d_func *)GetOpenGLProcAddress_Internal(state, "glCompressedTexSubImage3D");
+		glCompressedTexSubImage2D = (gl_compressed_tex_sub_image2d_func *)GetOpenGLProcAddress_Internal(state, "glCompressedTexSubImage2D");
+		glCompressedTexSubImage1D = (gl_compressed_tex_sub_image1d_func *)GetOpenGLProcAddress_Internal(state, "glCompressedTexSubImage1D");
+		glGetCompressedTexImage = (gl_get_compressed_tex_image_func *)GetOpenGLProcAddress_Internal(state, "glGetCompressedTexImage");
+		glClientActiveTexture = (gl_client_active_texture_func *)GetOpenGLProcAddress_Internal(state, "glClientActiveTexture");
+		glMultiTexCoord1d = (gl_multi_tex_coord1d_func *)GetOpenGLProcAddress_Internal(state, "glMultiTexCoord1d");
+		glMultiTexCoord1dv = (gl_multi_tex_coord1dv_func *)GetOpenGLProcAddress_Internal(state, "glMultiTexCoord1dv");
+		glMultiTexCoord1f = (gl_multi_tex_coord1f_func *)GetOpenGLProcAddress_Internal(state, "glMultiTexCoord1f");
+		glMultiTexCoord1fv = (gl_multi_tex_coord1fv_func *)GetOpenGLProcAddress_Internal(state, "glMultiTexCoord1fv");
+		glMultiTexCoord1i = (gl_multi_tex_coord1i_func *)GetOpenGLProcAddress_Internal(state, "glMultiTexCoord1i");
+		glMultiTexCoord1iv = (gl_multi_tex_coord1iv_func *)GetOpenGLProcAddress_Internal(state, "glMultiTexCoord1iv");
+		glMultiTexCoord1s = (gl_multi_tex_coord1s_func *)GetOpenGLProcAddress_Internal(state, "glMultiTexCoord1s");
+		glMultiTexCoord1sv = (gl_multi_tex_coord1sv_func *)GetOpenGLProcAddress_Internal(state, "glMultiTexCoord1sv");
+		glMultiTexCoord2d = (gl_multi_tex_coord2d_func *)GetOpenGLProcAddress_Internal(state, "glMultiTexCoord2d");
+		glMultiTexCoord2dv = (gl_multi_tex_coord2dv_func *)GetOpenGLProcAddress_Internal(state, "glMultiTexCoord2dv");
+		glMultiTexCoord2f = (gl_multi_tex_coord2f_func *)GetOpenGLProcAddress_Internal(state, "glMultiTexCoord2f");
+		glMultiTexCoord2fv = (gl_multi_tex_coord2fv_func *)GetOpenGLProcAddress_Internal(state, "glMultiTexCoord2fv");
+		glMultiTexCoord2i = (gl_multi_tex_coord2i_func *)GetOpenGLProcAddress_Internal(state, "glMultiTexCoord2i");
+		glMultiTexCoord2iv = (gl_multi_tex_coord2iv_func *)GetOpenGLProcAddress_Internal(state, "glMultiTexCoord2iv");
+		glMultiTexCoord2s = (gl_multi_tex_coord2s_func *)GetOpenGLProcAddress_Internal(state, "glMultiTexCoord2s");
+		glMultiTexCoord2sv = (gl_multi_tex_coord2sv_func *)GetOpenGLProcAddress_Internal(state, "glMultiTexCoord2sv");
+		glMultiTexCoord3d = (gl_multi_tex_coord3d_func *)GetOpenGLProcAddress_Internal(state, "glMultiTexCoord3d");
+		glMultiTexCoord3dv = (gl_multi_tex_coord3dv_func *)GetOpenGLProcAddress_Internal(state, "glMultiTexCoord3dv");
+		glMultiTexCoord3f = (gl_multi_tex_coord3f_func *)GetOpenGLProcAddress_Internal(state, "glMultiTexCoord3f");
+		glMultiTexCoord3fv = (gl_multi_tex_coord3fv_func *)GetOpenGLProcAddress_Internal(state, "glMultiTexCoord3fv");
+		glMultiTexCoord3i = (gl_multi_tex_coord3i_func *)GetOpenGLProcAddress_Internal(state, "glMultiTexCoord3i");
+		glMultiTexCoord3iv = (gl_multi_tex_coord3iv_func *)GetOpenGLProcAddress_Internal(state, "glMultiTexCoord3iv");
+		glMultiTexCoord3s = (gl_multi_tex_coord3s_func *)GetOpenGLProcAddress_Internal(state, "glMultiTexCoord3s");
+		glMultiTexCoord3sv = (gl_multi_tex_coord3sv_func *)GetOpenGLProcAddress_Internal(state, "glMultiTexCoord3sv");
+		glMultiTexCoord4d = (gl_multi_tex_coord4d_func *)GetOpenGLProcAddress_Internal(state, "glMultiTexCoord4d");
+		glMultiTexCoord4dv = (gl_multi_tex_coord4dv_func *)GetOpenGLProcAddress_Internal(state, "glMultiTexCoord4dv");
+		glMultiTexCoord4f = (gl_multi_tex_coord4f_func *)GetOpenGLProcAddress_Internal(state, "glMultiTexCoord4f");
+		glMultiTexCoord4fv = (gl_multi_tex_coord4fv_func *)GetOpenGLProcAddress_Internal(state, "glMultiTexCoord4fv");
+		glMultiTexCoord4i = (gl_multi_tex_coord4i_func *)GetOpenGLProcAddress_Internal(state, "glMultiTexCoord4i");
+		glMultiTexCoord4iv = (gl_multi_tex_coord4iv_func *)GetOpenGLProcAddress_Internal(state, "glMultiTexCoord4iv");
+		glMultiTexCoord4s = (gl_multi_tex_coord4s_func *)GetOpenGLProcAddress_Internal(state, "glMultiTexCoord4s");
+		glMultiTexCoord4sv = (gl_multi_tex_coord4sv_func *)GetOpenGLProcAddress_Internal(state, "glMultiTexCoord4sv");
+		glLoadTransposeMatrixf = (gl_load_transpose_matrixf_func *)GetOpenGLProcAddress_Internal(state, "glLoadTransposeMatrixf");
+		glLoadTransposeMatrixd = (gl_load_transpose_matrixd_func *)GetOpenGLProcAddress_Internal(state, "glLoadTransposeMatrixd");
+		glMultTransposeMatrixf = (gl_mult_transpose_matrixf_func *)GetOpenGLProcAddress_Internal(state, "glMultTransposeMatrixf");
+		glMultTransposeMatrixd = (gl_mult_transpose_matrixd_func *)GetOpenGLProcAddress_Internal(state, "glMultTransposeMatrixd");
+#	endif //GL_VERSION_1_3
+
+#	if GL_VERSION_1_4
+		glBlendFuncSeparate = (gl_blend_func_separate_func *)GetOpenGLProcAddress_Internal(state, "glBlendFuncSeparate");
+		glMultiDrawArrays = (gl_multi_draw_arrays_func *)GetOpenGLProcAddress_Internal(state, "glMultiDrawArrays");
+		glMultiDrawElements = (gl_multi_draw_elements_func *)GetOpenGLProcAddress_Internal(state, "glMultiDrawElements");
+		glPointParameterf = (gl_point_parameterf_func *)GetOpenGLProcAddress_Internal(state, "glPointParameterf");
+		glPointParameterfv = (gl_point_parameterfv_func *)GetOpenGLProcAddress_Internal(state, "glPointParameterfv");
+		glPointParameteri = (gl_point_parameteri_func *)GetOpenGLProcAddress_Internal(state, "glPointParameteri");
+		glPointParameteriv = (gl_point_parameteriv_func *)GetOpenGLProcAddress_Internal(state, "glPointParameteriv");
+		glFogCoordf = (gl_fog_coordf_func *)GetOpenGLProcAddress_Internal(state, "glFogCoordf");
+		glFogCoordfv = (gl_fog_coordfv_func *)GetOpenGLProcAddress_Internal(state, "glFogCoordfv");
+		glFogCoordd = (gl_fog_coordd_func *)GetOpenGLProcAddress_Internal(state, "glFogCoordd");
+		glFogCoorddv = (gl_fog_coorddv_func *)GetOpenGLProcAddress_Internal(state, "glFogCoorddv");
+		glFogCoordPointer = (gl_fog_coord_pointer_func *)GetOpenGLProcAddress_Internal(state, "glFogCoordPointer");
+		glSecondaryColor3b = (gl_secondary_color3b_func *)GetOpenGLProcAddress_Internal(state, "glSecondaryColor3b");
+		glSecondaryColor3bv = (gl_secondary_color3bv_func *)GetOpenGLProcAddress_Internal(state, "glSecondaryColor3bv");
+		glSecondaryColor3d = (gl_secondary_color3d_func *)GetOpenGLProcAddress_Internal(state, "glSecondaryColor3d");
+		glSecondaryColor3dv = (gl_secondary_color3dv_func *)GetOpenGLProcAddress_Internal(state, "glSecondaryColor3dv");
+		glSecondaryColor3f = (gl_secondary_color3f_func *)GetOpenGLProcAddress_Internal(state, "glSecondaryColor3f");
+		glSecondaryColor3fv = (gl_secondary_color3fv_func *)GetOpenGLProcAddress_Internal(state, "glSecondaryColor3fv");
+		glSecondaryColor3i = (gl_secondary_color3i_func *)GetOpenGLProcAddress_Internal(state, "glSecondaryColor3i");
+		glSecondaryColor3iv = (gl_secondary_color3iv_func *)GetOpenGLProcAddress_Internal(state, "glSecondaryColor3iv");
+		glSecondaryColor3s = (gl_secondary_color3s_func *)GetOpenGLProcAddress_Internal(state, "glSecondaryColor3s");
+		glSecondaryColor3sv = (gl_secondary_color3sv_func *)GetOpenGLProcAddress_Internal(state, "glSecondaryColor3sv");
+		glSecondaryColor3ub = (gl_secondary_color3ub_func *)GetOpenGLProcAddress_Internal(state, "glSecondaryColor3ub");
+		glSecondaryColor3ubv = (gl_secondary_color3ubv_func *)GetOpenGLProcAddress_Internal(state, "glSecondaryColor3ubv");
+		glSecondaryColor3ui = (gl_secondary_color3ui_func *)GetOpenGLProcAddress_Internal(state, "glSecondaryColor3ui");
+		glSecondaryColor3uiv = (gl_secondary_color3uiv_func *)GetOpenGLProcAddress_Internal(state, "glSecondaryColor3uiv");
+		glSecondaryColor3us = (gl_secondary_color3us_func *)GetOpenGLProcAddress_Internal(state, "glSecondaryColor3us");
+		glSecondaryColor3usv = (gl_secondary_color3usv_func *)GetOpenGLProcAddress_Internal(state, "glSecondaryColor3usv");
+		glSecondaryColorPointer = (gl_secondary_color_pointer_func *)GetOpenGLProcAddress_Internal(state, "glSecondaryColorPointer");
+		glWindowPos2d = (gl_window_pos2d_func *)GetOpenGLProcAddress_Internal(state, "glWindowPos2d");
+		glWindowPos2dv = (gl_window_pos2dv_func *)GetOpenGLProcAddress_Internal(state, "glWindowPos2dv");
+		glWindowPos2f = (gl_window_pos2f_func *)GetOpenGLProcAddress_Internal(state, "glWindowPos2f");
+		glWindowPos2fv = (gl_window_pos2fv_func *)GetOpenGLProcAddress_Internal(state, "glWindowPos2fv");
+		glWindowPos2i = (gl_window_pos2i_func *)GetOpenGLProcAddress_Internal(state, "glWindowPos2i");
+		glWindowPos2iv = (gl_window_pos2iv_func *)GetOpenGLProcAddress_Internal(state, "glWindowPos2iv");
+		glWindowPos2s = (gl_window_pos2s_func *)GetOpenGLProcAddress_Internal(state, "glWindowPos2s");
+		glWindowPos2sv = (gl_window_pos2sv_func *)GetOpenGLProcAddress_Internal(state, "glWindowPos2sv");
+		glWindowPos3d = (gl_window_pos3d_func *)GetOpenGLProcAddress_Internal(state, "glWindowPos3d");
+		glWindowPos3dv = (gl_window_pos3dv_func *)GetOpenGLProcAddress_Internal(state, "glWindowPos3dv");
+		glWindowPos3f = (gl_window_pos3f_func *)GetOpenGLProcAddress_Internal(state, "glWindowPos3f");
+		glWindowPos3fv = (gl_window_pos3fv_func *)GetOpenGLProcAddress_Internal(state, "glWindowPos3fv");
+		glWindowPos3i = (gl_window_pos3i_func *)GetOpenGLProcAddress_Internal(state, "glWindowPos3i");
+		glWindowPos3iv = (gl_window_pos3iv_func *)GetOpenGLProcAddress_Internal(state, "glWindowPos3iv");
+		glWindowPos3s = (gl_window_pos3s_func *)GetOpenGLProcAddress_Internal(state, "glWindowPos3s");
+		glWindowPos3sv = (gl_window_pos3sv_func *)GetOpenGLProcAddress_Internal(state, "glWindowPos3sv");
+		glBlendColor = (gl_blend_color_func *)GetOpenGLProcAddress_Internal(state, "glBlendColor");
+		glBlendEquation = (gl_blend_equation_func *)GetOpenGLProcAddress_Internal(state, "glBlendEquation");
+#	endif //GL_VERSION_1_4
+
+#	if GL_VERSION_1_5
+		glGenQueries = (gl_gen_queries_func *)GetOpenGLProcAddress_Internal(state, "glGenQueries");
+		glDeleteQueries = (gl_delete_queries_func *)GetOpenGLProcAddress_Internal(state, "glDeleteQueries");
+		glIsQuery = (gl_is_query_func *)GetOpenGLProcAddress_Internal(state, "glIsQuery");
+		glBeginQuery = (gl_begin_query_func *)GetOpenGLProcAddress_Internal(state, "glBeginQuery");
+		glEndQuery = (gl_end_query_func *)GetOpenGLProcAddress_Internal(state, "glEndQuery");
+		glGetQueryiv = (gl_get_queryiv_func *)GetOpenGLProcAddress_Internal(state, "glGetQueryiv");
+		glGetQueryObjectiv = (gl_get_query_objectiv_func *)GetOpenGLProcAddress_Internal(state, "glGetQueryObjectiv");
+		glGetQueryObjectuiv = (gl_get_query_objectuiv_func *)GetOpenGLProcAddress_Internal(state, "glGetQueryObjectuiv");
+		glBindBuffer = (gl_bind_buffer_func *)GetOpenGLProcAddress_Internal(state, "glBindBuffer");
+		glDeleteBuffers = (gl_delete_buffers_func *)GetOpenGLProcAddress_Internal(state, "glDeleteBuffers");
+		glGenBuffers = (gl_gen_buffers_func *)GetOpenGLProcAddress_Internal(state, "glGenBuffers");
+		glIsBuffer = (gl_is_buffer_func *)GetOpenGLProcAddress_Internal(state, "glIsBuffer");
+		glBufferData = (gl_buffer_data_func *)GetOpenGLProcAddress_Internal(state, "glBufferData");
+		glBufferSubData = (gl_buffer_sub_data_func *)GetOpenGLProcAddress_Internal(state, "glBufferSubData");
+		glGetBufferSubData = (gl_get_buffer_sub_data_func *)GetOpenGLProcAddress_Internal(state, "glGetBufferSubData");
+		glMapBuffer = (gl_map_buffer_func *)GetOpenGLProcAddress_Internal(state, "glMapBuffer");
+		glUnmapBuffer = (gl_unmap_buffer_func *)GetOpenGLProcAddress_Internal(state, "glUnmapBuffer");
+		glGetBufferParameteriv = (gl_get_buffer_parameteriv_func *)GetOpenGLProcAddress_Internal(state, "glGetBufferParameteriv");
+		glGetBufferPointerv = (gl_get_buffer_pointerv_func *)GetOpenGLProcAddress_Internal(state, "glGetBufferPointerv");
+#	endif //GL_VERSION_1_5
+
+#	if GL_VERSION_2_0
+		glBlendEquationSeparate = (gl_blend_equation_separate_func *)GetOpenGLProcAddress_Internal(state, "glBlendEquationSeparate");
+		glDrawBuffers = (gl_draw_buffers_func *)GetOpenGLProcAddress_Internal(state, "glDrawBuffers");
+		glStencilOpSeparate = (gl_stencil_op_separate_func *)GetOpenGLProcAddress_Internal(state, "glStencilOpSeparate");
+		glStencilFuncSeparate = (gl_stencil_func_separate_func *)GetOpenGLProcAddress_Internal(state, "glStencilFuncSeparate");
+		glStencilMaskSeparate = (gl_stencil_mask_separate_func *)GetOpenGLProcAddress_Internal(state, "glStencilMaskSeparate");
+		glAttachShader = (gl_attach_shader_func *)GetOpenGLProcAddress_Internal(state, "glAttachShader");
+		glBindAttribLocation = (gl_bind_attrib_location_func *)GetOpenGLProcAddress_Internal(state, "glBindAttribLocation");
+		glCompileShader = (gl_compile_shader_func *)GetOpenGLProcAddress_Internal(state, "glCompileShader");
+		glCreateProgram = (gl_create_program_func *)GetOpenGLProcAddress_Internal(state, "glCreateProgram");
+		glCreateShader = (gl_create_shader_func *)GetOpenGLProcAddress_Internal(state, "glCreateShader");
+		glDeleteProgram = (gl_delete_program_func *)GetOpenGLProcAddress_Internal(state, "glDeleteProgram");
+		glDeleteShader = (gl_delete_shader_func *)GetOpenGLProcAddress_Internal(state, "glDeleteShader");
+		glDetachShader = (gl_detach_shader_func *)GetOpenGLProcAddress_Internal(state, "glDetachShader");
+		glDisableVertexAttribArray = (gl_disable_vertex_attrib_array_func *)GetOpenGLProcAddress_Internal(state, "glDisableVertexAttribArray");
+		glEnableVertexAttribArray = (gl_enable_vertex_attrib_array_func *)GetOpenGLProcAddress_Internal(state, "glEnableVertexAttribArray");
+		glGetActiveAttrib = (gl_get_active_attrib_func *)GetOpenGLProcAddress_Internal(state, "glGetActiveAttrib");
+		glGetActiveUniform = (gl_get_active_uniform_func *)GetOpenGLProcAddress_Internal(state, "glGetActiveUniform");
+		glGetAttachedShaders = (gl_get_attached_shaders_func *)GetOpenGLProcAddress_Internal(state, "glGetAttachedShaders");
+		glGetAttribLocation = (gl_get_attrib_location_func *)GetOpenGLProcAddress_Internal(state, "glGetAttribLocation");
+		glGetProgramiv = (gl_get_programiv_func *)GetOpenGLProcAddress_Internal(state, "glGetProgramiv");
+		glGetProgramInfoLog = (gl_get_program_info_log_func *)GetOpenGLProcAddress_Internal(state, "glGetProgramInfoLog");
+		glGetShaderiv = (gl_get_shaderiv_func *)GetOpenGLProcAddress_Internal(state, "glGetShaderiv");
+		glGetShaderInfoLog = (gl_get_shader_info_log_func *)GetOpenGLProcAddress_Internal(state, "glGetShaderInfoLog");
+		glGetShaderSource = (gl_get_shader_source_func *)GetOpenGLProcAddress_Internal(state, "glGetShaderSource");
+		glGetUniformLocation = (gl_get_uniform_location_func *)GetOpenGLProcAddress_Internal(state, "glGetUniformLocation");
+		glGetUniformfv = (gl_get_uniformfv_func *)GetOpenGLProcAddress_Internal(state, "glGetUniformfv");
+		glGetUniformiv = (gl_get_uniformiv_func *)GetOpenGLProcAddress_Internal(state, "glGetUniformiv");
+		glGetVertexAttribdv = (gl_get_vertex_attribdv_func *)GetOpenGLProcAddress_Internal(state, "glGetVertexAttribdv");
+		glGetVertexAttribfv = (gl_get_vertex_attribfv_func *)GetOpenGLProcAddress_Internal(state, "glGetVertexAttribfv");
+		glGetVertexAttribiv = (gl_get_vertex_attribiv_func *)GetOpenGLProcAddress_Internal(state, "glGetVertexAttribiv");
+		glGetVertexAttribPointerv = (gl_get_vertex_attrib_pointerv_func *)GetOpenGLProcAddress_Internal(state, "glGetVertexAttribPointerv");
+		glIsProgram = (gl_is_program_func *)GetOpenGLProcAddress_Internal(state, "glIsProgram");
+		glIsShader = (gl_is_shader_func *)GetOpenGLProcAddress_Internal(state, "glIsShader");
+		glLinkProgram = (gl_link_program_func *)GetOpenGLProcAddress_Internal(state, "glLinkProgram");
+		glShaderSource = (gl_shader_source_func *)GetOpenGLProcAddress_Internal(state, "glShaderSource");
+		glUseProgram = (gl_use_program_func *)GetOpenGLProcAddress_Internal(state, "glUseProgram");
+		glUniform1f = (gl_uniform1f_func *)GetOpenGLProcAddress_Internal(state, "glUniform1f");
+		glUniform2f = (gl_uniform2f_func *)GetOpenGLProcAddress_Internal(state, "glUniform2f");
+		glUniform3f = (gl_uniform3f_func *)GetOpenGLProcAddress_Internal(state, "glUniform3f");
+		glUniform4f = (gl_uniform4f_func *)GetOpenGLProcAddress_Internal(state, "glUniform4f");
+		glUniform1i = (gl_uniform1i_func *)GetOpenGLProcAddress_Internal(state, "glUniform1i");
+		glUniform2i = (gl_uniform2i_func *)GetOpenGLProcAddress_Internal(state, "glUniform2i");
+		glUniform3i = (gl_uniform3i_func *)GetOpenGLProcAddress_Internal(state, "glUniform3i");
+		glUniform4i = (gl_uniform4i_func *)GetOpenGLProcAddress_Internal(state, "glUniform4i");
+		glUniform1fv = (gl_uniform1fv_func *)GetOpenGLProcAddress_Internal(state, "glUniform1fv");
+		glUniform2fv = (gl_uniform2fv_func *)GetOpenGLProcAddress_Internal(state, "glUniform2fv");
+		glUniform3fv = (gl_uniform3fv_func *)GetOpenGLProcAddress_Internal(state, "glUniform3fv");
+		glUniform4fv = (gl_uniform4fv_func *)GetOpenGLProcAddress_Internal(state, "glUniform4fv");
+		glUniform1iv = (gl_uniform1iv_func *)GetOpenGLProcAddress_Internal(state, "glUniform1iv");
+		glUniform2iv = (gl_uniform2iv_func *)GetOpenGLProcAddress_Internal(state, "glUniform2iv");
+		glUniform3iv = (gl_uniform3iv_func *)GetOpenGLProcAddress_Internal(state, "glUniform3iv");
+		glUniform4iv = (gl_uniform4iv_func *)GetOpenGLProcAddress_Internal(state, "glUniform4iv");
+		glUniformMatrix2fv = (gl_uniform_matrix2fv_func *)GetOpenGLProcAddress_Internal(state, "glUniformMatrix2fv");
+		glUniformMatrix3fv = (gl_uniform_matrix3fv_func *)GetOpenGLProcAddress_Internal(state, "glUniformMatrix3fv");
+		glUniformMatrix4fv = (gl_uniform_matrix4fv_func *)GetOpenGLProcAddress_Internal(state, "glUniformMatrix4fv");
+		glValidateProgram = (gl_validate_program_func *)GetOpenGLProcAddress_Internal(state, "glValidateProgram");
+		glVertexAttrib1d = (gl_vertex_attrib1d_func *)GetOpenGLProcAddress_Internal(state, "glVertexAttrib1d");
+		glVertexAttrib1dv = (gl_vertex_attrib1dv_func *)GetOpenGLProcAddress_Internal(state, "glVertexAttrib1dv");
+		glVertexAttrib1f = (gl_vertex_attrib1f_func *)GetOpenGLProcAddress_Internal(state, "glVertexAttrib1f");
+		glVertexAttrib1fv = (gl_vertex_attrib1fv_func *)GetOpenGLProcAddress_Internal(state, "glVertexAttrib1fv");
+		glVertexAttrib1s = (gl_vertex_attrib1s_func *)GetOpenGLProcAddress_Internal(state, "glVertexAttrib1s");
+		glVertexAttrib1sv = (gl_vertex_attrib1sv_func *)GetOpenGLProcAddress_Internal(state, "glVertexAttrib1sv");
+		glVertexAttrib2d = (gl_vertex_attrib2d_func *)GetOpenGLProcAddress_Internal(state, "glVertexAttrib2d");
+		glVertexAttrib2dv = (gl_vertex_attrib2dv_func *)GetOpenGLProcAddress_Internal(state, "glVertexAttrib2dv");
+		glVertexAttrib2f = (gl_vertex_attrib2f_func *)GetOpenGLProcAddress_Internal(state, "glVertexAttrib2f");
+		glVertexAttrib2fv = (gl_vertex_attrib2fv_func *)GetOpenGLProcAddress_Internal(state, "glVertexAttrib2fv");
+		glVertexAttrib2s = (gl_vertex_attrib2s_func *)GetOpenGLProcAddress_Internal(state, "glVertexAttrib2s");
+		glVertexAttrib2sv = (gl_vertex_attrib2sv_func *)GetOpenGLProcAddress_Internal(state, "glVertexAttrib2sv");
+		glVertexAttrib3d = (gl_vertex_attrib3d_func *)GetOpenGLProcAddress_Internal(state, "glVertexAttrib3d");
+		glVertexAttrib3dv = (gl_vertex_attrib3dv_func *)GetOpenGLProcAddress_Internal(state, "glVertexAttrib3dv");
+		glVertexAttrib3f = (gl_vertex_attrib3f_func *)GetOpenGLProcAddress_Internal(state, "glVertexAttrib3f");
+		glVertexAttrib3fv = (gl_vertex_attrib3fv_func *)GetOpenGLProcAddress_Internal(state, "glVertexAttrib3fv");
+		glVertexAttrib3s = (gl_vertex_attrib3s_func *)GetOpenGLProcAddress_Internal(state, "glVertexAttrib3s");
+		glVertexAttrib3sv = (gl_vertex_attrib3sv_func *)GetOpenGLProcAddress_Internal(state, "glVertexAttrib3sv");
+		glVertexAttrib4Nbv = (gl_vertex_attrib4_nbv_func *)GetOpenGLProcAddress_Internal(state, "glVertexAttrib4Nbv");
+		glVertexAttrib4Niv = (gl_vertex_attrib4_niv_func *)GetOpenGLProcAddress_Internal(state, "glVertexAttrib4Niv");
+		glVertexAttrib4Nsv = (gl_vertex_attrib4_nsv_func *)GetOpenGLProcAddress_Internal(state, "glVertexAttrib4Nsv");
+		glVertexAttrib4Nub = (gl_vertex_attrib4_nub_func *)GetOpenGLProcAddress_Internal(state, "glVertexAttrib4Nub");
+		glVertexAttrib4Nubv = (gl_vertex_attrib4_nubv_func *)GetOpenGLProcAddress_Internal(state, "glVertexAttrib4Nubv");
+		glVertexAttrib4Nuiv = (gl_vertex_attrib4_nuiv_func *)GetOpenGLProcAddress_Internal(state, "glVertexAttrib4Nuiv");
+		glVertexAttrib4Nusv = (gl_vertex_attrib4_nusv_func *)GetOpenGLProcAddress_Internal(state, "glVertexAttrib4Nusv");
+		glVertexAttrib4bv = (gl_vertex_attrib4bv_func *)GetOpenGLProcAddress_Internal(state, "glVertexAttrib4bv");
+		glVertexAttrib4d = (gl_vertex_attrib4d_func *)GetOpenGLProcAddress_Internal(state, "glVertexAttrib4d");
+		glVertexAttrib4dv = (gl_vertex_attrib4dv_func *)GetOpenGLProcAddress_Internal(state, "glVertexAttrib4dv");
+		glVertexAttrib4f = (gl_vertex_attrib4f_func *)GetOpenGLProcAddress_Internal(state, "glVertexAttrib4f");
+		glVertexAttrib4fv = (gl_vertex_attrib4fv_func *)GetOpenGLProcAddress_Internal(state, "glVertexAttrib4fv");
+		glVertexAttrib4iv = (gl_vertex_attrib4iv_func *)GetOpenGLProcAddress_Internal(state, "glVertexAttrib4iv");
+		glVertexAttrib4s = (gl_vertex_attrib4s_func *)GetOpenGLProcAddress_Internal(state, "glVertexAttrib4s");
+		glVertexAttrib4sv = (gl_vertex_attrib4sv_func *)GetOpenGLProcAddress_Internal(state, "glVertexAttrib4sv");
+		glVertexAttrib4ubv = (gl_vertex_attrib4ubv_func *)GetOpenGLProcAddress_Internal(state, "glVertexAttrib4ubv");
+		glVertexAttrib4uiv = (gl_vertex_attrib4uiv_func *)GetOpenGLProcAddress_Internal(state, "glVertexAttrib4uiv");
+		glVertexAttrib4usv = (gl_vertex_attrib4usv_func *)GetOpenGLProcAddress_Internal(state, "glVertexAttrib4usv");
+		glVertexAttribPointer = (gl_vertex_attrib_pointer_func *)GetOpenGLProcAddress_Internal(state, "glVertexAttribPointer");
+#	endif //GL_VERSION_2_0
+
+#	if GL_VERSION_2_1
+		glUniformMatrix2x3fv = (gl_uniform_matrix2x3fv_func *)GetOpenGLProcAddress_Internal(state, "glUniformMatrix2x3fv");
+		glUniformMatrix3x2fv = (gl_uniform_matrix3x2fv_func *)GetOpenGLProcAddress_Internal(state, "glUniformMatrix3x2fv");
+		glUniformMatrix2x4fv = (gl_uniform_matrix2x4fv_func *)GetOpenGLProcAddress_Internal(state, "glUniformMatrix2x4fv");
+		glUniformMatrix4x2fv = (gl_uniform_matrix4x2fv_func *)GetOpenGLProcAddress_Internal(state, "glUniformMatrix4x2fv");
+		glUniformMatrix3x4fv = (gl_uniform_matrix3x4fv_func *)GetOpenGLProcAddress_Internal(state, "glUniformMatrix3x4fv");
+		glUniformMatrix4x3fv = (gl_uniform_matrix4x3fv_func *)GetOpenGLProcAddress_Internal(state, "glUniformMatrix4x3fv");
+#	endif //GL_VERSION_2_1
+
+#	if GL_VERSION_3_0
+		glColorMaski = (gl_color_maski_func *)GetOpenGLProcAddress_Internal(state, "glColorMaski");
+		glGetBooleani_v = (gl_get_booleani_v_func *)GetOpenGLProcAddress_Internal(state, "glGetBooleani_v");
+		glGetIntegeri_v = (gl_get_integeri_v_func *)GetOpenGLProcAddress_Internal(state, "glGetIntegeri_v");
+		glEnablei = (gl_enablei_func *)GetOpenGLProcAddress_Internal(state, "glEnablei");
+		glDisablei = (gl_disablei_func *)GetOpenGLProcAddress_Internal(state, "glDisablei");
+		glIsEnabledi = (gl_is_enabledi_func *)GetOpenGLProcAddress_Internal(state, "glIsEnabledi");
+		glBeginTransformFeedback = (gl_begin_transform_feedback_func *)GetOpenGLProcAddress_Internal(state, "glBeginTransformFeedback");
+		glEndTransformFeedback = (gl_end_transform_feedback_func *)GetOpenGLProcAddress_Internal(state, "glEndTransformFeedback");
+		glBindBufferRange = (gl_bind_buffer_range_func *)GetOpenGLProcAddress_Internal(state, "glBindBufferRange");
+		glBindBufferBase = (gl_bind_buffer_base_func *)GetOpenGLProcAddress_Internal(state, "glBindBufferBase");
+		glTransformFeedbackVaryings = (gl_transform_feedback_varyings_func *)GetOpenGLProcAddress_Internal(state, "glTransformFeedbackVaryings");
+		glGetTransformFeedbackVarying = (gl_get_transform_feedback_varying_func *)GetOpenGLProcAddress_Internal(state, "glGetTransformFeedbackVarying");
+		glClampColor = (gl_clamp_color_func *)GetOpenGLProcAddress_Internal(state, "glClampColor");
+		glBeginConditionalRender = (gl_begin_conditional_render_func *)GetOpenGLProcAddress_Internal(state, "glBeginConditionalRender");
+		glEndConditionalRender = (gl_end_conditional_render_func *)GetOpenGLProcAddress_Internal(state, "glEndConditionalRender");
+		glVertexAttribIPointer = (gl_vertex_attrib_i_pointer_func *)GetOpenGLProcAddress_Internal(state, "glVertexAttribIPointer");
+		glGetVertexAttribIiv = (gl_get_vertex_attrib_iiv_func *)GetOpenGLProcAddress_Internal(state, "glGetVertexAttribIiv");
+		glGetVertexAttribIuiv = (gl_get_vertex_attrib_iuiv_func *)GetOpenGLProcAddress_Internal(state, "glGetVertexAttribIuiv");
+		glVertexAttribI1i = (gl_vertex_attrib_i1i_func *)GetOpenGLProcAddress_Internal(state, "glVertexAttribI1i");
+		glVertexAttribI2i = (gl_vertex_attrib_i2i_func *)GetOpenGLProcAddress_Internal(state, "glVertexAttribI2i");
+		glVertexAttribI3i = (gl_vertex_attrib_i3i_func *)GetOpenGLProcAddress_Internal(state, "glVertexAttribI3i");
+		glVertexAttribI4i = (gl_vertex_attrib_i4i_func *)GetOpenGLProcAddress_Internal(state, "glVertexAttribI4i");
+		glVertexAttribI1ui = (gl_vertex_attrib_i1ui_func *)GetOpenGLProcAddress_Internal(state, "glVertexAttribI1ui");
+		glVertexAttribI2ui = (gl_vertex_attrib_i2ui_func *)GetOpenGLProcAddress_Internal(state, "glVertexAttribI2ui");
+		glVertexAttribI3ui = (gl_vertex_attrib_i3ui_func *)GetOpenGLProcAddress_Internal(state, "glVertexAttribI3ui");
+		glVertexAttribI4ui = (gl_vertex_attrib_i4ui_func *)GetOpenGLProcAddress_Internal(state, "glVertexAttribI4ui");
+		glVertexAttribI1iv = (gl_vertex_attrib_i1iv_func *)GetOpenGLProcAddress_Internal(state, "glVertexAttribI1iv");
+		glVertexAttribI2iv = (gl_vertex_attrib_i2iv_func *)GetOpenGLProcAddress_Internal(state, "glVertexAttribI2iv");
+		glVertexAttribI3iv = (gl_vertex_attrib_i3iv_func *)GetOpenGLProcAddress_Internal(state, "glVertexAttribI3iv");
+		glVertexAttribI4iv = (gl_vertex_attrib_i4iv_func *)GetOpenGLProcAddress_Internal(state, "glVertexAttribI4iv");
+		glVertexAttribI1uiv = (gl_vertex_attrib_i1uiv_func *)GetOpenGLProcAddress_Internal(state, "glVertexAttribI1uiv");
+		glVertexAttribI2uiv = (gl_vertex_attrib_i2uiv_func *)GetOpenGLProcAddress_Internal(state, "glVertexAttribI2uiv");
+		glVertexAttribI3uiv = (gl_vertex_attrib_i3uiv_func *)GetOpenGLProcAddress_Internal(state, "glVertexAttribI3uiv");
+		glVertexAttribI4uiv = (gl_vertex_attrib_i4uiv_func *)GetOpenGLProcAddress_Internal(state, "glVertexAttribI4uiv");
+		glVertexAttribI4bv = (gl_vertex_attrib_i4bv_func *)GetOpenGLProcAddress_Internal(state, "glVertexAttribI4bv");
+		glVertexAttribI4sv = (gl_vertex_attrib_i4sv_func *)GetOpenGLProcAddress_Internal(state, "glVertexAttribI4sv");
+		glVertexAttribI4ubv = (gl_vertex_attrib_i4ubv_func *)GetOpenGLProcAddress_Internal(state, "glVertexAttribI4ubv");
+		glVertexAttribI4usv = (gl_vertex_attrib_i4usv_func *)GetOpenGLProcAddress_Internal(state, "glVertexAttribI4usv");
+		glGetUniformuiv = (gl_get_uniformuiv_func *)GetOpenGLProcAddress_Internal(state, "glGetUniformuiv");
+		glBindFragDataLocation = (gl_bind_frag_data_location_func *)GetOpenGLProcAddress_Internal(state, "glBindFragDataLocation");
+		glGetFragDataLocation = (gl_get_frag_data_location_func *)GetOpenGLProcAddress_Internal(state, "glGetFragDataLocation");
+		glUniform1ui = (gl_uniform1ui_func *)GetOpenGLProcAddress_Internal(state, "glUniform1ui");
+		glUniform2ui = (gl_uniform2ui_func *)GetOpenGLProcAddress_Internal(state, "glUniform2ui");
+		glUniform3ui = (gl_uniform3ui_func *)GetOpenGLProcAddress_Internal(state, "glUniform3ui");
+		glUniform4ui = (gl_uniform4ui_func *)GetOpenGLProcAddress_Internal(state, "glUniform4ui");
+		glUniform1uiv = (gl_uniform1uiv_func *)GetOpenGLProcAddress_Internal(state, "glUniform1uiv");
+		glUniform2uiv = (gl_uniform2uiv_func *)GetOpenGLProcAddress_Internal(state, "glUniform2uiv");
+		glUniform3uiv = (gl_uniform3uiv_func *)GetOpenGLProcAddress_Internal(state, "glUniform3uiv");
+		glUniform4uiv = (gl_uniform4uiv_func *)GetOpenGLProcAddress_Internal(state, "glUniform4uiv");
+		glTexParameterIiv = (gl_tex_parameter_iiv_func *)GetOpenGLProcAddress_Internal(state, "glTexParameterIiv");
+		glTexParameterIuiv = (gl_tex_parameter_iuiv_func *)GetOpenGLProcAddress_Internal(state, "glTexParameterIuiv");
+		glGetTexParameterIiv = (gl_get_tex_parameter_iiv_func *)GetOpenGLProcAddress_Internal(state, "glGetTexParameterIiv");
+		glGetTexParameterIuiv = (gl_get_tex_parameter_iuiv_func *)GetOpenGLProcAddress_Internal(state, "glGetTexParameterIuiv");
+		glClearBufferiv = (gl_clear_bufferiv_func *)GetOpenGLProcAddress_Internal(state, "glClearBufferiv");
+		glClearBufferuiv = (gl_clear_bufferuiv_func *)GetOpenGLProcAddress_Internal(state, "glClearBufferuiv");
+		glClearBufferfv = (gl_clear_bufferfv_func *)GetOpenGLProcAddress_Internal(state, "glClearBufferfv");
+		glClearBufferfi = (gl_clear_bufferfi_func *)GetOpenGLProcAddress_Internal(state, "glClearBufferfi");
+		glGetStringi = (gl_get_stringi_func *)GetOpenGLProcAddress_Internal(state, "glGetStringi");
+		glIsRenderbuffer = (gl_is_renderbuffer_func *)GetOpenGLProcAddress_Internal(state, "glIsRenderbuffer");
+		glBindRenderbuffer = (gl_bind_renderbuffer_func *)GetOpenGLProcAddress_Internal(state, "glBindRenderbuffer");
+		glDeleteRenderbuffers = (gl_delete_renderbuffers_func *)GetOpenGLProcAddress_Internal(state, "glDeleteRenderbuffers");
+		glGenRenderbuffers = (gl_gen_renderbuffers_func *)GetOpenGLProcAddress_Internal(state, "glGenRenderbuffers");
+		glRenderbufferStorage = (gl_renderbuffer_storage_func *)GetOpenGLProcAddress_Internal(state, "glRenderbufferStorage");
+		glGetRenderbufferParameteriv = (gl_get_renderbuffer_parameteriv_func *)GetOpenGLProcAddress_Internal(state, "glGetRenderbufferParameteriv");
+		glIsFramebuffer = (gl_is_framebuffer_func *)GetOpenGLProcAddress_Internal(state, "glIsFramebuffer");
+		glBindFramebuffer = (gl_bind_framebuffer_func *)GetOpenGLProcAddress_Internal(state, "glBindFramebuffer");
+		glDeleteFramebuffers = (gl_delete_framebuffers_func *)GetOpenGLProcAddress_Internal(state, "glDeleteFramebuffers");
+		glGenFramebuffers = (gl_gen_framebuffers_func *)GetOpenGLProcAddress_Internal(state, "glGenFramebuffers");
+		glCheckFramebufferStatus = (gl_check_framebuffer_status_func *)GetOpenGLProcAddress_Internal(state, "glCheckFramebufferStatus");
+		glFramebufferTexture1D = (gl_framebuffer_texture1d_func *)GetOpenGLProcAddress_Internal(state, "glFramebufferTexture1D");
+		glFramebufferTexture2D = (gl_framebuffer_texture2d_func *)GetOpenGLProcAddress_Internal(state, "glFramebufferTexture2D");
+		glFramebufferTexture3D = (gl_framebuffer_texture3d_func *)GetOpenGLProcAddress_Internal(state, "glFramebufferTexture3D");
+		glFramebufferRenderbuffer = (gl_framebuffer_renderbuffer_func *)GetOpenGLProcAddress_Internal(state, "glFramebufferRenderbuffer");
+		glGetFramebufferAttachmentParameteriv = (gl_get_framebuffer_attachment_parameteriv_func *)GetOpenGLProcAddress_Internal(state, "glGetFramebufferAttachmentParameteriv");
+		glGenerateMipmap = (gl_generate_mipmap_func *)GetOpenGLProcAddress_Internal(state, "glGenerateMipmap");
+		glBlitFramebuffer = (gl_blit_framebuffer_func *)GetOpenGLProcAddress_Internal(state, "glBlitFramebuffer");
+		glRenderbufferStorageMultisample = (gl_renderbuffer_storage_multisample_func *)GetOpenGLProcAddress_Internal(state, "glRenderbufferStorageMultisample");
+		glFramebufferTextureLayer = (gl_framebuffer_texture_layer_func *)GetOpenGLProcAddress_Internal(state, "glFramebufferTextureLayer");
+		glMapBufferRange = (gl_map_buffer_range_func *)GetOpenGLProcAddress_Internal(state, "glMapBufferRange");
+		glFlushMappedBufferRange = (gl_flush_mapped_buffer_range_func *)GetOpenGLProcAddress_Internal(state, "glFlushMappedBufferRange");
+		glBindVertexArray = (gl_bind_vertex_array_func *)GetOpenGLProcAddress_Internal(state, "glBindVertexArray");
+		glDeleteVertexArrays = (gl_delete_vertex_arrays_func *)GetOpenGLProcAddress_Internal(state, "glDeleteVertexArrays");
+		glGenVertexArrays = (gl_gen_vertex_arrays_func *)GetOpenGLProcAddress_Internal(state, "glGenVertexArrays");
+		glIsVertexArray = (gl_is_vertex_array_func *)GetOpenGLProcAddress_Internal(state, "glIsVertexArray");
+#	endif //GL_VERSION_3_0
+
+#	if GL_VERSION_3_1
+		glDrawArraysInstanced = (gl_draw_arrays_instanced_func *)GetOpenGLProcAddress_Internal(state, "glDrawArraysInstanced");
+		glDrawElementsInstanced = (gl_draw_elements_instanced_func *)GetOpenGLProcAddress_Internal(state, "glDrawElementsInstanced");
+		glTexBuffer = (gl_tex_buffer_func *)GetOpenGLProcAddress_Internal(state, "glTexBuffer");
+		glPrimitiveRestartIndex = (gl_primitive_restart_index_func *)GetOpenGLProcAddress_Internal(state, "glPrimitiveRestartIndex");
+		glCopyBufferSubData = (gl_copy_buffer_sub_data_func *)GetOpenGLProcAddress_Internal(state, "glCopyBufferSubData");
+		glGetUniformIndices = (gl_get_uniform_indices_func *)GetOpenGLProcAddress_Internal(state, "glGetUniformIndices");
+		glGetActiveUniformsiv = (gl_get_active_uniformsiv_func *)GetOpenGLProcAddress_Internal(state, "glGetActiveUniformsiv");
+		glGetActiveUniformName = (gl_get_active_uniform_name_func *)GetOpenGLProcAddress_Internal(state, "glGetActiveUniformName");
+		glGetUniformBlockIndex = (gl_get_uniform_block_index_func *)GetOpenGLProcAddress_Internal(state, "glGetUniformBlockIndex");
+		glGetActiveUniformBlockiv = (gl_get_active_uniform_blockiv_func *)GetOpenGLProcAddress_Internal(state, "glGetActiveUniformBlockiv");
+		glGetActiveUniformBlockName = (gl_get_active_uniform_block_name_func *)GetOpenGLProcAddress_Internal(state, "glGetActiveUniformBlockName");
+		glUniformBlockBinding = (gl_uniform_block_binding_func *)GetOpenGLProcAddress_Internal(state, "glUniformBlockBinding");
+#	endif //GL_VERSION_3_1
+
+#	if GL_VERSION_3_2
+		glDrawElementsBaseVertex = (gl_draw_elements_base_vertex_func *)GetOpenGLProcAddress_Internal(state, "glDrawElementsBaseVertex");
+		glDrawRangeElementsBaseVertex = (gl_draw_range_elements_base_vertex_func *)GetOpenGLProcAddress_Internal(state, "glDrawRangeElementsBaseVertex");
+		glDrawElementsInstancedBaseVertex = (gl_draw_elements_instanced_base_vertex_func *)GetOpenGLProcAddress_Internal(state, "glDrawElementsInstancedBaseVertex");
+		glMultiDrawElementsBaseVertex = (gl_multi_draw_elements_base_vertex_func *)GetOpenGLProcAddress_Internal(state, "glMultiDrawElementsBaseVertex");
+		glProvokingVertex = (gl_provoking_vertex_func *)GetOpenGLProcAddress_Internal(state, "glProvokingVertex");
+		glFenceSync = (gl_fence_sync_func *)GetOpenGLProcAddress_Internal(state, "glFenceSync");
+		glIsSync = (gl_is_sync_func *)GetOpenGLProcAddress_Internal(state, "glIsSync");
+		glDeleteSync = (gl_delete_sync_func *)GetOpenGLProcAddress_Internal(state, "glDeleteSync");
+		glClientWaitSync = (gl_client_wait_sync_func *)GetOpenGLProcAddress_Internal(state, "glClientWaitSync");
+		glWaitSync = (gl_wait_sync_func *)GetOpenGLProcAddress_Internal(state, "glWaitSync");
+		glGetInteger64v = (gl_get_integer64v_func *)GetOpenGLProcAddress_Internal(state, "glGetInteger64v");
+		glGetSynciv = (gl_get_synciv_func *)GetOpenGLProcAddress_Internal(state, "glGetSynciv");
+		glGetInteger64i_v = (gl_get_integer64i_v_func *)GetOpenGLProcAddress_Internal(state, "glGetInteger64i_v");
+		glGetBufferParameteri64v = (gl_get_buffer_parameteri64v_func *)GetOpenGLProcAddress_Internal(state, "glGetBufferParameteri64v");
+		glFramebufferTexture = (gl_framebuffer_texture_func *)GetOpenGLProcAddress_Internal(state, "glFramebufferTexture");
+		glTexImage2DMultisample = (gl_tex_image2_d_multisample_func *)GetOpenGLProcAddress_Internal(state, "glTexImage2DMultisample");
+		glTexImage3DMultisample = (gl_tex_image3_d_multisample_func *)GetOpenGLProcAddress_Internal(state, "glTexImage3DMultisample");
+		glGetMultisamplefv = (gl_get_multisamplefv_func *)GetOpenGLProcAddress_Internal(state, "glGetMultisamplefv");
+		glSampleMaski = (gl_sample_maski_func *)GetOpenGLProcAddress_Internal(state, "glSampleMaski");
+#	endif //GL_VERSION_3_2
+
+#	if GL_VERSION_3_3
+		glBindFragDataLocationIndexed = (gl_bind_frag_data_location_indexed_func *)GetOpenGLProcAddress_Internal(state, "glBindFragDataLocationIndexed");
+		glGetFragDataIndex = (gl_get_frag_data_index_func *)GetOpenGLProcAddress_Internal(state, "glGetFragDataIndex");
+		glGenSamplers = (gl_gen_samplers_func *)GetOpenGLProcAddress_Internal(state, "glGenSamplers");
+		glDeleteSamplers = (gl_delete_samplers_func *)GetOpenGLProcAddress_Internal(state, "glDeleteSamplers");
+		glIsSampler = (gl_is_sampler_func *)GetOpenGLProcAddress_Internal(state, "glIsSampler");
+		glBindSampler = (gl_bind_sampler_func *)GetOpenGLProcAddress_Internal(state, "glBindSampler");
+		glSamplerParameteri = (gl_sampler_parameteri_func *)GetOpenGLProcAddress_Internal(state, "glSamplerParameteri");
+		glSamplerParameteriv = (gl_sampler_parameteriv_func *)GetOpenGLProcAddress_Internal(state, "glSamplerParameteriv");
+		glSamplerParameterf = (gl_sampler_parameterf_func *)GetOpenGLProcAddress_Internal(state, "glSamplerParameterf");
+		glSamplerParameterfv = (gl_sampler_parameterfv_func *)GetOpenGLProcAddress_Internal(state, "glSamplerParameterfv");
+		glSamplerParameterIiv = (gl_sampler_parameter_iiv_func *)GetOpenGLProcAddress_Internal(state, "glSamplerParameterIiv");
+		glSamplerParameterIuiv = (gl_sampler_parameter_iuiv_func *)GetOpenGLProcAddress_Internal(state, "glSamplerParameterIuiv");
+		glGetSamplerParameteriv = (gl_get_sampler_parameteriv_func *)GetOpenGLProcAddress_Internal(state, "glGetSamplerParameteriv");
+		glGetSamplerParameterIiv = (gl_get_sampler_parameter_iiv_func *)GetOpenGLProcAddress_Internal(state, "glGetSamplerParameterIiv");
+		glGetSamplerParameterfv = (gl_get_sampler_parameterfv_func *)GetOpenGLProcAddress_Internal(state, "glGetSamplerParameterfv");
+		glGetSamplerParameterIuiv = (gl_get_sampler_parameter_iuiv_func *)GetOpenGLProcAddress_Internal(state, "glGetSamplerParameterIuiv");
+		glQueryCounter = (gl_query_counter_func *)GetOpenGLProcAddress_Internal(state, "glQueryCounter");
+		glGetQueryObjecti64v = (gl_get_query_objecti64v_func *)GetOpenGLProcAddress_Internal(state, "glGetQueryObjecti64v");
+		glGetQueryObjectui64v = (gl_get_query_objectui64v_func *)GetOpenGLProcAddress_Internal(state, "glGetQueryObjectui64v");
+		glVertexAttribDivisor = (gl_vertex_attrib_divisor_func *)GetOpenGLProcAddress_Internal(state, "glVertexAttribDivisor");
+		glVertexAttribP1ui = (gl_vertex_attrib_p1ui_func *)GetOpenGLProcAddress_Internal(state, "glVertexAttribP1ui");
+		glVertexAttribP1uiv = (gl_vertex_attrib_p1uiv_func *)GetOpenGLProcAddress_Internal(state, "glVertexAttribP1uiv");
+		glVertexAttribP2ui = (gl_vertex_attrib_p2ui_func *)GetOpenGLProcAddress_Internal(state, "glVertexAttribP2ui");
+		glVertexAttribP2uiv = (gl_vertex_attrib_p2uiv_func *)GetOpenGLProcAddress_Internal(state, "glVertexAttribP2uiv");
+		glVertexAttribP3ui = (gl_vertex_attrib_p3ui_func *)GetOpenGLProcAddress_Internal(state, "glVertexAttribP3ui");
+		glVertexAttribP3uiv = (gl_vertex_attrib_p3uiv_func *)GetOpenGLProcAddress_Internal(state, "glVertexAttribP3uiv");
+		glVertexAttribP4ui = (gl_vertex_attrib_p4ui_func *)GetOpenGLProcAddress_Internal(state, "glVertexAttribP4ui");
+		glVertexAttribP4uiv = (gl_vertex_attrib_p4uiv_func *)GetOpenGLProcAddress_Internal(state, "glVertexAttribP4uiv");
+		glVertexP2ui = (gl_vertex_p2ui_func *)GetOpenGLProcAddress_Internal(state, "glVertexP2ui");
+		glVertexP2uiv = (gl_vertex_p2uiv_func *)GetOpenGLProcAddress_Internal(state, "glVertexP2uiv");
+		glVertexP3ui = (gl_vertex_p3ui_func *)GetOpenGLProcAddress_Internal(state, "glVertexP3ui");
+		glVertexP3uiv = (gl_vertex_p3uiv_func *)GetOpenGLProcAddress_Internal(state, "glVertexP3uiv");
+		glVertexP4ui = (gl_vertex_p4ui_func *)GetOpenGLProcAddress_Internal(state, "glVertexP4ui");
+		glVertexP4uiv = (gl_vertex_p4uiv_func *)GetOpenGLProcAddress_Internal(state, "glVertexP4uiv");
+		glTexCoordP1ui = (gl_tex_coord_p1ui_func *)GetOpenGLProcAddress_Internal(state, "glTexCoordP1ui");
+		glTexCoordP1uiv = (gl_tex_coord_p1uiv_func *)GetOpenGLProcAddress_Internal(state, "glTexCoordP1uiv");
+		glTexCoordP2ui = (gl_tex_coord_p2ui_func *)GetOpenGLProcAddress_Internal(state, "glTexCoordP2ui");
+		glTexCoordP2uiv = (gl_tex_coord_p2uiv_func *)GetOpenGLProcAddress_Internal(state, "glTexCoordP2uiv");
+		glTexCoordP3ui = (gl_tex_coord_p3ui_func *)GetOpenGLProcAddress_Internal(state, "glTexCoordP3ui");
+		glTexCoordP3uiv = (gl_tex_coord_p3uiv_func *)GetOpenGLProcAddress_Internal(state, "glTexCoordP3uiv");
+		glTexCoordP4ui = (gl_tex_coord_p4ui_func *)GetOpenGLProcAddress_Internal(state, "glTexCoordP4ui");
+		glTexCoordP4uiv = (gl_tex_coord_p4uiv_func *)GetOpenGLProcAddress_Internal(state, "glTexCoordP4uiv");
+		glMultiTexCoordP1ui = (gl_multi_tex_coord_p1ui_func *)GetOpenGLProcAddress_Internal(state, "glMultiTexCoordP1ui");
+		glMultiTexCoordP1uiv = (gl_multi_tex_coord_p1uiv_func *)GetOpenGLProcAddress_Internal(state, "glMultiTexCoordP1uiv");
+		glMultiTexCoordP2ui = (gl_multi_tex_coord_p2ui_func *)GetOpenGLProcAddress_Internal(state, "glMultiTexCoordP2ui");
+		glMultiTexCoordP2uiv = (gl_multi_tex_coord_p2uiv_func *)GetOpenGLProcAddress_Internal(state, "glMultiTexCoordP2uiv");
+		glMultiTexCoordP3ui = (gl_multi_tex_coord_p3ui_func *)GetOpenGLProcAddress_Internal(state, "glMultiTexCoordP3ui");
+		glMultiTexCoordP3uiv = (gl_multi_tex_coord_p3uiv_func *)GetOpenGLProcAddress_Internal(state, "glMultiTexCoordP3uiv");
+		glMultiTexCoordP4ui = (gl_multi_tex_coord_p4ui_func *)GetOpenGLProcAddress_Internal(state, "glMultiTexCoordP4ui");
+		glMultiTexCoordP4uiv = (gl_multi_tex_coord_p4uiv_func *)GetOpenGLProcAddress_Internal(state, "glMultiTexCoordP4uiv");
+		glNormalP3ui = (gl_normal_p3ui_func *)GetOpenGLProcAddress_Internal(state, "glNormalP3ui");
+		glNormalP3uiv = (gl_normal_p3uiv_func *)GetOpenGLProcAddress_Internal(state, "glNormalP3uiv");
+		glColorP3ui = (gl_color_p3ui_func *)GetOpenGLProcAddress_Internal(state, "glColorP3ui");
+		glColorP3uiv = (gl_color_p3uiv_func *)GetOpenGLProcAddress_Internal(state, "glColorP3uiv");
+		glColorP4ui = (gl_color_p4ui_func *)GetOpenGLProcAddress_Internal(state, "glColorP4ui");
+		glColorP4uiv = (gl_color_p4uiv_func *)GetOpenGLProcAddress_Internal(state, "glColorP4uiv");
+		glSecondaryColorP3ui = (gl_secondary_color_p3ui_func *)GetOpenGLProcAddress_Internal(state, "glSecondaryColorP3ui");
+		glSecondaryColorP3uiv = (gl_secondary_color_p3uiv_func *)GetOpenGLProcAddress_Internal(state, "glSecondaryColorP3uiv");
+#	endif //GL_VERSION_3_3
+
+#	if GL_VERSION_4_0
+		glMinSampleShading = (gl_min_sample_shading_func *)GetOpenGLProcAddress_Internal(state, "glMinSampleShading");
+		glBlendEquationi = (gl_blend_equationi_func *)GetOpenGLProcAddress_Internal(state, "glBlendEquationi");
+		glBlendEquationSeparatei = (gl_blend_equation_separatei_func *)GetOpenGLProcAddress_Internal(state, "glBlendEquationSeparatei");
+		glBlendFunci = (gl_blend_funci_func *)GetOpenGLProcAddress_Internal(state, "glBlendFunci");
+		glBlendFuncSeparatei = (gl_blend_func_separatei_func *)GetOpenGLProcAddress_Internal(state, "glBlendFuncSeparatei");
+		glDrawArraysIndirect = (gl_draw_arrays_indirect_func *)GetOpenGLProcAddress_Internal(state, "glDrawArraysIndirect");
+		glDrawElementsIndirect = (gl_draw_elements_indirect_func *)GetOpenGLProcAddress_Internal(state, "glDrawElementsIndirect");
+		glUniform1d = (gl_uniform1d_func *)GetOpenGLProcAddress_Internal(state, "glUniform1d");
+		glUniform2d = (gl_uniform2d_func *)GetOpenGLProcAddress_Internal(state, "glUniform2d");
+		glUniform3d = (gl_uniform3d_func *)GetOpenGLProcAddress_Internal(state, "glUniform3d");
+		glUniform4d = (gl_uniform4d_func *)GetOpenGLProcAddress_Internal(state, "glUniform4d");
+		glUniform1dv = (gl_uniform1dv_func *)GetOpenGLProcAddress_Internal(state, "glUniform1dv");
+		glUniform2dv = (gl_uniform2dv_func *)GetOpenGLProcAddress_Internal(state, "glUniform2dv");
+		glUniform3dv = (gl_uniform3dv_func *)GetOpenGLProcAddress_Internal(state, "glUniform3dv");
+		glUniform4dv = (gl_uniform4dv_func *)GetOpenGLProcAddress_Internal(state, "glUniform4dv");
+		glUniformMatrix2dv = (gl_uniform_matrix2dv_func *)GetOpenGLProcAddress_Internal(state, "glUniformMatrix2dv");
+		glUniformMatrix3dv = (gl_uniform_matrix3dv_func *)GetOpenGLProcAddress_Internal(state, "glUniformMatrix3dv");
+		glUniformMatrix4dv = (gl_uniform_matrix4dv_func *)GetOpenGLProcAddress_Internal(state, "glUniformMatrix4dv");
+		glUniformMatrix2x3dv = (gl_uniform_matrix2x3dv_func *)GetOpenGLProcAddress_Internal(state, "glUniformMatrix2x3dv");
+		glUniformMatrix2x4dv = (gl_uniform_matrix2x4dv_func *)GetOpenGLProcAddress_Internal(state, "glUniformMatrix2x4dv");
+		glUniformMatrix3x2dv = (gl_uniform_matrix3x2dv_func *)GetOpenGLProcAddress_Internal(state, "glUniformMatrix3x2dv");
+		glUniformMatrix3x4dv = (gl_uniform_matrix3x4dv_func *)GetOpenGLProcAddress_Internal(state, "glUniformMatrix3x4dv");
+		glUniformMatrix4x2dv = (gl_uniform_matrix4x2dv_func *)GetOpenGLProcAddress_Internal(state, "glUniformMatrix4x2dv");
+		glUniformMatrix4x3dv = (gl_uniform_matrix4x3dv_func *)GetOpenGLProcAddress_Internal(state, "glUniformMatrix4x3dv");
+		glGetUniformdv = (gl_get_uniformdv_func *)GetOpenGLProcAddress_Internal(state, "glGetUniformdv");
+		glGetSubroutineUniformLocation = (gl_get_subroutine_uniform_location_func *)GetOpenGLProcAddress_Internal(state, "glGetSubroutineUniformLocation");
+		glGetSubroutineIndex = (gl_get_subroutine_index_func *)GetOpenGLProcAddress_Internal(state, "glGetSubroutineIndex");
+		glGetActiveSubroutineUniformiv = (gl_get_active_subroutine_uniformiv_func *)GetOpenGLProcAddress_Internal(state, "glGetActiveSubroutineUniformiv");
+		glGetActiveSubroutineUniformName = (gl_get_active_subroutine_uniform_name_func *)GetOpenGLProcAddress_Internal(state, "glGetActiveSubroutineUniformName");
+		glGetActiveSubroutineName = (gl_get_active_subroutine_name_func *)GetOpenGLProcAddress_Internal(state, "glGetActiveSubroutineName");
+		glUniformSubroutinesuiv = (gl_uniform_subroutinesuiv_func *)GetOpenGLProcAddress_Internal(state, "glUniformSubroutinesuiv");
+		glGetUniformSubroutineuiv = (gl_get_uniform_subroutineuiv_func *)GetOpenGLProcAddress_Internal(state, "glGetUniformSubroutineuiv");
+		glGetProgramStageiv = (gl_get_program_stageiv_func *)GetOpenGLProcAddress_Internal(state, "glGetProgramStageiv");
+		glPatchParameteri = (gl_patch_parameteri_func *)GetOpenGLProcAddress_Internal(state, "glPatchParameteri");
+		glPatchParameterfv = (gl_patch_parameterfv_func *)GetOpenGLProcAddress_Internal(state, "glPatchParameterfv");
+		glBindTransformFeedback = (gl_bind_transform_feedback_func *)GetOpenGLProcAddress_Internal(state, "glBindTransformFeedback");
+		glDeleteTransformFeedbacks = (gl_delete_transform_feedbacks_func *)GetOpenGLProcAddress_Internal(state, "glDeleteTransformFeedbacks");
+		glGenTransformFeedbacks = (gl_gen_transform_feedbacks_func *)GetOpenGLProcAddress_Internal(state, "glGenTransformFeedbacks");
+		glIsTransformFeedback = (gl_is_transform_feedback_func *)GetOpenGLProcAddress_Internal(state, "glIsTransformFeedback");
+		glPauseTransformFeedback = (gl_pause_transform_feedback_func *)GetOpenGLProcAddress_Internal(state, "glPauseTransformFeedback");
+		glResumeTransformFeedback = (gl_resume_transform_feedback_func *)GetOpenGLProcAddress_Internal(state, "glResumeTransformFeedback");
+		glDrawTransformFeedback = (gl_draw_transform_feedback_func *)GetOpenGLProcAddress_Internal(state, "glDrawTransformFeedback");
+		glDrawTransformFeedbackStream = (gl_draw_transform_feedback_stream_func *)GetOpenGLProcAddress_Internal(state, "glDrawTransformFeedbackStream");
+		glBeginQueryIndexed = (gl_begin_query_indexed_func *)GetOpenGLProcAddress_Internal(state, "glBeginQueryIndexed");
+		glEndQueryIndexed = (gl_end_query_indexed_func *)GetOpenGLProcAddress_Internal(state, "glEndQueryIndexed");
+		glGetQueryIndexediv = (gl_get_query_indexediv_func *)GetOpenGLProcAddress_Internal(state, "glGetQueryIndexediv");
+#	endif //GL_VERSION_4_0
+
+#	if GL_VERSION_4_1
+		glReleaseShaderCompiler = (gl_release_shader_compiler_func *)GetOpenGLProcAddress_Internal(state, "glReleaseShaderCompiler");
+		glShaderBinary = (gl_shader_binary_func *)GetOpenGLProcAddress_Internal(state, "glShaderBinary");
+		glGetShaderPrecisionFormat = (gl_get_shader_precision_format_func *)GetOpenGLProcAddress_Internal(state, "glGetShaderPrecisionFormat");
+		glDepthRangef = (gl_depth_rangef_func *)GetOpenGLProcAddress_Internal(state, "glDepthRangef");
+		glClearDepthf = (gl_clear_depthf_func *)GetOpenGLProcAddress_Internal(state, "glClearDepthf");
+		glGetProgramBinary = (gl_get_program_binary_func *)GetOpenGLProcAddress_Internal(state, "glGetProgramBinary");
+		glProgramBinary = (gl_program_binary_func *)GetOpenGLProcAddress_Internal(state, "glProgramBinary");
+		glProgramParameteri = (gl_program_parameteri_func *)GetOpenGLProcAddress_Internal(state, "glProgramParameteri");
+		glUseProgramStages = (gl_use_program_stages_func *)GetOpenGLProcAddress_Internal(state, "glUseProgramStages");
+		glActiveShaderProgram = (gl_active_shader_program_func *)GetOpenGLProcAddress_Internal(state, "glActiveShaderProgram");
+		glCreateShaderProgramv = (gl_create_shader_programv_func *)GetOpenGLProcAddress_Internal(state, "glCreateShaderProgramv");
+		glBindProgramPipeline = (gl_bind_program_pipeline_func *)GetOpenGLProcAddress_Internal(state, "glBindProgramPipeline");
+		glDeleteProgramPipelines = (gl_delete_program_pipelines_func *)GetOpenGLProcAddress_Internal(state, "glDeleteProgramPipelines");
+		glGenProgramPipelines = (gl_gen_program_pipelines_func *)GetOpenGLProcAddress_Internal(state, "glGenProgramPipelines");
+		glIsProgramPipeline = (gl_is_program_pipeline_func *)GetOpenGLProcAddress_Internal(state, "glIsProgramPipeline");
+		glGetProgramPipelineiv = (gl_get_program_pipelineiv_func *)GetOpenGLProcAddress_Internal(state, "glGetProgramPipelineiv");
+		glProgramUniform1i = (gl_program_uniform1i_func *)GetOpenGLProcAddress_Internal(state, "glProgramUniform1i");
+		glProgramUniform1iv = (gl_program_uniform1iv_func *)GetOpenGLProcAddress_Internal(state, "glProgramUniform1iv");
+		glProgramUniform1f = (gl_program_uniform1f_func *)GetOpenGLProcAddress_Internal(state, "glProgramUniform1f");
+		glProgramUniform1fv = (gl_program_uniform1fv_func *)GetOpenGLProcAddress_Internal(state, "glProgramUniform1fv");
+		glProgramUniform1d = (gl_program_uniform1d_func *)GetOpenGLProcAddress_Internal(state, "glProgramUniform1d");
+		glProgramUniform1dv = (gl_program_uniform1dv_func *)GetOpenGLProcAddress_Internal(state, "glProgramUniform1dv");
+		glProgramUniform1ui = (gl_program_uniform1ui_func *)GetOpenGLProcAddress_Internal(state, "glProgramUniform1ui");
+		glProgramUniform1uiv = (gl_program_uniform1uiv_func *)GetOpenGLProcAddress_Internal(state, "glProgramUniform1uiv");
+		glProgramUniform2i = (gl_program_uniform2i_func *)GetOpenGLProcAddress_Internal(state, "glProgramUniform2i");
+		glProgramUniform2iv = (gl_program_uniform2iv_func *)GetOpenGLProcAddress_Internal(state, "glProgramUniform2iv");
+		glProgramUniform2f = (gl_program_uniform2f_func *)GetOpenGLProcAddress_Internal(state, "glProgramUniform2f");
+		glProgramUniform2fv = (gl_program_uniform2fv_func *)GetOpenGLProcAddress_Internal(state, "glProgramUniform2fv");
+		glProgramUniform2d = (gl_program_uniform2d_func *)GetOpenGLProcAddress_Internal(state, "glProgramUniform2d");
+		glProgramUniform2dv = (gl_program_uniform2dv_func *)GetOpenGLProcAddress_Internal(state, "glProgramUniform2dv");
+		glProgramUniform2ui = (gl_program_uniform2ui_func *)GetOpenGLProcAddress_Internal(state, "glProgramUniform2ui");
+		glProgramUniform2uiv = (gl_program_uniform2uiv_func *)GetOpenGLProcAddress_Internal(state, "glProgramUniform2uiv");
+		glProgramUniform3i = (gl_program_uniform3i_func *)GetOpenGLProcAddress_Internal(state, "glProgramUniform3i");
+		glProgramUniform3iv = (gl_program_uniform3iv_func *)GetOpenGLProcAddress_Internal(state, "glProgramUniform3iv");
+		glProgramUniform3f = (gl_program_uniform3f_func *)GetOpenGLProcAddress_Internal(state, "glProgramUniform3f");
+		glProgramUniform3fv = (gl_program_uniform3fv_func *)GetOpenGLProcAddress_Internal(state, "glProgramUniform3fv");
+		glProgramUniform3d = (gl_program_uniform3d_func *)GetOpenGLProcAddress_Internal(state, "glProgramUniform3d");
+		glProgramUniform3dv = (gl_program_uniform3dv_func *)GetOpenGLProcAddress_Internal(state, "glProgramUniform3dv");
+		glProgramUniform3ui = (gl_program_uniform3ui_func *)GetOpenGLProcAddress_Internal(state, "glProgramUniform3ui");
+		glProgramUniform3uiv = (gl_program_uniform3uiv_func *)GetOpenGLProcAddress_Internal(state, "glProgramUniform3uiv");
+		glProgramUniform4i = (gl_program_uniform4i_func *)GetOpenGLProcAddress_Internal(state, "glProgramUniform4i");
+		glProgramUniform4iv = (gl_program_uniform4iv_func *)GetOpenGLProcAddress_Internal(state, "glProgramUniform4iv");
+		glProgramUniform4f = (gl_program_uniform4f_func *)GetOpenGLProcAddress_Internal(state, "glProgramUniform4f");
+		glProgramUniform4fv = (gl_program_uniform4fv_func *)GetOpenGLProcAddress_Internal(state, "glProgramUniform4fv");
+		glProgramUniform4d = (gl_program_uniform4d_func *)GetOpenGLProcAddress_Internal(state, "glProgramUniform4d");
+		glProgramUniform4dv = (gl_program_uniform4dv_func *)GetOpenGLProcAddress_Internal(state, "glProgramUniform4dv");
+		glProgramUniform4ui = (gl_program_uniform4ui_func *)GetOpenGLProcAddress_Internal(state, "glProgramUniform4ui");
+		glProgramUniform4uiv = (gl_program_uniform4uiv_func *)GetOpenGLProcAddress_Internal(state, "glProgramUniform4uiv");
+		glProgramUniformMatrix2fv = (gl_program_uniform_matrix2fv_func *)GetOpenGLProcAddress_Internal(state, "glProgramUniformMatrix2fv");
+		glProgramUniformMatrix3fv = (gl_program_uniform_matrix3fv_func *)GetOpenGLProcAddress_Internal(state, "glProgramUniformMatrix3fv");
+		glProgramUniformMatrix4fv = (gl_program_uniform_matrix4fv_func *)GetOpenGLProcAddress_Internal(state, "glProgramUniformMatrix4fv");
+		glProgramUniformMatrix2dv = (gl_program_uniform_matrix2dv_func *)GetOpenGLProcAddress_Internal(state, "glProgramUniformMatrix2dv");
+		glProgramUniformMatrix3dv = (gl_program_uniform_matrix3dv_func *)GetOpenGLProcAddress_Internal(state, "glProgramUniformMatrix3dv");
+		glProgramUniformMatrix4dv = (gl_program_uniform_matrix4dv_func *)GetOpenGLProcAddress_Internal(state, "glProgramUniformMatrix4dv");
+		glProgramUniformMatrix2x3fv = (gl_program_uniform_matrix2x3fv_func *)GetOpenGLProcAddress_Internal(state, "glProgramUniformMatrix2x3fv");
+		glProgramUniformMatrix3x2fv = (gl_program_uniform_matrix3x2fv_func *)GetOpenGLProcAddress_Internal(state, "glProgramUniformMatrix3x2fv");
+		glProgramUniformMatrix2x4fv = (gl_program_uniform_matrix2x4fv_func *)GetOpenGLProcAddress_Internal(state, "glProgramUniformMatrix2x4fv");
+		glProgramUniformMatrix4x2fv = (gl_program_uniform_matrix4x2fv_func *)GetOpenGLProcAddress_Internal(state, "glProgramUniformMatrix4x2fv");
+		glProgramUniformMatrix3x4fv = (gl_program_uniform_matrix3x4fv_func *)GetOpenGLProcAddress_Internal(state, "glProgramUniformMatrix3x4fv");
+		glProgramUniformMatrix4x3fv = (gl_program_uniform_matrix4x3fv_func *)GetOpenGLProcAddress_Internal(state, "glProgramUniformMatrix4x3fv");
+		glProgramUniformMatrix2x3dv = (gl_program_uniform_matrix2x3dv_func *)GetOpenGLProcAddress_Internal(state, "glProgramUniformMatrix2x3dv");
+		glProgramUniformMatrix3x2dv = (gl_program_uniform_matrix3x2dv_func *)GetOpenGLProcAddress_Internal(state, "glProgramUniformMatrix3x2dv");
+		glProgramUniformMatrix2x4dv = (gl_program_uniform_matrix2x4dv_func *)GetOpenGLProcAddress_Internal(state, "glProgramUniformMatrix2x4dv");
+		glProgramUniformMatrix4x2dv = (gl_program_uniform_matrix4x2dv_func *)GetOpenGLProcAddress_Internal(state, "glProgramUniformMatrix4x2dv");
+		glProgramUniformMatrix3x4dv = (gl_program_uniform_matrix3x4dv_func *)GetOpenGLProcAddress_Internal(state, "glProgramUniformMatrix3x4dv");
+		glProgramUniformMatrix4x3dv = (gl_program_uniform_matrix4x3dv_func *)GetOpenGLProcAddress_Internal(state, "glProgramUniformMatrix4x3dv");
+		glValidateProgramPipeline = (gl_validate_program_pipeline_func *)GetOpenGLProcAddress_Internal(state, "glValidateProgramPipeline");
+		glGetProgramPipelineInfoLog = (gl_get_program_pipeline_info_log_func *)GetOpenGLProcAddress_Internal(state, "glGetProgramPipelineInfoLog");
+		glVertexAttribL1d = (gl_vertex_attrib_l1d_func *)GetOpenGLProcAddress_Internal(state, "glVertexAttribL1d");
+		glVertexAttribL2d = (gl_vertex_attrib_l2d_func *)GetOpenGLProcAddress_Internal(state, "glVertexAttribL2d");
+		glVertexAttribL3d = (gl_vertex_attrib_l3d_func *)GetOpenGLProcAddress_Internal(state, "glVertexAttribL3d");
+		glVertexAttribL4d = (gl_vertex_attrib_l4d_func *)GetOpenGLProcAddress_Internal(state, "glVertexAttribL4d");
+		glVertexAttribL1dv = (gl_vertex_attrib_l1dv_func *)GetOpenGLProcAddress_Internal(state, "glVertexAttribL1dv");
+		glVertexAttribL2dv = (gl_vertex_attrib_l2dv_func *)GetOpenGLProcAddress_Internal(state, "glVertexAttribL2dv");
+		glVertexAttribL3dv = (gl_vertex_attrib_l3dv_func *)GetOpenGLProcAddress_Internal(state, "glVertexAttribL3dv");
+		glVertexAttribL4dv = (gl_vertex_attrib_l4dv_func *)GetOpenGLProcAddress_Internal(state, "glVertexAttribL4dv");
+		glVertexAttribLPointer = (gl_vertex_attrib_l_pointer_func *)GetOpenGLProcAddress_Internal(state, "glVertexAttribLPointer");
+		glGetVertexAttribLdv = (gl_get_vertex_attrib_ldv_func *)GetOpenGLProcAddress_Internal(state, "glGetVertexAttribLdv");
+		glViewportArrayv = (gl_viewport_arrayv_func *)GetOpenGLProcAddress_Internal(state, "glViewportArrayv");
+		glViewportIndexedf = (gl_viewport_indexedf_func *)GetOpenGLProcAddress_Internal(state, "glViewportIndexedf");
+		glViewportIndexedfv = (gl_viewport_indexedfv_func *)GetOpenGLProcAddress_Internal(state, "glViewportIndexedfv");
+		glScissorArrayv = (gl_scissor_arrayv_func *)GetOpenGLProcAddress_Internal(state, "glScissorArrayv");
+		glScissorIndexed = (gl_scissor_indexed_func *)GetOpenGLProcAddress_Internal(state, "glScissorIndexed");
+		glScissorIndexedv = (gl_scissor_indexedv_func *)GetOpenGLProcAddress_Internal(state, "glScissorIndexedv");
+		glDepthRangeArrayv = (gl_depth_range_arrayv_func *)GetOpenGLProcAddress_Internal(state, "glDepthRangeArrayv");
+		glDepthRangeIndexed = (gl_depth_range_indexed_func *)GetOpenGLProcAddress_Internal(state, "glDepthRangeIndexed");
+		glGetFloati_v = (gl_get_floati_v_func *)GetOpenGLProcAddress_Internal(state, "glGetFloati_v");
+		glGetDoublei_v = (gl_get_doublei_v_func *)GetOpenGLProcAddress_Internal(state, "glGetDoublei_v");
+#	endif //GL_VERSION_4_1
+
+#	if GL_VERSION_4_2
+		glDrawArraysInstancedBaseInstance = (gl_draw_arrays_instanced_base_instance_func *)GetOpenGLProcAddress_Internal(state, "glDrawArraysInstancedBaseInstance");
+		glDrawElementsInstancedBaseInstance = (gl_draw_elements_instanced_base_instance_func *)GetOpenGLProcAddress_Internal(state, "glDrawElementsInstancedBaseInstance");
+		glDrawElementsInstancedBaseVertexBaseInstance = (gl_draw_elements_instanced_base_vertex_base_instance_func *)GetOpenGLProcAddress_Internal(state, "glDrawElementsInstancedBaseVertexBaseInstance");
+		glGetInternalformativ = (gl_get_internalformativ_func *)GetOpenGLProcAddress_Internal(state, "glGetInternalformativ");
+		glGetActiveAtomicCounterBufferiv = (gl_get_active_atomic_counter_bufferiv_func *)GetOpenGLProcAddress_Internal(state, "glGetActiveAtomicCounterBufferiv");
+		glBindImageTexture = (gl_bind_image_texture_func *)GetOpenGLProcAddress_Internal(state, "glBindImageTexture");
+		glMemoryBarrier = (gl_memory_barrier_func *)GetOpenGLProcAddress_Internal(state, "glMemoryBarrier");
+		glTexStorage1D = (gl_tex_storage1d_func *)GetOpenGLProcAddress_Internal(state, "glTexStorage1D");
+		glTexStorage2D = (gl_tex_storage2d_func *)GetOpenGLProcAddress_Internal(state, "glTexStorage2D");
+		glTexStorage3D = (gl_tex_storage3d_func *)GetOpenGLProcAddress_Internal(state, "glTexStorage3D");
+		glDrawTransformFeedbackInstanced = (gl_draw_transform_feedback_instanced_func *)GetOpenGLProcAddress_Internal(state, "glDrawTransformFeedbackInstanced");
+		glDrawTransformFeedbackStreamInstanced = (gl_draw_transform_feedback_stream_instanced_func *)GetOpenGLProcAddress_Internal(state, "glDrawTransformFeedbackStreamInstanced");
+#	endif //GL_VERSION_4_2
+
+#	if GL_VERSION_4_3
+		glClearBufferData = (gl_clear_buffer_data_func *)GetOpenGLProcAddress_Internal(state, "glClearBufferData");
+		glClearBufferSubData = (gl_clear_buffer_sub_data_func *)GetOpenGLProcAddress_Internal(state, "glClearBufferSubData");
+		glDispatchCompute = (gl_dispatch_compute_func *)GetOpenGLProcAddress_Internal(state, "glDispatchCompute");
+		glDispatchComputeIndirect = (gl_dispatch_compute_indirect_func *)GetOpenGLProcAddress_Internal(state, "glDispatchComputeIndirect");
+		glCopyImageSubData = (gl_copy_image_sub_data_func *)GetOpenGLProcAddress_Internal(state, "glCopyImageSubData");
+		glFramebufferParameteri = (gl_framebuffer_parameteri_func *)GetOpenGLProcAddress_Internal(state, "glFramebufferParameteri");
+		glGetFramebufferParameteriv = (gl_get_framebuffer_parameteriv_func *)GetOpenGLProcAddress_Internal(state, "glGetFramebufferParameteriv");
+		glGetInternalformati64v = (gl_get_internalformati64v_func *)GetOpenGLProcAddress_Internal(state, "glGetInternalformati64v");
+		glInvalidateTexSubImage = (gl_invalidate_tex_sub_image_func *)GetOpenGLProcAddress_Internal(state, "glInvalidateTexSubImage");
+		glInvalidateTexImage = (gl_invalidate_tex_image_func *)GetOpenGLProcAddress_Internal(state, "glInvalidateTexImage");
+		glInvalidateBufferSubData = (gl_invalidate_buffer_sub_data_func *)GetOpenGLProcAddress_Internal(state, "glInvalidateBufferSubData");
+		glInvalidateBufferData = (gl_invalidate_buffer_data_func *)GetOpenGLProcAddress_Internal(state, "glInvalidateBufferData");
+		glInvalidateFramebuffer = (gl_invalidate_framebuffer_func *)GetOpenGLProcAddress_Internal(state, "glInvalidateFramebuffer");
+		glInvalidateSubFramebuffer = (gl_invalidate_sub_framebuffer_func *)GetOpenGLProcAddress_Internal(state, "glInvalidateSubFramebuffer");
+		glMultiDrawArraysIndirect = (gl_multi_draw_arrays_indirect_func *)GetOpenGLProcAddress_Internal(state, "glMultiDrawArraysIndirect");
+		glMultiDrawElementsIndirect = (gl_multi_draw_elements_indirect_func *)GetOpenGLProcAddress_Internal(state, "glMultiDrawElementsIndirect");
+		glGetProgramInterfaceiv = (gl_get_program_interfaceiv_func *)GetOpenGLProcAddress_Internal(state, "glGetProgramInterfaceiv");
+		glGetProgramResourceIndex = (gl_get_program_resource_index_func *)GetOpenGLProcAddress_Internal(state, "glGetProgramResourceIndex");
+		glGetProgramResourceName = (gl_get_program_resource_name_func *)GetOpenGLProcAddress_Internal(state, "glGetProgramResourceName");
+		glGetProgramResourceiv = (gl_get_program_resourceiv_func *)GetOpenGLProcAddress_Internal(state, "glGetProgramResourceiv");
+		glGetProgramResourceLocation = (gl_get_program_resource_location_func *)GetOpenGLProcAddress_Internal(state, "glGetProgramResourceLocation");
+		glGetProgramResourceLocationIndex = (gl_get_program_resource_location_index_func *)GetOpenGLProcAddress_Internal(state, "glGetProgramResourceLocationIndex");
+		glShaderStorageBlockBinding = (gl_shader_storage_block_binding_func *)GetOpenGLProcAddress_Internal(state, "glShaderStorageBlockBinding");
+		glTexBufferRange = (gl_tex_buffer_range_func *)GetOpenGLProcAddress_Internal(state, "glTexBufferRange");
+		glTexStorage2DMultisample = (gl_tex_storage2_d_multisample_func *)GetOpenGLProcAddress_Internal(state, "glTexStorage2DMultisample");
+		glTexStorage3DMultisample = (gl_tex_storage3_d_multisample_func *)GetOpenGLProcAddress_Internal(state, "glTexStorage3DMultisample");
+		glTextureView = (gl_texture_view_func *)GetOpenGLProcAddress_Internal(state, "glTextureView");
+		glBindVertexBuffer = (gl_bind_vertex_buffer_func *)GetOpenGLProcAddress_Internal(state, "glBindVertexBuffer");
+		glVertexAttribFormat = (gl_vertex_attrib_format_func *)GetOpenGLProcAddress_Internal(state, "glVertexAttribFormat");
+		glVertexAttribIFormat = (gl_vertex_attrib_i_format_func *)GetOpenGLProcAddress_Internal(state, "glVertexAttribIFormat");
+		glVertexAttribLFormat = (gl_vertex_attrib_l_format_func *)GetOpenGLProcAddress_Internal(state, "glVertexAttribLFormat");
+		glVertexAttribBinding = (gl_vertex_attrib_binding_func *)GetOpenGLProcAddress_Internal(state, "glVertexAttribBinding");
+		glVertexBindingDivisor = (gl_vertex_binding_divisor_func *)GetOpenGLProcAddress_Internal(state, "glVertexBindingDivisor");
+		glDebugMessageControl = (gl_debug_message_control_func *)GetOpenGLProcAddress_Internal(state, "glDebugMessageControl");
+		glDebugMessageInsert = (gl_debug_message_insert_func *)GetOpenGLProcAddress_Internal(state, "glDebugMessageInsert");
+		glDebugMessageCallback = (gl_debug_message_callback_func *)GetOpenGLProcAddress_Internal(state, "glDebugMessageCallback");
+		glGetDebugMessageLog = (gl_get_debug_message_log_func *)GetOpenGLProcAddress_Internal(state, "glGetDebugMessageLog");
+		glPushDebugGroup = (gl_push_debug_group_func *)GetOpenGLProcAddress_Internal(state, "glPushDebugGroup");
+		glPopDebugGroup = (gl_pop_debug_group_func *)GetOpenGLProcAddress_Internal(state, "glPopDebugGroup");
+		glObjectLabel = (gl_object_label_func *)GetOpenGLProcAddress_Internal(state, "glObjectLabel");
+		glGetObjectLabel = (gl_get_object_label_func *)GetOpenGLProcAddress_Internal(state, "glGetObjectLabel");
+		glObjectPtrLabel = (gl_object_ptr_label_func *)GetOpenGLProcAddress_Internal(state, "glObjectPtrLabel");
+		glGetObjectPtrLabel = (gl_get_object_ptr_label_func *)GetOpenGLProcAddress_Internal(state, "glGetObjectPtrLabel");
+#	endif //GL_VERSION_4_3
+
+#	if GL_VERSION_4_4
+		glBufferStorage = (gl_buffer_storage_func *)GetOpenGLProcAddress_Internal(state, "glBufferStorage");
+		glClearTexImage = (gl_clear_tex_image_func *)GetOpenGLProcAddress_Internal(state, "glClearTexImage");
+		glClearTexSubImage = (gl_clear_tex_sub_image_func *)GetOpenGLProcAddress_Internal(state, "glClearTexSubImage");
+		glBindBuffersBase = (gl_bind_buffers_base_func *)GetOpenGLProcAddress_Internal(state, "glBindBuffersBase");
+		glBindBuffersRange = (gl_bind_buffers_range_func *)GetOpenGLProcAddress_Internal(state, "glBindBuffersRange");
+		glBindTextures = (gl_bind_textures_func *)GetOpenGLProcAddress_Internal(state, "glBindTextures");
+		glBindSamplers = (gl_bind_samplers_func *)GetOpenGLProcAddress_Internal(state, "glBindSamplers");
+		glBindImageTextures = (gl_bind_image_textures_func *)GetOpenGLProcAddress_Internal(state, "glBindImageTextures");
+		glBindVertexBuffers = (gl_bind_vertex_buffers_func *)GetOpenGLProcAddress_Internal(state, "glBindVertexBuffers");
+#	endif //GL_VERSION_4_4
+
+#	if GL_VERSION_4_5
+		glClipControl = (gl_clip_control_func *)GetOpenGLProcAddress_Internal(state, "glClipControl");
+		glCreateTransformFeedbacks = (gl_create_transform_feedbacks_func *)GetOpenGLProcAddress_Internal(state, "glCreateTransformFeedbacks");
+		glTransformFeedbackBufferBase = (gl_transform_feedback_buffer_base_func *)GetOpenGLProcAddress_Internal(state, "glTransformFeedbackBufferBase");
+		glTransformFeedbackBufferRange = (gl_transform_feedback_buffer_range_func *)GetOpenGLProcAddress_Internal(state, "glTransformFeedbackBufferRange");
+		glGetTransformFeedbackiv = (gl_get_transform_feedbackiv_func *)GetOpenGLProcAddress_Internal(state, "glGetTransformFeedbackiv");
+		glGetTransformFeedbacki_v = (gl_get_transform_feedbacki_v_func *)GetOpenGLProcAddress_Internal(state, "glGetTransformFeedbacki_v");
+		glGetTransformFeedbacki64_v = (gl_get_transform_feedbacki64_v_func *)GetOpenGLProcAddress_Internal(state, "glGetTransformFeedbacki64_v");
+		glCreateBuffers = (gl_create_buffers_func *)GetOpenGLProcAddress_Internal(state, "glCreateBuffers");
+		glNamedBufferStorage = (gl_named_buffer_storage_func *)GetOpenGLProcAddress_Internal(state, "glNamedBufferStorage");
+		glNamedBufferData = (gl_named_buffer_data_func *)GetOpenGLProcAddress_Internal(state, "glNamedBufferData");
+		glNamedBufferSubData = (gl_named_buffer_sub_data_func *)GetOpenGLProcAddress_Internal(state, "glNamedBufferSubData");
+		glCopyNamedBufferSubData = (gl_copy_named_buffer_sub_data_func *)GetOpenGLProcAddress_Internal(state, "glCopyNamedBufferSubData");
+		glClearNamedBufferData = (gl_clear_named_buffer_data_func *)GetOpenGLProcAddress_Internal(state, "glClearNamedBufferData");
+		glClearNamedBufferSubData = (gl_clear_named_buffer_sub_data_func *)GetOpenGLProcAddress_Internal(state, "glClearNamedBufferSubData");
+		glMapNamedBuffer = (gl_map_named_buffer_func *)GetOpenGLProcAddress_Internal(state, "glMapNamedBuffer");
+		glMapNamedBufferRange = (gl_map_named_buffer_range_func *)GetOpenGLProcAddress_Internal(state, "glMapNamedBufferRange");
+		glUnmapNamedBuffer = (gl_unmap_named_buffer_func *)GetOpenGLProcAddress_Internal(state, "glUnmapNamedBuffer");
+		glFlushMappedNamedBufferRange = (gl_flush_mapped_named_buffer_range_func *)GetOpenGLProcAddress_Internal(state, "glFlushMappedNamedBufferRange");
+		glGetNamedBufferParameteriv = (gl_get_named_buffer_parameteriv_func *)GetOpenGLProcAddress_Internal(state, "glGetNamedBufferParameteriv");
+		glGetNamedBufferParameteri64v = (gl_get_named_buffer_parameteri64v_func *)GetOpenGLProcAddress_Internal(state, "glGetNamedBufferParameteri64v");
+		glGetNamedBufferPointerv = (gl_get_named_buffer_pointerv_func *)GetOpenGLProcAddress_Internal(state, "glGetNamedBufferPointerv");
+		glGetNamedBufferSubData = (gl_get_named_buffer_sub_data_func *)GetOpenGLProcAddress_Internal(state, "glGetNamedBufferSubData");
+		glCreateFramebuffers = (gl_create_framebuffers_func *)GetOpenGLProcAddress_Internal(state, "glCreateFramebuffers");
+		glNamedFramebufferRenderbuffer = (gl_named_framebuffer_renderbuffer_func *)GetOpenGLProcAddress_Internal(state, "glNamedFramebufferRenderbuffer");
+		glNamedFramebufferParameteri = (gl_named_framebuffer_parameteri_func *)GetOpenGLProcAddress_Internal(state, "glNamedFramebufferParameteri");
+		glNamedFramebufferTexture = (gl_named_framebuffer_texture_func *)GetOpenGLProcAddress_Internal(state, "glNamedFramebufferTexture");
+		glNamedFramebufferTextureLayer = (gl_named_framebuffer_texture_layer_func *)GetOpenGLProcAddress_Internal(state, "glNamedFramebufferTextureLayer");
+		glNamedFramebufferDrawBuffer = (gl_named_framebuffer_draw_buffer_func *)GetOpenGLProcAddress_Internal(state, "glNamedFramebufferDrawBuffer");
+		glNamedFramebufferDrawBuffers = (gl_named_framebuffer_draw_buffers_func *)GetOpenGLProcAddress_Internal(state, "glNamedFramebufferDrawBuffers");
+		glNamedFramebufferReadBuffer = (gl_named_framebuffer_read_buffer_func *)GetOpenGLProcAddress_Internal(state, "glNamedFramebufferReadBuffer");
+		glInvalidateNamedFramebufferData = (gl_invalidate_named_framebuffer_data_func *)GetOpenGLProcAddress_Internal(state, "glInvalidateNamedFramebufferData");
+		glInvalidateNamedFramebufferSubData = (gl_invalidate_named_framebuffer_sub_data_func *)GetOpenGLProcAddress_Internal(state, "glInvalidateNamedFramebufferSubData");
+		glClearNamedFramebufferiv = (gl_clear_named_framebufferiv_func *)GetOpenGLProcAddress_Internal(state, "glClearNamedFramebufferiv");
+		glClearNamedFramebufferuiv = (gl_clear_named_framebufferuiv_func *)GetOpenGLProcAddress_Internal(state, "glClearNamedFramebufferuiv");
+		glClearNamedFramebufferfv = (gl_clear_named_framebufferfv_func *)GetOpenGLProcAddress_Internal(state, "glClearNamedFramebufferfv");
+		glClearNamedFramebufferfi = (gl_clear_named_framebufferfi_func *)GetOpenGLProcAddress_Internal(state, "glClearNamedFramebufferfi");
+		glBlitNamedFramebuffer = (gl_blit_named_framebuffer_func *)GetOpenGLProcAddress_Internal(state, "glBlitNamedFramebuffer");
+		glCheckNamedFramebufferStatus = (gl_check_named_framebuffer_status_func *)GetOpenGLProcAddress_Internal(state, "glCheckNamedFramebufferStatus");
+		glGetNamedFramebufferParameteriv = (gl_get_named_framebuffer_parameteriv_func *)GetOpenGLProcAddress_Internal(state, "glGetNamedFramebufferParameteriv");
+		glGetNamedFramebufferAttachmentParameteriv = (gl_get_named_framebuffer_attachment_parameteriv_func *)GetOpenGLProcAddress_Internal(state, "glGetNamedFramebufferAttachmentParameteriv");
+		glCreateRenderbuffers = (gl_create_renderbuffers_func *)GetOpenGLProcAddress_Internal(state, "glCreateRenderbuffers");
+		glNamedRenderbufferStorage = (gl_named_renderbuffer_storage_func *)GetOpenGLProcAddress_Internal(state, "glNamedRenderbufferStorage");
+		glNamedRenderbufferStorageMultisample = (gl_named_renderbuffer_storage_multisample_func *)GetOpenGLProcAddress_Internal(state, "glNamedRenderbufferStorageMultisample");
+		glGetNamedRenderbufferParameteriv = (gl_get_named_renderbuffer_parameteriv_func *)GetOpenGLProcAddress_Internal(state, "glGetNamedRenderbufferParameteriv");
+		glCreateTextures = (gl_create_textures_func *)GetOpenGLProcAddress_Internal(state, "glCreateTextures");
+		glTextureBuffer = (gl_texture_buffer_func *)GetOpenGLProcAddress_Internal(state, "glTextureBuffer");
+		glTextureBufferRange = (gl_texture_buffer_range_func *)GetOpenGLProcAddress_Internal(state, "glTextureBufferRange");
+		glTextureStorage1D = (gl_texture_storage1d_func *)GetOpenGLProcAddress_Internal(state, "glTextureStorage1D");
+		glTextureStorage2D = (gl_texture_storage2d_func *)GetOpenGLProcAddress_Internal(state, "glTextureStorage2D");
+		glTextureStorage3D = (gl_texture_storage3d_func *)GetOpenGLProcAddress_Internal(state, "glTextureStorage3D");
+		glTextureStorage2DMultisample = (gl_texture_storage2_d_multisample_func *)GetOpenGLProcAddress_Internal(state, "glTextureStorage2DMultisample");
+		glTextureStorage3DMultisample = (gl_texture_storage3_d_multisample_func *)GetOpenGLProcAddress_Internal(state, "glTextureStorage3DMultisample");
+		glTextureSubImage1D = (gl_texture_sub_image1d_func *)GetOpenGLProcAddress_Internal(state, "glTextureSubImage1D");
+		glTextureSubImage2D = (gl_texture_sub_image2d_func *)GetOpenGLProcAddress_Internal(state, "glTextureSubImage2D");
+		glTextureSubImage3D = (gl_texture_sub_image3d_func *)GetOpenGLProcAddress_Internal(state, "glTextureSubImage3D");
+		glCompressedTextureSubImage1D = (gl_compressed_texture_sub_image1d_func *)GetOpenGLProcAddress_Internal(state, "glCompressedTextureSubImage1D");
+		glCompressedTextureSubImage2D = (gl_compressed_texture_sub_image2d_func *)GetOpenGLProcAddress_Internal(state, "glCompressedTextureSubImage2D");
+		glCompressedTextureSubImage3D = (gl_compressed_texture_sub_image3d_func *)GetOpenGLProcAddress_Internal(state, "glCompressedTextureSubImage3D");
+		glCopyTextureSubImage1D = (gl_copy_texture_sub_image1d_func *)GetOpenGLProcAddress_Internal(state, "glCopyTextureSubImage1D");
+		glCopyTextureSubImage2D = (gl_copy_texture_sub_image2d_func *)GetOpenGLProcAddress_Internal(state, "glCopyTextureSubImage2D");
+		glCopyTextureSubImage3D = (gl_copy_texture_sub_image3d_func *)GetOpenGLProcAddress_Internal(state, "glCopyTextureSubImage3D");
+		glTextureParameterf = (gl_texture_parameterf_func *)GetOpenGLProcAddress_Internal(state, "glTextureParameterf");
+		glTextureParameterfv = (gl_texture_parameterfv_func *)GetOpenGLProcAddress_Internal(state, "glTextureParameterfv");
+		glTextureParameteri = (gl_texture_parameteri_func *)GetOpenGLProcAddress_Internal(state, "glTextureParameteri");
+		glTextureParameterIiv = (gl_texture_parameter_iiv_func *)GetOpenGLProcAddress_Internal(state, "glTextureParameterIiv");
+		glTextureParameterIuiv = (gl_texture_parameter_iuiv_func *)GetOpenGLProcAddress_Internal(state, "glTextureParameterIuiv");
+		glTextureParameteriv = (gl_texture_parameteriv_func *)GetOpenGLProcAddress_Internal(state, "glTextureParameteriv");
+		glGenerateTextureMipmap = (gl_generate_texture_mipmap_func *)GetOpenGLProcAddress_Internal(state, "glGenerateTextureMipmap");
+		glBindTextureUnit = (gl_bind_texture_unit_func *)GetOpenGLProcAddress_Internal(state, "glBindTextureUnit");
+		glGetTextureImage = (gl_get_texture_image_func *)GetOpenGLProcAddress_Internal(state, "glGetTextureImage");
+		glGetCompressedTextureImage = (gl_get_compressed_texture_image_func *)GetOpenGLProcAddress_Internal(state, "glGetCompressedTextureImage");
+		glGetTextureLevelParameterfv = (gl_get_texture_level_parameterfv_func *)GetOpenGLProcAddress_Internal(state, "glGetTextureLevelParameterfv");
+		glGetTextureLevelParameteriv = (gl_get_texture_level_parameteriv_func *)GetOpenGLProcAddress_Internal(state, "glGetTextureLevelParameteriv");
+		glGetTextureParameterfv = (gl_get_texture_parameterfv_func *)GetOpenGLProcAddress_Internal(state, "glGetTextureParameterfv");
+		glGetTextureParameterIiv = (gl_get_texture_parameter_iiv_func *)GetOpenGLProcAddress_Internal(state, "glGetTextureParameterIiv");
+		glGetTextureParameterIuiv = (gl_get_texture_parameter_iuiv_func *)GetOpenGLProcAddress_Internal(state, "glGetTextureParameterIuiv");
+		glGetTextureParameteriv = (gl_get_texture_parameteriv_func *)GetOpenGLProcAddress_Internal(state, "glGetTextureParameteriv");
+		glCreateVertexArrays = (gl_create_vertex_arrays_func *)GetOpenGLProcAddress_Internal(state, "glCreateVertexArrays");
+		glDisableVertexArrayAttrib = (gl_disable_vertex_array_attrib_func *)GetOpenGLProcAddress_Internal(state, "glDisableVertexArrayAttrib");
+		glEnableVertexArrayAttrib = (gl_enable_vertex_array_attrib_func *)GetOpenGLProcAddress_Internal(state, "glEnableVertexArrayAttrib");
+		glVertexArrayElementBuffer = (gl_vertex_array_element_buffer_func *)GetOpenGLProcAddress_Internal(state, "glVertexArrayElementBuffer");
+		glVertexArrayVertexBuffer = (gl_vertex_array_vertex_buffer_func *)GetOpenGLProcAddress_Internal(state, "glVertexArrayVertexBuffer");
+		glVertexArrayVertexBuffers = (gl_vertex_array_vertex_buffers_func *)GetOpenGLProcAddress_Internal(state, "glVertexArrayVertexBuffers");
+		glVertexArrayAttribBinding = (gl_vertex_array_attrib_binding_func *)GetOpenGLProcAddress_Internal(state, "glVertexArrayAttribBinding");
+		glVertexArrayAttribFormat = (gl_vertex_array_attrib_format_func *)GetOpenGLProcAddress_Internal(state, "glVertexArrayAttribFormat");
+		glVertexArrayAttribIFormat = (gl_vertex_array_attrib_i_format_func *)GetOpenGLProcAddress_Internal(state, "glVertexArrayAttribIFormat");
+		glVertexArrayAttribLFormat = (gl_vertex_array_attrib_l_format_func *)GetOpenGLProcAddress_Internal(state, "glVertexArrayAttribLFormat");
+		glVertexArrayBindingDivisor = (gl_vertex_array_binding_divisor_func *)GetOpenGLProcAddress_Internal(state, "glVertexArrayBindingDivisor");
+		glGetVertexArrayiv = (gl_get_vertex_arrayiv_func *)GetOpenGLProcAddress_Internal(state, "glGetVertexArrayiv");
+		glGetVertexArrayIndexediv = (gl_get_vertex_array_indexediv_func *)GetOpenGLProcAddress_Internal(state, "glGetVertexArrayIndexediv");
+		glGetVertexArrayIndexed64iv = (gl_get_vertex_array_indexed64iv_func *)GetOpenGLProcAddress_Internal(state, "glGetVertexArrayIndexed64iv");
+		glCreateSamplers = (gl_create_samplers_func *)GetOpenGLProcAddress_Internal(state, "glCreateSamplers");
+		glCreateProgramPipelines = (gl_create_program_pipelines_func *)GetOpenGLProcAddress_Internal(state, "glCreateProgramPipelines");
+		glCreateQueries = (gl_create_queries_func *)GetOpenGLProcAddress_Internal(state, "glCreateQueries");
+		glGetQueryBufferObjecti64v = (gl_get_query_buffer_objecti64v_func *)GetOpenGLProcAddress_Internal(state, "glGetQueryBufferObjecti64v");
+		glGetQueryBufferObjectiv = (gl_get_query_buffer_objectiv_func *)GetOpenGLProcAddress_Internal(state, "glGetQueryBufferObjectiv");
+		glGetQueryBufferObjectui64v = (gl_get_query_buffer_objectui64v_func *)GetOpenGLProcAddress_Internal(state, "glGetQueryBufferObjectui64v");
+		glGetQueryBufferObjectuiv = (gl_get_query_buffer_objectuiv_func *)GetOpenGLProcAddress_Internal(state, "glGetQueryBufferObjectuiv");
+		glMemoryBarrierByRegion = (gl_memory_barrier_by_region_func *)GetOpenGLProcAddress_Internal(state, "glMemoryBarrierByRegion");
+		glGetTextureSubImage = (gl_get_texture_sub_image_func *)GetOpenGLProcAddress_Internal(state, "glGetTextureSubImage");
+		glGetCompressedTextureSubImage = (gl_get_compressed_texture_sub_image_func *)GetOpenGLProcAddress_Internal(state, "glGetCompressedTextureSubImage");
+		glGetGraphicsResetStatus = (gl_get_graphics_reset_status_func *)GetOpenGLProcAddress_Internal(state, "glGetGraphicsResetStatus");
+		glGetnCompressedTexImage = (gl_getn_compressed_tex_image_func *)GetOpenGLProcAddress_Internal(state, "glGetnCompressedTexImage");
+		glGetnTexImage = (gl_getn_tex_image_func *)GetOpenGLProcAddress_Internal(state, "glGetnTexImage");
+		glGetnUniformdv = (gl_getn_uniformdv_func *)GetOpenGLProcAddress_Internal(state, "glGetnUniformdv");
+		glGetnUniformfv = (gl_getn_uniformfv_func *)GetOpenGLProcAddress_Internal(state, "glGetnUniformfv");
+		glGetnUniformiv = (gl_getn_uniformiv_func *)GetOpenGLProcAddress_Internal(state, "glGetnUniformiv");
+		glGetnUniformuiv = (gl_getn_uniformuiv_func *)GetOpenGLProcAddress_Internal(state, "glGetnUniformuiv");
+		glReadnPixels = (gl_readn_pixels_func *)GetOpenGLProcAddress_Internal(state, "glReadnPixels");
+		glGetnMapdv = (gl_getn_mapdv_func *)GetOpenGLProcAddress_Internal(state, "glGetnMapdv");
+		glGetnMapfv = (gl_getn_mapfv_func *)GetOpenGLProcAddress_Internal(state, "glGetnMapfv");
+		glGetnMapiv = (gl_getn_mapiv_func *)GetOpenGLProcAddress_Internal(state, "glGetnMapiv");
+		glGetnPixelMapfv = (gl_getn_pixel_mapfv_func *)GetOpenGLProcAddress_Internal(state, "glGetnPixelMapfv");
+		glGetnPixelMapuiv = (gl_getn_pixel_mapuiv_func *)GetOpenGLProcAddress_Internal(state, "glGetnPixelMapuiv");
+		glGetnPixelMapusv = (gl_getn_pixel_mapusv_func *)GetOpenGLProcAddress_Internal(state, "glGetnPixelMapusv");
+		glGetnPolygonStipple = (gl_getn_polygon_stipple_func *)GetOpenGLProcAddress_Internal(state, "glGetnPolygonStipple");
+		glGetnColorTable = (gl_getn_color_table_func *)GetOpenGLProcAddress_Internal(state, "glGetnColorTable");
+		glGetnConvolutionFilter = (gl_getn_convolution_filter_func *)GetOpenGLProcAddress_Internal(state, "glGetnConvolutionFilter");
+		glGetnSeparableFilter = (gl_getn_separable_filter_func *)GetOpenGLProcAddress_Internal(state, "glGetnSeparableFilter");
+		glGetnHistogram = (gl_getn_histogram_func *)GetOpenGLProcAddress_Internal(state, "glGetnHistogram");
+		glGetnMinmax = (gl_getn_minmax_func *)GetOpenGLProcAddress_Internal(state, "glGetnMinmax");
+		glTextureBarrier = (gl_texture_barrier_func *)GetOpenGLProcAddress_Internal(state, "glTextureBarrier");
+#	endif //GL_VERSION_4_5
+		}
+
+		static bool LoadOpenGL_Internal(OpenGLState &state) {
+			bool result = false;
+
+#	if defined(FDYNGL_PLATFORM_WINDOWS)
+			const char *win32LibraryNames[] = {
+				"opengl32.dll",
+			};
+			for (int i = 0; i < FDYNGL_ARRAYCOUNT(win32LibraryNames); ++i) {
+				state.win32LibraryHandle = LoadLibraryA(win32LibraryNames[i]);
+				if (state.win32LibraryHandle != nullptr) {
+					state.wglGetProcAddress = (win32_func_wglGetProcAddress *)GetProcAddress(state.win32LibraryHandle, "wglGetProcAddress");
+					result = true;
+					break;
+				}
+			}
+#	elif defined(FDYNGL_PLATFORM_POSIX)
+			const char *posixLibraryNames[] = {
+				"libGL.so",
+				"libGL.so.1",
+			};
+			for (int i = 0; i < FDYNGL_ARRAYCOUNT(posixLibraryNames); ++i) {
+				state.posixLibraryHandle = dlopen(posixLibraryNames[i], RTLD_NOW);
+				if (state.posixLibraryHandle != nullptr) {
+					state.glXGetProcAddress = (posix_func_glXGetProcAddress *)dlsym(state.posixLibraryHandle, "glXGetProcAddress");
+					result = true;
+					break;
+				}
+			}
+#	endif
+			return (result);
+		}
+
+		static void UnloadOpenGL_Internal(OpenGLState &state) {
+#	if defined(FDYNGL_PLATFORM_WINDOWS)
+			if (state.win32LibraryHandle != nullptr) {
+				FreeLibrary(state.win32LibraryHandle);
+			}
+#	elif defined(FDYNGL_PLATFORM_POSIX)
+			if (state.posixLibraryHandle != nullptr) {
+				dlclose(state.posixLibraryHandle);
+			}
+#	endif
+			state = {};
+		}
+	}
+}
+
+namespace fdyngl {
+	static OpenGLState globalOpenGLState = {};
+	fdyngl_api bool LoadOpenGL() {
+		bool result = false;
+		OpenGLState &state = globalOpenGLState;
+		if (platform::LoadOpenGL_Internal(state)) {
+			platform::LoadOpenGLExtensions_Internal(state);
+			result = true;
+		}
+		return(result);
+	}
+	fdyngl_api void UnloadOpenGL() {
+		OpenGLState &state = globalOpenGLState;
+		platform::UnloadOpenGL_Internal(state);
 	}
 }
 

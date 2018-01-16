@@ -544,7 +544,7 @@ int main(int argc, char *args[]) {
 		for (auto prototype : prototypeList) {
 			string name = Trim(prototype.name);
 			string funcPtrName = MakeFunctionPtrName(name);
-			bodyOutStream << BodyIdent << "\t" << name << " = (" << funcPtrName << " *)" << GetProcAddressName  << "(\"" << name << "\");" << endl;
+			bodyOutStream << BodyIdent << "\t" << name << " = (" << funcPtrName << " *)" << GetProcAddressName  << "(state, \"" << name << "\");" << endl;
 		}
 
 		bodyOutStream << "#" << BodyIdent << "endif //" << version << endl;

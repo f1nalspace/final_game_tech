@@ -4,16 +4,7 @@
     <ClCompile Include="main.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <Filter Include="dependencies">
-      <UniqueIdentifier>{7d8e68e6-90a9-42bc-8a1d-ec0d716aa97d}</UniqueIdentifier>
-    </Filter>
-  </ItemGroup>
-  <ItemGroup>
-    <ClInclude Include="..\..\final_platform_layer.hpp">
-      <Filter>dependencies</Filter>
-    </ClInclude>
-    <ClInclude Include="..\..\final_dynamic_opengl.hpp">
-      <Filter>dependencies</Filter>
-    </ClInclude>
+    <ClInclude Include="..\..\final_dynamic_opengl.hpp" />
+    <ClInclude Include="..\..\final_platform_layer.hpp" />
   </ItemGroup>
 </Project>
