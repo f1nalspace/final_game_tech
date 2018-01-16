@@ -10,15 +10,16 @@ Written by Torsten Spaete
 [x] Handle PTS/DTS to schedule video frame
 [x] Syncronize video to audio
 [x] Fix memory leak (There was no leak at all)
-[ ] Rewrite Frame Queue to support Peek in Previous, Current and Next frame
-[ ] Frame drop: Introduce serial as well
-[ ] Syncronize audio to video
-[ ] Pause/Resume
-[ ] Restart
-[ ] Seeking
-[ ] Fix Bug when audio starts very late
-[ ] Growing packet queue
+[x] Support for FFMPEG static linking
+[x] Rewrite Frame Queue to support Peek in Previous, Current and Next frame
+[x] Introduce serials
+[x] Introduce null and flush packet
+[x] Restart
+[x] Frame dropping using prev/next frame
+[x] Pause/Resume
 [ ] OpenGL Video Rendering
+[ ] Syncronize audio to video
+[ ] Seeking (+/- 5 secs)
 [ ] Composite video rendering
 	[ ] OSD
 	[ ] Bitmap rect blitting
@@ -58,6 +59,8 @@ Requirements:
 #include "mpmc_queue.h"
 
 #define PRINT_QUEUE_INFOS 0
+
+#define USE_FFMPEG_STATIC_LINKING 0
 
 //
 // FFMPEG headers and function prototypes
@@ -349,14 +352,17 @@ struct FFMPEGContext {
 };
 
 static void ReleaseFFMPEG(FFMPEGContext &ffmpeg) {
+#if !USE_FFMPEG_STATIC_LINKING
 	DynamicLibraryUnload(ffmpeg.swResampleLib);
 	DynamicLibraryUnload(ffmpeg.swScaleLib);
 	DynamicLibraryUnload(ffmpeg.avUtilLib);
 	DynamicLibraryUnload(ffmpeg.avCodecLib);
 	DynamicLibraryUnload(ffmpeg.avFormatLib);
+#endif
 }
 
 static bool LoadFFMPEG(FFMPEGContext &ffmpeg) {
+#if !USE_FFMPEG_STATIC_LINKING
 	const char *avFormatLibFile = "avformat-58.dll";
 	const char *avCodecLibFile = "avcodec-58.dll";
 	const char *avUtilLibFile = "avutil-56.dll";
@@ -368,10 +374,12 @@ static bool LoadFFMPEG(FFMPEGContext &ffmpeg) {
 	DynamicLibraryHandle avUtilLib = ffmpeg.avUtilLib = DynamicLibraryLoad(avUtilLibFile);
 	DynamicLibraryHandle swScaleLib = ffmpeg.swScaleLib = DynamicLibraryLoad(swScaleLibFile);
 	DynamicLibraryHandle swResampleLib = ffmpeg.swResampleLib = DynamicLibraryLoad(swResampleLibFile);
+#endif
 
 	//
 	// AVFormat
 	//
+#if !USE_FFMPEG_STATIC_LINKING
 	FFMPEG_GET_FUNCTION_ADDRESS(avFormatLib, avFormatLibFile, ffmpeg.avRegisterAll, ffmpeg_av_register_all_func, "av_register_all");
 	FFMPEG_GET_FUNCTION_ADDRESS(avFormatLib, avFormatLibFile, ffmpeg.avformatCloseInput, ffmpeg_avformat_close_input_func, "avformat_close_input");
 	FFMPEG_GET_FUNCTION_ADDRESS(avFormatLib, avFormatLibFile, ffmpeg.avformatOpenInput, ffmpeg_avformat_open_input_func, "avformat_open_input");
@@ -387,10 +395,28 @@ static bool LoadFFMPEG(FFMPEGContext &ffmpeg) {
 	FFMPEG_GET_FUNCTION_ADDRESS(avFormatLib, avFormatLibFile, ffmpeg.avReadPause, ffmpeg_av_read_pause_func, "av_read_pause");
 	FFMPEG_GET_FUNCTION_ADDRESS(avFormatLib, avFormatLibFile, ffmpeg.avReadPlay, ffmpeg_av_read_play_func, "av_read_play");
 	FFMPEG_GET_FUNCTION_ADDRESS(avFormatLib, avFormatLibFile, ffmpeg.avioFEOF, ffmpeg_avio_feof_func, "avio_feof");
+#else
+	ffmpeg.avRegisterAll = av_register_all;
+	ffmpeg.avformatCloseInput = avformat_close_input;
+	ffmpeg.avformatOpenInput = avformat_open_input;
+	ffmpeg.avformatFindStreamInfo = avformat_find_stream_info;
+	ffmpeg.avDumpFormat = av_dump_format;
+	ffmpeg.avReadFrame = av_read_frame;
+	ffmpeg.avformatAllocContext = avformat_alloc_context;
+	ffmpeg.avformatSeekFile = avformat_seek_file;
+	ffmpeg.avformatMatchStreamSpecifier = avformat_match_stream_specifier;
+	ffmpeg.avFindBestStream = av_find_best_stream;
+	ffmpeg.avGuessSampleAspectRatio = av_guess_sample_aspect_ratio;
+	ffmpeg.avGuessFrameRate = av_guess_frame_rate;
+	ffmpeg.avReadPause = av_read_pause;
+	ffmpeg.avReadPlay = av_read_play;
+	ffmpeg.avioFEOF = avio_feof;
+#endif
 
 	//
 	// AVCodec
 	//
+#if !USE_FFMPEG_STATIC_LINKING
 	FFMPEG_GET_FUNCTION_ADDRESS(avCodecLib, avCodecLibFile, ffmpeg.avcodecFreeContext, ffmpeg_avcodec_free_context_func, "avcodec_free_context");
 	FFMPEG_GET_FUNCTION_ADDRESS(avCodecLib, avCodecLibFile, ffmpeg.avcodecAllocContext3, ffmpeg_avcodec_alloc_context3_func, "avcodec_alloc_context3");
 	FFMPEG_GET_FUNCTION_ADDRESS(avCodecLib, avCodecLibFile, ffmpeg.avcodecParametersToContext, ffmpeg_avcodec_parameters_to_context_func, "avcodec_parameters_to_context");
@@ -408,10 +434,30 @@ static bool LoadFFMPEG(FFMPEGContext &ffmpeg) {
 	FFMPEG_GET_FUNCTION_ADDRESS(avCodecLib, avCodecLibFile, ffmpeg.avcodecFlushBuffers, ffmpeg_avcodec_flush_buffers_func, "avcodec_flush_buffers");
 	FFMPEG_GET_FUNCTION_ADDRESS(avCodecLib, avCodecLibFile, ffmpeg.avcodecDecodeSubtitle2, ffmpeg_avcodec_decode_subtitle2_func, "avcodec_decode_subtitle2");
 	FFMPEG_GET_FUNCTION_ADDRESS(avCodecLib, avCodecLibFile, ffmpeg.avPacketRef, ffmpeg_av_packet_ref_func, "av_packet_ref");
+#else
+	ffmpeg.avcodecFreeContext = avcodec_free_context;
+	ffmpeg.avcodecAllocContext3 = avcodec_alloc_context3;
+	ffmpeg.avcodecParametersToContext = avcodec_parameters_to_context;
+	ffmpeg.avcodecFindDecoder = avcodec_find_decoder;
+	ffmpeg.avcodecOpen2 = avcodec_open2;
+	ffmpeg.avPacketUnref = av_packet_unref;
+	ffmpeg.avcodecReceiveFrame = avcodec_receive_frame;
+	ffmpeg.avcodecSendPacket = avcodec_send_packet;
+	ffmpeg.avPacketAlloc = av_packet_alloc;
+	ffmpeg.avPacketFree = av_packet_free;
+	ffmpeg.avInitPacket = av_init_packet;
+	ffmpeg.avsubtitleFree = avsubtitle_free;
+	ffmpeg.avcodecFindDecoderByName = avcodec_find_decoder_by_name;
+	ffmpeg.avPacketMoveRef = av_packet_move_ref;
+	ffmpeg.avcodecFlushBuffers = avcodec_flush_buffers;
+	ffmpeg.avcodecDecodeSubtitle2 = avcodec_decode_subtitle2;
+	ffmpeg.avPacketRef = av_packet_ref;
+#endif
 
 	//
 	// AVUtil
 	//
+#if !USE_FFMPEG_STATIC_LINKING
 	FFMPEG_GET_FUNCTION_ADDRESS(avUtilLib, avUtilLibFile, ffmpeg.avFrameAlloc, ffmpeg_av_frame_alloc_func, "av_frame_alloc");
 	FFMPEG_GET_FUNCTION_ADDRESS(avUtilLib, avUtilLibFile, ffmpeg.avFrameFree, ffmpeg_av_frame_free_func, "av_frame_free");
 	FFMPEG_GET_FUNCTION_ADDRESS(avUtilLib, avUtilLibFile, ffmpeg.avFrameUnref, ffmpeg_av_frame_unref_func, "av_frame_unref");
@@ -427,22 +473,53 @@ static bool LoadFFMPEG(FFMPEGContext &ffmpeg) {
 	FFMPEG_GET_FUNCTION_ADDRESS(avUtilLib, avUtilLibFile, ffmpeg.avSamplesGetBufferSize, ffmpeg_av_samples_get_buffer_size_func, "av_samples_get_buffer_size");
 	FFMPEG_GET_FUNCTION_ADDRESS(avUtilLib, avUtilLibFile, ffmpeg.avMallocZ, ffmpeg_av_mallocz_func, "av_mallocz");
 	FFMPEG_GET_FUNCTION_ADDRESS(avUtilLib, avUtilLibFile, ffmpeg.avFreeP, ffmpeg_av_freep_func, "av_freep");
+#else
+	ffmpeg.avFrameAlloc = av_frame_alloc;
+	ffmpeg.avFrameFree = av_frame_free;
+	ffmpeg.avFrameUnref = av_frame_unref;
+	ffmpeg.avFrameMoveRef = av_frame_move_ref;
+	ffmpeg.avImageGetBufferSize = av_image_get_buffer_size;
+	ffmpeg.avImageGetLineSize = av_image_get_linesize;
+	ffmpeg.avImageFillArrays = av_image_fill_arrays;
+	ffmpeg.avGetChannelLayoutNBChannels = av_get_channel_layout_nb_channels;
+	ffmpeg.avGetTimeRelative = av_gettime_relative;
+	ffmpeg.avGetTime = av_gettime;
+	ffmpeg.avGetMediaTypeString = av_get_media_type_string;
+	ffmpeg.avRescaleQ = av_rescale_q;
+	ffmpeg.avSamplesGetBufferSize = av_samples_get_buffer_size;
+	ffmpeg.avMallocZ = av_mallocz;
+	ffmpeg.avFreeP = av_freep;
+#endif
 
 	//
 	// SWS
 	//
+#if !USE_FFMPEG_STATIC_LINKING
 	FFMPEG_GET_FUNCTION_ADDRESS(swScaleLib, swScaleLibFile, ffmpeg.swsGetContext, ffmpeg_sws_getContext_func, "sws_getContext");
 	FFMPEG_GET_FUNCTION_ADDRESS(swScaleLib, swScaleLibFile, ffmpeg.swsScale, ffmpeg_sws_scale_func, "sws_scale");
 	FFMPEG_GET_FUNCTION_ADDRESS(swScaleLib, swScaleLibFile, ffmpeg.swsFreeContext, ffmpeg_sws_freeContext_func, "sws_freeContext");
 	FFMPEG_GET_FUNCTION_ADDRESS(swScaleLib, swScaleLibFile, ffmpeg.swsGetCachedContext, ffmpeg_sws_getCachedContext_func, "sws_getCachedContext");
+#else
+	ffmpeg.swsGetContext = sws_getContext;
+	ffmpeg.swsScale = sws_scale;
+	ffmpeg.swsFreeContext = sws_freeContext;
+	ffmpeg.swsGetCachedContext = sws_getCachedContext;
+#endif
 
 	//
 	// SWR
 	//
+#if !USE_FFMPEG_STATIC_LINKING
 	FFMPEG_GET_FUNCTION_ADDRESS(swResampleLib, swResampleLibFile, ffmpeg.swrAllocSetOpts, ffmpeg_swr_alloc_set_opts_func, "swr_alloc_set_opts");
 	FFMPEG_GET_FUNCTION_ADDRESS(swResampleLib, swResampleLibFile, ffmpeg.swrFree, ffmpeg_swr_free_func, "swr_free");
 	FFMPEG_GET_FUNCTION_ADDRESS(swResampleLib, swResampleLibFile, ffmpeg.swrConvert, ffmpeg_swr_convert_func, "swr_convert");
 	FFMPEG_GET_FUNCTION_ADDRESS(swResampleLib, swResampleLibFile, ffmpeg.swrInit, ffmpeg_swr_init_func, "swr_init");
+#else
+	ffmpeg.swrAllocSetOpts = swr_alloc_set_opts;
+	ffmpeg.swrFree = swr_free;
+	ffmpeg.swrConvert = swr_convert;
+	ffmpeg.swrInit = swr_init;
+#endif
 
 	return true;
 }
@@ -454,23 +531,64 @@ static FFMPEGContext *globalFFMPEGFunctions = nullptr;
 //
 struct MemoryStats {
 	volatile int32_t allocatedPackets;
-	volatile int32_t referencedPackets;
+	volatile int32_t usedPackets;
 	volatile int32_t allocatedFrames;
-	volatile int32_t referencedFrames;
+	volatile int32_t usedFrames;
 };
 
 static MemoryStats globalMemStats = {};
 
 inline void PrintMemStats() {
-	ConsoleFormatOut("Packets: %d / %d, Frames: %d / %d\n", globalMemStats.allocatedPackets, globalMemStats.referencedPackets, globalMemStats.allocatedFrames, globalMemStats.referencedFrames);
+	int32_t allocatedPackets = AtomicLoadS32(&globalMemStats.allocatedPackets);
+	int32_t usedPackets = AtomicLoadS32(&globalMemStats.usedPackets);
+	int32_t allocatedFrames = AtomicLoadS32(&globalMemStats.allocatedFrames);
+	int32_t usedFrames = AtomicLoadS32(&globalMemStats.usedFrames);
+	ConsoleFormatOut("Packets: %d / %d, Frames: %d / %d\n", allocatedPackets, usedPackets, allocatedFrames, usedFrames);
 }
+
+//
+// Constants
+//
+// Max number of frames in the queues
+fpl_constant uint32_t MAX_VIDEO_FRAME_QUEUE_COUNT = 4;
+fpl_constant uint32_t MAX_AUDIO_FRAME_QUEUE_COUNT = 8;
+fpl_constant uint32_t MAX_FRAME_QUEUE_COUNT = FPL_MAX(MAX_AUDIO_FRAME_QUEUE_COUNT, MAX_VIDEO_FRAME_QUEUE_COUNT);
+
+// Total size of data from all packet queues
+fpl_constant uint64_t MAX_PACKET_QUEUE_SIZE = FPL_MEGABYTES(16);
+
+// Min number of packet frames in a single queue
+fpl_constant uint32_t MIN_PACKET_FRAMES = 25;
+
+// External clock min/max frames
+fpl_constant uint32_t EXTERNAL_CLOCK_MIN_FRAMES = 2;
+fpl_constant uint32_t EXTERNAL_CLOCK_MAX_FRAMES = 10;
+
+// External clock speed adjustment constants for realtime sources based on buffer fullness
+#define EXTERNAL_CLOCK_SPEED_MIN  0.900
+#define EXTERNAL_CLOCK_SPEED_MAX  1.010
+#define EXTERNAL_CLOCK_SPEED_STEP 0.001
+
+// No AV sync correction is done if below the minimum AV sync threshold
+fpl_constant double AV_SYNC_THRESHOLD_MIN = 0.04;
+// No AV sync correction is done if above the maximum AV sync threshold
+fpl_constant double AV_SYNC_THRESHOLD_MAX = 0.1;
+// No AV correction is done if too big error
+fpl_constant double AV_NOSYNC_THRESHOLD = 10.0;
+// If a frame duration is longer than this, it will not be duplicated to compensate AV sync
+fpl_constant double AV_SYNC_FRAMEDUP_THRESHOLD = 0.1;
+// Default refresh rate of 1/sec
+fpl_constant double DEFAULT_REFRESH_RATE = 0.01;
 
 //
 // Packet Queue
 //
+static AVPacket globalFlushPacket = {};
+
 struct PacketList {
 	AVPacket packet;
 	PacketList *next;
+	int32_t serial;
 };
 
 struct PacketQueue {
@@ -482,7 +600,14 @@ struct PacketQueue {
 	uint64_t size;
 	uint64_t duration;
 	int32_t packetCount;
+	int32_t serial;
 };
+
+inline bool IsFlushPacket(PacketList *packet) {
+	assert(packet != nullptr);
+	bool result = (packet->packet.data == (uint8_t *)&globalFlushPacket);
+	return(result);
+}
 
 inline PacketList *AllocatePacket(PacketQueue &queue) {
 	const FFMPEGContext &ffmpeg = *globalFFMPEGFunctions;
@@ -490,42 +615,59 @@ inline PacketList *AllocatePacket(PacketQueue &queue) {
 	if (packet == nullptr) {
 		return nullptr;
 	}
-	ffmpeg.avInitPacket(&packet->packet);
 	AtomicAddS32(&globalMemStats.allocatedPackets, 1);
 	return(packet);
 }
 
 inline void DestroyPacket(PacketQueue &queue, PacketList *packet) {
 	const FFMPEGContext &ffmpeg = *globalFFMPEGFunctions;
-
-	ffmpeg.avPacketUnref(&packet->packet);
-	AtomicAddS32(&globalMemStats.referencedPackets, -1);
-
 	ffmpeg.avFreeP(packet);
 	AtomicAddS32(&globalMemStats.allocatedPackets, -1);
 }
 
-static void DestroyPacketQueue(PacketQueue &queue) {
+inline void ReleasePacketData(PacketList *packet) {
 	const FFMPEGContext &ffmpeg = *globalFFMPEGFunctions;
+	if (!IsFlushPacket(packet)) {
+		ffmpeg.avPacketUnref(&packet->packet);
+	}
+}
+
+inline void ReleasePacket(PacketQueue &queue, PacketList *packet) {
+	ReleasePacketData(packet);
+	DestroyPacket(queue, packet);
+	SignalWakeUp(queue.freeSignal);
+}
+
+inline bool AquirePacket(PacketQueue &queue, PacketList *&packet) {
+	bool result = false;
+	packet = AllocatePacket(queue);
+	if (packet != nullptr) {
+		result = true;
+	}
+	return(result);
+}
+
+static void FlushPacketQueue(PacketQueue &queue) {
+	MutexLock(queue.lock);
 	PacketList *p = queue.first;
 	while (p != nullptr) {
 		PacketList *n = p->next;
+		ReleasePacketData(p);
 		DestroyPacket(queue, p);
 		p = n;
 	}
 	queue.first = queue.last = nullptr;
 	queue.packetCount = 0;
 	queue.size = 0;
+	queue.duration = 0;
+	MutexUnlock(queue.lock);
+}
 
-	if (queue.freeSignal.isValid) {
-		SignalDestroy(queue.freeSignal);
-	}
-	if (queue.addedSignal.isValid) {
-		SignalDestroy(queue.addedSignal);
-	}
-	if (queue.lock.isValid) {
-		MutexDestroy(queue.lock);
-	}
+static void DestroyPacketQueue(PacketQueue &queue) {
+	FlushPacketQueue(queue);
+	SignalDestroy(queue.freeSignal);
+	SignalDestroy(queue.addedSignal);
+	MutexDestroy(queue.lock);
 }
 
 inline bool InitPacketQueue(PacketQueue &queue) {
@@ -544,26 +686,14 @@ inline bool InitPacketQueue(PacketQueue &queue) {
 	return true;
 }
 
-inline void ReleasePacket(PacketQueue &queue, PacketList *packet) {
-	// @TODO(final): Growing packet arena!
-	DestroyPacket(queue, packet);
-	SignalWakeUp(queue.freeSignal);
-}
-
-inline bool AquirePacket(PacketQueue &queue, PacketList *&packet) {
-	// @TODO(final): Growing packet arena!
-	bool result = false;
-	packet = AllocatePacket(queue);
-	if (packet != nullptr) {
-		result = true;
-	}
-	return(result);
-}
-
 inline void PushPacket(PacketQueue &queue, PacketList *packet) {
 	MutexLock(queue.lock);
 	{
 		packet->next = nullptr;
+		if (IsFlushPacket(packet)) {
+			queue.serial++;
+		}
+		packet->serial = queue.serial;
 		if (queue.first == nullptr) {
 			queue.first = packet;
 		}
@@ -575,6 +705,7 @@ inline void PushPacket(PacketQueue &queue, PacketList *packet) {
 		queue.size += packet->packet.size + sizeof(*packet);
 		queue.duration += packet->packet.duration;
 		AtomicAddS32(&queue.packetCount, 1);
+		AtomicAddS32(&globalMemStats.usedPackets, 1);
 		SignalWakeUp(queue.addedSignal);
 	}
 	MutexUnlock(queue.lock);
@@ -588,43 +719,70 @@ inline bool PopPacket(PacketQueue &queue, PacketList *&packet) {
 			PacketList *p = queue.first;
 			PacketList *n = p->next;
 			queue.first = n;
-			result = true;
 			p->next = nullptr;
 			packet = p;
 			queue.duration -= packet->packet.duration;
 			queue.size -= packet->packet.size + sizeof(*packet);
+			if (queue.first == nullptr) {
+				queue.last = nullptr;
+			}
+			AtomicAddS32(&queue.packetCount, -1);
+			AtomicAddS32(&globalMemStats.usedPackets, -1);
+			result = true;
 		}
-		if (queue.first == nullptr) {
-			queue.last = nullptr;
-		}
-		AtomicAddS32(&queue.packetCount, -1);
 	}
 	MutexUnlock(queue.lock);
 	return(result);
+}
+
+inline bool PushNullPacket(PacketQueue &queue, int streamIndex) {
+	const FFMPEGContext &ffmpeg = *globalFFMPEGFunctions;
+	bool result = false;
+	PacketList *packet = nullptr;
+	if (AquirePacket(queue, packet)) {
+		ffmpeg.avInitPacket(&packet->packet);
+		packet->packet.data = nullptr;
+		packet->packet.size = 0;
+		packet->packet.stream_index = streamIndex;
+		PushPacket(queue, packet);
+		result = true;
+	}
+	return(result);
+}
+
+inline bool PushFlushPacket(PacketQueue &queue) {
+	bool result = false;
+	PacketList *packet = nullptr;
+	if (AquirePacket(queue, packet)) {
+		packet->packet = globalFlushPacket;
+		PushPacket(queue, packet);
+		result = true;
+	}
+	return(result);
+}
+
+inline void StartPacketQueue(PacketQueue &queue) {
+	MutexLock(queue.lock);
+	assert(PushFlushPacket(queue));
+	MutexUnlock(queue.lock);
 }
 
 //
 // Frame Queue
 //
 struct FrameInfo {
-	double pts;
-	double duration;
 };
 struct Frame {
 	AVFrame *frame;
-	FrameInfo infos;
+	double pts;
+	double duration;
+	int64_t pos;
+	int32_t serial;
+	bool isUploaded;
 };
 
-struct FrameQueue {
-	PacketList *pendingPacket;
-	Frame *frames;
-	MPMCBoundedQueue<Frame *> freeListQueue;
-	MPMCBoundedQueue<Frame *> availableFramesQueue;
-	uint32_t maxFrameCount;
-	bool isValid;
-	bool hasPendingPacket;
-};
-
+// @NOTE(final): This is a single producer single consumer fast ringbuffer queue.
+// The read position can never pass the write position and vice versa.
 inline AVFrame *AllocateFrame() {
 	const FFMPEGContext &ffmpeg = *globalFFMPEGFunctions;
 	AVFrame *result = ffmpeg.avFrameAlloc();
@@ -643,57 +801,130 @@ inline void FreeFrame(Frame *frame) {
 	ffmpeg.avFrameFree(&frame->frame);
 }
 
-static FrameQueue CreateFrameQueue(uint32_t capacity) {
+struct FrameQueue {
+	Frame frames[MAX_FRAME_QUEUE_COUNT];
+	ThreadMutex lock;
+	ThreadSignal signal;
+	PacketList *pendingPacket;
+	volatile uint32_t *stopped;
+	int32_t readIndex;
+	int32_t writeIndex;
+	int32_t count;
+	int32_t capacity;
+	int32_t keepLast;
+	int32_t readIndexShown;
+	bool isValid;
+	bool hasPendingPacket;
+};
+
+static bool InitFrameQueue(FrameQueue &queue, int32_t capacity, volatile uint32_t *stopped, int32_t keepLast) {
 	const FFMPEGContext &ffmpeg = *globalFFMPEGFunctions;
-	FrameQueue result = {};
-	result.maxFrameCount = (uint32_t)RoundToPowerOfTwo(capacity);
-	result.frames = (Frame *)memory::MemoryAllocate(result.maxFrameCount * sizeof(Frame));
-	result.freeListQueue = MPMCBoundedQueue<Frame *>::Create(result.maxFrameCount);
-	result.availableFramesQueue = MPMCBoundedQueue<Frame *>::Create(result.maxFrameCount);
-	for (uint32_t i = 0; i < result.maxFrameCount; ++i) {
-		Frame *frame = result.frames + i;
+	queue = {};
+	queue.capacity = FPL_MIN(capacity, MAX_FRAME_QUEUE_COUNT);
+	for (int32_t i = 0; i < queue.capacity; ++i) {
+		Frame *frame = queue.frames + i;
 		frame->frame = AllocateFrame();
-		if (!Enqueue(result.freeListQueue, frame)) {
-			assert(!"Not enough capacity in freelist, increase buffer size!");
+		if (frame->frame == nullptr) {
+			return false;
 		}
 	}
-	result.isValid = true;
-	return(result);
+
+	queue.keepLast = !!keepLast;
+	queue.stopped = stopped;
+
+	queue.lock = MutexCreate();
+	if (!queue.lock.isValid) {
+		return false;
+	}
+
+	queue.signal = SignalCreate();
+	if (!queue.signal.isValid) {
+		return false;
+	}
+
+	queue.isValid = true;
+	return true;
 }
 
 static void DestroyFrameQueue(FrameQueue &queue) {
-	if (queue.isValid) {
-		MPMCBoundedQueue<Frame *>::Destroy(queue.availableFramesQueue);
-		MPMCBoundedQueue<Frame *>::Destroy(queue.freeListQueue);
-		for (uint32_t i = 0; i < queue.maxFrameCount; ++i) {
-			Frame *frame = queue.frames + i;
-			FreeFrame(frame);
-		}
-		memory::MemoryFree(queue.frames);
+	SignalDestroy(queue.signal);
+	MutexDestroy(queue.lock);
+	for (int64_t i = 0; i < queue.capacity; ++i) {
+		Frame *frame = queue.frames + i;
+		FreeFrame(frame);
 	}
 }
 
-static void AddToFrameQueue(FrameQueue &queue, Frame *frame) {
-	assert(Enqueue(queue.availableFramesQueue, frame));
+static Frame *PeekFrameQueue(FrameQueue &queue) {
+	return &queue.frames[(queue.readIndex + queue.readIndexShown) % queue.capacity];
 }
 
-static bool TakeFromFrameQueue(FrameQueue &queue, Frame *&frame) {
-	bool result = Dequeue(queue.availableFramesQueue, frame);
-	return(result);
+static Frame *PeekFrameQueueNext(FrameQueue &queue) {
+	return &queue.frames[(queue.readIndex + queue.readIndexShown + 1) % queue.capacity];
 }
 
-static void BackToFrameQueue(FrameQueue &queue, Frame *frame) {
-	assert(Enqueue(queue.freeListQueue, frame));
+static Frame *PeekFrameQueueLast(FrameQueue &queue) {
+	return &queue.frames[queue.readIndex];
 }
 
-static bool AquireFrame(FrameQueue &queue, Frame *&frame) {
-	bool result = Dequeue(queue.freeListQueue, frame);
-	return(result);
+static bool PeekWritableFromFrameQueue(FrameQueue &queue, Frame *&frame) {
+	MutexLock(queue.lock);
+	if (queue.count >= queue.capacity || *queue.stopped) {
+		MutexUnlock(queue.lock);
+		return false;
+	}
+	MutexUnlock(queue.lock);
+
+	if (*queue.stopped) {
+		return false;
+	}
+
+	frame = &queue.frames[queue.writeIndex];
+	return true;
 }
 
-static void ReleaseFrame(FrameQueue &queue, Frame *frame) {
-	FreeFrameData(frame);
-	assert(Enqueue(queue.freeListQueue, frame));
+static bool PeekReadableFromFrameQueue(FrameQueue &queue, Frame *&frame) {
+	MutexLock(queue.lock);
+	if ((queue.count - queue.readIndexShown) <= 0 || *queue.stopped) {
+		MutexUnlock(queue.lock);
+		return false;
+	}
+	MutexUnlock(queue.lock);
+
+	if (*queue.stopped) {
+		return false;
+	}
+
+	frame = &queue.frames[(queue.readIndex + queue.readIndexShown) % queue.capacity];
+	return true;
+}
+
+static void NextWritable(FrameQueue &queue) {
+	queue.writeIndex = (queue.writeIndex + 1) % queue.capacity;
+
+	MutexLock(queue.lock);
+	queue.count++;
+	SignalWakeUp(queue.signal);
+	MutexUnlock(queue.lock);
+}
+
+static void NextReadable(FrameQueue &queue) {
+	if (queue.keepLast && !queue.readIndexShown) {
+		queue.readIndexShown = 1;
+		return;
+	}
+
+	FreeFrameData(&queue.frames[queue.readIndex]);
+	queue.readIndex = (queue.readIndex + 1) % queue.capacity;
+
+	MutexLock(queue.lock);
+	queue.count--;
+	SignalWakeUp(queue.signal);
+	MutexUnlock(queue.lock);
+}
+
+static int32_t GetFrameQueueRemainingCount(FrameQueue &queue) {
+	return queue.count - queue.readIndexShown;
 }
 
 struct MediaStream {
@@ -708,9 +939,10 @@ struct ReaderContext {
 	PacketQueue packetQueue;
 	ThreadSignal stopSignal;
 	ThreadSignal resumeSignal;
+	ThreadContext *thread;
 	volatile uint32_t readPacketCount;
 	volatile uint32_t stopRequest;
-	volatile uint32_t isDone;
+	bool isEOF;
 };
 
 static bool InitReader(ReaderContext &outReader) {
@@ -732,19 +964,23 @@ static bool InitReader(ReaderContext &outReader) {
 
 static void DestroyReader(ReaderContext &reader) {
 	DestroyPacketQueue(reader.packetQueue);
-	if (reader.resumeSignal.isValid) {
-		SignalDestroy(reader.resumeSignal);
-	}
-	if (reader.stopSignal.isValid) {
-		SignalDestroy(reader.stopSignal);
-	}
+	SignalDestroy(reader.resumeSignal);
+	SignalDestroy(reader.stopSignal);
 }
 
 static void StopReader(ReaderContext &reader) {
 	reader.stopRequest = 1;
-	if (reader.stopSignal.isValid) {
-		SignalWakeUp(reader.stopSignal);
-	}
+	SignalWakeUp(reader.stopSignal);
+	ThreadWaitForOne(reader.thread);
+	ThreadDestroy(reader.thread);
+	reader.thread = nullptr;
+}
+
+static void StartReader(ReaderContext &reader, run_thread_function *readerThreadFunc, void *state) {
+	reader.stopRequest = 0;
+	SignalReset(reader.stopSignal);
+	assert(reader.thread == nullptr);
+	reader.thread = ThreadCreate(readerThreadFunc, state);
 }
 
 struct PlayerState;
@@ -753,8 +989,7 @@ struct Decoder {
 	FrameQueue frameQueue;
 	ThreadSignal stopSignal;
 	ThreadSignal resumeSignal;
-	ThreadSignal freeFrameSignal;
-	ThreadSignal decodedFrameSignal;
+	ThreadContext *thread;
 	PlayerState *state;
 	ReaderContext *reader;
 	MediaStream *stream;
@@ -763,16 +998,19 @@ struct Decoder {
 	int64_t next_pts;
 	AVRational next_pts_tb;
 	volatile uint32_t stopRequest;
-	volatile uint32_t isDone;
+	volatile uint32_t isEOF;
 	volatile uint32_t decodedFrameCount;
+	int32_t pktSerial;
+	int32_t finishedSerial;
 };
 
-static bool InitDecoder(Decoder &outDecoder, PlayerState *state, ReaderContext *reader, MediaStream *stream, uint32_t frameCapacity) {
+static bool InitDecoder(Decoder &outDecoder, PlayerState *state, ReaderContext *reader, MediaStream *stream, uint32_t frameCapacity, int32_t keepLast) {
 	outDecoder = {};
 	outDecoder.stream = stream;
 	outDecoder.reader = reader;
 	outDecoder.state = state;
 	outDecoder.stopSignal = SignalCreate();
+	outDecoder.pktSerial = -1;
 	if (!outDecoder.stopSignal.isValid) {
 		return false;
 	}
@@ -780,18 +1018,12 @@ static bool InitDecoder(Decoder &outDecoder, PlayerState *state, ReaderContext *
 	if (!outDecoder.resumeSignal.isValid) {
 		return false;
 	}
-	outDecoder.decodedFrameSignal = SignalCreate();
-	if (!outDecoder.decodedFrameSignal.isValid) {
-		return false;
-	}
-	outDecoder.freeFrameSignal = SignalCreate();
-	if (!outDecoder.freeFrameSignal.isValid) {
-		return false;
-	}
 	if (!InitPacketQueue(outDecoder.packetsQueue)) {
 		return false;
 	}
-	outDecoder.frameQueue = CreateFrameQueue(frameCapacity);
+	if (!InitFrameQueue(outDecoder.frameQueue, frameCapacity, &outDecoder.stopRequest, keepLast)) {
+		return false;
+	}
 
 	outDecoder.start_pts = stream->stream->start_time;
 	outDecoder.start_pts_tb = stream->stream->time_base;
@@ -802,12 +1034,6 @@ static bool InitDecoder(Decoder &outDecoder, PlayerState *state, ReaderContext *
 static void DestroyDecoder(Decoder &decoder) {
 	DestroyFrameQueue(decoder.frameQueue);
 	DestroyPacketQueue(decoder.packetsQueue);
-	if (decoder.freeFrameSignal.isValid) {
-		SignalDestroy(decoder.freeFrameSignal);
-	}
-	if (decoder.decodedFrameSignal.isValid) {
-		SignalDestroy(decoder.decodedFrameSignal);
-	}
 	if (decoder.resumeSignal.isValid) {
 		SignalDestroy(decoder.resumeSignal);
 	}
@@ -816,25 +1042,27 @@ static void DestroyDecoder(Decoder &decoder) {
 	}
 }
 
+static ThreadContext *StartDecoder(Decoder &decoder, run_thread_function *decoderThreadFunc) {
+	StartPacketQueue(decoder.packetsQueue);
+	assert(decoder.thread == nullptr);
+	decoder.thread = ThreadCreate(decoderThreadFunc, &decoder);
+	return (decoder.thread);
+}
+
 static void StopDecoder(Decoder &decoder) {
 	decoder.stopRequest = 1;
 	if (decoder.stopSignal.isValid) {
 		SignalWakeUp(decoder.stopSignal);
 	}
+	ThreadWaitForOne(decoder.thread);
+	ThreadDestroy(decoder.thread);
+	decoder.thread = nullptr;
+	FlushPacketQueue(decoder.packetsQueue);
 }
 
-static void AddPacketToDecoder(Decoder &decoder, PacketList *packet) {
-	PushPacket(decoder.packetsQueue, packet);
-}
-
-static void PutFrameBackToDecoder(Decoder &decoder, Frame *frame) {
-	ReleaseFrame(decoder.frameQueue, frame);
-	SignalWakeUp(decoder.freeFrameSignal);
-}
-
-static void AddDecodedFrameToDecoder(Decoder &decoder, Frame *frame) {
-	AddToFrameQueue(decoder.frameQueue, frame);
-	SignalWakeUp(decoder.decodedFrameSignal);
+static void AddPacketToDecoder(Decoder &decoder, PacketList *targetPacket, AVPacket *sourcePacket) {
+	targetPacket->packet = *sourcePacket;
+	PushPacket(decoder.packetsQueue, targetPacket);
 }
 
 //
@@ -845,6 +1073,8 @@ struct Clock {
 	double ptsDrift;
 	double lastUpdated;
 	double speed;
+	int32_t *queueSerial;
+	int32_t serial;
 	bool isPaused;
 };
 namespace AVSyncTypes {
@@ -890,9 +1120,6 @@ struct VideoContext {
 	AVFrame *targetRGBFrame;
 	uint8_t *targetRGBBuffer;
 	SwsContext *softwareScaleCtx;
-	Frame *waitingFrame;
-	FrameInfo prevFrameInfo;
-	FrameInfo nextFrameInfo;
 };
 
 static void UploadTexture(VideoContext &video, AVFrame *sourceNativeFrame) {
@@ -912,6 +1139,7 @@ struct AudioContext {
 	Decoder decoder;
 	Clock clock;
 	double audioClock;
+	int32_t audioClockSerial;
 
 	SwrContext *softwareResampleCtx;
 	Frame *pendingAudioFrame;
@@ -932,14 +1160,25 @@ struct PlayerPosition {
 struct PlayerSettings {
 	PlayerPosition startTime;
 	PlayerPosition duration;
-	bool useInfiniteBuffer;
+	int32_t frameDrop;
+	bool isInfiniteBuffer;
+	bool isLoop;
 };
 
 inline void InitPlayerSettings(PlayerSettings &settings) {
 	settings.startTime = {};
 	settings.duration = {};
-	settings.useInfiniteBuffer = false;
+	settings.frameDrop = 1;
+	settings.isInfiniteBuffer = false;
+	settings.isLoop = true;
 }
+
+struct SeekState {
+	int64_t pos;
+	int64_t rel;
+	int seekFlags;
+	bool isRequired;
+};
 
 fpl_constant uint32_t MAX_STREAM_COUNT = 8;
 struct PlayerState {
@@ -949,6 +1188,7 @@ struct PlayerState {
 	AudioContext audio;
 	PlayerSettings settings;
 	Clock externalClock;
+	SeekState seek;
 	AVFormatContext *formatCtx;
 	double frameLastPTS;
 	double frameLastDelay;
@@ -956,40 +1196,16 @@ struct PlayerState {
 	double maxFrameDuration;
 	AVSyncType syncType;
 	volatile uint32_t forceRefresh;
+	int loop;
+	int readPauseReturn;
+	int step;
+	int frame_drops_early;
+	int frame_drops_late;
 	bool isInfiniteBuffer;
 	bool isRealTime;
 	bool isPaused;
+	bool lastPaused;
 };
-
-// Max number of frames in the queues
-fpl_constant uint32_t MAX_VIDEO_FRAME_QUEUE_COUNT = 4;
-fpl_constant uint32_t MAX_AUDIO_FRAME_QUEUE_COUNT = 8;
-
-// Total size of data from all packet queues
-fpl_constant uint64_t MAX_PACKET_QUEUE_SIZE = FPL_MEGABYTES(16);
-
-// Min number of packet frames in a single queue
-fpl_constant uint32_t MIN_PACKET_FRAMES = 25;
-
-// External clock min/max frames
-fpl_constant uint32_t EXTERNAL_CLOCK_MIN_FRAMES = 2;
-fpl_constant uint32_t EXTERNAL_CLOCK_MAX_FRAMES = 10;
-
-// External clock speed adjustment constants for realtime sources based on buffer fullness
-#define EXTERNAL_CLOCK_SPEED_MIN  0.900
-#define EXTERNAL_CLOCK_SPEED_MAX  1.010
-#define EXTERNAL_CLOCK_SPEED_STEP 0.001
-
-// No AV sync correction is done if below the minimum AV sync threshold
-fpl_constant double AV_SYNC_THRESHOLD_MIN = 0.04;
-// No AV sync correction is done if above the maximum AV sync threshold
-fpl_constant double AV_SYNC_THRESHOLD_MAX = 0.1;
-// No AV correction is done if too big error
-fpl_constant double AV_NOSYNC_THRESHOLD = 10.0;
-// If a frame duration is longer than this, it will not be duplicated to compensate AV sync
-fpl_constant double AV_SYNC_FRAMEDUP_THRESHOLD = 0.1;
-// Default refresh rate of 1/sec
-fpl_constant double DEFAULT_REFRESH_RATE = 0.01;
 
 inline void PutPacketBackToReader(ReaderContext &reader, PacketList *packet) {
 	const FFMPEGContext &ffmpeg = *globalFFMPEGFunctions;
@@ -1023,6 +1239,9 @@ inline AVSyncType GetMasterSyncType(PlayerState *state) {
 
 inline double GetClock(Clock &clock) {
 	const FFMPEGContext &ffmpeg = *globalFFMPEGFunctions;
+	if (*clock.queueSerial != clock.serial) {
+		return NAN;
+	}
 	double result;
 	if (clock.isPaused) {
 		result = clock.pts;
@@ -1033,34 +1252,36 @@ inline double GetClock(Clock &clock) {
 	return(result);
 }
 
-inline void SetClockAt(Clock &clock, double pts, double time) {
+inline void SetClockAt(Clock &clock, double pts, int32_t serial, double time) {
 	clock.pts = pts;
 	clock.lastUpdated = time;
 	clock.ptsDrift = clock.pts - clock.lastUpdated;
+	clock.serial = serial;
 }
 
-inline void SetClock(Clock &clock, double pts) {
+inline void SetClock(Clock &clock, double pts, int32_t serial) {
 	const FFMPEGContext &ffmpeg = *globalFFMPEGFunctions;
 	double time = (double)ffmpeg.avGetTimeRelative() / (double)AV_TIME_BASE;
-	SetClockAt(clock, pts, time);
+	SetClockAt(clock, pts, serial, time);
 }
 
 inline void SetClockSpeed(Clock &clock, double speed) {
-	SetClock(clock, GetClock(clock));
+	SetClock(clock, GetClock(clock), clock.serial);
 	clock.speed = speed;
 }
 
-inline void InitClock(Clock &clock) {
+inline void InitClock(Clock &clock, int32_t *queueSerial) {
 	clock.speed = 1.0;
 	clock.isPaused = false;
-	SetClock(clock, NAN);
+	clock.queueSerial = queueSerial;
+	SetClock(clock, NAN, -1);
 }
 
 inline void SyncClockToSlave(Clock &c, Clock &slave) {
 	double clock = GetClock(c);
 	double slaveClock = GetClock(slave);
 	if (!isnan(slaveClock) && (isnan(clock) || fabs(clock - slaveClock) > AV_NOSYNC_THRESHOLD)) {
-		SetClock(c, slaveClock);
+		SetClock(c, slaveClock, slave.serial);
 	}
 }
 
@@ -1095,6 +1316,12 @@ static void UpdateExternalClockSpeed(PlayerState *state) {
 	}
 }
 
+static void AddFrameToDecoder(Decoder &decoder, Frame *frame, AVFrame *srcFrame) {
+	const FFMPEGContext &ffmpeg = *globalFFMPEGFunctions;
+	ffmpeg.avFrameMoveRef(frame->frame, srcFrame);
+	NextWritable(decoder.frameQueue);
+}
+
 namespace DecodeResults {
 	enum DecodeResultEnum {
 		Failed = -99,
@@ -1107,92 +1334,123 @@ namespace DecodeResults {
 };
 typedef DecodeResults::DecodeResultEnum DecodeResult;
 
-static DecodeResult DecodeFrame(ReaderContext &reader, Decoder &decoder, Frame *outFrame) {
+static DecodeResult DecodeFrame(ReaderContext &reader, Decoder &decoder, AVFrame *frame) {
 	const FFMPEGContext &ffmpeg = *globalFFMPEGFunctions;
 	assert(decoder.stream != nullptr);
 	AVCodecContext *codecCtx = decoder.stream->codecContext;
 	int ret = AVERROR(EAGAIN);
 	PacketList *pkt;
 	for (;;) {
-		do {
-			if (decoder.isDone) {
-				return DecodeResult::Skipped;
-			}
-			if (decoder.stopRequest) {
-				return DecodeResult::Stopped;
-			}
+		if (decoder.packetsQueue.serial == decoder.pktSerial) {
+			do {
+				if (decoder.isEOF) {
+					return DecodeResult::Skipped;
+				}
+				if (decoder.stopRequest) {
+					return DecodeResult::Stopped;
+				}
 
-			AVFrame *frame = outFrame->frame;
-
-			switch (codecCtx->codec_type) {
-				case AVMediaType::AVMEDIA_TYPE_VIDEO:
-				{
-					//avcodec_receive_frame
-					ret = ffmpeg.avcodecReceiveFrame(codecCtx, frame);
-					if (ret == 0) {
-						frame->pts = frame->best_effort_timestamp;
-					} else if (ret == AVERROR(EAGAIN)) {
-						// This will continue sending packets until the frame is complete
-						break;
-					}
-				} break;
-
-				case AVMediaType::AVMEDIA_TYPE_AUDIO:
-				{
-					ret = ffmpeg.avcodecReceiveFrame(codecCtx, frame);
-					if (ret == 0) {
-						AVRational tb = { 1, frame->sample_rate };
-						if (frame->pts != AV_NOPTS_VALUE) {
-							frame->pts = ffmpeg.avRescaleQ(frame->pts, codecCtx->pkt_timebase, tb);
-						} else if (decoder.next_pts != AV_NOPTS_VALUE) {
-							frame->pts = ffmpeg.avRescaleQ(decoder.next_pts, decoder.next_pts_tb, tb);
+				switch (codecCtx->codec_type) {
+					case AVMediaType::AVMEDIA_TYPE_VIDEO:
+					{
+						ret = ffmpeg.avcodecReceiveFrame(codecCtx, frame);
+						if (ret == 0) {
+							frame->pts = frame->best_effort_timestamp;
+						} else if (ret == AVERROR(EAGAIN)) {
+							// This will continue sending packets until the frame is complete
+							break;
 						}
-						if (frame->pts != AV_NOPTS_VALUE) {
-							decoder.next_pts = frame->pts + frame->nb_samples;
-							decoder.next_pts_tb = tb;
-						}
-					} else if (ret == AVERROR(EAGAIN)) {
-						// This will continue sending packets until the frame is complete
-						break;
-					}
-				} break;
-			}
-			if (ret == 0) {
-				return DecodeResult::Success;
-			} else if (ret == AVERROR_EOF) {
-				ffmpeg.avcodecFlushBuffers(codecCtx);
-				return DecodeResult::EndOfStream;
-			} else if (ret == AVERROR(EAGAIN)) {
-				// This will continue sending packets until the frame is complete
-				break;
-			} else {
-				return DecodeResult::Failed;
-			}
-		} while (ret != AVERROR(EAGAIN));
+					} break;
 
-		if (decoder.frameQueue.hasPendingPacket) {
-			assert(decoder.frameQueue.pendingPacket != nullptr);
-			pkt = decoder.frameQueue.pendingPacket;
-			decoder.frameQueue.hasPendingPacket = false;
-		} else {
-			pkt = nullptr;
-			if (PopPacket(decoder.packetsQueue, pkt)) {
-				assert(pkt->packet.data != nullptr);
-			} else {
-				// We cannot continue to decode, because the packet queue is empty
-				return DecodeResult::RequireMorePackets;
-			}
+					case AVMediaType::AVMEDIA_TYPE_AUDIO:
+					{
+						ret = ffmpeg.avcodecReceiveFrame(codecCtx, frame);
+						if (ret == 0) {
+							AVRational tb = { 1, frame->sample_rate };
+							if (frame->pts != AV_NOPTS_VALUE) {
+								frame->pts = ffmpeg.avRescaleQ(frame->pts, codecCtx->pkt_timebase, tb);
+							} else if (decoder.next_pts != AV_NOPTS_VALUE) {
+								frame->pts = ffmpeg.avRescaleQ(decoder.next_pts, decoder.next_pts_tb, tb);
+							}
+							if (frame->pts != AV_NOPTS_VALUE) {
+								decoder.next_pts = frame->pts + frame->nb_samples;
+								decoder.next_pts_tb = tb;
+							}
+						} else if (ret == AVERROR(EAGAIN)) {
+							// This will continue sending packets until the frame is complete
+							break;
+						}
+					} break;
+				}
+				if (ret == 0) {
+					return DecodeResult::Success;
+				} else if (ret == AVERROR_EOF) {
+					decoder.finishedSerial = decoder.pktSerial;
+					ffmpeg.avcodecFlushBuffers(codecCtx);
+					return DecodeResult::EndOfStream;
+				} else if (ret == AVERROR(EAGAIN)) {
+					// This will continue sending packets until the frame is complete
+					break;
+				} else {
+					return DecodeResult::Failed;
+				}
+			} while (ret != AVERROR(EAGAIN));
 		}
 
-		if (pkt != nullptr) {
-			if (ffmpeg.avcodecSendPacket(codecCtx, &pkt->packet) == AVERROR(EAGAIN)) {
-				decoder.frameQueue.hasPendingPacket = true;
-				decoder.frameQueue.pendingPacket = pkt;
+		do {
+			if (decoder.frameQueue.hasPendingPacket) {
+				assert(decoder.frameQueue.pendingPacket != nullptr);
+				pkt = decoder.frameQueue.pendingPacket;
+				decoder.frameQueue.hasPendingPacket = false;
 			} else {
+				pkt = nullptr;
+				if (PopPacket(decoder.packetsQueue, pkt)) {
+					decoder.pktSerial = pkt->serial;
+				} else {
+					// We cannot continue to decode, because the packet queue is empty
+					return DecodeResult::RequireMorePackets;
+				}
+			}
+		} while (decoder.packetsQueue.serial != decoder.pktSerial);
+
+		if (pkt != nullptr) {
+			if (IsFlushPacket(pkt)) {
+				ffmpeg.avcodecFlushBuffers(decoder.stream->codecContext);
+				decoder.finishedSerial = 0;
+				decoder.next_pts = decoder.start_pts;
+				decoder.next_pts_tb = decoder.start_pts_tb;
 				PutPacketBackToReader(reader, pkt);
+			} else {
+				if (ffmpeg.avcodecSendPacket(codecCtx, &pkt->packet) == AVERROR(EAGAIN)) {
+					decoder.frameQueue.hasPendingPacket = true;
+					decoder.frameQueue.pendingPacket = pkt;
+				} else {
+					PutPacketBackToReader(reader, pkt);
+				}
 			}
 		}
 	}
+}
+
+static void QueuePicture(Decoder &decoder, AVFrame *sourceFrame, Frame *targetFrame, int32_t serial) {
+	const FFMPEGContext &ffmpeg = *globalFFMPEGFunctions;
+
+	assert(targetFrame != nullptr);
+	assert(targetFrame->frame != nullptr);
+	assert(targetFrame->frame->pkt_size <= 0);
+	assert(targetFrame->frame->width == 0);
+
+	AVStream *videoStream = decoder.stream->stream;
+
+	AVRational currentTimeBase = videoStream->time_base;
+	AVRational currentFrameRate = ffmpeg.avGuessFrameRate(decoder.state->formatCtx, videoStream, nullptr);
+
+	targetFrame->pos = sourceFrame->pkt_pos;
+	targetFrame->pts = (sourceFrame->pts == AV_NOPTS_VALUE) ? NAN : sourceFrame->pts * av_q2d(currentTimeBase);
+	targetFrame->duration = (currentFrameRate.num && currentFrameRate.den ? av_q2d({ currentFrameRate.den, currentFrameRate.num }) : 0);
+	targetFrame->serial = serial;
+
+	AddFrameToDecoder(decoder, targetFrame, sourceFrame);
 }
 
 static void VideoDecodingThreadProc(const ThreadContext &thread, void *userData) {
@@ -1213,8 +1471,8 @@ static void VideoDecodingThreadProc(const ThreadContext &thread, void *userData)
 	ThreadSignal *waitSignals[] = {
 		// New packet arrived
 		&decoder->packetsQueue.addedSignal,
-		// Got a free frame to decode in it
-		&decoder->freeFrameSignal,
+		// Frame queue changed
+		&decoder->frameQueue.signal,
 		// Stopped decoding
 		&decoder->stopSignal,
 		// Resume from sleeping
@@ -1223,11 +1481,8 @@ static void VideoDecodingThreadProc(const ThreadContext &thread, void *userData)
 
 	AVStream *videoStream = decoder->stream->stream;
 
-	AVRational currentTimeBase = videoStream->time_base;
-	AVRational currentFrameRate = ffmpeg.avGuessFrameRate(state->formatCtx, videoStream, nullptr);
-
-	bool aquireNewTargetFrame = true;
-	Frame *targetFrame = nullptr;
+	AVFrame *sourceFrame = ffmpeg.avFrameAlloc();
+	bool hasDecodedFrame = false;
 	for (;;) {
 		// Wait for any signal (Available packet, Free frame, Stopped, Wake up)
 		SignalWaitForAny(waitSignals, FPL_ARRAYCOUNT(waitSignals));
@@ -1238,55 +1493,88 @@ static void VideoDecodingThreadProc(const ThreadContext &thread, void *userData)
 		}
 
 		// Wait until the decoder wakes up in the next iteration when the decoder is paused
-		if (decoder->isDone) {
+		if (decoder->isEOF) {
+			ThreadSleep(10);
 			continue;
 		}
 
-		// Get target frame from the free list if needed
-		if (aquireNewTargetFrame) {
-			targetFrame = nullptr;
-			if (!AquireFrame(decoder->frameQueue, targetFrame)) {
-				continue;
-			}
-			aquireNewTargetFrame = false;
-		}
-		assert(targetFrame != nullptr);
-		assert(targetFrame->frame != nullptr);
-		assert(targetFrame->frame->pkt_size <= 0);
-		assert(targetFrame->frame->width == 0);
+		if (!hasDecodedFrame) {
+			// Decode video frame
+			DecodeResult decodeResult = DecodeFrame(reader, *decoder, sourceFrame);
+			if (decodeResult != DecodeResult::Success) {
+				if (decodeResult != DecodeResult::RequireMorePackets) {
+					ffmpeg.avFrameUnref(sourceFrame);
+				}
+				if (decodeResult == DecodeResult::EndOfStream) {
+					decoder->isEOF = 1;
+					continue;
+				} else if (decodeResult <= DecodeResult::Stopped) {
+					break;
+				}
 
-		// Decode video frame
-		DecodeResult decodeResult = DecodeFrame(reader, *decoder, targetFrame);
-		if (decodeResult != DecodeResult::Success) {
-			if (decodeResult != DecodeResult::RequireMorePackets) {
-				FreeFrameData(targetFrame);
-			}
-			if (decodeResult == DecodeResult::EndOfStream) {
-				decoder->isDone = 1;
-				continue;
-			} else if (decodeResult <= DecodeResult::Stopped) {
-				break;
-			}
-		} else {
-			double duration = (currentFrameRate.num && currentFrameRate.den ? av_q2d({ currentFrameRate.den, currentFrameRate.num }) : 0);
-			double pts = (targetFrame->frame->pts == AV_NOPTS_VALUE) ? NAN : targetFrame->frame->pts * av_q2d(currentTimeBase);
-			targetFrame->infos.pts = pts;
-			targetFrame->infos.duration = duration;
-
-			// Frame decoded, add it to the decoder
-			aquireNewTargetFrame = true;
-			AddDecodedFrameToDecoder(*decoder, targetFrame);
-			uint32_t decodedAudioFrameIndex = AtomicAddU32(&decoder->decodedFrameCount, 1);
+				// Stream finished and no packets left to decode, then are finished as well
+				if (reader.isEOF && (decoder->packetsQueue.packetCount == 0)) {
+					decoder->isEOF = 1;
+				}
+			} else {
 #if PRINT_QUEUE_INFOS
-			ConsoleFormatOut("Decoded video frame %lu\n", decodedAudioFrameIndex);
+				uint32_t decodedVideoFrameIndex = AtomicAddU32(&decoder->decodedFrameCount, 1);
+				ConsoleFormatOut("Decoded video frame %lu\n", decodedVideoFrameIndex);
 #endif
+				sourceFrame->sample_aspect_ratio = ffmpeg.avGuessSampleAspectRatio(state->formatCtx, stream->stream, sourceFrame);
+				hasDecodedFrame = true;
 
-			// Stream finished and no packets left to decode, then are finished as well
-			if (reader.isDone && (decoder->packetsQueue.first == nullptr)) {
-				decoder->isDone = 1;
+				if (state->settings.frameDrop > 0 || (state->settings.frameDrop && GetMasterSyncType(state) != AVSyncType::VideoMaster)) {
+					double dpts = NAN;
+					if (sourceFrame->pts != AV_NOPTS_VALUE) {
+						dpts = av_q2d(stream->stream->time_base) * sourceFrame->pts;
+					}
+					if (!isnan(dpts)) {
+						double diff = dpts - GetMasterClock(state);
+						if (!isnan(diff) && fabs(diff) < AV_NOSYNC_THRESHOLD &&
+							diff < 0 &&
+							decoder->pktSerial == state->video.clock.serial &&
+							decoder->packetsQueue.packetCount) {
+							state->frame_drops_early++;
+							ffmpeg.avFrameUnref(sourceFrame);
+							hasDecodedFrame = false;
+						}
+					}
+				}
 			}
 		}
+
+		if (hasDecodedFrame) {
+			Frame *targetFrame = nullptr;
+			if (PeekWritableFromFrameQueue(decoder->frameQueue, targetFrame)) {
+				QueuePicture(*decoder, sourceFrame, targetFrame, decoder->pktSerial);
+				ffmpeg.avFrameUnref(sourceFrame);
+				hasDecodedFrame = false;
+			}
+		}
+
 	}
+	ffmpeg.avFrameFree(&sourceFrame);
+}
+
+static void QueueSamples(Decoder &decoder, AVFrame *sourceFrame, Frame *targetFrame, int32_t serial) {
+	const FFMPEGContext &ffmpeg = *globalFFMPEGFunctions;
+
+	assert(targetFrame != nullptr);
+	assert(targetFrame->frame != nullptr);
+	assert(targetFrame->frame->pkt_size <= 0);
+	assert(targetFrame->frame->nb_samples == 0);
+
+	AVStream *audioStream = decoder.stream->stream;
+
+	AVRational currentTimeBase = audioStream->time_base;
+
+	targetFrame->pos = sourceFrame->pkt_pos;
+	targetFrame->pts = (sourceFrame->pts == AV_NOPTS_VALUE) ? NAN : sourceFrame->pts * av_q2d(currentTimeBase);
+	targetFrame->duration = av_q2d({ sourceFrame->nb_samples, sourceFrame->sample_rate });
+	targetFrame->serial = serial;
+
+	AddFrameToDecoder(decoder, targetFrame, sourceFrame);
 }
 
 static void AudioDecodingThreadProc(const ThreadContext &thread, void *userData) {
@@ -1308,17 +1596,16 @@ static void AudioDecodingThreadProc(const ThreadContext &thread, void *userData)
 	ThreadSignal *waitSignals[] = {
 		// New packet arrived
 		&decoder->packetsQueue.addedSignal,
-		// Got a free frame to decode in it
-		&decoder->freeFrameSignal,
+		// Frame queue changed
+		&decoder->frameQueue.signal,
 		// Stopped decoding
 		&decoder->stopSignal,
 		// Resume from sleeping
 		&decoder->resumeSignal,
 	};
 
-	bool autoStarted = false;
-	bool aquireNewTargetFrame = true;
-	Frame *targetFrame = nullptr;
+	AVFrame *sourceFrame = ffmpeg.avFrameAlloc();
+	bool hasDecodedFrame = false;
 	for (;;) {
 		// Wait for any signal (Available packet, Free frame, Stopped, Wake up)
 		SignalWaitForAny(waitSignals, FPL_ARRAYCOUNT(waitSignals));
@@ -1329,60 +1616,64 @@ static void AudioDecodingThreadProc(const ThreadContext &thread, void *userData)
 		}
 
 		// Wait until the decoder wakes up in the next iteration when the decoder is paused
-		if (decoder->isDone) {
+		if (decoder->isEOF) {
 			continue;
 		}
 
-		// Get target frame from the free list if needed
-		if (aquireNewTargetFrame) {
-			targetFrame = nullptr;
-			if (!AquireFrame(decoder->frameQueue, targetFrame)) {
-				continue;
-			}
-			aquireNewTargetFrame = false;
-		}
-		assert(targetFrame != nullptr);
-		assert(targetFrame->frame != nullptr);
-		assert(targetFrame->frame->pkt_size <= 0);
-		assert(targetFrame->frame->nb_samples == 0);
+		if (!hasDecodedFrame) {
+			// Decode video frame
+			DecodeResult decodeResult = DecodeFrame(reader, *decoder, sourceFrame);
+			if (decodeResult != DecodeResult::Success) {
+				if (decodeResult != DecodeResult::RequireMorePackets) {
+					ffmpeg.avFrameUnref(sourceFrame);
+				}
+				if (decodeResult == DecodeResult::EndOfStream) {
+					decoder->isEOF = 1;
+					continue;
+				} else if (decodeResult <= DecodeResult::Stopped) {
+					break;
+				}
 
-		// Decode audio frame
-		DecodeResult decodeResult = DecodeFrame(reader, *decoder, targetFrame);
-		if (decodeResult != DecodeResult::Success) {
-			if (decodeResult != DecodeResult::RequireMorePackets) {
-				FreeFrameData(targetFrame);
-			}
-			if (decodeResult == DecodeResult::EndOfStream) {
-				decoder->isDone = 1;
-				continue;
-			} else if (decodeResult <= DecodeResult::Stopped) {
-				break;
-			}
-		} else {
-			// Update audio pts
-			targetFrame->infos.pts = (double)targetFrame->frame->pts;
-
-			// Update decoder audio clock
-			if (!isnan(targetFrame->infos.pts)) {
-				state->audio.audioClock = targetFrame->infos.pts + (double)targetFrame->frame->nb_samples / (double)targetFrame->frame->sample_rate;
+				// Stream finished and no packets left to decode, then are finished as well
+				if (reader.isEOF && (decoder->packetsQueue.packetCount == 0)) {
+					decoder->isEOF = 1;
+				}
 			} else {
-				state->audio.audioClock = NAN;
-			}
-
-			// Frame decoded, add it to the decoder
-			aquireNewTargetFrame = true;
-			AddDecodedFrameToDecoder(*decoder, targetFrame);
-			uint32_t decodedAudioFrameIndex = AtomicAddU32(&decoder->decodedFrameCount, 1);
 #if PRINT_QUEUE_INFOS
-			ConsoleFormatOut("Decoded audio frame %lu\n", decodedAudioFrameIndex);
+				uint32_t decodedAudioFrameIndex = AtomicAddU32(&decoder->decodedFrameCount, 1);
+				ConsoleFormatOut("Decoded audio frame %lu\n", decodedAudioFrameIndex);
 #endif
+				hasDecodedFrame = true;
+			}
+		}
 
-			// Stream finished and no packets left to decode, then are finished as well
-			if (reader.isDone && (decoder->packetsQueue.first == 0)) {
-				decoder->isDone = 1;
+		if (hasDecodedFrame) {
+			Frame *targetFrame = nullptr;
+			if (PeekWritableFromFrameQueue(decoder->frameQueue, targetFrame)) {
+				QueueSamples(*decoder, sourceFrame, targetFrame, decoder->pktSerial);
+
+				// Update decoder audio clock
+				if (!isnan(targetFrame->pts)) {
+					state->audio.audioClock = targetFrame->pts + (double)targetFrame->frame->nb_samples / (double)targetFrame->frame->sample_rate;
+				} else {
+					state->audio.audioClock = NAN;
+				}
+				state->audio.audioClockSerial = targetFrame->serial;
+
+				ffmpeg.avFrameUnref(sourceFrame);
+				hasDecodedFrame = false;
 			}
 		}
 	}
+	ffmpeg.avFrameFree(&sourceFrame);
+}
+
+static void WriteSilenceSamples(AudioContext *audio, uint32_t remainingFrameCount, uint32_t outputSampleStride, uint8_t *conversionAudioBuffer) {
+	audio->conversionAudioFramesRemaining = remainingFrameCount;
+	audio->conversionAudioFrameIndex = 0;
+	size_t bytesToClear = remainingFrameCount * outputSampleStride;
+	MemoryClear(conversionAudioBuffer, bytesToClear);
+
 }
 
 static uint32_t AudioReadCallback(const AudioDeviceFormat &nativeFormat, const uint32_t frameCount, void *outputSamples, void *userData) {
@@ -1412,6 +1703,10 @@ static uint32_t AudioReadCallback(const AudioDeviceFormat &nativeFormat, const u
 
 		uint32_t remainingFrameCount = frameCount;
 		while (remainingFrameCount > 0) {
+			if (state->isPaused) {
+				WriteSilenceSamples(audio, remainingFrameCount, outputSampleStride, conversionAudioBuffer);
+			}
+
 			// Consume audio in conversion buffer before we do anything else
 			if ((audio->conversionAudioFramesRemaining) > 0) {
 				uint32_t maxFramesToRead = audio->conversionAudioFramesRemaining;
@@ -1458,7 +1753,7 @@ static uint32_t AudioReadCallback(const AudioDeviceFormat &nativeFormat, const u
 
 				int samplesPerChannel = ffmpeg.swrConvert(audio->softwareResampleCtx, (uint8_t **)&audio->conversionAudioBuffer, maxConversionSampleCount, (const uint8_t **)sourceSamples, sourceSampleCount);
 
-				PutFrameBackToDecoder(decoder, audioFrame);
+				NextReadable(decoder.frameQueue);
 
 				if (samplesPerChannel <= 0) {
 					break;
@@ -1470,14 +1765,22 @@ static uint32_t AudioReadCallback(const AudioDeviceFormat &nativeFormat, const u
 
 			if ((audio->pendingAudioFrame == nullptr) && (audio->conversionAudioFramesRemaining == 0)) {
 				Frame *newAudioFrame;
-				if (TakeFromFrameQueue(decoder.frameQueue, newAudioFrame)) {
+				if (!state->isPaused && PeekReadableFromFrameQueue(decoder.frameQueue, newAudioFrame)) {
+					if (newAudioFrame->serial != decoder.packetsQueue.serial) {
+						NextReadable(decoder.frameQueue);
+						continue;
+					}
 					audio->pendingAudioFrame = newAudioFrame;
 					audio->conversionAudioFrameIndex = 0;
 					audio->conversionAudioFramesRemaining = 0;
 					continue;
 				} else {
-					// No audio frame available (Decoder is too slow).
-					break;
+					// No audio frame available, write silence for the remaining frames
+					if (remainingFrameCount > 0) {
+						WriteSilenceSamples(audio, remainingFrameCount, outputSampleStride, conversionAudioBuffer);
+					} else {
+						break;
+					}
 				}
 			}
 		}
@@ -1487,13 +1790,49 @@ static uint32_t AudioReadCallback(const AudioDeviceFormat &nativeFormat, const u
 			uint32_t writtenSize = result * outputSampleStride;
 			uint32_t bytesPerSample = nativeFormat.sampleRate * outputSampleStride;
 			double diff = (double)(nativeFormat.periods * nativeFormat.bufferSizeInBytes + writtenSize) / (double)bytesPerSample;
-			SetClockAt(audio->clock, audio->audioClock - diff, audioCallbackTime / (double)AV_TIME_BASE);
+			SetClockAt(audio->clock, audio->audioClock - diff, audio->audioClockSerial, audioCallbackTime / (double)AV_TIME_BASE);
 			SyncClockToSlave(state->externalClock, audio->clock);
 		}
 
 	}
 
 	return(result);
+}
+
+static void StreamTogglePause(PlayerState *state) {
+	const FFMPEGContext &ffmpeg = *globalFFMPEGFunctions;
+	if (state->isPaused) {
+		state->frameTimer += ffmpeg.avGetTimeRelative() / 1000000.0 - state->video.clock.lastUpdated;
+		if (state->readPauseReturn != AVERROR(ENOSYS)) {
+			state->video.clock.isPaused = false;
+		}
+		SetClock(state->video.clock, GetClock(state->video.clock), state->video.clock.serial);
+	}
+	SetClock(state->externalClock, GetClock(state->externalClock), state->externalClock.serial);
+	state->isPaused = state->audio.clock.isPaused = state->video.clock.isPaused = state->externalClock.isPaused = !state->isPaused;
+}
+
+static void SeekStream(SeekState *state, int64_t pos, int64_t rel, bool seekInBytes) {
+	if (!state->isRequired) {
+		state->pos = pos;
+		state->rel = rel;
+		state->seekFlags &= ~AVSEEK_FLAG_BYTE;
+		if (seekInBytes)
+			state->seekFlags |= AVSEEK_FLAG_BYTE;
+		state->isRequired = 1;
+	}
+}
+
+static void TogglePause(PlayerState *state) {
+	StreamTogglePause(state);
+	state->step = false;
+}
+
+static void StepToNextFrame(PlayerState *state) {
+	if (state->isPaused) {
+		StreamTogglePause(state);
+	}
+	state->step = 1;
 }
 
 static void PacketReadThreadProc(const ThreadContext &thread, void *userData) {
@@ -1520,6 +1859,8 @@ static void PacketReadThreadProc(const ThreadContext &thread, void *userData) {
 	};
 
 	bool skipWait = true;
+	AVPacket srcPacket;
+	bool hasPendingPacket = false;
 	for (;;) {
 		// Wait for any signal or skip wait
 		if (!skipWait) {
@@ -1533,68 +1874,151 @@ static void PacketReadThreadProc(const ThreadContext &thread, void *userData) {
 			break;
 		}
 
-		// Sleep 10 ms then wait until the reader wakes up in the next iteration when we are finished
-		if (reader.isDone) {
-			ThreadSleep(10);
-			skipWait = false;
-			continue;
+		// Pause
+		if (state->isPaused != state->lastPaused) {
+			state->lastPaused = state->isPaused;
+			if (state->isPaused) {
+				state->readPauseReturn = ffmpeg.avReadPause(formatCtx);
+			} else {
+				ffmpeg.avReadPlay(formatCtx);
+			}
 		}
+
+		// Seeking
+		if (state->seek.isRequired) {
+			int64_t seekTarget = state->seek.pos;
+			int64_t seekMin = state->seek.rel > 0 ? seekTarget - state->seek.rel + 2 : INT64_MIN;
+			int64_t seekMax = state->seek.rel < 0 ? seekTarget - state->seek.rel - 2 : INT64_MAX;
+			int seekResult = ffmpeg.avformatSeekFile(formatCtx, -1, seekMin, seekTarget, seekMax, state->seek.seekFlags);
+			if (seekResult < 0) {
+				// @TODO(final): Log seek error
+			} else {
+				if (state->seek.seekFlags & AVSEEK_FLAG_BYTE) {
+					SetClock(state->externalClock, NAN, 0);
+				} else {
+					SetClock(state->externalClock, seekTarget / (double)AV_TIME_BASE, 0);
+				}
+				if (state->audio.stream.isValid) {
+					FlushPacketQueue(state->audio.decoder.packetsQueue);
+					PushFlushPacket(state->audio.decoder.packetsQueue);
+
+					state->audio.decoder.isEOF = false;
+					SignalWakeUp(state->audio.decoder.resumeSignal);
+				}
+				if (state->video.stream.isValid) {
+					FlushPacketQueue(state->video.decoder.packetsQueue);
+					PushFlushPacket(state->video.decoder.packetsQueue);
+
+					state->video.decoder.isEOF = false;
+					SignalWakeUp(state->video.decoder.resumeSignal);
+				}
+			}
+			state->seek.isRequired = false;
+			reader.isEOF = false;
+			if (state->isPaused) {
+				StepToNextFrame(state);
+			}
+		}
+
+		// @TODO(final): Handle attached pictures
 
 		// Limit the queue?
 		if ((!state->isInfiniteBuffer &&
 			(audio.decoder.packetsQueue.size + video.decoder.packetsQueue.size) > MAX_PACKET_QUEUE_SIZE) ||
-			(StreamHasEnoughPackets(audio.stream.stream, audio.stream.streamIndex, audio.decoder.packetsQueue) &&
-			StreamHasEnoughPackets(video.stream.stream, video.stream.streamIndex, video.decoder.packetsQueue))) {
+			 (StreamHasEnoughPackets(audio.stream.stream, audio.stream.streamIndex, audio.decoder.packetsQueue) &&
+			  StreamHasEnoughPackets(video.stream.stream, video.stream.streamIndex, video.decoder.packetsQueue))) {
 			skipWait = true;
 			ThreadSleep(10);
 			continue;
 		}
 
-		// Try to get new packet from the freelist
-		PacketList *packet = nullptr;
-		if (AquirePacket(reader.packetQueue, packet)) {
-			assert(packet != nullptr);
+		//
+		// Seek to the beginning when everything is done
+		//
+		// @TODO(final): Make this configurable
+		bool autoExit = true;
+		int64_t startTime = AV_NOPTS_VALUE;
 
-			// Read packet
-			int res = ffmpeg.avReadFrame(formatCtx, &packet->packet);
-			AtomicAddS32(&globalMemStats.referencedPackets, 1);
-			if (res < 0) {
-				// Error or stream done
-				PutPacketBackToReader(reader, packet);
-				reader.isDone = 1;
-				continue;
-			}
-
-			uint32_t packetIndex = AtomicAddU32(&reader.readPacketCount, 1);
-#if PRINT_QUEUE_INFOS
-			ConsoleFormatOut("Read packet %lu\n", packetIndex);
-#endif
-
-			// Check if packet is in play range, then queue, otherwise discard
-			int64_t streamStartTime = formatCtx->streams[packet->packet.stream_index]->start_time;
-			int64_t pktTimeStamp = (packet->packet.pts == AV_NOPTS_VALUE) ? packet->packet.dts : packet->packet.pts;
-			double timeInSeconds = (double)(pktTimeStamp - (streamStartTime != AV_NOPTS_VALUE ? streamStartTime : 0)) * av_q2d(formatCtx->streams[packet->packet.stream_index]->time_base);
-			bool pktInPlayRange = (!state->settings.duration.isValid) ||
-				((timeInSeconds / (double)AV_TIME_BASE) <= ((double)state->settings.duration.value / (double)AV_TIME_BASE));
-			if ((videoStream != nullptr) && (packet->packet.stream_index == videoStream->streamIndex) && pktInPlayRange) {
-				AddPacketToDecoder(video.decoder, packet);
-#if PRINT_QUEUE_INFOS
-				ConsoleFormatOut("Queued video packet %lu\n", packetIndex);
-#endif
-			} else if ((audioStream != nullptr) && (packet->packet.stream_index == audioStream->streamIndex) && pktInPlayRange) {
-				AddPacketToDecoder(audio.decoder, packet);
-#if PRINT_QUEUE_INFOS
-				ConsoleFormatOut("Queued audio packet %lu\n", packetIndex);
-#endif
+		if (!state->isPaused &&
+			(!state->audio.stream.isValid || (state->audio.decoder.finishedSerial == state->audio.decoder.packetsQueue.serial && GetFrameQueueRemainingCount(state->audio.decoder.frameQueue) == 0)) &&
+			(!state->video.stream.isValid || (state->video.decoder.finishedSerial == state->video.decoder.packetsQueue.serial && GetFrameQueueRemainingCount(state->video.decoder.frameQueue) == 0))) {
+			if ((state->loop == -1) || (state->loop > 0)) {
+				if (state->loop > 0) {
+					--state->loop;
+				}
+				SeekStream(&state->seek, startTime != AV_NOPTS_VALUE ? startTime : 0, 0, 0);
 			} else {
+				if (autoExit) {
+					break;
+				}
+			}
+		}
+
+		// Read packet
+		if (!hasPendingPacket) {
+			int res = ffmpeg.avReadFrame(formatCtx, &srcPacket);
+			if (res < 0) {
+				if ((res == AVERROR_EOF || ffmpeg.avioFEOF(formatCtx->pb)) && !reader.isEOF) {
+					if (video.stream.isValid) {
+						PushNullPacket(video.decoder.packetsQueue, video.stream.streamIndex);
+					}
+					if (audio.stream.isValid) {
+						PushNullPacket(audio.decoder.packetsQueue, audio.stream.streamIndex);
+					}
+					reader.isEOF = true;
+				}
+				if (formatCtx->pb != nullptr && formatCtx->pb->error) {
+					// @TODO(final): Handle error
+					break;
+				}
+
+				// Wait for a few milliseconds
+				ThreadSleep(10);
+				skipWait = true;
+				continue;
+			} else {
+				hasPendingPacket = true;
+				reader.isEOF = false;
+			}
+		}
+
+		if (hasPendingPacket) {
+			// Try to get new packet from the freelist
+			PacketList *targetPacket = nullptr;
+			if (AquirePacket(reader.packetQueue, targetPacket)) {
+				assert(targetPacket != nullptr);
+
 #if PRINT_QUEUE_INFOS
-				ConsoleFormatOut("Dropped packet %lu\n", packetIndex);
+				uint32_t packetIndex = AtomicAddU32(&reader.readPacketCount, 1);
+				ConsoleFormatOut("Read packet %lu\n", packetIndex);
 #endif
-				PutPacketBackToReader(reader, packet);
+
+				// Check if packet is in play range, then queue, otherwise discard
+				int64_t streamStartTime = formatCtx->streams[srcPacket.stream_index]->start_time;
+				int64_t pktTimeStamp = (srcPacket.pts == AV_NOPTS_VALUE) ? srcPacket.dts : srcPacket.pts;
+				double timeInSeconds = (double)(pktTimeStamp - (streamStartTime != AV_NOPTS_VALUE ? streamStartTime : 0)) * av_q2d(formatCtx->streams[srcPacket.stream_index]->time_base);
+				bool pktInPlayRange = (!state->settings.duration.isValid) ||
+					((timeInSeconds / (double)AV_TIME_BASE) <= ((double)state->settings.duration.value / (double)AV_TIME_BASE));
+
+				if ((videoStream != nullptr) && (srcPacket.stream_index == videoStream->streamIndex) && pktInPlayRange) {
+					AddPacketToDecoder(video.decoder, targetPacket, &srcPacket);
+#if PRINT_QUEUE_INFOS
+					ConsoleFormatOut("Queued video packet %lu\n", packetIndex);
+#endif
+				} else if ((audioStream != nullptr) && (srcPacket.stream_index == audioStream->streamIndex) && pktInPlayRange) {
+					AddPacketToDecoder(audio.decoder, targetPacket, &srcPacket);
+#if PRINT_QUEUE_INFOS
+					ConsoleFormatOut("Queued audio packet %lu\n", packetIndex);
+#endif
+				} else {
+#if PRINT_QUEUE_INFOS
+					ConsoleFormatOut("Dropped packet %lu\n", packetIndex);
+#endif
+					ffmpeg.avPacketUnref(&srcPacket);
+				}
+				hasPendingPacket = false;
 			}
 			skipWait = true;
-		} else {
-			// Error: Packet cannot be allocated anymore!
 		}
 	}
 
@@ -1670,25 +2094,31 @@ struct RefreshState {
 	double remainingTime;
 };
 
-static void VideoDisplay(PlayerState *state, Frame *sourceNativeFrame) {
+static void DisplayVideoFrame(PlayerState *state) {
 	assert(state != nullptr);
-	assert(sourceNativeFrame != nullptr);
-	VideoContext &video = state->video;
-	UploadTexture(video, sourceNativeFrame->frame);
+	Frame *vp = PeekFrameQueueLast(state->video.decoder.frameQueue);
+	if (!vp->isUploaded) {
+		VideoContext &video = state->video;
+		UploadTexture(video, vp->frame);
+	}
 	WindowFlip();
 }
 
-inline void UpdateVideoClock(PlayerState *state, double pts) {
-	SetClock(state->video.clock, pts);
+inline void UpdateVideoClock(PlayerState *state, double pts, int32_t serial) {
+	SetClock(state->video.clock, pts, serial);
 	SyncClockToSlave(state->externalClock, state->video.clock);
 }
 
-inline double GetFrameDuration(PlayerState *state, const FrameInfo &cur, const FrameInfo &next) {
-	double duration = next.pts - cur.pts;
-	if (isnan(duration) || duration <= 0 || duration > state->maxFrameDuration)
-		return cur.duration;
-	else
-		return duration;
+inline double GetFrameDuration(PlayerState *state, const Frame *cur, const Frame *next) {
+	if (cur->serial == next->serial) {
+		double duration = next->pts - cur->pts;
+		if (isnan(duration) || duration <= 0 || duration > state->maxFrameDuration)
+			return cur->duration;
+		else
+			return duration;
+	} else {
+		return 0.0;
+	}
 }
 
 static double ComputeVideoDelay(PlayerState *state, double delay) {
@@ -1715,22 +2145,32 @@ static void VideoRefresh(PlayerState *state, double *remainingTime) {
 	}
 	if (state->video.stream.isValid) {
 	retry:
-		Frame *frame = state->video.waitingFrame;
-		if (state->video.waitingFrame == nullptr) {
-			frame = nullptr;
-			if (TakeFromFrameQueue(state->video.decoder.frameQueue, frame)) {
-				state->video.waitingFrame = frame;
-			}
-		}
-		if (frame != nullptr) {
-			double delay = frame->infos.pts - state->frameLastPTS;
-			if (delay <= 0 || delay >= 1) {
-				delay = state->frameLastDelay;
-			}
-			state->frameLastPTS = frame->infos.pts;
-			state->frameLastDelay = delay;
+		if (GetFrameQueueRemainingCount(state->video.decoder.frameQueue) == 0) {
+			// Nothing to do, no picture to display in the queue
+		} else {
+			// Dequeue the current and the last picture
+			Frame *lastvp = PeekFrameQueueLast(state->video.decoder.frameQueue);
+			Frame *vp = PeekFrameQueue(state->video.decoder.frameQueue);
 
-			delay = ComputeVideoDelay(state, delay);
+			// Serials from frame and packet queue must match
+			if (vp->serial != state->video.decoder.packetsQueue.serial) {
+				NextReadable(state->video.decoder.frameQueue);
+				goto retry;
+			}
+
+			// Reset frame timer when serial from current and last frame as different
+			if (lastvp->serial != vp->serial) {
+				state->frameTimer = (double)ffmpeg.avGetTimeRelative() / (double)AV_TIME_BASE;
+			}
+
+			// Just display the current frame which was last shown
+			if (state->isPaused) {
+				goto display;
+			}
+
+			// compute nominal last_duration */
+			double lastDuration = GetFrameDuration(state, lastvp, vp);
+			double delay = ComputeVideoDelay(state, lastDuration);
 
 			double time = (double)ffmpeg.avGetTimeRelative() / (double)AV_TIME_BASE;
 			if (time < state->frameTimer + delay) {
@@ -1743,20 +2183,35 @@ static void VideoRefresh(PlayerState *state, double *remainingTime) {
 				state->frameTimer = time;
 			}
 
-			UpdateVideoClock(state, frame->infos.pts);
+			MutexLock(state->video.decoder.frameQueue.lock);
+			if (!isnan(vp->pts)) {
+				UpdateVideoClock(state, vp->pts, vp->serial);
+			}
+			MutexUnlock(state->video.decoder.frameQueue.lock);
 
-			if (time > state->frameTimer + frame->infos.duration) {
-				PutFrameBackToDecoder(state->video.decoder, frame);
-				frame = state->video.waitingFrame = nullptr;
-				goto retry;
+			if (GetFrameQueueRemainingCount(state->video.decoder.frameQueue) > 1) {
+				Frame *nextvp = PeekFrameQueueNext(state->video.decoder.frameQueue);
+				double duration = GetFrameDuration(state, vp, nextvp);
+				if (!state->step && (state->settings.frameDrop > 0 || (state->settings.frameDrop && GetMasterSyncType(state) != AVSyncType::VideoMaster)) && time > state->frameTimer + duration) {
+					state->frame_drops_late++;
+					NextReadable(state->video.decoder.frameQueue);
+					goto retry;
+				}
 			}
 
-			VideoDisplay(state, frame);
-			state->video.prevFrameInfo = frame->infos;
-			PutFrameBackToDecoder(state->video.decoder, frame);
-			state->video.waitingFrame = nullptr;
+			NextReadable(state->video.decoder.frameQueue);
+			state->forceRefresh = 1;
+
+			if (state->step && !state->isPaused) {
+				StreamTogglePause(state);
+			}
+		}
+	display:
+		if (state->forceRefresh && state->video.decoder.frameQueue.readIndexShown) {
+			DisplayVideoFrame(state);
 		}
 	}
+	state->forceRefresh = 0;
 }
 
 static void ReleaseMedia(PlayerState &state) {
@@ -1864,7 +2319,7 @@ static bool LoadMedia(PlayerState &state, const char *mediaFilePath, const Audio
 		AVCodecContext *audioCodexCtx = audio.stream.codecContext;
 
 		// Init audio decoder
-		if (!InitDecoder(audio.decoder, &state, &state.reader, &audio.stream, MAX_AUDIO_FRAME_QUEUE_COUNT)) {
+		if (!InitDecoder(audio.decoder, &state, &state.reader, &audio.stream, MAX_AUDIO_FRAME_QUEUE_COUNT, 1)) {
 			ConsoleFormatError("Failed initialize audio decoder for media file '%s'!\n", mediaFilePath);
 			goto release;
 		}
@@ -1912,7 +2367,7 @@ static bool LoadMedia(PlayerState &state, const char *mediaFilePath, const Audio
 		AVCodecContext *videoCodexCtx = video.stream.codecContext;
 
 		// Init video decoder
-		if (!InitDecoder(video.decoder, &state, &state.reader, &video.stream, MAX_VIDEO_FRAME_QUEUE_COUNT)) {
+		if (!InitDecoder(video.decoder, &state, &state.reader, &video.stream, MAX_VIDEO_FRAME_QUEUE_COUNT, 1)) {
 			ConsoleFormatError("Failed initialize video decoder for media file '%s'!\n", mediaFilePath);
 			goto release;
 		}
@@ -1967,9 +2422,10 @@ static bool LoadMedia(PlayerState &state, const char *mediaFilePath, const Audio
 
 	// Init timings
 	state.maxFrameDuration = (state.formatCtx->iformat->flags & AVFMT_TS_DISCONT) ? 10.0 : 3600.0;
-	InitClock(state.video.clock);
-	InitClock(state.audio.clock);
-	InitClock(state.externalClock);
+	InitClock(state.video.clock, &state.video.decoder.packetsQueue.serial);
+	InitClock(state.audio.clock, &state.audio.decoder.packetsQueue.serial);
+	InitClock(state.externalClock, &state.externalClock.serial);
+	state.audio.audioClockSerial = -1;
 
 	return true;
 
@@ -2003,8 +2459,6 @@ int main(int argc, char **argv) {
 
 		PlayerState state = {};
 		RefreshState refresh = {};
-		int32_t threadCount = 0;
-		ThreadContext *threads[3] = {};
 
 		//
 		// Load ffmpeg libraries
@@ -2016,25 +2470,30 @@ int main(int argc, char **argv) {
 		// Register all formats and codecs
 		ffmpeg.avRegisterAll();
 
+		// Init flush packet
+		ffmpeg.avInitPacket(&globalFlushPacket);
+		globalFlushPacket.data = (uint8_t *)&globalFlushPacket;
+
 		//
 		// Settings
 		//
 		InitPlayerSettings(state.settings);
-		state.isInfiniteBuffer = state.settings.useInfiniteBuffer;
+		state.isInfiniteBuffer = state.settings.isInfiniteBuffer;
+		state.loop = state.settings.isLoop ? 1 : 0;
 
 		// Load media
 		if (!LoadMedia(state, mediaFilePath, nativeAudioFormat, backBuffer)) {
 			goto release;
 		}
 
-		// Create threads
-		threads[threadCount++] = ThreadCreate(PacketReadThreadProc, &state);
+		// Start decoder and reader
 		if (state.video.stream.isValid) {
-			threads[threadCount++] = ThreadCreate(VideoDecodingThreadProc, &state.video.decoder);
+			StartDecoder(state.video.decoder, VideoDecodingThreadProc);
 		}
 		if (state.audio.stream.isValid) {
-			threads[threadCount++] = ThreadCreate(AudioDecodingThreadProc, &state.audio.decoder);
+			StartDecoder(state.audio.decoder, AudioDecodingThreadProc);
 		}
+		StartReader(state.reader, PacketReadThreadProc, &state);
 
 		// Start playing audio
 		if (state.audio.stream.isValid) {
@@ -2053,12 +2512,19 @@ int main(int argc, char **argv) {
 			//
 			Event ev = {};
 			while (PollWindowEvent(ev)) {
+				if (ev.type == EventType::Keyboard) {
+					if ((ev.keyboard.type == KeyboardEventType::KeyUp) && (ev.keyboard.mappedKey == Key::Key_Space)) {
+						TogglePause(&state);
+					}
+				}
 			}
 
 			// Refresh video?
 			if (remainingTime <= 0.0) {
 				remainingTime = DEFAULT_REFRESH_RATE;
-				VideoRefresh(&state, &remainingTime);
+				if (!state.isPaused || state.forceRefresh) {
+					VideoRefresh(&state, &remainingTime);
+				}
 			}
 
 			// Update time
@@ -2083,12 +2549,6 @@ int main(int argc, char **argv) {
 		}
 		if (state.audio.stream.isValid) {
 			StopDecoder(state.audio.decoder);
-		}
-
-		// Wait until all threads are finished running and release all threads
-		ThreadWaitForAll(threads, threadCount);
-		for (int32_t threadIndex = threadCount - 1; threadIndex > 0; threadIndex--) {
-			ThreadDestroy(threads[threadIndex]);
 		}
 
 		// Release media

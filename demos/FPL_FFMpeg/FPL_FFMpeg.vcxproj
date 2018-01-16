@@ -162,6 +162,7 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClInclude Include="..\..\final_platform_layer.hpp" />
+    <ClInclude Include="mpmc_queue.h" />
     <ClInclude Include="utils.h" />
   </ItemGroup>
   <ItemGroup>
