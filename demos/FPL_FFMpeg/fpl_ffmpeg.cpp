@@ -1160,7 +1160,7 @@ static bool InitTexture(Texture &texture, uint32_t w, uint32_t h, uint32_t color
 	return true;
 }
 
-uint8_t *LockTexture(Texture &texture) {
+inline uint8_t *LockTexture(Texture &texture) {
 	uint8_t *result;
 
 #if USE_HARDWARE_RENDERING
@@ -1178,7 +1178,7 @@ uint8_t *LockTexture(Texture &texture) {
 	return(result);
 }
 
-void UnlockTexture(Texture &texture) {
+inline void UnlockTexture(Texture &texture) {
 #if USE_HARDWARE_RENDERING
 #	if USE_GL_PBO
 	glUnmapBuffer(GL_PIXEL_UNPACK_BUFFER);
@@ -1194,7 +1194,7 @@ void UnlockTexture(Texture &texture) {
 #endif
 }
 
-static void DestroyTexture(Texture &texture) {
+inline void DestroyTexture(Texture &texture) {
 #if USE_HARDWARE_RENDERING
 #	if !USE_GL_PBO
 	MemoryFree(texture.data);
@@ -1407,7 +1407,7 @@ inline double GetMasterClock(PlayerState *state) {
 	return val;
 }
 
-static void UpdateExternalClockSpeed(PlayerState *state) {
+inline void UpdateExternalClockSpeed(PlayerState *state) {
 	if ((state->video.stream.isValid && state->video.decoder.packetsQueue.packetCount <= EXTERNAL_CLOCK_MIN_FRAMES) ||
 		(state->audio.stream.isValid && state->audio.decoder.packetsQueue.packetCount <= EXTERNAL_CLOCK_MIN_FRAMES)) {
 		SetClockSpeed(state->externalClock, FPL_MAX(EXTERNAL_CLOCK_SPEED_MIN, state->externalClock.speed - EXTERNAL_CLOCK_SPEED_STEP));
@@ -1422,7 +1422,7 @@ static void UpdateExternalClockSpeed(PlayerState *state) {
 	}
 }
 
-static void AddFrameToDecoder(Decoder &decoder, Frame *frame, AVFrame *srcFrame) {
+inline void AddFrameToDecoder(Decoder &decoder, Frame *frame, AVFrame *srcFrame) {
 	const FFMPEGContext &ffmpeg = *globalFFMPEGFunctions;
 	ffmpeg.avFrameMoveRef(frame->frame, srcFrame);
 	NextWritable(decoder.frameQueue);
@@ -2151,6 +2151,7 @@ static bool OpenStreamComponent(const char *mediaFilePath, AVStream *stream, Med
 			typeName = "Audio";
 			break;
 		default:
+			typeName = "";
 			assert(!"Unsupported stream type!");
 	}
 
