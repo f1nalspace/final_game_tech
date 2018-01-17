@@ -35,7 +35,7 @@ SOFTWARE.
 
 /*!
 	\file final_platform_layer.hpp
-	\version v0.5.7.0 beta
+	\version v0.5.7.1 beta
 	\author Torsten Spaete
 	\brief Final Platform Layer (FPL) - A Open source C++ single file header platform abstraction layer library.
 */
@@ -500,6 +500,11 @@ SOFTWARE.
 /*!
 	\page page_changelog Changelog
 	\tableofcontents
+
+	## v0.5.7.1 beta:
+	- Fixed: xInputSetState renamed to xInputGetState internally
+	- Added: Introduced InputSettings
+	- Added: [Win32] XInput controller detection is now limited to a fixed frequency, for improving performance (InputSettings.controllerDetectionFrequency)
 
 	## v0.5.7.0 beta:
 	- Changed: Total change of documentation style
@@ -1457,6 +1462,19 @@ namespace fpl {
 		return(result);
 	}
 
+	//! Input settings
+	struct InputSettings {
+		//! Frequency in ms for detecting new or removed controllers (Default: 100 ms)
+		uint32_t controllerDetectionFrequency;
+	};
+
+	//! Make default settings for input devices
+	fpl_inline InputSettings DefaultInputSettings() {
+		InputSettings result = {};
+		result.controllerDetectionFrequency = 100;
+		return(result);
+	}
+
 	//! Settings container (Window, Video, etc)
 	struct Settings {
 		//! Window settings
@@ -1465,6 +1483,8 @@ namespace fpl {
 		VideoSettings video;
 		//! Audio settings
 		AudioSettings audio;
+		//! Input settings
+		InputSettings input;
 	};
 
 	//! Default settings for video, window, etc.
@@ -1473,6 +1493,7 @@ namespace fpl {
 		result.window = DefaultWindowSettings();
 		result.video = DefaultVideoSettings();
 		result.audio = DefaultAudioSettings();
+		result.input = DefaultInputSettings();
 		return(result);
 	}
 
@@ -1527,12 +1548,12 @@ namespace fpl {
 #			if defined(FPL_PLATFORM_POSIX)
 				void *posixHandle;
 #			endif
-			} internalHandle;
-			//! Library opened successfully
+		} internalHandle;
+		//! Library opened successfully
 			bool isValid;
-		};
+	};
 
-		//! Loads a dynamic library and returns the loaded handle for it.
+	//! Loads a dynamic library and returns the loaded handle for it.
 		fpl_api DynamicLibraryHandle DynamicLibraryLoad(const char *libraryFilePath);
 		//! Returns the dynamic library procedure address for the given procedure name.
 		fpl_api void *GetDynamicLibraryProc(const DynamicLibraryHandle &handle, const char *name);
@@ -1540,9 +1561,9 @@ namespace fpl {
 		fpl_api void DynamicLibraryUnload(DynamicLibraryHandle &handle);
 
 		/** \}*/
-	}
+}
 
-	//! Console functions
+//! Console functions
 	namespace console {
 		/**
 		  * \defgroup Console Console functions
@@ -2672,7 +2693,7 @@ namespace fpl {
 		// Forward declarations
 		fpl_internal void ReleaseAudio();
 		fpl_internal AudioResult InitAudio(const AudioSettings &audioSettings);
-	} // audio
+} // audio
 #endif // FPL_ENABLE_AUDIO
 
 	//
@@ -2867,7 +2888,7 @@ namespace fpl {
 #			error "Unsupported architecture/platform!"
 #		endif
 			return (result);
-		}
+	}
 
 		fpl_api void *AtomicCompareAndExchangePtr(volatile void **dest, const void *comparand, const void *exchange) {
 			FPL_ASSERT(dest != nullptr);
@@ -3136,11 +3157,17 @@ namespace fpl {
 		FPL_XINPUT_GET_STATE(Win32XInputGetStateStub) {
 			return(ERROR_DEVICE_NOT_CONNECTED);
 		}
+#		define FPL_XINPUT_GET_CAPABILITIES(name) DWORD WINAPI name(DWORD dwUserIndex, DWORD dwFlags, XINPUT_CAPABILITIES* pCapabilities)
+		typedef FPL_XINPUT_GET_CAPABILITIES(win32_func_XInputGetCapabilities);
+		FPL_XINPUT_GET_CAPABILITIES(Win32XInputGetCapabilitiesStub) {
+			return(ERROR_DEVICE_NOT_CONNECTED);
+		}
 
 		struct Win32InputFunctions {
 			struct {
 				HMODULE xinputLibrary;
-				win32_func_XInputGetState *xInputSetState = Win32XInputGetStateStub;
+				win32_func_XInputGetState *xInputGetState = Win32XInputGetStateStub;
+				win32_func_XInputGetCapabilities *xInputGetCapabilities = Win32XInputGetCapabilitiesStub;
 			} xinput;
 		};
 		fpl_globalvar Win32InputFunctions global__Win32__Input__Functions = {};
@@ -3522,6 +3549,7 @@ namespace fpl {
 		};
 		struct Win32XInputState {
 			bool isConnected[XUSER_MAX_COUNT];
+			LARGE_INTEGER lastDeviceSearchTime;
 		};
 #	else
 		typedef void *Win32WindowState;
@@ -3543,8 +3571,8 @@ namespace fpl {
 					BITMAPINFO bitmapInfo;
 				} software;
 #		endif
+				};
 			};
-		};
 
 		struct Win32ApplicationState {
 			bool isInitialized;
@@ -3767,7 +3795,7 @@ namespace fpl {
 			FPL_ASSERT(videoState.software.context.pixels != nullptr);
 			memory::MemoryAlignedFree(videoState.software.context.pixels);
 			videoState.software = {};
-		}
+			}
 #	endif // FPL_ENABLE_VIDEO_SOFTWARE
 
 #	if defined(FPL_ENABLE_WINDOW)
@@ -3894,21 +3922,51 @@ namespace fpl {
 		fpl_internal void Win32PollControllers(Win32State *win32State) {
 			using namespace window;
 			Win32InputFunctions &inputFuncs = global__Win32__Input__Functions;
-			if (inputFuncs.xinput.xInputSetState != nullptr) {
-				fpl_constant DWORD MAX_CONTROLLER_COUNT = XUSER_MAX_COUNT;
-				for (DWORD controllerIndex = 0; controllerIndex < MAX_CONTROLLER_COUNT; ++controllerIndex) {
-					XINPUT_STATE controllerState = {};
-					if (inputFuncs.xinput.xInputSetState(controllerIndex, &controllerState) == ERROR_SUCCESS) {
-						if (!win32State->xinput.isConnected[controllerIndex]) {
-							// Connected
-							win32State->xinput.isConnected[controllerIndex] = true;
-
-							Event ev = {};
-							ev.type = EventType::Gamepad;
-							ev.gamepad.type = GamepadEventType::Connected;
-							ev.gamepad.deviceIndex = controllerIndex;
-							PushEvent(ev);
+			if (inputFuncs.xinput.xInputGetState != nullptr) {
+				//
+				// Detect new controller (Only in a fixed frequency)
+				//
+				if (win32State->xinput.lastDeviceSearchTime.QuadPart == 0) {
+					QueryPerformanceCounter(&win32State->xinput.lastDeviceSearchTime);
+				}
+				LARGE_INTEGER currentDeviceSearchTime;
+				QueryPerformanceCounter(&currentDeviceSearchTime);
+				uint64_t deviceSearchDifferenceTimeInMs = ((currentDeviceSearchTime.QuadPart - win32State->xinput.lastDeviceSearchTime.QuadPart) / (global__Win32__AppState.performanceFrequency.QuadPart / 1000));
+				if ((win32State->currentSettings.input.controllerDetectionFrequency == 0) || (deviceSearchDifferenceTimeInMs > win32State->currentSettings.input.controllerDetectionFrequency)) {
+					win32State->xinput.lastDeviceSearchTime = currentDeviceSearchTime;
+					for (DWORD controllerIndex = 0; controllerIndex < XUSER_MAX_COUNT; ++controllerIndex) {
+						XINPUT_STATE controllerState = {};
+						if (inputFuncs.xinput.xInputGetState(controllerIndex, &controllerState) == ERROR_SUCCESS) {
+							if (!win32State->xinput.isConnected[controllerIndex]) {
+								// Connected
+								win32State->xinput.isConnected[controllerIndex] = true;
+								Event ev = {};
+								ev.type = EventType::Gamepad;
+								ev.gamepad.type = GamepadEventType::Connected;
+								ev.gamepad.deviceIndex = controllerIndex;
+								PushEvent(ev);
+							}
 						} else {
+							if (win32State->xinput.isConnected[controllerIndex]) {
+								// Disonnected
+								win32State->xinput.isConnected[controllerIndex] = false;
+								Event ev = {};
+								ev.type = EventType::Gamepad;
+								ev.gamepad.type = GamepadEventType::Disconnected;
+								ev.gamepad.deviceIndex = controllerIndex;
+								PushEvent(ev);
+							}
+						}
+					}
+				}
+
+				//
+				// Update controller state when connected only
+				//
+				for (DWORD controllerIndex = 0; controllerIndex < XUSER_MAX_COUNT; ++controllerIndex) {
+					if (win32State->xinput.isConnected[controllerIndex]) {
+						XINPUT_STATE controllerState = {};
+						if (inputFuncs.xinput.xInputGetState(controllerIndex, &controllerState) == ERROR_SUCCESS) {
 							// State changed
 							Event ev = {};
 							ev.type = EventType::Gamepad;
@@ -3959,17 +4017,6 @@ namespace fpl {
 							if (pad->wButtons & XINPUT_GAMEPAD_RIGHT_SHOULDER)
 								ev.gamepad.state.rightShoulder = { true };
 
-							PushEvent(ev);
-						}
-					} else {
-						if (win32State->xinput.isConnected[controllerIndex]) {
-							// Disonnected
-							win32State->xinput.isConnected[controllerIndex] = false;
-
-							Event ev = {};
-							ev.type = EventType::Gamepad;
-							ev.gamepad.type = GamepadEventType::Disconnected;
-							ev.gamepad.deviceIndex = controllerIndex;
 							PushEvent(ev);
 						}
 					}
@@ -4280,9 +4327,9 @@ namespace fpl {
 								(h != win32State->video.software.context.height)) {
 								platform::Win32ReleaseVideoSoftware(win32State);
 								platform::Win32InitVideoSoftware(win32State, w, h);
-							}
-						}
-					}
+				}
+			}
+		}
 #				endif
 
 					Event newEvent = {};
@@ -4291,7 +4338,7 @@ namespace fpl {
 					newEvent.window.width = LOWORD(lParam);
 					newEvent.window.height = HIWORD(lParam);
 					platform::PushEvent(newEvent);
-				} break;
+		} break;
 
 				case WM_SYSKEYDOWN:
 				case WM_SYSKEYUP:
@@ -4413,10 +4460,10 @@ namespace fpl {
 
 				default:
 					break;
-			}
+		}
 			result = win32_defWindowProc(hwnd, msg, wParam, lParam);
 			return (result);
-		}
+	}
 
 		fpl_internal bool Win32InitWindow(Win32State &win32State, const Settings &initSettings) {
 			Win32APIFunctions &wapi = global__Win32__API__Functions;
@@ -4546,14 +4593,14 @@ namespace fpl {
 					if (!softwareResult) {
 						common::PushError("Failed creating software rendering buffer for window '%d'/'%s'", win32State.window.windowHandle, win32State.window.windowClass);
 						return false;
-					}
+				}
 					win32State.video.activeVideoDriver = VideoDriverType::Software;
-				} break;
+			} break;
 #			endif // FPL_ENABLE_VIDEO_SOFTWARE
 
 				default:
 					break;
-			}
+		}
 #		endif // FPL_ENABLE_VIDEO
 
 			// Show window
@@ -4566,7 +4613,7 @@ namespace fpl {
 			win32State.window.isRunning = true;
 
 			return true;
-		}
+}
 
 		fpl_internal void Win32ReleaseWindow(Win32State &win32State) {
 			Win32APIFunctions &api = global__Win32__API__Functions;
@@ -4602,10 +4649,14 @@ namespace fpl {
 			Win32InputFunctions &inputFuncs = global__Win32__Input__Functions;
 			if (xinputLibrary) {
 				inputFuncs.xinput.xinputLibrary = xinputLibrary;
-				inputFuncs.xinput.xInputSetState = (win32_func_XInputGetState *)GetProcAddress(xinputLibrary, "XInputGetState");
+				inputFuncs.xinput.xInputGetState = (win32_func_XInputGetState *)GetProcAddress(xinputLibrary, "XInputGetState");
+				inputFuncs.xinput.xInputGetCapabilities = (win32_func_XInputGetCapabilities *)GetProcAddress(xinputLibrary, "XInputGetCapabilities");
 			}
-			if (inputFuncs.xinput.xInputSetState == nullptr) {
-				inputFuncs.xinput.xInputSetState = Win32XInputGetStateStub;
+			if (inputFuncs.xinput.xInputGetState == nullptr) {
+				inputFuncs.xinput.xInputGetState = Win32XInputGetStateStub;
+			}
+			if (inputFuncs.xinput.xInputGetCapabilities == nullptr) {
+				inputFuncs.xinput.xInputGetCapabilities = Win32XInputGetCapabilitiesStub;
 			}
 		}
 
@@ -4614,7 +4665,7 @@ namespace fpl {
 			if (inputFuncs.xinput.xinputLibrary) {
 				FreeLibrary(inputFuncs.xinput.xinputLibrary);
 				inputFuncs.xinput.xinputLibrary = nullptr;
-				inputFuncs.xinput.xInputSetState = Win32XInputGetStateStub;
+				inputFuncs.xinput.xInputGetState = Win32XInputGetStateStub;
 			}
 		}
 
@@ -5702,7 +5753,7 @@ namespace fpl {
 			GetModuleFileNameW(nullptr, modulePath, MAX_PATH);
 			strings::WideStringToAnsiString(modulePath, strings::GetWideStringLength(modulePath), destPath, maxDestLen);
 			return(destPath);
-}
+		}
 #	else
 		fpl_api char *GetExecutableFilePath(char *destPath, const uint32_t maxDestLen) {
 			if (destPath == nullptr) {
@@ -5893,7 +5944,7 @@ namespace fpl {
 			}
 #		endif
 			return(result);
-		}
+	}
 
 		fpl_api bool ResizeVideoBackBuffer(const uint32_t width, const uint32_t height) {
 			bool result = false;
@@ -5930,7 +5981,7 @@ namespace fpl {
 					uint32_t sourceWidth = video.software.context.width;
 					uint32_t sourceHeight = video.software.context.height;
 					wapi.gdi.stretchDIBits(state->window.deviceContext, 0, 0, targetWidth, targetHeight, 0, 0, sourceWidth, sourceHeight, video.software.context.pixels, &video.software.bitmapInfo, DIB_RGB_COLORS, SRCCOPY);
-				} break;
+		} break;
 #			endif
 
 #			if defined(FPL_ENABLE_VIDEO_OPENGL)
@@ -5942,7 +5993,7 @@ namespace fpl {
 
 				default:
 					break;
-			}
+	}
 		}
 
 		fpl_api WindowSize GetWindowArea() {
@@ -6242,13 +6293,13 @@ namespace fpl {
 			if (common::global__LastErrorState->count > 0) {
 				size_t index = common::global__LastErrorState->count - 1;
 				result = GetPlatformLastError(index);
-			}
+		}
 #		else
 			result = global__LastErrorState->errors[0];
 #		endif // FPL_ENABLE_MULTIPLE_ERRORSTATES
-			}
+	}
 		return (result);
-		}
+	}
 
 	fpl_api const char *GetPlatformLastError(const size_t index) {
 		const char *result = nullptr;
@@ -6262,9 +6313,9 @@ namespace fpl {
 #		else
 			result = global__LastErrorState->errors[0];
 #		endif // FPL_ENABLE_MULTIPLE_ERRORSTATES
-			}
-		return (result);
 		}
+		return (result);
+	}
 
 	fpl_api size_t GetPlatformLastErrorCount() {
 		size_t result = 0;
@@ -6274,7 +6325,7 @@ namespace fpl {
 #		else
 			result = strings::GetAnsiStringLength(common::global__LastErrorState->errors[0]) > 0 ? 1 : 0;
 #		endif
-		}
+	}
 		return (result);
 	}
 
@@ -6316,7 +6367,7 @@ namespace fpl {
 
 			default:
 				break;
-		}
+			}
 #	endif // FPL_ENABLE_VIDEO
 
 		platform::Win32ReleaseWindow(win32State);
@@ -6333,7 +6384,7 @@ namespace fpl {
 		platform::global__Win32__State = nullptr;
 
 		platform::global__Win32__AppState.isInitialized = false;
-	}
+		}
 
 	fpl_api bool InitPlatform(const InitFlags initFlags, const Settings &initSettings) {
 		if (platform::global__Win32__AppState.isInitialized) {
@@ -6412,7 +6463,7 @@ namespace fpl {
 		return (true);
 	}
 
-	} // fpl
+} // fpl
 
 #	if defined(FPL_ENABLE_WINDOW)
 
@@ -6423,7 +6474,7 @@ int WINAPI wWinMain(HINSTANCE appInstance, HINSTANCE prevInstance, LPWSTR cmdLin
 	int result = main(args.count, args.args);
 	fpl::memory::MemoryFree(args.mem);
 	return(result);
-}
+	}
 
 #		else
 
@@ -6727,7 +6778,7 @@ namespace fpl {
 
 	fpl_api void ReleasePlatform() {
 	}
-	}
+}
 #endif // FPL_PLATFORM_LINUX
 
 // ****************************************************************************
@@ -7597,7 +7648,7 @@ namespace fpl {
 				if (AudioGetDeviceState(*audioState) == AudioDeviceState::Stopped) {
 					audioState->common.clientReadCallback = newCallback;
 					audioState->common.clientUserData = userData;
-				}
+}
 			}
 		}
 	} // audio
