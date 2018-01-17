@@ -286,12 +286,23 @@ static GLPrototype ParsePrototype(const string &line, const char *FuncDeclString
 	ptr = name;
 	SkipWhitespaces(ptr);
 
+	// void *APIENTRY glMapBuffer(GLenum target, GLenum access);
+	// const GLubyte *APIENTRY glGetStringi(GLenum name, GLuint index);
+	// const GLubyte * APIENTRY glGetString (GLenum name);
+
 	vector<char> prototypeChars = { ' ', '(' };
 	while (*ptr) {
 		GLString ident = ReadUntilChars(ptr, prototypeChars);
 		if (ident.len == 0) break;
-		if (isspace(*ptr) && *(ptr + 1) == '(') {
-			ptr++;
+		bool incPtr = true;
+		if (isspace(*ptr)) {
+			if (*(ptr + 1) == '(') {
+				ptr++;
+			} else if (*(ptr + 1) == '*') {
+				ident.len += 2;
+				ptr += 2;
+				incPtr = false;
+			}
 		}
 		if (*ptr == '(') {
 			result.name = string(ident.ptr, ident.len);
@@ -299,7 +310,11 @@ static GLPrototype ParsePrototype(const string &line, const char *FuncDeclString
 		} else {
 			result.returns.emplace_back(string(ident.ptr, ident.len));
 		}
-		ptr++;
+		if (incPtr) {
+			ptr++;
+		} else {
+			SkipWhitespaces(ptr);
+		}
 	}
 	assert(result.name.size() > 0);
 
@@ -474,14 +489,14 @@ int main(int argc, char *args[]) {
 					if (hexValue.size() > 8) {
 						ctype = string("uint64_t");
 					}
-				}
+					}
 				headerOutStream << HeaderIdent << "\tstatic constexpr " << ctype << " " << constant.name << " = " << constant.value << ";" << endl;
+				}
 			}
-		}
 
-	#if OUTPUT_EXPORT_AS_WELL
+#if OUTPUT_EXPORT_AS_WELL
 		headerOutStream << "#" << HeaderIdent << "\tifdef " << StaticDefineName << endl;
-	#endif
+#endif
 
 		const vector<GLPrototype> prototypeList = it.second;
 		for (auto prototype : prototypeList) {
@@ -501,7 +516,7 @@ int main(int argc, char *args[]) {
 			headerOutStream << HeaderIdent << "\t\ttypedef " << returnString << " (" << APIEntryDefineName << " " << funcPtrName << ")(" << argString << ");" << endl;
 			headerOutStream << HeaderIdent << "\t\tstatic " << funcPtrName << "* " << name << ";" << endl;
 		}
-	#if OUTPUT_EXPORT_AS_WELL
+#if OUTPUT_EXPORT_AS_WELL
 		headerOutStream << "#" << HeaderIdent << "\telse" << endl;
 		for (auto prototype : prototypeList) {
 			string name = Trim(prototype.name);
@@ -520,10 +535,10 @@ int main(int argc, char *args[]) {
 			headerOutStream << HeaderIdent << "\t\t" << GLApiDefineName << " " << returnString << " " << APIEntryDefineName << " " << name << "(" << argString << ");" << endl;
 		}
 		headerOutStream << "#" << HeaderIdent << "\tendif // " << StaticDefineName << endl;
-	#endif
+#endif
 
 		headerOutStream << "#" << HeaderIdent << "endif // " << version << endl;
-	}
+		}
 
 	headerOutStream.flush();
 	headerOutStream.close();
@@ -544,7 +559,7 @@ int main(int argc, char *args[]) {
 		for (auto prototype : prototypeList) {
 			string name = Trim(prototype.name);
 			string funcPtrName = MakeFunctionPtrName(name);
-			bodyOutStream << BodyIdent << "\t" << name << " = (" << funcPtrName << " *)" << GetProcAddressName  << "(state, \"" << name << "\");" << endl;
+			bodyOutStream << BodyIdent << "\t" << name << " = (" << funcPtrName << " *)" << GetProcAddressName << "(state, \"" << name << "\");" << endl;
 		}
 
 		bodyOutStream << "#" << BodyIdent << "endif //" << version << endl;
@@ -555,4 +570,4 @@ int main(int argc, char *args[]) {
 	bodyOutStream.close();
 
 	return 0;
-}
+	}
