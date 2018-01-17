@@ -2700,8 +2700,6 @@ int main(int argc, char **argv) {
 						state.viewport.width = ev.window.width;
 						state.viewport.height = ev.window.height;
 						state.forceRefresh = 1;
-					} else if (ev.window.type == WindowEventType::Invalidated) {
-						state.forceRefresh = 1;
 					}
 				} break;
 			}
