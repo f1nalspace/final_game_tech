@@ -56,17 +56,46 @@ static void SaveBitmapRGB24(uint8_t *source, uint32_t width, uint32_t height, ui
 	}
 }
 
-static void ConvertRGB24ToRGB32(uint8_t *destData, uint32_t destScanline, int32_t width, int32_t height, uint32_t sourceScanLine, uint8_t *sourceData) {
-	for (int y = 0; y < height; ++y) {
-		uint8_t *src = sourceData + y * sourceScanLine;
-		int invertY = height - 1 - y;
+static void FillRGB32TestColor(uint8_t *destData, int32_t destScanline, int32_t width, int32_t height) {
+	for (int32_t y = 0; y < height; ++y) {
+		int32_t invertY = height - 1 - y;
 		uint32_t *dst = (uint32_t *)((uint8_t *)destData + invertY * destScanline);
-		for (int x = 0; x < width; ++x) {
-			uint8_t r = *src++;
-			uint8_t g = *src++;
-			uint8_t b = *src++;
+		for (int32_t x = 0; x < width; ++x) {
+			uint8_t r, g, b;
+			if (y < (height / 2)) {
+				r = x < (width / 2) ? 255 : 0;
+				g = 0;
+				b = x > (width / 2) ? 255 : 0;
+			} else {
+				r = x > (width / 2) ? 255 : 0;
+				g = x < (width / 2) ? 255 : 0;
+				b = x > (width / 2) ? 255 : 0;
+			}
 			uint8_t a = 255;
 			*dst++ = (a << 24) | (b << 16) | (g << 8) | r;
+		}
+	}
+}
+
+static void ConvertRGB24ToRGB32(uint8_t *destData, int32_t destScanline, int32_t width, int32_t height, int32_t sourceScanLine, uint8_t *sourceData, bool flipY, bool isBGRA) {
+	uint32_t rindex = 0;
+	uint32_t gindex = 1;
+	uint32_t bindex = 2;
+	if (isBGRA) {
+		rindex = 2;
+		bindex = 0;
+	}
+	for (int32_t y = 0; y < height; ++y) {
+		uint8_t *src = sourceData + y * sourceScanLine;
+		int32_t yDst = height - 1 - y;
+		uint32_t *dst = (uint32_t *)((uint8_t *)destData + yDst * destScanline);
+		for (int32_t x = 0; x < width; ++x) {
+			uint8_t r = *(src + rindex);
+			uint8_t g = *(src + gindex);
+			uint8_t b = *(src + bindex);
+			uint8_t a = 255;
+			*dst++ = (a << 24) | (b << 16) | (g << 8) | r;
+			src += 3;
 		}
 	}
 }

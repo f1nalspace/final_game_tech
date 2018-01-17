@@ -1,6 +1,6 @@
 /*
 
-Custom FFMPEG Media Player Example based on FPL
+Custom FFMPEG Media Player Example based on FPL and ffplay.c
 Written by Torsten Spaete
 
 [x] Reads packets from stream and queues them up
@@ -17,7 +17,7 @@ Written by Torsten Spaete
 [x] Restart
 [x] Frame dropping using prev/next frame
 [x] Pause/Resume
-[ ] OpenGL Video Rendering
+[x] OpenGL Video Rendering
 [ ] Syncronize audio to video
 [ ] Seeking (+/- 5 secs)
 [ ] Composite video rendering
@@ -56,11 +56,20 @@ Requirements:
 #include <assert.h> // assert
 
 #include "utils.h"
-#include "mpmc_queue.h"
 
 #define PRINT_QUEUE_INFOS 0
+#define PRINT_FRAME_UPLOAD_INFOS 0
+#define PRINT_MEMORY_STATS 0
 
+#define USE_HARDWARE_RENDERING 1
 #define USE_FFMPEG_STATIC_LINKING 0
+#define USE_GL_PBO 1
+#define USE_GL_RECTANGLE_TEXTURES 1
+
+#if USE_HARDWARE_RENDERING
+#	define FDYNGL_IMPLEMENTATION
+#	include "final_dynamic_opengl.hpp"
+#endif
 
 //
 // FFMPEG headers and function prototypes
@@ -770,15 +779,15 @@ inline void StartPacketQueue(PacketQueue &queue) {
 //
 // Frame Queue
 //
-struct FrameInfo {
-};
 struct Frame {
+	AVRational sar;
 	AVFrame *frame;
 	double pts;
 	double duration;
 	int64_t pos;
 	int32_t serial;
 	bool isUploaded;
+	bool flipY;
 };
 
 // @NOTE(final): This is a single producer single consumer fast ringbuffer queue.
@@ -1090,25 +1099,112 @@ typedef AVSyncTypes::AVSyncTypeEnum AVSyncType;
 // Video
 //
 struct Texture {
-	uint32_t id;
+#if USE_HARDWARE_RENDERING
+	GLuint id;
+	GLuint pboId;
+	GLuint target;
+#	if !USE_GL_PBO
 	uint8_t *data;
+#	endif
+#else
+	uint32_t id;
+#endif
 	uint32_t width;
 	uint32_t height;
-	uint32_t stride;
+	uint32_t pixelSize;
+	uint32_t rowSize;
 	uint32_t colorBits;
 };
 
-static bool InitTexture(Texture &texture, uint32_t w, uint32_t h, uint32_t colorBits, uint8_t *data) {
-	texture.id = 1;
+static bool InitTexture(Texture &texture, uint32_t w, uint32_t h, uint32_t colorBits) {
 	texture.width = w;
 	texture.height = h;
-	texture.data = data;
 	texture.colorBits = colorBits;
-	texture.stride = (colorBits / 8) * w;
+
+	int colorComponents = colorBits / 8;
+
+	texture.pixelSize = colorComponents * sizeof(uint8_t);
+	texture.rowSize = w * texture.pixelSize;
+
+#if USE_HARDWARE_RENDERING
+	size_t dataSize = texture.rowSize * texture.height;
+
+#	if USE_GL_PBO
+	glGenBuffers(1, &texture.pboId);
+	glBindBuffer(GL_PIXEL_UNPACK_BUFFER, texture.pboId);
+	glBufferData(GL_PIXEL_UNPACK_BUFFER, dataSize, 0, GL_STREAM_DRAW);
+	glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
+#	else
+	texture.data = (uint8_t *)MemoryAllocate(dataSize);
+#	endif
+
+#if USE_GL_RECTANGLE_TEXTURES
+	texture.target = GL_TEXTURE_RECTANGLE;
+#else
+	texture.target = GL_TEXTURE_2D;
+#endif
+
+	glGenTextures(1, &texture.id);
+	glBindTexture(texture.target, texture.id);
+	glTexImage2D(texture.target, 0, GL_RGBA8, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+	glTexParameteri(texture.target, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+	glTexParameteri(texture.target, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+	glTexParameteri(texture.target, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+	glTexParameteri(texture.target, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+	glBindTexture(texture.target, 0);
+#else
+	texture.id = 1;
+	ResizeVideoBackBuffer(w, h);
+#endif
+
 	return true;
 }
 
+uint8_t *LockTexture(Texture &texture) {
+	uint8_t *result;
+
+#if USE_HARDWARE_RENDERING
+#	if USE_GL_PBO
+	glBindBuffer(GL_PIXEL_UNPACK_BUFFER, texture.pboId);
+	result = (uint8_t *)glMapBuffer(GL_PIXEL_UNPACK_BUFFER, GL_WRITE_ONLY);
+#	else
+	result = texture.data;
+#	endif
+#else
+	VideoBackBuffer *backBuffer = GetVideoBackBuffer();
+	result = (uint8_t *)backBuffer->pixels;
+#endif
+
+	return(result);
+}
+
+void UnlockTexture(Texture &texture) {
+#if USE_HARDWARE_RENDERING
+#	if USE_GL_PBO
+	glUnmapBuffer(GL_PIXEL_UNPACK_BUFFER);
+	glBindTexture(texture.target, texture.id);
+	glTexSubImage2D(texture.target, 0, 0, 0, texture.width, texture.height, GL_RGBA, GL_UNSIGNED_BYTE, (void *)0);
+	glBindTexture(texture.target, 0);
+	glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
+#	else
+	glBindTexture(texture.target, texture.id);
+	glTexSubImage2D(texture.target, 0, 0, 0, texture.width, texture.height, GL_RGBA, GL_UNSIGNED_BYTE, texture.data);
+	glBindTexture(texture.target, 0);
+#	endif
+#endif
+}
+
 static void DestroyTexture(Texture &texture) {
+#if USE_HARDWARE_RENDERING
+#	if !USE_GL_PBO
+	MemoryFree(texture.data);
+#	endif
+	glDeleteTextures(1, &texture.id);
+#	if USE_GL_PBO
+	glDeleteBuffers(1, &texture.pboId);
+#	endif
+#endif
+
 	texture = {};
 }
 
@@ -1122,13 +1218,22 @@ struct VideoContext {
 	SwsContext *softwareScaleCtx;
 };
 
-static void UploadTexture(VideoContext &video, AVFrame *sourceNativeFrame) {
+static void UploadTexture(VideoContext &video, AVFrame *sourceNativeFrame, bool flipY) {
 	assert(video.targetTexture.width == sourceNativeFrame->width);
 	assert(video.targetTexture.height == sourceNativeFrame->height);
 	AVCodecContext *videoCodecCtx = video.stream.codecContext;
 	const FFMPEGContext &ffmpeg = *globalFFMPEGFunctions;
 	ffmpeg.swsScale(video.softwareScaleCtx, (uint8_t const * const *)sourceNativeFrame->data, sourceNativeFrame->linesize, 0, videoCodecCtx->height, video.targetRGBFrame->data, video.targetRGBFrame->linesize);
-	ConvertRGB24ToRGB32(video.targetTexture.data, video.targetTexture.stride, videoCodecCtx->width, videoCodecCtx->height, *video.targetRGBFrame->linesize, video.targetRGBBuffer);
+
+	bool isBGRA = false;
+#if USE_HARDWARE_RENDERING
+	isBGRA = true;
+#endif
+
+	uint8_t *data = LockTexture(video.targetTexture);
+	assert(data != nullptr);
+	ConvertRGB24ToRGB32(data, video.targetTexture.rowSize, video.targetTexture.width, video.targetTexture.height, *video.targetRGBFrame->linesize, video.targetRGBBuffer, flipY, isBGRA);
+	UnlockTexture(video.targetTexture);
 }
 
 //
@@ -1190,6 +1295,7 @@ struct PlayerState {
 	Clock externalClock;
 	SeekState seek;
 	AVFormatContext *formatCtx;
+	WindowSize viewport;
 	double frameLastPTS;
 	double frameLastDelay;
 	double frameTimer;
@@ -1449,6 +1555,9 @@ static void QueuePicture(Decoder &decoder, AVFrame *sourceFrame, Frame *targetFr
 	targetFrame->pts = (sourceFrame->pts == AV_NOPTS_VALUE) ? NAN : sourceFrame->pts * av_q2d(currentTimeBase);
 	targetFrame->duration = (currentFrameRate.num && currentFrameRate.den ? av_q2d({ currentFrameRate.den, currentFrameRate.num }) : 0);
 	targetFrame->serial = serial;
+	targetFrame->isUploaded = false;
+	targetFrame->flipY = false;
+	targetFrame->sar = sourceFrame->sample_aspect_ratio;
 
 	AddFrameToDecoder(decoder, targetFrame, sourceFrame);
 }
@@ -2096,12 +2205,64 @@ struct RefreshState {
 
 static void DisplayVideoFrame(PlayerState *state) {
 	assert(state != nullptr);
+	int readIndex = state->video.decoder.frameQueue.readIndex;
 	Frame *vp = PeekFrameQueueLast(state->video.decoder.frameQueue);
+	VideoContext &video = state->video;
+	bool wasUploaded = false;
 	if (!vp->isUploaded) {
-		VideoContext &video = state->video;
-		UploadTexture(video, vp->frame);
+		bool flipY = vp->frame->linesize[0] < 0;
+		UploadTexture(video, vp->frame, flipY);
+		vp->isUploaded = true;
+		vp->flipY = flipY;
+		wasUploaded = true;
 	}
+
+#if USE_HARDWARE_RENDERING
+	int w = state->viewport.width;
+	int h = state->viewport.height;
+	glViewport(0, 0, w, h);
+
+	glClear(GL_COLOR_BUFFER_BIT);
+	glMatrixMode(GL_PROJECTION);
+	glLoadIdentity();
+	glOrtho(0.0f, (float)w, 0.0f, (float)h, 0.0f, 1.0f);
+	glMatrixMode(GL_MODELVIEW);
+	glLoadIdentity();
+
+	float uMin = 0.0f;
+	float vMin = 0.0f;
+#if USE_GL_RECTANGLE_TEXTURES
+	float uMax = (float)video.targetTexture.width;
+	float vMax = (float)video.targetTexture.height;
+#else
+	float uMax = 1.0f;
+	float vMax = 1.0f;
+#endif
+
+	glEnable(video.targetTexture.target);
+	glBindTexture(video.targetTexture.target, video.targetTexture.id);
+	glColor4f(1, 1, 1, 1);
+	glBegin(GL_TRIANGLES);
+	// Topright, Bottomright, Bottomleft
+	glTexCoord2f(uMax, vMax); glVertex2i(w, h);
+	glTexCoord2f(uMax, vMin); glVertex2i(w, 0);
+	glTexCoord2f(uMin, vMin); glVertex2i(0, 0);
+	// Bottomleft, Topleft, Topright
+	glTexCoord2f(uMin, vMin); glVertex2i(0, 0);
+	glTexCoord2f(uMin, vMax); glVertex2i(0, h);
+	glTexCoord2f(uMax, vMax); glVertex2i(w, h);
+	glEnd();
+	glBindTexture(video.targetTexture.target, 0);
+	glDisable(video.targetTexture.target);
+#else
+	//VideoBackBuffer *backBuffer = GetVideoBackBuffer();
+#endif
+
 	WindowFlip();
+
+#if PRINT_FRAME_UPLOAD_INFOS
+	ConsoleFormatOut("Displayed frame: %d(%s)\n", readIndex, (wasUploaded ? " (New)" : ""));
+#endif
 }
 
 inline void UpdateVideoClock(PlayerState *state, double pts, int32_t serial) {
@@ -2145,9 +2306,7 @@ static void VideoRefresh(PlayerState *state, double *remainingTime) {
 	}
 	if (state->video.stream.isValid) {
 	retry:
-		if (GetFrameQueueRemainingCount(state->video.decoder.frameQueue) == 0) {
-			// Nothing to do, no picture to display in the queue
-		} else {
+		if (GetFrameQueueRemainingCount(state->video.decoder.frameQueue) > 0) {
 			// Dequeue the current and the last picture
 			Frame *lastvp = PeekFrameQueueLast(state->video.decoder.frameQueue);
 			Frame *vp = PeekFrameQueue(state->video.decoder.frameQueue);
@@ -2175,7 +2334,7 @@ static void VideoRefresh(PlayerState *state, double *remainingTime) {
 			double time = (double)ffmpeg.avGetTimeRelative() / (double)AV_TIME_BASE;
 			if (time < state->frameTimer + delay) {
 				*remainingTime = FPL_MIN(state->frameTimer + delay - time, *remainingTime);
-				return;
+				goto display;
 			}
 
 			state->frameTimer += delay;
@@ -2206,9 +2365,15 @@ static void VideoRefresh(PlayerState *state, double *remainingTime) {
 				StreamTogglePause(state);
 			}
 		}
+
 	display:
 		if (state->forceRefresh && state->video.decoder.frameQueue.readIndexShown) {
 			DisplayVideoFrame(state);
+		} else {
+			if (state->video.decoder.frameQueue.count < state->video.decoder.frameQueue.capacity) {
+				// @TODO(final): This is not great, but a fix to not wait forever in the video decoding thread
+				SignalWakeUp(state->video.decoder.frameQueue.signal);
+			}
 		}
 	}
 	state->forceRefresh = 0;
@@ -2251,7 +2416,7 @@ static void ReleaseMedia(PlayerState &state) {
 	}
 }
 
-static bool LoadMedia(PlayerState &state, const char *mediaFilePath, const AudioDeviceFormat &nativeAudioFormat, VideoBackBuffer *backBuffer) {
+static bool LoadMedia(PlayerState &state, const char *mediaFilePath, const AudioDeviceFormat &nativeAudioFormat) {
 	const FFMPEGContext &ffmpeg = *globalFFMPEGFunctions;
 
 	// @TODO(final): Custom IO!
@@ -2405,13 +2570,7 @@ static bool LoadMedia(PlayerState &state, const char *mediaFilePath, const Audio
 			goto release;
 		}
 
-		// Resize backbuffer to fit the video size
-		if (!ResizeVideoBackBuffer(videoCodexCtx->width, videoCodexCtx->height)) {
-			ConsoleFormatError("Failed resizing video backbuffer to size (%d x %d) for file '%s'!\n", videoCodexCtx->width, videoCodexCtx->height, mediaFilePath);
-			goto release;
-		}
-
-		if (!InitTexture(state.video.targetTexture, backBuffer->width, backBuffer->height, 32, (uint8_t *)backBuffer->pixels)) {
+		if (!InitTexture(state.video.targetTexture, videoCodexCtx->width, videoCodexCtx->height, 32)) {
 			goto release;
 		}
 
@@ -2446,127 +2605,156 @@ int main(int argc, char **argv) {
 
 	Settings settings = DefaultSettings();
 	CopyAnsiString("FPL FFmpeg Demo", settings.window.windowTitle, FPL_ARRAYCOUNT(settings.window.windowTitle));
+#if USE_HARDWARE_RENDERING
+	settings.video.driverType = VideoDriverType::OpenGL;
+	settings.video.profile = VideoCompabilityProfile::Legacy;
+#else
 	settings.video.driverType = VideoDriverType::Software;
+#endif
 	settings.video.isAutoSize = false;
 	settings.video.isVSync = true;
 
-	if (InitPlatform(InitFlags::All, settings)) {
-		VideoBackBuffer *backBuffer = GetVideoBackBuffer();
-		AudioDeviceFormat nativeAudioFormat = GetAudioHardwareFormat();
+	if (!InitPlatform(InitFlags::All, settings)) {
+		return -1;
+	}
 
-		globalFFMPEGFunctions = (FFMPEGContext *)MemoryAlignedAllocate(sizeof(FFMPEGContext), 16);
-		FFMPEGContext &ffmpeg = *globalFFMPEGFunctions;
+#if USE_HARDWARE_RENDERING
+	if (!fdyngl::LoadOpenGL()) {
+		ReleasePlatform();
+		return -1;
+	}
+#endif
 
-		PlayerState state = {};
-		RefreshState refresh = {};
+	AudioDeviceFormat nativeAudioFormat = GetAudioHardwareFormat();
 
+	globalFFMPEGFunctions = (FFMPEGContext *)MemoryAlignedAllocate(sizeof(FFMPEGContext), 16);
+	FFMPEGContext &ffmpeg = *globalFFMPEGFunctions;
+
+	PlayerState state = {};
+	RefreshState refresh = {};
+
+	//
+	// Load ffmpeg libraries
+	//
+	if (!LoadFFMPEG(ffmpeg)) {
+		goto release;
+	}
+
+	// Register all formats and codecs
+	ffmpeg.avRegisterAll();
+
+	// Init flush packet
+	ffmpeg.avInitPacket(&globalFlushPacket);
+	globalFlushPacket.data = (uint8_t *)&globalFlushPacket;
+
+	//
+	// Settings
+	//
+	InitPlayerSettings(state.settings);
+	state.isInfiniteBuffer = state.settings.isInfiniteBuffer;
+	state.loop = state.settings.isLoop ? 1 : 0;
+
+	state.viewport = GetWindowArea();
+
+	// Load media
+	if (!LoadMedia(state, mediaFilePath, nativeAudioFormat)) {
+		goto release;
+	}
+
+	// Start decoder and reader
+	if (state.video.stream.isValid) {
+		StartDecoder(state.video.decoder, VideoDecodingThreadProc);
+	}
+	if (state.audio.stream.isValid) {
+		StartDecoder(state.audio.decoder, AudioDecodingThreadProc);
+	}
+	StartReader(state.reader, PacketReadThreadProc, &state);
+
+	// Start playing audio
+	if (state.audio.stream.isValid) {
+		SetAudioClientReadCallback(AudioReadCallback, &state.audio);
+		PlayAudio();
+	}
+
+	//
+	// App loop
+	//
+	double lastTime = GetHighResolutionTimeInSeconds();
+	double remainingTime = 0.0;
+	while (WindowUpdate()) {
 		//
-		// Load ffmpeg libraries
+		// Handle events
 		//
-		if (!LoadFFMPEG(ffmpeg)) {
-			goto release;
-		}
-
-		// Register all formats and codecs
-		ffmpeg.avRegisterAll();
-
-		// Init flush packet
-		ffmpeg.avInitPacket(&globalFlushPacket);
-		globalFlushPacket.data = (uint8_t *)&globalFlushPacket;
-
-		//
-		// Settings
-		//
-		InitPlayerSettings(state.settings);
-		state.isInfiniteBuffer = state.settings.isInfiniteBuffer;
-		state.loop = state.settings.isLoop ? 1 : 0;
-
-		// Load media
-		if (!LoadMedia(state, mediaFilePath, nativeAudioFormat, backBuffer)) {
-			goto release;
-		}
-
-		// Start decoder and reader
-		if (state.video.stream.isValid) {
-			StartDecoder(state.video.decoder, VideoDecodingThreadProc);
-		}
-		if (state.audio.stream.isValid) {
-			StartDecoder(state.audio.decoder, AudioDecodingThreadProc);
-		}
-		StartReader(state.reader, PacketReadThreadProc, &state);
-
-		// Start playing audio
-		if (state.audio.stream.isValid) {
-			SetAudioClientReadCallback(AudioReadCallback, &state.audio);
-			PlayAudio();
-		}
-
-		//
-		// App loop
-		//
-		double lastTime = GetHighResolutionTimeInSeconds();
-		double remainingTime = 0.0;
-		while (WindowUpdate()) {
-			//
-			// Handle events
-			//
-			Event ev = {};
-			while (PollWindowEvent(ev)) {
-				if (ev.type == EventType::Keyboard) {
+		Event ev = {};
+		while (PollWindowEvent(ev)) {
+			switch (ev.type) {
+				case EventType::Keyboard:
+				{
 					if ((ev.keyboard.type == KeyboardEventType::KeyUp) && (ev.keyboard.mappedKey == Key::Key_Space)) {
 						TogglePause(&state);
 					}
-				}
+				} break;
+				case EventType::Window:
+				{
+					if (ev.window.type == WindowEventType::Resized) {
+						state.viewport.width = ev.window.width;
+						state.viewport.height = ev.window.height;
+						state.forceRefresh = 1;
+					} else if (ev.window.type == WindowEventType::Invalidated) {
+						state.forceRefresh = 1;
+					}
+				} break;
 			}
-
-			// Refresh video?
-			if (remainingTime <= 0.0) {
-				remainingTime = DEFAULT_REFRESH_RATE;
-				if (!state.isPaused || state.forceRefresh) {
-					VideoRefresh(&state, &remainingTime);
-				}
-			}
-
-			// Update time
-			double now = GetHighResolutionTimeInSeconds();
-			double delta = now - lastTime;
-			lastTime = now;
-			remainingTime -= delta;
-			PrintMemStats();
 		}
 
-
-	release:
-		// Stop audio
-		if (state.audio.stream.isValid) {
-			StopAudio();
+		// Refresh video?
+		if (remainingTime <= 0.0 || state.forceRefresh) {
+			remainingTime = DEFAULT_REFRESH_RATE;
+		}
+		if (!state.isPaused || state.forceRefresh) {
+			VideoRefresh(&state, &remainingTime);
 		}
 
-		// Stop reader and decoders
-		StopReader(state.reader);
-		if (state.video.stream.isValid) {
-			StopDecoder(state.video.decoder);
-		}
-		if (state.audio.stream.isValid) {
-			StopDecoder(state.audio.decoder);
-		}
-
-		// Release media
-		ReleaseMedia(state);
-
-		//
-		// Release FFMPEG
-		//
-		ReleaseFFMPEG(ffmpeg);
-		MemoryAlignedFree(globalFFMPEGFunctions);
-
-		// Release platform
-		ReleasePlatform();
-
-		result = 0;
-	} else {
-		result = -1;
+		// Update time
+		double now = GetHighResolutionTimeInSeconds();
+		double delta = now - lastTime;
+		lastTime = now;
+		remainingTime -= delta;
+#if PRINT_MEMORY_STATS
+		PrintMemStats();
+#endif
 	}
 
-	return(result);
+
+release:
+	// Stop audio
+	if (state.audio.stream.isValid) {
+		StopAudio();
+	}
+
+	// Stop reader and decoders
+	StopReader(state.reader);
+	if (state.video.stream.isValid) {
+		StopDecoder(state.video.decoder);
+	}
+	if (state.audio.stream.isValid) {
+		StopDecoder(state.audio.decoder);
+	}
+
+	// Release media
+	ReleaseMedia(state);
+
+	//
+	// Release FFMPEG
+	//
+	ReleaseFFMPEG(ffmpeg);
+	MemoryAlignedFree(globalFFMPEGFunctions);
+
+	// Release platform
+#if USE_HARDWARE_RENDERING
+	fdyngl::UnloadOpenGL();
+#endif
+	ReleasePlatform();
+
+	return(0);
 }
