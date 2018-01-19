@@ -163,6 +163,7 @@
   <ItemGroup>
     <ClInclude Include="..\..\final_dynamic_opengl.hpp" />
     <ClInclude Include="..\..\final_platform_layer.hpp" />
+    <ClInclude Include="stb_truetype.h" />
     <ClInclude Include="utils.h" />
   </ItemGroup>
   <ItemGroup>

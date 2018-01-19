@@ -4,6 +4,7 @@
     <ClInclude Include="..\..\final_platform_layer.hpp" />
     <ClInclude Include="utils.h" />
     <ClInclude Include="..\..\final_dynamic_opengl.hpp" />
+    <ClInclude Include="stb_truetype.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="fpl_ffmpeg.cpp" />
