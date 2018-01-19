@@ -472,6 +472,7 @@ int main(int argc, char *args[]) {
 
 		headerOutStream << "#" << HeaderIdent << "ifndef " << version << endl;
 		headerOutStream << "#" << HeaderIdent << "\tdefine " << version << " 1" << endl;
+		headerOutStream << HeaderIdent << "\tstatic bool is" << version << ";" << endl;
 
 		// Typedefs
 		const vector<string> initTypeList = initTypes[it.first];
@@ -489,10 +490,10 @@ int main(int argc, char *args[]) {
 					if (hexValue.size() > 8) {
 						ctype = string("uint64_t");
 					}
-					}
-				headerOutStream << HeaderIdent << "\tstatic constexpr " << ctype << " " << constant.name << " = " << constant.value << ";" << endl;
 				}
+				headerOutStream << HeaderIdent << "\tstatic const " << ctype << " " << constant.name << " = " << constant.value << ";" << endl;
 			}
+		}
 
 #if OUTPUT_EXPORT_AS_WELL
 		headerOutStream << "#" << HeaderIdent << "\tifdef " << StaticDefineName << endl;
