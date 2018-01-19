@@ -501,6 +501,9 @@ SOFTWARE.
 	\page page_changelog Changelog
 	\tableofcontents
 
+	## v0.5.7.2 beta:
+	- Added: Added new audio formats (AudioFormatType::F64, AudioFormatType::S64)
+
 	## v0.5.7.1 beta:
 	- Fixed: xInputSetState renamed to xInputGetState internally
 	- Added: Introduced InputSettings
@@ -1363,7 +1366,7 @@ namespace fpl {
 	};
 
 	//! Audio format type
-	enum class AudioFormatType {
+	enum class AudioFormatType : uint32_t {
 		// No audio format
 		None,
 		// Unsigned 8-bit integer PCM
@@ -1374,8 +1377,12 @@ namespace fpl {
 		S24,
 		// Signed 32-bit integer PCM
 		S32,
-		// 32-bit floating point PCM
-		F32
+		// Signed 64-bit integer PCM
+		S64,
+		// 32-bit IEEE_FLOAT
+		F32,
+		// 64-bit IEEE_FLOAT
+		F64,
 	};
 
 	//! Audio device format
@@ -1388,9 +1395,9 @@ namespace fpl {
 		uint32_t channels;
 		//! Number of periods
 		uint32_t periods;
-		//! Buffer size for one period
+		//! Buffer size for the device
 		uint32_t bufferSizeInBytes;
-		//! Buffer size in frames for one period
+		//! Buffer size in frames
 		uint32_t bufferSizeInFrames;
 	};
 
@@ -1548,12 +1555,12 @@ namespace fpl {
 #			if defined(FPL_PLATFORM_POSIX)
 				void *posixHandle;
 #			endif
-		} internalHandle;
-		//! Library opened successfully
+			} internalHandle;
+			//! Library opened successfully
 			bool isValid;
-	};
+		};
 
-	//! Loads a dynamic library and returns the loaded handle for it.
+		//! Loads a dynamic library and returns the loaded handle for it.
 		fpl_api DynamicLibraryHandle DynamicLibraryLoad(const char *libraryFilePath);
 		//! Returns the dynamic library procedure address for the given procedure name.
 		fpl_api void *GetDynamicLibraryProc(const DynamicLibraryHandle &handle, const char *name);
@@ -1561,9 +1568,9 @@ namespace fpl {
 		fpl_api void DynamicLibraryUnload(DynamicLibraryHandle &handle);
 
 		/** \}*/
-}
+	}
 
-//! Console functions
+	//! Console functions
 	namespace console {
 		/**
 		  * \defgroup Console Console functions
@@ -2645,18 +2652,24 @@ namespace fpl {
 				case AudioFormatType::S32:
 				case AudioFormatType::F32:
 					return 4;
+				case AudioFormatType::S64:
+				case AudioFormatType::F64:
+					return 8;
 				default:
 					return 0;
 			}
 		}
 
+		// @NOTE(final): Order must be equal to the AudioFormatType enum!
 		fpl_constant char *AUDIO_FORMAT_TYPE_STRINGS[] = {
 			"None",
 			"U8",
 			"S16",
 			"S24",
 			"S32",
+			"S64",
 			"F32",
+			"F64",
 		};
 		fpl_internal_inline const char *GetAudioFormatString(AudioFormatType format) {
 			uint32_t index = (uint32_t)format;
@@ -2693,7 +2706,7 @@ namespace fpl {
 		// Forward declarations
 		fpl_internal void ReleaseAudio();
 		fpl_internal AudioResult InitAudio(const AudioSettings &audioSettings);
-} // audio
+	} // audio
 #endif // FPL_ENABLE_AUDIO
 
 	//
@@ -2888,7 +2901,7 @@ namespace fpl {
 #			error "Unsupported architecture/platform!"
 #		endif
 			return (result);
-	}
+		}
 
 		fpl_api void *AtomicCompareAndExchangePtr(volatile void **dest, const void *comparand, const void *exchange) {
 			FPL_ASSERT(dest != nullptr);
@@ -3571,8 +3584,8 @@ namespace fpl {
 					BITMAPINFO bitmapInfo;
 				} software;
 #		endif
-				};
 			};
+		};
 
 		struct Win32ApplicationState {
 			bool isInitialized;
@@ -3795,7 +3808,7 @@ namespace fpl {
 			FPL_ASSERT(videoState.software.context.pixels != nullptr);
 			memory::MemoryAlignedFree(videoState.software.context.pixels);
 			videoState.software = {};
-			}
+		}
 #	endif // FPL_ENABLE_VIDEO_SOFTWARE
 
 #	if defined(FPL_ENABLE_WINDOW)
@@ -4327,9 +4340,9 @@ namespace fpl {
 								(h != win32State->video.software.context.height)) {
 								platform::Win32ReleaseVideoSoftware(win32State);
 								platform::Win32InitVideoSoftware(win32State, w, h);
-				}
-			}
-		}
+							}
+						}
+					}
 #				endif
 
 					Event newEvent = {};
@@ -4338,7 +4351,7 @@ namespace fpl {
 					newEvent.window.width = LOWORD(lParam);
 					newEvent.window.height = HIWORD(lParam);
 					platform::PushEvent(newEvent);
-		} break;
+				} break;
 
 				case WM_SYSKEYDOWN:
 				case WM_SYSKEYUP:
@@ -4460,10 +4473,10 @@ namespace fpl {
 
 				default:
 					break;
-		}
+			}
 			result = win32_defWindowProc(hwnd, msg, wParam, lParam);
 			return (result);
-	}
+		}
 
 		fpl_internal bool Win32InitWindow(Win32State &win32State, const Settings &initSettings) {
 			Win32APIFunctions &wapi = global__Win32__API__Functions;
@@ -4593,14 +4606,14 @@ namespace fpl {
 					if (!softwareResult) {
 						common::PushError("Failed creating software rendering buffer for window '%d'/'%s'", win32State.window.windowHandle, win32State.window.windowClass);
 						return false;
-				}
+					}
 					win32State.video.activeVideoDriver = VideoDriverType::Software;
-			} break;
+				} break;
 #			endif // FPL_ENABLE_VIDEO_SOFTWARE
 
 				default:
 					break;
-		}
+			}
 #		endif // FPL_ENABLE_VIDEO
 
 			// Show window
@@ -4613,7 +4626,7 @@ namespace fpl {
 			win32State.window.isRunning = true;
 
 			return true;
-}
+		}
 
 		fpl_internal void Win32ReleaseWindow(Win32State &win32State) {
 			Win32APIFunctions &api = global__Win32__API__Functions;
@@ -4980,11 +4993,11 @@ namespace fpl {
 			return(result);
 		}
 
-	} // platform
+		} // platform
 
-	//
-	// Win32 Atomics
-	//
+		//
+		// Win32 Atomics
+		//
 	namespace atomics {
 		fpl_api void AtomicReadFence() {
 			FPL_MEMORY_BARRIER();
@@ -5753,7 +5766,7 @@ namespace fpl {
 			GetModuleFileNameW(nullptr, modulePath, MAX_PATH);
 			strings::WideStringToAnsiString(modulePath, strings::GetWideStringLength(modulePath), destPath, maxDestLen);
 			return(destPath);
-		}
+	}
 #	else
 		fpl_api char *GetExecutableFilePath(char *destPath, const uint32_t maxDestLen) {
 			if (destPath == nullptr) {
@@ -5786,7 +5799,7 @@ namespace fpl {
 			api.shell.shGetFolderPathW(nullptr, CSIDL_PROFILE, nullptr, 0, homePath);
 			strings::WideStringToAnsiString(homePath, strings::GetWideStringLength(homePath), destPath, maxDestLen);
 			return(destPath);
-		}
+}
 #	else
 		fpl_api char *GetHomePath(char *destPath, const uint32_t maxDestLen) {
 			if (destPath == nullptr) {
@@ -5944,7 +5957,7 @@ namespace fpl {
 			}
 #		endif
 			return(result);
-	}
+		}
 
 		fpl_api bool ResizeVideoBackBuffer(const uint32_t width, const uint32_t height) {
 			bool result = false;
@@ -5981,7 +5994,7 @@ namespace fpl {
 					uint32_t sourceWidth = video.software.context.width;
 					uint32_t sourceHeight = video.software.context.height;
 					wapi.gdi.stretchDIBits(state->window.deviceContext, 0, 0, targetWidth, targetHeight, 0, 0, sourceWidth, sourceHeight, video.software.context.pixels, &video.software.bitmapInfo, DIB_RGB_COLORS, SRCCOPY);
-		} break;
+				} break;
 #			endif
 
 #			if defined(FPL_ENABLE_VIDEO_OPENGL)
@@ -5993,7 +6006,7 @@ namespace fpl {
 
 				default:
 					break;
-	}
+			}
 		}
 
 		fpl_api WindowSize GetWindowArea() {
@@ -6293,13 +6306,13 @@ namespace fpl {
 			if (common::global__LastErrorState->count > 0) {
 				size_t index = common::global__LastErrorState->count - 1;
 				result = GetPlatformLastError(index);
-		}
+			}
 #		else
 			result = global__LastErrorState->errors[0];
 #		endif // FPL_ENABLE_MULTIPLE_ERRORSTATES
-	}
+			}
 		return (result);
-	}
+		}
 
 	fpl_api const char *GetPlatformLastError(const size_t index) {
 		const char *result = nullptr;
@@ -6313,9 +6326,9 @@ namespace fpl {
 #		else
 			result = global__LastErrorState->errors[0];
 #		endif // FPL_ENABLE_MULTIPLE_ERRORSTATES
-		}
+			}
 		return (result);
-	}
+		}
 
 	fpl_api size_t GetPlatformLastErrorCount() {
 		size_t result = 0;
@@ -6325,7 +6338,7 @@ namespace fpl {
 #		else
 			result = strings::GetAnsiStringLength(common::global__LastErrorState->errors[0]) > 0 ? 1 : 0;
 #		endif
-	}
+		}
 		return (result);
 	}
 
@@ -6367,7 +6380,7 @@ namespace fpl {
 
 			default:
 				break;
-			}
+		}
 #	endif // FPL_ENABLE_VIDEO
 
 		platform::Win32ReleaseWindow(win32State);
@@ -6384,7 +6397,7 @@ namespace fpl {
 		platform::global__Win32__State = nullptr;
 
 		platform::global__Win32__AppState.isInitialized = false;
-		}
+	}
 
 	fpl_api bool InitPlatform(const InitFlags initFlags, const Settings &initSettings) {
 		if (platform::global__Win32__AppState.isInitialized) {
@@ -6463,7 +6476,7 @@ namespace fpl {
 		return (true);
 	}
 
-} // fpl
+	} // fpl
 
 #	if defined(FPL_ENABLE_WINDOW)
 
@@ -6474,7 +6487,7 @@ int WINAPI wWinMain(HINSTANCE appInstance, HINSTANCE prevInstance, LPWSTR cmdLin
 	int result = main(args.count, args.args);
 	fpl::memory::MemoryFree(args.mem);
 	return(result);
-	}
+}
 
 #		else
 
@@ -6778,7 +6791,7 @@ namespace fpl {
 
 	fpl_api void ReleasePlatform() {
 	}
-}
+	}
 #endif // FPL_PLATFORM_LINUX
 
 // ****************************************************************************
@@ -6878,7 +6891,7 @@ namespace fpl {
 			wf.Format.nBlockAlign = (wf.Format.nChannels * wf.Format.wBitsPerSample) / 8;
 			wf.Format.nAvgBytesPerSec = wf.Format.nBlockAlign * wf.Format.nSamplesPerSec;
 			wf.Samples.wValidBitsPerSample = wf.Format.wBitsPerSample;
-			if (audioSettings.desiredFormat.type == AudioFormatType::F32) {
+			if ((audioSettings.desiredFormat.type == AudioFormatType::F32) || (audioSettings.desiredFormat.type == AudioFormatType::F64)) {
 				wf.SubFormat = KSDATAFORMAT_SUBTYPE_IEEE_FLOAT;
 			} else {
 				wf.SubFormat = KSDATAFORMAT_SUBTYPE_PCM;
@@ -6935,7 +6948,11 @@ namespace fpl {
 			// Set internal format
 			AudioDeviceFormat internalFormat = {};
 			if (IsEqualGUID(pActualFormat->SubFormat, KSDATAFORMAT_SUBTYPE_IEEE_FLOAT)) {
-				internalFormat.type = AudioFormatType::F32;
+				if (pActualFormat->Format.wBitsPerSample == 64) {
+					internalFormat.type = AudioFormatType::F64;
+				} else {
+					internalFormat.type = AudioFormatType::F32;
+				}
 			} else {
 				switch (pActualFormat->Format.wBitsPerSample) {
 					case 8:
@@ -6949,6 +6966,9 @@ namespace fpl {
 						break;
 					case 32:
 						internalFormat.type = AudioFormatType::S32;
+						break;
+					case 64:
+						internalFormat.type = AudioFormatType::S64;
 						break;
 				}
 			}
@@ -7648,7 +7668,7 @@ namespace fpl {
 				if (AudioGetDeviceState(*audioState) == AudioDeviceState::Stopped) {
 					audioState->common.clientReadCallback = newCallback;
 					audioState->common.clientUserData = userData;
-}
+				}
 			}
 		}
 	} // audio
