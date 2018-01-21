@@ -1,6 +1,6 @@
 var searchData=
 [
-  ['left',['Left',['../namespacefpl_1_1window_1_1_mouse_button_types.html#a8421a50986b384eb037e31a522bc223baaf3a59f7250896516d4eff21c8c3d697',1,'fpl::window::MouseButtonTypes']]],
-  ['legacy',['Legacy',['../namespacefpl_1_1_video_compability_profiles.html#acfa373302044d5de2a2b41be42fdc5d2acce2f8ec850a14f06f3b660f0493b596',1,'fpl::VideoCompabilityProfiles']]],
-  ['lostfocus',['LostFocus',['../namespacefpl_1_1window_1_1_window_event_types.html#abe653c1f4e9a9e70d79b5df52aacb6c5aa64186511c76a94680b6d0dd4cdb9ec6',1,'fpl::window::WindowEventTypes']]]
+  ['left',['Left',['../group___window_events.html#ggaa59b9dadfe29d58132ad77164994bdc5a945d5e233cf7d6240f6b783b36a374ff',1,'fpl::window']]],
+  ['legacy',['Legacy',['../group___settings.html#ggab3552d007c8e23a65e4ac0366758c18da0cc0a0507cf3d31e5089f420a4cf8b4b',1,'fpl']]],
+  ['lostfocus',['LostFocus',['../group___window_events.html#ggad06ffcf43b2eabc01cb12a8cf9f55e35a8813875a99e12b641965aeb0e951a994',1,'fpl::window']]]
 ];

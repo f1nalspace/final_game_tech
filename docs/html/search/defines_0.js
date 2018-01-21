@@ -26,7 +26,6 @@ var searchData=
   ['fpl_5fmegabytes',['FPL_MEGABYTES',['../final__platform__layer_8hpp.html#a4ac11ba8028d84fdd28a1b8da9aa5d85',1,'final_platform_layer.hpp']]],
   ['fpl_5fmin',['FPL_MIN',['../final__platform__layer_8hpp.html#ac981bef3df9c03ceb5f5717f8a77741b',1,'final_platform_layer.hpp']]],
   ['fpl_5fnot_5fimplemented',['FPL_NOT_IMPLEMENTED',['../final__platform__layer_8hpp.html#a4d53ab9cdf56d440de4cb631dc5682ce',1,'final_platform_layer.hpp']]],
-  ['fpl_5fnull',['fpl_null',['../final__platform__layer_8hpp.html#a5802229fe609da01bab950248671c0ef',1,'final_platform_layer.hpp']]],
   ['fpl_5foffsetof',['FPL_OFFSETOF',['../final__platform__layer_8hpp.html#aa8c6c05d32a184862826e0a9257f5539',1,'final_platform_layer.hpp']]],
   ['fpl_5fstaticassert',['FPL_STATICASSERT',['../final__platform__layer_8hpp.html#a397051eb7e8dc5dc19697ddc1bd6b056',1,'final_platform_layer.hpp']]],
   ['fpl_5fsupport_5faudio',['FPL_SUPPORT_AUDIO',['../final__platform__layer_8hpp.html#a170f47c4fcb4ca58ea9627ca44641eae',1,'final_platform_layer.hpp']]],

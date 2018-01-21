@@ -15,6 +15,7 @@ var searchData=
   ['getplatformlasterrorcount',['GetPlatformLastErrorCount',['../group___error_handling.html#gac3b46af437dae868f37f36e0d0837655',1,'fpl']]],
   ['getprocessorcorecount',['GetProcessorCoreCount',['../group___hardware.html#ga4436ab750f9876cae642e985ddc31419',1,'fpl::hardware']]],
   ['getprocessorname',['GetProcessorName',['../group___hardware.html#ga9bc84d10830c46188cb9794459051b11',1,'fpl::hardware']]],
+  ['getsystemmemoryinfos',['GetSystemMemoryInfos',['../group___hardware.html#ga33106a99013de22d2b50a43c812aa760',1,'fpl::hardware']]],
   ['getvideobackbuffer',['GetVideoBackBuffer',['../group___video.html#ga66afa77e909dab32517268006e8da8da',1,'fpl::video']]],
   ['getwidestringlength',['GetWideStringLength',['../group___strings.html#ga2f5f224289b7bf9d19bb5684cd19fac1',1,'fpl::strings']]],
   ['getwindowarea',['GetWindowArea',['../group___window_base.html#ga373b828e140954c44c3415f98f9e7e63',1,'fpl::window']]],

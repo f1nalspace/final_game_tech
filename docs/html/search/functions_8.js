@@ -9,6 +9,6 @@ var searchData=
   ['memorystackallocate',['MemoryStackAllocate',['../group___memory.html#gaae59e8f8c515b0a58ece0a60588779dd',1,'fpl::memory']]],
   ['mutexcreate',['MutexCreate',['../group___threading.html#gad8496dd7dfa65ccd1b7187abe22e4a48',1,'fpl::threading']]],
   ['mutexdestroy',['MutexDestroy',['../group___threading.html#ga9fda6954c3de6afbc9e09b4636001282',1,'fpl::threading']]],
-  ['mutexlock',['MutexLock',['../group___threading.html#ga0126a46029f274634d90437fe39564b7',1,'fpl::threading']]],
-  ['mutexunlock',['MutexUnlock',['../group___threading.html#gab2f18851290d803349ef71c1aa78b493',1,'fpl::threading']]]
+  ['mutexlock',['MutexLock',['../group___threading.html#gad0304ca6339e7fc3376dc57943ea3d76',1,'fpl::threading']]],
+  ['mutexunlock',['MutexUnlock',['../group___threading.html#ga1f168ddadc3a54cdbf5acd04850bf8a8',1,'fpl::threading']]]
 ];

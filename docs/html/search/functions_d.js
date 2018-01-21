@@ -5,7 +5,7 @@ var searchData=
   ['threadresume',['ThreadResume',['../group___threading.html#ga8132b503372987c2e5c63eaeba985adb',1,'fpl::threading']]],
   ['threadsleep',['ThreadSleep',['../group___threading.html#ga5549e8b3fb7ba18a8268bd8026c13c9b',1,'fpl::threading']]],
   ['threadsuspend',['ThreadSuspend',['../group___threading.html#ga13be443e258c267955a7f4fe6a9f4c7b',1,'fpl::threading']]],
-  ['threadwaitforall',['ThreadWaitForAll',['../group___threading.html#ga9f307a0b49aa4aa46886010d9eb88e0f',1,'fpl::threading']]],
-  ['threadwaitforany',['ThreadWaitForAny',['../group___threading.html#gad974c8976ebcafbb4788a7713eddf34f',1,'fpl::threading']]],
-  ['threadwaitforone',['ThreadWaitForOne',['../group___threading.html#gaa40f358ef89b947e0b380a27acf7dbdc',1,'fpl::threading']]]
+  ['threadwaitforall',['ThreadWaitForAll',['../group___threading.html#ga270550991642a26870f04ee57721246f',1,'fpl::threading']]],
+  ['threadwaitforany',['ThreadWaitForAny',['../group___threading.html#gae7cef6c0b207497c150299cfc950f404',1,'fpl::threading']]],
+  ['threadwaitforone',['ThreadWaitForOne',['../group___threading.html#ga37f301c14e223afafab3913748cf2b5a',1,'fpl::threading']]]
 ];

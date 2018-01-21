@@ -1,10 +1,9 @@
 var searchData=
 [
-  ['gamepad',['gamepad',['../structfpl_1_1window_1_1_event.html#acd55903a68020728b161f3db3b8bff49',1,'fpl::window::Event::gamepad()'],['../namespacefpl_1_1window_1_1_event_types.html#ac1b654b98c2774f73b1b089f2886fc4fa7895681e76ab4eec49c5904850fab6d0',1,'fpl::window::EventTypes::Gamepad()']]],
+  ['gamepad',['gamepad',['../structfpl_1_1window_1_1_event.html#acd55903a68020728b161f3db3b8bff49',1,'fpl::window::Event::gamepad()'],['../group___window_events.html#gga5bca567a4ac5c4145c9a492b0558ee4aa221f6781b4faa2d321ca0d928f518d6e',1,'fpl::window::Gamepad()']]],
   ['gamepadbutton',['GamepadButton',['../structfpl_1_1window_1_1_gamepad_button.html',1,'fpl::window']]],
   ['gamepadevent',['GamepadEvent',['../structfpl_1_1window_1_1_gamepad_event.html',1,'fpl::window']]],
-  ['gamepadeventtype',['GamepadEventType',['../group___window_events.html#ga4fc94b5031d8e8806442cee7a47f4c4b',1,'fpl::window']]],
-  ['gamepadeventtypeenum',['GamepadEventTypeEnum',['../namespacefpl_1_1window_1_1_gamepad_event_types.html#ab7b887afe0886bbabc52ee0d76a9b3f6',1,'fpl::window::GamepadEventTypes']]],
+  ['gamepadeventtype',['GamepadEventType',['../group___window_events.html#ga85374967f1703b14d476872c6df8d4c7',1,'fpl::window']]],
   ['gamepadstate',['GamepadState',['../structfpl_1_1window_1_1_gamepad_state.html',1,'fpl::window']]],
   ['getansistringlength',['GetAnsiStringLength',['../group___strings.html#ga388ca55dd073575074821c146a585e2d',1,'fpl::strings']]],
   ['getaudiohardwareformat',['GetAudioHardwareFormat',['../group___audio.html#ga0b9d3595b9898f3d47e2a87e6d497c76',1,'fpl::audio']]],
@@ -21,9 +20,10 @@ var searchData=
   ['getplatformlasterrorcount',['GetPlatformLastErrorCount',['../group___error_handling.html#gac3b46af437dae868f37f36e0d0837655',1,'fpl']]],
   ['getprocessorcorecount',['GetProcessorCoreCount',['../group___hardware.html#ga4436ab750f9876cae642e985ddc31419',1,'fpl::hardware']]],
   ['getprocessorname',['GetProcessorName',['../group___hardware.html#ga9bc84d10830c46188cb9794459051b11',1,'fpl::hardware']]],
+  ['getsystemmemoryinfos',['GetSystemMemoryInfos',['../group___hardware.html#ga33106a99013de22d2b50a43c812aa760',1,'fpl::hardware']]],
   ['getvideobackbuffer',['GetVideoBackBuffer',['../group___video.html#ga66afa77e909dab32517268006e8da8da',1,'fpl::video']]],
   ['getwidestringlength',['GetWideStringLength',['../group___strings.html#ga2f5f224289b7bf9d19bb5684cd19fac1',1,'fpl::strings']]],
   ['getwindowarea',['GetWindowArea',['../group___window_base.html#ga373b828e140954c44c3415f98f9e7e63',1,'fpl::window']]],
   ['getwindowposition',['GetWindowPosition',['../group___window_base.html#ga802a660426beab88fcf3835aa0491a8b',1,'fpl::window']]],
-  ['gotfocus',['GotFocus',['../namespacefpl_1_1window_1_1_window_event_types.html#abe653c1f4e9a9e70d79b5df52aacb6c5a866464f3fbbe904285b6e60dcbcb6162',1,'fpl::window::WindowEventTypes']]]
+  ['gotfocus',['GotFocus',['../group___window_events.html#ggad06ffcf43b2eabc01cb12a8cf9f55e35a1b5e06777fc97a0645bfe375f0fa3fe4',1,'fpl::window']]]
 ];

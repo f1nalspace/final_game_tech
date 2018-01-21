@@ -22,7 +22,7 @@
  <tr style="height: 56px;">
   <td id="projectalign" style="padding-left: 0.5em;">
    <div id="projectname">Final Platform Layer
-   &#160;<span id="projectnumber">0.5.2.1</span>
+   &#160;<span id="projectnumber">0.5.6.1</span>
    </div>
   </td>
  </tr>
@@ -63,7 +63,148 @@ $(function() {
 <div class="title">Final Platform Layer Documentation</div>  </div>
 </div><!--header-->
 <div class="contents">
-<div class="textblock"><p>Summary of the Final Platform Layer (FPL) project. Please see <a class="el" href="final__platform__layer_8hpp.html">final_platform_layer.hpp</a> for more details. </p>
+<div class="toc"><h3>Table of Contents</h3>
+<ul><li class="level1"><a href="#section_intro">Introduction</a></li>
+<li class="level1"><a href="#section_features">Features</a><ul><li class="level2"><a href="#section_supported_archs">Supported Architectures</a></li>
+<li class="level2"><a href="#section_supported_compilers">Supported Compilers</a></li>
+<li class="level2"><a href="#section_supported_platforms">Supported Platforms</a></li>
+<li class="level2"><a href="#section_todo">Todo</a></li>
+</ul>
+</li>
+<li class="level1"><a href="#section_howtocompile">How to Compile</a><ul><li class="level2"><a href="#sectionCompileWin32">Win32</a></li>
+<li class="level2"><a href="#sectionCompileLinux">Linux</a></li>
+</ul>
+</li>
+<li class="level1"><a href="#section_usage">Usage</a></li>
+<li class="level1"><a href="#section_examples">Examples</a></li>
+<li class="level1"><a href="#section_notes">Notes</a><ul><li class="level2"><a href="#section_audio">Audio</a></li>
+</ul>
+</li>
+<li class="level1"><a href="#section_license">License</a></li>
+<li class="level1"><a href="#section_version_history">Version History</a></li>
+<li class="level1"><a href="#section_thanksto">Acknowledgements</a></li>
+</ul>
+</div>
+<div class="textblock"><h1><a class="anchor" id="section_intro"></a>
+Introduction</h1>
+<p><em>This library is designed to abstract the underlying platform to a very simple and easy to use api.</em><br />
+ <br />
+ The main focus is game/simulation development, so the default settings will create a window, setup a opengl rendering context and initialize audio playback on any platform.<br />
+ The only dependencies are built-in operating system libraries, a C++/11 compiler and the C runtime library.<br />
+</p>
+<p>It works very well with other libraries like for example:</p>
+<ul>
+<li>STB Libraries</li>
+<li>Standard C++ Library (STL)</li>
+<li>Glew/Glad</li>
+<li>Box2D</li>
+<li>GLM</li>
+<li>ImGUI</li>
+<li>etc.</li>
+</ul>
+<h1><a class="anchor" id="section_features"></a>
+Features</h1>
+<ul>
+<li>Creating a fixed or resizeable window</li>
+<li>Handling window, keyboard, mouse events</li>
+<li>Enable/Disable fullscreen</li>
+<li>Full event buffering</li>
+<li>Polling gamepad informations</li>
+<li>Clipboard string reading and writing</li>
+<li>Multi-monitor support for window creation and fullscreen switching (Todo)</li>
+<li>Video output:<ul>
+<li>Legacy 1.x opengl rendering context</li>
+<li>Modern 3.x + opengl rendering context</li>
+<li>Software backbuffer</li>
+</ul>
+</li>
+<li>Asyncronous audio playback<ul>
+<li>DirectSound</li>
+<li>Alsa (Todo)</li>
+</ul>
+</li>
+<li>Memory allocation and de-allocation with custom alignment support</li>
+<li>Atomic operations</li>
+<li>Path functions</li>
+<li>File functions</li>
+<li>Hardware functions</li>
+<li>String conversion functions</li>
+<li>Thread/Mutex/Signal handling</li>
+</ul>
+<h2><a class="anchor" id="section_supported_archs"></a>
+Supported Architectures</h2>
+<ul>
+<li>x86 / x86_64</li>
+<li>x64</li>
+</ul>
+<h2><a class="anchor" id="section_supported_compilers"></a>
+Supported Compilers</h2>
+<ul>
+<li>Compiles with MSVC</li>
+<li>Compiles with GCC</li>
+<li>Compiles with Clang (Partially)</li>
+<li>Compiles with MingW (Not tested)</li>
+<li>Compiles with Intel C++ Compiler (Not tested)</li>
+</ul>
+<h2><a class="anchor" id="section_supported_platforms"></a>
+Supported Platforms</h2>
+<ul>
+<li>Win32</li>
+<li>Compiles with GCC</li>
+<li>Linux/Posix (Partially)</li>
+<li>Unix/BSD/Posix (Todo)</li>
+</ul>
+<h2><a class="anchor" id="section_todo"></a>
+Todo</h2>
+<p>See <a class="el" href="page_todo.html">ToDo / Planned (Top priority order)</a></p>
+<h1><a class="anchor" id="section_howtocompile"></a>
+How to Compile</h1>
+<p>You need a C++/11 compatible compiler like MSVC, GCC, Clang, etc.</p>
+<p><a class="el" href="page_compiler_options.html">Compiler Options</a></p>
+<h2><a class="anchor" id="sectionCompileWin32"></a>
+Win32</h2>
+<ul>
+<li>Link against "kernel32.lib"</li>
+</ul>
+<h2><a class="anchor" id="sectionCompileLinux"></a>
+Linux</h2>
+<ul>
+<li>Link against "ld"</li>
+</ul>
+<h1><a class="anchor" id="section_usage"></a>
+Usage</h1>
+<p>In one of your C++ translation units include this:</p>
+<div class="fragment"><div class="line"><span class="preprocessor">#define FPL_IMPLEMENTATION</span></div><div class="line"><span class="preprocessor">#include &quot;final_platform_layer.hpp&quot;</span></div></div><!-- fragment --><p>You can then include this file in any other C++ source or header file as you would with any other header file.</p>
+<p>Provide the typical main entry point with at least the initialization and release of the platform:</p>
+<div class="fragment"><div class="line"><span class="keywordtype">int</span> main(<span class="keywordtype">int</span> argc, <span class="keywordtype">char</span> **args) {</div><div class="line">    <span class="comment">// Initialize the platform</span></div><div class="line">    <a class="code" href="group___initialization.html#ga92579bdb920c4ace57a038d7807d3b56">fpl::InitPlatform</a>(<a class="code" href="group___settings.html#ggae483f3743fdfa195f8746c04203ca850ab1c94ca2fbc3e78fc30069c8d0f01680">fpl::InitFlags::All</a>);</div><div class="line">    <span class="comment">// ..</span></div><div class="line">    <span class="comment">// your code goes here</span></div><div class="line">    <span class="comment">// ..</span></div><div class="line">    <span class="comment">// Release the platform</span></div><div class="line">    <a class="code" href="group___initialization.html#ga6687b3ab1ce1d54f30785baf70566ed5">fpl::ReleasePlatform</a>();</div><div class="line">}</div></div><!-- fragment --><h1><a class="anchor" id="section_examples"></a>
+Examples</h1>
+<ul>
+<li><a class="el" href="page_example_helloworld_console.html">Hello World Console Application!</a></li>
+<li><a class="el" href="page_example_opengl1x.html">Simple OpenGL 1.x Triangle</a></li>
+<li><a class="el" href="page_example_opengl33.html">Modern OpenGL 3.3+</a></li>
+<li><a class="el" href="page_example_simple_audio.html">Simple audio playback (Infinite square or sine wave)</a></li>
+</ul>
+<h1><a class="anchor" id="section_notes"></a>
+Notes</h1>
+<h2><a class="anchor" id="section_audio"></a>
+Audio</h2>
+<p>This library uses the operating system libraries to initialize a playback audio device.<br />
+ To get any audio samples to play you need to set the callback function with <a class="el" href="structfpl_1_1_audio_settings.html#a3ade4cb176a441d5da0236cbf954a8fa">fpl::AudioSettings::clientReadCallback</a> or <a class="el" href="group___audio.html#gab74286317a34e70379c2bdcd4756c02e" title="Overwrites the audio client read callback. This has no effect when audio is already playing...">fpl::audio::SetAudioClientReadCallback()</a> before start playing the audio using <a class="el" href="group___audio.html#gad879b8c42a68250a581a7d5347e3b3e0" title="Start playing audio. ">PlayAudio()</a>.<br />
+ When the audio device requires more audio samples this callback is automatically called.<br />
+ It is expected that the audio samples are filled in properly by the native format of the device, see <a class="el" href="structfpl_1_1_audio_device_format.html">fpl::AudioDeviceFormat</a>.<br />
+ This library does not provide any functionality for doing any kind of DSP.<br />
+ To start and stop the playback, you need to call <a class="el" href="group___audio.html#gad879b8c42a68250a581a7d5347e3b3e0" title="Start playing audio. ">fpl::audio::PlayAudio()</a> and <a class="el" href="group___audio.html#ga7c7306211763682dc822438ca375933d" title="Stop playing audio. ">fpl::audio::StopAudio()</a> respectively.<br />
+ There is no guarantee that you get a audio device with the exact same format you specified back, but S16 with 48 KHz is a common format which almost every audio card supports.<br />
+</p>
+<h1><a class="anchor" id="section_license"></a>
+License</h1>
+<p>Final Platform Layer is released under the <a class="el" href="page_license.html">MIT License</a>.</p>
+<h1><a class="anchor" id="section_version_history"></a>
+Version History</h1>
+<p><a class="el" href="page_changelog.html">Changelog / Version History</a></p>
+<h1><a class="anchor" id="section_thanksto"></a>
+Acknowledgements</h1>
+<p>The audio playback system in this library is a port of "mini_al.h", a small but fine C-Library written by David Reid. </p>
 </div></div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>

@@ -1,6 +1,6 @@
 var searchData=
 [
-  ['keyboardeventtypeenum',['KeyboardEventTypeEnum',['../namespacefpl_1_1window_1_1_keyboard_event_types.html#af2b159019bbc4f7c214b73c3dea46065',1,'fpl::window::KeyboardEventTypes']]],
-  ['keyboardmodifierflagenum',['KeyboardModifierFlagEnum',['../namespacefpl_1_1window_1_1_keyboard_modifier_flags.html#a957a3d95f8261e7566585d65f203300d',1,'fpl::window::KeyboardModifierFlags']]],
-  ['keyenum',['KeyEnum',['../namespacefpl_1_1window_1_1_keys.html#a2b24ab19a42e1be46413638f656803d6',1,'fpl::window::Keys']]]
+  ['key',['Key',['../group___window_events.html#gab45601d8968b4696e5d6dc3d79d4a3be',1,'fpl::window']]],
+  ['keyboardeventtype',['KeyboardEventType',['../group___window_events.html#gacc336636e2219913ba436b1900358e24',1,'fpl::window']]],
+  ['keyboardmodifierflags',['KeyboardModifierFlags',['../group___window_events.html#ga0273526560c565d3c67cdf5c0c071194',1,'fpl::window']]]
 ];

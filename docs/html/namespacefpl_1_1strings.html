@@ -22,7 +22,7 @@
  <tr style="height: 56px;">
   <td id="projectalign" style="padding-left: 0.5em;">
    <div id="projectname">Final Platform Layer
-   &#160;<span id="projectnumber">0.5.2.1</span>
+   &#160;<span id="projectnumber">0.5.6.1</span>
    </div>
   </td>
  </tr>
@@ -75,14 +75,10 @@ $(function() {
 <table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a name="func-members"></a>
 Functions</h2></td></tr>
-<tr class="memitem:ga388ca55dd073575074821c146a585e2d"><td class="memItemLeft" align="right" valign="top">
-<a class="el" href="final__platform__layer_8hpp.html#aafa1d3d90febf9826c55c1318f98b27d">fpl_api</a> uint32_t&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___strings.html#ga388ca55dd073575074821c146a585e2d">GetAnsiStringLength</a> (const char *str)</td></tr>
-<tr class="memdesc:ga388ca55dd073575074821c146a585e2d"><td class="mdescLeft">&#160;</td><td class="mdescRight">Returns the number of characters of the given 8-bit Ansi string. Null terminator is not included. <br /></td></tr>
-<tr class="separator:ga388ca55dd073575074821c146a585e2d"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:ga2f5f224289b7bf9d19bb5684cd19fac1"><td class="memItemLeft" align="right" valign="top">
-<a class="el" href="final__platform__layer_8hpp.html#aafa1d3d90febf9826c55c1318f98b27d">fpl_api</a> uint32_t&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___strings.html#ga2f5f224289b7bf9d19bb5684cd19fac1">GetWideStringLength</a> (const wchar_t *str)</td></tr>
-<tr class="memdesc:ga2f5f224289b7bf9d19bb5684cd19fac1"><td class="mdescLeft">&#160;</td><td class="mdescRight">Returns the number of characters of the given 16-bit Wide string. Null terminator is not included. <br /></td></tr>
-<tr class="separator:ga2f5f224289b7bf9d19bb5684cd19fac1"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:gacf1b68cc61d41d0e2be20b198d013dc6"><td class="memItemLeft" align="right" valign="top">
+<a class="el" href="final__platform__layer_8hpp.html#aafa1d3d90febf9826c55c1318f98b27d">fpl_api</a> wchar_t *&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___strings.html#gacf1b68cc61d41d0e2be20b198d013dc6">AnsiStringToWideString</a> (const char *ansiSource, const uint32_t ansiSourceLen, wchar_t *wideDest, const uint32_t maxWideDestLen)</td></tr>
+<tr class="memdesc:gacf1b68cc61d41d0e2be20b198d013dc6"><td class="mdescLeft">&#160;</td><td class="mdescRight">Converts the given 8-bit Ansi string in a 16-bit Wide string. Does not allocate any memory. <br /></td></tr>
+<tr class="separator:gacf1b68cc61d41d0e2be20b198d013dc6"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:ga4540f0bb0f47aeba1a0900f9f107c188"><td class="memItemLeft" align="right" valign="top">
 <a class="el" href="final__platform__layer_8hpp.html#aafa1d3d90febf9826c55c1318f98b27d">fpl_api</a> char *&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___strings.html#ga4540f0bb0f47aeba1a0900f9f107c188">CopyAnsiString</a> (const char *source, const uint32_t sourceLen, char *dest, const uint32_t maxDestLen)</td></tr>
 <tr class="memdesc:ga4540f0bb0f47aeba1a0900f9f107c188"><td class="mdescLeft">&#160;</td><td class="mdescRight">Copies the given 8-bit source Ansi string with length into a destination Ansi string. Does not allocate any memory. <br /></td></tr>
@@ -99,6 +95,18 @@ Functions</h2></td></tr>
 <a class="el" href="final__platform__layer_8hpp.html#aafa1d3d90febf9826c55c1318f98b27d">fpl_api</a> wchar_t *&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___strings.html#ga50be92a4b019e3e0e94ce7b8b5082421">CopyWideString</a> (const wchar_t *source, wchar_t *dest, const uint32_t maxDestLen)</td></tr>
 <tr class="memdesc:ga50be92a4b019e3e0e94ce7b8b5082421"><td class="mdescLeft">&#160;</td><td class="mdescRight">Copies the given 16-bit source Wide string into a destination Wide string. Does not allocate any memory. <br /></td></tr>
 <tr class="separator:ga50be92a4b019e3e0e94ce7b8b5082421"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:ga388ca55dd073575074821c146a585e2d"><td class="memItemLeft" align="right" valign="top">
+<a class="el" href="final__platform__layer_8hpp.html#aafa1d3d90febf9826c55c1318f98b27d">fpl_api</a> uint32_t&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___strings.html#ga388ca55dd073575074821c146a585e2d">GetAnsiStringLength</a> (const char *str)</td></tr>
+<tr class="memdesc:ga388ca55dd073575074821c146a585e2d"><td class="mdescLeft">&#160;</td><td class="mdescRight">Returns the number of characters of the given 8-bit Ansi string. Null terminator is not included. <br /></td></tr>
+<tr class="separator:ga388ca55dd073575074821c146a585e2d"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:ga2f5f224289b7bf9d19bb5684cd19fac1"><td class="memItemLeft" align="right" valign="top">
+<a class="el" href="final__platform__layer_8hpp.html#aafa1d3d90febf9826c55c1318f98b27d">fpl_api</a> uint32_t&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___strings.html#ga2f5f224289b7bf9d19bb5684cd19fac1">GetWideStringLength</a> (const wchar_t *str)</td></tr>
+<tr class="memdesc:ga2f5f224289b7bf9d19bb5684cd19fac1"><td class="mdescLeft">&#160;</td><td class="mdescRight">Returns the number of characters of the given 16-bit Wide string. Null terminator is not included. <br /></td></tr>
+<tr class="separator:ga2f5f224289b7bf9d19bb5684cd19fac1"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:ga01c5c0fb7305308d62cfde2620598ece"><td class="memItemLeft" align="right" valign="top">
+<a class="el" href="final__platform__layer_8hpp.html#aafa1d3d90febf9826c55c1318f98b27d">fpl_api</a> wchar_t *&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___strings.html#ga01c5c0fb7305308d62cfde2620598ece">UTF8StringToWideString</a> (const char *utf8Source, const uint32_t utf8SourceLen, wchar_t *wideDest, const uint32_t maxWideDestLen)</td></tr>
+<tr class="memdesc:ga01c5c0fb7305308d62cfde2620598ece"><td class="mdescLeft">&#160;</td><td class="mdescRight">Converts the given 8-bit UTF-8 string in a 16-bit Wide string. Does not allocate any memory. <br /></td></tr>
+<tr class="separator:ga01c5c0fb7305308d62cfde2620598ece"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:ga5deb86f97d22b96c050f1dddbeb8b153"><td class="memItemLeft" align="right" valign="top">
 <a class="el" href="final__platform__layer_8hpp.html#aafa1d3d90febf9826c55c1318f98b27d">fpl_api</a> char *&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___strings.html#ga5deb86f97d22b96c050f1dddbeb8b153">WideStringToAnsiString</a> (const wchar_t *wideSource, const uint32_t maxWideSourceLen, char *ansiDest, const uint32_t maxAnsiDestLen)</td></tr>
 <tr class="memdesc:ga5deb86f97d22b96c050f1dddbeb8b153"><td class="mdescLeft">&#160;</td><td class="mdescRight">Converts the given 16-bit source Wide string with length in a 8-bit Ansi string. Does not allocate any memory. <br /></td></tr>
@@ -107,14 +115,6 @@ Functions</h2></td></tr>
 <a class="el" href="final__platform__layer_8hpp.html#aafa1d3d90febf9826c55c1318f98b27d">fpl_api</a> char *&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___strings.html#gaa465c26a8a2d2514f723144ad8de8e42">WideStringToUTF8String</a> (const wchar_t *wideSource, const uint32_t maxWideSourceLen, char *utf8Dest, const uint32_t maxUtf8DestLen)</td></tr>
 <tr class="memdesc:gaa465c26a8a2d2514f723144ad8de8e42"><td class="mdescLeft">&#160;</td><td class="mdescRight">Converts the given 16-bit Wide string in a 8-bit UTF-8 string. Does not allocate any memory. <br /></td></tr>
 <tr class="separator:gaa465c26a8a2d2514f723144ad8de8e42"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:gacf1b68cc61d41d0e2be20b198d013dc6"><td class="memItemLeft" align="right" valign="top">
-<a class="el" href="final__platform__layer_8hpp.html#aafa1d3d90febf9826c55c1318f98b27d">fpl_api</a> wchar_t *&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___strings.html#gacf1b68cc61d41d0e2be20b198d013dc6">AnsiStringToWideString</a> (const char *ansiSource, const uint32_t ansiSourceLen, wchar_t *wideDest, const uint32_t maxWideDestLen)</td></tr>
-<tr class="memdesc:gacf1b68cc61d41d0e2be20b198d013dc6"><td class="mdescLeft">&#160;</td><td class="mdescRight">Converts the given 8-bit Ansi string in a 16-bit Wide string. Does not allocate any memory. <br /></td></tr>
-<tr class="separator:gacf1b68cc61d41d0e2be20b198d013dc6"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:ga01c5c0fb7305308d62cfde2620598ece"><td class="memItemLeft" align="right" valign="top">
-<a class="el" href="final__platform__layer_8hpp.html#aafa1d3d90febf9826c55c1318f98b27d">fpl_api</a> wchar_t *&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___strings.html#ga01c5c0fb7305308d62cfde2620598ece">UTF8StringToWideString</a> (const char *utf8Source, const uint32_t utf8SourceLen, wchar_t *wideDest, const uint32_t maxWideDestLen)</td></tr>
-<tr class="memdesc:ga01c5c0fb7305308d62cfde2620598ece"><td class="mdescLeft">&#160;</td><td class="mdescRight">Converts the given 8-bit UTF-8 string in a 16-bit Wide string. Does not allocate any memory. <br /></td></tr>
-<tr class="separator:ga01c5c0fb7305308d62cfde2620598ece"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table>
 <a name="details" id="details"></a><h2 class="groupheader">Detailed Description</h2>
 <div class="textblock"><p>String functions. </p>

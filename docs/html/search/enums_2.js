@@ -1,6 +1,6 @@
 var searchData=
 [
-  ['fileattributeflagenum',['FileAttributeFlagEnum',['../namespacefpl_1_1files_1_1_file_attribute_flags.html#a35ecb1521633ae298b52680df677b660',1,'fpl::files::FileAttributeFlags']]],
-  ['fileentrytypeenum',['FileEntryTypeEnum',['../namespacefpl_1_1files_1_1_file_entry_types.html#ab340319655afa9567100787edb58aca5',1,'fpl::files::FileEntryTypes']]],
-  ['filepositionmodeenum',['FilePositionModeEnum',['../namespacefpl_1_1files_1_1_file_position_modes.html#a8cbd0d70c12d2d153dbbe61b36a55200',1,'fpl::files::FilePositionModes']]]
+  ['fileattributeflags',['FileAttributeFlags',['../group___files.html#ga0fa0af9b0f3d3daf604a1cd5fc639953',1,'fpl::files']]],
+  ['fileentrytype',['FileEntryType',['../group___files.html#ga7a7d7d673ed79f0ed96f89e2492e62c1',1,'fpl::files']]],
+  ['filepositionmode',['FilePositionMode',['../group___files.html#ga4203b4bd92c5589a4c445aa01b90add9',1,'fpl::files']]]
 ];

@@ -1,5 +1,5 @@
 var searchData=
 [
-  ['gamepad',['Gamepad',['../namespacefpl_1_1window_1_1_event_types.html#ac1b654b98c2774f73b1b089f2886fc4fa7895681e76ab4eec49c5904850fab6d0',1,'fpl::window::EventTypes']]],
-  ['gotfocus',['GotFocus',['../namespacefpl_1_1window_1_1_window_event_types.html#abe653c1f4e9a9e70d79b5df52aacb6c5a866464f3fbbe904285b6e60dcbcb6162',1,'fpl::window::WindowEventTypes']]]
+  ['gamepad',['Gamepad',['../group___window_events.html#gga5bca567a4ac5c4145c9a492b0558ee4aa221f6781b4faa2d321ca0d928f518d6e',1,'fpl::window']]],
+  ['gotfocus',['GotFocus',['../group___window_events.html#ggad06ffcf43b2eabc01cb12a8cf9f55e35a1b5e06777fc97a0645bfe375f0fa3fe4',1,'fpl::window']]]
 ];

@@ -1,6 +1,6 @@
 var searchData=
 [
-  ['middle',['Middle',['../namespacefpl_1_1window_1_1_mouse_button_types.html#a8421a50986b384eb037e31a522bc223ba4a378f4f26388bd008fec836bf48b89c',1,'fpl::window::MouseButtonTypes']]],
-  ['mouse',['Mouse',['../namespacefpl_1_1window_1_1_event_types.html#ac1b654b98c2774f73b1b089f2886fc4fa62fb237bdef80b33d913c0d9f3f871bc',1,'fpl::window::EventTypes']]],
-  ['move',['Move',['../namespacefpl_1_1window_1_1_mouse_event_types.html#abac384b9b1e9bdf36d032f1c9ffcaa14a6fd26cf62de67b3267881614e7439d2c',1,'fpl::window::MouseEventTypes']]]
+  ['middle',['Middle',['../group___window_events.html#ggaa59b9dadfe29d58132ad77164994bdc5ab1ca34f82e83c52b010f86955f264e05',1,'fpl::window']]],
+  ['mouse',['Mouse',['../group___window_events.html#gga5bca567a4ac5c4145c9a492b0558ee4aaf2a47c6809d88e175dade0ef7b16aa13',1,'fpl::window']]],
+  ['move',['Move',['../group___window_events.html#ggafb71b85fe6f916d575cab2076f7c1635a6bc362dbf494c61ea117fe3c71ca48a5',1,'fpl::window']]]
 ];

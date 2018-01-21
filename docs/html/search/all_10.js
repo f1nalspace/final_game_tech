@@ -1,5 +1,7 @@
 var searchData=
 [
+  ['simple_20opengl_201_2ex_20triangle',['Simple OpenGL 1.x Triangle',['../page_example_opengl1x.html',1,'index']]],
+  ['simple_20audio_20playback_20_28infinite_20square_20or_20sine_20wave_29',['Simple audio playback (Infinite square or sine wave)',['../page_example_simple_audio.html',1,'index']]],
   ['samplerate',['sampleRate',['../structfpl_1_1_audio_device_format.html#ac43f3e139b09c5c38d0b6a0863c0ac1f',1,'fpl::AudioDeviceFormat']]],
   ['setaudioclientreadcallback',['SetAudioClientReadCallback',['../group___audio.html#gab74286317a34e70379c2bdcd4756c02e',1,'fpl::audio']]],
   ['setclipboardtext',['SetClipboardText',['../group___window_clipboard.html#gab10a8c4065efa4a51fc0426280f7a116',1,'fpl::window::SetClipboardText(const char *ansiSource)'],['../group___window_clipboard.html#ga195d6d724a7ad034189368770bf1466b',1,'fpl::window::SetClipboardText(const wchar_t *wideSource)']]],
@@ -11,7 +13,7 @@ var searchData=
   ['setwindowposition',['SetWindowPosition',['../group___window_base.html#ga1c3c320dc9e29fa1aa5f86f0fd434e79',1,'fpl::window']]],
   ['setwindowresizeable',['SetWindowResizeable',['../group___window_base.html#gae0b3a2e777c7c9fce74c0828455f3de1',1,'fpl::window']]],
   ['setwindowtitle',['SetWindowTitle',['../group___window_base.html#ga83958a36db0031b265f3b10470b4dade',1,'fpl::window']]],
-  ['shift',['Shift',['../namespacefpl_1_1window_1_1_keyboard_modifier_flags.html#a957a3d95f8261e7566585d65f203300da80081e7c30d4047ee227dd2c226b7cef',1,'fpl::window::KeyboardModifierFlags']]],
+  ['shift',['Shift',['../group___window_events.html#gga0273526560c565d3c67cdf5c0c071194a825a3d98017bab11815ad2817201324c',1,'fpl::window']]],
   ['signalcreate',['SignalCreate',['../group___threading.html#gaee83c654cfd2d0aa41de1c03b9d3cd5c',1,'fpl::threading']]],
   ['signaldestroy',['SignalDestroy',['../group___threading.html#ga878223b24ec17a7b4b8f6e6f945340f9',1,'fpl::threading']]],
   ['signalreset',['SignalReset',['../group___threading.html#ga60ae994f2b79e901efde8b9196019ed1',1,'fpl::threading']]],
@@ -19,14 +21,14 @@ var searchData=
   ['signalwaitforany',['SignalWaitForAny',['../group___threading.html#gaa775ca62b233851623ab917a7bd028ff',1,'fpl::threading']]],
   ['signalwaitforone',['SignalWaitForOne',['../group___threading.html#ga794026517242c2a47581bb2d2cb8c88c',1,'fpl::threading']]],
   ['signalwakeup',['SignalWakeUp',['../group___threading.html#gadf5a26ce3c88ba521a6a291e2ee956f7',1,'fpl::threading']]],
-  ['software',['Software',['../namespacefpl_1_1_video_driver_types.html#a258cb7cd4b12cc998472708f70d55f7facec18deb73c81ed6ac84319bfb4311db',1,'fpl::VideoDriverTypes']]],
+  ['software',['Software',['../group___settings.html#gga507fe7ca23031e714575d0a5ddd37598a719d067b229178f03bcfa1da4ac4dede',1,'fpl']]],
   ['start',['start',['../structfpl_1_1window_1_1_gamepad_state.html#a195956749363bc5370942668de04823e',1,'fpl::window::GamepadState']]],
   ['state',['state',['../structfpl_1_1window_1_1_gamepad_event.html#a9f0b1ac2350741a009afbf419b139efd',1,'fpl::window::GamepadEvent']]],
-  ['statechanged',['StateChanged',['../namespacefpl_1_1window_1_1_gamepad_event_types.html#ab7b887afe0886bbabc52ee0d76a9b3f6ae8a2632fcb4f5071a0f1cbda11d10da8',1,'fpl::window::GamepadEventTypes']]],
+  ['statechanged',['StateChanged',['../group___window_events.html#gga85374967f1703b14d476872c6df8d4c7a8499576aa97bf34e41c9ffec52b20151',1,'fpl::window']]],
   ['stopaudio',['StopAudio',['../group___audio.html#ga7c7306211763682dc822438ca375933d',1,'fpl::audio']]],
-  ['stopped',['Stopped',['../namespacefpl_1_1threading_1_1_thread_states.html#a8126df665987eab3a5d4d85806095082a08bcb5e39fc4e240908a1a10cc17ca34',1,'fpl::threading::ThreadStates']]],
+  ['stopped',['Stopped',['../group___threading.html#gga426869d2ff910fe7574a02a4fc58fb1eac23e2b09ebe6bf4cb5e2a9abe85c0be2',1,'fpl::threading']]],
   ['stride',['stride',['../structfpl_1_1video_1_1_video_back_buffer.html#ad7a677841458395ab93db56d3ae57945',1,'fpl::video::VideoBackBuffer']]],
   ['string_20manipulation_20functions',['String manipulation functions',['../group___strings.html',1,'']]],
-  ['super',['Super',['../namespacefpl_1_1window_1_1_keyboard_modifier_flags.html#a957a3d95f8261e7566585d65f203300da44f3ffe3ef7d60b54a3275b19969d297',1,'fpl::window::KeyboardModifierFlags']]],
-  ['system',['System',['../namespacefpl_1_1files_1_1_file_attribute_flags.html#a35ecb1521633ae298b52680df677b660a04b4472ee71e0c6b755ddcf9f5c10a83',1,'fpl::files::FileAttributeFlags']]]
+  ['super',['Super',['../group___window_events.html#gga0273526560c565d3c67cdf5c0c071194a0ce3266d4eb71ad50f7a90aee6d21dcd',1,'fpl::window']]],
+  ['system',['System',['../group___files.html#gga0fa0af9b0f3d3daf604a1cd5fc639953aa45da96d0bf6575970f2d27af22be28a',1,'fpl::files']]]
 ];

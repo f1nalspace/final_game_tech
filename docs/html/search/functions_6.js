@@ -1,6 +1,6 @@
 var searchData=
 [
-  ['initplatform',['InitPlatform',['../group___initialization.html#ga03321db2296b045eee4fec9cd9aac3a2',1,'fpl']]],
+  ['initplatform',['InitPlatform',['../group___initialization.html#ga92579bdb920c4ace57a038d7807d3b56',1,'fpl']]],
   ['isatomiccompareandexchangeptr',['IsAtomicCompareAndExchangePtr',['../group___atomics.html#ga9053017d18706dd32468809bdf115103',1,'fpl::atomics']]],
   ['isatomiccompareandexchanges32',['IsAtomicCompareAndExchangeS32',['../group___atomics.html#ga8cddb961f4b1f9e3738894cb9626bf9f',1,'fpl::atomics']]],
   ['isatomiccompareandexchanges64',['IsAtomicCompareAndExchangeS64',['../group___atomics.html#ga906723d4ae40442122864b0016e165ea',1,'fpl::atomics']]],

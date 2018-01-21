@@ -22,7 +22,7 @@
  <tr style="height: 56px;">
   <td id="projectalign" style="padding-left: 0.5em;">
    <div id="projectname">Final Platform Layer
-   &#160;<span id="projectnumber">0.5.2.1</span>
+   &#160;<span id="projectnumber">0.5.6.1</span>
    </div>
   </td>
  </tr>
@@ -75,10 +75,13 @@ $(function() {
 : <a class="el" href="structfpl_1_1window_1_1_gamepad_state.html#a6b97a638bcedc86823de45b5d4c88321">fpl::window::GamepadState</a>
 </li>
 <li>attributes
-: <a class="el" href="structfpl_1_1files_1_1_file_entry.html#a05335d9b8f326cc337bb9d274fc9d2a2">fpl::files::FileEntry</a>
+: <a class="el" href="structfpl_1_1files_1_1_file_entry.html#abe0f7f6f256935e7a74e37e2c100fbf2">fpl::files::FileEntry</a>
 </li>
 <li>audio
 : <a class="el" href="structfpl_1_1_settings.html#a396c3076134d4c6650a9f8985d28717c">fpl::Settings</a>
+</li>
+<li>availablePhysicalSize
+: <a class="el" href="structfpl_1_1hardware_1_1_memory_infos.html#adf677f5035225a48cc3b4363695c030d">fpl::hardware::MemoryInfos</a>
 </li>
 </ul>
 
@@ -108,6 +111,9 @@ $(function() {
 </li>
 <li>clientReadCallback
 : <a class="el" href="structfpl_1_1_audio_settings.html#a3ade4cb176a441d5da0236cbf954a8fa">fpl::AudioSettings</a>
+</li>
+<li>controllerDetectionFrequency
+: <a class="el" href="structfpl_1_1_input_settings.html#aedac41ab954d13fb01d1676a0b050477">fpl::InputSettings</a>
 </li>
 <li>currentState
 : <a class="el" href="structfpl_1_1threading_1_1_thread_context.html#a37c92f45870583481685fdc629f83e75">fpl::threading::ThreadContext</a>
@@ -176,13 +182,16 @@ $(function() {
 <li>id
 : <a class="el" href="structfpl_1_1threading_1_1_thread_context.html#af8cfcaa0345ee279f8979eec94a121c5">fpl::threading::ThreadContext</a>
 </li>
+<li>input
+: <a class="el" href="structfpl_1_1_settings.html#ad8c94bcb200e1b0a6f1f4608041008da">fpl::Settings</a>
+</li>
 <li>internalHandle
-: <a class="el" href="structfpl_1_1files_1_1_file_entry.html#a976d5e74bcd8b60fb0728922cc863499">fpl::files::FileEntry</a>
-, <a class="el" href="structfpl_1_1files_1_1_file_handle.html#adc4e830cd01b7283dec31109c978d950">fpl::files::FileHandle</a>
-, <a class="el" href="structfpl_1_1library_1_1_dynamic_library_handle.html#a738a384257e20524ca75ecc48397a35e">fpl::library::DynamicLibraryHandle</a>
-, <a class="el" href="structfpl_1_1threading_1_1_thread_context.html#a1d22580a4aa61dc8b20b516f81eef84f">fpl::threading::ThreadContext</a>
-, <a class="el" href="structfpl_1_1threading_1_1_thread_mutex.html#a0a405a35c51923753076b8620ff6fe08">fpl::threading::ThreadMutex</a>
-, <a class="el" href="structfpl_1_1threading_1_1_thread_signal.html#adbf395c4e509672e4690bdecd6a1ce19">fpl::threading::ThreadSignal</a>
+: <a class="el" href="structfpl_1_1files_1_1_file_entry.html#ab39fc7377e2823fcd696efab05f7fb87">fpl::files::FileEntry</a>
+, <a class="el" href="structfpl_1_1files_1_1_file_handle.html#a6beaf61cde5848ccfb171876113d0948">fpl::files::FileHandle</a>
+, <a class="el" href="structfpl_1_1library_1_1_dynamic_library_handle.html#aedf7b7503e7496fadceb31b50ee771f4">fpl::library::DynamicLibraryHandle</a>
+, <a class="el" href="structfpl_1_1threading_1_1_thread_context.html#a8c87f867034a2d58f41bd701e03e56a1">fpl::threading::ThreadContext</a>
+, <a class="el" href="structfpl_1_1threading_1_1_thread_mutex.html#a7cbb5e27b9ca39e6834dab1db81d4758">fpl::threading::ThreadMutex</a>
+, <a class="el" href="structfpl_1_1threading_1_1_thread_signal.html#a074498ad9755ae122420485fe3d8d1eb">fpl::threading::ThreadSignal</a>
 </li>
 <li>isAutoSize
 : <a class="el" href="structfpl_1_1_video_settings.html#a2c736124a9d77dbb65eeb2f5518fb781">fpl::VideoSettings</a>
@@ -251,7 +260,7 @@ $(function() {
 : <a class="el" href="structfpl_1_1_video_settings.html#ac99e6a0bc71882b9209875f09e632e47">fpl::VideoSettings</a>
 </li>
 <li>modifiers
-: <a class="el" href="structfpl_1_1window_1_1_keyboard_event.html#a776e0c3c6fdf991c605697e46a417abd">fpl::window::KeyboardEvent</a>
+: <a class="el" href="structfpl_1_1window_1_1_keyboard_event.html#ada8c00bf3cd8a2700e35e19609195c3d">fpl::window::KeyboardEvent</a>
 </li>
 <li>mouse
 : <a class="el" href="structfpl_1_1window_1_1_event.html#a64673c8ea91ac21ce618ed73fe413ba8">fpl::window::Event</a>
@@ -329,6 +338,15 @@ $(function() {
 <li>top
 : <a class="el" href="structfpl_1_1window_1_1_window_position.html#a59fb9f01813cb864ffc44a090f05d4a5">fpl::window::WindowPosition</a>
 </li>
+<li>totalPageSize
+: <a class="el" href="structfpl_1_1hardware_1_1_memory_infos.html#aac2809a67ba3c3e83cdfa0efc26366e7">fpl::hardware::MemoryInfos</a>
+</li>
+<li>totalPhysicalSize
+: <a class="el" href="structfpl_1_1hardware_1_1_memory_infos.html#ac1b52406ac3929c771b76995a930a53e">fpl::hardware::MemoryInfos</a>
+</li>
+<li>totalVirtualSize
+: <a class="el" href="structfpl_1_1hardware_1_1_memory_infos.html#af7a126973a85185b872b4fad210597f4">fpl::hardware::MemoryInfos</a>
+</li>
 <li>type
 : <a class="el" href="structfpl_1_1_audio_device_format.html#a1216ea77c930dc846b682bbaa3979f8f">fpl::AudioDeviceFormat</a>
 , <a class="el" href="structfpl_1_1files_1_1_file_entry.html#afa11bffe1b30ae51ebd18a67a0996dc5">fpl::files::FileEntry</a>
@@ -342,6 +360,15 @@ $(function() {
 
 
 <h3><a id="index_u"></a>- u -</h3><ul>
+<li>usedPageSize
+: <a class="el" href="structfpl_1_1hardware_1_1_memory_infos.html#a2d63780c63a72c4856b94c268f500977">fpl::hardware::MemoryInfos</a>
+</li>
+<li>usedPhysicalSize
+: <a class="el" href="structfpl_1_1hardware_1_1_memory_infos.html#a61dd3d9c16cdfd6b5918df74502cd8d1">fpl::hardware::MemoryInfos</a>
+</li>
+<li>usedVirtualSize
+: <a class="el" href="structfpl_1_1hardware_1_1_memory_infos.html#a791252916809e99d984bd0e01e38d655">fpl::hardware::MemoryInfos</a>
+</li>
 <li>userData
 : <a class="el" href="structfpl_1_1_audio_settings.html#afa7979c8ffe93ee2612a64ebeb688a5d">fpl::AudioSettings</a>
 </li>

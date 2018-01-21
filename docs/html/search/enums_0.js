@@ -1,6 +1,6 @@
 var searchData=
 [
-  ['audiodrivertypeenum',['AudioDriverTypeEnum',['../namespacefpl_1_1_audio_driver_types.html#afb8583e0947d11e4ec9479717912b82e',1,'fpl::AudioDriverTypes']]],
-  ['audioformattypeenum',['AudioFormatTypeEnum',['../namespacefpl_1_1_audio_format_types.html#a584b62b8408e98f7b44cdef4984ce8c8',1,'fpl::AudioFormatTypes']]],
-  ['audioresultenum',['AudioResultEnum',['../namespacefpl_1_1audio_1_1_audio_results.html#aa2612a356f6a8c7001e6e91eb1fd09b0',1,'fpl::audio::AudioResults']]]
+  ['audiodrivertype',['AudioDriverType',['../group___settings.html#ga7846abd72446af7c7e6b1e9bbddea3b4',1,'fpl']]],
+  ['audioformattype',['AudioFormatType',['../group___settings.html#ga55b37668317bc18d2c57ccb5653fc9c1',1,'fpl']]],
+  ['audioresult',['AudioResult',['../group___audio.html#ga341d4051c79a9c91ff98e4d9c1fb932d',1,'fpl::audio']]]
 ];

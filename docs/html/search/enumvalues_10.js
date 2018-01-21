@@ -1,4 +1,4 @@
 var searchData=
 [
-  ['video',['Video',['../namespacefpl_1_1_init_flags.html#a3aaa570e446e656cbc2c25d2a1a76db0a2fe2ed7e92f03819bb19ee67ba71605e',1,'fpl::InitFlags']]]
+  ['video',['Video',['../group___settings.html#ggae483f3743fdfa195f8746c04203ca850a34e2d1989a1dbf75cd631596133ee5ee',1,'fpl']]]
 ];

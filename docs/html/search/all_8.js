@@ -1,11 +1,12 @@
 var searchData=
 [
   ['id',['id',['../structfpl_1_1threading_1_1_thread_context.html#af8cfcaa0345ee279f8979eec94a121c5',1,'fpl::threading::ThreadContext']]],
-  ['initflag',['InitFlag',['../group___settings.html#ga8e20ac4b795db2079ebd0339e72d4110',1,'fpl']]],
-  ['initflagenum',['InitFlagEnum',['../namespacefpl_1_1_init_flags.html#a3aaa570e446e656cbc2c25d2a1a76db0',1,'fpl::InitFlags']]],
+  ['initflags',['InitFlags',['../group___settings.html#gae483f3743fdfa195f8746c04203ca850',1,'fpl']]],
   ['initialization_20functions',['Initialization functions',['../group___initialization.html',1,'']]],
-  ['initplatform',['InitPlatform',['../group___initialization.html#ga03321db2296b045eee4fec9cd9aac3a2',1,'fpl']]],
-  ['internalhandle',['internalHandle',['../structfpl_1_1library_1_1_dynamic_library_handle.html#a738a384257e20524ca75ecc48397a35e',1,'fpl::library::DynamicLibraryHandle::internalHandle()'],['../structfpl_1_1threading_1_1_thread_context.html#a1d22580a4aa61dc8b20b516f81eef84f',1,'fpl::threading::ThreadContext::internalHandle()'],['../structfpl_1_1threading_1_1_thread_mutex.html#a0a405a35c51923753076b8620ff6fe08',1,'fpl::threading::ThreadMutex::internalHandle()'],['../structfpl_1_1threading_1_1_thread_signal.html#adbf395c4e509672e4690bdecd6a1ce19',1,'fpl::threading::ThreadSignal::internalHandle()'],['../structfpl_1_1files_1_1_file_handle.html#adc4e830cd01b7283dec31109c978d950',1,'fpl::files::FileHandle::internalHandle()'],['../structfpl_1_1files_1_1_file_entry.html#a976d5e74bcd8b60fb0728922cc863499',1,'fpl::files::FileEntry::internalHandle()']]],
+  ['initplatform',['InitPlatform',['../group___initialization.html#ga92579bdb920c4ace57a038d7807d3b56',1,'fpl']]],
+  ['input',['input',['../structfpl_1_1_settings.html#ad8c94bcb200e1b0a6f1f4608041008da',1,'fpl::Settings']]],
+  ['inputsettings',['InputSettings',['../structfpl_1_1_input_settings.html',1,'fpl']]],
+  ['internalhandle',['internalHandle',['../structfpl_1_1library_1_1_dynamic_library_handle.html#aedf7b7503e7496fadceb31b50ee771f4',1,'fpl::library::DynamicLibraryHandle::internalHandle()'],['../structfpl_1_1threading_1_1_thread_context.html#a8c87f867034a2d58f41bd701e03e56a1',1,'fpl::threading::ThreadContext::internalHandle()'],['../structfpl_1_1threading_1_1_thread_mutex.html#a7cbb5e27b9ca39e6834dab1db81d4758',1,'fpl::threading::ThreadMutex::internalHandle()'],['../structfpl_1_1threading_1_1_thread_signal.html#a074498ad9755ae122420485fe3d8d1eb',1,'fpl::threading::ThreadSignal::internalHandle()'],['../structfpl_1_1files_1_1_file_handle.html#a6beaf61cde5848ccfb171876113d0948',1,'fpl::files::FileHandle::internalHandle()'],['../structfpl_1_1files_1_1_file_entry.html#ab39fc7377e2823fcd696efab05f7fb87',1,'fpl::files::FileEntry::internalHandle()']]],
   ['isatomiccompareandexchangeptr',['IsAtomicCompareAndExchangePtr',['../group___atomics.html#ga9053017d18706dd32468809bdf115103',1,'fpl::atomics']]],
   ['isatomiccompareandexchanges32',['IsAtomicCompareAndExchangeS32',['../group___atomics.html#ga8cddb961f4b1f9e3738894cb9626bf9f',1,'fpl::atomics']]],
   ['isatomiccompareandexchanges64',['IsAtomicCompareAndExchangeS64',['../group___atomics.html#ga906723d4ae40442122864b0016e165ea',1,'fpl::atomics']]],

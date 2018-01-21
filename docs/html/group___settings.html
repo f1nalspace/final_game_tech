@@ -22,7 +22,7 @@
  <tr style="height: 56px;">
   <td id="projectalign" style="padding-left: 0.5em;">
    <div id="projectname">Final Platform Layer
-   &#160;<span id="projectnumber">0.5.2.1</span>
+   &#160;<span id="projectnumber">0.5.6.1</span>
    </div>
   </td>
  </tr>
@@ -60,9 +60,9 @@ $(function() {
 
 <div class="header">
   <div class="summary">
-<a href="#namespaces">Namespaces</a> &#124;
 <a href="#nested-classes">Classes</a> &#124;
 <a href="#typedef-members">Typedefs</a> &#124;
+<a href="#enum-members">Enumerations</a> &#124;
 <a href="#func-members">Functions</a>  </div>
   <div class="headertitle">
 <div class="title">Settings and configurations</div>  </div>
@@ -72,91 +72,106 @@ $(function() {
 <p>Video/audio/window settings.  
 <a href="#details">More...</a></p>
 <table class="memberdecls">
-<tr class="heading"><td colspan="2"><h2 class="groupheader"><a name="namespaces"></a>
-Namespaces</h2></td></tr>
-<tr class="memitem:namespacefpl_1_1_init_flags"><td class="memItemLeft" align="right" valign="top"> &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespacefpl_1_1_init_flags.html">fpl::InitFlags</a></td></tr>
-<tr class="memdesc:namespacefpl_1_1_init_flags"><td class="mdescLeft">&#160;</td><td class="mdescRight">Initialization flags. <br /></td></tr>
-<tr class="separator:"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:namespacefpl_1_1_video_driver_types"><td class="memItemLeft" align="right" valign="top"> &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespacefpl_1_1_video_driver_types.html">fpl::VideoDriverTypes</a></td></tr>
-<tr class="memdesc:namespacefpl_1_1_video_driver_types"><td class="mdescLeft">&#160;</td><td class="mdescRight">Video driver types. <br /></td></tr>
-<tr class="separator:"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:namespacefpl_1_1_video_compability_profiles"><td class="memItemLeft" align="right" valign="top"> &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespacefpl_1_1_video_compability_profiles.html">fpl::VideoCompabilityProfiles</a></td></tr>
-<tr class="memdesc:namespacefpl_1_1_video_compability_profiles"><td class="mdescLeft">&#160;</td><td class="mdescRight">Video compability profiles. <br /></td></tr>
-<tr class="separator:"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:namespacefpl_1_1_audio_driver_types"><td class="memItemLeft" align="right" valign="top"> &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespacefpl_1_1_audio_driver_types.html">fpl::AudioDriverTypes</a></td></tr>
-<tr class="memdesc:namespacefpl_1_1_audio_driver_types"><td class="mdescLeft">&#160;</td><td class="mdescRight">Audio driver types. <br /></td></tr>
-<tr class="separator:"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:namespacefpl_1_1_audio_format_types"><td class="memItemLeft" align="right" valign="top"> &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespacefpl_1_1_audio_format_types.html">fpl::AudioFormatTypes</a></td></tr>
-<tr class="memdesc:namespacefpl_1_1_audio_format_types"><td class="mdescLeft">&#160;</td><td class="mdescRight">Audio format types. <br /></td></tr>
-<tr class="separator:"><td class="memSeparator" colspan="2">&#160;</td></tr>
-</table><table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a name="nested-classes"></a>
 Classes</h2></td></tr>
-<tr class="memitem:"><td class="memItemLeft" align="right" valign="top">struct &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structfpl_1_1_video_settings.html">fpl::VideoSettings</a></td></tr>
-<tr class="memdesc:"><td class="mdescLeft">&#160;</td><td class="mdescRight">Video settings container (Compability Profile, Version, VSync, etc.)  <a href="structfpl_1_1_video_settings.html#details">More...</a><br /></td></tr>
-<tr class="separator:"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:"><td class="memItemLeft" align="right" valign="top">struct &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structfpl_1_1_audio_device_format.html">fpl::AudioDeviceFormat</a></td></tr>
 <tr class="memdesc:"><td class="mdescLeft">&#160;</td><td class="mdescRight">Audio device format.  <a href="structfpl_1_1_audio_device_format.html#details">More...</a><br /></td></tr>
 <tr class="separator:"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:"><td class="memItemLeft" align="right" valign="top">struct &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structfpl_1_1_audio_settings.html">fpl::AudioSettings</a></td></tr>
 <tr class="memdesc:"><td class="mdescLeft">&#160;</td><td class="mdescRight">Audio settings.  <a href="structfpl_1_1_audio_settings.html#details">More...</a><br /></td></tr>
 <tr class="separator:"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:"><td class="memItemLeft" align="right" valign="top">struct &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structfpl_1_1_window_settings.html">fpl::WindowSettings</a></td></tr>
-<tr class="memdesc:"><td class="mdescLeft">&#160;</td><td class="mdescRight">Window settings (Size, Title etc.)  <a href="structfpl_1_1_window_settings.html#details">More...</a><br /></td></tr>
+<tr class="memitem:"><td class="memItemLeft" align="right" valign="top">struct &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structfpl_1_1_input_settings.html">fpl::InputSettings</a></td></tr>
+<tr class="memdesc:"><td class="mdescLeft">&#160;</td><td class="mdescRight">Input settings.  <a href="structfpl_1_1_input_settings.html#details">More...</a><br /></td></tr>
 <tr class="separator:"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:"><td class="memItemLeft" align="right" valign="top">struct &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structfpl_1_1_settings.html">fpl::Settings</a></td></tr>
 <tr class="memdesc:"><td class="mdescLeft">&#160;</td><td class="mdescRight"><a class="el" href="structfpl_1_1_settings.html" title="Settings container (Window, Video, etc) ">Settings</a> container (Window, Video, etc)  <a href="structfpl_1_1_settings.html#details">More...</a><br /></td></tr>
 <tr class="separator:"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:"><td class="memItemLeft" align="right" valign="top">struct &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structfpl_1_1_video_settings.html">fpl::VideoSettings</a></td></tr>
+<tr class="memdesc:"><td class="mdescLeft">&#160;</td><td class="mdescRight">Video settings container (Compability Profile, Version, VSync, etc.)  <a href="structfpl_1_1_video_settings.html#details">More...</a><br /></td></tr>
+<tr class="separator:"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:"><td class="memItemLeft" align="right" valign="top">struct &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structfpl_1_1_window_settings.html">fpl::WindowSettings</a></td></tr>
+<tr class="memdesc:"><td class="mdescLeft">&#160;</td><td class="mdescRight">Window settings (Size, Title etc.)  <a href="structfpl_1_1_window_settings.html#details">More...</a><br /></td></tr>
+<tr class="separator:"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table><table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a name="typedef-members"></a>
 Typedefs</h2></td></tr>
-<tr class="memitem:ga8e20ac4b795db2079ebd0339e72d4110"><td class="memItemLeft" align="right" valign="top"><a id="ga8e20ac4b795db2079ebd0339e72d4110"></a>
-typedef <a class="el" href="namespacefpl_1_1_init_flags.html#a3aaa570e446e656cbc2c25d2a1a76db0">InitFlags::InitFlagEnum</a>&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___settings.html#ga8e20ac4b795db2079ebd0339e72d4110">fpl::InitFlag</a></td></tr>
-<tr class="memdesc:ga8e20ac4b795db2079ebd0339e72d4110"><td class="mdescLeft">&#160;</td><td class="mdescRight">Initialization flags (Window, Video, etc.) <br /></td></tr>
-<tr class="separator:ga8e20ac4b795db2079ebd0339e72d4110"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:gaf6f67ba416d795684d6b0c836e5a4009"><td class="memItemLeft" align="right" valign="top"><a id="gaf6f67ba416d795684d6b0c836e5a4009"></a>
-typedef <a class="el" href="namespacefpl_1_1_video_driver_types.html#a258cb7cd4b12cc998472708f70d55f7f">VideoDriverTypes::VideoDriverTypeEnum</a>&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___settings.html#gaf6f67ba416d795684d6b0c836e5a4009">fpl::VideoDriverType</a></td></tr>
-<tr class="memdesc:gaf6f67ba416d795684d6b0c836e5a4009"><td class="mdescLeft">&#160;</td><td class="mdescRight">Video driver type. <br /></td></tr>
-<tr class="separator:gaf6f67ba416d795684d6b0c836e5a4009"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:ga09eed97cc88484e22dc03536d66b38b8"><td class="memItemLeft" align="right" valign="top"><a id="ga09eed97cc88484e22dc03536d66b38b8"></a>
-typedef <a class="el" href="namespacefpl_1_1_video_compability_profiles.html#acfa373302044d5de2a2b41be42fdc5d2">VideoCompabilityProfiles::VideoCompabilityProfileEnum</a>&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___settings.html#ga09eed97cc88484e22dc03536d66b38b8">fpl::VideoCompabilityProfile</a></td></tr>
-<tr class="memdesc:ga09eed97cc88484e22dc03536d66b38b8"><td class="mdescLeft">&#160;</td><td class="mdescRight">Video compability profile. <br /></td></tr>
-<tr class="separator:ga09eed97cc88484e22dc03536d66b38b8"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:gaa68dd55928a75c92a89e6160df9fbdd8"><td class="memItemLeft" align="right" valign="top"><a id="gaa68dd55928a75c92a89e6160df9fbdd8"></a>
-typedef <a class="el" href="namespacefpl_1_1_audio_driver_types.html#afb8583e0947d11e4ec9479717912b82e">AudioDriverTypes::AudioDriverTypeEnum</a>&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___settings.html#gaa68dd55928a75c92a89e6160df9fbdd8">fpl::AudioDriverType</a></td></tr>
-<tr class="memdesc:gaa68dd55928a75c92a89e6160df9fbdd8"><td class="mdescLeft">&#160;</td><td class="mdescRight">Audio driver type. <br /></td></tr>
-<tr class="separator:gaa68dd55928a75c92a89e6160df9fbdd8"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:ga2a55560abd38b3f813e8559cae2d6ee4"><td class="memItemLeft" align="right" valign="top"><a id="ga2a55560abd38b3f813e8559cae2d6ee4"></a>
-typedef <a class="el" href="namespacefpl_1_1_audio_format_types.html#a584b62b8408e98f7b44cdef4984ce8c8">AudioFormatTypes::AudioFormatTypeEnum</a>&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___settings.html#ga2a55560abd38b3f813e8559cae2d6ee4">fpl::AudioFormatType</a></td></tr>
-<tr class="memdesc:ga2a55560abd38b3f813e8559cae2d6ee4"><td class="mdescLeft">&#160;</td><td class="mdescRight">Audio format type. <br /></td></tr>
-<tr class="separator:ga2a55560abd38b3f813e8559cae2d6ee4"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:gaa2a5629c37b69482654db63bda6e28a0"><td class="memItemLeft" align="right" valign="top"><a id="gaa2a5629c37b69482654db63bda6e28a0"></a>
 typedef uint32_t()&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___settings.html#gaa2a5629c37b69482654db63bda6e28a0">fpl::AudioClientReadFunction</a>(const <a class="el" href="structfpl_1_1_audio_device_format.html">AudioDeviceFormat</a> &amp;deviceFormat, const uint32_t frameCount, void *outputSamples, void *userData)</td></tr>
 <tr class="memdesc:gaa2a5629c37b69482654db63bda6e28a0"><td class="mdescLeft">&#160;</td><td class="mdescRight">Audio Client Read Callback Function. <br /></td></tr>
 <tr class="separator:gaa2a5629c37b69482654db63bda6e28a0"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table><table class="memberdecls">
+<tr class="heading"><td colspan="2"><h2 class="groupheader"><a name="enum-members"></a>
+Enumerations</h2></td></tr>
+<tr class="memitem:ga7846abd72446af7c7e6b1e9bbddea3b4"><td class="memItemLeft" align="right" valign="top">enum &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___settings.html#ga7846abd72446af7c7e6b1e9bbddea3b4">fpl::AudioDriverType</a> { <a class="el" href="group___settings.html#gga7846abd72446af7c7e6b1e9bbddea3b4a6adf97f83acf6453d4a6a4b1070f3754">fpl::AudioDriverType::None</a>, 
+<a class="el" href="group___settings.html#gga7846abd72446af7c7e6b1e9bbddea3b4a06b9281e396db002010bde1de57262eb">fpl::AudioDriverType::Auto</a>, 
+<a class="el" href="group___settings.html#gga7846abd72446af7c7e6b1e9bbddea3b4a60c345a5a6e5f94b1e75bf212494a4bf">fpl::AudioDriverType::DirectSound</a>
+ }<tr class="memdesc:ga7846abd72446af7c7e6b1e9bbddea3b4"><td class="mdescLeft">&#160;</td><td class="mdescRight">Audio driver type.  <a href="group___settings.html#ga7846abd72446af7c7e6b1e9bbddea3b4">More...</a><br /></td></tr>
+</td></tr>
+<tr class="separator:ga7846abd72446af7c7e6b1e9bbddea3b4"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:ga55b37668317bc18d2c57ccb5653fc9c1"><td class="memItemLeft" align="right" valign="top"><a id="ga55b37668317bc18d2c57ccb5653fc9c1"></a>enum &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___settings.html#ga55b37668317bc18d2c57ccb5653fc9c1">fpl::AudioFormatType</a> : uint32_t { <br />
+&#160;&#160;<b>None</b>, 
+<b>U8</b>, 
+<b>S16</b>, 
+<b>S24</b>, 
+<br />
+&#160;&#160;<b>S32</b>, 
+<b>S64</b>, 
+<b>F32</b>, 
+<b>F64</b>
+<br />
+ }<tr class="memdesc:ga55b37668317bc18d2c57ccb5653fc9c1"><td class="mdescLeft">&#160;</td><td class="mdescRight">Audio format type. <br /></td></tr>
+</td></tr>
+<tr class="separator:ga55b37668317bc18d2c57ccb5653fc9c1"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:gae483f3743fdfa195f8746c04203ca850"><td class="memItemLeft" align="right" valign="top">enum &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___settings.html#gae483f3743fdfa195f8746c04203ca850">fpl::InitFlags</a> : int { <br />
+&#160;&#160;<a class="el" href="group___settings.html#ggae483f3743fdfa195f8746c04203ca850a6adf97f83acf6453d4a6a4b1070f3754">fpl::InitFlags::None</a> = 0, 
+<a class="el" href="group___settings.html#ggae483f3743fdfa195f8746c04203ca850ac89686a387d2b12b3c729ce35a0bcb5b">fpl::InitFlags::Window</a> = 1 &lt;&lt; 0, 
+<a class="el" href="group___settings.html#ggae483f3743fdfa195f8746c04203ca850a34e2d1989a1dbf75cd631596133ee5ee">fpl::InitFlags::Video</a> = 1 &lt;&lt; 1, 
+<a class="el" href="group___settings.html#ggae483f3743fdfa195f8746c04203ca850ab22f0418e8ac915eb66f829d262d14a2">fpl::InitFlags::Audio</a> = 1 &lt;&lt; 2, 
+<br />
+&#160;&#160;<a class="el" href="group___settings.html#ggae483f3743fdfa195f8746c04203ca850ab1c94ca2fbc3e78fc30069c8d0f01680">fpl::InitFlags::All</a> = Window | Video | Audio
+<br />
+ }<tr class="memdesc:gae483f3743fdfa195f8746c04203ca850"><td class="mdescLeft">&#160;</td><td class="mdescRight">Initialization flags (Window, Video, etc.)  <a href="group___settings.html#gae483f3743fdfa195f8746c04203ca850">More...</a><br /></td></tr>
+</td></tr>
+<tr class="separator:gae483f3743fdfa195f8746c04203ca850"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:gab3552d007c8e23a65e4ac0366758c18d"><td class="memItemLeft" align="right" valign="top">enum &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___settings.html#gab3552d007c8e23a65e4ac0366758c18d">fpl::VideoCompabilityProfile</a> { <a class="el" href="group___settings.html#ggab3552d007c8e23a65e4ac0366758c18da0cc0a0507cf3d31e5089f420a4cf8b4b">fpl::VideoCompabilityProfile::Legacy</a>, 
+<a class="el" href="group___settings.html#ggab3552d007c8e23a65e4ac0366758c18da83168e6cb289d732cc78427b51f93153">fpl::VideoCompabilityProfile::Core</a>, 
+<a class="el" href="group___settings.html#ggab3552d007c8e23a65e4ac0366758c18da67d2f6740a8eaebf4d5c6f79be8da481">fpl::VideoCompabilityProfile::Forward</a>
+ }<tr class="memdesc:gab3552d007c8e23a65e4ac0366758c18d"><td class="mdescLeft">&#160;</td><td class="mdescRight">Video compability profile.  <a href="group___settings.html#gab3552d007c8e23a65e4ac0366758c18d">More...</a><br /></td></tr>
+</td></tr>
+<tr class="separator:gab3552d007c8e23a65e4ac0366758c18d"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:ga507fe7ca23031e714575d0a5ddd37598"><td class="memItemLeft" align="right" valign="top">enum &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___settings.html#ga507fe7ca23031e714575d0a5ddd37598">fpl::VideoDriverType</a> { <a class="el" href="group___settings.html#gga507fe7ca23031e714575d0a5ddd37598a6adf97f83acf6453d4a6a4b1070f3754">fpl::VideoDriverType::None</a>, 
+<a class="el" href="group___settings.html#gga507fe7ca23031e714575d0a5ddd37598a760716b590ee7c0adc25f434f577d8be">fpl::VideoDriverType::OpenGL</a>, 
+<a class="el" href="group___settings.html#gga507fe7ca23031e714575d0a5ddd37598a719d067b229178f03bcfa1da4ac4dede">fpl::VideoDriverType::Software</a>
+ }<tr class="memdesc:ga507fe7ca23031e714575d0a5ddd37598"><td class="mdescLeft">&#160;</td><td class="mdescRight">Video driver type.  <a href="group___settings.html#ga507fe7ca23031e714575d0a5ddd37598">More...</a><br /></td></tr>
+</td></tr>
+<tr class="separator:ga507fe7ca23031e714575d0a5ddd37598"><td class="memSeparator" colspan="2">&#160;</td></tr>
+</table><table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a name="func-members"></a>
 Functions</h2></td></tr>
-<tr class="memitem:ga5a93d3ae02696764fc8c3707b7f38f31"><td class="memItemLeft" align="right" valign="top"><a id="ga5a93d3ae02696764fc8c3707b7f38f31"></a>
-&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___settings.html#ga5a93d3ae02696764fc8c3707b7f38f31">fpl::FPL_ENUM_AS_FLAGS_OPERATORS</a> (<a class="el" href="namespacefpl_1_1_init_flags.html#a3aaa570e446e656cbc2c25d2a1a76db0">InitFlag</a>)</td></tr>
-<tr class="memdesc:ga5a93d3ae02696764fc8c3707b7f38f31"><td class="mdescLeft">&#160;</td><td class="mdescRight">Operator support for InitFlag. <br /></td></tr>
-<tr class="separator:ga5a93d3ae02696764fc8c3707b7f38f31"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:ga0a2cce1f784787afdfe4d00f12fbfae0"><td class="memItemLeft" align="right" valign="top"><a id="ga0a2cce1f784787afdfe4d00f12fbfae0"></a>
-<a class="el" href="final__platform__layer_8hpp.html#ad67e19afe5bfc76f56e85436eac8cf4d">fpl_inline</a> <a class="el" href="structfpl_1_1_video_settings.html">VideoSettings</a>&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___settings.html#ga0a2cce1f784787afdfe4d00f12fbfae0">fpl::DefaultVideoSettings</a> ()</td></tr>
-<tr class="memdesc:ga0a2cce1f784787afdfe4d00f12fbfae0"><td class="mdescLeft">&#160;</td><td class="mdescRight">Make default settings for video. <br /></td></tr>
-<tr class="separator:ga0a2cce1f784787afdfe4d00f12fbfae0"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:ga433f5dc8e4c59843f149f14da279f7e1"><td class="memItemLeft" align="right" valign="top"><a id="ga433f5dc8e4c59843f149f14da279f7e1"></a>
 <a class="el" href="final__platform__layer_8hpp.html#ad67e19afe5bfc76f56e85436eac8cf4d">fpl_inline</a> <a class="el" href="structfpl_1_1_audio_settings.html">AudioSettings</a>&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___settings.html#ga433f5dc8e4c59843f149f14da279f7e1">fpl::DefaultAudioSettings</a> ()</td></tr>
 <tr class="memdesc:ga433f5dc8e4c59843f149f14da279f7e1"><td class="mdescLeft">&#160;</td><td class="mdescRight">Make default audio settings (S16 PCM, 48 KHz, 2 Channels) <br /></td></tr>
 <tr class="separator:ga433f5dc8e4c59843f149f14da279f7e1"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:gad69524831de452acbfc4b5d7cf1faa8f"><td class="memItemLeft" align="right" valign="top"><a id="gad69524831de452acbfc4b5d7cf1faa8f"></a>
-<a class="el" href="final__platform__layer_8hpp.html#ad67e19afe5bfc76f56e85436eac8cf4d">fpl_inline</a> <a class="el" href="structfpl_1_1_window_settings.html">WindowSettings</a>&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___settings.html#gad69524831de452acbfc4b5d7cf1faa8f">fpl::DefaultWindowSettings</a> ()</td></tr>
-<tr class="memdesc:gad69524831de452acbfc4b5d7cf1faa8f"><td class="mdescLeft">&#160;</td><td class="mdescRight">Make default settings for the window. <br /></td></tr>
-<tr class="separator:gad69524831de452acbfc4b5d7cf1faa8f"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:gaa05500bf791eee08ad6444f93591b6a5"><td class="memItemLeft" align="right" valign="top"><a id="gaa05500bf791eee08ad6444f93591b6a5"></a>
+<a class="el" href="final__platform__layer_8hpp.html#ad67e19afe5bfc76f56e85436eac8cf4d">fpl_inline</a> <a class="el" href="structfpl_1_1_input_settings.html">InputSettings</a>&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___settings.html#gaa05500bf791eee08ad6444f93591b6a5">fpl::DefaultInputSettings</a> ()</td></tr>
+<tr class="memdesc:gaa05500bf791eee08ad6444f93591b6a5"><td class="mdescLeft">&#160;</td><td class="mdescRight">Make default settings for input devices. <br /></td></tr>
+<tr class="separator:gaa05500bf791eee08ad6444f93591b6a5"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:ga61ea8dd870556f6a7c3b805050acce22"><td class="memItemLeft" align="right" valign="top"><a id="ga61ea8dd870556f6a7c3b805050acce22"></a>
 <a class="el" href="final__platform__layer_8hpp.html#ad67e19afe5bfc76f56e85436eac8cf4d">fpl_inline</a> <a class="el" href="structfpl_1_1_settings.html">Settings</a>&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___settings.html#ga61ea8dd870556f6a7c3b805050acce22">fpl::DefaultSettings</a> ()</td></tr>
 <tr class="memdesc:ga61ea8dd870556f6a7c3b805050acce22"><td class="mdescLeft">&#160;</td><td class="mdescRight">Default settings for video, window, etc. <br /></td></tr>
 <tr class="separator:ga61ea8dd870556f6a7c3b805050acce22"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:ga0a2cce1f784787afdfe4d00f12fbfae0"><td class="memItemLeft" align="right" valign="top"><a id="ga0a2cce1f784787afdfe4d00f12fbfae0"></a>
+<a class="el" href="final__platform__layer_8hpp.html#ad67e19afe5bfc76f56e85436eac8cf4d">fpl_inline</a> <a class="el" href="structfpl_1_1_video_settings.html">VideoSettings</a>&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___settings.html#ga0a2cce1f784787afdfe4d00f12fbfae0">fpl::DefaultVideoSettings</a> ()</td></tr>
+<tr class="memdesc:ga0a2cce1f784787afdfe4d00f12fbfae0"><td class="mdescLeft">&#160;</td><td class="mdescRight">Make default settings for video. <br /></td></tr>
+<tr class="separator:ga0a2cce1f784787afdfe4d00f12fbfae0"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:gad69524831de452acbfc4b5d7cf1faa8f"><td class="memItemLeft" align="right" valign="top"><a id="gad69524831de452acbfc4b5d7cf1faa8f"></a>
+<a class="el" href="final__platform__layer_8hpp.html#ad67e19afe5bfc76f56e85436eac8cf4d">fpl_inline</a> <a class="el" href="structfpl_1_1_window_settings.html">WindowSettings</a>&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___settings.html#gad69524831de452acbfc4b5d7cf1faa8f">fpl::DefaultWindowSettings</a> ()</td></tr>
+<tr class="memdesc:gad69524831de452acbfc4b5d7cf1faa8f"><td class="mdescLeft">&#160;</td><td class="mdescRight">Make default settings for the window. <br /></td></tr>
+<tr class="separator:gad69524831de452acbfc4b5d7cf1faa8f"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:gaa2f7a68f92104f5e6f8c0511005c03dc"><td class="memItemLeft" align="right" valign="top"><a id="gaa2f7a68f92104f5e6f8c0511005c03dc"></a>
+&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___settings.html#gaa2f7a68f92104f5e6f8c0511005c03dc">fpl::FPL_ENUM_AS_FLAGS_OPERATORS</a> (<a class="el" href="group___settings.html#gae483f3743fdfa195f8746c04203ca850">InitFlags</a>)</td></tr>
+<tr class="memdesc:gaa2f7a68f92104f5e6f8c0511005c03dc"><td class="mdescLeft">&#160;</td><td class="mdescRight">Operator support for InitFlags. <br /></td></tr>
+<tr class="separator:gaa2f7a68f92104f5e6f8c0511005c03dc"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:ga6eecc72936058abdbebfad659b886980"><td class="memItemLeft" align="right" valign="top"><a id="ga6eecc72936058abdbebfad659b886980"></a>
 <a class="el" href="final__platform__layer_8hpp.html#aafa1d3d90febf9826c55c1318f98b27d">fpl_api</a> const <a class="el" href="structfpl_1_1_settings.html">Settings</a> &amp;&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___settings.html#ga6eecc72936058abdbebfad659b886980">fpl::GetCurrentSettings</a> ()</td></tr>
 <tr class="memdesc:ga6eecc72936058abdbebfad659b886980"><td class="mdescLeft">&#160;</td><td class="mdescRight">Returns the current settings. <br /></td></tr>
@@ -164,6 +179,147 @@ Functions</h2></td></tr>
 </table>
 <a name="details" id="details"></a><h2 class="groupheader">Detailed Description</h2>
 <p>Video/audio/window settings. </p>
+<h2 class="groupheader">Enumeration Type Documentation</h2>
+<a id="ga7846abd72446af7c7e6b1e9bbddea3b4"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#ga7846abd72446af7c7e6b1e9bbddea3b4">&#9670;&nbsp;</a></span>AudioDriverType</h2>
+
+<div class="memitem">
+<div class="memproto">
+<table class="mlabels">
+  <tr>
+  <td class="mlabels-left">
+      <table class="memname">
+        <tr>
+          <td class="memname">enum <a class="el" href="group___settings.html#ga7846abd72446af7c7e6b1e9bbddea3b4">fpl::AudioDriverType</a></td>
+        </tr>
+      </table>
+  </td>
+  <td class="mlabels-right">
+<span class="mlabels"><span class="mlabel">strong</span></span>  </td>
+  </tr>
+</table>
+</div><div class="memdoc">
+
+<p>Audio driver type. </p>
+<table class="fieldtable">
+<tr><th colspan="2">Enumerator</th></tr><tr><td class="fieldname"><a id="gga7846abd72446af7c7e6b1e9bbddea3b4a6adf97f83acf6453d4a6a4b1070f3754"></a>None&#160;</td><td class="fielddoc"><p>No audio driver. </p>
+</td></tr>
+<tr><td class="fieldname"><a id="gga7846abd72446af7c7e6b1e9bbddea3b4a06b9281e396db002010bde1de57262eb"></a>Auto&#160;</td><td class="fielddoc"><p>Auto detection. </p>
+</td></tr>
+<tr><td class="fieldname"><a id="gga7846abd72446af7c7e6b1e9bbddea3b4a60c345a5a6e5f94b1e75bf212494a4bf"></a>DirectSound&#160;</td><td class="fielddoc"><p>DirectSound. </p>
+</td></tr>
+</table>
+
+<p class="definition">Definition at line <a class="el" href="final__platform__layer_8hpp_source.html#l01359">1359</a> of file <a class="el" href="final__platform__layer_8hpp_source.html">final_platform_layer.hpp</a>.</p>
+
+</div>
+</div>
+<a id="gae483f3743fdfa195f8746c04203ca850"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#gae483f3743fdfa195f8746c04203ca850">&#9670;&nbsp;</a></span>InitFlags</h2>
+
+<div class="memitem">
+<div class="memproto">
+<table class="mlabels">
+  <tr>
+  <td class="mlabels-left">
+      <table class="memname">
+        <tr>
+          <td class="memname">enum <a class="el" href="group___settings.html#gae483f3743fdfa195f8746c04203ca850">fpl::InitFlags</a> : int</td>
+        </tr>
+      </table>
+  </td>
+  <td class="mlabels-right">
+<span class="mlabels"><span class="mlabel">strong</span></span>  </td>
+  </tr>
+</table>
+</div><div class="memdoc">
+
+<p>Initialization flags (Window, Video, etc.) </p>
+<table class="fieldtable">
+<tr><th colspan="2">Enumerator</th></tr><tr><td class="fieldname"><a id="ggae483f3743fdfa195f8746c04203ca850a6adf97f83acf6453d4a6a4b1070f3754"></a>None&#160;</td><td class="fielddoc"><p>No init flags. </p>
+</td></tr>
+<tr><td class="fieldname"><a id="ggae483f3743fdfa195f8746c04203ca850ac89686a387d2b12b3c729ce35a0bcb5b"></a>Window&#160;</td><td class="fielddoc"><p>Create a single window. </p>
+</td></tr>
+<tr><td class="fieldname"><a id="ggae483f3743fdfa195f8746c04203ca850a34e2d1989a1dbf75cd631596133ee5ee"></a>Video&#160;</td><td class="fielddoc"><p>Use a video backbuffer (A window without video is pretty much useless) </p>
+</td></tr>
+<tr><td class="fieldname"><a id="ggae483f3743fdfa195f8746c04203ca850ab22f0418e8ac915eb66f829d262d14a2"></a>Audio&#160;</td><td class="fielddoc"><p>Use audio playback. </p>
+</td></tr>
+<tr><td class="fieldname"><a id="ggae483f3743fdfa195f8746c04203ca850ab1c94ca2fbc3e78fc30069c8d0f01680"></a>All&#160;</td><td class="fielddoc"><p>Default init flags for a window + video + audio. </p>
+</td></tr>
+</table>
+
+<p class="definition">Definition at line <a class="el" href="final__platform__layer_8hpp_source.html#l01287">1287</a> of file <a class="el" href="final__platform__layer_8hpp_source.html">final_platform_layer.hpp</a>.</p>
+
+</div>
+</div>
+<a id="gab3552d007c8e23a65e4ac0366758c18d"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#gab3552d007c8e23a65e4ac0366758c18d">&#9670;&nbsp;</a></span>VideoCompabilityProfile</h2>
+
+<div class="memitem">
+<div class="memproto">
+<table class="mlabels">
+  <tr>
+  <td class="mlabels-left">
+      <table class="memname">
+        <tr>
+          <td class="memname">enum <a class="el" href="group___settings.html#gab3552d007c8e23a65e4ac0366758c18d">fpl::VideoCompabilityProfile</a></td>
+        </tr>
+      </table>
+  </td>
+  <td class="mlabels-right">
+<span class="mlabels"><span class="mlabel">strong</span></span>  </td>
+  </tr>
+</table>
+</div><div class="memdoc">
+
+<p>Video compability profile. </p>
+<table class="fieldtable">
+<tr><th colspan="2">Enumerator</th></tr><tr><td class="fieldname"><a id="ggab3552d007c8e23a65e4ac0366758c18da0cc0a0507cf3d31e5089f420a4cf8b4b"></a>Legacy&#160;</td><td class="fielddoc"><p>Use legacy context. </p>
+</td></tr>
+<tr><td class="fieldname"><a id="ggab3552d007c8e23a65e4ac0366758c18da83168e6cb289d732cc78427b51f93153"></a>Core&#160;</td><td class="fielddoc"><p>Use core context with backwards compability. </p>
+</td></tr>
+<tr><td class="fieldname"><a id="ggab3552d007c8e23a65e4ac0366758c18da67d2f6740a8eaebf4d5c6f79be8da481"></a>Forward&#160;</td><td class="fielddoc"><p>Use foward context without backwards compability. </p>
+</td></tr>
+</table>
+
+<p class="definition">Definition at line <a class="el" href="final__platform__layer_8hpp_source.html#l01313">1313</a> of file <a class="el" href="final__platform__layer_8hpp_source.html">final_platform_layer.hpp</a>.</p>
+
+</div>
+</div>
+<a id="ga507fe7ca23031e714575d0a5ddd37598"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#ga507fe7ca23031e714575d0a5ddd37598">&#9670;&nbsp;</a></span>VideoDriverType</h2>
+
+<div class="memitem">
+<div class="memproto">
+<table class="mlabels">
+  <tr>
+  <td class="mlabels-left">
+      <table class="memname">
+        <tr>
+          <td class="memname">enum <a class="el" href="group___settings.html#ga507fe7ca23031e714575d0a5ddd37598">fpl::VideoDriverType</a></td>
+        </tr>
+      </table>
+  </td>
+  <td class="mlabels-right">
+<span class="mlabels"><span class="mlabel">strong</span></span>  </td>
+  </tr>
+</table>
+</div><div class="memdoc">
+
+<p>Video driver type. </p>
+<table class="fieldtable">
+<tr><th colspan="2">Enumerator</th></tr><tr><td class="fieldname"><a id="gga507fe7ca23031e714575d0a5ddd37598a6adf97f83acf6453d4a6a4b1070f3754"></a>None&#160;</td><td class="fielddoc"><p>No video driver. </p>
+</td></tr>
+<tr><td class="fieldname"><a id="gga507fe7ca23031e714575d0a5ddd37598a760716b590ee7c0adc25f434f577d8be"></a>OpenGL&#160;</td><td class="fielddoc"><p>OpenGL. </p>
+</td></tr>
+<tr><td class="fieldname"><a id="gga507fe7ca23031e714575d0a5ddd37598a719d067b229178f03bcfa1da4ac4dede"></a>Software&#160;</td><td class="fielddoc"><p>Software. </p>
+</td></tr>
+</table>
+
+<p class="definition">Definition at line <a class="el" href="final__platform__layer_8hpp_source.html#l01303">1303</a> of file <a class="el" href="final__platform__layer_8hpp_source.html">final_platform_layer.hpp</a>.</p>
+
+</div>
+</div>
 </div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>

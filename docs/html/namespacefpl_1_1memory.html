@@ -22,7 +22,7 @@
  <tr style="height: 56px;">
   <td id="projectalign" style="padding-left: 0.5em;">
    <div id="projectname">Final Platform Layer
-   &#160;<span id="projectnumber">0.5.2.1</span>
+   &#160;<span id="projectnumber">0.5.6.1</span>
    </div>
   </td>
  </tr>
@@ -75,26 +75,6 @@ $(function() {
 <table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a name="func-members"></a>
 Functions</h2></td></tr>
-<tr class="memitem:ga829c0017ffc716ac9302468d3ac41df2"><td class="memItemLeft" align="right" valign="top">
-<a class="el" href="final__platform__layer_8hpp.html#aafa1d3d90febf9826c55c1318f98b27d">fpl_api</a> void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___memory.html#ga829c0017ffc716ac9302468d3ac41df2">MemoryClear</a> (void *mem, const size_t size)</td></tr>
-<tr class="memdesc:ga829c0017ffc716ac9302468d3ac41df2"><td class="mdescLeft">&#160;</td><td class="mdescRight">Clears the given memory by the given size to zero. <br /></td></tr>
-<tr class="separator:ga829c0017ffc716ac9302468d3ac41df2"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:gadb98af4c9b6d561313a2ceeab8d44e06"><td class="memItemLeft" align="right" valign="top">
-<a class="el" href="final__platform__layer_8hpp.html#aafa1d3d90febf9826c55c1318f98b27d">fpl_api</a> void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___memory.html#gadb98af4c9b6d561313a2ceeab8d44e06">MemoryCopy</a> (void *sourceMem, const size_t sourceSize, void *targetMem)</td></tr>
-<tr class="memdesc:gadb98af4c9b6d561313a2ceeab8d44e06"><td class="mdescLeft">&#160;</td><td class="mdescRight">Copies the given source memory with its length to the target memory. <br /></td></tr>
-<tr class="separator:gadb98af4c9b6d561313a2ceeab8d44e06"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:gaabe256ab34794ac0f3f1633674de97f5"><td class="memItemLeft" align="right" valign="top">
-<a class="el" href="final__platform__layer_8hpp.html#aafa1d3d90febf9826c55c1318f98b27d">fpl_api</a> void *&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___memory.html#gaabe256ab34794ac0f3f1633674de97f5">MemoryAllocate</a> (const size_t size)</td></tr>
-<tr class="memdesc:gaabe256ab34794ac0f3f1633674de97f5"><td class="mdescLeft">&#160;</td><td class="mdescRight">Allocates memory from the operating system by the given size. The memory is guaranteed to be initialized by zero. <br /></td></tr>
-<tr class="separator:gaabe256ab34794ac0f3f1633674de97f5"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:ga62c8cc6c740a8089309c6e28ec03d83a"><td class="memItemLeft" align="right" valign="top">
-<a class="el" href="final__platform__layer_8hpp.html#aafa1d3d90febf9826c55c1318f98b27d">fpl_api</a> void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___memory.html#ga62c8cc6c740a8089309c6e28ec03d83a">MemoryFree</a> (void *ptr)</td></tr>
-<tr class="memdesc:ga62c8cc6c740a8089309c6e28ec03d83a"><td class="mdescLeft">&#160;</td><td class="mdescRight">Releases the memory allocated from the operating system. <br /></td></tr>
-<tr class="separator:ga62c8cc6c740a8089309c6e28ec03d83a"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:gaae59e8f8c515b0a58ece0a60588779dd"><td class="memItemLeft" align="right" valign="top">
-<a class="el" href="final__platform__layer_8hpp.html#aafa1d3d90febf9826c55c1318f98b27d">fpl_api</a> void *&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___memory.html#gaae59e8f8c515b0a58ece0a60588779dd">MemoryStackAllocate</a> (const size_t size)</td></tr>
-<tr class="memdesc:gaae59e8f8c515b0a58ece0a60588779dd"><td class="mdescLeft">&#160;</td><td class="mdescRight">Allocates memory on the current stack. Use this very carefully, it will be released then the current scope goes out of scope! <br /></td></tr>
-<tr class="separator:gaae59e8f8c515b0a58ece0a60588779dd"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:gaf5ad819b0045c31a72d86c20d8f8dd34"><td class="memItemLeft" align="right" valign="top">
 <a class="el" href="final__platform__layer_8hpp.html#aafa1d3d90febf9826c55c1318f98b27d">fpl_api</a> void *&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___memory.html#gaf5ad819b0045c31a72d86c20d8f8dd34">MemoryAlignedAllocate</a> (const size_t size, const size_t alignment)</td></tr>
 <tr class="memdesc:gaf5ad819b0045c31a72d86c20d8f8dd34"><td class="mdescLeft">&#160;</td><td class="mdescRight">Allocates aligned memory from the operating system by the given alignment. The memory is guaranteed to be initialized by zero. <br /></td></tr>
@@ -103,6 +83,26 @@ Functions</h2></td></tr>
 <a class="el" href="final__platform__layer_8hpp.html#aafa1d3d90febf9826c55c1318f98b27d">fpl_api</a> void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___memory.html#gafff57ceb6d17787d0bc84d66fd23f433">MemoryAlignedFree</a> (void *ptr)</td></tr>
 <tr class="memdesc:gafff57ceb6d17787d0bc84d66fd23f433"><td class="mdescLeft">&#160;</td><td class="mdescRight">Releases aligned memory from the operating system. <br /></td></tr>
 <tr class="separator:gafff57ceb6d17787d0bc84d66fd23f433"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:gaabe256ab34794ac0f3f1633674de97f5"><td class="memItemLeft" align="right" valign="top">
+<a class="el" href="final__platform__layer_8hpp.html#aafa1d3d90febf9826c55c1318f98b27d">fpl_api</a> void *&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___memory.html#gaabe256ab34794ac0f3f1633674de97f5">MemoryAllocate</a> (const size_t size)</td></tr>
+<tr class="memdesc:gaabe256ab34794ac0f3f1633674de97f5"><td class="mdescLeft">&#160;</td><td class="mdescRight">Allocates memory from the operating system by the given size. The memory is guaranteed to be initialized by zero. <br /></td></tr>
+<tr class="separator:gaabe256ab34794ac0f3f1633674de97f5"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:ga829c0017ffc716ac9302468d3ac41df2"><td class="memItemLeft" align="right" valign="top">
+<a class="el" href="final__platform__layer_8hpp.html#aafa1d3d90febf9826c55c1318f98b27d">fpl_api</a> void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___memory.html#ga829c0017ffc716ac9302468d3ac41df2">MemoryClear</a> (void *mem, const size_t size)</td></tr>
+<tr class="memdesc:ga829c0017ffc716ac9302468d3ac41df2"><td class="mdescLeft">&#160;</td><td class="mdescRight">Clears the given memory by the given size to zero. <br /></td></tr>
+<tr class="separator:ga829c0017ffc716ac9302468d3ac41df2"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:gadb98af4c9b6d561313a2ceeab8d44e06"><td class="memItemLeft" align="right" valign="top">
+<a class="el" href="final__platform__layer_8hpp.html#aafa1d3d90febf9826c55c1318f98b27d">fpl_api</a> void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___memory.html#gadb98af4c9b6d561313a2ceeab8d44e06">MemoryCopy</a> (void *sourceMem, const size_t sourceSize, void *targetMem)</td></tr>
+<tr class="memdesc:gadb98af4c9b6d561313a2ceeab8d44e06"><td class="mdescLeft">&#160;</td><td class="mdescRight">Copies the given source memory with its length to the target memory. <br /></td></tr>
+<tr class="separator:gadb98af4c9b6d561313a2ceeab8d44e06"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:ga62c8cc6c740a8089309c6e28ec03d83a"><td class="memItemLeft" align="right" valign="top">
+<a class="el" href="final__platform__layer_8hpp.html#aafa1d3d90febf9826c55c1318f98b27d">fpl_api</a> void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___memory.html#ga62c8cc6c740a8089309c6e28ec03d83a">MemoryFree</a> (void *ptr)</td></tr>
+<tr class="memdesc:ga62c8cc6c740a8089309c6e28ec03d83a"><td class="mdescLeft">&#160;</td><td class="mdescRight">Releases the memory allocated from the operating system. <br /></td></tr>
+<tr class="separator:ga62c8cc6c740a8089309c6e28ec03d83a"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:gaae59e8f8c515b0a58ece0a60588779dd"><td class="memItemLeft" align="right" valign="top">
+<a class="el" href="final__platform__layer_8hpp.html#aafa1d3d90febf9826c55c1318f98b27d">fpl_api</a> void *&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___memory.html#gaae59e8f8c515b0a58ece0a60588779dd">MemoryStackAllocate</a> (const size_t size)</td></tr>
+<tr class="memdesc:gaae59e8f8c515b0a58ece0a60588779dd"><td class="mdescLeft">&#160;</td><td class="mdescRight">Allocates memory on the current stack. Use this very carefully, it will be released then the current scope goes out of scope! <br /></td></tr>
+<tr class="separator:gaae59e8f8c515b0a58ece0a60588779dd"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table>
 <a name="details" id="details"></a><h2 class="groupheader">Detailed Description</h2>
 <div class="textblock"><p>Memory allocation, clearing and copy functions. </p>
