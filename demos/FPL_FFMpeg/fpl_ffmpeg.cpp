@@ -21,18 +21,20 @@ Written by Torsten Spaete
 [x] Syncronize audio to video
 [x] Use same ffmpeg name from every dynamic function
 [x] Fix bug for WMV always dropping nearly every frame (TimeBase was wrong all the time)
+[x] Aspect ratio calculation
+[x] Fullscreen toggling
+[ ] Seeking (+/- 5 secs)
 [ ] Support for audio format change while playing
 [ ] Support for video format change while playing
-[ ] Seeking (+/- 5 secs)
 [ ] Composite video rendering
 	[ ] OSD
 	[ ] Bitmap rect blitting
 	[ ] Subtitle Decoding and Compositing
 [ ] Image format conversion (YUY2, YUV > RGB24 etc.)
 	[ ] GLSL
-	[ ] Slow CPU implementation
+	[x] Slow CPU implementation (YUV420P for now)
 	[ ] SSE2/AVX implementation
-[ ] Audio format conversion (Downsampling, Upsamplíng, S16 > F32 etc.)
+[ ] Audio format conversion (Downsampling, Upsampling, S16 > F32 etc.)
 	[ ] Slow CPU implementation
 	[ ] SSE2/AVX implementation
 [ ] UI
@@ -64,7 +66,7 @@ Requirements:
 #define PRINT_QUEUE_INFOS 0
 #define PRINT_FRAME_UPLOAD_INFOS 0
 #define PRINT_MEMORY_STATS 0
-#define PRINT_FRAME_DROPS 0
+#define PRINT_FRAME_DROPS 1
 #define PRINT_VIDEO_REFRESH 0
 #define PRINT_VIDEO_DELAY 0
 #define PRINT_CLOCKS 0
@@ -75,6 +77,7 @@ Requirements:
 #define USE_FFMPEG_STATIC_LINKING 0
 #define USE_GL_PBO 1
 #define USE_GL_RECTANGLE_TEXTURES 1
+#define USE_FFMPEG_SOFTWARE_CONVERSION 0
 
 #if USE_HARDWARE_RENDERING
 #	define FDYNGL_IMPLEMENTATION
@@ -937,8 +940,9 @@ struct Frame {
 	double duration;
 	int64_t pos;
 	int32_t serial;
+	int32_t width;
+	int32_t height;
 	bool isUploaded;
-	bool flipY;
 };
 
 // @NOTE(final): This is a single producer single consumer fast ringbuffer queue.
@@ -1253,7 +1257,7 @@ struct Texture {
 	uint32_t width;
 	uint32_t height;
 	uint32_t pixelSize;
-	uint32_t rowSize;
+	int32_t rowSize;
 	uint32_t colorBits;
 };
 
@@ -1354,25 +1358,67 @@ struct VideoContext {
 	Decoder decoder;
 	Clock clock;
 	Texture targetTexture;
-	AVFrame *targetRGBFrame;
-	uint8_t *targetRGBBuffer;
 	SwsContext *softwareScaleCtx;
 };
 
-static void UploadTexture(VideoContext &video, const AVFrame *sourceNativeFrame, const bool flipY) {
+inline void FlipSourcePicture(uint8_t *srcData[8], int srcLineSize[8], int height) {
+	int h0 = srcLineSize[0];
+	for (int i = 0; i < 8; ++i) {
+		int hi = srcLineSize[i];
+		if (hi == 0) {
+			break;
+		}
+		int h;
+		if (hi != h0) {
+			int div = h0 / hi;
+			h = (height / div) - 1;
+		} else {
+			h = height - 1;
+		}
+		srcData[i] = srcData[i] + srcLineSize[i] * h;
+		srcLineSize[i] = -srcLineSize[i];
+	}
+
+}
+
+static void UploadTexture(VideoContext &video, const AVFrame *sourceNativeFrame) {
 	assert(video.targetTexture.width == sourceNativeFrame->width);
 	assert(video.targetTexture.height == sourceNativeFrame->height);
 	AVCodecContext *videoCodecCtx = video.stream.codecContext;
-	ffmpeg.sws_scale(video.softwareScaleCtx, (uint8_t const * const *)sourceNativeFrame->data, sourceNativeFrame->linesize, 0, videoCodecCtx->height, video.targetRGBFrame->data, video.targetRGBFrame->linesize);
-
-	bool isBGRA = false;
-#if USE_HARDWARE_RENDERING
-	isBGRA = true;
-#endif
 
 	uint8_t *data = LockTexture(video.targetTexture);
 	assert(data != nullptr);
-	ConvertRGB24ToRGB32(data, video.targetTexture.rowSize, video.targetTexture.width, video.targetTexture.height, *video.targetRGBFrame->linesize, video.targetRGBBuffer, flipY, isBGRA);
+
+	const bool srcFlipY = true;
+	int32_t dstLineSize[8] = { video.targetTexture.rowSize, 0 };
+	uint8_t *dstData[8] = { data, nullptr };
+	uint8_t *srcData[8];
+	int srcLineSize[8];
+	for (int i = 0; i < 8; ++i) {
+		srcData[i] = sourceNativeFrame->data[i];
+		srcLineSize[i] = sourceNativeFrame->linesize[i];
+	}
+	if (srcFlipY) {
+		FlipSourcePicture(srcData, srcLineSize, videoCodecCtx->height);
+	}
+
+#if USE_FFMPEG_SOFTWARE_CONVERSION
+	ffmpeg.sws_scale(video.softwareScaleCtx, (uint8_t const * const *)srcData, srcLineSize, 0, videoCodecCtx->height, dstData, dstLineSize);
+#else
+	ConversionFlags flags = ConversionFlags::None;
+#	if USE_HARDWARE_RENDERING
+	flags |= ConversionFlags::DstBGRA;
+#	endif
+	switch (sourceNativeFrame->format) {
+		case AVPixelFormat::AV_PIX_FMT_YUV420P:
+			ConvertYUV420PToRGB32(dstData, dstLineSize, video.targetTexture.width, video.targetTexture.height, srcData, srcLineSize, flags);
+			break;
+		default:
+			ffmpeg.sws_scale(video.softwareScaleCtx, (uint8_t const * const *)srcData, srcLineSize, 0, videoCodecCtx->height, dstData, dstLineSize);
+			break;
+	}
+#endif
+
 	UnlockTexture(video.targetTexture);
 }
 
@@ -1422,7 +1468,7 @@ struct PlayerSettings {
 inline void InitPlayerSettings(PlayerSettings &settings) {
 	settings.startTime = {};
 	settings.duration = {};
-	settings.frameDrop = 0;
+	settings.frameDrop = 1;
 	settings.isInfiniteBuffer = false;
 	settings.isLoop = false;
 	settings.reorderDecoderPTS = -1;
@@ -1461,6 +1507,7 @@ struct PlayerState {
 	bool isRealTime;
 	bool isPaused;
 	bool lastPaused;
+	bool isFullscreen;
 };
 
 inline void PutPacketBackToReader(ReaderContext &reader, PacketList *packet) {
@@ -1697,8 +1744,9 @@ static void QueuePicture(Decoder &decoder, AVFrame *sourceFrame, Frame *targetFr
 	targetFrame->duration = (currentFrameRate.num && currentFrameRate.den ? av_q2d({ currentFrameRate.den, currentFrameRate.num }) : 0);
 	targetFrame->serial = serial;
 	targetFrame->isUploaded = false;
-	targetFrame->flipY = false;
 	targetFrame->sar = sourceFrame->sample_aspect_ratio;
+	targetFrame->width = sourceFrame->width;
+	targetFrame->height = sourceFrame->height;
 
 #if PRINT_PTS
 	ConsoleFormatOut("PTS V: %7.2f, Next: %7.2f\n", targetFrame->pts, decoder.next_pts);
@@ -2107,6 +2155,15 @@ static void SeekStream(SeekState *state, int64_t pos, int64_t rel, bool seekInBy
 	}
 }
 
+static void ToggleFullscreen(PlayerState *state) {
+	if (state->isFullscreen) {
+		SetWindowFullscreen(false);
+		state->isFullscreen = false;
+	} else {
+		state->isFullscreen = SetWindowFullscreen(true);
+	}
+}
+
 static void TogglePause(PlayerState *state) {
 	StreamTogglePause(state);
 	state->step = false;
@@ -2372,9 +2429,40 @@ static bool IsRealTime(AVFormatContext *s) {
 	return false;
 }
 
-struct RefreshState {
-	double remainingTime;
+struct DisplayRect {
+	int left;
+	int top;
+	int right;
+	int bottom;
 };
+
+static DisplayRect CalculateDisplayRect(const int screenLeft, const int screenTop, const int screenWidth, const int screenHeight, const int pictureWidth, const int pictureHeight, const AVRational pictureSAR) {
+	double aspect_ratio;
+	if (pictureSAR.num == 0.0) {
+		aspect_ratio = 0.0;
+	} else {
+		aspect_ratio = av_q2d(pictureSAR);
+	}
+	if (aspect_ratio <= 0.0) {
+		aspect_ratio = 1.0;
+	}
+	aspect_ratio *= (float)pictureWidth / (float)pictureHeight;
+
+	int height = screenHeight;
+	int width = lrint(height * aspect_ratio) & ~1;
+	if (width > screenWidth) {
+		width = screenWidth;
+		height = lrint(width / aspect_ratio) & ~1;
+	}
+	int x = (screenWidth - width) / 2;
+	int y = (screenHeight - height) / 2;
+	DisplayRect result;
+	result.left = screenLeft + x;
+	result.top = screenTop + y;
+	result.right = result.left + FFMAX(width, 1);
+	result.bottom = result.top + FFMAX(height, 1);
+	return(result);
+}
 
 static void DisplayVideoFrame(PlayerState *state) {
 	assert(state != nullptr);
@@ -2383,16 +2471,17 @@ static void DisplayVideoFrame(PlayerState *state) {
 	VideoContext &video = state->video;
 	bool wasUploaded = false;
 	if (!vp->isUploaded) {
-		bool flipY = vp->frame->linesize[0] < 0;
-		UploadTexture(video, vp->frame, flipY);
+		UploadTexture(video, vp->frame);
 		vp->isUploaded = true;
-		vp->flipY = flipY;
 		wasUploaded = true;
 	}
 
-#if USE_HARDWARE_RENDERING
+	// Calculate display rect (Top-Down)
 	int w = state->viewport.width;
 	int h = state->viewport.height;
+	DisplayRect rect = CalculateDisplayRect(0, 0, w, h, vp->width, vp->height, vp->sar);
+
+#if USE_HARDWARE_RENDERING
 	glViewport(0, 0, w, h);
 
 	glClear(GL_COLOR_BUFFER_BIT);
@@ -2417,16 +2506,20 @@ static void DisplayVideoFrame(PlayerState *state) {
 	glColor4f(1, 1, 1, 1);
 	glBegin(GL_TRIANGLES);
 	// Topright, Bottomright, Bottomleft
-	glTexCoord2f(uMax, vMax); glVertex2i(w, h);
-	glTexCoord2f(uMax, vMin); glVertex2i(w, 0);
-	glTexCoord2f(uMin, vMin); glVertex2i(0, 0);
+	glTexCoord2f(uMax, vMax); glVertex2i(rect.right, rect.bottom);
+	glTexCoord2f(uMax, vMin); glVertex2i(rect.right, rect.top);
+	glTexCoord2f(uMin, vMin); glVertex2i(rect.left, rect.top);
 	// Bottomleft, Topleft, Topright
-	glTexCoord2f(uMin, vMin); glVertex2i(0, 0);
-	glTexCoord2f(uMin, vMax); glVertex2i(0, h);
-	glTexCoord2f(uMax, vMax); glVertex2i(w, h);
+	glTexCoord2f(uMin, vMin); glVertex2i(rect.left, rect.top);
+	glTexCoord2f(uMin, vMax); glVertex2i(rect.left, rect.bottom);
+	glTexCoord2f(uMax, vMax); glVertex2i(rect.right, rect.bottom);
 	glEnd();
 	glBindTexture(video.targetTexture.target, 0);
 	glDisable(video.targetTexture.target);
+#else
+	VideoBackBuffer *backBuffer = GetVideoBackBuffer();
+	backBuffer->outputRect = CreateVideoRectFromLTRB(rect.left, rect.top, rect.right, rect.bottom);
+	backBuffer->useOutputRect = true;
 #endif
 
 	WindowFlip();
@@ -2453,17 +2546,8 @@ inline double GetFrameDuration(const PlayerState *state, const Frame *cur, const
 	}
 }
 
-static double ComputeVideoDelay(const PlayerState *state, const  double delay) {
+static double ComputeVideoDelay(const PlayerState *state, const double delay) {
 	double result = delay;
-
-	static int delayCount = 0;
-
-	++delayCount;
-
-	if (delayCount == 2) {
-		int d = 0;
-	}
-
 	double diff = 0.0;
 	double videoClock = 0.0;
 	double masterClock = 0.0;
@@ -2582,41 +2666,6 @@ static void VideoRefresh(PlayerState *state, double &remainingTime, int &display
 #endif
 }
 
-static void ReleaseMedia(PlayerState &state) {
-	DestroyDecoder(state.audio.decoder);
-	if (state.audio.conversionAudioBuffer != nullptr) {
-		memory::MemoryAlignedFree(state.audio.conversionAudioBuffer);
-	}
-	if (state.audio.softwareResampleCtx != nullptr) {
-		ffmpeg.swr_free(&state.audio.softwareResampleCtx);
-	}
-	if (state.audio.stream.codecContext != nullptr) {
-		ffmpeg.avcodec_free_context(&state.audio.stream.codecContext);
-	}
-
-	DestroyDecoder(state.video.decoder);
-	if (state.video.softwareScaleCtx != nullptr) {
-		ffmpeg.sws_freeContext(state.video.softwareScaleCtx);
-	}
-	if (state.video.targetRGBBuffer != nullptr) {
-		MemoryAlignedFree(state.video.targetRGBBuffer);
-	}
-	if (state.video.targetRGBFrame != nullptr) {
-		ffmpeg.av_frame_free(&state.video.targetRGBFrame);
-	}
-	if (state.video.targetTexture.id) {
-		DestroyTexture(state.video.targetTexture);
-	}
-	if (state.video.stream.codecContext != nullptr) {
-		ffmpeg.avcodec_free_context(&state.video.stream.codecContext);
-	}
-
-	DestroyReader(state.reader);
-	if (state.formatCtx != nullptr) {
-		ffmpeg.avformat_close_input(&state.formatCtx);
-	}
-}
-
 inline AudioFormatType MapAVSampleFormat(const AVSampleFormat format) {
 	switch (format) {
 		case AV_SAMPLE_FMT_U8:
@@ -2648,6 +2697,161 @@ static int DecodeInterruptCallback(void *opaque) {
 	return(result);
 }
 
+static void CloseVideo(PlayerState &state) {
+	DestroyDecoder(state.video.decoder);
+	if (state.video.softwareScaleCtx != nullptr) {
+		ffmpeg.sws_freeContext(state.video.softwareScaleCtx);
+	}
+	if (state.video.targetTexture.id) {
+		DestroyTexture(state.video.targetTexture);
+	}
+	if (state.video.stream.codecContext != nullptr) {
+		ffmpeg.avcodec_free_context(&state.video.stream.codecContext);
+	}
+}
+
+
+static bool InitializeVideo(PlayerState &state, const char *mediaFilePath) {
+	VideoContext &video = state.video;
+	AVCodecContext *videoCodexCtx = video.stream.codecContext;
+
+	// Init video decoder
+	if (!InitDecoder(video.decoder, &state, &state.reader, &video.stream, MAX_VIDEO_FRAME_QUEUE_COUNT, 1)) {
+		ConsoleFormatError("Failed initialize video decoder for media file '%s'!\n", mediaFilePath);
+		return false;
+	}
+
+	AVPixelFormat targetPixelFormat;
+#	if USE_HARDWARE_RENDERING
+	targetPixelFormat = AVPixelFormat::AV_PIX_FMT_RGBA;
+#	else
+	targetPixelFormat = AVPixelFormat::AV_PIX_FMT_BGRA;
+#	endif
+
+	// Get software context
+	video.softwareScaleCtx = ffmpeg.sws_getContext(
+		videoCodexCtx->width,
+		videoCodexCtx->height,
+		videoCodexCtx->pix_fmt,
+		videoCodexCtx->width,
+		videoCodexCtx->height,
+		targetPixelFormat,
+		SWS_BILINEAR,
+		nullptr,
+		nullptr,
+		nullptr
+	);
+	if (video.softwareScaleCtx == nullptr) {
+		ConsoleFormatError("Failed getting software scale context with size (%d x %d) for file '%s'!\n", videoCodexCtx->width, videoCodexCtx->height, mediaFilePath);
+		return false;
+	}
+
+	if (!InitTexture(state.video.targetTexture, videoCodexCtx->width, videoCodexCtx->height, 32)) {
+		return false;
+	}
+
+	state.frameTimer = 0.0;
+	state.frameLastPTS = 0.0;
+	state.frameLastDelay = 40e-3;
+
+	return true;
+}
+
+static void CloseAudio(PlayerState &state) {
+	DestroyDecoder(state.audio.decoder);
+	if (state.audio.conversionAudioBuffer != nullptr) {
+		memory::MemoryAlignedFree(state.audio.conversionAudioBuffer);
+	}
+	if (state.audio.softwareResampleCtx != nullptr) {
+		ffmpeg.swr_free(&state.audio.softwareResampleCtx);
+	}
+	if (state.audio.stream.codecContext != nullptr) {
+		ffmpeg.avcodec_free_context(&state.audio.stream.codecContext);
+	}
+}
+
+static bool InitializeAudio(PlayerState &state, const char *mediaFilePath, const AudioDeviceFormat &nativeAudioFormat) {
+	AudioContext &audio = state.audio;
+	AVCodecContext *audioCodexCtx = audio.stream.codecContext;
+
+	// Init audio decoder
+	if (!InitDecoder(audio.decoder, &state, &state.reader, &audio.stream, MAX_AUDIO_FRAME_QUEUE_COUNT, 1)) {
+		ConsoleFormatError("Failed initialize audio decoder for media file '%s'!\n", mediaFilePath);
+		return false;
+	}
+
+	if ((state.formatCtx->iformat->flags & (AVFMT_NOBINSEARCH | AVFMT_NOGENSEARCH | AVFMT_NO_BYTE_SEEK)) && !state.formatCtx->iformat->read_seek) {
+		audio.decoder.start_pts = audio.stream.stream->start_time;
+		audio.decoder.start_pts_tb = audio.stream.stream->time_base;
+	}
+
+	// @TODO(final): Map target audio format to FFMPEG
+	assert(nativeAudioFormat.type == AudioFormatType::S16);
+	AVSampleFormat targetSampleFormat = AV_SAMPLE_FMT_S16;
+	// @TODO(final): Map target audio channels to channel layout
+	int targetChannelCount = nativeAudioFormat.channels;
+	uint64_t targetChannelLayout = AV_CH_LAYOUT_STEREO;
+	assert(targetChannelCount == 2);
+	int targetSampleRate = nativeAudioFormat.sampleRate;
+	audio.audioTarget = {};
+	audio.audioTarget.periods = nativeAudioFormat.periods;
+	audio.audioTarget.channels = targetChannelCount;
+	audio.audioTarget.sampleRate = targetSampleRate;
+	audio.audioTarget.type = nativeAudioFormat.type;
+	audio.audioTarget.bufferSizeInFrames = ffmpeg.av_samples_get_buffer_size(nullptr, audio.audioTarget.channels, 1, targetSampleFormat, 1);
+	audio.audioTarget.bufferSizeInBytes = ffmpeg.av_samples_get_buffer_size(nullptr, audio.audioTarget.channels, audio.audioTarget.sampleRate, targetSampleFormat, 1);
+
+	AVSampleFormat inputSampleFormat = audioCodexCtx->sample_fmt;
+	int inputChannelCount = audioCodexCtx->channels;
+	// @TODO(final): Map input audio channels to channel layout
+	uint64_t inputChannelLayout = AV_CH_LAYOUT_STEREO;
+	int inputSampleRate = audioCodexCtx->sample_rate;
+	assert(inputChannelCount == 2);
+	audio.audioSource = {};
+	audio.audioSource.channels = inputChannelCount;
+	audio.audioSource.sampleRate = inputSampleRate;
+	audio.audioSource.type = MapAVSampleFormat(inputSampleFormat);
+	audio.audioSource.periods = nativeAudioFormat.periods;
+	audio.audioSource.bufferSizeInBytes = ffmpeg.av_samples_get_buffer_size(nullptr, inputChannelCount, inputSampleRate, inputSampleFormat, 1);
+	audio.audioSource.bufferSizeInFrames = ffmpeg.av_samples_get_buffer_size(nullptr, inputChannelCount, 1, inputSampleFormat, 1);
+
+	// Compute AVSync audio threshold
+	audio.audioDiffAbgCoef = exp(log(0.01) / AV_AUDIO_DIFF_AVG_NB);
+	audio.audioDiffAvgCount = 0;
+	audio.audioDiffThreshold = nativeAudioFormat.bufferSizeInBytes / (double)audio.audioTarget.bufferSizeInBytes;
+
+	// Create software resample context and initialize
+	audio.softwareResampleCtx = ffmpeg.swr_alloc_set_opts(nullptr,
+														  targetChannelLayout,
+														  targetSampleFormat,
+														  targetSampleRate,
+														  inputChannelLayout,
+														  inputSampleFormat,
+														  inputSampleRate,
+														  0,
+														  nullptr);
+	ffmpeg.swr_init(audio.softwareResampleCtx);
+
+	// Allocate conversion buffer in native format, this must be big enough to hold one AVFrame worth of data.
+	int lineSize;
+	audio.maxConversionAudioBufferSize = ffmpeg.av_samples_get_buffer_size(&lineSize, targetChannelCount, targetSampleRate, targetSampleFormat, 1);
+	audio.maxConversionAudioFrameCount = audio.maxConversionAudioBufferSize / audio::GetAudioSampleSizeInBytes(nativeAudioFormat.type) / targetChannelCount;
+	audio.conversionAudioBuffer = (uint8_t *)memory::MemoryAlignedAllocate(audio.maxConversionAudioBufferSize, 16);
+	audio.conversionAudioFrameIndex = 0;
+	audio.conversionAudioFramesRemaining = 0;
+
+	return true;
+}
+
+static void ReleaseMedia(PlayerState &state) {
+	CloseAudio(state);
+	CloseVideo(state);
+	DestroyReader(state.reader);
+	if (state.formatCtx != nullptr) {
+		ffmpeg.avformat_close_input(&state.formatCtx);
+	}
+}
+
 static bool LoadMedia(PlayerState &state, const char *mediaFilePath, const AudioDeviceFormat &nativeAudioFormat) {
 	// @TODO(final): Custom IO!
 
@@ -2666,7 +2870,7 @@ static bool LoadMedia(PlayerState &state, const char *mediaFilePath, const Audio
 		goto release;
 	}
 
-	// Dump information about file onto standard error
+	// Dump information about file into standard error
 	ffmpeg.av_dump_format(state.formatCtx, 0, mediaFilePath, 0);
 
 	// Dont limit the queues when we are playing realtime based media, like internet streams, etc.
@@ -2710,127 +2914,16 @@ static bool LoadMedia(PlayerState &state, const char *mediaFilePath, const Audio
 
 	// Allocate audio related resources
 	if (state.audio.stream.isValid) {
-		AudioContext &audio = state.audio;
-		AVCodecContext *audioCodexCtx = audio.stream.codecContext;
-
-		// Init audio decoder
-		if (!InitDecoder(audio.decoder, &state, &state.reader, &audio.stream, MAX_AUDIO_FRAME_QUEUE_COUNT, 1)) {
-			ConsoleFormatError("Failed initialize audio decoder for media file '%s'!\n", mediaFilePath);
+		if (!InitializeAudio(state, mediaFilePath, nativeAudioFormat)) {
 			goto release;
 		}
-
-		if ((state.formatCtx->iformat->flags & (AVFMT_NOBINSEARCH | AVFMT_NOGENSEARCH | AVFMT_NO_BYTE_SEEK)) && !state.formatCtx->iformat->read_seek) {
-			audio.decoder.start_pts = audio.stream.stream->start_time;
-			audio.decoder.start_pts_tb = audio.stream.stream->time_base;
-		}
-
-		// @TODO(final): Map target audio format to FFMPEG
-		assert(nativeAudioFormat.type == AudioFormatType::S16);
-		AVSampleFormat targetSampleFormat = AV_SAMPLE_FMT_S16;
-		// @TODO(final): Map target audio channels to channel layout
-		int targetChannelCount = nativeAudioFormat.channels;
-		uint64_t targetChannelLayout = AV_CH_LAYOUT_STEREO;
-		assert(targetChannelCount == 2);
-		int targetSampleRate = nativeAudioFormat.sampleRate;
-		audio.audioTarget = {};
-		audio.audioTarget.periods = nativeAudioFormat.periods;
-		audio.audioTarget.channels = targetChannelCount;
-		audio.audioTarget.sampleRate = targetSampleRate;
-		audio.audioTarget.type = nativeAudioFormat.type;
-		audio.audioTarget.bufferSizeInFrames = ffmpeg.av_samples_get_buffer_size(nullptr, audio.audioTarget.channels, 1, targetSampleFormat, 1);
-		audio.audioTarget.bufferSizeInBytes = ffmpeg.av_samples_get_buffer_size(nullptr, audio.audioTarget.channels, audio.audioTarget.sampleRate, targetSampleFormat, 1);
-
-		AVSampleFormat inputSampleFormat = audioCodexCtx->sample_fmt;
-		int inputChannelCount = audioCodexCtx->channels;
-		// @TODO(final): Map input audio channels to channel layout
-		uint64_t inputChannelLayout = AV_CH_LAYOUT_STEREO;
-		int inputSampleRate = audioCodexCtx->sample_rate;
-		assert(inputChannelCount == 2);
-		audio.audioSource = {};
-		audio.audioSource.channels = inputChannelCount;
-		audio.audioSource.sampleRate = inputSampleRate;
-		audio.audioSource.type = MapAVSampleFormat(inputSampleFormat);
-		audio.audioSource.periods = nativeAudioFormat.periods;
-		audio.audioSource.bufferSizeInBytes = ffmpeg.av_samples_get_buffer_size(nullptr, inputChannelCount, inputSampleRate, inputSampleFormat, 1);
-		audio.audioSource.bufferSizeInFrames = ffmpeg.av_samples_get_buffer_size(nullptr, inputChannelCount, 1, inputSampleFormat, 1);
-
-		// Compute AVSync audio threshold
-		audio.audioDiffAbgCoef = exp(log(0.01) / AV_AUDIO_DIFF_AVG_NB);
-		audio.audioDiffAvgCount = 0;
-		audio.audioDiffThreshold = nativeAudioFormat.bufferSizeInBytes / (double)audio.audioTarget.bufferSizeInBytes;
-
-		// Create software resample context and initialize
-		audio.softwareResampleCtx = ffmpeg.swr_alloc_set_opts(nullptr,
-															  targetChannelLayout,
-															  targetSampleFormat,
-															  targetSampleRate,
-															  inputChannelLayout,
-															  inputSampleFormat,
-															  inputSampleRate,
-															  0,
-															  nullptr);
-		ffmpeg.swr_init(audio.softwareResampleCtx);
-
-		// Allocate conversion buffer in native format, this must be big enough to hold one AVFrame worth of data.
-		int lineSize;
-		audio.maxConversionAudioBufferSize = ffmpeg.av_samples_get_buffer_size(&lineSize, targetChannelCount, targetSampleRate, targetSampleFormat, 1);
-		audio.maxConversionAudioFrameCount = audio.maxConversionAudioBufferSize / audio::GetAudioSampleSizeInBytes(nativeAudioFormat.type) / targetChannelCount;
-		audio.conversionAudioBuffer = (uint8_t *)memory::MemoryAlignedAllocate(audio.maxConversionAudioBufferSize, 16);
-		audio.conversionAudioFrameIndex = 0;
-		audio.conversionAudioFramesRemaining = 0;
 	}
 
 	// Allocate video related resources
 	if (state.video.stream.isValid) {
-		VideoContext &video = state.video;
-		AVCodecContext *videoCodexCtx = video.stream.codecContext;
-
-		// Init video decoder
-		if (!InitDecoder(video.decoder, &state, &state.reader, &video.stream, MAX_VIDEO_FRAME_QUEUE_COUNT, 1)) {
-			ConsoleFormatError("Failed initialize video decoder for media file '%s'!\n", mediaFilePath);
+		if (!InitializeVideo(state, mediaFilePath)) {
 			goto release;
 		}
-
-		// Allocate RGB video frame
-		video.targetRGBFrame = ffmpeg.av_frame_alloc();
-		if (video.targetRGBFrame == nullptr) {
-			ConsoleFormatError("Failed allocating RGB video frame for media file '%s'!\n", mediaFilePath);
-			goto release;
-		}
-
-		// Allocate RGB buffer
-		AVPixelFormat targetPixelFormat = AVPixelFormat::AV_PIX_FMT_BGR24;
-		size_t rgbFrameSize = ffmpeg.av_image_get_buffer_size(targetPixelFormat, videoCodexCtx->width, videoCodexCtx->height, 1);
-		video.targetRGBBuffer = (uint8_t *)MemoryAlignedAllocate(rgbFrameSize, 16);
-
-		// Setup RGB video frame and give it access to the actual data
-		ffmpeg.av_image_fill_arrays(video.targetRGBFrame->data, video.targetRGBFrame->linesize, video.targetRGBBuffer, targetPixelFormat, videoCodexCtx->width, videoCodexCtx->height, 1);
-
-		// Get software context
-		video.softwareScaleCtx = ffmpeg.sws_getContext(
-			videoCodexCtx->width,
-			videoCodexCtx->height,
-			videoCodexCtx->pix_fmt,
-			videoCodexCtx->width,
-			videoCodexCtx->height,
-			targetPixelFormat,
-			SWS_BILINEAR,
-			nullptr,
-			nullptr,
-			nullptr
-		);
-		if (video.softwareScaleCtx == nullptr) {
-			ConsoleFormatError("Failed getting software scale context with size (%d x %d) for file '%s'!\n", videoCodexCtx->width, videoCodexCtx->height, mediaFilePath);
-			goto release;
-		}
-
-		if (!InitTexture(state.video.targetTexture, videoCodexCtx->width, videoCodexCtx->height, 32)) {
-			goto release;
-		}
-
-		state.frameTimer = 0.0;
-		state.frameLastPTS = 0.0;
-		state.frameLastDelay = 40e-3;
 	}
 
 	// Init timings
@@ -2882,7 +2975,6 @@ int main(int argc, char **argv) {
 	AudioDeviceFormat nativeAudioFormat = GetAudioHardwareFormat();
 
 	PlayerState state = {};
-	RefreshState refresh = {};
 
 	//
 	// Load ffmpeg libraries
@@ -2943,8 +3035,17 @@ int main(int argc, char **argv) {
 			switch (ev.type) {
 				case EventType::Keyboard:
 				{
-					if ((ev.keyboard.type == KeyboardEventType::KeyUp) && (ev.keyboard.mappedKey == Key::Key_Space)) {
-						TogglePause(&state);
+					if (ev.keyboard.type == KeyboardEventType::KeyUp) {
+						switch (ev.keyboard.mappedKey) {
+							case Key::Key_Space:
+							{
+								TogglePause(&state);
+							} break;
+							case Key::Key_F:
+							{
+								ToggleFullscreen(&state);
+							} break;
+						}
 					}
 				} break;
 				case EventType::Window:

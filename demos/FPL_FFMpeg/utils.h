@@ -77,22 +77,61 @@ static void FillRGB32TestColor(uint8_t *destData, int32_t destScanline, int32_t 
 	}
 }
 
-static void ConvertRGB24ToRGB32(uint8_t *destData, int32_t destScanline, int32_t width, int32_t height, int32_t sourceScanLine, uint8_t *sourceData, bool flipY, bool isBGRA) {
-	uint32_t rindex = 0;
-	uint32_t gindex = 1;
-	uint32_t bindex = 2;
+inline uint8_t ClipByte(float v) {
+	if (v < 0)
+		return 0;
+	if (v > 255)
+		return 255;
+	return (uint8_t)v;
+}
+
+inline uint32_t YUVToRGB32(const uint8_t y, const uint8_t u, const uint8_t v, const bool isBGRA) {
+	float r = (1.164f * (float)(y - 16)) + (2.018f * (float)(v - 128));
+	float g = (1.164f * (float)(y - 16)) - (0.813f * (float)(u - 128)) - (0.391f * (float)(v - 128));
+	float b = (1.164f * (float)(y - 16)) + (1.596f * (float)(u - 128));
+	uint32_t result;
 	if (isBGRA) {
-		rindex = 2;
-		bindex = 0;
+		result = ((uint8_t)255 << 24) | (ClipByte(b) << 16) | (ClipByte(g) << 8) | ClipByte(r);
+	} else {
+		result = ((uint8_t)255 << 24) | (ClipByte(r) << 16) | (ClipByte(g) << 8) | ClipByte(b);
 	}
+	return(result);
+}
+
+enum class ConversionFlags : uint32_t {
+	None = 0,
+	DstBGRA = 1 << 0,
+};
+FPL_ENUM_AS_FLAGS_OPERATORS(ConversionFlags);
+
+static void ConvertYUV420PToRGB32(uint8_t *destData[8], int32_t destLineSize[8], int32_t width, int32_t height, uint8_t *sourceData[8], int32_t sourceLineSize[8], const ConversionFlags flags) {
+	// Planar YUV 4:2:0, 12bpp, (1 Cr & Cb sample per 2x2 Y samples)
+	constexpr uint32_t YPLANE = 0;
+	constexpr uint32_t UPLANE = 1;
+	constexpr uint32_t VPLANE = 2;
+	const bool dstBGRA = (flags & ConversionFlags::DstBGRA);
+	for (int32_t y = 0; y < height; ++y) {
+		uint32_t *dst32 = (uint32_t *)((uint8_t *)destData[0] + y * destLineSize[0]);
+		uint8_t *srcY = sourceData[YPLANE] + y * sourceLineSize[YPLANE];
+		uint8_t *srcU = sourceData[UPLANE] + (y / 2) * sourceLineSize[UPLANE];
+		uint8_t *srcV = sourceData[VPLANE] + (y / 2) * sourceLineSize[VPLANE];
+		for (int32_t x = 0; x < width; ++x) {
+			uint8_t yComponent = *(srcY + x * sizeof(uint8_t));
+			uint8_t uComponent = *(srcU + (x / 2) * sizeof(uint8_t));
+			uint8_t vComponent = *(srcV + (x / 2) * sizeof(uint8_t));
+			*dst32++ = YUVToRGB32(yComponent, uComponent, vComponent, dstBGRA);
+		}
+	}
+}
+
+static void ConvertRGB24ToRGB32(uint8_t *destData, int32_t destScanline, int32_t width, int32_t height, int32_t sourceScanLine, uint8_t *sourceData) {
 	for (int32_t y = 0; y < height; ++y) {
 		uint8_t *src = sourceData + y * sourceScanLine;
-		int32_t yDst = height - 1 - y;
-		uint32_t *dst = (uint32_t *)((uint8_t *)destData + yDst * destScanline);
+		uint32_t *dst = (uint32_t *)((uint8_t *)destData + y * destScanline);
 		for (int32_t x = 0; x < width; ++x) {
-			uint8_t r = *(src + rindex);
-			uint8_t g = *(src + gindex);
-			uint8_t b = *(src + bindex);
+			uint8_t r = *(src + 0);
+			uint8_t g = *(src + 1);
+			uint8_t b = *(src + 2);
 			uint8_t a = 255;
 			*dst++ = (a << 24) | (b << 16) | (g << 8) | r;
 			src += 3;
