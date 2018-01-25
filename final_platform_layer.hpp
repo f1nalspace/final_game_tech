@@ -35,7 +35,7 @@ SOFTWARE.
 
 /*!
 	\file final_platform_layer.hpp
-	\version v0.5.7.2 beta
+	\version v0.5.7.3 beta
 	\author Torsten Spaete
 	\brief Final Platform Layer (FPL) - A Open source C++ single file header platform abstraction layer library.
 */
@@ -501,6 +501,11 @@ SOFTWARE.
 	\page page_changelog Changelog
 	\tableofcontents
 
+	## v0.5.7.3 beta:
+	- Fixed: [Win32] Fixed SetWindowFullscreen was not working properly
+	- New: Introduced outputRect in VideoBackBuffer + Win32 implementation
+	- Changed: SetWindowFullscreen returns bool
+
 	## v0.5.7.2 beta:
 	- Added: Added new audio formats (AudioFormatType::F64, AudioFormatType::S64)
 
@@ -776,8 +781,9 @@ SOFTWARE.
 /*!
 	\page page_todo ToDo / Planned (Top priority order)
 	\tableofcontents
-
-	- Change most assertions to normal comparisons and make it rock solid, so it wont crash for the most part. Returning nullptr or empty is much more preferred.
+	
+	- Direct2D video support
+	- Direct3D 9/10/11 video support
 
 	- Finish Linux Platform:
 		- Strings
@@ -991,7 +997,6 @@ SOFTWARE.
 		//! Enable OpenGL Video
 #		define FPL_ENABLE_VIDEO_OPENGL
 #	endif
-
 #	if defined(FPL_SUPPORT_VIDEO_SOFTWARE)
 		//! Enable Software Rendering Video
 #		define FPL_ENABLE_VIDEO_SOFTWARE
@@ -2346,7 +2351,7 @@ namespace fpl {
 		//! Enables or disables the ability to resize the window.
 		fpl_api void SetWindowResizeable(const bool value);
 		//! Enables or disables fullscreen mode
-		fpl_api void SetWindowFullscreen(const bool value, const uint32_t fullscreenWidth = 0, const uint32_t fullscreenHeight = 0, const uint32_t refreshRate = 0);
+		fpl_api bool SetWindowFullscreen(const bool value, const uint32_t fullscreenWidth = 0, const uint32_t fullscreenHeight = 0, const uint32_t refreshRate = 0);
 		//! Returns true when the window is in fullscreen mode
 		fpl_api bool IsWindowFullscreen();
 		//! Returns the absolute window position.
@@ -2386,6 +2391,24 @@ namespace fpl {
 		  * \{
 		  */
 
+		//! Video rectangle
+		struct VideoRect {
+			//! Left position in pixels
+			int32_t x;
+			//! Top position in pixels
+			int32_t y;
+			//! Width in pixels
+			int32_t width;
+			//! Height in pixels
+			int32_t height;
+		};
+
+		//! Return a video rectangle from a LT-RB rectangle
+		inline VideoRect CreateVideoRectFromLTRB(int32_t left, int32_t top, int32_t right, int32_t bottom) {
+			VideoRect result = { left, top, (right - left) + 1, (bottom - top) + 1 };
+			return(result);
+		}
+
 		//! Video backbuffer container. Use this for accessing the pixels directly. Use with care!
 		struct VideoBackBuffer {
 			//! The 32-bit pixel top-down array, format: 0xAABBGGRR. Do not modify before WindowUpdate
@@ -2396,12 +2419,18 @@ namespace fpl {
 			uint32_t height;
 			//! The size of one scanline. Do not modify, it will be set automatically.
 			size_t stride;
+			//! The output rectangle for displaying the backbuffer (Size may not match backbuffer size!)
+			VideoRect outputRect;
+			//! Set this to true to actually use the output rectangle
+			bool useOutputRect;
 		};
 
 		//! Returns the pointer to the video software context.
 		fpl_api VideoBackBuffer *GetVideoBackBuffer();
 		//! Resizes the current video backbuffer
 		fpl_api bool ResizeVideoBackBuffer(const uint32_t width, const uint32_t height);
+		//! Returns the actual video driver type
+		fpl_api VideoDriverType GetVideoDriver();
 
 		/** \}*/
 	};
@@ -3392,9 +3421,24 @@ namespace fpl {
 #		define FPL_FUNC_GET_FOREGROUND_WINDOW(name) HWND WINAPI name(VOID)
 		typedef FPL_FUNC_GET_FOREGROUND_WINDOW(win32_func_GetForegroundWindow);
 
-//
-// OLE32
-//
+#		define FPL_FUNC_IS_ZOOMED(name) BOOL WINAPI name(HWND hWnd)
+		typedef FPL_FUNC_IS_ZOOMED(win32_func_IsZoomed);
+#		define FPL_FUNC_SEND_MESSAGE_A(name) LRESULT WINAPI name(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam)
+		typedef FPL_FUNC_SEND_MESSAGE_A(win32_func_SendMessageA);
+#		define FPL_FUNC_SEND_MESSAGE_W(name) LRESULT WINAPI name(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam)
+		typedef FPL_FUNC_SEND_MESSAGE_W(win32_func_SendMessageW);
+#		define FPL_FUNC_GET_MONITOR_INFO_A(name) BOOL WINAPI name(HMONITOR hMonitor, LPMONITORINFO lpmi)
+		typedef FPL_FUNC_GET_MONITOR_INFO_A(win32_func_GetMonitorInfoA);
+#		define FPL_FUNC_GET_MONITOR_INFO_W(name) BOOL WINAPI name(HMONITOR hMonitor, LPMONITORINFO lpmi)
+		typedef FPL_FUNC_GET_MONITOR_INFO_W(win32_func_GetMonitorInfoW);
+#		define FPL_FUNC_MONITOR_FROM_RECT(name) HMONITOR WINAPI name(LPCRECT lprc, DWORD dwFlags)
+		typedef FPL_FUNC_MONITOR_FROM_RECT(win32_func_MonitorFromRect);
+#		define FPL_FUNC_MONITOR_FROM_WINDOW(name) HMONITOR WINAPI name(HWND hwnd, DWORD dwFlags)
+		typedef FPL_FUNC_MONITOR_FROM_WINDOW(win32_func_MonitorFromWindow);
+
+	//
+	// OLE32
+	//
 #		define FPL_FUNC_WIN32_CO_INITIALIZE_EX(name) HRESULT WINAPI name(LPVOID pvReserved, DWORD  dwCoInit)
 		typedef FPL_FUNC_WIN32_CO_INITIALIZE_EX(win32_func_CoInitializeEx);
 #		define FPL_FUNC_WIN32_CO_UNINITIALIZE(name) void WINAPI name(void)
@@ -3486,6 +3530,13 @@ namespace fpl {
 
 				win32_func_GetDesktopWindow *getDesktopWindow;
 				win32_func_GetForegroundWindow *getForegroundWindow;
+				win32_func_IsZoomed *isZoomed;
+				win32_func_SendMessageA *sendMessageA;
+				win32_func_SendMessageW *sendMessageW;
+				win32_func_GetMonitorInfoA *getMonitorInfoA;
+				win32_func_GetMonitorInfoW *getMonitorInfoW;
+				win32_func_MonitorFromRect *monitorFromRect;
+				win32_func_MonitorFromWindow *monitorFromWindow;
 			} user;
 
 			struct {
@@ -3523,6 +3574,8 @@ namespace fpl {
 #		define win32_createWindowEx global__Win32__API__Functions.user.createWindowExA
 #		define win32_loadIcon global__Win32__API__Functions.user.loadIconA
 #		define win32_loadCursor global__Win32__API__Functions.user.loadCursorA
+#		define win32_sendMessage global__Win32__API__Functions.user.sendMessageA
+#		define win32_getMonitorInfo global__Win32__API__Functions.user.getMonitorInfoA
 #	else
 #		define FPL_WIN32_CLASSNAME L"FPLWindowClassW"
 #		define FPL_WIN32_UNNAMED_WINDOW L"Unnamed FPL Unicode Window"
@@ -3546,17 +3599,26 @@ namespace fpl {
 #		define win32_createWindowEx global__Win32__API__Functions.user.createWindowExW
 #		define win32_loadIcon global__Win32__API__Functions.user.loadIconW
 #		define win32_loadCursor global__Win32__API__Functions.user.loadCursorW
+#		define win32_sendMessage global__Win32__API__Functions.user.sendMessageW
+#		define win32_getMonitorInfo global__Win32__API__Functions.user.getMonitorInfoW
 #	endif // UNICODE
 
 #	if defined(FPL_ENABLE_WINDOW)
+		struct Win32LastWindowInfo {
+			//RECT rect;
+			WINDOWPLACEMENT placement;
+			DWORD style;
+			DWORD exStyle;
+			bool isMaximized;
+			bool wasResolutionChanged;
+		};
+
 		struct Win32WindowState {
 			win32_char windowClass[256];
 			HWND windowHandle;
 			HDC deviceContext;
 			HCURSOR defaultCursor;
-			WINDOWPLACEMENT lastWindowPlacement;
-			uint32_t lastWindowWidth;
-			uint32_t lastWindowHeight;
+			Win32LastWindowInfo lastFullscreenInfo;
 			bool isRunning;
 			bool isCursorActive;
 		};
@@ -3845,79 +3907,105 @@ namespace fpl {
 		fpl_constant DWORD Win32FullscreenWindowExtendedStyle = WS_EX_APPWINDOW | WS_EX_TOPMOST;
 
 		fpl_internal bool Win32LeaveFullscreen() {
-			// @TODO(final): Support for multi-monitor (Leave)!
+			// @TODO(final): The old window rect may be wrong when the display was changed (Turn off, Orientation, Grid Position, Screen res).
+
 			FPL_ASSERT(global__Win32__State != nullptr);
 			Win32State *state = global__Win32__State;
 			Win32APIFunctions &wapi = global__Win32__API__Functions;
-
 			WindowSettings &settings = state->currentSettings.window;
-			FPL_ASSERT(settings.isFullscreen);
-			HWND handle = state->window.windowHandle;
+			Win32LastWindowInfo *fullscreenInfo = &global__Win32__State->window.lastFullscreenInfo;
 
-			if (settings.isResizable) {
-				win32_setWindowLongPtr(handle, GWL_STYLE, Win32ResizeableWindowStyle);
-				win32_setWindowLongPtr(handle, GWL_EXSTYLE, Win32ResizeableWindowExtendedStyle);
-			} else {
-				win32_setWindowLongPtr(handle, GWL_STYLE, Win32NonResizableWindowStyle);
-				win32_setWindowLongPtr(handle, GWL_EXSTYLE, Win32NonResizableWindowExtendedStyle);
+			HWND windowHandle = state->window.windowHandle;
+
+			FPL_ASSERT(fullscreenInfo->style > 0 && fullscreenInfo->exStyle > 0);
+			win32_setWindowLong(windowHandle, GWL_STYLE, fullscreenInfo->style);
+			win32_setWindowLong(windowHandle, GWL_EXSTYLE, fullscreenInfo->exStyle);
+			wapi.user.setWindowPlacement(windowHandle, &fullscreenInfo->placement);
+			wapi.user.setWindowPos(windowHandle, nullptr, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
+			//wapi.user.setWindowPos(windowHandle, nullptr, fullscreenInfo->rect.left, fullscreenInfo->rect.top, (fullscreenInfo->rect.right - fullscreenInfo->rect.left) + 1, (fullscreenInfo->rect.bottom - fullscreenInfo->rect.top) + 1, SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
+
+			if (fullscreenInfo->isMaximized) {
+				win32_sendMessage(windowHandle, WM_SYSCOMMAND, SC_MAXIMIZE, 0);
 			}
 
-			wapi.user.setWindowPos(handle, HWND_NOTOPMOST, 0, 0, state->window.lastWindowWidth, state->window.lastWindowHeight, SWP_SHOWWINDOW | SWP_NOMOVE);
-			wapi.user.setWindowPlacement(handle, &state->window.lastWindowPlacement);
-			bool result = (wapi.user.changeDisplaySettingsA(nullptr, CDS_RESET) == DISP_CHANGE_SUCCESSFUL);
-			wapi.user.showWindow(handle, SW_RESTORE);
-
-			settings.isFullscreen = false;
-			state->window.lastWindowPlacement = {};
-			state->window.lastWindowWidth = state->window.lastWindowHeight = 0;
+			bool result;
+			if (fullscreenInfo->wasResolutionChanged) {
+				result = (wapi.user.changeDisplaySettingsA(nullptr, CDS_RESET) == DISP_CHANGE_SUCCESSFUL);
+			} else {
+				result = true;
+			}
 
 			return(result);
 		}
 
 		fpl_internal bool Win32EnterFullscreen(const uint32_t fullscreenWidth, const uint32_t fullscreenHeight, const uint32_t refreshRate, const uint32_t colorBits) {
-			// @TODO(final): Support for multi-monitor (Enter)!
 			FPL_ASSERT(global__Win32__State != nullptr);
 			WindowSettings &settings = global__Win32__State->currentSettings.window;
-			FPL_ASSERT(!settings.isFullscreen);
 
 			HWND windowHandle = global__Win32__State->window.windowHandle;
 			HDC deviceContext = global__Win32__State->window.deviceContext;
 			Win32APIFunctions &wapi = global__Win32__API__Functions;
+			Win32LastWindowInfo *fullscreenInfo = &global__Win32__State->window.lastFullscreenInfo;
 
-			DWORD useRefreshRate = refreshRate;
-			if (!useRefreshRate) {
-				useRefreshRate = wapi.gdi.getDeviceCaps(deviceContext, VREFRESH);
+			FPL_ASSERT(fullscreenInfo->style > 0 && fullscreenInfo->exStyle > 0);
+			win32_setWindowLong(windowHandle, GWL_STYLE, fullscreenInfo->style & ~(WS_CAPTION | WS_THICKFRAME));
+			win32_setWindowLong(windowHandle, GWL_EXSTYLE, fullscreenInfo->exStyle & ~(WS_EX_DLGMODALFRAME | WS_EX_WINDOWEDGE | WS_EX_CLIENTEDGE | WS_EX_STATICEDGE));
+
+			MONITORINFO monitor = {};
+			monitor.cbSize = sizeof(monitor);
+			win32_getMonitorInfo(wapi.user.monitorFromWindow(windowHandle, MONITOR_DEFAULTTONEAREST), &monitor);
+
+			bool result;
+			if (fullscreenWidth > 0 && fullscreenHeight > 0) {
+				DWORD useFullscreenWidth = fullscreenWidth;
+				DWORD useFullscreenHeight = fullscreenHeight;
+
+				DWORD useRefreshRate = refreshRate;
+				if (!useRefreshRate) {
+					useRefreshRate = wapi.gdi.getDeviceCaps(deviceContext, VREFRESH);
+				}
+
+				DWORD useColourBits = colorBits;
+				if (!useColourBits) {
+					useColourBits = wapi.gdi.getDeviceCaps(deviceContext, BITSPIXEL);
+				}
+
+				// @TODO(final): Is this correct to assume the fullscreen rect is at (0, 0, w - 1, h - 1)?
+				RECT windowRect;
+				windowRect.left = 0;
+				windowRect.top = 0;
+				windowRect.right = windowRect.left + (useFullscreenWidth - 1);
+				windowRect.bottom = windowRect.left + (useFullscreenHeight - 1);
+
+				WINDOWPLACEMENT placement = {};
+				placement.length = sizeof(placement);
+				placement.rcNormalPosition = windowRect;
+				placement.showCmd = SW_SHOW;
+				wapi.user.setWindowPlacement(windowHandle, &placement);
+				wapi.user.setWindowPos(windowHandle, nullptr, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
+
+				DEVMODEA fullscreenSettings = {};
+				wapi.user.enumDisplaySettingsA(nullptr, 0, &fullscreenSettings);
+				fullscreenSettings.dmPelsWidth = useFullscreenWidth;
+				fullscreenSettings.dmPelsHeight = useFullscreenHeight;
+				fullscreenSettings.dmBitsPerPel = useColourBits;
+				fullscreenSettings.dmDisplayFrequency = useRefreshRate;
+				fullscreenSettings.dmFields = DM_PELSWIDTH | DM_PELSHEIGHT | DM_BITSPERPEL | DM_DISPLAYFREQUENCY;
+				result = (wapi.user.changeDisplaySettingsA(&fullscreenSettings, CDS_FULLSCREEN) == DISP_CHANGE_SUCCESSFUL);
+				fullscreenInfo->wasResolutionChanged = true;
+			} else {
+				RECT windowRect = monitor.rcMonitor;
+
+				WINDOWPLACEMENT placement = {};
+				placement.length = sizeof(placement);
+				placement.rcNormalPosition = windowRect;
+				placement.showCmd = SW_SHOW;
+				wapi.user.setWindowPlacement(windowHandle, &placement);
+				wapi.user.setWindowPos(windowHandle, nullptr, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
+
+				result = true;
+				fullscreenInfo->wasResolutionChanged = false;
 			}
-
-			DWORD useColourBits = colorBits;
-			if (!useColourBits) {
-				useColourBits = wapi.gdi.getDeviceCaps(deviceContext, BITSPIXEL);
-			}
-
-			DWORD useFullscreenWidth = fullscreenWidth;
-			DWORD useFullscreenHeight = fullscreenHeight;
-			if (!useFullscreenWidth || !useFullscreenHeight) {
-				useFullscreenWidth = wapi.gdi.getDeviceCaps(deviceContext, HORZRES);
-				useFullscreenHeight = wapi.gdi.getDeviceCaps(deviceContext, VERTRES);
-			}
-
-			win32_setWindowLong(windowHandle, GWL_STYLE, Win32FullscreenWindowStyle);
-			win32_setWindowLong(windowHandle, GWL_EXSTYLE, Win32FullscreenWindowExtendedStyle);
-
-			wapi.user.setWindowPos(windowHandle, HWND_TOPMOST, 0, 0, useFullscreenWidth, useFullscreenHeight, SWP_SHOWWINDOW);
-
-			DEVMODEA fullscreenSettings = {};
-			wapi.user.enumDisplaySettingsA(nullptr, 0, &fullscreenSettings);
-			fullscreenSettings.dmPelsWidth = useFullscreenWidth;
-			fullscreenSettings.dmPelsHeight = useFullscreenHeight;
-			fullscreenSettings.dmBitsPerPel = useColourBits;
-			fullscreenSettings.dmDisplayFrequency = useRefreshRate;
-			fullscreenSettings.dmFields = DM_PELSWIDTH | DM_PELSHEIGHT | DM_BITSPERPEL | DM_DISPLAYFREQUENCY;
-			bool result = (wapi.user.changeDisplaySettingsA(&fullscreenSettings, CDS_FULLSCREEN) == DISP_CHANGE_SUCCESSFUL);
-
-			wapi.user.showWindow(windowHandle, SW_MAXIMIZE);
-
-			settings.isFullscreen = result;
 
 			return(result);
 		}
@@ -4877,6 +4965,14 @@ namespace fpl {
 
 				FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.getDesktopWindow, win32_func_GetDesktopWindow, "GetDesktopWindow");
 				FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.getForegroundWindow, win32_func_GetForegroundWindow, "GetForegroundWindow");
+
+				FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.isZoomed, win32_func_IsZoomed, "IsZoomed");
+				FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.sendMessageA, win32_func_SendMessageA, "SendMessageA");
+				FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.sendMessageW, win32_func_SendMessageW, "SendMessageW");
+				FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.getMonitorInfoA, win32_func_GetMonitorInfoA, "GetMonitorInfoA");
+				FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.getMonitorInfoW, win32_func_GetMonitorInfoW, "GetMonitorInfoW");
+				FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.monitorFromRect, win32_func_MonitorFromRect, "MonitorFromRect");
+				FPL_WIN32_GET_FUNCTION_ADDRESS(library, userLibraryName, wapi.user.monitorFromWindow, win32_func_MonitorFromWindow, "MonitorFromWindow");
 			}
 
 			// GDI32
@@ -4993,11 +5089,11 @@ namespace fpl {
 			return(result);
 		}
 
-		} // platform
+	} // platform
 
-		//
-		// Win32 Atomics
-		//
+	//
+	// Win32 Atomics
+	//
 	namespace atomics {
 		fpl_api void AtomicReadFence() {
 			FPL_MEMORY_BARRIER();
@@ -5766,7 +5862,7 @@ namespace fpl {
 			GetModuleFileNameW(nullptr, modulePath, MAX_PATH);
 			strings::WideStringToAnsiString(modulePath, strings::GetWideStringLength(modulePath), destPath, maxDestLen);
 			return(destPath);
-	}
+		}
 #	else
 		fpl_api char *GetExecutableFilePath(char *destPath, const uint32_t maxDestLen) {
 			if (destPath == nullptr) {
@@ -5799,7 +5895,7 @@ namespace fpl {
 			api.shell.shGetFolderPathW(nullptr, CSIDL_PROFILE, nullptr, 0, homePath);
 			strings::WideStringToAnsiString(homePath, strings::GetWideStringLength(homePath), destPath, maxDestLen);
 			return(destPath);
-}
+		}
 #	else
 		fpl_api char *GetHomePath(char *destPath, const uint32_t maxDestLen) {
 			if (destPath == nullptr) {
@@ -5959,6 +6055,13 @@ namespace fpl {
 			return(result);
 		}
 
+		fpl_api VideoDriverType GetVideoDriver() {
+			FPL_ASSERT(platform::global__Win32__State != nullptr);
+			platform::Win32State *state = platform::global__Win32__State;
+			VideoDriverType result = state->video.activeVideoDriver;
+			return(result);
+		}
+
 		fpl_api bool ResizeVideoBackBuffer(const uint32_t width, const uint32_t height) {
 			bool result = false;
 			FPL_ASSERT(platform::global__Win32__State != nullptr);
@@ -5989,11 +6092,20 @@ namespace fpl {
 				case VideoDriverType::Software:
 				{
 					WindowSize area = GetWindowArea();
-					uint32_t targetWidth = area.width;
-					uint32_t targetHeight = area.height;
-					uint32_t sourceWidth = video.software.context.width;
-					uint32_t sourceHeight = video.software.context.height;
-					wapi.gdi.stretchDIBits(state->window.deviceContext, 0, 0, targetWidth, targetHeight, 0, 0, sourceWidth, sourceHeight, video.software.context.pixels, &video.software.bitmapInfo, DIB_RGB_COLORS, SRCCOPY);
+					int32_t targetX = 0;
+					int32_t targetY = 0;
+					int32_t targetWidth = area.width;
+					int32_t targetHeight = area.height;
+					int32_t sourceWidth = video.software.context.width;
+					int32_t sourceHeight = video.software.context.height;
+					if (video.software.context.useOutputRect) {
+						targetX = video.software.context.outputRect.x;
+						targetY = video.software.context.outputRect.y;
+						targetWidth = video.software.context.outputRect.width;
+						targetHeight = video.software.context.outputRect.height;
+						wapi.gdi.stretchDIBits(state->window.deviceContext, 0, 0, area.width, area.height, 0, 0, 0, 0, nullptr, nullptr, DIB_RGB_COLORS, BLACKNESS);
+					}
+					wapi.gdi.stretchDIBits(state->window.deviceContext, targetX, targetY, targetWidth, targetHeight, 0, 0, sourceWidth, sourceHeight, video.software.context.pixels, &video.software.bitmapInfo, DIB_RGB_COLORS, SRCCOPY);
 				} break;
 #			endif
 
@@ -6073,23 +6185,28 @@ namespace fpl {
 			return(result);
 		}
 
-		fpl_api void SetWindowFullscreen(const bool value, const uint32_t fullscreenWidth, const uint32_t fullscreenHeight, const uint32_t refreshRate) {
+		fpl_api bool SetWindowFullscreen(const bool value, const uint32_t fullscreenWidth, const uint32_t fullscreenHeight, const uint32_t refreshRate) {
 			FPL_ASSERT(platform::global__Win32__State != nullptr);
 			platform::Win32State *state = platform::global__Win32__State;
 			platform::Win32APIFunctions &wapi = platform::global__Win32__API__Functions;
+			WindowSettings &windowSettings = state->currentSettings.window;
+			platform::Win32LastWindowInfo *fullscreenState = &state->window.lastFullscreenInfo;
+
+			HWND windowHandle = state->window.windowHandle;
+
+			// Save current window info if not already fullscreen
+			if (!windowSettings.isFullscreen) {
+				fullscreenState->isMaximized = !!wapi.user.isZoomed(windowHandle);
+				if (fullscreenState->isMaximized) {
+					platform::win32_sendMessage(windowHandle, WM_SYSCOMMAND, SC_RESTORE, 0);
+				}
+				fullscreenState->style = platform::win32_getWindowLong(windowHandle, GWL_STYLE);
+				fullscreenState->exStyle = platform::win32_getWindowLong(windowHandle, GWL_EXSTYLE);
+				wapi.user.getWindowPlacement(windowHandle, &fullscreenState->placement);
+				//wapi.user.getWindowRect(windowHandle, &fullscreenState->rect);
+			}
+
 			if (value) {
-				WindowSettings &windowSettings = state->currentSettings.window;
-
-				// Save window placement and size
-				HWND windowHandle = state->window.windowHandle;
-				state->window.lastWindowPlacement = {};
-				wapi.user.getWindowPlacement(windowHandle, &state->window.lastWindowPlacement);
-
-				RECT windowRect = {};
-				wapi.user.getWindowRect(windowHandle, &windowRect);
-				state->window.lastWindowWidth = windowRect.right - windowRect.left;
-				state->window.lastWindowHeight = windowRect.bottom - windowRect.top;
-
 				// Enter fullscreen mode or fallback to window mode
 				windowSettings.isFullscreen = platform::Win32EnterFullscreen(fullscreenWidth, fullscreenHeight, refreshRate, 0);
 				if (!windowSettings.isFullscreen) {
@@ -6097,7 +6214,9 @@ namespace fpl {
 				}
 			} else {
 				platform::Win32LeaveFullscreen();
+				windowSettings.isFullscreen = false;
 			}
+			return(windowSettings.isFullscreen);
 		}
 
 		fpl_api WindowPosition GetWindowPosition() {
@@ -6310,9 +6429,9 @@ namespace fpl {
 #		else
 			result = global__LastErrorState->errors[0];
 #		endif // FPL_ENABLE_MULTIPLE_ERRORSTATES
-			}
-		return (result);
 		}
+		return (result);
+	}
 
 	fpl_api const char *GetPlatformLastError(const size_t index) {
 		const char *result = nullptr;
@@ -6326,9 +6445,9 @@ namespace fpl {
 #		else
 			result = global__LastErrorState->errors[0];
 #		endif // FPL_ENABLE_MULTIPLE_ERRORSTATES
-			}
-		return (result);
 		}
+		return (result);
+	}
 
 	fpl_api size_t GetPlatformLastErrorCount() {
 		size_t result = 0;
@@ -6476,7 +6595,7 @@ namespace fpl {
 		return (true);
 	}
 
-	} // fpl
+} // fpl
 
 #	if defined(FPL_ENABLE_WINDOW)
 
@@ -6791,7 +6910,7 @@ namespace fpl {
 
 	fpl_api void ReleasePlatform() {
 	}
-	}
+}
 #endif // FPL_PLATFORM_LINUX
 
 // ****************************************************************************
