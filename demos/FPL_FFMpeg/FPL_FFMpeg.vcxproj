@@ -163,6 +163,9 @@
   <ItemGroup>
     <ClInclude Include="..\..\final_dynamic_opengl.hpp" />
     <ClInclude Include="..\..\final_platform_layer.hpp" />
+    <ClInclude Include="defines.h" />
+    <ClInclude Include="maths.h" />
+    <ClInclude Include="shaders.h" />
     <ClInclude Include="stb_truetype.h" />
     <ClInclude Include="utils.h" />
   </ItemGroup>

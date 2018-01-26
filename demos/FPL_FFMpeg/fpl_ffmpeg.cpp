@@ -23,20 +23,19 @@ Written by Torsten Spaete
 [x] Fix bug for WMV always dropping nearly every frame (TimeBase was wrong all the time)
 [x] Aspect ratio calculation
 [x] Fullscreen toggling
+[x] Modern OpenGL 3.3
 [ ] Seeking (+/- 5 secs)
 [ ] Support for audio format change while playing
 [ ] Support for video format change while playing
+[x] Image format conversion (YUY2, YUV > RGB24 etc.)
+	[x] GLSL (YUV420P for now)
+	[x] Slow CPU implementation (YUV420P for now)
 [ ] Composite video rendering
 	[ ] OSD
 	[ ] Bitmap rect blitting
 	[ ] Subtitle Decoding and Compositing
-[ ] Image format conversion (YUY2, YUV > RGB24 etc.)
-	[ ] GLSL
-	[x] Slow CPU implementation (YUV420P for now)
-	[ ] SSE2/AVX implementation
 [ ] Audio format conversion (Downsampling, Upsampling, S16 > F32 etc.)
 	[ ] Slow CPU implementation
-	[ ] SSE2/AVX implementation
 [ ] UI
 	[ ] Current Time
 	[ ] Buttons
@@ -61,27 +60,14 @@ Requirements:
 
 #include <assert.h> // assert
 
+#include "defines.h"
 #include "utils.h"
-
-#define PRINT_QUEUE_INFOS 0
-#define PRINT_FRAME_UPLOAD_INFOS 0
-#define PRINT_MEMORY_STATS 0
-#define PRINT_FRAME_DROPS 1
-#define PRINT_VIDEO_REFRESH 0
-#define PRINT_VIDEO_DELAY 0
-#define PRINT_CLOCKS 0
-#define PRINT_PTS 0
-#define PRINT_FPS 0
-
-#define USE_HARDWARE_RENDERING 1
-#define USE_FFMPEG_STATIC_LINKING 0
-#define USE_GL_PBO 1
-#define USE_GL_RECTANGLE_TEXTURES 1
-#define USE_FFMPEG_SOFTWARE_CONVERSION 0
+#include "maths.h"
 
 #if USE_HARDWARE_RENDERING
 #	define FDYNGL_IMPLEMENTATION
 #	include "final_dynamic_opengl.hpp"
+#	include "shaders.h"
 #endif
 
 //
@@ -690,6 +676,34 @@ static bool LoadFFMPEG() {
 	return true;
 }
 
+static char glErrorCodeBuffer[16];
+static const char *GetGLErrorString(const GLenum err) {
+	switch (err) {
+		case GL_INVALID_ENUM:
+			return "GL_INVALID_ENUM";
+		case GL_INVALID_VALUE:
+			return "GL_INVALID_VALUE";
+		case GL_INVALID_OPERATION:
+			return "GL_INVALID_OPERATION";
+		case GL_STACK_OVERFLOW:
+			return "GL_STACK_OVERFLOW";
+		case GL_STACK_UNDERFLOW:
+			return "GL_STACK_UNDERFLOW";
+		case GL_OUT_OF_MEMORY:
+			return "GL_OUT_OF_MEMORY";
+		default:
+			return (const char *)_itoa_s(err, glErrorCodeBuffer, FPL_ARRAYCOUNT(glErrorCodeBuffer), 10);
+	}
+}
+
+static void CheckGLError() {
+	GLenum err = glGetError();
+	if (err != GL_NO_ERROR) {
+		const char *msg = GetGLErrorString(err);
+		assert(!msg);
+	}
+}
+
 //
 // Stats
 //
@@ -1191,12 +1205,8 @@ static bool InitDecoder(Decoder &outDecoder, PlayerState *state, ReaderContext *
 static void DestroyDecoder(Decoder &decoder) {
 	DestroyFrameQueue(decoder.frameQueue);
 	DestroyPacketQueue(decoder.packetsQueue);
-	if (decoder.resumeSignal.isValid) {
-		SignalDestroy(decoder.resumeSignal);
-	}
-	if (decoder.stopSignal.isValid) {
-		SignalDestroy(decoder.stopSignal);
-	}
+	SignalDestroy(decoder.resumeSignal);
+	SignalDestroy(decoder.stopSignal);
 }
 
 static ThreadContext *StartDecoder(Decoder &decoder, run_thread_function *decoderThreadFunc) {
@@ -1208,9 +1218,7 @@ static ThreadContext *StartDecoder(Decoder &decoder, run_thread_function *decode
 
 static void StopDecoder(Decoder &decoder) {
 	decoder.stopRequest = 1;
-	if (decoder.stopSignal.isValid) {
-		SignalWakeUp(decoder.stopSignal);
-	}
+	SignalWakeUp(decoder.stopSignal);
 	ThreadWaitForOne(decoder.thread);
 	ThreadDestroy(decoder.thread);
 	decoder.thread = nullptr;
@@ -1248,6 +1256,8 @@ struct Texture {
 	GLuint id;
 	GLuint pboId;
 	GLuint target;
+	GLint internalFormat;
+	GLenum format;
 #	if !USE_GL_PBO
 	uint8_t *data;
 #	endif
@@ -1289,14 +1299,22 @@ static bool InitTexture(Texture &texture, const uint32_t w, const uint32_t h, co
 	texture.target = GL_TEXTURE_2D;
 #endif
 
+	texture.internalFormat = GL_RGBA8;
+	texture.format = GL_RGBA;
+	if (colorComponents == 1) {
+		texture.internalFormat = GL_R8;
+		texture.format = GL_RED;
+	}
+
 	glGenTextures(1, &texture.id);
 	glBindTexture(texture.target, texture.id);
-	glTexImage2D(texture.target, 0, GL_RGBA8, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+	glTexImage2D(texture.target, 0, texture.internalFormat, w, h, 0, texture.format, GL_UNSIGNED_BYTE, nullptr);
 	glTexParameteri(texture.target, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 	glTexParameteri(texture.target, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 	glTexParameteri(texture.target, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
 	glTexParameteri(texture.target, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 	glBindTexture(texture.target, 0);
+	CheckGLError();
 #else
 	texture.id = 1;
 	ResizeVideoBackBuffer(w, h);
@@ -1312,6 +1330,7 @@ inline uint8_t *LockTexture(Texture &texture) {
 #	if USE_GL_PBO
 	glBindBuffer(GL_PIXEL_UNPACK_BUFFER, texture.pboId);
 	result = (uint8_t *)glMapBuffer(GL_PIXEL_UNPACK_BUFFER, GL_WRITE_ONLY);
+	CheckGLError();
 #	else
 	result = texture.data;
 #	endif
@@ -1328,9 +1347,10 @@ inline void UnlockTexture(Texture &texture) {
 #	if USE_GL_PBO
 	glUnmapBuffer(GL_PIXEL_UNPACK_BUFFER);
 	glBindTexture(texture.target, texture.id);
-	glTexSubImage2D(texture.target, 0, 0, 0, texture.width, texture.height, GL_RGBA, GL_UNSIGNED_BYTE, (void *)0);
+	glTexSubImage2D(texture.target, 0, 0, 0, texture.width, texture.height, texture.format, GL_UNSIGNED_BYTE, (void *)0);
 	glBindTexture(texture.target, 0);
 	glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
+	CheckGLError();
 #	else
 	glBindTexture(texture.target, texture.id);
 	glTexSubImage2D(texture.target, 0, 0, 0, texture.width, texture.height, GL_RGBA, GL_UNSIGNED_BYTE, texture.data);
@@ -1353,12 +1373,30 @@ inline void DestroyTexture(Texture &texture) {
 	texture = {};
 }
 
+struct VideoShader {
+	GLuint programId;
+	GLuint uniform_uniProjMat;
+	GLuint uniform_uniTextures;
+	GLuint uniform_uniTextureScaleY;
+	GLuint uniform_uniTextureOffsetY;
+};
+
+constexpr uint32_t MAX_TARGET_TEXTURE_COUNT = 4;
 struct VideoContext {
 	MediaStream stream;
 	Decoder decoder;
 	Clock clock;
-	Texture targetTexture;
+	Texture targetTextures[MAX_TARGET_TEXTURE_COUNT];
+#if USE_HARDWARE_RENDERING
+	VideoShader basicShader;
+	VideoShader yuv420pShader;
+	GLuint vao;
+	GLuint vertexBufferId;
+	GLuint indexBufferId;
+	VideoShader *activeShader;
+#endif
 	SwsContext *softwareScaleCtx;
+	uint32_t targetTextureCount;
 };
 
 inline void FlipSourcePicture(uint8_t *srcData[8], int srcLineSize[8], int height) {
@@ -1382,24 +1420,39 @@ inline void FlipSourcePicture(uint8_t *srcData[8], int srcLineSize[8], int heigh
 }
 
 static void UploadTexture(VideoContext &video, const AVFrame *sourceNativeFrame) {
-	assert(video.targetTexture.width == sourceNativeFrame->width);
-	assert(video.targetTexture.height == sourceNativeFrame->height);
 	AVCodecContext *videoCodecCtx = video.stream.codecContext;
+#if USE_HARDWARE_RENDERING && USE_HARDWARE_IMAGE_FORMAT_DECODING
+	switch (sourceNativeFrame->format) {
+		case AVPixelFormat::AV_PIX_FMT_YUV420P:
+			assert(video.targetTextureCount == 3);
+			for (uint32_t textureIndex = 0; textureIndex < video.targetTextureCount; ++textureIndex) {
+				Texture &targetTexture = video.targetTextures[textureIndex];
+				uint8_t *data = LockTexture(targetTexture);
+				assert(data != nullptr);
+				uint32_t h = (textureIndex == 0) ? sourceNativeFrame->height : sourceNativeFrame->height / 2;
+				MemoryCopy(sourceNativeFrame->data[textureIndex], sourceNativeFrame->linesize[textureIndex] * h, data);
+				UnlockTexture(targetTexture);
+			}
+			break;
+		default:
+			break;
+	}
+#else
+	assert(video.targetTextureCount == 1);
+	Texture &targetTexture = video.targetTextures[0];
+	assert(targetTexture.width == sourceNativeFrame->width);
+	assert(targetTexture.height == sourceNativeFrame->height);
 
-	uint8_t *data = LockTexture(video.targetTexture);
+	uint8_t *data = LockTexture(targetTexture);
 	assert(data != nullptr);
 
-	const bool srcFlipY = true;
-	int32_t dstLineSize[8] = { video.targetTexture.rowSize, 0 };
+	int32_t dstLineSize[8] = { targetTexture.rowSize, 0 };
 	uint8_t *dstData[8] = { data, nullptr };
 	uint8_t *srcData[8];
 	int srcLineSize[8];
 	for (int i = 0; i < 8; ++i) {
 		srcData[i] = sourceNativeFrame->data[i];
 		srcLineSize[i] = sourceNativeFrame->linesize[i];
-	}
-	if (srcFlipY) {
-		FlipSourcePicture(srcData, srcLineSize, videoCodecCtx->height);
 	}
 
 #if USE_FFMPEG_SOFTWARE_CONVERSION
@@ -1411,20 +1464,20 @@ static void UploadTexture(VideoContext &video, const AVFrame *sourceNativeFrame)
 #	endif
 	switch (sourceNativeFrame->format) {
 		case AVPixelFormat::AV_PIX_FMT_YUV420P:
-			ConvertYUV420PToRGB32(dstData, dstLineSize, video.targetTexture.width, video.targetTexture.height, srcData, srcLineSize, flags);
+			ConvertYUV420PToRGB32(dstData, dstLineSize, targetTexture.width, targetTexture.height, srcData, srcLineSize, flags);
 			break;
 		default:
 			ffmpeg.sws_scale(video.softwareScaleCtx, (uint8_t const * const *)srcData, srcLineSize, 0, videoCodecCtx->height, dstData, dstLineSize);
 			break;
 	}
 #endif
-
-	UnlockTexture(video.targetTexture);
+	UnlockTexture(targetTexture);
+#endif
 }
 
-//
-// Audio
-//
+	//
+	// Audio
+	//
 struct AudioContext {
 	MediaStream stream;
 	Decoder decoder;
@@ -2482,40 +2535,92 @@ static void DisplayVideoFrame(PlayerState *state) {
 	DisplayRect rect = CalculateDisplayRect(0, 0, w, h, vp->width, vp->height, vp->sar);
 
 #if USE_HARDWARE_RENDERING
-	glViewport(0, 0, w, h);
+	Mat4f proj = Mat4f::CreateOrthoRH(0.0f, (float)w, 0.0f, (float)h, 0.0f, 1.0f);
 
+	glViewport(0, 0, w, h);
 	glClear(GL_COLOR_BUFFER_BIT);
-	glMatrixMode(GL_PROJECTION);
-	glLoadIdentity();
-	glOrtho(0.0f, (float)w, 0.0f, (float)h, 0.0f, 1.0f);
-	glMatrixMode(GL_MODELVIEW);
-	glLoadIdentity();
 
 	float uMin = 0.0f;
 	float vMin = 0.0f;
 #if USE_GL_RECTANGLE_TEXTURES
-	float uMax = (float)video.targetTexture.width;
-	float vMax = (float)video.targetTexture.height;
+	float uMax = (float)vp->width;
+	float vMax = (float)vp->height;
 #else
 	float uMax = 1.0f;
 	float vMax = 1.0f;
 #endif
 
-	glEnable(video.targetTexture.target);
-	glBindTexture(video.targetTexture.target, video.targetTexture.id);
-	glColor4f(1, 1, 1, 1);
-	glBegin(GL_TRIANGLES);
-	// Topright, Bottomright, Bottomleft
-	glTexCoord2f(uMax, vMax); glVertex2i(rect.right, rect.bottom);
-	glTexCoord2f(uMax, vMin); glVertex2i(rect.right, rect.top);
-	glTexCoord2f(uMin, vMin); glVertex2i(rect.left, rect.top);
-	// Bottomleft, Topleft, Topright
-	glTexCoord2f(uMin, vMin); glVertex2i(rect.left, rect.top);
-	glTexCoord2f(uMin, vMax); glVertex2i(rect.left, rect.bottom);
-	glTexCoord2f(uMax, vMax); glVertex2i(rect.right, rect.bottom);
-	glEnd();
-	glBindTexture(video.targetTexture.target, 0);
-	glDisable(video.targetTexture.target);
+	float left = (float)rect.left;
+	float right = (float)rect.right;
+	float top = (float)rect.bottom;
+	float bottom = (float)rect.top;
+
+	float vertexData[4 * 4] = {
+		// Top right
+		right, top, uMax, vMax,
+		// Bottom right
+		right, bottom, uMax, vMin,
+		// Bottom left
+		left, bottom, uMin, vMin,
+		// Top left
+		left, top, uMin, vMax,
+	};
+
+	// Enable vertex array buffer
+	glBindVertexArray(state->video.vao);
+	glBindBuffer(GL_ARRAY_BUFFER, state->video.vertexBufferId);
+	// Update vertex array buffer with new rectangle
+	glBufferData(GL_ARRAY_BUFFER, FPL_ARRAYCOUNT(vertexData) * sizeof(float), vertexData, GL_STREAM_DRAW);
+	CheckGLError();
+
+	// Setup vertex attributes for vertex shader
+	glEnableVertexAttribArray(0);
+	glEnableVertexAttribArray(1);
+	glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(float) * 4, (GLvoid *)0);
+	glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, sizeof(float) * 4, (GLvoid *)(sizeof(float) * 2));
+	CheckGLError();
+
+	// Enable textures
+	int textureIndices[MAX_TARGET_TEXTURE_COUNT] = {};
+	for (uint32_t textureIndex = 0; textureIndex < video.targetTextureCount; ++textureIndex) {
+		const Texture &targetTexture = video.targetTextures[textureIndex];
+		glActiveTexture(GL_TEXTURE0 + textureIndex);
+		glBindTexture(targetTexture.target, targetTexture.id);
+		textureIndices[textureIndex] = textureIndex;
+	}
+
+	// Enable shader
+	const VideoShader *shader = state->video.activeShader;
+	glUseProgram(shader->programId);
+	glUniformMatrix4fv(shader->uniform_uniProjMat, 1, GL_FALSE, proj.m);
+	glUniform1iv(shader->uniform_uniTextures, (GLsizei)MAX_TARGET_TEXTURE_COUNT, textureIndices);
+	glUniform1f(shader->uniform_uniTextureOffsetY, vMax);
+	glUniform1f(shader->uniform_uniTextureScaleY, -1.0f);
+	CheckGLError();
+
+	// Draw quad
+	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, state->video.indexBufferId);
+	glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr);
+	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+	CheckGLError();
+
+	// Disable shader
+	glUseProgram(0);
+
+	// Disable textures
+	for (int textureIndex = (int)video.targetTextureCount - 1; textureIndex >= 0; textureIndex--) {
+		const Texture &targetTexture = video.targetTextures[textureIndex];
+		glActiveTexture(GL_TEXTURE0 + textureIndex);
+		glBindTexture(targetTexture.target, 0);
+	}
+
+	// Disable vertex array buffer
+	glDisableVertexAttribArray(1);
+	glDisableVertexAttribArray(0);
+	glBindBuffer(GL_ARRAY_BUFFER, 0);
+	glBindVertexArray(0);
+	CheckGLError();
+
 #else
 	VideoBackBuffer *backBuffer = GetVideoBackBuffer();
 	backBuffer->outputRect = CreateVideoRectFromLTRB(rect.left, rect.top, rect.right, rect.bottom);
@@ -2699,17 +2804,83 @@ static int DecodeInterruptCallback(void *opaque) {
 
 static void CloseVideo(PlayerState &state) {
 	DestroyDecoder(state.video.decoder);
+
+#if USE_HARDWARE_RENDERING
+	glDeleteProgram(state.video.basicShader.programId);
+	glDeleteBuffers(1, &state.video.indexBufferId);
+	glDeleteBuffers(1, &state.video.vertexBufferId);
+#endif
+
+	for (uint32_t textureIndex = 0; textureIndex < state.video.targetTextureCount; ++textureIndex) {
+		if (state.video.targetTextures[textureIndex].id) {
+			DestroyTexture(state.video.targetTextures[textureIndex]);
+		}
+	}
+
 	if (state.video.softwareScaleCtx != nullptr) {
 		ffmpeg.sws_freeContext(state.video.softwareScaleCtx);
-	}
-	if (state.video.targetTexture.id) {
-		DestroyTexture(state.video.targetTexture);
 	}
 	if (state.video.stream.codecContext != nullptr) {
 		ffmpeg.avcodec_free_context(&state.video.stream.codecContext);
 	}
 }
 
+static GLuint CompileShader(GLuint type, const char *source, const char *name) {
+	GLuint result = glCreateShader(type);
+	glShaderSource(result, 1, &source, nullptr);
+	glCompileShader(result);
+	int compileStatus;
+	glGetShaderiv(result, GL_COMPILE_STATUS, &compileStatus);
+	if (compileStatus == GL_FALSE) {
+		int length;
+		glGetShaderiv(result, GL_INFO_LOG_LENGTH, &length);
+		char *message = (char *)MemoryStackAllocate(length * sizeof(char));
+		glGetShaderInfoLog(result, length, &length, message);
+		ConsoleFormatError("Failed to compile %s shader '%s':\n%s\n", (type == GL_VERTEX_SHADER ? "vertex" : "fragment"), name, message);
+		glDeleteShader(result);
+		return 0;
+	}
+	return(result);
+}
+
+static GLuint CreateShader(const char *vertexShaderSource, const char *fragmentShaderSource, const char *name) {
+	GLuint result = glCreateProgram();
+	GLuint vs = CompileShader(GL_VERTEX_SHADER, vertexShaderSource, name);
+	GLuint fs = CompileShader(GL_FRAGMENT_SHADER, fragmentShaderSource, name);
+	if (vs == 0 || fs == 0) {
+		glDeleteProgram(result);
+		return 0;
+	}
+	glAttachShader(result, vs);
+	glAttachShader(result, fs);
+	glDeleteShader(fs);
+	glDeleteShader(vs);
+	glLinkProgram(result);
+
+	int linkStatus;
+	glGetProgramiv(result, GL_LINK_STATUS, &linkStatus);
+	if (GL_LINK_STATUS == GL_FALSE) {
+		int length;
+		glGetProgramiv(result, GL_INFO_LOG_LENGTH, &length);
+		char *message = (char *)MemoryStackAllocate(length * sizeof(char));
+		glGetProgramInfoLog(result, length, &length, message);
+		ConsoleFormatError("Failed to link %s shader program:\n%s\n", name, message);
+		glDeleteProgram(result);
+		return 0;
+	}
+
+	glValidateProgram(result);
+	return(result);
+}
+
+static bool LoadVideoShader(VideoShader &shader, const char *vertexSource, const char *fragSource, const char *name) {
+	shader.programId = CreateShader(vertexSource, fragSource, "Basic");
+	shader.uniform_uniProjMat = glGetUniformLocation(shader.programId, "uniProjMat");
+	shader.uniform_uniTextures = glGetUniformLocation(shader.programId, "uniTextures");
+	shader.uniform_uniTextureScaleY = glGetUniformLocation(shader.programId, "uniTextureScaleY");
+	shader.uniform_uniTextureOffsetY = glGetUniformLocation(shader.programId, "uniTextureOffsetY");
+	return true;
+}
 
 static bool InitializeVideo(PlayerState &state, const char *mediaFilePath) {
 	VideoContext &video = state.video;
@@ -2722,11 +2893,11 @@ static bool InitializeVideo(PlayerState &state, const char *mediaFilePath) {
 	}
 
 	AVPixelFormat targetPixelFormat;
-#	if USE_HARDWARE_RENDERING
+#if USE_HARDWARE_RENDERING
 	targetPixelFormat = AVPixelFormat::AV_PIX_FMT_RGBA;
-#	else
+#else
 	targetPixelFormat = AVPixelFormat::AV_PIX_FMT_BGRA;
-#	endif
+#endif
 
 	// Get software context
 	video.softwareScaleCtx = ffmpeg.sws_getContext(
@@ -2746,9 +2917,76 @@ static bool InitializeVideo(PlayerState &state, const char *mediaFilePath) {
 		return false;
 	}
 
-	if (!InitTexture(state.video.targetTexture, videoCodexCtx->width, videoCodexCtx->height, 32)) {
+#if USE_HARDWARE_RENDERING && USE_HARDWARE_IMAGE_FORMAT_DECODING
+	switch (videoCodexCtx->pix_fmt) {
+		case AVPixelFormat::AV_PIX_FMT_YUV420P:
+		{
+			state.video.activeShader = &state.video.yuv420pShader;
+			state.video.targetTextureCount = 3;
+			if (!InitTexture(state.video.targetTextures[0], videoCodexCtx->width, videoCodexCtx->height, 8)) {
+				return false;
+			}
+			if (!InitTexture(state.video.targetTextures[1], videoCodexCtx->width / 2, videoCodexCtx->height / 2, 8)) {
+				return false;
+			}
+			if (!InitTexture(state.video.targetTextures[2], videoCodexCtx->width / 2, videoCodexCtx->height / 2, 8)) {
+				return false;
+			}
+		} break;
+		default:
+		{
+			state.video.activeShader = &state.video.basicShader;
+			state.video.targetTextureCount = 1;
+			if (!InitTexture(state.video.targetTextures[0], videoCodexCtx->width, videoCodexCtx->height, 32)) {
+				return false;
+			}
+		} break;
+	}
+#else
+#	if USE_HARDWARE_RENDERING
+	state.video.activeShader = &state.video.basicShader;
+#	endif
+	state.video.targetTextureCount = 1;
+	if (!InitTexture(state.video.targetTextures[0], videoCodexCtx->width, videoCodexCtx->height, 32)) {
 		return false;
 	}
+#endif
+
+#if USE_HARDWARE_RENDERING
+	glGenVertexArrays(1, &state.video.vao);
+	glBindVertexArray(state.video.vao);
+	CheckGLError();
+
+	glGenBuffers(1, &state.video.vertexBufferId);
+	glGenBuffers(1, &state.video.indexBufferId);
+	CheckGLError();
+
+	glBindBuffer(GL_ARRAY_BUFFER, state.video.vertexBufferId);
+	glBufferData(GL_ARRAY_BUFFER, 4 * sizeof(float) * 4, nullptr, GL_STREAM_DRAW);
+	glBindBuffer(GL_ARRAY_BUFFER, 0);
+	CheckGLError();
+
+	// Topright, Bottomright, Bottomleft, Topleft
+	uint32_t indices[6] = {
+		0, 1, 2,
+		2, 3, 0,
+	};
+	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, state.video.indexBufferId);
+	glBufferData(GL_ELEMENT_ARRAY_BUFFER, FPL_ARRAYCOUNT(indices) * sizeof(uint32_t), indices, GL_STATIC_DRAW);
+	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+	CheckGLError();
+
+	glBindVertexArray(0);
+
+	if (!LoadVideoShader(state.video.basicShader, BasicShaderSource::Vertex, BasicShaderSource::Fragment, BasicShaderSource::Name)) {
+		return false;
+	}
+	if (!LoadVideoShader(state.video.yuv420pShader, YUV420PShaderSource::Vertex, YUV420PShaderSource::Fragment, YUV420PShaderSource::Name)) {
+		return false;
+	}
+
+	CheckGLError();
+#endif
 
 	state.frameTimer = 0.0;
 	state.frameLastPTS = 0.0;
@@ -2954,7 +3192,9 @@ int main(int argc, char **argv) {
 	CopyAnsiString("FPL FFmpeg Demo", settings.window.windowTitle, FPL_ARRAYCOUNT(settings.window.windowTitle));
 #if USE_HARDWARE_RENDERING
 	settings.video.driverType = VideoDriverType::OpenGL;
-	settings.video.profile = VideoCompabilityProfile::Legacy;
+	settings.video.profile = VideoCompabilityProfile::Core;
+	settings.video.majorVersion = 3;
+	settings.video.minorVersion = 3;
 #else
 	settings.video.driverType = VideoDriverType::Software;
 #endif
@@ -3122,4 +3362,4 @@ release:
 	ReleasePlatform();
 
 	return(0);
-}
+		}
