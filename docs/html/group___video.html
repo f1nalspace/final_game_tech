@@ -22,7 +22,7 @@
  <tr style="height: 56px;">
   <td id="projectalign" style="padding-left: 0.5em;">
    <div id="projectname">Final Platform Layer
-   &#160;<span id="projectnumber">0.5.6.1</span>
+   &#160;<span id="projectnumber">0.5.7.4</span>
    </div>
   </td>
  </tr>
@@ -75,20 +75,169 @@ Classes</h2></td></tr>
 <tr class="memitem:"><td class="memItemLeft" align="right" valign="top">struct &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structfpl_1_1video_1_1_video_back_buffer.html">fpl::video::VideoBackBuffer</a></td></tr>
 <tr class="memdesc:"><td class="mdescLeft">&#160;</td><td class="mdescRight">Video backbuffer container. Use this for accessing the pixels directly. Use with care!  <a href="structfpl_1_1video_1_1_video_back_buffer.html#details">More...</a><br /></td></tr>
 <tr class="separator:"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:"><td class="memItemLeft" align="right" valign="top">struct &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structfpl_1_1video_1_1_video_rect.html">fpl::video::VideoRect</a></td></tr>
+<tr class="memdesc:"><td class="mdescLeft">&#160;</td><td class="mdescRight">Video rectangle.  <a href="structfpl_1_1video_1_1_video_rect.html#details">More...</a><br /></td></tr>
+<tr class="separator:"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table><table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a name="func-members"></a>
 Functions</h2></td></tr>
-<tr class="memitem:ga66afa77e909dab32517268006e8da8da"><td class="memItemLeft" align="right" valign="top"><a id="ga66afa77e909dab32517268006e8da8da"></a>
-<a class="el" href="final__platform__layer_8hpp.html#aafa1d3d90febf9826c55c1318f98b27d">fpl_api</a> <a class="el" href="structfpl_1_1video_1_1_video_back_buffer.html">VideoBackBuffer</a> *&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___video.html#ga66afa77e909dab32517268006e8da8da">fpl::video::GetVideoBackBuffer</a> ()</td></tr>
-<tr class="memdesc:ga66afa77e909dab32517268006e8da8da"><td class="mdescLeft">&#160;</td><td class="mdescRight">Returns the pointer to the video software context. <br /></td></tr>
+<tr class="memitem:ga364b20c46457b9d9b70907a27baf9a90"><td class="memItemLeft" align="right" valign="top"><a class="el" href="structfpl_1_1video_1_1_video_rect.html">VideoRect</a>&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___video.html#ga364b20c46457b9d9b70907a27baf9a90">fpl::video::CreateVideoRectFromLTRB</a> (int32_t left, int32_t top, int32_t right, int32_t bottom)</td></tr>
+<tr class="memdesc:ga364b20c46457b9d9b70907a27baf9a90"><td class="mdescLeft">&#160;</td><td class="mdescRight">Makes a video rectangle from a LT-RB rectangle.  <a href="group___video.html#ga364b20c46457b9d9b70907a27baf9a90">More...</a><br /></td></tr>
+<tr class="separator:ga364b20c46457b9d9b70907a27baf9a90"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:ga66afa77e909dab32517268006e8da8da"><td class="memItemLeft" align="right" valign="top"><a class="el" href="final__platform__layer_8hpp.html#aafa1d3d90febf9826c55c1318f98b27d">fpl_api</a> <a class="el" href="structfpl_1_1video_1_1_video_back_buffer.html">VideoBackBuffer</a> *&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___video.html#ga66afa77e909dab32517268006e8da8da">fpl::video::GetVideoBackBuffer</a> ()</td></tr>
+<tr class="memdesc:ga66afa77e909dab32517268006e8da8da"><td class="mdescLeft">&#160;</td><td class="mdescRight">Returns the pointer to the video software context.  <a href="group___video.html#ga66afa77e909dab32517268006e8da8da">More...</a><br /></td></tr>
 <tr class="separator:ga66afa77e909dab32517268006e8da8da"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:gaa607597cd1e9dab0e6ffeaa7cbbd395c"><td class="memItemLeft" align="right" valign="top"><a id="gaa607597cd1e9dab0e6ffeaa7cbbd395c"></a>
-<a class="el" href="final__platform__layer_8hpp.html#aafa1d3d90febf9826c55c1318f98b27d">fpl_api</a> bool&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___video.html#gaa607597cd1e9dab0e6ffeaa7cbbd395c">fpl::video::ResizeVideoBackBuffer</a> (const uint32_t width, const uint32_t height)</td></tr>
-<tr class="memdesc:gaa607597cd1e9dab0e6ffeaa7cbbd395c"><td class="mdescLeft">&#160;</td><td class="mdescRight">Resizes the current video backbuffer. <br /></td></tr>
+<tr class="memitem:ga6d0b5252d53a1ec625213070273347c5"><td class="memItemLeft" align="right" valign="top"><a class="el" href="final__platform__layer_8hpp.html#aafa1d3d90febf9826c55c1318f98b27d">fpl_api</a> <a class="el" href="group___settings.html#ga507fe7ca23031e714575d0a5ddd37598">VideoDriverType</a>&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___video.html#ga6d0b5252d53a1ec625213070273347c5">fpl::video::GetVideoDriver</a> ()</td></tr>
+<tr class="memdesc:ga6d0b5252d53a1ec625213070273347c5"><td class="mdescLeft">&#160;</td><td class="mdescRight">Returns the current video driver type used.  <a href="group___video.html#ga6d0b5252d53a1ec625213070273347c5">More...</a><br /></td></tr>
+<tr class="separator:ga6d0b5252d53a1ec625213070273347c5"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:gaa607597cd1e9dab0e6ffeaa7cbbd395c"><td class="memItemLeft" align="right" valign="top"><a class="el" href="final__platform__layer_8hpp.html#aafa1d3d90febf9826c55c1318f98b27d">fpl_api</a> bool&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___video.html#gaa607597cd1e9dab0e6ffeaa7cbbd395c">fpl::video::ResizeVideoBackBuffer</a> (const uint32_t width, const uint32_t height)</td></tr>
+<tr class="memdesc:gaa607597cd1e9dab0e6ffeaa7cbbd395c"><td class="mdescLeft">&#160;</td><td class="mdescRight">Resizes the current video backbuffer.  <a href="group___video.html#gaa607597cd1e9dab0e6ffeaa7cbbd395c">More...</a><br /></td></tr>
 <tr class="separator:gaa607597cd1e9dab0e6ffeaa7cbbd395c"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table>
 <a name="details" id="details"></a><h2 class="groupheader">Detailed Description</h2>
 <p>Functions for retrieving or resizing the video buffer. </p>
+<h2 class="groupheader">Function Documentation</h2>
+<a id="ga364b20c46457b9d9b70907a27baf9a90"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#ga364b20c46457b9d9b70907a27baf9a90">&#9670;&nbsp;</a></span>CreateVideoRectFromLTRB()</h2>
+
+<div class="memitem">
+<div class="memproto">
+<table class="mlabels">
+  <tr>
+  <td class="mlabels-left">
+      <table class="memname">
+        <tr>
+          <td class="memname"><a class="el" href="structfpl_1_1video_1_1_video_rect.html">VideoRect</a> fpl::video::CreateVideoRectFromLTRB </td>
+          <td>(</td>
+          <td class="paramtype">int32_t&#160;</td>
+          <td class="paramname"><em>left</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">int32_t&#160;</td>
+          <td class="paramname"><em>top</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">int32_t&#160;</td>
+          <td class="paramname"><em>right</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">int32_t&#160;</td>
+          <td class="paramname"><em>bottom</em>&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td></td>
+        </tr>
+      </table>
+  </td>
+  <td class="mlabels-right">
+<span class="mlabels"><span class="mlabel">inline</span></span>  </td>
+  </tr>
+</table>
+</div><div class="memdoc">
+
+<p>Makes a video rectangle from a LT-RB rectangle. </p>
+<dl class="params"><dt>Parameters</dt><dd>
+  <table class="params">
+    <tr><td class="paramname">left</td><td>Left position in screen units. </td></tr>
+    <tr><td class="paramname">top</td><td>Top position in screen units. </td></tr>
+    <tr><td class="paramname">right</td><td>Right position in screen units. </td></tr>
+    <tr><td class="paramname">bottom</td><td>Bottom position in screen units. </td></tr>
+  </table>
+  </dd>
+</dl>
+<dl class="section return"><dt>Returns</dt><dd>Computed video rectangle </dd></dl>
+
+<p class="definition">Definition at line <a class="el" href="final__platform__layer_8hpp_source.html#l03140">3140</a> of file <a class="el" href="final__platform__layer_8hpp_source.html">final_platform_layer.hpp</a>.</p>
+
+</div>
+</div>
+<a id="ga66afa77e909dab32517268006e8da8da"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#ga66afa77e909dab32517268006e8da8da">&#9670;&nbsp;</a></span>GetVideoBackBuffer()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname"><a class="el" href="final__platform__layer_8hpp.html#aafa1d3d90febf9826c55c1318f98b27d">fpl_api</a> <a class="el" href="structfpl_1_1video_1_1_video_back_buffer.html">VideoBackBuffer</a>* fpl::video::GetVideoBackBuffer </td>
+          <td>(</td>
+          <td class="paramname"></td><td>)</td>
+          <td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p>Returns the pointer to the video software context. </p>
+<dl class="section warning"><dt>Warning</dt><dd>Do not release this memory by any means, otherwise you will corrupt heap memory! </dd></dl>
+<dl class="section return"><dt>Returns</dt><dd>Pointer to the video backbuffer. </dd></dl>
+
+</div>
+</div>
+<a id="ga6d0b5252d53a1ec625213070273347c5"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#ga6d0b5252d53a1ec625213070273347c5">&#9670;&nbsp;</a></span>GetVideoDriver()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname"><a class="el" href="final__platform__layer_8hpp.html#aafa1d3d90febf9826c55c1318f98b27d">fpl_api</a> <a class="el" href="group___settings.html#ga507fe7ca23031e714575d0a5ddd37598">VideoDriverType</a> fpl::video::GetVideoDriver </td>
+          <td>(</td>
+          <td class="paramname"></td><td>)</td>
+          <td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p>Returns the current video driver type used. </p>
+<dl class="section return"><dt>Returns</dt><dd>The current video driver type used. </dd></dl>
+
+</div>
+</div>
+<a id="gaa607597cd1e9dab0e6ffeaa7cbbd395c"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#gaa607597cd1e9dab0e6ffeaa7cbbd395c">&#9670;&nbsp;</a></span>ResizeVideoBackBuffer()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname"><a class="el" href="final__platform__layer_8hpp.html#aafa1d3d90febf9826c55c1318f98b27d">fpl_api</a> bool fpl::video::ResizeVideoBackBuffer </td>
+          <td>(</td>
+          <td class="paramtype">const uint32_t&#160;</td>
+          <td class="paramname"><em>width</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">const uint32_t&#160;</td>
+          <td class="paramname"><em>height</em>&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p>Resizes the current video backbuffer. </p>
+<dl class="params"><dt>Parameters</dt><dd>
+  <table class="params">
+    <tr><td class="paramname">width</td><td>Width in pixels. </td></tr>
+    <tr><td class="paramname">height</td><td>Height in pixels. </td></tr>
+  </table>
+  </dd>
+</dl>
+<dl class="section return"><dt>Returns</dt><dd>Returns true when video back buffer could be resized or false otherwise. </dd></dl>
+
+</div>
+</div>
 </div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>

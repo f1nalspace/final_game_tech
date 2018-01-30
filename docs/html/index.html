@@ -22,7 +22,7 @@
  <tr style="height: 56px;">
   <td id="projectalign" style="padding-left: 0.5em;">
    <div id="projectname">Final Platform Layer
-   &#160;<span id="projectnumber">0.5.6.1</span>
+   &#160;<span id="projectnumber">0.5.7.4</span>
    </div>
   </td>
  </tr>
@@ -140,17 +140,16 @@ Supported Architectures</h2>
 <h2><a class="anchor" id="section_supported_compilers"></a>
 Supported Compilers</h2>
 <ul>
-<li>Compiles with MSVC</li>
-<li>Compiles with GCC</li>
-<li>Compiles with Clang (Partially)</li>
-<li>Compiles with MingW (Not tested)</li>
-<li>Compiles with Intel C++ Compiler (Not tested)</li>
+<li>MSVC</li>
+<li>GCC</li>
+<li>Clang (Partially)</li>
+<li>MingW (Not tested)</li>
+<li>Intel C++ Compiler (Not tested)</li>
 </ul>
 <h2><a class="anchor" id="section_supported_platforms"></a>
 Supported Platforms</h2>
 <ul>
 <li>Win32</li>
-<li>Compiles with GCC</li>
 <li>Linux/Posix (Partially)</li>
 <li>Unix/BSD/Posix (Todo)</li>
 </ul>
@@ -176,7 +175,7 @@ Usage</h1>
 <p>In one of your C++ translation units include this:</p>
 <div class="fragment"><div class="line"><span class="preprocessor">#define FPL_IMPLEMENTATION</span></div><div class="line"><span class="preprocessor">#include &quot;final_platform_layer.hpp&quot;</span></div></div><!-- fragment --><p>You can then include this file in any other C++ source or header file as you would with any other header file.</p>
 <p>Provide the typical main entry point with at least the initialization and release of the platform:</p>
-<div class="fragment"><div class="line"><span class="keywordtype">int</span> main(<span class="keywordtype">int</span> argc, <span class="keywordtype">char</span> **args) {</div><div class="line">    <span class="comment">// Initialize the platform</span></div><div class="line">    <a class="code" href="group___initialization.html#ga92579bdb920c4ace57a038d7807d3b56">fpl::InitPlatform</a>(<a class="code" href="group___settings.html#ggae483f3743fdfa195f8746c04203ca850ab1c94ca2fbc3e78fc30069c8d0f01680">fpl::InitFlags::All</a>);</div><div class="line">    <span class="comment">// ..</span></div><div class="line">    <span class="comment">// your code goes here</span></div><div class="line">    <span class="comment">// ..</span></div><div class="line">    <span class="comment">// Release the platform</span></div><div class="line">    <a class="code" href="group___initialization.html#ga6687b3ab1ce1d54f30785baf70566ed5">fpl::ReleasePlatform</a>();</div><div class="line">}</div></div><!-- fragment --><h1><a class="anchor" id="section_examples"></a>
+<div class="fragment"><div class="line"><span class="keywordtype">int</span> main(<span class="keywordtype">int</span> argc, <span class="keywordtype">char</span> **args) {</div><div class="line">    <span class="comment">// Initialize the platform</span></div><div class="line">    <a class="code" href="group___initialization.html#ga89a2c7056b728c8b49b8767bb8227e21">fpl::InitPlatform</a>(<a class="code" href="group___settings.html#ggae483f3743fdfa195f8746c04203ca850ab1c94ca2fbc3e78fc30069c8d0f01680">fpl::InitFlags::All</a>);</div><div class="line"></div><div class="line">    <span class="comment">// your code goes here</span></div><div class="line"></div><div class="line">    <span class="comment">// Release the platform</span></div><div class="line">    <a class="code" href="group___initialization.html#ga6687b3ab1ce1d54f30785baf70566ed5">fpl::ReleasePlatform</a>();</div><div class="line">}</div></div><!-- fragment --><h1><a class="anchor" id="section_examples"></a>
 Examples</h1>
 <ul>
 <li><a class="el" href="page_example_helloworld_console.html">Hello World Console Application!</a></li>
@@ -189,11 +188,11 @@ Notes</h1>
 <h2><a class="anchor" id="section_audio"></a>
 Audio</h2>
 <p>This library uses the operating system libraries to initialize a playback audio device.<br />
- To get any audio samples to play you need to set the callback function with <a class="el" href="structfpl_1_1_audio_settings.html#a3ade4cb176a441d5da0236cbf954a8fa">fpl::AudioSettings::clientReadCallback</a> or <a class="el" href="group___audio.html#gab74286317a34e70379c2bdcd4756c02e" title="Overwrites the audio client read callback. This has no effect when audio is already playing...">fpl::audio::SetAudioClientReadCallback()</a> before start playing the audio using <a class="el" href="group___audio.html#gad879b8c42a68250a581a7d5347e3b3e0" title="Start playing audio. ">PlayAudio()</a>.<br />
+ To get any audio samples to play you need to set the callback function with <a class="el" href="structfpl_1_1_audio_settings.html#a3ade4cb176a441d5da0236cbf954a8fa">fpl::AudioSettings::clientReadCallback</a> or <a class="el" href="group___audio.html#gab74286317a34e70379c2bdcd4756c02e" title="Overwrites the audio client read callback. ">fpl::audio::SetAudioClientReadCallback()</a> before start playing the audio using <a class="el" href="group___audio.html#gad879b8c42a68250a581a7d5347e3b3e0" title="Start playing asyncronous audio. ">PlayAudio()</a>.<br />
  When the audio device requires more audio samples this callback is automatically called.<br />
  It is expected that the audio samples are filled in properly by the native format of the device, see <a class="el" href="structfpl_1_1_audio_device_format.html">fpl::AudioDeviceFormat</a>.<br />
  This library does not provide any functionality for doing any kind of DSP.<br />
- To start and stop the playback, you need to call <a class="el" href="group___audio.html#gad879b8c42a68250a581a7d5347e3b3e0" title="Start playing audio. ">fpl::audio::PlayAudio()</a> and <a class="el" href="group___audio.html#ga7c7306211763682dc822438ca375933d" title="Stop playing audio. ">fpl::audio::StopAudio()</a> respectively.<br />
+ To start and stop the playback, you need to call <a class="el" href="group___audio.html#gad879b8c42a68250a581a7d5347e3b3e0" title="Start playing asyncronous audio. ">fpl::audio::PlayAudio()</a> and <a class="el" href="group___audio.html#ga7c7306211763682dc822438ca375933d" title="Stop playing asyncronous audio. ">fpl::audio::StopAudio()</a> respectively.<br />
  There is no guarantee that you get a audio device with the exact same format you specified back, but S16 with 48 KHz is a common format which almost every audio card supports.<br />
 </p>
 <h1><a class="anchor" id="section_license"></a>

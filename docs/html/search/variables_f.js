@@ -1,7 +1,7 @@
 var searchData=
 [
-  ['usedpagesize',['usedPageSize',['../structfpl_1_1hardware_1_1_memory_infos.html#a2d63780c63a72c4856b94c268f500977',1,'fpl::hardware::MemoryInfos']]],
-  ['usedphysicalsize',['usedPhysicalSize',['../structfpl_1_1hardware_1_1_memory_infos.html#a61dd3d9c16cdfd6b5918df74502cd8d1',1,'fpl::hardware::MemoryInfos']]],
-  ['usedvirtualsize',['usedVirtualSize',['../structfpl_1_1hardware_1_1_memory_infos.html#a791252916809e99d984bd0e01e38d655',1,'fpl::hardware::MemoryInfos']]],
-  ['userdata',['userData',['../structfpl_1_1_audio_settings.html#afa7979c8ffe93ee2612a64ebeb688a5d',1,'fpl::AudioSettings']]]
+  ['samplerate',['sampleRate',['../structfpl_1_1_audio_device_format.html#ac43f3e139b09c5c38d0b6a0863c0ac1f',1,'fpl::AudioDeviceFormat']]],
+  ['start',['start',['../structfpl_1_1window_1_1_gamepad_state.html#a195956749363bc5370942668de04823e',1,'fpl::window::GamepadState']]],
+  ['state',['state',['../structfpl_1_1window_1_1_gamepad_event.html#a9f0b1ac2350741a009afbf419b139efd',1,'fpl::window::GamepadEvent']]],
+  ['stride',['stride',['../structfpl_1_1video_1_1_video_back_buffer.html#ad7a677841458395ab93db56d3ae57945',1,'fpl::video::VideoBackBuffer']]]
 ];

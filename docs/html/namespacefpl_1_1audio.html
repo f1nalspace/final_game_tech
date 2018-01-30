@@ -22,7 +22,7 @@
  <tr style="height: 56px;">
   <td id="projectalign" style="padding-left: 0.5em;">
    <div id="projectname">Final Platform Layer
-   &#160;<span id="projectnumber">0.5.6.1</span>
+   &#160;<span id="projectnumber">0.5.7.4</span>
    </div>
   </td>
  </tr>
@@ -91,21 +91,20 @@ Enumerations</h2></td></tr>
 </table><table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a name="func-members"></a>
 Functions</h2></td></tr>
-<tr class="memitem:ga0b9d3595b9898f3d47e2a87e6d497c76"><td class="memItemLeft" align="right" valign="top">
-<a class="el" href="final__platform__layer_8hpp.html#aafa1d3d90febf9826c55c1318f98b27d">fpl_api</a> const <a class="el" href="structfpl_1_1_audio_device_format.html">AudioDeviceFormat</a> &amp;&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___audio.html#ga0b9d3595b9898f3d47e2a87e6d497c76">GetAudioHardwareFormat</a> ()</td></tr>
-<tr class="memdesc:ga0b9d3595b9898f3d47e2a87e6d497c76"><td class="mdescLeft">&#160;</td><td class="mdescRight">Returns the native format for the current audio device. <br /></td></tr>
+<tr class="memitem:gade581873cbbeadf29f7335818345e673"><td class="memItemLeft" align="right" valign="top"><a class="el" href="final__platform__layer_8hpp.html#aafa1d3d90febf9826c55c1318f98b27d">fpl_api</a> uint32_t&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___audio.html#gade581873cbbeadf29f7335818345e673">GetAudioDevices</a> (<a class="el" href="structfpl_1_1_audio_device_i_d.html">AudioDeviceID</a> *devices, uint32_t maxDeviceCount)</td></tr>
+<tr class="memdesc:gade581873cbbeadf29f7335818345e673"><td class="mdescLeft">&#160;</td><td class="mdescRight">Gets all playback audio devices.  <a href="group___audio.html#gade581873cbbeadf29f7335818345e673">More...</a><br /></td></tr>
+<tr class="separator:gade581873cbbeadf29f7335818345e673"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:ga0b9d3595b9898f3d47e2a87e6d497c76"><td class="memItemLeft" align="right" valign="top"><a class="el" href="final__platform__layer_8hpp.html#aafa1d3d90febf9826c55c1318f98b27d">fpl_api</a> const <a class="el" href="structfpl_1_1_audio_device_format.html">AudioDeviceFormat</a> &amp;&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___audio.html#ga0b9d3595b9898f3d47e2a87e6d497c76">GetAudioHardwareFormat</a> ()</td></tr>
+<tr class="memdesc:ga0b9d3595b9898f3d47e2a87e6d497c76"><td class="mdescLeft">&#160;</td><td class="mdescRight">Returns the native format for the current audio device.  <a href="group___audio.html#ga0b9d3595b9898f3d47e2a87e6d497c76">More...</a><br /></td></tr>
 <tr class="separator:ga0b9d3595b9898f3d47e2a87e6d497c76"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:gad879b8c42a68250a581a7d5347e3b3e0"><td class="memItemLeft" align="right" valign="top">
-<a class="el" href="final__platform__layer_8hpp.html#aafa1d3d90febf9826c55c1318f98b27d">fpl_api</a> <a class="el" href="group___audio.html#ga341d4051c79a9c91ff98e4d9c1fb932d">AudioResult</a>&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___audio.html#gad879b8c42a68250a581a7d5347e3b3e0">PlayAudio</a> ()</td></tr>
-<tr class="memdesc:gad879b8c42a68250a581a7d5347e3b3e0"><td class="mdescLeft">&#160;</td><td class="mdescRight">Start playing audio. <br /></td></tr>
+<tr class="memitem:gad879b8c42a68250a581a7d5347e3b3e0"><td class="memItemLeft" align="right" valign="top"><a class="el" href="final__platform__layer_8hpp.html#aafa1d3d90febf9826c55c1318f98b27d">fpl_api</a> <a class="el" href="group___audio.html#ga341d4051c79a9c91ff98e4d9c1fb932d">AudioResult</a>&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___audio.html#gad879b8c42a68250a581a7d5347e3b3e0">PlayAudio</a> ()</td></tr>
+<tr class="memdesc:gad879b8c42a68250a581a7d5347e3b3e0"><td class="mdescLeft">&#160;</td><td class="mdescRight">Start playing asyncronous audio.  <a href="group___audio.html#gad879b8c42a68250a581a7d5347e3b3e0">More...</a><br /></td></tr>
 <tr class="separator:gad879b8c42a68250a581a7d5347e3b3e0"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:gab74286317a34e70379c2bdcd4756c02e"><td class="memItemLeft" align="right" valign="top">
-<a class="el" href="final__platform__layer_8hpp.html#aafa1d3d90febf9826c55c1318f98b27d">fpl_api</a> void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___audio.html#gab74286317a34e70379c2bdcd4756c02e">SetAudioClientReadCallback</a> (<a class="el" href="group___settings.html#gaa2a5629c37b69482654db63bda6e28a0">AudioClientReadFunction</a> *newCallback, void *userData)</td></tr>
-<tr class="memdesc:gab74286317a34e70379c2bdcd4756c02e"><td class="mdescLeft">&#160;</td><td class="mdescRight">Overwrites the audio client read callback. This has no effect when audio is already playing, you have to call it when audio is in a stopped state. <br /></td></tr>
+<tr class="memitem:gab74286317a34e70379c2bdcd4756c02e"><td class="memItemLeft" align="right" valign="top"><a class="el" href="final__platform__layer_8hpp.html#aafa1d3d90febf9826c55c1318f98b27d">fpl_api</a> void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___audio.html#gab74286317a34e70379c2bdcd4756c02e">SetAudioClientReadCallback</a> (<a class="el" href="group___settings.html#gaa2a5629c37b69482654db63bda6e28a0">AudioClientReadFunction</a> *newCallback, void *userData)</td></tr>
+<tr class="memdesc:gab74286317a34e70379c2bdcd4756c02e"><td class="mdescLeft">&#160;</td><td class="mdescRight">Overwrites the audio client read callback.  <a href="group___audio.html#gab74286317a34e70379c2bdcd4756c02e">More...</a><br /></td></tr>
 <tr class="separator:gab74286317a34e70379c2bdcd4756c02e"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:ga7c7306211763682dc822438ca375933d"><td class="memItemLeft" align="right" valign="top">
-<a class="el" href="final__platform__layer_8hpp.html#aafa1d3d90febf9826c55c1318f98b27d">fpl_api</a> <a class="el" href="group___audio.html#ga341d4051c79a9c91ff98e4d9c1fb932d">AudioResult</a>&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___audio.html#ga7c7306211763682dc822438ca375933d">StopAudio</a> ()</td></tr>
-<tr class="memdesc:ga7c7306211763682dc822438ca375933d"><td class="mdescLeft">&#160;</td><td class="mdescRight">Stop playing audio. <br /></td></tr>
+<tr class="memitem:ga7c7306211763682dc822438ca375933d"><td class="memItemLeft" align="right" valign="top"><a class="el" href="final__platform__layer_8hpp.html#aafa1d3d90febf9826c55c1318f98b27d">fpl_api</a> <a class="el" href="group___audio.html#ga341d4051c79a9c91ff98e4d9c1fb932d">AudioResult</a>&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___audio.html#ga7c7306211763682dc822438ca375933d">StopAudio</a> ()</td></tr>
+<tr class="memdesc:ga7c7306211763682dc822438ca375933d"><td class="mdescLeft">&#160;</td><td class="mdescRight">Stop playing asyncronous audio.  <a href="group___audio.html#ga7c7306211763682dc822438ca375933d">More...</a><br /></td></tr>
 <tr class="separator:ga7c7306211763682dc822438ca375933d"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table>
 <a name="details" id="details"></a><h2 class="groupheader">Detailed Description</h2>

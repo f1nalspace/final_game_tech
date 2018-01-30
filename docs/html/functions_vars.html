@@ -22,7 +22,7 @@
  <tr style="height: 56px;">
   <td id="projectalign" style="padding-left: 0.5em;">
    <div id="projectname">Final Platform Layer
-   &#160;<span id="projectnumber">0.5.6.1</span>
+   &#160;<span id="projectnumber">0.5.7.4</span>
    </div>
   </td>
  </tr>
@@ -125,8 +125,11 @@ $(function() {
 <li>data
 : <a class="el" href="structfpl_1_1threading_1_1_thread_context.html#a45e220e49d9bbd9239f234b6ecd8bfd8">fpl::threading::ThreadContext</a>
 </li>
-<li>desiredFormat
-: <a class="el" href="structfpl_1_1_audio_settings.html#a6eced4e689d091d5c64aa68215ac0541">fpl::AudioSettings</a>
+<li>deviceFormat
+: <a class="el" href="structfpl_1_1_audio_settings.html#a6136141a8b17c4d12d6b48bfd6eeaedd">fpl::AudioSettings</a>
+</li>
+<li>deviceID
+: <a class="el" href="structfpl_1_1_audio_settings.html#a5e0f126be6dee5518b2fe37241bfbb7a">fpl::AudioSettings</a>
 </li>
 <li>deviceIndex
 : <a class="el" href="structfpl_1_1window_1_1_gamepad_event.html#a2099e9363b9ed33032c3477dc9bca554">fpl::window::GamepadEvent</a>
@@ -172,6 +175,7 @@ $(function() {
 <h3><a id="index_h"></a>- h -</h3><ul>
 <li>height
 : <a class="el" href="structfpl_1_1video_1_1_video_back_buffer.html#a69cbcb70ac19416095ee4c292c9ef781">fpl::video::VideoBackBuffer</a>
+, <a class="el" href="structfpl_1_1video_1_1_video_rect.html#a425dd99f7b51ea7dfe7f7d8330643eb8">fpl::video::VideoRect</a>
 , <a class="el" href="structfpl_1_1window_1_1_window_event.html#ab5dfad611a3b242d0b144388f5c0d082">fpl::window::WindowEvent</a>
 , <a class="el" href="structfpl_1_1window_1_1_window_size.html#a5d126b1422ad5313a477b3baf0e6fe3a">fpl::window::WindowSize</a>
 </li>
@@ -186,12 +190,12 @@ $(function() {
 : <a class="el" href="structfpl_1_1_settings.html#ad8c94bcb200e1b0a6f1f4608041008da">fpl::Settings</a>
 </li>
 <li>internalHandle
-: <a class="el" href="structfpl_1_1files_1_1_file_entry.html#ab39fc7377e2823fcd696efab05f7fb87">fpl::files::FileEntry</a>
-, <a class="el" href="structfpl_1_1files_1_1_file_handle.html#a6beaf61cde5848ccfb171876113d0948">fpl::files::FileHandle</a>
-, <a class="el" href="structfpl_1_1library_1_1_dynamic_library_handle.html#aedf7b7503e7496fadceb31b50ee771f4">fpl::library::DynamicLibraryHandle</a>
-, <a class="el" href="structfpl_1_1threading_1_1_thread_context.html#a8c87f867034a2d58f41bd701e03e56a1">fpl::threading::ThreadContext</a>
-, <a class="el" href="structfpl_1_1threading_1_1_thread_mutex.html#a7cbb5e27b9ca39e6834dab1db81d4758">fpl::threading::ThreadMutex</a>
-, <a class="el" href="structfpl_1_1threading_1_1_thread_signal.html#a074498ad9755ae122420485fe3d8d1eb">fpl::threading::ThreadSignal</a>
+: <a class="el" href="structfpl_1_1files_1_1_file_entry.html#a7a708248624796836ec34b176ae21c30">fpl::files::FileEntry</a>
+, <a class="el" href="structfpl_1_1files_1_1_file_handle.html#ad94db6e2229fb93e86c6aa95ff0a6939">fpl::files::FileHandle</a>
+, <a class="el" href="structfpl_1_1library_1_1_dynamic_library_handle.html#a4c21fdb5904558c35a878dcc8427de5d">fpl::library::DynamicLibraryHandle</a>
+, <a class="el" href="structfpl_1_1threading_1_1_thread_context.html#ad421ed9c27131bcd1c8ff11cd7f1e78e">fpl::threading::ThreadContext</a>
+, <a class="el" href="structfpl_1_1threading_1_1_thread_mutex.html#a63cba12e45fd4d24b9046742e9f6f5e5">fpl::threading::ThreadMutex</a>
+, <a class="el" href="structfpl_1_1threading_1_1_thread_signal.html#acd836e91fdc8548601cf84b99cb38aeb">fpl::threading::ThreadSignal</a>
 </li>
 <li>isAutoSize
 : <a class="el" href="structfpl_1_1_video_settings.html#a2c736124a9d77dbb65eeb2f5518fb781">fpl::VideoSettings</a>
@@ -273,6 +277,20 @@ $(function() {
 </li>
 <li>mouseY
 : <a class="el" href="structfpl_1_1window_1_1_mouse_event.html#a5d5ee5899dda9956c45362ec2cf7e0da">fpl::window::MouseEvent</a>
+</li>
+</ul>
+
+
+<h3><a id="index_n"></a>- n -</h3><ul>
+<li>name
+: <a class="el" href="structfpl_1_1_audio_device_i_d.html#ae2966fff70bae406ce632d53da2cceee">fpl::AudioDeviceID</a>
+</li>
+</ul>
+
+
+<h3><a id="index_o"></a>- o -</h3><ul>
+<li>outputRect
+: <a class="el" href="structfpl_1_1video_1_1_video_back_buffer.html#acf6013f927cbee8d051b40fe9baffca6">fpl::video::VideoBackBuffer</a>
 </li>
 </ul>
 
@@ -369,6 +387,9 @@ $(function() {
 <li>usedVirtualSize
 : <a class="el" href="structfpl_1_1hardware_1_1_memory_infos.html#a791252916809e99d984bd0e01e38d655">fpl::hardware::MemoryInfos</a>
 </li>
+<li>useOutputRect
+: <a class="el" href="structfpl_1_1video_1_1_video_back_buffer.html#af824cd42284f9a03cf0895195a74e606">fpl::video::VideoBackBuffer</a>
+</li>
 <li>userData
 : <a class="el" href="structfpl_1_1_audio_settings.html#afa7979c8ffe93ee2612a64ebeb688a5d">fpl::AudioSettings</a>
 </li>
@@ -388,6 +409,7 @@ $(function() {
 </li>
 <li>width
 : <a class="el" href="structfpl_1_1video_1_1_video_back_buffer.html#a2d9169c4ff567a707b5d951824e1db7f">fpl::video::VideoBackBuffer</a>
+, <a class="el" href="structfpl_1_1video_1_1_video_rect.html#af6f08f0f5a3ee9365e066c0144004e0d">fpl::video::VideoRect</a>
 , <a class="el" href="structfpl_1_1window_1_1_window_event.html#afc9891648a45cc2c5a9a0eeb00d3921b">fpl::window::WindowEvent</a>
 , <a class="el" href="structfpl_1_1window_1_1_window_size.html#ab87c655d5b68f0e9966aefcd4c3d8bef">fpl::window::WindowSize</a>
 </li>
@@ -403,6 +425,20 @@ $(function() {
 </li>
 <li>windowWidth
 : <a class="el" href="structfpl_1_1_window_settings.html#a31f86bfc3450f5e82388fffb8c433b37">fpl::WindowSettings</a>
+</li>
+</ul>
+
+
+<h3><a id="index_x"></a>- x -</h3><ul>
+<li>x
+: <a class="el" href="structfpl_1_1video_1_1_video_rect.html#ad3e04c8d7dab06f10a228ac656ab0b84">fpl::video::VideoRect</a>
+</li>
+</ul>
+
+
+<h3><a id="index_y"></a>- y -</h3><ul>
+<li>y
+: <a class="el" href="structfpl_1_1video_1_1_video_rect.html#a47c1e4ad3532e1879af0d953afbff113">fpl::video::VideoRect</a>
 </li>
 </ul>
 </div><!-- contents -->

@@ -40,6 +40,7 @@ var searchData=
   ['audio',['audio',['../structfpl_1_1_settings.html#a396c3076134d4c6650a9f8985d28717c',1,'fpl::Settings::audio()'],['../group___settings.html#ggae483f3743fdfa195f8746c04203ca850ab22f0418e8ac915eb66f829d262d14a2',1,'fpl::Audio()'],['../group___audio.html',1,'(Global Namespace)']]],
   ['audioclientreadfunction',['AudioClientReadFunction',['../group___settings.html#gaa2a5629c37b69482654db63bda6e28a0',1,'fpl']]],
   ['audiodeviceformat',['AudioDeviceFormat',['../structfpl_1_1_audio_device_format.html',1,'fpl']]],
+  ['audiodeviceid',['AudioDeviceID',['../structfpl_1_1_audio_device_i_d.html',1,'fpl']]],
   ['audiodrivertype',['AudioDriverType',['../group___settings.html#ga7846abd72446af7c7e6b1e9bbddea3b4',1,'fpl']]],
   ['audioformattype',['AudioFormatType',['../group___settings.html#ga55b37668317bc18d2c57ccb5653fc9c1',1,'fpl']]],
   ['audioresult',['AudioResult',['../group___audio.html#ga341d4051c79a9c91ff98e4d9c1fb932d',1,'fpl::audio']]],

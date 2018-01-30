@@ -22,7 +22,7 @@
  <tr style="height: 56px;">
   <td id="projectalign" style="padding-left: 0.5em;">
    <div id="projectname">Final Platform Layer
-   &#160;<span id="projectnumber">0.5.6.1</span>
+   &#160;<span id="projectnumber">0.5.7.4</span>
    </div>
   </td>
  </tr>
@@ -73,19 +73,65 @@ $(function() {
 Functions</h2></td></tr>
 <tr class="memitem:ga21d84c13e805a5fc41be6602615bc099"><td class="memItemLeft" align="right" valign="top"><a id="ga21d84c13e805a5fc41be6602615bc099"></a>
 <a class="el" href="final__platform__layer_8hpp.html#aafa1d3d90febf9826c55c1318f98b27d">fpl_api</a> const char *&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___error_handling.html#ga21d84c13e805a5fc41be6602615bc099">fpl::GetPlatformLastError</a> ()</td></tr>
-<tr class="memdesc:ga21d84c13e805a5fc41be6602615bc099"><td class="mdescLeft">&#160;</td><td class="mdescRight">Returns last error string. <br /></td></tr>
+<tr class="memdesc:ga21d84c13e805a5fc41be6602615bc099"><td class="mdescLeft">&#160;</td><td class="mdescRight">Returns last internal error string. <br /></td></tr>
 <tr class="separator:ga21d84c13e805a5fc41be6602615bc099"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:ga3b15675b4e79ee4cd68666e97a690910"><td class="memItemLeft" align="right" valign="top"><a id="ga3b15675b4e79ee4cd68666e97a690910"></a>
-<a class="el" href="final__platform__layer_8hpp.html#aafa1d3d90febf9826c55c1318f98b27d">fpl_api</a> const char *&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___error_handling.html#ga3b15675b4e79ee4cd68666e97a690910">fpl::GetPlatformLastError</a> (const size_t index)</td></tr>
-<tr class="memdesc:ga3b15675b4e79ee4cd68666e97a690910"><td class="mdescLeft">&#160;</td><td class="mdescRight">Returns last error string from the given index. <br /></td></tr>
+<tr class="memitem:ga3b15675b4e79ee4cd68666e97a690910"><td class="memItemLeft" align="right" valign="top"><a class="el" href="final__platform__layer_8hpp.html#aafa1d3d90febf9826c55c1318f98b27d">fpl_api</a> const char *&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___error_handling.html#ga3b15675b4e79ee4cd68666e97a690910">fpl::GetPlatformLastError</a> (const size_t index)</td></tr>
+<tr class="memdesc:ga3b15675b4e79ee4cd68666e97a690910"><td class="mdescLeft">&#160;</td><td class="mdescRight">Returns last error string from the given index.  <a href="group___error_handling.html#ga3b15675b4e79ee4cd68666e97a690910">More...</a><br /></td></tr>
 <tr class="separator:ga3b15675b4e79ee4cd68666e97a690910"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:gac3b46af437dae868f37f36e0d0837655"><td class="memItemLeft" align="right" valign="top"><a id="gac3b46af437dae868f37f36e0d0837655"></a>
-<a class="el" href="final__platform__layer_8hpp.html#aafa1d3d90febf9826c55c1318f98b27d">fpl_api</a> size_t&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___error_handling.html#gac3b46af437dae868f37f36e0d0837655">fpl::GetPlatformLastErrorCount</a> ()</td></tr>
-<tr class="memdesc:gac3b46af437dae868f37f36e0d0837655"><td class="mdescLeft">&#160;</td><td class="mdescRight">Returns number of last errors. <br /></td></tr>
+<tr class="memitem:gac3b46af437dae868f37f36e0d0837655"><td class="memItemLeft" align="right" valign="top"><a class="el" href="final__platform__layer_8hpp.html#aafa1d3d90febf9826c55c1318f98b27d">fpl_api</a> size_t&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___error_handling.html#gac3b46af437dae868f37f36e0d0837655">fpl::GetPlatformLastErrorCount</a> ()</td></tr>
+<tr class="memdesc:gac3b46af437dae868f37f36e0d0837655"><td class="mdescLeft">&#160;</td><td class="mdescRight">Returns the count of total last errors.  <a href="group___error_handling.html#gac3b46af437dae868f37f36e0d0837655">More...</a><br /></td></tr>
 <tr class="separator:gac3b46af437dae868f37f36e0d0837655"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table>
 <a name="details" id="details"></a><h2 class="groupheader">Detailed Description</h2>
 <p>Functions for error handling. </p>
+<h2 class="groupheader">Function Documentation</h2>
+<a id="ga3b15675b4e79ee4cd68666e97a690910"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#ga3b15675b4e79ee4cd68666e97a690910">&#9670;&nbsp;</a></span>GetPlatformLastError()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname"><a class="el" href="final__platform__layer_8hpp.html#aafa1d3d90febf9826c55c1318f98b27d">fpl_api</a> const char* fpl::GetPlatformLastError </td>
+          <td>(</td>
+          <td class="paramtype">const size_t&#160;</td>
+          <td class="paramname"><em>index</em></td><td>)</td>
+          <td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p>Returns last error string from the given index. </p>
+<dl class="params"><dt>Parameters</dt><dd>
+  <table class="params">
+    <tr><td class="paramname">index</td><td>The index </td></tr>
+  </table>
+  </dd>
+</dl>
+<dl class="section return"><dt>Returns</dt><dd>Last error string from the given index or nullptr when there was no error. </dd></dl>
+
+</div>
+</div>
+<a id="gac3b46af437dae868f37f36e0d0837655"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#gac3b46af437dae868f37f36e0d0837655">&#9670;&nbsp;</a></span>GetPlatformLastErrorCount()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname"><a class="el" href="final__platform__layer_8hpp.html#aafa1d3d90febf9826c55c1318f98b27d">fpl_api</a> size_t fpl::GetPlatformLastErrorCount </td>
+          <td>(</td>
+          <td class="paramname"></td><td>)</td>
+          <td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p>Returns the count of total last errors. </p>
+<dl class="section return"><dt>Returns</dt><dd>Number of last errors or zero when there was no error. </dd></dl>
+
+</div>
+</div>
 </div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>

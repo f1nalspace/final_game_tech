@@ -22,7 +22,7 @@
  <tr style="height: 56px;">
   <td id="projectalign" style="padding-left: 0.5em;">
    <div id="projectname">Final Platform Layer
-   &#160;<span id="projectnumber">0.5.6.1</span>
+   &#160;<span id="projectnumber">0.5.7.4</span>
    </div>
   </td>
  </tr>
@@ -78,21 +78,111 @@ Classes</h2></td></tr>
 </table><table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a name="func-members"></a>
 Functions</h2></td></tr>
-<tr class="memitem:ga92e0b63d13ed16c4f9fb065b6962a4b3"><td class="memItemLeft" align="right" valign="top"><a id="ga92e0b63d13ed16c4f9fb065b6962a4b3"></a>
-<a class="el" href="final__platform__layer_8hpp.html#aafa1d3d90febf9826c55c1318f98b27d">fpl_api</a> <a class="el" href="structfpl_1_1library_1_1_dynamic_library_handle.html">DynamicLibraryHandle</a>&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___dynamic_library.html#ga92e0b63d13ed16c4f9fb065b6962a4b3">fpl::library::DynamicLibraryLoad</a> (const char *libraryFilePath)</td></tr>
-<tr class="memdesc:ga92e0b63d13ed16c4f9fb065b6962a4b3"><td class="mdescLeft">&#160;</td><td class="mdescRight">Loads a dynamic library and returns the loaded handle for it. <br /></td></tr>
+<tr class="memitem:ga92e0b63d13ed16c4f9fb065b6962a4b3"><td class="memItemLeft" align="right" valign="top"><a class="el" href="final__platform__layer_8hpp.html#aafa1d3d90febf9826c55c1318f98b27d">fpl_api</a> <a class="el" href="structfpl_1_1library_1_1_dynamic_library_handle.html">DynamicLibraryHandle</a>&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___dynamic_library.html#ga92e0b63d13ed16c4f9fb065b6962a4b3">fpl::library::DynamicLibraryLoad</a> (const char *libraryFilePath)</td></tr>
+<tr class="memdesc:ga92e0b63d13ed16c4f9fb065b6962a4b3"><td class="mdescLeft">&#160;</td><td class="mdescRight">Loads a dynamic library and returns the loaded handle for it.  <a href="group___dynamic_library.html#ga92e0b63d13ed16c4f9fb065b6962a4b3">More...</a><br /></td></tr>
 <tr class="separator:ga92e0b63d13ed16c4f9fb065b6962a4b3"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:ga1bcd31bbe30503b4021bc86327c1605f"><td class="memItemLeft" align="right" valign="top"><a id="ga1bcd31bbe30503b4021bc86327c1605f"></a>
-<a class="el" href="final__platform__layer_8hpp.html#aafa1d3d90febf9826c55c1318f98b27d">fpl_api</a> void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___dynamic_library.html#ga1bcd31bbe30503b4021bc86327c1605f">fpl::library::DynamicLibraryUnload</a> (<a class="el" href="structfpl_1_1library_1_1_dynamic_library_handle.html">DynamicLibraryHandle</a> &amp;handle)</td></tr>
-<tr class="memdesc:ga1bcd31bbe30503b4021bc86327c1605f"><td class="mdescLeft">&#160;</td><td class="mdescRight">Releases the loaded library and resets the handle to zero. <br /></td></tr>
+<tr class="memitem:ga1bcd31bbe30503b4021bc86327c1605f"><td class="memItemLeft" align="right" valign="top"><a class="el" href="final__platform__layer_8hpp.html#aafa1d3d90febf9826c55c1318f98b27d">fpl_api</a> void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___dynamic_library.html#ga1bcd31bbe30503b4021bc86327c1605f">fpl::library::DynamicLibraryUnload</a> (<a class="el" href="structfpl_1_1library_1_1_dynamic_library_handle.html">DynamicLibraryHandle</a> &amp;handle)</td></tr>
+<tr class="memdesc:ga1bcd31bbe30503b4021bc86327c1605f"><td class="mdescLeft">&#160;</td><td class="mdescRight">Unloads the loaded library and resets the handle to zero.  <a href="group___dynamic_library.html#ga1bcd31bbe30503b4021bc86327c1605f">More...</a><br /></td></tr>
 <tr class="separator:ga1bcd31bbe30503b4021bc86327c1605f"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:ga12045d7ac370414026e73bd5cbb2a1b1"><td class="memItemLeft" align="right" valign="top"><a id="ga12045d7ac370414026e73bd5cbb2a1b1"></a>
-<a class="el" href="final__platform__layer_8hpp.html#aafa1d3d90febf9826c55c1318f98b27d">fpl_api</a> void *&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___dynamic_library.html#ga12045d7ac370414026e73bd5cbb2a1b1">fpl::library::GetDynamicLibraryProc</a> (const <a class="el" href="structfpl_1_1library_1_1_dynamic_library_handle.html">DynamicLibraryHandle</a> &amp;handle, const char *name)</td></tr>
-<tr class="memdesc:ga12045d7ac370414026e73bd5cbb2a1b1"><td class="mdescLeft">&#160;</td><td class="mdescRight">Returns the dynamic library procedure address for the given procedure name. <br /></td></tr>
+<tr class="memitem:ga12045d7ac370414026e73bd5cbb2a1b1"><td class="memItemLeft" align="right" valign="top"><a class="el" href="final__platform__layer_8hpp.html#aafa1d3d90febf9826c55c1318f98b27d">fpl_api</a> void *&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___dynamic_library.html#ga12045d7ac370414026e73bd5cbb2a1b1">fpl::library::GetDynamicLibraryProc</a> (const <a class="el" href="structfpl_1_1library_1_1_dynamic_library_handle.html">DynamicLibraryHandle</a> &amp;handle, const char *name)</td></tr>
+<tr class="memdesc:ga12045d7ac370414026e73bd5cbb2a1b1"><td class="mdescLeft">&#160;</td><td class="mdescRight">Returns the dynamic library procedure address for the given procedure name.  <a href="group___dynamic_library.html#ga12045d7ac370414026e73bd5cbb2a1b1">More...</a><br /></td></tr>
 <tr class="separator:ga12045d7ac370414026e73bd5cbb2a1b1"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table>
 <a name="details" id="details"></a><h2 class="groupheader">Detailed Description</h2>
 <p>Loading dynamic libraries and retrieving the procedure addresses. </p>
+<h2 class="groupheader">Function Documentation</h2>
+<a id="ga92e0b63d13ed16c4f9fb065b6962a4b3"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#ga92e0b63d13ed16c4f9fb065b6962a4b3">&#9670;&nbsp;</a></span>DynamicLibraryLoad()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname"><a class="el" href="final__platform__layer_8hpp.html#aafa1d3d90febf9826c55c1318f98b27d">fpl_api</a> <a class="el" href="structfpl_1_1library_1_1_dynamic_library_handle.html">DynamicLibraryHandle</a> fpl::library::DynamicLibraryLoad </td>
+          <td>(</td>
+          <td class="paramtype">const char *&#160;</td>
+          <td class="paramname"><em>libraryFilePath</em></td><td>)</td>
+          <td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p>Loads a dynamic library and returns the loaded handle for it. </p>
+<dl class="params"><dt>Parameters</dt><dd>
+  <table class="params">
+    <tr><td class="paramname">libraryFilePath</td><td>The path to the library with included file extension (.dll / .so) </td></tr>
+  </table>
+  </dd>
+</dl>
+<dl class="section note"><dt>Note</dt><dd>To check for success, just check the <a class="el" href="structfpl_1_1library_1_1_dynamic_library_handle.html#ac7c12c02a587d3e4969fdd1100faa4c5" title="Library opened successfully. ">DynamicLibraryHandle.isValid</a> field from the result. </dd></dl>
+<dl class="section return"><dt>Returns</dt><dd>Handle container of the loaded library. </dd></dl>
+
+</div>
+</div>
+<a id="ga1bcd31bbe30503b4021bc86327c1605f"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#ga1bcd31bbe30503b4021bc86327c1605f">&#9670;&nbsp;</a></span>DynamicLibraryUnload()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname"><a class="el" href="final__platform__layer_8hpp.html#aafa1d3d90febf9826c55c1318f98b27d">fpl_api</a> void fpl::library::DynamicLibraryUnload </td>
+          <td>(</td>
+          <td class="paramtype"><a class="el" href="structfpl_1_1library_1_1_dynamic_library_handle.html">DynamicLibraryHandle</a> &amp;&#160;</td>
+          <td class="paramname"><em>handle</em></td><td>)</td>
+          <td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p>Unloads the loaded library and resets the handle to zero. </p>
+<dl class="params"><dt>Parameters</dt><dd>
+  <table class="params">
+    <tr><td class="paramname">handle</td><td>Loaded dynamic library handle </td></tr>
+  </table>
+  </dd>
+</dl>
+
+</div>
+</div>
+<a id="ga12045d7ac370414026e73bd5cbb2a1b1"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#ga12045d7ac370414026e73bd5cbb2a1b1">&#9670;&nbsp;</a></span>GetDynamicLibraryProc()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname"><a class="el" href="final__platform__layer_8hpp.html#aafa1d3d90febf9826c55c1318f98b27d">fpl_api</a> void* fpl::library::GetDynamicLibraryProc </td>
+          <td>(</td>
+          <td class="paramtype">const <a class="el" href="structfpl_1_1library_1_1_dynamic_library_handle.html">DynamicLibraryHandle</a> &amp;&#160;</td>
+          <td class="paramname"><em>handle</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">const char *&#160;</td>
+          <td class="paramname"><em>name</em>&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p>Returns the dynamic library procedure address for the given procedure name. </p>
+<dl class="params"><dt>Parameters</dt><dd>
+  <table class="params">
+    <tr><td class="paramname">handle</td><td>Handle to the loaded library </td></tr>
+    <tr><td class="paramname">name</td><td>Name of the procedure </td></tr>
+  </table>
+  </dd>
+</dl>
+<dl class="section return"><dt>Returns</dt><dd>Procedure address for the given procedure name or nullptr when procedure not found or library is not loaded. </dd></dl>
+
+</div>
+</div>
 </div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>

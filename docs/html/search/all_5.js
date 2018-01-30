@@ -14,6 +14,7 @@ var searchData=
   ['filepositionmode',['FilePositionMode',['../group___files.html#ga4203b4bd92c5589a4c445aa01b90add9',1,'fpl::files']]],
   ['files',['files',['../namespacefpl_1_1files.html',1,'fpl::files'],['../group___files.html',1,'(Global Namespace)']]],
   ['final_5fplatform_5flayer_2ehpp',['final_platform_layer.hpp',['../final__platform__layer_8hpp.html',1,'']]],
+  ['formatansistring',['FormatAnsiString',['../group___strings.html#ga20e9cf2119f739e6daed2e46863fcdc0',1,'fpl::strings']]],
   ['forward',['Forward',['../group___settings.html#ggab3552d007c8e23a65e4ac0366758c18da67d2f6740a8eaebf4d5c6f79be8da481',1,'fpl']]],
   ['fpl',['fpl',['../namespacefpl.html',1,'']]],
   ['fpl_5fapi',['fpl_api',['../final__platform__layer_8hpp.html#aafa1d3d90febf9826c55c1318f98b27d',1,'final_platform_layer.hpp']]],

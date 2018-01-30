@@ -1,6 +1,7 @@
 var searchData=
 [
   ['getansistringlength',['GetAnsiStringLength',['../group___strings.html#ga388ca55dd073575074821c146a585e2d',1,'fpl::strings']]],
+  ['getaudiodevices',['GetAudioDevices',['../group___audio.html#gade581873cbbeadf29f7335818345e673',1,'fpl::audio']]],
   ['getaudiohardwareformat',['GetAudioHardwareFormat',['../group___audio.html#ga0b9d3595b9898f3d47e2a87e6d497c76',1,'fpl::audio']]],
   ['getclipboardansitext',['GetClipboardAnsiText',['../group___window_clipboard.html#ga9ad3697817a0dfdbc2527e4087413c8d',1,'fpl::window']]],
   ['getclipboardwidetext',['GetClipboardWideText',['../group___window_clipboard.html#ga0101008cbd7d81f06a31d76fa0c81840',1,'fpl::window']]],
@@ -17,6 +18,7 @@ var searchData=
   ['getprocessorname',['GetProcessorName',['../group___hardware.html#ga9bc84d10830c46188cb9794459051b11',1,'fpl::hardware']]],
   ['getsystemmemoryinfos',['GetSystemMemoryInfos',['../group___hardware.html#ga33106a99013de22d2b50a43c812aa760',1,'fpl::hardware']]],
   ['getvideobackbuffer',['GetVideoBackBuffer',['../group___video.html#ga66afa77e909dab32517268006e8da8da',1,'fpl::video']]],
+  ['getvideodriver',['GetVideoDriver',['../group___video.html#ga6d0b5252d53a1ec625213070273347c5',1,'fpl::video']]],
   ['getwidestringlength',['GetWideStringLength',['../group___strings.html#ga2f5f224289b7bf9d19bb5684cd19fac1',1,'fpl::strings']]],
   ['getwindowarea',['GetWindowArea',['../group___window_base.html#ga373b828e140954c44c3415f98f9e7e63',1,'fpl::window']]],
   ['getwindowposition',['GetWindowPosition',['../group___window_base.html#ga802a660426beab88fcf3835aa0491a8b',1,'fpl::window']]]

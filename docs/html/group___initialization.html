@@ -22,7 +22,7 @@
  <tr style="height: 56px;">
   <td id="projectalign" style="padding-left: 0.5em;">
    <div id="projectname">Final Platform Layer
-   &#160;<span id="projectnumber">0.5.6.1</span>
+   &#160;<span id="projectnumber">0.5.7.4</span>
    </div>
   </td>
  </tr>
@@ -71,17 +71,75 @@ $(function() {
 <table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a name="func-members"></a>
 Functions</h2></td></tr>
-<tr class="memitem:ga92579bdb920c4ace57a038d7807d3b56"><td class="memItemLeft" align="right" valign="top"><a id="ga92579bdb920c4ace57a038d7807d3b56"></a>
-<a class="el" href="final__platform__layer_8hpp.html#aafa1d3d90febf9826c55c1318f98b27d">fpl_api</a> bool&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___initialization.html#ga92579bdb920c4ace57a038d7807d3b56">fpl::InitPlatform</a> (const <a class="el" href="group___settings.html#gae483f3743fdfa195f8746c04203ca850">InitFlags</a> initFlags, const <a class="el" href="structfpl_1_1_settings.html">Settings</a> &amp;initSettings=<a class="el" href="group___settings.html#ga61ea8dd870556f6a7c3b805050acce22">DefaultSettings</a>())</td></tr>
-<tr class="memdesc:ga92579bdb920c4ace57a038d7807d3b56"><td class="mdescLeft">&#160;</td><td class="mdescRight">Initialize the platform layer. <br /></td></tr>
-<tr class="separator:ga92579bdb920c4ace57a038d7807d3b56"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:ga6687b3ab1ce1d54f30785baf70566ed5"><td class="memItemLeft" align="right" valign="top"><a id="ga6687b3ab1ce1d54f30785baf70566ed5"></a>
-<a class="el" href="final__platform__layer_8hpp.html#aafa1d3d90febf9826c55c1318f98b27d">fpl_api</a> void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___initialization.html#ga6687b3ab1ce1d54f30785baf70566ed5">fpl::ReleasePlatform</a> ()</td></tr>
-<tr class="memdesc:ga6687b3ab1ce1d54f30785baf70566ed5"><td class="mdescLeft">&#160;</td><td class="mdescRight">Releases the platform layer and resets all structures to zero. <br /></td></tr>
+<tr class="memitem:ga89a2c7056b728c8b49b8767bb8227e21"><td class="memItemLeft" align="right" valign="top"><a class="el" href="final__platform__layer_8hpp.html#aafa1d3d90febf9826c55c1318f98b27d">fpl_api</a> bool&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___initialization.html#ga89a2c7056b728c8b49b8767bb8227e21">fpl::InitPlatform</a> (const <a class="el" href="group___settings.html#gae483f3743fdfa195f8746c04203ca850">InitFlags</a> initFlags=<a class="el" href="group___settings.html#ggae483f3743fdfa195f8746c04203ca850ab1c94ca2fbc3e78fc30069c8d0f01680">InitFlags::All</a>, const <a class="el" href="structfpl_1_1_settings.html">Settings</a> &amp;initSettings=<a class="el" href="group___settings.html#ga61ea8dd870556f6a7c3b805050acce22">DefaultSettings</a>())</td></tr>
+<tr class="memdesc:ga89a2c7056b728c8b49b8767bb8227e21"><td class="mdescLeft">&#160;</td><td class="mdescRight">Initializes the platform layer.  <a href="group___initialization.html#ga89a2c7056b728c8b49b8767bb8227e21">More...</a><br /></td></tr>
+<tr class="separator:ga89a2c7056b728c8b49b8767bb8227e21"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:ga6687b3ab1ce1d54f30785baf70566ed5"><td class="memItemLeft" align="right" valign="top"><a class="el" href="final__platform__layer_8hpp.html#aafa1d3d90febf9826c55c1318f98b27d">fpl_api</a> void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___initialization.html#ga6687b3ab1ce1d54f30785baf70566ed5">fpl::ReleasePlatform</a> ()</td></tr>
+<tr class="memdesc:ga6687b3ab1ce1d54f30785baf70566ed5"><td class="mdescLeft">&#160;</td><td class="mdescRight">Releases the resources allocated by the platform layer.  <a href="group___initialization.html#ga6687b3ab1ce1d54f30785baf70566ed5">More...</a><br /></td></tr>
 <tr class="separator:ga6687b3ab1ce1d54f30785baf70566ed5"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table>
 <a name="details" id="details"></a><h2 class="groupheader">Detailed Description</h2>
 <p>Initialization and release functions. </p>
+<h2 class="groupheader">Function Documentation</h2>
+<a id="ga89a2c7056b728c8b49b8767bb8227e21"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#ga89a2c7056b728c8b49b8767bb8227e21">&#9670;&nbsp;</a></span>InitPlatform()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname"><a class="el" href="final__platform__layer_8hpp.html#aafa1d3d90febf9826c55c1318f98b27d">fpl_api</a> bool fpl::InitPlatform </td>
+          <td>(</td>
+          <td class="paramtype">const <a class="el" href="group___settings.html#gae483f3743fdfa195f8746c04203ca850">InitFlags</a>&#160;</td>
+          <td class="paramname"><em>initFlags</em> = <code><a class="el" href="group___settings.html#ggae483f3743fdfa195f8746c04203ca850ab1c94ca2fbc3e78fc30069c8d0f01680">InitFlags::All</a></code>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">const <a class="el" href="structfpl_1_1_settings.html">Settings</a> &amp;&#160;</td>
+          <td class="paramname"><em>initSettings</em> = <code><a class="el" href="group___settings.html#ga61ea8dd870556f6a7c3b805050acce22">DefaultSettings</a>()</code>&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p>Initializes the platform layer. </p>
+<dl class="params"><dt>Parameters</dt><dd>
+  <table class="params">
+    <tr><td class="paramname">initFlags</td><td>Optional init flags used for enable certain features, like video/audio etc. (Default: <a class="el" href="group___settings.html#ggae483f3743fdfa195f8746c04203ca850ab1c94ca2fbc3e78fc30069c8d0f01680">InitFlags::All</a>) </td></tr>
+    <tr><td class="paramname">initSettings</td><td>Optional initialization settings which can be passed to control the platform layer behavior or systems. (Default: <a class="el" href="group___settings.html">Settings and configurations</a> provided by <a class="el" href="group___settings.html#ga61ea8dd870556f6a7c3b805050acce22">DefaultSettings()</a>) </td></tr>
+  </table>
+  </dd>
+</dl>
+<dl class="section note"><dt>Note</dt><dd><a class="el" href="group___initialization.html#ga6687b3ab1ce1d54f30785baf70566ed5">ReleasePlatform()</a> must be called when you are done! After <a class="el" href="group___initialization.html#ga6687b3ab1ce1d54f30785baf70566ed5">ReleasePlatform()</a> has been called you can call this function again if needed. </dd></dl>
+<dl class="section return"><dt>Returns</dt><dd>Returns true when the initialzation was successful, otherwise false. Will return false when the platform layers is already initialized successfully. </dd></dl>
+
+</div>
+</div>
+<a id="ga6687b3ab1ce1d54f30785baf70566ed5"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#ga6687b3ab1ce1d54f30785baf70566ed5">&#9670;&nbsp;</a></span>ReleasePlatform()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname"><a class="el" href="final__platform__layer_8hpp.html#aafa1d3d90febf9826c55c1318f98b27d">fpl_api</a> void fpl::ReleasePlatform </td>
+          <td>(</td>
+          <td class="paramname"></td><td>)</td>
+          <td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p>Releases the resources allocated by the platform layer. </p>
+<dl class="section note"><dt>Note</dt><dd>Can only be called when <a class="el" href="group___initialization.html#ga89a2c7056b728c8b49b8767bb8227e21">InitPlatform()</a> was successful. </dd></dl>
+
+</div>
+</div>
 </div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
