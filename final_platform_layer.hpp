@@ -7466,7 +7466,9 @@ int WINAPI WinMain(HINSTANCE appInstance, HINSTANCE prevInstance, LPSTR cmdLine,
 //
 // ****************************************************************************
 #if defined(FPL_PLATFORM_POSIX)
-
+#include <sys/mman.h> // mmap, munmap
+#include <sys/stat.h> // open, close, read, write
+#include <sys/types.h> // data types
 #include <time.h> // clock_gettime, nanosleep
 #include <dlfcn.h> // dlopen, dlclose
 
@@ -7609,7 +7611,7 @@ namespace fpl {
 #	endif
 	}
 
-	// ṔOSIX Timings
+	// POSIX Timings
 	namespace timings {
 		fpl_api double GetHighResolutionTimeInSeconds() {
             // @TODO(final): Do we need to take the performance frequency into account?
@@ -7620,7 +7622,7 @@ namespace fpl {
 		}
 	}
 
-	// ṔOSIX Threading
+	// POSIX Threading
 	namespace threading {
 		fpl_api void ThreadSleep(const uint32_t milliseconds) {
 			uint32_t ms;
@@ -7672,7 +7674,7 @@ namespace fpl {
 	}
 
 
-	// ṔOSIX Console
+	// POSIX Console
 	namespace console {
 		fpl_api void ConsoleOut(const char *text) {
 			if (text != nullptr) {
@@ -7702,25 +7704,7 @@ namespace fpl {
 		}
 	}
 
-}
-
-#endif // FPL_PLATFORM_POSIX
-
-// ****************************************************************************
-//
-// Linux Platform
-//
-// ****************************************************************************
-#if defined(FPL_PLATFORM_LINUX)
-#	include <sys/mman.h> // mmap, munmap
-#   include <unistd.h> // sysconf
-#   include <stdio.h> // fopen
-#   include <stdlib.h> // free
-#   include <string.h> // strtok, strchr, strstr
-#   include <ctype.h> // isspace
-
-namespace fpl {
-	// Linux Memory
+	// POSIX Memory
 	namespace memory {
 		fpl_api void *MemoryAllocate(const size_t size) {
 			// @NOTE(final): MAP_ANONYMOUS ensures that the memory is cleared to zero.
@@ -7745,6 +7729,20 @@ namespace fpl {
 		}
 	}
 
+}
+
+#endif // FPL_PLATFORM_POSIX
+
+// ****************************************************************************
+//
+// Linux Platform
+//
+// ****************************************************************************
+#if defined(FPL_PLATFORM_LINUX)
+#   include <unistd.h> // sysconf
+#   include <ctype.h> // isspace
+
+namespace fpl {
 	fpl_api bool InitPlatform(const InitFlags initFlags, const Settings &initSettings) {
 		return true;
 	}
@@ -7769,8 +7767,8 @@ namespace fpl {
                 return nullptr;
             }
             char *result = nullptr;
-            FILE *cpuinfo = fopen("/proc/cpuinfo", "rb");
-            if (cpuinfo != nullptr) {
+            int fileHandle = open("/proc/cpuinfo", O_RDONLY);
+            if (fileHandle != -1) {
                 char buffer[256];
                 char line[256];
                 const size_t maxBufferSize = FPL_ARRAYCOUNT(buffer);
@@ -7778,7 +7776,7 @@ namespace fpl {
                 int32_t readSize = maxBufferSize;
                 int32_t readPos = 0;
                 bool found = false;
-                while ((read = fread(&buffer[readPos], 1, readSize, cpuinfo)) > 0) {                 
+                while ((read = read(fileHandle, &buffer[readPos], readSize)) > 0) {                 
                     char *lastP = &buffer[0];
                     char *p = &buffer[0];
                     while (*p) {
@@ -7830,7 +7828,7 @@ namespace fpl {
                         result = destBuffer;
                     }
                 }
-                fclose(cpuinfo);
+                close(fileHandle);
             }
             return(result);
         }
