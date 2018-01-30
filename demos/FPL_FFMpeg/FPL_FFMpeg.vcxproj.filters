@@ -8,6 +8,7 @@
     <ClInclude Include="maths.h" />
     <ClInclude Include="shaders.h" />
     <ClInclude Include="defines.h" />
+    <ClInclude Include="ffmpeg.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="fpl_ffmpeg.cpp" />
