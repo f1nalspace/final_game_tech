@@ -27,6 +27,18 @@ int main(int argc, char **) {
 		fpl::console::ConsoleOut("Free memory of 1024\n");
 		fpl::memory::MemoryFree(mem1024);
 	}
+	
+	// Hardware test
+	{
+        uint32_t cpuCount = fpl::hardware::GetProcessorCoreCount();
+		fpl::console::ConsoleFormatOut("CPU core Count: %llu\n", cpuCount);
+        assert(cpuCount > 0);
+        
+        char cpuNameBuffer[2048];
+        char *cpuName = fpl::hardware::GetProcessorName(cpuNameBuffer, FPL_ARRAYCOUNT(cpuNameBuffer));
+        assert(fpl::strings::GetAnsiStringLength(cpuName) > 0);
+		fpl::console::ConsoleFormatOut("CPU name: %s\n", cpuName);
+    }
 
 	// Atomics test
 	{
