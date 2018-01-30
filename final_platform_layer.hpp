@@ -1159,6 +1159,10 @@ SOFTWARE.
 #	include <windows.h>		// Win32 api, its unfortunate we have to include this in the header as well, but there are structures
 #endif
 
+#if defined(FPL_PLATFORM_POSIX)
+#   include <stdio.h> // FILE, fopen, fclose, fread, fwrite
+#endif
+
 // ****************************************************************************
 //
 // API Declaration
@@ -2315,6 +2319,9 @@ namespace fpl {
 #			if defined(FPL_PLATFORM_WIN32)
 				HANDLE win32Handle;
 #			endif
+#			if defined(FPL_PLATFORM_POSIX)
+				FILE *posixHandle;
+#			endif
 			} internalHandle;
 			//! File opened successfully
 			bool isValid;
@@ -2373,6 +2380,9 @@ namespace fpl {
 			union {
 #			if defined(FPL_PLATFORM_WIN32)
 				HANDLE win32Handle;
+#			endif
+#			if defined(FPL_PLATFORM_POSIX)
+				void *posixHandle;
 #			endif
 			} internalHandle;
 		};
@@ -7467,13 +7477,17 @@ int WINAPI WinMain(HINSTANCE appInstance, HINSTANCE prevInstance, LPSTR cmdLine,
 // ****************************************************************************
 #if defined(FPL_PLATFORM_POSIX)
 #include <sys/mman.h> // mmap, munmap
-#include <sys/stat.h> // open, close, read, write
 #include <sys/types.h> // data types
+#include <sys/stat.h> // mkdir
+#include <stdlib.h> // wcstombs, mbstowcs
 #include <time.h> // clock_gettime, nanosleep
+#include <stdio.h> // fopen, fclose, fread, fwrite
 #include <dlfcn.h> // dlopen, dlclose
 
 namespace fpl {
+    //
 	// POSIX Atomics
+    //
 	namespace atomics {
 #	if defined(FPL_COMPILER_GCC)
 		// @NOTE(final): See: https://gcc.gnu.org/onlinedocs/gcc/_005f_005fsync-Builtins.html#g_t_005f_005fsync-Builtins
@@ -7611,7 +7625,9 @@ namespace fpl {
 #	endif
 	}
 
+	//
 	// POSIX Timings
+	//
 	namespace timings {
 		fpl_api double GetHighResolutionTimeInSeconds() {
             // @TODO(final): Do we need to take the performance frequency into account?
@@ -7622,7 +7638,9 @@ namespace fpl {
 		}
 	}
 
+	//
 	// POSIX Threading
+	//
 	namespace threading {
 		fpl_api void ThreadSleep(const uint32_t milliseconds) {
 			uint32_t ms;
@@ -7641,7 +7659,9 @@ namespace fpl {
 		}
 	}
 
+	//
 	// POSIX Library
+	//
 	namespace library {
 		fpl_api DynamicLibraryHandle DynamicLibraryLoad(const char *libraryFilePath) {
 			DynamicLibraryHandle result = {};
@@ -7674,7 +7694,9 @@ namespace fpl {
 	}
 
 
+	//
 	// POSIX Console
+	//
 	namespace console {
 		fpl_api void ConsoleOut(const char *text) {
 			if (text != nullptr) {
@@ -7704,7 +7726,9 @@ namespace fpl {
 		}
 	}
 
+	//
 	// POSIX Memory
+	//
 	namespace memory {
 		fpl_api void *MemoryAllocate(const size_t size) {
 			// @NOTE(final): MAP_ANONYMOUS ensures that the memory is cleared to zero.
@@ -7728,6 +7752,340 @@ namespace fpl {
 			munmap(basePtr, storedSize);
 		}
 	}
+	
+	//
+	// POSIX Strings
+	//
+	namespace strings {
+		fpl_api char *WideStringToAnsiString(const wchar_t *wideSource, const uint32_t maxWideSourceLen, char *ansiDest, const uint32_t maxAnsiDestLen) {
+			if (wideSource == nullptr) {
+				common::PushError("Wide source parameter are not allowed to be null");
+				return nullptr;
+			}
+			if (ansiDest == nullptr) {
+				common::PushError("Ansi dest parameter are not allowed to be null");
+				return nullptr;
+			}
+			uint32_t requiredLen = wcstombs(nullptr, wideSource, maxWideSourceLen);
+			if (maxAnsiDestLen < (requiredLen + 1)) {
+				common::PushError("Max ansi dest len parameter '%d' must be greater or equal than ''", maxAnsiDestLen, (requiredLen + 1));
+				return nullptr;
+			}
+			wcstombs(ansiDest, wideSource, maxWideSourceLen);
+			ansiDest[requiredLen] = 0;
+			return(ansiDest);
+		}
+		fpl_api char *WideStringToUTF8String(const wchar_t *wideSource, const uint32_t maxWideSourceLen, char *utf8Dest, const uint32_t maxUtf8DestLen) {
+			if (wideSource == nullptr) {
+				common::PushError("Wide source parameter are not allowed to be null");
+				return nullptr;
+			}
+			if (utf8Dest == nullptr) {
+				common::PushError("UTF8 dest parameter are not allowed to be null");
+				return nullptr;
+			}
+			// @TODO(final): UTF-8!
+			uint32_t requiredLen = wcstombs(nullptr, wideSource, maxWideSourceLen);
+			if (maxUtf8DestLen < (requiredLen + 1)) {
+				common::PushError("Max utf8 dest len parameter '%d' must be greater or equal than ''", maxUtf8DestLen, (requiredLen + 1));
+				return nullptr;
+			}
+			wcstombs(utf8Dest, wideSource, maxWideSourceLen);
+			utf8Dest[requiredLen] = 0;
+			return(utf8Dest);
+		}
+		fpl_api wchar_t *AnsiStringToWideString(const char *ansiSource, const uint32_t ansiSourceLen, wchar_t *wideDest, const uint32_t maxWideDestLen) {
+			if (ansiSource == nullptr) {
+				common::PushError("Ansi source parameter are not allowed to be null");
+				return nullptr;
+			}
+			if (wideDest == nullptr) {
+				common::PushError("Wide dest parameter are not allowed to be null");
+				return nullptr;
+			}
+			uint32_t requiredLen = mbstowcs(nullptr, ansiSource, ansiSourceLen);
+			if (maxWideDestLen < (requiredLen + 1)) {
+				common::PushError("Max wide dest len parameter '%d' must be greater or equal than '%d'", maxWideDestLen, (requiredLen + 1));
+				return nullptr;
+			}
+			mbstowcs(wideDest, ansiSource, ansiSourceLen);
+			wideDest[requiredLen] = 0;
+			return(wideDest);
+		}
+		fpl_api wchar_t *UTF8StringToWideString(const char *utf8Source, const uint32_t utf8SourceLen, wchar_t *wideDest, const uint32_t maxWideDestLen) {
+			if (utf8Source == nullptr) {
+				common::PushError("UTF8 source parameter are not allowed to be null");
+				return nullptr;
+			}
+			if (wideDest == nullptr) {
+				common::PushError("Wide dest parameter are not allowed to be null");
+				return nullptr;
+			}
+			// @TODO(final): UTF-8!
+			uint32_t requiredLen = mbstowcs(nullptr, utf8Source, utf8SourceLen);
+			if (maxWideDestLen < (requiredLen + 1)) {
+				common::PushError("Max wide dest len parameter '%d' must be greater or equal than '%d'", maxWideDestLen, (requiredLen + 1));
+				return nullptr;
+			}
+			mbstowcs(wideDest, utf8Source, utf8SourceLen);
+			wideDest[requiredLen] = 0;
+			return(wideDest);
+		}
+		fpl_api char *FormatAnsiString(char *ansiDestBuffer, const uint32_t maxAnsiDestBufferLen, const char *format, ...) {
+			if (ansiDestBuffer == nullptr) {
+				common::PushError("Ansi dest buffer parameter are not allowed to be null");
+				return nullptr;
+			}
+			if (maxAnsiDestBufferLen == 0) {
+				common::PushError("Max ansi dest len parameter must be greater that zero");
+				return nullptr;
+			}
+			if (format == nullptr) {
+				common::PushError("Format parameter are not allowed to be null");
+				return nullptr;
+			}
+			va_list argList;
+			va_start(argList, format);
+			// @NOTE(final): Need to clear the first character, otherwise vsnprintf() does weird things... O_o
+			ansiDestBuffer[0] = 0;
+			int charCount = vsnprintf(ansiDestBuffer, maxAnsiDestBufferLen, format, argList);
+			if (charCount < 0) {
+				common::PushError("Format parameter are '%s' are invalid!", format);
+				return nullptr;
+			}
+			if ((int)maxAnsiDestBufferLen < (charCount + 1)) {
+				common::PushError("Max ansi dest len parameter '%d' must be greater or equal than '%d'", maxAnsiDestBufferLen, (charCount + 1));
+				return nullptr;
+			}
+			va_end(argList);
+			FPL_ASSERT(charCount > 0);
+			ansiDestBuffer[charCount] = 0;
+			char *result = ansiDestBuffer;
+			return(result);
+		}
+    }
+	
+    //
+	// POSIX Files
+	//
+	namespace files {
+		fpl_api FileHandle OpenBinaryFile(const char *filePath) {
+			FileHandle result = {};
+			if (filePath != nullptr) {
+				FILE *posixFileHandle = fopen(filePath, "rb");
+				if (posixFileHandle != nullptr) {
+					result.isValid = true;
+					result.internalHandle.posixHandle = posixFileHandle;
+				}
+			}
+			return(result);
+		}
+		fpl_api FileHandle OpenBinaryFile(const wchar_t *filePath) {
+			FileHandle result = {};
+			if (filePath != nullptr) {
+                char utf8FilePath[1024] = {};
+                strings::WideStringToAnsiString(filePath, strings::GetWideStringLength(filePath), utf8FilePath, FPL_ARRAYCOUNT(utf8FilePath));
+                result = OpenBinaryFile(utf8FilePath);
+			}
+			return(result);
+		}
+
+		fpl_api FileHandle CreateBinaryFile(const char *filePath) {
+			FileHandle result = {};
+			if (filePath != nullptr) {
+				FILE *posixFileHandle = fopen(filePath, "wb");
+				if (posixFileHandle != nullptr) {
+					result.isValid = true;
+					result.internalHandle.posixHandle = posixFileHandle;
+				}
+			}
+			return(result);
+		}
+		fpl_api FileHandle CreateBinaryFile(const wchar_t *filePath) {
+			FileHandle result = {};
+			if (filePath != nullptr) {
+                char utf8FilePath[1024] = {};
+                strings::WideStringToAnsiString(filePath, strings::GetWideStringLength(filePath), utf8FilePath, FPL_ARRAYCOUNT(utf8FilePath));
+                result = CreateBinaryFile(utf8FilePath);
+			}
+			return(result);
+		}
+
+		fpl_api uint32_t ReadFileBlock32(const FileHandle &fileHandle, const uint32_t sizeToRead, void *targetBuffer, const uint32_t maxTargetBufferSize) {
+			if (sizeToRead == 0) {
+				return 0;
+			}
+			if (targetBuffer == nullptr) {
+				common::PushError("Target buffer parameter are now allowed to be null");
+				return 0;
+			}
+			if (fileHandle.internalHandle.posixHandle == nullptr) {
+				common::PushError("File handle is not opened for reading");
+				return 0;
+			}
+			uint32_t result = 0;
+			FILE *posixFileHandle = fileHandle.internalHandle.posixHandle;
+			size_t bytesRead = fread(targetBuffer, sizeToRead, 1, posixFileHandle);
+			result = (uint32_t)bytesRead;
+			return(result);
+		}
+
+		fpl_api uint32_t WriteFileBlock32(const FileHandle &fileHandle, void *sourceBuffer, const uint32_t sourceSize) {
+			if (sourceSize == 0) {
+				common::PushError("Source size parameter must be greater than zero");
+				return 0;
+			}
+			if (sourceBuffer == nullptr) {
+				common::PushError("Source buffer parameter are now allowed to be null");
+				return 0;
+			}
+			if (fileHandle.internalHandle.posixHandle == nullptr) {
+				common::PushError("File handle is not opened for writing");
+				return 0;
+			}
+			uint32_t result = 0;
+			FILE *posixFileHandle = fileHandle.internalHandle.posixHandle;
+			size_t bytesWritten = fwrite(sourceBuffer, sourceSize, 1, posixFileHandle);
+            result = (uint32_t)bytesWritten;
+			return(result);
+		}
+
+		fpl_api void SetFilePosition32(const FileHandle &fileHandle, const int32_t position, const FilePositionMode mode) {
+			if (fileHandle.internalHandle.posixHandle != nullptr) {
+				FILE *posixFileHandle = fileHandle.internalHandle.posixHandle;
+				int origin = SEEK_SET;
+				if (mode == FilePositionMode::Current) {
+					origin = SEEK_CUR;
+				} else if (mode == FilePositionMode::End) {
+					origin = SEEK_END;
+				}
+				fseek(posixFileHandle, position, origin);
+			}
+		}
+
+		fpl_api uint32_t GetFilePosition32(const FileHandle &fileHandle) {
+			uint32_t result = 0;
+			if (fileHandle.internalHandle.posixHandle != nullptr) {
+				FILE *posixFileHandle = fileHandle.internalHandle.posixHandle;
+				uint32_t result = ftell(posixFileHandle);
+			}
+			return(result);
+		}
+
+		fpl_api void CloseFile(FileHandle &fileHandle) {
+			if (fileHandle.internalHandle.posixHandle != nullptr) {
+				FILE *posixFileHandle = fileHandle.internalHandle.posixHandle;
+				fclose(posixFileHandle);
+				fileHandle = {};
+			}
+		}
+
+		fpl_api uint32_t GetFileSize32(const char *filePath) {
+			uint32_t result = 0;
+			if (filePath != nullptr) {
+				FILE *posixFileHandle = fopen(filePath, "rb");
+				if (posixFileHandle != nullptr) {
+                    fseek (posixFileHandle, 0, SEEK_END);
+					result = ftell(posixFileHandle);
+					fclose(posixFileHandle);
+				}
+			}
+			return(result);
+		}
+
+		fpl_api uint32_t GetFileSize32(const FileHandle &fileHandle) {
+			uint32_t result = 0;
+			if (fileHandle.internalHandle.posixHandle != nullptr) {
+				FILE *posixFileHandle = fileHandle.internalHandle.posixHandle;
+                long int curPos = ftell(posixFileHandle);
+                fseek (posixFileHandle, 0, SEEK_END);
+				result = ftell(posixFileHandle);
+                fseek (posixFileHandle, curPos, SEEK_SET);
+			}
+			return(result);
+		}
+
+		fpl_api bool FileExists(const char *filePath) {
+			bool result = false;
+			if (filePath != nullptr) {
+                // @IMPLEMENT(final): POSIX File Exists
+			}
+			return(result);
+		}
+
+		fpl_api bool FileCopy(const char *sourceFilePath, const char *targetFilePath, const bool overwrite) {
+			if (sourceFilePath == nullptr) {
+				common::PushError("Source file path parameter are not allowed to be null");
+				return false;
+			}
+			if (targetFilePath == nullptr) {
+				common::PushError("Target file path parameter are not allowed to be null");
+				return false;
+			}
+			bool result = false;
+			// @IMPLEMENT(final): POSIX Copy File
+			return(result);
+		}
+
+		fpl_api bool FileDelete(const char *filePath) {
+			if (filePath == nullptr) {
+				common::PushError("File path parameter are not allowed to be null");
+				return false;
+			}
+			bool result = false;
+			// @IMPLEMENT(final): POSIX Delete File
+			return(result);
+		}
+
+		fpl_api bool DirectoryExists(const char *path) {
+			bool result = false;
+			if (path != nullptr) {
+                // @IMPLEMENT(final): POSIX Directory Exists
+			}
+			return(result);
+		}
+
+		fpl_api bool CreateDirectories(const char *path) {
+			if (path == nullptr) {
+				common::PushError("Path parameter are not allowed to be null");
+				return false;
+			}
+			bool result = false;
+            // @IMPLEMENT(final): POSIX Create Directories
+			return(result);
+		}
+		fpl_api bool RemoveEmptyDirectory(const char *path) {
+			if (path == nullptr) {
+				common::PushError("Path parameter are not allowed to be null");
+				return false;
+			}
+            // @IMPLEMENT(final): POSIX Remove Empty Directory
+			bool result = false;
+			return(result);
+		}
+		fpl_api bool ListFilesBegin(const char *pathAndFilter, FileEntry &firstEntry) {
+			if (pathAndFilter == nullptr) {
+				return false;
+			}
+			bool result = false;
+            // @IMPLEMENT(final): POSIX Files Iteration Begin
+			return(result);
+		}
+		fpl_api bool ListFilesNext(FileEntry &nextEntry) {
+			bool result = false;
+			if (nextEntry.internalHandle.posixHandle != nullptr) {
+                // @IMPLEMENT(final): POSIX Files Iteration Next
+            }
+			return(result);
+		}
+		fpl_api void ListFilesEnd(FileEntry &lastEntry) {
+			if (lastEntry.internalHandle.posixHandle != nullptr) {
+                // @IMPLEMENT(final): POSIX Files Iteration End
+				lastEntry = {};
+			}
+		}
+	} // files
+
 
 }
 
@@ -7767,16 +8125,16 @@ namespace fpl {
                 return nullptr;
             }
             char *result = nullptr;
-            int fileHandle = open("/proc/cpuinfo", O_RDONLY);
-            if (fileHandle != -1) {
+            FILE *fileHandle = fopen("/proc/cpuinfo", "rb");
+            if (fileHandle != nullptr) {
                 char buffer[256];
                 char line[256];
                 const size_t maxBufferSize = FPL_ARRAYCOUNT(buffer);
-                int read = 0;
                 int32_t readSize = maxBufferSize;
                 int32_t readPos = 0;
                 bool found = false;
-                while ((read = read(fileHandle, &buffer[readPos], readSize)) > 0) {                 
+                int bytesRead = 0;
+                while ((bytesRead = fread(&buffer[readPos], readSize, 1, fileHandle)) > 0) {                 
                     char *lastP = &buffer[0];
                     char *p = &buffer[0];
                     while (*p) {
@@ -7828,7 +8186,7 @@ namespace fpl {
                         result = destBuffer;
                     }
                 }
-                close(fileHandle);
+                fclose(fileHandle);
             }
             return(result);
         }
