@@ -65,12 +65,26 @@ int main(int argc, char **args) {
 	AudioTest audioTest = {};
 	audioTest.toneHz = 256;
 	audioTest.toneVolume = 1000;
-	audioTest.wavePeriod = settings.audio.desiredFormat.sampleRate / audioTest.toneHz;
+	audioTest.wavePeriod = settings.audio.deviceFormat.sampleRate / audioTest.toneHz;
 	audioTest.useSquareWave = false;
 
 	// Provide client read callback and optionally user data
 	settings.audio.clientReadCallback = FillAudioBuffer;
 	settings.audio.userData = &audioTest;
+	settings.audio.deviceFormat.type = AudioFormatType::S16;
+	settings.audio.deviceFormat.channels = 2;
+	settings.audio.deviceFormat.sampleRate = 48000;
+
+	// Find audio device
+	if (InitPlatform(InitFlags::Audio, settings)) {
+		AudioDeviceID audioDevices[16] = {};
+		uint32_t deviceCount = GetAudioDevices(audioDevices, FPL_ARRAYCOUNT(audioDevices));
+		if (deviceCount > 0) {
+			settings.audio.deviceID = audioDevices[0];
+			ConsoleFormatOut("Using audio device: %s\n", settings.audio.deviceID.name);
+		}
+		ReleasePlatform();
+	}
 
 	// Initialize the platform with audio enabled and the settings
 	if (InitPlatform(InitFlags::Audio, settings)) {

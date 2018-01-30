@@ -35,7 +35,7 @@ SOFTWARE.
 
 /*!
 	\file final_platform_layer.hpp
-	\version v0.5.7.3 beta
+	\version v0.5.7.4 beta
 	\author Torsten Spaete
 	\brief Final Platform Layer (FPL) - A Open source C++ single file header platform abstraction layer library.
 */
@@ -95,16 +95,15 @@ SOFTWARE.
 
 	\subsection section_supported_compilers Supported Compilers
 
-	- Compiles with MSVC
-	- Compiles with GCC
-	- Compiles with Clang (Partially)
-	- Compiles with MingW (Not tested)
-	- Compiles with Intel C++ Compiler (Not tested)
+	- MSVC
+	- GCC
+	- Clang (Partially)
+	- MingW (Not tested)
+	- Intel C++ Compiler (Not tested)
 
 	\subsection section_supported_platforms Supported Platforms
 
 	- Win32
-	- Compiles with GCC
 	- Linux/Posix (Partially)
 	- Unix/BSD/Posix (Todo)
 
@@ -143,9 +142,9 @@ SOFTWARE.
 	int main(int argc, char **args) {
 		// Initialize the platform
 		fpl::InitPlatform(fpl::InitFlags::All);
-		// ..
+
 		// your code goes here
-		// ..
+
 		// Release the platform
 		fpl::ReleasePlatform();
 	}
@@ -315,7 +314,7 @@ SOFTWARE.
 
 	// You have to include GL.h yourself or use any other opengl loader you want.
 	// This library just creates a opengl rendering context for you, but nothing more.
-	// But GL.h will be included when FPL_IMPLEMENTATION is set always.
+	// GL.h will only be included when FPL_IMPLEMENTATION is set!
 	#include <GL\GL.h>
 
 	using namespace fpl;
@@ -359,7 +358,7 @@ SOFTWARE.
 
 	// You have to include GL.h yourself or use any other opengl loader you want.
 	// This library just creates a opengl rendering context for you, but nothing more.
-	// But GL.h will be included when FPL_IMPLEMENTATION is set always.
+	// GL.h will only be included when FPL_IMPLEMENTATION is set!
 	#include <GL\GL.h>
 
 	using namespace fpl;
@@ -455,6 +454,9 @@ SOFTWARE.
 
 		settings.audio.clientReadCallback = FillAudioBuffer;
 		settings.audio.userData = &audioTest;
+		settings.audio.deviceFormat.type = AudioFormatType::S16;
+		settings.audio.deviceFormat.channels = 2;
+		settings.audio.deviceFormat.sampleRate = 48000;
 
 		if (InitPlatform(InitFlags::Audio, settings)) {
 			if (PlayAudio() == AudioResults::Success) {
@@ -500,6 +502,16 @@ SOFTWARE.
 /*!
 	\page page_changelog Changelog
 	\tableofcontents
+
+	## v0.5.7.4 beta:
+	- Changed: Updated code documentation for all functions and types to doxygen/javadoc style
+	- Changed: SetFilePosition32 position is now int32_t instead of uint32_t to support negative positions as well
+	- Changed: Renamed desiredFormat to deviceFormat in AudioSettings
+	- Changed: [DirectSound] Use deviceID as GUID for the audio device
+	- new: Introduced AudioDeviceID
+	- New: Added deviceID field in AudioSettings
+	- New: Added audio::GetAudioDevices()
+	- New: Added strings::FormatString()
 
 	## v0.5.7.3 beta:
 	- Fixed: [Win32] Fixed SetWindowFullscreen was not working properly
@@ -781,7 +793,7 @@ SOFTWARE.
 /*!
 	\page page_todo ToDo / Planned (Top priority order)
 	\tableofcontents
-	
+
 	- Direct2D video support
 	- Direct3D 9/10/11 video support
 
@@ -797,6 +809,9 @@ SOFTWARE.
 
 	- Support other compilers for Win32 (Clang, MingW, Intel)
 		- Fix Clang errors
+
+	- Audio:
+		- Support for channel mapping
 
 	- REFERENCE.MD generation using doxygen
 
@@ -1168,79 +1183,266 @@ namespace fpl {
 		fpl_api void AtomicReadFence();
 		/**
 		  * \brief Insert a memory write fence/barrier.
-		  *
 		  * This will complete previous writes before future writes and prevents the compiler from reordering memory writes across this fence.
 		  */
 		fpl_api void AtomicWriteFence();
 		/**
 		  * \brief Insert a memory read/write fence/barrier.
-		  *
 		  * This will complete previous reads/writes before future reads/writes and prevents the compiler from reordering memory access across this fence.
 		  */
 		fpl_api void AtomicReadWriteFence();
 
-		//! Replace a 32-bit unsigned integer with the given value atomically. Returns the target before the replacement.
+		/**
+		  * \brief Replace a 32-bit unsigned integer with the given value atomically.
+		  * Ensures that memory operations are completed in order.
+		  * \param target The target value to write into.
+		  * \param value The source value used for exchange.
+		  * \return Returns the initial value before the replacement.
+		  */
 		fpl_api uint32_t AtomicExchangeU32(volatile uint32_t *target, const uint32_t value);
-		//! Replace a 32-bit signed integer with the given value atomically. Returns the target before the replacement.
-		fpl_api int32_t AtomicExchangeS32(volatile int32_t *target, const int32_t value);
-		//! Replace a 64-bit unsigned integer with the given value atomically. Returns the target before the replacement.
+		/**
+		  * \brief Replace a 64-bit unsigned integer with the given value atomically.
+		  * Ensures that memory operations are completed in order.
+		  * \param target The target value to write into.
+		  * \param value The source value used for exchange.
+		  * \return Returns the initial value before the replacement.
+		  */
 		fpl_api uint64_t AtomicExchangeU64(volatile uint64_t *target, const uint64_t value);
-		//! Replace a 64-bit signed integer with the given value atomically. Returns the target before the replacement.
+		/**
+		  * \brief Replace a 32-bit signed integer with the given value atomically.
+		  * Ensures that memory operations are completed in order.
+		  * \param target The target value to write into.
+		  * \param value The source value used for exchange.
+		  * \return Returns the initial value before the replacement.
+		  */
+		fpl_api int32_t AtomicExchangeS32(volatile int32_t *target, const int32_t value);
+		/**
+		  * \brief Replace a 64-bit signed integer with the given value atomically.
+		  * Ensures that memory operations are completed in order.
+		  * \param target The target value to write into.
+		  * \param value The source value used for exchange.
+		  * \return Returns the initial value before the replacement.
+		  */
 		fpl_api int64_t AtomicExchangeS64(volatile int64_t *target, const int64_t value);
-		//! Replace a pointer with the given value atomically. Returns the target before the replacement.
+		/**
+		  * \brief Replace a pointer with the given value atomically.
+		  * Ensures that memory operations are completed in order.
+		  * \param target The target value to write into.
+		  * \param value The source value used for exchange.
+		  * \return Returns the initial value before the replacement.
+		  */
 		fpl_api void *AtomicExchangePtr(volatile void **target, const void *value);
 
-		//! Adds a 32-bit unsigned integer atomatically. Returns the value before the addition.
+		/**
+		  * \brief Adds a 32-bit unsigned integer to the value by the given addend atomically.
+		  * Ensures that memory operations are completed in order.
+		  * \param value The target value to append to.
+		  * \param addend The value used for adding.
+		  * \return Returns the initial value before the append.
+		  */
 		fpl_api uint32_t AtomicAddU32(volatile uint32_t *value, const uint32_t addend);
-		//! Adds a 32-bit signed integer atomatically. Returns the value before the addition.
-		fpl_api int32_t AtomicAddS32(volatile int32_t *value, const int32_t addend);
-		//! Adds a 64-bit unsigned integer atomatically. Returns the value before the addition.
+		/**
+		  * \brief Adds a 64-bit unsigned integer to the value by the given addend atomically.
+		  * Ensures that memory operations are completed in order.
+		  * \param value The target value to append to.
+		  * \param addend The value used for adding.
+		  * \return Returns the initial value before the append.
+		  */
 		fpl_api uint64_t AtomicAddU64(volatile uint64_t *value, const uint64_t addend);
-		//! Adds a 64-bit signed integer atomatically. Returns the value before the addition.
+		/**
+		  * \brief Adds a 32-bit signed integer to the value by the given addend atomically.
+		  * Ensures that memory operations are completed in order.
+		  * \param value The target value to append to.
+		  * \param addend The value used for adding.
+		  * \return Returns the initial value before the append.
+		  */
+		fpl_api int32_t AtomicAddS32(volatile int32_t *value, const int32_t addend);
+		/**
+		  * \brief Adds a 64-bit signed integer to the value by the given addend atomically.
+		  * Ensures that memory operations are completed in order.
+		  * \param value The target value to append to.
+		  * \param addend The value used for adding.
+		  * \return Returns the initial value before the append.
+		  */
 		fpl_api int64_t AtomicAddS64(volatile int64_t *value, const int64_t addend);
 
-		//! Compares a 32-bit unsigned integer with a comparand and exchange it when comparand and matches destination. Returns the dest before the exchange.
+		/**
+		  * \brief Compares a 32-bit unsigned integer with a comparand and exchange it when comparand matches destination.
+		  * Ensures that memory operations are completed in order.
+		  * \param dest The target value to write into.
+		  * \param comparand The value to compare with.
+		  * \param exchange The value to exchange with.
+		  * \note Use \ref IsAtomicCompareAndExchangeU32() when you want to check if the exchange has happened or not.
+		  * \return Returns the dest before the exchange, regardless of the result.
+		  */
 		fpl_api uint32_t AtomicCompareAndExchangeU32(volatile uint32_t *dest, const uint32_t comparand, const uint32_t exchange);
-		//! Compares a 32-bit signed integer with a comparand and exchange it when comparand and matches destination. Returns the dest before the exchange.
-		fpl_api int32_t AtomicCompareAndExchangeS32(volatile int32_t *dest, const int32_t comparand, const int32_t exchange);
-		//! Compares a 64-bit unsigned integer with a comparand and exchange it when comparand and matches destination. Returns the dest before the exchange.
+		/**
+		  * \brief Compares a 64-bit unsigned integer with a comparand and exchange it when comparand matches destination.
+		  * Ensures that memory operations are completed in order.
+		  * \param dest The target value to write into.
+		  * \param comparand The value to compare with.
+		  * \param exchange The value to exchange with.
+		  * \note Use \ref IsAtomicCompareAndExchangeU64() when you want to check if the exchange has happened or not.
+		  * \return Returns the value of the destination before the exchange, regardless of the result.
+		  */
 		fpl_api uint64_t AtomicCompareAndExchangeU64(volatile uint64_t *dest, const uint64_t comparand, const uint64_t exchange);
-		//! Compares a 64-bit signed integer with a comparand and exchange it when comparand and matches destination. Returns the dest before the exchange.
+		/**
+		  * \brief Compares a 32-bit signed integer with a comparand and exchange it when comparand matches destination.
+		  * Ensures that memory operations are completed in order.
+		  * \param dest The target value to write into.
+		  * \param comparand The value to compare with.
+		  * \param exchange The value to exchange with.
+		  * \note Use \ref IsAtomicCompareAndExchangeS32() when you want to check if the exchange has happened or not.
+		  * \return Returns the value of the destination before the exchange, regardless of the result.
+		  */
+		fpl_api int32_t AtomicCompareAndExchangeS32(volatile int32_t *dest, const int32_t comparand, const int32_t exchange);
+		/**
+		  * \brief Compares a 64-bit signed integer with a comparand and exchange it when comparand matches destination.
+		  * Ensures that memory operations are completed in order.
+		  * \param dest The target value to write into.
+		  * \param comparand The value to compare with.
+		  * \param exchange The value to exchange with.
+		  * \note Use \ref IsAtomicCompareAndExchangeS64() when you want to check if the exchange has happened or not.
+		  * \return Returns the value of the destination before the exchange, regardless of the result.
+		  */
 		fpl_api int64_t AtomicCompareAndExchangeS64(volatile int64_t *dest, const int64_t comparand, const int64_t exchange);
-		//! Compares a pointer with a comparand and exchange it when comparand and matches destination. Returns the dest before the exchange.
+		/**
+		  * \brief Compares a pointer with a comparand and exchange it when comparand matches destination.
+		  * Ensures that memory operations are completed in order.
+		  * \param dest The target value to write into.
+		  * \param comparand The value to compare with.
+		  * \param exchange The value to exchange with.
+		  * \note Use \ref IsAtomicCompareAndExchangePtr() when you want to check if the exchange has happened or not.
+		  * \return Returns the value of the destination before the exchange, regardless of the result.
+		  */
 		fpl_api void *AtomicCompareAndExchangePtr(volatile void **dest, const void *comparand, const void *exchange);
 
-		//! Returns true when a 32-bit unsigned integer equals the comparand. In addition dest will be changed to the exchange when the result is true as well.
+		/**
+		  * \brief Compares a 32-bit unsigned integer with a comparand and exchange it when comparand matches destination and returns a bool indicating the result.
+		  * Ensures that memory operations are completed in order.
+		  * \param dest The target value to write into.
+		  * \param comparand The value to compare with.
+		  * \param exchange The value to exchange with.
+		  * \return Returns true when the exchange happened, otherwise false.
+		  */
 		fpl_api bool IsAtomicCompareAndExchangeU32(volatile uint32_t *dest, const uint32_t comparand, const uint32_t exchange);
-		//! Returns true when a 32-bit signed integer equals the comparand. In addition dest will be changed to the exchange when the result is true as well.
-		fpl_api bool IsAtomicCompareAndExchangeS32(volatile int32_t *dest, const int32_t comparand, const int32_t exchange);
-		//! Returns true when a 64-bit unsigned integer equals the comparand. In addition dest will be changed to the exchange when the result is true as well.
+		/**
+		  * \brief Compares a 64-bit unsigned integer with a comparand and exchange it when comparand matches destination and returns a bool indicating the result.
+		  * Ensures that memory operations are completed in order.
+		  * \param dest The target value to write into.
+		  * \param comparand The value to compare with.
+		  * \param exchange The value to exchange with.
+		  * \return Returns true when the exchange happened, otherwise false.
+		  */
 		fpl_api bool IsAtomicCompareAndExchangeU64(volatile uint64_t *dest, const uint64_t comparand, const uint64_t exchange);
-		//! Returns true when a 64-bit signed integer equals the comparand. In addition dest will be changed to the exchange when the result is true as well.
+		/**
+		  * \brief Compares a 32-bit signed integer with a comparand and exchange it when comparand matches destination and returns a bool indicating the result.
+		  * Ensures that memory operations are completed in order.
+		  * \param dest The target value to write into.
+		  * \param comparand The value to compare with.
+		  * \param exchange The value to exchange with.
+		  * \return Returns true when the exchange happened, otherwise false.
+		  */
+		fpl_api bool IsAtomicCompareAndExchangeS32(volatile int32_t *dest, const int32_t comparand, const int32_t exchange);
+		/**
+		  * \brief Compares a 64-bit signed integer with a comparand and exchange it when comparand matches destination and returns a bool indicating the result.
+		  * Ensures that memory operations are completed in order.
+		  * \param dest The target value to write into.
+		  * \param comparand The value to compare with.
+		  * \param exchange The value to exchange with.
+		  * \return Returns true when the exchange happened, otherwise false.
+		  */
 		fpl_api bool IsAtomicCompareAndExchangeS64(volatile int64_t *dest, const int64_t comparand, const int64_t exchange);
-		//! Returns true when a pointer equals the comparand. In addition dest will be changed to the exchange when the result is true as well.
+		/**
+		  * \brief Compares a pointer with a comparand and exchange it when comparand matches destination and returns a bool indicating the result.
+		  * Ensures that memory operations are completed in order.
+		  * \param dest The target value to write into.
+		  * \param comparand The value to compare with.
+		  * \param exchange The value to exchange with.
+		  * \return Returns true when the exchange happened, otherwise false.
+		  */
 		fpl_api bool IsAtomicCompareAndExchangePtr(volatile void **dest, const void *comparand, const void *exchange);
 
-		//! Loads the 32-bit unsigned value atomically and returns the result.
+		/**
+		  * \brief Loads the 32-bit unsigned value atomically and returns the value.
+		  * Ensures that memory operations are completed before the read.
+		  * \param source The source value to read from.
+		  * \note This may use a CAS instruction when there is no suitable compiler intrinsics found.
+		  * \return Returns the source value.
+		  */
 		fpl_api uint32_t AtomicLoadU32(volatile uint32_t *source);
-		//! Loads the 64-bit unsigned value atomically and returns the result.
+		/**
+		  * \brief Loads the 64-bit unsigned value atomically and returns the value.
+		  * Ensures that memory operations are completed before the read.
+		  * \param source The source value to read from.
+		  * \note This may use a CAS instruction when there is no suitable compiler intrinsics found.
+		  * \return Returns the source value.
+		  */
 		fpl_api uint64_t AtomicLoadU64(volatile uint64_t *source);
-		//! Loads the 32-bit signed value atomically and returns the result.
+		/**
+		  * \brief Loads the 32-bit signed value atomically and returns the value.
+		  * Ensures that memory operations are completed before the read.
+		  * \param source The source value to read from.
+		  * \note This may use a CAS instruction when there is no suitable compiler intrinsics found.
+		  * \return Returns the source value.
+		  */
 		fpl_api int32_t AtomicLoadS32(volatile int32_t *source);
-		//! Loads the 64-bit signed value atomically and returns the result.
+		/**
+		  * \brief Loads the 64-bit signed value atomically and returns the value.
+		  * Ensures that memory operations are completed before the read.
+		  * \param source The source value to read from.
+		  * \note This may use a CAS instruction when there is no suitable compiler intrinsics found.
+		  * \return Returns the source value.
+		  */
 		fpl_api int64_t AtomicLoadS64(volatile int64_t *source);
-		//! Loads the 64-bit signed value atomically and returns the result.
+		/**
+		  * \brief Loads the pointer value atomically and returns the value.
+		  * Ensures that memory operations are completed before the read.
+		  * \param source The source value to read from.
+		  * \note This may use a CAS instruction when there is no suitable compiler intrinsics found.
+		  * \return Returns the source value.
+		  */
 		fpl_api void *AtomicLoadPtr(volatile void **source);
 
-		//! Stores the 32-bit unsigned value atomically into the target.
+		/**
+		  * \brief Overwrites the 32-bit unsigned value atomically.
+		  * Ensures that memory operations are completed before the write.
+		  * \param dest The destination to write to.
+		  * \param value The value to exchange with.
+		  * \return Returns the source value.
+		  */
 		fpl_api void AtomicStoreU32(volatile uint32_t *dest, const uint32_t value);
-		//! Stores the 64-bit unsigned value atomically into the target.
+		/**
+		  * \brief Overwrites the 64-bit unsigned value atomically.
+		  * Ensures that memory operations are completed before the write.
+		  * \param dest The destination to write to.
+		  * \param value The value to exchange with.
+		  * \return Returns the source value.
+		  */
 		fpl_api void AtomicStoreU64(volatile uint64_t *dest, const uint64_t value);
-		//! Stores the 32-bit signed value atomically into the target.
+		/**
+		  * \brief Overwrites the 32-bit signed value atomically.
+		  * Ensures that memory operations are completed before the write.
+		  * \param dest The destination to write to.
+		  * \param value The value to exchange with.
+		  * \return Returns the source value.
+		  */
 		fpl_api void AtomicStoreS32(volatile int32_t *dest, const int32_t value);
-		//! Stores the 64-bit signed value atomically into the target.
+		/**
+		  * \brief Overwrites the 64-bit signed value atomically.
+		  * Ensures that memory operations are completed before the write.
+		  * \param dest The destination to write to.
+		  * \param value The value to exchange with.
+		  * \return Returns the source value.
+		  */
 		fpl_api void AtomicStoreS64(volatile int64_t *dest, const int64_t value);
-		//! Stores the pointer value atomically into the target.
+		/**
+		  * \brief Overwrites the pointer value atomically.
+		  * Ensures that memory operations are completed before the write.
+		  * \param dest The destination to write to.
+		  * \param value The value to exchange with.
+		  * \return Returns the source value.
+		  */
 		fpl_api void AtomicStorePtr(volatile void **dest, const void *value);
 
 		/** \}*/
@@ -1272,11 +1474,23 @@ namespace fpl {
 			size_t usedPageSize;
 		};
 
-		//! Returns the total number of processor cores
+		/**
+		  * \brief Returns the total number of processor cores.
+		  * \return Number of processor cores.
+		  */
 		fpl_api uint32_t GetProcessorCoreCount();
-		//! Returns the processor name/identifier. Result is written in the required destination buffer.
+		/**
+		  * \brief Returns the name of the processor.
+		  * The processor name is written in the destination buffer.
+		  * \param destBuffer The character buffer to write the processor name into.
+		  * \param maxDestBufferLen The total number of characters available in the destination character buffer.
+		  * \return Name of the processor.
+		  */
 		fpl_api char *GetProcessorName(char *destBuffer, const uint32_t maxDestBufferLen);
-		//! Returns the current system memory informations.
+		/**
+		  * \brief Returns the current system memory informations.
+		  * \return Current system memory informations.
+		  */
 		fpl_api MemoryInfos GetSystemMemoryInfos();
 
 		/** \}*/
@@ -1294,11 +1508,11 @@ namespace fpl {
 		None = 0,
 		//! Create a single window
 		Window = 1 << 0,
-		//! Use a video backbuffer (A window without video is pretty much useless)
+		//! Use a video backbuffer (This flag ensures that \ref InitFlags::Window is included always)
 		Video = 1 << 1,
-		//! Use audio playback
+		//! Use asyncronous audio playback
 		Audio = 1 << 2,
-		//! Default init flags for a window + video + audio
+		//! Default init flags for initializing everything
 		All = Window | Video | Audio
 	};
 	//! Operator support for InitFlags
@@ -1340,7 +1554,10 @@ namespace fpl {
 		bool isAutoSize;
 	};
 
-	//! Make default settings for video
+	/**
+	  * \brief Make default video settings
+	  * \note This will not change any video settings! To change the actual settings you have to pass the entire \ref Settings container to a argument in \ref InitPlatform().
+	  */
 	fpl_inline VideoSettings DefaultVideoSettings() {
 		VideoSettings result = {};
 		result.profile = VideoCompabilityProfile::Legacy;
@@ -1406,13 +1623,27 @@ namespace fpl {
 		uint32_t bufferSizeInFrames;
 	};
 
+	//! Audio device id
+	struct AudioDeviceID {
+		//! Device name
+		char name[256];
+		union {
+#		if defined(FPL_ENABLE_AUDIO_DIRECTSOUND)
+			//! DirectShow Device GUID
+			GUID dshow;
+#		endif
+		};
+	};
+
 	//! Audio Client Read Callback Function
 	typedef uint32_t(AudioClientReadFunction)(const AudioDeviceFormat &deviceFormat, const uint32_t frameCount, void *outputSamples, void *userData);
 
 	//! Audio settings
 	struct AudioSettings {
-		//! The targeted format
-		AudioDeviceFormat desiredFormat;
+		//! The device format
+		AudioDeviceFormat deviceFormat;
+		//! The device id
+		AudioDeviceID deviceID;
 		//! The callback for retrieving audio data from the client
 		AudioClientReadFunction *clientReadCallback;
 		//! The targeted driver
@@ -1425,14 +1656,17 @@ namespace fpl {
 		void *userData;
 	};
 
-	//! Make default audio settings (S16 PCM, 48 KHz, 2 Channels)
+	/**
+	  * \brief Make default audio settings (S16 PCM, 48 KHz, 2 Channels)
+	  * \note This will not change any audio settings! To change the actual settings you have to pass the entire \ref Settings container to a argument in \ref InitPlatform().
+	  */
 	fpl_inline AudioSettings DefaultAudioSettings() {
 		AudioSettings result = {};
 		result.bufferSizeInMilliSeconds = 25;
 		result.preferExclusiveMode = false;
-		result.desiredFormat.channels = 2;
-		result.desiredFormat.sampleRate = 48000;
-		result.desiredFormat.type = AudioFormatType::S16;
+		result.deviceFormat.channels = 2;
+		result.deviceFormat.sampleRate = 48000;
+		result.deviceFormat.type = AudioFormatType::S16;
 
 		result.driver = AudioDriverType::None;
 #	if defined(FPL_PLATFORM_WIN32)
@@ -1461,7 +1695,10 @@ namespace fpl {
 		bool isFullscreen;
 	};
 
-	//! Make default settings for the window
+	/**
+	  * \brief Make default settings for the window
+	  * \note This will not change any window settings! To change the actual settings you have to pass the entire \ref Settings container to a argument in \ref InitPlatform().
+	  */
 	fpl_inline WindowSettings DefaultWindowSettings() {
 		WindowSettings result = {};
 		result.windowTitle[0] = 0;
@@ -1480,7 +1717,10 @@ namespace fpl {
 		uint32_t controllerDetectionFrequency;
 	};
 
-	//! Make default settings for input devices
+	/**
+	  * \brief Make default settings for input devices.
+	  * \note This will not change any input settings! To change the actual settings you have to pass the entire \ref Settings container to a argument in \ref InitPlatform().
+	  */
 	fpl_inline InputSettings DefaultInputSettings() {
 		InputSettings result = {};
 		result.controllerDetectionFrequency = 100;
@@ -1499,7 +1739,10 @@ namespace fpl {
 		InputSettings input;
 	};
 
-	//! Default settings for video, window, etc.
+	/**
+	  * \brief Make default settings for window, video, audio, etc.
+	  * \note This will not change any settings! To change the actual settings you have to pass this settings container to a argument in \ref InitPlatform().
+	  */
 	fpl_inline Settings DefaultSettings() {
 		Settings result = {};
 		result.window = DefaultWindowSettings();
@@ -1509,7 +1752,9 @@ namespace fpl {
 		return(result);
 	}
 
-	//! Returns the current settings
+	/**
+	  * \brief Returns the current settings
+	  */
 	fpl_api const Settings &GetCurrentSettings();
 
 	/** \}*/
@@ -1520,9 +1765,18 @@ namespace fpl {
 	  * \{
 	  */
 
-	//! Initialize the platform layer.
-	fpl_api bool InitPlatform(const InitFlags initFlags, const Settings &initSettings = DefaultSettings());
-	//! Releases the platform layer and resets all structures to zero.
+	/**
+	  * \brief Initializes the platform layer.
+	  * \param initFlags Optional init flags used for enable certain features, like video/audio etc. (Default: \ref InitFlags::All)
+	  * \param initSettings Optional initialization settings which can be passed to control the platform layer behavior or systems. (Default: \ref Settings provided by \ref DefaultSettings())
+	  * \note \ref ReleasePlatform() must be called when you are done! After \ref ReleasePlatform() has been called you can call this function again if needed.
+	  * \return Returns true when the initialzation was successful, otherwise false. Will return false when the platform layers is already initialized successfully.
+	  */
+	fpl_api bool InitPlatform(const InitFlags initFlags = InitFlags::All, const Settings &initSettings = DefaultSettings());
+	/**
+	  * \brief Releases the resources allocated by the platform layer.
+	  * \note Can only be called when \ref InitPlatform() was successful.
+	  */
 	fpl_api void ReleasePlatform();
 
 	/** \}*/
@@ -1533,11 +1787,20 @@ namespace fpl {
 	  * \{
 	  */
 
-	//! Returns last error string
+	/**
+	  * \brief Returns last internal error string
+	  */
 	fpl_api const char *GetPlatformLastError();
-	//! Returns last error string from the given index
+	/**
+	  * \brief Returns last error string from the given index
+	  * \param index The index
+	  * \return Last error string from the given index or nullptr when there was no error.
+	  */
 	fpl_api const char *GetPlatformLastError(const size_t index);
-	//! Returns number of last errors
+	/**
+	  * \brief Returns the count of total last errors
+	  * \return Number of last errors or zero when there was no error.
+	  */
 	fpl_api size_t GetPlatformLastErrorCount();
 
 	/** \}*/
@@ -1565,11 +1828,24 @@ namespace fpl {
 			bool isValid;
 		};
 
-		//! Loads a dynamic library and returns the loaded handle for it.
+		/**
+		  * \brief Loads a dynamic library and returns the loaded handle for it.
+		  * \param libraryFilePath The path to the library with included file extension (.dll / .so)
+		  * \note To check for success, just check the DynamicLibraryHandle.isValid field from the result.
+		  * \return Handle container of the loaded library.
+		  */
 		fpl_api DynamicLibraryHandle DynamicLibraryLoad(const char *libraryFilePath);
-		//! Returns the dynamic library procedure address for the given procedure name.
+		/**
+		  * \brief Returns the dynamic library procedure address for the given procedure name.
+		  * \param handle Handle to the loaded library
+		  * \param name Name of the procedure
+		  * \return Procedure address for the given procedure name or nullptr when procedure not found or library is not loaded.
+		  */
 		fpl_api void *GetDynamicLibraryProc(const DynamicLibraryHandle &handle, const char *name);
-		//! Releases the loaded library and resets the handle to zero.
+		/**
+		  * \brief Unloads the loaded library and resets the handle to zero.
+		  * \param handle Loaded dynamic library handle
+		  */
 		fpl_api void DynamicLibraryUnload(DynamicLibraryHandle &handle);
 
 		/** \}*/
@@ -1583,13 +1859,31 @@ namespace fpl {
 		  * \{
 		  */
 
-		//! Writes the given text to the default console output
+		/**
+		  * \brief Writes the given text to the standard output console buffer.
+		  * \param text The text to write into standard output console.
+		  * \note This is most likely just a wrapper call to fprintf(stdout)
+		  */
 		fpl_api void ConsoleOut(const char *text);
-		//! Writes the given formatted text to the default console output 
+		/**
+		  * \brief Writes the given formatted text to the standard output console buffer.
+		  * \param format The format used for writing into the standard output console.
+		  * \param ... The dynamic arguments used for formatting the text.
+		  * \note This is most likely just a wrapper call to vfprintf(stdout)
+		  */
 		fpl_api void ConsoleFormatOut(const char *format, ...);
-		//! Writes the given text to the console error output
+		/**
+		  * \brief Writes the given text to the standard error console buffer.
+		  * \param text The text to write into standard error console.
+		  * \note This is most likely just a wrapper call to fprintf(stderr)
+		  */
 		fpl_api void ConsoleError(const char *text);
-		//! Writes the given formatted text to the console error output
+		/**
+		  * \brief Writes the given formatted text to the standard error console buffer.
+		  * \param format The format used for writing into the standard error console.
+		  * \param ... The dynamic arguments used for formatting the text.
+		  * \note This is most likely just a wrapper call to vfprintf(stderr)
+		  */
 		fpl_api void ConsoleFormatError(const char *format, ...);
 
 		/** \}*/
@@ -1610,7 +1904,7 @@ namespace fpl {
 			//! Thread is still running
 			Running,
 			// Thread is suspended
-			Suspended
+			Suspended,
 		};
 
 		struct ThreadContext;
@@ -1658,56 +1952,139 @@ namespace fpl {
 			bool isValid;
 		};
 
-		//! Create a thread and return the context for it. When autoStart is set to true, it will start immediatly. 
+		/**
+		  * \brief Creates a thread and return the context for it.
+		  * The thread will be started automatically when autoStart is set to true.
+		  * \param runFunc Function prototype called when this thread starts.
+		  * \param data User data passed to the run function.
+		  * \param autoStart Optional bool indicating to start the thread immediatly or leave it suspended. (Default: true)
+		  * \note Use \ref ThreadDestroy() with this thread context when you dont need this thread anymore. You can only have 64 threads suspended/running at the same time!
+		  * \warning Do not free this thread context directly! Use \ref ThreadDestroy() instead.
+		  * \return Pointer to a internal stored thread-context or return nullptr when the limit of current threads has been reached.
+		  */
 		fpl_api ThreadContext *ThreadCreate(run_thread_function *runFunc, void *data, const bool autoStart = true);
-		//! Let the current thread sleep for the number of given milliseconds
+		/**
+		  * \brief Let the current thread sleep for the given amount of milliseconds.
+		  * \param milliseconds Number of milliseconds to sleep
+		  * \note There is no guarantee that the OS sleeps for the exact amount of milliseconds! This can vary based on the OS scheduler granularity.
+		  */
 		fpl_api void ThreadSleep(const uint32_t milliseconds);
-		//! Suspend the given thread, so any user code will get be freezed at the current point. Returns true when the thread was successfully suspended.
+		/**
+		  * \brief Suspends the given thread.
+		  * So any user code will get be freezed at the current point.
+		  * \param context Context to the thread
+		  * \return Returns true when the thread was successfully suspended or false otherwise.
+		  */
 		fpl_api bool ThreadSuspend(ThreadContext *context);
-		//! Resume a suspended thread, so any user code will continue to run. Returns true when the thread was successfully resumed.
+		/**
+		  * \brief Resumes a suspended thread.
+		  * Any user code will continue to run from the latest point.
+		  * \param context Context to the thread
+		  * \return Returns true when the thread was successfully resumed or false otherwise.
+		  */
 		fpl_api bool ThreadResume(ThreadContext *context);
-		//! Stop the given thread and release all underlying resources.
+		/**
+		  * \brief Stop the given thread and release all underlying resources.
+		  * \param context Context to the thread
+		  * \note This thread context may get re-used for another thread in the future!
+		  * \warning Do not free the given thread context manually!
+		  */
 		fpl_api void ThreadDestroy(ThreadContext *context);
-		//! Wait until the given thread is done running. When maxMilliseconds is set to UINT32_MAX it will wait infinitly.
+		/**
+		  * \brief Wait until the given thread is done running or the given timeout has been reached.
+		  * \param context Thread context
+		  * \param maxMilliseconds Optional number of milliseconds to wait. When this is set to UINT32_MAX it may wait infinitly. (Default: UINT32_MAX)
+		  * \return Returns true when the thread completes or when the timeout has been reached.
+		  */
 		fpl_api bool ThreadWaitForOne(ThreadContext *context, const uint32_t maxMilliseconds = UINT32_MAX);
-		//! Wait until all given threads are done running. When maxMilliseconds is set to UINT32_MAX it will wait infinitly.
+		/**
+		  * \brief Wait until all given threads are done running or the given timeout has been reached.
+		  * \param contexts Array of thread contexts
+		  * \param count Number of thread contexts in the array
+		  * \param maxMilliseconds Optional number of milliseconds to wait. When this is set to UINT32_MAX it may wait infinitly. (Default: UINT32_MAX)
+		  * \return Returns true when all threads completes or when the timeout has been reached.
+		  */
 		fpl_api bool ThreadWaitForAll(ThreadContext **contexts, const uint32_t count, const uint32_t maxMilliseconds = UINT32_MAX);
-		//! Wait until one of given threads are done running. When maxMilliseconds is set to UINT32_MAX it will wait infinitly.
+		/**
+		  * \brief Wait until one of given threads is done running or the given timeout has been reached.
+		  * \param contexts Array of thread contexts
+		  * \param count Number of thread contexts in the array
+		  * \param maxMilliseconds Optional number of milliseconds to wait. When this is set to UINT32_MAX it may wait infinitly. (Default: UINT32_MAX)
+		  * \return Returns true when one thread completes or when the timeout has been reached.
+		  */
 		fpl_api bool ThreadWaitForAny(ThreadContext **contexts, const uint32_t count, const uint32_t maxMilliseconds = UINT32_MAX);
 
-		//! Creates a mutex
+		/**
+		  * \brief Creates a mutex and returns a copy of the handle to it.
+		  * \note Use \ref MutexDestroy() when you are done with this mutex.
+		  * \return Copy of the handle to the mutex.
+		  */
 		fpl_api ThreadMutex MutexCreate();
-		//! Destroys the given mutex
+		/**
+		  * \brief Releases the given mutex and clears the structure to zero.
+		  * \param mutex The mutex reference to destroy.
+		  */
 		fpl_api void MutexDestroy(ThreadMutex &mutex);
 		/**
-		 * \brief Locks the given mutex and waits until it gets unlocked.
-		 * When maxMilliseconds is set to UINT32_MAX it will wait infinitly.
-		 * \param mutex The mutex reference to lock
-		 * \param maxMilliseconds The maximum number of milliseconds to wait (Optional)
-		 * \returns Mutex was locked or not
-		 */
+		  * \brief Locks the given mutex and ensures that other threads will wait until it gets unlocked or the timeout has been reached.
+		  * \param mutex The mutex reference to lock
+		  * \param maxMilliseconds Optional number of milliseconds to wait. When this is set to UINT32_MAX it may wait infinitly. (Default: UINT32_MAX)
+		  * \returns True when mutex was locked or false otherwise.
+		  */
 		fpl_api bool MutexLock(ThreadMutex &mutex, const uint32_t maxMilliseconds = UINT32_MAX);
 		/**
 		 * \brief Unlocks the given mutex
 		 * \param mutex The mutex reference to unlock
-		 * \returns Mutex was unlocked or not
+		 * \returns True when mutex was unlocked or false otherwise.
 		 */
 		fpl_api bool MutexUnlock(ThreadMutex &mutex);
 
-		//! Creates a signal
+		/**
+		  * \brief Creates a signal and returns a copy of the handle to it.
+		  * \note Use \ref SignalDestroy() when you are done with this signal.
+		  * \return Copy of the handle to the signal.
+		  */
 		fpl_api ThreadSignal SignalCreate();
-		//! Destroys the given signal
-		fpl_api void SignalDestroy(ThreadSignal &availableSignal);
-		//! Waits until the given signal are waked up. When maxMilliseconds is set to UINT32_MAX it will wait infinitly.
-		fpl_api bool SignalWaitForOne(ThreadSignal &availableSignal, const uint32_t maxMilliseconds = UINT32_MAX);
-		//! Waits until all the given signal are waked up. When maxMilliseconds is set to UINT32_MAX it will wait infinitly.
-		fpl_api bool SignalWaitForAll(ThreadSignal **availableSignal, const uint32_t count, const uint32_t maxMilliseconds = UINT32_MAX);
-		//! Waits until any of the given signals wakes up. When maxMilliseconds is set to UINT32_MAX it will wait infinitly.
-		fpl_api bool SignalWaitForAny(ThreadSignal **availableSignal, const uint32_t count, const uint32_t maxMilliseconds = UINT32_MAX);
-		//! Wakes up the given signal
-		fpl_api bool SignalWakeUp(ThreadSignal &availableSignal);
-		//! Resets the given signal
-		fpl_api bool SignalReset(ThreadSignal &availableSignal);
+		/**
+		  * \brief Releases the given signal and clears the structure to zero.
+		  * \param signal The signal reference to destroy.
+		  */
+		fpl_api void SignalDestroy(ThreadSignal &signal);
+		/**
+		  * \brief Waits until the given signal are waked up.
+		  * \param signal The signal reference to signal.
+		  * \param maxMilliseconds Optional number of milliseconds to wait. When this is set to UINT32_MAX it may wait infinitly. (Default: UINT32_MAX)
+		  * \return Returns true when the signal woke up or the timeout has been reached, otherwise false.
+		  */
+		fpl_api bool SignalWaitForOne(const ThreadSignal &signal, const uint32_t maxMilliseconds = UINT32_MAX);
+		/**
+		  * \brief Waits until all the given signal are waked up.
+		  * \param signals Array of signals
+		  * \param count Number of signals
+		  * \param maxMilliseconds Optional number of milliseconds to wait. When this is set to UINT32_MAX it may wait infinitly. (Default: UINT32_MAX)
+		  * \return Returns true when all signals woke up or the timeout has been reached, otherwise false.
+		  */
+		fpl_api bool SignalWaitForAll(const ThreadSignal **signals, const uint32_t count, const uint32_t maxMilliseconds = UINT32_MAX);
+		/**
+		  * \brief Waits until any of the given signals wakes up or the timeout has been reached.
+		  * \param signals Array of signals
+		  * \param count Number of signals
+		  * \param maxMilliseconds Optional number of milliseconds to wait. When this is set to UINT32_MAX it may wait infinitly. (Default: UINT32_MAX)
+		  * \return Returns true when any of the signals woke up or the timeout has been reached, otherwise false.
+		  */
+		fpl_api bool SignalWaitForAny(const ThreadSignal **signals, const uint32_t count, const uint32_t maxMilliseconds = UINT32_MAX);
+		/**
+		  * \brief Wakes up the given signal.
+		  * \param signal The reference to the signal
+		  * \return Returns true when the signal was woke up, otherwise false.
+		  */
+		fpl_api bool SignalWakeUp(const ThreadSignal &signal);
+		/**
+		  * \brief Resets the given signal
+		  * \param signal The reference to the signal
+		  * \return Returns true when the signal was reset, otherwise false.
+		  */
+		fpl_api bool SignalReset(const ThreadSignal &signal);
 
 		/** \}*/
 	}
@@ -1720,20 +2097,56 @@ namespace fpl {
 		  * \{
 		  */
 
-		//! Clears the given memory by the given size to zero.
+		/**
+		  * \brief Clears the given memory by the given size to zero.
+		  * \param mem Pointer to the memory.
+		  * \param size Size in bytes to be cleared to zero.
+		  */
 		fpl_api void MemoryClear(void *mem, const size_t size);
-		//! Copies the given source memory with its length to the target memory
+		/**
+		  * \brief Copies the given source memory with its length to the target memory.
+		  * \param sourceMem Pointer to the source memory to copy from.
+		  * \param sourceSize Size in bytes to be copied.
+		  * \param targetMem Pointer to the target memory to copy to.
+		  */
 		fpl_api void MemoryCopy(void *sourceMem, const size_t sourceSize, void *targetMem);
-		//! Allocates memory from the operating system by the given size. The memory is guaranteed to be initialized by zero.
+		/**
+		  * \brief Allocates memory from the operating system by the given size.
+		  * \param size Size to by allocated in bytes.
+		  * \note The memory is guaranteed to be initialized by zero.
+		  * \warning Alignment is not ensured here, the OS decides how to handle this. If you want to force a specific alignment use \ref MemoryAlignedAllocate() instead.
+		  * \return Pointer to the new allocated memory.
+		  */
 		fpl_api void *MemoryAllocate(const size_t size);
-		//! Releases the memory allocated from the operating system.
+		/**
+		  * \brief Releases the memory allocated from the operating system.
+		  * \param ptr Pointer to the allocated memory.
+		  * \warning This should never be called with a aligned memory pointer! For freeing aligned memory, use \ref MemoryAlignedFree() instead.
+		  * \return Pointer to the new allocated memory.
+		  */
 		fpl_api void MemoryFree(void *ptr);
-		//! Allocates memory on the current stack. Use this very carefully, it will be released then the current scope goes out of scope!
+		/**
+		  * \brief Allocates memory on the current stack by the given amount in bytes.
+		  * \param size Size amount in bytes
+		  * \warning Use this very carefully, the memory will be released then the current scope goes out of scope!
+		  * \return Pointer to the new allocated stack memory.
+		  */
 		fpl_api void *MemoryStackAllocate(const size_t size);
-		//! Allocates aligned memory from the operating system by the given alignment. The memory is guaranteed to be initialized by zero.
+		/**
+		  * \brief Allocates aligned memory from the operating system by the given alignment.
+		  * \param size Size amount in bytes
+		  * \param alignment Alignment in bytes (Needs to be a power-of-two!)
+		  * \note The memory is guaranteed to be initialized by zero.
+		  * \return Pointer to the new allocated aligned memory.
+		  */
 		fpl_api void *MemoryAlignedAllocate(const size_t size, const size_t alignment);
-		//! Releases aligned memory from the operating system.
-		fpl_api void MemoryAlignedFree(void *ptr);
+		/**
+		  * \brief Releases the aligned memory allocated from the operating system.
+		  * \param ptr Pointer to the aligned allocated memory.
+		  * \warning This should never be called with a not-aligned memory pointer! For freeing not-aligned memory, use \ref MemoryFree() instead.
+		  * \return Pointer to the new allocated memory.
+		  */
+		fpl_api void MemoryAlignedFree(void **ptr);
 
 		/** \}*/
 	}
@@ -1746,7 +2159,11 @@ namespace fpl {
 		  * \{
 		  */
 
-		//! Returns the current system clock in seconds with the highest precision.
+		/**
+		  * \brief Returns the current system clock in seconds with the highest precision possible.
+		  * \return Returns number of second since some fixed starting point (OS start, System start, etc).
+		  * \note Can only be used to calculate a difference in time!
+		  */
 		fpl_api double GetHighResolutionTimeInSeconds();
 
 		/** \}*/
@@ -1760,26 +2177,125 @@ namespace fpl {
 		  * \{
 		  */
 
-		//! Returns the number of characters of the given 8-bit Ansi string. Null terminator is not included.
+		/**
+		  * \brief Returns true when both ansi strings are equal with enforcing the given length.
+		  * \param a First string
+		  * \param aLen Number of characters for the first string
+		  * \param b Second string
+		  * \param bLen Number of characters for the second string
+		  * \note Len parameters does not include the null-terminator!
+		  * \return True when strings matches, otherwise false.
+		  */
+		fpl_api bool IsStringEqual(const char *a, const uint32_t aLen, const char *b, const uint32_t bLen);
+		/**
+		  * \brief Returns true when both ansi strings are equal.
+		  * \param a First string
+		  * \param b Second string
+		  * \return True when strings matches, otherwise false.
+		  */
+		fpl_api bool IsStringEqual(const char *a, const char *b);
+		/**
+		  * \brief Returns the number of characters of the given 8-bit Ansi string.
+		  * \param str The 8-bit ansi string
+		  * \note Null terminator is not included!
+		  * \return Returns the character length or zero when the input string is nullptr.
+		  */
 		fpl_api uint32_t GetAnsiStringLength(const char *str);
-		//! Returns the number of characters of the given 16-bit Wide string. Null terminator is not included.
+		/**
+		  * \brief Returns the number of characters of the given 16-bit wide string.
+		  * \param str The 16-bit wide string
+		  * \note Null terminator is not included!
+		  * \return Returns the character length or zero when the input string is nullptr.
+		  */
 		fpl_api uint32_t GetWideStringLength(const wchar_t *str);
-		//! Copies the given 8-bit source Ansi string with length into a destination Ansi string. Does not allocate any memory.
+		/**
+		  * \brief Copies the given 8-bit source ansi string with a fixed length into a destination ansi string.
+		  * \param source The 8-bit source ansi string.
+		  * \param sourceLen The number of characters to copy.
+		  * \param dest The 8-bit destination ansi string buffer.
+		  * \param maxDestLen The total number of characters available in the destination buffer.
+		  * \note Null terminator is included always. Does not allocate any memory.
+		  * \return Returns the pointer to the first character in the destination buffer or nullptr when either the dest buffer is too small or the source string is invalid.
+		  */
 		fpl_api char *CopyAnsiString(const char *source, const uint32_t sourceLen, char *dest, const uint32_t maxDestLen);
-		//! Copies the given 8-bit source Ansi string into a destination Ansi string. Does not allocate any memory.
+		/**
+		  * \brief Copies the given 8-bit source ansi string into a destination ansi string.
+		  * \param source The 8-bit source ansi string.
+		  * \param dest The 8-bit destination ansi string buffer.
+		  * \param maxDestLen The total number of characters available in the destination buffer.
+		  * \note Null terminator is included always. Does not allocate any memory.
+		  * \return Returns the pointer to the first character in the destination buffer or nullptr when either the dest buffer is too small or the source string is invalid.
+		  */
 		fpl_api char *CopyAnsiString(const char *source, char *dest, const uint32_t maxDestLen);
-		//! Copies the given 16-bit source Wide string with length into a destination Wide string. Does not allocate any memory.
+		/**
+		  * \brief Copies the given 16-bit source wide string with a fixed length into a destination wide string.
+		  * \param source The 16-bit source wide string.
+		  * \param sourceLen The number of characters to copy.
+		  * \param dest The 16-bit destination wide string buffer.
+		  * \param maxDestLen The total number of characters available in the destination buffer.
+		  * \note Null terminator is included always. Does not allocate any memory.
+		  * \return Returns the pointer to the first character in the destination buffer or nullptr when either the dest buffer is too small or the source string is invalid.
+		  */
 		fpl_api wchar_t *CopyWideString(const wchar_t *source, const uint32_t sourceLen, wchar_t *dest, const uint32_t maxDestLen);
-		//! Copies the given 16-bit source Wide string into a destination Wide string. Does not allocate any memory.
+		/**
+		  * \brief Copies the given 16-bit source wide string into a destination wide string.
+		  * \param source The 16-bit source wide string.
+		  * \param dest The 16-bit destination wide string buffer.
+		  * \param maxDestLen The total number of characters available in the destination buffer.
+		  * \note Null terminator is included always. Does not allocate any memory.
+		  * \return Returns the pointer to the first character in the destination buffer or nullptr when either the dest buffer is too small or the source string is invalid.
+		  */
 		fpl_api wchar_t *CopyWideString(const wchar_t *source, wchar_t *dest, const uint32_t maxDestLen);
-		//! Converts the given 16-bit source Wide string with length in a 8-bit Ansi string. Does not allocate any memory.
+		/**
+		  * \brief Converts the given 16-bit source wide string with length in a 8-bit ansi string.
+		  * \param wideSource The 16-bit source wide string.
+		  * \param maxWideSourceLen The number of characters of the source wide string.
+		  * \param ansiDest The 8-bit destination ansi string buffer.
+		  * \param maxAnsiDestLen The total number of characters available in the destination buffer.
+		  * \note Null terminator is included always. Does not allocate any memory.
+		  * \return Returns the pointer to the first character in the destination buffer or nullptr when either the dest buffer is too small or the source string is invalid.
+		  */
 		fpl_api char *WideStringToAnsiString(const wchar_t *wideSource, const uint32_t maxWideSourceLen, char *ansiDest, const uint32_t maxAnsiDestLen);
-		//! Converts the given 16-bit Wide string in a 8-bit UTF-8 string. Does not allocate any memory.
+		/**
+		  * \brief Converts the given 16-bit source wide string with length in a 8-bit UTF-8 ansi string.
+		  * \param wideSource The 16-bit source wide string.
+		  * \param maxWideSourceLen The number of characters of the source wide string.
+		  * \param utf8Dest The 8-bit destination ansi string buffer.
+		  * \param maxUtf8DestLen The total number of characters available in the destination buffer.
+		  * \note Null terminator is included always. Does not allocate any memory.
+		  * \return Returns the pointer to the first character in the destination buffer or nullptr when either the dest buffer is too small or the source string is invalid.
+		  */
 		fpl_api char *WideStringToUTF8String(const wchar_t *wideSource, const uint32_t maxWideSourceLen, char *utf8Dest, const uint32_t maxUtf8DestLen);
-		//! Converts the given 8-bit Ansi string in a 16-bit Wide string. Does not allocate any memory.
+		/**
+		  * \brief Converts the given 8-bit source ansi string with length in a 16-bit wide string.
+		  * \param ansiSource The 8-bit source ansi string.
+		  * \param ansiSourceLen The number of characters of the source wide string.
+		  * \param wideDest The 16-bit destination wide string buffer.
+		  * \param maxWideDestLen The total number of characters available in the destination buffer.
+		  * \note Null terminator is included always. Does not allocate any memory.
+		  * \return Returns the pointer to the first character in the destination buffer or nullptr when either the dest buffer is too small or the source string is invalid.
+		  */
 		fpl_api wchar_t *AnsiStringToWideString(const char *ansiSource, const uint32_t ansiSourceLen, wchar_t *wideDest, const uint32_t maxWideDestLen);
-		//! Converts the given 8-bit UTF-8 string in a 16-bit Wide string. Does not allocate any memory.
+		/**
+		  * \brief Converts the given 8-bit UTF-8 source ansi string with length in a 16-bit wide string.
+		  * \param utf8Source The 8-bit source ansi string.
+		  * \param utf8SourceLen The number of characters of the source wide string.
+		  * \param wideDest The 16-bit destination wide string buffer.
+		  * \param maxWideDestLen The total number of characters available in the destination buffer.
+		  * \note Null terminator is included always. Does not allocate any memory.
+		  * \return Returns the pointer to the first character in the destination buffer or nullptr when either the dest buffer is too small or the source string is invalid.
+		  */
 		fpl_api wchar_t *UTF8StringToWideString(const char *utf8Source, const uint32_t utf8SourceLen, wchar_t *wideDest, const uint32_t maxWideDestLen);
+		/**
+		  * \brief Fills out the given destination ansi string buffer with a formatted string, using the format specifier and variable arguments.
+		  * \param ansiDestBuffer The 8-bit destination ansi string buffer.
+		  * \param maxAnsiDestBufferLen The total number of characters available in the destination buffer.
+		  * \param format The string format.
+		  * \param ... Variable arguments.
+		  * \note This is most likely just a wrapper call to vsnprintf()
+		  * \return Pointer to the first character in the destination buffer or nullptr.
+		  */
+		fpl_api char *FormatAnsiString(char *ansiDestBuffer, const uint32_t maxAnsiDestBufferLen, const char *format, ...);
 
 		/** \}*/
 	}
@@ -1861,49 +2377,148 @@ namespace fpl {
 			} internalHandle;
 		};
 
-		//! Opens a binary file from a ansi string path for reading and returns the handle of it.
+		/**
+		  * \brief Opens a binary file for reading from a ansi string path and returns the handle of it.
+		  * \param filePath Ansi file path.
+		  * \note To check for success just test the \ref FileHandle.isValid field from the result.
+		  * \return Copy of the handle to the open file.
+		  */
 		fpl_api FileHandle OpenBinaryFile(const char *filePath);
-		//! Opens a binary file from a wide string path for reading and returns the handle of it.
+		/**
+		  * \brief Opens a binary file for reading from a wide string path and returns the handle of it.
+		  * \param filePath Wide file path.
+		  * \note To check for success just test the \ref FileHandle.isValid field from the result.
+		  * \return Copy of the handle to the open file.
+		  */
 		fpl_api FileHandle OpenBinaryFile(const wchar_t *filePath);
-		//! Creates a binary file to a ansi string path and returns the handle of it.
+		/**
+		  * \brief Create a binary file for writing to the given ansi string path and returns the handle of it.
+		  * \param filePath Ansi file path.
+		  * \note To check for success just test the \ref FileHandle.isValid field from the result. The file is ensured to be overriden always.
+		  * \return Copy of the handle to the created file.
+		  */
 		fpl_api FileHandle CreateBinaryFile(const char *filePath);
-		//! Creates a binary file to a wide string path and returns the handle of it.
+		/**
+		  * \brief Create a binary file for writing to the given wide string path and returns the handle of it.
+		  * \param filePath Wide file path.
+		  * \note To check for success just test the \ref FileHandle.isValid field from the result. The file is ensured to be overriden always.
+		  * \return Copy of the handle to the created file.
+		  */
 		fpl_api FileHandle CreateBinaryFile(const wchar_t *filePath);
-		//! Reads a block from the given file handle and returns the number of bytes readed. Operation is limited to a 2 GB byte boundary.
+		/**
+		  * \brief Reads a block from the given file handle and returns the number of bytes read.
+		  * \param fileHandle Reference to the file handle.
+		  * \param sizeToRead Number of bytes to read.
+		  * \param targetBuffer Target memory to write into.
+		  * \param maxTargetBufferSize Total number of bytes available in the target buffer.
+		  * \note Its limited to files < 2 GB.
+		  * \return Number of bytes read or zero.
+		  */
 		fpl_api uint32_t ReadFileBlock32(const FileHandle &fileHandle, const uint32_t sizeToRead, void *targetBuffer, const uint32_t maxTargetBufferSize);
-		//! Writes a block to the given file handle and returns the number of bytes written. Operation is limited to a 2 GB byte boundary.
+		/**
+		  * \brief Writes a block to the given file handle and returns the number of bytes written.
+		  * \param fileHandle Reference to the file handle.
+		  * \param sourceBuffer Source memory to read from.
+		  * \param sourceSize Number of bytes to write.
+		  * \note Its limited to files < 2 GB.
+		  * \return Number of bytes written or zero.
+		  */
 		fpl_api uint32_t WriteFileBlock32(const FileHandle &fileHandle, void *sourceBuffer, const uint32_t sourceSize);
-		//! Sets the current file position by the given position, depending on the mode its absolute or relative. Position is limited to a 2 GB byte boundary.
-		fpl_api void SetFilePosition32(const FileHandle &fileHandle, const uint32_t position, const FilePositionMode mode);
-		//! Returns the current file position. Position is limited to a 2 GB byte boundary.
+		/**
+		  * \brief Sets the current file position by the given position, depending on the mode its absolute or relative.
+		  * \param fileHandle Reference to the file handle.
+		  * \param position Position in bytes
+		  * \param mode Position mode
+		  * \note Its limited to files < 2 GB.
+		  */
+		fpl_api void SetFilePosition32(const FileHandle &fileHandle, const int32_t position, const FilePositionMode mode);
+		/**
+		  * \brief Returns the current file position in bytes.
+		  * \param fileHandle Reference to the file handle.
+		  * \note Its limited to files < 2 GB.
+		  * \return Current file position in bytes.
+		  */
 		fpl_api uint32_t GetFilePosition32(const FileHandle &fileHandle);
-		//! Closes the given file handle and resets the handle to zero.
+		/**
+		  * \brief Closes the given file and releases the underlying resources and clears the handle to zero.
+		  * \param fileHandle Reference to the file handle.
+		  */
 		fpl_api void CloseFile(FileHandle &fileHandle);
 
-		// @TODO(final): Add 64-bit file operations as well!
+		// @TODO(final): Add 64-bit file operations
+		// @TODO(final): Add wide file operations
 
-		//! Returns the 32-bit file size in bytes for the given file. Its limited to files < 2 GB.
+		/**
+		  * \brief Returns the 32-bit file size in bytes for the given file.
+		  * \param filePath Ansi path to the file.
+		  * \note Its limited to files < 2 GB.
+		  * \return File size in bytes or zero.
+		  */
 		fpl_api uint32_t GetFileSize32(const char *filePath);
-		//! Returns the 32-bit file size in bytes for a opened file. Its limited to files < 2 GB.
+		/**
+		  * \brief Returns the 32-bit file size in bytes for a opened file.
+		  * \param fileHandle Reference to the file handle.
+		  * \note Its limited to files < 2 GB.
+		  * \return File size in bytes or zero.
+		  */
 		fpl_api uint32_t GetFileSize32(const FileHandle &fileHandle);
-		//! Returns true when the given file path physically exists.
+		/**
+		  * \brief Returns true when the given file physically exists.
+		  * \param filePath Ansi path to the file.
+		  * \return True when the file exists, otherwise false.
+		  */
 		fpl_api bool FileExists(const char *filePath);
-		//! Copies the given source file to the target path and returns true when copy was successful. Target path must include the full path to the file. When overwrite is set, the target file path will always be overwritten.
+		/**
+		  * \brief Copies the given source file to the target path and returns true when copy was successful.
+		  * \param sourceFilePath Ansi source file path.
+		  * \param targetFilePath Ansi target file path.
+		  * \param overwrite When true the target file always be overwritten, otherwise it will return false when file already exists.
+		  * \return True when the file was copied, otherwise false.
+		  */
 		fpl_api bool FileCopy(const char *sourceFilePath, const char *targetFilePath, const bool overwrite);
-		//! Deletes the given file without confirmation and returns true when the deletion was successful.
+		/**
+		  * \brief Deletes the given file without confirmation and returns true when the deletion was successful.
+		  * \param filePath Ansi path to the file.
+		  * \return True when the file was deleted, otherwise false.
+		  */
 		fpl_api bool FileDelete(const char *filePath);
 
-		//! Creates all the directories in the path when not exists.
+		/**
+		  * \brief Creates all the directories in the given path.
+		  * \param path Ansi path to the directory.
+		  * \return True when at least one directory was created, otherwise false.
+		  */
 		fpl_api bool CreateDirectories(const char *path);
-		//! Returns true when the given directory path physically exists.
+		/**
+		  * \brief Returns true when the given directory physically exists.
+		  * \param path Ansi path to the directory.
+		  * \return True when the directory exists, otherwise false.
+		  */
 		fpl_api bool DirectoryExists(const char *path);
-		//! Deletes the given directory without confirmation and returns true when the deletion was successful. When recursive is set, all files and folders in sub-directories will be deleted as well.
+		/**
+		  * \brief Deletes the given empty directory without confirmation and returns true when the deletion was successful.
+		  * \param path Ansi path to the directory.
+		  * \return True when the empty directory was deleted, otherwise false.
+		  */
 		fpl_api bool RemoveEmptyDirectory(const char *path);
-		//! Iterates through files / directories in the given directory. The path must contain the filter as well. Returns true when there was a first entry found.
+		/**
+		  * \brief Iterates through files / directories in the given directory.
+		  * \param pathAndFilter The path with its included after the path separator.
+		  * \param firstEntry The reference to a file entry.
+		  * \note The path must contain the filter as well.
+		  * \return Returns true when there was a first entry found otherwise false.
+		  */
 		fpl_api bool ListFilesBegin(const char *pathAndFilter, FileEntry &firstEntry);
-		//! Get next file entry from iterating through files / directories. Returns false when there is no entry found.
+		/**
+		  * \brief Gets the next file entry from iterating through files / directories.
+		  * \param nextEntry The reference to the current file entry.
+		  * \return Returns true when there was a next file otherwise false if not.
+		  */
 		fpl_api bool ListFilesNext(FileEntry &nextEntry);
-		//! Releases opened resources from iterating through files / directories.
+		/**
+		  * \brief Releases opened resources from iterating through files / directories.
+		  * \param lastEntry The reference to the last file entry.
+		  */
 		fpl_api void ListFilesEnd(FileEntry &lastEntry);
 
 		/** \}*/
@@ -1917,19 +2532,64 @@ namespace fpl {
 		  * \{
 		  */
 
-		//! Returns the full path to this executable, including the executable file name. Result is written in the required destination buffer.
+		// @TODO(final): Support wide paths as well
+
+		/**
+		  * \brief Returns the full path to this executable, including the executable file name.
+		  * \param destPath Destination buffer
+		  * \param maxDestLen Total number of characters available in the destination buffer.
+		  * \note Result is written in the destination buffer.
+		  * \return Returns the pointer to the first character in the destination buffer or nullptr.
+		  */
 		fpl_api char *GetExecutableFilePath(char *destPath, const uint32_t maxDestLen);
-		//! Returns the full path to your home directory. Result is written in the required destination buffer.
+		/**
+		  * \brief Returns the full path to your home directory.
+		  * \param destPath Destination buffer
+		  * \param maxDestLen Total number of characters available in the destination buffer.
+		  * \note Result is written in the destination buffer.
+		  * \return Returns the pointer to the first character in the destination buffer or nullptr.
+		  */
 		fpl_api char *GetHomePath(char *destPath, const uint32_t maxDestLen);
-		//! Returns the path from the given source path. Result is written in the required destination buffer.
+		/**
+		  * \brief Returns the path from the given source path.
+		  * \param sourcePath Source path to extract from.
+		  * \param destPath Destination buffer
+		  * \param maxDestLen Total number of characters available in the destination buffer.
+		  * \note Result is written in the destination buffer.
+		  * \return Returns the pointer to the first character in the destination buffer or nullptr.
+		  */
 		fpl_api char *ExtractFilePath(const char *sourcePath, char *destPath, const uint32_t maxDestLen);
-		//! Returns the file extension from the given source path.
+		/**
+		  * \brief Returns the file extension from the given source path.
+		  * \param sourcePath Source path to extract from.
+		  * \return Returns the pointer to the first character of the extension.
+		  */
 		fpl_api char *ExtractFileExtension(const char *sourcePath);
-		//! Returns the file name including the file extension from the given source path.
+		/**
+		  * \brief Returns the file name including the file extension from the given source path.
+		  * \param sourcePath Source path to extract from.
+		  * \return Returns the pointer to the first character of the filename.
+		  */
 		fpl_api char *ExtractFileName(const char *sourcePath);
-		//! Changes the file extension on the given source path and writes the result into the destination path. Returns the pointer of the destination path. Result is written in the required destination buffer.
+		/**
+		  * \brief Changes the file extension on the given source path and writes the result into the destination path.
+		  * \param filePath File path to search for the extension.
+		  * \param newFileExtension New file extension.
+		  * \param destPath Destination buffer
+		  * \param maxDestLen Total number of characters available in the destination buffer.
+		  * \note Result is written in the destination buffer.
+		  * \return Returns the pointer to the first character in the destination buffer or nullptr.
+		  */
 		fpl_api char *ChangeFileExtension(const char *filePath, const char *newFileExtension, char *destPath, const uint32_t maxDestLen);
-		//! Combines all included path by the systems path separator. Returns the pointer of the destination path. Result is written in the required destination buffer.
+		/**
+		  * \brief Combines all included path by the systems path separator.
+		  * \param destPath Destination buffer
+		  * \param maxDestPathLen Total number of characters available in the destination buffer.
+		  * \param pathCount Number of dynamic path arguments.
+		  * \param ... Dynamic path arguments.
+		  * \note Result is written in the destination buffer.
+		  * \return Returns the pointer to the first character in the destination buffer or nullptr.
+		  */
 		fpl_api char *CombinePath(char *destPath, const uint32_t maxDestPathLen, const uint32_t pathCount, ...);
 
 		/** \}*/
@@ -2307,7 +2967,11 @@ namespace fpl {
 			};
 		};
 
-		//! Gets and removes the top event from the internal queue and fills out the "event" argument. Returns false when there are no events left, otherwise true.
+		/**
+		  * \brief Gets and moves the top event data from the internal queue into the event argument.
+		  * \param ev Reference to an event
+		  * \return Returns false when there are no events left, otherwise true.
+		  */
 		fpl_api bool PollWindowEvent(Event &ev);
 
 		/*\}*/
@@ -2334,31 +2998,75 @@ namespace fpl {
 			int32_t top;
 		};
 
-		//! Returns true when the window is active.
+		/**
+		  * \brief Returns true when the window is active.
+		  * \return True when the window is active, otherwise false.
+		  */
 		fpl_api bool IsWindowRunning();
-		//! Processes the message queue of the window.
+		/**
+		  * \brief Processes the message queue of the window.
+		  * \return True when the window is still active, otherwise false.
+		  */
 		fpl_api bool WindowUpdate();
-		//! Forces the window to redraw or swap the back/front buffer.
+		/**
+		  * \brief Forces the window to redraw or to swap the back/front buffer.
+		  */
 		fpl_api void WindowFlip();
-		//! Enables or disables the window cursor.
+		/**
+		  * \brief Enables or disables the window cursor.
+		  * \param value Set this to true for enabling the cursor or false for disabling the cursor.
+		  */
 		fpl_api void SetWindowCursorEnabled(const bool value);
-		//! Returns the inner window area.
+		/**
+		  * \brief Returns the inner window area.
+		  * \return Window area size
+		  */
 		fpl_api WindowSize GetWindowArea();
-		//! Resizes the window to fit the inner area to the given size.
+		/**
+		  * \brief Resizes the window to fit the inner area to the given size.
+		  * \param width Width in screen units
+		  * \param height Height in screen units
+		  */
 		fpl_api void SetWindowArea(const uint32_t width, const uint32_t height);
-		//! Returns true when the window is resizable.
+		/**
+		  * \brief Returns true when the window is resizable.
+		  * \return True when the window resizable, otherwise false.
+		  */
 		fpl_api bool IsWindowResizable();
-		//! Enables or disables the ability to resize the window.
+		/**
+		  * \brief Enables or disables the ability to resize the window.
+		  * \param value Set this to true for making the window resizable or false for making it static
+		  */
 		fpl_api void SetWindowResizeable(const bool value);
-		//! Enables or disables fullscreen mode
+		/**
+		  * \brief Enables or disables fullscreen mode.
+		  * \param value Set this to true for changing the window to fullscreen or false for switching it back to window mode.
+		  * \param fullscreenWidth Optional fullscreen width in screen units. When set to zero the desktop default is being used. (Default: 0)
+		  * \param fullscreenHeight Optional fullscreen height in screen units. When set to zero the desktop default is being used. (Default: 0)
+		  * \param refreshRate Optional refresh rate in screen units. When set to zero the desktop default is being used. (Default: 0)
+		  * \return True when the window was changed to the desire fullscreen mode, false when otherwise.
+		  */
 		fpl_api bool SetWindowFullscreen(const bool value, const uint32_t fullscreenWidth = 0, const uint32_t fullscreenHeight = 0, const uint32_t refreshRate = 0);
-		//! Returns true when the window is in fullscreen mode
+		/**
+		  * \brief Returns true when the window is in fullscreen mode
+		  * \return True when the window is in fullscreen mode, otherwise false.
+		  */
 		fpl_api bool IsWindowFullscreen();
-		//! Returns the absolute window position.
+		/**
+		  * \brief Returns the absolute window position.
+		  * \return Window position in screen units
+		  */
 		fpl_api WindowPosition GetWindowPosition();
-		//! Sets the window absolut position to the given coordinates.
+		/**
+		  * \brief Sets the window absolut position to the given coordinates.
+		  * \param left Left position in screen units.
+		  * \param top Top position in screen units.
+		  */
 		fpl_api void SetWindowPosition(const int32_t left, const int32_t top);
-		//! Sets the window title
+		/**
+		  * \brief Sets the window title.
+		  * \param title New title ansi string
+		  */
 		fpl_api void SetWindowTitle(const char *title);
 
 		/*\}*/
@@ -2369,13 +3077,31 @@ namespace fpl {
 		  * \{
 		  */
 
-		//! Returns the current clipboard ansi text
+		/**
+		  * \brief Returns the current clipboard ansi text.
+		  * \param dest The destination ansi string buffer to write the clipboard text into.
+		  * \param maxDestLen The total number of characters available in the destination buffer.
+		  * \return Pointer to the first character in the clipboard text or nullptr otherwise.
+		  */
 		fpl_api char *GetClipboardAnsiText(char *dest, const uint32_t maxDestLen);
-		//! Returns the current clipboard wide text
+		/**
+		  * \brief Returns the current clipboard wide text.
+		  * \param dest The destination wide string buffer to write the clipboard text into.
+		  * \param maxDestLen The total number of characters available in the destination buffer.
+		  * \return Pointer to the first character in the clipboard text or nullptr otherwise.
+		  */
 		fpl_api wchar_t *GetClipboardWideText(wchar_t *dest, const uint32_t maxDestLen);
-		//! Overwrites the current clipboard ansi text with the given one.
+		/**
+		  * \brief Overwrites the current clipboard ansi text with the given one.
+		  * \param ansiSource The new clipboard ansi string.
+		  * \return Returns true when the text in the clipboard was changed, otherwise false.
+		  */
 		fpl_api bool SetClipboardText(const char *ansiSource);
-		//! Overwrites the current clipboard wide text with the given one.
+		/**
+		  * \brief Overwrites the current clipboard wide text with the given one.
+		  * \param wideSource The new clipboard wide string.
+		  * \return Returns true when the text in the clipboard was changed, otherwise false.
+		  */
 		fpl_api bool SetClipboardText(const wchar_t *wideSource);
 
 		/** \}*/
@@ -2403,7 +3129,14 @@ namespace fpl {
 			int32_t height;
 		};
 
-		//! Return a video rectangle from a LT-RB rectangle
+		/**
+		  * \brief Makes a video rectangle from a LT-RB rectangle
+		  * \param left Left position in screen units.
+		  * \param top Top position in screen units.
+		  * \param right Right position in screen units.
+		  * \param bottom Bottom position in screen units.
+		  * \return Computed video rectangle
+		  */
 		inline VideoRect CreateVideoRectFromLTRB(int32_t left, int32_t top, int32_t right, int32_t bottom) {
 			VideoRect result = { left, top, (right - left) + 1, (bottom - top) + 1 };
 			return(result);
@@ -2425,11 +3158,23 @@ namespace fpl {
 			bool useOutputRect;
 		};
 
-		//! Returns the pointer to the video software context.
+		/**
+		  * \brief Returns the pointer to the video software context.
+		  * \warning Do not release this memory by any means, otherwise you will corrupt heap memory!
+		  * \return Pointer to the video backbuffer.
+		  */
 		fpl_api VideoBackBuffer *GetVideoBackBuffer();
-		//! Resizes the current video backbuffer
+		/**
+		  * \brief Resizes the current video backbuffer.
+		  * \param width Width in pixels.
+		  * \param height Height in pixels.
+		  * \return Returns true when video back buffer could be resized or false otherwise.
+		  */
 		fpl_api bool ResizeVideoBackBuffer(const uint32_t width, const uint32_t height);
-		//! Returns the actual video driver type
+		/**
+		  * \brief Returns the current video driver type used.
+		  * \return The current video driver type used.
+		  */
 		fpl_api VideoDriverType GetVideoDriver();
 
 		/** \}*/
@@ -2455,14 +3200,35 @@ namespace fpl {
 			Failed,
 		};
 
-		//! Start playing audio
+		/**
+		  * \brief Start playing asyncronous audio.
+		  * \return Audio result code.
+		  */
 		fpl_api AudioResult PlayAudio();
-		//! Stop playing audio
+		/**
+		  * \brief Stop playing asyncronous audio.
+		  * \return Audio result code.
+		  */
 		fpl_api AudioResult StopAudio();
-		//! Returns the native format for the current audio device
+		/**
+		  * \brief Returns the native format for the current audio device.
+		  * \return Copy fo the audio device format.
+		  */
 		fpl_api const AudioDeviceFormat &GetAudioHardwareFormat();
-		//! Overwrites the audio client read callback. This has no effect when audio is already playing, you have to call it when audio is in a stopped state.
+		/**
+		  * \brief Overwrites the audio client read callback.
+		  * \param newCallback Pointer to the client read callback.
+		  * \param userData Pointer to the client/user data.
+		  * \note This has no effect when audio is already playing, you have to call it when audio is in a stopped state!
+		  */
 		fpl_api void SetAudioClientReadCallback(AudioClientReadFunction *newCallback, void *userData);
+		/**
+		  * \brief Gets all playback audio devices.
+		  * \param devices Target device id array.
+		  * \param maxDeviceCount Total number of devices available in the devices array.
+		  * \return Number of devices found.
+		  */
+		fpl_api uint32_t GetAudioDevices(AudioDeviceID *devices, uint32_t maxDeviceCount);
 
 		/** \}*/
 	};
@@ -2604,7 +3370,7 @@ namespace fpl {
 				size_t errorIndex = state->count++;
 				strings::CopyAnsiString(buffer, messageLen, state->errors[errorIndex], MAX_LAST_ERROR_STRING_LENGTH);
 #		if defined(FPL_ENABLE_ERROR_IN_CONSOLE)
-				console::ConsoleError(buffer);
+				console::ConsoleFormatError("FPL Error: %s\n", buffer);
 #		endif
 			}
 		}
@@ -2618,7 +3384,7 @@ namespace fpl {
 				uint32_t messageLen = strings::GetAnsiStringLength(buffer);
 				strings::CopyAnsiString(buffer, messageLen, state->errors[0], MAX_LAST_ERROR_STRING_LENGTH);
 #		if defined(FPL_ENABLE_ERROR_IN_CONSOLE)
-				console::ConsoleError(buffer);
+				console::ConsoleFormatError("FPL Error: %s\n", buffer);
 #		endif
 			}
 		}
@@ -2742,6 +3508,46 @@ namespace fpl {
 	// Common Strings
 	//
 	namespace strings {
+		fpl_api bool IsStringEqual(const char *a, const uint32_t aLen, const char *b, const uint32_t bLen) {
+			if ((a == nullptr) || (b == nullptr)) {
+				return (a == b);
+			}
+			if (aLen != bLen) {
+				return false;
+			}
+			FPL_ASSERT(aLen == bLen);
+			bool result = true;
+			for (uint32_t index = 0; index < aLen; ++index) {
+				char aChar = a[index];
+				char bChar = b[index];
+				if (aChar != bChar) {
+					result = false;
+					break;
+				}
+			}
+			return(result);
+		}
+
+		fpl_api bool IsStringEqual(const char *a, const char *b) {
+			if ((a == nullptr) || (b == nullptr)) {
+				return (a == b);
+			}
+			bool result = true;
+			for (;;) {
+				const char aChar = *(a++);
+				const char bChar = *(b++);
+				if (aChar == 0 || bChar == 0) {
+					result = (aChar == bChar);
+					break;
+				}
+				if (aChar != bChar) {
+					result = false;
+					break;
+				}
+			}
+			return(result);
+		}
+
 		fpl_api uint32_t GetAnsiStringLength(const char *str) {
 			uint32_t result = 0;
 			if (str != nullptr) {
@@ -5482,47 +6288,47 @@ namespace fpl {
 			return(result);
 		}
 
-		fpl_api void SignalDestroy(ThreadSignal &availableSignal) {
-			if (availableSignal.internalHandle.win32Handle != nullptr) {
-				HANDLE handle = (HANDLE)availableSignal.internalHandle.win32Handle;
+		fpl_api void SignalDestroy(ThreadSignal &signal) {
+			if (signal.internalHandle.win32Handle != nullptr) {
+				HANDLE handle = (HANDLE)signal.internalHandle.win32Handle;
 				CloseHandle(handle);
-				availableSignal = {};
+				signal = {};
 			}
 		}
 
-		fpl_api bool SignalWaitForOne(ThreadSignal &availableSignal, const uint32_t maxMilliseconds) {
-			if (availableSignal.internalHandle.win32Handle == nullptr) {
+		fpl_api bool SignalWaitForOne(const ThreadSignal &signal, const uint32_t maxMilliseconds) {
+			if (signal.internalHandle.win32Handle == nullptr) {
 				return false;
 			}
-			HANDLE handle = (HANDLE)availableSignal.internalHandle.win32Handle;
+			HANDLE handle = (HANDLE)signal.internalHandle.win32Handle;
 			bool result = (WaitForSingleObject(handle, maxMilliseconds < UINT32_MAX ? maxMilliseconds : INFINITE) == WAIT_OBJECT_0);
 			return(result);
 		}
 
-		fpl_api bool SignalWaitForAll(ThreadSignal **signals, const uint32_t count, const uint32_t maxMilliseconds) {
-			bool result = platform::Win32SignalWaitForMultiple(signals, count, true, maxMilliseconds);
+		fpl_api bool SignalWaitForAll(const ThreadSignal **signals, const uint32_t count, const uint32_t maxMilliseconds) {
+			bool result = platform::Win32SignalWaitForMultiple((ThreadSignal **)signals, count, true, maxMilliseconds);
 			return(result);
 		}
 
-		fpl_api bool SignalWaitForAny(ThreadSignal **signals, const uint32_t count, const uint32_t maxMilliseconds) {
-			bool result = platform::Win32SignalWaitForMultiple(signals, count, false, maxMilliseconds);
+		fpl_api bool SignalWaitForAny(const ThreadSignal **signals, const uint32_t count, const uint32_t maxMilliseconds) {
+			bool result = platform::Win32SignalWaitForMultiple((ThreadSignal **)signals, count, false, maxMilliseconds);
 			return(result);
 		}
 
-		fpl_api bool SignalWakeUp(ThreadSignal &availableSignal) {
-			if (availableSignal.internalHandle.win32Handle == nullptr) {
+		fpl_api bool SignalWakeUp(const ThreadSignal &signal) {
+			if (signal.internalHandle.win32Handle == nullptr) {
 				return false;
 			}
-			HANDLE handle = (HANDLE)availableSignal.internalHandle.win32Handle;
+			HANDLE handle = (HANDLE)signal.internalHandle.win32Handle;
 			bool result = SetEvent(handle) == TRUE;
 			return(result);
 		}
 
-		fpl_api bool SignalReset(ThreadSignal &availableSignal) {
-			if (availableSignal.internalHandle.win32Handle == nullptr) {
+		fpl_api bool SignalReset(const ThreadSignal &signal) {
+			if (signal.internalHandle.win32Handle == nullptr) {
 				return false;
 			}
-			HANDLE handle = (HANDLE)availableSignal.internalHandle.win32Handle;
+			HANDLE handle = (HANDLE)signal.internalHandle.win32Handle;
 			bool result = ResetEvent(handle) == TRUE;
 			return(result);
 		}
@@ -5655,7 +6461,7 @@ namespace fpl {
 			return(result);
 		}
 
-		fpl_api void SetFilePosition32(const FileHandle &fileHandle, const uint32_t position, const FilePositionMode mode) {
+		fpl_api void SetFilePosition32(const FileHandle &fileHandle, const int32_t position, const FilePositionMode mode) {
 			if (fileHandle.internalHandle.win32Handle != INVALID_HANDLE_VALUE) {
 				HANDLE win32FileHandle = (void *)fileHandle.internalHandle.win32Handle;
 				DWORD moveMethod = FILE_BEGIN;
@@ -5978,7 +6784,7 @@ namespace fpl {
 			}
 			uint32_t requiredLen = MultiByteToWideChar(CP_ACP, 0, ansiSource, ansiSourceLen, nullptr, 0);
 			if (maxWideDestLen < (requiredLen + 1)) {
-				common::PushError("Max wide dest len parameter '%d' must be greater or equal than ''", maxWideDestLen, (requiredLen + 1));
+				common::PushError("Max wide dest len parameter '%d' must be greater or equal than '%d'", maxWideDestLen, (requiredLen + 1));
 				return nullptr;
 			}
 			MultiByteToWideChar(CP_ACP, 0, ansiSource, ansiSourceLen, wideDest, maxWideDestLen);
@@ -5996,12 +6802,44 @@ namespace fpl {
 			}
 			uint32_t requiredLen = MultiByteToWideChar(CP_UTF8, 0, utf8Source, utf8SourceLen, nullptr, 0);
 			if (maxWideDestLen < (requiredLen + 1)) {
-				common::PushError("Max wide dest len parameter '%d' must be greater or equal than ''", maxWideDestLen, (requiredLen + 1));
+				common::PushError("Max wide dest len parameter '%d' must be greater or equal than '%d'", maxWideDestLen, (requiredLen + 1));
 				return nullptr;
 			}
 			MultiByteToWideChar(CP_UTF8, 0, utf8Source, utf8SourceLen, wideDest, maxWideDestLen);
 			wideDest[requiredLen] = 0;
 			return(wideDest);
+		}
+		fpl_api char *FormatAnsiString(char *ansiDestBuffer, const uint32_t maxAnsiDestBufferLen, const char *format, ...) {
+			if (ansiDestBuffer == nullptr) {
+				common::PushError("Ansi dest buffer parameter are not allowed to be null");
+				return nullptr;
+			}
+			if (maxAnsiDestBufferLen == 0) {
+				common::PushError("Max ansi dest len parameter must be greater that zero");
+				return nullptr;
+			}
+			if (format == nullptr) {
+				common::PushError("Format parameter are not allowed to be null");
+				return nullptr;
+			}
+			va_list argList;
+			va_start(argList, format);
+			// @NOTE(final): Need to clear the first character, otherwise vsnprintf() does weird things... O_o
+			ansiDestBuffer[0] = 0;
+			int charCount = vsnprintf(ansiDestBuffer, maxAnsiDestBufferLen, format, argList);
+			if (charCount < 0) {
+				common::PushError("Format parameter are '%s' are invalid!", format);
+				return nullptr;
+			}
+			if ((int)maxAnsiDestBufferLen < (charCount + 1)) {
+				common::PushError("Max ansi dest len parameter '%d' must be greater or equal than '%d'", maxAnsiDestBufferLen, (charCount + 1));
+				return nullptr;
+			}
+			va_end(argList);
+			FPL_ASSERT(charCount > 0);
+			ansiDestBuffer[charCount] = 0;
+			char *result = ansiDestBuffer;
+			return(result);
 		}
 	} // strings
 
@@ -6584,7 +7422,7 @@ namespace fpl {
 #	if defined(FPL_ENABLE_AUDIO)
 		if (win32State.initFlags & InitFlags::Audio) {
 			if (audio::InitAudio(initSettings.audio) != audio::AudioResult::Success) {
-				common::PushError("Failed initialization audio with settings (Driver=%s, Format=%s, SampleRate=%d, Channels=%d, BufferSize=%d)", audio::GetAudioDriverString(initSettings.audio.driver), audio::GetAudioFormatString(initSettings.audio.desiredFormat.type), initSettings.audio.desiredFormat.sampleRate, initSettings.audio.desiredFormat.channels);
+				common::PushError("Failed initialization audio with settings (Driver=%s, Format=%s, SampleRate=%d, Channels=%d, BufferSize=%d)", audio::GetAudioDriverString(initSettings.audio.driver), audio::GetAudioFormatString(initSettings.audio.deviceFormat.type), initSettings.audio.deviceFormat.sampleRate, initSettings.audio.deviceFormat.channels);
 				return false;
 			}
 		}
@@ -6950,6 +7788,45 @@ namespace fpl {
 			bool breakMainLoop;
 		};
 
+		struct DirectSoundDeviceInfos {
+			uint32_t foundDeviceCount;
+			AudioDeviceID *devices;
+			uint32_t maxDeviceCount;
+		};
+
+		fpl_internal BOOL CALLBACK GetDeviceCallbackDirectSound(LPGUID lpGuid, LPCSTR lpcstrDescription, LPCSTR lpcstrModule, LPVOID lpContext) {
+			(void)lpcstrModule;
+
+			DirectSoundDeviceInfos *infos = (DirectSoundDeviceInfos *)lpContext;
+			FPL_ASSERT(infos != nullptr);
+			if (infos->devices != nullptr) {
+				uint32_t index = infos->foundDeviceCount++;
+				if (index < infos->maxDeviceCount) {
+					AudioDeviceID *deviceId = infos->devices + index;
+					*deviceId = {};
+					strings::CopyAnsiString(lpcstrDescription, deviceId->name, FPL_ARRAYCOUNT(deviceId->name));
+					if (lpGuid != nullptr) {
+						memory::MemoryCopy(lpGuid, sizeof(deviceId->dshow), &deviceId->dshow);
+					}
+					return TRUE;
+				}
+			}
+			return FALSE;
+		}
+
+		fpl_internal uint32_t GetDevicesDirectSound(DirectSoundState &dsoundState, AudioDeviceID *devices, uint32_t maxDeviceCount) {
+			uint32_t result = 0;
+			func_DirectSoundEnumerateA *directSoundEnumerateA = (func_DirectSoundEnumerateA *)GetProcAddress(dsoundState.dsoundLibrary, "DirectSoundEnumerateA");
+			if (directSoundEnumerateA != nullptr) {
+				DirectSoundDeviceInfos infos = {};
+				infos.maxDeviceCount = maxDeviceCount;
+				infos.devices = devices;
+				directSoundEnumerateA(GetDeviceCallbackDirectSound, &infos);
+				result = infos.foundDeviceCount;
+			}
+			return(result);
+		}
+
 		fpl_internal bool ReleaseDirectSound(const audio::CommonAudioState &commonAudio, DirectSoundState &dsoundState) {
 			if (dsoundState.dsoundLibrary != nullptr) {
 				if (dsoundState.stopEvent != nullptr) {
@@ -6995,7 +7872,11 @@ namespace fpl {
 			}
 
 			// Load direct sound object
-			if (!SUCCEEDED(directSoundCreate(nullptr, &dsoundState.directSound, nullptr))) {
+			const GUID *deviceId = nullptr;
+			if (strings::GetAnsiStringLength(audioSettings.deviceID.name) > 0) {
+				deviceId = &audioSettings.deviceID.dshow;
+			}
+			if (!SUCCEEDED(directSoundCreate(deviceId, &dsoundState.directSound, nullptr))) {
 				ReleaseDirectSound(commonAudio, dsoundState);
 				return audio::AudioResult::Failed;
 			}
@@ -7004,13 +7885,13 @@ namespace fpl {
 			WAVEFORMATEXTENSIBLE wf = {};
 			wf.Format.cbSize = sizeof(wf);
 			wf.Format.wFormatTag = WAVE_FORMAT_EXTENSIBLE;
-			wf.Format.nChannels = (WORD)audioSettings.desiredFormat.channels;
-			wf.Format.nSamplesPerSec = (DWORD)audioSettings.desiredFormat.sampleRate;
-			wf.Format.wBitsPerSample = audio::GetAudioSampleSizeInBytes(audioSettings.desiredFormat.type) * 8;
+			wf.Format.nChannels = (WORD)audioSettings.deviceFormat.channels;
+			wf.Format.nSamplesPerSec = (DWORD)audioSettings.deviceFormat.sampleRate;
+			wf.Format.wBitsPerSample = audio::GetAudioSampleSizeInBytes(audioSettings.deviceFormat.type) * 8;
 			wf.Format.nBlockAlign = (wf.Format.nChannels * wf.Format.wBitsPerSample) / 8;
 			wf.Format.nAvgBytesPerSec = wf.Format.nBlockAlign * wf.Format.nSamplesPerSec;
 			wf.Samples.wValidBitsPerSample = wf.Format.wBitsPerSample;
-			if ((audioSettings.desiredFormat.type == AudioFormatType::F32) || (audioSettings.desiredFormat.type == AudioFormatType::F64)) {
+			if ((audioSettings.deviceFormat.type == AudioFormatType::F32) || (audioSettings.deviceFormat.type == AudioFormatType::F64)) {
 				wf.SubFormat = KSDATAFORMAT_SUBTYPE_IEEE_FLOAT;
 			} else {
 				wf.SubFormat = KSDATAFORMAT_SUBTYPE_PCM;
@@ -7487,25 +8368,15 @@ namespace fpl {
 			platform::global__Win32__API__Functions.ole.coInitializeEx(nullptr, 0);
 #		endif
 
-			// This is only used to prevent posting onStop() when the device is first initialized.
-			bool skipNextStopEvent = true;
-
 			for (;;) {
-				// At the start of iteration the device is stopped - we must explicitly mark it as such.
+				// Stop the device at the start of the iteration always
 				AudioStopDevice(*audioState);
 
-				if (!skipNextStopEvent) {
-					// @TODO(final): Call stop callback to notify client
-				} else {
-					skipNextStopEvent = false;
-				}
-
-
-				// Let the other threads know that the device has stopped.
+				// Let the other threads know that the device has been stopped.
 				AudioSetDeviceState(*audioState, AudioDeviceState::Stopped);
 				threading::SignalWakeUp(audioState->stopSignal);
 
-				// We use an event to wait for a request to wake up.
+				// We wait until the audio device gets wake up
 				threading::SignalWaitForOne(audioState->wakeupSignal);
 
 				// Default result code.
@@ -7516,24 +8387,25 @@ namespace fpl {
 					break;
 				}
 
-				// Getting here means we just started the device and we need to wait for the device to request more data.
+				// Expect that the device is currently be started by the client
 				FPL_ASSERT(AudioGetDeviceState(*audioState) == AudioDeviceState::Starting);
 
+				// Start audio device
 				audioState->workResult = AudioStartDevice(*audioState);
 				if (audioState->workResult != AudioResult::Success) {
 					threading::SignalWakeUp(audioState->startSignal);
 					continue;
 				}
 
-				// The thread that requested the device to start playing is waiting for this thread to start the device for real, which is now.
+				// The audio device is started, mark it as such
 				AudioSetDeviceState(*audioState, AudioDeviceState::Started);
 				threading::SignalWakeUp(audioState->startSignal);
 
-				// Now we just enter the main loop.
+				// Enter audio device main loop
 				AudioDeviceMainLoop(*audioState);
 			}
 
-			// Make sure we aren't continuously waiting on a stop event.
+			// Signal to stop any audio threads, in case there are some waiting
 			threading::SignalWakeUp(audioState->stopSignal);
 
 #		if defined(FPL_PLATFORM_WIN32)
@@ -7575,11 +8447,11 @@ namespace fpl {
 				} else {
 					// Synchronous drivers
 
-					// When we get here the worker thread is likely in a wait state while waiting for the backend device to request audio data. We need to force these to return as quickly as possible.
+					// The audio worker thread is most likely in a wait state, so let it stop properly.
 					AudioDeviceStopMainLoop(*audioState);
 
 					// We need to wait for the worker thread to become available for work before returning.
-					// Note that the worker thread will be the one who puts the device into the stopped state.
+					// @NOTE(final): The audio worker thread will be the one who puts the device into the stopped state.
 					SignalWaitForOne(audioState->stopSignal);
 					result = AudioResult::Success;
 				}
@@ -7626,7 +8498,7 @@ namespace fpl {
 					SignalWakeUp(audioState->wakeupSignal);
 
 					// Wait for the worker thread to finish starting the device.
-					// Note that the worker thread will be the one who puts the device into the started state.
+					// @NOTE(final): The audio worker thread will be the one who puts the device into the started state.
 					SignalWaitForOne(audioState->startSignal);
 					result = audioState->workResult;
 				}
@@ -7643,9 +8515,8 @@ namespace fpl {
 				return;
 			}
 
-			// Make sure the device is stopped first. The backends will probably handle this naturally,
-			// but I like to do it explicitly for my own sanity.
 			if (IsAudioDeviceStarted(audioState)) {
+				// Wait until the audio device is started
 				while (StopAudio() == AudioResult::DeviceBusy) {
 					threading::ThreadSleep(1);
 				}
@@ -7665,6 +8536,7 @@ namespace fpl {
 			threading::SignalDestroy(audioState->wakeupSignal);
 			threading::MutexDestroy(audioState->lock);
 
+			// Release audio device
 			AudioReleaseDevice(*audioState);
 
 			*audioState = {};
@@ -7681,10 +8553,10 @@ namespace fpl {
 				return AudioResult::Failed;
 			}
 
-			if (audioSettings.desiredFormat.channels == 0) {
+			if (audioSettings.deviceFormat.channels == 0) {
 				return AudioResult::Failed;
 			}
-			if (audioSettings.desiredFormat.sampleRate == 0) {
+			if (audioSettings.deviceFormat.sampleRate == 0) {
 				return AudioResult::Failed;
 			}
 			if (audioSettings.bufferSizeInMilliSeconds == 0) {
@@ -7736,9 +8608,9 @@ namespace fpl {
 #				if defined(FPL_ENABLE_AUDIO_DIRECTSOUND)
 					case AudioDriverType::DirectSound:
 					{
-						initResult = InitDirectSound(audioSettings, audioState->common, audioState->dsound);
+						initResult = drivers::InitDirectSound(audioSettings, audioState->common, audioState->dsound);
 						if (initResult != AudioResult::Success) {
-							ReleaseDirectSound(audioState->common, audioState->dsound);
+							drivers::ReleaseDirectSound(audioState->common, audioState->dsound);
 						}
 					} break;
 #				endif
@@ -7759,13 +8631,13 @@ namespace fpl {
 			}
 
 			if (!audioState->isAsyncDriver) {
-				// Create worker thread
+				// Create and start worker thread
 				audioState->workerThread = threading::ThreadCreate(AudioWorkerThread, audioState, true);
 				if (audioState->workerThread == nullptr) {
 					ReleaseAudio();
 					return AudioResult::Failed;
 				}
-				// Wait for the worker thread to put the device into it's stopped state for real.
+				// Wait for the worker thread to put the device into the stopped state.
 				SignalWaitForOne(audioState->stopSignal);
 			} else {
 				AudioSetDeviceState(*audioState, AudioDeviceState::Stopped);
@@ -7790,10 +8662,31 @@ namespace fpl {
 				}
 			}
 		}
+
+		fpl_api uint32_t GetAudioDevices(AudioDeviceID *devices, uint32_t maxDeviceCount) {
+			if (devices == nullptr) {
+				return 0;
+			}
+			if (maxDeviceCount == 0) {
+				return 0;
+			}
+			uint32_t result = 0;
+			AudioState *audioState = &global__Audio__State;
+			if (audioState->activeDriver > AudioDriverType::Auto) {
+				switch (audioState->activeDriver) {
+#				if defined(FPL_ENABLE_AUDIO_DIRECTSOUND)
+					case AudioDriverType::DirectSound:
+					{
+						result = drivers::GetDevicesDirectSound(audioState->dsound, devices, maxDeviceCount);
+					} break;
+#				endif
+				}
+			}
+			return(result);
+		}
 	} // audio
 #endif // FPL_ENABLE_AUDIO
 
 } // fpl
 
 #endif // FPL_IMPLEMENTATION && !FPL_IMPLEMENTED
-

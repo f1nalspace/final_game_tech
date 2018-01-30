@@ -45,6 +45,20 @@ static void TestAssert(const T &expected, const T &actual, const TestLineAsserti
 }
 
 template <typename T>
+static void TestAssert(const T *expected, const T *actual, const TestLineAssertionInfo &lineInfo, const std::string &message = "") {
+	bool success = (expected == actual);
+	if (!success) {
+		std::cerr << "Failed assertion in file '" << lineInfo.filename << "', function '" << lineInfo.functionName << "', line " << lineInfo.line;
+		if (message.size() > 0) {
+			std::cerr << " -> " << message;
+		}
+		std::cerr << std::endl;
+		std::cerr << "Expected type '" << typeid(T).name() << "' of '" << (expected != nullptr ? expected : "nullptr") << "' but got '" << (actual != nullptr ? actual : "nullptr") << "'!" << std::endl;
+		ASSERTION_CRASH();
+	}
+}
+
+template <typename T>
 static void TestNotAssert(const T &notExpected, const T &actual, const TestLineAssertionInfo &lineInfo, const std::string &message = "") {
 	bool success = (notExpected != actual);
 	if (!success) {
@@ -215,6 +229,114 @@ static void ThreadingTest() {
 	ThreadWaitForAll(threads, FPL_ARRAYCOUNT(threads));
 }
 
+static void StringsTest() {
+	TestLog(FN, "Test string equal");
+	{
+		bool res = IsStringEqual(nullptr, nullptr);
+		TestAssert<bool>(true, res, LAI, "IsStringEqual with nullptr");
+	}
+	{
+		bool res = IsStringEqual(nullptr, 0, nullptr, 0);
+		TestAssert<bool>(true, res, LAI, "IsStringEqual with nullptr and length");
+	}
+	{
+		bool res = IsStringEqual(nullptr, "");
+		TestAssert<bool>(false, res, LAI, "IsStringEqual with nullptr and empty");
+	}
+	{
+		bool res = IsStringEqual("B", "A");
+		TestAssert<bool>(false, res, LAI, "IsStringEqual not-equal [1]");
+	}
+	{
+		bool res = IsStringEqual("A", "A");
+		TestAssert<bool>(true, res, LAI, "IsStringEqual equal [1]");
+	}
+	{
+		bool res = IsStringEqual("Hello", "World");
+		TestAssert<bool>(false, res, LAI, "IsStringEqual not equal [N]");
+	}
+	{
+		bool res = IsStringEqual("World", "World");
+		TestAssert<bool>(true, res, LAI, "IsStringEqual equal [N]");
+	}
+	{
+		bool res = IsStringEqual("B", 1, "A", 1);
+		TestAssert<bool>(false, res, LAI, "IsStringEqual not-equal with length [1]");
+	}
+	{
+		bool res = IsStringEqual("A", 1, "A", 1);
+		TestAssert<bool>(true, res, LAI, "IsStringEqual not-equal with length [1]");
+	}
+	{
+		bool res = IsStringEqual("Hello", 5, "World", 5);
+		TestAssert<bool>(false, res, LAI, "IsStringEqual not-equal with same length");
+	}
+	{
+		bool res = IsStringEqual("Hello", 3, "World", 5);
+		TestAssert<bool>(false, res, LAI, "IsStringEqual not-equal with different length");
+	}
+	{
+		bool res = IsStringEqual("World", 5, "Hello", 3);
+		TestAssert<bool>(false, res, LAI, "IsStringEqual not-equal with different length reversed");
+	}
+	{
+		bool res = IsStringEqual("Hello", 5, "Hello", 5);
+		TestAssert<bool>(true, res, LAI, "IsStringEqual equals with equal length");
+	}
+	{
+		bool res = IsStringEqual("Hello", 3, "Hello", 3);
+		TestAssert<bool>(true, res, LAI, "IsStringEqual equals with equal but smaller length");
+	}
+
+	TestLog(FN, "Test format ansi string");
+	{
+		char *res = FormatAnsiString(nullptr, 0, nullptr);
+		TestAssert<char *>(nullptr, res, LAI, "FormatAnsiString with nullptr");
+	}
+	{
+		char *res = FormatAnsiString("", 0, "");
+		TestAssert<char *>(nullptr, res, LAI, "FormatAnsiString with empty strings");
+	}
+	{
+		char buffer[1];
+		char *res = FormatAnsiString(buffer, FPL_ARRAYCOUNT(buffer), "A");
+		TestAssert<char *>(nullptr, res, LAI, "FormatAnsiString buffer not big enough (1)");
+	}
+	{
+		char buffer[2];
+		char *res = FormatAnsiString(buffer, FPL_ARRAYCOUNT(buffer), "A");
+		bool r = strings::IsStringEqual("A", 1, res, 1);
+		TestAssert<bool>(true, r, LAI, "FormatAnsiString buffer fits exactly (1)");
+	}
+	{
+		char buffer[5];
+		char *res = FormatAnsiString(buffer, FPL_ARRAYCOUNT(buffer), "Hello");
+		TestAssert<char *>(nullptr, res, LAI, "FormatAnsiString buffer not big enough (N)");
+	}
+	{
+		char buffer[6];
+		char *res = FormatAnsiString(buffer, FPL_ARRAYCOUNT(buffer), "Hello");
+		bool r = strings::IsStringEqual("Hello", 5, res, 5);
+		TestAssert<bool>(true, r, LAI, "FormatAnsiString buffer fits exactly (N+1)");
+	}
+	{
+		char buffer[6];
+		char *res = FormatAnsiString(buffer, FPL_ARRAYCOUNT(buffer), "%s", "Hello");
+		bool r = strings::IsStringEqual("Hello", 5, res, 5);
+		TestAssert<bool>(true, r, LAI, "FormatAnsiString buffer fits exactly (N+1) with one string argument");
+	}
+	{
+		char buffer[20];
+		char *res = FormatAnsiString(buffer, FPL_ARRAYCOUNT(buffer), "%4xd-%2d-%2d %2d:%2d:%2d", 2009, 11, 17, 13, 47, 25);
+		TestAssert<char *>(nullptr, res, LAI, "FormatAnsiString invalid format");
+	}
+	{
+		char buffer[20];
+		char *res = FormatAnsiString(buffer, FPL_ARRAYCOUNT(buffer), "%4d-%2d-%2d %2d:%2d:%2d", 2009, 11, 17, 13, 47, 25);
+		bool r = strings::IsStringEqual("2009-11-17 13:47:25", res);
+		TestAssert<bool>(true, r, LAI, "FormatAnsiString valid year format");
+	}
+}
 
 int main(int argc, char **args) {
 	volatile int64_t rindex_rindexShown = 0;
@@ -233,6 +355,7 @@ int main(int argc, char **args) {
 	rindexShown = (r & 0xFFFFFFFF00000000) >> 32;
 
 	InitPlatform(InitFlags::None);
+	StringsTest();
 	MemoryTests();
 	ThreadingTest();
 	HardwareTest();
