@@ -7605,14 +7605,14 @@ namespace fpl {
 			__sync_synchronize();
 		}
 #	else
-#		error "This POSIX compiler/platform is supported!"
+#		error "This POSIX compiler/platform is not supported!"
 #	endif
 	}
 
 	// ṔOSIX Timings
 	namespace timings {
 		fpl_api double GetHighResolutionTimeInSeconds() {
-		  // @TODO(final): Do we need to take the performance frequency into account?
+            // @TODO(final): Do we need to take the performance frequency into account?
 			timespec t;
 			clock_gettime(CLOCK_MONOTONIC, &t);
 			double result = (double)t.tv_sec + ((double)t.tv_nsec * 1e-9);
@@ -7676,7 +7676,7 @@ namespace fpl {
 	namespace console {
 		fpl_api void ConsoleOut(const char *text) {
 			if (text != nullptr) {
-				fprintf(stdout, text);
+				fprintf(stdout, "%s", text);
 			}
 		}
 		fpl_api void ConsoleFormatOut(const char *format, ...) {
@@ -7702,8 +7702,6 @@ namespace fpl {
 		}
 	}
 
-
-
 }
 
 #endif // FPL_PLATFORM_POSIX
@@ -7715,6 +7713,11 @@ namespace fpl {
 // ****************************************************************************
 #if defined(FPL_PLATFORM_LINUX)
 #	include <sys/mman.h> // mmap, munmap
+#   include <unistd.h> // sysconf
+#   include <stdio.h> // fopen
+#   include <stdlib.h> // free
+#   include <string.h> // strtok, strchr, strstr
+#   include <ctype.h> // isspace
 
 namespace fpl {
 	// Linux Memory
@@ -7748,6 +7751,96 @@ namespace fpl {
 
 	fpl_api void ReleasePlatform() {
 	}
+
+	// Linux Hardware
+	namespace hardware {
+        fpl_api uint32_t GetProcessorCoreCount() {
+            uint32_t result = sysconf(_SC_NPROCESSORS_ONLN);
+            return(result);
+        }
+        
+        fpl_api char *GetProcessorName(char *destBuffer, const uint32_t maxDestBufferLen) {
+            if (destBuffer == nullptr) {
+                common::PushError("Dest buffer parameter are not allowed to be null");
+                return nullptr;
+            }
+            if (maxDestBufferLen == 0) {
+                common::PushError("Max dest buffer len parameter '%d' must be greater than zero");
+                return nullptr;
+            }
+            char *result = nullptr;
+            FILE *cpuinfo = fopen("/proc/cpuinfo", "rb");
+            if (cpuinfo != nullptr) {
+                char buffer[256];
+                char line[256];
+                const size_t maxBufferSize = FPL_ARRAYCOUNT(buffer);
+                int read = 0;
+                int32_t readSize = maxBufferSize;
+                int32_t readPos = 0;
+                bool found = false;
+                while ((read = fread(&buffer[readPos], 1, readSize, cpuinfo)) > 0) {                 
+                    char *lastP = &buffer[0];
+                    char *p = &buffer[0];
+                    while (*p) {
+                        if (*p == '\n') {
+                            int32_t len = p - lastP;
+                            FPL_ASSERT(len > 0);
+                            if (strings::IsStringEqual(lastP, 10, "model name", 10)) {
+                                strings::CopyAnsiString(lastP, len, line, FPL_ARRAYCOUNT(line));
+                                found = true;
+                                break;
+                            }
+                            lastP = p + 1;                           
+                        }
+                        ++p;
+                    }
+                    if (found) {
+                        break;
+                    }
+                    
+                    int32_t remaining = &buffer[maxBufferSize] - lastP;
+                    FPL_ASSERT(remaining >= 0);
+                    if (remaining > 0) {
+                        // Buffer does not contain a line separator - copy back to remaining characters to the line
+                        strings::CopyAnsiString(lastP, remaining, line, FPL_ARRAYCOUNT(line));
+                        // Copy back line to buffer and use a different read position/size
+                        strings::CopyAnsiString(line, remaining, buffer, maxBufferSize);
+                        readPos = remaining;
+                        readSize = maxBufferSize - remaining;
+                    } else {
+                        readPos = 0;
+                        readSize = maxBufferSize;
+                    }
+                }
+                if (found) {
+                    char *p = line;
+                    while (*p) {
+                        if (*p == ':') {
+                            ++p;
+                            // Skip whitespaces
+                            while (*p && isspace(*p)) {
+                                ++p;
+                            }
+                            break;
+                        }
+                        ++p;
+                    }
+                    if (p != line) {
+                        strings::CopyAnsiString(p, destBuffer, maxDestBufferLen);
+                        result = destBuffer;
+                    }
+                }
+                fclose(cpuinfo);
+            }
+            return(result);
+        }
+        
+        fpl_api MemoryInfos GetSystemMemoryInfos() {
+            MemoryInfos result = {};
+            return(result);
+        }
+    }
+    
 }
 #endif // FPL_PLATFORM_LINUX
 
