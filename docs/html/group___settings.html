@@ -22,7 +22,7 @@
  <tr style="height: 56px;">
   <td id="projectalign" style="padding-left: 0.5em;">
    <div id="projectname">Final Platform Layer
-   &#160;<span id="projectnumber">0.5.7.4</span>
+   &#160;<span id="projectnumber">0.5.8.0</span>
    </div>
   </td>
  </tr>
@@ -90,7 +90,7 @@ Classes</h2></td></tr>
 <tr class="memdesc:"><td class="mdescLeft">&#160;</td><td class="mdescRight"><a class="el" href="structfpl_1_1_settings.html" title="Settings container (Window, Video, etc) ">Settings</a> container (Window, Video, etc)  <a href="structfpl_1_1_settings.html#details">More...</a><br /></td></tr>
 <tr class="separator:"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:"><td class="memItemLeft" align="right" valign="top">struct &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structfpl_1_1_video_settings.html">fpl::VideoSettings</a></td></tr>
-<tr class="memdesc:"><td class="mdescLeft">&#160;</td><td class="mdescRight">Video settings container (Compability Profile, Version, VSync, etc.)  <a href="structfpl_1_1_video_settings.html#details">More...</a><br /></td></tr>
+<tr class="memdesc:"><td class="mdescLeft">&#160;</td><td class="mdescRight">Video settings container (Driver, Flags, Version, VSync, etc.)  <a href="structfpl_1_1_video_settings.html#details">More...</a><br /></td></tr>
 <tr class="separator:"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:"><td class="memItemLeft" align="right" valign="top">struct &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structfpl_1_1_window_settings.html">fpl::WindowSettings</a></td></tr>
 <tr class="memdesc:"><td class="mdescLeft">&#160;</td><td class="mdescRight">Window settings (Size, Title etc.)  <a href="structfpl_1_1_window_settings.html#details">More...</a><br /></td></tr>
@@ -136,12 +136,13 @@ Enumerations</h2></td></tr>
  }<tr class="memdesc:gae483f3743fdfa195f8746c04203ca850"><td class="mdescLeft">&#160;</td><td class="mdescRight">Initialization flags (Window, Video, etc.)  <a href="group___settings.html#gae483f3743fdfa195f8746c04203ca850">More...</a><br /></td></tr>
 </td></tr>
 <tr class="separator:gae483f3743fdfa195f8746c04203ca850"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:gab3552d007c8e23a65e4ac0366758c18d"><td class="memItemLeft" align="right" valign="top">enum &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___settings.html#gab3552d007c8e23a65e4ac0366758c18d">fpl::VideoCompabilityProfile</a> { <a class="el" href="group___settings.html#ggab3552d007c8e23a65e4ac0366758c18da0cc0a0507cf3d31e5089f420a4cf8b4b">fpl::VideoCompabilityProfile::Legacy</a>, 
-<a class="el" href="group___settings.html#ggab3552d007c8e23a65e4ac0366758c18da83168e6cb289d732cc78427b51f93153">fpl::VideoCompabilityProfile::Core</a>, 
-<a class="el" href="group___settings.html#ggab3552d007c8e23a65e4ac0366758c18da67d2f6740a8eaebf4d5c6f79be8da481">fpl::VideoCompabilityProfile::Forward</a>
- }<tr class="memdesc:gab3552d007c8e23a65e4ac0366758c18d"><td class="mdescLeft">&#160;</td><td class="mdescRight">Video compability profile.  <a href="group___settings.html#gab3552d007c8e23a65e4ac0366758c18d">More...</a><br /></td></tr>
+<tr class="memitem:ga474e10da59313b97e3d573eb21f53408"><td class="memItemLeft" align="right" valign="top">enum &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___settings.html#ga474e10da59313b97e3d573eb21f53408">fpl::OpenGLCompabilityFlags</a> : uint32_t { <a class="el" href="group___settings.html#gga474e10da59313b97e3d573eb21f53408a0cc0a0507cf3d31e5089f420a4cf8b4b">fpl::OpenGLCompabilityFlags::Legacy</a> = 0, 
+<a class="el" href="group___settings.html#gga474e10da59313b97e3d573eb21f53408a83168e6cb289d732cc78427b51f93153">fpl::OpenGLCompabilityFlags::Core</a> = 1 &lt;&lt; 1, 
+<a class="el" href="group___settings.html#gga474e10da59313b97e3d573eb21f53408ad64a1b98b71008d2b452572f0933a55f">fpl::OpenGLCompabilityFlags::Compability</a> = 1 &lt;&lt; 2, 
+<a class="el" href="group___settings.html#gga474e10da59313b97e3d573eb21f53408a67d2f6740a8eaebf4d5c6f79be8da481">fpl::OpenGLCompabilityFlags::Forward</a> = 1 &lt;&lt; 3
+ }<tr class="memdesc:ga474e10da59313b97e3d573eb21f53408"><td class="mdescLeft">&#160;</td><td class="mdescRight">OpenGL compability flags.  <a href="group___settings.html#ga474e10da59313b97e3d573eb21f53408">More...</a><br /></td></tr>
 </td></tr>
-<tr class="separator:gab3552d007c8e23a65e4ac0366758c18d"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="separator:ga474e10da59313b97e3d573eb21f53408"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:ga507fe7ca23031e714575d0a5ddd37598"><td class="memItemLeft" align="right" valign="top">enum &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___settings.html#ga507fe7ca23031e714575d0a5ddd37598">fpl::VideoDriverType</a> { <a class="el" href="group___settings.html#gga507fe7ca23031e714575d0a5ddd37598a6adf97f83acf6453d4a6a4b1070f3754">fpl::VideoDriverType::None</a>, 
 <a class="el" href="group___settings.html#gga507fe7ca23031e714575d0a5ddd37598a760716b590ee7c0adc25f434f577d8be">fpl::VideoDriverType::OpenGL</a>, 
 <a class="el" href="group___settings.html#gga507fe7ca23031e714575d0a5ddd37598a719d067b229178f03bcfa1da4ac4dede">fpl::VideoDriverType::Software</a>
@@ -170,6 +171,10 @@ Functions</h2></td></tr>
 &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___settings.html#gaa2f7a68f92104f5e6f8c0511005c03dc">fpl::FPL_ENUM_AS_FLAGS_OPERATORS</a> (<a class="el" href="group___settings.html#gae483f3743fdfa195f8746c04203ca850">InitFlags</a>)</td></tr>
 <tr class="memdesc:gaa2f7a68f92104f5e6f8c0511005c03dc"><td class="mdescLeft">&#160;</td><td class="mdescRight">Operator support for InitFlags. <br /></td></tr>
 <tr class="separator:gaa2f7a68f92104f5e6f8c0511005c03dc"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:ga7e437ab66ee41b3f381a8ee0faafa4e0"><td class="memItemLeft" align="right" valign="top"><a id="ga7e437ab66ee41b3f381a8ee0faafa4e0"></a>
+&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___settings.html#ga7e437ab66ee41b3f381a8ee0faafa4e0">fpl::FPL_ENUM_AS_FLAGS_OPERATORS</a> (<a class="el" href="group___settings.html#ga474e10da59313b97e3d573eb21f53408">OpenGLCompabilityFlags</a>)</td></tr>
+<tr class="memdesc:ga7e437ab66ee41b3f381a8ee0faafa4e0"><td class="mdescLeft">&#160;</td><td class="mdescRight">Defines the operator overloads for a enum used as flags. <br /></td></tr>
+<tr class="separator:ga7e437ab66ee41b3f381a8ee0faafa4e0"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:ga6eecc72936058abdbebfad659b886980"><td class="memItemLeft" align="right" valign="top"><a id="ga6eecc72936058abdbebfad659b886980"></a>
 <a class="el" href="final__platform__layer_8hpp.html#aafa1d3d90febf9826c55c1318f98b27d">fpl_api</a> const <a class="el" href="structfpl_1_1_settings.html">Settings</a> &amp;&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___settings.html#ga6eecc72936058abdbebfad659b886980">fpl::GetCurrentSettings</a> ()</td></tr>
 <tr class="memdesc:ga6eecc72936058abdbebfad659b886980"><td class="mdescLeft">&#160;</td><td class="mdescRight">Returns the current settings. <br /></td></tr>
@@ -208,7 +213,7 @@ Functions</h2></td></tr>
 </td></tr>
 </table>
 
-<p class="definition">Definition at line <a class="el" href="final__platform__layer_8hpp_source.html#l01581">1581</a> of file <a class="el" href="final__platform__layer_8hpp_source.html">final_platform_layer.hpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="final__platform__layer_8hpp_source.html#l02058">2058</a> of file <a class="el" href="final__platform__layer_8hpp_source.html">final_platform_layer.hpp</a>.</p>
 
 </div>
 </div>
@@ -246,12 +251,12 @@ Functions</h2></td></tr>
 </td></tr>
 </table>
 
-<p class="definition">Definition at line <a class="el" href="final__platform__layer_8hpp_source.html#l01506">1506</a> of file <a class="el" href="final__platform__layer_8hpp_source.html">final_platform_layer.hpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="final__platform__layer_8hpp_source.html#l01968">1968</a> of file <a class="el" href="final__platform__layer_8hpp_source.html">final_platform_layer.hpp</a>.</p>
 
 </div>
 </div>
-<a id="gab3552d007c8e23a65e4ac0366758c18d"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#gab3552d007c8e23a65e4ac0366758c18d">&#9670;&nbsp;</a></span>VideoCompabilityProfile</h2>
+<a id="ga474e10da59313b97e3d573eb21f53408"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#ga474e10da59313b97e3d573eb21f53408">&#9670;&nbsp;</a></span>OpenGLCompabilityFlags</h2>
 
 <div class="memitem">
 <div class="memproto">
@@ -260,7 +265,7 @@ Functions</h2></td></tr>
   <td class="mlabels-left">
       <table class="memname">
         <tr>
-          <td class="memname">enum <a class="el" href="group___settings.html#gab3552d007c8e23a65e4ac0366758c18d">fpl::VideoCompabilityProfile</a></td>
+          <td class="memname">enum <a class="el" href="group___settings.html#ga474e10da59313b97e3d573eb21f53408">fpl::OpenGLCompabilityFlags</a> : uint32_t</td>
         </tr>
       </table>
   </td>
@@ -270,17 +275,19 @@ Functions</h2></td></tr>
 </table>
 </div><div class="memdoc">
 
-<p>Video compability profile. </p>
+<p>OpenGL compability flags. </p>
 <table class="fieldtable">
-<tr><th colspan="2">Enumerator</th></tr><tr><td class="fieldname"><a id="ggab3552d007c8e23a65e4ac0366758c18da0cc0a0507cf3d31e5089f420a4cf8b4b"></a>Legacy&#160;</td><td class="fielddoc"><p>Use legacy context. </p>
+<tr><th colspan="2">Enumerator</th></tr><tr><td class="fieldname"><a id="gga474e10da59313b97e3d573eb21f53408a0cc0a0507cf3d31e5089f420a4cf8b4b"></a>Legacy&#160;</td><td class="fielddoc"><p>Use legacy context. </p>
 </td></tr>
-<tr><td class="fieldname"><a id="ggab3552d007c8e23a65e4ac0366758c18da83168e6cb289d732cc78427b51f93153"></a>Core&#160;</td><td class="fielddoc"><p>Use core context with backwards compability. </p>
+<tr><td class="fieldname"><a id="gga474e10da59313b97e3d573eb21f53408a83168e6cb289d732cc78427b51f93153"></a>Core&#160;</td><td class="fielddoc"><p>Use core profile. </p>
 </td></tr>
-<tr><td class="fieldname"><a id="ggab3552d007c8e23a65e4ac0366758c18da67d2f6740a8eaebf4d5c6f79be8da481"></a>Forward&#160;</td><td class="fielddoc"><p>Use foward context without backwards compability. </p>
+<tr><td class="fieldname"><a id="gga474e10da59313b97e3d573eb21f53408ad64a1b98b71008d2b452572f0933a55f"></a>Compability&#160;</td><td class="fielddoc"><p>Use compability profile. </p>
+</td></tr>
+<tr><td class="fieldname"><a id="gga474e10da59313b97e3d573eb21f53408a67d2f6740a8eaebf4d5c6f79be8da481"></a>Forward&#160;</td><td class="fielddoc"><p>Remove features marked as deprecated. </p>
 </td></tr>
 </table>
 
-<p class="definition">Definition at line <a class="el" href="final__platform__layer_8hpp_source.html#l01532">1532</a> of file <a class="el" href="final__platform__layer_8hpp_source.html">final_platform_layer.hpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="final__platform__layer_8hpp_source.html#l01995">1995</a> of file <a class="el" href="final__platform__layer_8hpp_source.html">final_platform_layer.hpp</a>.</p>
 
 </div>
 </div>
@@ -314,7 +321,7 @@ Functions</h2></td></tr>
 </td></tr>
 </table>
 
-<p class="definition">Definition at line <a class="el" href="final__platform__layer_8hpp_source.html#l01522">1522</a> of file <a class="el" href="final__platform__layer_8hpp_source.html">final_platform_layer.hpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="final__platform__layer_8hpp_source.html#l01984">1984</a> of file <a class="el" href="final__platform__layer_8hpp_source.html">final_platform_layer.hpp</a>.</p>
 
 </div>
 </div>
@@ -337,7 +344,7 @@ Functions</h2></td></tr>
 <p>Make default audio settings (S16 PCM, 48 KHz, 2 Channels) </p>
 <dl class="section note"><dt>Note</dt><dd>This will not change any audio settings! To change the actual settings you have to pass the entire <a class="el" href="group___settings.html">Settings and configurations</a> container to a argument in <a class="el" href="group___initialization.html#ga89a2c7056b728c8b49b8767bb8227e21">InitPlatform()</a>. </dd></dl>
 
-<p class="definition">Definition at line <a class="el" href="final__platform__layer_8hpp_source.html#l01663">1663</a> of file <a class="el" href="final__platform__layer_8hpp_source.html">final_platform_layer.hpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="final__platform__layer_8hpp_source.html#l02140">2140</a> of file <a class="el" href="final__platform__layer_8hpp_source.html">final_platform_layer.hpp</a>.</p>
 
 </div>
 </div>
@@ -359,7 +366,7 @@ Functions</h2></td></tr>
 <p>Make default settings for input devices. </p>
 <dl class="section note"><dt>Note</dt><dd>This will not change any input settings! To change the actual settings you have to pass the entire <a class="el" href="group___settings.html">Settings and configurations</a> container to a argument in <a class="el" href="group___initialization.html#ga89a2c7056b728c8b49b8767bb8227e21">InitPlatform()</a>. </dd></dl>
 
-<p class="definition">Definition at line <a class="el" href="final__platform__layer_8hpp_source.html#l01724">1724</a> of file <a class="el" href="final__platform__layer_8hpp_source.html">final_platform_layer.hpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="final__platform__layer_8hpp_source.html#l02201">2201</a> of file <a class="el" href="final__platform__layer_8hpp_source.html">final_platform_layer.hpp</a>.</p>
 
 </div>
 </div>
@@ -381,7 +388,7 @@ Functions</h2></td></tr>
 <p>Make default settings for window, video, audio, etc. </p>
 <dl class="section note"><dt>Note</dt><dd>This will not change any settings! To change the actual settings you have to pass this settings container to a argument in <a class="el" href="group___initialization.html#ga89a2c7056b728c8b49b8767bb8227e21">InitPlatform()</a>. </dd></dl>
 
-<p class="definition">Definition at line <a class="el" href="final__platform__layer_8hpp_source.html#l01746">1746</a> of file <a class="el" href="final__platform__layer_8hpp_source.html">final_platform_layer.hpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="final__platform__layer_8hpp_source.html#l02223">2223</a> of file <a class="el" href="final__platform__layer_8hpp_source.html">final_platform_layer.hpp</a>.</p>
 
 </div>
 </div>
@@ -403,7 +410,7 @@ Functions</h2></td></tr>
 <p>Make default video settings. </p>
 <dl class="section note"><dt>Note</dt><dd>This will not change any video settings! To change the actual settings you have to pass the entire <a class="el" href="group___settings.html">Settings and configurations</a> container to a argument in <a class="el" href="group___initialization.html#ga89a2c7056b728c8b49b8767bb8227e21">InitPlatform()</a>. </dd></dl>
 
-<p class="definition">Definition at line <a class="el" href="final__platform__layer_8hpp_source.html#l01561">1561</a> of file <a class="el" href="final__platform__layer_8hpp_source.html">final_platform_layer.hpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="final__platform__layer_8hpp_source.html#l02035">2035</a> of file <a class="el" href="final__platform__layer_8hpp_source.html">final_platform_layer.hpp</a>.</p>
 
 </div>
 </div>
@@ -425,7 +432,7 @@ Functions</h2></td></tr>
 <p>Make default settings for the window. </p>
 <dl class="section note"><dt>Note</dt><dd>This will not change any window settings! To change the actual settings you have to pass the entire <a class="el" href="group___settings.html">Settings and configurations</a> container to a argument in <a class="el" href="group___initialization.html#ga89a2c7056b728c8b49b8767bb8227e21">InitPlatform()</a>. </dd></dl>
 
-<p class="definition">Definition at line <a class="el" href="final__platform__layer_8hpp_source.html#l01702">1702</a> of file <a class="el" href="final__platform__layer_8hpp_source.html">final_platform_layer.hpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="final__platform__layer_8hpp_source.html#l02179">2179</a> of file <a class="el" href="final__platform__layer_8hpp_source.html">final_platform_layer.hpp</a>.</p>
 
 </div>
 </div>

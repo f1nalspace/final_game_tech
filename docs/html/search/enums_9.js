@@ -1,4 +1,4 @@
 var searchData=
 [
-  ['windoweventtype',['WindowEventType',['../group___window_events.html#gad06ffcf43b2eabc01cb12a8cf9f55e35',1,'fpl::window']]]
+  ['videodrivertype',['VideoDriverType',['../group___settings.html#ga507fe7ca23031e714575d0a5ddd37598',1,'fpl']]]
 ];

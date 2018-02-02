@@ -22,7 +22,7 @@
  <tr style="height: 56px;">
   <td id="projectalign" style="padding-left: 0.5em;">
    <div id="projectname">Final Platform Layer
-   &#160;<span id="projectnumber">0.5.7.4</span>
+   &#160;<span id="projectnumber">0.5.8.0</span>
    </div>
   </td>
  </tr>
@@ -153,6 +153,9 @@ $(function() {
 <li>ChangeFileExtension()
 : <a class="el" href="group___paths.html#ga2f024c3d4f8297173ca50a666cb69627">fpl::paths</a>
 </li>
+<li>ClearPlatformErrors()
+: <a class="el" href="group___error_handling.html#gaab86f65f0e66c116ea22a52bde2bfc5c">fpl</a>
+</li>
 <li>CloseFile()
 : <a class="el" href="group___files.html#gadf8a868ce8399951d94368b2a6efe9ad">fpl::files</a>
 </li>
@@ -245,7 +248,7 @@ $(function() {
 </li>
 <li>FPL_ENUM_AS_FLAGS_OPERATORS()
 : <a class="el" href="group___files.html#ga32a21a79cac2791623c4e46f0439c8f3">fpl::files</a>
-, <a class="el" href="group___settings.html#gaa2f7a68f92104f5e6f8c0511005c03dc">fpl</a>
+, <a class="el" href="group___settings.html#ga7e437ab66ee41b3f381a8ee0faafa4e0">fpl</a>
 , <a class="el" href="group___window_events.html#gacdd8b1e56dfec05e62735ae48df2080d">fpl::window</a>
 </li>
 </ul>
@@ -288,11 +291,11 @@ $(function() {
 <li>GetHomePath()
 : <a class="el" href="group___paths.html#gaf8e72dff34e3ab55bed53daafc27a503">fpl::paths</a>
 </li>
-<li>GetPlatformLastError()
-: <a class="el" href="group___error_handling.html#ga21d84c13e805a5fc41be6602615bc099">fpl</a>
+<li>GetPlatformError()
+: <a class="el" href="group___error_handling.html#gab32395ba3e3ca64065a32905fe0fa343">fpl</a>
 </li>
-<li>GetPlatformLastErrorCount()
-: <a class="el" href="group___error_handling.html#gac3b46af437dae868f37f36e0d0837655">fpl</a>
+<li>GetPlatformErrorCount()
+: <a class="el" href="group___error_handling.html#gabbd7c616f47eea317d29d323700f8008">fpl</a>
 </li>
 <li>GetProcessorCoreCount()
 : <a class="el" href="group___hardware.html#ga4436ab750f9876cae642e985ddc31419">fpl::hardware</a>
@@ -373,7 +376,7 @@ $(function() {
 : <a class="el" href="group___memory.html#gaf5ad819b0045c31a72d86c20d8f8dd34">fpl::memory</a>
 </li>
 <li>MemoryAlignedFree()
-: <a class="el" href="group___memory.html#gae4f201c9469c35665c2befd9f81101d6">fpl::memory</a>
+: <a class="el" href="group___memory.html#gafff57ceb6d17787d0bc84d66fd23f433">fpl::memory</a>
 </li>
 <li>MemoryAllocate()
 : <a class="el" href="group___memory.html#gaabe256ab34794ac0f3f1633674de97f5">fpl::memory</a>
@@ -473,19 +476,19 @@ $(function() {
 : <a class="el" href="group___threading.html#gaeafa8b04195a6a0dee9483fbe8ad2369">fpl::threading</a>
 </li>
 <li>SignalReset()
-: <a class="el" href="group___threading.html#ga32029b63c73634063e62c45ca080d5f2">fpl::threading</a>
+: <a class="el" href="group___threading.html#ga10b05d43d334d5155ce4d91bad8ebd26">fpl::threading</a>
 </li>
 <li>SignalWaitForAll()
-: <a class="el" href="group___threading.html#gaab4a22b046cb2be0efc447927c807cae">fpl::threading</a>
+: <a class="el" href="group___threading.html#ga210630321543175a58f3b32815593488">fpl::threading</a>
 </li>
 <li>SignalWaitForAny()
-: <a class="el" href="group___threading.html#gaac412beb7b9c7974e26c765e0fa3309f">fpl::threading</a>
+: <a class="el" href="group___threading.html#ga0545a820b7548e6ece5a7fac3c94a096">fpl::threading</a>
 </li>
 <li>SignalWaitForOne()
-: <a class="el" href="group___threading.html#gadb66460fdf6a218821af98b8ed5ea680">fpl::threading</a>
+: <a class="el" href="group___threading.html#ga88d8a78d16a306113618187544149e46">fpl::threading</a>
 </li>
 <li>SignalWakeUp()
-: <a class="el" href="group___threading.html#gaf7143108b42c0837b4c50a4146511a20">fpl::threading</a>
+: <a class="el" href="group___threading.html#ga07e05d3ab078379bd4a7dd549c3d6fee">fpl::threading</a>
 </li>
 <li>StopAudio()
 : <a class="el" href="group___audio.html#ga7c7306211763682dc822438ca375933d">fpl::audio</a>
@@ -510,10 +513,10 @@ $(function() {
 : <a class="el" href="group___threading.html#ga13be443e258c267955a7f4fe6a9f4c7b">fpl::threading</a>
 </li>
 <li>ThreadWaitForAll()
-: <a class="el" href="group___threading.html#ga270550991642a26870f04ee57721246f">fpl::threading</a>
+: <a class="el" href="group___threading.html#ga5dd7429e685be4d10aa1dbdaaf5f589d">fpl::threading</a>
 </li>
 <li>ThreadWaitForAny()
-: <a class="el" href="group___threading.html#gae7cef6c0b207497c150299cfc950f404">fpl::threading</a>
+: <a class="el" href="group___threading.html#ga00a5d0483a140aac6f8724be3a4e4b00">fpl::threading</a>
 </li>
 <li>ThreadWaitForOne()
 : <a class="el" href="group___threading.html#ga37f301c14e223afafab3913748cf2b5a">fpl::threading</a>

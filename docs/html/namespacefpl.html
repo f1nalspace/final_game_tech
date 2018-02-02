@@ -22,7 +22,7 @@
  <tr style="height: 56px;">
   <td id="projectalign" style="padding-left: 0.5em;">
    <div id="projectname">Final Platform Layer
-   &#160;<span id="projectnumber">0.5.7.4</span>
+   &#160;<span id="projectnumber">0.5.8.0</span>
    </div>
   </td>
  </tr>
@@ -133,7 +133,7 @@ Classes</h2></td></tr>
 <tr class="memdesc:"><td class="mdescLeft">&#160;</td><td class="mdescRight"><a class="el" href="structfpl_1_1_settings.html" title="Settings container (Window, Video, etc) ">Settings</a> container (Window, Video, etc)  <a href="structfpl_1_1_settings.html#details">More...</a><br /></td></tr>
 <tr class="separator:"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:"><td class="memItemLeft" align="right" valign="top">struct &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structfpl_1_1_video_settings.html">VideoSettings</a></td></tr>
-<tr class="memdesc:"><td class="mdescLeft">&#160;</td><td class="mdescRight">Video settings container (Compability Profile, Version, VSync, etc.)  <a href="structfpl_1_1_video_settings.html#details">More...</a><br /></td></tr>
+<tr class="memdesc:"><td class="mdescLeft">&#160;</td><td class="mdescRight">Video settings container (Driver, Flags, Version, VSync, etc.)  <a href="structfpl_1_1_video_settings.html#details">More...</a><br /></td></tr>
 <tr class="separator:"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:"><td class="memItemLeft" align="right" valign="top">struct &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structfpl_1_1_window_settings.html">WindowSettings</a></td></tr>
 <tr class="memdesc:"><td class="mdescLeft">&#160;</td><td class="mdescRight">Window settings (Size, Title etc.)  <a href="structfpl_1_1_window_settings.html#details">More...</a><br /></td></tr>
@@ -179,12 +179,13 @@ Enumerations</h2></td></tr>
  }<tr class="memdesc:gae483f3743fdfa195f8746c04203ca850"><td class="mdescLeft">&#160;</td><td class="mdescRight">Initialization flags (Window, Video, etc.)  <a href="group___settings.html#gae483f3743fdfa195f8746c04203ca850">More...</a><br /></td></tr>
 </td></tr>
 <tr class="separator:gae483f3743fdfa195f8746c04203ca850"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:gab3552d007c8e23a65e4ac0366758c18d"><td class="memItemLeft" align="right" valign="top">enum &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___settings.html#gab3552d007c8e23a65e4ac0366758c18d">VideoCompabilityProfile</a> { <a class="el" href="group___settings.html#ggab3552d007c8e23a65e4ac0366758c18da0cc0a0507cf3d31e5089f420a4cf8b4b">VideoCompabilityProfile::Legacy</a>, 
-<a class="el" href="group___settings.html#ggab3552d007c8e23a65e4ac0366758c18da83168e6cb289d732cc78427b51f93153">VideoCompabilityProfile::Core</a>, 
-<a class="el" href="group___settings.html#ggab3552d007c8e23a65e4ac0366758c18da67d2f6740a8eaebf4d5c6f79be8da481">VideoCompabilityProfile::Forward</a>
- }<tr class="memdesc:gab3552d007c8e23a65e4ac0366758c18d"><td class="mdescLeft">&#160;</td><td class="mdescRight">Video compability profile.  <a href="group___settings.html#gab3552d007c8e23a65e4ac0366758c18d">More...</a><br /></td></tr>
+<tr class="memitem:ga474e10da59313b97e3d573eb21f53408"><td class="memItemLeft" align="right" valign="top">enum &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___settings.html#ga474e10da59313b97e3d573eb21f53408">OpenGLCompabilityFlags</a> : uint32_t { <a class="el" href="group___settings.html#gga474e10da59313b97e3d573eb21f53408a0cc0a0507cf3d31e5089f420a4cf8b4b">OpenGLCompabilityFlags::Legacy</a> = 0, 
+<a class="el" href="group___settings.html#gga474e10da59313b97e3d573eb21f53408a83168e6cb289d732cc78427b51f93153">OpenGLCompabilityFlags::Core</a> = 1 &lt;&lt; 1, 
+<a class="el" href="group___settings.html#gga474e10da59313b97e3d573eb21f53408ad64a1b98b71008d2b452572f0933a55f">OpenGLCompabilityFlags::Compability</a> = 1 &lt;&lt; 2, 
+<a class="el" href="group___settings.html#gga474e10da59313b97e3d573eb21f53408a67d2f6740a8eaebf4d5c6f79be8da481">OpenGLCompabilityFlags::Forward</a> = 1 &lt;&lt; 3
+ }<tr class="memdesc:ga474e10da59313b97e3d573eb21f53408"><td class="mdescLeft">&#160;</td><td class="mdescRight">OpenGL compability flags.  <a href="group___settings.html#ga474e10da59313b97e3d573eb21f53408">More...</a><br /></td></tr>
 </td></tr>
-<tr class="separator:gab3552d007c8e23a65e4ac0366758c18d"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="separator:ga474e10da59313b97e3d573eb21f53408"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:ga507fe7ca23031e714575d0a5ddd37598"><td class="memItemLeft" align="right" valign="top">enum &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___settings.html#ga507fe7ca23031e714575d0a5ddd37598">VideoDriverType</a> { <a class="el" href="group___settings.html#gga507fe7ca23031e714575d0a5ddd37598a6adf97f83acf6453d4a6a4b1070f3754">VideoDriverType::None</a>, 
 <a class="el" href="group___settings.html#gga507fe7ca23031e714575d0a5ddd37598a760716b590ee7c0adc25f434f577d8be">VideoDriverType::OpenGL</a>, 
 <a class="el" href="group___settings.html#gga507fe7ca23031e714575d0a5ddd37598a719d067b229178f03bcfa1da4ac4dede">VideoDriverType::Software</a>
@@ -194,6 +195,9 @@ Enumerations</h2></td></tr>
 </table><table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a name="func-members"></a>
 Functions</h2></td></tr>
+<tr class="memitem:gaab86f65f0e66c116ea22a52bde2bfc5c"><td class="memItemLeft" align="right" valign="top"><a class="el" href="final__platform__layer_8hpp.html#aafa1d3d90febf9826c55c1318f98b27d">fpl_api</a> void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___error_handling.html#gaab86f65f0e66c116ea22a52bde2bfc5c">ClearPlatformErrors</a> ()</td></tr>
+<tr class="memdesc:gaab86f65f0e66c116ea22a52bde2bfc5c"><td class="mdescLeft">&#160;</td><td class="mdescRight">Clears all the current errors in the platform.  <a href="group___error_handling.html#gaab86f65f0e66c116ea22a52bde2bfc5c">More...</a><br /></td></tr>
+<tr class="separator:gaab86f65f0e66c116ea22a52bde2bfc5c"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:ga433f5dc8e4c59843f149f14da279f7e1"><td class="memItemLeft" align="right" valign="top"><a class="el" href="final__platform__layer_8hpp.html#ad67e19afe5bfc76f56e85436eac8cf4d">fpl_inline</a> <a class="el" href="structfpl_1_1_audio_settings.html">AudioSettings</a>&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___settings.html#ga433f5dc8e4c59843f149f14da279f7e1">DefaultAudioSettings</a> ()</td></tr>
 <tr class="memdesc:ga433f5dc8e4c59843f149f14da279f7e1"><td class="mdescLeft">&#160;</td><td class="mdescRight">Make default audio settings (S16 PCM, 48 KHz, 2 Channels)  <a href="group___settings.html#ga433f5dc8e4c59843f149f14da279f7e1">More...</a><br /></td></tr>
 <tr class="separator:ga433f5dc8e4c59843f149f14da279f7e1"><td class="memSeparator" colspan="2">&#160;</td></tr>
@@ -213,20 +217,23 @@ Functions</h2></td></tr>
 &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___settings.html#gaa2f7a68f92104f5e6f8c0511005c03dc">FPL_ENUM_AS_FLAGS_OPERATORS</a> (<a class="el" href="group___settings.html#gae483f3743fdfa195f8746c04203ca850">InitFlags</a>)</td></tr>
 <tr class="memdesc:gaa2f7a68f92104f5e6f8c0511005c03dc"><td class="mdescLeft">&#160;</td><td class="mdescRight">Operator support for InitFlags. <br /></td></tr>
 <tr class="separator:gaa2f7a68f92104f5e6f8c0511005c03dc"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:ga7e437ab66ee41b3f381a8ee0faafa4e0"><td class="memItemLeft" align="right" valign="top">
+&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___settings.html#ga7e437ab66ee41b3f381a8ee0faafa4e0">FPL_ENUM_AS_FLAGS_OPERATORS</a> (<a class="el" href="group___settings.html#ga474e10da59313b97e3d573eb21f53408">OpenGLCompabilityFlags</a>)</td></tr>
+<tr class="memdesc:ga7e437ab66ee41b3f381a8ee0faafa4e0"><td class="mdescLeft">&#160;</td><td class="mdescRight">Defines the operator overloads for a enum used as flags. <br /></td></tr>
+<tr class="separator:ga7e437ab66ee41b3f381a8ee0faafa4e0"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:ga6eecc72936058abdbebfad659b886980"><td class="memItemLeft" align="right" valign="top">
 <a class="el" href="final__platform__layer_8hpp.html#aafa1d3d90febf9826c55c1318f98b27d">fpl_api</a> const <a class="el" href="structfpl_1_1_settings.html">Settings</a> &amp;&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___settings.html#ga6eecc72936058abdbebfad659b886980">GetCurrentSettings</a> ()</td></tr>
 <tr class="memdesc:ga6eecc72936058abdbebfad659b886980"><td class="mdescLeft">&#160;</td><td class="mdescRight">Returns the current settings. <br /></td></tr>
 <tr class="separator:ga6eecc72936058abdbebfad659b886980"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:ga21d84c13e805a5fc41be6602615bc099"><td class="memItemLeft" align="right" valign="top">
-<a class="el" href="final__platform__layer_8hpp.html#aafa1d3d90febf9826c55c1318f98b27d">fpl_api</a> const char *&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___error_handling.html#ga21d84c13e805a5fc41be6602615bc099">GetPlatformLastError</a> ()</td></tr>
-<tr class="memdesc:ga21d84c13e805a5fc41be6602615bc099"><td class="mdescLeft">&#160;</td><td class="mdescRight">Returns last internal error string. <br /></td></tr>
-<tr class="separator:ga21d84c13e805a5fc41be6602615bc099"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:ga3b15675b4e79ee4cd68666e97a690910"><td class="memItemLeft" align="right" valign="top"><a class="el" href="final__platform__layer_8hpp.html#aafa1d3d90febf9826c55c1318f98b27d">fpl_api</a> const char *&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___error_handling.html#ga3b15675b4e79ee4cd68666e97a690910">GetPlatformLastError</a> (const size_t index)</td></tr>
-<tr class="memdesc:ga3b15675b4e79ee4cd68666e97a690910"><td class="mdescLeft">&#160;</td><td class="mdescRight">Returns last error string from the given index.  <a href="group___error_handling.html#ga3b15675b4e79ee4cd68666e97a690910">More...</a><br /></td></tr>
-<tr class="separator:ga3b15675b4e79ee4cd68666e97a690910"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:gac3b46af437dae868f37f36e0d0837655"><td class="memItemLeft" align="right" valign="top"><a class="el" href="final__platform__layer_8hpp.html#aafa1d3d90febf9826c55c1318f98b27d">fpl_api</a> size_t&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___error_handling.html#gac3b46af437dae868f37f36e0d0837655">GetPlatformLastErrorCount</a> ()</td></tr>
-<tr class="memdesc:gac3b46af437dae868f37f36e0d0837655"><td class="mdescLeft">&#160;</td><td class="mdescRight">Returns the count of total last errors.  <a href="group___error_handling.html#gac3b46af437dae868f37f36e0d0837655">More...</a><br /></td></tr>
-<tr class="separator:gac3b46af437dae868f37f36e0d0837655"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:gab32395ba3e3ca64065a32905fe0fa343"><td class="memItemLeft" align="right" valign="top"><a class="el" href="final__platform__layer_8hpp.html#aafa1d3d90febf9826c55c1318f98b27d">fpl_api</a> const char *&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___error_handling.html#gab32395ba3e3ca64065a32905fe0fa343">GetPlatformError</a> ()</td></tr>
+<tr class="memdesc:gab32395ba3e3ca64065a32905fe0fa343"><td class="mdescLeft">&#160;</td><td class="mdescRight">Returns the last internal error string.  <a href="group___error_handling.html#gab32395ba3e3ca64065a32905fe0fa343">More...</a><br /></td></tr>
+<tr class="separator:gab32395ba3e3ca64065a32905fe0fa343"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:ga9fb02ab3a398406fff87a213dabbf00a"><td class="memItemLeft" align="right" valign="top"><a class="el" href="final__platform__layer_8hpp.html#aafa1d3d90febf9826c55c1318f98b27d">fpl_api</a> const char *&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___error_handling.html#ga9fb02ab3a398406fff87a213dabbf00a">GetPlatformError</a> (const size_t index)</td></tr>
+<tr class="memdesc:ga9fb02ab3a398406fff87a213dabbf00a"><td class="mdescLeft">&#160;</td><td class="mdescRight">Returns the last error string from the given index.  <a href="group___error_handling.html#ga9fb02ab3a398406fff87a213dabbf00a">More...</a><br /></td></tr>
+<tr class="separator:ga9fb02ab3a398406fff87a213dabbf00a"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:gabbd7c616f47eea317d29d323700f8008"><td class="memItemLeft" align="right" valign="top"><a class="el" href="final__platform__layer_8hpp.html#aafa1d3d90febf9826c55c1318f98b27d">fpl_api</a> size_t&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___error_handling.html#gabbd7c616f47eea317d29d323700f8008">GetPlatformErrorCount</a> ()</td></tr>
+<tr class="memdesc:gabbd7c616f47eea317d29d323700f8008"><td class="mdescLeft">&#160;</td><td class="mdescRight">Returns the count of total last errors.  <a href="group___error_handling.html#gabbd7c616f47eea317d29d323700f8008">More...</a><br /></td></tr>
+<tr class="separator:gabbd7c616f47eea317d29d323700f8008"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:ga89a2c7056b728c8b49b8767bb8227e21"><td class="memItemLeft" align="right" valign="top"><a class="el" href="final__platform__layer_8hpp.html#aafa1d3d90febf9826c55c1318f98b27d">fpl_api</a> bool&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___initialization.html#ga89a2c7056b728c8b49b8767bb8227e21">InitPlatform</a> (const <a class="el" href="group___settings.html#gae483f3743fdfa195f8746c04203ca850">InitFlags</a> initFlags=<a class="el" href="group___settings.html#ggae483f3743fdfa195f8746c04203ca850ab1c94ca2fbc3e78fc30069c8d0f01680">InitFlags::All</a>, const <a class="el" href="structfpl_1_1_settings.html">Settings</a> &amp;initSettings=<a class="el" href="group___settings.html#ga61ea8dd870556f6a7c3b805050acce22">DefaultSettings</a>())</td></tr>
 <tr class="memdesc:ga89a2c7056b728c8b49b8767bb8227e21"><td class="mdescLeft">&#160;</td><td class="mdescRight">Initializes the platform layer.  <a href="group___initialization.html#ga89a2c7056b728c8b49b8767bb8227e21">More...</a><br /></td></tr>
 <tr class="separator:ga89a2c7056b728c8b49b8767bb8227e21"><td class="memSeparator" colspan="2">&#160;</td></tr>

@@ -22,7 +22,7 @@
  <tr style="height: 56px;">
   <td id="projectalign" style="padding-left: 0.5em;">
    <div id="projectname">Final Platform Layer
-   &#160;<span id="projectnumber">0.5.7.4</span>
+   &#160;<span id="projectnumber">0.5.8.0</span>
    </div>
   </td>
  </tr>
@@ -71,28 +71,71 @@ $(function() {
 <table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a name="func-members"></a>
 Functions</h2></td></tr>
-<tr class="memitem:ga21d84c13e805a5fc41be6602615bc099"><td class="memItemLeft" align="right" valign="top"><a id="ga21d84c13e805a5fc41be6602615bc099"></a>
-<a class="el" href="final__platform__layer_8hpp.html#aafa1d3d90febf9826c55c1318f98b27d">fpl_api</a> const char *&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___error_handling.html#ga21d84c13e805a5fc41be6602615bc099">fpl::GetPlatformLastError</a> ()</td></tr>
-<tr class="memdesc:ga21d84c13e805a5fc41be6602615bc099"><td class="mdescLeft">&#160;</td><td class="mdescRight">Returns last internal error string. <br /></td></tr>
-<tr class="separator:ga21d84c13e805a5fc41be6602615bc099"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:ga3b15675b4e79ee4cd68666e97a690910"><td class="memItemLeft" align="right" valign="top"><a class="el" href="final__platform__layer_8hpp.html#aafa1d3d90febf9826c55c1318f98b27d">fpl_api</a> const char *&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___error_handling.html#ga3b15675b4e79ee4cd68666e97a690910">fpl::GetPlatformLastError</a> (const size_t index)</td></tr>
-<tr class="memdesc:ga3b15675b4e79ee4cd68666e97a690910"><td class="mdescLeft">&#160;</td><td class="mdescRight">Returns last error string from the given index.  <a href="group___error_handling.html#ga3b15675b4e79ee4cd68666e97a690910">More...</a><br /></td></tr>
-<tr class="separator:ga3b15675b4e79ee4cd68666e97a690910"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:gac3b46af437dae868f37f36e0d0837655"><td class="memItemLeft" align="right" valign="top"><a class="el" href="final__platform__layer_8hpp.html#aafa1d3d90febf9826c55c1318f98b27d">fpl_api</a> size_t&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___error_handling.html#gac3b46af437dae868f37f36e0d0837655">fpl::GetPlatformLastErrorCount</a> ()</td></tr>
-<tr class="memdesc:gac3b46af437dae868f37f36e0d0837655"><td class="mdescLeft">&#160;</td><td class="mdescRight">Returns the count of total last errors.  <a href="group___error_handling.html#gac3b46af437dae868f37f36e0d0837655">More...</a><br /></td></tr>
-<tr class="separator:gac3b46af437dae868f37f36e0d0837655"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:gaab86f65f0e66c116ea22a52bde2bfc5c"><td class="memItemLeft" align="right" valign="top"><a class="el" href="final__platform__layer_8hpp.html#aafa1d3d90febf9826c55c1318f98b27d">fpl_api</a> void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___error_handling.html#gaab86f65f0e66c116ea22a52bde2bfc5c">fpl::ClearPlatformErrors</a> ()</td></tr>
+<tr class="memdesc:gaab86f65f0e66c116ea22a52bde2bfc5c"><td class="mdescLeft">&#160;</td><td class="mdescRight">Clears all the current errors in the platform.  <a href="group___error_handling.html#gaab86f65f0e66c116ea22a52bde2bfc5c">More...</a><br /></td></tr>
+<tr class="separator:gaab86f65f0e66c116ea22a52bde2bfc5c"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:gab32395ba3e3ca64065a32905fe0fa343"><td class="memItemLeft" align="right" valign="top"><a class="el" href="final__platform__layer_8hpp.html#aafa1d3d90febf9826c55c1318f98b27d">fpl_api</a> const char *&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___error_handling.html#gab32395ba3e3ca64065a32905fe0fa343">fpl::GetPlatformError</a> ()</td></tr>
+<tr class="memdesc:gab32395ba3e3ca64065a32905fe0fa343"><td class="mdescLeft">&#160;</td><td class="mdescRight">Returns the last internal error string.  <a href="group___error_handling.html#gab32395ba3e3ca64065a32905fe0fa343">More...</a><br /></td></tr>
+<tr class="separator:gab32395ba3e3ca64065a32905fe0fa343"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:ga9fb02ab3a398406fff87a213dabbf00a"><td class="memItemLeft" align="right" valign="top"><a class="el" href="final__platform__layer_8hpp.html#aafa1d3d90febf9826c55c1318f98b27d">fpl_api</a> const char *&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___error_handling.html#ga9fb02ab3a398406fff87a213dabbf00a">fpl::GetPlatformError</a> (const size_t index)</td></tr>
+<tr class="memdesc:ga9fb02ab3a398406fff87a213dabbf00a"><td class="mdescLeft">&#160;</td><td class="mdescRight">Returns the last error string from the given index.  <a href="group___error_handling.html#ga9fb02ab3a398406fff87a213dabbf00a">More...</a><br /></td></tr>
+<tr class="separator:ga9fb02ab3a398406fff87a213dabbf00a"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:gabbd7c616f47eea317d29d323700f8008"><td class="memItemLeft" align="right" valign="top"><a class="el" href="final__platform__layer_8hpp.html#aafa1d3d90febf9826c55c1318f98b27d">fpl_api</a> size_t&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___error_handling.html#gabbd7c616f47eea317d29d323700f8008">fpl::GetPlatformErrorCount</a> ()</td></tr>
+<tr class="memdesc:gabbd7c616f47eea317d29d323700f8008"><td class="mdescLeft">&#160;</td><td class="mdescRight">Returns the count of total last errors.  <a href="group___error_handling.html#gabbd7c616f47eea317d29d323700f8008">More...</a><br /></td></tr>
+<tr class="separator:gabbd7c616f47eea317d29d323700f8008"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table>
 <a name="details" id="details"></a><h2 class="groupheader">Detailed Description</h2>
 <p>Functions for error handling. </p>
 <h2 class="groupheader">Function Documentation</h2>
-<a id="ga3b15675b4e79ee4cd68666e97a690910"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#ga3b15675b4e79ee4cd68666e97a690910">&#9670;&nbsp;</a></span>GetPlatformLastError()</h2>
+<a id="gaab86f65f0e66c116ea22a52bde2bfc5c"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#gaab86f65f0e66c116ea22a52bde2bfc5c">&#9670;&nbsp;</a></span>ClearPlatformErrors()</h2>
 
 <div class="memitem">
 <div class="memproto">
       <table class="memname">
         <tr>
-          <td class="memname"><a class="el" href="final__platform__layer_8hpp.html#aafa1d3d90febf9826c55c1318f98b27d">fpl_api</a> const char* fpl::GetPlatformLastError </td>
+          <td class="memname"><a class="el" href="final__platform__layer_8hpp.html#aafa1d3d90febf9826c55c1318f98b27d">fpl_api</a> void fpl::ClearPlatformErrors </td>
+          <td>(</td>
+          <td class="paramname"></td><td>)</td>
+          <td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p>Clears all the current errors in the platform. </p>
+<dl class="section note"><dt>Note</dt><dd>This function can be called regardless of the initialization state! </dd></dl>
+
+</div>
+</div>
+<a id="gab32395ba3e3ca64065a32905fe0fa343"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#gab32395ba3e3ca64065a32905fe0fa343">&#9670;&nbsp;</a></span>GetPlatformError() <span class="overload">[1/2]</span></h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname"><a class="el" href="final__platform__layer_8hpp.html#aafa1d3d90febf9826c55c1318f98b27d">fpl_api</a> const char* fpl::GetPlatformError </td>
+          <td>(</td>
+          <td class="paramname"></td><td>)</td>
+          <td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p>Returns the last internal error string. </p>
+<dl class="section note"><dt>Note</dt><dd>This function can be called regardless of the initialization state! </dd></dl>
+<dl class="section return"><dt>Returns</dt><dd>Last error string or empty string when there was no error. </dd></dl>
+
+</div>
+</div>
+<a id="ga9fb02ab3a398406fff87a213dabbf00a"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#ga9fb02ab3a398406fff87a213dabbf00a">&#9670;&nbsp;</a></span>GetPlatformError() <span class="overload">[2/2]</span></h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname"><a class="el" href="final__platform__layer_8hpp.html#aafa1d3d90febf9826c55c1318f98b27d">fpl_api</a> const char* fpl::GetPlatformError </td>
           <td>(</td>
           <td class="paramtype">const size_t&#160;</td>
           <td class="paramname"><em>index</em></td><td>)</td>
@@ -101,25 +144,26 @@ Functions</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p>Returns last error string from the given index. </p>
+<p>Returns the last error string from the given index. </p>
 <dl class="params"><dt>Parameters</dt><dd>
   <table class="params">
     <tr><td class="paramname">index</td><td>The index </td></tr>
   </table>
   </dd>
 </dl>
-<dl class="section return"><dt>Returns</dt><dd>Last error string from the given index or nullptr when there was no error. </dd></dl>
+<dl class="section note"><dt>Note</dt><dd>This function can be called regardless of the initialization state! </dd></dl>
+<dl class="section return"><dt>Returns</dt><dd>Last error string from the given index or empty when there was no error. </dd></dl>
 
 </div>
 </div>
-<a id="gac3b46af437dae868f37f36e0d0837655"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#gac3b46af437dae868f37f36e0d0837655">&#9670;&nbsp;</a></span>GetPlatformLastErrorCount()</h2>
+<a id="gabbd7c616f47eea317d29d323700f8008"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#gabbd7c616f47eea317d29d323700f8008">&#9670;&nbsp;</a></span>GetPlatformErrorCount()</h2>
 
 <div class="memitem">
 <div class="memproto">
       <table class="memname">
         <tr>
-          <td class="memname"><a class="el" href="final__platform__layer_8hpp.html#aafa1d3d90febf9826c55c1318f98b27d">fpl_api</a> size_t fpl::GetPlatformLastErrorCount </td>
+          <td class="memname"><a class="el" href="final__platform__layer_8hpp.html#aafa1d3d90febf9826c55c1318f98b27d">fpl_api</a> size_t fpl::GetPlatformErrorCount </td>
           <td>(</td>
           <td class="paramname"></td><td>)</td>
           <td></td>
@@ -128,6 +172,7 @@ Functions</h2></td></tr>
 </div><div class="memdoc">
 
 <p>Returns the count of total last errors. </p>
+<dl class="section note"><dt>Note</dt><dd>This function can be called regardless of the initialization state! </dd></dl>
 <dl class="section return"><dt>Returns</dt><dd>Number of last errors or zero when there was no error. </dd></dl>
 
 </div>

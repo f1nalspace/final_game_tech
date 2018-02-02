@@ -1,6 +1,7 @@
 var searchData=
 [
   ['todo_20_2f_20planned_20_28top_20priority_20order_29',['ToDo / Planned (Top priority order)',['../page_todo.html',1,'index']]],
+  ['tutorials',['Tutorials',['../page_tutorials.html',1,'page_introduction']]],
   ['threadcontext',['ThreadContext',['../structfpl_1_1threading_1_1_thread_context.html',1,'fpl::threading']]],
   ['threadcreate',['ThreadCreate',['../group___threading.html#ga57538de72b2f378b1213428e81851e08',1,'fpl::threading']]],
   ['threaddestroy',['ThreadDestroy',['../group___threading.html#gab78be4e5aa5bc3f267c844d2d9e46ce7',1,'fpl::threading']]],
@@ -11,8 +12,8 @@ var searchData=
   ['threadsleep',['ThreadSleep',['../group___threading.html#ga5549e8b3fb7ba18a8268bd8026c13c9b',1,'fpl::threading']]],
   ['threadstate',['ThreadState',['../group___threading.html#ga426869d2ff910fe7574a02a4fc58fb1e',1,'fpl::threading']]],
   ['threadsuspend',['ThreadSuspend',['../group___threading.html#ga13be443e258c267955a7f4fe6a9f4c7b',1,'fpl::threading']]],
-  ['threadwaitforall',['ThreadWaitForAll',['../group___threading.html#ga270550991642a26870f04ee57721246f',1,'fpl::threading']]],
-  ['threadwaitforany',['ThreadWaitForAny',['../group___threading.html#gae7cef6c0b207497c150299cfc950f404',1,'fpl::threading']]],
+  ['threadwaitforall',['ThreadWaitForAll',['../group___threading.html#ga5dd7429e685be4d10aa1dbdaaf5f589d',1,'fpl::threading']]],
+  ['threadwaitforany',['ThreadWaitForAny',['../group___threading.html#ga00a5d0483a140aac6f8724be3a4e4b00',1,'fpl::threading']]],
   ['threadwaitforone',['ThreadWaitForOne',['../group___threading.html#ga37f301c14e223afafab3913748cf2b5a',1,'fpl::threading']]],
   ['timing_20functions',['Timing functions',['../group___timings.html',1,'']]],
   ['top',['top',['../structfpl_1_1window_1_1_window_position.html#a59fb9f01813cb864ffc44a090f05d4a5',1,'fpl::window::WindowPosition']]],

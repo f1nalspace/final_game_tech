@@ -46,5 +46,6 @@ var searchData=
   ['audioresult',['AudioResult',['../group___audio.html#ga341d4051c79a9c91ff98e4d9c1fb932d',1,'fpl::audio']]],
   ['audiosettings',['AudioSettings',['../structfpl_1_1_audio_settings.html',1,'fpl']]],
   ['auto',['Auto',['../group___settings.html#gga7846abd72446af7c7e6b1e9bbddea3b4a06b9281e396db002010bde1de57262eb',1,'fpl']]],
-  ['availablephysicalsize',['availablePhysicalSize',['../structfpl_1_1hardware_1_1_memory_infos.html#adf677f5035225a48cc3b4363695c030d',1,'fpl::hardware::MemoryInfos']]]
+  ['availablephysicalsize',['availablePhysicalSize',['../structfpl_1_1hardware_1_1_memory_infos.html#adf677f5035225a48cc3b4363695c030d',1,'fpl::hardware::MemoryInfos']]],
+  ['automatic_20namespace_20inclusion',['Automatic namespace inclusion',['../page_otutorial_autonamespace.html',1,'page_tutorials']]]
 ];
