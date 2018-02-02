@@ -111,9 +111,6 @@ static void LoadGLExtensions() {
 }
 
 #define MODERN_OPENGL 1
-#define OPENGL_MAJOR 3
-#define OPENGL_MINOR 3
-#define VIDEO_PROFILE VideoCompabilityProfile::Core
 
 static void RunLegacy() {
 	ConsoleOut("Running legacy opengl\n");
@@ -269,9 +266,9 @@ int main(int argc, char **args) {
 	settings.video.driverType = VideoDriverType::OpenGL;
 #if MODERN_OPENGL
 	CopyAnsiString("FPL Modern OpenGL", settings.window.windowTitle, FPL_ARRAYCOUNT(settings.window.windowTitle));
-	settings.video.profile = VIDEO_PROFILE;
-	settings.video.majorVersion = OPENGL_MAJOR;
-	settings.video.minorVersion = OPENGL_MINOR;
+	settings.video.opengl.compabilityFlags = OpenGLCompabilityFlags::Core;
+	settings.video.opengl.majorVersion = 3;
+	settings.video.opengl.minorVersion = 3;
 #else
 	CopyAnsiString("FPL Legacy OpenGL", settings.window.windowTitle, FPL_ARRAYCOUNT(settings.window.windowTitle));
 	settings.video.profile = VideoCompabilityProfile::Legacy;

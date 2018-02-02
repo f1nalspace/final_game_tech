@@ -3,14 +3,14 @@ final_platform_layer.hpp
 
 A Open source C++ single file header platform abstraction layer library.
 
-This library is designed to abstract the underlying platform to a very simple and easy to use api.
+Final Platform Layer is a cross-platform single-header-file development library designed to abstract the underlying platform to a very simple and easy to use low-level api for accessing input devices, audio playback, window handling, IO handling, multithreading and graphics software or hardware rendering initialization.
 The main focus is game/simulation development, so the default settings will create a window, setup a opengl rendering context and initialize audio playback on any platform.
 
 The only dependencies are built-in operating system libraries, a C++/11 compiler and the C runtime library.
 
-Copyright 2017 Torsten Spaete
+Final Platform Layer is released under the following license:
 
-Final Platform Layer is released under the MIT License:
+MIT License
 
 Copyright (c) 2017-2018 Torsten Spaete
 
@@ -33,9 +33,15 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ***/
 
+// ****************************************************************************
+//
+// Documentation
+//
+// ****************************************************************************
+
 /*!
 	\file final_platform_layer.hpp
-	\version v0.5.7.4 beta
+	\version v0.5.8.0 beta
 	\author Torsten Spaete
 	\brief Final Platform Layer (FPL) - A Open source C++ single file header platform abstraction layer library.
 */
@@ -44,89 +50,154 @@ SOFTWARE.
 	\mainpage
 	\tableofcontents
 
-	\section section_intro Introduction
+	\section section_overview Overview
 
-	<em>This library is designed to abstract the underlying platform to a very simple and easy to use api.</em><br>
-	<br>
+	Final Platform Layer is a cross-platform single-header-file development library designed to abstract the underlying platform to a very simple and easy to use low-level api for accessing input devices (keyboard, mouse, gamepad), audio playback, window handling, IO handling (files, directories, paths), multithreading (threads, mutex, signals) and graphics software or hardware rendering initialization.<br>
+
 	The main focus is game/simulation development, so the default settings will create a window, setup a opengl rendering context and initialize audio playback on any platform.<br>
-	The only dependencies are built-in operating system libraries, a C++/11 compiler and the C runtime library.<br>
+	<br>
+	Right know FPL has support for Windows only, but Linux support is already in progress and more platforms are planned.<br>
+	<br>
+	FPL is written in C++ in a C-like style, so it uses namespaces, method overloading and standard types for seamless integration into any codebase but does not provide or use any classes.<br>
+	<br>
+	Final Platform Layer is released under the \subpage page_license "MIT License". This license allows you to use FPL freely in any software.<br>
+	<br>
+	This is the FPL documentation -> The main website is https://libfpl.org/.
 
-	It works very well with other libraries like for example:
+	\section section_using_this_documentation How to use this documentation?
+	Use the following links to learn more about FPL:
+	- \subpage page_introduction
+	- \subpage page_usage
+	- \subpage page_tutorials
+	- \subpage page_examples
+	- \subpage page_faq
+	- \subpage page_contribute
+	- \subpage page_changelog
+	- \subpage page_todo
+	- \subpage page_license
 
-	- STB Libraries
-	- Standard C++ Library (STL)
-	- Glew/Glad
-	- Box2D
-	- GLM
-	- ImGUI
-	- etc.
+	I hope you find all the informations you need. If not please drop a issue on the github project page and i answer it as soon as possible!
 
-	\section section_features Features
+	Thanks for using, have a great day!
+*/
 
-	- Creating a fixed or resizeable window
-	- Handling window, keyboard, mouse events
-	- Enable/Disable fullscreen
-	- Full event buffering
-	- Polling gamepad informations
-	- Clipboard string reading and writing
-	- Multi-monitor support for window creation and fullscreen switching (Todo)
+/*!
+	\page page_introduction Introduction
+	\tableofcontents
 
-	- Video output:
-		- Legacy 1.x opengl rendering context
-		- Modern 3.x + opengl rendering context
-		- Software backbuffer
+	\section section_intro Introduction to FPL
 
-	- Asyncronous audio playback
-		- DirectSound
-		- Alsa (Todo)
+	\subsection subsection_whatisfpl What is FPL?
+	Final Platform Layer is a cross-platform single-header-file development library designed to abstract the underlying platform to a very simple and easy to use low-level api for accessing input devices (keyboard, mouse, gamepad), audio playback, window handling, IO handling (files, directories, paths), multithreading (threads, mutex, signals) and graphics software or hardware rendering initialization.<br>
 
-	- Memory allocation and de-allocation with custom alignment support
-	- Atomic operations
-	- Path functions
-	- File functions
-	- Hardware functions
-	- String conversion functions
-	- Thread/Mutex/Signal handling
+	The main focus is game/simulation development, so the default settings will create a window, setup a opengl rendering context and initialize audio playback on any platform.<br>
+	<br>
+	Right know FPL has support for Windows only, but Linux support is already in progress and more platforms are planned.<br>
+	-> For more details see the page about the current \subpage page_platform_status.<br>
+	<br>
+	FPL is written in C++ in a C-like style, so it uses namespaces, method overloading and standard types for seamless integration into any codebase but does not provide or use any classes.<br>
+	<br>
+	Final Platform Layer is released under the \subpage page_license "MIT License". This license allows you to use FPL freely in any software.<br>
 
-	\subsection section_supported_archs Supported Architectures
+	\subsection subsection_whatissingleheaderfilelibrary What is a single-header-file Library and why is FPL based on that?
+	A single header file library (as the name implies) is a development library designed to be one file only.<br>
+	Such a file contains the header (API) and the body (Implementation) in one file but separated and controlled by compiler conditions.<br>
+	This makes it easy to use the library however you want (With source, Static-linked, Private use only).<br>
+	In addition such libraries mostly does not require any dependencies at all, to making it more friendly to the user.<br>
+	<br>
+	So, why then is FPL based on that?<br>
+	<br>
+	Because non-single-header-file libraries are either hard to integrate, forces you to link to it dynamically or statically, are closed source, comes with a ton of dependencies - which is not user friendly at all!
 
-	- x86 / x86_64
-	- x64
+	\subsection subsection_supported_platforms Which platforms are supported by FPL?
+	Right know FPL supports just a couple of x86/x64 platforms, but some are already in progress and more are planned:
 
-	\subsection section_supported_compilers Supported Compilers
+	- Windows (32-bit and 64-bit)
+	- Linux (In progress)
+
+	\subsection subsection_supported_compilers Which compilers are supported by FPL?
+	FPL should compile on every modern C++/11 compiler, but is tested on a couple of compilers only:
 
 	- MSVC
 	- GCC
-	- Clang (Partially)
-	- MingW (Not tested)
-	- Intel C++ Compiler (Not tested)
+	- Clang
 
-	\subsection section_supported_platforms Supported Platforms
+	\subsection section_features What can FPL do?
+	Read ahead a detailed feature overview of FPL:
 
-	- Win32
-	- Linux/Posix (Partially)
-	- Unix/BSD/Posix (Todo)
+	- Window
+		- Create and handle a single window
+		- Fullscreen toggling
+		- Event handling
+		- Clipboard string reading and writing
+	- Event-based input
+		- Keyboard
+		- Mouse
+		- Game controllers
+	- Video:
+		- OpenGL 1.x (Legacy)
+		- OpenGL 3.x or higher (Modern)
+		- Software backbuffer
+	- Audio asyncronous playback
+		- DirectSound
+	- Memory
+		- Allocation and de-allocation
+		- Custom alignment support
+		- Fast clear and copy
+	- Atomics
+		- Support for 8,16,32,64 bit signed and unsigned integer types
+		- Support for void pointer type
+		- Compare and exchange
+		- Add / Exchange
+		- Load / Store
+		- Memory barriers
+	- Shared library
+		- Loading of shared libraries (DLL on windows, .so on Linux)
+		- Function lookup
+	- IO
+		- Path functions
+			- Query user home directory
+			- Query executable path
+			- Extract filename, extension and path
+			- Combine paths
+			- Change file extension
+		- Files/Directories
+			- Reading and writing binary files (32-bit only, 64-bit are planned)
+			- Iterating over files/directories
+			- Rename/Copy/Delete/Move operations
+	- Hardware infos retrievement
+		- Query processor infos (Core count, Name)
+		- Query current memory state (Physical size, virtual size, page size, etc.)
+	- Timings
+		- Get number of seconds with high precision used for profiling and delta calculations
+	- String conversion functions
+		- Ansistring <-> Widestring
+		- UTF-8 <-> Widestring
+		- Copy
+		- Comparing
+		- Formatting
+	- Console
+		- Standard/Error out
+		- Formatting
+	- Threading
+		- Thread
+		- Mutex
+		- Signal
 
-	\subsection section_todo Todo
+	\subsection section_getstarted How do i get started with FPL?
+	- You download the latest <a href="https://github.com/f1nalspace/final_game_tech/blob/master/final_platform_layer.hpp">"final_platform_layer.hpp"</a> file.
+	- Drop it into your C++ project and use it in any place you want.
+	- Define <b>FPL_IMPLEMENTATION</b> in at least one translation unit before including this header file!
+	- Ready to go.
 
-	See \subpage page_todo
+	For more details see the \subpage page_usage, \subpage page_tutorials and \subpage page_examples pages.
+*/
 
-	\section section_howtocompile How to Compile
+/*!
+	\page page_usage Usage
+	\tableofcontents
 
-	You need a C++/11 compatible compiler like MSVC, GCC, Clang, etc.
-
-	\subpage page_compiler_options
-
-	\subsection sectionCompileWin32 Win32
-
-	- Link against "kernel32.lib"
-
-	\subsection sectionCompileLinux Linux
-
-	- Link against "ld"
-
-	\section section_usage Usage
-
+	\section section_usage How to use FPL?
 	In one of your C++ translation units include this:
 
 	\code{.cpp}
@@ -139,7 +210,7 @@ SOFTWARE.
 	Provide the typical main entry point with at least the initialization and release of the platform:
 
 	\code{.cpp}
-	int main(int argc, char **args) {
+	int main(int argc, char *args[]) {
 		// Initialize the platform
 		fpl::InitPlatform(fpl::InitFlags::All);
 
@@ -150,17 +221,325 @@ SOFTWARE.
 	}
 	\endcode
 
-	\section section_examples Examples
+	\section subsection_requirements Requirements
+	The only dependencies are built-in operating system libraries, a C++/11 compiler and the C-Runtime.<br>
+	Depending on the compiler and platform - linking to one system library may be required:
+	<br>
+	\subsection sectionCompileWin32 Win32
+	- Link against "kernel32.lib"
 
-	- \subpage page_example_helloworld_console
-	- \subpage page_example_opengl1x
-	- \subpage page_example_opengl33
-	- \subpage page_example_simple_audio
+	\subsection sectionCompileLinux Linux
+	- Link against "ld"
 
-	\section section_notes Notes
+	\section subsection_compiler_opts Options
 
-	\subsection section_audio Audio
+	See \subpage page_compiler_options for more details.
+*/
 
+/*!
+	\page page_tutorials Tutorials
+	\tableofcontents
+
+	\section section_official_tutorials Official tutorials
+
+	\subsection subsection_otutorial_general General
+	\subpage page_otutorial_initialization <br>
+	\subpage page_otutorial_autonamespace <br>
+
+	\subsection subsection_otutorial_window Window
+	\subpage page_otutorial_window_creation <br>
+	\subpage page_otutorial_window_events <br>
+
+	\subsection subsection_otutorial_video Video
+	\subpage page_otutorial_video_general <br>
+	\subpage page_otutorial_video_legacy_opengl <br>
+	\subpage page_otutorial_video_modern_opengl <br>
+	\subpage page_otutorial_video_software <br>
+
+	\subsection subsection_otutorial_audio Audio
+	\subpage page_otutorial_audio_general <br>
+	\subpage page_otutorial_audio_clientdata <br>
+*/
+
+/*!
+	\page page_otutorial_initialization Initialization & Release
+	\tableofcontents
+
+	\section section_otutorial_initialization_entrypoint Entry Point
+
+	Simply provide the typical main entry point (char, C++ style):<br>
+
+	\code{.cpp}
+	int main(int argc, char *args[]) {
+		// code goes here
+	}
+	\endcode
+
+	\section section_otutorial_initialization_simple Initialization
+
+	To initialize FPL you need to call \ref fpl::InitPlatform() (inside the main \ref section_otutorial_initialization_entrypoint) and provide the desired \ref fpl::InitFlags :
+
+	\code{.cpp}
+	int main(int argc, char *args[]) {
+		// With defaults (Window, Video, Audio)
+		fpl::InitPlatform(fpl::InitFlags::All);
+
+		// Only audio
+		fpl::InitPlatform(fpl::InitFlags::Audio);
+
+		// Only window and audio
+		fpl::InitPlatform(fpl::InitFlags::Window | fpl::InitFlags::Audio);
+
+		return 0;
+	}
+	\endcode
+
+	\section section_otutorial_initialization_with_settings Initialization with settings
+
+	To initialize FPL with custom settings you need to call \ref fpl::InitPlatform() and provide the desired \ref fpl::InitFlags and the \ref fpl::Settings parameter:
+
+	\code{.cpp}
+	fpl::Settings settings = DefaultSettings();
+
+	// change the settings here
+
+	fpl::InitPlatform(fpl::InitFlags::All, settings);
+	\endcode
+
+	\section section_otutorial_initialization_release Release
+
+	When you are done, you release FPL with the call \ref fpl::ReleasePlatform():
+	\code{.cpp}
+	fpl::ReleasePlatform();
+	\endcode
+
+	\section section_otutorial_initialization_result Result/Error checking
+
+	There is no guarantee that \ref fpl::InitPlatform() will always work with the fpl::Settings you specified, maybe the audio device does not support a sample rate of 1337 Khz or your video card does not support OpenGL version 3.7 - who knows.<br>
+	<br>
+	Therefore you should always check the result of the \ref fpl::InitPlatform() call! The result is a simple bool indicating whether the initialization failed or was successful - its that easy.<br>
+	<br>
+	Also you should release the platform when the initialization was successful only! If something goes wrong the resources are already cleaned up by FPL.<br>
+	<br>
+	In addition you should use \ref fpl::GetPlatformError() to print out the actual error when the initialization fails!<br>
+
+	<b>Bad:</b> (But will work)
+	\code{.cpp}
+	if (fpl::InitPlatform(fpl::InitFlags::All)) {
+		// your code here
+	}
+	fpl::ReleasePlatform();
+	\endcode
+
+	<b>Good:</b>
+	\code{.cpp}
+	if (fpl::InitPlatform(fpl::InitFlags::All)) {
+		// your code here
+		fpl::ReleasePlatform();
+	}
+	\endcode
+
+	<b>Better:</b>
+	\code{.cpp}
+	if (fpl::InitPlatform(fpl::InitFlags::All)) {
+		// your code here
+		fpl::ReleasePlatform();
+	} else {
+		const char *errStr = fpl::GetPlatformError();
+		fpl::console::ConsoleFormatError("FPL-ERROR: %s\n", errStr);
+	}
+	\endcode
+
+	See the \subpage page_otutorial_errorhandling page for more details about error handling.
+
+	\section section_otutorial_initialization_tips Tips
+	After releasing FPL you can call \ref fpl::InitPlatform() again if needed - for example: Finding the proper audio device, Testing for OpenGL compability, etc. may require you call InitPlatform() and ReleasePlatform() multiple times.
+*/
+
+/*!
+	\page page_otutorial_autonamespace Automatic namespace inclusion
+	\tableofcontents
+
+	\section section_otutorial_autonamespace Enable automatic namespaces
+
+	In case you dont want to fiddle around with any namespaces from FPL you can always enforces the inclusion of all namespaces automatically:
+
+	\code{.cpp}
+	#define FPL_AUTO_NAMESPACE
+	#include <final_platform_layer.hpp>
+	\endcode
+
+	This way you can always write:
+	\code{.cpp}
+	InitPlatform(InitFlags::All);
+	VideoBackBuffer backbuffer = GetVideoBackBuffer();
+	\endcode
+
+	instead of:
+	\code{.cpp}
+	fpl::InitPlatform(fpl::InitFlags::All);
+	fpl::video::VideoBackBuffer backbuffer = fpl::video::GetVideoBackBuffer();
+	\endcode
+
+	\section section_otutorial_autonamespace_note Note
+
+	Keep in mind that automatic namespace inclusion is the same as writing:
+	\code{.cpp}
+	using namespace fpl;
+	using namespace fpl::audio;
+	using namespace fpl::window;
+	// ...
+	\endcode
+*/
+
+	
+
+
+/*!
+	\page page_otutorial_errorhandling Error handling
+	\tableofcontents
+
+	\section section_otutorial_errorhandling_getlatest Get latest error
+
+	In case something goes wrong you can always call \ref fpl::GetPlatformError() - at any time.<br>
+	This either returns a empty string indicating everything is fine or a constant string with a valid error message.<br>
+
+	Example:
+	\code{.cpp}
+	const char *errStr = fpl::GetPlatformError();
+	// Do something with the error string
+	\endcode
+
+	\section section_otutorial_errorhandling_count Was there a error?
+
+	If you just want to check if there was an error, you can call \ref fpl::GetPlatformErrorCount() to use the number of errors as a condition.<br>
+
+	Example:
+	\code{.cpp}
+	if (fpl::GetPlatformErrorCount()) {
+		// Print out the error message
+	}
+	\endcode
+
+	\section section_otutorial_errorhandling_clear Clearing the errors
+
+	Errors will never be cleared by FPL! You have to do this yourself using \ref fpl::ClearPlatformErrors() .<br>
+
+	Example:
+	\code{.cpp}
+	fpl::ClearPlatformErrors();
+	\endcode
+
+	\section section_otutorial_errorhandling_note Note
+	Keep in mind that any platform error is reported in the output of the error console automatically!<br>
+	If you dont want to do that, then simply define the compiler directive for ignoring this behavior - before including this library with implementation enabled:
+
+	\code{.cpp}
+	#define FPL_NO_ERROR_IN_CONSOLE
+	#define FPL_IMPLEMENTATION
+	#include <final_platform_layer.hpp>
+	\endcode
+*/
+
+/*!
+	\page page_otutorial_window_creation Window creation & main loop
+	\tableofcontents
+
+	\section section_otutorial_window_creation_init Initialization
+
+	To create a window you add the \ref fpl::InitFlags::Window flag to the fpl::InitFlags parameter in the \ref fpl::InitPlatform() call.<br>
+	It makes no sense to create a window alone, so we combine it at least with something else, like for example: a video context or audio playback.<br>
+
+	\code{.cpp}
+	fpl::InitPlatform(fpl::InitFlags::Window | fpl::InitFlags::Video, settings);
+	\endcode
+
+	\section section_otutorial_window_creation_loop Main loop
+
+	After you initialize FPL with a window you have to create some sort of a loop to keep the window open until you close them.<br>
+	This is required due to the fact that operating systems uses a event-based system to communicate with the window and your app.<br>
+	If no communication happens with your window and your app, the window will no longer be responsive - so make sure to communicate properly.<br>
+	<br>
+	For that there is a single function call required to process these events -> \ref fpl::Window::WindowUpdate().
+
+	\code{.cpp}
+	while (fpl::Window::WindowUpdate()) {
+		// your code goes here
+	}
+	\endcode
+
+	\section section_otutorial_window_creation_note Note
+	All window based calls are required to be executed from the main-thread only!
+
+*/
+
+/*!
+	\page page_otutorial_window_events Window events
+	\tableofcontents
+
+*/
+
+/*!
+	\page page_faq FAQ
+	\tableofcontents
+
+	\section section_faq FAQ
+
+	\subsection subsection_faq_license What are the license requirements for FPL?
+	Final Platform Layer is released under the \subpage page_license "MIT License".<br>
+	This license allows you to use FPL freely in any non-commerical or commercial software.<br>
+
+	\subsection subsection_faq_costs I did pay for FPL, did i get ripped-of?
+	Yes you are! FPL is full open source and costs nothing.
+
+	\subsection subsection_faq_inwhatlanguage In what language is FPL written?
+	Final Platform Layer is written in C++ but in C-Style without using any object orientation concepts.<br>
+	It uses namespaces for categorizing and for preventing name collisions with other apis and uses the C++/11 standard integral types.<br>
+	<br>
+	But it does not use the C++ standard library or any advanced C++/11 features.
+
+	\subsection subsection_faq_inwhatlanguage Why is C++/11 required for FPL?
+	Because C++ has no proper standards for types and even null until C++/11 - its that simple.<br>
+	All modern compilers today does support C++/11 properly, so there is reason to not use it.
+
+	\subsection subsection_faq_whyshouldiuse Why should i use FPL?
+	If you want a hassle free platform abstraction library, FPL is the way to go.<br>
+	- You dont have any linking madness
+	- No configuration needed
+	- No build-scripts required
+	- It just compiles
+	- You decide how you integrate it; not the library
+
+	Also even when you use FPL you still can use other libraries and ignore features you dont need.<br>
+	For example FPL provides a few atomic operations, but its very limited - so you may use std::atomic or other libraries for that task.<br>
+
+	\subsection subsection_faq_whyisfplsobig Why is FPL so big?
+	Final Platform Layer contains headers and implementations for all supported platforms with all the function prototypes for linking operating system functions dynamically.<br>
+	In addition there is a full doxygen documentation included with a detailed changelog.<br>
+
+	\subsection subsection_faq_limitations Does FPL have some limitations?
+	Yes it does have some limitations, because it cannot do everything for you:
+	- There is no audio DSP going on, so you have to convert the samples into the proper format (Sample rate, Channels, Format type) FPL expects.
+	- There is no rendering functions included, except for presenting the current frame. So you have to load and call the correct api functions yourself.
+
+	\subsection subsection_faq_thirdparty_libs Can FPL handle third party libraries?
+	Yes actually it works very well with other libraries - in fact there are several demo projects in the repository which shows that.<br>
+	<br>
+	Here is a short list of tested third-party libraries with FPL:
+
+	- STB Libraries
+	- Standard C++ Library (STL)
+	- Glew/Glad
+	- Box2D
+	- GLM
+	- ImGUI
+	- FFMPEG
+
+	But it will not work with other platform abstraction libraries, like GLUT, SFML, SDL etc.
+
+	\section section_additional_notes Additional notes
+
+	\subsection subsection_additional_notes_audio Audio
 	This library uses the operating system libraries to initialize a playback audio device.<br>
 	To get any audio samples to play you need to set the callback function with \ref fpl::AudioSettings.clientReadCallback or fpl::audio::SetAudioClientReadCallback() before start playing the audio using PlayAudio().<br>
 	When the audio device requires more audio samples this callback is automatically called.<br>
@@ -168,25 +547,63 @@ SOFTWARE.
 	This library does not provide any functionality for doing any kind of DSP.<br>
 	To start and stop the playback, you need to call fpl::audio::PlayAudio() and fpl::audio::StopAudio() respectively.<br>
 	There is no guarantee that you get a audio device with the exact same format you specified back, but S16 with 48 KHz is a common format which almost every audio card supports.<br>
+*/
 
-	\section section_license License
+/*!
+	\page page_contribute Contribute
+	\tableofcontents
 
-	Final Platform Layer is released under the \subpage page_license "MIT License".
+	Glad you want to support this project.
+*/
 
-	\section section_version_history Version History
+/*!
+	\page page_examples Examples
+	\tableofcontents
 
-	\subpage page_changelog "Changelog / Version History"
+	\section section_console_examples Console examples
 
-	\section section_thanksto Acknowledgements
+	- \subpage page_example_helloworld_console
+	- \subpage page_example_simple_audio
 
-	The audio playback system in this library is a port of "mini_al.h", a small but fine C-Library written by David Reid.
+	\section section_windowed_examples Window examples
+
+	- \subpage page_example_opengl1x
+	- \subpage page_example_opengl33
+*/
+
+/*!
+	\page page_platform_status Platform Status
+	\tableofcontents
+
+	\section section_supported_platforms_archs Supported platforms / architectures
+
+	Current state of supported platforms/architectures:
+
+	- Windows (Win32)
+		- x86
+		- x86_64
+		- x64
+	<br><br>
+	- Linux (POSIX, In progress)
+		- x86
+		- x86_64
+		- x64
+
+	\section section_planned_platforms_archs Planned platforms / architectures
+
+	This platforms/architectures are planned for the future:
+
+	- Unix (POSIX, Planned)
+		- x86
+		- x86_64
+		- x64
 */
 
 /*!
 	\page page_compiler_options Compiler Options
 	\tableofcontents
 
-	Define these options before including this file.
+	\section section_preprocessor_opts Preprocessor options
 
 	\code{.cpp}
 	#define FPL_IMPLEMENTATION
@@ -262,7 +679,7 @@ SOFTWARE.
 	#define FPL_NO_MULTIPLE_ERRORSTATES
 	\endcode
 
-	Define this to use a single error state for GetPlatformLastError() instead of multiple ones.
+	Define this to use a single error state for \ref fpl::GetPlatformError() instead of multiple ones.
 
 	\code{.cpp}
 	#define FPL_NO_ERROR_IN_CONSOLE
@@ -287,7 +704,7 @@ SOFTWARE.
 	#define FPL_IMPLEMENTATION
 	#include "final_platform_layer.hpp"
 
-	int main(int argc, char **args) {
+	int main(int argc, char *args[]) {
 		int result;
 		if (fpl::InitPlatform(fpl::InitFlags::None)) {
 			fpl::console::ConsoleOut("Hello World!");
@@ -303,7 +720,7 @@ SOFTWARE.
 */
 
 /*!
-	\page page_example_opengl1x Simple OpenGL 1.x Triangle
+	\page page_example_opengl1x Simple OpenGL 1.x
 	\tableofcontents
 
 	\section section_maincpp2 main.cpp
@@ -320,7 +737,7 @@ SOFTWARE.
 	using namespace fpl;
 	using namespace fpl::window;
 
-	int main(int argc, char **args) {
+	int main(int argc, char *args[]) {
 		int result = 0;
 		if (InitPlatform(InitFlags::Video)) {
 			glClearColor(0.39f, 0.58f, 0.93f, 1.0f);
@@ -364,15 +781,15 @@ SOFTWARE.
 	using namespace fpl;
 	using namespace fpl::window;
 
-	int main(int argc, char **args) {
+	int main(int argc, char *args[]) {
 		int result = 0;
 
 		// Legacy opengl is default, so we force it to be forward or backward compability
 		Settings settings = DefaultSettings();
 		settings.video.driverType = VideoDriverType::OpenGL;
-		settings.video.profile = VideoCompabilityProfile::Forward;
-		settings.video.majorVersion = 3;
-		settings.video.minorVersion = 3;
+		settings.video.opengl.compabilityFlags = OpenGLCompabilityFlags::Core;
+		settings.video.opengl.majorVersion = 3;
+		settings.video.opengl.minorVersion = 3;
 		if (InitPlatform(InitFlags::Video, settings)) {
 			glClearColor(0.39f, 0.58f, 0.93f, 1.0f);
 			while (WindowUpdate()) {
@@ -396,17 +813,17 @@ SOFTWARE.
 */
 
 /*!
-	\page page_example_simple_audio Simple audio playback (Infinite square or sine wave)
+	\page page_example_simple_audio Simple audio playback
 	\tableofcontents
 
 	\section section_maincpp4 main.cpp
 
 	\code{.cpp}
 	#define FPL_IMPLEMENTATION
-	#define FPL_AUTO_NAMESPACE
 	#define FPL_NO_WINDOW
 	#include <final_platform_layer.hpp>
-	#include <math.h>
+	#include <math.h> // sinf
+	#include <stdio.h> // getchar
 
 	struct AudioTest {
 		uint32_t toneHz;
@@ -417,6 +834,8 @@ SOFTWARE.
 	};
 
 	static const float PI32 = 3.14159265359f;
+
+	using namespace fpl;
 
 	static uint32_t FillAudioBuffer(const AudioDeviceFormat &nativeFormat, const uint32_t frameCount, void *outputSamples, void *userData) {
 		AudioTest *audioTest = (AudioTest *)userData;
@@ -441,30 +860,56 @@ SOFTWARE.
 		return result;
 	}
 
-	int main(int argc, char **args) {
+	int main(int argc, char *args[]) {
 		int result = -1;
 
+		// Initialize to default settings which is 48 KHz and 2 Channels
 		Settings settings = DefaultSettings();
 
+		// Optionally overwrite audio settings if needed
+
+		// Setup some state for the sine/square wave generation
 		AudioTest audioTest = {};
 		audioTest.toneHz = 256;
 		audioTest.toneVolume = 1000;
-		audioTest.wavePeriod = settings.audio.desiredFormat.sampleRate / audioTest.toneHz;
+		audioTest.wavePeriod = settings.audio.deviceFormat.sampleRate / audioTest.toneHz;
 		audioTest.useSquareWave = false;
 
+		// Provide client read callback and optionally user data
 		settings.audio.clientReadCallback = FillAudioBuffer;
 		settings.audio.userData = &audioTest;
 		settings.audio.deviceFormat.type = AudioFormatType::S16;
 		settings.audio.deviceFormat.channels = 2;
 		settings.audio.deviceFormat.sampleRate = 48000;
 
+		// Find audio device
 		if (InitPlatform(InitFlags::Audio, settings)) {
-			if (PlayAudio() == AudioResults::Success) {
-				ConsoleOut("Press any key to quit playing...\n");
-				getchar();
-				StopAudio();
+			AudioDeviceID audioDevices[16] = {};
+			uint32_t deviceCount = audio::GetAudioDevices(audioDevices, FPL_ARRAYCOUNT(audioDevices));
+			if (deviceCount > 0) {
+				settings.audio.deviceID = audioDevices[0];
+				console::ConsoleFormatOut("Using audio device: %s\n", settings.audio.deviceID.name);
 			}
 			ReleasePlatform();
+		}
+
+		// Initialize the platform with audio enabled and the settings
+		if (InitPlatform(InitFlags::Audio, settings)) {
+			// You can overwrite the client read callback and user data if you want to
+			audio::SetAudioClientReadCallback(FillAudioBuffer, &audioTest);
+			// Start audio playback (This will start calling clientReadCallback regulary)
+			if (audio::PlayAudio() == audio::AudioResult::Success) {
+				// Print out the native audio format
+				AudioDeviceFormat nativeFormat = audio::GetAudioHardwareFormat();
+				console::ConsoleFormatOut("Audio with %lu KHz and %lu channels is playing, press any key to stop playback...\n", nativeFormat.sampleRate, nativeFormat.channels);
+				// Wait for any key presses
+				getchar();
+				// Stop audio playback
+				audio::StopAudio();
+			}
+			// Release the platform
+			ReleasePlatform();
+			result = 0;
 		}
 		return(result);
 	}
@@ -503,12 +948,26 @@ SOFTWARE.
 	\page page_changelog Changelog
 	\tableofcontents
 
+	## v0.5.8.0 beta:
+	- Changed: SignalWaitFor* requires additional parameter for passing in the ThreadMutex reference (pthread compability)
+	- Changed: Signal* does not use const reference anymore (pthread compability)
+	- Changed: Updated documentation a ton
+	- Changed: Decreased MAX_ERRORSTATE_COUNT from 1024 to 256
+	- Changed: global__LastErrorState is a non-pointer global now
+	- Changed: Renamed GetPlatformLastError() to GetPlatformError()
+	- Changed: All array of objects parameters uses C++ array style -> int *arr[] instead of int **arr
+	- Fixed: MemoryAlignedFree() had wrong signature (void **) instead of (void *)
+	- Fixed: GetPlatformErrorCount() was not increasing when an empty error was pushed on for single error states
+	- Fixed: [Win32] InitPlatform() was not cleaning up the Win32State when the initialization failed
+	- Replaced: VideoCompabilityProfile is replaced by OpenGLCompabilityFlags (Only available with OpenGL)
+	- New: Added ClearPlatformErrors()
+
 	## v0.5.7.4 beta:
 	- Changed: Updated code documentation for all functions and types to doxygen/javadoc style
 	- Changed: SetFilePosition32 position is now int32_t instead of uint32_t to support negative positions as well
 	- Changed: Renamed desiredFormat to deviceFormat in AudioSettings
 	- Changed: [DirectSound] Use deviceID as GUID for the audio device
-	- new: Introduced AudioDeviceID
+	- New: Introduced AudioDeviceID
 	- New: Added deviceID field in AudioSettings
 	- New: Added audio::GetAudioDevices()
 	- New: Added strings::FormatString()
@@ -794,18 +1253,20 @@ SOFTWARE.
 	\page page_todo ToDo / Planned (Top priority order)
 	\tableofcontents
 
-	- Direct2D video support
-	- Direct3D 9/10/11 video support
+	- The implementation of InitPlatform and ReleasePlatform should be platform independent!
 
 	- Finish Linux Platform:
-		- Strings
-		- Files & Path (Look out for .DS_Store and . files/folders, handle it properly)
-		- Hardware
+		- Files & Path (Look out for . files and folders!)
 		- Threading (pthread)
 		- Window (X11)
 		- Video opengl (GLX)
 		- Video software
 		- Audio (Alsa)
+
+	- DLL-Export support in FPL
+
+	- Direct2D video support
+	- Direct3D 9/10/11 video support
 
 	- Support other compilers for Win32 (Clang, MingW, Intel)
 		- Fix Clang errors
@@ -813,23 +1274,17 @@ SOFTWARE.
 	- Audio:
 		- Support for channel mapping
 
-	- REFERENCE.MD generation using doxygen
-
-	- Feature completeness for Win32 (Multimonitor)
-
 	- Additional parameters for passing pointers instead of returning structs (Method overloading)
 
-	- Solidify file/path system:
-		- Decide to a fixed encoding, either unicode 16 bit or UTF8 or
-			Leave it as it is, but give the caller informations about the platform (which separator, what character encoding for files/path etc.)<br>
-			And use a custom main entry point for every platform so we can ensure that the arguments come in as native always.<br>
-			Reason: I want unicode support for arguments in win32 and UTF8 for the other platforms.<br>
+	- Unix Platform
 
-	- Remove the need of the C/C++ Runtime
+	- Multimonitor-Support
+
+	- Unicode-Support for commandline arguments (Win32)
 
 	- Additional features for later:
-		- Open/Save file/folder dialog
 		- Networking (UDP, TCP)
+		- Open/Save file/folder dialog
 */
 
 // ****************************************************************************
@@ -933,6 +1388,7 @@ SOFTWARE.
 //
 // Options & Feature detection
 //
+
 // Assertions
 #if !defined(FPL_NO_ASSERTIONS)
 #	if !defined(FPL_FORCE_ASSERTIONS)
@@ -951,6 +1407,7 @@ SOFTWARE.
 #		define FPL_ENABLE_C_ASSERT
 #	endif
 #endif
+
 // Window
 #if !defined(FPL_NO_WINDOW)
 	//! Window support enabled by default
@@ -985,7 +1442,7 @@ SOFTWARE.
 #	endif
 #endif // FPL_SUPPORT_AUDIO
 
-
+// Remove video support when window is disabled
 #if !defined(FPL_SUPPORT_WINDOW)
 #	if defined(FPL_SUPPORT_VIDEO)
 #		undef FPL_SUPPORT_VIDEO
@@ -1160,7 +1617,8 @@ SOFTWARE.
 #endif
 
 #if defined(FPL_PLATFORM_POSIX)
-#   include <stdio.h> // FILE, fopen, fclose, fread, fwrite
+#   include <stdio.h> // FILE
+#	include <pthread.h> // pthread_t, pthread_mutex_, pthread_cond_, pthread_barrier_
 #endif
 
 // ****************************************************************************
@@ -1532,27 +1990,39 @@ namespace fpl {
 		Software
 	};
 
-	//! Video compability profile 
-	enum class VideoCompabilityProfile {
+#if defined(FPL_ENABLE_VIDEO_OPENGL)
+	//! OpenGL compability flags
+	enum class OpenGLCompabilityFlags : uint32_t {
 		//! Use legacy context
-		Legacy,
-		//! Use core context with backwards compability
-		Core,
-		//! Use foward context without backwards compability
-		Forward
+		Legacy = 0,
+		//! Use core profile
+		Core = 1 << 1,
+		//! Use compability profile
+		Compability = 1 << 2,
+		//! Remove features marked as deprecated
+		Forward = 1 << 3,
 	};
+	//! Defines the operator overloads for a enum used as flags
+	FPL_ENUM_AS_FLAGS_OPERATORS(OpenGLCompabilityFlags);
+#endif
 
-	//! Video settings container (Compability Profile, Version, VSync, etc.)
+	//! Video settings container (Driver, Flags, Version, VSync, etc.)
 	struct VideoSettings {
 		//! Video driver type
 		VideoDriverType driverType;
-		//! Compability profile
-		VideoCompabilityProfile profile;
-		//! Desired major version
-		uint32_t majorVersion;
-		//! Desired minor version
-		uint32_t minorVersion;
-		//! Vertical syncronisation is wanted
+		union {
+#if defined(FPL_ENABLE_VIDEO_OPENGL)
+			struct {
+				//! Compability flags
+				OpenGLCompabilityFlags compabilityFlags;
+				//! Desired major version
+				uint32_t majorVersion;
+				//! Desired minor version
+				uint32_t minorVersion;
+			} opengl;
+#endif
+		};
+		//! Vertical syncronisation enabled/disabled
 		bool isVSync;
 		//! Backbuffer size is automatically resized. Useable only for software rendering!
 		bool isAutoSize;
@@ -1564,8 +2034,11 @@ namespace fpl {
 	  */
 	fpl_inline VideoSettings DefaultVideoSettings() {
 		VideoSettings result = {};
-		result.profile = VideoCompabilityProfile::Legacy;
-		result.majorVersion = result.minorVersion = 0;
+
+#	if defined(FPL_ENABLE_VIDEO_OPENGL)
+		result.opengl.compabilityFlags = OpenGLCompabilityFlags::Legacy;
+#	endif
+
 		result.isVSync = false;
 		result.isAutoSize = true;
 
@@ -1792,20 +2265,29 @@ namespace fpl {
 	  */
 
 	/**
-	  * \brief Returns last internal error string
+	  * \brief Returns the last internal error string
+	  * \note This function can be called regardless of the initialization state!
+	  * \return Last error string or empty string when there was no error.
 	  */
-	fpl_api const char *GetPlatformLastError();
+	fpl_api const char *GetPlatformError();
 	/**
-	  * \brief Returns last error string from the given index
+	  * \brief Returns the last error string from the given index
 	  * \param index The index
-	  * \return Last error string from the given index or nullptr when there was no error.
+	  * \note This function can be called regardless of the initialization state!
+	  * \return Last error string from the given index or empty when there was no error.
 	  */
-	fpl_api const char *GetPlatformLastError(const size_t index);
+	fpl_api const char *GetPlatformError(const size_t index);
 	/**
 	  * \brief Returns the count of total last errors
+	  * \note This function can be called regardless of the initialization state!
 	  * \return Number of last errors or zero when there was no error.
 	  */
-	fpl_api size_t GetPlatformLastErrorCount();
+	fpl_api size_t GetPlatformErrorCount();
+	/**
+	  * \brief Clears all the current errors in the platform
+	  * \note This function can be called regardless of the initialization state!
+	  */
+	fpl_api void ClearPlatformErrors();
 
 	/** \}*/
 
@@ -1926,11 +2408,21 @@ namespace fpl {
 			//! The internal thread handle
 			union {
 #			if defined(FPL_PLATFORM_WIN32)
-				HANDLE win32Handle;
+				HANDLE win32Thread;
 #			endif
+#			if defined(FPL_PLATFORM_POSIX)
+				pthread_t posixThread;
+				pthread_mutex_t posixWaitMutex;
+				pthread_cond_t posixWaitCondition;
+				volatile int32_t posixWaitState;
+				volatile int32_t posixStopState;
+#			endif		
 			} internalHandle;
 			//! Thread state
 			volatile ThreadState currentState;
+			//! Thread state
+			//! Is this thread valid (suspended or running)
+			bool isValid;
 		};
 
 		//! Mutex context
@@ -1940,6 +2432,9 @@ namespace fpl {
 #			if defined(FPL_PLATFORM_WIN32)
 				CRITICAL_SECTION win32CriticalSection;
 #			endif
+#			if defined(FPL_PLATFORM_POSIX)
+				pthread_mutex_ posixMutex;
+#			endif		
 			} internalHandle;			//! Is it valid
 			bool isValid;
 		};
@@ -1949,8 +2444,11 @@ namespace fpl {
 			//! The internal signal handle
 			union {
 #			if defined(FPL_PLATFORM_WIN32)
-				HANDLE win32Handle;
+				HANDLE win32Event;
 #			endif
+#			if defined(FPL_PLATFORM_POSIX)
+				pthread_cond_ posixCondition;
+#			endif		
 			} internalHandle;
 			//! Is it valid
 			bool isValid;
@@ -2008,7 +2506,7 @@ namespace fpl {
 		  * \param maxMilliseconds Optional number of milliseconds to wait. When this is set to UINT32_MAX it may wait infinitly. (Default: UINT32_MAX)
 		  * \return Returns true when all threads completes or when the timeout has been reached.
 		  */
-		fpl_api bool ThreadWaitForAll(ThreadContext **contexts, const uint32_t count, const uint32_t maxMilliseconds = UINT32_MAX);
+		fpl_api bool ThreadWaitForAll(ThreadContext *contexts[], const uint32_t count, const uint32_t maxMilliseconds = UINT32_MAX);
 		/**
 		  * \brief Wait until one of given threads is done running or the given timeout has been reached.
 		  * \param contexts Array of thread contexts
@@ -2016,7 +2514,7 @@ namespace fpl {
 		  * \param maxMilliseconds Optional number of milliseconds to wait. When this is set to UINT32_MAX it may wait infinitly. (Default: UINT32_MAX)
 		  * \return Returns true when one thread completes or when the timeout has been reached.
 		  */
-		fpl_api bool ThreadWaitForAny(ThreadContext **contexts, const uint32_t count, const uint32_t maxMilliseconds = UINT32_MAX);
+		fpl_api bool ThreadWaitForAny(ThreadContext *contexts[], const uint32_t count, const uint32_t maxMilliseconds = UINT32_MAX);
 
 		/**
 		  * \brief Creates a mutex and returns a copy of the handle to it.
@@ -2056,39 +2554,42 @@ namespace fpl {
 		fpl_api void SignalDestroy(ThreadSignal &signal);
 		/**
 		  * \brief Waits until the given signal are waked up.
+		  * \param mutex The mutex reference
 		  * \param signal The signal reference to signal.
 		  * \param maxMilliseconds Optional number of milliseconds to wait. When this is set to UINT32_MAX it may wait infinitly. (Default: UINT32_MAX)
 		  * \return Returns true when the signal woke up or the timeout has been reached, otherwise false.
 		  */
-		fpl_api bool SignalWaitForOne(const ThreadSignal &signal, const uint32_t maxMilliseconds = UINT32_MAX);
+		fpl_api bool SignalWaitForOne(ThreadMutex &mutex, ThreadSignal &signal, const uint32_t maxMilliseconds = UINT32_MAX);
 		/**
 		  * \brief Waits until all the given signal are waked up.
+		  * \param mutex The mutex reference
 		  * \param signals Array of signals
 		  * \param count Number of signals
 		  * \param maxMilliseconds Optional number of milliseconds to wait. When this is set to UINT32_MAX it may wait infinitly. (Default: UINT32_MAX)
 		  * \return Returns true when all signals woke up or the timeout has been reached, otherwise false.
 		  */
-		fpl_api bool SignalWaitForAll(const ThreadSignal **signals, const uint32_t count, const uint32_t maxMilliseconds = UINT32_MAX);
+		fpl_api bool SignalWaitForAll(ThreadMutex &mutex, ThreadSignal *signals[], const uint32_t count, const uint32_t maxMilliseconds = UINT32_MAX);
 		/**
 		  * \brief Waits until any of the given signals wakes up or the timeout has been reached.
+		  * \param mutex The mutex reference
 		  * \param signals Array of signals
 		  * \param count Number of signals
 		  * \param maxMilliseconds Optional number of milliseconds to wait. When this is set to UINT32_MAX it may wait infinitly. (Default: UINT32_MAX)
 		  * \return Returns true when any of the signals woke up or the timeout has been reached, otherwise false.
 		  */
-		fpl_api bool SignalWaitForAny(const ThreadSignal **signals, const uint32_t count, const uint32_t maxMilliseconds = UINT32_MAX);
+		fpl_api bool SignalWaitForAny(ThreadMutex &mutex, ThreadSignal *signals[], const uint32_t count, const uint32_t maxMilliseconds = UINT32_MAX);
 		/**
 		  * \brief Wakes up the given signal.
 		  * \param signal The reference to the signal
 		  * \return Returns true when the signal was woke up, otherwise false.
 		  */
-		fpl_api bool SignalWakeUp(const ThreadSignal &signal);
+		fpl_api bool SignalWakeUp(ThreadSignal &signal);
 		/**
 		  * \brief Resets the given signal
 		  * \param signal The reference to the signal
 		  * \return Returns true when the signal was reset, otherwise false.
 		  */
-		fpl_api bool SignalReset(const ThreadSignal &signal);
+		fpl_api bool SignalReset(ThreadSignal &signal);
 
 		/** \}*/
 	}
@@ -2150,7 +2651,7 @@ namespace fpl {
 		  * \warning This should never be called with a not-aligned memory pointer! For freeing not-aligned memory, use \ref MemoryFree() instead.
 		  * \return Pointer to the new allocated memory.
 		  */
-		fpl_api void MemoryAlignedFree(void **ptr);
+		fpl_api void MemoryAlignedFree(void *ptr);
 
 		/** \}*/
 	}
@@ -3250,7 +3751,7 @@ namespace fpl {
 //
 #if defined(FPL_PLATFORM_WIN32)
 // @NOTE(final): Required for access "main" from the actual win32 entry point
-fpl_api int main(int argc, char **args);
+fpl_api int main(int argc, char *args[]);
 #endif // FPL_PLATFORM_WIN32
 
 // Expand all namespaces if the callers wants this
@@ -3356,7 +3857,7 @@ namespace fpl {
 		//
 		fpl_constant uint32_t MAX_LAST_ERROR_STRING_LENGTH = 1024;
 #	if defined(FPL_ENABLE_MULTIPLE_ERRORSTATES)
-		fpl_constant size_t MAX_ERRORSTATE_COUNT = 1024;
+		fpl_constant size_t MAX_ERRORSTATE_COUNT = 256;
 #	else
 		fpl_constant size_t MAX_ERRORSTATE_COUNT = 1;
 #	endif
@@ -3366,37 +3867,35 @@ namespace fpl {
 			size_t count;
 		};
 
-		fpl_globalvar ErrorState *global__LastErrorState = nullptr;
+		fpl_globalvar ErrorState global__LastErrorState;
 
 #	if defined(FPL_ENABLE_MULTIPLE_ERRORSTATES)
 		fpl_internal_inline void PushError_Formatted(const char *format, va_list &argList) {
-			ErrorState *state = global__LastErrorState;
-			if (state != nullptr) {
-				FPL_ASSERT(format != nullptr);
-				char buffer[MAX_LAST_ERROR_STRING_LENGTH];
-				vsnprintf(buffer, FPL_ARRAYCOUNT(buffer), format, argList);
-				uint32_t messageLen = strings::GetAnsiStringLength(buffer);
-				FPL_ASSERT(state->count < MAX_ERRORSTATE_COUNT);
-				size_t errorIndex = state->count++;
-				strings::CopyAnsiString(buffer, messageLen, state->errors[errorIndex], MAX_LAST_ERROR_STRING_LENGTH);
+			ErrorState &state = global__LastErrorState;
+			FPL_ASSERT(format != nullptr);
+			char buffer[MAX_LAST_ERROR_STRING_LENGTH];
+			vsnprintf(buffer, FPL_ARRAYCOUNT(buffer), format, argList);
+			uint32_t messageLen = strings::GetAnsiStringLength(buffer);
+			FPL_ASSERT(state.count < MAX_ERRORSTATE_COUNT);
+			size_t errorIndex = state.count;
+			state.count = (state.count + 1) % MAX_ERRORSTATE_COUNT;
+			strings::CopyAnsiString(buffer, messageLen, state.errors[errorIndex], MAX_LAST_ERROR_STRING_LENGTH);
 #		if defined(FPL_ENABLE_ERROR_IN_CONSOLE)
-				console::ConsoleFormatError("FPL Error: %s\n", buffer);
+			console::ConsoleFormatError("FPL Error: %s\n", buffer);
 #		endif
-			}
 		}
 #	else
 		fpl_internal_inline void PushError_Formatted(const char *format, va_list &argList) {
-			ErrorState *state = global__LastErrorState;
-			if (state != nullptr) {
-				FPL_ASSERT(format != nullptr);
-				char buffer[MAX_LAST_ERROR_STRING_LENGTH];
-				vsnprintf(buffer, FPL_ARRAYCOUNT(buffer), format, argList);
-				uint32_t messageLen = strings::GetAnsiStringLength(buffer);
-				strings::CopyAnsiString(buffer, messageLen, state->errors[0], MAX_LAST_ERROR_STRING_LENGTH);
+			ErrorState &state = global__LastErrorState;
+			FPL_ASSERT(format != nullptr);
+			char buffer[MAX_LAST_ERROR_STRING_LENGTH];
+			vsnprintf(buffer, FPL_ARRAYCOUNT(buffer), format, argList);
+			uint32_t messageLen = strings::GetAnsiStringLength(buffer);
+			state.count = 1;
+			strings::CopyAnsiString(buffer, messageLen, state.errors[0], MAX_LAST_ERROR_STRING_LENGTH);
 #		if defined(FPL_ENABLE_ERROR_IN_CONSOLE)
-				console::ConsoleFormatError("FPL Error: %s\n", buffer);
+			console::ConsoleFormatError("FPL Error: %s\n", buffer);
 #		endif
-			}
 		}
 #	endif // FPL_ENABLE_MULTIPLE_ERRORSTATES
 
@@ -4557,9 +5056,9 @@ namespace fpl {
 			glFuncs.wglMakeCurrent(nullptr, nullptr);
 
 			HGLRC activeRenderingContext;
-			if (videoSettings.profile != VideoCompabilityProfile::Legacy) {
+			if (videoSettings.opengl.compabilityFlags != OpenGLCompabilityFlags::Legacy) {
 				// @NOTE(final): This is only available in OpenGL 3.0+
-				if (!(videoSettings.majorVersion >= 3 && videoSettings.minorVersion >= 0)) {
+				if (!(videoSettings.opengl.majorVersion >= 3 && videoSettings.opengl.minorVersion >= 0)) {
 					common::PushError("You have not specified the 'majorVersion' and 'minorVersion' in the VideoSettings");
 					return false;
 				}
@@ -4573,26 +5072,38 @@ namespace fpl {
 					return false;
 				}
 
+				int profile = 0;
+				int flags = 0;
+				if (videoSettings.opengl.compabilityFlags & OpenGLCompabilityFlags::Core) {
+					profile = FPL_WGL_CONTEXT_CORE_PROFILE_BIT_ARB;
+				} else if (videoSettings.opengl.compabilityFlags & OpenGLCompabilityFlags::Compability) {
+					profile = FPL_WGL_CONTEXT_COMPATIBILITY_PROFILE_BIT_ARB;
+				} else {
+					common::PushError("No opengl compability profile selected, please specific Core OpenGLCompabilityFlags::Core or OpenGLCompabilityFlags::Compability");
+					return false;
+				}
+				if (videoSettings.opengl.compabilityFlags & OpenGLCompabilityFlags::Forward) {
+					flags = FPL_WGL_CONTEXT_FORWARD_COMPATIBLE_BIT_ARB;
+				}
+
 				int contextAttribIndex = 0;
 				int contextAttribList[20 + 1] = {};
 				contextAttribList[contextAttribIndex++] = FPL_WGL_CONTEXT_MAJOR_VERSION_ARB;
-				contextAttribList[contextAttribIndex++] = (int)videoSettings.majorVersion;
+				contextAttribList[contextAttribIndex++] = (int)videoSettings.opengl.majorVersion;
 				contextAttribList[contextAttribIndex++] = FPL_WGL_CONTEXT_MINOR_VERSION_ARB;
-				contextAttribList[contextAttribIndex++] = (int)videoSettings.minorVersion;
-				if (videoSettings.profile == VideoCompabilityProfile::Core) {
-					contextAttribList[contextAttribIndex++] = FPL_WGL_CONTEXT_PROFILE_MASK_ARB;
-					contextAttribList[contextAttribIndex++] = FPL_WGL_CONTEXT_CORE_PROFILE_BIT_ARB;
-				} else {
-					FPL_ASSERT(videoSettings.profile == VideoCompabilityProfile::Forward);
+				contextAttribList[contextAttribIndex++] = (int)videoSettings.opengl.minorVersion;
+				contextAttribList[contextAttribIndex++] = FPL_WGL_CONTEXT_PROFILE_MASK_ARB;
+				contextAttribList[contextAttribIndex++] = profile;
+				if (flags > 0) {
 					contextAttribList[contextAttribIndex++] = FPL_WGL_CONTEXT_FLAGS_ARB;
-					contextAttribList[contextAttribIndex++] = FPL_WGL_CONTEXT_FORWARD_COMPATIBLE_BIT_ARB;
+					contextAttribList[contextAttribIndex++] = flags;
 				}
 
 				// Create modern opengl rendering context
 				HGLRC modernRenderingContext = glFuncs.wglCreateContextAttribsArb(deviceContext, 0, contextAttribList);
 				if (modernRenderingContext) {
 					if (!glFuncs.wglMakeCurrent(deviceContext, modernRenderingContext)) {
-						common::PushError("Warning: Failed activating Modern OpenGL Rendering Context for version (%d.%d) and DC '%x') -> Fallback to legacy context", videoSettings.majorVersion, videoSettings.minorVersion, deviceContext);
+						common::PushError("Warning: Failed activating Modern OpenGL Rendering Context for version (%d.%d) and compability flags (%d) and DC '%x') -> Fallback to legacy context", videoSettings.opengl.majorVersion, videoSettings.opengl.minorVersion, videoSettings.opengl.compabilityFlags, deviceContext);
 
 						glFuncs.wglDeleteContext(modernRenderingContext);
 						modernRenderingContext = nullptr;
@@ -4607,7 +5118,7 @@ namespace fpl {
 						activeRenderingContext = modernRenderingContext;
 					}
 				} else {
-					common::PushError("Warning: Failed creating Modern OpenGL Rendering Context for version (%d.%d) and DC '%x') -> Fallback to legacy context", videoSettings.majorVersion, videoSettings.minorVersion, deviceContext);
+					common::PushError("Warning: Failed creating Modern OpenGL Rendering Context for version (%d.%d) and compability flags (%d) and DC '%x') -> Fallback to legacy context", videoSettings.opengl.majorVersion, videoSettings.opengl.minorVersion, videoSettings.opengl.compabilityFlags, deviceContext);
 
 					// Fallback to legacy context
 					glFuncs.wglMakeCurrent(deviceContext, legacyRenderingContext);
@@ -5849,7 +6360,7 @@ namespace fpl {
 			}
 		}
 
-		fpl_internal bool Win32ThreadWaitForMultiple(threading::ThreadContext **contexts, const uint32_t count, const bool waitForAll, const uint32_t maxMilliseconds) {
+		fpl_internal bool Win32ThreadWaitForMultiple(threading::ThreadContext *contexts[], const uint32_t count, const bool waitForAll, const uint32_t maxMilliseconds) {
 			if (contexts == nullptr) {
 				common::PushError("Contexts parameter are not allowed to be null");
 				return false;
@@ -5865,11 +6376,11 @@ namespace fpl {
 					common::PushError("Thread context for index '%d' are not allowed to be null", index);
 					return false;
 				}
-				if (context->internalHandle.win32Handle == nullptr) {
+				if (context->internalHandle.win32Thread == nullptr) {
 					common::PushError("Thread handle for index '%d' are not allowed to be null", index);
 					return false;
 				}
-				HANDLE handle = (HANDLE)context->internalHandle.win32Handle;
+				HANDLE handle = context->internalHandle.win32Thread;
 				threadHandles[index] = handle;
 			}
 			DWORD code = WaitForMultipleObjects(count, threadHandles, waitForAll ? TRUE : FALSE, maxMilliseconds < UINT32_MAX ? maxMilliseconds : INFINITE);
@@ -5877,7 +6388,7 @@ namespace fpl {
 			return(result);
 		}
 
-		fpl_internal bool Win32SignalWaitForMultiple(threading::ThreadSignal **signals, const uint32_t count, const bool waitForAll, const uint32_t maxMilliseconds) {
+		fpl_internal bool Win32SignalWaitForMultiple(threading::ThreadSignal *signals[], const uint32_t count, const bool waitForAll, const uint32_t maxMilliseconds) {
 			if (signals == nullptr) {
 				common::PushError("Signals parameter are not allowed to be null");
 				return false;
@@ -5893,16 +6404,145 @@ namespace fpl {
 					common::PushError("Signal for index '%d' are not allowed to be null", index);
 					return false;
 				}
-				if (availableSignal->internalHandle.win32Handle == nullptr) {
+				if (availableSignal->internalHandle.win32Event == nullptr) {
 					common::PushError("Signal handle for index '%d' are not allowed to be null", index);
 					return false;
 				}
-				HANDLE handle = (HANDLE)availableSignal->internalHandle.win32Handle;
+				HANDLE handle = availableSignal->internalHandle.win32Event;
 				signalHandles[index] = handle;
 			}
 			DWORD code = WaitForMultipleObjects(count, signalHandles, waitForAll ? TRUE : FALSE, maxMilliseconds < UINT32_MAX ? maxMilliseconds : INFINITE);
 			bool result = (code != WAIT_TIMEOUT) && (code != WAIT_FAILED);
 			return(result);
+		}
+
+		fpl_internal void Win32ReleasePlatform() {
+			Win32ApplicationState &appState = global__Win32__AppState;
+
+			if (global__Win32__State != nullptr) {
+				Win32State &win32State = *global__Win32__State;
+
+#		if defined(FPL_ENABLE_AUDIO)
+				audio::ReleaseAudio();
+#		endif
+
+#		if defined(FPL_ENABLE_WINDOW)
+				if (win32State.currentSettings.window.isFullscreen) {
+					Win32LeaveFullscreen();
+				}
+
+#			if defined(FPL_ENABLE_VIDEO)
+				switch (win32State.video.activeVideoDriver) {
+#				if defined(FPL_ENABLE_VIDEO_OPENGL)
+					case VideoDriverType::OpenGL:
+					{
+						Win32ReleaseVideoOpenGL(&win32State);
+					} break;
+#				endif
+
+#				if defined(FPL_ENABLE_VIDEO_SOFTWARE)
+					case VideoDriverType::Software:
+					{
+						Win32ReleaseVideoSoftware(&win32State);
+					} break;
+#				endif
+
+					default:
+						break;
+				}
+#			endif // FPL_ENABLE_VIDEO
+
+				Win32ReleaseWindow(win32State);
+
+				Win32UnloadXInput();
+#		endif // FPL_ENABLE_WINDOW
+
+				Win32UnloadAPI();
+
+				memory::MemoryAlignedFree(global__Win32__State);
+				global__Win32__State = nullptr;
+			}
+			appState.isInitialized = false;
+		}
+
+		fpl_internal bool Win32InitPlatform(const InitFlags initFlags, const Settings &initSettings) {
+			Win32ApplicationState &appState = global__Win32__AppState;
+
+			appState = {};
+			appState.appInstance = GetModuleHandleA(nullptr);
+
+			// @NOTE(final): Expect kernel32.lib to be linked always, so VirtualAlloc and LoadLibrary will always work.
+
+			// Allocate win32 state
+			FPL_ASSERT(global__Win32__State == nullptr);
+			size_t win32StateSize = sizeof(Win32State);
+			void *win32StateMemory = memory::MemoryAlignedAllocate(win32StateSize, 16);
+			if (win32StateMemory == nullptr) {
+				common::PushError("Failed allocating win32 state memory of size '%zu'", win32StateSize);
+				return false;
+			}
+
+			FPL_ASSERT(win32StateMemory != nullptr);
+			global__Win32__State = (Win32State *)win32StateMemory;
+			Win32State &win32State = *global__Win32__State;
+			win32State.initSettings = initSettings;
+			win32State.initFlags = initFlags;
+			win32State.currentSettings = initSettings;
+			win32State.video = {};
+
+			// Timing
+			QueryPerformanceFrequency(&appState.performanceFrequency);
+
+			// Get main thread infos
+			HANDLE mainThreadHandle = GetCurrentThread();
+			DWORD mainThreadHandleId = GetCurrentThreadId();
+			threading::ThreadContext *context = &common::global__ThreadState.mainThread;
+			*context = {};
+			context->id = mainThreadHandleId;
+			context->internalHandle.win32Thread = mainThreadHandle;
+			context->currentState = threading::ThreadState::Running;
+
+#		if defined(FPL_ENABLE_WINDOW)
+			// Window is required for video always
+			if (win32State.initFlags & InitFlags::Video) {
+				win32State.initFlags |= InitFlags::Window;
+			}
+#		endif
+
+			// Load windows api library
+			if (!Win32LoadAPI(win32State)) {
+				// @NOTE(final): Assume that errors are pushed on already.
+				Win32ReleasePlatform();
+				return false;
+			}
+
+#		if defined(FPL_ENABLE_WINDOW)
+			// Load XInput
+			Win32LoadXInput();
+
+			if (win32State.initFlags & InitFlags::Window) {
+				if (!Win32InitWindow(win32State, initSettings)) {
+					common::PushError("Failed creating a window with flags '%d' and settings (Width=%d, Height=%d, Video driver=%d)", win32State.initFlags, initSettings.window.windowWidth, initSettings.window.windowHeight, initSettings.video.driverType);
+					Win32ReleasePlatform();
+					return false;
+				}
+			}
+#		endif // FPL_ENABLE_WINDOW
+
+#		if defined(FPL_ENABLE_AUDIO)
+			// Init audio
+			if (win32State.initFlags & InitFlags::Audio) {
+				if (audio::InitAudio(initSettings.audio) != audio::AudioResult::Success) {
+					common::PushError("Failed initialization audio with settings (Driver=%s, Format=%s, SampleRate=%d, Channels=%d, BufferSize=%d)", audio::GetAudioDriverString(initSettings.audio.driver), audio::GetAudioFormatString(initSettings.audio.deviceFormat.type), initSettings.audio.deviceFormat.sampleRate, initSettings.audio.deviceFormat.channels);
+					Win32ReleasePlatform();
+					return false;
+				}
+			}
+#		endif
+
+			appState.isInitialized = true;
+
+			return (true);
 		}
 
 	} // platform
@@ -6166,8 +6806,9 @@ namespace fpl {
 					context->currentState = ThreadState::Suspended;
 					context->data = data;
 					context->id = threadId;
-					context->internalHandle.win32Handle = (void *)handle;
+					context->internalHandle.win32Thread = handle;
 					context->runFunc = runFunc;
+					context->isValid = true;
 					if (autoStart) {
 						ResumeThread(handle);
 					}
@@ -6190,11 +6831,11 @@ namespace fpl {
 				common::PushError("Context parameter are not allowed to be null");
 				return false;
 			}
-			if (context->internalHandle.win32Handle == nullptr) {
+			if (context->internalHandle.win32Thread == nullptr) {
 				common::PushError("Thread context handle are not allowed to be null");
 				return false;
 			}
-			HANDLE handle = (HANDLE)context->internalHandle.win32Handle;
+			HANDLE handle = context->internalHandle.win32Thread;
 			DWORD err = SuspendThread(handle);
 			bool result = err != -1;
 			if (result) {
@@ -6209,11 +6850,11 @@ namespace fpl {
 				common::PushError("Context parameter are not allowed to be null");
 				return false;
 			}
-			if (context->internalHandle.win32Handle == nullptr) {
+			if (context->internalHandle.win32Thread == nullptr) {
 				common::PushError("Thread context handle are not allowed to be null");
 				return false;
 			}
-			HANDLE handle = (HANDLE)context->internalHandle.win32Handle;
+			HANDLE handle = context->internalHandle.win32Thread;
 			DWORD err = ResumeThread(handle);
 			bool result = err != -1;
 			if (result) {
@@ -6224,8 +6865,8 @@ namespace fpl {
 		}
 
 		fpl_api void ThreadDestroy(ThreadContext *context) {
-			if (context != nullptr && context->internalHandle.win32Handle != nullptr) {
-				HANDLE handle = (HANDLE)context->internalHandle.win32Handle;
+			if (context != nullptr && context->internalHandle.win32Thread != nullptr) {
+				HANDLE handle = context->internalHandle.win32Thread;
 				TerminateThread(handle, 0);
 				CloseHandle(handle);
 				// @TODO(final): Is this really needed to use a atomic store for setting the thread state?
@@ -6239,21 +6880,21 @@ namespace fpl {
 				common::PushError("Context parameter are not allowed to be null");
 				return false;
 			}
-			if (context->internalHandle.win32Handle == nullptr) {
+			if (context->internalHandle.win32Thread == nullptr) {
 				common::PushError("Thread context handle are not allowed to be null");
 				return false;
 			}
-			HANDLE handle = (HANDLE)context->internalHandle.win32Handle;
+			HANDLE handle = context->internalHandle.win32Thread;
 			bool result = (WaitForSingleObject(handle, maxMilliseconds < UINT32_MAX ? maxMilliseconds : INFINITE) == WAIT_OBJECT_0);
 			return(result);
 		}
 
-		fpl_api bool ThreadWaitForAll(ThreadContext **contexts, const uint32_t count, const uint32_t maxMilliseconds) {
+		fpl_api bool ThreadWaitForAll(ThreadContext *contexts[], const uint32_t count, const uint32_t maxMilliseconds) {
 			bool result = platform::Win32ThreadWaitForMultiple(contexts, count, true, maxMilliseconds);
 			return(result);
 		}
 
-		fpl_api bool ThreadWaitForAny(ThreadContext **contexts, const uint32_t count, const uint32_t maxMilliseconds) {
+		fpl_api bool ThreadWaitForAny(ThreadContext *contexts[], const uint32_t count, const uint32_t maxMilliseconds) {
 			bool result = platform::Win32ThreadWaitForMultiple(contexts, count, false, maxMilliseconds);
 			return(result);
 		}
@@ -6293,52 +6934,52 @@ namespace fpl {
 			HANDLE handle = CreateEventA(nullptr, FALSE, FALSE, nullptr);
 			if (handle != nullptr) {
 				result.isValid = true;
-				result.internalHandle.win32Handle = handle;
+				result.internalHandle.win32Event = handle;
 			}
 			return(result);
 		}
 
 		fpl_api void SignalDestroy(ThreadSignal &signal) {
-			if (signal.internalHandle.win32Handle != nullptr) {
-				HANDLE handle = (HANDLE)signal.internalHandle.win32Handle;
+			if (signal.internalHandle.win32Event != nullptr) {
+				HANDLE handle = signal.internalHandle.win32Event;
 				CloseHandle(handle);
 				signal = {};
 			}
 		}
 
-		fpl_api bool SignalWaitForOne(const ThreadSignal &signal, const uint32_t maxMilliseconds) {
-			if (signal.internalHandle.win32Handle == nullptr) {
+		fpl_api bool SignalWaitForOne(ThreadMutex &mutex, ThreadSignal &signal, const uint32_t maxMilliseconds) {
+			if (signal.internalHandle.win32Event == nullptr) {
 				return false;
 			}
-			HANDLE handle = (HANDLE)signal.internalHandle.win32Handle;
+			HANDLE handle = signal.internalHandle.win32Event;
 			bool result = (WaitForSingleObject(handle, maxMilliseconds < UINT32_MAX ? maxMilliseconds : INFINITE) == WAIT_OBJECT_0);
 			return(result);
 		}
 
-		fpl_api bool SignalWaitForAll(const ThreadSignal **signals, const uint32_t count, const uint32_t maxMilliseconds) {
+		fpl_api bool SignalWaitForAll(ThreadMutex &mutex, ThreadSignal *signals[], const uint32_t count, const uint32_t maxMilliseconds) {
 			bool result = platform::Win32SignalWaitForMultiple((ThreadSignal **)signals, count, true, maxMilliseconds);
 			return(result);
 		}
 
-		fpl_api bool SignalWaitForAny(const ThreadSignal **signals, const uint32_t count, const uint32_t maxMilliseconds) {
+		fpl_api bool SignalWaitForAny(ThreadMutex &mutex, ThreadSignal *signals[], const uint32_t count, const uint32_t maxMilliseconds) {
 			bool result = platform::Win32SignalWaitForMultiple((ThreadSignal **)signals, count, false, maxMilliseconds);
 			return(result);
 		}
 
-		fpl_api bool SignalWakeUp(const ThreadSignal &signal) {
-			if (signal.internalHandle.win32Handle == nullptr) {
+		fpl_api bool SignalWakeUp(ThreadSignal &signal) {
+			if (signal.internalHandle.win32Event == nullptr) {
 				return false;
 			}
-			HANDLE handle = (HANDLE)signal.internalHandle.win32Handle;
+			HANDLE handle = signal.internalHandle.win32Event;
 			bool result = SetEvent(handle) == TRUE;
 			return(result);
 		}
 
-		fpl_api bool SignalReset(const ThreadSignal &signal) {
-			if (signal.internalHandle.win32Handle == nullptr) {
+		fpl_api bool SignalReset(ThreadSignal &signal) {
+			if (signal.internalHandle.win32Event == nullptr) {
 				return false;
 			}
-			HANDLE handle = (HANDLE)signal.internalHandle.win32Handle;
+			HANDLE handle = signal.internalHandle.win32Event;
 			bool result = ResetEvent(handle) == TRUE;
 			return(result);
 		}
@@ -7263,52 +7904,9 @@ namespace fpl {
 	} // window
 #endif // FPL_ENABLE_WINDOW
 
-//
-// Core Win32
-//
-	fpl_api const char *GetPlatformLastError() {
-		const char *result = nullptr;
-		if (common::global__LastErrorState != nullptr) {
-#		if defined(FPL_ENABLE_MULTIPLE_ERRORSTATES)
-			if (common::global__LastErrorState->count > 0) {
-				size_t index = common::global__LastErrorState->count - 1;
-				result = GetPlatformLastError(index);
-			}
-#		else
-			result = global__LastErrorState->errors[0];
-#		endif // FPL_ENABLE_MULTIPLE_ERRORSTATES
-		}
-		return (result);
-	}
-
-	fpl_api const char *GetPlatformLastError(const size_t index) {
-		const char *result = nullptr;
-		if (common::global__LastErrorState != nullptr) {
-#		if defined(FPL_ENABLE_MULTIPLE_ERRORSTATES)
-			if (index > -1 && index < (int32_t)common::global__LastErrorState->count) {
-				result = common::global__LastErrorState->errors[index];
-			} else {
-				result = common::global__LastErrorState->errors[common::global__LastErrorState->count - 1];
-			}
-#		else
-			result = global__LastErrorState->errors[0];
-#		endif // FPL_ENABLE_MULTIPLE_ERRORSTATES
-		}
-		return (result);
-	}
-
-	fpl_api size_t GetPlatformLastErrorCount() {
-		size_t result = 0;
-		if (common::global__LastErrorState != nullptr) {
-#		if defined(FPL_ENABLE_MULTIPLE_ERRORSTATES)
-			result = common::global__LastErrorState->count;
-#		else
-			result = strings::GetAnsiStringLength(common::global__LastErrorState->errors[0]) > 0 ? 1 : 0;
-#		endif
-		}
-		return (result);
-	}
-
+	//
+	// Error state
+	//
 	fpl_api const Settings &GetCurrentSettings() {
 		FPL_ASSERT(platform::global__Win32__State != nullptr);
 		const platform::Win32State *state = platform::global__Win32__State;
@@ -7316,54 +7914,11 @@ namespace fpl {
 	}
 
 	fpl_api void ReleasePlatform() {
-		FPL_ASSERT(platform::global__Win32__AppState.isInitialized);
-		FPL_ASSERT(platform::global__Win32__State != nullptr);
-		platform::Win32State &win32State = *platform::global__Win32__State;
-
-#	if defined(FPL_ENABLE_AUDIO)
-		audio::ReleaseAudio();
-#	endif
-
-#	if defined(FPL_ENABLE_WINDOW)
-		if (win32State.currentSettings.window.isFullscreen) {
-			platform::Win32LeaveFullscreen();
+		if (!platform::global__Win32__AppState.isInitialized) {
+			common::PushError("Platform is not initialized");
+			return;
 		}
-
-#	if defined(FPL_ENABLE_VIDEO)
-		switch (win32State.video.activeVideoDriver) {
-#		if defined(FPL_ENABLE_VIDEO_OPENGL)
-			case VideoDriverType::OpenGL:
-			{
-				platform::Win32ReleaseVideoOpenGL(&win32State);
-			} break;
-#		endif
-
-#		if defined(FPL_ENABLE_VIDEO_SOFTWARE)
-			case VideoDriverType::Software:
-			{
-				platform::Win32ReleaseVideoSoftware(&win32State);
-			} break;
-#		endif
-
-			default:
-				break;
-		}
-#	endif // FPL_ENABLE_VIDEO
-
-		platform::Win32ReleaseWindow(win32State);
-
-		platform::Win32UnloadXInput();
-#	endif // FPL_ENABLE_WINDOW
-
-		platform::Win32UnloadAPI();
-
-		memory::MemoryAlignedFree(common::global__LastErrorState);
-		common::global__LastErrorState = nullptr;
-
-		fpl::memory::MemoryAlignedFree(platform::global__Win32__State);
-		platform::global__Win32__State = nullptr;
-
-		platform::global__Win32__AppState.isInitialized = false;
+		platform::Win32ReleasePlatform();
 	}
 
 	fpl_api bool InitPlatform(const InitFlags initFlags, const Settings &initSettings) {
@@ -7371,76 +7926,8 @@ namespace fpl {
 			common::PushError("Platform is already initialized");
 			return false;
 		}
-
-		platform::global__Win32__AppState.appInstance = GetModuleHandleA(nullptr);
-
-		// @NOTE(final): Expect kernel32.lib to be linked always, so VirtualAlloc and LoadLibrary will always work.
-
-		// Allocate win32 state
-		FPL_ASSERT(platform::global__Win32__State == nullptr);
-		void *win32StateMemory = fpl::memory::MemoryAlignedAllocate(sizeof(platform::Win32State), 16);
-		FPL_ASSERT(win32StateMemory != nullptr);
-		platform::global__Win32__State = (platform::Win32State *)win32StateMemory;
-		platform::Win32State &win32State = *platform::global__Win32__State;
-		win32State.initSettings = initSettings;
-		win32State.initFlags = initFlags;
-		win32State.currentSettings = initSettings;
-		win32State.video = {};
-
-		// Allocate last error state
-		void *lastErrorStateMemory = memory::MemoryAlignedAllocate(sizeof(common::ErrorState), 16);
-		FPL_ASSERT(lastErrorStateMemory != nullptr);
-		common::global__LastErrorState = (common::ErrorState *)lastErrorStateMemory;
-
-		// Timing
-		QueryPerformanceFrequency(&platform::global__Win32__AppState.performanceFrequency);
-
-		// Get main thread infos
-		HANDLE mainThreadHandle = GetCurrentThread();
-		DWORD mainThreadHandleId = GetCurrentThreadId();
-		threading::ThreadContext *context = &common::global__ThreadState.mainThread;
-		*context = {};
-		context->id = mainThreadHandleId;
-		context->internalHandle.win32Handle = (void *)mainThreadHandle;
-		context->currentState = threading::ThreadState::Running;
-
-#	if defined(FPL_ENABLE_WINDOW)
-		// Window is required for video always
-		if (win32State.initFlags & InitFlags::Video) {
-			win32State.initFlags |= InitFlags::Window;
-		}
-#	endif
-
-		// Load windows api library
-		if (!Win32LoadAPI(win32State)) {
-			// @NOTE(final): Assume that errors are pushed on already.
-			return false;
-		}
-
-#	if defined(FPL_ENABLE_WINDOW)
-		// Load XInput
-		platform::Win32LoadXInput();
-
-		if (win32State.initFlags & InitFlags::Window) {
-			if (!platform::Win32InitWindow(win32State, initSettings)) {
-				common::PushError("Failed creating a window with flags '%d' and settings (Width=%d, Height=%d, Videoprofile=%d)", win32State.initFlags, initSettings.window.windowWidth, initSettings.window.windowHeight, initSettings.video.profile);
-				return false;
-			}
-		}
-#	endif // FPL_ENABLE_WINDOW
-
-#	if defined(FPL_ENABLE_AUDIO)
-		if (win32State.initFlags & InitFlags::Audio) {
-			if (audio::InitAudio(initSettings.audio) != audio::AudioResult::Success) {
-				common::PushError("Failed initialization audio with settings (Driver=%s, Format=%s, SampleRate=%d, Channels=%d, BufferSize=%d)", audio::GetAudioDriverString(initSettings.audio.driver), audio::GetAudioFormatString(initSettings.audio.deviceFormat.type), initSettings.audio.deviceFormat.sampleRate, initSettings.audio.deviceFormat.channels);
-				return false;
-			}
-		}
-#	endif
-
-		platform::global__Win32__AppState.isInitialized = true;
-
-		return (true);
+		bool result = platform::Win32InitPlatform(initFlags, initSettings);
+		return(result);
 	}
 
 } // fpl
@@ -7485,9 +7972,9 @@ int WINAPI WinMain(HINSTANCE appInstance, HINSTANCE prevInstance, LPSTR cmdLine,
 #include <dlfcn.h> // dlopen, dlclose
 
 namespace fpl {
-    //
+	//
 	// POSIX Atomics
-    //
+	//
 	namespace atomics {
 #	if defined(FPL_COMPILER_GCC)
 		// @NOTE(final): See: https://gcc.gnu.org/onlinedocs/gcc/_005f_005fsync-Builtins.html#g_t_005f_005fsync-Builtins
@@ -7630,7 +8117,7 @@ namespace fpl {
 	//
 	namespace timings {
 		fpl_api double GetHighResolutionTimeInSeconds() {
-            // @TODO(final): Do we need to take the performance frequency into account?
+			// @TODO(final): Do we need to take the performance frequency into account?
 			timespec t;
 			clock_gettime(CLOCK_MONOTONIC, &t);
 			double result = (double)t.tv_sec + ((double)t.tv_nsec * 1e-9);
@@ -7642,6 +8129,114 @@ namespace fpl {
 	// POSIX Threading
 	//
 	namespace threading {
+		// @TODO(final): Move internal stuff into "platform" namespace!
+		fpl_internal bool WaitInPosixThreadWhenSuspended(ThreadContext *context) {
+			if (context->internalHandle.posixWaitState) {
+				atomics::AtomicStoreU32((volatile uint32_t *)&context->currentState, (uint32_t)ThreadState::Suspended);
+				pthread_mutex_t *mutex = &context->internalHandle.posixWaitMutex;
+				pthread_cond_t *cond = &context->internalHandle.posixWaitCondition;
+				pthread_mutex_lock(mutex);
+				pthread_cond_wait(cond, mutex);
+				pthread_mutex_unlock(mutex);
+			}
+			atomics::AtomicStoreU32((volatile uint32_t *)&context->currentState, (uint32_t)ThreadState::Running);
+			bool result = !context->posixStopState;
+			return(result);
+		}
+		fpl_internal void POSIXResumeThread(ThreadContext *context) {
+			pthread_mutex_t *mutex = &context->internalHandle.posixWaitMutex;
+			pthread_cond_t *cond = &context->internalHandle.posixWaitCondition;
+			pthread_mutex_lock(mutex);
+			context->internalHandle.posixWaitState = 0;
+			phtread_cond_broadcast(cond);
+			pthread_mutex_unlock(mutex);
+		}
+		fpl_internal void POSIXSuspendThread(ThreadContext *context) {
+			pthread_mutex_t *mutex = &context->internalHandle.posixWaitMutex;
+			pthread_mutex_lock(mutex);
+			context->internalHandle.posixWaitState = 1;
+			pthread_mutex_unlock(mutex);
+		}
+		fpl_internal void POSIXStopThread(ThreadContext *context) {
+			pthread_mutex_t *mutex = &context->internalHandle.posixWaitMutex;
+			pthread_cond_t *cond = &context->internalHandle.posixWaitCondition;
+			pthread_mutex_lock(mutex);
+			context->internalHandle.posixWaitState = 0;
+			context->internalHandle.posixStopState = 1;
+			phtread_cond_broadcast(cond);
+			pthread_mutex_unlock(mutex);
+		}
+
+		void *PosixThreadProc(void *data) {
+			ThreadContext *context = (ThreadContext *)data;
+			FPL_ASSERT(context != nullptr);
+			while (atomics::AtomicLoadU32((volatile uint32_t *)&context->currentState) == (uint32_t)ThreadState::Running) {
+				if (!WaitInPosixThreadWhenSuspended(context)) {
+					break;
+				}
+				// @TODO(final): Use a callback for the run function to wait for suspended state
+				if (context->runFunc != nullptr) {
+					context->runFunc(*context, context->data);
+				}
+			}
+			atomics::AtomicStoreU32((volatile uint32_t *)&context->currentState, (uint32_t)ThreadState::Stopped);
+			// @TODO(final): Dynamic linking of pthread!
+			pthread_cond_destroy(&context->internalHandle.posixWaitCondition);
+			pthread_mutex_destroy(&context->internalHandle.posixWaitMutex);
+			*context = {};
+			pthread_exit(nullptr);
+		}
+
+		fpl_api ThreadContext *ThreadCreate(run_thread_function *runFunc, void *data, const bool autoStart) {
+			// @NOTE(final): pthread does not allow to "suspend" or "resume" any thread, this is totally up to the caller. So we use a mutex and a resume condition.
+			ThreadContext *result = nullptr;
+			ThreadContext *context = common::GetThreadContext();
+			if (context != nullptr) {
+				// @TODO(final): Dynamic linking of pthread!
+				context->currentState = ThreadState::Suspended;
+				context->data = data;
+				// @TODO(final): Better pthread id!
+				memory::MemoryCopy(&context->posixThread, FPL_MIN(sizeof(context->id), sizeof(context->posixThread)), &context->id);
+				context->runFunc = runFunc;
+				context->isValid = true;
+				context->internalHandle.posixWaitState = 1;
+
+				int err;
+
+				err = pthread_mutex_init(&context->internalHandle.posixWaitMutex, nullptr);
+				if (err != 0) {
+					common::PushError("Failed creating pthread mutex, error code: %d", err);
+				}
+				if (err == 0) {
+					err = pthread_cond_init(&context->internalHandle.posixWaitCondition, nullptr);
+					if (err != 0) {
+						pthread_mutex_destroy(&context->internalHandle.posixWaitMutex);
+						common::PushError("Failed creating pthread condition, error code: %d", err);
+					}
+				}
+				if (err == 0) {
+					err = pthread_create(&context->internalHandle.posixThread, nullptr, PosixThreadProc, (void *)context);
+					if (err != 0) {
+						pthread_cond_destroy(&context->internalHandle.posixWaitCondition);
+						pthread_mutex_destroy(&context->internalHandle.posixWaitMutex);
+						common::PushError("Failed creating thread, error code: %d", err);
+					}
+				}
+				if (err == 0) {
+					result = context;
+
+					if (autoStart) {
+						POSIXResumeThread(context);
+					}
+				} else {
+					context->currentState = ThreadState::Stopped;
+				}
+			} else {
+				common::PushError("All %d threads are in use, you cannot create until you free one", common::MAX_THREAD_COUNT);
+			}
+			return(result);
+		}
+
 		fpl_api void ThreadSleep(const uint32_t milliseconds) {
 			uint32_t ms;
 			uint32_t s;
@@ -7656,6 +8251,52 @@ namespace fpl {
 			input.tv_sec = s;
 			input.tv_nsec = ms * 1000000;
 			nanosleep(&input, &output);
+		}
+
+		fpl_api bool ThreadSuspend(ThreadContext *context) {
+			if (context == nullptr) {
+				common::PushError("Context parameter are not allowed to be null");
+				return false;
+			}
+			if (!context->isValid) {
+				common::PushError("Thread context is not valid");
+				return false;
+			}
+			bool result = false;
+			if (!context->internalHandle.posixWaitState) {
+				POSIXSuspendThread(context);
+				result = true;
+			}
+			return(result);
+		}
+
+		fpl_api bool ThreadResume(ThreadContext *context) {
+			if (context == nullptr) {
+				common::PushError("Context parameter are not allowed to be null");
+				return false;
+			}
+			if (!context->isValid) {
+				common::PushError("Thread context is not valid");
+				return false;
+			}
+			bool result = false;
+			if (context->internalHandle.posixWaitState) {
+				POSIXResumeThread(context);
+				result = true;
+			}
+			return(result);
+		}
+
+		fpl_api void ThreadDestroy(ThreadContext *context) {
+			if (context != nullptr && context->internalHandle.isValid) {
+				// @TODO(final): Test if thread is already terminated, only the release the resources.
+				pthread_cond_destroy(&context->internalHandle.posixWaitCondition);
+				pthread_mutex_destroy(&context->internalHandle.posixWaitMutex);
+				pthread_destroy(&context->internalHandle.posixThread);
+				// @TODO(final): Is this really needed to use a atomic store for setting the thread state?
+				atomics::AtomicStoreU32((volatile uint32_t *)&context->currentState, (uint32_t)ThreadState::Stopped);
+				*context = {};
+			}
 		}
 	}
 
@@ -7752,7 +8393,7 @@ namespace fpl {
 			munmap(basePtr, storedSize);
 		}
 	}
-	
+
 	//
 	// POSIX Strings
 	//
@@ -7863,9 +8504,9 @@ namespace fpl {
 			char *result = ansiDestBuffer;
 			return(result);
 		}
-    }
-	
-    //
+	}
+
+	//
 	// POSIX Files
 	//
 	namespace files {
@@ -7883,9 +8524,9 @@ namespace fpl {
 		fpl_api FileHandle OpenBinaryFile(const wchar_t *filePath) {
 			FileHandle result = {};
 			if (filePath != nullptr) {
-                char utf8FilePath[1024] = {};
-                strings::WideStringToAnsiString(filePath, strings::GetWideStringLength(filePath), utf8FilePath, FPL_ARRAYCOUNT(utf8FilePath));
-                result = OpenBinaryFile(utf8FilePath);
+				char utf8FilePath[1024] = {};
+				strings::WideStringToAnsiString(filePath, strings::GetWideStringLength(filePath), utf8FilePath, FPL_ARRAYCOUNT(utf8FilePath));
+				result = OpenBinaryFile(utf8FilePath);
 			}
 			return(result);
 		}
@@ -7904,9 +8545,9 @@ namespace fpl {
 		fpl_api FileHandle CreateBinaryFile(const wchar_t *filePath) {
 			FileHandle result = {};
 			if (filePath != nullptr) {
-                char utf8FilePath[1024] = {};
-                strings::WideStringToAnsiString(filePath, strings::GetWideStringLength(filePath), utf8FilePath, FPL_ARRAYCOUNT(utf8FilePath));
-                result = CreateBinaryFile(utf8FilePath);
+				char utf8FilePath[1024] = {};
+				strings::WideStringToAnsiString(filePath, strings::GetWideStringLength(filePath), utf8FilePath, FPL_ARRAYCOUNT(utf8FilePath));
+				result = CreateBinaryFile(utf8FilePath);
 			}
 			return(result);
 		}
@@ -7946,7 +8587,7 @@ namespace fpl {
 			uint32_t result = 0;
 			FILE *posixFileHandle = fileHandle.internalHandle.posixHandle;
 			size_t bytesWritten = fwrite(sourceBuffer, sourceSize, 1, posixFileHandle);
-            result = (uint32_t)bytesWritten;
+			result = (uint32_t)bytesWritten;
 			return(result);
 		}
 
@@ -7985,7 +8626,7 @@ namespace fpl {
 			if (filePath != nullptr) {
 				FILE *posixFileHandle = fopen(filePath, "rb");
 				if (posixFileHandle != nullptr) {
-                    fseek (posixFileHandle, 0, SEEK_END);
+					fseek(posixFileHandle, 0, SEEK_END);
 					result = ftell(posixFileHandle);
 					fclose(posixFileHandle);
 				}
@@ -7997,10 +8638,10 @@ namespace fpl {
 			uint32_t result = 0;
 			if (fileHandle.internalHandle.posixHandle != nullptr) {
 				FILE *posixFileHandle = fileHandle.internalHandle.posixHandle;
-                long int curPos = ftell(posixFileHandle);
-                fseek (posixFileHandle, 0, SEEK_END);
+				long int curPos = ftell(posixFileHandle);
+				fseek(posixFileHandle, 0, SEEK_END);
 				result = ftell(posixFileHandle);
-                fseek (posixFileHandle, curPos, SEEK_SET);
+				fseek(posixFileHandle, curPos, SEEK_SET);
 			}
 			return(result);
 		}
@@ -8008,7 +8649,7 @@ namespace fpl {
 		fpl_api bool FileExists(const char *filePath) {
 			bool result = false;
 			if (filePath != nullptr) {
-                // @IMPLEMENT(final): POSIX File Exists
+				// @IMPLEMENT(final): POSIX File Exists
 			}
 			return(result);
 		}
@@ -8040,7 +8681,7 @@ namespace fpl {
 		fpl_api bool DirectoryExists(const char *path) {
 			bool result = false;
 			if (path != nullptr) {
-                // @IMPLEMENT(final): POSIX Directory Exists
+				// @IMPLEMENT(final): POSIX Directory Exists
 			}
 			return(result);
 		}
@@ -8051,7 +8692,7 @@ namespace fpl {
 				return false;
 			}
 			bool result = false;
-            // @IMPLEMENT(final): POSIX Create Directories
+			// @IMPLEMENT(final): POSIX Create Directories
 			return(result);
 		}
 		fpl_api bool RemoveEmptyDirectory(const char *path) {
@@ -8059,7 +8700,7 @@ namespace fpl {
 				common::PushError("Path parameter are not allowed to be null");
 				return false;
 			}
-            // @IMPLEMENT(final): POSIX Remove Empty Directory
+			// @IMPLEMENT(final): POSIX Remove Empty Directory
 			bool result = false;
 			return(result);
 		}
@@ -8068,19 +8709,19 @@ namespace fpl {
 				return false;
 			}
 			bool result = false;
-            // @IMPLEMENT(final): POSIX Files Iteration Begin
+			// @IMPLEMENT(final): POSIX Files Iteration Begin
 			return(result);
 		}
 		fpl_api bool ListFilesNext(FileEntry &nextEntry) {
 			bool result = false;
 			if (nextEntry.internalHandle.posixHandle != nullptr) {
-                // @IMPLEMENT(final): POSIX Files Iteration Next
-            }
+				// @IMPLEMENT(final): POSIX Files Iteration Next
+			}
 			return(result);
 		}
 		fpl_api void ListFilesEnd(FileEntry &lastEntry) {
 			if (lastEntry.internalHandle.posixHandle != nullptr) {
-                // @IMPLEMENT(final): POSIX Files Iteration End
+				// @IMPLEMENT(final): POSIX Files Iteration End
 				lastEntry = {};
 			}
 		}
@@ -8110,93 +8751,93 @@ namespace fpl {
 
 	// Linux Hardware
 	namespace hardware {
-        fpl_api uint32_t GetProcessorCoreCount() {
-            uint32_t result = sysconf(_SC_NPROCESSORS_ONLN);
-            return(result);
-        }
-        
-        fpl_api char *GetProcessorName(char *destBuffer, const uint32_t maxDestBufferLen) {
-            if (destBuffer == nullptr) {
-                common::PushError("Dest buffer parameter are not allowed to be null");
-                return nullptr;
-            }
-            if (maxDestBufferLen == 0) {
-                common::PushError("Max dest buffer len parameter '%d' must be greater than zero");
-                return nullptr;
-            }
-            char *result = nullptr;
-            FILE *fileHandle = fopen("/proc/cpuinfo", "rb");
-            if (fileHandle != nullptr) {
-                char buffer[256];
-                char line[256];
-                const size_t maxBufferSize = FPL_ARRAYCOUNT(buffer);
-                int32_t readSize = maxBufferSize;
-                int32_t readPos = 0;
-                bool found = false;
-                int bytesRead = 0;
-                while ((bytesRead = fread(&buffer[readPos], readSize, 1, fileHandle)) > 0) {                 
-                    char *lastP = &buffer[0];
-                    char *p = &buffer[0];
-                    while (*p) {
-                        if (*p == '\n') {
-                            int32_t len = p - lastP;
-                            FPL_ASSERT(len > 0);
-                            if (strings::IsStringEqual(lastP, 10, "model name", 10)) {
-                                strings::CopyAnsiString(lastP, len, line, FPL_ARRAYCOUNT(line));
-                                found = true;
-                                break;
-                            }
-                            lastP = p + 1;                           
-                        }
-                        ++p;
-                    }
-                    if (found) {
-                        break;
-                    }
-                    
-                    int32_t remaining = &buffer[maxBufferSize] - lastP;
-                    FPL_ASSERT(remaining >= 0);
-                    if (remaining > 0) {
-                        // Buffer does not contain a line separator - copy back to remaining characters to the line
-                        strings::CopyAnsiString(lastP, remaining, line, FPL_ARRAYCOUNT(line));
-                        // Copy back line to buffer and use a different read position/size
-                        strings::CopyAnsiString(line, remaining, buffer, maxBufferSize);
-                        readPos = remaining;
-                        readSize = maxBufferSize - remaining;
-                    } else {
-                        readPos = 0;
-                        readSize = maxBufferSize;
-                    }
-                }
-                if (found) {
-                    char *p = line;
-                    while (*p) {
-                        if (*p == ':') {
-                            ++p;
-                            // Skip whitespaces
-                            while (*p && isspace(*p)) {
-                                ++p;
-                            }
-                            break;
-                        }
-                        ++p;
-                    }
-                    if (p != line) {
-                        strings::CopyAnsiString(p, destBuffer, maxDestBufferLen);
-                        result = destBuffer;
-                    }
-                }
-                fclose(fileHandle);
-            }
-            return(result);
-        }
-        
-        fpl_api MemoryInfos GetSystemMemoryInfos() {
-            MemoryInfos result = {};
-            return(result);
-        }
-    }
-    
+		fpl_api uint32_t GetProcessorCoreCount() {
+			uint32_t result = sysconf(_SC_NPROCESSORS_ONLN);
+			return(result);
+		}
+
+		fpl_api char *GetProcessorName(char *destBuffer, const uint32_t maxDestBufferLen) {
+			if (destBuffer == nullptr) {
+				common::PushError("Dest buffer parameter are not allowed to be null");
+				return nullptr;
+			}
+			if (maxDestBufferLen == 0) {
+				common::PushError("Max dest buffer len parameter '%d' must be greater than zero");
+				return nullptr;
+			}
+			char *result = nullptr;
+			FILE *fileHandle = fopen("/proc/cpuinfo", "rb");
+			if (fileHandle != nullptr) {
+				char buffer[256];
+				char line[256];
+				const size_t maxBufferSize = FPL_ARRAYCOUNT(buffer);
+				int32_t readSize = maxBufferSize;
+				int32_t readPos = 0;
+				bool found = false;
+				int bytesRead = 0;
+				while ((bytesRead = fread(&buffer[readPos], readSize, 1, fileHandle)) > 0) {
+					char *lastP = &buffer[0];
+					char *p = &buffer[0];
+					while (*p) {
+						if (*p == '\n') {
+							int32_t len = p - lastP;
+							FPL_ASSERT(len > 0);
+							if (strings::IsStringEqual(lastP, 10, "model name", 10)) {
+								strings::CopyAnsiString(lastP, len, line, FPL_ARRAYCOUNT(line));
+								found = true;
+								break;
+							}
+							lastP = p + 1;
+						}
+						++p;
+					}
+					if (found) {
+						break;
+					}
+
+					int32_t remaining = &buffer[maxBufferSize] - lastP;
+					FPL_ASSERT(remaining >= 0);
+					if (remaining > 0) {
+						// Buffer does not contain a line separator - copy back to remaining characters to the line
+						strings::CopyAnsiString(lastP, remaining, line, FPL_ARRAYCOUNT(line));
+						// Copy back line to buffer and use a different read position/size
+						strings::CopyAnsiString(line, remaining, buffer, maxBufferSize);
+						readPos = remaining;
+						readSize = maxBufferSize - remaining;
+					} else {
+						readPos = 0;
+						readSize = maxBufferSize;
+					}
+				}
+				if (found) {
+					char *p = line;
+					while (*p) {
+						if (*p == ':') {
+							++p;
+							// Skip whitespaces
+							while (*p && isspace(*p)) {
+								++p;
+							}
+							break;
+						}
+						++p;
+					}
+					if (p != line) {
+						strings::CopyAnsiString(p, destBuffer, maxDestBufferLen);
+						result = destBuffer;
+					}
+				}
+				fclose(fileHandle);
+			}
+			return(result);
+		}
+
+		fpl_api MemoryInfos GetSystemMemoryInfos() {
+			MemoryInfos result = {};
+			return(result);
+		}
+	}
+
 }
 #endif // FPL_PLATFORM_LINUX
 
@@ -8826,7 +9467,7 @@ namespace fpl {
 				threading::SignalWakeUp(audioState->stopSignal);
 
 				// We wait until the audio device gets wake up
-				threading::SignalWaitForOne(audioState->wakeupSignal);
+				threading::SignalWaitForOne(audioState->lock, audioState->wakeupSignal);
 
 				// Default result code.
 				audioState->workResult = AudioResult::Success;
@@ -8901,7 +9542,7 @@ namespace fpl {
 
 					// We need to wait for the worker thread to become available for work before returning.
 					// @NOTE(final): The audio worker thread will be the one who puts the device into the stopped state.
-					SignalWaitForOne(audioState->stopSignal);
+					SignalWaitForOne(audioState->lock, audioState->stopSignal);
 					result = AudioResult::Success;
 				}
 			}
@@ -8948,7 +9589,7 @@ namespace fpl {
 
 					// Wait for the worker thread to finish starting the device.
 					// @NOTE(final): The audio worker thread will be the one who puts the device into the started state.
-					SignalWaitForOne(audioState->startSignal);
+					SignalWaitForOne(audioState->lock, audioState->startSignal);
 					result = audioState->workResult;
 				}
 			}
@@ -9087,7 +9728,7 @@ namespace fpl {
 					return AudioResult::Failed;
 				}
 				// Wait for the worker thread to put the device into the stopped state.
-				SignalWaitForOne(audioState->stopSignal);
+				SignalWaitForOne(audioState->lock, audioState->stopSignal);
 			} else {
 				AudioSetDeviceState(*audioState, AudioDeviceState::Stopped);
 			}
@@ -9135,6 +9776,50 @@ namespace fpl {
 		}
 	} // audio
 #endif // FPL_ENABLE_AUDIO
+
+	//
+	// Error State
+	//
+	fpl_api const char *GetPlatformError() {
+		const char *result = "";
+		const common::ErrorState &errorState = common::global__LastErrorState;
+#	if defined(FPL_ENABLE_MULTIPLE_ERRORSTATES)
+		if (errorState.count > 0) {
+			size_t index = errorState.count - 1;
+			result = GetPlatformError(index);
+		}
+#	else
+		result = errorState.errors[0];
+#	endif // FPL_ENABLE_MULTIPLE_ERRORSTATES
+		return (result);
+	}
+
+	fpl_api const char *GetPlatformError(const size_t index) {
+		const char *result = "";
+		const common::ErrorState &errorState = common::global__LastErrorState;
+#	if defined(FPL_ENABLE_MULTIPLE_ERRORSTATES)
+		if (index > -1 && index < (int32_t)errorState.count) {
+			result = errorState.errors[index];
+		} else {
+			result = errorState.errors[errorState.count - 1];
+		}
+#	else
+		result = errorState.errors[0];
+#	endif // FPL_ENABLE_MULTIPLE_ERRORSTATES
+		return (result);
+	}
+
+	fpl_api size_t GetPlatformErrorCount() {
+		size_t result = 0;
+		const common::ErrorState &errorState = common::global__LastErrorState;
+		result = errorState.count;
+		return (result);
+	}
+
+	fpl_api void ClearPlatformErrors() {
+		common::ErrorState &errorState = common::global__LastErrorState;
+		memory::MemoryClear(&errorState, sizeof(errorState));
+	}
 
 } // fpl
 

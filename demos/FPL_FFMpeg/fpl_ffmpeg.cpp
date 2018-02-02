@@ -518,6 +518,7 @@ struct MediaStream {
 
 struct ReaderContext {
 	PacketQueue packetQueue;
+	ThreadMutex lock;
 	ThreadSignal stopSignal;
 	ThreadSignal resumeSignal;
 	ThreadContext *thread;
@@ -528,6 +529,10 @@ struct ReaderContext {
 
 static bool InitReader(ReaderContext &outReader) {
 	outReader = {};
+	outReader.lock = MutexCreate();
+	if (!outReader.lock.isValid) {
+		return false;
+	}
 	outReader.stopSignal = SignalCreate();
 	if (!outReader.stopSignal.isValid) {
 		return false;
@@ -546,6 +551,7 @@ static void DestroyReader(ReaderContext &reader) {
 	DestroyPacketQueue(reader.packetQueue);
 	SignalDestroy(reader.resumeSignal);
 	SignalDestroy(reader.stopSignal);
+	MutexDestroy(reader.lock);
 }
 
 static void StopReader(ReaderContext &reader) {
@@ -567,6 +573,7 @@ struct PlayerState;
 struct Decoder {
 	PacketQueue packetsQueue;
 	FrameQueue frameQueue;
+	ThreadMutex lock;
 	ThreadSignal stopSignal;
 	ThreadSignal resumeSignal;
 	ThreadContext *thread;
@@ -589,9 +596,13 @@ static bool InitDecoder(Decoder &outDecoder, PlayerState *state, ReaderContext *
 	outDecoder.stream = stream;
 	outDecoder.reader = reader;
 	outDecoder.state = state;
-	outDecoder.stopSignal = SignalCreate();
 	outDecoder.pktSerial = -1;
 	outDecoder.start_pts = AV_NOPTS_VALUE;
+	outDecoder.lock = MutexCreate();
+	if (!outDecoder.lock.isValid) {
+		return false;
+	}
+	outDecoder.stopSignal = SignalCreate();
 	if (!outDecoder.stopSignal.isValid) {
 		return false;
 	}
@@ -614,6 +625,7 @@ static void DestroyDecoder(Decoder &decoder) {
 	DestroyPacketQueue(decoder.packetsQueue);
 	SignalDestroy(decoder.resumeSignal);
 	SignalDestroy(decoder.stopSignal);
+	MutexDestroy(decoder.lock);
 }
 
 static ThreadContext *StartDecoder(Decoder &decoder, run_thread_function *decoderThreadFunc) {
@@ -1285,7 +1297,7 @@ static void VideoDecodingThreadProc(const ThreadContext &thread, void *userData)
 
 	PlayerState *state = decoder->state;
 
-	const ThreadSignal *waitSignals[] = {
+	ThreadSignal *waitSignals[] = {
 		// New packet arrived
 		&decoder->packetsQueue.addedSignal,
 		// Frame queue changed
@@ -1302,7 +1314,7 @@ static void VideoDecodingThreadProc(const ThreadContext &thread, void *userData)
 	bool hasDecodedFrame = false;
 	for (;;) {
 		// Wait for any signal (Available packet, Free frame, Stopped, Wake up)
-		SignalWaitForAny(waitSignals, FPL_ARRAYCOUNT(waitSignals));
+		SignalWaitForAny(decoder->lock, waitSignals, FPL_ARRAYCOUNT(waitSignals));
 
 		// Stop decoder
 		if (decoder->stopRequest) {
@@ -1439,7 +1451,7 @@ static void AudioDecodingThreadProc(const ThreadContext &thread, void *userData)
 	assert(stream->isValid);
 	assert(stream->streamIndex > -1);
 
-	const ThreadSignal *waitSignals[] = {
+	ThreadSignal *waitSignals[] = {
 		// New packet arrived
 		&decoder->packetsQueue.addedSignal,
 		// Frame queue changed
@@ -1454,7 +1466,7 @@ static void AudioDecodingThreadProc(const ThreadContext &thread, void *userData)
 	bool hasDecodedFrame = false;
 	for (;;) {
 		// Wait for any signal (Available packet, Free frame, Stopped, Wake up)
-		SignalWaitForAny(waitSignals, FPL_ARRAYCOUNT(waitSignals));
+		SignalWaitForAny(decoder->lock, waitSignals, FPL_ARRAYCOUNT(waitSignals));
 
 		// Stop decoder
 		if (decoder->stopRequest) {
@@ -1708,7 +1720,7 @@ static void PacketReadThreadProc(const ThreadContext &thread, void *userData) {
 	AVFormatContext *formatCtx = state->formatCtx;
 	assert(formatCtx != nullptr);
 
-	const ThreadSignal *waitSignals[] = {
+	ThreadSignal *waitSignals[] = {
 		// We got a free packet for use to read into
 		&reader.packetQueue.freeSignal,
 		// Reader should terminate
@@ -1723,7 +1735,7 @@ static void PacketReadThreadProc(const ThreadContext &thread, void *userData) {
 	for (;;) {
 		// Wait for any signal or skip wait
 		if (!skipWait) {
-			SignalWaitForAny(waitSignals, FPL_ARRAYCOUNT(waitSignals));
+			SignalWaitForAny(reader.lock, waitSignals, FPL_ARRAYCOUNT(waitSignals));
 		} else {
 			skipWait = false;
 		}
@@ -2636,9 +2648,9 @@ int main(int argc, char **argv) {
 	CopyAnsiString("FPL FFmpeg Demo", settings.window.windowTitle, FPL_ARRAYCOUNT(settings.window.windowTitle));
 #if USE_HARDWARE_RENDERING
 	settings.video.driverType = VideoDriverType::OpenGL;
-	settings.video.profile = VideoCompabilityProfile::Core;
-	settings.video.majorVersion = 3;
-	settings.video.minorVersion = 3;
+	settings.video.opengl.compabilityFlags = OpenGLCompabilityFlags::Core;
+	settings.video.opengl.majorVersion = 3;
+	settings.video.opengl.minorVersion = 3;
 #else
 	settings.video.driverType = VideoDriverType::Software;
 #endif

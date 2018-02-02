@@ -42,8 +42,8 @@ public:
 		{
 			bool result = InitPlatform(InitFlags::All);
 			Assert::IsTrue(result, L"", LINE_INFO());
-			const char *errorStr = GetPlatformLastError();
-			Assert::AreEqual(nullptr, errorStr, L"", LINE_INFO());
+			const char *errorStr = GetPlatformError();
+			Assert::AreEqual("", errorStr, L"", LINE_INFO());
 			ReleasePlatform();
 		}
 
@@ -51,26 +51,10 @@ public:
 		{
 			bool result = InitPlatform(InitFlags::None);
 			Assert::IsTrue(result, L"", LINE_INFO());
-			const char *errorStr = GetPlatformLastError();
-			Assert::AreEqual(nullptr, errorStr, L"", LINE_INFO());
+			const char *errorStr = GetPlatformError();
+			Assert::AreEqual("", errorStr, L"", LINE_INFO());
 			ReleasePlatform();
 		}
-
-	#if 0
-		Msg("Test InitPlatform with broken global win32 state\n");
-		{
-			globalWin32State_Internal = (Win32State_Internal *)(void *)1;
-			bool result = InitPlatform(InitFlags::None);
-			Assert::IsFalse(result);
-			// @NOTE(final): We created an invalid global win32 state, so it will fail before allocating the error buffer.
-			size_t errorCount = GetPlatformLastErrorCount();
-			Assert::AreEqual((size_t)0, errorCount, L"", LINE_INFO());
-			const char *errorStr = GetPlatformLastError();
-			Assert::AreEqual(nullptr, errorStr, L"", LINE_INFO());
-			// @NOTE(final): This will crash because the memory is corrupted!
-			ReleasePlatform();
-		}
-	#endif
 	}
 
 	TEST_METHOD(TestMacros) {

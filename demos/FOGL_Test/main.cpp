@@ -155,9 +155,9 @@ int main(int argc, char **args) {
 	settings.video.driverType = VideoDriverType::OpenGL;
 #if !USE_LEGACY_OPENGL
 	CopyAnsiString("FPL Modern OpenGL", settings.window.windowTitle, FPL_ARRAYCOUNT(settings.window.windowTitle));
-	settings.video.profile = VideoCompabilityProfile::Core;
-	settings.video.majorVersion = 3;
-	settings.video.minorVersion = 3;
+	settings.video.opengl.compabilityFlags = OpenGLCompabilityFlags::Core;
+	settings.video.opengl.majorVersion = 3;
+	settings.video.opengl.minorVersion = 3;
 #else
 	CopyAnsiString("FPL Legacy OpenGL", settings.window.windowTitle, FPL_ARRAYCOUNT(settings.window.windowTitle));
 	settings.video.profile = VideoCompabilityProfile::Legacy;

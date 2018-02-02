@@ -14,7 +14,6 @@ This demo plays a contiguous sine or square wave in the expected S16 format.
 */
 
 #define FPL_IMPLEMENTATION
-#define FPL_AUTO_NAMESPACE
 #define FPL_NO_WINDOW
 #include <final_platform_layer.hpp>
 #include <math.h> // sinf
@@ -29,6 +28,8 @@ struct AudioTest {
 };
 
 static const float PI32 = 3.14159265359f;
+
+using namespace fpl;
 
 static uint32_t FillAudioBuffer(const AudioDeviceFormat &nativeFormat, const uint32_t frameCount, void *outputSamples, void *userData) {
 	AudioTest *audioTest = (AudioTest *)userData;
@@ -78,10 +79,10 @@ int main(int argc, char **args) {
 	// Find audio device
 	if (InitPlatform(InitFlags::Audio, settings)) {
 		AudioDeviceID audioDevices[16] = {};
-		uint32_t deviceCount = GetAudioDevices(audioDevices, FPL_ARRAYCOUNT(audioDevices));
+		uint32_t deviceCount = audio::GetAudioDevices(audioDevices, FPL_ARRAYCOUNT(audioDevices));
 		if (deviceCount > 0) {
 			settings.audio.deviceID = audioDevices[0];
-			ConsoleFormatOut("Using audio device: %s\n", settings.audio.deviceID.name);
+			console::ConsoleFormatOut("Using audio device: %s\n", settings.audio.deviceID.name);
 		}
 		ReleasePlatform();
 	}
@@ -89,16 +90,16 @@ int main(int argc, char **args) {
 	// Initialize the platform with audio enabled and the settings
 	if (InitPlatform(InitFlags::Audio, settings)) {
 		// You can overwrite the client read callback and user data if you want to
-		SetAudioClientReadCallback(FillAudioBuffer, &audioTest);
+		audio::SetAudioClientReadCallback(FillAudioBuffer, &audioTest);
 		// Start audio playback (This will start calling clientReadCallback regulary)
-		if (PlayAudio() == AudioResult::Success) {
+		if (audio::PlayAudio() == audio::AudioResult::Success) {
 			// Print out the native audio format
-			AudioDeviceFormat nativeFormat = GetAudioHardwareFormat();
-			ConsoleFormatOut("Audio with %lu KHz and %lu channels is playing, press any key to stop playback...\n", nativeFormat.sampleRate, nativeFormat.channels);
+			AudioDeviceFormat nativeFormat = audio::GetAudioHardwareFormat();
+			console::ConsoleFormatOut("Audio with %lu KHz and %lu channels is playing, press any key to stop playback...\n", nativeFormat.sampleRate, nativeFormat.channels);
 			// Wait for any key presses
 			getchar();
 			// Stop audio playback
-			StopAudio();
+			audio::StopAudio();
 		}
 		// Release the platform
 		ReleasePlatform();
