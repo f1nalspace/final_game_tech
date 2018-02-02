@@ -1,15 +1,20 @@
 /***
 final_dynamic_opengl.hpp
 
-A Open source C++ single file header OpenGL-Loader library.
+A open source C++ single file header OpenGL-Loader library.
 
 This library is designed to load all the opengl functions for you so you can start right away with OpenGL up to version 4.6.
 It is meant to be simple, so there is no context creation built-in.
 You have to create and activate the context yourself beforehand!
 
-The only dependencies are built-in operating system libraries and a C++ compiler.
+Also each opengl function is defined as static, so its private to this header file only!
+Therefore you can use this library in one project only.
 
-Final Dynamic OpenGL is released under the MIT License:
+The only dependencies are built-in operating system libraries and a C++/11 compiler.
+
+Final Dynamic OpenGL is released under the following license:
+
+MIT License
 
 Copyright (c) 2018 Torsten Spaete
 
@@ -33,10 +38,32 @@ SOFTWARE.
 ***/
 
 // ****************************************************************************
+//
+// Documentation
+//
+// ****************************************************************************
+
+/*!
+	\file final_dynamic_opengl.hpp
+	\version v0.1 beta
+	\author Torsten Spaete
+	\brief Final Dynamic OpenGL (FDYNGL) - A open source C++ single file header OpenGL-Loader library.
+*/
+
+// @TODO(final): Write actual documentation (Usage, Requirements, Notes)!
+
+// ****************************************************************************
+//
 // Header
+//
 // ****************************************************************************
 #ifndef FDYNGL_INCLUDE_HPP
 #define FDYNGL_INCLUDE_HPP
+
+// C++/11 detection
+#if !((defined(__cplusplus) && (__cplusplus >= 201103L)) || (defined(_MSC_VER) && _MSC_VER >= 1900))
+#	error "You need a C++/11 compatible compiler for this library!"
+#endif
 
 //
 // Platform detection
@@ -99,6 +126,7 @@ SOFTWARE.
 //
 // API
 //
+
 //! Core namespace
 namespace fdyngl {
 	//! Loads the opengl library suitable for your operating system and loads all the function pointers for every OpenGL version.
@@ -4177,7 +4205,9 @@ extern "C" {
 #endif // FDYNGL_INCLUDE_HPP
 
 // ****************************************************************************
+//
 // Implementation
+//
 // ****************************************************************************
 #if defined(FDYNGL_IMPLEMENTATION) && !defined(FDYNGL_IMPLEMENTED)
 #	define FDYNGL_IMPLEMENTED
