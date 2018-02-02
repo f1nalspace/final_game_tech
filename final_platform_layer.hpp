@@ -2412,16 +2412,11 @@ namespace fpl {
 #			endif
 #			if defined(FPL_PLATFORM_POSIX)
 				pthread_t posixThread;
-				pthread_mutex_t posixWaitMutex;
-				pthread_cond_t posixWaitCondition;
-				volatile int32_t posixWaitState;
-				volatile int32_t posixStopState;
 #			endif		
 			} internalHandle;
 			//! Thread state
 			volatile ThreadState currentState;
-			//! Thread state
-			//! Is this thread valid (suspended or running)
+			//! Is this thread valid
 			bool isValid;
 		};
 
@@ -2433,7 +2428,7 @@ namespace fpl {
 				CRITICAL_SECTION win32CriticalSection;
 #			endif
 #			if defined(FPL_PLATFORM_POSIX)
-				pthread_mutex_ posixMutex;
+				pthread_mutex_t posixMutex;
 #			endif		
 			} internalHandle;			//! Is it valid
 			bool isValid;
@@ -2447,7 +2442,7 @@ namespace fpl {
 				HANDLE win32Event;
 #			endif
 #			if defined(FPL_PLATFORM_POSIX)
-				pthread_cond_ posixCondition;
+				pthread_cond_t posixCondition;
 #			endif		
 			} internalHandle;
 			//! Is it valid
@@ -7966,6 +7961,7 @@ int WINAPI WinMain(HINSTANCE appInstance, HINSTANCE prevInstance, LPSTR cmdLine,
 #include <sys/mman.h> // mmap, munmap
 #include <sys/types.h> // data types
 #include <sys/stat.h> // mkdir
+#include <signal.h> // pthread_kill
 #include <stdlib.h> // wcstombs, mbstowcs
 #include <time.h> // clock_gettime, nanosleep
 #include <stdio.h> // fopen, fclose, fread, fwrite
@@ -8130,107 +8126,37 @@ namespace fpl {
 	//
 	namespace threading {
 		// @TODO(final): Move internal stuff into "platform" namespace!
-		fpl_internal bool WaitInPosixThreadWhenSuspended(ThreadContext *context) {
-			if (context->internalHandle.posixWaitState) {
-				atomics::AtomicStoreU32((volatile uint32_t *)&context->currentState, (uint32_t)ThreadState::Suspended);
-				pthread_mutex_t *mutex = &context->internalHandle.posixWaitMutex;
-				pthread_cond_t *cond = &context->internalHandle.posixWaitCondition;
-				pthread_mutex_lock(mutex);
-				pthread_cond_wait(cond, mutex);
-				pthread_mutex_unlock(mutex);
-			}
-			atomics::AtomicStoreU32((volatile uint32_t *)&context->currentState, (uint32_t)ThreadState::Running);
-			bool result = !context->posixStopState;
-			return(result);
-		}
-		fpl_internal void POSIXResumeThread(ThreadContext *context) {
-			pthread_mutex_t *mutex = &context->internalHandle.posixWaitMutex;
-			pthread_cond_t *cond = &context->internalHandle.posixWaitCondition;
-			pthread_mutex_lock(mutex);
-			context->internalHandle.posixWaitState = 0;
-			phtread_cond_broadcast(cond);
-			pthread_mutex_unlock(mutex);
-		}
-		fpl_internal void POSIXSuspendThread(ThreadContext *context) {
-			pthread_mutex_t *mutex = &context->internalHandle.posixWaitMutex;
-			pthread_mutex_lock(mutex);
-			context->internalHandle.posixWaitState = 1;
-			pthread_mutex_unlock(mutex);
-		}
-		fpl_internal void POSIXStopThread(ThreadContext *context) {
-			pthread_mutex_t *mutex = &context->internalHandle.posixWaitMutex;
-			pthread_cond_t *cond = &context->internalHandle.posixWaitCondition;
-			pthread_mutex_lock(mutex);
-			context->internalHandle.posixWaitState = 0;
-			context->internalHandle.posixStopState = 1;
-			phtread_cond_broadcast(cond);
-			pthread_mutex_unlock(mutex);
-		}
-
 		void *PosixThreadProc(void *data) {
 			ThreadContext *context = (ThreadContext *)data;
 			FPL_ASSERT(context != nullptr);
-			while (atomics::AtomicLoadU32((volatile uint32_t *)&context->currentState) == (uint32_t)ThreadState::Running) {
-				if (!WaitInPosixThreadWhenSuspended(context)) {
-					break;
-				}
-				// @TODO(final): Use a callback for the run function to wait for suspended state
-				if (context->runFunc != nullptr) {
-					context->runFunc(*context, context->data);
-				}
-			}
+            atomics::AtomicStoreU32((volatile uint32_t *)&context->currentState, (uint32_t)ThreadState::Running);
+            if (context->runFunc != nullptr) {
+                context->runFunc(*context, context->data);
+            }
 			atomics::AtomicStoreU32((volatile uint32_t *)&context->currentState, (uint32_t)ThreadState::Stopped);
-			// @TODO(final): Dynamic linking of pthread!
-			pthread_cond_destroy(&context->internalHandle.posixWaitCondition);
-			pthread_mutex_destroy(&context->internalHandle.posixWaitMutex);
-			*context = {};
 			pthread_exit(nullptr);
 		}
 
 		fpl_api ThreadContext *ThreadCreate(run_thread_function *runFunc, void *data, const bool autoStart) {
-			// @NOTE(final): pthread does not allow to "suspend" or "resume" any thread, this is totally up to the caller. So we use a mutex and a resume condition.
+			// @NOTE(final): pthread does not support to "suspend" or "resume" any thread, so autoStart is not allowed to be false
+            FPL_ASSERT(autoStart);
 			ThreadContext *result = nullptr;
 			ThreadContext *context = common::GetThreadContext();
 			if (context != nullptr) {
 				// @TODO(final): Dynamic linking of pthread!
-				context->currentState = ThreadState::Suspended;
+				context->currentState = ThreadState::Stopped;
 				context->data = data;
 				// @TODO(final): Better pthread id!
-				memory::MemoryCopy(&context->posixThread, FPL_MIN(sizeof(context->id), sizeof(context->posixThread)), &context->id);
+				memory::MemoryCopy(&context->internalHandle.posixThread, FPL_MIN(sizeof(context->id), sizeof(context->internalHandle.posixThread)), &context->id);
 				context->runFunc = runFunc;
-				context->isValid = true;
-				context->internalHandle.posixWaitState = 1;
-
-				int err;
-
-				err = pthread_mutex_init(&context->internalHandle.posixWaitMutex, nullptr);
-				if (err != 0) {
-					common::PushError("Failed creating pthread mutex, error code: %d", err);
-				}
-				if (err == 0) {
-					err = pthread_cond_init(&context->internalHandle.posixWaitCondition, nullptr);
-					if (err != 0) {
-						pthread_mutex_destroy(&context->internalHandle.posixWaitMutex);
-						common::PushError("Failed creating pthread condition, error code: %d", err);
-					}
-				}
-				if (err == 0) {
-					err = pthread_create(&context->internalHandle.posixThread, nullptr, PosixThreadProc, (void *)context);
-					if (err != 0) {
-						pthread_cond_destroy(&context->internalHandle.posixWaitCondition);
-						pthread_mutex_destroy(&context->internalHandle.posixWaitMutex);
-						common::PushError("Failed creating thread, error code: %d", err);
-					}
-				}
-				if (err == 0) {
+                int err = pthread_create(&context->internalHandle.posixThread, nullptr, PosixThreadProc, (void *)context);
+                if (err != 0) {
+                    context->isValid = true;
+                    context->currentState = ThreadState::Stopped;
+                    common::PushError("Failed creating thread, error code: %d", err);
+                } else {
 					result = context;
-
-					if (autoStart) {
-						POSIXResumeThread(context);
-					}
-				} else {
-					context->currentState = ThreadState::Stopped;
-				}
+                }
 			} else {
 				common::PushError("All %d threads are in use, you cannot create until you free one", common::MAX_THREAD_COUNT);
 			}
@@ -8254,45 +8180,21 @@ namespace fpl {
 		}
 
 		fpl_api bool ThreadSuspend(ThreadContext *context) {
-			if (context == nullptr) {
-				common::PushError("Context parameter are not allowed to be null");
-				return false;
-			}
-			if (!context->isValid) {
-				common::PushError("Thread context is not valid");
-				return false;
-			}
-			bool result = false;
-			if (!context->internalHandle.posixWaitState) {
-				POSIXSuspendThread(context);
-				result = true;
-			}
-			return(result);
+            // @NOTE(final): Suspend in pthread is not supported!
+            return(false);
 		}
 
 		fpl_api bool ThreadResume(ThreadContext *context) {
-			if (context == nullptr) {
-				common::PushError("Context parameter are not allowed to be null");
-				return false;
-			}
-			if (!context->isValid) {
-				common::PushError("Thread context is not valid");
-				return false;
-			}
-			bool result = false;
-			if (context->internalHandle.posixWaitState) {
-				POSIXResumeThread(context);
-				result = true;
-			}
-			return(result);
+            // @NOTE(final): Resume in pthread is not supported!
+            return(false);
 		}
 
 		fpl_api void ThreadDestroy(ThreadContext *context) {
-			if (context != nullptr && context->internalHandle.isValid) {
-				// @TODO(final): Test if thread is already terminated, only the release the resources.
-				pthread_cond_destroy(&context->internalHandle.posixWaitCondition);
-				pthread_mutex_destroy(&context->internalHandle.posixWaitMutex);
-				pthread_destroy(&context->internalHandle.posixThread);
+			if (context != nullptr && context->isValid) {
+                // @TODO(final): Dynamic linking of pthread!
+                if (pthread_kill(context->internalHandle.posixThread, 0) == 0) {
+                    pthread_join(context->internalHandle.posixThread, nullptr);
+                }
 				// @TODO(final): Is this really needed to use a atomic store for setting the thread state?
 				atomics::AtomicStoreU32((volatile uint32_t *)&context->currentState, (uint32_t)ThreadState::Stopped);
 				*context = {};
