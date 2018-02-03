@@ -7967,7 +7967,93 @@ int WINAPI WinMain(HINSTANCE appInstance, HINSTANCE prevInstance, LPSTR cmdLine,
 #include <stdio.h> // fopen, fclose, fread, fwrite
 #include <dlfcn.h> // dlopen, dlclose
 
+	// @NOTE(final): Little macro to not write 5 lines of code all the time
+#	define FPL_DL_GET_FUNCTION_ADDRESS(libHandle, libName, target, type, name) \
+	target = (type *)dlsym(libHandle, name); \
+	if (target == nullptr) { \
+		fpl::common::PushError("Failed getting '%s' from library '%s'", name, libName); \
+		return false; \
+	}
+
 namespace fpl {
+    //
+    // POSIX Platform
+    //
+    namespace platform {
+        
+#       define FPL_FUNC_PTHREAD_CREATE(name) int name(pthread_t *, const pthread_attr_t *, void *(*__start_routine) (void *), void *)
+        typedef FPL_FUNC_PTHREAD_CREATE(pthread_func_pthread_create);
+#       define FPL_FUNC_PTHREAD_KILL(name) int name(pthread_t thread, int sig)
+        typedef FPL_FUNC_PTHREAD_KILL(pthread_func_pthread_kill);
+#       define FPL_FUNC_PTHREAD_JOIN(name) int name(pthread_t __th, void **__thread_return)
+        typedef FPL_FUNC_PTHREAD_JOIN(pthread_func_pthread_join);
+#       define FPL_FUNC_PTHREAD_EXIT(name) void name(void *__retval)
+        typedef FPL_FUNC_PTHREAD_EXIT(pthread_func_pthread_exit);
+#       define FPL_FUNC_PTHREAD_YIELD(name) int name(void)
+        typedef FPL_FUNC_PTHREAD_YIELD(pthread_func_pthread_yield);
+        
+        struct PThreadAPI {
+            void *libraryHandle;
+            pthread_func_pthread_create *pthread_create;
+            pthread_func_pthread_kill *pthread_kill;
+            pthread_func_pthread_join *pthread_join;
+            pthread_func_pthread_exit *pthread_exit;
+            pthread_func_pthread_yield *pthread_yield;
+        };
+        
+        fpl_globalvar PThreadAPI global__PThreadApi = {};
+        
+        fpl_internal bool LoadPThreadAPI() {
+            PThreadAPI &pthreadAPI = global__PThreadApi;
+            const char* libpthreadFileNames[] = {
+                "libpthread.so",
+                "libpthread.so.0",
+                "libpthread.dylib"
+            };
+            pthreadAPI = {};
+            const char *libName = nullptr;
+            void *libHandle = nullptr;
+            for (uint32_t index = 0; index < FPL_ARRAYCOUNT(libpthreadFileNames); ++index) {
+                libName = libpthreadFileNames[index];
+                libHandle = dlopen(libName, RTLD_NOW);
+                if (libHandle != nullptr) {
+                    break;
+                }
+            }
+            if (libHandle == nullptr) {
+                return false;
+            }
+            FPL_DL_GET_FUNCTION_ADDRESS(libHandle, libName, pthreadAPI.pthread_create, pthread_func_pthread_create, "pthread_create");
+            FPL_DL_GET_FUNCTION_ADDRESS(libHandle, libName, pthreadAPI.pthread_kill, pthread_func_pthread_kill, "pthread_kill");
+            FPL_DL_GET_FUNCTION_ADDRESS(libHandle, libName, pthreadAPI.pthread_join, pthread_func_pthread_join, "pthread_join");
+            FPL_DL_GET_FUNCTION_ADDRESS(libHandle, libName, pthreadAPI.pthread_exit, pthread_func_pthread_exit, "pthread_exit");
+            FPL_DL_GET_FUNCTION_ADDRESS(libHandle, libName, pthreadAPI.pthread_yield, pthread_func_pthread_yield, "pthread_yield");
+            pthreadAPI.libraryHandle = libHandle;
+            return true;
+        }
+
+        fpl_internal void UnloadPThreadAPI() {
+            PThreadAPI &pthreadAPI = global__PThreadApi;
+            if (pthreadAPI.libraryHandle != nullptr) {
+                dlclose(pthreadAPI.libraryHandle);
+            }
+            pthreadAPI = {};
+        }
+        
+        fpl_internal void PosixReleasePlatform() {
+            UnloadPThreadAPI();
+        }
+        
+        fpl_internal bool PosixInitPlatform(const InitFlags initFlags, const Settings &initSettings) {
+            if (!LoadPThreadAPI()) {
+                common::PushError("Failed loading pthread API");
+                return false;
+            }
+            return true;
+        }
+
+    }
+    
 	//
 	// POSIX Atomics
 	//
@@ -8138,20 +8224,31 @@ namespace fpl {
 		}
 
 		fpl_api ThreadContext *ThreadCreate(run_thread_function *runFunc, void *data, const bool autoStart) {
+            const platform::PThreadAPI &pthreadAPI = platform::global__PThreadApi;
+            
 			// @NOTE(final): pthread does not support to "suspend" or "resume" any thread, so autoStart is not allowed to be false
-            FPL_ASSERT(autoStart);
+            if (!autoStart) {
+                common::PushError("Suspended started threads in POSIX platforms are not supported");
+                return nullptr;
+            }
+            if (runFunc == nullptr) {
+                common::PushError("Not allowed to use a nullptr as runFunc parameter");
+                return nullptr;
+            }
 			ThreadContext *result = nullptr;
 			ThreadContext *context = common::GetThreadContext();
 			if (context != nullptr) {
-				// @TODO(final): Dynamic linking of pthread!
 				context->currentState = ThreadState::Stopped;
 				context->data = data;
-				// @TODO(final): Better pthread id!
-				memory::MemoryCopy(&context->internalHandle.posixThread, FPL_MIN(sizeof(context->id), sizeof(context->internalHandle.posixThread)), &context->id);
 				context->runFunc = runFunc;
-                int err = pthread_create(&context->internalHandle.posixThread, nullptr, PosixThreadProc, (void *)context);
+                context->isValid = true;
+
+                // @TODO(final): Better pthread id!
+				memory::MemoryCopy(&context->internalHandle.posixThread, FPL_MIN(sizeof(context->id), sizeof(context->internalHandle.posixThread)), &context->id);
+
+                int err = pthreadAPI.pthread_create(&context->internalHandle.posixThread, nullptr, PosixThreadProc, (void *)context);
                 if (err != 0) {
-                    context->isValid = true;
+                    context->isValid = false;
                     context->currentState = ThreadState::Stopped;
                     common::PushError("Failed creating thread, error code: %d", err);
                 } else {
@@ -8181,19 +8278,22 @@ namespace fpl {
 
 		fpl_api bool ThreadSuspend(ThreadContext *context) {
             // @NOTE(final): Suspend in pthread is not supported!
+            common::PushError("Suspend in POSIX platforms is not supported!");
             return(false);
 		}
 
 		fpl_api bool ThreadResume(ThreadContext *context) {
             // @NOTE(final): Resume in pthread is not supported!
+            common::PushError("Resume in POSIX platforms is not supported!");
             return(false);
 		}
 
 		fpl_api void ThreadDestroy(ThreadContext *context) {
+            const platform::PThreadAPI &pthreadAPI = platform::global__PThreadApi;
+            FPL_ASSERT(pthreadAPI.libHandle != nullptr);
 			if (context != nullptr && context->isValid) {
-                // @TODO(final): Dynamic linking of pthread!
-                if (pthread_kill(context->internalHandle.posixThread, 0) == 0) {
-                    pthread_join(context->internalHandle.posixThread, nullptr);
+                if (pthreadAPI.pthread_kill(context->internalHandle.posixThread, 0) == 0) {
+                    pthreadAPI.pthread_join(context->internalHandle.posixThread, nullptr);
                 }
 				// @TODO(final): Is this really needed to use a atomic store for setting the thread state?
 				atomics::AtomicStoreU32((volatile uint32_t *)&context->currentState, (uint32_t)ThreadState::Stopped);
@@ -8209,6 +8309,7 @@ namespace fpl {
 		fpl_api DynamicLibraryHandle DynamicLibraryLoad(const char *libraryFilePath) {
 			DynamicLibraryHandle result = {};
 			if (libraryFilePath != nullptr) {
+                // @TODO(final): Is RTLD_NOW for dlopen correct?
 				void *p = dlopen(libraryFilePath, RTLD_NOW);
 				if (p != nullptr) {
 					result.internalHandle.posixHandle = p;
@@ -8629,7 +8730,6 @@ namespace fpl {
 		}
 	} // files
 
-
 }
 
 #endif // FPL_PLATFORM_POSIX
@@ -8644,13 +8744,27 @@ namespace fpl {
 #   include <ctype.h> // isspace
 
 namespace fpl {
-	fpl_api bool InitPlatform(const InitFlags initFlags, const Settings &initSettings) {
-		return true;
-	}
-
-	fpl_api void ReleasePlatform() {
-	}
-
+    namespace platform {
+        struct LinuxAppState {
+            bool isInitialized;
+        };
+        fpl_globalvar LinuxAppState global__Linux__AppState = {};
+        
+        fpl_internal void LinuxReleasePlatform() {
+            platform::PosixReleasePlatform();
+            platform::global__Linux__AppState.isInitialized = false;
+        }
+        
+        fpl_internal bool LinuxInitPlatform(const InitFlags initFlags, const Settings &initSettings) {
+            if (!platform::PosixInitPlatform(initFlags, initSettings)) {
+                common::PushError("Failed initalizing POSIX platform");
+                return false;
+            }
+            platform::global__Linux__AppState.isInitialized = true;
+            return true;
+        }
+    }
+    
 	// Linux Hardware
 	namespace hardware {
 		fpl_api uint32_t GetProcessorCoreCount() {
@@ -8740,6 +8854,24 @@ namespace fpl {
 		}
 	}
 
+	fpl_api void ReleasePlatform() {
+		if (!platform::global__Linux__AppState.isInitialized) {
+			common::PushError("Platform is not initialized");
+			return;
+		}
+		platform::LinuxReleasePlatform();
+	}
+
+	fpl_api bool InitPlatform(const InitFlags initFlags, const Settings &initSettings) {
+		if (platform::global__Linux__AppState.isInitialized) {
+			common::PushError("Platform is already initialized");
+			return false;
+		}
+		bool result = platform::LinuxInitPlatform(initFlags, initSettings);
+		return(result);
+	}
+
+    
 }
 #endif // FPL_PLATFORM_LINUX
 
