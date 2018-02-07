@@ -24,15 +24,19 @@ int main(int argc, char **args) {
 	settings.video.driverType = VideoDriverType::Software;
 	if (InitPlatform(InitFlags::Video, settings)) {
 		RandomSeries series = {1337};
-		VideoBackBuffer *videoContext = GetVideoBackBuffer();
+		VideoBackBuffer *backBuffer = GetVideoBackBuffer();
 		while (WindowUpdate()) {
-			uint32_t *p = videoContext->pixels;
-			for (uint32_t y = 0; y < videoContext->height; ++y) {
-				for (uint32_t x = 0; x < videoContext->width; ++x) {
+			for (uint32_t y = 0; y < backBuffer->height; ++y) {
+				uint32_t *p = (uint32_t *)((uint8_t *)backBuffer->pixels + y * backBuffer->lineWidth);
+				for (uint32_t x = 0; x < backBuffer->width; ++x) {
+#if 1
 					uint8_t r = RandomByte(series);
 					uint8_t g = RandomByte(series);
 					uint8_t b = RandomByte(series);
 					uint32_t color = (0xFF << 24) | (r << 16) | (g << 8) | b;
+#else
+					uint32_t color = 0xFFFF00FF;
+#endif
 					*p++ = color;
 				}
 			}

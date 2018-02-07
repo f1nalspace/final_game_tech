@@ -1545,7 +1545,7 @@ static uint32_t AudioReadCallback(const AudioDeviceFormat &nativeFormat, const u
 		uint8_t *conversionAudioBuffer = audio->conversionAudioBuffer;
 		uint32_t maxConversionAudioBufferSize = audio->maxConversionAudioBufferSize;
 
-		uint32_t outputSampleStride = nativeFormat.channels * audio::GetAudioSampleSizeInBytes(nativeFormat.type);
+		uint32_t outputSampleStride = audio::GetAudioFrameSizeInBytes(nativeFormat.type, nativeFormat.channels);
 		uint32_t maxOutputSampleBufferSize = outputSampleStride * frameCount;
 
 		uint32_t remainingFrameCount = frameCount;
@@ -1654,7 +1654,7 @@ static uint32_t AudioReadCallback(const AudioDeviceFormat &nativeFormat, const u
 		// Update audio clock
 		if (!isnan(audio->audioClock)) {
 			uint32_t writtenSize = result * outputSampleStride;
-			double pts = audio->audioClock - (double)(2 * nativeFormat.bufferSizeInBytes + writtenSize) / state->audio.audioTarget.bufferSizeInBytes;
+			double pts = audio->audioClock - (double)(nativeFormat.periods * nativeFormat.bufferSizeInBytes + writtenSize) / state->audio.audioTarget.bufferSizeInBytes;
 			SetClockAt(audio->clock, pts, audio->audioClockSerial, audioCallbackTime / (double)AV_TIME_BASE);
 			SyncClockToSlave(state->externalClock, audio->clock);
 		}
