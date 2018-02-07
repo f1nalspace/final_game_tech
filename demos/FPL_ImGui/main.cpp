@@ -257,7 +257,7 @@ int main(int argc, char **args) {
 							{
 								ImGUIKeyEvent(event.keyboard.keyCode, event.keyboard.mappedKey, event.keyboard.modifiers, false);
 							} break;
-							case KeyboardEventType::Char:
+							case KeyboardEventType::CharInput:
 							{
 								if (event.keyboard.keyCode > 0 && event.keyboard.keyCode < 0x10000) {
 									io.AddInputCharacter(ImWchar(event.keyboard.keyCode));

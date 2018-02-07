@@ -2,6 +2,7 @@ var searchData=
 [
   ['usage',['Usage',['../page_usage.html',1,'page_introduction']]],
   ['unknown',['Unknown',['../group___files.html#gga7a7d7d673ed79f0ed96f89e2492e62c1a88183b946cc5f0e8c96b2e66e1c74a7e',1,'fpl::files']]],
+  ['updategamecontrollers',['UpdateGameControllers',['../group___window_events.html#ga6d63e5f628a0d283e1fcdc19787531bd',1,'fpl::window']]],
   ['usedpagesize',['usedPageSize',['../structfpl_1_1hardware_1_1_memory_infos.html#a2d63780c63a72c4856b94c268f500977',1,'fpl::hardware::MemoryInfos']]],
   ['usedphysicalsize',['usedPhysicalSize',['../structfpl_1_1hardware_1_1_memory_infos.html#a61dd3d9c16cdfd6b5918df74502cd8d1',1,'fpl::hardware::MemoryInfos']]],
   ['usedvirtualsize',['usedVirtualSize',['../structfpl_1_1hardware_1_1_memory_infos.html#a791252916809e99d984bd0e01e38d655',1,'fpl::hardware::MemoryInfos']]],

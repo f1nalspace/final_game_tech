@@ -1,7 +1,7 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio 14
-VisualStudioVersion = 14.0.25123.0
+VisualStudioVersion = 14.0.25420.1
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "FPL_OpenGL", "FPL_OpenGL\FPL_OpenGL.vcxproj", "{4D324317-CB24-4B90-AEDA-EA084FF25C2D}"
 EndProject
@@ -21,6 +21,7 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "FPL_FFMpeg", "FPL_FFMpeg\FP
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Root", "Root", "{8BC6F705-2A3B-41E5-B20F-E2473A014BD4}"
 	ProjectSection(SolutionItems) = preProject
+		..\final_platform_layer.doxygen = ..\final_platform_layer.doxygen
 		..\README.md = ..\README.md
 	EndProjectSection
 EndProject

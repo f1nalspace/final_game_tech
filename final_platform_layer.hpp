@@ -41,7 +41,7 @@ SOFTWARE.
 
 /*!
 	\file final_platform_layer.hpp
-	\version v0.5.8.0 beta
+	\version v0.5.8.1 beta
 	\author Torsten Spaete
 	\brief Final Platform Layer (FPL) - A Open source C++ single file header platform abstraction layer library.
 */
@@ -250,6 +250,9 @@ SOFTWARE.
 	\subpage page_otutorial_window_creation <br>
 	\subpage page_otutorial_window_events <br>
 
+	\subsection subsection_otutorial_input Input
+	\subpage page_otutorial_input_events <br>
+
 	\subsection subsection_otutorial_video Video
 	\subpage page_otutorial_video_general <br>
 	\subpage page_otutorial_video_legacy_opengl <br>
@@ -258,7 +261,7 @@ SOFTWARE.
 
 	\subsection subsection_otutorial_audio Audio
 	\subpage page_otutorial_audio_general <br>
-	\subpage page_otutorial_audio_clientdata <br>
+	\subpage page_otutorial_audio_writesamples <br>
 */
 
 /*!
@@ -392,7 +395,7 @@ SOFTWARE.
 	\endcode
 */
 
-	
+
 
 
 /*!
@@ -432,7 +435,7 @@ SOFTWARE.
 
 	\section section_otutorial_errorhandling_note Note
 	Keep in mind that any platform error is reported in the output of the error console automatically!<br>
-	If you dont want to do that, then simply define the compiler directive for ignoring this behavior - before including this library with implementation enabled:
+	If you dont want to do that, then simply define the preprocessor directive for ignoring this behavior - before including this library with implementation enabled:
 
 	\code{.cpp}
 	#define FPL_NO_ERROR_IN_CONSOLE
@@ -477,6 +480,588 @@ SOFTWARE.
 	\page page_otutorial_window_events Window events
 	\tableofcontents
 
+	\section section_otutorial_window_events_polling Polling the events
+
+	To poll the events from the internal queue you simply call the correspondending function \ref fpl::window::PollWindowEvent() in a while-loop inside your actual main-loop.<br>
+	Each event is copied into the \ref fpl::window::Event reference parameter which you can handle or not.<br>
+	If there are no events left, the function returns false and you are done.
+
+	\code{.cpp}
+	fpl::window::Event currentEvent;
+	while (fpl::Window::PollWindowEvent(currentEvent)) {
+		// ... Handling the event
+	}
+	\endcode
+
+	\section section_otutorial_window_events_handling Handling the Events
+
+	Each event has a \ref fpl::window::Event.type field which you can check on to read the actual data (Keyboard, Mouse, Window, etc.).
+
+	\code{.cpp}
+	fpl::window::Event currentEvent;
+	while (fpl::window::PollWindowEvent(currentEvent)) {
+		switch (currentEvent.type) {
+			case fpl::window::EventType::Window:
+			{
+				// A window event, like resize, lost/got focus, etc.
+			} break;
+			case fpl::window::EventType::Keyboard:
+			{
+				// A keyboard event, like key down/up, pressed, etc.
+			} break;
+			case fpl::window::EventType::Mouse:
+			{
+				// A mouse event, like mouse button down/up, mouse move, etc.
+			} break;
+			case fpl::window::EventType::Gamepad:
+			{
+				// A gamepad event, like connected/disconnected, state-updated etc.
+			} break;
+		}
+	}
+	\endcode
+
+	All available event types are stored in the \ref fpl::window::EventType enumeration.
+
+	\section section_otutorial_window_events_handle_event_type Handle the event data
+
+	All relevant event data are stored in fields which matches the lowercase \ref fpl::window::EventType name.<br>
+	Each event structure has another type field to check for the actual type (Key-Down, Mouse-Move, Window-Resize etc.).<br>
+
+	\subsection subsection_otutorial_window_events_handle_event_type_mouse Mouse events
+
+	Mouse event data are stored in the \ref fpl::window::MouseEvent structure.
+
+	\code{.cpp}
+	switch (currentEvent.mouse.type) {
+		case fpl::window::MouseEventType::ButtonDown:
+		{
+			fpl::window::MouseButtonType button = currentEvent.mouse.button;
+			// ... do something with the mouse button
+		} break;
+
+		case fpl::window::MouseEventType::Move:
+		{
+			int mouseX = currentEvent.mouse.mouseX;
+			int mouseY = currentEvent.mouse.mouseY;
+			// ... do something with the mouse position
+		} break;
+	}
+	\endcode
+
+	\subsection subsection_otutorial_window_events_handle_event_type_keyboard Keyboard events
+
+	Keyboard event data are stored in the \ref fpl::window::KeyboardEvent structure.<br>
+	<br>
+	You can either check for the original \ref fpl::window::KeyboardEvent.keyCode or use the fpl::window::KeyboardEvent.mappedKey field - which is much easier and less error prone.<br>
+
+	\code{.cpp}
+	switch (currentEvent.keyboard.type) {
+		case fpl::window::KeyboardEventType::KeyDown:
+		{
+			// ... Handle the key code
+			uint64_t keyCode = currentEvent.keyboard.keyCode;
+			if (keyCode == 65 || keyCode == 97) {
+				// Letter A is held down
+			}
+
+			// or
+
+			// ... handle the mapped key
+			fpl::window::Key mappedKey = currentEvent.keyboard.mappedKey;
+			if (mappedKey == fpl::window::Key::Key_F1) {
+				// F1 key held down
+			}
+		} break;
+
+		case fpl::window::KeyboardEventType::CharInput:
+		{
+			// Handle character input
+		} break;
+	}
+	\endcode
+
+	\subsection subsection_otutorial_window_events_handle_event_type_gamepad Gamepad events
+
+	Gamepad event data are stored in the \ref fpl::window::GamepadEvent structure.<br>
+
+	\code{.cpp}
+	switch (currentEvent.gamepad.type) {
+		case fpl::window::GamepadEventType::Connected:
+		{
+			// New gamepad device connected
+		} break;
+
+		case fpl::window::GamepadEventType::Disconnected:
+		{
+			// Lost connection to a gamepad device
+		} break;
+
+		case fpl::window::GamepadEventType::StateChanged:
+		{
+			// State of one controller updated (Buttons, Movement, etc.)
+			if (absf(currentEvent.gamepad.leftStickX) > 0) {
+				// ... Handle horizontal movement on left stick
+			}
+			if (currentEvent.gamepad.actionX.isDown) {
+				// ... X-Button is held down
+			}
+		} break;
+	}
+	\endcode
+
+	\subsection subsection_otutorial_window_events_handle_event_type_window Window events
+
+	Window event data are stored in the \ref fpl::window::WindowEvent structure.<br>
+
+	\code{.cpp}
+	switch (currentEvent.window.type) {
+		case fpl::window::WindowEventType::Resized:
+		{
+			uint32_t newWidth = currentEvent.window.width;
+			uint32_t newHeight = currentEvent.window.height;
+			// ... Window was resized, handle it properly
+		} break;
+	}
+	\endcode
+
+	\section section_otutorial_window_events_inotes Important Notes
+
+	FPL does not cache the events from the previous update. If you dont handle the event - the data is lost!<br>
+	You are responsible for caching the data if needed.<br>
+	Also you must always poll each event to ensure that the internal queue will not get full!
+*/
+
+/*!
+	\page page_otutorial_input_events Input events
+
+	\section section_page_otutorial_input_events_overview Overview
+
+	All input events are mapped to window events.<br>
+	To detect any key presses, button downs, you simply handle the specific event type in your event-loop!<br>
+	<br>
+	For details see the \subpage page_otutorial_window_events page.
+*/
+
+/*!
+	\page page_otutorial_video_general Initialization & Overview
+
+	\section otutorial_video_general_init Initialize a video context
+
+	To initialize either software or hardware video output you have to set the \ref fpl::InitFlags::Video flag in the \ref fpl::InitPlatform() call and ensure that video is not disabled by a preprocessor directive (FPL_NO_VIDEO).<br>
+
+	Also setting the \ref fpl::InitFlags::Video flag ensures that the \ref fpl::InitFlags::Window flag is appended automatically.<br>
+
+	\subsection otutorial_video_general_init_default Default video output
+
+	If you dont specify any settings then the video driver is automatically detected, depending on your operating system and supported hardware and software.<br>
+	By default this is most likely be legacy OpenGL - which is supported on almost every video card on any OS.<br>
+	<br>
+	But this is not the recommended way to initialize video output, due to the fact that you are responsible for handling any video output yourself.<br>
+
+	\code{.cpp}
+	if (fpl::InitPlatform(fpl::InitFlags::Video)) {
+		// ... your code here
+	}
+	\endcode
+
+	\subsection otutorial_video_general_init_setting_driver Setting the video driver
+
+	It recommended to set at least the video driver manually, to ensure that you get either initialized with that driver properly or a error when your configuration is not supported.<br>
+	<br>
+	You do that by simply setting the \ref fpl::VideoDriverType field in your \ref fpl::VideoSettings structure which is included in the \ref fpl::Settings structure to the \ref fpl::InitPlatform() call.
+
+	\code{.cpp}
+	fpl::Settings settings = DefaultSettings();
+	fpl::VideoSettings &videoSettings = settings.video;
+
+	// Forcing the video driver to be OpenGL
+	videoSettings.driverType = fpl::VideoDriverType::OpenGL;
+
+	if (fpl::InitPlatform(fpl::InitFlags::Video, settings)) {
+		// ... your code here
+	}
+	\endcode
+
+	\section otutorial_video_general_vsync Enable/Disable Vertical Syncronisation
+
+	If you want to enable/disable vertical syncronization you simply set the fpl::VideoSettings.isVSync field respectively.
+	<br>
+	\note There is no guarantee that vertical syncronisation is supported by your video device or selected driver.
+	\note Software video output does not support vertical syncronisation!
+
+	\section otutorial_video_general_disable Disable unneeded Video Drivers
+
+	To compile out certain video drivers you simply specify the FPL_NO_VIDEO_[Name of the video driver] preprocessor directive.<br>
+	But the correspondending \ref fpl::VideoDriverType is never removed from the enumeration - keep that in mind!<br>
+
+	Example (Disable OpenGL Video Driver):
+
+	\code{.cpp}
+	#define FPL_NO_VIDEO_OPENGL
+	#define FPL_IMPLEMENTATION
+	#include <final_platform_layer.hpp>
+	\endcode
+
+	\section otutorial_video_general_disable_all Disable all Video Output
+
+	To compile out all video output code you define the FPL_NO_VIDEO preprocessor directive.
+
+	\code{.cpp}
+	#define FPL_NO_VIDEO
+	#define FPL_IMPLEMENTATION
+	#include <final_platform_layer.hpp>
+	\endcode
+
+	\note Keep in mind that this is not useful for window based applications!
+	\note If you writing a console application and dont want any video output whatsoever you set the FPL_NO_WINDOW which automatically disabled any video devices as well.
+
+	\section otutorial_video_general_notes Notes
+
+	Driver types stored in the \ref fpl::VideoDriverType enumeration are not filtered away, even when you disable it by a preprocessor directive!<br>
+	Keep that in mind when you initialize the video device.<br>
+
+*/
+
+/*!
+	\page page_otutorial_video_legacy_opengl Legacy OpenGL
+
+	\section section_otutorial_video_legacy_opengl_init Initialize Legacy OpenGL
+
+	To initialize a legacy OpenGL (up to GL version 2.1) rendering context you simply set the the \ref fpl::InitFlags::Video flag in the \ref fpl::InitPlatform() call and change the video driver type to \ref fpl::VideoDriverType::OpenGL and set the \ref fpl::OpenGLVideoSettings.compabilityFlags to \ref fpl::OpenGLCompabilityFlags::Legacy .<br>
+	<br>
+	This will work in ~99% on all supported platforms - if not please post a issue for that platform/configuration/video-card ;-)
+
+	\code{.cpp}
+	fpl::Settings settings = DefaultSettings();
+	fpl::VideoSettings &videoSettings = settings.video;
+
+	// Forcing the video driver to be legacy OpenGL
+	videoSettings.driverType = fpl::VideoDriverType::OpenGL;
+	videoSettings.opengl.compabilityFlags = fpl::OpenGLCompabilityFlags::Legacy;
+
+	if (fpl::InitPlatform(fpl::InitFlags::Video, settings)) {
+		// ... your code here
+	}
+	\endcode
+
+	\section section_otutorial_video_legacy_opengl_usage Usage
+
+	\subsection subsection_otutorial_video_legacy_opengl_usage_extensions Extensions loader
+
+	To use features of OpenGL 1.2 or later you need some sort of a opengl extension loader which gives you access to the constants and functions like glMultiTexCoord2f().<br>
+	For more details please check the modern OpenGL \ref subsection_otutorial_video_modern_opengl_usage_extensions section.
+
+	\subsection subsection_otutorial_video_legacy_opengl_usage_present Presenting your frame
+
+	To swap the backbuffer with the frontbuffer in the window you have to call the \ref fpl::window::WindowFlip() function.<br>
+	Its recommend to call this after each draw call of your frame at the end of the main-loop.
+*/
+
+/*!
+	\page page_otutorial_video_modern_opengl Modern OpenGL
+
+	\section section_otutorial_video_modern_opengl_init Initialize a modern OpenGL Rendering Context
+
+	To initialize a modern OpenGL (3.0+) rendering context you simply set the the \ref fpl::InitFlags::Video flag in the \ref fpl::InitPlatform() call and change the video driver type to \ref fpl::VideoDriverType::OpenGL and setup the following parameters:<br>
+	- Set the \ref fpl::OpenGLVideoSettings.majorVersion to 3 or higher
+	- Set the \ref fpl::OpenGLVideoSettings.minorVersion to 0 or higher
+	- Set the \ref fpl::OpenGLVideoSettings.compabilityFlags to either a \ref fpl::OpenGLCompabilityFlags::Core or \ref fpl::OpenGLCompabilityFlags::Compability
+	- Optionally add the fpl::OpenGLCompabilityFlags::Forward flag for removing obsolete functions
+
+	\code{.cpp}
+	fpl::Settings settings = DefaultSettings();
+	fpl::VideoSettings &videoSettings = settings.video;
+
+	// Forcing the video driver to be modern OpenGL with Core profile and for GL version 3.3
+	videoSettings.driverType = fpl::VideoDriverType::OpenGL;
+	videoSettings.opengl.compabilityFlags = fpl::OpenGLCompabilityFlags::Core;
+	videoSettings.opengl.majorVersion = 3;
+	videoSettings.opengl.minorVersion = 3;
+
+	if (fpl::InitPlatform(fpl::InitFlags::Video, settings)) {
+		// ... modern context is ready
+	}
+	\endcode
+
+	\section section_otutorial_video_modern_opengl_usage Usage
+
+	\subsection subsection_otutorial_video_modern_opengl_usage_extensions Extensions loader
+
+	To use modern OpenGL you need some sort of a opengl extension loader which gives you access to the constants and functions like glCreateProgram().<br>
+	You can either use a thirdparty C/C++ library for doing that for you or use/write your own OpenGL loader. FPL should work in both ways.<br>
+	<br>
+	List of tested OpenGL loaders:
+	- <a href="https://github.com/f1nalspace/final_game_tech/blob/master/final_dynamic_opengl.hpp">Final Dynamic OpenGL</a>
+	- <a href="http://glew.sourceforge.net/">Glew</a>
+
+	\subsection subsection_otutorial_video_modern_opengl_present Presenting your frame
+
+	To swap the backbuffer with the frontbuffer in the window you have to call the \ref fpl::window::WindowFlip() function.<br>
+	Its recommend to call this after each draw call of your frame at the end of the main-loop.
+
+	\section section_otutorial_video_modern_opengl_notes Notes
+	FPL does not provide any opengl types, prototypes or functions - its fully up to the caller how to handle this.
+	<br>
+	Keep in mind that FPL does not work with any OpenGL platform abstraction library like GLFW or GLUT!
+*/
+
+/*!
+	\page page_otutorial_video_software Software Output
+
+	\section section_otutorial_video_software_init Initialize a Software Backbuffer
+
+	FPL supports software video output as well, which will work on any platform.<br>
+
+	\code{.cpp}
+	fpl::Settings settings = DefaultSettings();
+	fpl::VideoSettings &videoSettings = settings.video;
+
+	// Forcing the video driver to be software
+	videoSettings.driverType = fpl::VideoDriverType::Software;
+
+	if (fpl::InitPlatform(fpl::InitFlags::Video, settings)) {
+		// Video software back buffer is ready
+		fpl::video::VideoBackBuffer *videoBackBuffer = fpl::video::GetVideoBackBuffer();
+	}
+	\endcode
+
+	\section section_otutorial_video_software_usage Usage
+
+	To use the software backbuffer you simply access the \ref fpl::video::VideoBackBuffer from the \ref fpl::video::GetVideoBackBuffer() function and update the pixels as needed.
+
+	\subsection subsection_otutorial_video_software_present Presenting your frame
+
+	To update the frontbuffer in the window with the pixels you may have changed you have to call the \ref fpl::window::WindowFlip() function.<br>
+	Its recommend to call this after each draw call of your frame at the end of the main-loop.
+
+	\subsection subsection_otutorial_video_software_drawing Drawing
+
+	Drawing is done by manually changing the pixels in the \ref fpl::video::VideoBackBuffer.pixels field.<br>
+	Each pixel is stored as 32-bit with 4 RGBA components in little-endian (AA BB GG RR).<br>
+	Lines are stored in top-down order - meaning that position "0" in the \ref fpl::video::VideoBackBuffer.pixels field is always the top-left corner of the bitmap!<br>
+	To calculate the actual position for the current line you simply multiply your Y-Index with the \ref fpl::video::VideoBackBuffer.lineWidth field.
+
+	<b>Example (Filling all pixels to purple):</b>
+
+	\code{.cpp}
+	fpl::video::VideoBackBuffer *backBuffer = fpl::video::GetVideoBackBuffer();
+	for (uint32_t y = 0; y < backBuffer->height; ++y) {
+		uint32_t *p = (uint32_t *)((uint8_t *)backBuffer->pixels + y * backBuffer->lineWidth);
+		for (uint32_t x = 0; x < backBuffer->width; ++x) {
+			uint32_t color = 0xFFFF00FF;
+			*p++ = color;
+		}
+	}
+	\endcode
+
+	\subsection subsection_otutorial_video_software_outrect Limiting the output rectangle (Stretching vs non-stretched)
+
+	To force the pixels to be shown in a fixed rectangle you simply enable the \ref fpl::video::VideoBackBuffer.useOutputRect field and update the \ref fpl::video::VideoBackBuffer.outputRect as needed.<br>
+	This mimics a "viewport" which is similar to OpenGLs glViewport().<br>
+	<br>
+	If you dont use this feature all pixels are fully stretched to the current window area always!
+
+	\note This viewport should not be greater than the actual window area dimension!
+
+	<b>Example (Resize window event):</b>
+	\code{.cpp}
+	fpl::video::VideoBackBuffer *backBuffer = fpl::video::GetVideoBackBuffer();
+	backBuffer->useOutputRect = true;
+	while (fpl::window::WindowUpdate()) {
+		fpl::window::Event ev;
+		while (fpl::window::PollWindowEvent(ev)) {
+			if (ev.type == fpl::window::EventType::Window) {
+				if (ev.window.type == fpl::window::WindowEventType::Resized) {
+					VideoRect newRect = ComputeLetterbox(ev.window.width, ev.window.height, backBuffer->width, backBuffer->height); // ... Compute new rectangle here (Letterbox or something)
+					backBuffer->outputRect = newRect;
+				}
+			}
+		}
+
+		// ... Modify the pixels here (Draw call)
+
+		fpl::window::WindowFlip();
+	}
+	\endcode
+
+	<b>Example (Always before the draw call):</b>
+	\code{.cpp}
+	fpl::video::VideoBackBuffer *backBuffer = fpl::video::GetVideoBackBuffer();
+	backBuffer->useOutputRect = true;
+	while (fpl::window::WindowUpdate()) {
+		fpl::window::Event ev;
+		while (fpl::window::PollWindowEvent(ev)) {}
+
+		WindowSize windowArea = GetWindowArea();
+		VideoRect newRect = ComputeLetterbox(windowArea, backBuffer->width, backBuffer->height); // ... Compute new rectangle here (Letterbox or something)
+		backBuffer->outputRect = newRect;
+
+		// ... Modify the pixels here (Draw call)
+
+		fpl::window::WindowFlip();
+	}
+	\endcode
+
+	\subsection subsection_otutorial_video_software_resize Resizing the backbuffer
+
+	By default the video backbuffer is automatically resized when the dimension of the window area changes.<br>
+	If you want to manually do this, you disable this feature in the \ref fpl::VideoSettings.isAutoSize field - in the \ref fpl::Settings.video configuration section.<br>
+	<br>
+	To force the backbuffer to be resized to a fixed dimension you have to call \ref fpl::video::ResizeVideoBackBuffer() with a new width and height.
+	<br>
+	\warning Do not call this method while you are modifing pixels!
+
+	\section section_otutorial_video_software_notes Notes
+
+	There is no software rendering functions built-in! If you want to draw for example a circle, you have to roll out your own drawCircle() function - which may uses Bresenham as its base or something.<br>
+	Vertical syncronisation is not supported for software video drivers!
+*/
+
+/*!
+	\page page_otutorial_audio_general Initialization & Usage
+
+	\section section_otutorial_audio_general_default_init Default initialization
+
+	To initialize audio playback with default settings (Interleaved, 48 KHz, 2 Channels, signed 16-bit integer format) you have to set the \ref fpl::InitFlags::Audio flag in the \ref fpl::InitPlatform() call and ensure that audio is not disabled by a preprocessor directive (FPL_NO_AUDIO).<br>
+
+	\code{.cpp}
+	if (fpl::InitPlatform(fpl::InitFlags::Audio)) {
+		// ... your code here
+	}
+	\endcode
+
+	\subsection subsection_otutorial_audio_general_default_init_clientcallback Setting the client callback
+
+	Next is to specify the client user callback which gets invoked regularly when the audio device requires new samples to play.<br>
+	This \ref fpl::AudioClientReadFunction "client callback" can be set up in the \ref fpl::AudioSettings.clientReadCallback field from the \ref fpl::Settings.audio or changed by calling \ref fpl::audio::SetAudioClientReadCallback() :<br>
+
+	\code{.cpp}
+	static uint32_t MyAudioPlaybackCallback(const AudioDeviceFormat &nativeFormat, const uint32_t frameCount, void *outputSamples, void *userData) {
+		// ... Fill audio frames here
+	}
+
+	fpl::Settings settings = DefaultSettings();
+	fpl::AudioSettings &audioSettings = settings.audio;
+	audioSettings.clientReadCallback = MyAudioPlaybackCallback;
+	audioSettings.userData = // ... pointer to some user data
+	if (fpl::InitPlatform(fpl::InitFlags::Audio, settings)) {
+		// ... your code here
+	}
+	\endcode
+
+	\note This step must be done before you actually start playing the audio!
+	\note You can specify a user data pointer which gets passed to the client callback as well.
+
+	\section section_otutorial_audio_general_custom_init Custom initialization
+
+	You can change several audio settings (Sample rate, Number of Channels, Format, etc.) before initializing the audio playback like this:<br>
+
+	\code{.cpp}
+	fpl::Settings settings = DefaultSettings();
+	fpl::AudioSettings &audioSettings = settings.audio;
+	audioSettings.clientReadCallback = MyAudioPlaybackCallback;
+	audioSettings.userData = // ... pointer to some user data
+	fpl::AudioDeviceFormat &audioDeviceFormat = audioSettings.deviceFormat;
+	audioDeviceFormat.sampleRate = 48000;
+	audioDeviceFormat.channels = 2;
+	audioDeviceFormat.type = fpl::AudioFormatType::F32;
+	if (fpl::InitPlatform(fpl::InitFlags::Audio, settings)) {
+		// ... your code here
+	}
+	\endcode
+
+	\note Please see the \ref section_otutorial_audio_general_notes for possible limitations!
+
+	\section section_otutorial_audio_general_choosing_driver Choosing the audio driver
+
+	By default FPL uses the first available audio driver which is supported on your platform.<br>
+	If you want to force FPL to use a certain audio driver, you can do this by changing the \ref fpl::AudioSettings.driver field in the \ref fpl::AudioSettings structure:<br>
+
+	\code{.cpp}
+	fpl::Settings settings = DefaultSettings();
+	fpl::AudioSettings &audioSettings = settings.audio;
+
+	// Forcing to use the DirectSound audio driver
+	audioSettings.driver = fpl::AudioDriverType::DirectSound;
+
+	if (fpl::InitPlatform(fpl::InitFlags::Audio, settings)) {
+		// ... your code here
+	}
+	\endcode
+
+	Its recommend to use the default \ref fpl::AudioDriverType::Auto which uses the first supported audio driver.
+
+	\warning If your platform/system does not support the desired driver the audio and platform initialization will fail!
+
+	\section section_otutorial_audio_general_playing_and_stopping Start and stop playing the audio samples
+
+	After the initialization the audio device is stopped always.<br>
+	To start requesting and playing audio samples you have to call the \ref fpl::audio::PlayAudio() function.<br>
+	<br>
+	To stop the audio playback you call the opposite \ref fpl::audio::StopAudio() function.
+
+	\note If you are about to release the platform using \ref fpl::ReleasePlatform() you should always call \ref fpl::audio::StopAudio() before!
+
+	\section section_otutorial_audio_general_notes Notes
+
+	There is no guarantee that you get the desired audio format you specified back!<br>
+	You should always check the \ref fpl::AudioDeviceFormat "nativeAudioFormat" in your client callback and convert/write the correct samples the audio device expects!<br>
+	<br>
+	How to write samples is explained here: \subpage page_otutorial_audio_writesamples
+*/
+
+/*!
+	\page page_otutorial_audio_writesamples Writing audio samples
+
+	\section section_otutorial_audio_writesamples_overview Overview
+
+	To write audio samples in the audio client callback you have to know at least four things:
+	- Target format (S16, S24, F32, etc.)
+	- Target number of channels (1 = Mono, 2 = Stereo, etc.)
+	- Target sample rate (44 KHz, 48 Khz, etc.)
+	- Number of frames required
+
+	All these informations are provided by the \ref fpl::AudioClientReadFunction callback function.<br>
+	<br>
+	To get this information before the audio playback is started, you can query it by calling \ref fpl::audio::GetAudioHardwareFormat() .
+
+	\section section_otutorial_audio_writesamples_functions Useful functions
+
+	To help with sample computation there are several inline functions available:
+
+	- \ref fpl::audio::GetAudioHardwareFormat()
+	- \ref fpl::audio::GetAudioBufferSizeInFrames()
+	- \ref fpl::audio::GetAudioDriverString()
+	- \ref fpl::audio::GetAudioFormatString()
+	- \ref fpl::audio::GetAudioSampleSizeInBytes()
+	- \ref fpl::audio::GetAudioFrameSizeInBytes()
+	- \ref fpl::audio::GetAudioBufferSizeInBytes()
+
+	\section section_otutorial_audio_writesamples_s16 Writing 16-bit signed integer samples
+
+	\code{.cpp}
+	static uint32_t MyAudioPlaybackCallback(const AudioDeviceFormat &nativeFormat, const uint32_t frameCount, void *outputSamples, void *userData) {
+		uint32_t result = 0;
+		if (nativeFormat.type == AudioFormatType::S16) {
+			int16_t *outSamples = (int16_t *)outputSamples;
+			for (uint32_t frameIndex = 0; frameIndex < frameCount; ++frameIndex) {
+				for (uint32_t channelIndex = 0; channelIndex < nativeFormat.channels; ++channelIndex) {
+					*outSamples++ = // ... Getting a sample for the current frame/channel
+					++result;
+				}
+			}
+		} else {
+			// ... handle other formats here
+		}
+		return result;
+	}
+	\endcode
+
+	\section section_otutorial_audio_writesamples_notes Notes
+
+	\note FPL does not provide any functionality for doing any kind of DSP or format conversion!<br>
+	\note You are responsible for filling out the samples in the correct format your audio device expects!
 */
 
 /*!
@@ -498,7 +1083,7 @@ SOFTWARE.
 	<br>
 	But it does not use the C++ standard library or any advanced C++/11 features.
 
-	\subsection subsection_faq_inwhatlanguage Why is C++/11 required for FPL?
+	\subsection subsection_faq_whycpp11 Why is C++/11 required for FPL?
 	Because C++ has no proper standards for types and even null until C++/11 - its that simple.<br>
 	All modern compilers today does support C++/11 properly, so there is reason to not use it.
 
@@ -541,11 +1126,11 @@ SOFTWARE.
 
 	\subsection subsection_additional_notes_audio Audio
 	This library uses the operating system libraries to initialize a playback audio device.<br>
-	To get any audio samples to play you need to set the callback function with \ref fpl::AudioSettings.clientReadCallback or fpl::audio::SetAudioClientReadCallback() before start playing the audio using PlayAudio().<br>
+	To get any audio samples to play you need to set the callback function with \ref fpl::AudioSettings.clientReadCallback or \ref fpl::audio::SetAudioClientReadCallback() before start playing the audio using fpl::audio::PlayAudio().<br>
 	When the audio device requires more audio samples this callback is automatically called.<br>
 	It is expected that the audio samples are filled in properly by the native format of the device, see \ref fpl::AudioDeviceFormat.<br>
 	This library does not provide any functionality for doing any kind of DSP.<br>
-	To start and stop the playback, you need to call fpl::audio::PlayAudio() and fpl::audio::StopAudio() respectively.<br>
+	To start and stop the playback, you need to call \ref fpl::audio::PlayAudio() and \ref fpl::audio::StopAudio() respectively.<br>
 	There is no guarantee that you get a audio device with the exact same format you specified back, but S16 with 48 KHz is a common format which almost every audio card supports.<br>
 */
 
@@ -948,6 +1533,24 @@ SOFTWARE.
 	\page page_changelog Changelog
 	\tableofcontents
 
+	## v0.5.8.1 beta:
+	- Changed: KeyboardEventType::Char renamed to KeyboardEventType::CharInput
+	- Changed: Completed basic documentation
+	- Changed: Renamed VideoBackBuffer.stride to VideoBackBuffer.lineWidth
+	- Changed: Moved a few internal inline audio functions to the global audio namespace
+	- Fixed: [Win32] WM_CHAR was allowing unicode characters as well, which is wrong because it must be properly converted first.
+	- Fixed: Audio driver selection was buggy
+	- Added: pixelStride to fpl::video::VideoBackBuffer
+	- Added: fpl::window::ClearWindowEvents()
+	- Added: fpl::window::PushWindowEvent()
+	- Added: fpl::window::UpdateGameControllers()
+	- Added: fpl::audio::GetAudioBufferSizeInFrames()
+	- Added: fpl::audio::GetAudioDriverString()
+	- Added: fpl::audio::GetAudioFormatString()
+	- Added: fpl::audio::GetAudioSampleSizeInBytes()
+	- Added: fpl::audio::GetAudioFrameSizeInBytes()
+	- Added: fpl::audio::GetAudioBufferSizeInBytes()
+
 	## v0.5.8.0 beta:
 	- Changed: SignalWaitFor* requires additional parameter for passing in the ThreadMutex reference (pthread compability)
 	- Changed: Signal* does not use const reference anymore (pthread compability)
@@ -1255,6 +1858,12 @@ SOFTWARE.
 
 	- The implementation of InitPlatform and ReleasePlatform should be platform independent!
 
+	- Make VideoBackBuffer be readonly and separate functions for getting the data pointer and setting the output rectangle.
+
+	- Documentation
+		- Audio deviceID
+		- Audio introduction (What is a frame, a sample, a buffer, how data is layed out, etc.)
+
 	- Finish Linux Platform:
 		- Files & Path (Look out for . files and folders!)
 		- Threading (pthread)
@@ -1273,12 +1882,15 @@ SOFTWARE.
 
 	- Audio:
 		- Support for channel mapping
+		- WASAPI audio driver
 
 	- Additional parameters for passing pointers instead of returning structs (Method overloading)
 
 	- Unix Platform
 
 	- Multimonitor-Support
+
+	- Unicode/UTF-8 Support for character input
 
 	- Unicode-Support for commandline arguments (Win32)
 
@@ -2006,21 +2618,26 @@ namespace fpl {
 	FPL_ENUM_AS_FLAGS_OPERATORS(OpenGLCompabilityFlags);
 #endif
 
+#if defined(FPL_ENABLE_VIDEO_OPENGL)
+	//! OpenGL video settings container
+	struct OpenGLVideoSettings {
+		//! Compability flags
+		OpenGLCompabilityFlags compabilityFlags;
+		//! Desired major version
+		uint32_t majorVersion;
+		//! Desired minor version
+		uint32_t minorVersion;
+	};
+#endif
+
 	//! Video settings container (Driver, Flags, Version, VSync, etc.)
 	struct VideoSettings {
 		//! Video driver type
 		VideoDriverType driverType;
 		union {
-#if defined(FPL_ENABLE_VIDEO_OPENGL)
-			struct {
-				//! Compability flags
-				OpenGLCompabilityFlags compabilityFlags;
-				//! Desired major version
-				uint32_t majorVersion;
-				//! Desired minor version
-				uint32_t minorVersion;
-			} opengl;
-#endif
+#		if defined(FPL_ENABLE_VIDEO_OPENGL)
+			OpenGLVideoSettings opengl;
+#		endif
 		};
 		//! Vertical syncronisation enabled/disabled
 		bool isVSync;
@@ -2061,7 +2678,7 @@ namespace fpl {
 		//! Auto detection
 		Auto,
 		//! DirectSound
-		DirectSound
+		DirectSound,
 	};
 
 	//! Audio format type
@@ -3291,7 +3908,7 @@ namespace fpl {
 			//! Key was released
 			KeyUp,
 			//! Character was entered
-			Char,
+			CharInput,
 		};
 
 		//! Keyboard modifier flags (Alt, Ctrl, ...)
@@ -3474,11 +4091,27 @@ namespace fpl {
 		};
 
 		/**
-		  * \brief Gets and moves the top event data from the internal queue into the event argument.
+		  * \brief Gets the top event from the internal event queue and removes it.
 		  * \param ev Reference to an event
 		  * \return Returns false when there are no events left, otherwise true.
 		  */
 		fpl_api bool PollWindowEvent(Event &ev);
+		/**
+		  * \brief Removes all the events from the internal event queue.
+		  * \todo Dont call when you care about any event!
+		  */
+		fpl_api void ClearWindowEvents();
+		/**
+		  * \brief Reads the next window event from the OS and pushes it into the internal queue.
+		  * \return Returns true when there was a event from the OS, otherwise true.
+		  * \note Use this only if dont use \ref WindowUpdate() and want to handle the events more granular!
+		  */
+		fpl_api bool PushWindowEvent();
+		/**
+		  * \brief Updates the game controller states and detects new and disconnected devices.
+		  * \note Use this only if dont use \ref WindowUpdate() and want to handle the events more granular!
+		  */
+		fpl_api void UpdateGameControllers();
 
 		/*\}*/
 
@@ -3511,6 +4144,7 @@ namespace fpl {
 		fpl_api bool IsWindowRunning();
 		/**
 		  * \brief Processes the message queue of the window.
+		  * \note This will update the game controller states as well.
 		  * \return True when the window is still active, otherwise false.
 		  */
 		fpl_api bool WindowUpdate();
@@ -3656,8 +4290,10 @@ namespace fpl {
 			uint32_t width;
 			//! The height of the backbuffer in pixels. Do not modify, it will be set automatically.
 			uint32_t height;
-			//! The size of one scanline. Do not modify, it will be set automatically.
-			size_t stride;
+			//! The size of one entire pixel with all 4 components in bytes. Do not modify, it will be set automatically.
+			size_t pixelStride;
+			//! The width of one line in bytes. Do not modify, it will be set automatically.
+			size_t lineWidth;
 			//! The output rectangle for displaying the backbuffer (Size may not match backbuffer size!)
 			VideoRect outputRect;
 			//! Set this to true to actually use the output rectangle
@@ -3735,6 +4371,105 @@ namespace fpl {
 		  * \return Number of devices found.
 		  */
 		fpl_api uint32_t GetAudioDevices(AudioDeviceID *devices, uint32_t maxDeviceCount);
+
+		/**
+		  * \brief Returns the number of bytes required to write one sample with one channel
+		  * \param format The audio format
+		  * \return Number of bytes for one sample with one channel
+		  */
+		fpl_inline uint32_t GetAudioSampleSizeInBytes(const AudioFormatType format) {
+			switch (format) {
+				case AudioFormatType::U8:
+					return 1;
+				case AudioFormatType::S16:
+					return 2;
+				case AudioFormatType::S24:
+					return 3;
+				case AudioFormatType::S32:
+				case AudioFormatType::F32:
+					return 4;
+				case AudioFormatType::S64:
+				case AudioFormatType::F64:
+					return 8;
+				default:
+					return 0;
+			}
+		}
+
+		/**
+		  * \brief Returns the string for the given format type
+		  * \param format The audio format
+		  * \return String for the given format type
+		  */
+		fpl_inline const char *GetAudioFormatString(const AudioFormatType format) {
+			// @NOTE(final): Order must be equal to the AudioFormatType enum!
+			fpl_constant char *AUDIO_FORMAT_TYPE_STRINGS[] = {
+				"None",
+				"U8",
+				"S16",
+				"S24",
+				"S32",
+				"S64",
+				"F32",
+				"F64",
+			};
+			uint32_t index = (uint32_t)format;
+			FPL_ASSERT(index < FPL_ARRAYCOUNT(AUDIO_FORMAT_TYPE_STRINGS));
+			const char *result = AUDIO_FORMAT_TYPE_STRINGS[index];
+			return(result);
+		}
+
+		/**
+		  * \brief Returns the string for the given audio driver
+		  * \param driver The audio driver
+		  * \return String for the given audio driver
+		  */
+		fpl_inline const char *GetAudioDriverString(AudioDriverType driver) {
+			fpl_constant char *AUDIO_DRIVER_TYPE_STRINGS[] = {
+				"None",
+				"Auto",
+				"DirectSound",
+			};
+			uint32_t index = (uint32_t)driver;
+			FPL_ASSERT(index < FPL_ARRAYCOUNT(AUDIO_DRIVER_TYPE_STRINGS));
+			const char *result = AUDIO_DRIVER_TYPE_STRINGS[index];
+			return(result);
+		}
+
+		/**
+		  * \brief Returns the total frame count for given sample rate and buffer size in milliseconds
+		  * \param sampleRate The sample rate in Hz
+		  * \param bufferSizeInMilliSeconds The buffer size in number of milliseconds
+		  * \return Number of frames
+		  */
+		fpl_inline uint32_t GetAudioBufferSizeInFrames(uint32_t sampleRate, uint32_t bufferSizeInMilliSeconds) {
+			uint32_t result = (sampleRate / 1000) * bufferSizeInMilliSeconds;
+			return(result);
+		}
+
+		/**
+		  * \brief Returns the number of bytes required for one interleaved audio frame - containing all the channels
+		  * \param format The audio format
+		  * \param channelCount The number of channels
+		  * \return Number of bytes for one frame in bytes
+		  */
+		fpl_inline uint32_t GetAudioFrameSizeInBytes(const AudioFormatType format, const uint32_t channelCount) {
+			uint32_t result = GetAudioSampleSizeInBytes(format) * channelCount;
+			return(result);
+		}
+
+		/**
+		  * \brief Returns the total number of bytes for the buffer and the given parameters
+		  * \param format The audio format
+		  * \param channelCount The number of channels
+		  * \param frameCount The number of frames
+		  * \return Total number of bytes for the buffer
+		  */
+		fpl_inline uint32_t GetAudioBufferSizeInBytes(const AudioFormatType format, const uint32_t channelCount, const uint32_t frameCount) {
+			uint32_t frameSize = GetAudioFrameSizeInBytes(format, channelCount);
+			uint32_t result = frameSize * frameCount;
+			return(result);
+		}
 
 		/** \}*/
 	};
@@ -3939,60 +4674,6 @@ namespace fpl {
 			AudioClientReadFunction *clientReadCallback;
 			void *clientUserData;
 		};
-
-		fpl_internal_inline uint32_t GetAudioSampleSizeInBytes(const AudioFormatType format) {
-			switch (format) {
-				case AudioFormatType::U8:
-					return 1;
-				case AudioFormatType::S16:
-					return 2;
-				case AudioFormatType::S24:
-					return 3;
-				case AudioFormatType::S32:
-				case AudioFormatType::F32:
-					return 4;
-				case AudioFormatType::S64:
-				case AudioFormatType::F64:
-					return 8;
-				default:
-					return 0;
-			}
-		}
-
-		// @NOTE(final): Order must be equal to the AudioFormatType enum!
-		fpl_constant char *AUDIO_FORMAT_TYPE_STRINGS[] = {
-			"None",
-			"U8",
-			"S16",
-			"S24",
-			"S32",
-			"S64",
-			"F32",
-			"F64",
-		};
-		fpl_internal_inline const char *GetAudioFormatString(AudioFormatType format) {
-			uint32_t index = (uint32_t)format;
-			FPL_ASSERT(index < FPL_ARRAYCOUNT(AUDIO_FORMAT_TYPE_STRINGS));
-			const char *result = AUDIO_FORMAT_TYPE_STRINGS[index];
-			return(result);
-		}
-
-		fpl_constant char *AUDIO_DRIVER_TYPE_STRINGS[] = {
-			"None",
-			"Auto",
-			"DirectSound",
-		};
-		fpl_internal_inline const char *GetAudioDriverString(AudioDriverType driver) {
-			uint32_t index = (uint32_t)driver;
-			FPL_ASSERT(index < FPL_ARRAYCOUNT(AUDIO_DRIVER_TYPE_STRINGS));
-			const char *result = AUDIO_DRIVER_TYPE_STRINGS[index];
-			return(result);
-		}
-
-		fpl_internal_inline uint32_t GetAudioBufferSizeInFrames(uint32_t sampleRate, uint32_t bufferSizeInMilliSeconds) {
-			uint32_t result = (sampleRate / 1000) * bufferSizeInMilliSeconds;
-			return(result);
-		}
 
 		fpl_internal_inline uint32_t ReadAudioFramesFromClient(const CommonAudioState &commonAudio, uint32_t frameCount, void *pSamples) {
 			uint32_t outputSamplesWritten = 0;
@@ -4915,7 +5596,6 @@ namespace fpl {
 
 #	if defined(FPL_ENABLE_WINDOW)
 		struct Win32LastWindowInfo {
-			//RECT rect;
 			WINDOWPLACEMENT placement;
 			DWORD style;
 			DWORD exStyle;
@@ -5160,8 +5840,9 @@ namespace fpl {
 			videoState.software = {};
 			videoState.software.context.width = width;
 			videoState.software.context.height = height;
-			videoState.software.context.stride = videoState.software.context.width * sizeof(uint32_t);
-			size_t size = videoState.software.context.stride * videoState.software.context.height;
+			videoState.software.context.pixelStride = sizeof(uint32_t);
+			videoState.software.context.lineWidth = videoState.software.context.width * videoState.software.context.pixelStride;
+			size_t size = videoState.software.context.lineWidth * videoState.software.context.height;
 			videoState.software.context.pixels = (uint32_t *)memory::MemoryAlignedAllocate(size, 16);
 
 			// Clear to black by default
@@ -5804,9 +6485,12 @@ namespace fpl {
 
 				case WM_CHAR:
 				{
-					uint64_t keyCode = wParam;
-					KeyboardModifierFlags modifiers = KeyboardModifierFlags::None;
-					platform::Win32PushKeyboardEvent(KeyboardEventType::Char, keyCode, modifiers, 0);
+					// @TODO(final): Add unicode support (WM_UNICHAR)!
+					if (wParam >= 0 && wParam < 256) {
+						uint64_t keyCode = wParam;
+						KeyboardModifierFlags modifiers = KeyboardModifierFlags::None;
+						platform::Win32PushKeyboardEvent(KeyboardEventType::CharInput, keyCode, modifiers, 0);
+					}
 				} break;
 
 				case WM_ACTIVATE:
@@ -7771,6 +8455,25 @@ namespace fpl {
 			state->window.isCursorActive = value;
 		}
 
+		fpl_api bool PushWindowEvent() {
+			platform::Win32APIFunctions &wapi = platform::global__Win32__API__Functions;
+			bool result = false;
+			MSG msg;
+			BOOL R = platform::win32_peekMessage(&msg, nullptr, 0, 0, PM_REMOVE);
+			if (R == TRUE) {
+				wapi.user.translateMessage(&msg);
+				platform::win32_dispatchMessage(&msg);
+				result = true;
+			}
+			return (result);
+		}
+
+		fpl_api void UpdateGameControllers() {
+			FPL_ASSERT(platform::global__Win32__State != nullptr);
+			platform::Win32State *state = platform::global__Win32__State;
+			platform::Win32PollControllers(state);
+		}
+
 		fpl_api bool WindowUpdate() {
 			FPL_ASSERT(platform::global__Win32__State != nullptr);
 			platform::Win32State *state = platform::global__Win32__State;
@@ -7813,6 +8516,13 @@ namespace fpl {
 				atomics::AtomicExchangeU32(&eventQueue->pushCount, 0);
 			}
 			return result;
+		}
+
+		fpl_api void ClearWindowEvents() {
+			platform::EventQueue *eventQueue = platform::global__EventQueue;
+			FPL_ASSERT(eventQueue != nullptr);
+			atomics::AtomicExchangeU32(&eventQueue->pollIndex, 0);
+			atomics::AtomicExchangeU32(&eventQueue->pushCount, 0);
 		}
 
 		fpl_api char *GetClipboardAnsiText(char *dest, const uint32_t maxDestLen) {
@@ -7976,84 +8686,84 @@ int WINAPI WinMain(HINSTANCE appInstance, HINSTANCE prevInstance, LPSTR cmdLine,
 	}
 
 namespace fpl {
-    //
-    // POSIX Platform
-    //
-    namespace platform {
-        
+	//
+	// POSIX Platform
+	//
+	namespace platform {
+
 #       define FPL_FUNC_PTHREAD_CREATE(name) int name(pthread_t *, const pthread_attr_t *, void *(*__start_routine) (void *), void *)
-        typedef FPL_FUNC_PTHREAD_CREATE(pthread_func_pthread_create);
+		typedef FPL_FUNC_PTHREAD_CREATE(pthread_func_pthread_create);
 #       define FPL_FUNC_PTHREAD_KILL(name) int name(pthread_t thread, int sig)
-        typedef FPL_FUNC_PTHREAD_KILL(pthread_func_pthread_kill);
+		typedef FPL_FUNC_PTHREAD_KILL(pthread_func_pthread_kill);
 #       define FPL_FUNC_PTHREAD_JOIN(name) int name(pthread_t __th, void **__thread_return)
-        typedef FPL_FUNC_PTHREAD_JOIN(pthread_func_pthread_join);
+		typedef FPL_FUNC_PTHREAD_JOIN(pthread_func_pthread_join);
 #       define FPL_FUNC_PTHREAD_EXIT(name) void name(void *__retval)
-        typedef FPL_FUNC_PTHREAD_EXIT(pthread_func_pthread_exit);
+		typedef FPL_FUNC_PTHREAD_EXIT(pthread_func_pthread_exit);
 #       define FPL_FUNC_PTHREAD_YIELD(name) int name(void)
-        typedef FPL_FUNC_PTHREAD_YIELD(pthread_func_pthread_yield);
-        
-        struct PThreadAPI {
-            void *libraryHandle;
-            pthread_func_pthread_create *pthread_create;
-            pthread_func_pthread_kill *pthread_kill;
-            pthread_func_pthread_join *pthread_join;
-            pthread_func_pthread_exit *pthread_exit;
-            pthread_func_pthread_yield *pthread_yield;
-        };
-        
-        fpl_globalvar PThreadAPI global__PThreadApi = {};
-        
-        fpl_internal bool LoadPThreadAPI() {
-            PThreadAPI &pthreadAPI = global__PThreadApi;
-            const char* libpthreadFileNames[] = {
-                "libpthread.so",
-                "libpthread.so.0",
-                "libpthread.dylib"
-            };
-            pthreadAPI = {};
-            const char *libName = nullptr;
-            void *libHandle = nullptr;
-            for (uint32_t index = 0; index < FPL_ARRAYCOUNT(libpthreadFileNames); ++index) {
-                libName = libpthreadFileNames[index];
-                libHandle = dlopen(libName, RTLD_NOW);
-                if (libHandle != nullptr) {
-                    break;
-                }
-            }
-            if (libHandle == nullptr) {
-                return false;
-            }
-            FPL_DL_GET_FUNCTION_ADDRESS(libHandle, libName, pthreadAPI.pthread_create, pthread_func_pthread_create, "pthread_create");
-            FPL_DL_GET_FUNCTION_ADDRESS(libHandle, libName, pthreadAPI.pthread_kill, pthread_func_pthread_kill, "pthread_kill");
-            FPL_DL_GET_FUNCTION_ADDRESS(libHandle, libName, pthreadAPI.pthread_join, pthread_func_pthread_join, "pthread_join");
-            FPL_DL_GET_FUNCTION_ADDRESS(libHandle, libName, pthreadAPI.pthread_exit, pthread_func_pthread_exit, "pthread_exit");
-            FPL_DL_GET_FUNCTION_ADDRESS(libHandle, libName, pthreadAPI.pthread_yield, pthread_func_pthread_yield, "pthread_yield");
-            pthreadAPI.libraryHandle = libHandle;
-            return true;
-        }
+		typedef FPL_FUNC_PTHREAD_YIELD(pthread_func_pthread_yield);
 
-        fpl_internal void UnloadPThreadAPI() {
-            PThreadAPI &pthreadAPI = global__PThreadApi;
-            if (pthreadAPI.libraryHandle != nullptr) {
-                dlclose(pthreadAPI.libraryHandle);
-            }
-            pthreadAPI = {};
-        }
-        
-        fpl_internal void PosixReleasePlatform() {
-            UnloadPThreadAPI();
-        }
-        
-        fpl_internal bool PosixInitPlatform(const InitFlags initFlags, const Settings &initSettings) {
-            if (!LoadPThreadAPI()) {
-                common::PushError("Failed loading pthread API");
-                return false;
-            }
-            return true;
-        }
+		struct PThreadAPI {
+			void *libraryHandle;
+			pthread_func_pthread_create *pthread_create;
+			pthread_func_pthread_kill *pthread_kill;
+			pthread_func_pthread_join *pthread_join;
+			pthread_func_pthread_exit *pthread_exit;
+			pthread_func_pthread_yield *pthread_yield;
+		};
 
-    }
-    
+		fpl_globalvar PThreadAPI global__PThreadApi = {};
+
+		fpl_internal bool LoadPThreadAPI() {
+			PThreadAPI &pthreadAPI = global__PThreadApi;
+			const char* libpthreadFileNames[] = {
+				"libpthread.so",
+				"libpthread.so.0",
+				"libpthread.dylib"
+			};
+			pthreadAPI = {};
+			const char *libName = nullptr;
+			void *libHandle = nullptr;
+			for (uint32_t index = 0; index < FPL_ARRAYCOUNT(libpthreadFileNames); ++index) {
+				libName = libpthreadFileNames[index];
+				libHandle = dlopen(libName, RTLD_NOW);
+				if (libHandle != nullptr) {
+					break;
+				}
+			}
+			if (libHandle == nullptr) {
+				return false;
+			}
+			FPL_DL_GET_FUNCTION_ADDRESS(libHandle, libName, pthreadAPI.pthread_create, pthread_func_pthread_create, "pthread_create");
+			FPL_DL_GET_FUNCTION_ADDRESS(libHandle, libName, pthreadAPI.pthread_kill, pthread_func_pthread_kill, "pthread_kill");
+			FPL_DL_GET_FUNCTION_ADDRESS(libHandle, libName, pthreadAPI.pthread_join, pthread_func_pthread_join, "pthread_join");
+			FPL_DL_GET_FUNCTION_ADDRESS(libHandle, libName, pthreadAPI.pthread_exit, pthread_func_pthread_exit, "pthread_exit");
+			FPL_DL_GET_FUNCTION_ADDRESS(libHandle, libName, pthreadAPI.pthread_yield, pthread_func_pthread_yield, "pthread_yield");
+			pthreadAPI.libraryHandle = libHandle;
+			return true;
+		}
+
+		fpl_internal void UnloadPThreadAPI() {
+			PThreadAPI &pthreadAPI = global__PThreadApi;
+			if (pthreadAPI.libraryHandle != nullptr) {
+				dlclose(pthreadAPI.libraryHandle);
+			}
+			pthreadAPI = {};
+		}
+
+		fpl_internal void PosixReleasePlatform() {
+			UnloadPThreadAPI();
+		}
+
+		fpl_internal bool PosixInitPlatform(const InitFlags initFlags, const Settings &initSettings) {
+			if (!LoadPThreadAPI()) {
+				common::PushError("Failed loading pthread API");
+				return false;
+			}
+			return true;
+		}
+
+	}
+
 	//
 	// POSIX Atomics
 	//
@@ -8215,45 +8925,45 @@ namespace fpl {
 		void *PosixThreadProc(void *data) {
 			ThreadContext *context = (ThreadContext *)data;
 			FPL_ASSERT(context != nullptr);
-            atomics::AtomicStoreU32((volatile uint32_t *)&context->currentState, (uint32_t)ThreadState::Running);
-            if (context->runFunc != nullptr) {
-                context->runFunc(*context, context->data);
-            }
+			atomics::AtomicStoreU32((volatile uint32_t *)&context->currentState, (uint32_t)ThreadState::Running);
+			if (context->runFunc != nullptr) {
+				context->runFunc(*context, context->data);
+			}
 			atomics::AtomicStoreU32((volatile uint32_t *)&context->currentState, (uint32_t)ThreadState::Stopped);
 			pthread_exit(nullptr);
 		}
 
 		fpl_api ThreadContext *ThreadCreate(run_thread_function *runFunc, void *data, const bool autoStart) {
-            const platform::PThreadAPI &pthreadAPI = platform::global__PThreadApi;
-            
+			const platform::PThreadAPI &pthreadAPI = platform::global__PThreadApi;
+
 			// @NOTE(final): pthread does not support to "suspend" or "resume" any thread, so autoStart is not allowed to be false
-            if (!autoStart) {
-                common::PushError("Suspended started threads in POSIX platforms are not supported");
-                return nullptr;
-            }
-            if (runFunc == nullptr) {
-                common::PushError("Not allowed to use a nullptr as runFunc parameter");
-                return nullptr;
-            }
+			if (!autoStart) {
+				common::PushError("Suspended started threads in POSIX platforms are not supported");
+				return nullptr;
+			}
+			if (runFunc == nullptr) {
+				common::PushError("Not allowed to use a nullptr as runFunc parameter");
+				return nullptr;
+			}
 			ThreadContext *result = nullptr;
 			ThreadContext *context = common::GetThreadContext();
 			if (context != nullptr) {
 				context->currentState = ThreadState::Stopped;
 				context->data = data;
 				context->runFunc = runFunc;
-                context->isValid = true;
+				context->isValid = true;
 
-                // @TODO(final): Better pthread id!
+				// @TODO(final): Better pthread id!
 				memory::MemoryCopy(&context->internalHandle.posixThread, FPL_MIN(sizeof(context->id), sizeof(context->internalHandle.posixThread)), &context->id);
 
-                int err = pthreadAPI.pthread_create(&context->internalHandle.posixThread, nullptr, PosixThreadProc, (void *)context);
-                if (err != 0) {
-                    context->isValid = false;
-                    context->currentState = ThreadState::Stopped;
-                    common::PushError("Failed creating thread, error code: %d", err);
-                } else {
+				int err = pthreadAPI.pthread_create(&context->internalHandle.posixThread, nullptr, PosixThreadProc, (void *)context);
+				if (err != 0) {
+					context->isValid = false;
+					context->currentState = ThreadState::Stopped;
+					common::PushError("Failed creating thread, error code: %d", err);
+				} else {
 					result = context;
-                }
+				}
 			} else {
 				common::PushError("All %d threads are in use, you cannot create until you free one", common::MAX_THREAD_COUNT);
 			}
@@ -8277,24 +8987,24 @@ namespace fpl {
 		}
 
 		fpl_api bool ThreadSuspend(ThreadContext *context) {
-            // @NOTE(final): Suspend in pthread is not supported!
-            common::PushError("Suspend in POSIX platforms is not supported!");
-            return(false);
+			// @NOTE(final): Suspend in pthread is not supported!
+			common::PushError("Suspend in POSIX platforms is not supported!");
+			return(false);
 		}
 
 		fpl_api bool ThreadResume(ThreadContext *context) {
-            // @NOTE(final): Resume in pthread is not supported!
-            common::PushError("Resume in POSIX platforms is not supported!");
-            return(false);
+			// @NOTE(final): Resume in pthread is not supported!
+			common::PushError("Resume in POSIX platforms is not supported!");
+			return(false);
 		}
 
 		fpl_api void ThreadDestroy(ThreadContext *context) {
-            const platform::PThreadAPI &pthreadAPI = platform::global__PThreadApi;
-            FPL_ASSERT(pthreadAPI.libHandle != nullptr);
+			const platform::PThreadAPI &pthreadAPI = platform::global__PThreadApi;
+			FPL_ASSERT(pthreadAPI.libHandle != nullptr);
 			if (context != nullptr && context->isValid) {
-                if (pthreadAPI.pthread_kill(context->internalHandle.posixThread, 0) == 0) {
-                    pthreadAPI.pthread_join(context->internalHandle.posixThread, nullptr);
-                }
+				if (pthreadAPI.pthread_kill(context->internalHandle.posixThread, 0) == 0) {
+					pthreadAPI.pthread_join(context->internalHandle.posixThread, nullptr);
+				}
 				// @TODO(final): Is this really needed to use a atomic store for setting the thread state?
 				atomics::AtomicStoreU32((volatile uint32_t *)&context->currentState, (uint32_t)ThreadState::Stopped);
 				*context = {};
@@ -8309,7 +9019,7 @@ namespace fpl {
 		fpl_api DynamicLibraryHandle DynamicLibraryLoad(const char *libraryFilePath) {
 			DynamicLibraryHandle result = {};
 			if (libraryFilePath != nullptr) {
-                // @TODO(final): Is RTLD_NOW for dlopen correct?
+				// @TODO(final): Is RTLD_NOW for dlopen correct?
 				void *p = dlopen(libraryFilePath, RTLD_NOW);
 				if (p != nullptr) {
 					result.internalHandle.posixHandle = p;
@@ -8744,27 +9454,27 @@ namespace fpl {
 #   include <ctype.h> // isspace
 
 namespace fpl {
-    namespace platform {
-        struct LinuxAppState {
-            bool isInitialized;
-        };
-        fpl_globalvar LinuxAppState global__Linux__AppState = {};
-        
-        fpl_internal void LinuxReleasePlatform() {
-            platform::PosixReleasePlatform();
-            platform::global__Linux__AppState.isInitialized = false;
-        }
-        
-        fpl_internal bool LinuxInitPlatform(const InitFlags initFlags, const Settings &initSettings) {
-            if (!platform::PosixInitPlatform(initFlags, initSettings)) {
-                common::PushError("Failed initalizing POSIX platform");
-                return false;
-            }
-            platform::global__Linux__AppState.isInitialized = true;
-            return true;
-        }
-    }
-    
+	namespace platform {
+		struct LinuxAppState {
+			bool isInitialized;
+		};
+		fpl_globalvar LinuxAppState global__Linux__AppState = {};
+
+		fpl_internal void LinuxReleasePlatform() {
+			platform::PosixReleasePlatform();
+			platform::global__Linux__AppState.isInitialized = false;
+		}
+
+		fpl_internal bool LinuxInitPlatform(const InitFlags initFlags, const Settings &initSettings) {
+			if (!platform::PosixInitPlatform(initFlags, initSettings)) {
+				common::PushError("Failed initalizing POSIX platform");
+				return false;
+			}
+			platform::global__Linux__AppState.isInitialized = true;
+			return true;
+		}
+	}
+
 	// Linux Hardware
 	namespace hardware {
 		fpl_api uint32_t GetProcessorCoreCount() {
@@ -8871,7 +9581,7 @@ namespace fpl {
 		return(result);
 	}
 
-    
+
 }
 #endif // FPL_PLATFORM_LINUX
 
@@ -9718,16 +10428,21 @@ namespace fpl {
 			}
 
 			// Prope drivers
-			AudioDriverType propeDrivers[] = {
-				AudioDriverType::DirectSound,
-			};
-			uint32_t driverCount = FPL_ARRAYCOUNT(propeDrivers);
+			AudioDriverType propeDrivers[16];
+			uint32_t driverCount = 0;
+			if (audioSettings.driver == AudioDriverType::Auto) {
+				// @NOTE(final): Add all audio drivers here, regardless of the platform.
+				propeDrivers[driverCount++] = AudioDriverType::DirectSound;
+			} else {
+				// @NOTE(final): Forced audio driver
+				propeDrivers[driverCount++] = audioSettings.driver;
+			}
 			AudioResult initResult = AudioResult::Failed;
 			for (uint32_t driverIndex = 0; driverIndex < driverCount; ++driverIndex) {
 				AudioDriverType propeDriver = propeDrivers[driverIndex];
 
 				initResult = AudioResult::Failed;
-				switch (audioSettings.driver) {
+				switch (propeDriver) {
 
 #				if defined(FPL_ENABLE_AUDIO_DIRECTSOUND)
 					case AudioDriverType::DirectSound:

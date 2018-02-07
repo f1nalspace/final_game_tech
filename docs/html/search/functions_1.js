@@ -2,6 +2,7 @@ var searchData=
 [
   ['changefileextension',['ChangeFileExtension',['../group___paths.html#ga2f024c3d4f8297173ca50a666cb69627',1,'fpl::paths']]],
   ['clearplatformerrors',['ClearPlatformErrors',['../group___error_handling.html#gaab86f65f0e66c116ea22a52bde2bfc5c',1,'fpl']]],
+  ['clearwindowevents',['ClearWindowEvents',['../group___window_events.html#ga97f842560d647e65ebb5e30a2dd572fc',1,'fpl::window']]],
   ['closefile',['CloseFile',['../group___files.html#gadf8a868ce8399951d94368b2a6efe9ad',1,'fpl::files']]],
   ['combinepath',['CombinePath',['../group___paths.html#ga41591ef383ffb2e673c7d1746e5dcd05',1,'fpl::paths']]],
   ['consoleerror',['ConsoleError',['../group___console.html#gaf9a2aff1071c86843688e16b8ee0431f',1,'fpl::console']]],

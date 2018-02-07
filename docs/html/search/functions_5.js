@@ -1,8 +1,14 @@
 var searchData=
 [
   ['getansistringlength',['GetAnsiStringLength',['../group___strings.html#ga388ca55dd073575074821c146a585e2d',1,'fpl::strings']]],
+  ['getaudiobuffersizeinbytes',['GetAudioBufferSizeInBytes',['../group___audio.html#ga00cd065e707e828dc5b1e60a6d631bd7',1,'fpl::audio']]],
+  ['getaudiobuffersizeinframes',['GetAudioBufferSizeInFrames',['../group___audio.html#ga7bbf3bbda0a16c2709784b40f58be5dc',1,'fpl::audio']]],
   ['getaudiodevices',['GetAudioDevices',['../group___audio.html#gade581873cbbeadf29f7335818345e673',1,'fpl::audio']]],
+  ['getaudiodriverstring',['GetAudioDriverString',['../group___audio.html#ga0d93f5ed6e3484932a57c0cb6c605c48',1,'fpl::audio']]],
+  ['getaudioformatstring',['GetAudioFormatString',['../group___audio.html#ga6b4841dc4e0d739cabc2632b15f47700',1,'fpl::audio']]],
+  ['getaudioframesizeinbytes',['GetAudioFrameSizeInBytes',['../group___audio.html#gafa51ef4e96e431877fde7926e7f9786e',1,'fpl::audio']]],
   ['getaudiohardwareformat',['GetAudioHardwareFormat',['../group___audio.html#ga0b9d3595b9898f3d47e2a87e6d497c76',1,'fpl::audio']]],
+  ['getaudiosamplesizeinbytes',['GetAudioSampleSizeInBytes',['../group___audio.html#ga8a27c0a69e458aae224c008085c2883d',1,'fpl::audio']]],
   ['getclipboardansitext',['GetClipboardAnsiText',['../group___window_clipboard.html#ga9ad3697817a0dfdbc2527e4087413c8d',1,'fpl::window']]],
   ['getclipboardwidetext',['GetClipboardWideText',['../group___window_clipboard.html#ga0101008cbd7d81f06a31d76fa0c81840',1,'fpl::window']]],
   ['getcurrentsettings',['GetCurrentSettings',['../group___settings.html#ga6eecc72936058abdbebfad659b886980',1,'fpl']]],

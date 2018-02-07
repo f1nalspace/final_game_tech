@@ -22,7 +22,7 @@
  <tr style="height: 56px;">
   <td id="projectalign" style="padding-left: 0.5em;">
    <div id="projectname">Final Platform Layer
-   &#160;<span id="projectnumber">0.5.8.0</span>
+   &#160;<span id="projectnumber">0.5.8.1</span>
    </div>
   </td>
  </tr>
@@ -261,7 +261,7 @@ Enumerations</h2></td></tr>
 <tr class="separator:gab45601d8968b4696e5d6dc3d79d4a3be"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:gacc336636e2219913ba436b1900358e24"><td class="memItemLeft" align="right" valign="top">enum &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___window_events.html#gacc336636e2219913ba436b1900358e24">fpl::window::KeyboardEventType</a> { <a class="el" href="group___window_events.html#ggacc336636e2219913ba436b1900358e24acfd07bf1effd88bca04a12a087777354">fpl::window::KeyboardEventType::KeyDown</a>, 
 <a class="el" href="group___window_events.html#ggacc336636e2219913ba436b1900358e24a0f8baa14654b1f6ef00fed708c7f198a">fpl::window::KeyboardEventType::KeyUp</a>, 
-<a class="el" href="group___window_events.html#ggacc336636e2219913ba436b1900358e24a8e95e84813830072b7516cfaa7dbc1a9">fpl::window::KeyboardEventType::Char</a>
+<a class="el" href="group___window_events.html#ggacc336636e2219913ba436b1900358e24a699a1a8e07421c3903046eace15b9ce1">fpl::window::KeyboardEventType::CharInput</a>
  }<tr class="memdesc:gacc336636e2219913ba436b1900358e24"><td class="mdescLeft">&#160;</td><td class="mdescRight">Keyboard event type (KeyDown, KeyUp, Char, ...)  <a href="group___window_events.html#gacc336636e2219913ba436b1900358e24">More...</a><br /></td></tr>
 </td></tr>
 <tr class="separator:gacc336636e2219913ba436b1900358e24"><td class="memSeparator" colspan="2">&#160;</td></tr>
@@ -299,13 +299,22 @@ Enumerations</h2></td></tr>
 </table><table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a name="func-members"></a>
 Functions</h2></td></tr>
+<tr class="memitem:ga97f842560d647e65ebb5e30a2dd572fc"><td class="memItemLeft" align="right" valign="top"><a class="el" href="final__platform__layer_8hpp.html#aafa1d3d90febf9826c55c1318f98b27d">fpl_api</a> void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___window_events.html#ga97f842560d647e65ebb5e30a2dd572fc">fpl::window::ClearWindowEvents</a> ()</td></tr>
+<tr class="memdesc:ga97f842560d647e65ebb5e30a2dd572fc"><td class="mdescLeft">&#160;</td><td class="mdescRight">Removes all the events from the internal event queue.  <a href="group___window_events.html#ga97f842560d647e65ebb5e30a2dd572fc">More...</a><br /></td></tr>
+<tr class="separator:ga97f842560d647e65ebb5e30a2dd572fc"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:gacdd8b1e56dfec05e62735ae48df2080d"><td class="memItemLeft" align="right" valign="top"><a id="gacdd8b1e56dfec05e62735ae48df2080d"></a>
 &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___window_events.html#gacdd8b1e56dfec05e62735ae48df2080d">fpl::window::FPL_ENUM_AS_FLAGS_OPERATORS</a> (<a class="el" href="group___window_events.html#ga0273526560c565d3c67cdf5c0c071194">KeyboardModifierFlags</a>)</td></tr>
 <tr class="memdesc:gacdd8b1e56dfec05e62735ae48df2080d"><td class="mdescLeft">&#160;</td><td class="mdescRight">Operator support for KeyboardModifierFlags. <br /></td></tr>
 <tr class="separator:gacdd8b1e56dfec05e62735ae48df2080d"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:ga9801762935e9ba7bcb4c1189eb88fbf3"><td class="memItemLeft" align="right" valign="top"><a class="el" href="final__platform__layer_8hpp.html#aafa1d3d90febf9826c55c1318f98b27d">fpl_api</a> bool&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___window_events.html#ga9801762935e9ba7bcb4c1189eb88fbf3">fpl::window::PollWindowEvent</a> (<a class="el" href="structfpl_1_1window_1_1_event.html">Event</a> &amp;ev)</td></tr>
-<tr class="memdesc:ga9801762935e9ba7bcb4c1189eb88fbf3"><td class="mdescLeft">&#160;</td><td class="mdescRight">Gets and moves the top event data from the internal queue into the event argument.  <a href="group___window_events.html#ga9801762935e9ba7bcb4c1189eb88fbf3">More...</a><br /></td></tr>
+<tr class="memdesc:ga9801762935e9ba7bcb4c1189eb88fbf3"><td class="mdescLeft">&#160;</td><td class="mdescRight">Gets the top event from the internal event queue and removes it.  <a href="group___window_events.html#ga9801762935e9ba7bcb4c1189eb88fbf3">More...</a><br /></td></tr>
 <tr class="separator:ga9801762935e9ba7bcb4c1189eb88fbf3"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:ga87ae061626cbd36404b976be1d1398d6"><td class="memItemLeft" align="right" valign="top"><a class="el" href="final__platform__layer_8hpp.html#aafa1d3d90febf9826c55c1318f98b27d">fpl_api</a> bool&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___window_events.html#ga87ae061626cbd36404b976be1d1398d6">fpl::window::PushWindowEvent</a> ()</td></tr>
+<tr class="memdesc:ga87ae061626cbd36404b976be1d1398d6"><td class="mdescLeft">&#160;</td><td class="mdescRight">Reads the next window event from the OS and pushes it into the internal queue.  <a href="group___window_events.html#ga87ae061626cbd36404b976be1d1398d6">More...</a><br /></td></tr>
+<tr class="separator:ga87ae061626cbd36404b976be1d1398d6"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:ga6d63e5f628a0d283e1fcdc19787531bd"><td class="memItemLeft" align="right" valign="top"><a class="el" href="final__platform__layer_8hpp.html#aafa1d3d90febf9826c55c1318f98b27d">fpl_api</a> void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___window_events.html#ga6d63e5f628a0d283e1fcdc19787531bd">fpl::window::UpdateGameControllers</a> ()</td></tr>
+<tr class="memdesc:ga6d63e5f628a0d283e1fcdc19787531bd"><td class="mdescLeft">&#160;</td><td class="mdescRight">Updates the game controller states and detects new and disconnected devices.  <a href="group___window_events.html#ga6d63e5f628a0d283e1fcdc19787531bd">More...</a><br /></td></tr>
+<tr class="separator:ga6d63e5f628a0d283e1fcdc19787531bd"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table>
 <a name="details" id="details"></a><h2 class="groupheader">Detailed Description</h2>
 <p>Window event structures. </p>
@@ -342,7 +351,7 @@ Functions</h2></td></tr>
 </td></tr>
 </table>
 
-<p class="definition">Definition at line <a class="el" href="final__platform__layer_8hpp_source.html#l03454">3454</a> of file <a class="el" href="final__platform__layer_8hpp_source.html">final_platform_layer.hpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="final__platform__layer_8hpp_source.html#l04066">4066</a> of file <a class="el" href="final__platform__layer_8hpp_source.html">final_platform_layer.hpp</a>.</p>
 
 </div>
 </div>
@@ -378,7 +387,7 @@ Functions</h2></td></tr>
 </td></tr>
 </table>
 
-<p class="definition">Definition at line <a class="el" href="final__platform__layer_8hpp_source.html#l03369">3369</a> of file <a class="el" href="final__platform__layer_8hpp_source.html">final_platform_layer.hpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="final__platform__layer_8hpp_source.html#l03981">3981</a> of file <a class="el" href="final__platform__layer_8hpp_source.html">final_platform_layer.hpp</a>.</p>
 
 </div>
 </div>
@@ -408,11 +417,11 @@ Functions</h2></td></tr>
 </td></tr>
 <tr><td class="fieldname"><a id="ggacc336636e2219913ba436b1900358e24a0f8baa14654b1f6ef00fed708c7f198a"></a>KeyUp&#160;</td><td class="fielddoc"><p>Key was released. </p>
 </td></tr>
-<tr><td class="fieldname"><a id="ggacc336636e2219913ba436b1900358e24a8e95e84813830072b7516cfaa7dbc1a9"></a>Char&#160;</td><td class="fielddoc"><p>Character was entered. </p>
+<tr><td class="fieldname"><a id="ggacc336636e2219913ba436b1900358e24a699a1a8e07421c3903046eace15b9ce1"></a>CharInput&#160;</td><td class="fielddoc"><p>Character was entered. </p>
 </td></tr>
 </table>
 
-<p class="definition">Definition at line <a class="el" href="final__platform__layer_8hpp_source.html#l03293">3293</a> of file <a class="el" href="final__platform__layer_8hpp_source.html">final_platform_layer.hpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="final__platform__layer_8hpp_source.html#l03905">3905</a> of file <a class="el" href="final__platform__layer_8hpp_source.html">final_platform_layer.hpp</a>.</p>
 
 </div>
 </div>
@@ -450,7 +459,7 @@ Functions</h2></td></tr>
 </td></tr>
 </table>
 
-<p class="definition">Definition at line <a class="el" href="final__platform__layer_8hpp_source.html#l03303">3303</a> of file <a class="el" href="final__platform__layer_8hpp_source.html">final_platform_layer.hpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="final__platform__layer_8hpp_source.html#l03915">3915</a> of file <a class="el" href="final__platform__layer_8hpp_source.html">final_platform_layer.hpp</a>.</p>
 
 </div>
 </div>
@@ -486,7 +495,7 @@ Functions</h2></td></tr>
 </td></tr>
 </table>
 
-<p class="definition">Definition at line <a class="el" href="final__platform__layer_8hpp_source.html#l03343">3343</a> of file <a class="el" href="final__platform__layer_8hpp_source.html">final_platform_layer.hpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="final__platform__layer_8hpp_source.html#l03955">3955</a> of file <a class="el" href="final__platform__layer_8hpp_source.html">final_platform_layer.hpp</a>.</p>
 
 </div>
 </div>
@@ -522,7 +531,7 @@ Functions</h2></td></tr>
 </td></tr>
 </table>
 
-<p class="definition">Definition at line <a class="el" href="final__platform__layer_8hpp_source.html#l03331">3331</a> of file <a class="el" href="final__platform__layer_8hpp_source.html">final_platform_layer.hpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="final__platform__layer_8hpp_source.html#l03943">3943</a> of file <a class="el" href="final__platform__layer_8hpp_source.html">final_platform_layer.hpp</a>.</p>
 
 </div>
 </div>
@@ -556,11 +565,31 @@ Functions</h2></td></tr>
 </td></tr>
 </table>
 
-<p class="definition">Definition at line <a class="el" href="final__platform__layer_8hpp_source.html#l03273">3273</a> of file <a class="el" href="final__platform__layer_8hpp_source.html">final_platform_layer.hpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="final__platform__layer_8hpp_source.html#l03885">3885</a> of file <a class="el" href="final__platform__layer_8hpp_source.html">final_platform_layer.hpp</a>.</p>
 
 </div>
 </div>
 <h2 class="groupheader">Function Documentation</h2>
+<a id="ga97f842560d647e65ebb5e30a2dd572fc"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#ga97f842560d647e65ebb5e30a2dd572fc">&#9670;&nbsp;</a></span>ClearWindowEvents()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname"><a class="el" href="final__platform__layer_8hpp.html#aafa1d3d90febf9826c55c1318f98b27d">fpl_api</a> void fpl::window::ClearWindowEvents </td>
+          <td>(</td>
+          <td class="paramname"></td><td>)</td>
+          <td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p>Removes all the events from the internal event queue. </p>
+<dl class="todo"><dt><b><a class="el" href="todo.html#_todo000001">Todo:</a></b></dt><dd>Dont call when you care about any event! </dd></dl>
+
+</div>
+</div>
 <a id="ga9801762935e9ba7bcb4c1189eb88fbf3"></a>
 <h2 class="memtitle"><span class="permalink"><a href="#ga9801762935e9ba7bcb4c1189eb88fbf3">&#9670;&nbsp;</a></span>PollWindowEvent()</h2>
 
@@ -577,7 +606,7 @@ Functions</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p>Gets and moves the top event data from the internal queue into the event argument. </p>
+<p>Gets the top event from the internal event queue and removes it. </p>
 <dl class="params"><dt>Parameters</dt><dd>
   <table class="params">
     <tr><td class="paramname">ev</td><td>Reference to an event </td></tr>
@@ -585,6 +614,47 @@ Functions</h2></td></tr>
   </dd>
 </dl>
 <dl class="section return"><dt>Returns</dt><dd>Returns false when there are no events left, otherwise true. </dd></dl>
+
+</div>
+</div>
+<a id="ga87ae061626cbd36404b976be1d1398d6"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#ga87ae061626cbd36404b976be1d1398d6">&#9670;&nbsp;</a></span>PushWindowEvent()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname"><a class="el" href="final__platform__layer_8hpp.html#aafa1d3d90febf9826c55c1318f98b27d">fpl_api</a> bool fpl::window::PushWindowEvent </td>
+          <td>(</td>
+          <td class="paramname"></td><td>)</td>
+          <td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p>Reads the next window event from the OS and pushes it into the internal queue. </p>
+<dl class="section return"><dt>Returns</dt><dd>Returns true when there was a event from the OS, otherwise true. </dd></dl>
+<dl class="section note"><dt>Note</dt><dd>Use this only if dont use <a class="el" href="group___window_base.html#ga3b59bf79f2c70c92b61c12741e75ae0a">WindowUpdate()</a> and want to handle the events more granular! </dd></dl>
+
+</div>
+</div>
+<a id="ga6d63e5f628a0d283e1fcdc19787531bd"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#ga6d63e5f628a0d283e1fcdc19787531bd">&#9670;&nbsp;</a></span>UpdateGameControllers()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname"><a class="el" href="final__platform__layer_8hpp.html#aafa1d3d90febf9826c55c1318f98b27d">fpl_api</a> void fpl::window::UpdateGameControllers </td>
+          <td>(</td>
+          <td class="paramname"></td><td>)</td>
+          <td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p>Updates the game controller states and detects new and disconnected devices. </p>
+<dl class="section note"><dt>Note</dt><dd>Use this only if dont use <a class="el" href="group___window_base.html#ga3b59bf79f2c70c92b61c12741e75ae0a">WindowUpdate()</a> and want to handle the events more granular! </dd></dl>
 
 </div>
 </div>

@@ -22,7 +22,7 @@
  <tr style="height: 56px;">
   <td id="projectalign" style="padding-left: 0.5em;">
    <div id="projectname">Final Platform Layer
-   &#160;<span id="projectnumber">0.5.8.0</span>
+   &#160;<span id="projectnumber">0.5.8.1</span>
    </div>
   </td>
  </tr>
@@ -82,6 +82,10 @@ Public Attributes</h2></td></tr>
 uint32_t&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structfpl_1_1video_1_1_video_back_buffer.html#a69cbcb70ac19416095ee4c292c9ef781">height</a></td></tr>
 <tr class="memdesc:a69cbcb70ac19416095ee4c292c9ef781"><td class="mdescLeft">&#160;</td><td class="mdescRight">The height of the backbuffer in pixels. Do not modify, it will be set automatically. <br /></td></tr>
 <tr class="separator:a69cbcb70ac19416095ee4c292c9ef781"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:ad2c067b79874afd0e8c3f67106d7c83f"><td class="memItemLeft" align="right" valign="top"><a id="ad2c067b79874afd0e8c3f67106d7c83f"></a>
+size_t&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structfpl_1_1video_1_1_video_back_buffer.html#ad2c067b79874afd0e8c3f67106d7c83f">lineWidth</a></td></tr>
+<tr class="memdesc:ad2c067b79874afd0e8c3f67106d7c83f"><td class="mdescLeft">&#160;</td><td class="mdescRight">The width of one line in bytes. Do not modify, it will be set automatically. <br /></td></tr>
+<tr class="separator:ad2c067b79874afd0e8c3f67106d7c83f"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:acf6013f927cbee8d051b40fe9baffca6"><td class="memItemLeft" align="right" valign="top"><a id="acf6013f927cbee8d051b40fe9baffca6"></a>
 <a class="el" href="structfpl_1_1video_1_1_video_rect.html">VideoRect</a>&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structfpl_1_1video_1_1_video_back_buffer.html#acf6013f927cbee8d051b40fe9baffca6">outputRect</a></td></tr>
 <tr class="memdesc:acf6013f927cbee8d051b40fe9baffca6"><td class="mdescLeft">&#160;</td><td class="mdescRight">The output rectangle for displaying the backbuffer (Size may not match backbuffer size!) <br /></td></tr>
@@ -90,10 +94,10 @@ uint32_t&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="
 uint32_t *&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structfpl_1_1video_1_1_video_back_buffer.html#af423b416ba0131dd3483f7f25a3d6496">pixels</a></td></tr>
 <tr class="memdesc:af423b416ba0131dd3483f7f25a3d6496"><td class="mdescLeft">&#160;</td><td class="mdescRight">The 32-bit pixel top-down array, format: 0xAABBGGRR. Do not modify before WindowUpdate. <br /></td></tr>
 <tr class="separator:af423b416ba0131dd3483f7f25a3d6496"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:ad7a677841458395ab93db56d3ae57945"><td class="memItemLeft" align="right" valign="top"><a id="ad7a677841458395ab93db56d3ae57945"></a>
-size_t&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structfpl_1_1video_1_1_video_back_buffer.html#ad7a677841458395ab93db56d3ae57945">stride</a></td></tr>
-<tr class="memdesc:ad7a677841458395ab93db56d3ae57945"><td class="mdescLeft">&#160;</td><td class="mdescRight">The size of one scanline. Do not modify, it will be set automatically. <br /></td></tr>
-<tr class="separator:ad7a677841458395ab93db56d3ae57945"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:ab8a6c8767122f84959f9a3a027a3b423"><td class="memItemLeft" align="right" valign="top"><a id="ab8a6c8767122f84959f9a3a027a3b423"></a>
+size_t&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structfpl_1_1video_1_1_video_back_buffer.html#ab8a6c8767122f84959f9a3a027a3b423">pixelStride</a></td></tr>
+<tr class="memdesc:ab8a6c8767122f84959f9a3a027a3b423"><td class="mdescLeft">&#160;</td><td class="mdescRight">The size of one entire pixel with all 4 components in bytes. Do not modify, it will be set automatically. <br /></td></tr>
+<tr class="separator:ab8a6c8767122f84959f9a3a027a3b423"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:af824cd42284f9a03cf0895195a74e606"><td class="memItemLeft" align="right" valign="top"><a id="af824cd42284f9a03cf0895195a74e606"></a>
 bool&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structfpl_1_1video_1_1_video_back_buffer.html#af824cd42284f9a03cf0895195a74e606">useOutputRect</a></td></tr>
 <tr class="memdesc:af824cd42284f9a03cf0895195a74e606"><td class="mdescLeft">&#160;</td><td class="mdescRight">Set this to true to actually use the output rectangle. <br /></td></tr>
@@ -106,7 +110,7 @@ uint32_t&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="
 <a name="details" id="details"></a><h2 class="groupheader">Detailed Description</h2>
 <div class="textblock"><p>Video backbuffer container. Use this for accessing the pixels directly. Use with care! </p>
 
-<p class="definition">Definition at line <a class="el" href="final__platform__layer_8hpp_source.html#l03657">3657</a> of file <a class="el" href="final__platform__layer_8hpp_source.html">final_platform_layer.hpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="final__platform__layer_8hpp_source.html#l04286">4286</a> of file <a class="el" href="final__platform__layer_8hpp_source.html">final_platform_layer.hpp</a>.</p>
 </div><hr/>The documentation for this struct was generated from the following file:<ul>
 <li><a class="el" href="final__platform__layer_8hpp_source.html">final_platform_layer.hpp</a></li>
 </ul>

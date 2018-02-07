@@ -1,6 +1,6 @@
 var searchData=
 [
-  ['char',['Char',['../group___window_events.html#ggacc336636e2219913ba436b1900358e24a8e95e84813830072b7516cfaa7dbc1a9',1,'fpl::window']]],
+  ['charinput',['CharInput',['../group___window_events.html#ggacc336636e2219913ba436b1900358e24a699a1a8e07421c3903046eace15b9ce1',1,'fpl::window']]],
   ['compability',['Compability',['../group___settings.html#gga474e10da59313b97e3d573eb21f53408ad64a1b98b71008d2b452572f0933a55f',1,'fpl']]],
   ['connected',['Connected',['../group___window_events.html#gga85374967f1703b14d476872c6df8d4c7a2ec0d16e4ca169baedb9b2d50ec5c6d7',1,'fpl::window']]],
   ['core',['Core',['../group___settings.html#gga474e10da59313b97e3d573eb21f53408a83168e6cb289d732cc78427b51f93153',1,'fpl']]],

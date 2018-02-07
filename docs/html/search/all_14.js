@@ -1,7 +1,8 @@
 var searchData=
 [
+  ['writing_20audio_20samples',['Writing audio samples',['../page_otutorial_audio_writesamples.html',1,'page_otutorial_audio_general']]],
   ['window_20creation_20_26_20main_20loop',['Window creation &amp; main loop',['../page_otutorial_window_creation.html',1,'page_tutorials']]],
-  ['window_20events',['Window events',['../page_otutorial_window_events.html',1,'page_tutorials']]],
+  ['window_20events',['Window events',['../page_otutorial_window_events.html',1,'page_otutorial_input_events']]],
   ['wheel',['Wheel',['../group___window_events.html#ggafb71b85fe6f916d575cab2076f7c1635aa5df60ef4fc4447353769d66661d2229',1,'fpl::window']]],
   ['wheeldelta',['wheelDelta',['../structfpl_1_1window_1_1_mouse_event.html#ae41d90b6630a3feecb2c2a72d9d64af5',1,'fpl::window::MouseEvent']]],
   ['widestringtoansistring',['WideStringToAnsiString',['../group___strings.html#ga5deb86f97d22b96c050f1dddbeb8b153',1,'fpl::strings']]],

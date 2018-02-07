@@ -22,7 +22,7 @@
  <tr style="height: 56px;">
   <td id="projectalign" style="padding-left: 0.5em;">
    <div id="projectname">Final Platform Layer
-   &#160;<span id="projectnumber">0.5.8.0</span>
+   &#160;<span id="projectnumber">0.5.8.1</span>
    </div>
   </td>
  </tr>
@@ -271,7 +271,7 @@ Enumerations</h2></td></tr>
 <tr class="separator:gab45601d8968b4696e5d6dc3d79d4a3be"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:gacc336636e2219913ba436b1900358e24"><td class="memItemLeft" align="right" valign="top">enum &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___window_events.html#gacc336636e2219913ba436b1900358e24">KeyboardEventType</a> { <a class="el" href="group___window_events.html#ggacc336636e2219913ba436b1900358e24acfd07bf1effd88bca04a12a087777354">KeyboardEventType::KeyDown</a>, 
 <a class="el" href="group___window_events.html#ggacc336636e2219913ba436b1900358e24a0f8baa14654b1f6ef00fed708c7f198a">KeyboardEventType::KeyUp</a>, 
-<a class="el" href="group___window_events.html#ggacc336636e2219913ba436b1900358e24a8e95e84813830072b7516cfaa7dbc1a9">KeyboardEventType::Char</a>
+<a class="el" href="group___window_events.html#ggacc336636e2219913ba436b1900358e24a699a1a8e07421c3903046eace15b9ce1">KeyboardEventType::CharInput</a>
  }<tr class="memdesc:gacc336636e2219913ba436b1900358e24"><td class="mdescLeft">&#160;</td><td class="mdescRight">Keyboard event type (KeyDown, KeyUp, Char, ...)  <a href="group___window_events.html#gacc336636e2219913ba436b1900358e24">More...</a><br /></td></tr>
 </td></tr>
 <tr class="separator:gacc336636e2219913ba436b1900358e24"><td class="memSeparator" colspan="2">&#160;</td></tr>
@@ -309,6 +309,9 @@ Enumerations</h2></td></tr>
 </table><table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a name="func-members"></a>
 Functions</h2></td></tr>
+<tr class="memitem:ga97f842560d647e65ebb5e30a2dd572fc"><td class="memItemLeft" align="right" valign="top"><a class="el" href="final__platform__layer_8hpp.html#aafa1d3d90febf9826c55c1318f98b27d">fpl_api</a> void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___window_events.html#ga97f842560d647e65ebb5e30a2dd572fc">ClearWindowEvents</a> ()</td></tr>
+<tr class="memdesc:ga97f842560d647e65ebb5e30a2dd572fc"><td class="mdescLeft">&#160;</td><td class="mdescRight">Removes all the events from the internal event queue.  <a href="group___window_events.html#ga97f842560d647e65ebb5e30a2dd572fc">More...</a><br /></td></tr>
+<tr class="separator:ga97f842560d647e65ebb5e30a2dd572fc"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:gacdd8b1e56dfec05e62735ae48df2080d"><td class="memItemLeft" align="right" valign="top">
 &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___window_events.html#gacdd8b1e56dfec05e62735ae48df2080d">FPL_ENUM_AS_FLAGS_OPERATORS</a> (<a class="el" href="group___window_events.html#ga0273526560c565d3c67cdf5c0c071194">KeyboardModifierFlags</a>)</td></tr>
 <tr class="memdesc:gacdd8b1e56dfec05e62735ae48df2080d"><td class="mdescLeft">&#160;</td><td class="mdescRight">Operator support for KeyboardModifierFlags. <br /></td></tr>
@@ -335,8 +338,11 @@ Functions</h2></td></tr>
 <tr class="memdesc:gae603a20eb995b5887ff055e95b48363b"><td class="mdescLeft">&#160;</td><td class="mdescRight">Returns true when the window is active.  <a href="group___window_base.html#gae603a20eb995b5887ff055e95b48363b">More...</a><br /></td></tr>
 <tr class="separator:gae603a20eb995b5887ff055e95b48363b"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:ga9801762935e9ba7bcb4c1189eb88fbf3"><td class="memItemLeft" align="right" valign="top"><a class="el" href="final__platform__layer_8hpp.html#aafa1d3d90febf9826c55c1318f98b27d">fpl_api</a> bool&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___window_events.html#ga9801762935e9ba7bcb4c1189eb88fbf3">PollWindowEvent</a> (<a class="el" href="structfpl_1_1window_1_1_event.html">Event</a> &amp;ev)</td></tr>
-<tr class="memdesc:ga9801762935e9ba7bcb4c1189eb88fbf3"><td class="mdescLeft">&#160;</td><td class="mdescRight">Gets and moves the top event data from the internal queue into the event argument.  <a href="group___window_events.html#ga9801762935e9ba7bcb4c1189eb88fbf3">More...</a><br /></td></tr>
+<tr class="memdesc:ga9801762935e9ba7bcb4c1189eb88fbf3"><td class="mdescLeft">&#160;</td><td class="mdescRight">Gets the top event from the internal event queue and removes it.  <a href="group___window_events.html#ga9801762935e9ba7bcb4c1189eb88fbf3">More...</a><br /></td></tr>
 <tr class="separator:ga9801762935e9ba7bcb4c1189eb88fbf3"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:ga87ae061626cbd36404b976be1d1398d6"><td class="memItemLeft" align="right" valign="top"><a class="el" href="final__platform__layer_8hpp.html#aafa1d3d90febf9826c55c1318f98b27d">fpl_api</a> bool&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___window_events.html#ga87ae061626cbd36404b976be1d1398d6">PushWindowEvent</a> ()</td></tr>
+<tr class="memdesc:ga87ae061626cbd36404b976be1d1398d6"><td class="mdescLeft">&#160;</td><td class="mdescRight">Reads the next window event from the OS and pushes it into the internal queue.  <a href="group___window_events.html#ga87ae061626cbd36404b976be1d1398d6">More...</a><br /></td></tr>
+<tr class="separator:ga87ae061626cbd36404b976be1d1398d6"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:gab10a8c4065efa4a51fc0426280f7a116"><td class="memItemLeft" align="right" valign="top"><a class="el" href="final__platform__layer_8hpp.html#aafa1d3d90febf9826c55c1318f98b27d">fpl_api</a> bool&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___window_clipboard.html#gab10a8c4065efa4a51fc0426280f7a116">SetClipboardText</a> (const char *ansiSource)</td></tr>
 <tr class="memdesc:gab10a8c4065efa4a51fc0426280f7a116"><td class="mdescLeft">&#160;</td><td class="mdescRight">Overwrites the current clipboard ansi text with the given one.  <a href="group___window_clipboard.html#gab10a8c4065efa4a51fc0426280f7a116">More...</a><br /></td></tr>
 <tr class="separator:gab10a8c4065efa4a51fc0426280f7a116"><td class="memSeparator" colspan="2">&#160;</td></tr>
@@ -361,6 +367,9 @@ Functions</h2></td></tr>
 <tr class="memitem:ga83958a36db0031b265f3b10470b4dade"><td class="memItemLeft" align="right" valign="top"><a class="el" href="final__platform__layer_8hpp.html#aafa1d3d90febf9826c55c1318f98b27d">fpl_api</a> void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___window_base.html#ga83958a36db0031b265f3b10470b4dade">SetWindowTitle</a> (const char *title)</td></tr>
 <tr class="memdesc:ga83958a36db0031b265f3b10470b4dade"><td class="mdescLeft">&#160;</td><td class="mdescRight">Sets the window title.  <a href="group___window_base.html#ga83958a36db0031b265f3b10470b4dade">More...</a><br /></td></tr>
 <tr class="separator:ga83958a36db0031b265f3b10470b4dade"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:ga6d63e5f628a0d283e1fcdc19787531bd"><td class="memItemLeft" align="right" valign="top"><a class="el" href="final__platform__layer_8hpp.html#aafa1d3d90febf9826c55c1318f98b27d">fpl_api</a> void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___window_events.html#ga6d63e5f628a0d283e1fcdc19787531bd">UpdateGameControllers</a> ()</td></tr>
+<tr class="memdesc:ga6d63e5f628a0d283e1fcdc19787531bd"><td class="mdescLeft">&#160;</td><td class="mdescRight">Updates the game controller states and detects new and disconnected devices.  <a href="group___window_events.html#ga6d63e5f628a0d283e1fcdc19787531bd">More...</a><br /></td></tr>
+<tr class="separator:ga6d63e5f628a0d283e1fcdc19787531bd"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:gaad836fba746600304f58f1d07d12ab72"><td class="memItemLeft" align="right" valign="top">
 <a class="el" href="final__platform__layer_8hpp.html#aafa1d3d90febf9826c55c1318f98b27d">fpl_api</a> void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___window_base.html#gaad836fba746600304f58f1d07d12ab72">WindowFlip</a> ()</td></tr>
 <tr class="memdesc:gaad836fba746600304f58f1d07d12ab72"><td class="mdescLeft">&#160;</td><td class="mdescRight">Forces the window to redraw or to swap the back/front buffer. <br /></td></tr>

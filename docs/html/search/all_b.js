@@ -1,6 +1,6 @@
 var searchData=
 [
-  ['majorversion',['majorVersion',['../structfpl_1_1_video_settings.html#a978bfca33e1fd1f26afc502fb392f021',1,'fpl::VideoSettings']]],
+  ['majorversion',['majorVersion',['../structfpl_1_1_open_g_l_video_settings.html#a95da64f662ffbeb54e39111b00d0cfb7',1,'fpl::OpenGLVideoSettings']]],
   ['mappedkey',['mappedKey',['../structfpl_1_1window_1_1_keyboard_event.html#ac2d511ffa600d151cf5c7f9a1882a51a',1,'fpl::window::KeyboardEvent']]],
   ['max_5ffileentry_5fpath_5flength',['MAX_FILEENTRY_PATH_LENGTH',['../group___files.html#ga37b8887a6a2c3cea5d8f0df234a0e90b',1,'fpl::files']]],
   ['memory_20functions',['Memory functions',['../group___memory.html',1,'']]],
@@ -13,7 +13,7 @@ var searchData=
   ['memoryinfos',['MemoryInfos',['../structfpl_1_1hardware_1_1_memory_infos.html',1,'fpl::hardware']]],
   ['memorystackallocate',['MemoryStackAllocate',['../group___memory.html#gaae59e8f8c515b0a58ece0a60588779dd',1,'fpl::memory']]],
   ['middle',['Middle',['../group___window_events.html#ggaa59b9dadfe29d58132ad77164994bdc5ab1ca34f82e83c52b010f86955f264e05',1,'fpl::window']]],
-  ['minorversion',['minorVersion',['../structfpl_1_1_video_settings.html#ac99e6a0bc71882b9209875f09e632e47',1,'fpl::VideoSettings']]],
+  ['minorversion',['minorVersion',['../structfpl_1_1_open_g_l_video_settings.html#aabbb23489a936695bed6cb2b946d441e',1,'fpl::OpenGLVideoSettings']]],
   ['modifiers',['modifiers',['../structfpl_1_1window_1_1_keyboard_event.html#ada8c00bf3cd8a2700e35e19609195c3d',1,'fpl::window::KeyboardEvent']]],
   ['mouse',['mouse',['../structfpl_1_1window_1_1_event.html#a64673c8ea91ac21ce618ed73fe413ba8',1,'fpl::window::Event::mouse()'],['../group___window_events.html#gga5bca567a4ac5c4145c9a492b0558ee4aaf2a47c6809d88e175dade0ef7b16aa13',1,'fpl::window::Mouse()']]],
   ['mousebutton',['mouseButton',['../structfpl_1_1window_1_1_mouse_event.html#a1ea9badf6365cb020c77e735ca6e2298',1,'fpl::window::MouseEvent']]],
@@ -27,5 +27,6 @@ var searchData=
   ['mutexdestroy',['MutexDestroy',['../group___threading.html#ga9fda6954c3de6afbc9e09b4636001282',1,'fpl::threading']]],
   ['mutexlock',['MutexLock',['../group___threading.html#gad0304ca6339e7fc3376dc57943ea3d76',1,'fpl::threading']]],
   ['mutexunlock',['MutexUnlock',['../group___threading.html#ga1f168ddadc3a54cdbf5acd04850bf8a8',1,'fpl::threading']]],
-  ['modern_20opengl_203_2e3_2b',['Modern OpenGL 3.3+',['../page_example_opengl33.html',1,'page_examples']]]
+  ['modern_20opengl_203_2e3_2b',['Modern OpenGL 3.3+',['../page_example_opengl33.html',1,'page_examples']]],
+  ['modern_20opengl',['Modern OpenGL',['../page_otutorial_video_modern_opengl.html',1,'page_tutorials']]]
 ];

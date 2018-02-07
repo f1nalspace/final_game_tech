@@ -22,7 +22,7 @@
  <tr style="height: 56px;">
   <td id="projectalign" style="padding-left: 0.5em;">
    <div id="projectname">Final Platform Layer
-   &#160;<span id="projectnumber">0.5.8.0</span>
+   &#160;<span id="projectnumber">0.5.8.1</span>
    </div>
   </td>
  </tr>
@@ -87,12 +87,30 @@ Enumerations</h2></td></tr>
 </table><table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a name="func-members"></a>
 Functions</h2></td></tr>
+<tr class="memitem:ga00cd065e707e828dc5b1e60a6d631bd7"><td class="memItemLeft" align="right" valign="top"><a class="el" href="final__platform__layer_8hpp.html#ad67e19afe5bfc76f56e85436eac8cf4d">fpl_inline</a> uint32_t&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___audio.html#ga00cd065e707e828dc5b1e60a6d631bd7">fpl::audio::GetAudioBufferSizeInBytes</a> (const <a class="el" href="group___settings.html#ga55b37668317bc18d2c57ccb5653fc9c1">AudioFormatType</a> format, const uint32_t channelCount, const uint32_t frameCount)</td></tr>
+<tr class="memdesc:ga00cd065e707e828dc5b1e60a6d631bd7"><td class="mdescLeft">&#160;</td><td class="mdescRight">Returns the total number of bytes for the buffer and the given parameters.  <a href="group___audio.html#ga00cd065e707e828dc5b1e60a6d631bd7">More...</a><br /></td></tr>
+<tr class="separator:ga00cd065e707e828dc5b1e60a6d631bd7"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:ga7bbf3bbda0a16c2709784b40f58be5dc"><td class="memItemLeft" align="right" valign="top"><a class="el" href="final__platform__layer_8hpp.html#ad67e19afe5bfc76f56e85436eac8cf4d">fpl_inline</a> uint32_t&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___audio.html#ga7bbf3bbda0a16c2709784b40f58be5dc">fpl::audio::GetAudioBufferSizeInFrames</a> (uint32_t sampleRate, uint32_t bufferSizeInMilliSeconds)</td></tr>
+<tr class="memdesc:ga7bbf3bbda0a16c2709784b40f58be5dc"><td class="mdescLeft">&#160;</td><td class="mdescRight">Returns the total frame count for given sample rate and buffer size in milliseconds.  <a href="group___audio.html#ga7bbf3bbda0a16c2709784b40f58be5dc">More...</a><br /></td></tr>
+<tr class="separator:ga7bbf3bbda0a16c2709784b40f58be5dc"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:gade581873cbbeadf29f7335818345e673"><td class="memItemLeft" align="right" valign="top"><a class="el" href="final__platform__layer_8hpp.html#aafa1d3d90febf9826c55c1318f98b27d">fpl_api</a> uint32_t&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___audio.html#gade581873cbbeadf29f7335818345e673">fpl::audio::GetAudioDevices</a> (<a class="el" href="structfpl_1_1_audio_device_i_d.html">AudioDeviceID</a> *devices, uint32_t maxDeviceCount)</td></tr>
 <tr class="memdesc:gade581873cbbeadf29f7335818345e673"><td class="mdescLeft">&#160;</td><td class="mdescRight">Gets all playback audio devices.  <a href="group___audio.html#gade581873cbbeadf29f7335818345e673">More...</a><br /></td></tr>
 <tr class="separator:gade581873cbbeadf29f7335818345e673"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:ga0d93f5ed6e3484932a57c0cb6c605c48"><td class="memItemLeft" align="right" valign="top"><a class="el" href="final__platform__layer_8hpp.html#ad67e19afe5bfc76f56e85436eac8cf4d">fpl_inline</a> const char *&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___audio.html#ga0d93f5ed6e3484932a57c0cb6c605c48">fpl::audio::GetAudioDriverString</a> (<a class="el" href="group___settings.html#ga7846abd72446af7c7e6b1e9bbddea3b4">AudioDriverType</a> driver)</td></tr>
+<tr class="memdesc:ga0d93f5ed6e3484932a57c0cb6c605c48"><td class="mdescLeft">&#160;</td><td class="mdescRight">Returns the string for the given audio driver.  <a href="group___audio.html#ga0d93f5ed6e3484932a57c0cb6c605c48">More...</a><br /></td></tr>
+<tr class="separator:ga0d93f5ed6e3484932a57c0cb6c605c48"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:ga6b4841dc4e0d739cabc2632b15f47700"><td class="memItemLeft" align="right" valign="top"><a class="el" href="final__platform__layer_8hpp.html#ad67e19afe5bfc76f56e85436eac8cf4d">fpl_inline</a> const char *&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___audio.html#ga6b4841dc4e0d739cabc2632b15f47700">fpl::audio::GetAudioFormatString</a> (const <a class="el" href="group___settings.html#ga55b37668317bc18d2c57ccb5653fc9c1">AudioFormatType</a> format)</td></tr>
+<tr class="memdesc:ga6b4841dc4e0d739cabc2632b15f47700"><td class="mdescLeft">&#160;</td><td class="mdescRight">Returns the string for the given format type.  <a href="group___audio.html#ga6b4841dc4e0d739cabc2632b15f47700">More...</a><br /></td></tr>
+<tr class="separator:ga6b4841dc4e0d739cabc2632b15f47700"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:gafa51ef4e96e431877fde7926e7f9786e"><td class="memItemLeft" align="right" valign="top"><a class="el" href="final__platform__layer_8hpp.html#ad67e19afe5bfc76f56e85436eac8cf4d">fpl_inline</a> uint32_t&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___audio.html#gafa51ef4e96e431877fde7926e7f9786e">fpl::audio::GetAudioFrameSizeInBytes</a> (const <a class="el" href="group___settings.html#ga55b37668317bc18d2c57ccb5653fc9c1">AudioFormatType</a> format, const uint32_t channelCount)</td></tr>
+<tr class="memdesc:gafa51ef4e96e431877fde7926e7f9786e"><td class="mdescLeft">&#160;</td><td class="mdescRight">Returns the number of bytes required for one interleaved audio frame - containing all the channels.  <a href="group___audio.html#gafa51ef4e96e431877fde7926e7f9786e">More...</a><br /></td></tr>
+<tr class="separator:gafa51ef4e96e431877fde7926e7f9786e"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:ga0b9d3595b9898f3d47e2a87e6d497c76"><td class="memItemLeft" align="right" valign="top"><a class="el" href="final__platform__layer_8hpp.html#aafa1d3d90febf9826c55c1318f98b27d">fpl_api</a> const <a class="el" href="structfpl_1_1_audio_device_format.html">AudioDeviceFormat</a> &amp;&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___audio.html#ga0b9d3595b9898f3d47e2a87e6d497c76">fpl::audio::GetAudioHardwareFormat</a> ()</td></tr>
 <tr class="memdesc:ga0b9d3595b9898f3d47e2a87e6d497c76"><td class="mdescLeft">&#160;</td><td class="mdescRight">Returns the native format for the current audio device.  <a href="group___audio.html#ga0b9d3595b9898f3d47e2a87e6d497c76">More...</a><br /></td></tr>
 <tr class="separator:ga0b9d3595b9898f3d47e2a87e6d497c76"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:ga8a27c0a69e458aae224c008085c2883d"><td class="memItemLeft" align="right" valign="top"><a class="el" href="final__platform__layer_8hpp.html#ad67e19afe5bfc76f56e85436eac8cf4d">fpl_inline</a> uint32_t&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___audio.html#ga8a27c0a69e458aae224c008085c2883d">fpl::audio::GetAudioSampleSizeInBytes</a> (const <a class="el" href="group___settings.html#ga55b37668317bc18d2c57ccb5653fc9c1">AudioFormatType</a> format)</td></tr>
+<tr class="memdesc:ga8a27c0a69e458aae224c008085c2883d"><td class="mdescLeft">&#160;</td><td class="mdescRight">Returns the number of bytes required to write one sample with one channel.  <a href="group___audio.html#ga8a27c0a69e458aae224c008085c2883d">More...</a><br /></td></tr>
+<tr class="separator:ga8a27c0a69e458aae224c008085c2883d"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:gad879b8c42a68250a581a7d5347e3b3e0"><td class="memItemLeft" align="right" valign="top"><a class="el" href="final__platform__layer_8hpp.html#aafa1d3d90febf9826c55c1318f98b27d">fpl_api</a> <a class="el" href="group___audio.html#ga341d4051c79a9c91ff98e4d9c1fb932d">AudioResult</a>&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___audio.html#gad879b8c42a68250a581a7d5347e3b3e0">fpl::audio::PlayAudio</a> ()</td></tr>
 <tr class="memdesc:gad879b8c42a68250a581a7d5347e3b3e0"><td class="mdescLeft">&#160;</td><td class="mdescRight">Start playing asyncronous audio.  <a href="group___audio.html#gad879b8c42a68250a581a7d5347e3b3e0">More...</a><br /></td></tr>
 <tr class="separator:gad879b8c42a68250a581a7d5347e3b3e0"><td class="memSeparator" colspan="2">&#160;</td></tr>
@@ -106,6 +124,93 @@ Functions</h2></td></tr>
 <a name="details" id="details"></a><h2 class="groupheader">Detailed Description</h2>
 <p>Functions for start/stop playing audio and retrieving/changing some audio related settings. </p>
 <h2 class="groupheader">Function Documentation</h2>
+<a id="ga00cd065e707e828dc5b1e60a6d631bd7"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#ga00cd065e707e828dc5b1e60a6d631bd7">&#9670;&nbsp;</a></span>GetAudioBufferSizeInBytes()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname"><a class="el" href="final__platform__layer_8hpp.html#ad67e19afe5bfc76f56e85436eac8cf4d">fpl_inline</a> uint32_t fpl::audio::GetAudioBufferSizeInBytes </td>
+          <td>(</td>
+          <td class="paramtype">const <a class="el" href="group___settings.html#ga55b37668317bc18d2c57ccb5653fc9c1">AudioFormatType</a>&#160;</td>
+          <td class="paramname"><em>format</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">const uint32_t&#160;</td>
+          <td class="paramname"><em>channelCount</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">const uint32_t&#160;</td>
+          <td class="paramname"><em>frameCount</em>&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p>Returns the total number of bytes for the buffer and the given parameters. </p>
+<dl class="params"><dt>Parameters</dt><dd>
+  <table class="params">
+    <tr><td class="paramname">format</td><td>The audio format </td></tr>
+    <tr><td class="paramname">channelCount</td><td>The number of channels </td></tr>
+    <tr><td class="paramname">frameCount</td><td>The number of frames </td></tr>
+  </table>
+  </dd>
+</dl>
+<dl class="section return"><dt>Returns</dt><dd>Total number of bytes for the buffer </dd></dl>
+
+<p class="definition">Definition at line <a class="el" href="final__platform__layer_8hpp_source.html#l04468">4468</a> of file <a class="el" href="final__platform__layer_8hpp_source.html">final_platform_layer.hpp</a>.</p>
+
+</div>
+</div>
+<a id="ga7bbf3bbda0a16c2709784b40f58be5dc"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#ga7bbf3bbda0a16c2709784b40f58be5dc">&#9670;&nbsp;</a></span>GetAudioBufferSizeInFrames()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname"><a class="el" href="final__platform__layer_8hpp.html#ad67e19afe5bfc76f56e85436eac8cf4d">fpl_inline</a> uint32_t fpl::audio::GetAudioBufferSizeInFrames </td>
+          <td>(</td>
+          <td class="paramtype">uint32_t&#160;</td>
+          <td class="paramname"><em>sampleRate</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">uint32_t&#160;</td>
+          <td class="paramname"><em>bufferSizeInMilliSeconds</em>&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p>Returns the total frame count for given sample rate and buffer size in milliseconds. </p>
+<dl class="params"><dt>Parameters</dt><dd>
+  <table class="params">
+    <tr><td class="paramname">sampleRate</td><td>The sample rate in Hz </td></tr>
+    <tr><td class="paramname">bufferSizeInMilliSeconds</td><td>The buffer size in number of milliseconds </td></tr>
+  </table>
+  </dd>
+</dl>
+<dl class="section return"><dt>Returns</dt><dd>Number of frames </dd></dl>
+
+<p class="definition">Definition at line <a class="el" href="final__platform__layer_8hpp_source.html#l04445">4445</a> of file <a class="el" href="final__platform__layer_8hpp_source.html">final_platform_layer.hpp</a>.</p>
+
+</div>
+</div>
 <a id="gade581873cbbeadf29f7335818345e673"></a>
 <h2 class="memtitle"><span class="permalink"><a href="#gade581873cbbeadf29f7335818345e673">&#9670;&nbsp;</a></span>GetAudioDevices()</h2>
 
@@ -144,6 +249,104 @@ Functions</h2></td></tr>
 
 </div>
 </div>
+<a id="ga0d93f5ed6e3484932a57c0cb6c605c48"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#ga0d93f5ed6e3484932a57c0cb6c605c48">&#9670;&nbsp;</a></span>GetAudioDriverString()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname"><a class="el" href="final__platform__layer_8hpp.html#ad67e19afe5bfc76f56e85436eac8cf4d">fpl_inline</a> const char* fpl::audio::GetAudioDriverString </td>
+          <td>(</td>
+          <td class="paramtype"><a class="el" href="group___settings.html#ga7846abd72446af7c7e6b1e9bbddea3b4">AudioDriverType</a>&#160;</td>
+          <td class="paramname"><em>driver</em></td><td>)</td>
+          <td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p>Returns the string for the given audio driver. </p>
+<dl class="params"><dt>Parameters</dt><dd>
+  <table class="params">
+    <tr><td class="paramname">driver</td><td>The audio driver </td></tr>
+  </table>
+  </dd>
+</dl>
+<dl class="section return"><dt>Returns</dt><dd>String for the given audio driver </dd></dl>
+
+<p class="definition">Definition at line <a class="el" href="final__platform__layer_8hpp_source.html#l04427">4427</a> of file <a class="el" href="final__platform__layer_8hpp_source.html">final_platform_layer.hpp</a>.</p>
+
+</div>
+</div>
+<a id="ga6b4841dc4e0d739cabc2632b15f47700"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#ga6b4841dc4e0d739cabc2632b15f47700">&#9670;&nbsp;</a></span>GetAudioFormatString()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname"><a class="el" href="final__platform__layer_8hpp.html#ad67e19afe5bfc76f56e85436eac8cf4d">fpl_inline</a> const char* fpl::audio::GetAudioFormatString </td>
+          <td>(</td>
+          <td class="paramtype">const <a class="el" href="group___settings.html#ga55b37668317bc18d2c57ccb5653fc9c1">AudioFormatType</a>&#160;</td>
+          <td class="paramname"><em>format</em></td><td>)</td>
+          <td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p>Returns the string for the given format type. </p>
+<dl class="params"><dt>Parameters</dt><dd>
+  <table class="params">
+    <tr><td class="paramname">format</td><td>The audio format </td></tr>
+  </table>
+  </dd>
+</dl>
+<dl class="section return"><dt>Returns</dt><dd>String for the given format type </dd></dl>
+
+<p class="definition">Definition at line <a class="el" href="final__platform__layer_8hpp_source.html#l04404">4404</a> of file <a class="el" href="final__platform__layer_8hpp_source.html">final_platform_layer.hpp</a>.</p>
+
+</div>
+</div>
+<a id="gafa51ef4e96e431877fde7926e7f9786e"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#gafa51ef4e96e431877fde7926e7f9786e">&#9670;&nbsp;</a></span>GetAudioFrameSizeInBytes()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname"><a class="el" href="final__platform__layer_8hpp.html#ad67e19afe5bfc76f56e85436eac8cf4d">fpl_inline</a> uint32_t fpl::audio::GetAudioFrameSizeInBytes </td>
+          <td>(</td>
+          <td class="paramtype">const <a class="el" href="group___settings.html#ga55b37668317bc18d2c57ccb5653fc9c1">AudioFormatType</a>&#160;</td>
+          <td class="paramname"><em>format</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">const uint32_t&#160;</td>
+          <td class="paramname"><em>channelCount</em>&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p>Returns the number of bytes required for one interleaved audio frame - containing all the channels. </p>
+<dl class="params"><dt>Parameters</dt><dd>
+  <table class="params">
+    <tr><td class="paramname">format</td><td>The audio format </td></tr>
+    <tr><td class="paramname">channelCount</td><td>The number of channels </td></tr>
+  </table>
+  </dd>
+</dl>
+<dl class="section return"><dt>Returns</dt><dd>Number of bytes for one frame in bytes </dd></dl>
+
+<p class="definition">Definition at line <a class="el" href="final__platform__layer_8hpp_source.html#l04456">4456</a> of file <a class="el" href="final__platform__layer_8hpp_source.html">final_platform_layer.hpp</a>.</p>
+
+</div>
+</div>
 <a id="ga0b9d3595b9898f3d47e2a87e6d497c76"></a>
 <h2 class="memtitle"><span class="permalink"><a href="#ga0b9d3595b9898f3d47e2a87e6d497c76">&#9670;&nbsp;</a></span>GetAudioHardwareFormat()</h2>
 
@@ -161,6 +364,35 @@ Functions</h2></td></tr>
 
 <p>Returns the native format for the current audio device. </p>
 <dl class="section return"><dt>Returns</dt><dd>Copy fo the audio device format. </dd></dl>
+
+</div>
+</div>
+<a id="ga8a27c0a69e458aae224c008085c2883d"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#ga8a27c0a69e458aae224c008085c2883d">&#9670;&nbsp;</a></span>GetAudioSampleSizeInBytes()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname"><a class="el" href="final__platform__layer_8hpp.html#ad67e19afe5bfc76f56e85436eac8cf4d">fpl_inline</a> uint32_t fpl::audio::GetAudioSampleSizeInBytes </td>
+          <td>(</td>
+          <td class="paramtype">const <a class="el" href="group___settings.html#ga55b37668317bc18d2c57ccb5653fc9c1">AudioFormatType</a>&#160;</td>
+          <td class="paramname"><em>format</em></td><td>)</td>
+          <td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p>Returns the number of bytes required to write one sample with one channel. </p>
+<dl class="params"><dt>Parameters</dt><dd>
+  <table class="params">
+    <tr><td class="paramname">format</td><td>The audio format </td></tr>
+  </table>
+  </dd>
+</dl>
+<dl class="section return"><dt>Returns</dt><dd>Number of bytes for one sample with one channel </dd></dl>
+
+<p class="definition">Definition at line <a class="el" href="final__platform__layer_8hpp_source.html#l04380">4380</a> of file <a class="el" href="final__platform__layer_8hpp_source.html">final_platform_layer.hpp</a>.</p>
 
 </div>
 </div>

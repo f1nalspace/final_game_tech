@@ -2,6 +2,7 @@ var searchData=
 [
   ['simple_20opengl_201_2ex',['Simple OpenGL 1.x',['../page_example_opengl1x.html',1,'page_examples']]],
   ['simple_20audio_20playback',['Simple audio playback',['../page_example_simple_audio.html',1,'page_examples']]],
+  ['software_20output',['Software Output',['../page_otutorial_video_software.html',1,'page_tutorials']]],
   ['samplerate',['sampleRate',['../structfpl_1_1_audio_device_format.html#ac43f3e139b09c5c38d0b6a0863c0ac1f',1,'fpl::AudioDeviceFormat']]],
   ['setaudioclientreadcallback',['SetAudioClientReadCallback',['../group___audio.html#gab74286317a34e70379c2bdcd4756c02e',1,'fpl::audio']]],
   ['setclipboardtext',['SetClipboardText',['../group___window_clipboard.html#gab10a8c4065efa4a51fc0426280f7a116',1,'fpl::window::SetClipboardText(const char *ansiSource)'],['../group___window_clipboard.html#ga195d6d724a7ad034189368770bf1466b',1,'fpl::window::SetClipboardText(const wchar_t *wideSource)']]],
@@ -27,7 +28,6 @@ var searchData=
   ['statechanged',['StateChanged',['../group___window_events.html#gga85374967f1703b14d476872c6df8d4c7a8499576aa97bf34e41c9ffec52b20151',1,'fpl::window']]],
   ['stopaudio',['StopAudio',['../group___audio.html#ga7c7306211763682dc822438ca375933d',1,'fpl::audio']]],
   ['stopped',['Stopped',['../group___threading.html#gga426869d2ff910fe7574a02a4fc58fb1eac23e2b09ebe6bf4cb5e2a9abe85c0be2',1,'fpl::threading']]],
-  ['stride',['stride',['../structfpl_1_1video_1_1_video_back_buffer.html#ad7a677841458395ab93db56d3ae57945',1,'fpl::video::VideoBackBuffer']]],
   ['string_20manipulation_20functions',['String manipulation functions',['../group___strings.html',1,'']]],
   ['super',['Super',['../group___window_events.html#gga0273526560c565d3c67cdf5c0c071194a0ce3266d4eb71ad50f7a90aee6d21dcd',1,'fpl::window']]],
   ['system',['System',['../group___files.html#gga0fa0af9b0f3d3daf604a1cd5fc639953aa45da96d0bf6575970f2d27af22be28a',1,'fpl::files']]]
