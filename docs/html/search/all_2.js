@@ -16,6 +16,7 @@ var searchData=
   ['consoleformaterror',['ConsoleFormatError',['../group___console.html#gab30929f059d4467a70dc0269c9fb380b',1,'fpl::console']]],
   ['consoleformatout',['ConsoleFormatOut',['../group___console.html#gad6e322c2dc4df3e2424979bde28d97aa',1,'fpl::console']]],
   ['consoleout',['ConsoleOut',['../group___console.html#ga5c6818646bf4500afb78745d63e00469',1,'fpl::console']]],
+  ['consolewaitforcharinput',['ConsoleWaitForCharInput',['../group___console.html#gae5d1380a902e4890085949859eb4b878',1,'fpl::console']]],
   ['controllerdetectionfrequency',['controllerDetectionFrequency',['../structfpl_1_1_input_settings.html#aedac41ab954d13fb01d1676a0b050477',1,'fpl::InputSettings']]],
   ['copyansistring',['CopyAnsiString',['../group___strings.html#ga4540f0bb0f47aeba1a0900f9f107c188',1,'fpl::strings::CopyAnsiString(const char *source, const uint32_t sourceLen, char *dest, const uint32_t maxDestLen)'],['../group___strings.html#ga13b6ef7d3fd687e16fa4db1a58a0cb60',1,'fpl::strings::CopyAnsiString(const char *source, char *dest, const uint32_t maxDestLen)']]],
   ['copywidestring',['CopyWideString',['../group___strings.html#gaa94f2d8d8590d1625ec8dc147fa115e6',1,'fpl::strings::CopyWideString(const wchar_t *source, const uint32_t sourceLen, wchar_t *dest, const uint32_t maxDestLen)'],['../group___strings.html#ga50be92a4b019e3e0e94ce7b8b5082421',1,'fpl::strings::CopyWideString(const wchar_t *source, wchar_t *dest, const uint32_t maxDestLen)']]],
