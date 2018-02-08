@@ -1,0 +1,1488 @@
+// ****************************************************************************
+//
+// Documentation
+//
+// ****************************************************************************
+
+/*!
+	\mainpage
+	\tableofcontents
+
+	\section section_overview Overview
+
+	Final Platform Layer is a cross-platform single-header-file development library designed to abstract the underlying platform to a very simple and easy to use low-level api for accessing input devices (keyboard, mouse, gamepad), audio playback, window handling, IO handling (files, directories, paths), multithreading (threads, mutex, signals) and graphics software or hardware rendering initialization.<br>
+
+	The main focus is game/simulation development, so the default settings will create a window, setup a opengl rendering context and initialize audio playback on any platform.<br>
+	<br>
+	Right know FPL has support for Windows only, but Linux support is already in progress and more platforms are planned.<br>
+	<br>
+	FPL is written in C++ in a C-like style, so it uses namespaces, method overloading and standard types for seamless integration into any codebase but does not provide or use any classes.<br>
+	<br>
+	Final Platform Layer is released under the \subpage page_license "MIT License". This license allows you to use FPL freely in any software.<br>
+	<br>
+	This is the FPL documentation -> The main website is https://libfpl.org/.
+
+	\section section_using_this_documentation How to use this documentation?
+	Use the following links to learn more about FPL:
+	- \subpage page_introduction
+	- \subpage page_usage
+	- \subpage page_tutorials
+	- \subpage page_examples
+	- \subpage page_faq
+	- \subpage page_contribute
+	- \subpage page_changelog
+	- \subpage page_todo
+	- \subpage page_license
+
+	I hope you find all the informations you need. If not please drop a issue on the github project page and i answer it as soon as possible!
+
+	Thanks for using, have a great day!
+*/
+
+/*!
+	\page page_introduction Introduction
+	\tableofcontents
+
+	\section section_intro Introduction to FPL
+
+	\subsection subsection_whatisfpl What is FPL?
+	Final Platform Layer is a cross-platform single-header-file development library designed to abstract the underlying platform to a very simple and easy to use low-level api for accessing input devices (keyboard, mouse, gamepad), audio playback, window handling, IO handling (files, directories, paths), multithreading (threads, mutex, signals) and graphics software or hardware rendering initialization.<br>
+
+	The main focus is game/simulation development, so the default settings will create a window, setup a opengl rendering context and initialize audio playback on any platform.<br>
+	<br>
+	Right know FPL has support for Windows only, but Linux support is already in progress and more platforms are planned.<br>
+	-> For more details see the page about the current \subpage page_platform_status.<br>
+	<br>
+	FPL is written in C++ in a C-like style, so it uses namespaces, method overloading and standard types for seamless integration into any codebase but does not provide or use any classes.<br>
+	<br>
+	Final Platform Layer is released under the \subpage page_license "MIT License". This license allows you to use FPL freely in any software.<br>
+
+	\subsection subsection_whatissingleheaderfilelibrary What is a single-header-file Library and why is FPL based on that?
+	A single header file library (as the name implies) is a development library designed to be one file only.<br>
+	Such a file contains the header (API) and the body (Implementation) in one file but separated and controlled by compiler conditions.<br>
+	This makes it easy to use the library however you want (With source, Static-linked, Private use only).<br>
+	In addition such libraries mostly does not require any dependencies at all, to making it more friendly to the user.<br>
+	<br>
+	So, why then is FPL based on that?<br>
+	<br>
+	Because non-single-header-file libraries are either hard to integrate, forces you to link to it dynamically or statically, are closed source, comes with a ton of dependencies - which is not user friendly at all!
+
+	\subsection subsection_supported_platforms Which platforms are supported by FPL?
+	Right know FPL supports just a couple of x86/x64 platforms, but some are already in progress and more are planned:
+
+	- Windows (32-bit and 64-bit)
+	- Linux (In progress)
+
+	\subsection subsection_supported_compilers Which compilers are supported by FPL?
+	FPL should compile on every modern C++/11 compiler, but is tested on a couple of compilers only:
+
+	- MSVC
+	- GCC
+	- Clang
+
+	\subsection section_features What can FPL do?
+	Read ahead a detailed feature overview of FPL:
+
+	- Window
+		- Create and handle a single window
+		- Fullscreen toggling
+		- Event handling
+		- Clipboard string reading and writing
+	- Event-based input
+		- Keyboard
+		- Mouse
+		- Game controllers
+	- Video:
+		- OpenGL 1.x (Legacy)
+		- OpenGL 3.x or higher (Modern)
+		- Software backbuffer
+	- Audio asyncronous playback
+		- DirectSound
+	- Memory
+		- Allocation and de-allocation
+		- Custom alignment support
+		- Fast clear and copy
+	- Atomics
+		- Support for 8,16,32,64 bit signed and unsigned integer types
+		- Support for void pointer type
+		- Compare and exchange
+		- Add / Exchange
+		- Load / Store
+		- Memory barriers
+	- Shared library
+		- Loading of shared libraries (DLL on windows, .so on Linux)
+		- Function lookup
+	- IO
+		- Path functions
+			- Query user home directory
+			- Query executable path
+			- Extract filename, extension and path
+			- Combine paths
+			- Change file extension
+		- Files/Directories
+			- Reading and writing binary files (32-bit only, 64-bit are planned)
+			- Iterating over files/directories
+			- Rename/Copy/Delete/Move operations
+	- Hardware infos retrievement
+		- Query processor infos (Core count, Name)
+		- Query current memory state (Physical size, virtual size, page size, etc.)
+	- Timings
+		- Get number of seconds with high precision used for profiling and delta calculations
+	- String conversion functions
+		- Ansistring <-> Widestring
+		- UTF-8 <-> Widestring
+		- Copy
+		- Comparing
+		- Formatting
+	- Console
+		- Standard/Error out
+		- Formatting
+	- Threading
+		- Thread
+		- Mutex
+		- Signal
+
+	\subsection section_getstarted How do i get started with FPL?
+	- You download the latest <a href="https://github.com/f1nalspace/final_game_tech/blob/master/final_platform_layer.hpp">"final_platform_layer.hpp"</a> file.
+	- Drop it into your C++ project and use it in any place you want.
+	- Define <b>FPL_IMPLEMENTATION</b> in at least one translation unit before including this header file!
+	- Ready to go.
+
+	For more details see the \subpage page_usage, \subpage page_tutorials and \subpage page_examples pages.
+*/
+
+/*!
+	\page page_usage Usage
+	\tableofcontents
+
+	\section section_usage How to use FPL?
+	In one of your C++ translation units include this:
+
+	\code{.cpp}
+	#define FPL_IMPLEMENTATION
+	#include "final_platform_layer.hpp"
+	\endcode
+
+	You can then include this file in any other C++ source or header file as you would with any other header file.
+
+	Provide the typical main entry point with at least the initialization and release of the platform:
+
+	\code{.cpp}
+	int main(int argc, char *args[]) {
+		// Initialize the platform
+		fpl::InitPlatform(fpl::InitFlags::All);
+
+		// your code goes here
+
+		// Release the platform
+		fpl::ReleasePlatform();
+	}
+	\endcode
+
+	\section subsection_requirements Requirements
+	The only dependencies are built-in operating system libraries, a C++/11 compiler and the C-Runtime.<br>
+	Depending on the compiler and platform - linking to one system library may be required:
+	<br>
+	\subsection sectionCompileWin32 Win32
+	- Link against "kernel32.lib"
+
+	\subsection sectionCompileLinux Linux
+	- Link against "ld"
+
+	\section subsection_compiler_opts Options
+
+	See \subpage page_compiler_options for more details.
+*/
+
+/*!
+	\page page_tutorials Tutorials
+	\tableofcontents
+
+	\section section_official_tutorials Official tutorials
+
+	\subsection subsection_otutorial_general General
+	\subpage page_otutorial_initialization <br>
+	\subpage page_otutorial_autonamespace <br>
+
+	\subsection subsection_otutorial_window Window
+	\subpage page_otutorial_window_creation <br>
+	\subpage page_otutorial_window_events <br>
+
+	\subsection subsection_otutorial_input Input
+	\subpage page_otutorial_input_events <br>
+
+	\subsection subsection_otutorial_video Video
+	\subpage page_otutorial_video_general <br>
+	\subpage page_otutorial_video_legacy_opengl <br>
+	\subpage page_otutorial_video_modern_opengl <br>
+	\subpage page_otutorial_video_software <br>
+
+	\subsection subsection_otutorial_audio Audio
+	\subpage page_otutorial_audio_general <br>
+	\subpage page_otutorial_audio_writesamples <br>
+*/
+
+/*!
+	\page page_otutorial_initialization Initialization & Release
+	\tableofcontents
+
+	\section section_otutorial_initialization_entrypoint Entry Point
+
+	Simply provide the typical main entry point (char, C++ style):<br>
+
+	\code{.cpp}
+	int main(int argc, char *args[]) {
+		// code goes here
+	}
+	\endcode
+
+	\section section_otutorial_initialization_simple Initialization
+
+	To initialize FPL you need to call \ref fpl::InitPlatform() (inside the main \ref section_otutorial_initialization_entrypoint) and provide the desired \ref fpl::InitFlags :
+
+	\code{.cpp}
+	int main(int argc, char *args[]) {
+		// With defaults (Window, Video, Audio)
+		fpl::InitPlatform(fpl::InitFlags::All);
+
+		// Only audio
+		fpl::InitPlatform(fpl::InitFlags::Audio);
+
+		// Only window and audio
+		fpl::InitPlatform(fpl::InitFlags::Window | fpl::InitFlags::Audio);
+
+		return 0;
+	}
+	\endcode
+
+	\section section_otutorial_initialization_with_settings Initialization with settings
+
+	To initialize FPL with custom settings you need to call \ref fpl::InitPlatform() and provide the desired \ref fpl::InitFlags and the \ref fpl::Settings parameter:
+
+	\code{.cpp}
+	fpl::Settings settings = DefaultSettings();
+
+	// change the settings here
+
+	fpl::InitPlatform(fpl::InitFlags::All, settings);
+	\endcode
+
+	\section section_otutorial_initialization_release Release
+
+	When you are done, you release FPL with the call \ref fpl::ReleasePlatform():
+	\code{.cpp}
+	fpl::ReleasePlatform();
+	\endcode
+
+	\section section_otutorial_initialization_result Result/Error checking
+
+	There is no guarantee that \ref fpl::InitPlatform() will always work with the fpl::Settings you specified, maybe the audio device does not support a sample rate of 1337 Khz or your video card does not support OpenGL version 3.7 - who knows.<br>
+	<br>
+	Therefore you should always check the result of the \ref fpl::InitPlatform() call! The result is a simple bool indicating whether the initialization failed or was successful - its that easy.<br>
+	<br>
+	Also you should release the platform when the initialization was successful only! If something goes wrong the resources are already cleaned up by FPL.<br>
+	<br>
+	In addition you should use \ref fpl::GetPlatformError() to print out the actual error when the initialization fails!<br>
+
+	<b>Bad:</b> (But will work)
+	\code{.cpp}
+	if (fpl::InitPlatform(fpl::InitFlags::All)) {
+		// your code here
+	}
+	fpl::ReleasePlatform();
+	\endcode
+
+	<b>Good:</b>
+	\code{.cpp}
+	if (fpl::InitPlatform(fpl::InitFlags::All)) {
+		// your code here
+		fpl::ReleasePlatform();
+	}
+	\endcode
+
+	<b>Better:</b>
+	\code{.cpp}
+	if (fpl::InitPlatform(fpl::InitFlags::All)) {
+		// your code here
+		fpl::ReleasePlatform();
+	} else {
+		const char *errStr = fpl::GetPlatformError();
+		fpl::console::ConsoleFormatError("FPL-ERROR: %s\n", errStr);
+	}
+	\endcode
+
+	See the \subpage page_otutorial_errorhandling page for more details about error handling.
+
+	\section section_otutorial_initialization_tips Tips
+	After releasing FPL you can call \ref fpl::InitPlatform() again if needed - for example: Finding the proper audio device, Testing for OpenGL compability, etc. may require you call InitPlatform() and ReleasePlatform() multiple times.
+*/
+
+/*!
+	\page page_otutorial_autonamespace Automatic namespace inclusion
+	\tableofcontents
+
+	\section section_otutorial_autonamespace Enable automatic namespaces
+
+	In case you dont want to fiddle around with any namespaces from FPL you can always enforces the inclusion of all namespaces automatically:
+
+	\code{.cpp}
+	#define FPL_AUTO_NAMESPACE
+	#include <final_platform_layer.hpp>
+	\endcode
+
+	This way you can always write:
+	\code{.cpp}
+	InitPlatform(InitFlags::All);
+	VideoBackBuffer backbuffer = GetVideoBackBuffer();
+	\endcode
+
+	instead of:
+	\code{.cpp}
+	fpl::InitPlatform(fpl::InitFlags::All);
+	fpl::video::VideoBackBuffer backbuffer = fpl::video::GetVideoBackBuffer();
+	\endcode
+
+	\section section_otutorial_autonamespace_note Note
+
+	Keep in mind that automatic namespace inclusion is the same as writing:
+	\code{.cpp}
+	using namespace fpl;
+	using namespace fpl::audio;
+	using namespace fpl::window;
+	// ...
+	\endcode
+*/
+
+
+
+
+/*!
+	\page page_otutorial_errorhandling Error handling
+	\tableofcontents
+
+	\section section_otutorial_errorhandling_getlatest Get latest error
+
+	In case something goes wrong you can always call \ref fpl::GetPlatformError() - at any time.<br>
+	This either returns a empty string indicating everything is fine or a constant string with a valid error message.<br>
+
+	Example:
+	\code{.cpp}
+	const char *errStr = fpl::GetPlatformError();
+	// Do something with the error string
+	\endcode
+
+	\section section_otutorial_errorhandling_count Was there a error?
+
+	If you just want to check if there was an error, you can call \ref fpl::GetPlatformErrorCount() to use the number of errors as a condition.<br>
+
+	Example:
+	\code{.cpp}
+	if (fpl::GetPlatformErrorCount()) {
+		// Print out the error message
+	}
+	\endcode
+
+	\section section_otutorial_errorhandling_clear Clearing the errors
+
+	Errors will never be cleared by FPL! You have to do this yourself using \ref fpl::ClearPlatformErrors() .<br>
+
+	Example:
+	\code{.cpp}
+	fpl::ClearPlatformErrors();
+	\endcode
+
+	\section section_otutorial_errorhandling_note Note
+	Keep in mind that any platform error is reported in the output of the error console automatically!<br>
+	If you dont want to do that, then simply define the preprocessor directive for ignoring this behavior - before including this library with implementation enabled:
+
+	\code{.cpp}
+	#define FPL_NO_ERROR_IN_CONSOLE
+	#define FPL_IMPLEMENTATION
+	#include <final_platform_layer.hpp>
+	\endcode
+*/
+
+/*!
+	\page page_otutorial_window_creation Window creation & main loop
+	\tableofcontents
+
+	\section section_otutorial_window_creation_init Initialization
+
+	To create a window you add the \ref fpl::InitFlags::Window flag to the fpl::InitFlags parameter in the \ref fpl::InitPlatform() call.<br>
+	It makes no sense to create a window alone, so we combine it at least with something else, like for example: a video context or audio playback.<br>
+
+	\code{.cpp}
+	fpl::InitPlatform(fpl::InitFlags::Window | fpl::InitFlags::Video, settings);
+	\endcode
+
+	\section section_otutorial_window_creation_loop Main loop
+
+	After you initialize FPL with a window you have to create some sort of a loop to keep the window open until you close them.<br>
+	This is required due to the fact that operating systems uses a event-based system to communicate with the window and your app.<br>
+	If no communication happens with your window and your app, the window will no longer be responsive - so make sure to communicate properly.<br>
+	<br>
+	For that there is a single function call required to process these events -> \ref fpl::Window::WindowUpdate().
+
+	\code{.cpp}
+	while (fpl::Window::WindowUpdate()) {
+		// your code goes here
+	}
+	\endcode
+
+	\section section_otutorial_window_creation_note Note
+	All window based calls are required to be executed from the main-thread only!
+
+*/
+
+/*!
+	\page page_otutorial_window_events Window events
+	\tableofcontents
+
+	\section section_otutorial_window_events_polling Polling the events
+
+	To poll the events from the internal queue you simply call the correspondending function \ref fpl::window::PollWindowEvent() in a while-loop inside your actual main-loop.<br>
+	Each event is copied into the \ref fpl::window::Event reference parameter which you can handle or not.<br>
+	If there are no events left, the function returns false and you are done.
+
+	\code{.cpp}
+	fpl::window::Event currentEvent;
+	while (fpl::Window::PollWindowEvent(currentEvent)) {
+		// ... Handling the event
+	}
+	\endcode
+
+	\section section_otutorial_window_events_handling Handling the Events
+
+	Each event has a \ref fpl::window::Event.type field which you can check on to read the actual data (Keyboard, Mouse, Window, etc.).
+
+	\code{.cpp}
+	fpl::window::Event currentEvent;
+	while (fpl::window::PollWindowEvent(currentEvent)) {
+		switch (currentEvent.type) {
+			case fpl::window::EventType::Window:
+			{
+				// A window event, like resize, lost/got focus, etc.
+			} break;
+			case fpl::window::EventType::Keyboard:
+			{
+				// A keyboard event, like key down/up, pressed, etc.
+			} break;
+			case fpl::window::EventType::Mouse:
+			{
+				// A mouse event, like mouse button down/up, mouse move, etc.
+			} break;
+			case fpl::window::EventType::Gamepad:
+			{
+				// A gamepad event, like connected/disconnected, state-updated etc.
+			} break;
+		}
+	}
+	\endcode
+
+	All available event types are stored in the \ref fpl::window::EventType enumeration.
+
+	\section section_otutorial_window_events_handle_event_type Handle the event data
+
+	All relevant event data are stored in fields which matches the lowercase \ref fpl::window::EventType name.<br>
+	Each event structure has another type field to check for the actual type (Key-Down, Mouse-Move, Window-Resize etc.).<br>
+
+	\subsection subsection_otutorial_window_events_handle_event_type_mouse Mouse events
+
+	Mouse event data are stored in the \ref fpl::window::MouseEvent structure.
+
+	\code{.cpp}
+	switch (currentEvent.mouse.type) {
+		case fpl::window::MouseEventType::ButtonDown:
+		{
+			fpl::window::MouseButtonType button = currentEvent.mouse.button;
+			// ... do something with the mouse button
+		} break;
+
+		case fpl::window::MouseEventType::Move:
+		{
+			int mouseX = currentEvent.mouse.mouseX;
+			int mouseY = currentEvent.mouse.mouseY;
+			// ... do something with the mouse position
+		} break;
+	}
+	\endcode
+
+	\subsection subsection_otutorial_window_events_handle_event_type_keyboard Keyboard events
+
+	Keyboard event data are stored in the \ref fpl::window::KeyboardEvent structure.<br>
+	<br>
+	You can either check for the original \ref fpl::window::KeyboardEvent.keyCode or use the fpl::window::KeyboardEvent.mappedKey field - which is much easier and less error prone.<br>
+
+	\code{.cpp}
+	switch (currentEvent.keyboard.type) {
+		case fpl::window::KeyboardEventType::KeyDown:
+		{
+			// ... Handle the key code
+			uint64_t keyCode = currentEvent.keyboard.keyCode;
+			if (keyCode == 65 || keyCode == 97) {
+				// Letter A is held down
+			}
+
+			// or
+
+			// ... handle the mapped key
+			fpl::window::Key mappedKey = currentEvent.keyboard.mappedKey;
+			if (mappedKey == fpl::window::Key::Key_F1) {
+				// F1 key held down
+			}
+		} break;
+
+		case fpl::window::KeyboardEventType::CharInput:
+		{
+			// Handle character input
+		} break;
+	}
+	\endcode
+
+	\subsection subsection_otutorial_window_events_handle_event_type_gamepad Gamepad events
+
+	Gamepad event data are stored in the \ref fpl::window::GamepadEvent structure.<br>
+
+	\code{.cpp}
+	switch (currentEvent.gamepad.type) {
+		case fpl::window::GamepadEventType::Connected:
+		{
+			// New gamepad device connected
+		} break;
+
+		case fpl::window::GamepadEventType::Disconnected:
+		{
+			// Lost connection to a gamepad device
+		} break;
+
+		case fpl::window::GamepadEventType::StateChanged:
+		{
+			// State of one controller updated (Buttons, Movement, etc.)
+			if (absf(currentEvent.gamepad.leftStickX) > 0) {
+				// ... Handle horizontal movement on left stick
+			}
+			if (currentEvent.gamepad.actionX.isDown) {
+				// ... X-Button is held down
+			}
+		} break;
+	}
+	\endcode
+
+	\subsection subsection_otutorial_window_events_handle_event_type_window Window events
+
+	Window event data are stored in the \ref fpl::window::WindowEvent structure.<br>
+
+	\code{.cpp}
+	switch (currentEvent.window.type) {
+		case fpl::window::WindowEventType::Resized:
+		{
+			uint32_t newWidth = currentEvent.window.width;
+			uint32_t newHeight = currentEvent.window.height;
+			// ... Window was resized, handle it properly
+		} break;
+	}
+	\endcode
+
+	\section section_otutorial_window_events_inotes Important Notes
+
+	FPL does not cache the events from the previous update. If you dont handle the event - the data is lost!<br>
+	You are responsible for caching the data if needed.<br>
+	Also you must always poll each event to ensure that the internal queue will not get full!
+*/
+
+/*!
+	\page page_otutorial_input_events Input events
+
+	\section section_page_otutorial_input_events_overview Overview
+
+	All input events are mapped to window events.<br>
+	To detect any key presses, button downs, you simply handle the specific event type in your event-loop!<br>
+	<br>
+	For details see the \subpage page_otutorial_window_events page.
+*/
+
+/*!
+	\page page_otutorial_video_general Initialization & Overview
+
+	\section otutorial_video_general_init Initialize a video context
+
+	To initialize either software or hardware video output you have to set the \ref fpl::InitFlags::Video flag in the \ref fpl::InitPlatform() call and ensure that video is not disabled by a preprocessor directive (FPL_NO_VIDEO).<br>
+
+	Also setting the \ref fpl::InitFlags::Video flag ensures that the \ref fpl::InitFlags::Window flag is appended automatically.<br>
+
+	\subsection otutorial_video_general_init_default Default video output
+
+	If you dont specify any settings then the video driver is automatically detected, depending on your operating system and supported hardware and software.<br>
+	By default this is most likely be legacy OpenGL - which is supported on almost every video card on any OS.<br>
+	<br>
+	But this is not the recommended way to initialize video output, due to the fact that you are responsible for handling any video output yourself.<br>
+
+	\code{.cpp}
+	if (fpl::InitPlatform(fpl::InitFlags::Video)) {
+		// ... your code here
+	}
+	\endcode
+
+	\subsection otutorial_video_general_init_setting_driver Setting the video driver
+
+	It recommended to set at least the video driver manually, to ensure that you get either initialized with that driver properly or a error when your configuration is not supported.<br>
+	<br>
+	You do that by simply setting the \ref fpl::VideoDriverType field in your \ref fpl::VideoSettings structure which is included in the \ref fpl::Settings structure to the \ref fpl::InitPlatform() call.
+
+	\code{.cpp}
+	fpl::Settings settings = DefaultSettings();
+	fpl::VideoSettings &videoSettings = settings.video;
+
+	// Forcing the video driver to be OpenGL
+	videoSettings.driverType = fpl::VideoDriverType::OpenGL;
+
+	if (fpl::InitPlatform(fpl::InitFlags::Video, settings)) {
+		// ... your code here
+	}
+	\endcode
+
+	\section otutorial_video_general_vsync Enable/Disable Vertical Syncronisation
+
+	If you want to enable/disable vertical syncronization you simply set the fpl::VideoSettings.isVSync field respectively.
+	<br>
+	\note There is no guarantee that vertical syncronisation is supported by your video device or selected driver.
+	\note Software video output does not support vertical syncronisation!
+
+	\section otutorial_video_general_disable Disable unneeded Video Drivers
+
+	To compile out certain video drivers you simply specify the FPL_NO_VIDEO_[Name of the video driver] preprocessor directive.<br>
+	But the correspondending \ref fpl::VideoDriverType is never removed from the enumeration - keep that in mind!<br>
+
+	Example (Disable OpenGL Video Driver):
+
+	\code{.cpp}
+	#define FPL_NO_VIDEO_OPENGL
+	#define FPL_IMPLEMENTATION
+	#include <final_platform_layer.hpp>
+	\endcode
+
+	\section otutorial_video_general_disable_all Disable all Video Output
+
+	To compile out all video output code you define the FPL_NO_VIDEO preprocessor directive.
+
+	\code{.cpp}
+	#define FPL_NO_VIDEO
+	#define FPL_IMPLEMENTATION
+	#include <final_platform_layer.hpp>
+	\endcode
+
+	\note Keep in mind that this is not useful for window based applications!
+	\note If you writing a console application and dont want any video output whatsoever you set the FPL_NO_WINDOW which automatically disabled any video devices as well.
+
+	\section otutorial_video_general_notes Notes
+
+	Driver types stored in the \ref fpl::VideoDriverType enumeration are not filtered away, even when you disable it by a preprocessor directive!<br>
+	Keep that in mind when you initialize the video device.<br>
+
+*/
+
+/*!
+	\page page_otutorial_video_legacy_opengl Legacy OpenGL
+
+	\section section_otutorial_video_legacy_opengl_init Initialize Legacy OpenGL
+
+	To initialize a legacy OpenGL (up to GL version 2.1) rendering context you simply set the the \ref fpl::InitFlags::Video flag in the \ref fpl::InitPlatform() call and change the video driver type to \ref fpl::VideoDriverType::OpenGL and set the \ref fpl::OpenGLVideoSettings.compabilityFlags to \ref fpl::OpenGLCompabilityFlags::Legacy .<br>
+	<br>
+	This will work in ~99% on all supported platforms - if not please post a issue for that platform/configuration/video-card ;-)
+
+	\code{.cpp}
+	fpl::Settings settings = DefaultSettings();
+	fpl::VideoSettings &videoSettings = settings.video;
+
+	// Forcing the video driver to be legacy OpenGL
+	videoSettings.driverType = fpl::VideoDriverType::OpenGL;
+	videoSettings.opengl.compabilityFlags = fpl::OpenGLCompabilityFlags::Legacy;
+
+	if (fpl::InitPlatform(fpl::InitFlags::Video, settings)) {
+		// ... your code here
+	}
+	\endcode
+
+	\section section_otutorial_video_legacy_opengl_usage Usage
+
+	\subsection subsection_otutorial_video_legacy_opengl_usage_extensions Extensions loader
+
+	To use features of OpenGL 1.2 or later you need some sort of a opengl extension loader which gives you access to the constants and functions like glMultiTexCoord2f().<br>
+	For more details please check the modern OpenGL \ref subsection_otutorial_video_modern_opengl_usage_extensions section.
+
+	\subsection subsection_otutorial_video_legacy_opengl_usage_present Presenting your frame
+
+	To swap the backbuffer with the frontbuffer in the window you have to call the \ref fpl::window::WindowFlip() function.<br>
+	Its recommend to call this after each draw call of your frame at the end of the main-loop.
+*/
+
+/*!
+	\page page_otutorial_video_modern_opengl Modern OpenGL
+
+	\section section_otutorial_video_modern_opengl_init Initialize a modern OpenGL Rendering Context
+
+	To initialize a modern OpenGL (3.0+) rendering context you simply set the the \ref fpl::InitFlags::Video flag in the \ref fpl::InitPlatform() call and change the video driver type to \ref fpl::VideoDriverType::OpenGL and setup the following parameters:<br>
+	- Set the \ref fpl::OpenGLVideoSettings.majorVersion to 3 or higher
+	- Set the \ref fpl::OpenGLVideoSettings.minorVersion to 0 or higher
+	- Set the \ref fpl::OpenGLVideoSettings.compabilityFlags to either a \ref fpl::OpenGLCompabilityFlags::Core or \ref fpl::OpenGLCompabilityFlags::Compability
+	- Optionally add the fpl::OpenGLCompabilityFlags::Forward flag for removing obsolete functions
+
+	\code{.cpp}
+	fpl::Settings settings = DefaultSettings();
+	fpl::VideoSettings &videoSettings = settings.video;
+
+	// Forcing the video driver to be modern OpenGL with Core profile and for GL version 3.3
+	videoSettings.driverType = fpl::VideoDriverType::OpenGL;
+	videoSettings.opengl.compabilityFlags = fpl::OpenGLCompabilityFlags::Core;
+	videoSettings.opengl.majorVersion = 3;
+	videoSettings.opengl.minorVersion = 3;
+
+	if (fpl::InitPlatform(fpl::InitFlags::Video, settings)) {
+		// ... modern context is ready
+	}
+	\endcode
+
+	\section section_otutorial_video_modern_opengl_usage Usage
+
+	\subsection subsection_otutorial_video_modern_opengl_usage_extensions Extensions loader
+
+	To use modern OpenGL you need some sort of a opengl extension loader which gives you access to the constants and functions like glCreateProgram().<br>
+	You can either use a thirdparty C/C++ library for doing that for you or use/write your own OpenGL loader. FPL should work in both ways.<br>
+	<br>
+	List of tested OpenGL loaders:
+	- <a href="https://github.com/f1nalspace/final_game_tech/blob/master/final_dynamic_opengl.hpp">Final Dynamic OpenGL</a>
+	- <a href="http://glew.sourceforge.net/">Glew</a>
+
+	\subsection subsection_otutorial_video_modern_opengl_present Presenting your frame
+
+	To swap the backbuffer with the frontbuffer in the window you have to call the \ref fpl::window::WindowFlip() function.<br>
+	Its recommend to call this after each draw call of your frame at the end of the main-loop.
+
+	\section section_otutorial_video_modern_opengl_notes Notes
+	FPL does not provide any opengl types, prototypes or functions - its fully up to the caller how to handle this.
+	<br>
+	Keep in mind that FPL does not work with any OpenGL platform abstraction library like GLFW or GLUT!
+*/
+
+/*!
+	\page page_otutorial_video_software Software Output
+
+	\section section_otutorial_video_software_init Initialize a Software Backbuffer
+
+	FPL supports software video output as well, which will work on any platform.<br>
+
+	\code{.cpp}
+	fpl::Settings settings = DefaultSettings();
+	fpl::VideoSettings &videoSettings = settings.video;
+
+	// Forcing the video driver to be software
+	videoSettings.driverType = fpl::VideoDriverType::Software;
+
+	if (fpl::InitPlatform(fpl::InitFlags::Video, settings)) {
+		// Video software back buffer is ready
+		fpl::video::VideoBackBuffer *videoBackBuffer = fpl::video::GetVideoBackBuffer();
+	}
+	\endcode
+
+	\section section_otutorial_video_software_usage Usage
+
+	To use the software backbuffer you simply access the \ref fpl::video::VideoBackBuffer from the \ref fpl::video::GetVideoBackBuffer() function and update the pixels as needed.
+
+	\subsection subsection_otutorial_video_software_present Presenting your frame
+
+	To update the frontbuffer in the window with the pixels you may have changed you have to call the \ref fpl::window::WindowFlip() function.<br>
+	Its recommend to call this after each draw call of your frame at the end of the main-loop.
+
+	\subsection subsection_otutorial_video_software_drawing Drawing
+
+	Drawing is done by manually changing the pixels in the \ref fpl::video::VideoBackBuffer.pixels field.<br>
+	Each pixel is stored as 32-bit with 4 RGBA components in little-endian (AA BB GG RR).<br>
+	Lines are stored in top-down order - meaning that position "0" in the \ref fpl::video::VideoBackBuffer.pixels field is always the top-left corner of the bitmap!<br>
+	To calculate the actual position for the current line you simply multiply your Y-Index with the \ref fpl::video::VideoBackBuffer.lineWidth field.
+
+	<b>Example (Filling all pixels to purple):</b>
+
+	\code{.cpp}
+	fpl::video::VideoBackBuffer *backBuffer = fpl::video::GetVideoBackBuffer();
+	for (uint32_t y = 0; y < backBuffer->height; ++y) {
+		uint32_t *p = (uint32_t *)((uint8_t *)backBuffer->pixels + y * backBuffer->lineWidth);
+		for (uint32_t x = 0; x < backBuffer->width; ++x) {
+			uint32_t color = 0xFFFF00FF;
+			*p++ = color;
+		}
+	}
+	\endcode
+
+	\subsection subsection_otutorial_video_software_outrect Limiting the output rectangle (Stretching vs non-stretched)
+
+	To force the pixels to be shown in a fixed rectangle you simply enable the \ref fpl::video::VideoBackBuffer.useOutputRect field and update the \ref fpl::video::VideoBackBuffer.outputRect as needed.<br>
+	This mimics a "viewport" which is similar to OpenGLs glViewport().<br>
+	<br>
+	If you dont use this feature all pixels are fully stretched to the current window area always!
+
+	\note This viewport should not be greater than the actual window area dimension!
+
+	<b>Example (Resize window event):</b>
+	\code{.cpp}
+	fpl::video::VideoBackBuffer *backBuffer = fpl::video::GetVideoBackBuffer();
+	backBuffer->useOutputRect = true;
+	while (fpl::window::WindowUpdate()) {
+		fpl::window::Event ev;
+		while (fpl::window::PollWindowEvent(ev)) {
+			if (ev.type == fpl::window::EventType::Window) {
+				if (ev.window.type == fpl::window::WindowEventType::Resized) {
+					VideoRect newRect = ComputeLetterbox(ev.window.width, ev.window.height, backBuffer->width, backBuffer->height); // ... Compute new rectangle here (Letterbox or something)
+					backBuffer->outputRect = newRect;
+				}
+			}
+		}
+
+		// ... Modify the pixels here (Draw call)
+
+		fpl::window::WindowFlip();
+	}
+	\endcode
+
+	<b>Example (Always before the draw call):</b>
+	\code{.cpp}
+	fpl::video::VideoBackBuffer *backBuffer = fpl::video::GetVideoBackBuffer();
+	backBuffer->useOutputRect = true;
+	while (fpl::window::WindowUpdate()) {
+		fpl::window::Event ev;
+		while (fpl::window::PollWindowEvent(ev)) {}
+
+		WindowSize windowArea = GetWindowArea();
+		VideoRect newRect = ComputeLetterbox(windowArea, backBuffer->width, backBuffer->height); // ... Compute new rectangle here (Letterbox or something)
+		backBuffer->outputRect = newRect;
+
+		// ... Modify the pixels here (Draw call)
+
+		fpl::window::WindowFlip();
+	}
+	\endcode
+
+	\subsection subsection_otutorial_video_software_resize Resizing the backbuffer
+
+	By default the video backbuffer is automatically resized when the dimension of the window area changes.<br>
+	If you want to manually do this, you disable this feature in the \ref fpl::VideoSettings.isAutoSize field - in the \ref fpl::Settings.video configuration section.<br>
+	<br>
+	To force the backbuffer to be resized to a fixed dimension you have to call \ref fpl::video::ResizeVideoBackBuffer() with a new width and height.
+	<br>
+	\warning Do not call this method while you are modifing pixels!
+
+	\section section_otutorial_video_software_notes Notes
+
+	There is no software rendering functions built-in! If you want to draw for example a circle, you have to roll out your own drawCircle() function - which may uses Bresenham as its base or something.<br>
+	Vertical syncronisation is not supported for software video drivers!
+*/
+
+/*!
+	\page page_otutorial_audio_general Initialization & Usage
+
+	\section section_otutorial_audio_general_default_init Default initialization
+
+	To initialize audio playback with default settings (Interleaved, 48 KHz, 2 Channels, signed 16-bit integer format) you have to set the \ref fpl::InitFlags::Audio flag in the \ref fpl::InitPlatform() call and ensure that audio is not disabled by a preprocessor directive (FPL_NO_AUDIO).<br>
+
+	\code{.cpp}
+	if (fpl::InitPlatform(fpl::InitFlags::Audio)) {
+		// ... your code here
+	}
+	\endcode
+
+	\subsection subsection_otutorial_audio_general_default_init_clientcallback Setting the client callback
+
+	Next is to specify the client user callback which gets invoked regularly when the audio device requires new samples to play.<br>
+	This \ref fpl::AudioClientReadFunction "client callback" can be set up in the \ref fpl::AudioSettings.clientReadCallback field from the \ref fpl::Settings.audio or changed by calling \ref fpl::audio::SetAudioClientReadCallback() :<br>
+
+	\code{.cpp}
+	static uint32_t MyAudioPlaybackCallback(const AudioDeviceFormat &nativeFormat, const uint32_t frameCount, void *outputSamples, void *userData) {
+		// ... Fill audio frames here
+	}
+
+	fpl::Settings settings = DefaultSettings();
+	fpl::AudioSettings &audioSettings = settings.audio;
+	audioSettings.clientReadCallback = MyAudioPlaybackCallback;
+	audioSettings.userData = // ... pointer to some user data
+	if (fpl::InitPlatform(fpl::InitFlags::Audio, settings)) {
+		// ... your code here
+	}
+	\endcode
+
+	\note This step must be done before you actually start playing the audio!
+	\note You can specify a user data pointer which gets passed to the client callback as well.
+
+	\section section_otutorial_audio_general_custom_init Custom initialization
+
+	You can change several audio settings (Sample rate, Number of Channels, Format, etc.) before initializing the audio playback like this:<br>
+
+	\code{.cpp}
+	fpl::Settings settings = DefaultSettings();
+	fpl::AudioSettings &audioSettings = settings.audio;
+	audioSettings.clientReadCallback = MyAudioPlaybackCallback;
+	audioSettings.userData = // ... pointer to some user data
+	fpl::AudioDeviceFormat &audioDeviceFormat = audioSettings.deviceFormat;
+	audioDeviceFormat.sampleRate = 48000;
+	audioDeviceFormat.channels = 2;
+	audioDeviceFormat.type = fpl::AudioFormatType::F32;
+	if (fpl::InitPlatform(fpl::InitFlags::Audio, settings)) {
+		// ... your code here
+	}
+	\endcode
+
+	\note Please see the \ref section_otutorial_audio_general_notes for possible limitations!
+
+	\section section_otutorial_audio_general_choosing_driver Choosing the audio driver
+
+	By default FPL uses the first available audio driver which is supported on your platform.<br>
+	If you want to force FPL to use a certain audio driver, you can do this by changing the \ref fpl::AudioSettings.driver field in the \ref fpl::AudioSettings structure:<br>
+
+	\code{.cpp}
+	fpl::Settings settings = DefaultSettings();
+	fpl::AudioSettings &audioSettings = settings.audio;
+
+	// Forcing to use the DirectSound audio driver
+	audioSettings.driver = fpl::AudioDriverType::DirectSound;
+
+	if (fpl::InitPlatform(fpl::InitFlags::Audio, settings)) {
+		// ... your code here
+	}
+	\endcode
+
+	Its recommend to use the default \ref fpl::AudioDriverType::Auto which uses the first supported audio driver.
+
+	\warning If your platform/system does not support the desired driver the audio and platform initialization will fail!
+
+	\section section_otutorial_audio_general_playing_and_stopping Start and stop playing the audio samples
+
+	After the initialization the audio device is stopped always.<br>
+	To start requesting and playing audio samples you have to call the \ref fpl::audio::PlayAudio() function.<br>
+	<br>
+	To stop the audio playback you call the opposite \ref fpl::audio::StopAudio() function.
+
+	\note If you are about to release the platform using \ref fpl::ReleasePlatform() you should always call \ref fpl::audio::StopAudio() before!
+
+	\section section_otutorial_audio_general_notes Notes
+
+	There is no guarantee that you get the desired audio format you specified back!<br>
+	You should always check the \ref fpl::AudioDeviceFormat "nativeAudioFormat" in your client callback and convert/write the correct samples the audio device expects!<br>
+	<br>
+	How to write samples is explained here: \subpage page_otutorial_audio_writesamples
+*/
+
+/*!
+	\page page_otutorial_audio_writesamples Writing audio samples
+
+	\section section_otutorial_audio_writesamples_overview Overview
+
+	To write audio samples in the audio client callback you have to know at least four things:
+	- Target format (S16, S24, F32, etc.)
+	- Target number of channels (1 = Mono, 2 = Stereo, etc.)
+	- Target sample rate (44 KHz, 48 Khz, etc.)
+	- Number of frames required
+
+	All these informations are provided by the \ref fpl::AudioClientReadFunction callback function.<br>
+	<br>
+	To get this information before the audio playback is started, you can query it by calling \ref fpl::audio::GetAudioHardwareFormat() .
+
+	\section section_otutorial_audio_writesamples_functions Useful functions
+
+	To help with sample computation there are several inline functions available:
+
+	- \ref fpl::audio::GetAudioHardwareFormat()
+	- \ref fpl::audio::GetAudioBufferSizeInFrames()
+	- \ref fpl::audio::GetAudioDriverString()
+	- \ref fpl::audio::GetAudioFormatString()
+	- \ref fpl::audio::GetAudioSampleSizeInBytes()
+	- \ref fpl::audio::GetAudioFrameSizeInBytes()
+	- \ref fpl::audio::GetAudioBufferSizeInBytes()
+
+	\section section_otutorial_audio_writesamples_s16 Writing 16-bit signed integer samples
+
+	\code{.cpp}
+	static uint32_t MyAudioPlaybackCallback(const AudioDeviceFormat &nativeFormat, const uint32_t frameCount, void *outputSamples, void *userData) {
+		uint32_t result = 0;
+		if (nativeFormat.type == AudioFormatType::S16) {
+			int16_t *outSamples = (int16_t *)outputSamples;
+			for (uint32_t frameIndex = 0; frameIndex < frameCount; ++frameIndex) {
+				for (uint32_t channelIndex = 0; channelIndex < nativeFormat.channels; ++channelIndex) {
+					*outSamples++ = // ... Getting a sample for the current frame/channel
+					++result;
+				}
+			}
+		} else {
+			// ... handle other formats here
+		}
+		return result;
+	}
+	\endcode
+
+	\section section_otutorial_audio_writesamples_notes Notes
+
+	\note FPL does not provide any functionality for doing any kind of DSP or format conversion!<br>
+	\note You are responsible for filling out the samples in the correct format your audio device expects!
+*/
+
+/*!
+	\page page_faq FAQ
+	\tableofcontents
+
+	\section section_faq FAQ
+
+	\subsection subsection_faq_license What are the license requirements for FPL?
+	Final Platform Layer is released under the \subpage page_license "MIT License".<br>
+	This license allows you to use FPL freely in any non-commerical or commercial software.<br>
+
+	\subsection subsection_faq_costs I did pay for FPL, did i get ripped-of?
+	Yes you are! FPL is full open source and costs nothing.
+
+	\subsection subsection_faq_inwhatlanguage In what language is FPL written?
+	Final Platform Layer is written in C++ but in C-Style without using any object orientation concepts.<br>
+	It uses namespaces for categorizing and for preventing name collisions with other apis and uses the C++/11 standard integral types.<br>
+	<br>
+	But it does not use the C++ standard library or any advanced C++/11 features.
+
+	\subsection subsection_faq_whycpp11 Why is C++/11 required for FPL?
+	Because C++ has no proper standards for types and even null until C++/11 - its that simple.<br>
+	All modern compilers today does support C++/11 properly, so there is reason to not use it.
+
+	\subsection subsection_faq_whyshouldiuse Why should i use FPL?
+	If you want a hassle free platform abstraction library, FPL is the way to go.<br>
+	- You dont have any linking madness
+	- No configuration needed
+	- No build-scripts required
+	- It just compiles
+	- You decide how you integrate it; not the library
+
+	Also even when you use FPL you still can use other libraries and ignore features you dont need.<br>
+	For example FPL provides a few atomic operations, but its very limited - so you may use std::atomic or other libraries for that task.<br>
+
+	\subsection subsection_faq_whyisfplsobig Why is FPL so big?
+	Final Platform Layer contains headers and implementations for all supported platforms with all the function prototypes for linking operating system functions dynamically.<br>
+	In addition there is a full doxygen documentation included with a detailed changelog.<br>
+
+	\subsection subsection_faq_limitations Does FPL have some limitations?
+	Yes it does have some limitations, because it cannot do everything for you:
+	- There is no audio DSP going on, so you have to convert the samples into the proper format (Sample rate, Channels, Format type) FPL expects.
+	- There is no rendering functions included, except for presenting the current frame. So you have to load and call the correct api functions yourself.
+
+	\subsection subsection_faq_thirdparty_libs Can FPL handle third party libraries?
+	Yes actually it works very well with other libraries - in fact there are several demo projects in the repository which shows that.<br>
+	<br>
+	Here is a short list of tested third-party libraries with FPL:
+
+	- STB Libraries
+	- Standard C++ Library (STL)
+	- Glew/Glad
+	- Box2D
+	- GLM
+	- ImGUI
+	- FFMPEG
+
+	But it will not work with other platform abstraction libraries, like GLUT, SFML, SDL etc.
+
+	\section section_additional_notes Additional notes
+
+	\subsection subsection_additional_notes_audio Audio
+	This library uses the operating system libraries to initialize a playback audio device.<br>
+	To get any audio samples to play you need to set the callback function with \ref fpl::AudioSettings.clientReadCallback or \ref fpl::audio::SetAudioClientReadCallback() before start playing the audio using fpl::audio::PlayAudio().<br>
+	When the audio device requires more audio samples this callback is automatically called.<br>
+	It is expected that the audio samples are filled in properly by the native format of the device, see \ref fpl::AudioDeviceFormat.<br>
+	This library does not provide any functionality for doing any kind of DSP.<br>
+	To start and stop the playback, you need to call \ref fpl::audio::PlayAudio() and \ref fpl::audio::StopAudio() respectively.<br>
+	There is no guarantee that you get a audio device with the exact same format you specified back, but S16 with 48 KHz is a common format which almost every audio card supports.<br>
+*/
+
+/*!
+	\page page_contribute Contribute
+	\tableofcontents
+
+	Glad you want to support this project.
+*/
+
+/*!
+	\page page_examples Examples
+	\tableofcontents
+
+	\section section_console_examples Console examples
+
+	- \subpage page_example_helloworld_console
+	- \subpage page_example_simple_audio
+
+	\section section_windowed_examples Window examples
+
+	- \subpage page_example_opengl1x
+	- \subpage page_example_opengl33
+*/
+
+/*!
+	\page page_platform_status Platform Status
+	\tableofcontents
+
+	\section section_supported_platforms_archs Supported platforms / architectures
+
+	Current state of supported platforms/architectures:
+
+	- Windows (Win32)
+		- x86
+		- x86_64
+		- x64
+	<br><br>
+	- Linux (POSIX, In progress)
+		- x86
+		- x86_64
+		- x64
+
+	\section section_planned_platforms_archs Planned platforms / architectures
+
+	This platforms/architectures are planned for the future:
+
+	- Unix (POSIX, Planned)
+		- x86
+		- x86_64
+		- x64
+*/
+
+/*!
+	\page page_compiler_options Compiler Options
+	\tableofcontents
+
+	\section section_preprocessor_opts Preprocessor options
+
+	\code{.cpp}
+	#define FPL_IMPLEMENTATION
+	\endcode
+
+	Define this to include the actual implementation code as well.
+	Set this only once per translation unit, otherwise you will get linking errors.
+
+	\code{.cpp}
+	#define FPL_API_AS_PRIVATE
+	\endcode
+
+	Define this to make all functions be private "static".
+	Default is "export".
+
+	\code{.cpp}
+	#define FPL_NO_ASSERTIONS
+	\endcode
+
+	Define this to disable all internal assertions.
+
+	\code{.cpp}
+	#define FPL_FORCE_ASSERTIONS
+	\endcode
+
+	Define this to enable internal assertions always, even in debug builds.
+	NOTE: When enabled, all assertions wont use the C assert() at all, because it may be compiled out!
+
+	\code{.cpp}
+	#define FPL_NO_C_ASSERT
+	\endcode
+
+	Define this to disable C runtime assert.
+	Has no effect when FPL_FORCE_ASSERTIONS is set!
+
+	\code{.cpp}
+	#define FPL_NO_WINDOW
+	\endcode
+
+	Define this to disable window support entirely.
+
+	\code{.cpp}
+	#define FPL_NO_VIDEO
+	\endcode
+
+	Define this to disable any rendering device entirely.
+
+	\code{.cpp}
+	#define FPL_NO_VIDEO_OPENGL
+	\endcode
+
+	Define this to disable opengl rendering support entirely.
+
+	\code{.cpp}
+	#define FPL_NO_VIDEO_SOFTWARE
+	\endcode
+
+	Define this to disable software rendering support entirely.
+
+	\code{.cpp}
+	#define FPL_NO_AUDIO
+	\endcode
+
+	Define this to disable audio playback entirely.
+
+	\code{.cpp}
+	#define FPL_NO_AUDIO_DIRECTSOUND
+	\endcode
+
+	Define this to disable directsound support entirely.
+
+	\code{.cpp}
+	#define FPL_NO_MULTIPLE_ERRORSTATES
+	\endcode
+
+	Define this to use a single error state for \ref fpl::GetPlatformError() instead of multiple ones.
+
+	\code{.cpp}
+	#define FPL_NO_ERROR_IN_CONSOLE
+	\endcode
+
+	Define this to disable printing any platform specific errors to the console.
+
+	\code{.cpp}
+	#define FPL_AUTO_NAMESPACE
+	\endcode
+
+	Define this to include all required namespaces automatically.
+*/
+
+/*!
+	\page page_example_helloworld_console Hello World Console Application!
+	\tableofcontents
+
+	\section section_maincpp1 main.cpp
+
+	\code{.cpp}
+	#define FPL_IMPLEMENTATION
+	#include "final_platform_layer.hpp"
+
+	int main(int argc, char *args[]) {
+		int result;
+		if (fpl::InitPlatform(fpl::InitFlags::None)) {
+			fpl::console::ConsoleOut("Hello World!");
+			fpl::ReleasePlatform();
+			result = 0;
+		} else {
+			result = -1;
+		}
+		return(result);
+	}
+	\endcode
+
+*/
+
+/*!
+	\page page_example_opengl1x Simple OpenGL 1.x
+	\tableofcontents
+
+	\section section_maincpp2 main.cpp
+
+	\code{.cpp}
+	#define FPL_IMPLEMENTATION
+	#include "final_platform_layer.hpp"
+
+	// You have to include GL.h yourself or use any other opengl loader you want.
+	// This library just creates a opengl rendering context for you, but nothing more.
+	// GL.h will only be included when FPL_IMPLEMENTATION is set!
+	#include <GL\GL.h>
+
+	using namespace fpl;
+	using namespace fpl::window;
+
+	int main(int argc, char *args[]) {
+		int result = 0;
+		if (InitPlatform(InitFlags::Video)) {
+			glClearColor(0.39f, 0.58f, 0.93f, 1.0f);
+			while (WindowUpdate()) {
+				WindowSize windowArea = GetWindowArea();
+				glViewport(0, 0, windowArea.width, windowArea.height);
+				glClear(GL_COLOR_BUFFER_BIT);
+				glBegin(GL_TRIANGLES);
+				glVertex2f(0.0f, 0.5f);
+				glVertex2f(-0.5f, -0.5f);
+				glVertex2f(0.5f, -0.5f);
+				glEnd();
+				WindowFlip();
+			}
+			ReleasePlatform();
+			result = 0;
+		} else {
+			result = -1;
+		}
+		return(result);
+	}
+	\endcode
+
+*/
+
+/*!
+	\page page_example_opengl33 Modern OpenGL 3.3+
+	\tableofcontents
+
+	\section section_maincpp3 main.cpp
+
+	\code{.cpp}
+	#define FPL_IMPLEMENTATION
+	#include "final_platform_layer.hpp"
+
+	// You have to include GL.h yourself or use any other opengl loader you want.
+	// This library just creates a opengl rendering context for you, but nothing more.
+	// GL.h will only be included when FPL_IMPLEMENTATION is set!
+	#include <GL\GL.h>
+
+	using namespace fpl;
+	using namespace fpl::window;
+
+	int main(int argc, char *args[]) {
+		int result = 0;
+
+		// Legacy opengl is default, so we force it to be forward or backward compability
+		Settings settings = DefaultSettings();
+		settings.video.driverType = VideoDriverType::OpenGL;
+		settings.video.opengl.compabilityFlags = OpenGLCompabilityFlags::Core;
+		settings.video.opengl.majorVersion = 3;
+		settings.video.opengl.minorVersion = 3;
+		if (InitPlatform(InitFlags::Video, settings)) {
+			glClearColor(0.39f, 0.58f, 0.93f, 1.0f);
+			while (WindowUpdate()) {
+				WindowSize windowArea = GetWindowArea();
+				glViewport(0, 0, windowArea.width, windowArea.height);
+				glClear(GL_COLOR_BUFFER_BIT);
+
+				// Your code using modern opengl (VBO, IBO, VAO, GLSL, etc.)
+
+				WindowFlip();
+			}
+			ReleasePlatform();
+			result = 0;
+		} else {
+			result = -1;
+		}
+		return(result);
+	}
+	\endcode
+
+*/
+
+/*!
+	\page page_example_simple_audio Simple audio playback
+	\tableofcontents
+
+	\section section_maincpp4 main.cpp
+
+	\code{.cpp}
+	#define FPL_IMPLEMENTATION
+	#define FPL_NO_WINDOW
+	#include <final_platform_layer.hpp>
+	#include <math.h> // sinf
+	#include <stdio.h> // getchar
+
+	struct AudioTest {
+		uint32_t toneHz;
+		uint32_t toneVolume;
+		uint32_t runningSampleIndex;
+		uint32_t wavePeriod;
+		bool useSquareWave;
+	};
+
+	static const float PI32 = 3.14159265359f;
+
+	using namespace fpl;
+
+	static uint32_t FillAudioBuffer(const AudioDeviceFormat &nativeFormat, const uint32_t frameCount, void *outputSamples, void *userData) {
+		AudioTest *audioTest = (AudioTest *)userData;
+		FPL_ASSERT(audioTest != nullptr);
+		FPL_ASSERT(nativeFormat.type == AudioFormatType::S16);
+		uint32_t result = 0;
+		int16_t *outSamples = (int16_t *)outputSamples;
+		uint32_t halfWavePeriod = audioTest->wavePeriod / 2;
+		for (uint32_t frameIndex = 0; frameIndex < frameCount; ++frameIndex) {
+			int16_t sampleValue;
+			if (audioTest->useSquareWave) {
+				sampleValue = ((audioTest->runningSampleIndex++ / halfWavePeriod) % 2) ? (int16_t)audioTest->toneVolume : -(int16_t)audioTest->toneVolume;
+			} else {
+				float t = 2.0f * PI32 * (float)audioTest->runningSampleIndex++ / (float)audioTest->wavePeriod;
+				sampleValue = (int16_t)(sinf(t) * audioTest->toneVolume);
+			}
+			for (uint32_t channelIndex = 0; channelIndex < nativeFormat.channels; ++channelIndex) {
+				*outSamples++ = sampleValue;
+				++result;
+			}
+		}
+		return result;
+	}
+
+	int main(int argc, char *args[]) {
+		int result = -1;
+
+		// Initialize to default settings which is 48 KHz and 2 Channels
+		Settings settings = DefaultSettings();
+
+		// Optionally overwrite audio settings if needed
+
+		// Setup some state for the sine/square wave generation
+		AudioTest audioTest = {};
+		audioTest.toneHz = 256;
+		audioTest.toneVolume = 1000;
+		audioTest.wavePeriod = settings.audio.deviceFormat.sampleRate / audioTest.toneHz;
+		audioTest.useSquareWave = false;
+
+		// Provide client read callback and optionally user data
+		settings.audio.clientReadCallback = FillAudioBuffer;
+		settings.audio.userData = &audioTest;
+		settings.audio.deviceFormat.type = AudioFormatType::S16;
+		settings.audio.deviceFormat.channels = 2;
+		settings.audio.deviceFormat.sampleRate = 48000;
+
+		// Find audio device
+		if (InitPlatform(InitFlags::Audio, settings)) {
+			AudioDeviceID audioDevices[16] = {};
+			uint32_t deviceCount = audio::GetAudioDevices(audioDevices, FPL_ARRAYCOUNT(audioDevices));
+			if (deviceCount > 0) {
+				settings.audio.deviceID = audioDevices[0];
+				console::ConsoleFormatOut("Using audio device: %s\n", settings.audio.deviceID.name);
+			}
+			ReleasePlatform();
+		}
+
+		// Initialize the platform with audio enabled and the settings
+		if (InitPlatform(InitFlags::Audio, settings)) {
+			// You can overwrite the client read callback and user data if you want to
+			audio::SetAudioClientReadCallback(FillAudioBuffer, &audioTest);
+			// Start audio playback (This will start calling clientReadCallback regulary)
+			if (audio::PlayAudio() == audio::AudioResult::Success) {
+				// Print out the native audio format
+				AudioDeviceFormat nativeFormat = audio::GetAudioHardwareFormat();
+				console::ConsoleFormatOut("Audio with %lu KHz and %lu channels is playing, press any key to stop playback...\n", nativeFormat.sampleRate, nativeFormat.channels);
+				// Wait for any key presses
+				getchar();
+				// Stop audio playback
+				audio::StopAudio();
+			}
+			// Release the platform
+			ReleasePlatform();
+			result = 0;
+		}
+		return(result);
+	}
+	\endcode
+
+*/
+
+/*!
+	\page page_license License
+	\tableofcontents
+
+	\section section_mit_license MIT License
+
+	Copyright (c) 2017-2018 Torsten Spaete<br>
+	<br>
+	Permission is hereby granted, free of charge, to any person obtaining a copy of<br>
+	this software and associated documentation files (the "Software"), to deal in<br>
+	the Software without restriction, including without limitation the rights to<br>
+	use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies<br>
+	of the Software, and to permit persons to whom the Software is furnished to do<br>
+	so, subject to the following conditions:<br>
+	<br>
+	The above copyright notice and this permission notice shall be included in all<br>
+	copies or substantial portions of the Software.<br>
+	<br>
+	THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR<br>
+	IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,<br>
+	FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE<br>
+	AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER<br>
+	LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,<br>
+	OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE<br>
+	SOFTWARE.<br>
+*/

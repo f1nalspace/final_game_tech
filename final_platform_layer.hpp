@@ -1,4 +1,4 @@
-/***
+/*
 final_platform_layer.hpp
 
 A Open source C++ single file header platform abstraction layer library.
@@ -31,1507 +31,24 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
-***/
-
-// ****************************************************************************
-//
-// Documentation
-//
-// ****************************************************************************
+*/
 
 /*!
 	\file final_platform_layer.hpp
-	\version v0.5.8.1 beta
+	\version v0.5.9.0 beta
 	\author Torsten Spaete
 	\brief Final Platform Layer (FPL) - A Open source C++ single file header platform abstraction layer library.
 */
 
 /*!
-	\mainpage
-	\tableofcontents
-
-	\section section_overview Overview
-
-	Final Platform Layer is a cross-platform single-header-file development library designed to abstract the underlying platform to a very simple and easy to use low-level api for accessing input devices (keyboard, mouse, gamepad), audio playback, window handling, IO handling (files, directories, paths), multithreading (threads, mutex, signals) and graphics software or hardware rendering initialization.<br>
-
-	The main focus is game/simulation development, so the default settings will create a window, setup a opengl rendering context and initialize audio playback on any platform.<br>
-	<br>
-	Right know FPL has support for Windows only, but Linux support is already in progress and more platforms are planned.<br>
-	<br>
-	FPL is written in C++ in a C-like style, so it uses namespaces, method overloading and standard types for seamless integration into any codebase but does not provide or use any classes.<br>
-	<br>
-	Final Platform Layer is released under the \subpage page_license "MIT License". This license allows you to use FPL freely in any software.<br>
-	<br>
-	This is the FPL documentation -> The main website is https://libfpl.org/.
-
-	\section section_using_this_documentation How to use this documentation?
-	Use the following links to learn more about FPL:
-	- \subpage page_introduction
-	- \subpage page_usage
-	- \subpage page_tutorials
-	- \subpage page_examples
-	- \subpage page_faq
-	- \subpage page_contribute
-	- \subpage page_changelog
-	- \subpage page_todo
-	- \subpage page_license
-
-	I hope you find all the informations you need. If not please drop a issue on the github project page and i answer it as soon as possible!
-
-	Thanks for using, have a great day!
-*/
-
-/*!
-	\page page_introduction Introduction
-	\tableofcontents
-
-	\section section_intro Introduction to FPL
-
-	\subsection subsection_whatisfpl What is FPL?
-	Final Platform Layer is a cross-platform single-header-file development library designed to abstract the underlying platform to a very simple and easy to use low-level api for accessing input devices (keyboard, mouse, gamepad), audio playback, window handling, IO handling (files, directories, paths), multithreading (threads, mutex, signals) and graphics software or hardware rendering initialization.<br>
-
-	The main focus is game/simulation development, so the default settings will create a window, setup a opengl rendering context and initialize audio playback on any platform.<br>
-	<br>
-	Right know FPL has support for Windows only, but Linux support is already in progress and more platforms are planned.<br>
-	-> For more details see the page about the current \subpage page_platform_status.<br>
-	<br>
-	FPL is written in C++ in a C-like style, so it uses namespaces, method overloading and standard types for seamless integration into any codebase but does not provide or use any classes.<br>
-	<br>
-	Final Platform Layer is released under the \subpage page_license "MIT License". This license allows you to use FPL freely in any software.<br>
-
-	\subsection subsection_whatissingleheaderfilelibrary What is a single-header-file Library and why is FPL based on that?
-	A single header file library (as the name implies) is a development library designed to be one file only.<br>
-	Such a file contains the header (API) and the body (Implementation) in one file but separated and controlled by compiler conditions.<br>
-	This makes it easy to use the library however you want (With source, Static-linked, Private use only).<br>
-	In addition such libraries mostly does not require any dependencies at all, to making it more friendly to the user.<br>
-	<br>
-	So, why then is FPL based on that?<br>
-	<br>
-	Because non-single-header-file libraries are either hard to integrate, forces you to link to it dynamically or statically, are closed source, comes with a ton of dependencies - which is not user friendly at all!
-
-	\subsection subsection_supported_platforms Which platforms are supported by FPL?
-	Right know FPL supports just a couple of x86/x64 platforms, but some are already in progress and more are planned:
-
-	- Windows (32-bit and 64-bit)
-	- Linux (In progress)
-
-	\subsection subsection_supported_compilers Which compilers are supported by FPL?
-	FPL should compile on every modern C++/11 compiler, but is tested on a couple of compilers only:
-
-	- MSVC
-	- GCC
-	- Clang
-
-	\subsection section_features What can FPL do?
-	Read ahead a detailed feature overview of FPL:
-
-	- Window
-		- Create and handle a single window
-		- Fullscreen toggling
-		- Event handling
-		- Clipboard string reading and writing
-	- Event-based input
-		- Keyboard
-		- Mouse
-		- Game controllers
-	- Video:
-		- OpenGL 1.x (Legacy)
-		- OpenGL 3.x or higher (Modern)
-		- Software backbuffer
-	- Audio asyncronous playback
-		- DirectSound
-	- Memory
-		- Allocation and de-allocation
-		- Custom alignment support
-		- Fast clear and copy
-	- Atomics
-		- Support for 8,16,32,64 bit signed and unsigned integer types
-		- Support for void pointer type
-		- Compare and exchange
-		- Add / Exchange
-		- Load / Store
-		- Memory barriers
-	- Shared library
-		- Loading of shared libraries (DLL on windows, .so on Linux)
-		- Function lookup
-	- IO
-		- Path functions
-			- Query user home directory
-			- Query executable path
-			- Extract filename, extension and path
-			- Combine paths
-			- Change file extension
-		- Files/Directories
-			- Reading and writing binary files (32-bit only, 64-bit are planned)
-			- Iterating over files/directories
-			- Rename/Copy/Delete/Move operations
-	- Hardware infos retrievement
-		- Query processor infos (Core count, Name)
-		- Query current memory state (Physical size, virtual size, page size, etc.)
-	- Timings
-		- Get number of seconds with high precision used for profiling and delta calculations
-	- String conversion functions
-		- Ansistring <-> Widestring
-		- UTF-8 <-> Widestring
-		- Copy
-		- Comparing
-		- Formatting
-	- Console
-		- Standard/Error out
-		- Formatting
-	- Threading
-		- Thread
-		- Mutex
-		- Signal
-
-	\subsection section_getstarted How do i get started with FPL?
-	- You download the latest <a href="https://github.com/f1nalspace/final_game_tech/blob/master/final_platform_layer.hpp">"final_platform_layer.hpp"</a> file.
-	- Drop it into your C++ project and use it in any place you want.
-	- Define <b>FPL_IMPLEMENTATION</b> in at least one translation unit before including this header file!
-	- Ready to go.
-
-	For more details see the \subpage page_usage, \subpage page_tutorials and \subpage page_examples pages.
-*/
-
-/*!
-	\page page_usage Usage
-	\tableofcontents
-
-	\section section_usage How to use FPL?
-	In one of your C++ translation units include this:
-
-	\code{.cpp}
-	#define FPL_IMPLEMENTATION
-	#include "final_platform_layer.hpp"
-	\endcode
-
-	You can then include this file in any other C++ source or header file as you would with any other header file.
-
-	Provide the typical main entry point with at least the initialization and release of the platform:
-
-	\code{.cpp}
-	int main(int argc, char *args[]) {
-		// Initialize the platform
-		fpl::InitPlatform(fpl::InitFlags::All);
-
-		// your code goes here
-
-		// Release the platform
-		fpl::ReleasePlatform();
-	}
-	\endcode
-
-	\section subsection_requirements Requirements
-	The only dependencies are built-in operating system libraries, a C++/11 compiler and the C-Runtime.<br>
-	Depending on the compiler and platform - linking to one system library may be required:
-	<br>
-	\subsection sectionCompileWin32 Win32
-	- Link against "kernel32.lib"
-
-	\subsection sectionCompileLinux Linux
-	- Link against "ld"
-
-	\section subsection_compiler_opts Options
-
-	See \subpage page_compiler_options for more details.
-*/
-
-/*!
-	\page page_tutorials Tutorials
-	\tableofcontents
-
-	\section section_official_tutorials Official tutorials
-
-	\subsection subsection_otutorial_general General
-	\subpage page_otutorial_initialization <br>
-	\subpage page_otutorial_autonamespace <br>
-
-	\subsection subsection_otutorial_window Window
-	\subpage page_otutorial_window_creation <br>
-	\subpage page_otutorial_window_events <br>
-
-	\subsection subsection_otutorial_input Input
-	\subpage page_otutorial_input_events <br>
-
-	\subsection subsection_otutorial_video Video
-	\subpage page_otutorial_video_general <br>
-	\subpage page_otutorial_video_legacy_opengl <br>
-	\subpage page_otutorial_video_modern_opengl <br>
-	\subpage page_otutorial_video_software <br>
-
-	\subsection subsection_otutorial_audio Audio
-	\subpage page_otutorial_audio_general <br>
-	\subpage page_otutorial_audio_writesamples <br>
-*/
-
-/*!
-	\page page_otutorial_initialization Initialization & Release
-	\tableofcontents
-
-	\section section_otutorial_initialization_entrypoint Entry Point
-
-	Simply provide the typical main entry point (char, C++ style):<br>
-
-	\code{.cpp}
-	int main(int argc, char *args[]) {
-		// code goes here
-	}
-	\endcode
-
-	\section section_otutorial_initialization_simple Initialization
-
-	To initialize FPL you need to call \ref fpl::InitPlatform() (inside the main \ref section_otutorial_initialization_entrypoint) and provide the desired \ref fpl::InitFlags :
-
-	\code{.cpp}
-	int main(int argc, char *args[]) {
-		// With defaults (Window, Video, Audio)
-		fpl::InitPlatform(fpl::InitFlags::All);
-
-		// Only audio
-		fpl::InitPlatform(fpl::InitFlags::Audio);
-
-		// Only window and audio
-		fpl::InitPlatform(fpl::InitFlags::Window | fpl::InitFlags::Audio);
-
-		return 0;
-	}
-	\endcode
-
-	\section section_otutorial_initialization_with_settings Initialization with settings
-
-	To initialize FPL with custom settings you need to call \ref fpl::InitPlatform() and provide the desired \ref fpl::InitFlags and the \ref fpl::Settings parameter:
-
-	\code{.cpp}
-	fpl::Settings settings = DefaultSettings();
-
-	// change the settings here
-
-	fpl::InitPlatform(fpl::InitFlags::All, settings);
-	\endcode
-
-	\section section_otutorial_initialization_release Release
-
-	When you are done, you release FPL with the call \ref fpl::ReleasePlatform():
-	\code{.cpp}
-	fpl::ReleasePlatform();
-	\endcode
-
-	\section section_otutorial_initialization_result Result/Error checking
-
-	There is no guarantee that \ref fpl::InitPlatform() will always work with the fpl::Settings you specified, maybe the audio device does not support a sample rate of 1337 Khz or your video card does not support OpenGL version 3.7 - who knows.<br>
-	<br>
-	Therefore you should always check the result of the \ref fpl::InitPlatform() call! The result is a simple bool indicating whether the initialization failed or was successful - its that easy.<br>
-	<br>
-	Also you should release the platform when the initialization was successful only! If something goes wrong the resources are already cleaned up by FPL.<br>
-	<br>
-	In addition you should use \ref fpl::GetPlatformError() to print out the actual error when the initialization fails!<br>
-
-	<b>Bad:</b> (But will work)
-	\code{.cpp}
-	if (fpl::InitPlatform(fpl::InitFlags::All)) {
-		// your code here
-	}
-	fpl::ReleasePlatform();
-	\endcode
-
-	<b>Good:</b>
-	\code{.cpp}
-	if (fpl::InitPlatform(fpl::InitFlags::All)) {
-		// your code here
-		fpl::ReleasePlatform();
-	}
-	\endcode
-
-	<b>Better:</b>
-	\code{.cpp}
-	if (fpl::InitPlatform(fpl::InitFlags::All)) {
-		// your code here
-		fpl::ReleasePlatform();
-	} else {
-		const char *errStr = fpl::GetPlatformError();
-		fpl::console::ConsoleFormatError("FPL-ERROR: %s\n", errStr);
-	}
-	\endcode
-
-	See the \subpage page_otutorial_errorhandling page for more details about error handling.
-
-	\section section_otutorial_initialization_tips Tips
-	After releasing FPL you can call \ref fpl::InitPlatform() again if needed - for example: Finding the proper audio device, Testing for OpenGL compability, etc. may require you call InitPlatform() and ReleasePlatform() multiple times.
-*/
-
-/*!
-	\page page_otutorial_autonamespace Automatic namespace inclusion
-	\tableofcontents
-
-	\section section_otutorial_autonamespace Enable automatic namespaces
-
-	In case you dont want to fiddle around with any namespaces from FPL you can always enforces the inclusion of all namespaces automatically:
-
-	\code{.cpp}
-	#define FPL_AUTO_NAMESPACE
-	#include <final_platform_layer.hpp>
-	\endcode
-
-	This way you can always write:
-	\code{.cpp}
-	InitPlatform(InitFlags::All);
-	VideoBackBuffer backbuffer = GetVideoBackBuffer();
-	\endcode
-
-	instead of:
-	\code{.cpp}
-	fpl::InitPlatform(fpl::InitFlags::All);
-	fpl::video::VideoBackBuffer backbuffer = fpl::video::GetVideoBackBuffer();
-	\endcode
-
-	\section section_otutorial_autonamespace_note Note
-
-	Keep in mind that automatic namespace inclusion is the same as writing:
-	\code{.cpp}
-	using namespace fpl;
-	using namespace fpl::audio;
-	using namespace fpl::window;
-	// ...
-	\endcode
-*/
-
-
-
-
-/*!
-	\page page_otutorial_errorhandling Error handling
-	\tableofcontents
-
-	\section section_otutorial_errorhandling_getlatest Get latest error
-
-	In case something goes wrong you can always call \ref fpl::GetPlatformError() - at any time.<br>
-	This either returns a empty string indicating everything is fine or a constant string with a valid error message.<br>
-
-	Example:
-	\code{.cpp}
-	const char *errStr = fpl::GetPlatformError();
-	// Do something with the error string
-	\endcode
-
-	\section section_otutorial_errorhandling_count Was there a error?
-
-	If you just want to check if there was an error, you can call \ref fpl::GetPlatformErrorCount() to use the number of errors as a condition.<br>
-
-	Example:
-	\code{.cpp}
-	if (fpl::GetPlatformErrorCount()) {
-		// Print out the error message
-	}
-	\endcode
-
-	\section section_otutorial_errorhandling_clear Clearing the errors
-
-	Errors will never be cleared by FPL! You have to do this yourself using \ref fpl::ClearPlatformErrors() .<br>
-
-	Example:
-	\code{.cpp}
-	fpl::ClearPlatformErrors();
-	\endcode
-
-	\section section_otutorial_errorhandling_note Note
-	Keep in mind that any platform error is reported in the output of the error console automatically!<br>
-	If you dont want to do that, then simply define the preprocessor directive for ignoring this behavior - before including this library with implementation enabled:
-
-	\code{.cpp}
-	#define FPL_NO_ERROR_IN_CONSOLE
-	#define FPL_IMPLEMENTATION
-	#include <final_platform_layer.hpp>
-	\endcode
-*/
-
-/*!
-	\page page_otutorial_window_creation Window creation & main loop
-	\tableofcontents
-
-	\section section_otutorial_window_creation_init Initialization
-
-	To create a window you add the \ref fpl::InitFlags::Window flag to the fpl::InitFlags parameter in the \ref fpl::InitPlatform() call.<br>
-	It makes no sense to create a window alone, so we combine it at least with something else, like for example: a video context or audio playback.<br>
-
-	\code{.cpp}
-	fpl::InitPlatform(fpl::InitFlags::Window | fpl::InitFlags::Video, settings);
-	\endcode
-
-	\section section_otutorial_window_creation_loop Main loop
-
-	After you initialize FPL with a window you have to create some sort of a loop to keep the window open until you close them.<br>
-	This is required due to the fact that operating systems uses a event-based system to communicate with the window and your app.<br>
-	If no communication happens with your window and your app, the window will no longer be responsive - so make sure to communicate properly.<br>
-	<br>
-	For that there is a single function call required to process these events -> \ref fpl::Window::WindowUpdate().
-
-	\code{.cpp}
-	while (fpl::Window::WindowUpdate()) {
-		// your code goes here
-	}
-	\endcode
-
-	\section section_otutorial_window_creation_note Note
-	All window based calls are required to be executed from the main-thread only!
-
-*/
-
-/*!
-	\page page_otutorial_window_events Window events
-	\tableofcontents
-
-	\section section_otutorial_window_events_polling Polling the events
-
-	To poll the events from the internal queue you simply call the correspondending function \ref fpl::window::PollWindowEvent() in a while-loop inside your actual main-loop.<br>
-	Each event is copied into the \ref fpl::window::Event reference parameter which you can handle or not.<br>
-	If there are no events left, the function returns false and you are done.
-
-	\code{.cpp}
-	fpl::window::Event currentEvent;
-	while (fpl::Window::PollWindowEvent(currentEvent)) {
-		// ... Handling the event
-	}
-	\endcode
-
-	\section section_otutorial_window_events_handling Handling the Events
-
-	Each event has a \ref fpl::window::Event.type field which you can check on to read the actual data (Keyboard, Mouse, Window, etc.).
-
-	\code{.cpp}
-	fpl::window::Event currentEvent;
-	while (fpl::window::PollWindowEvent(currentEvent)) {
-		switch (currentEvent.type) {
-			case fpl::window::EventType::Window:
-			{
-				// A window event, like resize, lost/got focus, etc.
-			} break;
-			case fpl::window::EventType::Keyboard:
-			{
-				// A keyboard event, like key down/up, pressed, etc.
-			} break;
-			case fpl::window::EventType::Mouse:
-			{
-				// A mouse event, like mouse button down/up, mouse move, etc.
-			} break;
-			case fpl::window::EventType::Gamepad:
-			{
-				// A gamepad event, like connected/disconnected, state-updated etc.
-			} break;
-		}
-	}
-	\endcode
-
-	All available event types are stored in the \ref fpl::window::EventType enumeration.
-
-	\section section_otutorial_window_events_handle_event_type Handle the event data
-
-	All relevant event data are stored in fields which matches the lowercase \ref fpl::window::EventType name.<br>
-	Each event structure has another type field to check for the actual type (Key-Down, Mouse-Move, Window-Resize etc.).<br>
-
-	\subsection subsection_otutorial_window_events_handle_event_type_mouse Mouse events
-
-	Mouse event data are stored in the \ref fpl::window::MouseEvent structure.
-
-	\code{.cpp}
-	switch (currentEvent.mouse.type) {
-		case fpl::window::MouseEventType::ButtonDown:
-		{
-			fpl::window::MouseButtonType button = currentEvent.mouse.button;
-			// ... do something with the mouse button
-		} break;
-
-		case fpl::window::MouseEventType::Move:
-		{
-			int mouseX = currentEvent.mouse.mouseX;
-			int mouseY = currentEvent.mouse.mouseY;
-			// ... do something with the mouse position
-		} break;
-	}
-	\endcode
-
-	\subsection subsection_otutorial_window_events_handle_event_type_keyboard Keyboard events
-
-	Keyboard event data are stored in the \ref fpl::window::KeyboardEvent structure.<br>
-	<br>
-	You can either check for the original \ref fpl::window::KeyboardEvent.keyCode or use the fpl::window::KeyboardEvent.mappedKey field - which is much easier and less error prone.<br>
-
-	\code{.cpp}
-	switch (currentEvent.keyboard.type) {
-		case fpl::window::KeyboardEventType::KeyDown:
-		{
-			// ... Handle the key code
-			uint64_t keyCode = currentEvent.keyboard.keyCode;
-			if (keyCode == 65 || keyCode == 97) {
-				// Letter A is held down
-			}
-
-			// or
-
-			// ... handle the mapped key
-			fpl::window::Key mappedKey = currentEvent.keyboard.mappedKey;
-			if (mappedKey == fpl::window::Key::Key_F1) {
-				// F1 key held down
-			}
-		} break;
-
-		case fpl::window::KeyboardEventType::CharInput:
-		{
-			// Handle character input
-		} break;
-	}
-	\endcode
-
-	\subsection subsection_otutorial_window_events_handle_event_type_gamepad Gamepad events
-
-	Gamepad event data are stored in the \ref fpl::window::GamepadEvent structure.<br>
-
-	\code{.cpp}
-	switch (currentEvent.gamepad.type) {
-		case fpl::window::GamepadEventType::Connected:
-		{
-			// New gamepad device connected
-		} break;
-
-		case fpl::window::GamepadEventType::Disconnected:
-		{
-			// Lost connection to a gamepad device
-		} break;
-
-		case fpl::window::GamepadEventType::StateChanged:
-		{
-			// State of one controller updated (Buttons, Movement, etc.)
-			if (absf(currentEvent.gamepad.leftStickX) > 0) {
-				// ... Handle horizontal movement on left stick
-			}
-			if (currentEvent.gamepad.actionX.isDown) {
-				// ... X-Button is held down
-			}
-		} break;
-	}
-	\endcode
-
-	\subsection subsection_otutorial_window_events_handle_event_type_window Window events
-
-	Window event data are stored in the \ref fpl::window::WindowEvent structure.<br>
-
-	\code{.cpp}
-	switch (currentEvent.window.type) {
-		case fpl::window::WindowEventType::Resized:
-		{
-			uint32_t newWidth = currentEvent.window.width;
-			uint32_t newHeight = currentEvent.window.height;
-			// ... Window was resized, handle it properly
-		} break;
-	}
-	\endcode
-
-	\section section_otutorial_window_events_inotes Important Notes
-
-	FPL does not cache the events from the previous update. If you dont handle the event - the data is lost!<br>
-	You are responsible for caching the data if needed.<br>
-	Also you must always poll each event to ensure that the internal queue will not get full!
-*/
-
-/*!
-	\page page_otutorial_input_events Input events
-
-	\section section_page_otutorial_input_events_overview Overview
-
-	All input events are mapped to window events.<br>
-	To detect any key presses, button downs, you simply handle the specific event type in your event-loop!<br>
-	<br>
-	For details see the \subpage page_otutorial_window_events page.
-*/
-
-/*!
-	\page page_otutorial_video_general Initialization & Overview
-
-	\section otutorial_video_general_init Initialize a video context
-
-	To initialize either software or hardware video output you have to set the \ref fpl::InitFlags::Video flag in the \ref fpl::InitPlatform() call and ensure that video is not disabled by a preprocessor directive (FPL_NO_VIDEO).<br>
-
-	Also setting the \ref fpl::InitFlags::Video flag ensures that the \ref fpl::InitFlags::Window flag is appended automatically.<br>
-
-	\subsection otutorial_video_general_init_default Default video output
-
-	If you dont specify any settings then the video driver is automatically detected, depending on your operating system and supported hardware and software.<br>
-	By default this is most likely be legacy OpenGL - which is supported on almost every video card on any OS.<br>
-	<br>
-	But this is not the recommended way to initialize video output, due to the fact that you are responsible for handling any video output yourself.<br>
-
-	\code{.cpp}
-	if (fpl::InitPlatform(fpl::InitFlags::Video)) {
-		// ... your code here
-	}
-	\endcode
-
-	\subsection otutorial_video_general_init_setting_driver Setting the video driver
-
-	It recommended to set at least the video driver manually, to ensure that you get either initialized with that driver properly or a error when your configuration is not supported.<br>
-	<br>
-	You do that by simply setting the \ref fpl::VideoDriverType field in your \ref fpl::VideoSettings structure which is included in the \ref fpl::Settings structure to the \ref fpl::InitPlatform() call.
-
-	\code{.cpp}
-	fpl::Settings settings = DefaultSettings();
-	fpl::VideoSettings &videoSettings = settings.video;
-
-	// Forcing the video driver to be OpenGL
-	videoSettings.driverType = fpl::VideoDriverType::OpenGL;
-
-	if (fpl::InitPlatform(fpl::InitFlags::Video, settings)) {
-		// ... your code here
-	}
-	\endcode
-
-	\section otutorial_video_general_vsync Enable/Disable Vertical Syncronisation
-
-	If you want to enable/disable vertical syncronization you simply set the fpl::VideoSettings.isVSync field respectively.
-	<br>
-	\note There is no guarantee that vertical syncronisation is supported by your video device or selected driver.
-	\note Software video output does not support vertical syncronisation!
-
-	\section otutorial_video_general_disable Disable unneeded Video Drivers
-
-	To compile out certain video drivers you simply specify the FPL_NO_VIDEO_[Name of the video driver] preprocessor directive.<br>
-	But the correspondending \ref fpl::VideoDriverType is never removed from the enumeration - keep that in mind!<br>
-
-	Example (Disable OpenGL Video Driver):
-
-	\code{.cpp}
-	#define FPL_NO_VIDEO_OPENGL
-	#define FPL_IMPLEMENTATION
-	#include <final_platform_layer.hpp>
-	\endcode
-
-	\section otutorial_video_general_disable_all Disable all Video Output
-
-	To compile out all video output code you define the FPL_NO_VIDEO preprocessor directive.
-
-	\code{.cpp}
-	#define FPL_NO_VIDEO
-	#define FPL_IMPLEMENTATION
-	#include <final_platform_layer.hpp>
-	\endcode
-
-	\note Keep in mind that this is not useful for window based applications!
-	\note If you writing a console application and dont want any video output whatsoever you set the FPL_NO_WINDOW which automatically disabled any video devices as well.
-
-	\section otutorial_video_general_notes Notes
-
-	Driver types stored in the \ref fpl::VideoDriverType enumeration are not filtered away, even when you disable it by a preprocessor directive!<br>
-	Keep that in mind when you initialize the video device.<br>
-
-*/
-
-/*!
-	\page page_otutorial_video_legacy_opengl Legacy OpenGL
-
-	\section section_otutorial_video_legacy_opengl_init Initialize Legacy OpenGL
-
-	To initialize a legacy OpenGL (up to GL version 2.1) rendering context you simply set the the \ref fpl::InitFlags::Video flag in the \ref fpl::InitPlatform() call and change the video driver type to \ref fpl::VideoDriverType::OpenGL and set the \ref fpl::OpenGLVideoSettings.compabilityFlags to \ref fpl::OpenGLCompabilityFlags::Legacy .<br>
-	<br>
-	This will work in ~99% on all supported platforms - if not please post a issue for that platform/configuration/video-card ;-)
-
-	\code{.cpp}
-	fpl::Settings settings = DefaultSettings();
-	fpl::VideoSettings &videoSettings = settings.video;
-
-	// Forcing the video driver to be legacy OpenGL
-	videoSettings.driverType = fpl::VideoDriverType::OpenGL;
-	videoSettings.opengl.compabilityFlags = fpl::OpenGLCompabilityFlags::Legacy;
-
-	if (fpl::InitPlatform(fpl::InitFlags::Video, settings)) {
-		// ... your code here
-	}
-	\endcode
-
-	\section section_otutorial_video_legacy_opengl_usage Usage
-
-	\subsection subsection_otutorial_video_legacy_opengl_usage_extensions Extensions loader
-
-	To use features of OpenGL 1.2 or later you need some sort of a opengl extension loader which gives you access to the constants and functions like glMultiTexCoord2f().<br>
-	For more details please check the modern OpenGL \ref subsection_otutorial_video_modern_opengl_usage_extensions section.
-
-	\subsection subsection_otutorial_video_legacy_opengl_usage_present Presenting your frame
-
-	To swap the backbuffer with the frontbuffer in the window you have to call the \ref fpl::window::WindowFlip() function.<br>
-	Its recommend to call this after each draw call of your frame at the end of the main-loop.
-*/
-
-/*!
-	\page page_otutorial_video_modern_opengl Modern OpenGL
-
-	\section section_otutorial_video_modern_opengl_init Initialize a modern OpenGL Rendering Context
-
-	To initialize a modern OpenGL (3.0+) rendering context you simply set the the \ref fpl::InitFlags::Video flag in the \ref fpl::InitPlatform() call and change the video driver type to \ref fpl::VideoDriverType::OpenGL and setup the following parameters:<br>
-	- Set the \ref fpl::OpenGLVideoSettings.majorVersion to 3 or higher
-	- Set the \ref fpl::OpenGLVideoSettings.minorVersion to 0 or higher
-	- Set the \ref fpl::OpenGLVideoSettings.compabilityFlags to either a \ref fpl::OpenGLCompabilityFlags::Core or \ref fpl::OpenGLCompabilityFlags::Compability
-	- Optionally add the fpl::OpenGLCompabilityFlags::Forward flag for removing obsolete functions
-
-	\code{.cpp}
-	fpl::Settings settings = DefaultSettings();
-	fpl::VideoSettings &videoSettings = settings.video;
-
-	// Forcing the video driver to be modern OpenGL with Core profile and for GL version 3.3
-	videoSettings.driverType = fpl::VideoDriverType::OpenGL;
-	videoSettings.opengl.compabilityFlags = fpl::OpenGLCompabilityFlags::Core;
-	videoSettings.opengl.majorVersion = 3;
-	videoSettings.opengl.minorVersion = 3;
-
-	if (fpl::InitPlatform(fpl::InitFlags::Video, settings)) {
-		// ... modern context is ready
-	}
-	\endcode
-
-	\section section_otutorial_video_modern_opengl_usage Usage
-
-	\subsection subsection_otutorial_video_modern_opengl_usage_extensions Extensions loader
-
-	To use modern OpenGL you need some sort of a opengl extension loader which gives you access to the constants and functions like glCreateProgram().<br>
-	You can either use a thirdparty C/C++ library for doing that for you or use/write your own OpenGL loader. FPL should work in both ways.<br>
-	<br>
-	List of tested OpenGL loaders:
-	- <a href="https://github.com/f1nalspace/final_game_tech/blob/master/final_dynamic_opengl.hpp">Final Dynamic OpenGL</a>
-	- <a href="http://glew.sourceforge.net/">Glew</a>
-
-	\subsection subsection_otutorial_video_modern_opengl_present Presenting your frame
-
-	To swap the backbuffer with the frontbuffer in the window you have to call the \ref fpl::window::WindowFlip() function.<br>
-	Its recommend to call this after each draw call of your frame at the end of the main-loop.
-
-	\section section_otutorial_video_modern_opengl_notes Notes
-	FPL does not provide any opengl types, prototypes or functions - its fully up to the caller how to handle this.
-	<br>
-	Keep in mind that FPL does not work with any OpenGL platform abstraction library like GLFW or GLUT!
-*/
-
-/*!
-	\page page_otutorial_video_software Software Output
-
-	\section section_otutorial_video_software_init Initialize a Software Backbuffer
-
-	FPL supports software video output as well, which will work on any platform.<br>
-
-	\code{.cpp}
-	fpl::Settings settings = DefaultSettings();
-	fpl::VideoSettings &videoSettings = settings.video;
-
-	// Forcing the video driver to be software
-	videoSettings.driverType = fpl::VideoDriverType::Software;
-
-	if (fpl::InitPlatform(fpl::InitFlags::Video, settings)) {
-		// Video software back buffer is ready
-		fpl::video::VideoBackBuffer *videoBackBuffer = fpl::video::GetVideoBackBuffer();
-	}
-	\endcode
-
-	\section section_otutorial_video_software_usage Usage
-
-	To use the software backbuffer you simply access the \ref fpl::video::VideoBackBuffer from the \ref fpl::video::GetVideoBackBuffer() function and update the pixels as needed.
-
-	\subsection subsection_otutorial_video_software_present Presenting your frame
-
-	To update the frontbuffer in the window with the pixels you may have changed you have to call the \ref fpl::window::WindowFlip() function.<br>
-	Its recommend to call this after each draw call of your frame at the end of the main-loop.
-
-	\subsection subsection_otutorial_video_software_drawing Drawing
-
-	Drawing is done by manually changing the pixels in the \ref fpl::video::VideoBackBuffer.pixels field.<br>
-	Each pixel is stored as 32-bit with 4 RGBA components in little-endian (AA BB GG RR).<br>
-	Lines are stored in top-down order - meaning that position "0" in the \ref fpl::video::VideoBackBuffer.pixels field is always the top-left corner of the bitmap!<br>
-	To calculate the actual position for the current line you simply multiply your Y-Index with the \ref fpl::video::VideoBackBuffer.lineWidth field.
-
-	<b>Example (Filling all pixels to purple):</b>
-
-	\code{.cpp}
-	fpl::video::VideoBackBuffer *backBuffer = fpl::video::GetVideoBackBuffer();
-	for (uint32_t y = 0; y < backBuffer->height; ++y) {
-		uint32_t *p = (uint32_t *)((uint8_t *)backBuffer->pixels + y * backBuffer->lineWidth);
-		for (uint32_t x = 0; x < backBuffer->width; ++x) {
-			uint32_t color = 0xFFFF00FF;
-			*p++ = color;
-		}
-	}
-	\endcode
-
-	\subsection subsection_otutorial_video_software_outrect Limiting the output rectangle (Stretching vs non-stretched)
-
-	To force the pixels to be shown in a fixed rectangle you simply enable the \ref fpl::video::VideoBackBuffer.useOutputRect field and update the \ref fpl::video::VideoBackBuffer.outputRect as needed.<br>
-	This mimics a "viewport" which is similar to OpenGLs glViewport().<br>
-	<br>
-	If you dont use this feature all pixels are fully stretched to the current window area always!
-
-	\note This viewport should not be greater than the actual window area dimension!
-
-	<b>Example (Resize window event):</b>
-	\code{.cpp}
-	fpl::video::VideoBackBuffer *backBuffer = fpl::video::GetVideoBackBuffer();
-	backBuffer->useOutputRect = true;
-	while (fpl::window::WindowUpdate()) {
-		fpl::window::Event ev;
-		while (fpl::window::PollWindowEvent(ev)) {
-			if (ev.type == fpl::window::EventType::Window) {
-				if (ev.window.type == fpl::window::WindowEventType::Resized) {
-					VideoRect newRect = ComputeLetterbox(ev.window.width, ev.window.height, backBuffer->width, backBuffer->height); // ... Compute new rectangle here (Letterbox or something)
-					backBuffer->outputRect = newRect;
-				}
-			}
-		}
-
-		// ... Modify the pixels here (Draw call)
-
-		fpl::window::WindowFlip();
-	}
-	\endcode
-
-	<b>Example (Always before the draw call):</b>
-	\code{.cpp}
-	fpl::video::VideoBackBuffer *backBuffer = fpl::video::GetVideoBackBuffer();
-	backBuffer->useOutputRect = true;
-	while (fpl::window::WindowUpdate()) {
-		fpl::window::Event ev;
-		while (fpl::window::PollWindowEvent(ev)) {}
-
-		WindowSize windowArea = GetWindowArea();
-		VideoRect newRect = ComputeLetterbox(windowArea, backBuffer->width, backBuffer->height); // ... Compute new rectangle here (Letterbox or something)
-		backBuffer->outputRect = newRect;
-
-		// ... Modify the pixels here (Draw call)
-
-		fpl::window::WindowFlip();
-	}
-	\endcode
-
-	\subsection subsection_otutorial_video_software_resize Resizing the backbuffer
-
-	By default the video backbuffer is automatically resized when the dimension of the window area changes.<br>
-	If you want to manually do this, you disable this feature in the \ref fpl::VideoSettings.isAutoSize field - in the \ref fpl::Settings.video configuration section.<br>
-	<br>
-	To force the backbuffer to be resized to a fixed dimension you have to call \ref fpl::video::ResizeVideoBackBuffer() with a new width and height.
-	<br>
-	\warning Do not call this method while you are modifing pixels!
-
-	\section section_otutorial_video_software_notes Notes
-
-	There is no software rendering functions built-in! If you want to draw for example a circle, you have to roll out your own drawCircle() function - which may uses Bresenham as its base or something.<br>
-	Vertical syncronisation is not supported for software video drivers!
-*/
-
-/*!
-	\page page_otutorial_audio_general Initialization & Usage
-
-	\section section_otutorial_audio_general_default_init Default initialization
-
-	To initialize audio playback with default settings (Interleaved, 48 KHz, 2 Channels, signed 16-bit integer format) you have to set the \ref fpl::InitFlags::Audio flag in the \ref fpl::InitPlatform() call and ensure that audio is not disabled by a preprocessor directive (FPL_NO_AUDIO).<br>
-
-	\code{.cpp}
-	if (fpl::InitPlatform(fpl::InitFlags::Audio)) {
-		// ... your code here
-	}
-	\endcode
-
-	\subsection subsection_otutorial_audio_general_default_init_clientcallback Setting the client callback
-
-	Next is to specify the client user callback which gets invoked regularly when the audio device requires new samples to play.<br>
-	This \ref fpl::AudioClientReadFunction "client callback" can be set up in the \ref fpl::AudioSettings.clientReadCallback field from the \ref fpl::Settings.audio or changed by calling \ref fpl::audio::SetAudioClientReadCallback() :<br>
-
-	\code{.cpp}
-	static uint32_t MyAudioPlaybackCallback(const AudioDeviceFormat &nativeFormat, const uint32_t frameCount, void *outputSamples, void *userData) {
-		// ... Fill audio frames here
-	}
-
-	fpl::Settings settings = DefaultSettings();
-	fpl::AudioSettings &audioSettings = settings.audio;
-	audioSettings.clientReadCallback = MyAudioPlaybackCallback;
-	audioSettings.userData = // ... pointer to some user data
-	if (fpl::InitPlatform(fpl::InitFlags::Audio, settings)) {
-		// ... your code here
-	}
-	\endcode
-
-	\note This step must be done before you actually start playing the audio!
-	\note You can specify a user data pointer which gets passed to the client callback as well.
-
-	\section section_otutorial_audio_general_custom_init Custom initialization
-
-	You can change several audio settings (Sample rate, Number of Channels, Format, etc.) before initializing the audio playback like this:<br>
-
-	\code{.cpp}
-	fpl::Settings settings = DefaultSettings();
-	fpl::AudioSettings &audioSettings = settings.audio;
-	audioSettings.clientReadCallback = MyAudioPlaybackCallback;
-	audioSettings.userData = // ... pointer to some user data
-	fpl::AudioDeviceFormat &audioDeviceFormat = audioSettings.deviceFormat;
-	audioDeviceFormat.sampleRate = 48000;
-	audioDeviceFormat.channels = 2;
-	audioDeviceFormat.type = fpl::AudioFormatType::F32;
-	if (fpl::InitPlatform(fpl::InitFlags::Audio, settings)) {
-		// ... your code here
-	}
-	\endcode
-
-	\note Please see the \ref section_otutorial_audio_general_notes for possible limitations!
-
-	\section section_otutorial_audio_general_choosing_driver Choosing the audio driver
-
-	By default FPL uses the first available audio driver which is supported on your platform.<br>
-	If you want to force FPL to use a certain audio driver, you can do this by changing the \ref fpl::AudioSettings.driver field in the \ref fpl::AudioSettings structure:<br>
-
-	\code{.cpp}
-	fpl::Settings settings = DefaultSettings();
-	fpl::AudioSettings &audioSettings = settings.audio;
-
-	// Forcing to use the DirectSound audio driver
-	audioSettings.driver = fpl::AudioDriverType::DirectSound;
-
-	if (fpl::InitPlatform(fpl::InitFlags::Audio, settings)) {
-		// ... your code here
-	}
-	\endcode
-
-	Its recommend to use the default \ref fpl::AudioDriverType::Auto which uses the first supported audio driver.
-
-	\warning If your platform/system does not support the desired driver the audio and platform initialization will fail!
-
-	\section section_otutorial_audio_general_playing_and_stopping Start and stop playing the audio samples
-
-	After the initialization the audio device is stopped always.<br>
-	To start requesting and playing audio samples you have to call the \ref fpl::audio::PlayAudio() function.<br>
-	<br>
-	To stop the audio playback you call the opposite \ref fpl::audio::StopAudio() function.
-
-	\note If you are about to release the platform using \ref fpl::ReleasePlatform() you should always call \ref fpl::audio::StopAudio() before!
-
-	\section section_otutorial_audio_general_notes Notes
-
-	There is no guarantee that you get the desired audio format you specified back!<br>
-	You should always check the \ref fpl::AudioDeviceFormat "nativeAudioFormat" in your client callback and convert/write the correct samples the audio device expects!<br>
-	<br>
-	How to write samples is explained here: \subpage page_otutorial_audio_writesamples
-*/
-
-/*!
-	\page page_otutorial_audio_writesamples Writing audio samples
-
-	\section section_otutorial_audio_writesamples_overview Overview
-
-	To write audio samples in the audio client callback you have to know at least four things:
-	- Target format (S16, S24, F32, etc.)
-	- Target number of channels (1 = Mono, 2 = Stereo, etc.)
-	- Target sample rate (44 KHz, 48 Khz, etc.)
-	- Number of frames required
-
-	All these informations are provided by the \ref fpl::AudioClientReadFunction callback function.<br>
-	<br>
-	To get this information before the audio playback is started, you can query it by calling \ref fpl::audio::GetAudioHardwareFormat() .
-
-	\section section_otutorial_audio_writesamples_functions Useful functions
-
-	To help with sample computation there are several inline functions available:
-
-	- \ref fpl::audio::GetAudioHardwareFormat()
-	- \ref fpl::audio::GetAudioBufferSizeInFrames()
-	- \ref fpl::audio::GetAudioDriverString()
-	- \ref fpl::audio::GetAudioFormatString()
-	- \ref fpl::audio::GetAudioSampleSizeInBytes()
-	- \ref fpl::audio::GetAudioFrameSizeInBytes()
-	- \ref fpl::audio::GetAudioBufferSizeInBytes()
-
-	\section section_otutorial_audio_writesamples_s16 Writing 16-bit signed integer samples
-
-	\code{.cpp}
-	static uint32_t MyAudioPlaybackCallback(const AudioDeviceFormat &nativeFormat, const uint32_t frameCount, void *outputSamples, void *userData) {
-		uint32_t result = 0;
-		if (nativeFormat.type == AudioFormatType::S16) {
-			int16_t *outSamples = (int16_t *)outputSamples;
-			for (uint32_t frameIndex = 0; frameIndex < frameCount; ++frameIndex) {
-				for (uint32_t channelIndex = 0; channelIndex < nativeFormat.channels; ++channelIndex) {
-					*outSamples++ = // ... Getting a sample for the current frame/channel
-					++result;
-				}
-			}
-		} else {
-			// ... handle other formats here
-		}
-		return result;
-	}
-	\endcode
-
-	\section section_otutorial_audio_writesamples_notes Notes
-
-	\note FPL does not provide any functionality for doing any kind of DSP or format conversion!<br>
-	\note You are responsible for filling out the samples in the correct format your audio device expects!
-*/
-
-/*!
-	\page page_faq FAQ
-	\tableofcontents
-
-	\section section_faq FAQ
-
-	\subsection subsection_faq_license What are the license requirements for FPL?
-	Final Platform Layer is released under the \subpage page_license "MIT License".<br>
-	This license allows you to use FPL freely in any non-commerical or commercial software.<br>
-
-	\subsection subsection_faq_costs I did pay for FPL, did i get ripped-of?
-	Yes you are! FPL is full open source and costs nothing.
-
-	\subsection subsection_faq_inwhatlanguage In what language is FPL written?
-	Final Platform Layer is written in C++ but in C-Style without using any object orientation concepts.<br>
-	It uses namespaces for categorizing and for preventing name collisions with other apis and uses the C++/11 standard integral types.<br>
-	<br>
-	But it does not use the C++ standard library or any advanced C++/11 features.
-
-	\subsection subsection_faq_whycpp11 Why is C++/11 required for FPL?
-	Because C++ has no proper standards for types and even null until C++/11 - its that simple.<br>
-	All modern compilers today does support C++/11 properly, so there is reason to not use it.
-
-	\subsection subsection_faq_whyshouldiuse Why should i use FPL?
-	If you want a hassle free platform abstraction library, FPL is the way to go.<br>
-	- You dont have any linking madness
-	- No configuration needed
-	- No build-scripts required
-	- It just compiles
-	- You decide how you integrate it; not the library
-
-	Also even when you use FPL you still can use other libraries and ignore features you dont need.<br>
-	For example FPL provides a few atomic operations, but its very limited - so you may use std::atomic or other libraries for that task.<br>
-
-	\subsection subsection_faq_whyisfplsobig Why is FPL so big?
-	Final Platform Layer contains headers and implementations for all supported platforms with all the function prototypes for linking operating system functions dynamically.<br>
-	In addition there is a full doxygen documentation included with a detailed changelog.<br>
-
-	\subsection subsection_faq_limitations Does FPL have some limitations?
-	Yes it does have some limitations, because it cannot do everything for you:
-	- There is no audio DSP going on, so you have to convert the samples into the proper format (Sample rate, Channels, Format type) FPL expects.
-	- There is no rendering functions included, except for presenting the current frame. So you have to load and call the correct api functions yourself.
-
-	\subsection subsection_faq_thirdparty_libs Can FPL handle third party libraries?
-	Yes actually it works very well with other libraries - in fact there are several demo projects in the repository which shows that.<br>
-	<br>
-	Here is a short list of tested third-party libraries with FPL:
-
-	- STB Libraries
-	- Standard C++ Library (STL)
-	- Glew/Glad
-	- Box2D
-	- GLM
-	- ImGUI
-	- FFMPEG
-
-	But it will not work with other platform abstraction libraries, like GLUT, SFML, SDL etc.
-
-	\section section_additional_notes Additional notes
-
-	\subsection subsection_additional_notes_audio Audio
-	This library uses the operating system libraries to initialize a playback audio device.<br>
-	To get any audio samples to play you need to set the callback function with \ref fpl::AudioSettings.clientReadCallback or \ref fpl::audio::SetAudioClientReadCallback() before start playing the audio using fpl::audio::PlayAudio().<br>
-	When the audio device requires more audio samples this callback is automatically called.<br>
-	It is expected that the audio samples are filled in properly by the native format of the device, see \ref fpl::AudioDeviceFormat.<br>
-	This library does not provide any functionality for doing any kind of DSP.<br>
-	To start and stop the playback, you need to call \ref fpl::audio::PlayAudio() and \ref fpl::audio::StopAudio() respectively.<br>
-	There is no guarantee that you get a audio device with the exact same format you specified back, but S16 with 48 KHz is a common format which almost every audio card supports.<br>
-*/
-
-/*!
-	\page page_contribute Contribute
-	\tableofcontents
-
-	Glad you want to support this project.
-*/
-
-/*!
-	\page page_examples Examples
-	\tableofcontents
-
-	\section section_console_examples Console examples
-
-	- \subpage page_example_helloworld_console
-	- \subpage page_example_simple_audio
-
-	\section section_windowed_examples Window examples
-
-	- \subpage page_example_opengl1x
-	- \subpage page_example_opengl33
-*/
-
-/*!
-	\page page_platform_status Platform Status
-	\tableofcontents
-
-	\section section_supported_platforms_archs Supported platforms / architectures
-
-	Current state of supported platforms/architectures:
-
-	- Windows (Win32)
-		- x86
-		- x86_64
-		- x64
-	<br><br>
-	- Linux (POSIX, In progress)
-		- x86
-		- x86_64
-		- x64
-
-	\section section_planned_platforms_archs Planned platforms / architectures
-
-	This platforms/architectures are planned for the future:
-
-	- Unix (POSIX, Planned)
-		- x86
-		- x86_64
-		- x64
-*/
-
-/*!
-	\page page_compiler_options Compiler Options
-	\tableofcontents
-
-	\section section_preprocessor_opts Preprocessor options
-
-	\code{.cpp}
-	#define FPL_IMPLEMENTATION
-	\endcode
-
-	Define this to include the actual implementation code as well.
-	Set this only once per translation unit, otherwise you will get linking errors.
-
-	\code{.cpp}
-	#define FPL_API_AS_PRIVATE
-	\endcode
-
-	Define this to make all functions be private "static".
-	Default is "export".
-
-	\code{.cpp}
-	#define FPL_NO_ASSERTIONS
-	\endcode
-
-	Define this to disable all internal assertions.
-
-	\code{.cpp}
-	#define FPL_FORCE_ASSERTIONS
-	\endcode
-
-	Define this to enable internal assertions always, even in debug builds.
-	NOTE: When enabled, all assertions wont use the C assert() at all, because it may be compiled out!
-
-	\code{.cpp}
-	#define FPL_NO_C_ASSERT
-	\endcode
-
-	Define this to disable C runtime assert.
-	Has no effect when FPL_FORCE_ASSERTIONS is set!
-
-	\code{.cpp}
-	#define FPL_NO_WINDOW
-	\endcode
-
-	Define this to disable window support entirely.
-
-	\code{.cpp}
-	#define FPL_NO_VIDEO
-	\endcode
-
-	Define this to disable any rendering device entirely.
-
-	\code{.cpp}
-	#define FPL_NO_VIDEO_OPENGL
-	\endcode
-
-	Define this to disable opengl rendering support entirely.
-
-	\code{.cpp}
-	#define FPL_NO_VIDEO_SOFTWARE
-	\endcode
-
-	Define this to disable software rendering support entirely.
-
-	\code{.cpp}
-	#define FPL_NO_AUDIO
-	\endcode
-
-	Define this to disable audio playback entirely.
-
-	\code{.cpp}
-	#define FPL_NO_AUDIO_DIRECTSOUND
-	\endcode
-
-	Define this to disable directsound support entirely.
-
-	\code{.cpp}
-	#define FPL_NO_MULTIPLE_ERRORSTATES
-	\endcode
-
-	Define this to use a single error state for \ref fpl::GetPlatformError() instead of multiple ones.
-
-	\code{.cpp}
-	#define FPL_NO_ERROR_IN_CONSOLE
-	\endcode
-
-	Define this to disable printing any platform specific errors to the console.
-
-	\code{.cpp}
-	#define FPL_AUTO_NAMESPACE
-	\endcode
-
-	Define this to include all required namespaces automatically.
-*/
-
-/*!
-	\page page_example_helloworld_console Hello World Console Application!
-	\tableofcontents
-
-	\section section_maincpp1 main.cpp
-
-	\code{.cpp}
-	#define FPL_IMPLEMENTATION
-	#include "final_platform_layer.hpp"
-
-	int main(int argc, char *args[]) {
-		int result;
-		if (fpl::InitPlatform(fpl::InitFlags::None)) {
-			fpl::console::ConsoleOut("Hello World!");
-			fpl::ReleasePlatform();
-			result = 0;
-		} else {
-			result = -1;
-		}
-		return(result);
-	}
-	\endcode
-
-*/
-
-/*!
-	\page page_example_opengl1x Simple OpenGL 1.x
-	\tableofcontents
-
-	\section section_maincpp2 main.cpp
-
-	\code{.cpp}
-	#define FPL_IMPLEMENTATION
-	#include "final_platform_layer.hpp"
-
-	// You have to include GL.h yourself or use any other opengl loader you want.
-	// This library just creates a opengl rendering context for you, but nothing more.
-	// GL.h will only be included when FPL_IMPLEMENTATION is set!
-	#include <GL\GL.h>
-
-	using namespace fpl;
-	using namespace fpl::window;
-
-	int main(int argc, char *args[]) {
-		int result = 0;
-		if (InitPlatform(InitFlags::Video)) {
-			glClearColor(0.39f, 0.58f, 0.93f, 1.0f);
-			while (WindowUpdate()) {
-				WindowSize windowArea = GetWindowArea();
-				glViewport(0, 0, windowArea.width, windowArea.height);
-				glClear(GL_COLOR_BUFFER_BIT);
-				glBegin(GL_TRIANGLES);
-				glVertex2f(0.0f, 0.5f);
-				glVertex2f(-0.5f, -0.5f);
-				glVertex2f(0.5f, -0.5f);
-				glEnd();
-				WindowFlip();
-			}
-			ReleasePlatform();
-			result = 0;
-		} else {
-			result = -1;
-		}
-		return(result);
-	}
-	\endcode
-
-*/
-
-/*!
-	\page page_example_opengl33 Modern OpenGL 3.3+
-	\tableofcontents
-
-	\section section_maincpp3 main.cpp
-
-	\code{.cpp}
-	#define FPL_IMPLEMENTATION
-	#include "final_platform_layer.hpp"
-
-	// You have to include GL.h yourself or use any other opengl loader you want.
-	// This library just creates a opengl rendering context for you, but nothing more.
-	// GL.h will only be included when FPL_IMPLEMENTATION is set!
-	#include <GL\GL.h>
-
-	using namespace fpl;
-	using namespace fpl::window;
-
-	int main(int argc, char *args[]) {
-		int result = 0;
-
-		// Legacy opengl is default, so we force it to be forward or backward compability
-		Settings settings = DefaultSettings();
-		settings.video.driverType = VideoDriverType::OpenGL;
-		settings.video.opengl.compabilityFlags = OpenGLCompabilityFlags::Core;
-		settings.video.opengl.majorVersion = 3;
-		settings.video.opengl.minorVersion = 3;
-		if (InitPlatform(InitFlags::Video, settings)) {
-			glClearColor(0.39f, 0.58f, 0.93f, 1.0f);
-			while (WindowUpdate()) {
-				WindowSize windowArea = GetWindowArea();
-				glViewport(0, 0, windowArea.width, windowArea.height);
-				glClear(GL_COLOR_BUFFER_BIT);
-
-				// Your code using modern opengl (VBO, IBO, VAO, GLSL, etc.)
-
-				WindowFlip();
-			}
-			ReleasePlatform();
-			result = 0;
-		} else {
-			result = -1;
-		}
-		return(result);
-	}
-	\endcode
-
-*/
-
-/*!
-	\page page_example_simple_audio Simple audio playback
-	\tableofcontents
-
-	\section section_maincpp4 main.cpp
-
-	\code{.cpp}
-	#define FPL_IMPLEMENTATION
-	#define FPL_NO_WINDOW
-	#include <final_platform_layer.hpp>
-	#include <math.h> // sinf
-	#include <stdio.h> // getchar
-
-	struct AudioTest {
-		uint32_t toneHz;
-		uint32_t toneVolume;
-		uint32_t runningSampleIndex;
-		uint32_t wavePeriod;
-		bool useSquareWave;
-	};
-
-	static const float PI32 = 3.14159265359f;
-
-	using namespace fpl;
-
-	static uint32_t FillAudioBuffer(const AudioDeviceFormat &nativeFormat, const uint32_t frameCount, void *outputSamples, void *userData) {
-		AudioTest *audioTest = (AudioTest *)userData;
-		FPL_ASSERT(audioTest != nullptr);
-		FPL_ASSERT(nativeFormat.type == AudioFormatType::S16);
-		uint32_t result = 0;
-		int16_t *outSamples = (int16_t *)outputSamples;
-		uint32_t halfWavePeriod = audioTest->wavePeriod / 2;
-		for (uint32_t frameIndex = 0; frameIndex < frameCount; ++frameIndex) {
-			int16_t sampleValue;
-			if (audioTest->useSquareWave) {
-				sampleValue = ((audioTest->runningSampleIndex++ / halfWavePeriod) % 2) ? (int16_t)audioTest->toneVolume : -(int16_t)audioTest->toneVolume;
-			} else {
-				float t = 2.0f * PI32 * (float)audioTest->runningSampleIndex++ / (float)audioTest->wavePeriod;
-				sampleValue = (int16_t)(sinf(t) * audioTest->toneVolume);
-			}
-			for (uint32_t channelIndex = 0; channelIndex < nativeFormat.channels; ++channelIndex) {
-				*outSamples++ = sampleValue;
-				++result;
-			}
-		}
-		return result;
-	}
-
-	int main(int argc, char *args[]) {
-		int result = -1;
-
-		// Initialize to default settings which is 48 KHz and 2 Channels
-		Settings settings = DefaultSettings();
-
-		// Optionally overwrite audio settings if needed
-
-		// Setup some state for the sine/square wave generation
-		AudioTest audioTest = {};
-		audioTest.toneHz = 256;
-		audioTest.toneVolume = 1000;
-		audioTest.wavePeriod = settings.audio.deviceFormat.sampleRate / audioTest.toneHz;
-		audioTest.useSquareWave = false;
-
-		// Provide client read callback and optionally user data
-		settings.audio.clientReadCallback = FillAudioBuffer;
-		settings.audio.userData = &audioTest;
-		settings.audio.deviceFormat.type = AudioFormatType::S16;
-		settings.audio.deviceFormat.channels = 2;
-		settings.audio.deviceFormat.sampleRate = 48000;
-
-		// Find audio device
-		if (InitPlatform(InitFlags::Audio, settings)) {
-			AudioDeviceID audioDevices[16] = {};
-			uint32_t deviceCount = audio::GetAudioDevices(audioDevices, FPL_ARRAYCOUNT(audioDevices));
-			if (deviceCount > 0) {
-				settings.audio.deviceID = audioDevices[0];
-				console::ConsoleFormatOut("Using audio device: %s\n", settings.audio.deviceID.name);
-			}
-			ReleasePlatform();
-		}
-
-		// Initialize the platform with audio enabled and the settings
-		if (InitPlatform(InitFlags::Audio, settings)) {
-			// You can overwrite the client read callback and user data if you want to
-			audio::SetAudioClientReadCallback(FillAudioBuffer, &audioTest);
-			// Start audio playback (This will start calling clientReadCallback regulary)
-			if (audio::PlayAudio() == audio::AudioResult::Success) {
-				// Print out the native audio format
-				AudioDeviceFormat nativeFormat = audio::GetAudioHardwareFormat();
-				console::ConsoleFormatOut("Audio with %lu KHz and %lu channels is playing, press any key to stop playback...\n", nativeFormat.sampleRate, nativeFormat.channels);
-				// Wait for any key presses
-				getchar();
-				// Stop audio playback
-				audio::StopAudio();
-			}
-			// Release the platform
-			ReleasePlatform();
-			result = 0;
-		}
-		return(result);
-	}
-	\endcode
-
-*/
-
-/*!
-	\page page_license License
-	\tableofcontents
-
-	\section section_mit_license MIT License
-
-	Copyright (c) 2017-2018 Torsten Spaete<br>
-	<br>
-	Permission is hereby granted, free of charge, to any person obtaining a copy of<br>
-	this software and associated documentation files (the "Software"), to deal in<br>
-	the Software without restriction, including without limitation the rights to<br>
-	use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies<br>
-	of the Software, and to permit persons to whom the Software is furnished to do<br>
-	so, subject to the following conditions:<br>
-	<br>
-	The above copyright notice and this permission notice shall be included in all<br>
-	copies or substantial portions of the Software.<br>
-	<br>
-	THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR<br>
-	IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,<br>
-	FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE<br>
-	AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER<br>
-	LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,<br>
-	OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE<br>
-	SOFTWARE.<br>
-*/
-
-/*!
 	\page page_changelog Changelog
 	\tableofcontents
+
+	## v0.5.9.0 beta:
+	- Changed: Moved documentation inside its own file "final_platform_layer.documentation"
+	- Changed: [Win32] Window creation uses CS_OWNDC always
+	- Changed: Refactoring of platform and non-platform code
+	- Changed: InitPlatform() and ReleasePlatform() is now platform independent
 
 	## v0.5.8.1 beta:
 	- Changed: KeyboardEventType::Char renamed to KeyboardEventType::CharInput
@@ -1921,14 +438,14 @@ SOFTWARE.
 #elif defined(__linux__) || defined(__gnu_linux__) || defined(linux)
 #	define FPL_PLATFORM_LINUX
 #	define FPL_PLATFORM_NAME "Linux"
-#	define FPL_PLATFORM_POSIX
+#	define FPL_SUBPLATFORM_POSIX
 #elif defined(__unix__) || defined(_POSIX_VERSION)
 #	define FPL_PLATFORM_UNIX
 #	define FPL_PLATFORM_NAME "Unix"
-#	define FPL_PLATFORM_POSIX
+#	define FPL_SUBPLATFORM_POSIX
 #else
 #	error "This platform/compiler is not supported!"
-#endif
+#endif // FPL_PLATFORM
 
 //
 // Architecture detection (x86, x64)
@@ -1940,7 +457,7 @@ SOFTWARE.
 #	define FPL_ARCH_X86
 #else
 #	error "This architecture/compiler is not supported!"
-#endif
+#endif // FPL_ARCH
 
 //
 // Build configuration and compilers
@@ -1968,7 +485,7 @@ SOFTWARE.
 #else
 	//! No compiler detected
 #	define FPL_COMPILER_UNKNOWN
-#endif
+#endif // FPL_COMPILER
 
 //
 // Compiler depended settings and detections
@@ -1995,7 +512,7 @@ SOFTWARE.
 		//! Non-debug (Release) mode detected
 #		define FPL_ENABLE_RELEASE
 #	endif
-#endif
+#endif // FPL_COMPILER
 
 //
 // Options & Feature detection
@@ -2012,13 +529,13 @@ SOFTWARE.
 		//! Enable Assertions always
 #		define FPL_ENABLE_ASSERTIONS
 #	endif
-#endif
+#endif // !FPL_NO_ASSERTIONS
 #if defined(FPL_ENABLE_ASSERTIONS)
 #	if !defined(FPL_NO_C_ASSERT)
 		//! Enable C-Runtime Assertions by default
 #		define FPL_ENABLE_C_ASSERT
 #	endif
-#endif
+#endif // FPL_ENABLE_ASSERTIONS
 
 // Window
 #if !defined(FPL_NO_WINDOW)
@@ -2040,7 +557,7 @@ SOFTWARE.
 		//! Software rendering support enabled by default
 #		define FPL_SUPPORT_VIDEO_SOFTWARE
 #	endif
-#endif
+#endif // FPL_SUPPORT_VIDEO
 
 // Audio
 #if !defined(FPL_NO_AUDIO)
@@ -2065,7 +582,7 @@ SOFTWARE.
 #	if defined(FPL_SUPPORT_VIDEO_SOFTWARE)
 #		undef FPL_SUPPORT_VIDEO_SOFTWARE
 #	endif
-#endif
+#endif // !FPL_SUPPORT_WINDOW
 
 //
 // Enable supports (FPL uses _ENABLE_ internally only)
@@ -2085,7 +602,7 @@ SOFTWARE.
 		//! Enable Software Rendering Video
 #		define FPL_ENABLE_VIDEO_SOFTWARE
 #	endif
-#endif
+#endif // FPL_SUPPORT_VIDEO
 #if defined(FPL_SUPPORT_AUDIO)
 	//! Enable Audio
 #	define FPL_ENABLE_AUDIO
@@ -2093,7 +610,7 @@ SOFTWARE.
 		//! Enable DirectSound Audio
 #		define FPL_ENABLE_AUDIO_DIRECTSOUND
 #	endif
-#endif
+#endif // FPL_SUPPORT_AUDIO
 
 #if !defined(FPL_NO_ERROR_IN_CONSOLE)
 	//! Write errors in console
@@ -2226,12 +743,12 @@ SOFTWARE.
 #		define WIN32_LEAN_AND_MEAN 1
 #	endif
 #	include <windows.h>		// Win32 api, its unfortunate we have to include this in the header as well, but there are structures
-#endif
+#endif // FPL_PLATFORM_WIN32
 
-#if defined(FPL_PLATFORM_POSIX)
+#if defined(FPL_SUBPLATFORM_POSIX)
 #   include <stdio.h> // FILE
 #	include <pthread.h> // pthread_t, pthread_mutex_, pthread_cond_, pthread_barrier_
-#endif
+#endif // FPL_SUBPLATFORM_POSIX
 
 // ****************************************************************************
 //
@@ -2616,9 +1133,7 @@ namespace fpl {
 	};
 	//! Defines the operator overloads for a enum used as flags
 	FPL_ENUM_AS_FLAGS_OPERATORS(OpenGLCompabilityFlags);
-#endif
 
-#if defined(FPL_ENABLE_VIDEO_OPENGL)
 	//! OpenGL video settings container
 	struct OpenGLVideoSettings {
 		//! Compability flags
@@ -2628,7 +1143,7 @@ namespace fpl {
 		//! Desired minor version
 		uint32_t minorVersion;
 	};
-#endif
+#endif // FPL_ENABLE_VIDEO_OPENGL
 
 	//! Video settings container (Driver, Flags, Version, VSync, etc.)
 	struct VideoSettings {
@@ -2923,7 +1438,7 @@ namespace fpl {
 #			if defined(FPL_PLATFORM_WIN32)
 				HMODULE win32Handle;
 #			endif
-#			if defined(FPL_PLATFORM_POSIX)
+#			if defined(FPL_SUBPLATFORM_POSIX)
 				void *posixHandle;
 #			endif
 			} internalHandle;
@@ -2988,6 +1503,12 @@ namespace fpl {
 		  * \note This is most likely just a wrapper call to vfprintf(stderr)
 		  */
 		fpl_api void ConsoleFormatError(const char *format, ...);
+		/**
+		  * \brief Wait for a character to be typed in the console input and return it
+		  * \note This is most likely just a wrapper call to getchar()
+		  * \return Character typed in in the console input
+		  */
+		fpl_api const char ConsoleWaitForCharInput();
 
 		/** \}*/
 	}
@@ -3027,7 +1548,7 @@ namespace fpl {
 #			if defined(FPL_PLATFORM_WIN32)
 				HANDLE win32Thread;
 #			endif
-#			if defined(FPL_PLATFORM_POSIX)
+#			if defined(FPL_SUBPLATFORM_POSIX)
 				pthread_t posixThread;
 #			endif		
 			} internalHandle;
@@ -3044,7 +1565,7 @@ namespace fpl {
 #			if defined(FPL_PLATFORM_WIN32)
 				CRITICAL_SECTION win32CriticalSection;
 #			endif
-#			if defined(FPL_PLATFORM_POSIX)
+#			if defined(FPL_SUBPLATFORM_POSIX)
 				pthread_mutex_t posixMutex;
 #			endif		
 			} internalHandle;			//! Is it valid
@@ -3058,7 +1579,7 @@ namespace fpl {
 #			if defined(FPL_PLATFORM_WIN32)
 				HANDLE win32Event;
 #			endif
-#			if defined(FPL_PLATFORM_POSIX)
+#			if defined(FPL_SUBPLATFORM_POSIX)
 				pthread_cond_t posixCondition;
 #			endif		
 			} internalHandle;
@@ -3432,7 +1953,7 @@ namespace fpl {
 #			if defined(FPL_PLATFORM_WIN32)
 				HANDLE win32Handle;
 #			endif
-#			if defined(FPL_PLATFORM_POSIX)
+#			if defined(FPL_SUBPLATFORM_POSIX)
 				FILE *posixHandle;
 #			endif
 			} internalHandle;
@@ -3494,7 +2015,7 @@ namespace fpl {
 #			if defined(FPL_PLATFORM_WIN32)
 				HANDLE win32Handle;
 #			endif
-#			if defined(FPL_PLATFORM_POSIX)
+#			if defined(FPL_SUBPLATFORM_POSIX)
 				void *posixHandle;
 #			endif
 			} internalHandle;
@@ -4213,7 +2734,7 @@ namespace fpl {
 
 		/**
 		  * \defgroup WindowClipboard Clipboard functions
-		  * \brief Functions for reading/writting clipboard data
+		  * \brief Functions for reading/writing clipboard data
 		  * \{
 		  */
 
@@ -4473,7 +2994,7 @@ namespace fpl {
 
 		/** \}*/
 	};
-#endif
+#endif // FPL_ENABLE_AUDIO
 }
 
 //
@@ -4518,13 +3039,559 @@ using namespace fpl::threading;
 
 // ****************************************************************************
 //
-// Common Functions (Non-Platform specific)
+// Platform constants
+//
+// ****************************************************************************
+namespace fpl {
+	namespace platform {
+#	if defined(FPL_PLATFORM_WIN32)
+		fpl_constant char PATH_SEPARATOR = '\\';
+		fpl_constant char FILE_EXT_SEPARATOR = '.';
+#	else
+		fpl_constant char PATH_SEPARATOR = '/';
+		fpl_constant char FILE_EXT_SEPARATOR = '.';
+#	endif
+
+		// Forward declarations
+		struct PlatformAppState;
+		fpl_globalvar PlatformAppState* global__AppState = nullptr;
+	}
+}
+
+// ****************************************************************************
+//
+// Win32 Types
+//
+// ****************************************************************************
+#if defined(FPL_PLATFORM_WIN32)
+#	include <windowsx.h>	// Macros for window messages
+#	include <shlobj.h>		// SHGetFolderPath
+#	include <intrin.h>		// Interlock*
+#	include <xinput.h>		// XInputGetState
+
+namespace fpl {
+	namespace platform {
+		//
+		// XInput
+		//
+#		define FPL_XINPUT_GET_STATE(name) DWORD WINAPI name(DWORD dwUserIndex, XINPUT_STATE *pState)
+		typedef FPL_XINPUT_GET_STATE(win32_func_XInputGetState);
+		FPL_XINPUT_GET_STATE(Win32XInputGetStateStub) {
+			return(ERROR_DEVICE_NOT_CONNECTED);
+		}
+#		define FPL_XINPUT_GET_CAPABILITIES(name) DWORD WINAPI name(DWORD dwUserIndex, DWORD dwFlags, XINPUT_CAPABILITIES* pCapabilities)
+		typedef FPL_XINPUT_GET_CAPABILITIES(win32_func_XInputGetCapabilities);
+		FPL_XINPUT_GET_CAPABILITIES(Win32XInputGetCapabilitiesStub) {
+			return(ERROR_DEVICE_NOT_CONNECTED);
+		}
+		struct Win32XInputFunctions {
+			HMODULE xinputLibrary;
+			win32_func_XInputGetState *xInputGetState = Win32XInputGetStateStub;
+			win32_func_XInputGetCapabilities *xInputGetCapabilities = Win32XInputGetCapabilitiesStub;
+		};
+
+#	if defined(FPL_ENABLE_VIDEO_OPENGL)
+		//
+		// OpenGL Constants and Function-Prototypes
+		//
+#		define FPL_GL_CONTEXT_FLAG_FORWARD_COMPATIBLE_BIT 0x0001
+#		define FPL_GL_CONTEXT_FLAG_DEBUG_BIT 0x00000002
+#		define FPL_GL_CONTEXT_FLAG_ROBUST_ACCESS_BIT 0x00000004
+#		define FPL_GL_CONTEXT_FLAG_NO_ERROR_BIT 0x00000008
+#		define FPL_GL_CONTEXT_CORE_PROFILE_BIT 0x00000001
+#		define FPL_GL_CONTEXT_COMPATIBILITY_PROFILE_BIT 0x00000002
+
+#		define FPL_WGL_CONTEXT_DEBUG_BIT_ARB 0x0001
+#		define FPL_WGL_CONTEXT_FORWARD_COMPATIBLE_BIT_ARB 0x0002
+#		define FPL_WGL_CONTEXT_CORE_PROFILE_BIT_ARB 0x00000001
+#		define FPL_WGL_CONTEXT_COMPATIBILITY_PROFILE_BIT_ARB 0x00000002
+#		define FPL_WGL_CONTEXT_PROFILE_MASK_ARB 0x9126
+#		define FPL_WGL_CONTEXT_MAJOR_VERSION_ARB 0x2091
+#		define FPL_WGL_CONTEXT_MINOR_VERSION_ARB 0x2092
+#		define FPL_WGL_CONTEXT_LAYER_PLANE_ARB 0x2093
+#		define FPL_WGL_CONTEXT_FLAGS_ARB 0x2094
+
+#		define FPL_WGL_DRAW_TO_WINDOW_ARB 0x2001
+#		define FPL_WGL_ACCELERATION_ARB 0x2003
+#		define FPL_WGL_SWAP_METHOD_ARB 0x2007
+#		define FPL_WGL_SUPPORT_OPENGL_ARB 0x2010
+#		define FPL_WGL_DOUBLE_BUFFER_ARB 0x2011
+#		define FPL_WGL_PIXEL_TYPE_ARB 0x2013
+#		define FPL_WGL_COLOR_BITS_ARB 0x2014
+#		define FPL_WGL_DEPTH_BITS_ARB 0x2022
+#		define FPL_WGL_STENCIL_BITS_ARB 0x2023
+#		define FPL_WGL_FULL_ACCELERATION_ARB 0x2027
+#		define FPL_WGL_SWAP_EXCHANGE_ARB 0x2028
+#		define FPL_WGL_TYPE_RGBA_ARB 0x202B
+
+#		define FPL_FUNC_WGL_MAKE_CURRENT(name) BOOL WINAPI name(HDC deviceContext, HGLRC renderingContext)
+		typedef FPL_FUNC_WGL_MAKE_CURRENT(win32_func_wglMakeCurrent);
+#		define FPL_FUNC_WGL_GET_PROC_ADDRESS(name) PROC WINAPI name(LPCSTR procedure)
+		typedef FPL_FUNC_WGL_GET_PROC_ADDRESS(win32_func_wglGetProcAddress);
+#		define FPL_FUNC_WGL_DELETE_CONTEXT(name) BOOL WINAPI name(HGLRC renderingContext)
+		typedef FPL_FUNC_WGL_DELETE_CONTEXT(win32_func_wglDeleteContext);
+#		define FPL_FUNC_WGL_CREATE_CONTEXT(name) HGLRC WINAPI name(HDC deviceContext)
+		typedef FPL_FUNC_WGL_CREATE_CONTEXT(win32_func_wglCreateContext);
+
+#		define FPL_FUNC_WGL_CHOOSE_PIXEL_FORMAT_ARB(name) BOOL WINAPI name(HDC hdc, const int *piAttribIList, const FLOAT *pfAttribFList, UINT nMaxFormats, int *piFormats, UINT *nNumFormats)
+		typedef FPL_FUNC_WGL_CHOOSE_PIXEL_FORMAT_ARB(win32_func_wglChoosePixelFormatARB);
+#		define FPL_FUNC_WGL_CREATE_CONTEXT_ATTRIBS_ARB(name) HGLRC WINAPI name(HDC hDC, HGLRC hShareContext, const int *attribList)
+		typedef FPL_FUNC_WGL_CREATE_CONTEXT_ATTRIBS_ARB(win32_func_wglCreateContextAttribsARB);
+#		define FPL_FUNC_WGL_SWAP_INTERVAL_EXT(name) BOOL WINAPI name(int interval)
+		typedef FPL_FUNC_WGL_SWAP_INTERVAL_EXT(win32_func_wglSwapIntervalEXT);
+
+		struct Win32OpenGLFunctions {
+			HMODULE openglLibrary;
+			win32_func_wglMakeCurrent *wglMakeCurrent;
+			win32_func_wglGetProcAddress *wglGetProcAddress;
+			win32_func_wglDeleteContext *wglDeleteContext;
+			win32_func_wglCreateContext *wglCreateContext;
+			win32_func_wglChoosePixelFormatARB *wglChoosePixelFormatArb;
+			win32_func_wglCreateContextAttribsARB *wglCreateContextAttribsArb;
+			win32_func_wglSwapIntervalEXT *wglSwapIntervalExt;
+		};
+#	endif // FPL_ENABLE_VIDEO_OPENGL
+
+		//
+		// WINAPI functions
+		//
+
+		// GDI32
+#		define FPL_FUNC_CHOOSE_PIXEL_FORMAT(name) int WINAPI name(HDC hdc, CONST PIXELFORMATDESCRIPTOR *ppfd)
+		typedef FPL_FUNC_CHOOSE_PIXEL_FORMAT(win32_func_ChoosePixelFormat);
+#		define FPL_FUNC_SET_PIXEL_FORMAT(name) BOOL WINAPI name(HDC hdc, int format, CONST PIXELFORMATDESCRIPTOR *ppfd)
+		typedef FPL_FUNC_SET_PIXEL_FORMAT(win32_func_SetPixelFormat);
+#		define FPL_FUNC_DESCRIPE_PIXEL_FORMAT(name) int WINAPI name(HDC hdc, int iPixelFormat, UINT nBytes, LPPIXELFORMATDESCRIPTOR ppfd)
+		typedef FPL_FUNC_DESCRIPE_PIXEL_FORMAT(win32_func_DescribePixelFormat);
+#		define FPL_FUNC_GET_DEVICE_CAPS(name) int WINAPI name(HDC hdc, int index)
+		typedef FPL_FUNC_GET_DEVICE_CAPS(win32_func_GetDeviceCaps);
+#		define FPL_FUNC_STRETCH_DIBITS(name) int WINAPI name(HDC hdc, int xDest, int yDest, int DestWidth, int DestHeight, int xSrc, int ySrc, int SrcWidth, int SrcHeight, CONST VOID *lpBits, CONST BITMAPINFO *lpbmi, UINT iUsage, DWORD rop)
+		typedef FPL_FUNC_STRETCH_DIBITS(win32_func_StretchDIBits);
+#		define FPL_FUNC_DELETE_OBJECT(name) BOOL WINAPI name( _In_ HGDIOBJ ho)
+		typedef FPL_FUNC_DELETE_OBJECT(win32_func_DeleteObject);
+#		define FPL_FUNC_SWAP_BUFFERS(name) BOOL WINAPI name(HDC)
+		typedef FPL_FUNC_SWAP_BUFFERS(win32_func_SwapBuffers);
+
+		// ShellAPI
+#		define FPL_FUNC_COMMAND_LINE_TO_ARGV_W(name) LPWSTR* WINAPI name(LPCWSTR lpCmdLine, int *pNumArgs)
+		typedef FPL_FUNC_COMMAND_LINE_TO_ARGV_W(win32_func_CommandLineToArgvW);
+#		define FPL_FUNC_SH_GET_FOLDER_PATH_A(name) HRESULT WINAPI name(HWND hwnd, int csidl, HANDLE hToken, DWORD dwFlags, LPSTR pszPath)
+		typedef FPL_FUNC_SH_GET_FOLDER_PATH_A(win32_func_SHGetFolderPathA);
+#		define FPL_FUNC_SH_GET_FOLDER_PATH_W(name) HRESULT WINAPI name(HWND hwnd, int csidl, HANDLE hToken, DWORD dwFlags, LPWSTR pszPath)
+		typedef FPL_FUNC_SH_GET_FOLDER_PATH_W(win32_func_SHGetFolderPathW);
+
+		// User32
+#		define FPL_FUNC_REGISTER_CLASS_EX_A(name) ATOM WINAPI name(CONST WNDCLASSEXA *)
+		typedef FPL_FUNC_REGISTER_CLASS_EX_A(win32_func_RegisterClassExA);
+#		define FPL_FUNC_REGISTER_CLASS_EX_W(name) ATOM WINAPI name(CONST WNDCLASSEXW *)
+		typedef FPL_FUNC_REGISTER_CLASS_EX_W(win32_func_RegisterClassExW);
+#		define FPL_FUNC_UNREGISTER_CLASS_EX_A(name) BOOL WINAPI name(LPCSTR lpClassName, HINSTANCE hInstance)
+		typedef FPL_FUNC_UNREGISTER_CLASS_EX_A(win32_func_UnregisterClassA);
+#		define FPL_FUNC_UNREGISTER_CLASS_EX_W(name) BOOL WINAPI name(LPCWSTR lpClassName, HINSTANCE hInstance)
+		typedef FPL_FUNC_UNREGISTER_CLASS_EX_W(win32_func_UnregisterClassW);
+#		define FPL_FUNC_SHOW_WINDOW(name) BOOL WINAPI name(HWND hWnd, int nCmdShow)
+		typedef FPL_FUNC_SHOW_WINDOW(win32_func_ShowWindow);
+#		define FPL_FUNC_DESTROY_WINDOW(name) BOOL WINAPI name(HWND hWnd)
+		typedef FPL_FUNC_DESTROY_WINDOW(win32_func_DestroyWindow);
+#		define FPL_FUNC_UPDATE_WINDOW(name) BOOL WINAPI name(HWND hWnd)
+		typedef FPL_FUNC_UPDATE_WINDOW(win32_func_UpdateWindow);
+#		define FPL_FUNC_TRANSLATE_MESSAGE(name) BOOL WINAPI name(CONST MSG *lpMsg)
+		typedef FPL_FUNC_TRANSLATE_MESSAGE(win32_func_TranslateMessage);
+#		define FPL_FUNC_DISPATCH_MESSAGE_A(name) LRESULT WINAPI name(CONST MSG *lpMsg)
+		typedef FPL_FUNC_DISPATCH_MESSAGE_A(win32_func_DispatchMessageA);
+#		define FPL_FUNC_DISPATCH_MESSAGE_W(name) LRESULT WINAPI name(CONST MSG *lpMsg)
+		typedef FPL_FUNC_DISPATCH_MESSAGE_W(win32_func_DispatchMessageW);
+#		define FPL_FUNC_PEEK_MESSAGE_A(name) BOOL WINAPI name(LPMSG lpMsg, HWND hWnd, UINT wMsgFilterMin, UINT wMsgFilterMax, UINT wRemoveMsg)
+		typedef FPL_FUNC_PEEK_MESSAGE_A(win32_func_PeekMessageA);
+#		define FPL_FUNC_PEEK_MESSAGE_W(name) BOOL WINAPI name(LPMSG lpMsg, HWND hWnd, UINT wMsgFilterMin, UINT wMsgFilterMax, UINT wRemoveMsg)
+		typedef FPL_FUNC_PEEK_MESSAGE_W(win32_func_PeekMessageW);
+#		define FPL_FUNC_DEF_WINDOW_PROC_A(name) LRESULT WINAPI name(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam)
+		typedef FPL_FUNC_DEF_WINDOW_PROC_A(win32_func_DefWindowProcA);
+#		define FPL_FUNC_DEF_WINDOW_PROC_W(name) LRESULT WINAPI name(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam)
+		typedef FPL_FUNC_DEF_WINDOW_PROC_W(win32_func_DefWindowProcW);
+#		define FPL_FUNC_CREATE_WINDOW_EX_W(name) HWND WINAPI name(DWORD dwExStyle, LPCWSTR lpClassName, LPCWSTR lpWindowName, DWORD dwStyle, int X, int Y, int nWidth, int nHeight, HWND hWndParent, HMENU hMenu, HINSTANCE hInstance, LPVOID lpParam)
+		typedef FPL_FUNC_CREATE_WINDOW_EX_W(win32_func_CreateWindowExW);
+#		define FPL_FUNC_CREATE_WINDOW_EX_A(name) HWND WINAPI name(DWORD dwExStyle, LPCSTR lpClassName, PCSTR lpWindowName, DWORD dwStyle, int X, int Y, int nWidth, int nHeight, HWND hWndParent, HMENU hMenu, HINSTANCE hInstance, LPVOID lpParam)
+		typedef FPL_FUNC_CREATE_WINDOW_EX_A(win32_func_CreateWindowExA);
+#		define FPL_FUNC_SET_WINDOW_POS(name) BOOL WINAPI name(HWND hWnd, HWND hWndInsertAfter, int X, int Y, int cx, int cy, UINT uFlags)
+		typedef FPL_FUNC_SET_WINDOW_POS(win32_func_SetWindowPos);
+#		define FPL_FUNC_GET_WINDOW_PLACEMENT(name) BOOL WINAPI name(HWND hWnd, WINDOWPLACEMENT *lpwndpl)
+		typedef FPL_FUNC_GET_WINDOW_PLACEMENT(win32_func_GetWindowPlacement);
+#		define FPL_FUNC_SET_WINDOW_PLACEMENT(name) BOOL WINAPI name(HWND hWnd, CONST WINDOWPLACEMENT *lpwndpl)
+		typedef FPL_FUNC_SET_WINDOW_PLACEMENT(win32_func_SetWindowPlacement);
+#		define FPL_FUNC_GET_CLIENT_RECT(name) BOOL WINAPI name(HWND hWnd, LPRECT lpRect)
+		typedef FPL_FUNC_GET_CLIENT_RECT(win32_func_GetClientRect);
+#		define FPL_FUNC_GET_WINDOW_RECT(name) BOOL WINAPI name(HWND hWnd, LPRECT lpRect)
+		typedef FPL_FUNC_GET_WINDOW_RECT(win32_func_GetWindowRect);
+#		define FPL_FUNC_ADJUST_WINDOW_RECT(name) BOOL WINAPI name(LPRECT lpRect, DWORD dwStyle, BOOL bMenu)
+		typedef FPL_FUNC_ADJUST_WINDOW_RECT(win32_func_AdjustWindowRect);
+#		define FPL_FUNC_GET_ASYNC_KEY_STATE(name) SHORT WINAPI name(int vKey)
+		typedef FPL_FUNC_GET_ASYNC_KEY_STATE(win32_func_GetAsyncKeyState);
+#		define FPL_FUNC_MAP_VIRTUAL_KEY_A(name) UINT WINAPI name(UINT uCode, UINT uMapType)
+		typedef FPL_FUNC_MAP_VIRTUAL_KEY_A(win32_func_MapVirtualKeyA);
+#		define FPL_FUNC_MAP_VIRTUAL_KEY_W(name) UINT WINAPI name(UINT uCode, UINT uMapType)
+		typedef FPL_FUNC_MAP_VIRTUAL_KEY_W(win32_func_MapVirtualKeyW);
+#		define FPL_FUNC_SET_CURSOR(name) HCURSOR WINAPI name(HCURSOR hCursor)
+		typedef FPL_FUNC_SET_CURSOR(win32_func_SetCursor);
+#		define FPL_FUNC_GET_CURSOR(name) HCURSOR WINAPI name(VOID)
+		typedef FPL_FUNC_GET_CURSOR(win32_func_GetCursor);
+#		define FPL_FUNC_LOAD_CURSOR_A(name) HCURSOR WINAPI name(HINSTANCE hInstance, LPCSTR lpCursorName)
+		typedef FPL_FUNC_LOAD_CURSOR_A(win32_func_LoadCursorA);
+#		define FPL_FUNC_LOAD_CURSOR_W(name) HCURSOR WINAPI name(HINSTANCE hInstance, LPCWSTR lpCursorName)
+		typedef FPL_FUNC_LOAD_CURSOR_W(win32_func_LoadCursorW);
+#		define FPL_FUNC_LOAD_ICON_A(name) HICON WINAPI name(HINSTANCE hInstance, LPCSTR lpIconName)
+		typedef FPL_FUNC_LOAD_ICON_A(win32_func_LoadIconA);
+#		define FPL_FUNC_LOAD_ICON_W(name) HICON WINAPI name(HINSTANCE hInstance, LPCWSTR lpIconName)
+		typedef FPL_FUNC_LOAD_ICON_W(win32_func_LoadIconW);
+#		define FPL_FUNC_SET_WINDOW_TEXT_A(name) BOOL WINAPI name(HWND hWnd, LPCSTR lpString)
+		typedef FPL_FUNC_SET_WINDOW_TEXT_A(win32_func_SetWindowTextA);
+#		define FPL_FUNC_SET_WINDOW_TEXT_W(name) BOOL WINAPI name(HWND hWnd, LPCWSTR lpString)
+		typedef FPL_FUNC_SET_WINDOW_TEXT_W(win32_func_SetWindowTextW);
+#		define FPL_FUNC_SET_WINDOW_LONG_A(name) LONG WINAPI name(HWND hWnd, int nIndex, LONG dwNewLong)
+		typedef FPL_FUNC_SET_WINDOW_LONG_A(win32_func_SetWindowLongA);
+#		define FPL_FUNC_SET_WINDOW_LONG_W(name) LONG WINAPI name(HWND hWnd, int nIndex, LONG dwNewLong)
+		typedef FPL_FUNC_SET_WINDOW_LONG_W(win32_func_SetWindowLongW);
+#		define FPL_FUNC_GET_WINDOW_LONG_A(name) LONG WINAPI name(HWND hWnd, int nIndex)
+		typedef FPL_FUNC_GET_WINDOW_LONG_A(win32_func_GetWindowLongA);
+#		define FPL_FUNC_GET_WINDOW_LONG_W(name) LONG WINAPI name(HWND hWnd, int nIndex)
+		typedef FPL_FUNC_GET_WINDOW_LONG_W(win32_func_GetWindowLongW);
+
+#	if defined(FPL_ARCH_X64)
+#		define FPL_FUNC_SET_WINDOW_LONG_PTR_A(name) LONG_PTR WINAPI name(HWND hWnd, int nIndex, LONG_PTR dwNewLong)
+		typedef FPL_FUNC_SET_WINDOW_LONG_PTR_A(win32_func_SetWindowLongPtrA);
+#		define FPL_FUNC_SET_WINDOW_LONG_PTR_W(name) LONG_PTR WINAPI name(HWND hWnd, int nIndex, LONG_PTR dwNewLong)
+		typedef FPL_FUNC_SET_WINDOW_LONG_PTR_W(win32_func_SetWindowLongPtrW);
+#		define FPL_FUNC_GET_WINDOW_LONG_PTR_A(name) LONG_PTR WINAPI name(HWND hWnd, int nIndex)
+		typedef FPL_FUNC_GET_WINDOW_LONG_PTR_A(win32_func_GetWindowLongPtrA);
+#		define FPL_FUNC_GET_WINDOW_LONG_PTR_W(name) LONG_PTR WINAPI name(HWND hWnd, int nIndex)
+		typedef FPL_FUNC_GET_WINDOW_LONG_PTR_W(win32_func_GetWindowLongPtrW);
+#	endif
+
+#		define FPL_FUNC_RELEASE_DC(name) int WINAPI name(HWND hWnd, HDC hDC)
+		typedef FPL_FUNC_RELEASE_DC(win32_func_ReleaseDC);
+#		define FPL_FUNC_GET_DC(name) HDC WINAPI name(HWND hWnd)
+		typedef FPL_FUNC_GET_DC(win32_func_GetDC);
+#		define FPL_FUNC_CHANGE_DISPLAY_SETTINGS_A(name) LONG WINAPI name(DEVMODEA* lpDevMode, DWORD dwFlags)
+		typedef FPL_FUNC_CHANGE_DISPLAY_SETTINGS_A(win32_func_ChangeDisplaySettingsA);
+#		define FPL_FUNC_CHANGE_DISPLAY_SETTINGS_W(name) LONG WINAPI name(DEVMODEW* lpDevMode, DWORD dwFlags)
+		typedef FPL_FUNC_CHANGE_DISPLAY_SETTINGS_W(win32_func_ChangeDisplaySettingsW);
+#		define FPL_FUNC_ENUM_DISPLAY_SETTINGS_A(name) BOOL WINAPI name(LPCSTR lpszDeviceName, DWORD iModeNum, DEVMODEA* lpDevMode)
+		typedef FPL_FUNC_ENUM_DISPLAY_SETTINGS_A(win32_func_EnumDisplaySettingsA);
+#		define FPL_FUNC_ENUM_DISPLAY_SETTINGS_W(name) BOOL WINAPI name(LPCWSTR lpszDeviceName, DWORD iModeNum, DEVMODEW* lpDevMode)
+		typedef FPL_FUNC_ENUM_DISPLAY_SETTINGS_W(win32_func_EnumDisplaySettingsW);
+
+#		define FPL_FUNC_OPEN_CLIPBOARD(name) BOOL WINAPI name(HWND hWndNewOwner)
+		typedef FPL_FUNC_OPEN_CLIPBOARD(win32_func_OpenClipboard);
+#		define FPL_FUNC_CLOSE_CLIPBOARD(name) BOOL WINAPI name(VOID)
+		typedef FPL_FUNC_CLOSE_CLIPBOARD(win32_func_CloseClipboard);
+#		define FPL_FUNC_EMPTY_CLIPBOARD(name) BOOL WINAPI name(VOID)
+		typedef FPL_FUNC_EMPTY_CLIPBOARD(win32_func_EmptyClipboard);
+#		define FPL_FUNC_IS_CLIPBOARD_FORMAT_AVAILABLE(name) BOOL WINAPI name(UINT format)
+		typedef FPL_FUNC_IS_CLIPBOARD_FORMAT_AVAILABLE(win32_func_IsClipboardFormatAvailable);
+#		define FPL_FUNC_SET_CLIPBOARD_DATA(name) HANDLE WINAPI name(UINT uFormat, HANDLE hMem)
+		typedef FPL_FUNC_SET_CLIPBOARD_DATA(win32_func_SetClipboardData);
+#		define FPL_FUNC_GET_CLIPBOARD_DATA(name) HANDLE WINAPI name(UINT uFormat)
+		typedef FPL_FUNC_GET_CLIPBOARD_DATA(win32_func_GetClipboardData);
+
+#		define FPL_FUNC_GET_DESKTOP_WINDOW(name) HWND WINAPI name(VOID)
+		typedef FPL_FUNC_GET_DESKTOP_WINDOW(win32_func_GetDesktopWindow);
+#		define FPL_FUNC_GET_FOREGROUND_WINDOW(name) HWND WINAPI name(VOID)
+		typedef FPL_FUNC_GET_FOREGROUND_WINDOW(win32_func_GetForegroundWindow);
+
+#		define FPL_FUNC_IS_ZOOMED(name) BOOL WINAPI name(HWND hWnd)
+		typedef FPL_FUNC_IS_ZOOMED(win32_func_IsZoomed);
+#		define FPL_FUNC_SEND_MESSAGE_A(name) LRESULT WINAPI name(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam)
+		typedef FPL_FUNC_SEND_MESSAGE_A(win32_func_SendMessageA);
+#		define FPL_FUNC_SEND_MESSAGE_W(name) LRESULT WINAPI name(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam)
+		typedef FPL_FUNC_SEND_MESSAGE_W(win32_func_SendMessageW);
+#		define FPL_FUNC_GET_MONITOR_INFO_A(name) BOOL WINAPI name(HMONITOR hMonitor, LPMONITORINFO lpmi)
+		typedef FPL_FUNC_GET_MONITOR_INFO_A(win32_func_GetMonitorInfoA);
+#		define FPL_FUNC_GET_MONITOR_INFO_W(name) BOOL WINAPI name(HMONITOR hMonitor, LPMONITORINFO lpmi)
+		typedef FPL_FUNC_GET_MONITOR_INFO_W(win32_func_GetMonitorInfoW);
+#		define FPL_FUNC_MONITOR_FROM_RECT(name) HMONITOR WINAPI name(LPCRECT lprc, DWORD dwFlags)
+		typedef FPL_FUNC_MONITOR_FROM_RECT(win32_func_MonitorFromRect);
+#		define FPL_FUNC_MONITOR_FROM_WINDOW(name) HMONITOR WINAPI name(HWND hwnd, DWORD dwFlags)
+		typedef FPL_FUNC_MONITOR_FROM_WINDOW(win32_func_MonitorFromWindow);
+
+		// OLE32
+#		define FPL_FUNC_WIN32_CO_INITIALIZE_EX(name) HRESULT WINAPI name(LPVOID pvReserved, DWORD  dwCoInit)
+		typedef FPL_FUNC_WIN32_CO_INITIALIZE_EX(win32_func_CoInitializeEx);
+#		define FPL_FUNC_WIN32_CO_UNINITIALIZE(name) void WINAPI name(void)
+		typedef FPL_FUNC_WIN32_CO_UNINITIALIZE(win32_func_CoUninitialize);
+#		define FPL_FUNC_WIN32_CO_CREATE_INSTANCE(name) HRESULT WINAPI name(REFCLSID rclsid, LPUNKNOWN pUnkOuter, DWORD dwClsContext, REFIID riid, LPVOID *ppv)
+		typedef FPL_FUNC_WIN32_CO_CREATE_INSTANCE(win32_func_CoCreateInstance);
+#		define FPL_FUNC_WIN32_CO_TASK_MEM_FREE(name) void WINAPI name(LPVOID pv)
+		typedef FPL_FUNC_WIN32_CO_TASK_MEM_FREE(win32_func_CoTaskMemFree);
+#		define FPL_FUNC_WIN32_PROP_VARIANT_CLEAR(name) HRESULT WINAPI name(PROPVARIANT *pvar)
+		typedef FPL_FUNC_WIN32_PROP_VARIANT_CLEAR(win32_func_PropVariantClear);
+
+		struct Win32APIFunctions {
+			struct {
+				HMODULE gdiLibrary;
+				win32_func_ChoosePixelFormat *choosePixelFormat;
+				win32_func_SetPixelFormat *setPixelFormat;
+				win32_func_DescribePixelFormat *describePixelFormat;
+				win32_func_GetDeviceCaps *getDeviceCaps;
+				win32_func_StretchDIBits *stretchDIBits;
+				win32_func_DeleteObject *deleteObject;
+				win32_func_SwapBuffers *swapBuffers;
+			} gdi;
+
+			struct {
+				HMODULE shellLibrary;
+				win32_func_CommandLineToArgvW *commandLineToArgvW;
+				win32_func_SHGetFolderPathA *shGetFolderPathA;
+				win32_func_SHGetFolderPathW *shGetFolderPathW;
+			} shell;
+
+			struct {
+				HMODULE userLibrary;
+				win32_func_RegisterClassExA *registerClassExA;
+				win32_func_RegisterClassExW *registerClassExW;
+				win32_func_UnregisterClassA *unregisterClassA;
+				win32_func_UnregisterClassW *unregisterClassW;
+				win32_func_ShowWindow *showWindow;
+				win32_func_DestroyWindow *destroyWindow;
+				win32_func_UpdateWindow *updateWindow;
+				win32_func_TranslateMessage *translateMessage;
+				win32_func_DispatchMessageA *dispatchMessageA;
+				win32_func_DispatchMessageW *dispatchMessageW;
+				win32_func_PeekMessageA *peekMessageA;
+				win32_func_PeekMessageW *peekMessageW;
+				win32_func_DefWindowProcA *defWindowProcA;
+				win32_func_DefWindowProcW *defWindowProcW;
+				win32_func_CreateWindowExA *createWindowExA;
+				win32_func_CreateWindowExW *createWindowExW;
+				win32_func_SetWindowPos *setWindowPos;
+				win32_func_GetWindowPlacement *getWindowPlacement;
+				win32_func_SetWindowPlacement *setWindowPlacement;
+				win32_func_GetClientRect *getClientRect;
+				win32_func_GetWindowRect *getWindowRect;
+				win32_func_AdjustWindowRect *adjustWindowRect;
+				win32_func_GetAsyncKeyState *getAsyncKeyState;
+				win32_func_MapVirtualKeyA *mapVirtualKeyA;
+				win32_func_MapVirtualKeyW *mapVirtualKeyW;
+				win32_func_SetCursor *setCursor;
+				win32_func_GetCursor *getCursor;
+				win32_func_LoadCursorA *loadCursorA;
+				win32_func_LoadCursorW *loadCursorW;
+				win32_func_LoadIconA *loadIconA;
+				win32_func_LoadIconW *loadIconW;
+				win32_func_SetWindowTextA *setWindowTextA;
+				win32_func_SetWindowTextW *setWindowTextW;
+				win32_func_SetWindowLongA *setWindowLongA;
+				win32_func_SetWindowLongW *setWindowLongW;
+				win32_func_GetWindowLongA *getWindowLongA;
+				win32_func_GetWindowLongW *getWindowLongW;
+#			if defined(FPL_ARCH_X64)
+				win32_func_SetWindowLongPtrA *setWindowLongPtrA;
+				win32_func_SetWindowLongPtrW *setWindowLongPtrW;
+				win32_func_GetWindowLongPtrA *getWindowLongPtrA;
+				win32_func_GetWindowLongPtrW *getWindowLongPtrW;
+#			endif
+				win32_func_ReleaseDC *releaseDC;
+				win32_func_GetDC *getDC;
+				win32_func_ChangeDisplaySettingsA *changeDisplaySettingsA;
+				win32_func_ChangeDisplaySettingsW *changeDisplaySettingsW;
+				win32_func_EnumDisplaySettingsA *enumDisplaySettingsA;
+				win32_func_EnumDisplaySettingsW *enumDisplaySettingsW;
+
+				win32_func_OpenClipboard *openClipboard;
+				win32_func_CloseClipboard *closeClipboard;
+				win32_func_EmptyClipboard *emptyClipboard;
+				win32_func_IsClipboardFormatAvailable *isClipboardFormatAvailable;
+				win32_func_SetClipboardData *setClipboardData;
+				win32_func_GetClipboardData *getClipboardData;
+
+				win32_func_GetDesktopWindow *getDesktopWindow;
+				win32_func_GetForegroundWindow *getForegroundWindow;
+				win32_func_IsZoomed *isZoomed;
+				win32_func_SendMessageA *sendMessageA;
+				win32_func_SendMessageW *sendMessageW;
+				win32_func_GetMonitorInfoA *getMonitorInfoA;
+				win32_func_GetMonitorInfoW *getMonitorInfoW;
+				win32_func_MonitorFromRect *monitorFromRect;
+				win32_func_MonitorFromWindow *monitorFromWindow;
+			} user;
+
+			struct {
+				HMODULE oleLibrary;
+				win32_func_CoInitializeEx *coInitializeEx;
+				win32_func_CoUninitialize *coUninitialize;
+				win32_func_CoCreateInstance *coCreateInstance;
+				win32_func_CoTaskMemFree *coTaskMemFree;
+				win32_func_PropVariantClear *propVariantClear;
+			} ole;
+		};
+
+		// Unicode dependent function calls and types
+#	if !defined(UNICODE)
+#		define FPL_WIN32_CLASSNAME "FPLWindowClassA"
+#		define FPL_WIN32_UNNAMED_WINDOW "Unnamed FPL Ansi Window"
+		typedef char win32_char;
+#		define win32_copyString strings::CopyAnsiString
+#		define win32_getStringLength strings::GetAnsiStringLength
+#		define win32_ansiToString strings::CopyAnsiString
+#		define win32_wndclassex WNDCLASSEXA
+#		if defined(FPL_ARCH_X64)
+#			define win32_setWindowLongPtr global__AppState->win32.winApi.user.setWindowLongPtrA
+#		else
+#			define win32_setWindowLongPtr global__AppState->win32.winApi.user.setWindowLongA
+#		endif
+#		define win32_setWindowLong global__AppState->win32.winApi.user.setWindowLongA
+#		define win32_getWindowLong global__AppState->win32.winApi.user.getWindowLongA
+#		define win32_peekMessage global__AppState->win32.winApi.user.peekMessageA
+#		define win32_dispatchMessage global__AppState->win32.winApi.user.dispatchMessageA
+#		define win32_defWindowProc global__AppState->win32.winApi.user.defWindowProcA
+#		define win32_registerClassEx global__AppState->win32.winApi.user.registerClassExA
+#		define win32_unregisterClass global__AppState->win32.winApi.user.unregisterClassA
+#		define win32_createWindowEx global__AppState->win32.winApi.user.createWindowExA
+#		define win32_loadIcon global__AppState->win32.winApi.user.loadIconA
+#		define win32_loadCursor global__AppState->win32.winApi.user.loadCursorA
+#		define win32_sendMessage global__AppState->win32.winApi.user.sendMessageA
+#		define win32_getMonitorInfo global__AppState->win32.winApi.user.getMonitorInfoA
+#	else
+#		define FPL_WIN32_CLASSNAME L"FPLWindowClassW"
+#		define FPL_WIN32_UNNAMED_WINDOW L"Unnamed FPL Unicode Window"
+		typedef wchar_t win32_char;
+#		define win32_copyString strings::CopyWideString
+#		define win32_getStringLength strings::GetWideStringLength
+#		define win32_ansiToString strings::AnsiStringToWideString
+#		define win32_wndclassex WNDCLASSEXW
+#		if defined(FPL_ARCH_X64)
+#			define win32_setWindowLongPtr global__AppState->win32.winApi.user.setWindowLongPtrW
+#		else
+#			define win32_setWindowLongPtr global__AppState->win32.winApi.user.setWindowLongW
+#		endif
+#		define win32_setWindowLong global__AppState->win32.winApi.user.setWindowLongW
+#		define win32_getWindowLong global__AppState->win32.winApi.user.getWindowLongW
+#		define win32_peekMessage global__AppState->win32.winApi.user.peekMessageW
+#		define win32_dispatchMessage global__AppState->win32.winApi.user.dispatchMessageW
+#		define win32_defWindowProc global__AppState->win32.winApi.user.defWindowProcW
+#		define win32_registerClassEx global__AppState->win32.winApi.user.registerClassExW
+#		define win32_unregisterClass global__AppState->win32.winApi.user.unregisterClassW
+#		define win32_createWindowEx global__AppState->win32.winApi.user.createWindowExW
+#		define win32_loadIcon global__AppState->win32.winApi.user.loadIconW
+#		define win32_loadCursor global__AppState->win32.winApi.user.loadCursorW
+#		define win32_sendMessage global__AppState->win32.winApi.user.sendMessageW
+#		define win32_getMonitorInfo global__AppState->win32.winApi.user.getMonitorInfoW
+#	endif // UNICODE
+
+#	if defined(FPL_ENABLE_WINDOW)
+		struct Win32LastWindowInfo {
+			WINDOWPLACEMENT placement;
+			DWORD style;
+			DWORD exStyle;
+			bool isMaximized;
+			bool wasResolutionChanged;
+		};
+
+		struct Win32WindowState {
+			win32_char windowClass[256];
+			HWND windowHandle;
+			HDC deviceContext;
+			HCURSOR defaultCursor;
+			Win32LastWindowInfo lastFullscreenInfo;
+			bool isRunning;
+			bool isCursorActive;
+		};
+		struct Win32XInputState {
+			bool isConnected[XUSER_MAX_COUNT];
+			LARGE_INTEGER lastDeviceSearchTime;
+			Win32XInputFunctions xinputApi;
+		};
+#	else
+		typedef void *Win32WindowState;
+		typedef void *Win32XInputState;
+#	endif // FPL_ENABLE_WINDOW
+
+#	if defined(FPL_ENABLE_VIDEO_OPENGL)
+		struct Win32VideoOpenGLState {
+			HGLRC renderingContext;
+			Win32OpenGLFunctions glApi;
+		};
+#	endif
+
+#	if defined(FPL_ENABLE_VIDEO_SOFTWARE)
+		struct Win32VideoSoftwareState {
+			video::VideoBackBuffer context;
+			BITMAPINFO bitmapInfo;
+		};
+#	endif
+
+		struct Win32VideoState {
+			VideoDriverType activeVideoDriver;
+			union {
+#		if defined(FPL_ENABLE_VIDEO_OPENGL)
+				Win32VideoOpenGLState opengl;
+#		endif
+#		if defined(FPL_ENABLE_VIDEO_SOFTWARE)
+				Win32VideoSoftwareState software;
+#		endif
+			};
+		};
+
+		struct Win32InitState {
+			HINSTANCE appInstance;
+			LARGE_INTEGER performanceFrequency;
+		};
+
+		struct Win32AppState {
+			Win32WindowState window;
+			Win32VideoState video;
+			Win32XInputState xinput;
+			Win32APIFunctions winApi;
+		};
+	}
+}
+#endif // FPL_PLATFORM_WIN32
+
+// ****************************************************************************
+//
+// All Platforms & Forward Declarations
+//
+// ****************************************************************************
+namespace fpl {
+	namespace platform {
+		//
+		// Platform initialization state
+		//
+		struct PlatformInitState {
+			union {
+#		if defined(FPL_PLATFORM_WIN32)
+				Win32InitState win32;
+#		endif
+			};
+			bool isInitialized;
+		};
+		fpl_globalvar PlatformInitState global__InitState = {};
+
+		//
+		// Platform application state
+		//
+		struct PlatformAppState {
+			union {
+#		if defined(FPL_PLATFORM_WIN32)
+				Win32AppState win32;
+#		endif
+			};
+			Settings initSettings;
+			Settings currentSettings;
+			InitFlags initFlags;
+		};
+	}
+
+}
+
+// ****************************************************************************
+//
+// Non-Platform specifics
 //
 // ****************************************************************************
 
 // Standard includes
 #include <stdarg.h> // va_start, va_end, va_list, va_arg
-#include <stdio.h> // fprintf, vfprintf, vsprintf
+#include <stdio.h> // fprintf, vfprintf, vsprintf, getchar
 
 //
 // Macros
@@ -4568,19 +3635,6 @@ using namespace fpl::threading;
 	} while (0);
 
 namespace fpl {
-	namespace platform {
-		//
-		// Platform constants
-		//
-#	if defined(FPL_PLATFORM_WIN32)
-		fpl_constant char PATH_SEPARATOR = '\\';
-		fpl_constant char FILE_EXT_SEPARATOR = '.';
-#	else
-		fpl_constant char PATH_SEPARATOR = '/';
-		fpl_constant char FILE_EXT_SEPARATOR = '.';
-#	endif
-	} // platform
-
 	namespace common {
 		//
 		// Internal types and functions
@@ -4661,33 +3715,7 @@ namespace fpl {
 			}
 			return(result);
 		}
-
 	} // common
-
-	//
-	// Common Audio
-	//
-#if defined(FPL_ENABLE_AUDIO)
-	namespace audio {
-		struct CommonAudioState {
-			AudioDeviceFormat internalFormat;
-			AudioClientReadFunction *clientReadCallback;
-			void *clientUserData;
-		};
-
-		fpl_internal_inline uint32_t ReadAudioFramesFromClient(const CommonAudioState &commonAudio, uint32_t frameCount, void *pSamples) {
-			uint32_t outputSamplesWritten = 0;
-			if (commonAudio.clientReadCallback != nullptr) {
-				outputSamplesWritten = commonAudio.clientReadCallback(commonAudio.internalFormat, frameCount, pSamples, commonAudio.clientUserData);
-			}
-			return outputSamplesWritten;
-		}
-
-		// Forward declarations
-		fpl_internal void ReleaseAudio();
-		fpl_internal AudioResult InitAudio(const AudioSettings &audioSettings);
-	} // audio
-#endif // FPL_ENABLE_AUDIO
 
 	//
 	// Common Strings
@@ -4943,7 +3971,7 @@ namespace fpl {
 			bool result = IsAtomicCompareAndExchangeU32((volatile uint32_t *)dest, (uint32_t)comparand, (uint32_t)exchange);
 #		else
 #			error "Unsupported architecture/platform!"
-#endif
+#		endif // FPL_ARCH
 			return (result);
 		}
 
@@ -5157,11 +4185,6 @@ namespace fpl {
 //
 // ****************************************************************************
 #if defined(FPL_PLATFORM_WIN32)
-#	include <windowsx.h>	// Macros for window messages
-#	include <shlobj.h>		// SHGetFolderPath
-#	include <intrin.h>		// Interlock*
-
-#	include <xinput.h>		// XInputGetState
 
 #	if defined(FPL_ARCH_X86)
 #		define FPL_MEMORY_BARRIER() \
@@ -5182,484 +4205,10 @@ namespace fpl {
 
 namespace fpl {
 	namespace platform {
-		//
-		// XInputGetState
-		//
-#		define FPL_XINPUT_GET_STATE(name) DWORD WINAPI name(DWORD dwUserIndex, XINPUT_STATE *pState)
-		typedef FPL_XINPUT_GET_STATE(win32_func_XInputGetState);
-		FPL_XINPUT_GET_STATE(Win32XInputGetStateStub) {
-			return(ERROR_DEVICE_NOT_CONNECTED);
-		}
-#		define FPL_XINPUT_GET_CAPABILITIES(name) DWORD WINAPI name(DWORD dwUserIndex, DWORD dwFlags, XINPUT_CAPABILITIES* pCapabilities)
-		typedef FPL_XINPUT_GET_CAPABILITIES(win32_func_XInputGetCapabilities);
-		FPL_XINPUT_GET_CAPABILITIES(Win32XInputGetCapabilitiesStub) {
-			return(ERROR_DEVICE_NOT_CONNECTED);
-		}
-
-		struct Win32InputFunctions {
-			struct {
-				HMODULE xinputLibrary;
-				win32_func_XInputGetState *xInputGetState = Win32XInputGetStateStub;
-				win32_func_XInputGetCapabilities *xInputGetCapabilities = Win32XInputGetCapabilitiesStub;
-			} xinput;
-		};
-		fpl_globalvar Win32InputFunctions global__Win32__Input__Functions = {};
-
-		//
-		// WGL and Extensions
-		//
-#		define FPL_GL_CONTEXT_FLAG_FORWARD_COMPATIBLE_BIT 0x0001
-#		define FPL_GL_CONTEXT_FLAG_DEBUG_BIT 0x00000002
-#		define FPL_GL_CONTEXT_FLAG_ROBUST_ACCESS_BIT 0x00000004
-#		define FPL_GL_CONTEXT_FLAG_NO_ERROR_BIT 0x00000008
-#		define FPL_GL_CONTEXT_CORE_PROFILE_BIT 0x00000001
-#		define FPL_GL_CONTEXT_COMPATIBILITY_PROFILE_BIT 0x00000002
-
-#		define FPL_WGL_CONTEXT_DEBUG_BIT_ARB 0x0001
-#		define FPL_WGL_CONTEXT_FORWARD_COMPATIBLE_BIT_ARB 0x0002
-#		define FPL_WGL_CONTEXT_CORE_PROFILE_BIT_ARB 0x00000001
-#		define FPL_WGL_CONTEXT_COMPATIBILITY_PROFILE_BIT_ARB 0x00000002
-#		define FPL_WGL_CONTEXT_PROFILE_MASK_ARB 0x9126
-#		define FPL_WGL_CONTEXT_MAJOR_VERSION_ARB 0x2091
-#		define FPL_WGL_CONTEXT_MINOR_VERSION_ARB 0x2092
-#		define FPL_WGL_CONTEXT_LAYER_PLANE_ARB 0x2093
-#		define FPL_WGL_CONTEXT_FLAGS_ARB 0x2094
-
-#		define FPL_WGL_DRAW_TO_WINDOW_ARB 0x2001
-#		define FPL_WGL_ACCELERATION_ARB 0x2003
-#		define FPL_WGL_SWAP_METHOD_ARB 0x2007
-#		define FPL_WGL_SUPPORT_OPENGL_ARB 0x2010
-#		define FPL_WGL_DOUBLE_BUFFER_ARB 0x2011
-#		define FPL_WGL_PIXEL_TYPE_ARB 0x2013
-#		define FPL_WGL_COLOR_BITS_ARB 0x2014
-#		define FPL_WGL_DEPTH_BITS_ARB 0x2022
-#		define FPL_WGL_STENCIL_BITS_ARB 0x2023
-#		define FPL_WGL_FULL_ACCELERATION_ARB 0x2027
-#		define FPL_WGL_SWAP_EXCHANGE_ARB 0x2028
-#		define FPL_WGL_TYPE_RGBA_ARB 0x202B
-
-#		define FPL_FUNC_WGL_MAKE_CURRENT(name) BOOL WINAPI name(HDC deviceContext, HGLRC renderingContext)
-		typedef FPL_FUNC_WGL_MAKE_CURRENT(win32_func_wglMakeCurrent);
-#		define FPL_FUNC_WGL_GET_PROC_ADDRESS(name) PROC WINAPI name(LPCSTR procedure)
-		typedef FPL_FUNC_WGL_GET_PROC_ADDRESS(win32_func_wglGetProcAddress);
-#		define FPL_FUNC_WGL_DELETE_CONTEXT(name) BOOL WINAPI name(HGLRC renderingContext)
-		typedef FPL_FUNC_WGL_DELETE_CONTEXT(win32_func_wglDeleteContext);
-#		define FPL_FUNC_WGL_CREATE_CONTEXT(name) HGLRC WINAPI name(HDC deviceContext)
-		typedef FPL_FUNC_WGL_CREATE_CONTEXT(win32_func_wglCreateContext);
-
-#		define FPL_FUNC_WGL_CHOOSE_PIXEL_FORMAT_ARB(name) BOOL WINAPI name(HDC hdc, const int *piAttribIList, const FLOAT *pfAttribFList, UINT nMaxFormats, int *piFormats, UINT *nNumFormats)
-		typedef FPL_FUNC_WGL_CHOOSE_PIXEL_FORMAT_ARB(win32_func_wglChoosePixelFormatARB);
-#		define FPL_FUNC_WGL_CREATE_CONTEXT_ATTRIBS_ARB(name) HGLRC WINAPI name(HDC hDC, HGLRC hShareContext, const int *attribList)
-		typedef FPL_FUNC_WGL_CREATE_CONTEXT_ATTRIBS_ARB(win32_func_wglCreateContextAttribsARB);
-#		define FPL_FUNC_WGL_SWAP_INTERVAL_EXT(name) BOOL WINAPI name(int interval)
-		typedef FPL_FUNC_WGL_SWAP_INTERVAL_EXT(win32_func_wglSwapIntervalEXT);
-
-		struct Win32OpenGLFunctions {
-			HMODULE openglLibrary;
-			win32_func_wglMakeCurrent *wglMakeCurrent;
-			win32_func_wglGetProcAddress *wglGetProcAddress;
-			win32_func_wglDeleteContext *wglDeleteContext;
-			win32_func_wglCreateContext *wglCreateContext;
-			win32_func_wglChoosePixelFormatARB *wglChoosePixelFormatArb;
-			win32_func_wglCreateContextAttribsARB *wglCreateContextAttribsArb;
-			win32_func_wglSwapIntervalEXT *wglSwapIntervalExt;
-		};
-		fpl_globalvar Win32OpenGLFunctions global__Win32__OpenGL_Functions = {};
-
-		//
-		// WINAPI functions
-		//
-
-		// GDI32
-#		define FPL_FUNC_CHOOSE_PIXEL_FORMAT(name) int WINAPI name(HDC hdc, CONST PIXELFORMATDESCRIPTOR *ppfd)
-		typedef FPL_FUNC_CHOOSE_PIXEL_FORMAT(win32_func_ChoosePixelFormat);
-#		define FPL_FUNC_SET_PIXEL_FORMAT(name) BOOL WINAPI name(HDC hdc, int format, CONST PIXELFORMATDESCRIPTOR *ppfd)
-		typedef FPL_FUNC_SET_PIXEL_FORMAT(win32_func_SetPixelFormat);
-#		define FPL_FUNC_DESCRIPE_PIXEL_FORMAT(name) int WINAPI name(HDC hdc, int iPixelFormat, UINT nBytes, LPPIXELFORMATDESCRIPTOR ppfd)
-		typedef FPL_FUNC_DESCRIPE_PIXEL_FORMAT(win32_func_DescribePixelFormat);
-#		define FPL_FUNC_GET_DEVICE_CAPS(name) int WINAPI name(HDC hdc, int index)
-		typedef FPL_FUNC_GET_DEVICE_CAPS(win32_func_GetDeviceCaps);
-#		define FPL_FUNC_STRETCH_DIBITS(name) int WINAPI name(HDC hdc, int xDest, int yDest, int DestWidth, int DestHeight, int xSrc, int ySrc, int SrcWidth, int SrcHeight, CONST VOID *lpBits, CONST BITMAPINFO *lpbmi, UINT iUsage, DWORD rop)
-		typedef FPL_FUNC_STRETCH_DIBITS(win32_func_StretchDIBits);
-#		define FPL_FUNC_DELETE_OBJECT(name) BOOL WINAPI name( _In_ HGDIOBJ ho)
-		typedef FPL_FUNC_DELETE_OBJECT(win32_func_DeleteObject);
-#		define FPL_FUNC_SWAP_BUFFERS(name) BOOL WINAPI name(HDC)
-		typedef FPL_FUNC_SWAP_BUFFERS(win32_func_SwapBuffers);
-
-		// ShellAPI
-#		define FPL_FUNC_COMMAND_LINE_TO_ARGV_W(name) LPWSTR* WINAPI name(LPCWSTR lpCmdLine, int *pNumArgs)
-		typedef FPL_FUNC_COMMAND_LINE_TO_ARGV_W(win32_func_CommandLineToArgvW);
-#		define FPL_FUNC_SH_GET_FOLDER_PATH_A(name) HRESULT WINAPI name(HWND hwnd, int csidl, HANDLE hToken, DWORD dwFlags, LPSTR pszPath)
-		typedef FPL_FUNC_SH_GET_FOLDER_PATH_A(win32_func_SHGetFolderPathA);
-#		define FPL_FUNC_SH_GET_FOLDER_PATH_W(name) HRESULT WINAPI name(HWND hwnd, int csidl, HANDLE hToken, DWORD dwFlags, LPWSTR pszPath)
-		typedef FPL_FUNC_SH_GET_FOLDER_PATH_W(win32_func_SHGetFolderPathW);
-
-		// User32
-#		define FPL_FUNC_REGISTER_CLASS_EX_A(name) ATOM WINAPI name(CONST WNDCLASSEXA *)
-		typedef FPL_FUNC_REGISTER_CLASS_EX_A(win32_func_RegisterClassExA);
-#		define FPL_FUNC_REGISTER_CLASS_EX_W(name) ATOM WINAPI name(CONST WNDCLASSEXW *)
-		typedef FPL_FUNC_REGISTER_CLASS_EX_W(win32_func_RegisterClassExW);
-#		define FPL_FUNC_UNREGISTER_CLASS_EX_A(name) BOOL WINAPI name(LPCSTR lpClassName, HINSTANCE hInstance)
-		typedef FPL_FUNC_UNREGISTER_CLASS_EX_A(win32_func_UnregisterClassA);
-#		define FPL_FUNC_UNREGISTER_CLASS_EX_W(name) BOOL WINAPI name(LPCWSTR lpClassName, HINSTANCE hInstance)
-		typedef FPL_FUNC_UNREGISTER_CLASS_EX_W(win32_func_UnregisterClassW);
-#		define FPL_FUNC_SHOW_WINDOW(name) BOOL WINAPI name(HWND hWnd, int nCmdShow)
-		typedef FPL_FUNC_SHOW_WINDOW(win32_func_ShowWindow);
-#		define FPL_FUNC_DESTROY_WINDOW(name) BOOL WINAPI name(HWND hWnd)
-		typedef FPL_FUNC_DESTROY_WINDOW(win32_func_DestroyWindow);
-#		define FPL_FUNC_UPDATE_WINDOW(name) BOOL WINAPI name(HWND hWnd)
-		typedef FPL_FUNC_UPDATE_WINDOW(win32_func_UpdateWindow);
-#		define FPL_FUNC_TRANSLATE_MESSAGE(name) BOOL WINAPI name(CONST MSG *lpMsg)
-		typedef FPL_FUNC_TRANSLATE_MESSAGE(win32_func_TranslateMessage);
-#		define FPL_FUNC_DISPATCH_MESSAGE_A(name) LRESULT WINAPI name(CONST MSG *lpMsg)
-		typedef FPL_FUNC_DISPATCH_MESSAGE_A(win32_func_DispatchMessageA);
-#		define FPL_FUNC_DISPATCH_MESSAGE_W(name) LRESULT WINAPI name(CONST MSG *lpMsg)
-		typedef FPL_FUNC_DISPATCH_MESSAGE_W(win32_func_DispatchMessageW);
-#		define FPL_FUNC_PEEK_MESSAGE_A(name) BOOL WINAPI name(LPMSG lpMsg, HWND hWnd, UINT wMsgFilterMin, UINT wMsgFilterMax, UINT wRemoveMsg)
-		typedef FPL_FUNC_PEEK_MESSAGE_A(win32_func_PeekMessageA);
-#		define FPL_FUNC_PEEK_MESSAGE_W(name) BOOL WINAPI name(LPMSG lpMsg, HWND hWnd, UINT wMsgFilterMin, UINT wMsgFilterMax, UINT wRemoveMsg)
-		typedef FPL_FUNC_PEEK_MESSAGE_W(win32_func_PeekMessageW);
-#		define FPL_FUNC_DEF_WINDOW_PROC_A(name) LRESULT WINAPI name(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam)
-		typedef FPL_FUNC_DEF_WINDOW_PROC_A(win32_func_DefWindowProcA);
-#		define FPL_FUNC_DEF_WINDOW_PROC_W(name) LRESULT WINAPI name(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam)
-		typedef FPL_FUNC_DEF_WINDOW_PROC_W(win32_func_DefWindowProcW);
-#		define FPL_FUNC_CREATE_WINDOW_EX_W(name) HWND WINAPI name(DWORD dwExStyle, LPCWSTR lpClassName, LPCWSTR lpWindowName, DWORD dwStyle, int X, int Y, int nWidth, int nHeight, HWND hWndParent, HMENU hMenu, HINSTANCE hInstance, LPVOID lpParam)
-		typedef FPL_FUNC_CREATE_WINDOW_EX_W(win32_func_CreateWindowExW);
-#		define FPL_FUNC_CREATE_WINDOW_EX_A(name) HWND WINAPI name(DWORD dwExStyle, LPCSTR lpClassName, PCSTR lpWindowName, DWORD dwStyle, int X, int Y, int nWidth, int nHeight, HWND hWndParent, HMENU hMenu, HINSTANCE hInstance, LPVOID lpParam)
-		typedef FPL_FUNC_CREATE_WINDOW_EX_A(win32_func_CreateWindowExA);
-#		define FPL_FUNC_SET_WINDOW_POS(name) BOOL WINAPI name(HWND hWnd, HWND hWndInsertAfter, int X, int Y, int cx, int cy, UINT uFlags)
-		typedef FPL_FUNC_SET_WINDOW_POS(win32_func_SetWindowPos);
-#		define FPL_FUNC_GET_WINDOW_PLACEMENT(name) BOOL WINAPI name(HWND hWnd, WINDOWPLACEMENT *lpwndpl)
-		typedef FPL_FUNC_GET_WINDOW_PLACEMENT(win32_func_GetWindowPlacement);
-#		define FPL_FUNC_SET_WINDOW_PLACEMENT(name) BOOL WINAPI name(HWND hWnd, CONST WINDOWPLACEMENT *lpwndpl)
-		typedef FPL_FUNC_SET_WINDOW_PLACEMENT(win32_func_SetWindowPlacement);
-#		define FPL_FUNC_GET_CLIENT_RECT(name) BOOL WINAPI name(HWND hWnd, LPRECT lpRect)
-		typedef FPL_FUNC_GET_CLIENT_RECT(win32_func_GetClientRect);
-#		define FPL_FUNC_GET_WINDOW_RECT(name) BOOL WINAPI name(HWND hWnd, LPRECT lpRect)
-		typedef FPL_FUNC_GET_WINDOW_RECT(win32_func_GetWindowRect);
-#		define FPL_FUNC_ADJUST_WINDOW_RECT(name) BOOL WINAPI name(LPRECT lpRect, DWORD dwStyle, BOOL bMenu)
-		typedef FPL_FUNC_ADJUST_WINDOW_RECT(win32_func_AdjustWindowRect);
-#		define FPL_FUNC_GET_ASYNC_KEY_STATE(name) SHORT WINAPI name(int vKey)
-		typedef FPL_FUNC_GET_ASYNC_KEY_STATE(win32_func_GetAsyncKeyState);
-#		define FPL_FUNC_MAP_VIRTUAL_KEY_A(name) UINT WINAPI name(UINT uCode, UINT uMapType)
-		typedef FPL_FUNC_MAP_VIRTUAL_KEY_A(win32_func_MapVirtualKeyA);
-#		define FPL_FUNC_MAP_VIRTUAL_KEY_W(name) UINT WINAPI name(UINT uCode, UINT uMapType)
-		typedef FPL_FUNC_MAP_VIRTUAL_KEY_W(win32_func_MapVirtualKeyW);
-#		define FPL_FUNC_SET_CURSOR(name) HCURSOR WINAPI name(HCURSOR hCursor)
-		typedef FPL_FUNC_SET_CURSOR(win32_func_SetCursor);
-#		define FPL_FUNC_GET_CURSOR(name) HCURSOR WINAPI name(VOID)
-		typedef FPL_FUNC_GET_CURSOR(win32_func_GetCursor);
-#		define FPL_FUNC_LOAD_CURSOR_A(name) HCURSOR WINAPI name(HINSTANCE hInstance, LPCSTR lpCursorName)
-		typedef FPL_FUNC_LOAD_CURSOR_A(win32_func_LoadCursorA);
-#		define FPL_FUNC_LOAD_CURSOR_W(name) HCURSOR WINAPI name(HINSTANCE hInstance, LPCWSTR lpCursorName)
-		typedef FPL_FUNC_LOAD_CURSOR_W(win32_func_LoadCursorW);
-#		define FPL_FUNC_LOAD_ICON_A(name) HICON WINAPI name(HINSTANCE hInstance, LPCSTR lpIconName)
-		typedef FPL_FUNC_LOAD_ICON_A(win32_func_LoadIconA);
-#		define FPL_FUNC_LOAD_ICON_W(name) HICON WINAPI name(HINSTANCE hInstance, LPCWSTR lpIconName)
-		typedef FPL_FUNC_LOAD_ICON_W(win32_func_LoadIconW);
-#		define FPL_FUNC_SET_WINDOW_TEXT_A(name) BOOL WINAPI name(HWND hWnd, LPCSTR lpString)
-		typedef FPL_FUNC_SET_WINDOW_TEXT_A(win32_func_SetWindowTextA);
-#		define FPL_FUNC_SET_WINDOW_TEXT_W(name) BOOL WINAPI name(HWND hWnd, LPCWSTR lpString)
-		typedef FPL_FUNC_SET_WINDOW_TEXT_W(win32_func_SetWindowTextW);
-#		define FPL_FUNC_SET_WINDOW_LONG_A(name) LONG WINAPI name(HWND hWnd, int nIndex, LONG dwNewLong)
-		typedef FPL_FUNC_SET_WINDOW_LONG_A(win32_func_SetWindowLongA);
-#		define FPL_FUNC_SET_WINDOW_LONG_W(name) LONG WINAPI name(HWND hWnd, int nIndex, LONG dwNewLong)
-		typedef FPL_FUNC_SET_WINDOW_LONG_W(win32_func_SetWindowLongW);
-#		define FPL_FUNC_GET_WINDOW_LONG_A(name) LONG WINAPI name(HWND hWnd, int nIndex)
-		typedef FPL_FUNC_GET_WINDOW_LONG_A(win32_func_GetWindowLongA);
-#		define FPL_FUNC_GET_WINDOW_LONG_W(name) LONG WINAPI name(HWND hWnd, int nIndex)
-		typedef FPL_FUNC_GET_WINDOW_LONG_W(win32_func_GetWindowLongW);
-
-#	if defined(FPL_ARCH_X64)
-#		define FPL_FUNC_SET_WINDOW_LONG_PTR_A(name) LONG_PTR WINAPI name(HWND hWnd, int nIndex, LONG_PTR dwNewLong)
-		typedef FPL_FUNC_SET_WINDOW_LONG_PTR_A(win32_func_SetWindowLongPtrA);
-#		define FPL_FUNC_SET_WINDOW_LONG_PTR_W(name) LONG_PTR WINAPI name(HWND hWnd, int nIndex, LONG_PTR dwNewLong)
-		typedef FPL_FUNC_SET_WINDOW_LONG_PTR_W(win32_func_SetWindowLongPtrW);
-#		define FPL_FUNC_GET_WINDOW_LONG_PTR_A(name) LONG_PTR WINAPI name(HWND hWnd, int nIndex)
-		typedef FPL_FUNC_GET_WINDOW_LONG_PTR_A(win32_func_GetWindowLongPtrA);
-#		define FPL_FUNC_GET_WINDOW_LONG_PTR_W(name) LONG_PTR WINAPI name(HWND hWnd, int nIndex)
-		typedef FPL_FUNC_GET_WINDOW_LONG_PTR_W(win32_func_GetWindowLongPtrW);
-#	endif
-
-#		define FPL_FUNC_RELEASE_DC(name) int WINAPI name(HWND hWnd, HDC hDC)
-		typedef FPL_FUNC_RELEASE_DC(win32_func_ReleaseDC);
-#		define FPL_FUNC_GET_DC(name) HDC WINAPI name(HWND hWnd)
-		typedef FPL_FUNC_GET_DC(win32_func_GetDC);
-#		define FPL_FUNC_CHANGE_DISPLAY_SETTINGS_A(name) LONG WINAPI name(DEVMODEA* lpDevMode, DWORD dwFlags)
-		typedef FPL_FUNC_CHANGE_DISPLAY_SETTINGS_A(win32_func_ChangeDisplaySettingsA);
-#		define FPL_FUNC_CHANGE_DISPLAY_SETTINGS_W(name) LONG WINAPI name(DEVMODEW* lpDevMode, DWORD dwFlags)
-		typedef FPL_FUNC_CHANGE_DISPLAY_SETTINGS_W(win32_func_ChangeDisplaySettingsW);
-#		define FPL_FUNC_ENUM_DISPLAY_SETTINGS_A(name) BOOL WINAPI name(LPCSTR lpszDeviceName, DWORD iModeNum, DEVMODEA* lpDevMode)
-		typedef FPL_FUNC_ENUM_DISPLAY_SETTINGS_A(win32_func_EnumDisplaySettingsA);
-#		define FPL_FUNC_ENUM_DISPLAY_SETTINGS_W(name) BOOL WINAPI name(LPCWSTR lpszDeviceName, DWORD iModeNum, DEVMODEW* lpDevMode)
-		typedef FPL_FUNC_ENUM_DISPLAY_SETTINGS_W(win32_func_EnumDisplaySettingsW);
-
-#		define FPL_FUNC_OPEN_CLIPBOARD(name) BOOL WINAPI name(HWND hWndNewOwner)
-		typedef FPL_FUNC_OPEN_CLIPBOARD(win32_func_OpenClipboard);
-#		define FPL_FUNC_CLOSE_CLIPBOARD(name) BOOL WINAPI name(VOID)
-		typedef FPL_FUNC_CLOSE_CLIPBOARD(win32_func_CloseClipboard);
-#		define FPL_FUNC_EMPTY_CLIPBOARD(name) BOOL WINAPI name(VOID)
-		typedef FPL_FUNC_EMPTY_CLIPBOARD(win32_func_EmptyClipboard);
-#		define FPL_FUNC_IS_CLIPBOARD_FORMAT_AVAILABLE(name) BOOL WINAPI name(UINT format)
-		typedef FPL_FUNC_IS_CLIPBOARD_FORMAT_AVAILABLE(win32_func_IsClipboardFormatAvailable);
-#		define FPL_FUNC_SET_CLIPBOARD_DATA(name) HANDLE WINAPI name(UINT uFormat, HANDLE hMem)
-		typedef FPL_FUNC_SET_CLIPBOARD_DATA(win32_func_SetClipboardData);
-#		define FPL_FUNC_GET_CLIPBOARD_DATA(name) HANDLE WINAPI name(UINT uFormat)
-		typedef FPL_FUNC_GET_CLIPBOARD_DATA(win32_func_GetClipboardData);
-
-#		define FPL_FUNC_GET_DESKTOP_WINDOW(name) HWND WINAPI name(VOID)
-		typedef FPL_FUNC_GET_DESKTOP_WINDOW(win32_func_GetDesktopWindow);
-#		define FPL_FUNC_GET_FOREGROUND_WINDOW(name) HWND WINAPI name(VOID)
-		typedef FPL_FUNC_GET_FOREGROUND_WINDOW(win32_func_GetForegroundWindow);
-
-#		define FPL_FUNC_IS_ZOOMED(name) BOOL WINAPI name(HWND hWnd)
-		typedef FPL_FUNC_IS_ZOOMED(win32_func_IsZoomed);
-#		define FPL_FUNC_SEND_MESSAGE_A(name) LRESULT WINAPI name(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam)
-		typedef FPL_FUNC_SEND_MESSAGE_A(win32_func_SendMessageA);
-#		define FPL_FUNC_SEND_MESSAGE_W(name) LRESULT WINAPI name(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam)
-		typedef FPL_FUNC_SEND_MESSAGE_W(win32_func_SendMessageW);
-#		define FPL_FUNC_GET_MONITOR_INFO_A(name) BOOL WINAPI name(HMONITOR hMonitor, LPMONITORINFO lpmi)
-		typedef FPL_FUNC_GET_MONITOR_INFO_A(win32_func_GetMonitorInfoA);
-#		define FPL_FUNC_GET_MONITOR_INFO_W(name) BOOL WINAPI name(HMONITOR hMonitor, LPMONITORINFO lpmi)
-		typedef FPL_FUNC_GET_MONITOR_INFO_W(win32_func_GetMonitorInfoW);
-#		define FPL_FUNC_MONITOR_FROM_RECT(name) HMONITOR WINAPI name(LPCRECT lprc, DWORD dwFlags)
-		typedef FPL_FUNC_MONITOR_FROM_RECT(win32_func_MonitorFromRect);
-#		define FPL_FUNC_MONITOR_FROM_WINDOW(name) HMONITOR WINAPI name(HWND hwnd, DWORD dwFlags)
-		typedef FPL_FUNC_MONITOR_FROM_WINDOW(win32_func_MonitorFromWindow);
-
-	//
-	// OLE32
-	//
-#		define FPL_FUNC_WIN32_CO_INITIALIZE_EX(name) HRESULT WINAPI name(LPVOID pvReserved, DWORD  dwCoInit)
-		typedef FPL_FUNC_WIN32_CO_INITIALIZE_EX(win32_func_CoInitializeEx);
-#		define FPL_FUNC_WIN32_CO_UNINITIALIZE(name) void WINAPI name(void)
-		typedef FPL_FUNC_WIN32_CO_UNINITIALIZE(win32_func_CoUninitialize);
-#		define FPL_FUNC_WIN32_CO_CREATE_INSTANCE(name) HRESULT WINAPI name(REFCLSID rclsid, LPUNKNOWN pUnkOuter, DWORD dwClsContext, REFIID riid, LPVOID *ppv)
-		typedef FPL_FUNC_WIN32_CO_CREATE_INSTANCE(win32_func_CoCreateInstance);
-#		define FPL_FUNC_WIN32_CO_TASK_MEM_FREE(name) void WINAPI name(LPVOID pv)
-		typedef FPL_FUNC_WIN32_CO_TASK_MEM_FREE(win32_func_CoTaskMemFree);
-#		define FPL_FUNC_WIN32_PROP_VARIANT_CLEAR(name) HRESULT WINAPI name(PROPVARIANT *pvar)
-		typedef FPL_FUNC_WIN32_PROP_VARIANT_CLEAR(win32_func_PropVariantClear);
-
-		struct Win32APIFunctions {
-			struct {
-				HMODULE gdiLibrary;
-				win32_func_ChoosePixelFormat *choosePixelFormat;
-				win32_func_SetPixelFormat *setPixelFormat;
-				win32_func_DescribePixelFormat *describePixelFormat;
-				win32_func_GetDeviceCaps *getDeviceCaps;
-				win32_func_StretchDIBits *stretchDIBits;
-				win32_func_DeleteObject *deleteObject;
-				win32_func_SwapBuffers *swapBuffers;
-			} gdi;
-
-			struct {
-				HMODULE shellLibrary;
-				win32_func_CommandLineToArgvW *commandLineToArgvW;
-				win32_func_SHGetFolderPathA *shGetFolderPathA;
-				win32_func_SHGetFolderPathW *shGetFolderPathW;
-			} shell;
-
-			struct {
-				HMODULE userLibrary;
-				win32_func_RegisterClassExA *registerClassExA;
-				win32_func_RegisterClassExW *registerClassExW;
-				win32_func_UnregisterClassA *unregisterClassA;
-				win32_func_UnregisterClassW *unregisterClassW;
-				win32_func_ShowWindow *showWindow;
-				win32_func_DestroyWindow *destroyWindow;
-				win32_func_UpdateWindow *updateWindow;
-				win32_func_TranslateMessage *translateMessage;
-				win32_func_DispatchMessageA *dispatchMessageA;
-				win32_func_DispatchMessageW *dispatchMessageW;
-				win32_func_PeekMessageA *peekMessageA;
-				win32_func_PeekMessageW *peekMessageW;
-				win32_func_DefWindowProcA *defWindowProcA;
-				win32_func_DefWindowProcW *defWindowProcW;
-				win32_func_CreateWindowExA *createWindowExA;
-				win32_func_CreateWindowExW *createWindowExW;
-				win32_func_SetWindowPos *setWindowPos;
-				win32_func_GetWindowPlacement *getWindowPlacement;
-				win32_func_SetWindowPlacement *setWindowPlacement;
-				win32_func_GetClientRect *getClientRect;
-				win32_func_GetWindowRect *getWindowRect;
-				win32_func_AdjustWindowRect *adjustWindowRect;
-				win32_func_GetAsyncKeyState *getAsyncKeyState;
-				win32_func_MapVirtualKeyA *mapVirtualKeyA;
-				win32_func_MapVirtualKeyW *mapVirtualKeyW;
-				win32_func_SetCursor *setCursor;
-				win32_func_GetCursor *getCursor;
-				win32_func_LoadCursorA *loadCursorA;
-				win32_func_LoadCursorW *loadCursorW;
-				win32_func_LoadIconA *loadIconA;
-				win32_func_LoadIconW *loadIconW;
-				win32_func_SetWindowTextA *setWindowTextA;
-				win32_func_SetWindowTextW *setWindowTextW;
-				win32_func_SetWindowLongA *setWindowLongA;
-				win32_func_SetWindowLongW *setWindowLongW;
-				win32_func_GetWindowLongA *getWindowLongA;
-				win32_func_GetWindowLongW *getWindowLongW;
-#			if defined(FPL_ARCH_X64)
-				win32_func_SetWindowLongPtrA *setWindowLongPtrA;
-				win32_func_SetWindowLongPtrW *setWindowLongPtrW;
-				win32_func_GetWindowLongPtrA *getWindowLongPtrA;
-				win32_func_GetWindowLongPtrW *getWindowLongPtrW;
-#			endif
-				win32_func_ReleaseDC *releaseDC;
-				win32_func_GetDC *getDC;
-				win32_func_ChangeDisplaySettingsA *changeDisplaySettingsA;
-				win32_func_ChangeDisplaySettingsW *changeDisplaySettingsW;
-				win32_func_EnumDisplaySettingsA *enumDisplaySettingsA;
-				win32_func_EnumDisplaySettingsW *enumDisplaySettingsW;
-
-				win32_func_OpenClipboard *openClipboard;
-				win32_func_CloseClipboard *closeClipboard;
-				win32_func_EmptyClipboard *emptyClipboard;
-				win32_func_IsClipboardFormatAvailable *isClipboardFormatAvailable;
-				win32_func_SetClipboardData *setClipboardData;
-				win32_func_GetClipboardData *getClipboardData;
-
-				win32_func_GetDesktopWindow *getDesktopWindow;
-				win32_func_GetForegroundWindow *getForegroundWindow;
-				win32_func_IsZoomed *isZoomed;
-				win32_func_SendMessageA *sendMessageA;
-				win32_func_SendMessageW *sendMessageW;
-				win32_func_GetMonitorInfoA *getMonitorInfoA;
-				win32_func_GetMonitorInfoW *getMonitorInfoW;
-				win32_func_MonitorFromRect *monitorFromRect;
-				win32_func_MonitorFromWindow *monitorFromWindow;
-			} user;
-
-			struct {
-				HMODULE oleLibrary;
-				win32_func_CoInitializeEx *coInitializeEx;
-				win32_func_CoUninitialize *coUninitialize;
-				win32_func_CoCreateInstance *coCreateInstance;
-				win32_func_CoTaskMemFree *coTaskMemFree;
-				win32_func_PropVariantClear *propVariantClear;
-			} ole;
-		};
-		fpl_globalvar Win32APIFunctions global__Win32__API__Functions = {};
-
-		// Unicode dependent function calls and types
-#	if !defined(UNICODE)
-#		define FPL_WIN32_CLASSNAME "FPLWindowClassA"
-#		define FPL_WIN32_UNNAMED_WINDOW "Unnamed FPL Ansi Window"
-		typedef char win32_char;
-#		define win32_copyString strings::CopyAnsiString
-#		define win32_getStringLength strings::GetAnsiStringLength
-#		define win32_ansiToString strings::CopyAnsiString
-#		define win32_wndclassex WNDCLASSEXA
-#		if defined(FPL_ARCH_X64)
-#			define win32_setWindowLongPtr global__Win32__API__Functions.user.setWindowLongPtrA
-#		else
-#			define win32_setWindowLongPtr global__Win32__API__Functions.user.setWindowLongA
-#		endif
-#		define win32_setWindowLong global__Win32__API__Functions.user.setWindowLongA
-#		define win32_getWindowLong global__Win32__API__Functions.user.getWindowLongA
-#		define win32_peekMessage global__Win32__API__Functions.user.peekMessageA
-#		define win32_dispatchMessage global__Win32__API__Functions.user.dispatchMessageA
-#		define win32_defWindowProc global__Win32__API__Functions.user.defWindowProcA
-#		define win32_registerClassEx global__Win32__API__Functions.user.registerClassExA
-#		define win32_unregisterClass global__Win32__API__Functions.user.unregisterClassA
-#		define win32_createWindowEx global__Win32__API__Functions.user.createWindowExA
-#		define win32_loadIcon global__Win32__API__Functions.user.loadIconA
-#		define win32_loadCursor global__Win32__API__Functions.user.loadCursorA
-#		define win32_sendMessage global__Win32__API__Functions.user.sendMessageA
-#		define win32_getMonitorInfo global__Win32__API__Functions.user.getMonitorInfoA
-#	else
-#		define FPL_WIN32_CLASSNAME L"FPLWindowClassW"
-#		define FPL_WIN32_UNNAMED_WINDOW L"Unnamed FPL Unicode Window"
-		typedef wchar_t win32_char;
-#		define win32_copyString strings::CopyWideString
-#		define win32_getStringLength strings::GetWideStringLength
-#		define win32_ansiToString strings::AnsiStringToWideString
-#		define win32_wndclassex WNDCLASSEXW
-#		if defined(FPL_ARCH_X64)
-#			define win32_setWindowLongPtr global__Win32__API__Functions.user.setWindowLongPtrW
-#		else
-#			define win32_setWindowLongPtr global__Win32__API__Functions.user.setWindowLongW
-#		endif
-#		define win32_setWindowLong global__Win32__API__Functions.user.setWindowLongW
-#		define win32_getWindowLong global__Win32__API__Functions.user.getWindowLongW
-#		define win32_peekMessage global__Win32__API__Functions.user.peekMessageW
-#		define win32_dispatchMessage global__Win32__API__Functions.user.dispatchMessageW
-#		define win32_defWindowProc global__Win32__API__Functions.user.defWindowProcW
-#		define win32_registerClassEx global__Win32__API__Functions.user.registerClassExW
-#		define win32_unregisterClass global__Win32__API__Functions.user.unregisterClassW
-#		define win32_createWindowEx global__Win32__API__Functions.user.createWindowExW
-#		define win32_loadIcon global__Win32__API__Functions.user.loadIconW
-#		define win32_loadCursor global__Win32__API__Functions.user.loadCursorW
-#		define win32_sendMessage global__Win32__API__Functions.user.sendMessageW
-#		define win32_getMonitorInfo global__Win32__API__Functions.user.getMonitorInfoW
-#	endif // UNICODE
-
-#	if defined(FPL_ENABLE_WINDOW)
-		struct Win32LastWindowInfo {
-			WINDOWPLACEMENT placement;
-			DWORD style;
-			DWORD exStyle;
-			bool isMaximized;
-			bool wasResolutionChanged;
-		};
-
-		struct Win32WindowState {
-			win32_char windowClass[256];
-			HWND windowHandle;
-			HDC deviceContext;
-			HCURSOR defaultCursor;
-			Win32LastWindowInfo lastFullscreenInfo;
-			bool isRunning;
-			bool isCursorActive;
-		};
-		struct Win32XInputState {
-			bool isConnected[XUSER_MAX_COUNT];
-			LARGE_INTEGER lastDeviceSearchTime;
-		};
-#	else
-		typedef void *Win32WindowState;
-		typedef void *Win32XInputState;
-#	endif // FPL_ENABLE_WINDOW
-
-		struct Win32VideoState {
-			VideoDriverType activeVideoDriver;
-			union {
-#		if defined(FPL_ENABLE_VIDEO_OPENGL)
-				struct {
-					HGLRC renderingContext;
-				} opengl;
-#		endif
-
-#		if defined(FPL_ENABLE_VIDEO_SOFTWARE)
-				struct {
-					video::VideoBackBuffer context;
-					BITMAPINFO bitmapInfo;
-				} software;
-#		endif
-			};
-		};
-
-		struct Win32ApplicationState {
-			bool isInitialized;
-			HINSTANCE appInstance;
-			LARGE_INTEGER performanceFrequency;
-		};
-		fpl_globalvar Win32ApplicationState global__Win32__AppState = {};
-
-		struct Win32State {
-			Settings initSettings;
-			Settings currentSettings;
-			Win32WindowState window;
-			Win32VideoState video;
-			Win32XInputState xinput;
-			InitFlags initFlags;
-		};
-		fpl_globalvar Win32State *global__Win32__State = nullptr;
-
 #	if defined(FPL_ENABLE_VIDEO_OPENGL)
-		fpl_internal bool Win32InitVideoOpenGL(platform::Win32State *state, const VideoSettings &videoSettings) {
-			platform::Win32APIFunctions &wapi = platform::global__Win32__API__Functions;
-			platform::Win32OpenGLFunctions &glFuncs = platform::global__Win32__OpenGL_Functions;
+		fpl_internal bool Win32InitVideoOpenGL(const VideoSettings &videoSettings, const platform::Win32AppState &appState, platform::Win32VideoOpenGLState &glState) {
+			const platform::Win32APIFunctions &wapi = appState.winApi;
+			platform::Win32OpenGLFunctions &glFuncs = glState.glApi;
 
 			//
 			// Load OpenGL Library
@@ -5681,8 +4230,8 @@ namespace fpl {
 			//
 			// Prepare window for Opengl
 			//
-			HDC deviceContext = state->window.deviceContext;
-			HWND handle = state->window.windowHandle;
+			HDC deviceContext = appState.window.deviceContext;
+			HWND handle = appState.window.windowHandle;
 
 			PIXELFORMATDESCRIPTOR pfd = {};
 			pfd.nSize = sizeof(pfd);
@@ -5807,7 +4356,7 @@ namespace fpl {
 
 			FPL_ASSERT(activeRenderingContext != nullptr);
 
-			state->video.opengl.renderingContext = activeRenderingContext;
+			glState.renderingContext = activeRenderingContext;
 
 			// Set vertical syncronisation if available
 			if (glFuncs.wglSwapIntervalExt != nullptr) {
@@ -5818,61 +4367,58 @@ namespace fpl {
 			return true;
 		}
 
-		fpl_internal void Win32ReleaseVideoOpenGL(platform::Win32State *state) {
-			platform::Win32OpenGLFunctions &glFuncs = platform::global__Win32__OpenGL_Functions;
-			if (state->video.opengl.renderingContext) {
+		fpl_internal void Win32ReleaseVideoOpenGL(platform::Win32VideoOpenGLState &glState) {
+			platform::Win32OpenGLFunctions &glFuncs = glState.glApi;
+			if (glState.renderingContext) {
 				glFuncs.wglMakeCurrent(nullptr, nullptr);
-				glFuncs.wglDeleteContext(state->video.opengl.renderingContext);
-				state->video.opengl.renderingContext = nullptr;
+				glFuncs.wglDeleteContext(glState.renderingContext);
 			}
 			if (glFuncs.openglLibrary != nullptr) {
 				FreeLibrary(glFuncs.openglLibrary);
-				glFuncs = {};
 			}
+			glState = {};
 		}
 #	endif // FPL_ENABLE_VIDEO_OPENGL
 
 #	if defined(FPL_ENABLE_VIDEO_SOFTWARE)
-		fpl_internal bool Win32InitVideoSoftware(platform::Win32State *state, const uint32_t width, const uint32_t height) {
-			platform::Win32VideoState &videoState = state->video;
-
+		fpl_internal bool Win32InitVideoSoftware(const uint32_t width, const uint32_t height, platform::Win32VideoSoftwareState &softwareState) {
 			// Allocate memory/fill context
-			videoState.software = {};
-			videoState.software.context.width = width;
-			videoState.software.context.height = height;
-			videoState.software.context.pixelStride = sizeof(uint32_t);
-			videoState.software.context.lineWidth = videoState.software.context.width * videoState.software.context.pixelStride;
-			size_t size = videoState.software.context.lineWidth * videoState.software.context.height;
-			videoState.software.context.pixels = (uint32_t *)memory::MemoryAlignedAllocate(size, 16);
+			softwareState = {};
+			softwareState.context.width = width;
+			softwareState.context.height = height;
+			softwareState.context.pixelStride = sizeof(uint32_t);
+			softwareState.context.lineWidth = softwareState.context.width * softwareState.context.pixelStride;
+			size_t size = softwareState.context.lineWidth * softwareState.context.height;
+			softwareState.context.pixels = (uint32_t *)memory::MemoryAlignedAllocate(size, 16);
 
 			// Clear to black by default
 			// @NOTE(final): Bitmap is top-down, 0xAABBGGRR
-			uint32_t *p = videoState.software.context.pixels;
-			for (uint32_t y = 0; y < videoState.software.context.height; ++y) {
+			uint32_t *p = softwareState.context.pixels;
+			for (uint32_t y = 0; y < softwareState.context.height; ++y) {
 				uint32_t color = 0xFF000000;
-				for (uint32_t x = 0; x < videoState.software.context.width; ++x) {
+				for (uint32_t x = 0; x < softwareState.context.width; ++x) {
 					*p++ = color;
 				}
 			}
 
 			// Create DIB section from bitmapinfo
-			videoState.software.bitmapInfo = {};
-			videoState.software.bitmapInfo.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
-			videoState.software.bitmapInfo.bmiHeader.biWidth = (LONG)videoState.software.context.width;
-			videoState.software.bitmapInfo.bmiHeader.biHeight = (LONG)videoState.software.context.height;
-			videoState.software.bitmapInfo.bmiHeader.biBitCount = 32;
-			videoState.software.bitmapInfo.bmiHeader.biCompression = BI_RGB;
-			videoState.software.bitmapInfo.bmiHeader.biPlanes = 1;
-			videoState.software.bitmapInfo.bmiHeader.biSizeImage = (DWORD)size;
+			softwareState.bitmapInfo = {};
+			softwareState.bitmapInfo.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+			softwareState.bitmapInfo.bmiHeader.biWidth = (LONG)softwareState.context.width;
+			softwareState.bitmapInfo.bmiHeader.biHeight = (LONG)softwareState.context.height;
+			softwareState.bitmapInfo.bmiHeader.biBitCount = 32;
+			softwareState.bitmapInfo.bmiHeader.biCompression = BI_RGB;
+			softwareState.bitmapInfo.bmiHeader.biPlanes = 1;
+			softwareState.bitmapInfo.bmiHeader.biSizeImage = (DWORD)size;
 
 			return true;
 		}
 
-		fpl_internal void Win32ReleaseVideoSoftware(platform::Win32State *state) {
-			platform::Win32VideoState &videoState = state->video;
-			FPL_ASSERT(videoState.software.context.pixels != nullptr);
-			memory::MemoryAlignedFree(videoState.software.context.pixels);
-			videoState.software = {};
+		fpl_internal void Win32ReleaseVideoSoftware(platform::Win32VideoSoftwareState &softwareState) {
+			if (softwareState.context.pixels != nullptr) {
+				memory::MemoryAlignedFree(softwareState.context.pixels);
+			}
+			softwareState = {};
 		}
 #	endif // FPL_ENABLE_VIDEO_SOFTWARE
 
@@ -5911,28 +4457,27 @@ namespace fpl {
 
 		fpl_internal bool Win32LeaveFullscreen() {
 			// @TODO(final): The old window rect may be wrong when the display was changed (Turn off, Orientation, Grid Position, Screen res).
+			FPL_ASSERT(global__AppState != nullptr);
+			const PlatformAppState *platState = global__AppState;
+			const Win32AppState &win32State = platState->win32;
+			const Win32APIFunctions &wapi = win32State.winApi;
+			const WindowSettings &settings = platState->currentSettings.window;
+			const Win32LastWindowInfo &fullscreenInfo = win32State.window.lastFullscreenInfo;
 
-			FPL_ASSERT(global__Win32__State != nullptr);
-			Win32State *state = global__Win32__State;
-			Win32APIFunctions &wapi = global__Win32__API__Functions;
-			WindowSettings &settings = state->currentSettings.window;
-			Win32LastWindowInfo *fullscreenInfo = &global__Win32__State->window.lastFullscreenInfo;
+			HWND windowHandle = win32State.window.windowHandle;
 
-			HWND windowHandle = state->window.windowHandle;
-
-			FPL_ASSERT(fullscreenInfo->style > 0 && fullscreenInfo->exStyle > 0);
-			win32_setWindowLong(windowHandle, GWL_STYLE, fullscreenInfo->style);
-			win32_setWindowLong(windowHandle, GWL_EXSTYLE, fullscreenInfo->exStyle);
-			wapi.user.setWindowPlacement(windowHandle, &fullscreenInfo->placement);
+			FPL_ASSERT(fullscreenInfo.style > 0 && fullscreenInfo.exStyle > 0);
+			win32_setWindowLong(windowHandle, GWL_STYLE, fullscreenInfo.style);
+			win32_setWindowLong(windowHandle, GWL_EXSTYLE, fullscreenInfo.exStyle);
+			wapi.user.setWindowPlacement(windowHandle, &fullscreenInfo.placement);
 			wapi.user.setWindowPos(windowHandle, nullptr, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
-			//wapi.user.setWindowPos(windowHandle, nullptr, fullscreenInfo->rect.left, fullscreenInfo->rect.top, (fullscreenInfo->rect.right - fullscreenInfo->rect.left) + 1, (fullscreenInfo->rect.bottom - fullscreenInfo->rect.top) + 1, SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
 
-			if (fullscreenInfo->isMaximized) {
+			if (fullscreenInfo.isMaximized) {
 				win32_sendMessage(windowHandle, WM_SYSCOMMAND, SC_MAXIMIZE, 0);
 			}
 
 			bool result;
-			if (fullscreenInfo->wasResolutionChanged) {
+			if (fullscreenInfo.wasResolutionChanged) {
 				result = (wapi.user.changeDisplaySettingsA(nullptr, CDS_RESET) == DISP_CHANGE_SUCCESSFUL);
 			} else {
 				result = true;
@@ -5942,17 +4487,19 @@ namespace fpl {
 		}
 
 		fpl_internal bool Win32EnterFullscreen(const uint32_t fullscreenWidth, const uint32_t fullscreenHeight, const uint32_t refreshRate, const uint32_t colorBits) {
-			FPL_ASSERT(global__Win32__State != nullptr);
-			WindowSettings &settings = global__Win32__State->currentSettings.window;
+			FPL_ASSERT(global__AppState != nullptr);
+			PlatformAppState *platState = global__AppState;
+			Win32AppState &win32State = platState->win32;
+			const Win32APIFunctions &wapi = win32State.winApi;
+			const WindowSettings &settings = platState->currentSettings.window;
+			Win32LastWindowInfo &fullscreenInfo = win32State.window.lastFullscreenInfo;
 
-			HWND windowHandle = global__Win32__State->window.windowHandle;
-			HDC deviceContext = global__Win32__State->window.deviceContext;
-			Win32APIFunctions &wapi = global__Win32__API__Functions;
-			Win32LastWindowInfo *fullscreenInfo = &global__Win32__State->window.lastFullscreenInfo;
+			HWND windowHandle = win32State.window.windowHandle;
+			HDC deviceContext = win32State.window.deviceContext;
 
-			FPL_ASSERT(fullscreenInfo->style > 0 && fullscreenInfo->exStyle > 0);
-			win32_setWindowLong(windowHandle, GWL_STYLE, fullscreenInfo->style & ~(WS_CAPTION | WS_THICKFRAME));
-			win32_setWindowLong(windowHandle, GWL_EXSTYLE, fullscreenInfo->exStyle & ~(WS_EX_DLGMODALFRAME | WS_EX_WINDOWEDGE | WS_EX_CLIENTEDGE | WS_EX_STATICEDGE));
+			FPL_ASSERT(fullscreenInfo.style > 0 && fullscreenInfo.exStyle > 0);
+			win32_setWindowLong(windowHandle, GWL_STYLE, fullscreenInfo.style & ~(WS_CAPTION | WS_THICKFRAME));
+			win32_setWindowLong(windowHandle, GWL_EXSTYLE, fullscreenInfo.exStyle & ~(WS_EX_DLGMODALFRAME | WS_EX_WINDOWEDGE | WS_EX_CLIENTEDGE | WS_EX_STATICEDGE));
 
 			MONITORINFO monitor = {};
 			monitor.cbSize = sizeof(monitor);
@@ -5995,7 +4542,7 @@ namespace fpl {
 				fullscreenSettings.dmDisplayFrequency = useRefreshRate;
 				fullscreenSettings.dmFields = DM_PELSWIDTH | DM_PELSHEIGHT | DM_BITSPERPEL | DM_DISPLAYFREQUENCY;
 				result = (wapi.user.changeDisplaySettingsA(&fullscreenSettings, CDS_FULLSCREEN) == DISP_CHANGE_SUCCESSFUL);
-				fullscreenInfo->wasResolutionChanged = true;
+				fullscreenInfo.wasResolutionChanged = true;
 			} else {
 				RECT windowRect = monitor.rcMonitor;
 
@@ -6007,13 +4554,13 @@ namespace fpl {
 				wapi.user.setWindowPos(windowHandle, nullptr, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
 
 				result = true;
-				fullscreenInfo->wasResolutionChanged = false;
+				fullscreenInfo.wasResolutionChanged = false;
 			}
 
 			return(result);
 		}
 
-		fpl_internal_inline float Win32XInputProcessStickValue(SHORT value, SHORT deadZoneThreshold) {
+		fpl_internal_inline float Win32XInputProcessStickValue(const SHORT value, const SHORT deadZoneThreshold) {
 			float result = 0;
 			if (value < -deadZoneThreshold) {
 				result = (float)((value + deadZoneThreshold) / (32768.0f - deadZoneThreshold));
@@ -6023,27 +4570,26 @@ namespace fpl {
 			return(result);
 		}
 
-		fpl_internal void Win32PollControllers(Win32State *win32State) {
+		fpl_internal void Win32PollControllers(const Settings &settings, const Win32InitState &initState, Win32XInputState &xinputState) {
 			using namespace window;
-			Win32InputFunctions &inputFuncs = global__Win32__Input__Functions;
-			if (inputFuncs.xinput.xInputGetState != nullptr) {
+			if (xinputState.xinputApi.xInputGetState != nullptr) {
 				//
-				// Detect new controller (Only in a fixed frequency)
+				// Detect new controller (Only on a fixed frequency)
 				//
-				if (win32State->xinput.lastDeviceSearchTime.QuadPart == 0) {
-					QueryPerformanceCounter(&win32State->xinput.lastDeviceSearchTime);
+				if (xinputState.lastDeviceSearchTime.QuadPart == 0) {
+					QueryPerformanceCounter(&xinputState.lastDeviceSearchTime);
 				}
 				LARGE_INTEGER currentDeviceSearchTime;
 				QueryPerformanceCounter(&currentDeviceSearchTime);
-				uint64_t deviceSearchDifferenceTimeInMs = ((currentDeviceSearchTime.QuadPart - win32State->xinput.lastDeviceSearchTime.QuadPart) / (global__Win32__AppState.performanceFrequency.QuadPart / 1000));
-				if ((win32State->currentSettings.input.controllerDetectionFrequency == 0) || (deviceSearchDifferenceTimeInMs > win32State->currentSettings.input.controllerDetectionFrequency)) {
-					win32State->xinput.lastDeviceSearchTime = currentDeviceSearchTime;
+				uint64_t deviceSearchDifferenceTimeInMs = ((currentDeviceSearchTime.QuadPart - xinputState.lastDeviceSearchTime.QuadPart) / (initState.performanceFrequency.QuadPart / 1000));
+				if ((settings.input.controllerDetectionFrequency == 0) || (deviceSearchDifferenceTimeInMs > settings.input.controllerDetectionFrequency)) {
+					xinputState.lastDeviceSearchTime = currentDeviceSearchTime;
 					for (DWORD controllerIndex = 0; controllerIndex < XUSER_MAX_COUNT; ++controllerIndex) {
 						XINPUT_STATE controllerState = {};
-						if (inputFuncs.xinput.xInputGetState(controllerIndex, &controllerState) == ERROR_SUCCESS) {
-							if (!win32State->xinput.isConnected[controllerIndex]) {
+						if (xinputState.xinputApi.xInputGetState(controllerIndex, &controllerState) == ERROR_SUCCESS) {
+							if (!xinputState.isConnected[controllerIndex]) {
 								// Connected
-								win32State->xinput.isConnected[controllerIndex] = true;
+								xinputState.isConnected[controllerIndex] = true;
 								Event ev = {};
 								ev.type = EventType::Gamepad;
 								ev.gamepad.type = GamepadEventType::Connected;
@@ -6051,9 +4597,9 @@ namespace fpl {
 								PushEvent(ev);
 							}
 						} else {
-							if (win32State->xinput.isConnected[controllerIndex]) {
+							if (xinputState.isConnected[controllerIndex]) {
 								// Disonnected
-								win32State->xinput.isConnected[controllerIndex] = false;
+								xinputState.isConnected[controllerIndex] = false;
 								Event ev = {};
 								ev.type = EventType::Gamepad;
 								ev.gamepad.type = GamepadEventType::Disconnected;
@@ -6068,9 +4614,9 @@ namespace fpl {
 				// Update controller state when connected only
 				//
 				for (DWORD controllerIndex = 0; controllerIndex < XUSER_MAX_COUNT; ++controllerIndex) {
-					if (win32State->xinput.isConnected[controllerIndex]) {
+					if (xinputState.isConnected[controllerIndex]) {
 						XINPUT_STATE controllerState = {};
-						if (inputFuncs.xinput.xInputGetState(controllerIndex, &controllerState) == ERROR_SUCCESS) {
+						if (xinputState.xinputApi.xInputGetState(controllerIndex, &controllerState) == ERROR_SUCCESS) {
 							// State changed
 							Event ev = {};
 							ev.type = EventType::Gamepad;
@@ -6395,20 +4941,20 @@ namespace fpl {
 			PushEvent(newEvent);
 		}
 
-		fpl_internal_inline bool Win32IsKeyDown(const uint64_t keyCode) {
-			Win32APIFunctions &api = global__Win32__API__Functions;
-			bool result = (api.user.getAsyncKeyState((int)keyCode) & 0x8000) > 0;
+		fpl_internal_inline bool Win32IsKeyDown(const Win32APIFunctions &wapi, const uint64_t keyCode) {
+			bool result = (wapi.user.getAsyncKeyState((int)keyCode) & 0x8000) > 0;
 			return(result);
 		}
 
 		LRESULT CALLBACK Win32MessageProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 			using namespace window;
 
-			FPL_ASSERT(platform::global__Win32__State != nullptr);
-			platform::Win32State *win32State = platform::global__Win32__State;
-			platform::Win32APIFunctions &wapi = platform::global__Win32__API__Functions;
+			FPL_ASSERT(global__AppState != nullptr);
+			PlatformAppState *platState = global__AppState;
+			Win32AppState &win32State = platState->win32;
+			const Win32APIFunctions &wapi = win32State.winApi;
 
-			if (!win32State->window.windowHandle) {
+			if (!win32State.window.windowHandle) {
 				return win32_defWindowProc(hwnd, msg, wParam, lParam);
 			}
 
@@ -6417,20 +4963,20 @@ namespace fpl {
 				case WM_DESTROY:
 				case WM_CLOSE:
 				{
-					win32State->window.isRunning = false;
+					win32State.window.isRunning = false;
 				} break;
 
 				case WM_SIZE:
 				{
 #				if defined(FPL_ENABLE_VIDEO_SOFTWARE)
-					if (win32State->video.activeVideoDriver == VideoDriverType::Software) {
-						if (win32State->initSettings.video.isAutoSize) {
+					if (win32State.video.activeVideoDriver == VideoDriverType::Software) {
+						if (platState->initSettings.video.isAutoSize) {
 							uint32_t w = LOWORD(lParam);
 							uint32_t h = HIWORD(lParam);
-							if ((w != win32State->video.software.context.width) ||
-								(h != win32State->video.software.context.height)) {
-								platform::Win32ReleaseVideoSoftware(win32State);
-								platform::Win32InitVideoSoftware(win32State, w, h);
+							if ((w != win32State.video.software.context.width) ||
+								(h != win32State.video.software.context.height)) {
+								platform::Win32ReleaseVideoSoftware(win32State.video.software);
+								platform::Win32InitVideoSoftware(w, h, win32State.video.software);
 							}
 						}
 					}
@@ -6453,10 +4999,10 @@ namespace fpl {
 					bool wasDown = ((lParam & (1 << 30)) != 0);
 					bool isDown = ((lParam & (1 << 31)) == 0);
 
-					bool altKeyWasDown = platform::Win32IsKeyDown(VK_MENU);
-					bool shiftKeyWasDown = platform::Win32IsKeyDown(VK_LSHIFT);
-					bool ctrlKeyWasDown = platform::Win32IsKeyDown(VK_LCONTROL);
-					bool superKeyWasDown = platform::Win32IsKeyDown(VK_LMENU);
+					bool altKeyWasDown = platform::Win32IsKeyDown(wapi, VK_MENU);
+					bool shiftKeyWasDown = platform::Win32IsKeyDown(wapi, VK_LSHIFT);
+					bool ctrlKeyWasDown = platform::Win32IsKeyDown(wapi, VK_LCONTROL);
+					bool superKeyWasDown = platform::Win32IsKeyDown(wapi, VK_LMENU);
 
 					KeyboardEventType keyEventType = isDown ? KeyboardEventType::KeyDown : KeyboardEventType::KeyUp;
 					KeyboardModifierFlags modifiers = KeyboardModifierFlags::None;
@@ -6477,7 +5023,7 @@ namespace fpl {
 					if (wasDown != isDown) {
 						if (isDown) {
 							if (keyCode == VK_F4 && altKeyWasDown) {
-								win32State->window.isRunning = 0;
+								win32State.window.isRunning = 0;
 							}
 						}
 					}
@@ -6550,7 +5096,7 @@ namespace fpl {
 				case WM_SETCURSOR:
 				{
 					// @TODO(final): This is not right to assume default cursor always, because the size cursor does not work this way!
-					if (win32State->window.isCursorActive) {
+					if (win32State.window.isCursorActive) {
 						HCURSOR cursor = wapi.user.getCursor();
 						wapi.user.setCursor(cursor);
 					} else {
@@ -6572,8 +5118,8 @@ namespace fpl {
 			return (result);
 		}
 
-		fpl_internal bool Win32InitWindow(Win32State &win32State, const Settings &initSettings) {
-			Win32APIFunctions &wapi = global__Win32__API__Functions;
+		fpl_internal bool Win32InitWindow(const Settings &initSettings, Win32AppState &appState, Settings &currentSettings) {
+			const Win32APIFunctions &wapi = appState.winApi;
 
 			// Register window class
 			win32_wndclassex windowClass = {};
@@ -6587,28 +5133,17 @@ namespace fpl {
 			windowClass.hIconSm = win32_loadIcon(nullptr, IDI_APPLICATION);
 			windowClass.lpszClassName = FPL_WIN32_CLASSNAME;
 			windowClass.lpfnWndProc = Win32MessageProc;
-			if (initSettings.video.driverType == VideoDriverType::OpenGL) {
-				windowClass.style |= CS_OWNDC;
-			}
-			win32_copyString(windowClass.lpszClassName, win32_getStringLength(windowClass.lpszClassName), win32State.window.windowClass, FPL_ARRAYCOUNT(win32State.window.windowClass));
+			windowClass.style |= CS_OWNDC;
+			win32_copyString(windowClass.lpszClassName, win32_getStringLength(windowClass.lpszClassName), appState.window.windowClass, FPL_ARRAYCOUNT(appState.window.windowClass));
 			if (win32_registerClassEx(&windowClass) == 0) {
-				common::PushError("Failed Registering Window Class '%s'", win32State.window.windowClass);
+				common::PushError("Failed Registering Window Class '%s'", appState.window.windowClass);
 				return false;
 			}
-
-			// Allocate event queue
-			size_t eventQueueMemorySize = sizeof(EventQueue);
-			void *eventQueueMemory = memory::MemoryAlignedAllocate(eventQueueMemorySize, 16);
-			if (eventQueueMemory == nullptr) {
-				common::PushError("Failed Allocating Event Queue Memory with size '%zu'", eventQueueMemorySize);
-				return false;
-			}
-			global__EventQueue = (EventQueue *)eventQueueMemory;
 
 			// Create window
 			platform::win32_char windowTitleBuffer[1024];
 			platform::win32_char *windowTitle = FPL_WIN32_UNNAMED_WINDOW;
-			WindowSettings &currentWindowSettings = win32State.currentSettings.window;
+			WindowSettings &currentWindowSettings = currentSettings.window;
 			currentWindowSettings.isFullscreen = false;
 			if (strings::GetAnsiStringLength(initSettings.window.windowTitle) > 0) {
 				win32_ansiToString(initSettings.window.windowTitle, strings::GetAnsiStringLength(initSettings.window.windowTitle), windowTitleBuffer, FPL_ARRAYCOUNT(windowTitleBuffer));
@@ -6650,9 +5185,9 @@ namespace fpl {
 
 
 			// Create window
-			win32State.window.windowHandle = win32_createWindowEx(exStyle, windowClass.lpszClassName, windowTitle, style, windowX, windowY, windowWidth, windowHeight, nullptr, nullptr, windowClass.hInstance, nullptr);
-			if (win32State.window.windowHandle == nullptr) {
-				common::PushError("Failed creating window for class '%s' and position (%d x %d) with size (%d x %d)", win32State.window.windowClass, windowWidth, windowHeight, windowWidth, windowHeight);
+			appState.window.windowHandle = win32_createWindowEx(exStyle, windowClass.lpszClassName, windowTitle, style, windowX, windowY, windowWidth, windowHeight, nullptr, nullptr, windowClass.hInstance, nullptr);
+			if (appState.window.windowHandle == nullptr) {
+				common::PushError("Failed creating window for class '%s' and position (%d x %d) with size (%d x %d)", appState.window.windowClass, windowWidth, windowHeight, windowWidth, windowHeight);
 				return false;
 			}
 
@@ -6660,15 +5195,15 @@ namespace fpl {
 			currentWindowSettings.windowWidth = windowWidth;
 			currentWindowSettings.windowHeight = windowHeight;
 			RECT clientRect;
-			if (wapi.user.getClientRect(global__Win32__State->window.windowHandle, &clientRect)) {
+			if (wapi.user.getClientRect(appState.window.windowHandle, &clientRect)) {
 				currentWindowSettings.windowWidth = clientRect.right - clientRect.left;
 				currentWindowSettings.windowHeight = clientRect.bottom - clientRect.top;
 			}
 
 			// Get device context so we can swap the back and front buffer
-			win32State.window.deviceContext = wapi.user.getDC(win32State.window.windowHandle);
-			if (win32State.window.deviceContext == nullptr) {
-				common::PushError("Failed aquiring device context from window '%d'", win32State.window.windowHandle);
+			appState.window.deviceContext = wapi.user.getDC(appState.window.windowHandle);
+			if (appState.window.deviceContext == nullptr) {
+				common::PushError("Failed aquiring device context from window '%d'", appState.window.windowHandle);
 				return false;
 			}
 
@@ -6678,30 +5213,31 @@ namespace fpl {
 			}
 
 #		if defined(FPL_ENABLE_VIDEO)
-			// Create opengl rendering context if required
-			win32State.video.activeVideoDriver = VideoDriverType::None;
+			// Create video context if required
+			appState.video.activeVideoDriver = VideoDriverType::None;
 			switch (initSettings.video.driverType) {
+
 #			if defined(FPL_ENABLE_VIDEO_OPENGL)
 				case VideoDriverType::OpenGL:
 				{
-					bool openglResult = platform::Win32InitVideoOpenGL(&win32State, initSettings.video);
+					bool openglResult = platform::Win32InitVideoOpenGL(initSettings.video, appState, appState.video.opengl);
 					if (!openglResult) {
-						common::PushError("Failed initializing OpenGL for window '%d'/'%s'", win32State.window.windowHandle, win32State.window.windowClass);
+						common::PushError("Failed initializing OpenGL for window '%d'/'%s'", appState.window.windowHandle, appState.window.windowClass);
 						return false;
 					}
-					win32State.video.activeVideoDriver = VideoDriverType::OpenGL;
+					appState.video.activeVideoDriver = VideoDriverType::OpenGL;
 				} break;
 #			endif // FPL_ENABLE_VIDEO_OPENGL
 
 #			if defined(FPL_ENABLE_VIDEO_SOFTWARE)
 				case VideoDriverType::Software:
 				{
-					bool softwareResult = platform::Win32InitVideoSoftware(&win32State, windowWidth, windowHeight);
+					bool softwareResult = platform::Win32InitVideoSoftware(windowWidth, windowHeight, appState.video.software);
 					if (!softwareResult) {
-						common::PushError("Failed creating software rendering buffer for window '%d'/'%s'", win32State.window.windowHandle, win32State.window.windowClass);
+						common::PushError("Failed creating software rendering buffer for window '%d'/'%s'", appState.window.windowHandle, appState.window.windowClass);
 						return false;
 					}
-					win32State.video.activeVideoDriver = VideoDriverType::Software;
+					appState.video.activeVideoDriver = VideoDriverType::Software;
 				} break;
 #			endif // FPL_ENABLE_VIDEO_SOFTWARE
 
@@ -6711,38 +5247,33 @@ namespace fpl {
 #		endif // FPL_ENABLE_VIDEO
 
 			// Show window
-			wapi.user.showWindow(win32State.window.windowHandle, SW_SHOW);
-			wapi.user.updateWindow(win32State.window.windowHandle);
+			wapi.user.showWindow(appState.window.windowHandle, SW_SHOW);
+			wapi.user.updateWindow(appState.window.windowHandle);
 
 			// Cursor is visible at start
-			win32State.window.defaultCursor = windowClass.hCursor;
-			win32State.window.isCursorActive = true;
-			win32State.window.isRunning = true;
+			appState.window.defaultCursor = windowClass.hCursor;
+			appState.window.isCursorActive = true;
+			appState.window.isRunning = true;
 
 			return true;
 		}
 
-		fpl_internal void Win32ReleaseWindow(Win32State &win32State) {
-			Win32APIFunctions &api = global__Win32__API__Functions;
+		fpl_internal void Win32ReleaseWindow(const Win32InitState &initState, Win32AppState &appState) {
+			const Win32APIFunctions &wapi = appState.winApi;
 
-			if (win32State.window.deviceContext != nullptr) {
-				api.user.releaseDC(win32State.window.windowHandle, win32State.window.deviceContext);
-				win32State.window.deviceContext = nullptr;
+			if (appState.window.deviceContext != nullptr) {
+				wapi.user.releaseDC(appState.window.windowHandle, appState.window.deviceContext);
+				appState.window.deviceContext = nullptr;
 			}
 
-			if (win32State.window.windowHandle != nullptr) {
-				api.user.destroyWindow(win32State.window.windowHandle);
-				win32State.window.windowHandle = nullptr;
-				win32_unregisterClass(win32State.window.windowClass, global__Win32__AppState.appInstance);
-			}
-
-			if (global__EventQueue != nullptr) {
-				memory::MemoryAlignedFree(global__EventQueue);
-				global__EventQueue = nullptr;
+			if (appState.window.windowHandle != nullptr) {
+				wapi.user.destroyWindow(appState.window.windowHandle);
+				appState.window.windowHandle = nullptr;
+				win32_unregisterClass(appState.window.windowClass, initState.appInstance);
 			}
 		}
 
-		fpl_internal void Win32LoadXInput() {
+		fpl_internal void Win32LoadXInput(Win32XInputState &xinputState) {
 			// Windows 8
 			HMODULE xinputLibrary = LoadLibraryA("xinput1_4.dll");
 			if (!xinputLibrary) {
@@ -6753,26 +5284,26 @@ namespace fpl {
 				// Windows Generic
 				xinputLibrary = LoadLibraryA("xinput9_1_0.dll");
 			}
-			Win32InputFunctions &inputFuncs = global__Win32__Input__Functions;
+			Win32XInputFunctions &inputFuncs = xinputState.xinputApi;
 			if (xinputLibrary) {
-				inputFuncs.xinput.xinputLibrary = xinputLibrary;
-				inputFuncs.xinput.xInputGetState = (win32_func_XInputGetState *)GetProcAddress(xinputLibrary, "XInputGetState");
-				inputFuncs.xinput.xInputGetCapabilities = (win32_func_XInputGetCapabilities *)GetProcAddress(xinputLibrary, "XInputGetCapabilities");
+				inputFuncs.xinputLibrary = xinputLibrary;
+				inputFuncs.xInputGetState = (win32_func_XInputGetState *)GetProcAddress(xinputLibrary, "XInputGetState");
+				inputFuncs.xInputGetCapabilities = (win32_func_XInputGetCapabilities *)GetProcAddress(xinputLibrary, "XInputGetCapabilities");
 			}
-			if (inputFuncs.xinput.xInputGetState == nullptr) {
-				inputFuncs.xinput.xInputGetState = Win32XInputGetStateStub;
+			if (inputFuncs.xInputGetState == nullptr) {
+				inputFuncs.xInputGetState = Win32XInputGetStateStub;
 			}
-			if (inputFuncs.xinput.xInputGetCapabilities == nullptr) {
-				inputFuncs.xinput.xInputGetCapabilities = Win32XInputGetCapabilitiesStub;
+			if (inputFuncs.xInputGetCapabilities == nullptr) {
+				inputFuncs.xInputGetCapabilities = Win32XInputGetCapabilitiesStub;
 			}
 		}
 
-		fpl_internal void Win32UnloadXInput() {
-			Win32InputFunctions &inputFuncs = global__Win32__Input__Functions;
-			if (inputFuncs.xinput.xinputLibrary) {
-				FreeLibrary(inputFuncs.xinput.xinputLibrary);
-				inputFuncs.xinput.xinputLibrary = nullptr;
-				inputFuncs.xinput.xInputGetState = Win32XInputGetStateStub;
+		fpl_internal void Win32UnloadXInput(Win32XInputState &xinputState) {
+			Win32XInputFunctions &inputFuncs = xinputState.xinputApi;
+			if (inputFuncs.xinputLibrary) {
+				FreeLibrary(inputFuncs.xinputLibrary);
+				inputFuncs.xinputLibrary = nullptr;
+				inputFuncs.xInputGetState = Win32XInputGetStateStub;
 			}
 		}
 
@@ -6886,9 +5417,7 @@ namespace fpl {
 
 #	endif // FPL_ENABLE_WINDOW
 
-		fpl_api bool Win32LoadAPI(Win32State &win32State) {
-			Win32APIFunctions &wapi = global__Win32__API__Functions;
-
+		fpl_api bool Win32LoadAPI(Win32APIFunctions &wapi) {
 			// Shell32
 			{
 				const char *shellLibraryName = "shell32.dll";
@@ -7019,23 +5548,22 @@ namespace fpl {
 			return true;
 		}
 
-		fpl_api void Win32UnloadAPI() {
-			Win32APIFunctions &api = global__Win32__API__Functions;
-			if (api.ole.oleLibrary != nullptr) {
-				FreeLibrary(api.ole.oleLibrary);
-				api.ole = {};
+		fpl_api void Win32UnloadAPI(Win32APIFunctions &wapi) {
+			if (wapi.ole.oleLibrary != nullptr) {
+				FreeLibrary(wapi.ole.oleLibrary);
+				wapi.ole = {};
 			}
-			if (api.gdi.gdiLibrary != nullptr) {
-				FreeLibrary(api.gdi.gdiLibrary);
-				api.gdi = {};
+			if (wapi.gdi.gdiLibrary != nullptr) {
+				FreeLibrary(wapi.gdi.gdiLibrary);
+				wapi.gdi = {};
 			}
-			if (api.user.userLibrary != nullptr) {
-				FreeLibrary(api.user.userLibrary);
-				api.user = {};
+			if (wapi.user.userLibrary != nullptr) {
+				FreeLibrary(wapi.user.userLibrary);
+				wapi.user = {};
 			}
-			if (api.shell.shellLibrary != nullptr) {
-				FreeLibrary(api.shell.shellLibrary);
-				api.shell = {};
+			if (wapi.shell.shellLibrary != nullptr) {
+				FreeLibrary(wapi.shell.shellLibrary);
+				wapi.shell = {};
 			}
 		}
 
@@ -7095,82 +5623,56 @@ namespace fpl {
 			return(result);
 		}
 
-		fpl_internal void Win32ReleasePlatform() {
-			Win32ApplicationState &appState = global__Win32__AppState;
-
-			if (global__Win32__State != nullptr) {
-				Win32State &win32State = *global__Win32__State;
-
-#		if defined(FPL_ENABLE_AUDIO)
-				audio::ReleaseAudio();
-#		endif
+		fpl_internal void Win32ReleasePlatform(PlatformInitState &initState, PlatformAppState *appState) {
+			FPL_ASSERT(appState != nullptr);
+			Win32AppState &win32AppState = appState->win32;
+			Settings &currentSettings = appState->currentSettings;
+			Win32InitState &win32InitState = initState.win32;
 
 #		if defined(FPL_ENABLE_WINDOW)
-				if (win32State.currentSettings.window.isFullscreen) {
-					Win32LeaveFullscreen();
-				}
+			if (currentSettings.window.isFullscreen) {
+				Win32LeaveFullscreen();
+			}
 
 #			if defined(FPL_ENABLE_VIDEO)
-				switch (win32State.video.activeVideoDriver) {
+			switch (win32AppState.video.activeVideoDriver) {
 #				if defined(FPL_ENABLE_VIDEO_OPENGL)
-					case VideoDriverType::OpenGL:
-					{
-						Win32ReleaseVideoOpenGL(&win32State);
-					} break;
+				case VideoDriverType::OpenGL:
+				{
+					Win32ReleaseVideoOpenGL(win32AppState.video.opengl);
+				} break;
 #				endif
 
 #				if defined(FPL_ENABLE_VIDEO_SOFTWARE)
-					case VideoDriverType::Software:
-					{
-						Win32ReleaseVideoSoftware(&win32State);
-					} break;
+				case VideoDriverType::Software:
+				{
+					Win32ReleaseVideoSoftware(win32AppState.video.software);
+				} break;
 #				endif
 
-					default:
-						break;
-				}
+				default:
+					break;
+			}
 #			endif // FPL_ENABLE_VIDEO
 
-				Win32ReleaseWindow(win32State);
+			Win32ReleaseWindow(win32InitState, win32AppState);
 
-				Win32UnloadXInput();
+			Win32UnloadXInput(win32AppState.xinput);
 #		endif // FPL_ENABLE_WINDOW
 
-				Win32UnloadAPI();
-
-				memory::MemoryAlignedFree(global__Win32__State);
-				global__Win32__State = nullptr;
-			}
-			appState.isInitialized = false;
+			Win32UnloadAPI(win32AppState.winApi);
 		}
 
-		fpl_internal bool Win32InitPlatform(const InitFlags initFlags, const Settings &initSettings) {
-			Win32ApplicationState &appState = global__Win32__AppState;
-
-			appState = {};
-			appState.appInstance = GetModuleHandleA(nullptr);
+		fpl_internal bool Win32InitPlatform(const InitFlags initFlags, const Settings &initSettings, PlatformInitState &initState, PlatformAppState *appState) {
+			Win32InitState &win32InitState = initState.win32;
+			win32InitState.appInstance = GetModuleHandleA(nullptr);
+			FPL_ASSERT(appState != nullptr);
+			Win32AppState &win32AppState = appState->win32;
 
 			// @NOTE(final): Expect kernel32.lib to be linked always, so VirtualAlloc and LoadLibrary will always work.
 
-			// Allocate win32 state
-			FPL_ASSERT(global__Win32__State == nullptr);
-			size_t win32StateSize = sizeof(Win32State);
-			void *win32StateMemory = memory::MemoryAlignedAllocate(win32StateSize, 16);
-			if (win32StateMemory == nullptr) {
-				common::PushError("Failed allocating win32 state memory of size '%zu'", win32StateSize);
-				return false;
-			}
-
-			FPL_ASSERT(win32StateMemory != nullptr);
-			global__Win32__State = (Win32State *)win32StateMemory;
-			Win32State &win32State = *global__Win32__State;
-			win32State.initSettings = initSettings;
-			win32State.initFlags = initFlags;
-			win32State.currentSettings = initSettings;
-			win32State.video = {};
-
 			// Timing
-			QueryPerformanceFrequency(&appState.performanceFrequency);
+			QueryPerformanceFrequency(&win32InitState.performanceFrequency);
 
 			// Get main thread infos
 			HANDLE mainThreadHandle = GetCurrentThread();
@@ -7181,45 +5683,25 @@ namespace fpl {
 			context->internalHandle.win32Thread = mainThreadHandle;
 			context->currentState = threading::ThreadState::Running;
 
-#		if defined(FPL_ENABLE_WINDOW)
-			// Window is required for video always
-			if (win32State.initFlags & InitFlags::Video) {
-				win32State.initFlags |= InitFlags::Window;
-			}
-#		endif
-
 			// Load windows api library
-			if (!Win32LoadAPI(win32State)) {
+			if (!Win32LoadAPI(win32AppState.winApi)) {
 				// @NOTE(final): Assume that errors are pushed on already.
-				Win32ReleasePlatform();
+				Win32ReleasePlatform(initState, appState);
 				return false;
 			}
 
 #		if defined(FPL_ENABLE_WINDOW)
 			// Load XInput
-			Win32LoadXInput();
+			Win32LoadXInput(win32AppState.xinput);
 
-			if (win32State.initFlags & InitFlags::Window) {
-				if (!Win32InitWindow(win32State, initSettings)) {
-					common::PushError("Failed creating a window with flags '%d' and settings (Width=%d, Height=%d, Video driver=%d)", win32State.initFlags, initSettings.window.windowWidth, initSettings.window.windowHeight, initSettings.video.driverType);
-					Win32ReleasePlatform();
+			if (appState->initFlags & InitFlags::Window) {
+				if (!Win32InitWindow(initSettings, win32AppState, appState->currentSettings)) {
+					common::PushError("Failed creating a window with flags '%d' and settings (Width=%d, Height=%d, Video driver=%d)", appState->initFlags, initSettings.window.windowWidth, initSettings.window.windowHeight, initSettings.video.driverType);
+					Win32ReleasePlatform(initState, appState);
 					return false;
 				}
 			}
 #		endif // FPL_ENABLE_WINDOW
-
-#		if defined(FPL_ENABLE_AUDIO)
-			// Init audio
-			if (win32State.initFlags & InitFlags::Audio) {
-				if (audio::InitAudio(initSettings.audio) != audio::AudioResult::Success) {
-					common::PushError("Failed initialization audio with settings (Driver=%s, Format=%s, SampleRate=%d, Channels=%d, BufferSize=%d)", audio::GetAudioDriverString(initSettings.audio.driver), audio::GetAudioFormatString(initSettings.audio.deviceFormat.type), initSettings.audio.deviceFormat.sampleRate, initSettings.audio.deviceFormat.channels);
-					Win32ReleasePlatform();
-					return false;
-				}
-			}
-#		endif
-
-			appState.isInitialized = true;
 
 			return (true);
 		}
@@ -7455,6 +5937,11 @@ namespace fpl {
 				vfprintf(stderr, format, vaList);
 				va_end(vaList);
 			}
+		}
+		fpl_api const char ConsoleWaitForCharInput() {
+			int c = getchar();
+			const char result = (c >= 0 && c < 256) ? (char)c : 0;
+			return(result);
 		}
 	}
 
@@ -8018,6 +6505,8 @@ namespace fpl {
 
 #	if defined(UNICODE)
 		fpl_api char *GetHomePath(char *destPath, const uint32_t maxDestLen) {
+			FPL_ASSERT(platform::global__AppState != nullptr);
+			const platform::Win32APIFunctions &wapi = platform::global__AppState->win32.winApi;
 			if (destPath == nullptr) {
 				common::PushError("Dest path parameter are not allowed to be null");
 				return nullptr;
@@ -8026,14 +6515,15 @@ namespace fpl {
 				common::PushError("Max dest len parameter '%d' must be greater or equal than '%d'", maxDestLen, MAX_PATH + 1);
 				return nullptr;
 			}
-			const platform::Win32APIFunctions &api = platform::global__Win32__API__Functions;
 			wchar_t homePath[MAX_PATH];
-			api.shell.shGetFolderPathW(nullptr, CSIDL_PROFILE, nullptr, 0, homePath);
+			wapi.shell.shGetFolderPathW(nullptr, CSIDL_PROFILE, nullptr, 0, homePath);
 			strings::WideStringToAnsiString(homePath, strings::GetWideStringLength(homePath), destPath, maxDestLen);
 			return(destPath);
 		}
 #	else
 		fpl_api char *GetHomePath(char *destPath, const uint32_t maxDestLen) {
+			FPL_ASSERT(platform::global__AppState != nullptr);
+			const platform::Win32APIFunctions &wapi = platform::global__AppState->win32.winApi;
 			if (destPath == nullptr) {
 				common::PushError("Dest path parameter are not allowed to be null");
 				return nullptr;
@@ -8042,9 +6532,8 @@ namespace fpl {
 				common::PushError("Max dest len parameter '%d' must be greater or equal than '%d'", maxDestLen, MAX_PATH + 1);
 				return nullptr;
 			}
-			const platform::Win32APIFunctions &api = platform::global__Win32__API__Functions;
 			char homePath[MAX_PATH];
-			api.shell.shGetFolderPathA(nullptr, CSIDL_PROFILE, nullptr, 0, homePath);
+			wapi.shell.shGetFolderPathA(nullptr, CSIDL_PROFILE, nullptr, 0, homePath);
 			strings::CopyAnsiString(homePath, strings::GetAnsiStringLength(homePath), destPath, maxDestLen);
 			return(destPath);
 		}
@@ -8056,9 +6545,10 @@ namespace fpl {
 	//
 	namespace timings {
 		fpl_api double GetHighResolutionTimeInSeconds() {
+			const platform::Win32InitState &initState = platform::global__InitState.win32;
 			LARGE_INTEGER time;
 			QueryPerformanceCounter(&time);
-			double result = time.QuadPart / (double)platform::global__Win32__AppState.performanceFrequency.QuadPart;
+			double result = time.QuadPart / (double)initState.performanceFrequency.QuadPart;
 			return(result);
 		}
 	} // timings
@@ -8211,11 +6701,11 @@ namespace fpl {
 #if defined(FPL_ENABLE_VIDEO)
 	namespace video {
 		fpl_api VideoBackBuffer *GetVideoBackBuffer() {
+			FPL_ASSERT(platform::global__AppState != nullptr);
+			platform::Win32AppState &appState = platform::global__AppState->win32;
 			VideoBackBuffer *result = nullptr;
-			FPL_ASSERT(platform::global__Win32__State != nullptr);
-			platform::Win32State *state = platform::global__Win32__State;
 #		if defined(FPL_ENABLE_VIDEO_SOFTWARE)
-			platform::Win32VideoState &video = state->video;
+			platform::Win32VideoState &video = appState.video;
 			if (video.activeVideoDriver == VideoDriverType::Software) {
 				result = &video.software.context;
 			}
@@ -8224,20 +6714,20 @@ namespace fpl {
 		}
 
 		fpl_api VideoDriverType GetVideoDriver() {
-			FPL_ASSERT(platform::global__Win32__State != nullptr);
-			platform::Win32State *state = platform::global__Win32__State;
-			VideoDriverType result = state->video.activeVideoDriver;
+			FPL_ASSERT(platform::global__AppState != nullptr);
+			const platform::Win32AppState &appState = platform::global__AppState->win32;
+			VideoDriverType result = appState.video.activeVideoDriver;
 			return(result);
 		}
 
 		fpl_api bool ResizeVideoBackBuffer(const uint32_t width, const uint32_t height) {
+			FPL_ASSERT(platform::global__AppState != nullptr);
+			platform::Win32AppState &appState = platform::global__AppState->win32;
 			bool result = false;
-			FPL_ASSERT(platform::global__Win32__State != nullptr);
-			platform::Win32State *state = platform::global__Win32__State;
 #		if defined(FPL_ENABLE_VIDEO_SOFTWARE)
-			if (state->video.activeVideoDriver == VideoDriverType::Software) {
-				Win32ReleaseVideoSoftware(state);
-				result = Win32InitVideoSoftware(state, width, height);
+			if (appState.video.activeVideoDriver == VideoDriverType::Software) {
+				Win32ReleaseVideoSoftware(appState.video.software);
+				result = Win32InitVideoSoftware(width, height, appState.video.software);
 			}
 #		endif
 			return (result);
@@ -8251,10 +6741,10 @@ namespace fpl {
 	//
 	namespace window {
 		fpl_api void WindowFlip() {
-			FPL_ASSERT(platform::global__Win32__State != nullptr);
-			platform::Win32State *state = platform::global__Win32__State;
-			platform::Win32APIFunctions &wapi = platform::global__Win32__API__Functions;
-			platform::Win32VideoState &video = state->video;
+			FPL_ASSERT(platform::global__AppState != nullptr);
+			const platform::Win32AppState &appState = platform::global__AppState->win32;
+			const platform::Win32APIFunctions &wapi = appState.winApi;
+			const platform::Win32VideoState &video = appState.video;
 			switch (video.activeVideoDriver) {
 #			if defined(FPL_ENABLE_VIDEO_SOFTWARE)
 				case VideoDriverType::Software:
@@ -8271,16 +6761,16 @@ namespace fpl {
 						targetY = video.software.context.outputRect.y;
 						targetWidth = video.software.context.outputRect.width;
 						targetHeight = video.software.context.outputRect.height;
-						wapi.gdi.stretchDIBits(state->window.deviceContext, 0, 0, area.width, area.height, 0, 0, 0, 0, nullptr, nullptr, DIB_RGB_COLORS, BLACKNESS);
+						wapi.gdi.stretchDIBits(appState.window.deviceContext, 0, 0, area.width, area.height, 0, 0, 0, 0, nullptr, nullptr, DIB_RGB_COLORS, BLACKNESS);
 					}
-					wapi.gdi.stretchDIBits(state->window.deviceContext, targetX, targetY, targetWidth, targetHeight, 0, 0, sourceWidth, sourceHeight, video.software.context.pixels, &video.software.bitmapInfo, DIB_RGB_COLORS, SRCCOPY);
+					wapi.gdi.stretchDIBits(appState.window.deviceContext, targetX, targetY, targetWidth, targetHeight, 0, 0, sourceWidth, sourceHeight, video.software.context.pixels, &video.software.bitmapInfo, DIB_RGB_COLORS, SRCCOPY);
 				} break;
 #			endif
 
 #			if defined(FPL_ENABLE_VIDEO_OPENGL)
 				case VideoDriverType::OpenGL:
 				{
-					wapi.gdi.swapBuffers(state->window.deviceContext);
+					wapi.gdi.swapBuffers(appState.window.deviceContext);
 				} break;
 #			endif
 
@@ -8290,12 +6780,12 @@ namespace fpl {
 		}
 
 		fpl_api WindowSize GetWindowArea() {
-			FPL_ASSERT(platform::global__Win32__State != nullptr);
-			platform::Win32State *state = platform::global__Win32__State;
-			platform::Win32APIFunctions &wapi = platform::global__Win32__API__Functions;
+			FPL_ASSERT(platform::global__AppState != nullptr);
+			const platform::Win32AppState &appState = platform::global__AppState->win32;
+			const platform::Win32APIFunctions &wapi = appState.winApi;
 			WindowSize result = {};
 			RECT windowRect;
-			if (wapi.user.getClientRect(state->window.windowHandle, &windowRect)) {
+			if (wapi.user.getClientRect(appState.window.windowHandle, &windowRect)) {
 				result.width = windowRect.right - windowRect.left;
 				result.height = windowRect.bottom - windowRect.top;
 			}
@@ -8303,32 +6793,33 @@ namespace fpl {
 		}
 
 		fpl_api void SetWindowArea(const uint32_t width, const uint32_t height) {
-			FPL_ASSERT(platform::global__Win32__State != nullptr);
-			platform::Win32State *state = platform::global__Win32__State;
-			platform::Win32APIFunctions &wapi = platform::global__Win32__API__Functions;
+			FPL_ASSERT(platform::global__AppState != nullptr);
+			const platform::Win32AppState &appState = platform::global__AppState->win32;
+			const platform::Win32APIFunctions &wapi = appState.winApi;
 			RECT clientRect, windowRect;
-			if (wapi.user.getClientRect(state->window.windowHandle, &clientRect) &&
-				wapi.user.getWindowRect(state->window.windowHandle, &windowRect)) {
+			if (wapi.user.getClientRect(appState.window.windowHandle, &clientRect) &&
+				wapi.user.getWindowRect(appState.window.windowHandle, &windowRect)) {
 				int borderWidth = (windowRect.right - windowRect.left) - (clientRect.right - clientRect.left);
 				int borderHeight = (windowRect.bottom - windowRect.top) - (clientRect.bottom - clientRect.top);
 				int newWidth = width + borderWidth;
 				int newHeight = height + borderHeight;
-				wapi.user.setWindowPos(state->window.windowHandle, 0, 0, 0, newWidth, newHeight, SWP_NOZORDER | SWP_NOMOVE | SWP_NOACTIVATE);
+				wapi.user.setWindowPos(appState.window.windowHandle, 0, 0, 0, newWidth, newHeight, SWP_NOZORDER | SWP_NOMOVE | SWP_NOACTIVATE);
 			}
 		}
 
 		fpl_api bool IsWindowResizable() {
-			FPL_ASSERT(platform::global__Win32__State != nullptr);
-			platform::Win32State *state = platform::global__Win32__State;
-			DWORD style = platform::win32_getWindowLong(state->window.windowHandle, GWL_STYLE);
+			FPL_ASSERT(platform::global__AppState != nullptr);
+			const platform::Win32AppState &appState = platform::global__AppState->win32;
+			DWORD style = platform::win32_getWindowLong(appState.window.windowHandle, GWL_STYLE);
 			bool result = (style & WS_THICKFRAME) > 0;
 			return(result);
 		}
 
 		fpl_api void SetWindowResizeable(const bool value) {
-			FPL_ASSERT(platform::global__Win32__State != nullptr);
-			platform::Win32State *state = platform::global__Win32__State;
-			if (!state->currentSettings.window.isFullscreen) {
+			FPL_ASSERT(platform::global__AppState != nullptr);
+			platform::PlatformAppState *appState = platform::global__AppState;
+			const platform::Win32AppState &win32State = appState->win32;
+			if (!appState->currentSettings.window.isFullscreen) {
 				DWORD style;
 				DWORD exStyle;
 				if (value) {
@@ -8338,40 +6829,40 @@ namespace fpl {
 					style = platform::Win32NonResizableWindowStyle;
 					exStyle = platform::Win32NonResizableWindowExtendedStyle;
 				}
-				platform::win32_setWindowLong(state->window.windowHandle, GWL_STYLE, style);
-				platform::win32_setWindowLong(state->window.windowHandle, GWL_EXSTYLE, exStyle);
-				state->currentSettings.window.isResizable = value;
+				platform::win32_setWindowLong(win32State.window.windowHandle, GWL_STYLE, style);
+				platform::win32_setWindowLong(win32State.window.windowHandle, GWL_EXSTYLE, exStyle);
+				appState->currentSettings.window.isResizable = value;
 			}
 		}
 
 		fpl_api bool IsWindowFullscreen() {
-			FPL_ASSERT(platform::global__Win32__State != nullptr);
-			platform::Win32State *state = platform::global__Win32__State;
-			HWND windowHandle = state->window.windowHandle;
+			FPL_ASSERT(platform::global__AppState != nullptr);
+			const platform::Win32AppState &appState = platform::global__AppState->win32;
+			HWND windowHandle = appState.window.windowHandle;
 			DWORD style = platform::win32_getWindowLong(windowHandle, GWL_STYLE);
 			bool result = (style & platform::Win32FullscreenWindowStyle) > 0;
 			return(result);
 		}
 
 		fpl_api bool SetWindowFullscreen(const bool value, const uint32_t fullscreenWidth, const uint32_t fullscreenHeight, const uint32_t refreshRate) {
-			FPL_ASSERT(platform::global__Win32__State != nullptr);
-			platform::Win32State *state = platform::global__Win32__State;
-			platform::Win32APIFunctions &wapi = platform::global__Win32__API__Functions;
-			WindowSettings &windowSettings = state->currentSettings.window;
-			platform::Win32LastWindowInfo *fullscreenState = &state->window.lastFullscreenInfo;
+			FPL_ASSERT(platform::global__AppState != nullptr);
+			platform::PlatformAppState *appState = platform::global__AppState;
+			platform::Win32AppState &win32AppState = appState->win32;
+			WindowSettings &windowSettings = appState->currentSettings.window;
+			platform::Win32LastWindowInfo &fullscreenState = win32AppState.window.lastFullscreenInfo;
+			const platform::Win32APIFunctions &wapi = win32AppState.winApi;
 
-			HWND windowHandle = state->window.windowHandle;
+			HWND windowHandle = win32AppState.window.windowHandle;
 
 			// Save current window info if not already fullscreen
 			if (!windowSettings.isFullscreen) {
-				fullscreenState->isMaximized = !!wapi.user.isZoomed(windowHandle);
-				if (fullscreenState->isMaximized) {
+				fullscreenState.isMaximized = !!wapi.user.isZoomed(windowHandle);
+				if (fullscreenState.isMaximized) {
 					platform::win32_sendMessage(windowHandle, WM_SYSCOMMAND, SC_RESTORE, 0);
 				}
-				fullscreenState->style = platform::win32_getWindowLong(windowHandle, GWL_STYLE);
-				fullscreenState->exStyle = platform::win32_getWindowLong(windowHandle, GWL_EXSTYLE);
-				wapi.user.getWindowPlacement(windowHandle, &fullscreenState->placement);
-				//wapi.user.getWindowRect(windowHandle, &fullscreenState->rect);
+				fullscreenState.style = platform::win32_getWindowLong(windowHandle, GWL_STYLE);
+				fullscreenState.exStyle = platform::win32_getWindowLong(windowHandle, GWL_EXSTYLE);
+				wapi.user.getWindowPlacement(windowHandle, &fullscreenState.placement);
 			}
 
 			if (value) {
@@ -8388,13 +6879,14 @@ namespace fpl {
 		}
 
 		fpl_api WindowPosition GetWindowPosition() {
-			FPL_ASSERT(platform::global__Win32__State != nullptr);
-			platform::Win32State *state = platform::global__Win32__State;
-			platform::Win32APIFunctions &wapi = platform::global__Win32__API__Functions;
+			FPL_ASSERT(platform::global__AppState != nullptr);
+			const platform::Win32AppState &appState = platform::global__AppState->win32;
+			const platform::Win32APIFunctions &wapi = appState.winApi;
+
 			WindowPosition result = {};
 			WINDOWPLACEMENT placement = {};
 			placement.length = sizeof(WINDOWPLACEMENT);
-			if (wapi.user.getWindowPlacement(state->window.windowHandle, &placement) == TRUE) {
+			if (wapi.user.getWindowPlacement(appState.window.windowHandle, &placement) == TRUE) {
 				switch (placement.showCmd) {
 					case SW_MAXIMIZE:
 					{
@@ -8417,24 +6909,25 @@ namespace fpl {
 		}
 
 		fpl_api void SetWindowTitle(const char *title) {
-			FPL_ASSERT(platform::global__Win32__State != nullptr);
-			platform::Win32State *state = platform::global__Win32__State;
-			platform::Win32APIFunctions &wapi = platform::global__Win32__API__Functions;
-			HWND handle = state->window.windowHandle;
+			FPL_ASSERT(platform::global__AppState != nullptr);
+			const platform::Win32AppState &appState = platform::global__AppState->win32;
+			const platform::Win32APIFunctions &wapi = appState.winApi;
 
-			// @FIXME(final): This is not correct to set a ansi text, in unicode we have to use the Wide version!
+			// @TODO(final): Add function for setting the unicode window title!
+			HWND handle = appState.window.windowHandle;
 			wapi.user.setWindowTextA(handle, title);
 		}
 
 		fpl_api void SetWindowPosition(const int32_t left, const int32_t top) {
-			FPL_ASSERT(platform::global__Win32__State != nullptr);
-			platform::Win32State *state = platform::global__Win32__State;
-			platform::Win32APIFunctions &wapi = platform::global__Win32__API__Functions;
+			FPL_ASSERT(platform::global__AppState != nullptr);
+			const platform::Win32AppState &appState = platform::global__AppState->win32;
+			const platform::Win32APIFunctions &wapi = appState.winApi;
+
 			WINDOWPLACEMENT placement = {};
 			placement.length = sizeof(WINDOWPLACEMENT);
 			RECT windowRect;
-			if (wapi.user.getWindowPlacement(state->window.windowHandle, &placement) &&
-				wapi.user.getWindowRect(state->window.windowHandle, &windowRect)) {
+			if (wapi.user.getWindowPlacement(appState.window.windowHandle, &placement) &&
+				wapi.user.getWindowRect(appState.window.windowHandle, &windowRect)) {
 				switch (placement.showCmd) {
 					case SW_NORMAL:
 					case SW_SHOW:
@@ -8443,20 +6936,21 @@ namespace fpl {
 						placement.rcNormalPosition.top = top;
 						placement.rcNormalPosition.right = placement.rcNormalPosition.left + (windowRect.right - windowRect.left);
 						placement.rcNormalPosition.bottom = placement.rcNormalPosition.top + (windowRect.bottom - windowRect.top);
-						wapi.user.setWindowPlacement(state->window.windowHandle, &placement);
+						wapi.user.setWindowPlacement(appState.window.windowHandle, &placement);
 					} break;
 				}
 			}
 		}
 
 		fpl_api void SetWindowCursorEnabled(const bool value) {
-			FPL_ASSERT(platform::global__Win32__State != nullptr);
-			platform::Win32State *state = platform::global__Win32__State;
-			state->window.isCursorActive = value;
+			FPL_ASSERT(platform::global__AppState != nullptr);
+			platform::Win32AppState &appState = platform::global__AppState->win32;
+			appState.window.isCursorActive = value;
 		}
 
 		fpl_api bool PushWindowEvent() {
-			platform::Win32APIFunctions &wapi = platform::global__Win32__API__Functions;
+			FPL_ASSERT(platform::global__AppState != nullptr);
+			const platform::Win32APIFunctions &wapi = platform::global__AppState->win32.winApi;
 			bool result = false;
 			MSG msg;
 			BOOL R = platform::win32_peekMessage(&msg, nullptr, 0, 0, PM_REMOVE);
@@ -8469,43 +6963,48 @@ namespace fpl {
 		}
 
 		fpl_api void UpdateGameControllers() {
-			FPL_ASSERT(platform::global__Win32__State != nullptr);
-			platform::Win32State *state = platform::global__Win32__State;
-			platform::Win32PollControllers(state);
+			FPL_ASSERT(platform::global__AppState != nullptr);
+			platform::PlatformAppState *appState = platform::global__AppState;
+			platform::Win32AppState &win32AppState = appState->win32;
+			const platform::Win32InitState &win32InitState = platform::global__InitState.win32;
+			platform::Win32PollControllers(appState->currentSettings, win32InitState, win32AppState.xinput);
 		}
 
 		fpl_api bool WindowUpdate() {
-			FPL_ASSERT(platform::global__Win32__State != nullptr);
-			platform::Win32State *state = platform::global__Win32__State;
-			platform::Win32APIFunctions &wapi = platform::global__Win32__API__Functions;
+			FPL_ASSERT(platform::global__AppState != nullptr);
+			platform::PlatformAppState *appState = platform::global__AppState;
+			platform::Win32AppState &win32AppState = appState->win32;
+			const platform::Win32InitState &win32InitState = platform::global__InitState.win32;
+			const platform::Win32APIFunctions &wapi = win32AppState.winApi;
+
 			bool result = false;
 
 			// Poll gamepad controller states
-			platform::Win32PollControllers(state);
+			platform::Win32PollControllers(appState->currentSettings, win32InitState, win32AppState.xinput);
 
 			// Poll window events
-			if (state->window.windowHandle != 0) {
+			if (win32AppState.window.windowHandle != 0) {
 				MSG msg;
 				while (platform::win32_peekMessage(&msg, nullptr, 0, 0, PM_REMOVE) != 0) {
 					wapi.user.translateMessage(&msg);
 					platform::win32_dispatchMessage(&msg);
 				}
-				result = state->window.isRunning;
+				result = win32AppState.window.isRunning;
 			}
 
 			return(result);
 		}
 
 		fpl_api bool IsWindowRunning() {
-			FPL_ASSERT(platform::global__Win32__State != nullptr);
-			platform::Win32State *state = platform::global__Win32__State;
-			bool result = state->window.isRunning;
+			FPL_ASSERT(platform::global__AppState != nullptr);
+			const platform::Win32AppState &appState = platform::global__AppState->win32;
+			bool result = appState.window.isRunning;
 			return(result);
 		}
 
 		fpl_api bool PollWindowEvent(Event &ev) {
+			FPL_ASSERT(platform::global__EventQueue != nullptr);
 			platform::EventQueue *eventQueue = platform::global__EventQueue;
-			FPL_ASSERT(eventQueue != nullptr);
 			bool result = false;
 			if (eventQueue->pushCount > 0 && (eventQueue->pollIndex < eventQueue->pushCount)) {
 				uint32_t eventIndex = atomics::AtomicAddU32(&eventQueue->pollIndex, 1);
@@ -8519,18 +7018,18 @@ namespace fpl {
 		}
 
 		fpl_api void ClearWindowEvents() {
+			FPL_ASSERT(platform::global__EventQueue != nullptr);
 			platform::EventQueue *eventQueue = platform::global__EventQueue;
-			FPL_ASSERT(eventQueue != nullptr);
 			atomics::AtomicExchangeU32(&eventQueue->pollIndex, 0);
 			atomics::AtomicExchangeU32(&eventQueue->pushCount, 0);
 		}
 
 		fpl_api char *GetClipboardAnsiText(char *dest, const uint32_t maxDestLen) {
-			FPL_ASSERT(platform::global__Win32__State != nullptr);
-			platform::Win32State *state = platform::global__Win32__State;
-			platform::Win32APIFunctions &wapi = platform::global__Win32__API__Functions;
+			FPL_ASSERT(platform::global__AppState != nullptr);
+			const platform::Win32AppState &appState = platform::global__AppState->win32;
+			const platform::Win32APIFunctions &wapi = appState.winApi;
 			char *result = nullptr;
-			if (wapi.user.openClipboard(state->window.windowHandle)) {
+			if (wapi.user.openClipboard(appState.window.windowHandle)) {
 				if (wapi.user.isClipboardFormatAvailable(CF_TEXT)) {
 					HGLOBAL dataHandle = wapi.user.getClipboardData(CF_TEXT);
 					if (dataHandle != nullptr) {
@@ -8545,11 +7044,11 @@ namespace fpl {
 		}
 
 		fpl_api wchar_t *GetClipboardWideText(wchar_t *dest, const uint32_t maxDestLen) {
-			FPL_ASSERT(platform::global__Win32__State != nullptr);
-			platform::Win32State *state = platform::global__Win32__State;
-			platform::Win32APIFunctions &wapi = platform::global__Win32__API__Functions;
+			FPL_ASSERT(platform::global__AppState != nullptr);
+			const platform::Win32AppState &appState = platform::global__AppState->win32;
+			const platform::Win32APIFunctions &wapi = appState.winApi;
 			wchar_t *result = nullptr;
-			if (wapi.user.openClipboard(state->window.windowHandle)) {
+			if (wapi.user.openClipboard(appState.window.windowHandle)) {
 				if (wapi.user.isClipboardFormatAvailable(CF_UNICODETEXT)) {
 					HGLOBAL dataHandle = wapi.user.getClipboardData(CF_UNICODETEXT);
 					if (dataHandle != nullptr) {
@@ -8564,11 +7063,11 @@ namespace fpl {
 		}
 
 		fpl_api bool SetClipboardText(const char *ansiSource) {
-			FPL_ASSERT(platform::global__Win32__State != nullptr);
-			platform::Win32State *state = platform::global__Win32__State;
-			platform::Win32APIFunctions &wapi = platform::global__Win32__API__Functions;
+			FPL_ASSERT(platform::global__AppState != nullptr);
+			const platform::Win32AppState &appState = platform::global__AppState->win32;
+			const platform::Win32APIFunctions &wapi = appState.winApi;
 			bool result = false;
-			if (wapi.user.openClipboard(state->window.windowHandle)) {
+			if (wapi.user.openClipboard(appState.window.windowHandle)) {
 				const uint32_t ansiLen = strings::GetAnsiStringLength(ansiSource);
 				const uint32_t ansiBufferLen = ansiLen + 1;
 				HGLOBAL handle = GlobalAlloc(GMEM_MOVEABLE, (SIZE_T)ansiBufferLen * sizeof(char));
@@ -8586,11 +7085,11 @@ namespace fpl {
 		}
 
 		fpl_api bool SetClipboardText(const wchar_t *wideSource) {
-			FPL_ASSERT(platform::global__Win32__State != nullptr);
-			platform::Win32State *state = platform::global__Win32__State;
-			platform::Win32APIFunctions &wapi = platform::global__Win32__API__Functions;
+			FPL_ASSERT(platform::global__AppState != nullptr);
+			const platform::Win32AppState &appState = platform::global__AppState->win32;
+			const platform::Win32APIFunctions &wapi = appState.winApi;
 			bool result = false;
-			if (wapi.user.openClipboard(state->window.windowHandle)) {
+			if (wapi.user.openClipboard(appState.window.windowHandle)) {
 				const uint32_t wideLen = strings::GetWideStringLength(wideSource);
 				const uint32_t wideBufferLen = wideLen + 1;
 				HGLOBAL handle = GlobalAlloc(GMEM_MOVEABLE, (SIZE_T)wideBufferLen * sizeof(wchar_t));
@@ -8608,32 +7107,6 @@ namespace fpl {
 		}
 	} // window
 #endif // FPL_ENABLE_WINDOW
-
-	//
-	// Error state
-	//
-	fpl_api const Settings &GetCurrentSettings() {
-		FPL_ASSERT(platform::global__Win32__State != nullptr);
-		const platform::Win32State *state = platform::global__Win32__State;
-		return (state->currentSettings);
-	}
-
-	fpl_api void ReleasePlatform() {
-		if (!platform::global__Win32__AppState.isInitialized) {
-			common::PushError("Platform is not initialized");
-			return;
-		}
-		platform::Win32ReleasePlatform();
-	}
-
-	fpl_api bool InitPlatform(const InitFlags initFlags, const Settings &initSettings) {
-		if (platform::global__Win32__AppState.isInitialized) {
-			common::PushError("Platform is already initialized");
-			return false;
-		}
-		bool result = platform::Win32InitPlatform(initFlags, initSettings);
-		return(result);
-	}
 
 } // fpl
 
@@ -8667,7 +7140,7 @@ int WINAPI WinMain(HINSTANCE appInstance, HINSTANCE prevInstance, LPSTR cmdLine,
 // POSIX Platform (Linux, Unix)
 //
 // ****************************************************************************
-#if defined(FPL_PLATFORM_POSIX)
+#if defined(FPL_SUBPLATFORM_POSIX)
 #include <sys/mman.h> // mmap, munmap
 #include <sys/types.h> // data types
 #include <sys/stat.h> // mkdir
@@ -9442,7 +7915,7 @@ namespace fpl {
 
 }
 
-#endif // FPL_PLATFORM_POSIX
+#endif // FPL_SUBPLATFORM_POSIX
 
 // ****************************************************************************
 //
@@ -9590,13 +8063,30 @@ namespace fpl {
 // Audio Drivers
 //
 // ****************************************************************************
+namespace fpl {
+	namespace common {
+		struct CommonAudioState {
+			AudioDeviceFormat internalFormat;
+			AudioClientReadFunction *clientReadCallback;
+			void *clientUserData;
+		};
+
+		fpl_internal_inline uint32_t ReadAudioFramesFromClient(const CommonAudioState &commonAudio, uint32_t frameCount, void *pSamples) {
+			uint32_t outputSamplesWritten = 0;
+			if (commonAudio.clientReadCallback != nullptr) {
+				outputSamplesWritten = commonAudio.clientReadCallback(commonAudio.internalFormat, frameCount, pSamples, commonAudio.clientUserData);
+			}
+			return outputSamplesWritten;
+		}
+	}
+}
+
 #if defined(FPL_ENABLE_AUDIO_DIRECTSOUND)
 #	include <mmreg.h>
 #	include <dsound.h>
 #endif
 namespace fpl {
 	namespace drivers {
-
 #	if defined(FPL_ENABLE_AUDIO_DIRECTSOUND)
 		//
 		// DirectSound
@@ -9661,7 +8151,7 @@ namespace fpl {
 			return(result);
 		}
 
-		fpl_internal bool ReleaseDirectSound(const audio::CommonAudioState &commonAudio, DirectSoundState &dsoundState) {
+		fpl_internal bool ReleaseDirectSound(const common::CommonAudioState &commonAudio, DirectSoundState &dsoundState) {
 			if (dsoundState.dsoundLibrary != nullptr) {
 				if (dsoundState.stopEvent != nullptr) {
 					CloseHandle(dsoundState.stopEvent);
@@ -9696,7 +8186,12 @@ namespace fpl {
 			return true;
 		}
 
-		fpl_internal audio::AudioResult InitDirectSound(const AudioSettings &audioSettings, audio::CommonAudioState &commonAudio, DirectSoundState &dsoundState) {
+		fpl_internal audio::AudioResult InitDirectSound(const AudioSettings &audioSettings, common::CommonAudioState &commonAudio, DirectSoundState &dsoundState) {
+			FPL_ASSERT(platform::global__AppState != nullptr);
+			platform::PlatformAppState *appState = platform::global__AppState;
+			platform::Win32AppState &win32AppState = appState->win32;
+			const platform::Win32APIFunctions &apiFuncs = win32AppState.winApi;
+
 			// Load direct sound library
 			dsoundState.dsoundLibrary = LoadLibraryA("dsound.dll");
 			func_DirectSoundCreate *directSoundCreate = (func_DirectSoundCreate *)GetProcAddress(dsoundState.dsoundLibrary, "DirectSoundCreate");
@@ -9732,15 +8227,14 @@ namespace fpl {
 			}
 
 			// Get either local window handle or desktop handle
-			FPL_ASSERT(platform::global__Win32__State != nullptr);
 			HWND windowHandle = nullptr;
 #if defined(FPL_ENABLE_WINDOW)
-			if (platform::global__Win32__State->initFlags & InitFlags::Window) {
-				windowHandle = platform::global__Win32__State->window.windowHandle;
+			if (appState->initFlags & InitFlags::Window) {
+				windowHandle = win32AppState.window.windowHandle;
 			}
 #endif
 			if (windowHandle == nullptr) {
-				windowHandle = platform::global__Win32__API__Functions.user.getDesktopWindow();
+				windowHandle = apiFuncs.user.getDesktopWindow();
 			}
 
 			// The cooperative level must be set before doing anything else
@@ -9867,7 +8361,7 @@ namespace fpl {
 			SetEvent(dsoundState.stopEvent);
 		}
 
-		fpl_internal bool GetCurrentFrameDirectSound(const audio::CommonAudioState &commonAudio, DirectSoundState &dsoundState, uint32_t* pCurrentPos) {
+		fpl_internal bool GetCurrentFrameDirectSound(const common::CommonAudioState &commonAudio, DirectSoundState &dsoundState, uint32_t* pCurrentPos) {
 			FPL_ASSERT(pCurrentPos != nullptr);
 			*pCurrentPos = 0;
 
@@ -9882,7 +8376,7 @@ namespace fpl {
 			return true;
 		}
 
-		fpl_internal uint32_t GetAvailableFramesDirectSound(const audio::CommonAudioState &commonAudio, DirectSoundState &dsoundState) {
+		fpl_internal uint32_t GetAvailableFramesDirectSound(const common::CommonAudioState &commonAudio, DirectSoundState &dsoundState) {
 			// Get current frame from current play position
 			uint32_t currentFrame;
 			if (!GetCurrentFrameDirectSound(commonAudio, dsoundState, &currentFrame)) {
@@ -9906,7 +8400,7 @@ namespace fpl {
 			return totalFrameCount - committedSize;
 		}
 
-		fpl_internal uint32_t WaitForFramesDirectSound(const audio::CommonAudioState &commonAudio, DirectSoundState &dsoundState) {
+		fpl_internal uint32_t WaitForFramesDirectSound(const common::CommonAudioState &commonAudio, DirectSoundState &dsoundState) {
 			FPL_ASSERT(commonAudio.internalFormat.sampleRate > 0);
 			FPL_ASSERT(commonAudio.internalFormat.periods > 0);
 
@@ -9946,7 +8440,7 @@ namespace fpl {
 			return true;
 		}
 
-		fpl_internal audio::AudioResult StartDirectSound(const audio::CommonAudioState &commonAudio, DirectSoundState &dsoundState) {
+		fpl_internal audio::AudioResult StartDirectSound(const common::CommonAudioState &commonAudio, DirectSoundState &dsoundState) {
 			FPL_ASSERT(commonAudio.internalFormat.channels > 0);
 			FPL_ASSERT(commonAudio.internalFormat.periods > 0);
 			uint32_t audioSampleSizeBytes = audio::GetAudioSampleSizeInBytes(commonAudio.internalFormat.type);
@@ -9962,7 +8456,7 @@ namespace fpl {
 			DWORD actualLockSize2;
 			if (SUCCEEDED(dsoundState.secondaryBuffer->Lock(0, desiredLockSize, &pLockPtr, &actualLockSize, &pLockPtr2, &actualLockSize2, 0))) {
 				framesToRead = actualLockSize / audioSampleSizeBytes / commonAudio.internalFormat.channels;
-				audio::ReadAudioFramesFromClient(commonAudio, framesToRead, pLockPtr);
+				common::ReadAudioFramesFromClient(commonAudio, framesToRead, pLockPtr);
 				dsoundState.secondaryBuffer->Unlock(pLockPtr, actualLockSize, pLockPtr2, actualLockSize2);
 				dsoundState.lastProcessedFrame = framesToRead;
 				if (FAILED(dsoundState.secondaryBuffer->Play(0, 0, DSBPLAY_LOOPING))) {
@@ -9974,7 +8468,7 @@ namespace fpl {
 			return audio::AudioResult::Success;
 		}
 
-		fpl_internal void DirectSoundMainLoop(const audio::CommonAudioState &commonAudio, DirectSoundState &dsoundState) {
+		fpl_internal void DirectSoundMainLoop(const common::CommonAudioState &commonAudio, DirectSoundState &dsoundState) {
 			FPL_ASSERT(commonAudio.internalFormat.channels > 0);
 			uint32_t audioSampleSizeBytes = audio::GetAudioSampleSizeInBytes(commonAudio.internalFormat.type);
 			FPL_ASSERT(audioSampleSizeBytes > 0);
@@ -10011,7 +8505,7 @@ namespace fpl {
 
 					// Read actual frames from user
 					uint32_t frameCount = actualLockSize / audioSampleSizeBytes / commonAudio.internalFormat.channels;
-					audio::ReadAudioFramesFromClient(commonAudio, frameCount, pLockPtr);
+					common::ReadAudioFramesFromClient(commonAudio, frameCount, pLockPtr);
 					dsoundState.lastProcessedFrame = (dsoundState.lastProcessedFrame + frameCount) % commonAudio.internalFormat.bufferSizeInFrames;
 
 					// Unlock playback buffer
@@ -10034,11 +8528,11 @@ namespace fpl {
 // ****************************************************************************
 namespace fpl {
 
+	namespace common {
 //
 // Audio
 //
 #if defined(FPL_ENABLE_AUDIO)
-	namespace audio {
 		enum class AudioDeviceState : uint32_t {
 			Uninitialized = 0,
 			Stopped,
@@ -10056,7 +8550,7 @@ namespace fpl {
 			threading::ThreadSignal stopSignal;
 			threading::ThreadSignal wakeupSignal;
 			volatile AudioDeviceState state;
-			volatile AudioResult workResult;
+			volatile audio::AudioResult workResult;
 
 			AudioDriverType activeDriver;
 			uint32_t periods;
@@ -10080,7 +8574,7 @@ namespace fpl {
 #			if defined(FPL_ENABLE_AUDIO_DIRECTSOUND)
 				case AudioDriverType::DirectSound:
 				{
-					StopMainLoopDirectSound(audioState.dsound);
+					drivers::StopMainLoopDirectSound(audioState.dsound);
 				} break;
 #			endif
 
@@ -10097,7 +8591,7 @@ namespace fpl {
 #			if defined(FPL_ENABLE_AUDIO_DIRECTSOUND)
 				case AudioDriverType::DirectSound:
 				{
-					result = ReleaseDirectSound(audioState.common, audioState.dsound);
+					result = drivers::ReleaseDirectSound(audioState.common, audioState.dsound);
 				} break;
 #			endif
 
@@ -10115,7 +8609,7 @@ namespace fpl {
 #			if defined(FPL_ENABLE_AUDIO_DIRECTSOUND)
 				case AudioDriverType::DirectSound:
 				{
-					result = StopDirectSound(audioState.dsound);
+					result = drivers::StopDirectSound(audioState.dsound);
 				} break;
 #			endif
 
@@ -10125,15 +8619,15 @@ namespace fpl {
 			return (result);
 		}
 
-		fpl_internal AudioResult AudioStartDevice(AudioState &audioState) {
+		fpl_internal audio::AudioResult AudioStartDevice(AudioState &audioState) {
 			FPL_ASSERT(audioState.activeDriver > AudioDriverType::Auto);
-			AudioResult result = AudioResult::Failed;
+			audio::AudioResult result = audio::AudioResult::Failed;
 			switch (audioState.activeDriver) {
 
 #			if defined(FPL_ENABLE_AUDIO_DIRECTSOUND)
 				case AudioDriverType::DirectSound:
 				{
-					result = StartDirectSound(audioState.common, audioState.dsound);
+					result = drivers::StartDirectSound(audioState.common, audioState.dsound);
 				} break;
 #			endif
 
@@ -10150,7 +8644,7 @@ namespace fpl {
 #			if defined(FPL_ENABLE_AUDIO_DIRECTSOUND)
 				case AudioDriverType::DirectSound:
 				{
-					DirectSoundMainLoop(audioState.common, audioState.dsound);
+					drivers::DirectSoundMainLoop(audioState.common, audioState.dsound);
 				} break;
 #			endif
 
@@ -10194,12 +8688,17 @@ namespace fpl {
 		}
 
 		fpl_internal void AudioWorkerThread(const threading::ThreadContext &context, void *data) {
+#		if defined(FPL_PLATFORM_WIN32)
+			FPL_ASSERT(platform::global__AppState != nullptr);
+			const platform::Win32APIFunctions &wapi = platform::global__AppState->win32.winApi;
+#		endif
+
 			AudioState *audioState = (AudioState *)data;
 			FPL_ASSERT(audioState != nullptr);
 			FPL_ASSERT(audioState->activeDriver != AudioDriverType::None);
 
 #		if defined(FPL_PLATFORM_WIN32)
-			platform::global__Win32__API__Functions.ole.coInitializeEx(nullptr, 0);
+			wapi.ole.coInitializeEx(nullptr, 0);
 #		endif
 
 			for (;;) {
@@ -10214,7 +8713,7 @@ namespace fpl {
 				threading::SignalWaitForOne(audioState->lock, audioState->wakeupSignal);
 
 				// Default result code.
-				audioState->workResult = AudioResult::Success;
+				audioState->workResult = audio::AudioResult::Success;
 
 				// Just break if we're terminating.
 				if (AudioGetDeviceState(*audioState) == AudioDeviceState::Uninitialized) {
@@ -10226,7 +8725,7 @@ namespace fpl {
 
 				// Start audio device
 				audioState->workResult = AudioStartDevice(*audioState);
-				if (audioState->workResult != AudioResult::Success) {
+				if (audioState->workResult != audio::AudioResult::Success) {
 					threading::SignalWakeUp(audioState->startSignal);
 					continue;
 				}
@@ -10243,11 +8742,198 @@ namespace fpl {
 			threading::SignalWakeUp(audioState->stopSignal);
 
 #		if defined(FPL_PLATFORM_WIN32)
-			platform::global__Win32__API__Functions.ole.coUninitialize();
+			wapi.ole.coUninitialize();
 #		endif
 		}
 
+		fpl_internal void ReleaseAudio() {
+#		if defined(FPL_PLATFORM_WIN32)
+			FPL_ASSERT(platform::global__AppState != nullptr);
+			const platform::Win32APIFunctions &wapi = platform::global__AppState->win32.winApi;
+#		endif
+
+			AudioState *audioState = &global__Audio__State;
+
+			if (!IsAudioDeviceInitialized(audioState)) {
+				return;
+			}
+
+			if (IsAudioDeviceStarted(audioState)) {
+				// Wait until the audio device is started
+				while (audio::StopAudio() == audio::AudioResult::DeviceBusy) {
+					threading::ThreadSleep(1);
+				}
+			}
+
+			// Putting the device into an uninitialized state will make the worker thread return.
+			AudioSetDeviceState(*audioState, AudioDeviceState::Uninitialized);
+
+			// Wake up the worker thread and wait for it to properly terminate.
+			SignalWakeUp(audioState->wakeupSignal);
+			ThreadWaitForOne(audioState->workerThread);
+			ThreadDestroy(audioState->workerThread);
+
+			// Release signals and thread
+			threading::SignalDestroy(audioState->stopSignal);
+			threading::SignalDestroy(audioState->startSignal);
+			threading::SignalDestroy(audioState->wakeupSignal);
+			threading::MutexDestroy(audioState->lock);
+
+			// Release audio device
+			AudioReleaseDevice(*audioState);
+
+			*audioState = {};
+
+#		if defined(FPL_PLATFORM_WIN32)
+			wapi.ole.coUninitialize();
+#		endif
+		}
+
+		fpl_internal audio::AudioResult InitAudio(const AudioSettings &audioSettings) {
+#		if defined(FPL_PLATFORM_WIN32)
+			FPL_ASSERT(platform::global__AppState != nullptr);
+			const platform::Win32APIFunctions &wapi = platform::global__AppState->win32.winApi;
+#		endif
+			AudioState *audioState = &global__Audio__State;
+
+			if (audioState->activeDriver != AudioDriverType::None) {
+				return audio::AudioResult::Failed;
+			}
+
+			if (audioSettings.deviceFormat.channels == 0) {
+				return audio::AudioResult::Failed;
+			}
+			if (audioSettings.deviceFormat.sampleRate == 0) {
+				return audio::AudioResult::Failed;
+			}
+			if (audioSettings.bufferSizeInMilliSeconds == 0) {
+				return audio::AudioResult::Failed;
+			}
+
+			*audioState = {};
+			audioState->common.clientReadCallback = audioSettings.clientReadCallback;
+			audioState->common.clientUserData = audioSettings.userData;
+
+#		if defined(FPL_PLATFORM_WIN32)
+			wapi.ole.coInitializeEx(nullptr, 0);
+#		endif
+
+			// Create mutex and signals
+			audioState->lock = threading::MutexCreate();
+			if (!audioState->lock.isValid) {
+				ReleaseAudio();
+				return audio::AudioResult::Failed;
+			}
+			audioState->wakeupSignal = threading::SignalCreate();
+			if (!audioState->wakeupSignal.isValid) {
+				ReleaseAudio();
+				return audio::AudioResult::Failed;
+			}
+			audioState->startSignal = threading::SignalCreate();
+			if (!audioState->startSignal.isValid) {
+				ReleaseAudio();
+				return audio::AudioResult::Failed;
+			}
+			audioState->stopSignal = threading::SignalCreate();
+			if (!audioState->stopSignal.isValid) {
+				ReleaseAudio();
+				return audio::AudioResult::Failed;
+			}
+
+			// Prope drivers
+			AudioDriverType propeDrivers[16];
+			uint32_t driverCount = 0;
+			if (audioSettings.driver == AudioDriverType::Auto) {
+				// @NOTE(final): Add all audio drivers here, regardless of the platform.
+				propeDrivers[driverCount++] = AudioDriverType::DirectSound;
+			} else {
+				// @NOTE(final): Forced audio driver
+				propeDrivers[driverCount++] = audioSettings.driver;
+			}
+			audio::AudioResult initResult = audio::AudioResult::Failed;
+			for (uint32_t driverIndex = 0; driverIndex < driverCount; ++driverIndex) {
+				AudioDriverType propeDriver = propeDrivers[driverIndex];
+
+				initResult = audio::AudioResult::Failed;
+				switch (propeDriver) {
+
+#				if defined(FPL_ENABLE_AUDIO_DIRECTSOUND)
+					case AudioDriverType::DirectSound:
+					{
+						initResult = drivers::InitDirectSound(audioSettings, audioState->common, audioState->dsound);
+						if (initResult != audio::AudioResult::Success) {
+							drivers::ReleaseDirectSound(audioState->common, audioState->dsound);
+						}
+					} break;
+#				endif
+
+					default:
+						break;
+				}
+				if (initResult == audio::AudioResult::Success) {
+					audioState->activeDriver = propeDriver;
+					audioState->isAsyncDriver = IsAudioDriverAsync(propeDriver);
+					break;
+				}
+			}
+
+			if (initResult != audio::AudioResult::Success) {
+				ReleaseAudio();
+				return initResult;
+			}
+
+			if (!audioState->isAsyncDriver) {
+				// Create and start worker thread
+				audioState->workerThread = threading::ThreadCreate(AudioWorkerThread, audioState, true);
+				if (audioState->workerThread == nullptr) {
+					ReleaseAudio();
+					return audio::AudioResult::Failed;
+				}
+				// Wait for the worker thread to put the device into the stopped state.
+				SignalWaitForOne(audioState->lock, audioState->stopSignal);
+			} else {
+				AudioSetDeviceState(*audioState, AudioDeviceState::Stopped);
+			}
+
+			FPL_ASSERT(AudioGetDeviceState(*audioState) == AudioDeviceState::Stopped);
+
+			return(audio::AudioResult::Success);
+		}
+
+#endif // FPL_ENABLE_AUDIO
+
+		fpl_internal void ReleasePlatformResources(platform::PlatformInitState &initState, platform::PlatformAppState *appState) {
+#		if defined(FPL_ENABLE_AUDIO)
+			ReleaseAudio();
+#		endif
+
+			if (appState != nullptr) {
+				// Release actual platform
+#			if defined(FPL_PLATFORM_WIN32)
+				platform::Win32ReleasePlatform(initState, appState);
+#			endif
+
+				// Release platform applicatiom state memory
+				memory::MemoryAlignedFree(appState);
+				platform::global__AppState = nullptr;
+			}
+
+#		if defined(FPL_ENABLE_WINDOW)
+			if (platform::global__EventQueue != nullptr) {
+				memory::MemoryAlignedFree(platform::global__EventQueue);
+				platform::global__EventQueue = nullptr;
+			}
+#		endif
+
+			initState.isInitialized = false;
+		}
+
+	} // common
+
+#if defined(FPL_ENABLE_AUDIO)
+	namespace audio {
 		fpl_api AudioResult StopAudio() {
+			using namespace common;
 			AudioState *audioState = &global__Audio__State;
 
 			if (AudioGetDeviceState(*audioState) == AudioDeviceState::Uninitialized) {
@@ -10296,6 +8982,7 @@ namespace fpl {
 		}
 
 		fpl_api AudioResult PlayAudio() {
+			using namespace common;
 			AudioState *audioState = &global__Audio__State;
 
 			if (!IsAudioDeviceInitialized(audioState)) {
@@ -10342,157 +9029,13 @@ namespace fpl {
 			return result;
 		}
 
-		fpl_internal void ReleaseAudio() {
-			AudioState *audioState = &global__Audio__State;
-
-			if (!IsAudioDeviceInitialized(audioState)) {
-				return;
-			}
-
-			if (IsAudioDeviceStarted(audioState)) {
-				// Wait until the audio device is started
-				while (StopAudio() == AudioResult::DeviceBusy) {
-					threading::ThreadSleep(1);
-				}
-			}
-
-			// Putting the device into an uninitialized state will make the worker thread return.
-			AudioSetDeviceState(*audioState, AudioDeviceState::Uninitialized);
-
-			// Wake up the worker thread and wait for it to properly terminate.
-			SignalWakeUp(audioState->wakeupSignal);
-			ThreadWaitForOne(audioState->workerThread);
-			ThreadDestroy(audioState->workerThread);
-
-			// Release signals and thread
-			threading::SignalDestroy(audioState->stopSignal);
-			threading::SignalDestroy(audioState->startSignal);
-			threading::SignalDestroy(audioState->wakeupSignal);
-			threading::MutexDestroy(audioState->lock);
-
-			// Release audio device
-			AudioReleaseDevice(*audioState);
-
-			*audioState = {};
-
-#		if defined(FPL_PLATFORM_WIN32)
-			platform::global__Win32__API__Functions.ole.coUninitialize();
-#		endif
-		}
-
-		fpl_internal AudioResult InitAudio(const AudioSettings &audioSettings) {
-			AudioState *audioState = &global__Audio__State;
-
-			if (audioState->activeDriver != AudioDriverType::None) {
-				return AudioResult::Failed;
-			}
-
-			if (audioSettings.deviceFormat.channels == 0) {
-				return AudioResult::Failed;
-			}
-			if (audioSettings.deviceFormat.sampleRate == 0) {
-				return AudioResult::Failed;
-			}
-			if (audioSettings.bufferSizeInMilliSeconds == 0) {
-				return AudioResult::Failed;
-			}
-
-			*audioState = {};
-			audioState->common.clientReadCallback = audioSettings.clientReadCallback;
-			audioState->common.clientUserData = audioSettings.userData;
-
-#		if defined(FPL_PLATFORM_WIN32)
-			platform::global__Win32__API__Functions.ole.coInitializeEx(nullptr, 0);
-#		endif
-
-			// Create mutex and signals
-			audioState->lock = threading::MutexCreate();
-			if (!audioState->lock.isValid) {
-				ReleaseAudio();
-				return AudioResult::Failed;
-			}
-			audioState->wakeupSignal = threading::SignalCreate();
-			if (!audioState->wakeupSignal.isValid) {
-				ReleaseAudio();
-				return AudioResult::Failed;
-			}
-			audioState->startSignal = threading::SignalCreate();
-			if (!audioState->startSignal.isValid) {
-				ReleaseAudio();
-				return AudioResult::Failed;
-			}
-			audioState->stopSignal = threading::SignalCreate();
-			if (!audioState->stopSignal.isValid) {
-				ReleaseAudio();
-				return AudioResult::Failed;
-			}
-
-			// Prope drivers
-			AudioDriverType propeDrivers[16];
-			uint32_t driverCount = 0;
-			if (audioSettings.driver == AudioDriverType::Auto) {
-				// @NOTE(final): Add all audio drivers here, regardless of the platform.
-				propeDrivers[driverCount++] = AudioDriverType::DirectSound;
-			} else {
-				// @NOTE(final): Forced audio driver
-				propeDrivers[driverCount++] = audioSettings.driver;
-			}
-			AudioResult initResult = AudioResult::Failed;
-			for (uint32_t driverIndex = 0; driverIndex < driverCount; ++driverIndex) {
-				AudioDriverType propeDriver = propeDrivers[driverIndex];
-
-				initResult = AudioResult::Failed;
-				switch (propeDriver) {
-
-#				if defined(FPL_ENABLE_AUDIO_DIRECTSOUND)
-					case AudioDriverType::DirectSound:
-					{
-						initResult = drivers::InitDirectSound(audioSettings, audioState->common, audioState->dsound);
-						if (initResult != AudioResult::Success) {
-							drivers::ReleaseDirectSound(audioState->common, audioState->dsound);
-						}
-					} break;
-#				endif
-
-					default:
-						break;
-				}
-				if (initResult == AudioResult::Success) {
-					audioState->activeDriver = propeDriver;
-					audioState->isAsyncDriver = IsAudioDriverAsync(propeDriver);
-					break;
-				}
-			}
-
-			if (initResult != AudioResult::Success) {
-				ReleaseAudio();
-				return initResult;
-			}
-
-			if (!audioState->isAsyncDriver) {
-				// Create and start worker thread
-				audioState->workerThread = threading::ThreadCreate(AudioWorkerThread, audioState, true);
-				if (audioState->workerThread == nullptr) {
-					ReleaseAudio();
-					return AudioResult::Failed;
-				}
-				// Wait for the worker thread to put the device into the stopped state.
-				SignalWaitForOne(audioState->lock, audioState->stopSignal);
-			} else {
-				AudioSetDeviceState(*audioState, AudioDeviceState::Stopped);
-			}
-
-			FPL_ASSERT(AudioGetDeviceState(*audioState) == AudioDeviceState::Stopped);
-
-			return(AudioResult::Success);
-		}
-
 		fpl_api const AudioDeviceFormat &GetAudioHardwareFormat() {
-			AudioState *audioState = &global__Audio__State;
+			common::AudioState *audioState = &common::global__Audio__State;
 			return audioState->common.internalFormat;
 		}
 
 		fpl_api void SetAudioClientReadCallback(AudioClientReadFunction *newCallback, void *userData) {
+			using namespace common;
 			AudioState *audioState = &global__Audio__State;
 			if (audioState->activeDriver > AudioDriverType::Auto) {
 				if (AudioGetDeviceState(*audioState) == AudioDeviceState::Stopped) {
@@ -10503,6 +9046,7 @@ namespace fpl {
 		}
 
 		fpl_api uint32_t GetAudioDevices(AudioDeviceID *devices, uint32_t maxDeviceCount) {
+			using namespace common;
 			if (devices == nullptr) {
 				return 0;
 			}
@@ -10526,9 +9070,6 @@ namespace fpl {
 	} // audio
 #endif // FPL_ENABLE_AUDIO
 
-	//
-	// Error State
-	//
 	fpl_api const char *GetPlatformError() {
 		const char *result = "";
 		const common::ErrorState &errorState = common::global__LastErrorState;
@@ -10568,6 +9109,94 @@ namespace fpl {
 	fpl_api void ClearPlatformErrors() {
 		common::ErrorState &errorState = common::global__LastErrorState;
 		memory::MemoryClear(&errorState, sizeof(errorState));
+	}
+
+	fpl_api const Settings &GetCurrentSettings() {
+		FPL_ASSERT(platform::global__AppState != nullptr);
+		const platform::PlatformAppState *appState = platform::global__AppState;
+		return (appState->currentSettings);
+	}
+
+	fpl_api void ReleasePlatform() {
+		// Exit out if platform is not initialized
+		platform::PlatformInitState &initState = platform::global__InitState;
+		if (!initState.isInitialized) {
+			common::PushError("Platform is not initialized");
+			return;
+		}
+		platform::PlatformAppState *appState = platform::global__AppState;
+		common::ReleasePlatformResources(initState, appState);
+	}
+
+	fpl_api bool InitPlatform(const InitFlags initFlags, const Settings &initSettings) {
+		// Exit out if platform is already initialized
+		if (platform::global__InitState.isInitialized) {
+			common::PushError("Platform is already initialized");
+			return false;
+		}
+
+		// Allocate platform app state memory
+		FPL_ASSERT(platform::global__AppState == nullptr);
+		size_t platformAppStateSize = sizeof(platform::PlatformAppState);
+		void *platformAppStateMemory = memory::MemoryAlignedAllocate(platformAppStateSize, 16);
+		if (platformAppStateMemory == nullptr) {
+			common::PushError("Failed allocating app state memory of size '%zu'", platformAppStateSize);
+			return false;
+		}
+
+		// Setup platform app state
+		platform::PlatformAppState *appState = platform::global__AppState = (platform::PlatformAppState *)platformAppStateMemory;
+		appState->initSettings = initSettings;
+		appState->initFlags = initFlags;
+		appState->currentSettings = initSettings;
+
+		// Reset platform init state
+		platform::PlatformInitState &initState = platform::global__InitState;
+		initState = {};
+
+#	if defined(FPL_ENABLE_VIDEO) && defined(FPL_ENABLE_WINDOW)
+			// Window is required for video always
+		if (appState->initFlags & InitFlags::Video) {
+			appState->initFlags |= InitFlags::Window;
+		}
+#	endif
+
+#	if defined(FPL_ENABLE_WINDOW)
+		// Allocate event queue
+		size_t eventQueueMemorySize = sizeof(platform::EventQueue);
+		void *eventQueueMemory = memory::MemoryAlignedAllocate(eventQueueMemorySize, 16);
+		if (eventQueueMemory == nullptr) {
+			common::PushError("Failed Allocating Event Queue Memory with size '%zu'", eventQueueMemorySize);
+			common::ReleasePlatformResources(initState, appState);
+			return false;
+		}
+		platform::global__EventQueue = (platform::EventQueue *)eventQueueMemory;
+#	endif
+
+		// Initialize the actual platform
+		bool isInitialized = false;
+#	if defined(FPL_PLATFORM_WIN32)
+		isInitialized = platform::Win32InitPlatform(appState->initFlags, initSettings, initState, appState);
+#	endif
+
+		if (isInitialized) {
+
+#		if defined(FPL_ENABLE_AUDIO)
+			if (appState->initFlags & InitFlags::Audio) {
+				if (common::InitAudio(initSettings.audio) != audio::AudioResult::Success) {
+					common::PushError("Failed initialization audio with settings (Driver=%s, Format=%s, SampleRate=%d, Channels=%d, BufferSize=%d)", audio::GetAudioDriverString(initSettings.audio.driver), audio::GetAudioFormatString(initSettings.audio.deviceFormat.type), initSettings.audio.deviceFormat.sampleRate, initSettings.audio.deviceFormat.channels);
+					common::ReleasePlatformResources(initState, appState);
+					return false;
+				}
+			}
+#		endif
+
+			initState.isInitialized = true;
+			return true;
+		} else {
+			common::ReleasePlatformResources(initState, appState);
+			return false;
+		}
 	}
 
 } // fpl
