@@ -17,7 +17,6 @@ This demo plays a contiguous sine or square wave in the expected S16 format.
 #define FPL_NO_WINDOW
 #include <final_platform_layer.hpp>
 #include <math.h> // sinf
-#include <stdio.h> // getchar
 
 struct AudioTest {
 	uint32_t toneHz;
@@ -30,6 +29,7 @@ struct AudioTest {
 static const float PI32 = 3.14159265359f;
 
 using namespace fpl;
+using namespace fpl::console;
 
 static uint32_t FillAudioBuffer(const AudioDeviceFormat &nativeFormat, const uint32_t frameCount, void *outputSamples, void *userData) {
 	AudioTest *audioTest = (AudioTest *)userData;
@@ -82,22 +82,22 @@ int main(int argc, char **args) {
 		uint32_t deviceCount = audio::GetAudioDevices(audioDevices, FPL_ARRAYCOUNT(audioDevices));
 		if (deviceCount > 0) {
 			settings.audio.deviceID = audioDevices[0];
-			console::ConsoleFormatOut("Using audio device: %s\n", settings.audio.deviceID.name);
+			ConsoleFormatOut("Using audio device: %s\n", settings.audio.deviceID.name);
 		}
 		ReleasePlatform();
 	}
 
 	// Initialize the platform with audio enabled and the settings
 	if (InitPlatform(InitFlags::Audio, settings)) {
+		// Print out the native audio format
+		AudioDeviceFormat nativeFormat = audio::GetAudioHardwareFormat();
 		// You can overwrite the client read callback and user data if you want to
 		audio::SetAudioClientReadCallback(FillAudioBuffer, &audioTest);
 		// Start audio playback (This will start calling clientReadCallback regulary)
 		if (audio::PlayAudio() == audio::AudioResult::Success) {
-			// Print out the native audio format
-			AudioDeviceFormat nativeFormat = audio::GetAudioHardwareFormat();
-			console::ConsoleFormatOut("Audio with %lu KHz and %lu channels is playing, press any key to stop playback...\n", nativeFormat.sampleRate, nativeFormat.channels);
+			ConsoleFormatOut("Audio with %lu KHz and %lu channels is playing, press any key to stop playback...\n", nativeFormat.sampleRate, nativeFormat.channels);
 			// Wait for any key presses
-			getchar();
+			ConsoleWaitForCharInput();
 			// Stop audio playback
 			audio::StopAudio();
 		}
