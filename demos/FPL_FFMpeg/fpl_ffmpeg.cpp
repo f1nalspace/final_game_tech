@@ -24,6 +24,7 @@ Written by Torsten Spaete
 [x] Aspect ratio calculation
 [x] Fullscreen toggling
 [x] Modern OpenGL 3.3
+[ ] OSD
 [ ] Seeking (+/- 5 secs)
 [ ] Frame by frame stepping
 [ ] Support for audio format change while playing
@@ -31,13 +32,12 @@ Written by Torsten Spaete
 [x] Image format conversion (YUY2, YUV > RGB24 etc.)
 	[x] GLSL (YUV420P for now)
 	[x] Slow CPU implementation (YUV420P for now)
-[ ] Composite video rendering
-	[ ] OSD
-	[ ] Bitmap rect blitting
-	[ ] Subtitle Decoding and Compositing
 [ ] Audio format conversion (Downsampling, Upsampling, S16 > F32 etc.)
 	[ ] Slow CPU implementation
 	[ ] Planar (Non-interleaved) samples to (Interleaved) Non-planar samples conversion
+[ ] Composite video rendering
+	[ ] Bitmap rect blitting
+	[ ] Subtitle Decoding and Compositing
 [ ] UI
 	[ ] Current Time
 	[ ] Buttons
@@ -1888,10 +1888,10 @@ static void PacketReadThreadProc(const ThreadContext &thread, void *userData) {
 					ffmpeg.av_packet_unref(&srcPacket);
 				}
 				hasPendingPacket = false;
-		}
+			}
 			skipWait = true;
+		}
 	}
-}
 
 	ConsoleOut("Reader thread stopped.\n");
 }
@@ -2150,14 +2150,14 @@ static double ComputeVideoDelay(const PlayerState *state, const double delay) {
 				result = 2 * delay;
 			}
 		}
-			}
+	}
 
 #if PRINT_VIDEO_DELAY
 	ConsoleFormatOut("video: delay=%0.3f A-V=%f\n", delay, -diff);
 #endif
 
 	return(result);
-		}
+}
 
 static void VideoRefresh(PlayerState *state, double &remainingTime, int &displayCount) {
 	if (!state->isPaused && GetMasterSyncType(state) == AVSyncType::ExternalClock && state->isRealTime) {
@@ -2176,37 +2176,43 @@ static void VideoRefresh(PlayerState *state, double &remainingTime, int &display
 				goto retry;
 			}
 
-			// Reset frame timer when serial from current and last frame was different
+			// Reset frame timer when serial from current and last frame are different
 			if (lastvp->serial != vp->serial) {
 				state->frameTimer = ffmpeg.av_gettime_relative() / (double)AV_TIME_BASE;
 			}
 
-			// Just display the current show frame
+			// Just display the last shown frame
 			if (state->isPaused) {
 				goto display;
 			}
 
-			// Compute delay */
+			// Compute duration and delay
 			double lastDuration = GetFrameDuration(state, lastvp, vp);
 			double delay = ComputeVideoDelay(state, lastDuration);
 
+			// Compute remaining time if have time left to display the frame
 			double time = ffmpeg.av_gettime_relative() / (double)AV_TIME_BASE;
 			if (time < state->frameTimer + delay) {
 				remainingTime = FPL_MIN(state->frameTimer + delay - time, remainingTime);
 				goto display;
 			}
 
+			// Accumulate frame timer by the computed delay
 			state->frameTimer += delay;
+
+			// Reset frame timer when frametimer is out-of-sync
 			if (delay > 0 && time - state->frameTimer > AV_SYNC_THRESHOLD_MAX) {
 				state->frameTimer = time;
 			}
 
+			// @TODO(final): Why do we need to lock the frame queue here?
 			MutexLock(state->video.decoder.frameQueue.lock);
 			if (!isnan(vp->pts)) {
 				UpdateVideoClock(state, vp->pts, vp->serial);
 			}
 			MutexUnlock(state->video.decoder.frameQueue.lock);
 
+			// When we got more than one frame we may drop this frame entirely
 			if (GetFrameQueueRemainingCount(state->video.decoder.frameQueue) > 1) {
 				Frame *nextvp = PeekFrameQueueNext(state->video.decoder.frameQueue);
 				double duration = GetFrameDuration(state, vp, nextvp);
@@ -2220,6 +2226,7 @@ static void VideoRefresh(PlayerState *state, double &remainingTime, int &display
 				}
 			}
 
+			// Get to next readable frame in the queue and force the refresh of the frame
 			NextReadable(state->video.decoder.frameQueue);
 			state->forceRefresh = 1;
 
@@ -2248,7 +2255,7 @@ static void VideoRefresh(PlayerState *state, double &remainingTime, int &display
 	double extClock = GetClock(state->externalClock);
 	ConsoleFormatOut("M: %7.2f, A: %7.2f, V: %7.2f, E: %7.2f\n", masterClock, audioClock, videoClock, extClock);
 #endif
-		}
+}
 
 static int DecodeInterruptCallback(void *opaque) {
 	PlayerState *state = (PlayerState *)opaque;
@@ -2449,7 +2456,7 @@ static bool InitializeVideo(PlayerState &state, const char *mediaFilePath) {
 	state.frameLastDelay = 40e-3;
 
 	return true;
-			}
+}
 
 static void ReleaseAudio(AudioContext &audio) {
 	if (audio.conversionAudioBuffer != nullptr) {
@@ -2785,7 +2792,7 @@ int main(int argc, char **argv) {
 #if PRINT_MEMORY_STATS
 		PrintMemStats();
 #endif
-		}
+	}
 
 
 release:
@@ -2818,4 +2825,4 @@ release:
 	ReleasePlatform();
 
 	return(0);
-		}
+}
