@@ -51,6 +51,7 @@ SOFTWARE.
 	- Changed: [POSIX] Replaced file-io with POSIX open, read, write
 	- Fixed: Arm64 was misdetected as X64, this is now its own arch
 	- Fixed: GNUC and ICC are pure C-compilers, it makes no sense to detect such in a C++ library
+	- Fixed: [Linux][POSIX] Refactor init and release to match PlatformInitState and PlatformAppState
 
 	## v0.5.9.0 beta:
 	- Changed: Moved documentation inside its own file "final_platform_layer.documentation"
@@ -3568,6 +3569,64 @@ namespace fpl {
 
 // ****************************************************************************
 //
+// POSIX Types
+//
+// ****************************************************************************
+#if defined(FPL_SUBPLATFORM_POSIX)
+namespace fpl {
+	namespace platform {
+#       define FPL_FUNC_PTHREAD_CREATE(name) int name(pthread_t *, const pthread_attr_t *, void *(*__start_routine) (void *), void *)
+		typedef FPL_FUNC_PTHREAD_CREATE(pthread_func_pthread_create);
+#       define FPL_FUNC_PTHREAD_KILL(name) int name(pthread_t thread, int sig)
+		typedef FPL_FUNC_PTHREAD_KILL(pthread_func_pthread_kill);
+#       define FPL_FUNC_PTHREAD_JOIN(name) int name(pthread_t __th, void **__thread_return)
+		typedef FPL_FUNC_PTHREAD_JOIN(pthread_func_pthread_join);
+#       define FPL_FUNC_PTHREAD_EXIT(name) void name(void *__retval)
+		typedef FPL_FUNC_PTHREAD_EXIT(pthread_func_pthread_exit);
+#       define FPL_FUNC_PTHREAD_YIELD(name) int name(void)
+		typedef FPL_FUNC_PTHREAD_YIELD(pthread_func_pthread_yield);
+
+		struct PThreadAPI {
+			void *libraryHandle;
+			pthread_func_pthread_create *pthread_create;
+			pthread_func_pthread_kill *pthread_kill;
+			pthread_func_pthread_join *pthread_join;
+			pthread_func_pthread_exit *pthread_exit;
+			pthread_func_pthread_yield *pthread_yield;
+		};
+
+		
+		struct POSIXInitState {
+        };
+        
+		struct POSIXAppState {
+            PThreadAPI pthreadApi;
+		};
+    }
+}
+#endif
+
+// ****************************************************************************
+//
+// Linux Types
+//
+// ****************************************************************************
+#if defined(FPL_PLATFORM_LINUX)
+namespace fpl {
+	namespace platform {
+        struct LinuxInitState {
+            POSIXInitState posix;
+        };
+        
+		struct LinuxAppState {
+            POSIXAppState posix;
+		};
+    }
+}
+#endif
+
+// ****************************************************************************
+//
 // All Platforms & Forward Declarations
 //
 // ****************************************************************************
@@ -3581,6 +3640,9 @@ namespace fpl {
 #		if defined(FPL_PLATFORM_WIN32)
 				Win32InitState win32;
 #		endif
+#       if defined(FPL_PLATFORM_LINUX)
+                LinuxInitState linux;
+#       endif
 			};
 			bool isInitialized;
 		};
@@ -3594,6 +3656,9 @@ namespace fpl {
 #		if defined(FPL_PLATFORM_WIN32)
 				Win32AppState win32;
 #		endif
+#       if defined(FPL_PLATFORM_LINUX)
+                LinuxAppState linux;
+#       endif
 			};
 			Settings initSettings;
 			Settings currentSettings;
@@ -7164,11 +7229,13 @@ int WINAPI WinMain(HINSTANCE appInstance, HINSTANCE prevInstance, LPSTR cmdLine,
 #include <sys/mman.h> // mmap, munmap
 #include <sys/types.h> // data types
 #include <sys/stat.h> // mkdir
+#include <sys/errno.h> // errno
 #include <signal.h> // pthread_kill
 #include <stdlib.h> // wcstombs, mbstowcs
 #include <time.h> // clock_gettime, nanosleep
 #include <dlfcn.h> // dlopen, dlclose
-#include <unistd.h> // open, read, write, close
+#include <fcntl.h> // open
+#include <unistd.h> // read, write, close
 
 	// @NOTE(final): Little macro to not write 5 lines of code all the time
 #	define FPL_DL_GET_FUNCTION_ADDRESS(libHandle, libName, target, type, name) \
@@ -7183,31 +7250,7 @@ namespace fpl {
 	// POSIX Platform
 	//
 	namespace platform {
-
-#       define FPL_FUNC_PTHREAD_CREATE(name) int name(pthread_t *, const pthread_attr_t *, void *(*__start_routine) (void *), void *)
-		typedef FPL_FUNC_PTHREAD_CREATE(pthread_func_pthread_create);
-#       define FPL_FUNC_PTHREAD_KILL(name) int name(pthread_t thread, int sig)
-		typedef FPL_FUNC_PTHREAD_KILL(pthread_func_pthread_kill);
-#       define FPL_FUNC_PTHREAD_JOIN(name) int name(pthread_t __th, void **__thread_return)
-		typedef FPL_FUNC_PTHREAD_JOIN(pthread_func_pthread_join);
-#       define FPL_FUNC_PTHREAD_EXIT(name) void name(void *__retval)
-		typedef FPL_FUNC_PTHREAD_EXIT(pthread_func_pthread_exit);
-#       define FPL_FUNC_PTHREAD_YIELD(name) int name(void)
-		typedef FPL_FUNC_PTHREAD_YIELD(pthread_func_pthread_yield);
-
-		struct PThreadAPI {
-			void *libraryHandle;
-			pthread_func_pthread_create *pthread_create;
-			pthread_func_pthread_kill *pthread_kill;
-			pthread_func_pthread_join *pthread_join;
-			pthread_func_pthread_exit *pthread_exit;
-			pthread_func_pthread_yield *pthread_yield;
-		};
-
-		fpl_globalvar PThreadAPI global__PThreadApi = {};
-
-		fpl_internal bool LoadPThreadAPI() {
-			PThreadAPI &pthreadAPI = global__PThreadApi;
+		fpl_internal bool LoadPThreadAPI(PThreadAPI &pthreadAPI) {
 			const char* libpthreadFileNames[] = {
 				"libpthread.so",
 				"libpthread.so.0",
@@ -7235,26 +7278,24 @@ namespace fpl {
 			return true;
 		}
 
-		fpl_internal void UnloadPThreadAPI() {
-			PThreadAPI &pthreadAPI = global__PThreadApi;
+		fpl_internal void UnloadPThreadAPI(PThreadAPI &pthreadAPI) {
 			if (pthreadAPI.libraryHandle != nullptr) {
 				dlclose(pthreadAPI.libraryHandle);
 			}
 			pthreadAPI = {};
 		}
 
-		fpl_internal void PosixReleasePlatform() {
-			UnloadPThreadAPI();
+		fpl_internal void POSIXReleasePlatform(POSIXAppState &appState) {
+            UnloadPThreadAPI(appState.pthreadApi);
 		}
 
-		fpl_internal bool PosixInitPlatform(const InitFlags initFlags, const Settings &initSettings) {
-			if (!LoadPThreadAPI()) {
-				common::PushError("Failed loading pthread API");
-				return false;
-			}
+		fpl_internal bool POSIXInitPlatform(const InitFlags initFlags, const Settings &initSettings, POSIXInitState &initState, POSIXAppState &appState) {
+            if (!LoadPThreadAPI(appState.pthreadApi)) {
+                common::PushError("Failed initializing PThread API");
+                return false;
+            }
 			return true;
 		}
-
 	}
 
 	//
@@ -7427,7 +7468,9 @@ namespace fpl {
 		}
 
 		fpl_api ThreadContext *ThreadCreate(run_thread_function *runFunc, void *data, const bool autoStart) {
-			const platform::PThreadAPI &pthreadAPI = platform::global__PThreadApi;
+            FPL_ASSERT(platform::global__AppState != nullptr);
+            const platform::PlatformAppState *appState = platform::global__AppState;
+			const platform::PThreadAPI &pthreadAPI = appState->linux.posix.pthreadApi;
 
 			// @NOTE(final): pthread does not support to "suspend" or "resume" any thread, so autoStart is not allowed to be false
 			if (!autoStart) {
@@ -7492,7 +7535,9 @@ namespace fpl {
 		}
 
 		fpl_api void ThreadDestroy(ThreadContext *context) {
-			const platform::PThreadAPI &pthreadAPI = platform::global__PThreadApi;
+            FPL_ASSERT(platform::global__AppState != nullptr);
+            const platform::PlatformAppState *appState = platform::global__AppState;
+			const platform::PThreadAPI &pthreadAPI = appState->linux.posix.pthreadApi;
 			FPL_ASSERT(pthreadAPI.libHandle != nullptr);
 			if (context != nullptr && context->isValid) {
 				if (pthreadAPI.pthread_kill(context->internalHandle.posixThread, 0) == 0) {
@@ -7870,7 +7915,7 @@ namespace fpl {
 
 		fpl_api uint32_t GetFileSize32(const FileHandle &fileHandle) {
 			uint32_t result = 0;
-			if (fileHandle.internalHandle.posixHandle != nullptr) {
+			if (fileHandle.internalHandle.posixHandle) {
 				int posixFileHandle = fileHandle.internalHandle.posixHandle;
 				off_t curPos = lseek(posixFileHandle, 0, SEEK_CUR);
 				if (curPos != -1) {
@@ -7949,13 +7994,13 @@ namespace fpl {
 		}
 		fpl_api bool ListFilesNext(FileEntry &nextEntry) {
 			bool result = false;
-			if (nextEntry.internalHandle.posixHandle != nullptr) {
+			if (nextEntry.internalHandle.posixHandle) {
 				// @IMPLEMENT(final): POSIX Files Iteration Next
 			}
 			return(result);
 		}
 		fpl_api void ListFilesEnd(FileEntry &lastEntry) {
-			if (lastEntry.internalHandle.posixHandle != nullptr) {
+			if (lastEntry.internalHandle.posixHandle) {
 				// @IMPLEMENT(final): POSIX Files Iteration End
 				lastEntry = {};
 			}
@@ -7972,27 +8017,22 @@ namespace fpl {
 //
 // ****************************************************************************
 #if defined(FPL_PLATFORM_LINUX)
-#   include <unistd.h> // sysconf
 #   include <ctype.h> // isspace
 
 namespace fpl {
 	namespace platform {
-		struct LinuxAppState {
-			bool isInitialized;
-		};
-		fpl_globalvar LinuxAppState global__Linux__AppState = {};
-
-		fpl_internal void LinuxReleasePlatform() {
-			platform::PosixReleasePlatform();
-			platform::global__Linux__AppState.isInitialized = false;
+		fpl_internal void LinuxReleasePlatform(PlatformInitState &initState, PlatformAppState *appState) {
+            LinuxAppState &linuxAppState = appState->linux;
+			platform::POSIXReleasePlatform(linuxAppState.posix);
 		}
 
-		fpl_internal bool LinuxInitPlatform(const InitFlags initFlags, const Settings &initSettings) {
-			if (!platform::PosixInitPlatform(initFlags, initSettings)) {
+		fpl_internal bool LinuxInitPlatform(const InitFlags initFlags, const Settings &initSettings, PlatformInitState &initState, PlatformAppState *appState) {
+            LinuxInitState &linuxInitState = initState.linux;
+            LinuxAppState &linuxAppState = appState->linux;
+			if (!platform::POSIXInitPlatform(initFlags, initSettings, linuxInitState.posix, linuxAppState.posix)) {
 				common::PushError("Failed initalizing POSIX platform");
 				return false;
 			}
-			platform::global__Linux__AppState.isInitialized = true;
 			return true;
 		}
 	}
@@ -8085,25 +8125,6 @@ namespace fpl {
 			return(result);
 		}
 	}
-
-	fpl_api void ReleasePlatform() {
-		if (!platform::global__Linux__AppState.isInitialized) {
-			common::PushError("Platform is not initialized");
-			return;
-		}
-		platform::LinuxReleasePlatform();
-	}
-
-	fpl_api bool InitPlatform(const InitFlags initFlags, const Settings &initSettings) {
-		if (platform::global__Linux__AppState.isInitialized) {
-			common::PushError("Platform is already initialized");
-			return false;
-		}
-		bool result = platform::LinuxInitPlatform(initFlags, initSettings);
-		return(result);
-	}
-
-
 }
 #endif // FPL_PLATFORM_LINUX
 
@@ -8960,6 +8981,8 @@ namespace fpl {
 				// Release actual platform
 #			if defined(FPL_PLATFORM_WIN32)
 				platform::Win32ReleasePlatform(initState, appState);
+#           elif defined(FPL_PLATFORM_LINUX)
+				platform::LinuxReleasePlatform(initState, appState);
 #			endif
 
 				// Release platform applicatiom state memory
@@ -9226,6 +9249,8 @@ namespace fpl {
 		bool isInitialized = false;
 #	if defined(FPL_PLATFORM_WIN32)
 		isInitialized = platform::Win32InitPlatform(appState->initFlags, initSettings, initState, appState);
+#   elif defined(FPL_PLATFORM_LINUX)
+		isInitialized = platform::LinuxInitPlatform(appState->initFlags, initSettings, initState, appState);
 #	endif
 
 		if (isInitialized) {
