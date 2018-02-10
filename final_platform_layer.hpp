@@ -35,7 +35,7 @@ SOFTWARE.
 
 /*!
 	\file final_platform_layer.hpp
-	\version v0.5.9.0 beta
+	\version v0.5.9.1 beta
 	\author Torsten Spaete
 	\brief Final Platform Layer (FPL) - A Open source C++ single file header platform abstraction layer library.
 */
@@ -43,6 +43,14 @@ SOFTWARE.
 /*!
 	\page page_changelog Changelog
 	\tableofcontents
+
+	## v0.5.9.1 beta:
+	- Changed: MemoryInfos uses uint64_t instead of size_t
+	- Changed: Added BSD to platform detecton
+	- Changed: Architecture detection does not use _WIN64 or _WIN32 anymore
+	- Changed: [POSIX] Replaced file-io with POSIX open, read, write
+	- Fixed: Arm64 was misdetected as X64, this is now its own arch
+	- Fixed: GNUC and ICC are pure C-compilers, it makes no sense to detect such in a C++ library
 
 	## v0.5.9.0 beta:
 	- Changed: Moved documentation inside its own file "final_platform_layer.documentation"
@@ -432,31 +440,44 @@ SOFTWARE.
 //
 // Platform detection
 //
-#if defined(_WIN32)
+// https://sourceforge.net/p/predef/wiki/OperatingSystems/
+#if defined(_WIN32) || defined(_WIN64)
 #	define FPL_PLATFORM_WIN32
-#	define FPL_PLATFORM_NAME "Win32"
-#elif defined(__linux__) || defined(__gnu_linux__) || defined(linux)
+#	define FPL_PLATFORM_NAME "Windows"
+#elif defined(__linux__) || defined(__gnu_linux__)
 #	define FPL_PLATFORM_LINUX
 #	define FPL_PLATFORM_NAME "Linux"
 #	define FPL_SUBPLATFORM_POSIX
-#elif defined(__unix__) || defined(_POSIX_VERSION)
+#elif defined(__FreeBSD__) || defined(__NetBSD__) || defined(__OpenBSD__) || defined(__DragonFly__) || defined(__bsdi__)
+#	define FPL_PLATFORM_BSD
+#	define FPL_PLATFORM_NAME "BSD"
+#	define FPL_SUBPLATFORM_POSIX
+#	error "Not implemented yet!"
+#elif defined(unix) || defined(__unix) || defined(__unix__)
 #	define FPL_PLATFORM_UNIX
 #	define FPL_PLATFORM_NAME "Unix"
 #	define FPL_SUBPLATFORM_POSIX
+#	error "Not implemented yet!"
 #else
-#	error "This platform/compiler is not supported!"
+#	error "This platform is not supported!"
 #endif // FPL_PLATFORM
 
 //
 // Architecture detection (x86, x64)
 // See: https://sourceforge.net/p/predef/wiki/Architectures/
 //
-#if defined(_WIN64) || defined(__x86_64__) || defined(__aarch64__)
-#	define FPL_ARCH_X64	
-#elif defined(_WIN32) || defined(__i386__) || defined(__X86__) || defined(_X86_)
+#if defined(_M_X64) || defined(__x86_64__) || defined(__amd64__)
+#	define FPL_ARCH_X64
+#elif defined(_M_IX86) || defined(__i386__) || defined(__X86__) || defined(_X86_)
 #	define FPL_ARCH_X86
+#elif defined(__arm__) || defined(_M_ARM)
+#	if defined(__aarch64__)
+#		define FPL_ARCH_ARM64
+#	else	
+#		define FPL_ARCH_ARM32
+#	endif
 #else
-#	error "This architecture/compiler is not supported!"
+#	error "This architecture is not supported!"
 #endif // FPL_ARCH
 
 //
@@ -470,15 +491,15 @@ SOFTWARE.
 #elif defined(__llvm__)
 	//! LLVM compiler detected
 #	define FPL_COMPILER_LLVM
-#elif defined(__INTEL_COMPILER) || defined(__ICC)
+#elif defined(__INTEL_COMPILER)
 	//! Intel compiler detected
 #	define FPL_COMPILER_INTEL
-#elif defined(__GNUC__) || defined(__GNUG__)
-	//! GCC compiler detected
-#	define FPL_COMPILER_GCC
 #elif defined(__MINGW32__)
 	//! MingW compiler detected
 #	define FPL_COMPILER_MINGW
+#elif defined(__GNUG__) && !defined(__clang__)
+	//! GCC compiler detected
+#	define FPL_COMPILER_GCC
 #elif defined(_MSC_VER)
 	//! Visual studio compiler detected
 #	define FPL_COMPILER_MSVC
@@ -746,7 +767,6 @@ SOFTWARE.
 #endif // FPL_PLATFORM_WIN32
 
 #if defined(FPL_SUBPLATFORM_POSIX)
-#   include <stdio.h> // FILE
 #	include <pthread.h> // pthread_t, pthread_mutex_, pthread_cond_, pthread_barrier_
 #endif // FPL_SUBPLATFORM_POSIX
 
@@ -1050,19 +1070,19 @@ namespace fpl {
 		//! Memory informations
 		struct MemoryInfos {
 			//! Total size of physical memory in bytes (Amount of RAM installed)
-			size_t totalPhysicalSize;
+			uint64_t totalPhysicalSize;
 			//! Available size of physical memory in bytes (May be less than the amount of RAM installed)
-			size_t availablePhysicalSize;
+			uint64_t availablePhysicalSize;
 			//! Free size of physical memory in bytes
-			size_t usedPhysicalSize;
+			uint64_t usedPhysicalSize;
 			//! Total size of virtual memory in bytes
-			size_t totalVirtualSize;
+			uint64_t totalVirtualSize;
 			//! Used size of virtual memory in bytes
-			size_t usedVirtualSize;
+			uint64_t usedVirtualSize;
 			//! Total page size in bytes
-			size_t totalPageSize;
+			uint64_t totalPageSize;
 			//! Used page size in bytes
-			size_t usedPageSize;
+			uint64_t usedPageSize;
 		};
 
 		/**
@@ -1954,7 +1974,7 @@ namespace fpl {
 				HANDLE win32Handle;
 #			endif
 #			if defined(FPL_SUBPLATFORM_POSIX)
-				FILE *posixHandle;
+				int posixHandle;
 #			endif
 			} internalHandle;
 			//! File opened successfully
@@ -2016,7 +2036,7 @@ namespace fpl {
 				HANDLE win32Handle;
 #			endif
 #			if defined(FPL_SUBPLATFORM_POSIX)
-				void *posixHandle;
+				int posixHandle;
 #			endif
 			} internalHandle;
 		};
@@ -5862,7 +5882,7 @@ namespace fpl {
 			statex.dwLength = sizeof(statex);
 			ULONGLONG totalMemorySize;
 			if (GetPhysicallyInstalledSystemMemory(&totalMemorySize) && GlobalMemoryStatusEx(&statex)) {
-				result.totalPhysicalSize = totalMemorySize * 1024;
+				result.totalPhysicalSize = totalMemorySize * 1024ull;
 				result.availablePhysicalSize = statex.ullTotalPhys;
 				result.usedPhysicalSize = result.availablePhysicalSize - statex.ullAvailPhys;
 				result.totalVirtualSize = statex.ullTotalVirtual;
@@ -7137,7 +7157,7 @@ int WINAPI WinMain(HINSTANCE appInstance, HINSTANCE prevInstance, LPSTR cmdLine,
 
 // ****************************************************************************
 //
-// POSIX Platform (Linux, Unix)
+// POSIX Sub-Platform (Linux, Unix)
 //
 // ****************************************************************************
 #if defined(FPL_SUBPLATFORM_POSIX)
@@ -7147,8 +7167,8 @@ int WINAPI WinMain(HINSTANCE appInstance, HINSTANCE prevInstance, LPSTR cmdLine,
 #include <signal.h> // pthread_kill
 #include <stdlib.h> // wcstombs, mbstowcs
 #include <time.h> // clock_gettime, nanosleep
-#include <stdio.h> // fopen, fclose, fread, fwrite
 #include <dlfcn.h> // dlopen, dlclose
+#include <unistd.h> // open, read, write, close
 
 	// @NOTE(final): Little macro to not write 5 lines of code all the time
 #	define FPL_DL_GET_FUNCTION_ADDRESS(libHandle, libName, target, type, name) \
@@ -7699,8 +7719,11 @@ namespace fpl {
 		fpl_api FileHandle OpenBinaryFile(const char *filePath) {
 			FileHandle result = {};
 			if (filePath != nullptr) {
-				FILE *posixFileHandle = fopen(filePath, "rb");
-				if (posixFileHandle != nullptr) {
+				int posixFileHandle;
+				do {
+					posixFileHandle = open(filePath, O_RDONLY);
+				} while (posixFileHandle == -1 && errno == EINTR);
+				if (posixFileHandle != -1) {
 					result.isValid = true;
 					result.internalHandle.posixHandle = posixFileHandle;
 				}
@@ -7720,8 +7743,11 @@ namespace fpl {
 		fpl_api FileHandle CreateBinaryFile(const char *filePath) {
 			FileHandle result = {};
 			if (filePath != nullptr) {
-				FILE *posixFileHandle = fopen(filePath, "wb");
-				if (posixFileHandle != nullptr) {
+				int posixFileHandle;
+				do {
+					posixFileHandle = open(filePath, O_WRONLY | O_CREAT | O_TRUNC);
+				} while (posixFileHandle == -1 && errno == EINTR);
+				if (posixFileHandle != -1) {
 					result.isValid = true;
 					result.internalHandle.posixHandle = posixFileHandle;
 				}
@@ -7746,63 +7772,80 @@ namespace fpl {
 				common::PushError("Target buffer parameter are now allowed to be null");
 				return 0;
 			}
-			if (fileHandle.internalHandle.posixHandle == nullptr) {
+			if (!fileHandle.internalHandle.posixHandle) {
 				common::PushError("File handle is not opened for reading");
 				return 0;
 			}
+			int posixFileHandle = fileHandle.internalHandle.posixHandle;
+
+			ssize_t res;
+			do {
+				res = read(posixFileHandle, targetBuffer, sizeToRead);
+			} while (res == -1 && errno == EINTR);
+
 			uint32_t result = 0;
-			FILE *posixFileHandle = fileHandle.internalHandle.posixHandle;
-			size_t bytesRead = fread(targetBuffer, sizeToRead, 1, posixFileHandle);
-			result = (uint32_t)bytesRead;
+			if (res != -1) {
+				result = (uint32_t)res;
+			}
 			return(result);
 		}
 
 		fpl_api uint32_t WriteFileBlock32(const FileHandle &fileHandle, void *sourceBuffer, const uint32_t sourceSize) {
 			if (sourceSize == 0) {
-				common::PushError("Source size parameter must be greater than zero");
 				return 0;
 			}
 			if (sourceBuffer == nullptr) {
 				common::PushError("Source buffer parameter are now allowed to be null");
 				return 0;
 			}
-			if (fileHandle.internalHandle.posixHandle == nullptr) {
+			if (!fileHandle.internalHandle.posixHandle) {
 				common::PushError("File handle is not opened for writing");
 				return 0;
 			}
+
+			int posixFileHandle = fileHandle.internalHandle.posixHandle;
+
+			ssize_t res;
+			do {
+				res = write(posixFileHandle, sourceBuffer, sourceSize);
+			} while (res == -1 && errno == EINTR);
+
 			uint32_t result = 0;
-			FILE *posixFileHandle = fileHandle.internalHandle.posixHandle;
-			size_t bytesWritten = fwrite(sourceBuffer, sourceSize, 1, posixFileHandle);
-			result = (uint32_t)bytesWritten;
+			if (res != -1) {
+				result = (uint32_t)res;
+			}
 			return(result);
 		}
 
 		fpl_api void SetFilePosition32(const FileHandle &fileHandle, const int32_t position, const FilePositionMode mode) {
-			if (fileHandle.internalHandle.posixHandle != nullptr) {
-				FILE *posixFileHandle = fileHandle.internalHandle.posixHandle;
-				int origin = SEEK_SET;
+			if (fileHandle.internalHandle.posixHandle) {
+				int posixFileHandle = fileHandle.internalHandle.posixHandle;
+				int whence = SEEK_SET;
 				if (mode == FilePositionMode::Current) {
-					origin = SEEK_CUR;
+					whence = SEEK_CUR;
 				} else if (mode == FilePositionMode::End) {
-					origin = SEEK_END;
+					whence = SEEK_END;
 				}
-				fseek(posixFileHandle, position, origin);
+				lseek(posixFileHandle, position, whence);
 			}
 		}
 
 		fpl_api uint32_t GetFilePosition32(const FileHandle &fileHandle) {
 			uint32_t result = 0;
-			if (fileHandle.internalHandle.posixHandle != nullptr) {
-				FILE *posixFileHandle = fileHandle.internalHandle.posixHandle;
-				uint32_t result = ftell(posixFileHandle);
+			if (fileHandle.internalHandle.posixHandle) {
+				int posixFileHandle = fileHandle.internalHandle.posixHandle;
+				off_t res = lseek(posixFileHandle, 0, SEEK_CUR);
+				if (res != -1) {
+					result = (uint32_t)res;
+				}
 			}
 			return(result);
 		}
 
 		fpl_api void CloseFile(FileHandle &fileHandle) {
-			if (fileHandle.internalHandle.posixHandle != nullptr) {
-				FILE *posixFileHandle = fileHandle.internalHandle.posixHandle;
-				fclose(posixFileHandle);
+			if (fileHandle.internalHandle.posixHandle) {
+				int posixFileHandle = fileHandle.internalHandle.posixHandle;
+				close(posixFileHandle);
 				fileHandle = {};
 			}
 		}
@@ -7810,11 +7853,16 @@ namespace fpl {
 		fpl_api uint32_t GetFileSize32(const char *filePath) {
 			uint32_t result = 0;
 			if (filePath != nullptr) {
-				FILE *posixFileHandle = fopen(filePath, "rb");
-				if (posixFileHandle != nullptr) {
-					fseek(posixFileHandle, 0, SEEK_END);
-					result = ftell(posixFileHandle);
-					fclose(posixFileHandle);
+				int posixFileHandle;
+				do {
+					posixFileHandle = open(filePath, O_RDONLY);
+				} while (posixFileHandle == -1 && errno == EINTR);
+				if (posixFileHandle != -1) {
+					off_t res = lseek(posixFileHandle, 0, SEEK_END);
+					if (res != -1) {
+						result = (uint32_t)res;
+					}
+					close(posixFileHandle);
 				}
 			}
 			return(result);
@@ -7823,11 +7871,12 @@ namespace fpl {
 		fpl_api uint32_t GetFileSize32(const FileHandle &fileHandle) {
 			uint32_t result = 0;
 			if (fileHandle.internalHandle.posixHandle != nullptr) {
-				FILE *posixFileHandle = fileHandle.internalHandle.posixHandle;
-				long int curPos = ftell(posixFileHandle);
-				fseek(posixFileHandle, 0, SEEK_END);
-				result = ftell(posixFileHandle);
-				fseek(posixFileHandle, curPos, SEEK_SET);
+				int posixFileHandle = fileHandle.internalHandle.posixHandle;
+				off_t curPos = lseek(posixFileHandle, 0, SEEK_CUR);
+				if (curPos != -1) {
+					result = (uint32_t)lseek(posixFileHandle, 0, SEEK_END);
+					lseek(posixFileHandle, curPos, SEEK_SET);
+				}
 			}
 			return(result);
 		}
