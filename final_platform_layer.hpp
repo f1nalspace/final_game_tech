@@ -2829,7 +2829,7 @@ namespace fpl {
 		  * \param bottom Bottom position in screen units.
 		  * \return Computed video rectangle
 		  */
-		inline VideoRect CreateVideoRectFromLTRB(int32_t left, int32_t top, int32_t right, int32_t bottom) {
+		fpl_inline VideoRect CreateVideoRectFromLTRB(int32_t left, int32_t top, int32_t right, int32_t bottom) {
 			VideoRect result = { left, top, (right - left) + 1, (bottom - top) + 1 };
 			return(result);
 		}
