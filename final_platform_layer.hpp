@@ -49,6 +49,9 @@ SOFTWARE.
 	- Changed: Added BSD to platform detecton
 	- Changed: Architecture detection does not use _WIN64 or _WIN32 anymore
 	- Changed: [POSIX] Replaced file-io with POSIX open, read, write
+	- Changed: fpl_api is now either fpl_platform_api or fpl_common_api
+	- Changed: [Win32] Removed fpl_api from main entry point forward declararation
+	- Changed: [Win32] Moved main entry point inside the implementation block
 	- Fixed: Arm64 was misdetected as X64, this is now its own arch
 	- Fixed: GNUC and ICC are pure C-compilers, it makes no sense to detect such in a C++ library
 	- Fixed: [Linux][POSIX] Refactor init and release to match PlatformInitState and PlatformAppState
@@ -671,6 +674,13 @@ SOFTWARE.
 #	define fpl_api extern
 #endif // FPL_API_AS_PRIVATE
 
+//! Platform implementation function
+#define fpl_platform_api fpl_api
+//! All-Platform implementation function
+#define fpl_common_api fpl_api
+//! Main entry point
+#define fpl_main
+
 //
 // Assertions
 //
@@ -792,17 +802,17 @@ namespace fpl {
 		  *
 		  * This will complete previous reads before future reads and prevents the compiler from reordering memory reads across this fence.
 		  */
-		fpl_api void AtomicReadFence();
+		fpl_platform_api void AtomicReadFence();
 		/**
 		  * \brief Insert a memory write fence/barrier.
 		  * This will complete previous writes before future writes and prevents the compiler from reordering memory writes across this fence.
 		  */
-		fpl_api void AtomicWriteFence();
+		fpl_platform_api void AtomicWriteFence();
 		/**
 		  * \brief Insert a memory read/write fence/barrier.
 		  * This will complete previous reads/writes before future reads/writes and prevents the compiler from reordering memory access across this fence.
 		  */
-		fpl_api void AtomicReadWriteFence();
+		fpl_platform_api void AtomicReadWriteFence();
 
 		/**
 		  * \brief Replace a 32-bit unsigned integer with the given value atomically.
@@ -811,7 +821,7 @@ namespace fpl {
 		  * \param value The source value used for exchange.
 		  * \return Returns the initial value before the replacement.
 		  */
-		fpl_api uint32_t AtomicExchangeU32(volatile uint32_t *target, const uint32_t value);
+		fpl_platform_api uint32_t AtomicExchangeU32(volatile uint32_t *target, const uint32_t value);
 		/**
 		  * \brief Replace a 64-bit unsigned integer with the given value atomically.
 		  * Ensures that memory operations are completed in order.
@@ -819,7 +829,7 @@ namespace fpl {
 		  * \param value The source value used for exchange.
 		  * \return Returns the initial value before the replacement.
 		  */
-		fpl_api uint64_t AtomicExchangeU64(volatile uint64_t *target, const uint64_t value);
+		fpl_platform_api uint64_t AtomicExchangeU64(volatile uint64_t *target, const uint64_t value);
 		/**
 		  * \brief Replace a 32-bit signed integer with the given value atomically.
 		  * Ensures that memory operations are completed in order.
@@ -827,7 +837,7 @@ namespace fpl {
 		  * \param value The source value used for exchange.
 		  * \return Returns the initial value before the replacement.
 		  */
-		fpl_api int32_t AtomicExchangeS32(volatile int32_t *target, const int32_t value);
+		fpl_platform_api int32_t AtomicExchangeS32(volatile int32_t *target, const int32_t value);
 		/**
 		  * \brief Replace a 64-bit signed integer with the given value atomically.
 		  * Ensures that memory operations are completed in order.
@@ -835,7 +845,7 @@ namespace fpl {
 		  * \param value The source value used for exchange.
 		  * \return Returns the initial value before the replacement.
 		  */
-		fpl_api int64_t AtomicExchangeS64(volatile int64_t *target, const int64_t value);
+		fpl_platform_api int64_t AtomicExchangeS64(volatile int64_t *target, const int64_t value);
 		/**
 		  * \brief Replace a pointer with the given value atomically.
 		  * Ensures that memory operations are completed in order.
@@ -843,7 +853,7 @@ namespace fpl {
 		  * \param value The source value used for exchange.
 		  * \return Returns the initial value before the replacement.
 		  */
-		fpl_api void *AtomicExchangePtr(volatile void **target, const void *value);
+		fpl_common_api void *AtomicExchangePtr(volatile void **target, const void *value);
 
 		/**
 		  * \brief Adds a 32-bit unsigned integer to the value by the given addend atomically.
@@ -852,7 +862,7 @@ namespace fpl {
 		  * \param addend The value used for adding.
 		  * \return Returns the initial value before the append.
 		  */
-		fpl_api uint32_t AtomicAddU32(volatile uint32_t *value, const uint32_t addend);
+		fpl_platform_api uint32_t AtomicAddU32(volatile uint32_t *value, const uint32_t addend);
 		/**
 		  * \brief Adds a 64-bit unsigned integer to the value by the given addend atomically.
 		  * Ensures that memory operations are completed in order.
@@ -860,7 +870,7 @@ namespace fpl {
 		  * \param addend The value used for adding.
 		  * \return Returns the initial value before the append.
 		  */
-		fpl_api uint64_t AtomicAddU64(volatile uint64_t *value, const uint64_t addend);
+		fpl_platform_api uint64_t AtomicAddU64(volatile uint64_t *value, const uint64_t addend);
 		/**
 		  * \brief Adds a 32-bit signed integer to the value by the given addend atomically.
 		  * Ensures that memory operations are completed in order.
@@ -868,7 +878,7 @@ namespace fpl {
 		  * \param addend The value used for adding.
 		  * \return Returns the initial value before the append.
 		  */
-		fpl_api int32_t AtomicAddS32(volatile int32_t *value, const int32_t addend);
+		fpl_platform_api int32_t AtomicAddS32(volatile int32_t *value, const int32_t addend);
 		/**
 		  * \brief Adds a 64-bit signed integer to the value by the given addend atomically.
 		  * Ensures that memory operations are completed in order.
@@ -876,7 +886,7 @@ namespace fpl {
 		  * \param addend The value used for adding.
 		  * \return Returns the initial value before the append.
 		  */
-		fpl_api int64_t AtomicAddS64(volatile int64_t *value, const int64_t addend);
+		fpl_platform_api int64_t AtomicAddS64(volatile int64_t *value, const int64_t addend);
 
 		/**
 		  * \brief Compares a 32-bit unsigned integer with a comparand and exchange it when comparand matches destination.
@@ -887,7 +897,7 @@ namespace fpl {
 		  * \note Use \ref IsAtomicCompareAndExchangeU32() when you want to check if the exchange has happened or not.
 		  * \return Returns the dest before the exchange, regardless of the result.
 		  */
-		fpl_api uint32_t AtomicCompareAndExchangeU32(volatile uint32_t *dest, const uint32_t comparand, const uint32_t exchange);
+		fpl_platform_api uint32_t AtomicCompareAndExchangeU32(volatile uint32_t *dest, const uint32_t comparand, const uint32_t exchange);
 		/**
 		  * \brief Compares a 64-bit unsigned integer with a comparand and exchange it when comparand matches destination.
 		  * Ensures that memory operations are completed in order.
@@ -897,7 +907,7 @@ namespace fpl {
 		  * \note Use \ref IsAtomicCompareAndExchangeU64() when you want to check if the exchange has happened or not.
 		  * \return Returns the value of the destination before the exchange, regardless of the result.
 		  */
-		fpl_api uint64_t AtomicCompareAndExchangeU64(volatile uint64_t *dest, const uint64_t comparand, const uint64_t exchange);
+		fpl_platform_api uint64_t AtomicCompareAndExchangeU64(volatile uint64_t *dest, const uint64_t comparand, const uint64_t exchange);
 		/**
 		  * \brief Compares a 32-bit signed integer with a comparand and exchange it when comparand matches destination.
 		  * Ensures that memory operations are completed in order.
@@ -907,7 +917,7 @@ namespace fpl {
 		  * \note Use \ref IsAtomicCompareAndExchangeS32() when you want to check if the exchange has happened or not.
 		  * \return Returns the value of the destination before the exchange, regardless of the result.
 		  */
-		fpl_api int32_t AtomicCompareAndExchangeS32(volatile int32_t *dest, const int32_t comparand, const int32_t exchange);
+		fpl_platform_api int32_t AtomicCompareAndExchangeS32(volatile int32_t *dest, const int32_t comparand, const int32_t exchange);
 		/**
 		  * \brief Compares a 64-bit signed integer with a comparand and exchange it when comparand matches destination.
 		  * Ensures that memory operations are completed in order.
@@ -917,7 +927,7 @@ namespace fpl {
 		  * \note Use \ref IsAtomicCompareAndExchangeS64() when you want to check if the exchange has happened or not.
 		  * \return Returns the value of the destination before the exchange, regardless of the result.
 		  */
-		fpl_api int64_t AtomicCompareAndExchangeS64(volatile int64_t *dest, const int64_t comparand, const int64_t exchange);
+		fpl_platform_api int64_t AtomicCompareAndExchangeS64(volatile int64_t *dest, const int64_t comparand, const int64_t exchange);
 		/**
 		  * \brief Compares a pointer with a comparand and exchange it when comparand matches destination.
 		  * Ensures that memory operations are completed in order.
@@ -927,7 +937,7 @@ namespace fpl {
 		  * \note Use \ref IsAtomicCompareAndExchangePtr() when you want to check if the exchange has happened or not.
 		  * \return Returns the value of the destination before the exchange, regardless of the result.
 		  */
-		fpl_api void *AtomicCompareAndExchangePtr(volatile void **dest, const void *comparand, const void *exchange);
+		fpl_common_api void *AtomicCompareAndExchangePtr(volatile void **dest, const void *comparand, const void *exchange);
 
 		/**
 		  * \brief Compares a 32-bit unsigned integer with a comparand and exchange it when comparand matches destination and returns a bool indicating the result.
@@ -937,7 +947,7 @@ namespace fpl {
 		  * \param exchange The value to exchange with.
 		  * \return Returns true when the exchange happened, otherwise false.
 		  */
-		fpl_api bool IsAtomicCompareAndExchangeU32(volatile uint32_t *dest, const uint32_t comparand, const uint32_t exchange);
+		fpl_platform_api bool IsAtomicCompareAndExchangeU32(volatile uint32_t *dest, const uint32_t comparand, const uint32_t exchange);
 		/**
 		  * \brief Compares a 64-bit unsigned integer with a comparand and exchange it when comparand matches destination and returns a bool indicating the result.
 		  * Ensures that memory operations are completed in order.
@@ -946,7 +956,7 @@ namespace fpl {
 		  * \param exchange The value to exchange with.
 		  * \return Returns true when the exchange happened, otherwise false.
 		  */
-		fpl_api bool IsAtomicCompareAndExchangeU64(volatile uint64_t *dest, const uint64_t comparand, const uint64_t exchange);
+		fpl_platform_api bool IsAtomicCompareAndExchangeU64(volatile uint64_t *dest, const uint64_t comparand, const uint64_t exchange);
 		/**
 		  * \brief Compares a 32-bit signed integer with a comparand and exchange it when comparand matches destination and returns a bool indicating the result.
 		  * Ensures that memory operations are completed in order.
@@ -955,7 +965,7 @@ namespace fpl {
 		  * \param exchange The value to exchange with.
 		  * \return Returns true when the exchange happened, otherwise false.
 		  */
-		fpl_api bool IsAtomicCompareAndExchangeS32(volatile int32_t *dest, const int32_t comparand, const int32_t exchange);
+		fpl_platform_api bool IsAtomicCompareAndExchangeS32(volatile int32_t *dest, const int32_t comparand, const int32_t exchange);
 		/**
 		  * \brief Compares a 64-bit signed integer with a comparand and exchange it when comparand matches destination and returns a bool indicating the result.
 		  * Ensures that memory operations are completed in order.
@@ -964,7 +974,7 @@ namespace fpl {
 		  * \param exchange The value to exchange with.
 		  * \return Returns true when the exchange happened, otherwise false.
 		  */
-		fpl_api bool IsAtomicCompareAndExchangeS64(volatile int64_t *dest, const int64_t comparand, const int64_t exchange);
+		fpl_platform_api bool IsAtomicCompareAndExchangeS64(volatile int64_t *dest, const int64_t comparand, const int64_t exchange);
 		/**
 		  * \brief Compares a pointer with a comparand and exchange it when comparand matches destination and returns a bool indicating the result.
 		  * Ensures that memory operations are completed in order.
@@ -973,7 +983,7 @@ namespace fpl {
 		  * \param exchange The value to exchange with.
 		  * \return Returns true when the exchange happened, otherwise false.
 		  */
-		fpl_api bool IsAtomicCompareAndExchangePtr(volatile void **dest, const void *comparand, const void *exchange);
+		fpl_common_api bool IsAtomicCompareAndExchangePtr(volatile void **dest, const void *comparand, const void *exchange);
 
 		/**
 		  * \brief Loads the 32-bit unsigned value atomically and returns the value.
@@ -982,7 +992,7 @@ namespace fpl {
 		  * \note This may use a CAS instruction when there is no suitable compiler intrinsics found.
 		  * \return Returns the source value.
 		  */
-		fpl_api uint32_t AtomicLoadU32(volatile uint32_t *source);
+		fpl_platform_api uint32_t AtomicLoadU32(volatile uint32_t *source);
 		/**
 		  * \brief Loads the 64-bit unsigned value atomically and returns the value.
 		  * Ensures that memory operations are completed before the read.
@@ -990,7 +1000,7 @@ namespace fpl {
 		  * \note This may use a CAS instruction when there is no suitable compiler intrinsics found.
 		  * \return Returns the source value.
 		  */
-		fpl_api uint64_t AtomicLoadU64(volatile uint64_t *source);
+		fpl_platform_api uint64_t AtomicLoadU64(volatile uint64_t *source);
 		/**
 		  * \brief Loads the 32-bit signed value atomically and returns the value.
 		  * Ensures that memory operations are completed before the read.
@@ -998,7 +1008,7 @@ namespace fpl {
 		  * \note This may use a CAS instruction when there is no suitable compiler intrinsics found.
 		  * \return Returns the source value.
 		  */
-		fpl_api int32_t AtomicLoadS32(volatile int32_t *source);
+		fpl_platform_api int32_t AtomicLoadS32(volatile int32_t *source);
 		/**
 		  * \brief Loads the 64-bit signed value atomically and returns the value.
 		  * Ensures that memory operations are completed before the read.
@@ -1006,7 +1016,7 @@ namespace fpl {
 		  * \note This may use a CAS instruction when there is no suitable compiler intrinsics found.
 		  * \return Returns the source value.
 		  */
-		fpl_api int64_t AtomicLoadS64(volatile int64_t *source);
+		fpl_platform_api int64_t AtomicLoadS64(volatile int64_t *source);
 		/**
 		  * \brief Loads the pointer value atomically and returns the value.
 		  * Ensures that memory operations are completed before the read.
@@ -1014,7 +1024,7 @@ namespace fpl {
 		  * \note This may use a CAS instruction when there is no suitable compiler intrinsics found.
 		  * \return Returns the source value.
 		  */
-		fpl_api void *AtomicLoadPtr(volatile void **source);
+		fpl_common_api void *AtomicLoadPtr(volatile void **source);
 
 		/**
 		  * \brief Overwrites the 32-bit unsigned value atomically.
@@ -1023,7 +1033,7 @@ namespace fpl {
 		  * \param value The value to exchange with.
 		  * \return Returns the source value.
 		  */
-		fpl_api void AtomicStoreU32(volatile uint32_t *dest, const uint32_t value);
+		fpl_platform_api void AtomicStoreU32(volatile uint32_t *dest, const uint32_t value);
 		/**
 		  * \brief Overwrites the 64-bit unsigned value atomically.
 		  * Ensures that memory operations are completed before the write.
@@ -1031,7 +1041,7 @@ namespace fpl {
 		  * \param value The value to exchange with.
 		  * \return Returns the source value.
 		  */
-		fpl_api void AtomicStoreU64(volatile uint64_t *dest, const uint64_t value);
+		fpl_platform_api void AtomicStoreU64(volatile uint64_t *dest, const uint64_t value);
 		/**
 		  * \brief Overwrites the 32-bit signed value atomically.
 		  * Ensures that memory operations are completed before the write.
@@ -1039,7 +1049,7 @@ namespace fpl {
 		  * \param value The value to exchange with.
 		  * \return Returns the source value.
 		  */
-		fpl_api void AtomicStoreS32(volatile int32_t *dest, const int32_t value);
+		fpl_platform_api void AtomicStoreS32(volatile int32_t *dest, const int32_t value);
 		/**
 		  * \brief Overwrites the 64-bit signed value atomically.
 		  * Ensures that memory operations are completed before the write.
@@ -1047,7 +1057,7 @@ namespace fpl {
 		  * \param value The value to exchange with.
 		  * \return Returns the source value.
 		  */
-		fpl_api void AtomicStoreS64(volatile int64_t *dest, const int64_t value);
+		fpl_platform_api void AtomicStoreS64(volatile int64_t *dest, const int64_t value);
 		/**
 		  * \brief Overwrites the pointer value atomically.
 		  * Ensures that memory operations are completed before the write.
@@ -1055,7 +1065,7 @@ namespace fpl {
 		  * \param value The value to exchange with.
 		  * \return Returns the source value.
 		  */
-		fpl_api void AtomicStorePtr(volatile void **dest, const void *value);
+		fpl_common_api void AtomicStorePtr(volatile void **dest, const void *value);
 
 		/** \}*/
 	}
@@ -1090,7 +1100,7 @@ namespace fpl {
 		  * \brief Returns the total number of processor cores.
 		  * \return Number of processor cores.
 		  */
-		fpl_api uint32_t GetProcessorCoreCount();
+		fpl_platform_api uint32_t GetProcessorCoreCount();
 		/**
 		  * \brief Returns the name of the processor.
 		  * The processor name is written in the destination buffer.
@@ -1098,12 +1108,12 @@ namespace fpl {
 		  * \param maxDestBufferLen The total number of characters available in the destination character buffer.
 		  * \return Name of the processor.
 		  */
-		fpl_api char *GetProcessorName(char *destBuffer, const uint32_t maxDestBufferLen);
+		fpl_platform_api char *GetProcessorName(char *destBuffer, const uint32_t maxDestBufferLen);
 		/**
 		  * \brief Returns the current system memory informations.
 		  * \return Current system memory informations.
 		  */
-		fpl_api MemoryInfos GetSystemMemoryInfos();
+		fpl_platform_api MemoryInfos GetSystemMemoryInfos();
 
 		/** \}*/
 	}
@@ -1385,7 +1395,7 @@ namespace fpl {
 	/**
 	  * \brief Returns the current settings
 	  */
-	fpl_api const Settings &GetCurrentSettings();
+	fpl_common_api const Settings &GetCurrentSettings();
 
 	/** \}*/
 
@@ -1402,12 +1412,12 @@ namespace fpl {
 	  * \note \ref ReleasePlatform() must be called when you are done! After \ref ReleasePlatform() has been called you can call this function again if needed.
 	  * \return Returns true when the initialzation was successful, otherwise false. Will return false when the platform layers is already initialized successfully.
 	  */
-	fpl_api bool InitPlatform(const InitFlags initFlags = InitFlags::All, const Settings &initSettings = DefaultSettings());
+	fpl_common_api bool InitPlatform(const InitFlags initFlags = InitFlags::All, const Settings &initSettings = DefaultSettings());
 	/**
 	  * \brief Releases the resources allocated by the platform layer.
 	  * \note Can only be called when \ref InitPlatform() was successful.
 	  */
-	fpl_api void ReleasePlatform();
+	fpl_common_api void ReleasePlatform();
 
 	/** \}*/
 
@@ -1422,25 +1432,25 @@ namespace fpl {
 	  * \note This function can be called regardless of the initialization state!
 	  * \return Last error string or empty string when there was no error.
 	  */
-	fpl_api const char *GetPlatformError();
+	fpl_common_api const char *GetPlatformError();
 	/**
 	  * \brief Returns the last error string from the given index
 	  * \param index The index
 	  * \note This function can be called regardless of the initialization state!
 	  * \return Last error string from the given index or empty when there was no error.
 	  */
-	fpl_api const char *GetPlatformError(const size_t index);
+	fpl_common_api const char *GetPlatformError(const size_t index);
 	/**
 	  * \brief Returns the count of total last errors
 	  * \note This function can be called regardless of the initialization state!
 	  * \return Number of last errors or zero when there was no error.
 	  */
-	fpl_api size_t GetPlatformErrorCount();
+	fpl_common_api size_t GetPlatformErrorCount();
 	/**
 	  * \brief Clears all the current errors in the platform
 	  * \note This function can be called regardless of the initialization state!
 	  */
-	fpl_api void ClearPlatformErrors();
+	fpl_common_api void ClearPlatformErrors();
 
 	/** \}*/
 
@@ -1473,19 +1483,19 @@ namespace fpl {
 		  * \note To check for success, just check the DynamicLibraryHandle.isValid field from the result.
 		  * \return Handle container of the loaded library.
 		  */
-		fpl_api DynamicLibraryHandle DynamicLibraryLoad(const char *libraryFilePath);
+		fpl_platform_api DynamicLibraryHandle DynamicLibraryLoad(const char *libraryFilePath);
 		/**
 		  * \brief Returns the dynamic library procedure address for the given procedure name.
 		  * \param handle Handle to the loaded library
 		  * \param name Name of the procedure
 		  * \return Procedure address for the given procedure name or nullptr when procedure not found or library is not loaded.
 		  */
-		fpl_api void *GetDynamicLibraryProc(const DynamicLibraryHandle &handle, const char *name);
+		fpl_platform_api void *GetDynamicLibraryProc(const DynamicLibraryHandle &handle, const char *name);
 		/**
 		  * \brief Unloads the loaded library and resets the handle to zero.
 		  * \param handle Loaded dynamic library handle
 		  */
-		fpl_api void DynamicLibraryUnload(DynamicLibraryHandle &handle);
+		fpl_platform_api void DynamicLibraryUnload(DynamicLibraryHandle &handle);
 
 		/** \}*/
 	}
@@ -1503,33 +1513,33 @@ namespace fpl {
 		  * \param text The text to write into standard output console.
 		  * \note This is most likely just a wrapper call to fprintf(stdout)
 		  */
-		fpl_api void ConsoleOut(const char *text);
+		fpl_platform_api void ConsoleOut(const char *text);
 		/**
 		  * \brief Writes the given formatted text to the standard output console buffer.
 		  * \param format The format used for writing into the standard output console.
 		  * \param ... The dynamic arguments used for formatting the text.
 		  * \note This is most likely just a wrapper call to vfprintf(stdout)
 		  */
-		fpl_api void ConsoleFormatOut(const char *format, ...);
+		fpl_platform_api void ConsoleFormatOut(const char *format, ...);
 		/**
 		  * \brief Writes the given text to the standard error console buffer.
 		  * \param text The text to write into standard error console.
 		  * \note This is most likely just a wrapper call to fprintf(stderr)
 		  */
-		fpl_api void ConsoleError(const char *text);
+		fpl_platform_api void ConsoleError(const char *text);
 		/**
 		  * \brief Writes the given formatted text to the standard error console buffer.
 		  * \param format The format used for writing into the standard error console.
 		  * \param ... The dynamic arguments used for formatting the text.
 		  * \note This is most likely just a wrapper call to vfprintf(stderr)
 		  */
-		fpl_api void ConsoleFormatError(const char *format, ...);
+		fpl_platform_api void ConsoleFormatError(const char *format, ...);
 		/**
 		  * \brief Wait for a character to be typed in the console input and return it
 		  * \note This is most likely just a wrapper call to getchar()
 		  * \return Character typed in in the console input
 		  */
-		fpl_api const char ConsoleWaitForCharInput();
+		fpl_platform_api const char ConsoleWaitForCharInput();
 
 		/** \}*/
 	}
@@ -1618,41 +1628,41 @@ namespace fpl {
 		  * \warning Do not free this thread context directly! Use \ref ThreadDestroy() instead.
 		  * \return Pointer to a internal stored thread-context or return nullptr when the limit of current threads has been reached.
 		  */
-		fpl_api ThreadContext *ThreadCreate(run_thread_function *runFunc, void *data, const bool autoStart = true);
+		fpl_platform_api ThreadContext *ThreadCreate(run_thread_function *runFunc, void *data, const bool autoStart = true);
 		/**
 		  * \brief Let the current thread sleep for the given amount of milliseconds.
 		  * \param milliseconds Number of milliseconds to sleep
 		  * \note There is no guarantee that the OS sleeps for the exact amount of milliseconds! This can vary based on the OS scheduler granularity.
 		  */
-		fpl_api void ThreadSleep(const uint32_t milliseconds);
+		fpl_platform_api void ThreadSleep(const uint32_t milliseconds);
 		/**
 		  * \brief Suspends the given thread.
 		  * So any user code will get be freezed at the current point.
 		  * \param context Context to the thread
 		  * \return Returns true when the thread was successfully suspended or false otherwise.
 		  */
-		fpl_api bool ThreadSuspend(ThreadContext *context);
+		fpl_platform_api bool ThreadSuspend(ThreadContext *context);
 		/**
 		  * \brief Resumes a suspended thread.
 		  * Any user code will continue to run from the latest point.
 		  * \param context Context to the thread
 		  * \return Returns true when the thread was successfully resumed or false otherwise.
 		  */
-		fpl_api bool ThreadResume(ThreadContext *context);
+		fpl_platform_api bool ThreadResume(ThreadContext *context);
 		/**
 		  * \brief Stop the given thread and release all underlying resources.
 		  * \param context Context to the thread
 		  * \note This thread context may get re-used for another thread in the future!
 		  * \warning Do not free the given thread context manually!
 		  */
-		fpl_api void ThreadDestroy(ThreadContext *context);
+		fpl_platform_api void ThreadDestroy(ThreadContext *context);
 		/**
 		  * \brief Wait until the given thread is done running or the given timeout has been reached.
 		  * \param context Thread context
 		  * \param maxMilliseconds Optional number of milliseconds to wait. When this is set to UINT32_MAX it may wait infinitly. (Default: UINT32_MAX)
 		  * \return Returns true when the thread completes or when the timeout has been reached.
 		  */
-		fpl_api bool ThreadWaitForOne(ThreadContext *context, const uint32_t maxMilliseconds = UINT32_MAX);
+		fpl_platform_api bool ThreadWaitForOne(ThreadContext *context, const uint32_t maxMilliseconds = UINT32_MAX);
 		/**
 		  * \brief Wait until all given threads are done running or the given timeout has been reached.
 		  * \param contexts Array of thread contexts
@@ -1660,7 +1670,7 @@ namespace fpl {
 		  * \param maxMilliseconds Optional number of milliseconds to wait. When this is set to UINT32_MAX it may wait infinitly. (Default: UINT32_MAX)
 		  * \return Returns true when all threads completes or when the timeout has been reached.
 		  */
-		fpl_api bool ThreadWaitForAll(ThreadContext *contexts[], const uint32_t count, const uint32_t maxMilliseconds = UINT32_MAX);
+		fpl_platform_api bool ThreadWaitForAll(ThreadContext *contexts[], const uint32_t count, const uint32_t maxMilliseconds = UINT32_MAX);
 		/**
 		  * \brief Wait until one of given threads is done running or the given timeout has been reached.
 		  * \param contexts Array of thread contexts
@@ -1668,44 +1678,44 @@ namespace fpl {
 		  * \param maxMilliseconds Optional number of milliseconds to wait. When this is set to UINT32_MAX it may wait infinitly. (Default: UINT32_MAX)
 		  * \return Returns true when one thread completes or when the timeout has been reached.
 		  */
-		fpl_api bool ThreadWaitForAny(ThreadContext *contexts[], const uint32_t count, const uint32_t maxMilliseconds = UINT32_MAX);
+		fpl_platform_api bool ThreadWaitForAny(ThreadContext *contexts[], const uint32_t count, const uint32_t maxMilliseconds = UINT32_MAX);
 
 		/**
 		  * \brief Creates a mutex and returns a copy of the handle to it.
 		  * \note Use \ref MutexDestroy() when you are done with this mutex.
 		  * \return Copy of the handle to the mutex.
 		  */
-		fpl_api ThreadMutex MutexCreate();
+		fpl_platform_api ThreadMutex MutexCreate();
 		/**
 		  * \brief Releases the given mutex and clears the structure to zero.
 		  * \param mutex The mutex reference to destroy.
 		  */
-		fpl_api void MutexDestroy(ThreadMutex &mutex);
+		fpl_platform_api void MutexDestroy(ThreadMutex &mutex);
 		/**
 		  * \brief Locks the given mutex and ensures that other threads will wait until it gets unlocked or the timeout has been reached.
 		  * \param mutex The mutex reference to lock
 		  * \param maxMilliseconds Optional number of milliseconds to wait. When this is set to UINT32_MAX it may wait infinitly. (Default: UINT32_MAX)
 		  * \returns True when mutex was locked or false otherwise.
 		  */
-		fpl_api bool MutexLock(ThreadMutex &mutex, const uint32_t maxMilliseconds = UINT32_MAX);
+		fpl_platform_api bool MutexLock(ThreadMutex &mutex, const uint32_t maxMilliseconds = UINT32_MAX);
 		/**
 		 * \brief Unlocks the given mutex
 		 * \param mutex The mutex reference to unlock
 		 * \returns True when mutex was unlocked or false otherwise.
 		 */
-		fpl_api bool MutexUnlock(ThreadMutex &mutex);
+		fpl_platform_api bool MutexUnlock(ThreadMutex &mutex);
 
 		/**
 		  * \brief Creates a signal and returns a copy of the handle to it.
 		  * \note Use \ref SignalDestroy() when you are done with this signal.
 		  * \return Copy of the handle to the signal.
 		  */
-		fpl_api ThreadSignal SignalCreate();
+		fpl_platform_api ThreadSignal SignalCreate();
 		/**
 		  * \brief Releases the given signal and clears the structure to zero.
 		  * \param signal The signal reference to destroy.
 		  */
-		fpl_api void SignalDestroy(ThreadSignal &signal);
+		fpl_platform_api void SignalDestroy(ThreadSignal &signal);
 		/**
 		  * \brief Waits until the given signal are waked up.
 		  * \param mutex The mutex reference
@@ -1713,7 +1723,7 @@ namespace fpl {
 		  * \param maxMilliseconds Optional number of milliseconds to wait. When this is set to UINT32_MAX it may wait infinitly. (Default: UINT32_MAX)
 		  * \return Returns true when the signal woke up or the timeout has been reached, otherwise false.
 		  */
-		fpl_api bool SignalWaitForOne(ThreadMutex &mutex, ThreadSignal &signal, const uint32_t maxMilliseconds = UINT32_MAX);
+		fpl_platform_api bool SignalWaitForOne(ThreadMutex &mutex, ThreadSignal &signal, const uint32_t maxMilliseconds = UINT32_MAX);
 		/**
 		  * \brief Waits until all the given signal are waked up.
 		  * \param mutex The mutex reference
@@ -1722,7 +1732,7 @@ namespace fpl {
 		  * \param maxMilliseconds Optional number of milliseconds to wait. When this is set to UINT32_MAX it may wait infinitly. (Default: UINT32_MAX)
 		  * \return Returns true when all signals woke up or the timeout has been reached, otherwise false.
 		  */
-		fpl_api bool SignalWaitForAll(ThreadMutex &mutex, ThreadSignal *signals[], const uint32_t count, const uint32_t maxMilliseconds = UINT32_MAX);
+		fpl_platform_api bool SignalWaitForAll(ThreadMutex &mutex, ThreadSignal *signals[], const uint32_t count, const uint32_t maxMilliseconds = UINT32_MAX);
 		/**
 		  * \brief Waits until any of the given signals wakes up or the timeout has been reached.
 		  * \param mutex The mutex reference
@@ -1731,19 +1741,19 @@ namespace fpl {
 		  * \param maxMilliseconds Optional number of milliseconds to wait. When this is set to UINT32_MAX it may wait infinitly. (Default: UINT32_MAX)
 		  * \return Returns true when any of the signals woke up or the timeout has been reached, otherwise false.
 		  */
-		fpl_api bool SignalWaitForAny(ThreadMutex &mutex, ThreadSignal *signals[], const uint32_t count, const uint32_t maxMilliseconds = UINT32_MAX);
+		fpl_platform_api bool SignalWaitForAny(ThreadMutex &mutex, ThreadSignal *signals[], const uint32_t count, const uint32_t maxMilliseconds = UINT32_MAX);
 		/**
 		  * \brief Wakes up the given signal.
 		  * \param signal The reference to the signal
 		  * \return Returns true when the signal was woke up, otherwise false.
 		  */
-		fpl_api bool SignalWakeUp(ThreadSignal &signal);
+		fpl_platform_api bool SignalWakeUp(ThreadSignal &signal);
 		/**
 		  * \brief Resets the given signal
 		  * \param signal The reference to the signal
 		  * \return Returns true when the signal was reset, otherwise false.
 		  */
-		fpl_api bool SignalReset(ThreadSignal &signal);
+		fpl_platform_api bool SignalReset(ThreadSignal &signal);
 
 		/** \}*/
 	}
@@ -1761,14 +1771,14 @@ namespace fpl {
 		  * \param mem Pointer to the memory.
 		  * \param size Size in bytes to be cleared to zero.
 		  */
-		fpl_api void MemoryClear(void *mem, const size_t size);
+		fpl_common_api void MemoryClear(void *mem, const size_t size);
 		/**
 		  * \brief Copies the given source memory with its length to the target memory.
 		  * \param sourceMem Pointer to the source memory to copy from.
 		  * \param sourceSize Size in bytes to be copied.
 		  * \param targetMem Pointer to the target memory to copy to.
 		  */
-		fpl_api void MemoryCopy(void *sourceMem, const size_t sourceSize, void *targetMem);
+		fpl_common_api void MemoryCopy(void *sourceMem, const size_t sourceSize, void *targetMem);
 		/**
 		  * \brief Allocates memory from the operating system by the given size.
 		  * \param size Size to by allocated in bytes.
@@ -1776,21 +1786,21 @@ namespace fpl {
 		  * \warning Alignment is not ensured here, the OS decides how to handle this. If you want to force a specific alignment use \ref MemoryAlignedAllocate() instead.
 		  * \return Pointer to the new allocated memory.
 		  */
-		fpl_api void *MemoryAllocate(const size_t size);
+		fpl_platform_api void *MemoryAllocate(const size_t size);
 		/**
 		  * \brief Releases the memory allocated from the operating system.
 		  * \param ptr Pointer to the allocated memory.
 		  * \warning This should never be called with a aligned memory pointer! For freeing aligned memory, use \ref MemoryAlignedFree() instead.
 		  * \return Pointer to the new allocated memory.
 		  */
-		fpl_api void MemoryFree(void *ptr);
+		fpl_platform_api void MemoryFree(void *ptr);
 		/**
 		  * \brief Allocates memory on the current stack by the given amount in bytes.
 		  * \param size Size amount in bytes
 		  * \warning Use this very carefully, the memory will be released then the current scope goes out of scope!
 		  * \return Pointer to the new allocated stack memory.
 		  */
-		fpl_api void *MemoryStackAllocate(const size_t size);
+		fpl_platform_api void *MemoryStackAllocate(const size_t size);
 		/**
 		  * \brief Allocates aligned memory from the operating system by the given alignment.
 		  * \param size Size amount in bytes
@@ -1798,14 +1808,14 @@ namespace fpl {
 		  * \note The memory is guaranteed to be initialized by zero.
 		  * \return Pointer to the new allocated aligned memory.
 		  */
-		fpl_api void *MemoryAlignedAllocate(const size_t size, const size_t alignment);
+		fpl_common_api void *MemoryAlignedAllocate(const size_t size, const size_t alignment);
 		/**
 		  * \brief Releases the aligned memory allocated from the operating system.
 		  * \param ptr Pointer to the aligned allocated memory.
 		  * \warning This should never be called with a not-aligned memory pointer! For freeing not-aligned memory, use \ref MemoryFree() instead.
 		  * \return Pointer to the new allocated memory.
 		  */
-		fpl_api void MemoryAlignedFree(void *ptr);
+		fpl_common_api void MemoryAlignedFree(void *ptr);
 
 		/** \}*/
 	}
@@ -1823,7 +1833,7 @@ namespace fpl {
 		  * \return Returns number of second since some fixed starting point (OS start, System start, etc).
 		  * \note Can only be used to calculate a difference in time!
 		  */
-		fpl_api double GetHighResolutionTimeInSeconds();
+		fpl_platform_api double GetHighResolutionTimeInSeconds();
 
 		/** \}*/
 	}
@@ -1845,28 +1855,28 @@ namespace fpl {
 		  * \note Len parameters does not include the null-terminator!
 		  * \return True when strings matches, otherwise false.
 		  */
-		fpl_api bool IsStringEqual(const char *a, const uint32_t aLen, const char *b, const uint32_t bLen);
+		fpl_common_api bool IsStringEqual(const char *a, const uint32_t aLen, const char *b, const uint32_t bLen);
 		/**
 		  * \brief Returns true when both ansi strings are equal.
 		  * \param a First string
 		  * \param b Second string
 		  * \return True when strings matches, otherwise false.
 		  */
-		fpl_api bool IsStringEqual(const char *a, const char *b);
+		fpl_common_api bool IsStringEqual(const char *a, const char *b);
 		/**
 		  * \brief Returns the number of characters of the given 8-bit Ansi string.
 		  * \param str The 8-bit ansi string
 		  * \note Null terminator is not included!
 		  * \return Returns the character length or zero when the input string is nullptr.
 		  */
-		fpl_api uint32_t GetAnsiStringLength(const char *str);
+		fpl_common_api uint32_t GetAnsiStringLength(const char *str);
 		/**
 		  * \brief Returns the number of characters of the given 16-bit wide string.
 		  * \param str The 16-bit wide string
 		  * \note Null terminator is not included!
 		  * \return Returns the character length or zero when the input string is nullptr.
 		  */
-		fpl_api uint32_t GetWideStringLength(const wchar_t *str);
+		fpl_common_api uint32_t GetWideStringLength(const wchar_t *str);
 		/**
 		  * \brief Copies the given 8-bit source ansi string with a fixed length into a destination ansi string.
 		  * \param source The 8-bit source ansi string.
@@ -1876,7 +1886,7 @@ namespace fpl {
 		  * \note Null terminator is included always. Does not allocate any memory.
 		  * \return Returns the pointer to the first character in the destination buffer or nullptr when either the dest buffer is too small or the source string is invalid.
 		  */
-		fpl_api char *CopyAnsiString(const char *source, const uint32_t sourceLen, char *dest, const uint32_t maxDestLen);
+		fpl_common_api char *CopyAnsiString(const char *source, const uint32_t sourceLen, char *dest, const uint32_t maxDestLen);
 		/**
 		  * \brief Copies the given 8-bit source ansi string into a destination ansi string.
 		  * \param source The 8-bit source ansi string.
@@ -1885,7 +1895,7 @@ namespace fpl {
 		  * \note Null terminator is included always. Does not allocate any memory.
 		  * \return Returns the pointer to the first character in the destination buffer or nullptr when either the dest buffer is too small or the source string is invalid.
 		  */
-		fpl_api char *CopyAnsiString(const char *source, char *dest, const uint32_t maxDestLen);
+		fpl_common_api char *CopyAnsiString(const char *source, char *dest, const uint32_t maxDestLen);
 		/**
 		  * \brief Copies the given 16-bit source wide string with a fixed length into a destination wide string.
 		  * \param source The 16-bit source wide string.
@@ -1895,7 +1905,7 @@ namespace fpl {
 		  * \note Null terminator is included always. Does not allocate any memory.
 		  * \return Returns the pointer to the first character in the destination buffer or nullptr when either the dest buffer is too small or the source string is invalid.
 		  */
-		fpl_api wchar_t *CopyWideString(const wchar_t *source, const uint32_t sourceLen, wchar_t *dest, const uint32_t maxDestLen);
+		fpl_common_api wchar_t *CopyWideString(const wchar_t *source, const uint32_t sourceLen, wchar_t *dest, const uint32_t maxDestLen);
 		/**
 		  * \brief Copies the given 16-bit source wide string into a destination wide string.
 		  * \param source The 16-bit source wide string.
@@ -1904,7 +1914,7 @@ namespace fpl {
 		  * \note Null terminator is included always. Does not allocate any memory.
 		  * \return Returns the pointer to the first character in the destination buffer or nullptr when either the dest buffer is too small or the source string is invalid.
 		  */
-		fpl_api wchar_t *CopyWideString(const wchar_t *source, wchar_t *dest, const uint32_t maxDestLen);
+		fpl_common_api wchar_t *CopyWideString(const wchar_t *source, wchar_t *dest, const uint32_t maxDestLen);
 		/**
 		  * \brief Converts the given 16-bit source wide string with length in a 8-bit ansi string.
 		  * \param wideSource The 16-bit source wide string.
@@ -1914,7 +1924,7 @@ namespace fpl {
 		  * \note Null terminator is included always. Does not allocate any memory.
 		  * \return Returns the pointer to the first character in the destination buffer or nullptr when either the dest buffer is too small or the source string is invalid.
 		  */
-		fpl_api char *WideStringToAnsiString(const wchar_t *wideSource, const uint32_t maxWideSourceLen, char *ansiDest, const uint32_t maxAnsiDestLen);
+		fpl_platform_api char *WideStringToAnsiString(const wchar_t *wideSource, const uint32_t maxWideSourceLen, char *ansiDest, const uint32_t maxAnsiDestLen);
 		/**
 		  * \brief Converts the given 16-bit source wide string with length in a 8-bit UTF-8 ansi string.
 		  * \param wideSource The 16-bit source wide string.
@@ -1924,7 +1934,7 @@ namespace fpl {
 		  * \note Null terminator is included always. Does not allocate any memory.
 		  * \return Returns the pointer to the first character in the destination buffer or nullptr when either the dest buffer is too small or the source string is invalid.
 		  */
-		fpl_api char *WideStringToUTF8String(const wchar_t *wideSource, const uint32_t maxWideSourceLen, char *utf8Dest, const uint32_t maxUtf8DestLen);
+		fpl_platform_api char *WideStringToUTF8String(const wchar_t *wideSource, const uint32_t maxWideSourceLen, char *utf8Dest, const uint32_t maxUtf8DestLen);
 		/**
 		  * \brief Converts the given 8-bit source ansi string with length in a 16-bit wide string.
 		  * \param ansiSource The 8-bit source ansi string.
@@ -1934,7 +1944,7 @@ namespace fpl {
 		  * \note Null terminator is included always. Does not allocate any memory.
 		  * \return Returns the pointer to the first character in the destination buffer or nullptr when either the dest buffer is too small or the source string is invalid.
 		  */
-		fpl_api wchar_t *AnsiStringToWideString(const char *ansiSource, const uint32_t ansiSourceLen, wchar_t *wideDest, const uint32_t maxWideDestLen);
+		fpl_platform_api wchar_t *AnsiStringToWideString(const char *ansiSource, const uint32_t ansiSourceLen, wchar_t *wideDest, const uint32_t maxWideDestLen);
 		/**
 		  * \brief Converts the given 8-bit UTF-8 source ansi string with length in a 16-bit wide string.
 		  * \param utf8Source The 8-bit source ansi string.
@@ -1944,7 +1954,7 @@ namespace fpl {
 		  * \note Null terminator is included always. Does not allocate any memory.
 		  * \return Returns the pointer to the first character in the destination buffer or nullptr when either the dest buffer is too small or the source string is invalid.
 		  */
-		fpl_api wchar_t *UTF8StringToWideString(const char *utf8Source, const uint32_t utf8SourceLen, wchar_t *wideDest, const uint32_t maxWideDestLen);
+		fpl_platform_api wchar_t *UTF8StringToWideString(const char *utf8Source, const uint32_t utf8SourceLen, wchar_t *wideDest, const uint32_t maxWideDestLen);
 		/**
 		  * \brief Fills out the given destination ansi string buffer with a formatted string, using the format specifier and variable arguments.
 		  * \param ansiDestBuffer The 8-bit destination ansi string buffer.
@@ -1954,7 +1964,7 @@ namespace fpl {
 		  * \note This is most likely just a wrapper call to vsnprintf()
 		  * \return Pointer to the first character in the destination buffer or nullptr.
 		  */
-		fpl_api char *FormatAnsiString(char *ansiDestBuffer, const uint32_t maxAnsiDestBufferLen, const char *format, ...);
+		fpl_platform_api char *FormatAnsiString(char *ansiDestBuffer, const uint32_t maxAnsiDestBufferLen, const char *format, ...);
 
 		/** \}*/
 	}
@@ -2048,28 +2058,28 @@ namespace fpl {
 		  * \note To check for success just test the \ref FileHandle.isValid field from the result.
 		  * \return Copy of the handle to the open file.
 		  */
-		fpl_api FileHandle OpenBinaryFile(const char *filePath);
+		fpl_platform_api FileHandle OpenBinaryFile(const char *filePath);
 		/**
 		  * \brief Opens a binary file for reading from a wide string path and returns the handle of it.
 		  * \param filePath Wide file path.
 		  * \note To check for success just test the \ref FileHandle.isValid field from the result.
 		  * \return Copy of the handle to the open file.
 		  */
-		fpl_api FileHandle OpenBinaryFile(const wchar_t *filePath);
+		fpl_platform_api FileHandle OpenBinaryFile(const wchar_t *filePath);
 		/**
 		  * \brief Create a binary file for writing to the given ansi string path and returns the handle of it.
 		  * \param filePath Ansi file path.
 		  * \note To check for success just test the \ref FileHandle.isValid field from the result. The file is ensured to be overriden always.
 		  * \return Copy of the handle to the created file.
 		  */
-		fpl_api FileHandle CreateBinaryFile(const char *filePath);
+		fpl_platform_api FileHandle CreateBinaryFile(const char *filePath);
 		/**
 		  * \brief Create a binary file for writing to the given wide string path and returns the handle of it.
 		  * \param filePath Wide file path.
 		  * \note To check for success just test the \ref FileHandle.isValid field from the result. The file is ensured to be overriden always.
 		  * \return Copy of the handle to the created file.
 		  */
-		fpl_api FileHandle CreateBinaryFile(const wchar_t *filePath);
+		fpl_platform_api FileHandle CreateBinaryFile(const wchar_t *filePath);
 		/**
 		  * \brief Reads a block from the given file handle and returns the number of bytes read.
 		  * \param fileHandle Reference to the file handle.
@@ -2079,7 +2089,7 @@ namespace fpl {
 		  * \note Its limited to files < 2 GB.
 		  * \return Number of bytes read or zero.
 		  */
-		fpl_api uint32_t ReadFileBlock32(const FileHandle &fileHandle, const uint32_t sizeToRead, void *targetBuffer, const uint32_t maxTargetBufferSize);
+		fpl_platform_api uint32_t ReadFileBlock32(const FileHandle &fileHandle, const uint32_t sizeToRead, void *targetBuffer, const uint32_t maxTargetBufferSize);
 		/**
 		  * \brief Writes a block to the given file handle and returns the number of bytes written.
 		  * \param fileHandle Reference to the file handle.
@@ -2088,7 +2098,7 @@ namespace fpl {
 		  * \note Its limited to files < 2 GB.
 		  * \return Number of bytes written or zero.
 		  */
-		fpl_api uint32_t WriteFileBlock32(const FileHandle &fileHandle, void *sourceBuffer, const uint32_t sourceSize);
+		fpl_platform_api uint32_t WriteFileBlock32(const FileHandle &fileHandle, void *sourceBuffer, const uint32_t sourceSize);
 		/**
 		  * \brief Sets the current file position by the given position, depending on the mode its absolute or relative.
 		  * \param fileHandle Reference to the file handle.
@@ -2096,19 +2106,19 @@ namespace fpl {
 		  * \param mode Position mode
 		  * \note Its limited to files < 2 GB.
 		  */
-		fpl_api void SetFilePosition32(const FileHandle &fileHandle, const int32_t position, const FilePositionMode mode);
+		fpl_platform_api void SetFilePosition32(const FileHandle &fileHandle, const int32_t position, const FilePositionMode mode);
 		/**
 		  * \brief Returns the current file position in bytes.
 		  * \param fileHandle Reference to the file handle.
 		  * \note Its limited to files < 2 GB.
 		  * \return Current file position in bytes.
 		  */
-		fpl_api uint32_t GetFilePosition32(const FileHandle &fileHandle);
+		fpl_platform_api uint32_t GetFilePosition32(const FileHandle &fileHandle);
 		/**
 		  * \brief Closes the given file and releases the underlying resources and clears the handle to zero.
 		  * \param fileHandle Reference to the file handle.
 		  */
-		fpl_api void CloseFile(FileHandle &fileHandle);
+		fpl_platform_api void CloseFile(FileHandle &fileHandle);
 
 		// @TODO(final): Add 64-bit file operations
 		// @TODO(final): Add wide file operations
@@ -2119,20 +2129,20 @@ namespace fpl {
 		  * \note Its limited to files < 2 GB.
 		  * \return File size in bytes or zero.
 		  */
-		fpl_api uint32_t GetFileSize32(const char *filePath);
+		fpl_platform_api uint32_t GetFileSize32(const char *filePath);
 		/**
 		  * \brief Returns the 32-bit file size in bytes for a opened file.
 		  * \param fileHandle Reference to the file handle.
 		  * \note Its limited to files < 2 GB.
 		  * \return File size in bytes or zero.
 		  */
-		fpl_api uint32_t GetFileSize32(const FileHandle &fileHandle);
+		fpl_platform_api uint32_t GetFileSize32(const FileHandle &fileHandle);
 		/**
 		  * \brief Returns true when the given file physically exists.
 		  * \param filePath Ansi path to the file.
 		  * \return True when the file exists, otherwise false.
 		  */
-		fpl_api bool FileExists(const char *filePath);
+		fpl_platform_api bool FileExists(const char *filePath);
 		/**
 		  * \brief Copies the given source file to the target path and returns true when copy was successful.
 		  * \param sourceFilePath Ansi source file path.
@@ -2140,32 +2150,32 @@ namespace fpl {
 		  * \param overwrite When true the target file always be overwritten, otherwise it will return false when file already exists.
 		  * \return True when the file was copied, otherwise false.
 		  */
-		fpl_api bool FileCopy(const char *sourceFilePath, const char *targetFilePath, const bool overwrite);
+		fpl_platform_api bool FileCopy(const char *sourceFilePath, const char *targetFilePath, const bool overwrite);
 		/**
 		  * \brief Deletes the given file without confirmation and returns true when the deletion was successful.
 		  * \param filePath Ansi path to the file.
 		  * \return True when the file was deleted, otherwise false.
 		  */
-		fpl_api bool FileDelete(const char *filePath);
+		fpl_platform_api bool FileDelete(const char *filePath);
 
 		/**
 		  * \brief Creates all the directories in the given path.
 		  * \param path Ansi path to the directory.
 		  * \return True when at least one directory was created, otherwise false.
 		  */
-		fpl_api bool CreateDirectories(const char *path);
+		fpl_platform_api bool CreateDirectories(const char *path);
 		/**
 		  * \brief Returns true when the given directory physically exists.
 		  * \param path Ansi path to the directory.
 		  * \return True when the directory exists, otherwise false.
 		  */
-		fpl_api bool DirectoryExists(const char *path);
+		fpl_platform_api bool DirectoryExists(const char *path);
 		/**
 		  * \brief Deletes the given empty directory without confirmation and returns true when the deletion was successful.
 		  * \param path Ansi path to the directory.
 		  * \return True when the empty directory was deleted, otherwise false.
 		  */
-		fpl_api bool RemoveEmptyDirectory(const char *path);
+		fpl_platform_api bool RemoveEmptyDirectory(const char *path);
 		/**
 		  * \brief Iterates through files / directories in the given directory.
 		  * \param pathAndFilter The path with its included after the path separator.
@@ -2173,18 +2183,18 @@ namespace fpl {
 		  * \note The path must contain the filter as well.
 		  * \return Returns true when there was a first entry found otherwise false.
 		  */
-		fpl_api bool ListFilesBegin(const char *pathAndFilter, FileEntry &firstEntry);
+		fpl_platform_api bool ListFilesBegin(const char *pathAndFilter, FileEntry &firstEntry);
 		/**
 		  * \brief Gets the next file entry from iterating through files / directories.
 		  * \param nextEntry The reference to the current file entry.
 		  * \return Returns true when there was a next file otherwise false if not.
 		  */
-		fpl_api bool ListFilesNext(FileEntry &nextEntry);
+		fpl_platform_api bool ListFilesNext(FileEntry &nextEntry);
 		/**
 		  * \brief Releases opened resources from iterating through files / directories.
 		  * \param lastEntry The reference to the last file entry.
 		  */
-		fpl_api void ListFilesEnd(FileEntry &lastEntry);
+		fpl_platform_api void ListFilesEnd(FileEntry &lastEntry);
 
 		/** \}*/
 	}
@@ -2206,7 +2216,7 @@ namespace fpl {
 		  * \note Result is written in the destination buffer.
 		  * \return Returns the pointer to the first character in the destination buffer or nullptr.
 		  */
-		fpl_api char *GetExecutableFilePath(char *destPath, const uint32_t maxDestLen);
+		fpl_platform_api char *GetExecutableFilePath(char *destPath, const uint32_t maxDestLen);
 		/**
 		  * \brief Returns the full path to your home directory.
 		  * \param destPath Destination buffer
@@ -2214,7 +2224,7 @@ namespace fpl {
 		  * \note Result is written in the destination buffer.
 		  * \return Returns the pointer to the first character in the destination buffer or nullptr.
 		  */
-		fpl_api char *GetHomePath(char *destPath, const uint32_t maxDestLen);
+		fpl_platform_api char *GetHomePath(char *destPath, const uint32_t maxDestLen);
 		/**
 		  * \brief Returns the path from the given source path.
 		  * \param sourcePath Source path to extract from.
@@ -2223,19 +2233,19 @@ namespace fpl {
 		  * \note Result is written in the destination buffer.
 		  * \return Returns the pointer to the first character in the destination buffer or nullptr.
 		  */
-		fpl_api char *ExtractFilePath(const char *sourcePath, char *destPath, const uint32_t maxDestLen);
+		fpl_common_api char *ExtractFilePath(const char *sourcePath, char *destPath, const uint32_t maxDestLen);
 		/**
 		  * \brief Returns the file extension from the given source path.
 		  * \param sourcePath Source path to extract from.
 		  * \return Returns the pointer to the first character of the extension.
 		  */
-		fpl_api char *ExtractFileExtension(const char *sourcePath);
+		fpl_common_api char *ExtractFileExtension(const char *sourcePath);
 		/**
 		  * \brief Returns the file name including the file extension from the given source path.
 		  * \param sourcePath Source path to extract from.
 		  * \return Returns the pointer to the first character of the filename.
 		  */
-		fpl_api char *ExtractFileName(const char *sourcePath);
+		fpl_common_api char *ExtractFileName(const char *sourcePath);
 		/**
 		  * \brief Changes the file extension on the given source path and writes the result into the destination path.
 		  * \param filePath File path to search for the extension.
@@ -2245,7 +2255,7 @@ namespace fpl {
 		  * \note Result is written in the destination buffer.
 		  * \return Returns the pointer to the first character in the destination buffer or nullptr.
 		  */
-		fpl_api char *ChangeFileExtension(const char *filePath, const char *newFileExtension, char *destPath, const uint32_t maxDestLen);
+		fpl_common_api char *ChangeFileExtension(const char *filePath, const char *newFileExtension, char *destPath, const uint32_t maxDestLen);
 		/**
 		  * \brief Combines all included path by the systems path separator.
 		  * \param destPath Destination buffer
@@ -2255,7 +2265,7 @@ namespace fpl {
 		  * \note Result is written in the destination buffer.
 		  * \return Returns the pointer to the first character in the destination buffer or nullptr.
 		  */
-		fpl_api char *CombinePath(char *destPath, const uint32_t maxDestPathLen, const uint32_t pathCount, ...);
+		fpl_common_api char *CombinePath(char *destPath, const uint32_t maxDestPathLen, const uint32_t pathCount, ...);
 
 		/** \}*/
 	}
@@ -2637,23 +2647,23 @@ namespace fpl {
 		  * \param ev Reference to an event
 		  * \return Returns false when there are no events left, otherwise true.
 		  */
-		fpl_api bool PollWindowEvent(Event &ev);
+		fpl_common_api bool PollWindowEvent(Event &ev);
 		/**
 		  * \brief Removes all the events from the internal event queue.
 		  * \todo Dont call when you care about any event!
 		  */
-		fpl_api void ClearWindowEvents();
+		fpl_common_api void ClearWindowEvents();
 		/**
 		  * \brief Reads the next window event from the OS and pushes it into the internal queue.
 		  * \return Returns true when there was a event from the OS, otherwise true.
 		  * \note Use this only if dont use \ref WindowUpdate() and want to handle the events more granular!
 		  */
-		fpl_api bool PushWindowEvent();
+		fpl_platform_api bool PushWindowEvent();
 		/**
 		  * \brief Updates the game controller states and detects new and disconnected devices.
 		  * \note Use this only if dont use \ref WindowUpdate() and want to handle the events more granular!
 		  */
-		fpl_api void UpdateGameControllers();
+		fpl_platform_api void UpdateGameControllers();
 
 		/*\}*/
 
@@ -2683,43 +2693,43 @@ namespace fpl {
 		  * \brief Returns true when the window is active.
 		  * \return True when the window is active, otherwise false.
 		  */
-		fpl_api bool IsWindowRunning();
+		fpl_platform_api bool IsWindowRunning();
 		/**
 		  * \brief Processes the message queue of the window.
 		  * \note This will update the game controller states as well.
 		  * \return True when the window is still active, otherwise false.
 		  */
-		fpl_api bool WindowUpdate();
+		fpl_platform_api bool WindowUpdate();
 		/**
 		  * \brief Forces the window to redraw or to swap the back/front buffer.
 		  */
-		fpl_api void WindowFlip();
+		fpl_platform_api void WindowFlip();
 		/**
 		  * \brief Enables or disables the window cursor.
 		  * \param value Set this to true for enabling the cursor or false for disabling the cursor.
 		  */
-		fpl_api void SetWindowCursorEnabled(const bool value);
+		fpl_platform_api void SetWindowCursorEnabled(const bool value);
 		/**
 		  * \brief Returns the inner window area.
 		  * \return Window area size
 		  */
-		fpl_api WindowSize GetWindowArea();
+		fpl_platform_api WindowSize GetWindowArea();
 		/**
 		  * \brief Resizes the window to fit the inner area to the given size.
 		  * \param width Width in screen units
 		  * \param height Height in screen units
 		  */
-		fpl_api void SetWindowArea(const uint32_t width, const uint32_t height);
+		fpl_platform_api void SetWindowArea(const uint32_t width, const uint32_t height);
 		/**
 		  * \brief Returns true when the window is resizable.
 		  * \return True when the window resizable, otherwise false.
 		  */
-		fpl_api bool IsWindowResizable();
+		fpl_platform_api bool IsWindowResizable();
 		/**
 		  * \brief Enables or disables the ability to resize the window.
 		  * \param value Set this to true for making the window resizable or false for making it static
 		  */
-		fpl_api void SetWindowResizeable(const bool value);
+		fpl_platform_api void SetWindowResizeable(const bool value);
 		/**
 		  * \brief Enables or disables fullscreen mode.
 		  * \param value Set this to true for changing the window to fullscreen or false for switching it back to window mode.
@@ -2728,28 +2738,28 @@ namespace fpl {
 		  * \param refreshRate Optional refresh rate in screen units. When set to zero the desktop default is being used. (Default: 0)
 		  * \return True when the window was changed to the desire fullscreen mode, false when otherwise.
 		  */
-		fpl_api bool SetWindowFullscreen(const bool value, const uint32_t fullscreenWidth = 0, const uint32_t fullscreenHeight = 0, const uint32_t refreshRate = 0);
+		fpl_platform_api bool SetWindowFullscreen(const bool value, const uint32_t fullscreenWidth = 0, const uint32_t fullscreenHeight = 0, const uint32_t refreshRate = 0);
 		/**
 		  * \brief Returns true when the window is in fullscreen mode
 		  * \return True when the window is in fullscreen mode, otherwise false.
 		  */
-		fpl_api bool IsWindowFullscreen();
+		fpl_platform_api bool IsWindowFullscreen();
 		/**
 		  * \brief Returns the absolute window position.
 		  * \return Window position in screen units
 		  */
-		fpl_api WindowPosition GetWindowPosition();
+		fpl_platform_api WindowPosition GetWindowPosition();
 		/**
 		  * \brief Sets the window absolut position to the given coordinates.
 		  * \param left Left position in screen units.
 		  * \param top Top position in screen units.
 		  */
-		fpl_api void SetWindowPosition(const int32_t left, const int32_t top);
+		fpl_platform_api void SetWindowPosition(const int32_t left, const int32_t top);
 		/**
 		  * \brief Sets the window title.
 		  * \param title New title ansi string
 		  */
-		fpl_api void SetWindowTitle(const char *title);
+		fpl_platform_api void SetWindowTitle(const char *title);
 
 		/*\}*/
 
@@ -2765,26 +2775,26 @@ namespace fpl {
 		  * \param maxDestLen The total number of characters available in the destination buffer.
 		  * \return Pointer to the first character in the clipboard text or nullptr otherwise.
 		  */
-		fpl_api char *GetClipboardAnsiText(char *dest, const uint32_t maxDestLen);
+		fpl_platform_api char *GetClipboardAnsiText(char *dest, const uint32_t maxDestLen);
 		/**
 		  * \brief Returns the current clipboard wide text.
 		  * \param dest The destination wide string buffer to write the clipboard text into.
 		  * \param maxDestLen The total number of characters available in the destination buffer.
 		  * \return Pointer to the first character in the clipboard text or nullptr otherwise.
 		  */
-		fpl_api wchar_t *GetClipboardWideText(wchar_t *dest, const uint32_t maxDestLen);
+		fpl_platform_api wchar_t *GetClipboardWideText(wchar_t *dest, const uint32_t maxDestLen);
 		/**
 		  * \brief Overwrites the current clipboard ansi text with the given one.
 		  * \param ansiSource The new clipboard ansi string.
 		  * \return Returns true when the text in the clipboard was changed, otherwise false.
 		  */
-		fpl_api bool SetClipboardText(const char *ansiSource);
+		fpl_platform_api bool SetClipboardText(const char *ansiSource);
 		/**
 		  * \brief Overwrites the current clipboard wide text with the given one.
 		  * \param wideSource The new clipboard wide string.
 		  * \return Returns true when the text in the clipboard was changed, otherwise false.
 		  */
-		fpl_api bool SetClipboardText(const wchar_t *wideSource);
+		fpl_platform_api bool SetClipboardText(const wchar_t *wideSource);
 
 		/** \}*/
 	};
@@ -2847,19 +2857,19 @@ namespace fpl {
 		  * \warning Do not release this memory by any means, otherwise you will corrupt heap memory!
 		  * \return Pointer to the video backbuffer.
 		  */
-		fpl_api VideoBackBuffer *GetVideoBackBuffer();
+		fpl_platform_api VideoBackBuffer *GetVideoBackBuffer();
 		/**
 		  * \brief Resizes the current video backbuffer.
 		  * \param width Width in pixels.
 		  * \param height Height in pixels.
 		  * \return Returns true when video back buffer could be resized or false otherwise.
 		  */
-		fpl_api bool ResizeVideoBackBuffer(const uint32_t width, const uint32_t height);
+		fpl_platform_api bool ResizeVideoBackBuffer(const uint32_t width, const uint32_t height);
 		/**
 		  * \brief Returns the current video driver type used.
 		  * \return The current video driver type used.
 		  */
-		fpl_api VideoDriverType GetVideoDriver();
+		fpl_platform_api VideoDriverType GetVideoDriver();
 
 		/** \}*/
 	};
@@ -2888,31 +2898,31 @@ namespace fpl {
 		  * \brief Start playing asyncronous audio.
 		  * \return Audio result code.
 		  */
-		fpl_api AudioResult PlayAudio();
+		fpl_common_api AudioResult PlayAudio();
 		/**
 		  * \brief Stop playing asyncronous audio.
 		  * \return Audio result code.
 		  */
-		fpl_api AudioResult StopAudio();
+		fpl_common_api AudioResult StopAudio();
 		/**
 		  * \brief Returns the native format for the current audio device.
 		  * \return Copy fo the audio device format.
 		  */
-		fpl_api const AudioDeviceFormat &GetAudioHardwareFormat();
+		fpl_common_api const AudioDeviceFormat &GetAudioHardwareFormat();
 		/**
 		  * \brief Overwrites the audio client read callback.
 		  * \param newCallback Pointer to the client read callback.
 		  * \param userData Pointer to the client/user data.
 		  * \note This has no effect when audio is already playing, you have to call it when audio is in a stopped state!
 		  */
-		fpl_api void SetAudioClientReadCallback(AudioClientReadFunction *newCallback, void *userData);
+		fpl_common_api void SetAudioClientReadCallback(AudioClientReadFunction *newCallback, void *userData);
 		/**
 		  * \brief Gets all playback audio devices.
 		  * \param devices Target device id array.
 		  * \param maxDeviceCount Total number of devices available in the devices array.
 		  * \return Number of devices found.
 		  */
-		fpl_api uint32_t GetAudioDevices(AudioDeviceID *devices, uint32_t maxDeviceCount);
+		fpl_common_api uint32_t GetAudioDevices(AudioDeviceID *devices, uint32_t maxDeviceCount);
 
 		/**
 		  * \brief Returns the number of bytes required to write one sample with one channel
@@ -3018,14 +3028,6 @@ namespace fpl {
 #endif // FPL_ENABLE_AUDIO
 }
 
-//
-// Platform specific defines/includes and forward declarations
-//
-#if defined(FPL_PLATFORM_WIN32)
-// @NOTE(final): Required for access "main" from the actual win32 entry point
-fpl_api int main(int argc, char *args[]);
-#endif // FPL_PLATFORM_WIN32
-
 // Expand all namespaces if the callers wants this
 #if defined(FPL_ENABLE_AUTO_NAMESPACE)
 using namespace fpl;
@@ -3057,6 +3059,14 @@ using namespace fpl::threading;
 // ****************************************************************************
 #if defined(FPL_IMPLEMENTATION) && !defined(FPL_IMPLEMENTED)
 #define FPL_IMPLEMENTED
+
+//
+// Main entry point forward declarations
+//
+#if defined(FPL_PLATFORM_WIN32)
+// @NOTE(final): Required for access "main" from the actual win32 entry point
+fpl_main int main(int argc, char *args[]);
+#endif // FPL_PLATFORM_WIN32
 
 // ****************************************************************************
 //
@@ -3595,14 +3605,14 @@ namespace fpl {
 			pthread_func_pthread_yield *pthread_yield;
 		};
 
-		
+
 		struct POSIXInitState {
-        };
-        
-		struct POSIXAppState {
-            PThreadAPI pthreadApi;
 		};
-    }
+
+		struct POSIXAppState {
+			PThreadAPI pthreadApi;
+		};
+	}
 }
 #endif
 
@@ -3614,14 +3624,14 @@ namespace fpl {
 #if defined(FPL_PLATFORM_LINUX)
 namespace fpl {
 	namespace platform {
-        struct LinuxInitState {
-            POSIXInitState posix;
-        };
-        
-		struct LinuxAppState {
-            POSIXAppState posix;
+		struct LinuxInitState {
+			POSIXInitState posix;
 		};
-    }
+
+		struct LinuxAppState {
+			POSIXAppState posix;
+		};
+	}
 }
 #endif
 
@@ -3641,7 +3651,7 @@ namespace fpl {
 				Win32InitState win32;
 #		endif
 #       if defined(FPL_PLATFORM_LINUX)
-                LinuxInitState linux;
+				LinuxInitState linux;
 #       endif
 			};
 			bool isInitialized;
@@ -3657,16 +3667,37 @@ namespace fpl {
 				Win32AppState win32;
 #		endif
 #       if defined(FPL_PLATFORM_LINUX)
-                LinuxAppState linux;
+				LinuxAppState linux;
 #       endif
 			};
 			Settings initSettings;
 			Settings currentSettings;
 			InitFlags initFlags;
 		};
-	}
 
-}
+#	if defined(FPL_ENABLE_WINDOW)
+		fpl_constant uint32_t MAX_EVENT_COUNT = 32768;
+		struct EventQueue {
+			window::Event events[MAX_EVENT_COUNT];
+			volatile uint32_t pollIndex;
+			volatile uint32_t pushCount;
+		};
+		fpl_globalvar EventQueue *global__EventQueue = nullptr;
+
+		fpl_internal_inline void PushEvent(const window::Event &event) {
+			EventQueue *eventQueue = global__EventQueue;
+			FPL_ASSERT(eventQueue != nullptr);
+			if (eventQueue->pushCount < MAX_EVENT_COUNT) {
+				uint32_t eventIndex = atomics::AtomicAddU32(&eventQueue->pushCount, 1);
+				FPL_ASSERT(eventIndex < MAX_EVENT_COUNT);
+				eventQueue->events[eventIndex] = event;
+			}
+		}
+#endif // FPL_ENABLE_WINDOW
+
+	} // platform
+
+} // fpl
 
 // ****************************************************************************
 //
@@ -3806,7 +3837,7 @@ namespace fpl {
 	// Common Strings
 	//
 	namespace strings {
-		fpl_api bool IsStringEqual(const char *a, const uint32_t aLen, const char *b, const uint32_t bLen) {
+		fpl_common_api bool IsStringEqual(const char *a, const uint32_t aLen, const char *b, const uint32_t bLen) {
 			if ((a == nullptr) || (b == nullptr)) {
 				return (a == b);
 			}
@@ -3826,7 +3857,7 @@ namespace fpl {
 			return(result);
 		}
 
-		fpl_api bool IsStringEqual(const char *a, const char *b) {
+		fpl_common_api bool IsStringEqual(const char *a, const char *b) {
 			if ((a == nullptr) || (b == nullptr)) {
 				return (a == b);
 			}
@@ -3846,7 +3877,7 @@ namespace fpl {
 			return(result);
 		}
 
-		fpl_api uint32_t GetAnsiStringLength(const char *str) {
+		fpl_common_api uint32_t GetAnsiStringLength(const char *str) {
 			uint32_t result = 0;
 			if (str != nullptr) {
 				while (*str++) {
@@ -3856,7 +3887,7 @@ namespace fpl {
 			return(result);
 		}
 
-		fpl_api uint32_t GetWideStringLength(const wchar_t *str) {
+		fpl_common_api uint32_t GetWideStringLength(const wchar_t *str) {
 			uint32_t result = 0;
 			if (str != nullptr) {
 				while (*str++) {
@@ -3866,7 +3897,7 @@ namespace fpl {
 			return(result);
 		}
 
-		fpl_api char *CopyAnsiString(const char *source, const uint32_t sourceLen, char *dest, const uint32_t maxDestLen) {
+		fpl_common_api char *CopyAnsiString(const char *source, const uint32_t sourceLen, char *dest, const uint32_t maxDestLen) {
 			char *result = nullptr;
 			if ((source != nullptr && dest != nullptr) && ((sourceLen + 1) <= maxDestLen)) {
 				result = dest;
@@ -3881,7 +3912,7 @@ namespace fpl {
 			return(result);
 		}
 
-		fpl_api char *CopyAnsiString(const char *source, char *dest, const uint32_t maxDestLen) {
+		fpl_common_api char *CopyAnsiString(const char *source, char *dest, const uint32_t maxDestLen) {
 			char *result = nullptr;
 			if (source != nullptr) {
 				uint32_t sourceLen = GetAnsiStringLength(source);
@@ -3892,7 +3923,7 @@ namespace fpl {
 			return(result);
 		}
 
-		fpl_api wchar_t *CopyWideString(const wchar_t *source, const uint32_t sourceLen, wchar_t *dest, const uint32_t maxDestLen) {
+		fpl_common_api wchar_t *CopyWideString(const wchar_t *source, const uint32_t sourceLen, wchar_t *dest, const uint32_t maxDestLen) {
 			wchar_t *result = nullptr;
 			if ((source != nullptr && dest != nullptr) && ((sourceLen + 1) <= maxDestLen)) {
 				result = dest;
@@ -3907,7 +3938,7 @@ namespace fpl {
 			return(result);
 		}
 
-		fpl_api wchar_t *CopyWideString(const wchar_t *source, wchar_t *dest, const uint32_t maxDestLen) {
+		fpl_common_api wchar_t *CopyWideString(const wchar_t *source, wchar_t *dest, const uint32_t maxDestLen) {
 			wchar_t *result = nullptr;
 			if (source != nullptr) {
 				uint32_t sourceLen = GetWideStringLength(source);
@@ -3923,7 +3954,7 @@ namespace fpl {
 	// Common Memory
 	//
 	namespace memory {
-		fpl_api void *MemoryAlignedAllocate(const size_t size, const size_t alignment) {
+		fpl_common_api void *MemoryAlignedAllocate(const size_t size, const size_t alignment) {
 			if (size == 0) {
 				common::PushError("Memory size parameter must be greater than zero");
 				return nullptr;
@@ -3956,7 +3987,7 @@ namespace fpl {
 			return(alignedPtr);
 		}
 
-		fpl_api void MemoryAlignedFree(void *ptr) {
+		fpl_common_api void MemoryAlignedFree(void *ptr) {
 			if (ptr == nullptr) {
 				common::PushError("Memory pointer parameter are not allowed to be null");
 				return;
@@ -3975,7 +4006,7 @@ namespace fpl {
 		fpl_constant size_t MEM_SHIFT_16 = 1;
 		fpl_constant size_t MEM_MASK_16 = 0x00000001;
 
-		fpl_api void MemoryClear(void *mem, const size_t size) {
+		fpl_common_api void MemoryClear(void *mem, const size_t size) {
 			if (mem == nullptr) {
 				common::PushError("Memory parameter are not allowed to be null");
 				return;
@@ -3995,7 +4026,7 @@ namespace fpl {
 			}
 		}
 
-		fpl_api void MemoryCopy(void *sourceMem, const size_t sourceSize, void *targetMem) {
+		fpl_common_api void MemoryCopy(void *sourceMem, const size_t sourceSize, void *targetMem) {
 			if (sourceMem == nullptr) {
 				common::PushError("Source memory parameter are not allowed to be null");
 				return;
@@ -4024,7 +4055,7 @@ namespace fpl {
 	// Common Atomics
 	//
 	namespace atomics {
-		fpl_api void *AtomicExchangePtr(volatile void **target, const void *value) {
+		fpl_common_api void *AtomicExchangePtr(volatile void **target, const void *value) {
 			FPL_ASSERT(target != nullptr);
 #		if defined(FPL_ARCH_X64)
 			void *result = (void *)AtomicExchangeU64((volatile uint64_t *)target, (uint64_t)value);
@@ -4036,7 +4067,7 @@ namespace fpl {
 			return (result);
 		}
 
-		fpl_api void *AtomicCompareAndExchangePtr(volatile void **dest, const void *comparand, const void *exchange) {
+		fpl_common_api void *AtomicCompareAndExchangePtr(volatile void **dest, const void *comparand, const void *exchange) {
 			FPL_ASSERT(dest != nullptr);
 #		if defined(FPL_ARCH_X64)
 			void *result = (void *)AtomicCompareAndExchangeU64((volatile uint64_t *)dest, (uint64_t)comparand, (uint64_t)exchange);
@@ -4048,7 +4079,7 @@ namespace fpl {
 			return (result);
 		}
 
-		fpl_api bool IsAtomicCompareAndExchangePtr(volatile void **dest, const void *comparand, const void *exchange) {
+		fpl_common_api bool IsAtomicCompareAndExchangePtr(volatile void **dest, const void *comparand, const void *exchange) {
 			FPL_ASSERT(dest != nullptr);
 #		if defined(FPL_ARCH_X64)
 			bool result = IsAtomicCompareAndExchangeU64((volatile uint64_t *)dest, (uint64_t)comparand, (uint64_t)exchange);
@@ -4060,7 +4091,7 @@ namespace fpl {
 			return (result);
 		}
 
-		fpl_api void *AtomicLoadPtr(volatile void **source) {
+		fpl_common_api void *AtomicLoadPtr(volatile void **source) {
 #		if defined(FPL_ARCH_X64)
 			void *result = (void *)AtomicLoadU64((volatile uint64_t *)source);
 #		elif defined(FPL_ARCH_X86)
@@ -4071,7 +4102,7 @@ namespace fpl {
 			return(result);
 		}
 
-		fpl_api void AtomicStorePtr(volatile void **dest, const void *value) {
+		fpl_common_api void AtomicStorePtr(volatile void **dest, const void *value) {
 #		if defined(FPL_ARCH_X64)
 			AtomicStoreU64((volatile uint64_t *)dest, (uint64_t)value);
 #		elif defined(FPL_ARCH_X86)
@@ -4086,7 +4117,7 @@ namespace fpl {
 	// Common Paths
 	//
 	namespace paths {
-		fpl_api char *ExtractFilePath(const char *sourcePath, char *destPath, const uint32_t maxDestLen) {
+		fpl_common_api char *ExtractFilePath(const char *sourcePath, char *destPath, const uint32_t maxDestLen) {
 			if (sourcePath == nullptr) {
 				return nullptr;
 			}
@@ -4120,7 +4151,7 @@ namespace fpl {
 			return(result);
 		}
 
-		fpl_api char *ExtractFileExtension(const char *sourcePath) {
+		fpl_common_api char *ExtractFileExtension(const char *sourcePath) {
 			char *result = (char *)nullptr;
 			if (sourcePath != nullptr) {
 				char *filename = ExtractFileName(sourcePath);
@@ -4142,7 +4173,7 @@ namespace fpl {
 			return(result);
 		}
 
-		fpl_api char *ExtractFileName(const char *sourcePath) {
+		fpl_common_api char *ExtractFileName(const char *sourcePath) {
 			char *result = (char *)nullptr;
 			if (sourcePath) {
 				result = (char *)sourcePath;
@@ -4161,7 +4192,7 @@ namespace fpl {
 			return(result);
 		}
 
-		fpl_api char *ChangeFileExtension(const char *filePath, const char *newFileExtension, char *destPath, const uint32_t maxDestLen) {
+		fpl_common_api char *ChangeFileExtension(const char *filePath, const char *newFileExtension, char *destPath, const uint32_t maxDestLen) {
 			if (filePath == nullptr) {
 				return nullptr;
 			}
@@ -4225,7 +4256,7 @@ namespace fpl {
 			return(result);
 		}
 
-		fpl_api char *CombinePath(char *destPath, const uint32_t maxDestPathLen, const uint32_t pathCount, ...) {
+		fpl_common_api char *CombinePath(char *destPath, const uint32_t maxDestPathLen, const uint32_t pathCount, ...) {
 			if (pathCount == 0) {
 				return nullptr;
 			}
@@ -4261,6 +4292,33 @@ namespace fpl {
 		}
 
 	} // paths
+
+#if defined(FPL_ENABLE_WINDOW)
+	namespace window {
+		fpl_common_api bool PollWindowEvent(Event &ev) {
+			FPL_ASSERT(platform::global__EventQueue != nullptr);
+			platform::EventQueue *eventQueue = platform::global__EventQueue;
+			bool result = false;
+			if (eventQueue->pushCount > 0 && (eventQueue->pollIndex < eventQueue->pushCount)) {
+				uint32_t eventIndex = atomics::AtomicAddU32(&eventQueue->pollIndex, 1);
+				ev = eventQueue->events[eventIndex];
+				result = true;
+			} else if (eventQueue->pushCount > 0) {
+				atomics::AtomicExchangeU32(&eventQueue->pollIndex, 0);
+				atomics::AtomicExchangeU32(&eventQueue->pushCount, 0);
+			}
+			return result;
+		}
+
+		fpl_common_api void ClearWindowEvents() {
+			FPL_ASSERT(platform::global__EventQueue != nullptr);
+			platform::EventQueue *eventQueue = platform::global__EventQueue;
+			atomics::AtomicExchangeU32(&eventQueue->pollIndex, 0);
+			atomics::AtomicExchangeU32(&eventQueue->pushCount, 0);
+		}
+	} // window
+#endif // FPL_ENABLE_WINDOW
+
 
 } // fpl
 
@@ -4508,24 +4566,6 @@ namespace fpl {
 #	endif // FPL_ENABLE_VIDEO_SOFTWARE
 
 #	if defined(FPL_ENABLE_WINDOW)
-		fpl_constant uint32_t MAX_EVENT_COUNT = 32768;
-		struct EventQueue {
-			window::Event events[MAX_EVENT_COUNT];
-			volatile uint32_t pollIndex;
-			volatile uint32_t pushCount;
-		};
-		fpl_globalvar EventQueue *global__EventQueue = nullptr;
-
-		fpl_internal_inline void PushEvent(const window::Event &event) {
-			EventQueue *eventQueue = global__EventQueue;
-			FPL_ASSERT(eventQueue != nullptr);
-			if (eventQueue->pushCount < MAX_EVENT_COUNT) {
-				uint32_t eventIndex = atomics::AtomicAddU32(&eventQueue->pushCount, 1);
-				FPL_ASSERT(eventIndex < MAX_EVENT_COUNT);
-				eventQueue->events[eventIndex] = event;
-			}
-		}
-
 		struct Win32WindowStyle {
 			DWORD style;
 			DWORD exStyle;
@@ -5502,7 +5542,7 @@ namespace fpl {
 
 #	endif // FPL_ENABLE_WINDOW
 
-		fpl_api bool Win32LoadAPI(Win32APIFunctions &wapi) {
+		fpl_internal bool Win32LoadAPI(Win32APIFunctions &wapi) {
 			// Shell32
 			{
 				const char *shellLibraryName = "shell32.dll";
@@ -5633,7 +5673,7 @@ namespace fpl {
 			return true;
 		}
 
-		fpl_api void Win32UnloadAPI(Win32APIFunctions &wapi) {
+		fpl_internal void Win32UnloadAPI(Win32APIFunctions &wapi) {
 			if (wapi.ole.oleLibrary != nullptr) {
 				FreeLibrary(wapi.ole.oleLibrary);
 				wapi.ole = {};
@@ -5797,134 +5837,134 @@ namespace fpl {
 	// Win32 Atomics
 	//
 	namespace atomics {
-		fpl_api void AtomicReadFence() {
+		fpl_platform_api void AtomicReadFence() {
 			FPL_MEMORY_BARRIER();
 			_ReadBarrier();
 		}
-		fpl_api void AtomicWriteFence() {
+		fpl_platform_api void AtomicWriteFence() {
 			FPL_MEMORY_BARRIER();
 			_WriteBarrier();
 		}
-		fpl_api void AtomicReadWriteFence() {
+		fpl_platform_api void AtomicReadWriteFence() {
 			FPL_MEMORY_BARRIER();
 			_ReadWriteBarrier();
 		}
 
-		fpl_api uint32_t AtomicExchangeU32(volatile uint32_t *target, const uint32_t value) {
+		fpl_platform_api uint32_t AtomicExchangeU32(volatile uint32_t *target, const uint32_t value) {
 			FPL_ASSERT(target != nullptr);
 			uint32_t result = _InterlockedExchange((volatile unsigned long *)target, value);
 			return (result);
 		}
-		fpl_api int32_t AtomicExchangeS32(volatile int32_t *target, const int32_t value) {
+		fpl_platform_api int32_t AtomicExchangeS32(volatile int32_t *target, const int32_t value) {
 			FPL_ASSERT(target != nullptr);
 			int32_t result = _InterlockedExchange((volatile long *)target, value);
 			return (result);
 		}
-		fpl_api uint64_t AtomicExchangeU64(volatile uint64_t *target, const uint64_t value) {
+		fpl_platform_api uint64_t AtomicExchangeU64(volatile uint64_t *target, const uint64_t value) {
 			FPL_ASSERT(target != nullptr);
 			uint64_t result = _InterlockedExchange((volatile unsigned __int64 *)target, value);
 			return (result);
 		}
-		fpl_api int64_t AtomicExchangeS64(volatile int64_t *target, const int64_t value) {
+		fpl_platform_api int64_t AtomicExchangeS64(volatile int64_t *target, const int64_t value) {
 			FPL_ASSERT(target != nullptr);
 			int64_t result = _InterlockedExchange64((volatile long long *)target, value);
 			return (result);
 		}
 
-		fpl_api uint32_t AtomicAddU32(volatile uint32_t *value, const uint32_t addend) {
+		fpl_platform_api uint32_t AtomicAddU32(volatile uint32_t *value, const uint32_t addend) {
 			FPL_ASSERT(value != nullptr);
 			uint32_t result = _InterlockedExchangeAdd((volatile unsigned long *)value, addend);
 			return (result);
 		}
-		fpl_api int32_t AtomicAddS32(volatile int32_t *value, const int32_t addend) {
+		fpl_platform_api int32_t AtomicAddS32(volatile int32_t *value, const int32_t addend) {
 			FPL_ASSERT(value != nullptr);
 			int32_t result = _InterlockedExchangeAdd((volatile long *)value, addend);
 			return (result);
 		}
-		fpl_api uint64_t AtomicAddU64(volatile uint64_t *value, const uint64_t addend) {
+		fpl_platform_api uint64_t AtomicAddU64(volatile uint64_t *value, const uint64_t addend) {
 			FPL_ASSERT(value != nullptr);
 			uint64_t result = _InterlockedExchangeAdd((volatile unsigned __int64 *)value, addend);
 			return (result);
 		}
-		fpl_api int64_t AtomicAddS64(volatile int64_t *value, const int64_t addend) {
+		fpl_platform_api int64_t AtomicAddS64(volatile int64_t *value, const int64_t addend) {
 			FPL_ASSERT(value != nullptr);
 			int64_t result = _InterlockedExchangeAdd64((volatile long long *)value, addend);
 			return (result);
 		}
 
-		fpl_api uint32_t AtomicCompareAndExchangeU32(volatile uint32_t *dest, const uint32_t comparand, const uint32_t exchange) {
+		fpl_platform_api uint32_t AtomicCompareAndExchangeU32(volatile uint32_t *dest, const uint32_t comparand, const uint32_t exchange) {
 			FPL_ASSERT(dest != nullptr);
 			uint32_t result = _InterlockedCompareExchange((volatile unsigned long *)dest, exchange, comparand);
 			return (result);
 		}
-		fpl_api int32_t AtomicCompareAndExchangeS32(volatile int32_t *dest, const int32_t comparand, const int32_t exchange) {
+		fpl_platform_api int32_t AtomicCompareAndExchangeS32(volatile int32_t *dest, const int32_t comparand, const int32_t exchange) {
 			FPL_ASSERT(dest != nullptr);
 			int32_t result = _InterlockedCompareExchange((volatile long *)dest, exchange, comparand);
 			return (result);
 		}
-		fpl_api uint64_t AtomicCompareAndExchangeU64(volatile uint64_t *dest, const uint64_t comparand, const uint64_t exchange) {
+		fpl_platform_api uint64_t AtomicCompareAndExchangeU64(volatile uint64_t *dest, const uint64_t comparand, const uint64_t exchange) {
 			FPL_ASSERT(dest != nullptr);
 			uint64_t result = _InterlockedCompareExchange((volatile unsigned __int64 *)dest, exchange, comparand);
 			return (result);
 		}
-		fpl_api int64_t AtomicCompareAndExchangeS64(volatile int64_t *dest, const int64_t comparand, const int64_t exchange) {
+		fpl_platform_api int64_t AtomicCompareAndExchangeS64(volatile int64_t *dest, const int64_t comparand, const int64_t exchange) {
 			FPL_ASSERT(dest != nullptr);
 			int64_t result = _InterlockedCompareExchange64((volatile long long *)dest, exchange, comparand);
 			return (result);
 		}
 
-		fpl_api bool IsAtomicCompareAndExchangeU32(volatile uint32_t *dest, const uint32_t comparand, const uint32_t exchange) {
+		fpl_platform_api bool IsAtomicCompareAndExchangeU32(volatile uint32_t *dest, const uint32_t comparand, const uint32_t exchange) {
 			FPL_ASSERT(dest != nullptr);
 			uint32_t value = _InterlockedCompareExchange((volatile unsigned long *)dest, exchange, comparand);
 			bool result = (value == comparand);
 			return (result);
 		}
-		fpl_api bool IsAtomicCompareAndExchangeS32(volatile int32_t *dest, const int32_t comparand, const int32_t exchange) {
+		fpl_platform_api bool IsAtomicCompareAndExchangeS32(volatile int32_t *dest, const int32_t comparand, const int32_t exchange) {
 			FPL_ASSERT(dest != nullptr);
 			int32_t value = _InterlockedCompareExchange((volatile long *)dest, exchange, comparand);
 			bool result = (value == comparand);
 			return (result);
 		}
-		fpl_api bool IsAtomicCompareAndExchangeU64(volatile uint64_t *dest, const uint64_t comparand, const uint64_t exchange) {
+		fpl_platform_api bool IsAtomicCompareAndExchangeU64(volatile uint64_t *dest, const uint64_t comparand, const uint64_t exchange) {
 			FPL_ASSERT(dest != nullptr);
 			uint64_t value = _InterlockedCompareExchange((volatile unsigned __int64 *)dest, exchange, comparand);
 			bool result = (value == comparand);
 			return (result);
 		}
-		fpl_api bool IsAtomicCompareAndExchangeS64(volatile int64_t *dest, const int64_t comparand, const int64_t exchange) {
+		fpl_platform_api bool IsAtomicCompareAndExchangeS64(volatile int64_t *dest, const int64_t comparand, const int64_t exchange) {
 			FPL_ASSERT(dest != nullptr);
 			int64_t value = _InterlockedCompareExchange64((volatile long long *)dest, exchange, comparand);
 			bool result = (value == comparand);
 			return (result);
 		}
 
-		fpl_api uint32_t AtomicLoadU32(volatile uint32_t *source) {
+		fpl_platform_api uint32_t AtomicLoadU32(volatile uint32_t *source) {
 			uint32_t result = _InterlockedCompareExchange((volatile unsigned long *)source, 0, 0);
 			return(result);
 		}
-		fpl_api uint64_t AtomicLoadU64(volatile uint64_t *source) {
+		fpl_platform_api uint64_t AtomicLoadU64(volatile uint64_t *source) {
 			uint64_t result = _InterlockedCompareExchange((volatile unsigned __int64 *)source, 0, 0);
 			return(result);
 		}
-		fpl_api int32_t AtomicLoadS32(volatile int32_t *source) {
+		fpl_platform_api int32_t AtomicLoadS32(volatile int32_t *source) {
 			int32_t result = _InterlockedCompareExchange((volatile long *)source, 0, 0);
 			return(result);
 		}
-		fpl_api int64_t AtomicLoadS64(volatile int64_t *source) {
+		fpl_platform_api int64_t AtomicLoadS64(volatile int64_t *source) {
 			int64_t result = _InterlockedCompareExchange64((volatile __int64 *)source, 0, 0);
 			return(result);
 		}
 
-		fpl_api void AtomicStoreU32(volatile uint32_t *dest, const uint32_t value) {
+		fpl_platform_api void AtomicStoreU32(volatile uint32_t *dest, const uint32_t value) {
 			_InterlockedExchange((volatile unsigned long *)dest, value);
 		}
-		fpl_api void AtomicStoreU64(volatile uint64_t *dest, const uint64_t value) {
+		fpl_platform_api void AtomicStoreU64(volatile uint64_t *dest, const uint64_t value) {
 			_InterlockedExchange((volatile unsigned __int64 *)dest, value);
 		}
-		fpl_api void AtomicStoreS32(volatile int32_t *dest, const int32_t value) {
+		fpl_platform_api void AtomicStoreS32(volatile int32_t *dest, const int32_t value) {
 			_InterlockedExchange((volatile long *)dest, value);
 		}
-		fpl_api void AtomicStoreS64(volatile int64_t *dest, const int64_t value) {
+		fpl_platform_api void AtomicStoreS64(volatile int64_t *dest, const int64_t value) {
 			_InterlockedExchange64((volatile __int64 *)dest, value);
 		}
 	} // atomics
@@ -5933,7 +5973,7 @@ namespace fpl {
 	// Win32 Hardware
 	//
 	namespace hardware {
-		fpl_api uint32_t GetProcessorCoreCount() {
+		fpl_platform_api uint32_t GetProcessorCoreCount() {
 			SYSTEM_INFO sysInfo = {};
 			GetSystemInfo(&sysInfo);
 			// @NOTE(final): For now this returns the number of logical processors, which is the actual core count in most cases.
@@ -5941,7 +5981,7 @@ namespace fpl {
 			return(result);
 		}
 
-		fpl_api MemoryInfos GetSystemMemoryInfos() {
+		fpl_platform_api MemoryInfos GetSystemMemoryInfos() {
 			MemoryInfos result = {};
 			MEMORYSTATUSEX statex = {};
 			statex.dwLength = sizeof(statex);
@@ -5958,7 +5998,7 @@ namespace fpl {
 			return(result);
 		}
 
-		fpl_api char *GetProcessorName(char *destBuffer, const uint32_t maxDestBufferLen) {
+		fpl_platform_api char *GetProcessorName(char *destBuffer, const uint32_t maxDestBufferLen) {
 			fpl_constant uint32_t CPU_BRAND_BUFFER_SIZE = 0x40;
 
 			if (destBuffer == nullptr) {
@@ -5997,12 +6037,12 @@ namespace fpl {
 	// Win32 Console
 	//
 	namespace console {
-		fpl_api void ConsoleOut(const char *text) {
+		fpl_platform_api void ConsoleOut(const char *text) {
 			if (text != nullptr) {
 				fprintf(stdout, text);
 			}
 		}
-		fpl_api void ConsoleFormatOut(const char *format, ...) {
+		fpl_platform_api void ConsoleFormatOut(const char *format, ...) {
 			if (format != nullptr) {
 				va_list vaList;
 				va_start(vaList, format);
@@ -6010,12 +6050,12 @@ namespace fpl {
 				va_end(vaList);
 			}
 		}
-		fpl_api void ConsoleError(const char *text) {
+		fpl_platform_api void ConsoleError(const char *text) {
 			if (text != nullptr) {
 				fprintf(stderr, "%s", text);
 			}
 		}
-		fpl_api void ConsoleFormatError(const char *format, ...) {
+		fpl_platform_api void ConsoleFormatError(const char *format, ...) {
 			if (format != nullptr) {
 				va_list vaList;
 				va_start(vaList, format);
@@ -6023,7 +6063,7 @@ namespace fpl {
 				va_end(vaList);
 			}
 		}
-		fpl_api const char ConsoleWaitForCharInput() {
+		fpl_platform_api const char ConsoleWaitForCharInput() {
 			int c = getchar();
 			const char result = (c >= 0 && c < 256) ? (char)c : 0;
 			return(result);
@@ -6046,7 +6086,7 @@ namespace fpl {
 			return(result);
 		}
 
-		fpl_api ThreadContext *ThreadCreate(run_thread_function *runFunc, void *data, const bool autoStart) {
+		fpl_platform_api ThreadContext *ThreadCreate(run_thread_function *runFunc, void *data, const bool autoStart) {
 			ThreadContext *result = nullptr;
 			ThreadContext *context = common::GetThreadContext();
 			if (context != nullptr) {
@@ -6073,11 +6113,11 @@ namespace fpl {
 			return(result);
 		}
 
-		fpl_api void ThreadSleep(const uint32_t milliseconds) {
+		fpl_platform_api void ThreadSleep(const uint32_t milliseconds) {
 			Sleep((DWORD)milliseconds);
 		}
 
-		fpl_api bool ThreadSuspend(ThreadContext *context) {
+		fpl_platform_api bool ThreadSuspend(ThreadContext *context) {
 			if (context == nullptr) {
 				common::PushError("Context parameter are not allowed to be null");
 				return false;
@@ -6096,7 +6136,7 @@ namespace fpl {
 			return(result);
 		}
 
-		fpl_api bool ThreadResume(ThreadContext *context) {
+		fpl_platform_api bool ThreadResume(ThreadContext *context) {
 			if (context == nullptr) {
 				common::PushError("Context parameter are not allowed to be null");
 				return false;
@@ -6115,7 +6155,7 @@ namespace fpl {
 			return(result);
 		}
 
-		fpl_api void ThreadDestroy(ThreadContext *context) {
+		fpl_platform_api void ThreadDestroy(ThreadContext *context) {
 			if (context != nullptr && context->internalHandle.win32Thread != nullptr) {
 				HANDLE handle = context->internalHandle.win32Thread;
 				TerminateThread(handle, 0);
@@ -6126,7 +6166,7 @@ namespace fpl {
 			}
 		}
 
-		fpl_api bool ThreadWaitForOne(ThreadContext *context, const uint32_t maxMilliseconds) {
+		fpl_platform_api bool ThreadWaitForOne(ThreadContext *context, const uint32_t maxMilliseconds) {
 			if (context == nullptr) {
 				common::PushError("Context parameter are not allowed to be null");
 				return false;
@@ -6140,31 +6180,31 @@ namespace fpl {
 			return(result);
 		}
 
-		fpl_api bool ThreadWaitForAll(ThreadContext *contexts[], const uint32_t count, const uint32_t maxMilliseconds) {
+		fpl_platform_api bool ThreadWaitForAll(ThreadContext *contexts[], const uint32_t count, const uint32_t maxMilliseconds) {
 			bool result = platform::Win32ThreadWaitForMultiple(contexts, count, true, maxMilliseconds);
 			return(result);
 		}
 
-		fpl_api bool ThreadWaitForAny(ThreadContext *contexts[], const uint32_t count, const uint32_t maxMilliseconds) {
+		fpl_platform_api bool ThreadWaitForAny(ThreadContext *contexts[], const uint32_t count, const uint32_t maxMilliseconds) {
 			bool result = platform::Win32ThreadWaitForMultiple(contexts, count, false, maxMilliseconds);
 			return(result);
 		}
 
-		fpl_api ThreadMutex MutexCreate() {
+		fpl_platform_api ThreadMutex MutexCreate() {
 			ThreadMutex result = {};
 			InitializeCriticalSection(&result.internalHandle.win32CriticalSection);
 			result.isValid = true;
 			return(result);
 		}
 
-		fpl_api void MutexDestroy(ThreadMutex &mutex) {
+		fpl_platform_api void MutexDestroy(ThreadMutex &mutex) {
 			if (mutex.isValid) {
 				DeleteCriticalSection(&mutex.internalHandle.win32CriticalSection);
 				mutex = {};
 			}
 		}
 
-		fpl_api bool MutexLock(ThreadMutex &mutex, const uint32_t maxMilliseconds) {
+		fpl_platform_api bool MutexLock(ThreadMutex &mutex, const uint32_t maxMilliseconds) {
 			if (!mutex.isValid) {
 				return false;
 			}
@@ -6172,7 +6212,7 @@ namespace fpl {
 			return true;
 		}
 
-		fpl_api bool MutexUnlock(ThreadMutex &mutex) {
+		fpl_platform_api bool MutexUnlock(ThreadMutex &mutex) {
 			if (!mutex.isValid) {
 				return false;
 			}
@@ -6180,7 +6220,7 @@ namespace fpl {
 			return true;
 		}
 
-		fpl_api ThreadSignal SignalCreate() {
+		fpl_platform_api ThreadSignal SignalCreate() {
 			ThreadSignal result = {};
 			HANDLE handle = CreateEventA(nullptr, FALSE, FALSE, nullptr);
 			if (handle != nullptr) {
@@ -6190,7 +6230,7 @@ namespace fpl {
 			return(result);
 		}
 
-		fpl_api void SignalDestroy(ThreadSignal &signal) {
+		fpl_platform_api void SignalDestroy(ThreadSignal &signal) {
 			if (signal.internalHandle.win32Event != nullptr) {
 				HANDLE handle = signal.internalHandle.win32Event;
 				CloseHandle(handle);
@@ -6198,7 +6238,7 @@ namespace fpl {
 			}
 		}
 
-		fpl_api bool SignalWaitForOne(ThreadMutex &mutex, ThreadSignal &signal, const uint32_t maxMilliseconds) {
+		fpl_platform_api bool SignalWaitForOne(ThreadMutex &mutex, ThreadSignal &signal, const uint32_t maxMilliseconds) {
 			if (signal.internalHandle.win32Event == nullptr) {
 				return false;
 			}
@@ -6207,17 +6247,17 @@ namespace fpl {
 			return(result);
 		}
 
-		fpl_api bool SignalWaitForAll(ThreadMutex &mutex, ThreadSignal *signals[], const uint32_t count, const uint32_t maxMilliseconds) {
+		fpl_platform_api bool SignalWaitForAll(ThreadMutex &mutex, ThreadSignal *signals[], const uint32_t count, const uint32_t maxMilliseconds) {
 			bool result = platform::Win32SignalWaitForMultiple((ThreadSignal **)signals, count, true, maxMilliseconds);
 			return(result);
 		}
 
-		fpl_api bool SignalWaitForAny(ThreadMutex &mutex, ThreadSignal *signals[], const uint32_t count, const uint32_t maxMilliseconds) {
+		fpl_platform_api bool SignalWaitForAny(ThreadMutex &mutex, ThreadSignal *signals[], const uint32_t count, const uint32_t maxMilliseconds) {
 			bool result = platform::Win32SignalWaitForMultiple((ThreadSignal **)signals, count, false, maxMilliseconds);
 			return(result);
 		}
 
-		fpl_api bool SignalWakeUp(ThreadSignal &signal) {
+		fpl_platform_api bool SignalWakeUp(ThreadSignal &signal) {
 			if (signal.internalHandle.win32Event == nullptr) {
 				return false;
 			}
@@ -6226,7 +6266,7 @@ namespace fpl {
 			return(result);
 		}
 
-		fpl_api bool SignalReset(ThreadSignal &signal) {
+		fpl_platform_api bool SignalReset(ThreadSignal &signal) {
 			if (signal.internalHandle.win32Event == nullptr) {
 				return false;
 			}
@@ -6241,7 +6281,7 @@ namespace fpl {
 	// Win32 Memory
 	//
 	namespace memory {
-		fpl_api void *MemoryAllocate(const size_t size) {
+		fpl_platform_api void *MemoryAllocate(const size_t size) {
 			if (size == 0) {
 				common::PushError("Size parameter must be greater than zero");
 				return nullptr;
@@ -6253,14 +6293,14 @@ namespace fpl {
 			return(result);
 		}
 
-		fpl_api void MemoryFree(void *ptr) {
+		fpl_platform_api void MemoryFree(void *ptr) {
 			if (ptr == nullptr) {
 				common::PushError("Pointer parameter are not allowed to be null");
 			}
 			VirtualFree(ptr, 0, MEM_FREE);
 		}
 
-		fpl_api void *MemoryStackAllocate(const size_t size) {
+		fpl_platform_api void *MemoryStackAllocate(const size_t size) {
 			if (size == 0) {
 				common::PushError("Size parameter must be greater than zero");
 				return nullptr;
@@ -6274,7 +6314,7 @@ namespace fpl {
 	// Win32 Files
 	//
 	namespace files {
-		fpl_api FileHandle OpenBinaryFile(const char *filePath) {
+		fpl_platform_api FileHandle OpenBinaryFile(const char *filePath) {
 			FileHandle result = {};
 			if (filePath != nullptr) {
 				HANDLE win32FileHandle = CreateFileA(filePath, GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
@@ -6285,7 +6325,7 @@ namespace fpl {
 			}
 			return(result);
 		}
-		fpl_api FileHandle OpenBinaryFile(const wchar_t *filePath) {
+		fpl_platform_api FileHandle OpenBinaryFile(const wchar_t *filePath) {
 			FileHandle result = {};
 			if (filePath != nullptr) {
 				HANDLE win32FileHandle = CreateFileW(filePath, GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
@@ -6297,7 +6337,7 @@ namespace fpl {
 			return(result);
 		}
 
-		fpl_api FileHandle CreateBinaryFile(const char *filePath) {
+		fpl_platform_api FileHandle CreateBinaryFile(const char *filePath) {
 			FileHandle result = {};
 			if (filePath != nullptr) {
 				HANDLE win32FileHandle = CreateFileA(filePath, GENERIC_WRITE, FILE_SHARE_WRITE, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
@@ -6308,7 +6348,7 @@ namespace fpl {
 			}
 			return(result);
 		}
-		fpl_api FileHandle CreateBinaryFile(const wchar_t *filePath) {
+		fpl_platform_api FileHandle CreateBinaryFile(const wchar_t *filePath) {
 			FileHandle result = {};
 			if (filePath != nullptr) {
 				HANDLE win32FileHandle = CreateFileW(filePath, GENERIC_WRITE, FILE_SHARE_WRITE, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
@@ -6320,7 +6360,7 @@ namespace fpl {
 			return(result);
 		}
 
-		fpl_api uint32_t ReadFileBlock32(const FileHandle &fileHandle, const uint32_t sizeToRead, void *targetBuffer, const uint32_t maxTargetBufferSize) {
+		fpl_platform_api uint32_t ReadFileBlock32(const FileHandle &fileHandle, const uint32_t sizeToRead, void *targetBuffer, const uint32_t maxTargetBufferSize) {
 			if (sizeToRead == 0) {
 				return 0;
 			}
@@ -6341,7 +6381,7 @@ namespace fpl {
 			return(result);
 		}
 
-		fpl_api uint32_t WriteFileBlock32(const FileHandle &fileHandle, void *sourceBuffer, const uint32_t sourceSize) {
+		fpl_platform_api uint32_t WriteFileBlock32(const FileHandle &fileHandle, void *sourceBuffer, const uint32_t sourceSize) {
 			if (sourceSize == 0) {
 				common::PushError("Source size parameter must be greater than zero");
 				return 0;
@@ -6363,7 +6403,7 @@ namespace fpl {
 			return(result);
 		}
 
-		fpl_api void SetFilePosition32(const FileHandle &fileHandle, const int32_t position, const FilePositionMode mode) {
+		fpl_platform_api void SetFilePosition32(const FileHandle &fileHandle, const int32_t position, const FilePositionMode mode) {
 			if (fileHandle.internalHandle.win32Handle != INVALID_HANDLE_VALUE) {
 				HANDLE win32FileHandle = (void *)fileHandle.internalHandle.win32Handle;
 				DWORD moveMethod = FILE_BEGIN;
@@ -6376,7 +6416,7 @@ namespace fpl {
 			}
 		}
 
-		fpl_api uint32_t GetFilePosition32(const FileHandle &fileHandle) {
+		fpl_platform_api uint32_t GetFilePosition32(const FileHandle &fileHandle) {
 			uint32_t result = 0;
 			if (fileHandle.internalHandle.win32Handle != INVALID_HANDLE_VALUE) {
 				HANDLE win32FileHandle = (void *)fileHandle.internalHandle.win32Handle;
@@ -6388,7 +6428,7 @@ namespace fpl {
 			return(result);
 		}
 
-		fpl_api void CloseFile(FileHandle &fileHandle) {
+		fpl_platform_api void CloseFile(FileHandle &fileHandle) {
 			if (fileHandle.internalHandle.win32Handle != INVALID_HANDLE_VALUE) {
 				HANDLE win32FileHandle = (void *)fileHandle.internalHandle.win32Handle;
 				CloseHandle(win32FileHandle);
@@ -6396,7 +6436,7 @@ namespace fpl {
 			}
 		}
 
-		fpl_api uint32_t GetFileSize32(const char *filePath) {
+		fpl_platform_api uint32_t GetFileSize32(const char *filePath) {
 			uint32_t result = 0;
 			if (filePath != nullptr) {
 				HANDLE win32FileHandle = CreateFileA(filePath, GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
@@ -6409,7 +6449,7 @@ namespace fpl {
 			return(result);
 		}
 
-		fpl_api uint32_t GetFileSize32(const FileHandle &fileHandle) {
+		fpl_platform_api uint32_t GetFileSize32(const FileHandle &fileHandle) {
 			uint32_t result = 0;
 			if (fileHandle.internalHandle.win32Handle != INVALID_HANDLE_VALUE) {
 				HANDLE win32FileHandle = (void *)fileHandle.internalHandle.win32Handle;
@@ -6419,7 +6459,7 @@ namespace fpl {
 			return(result);
 		}
 
-		fpl_api bool FileExists(const char *filePath) {
+		fpl_platform_api bool FileExists(const char *filePath) {
 			bool result = false;
 			if (filePath != nullptr) {
 				WIN32_FIND_DATAA findData;
@@ -6432,7 +6472,7 @@ namespace fpl {
 			return(result);
 		}
 
-		fpl_api bool FileCopy(const char *sourceFilePath, const char *targetFilePath, const bool overwrite) {
+		fpl_platform_api bool FileCopy(const char *sourceFilePath, const char *targetFilePath, const bool overwrite) {
 			if (sourceFilePath == nullptr) {
 				common::PushError("Source file path parameter are not allowed to be null");
 				return false;
@@ -6445,7 +6485,7 @@ namespace fpl {
 			return(result);
 		}
 
-		fpl_api bool FileDelete(const char *filePath) {
+		fpl_platform_api bool FileDelete(const char *filePath) {
 			if (filePath == nullptr) {
 				common::PushError("File path parameter are not allowed to be null");
 				return false;
@@ -6454,7 +6494,7 @@ namespace fpl {
 			return(result);
 		}
 
-		fpl_api bool DirectoryExists(const char *path) {
+		fpl_platform_api bool DirectoryExists(const char *path) {
 			bool result = false;
 			if (path != nullptr) {
 				WIN32_FIND_DATAA findData;
@@ -6467,7 +6507,7 @@ namespace fpl {
 			return(result);
 		}
 
-		fpl_api bool CreateDirectories(const char *path) {
+		fpl_platform_api bool CreateDirectories(const char *path) {
 			if (path == nullptr) {
 				common::PushError("Path parameter are not allowed to be null");
 				return false;
@@ -6475,7 +6515,7 @@ namespace fpl {
 			bool result = CreateDirectoryA(path, nullptr) > 0;
 			return(result);
 		}
-		fpl_api bool RemoveEmptyDirectory(const char *path) {
+		fpl_platform_api bool RemoveEmptyDirectory(const char *path) {
 			if (path == nullptr) {
 				common::PushError("Path parameter are not allowed to be null");
 				return false;
@@ -6516,7 +6556,7 @@ namespace fpl {
 				}
 			}
 		}
-		fpl_api bool ListFilesBegin(const char *pathAndFilter, FileEntry &firstEntry) {
+		fpl_platform_api bool ListFilesBegin(const char *pathAndFilter, FileEntry &firstEntry) {
 			if (pathAndFilter == nullptr) {
 				return false;
 			}
@@ -6531,7 +6571,7 @@ namespace fpl {
 			}
 			return(result);
 		}
-		fpl_api bool ListFilesNext(FileEntry &nextEntry) {
+		fpl_platform_api bool ListFilesNext(FileEntry &nextEntry) {
 			bool result = false;
 			if (nextEntry.internalHandle.win32Handle != INVALID_HANDLE_VALUE) {
 				HANDLE searchHandle = nextEntry.internalHandle.win32Handle;
@@ -6543,7 +6583,7 @@ namespace fpl {
 			}
 			return(result);
 		}
-		fpl_api void ListFilesEnd(FileEntry &lastEntry) {
+		fpl_platform_api void ListFilesEnd(FileEntry &lastEntry) {
 			if (lastEntry.internalHandle.win32Handle != INVALID_HANDLE_VALUE) {
 				HANDLE searchHandle = lastEntry.internalHandle.win32Handle;
 				FindClose(searchHandle);
@@ -6557,7 +6597,7 @@ namespace fpl {
 	//
 	namespace paths {
 #	if defined(UNICODE)
-		fpl_api char *GetExecutableFilePath(char *destPath, const uint32_t maxDestLen) {
+		fpl_platform_api char *GetExecutableFilePath(char *destPath, const uint32_t maxDestLen) {
 			if (destPath == nullptr) {
 				common::PushError("Dest path parameter are not allowed to be null");
 				return nullptr;
@@ -6572,7 +6612,7 @@ namespace fpl {
 			return(destPath);
 		}
 #	else
-		fpl_api char *GetExecutableFilePath(char *destPath, const uint32_t maxDestLen) {
+		fpl_platform_api char *GetExecutableFilePath(char *destPath, const uint32_t maxDestLen) {
 			if (destPath == nullptr) {
 				common::PushError("Dest path parameter are not allowed to be null");
 				return nullptr;
@@ -6589,7 +6629,7 @@ namespace fpl {
 #	endif // UNICODE
 
 #	if defined(UNICODE)
-		fpl_api char *GetHomePath(char *destPath, const uint32_t maxDestLen) {
+		fpl_platform_api char *GetHomePath(char *destPath, const uint32_t maxDestLen) {
 			FPL_ASSERT(platform::global__AppState != nullptr);
 			const platform::Win32APIFunctions &wapi = platform::global__AppState->win32.winApi;
 			if (destPath == nullptr) {
@@ -6606,7 +6646,7 @@ namespace fpl {
 			return(destPath);
 		}
 #	else
-		fpl_api char *GetHomePath(char *destPath, const uint32_t maxDestLen) {
+		fpl_platform_api char *GetHomePath(char *destPath, const uint32_t maxDestLen) {
 			FPL_ASSERT(platform::global__AppState != nullptr);
 			const platform::Win32APIFunctions &wapi = platform::global__AppState->win32.winApi;
 			if (destPath == nullptr) {
@@ -6629,7 +6669,7 @@ namespace fpl {
 	// Win32 Timings
 	//
 	namespace timings {
-		fpl_api double GetHighResolutionTimeInSeconds() {
+		fpl_platform_api double GetHighResolutionTimeInSeconds() {
 			const platform::Win32InitState &initState = platform::global__InitState.win32;
 			LARGE_INTEGER time;
 			QueryPerformanceCounter(&time);
@@ -6642,7 +6682,7 @@ namespace fpl {
 	// Win32 Strings
 	//
 	namespace strings {
-		fpl_api char *WideStringToAnsiString(const wchar_t *wideSource, const uint32_t maxWideSourceLen, char *ansiDest, const uint32_t maxAnsiDestLen) {
+		fpl_platform_api char *WideStringToAnsiString(const wchar_t *wideSource, const uint32_t maxWideSourceLen, char *ansiDest, const uint32_t maxAnsiDestLen) {
 			if (wideSource == nullptr) {
 				common::PushError("Wide source parameter are not allowed to be null");
 				return nullptr;
@@ -6660,7 +6700,7 @@ namespace fpl {
 			ansiDest[requiredLen] = 0;
 			return(ansiDest);
 		}
-		fpl_api char *WideStringToUTF8String(const wchar_t *wideSource, const uint32_t maxWideSourceLen, char *utf8Dest, const uint32_t maxUtf8DestLen) {
+		fpl_platform_api char *WideStringToUTF8String(const wchar_t *wideSource, const uint32_t maxWideSourceLen, char *utf8Dest, const uint32_t maxUtf8DestLen) {
 			if (wideSource == nullptr) {
 				common::PushError("Wide source parameter are not allowed to be null");
 				return nullptr;
@@ -6678,7 +6718,7 @@ namespace fpl {
 			utf8Dest[requiredLen] = 0;
 			return(utf8Dest);
 		}
-		fpl_api wchar_t *AnsiStringToWideString(const char *ansiSource, const uint32_t ansiSourceLen, wchar_t *wideDest, const uint32_t maxWideDestLen) {
+		fpl_platform_api wchar_t *AnsiStringToWideString(const char *ansiSource, const uint32_t ansiSourceLen, wchar_t *wideDest, const uint32_t maxWideDestLen) {
 			if (ansiSource == nullptr) {
 				common::PushError("Ansi source parameter are not allowed to be null");
 				return nullptr;
@@ -6696,7 +6736,7 @@ namespace fpl {
 			wideDest[requiredLen] = 0;
 			return(wideDest);
 		}
-		fpl_api wchar_t *UTF8StringToWideString(const char *utf8Source, const uint32_t utf8SourceLen, wchar_t *wideDest, const uint32_t maxWideDestLen) {
+		fpl_platform_api wchar_t *UTF8StringToWideString(const char *utf8Source, const uint32_t utf8SourceLen, wchar_t *wideDest, const uint32_t maxWideDestLen) {
 			if (utf8Source == nullptr) {
 				common::PushError("UTF8 source parameter are not allowed to be null");
 				return nullptr;
@@ -6714,7 +6754,7 @@ namespace fpl {
 			wideDest[requiredLen] = 0;
 			return(wideDest);
 		}
-		fpl_api char *FormatAnsiString(char *ansiDestBuffer, const uint32_t maxAnsiDestBufferLen, const char *format, ...) {
+		fpl_platform_api char *FormatAnsiString(char *ansiDestBuffer, const uint32_t maxAnsiDestBufferLen, const char *format, ...) {
 			if (ansiDestBuffer == nullptr) {
 				common::PushError("Ansi dest buffer parameter are not allowed to be null");
 				return nullptr;
@@ -6752,7 +6792,7 @@ namespace fpl {
 	// Win32 Library
 	//
 	namespace library {
-		fpl_api DynamicLibraryHandle DynamicLibraryLoad(const char *libraryFilePath) {
+		fpl_platform_api DynamicLibraryHandle DynamicLibraryLoad(const char *libraryFilePath) {
 			DynamicLibraryHandle result = {};
 			if (libraryFilePath != nullptr) {
 				HMODULE libModule = LoadLibraryA(libraryFilePath);
@@ -6763,7 +6803,7 @@ namespace fpl {
 			}
 			return(result);
 		}
-		fpl_api void *GetDynamicLibraryProc(const DynamicLibraryHandle &handle, const char *name) {
+		fpl_platform_api void *GetDynamicLibraryProc(const DynamicLibraryHandle &handle, const char *name) {
 			void *result = nullptr;
 			if (handle.internalHandle.win32Handle != nullptr && name != nullptr) {
 				HMODULE libModule = handle.internalHandle.win32Handle;
@@ -6771,7 +6811,7 @@ namespace fpl {
 			}
 			return(result);
 		}
-		fpl_api void DynamicLibraryUnload(DynamicLibraryHandle &handle) {
+		fpl_platform_api void DynamicLibraryUnload(DynamicLibraryHandle &handle) {
 			if (handle.internalHandle.win32Handle != nullptr) {
 				HMODULE libModule = (HMODULE)handle.internalHandle.win32Handle;
 				FreeLibrary(libModule);
@@ -6785,7 +6825,7 @@ namespace fpl {
 	//
 #if defined(FPL_ENABLE_VIDEO)
 	namespace video {
-		fpl_api VideoBackBuffer *GetVideoBackBuffer() {
+		fpl_platform_api VideoBackBuffer *GetVideoBackBuffer() {
 			FPL_ASSERT(platform::global__AppState != nullptr);
 			platform::Win32AppState &appState = platform::global__AppState->win32;
 			VideoBackBuffer *result = nullptr;
@@ -6798,14 +6838,14 @@ namespace fpl {
 			return(result);
 		}
 
-		fpl_api VideoDriverType GetVideoDriver() {
+		fpl_platform_api VideoDriverType GetVideoDriver() {
 			FPL_ASSERT(platform::global__AppState != nullptr);
 			const platform::Win32AppState &appState = platform::global__AppState->win32;
 			VideoDriverType result = appState.video.activeVideoDriver;
 			return(result);
 		}
 
-		fpl_api bool ResizeVideoBackBuffer(const uint32_t width, const uint32_t height) {
+		fpl_platform_api bool ResizeVideoBackBuffer(const uint32_t width, const uint32_t height) {
 			FPL_ASSERT(platform::global__AppState != nullptr);
 			platform::Win32AppState &appState = platform::global__AppState->win32;
 			bool result = false;
@@ -6825,7 +6865,7 @@ namespace fpl {
 	// Win32 Window
 	//
 	namespace window {
-		fpl_api void WindowFlip() {
+		fpl_platform_api void WindowFlip() {
 			FPL_ASSERT(platform::global__AppState != nullptr);
 			const platform::Win32AppState &appState = platform::global__AppState->win32;
 			const platform::Win32APIFunctions &wapi = appState.winApi;
@@ -6864,7 +6904,7 @@ namespace fpl {
 			}
 		}
 
-		fpl_api WindowSize GetWindowArea() {
+		fpl_platform_api WindowSize GetWindowArea() {
 			FPL_ASSERT(platform::global__AppState != nullptr);
 			const platform::Win32AppState &appState = platform::global__AppState->win32;
 			const platform::Win32APIFunctions &wapi = appState.winApi;
@@ -6877,7 +6917,7 @@ namespace fpl {
 			return(result);
 		}
 
-		fpl_api void SetWindowArea(const uint32_t width, const uint32_t height) {
+		fpl_platform_api void SetWindowArea(const uint32_t width, const uint32_t height) {
 			FPL_ASSERT(platform::global__AppState != nullptr);
 			const platform::Win32AppState &appState = platform::global__AppState->win32;
 			const platform::Win32APIFunctions &wapi = appState.winApi;
@@ -6892,7 +6932,7 @@ namespace fpl {
 			}
 		}
 
-		fpl_api bool IsWindowResizable() {
+		fpl_platform_api bool IsWindowResizable() {
 			FPL_ASSERT(platform::global__AppState != nullptr);
 			const platform::Win32AppState &appState = platform::global__AppState->win32;
 			DWORD style = platform::win32_getWindowLong(appState.window.windowHandle, GWL_STYLE);
@@ -6900,7 +6940,7 @@ namespace fpl {
 			return(result);
 		}
 
-		fpl_api void SetWindowResizeable(const bool value) {
+		fpl_platform_api void SetWindowResizeable(const bool value) {
 			FPL_ASSERT(platform::global__AppState != nullptr);
 			platform::PlatformAppState *appState = platform::global__AppState;
 			const platform::Win32AppState &win32State = appState->win32;
@@ -6920,7 +6960,7 @@ namespace fpl {
 			}
 		}
 
-		fpl_api bool IsWindowFullscreen() {
+		fpl_platform_api bool IsWindowFullscreen() {
 			FPL_ASSERT(platform::global__AppState != nullptr);
 			const platform::Win32AppState &appState = platform::global__AppState->win32;
 			HWND windowHandle = appState.window.windowHandle;
@@ -6929,7 +6969,7 @@ namespace fpl {
 			return(result);
 		}
 
-		fpl_api bool SetWindowFullscreen(const bool value, const uint32_t fullscreenWidth, const uint32_t fullscreenHeight, const uint32_t refreshRate) {
+		fpl_platform_api bool SetWindowFullscreen(const bool value, const uint32_t fullscreenWidth, const uint32_t fullscreenHeight, const uint32_t refreshRate) {
 			FPL_ASSERT(platform::global__AppState != nullptr);
 			platform::PlatformAppState *appState = platform::global__AppState;
 			platform::Win32AppState &win32AppState = appState->win32;
@@ -6963,7 +7003,7 @@ namespace fpl {
 			return(windowSettings.isFullscreen);
 		}
 
-		fpl_api WindowPosition GetWindowPosition() {
+		fpl_platform_api WindowPosition GetWindowPosition() {
 			FPL_ASSERT(platform::global__AppState != nullptr);
 			const platform::Win32AppState &appState = platform::global__AppState->win32;
 			const platform::Win32APIFunctions &wapi = appState.winApi;
@@ -6993,7 +7033,7 @@ namespace fpl {
 			return(result);
 		}
 
-		fpl_api void SetWindowTitle(const char *title) {
+		fpl_platform_api void SetWindowTitle(const char *title) {
 			FPL_ASSERT(platform::global__AppState != nullptr);
 			const platform::Win32AppState &appState = platform::global__AppState->win32;
 			const platform::Win32APIFunctions &wapi = appState.winApi;
@@ -7003,7 +7043,7 @@ namespace fpl {
 			wapi.user.setWindowTextA(handle, title);
 		}
 
-		fpl_api void SetWindowPosition(const int32_t left, const int32_t top) {
+		fpl_platform_api void SetWindowPosition(const int32_t left, const int32_t top) {
 			FPL_ASSERT(platform::global__AppState != nullptr);
 			const platform::Win32AppState &appState = platform::global__AppState->win32;
 			const platform::Win32APIFunctions &wapi = appState.winApi;
@@ -7027,13 +7067,13 @@ namespace fpl {
 			}
 		}
 
-		fpl_api void SetWindowCursorEnabled(const bool value) {
+		fpl_platform_api void SetWindowCursorEnabled(const bool value) {
 			FPL_ASSERT(platform::global__AppState != nullptr);
 			platform::Win32AppState &appState = platform::global__AppState->win32;
 			appState.window.isCursorActive = value;
 		}
 
-		fpl_api bool PushWindowEvent() {
+		fpl_platform_api bool PushWindowEvent() {
 			FPL_ASSERT(platform::global__AppState != nullptr);
 			const platform::Win32APIFunctions &wapi = platform::global__AppState->win32.winApi;
 			bool result = false;
@@ -7047,7 +7087,7 @@ namespace fpl {
 			return (result);
 		}
 
-		fpl_api void UpdateGameControllers() {
+		fpl_platform_api void UpdateGameControllers() {
 			FPL_ASSERT(platform::global__AppState != nullptr);
 			platform::PlatformAppState *appState = platform::global__AppState;
 			platform::Win32AppState &win32AppState = appState->win32;
@@ -7055,7 +7095,7 @@ namespace fpl {
 			platform::Win32PollControllers(appState->currentSettings, win32InitState, win32AppState.xinput);
 		}
 
-		fpl_api bool WindowUpdate() {
+		fpl_platform_api bool WindowUpdate() {
 			FPL_ASSERT(platform::global__AppState != nullptr);
 			platform::PlatformAppState *appState = platform::global__AppState;
 			platform::Win32AppState &win32AppState = appState->win32;
@@ -7080,36 +7120,14 @@ namespace fpl {
 			return(result);
 		}
 
-		fpl_api bool IsWindowRunning() {
+		fpl_platform_api bool IsWindowRunning() {
 			FPL_ASSERT(platform::global__AppState != nullptr);
 			const platform::Win32AppState &appState = platform::global__AppState->win32;
 			bool result = appState.window.isRunning;
 			return(result);
 		}
 
-		fpl_api bool PollWindowEvent(Event &ev) {
-			FPL_ASSERT(platform::global__EventQueue != nullptr);
-			platform::EventQueue *eventQueue = platform::global__EventQueue;
-			bool result = false;
-			if (eventQueue->pushCount > 0 && (eventQueue->pollIndex < eventQueue->pushCount)) {
-				uint32_t eventIndex = atomics::AtomicAddU32(&eventQueue->pollIndex, 1);
-				ev = eventQueue->events[eventIndex];
-				result = true;
-			} else if (eventQueue->pushCount > 0) {
-				atomics::AtomicExchangeU32(&eventQueue->pollIndex, 0);
-				atomics::AtomicExchangeU32(&eventQueue->pushCount, 0);
-			}
-			return result;
-		}
-
-		fpl_api void ClearWindowEvents() {
-			FPL_ASSERT(platform::global__EventQueue != nullptr);
-			platform::EventQueue *eventQueue = platform::global__EventQueue;
-			atomics::AtomicExchangeU32(&eventQueue->pollIndex, 0);
-			atomics::AtomicExchangeU32(&eventQueue->pushCount, 0);
-		}
-
-		fpl_api char *GetClipboardAnsiText(char *dest, const uint32_t maxDestLen) {
+		fpl_platform_api char *GetClipboardAnsiText(char *dest, const uint32_t maxDestLen) {
 			FPL_ASSERT(platform::global__AppState != nullptr);
 			const platform::Win32AppState &appState = platform::global__AppState->win32;
 			const platform::Win32APIFunctions &wapi = appState.winApi;
@@ -7128,7 +7146,7 @@ namespace fpl {
 			return(result);
 		}
 
-		fpl_api wchar_t *GetClipboardWideText(wchar_t *dest, const uint32_t maxDestLen) {
+		fpl_platform_api wchar_t *GetClipboardWideText(wchar_t *dest, const uint32_t maxDestLen) {
 			FPL_ASSERT(platform::global__AppState != nullptr);
 			const platform::Win32AppState &appState = platform::global__AppState->win32;
 			const platform::Win32APIFunctions &wapi = appState.winApi;
@@ -7147,7 +7165,7 @@ namespace fpl {
 			return(result);
 		}
 
-		fpl_api bool SetClipboardText(const char *ansiSource) {
+		fpl_platform_api bool SetClipboardText(const char *ansiSource) {
 			FPL_ASSERT(platform::global__AppState != nullptr);
 			const platform::Win32AppState &appState = platform::global__AppState->win32;
 			const platform::Win32APIFunctions &wapi = appState.winApi;
@@ -7169,7 +7187,7 @@ namespace fpl {
 			return(result);
 		}
 
-		fpl_api bool SetClipboardText(const wchar_t *wideSource) {
+		fpl_platform_api bool SetClipboardText(const wchar_t *wideSource) {
 			FPL_ASSERT(platform::global__AppState != nullptr);
 			const platform::Win32AppState &appState = platform::global__AppState->win32;
 			const platform::Win32APIFunctions &wapi = appState.winApi;
@@ -7286,14 +7304,14 @@ namespace fpl {
 		}
 
 		fpl_internal void POSIXReleasePlatform(POSIXAppState &appState) {
-            UnloadPThreadAPI(appState.pthreadApi);
+			UnloadPThreadAPI(appState.pthreadApi);
 		}
 
 		fpl_internal bool POSIXInitPlatform(const InitFlags initFlags, const Settings &initSettings, POSIXInitState &initState, POSIXAppState &appState) {
-            if (!LoadPThreadAPI(appState.pthreadApi)) {
-                common::PushError("Failed initializing PThread API");
-                return false;
-            }
+			if (!LoadPThreadAPI(appState.pthreadApi)) {
+				common::PushError("Failed initializing PThread API");
+				return false;
+			}
 			return true;
 		}
 	}
@@ -7468,8 +7486,8 @@ namespace fpl {
 		}
 
 		fpl_api ThreadContext *ThreadCreate(run_thread_function *runFunc, void *data, const bool autoStart) {
-            FPL_ASSERT(platform::global__AppState != nullptr);
-            const platform::PlatformAppState *appState = platform::global__AppState;
+			FPL_ASSERT(platform::global__AppState != nullptr);
+			const platform::PlatformAppState *appState = platform::global__AppState;
 			const platform::PThreadAPI &pthreadAPI = appState->linux.posix.pthreadApi;
 
 			// @NOTE(final): pthread does not support to "suspend" or "resume" any thread, so autoStart is not allowed to be false
@@ -7535,8 +7553,8 @@ namespace fpl {
 		}
 
 		fpl_api void ThreadDestroy(ThreadContext *context) {
-            FPL_ASSERT(platform::global__AppState != nullptr);
-            const platform::PlatformAppState *appState = platform::global__AppState;
+			FPL_ASSERT(platform::global__AppState != nullptr);
+			const platform::PlatformAppState *appState = platform::global__AppState;
 			const platform::PThreadAPI &pthreadAPI = appState->linux.posix.pthreadApi;
 			FPL_ASSERT(pthreadAPI.libHandle != nullptr);
 			if (context != nullptr && context->isValid) {
@@ -8022,13 +8040,13 @@ namespace fpl {
 namespace fpl {
 	namespace platform {
 		fpl_internal void LinuxReleasePlatform(PlatformInitState &initState, PlatformAppState *appState) {
-            LinuxAppState &linuxAppState = appState->linux;
+			LinuxAppState &linuxAppState = appState->linux;
 			platform::POSIXReleasePlatform(linuxAppState.posix);
 		}
 
 		fpl_internal bool LinuxInitPlatform(const InitFlags initFlags, const Settings &initSettings, PlatformInitState &initState, PlatformAppState *appState) {
-            LinuxInitState &linuxInitState = initState.linux;
-            LinuxAppState &linuxAppState = appState->linux;
+			LinuxInitState &linuxInitState = initState.linux;
+			LinuxAppState &linuxAppState = appState->linux;
 			if (!platform::POSIXInitPlatform(initFlags, initSettings, linuxInitState.posix, linuxAppState.posix)) {
 				common::PushError("Failed initalizing POSIX platform");
 				return false;
@@ -9004,7 +9022,7 @@ namespace fpl {
 
 #if defined(FPL_ENABLE_AUDIO)
 	namespace audio {
-		fpl_api AudioResult StopAudio() {
+		fpl_common_api AudioResult StopAudio() {
 			using namespace common;
 			AudioState *audioState = &global__Audio__State;
 
@@ -9053,7 +9071,7 @@ namespace fpl {
 			return result;
 		}
 
-		fpl_api AudioResult PlayAudio() {
+		fpl_common_api AudioResult PlayAudio() {
 			using namespace common;
 			AudioState *audioState = &global__Audio__State;
 
@@ -9101,12 +9119,12 @@ namespace fpl {
 			return result;
 		}
 
-		fpl_api const AudioDeviceFormat &GetAudioHardwareFormat() {
+		fpl_common_api const AudioDeviceFormat &GetAudioHardwareFormat() {
 			common::AudioState *audioState = &common::global__Audio__State;
 			return audioState->common.internalFormat;
 		}
 
-		fpl_api void SetAudioClientReadCallback(AudioClientReadFunction *newCallback, void *userData) {
+		fpl_common_api void SetAudioClientReadCallback(AudioClientReadFunction *newCallback, void *userData) {
 			using namespace common;
 			AudioState *audioState = &global__Audio__State;
 			if (audioState->activeDriver > AudioDriverType::Auto) {
@@ -9117,7 +9135,7 @@ namespace fpl {
 			}
 		}
 
-		fpl_api uint32_t GetAudioDevices(AudioDeviceID *devices, uint32_t maxDeviceCount) {
+		fpl_common_api uint32_t GetAudioDevices(AudioDeviceID *devices, uint32_t maxDeviceCount) {
 			using namespace common;
 			if (devices == nullptr) {
 				return 0;
@@ -9142,7 +9160,7 @@ namespace fpl {
 	} // audio
 #endif // FPL_ENABLE_AUDIO
 
-	fpl_api const char *GetPlatformError() {
+	fpl_common_api const char *GetPlatformError() {
 		const char *result = "";
 		const common::ErrorState &errorState = common::global__LastErrorState;
 #	if defined(FPL_ENABLE_MULTIPLE_ERRORSTATES)
@@ -9156,7 +9174,7 @@ namespace fpl {
 		return (result);
 	}
 
-	fpl_api const char *GetPlatformError(const size_t index) {
+	fpl_common_api const char *GetPlatformError(const size_t index) {
 		const char *result = "";
 		const common::ErrorState &errorState = common::global__LastErrorState;
 #	if defined(FPL_ENABLE_MULTIPLE_ERRORSTATES)
@@ -9171,25 +9189,25 @@ namespace fpl {
 		return (result);
 	}
 
-	fpl_api size_t GetPlatformErrorCount() {
+	fpl_common_api size_t GetPlatformErrorCount() {
 		size_t result = 0;
 		const common::ErrorState &errorState = common::global__LastErrorState;
 		result = errorState.count;
 		return (result);
 	}
 
-	fpl_api void ClearPlatformErrors() {
+	fpl_common_api void ClearPlatformErrors() {
 		common::ErrorState &errorState = common::global__LastErrorState;
 		memory::MemoryClear(&errorState, sizeof(errorState));
 	}
 
-	fpl_api const Settings &GetCurrentSettings() {
+	fpl_common_api const Settings &GetCurrentSettings() {
 		FPL_ASSERT(platform::global__AppState != nullptr);
 		const platform::PlatformAppState *appState = platform::global__AppState;
 		return (appState->currentSettings);
 	}
 
-	fpl_api void ReleasePlatform() {
+	fpl_common_api void ReleasePlatform() {
 		// Exit out if platform is not initialized
 		platform::PlatformInitState &initState = platform::global__InitState;
 		if (!initState.isInitialized) {
@@ -9200,7 +9218,7 @@ namespace fpl {
 		common::ReleasePlatformResources(initState, appState);
 	}
 
-	fpl_api bool InitPlatform(const InitFlags initFlags, const Settings &initSettings) {
+	fpl_common_api bool InitPlatform(const InitFlags initFlags, const Settings &initSettings) {
 		// Exit out if platform is already initialized
 		if (platform::global__InitState.isInitialized) {
 			common::PushError("Platform is already initialized");
