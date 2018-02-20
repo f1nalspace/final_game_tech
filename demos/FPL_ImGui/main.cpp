@@ -231,7 +231,7 @@ int main(int argc, char **args) {
 	CopyAnsiString("ImGUI Example", settings.window.windowTitle, FPL_ARRAYCOUNT(settings.window.windowTitle) - 1);
 	settings.window.windowWidth = 1280;
 	settings.window.windowHeight = 720;
-	settings.video.driverType = VideoDriverType::OpenGL;
+	settings.video.driver = VideoDriverType::OpenGL;
 	if (InitPlatform(InitFlags::Video, settings)) {
 		InitImGUI();
 
@@ -298,7 +298,7 @@ int main(int argc, char **args) {
 
 			UpdateAndRender(lastDeltaTime);
 
-			WindowFlip();
+			VideoFlip();
 
 			double currentTime = GetHighResolutionTimeInSeconds();
 			lastDeltaTime = lastTime > 0.0 ? (float)(currentTime - lastTime) : (float)(1.0f / 60.0f);

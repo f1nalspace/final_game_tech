@@ -100,7 +100,7 @@ int main(int argc, char **args) {
 	int result = 0;
 	Settings settings = DefaultSettings();
 	CopyAnsiString("Tile-Tracing Example", settings.window.windowTitle, FPL_ARRAYCOUNT(settings.window.windowTitle) - 1);
-	settings.video.driverType = VideoDriverType::OpenGL;
+	settings.video.driver = VideoDriverType::OpenGL;
 	if (InitPlatform(InitFlags::Video, settings)) {
 		SetWindowArea(640, 480);
 		SetWindowPosition(0, 0);
@@ -261,7 +261,7 @@ int main(int argc, char **args) {
 				glLineWidth(1.0f);
 			}
 
-			WindowFlip();
+			VideoFlip();
 		}
 
 		ReleasePlatform();

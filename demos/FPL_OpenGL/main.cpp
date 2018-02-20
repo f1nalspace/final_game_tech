@@ -127,7 +127,7 @@ static void RunLegacy() {
 		glVertex2f(-0.5f, -0.5f);
 		glVertex2f(0.5f, -0.5f);
 		glEnd();
-		WindowFlip();
+		VideoFlip();
 	}
 }
 
@@ -248,7 +248,7 @@ static bool RunModern() {
 
 		glDrawArrays(GL_TRIANGLES, 0, 3);
 
-		WindowFlip();
+		VideoFlip();
 	}
 
 	glDisableVertexAttribArray(0);
@@ -263,7 +263,7 @@ static bool RunModern() {
 int main(int argc, char **args) {
 	int result = 0;
 	Settings settings = DefaultSettings();
-	settings.video.driverType = VideoDriverType::OpenGL;
+	settings.video.driver = VideoDriverType::OpenGL;
 #if MODERN_OPENGL
 	CopyAnsiString("FPL Modern OpenGL", settings.window.windowTitle, FPL_ARRAYCOUNT(settings.window.windowTitle));
 	settings.video.opengl.compabilityFlags = OpenGLCompabilityFlags::Core;

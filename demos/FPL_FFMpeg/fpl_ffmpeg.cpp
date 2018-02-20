@@ -1115,19 +1115,19 @@ inline void SyncClockToSlave(Clock &c, const Clock &slave) {
 }
 
 inline double GetMasterClock(const PlayerState *state) {
-	double val;
+	double result = 0;
 	switch (GetMasterSyncType(state)) {
 		case AVSyncType::VideoMaster:
-			val = GetClock(state->video.clock);
+			result = GetClock(state->video.clock);
 			break;
 		case AVSyncType::AudioMaster:
-			val = GetClock(state->audio.clock);
+			result = GetClock(state->audio.clock);
 			break;
 		case AVSyncType::ExternalClock:
-			val = GetClock(state->externalClock);
+			result = GetClock(state->externalClock);
 			break;
 	}
-	return val;
+	return result;
 }
 
 inline void UpdateExternalClockSpeed(PlayerState *state) {
@@ -2106,7 +2106,7 @@ static void DisplayVideoFrame(PlayerState *state) {
 	backBuffer->useOutputRect = true;
 #endif
 
-	WindowFlip();
+	VideoFlip();
 
 #if PRINT_FRAME_UPLOAD_INFOS
 	ConsoleFormatOut("Displayed frame: %d(%s)\n", readIndex, (wasUploaded ? " (New)" : ""));
@@ -2263,7 +2263,7 @@ static int DecodeInterruptCallback(void *opaque) {
 	return(result);
 }
 
-static void ReleaseVideo(VideoContext &video) {
+static void ReleaseVideoContext(VideoContext &video) {
 #if USE_HARDWARE_RENDERING
 	glDeleteProgram(video.basicShader.programId);
 	video.basicShader.programId = 0;
@@ -2546,7 +2546,7 @@ static void ReleaseMedia(PlayerState &state) {
 	DestroyDecoder(state.audio.decoder);
 	ReleaseAudio(state.audio);
 	DestroyDecoder(state.video.decoder);
-	ReleaseVideo(state.video);
+	ReleaseVideoContext(state.video);
 	DestroyReader(state.reader);
 	if (state.formatCtx != nullptr) {
 		ffmpeg.avformat_close_input(&state.formatCtx);
@@ -2654,7 +2654,7 @@ int main(int argc, char **argv) {
 	Settings settings = DefaultSettings();
 	CopyAnsiString("FPL FFmpeg Demo", settings.window.windowTitle, FPL_ARRAYCOUNT(settings.window.windowTitle));
 #if USE_HARDWARE_RENDERING
-	settings.video.driverType = VideoDriverType::OpenGL;
+	settings.video.driver = VideoDriverType::OpenGL;
 	settings.video.opengl.compabilityFlags = OpenGLCompabilityFlags::Core;
 	settings.video.opengl.majorVersion = 3;
 	settings.video.opengl.minorVersion = 3;

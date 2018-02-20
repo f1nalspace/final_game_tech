@@ -21,7 +21,7 @@ static uint8_t RandomByte(RandomSeries &series) {
 int main(int argc, char **args) {
 	Settings settings = DefaultSettings();
 	CopyAnsiString("Software Rendering Example", settings.window.windowTitle, FPL_ARRAYCOUNT(settings.window.windowTitle) - 1);
-	settings.video.driverType = VideoDriverType::Software;
+	settings.video.driver = VideoDriverType::Software;
 	if (InitPlatform(InitFlags::Video, settings)) {
 		RandomSeries series = {1337};
 		VideoBackBuffer *backBuffer = GetVideoBackBuffer();
@@ -40,7 +40,7 @@ int main(int argc, char **args) {
 					*p++ = color;
 				}
 			}
-			WindowFlip();
+			VideoFlip();
 		}
 		ReleasePlatform();
 	}

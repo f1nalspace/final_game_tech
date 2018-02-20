@@ -170,28 +170,44 @@
 	\code{.cpp}
 	int main(int argc, char *args[]) {
 		// Initialize the platform
-		fpl::InitPlatform(fpl::InitFlags::All);
+		if (fpl::InitPlatform(fpl::InitFlags::All)) {
 
-		// your code goes here
+			// your code goes here
 
-		// Release the platform
-		fpl::ReleasePlatform();
+			// Release the platform
+			fpl::ReleasePlatform();
+			return 0;
+		} else {
+			return -1;
+		}
 	}
 	\endcode
 
-	\section subsection_requirements Requirements
+	\section subsection_usage_multiple_translation_units How to use FPL in multiple translation units?
+
+	To use FPL in multiple translation units, i recommend creating a separated "final_platform_layer.cpp" in the same directory FPL is located and define the implementation there only:<br>
+	<br>
+	<b>final_platform_layer.cpp</b>:
+	\code{.cpp}
+	#define FPL_IMPLEMENTATION
+	#include "final_platform_layer.hpp"
+	\endcode
+	<br>
+	This way FPL implementation is compiled once and can be used everywhere.<br>
+
+	\section subsection_usage_requirements What do i need to get started?
 	The only dependencies are built-in operating system libraries, a C++/11 compiler and the C-Runtime.<br>
 	Depending on the compiler and platform - linking to one system library may be required:
 	<br>
-	\subsection sectionCompileWin32 Win32
+	\subsection subsection_usage_win32 Win32
 	- Link against "kernel32.lib"
 
-	\subsection sectionCompileLinux Linux
-	- Link against "ld"
+	\subsection subsection_usage_linux Linux
+	- Link against "libld.so"
 
-	\section subsection_compiler_opts Options
+	\section subsection_usage_options Options
 
-	See \subpage page_compiler_options for more details.
+	See \subpage page_compiler_options for all compile time options.
 */
 
 /*!
@@ -421,10 +437,10 @@
 	This is required due to the fact that operating systems uses a event-based system to communicate with the window and your app.<br>
 	If no communication happens with your window and your app, the window will no longer be responsive - so make sure to communicate properly.<br>
 	<br>
-	For that there is a single function call required to process these events -> \ref fpl::Window::WindowUpdate().
+	For that there is a single function call required to process these events -> \ref fpl::window::WindowUpdate().
 
 	\code{.cpp}
-	while (fpl::Window::WindowUpdate()) {
+	while (fpl::window::WindowUpdate()) {
 		// your code goes here
 	}
 	\endcode
@@ -446,7 +462,7 @@
 
 	\code{.cpp}
 	fpl::window::Event currentEvent;
-	while (fpl::Window::PollWindowEvent(currentEvent)) {
+	while (fpl::window::PollWindowEvent(currentEvent)) {
 		// ... Handling the event
 	}
 	\endcode
@@ -634,7 +650,7 @@
 	fpl::VideoSettings &videoSettings = settings.video;
 
 	// Forcing the video driver to be OpenGL
-	videoSettings.driverType = fpl::VideoDriverType::OpenGL;
+	videoSettings.driver = fpl::VideoDriverType::OpenGL;
 
 	if (fpl::InitPlatform(fpl::InitFlags::Video, settings)) {
 		// ... your code here
@@ -695,7 +711,7 @@
 	fpl::VideoSettings &videoSettings = settings.video;
 
 	// Forcing the video driver to be legacy OpenGL
-	videoSettings.driverType = fpl::VideoDriverType::OpenGL;
+	videoSettings.driver = fpl::VideoDriverType::OpenGL;
 	videoSettings.opengl.compabilityFlags = fpl::OpenGLCompabilityFlags::Legacy;
 
 	if (fpl::InitPlatform(fpl::InitFlags::Video, settings)) {
@@ -712,7 +728,7 @@
 
 	\subsection subsection_otutorial_video_legacy_opengl_usage_present Presenting your frame
 
-	To swap the backbuffer with the frontbuffer in the window you have to call the \ref fpl::window::WindowFlip() function.<br>
+	To swap the backbuffer with the frontbuffer in the window you have to call the \ref fpl::video::VideoFlip() function.<br>
 	Its recommend to call this after each draw call of your frame at the end of the main-loop.
 */
 
@@ -732,7 +748,7 @@
 	fpl::VideoSettings &videoSettings = settings.video;
 
 	// Forcing the video driver to be modern OpenGL with Core profile and for GL version 3.3
-	videoSettings.driverType = fpl::VideoDriverType::OpenGL;
+	videoSettings.driver = fpl::VideoDriverType::OpenGL;
 	videoSettings.opengl.compabilityFlags = fpl::OpenGLCompabilityFlags::Core;
 	videoSettings.opengl.majorVersion = 3;
 	videoSettings.opengl.minorVersion = 3;
@@ -755,7 +771,7 @@
 
 	\subsection subsection_otutorial_video_modern_opengl_present Presenting your frame
 
-	To swap the backbuffer with the frontbuffer in the window you have to call the \ref fpl::window::WindowFlip() function.<br>
+	To swap the backbuffer with the frontbuffer in the window you have to call the \ref fpl::video::VideoFlip() function.<br>
 	Its recommend to call this after each draw call of your frame at the end of the main-loop.
 
 	\section section_otutorial_video_modern_opengl_notes Notes
@@ -776,7 +792,7 @@
 	fpl::VideoSettings &videoSettings = settings.video;
 
 	// Forcing the video driver to be software
-	videoSettings.driverType = fpl::VideoDriverType::Software;
+	videoSettings.driver = fpl::VideoDriverType::Software;
 
 	if (fpl::InitPlatform(fpl::InitFlags::Video, settings)) {
 		// Video software back buffer is ready
@@ -790,7 +806,7 @@
 
 	\subsection subsection_otutorial_video_software_present Presenting your frame
 
-	To update the frontbuffer in the window with the pixels you may have changed you have to call the \ref fpl::window::WindowFlip() function.<br>
+	To update the frontbuffer in the window with the pixels you may have changed you have to call the \ref fpl::video::VideoFlip() function.<br>
 	Its recommend to call this after each draw call of your frame at the end of the main-loop.
 
 	\subsection subsection_otutorial_video_software_drawing Drawing
@@ -839,7 +855,7 @@
 
 		// ... Modify the pixels here (Draw call)
 
-		fpl::window::WindowFlip();
+		fpl::video::VideoFlip();
 	}
 	\endcode
 
@@ -857,7 +873,7 @@
 
 		// ... Modify the pixels here (Draw call)
 
-		fpl::window::WindowFlip();
+		fpl::video::VideoFlip();
 	}
 	\endcode
 
@@ -1037,13 +1053,12 @@
 
 	\subsection subsection_faq_inwhatlanguage In what language is FPL written?
 	Final Platform Layer is written in C++ but in C-Style without using any object orientation concepts.<br>
-	It uses namespaces for categorizing and for preventing name collisions with other apis and uses the C++/11 standard integral types.<br>
-	<br>
+	It uses namespaces for categorizing and for preventing name collisions with other apis and uses the C++/11 standard types like (uint32_t, int64_t, intptr_t, size_t etc).<br>
 	But it does not use the C++ standard library or any advanced C++/11 features.
 
 	\subsection subsection_faq_whycpp11 Why is C++/11 required for FPL?
 	Because C++ has no proper standards for types and even null until C++/11 - its that simple.<br>
-	All modern compilers today does support C++/11 properly, so there is reason to not use it.
+	All modern compilers today does support C++/11 properly, so there are reason not to use it.
 
 	\subsection subsection_faq_whyshouldiuse Why should i use FPL?
 	If you want a hassle free platform abstraction library, FPL is the way to go.<br>
@@ -1054,11 +1069,11 @@
 	- You decide how you integrate it; not the library
 
 	Also even when you use FPL you still can use other libraries and ignore features you dont need.<br>
-	For example FPL provides a few atomic operations, but its very limited - so you may use std::atomic or other libraries for that task.<br>
+	For example FPL provides a few atomic operations - but you can use std::atomic or other libraries if you want to.<br>
 
 	\subsection subsection_faq_whyisfplsobig Why is FPL so big?
 	Final Platform Layer contains headers and implementations for all supported platforms with all the function prototypes for linking operating system functions dynamically.<br>
-	In addition there is a full doxygen documentation included with a detailed changelog.<br>
+	In addition there is a full detailed changelog included as well.<br>
 
 	\subsection subsection_faq_limitations Does FPL have some limitations?
 	Yes it does have some limitations, because it cannot do everything for you:
@@ -1078,17 +1093,23 @@
 	- ImGUI
 	- FFMPEG
 
-	But it will not work with other platform abstraction libraries, like GLUT, SFML, SDL etc.
+	But it wont work with other platform abstraction libraries, like GLUT, SFML, SDL etc.<br>
+	All these other platform abstract libraries have their own way of providing the main entry point and are not compability with each other.
 
 	\section section_additional_notes Additional notes
 
 	\subsection subsection_additional_notes_audio Audio
 	This library uses the operating system libraries to initialize a playback audio device.<br>
 	To get any audio samples to play you need to set the callback function with \ref fpl::AudioSettings.clientReadCallback or \ref fpl::audio::SetAudioClientReadCallback() before start playing the audio using fpl::audio::PlayAudio().<br>
-	When the audio device requires more audio samples this callback is automatically called.<br>
+	<br>
+	This callback will be automatically called when audio device requires more samples to play.<br>
+	<br>
 	It is expected that the audio samples are filled in properly by the native format of the device, see \ref fpl::AudioDeviceFormat.<br>
+	<br>
 	This library does not provide any functionality for doing any kind of DSP.<br>
+	<br>
 	To start and stop the playback, you need to call \ref fpl::audio::PlayAudio() and \ref fpl::audio::StopAudio() respectively.<br>
+	<br>
 	There is no guarantee that you get a audio device with the exact same format you specified back, but S16 with 48 KHz is a common format which almost every audio card supports.<br>
 */
 
@@ -1096,7 +1117,22 @@
 	\page page_contribute Contribute
 	\tableofcontents
 
-	Glad you want to support this project.
+	<b>I am happy that you want to support this project!</b><br>
+	<br>
+	I created this project alone, so i really appreciate any kind of contributions.<br>
+	<br>
+	There are several ways to help this project:<br>
+	- Test the library for any hardware/platform/compiler configuration you have access to and report the result -> This helps a lot!
+	- Report any bugs you find
+	- Improving this documentation by sending in new tutorials/examples, point me to typos etc.
+	- Write pull-requests for fixed bugs
+	- Write new demos
+	- Recommend this project
+	- Give me feedback
+
+	And lastly if you want to contact me for another reason, just drop a message in some way (Github issue, Private message, Socials etc.).<br>
+	<br>
+	Thanks a lot!<br>
 */
 
 /*!
@@ -1146,34 +1182,51 @@
 	\page page_compiler_options Compiler Options
 	\tableofcontents
 
-	\section section_preprocessor_opts Preprocessor options
+	\section section_compiler_options_preprocessor_opts Preprocessor options
+
+	<b>You can control which features are included in the compilation and which are not using the following C processor defines:</b>
 
 	\code{.cpp}
 	#define FPL_IMPLEMENTATION
 	\endcode
 
-	Define this to include the actual implementation code as well.
+	Define this to include the actual implementation code.
 	Set this only once per translation unit, otherwise you will get linking errors.
 
 	\code{.cpp}
 	#define FPL_API_AS_PRIVATE
 	\endcode
 
-	Define this to make all functions be private "static".
-	Default is "export".
+	Define this to make all functions be private ( <b>static</b> ). This means that all function calls can be called from one translation unit only.<br>
+	By default all FPL functions are defined as ( <b>extern</b> ).
+
+	\code{.cpp}
+	#define FPL_DEBUG
+	\endcode
+
+	Define this to enable the "Debug" configuration which means that certain features like assertions are compiled out in FPL_RELEASE configuration.<br>
+	By default FPL detects this by checking special preprocessor defines, but should be set for any development built.
+
+	\code{.cpp}
+	#define FPL_RELEASE
+	\endcode
+
+	Define this to enable the "Release" configuration which means that all DEBUG features are compiler out entirely.<br>
+	By default FPL detects this by checking special preprocessor defines, but should be set for any release or shipping built.
 
 	\code{.cpp}
 	#define FPL_NO_ASSERTIONS
 	\endcode
 
 	Define this to disable all internal assertions.
+	By default assertions are enabled when a "Debug" configuration is detected or the FPL_DEBUG define is set.
 
 	\code{.cpp}
 	#define FPL_FORCE_ASSERTIONS
 	\endcode
 
 	Define this to enable internal assertions always, even in debug builds.
-	NOTE: When enabled, all assertions wont use the C assert() at all, because it may be compiled out!
+	\note When enabled all assertions will use a simple null-pointe assertion macro always!
 
 	\code{.cpp}
 	#define FPL_NO_C_ASSERT
@@ -1217,24 +1270,57 @@
 	\endcode
 
 	Define this to disable directsound support entirely.
+	By default this enabled when the win32 platform is detected.
 
 	\code{.cpp}
 	#define FPL_NO_MULTIPLE_ERRORSTATES
 	\endcode
 
-	Define this to use a single error state for \ref fpl::GetPlatformError() instead of multiple ones.
+	Define this to use a single error state for \ref fpl::GetPlatformError() instead of multiple ones.<br>
+	By default multiple error states are used.
 
 	\code{.cpp}
 	#define FPL_NO_ERROR_IN_CONSOLE
 	\endcode
 
-	Define this to disable printing any platform specific errors to the console.
+	Define this to disable printing any platform specific errors to the console.<br>
+	By default all platform specific error will be printed to the error console.
 
 	\code{.cpp}
 	#define FPL_AUTO_NAMESPACE
 	\endcode
 
 	Define this to include all required namespaces automatically.
+
+	\section section_compiler_options_detection Platform/Compiler detection
+
+	Like every other C/C++ program, FPL uses compiler defines to detect the proper platform/architecture and used compiler.<br>
+	If you need this information for whatever reason you can simply compare the defines:
+
+	- FPL_PLATFORM_WIN32 or FPL_PLATFORM_LINUX or FPL_PLATFORM_FREEBSD ...
+	- FPL_ARCH_X64 or FPL_ARCH_X86 or FPL_ARCH_ARM64 ...
+
+	All this defines have no value set, there are just "defined" - use always defined() for checking them.
+
+	\code{.cpp}
+	#if defined(FPL_PLATFORM_WIN32)
+		// ... Any win32 code you may need
+	#endif // FPL_PLATFORM_WIN32
+
+	#if defined(FPL_ARCH_X64)
+		// ... Any x64 code you may need
+	#endif // FPL_ARCH_X64
+
+	#if defined(FPL_COMPILER_MSVC)
+		// ... MSVC compiler specific code you may need
+	#endif // FPL_COMPILER_MSVC
+	\endcode
+
+	\section section_compiler_options_subplatform Sub-Platforms
+
+	To prevent code duplication for platform combinations, FPL uses sub-platforms - which are no real platforms, but rather principles or standards the actual operating system is built-on.<br>
+	For example "Linux" is detected as FPL_PLATFORM_LINUX but uses POSIX as a sub-platform FPL_SUBPLATFORM_POSIX.<br>
+	Another example is "FreeBSD" which is a unix-based operation system which uses POSIX standards as well, so it uses the same posix code linux uses.<br>
 */
 
 /*!
@@ -1293,7 +1379,7 @@
 				glVertex2f(-0.5f, -0.5f);
 				glVertex2f(0.5f, -0.5f);
 				glEnd();
-				WindowFlip();
+				VideoFlip();
 			}
 			ReleasePlatform();
 			result = 0;
@@ -1329,7 +1415,7 @@
 
 		// Legacy opengl is default, so we force it to be forward or backward compability
 		Settings settings = DefaultSettings();
-		settings.video.driverType = VideoDriverType::OpenGL;
+		settings.video.driver = VideoDriverType::OpenGL;
 		settings.video.opengl.compabilityFlags = OpenGLCompabilityFlags::Core;
 		settings.video.opengl.majorVersion = 3;
 		settings.video.opengl.minorVersion = 3;
@@ -1342,7 +1428,7 @@
 
 				// Your code using modern opengl (VBO, IBO, VAO, GLSL, etc.)
 
-				WindowFlip();
+				VideoFlip();
 			}
 			ReleasePlatform();
 			result = 0;
