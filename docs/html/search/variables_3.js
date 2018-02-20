@@ -8,6 +8,5 @@ var searchData=
   ['dpadleft',['dpadLeft',['../structfpl_1_1window_1_1_gamepad_state.html#a0f225cc2dd8f7b0fc30beda6f4ac35f3',1,'fpl::window::GamepadState']]],
   ['dpadright',['dpadRight',['../structfpl_1_1window_1_1_gamepad_state.html#a51617a9012e78f69b1ff57cc1101cca6',1,'fpl::window::GamepadState']]],
   ['dpadup',['dpadUp',['../structfpl_1_1window_1_1_gamepad_state.html#a5b77ef1ed6a3c4397223e72500584c0e',1,'fpl::window::GamepadState']]],
-  ['driver',['driver',['../structfpl_1_1_audio_settings.html#a67df3146815aa36f2d0389da88090ad1',1,'fpl::AudioSettings']]],
-  ['drivertype',['driverType',['../structfpl_1_1_video_settings.html#a5d0998db137f081c4ae3ce3faa12de4a',1,'fpl::VideoSettings']]]
+  ['driver',['driver',['../structfpl_1_1_video_settings.html#ad0aca2e9e9222d13c43ce0e32adbf34f',1,'fpl::VideoSettings::driver()'],['../structfpl_1_1_audio_settings.html#a67df3146815aa36f2d0389da88090ad1',1,'fpl::AudioSettings::driver()']]]
 ];

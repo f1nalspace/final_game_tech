@@ -22,7 +22,7 @@
  <tr style="height: 56px;">
   <td id="projectalign" style="padding-left: 0.5em;">
    <div id="projectname">Final Platform Layer
-   &#160;<span id="projectnumber">0.5.9.0</span>
+   &#160;<span id="projectnumber">0.5.9.1</span>
    </div>
   </td>
  </tr>
@@ -110,70 +110,70 @@ Enumerations</h2></td></tr>
 </table><table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a name="func-members"></a>
 Functions</h2></td></tr>
-<tr class="memitem:gadf8a868ce8399951d94368b2a6efe9ad"><td class="memItemLeft" align="right" valign="top"><a class="el" href="final__platform__layer_8hpp.html#aafa1d3d90febf9826c55c1318f98b27d">fpl_api</a> void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___files.html#gadf8a868ce8399951d94368b2a6efe9ad">fpl::files::CloseFile</a> (<a class="el" href="structfpl_1_1files_1_1_file_handle.html">FileHandle</a> &amp;fileHandle)</td></tr>
-<tr class="memdesc:gadf8a868ce8399951d94368b2a6efe9ad"><td class="mdescLeft">&#160;</td><td class="mdescRight">Closes the given file and releases the underlying resources and clears the handle to zero.  <a href="group___files.html#gadf8a868ce8399951d94368b2a6efe9ad">More...</a><br /></td></tr>
-<tr class="separator:gadf8a868ce8399951d94368b2a6efe9ad"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:ga347416b5cbc4243171a063f57be98547"><td class="memItemLeft" align="right" valign="top"><a class="el" href="final__platform__layer_8hpp.html#aafa1d3d90febf9826c55c1318f98b27d">fpl_api</a> <a class="el" href="structfpl_1_1files_1_1_file_handle.html">FileHandle</a>&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___files.html#ga347416b5cbc4243171a063f57be98547">fpl::files::CreateBinaryFile</a> (const char *filePath)</td></tr>
-<tr class="memdesc:ga347416b5cbc4243171a063f57be98547"><td class="mdescLeft">&#160;</td><td class="mdescRight">Create a binary file for writing to the given ansi string path and returns the handle of it.  <a href="group___files.html#ga347416b5cbc4243171a063f57be98547">More...</a><br /></td></tr>
-<tr class="separator:ga347416b5cbc4243171a063f57be98547"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:ga6dff9fb81386319d26f9221457734dc4"><td class="memItemLeft" align="right" valign="top"><a class="el" href="final__platform__layer_8hpp.html#aafa1d3d90febf9826c55c1318f98b27d">fpl_api</a> <a class="el" href="structfpl_1_1files_1_1_file_handle.html">FileHandle</a>&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___files.html#ga6dff9fb81386319d26f9221457734dc4">fpl::files::CreateBinaryFile</a> (const wchar_t *filePath)</td></tr>
-<tr class="memdesc:ga6dff9fb81386319d26f9221457734dc4"><td class="mdescLeft">&#160;</td><td class="mdescRight">Create a binary file for writing to the given wide string path and returns the handle of it.  <a href="group___files.html#ga6dff9fb81386319d26f9221457734dc4">More...</a><br /></td></tr>
-<tr class="separator:ga6dff9fb81386319d26f9221457734dc4"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:gad6815e384d0fcce318c752c2126fb4fe"><td class="memItemLeft" align="right" valign="top"><a class="el" href="final__platform__layer_8hpp.html#aafa1d3d90febf9826c55c1318f98b27d">fpl_api</a> bool&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___files.html#gad6815e384d0fcce318c752c2126fb4fe">fpl::files::CreateDirectories</a> (const char *path)</td></tr>
-<tr class="memdesc:gad6815e384d0fcce318c752c2126fb4fe"><td class="mdescLeft">&#160;</td><td class="mdescRight">Creates all the directories in the given path.  <a href="group___files.html#gad6815e384d0fcce318c752c2126fb4fe">More...</a><br /></td></tr>
-<tr class="separator:gad6815e384d0fcce318c752c2126fb4fe"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:ga81077ac3e1713d50f12cc1767ca96326"><td class="memItemLeft" align="right" valign="top"><a class="el" href="final__platform__layer_8hpp.html#aafa1d3d90febf9826c55c1318f98b27d">fpl_api</a> bool&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___files.html#ga81077ac3e1713d50f12cc1767ca96326">fpl::files::DirectoryExists</a> (const char *path)</td></tr>
-<tr class="memdesc:ga81077ac3e1713d50f12cc1767ca96326"><td class="mdescLeft">&#160;</td><td class="mdescRight">Returns true when the given directory physically exists.  <a href="group___files.html#ga81077ac3e1713d50f12cc1767ca96326">More...</a><br /></td></tr>
-<tr class="separator:ga81077ac3e1713d50f12cc1767ca96326"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:gaa3e7bb92f93e300d549a2fbf5bec740d"><td class="memItemLeft" align="right" valign="top"><a class="el" href="final__platform__layer_8hpp.html#aafa1d3d90febf9826c55c1318f98b27d">fpl_api</a> bool&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___files.html#gaa3e7bb92f93e300d549a2fbf5bec740d">fpl::files::FileCopy</a> (const char *sourceFilePath, const char *targetFilePath, const bool overwrite)</td></tr>
-<tr class="memdesc:gaa3e7bb92f93e300d549a2fbf5bec740d"><td class="mdescLeft">&#160;</td><td class="mdescRight">Copies the given source file to the target path and returns true when copy was successful.  <a href="group___files.html#gaa3e7bb92f93e300d549a2fbf5bec740d">More...</a><br /></td></tr>
-<tr class="separator:gaa3e7bb92f93e300d549a2fbf5bec740d"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:ga7e8d74c15138b08866e0182d4e3e53af"><td class="memItemLeft" align="right" valign="top"><a class="el" href="final__platform__layer_8hpp.html#aafa1d3d90febf9826c55c1318f98b27d">fpl_api</a> bool&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___files.html#ga7e8d74c15138b08866e0182d4e3e53af">fpl::files::FileDelete</a> (const char *filePath)</td></tr>
-<tr class="memdesc:ga7e8d74c15138b08866e0182d4e3e53af"><td class="mdescLeft">&#160;</td><td class="mdescRight">Deletes the given file without confirmation and returns true when the deletion was successful.  <a href="group___files.html#ga7e8d74c15138b08866e0182d4e3e53af">More...</a><br /></td></tr>
-<tr class="separator:ga7e8d74c15138b08866e0182d4e3e53af"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:ga48b28a1bb885afecf015b348961d09ce"><td class="memItemLeft" align="right" valign="top"><a class="el" href="final__platform__layer_8hpp.html#aafa1d3d90febf9826c55c1318f98b27d">fpl_api</a> bool&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___files.html#ga48b28a1bb885afecf015b348961d09ce">fpl::files::FileExists</a> (const char *filePath)</td></tr>
-<tr class="memdesc:ga48b28a1bb885afecf015b348961d09ce"><td class="mdescLeft">&#160;</td><td class="mdescRight">Returns true when the given file physically exists.  <a href="group___files.html#ga48b28a1bb885afecf015b348961d09ce">More...</a><br /></td></tr>
-<tr class="separator:ga48b28a1bb885afecf015b348961d09ce"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:gacaf2510d2c325bdeac90e18864bc2d15"><td class="memItemLeft" align="right" valign="top"><a class="el" href="final__platform__layer_8hpp.html#aa8f306dc44b7fa9ce8937e3c059483e0">fpl_platform_api</a> void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___files.html#gacaf2510d2c325bdeac90e18864bc2d15">fpl::files::CloseFile</a> (<a class="el" href="structfpl_1_1files_1_1_file_handle.html">FileHandle</a> &amp;fileHandle)</td></tr>
+<tr class="memdesc:gacaf2510d2c325bdeac90e18864bc2d15"><td class="mdescLeft">&#160;</td><td class="mdescRight">Closes the given file and releases the underlying resources and clears the handle to zero.  <a href="group___files.html#gacaf2510d2c325bdeac90e18864bc2d15">More...</a><br /></td></tr>
+<tr class="separator:gacaf2510d2c325bdeac90e18864bc2d15"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:ga6f4cc9d4cfceaee5c78157391418f33f"><td class="memItemLeft" align="right" valign="top"><a class="el" href="final__platform__layer_8hpp.html#aa8f306dc44b7fa9ce8937e3c059483e0">fpl_platform_api</a> <a class="el" href="structfpl_1_1files_1_1_file_handle.html">FileHandle</a>&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___files.html#ga6f4cc9d4cfceaee5c78157391418f33f">fpl::files::CreateBinaryFile</a> (const char *filePath)</td></tr>
+<tr class="memdesc:ga6f4cc9d4cfceaee5c78157391418f33f"><td class="mdescLeft">&#160;</td><td class="mdescRight">Create a binary file for writing to the given ansi string path and returns the handle of it.  <a href="group___files.html#ga6f4cc9d4cfceaee5c78157391418f33f">More...</a><br /></td></tr>
+<tr class="separator:ga6f4cc9d4cfceaee5c78157391418f33f"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:ga85efd491524892a111d7860838097b61"><td class="memItemLeft" align="right" valign="top"><a class="el" href="final__platform__layer_8hpp.html#aa8f306dc44b7fa9ce8937e3c059483e0">fpl_platform_api</a> <a class="el" href="structfpl_1_1files_1_1_file_handle.html">FileHandle</a>&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___files.html#ga85efd491524892a111d7860838097b61">fpl::files::CreateBinaryFile</a> (const wchar_t *filePath)</td></tr>
+<tr class="memdesc:ga85efd491524892a111d7860838097b61"><td class="mdescLeft">&#160;</td><td class="mdescRight">Create a binary file for writing to the given wide string path and returns the handle of it.  <a href="group___files.html#ga85efd491524892a111d7860838097b61">More...</a><br /></td></tr>
+<tr class="separator:ga85efd491524892a111d7860838097b61"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:ga788e5c02d1c410aa1608f496d3f4e877"><td class="memItemLeft" align="right" valign="top"><a class="el" href="final__platform__layer_8hpp.html#aa8f306dc44b7fa9ce8937e3c059483e0">fpl_platform_api</a> bool&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___files.html#ga788e5c02d1c410aa1608f496d3f4e877">fpl::files::CreateDirectories</a> (const char *path)</td></tr>
+<tr class="memdesc:ga788e5c02d1c410aa1608f496d3f4e877"><td class="mdescLeft">&#160;</td><td class="mdescRight">Creates all the directories in the given path.  <a href="group___files.html#ga788e5c02d1c410aa1608f496d3f4e877">More...</a><br /></td></tr>
+<tr class="separator:ga788e5c02d1c410aa1608f496d3f4e877"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:gafac9cdef0cc4f61d9cdbf18e213699cc"><td class="memItemLeft" align="right" valign="top"><a class="el" href="final__platform__layer_8hpp.html#aa8f306dc44b7fa9ce8937e3c059483e0">fpl_platform_api</a> bool&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___files.html#gafac9cdef0cc4f61d9cdbf18e213699cc">fpl::files::DirectoryExists</a> (const char *path)</td></tr>
+<tr class="memdesc:gafac9cdef0cc4f61d9cdbf18e213699cc"><td class="mdescLeft">&#160;</td><td class="mdescRight">Returns true when the given directory physically exists.  <a href="group___files.html#gafac9cdef0cc4f61d9cdbf18e213699cc">More...</a><br /></td></tr>
+<tr class="separator:gafac9cdef0cc4f61d9cdbf18e213699cc"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:gabc1ef037b4d55ac7f58b701189a213f3"><td class="memItemLeft" align="right" valign="top"><a class="el" href="final__platform__layer_8hpp.html#aa8f306dc44b7fa9ce8937e3c059483e0">fpl_platform_api</a> bool&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___files.html#gabc1ef037b4d55ac7f58b701189a213f3">fpl::files::FileCopy</a> (const char *sourceFilePath, const char *targetFilePath, const bool overwrite)</td></tr>
+<tr class="memdesc:gabc1ef037b4d55ac7f58b701189a213f3"><td class="mdescLeft">&#160;</td><td class="mdescRight">Copies the given source file to the target path and returns true when copy was successful.  <a href="group___files.html#gabc1ef037b4d55ac7f58b701189a213f3">More...</a><br /></td></tr>
+<tr class="separator:gabc1ef037b4d55ac7f58b701189a213f3"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:ga4f9886a0921361535a6fcd7873ccbe94"><td class="memItemLeft" align="right" valign="top"><a class="el" href="final__platform__layer_8hpp.html#aa8f306dc44b7fa9ce8937e3c059483e0">fpl_platform_api</a> bool&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___files.html#ga4f9886a0921361535a6fcd7873ccbe94">fpl::files::FileDelete</a> (const char *filePath)</td></tr>
+<tr class="memdesc:ga4f9886a0921361535a6fcd7873ccbe94"><td class="mdescLeft">&#160;</td><td class="mdescRight">Deletes the given file without confirmation and returns true when the deletion was successful.  <a href="group___files.html#ga4f9886a0921361535a6fcd7873ccbe94">More...</a><br /></td></tr>
+<tr class="separator:ga4f9886a0921361535a6fcd7873ccbe94"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:gad57f7b8063a0d1544589146a492f034c"><td class="memItemLeft" align="right" valign="top"><a class="el" href="final__platform__layer_8hpp.html#aa8f306dc44b7fa9ce8937e3c059483e0">fpl_platform_api</a> bool&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___files.html#gad57f7b8063a0d1544589146a492f034c">fpl::files::FileExists</a> (const char *filePath)</td></tr>
+<tr class="memdesc:gad57f7b8063a0d1544589146a492f034c"><td class="mdescLeft">&#160;</td><td class="mdescRight">Returns true when the given file physically exists.  <a href="group___files.html#gad57f7b8063a0d1544589146a492f034c">More...</a><br /></td></tr>
+<tr class="separator:gad57f7b8063a0d1544589146a492f034c"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:ga32a21a79cac2791623c4e46f0439c8f3"><td class="memItemLeft" align="right" valign="top"><a id="ga32a21a79cac2791623c4e46f0439c8f3"></a>
 &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___files.html#ga32a21a79cac2791623c4e46f0439c8f3">fpl::files::FPL_ENUM_AS_FLAGS_OPERATORS</a> (<a class="el" href="group___files.html#ga0fa0af9b0f3d3daf604a1cd5fc639953">FileAttributeFlags</a>)</td></tr>
 <tr class="memdesc:ga32a21a79cac2791623c4e46f0439c8f3"><td class="mdescLeft">&#160;</td><td class="mdescRight">Operator support for FileAttributeFlags. <br /></td></tr>
 <tr class="separator:ga32a21a79cac2791623c4e46f0439c8f3"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:ga991df8158e3abcd8b03930562bd118ba"><td class="memItemLeft" align="right" valign="top"><a class="el" href="final__platform__layer_8hpp.html#aafa1d3d90febf9826c55c1318f98b27d">fpl_api</a> uint32_t&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___files.html#ga991df8158e3abcd8b03930562bd118ba">fpl::files::GetFilePosition32</a> (const <a class="el" href="structfpl_1_1files_1_1_file_handle.html">FileHandle</a> &amp;fileHandle)</td></tr>
-<tr class="memdesc:ga991df8158e3abcd8b03930562bd118ba"><td class="mdescLeft">&#160;</td><td class="mdescRight">Returns the current file position in bytes.  <a href="group___files.html#ga991df8158e3abcd8b03930562bd118ba">More...</a><br /></td></tr>
-<tr class="separator:ga991df8158e3abcd8b03930562bd118ba"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:ga6b34551650f89db6164849942bc22a48"><td class="memItemLeft" align="right" valign="top"><a class="el" href="final__platform__layer_8hpp.html#aafa1d3d90febf9826c55c1318f98b27d">fpl_api</a> uint32_t&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___files.html#ga6b34551650f89db6164849942bc22a48">fpl::files::GetFileSize32</a> (const char *filePath)</td></tr>
-<tr class="memdesc:ga6b34551650f89db6164849942bc22a48"><td class="mdescLeft">&#160;</td><td class="mdescRight">Returns the 32-bit file size in bytes for the given file.  <a href="group___files.html#ga6b34551650f89db6164849942bc22a48">More...</a><br /></td></tr>
-<tr class="separator:ga6b34551650f89db6164849942bc22a48"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:ga0d2785fac8c42fc55c3dbf02f93204af"><td class="memItemLeft" align="right" valign="top"><a class="el" href="final__platform__layer_8hpp.html#aafa1d3d90febf9826c55c1318f98b27d">fpl_api</a> uint32_t&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___files.html#ga0d2785fac8c42fc55c3dbf02f93204af">fpl::files::GetFileSize32</a> (const <a class="el" href="structfpl_1_1files_1_1_file_handle.html">FileHandle</a> &amp;fileHandle)</td></tr>
-<tr class="memdesc:ga0d2785fac8c42fc55c3dbf02f93204af"><td class="mdescLeft">&#160;</td><td class="mdescRight">Returns the 32-bit file size in bytes for a opened file.  <a href="group___files.html#ga0d2785fac8c42fc55c3dbf02f93204af">More...</a><br /></td></tr>
-<tr class="separator:ga0d2785fac8c42fc55c3dbf02f93204af"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:ga16d8f0af16c7e9090b5084be22b0fef7"><td class="memItemLeft" align="right" valign="top"><a class="el" href="final__platform__layer_8hpp.html#aafa1d3d90febf9826c55c1318f98b27d">fpl_api</a> bool&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___files.html#ga16d8f0af16c7e9090b5084be22b0fef7">fpl::files::ListFilesBegin</a> (const char *pathAndFilter, <a class="el" href="structfpl_1_1files_1_1_file_entry.html">FileEntry</a> &amp;firstEntry)</td></tr>
-<tr class="memdesc:ga16d8f0af16c7e9090b5084be22b0fef7"><td class="mdescLeft">&#160;</td><td class="mdescRight">Iterates through files / directories in the given directory.  <a href="group___files.html#ga16d8f0af16c7e9090b5084be22b0fef7">More...</a><br /></td></tr>
-<tr class="separator:ga16d8f0af16c7e9090b5084be22b0fef7"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:ga3c4dd93ea39de72cd460b1cc6131f4a5"><td class="memItemLeft" align="right" valign="top"><a class="el" href="final__platform__layer_8hpp.html#aafa1d3d90febf9826c55c1318f98b27d">fpl_api</a> void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___files.html#ga3c4dd93ea39de72cd460b1cc6131f4a5">fpl::files::ListFilesEnd</a> (<a class="el" href="structfpl_1_1files_1_1_file_entry.html">FileEntry</a> &amp;lastEntry)</td></tr>
-<tr class="memdesc:ga3c4dd93ea39de72cd460b1cc6131f4a5"><td class="mdescLeft">&#160;</td><td class="mdescRight">Releases opened resources from iterating through files / directories.  <a href="group___files.html#ga3c4dd93ea39de72cd460b1cc6131f4a5">More...</a><br /></td></tr>
-<tr class="separator:ga3c4dd93ea39de72cd460b1cc6131f4a5"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:gaec7155bb8cfe496644dcf0d408c87f81"><td class="memItemLeft" align="right" valign="top"><a class="el" href="final__platform__layer_8hpp.html#aafa1d3d90febf9826c55c1318f98b27d">fpl_api</a> bool&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___files.html#gaec7155bb8cfe496644dcf0d408c87f81">fpl::files::ListFilesNext</a> (<a class="el" href="structfpl_1_1files_1_1_file_entry.html">FileEntry</a> &amp;nextEntry)</td></tr>
-<tr class="memdesc:gaec7155bb8cfe496644dcf0d408c87f81"><td class="mdescLeft">&#160;</td><td class="mdescRight">Gets the next file entry from iterating through files / directories.  <a href="group___files.html#gaec7155bb8cfe496644dcf0d408c87f81">More...</a><br /></td></tr>
-<tr class="separator:gaec7155bb8cfe496644dcf0d408c87f81"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:ga7be15689bbc818f5a4fc1276e0fba8de"><td class="memItemLeft" align="right" valign="top"><a class="el" href="final__platform__layer_8hpp.html#aafa1d3d90febf9826c55c1318f98b27d">fpl_api</a> <a class="el" href="structfpl_1_1files_1_1_file_handle.html">FileHandle</a>&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___files.html#ga7be15689bbc818f5a4fc1276e0fba8de">fpl::files::OpenBinaryFile</a> (const char *filePath)</td></tr>
-<tr class="memdesc:ga7be15689bbc818f5a4fc1276e0fba8de"><td class="mdescLeft">&#160;</td><td class="mdescRight">Opens a binary file for reading from a ansi string path and returns the handle of it.  <a href="group___files.html#ga7be15689bbc818f5a4fc1276e0fba8de">More...</a><br /></td></tr>
-<tr class="separator:ga7be15689bbc818f5a4fc1276e0fba8de"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:ga24bff7e5072f14496b432d8832791eed"><td class="memItemLeft" align="right" valign="top"><a class="el" href="final__platform__layer_8hpp.html#aafa1d3d90febf9826c55c1318f98b27d">fpl_api</a> <a class="el" href="structfpl_1_1files_1_1_file_handle.html">FileHandle</a>&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___files.html#ga24bff7e5072f14496b432d8832791eed">fpl::files::OpenBinaryFile</a> (const wchar_t *filePath)</td></tr>
-<tr class="memdesc:ga24bff7e5072f14496b432d8832791eed"><td class="mdescLeft">&#160;</td><td class="mdescRight">Opens a binary file for reading from a wide string path and returns the handle of it.  <a href="group___files.html#ga24bff7e5072f14496b432d8832791eed">More...</a><br /></td></tr>
-<tr class="separator:ga24bff7e5072f14496b432d8832791eed"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:ga0884301043e2c2df8433055bccb3d83f"><td class="memItemLeft" align="right" valign="top"><a class="el" href="final__platform__layer_8hpp.html#aafa1d3d90febf9826c55c1318f98b27d">fpl_api</a> uint32_t&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___files.html#ga0884301043e2c2df8433055bccb3d83f">fpl::files::ReadFileBlock32</a> (const <a class="el" href="structfpl_1_1files_1_1_file_handle.html">FileHandle</a> &amp;fileHandle, const uint32_t sizeToRead, void *targetBuffer, const uint32_t maxTargetBufferSize)</td></tr>
-<tr class="memdesc:ga0884301043e2c2df8433055bccb3d83f"><td class="mdescLeft">&#160;</td><td class="mdescRight">Reads a block from the given file handle and returns the number of bytes read.  <a href="group___files.html#ga0884301043e2c2df8433055bccb3d83f">More...</a><br /></td></tr>
-<tr class="separator:ga0884301043e2c2df8433055bccb3d83f"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:gacc26bd5324fee12541bd61ff384df9ed"><td class="memItemLeft" align="right" valign="top"><a class="el" href="final__platform__layer_8hpp.html#aafa1d3d90febf9826c55c1318f98b27d">fpl_api</a> bool&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___files.html#gacc26bd5324fee12541bd61ff384df9ed">fpl::files::RemoveEmptyDirectory</a> (const char *path)</td></tr>
-<tr class="memdesc:gacc26bd5324fee12541bd61ff384df9ed"><td class="mdescLeft">&#160;</td><td class="mdescRight">Deletes the given empty directory without confirmation and returns true when the deletion was successful.  <a href="group___files.html#gacc26bd5324fee12541bd61ff384df9ed">More...</a><br /></td></tr>
-<tr class="separator:gacc26bd5324fee12541bd61ff384df9ed"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:gaf9b5405a8565f59278905aec5027cb8b"><td class="memItemLeft" align="right" valign="top"><a class="el" href="final__platform__layer_8hpp.html#aafa1d3d90febf9826c55c1318f98b27d">fpl_api</a> void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___files.html#gaf9b5405a8565f59278905aec5027cb8b">fpl::files::SetFilePosition32</a> (const <a class="el" href="structfpl_1_1files_1_1_file_handle.html">FileHandle</a> &amp;fileHandle, const int32_t position, const <a class="el" href="group___files.html#ga4203b4bd92c5589a4c445aa01b90add9">FilePositionMode</a> mode)</td></tr>
-<tr class="memdesc:gaf9b5405a8565f59278905aec5027cb8b"><td class="mdescLeft">&#160;</td><td class="mdescRight">Sets the current file position by the given position, depending on the mode its absolute or relative.  <a href="group___files.html#gaf9b5405a8565f59278905aec5027cb8b">More...</a><br /></td></tr>
-<tr class="separator:gaf9b5405a8565f59278905aec5027cb8b"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:ga14d97136914889a756685ab47b7699c2"><td class="memItemLeft" align="right" valign="top"><a class="el" href="final__platform__layer_8hpp.html#aafa1d3d90febf9826c55c1318f98b27d">fpl_api</a> uint32_t&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___files.html#ga14d97136914889a756685ab47b7699c2">fpl::files::WriteFileBlock32</a> (const <a class="el" href="structfpl_1_1files_1_1_file_handle.html">FileHandle</a> &amp;fileHandle, void *sourceBuffer, const uint32_t sourceSize)</td></tr>
-<tr class="memdesc:ga14d97136914889a756685ab47b7699c2"><td class="mdescLeft">&#160;</td><td class="mdescRight">Writes a block to the given file handle and returns the number of bytes written.  <a href="group___files.html#ga14d97136914889a756685ab47b7699c2">More...</a><br /></td></tr>
-<tr class="separator:ga14d97136914889a756685ab47b7699c2"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:gaa289af36da0e3ecddaa59eb7d749c754"><td class="memItemLeft" align="right" valign="top"><a class="el" href="final__platform__layer_8hpp.html#aa8f306dc44b7fa9ce8937e3c059483e0">fpl_platform_api</a> uint32_t&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___files.html#gaa289af36da0e3ecddaa59eb7d749c754">fpl::files::GetFilePosition32</a> (const <a class="el" href="structfpl_1_1files_1_1_file_handle.html">FileHandle</a> &amp;fileHandle)</td></tr>
+<tr class="memdesc:gaa289af36da0e3ecddaa59eb7d749c754"><td class="mdescLeft">&#160;</td><td class="mdescRight">Returns the current file position in bytes.  <a href="group___files.html#gaa289af36da0e3ecddaa59eb7d749c754">More...</a><br /></td></tr>
+<tr class="separator:gaa289af36da0e3ecddaa59eb7d749c754"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:ga00859517d3823ee588a846ec6648b43f"><td class="memItemLeft" align="right" valign="top"><a class="el" href="final__platform__layer_8hpp.html#aa8f306dc44b7fa9ce8937e3c059483e0">fpl_platform_api</a> uint32_t&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___files.html#ga00859517d3823ee588a846ec6648b43f">fpl::files::GetFileSize32</a> (const char *filePath)</td></tr>
+<tr class="memdesc:ga00859517d3823ee588a846ec6648b43f"><td class="mdescLeft">&#160;</td><td class="mdescRight">Returns the 32-bit file size in bytes for the given file.  <a href="group___files.html#ga00859517d3823ee588a846ec6648b43f">More...</a><br /></td></tr>
+<tr class="separator:ga00859517d3823ee588a846ec6648b43f"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:gaa4861e347ce107fdd5735fbd3db4f385"><td class="memItemLeft" align="right" valign="top"><a class="el" href="final__platform__layer_8hpp.html#aa8f306dc44b7fa9ce8937e3c059483e0">fpl_platform_api</a> uint32_t&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___files.html#gaa4861e347ce107fdd5735fbd3db4f385">fpl::files::GetFileSize32</a> (const <a class="el" href="structfpl_1_1files_1_1_file_handle.html">FileHandle</a> &amp;fileHandle)</td></tr>
+<tr class="memdesc:gaa4861e347ce107fdd5735fbd3db4f385"><td class="mdescLeft">&#160;</td><td class="mdescRight">Returns the 32-bit file size in bytes for a opened file.  <a href="group___files.html#gaa4861e347ce107fdd5735fbd3db4f385">More...</a><br /></td></tr>
+<tr class="separator:gaa4861e347ce107fdd5735fbd3db4f385"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:ga330d3f5182c18aea247923841878e60c"><td class="memItemLeft" align="right" valign="top"><a class="el" href="final__platform__layer_8hpp.html#aa8f306dc44b7fa9ce8937e3c059483e0">fpl_platform_api</a> bool&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___files.html#ga330d3f5182c18aea247923841878e60c">fpl::files::ListFilesBegin</a> (const char *pathAndFilter, <a class="el" href="structfpl_1_1files_1_1_file_entry.html">FileEntry</a> &amp;firstEntry)</td></tr>
+<tr class="memdesc:ga330d3f5182c18aea247923841878e60c"><td class="mdescLeft">&#160;</td><td class="mdescRight">Iterates through files / directories in the given directory.  <a href="group___files.html#ga330d3f5182c18aea247923841878e60c">More...</a><br /></td></tr>
+<tr class="separator:ga330d3f5182c18aea247923841878e60c"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:ga71edce353282ad93614388fb46b457b3"><td class="memItemLeft" align="right" valign="top"><a class="el" href="final__platform__layer_8hpp.html#aa8f306dc44b7fa9ce8937e3c059483e0">fpl_platform_api</a> void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___files.html#ga71edce353282ad93614388fb46b457b3">fpl::files::ListFilesEnd</a> (<a class="el" href="structfpl_1_1files_1_1_file_entry.html">FileEntry</a> &amp;lastEntry)</td></tr>
+<tr class="memdesc:ga71edce353282ad93614388fb46b457b3"><td class="mdescLeft">&#160;</td><td class="mdescRight">Releases opened resources from iterating through files / directories.  <a href="group___files.html#ga71edce353282ad93614388fb46b457b3">More...</a><br /></td></tr>
+<tr class="separator:ga71edce353282ad93614388fb46b457b3"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:ga0d03828bed4f222843a9378c2ee347d9"><td class="memItemLeft" align="right" valign="top"><a class="el" href="final__platform__layer_8hpp.html#aa8f306dc44b7fa9ce8937e3c059483e0">fpl_platform_api</a> bool&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___files.html#ga0d03828bed4f222843a9378c2ee347d9">fpl::files::ListFilesNext</a> (<a class="el" href="structfpl_1_1files_1_1_file_entry.html">FileEntry</a> &amp;nextEntry)</td></tr>
+<tr class="memdesc:ga0d03828bed4f222843a9378c2ee347d9"><td class="mdescLeft">&#160;</td><td class="mdescRight">Gets the next file entry from iterating through files / directories.  <a href="group___files.html#ga0d03828bed4f222843a9378c2ee347d9">More...</a><br /></td></tr>
+<tr class="separator:ga0d03828bed4f222843a9378c2ee347d9"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:ga78f2469958146ee7a9a8019de5522fa1"><td class="memItemLeft" align="right" valign="top"><a class="el" href="final__platform__layer_8hpp.html#aa8f306dc44b7fa9ce8937e3c059483e0">fpl_platform_api</a> <a class="el" href="structfpl_1_1files_1_1_file_handle.html">FileHandle</a>&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___files.html#ga78f2469958146ee7a9a8019de5522fa1">fpl::files::OpenBinaryFile</a> (const char *filePath)</td></tr>
+<tr class="memdesc:ga78f2469958146ee7a9a8019de5522fa1"><td class="mdescLeft">&#160;</td><td class="mdescRight">Opens a binary file for reading from a ansi string path and returns the handle of it.  <a href="group___files.html#ga78f2469958146ee7a9a8019de5522fa1">More...</a><br /></td></tr>
+<tr class="separator:ga78f2469958146ee7a9a8019de5522fa1"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:ga8a3cdefee56ee1c5f34764cc6b20ce4c"><td class="memItemLeft" align="right" valign="top"><a class="el" href="final__platform__layer_8hpp.html#aa8f306dc44b7fa9ce8937e3c059483e0">fpl_platform_api</a> <a class="el" href="structfpl_1_1files_1_1_file_handle.html">FileHandle</a>&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___files.html#ga8a3cdefee56ee1c5f34764cc6b20ce4c">fpl::files::OpenBinaryFile</a> (const wchar_t *filePath)</td></tr>
+<tr class="memdesc:ga8a3cdefee56ee1c5f34764cc6b20ce4c"><td class="mdescLeft">&#160;</td><td class="mdescRight">Opens a binary file for reading from a wide string path and returns the handle of it.  <a href="group___files.html#ga8a3cdefee56ee1c5f34764cc6b20ce4c">More...</a><br /></td></tr>
+<tr class="separator:ga8a3cdefee56ee1c5f34764cc6b20ce4c"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:ga18338aebe629a945806cd81f10157629"><td class="memItemLeft" align="right" valign="top"><a class="el" href="final__platform__layer_8hpp.html#aa8f306dc44b7fa9ce8937e3c059483e0">fpl_platform_api</a> uint32_t&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___files.html#ga18338aebe629a945806cd81f10157629">fpl::files::ReadFileBlock32</a> (const <a class="el" href="structfpl_1_1files_1_1_file_handle.html">FileHandle</a> &amp;fileHandle, const uint32_t sizeToRead, void *targetBuffer, const uint32_t maxTargetBufferSize)</td></tr>
+<tr class="memdesc:ga18338aebe629a945806cd81f10157629"><td class="mdescLeft">&#160;</td><td class="mdescRight">Reads a block from the given file handle and returns the number of bytes read.  <a href="group___files.html#ga18338aebe629a945806cd81f10157629">More...</a><br /></td></tr>
+<tr class="separator:ga18338aebe629a945806cd81f10157629"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:ga635aa4a126ed7e9ac2068c89ad7b9afb"><td class="memItemLeft" align="right" valign="top"><a class="el" href="final__platform__layer_8hpp.html#aa8f306dc44b7fa9ce8937e3c059483e0">fpl_platform_api</a> bool&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___files.html#ga635aa4a126ed7e9ac2068c89ad7b9afb">fpl::files::RemoveEmptyDirectory</a> (const char *path)</td></tr>
+<tr class="memdesc:ga635aa4a126ed7e9ac2068c89ad7b9afb"><td class="mdescLeft">&#160;</td><td class="mdescRight">Deletes the given empty directory without confirmation and returns true when the deletion was successful.  <a href="group___files.html#ga635aa4a126ed7e9ac2068c89ad7b9afb">More...</a><br /></td></tr>
+<tr class="separator:ga635aa4a126ed7e9ac2068c89ad7b9afb"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:gac61dea72a3419799b7aea15321f06c06"><td class="memItemLeft" align="right" valign="top"><a class="el" href="final__platform__layer_8hpp.html#aa8f306dc44b7fa9ce8937e3c059483e0">fpl_platform_api</a> void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___files.html#gac61dea72a3419799b7aea15321f06c06">fpl::files::SetFilePosition32</a> (const <a class="el" href="structfpl_1_1files_1_1_file_handle.html">FileHandle</a> &amp;fileHandle, const int32_t position, const <a class="el" href="group___files.html#ga4203b4bd92c5589a4c445aa01b90add9">FilePositionMode</a> mode)</td></tr>
+<tr class="memdesc:gac61dea72a3419799b7aea15321f06c06"><td class="mdescLeft">&#160;</td><td class="mdescRight">Sets the current file position by the given position, depending on the mode its absolute or relative.  <a href="group___files.html#gac61dea72a3419799b7aea15321f06c06">More...</a><br /></td></tr>
+<tr class="separator:gac61dea72a3419799b7aea15321f06c06"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:ga7960252c7e1b53ed174203379f6ff222"><td class="memItemLeft" align="right" valign="top"><a class="el" href="final__platform__layer_8hpp.html#aa8f306dc44b7fa9ce8937e3c059483e0">fpl_platform_api</a> uint32_t&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___files.html#ga7960252c7e1b53ed174203379f6ff222">fpl::files::WriteFileBlock32</a> (const <a class="el" href="structfpl_1_1files_1_1_file_handle.html">FileHandle</a> &amp;fileHandle, void *sourceBuffer, const uint32_t sourceSize)</td></tr>
+<tr class="memdesc:ga7960252c7e1b53ed174203379f6ff222"><td class="mdescLeft">&#160;</td><td class="mdescRight">Writes a block to the given file handle and returns the number of bytes written.  <a href="group___files.html#ga7960252c7e1b53ed174203379f6ff222">More...</a><br /></td></tr>
+<tr class="separator:ga7960252c7e1b53ed174203379f6ff222"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table><table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a name="var-members"></a>
 Variables</h2></td></tr>
@@ -221,7 +221,7 @@ Variables</h2></td></tr>
 </td></tr>
 </table>
 
-<p class="definition">Definition at line <a class="el" href="final__platform__layer_8hpp_source.html#l01985">1985</a> of file <a class="el" href="final__platform__layer_8hpp_source.html">final_platform_layer.hpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="final__platform__layer_8hpp_source.html#l02100">2100</a> of file <a class="el" href="final__platform__layer_8hpp_source.html">final_platform_layer.hpp</a>.</p>
 
 </div>
 </div>
@@ -255,7 +255,7 @@ Variables</h2></td></tr>
 </td></tr>
 </table>
 
-<p class="definition">Definition at line <a class="el" href="final__platform__layer_8hpp_source.html#l01975">1975</a> of file <a class="el" href="final__platform__layer_8hpp_source.html">final_platform_layer.hpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="final__platform__layer_8hpp_source.html#l02090">2090</a> of file <a class="el" href="final__platform__layer_8hpp_source.html">final_platform_layer.hpp</a>.</p>
 
 </div>
 </div>
@@ -289,19 +289,19 @@ Variables</h2></td></tr>
 </td></tr>
 </table>
 
-<p class="definition">Definition at line <a class="el" href="final__platform__layer_8hpp_source.html#l01965">1965</a> of file <a class="el" href="final__platform__layer_8hpp_source.html">final_platform_layer.hpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="final__platform__layer_8hpp_source.html#l02080">2080</a> of file <a class="el" href="final__platform__layer_8hpp_source.html">final_platform_layer.hpp</a>.</p>
 
 </div>
 </div>
 <h2 class="groupheader">Function Documentation</h2>
-<a id="gadf8a868ce8399951d94368b2a6efe9ad"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#gadf8a868ce8399951d94368b2a6efe9ad">&#9670;&nbsp;</a></span>CloseFile()</h2>
+<a id="gacaf2510d2c325bdeac90e18864bc2d15"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#gacaf2510d2c325bdeac90e18864bc2d15">&#9670;&nbsp;</a></span>CloseFile()</h2>
 
 <div class="memitem">
 <div class="memproto">
       <table class="memname">
         <tr>
-          <td class="memname"><a class="el" href="final__platform__layer_8hpp.html#aafa1d3d90febf9826c55c1318f98b27d">fpl_api</a> void fpl::files::CloseFile </td>
+          <td class="memname"><a class="el" href="final__platform__layer_8hpp.html#aa8f306dc44b7fa9ce8937e3c059483e0">fpl_platform_api</a> void fpl::files::CloseFile </td>
           <td>(</td>
           <td class="paramtype"><a class="el" href="structfpl_1_1files_1_1_file_handle.html">FileHandle</a> &amp;&#160;</td>
           <td class="paramname"><em>fileHandle</em></td><td>)</td>
@@ -320,14 +320,14 @@ Variables</h2></td></tr>
 
 </div>
 </div>
-<a id="ga347416b5cbc4243171a063f57be98547"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#ga347416b5cbc4243171a063f57be98547">&#9670;&nbsp;</a></span>CreateBinaryFile() <span class="overload">[1/2]</span></h2>
+<a id="ga6f4cc9d4cfceaee5c78157391418f33f"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#ga6f4cc9d4cfceaee5c78157391418f33f">&#9670;&nbsp;</a></span>CreateBinaryFile() <span class="overload">[1/2]</span></h2>
 
 <div class="memitem">
 <div class="memproto">
       <table class="memname">
         <tr>
-          <td class="memname"><a class="el" href="final__platform__layer_8hpp.html#aafa1d3d90febf9826c55c1318f98b27d">fpl_api</a> <a class="el" href="structfpl_1_1files_1_1_file_handle.html">FileHandle</a> fpl::files::CreateBinaryFile </td>
+          <td class="memname"><a class="el" href="final__platform__layer_8hpp.html#aa8f306dc44b7fa9ce8937e3c059483e0">fpl_platform_api</a> <a class="el" href="structfpl_1_1files_1_1_file_handle.html">FileHandle</a> fpl::files::CreateBinaryFile </td>
           <td>(</td>
           <td class="paramtype">const char *&#160;</td>
           <td class="paramname"><em>filePath</em></td><td>)</td>
@@ -348,14 +348,14 @@ Variables</h2></td></tr>
 
 </div>
 </div>
-<a id="ga6dff9fb81386319d26f9221457734dc4"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#ga6dff9fb81386319d26f9221457734dc4">&#9670;&nbsp;</a></span>CreateBinaryFile() <span class="overload">[2/2]</span></h2>
+<a id="ga85efd491524892a111d7860838097b61"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#ga85efd491524892a111d7860838097b61">&#9670;&nbsp;</a></span>CreateBinaryFile() <span class="overload">[2/2]</span></h2>
 
 <div class="memitem">
 <div class="memproto">
       <table class="memname">
         <tr>
-          <td class="memname"><a class="el" href="final__platform__layer_8hpp.html#aafa1d3d90febf9826c55c1318f98b27d">fpl_api</a> <a class="el" href="structfpl_1_1files_1_1_file_handle.html">FileHandle</a> fpl::files::CreateBinaryFile </td>
+          <td class="memname"><a class="el" href="final__platform__layer_8hpp.html#aa8f306dc44b7fa9ce8937e3c059483e0">fpl_platform_api</a> <a class="el" href="structfpl_1_1files_1_1_file_handle.html">FileHandle</a> fpl::files::CreateBinaryFile </td>
           <td>(</td>
           <td class="paramtype">const wchar_t *&#160;</td>
           <td class="paramname"><em>filePath</em></td><td>)</td>
@@ -376,14 +376,14 @@ Variables</h2></td></tr>
 
 </div>
 </div>
-<a id="gad6815e384d0fcce318c752c2126fb4fe"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#gad6815e384d0fcce318c752c2126fb4fe">&#9670;&nbsp;</a></span>CreateDirectories()</h2>
+<a id="ga788e5c02d1c410aa1608f496d3f4e877"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#ga788e5c02d1c410aa1608f496d3f4e877">&#9670;&nbsp;</a></span>CreateDirectories()</h2>
 
 <div class="memitem">
 <div class="memproto">
       <table class="memname">
         <tr>
-          <td class="memname"><a class="el" href="final__platform__layer_8hpp.html#aafa1d3d90febf9826c55c1318f98b27d">fpl_api</a> bool fpl::files::CreateDirectories </td>
+          <td class="memname"><a class="el" href="final__platform__layer_8hpp.html#aa8f306dc44b7fa9ce8937e3c059483e0">fpl_platform_api</a> bool fpl::files::CreateDirectories </td>
           <td>(</td>
           <td class="paramtype">const char *&#160;</td>
           <td class="paramname"><em>path</em></td><td>)</td>
@@ -403,14 +403,14 @@ Variables</h2></td></tr>
 
 </div>
 </div>
-<a id="ga81077ac3e1713d50f12cc1767ca96326"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#ga81077ac3e1713d50f12cc1767ca96326">&#9670;&nbsp;</a></span>DirectoryExists()</h2>
+<a id="gafac9cdef0cc4f61d9cdbf18e213699cc"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#gafac9cdef0cc4f61d9cdbf18e213699cc">&#9670;&nbsp;</a></span>DirectoryExists()</h2>
 
 <div class="memitem">
 <div class="memproto">
       <table class="memname">
         <tr>
-          <td class="memname"><a class="el" href="final__platform__layer_8hpp.html#aafa1d3d90febf9826c55c1318f98b27d">fpl_api</a> bool fpl::files::DirectoryExists </td>
+          <td class="memname"><a class="el" href="final__platform__layer_8hpp.html#aa8f306dc44b7fa9ce8937e3c059483e0">fpl_platform_api</a> bool fpl::files::DirectoryExists </td>
           <td>(</td>
           <td class="paramtype">const char *&#160;</td>
           <td class="paramname"><em>path</em></td><td>)</td>
@@ -430,14 +430,14 @@ Variables</h2></td></tr>
 
 </div>
 </div>
-<a id="gaa3e7bb92f93e300d549a2fbf5bec740d"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#gaa3e7bb92f93e300d549a2fbf5bec740d">&#9670;&nbsp;</a></span>FileCopy()</h2>
+<a id="gabc1ef037b4d55ac7f58b701189a213f3"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#gabc1ef037b4d55ac7f58b701189a213f3">&#9670;&nbsp;</a></span>FileCopy()</h2>
 
 <div class="memitem">
 <div class="memproto">
       <table class="memname">
         <tr>
-          <td class="memname"><a class="el" href="final__platform__layer_8hpp.html#aafa1d3d90febf9826c55c1318f98b27d">fpl_api</a> bool fpl::files::FileCopy </td>
+          <td class="memname"><a class="el" href="final__platform__layer_8hpp.html#aa8f306dc44b7fa9ce8937e3c059483e0">fpl_platform_api</a> bool fpl::files::FileCopy </td>
           <td>(</td>
           <td class="paramtype">const char *&#160;</td>
           <td class="paramname"><em>sourceFilePath</em>, </td>
@@ -475,14 +475,14 @@ Variables</h2></td></tr>
 
 </div>
 </div>
-<a id="ga7e8d74c15138b08866e0182d4e3e53af"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#ga7e8d74c15138b08866e0182d4e3e53af">&#9670;&nbsp;</a></span>FileDelete()</h2>
+<a id="ga4f9886a0921361535a6fcd7873ccbe94"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#ga4f9886a0921361535a6fcd7873ccbe94">&#9670;&nbsp;</a></span>FileDelete()</h2>
 
 <div class="memitem">
 <div class="memproto">
       <table class="memname">
         <tr>
-          <td class="memname"><a class="el" href="final__platform__layer_8hpp.html#aafa1d3d90febf9826c55c1318f98b27d">fpl_api</a> bool fpl::files::FileDelete </td>
+          <td class="memname"><a class="el" href="final__platform__layer_8hpp.html#aa8f306dc44b7fa9ce8937e3c059483e0">fpl_platform_api</a> bool fpl::files::FileDelete </td>
           <td>(</td>
           <td class="paramtype">const char *&#160;</td>
           <td class="paramname"><em>filePath</em></td><td>)</td>
@@ -502,14 +502,14 @@ Variables</h2></td></tr>
 
 </div>
 </div>
-<a id="ga48b28a1bb885afecf015b348961d09ce"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#ga48b28a1bb885afecf015b348961d09ce">&#9670;&nbsp;</a></span>FileExists()</h2>
+<a id="gad57f7b8063a0d1544589146a492f034c"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#gad57f7b8063a0d1544589146a492f034c">&#9670;&nbsp;</a></span>FileExists()</h2>
 
 <div class="memitem">
 <div class="memproto">
       <table class="memname">
         <tr>
-          <td class="memname"><a class="el" href="final__platform__layer_8hpp.html#aafa1d3d90febf9826c55c1318f98b27d">fpl_api</a> bool fpl::files::FileExists </td>
+          <td class="memname"><a class="el" href="final__platform__layer_8hpp.html#aa8f306dc44b7fa9ce8937e3c059483e0">fpl_platform_api</a> bool fpl::files::FileExists </td>
           <td>(</td>
           <td class="paramtype">const char *&#160;</td>
           <td class="paramname"><em>filePath</em></td><td>)</td>
@@ -529,14 +529,14 @@ Variables</h2></td></tr>
 
 </div>
 </div>
-<a id="ga991df8158e3abcd8b03930562bd118ba"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#ga991df8158e3abcd8b03930562bd118ba">&#9670;&nbsp;</a></span>GetFilePosition32()</h2>
+<a id="gaa289af36da0e3ecddaa59eb7d749c754"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#gaa289af36da0e3ecddaa59eb7d749c754">&#9670;&nbsp;</a></span>GetFilePosition32()</h2>
 
 <div class="memitem">
 <div class="memproto">
       <table class="memname">
         <tr>
-          <td class="memname"><a class="el" href="final__platform__layer_8hpp.html#aafa1d3d90febf9826c55c1318f98b27d">fpl_api</a> uint32_t fpl::files::GetFilePosition32 </td>
+          <td class="memname"><a class="el" href="final__platform__layer_8hpp.html#aa8f306dc44b7fa9ce8937e3c059483e0">fpl_platform_api</a> uint32_t fpl::files::GetFilePosition32 </td>
           <td>(</td>
           <td class="paramtype">const <a class="el" href="structfpl_1_1files_1_1_file_handle.html">FileHandle</a> &amp;&#160;</td>
           <td class="paramname"><em>fileHandle</em></td><td>)</td>
@@ -557,14 +557,14 @@ Variables</h2></td></tr>
 
 </div>
 </div>
-<a id="ga6b34551650f89db6164849942bc22a48"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#ga6b34551650f89db6164849942bc22a48">&#9670;&nbsp;</a></span>GetFileSize32() <span class="overload">[1/2]</span></h2>
+<a id="ga00859517d3823ee588a846ec6648b43f"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#ga00859517d3823ee588a846ec6648b43f">&#9670;&nbsp;</a></span>GetFileSize32() <span class="overload">[1/2]</span></h2>
 
 <div class="memitem">
 <div class="memproto">
       <table class="memname">
         <tr>
-          <td class="memname"><a class="el" href="final__platform__layer_8hpp.html#aafa1d3d90febf9826c55c1318f98b27d">fpl_api</a> uint32_t fpl::files::GetFileSize32 </td>
+          <td class="memname"><a class="el" href="final__platform__layer_8hpp.html#aa8f306dc44b7fa9ce8937e3c059483e0">fpl_platform_api</a> uint32_t fpl::files::GetFileSize32 </td>
           <td>(</td>
           <td class="paramtype">const char *&#160;</td>
           <td class="paramname"><em>filePath</em></td><td>)</td>
@@ -585,14 +585,14 @@ Variables</h2></td></tr>
 
 </div>
 </div>
-<a id="ga0d2785fac8c42fc55c3dbf02f93204af"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#ga0d2785fac8c42fc55c3dbf02f93204af">&#9670;&nbsp;</a></span>GetFileSize32() <span class="overload">[2/2]</span></h2>
+<a id="gaa4861e347ce107fdd5735fbd3db4f385"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#gaa4861e347ce107fdd5735fbd3db4f385">&#9670;&nbsp;</a></span>GetFileSize32() <span class="overload">[2/2]</span></h2>
 
 <div class="memitem">
 <div class="memproto">
       <table class="memname">
         <tr>
-          <td class="memname"><a class="el" href="final__platform__layer_8hpp.html#aafa1d3d90febf9826c55c1318f98b27d">fpl_api</a> uint32_t fpl::files::GetFileSize32 </td>
+          <td class="memname"><a class="el" href="final__platform__layer_8hpp.html#aa8f306dc44b7fa9ce8937e3c059483e0">fpl_platform_api</a> uint32_t fpl::files::GetFileSize32 </td>
           <td>(</td>
           <td class="paramtype">const <a class="el" href="structfpl_1_1files_1_1_file_handle.html">FileHandle</a> &amp;&#160;</td>
           <td class="paramname"><em>fileHandle</em></td><td>)</td>
@@ -613,14 +613,14 @@ Variables</h2></td></tr>
 
 </div>
 </div>
-<a id="ga16d8f0af16c7e9090b5084be22b0fef7"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#ga16d8f0af16c7e9090b5084be22b0fef7">&#9670;&nbsp;</a></span>ListFilesBegin()</h2>
+<a id="ga330d3f5182c18aea247923841878e60c"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#ga330d3f5182c18aea247923841878e60c">&#9670;&nbsp;</a></span>ListFilesBegin()</h2>
 
 <div class="memitem">
 <div class="memproto">
       <table class="memname">
         <tr>
-          <td class="memname"><a class="el" href="final__platform__layer_8hpp.html#aafa1d3d90febf9826c55c1318f98b27d">fpl_api</a> bool fpl::files::ListFilesBegin </td>
+          <td class="memname"><a class="el" href="final__platform__layer_8hpp.html#aa8f306dc44b7fa9ce8937e3c059483e0">fpl_platform_api</a> bool fpl::files::ListFilesBegin </td>
           <td>(</td>
           <td class="paramtype">const char *&#160;</td>
           <td class="paramname"><em>pathAndFilter</em>, </td>
@@ -652,14 +652,14 @@ Variables</h2></td></tr>
 
 </div>
 </div>
-<a id="ga3c4dd93ea39de72cd460b1cc6131f4a5"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#ga3c4dd93ea39de72cd460b1cc6131f4a5">&#9670;&nbsp;</a></span>ListFilesEnd()</h2>
+<a id="ga71edce353282ad93614388fb46b457b3"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#ga71edce353282ad93614388fb46b457b3">&#9670;&nbsp;</a></span>ListFilesEnd()</h2>
 
 <div class="memitem">
 <div class="memproto">
       <table class="memname">
         <tr>
-          <td class="memname"><a class="el" href="final__platform__layer_8hpp.html#aafa1d3d90febf9826c55c1318f98b27d">fpl_api</a> void fpl::files::ListFilesEnd </td>
+          <td class="memname"><a class="el" href="final__platform__layer_8hpp.html#aa8f306dc44b7fa9ce8937e3c059483e0">fpl_platform_api</a> void fpl::files::ListFilesEnd </td>
           <td>(</td>
           <td class="paramtype"><a class="el" href="structfpl_1_1files_1_1_file_entry.html">FileEntry</a> &amp;&#160;</td>
           <td class="paramname"><em>lastEntry</em></td><td>)</td>
@@ -678,14 +678,14 @@ Variables</h2></td></tr>
 
 </div>
 </div>
-<a id="gaec7155bb8cfe496644dcf0d408c87f81"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#gaec7155bb8cfe496644dcf0d408c87f81">&#9670;&nbsp;</a></span>ListFilesNext()</h2>
+<a id="ga0d03828bed4f222843a9378c2ee347d9"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#ga0d03828bed4f222843a9378c2ee347d9">&#9670;&nbsp;</a></span>ListFilesNext()</h2>
 
 <div class="memitem">
 <div class="memproto">
       <table class="memname">
         <tr>
-          <td class="memname"><a class="el" href="final__platform__layer_8hpp.html#aafa1d3d90febf9826c55c1318f98b27d">fpl_api</a> bool fpl::files::ListFilesNext </td>
+          <td class="memname"><a class="el" href="final__platform__layer_8hpp.html#aa8f306dc44b7fa9ce8937e3c059483e0">fpl_platform_api</a> bool fpl::files::ListFilesNext </td>
           <td>(</td>
           <td class="paramtype"><a class="el" href="structfpl_1_1files_1_1_file_entry.html">FileEntry</a> &amp;&#160;</td>
           <td class="paramname"><em>nextEntry</em></td><td>)</td>
@@ -705,14 +705,14 @@ Variables</h2></td></tr>
 
 </div>
 </div>
-<a id="ga7be15689bbc818f5a4fc1276e0fba8de"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#ga7be15689bbc818f5a4fc1276e0fba8de">&#9670;&nbsp;</a></span>OpenBinaryFile() <span class="overload">[1/2]</span></h2>
+<a id="ga78f2469958146ee7a9a8019de5522fa1"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#ga78f2469958146ee7a9a8019de5522fa1">&#9670;&nbsp;</a></span>OpenBinaryFile() <span class="overload">[1/2]</span></h2>
 
 <div class="memitem">
 <div class="memproto">
       <table class="memname">
         <tr>
-          <td class="memname"><a class="el" href="final__platform__layer_8hpp.html#aafa1d3d90febf9826c55c1318f98b27d">fpl_api</a> <a class="el" href="structfpl_1_1files_1_1_file_handle.html">FileHandle</a> fpl::files::OpenBinaryFile </td>
+          <td class="memname"><a class="el" href="final__platform__layer_8hpp.html#aa8f306dc44b7fa9ce8937e3c059483e0">fpl_platform_api</a> <a class="el" href="structfpl_1_1files_1_1_file_handle.html">FileHandle</a> fpl::files::OpenBinaryFile </td>
           <td>(</td>
           <td class="paramtype">const char *&#160;</td>
           <td class="paramname"><em>filePath</em></td><td>)</td>
@@ -733,14 +733,14 @@ Variables</h2></td></tr>
 
 </div>
 </div>
-<a id="ga24bff7e5072f14496b432d8832791eed"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#ga24bff7e5072f14496b432d8832791eed">&#9670;&nbsp;</a></span>OpenBinaryFile() <span class="overload">[2/2]</span></h2>
+<a id="ga8a3cdefee56ee1c5f34764cc6b20ce4c"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#ga8a3cdefee56ee1c5f34764cc6b20ce4c">&#9670;&nbsp;</a></span>OpenBinaryFile() <span class="overload">[2/2]</span></h2>
 
 <div class="memitem">
 <div class="memproto">
       <table class="memname">
         <tr>
-          <td class="memname"><a class="el" href="final__platform__layer_8hpp.html#aafa1d3d90febf9826c55c1318f98b27d">fpl_api</a> <a class="el" href="structfpl_1_1files_1_1_file_handle.html">FileHandle</a> fpl::files::OpenBinaryFile </td>
+          <td class="memname"><a class="el" href="final__platform__layer_8hpp.html#aa8f306dc44b7fa9ce8937e3c059483e0">fpl_platform_api</a> <a class="el" href="structfpl_1_1files_1_1_file_handle.html">FileHandle</a> fpl::files::OpenBinaryFile </td>
           <td>(</td>
           <td class="paramtype">const wchar_t *&#160;</td>
           <td class="paramname"><em>filePath</em></td><td>)</td>
@@ -761,14 +761,14 @@ Variables</h2></td></tr>
 
 </div>
 </div>
-<a id="ga0884301043e2c2df8433055bccb3d83f"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#ga0884301043e2c2df8433055bccb3d83f">&#9670;&nbsp;</a></span>ReadFileBlock32()</h2>
+<a id="ga18338aebe629a945806cd81f10157629"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#ga18338aebe629a945806cd81f10157629">&#9670;&nbsp;</a></span>ReadFileBlock32()</h2>
 
 <div class="memitem">
 <div class="memproto">
       <table class="memname">
         <tr>
-          <td class="memname"><a class="el" href="final__platform__layer_8hpp.html#aafa1d3d90febf9826c55c1318f98b27d">fpl_api</a> uint32_t fpl::files::ReadFileBlock32 </td>
+          <td class="memname"><a class="el" href="final__platform__layer_8hpp.html#aa8f306dc44b7fa9ce8937e3c059483e0">fpl_platform_api</a> uint32_t fpl::files::ReadFileBlock32 </td>
           <td>(</td>
           <td class="paramtype">const <a class="el" href="structfpl_1_1files_1_1_file_handle.html">FileHandle</a> &amp;&#160;</td>
           <td class="paramname"><em>fileHandle</em>, </td>
@@ -814,14 +814,14 @@ Variables</h2></td></tr>
 
 </div>
 </div>
-<a id="gacc26bd5324fee12541bd61ff384df9ed"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#gacc26bd5324fee12541bd61ff384df9ed">&#9670;&nbsp;</a></span>RemoveEmptyDirectory()</h2>
+<a id="ga635aa4a126ed7e9ac2068c89ad7b9afb"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#ga635aa4a126ed7e9ac2068c89ad7b9afb">&#9670;&nbsp;</a></span>RemoveEmptyDirectory()</h2>
 
 <div class="memitem">
 <div class="memproto">
       <table class="memname">
         <tr>
-          <td class="memname"><a class="el" href="final__platform__layer_8hpp.html#aafa1d3d90febf9826c55c1318f98b27d">fpl_api</a> bool fpl::files::RemoveEmptyDirectory </td>
+          <td class="memname"><a class="el" href="final__platform__layer_8hpp.html#aa8f306dc44b7fa9ce8937e3c059483e0">fpl_platform_api</a> bool fpl::files::RemoveEmptyDirectory </td>
           <td>(</td>
           <td class="paramtype">const char *&#160;</td>
           <td class="paramname"><em>path</em></td><td>)</td>
@@ -841,14 +841,14 @@ Variables</h2></td></tr>
 
 </div>
 </div>
-<a id="gaf9b5405a8565f59278905aec5027cb8b"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#gaf9b5405a8565f59278905aec5027cb8b">&#9670;&nbsp;</a></span>SetFilePosition32()</h2>
+<a id="gac61dea72a3419799b7aea15321f06c06"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#gac61dea72a3419799b7aea15321f06c06">&#9670;&nbsp;</a></span>SetFilePosition32()</h2>
 
 <div class="memitem">
 <div class="memproto">
       <table class="memname">
         <tr>
-          <td class="memname"><a class="el" href="final__platform__layer_8hpp.html#aafa1d3d90febf9826c55c1318f98b27d">fpl_api</a> void fpl::files::SetFilePosition32 </td>
+          <td class="memname"><a class="el" href="final__platform__layer_8hpp.html#aa8f306dc44b7fa9ce8937e3c059483e0">fpl_platform_api</a> void fpl::files::SetFilePosition32 </td>
           <td>(</td>
           <td class="paramtype">const <a class="el" href="structfpl_1_1files_1_1_file_handle.html">FileHandle</a> &amp;&#160;</td>
           <td class="paramname"><em>fileHandle</em>, </td>
@@ -886,14 +886,14 @@ Variables</h2></td></tr>
 
 </div>
 </div>
-<a id="ga14d97136914889a756685ab47b7699c2"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#ga14d97136914889a756685ab47b7699c2">&#9670;&nbsp;</a></span>WriteFileBlock32()</h2>
+<a id="ga7960252c7e1b53ed174203379f6ff222"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#ga7960252c7e1b53ed174203379f6ff222">&#9670;&nbsp;</a></span>WriteFileBlock32()</h2>
 
 <div class="memitem">
 <div class="memproto">
       <table class="memname">
         <tr>
-          <td class="memname"><a class="el" href="final__platform__layer_8hpp.html#aafa1d3d90febf9826c55c1318f98b27d">fpl_api</a> uint32_t fpl::files::WriteFileBlock32 </td>
+          <td class="memname"><a class="el" href="final__platform__layer_8hpp.html#aa8f306dc44b7fa9ce8937e3c059483e0">fpl_platform_api</a> uint32_t fpl::files::WriteFileBlock32 </td>
           <td>(</td>
           <td class="paramtype">const <a class="el" href="structfpl_1_1files_1_1_file_handle.html">FileHandle</a> &amp;&#160;</td>
           <td class="paramname"><em>fileHandle</em>, </td>

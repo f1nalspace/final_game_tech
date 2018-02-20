@@ -10,17 +10,16 @@ var searchData=
   ['deviceid',['deviceID',['../structfpl_1_1_audio_settings.html#a5e0f126be6dee5518b2fe37241bfbb7a',1,'fpl::AudioSettings']]],
   ['deviceindex',['deviceIndex',['../structfpl_1_1window_1_1_gamepad_event.html#a2099e9363b9ed33032c3477dc9bca554',1,'fpl::window::GamepadEvent']]],
   ['directory',['Directory',['../group___files.html#gga7a7d7d673ed79f0ed96f89e2492e62c1ae73cda510e8bb947f7e61089e5581494',1,'fpl::files']]],
-  ['directoryexists',['DirectoryExists',['../group___files.html#ga81077ac3e1713d50f12cc1767ca96326',1,'fpl::files']]],
+  ['directoryexists',['DirectoryExists',['../group___files.html#gafac9cdef0cc4f61d9cdbf18e213699cc',1,'fpl::files']]],
   ['directsound',['DirectSound',['../group___settings.html#gga7846abd72446af7c7e6b1e9bbddea3b4a60c345a5a6e5f94b1e75bf212494a4bf',1,'fpl']]],
   ['disconnected',['Disconnected',['../group___window_events.html#gga85374967f1703b14d476872c6df8d4c7aef70e46fd3bbc21e3e1f0b6815e750c0',1,'fpl::window']]],
   ['dpaddown',['dpadDown',['../structfpl_1_1window_1_1_gamepad_state.html#a696ad4932c852991274b89a109d3f228',1,'fpl::window::GamepadState']]],
   ['dpadleft',['dpadLeft',['../structfpl_1_1window_1_1_gamepad_state.html#a0f225cc2dd8f7b0fc30beda6f4ac35f3',1,'fpl::window::GamepadState']]],
   ['dpadright',['dpadRight',['../structfpl_1_1window_1_1_gamepad_state.html#a51617a9012e78f69b1ff57cc1101cca6',1,'fpl::window::GamepadState']]],
   ['dpadup',['dpadUp',['../structfpl_1_1window_1_1_gamepad_state.html#a5b77ef1ed6a3c4397223e72500584c0e',1,'fpl::window::GamepadState']]],
-  ['driver',['driver',['../structfpl_1_1_audio_settings.html#a67df3146815aa36f2d0389da88090ad1',1,'fpl::AudioSettings']]],
-  ['drivertype',['driverType',['../structfpl_1_1_video_settings.html#a5d0998db137f081c4ae3ce3faa12de4a',1,'fpl::VideoSettings']]],
+  ['driver',['driver',['../structfpl_1_1_video_settings.html#ad0aca2e9e9222d13c43ce0e32adbf34f',1,'fpl::VideoSettings::driver()'],['../structfpl_1_1_audio_settings.html#a67df3146815aa36f2d0389da88090ad1',1,'fpl::AudioSettings::driver()']]],
   ['dynamic_20library_20loading',['Dynamic library loading',['../group___dynamic_library.html',1,'']]],
   ['dynamiclibraryhandle',['DynamicLibraryHandle',['../structfpl_1_1library_1_1_dynamic_library_handle.html',1,'fpl::library']]],
-  ['dynamiclibraryload',['DynamicLibraryLoad',['../group___dynamic_library.html#ga92e0b63d13ed16c4f9fb065b6962a4b3',1,'fpl::library']]],
-  ['dynamiclibraryunload',['DynamicLibraryUnload',['../group___dynamic_library.html#ga1bcd31bbe30503b4021bc86327c1605f',1,'fpl::library']]]
+  ['dynamiclibraryload',['DynamicLibraryLoad',['../group___dynamic_library.html#ga24e50c2efb18d479d8206e9ccd8b57df',1,'fpl::library']]],
+  ['dynamiclibraryunload',['DynamicLibraryUnload',['../group___dynamic_library.html#ga186ebd98974e40979dc606b0859b26fc',1,'fpl::library']]]
 ];
