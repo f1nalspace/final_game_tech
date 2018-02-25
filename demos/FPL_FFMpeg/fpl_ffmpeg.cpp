@@ -220,7 +220,7 @@ inline void ReleasePacketData(PacketList *packet) {
 inline void ReleasePacket(PacketQueue &queue, PacketList *packet) {
 	ReleasePacketData(packet);
 	DestroyPacket(queue, packet);
-	SignalWakeUp(queue.freeSignal);
+	SignalSet(queue.freeSignal);
 }
 
 inline bool AquirePacket(PacketQueue &queue, PacketList *&packet) {
@@ -291,7 +291,7 @@ inline void PushPacket(PacketQueue &queue, PacketList *packet) {
 		queue.duration += packet->packet.duration;
 		AtomicAddS32(&queue.packetCount, 1);
 		AtomicAddS32(&globalMemStats.usedPackets, 1);
-		SignalWakeUp(queue.addedSignal);
+		SignalSet(queue.addedSignal);
 	}
 	MutexUnlock(queue.lock);
 }
@@ -485,7 +485,7 @@ static void NextWritable(FrameQueue &queue) {
 
 	MutexLock(queue.lock);
 	queue.count++;
-	SignalWakeUp(queue.signal);
+	SignalSet(queue.signal);
 	MutexUnlock(queue.lock);
 }
 
@@ -500,7 +500,7 @@ static void NextReadable(FrameQueue &queue) {
 
 	MutexLock(queue.lock);
 	queue.count--;
-	SignalWakeUp(queue.signal);
+	SignalSet(queue.signal);
 	MutexUnlock(queue.lock);
 }
 
@@ -556,7 +556,7 @@ static void DestroyReader(ReaderContext &reader) {
 
 static void StopReader(ReaderContext &reader) {
 	reader.stopRequest = 1;
-	SignalWakeUp(reader.stopSignal);
+	SignalSet(reader.stopSignal);
 	ThreadWaitForOne(reader.thread);
 	ThreadDestroy(reader.thread);
 	reader.thread = nullptr;
@@ -564,7 +564,6 @@ static void StopReader(ReaderContext &reader) {
 
 static void StartReader(ReaderContext &reader, run_thread_function *readerThreadFunc, void *state) {
 	reader.stopRequest = 0;
-	SignalReset(reader.stopSignal);
 	assert(reader.thread == nullptr);
 	reader.thread = ThreadCreate(readerThreadFunc, state);
 }
@@ -637,7 +636,7 @@ static ThreadContext *StartDecoder(Decoder &decoder, run_thread_function *decode
 
 static void StopDecoder(Decoder &decoder) {
 	decoder.stopRequest = 1;
-	SignalWakeUp(decoder.stopSignal);
+	SignalSet(decoder.stopSignal);
 	ThreadWaitForOne(decoder.thread);
 	ThreadDestroy(decoder.thread);
 	decoder.thread = nullptr;
@@ -1774,14 +1773,14 @@ static void PacketReadThreadProc(const ThreadContext &thread, void *userData) {
 					PushFlushPacket(state->audio.decoder.packetsQueue);
 
 					state->audio.decoder.isEOF = false;
-					SignalWakeUp(state->audio.decoder.resumeSignal);
+					SignalSet(state->audio.decoder.resumeSignal);
 				}
 				if (state->video.stream.isValid) {
 					FlushPacketQueue(state->video.decoder.packetsQueue);
 					PushFlushPacket(state->video.decoder.packetsQueue);
 
 					state->video.decoder.isEOF = false;
-					SignalWakeUp(state->video.decoder.resumeSignal);
+					SignalSet(state->video.decoder.resumeSignal);
 				}
 			}
 			state->seek.isRequired = false;
@@ -2242,7 +2241,7 @@ static void VideoRefresh(PlayerState *state, double &remainingTime, int &display
 		} else {
 			if (state->video.decoder.frameQueue.count < state->video.decoder.frameQueue.capacity) {
 				// @TODO(final): This is not great, but a fix to not wait forever in the video decoding thread
-				SignalWakeUp(state->video.decoder.frameQueue.signal);
+				SignalSet(state->video.decoder.frameQueue.signal);
 			}
 		}
 	}
