@@ -1,16 +1,80 @@
 /***
 final_dynamic_opengl.hpp
 
-A open source C++ single file header OpenGL-Loader library.
+-------------------------------------------------------------------------------
+	About
+-------------------------------------------------------------------------------
+
+A open source single header file OpenGL-Loader C++ library.
 
 This library is designed to load all the opengl functions for you so you can start right away with OpenGL up to version 4.6.
-It is meant to be simple, so there is no context creation built-in.
-You have to create and activate the context yourself beforehand!
+It even can create a rendering context for you, if needed.
 
-Also each opengl function is defined as static, so its private to this header file only!
-Therefore you can use this library in one project only.
+Due to removing any kind of linking madness, all opengl functions are defined as static - so its private to this header file only!
+Therefore you can use this library in one file only.
 
 The only dependencies are built-in operating system libraries and a C++/11 compiler.
+
+Required linking is bare minimum:
+	Win32: Link to kernel32.lib
+	Unix/Linux: Link to ld.so
+
+-------------------------------------------------------------------------------
+	Getting started
+-------------------------------------------------------------------------------
+
+- Drop this file into your main C++ project and include it in one place you do the rendering.
+- Define FDYNGL_IMPLEMENTATION before including this header file in that translation unit.
+- Load the library with fdyngl::LoadOpenGL(), while a opengl rendering context is already activated - or create a context using fdyngl::CreateOpenGLContext()
+- Use all the opengl features you want
+- Unload the library with fdyngl::UnloadOpenGL() when you are done
+- Destroy the context when you created it using fdyngl::DestroyOpenGLContext()
+
+-------------------------------------------------------------------------------
+	Usage from a already activated rendering context
+-------------------------------------------------------------------------------
+
+#define FDYNGL_IMPLEMENTATION
+#include <final_dynamic_opengl.hpp>
+
+if (fdyngl::LoadOpenGL()) {
+	// ... load shader, whatever you want to do
+	fdyngl::UnloadOpenGL();
+}
+
+-------------------------------------------------------------------------------
+	Usage (Without a rendering context, but with an existing window)
+-------------------------------------------------------------------------------
+
+#define FDYNGL_IMPLEMENTATION
+#include <final_dynamic_opengl.hpp>
+
+// Load opengl library without loading all the functions - functions are loaded separately later
+if (fdyngl::LoadOpenGL(false)) {
+
+	// Fill out window handle (This is platform dependent!)
+	fdyngl::OpenGLContextCreationParameters contextCreationParams = {};
+#	if defined(FDYNGL_PLATFORM_WIN32)
+		contextCreationParams.windowHandle.win32.deviceContext = // ... pass your current device context here
+		// or
+		contextCreationParams.windowHandle.win32.windowHandle = // ... pass your current window handle here
+#	endif
+
+	// Create context and load opengl functions
+	fdyngl::OpenGLContext glContext = {};
+	if (fdyngl::CreateOpenGLContext(contextCreationParams, glContext)) {
+		fdyngl::LoadOpenGLFunctions();
+
+		// ... load shader, whatever you want to do
+
+		fdyngl::DestroyOpenGLContext(glContext);
+	}
+	fdyngl::UnloadOpenGL();
+}
+
+-------------------------------------------------------------------------------
+	License
+-------------------------------------------------------------------------------
 
 Final Dynamic OpenGL is released under the following license:
 
@@ -37,20 +101,39 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ***/
 
-// ****************************************************************************
-//
-// Documentation
-//
-// ****************************************************************************
-
 /*!
 	\file final_dynamic_opengl.hpp
-	\version v0.1 beta
+	\version v0.2.0.0 beta
 	\author Torsten Spaete
 	\brief Final Dynamic OpenGL (FDYNGL) - A open source C++ single file header OpenGL-Loader library.
 */
 
-// @TODO(final): Write actual documentation (Usage, Requirements, Notes)!
+/*!
+	\page page_changelog Changelog
+	\tableofcontents
+
+	## v0.2.0.0 beta:
+	- Changed: Added parameter for controlling to load of the extensions to LoadOpenGL()
+	- Fixed: Use stdint.h instead of inttypes.h
+	- Fixed: WINGDIAPI detection was wrong
+	- New: Added context creation support (CreateOpenGLContext, DestroyOpenGLContext)
+	- New: Added LoadOpenGLFunctions()
+	- New: Added PresentOpenGL()
+	- New: Added GetLastError()
+	- New: Written documentation
+
+	## v0.1.0.0 beta:
+	- Initial version
+*/
+
+/*!
+	\page page_todo Todo
+	\tableofcontents
+
+	- [Win32] Modern context creation
+	- [POSIX, GLX] Implement context creation
+
+*/
 
 // ****************************************************************************
 //
@@ -69,13 +152,17 @@ SOFTWARE.
 // Platform detection
 //
 #if defined(_WIN32)
-#	define FDYNGL_PLATFORM_WINDOWS
+#	define FDYNGL_PLATFORM_WIN32
 #elif defined(__linux__) || defined(__gnu_linux__) || defined(linux)
 #	define FDYNGL_PLATFORM_LINUX
-#	define FDYNGL_PLATFORM_POSIX
+#	define FDYNGL_SUBPLATFORM POSIX
+#	define FDYNGL_SUBPLATFORM_X11
+#	define FDYNGL_SUBPLATFORM_GLX
 #elif defined(__unix__) || defined(_POSIX_VERSION)
 #	define FDYNGL_PLATFORM_UNIX
-#	define FDYNGL_PLATFORM_POSIX
+#	define FDYNGL_SUBPLATFORM POSIX
+#	define FDYNGL_SUBPLATFORM_X11
+#	define FDYNGL_SUBPLATFORM_GLX
 #else
 #	error "This platform/compiler is not supported!"
 #endif
@@ -83,7 +170,7 @@ SOFTWARE.
 //
 // Required api defines
 //
-#ifdef FDYNGL_PLATFORM_WINDOWS
+#ifdef FDYNGL_PLATFORM_WIN32
 #	ifdef APIENTRY
 #		define FDYNGL_GLAPIENTRY APIENTRY
 #		define FDYNGL_APIENTRY APIENTRY
@@ -100,7 +187,7 @@ SOFTWARE.
 #			define FDYNGL_APIENTRY
 #		endif
 #	endif
-#	ifndef WINGDIAPI
+#	ifdef WINGDIAPI
 #		define FDYNGL_WINGDIAPI WINGDIAPI
 #	else
 #		define FDYNGL_WINGDIAPI __declspec(dllimport)
@@ -124,30 +211,131 @@ SOFTWARE.
 #endif
 
 //
+// Includes
+//
+#include <stddef.h>
+#include <stdint.h>
+
+#if defined(FDYNGL_PLATFORM_WIN32)
+#	ifndef WIN32_LEAN_AND_MEAN
+#			define WIN32_LEAN_AND_MEAN 1
+#	endif
+#	include <Windows.h>
+#elif defined(FDYNGL_SUBPLATFORM_X11)
+#	include<X11/X.h>
+#	include<X11/Xlib.h>
+#	include <GL/gl.h>
+#	include <GL/glx.h>
+#endif
+
+//
 // API
 //
 
 //! Core namespace
 namespace fdyngl {
-	//! Loads the opengl library suitable for your operating system and loads all the function pointers for every OpenGL version.
-	fdyngl_api bool LoadOpenGL();
+	//! OpenGL profile type
+	enum class OpenGLProfileType {
+		//! No or legacy profile
+		LegacyProfile,
+		//! Core profile
+		CoreProfile,
+		//! Compability profile
+		CompabilityProfile,
+	};
 
-	//! Unloads the opengl library and clears all the function pointers
+	//! OpenGL window handle
+	struct OpenGLWindowHandle {
+#if defined(FDYNGL_PLATFORM_WIN32)
+		//! Win32 window
+		struct {
+			//! Window handle
+			HWND windowHandle;
+			//! Device context
+			HDC deviceContext;
+			//! Bool to indicate to release DC when done
+			bool requireToReleaseDC;
+		} win32;
+#elif defined(FDYNGL_SUBPLATFORM_X11)
+		//! X11 window
+		struct {
+			Display *display;
+			Window *window;
+		} x11;
+#endif
+	};
+
+	//! OpenGL window handle
+	struct OpenGLRenderingContext {
+#if defined(FDYNGL_PLATFORM_WIN32)
+		//! Win32 rendering context
+		struct {
+			//! Rendering context
+			HGLRC renderingContext;
+		} win32;
+#elif defined(FDYNGL_SUBPLATFORM_GLX)
+		// @TODO(final): Implement GLX context definition
+		struct {
+		} glx;
+#endif
+	};
+
+	//! OpenGL rendering context
+	struct OpenGLContext {
+		//! Window handle container
+		OpenGLWindowHandle windowHandle;
+		//! Rendering context container
+		OpenGLRenderingContext renderingContext;
+		//! Is context valid
+		bool isValid;
+	};
+
+	struct OpenGLContextCreationParameters {
+		OpenGLWindowHandle windowHandle;
+		uint32_t majorVersion;
+		uint32_t minorVersion;
+		OpenGLProfileType profile;
+		bool forwardCompability;
+	};
+
+	inline OpenGLContextCreationParameters MakeDefaultOpenGLContextCreationParameters() {
+		OpenGLContextCreationParameters result = {};
+		result.majorVersion = 3;
+		result.minorVersion = 3;
+		result.profile = OpenGLProfileType::LegacyProfile;
+		return(result);
+	}
+
+	//! Create a opengl context
+	fdyngl_api bool CreateOpenGLContext(const OpenGLContextCreationParameters &contextCreationParams, OpenGLContext &outContext);
+
+	//! Destroy the given opengl context
+	fdyngl_api void DestroyOpenGLContext(OpenGLContext &context);
+
+	//! Does all the things to get opengl up and running
+	fdyngl_api bool LoadOpenGL(const bool loadFunctions = true);
+
+	//! Releases all resources allocated for opengl
 	fdyngl_api void UnloadOpenGL();
-};
 
-//
-// Includes
-//
-#include <stddef.h>
-#include <inttypes.h>
+	//! Load all opengl functions
+	fdyngl_api void LoadOpenGLFunctions();
+
+	//! Presents the current frame for the given opengl context
+	fdyngl_api void PresentOpenGL(const OpenGLContext &context);
+
+	//! Returns last error string
+	fdyngl_api const char *GetLastError();
+};
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 	//
-	// OpenGL
+	// OpenGL types and function prototypes
+	// This is automatically generated by a tool, do not modify by hand!
+	// Contains gl.h and glext.h stuff, reconverted into static const.
 	//
 #	ifndef GL_VERSION_1_1
 #		define GL_VERSION_1_1 1
@@ -4212,49 +4400,148 @@ extern "C" {
 #if defined(FDYNGL_IMPLEMENTATION) && !defined(FDYNGL_IMPLEMENTED)
 #	define FDYNGL_IMPLEMENTED
 
-#	define FDYNGL_ARRAYCOUNT(arr) (sizeof(arr) / sizeof((arr)[0]))
+#define FDYNGL_ARRAYCOUNT(arr) (sizeof(arr) / sizeof((arr)[0]))
 
-#	if defined(FDYNGL_PLATFORM_WINDOWS)
-#		ifndef WIN32_LEAN_AND_MEAN
-#			define WIN32_LEAN_AND_MEAN 1
-#		endif
-#		include <Windows.h>
-#	endif
-
+#include <string.h> // strcpy, strlen
+#include <assert.h> // assert
+#include <stdarg.h> // va_start, va_end
+#include <stdio.h> // vsnprintf
 
 namespace fdyngl {
-#	if defined(FDYNGL_PLATFORM_WINDOWS)
-#		define FDYNGL_FUNC_WGL_GET_PROC_ADDRESS(name) PROC WINAPI name(LPCSTR procedure)
+#if defined(FDYNGL_PLATFORM_WIN32)
+	// User32.dll
+#	define FDYNGL_FUNC_RELEASE_DC(name) int WINAPI name(HWND hWnd, HDC hDC)
+	typedef FDYNGL_FUNC_RELEASE_DC(win32_func_ReleaseDC);
+#	define FDYNGL_FUNC_GET_DC(name) HDC WINAPI name(HWND hWnd)
+	typedef FDYNGL_FUNC_GET_DC(win32_func_GetDC);
+
+	// Gdi32.dll
+#	define FDYNGL_FUNC_CHOOSE_PIXEL_FORMAT(name) int WINAPI name(HDC hdc, CONST PIXELFORMATDESCRIPTOR *ppfd)
+	typedef FDYNGL_FUNC_CHOOSE_PIXEL_FORMAT(win32_func_ChoosePixelFormat);
+#	define FDYNGL_FUNC_SET_PIXEL_FORMAT(name) BOOL WINAPI name(HDC hdc, int format, CONST PIXELFORMATDESCRIPTOR *ppfd)
+	typedef FDYNGL_FUNC_SET_PIXEL_FORMAT(win32_func_SetPixelFormat);
+#	define FDYNGL_FUNC_DESCRIPE_PIXEL_FORMAT(name) int WINAPI name(HDC hdc, int iPixelFormat, UINT nBytes, LPPIXELFORMATDESCRIPTOR ppfd)
+	typedef FDYNGL_FUNC_DESCRIPE_PIXEL_FORMAT(win32_func_DescribePixelFormat);
+#	define FDYNGL_FUNC_SWAP_BUFFERS(name) BOOL WINAPI name(HDC)
+	typedef FDYNGL_FUNC_SWAP_BUFFERS(win32_func_SwapBuffers);
+
+	// OpenGL32.dll
+#	define FDYNGL_GL_CONTEXT_FLAG_FORWARD_COMPATIBLE_BIT 0x0001
+#	define FDYNGL_GL_CONTEXT_FLAG_DEBUG_BIT 0x00000002
+#	define FDYNGL_GL_CONTEXT_FLAG_ROBUST_ACCESS_BIT 0x00000004
+#	define FDYNGL_GL_CONTEXT_FLAG_NO_ERROR_BIT 0x00000008
+#	define FDYNGL_GL_CONTEXT_CORE_PROFILE_BIT 0x00000001
+#	define FDYNGL_GL_CONTEXT_COMPATIBILITY_PROFILE_BIT 0x00000002
+
+#	define FDYNGL_WGL_CONTEXT_DEBUG_BIT_ARB 0x0001
+#	define FDYNGL_WGL_CONTEXT_FORWARD_COMPATIBLE_BIT_ARB 0x0002
+#	define FDYNGL_WGL_CONTEXT_CORE_PROFILE_BIT_ARB 0x00000001
+#	define FDYNGL_WGL_CONTEXT_COMPATIBILITY_PROFILE_BIT_ARB 0x00000002
+#	define FDYNGL_WGL_CONTEXT_PROFILE_MASK_ARB 0x9126
+#	define FDYNGL_WGL_CONTEXT_MAJOR_VERSION_ARB 0x2091
+#	define FDYNGL_WGL_CONTEXT_MINOR_VERSION_ARB 0x2092
+#	define FDYNGL_WGL_CONTEXT_LAYER_PLANE_ARB 0x2093
+#	define FDYNGL_WGL_CONTEXT_FLAGS_ARB 0x2094
+
+#	define FDYNGL_WGL_DRAW_TO_WINDOW_ARB 0x2001
+#	define FDYNGL_WGL_ACCELERATION_ARB 0x2003
+#	define FDYNGL_WGL_SWAP_METHOD_ARB 0x2007
+#	define FDYNGL_WGL_SUPPORT_OPENGL_ARB 0x2010
+#	define FDYNGL_WGL_DOUBLE_BUFFER_ARB 0x2011
+#	define FDYNGL_WGL_PIXEL_TYPE_ARB 0x2013
+#	define FDYNGL_WGL_COLOR_BITS_ARB 0x2014
+#	define FDYNGL_WGL_DEPTH_BITS_ARB 0x2022
+#	define FDYNGL_WGL_STENCIL_BITS_ARB 0x2023
+#	define FDYNGL_WGL_FULL_ACCELERATION_ARB 0x2027
+#	define FDYNGL_WGL_SWAP_EXCHANGE_ARB 0x2028
+#	define FDYNGL_WGL_TYPE_RGBA_ARB 0x202B
+
+#	define FDYNGL_FUNC_WGL_MAKE_CURRENT(name) BOOL WINAPI name(HDC deviceContext, HGLRC renderingContext)
+	typedef FDYNGL_FUNC_WGL_MAKE_CURRENT(win32_func_wglMakeCurrent);
+#	define FDYNGL_FUNC_WGL_GET_PROC_ADDRESS(name) PROC WINAPI name(LPCSTR procedure)
 	typedef FDYNGL_FUNC_WGL_GET_PROC_ADDRESS(win32_func_wglGetProcAddress);
-#	elif defined(FDYNGL_PLATFORM_POSIX)
-#		define FDYNGL_FUNC_GLX_GET_PROC_ADDRESS(name) void *name(const char *name)
-	typedef FDYNGL_FUNC_GLX_GET_PROC_ADDRESS(posix_func_glXGetProcAddress);
-#	endif
+#	define FDYNGL_FUNC_WGL_DELETE_CONTEXT(name) BOOL WINAPI name(HGLRC renderingContext)
+	typedef FDYNGL_FUNC_WGL_DELETE_CONTEXT(win32_func_wglDeleteContext);
+#	define FDYNGL_FUNC_WGL_CREATE_CONTEXT(name) HGLRC WINAPI name(HDC deviceContext)
+	typedef FDYNGL_FUNC_WGL_CREATE_CONTEXT(win32_func_wglCreateContext);
+
+#	define FDYNGL_FUNC_WGL_CHOOSE_PIXEL_FORMAT_ARB(name) BOOL WINAPI name(HDC hdc, const int *piAttribIList, const FLOAT *pfAttribFList, UINT nMaxFormats, int *piFormats, UINT *nNumFormats)
+	typedef FDYNGL_FUNC_WGL_CHOOSE_PIXEL_FORMAT_ARB(win32_func_wglChoosePixelFormatARB);
+#	define FDYNGL_FUNC_WGL_CREATE_CONTEXT_ATTRIBS_ARB(name) HGLRC WINAPI name(HDC hDC, HGLRC hShareContext, const int *attribList)
+	typedef FDYNGL_FUNC_WGL_CREATE_CONTEXT_ATTRIBS_ARB(win32_func_wglCreateContextAttribsARB);
+#	define FDYNGL_FUNC_WGL_SWAP_INTERVAL_EXT(name) BOOL WINAPI name(int interval)
+	typedef FDYNGL_FUNC_WGL_SWAP_INTERVAL_EXT(win32_func_wglSwapIntervalEXT);
+
+#elif defined(FDYNGL_SUBPLATFORM_GLX)
+#	define FDYNGL_FUNC_GLX_GET_PROC_ADDRESS(name) void *name(const char *name)
+	typedef FDYNGL_FUNC_GLX_GET_PROC_ADDRESS(glx_func_glXGetProcAddress);
+#endif
 
 	struct OpenGLState {
-#	if defined(FDYNGL_PLATFORM_WINDOWS)
-		HMODULE win32LibraryHandle;
-		win32_func_wglGetProcAddress *wglGetProcAddress;
-#	elif defined(FDYNGL_PLATFORM_POSIX)
-		void *posixLibraryHandle;
-		posix_func_glXGetProcAddress *glXGetProcAddress;
-#	endif
+		union {
+#		if defined(FDYNGL_PLATFORM_WIN32)
+			struct {
+				struct {
+					HMODULE libraryHandle;
+					win32_func_GetDC *GetDC;
+					win32_func_ReleaseDC *ReleaseDC;
+				} user32;
+
+				struct {
+					HMODULE libraryHandle;
+					win32_func_ChoosePixelFormat *ChoosePixelFormat;
+					win32_func_SetPixelFormat *SetPixelFormat;
+					win32_func_DescribePixelFormat *DescribePixelFormat;
+					win32_func_SwapBuffers *SwapBuffers;
+				} gdi32;
+
+				struct {
+					HMODULE libraryHandle;
+					win32_func_wglMakeCurrent *wglMakeCurrent;
+					win32_func_wglGetProcAddress *wglGetProcAddress;
+					win32_func_wglDeleteContext *wglDeleteContext;
+					win32_func_wglCreateContext *wglCreateContext;
+					win32_func_wglChoosePixelFormatARB *wglChoosePixelFormatArb;
+					win32_func_wglCreateContextAttribsARB *wglCreateContextAttribsArb;
+					win32_func_wglSwapIntervalEXT *wglSwapIntervalExt;
+				} opengl32;
+			} win32;
+#		elif defined(FDYNGL_PLATFORM_POSIX) && defined(FDYNGL_PLATFORM_GLX)
+			struct {
+				void *libraryHandle;
+				glx_func_glXGetProcAddress *glXGetProcAddress;
+			} posix_glx;
+#		endif
+		};
+		char lastError[256];
+		bool isLoaded;
 	};
 
 	namespace platform {
+		static void SetLastError_Internal(OpenGLState &state, const char *format, ...) {
+			if (format != nullptr) {
+				va_list argList;
+				va_start(argList, format);
+				vsnprintf(state.lastError, FDYNGL_ARRAYCOUNT(state.lastError), format, argList);
+				va_end(argList);
+			} else {
+				memset(state.lastError, 0, sizeof(state.lastError));
+			}
+		}
+
 		static void *GetOpenGLProcAddress_Internal(const OpenGLState &state, const char *name) {
 			void *result = nullptr;
-#	if defined(FDYNGL_PLATFORM_WINDOWS)
-			result = GetProcAddress(state.win32LibraryHandle, name);
+#		if defined(FDYNGL_PLATFORM_WIN32)
+			result = GetProcAddress(state.win32.opengl32.libraryHandle, name);
 			if (result == nullptr) {
-				result = state.wglGetProcAddress(name);
+				result = state.win32.opengl32.wglGetProcAddress(name);
 			}
-#	elif defined(FDYNGL_PLATFORM_POSIX)
-			result = dlsym(state.posixLibraryHandle, name);
+#		elif defined(FDYNGL_PLATFORM_POSIX) && defined(FDYNGL_PLATFORM_GLX)
+			result = dlsym(state.posix_glx.libraryHandle, name);
 			if (result == nullptr) {
-				result = state.glXGetProcAddress(name);
+				result = state.posix_glx.glXGetProcAddress(name);
 			}
-#	endif
+#		endif
 			return(result);
 		}
 
@@ -5356,67 +5643,246 @@ namespace fdyngl {
 		}
 
 		static bool LoadOpenGL_Internal(OpenGLState &state) {
-			bool result = false;
+#	if defined(FDYNGL_PLATFORM_WIN32)
+			// user.dll
+			state.win32.user32.libraryHandle = LoadLibraryA("user32.dll");
+			if (state.win32.user32.libraryHandle == nullptr) {
+				SetLastError_Internal(state, "Failed loading win32 user32.dll!");
+				return false;
+			}
+			state.win32.user32.GetDC = (win32_func_GetDC *)GetProcAddress(state.win32.user32.libraryHandle, "GetDC");
+			state.win32.user32.ReleaseDC = (win32_func_ReleaseDC *)GetProcAddress(state.win32.user32.libraryHandle, "ReleaseDC");
 
-#	if defined(FDYNGL_PLATFORM_WINDOWS)
+			// gdi.dll
+			state.win32.gdi32.libraryHandle = LoadLibraryA("gdi32.dll");
+			if (state.win32.gdi32.libraryHandle == nullptr) {
+				SetLastError_Internal(state, "Failed loading win32 gdi32.dll!");
+				return false;
+			}
+			state.win32.gdi32.ChoosePixelFormat = (win32_func_ChoosePixelFormat *)GetProcAddress(state.win32.gdi32.libraryHandle, "ChoosePixelFormat");
+			state.win32.gdi32.SetPixelFormat = (win32_func_SetPixelFormat *)GetProcAddress(state.win32.gdi32.libraryHandle, "SetPixelFormat");
+			state.win32.gdi32.DescribePixelFormat = (win32_func_DescribePixelFormat *)GetProcAddress(state.win32.gdi32.libraryHandle, "DescribePixelFormat");
+			state.win32.gdi32.SwapBuffers = (win32_func_SwapBuffers *)GetProcAddress(state.win32.gdi32.libraryHandle, "SwapBuffers");
+
+			// opengl32.dll
 			const char *win32LibraryNames[] = {
 				"opengl32.dll",
 			};
+			HMODULE glLibraryHandle = nullptr;
 			for (int i = 0; i < FDYNGL_ARRAYCOUNT(win32LibraryNames); ++i) {
-				state.win32LibraryHandle = LoadLibraryA(win32LibraryNames[i]);
-				if (state.win32LibraryHandle != nullptr) {
-					state.wglGetProcAddress = (win32_func_wglGetProcAddress *)GetProcAddress(state.win32LibraryHandle, "wglGetProcAddress");
-					result = true;
+				glLibraryHandle = LoadLibraryA(win32LibraryNames[i]);
+				if (glLibraryHandle != nullptr) {
+					state.win32.opengl32.wglGetProcAddress = (win32_func_wglGetProcAddress *)GetProcAddress(glLibraryHandle, "wglGetProcAddress");
+					state.win32.opengl32.wglCreateContext = (win32_func_wglCreateContext *)GetProcAddress(glLibraryHandle, "wglCreateContext");
+					state.win32.opengl32.wglDeleteContext = (win32_func_wglDeleteContext *)GetProcAddress(glLibraryHandle, "wglDeleteContext");
+					state.win32.opengl32.wglMakeCurrent = (win32_func_wglMakeCurrent *)GetProcAddress(glLibraryHandle, "wglMakeCurrent");
 					break;
 				}
 			}
+			if (glLibraryHandle == nullptr) {
+				SetLastError_Internal(state, "Failed loading win32 opengl32.dll!");
+				return false;
+			}
+			state.win32.opengl32.libraryHandle = glLibraryHandle;
 #	elif defined(FDYNGL_PLATFORM_POSIX)
 			const char *posixLibraryNames[] = {
 				"libGL.so",
 				"libGL.so.1",
 			};
+			void *glLibraryHandle = nullptr;
 			for (int i = 0; i < FDYNGL_ARRAYCOUNT(posixLibraryNames); ++i) {
-				state.posixLibraryHandle = dlopen(posixLibraryNames[i], RTLD_NOW);
-				if (state.posixLibraryHandle != nullptr) {
-					state.glXGetProcAddress = (posix_func_glXGetProcAddress *)dlsym(state.posixLibraryHandle, "glXGetProcAddress");
-					result = true;
+				glLibraryHandle = dlopen(posixLibraryNames[i], RTLD_NOW);
+				if (glLibraryHandle != nullptr) {
+					state.posix_glx.glXGetProcAddress = (glx_func_glXGetProcAddress *)dlsym(glLibraryHandle, "glXGetProcAddress");
 					break;
 				}
 			}
+			if (glLibraryHandle == nullptr) {
+				SetLastError_Internal(state, "Failed loading posix libGL.so!");
+				return false;
+			}
+			state.posix_glx.libraryHandle = glLibraryHandle;
 #	endif
-			return (result);
+			state.isLoaded = true;
+			return(true);
 		}
 
 		static void UnloadOpenGL_Internal(OpenGLState &state) {
-#	if defined(FDYNGL_PLATFORM_WINDOWS)
-			if (state.win32LibraryHandle != nullptr) {
-				FreeLibrary(state.win32LibraryHandle);
+			if (state.isLoaded) {
+#			if defined(FDYNGL_PLATFORM_WIN32)
+				if (state.win32.opengl32.libraryHandle != nullptr) {
+					FreeLibrary(state.win32.opengl32.libraryHandle);
+				}
+				if (state.win32.gdi32.libraryHandle != nullptr) {
+					FreeLibrary(state.win32.gdi32.libraryHandle);
+				}
+				if (state.win32.user32.libraryHandle != nullptr) {
+					FreeLibrary(state.win32.user32.libraryHandle);
+				}
+#			elif defined(FDYNGL_PLATFORM_POSIX) && defined(FDYNGL_PLATFORM_GLX)
+				if (state.posix_glx.libraryHandle != nullptr) {
+					dlclose(state.posix_glx.libraryHandle);
+				}
+#			endif
 			}
-#	elif defined(FDYNGL_PLATFORM_POSIX)
-			if (state.posixLibraryHandle != nullptr) {
-				dlclose(state.posixLibraryHandle);
-			}
-#	endif
 			state = {};
 		}
-	}
-}
+
+		static void DestroyOpenGLContext_Internal(OpenGLState &state, OpenGLContext &context) {
+			if (!state.isLoaded) {
+				SetLastError_Internal(state, "OpenGL library was not loaded!");
+				return;
+			}
+#		if defined(FDYNGL_PLATFORM_WIN32)
+			if (context.renderingContext.win32.renderingContext != nullptr) {
+				state.win32.opengl32.wglMakeCurrent(nullptr, nullptr);
+				state.win32.opengl32.wglDeleteContext(context.renderingContext.win32.renderingContext);
+				context.renderingContext.win32.renderingContext = nullptr;
+			}
+			if (context.windowHandle.win32.requireToReleaseDC) {
+				state.win32.user32.ReleaseDC(context.windowHandle.win32.windowHandle, context.windowHandle.win32.deviceContext);
+				context.windowHandle.win32.deviceContext = nullptr;
+				context.windowHandle.win32.requireToReleaseDC = false;
+			}
+#		elif defined(FDYNGL_PLATFORM_POSIX) && defined(FDYNGL_PLATFORM_GLX)
+#		endif
+			context = {};
+		}
+
+		static bool CreateOpenGLContext_Internal(OpenGLState &state, const OpenGLContextCreationParameters &contextCreationParams, OpenGLContext &outContext) {
+			if (!state.isLoaded) {
+				SetLastError_Internal(state, "OpenGL library is not loaded!");
+				return false;
+			}
+
+			outContext = {};
+#		if defined(FDYNGL_PLATFORM_WIN32)
+			HDC deviceContext = contextCreationParams.windowHandle.win32.deviceContext;
+			HWND handle = contextCreationParams.windowHandle.win32.windowHandle;
+			bool requireToReleaseDC = false;
+			if (deviceContext == nullptr) {
+				if (handle == nullptr) {
+					SetLastError_Internal(state, "Missing win32 window handle in opengl context creation!");
+					return false;
+				}
+				deviceContext = state.win32.user32.GetDC(handle);
+				requireToReleaseDC = true;
+			}
+
+			outContext.windowHandle.win32.deviceContext = deviceContext;
+			outContext.windowHandle.win32.windowHandle = handle;
+			outContext.windowHandle.win32.requireToReleaseDC = requireToReleaseDC;
+
+			PIXELFORMATDESCRIPTOR pfd = {};
+			pfd.nSize = sizeof(pfd);
+			pfd.nVersion = 1;
+			pfd.dwFlags = PFD_DOUBLEBUFFER | PFD_SUPPORT_OPENGL | PFD_DRAW_TO_WINDOW;
+			pfd.iPixelType = PFD_TYPE_RGBA;
+			pfd.cColorBits = 32;
+			pfd.cDepthBits = 24;
+			pfd.cAlphaBits = 8;
+			pfd.iLayerType = PFD_MAIN_PLANE;
+
+			int pixelFormat = state.win32.gdi32.ChoosePixelFormat(deviceContext, &pfd);
+			if (!pixelFormat) {
+				SetLastError_Internal(state, "Failed win32 choosing pixel format for device context '%p'!", deviceContext);
+				DestroyOpenGLContext_Internal(state, outContext);
+				return false;
+			}
+
+			if (!state.win32.gdi32.SetPixelFormat(deviceContext, pixelFormat, &pfd)) {
+				SetLastError_Internal(state, "Failed win32 setting pixel format '%d' for device context '%p'!", pixelFormat, deviceContext);
+				DestroyOpenGLContext_Internal(state, outContext);
+				return false;
+			}
+
+			state.win32.gdi32.DescribePixelFormat(deviceContext, pixelFormat, sizeof(pfd), &pfd);
+
+			HGLRC legacyRenderingContext = state.win32.opengl32.wglCreateContext(deviceContext);
+			if (!legacyRenderingContext) {
+				SetLastError_Internal(state, "Failed win32 creating opengl legacy rendering context for device context '%p'!", deviceContext);
+				DestroyOpenGLContext_Internal(state, outContext);
+				return false;
+			}
+
+			if (!state.win32.opengl32.wglMakeCurrent(deviceContext, legacyRenderingContext)) {
+				SetLastError_Internal(state, "Failed win32 activating opengl legacy rendering context '%p' for device context '%p'!", legacyRenderingContext, deviceContext);
+				DestroyOpenGLContext_Internal(state, outContext);
+				return false;
+			}
+
+			outContext.renderingContext.win32.renderingContext = legacyRenderingContext;
+			outContext.isValid = true;
+#		elif defined(FDYNGL_PLATFORM_POSIX) && defined(FDYNGL_PLATFORM_GLX)
+			// @TODO(final): Implement GLX context creation
+#		endif
+			return (outContext.isValid);
+		}
+	} // platform
+} // fdyngl
 
 namespace fdyngl {
 	static OpenGLState globalOpenGLState = {};
-	fdyngl_api bool LoadOpenGL() {
-		bool result = false;
+
+	fdyngl_api bool CreateOpenGLContext(const OpenGLContextCreationParameters &contextCreationParams, OpenGLContext &outContext) {
 		OpenGLState &state = globalOpenGLState;
-		if (platform::LoadOpenGL_Internal(state)) {
-			platform::LoadOpenGLExtensions_Internal(state);
-			result = true;
+		if (!state.isLoaded) {
+			if (!platform::LoadOpenGL_Internal(state)) {
+				assert(strlen(state.lastError) > 0);
+				return false;
+			}
+		}
+		bool result = platform::CreateOpenGLContext_Internal(globalOpenGLState, contextCreationParams, outContext);
+		if (!result) {
+			assert(strlen(state.lastError) > 0);
 		}
 		return(result);
 	}
+
+	fdyngl_api void DestroyOpenGLContext(OpenGLContext &context) {
+		platform::DestroyOpenGLContext_Internal(globalOpenGLState, context);
+	}
+
+	fdyngl_api void LoadOpenGLFunctions() {
+		OpenGLState &state = globalOpenGLState;
+		if (state.isLoaded) {
+			platform::LoadOpenGLExtensions_Internal(state);
+		}
+	}
+
+	fdyngl_api bool LoadOpenGL(const bool loadFunctions) {
+		OpenGLState &state = globalOpenGLState;
+		if (!state.isLoaded) {
+			if (!platform::LoadOpenGL_Internal(state)) {
+				assert(strlen(state.lastError) > 0);
+				return false;
+			}
+		}
+		if (loadFunctions) {
+			LoadOpenGLFunctions();
+		}
+		return true;
+	}
+
 	fdyngl_api void UnloadOpenGL() {
 		OpenGLState &state = globalOpenGLState;
 		platform::UnloadOpenGL_Internal(state);
+		assert(!state.isLoaded);
 	}
-}
+
+	fdyngl_api void PresentOpenGL(const OpenGLContext &context) {
+		const OpenGLState &state = globalOpenGLState;
+#	if defined(FDYNGL_PLATFORM_WIN32)
+		if (context.windowHandle.win32.deviceContext != nullptr) {
+			state.win32.gdi32.SwapBuffers(context.windowHandle.win32.deviceContext);
+		}
+#	endif
+	}
+
+	fdyngl_api const char *GetLastError() {
+		const OpenGLState &state = globalOpenGLState;
+		return state.lastError;
+	}
+} // fdyngl
 
 #endif // FDYNGL_IMPLEMENTATION
