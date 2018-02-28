@@ -89,6 +89,7 @@
 		- Event handling
 		- Clipboard string reading and writing
 	- Event-based input
+		- Text input
 		- Keyboard
 		- Mouse
 		- Game controllers
@@ -128,6 +129,7 @@
 		- Query current memory state (Physical size, virtual size, page size, etc.)
 	- Timings
 		- Get number of seconds with high precision used for profiling and delta calculations
+		- Get number of milliseconds with low precision user for simple measurement
 	- String conversion functions
 		- Ansistring <-> Widestring
 		- UTF-8 <-> Widestring
@@ -241,6 +243,17 @@
 /*!
 	\page page_otutorial_initialization Initialization & Release
 	\tableofcontents
+
+	\section section_otutorial_initialization_include Include the Library
+
+	In one of your C++ translation units include this:
+
+	\code{.cpp}
+	#define FPL_IMPLEMENTATION
+	#include "final_platform_layer.hpp"
+	\endcode
+
+	You can then include this file in any other C++ source or header file as you would with any other header file.
 
 	\section section_otutorial_initialization_entrypoint Entry Point
 
