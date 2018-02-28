@@ -1,7 +1,7 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
-# Visual Studio 14
-VisualStudioVersion = 14.0.25420.1
+# Visual Studio 15
+VisualStudioVersion = 15.0.27130.2027
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "FPL_OpenGL", "FPL_OpenGL\FPL_OpenGL.vcxproj", "{4D324317-CB24-4B90-AEDA-EA084FF25C2D}"
 EndProject
@@ -13,9 +13,7 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "FTT_TileTracingDemo", "FTT_
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "FOGL_Test", "FOGL_Test\FOGL_Test.vcxproj", "{559B02CC-DCF3-4AF1-80BC-78C78D04E197}"
 EndProject
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "FPL_Software", "FPL_Cpp\FPL_Cpp.vcxproj", "{9179B4A1-2960-4F36-AEA8-455A87C979B6}"
-EndProject
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "FPL_UnitTest", "FPL_UnitTest\FPL_UnitTest.vcxproj", "{272599F0-4F46-4607-A9DC-DFCDDE3D3E1D}"
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "FPL_Software", "FPL_Software\FPL_Software.vcxproj", "{9179B4A1-2960-4F36-AEA8-455A87C979B6}"
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "FPL_FFMpeg", "FPL_FFMpeg\FPL_FFMpeg.vcxproj", "{EA0FE726-7868-4779-9134-17EEBA2F7159}"
 EndProject
@@ -27,6 +25,8 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Root", "Root", "{8BC6F705-2
 	EndProjectSection
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "FPL_Audio", "FPL_Audio\FPL_Audio.vcxproj", "{32DFE331-08FD-4D82-BBE0-5641BE5B35D0}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "FPL_Test", "FPL_Test\FPL_Test.vcxproj", "{F570E90E-7E14-4442-B66E-72F9284B6BB5}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -84,14 +84,6 @@ Global
 		{9179B4A1-2960-4F36-AEA8-455A87C979B6}.Release|x64.Build.0 = Release|x64
 		{9179B4A1-2960-4F36-AEA8-455A87C979B6}.Release|x86.ActiveCfg = Release|Win32
 		{9179B4A1-2960-4F36-AEA8-455A87C979B6}.Release|x86.Build.0 = Release|Win32
-		{272599F0-4F46-4607-A9DC-DFCDDE3D3E1D}.Debug|x64.ActiveCfg = Debug|x64
-		{272599F0-4F46-4607-A9DC-DFCDDE3D3E1D}.Debug|x64.Build.0 = Debug|x64
-		{272599F0-4F46-4607-A9DC-DFCDDE3D3E1D}.Debug|x86.ActiveCfg = Debug|Win32
-		{272599F0-4F46-4607-A9DC-DFCDDE3D3E1D}.Debug|x86.Build.0 = Debug|Win32
-		{272599F0-4F46-4607-A9DC-DFCDDE3D3E1D}.Release|x64.ActiveCfg = Release|x64
-		{272599F0-4F46-4607-A9DC-DFCDDE3D3E1D}.Release|x64.Build.0 = Release|x64
-		{272599F0-4F46-4607-A9DC-DFCDDE3D3E1D}.Release|x86.ActiveCfg = Release|Win32
-		{272599F0-4F46-4607-A9DC-DFCDDE3D3E1D}.Release|x86.Build.0 = Release|Win32
 		{EA0FE726-7868-4779-9134-17EEBA2F7159}.Debug|x64.ActiveCfg = Debug|x64
 		{EA0FE726-7868-4779-9134-17EEBA2F7159}.Debug|x64.Build.0 = Debug|x64
 		{EA0FE726-7868-4779-9134-17EEBA2F7159}.Debug|x86.ActiveCfg = Debug|Win32
@@ -108,8 +100,19 @@ Global
 		{32DFE331-08FD-4D82-BBE0-5641BE5B35D0}.Release|x64.Build.0 = Release|x64
 		{32DFE331-08FD-4D82-BBE0-5641BE5B35D0}.Release|x86.ActiveCfg = Release|Win32
 		{32DFE331-08FD-4D82-BBE0-5641BE5B35D0}.Release|x86.Build.0 = Release|Win32
+		{F570E90E-7E14-4442-B66E-72F9284B6BB5}.Debug|x64.ActiveCfg = Debug|x64
+		{F570E90E-7E14-4442-B66E-72F9284B6BB5}.Debug|x64.Build.0 = Debug|x64
+		{F570E90E-7E14-4442-B66E-72F9284B6BB5}.Debug|x86.ActiveCfg = Debug|Win32
+		{F570E90E-7E14-4442-B66E-72F9284B6BB5}.Debug|x86.Build.0 = Debug|Win32
+		{F570E90E-7E14-4442-B66E-72F9284B6BB5}.Release|x64.ActiveCfg = Release|x64
+		{F570E90E-7E14-4442-B66E-72F9284B6BB5}.Release|x64.Build.0 = Release|x64
+		{F570E90E-7E14-4442-B66E-72F9284B6BB5}.Release|x86.ActiveCfg = Release|Win32
+		{F570E90E-7E14-4442-B66E-72F9284B6BB5}.Release|x86.Build.0 = Release|Win32
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {D82F19D2-526F-4636-9975-883A59A9CE5A}
 	EndGlobalSection
 EndGlobal

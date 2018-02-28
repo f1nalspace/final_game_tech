@@ -5,9 +5,9 @@ else
 	CFLAGS=-DNDEBUG
 endif
 
-BUILD_BASE_DIR =../bin/FPL_Linux
-SOURCE_FILES = main.cpp
-EXECUTABLE = FPL_Linux
+BUILD_BASE_DIR =../bin/FPL_Software
+SOURCE_FILES = main.cpp final_platform_layer.cpp
+EXECUTABLE = FPL_Software
 LIBS = -ldl
 
 ifeq ($(DEBUG), 1)

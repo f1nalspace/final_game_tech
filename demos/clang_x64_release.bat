@@ -1,4 +1,4 @@
-set BUILD_DIR=bin\FPL_Console\x64-Release
+set BUILD_DIR=bin\FPL_Console\Windows-x64-Release
 set IGNORED_WARNINGS=-Wno-missing-field-initializers -Wno-sign-conversion -Wno-cast-qual -Wno-unused-parameter -Wno-format-nonliteral -Wno-old-style-cast -Wno-header-hygiene -Wno-c++98-compat -Wno-c++98-compat-pedantic
 rmdir /s /q %BUILD_DIR%
 mkdir %BUILD_DIR%

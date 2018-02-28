@@ -2654,11 +2654,11 @@ int main(int argc, char **argv) {
 	CopyAnsiString("FPL FFmpeg Demo", settings.window.windowTitle, FPL_ARRAYCOUNT(settings.window.windowTitle));
 #if USE_HARDWARE_RENDERING
 	settings.video.driver = VideoDriverType::OpenGL;
-	settings.video.opengl.compabilityFlags = OpenGLCompabilityFlags::Core;
-	settings.video.opengl.majorVersion = 3;
-	settings.video.opengl.minorVersion = 3;
+	settings.video.graphics.opengl.compabilityFlags = OpenGLCompabilityFlags::Core;
+	settings.video.graphics.opengl.majorVersion = 3;
+	settings.video.graphics.opengl.minorVersion = 3;
 #else
-	settings.video.driverType = VideoDriverType::Software;
+	settings.video.driver = VideoDriverType::Software;
 #endif
 	settings.video.isAutoSize = false;
 	settings.video.isVSync = false;
