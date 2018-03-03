@@ -901,6 +901,7 @@ SOFTWARE.
 #if defined(FPL_SUBPLATFORM_X11)
 #	include <X11/X.h> // XVisualInfo
 #	include <X11/Xlib.h> // ???
+#   undef None
 #endif
 
 // ****************************************************************************
@@ -1501,7 +1502,7 @@ namespace fpl {
 			//! X11 result
 			struct {
 				//! Visual info created by GLX
-				XVisualInfo *visualInfo;
+				void *visualInfoOpaque;
 			} x11;
 #		endif
 		} window;
@@ -7407,6 +7408,21 @@ namespace fpl {
 			return(condRes);
 		}
 
+		fpl_internal_inline timespec CreateWaitTimeSpec(const uint32_t milliseconds) {
+			time_t secs = milliseconds / 1000;
+			uint64_t nanoSecs = (milliseconds - (secs * 1000)) * 1000000;
+			if(nanoSecs >= 1000000000) {
+				time_t addonSecs = (time_t)(nanoSecs / 1000000000);
+				nanoSecs -= (addonSecs * 1000000000);
+				secs += addonSecs;
+			}
+			timespec result;
+			clock_gettime(CLOCK_REALTIME, &result);
+			result.tv_sec += secs;
+			result.tv_nsec += nanoSecs;
+			return(result);
+		}
+
 		fpl_internal bool PosixThreadWaitForMultiple(ThreadContext *contexts[], const uint32_t minCount, const uint32_t maxCount, const uint32_t maxMilliseconds) {
 			if(contexts == nullptr) {
 				common::PushError("Contexts parameter are not allowed to be null");
@@ -7513,7 +7529,7 @@ namespace fpl {
 			}
 			return(result);
 		}
-
+		
 		fpl_platform_api void ThreadDestroy(ThreadContext *context) {
 			FPL_ASSERT(platform::global__AppState != nullptr);
 			const platform::PlatformAppState *appState = platform::global__AppState;
@@ -7701,20 +7717,7 @@ namespace fpl {
 			signal = {};
 		}
 
-		fpl_internal_inline timespec CreateWaitTimeSpec(const uint32_t milliseconds) {
-			time_t secs = milliseconds / 1000;
-			uint64_t nanoSecs = (milliseconds - (secs * 1000)) * 1000000;
-			if(nanoSecs >= 1000000000) {
-				time_t addonSecs = (time_t)(nanoSecs / 1000000000);
-				nanoSecs -= (addonSecs * 1000000000);
-				secs += addonSecs;
-			}
-			timespec result;
-			clock_gettime(CLOCK_REALTIME, &result);
-			result.tv_sec += secs;
-			result.tv_nsec += nanoSecs;
-			return(result);
-		}
+		
 
 		fpl_platform_api bool SignalWaitForOne(ThreadMutex &mutex, ThreadSignal &signal, const uint32_t maxMilliseconds) {
 			const platform::PlatformAppState *appState = platform::global__AppState;
@@ -8148,7 +8151,7 @@ namespace fpl {
 		fpl_platform_api bool FileExists(const char *filePath) {
 			bool result = false;
 			if(filePath != nullptr) {
-				result = ::access(filePath, F_OK) != -1 );
+				result = ::access(filePath, F_OK) != -1;
 			}
 			return(result);
 		}

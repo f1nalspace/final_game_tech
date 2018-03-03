@@ -362,7 +362,7 @@ static void SimpleMultiThreadTest(const uint32_t threadCount) {
 	fpl::threading::ThreadWaitForAll(threads, threadCount);
 	ft::Msg("All %d threads are done\n", threadCount);
 	for(uint32_t threadIndex = 0; threadIndex < threadCount; ++threadIndex) {
-		assert(threads[threadIndex]->currentState == fpl::threading::ThreadState::Stopped);
+		FT_EXPECTS(fpl::threading::ThreadState::Stopped, threads[threadIndex]->currentState);
 	}
 	ft::Msg("Destroy %d threads\n", threadCount);
 	for(uint32_t threadIndex = 0; threadIndex < threadCount; ++threadIndex) {
