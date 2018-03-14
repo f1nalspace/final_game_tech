@@ -160,7 +160,7 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="final_platform_layer.cpp" />
-    <ClCompile Include="main.cpp" />
+    <ClCompile Include="fpl_software.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\..\final_platform_layer.hpp" />

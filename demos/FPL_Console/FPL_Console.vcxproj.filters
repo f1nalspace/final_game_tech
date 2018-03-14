@@ -4,6 +4,6 @@
     <ClInclude Include="..\..\final_platform_layer.hpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="main.cpp" />
+    <ClCompile Include="fpl_console.cpp" />
   </ItemGroup>
 </Project>

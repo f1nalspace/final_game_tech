@@ -180,9 +180,9 @@ struct PacketList {
 };
 
 struct PacketQueue {
-	ThreadMutex lock;
-	ThreadSignal addedSignal;
-	ThreadSignal freeSignal;
+	MutexHandle lock;
+	SignalHandle addedSignal;
+	SignalHandle freeSignal;
 	PacketList *first;
 	PacketList *last;
 	uint64_t size;
@@ -385,8 +385,8 @@ inline void FreeFrame(Frame *frame) {
 
 struct FrameQueue {
 	Frame frames[MAX_FRAME_QUEUE_COUNT];
-	ThreadMutex lock;
-	ThreadSignal signal;
+	MutexHandle lock;
+	SignalHandle signal;
 	PacketList *pendingPacket;
 	volatile uint32_t *stopped;
 	int32_t readIndex;
@@ -518,10 +518,10 @@ struct MediaStream {
 
 struct ReaderContext {
 	PacketQueue packetQueue;
-	ThreadMutex lock;
-	ThreadSignal stopSignal;
-	ThreadSignal resumeSignal;
-	ThreadContext *thread;
+	MutexHandle lock;
+	SignalHandle stopSignal;
+	SignalHandle resumeSignal;
+	ThreadHandle *thread;
 	volatile uint32_t readPacketCount;
 	volatile uint32_t stopRequest;
 	bool isEOF;
@@ -572,10 +572,10 @@ struct PlayerState;
 struct Decoder {
 	PacketQueue packetsQueue;
 	FrameQueue frameQueue;
-	ThreadMutex lock;
-	ThreadSignal stopSignal;
-	ThreadSignal resumeSignal;
-	ThreadContext *thread;
+	MutexHandle lock;
+	SignalHandle stopSignal;
+	SignalHandle resumeSignal;
+	ThreadHandle *thread;
 	PlayerState *state;
 	ReaderContext *reader;
 	MediaStream *stream;
@@ -627,11 +627,10 @@ static void DestroyDecoder(Decoder &decoder) {
 	MutexDestroy(decoder.lock);
 }
 
-static ThreadContext *StartDecoder(Decoder &decoder, run_thread_function *decoderThreadFunc) {
+static void StartDecoder(Decoder &decoder, run_thread_function *decoderThreadFunc) {
 	StartPacketQueue(decoder.packetsQueue);
 	assert(decoder.thread == nullptr);
 	decoder.thread = ThreadCreate(decoderThreadFunc, &decoder);
-	return (decoder.thread);
 }
 
 static void StopDecoder(Decoder &decoder) {
@@ -1283,7 +1282,7 @@ static void QueuePicture(Decoder &decoder, AVFrame *sourceFrame, Frame *targetFr
 	AddFrameToDecoder(decoder, targetFrame, sourceFrame);
 }
 
-static void VideoDecodingThreadProc(const ThreadContext &thread, void *userData) {
+static void VideoDecodingThreadProc(const ThreadHandle &thread, void *userData) {
 	Decoder *decoder = (Decoder *)userData;
 	assert(decoder != nullptr);
 
@@ -1296,7 +1295,7 @@ static void VideoDecodingThreadProc(const ThreadContext &thread, void *userData)
 
 	PlayerState *state = decoder->state;
 
-	ThreadSignal *waitSignals[] = {
+	SignalHandle *waitSignals[] = {
 		// New packet arrived
 		&decoder->packetsQueue.addedSignal,
 		// Frame queue changed
@@ -1436,7 +1435,7 @@ static int SyncronizeAudio(PlayerState *state, const uint32_t sampleCount) {
 	return(result);
 }
 
-static void AudioDecodingThreadProc(const ThreadContext &thread, void *userData) {
+static void AudioDecodingThreadProc(const ThreadHandle &thread, void *userData) {
 	Decoder *decoder = (Decoder *)userData;
 	assert(decoder != nullptr);
 
@@ -1450,7 +1449,7 @@ static void AudioDecodingThreadProc(const ThreadContext &thread, void *userData)
 	assert(stream->isValid);
 	assert(stream->streamIndex > -1);
 
-	ThreadSignal *waitSignals[] = {
+	SignalHandle *waitSignals[] = {
 		// New packet arrived
 		&decoder->packetsQueue.addedSignal,
 		// Frame queue changed
@@ -1707,7 +1706,7 @@ static void StepToNextFrame(PlayerState *state) {
 	state->step = 1;
 }
 
-static void PacketReadThreadProc(const ThreadContext &thread, void *userData) {
+static void PacketReadThreadProc(const ThreadHandle &thread, void *userData) {
 	PlayerState *state = (PlayerState *)userData;
 	assert(state != nullptr);
 
@@ -1719,7 +1718,7 @@ static void PacketReadThreadProc(const ThreadContext &thread, void *userData) {
 	AVFormatContext *formatCtx = state->formatCtx;
 	assert(formatCtx != nullptr);
 
-	ThreadSignal *waitSignals[] = {
+	SignalHandle *waitSignals[] = {
 		// We got a free packet for use to read into
 		&reader.packetQueue.freeSignal,
 		// Reader should terminate

@@ -332,7 +332,7 @@ static void TestHardware() {
 
 
 
-static void EmptyThreadproc(const fpl::threading::ThreadContext &context, void *data) {
+static void EmptyThreadproc(const fpl::threading::ThreadHandle &context, void *data) {
 }
 
 struct ThreadData {
@@ -340,7 +340,7 @@ struct ThreadData {
 	int sleepFor;
 };
 
-static void SingleThreadProc(const fpl::threading::ThreadContext &context, void *data) {
+static void SingleThreadProc(const fpl::threading::ThreadHandle &context, void *data) {
 	ThreadData *d = (ThreadData *)data;
 	ft::Msg("Sleep in thread %d for %d ms\n", d->num, d->sleepFor);
 	fpl::threading::ThreadSleep(d->sleepFor);
@@ -353,7 +353,7 @@ static void SimpleMultiThreadTest(const uint32_t threadCount) {
 		threadData[threadIndex].num = threadIndex + 1;
 		threadData[threadIndex].sleepFor = (1 + threadIndex) * 500;
 	}
-	fpl::threading::ThreadContext *threads[fpl::common::MAX_THREAD_COUNT];
+	fpl::threading::ThreadHandle *threads[fpl::common::MAX_THREAD_COUNT];
 	ft::Msg("Start %d threads\n", threadCount);
 	for(uint32_t threadIndex = 0; threadIndex < threadCount; ++threadIndex) {
 		threads[threadIndex] = fpl::threading::ThreadCreate(SingleThreadProc, &threadData[threadIndex]);
@@ -372,18 +372,18 @@ static void SimpleMultiThreadTest(const uint32_t threadCount) {
 
 struct SlaveThreadData {
 	ThreadData base;
-	fpl::threading::ThreadMutex *mutex;
-	fpl::threading::ThreadSignal signal;
+	fpl::threading::MutexHandle *mutex;
+	fpl::threading::SignalHandle signal;
 };
 
 struct MasterThreadData {
 	ThreadData base;
-	fpl::threading::ThreadMutex mutex;
-	fpl::threading::ThreadSignal *signals[fpl::common::MAX_SIGNAL_COUNT];
+	fpl::threading::MutexHandle mutex;
+	fpl::threading::SignalHandle *signals[fpl::common::MAX_SIGNAL_COUNT];
 	uint32_t signalCount;
 };
 
-static void ThreadSlaveProc(const fpl::threading::ThreadContext &context, void *data) {
+static void ThreadSlaveProc(const fpl::threading::ThreadHandle &context, void *data) {
 	SlaveThreadData *d = (SlaveThreadData *)data;
 
 	ft::Msg("Slave-Thread %d waits for signal\n", d->base.num);
@@ -393,7 +393,7 @@ static void ThreadSlaveProc(const fpl::threading::ThreadContext &context, void *
 	ft::Msg("Slave-Thread %d is done\n", d->base.num);
 }
 
-static void ThreadMasterProc(const fpl::threading::ThreadContext &context, void *data) {
+static void ThreadMasterProc(const fpl::threading::ThreadHandle &context, void *data) {
 	MasterThreadData *d = (MasterThreadData *)data;
 	ft::Msg("Master-Thread %d waits for 5 seconds\n", d->base.num);
 	fpl::threading::ThreadSleep(5000);
@@ -409,7 +409,7 @@ static void ThreadMasterProc(const fpl::threading::ThreadContext &context, void 
 }
 
 struct MutableThreadData {
-	fpl::threading::ThreadMutex lock;
+	fpl::threading::MutexHandle lock;
 	volatile int32_t value;
 	bool useLock;
 };
@@ -426,13 +426,13 @@ struct ReadThreadData {
 	int32_t expectedValue;
 };
 
-static void WriteDataThreadProc(const fpl::threading::ThreadContext &context, void *data) {
+static void WriteDataThreadProc(const fpl::threading::ThreadHandle &context, void *data) {
 	WriteThreadData *d = (WriteThreadData *)data;
 	fpl::threading::ThreadSleep(d->base.sleepFor);
 	fpl::atomics::AtomicStoreS32(&d->data->value, d->valueToWrite);
 }
 
-static void ReadDataThreadProc(const fpl::threading::ThreadContext &context, void *data) {
+static void ReadDataThreadProc(const fpl::threading::ThreadHandle &context, void *data) {
 	ReadThreadData *d = (ReadThreadData *)data;
 	fpl::threading::ThreadSleep(d->base.sleepFor);
 	int32_t actualValue = fpl::atomics::AtomicLoadS32(&d->data->value);
@@ -460,7 +460,7 @@ static void SyncThreadsTest() {
 		writeData.data = &mutableData;
 		writeData.valueToWrite = 42;
 
-		fpl::threading::ThreadContext *threads[2];
+		fpl::threading::ThreadHandle *threads[2];
 		uint32_t threadCount = FPL_ARRAYCOUNT(threads);
 
 		ft::Msg("Start %d threads\n", threadCount);
@@ -498,7 +498,7 @@ static void ConditionThreadsTest(const uint32_t threadCount) {
 	}
 
 	ft::Msg("Start %d slave threads, 1 master thread\n", slaveThreadCount);
-	fpl::threading::ThreadContext *threads[fpl::common::MAX_THREAD_COUNT];
+	fpl::threading::ThreadHandle *threads[fpl::common::MAX_THREAD_COUNT];
 	for(uint32_t threadIndex = 0; threadIndex < threadCount; ++threadIndex) {
 		if(threadIndex == slaveThreadCount) {
 			threads[threadIndex] = fpl::threading::ThreadCreate(ThreadMasterProc, &masterData);
@@ -516,7 +516,7 @@ static void ConditionThreadsTest(const uint32_t threadCount) {
 	}
 	fpl::threading::MutexDestroy(masterData.mutex);
 	for(uint32_t threadIndex = 0; threadIndex < threadCount; ++threadIndex) {
-		fpl::threading::ThreadContext *thread = threads[threadIndex];
+		fpl::threading::ThreadHandle *thread = threads[threadIndex];
 		FT_EXPECTS(fpl::threading::ThreadState::Stopped, thread->currentState);
 		fpl::threading::ThreadDestroy(thread);
 	}
@@ -530,7 +530,7 @@ static void TestThreading() {
 		ft::Line();
 		ft::Msg("Test 1 empty thread\n");
 		{
-			fpl::threading::ThreadContext *thread;
+			fpl::threading::ThreadHandle *thread;
 			ft::Msg("Start thread\n");
 			thread = fpl::threading::ThreadCreate(EmptyThreadproc, nullptr);
 			ft::Msg("Wait thread for exit\n");
@@ -547,7 +547,7 @@ static void TestThreading() {
 			threadData.num = 1;
 			threadData.sleepFor = 3000;
 			ft::Msg("Start thread %d\n", threadData.num);
-			fpl::threading::ThreadContext *thread = fpl::threading::ThreadCreate(SingleThreadProc, &threadData);
+			fpl::threading::ThreadHandle *thread = fpl::threading::ThreadCreate(SingleThreadProc, &threadData);
 			ft::Msg("Wait thread %d for exit\n", threadData.num);
 			fpl::threading::ThreadWaitForOne(thread);
 			ft::Msg("Thread %d is done\n", threadData.num);
