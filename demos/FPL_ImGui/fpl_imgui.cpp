@@ -3,7 +3,7 @@
 #define FPL_LOGGING
 #include <final_platform_layer.hpp>
 
-//#define JUST_INIT
+#define JUST_INIT 
 
 #if !defined(JUST_INIT)
 

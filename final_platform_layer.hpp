@@ -1558,14 +1558,12 @@ namespace fpl {
 #if defined(FPL_SUBPLATFORM_X11)
 	//! X11 window attributes output
 	struct X11WindowAttributes {
-		//! Visual info pointer
-        void *visualInfo;
         //! Visual
         Visual *visual;
-		//! Colormap
-		Colormap colorMap;
 		//! Color depth
 		int colorDepth;
+        //! Frame buffer config pointer
+        uintptr_t fbConfigPtr;
 	};
 #endif
 
@@ -4280,6 +4278,8 @@ namespace fpl {
 //        typedef FPL_FUNC_X11_X_RENDER_FIND_VISUAL_FORMAT(fpl_func_x11_XRenderFindVisualFormat);
 #       define FPL_FUNC_X11_X_DEFAULT_VISUAL(name) Visual *name(Display *display, int screen_number)
 		typedef FPL_FUNC_X11_X_DEFAULT_VISUAL(fpl_func_x11_XDefaultVisual);
+#       define FPL_FUNC_X11_X_DEFAULT_DEPTH(name) int name(Display *display, int screen_number)
+		typedef FPL_FUNC_X11_X_DEFAULT_DEPTH(fpl_func_x11_XDefaultDepth);
 #       define FPL_FUNC_X11_X_SET_ERROR_HANDLER(name) XErrorHandler name(XErrorHandler handler)
 		typedef FPL_FUNC_X11_X_SET_ERROR_HANDLER(fpl_func_x11_XSetErrorHandler);
 
@@ -4301,6 +4301,7 @@ namespace fpl {
 			fpl_func_x11_XStoreName *XStoreName;
 			//fpl_func_x11_XRenderFindVisualFormat *XRenderFindVisualFormat;
 			fpl_func_x11_XDefaultVisual *XDefaultVisual;
+            fpl_func_x11_XDefaultDepth *XDefaultDepth;
 			fpl_func_x11_XSetErrorHandler *XSetErrorHandler;
 		};
 
@@ -4339,6 +4340,7 @@ namespace fpl {
 					FPL_POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, x11Api.XStoreName, fpl_func_x11_XStoreName, "XStoreName");
 					//FPL_POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, x11Api.XRenderFindVisualFormat, fpl_func_x11_XRenderFindVisualFormat, "XRenderFindVisualFormat");
 					FPL_POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, x11Api.XDefaultVisual, fpl_func_x11_XDefaultVisual, "XDefaultVisual");
+                    FPL_POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, x11Api.XDefaultDepth, fpl_func_x11_XDefaultDepth, "XDefaultDepth");
 					FPL_POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, x11Api.XSetErrorHandler, fpl_func_x11_XSetErrorHandler, "XSetErrorHandler");
 					result = true;
 					break;
@@ -4356,10 +4358,10 @@ namespace fpl {
 			Window root;
 			Window window;
 			Colormap colorMap;
-            void *visualInfo;
 			XErrorHandler originalErrorHandler;
 			Display *display;
 			int32_t screen;
+            uintptr_t fbConfigPtr;
 		};
 
 	} // subplatform_x11
@@ -4398,12 +4400,22 @@ namespace fpl {
 		fpl_globalvar PlatformInitState global__InitState = {};
 
 #	if defined(FPL_ENABLE_WINDOW)
-		union PlatformWindowState {
+		fpl_constant uint32_t MAX_EVENT_COUNT = 32768;
+		struct EventQueue {
+			window::Event events[MAX_EVENT_COUNT];
+			volatile uint32_t pollIndex;
+			volatile uint32_t pushCount;
+		};
+
+        struct PlatformWindowState {
+            EventQueue eventQueue;
+            union {
 #		if defined(FPL_PLATFORM_WIN32)
 			platform_win32::Win32WindowState win32;
 #       elif defined(FPL_SUBPLATFORM_X11)
 			subplatform_x11::X11WindowState x11;
 #		endif
+            };
 		};
 #	endif
 
@@ -4459,22 +4471,14 @@ namespace fpl {
 		};
 
 #	if defined(FPL_ENABLE_WINDOW)
-		// @TODO(final): Move event queue into PlatformWindowState
-		fpl_constant uint32_t MAX_EVENT_COUNT = 32768;
-		struct EventQueue {
-			window::Event events[MAX_EVENT_COUNT];
-			volatile uint32_t pollIndex;
-			volatile uint32_t pushCount;
-		};
-		fpl_globalvar EventQueue *global__EventQueue = nullptr;
-
 		fpl_internal_inline void PushEvent(const window::Event &event) {
-			EventQueue *eventQueue = global__EventQueue;
-			FPL_ASSERT(eventQueue != nullptr);
-			if(eventQueue->pushCount < MAX_EVENT_COUNT) {
-				uint32_t eventIndex = atomics::AtomicAddU32(&eventQueue->pushCount, 1);
+            PlatformAppState *appState = global__AppState;
+			FPL_ASSERT(appState != nullptr);
+			EventQueue &eventQueue = appState->window.eventQueue;
+			if(eventQueue.pushCount < MAX_EVENT_COUNT) {
+				uint32_t eventIndex = atomics::AtomicAddU32(&eventQueue.pushCount, 1);
 				FPL_ASSERT(eventIndex < MAX_EVENT_COUNT);
-				eventQueue->events[eventIndex] = event;
+				eventQueue.events[eventIndex] = event;
 			}
 		}
 #endif // FPL_ENABLE_WINDOW
@@ -5134,25 +5138,27 @@ namespace fpl {
 #if defined(FPL_ENABLE_WINDOW)
 	namespace window {
 		fpl_common_api bool PollWindowEvent(Event &ev) {
-			FPL_ASSERT(platform::global__EventQueue != nullptr);
-			platform::EventQueue *eventQueue = platform::global__EventQueue;
+			platform::PlatformAppState *appState = platform::global__AppState;
+			FPL_ASSERT(appState != nullptr);
+			platform::EventQueue &eventQueue = appState->window.eventQueue;
 			bool result = false;
-			if(eventQueue->pushCount > 0 && (eventQueue->pollIndex < eventQueue->pushCount)) {
-				uint32_t eventIndex = atomics::AtomicAddU32(&eventQueue->pollIndex, 1);
-				ev = eventQueue->events[eventIndex];
+			if(eventQueue.pushCount > 0 && (eventQueue.pollIndex < eventQueue.pushCount)) {
+				uint32_t eventIndex = atomics::AtomicAddU32(&eventQueue.pollIndex, 1);
+				ev = eventQueue.events[eventIndex];
 				result = true;
-			} else if(eventQueue->pushCount > 0) {
-				atomics::AtomicExchangeU32(&eventQueue->pollIndex, 0);
-				atomics::AtomicExchangeU32(&eventQueue->pushCount, 0);
+			} else if(eventQueue.pushCount > 0) {
+				atomics::AtomicExchangeU32(&eventQueue.pollIndex, 0);
+				atomics::AtomicExchangeU32(&eventQueue.pushCount, 0);
 			}
 			return result;
 		}
 
 		fpl_common_api void ClearWindowEvents() {
-			FPL_ASSERT(platform::global__EventQueue != nullptr);
-			platform::EventQueue *eventQueue = platform::global__EventQueue;
-			atomics::AtomicExchangeU32(&eventQueue->pollIndex, 0);
-			atomics::AtomicExchangeU32(&eventQueue->pushCount, 0);
+			platform::PlatformAppState *appState = platform::global__AppState;
+			FPL_ASSERT(appState != nullptr);
+			platform::EventQueue &eventQueue = appState->window.eventQueue;
+			atomics::AtomicExchangeU32(&eventQueue.pollIndex, 0);
+			atomics::AtomicExchangeU32(&eventQueue.pushCount, 0);
 		}
 	} // window
 #endif // FPL_ENABLE_WINDOW
@@ -8700,11 +8706,6 @@ namespace fpl {
 				x11Api.XFreeColormap(windowState.display, windowState.colorMap);
 				windowState.colorMap = (Colormap)0;
 			}
-			if(windowState.visualInfo) {
-				FPL_LOG("X11", "Free VisualInfo '%p'", windowState.visualInfo);
-				x11Api.XFree(windowState.visualInfo);
-				windowState.visualInfo = nullptr;
-			}
 			if(windowState.display != nullptr) {
 				FPL_LOG("X11", "Flush Display '%p'", windowState.display);
 				x11Api.XFlush(windowState.display);
@@ -8787,32 +8788,38 @@ namespace fpl {
 			} else {
 				FPL_LOG("X11", "No Get Window Attributes Callback set!");
 			}
-
-			// Set window attributes
-			XSetWindowAttributes swa = {};
-			unsigned long valueMask;
-			if(gotCreateWindowSettings) {
-				FPL_LOG("X11", "Using Colormap from Window Attributes");
-				swa.colormap = winAttributes.x11.colorMap;
-				valueMask = CWEventMask | CWBorderPixel | CWColormap;
-			} else {
-				FPL_LOG("X11", "Not using a Colormap");
-				winAttributes.x11.colorMap = x11Api.XDefaultColormap(windowState.display, windowState.screen);
-				winAttributes.x11.visual = x11Api.XDefaultVisual(windowState.display, windowState.root);
-				winAttributes.x11.colorDepth = CopyFromParent;
-				valueMask = CWEventMask | CWBorderPixel;
-			}
-			swa.event_mask = StructureNotifyMask;
+			
+			Visual *visual;
+            int colorDepth;
+            uintptr_t fbConfigPtr;
+            if (gotCreateWindowSettings) {
+                visual = winAttributes.x11.visual;
+                colorDepth = winAttributes.x11.colorDepth;
+                fbConfigPtr = winAttributes.x11.fbConfigPtr;
+            } else {
+                visual = x11Api.XDefaultVisual(windowState.display, windowState.root);
+                colorDepth = x11Api.XDefaultDepth(windowState.display, windowState.root);
+                fbConfigPtr = 0;
+            }
 
 			// @TODO(final): Get window width from settings (Either window or fullscreen)
 			uint32_t windowWidth = 800;
 			uint32_t windowHeight = 600;
 
-			// Create window
+            // Create color map
+			FPL_LOG("X11", "Create Colormap from visual '%p' on Display '%p'  and Root '%d'", visual, windowState.display, (int)windowState.root);
+			windowState.colorMap = x11Api.XCreateColormap(windowState.display, windowState.root, visual, AllocNone);
+            windowState.fbConfigPtr = fbConfigPtr;
+
+			// Set window attributes
+			XSetWindowAttributes swa = {};
+			unsigned long valueMask = CWEventMask | CWBorderPixel | CWColormap;
+            swa.colormap = windowState.colorMap;
+			swa.event_mask = StructureNotifyMask;
+
+            // Create window
 			FPL_LOG("X11", "Create Window with Display('%p'), Root('%d'), Dimension(%d x %d), ColorDepth(%d)", windowState.display, (int)windowState.root, windowWidth, windowHeight, winAttributes.x11.colorDepth);
-            windowState.visualInfo = winAttributes.x11.visualInfo;
-			windowState.colorMap = winAttributes.x11.colorMap;
-			windowState.window = x11Api.XCreateWindow(windowState.display, windowState.root, 0, 0, windowWidth, windowHeight, 0, winAttributes.x11.colorDepth, InputOutput, winAttributes.x11.visual, valueMask, &swa);
+			windowState.window = x11Api.XCreateWindow(windowState.display, windowState.root, 0, 0, windowWidth, windowHeight, 0, colorDepth, InputOutput, visual, valueMask, &swa);
 			if(!windowState.window) {
 				FPL_LOG("X11", "Failed creating Window from Display '%p' and Root '%d'", windowState.display, (int)windowState.root);
 				common::PushError("Failed creating X11 window");
@@ -9440,9 +9447,9 @@ namespace fpl {
 			return(result);
 		}
 
-		fpl_internal XVisualInfo *GLXGetVisualInfo(const subplatform_x11::X11AppState &x11AppState, const X11VideoOpenGLState &glState, Display *display, int screen) {
-			XVisualInfo *result = nullptr;
-
+		fpl_internal bool GLXGetVisualConfig(const subplatform_x11::X11AppState &x11AppState, const X11VideoOpenGLState &glState, Display *display, int screen, Visual **visual, int *colorDepth, uintptr_t *fbConfigPtr) {
+            bool result = false;
+            
 			const GLXApi &glxApi = glState.glxApi;
 			const subplatform_x11::X11Api &x11Api = x11AppState.api;
 
@@ -9468,14 +9475,12 @@ namespace fpl {
 			if(!fbAllConfigs || !fbAllConfigCount) {
 				FPL_LOG("GLX", "Failed getting FrameBuffer Configs from Display '%p' and Screen '%d'!", display, screen);
 				common::PushError("No FrameBuffer Configs returned");
-				return nullptr;
+				return false;
 			}
 			FPL_LOG("GLX", "Successfully got '%d' FrameBuffer Configs from Display '%p' and Screen '%d'", fbAllConfigCount, display, screen);
 
-			XVisualInfo *foundVisualInfo = nullptr;
-			GLXFBConfig foundFBConfig = nullptr;
 			for(int fbConfigIndex = 0; fbConfigIndex < fbAllConfigCount; ++fbConfigIndex) {
-				GLXFBConfig testFBConfig = fbAllConfigs[fbConfigIndex];
+				const GLXFBConfig testFBConfig = fbAllConfigs[fbConfigIndex];
 
 				// Get visual info from frame buffer config
 				XVisualInfo *visualInfo = (XVisualInfo*)glxApi.glXGetVisualFromFBConfig(display, testFBConfig);
@@ -9488,32 +9493,34 @@ namespace fpl {
 
 				// Found a suitable frame buffer config with visual
 				if(testAlphaBits > 0) {
-					foundFBConfig = testFBConfig;
-					foundVisualInfo = visualInfo;
-					break;
-				}
+                    int doubleBuffer = GLXGetFrameBufferConfigAttrib(glxApi, display, testFBConfig, GLX_DOUBLEBUFFER);
+                    int redBits = GLXGetFrameBufferConfigAttrib(glxApi, display, testFBConfig, GLX_RED_SIZE);
+                    int greenBits = GLXGetFrameBufferConfigAttrib(glxApi, display, testFBConfig, GLX_GREEN_SIZE);
+                    int blueBits = GLXGetFrameBufferConfigAttrib(glxApi, display, testFBConfig, GLX_BLUE_SIZE);
+                    int alphaBits = GLXGetFrameBufferConfigAttrib(glxApi, display, testFBConfig, GLX_ALPHA_SIZE);
+                    int depthBits = GLXGetFrameBufferConfigAttrib(glxApi, display, testFBConfig, GLX_DEPTH_SIZE);
+                    int xcolorDepth = redBits + greenBits + blueBits + alphaBits;
+                    result = true;
+                    *visual = visualInfo->visual;
+                    *colorDepth = visualInfo->depth;
+                    *fbConfigPtr = (uintptr_t)testFBConfig;
+                    FPL_LOG("GLX", "Successfully found a suitable Frame Buffer Config (Doublebuffer: %s, Color bits: %d, Depth bits: %d) with Visual '%p'", (doubleBuffer == True ? "Yes" : "No"), xcolorDepth, depthBits, (void *)result);
+                }
 
-				// Release unused visual info (Important!)
-				x11Api.XFree(visualInfo);
-			}
-
-			if(foundFBConfig != nullptr) {
-				FPL_ASSERT(foundVisualInfo != nullptr);
-				int doubleBuffer = GLXGetFrameBufferConfigAttrib(glxApi, display, foundFBConfig, GLX_DOUBLEBUFFER);
-				int redBits = GLXGetFrameBufferConfigAttrib(glxApi, display, foundFBConfig, GLX_RED_SIZE);
-				int greenBits = GLXGetFrameBufferConfigAttrib(glxApi, display, foundFBConfig, GLX_GREEN_SIZE);
-				int blueBits = GLXGetFrameBufferConfigAttrib(glxApi, display, foundFBConfig, GLX_BLUE_SIZE);
-				int alphaBits = GLXGetFrameBufferConfigAttrib(glxApi, display, foundFBConfig, GLX_ALPHA_SIZE);
-				int depthBits = GLXGetFrameBufferConfigAttrib(glxApi, display, foundFBConfig, GLX_DEPTH_SIZE);
-				int colorDepth = redBits + greenBits + blueBits + alphaBits;
-				FPL_LOG("GLX", "Successfully found a suitable Frame Buffer Config (Doublebuffer: %s, Color bits: %d, Depth bits: %d) with Visual '%p'", (doubleBuffer == True ? "Yes" : "No"), colorDepth, depthBits, foundVisualInfo);
-				result = foundVisualInfo;
-			} else {
+                // Release visual info always
+                x11Api.XFree(visualInfo);
+                
+                // Did we found a visual?
+                if (result) {
+                    break;
+                }                
+            }
+			if (!result) {
 				FPL_LOG("GLX", "Failed finding a suitable Frame Buffer Config for Display '%p'!", display);
 				common::PushError("No FrameBuffer Configs returned");
-			}
+            }
 
-			// Release frame buffer configs (Important!)
+			// Release all frame buffer configs (Important!)
 			x11Api.XFree(fbAllConfigs);
 
 			return(result);
@@ -9522,54 +9529,34 @@ namespace fpl {
 		fpl_internal bool X11GetWindowAttributesOpenGL(const subplatform_x11::X11AppState &x11AppState, subplatform_x11::X11WindowState &windowState, X11VideoOpenGLState &glState, X11WindowAttributes &outAttributes) {
 			FPL_LOG_BLOCK;
 
-			const subplatform_x11::X11Api &x11Api = x11AppState.api;
-
 			Display *display = windowState.display;
-			Window root = windowState.root;
 			int screen = windowState.screen;
 
 			FPL_LOG("GLX", "Get Visual Info for Display '%p' and Screen '%d':", windowState.display, windowState.screen);
-			XVisualInfo *visualInfo = GLXGetVisualInfo(x11AppState, glState, display, screen);
-			if(visualInfo == nullptr) {
-				FPL_LOG("GLX", "Failed getting Visual Info for Display '%p' and Screen '%d'!", windowState.display, windowState.screen);
+            if (!GLXGetVisualConfig(x11AppState, glState, display, screen, &outAttributes.visual, &outAttributes.colorDepth, &outAttributes.fbConfigPtr)) {
+				FPL_LOG("GLX", "Failed getting Visual for Display '%p' and Screen '%d'!", windowState.display, windowState.screen);
 				return false;
-			}
-			FPL_LOG("GLX", "Successfully got Visual Info '%p' for Display '%p' and Screen '%d'", visualInfo, windowState.display, windowState.screen);
-
-			FPL_LOG("GLX", "Create Colormap on Display '%p' and Screen '%d'", display, screen);
-			Colormap colorMap = x11Api.XCreateColormap(display, root, visualInfo->visual, AllocNone);
-
-            outAttributes.visualInfo = visualInfo;
-			outAttributes.visual = visualInfo->visual;
-			outAttributes.colorMap = colorMap;
-			outAttributes.colorDepth = visualInfo->depth;
+            }
+            FPL_LOG("GLX", "Successfully got Visual '%p' and color depth '%d' for Display '%p' and Screen '%d'", outAttributes.visual, outAttributes.colorDepth, windowState.display, windowState.screen);
 
 			return(true);
 		}
 
-		fpl_internal bool X11InitVideoOpenGL(const subplatform_x11::X11AppState &x11AppState, const subplatform_x11::X11WindowState &windowState, const VideoSettings &videoSettings, X11VideoOpenGLState &glState) {
+		fpl_internal bool X11InitVideoOpenGL(const subplatform_x11::X11AppState &x11AppState, const subplatform_x11::X11WindowState &windowState, const VideoSettings &videoSettings, X11VideoOpenGLState &glState, const GLXFBConfig fbConfig) {
 			FPL_LOG_BLOCK;
 
 			const GLXApi &glxApi = glState.glxApi;
 
 			glState.isActivated = false;
-
-			if(windowState.visualInfo == nullptr) {
-				FPL_LOG("GLX", "VisualInfo was not set!");
-				common::PushError("VisualInfo was not set in GLX State");
-				return false;
-			}
-			
-			XVisualInfo *visualInfo = (XVisualInfo *)windowState.visualInfo;
-
-			FPL_LOG("GLX", "Create Context for Display '%p' and VisualInfo '%p':", windowState.display, visualInfo);
-			glState.glxContext = glxApi.glXCreateContext(windowState.display, visualInfo, nullptr, GL_TRUE);
+            	
+			FPL_LOG("GLX", "Create Context for Display '%p' and Frame Buffer Config '%p':", windowState.display, fbConfig);
+			glState.glxContext = glxApi.glXCreateNewContext(windowState.display, fbConfig, GLX_RGBA_TYPE, nullptr, GL_TRUE);
 			if(glState.glxContext == nullptr) {
-				FPL_LOG("GLX", "Failed creating Context for Display '%p' and VisualInfo '%p'!", windowState.display, visualInfo);
+				FPL_LOG("GLX", "Failed creating Context for Display '%p' and Frame Buffer Config '%p'!", windowState.display, fbConfig);
 				common::PushError("Failed creating GLX rendering context");
 				return false;
 			}
-			FPL_LOG("GLX", "Successfully created Context for Display '%p' and VisualInfo '%p': %p", windowState.display, visualInfo, glState.glxContext);
+			FPL_LOG("GLX", "Successfully created Context for Display '%p' and Frame Buffer Config '%p': %p", windowState.display, fbConfig, glState.glxContext);
 
 			FPL_LOG("GLX", "Activate Context for Display '%p' and Context '%p':", windowState.display, glState.glxContext);
 			if(!glxApi.glXMakeCurrent(windowState.display, windowState.window, glState.glxContext)) {
@@ -10757,7 +10744,9 @@ namespace fpl {
 #				if defined(FPL_PLATFORM_WIN32)
 					videoInitResult = drivers::Win32InitVideoOpenGL(appState->win32, appState->window.win32, videoSettings, videoState->win32.opengl);
 #				elif defined(FPL_SUBPLATFORM_X11)
-					videoInitResult = drivers::X11InitVideoOpenGL(appState->x11, appState->window.x11, videoSettings, videoState->x11.opengl);
+                    // @TODO(final): Better way to pass in the FB config
+                    GLXFBConfig fbConfig = (GLXFBConfig)appState->window.x11.fbConfigPtr;
+					videoInitResult = drivers::X11InitVideoOpenGL(appState->x11, appState->window.x11, videoSettings, videoState->x11.opengl, fbConfig);
 #				endif
 				} break;
 #			endif // FPL_ENABLE_VIDEO_OPENGL
@@ -11204,14 +11193,6 @@ namespace fpl {
 				platform::global__AppState = nullptr;
 			}
 
-#		if defined(FPL_ENABLE_WINDOW)
-			if(platform::global__EventQueue != nullptr) {
-				FPL_LOG("Core", "Release allocated Event Queue Memory");
-				memory::MemoryAlignedFree(platform::global__EventQueue);
-				platform::global__EventQueue = nullptr;
-			}
-#		endif
-
 			initState.isInitialized = false;
 		}
 	} // common
@@ -11339,18 +11320,6 @@ namespace fpl {
 	// Init Window & event queue
 #	if defined(FPL_ENABLE_WINDOW)
 		if(appState->initFlags & InitFlags::Window) {
-			FPL_LOG("Core", "Allocate Event Queue Memory:");
-			size_t eventQueueMemorySize = sizeof(platform::EventQueue);
-			void *eventQueueMemory = memory::MemoryAlignedAllocate(eventQueueMemorySize, 16);
-			if(eventQueueMemory == nullptr) {
-				FPL_LOG("Core", "Failed allocating Event Queue Memory of size '%zu'!", eventQueueMemorySize);
-				common::PushError("Failed Allocating Event Queue Memory with size '%zu'", eventQueueMemorySize);
-				common_init::ReleasePlatformStates(initState, appState);
-				return false;
-			}
-			platform::global__EventQueue = (platform::EventQueue *)eventQueueMemory;
-			FPL_LOG("Core", "Successfully allocated Event Queue Memory of size '%zu'", eventQueueMemorySize);
-
 			CreateWindowSettings createWindowSettings = appState->currentSettings.createWindowSettings;
 			if(createWindowSettings.getWindowAttributesCallback == nullptr) {
 				if(appState->initFlags & InitFlags::Video) {
