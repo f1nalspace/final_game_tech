@@ -134,14 +134,19 @@ SOFTWARE.
 	- Changed: Moved internal functions around and restructured things
 	- Changed: Moved platforms and subplatforms into its own namespace
 	- Changed: Updated documentation a bit
+	- Changed: Introduced common::Argument*Error functions
+	- Changed: Removed memory::MemoryStackAllocate()
+	- Changed: App state memory size is aligned by 16-bytes as well
+	- Changed: Video/Audio state memory block is included in app state memory as well
 	- Fixed: Get rid of const char* to char* warnings for Get*DriverString() functions
 	- Fixed: [Win32] Icon was not default application icon
+	- Fixed: paths::ExtractFileName and paths::ExtractFileExtension was not returning const char*
 	- New: [X11][Window] Implemented X11 window creation and handling
 	- New: [X11][OpenGL] Implemented X11/GLX video driver
-	- New: [X11][Software] Implemented X11/Software video driver
 	- New: [POSIX] Implemented all remaining posix functions
 	- New: Introduced debug logging
-	- Changed: Introduced common::Argument*Error functions
+	- New: Added FPL_ALIGNMENT_OFFSET macro
+	- New: Added FPL_ALIGNED_SIZE macro
 
 	## v0.6.0.0 beta:
 	- Changed: Documentation changed a bit
@@ -895,6 +900,12 @@ SOFTWARE.
 
 //! Returns the offset in bytes to a field in a structure
 #define FPL_OFFSETOF(type, field) ((size_t)(&(((type*)(0))->field)))
+            
+//! Returns the offset for the value to satisfy the given alignment boundary
+#define FPL_ALIGNMENT_OFFSET(value, alignment) ( (((alignment) > 1) && (((value) & ((alignment) - 1)) != 0)) ? ((alignment) - ((value) & (alignment - 1))) : 0)
+            
+//! Returns the given size extended o to satisfy the given alignment boundary
+#define FPL_ALIGNED_SIZE(size, alignment) (((size) > 0 && (alignment) > 0) ? ((size) + FPL_ALIGNMENT_OFFSET(size, alignment)) : (size))
 
 //! Returns the smallest value
 #define FPL_MIN(a, b) ((a) < (b)) ? (a) : (b)
@@ -2038,13 +2049,6 @@ namespace fpl {
 		  */
 		fpl_platform_api void MemoryFree(void *ptr);
 		/**
-		  * \brief Allocates memory on the current stack by the given amount in bytes.
-		  * \param size Size amount in bytes
-		  * \warning Use this very carefully, the memory will be released then the current scope goes out of scope!
-		  * \return Pointer to the new allocated stack memory.
-		  */
-		fpl_platform_api void *MemoryStackAllocate(const size_t size);
-		/**
 		  * \brief Allocates aligned memory from the operating system by the given alignment.
 		  * \param size Size amount in bytes
 		  * \param alignment Alignment in bytes (Needs to be a power-of-two!)
@@ -2504,13 +2508,13 @@ namespace fpl {
 		  * \param sourcePath Source path to extract from.
 		  * \return Returns the pointer to the first character of the extension.
 		  */
-		fpl_common_api char *ExtractFileExtension(const char *sourcePath);
+		fpl_common_api const char *ExtractFileExtension(const char *sourcePath);
 		/**
 		  * \brief Returns the file name including the file extension from the given source path.
 		  * \param sourcePath Source path to extract from.
 		  * \return Returns the pointer to the first character of the filename.
 		  */
-		fpl_common_api char *ExtractFileName(const char *sourcePath);
+		fpl_common_api const char *ExtractFileName(const char *sourcePath);
 		/**
 		  * \brief Changes the file extension on the given source path and writes the result into the destination path.
 		  * \param filePath File path to search for the extension.
@@ -3449,6 +3453,9 @@ namespace fpl {
 		fpl_constant char PATH_SEPARATOR = '/';
 		fpl_constant char FILE_EXT_SEPARATOR = '.';
 #	endif
+
+        // One cacheline worth of padding
+        fpl_constant size_t SIZE_PADDING = 64;
 
 		struct PlatformAppState;
 		fpl_globalvar PlatformAppState* global__AppState = nullptr;
@@ -4988,42 +4995,34 @@ namespace fpl {
 			return(result);
 		}
 
-		fpl_common_api char *ExtractFileExtension(const char *sourcePath) {
-			char *result = nullptr;
+		fpl_common_api const char *ExtractFileExtension(const char *sourcePath) {
+			const char *result = nullptr;
 			if(sourcePath != nullptr) {
-				char *filename = ExtractFileName(sourcePath);
+				const char *filename = ExtractFileName(sourcePath);
 				if(filename) {
-					char *chPtr = filename;
-					char *firstSeparatorPtr = (char *)nullptr;
+					const char *chPtr = filename;
 					while(*chPtr) {
 						if(*chPtr == platform::FILE_EXT_SEPARATOR) {
-							firstSeparatorPtr = chPtr;
+							result = chPtr;
 							break;
 						}
 						++chPtr;
-					}
-					if(firstSeparatorPtr != nullptr) {
-						result = firstSeparatorPtr;
 					}
 				}
 			}
 			return(result);
 		}
 
-		fpl_common_api char *ExtractFileName(const char *sourcePath) {
-			char *result = nullptr;
+		fpl_common_api const char *ExtractFileName(const char *sourcePath) {
+			const char *result = nullptr;
 			if(sourcePath) {
-				result = (char *)sourcePath;
-				char *chPtr = (char *)sourcePath;
-				char *lastPtr = (char *)nullptr;
+				result = sourcePath;
+				const char *chPtr = sourcePath;
 				while(*chPtr) {
 					if(*chPtr == platform::PATH_SEPARATOR) {
-						lastPtr = chPtr;
+						result = chPtr + 1;
 					}
 					++chPtr;
-				}
-				if(lastPtr != nullptr) {
-					result = lastPtr + 1;
 				}
 			}
 			return(result);
@@ -6082,7 +6081,7 @@ namespace fpl {
 					args.count = 1 + actualArgumentCount;
 					uint32_t totalStringLen = executableFilePathLen + actualArgumentsLen + args.count;
 					size_t singleArgStringSize = sizeof(char) * (totalStringLen);
-					size_t arbitaryPadding = sizeof(char) * 8;
+					size_t arbitaryPadding = SIZE_PADDING;
 					size_t argArraySize = sizeof(char **) * args.count;
 					size_t totalArgSize = singleArgStringSize + arbitaryPadding + argArraySize;
 
@@ -6665,15 +6664,6 @@ namespace fpl {
 				return;
 			}
 			::VirtualFree(ptr, 0, MEM_FREE);
-		}
-
-		fpl_platform_api void *MemoryStackAllocate(const size_t size) {
-			if(size == 0) {
-				common::ArgumentZeroError("Size");
-				return nullptr;
-			}
-			void *result = _malloca(size);
-			return(result);
 		}
 	} // memory
 
@@ -8213,14 +8203,14 @@ namespace fpl {
 			// @NOTE(final): MAP_ANONYMOUS ensures that the memory is cleared to zero.
 
 			// Allocate empty memory to hold the size + some arbitary padding + the actual data
-			size_t newSize = sizeof(size_t) + sizeof(uintptr_t) + size;
+			size_t newSize = sizeof(size_t) + platform::SIZE_PADDING + size;
 			void *basePtr = ::mmap(nullptr, newSize, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
 
 			// Write the size at the beginning
 			*(size_t *)basePtr = newSize;
 
 			// The resulting address starts after the arbitary padding
-			void *result = (uint8_t *)basePtr + sizeof(size_t) + sizeof(uintptr_t);
+			void *result = (uint8_t *)basePtr + sizeof(size_t) + platform::SIZE_PADDING;
 			return(result);
 		}
 
@@ -10298,77 +10288,52 @@ namespace fpl {
 #		endif
 		}
 
-		fpl_internal AudioState *AllocateAudioState(platform::PlatformAudioState &platAudioState) {
-			platAudioState = {};
-			platAudioState.memSize = sizeof(AudioState);
-			platAudioState.mem = memory::MemoryAlignedAllocate(platAudioState.memSize, 16);
-			AudioState *result = (AudioState *)platAudioState.mem;
-			return(result);
-		}
-
-		fpl_internal void FreeAudioState(platform::PlatformAudioState &platAudioState) {
-			if(platAudioState.mem != nullptr) {
-				memory::MemoryAlignedFree(platAudioState.mem);
-			}
-			platAudioState = {};
-		}
-
-		fpl_internal void ReleaseAudio() {
+		fpl_internal void ReleaseAudio(AudioState &audioState) {
 #		if defined(FPL_PLATFORM_WIN32)
 			FPL_ASSERT(platform::global__AppState != nullptr);
 			const platform_win32::Win32Api &wapi = platform::global__AppState->win32.winApi;
 #		endif
 
-			platform::PlatformAudioState &platAudioState = platform::global__AppState->audio;
+            if(IsAudioDeviceInitialized(audioState)) {
 
-			if(platAudioState.mem != nullptr) {
-				AudioState *audioState = (AudioState *)platAudioState.mem;
+                // Wait until the audio device is stopped
+                if(IsAudioDeviceStarted(audioState)) {
+                    while(audio::StopAudio() == audio::AudioResult::DeviceBusy) {
+                        threading::ThreadSleep(1);
+                    }
+                }
 
-				if(IsAudioDeviceInitialized(audioState)) {
+                // Putting the device into an uninitialized state will make the worker thread return.
+                AudioSetDeviceState(*audioState, AudioDeviceState::Uninitialized);
 
-					// Wait until the audio device is stopped
-					if(IsAudioDeviceStarted(audioState)) {
-						while(audio::StopAudio() == audio::AudioResult::DeviceBusy) {
-							threading::ThreadSleep(1);
-						}
-					}
+                // Wake up the worker thread and wait for it to properly terminate.
+                SignalSet(audioState->wakeupSignal);
+                ThreadWaitForOne(audioState->workerThread);
+                ThreadDestroy(audioState->workerThread);
 
-					// Putting the device into an uninitialized state will make the worker thread return.
-					AudioSetDeviceState(*audioState, AudioDeviceState::Uninitialized);
+                // Release signals and thread
+                threading::SignalDestroy(audioState->stopSignal);
+                threading::SignalDestroy(audioState->startSignal);
+                threading::SignalDestroy(audioState->wakeupSignal);
+                threading::MutexDestroy(audioState->lock);
 
-					// Wake up the worker thread and wait for it to properly terminate.
-					SignalSet(audioState->wakeupSignal);
-					ThreadWaitForOne(audioState->workerThread);
-					ThreadDestroy(audioState->workerThread);
-
-					// Release signals and thread
-					threading::SignalDestroy(audioState->stopSignal);
-					threading::SignalDestroy(audioState->startSignal);
-					threading::SignalDestroy(audioState->wakeupSignal);
-					threading::MutexDestroy(audioState->lock);
-
-					// Release audio device
-					AudioReleaseDevice(*audioState);
-				}
-
-				// Release state memory
-				FreeAudioState(platAudioState);
-			}
+                // Release audio device
+                AudioReleaseDevice(*audioState);
+                
+                // Clear audio state
+                audioState = {};
+            }
 
 #		if defined(FPL_PLATFORM_WIN32)
 			wapi.ole.coUninitialize();
 #		endif
 		}
 
-		fpl_internal audio::AudioResult InitAudio(const AudioSettings &audioSettings) {
+		fpl_internal audio::AudioResult InitAudio(const AudioSettings &audioSettings, AudioState &audioState) {
 #		if defined(FPL_PLATFORM_WIN32)
 			FPL_ASSERT(platform::global__AppState != nullptr);
 			const platform_win32::Win32Api &wapi = platform::global__AppState->win32.winApi;
 #		endif
-
-			platform::PlatformAudioState &platAudioState = platform::global__AppState->audio;
-			FPL_ASSERT(platAudioState.mem == nullptr);
-			AudioState *audioState = AllocateAudioState(platAudioState);
 
 			if(audioState->activeDriver != AudioDriverType::None) {
 				FreeAudioState(platAudioState);
@@ -10532,7 +10497,6 @@ namespace fpl {
 
 		fpl_internal void ReleaseVideo(platform::PlatformAppState *appState, VideoState *videoState) {
 			FPL_LOG_BLOCK;
-
 			FPL_ASSERT(appState != nullptr);
 			if(videoState != nullptr) {
 				switch(videoState->activeDriver) {
@@ -10570,6 +10534,8 @@ namespace fpl {
 				}
 				backbuffer = {};
 #				endif
+                
+                *videoState = {};
 			}
 		}
 
@@ -10617,28 +10583,6 @@ namespace fpl {
 				} break;
 			}
 			return(result);
-		}
-
-		fpl_internal void FreeVideoState(platform::PlatformVideoState &platVideoState) {
-			if(platVideoState.mem != nullptr) {
-				memory::MemoryAlignedFree(platVideoState.mem);
-			}
-			platVideoState = {};
-		}
-
-		fpl_internal bool AllocateVideoState(platform::PlatformVideoState &platVideoState) {
-			if(platVideoState.mem != nullptr) {
-				common::PushError("Video state memory is already allocated");
-				return false;
-			}
-			platVideoState = {};
-			platVideoState.memSize = sizeof(VideoState);
-			platVideoState.mem = memory::MemoryAlignedAllocate(platVideoState.memSize, 16);
-			if(platVideoState.mem == nullptr) {
-				common::PushError("Failed allocating video state memory of %xu bytes", platVideoState.memSize);
-				return false;
-			}
-			return true;
 		}
 
 		fpl_internal void UnloadVideoApi(VideoState *videoState) {
@@ -10716,7 +10660,7 @@ namespace fpl {
 				backbuffer.pixelStride = sizeof(uint32_t);
 				backbuffer.lineWidth = backbuffer.width * backbuffer.pixelStride;
 				size_t size = backbuffer.lineWidth * backbuffer.height;
-				backbuffer.pixels = (uint32_t *)memory::MemoryAlignedAllocate(size, 16);
+				backbuffer.pixels = (uint32_t *)memory::MemoryAlignedAllocate(size, 4);
 				if(backbuffer.pixels == nullptr) {
 					common::PushError("Failed allocating video software backbuffer of size %xu bytes", size);
 					ReleaseVideo(appState, videoState);
@@ -11156,8 +11100,6 @@ namespace fpl {
 					FPL_LOG("Core", "Unload Video API for Driver '%s'", video::GetVideoDriverString(videoState->activeDriver));
 					common_video::UnloadVideoApi(videoState);
 				}
-				FPL_LOG("Core", "Free Video State");
-				common_video::FreeVideoState(appState->video);
 			}
 #		endif
 
@@ -11220,8 +11162,28 @@ namespace fpl {
 			return false;
 		}
 
-		// Allocate platform app state memory
-		size_t platformAppStateSize = sizeof(platform::PlatformAppState);
+		// Allocate platform app state memory (By boundary of 16-bytes)
+		size_t platformAppStateSize = FPL_ALIGNED_SIZE(sizeof(platform::PlatformAppState), 16);
+               
+        // Include video/audio state memory in app state memory as well
+        #if defined(FPL_ENABLE_VIDEO)
+        size_t videoMemoryOffset = 0;
+        if(initFlags & InitFlags::Video) {
+            platformAppStateSize += platform::SIZE_PADDING;
+            videoMemoryOffset = platformAppStateSize;
+            platformAppStateSize += sizeof(common_video::VideoState);
+        }
+        #endif
+        
+        #if defined(FPL_ENABLE_AUDIO)
+        size_t audioMemoryOffset = 0;
+        if(initFlags & InitFlags::Audio) {
+            platformAppStateSize += SIZE_PADDING;
+            audioMemoryOffset = platformAppStateSize;
+            platformAppStateSize += sizeof(common_audio::AudioState);
+        }
+        #endif
+        
 		FPL_LOG("Core", "Allocate Platform App State Memory of size '%zu':", platformAppStateSize);
 		FPL_ASSERT(platform::global__AppState == nullptr);
 		void *platformAppStateMemory = memory::MemoryAlignedAllocate(platformAppStateSize, 16);
@@ -11289,17 +11251,12 @@ namespace fpl {
 		}
 		FPL_LOG("Core", "Successfully initialized %s Platform", FPL_PLATFORM_NAME);
 
-	// Allocate video state
+	// Init video state
 #	if defined(FPL_ENABLE_VIDEO)
 		if(appState->initFlags & InitFlags::Video) {
-			FPL_LOG("Core", "Allocating video state:");
-			if(!common_video::AllocateVideoState(appState->video)) {
-				FPL_LOG("Core", "Failed allocating Video State!");
-				common_init::ReleasePlatformStates(initState, appState);
-				return false;
-			}
-			FPL_LOG("Core", "Successfully allocated Video State");
-
+			FPL_LOG("Core", "Init video state:");
+            appState->video.mem = (uint8_t *)platformAppStateMemory + videoMemoryOffset;
+            appState->video.memSize = sizeof(common_video::VideoState);
 			common_video::VideoState *videoState = common_video::GetVideoState(appState);
 			FPL_ASSERT(videoState != nullptr);
 
@@ -11367,6 +11324,8 @@ namespace fpl {
 	// Init Audio
 #	if defined(FPL_ENABLE_AUDIO)
 		if(appState->initFlags & InitFlags::Audio) {
+            appState->audio.mem = (uint8_t *)platformAppStateMemory + audioMemoryOffset;
+            appState->audio.memSize = sizeof(common_video::AudioState);
 			const char *audioDriverName = audio::GetAudioDriverString(initSettings.audio.driver);
 			FPL_LOG("Core", "Init Audio with Driver '%s':", audioDriverName);
 			if(common_audio::InitAudio(initSettings.audio) != audio::AudioResult::Success) {
