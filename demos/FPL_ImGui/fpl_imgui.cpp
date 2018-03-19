@@ -3,6 +3,9 @@
 #define FPL_LOGGING
 #include <final_platform_layer.hpp>
 
+// @TODO(final): Use final_dynamic_opengl here, so we dont need any linking like any other opengl demo
+#include <GL/gl.h>
+
 #define JUST_INIT 
 
 #if !defined(JUST_INIT)
@@ -11,9 +14,6 @@
 #include <imgui/imgui.h>
 
 #include <math.h> // fabsf
-
-// @TODO(final): Use final_dynamic_opengl here, so we dont need any linking like any other opengl demo
-#include <GL/gl.h>
 
 static int currentMousePosition[2] = { -1, -1 };
 static bool currentMouseStates[3] = { 0 };

@@ -2295,7 +2295,7 @@ static GLuint CompileShader(GLuint type, const char *source, const char *name) {
 	if (compileStatus == GL_FALSE) {
 		int length;
 		glGetShaderiv(result, GL_INFO_LOG_LENGTH, &length);
-		char *message = (char *)MemoryStackAllocate(length * sizeof(char));
+		char *message = (char *)FPL_STACKALLOCATE(length * sizeof(char));
 		glGetShaderInfoLog(result, length, &length, message);
 		ConsoleFormatError("Failed to compile %s shader '%s':\n%s\n", (type == GL_VERTEX_SHADER ? "vertex" : "fragment"), name, message);
 		glDeleteShader(result);
@@ -2323,7 +2323,7 @@ static GLuint CreateShader(const char *vertexShaderSource, const char *fragmentS
 	if (GL_LINK_STATUS == GL_FALSE) {
 		int length;
 		glGetProgramiv(result, GL_INFO_LOG_LENGTH, &length);
-		char *message = (char *)MemoryStackAllocate(length * sizeof(char));
+		char *message = (char *)FPL_STACKALLOCATE(length * sizeof(char));
 		glGetProgramInfoLog(result, length, &length, message);
 		ConsoleFormatError("Failed to link %s shader program:\n%s\n", name, message);
 		glDeleteProgram(result);

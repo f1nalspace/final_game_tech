@@ -890,7 +890,7 @@ SOFTWARE.
 //
 #include <stdint.h> // uint32_t, ...
 #include <stddef.h> // size_t
-#include <limits.h> // UINT32_MAX, ...
+#include <stdlib.h> // UINT32_MAX, ...
 
 //
 // Macro functions
@@ -902,10 +902,11 @@ SOFTWARE.
 #define FPL_OFFSETOF(type, field) ((size_t)(&(((type*)(0))->field)))
             
 //! Returns the offset for the value to satisfy the given alignment boundary
-#define FPL_ALIGNMENT_OFFSET(value, alignment) ( (((alignment) > 1) && (((value) & ((alignment) - 1)) != 0)) ? ((alignment) - ((value) & (alignment - 1))) : 0)
-            
+#define FPL_ALIGNMENT_OFFSET(value, alignment) ( (((alignment) > 1) && (((value) & ((alignment) - 1)) != 0)) ? ((alignment) - ((value) & (alignment - 1))) : 0)           
 //! Returns the given size extended o to satisfy the given alignment boundary
 #define FPL_ALIGNED_SIZE(size, alignment) (((size) > 0 && (alignment) > 0) ? ((size) + FPL_ALIGNMENT_OFFSET(size, alignment)) : (size))
+//! Returns true when the given pointer address is aligned to the given alignment
+#define FPL_IS_ALIGNED(ptr, alignment) (((uintptr_t)(const void *)(ptr)) % (alignment) == 0)
 
 //! Returns the smallest value
 #define FPL_MIN(a, b) ((a) < (b)) ? (a) : (b)
@@ -921,8 +922,8 @@ SOFTWARE.
 //! Returns the number of bytes for the given terabytes
 #define FPL_TERABYTES(value) ((FPL_GIGABYTES(value) * 1024ull))
 
-//! Returns true when the given pointer address is aligned to the given alignment
-#define FPL_IS_ALIGNED(ptr, alignment) (((uintptr_t)(const void *)(ptr)) % (alignment) == 0)
+//! Manually allocate memory on the stack (Use this with care!)
+#define FPL_STACKALLOCATE(size) _alloca(size)
 
 //! Defines the operator overloads for a enum used as flags
 #define FPL_ENUM_AS_FLAGS_OPERATORS(etype) \
@@ -6081,7 +6082,7 @@ namespace fpl {
 					args.count = 1 + actualArgumentCount;
 					uint32_t totalStringLen = executableFilePathLen + actualArgumentsLen + args.count;
 					size_t singleArgStringSize = sizeof(char) * (totalStringLen);
-					size_t arbitaryPadding = SIZE_PADDING;
+					size_t arbitaryPadding = platform::SIZE_PADDING;
 					size_t argArraySize = sizeof(char **) * args.count;
 					size_t totalArgSize = singleArgStringSize + arbitaryPadding + argArraySize;
 
@@ -7539,7 +7540,7 @@ namespace fpl {
 
 #	if defined(FPL_ENABLE_WINDOW)
 
-#		if defined(UNICODE)
+#			if defined(UNICODE)
 
 int WINAPI wWinMain(HINSTANCE appInstance, HINSTANCE prevInstance, LPWSTR cmdLine, int cmdShow) {
 	fpl::platform_win32::Win32CommandLineUTF8Arguments args = fpl::platform_win32::Win32ParseWideArguments(cmdLine);
@@ -7548,7 +7549,7 @@ int WINAPI wWinMain(HINSTANCE appInstance, HINSTANCE prevInstance, LPWSTR cmdLin
 	return(result);
 }
 
-#		else
+#			else
 
 int WINAPI WinMain(HINSTANCE appInstance, HINSTANCE prevInstance, LPSTR cmdLine, int cmdShow) {
 	fpl::platform_win32::Win32CommandLineUTF8Arguments args = fpl::platform_win32::Win32ParseAnsiArguments(cmdLine);
@@ -7556,7 +7557,7 @@ int WINAPI WinMain(HINSTANCE appInstance, HINSTANCE prevInstance, LPSTR cmdLine,
 	fpl::memory::MemoryFree(args.mem);
 	return(result);
 }
-#		endif // UNICODE
+#			endif // UNICODE
 
 #	endif // FPL_ENABLE_WINDOW
 
@@ -10109,6 +10110,13 @@ namespace fpl {
 			};
 		};
 
+		fpl_internal_inline AudioState *GetAudioState(platform::PlatformAppState *appState) {
+			FPL_ASSERT(appState != nullptr);
+			FPL_ASSERT(appState->audio.mem != nullptr);
+			AudioState *audioState = (AudioState *)appState->audio.mem;
+			return(audioState);
+		}
+
 		fpl_internal void AudioDeviceStopMainLoop(AudioState &audioState) {
 			FPL_ASSERT(audioState.activeDriver > AudioDriverType::Auto);
 			switch(audioState.activeDriver) {
@@ -10288,7 +10296,9 @@ namespace fpl {
 #		endif
 		}
 
-		fpl_internal void ReleaseAudio(AudioState &audioState) {
+		fpl_internal void ReleaseAudio(AudioState *audioState) {
+			FPL_ASSERT(audioState != nullptr);
+
 #		if defined(FPL_PLATFORM_WIN32)
 			FPL_ASSERT(platform::global__AppState != nullptr);
 			const platform_win32::Win32Api &wapi = platform::global__AppState->win32.winApi;
@@ -10329,27 +10339,29 @@ namespace fpl {
 #		endif
 		}
 
-		fpl_internal audio::AudioResult InitAudio(const AudioSettings &audioSettings, AudioState &audioState) {
+		fpl_internal audio::AudioResult InitAudio(const AudioSettings &audioSettings, AudioState *audioState) {
+			FPL_ASSERT(audioState != nullptr);
+
 #		if defined(FPL_PLATFORM_WIN32)
 			FPL_ASSERT(platform::global__AppState != nullptr);
 			const platform_win32::Win32Api &wapi = platform::global__AppState->win32.winApi;
 #		endif
 
 			if(audioState->activeDriver != AudioDriverType::None) {
-				FreeAudioState(platAudioState);
+				ReleaseAudio(audioState);
 				return audio::AudioResult::Failed;
 			}
 
 			if(audioSettings.deviceFormat.channels == 0) {
-				FreeAudioState(platAudioState);
+				ReleaseAudio(audioState);
 				return audio::AudioResult::Failed;
 			}
 			if(audioSettings.deviceFormat.sampleRate == 0) {
-				FreeAudioState(platAudioState);
+				ReleaseAudio(audioState);
 				return audio::AudioResult::Failed;
 			}
 			if(audioSettings.bufferSizeInMilliSeconds == 0) {
-				FreeAudioState(platAudioState);
+				ReleaseAudio(audioState);
 				return audio::AudioResult::Failed;
 			}
 
@@ -10363,22 +10375,22 @@ namespace fpl {
 			// Create mutex and signals
 			audioState->lock = threading::MutexCreate();
 			if(!audioState->lock.isValid) {
-				ReleaseAudio();
+				ReleaseAudio(audioState);
 				return audio::AudioResult::Failed;
 			}
 			audioState->wakeupSignal = threading::SignalCreate();
 			if(!audioState->wakeupSignal.isValid) {
-				ReleaseAudio();
+				ReleaseAudio(audioState);
 				return audio::AudioResult::Failed;
 			}
 			audioState->startSignal = threading::SignalCreate();
 			if(!audioState->startSignal.isValid) {
-				ReleaseAudio();
+				ReleaseAudio(audioState);
 				return audio::AudioResult::Failed;
 			}
 			audioState->stopSignal = threading::SignalCreate();
 			if(!audioState->stopSignal.isValid) {
-				ReleaseAudio();
+				ReleaseAudio(audioState);
 				return audio::AudioResult::Failed;
 			}
 
@@ -10420,7 +10432,7 @@ namespace fpl {
 			}
 
 			if(initResult != audio::AudioResult::Success) {
-				ReleaseAudio();
+				ReleaseAudio(audioState);
 				return initResult;
 			}
 
@@ -10428,7 +10440,7 @@ namespace fpl {
 				// Create and start worker thread
 				audioState->workerThread = threading::ThreadCreate(AudioWorkerThread, audioState);
 				if(audioState->workerThread == nullptr) {
-					ReleaseAudio();
+					ReleaseAudio(audioState);
 					return audio::AudioResult::Failed;
 				}
 				// Wait for the worker thread to put the device into the stopped state.
@@ -11069,7 +11081,10 @@ namespace fpl {
 #		if defined(FPL_ENABLE_AUDIO)
 			{
 				FPL_LOG("Core", "Release Audio");
-				common_audio::ReleaseAudio();
+				common_audio::AudioState *audioState = common_audio::GetAudioState(appState);
+				if(audioState != nullptr) {
+					common_audio::ReleaseAudio(audioState);
+				}
 			}
 #		endif
 
@@ -11178,7 +11193,7 @@ namespace fpl {
         #if defined(FPL_ENABLE_AUDIO)
         size_t audioMemoryOffset = 0;
         if(initFlags & InitFlags::Audio) {
-            platformAppStateSize += SIZE_PADDING;
+            platformAppStateSize += platform::SIZE_PADDING;
             audioMemoryOffset = platformAppStateSize;
             platformAppStateSize += sizeof(common_audio::AudioState);
         }
@@ -11325,10 +11340,12 @@ namespace fpl {
 #	if defined(FPL_ENABLE_AUDIO)
 		if(appState->initFlags & InitFlags::Audio) {
             appState->audio.mem = (uint8_t *)platformAppStateMemory + audioMemoryOffset;
-            appState->audio.memSize = sizeof(common_video::AudioState);
+            appState->audio.memSize = sizeof(common_audio::AudioState);
 			const char *audioDriverName = audio::GetAudioDriverString(initSettings.audio.driver);
 			FPL_LOG("Core", "Init Audio with Driver '%s':", audioDriverName);
-			if(common_audio::InitAudio(initSettings.audio) != audio::AudioResult::Success) {
+			common_audio::AudioState *audioState = common_audio::GetAudioState(appState);
+			FPL_ASSERT(audioState != nullptr);
+			if(common_audio::InitAudio(initSettings.audio, audioState) != audio::AudioResult::Success) {
 				FPL_LOG("Core", "Failed initializing Audio Driver '%s'!", audioDriverName);
 				common::PushError("Failed initialization audio with settings (Driver=%s, Format=%s, SampleRate=%d, Channels=%d, BufferSize=%d)", audioDriverName, audio::GetAudioFormatString(initSettings.audio.deviceFormat.type), initSettings.audio.deviceFormat.sampleRate, initSettings.audio.deviceFormat.channels);
 				common_init::ReleasePlatformStates(initState, appState);

@@ -284,10 +284,10 @@ static void TestPaths() {
 		fpl::paths::ExtractFilePath(exeFilePathBuffer, extractedPathBuffer, FPL_ARRAYCOUNT(extractedPathBuffer));
 		ft::Msg("Extracted path:\n%s\n", extractedPathBuffer);
 
-		char *exeFileName = fpl::paths::ExtractFileName(exeFilePathBuffer);
+		const char *exeFileName = fpl::paths::ExtractFileName(exeFilePathBuffer);
 		ft::Msg("Extracted filename:\n%s\n", exeFileName);
 
-		char *exeFileExt = fpl::paths::ExtractFileExtension(exeFilePathBuffer);
+		const char *exeFileExt = fpl::paths::ExtractFileExtension(exeFilePathBuffer);
 		ft::Msg("Extracted extension:\n%s\n", exeFileExt);
 
 		char combinedPathBuffer[1024 * 10] = {};

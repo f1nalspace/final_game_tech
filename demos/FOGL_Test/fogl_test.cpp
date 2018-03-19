@@ -22,7 +22,7 @@ static GLuint CreateShaderType(GLenum type, const char *source) {
 	if (!compileResult) {
 		GLint infoLen;
 		glGetShaderiv(shaderId, GL_INFO_LOG_LENGTH, &infoLen);
-		char *info = (char *)MemoryStackAllocate(infoLen);
+		char *info = (char *)FPL_STACKALLOCATE(infoLen);
 		glGetShaderInfoLog(shaderId, infoLen, &infoLen, info);
 		ConsoleFormatError("Failed compiling %s shader!\n", (type == GL_VERTEX_SHADER ? "vertex" : "fragment"));
 		ConsoleFormatError("%s\n", info);
@@ -48,7 +48,7 @@ static GLuint CreateShaderProgram(const char *name, const char *vertexSource, co
 		GLint infoLen;
 		glGetProgramiv(programId, GL_INFO_LOG_LENGTH, &infoLen);
 
-		char *info = (char *)MemoryStackAllocate(infoLen);
+		char *info = (char *)FPL_STACKALLOCATE(infoLen);
 		glGetProgramInfoLog(programId, infoLen, &infoLen, info);
 		ConsoleFormatError("Failed linking '%s' shader!\n", name);
 		ConsoleFormatError("%s\n", info);
