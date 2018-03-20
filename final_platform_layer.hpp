@@ -10245,7 +10245,7 @@ namespace fpl {
 				case VideoDriverType::OpenGL:
 				{
 #				if defined(FPL_PLATFORM_WIN32)
-					drivers::Win32UnloadVideoOpenGLApi(videoState->win32.opengl.glApi);
+					drivers::Win32UnloadVideoOpenGLApi(videoState->win32.opengl.api);
 #				elif defined(FPL_SUBPLATFORM_X11)
                     drivers::X11UnloadVideoOpenGLApi(videoState->x11.opengl.api);
 #				endif
@@ -10274,7 +10274,7 @@ namespace fpl {
 				case VideoDriverType::OpenGL:
 				{
 #				if defined(FPL_PLATFORM_WIN32)
-					result = drivers::Win32LoadVideoOpenGLApi(videoState->win32.opengl.glApi);
+					result = drivers::Win32LoadVideoOpenGLApi(videoState->win32.opengl.api);
 #				elif defined(FPL_SUBPLATFORM_X11)
                     result = drivers::X11LoadVideoOpenGLApi(videoState->x11.opengl.api);
 #				endif
