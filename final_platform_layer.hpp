@@ -141,8 +141,8 @@ SOFTWARE.
 	- Fixed: Get rid of const char* to char* warnings for Get*DriverString() functions
 	- Fixed: [Win32] Icon was not default application icon
 	- Fixed: paths::ExtractFileName and paths::ExtractFileExtension was not returning const char*
-	- New: [X11][Window] Implemented X11 window creation and handling
-	- New: [X11][OpenGL] Implemented X11/GLX video driver
+	- New: [X11][Window] Experimental X11 window creation and handling
+	- New: [X11][OpenGL] Experimental X11/GLX video driver
 	- New: [POSIX] Implemented all remaining posix functions
 	- New: Introduced debug logging
 	- New: Added FPL_ALIGNMENT_OFFSET macro
@@ -900,7 +900,7 @@ SOFTWARE.
 
 //! Returns the offset in bytes to a field in a structure
 #define FPL_OFFSETOF(type, field) ((size_t)(&(((type*)(0))->field)))
-            
+
 //! Returns the offset for the value to satisfy the given alignment boundary
 #define FPL_ALIGNMENT_OFFSET(value, alignment) ( (((alignment) > 1) && (((value) & ((alignment) - 1)) != 0)) ? ((alignment) - ((value) & (alignment - 1))) : 0)           
 //! Returns the given size extended o to satisfy the given alignment boundary
@@ -3419,17 +3419,11 @@ namespace fpl {
 		fpl_constant char FILE_EXT_SEPARATOR = '.';
 #	endif
 
-        // One cacheline worth of padding
-        fpl_constant size_t SIZE_PADDING = 64;
+		// One cacheline worth of padding
+		fpl_constant size_t SIZE_PADDING = 64;
 
 		struct PlatformAppState;
 		fpl_globalvar PlatformAppState* global__AppState = nullptr;
-
-#	if defined(FPL_ENABLE_WINDOW)
-		// @NOTE(final): This is only used for Win32 to prepare a HWND for OpenGL
-#		define FPL_FUNC_SETUP_WINDOW_FOR_VIDEO(name) bool name(const VideoSettings &videoSettings, platform::PlatformAppState *appState)
-		typedef FPL_FUNC_SETUP_WINDOW_FOR_VIDEO(callback_SetupWindowForVideo);
-#	endif // defined(FPL_ENABLE_WINDOW)
 	}
 
 	namespace common {
@@ -4270,7 +4264,7 @@ namespace fpl {
 			fpl_func_x11_XUnmapWindow *XUnmapWindow;
 			fpl_func_x11_XStoreName *XStoreName;
 			fpl_func_x11_XDefaultVisual *XDefaultVisual;
-            fpl_func_x11_XDefaultDepth *XDefaultDepth;
+			fpl_func_x11_XDefaultDepth *XDefaultDepth;
 			fpl_func_x11_XSetErrorHandler *XSetErrorHandler;
 		};
 
@@ -4308,7 +4302,7 @@ namespace fpl {
 					FPL_POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, x11Api.XUnmapWindow, fpl_func_x11_XUnmapWindow, "XUnmapWindow");
 					FPL_POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, x11Api.XStoreName, fpl_func_x11_XStoreName, "XStoreName");
 					FPL_POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, x11Api.XDefaultVisual, fpl_func_x11_XDefaultVisual, "XDefaultVisual");
-                    FPL_POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, x11Api.XDefaultDepth, fpl_func_x11_XDefaultDepth, "XDefaultDepth");
+					FPL_POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, x11Api.XDefaultDepth, fpl_func_x11_XDefaultDepth, "XDefaultDepth");
 					FPL_POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, x11Api.XSetErrorHandler, fpl_func_x11_XSetErrorHandler, "XSetErrorHandler");
 					result = true;
 					break;
@@ -4317,13 +4311,23 @@ namespace fpl {
 			}
 			return(result);
 		}
-		
+
 		struct X11SubplatformState {
-            X11Api api;
-        };
-		       
-        struct X11WindowState {
-        };
+			X11Api api;
+		};
+
+		struct X11WindowState {
+			Display* display;
+			int screen;
+			Window root;
+			Colormap colorMap;
+			Window window;
+		};
+
+		struct X11PreWindowSetupResult {
+			Visual *visual;
+			int colorDepth;
+		};
 
 	} // subplatform_x11
 } // fpl
@@ -4368,15 +4372,15 @@ namespace fpl {
 			volatile uint32_t pushCount;
 		};
 
-        struct PlatformWindowState {
-            EventQueue eventQueue;
-            union {
+		struct PlatformWindowState {
+			EventQueue eventQueue;
+			union {
 #		if defined(FPL_PLATFORM_WIN32)
-			platform_win32::Win32WindowState win32;
+				platform_win32::Win32WindowState win32;
 #       elif defined(FPL_SUBPLATFORM_X11)
-            subplatform_x11::X11WindowState x11;
+				subplatform_x11::X11WindowState x11;
 #		endif
-            };
+			};
 		};
 #	endif
 
@@ -4403,7 +4407,7 @@ namespace fpl {
 			subplatform_posix::PosixAppState posix;
 #       endif
 #       if defined(FPL_SUBPLATFORM_X11)
-            subplatform_x11::X11SubplatformState x11;
+			subplatform_x11::X11SubplatformState x11;
 #       endif
 
 #		if defined(FPL_ENABLE_WINDOW)
@@ -4433,7 +4437,7 @@ namespace fpl {
 
 #	if defined(FPL_ENABLE_WINDOW)
 		fpl_internal_inline void PushEvent(const window::Event &event) {
-            PlatformAppState *appState = global__AppState;
+			PlatformAppState *appState = global__AppState;
 			FPL_ASSERT(appState != nullptr);
 			EventQueue &eventQueue = appState->window.eventQueue;
 			if(eventQueue.pushCount < MAX_EVENT_COUNT) {
@@ -4442,6 +4446,25 @@ namespace fpl {
 				eventQueue.events[eventIndex] = event;
 			}
 		}
+
+		union PreSetupWindowResult {
+#		if defined(FPL_SUBPLATFORM_X11)
+			subplatform_x11::X11PreWindowSetupResult x11;
+#		endif
+		};
+
+		// @NOTE(final): Callback used for setup a window before it is created
+#		define FPL_FUNC_PRE_SETUP_WINDOW(name) bool name(platform::PlatformAppState *appState, const InitFlags initFlags, const Settings &initSettings, platform::PreSetupWindowResult &outResult)
+		typedef FPL_FUNC_PRE_SETUP_WINDOW(callback_PreSetupWindow);
+
+		// @NOTE(final): Callback used for setup a window after it was created
+#		define FPL_FUNC_POST_SETUP_WINDOW(name) bool name(platform::PlatformAppState *appState, const InitFlags initFlags, const Settings &initSettings)
+		typedef FPL_FUNC_POST_SETUP_WINDOW(callback_PostSetupWindow);
+
+		struct SetupWindowCallbacks {
+			callback_PreSetupWindow *preSetup;
+			callback_PostSetupWindow *postSetup;
+		};
 #endif // FPL_ENABLE_WINDOW
 
 	} // platform
@@ -5862,7 +5885,7 @@ namespace fpl {
 			return (result);
 		}
 
-		fpl_internal bool Win32InitWindow(const Settings &initSettings, WindowSettings &currentWindowSettings, platform::PlatformAppState *platAppState, Win32AppState &appState, Win32WindowState &windowState, platform::callback_SetupWindowForVideo *setupWindowForVideoCallback) {
+		fpl_internal bool Win32InitWindow(const Settings &initSettings, WindowSettings &currentWindowSettings, platform::PlatformAppState *platAppState, Win32AppState &appState, Win32WindowState &windowState, const platform::SetupWindowCallbacks &setupCallbacks) {
 			const Win32Api &wapi = appState.winApi;
 			const WindowSettings &initWindowSettings = initSettings.window;
 
@@ -5951,12 +5974,9 @@ namespace fpl {
 				return false;
 			}
 
-			// Prepare video if needed
-			if(platAppState->initFlags & InitFlags::Video) {
-				if(setupWindowForVideoCallback != nullptr) {
-					const VideoSettings &initVideoSettings = initSettings.video;
-					setupWindowForVideoCallback(initVideoSettings, platAppState);
-				}
+			// Call post window setup callback
+			if(setupCallbacks.postSetup != nullptr) {
+				setupCallbacks.postSetup(platAppState, platAppState->initFlags, initSettings);
 			}
 
 			// Enter fullscreen if needed
@@ -8635,13 +8655,88 @@ namespace fpl {
 			}
 			return true;
 		}
-		
-		fpl_internal void X11ReleaseWindow(const X11SubplatformState &subplatform, X11WindowState &windowState) {
-        }
 
-        fpl_internal bool X11InitWindow(const Settings &initSettings, WindowSettings &currentWindowSettings, platform::PlatformAppState *platAppState, X11SubplatformState &subplatform, X11WindowState &windowState) {
-            return false;
-        }
+		fpl_internal void X11ReleaseWindow(const X11SubplatformState &subplatform, X11WindowState &windowState) {
+			const X11Api &x11Api = subplatform.api;
+			if(windowState.window) {
+				x11Api.XDestroyWindow(windowState.display, windowState.window);
+				windowState.window = 0;
+			}
+			if(windowState.colorMap) {
+				x11Api.XFreeColormap(windowState.display, windowState.colorMap);
+				windowState.colorMap = 0;
+			}
+			if(windowState.display) {
+				x11Api.XCloseDisplay(windowState.display);
+				windowState.display = nullptr;
+			}
+			windowState = {};
+		}
+
+		fpl_internal bool X11InitWindow(const Settings &initSettings, WindowSettings &currentWindowSettings, platform::PlatformAppState *appState, X11SubplatformState &subplatform, X11WindowState &windowState, const platform::SetupWindowCallbacks &setupCallbacks) {
+			const X11Api &x11Api = subplatform.api;
+			windowState.display = x11Api.XOpenDisplay(nullptr);
+			if(windowState.display == nullptr) {
+				return false;
+			}
+
+			windowState.screen = x11Api.XDefaultScreen(windowState.display);
+
+			windowState.root = x11Api.XRootWindow(windowState.display, windowState.screen);
+
+			bool usePreSetupWindow = false;
+			platform::PreSetupWindowResult setupResult = {};
+			if(setupCallbacks.preSetup != nullptr) {
+				usePreSetupWindow = setupCallbacks.preSetup(appState, appState->initFlags, initSettings, setupResult);
+			}
+
+			Visual *visual = nullptr;
+			int colorDepth = 0;
+			Colormap colormap;
+			if(usePreSetupWindow) {
+				FPL_ASSERT(setupResult.x11.visual != nullptr);
+				visual = setupResult.x11.visual;
+				colorDepth = setupResult.x11.colorDepth;
+				colormap = x11Api.XCreateColormap(windowState.display, windowState.root, visual, AllocNone);
+			} else {
+				colormap = x11Api.XDefaultColormap(windowState.display, windowState.root);
+				visual = x11Api.XDefaultVisual(windowState.display, windowState.root);
+				colorDepth = x11Api.XDefaultDepth(windowState.display, windowState.root);
+			}
+
+			windowState.colorMap = colormap;
+
+			XSetWindowAttributes swa;
+			swa.colormap = colormap;
+			swa.event_mask = StructureNotifyMask;
+
+			uint32_t windowWidth = 640;
+			uint32_t windowHeight = 640;
+
+			windowState.window = x11Api.XCreateWindow(windowState.display,
+													  windowState.root,
+													  0,
+													  0,
+													  windowWidth,
+													  windowHeight,
+													  0,
+													  colorDepth,
+													  InputOutput,
+													  visual,
+													  CWColormap | CWEventMask,
+													  &swa);
+			if(!windowState.window) {
+				X11ReleaseWindow(subplatform, windowState);
+				return false;
+			}
+
+			char nameBuffer[1024] = {};
+			strings::CopyAnsiString("Unnamed FPL X11 Window", nameBuffer, FPL_ARRAYCOUNT(nameBuffer));
+			x11Api.XStoreName(windowState.display, windowState.window, nameBuffer);
+			x11Api.XMapWindow(windowState.display, windowState.window);
+
+			return true;
+		}
 	} // subplatform_x11
 
 	namespace window {
@@ -8974,7 +9069,7 @@ namespace fpl {
 			Win32OpenGLApi api;
 		};
 
-		fpl_internal bool Win32PrepareWindowForOpenGL(platform_win32::Win32AppState &appState, const platform_win32::Win32WindowState &windowState, const VideoSettings &videoSettings) {
+		fpl_internal bool Win32PostSetupWindowForOpenGL(platform_win32::Win32AppState &appState, const platform_win32::Win32WindowState &windowState, const VideoSettings &videoSettings) {
 			const platform_win32::Win32Api &wapi = appState.winApi;
 
 			//
@@ -9233,17 +9328,99 @@ namespace fpl {
 			}
 			return (result);
 		}
-		
+
+		struct X11VideoOpenGLVisual {
+			XVisualInfo *visualInfo;
+		};
+
 		struct X11VideoOpenGLState {
-            X11VideoOpenGLApi api;
-        };
-        
-        fpl_internal void X11ReleaseVideoOpenGL(X11VideoOpenGLState &glState) {
-        }
-        
-        fpl_internal bool X11InitVideoOpenGL(const subplatform_x11::X11SubplatformState &subplatform, const subplatform_x11::X11WindowState &windowState, const VideoSettings &videoSettings, X11VideoOpenGLState &glState) {
-            return false;
-        }
+			X11VideoOpenGLApi api;
+			X11VideoOpenGLVisual visual;
+			GLXContext context;
+			bool isActiveContext;
+		};
+
+		fpl_internal void X11ReleaseVisualForVideoOpenGL(const subplatform_x11::X11Api &x11Api, X11VideoOpenGLVisual &visual) {
+			if(visual.visualInfo != nullptr) {
+				x11Api.XFree(visual.visualInfo);
+				visual.visualInfo = nullptr;
+			}
+		}
+
+		fpl_internal bool X11InitVisualForVideoOpenGL(const subplatform_x11::X11Api &x11Api, const subplatform_x11::X11WindowState &windowState, const X11VideoOpenGLApi &glApi, X11VideoOpenGLVisual &visual) {
+			FPL_ASSERT(visual.visualInfo == nullptr);
+
+			int attr[32];
+			int* p = attr;
+			*p++ = GLX_X_VISUAL_TYPE; *p++ = GLX_TRUE_COLOR;
+			*p++ = GLX_DOUBLEBUFFER;  *p++ = True;
+			*p++ = GLX_RED_SIZE;      *p++ = 8;
+			*p++ = GLX_GREEN_SIZE;    *p++ = 8;
+			*p++ = GLX_BLUE_SIZE;     *p++ = 8;
+			*p++ = GLX_DEPTH_SIZE;    *p++ = 24;
+			*p++ = GLX_STENCIL_SIZE;  *p++ = 8;
+			*p++ = 0;
+
+			int configCount = 0;
+			GLXFBConfig *configs = glApi.glXChooseFBConfig(windowState.display, windowState.screen, attr, &configCount);
+			if(configs == nullptr || !configCount) {
+				X11ReleaseVisualForVideoOpenGL(x11Api, visual);
+				return false;
+			}
+
+			GLXFBConfig firstConfig = configs[0];
+			XVisualInfo *visualInfo = glApi.glXGetVisualFromFBConfig(windowState.display, firstConfig);
+            x11Api.XFree(configs);
+
+            if(visualInfo == nullptr) {
+				X11ReleaseVisualForVideoOpenGL(x11Api, visual);
+				return false;
+			}
+			
+            visual.visualInfo = visualInfo;
+
+			return true;
+		}
+
+		fpl_internal void X11ReleaseVideoOpenGL(const subplatform_x11::X11WindowState &windowState, X11VideoOpenGLState &glState) {
+			// @NOTE(final): Visual is released before the api is released.
+			// Do never release it here!
+
+			const X11VideoOpenGLApi &glApi = glState.api;
+
+			if(glState.isActiveContext) {
+				glApi.glXMakeCurrent(windowState.display, 0, nullptr);
+				glState.isActiveContext = false;
+			}
+
+			if(glState.context != nullptr) {
+				glApi.glXDestroyContext(windowState.display, glState.context);
+				glState.context = nullptr;
+			}
+		}
+
+		fpl_internal bool X11InitVideoOpenGL(const subplatform_x11::X11SubplatformState &subplatform, const subplatform_x11::X11WindowState &windowState, const VideoSettings &videoSettings, X11VideoOpenGLState &glState) {
+			const X11VideoOpenGLApi &glApi = glState.api;
+			const X11VideoOpenGLVisual &vis = glState.visual;
+
+			if(vis.visualInfo == nullptr) {
+				return false;
+			}
+
+			glState.context = glApi.glXCreateContext(windowState.display, vis.visualInfo, nullptr, GL_TRUE);
+			if(glState.context == nullptr) {
+				return false;
+			}
+
+			if(!glApi.glXMakeCurrent(windowState.display, windowState.window, glState.context)) {
+				X11ReleaseVideoOpenGL(windowState, glState);
+				return false;
+			}
+
+			glState.isActiveContext = true;
+
+			return true;
+		}
 #	endif // FPL_SUBPLATFORM_X11
 
 #endif // FPL_ENABLE_VIDEO_OPENGL
@@ -9971,35 +10148,35 @@ namespace fpl {
 			const platform_win32::Win32Api &wapi = platform::global__AppState->win32.winApi;
 #		endif
 
-            if(IsAudioDeviceInitialized(audioState)) {
+			if(IsAudioDeviceInitialized(audioState)) {
 
-                // Wait until the audio device is stopped
-                if(IsAudioDeviceStarted(audioState)) {
-                    while(audio::StopAudio() == audio::AudioResult::DeviceBusy) {
-                        threading::ThreadSleep(1);
-                    }
-                }
+				// Wait until the audio device is stopped
+				if(IsAudioDeviceStarted(audioState)) {
+					while(audio::StopAudio() == audio::AudioResult::DeviceBusy) {
+						threading::ThreadSleep(1);
+					}
+				}
 
-                // Putting the device into an uninitialized state will make the worker thread return.
-                AudioSetDeviceState(*audioState, AudioDeviceState::Uninitialized);
+				// Putting the device into an uninitialized state will make the worker thread return.
+				AudioSetDeviceState(*audioState, AudioDeviceState::Uninitialized);
 
-                // Wake up the worker thread and wait for it to properly terminate.
-                SignalSet(audioState->wakeupSignal);
-                ThreadWaitForOne(audioState->workerThread);
-                ThreadDestroy(audioState->workerThread);
+				// Wake up the worker thread and wait for it to properly terminate.
+				SignalSet(audioState->wakeupSignal);
+				ThreadWaitForOne(audioState->workerThread);
+				ThreadDestroy(audioState->workerThread);
 
-                // Release signals and thread
-                threading::SignalDestroy(audioState->stopSignal);
-                threading::SignalDestroy(audioState->startSignal);
-                threading::SignalDestroy(audioState->wakeupSignal);
-                threading::MutexDestroy(audioState->lock);
+				// Release signals and thread
+				threading::SignalDestroy(audioState->stopSignal);
+				threading::SignalDestroy(audioState->startSignal);
+				threading::SignalDestroy(audioState->wakeupSignal);
+				threading::MutexDestroy(audioState->lock);
 
-                // Release audio device
-                AudioReleaseDevice(*audioState);
-                
-                // Clear audio state
-                audioState = {};
-            }
+				// Release audio device
+				AudioReleaseDevice(*audioState);
+
+				// Clear audio state
+				audioState = {};
+			}
 
 #		if defined(FPL_PLATFORM_WIN32)
 			wapi.ole.coUninitialize();
@@ -10148,7 +10325,7 @@ namespace fpl {
 #	elif defined(FPL_SUBPLATFORM_X11)
 		struct X11VideoState {
 #		if defined(FPL_ENABLE_VIDEO_OPENGL)
-            drivers::X11VideoOpenGLState opengl;
+			drivers::X11VideoOpenGLState opengl;
 #		endif
 		};
 #	endif // FPL_PLATFORM
@@ -10174,70 +10351,48 @@ namespace fpl {
 			return(videoState);
 		}
 
-		fpl_internal void ReleaseVideo(platform::PlatformAppState *appState, VideoState *videoState) {
+		fpl_internal void ShutdownVideo(platform::PlatformAppState *appState, VideoState *videoState) {
 			FPL_LOG_BLOCK;
 			FPL_ASSERT(appState != nullptr);
 			if(videoState != nullptr) {
 				switch(videoState->activeDriver) {
-#					if defined(FPL_ENABLE_VIDEO_OPENGL)
+#				if defined(FPL_ENABLE_VIDEO_OPENGL)
 					case VideoDriverType::OpenGL:
 					{
-#						if defined(FPL_PLATFORM_WIN32)
+#					if defined(FPL_PLATFORM_WIN32)
 						drivers::Win32ReleaseVideoOpenGL(videoState->win32.opengl);
-#						elif defined(FPL_SUBPLATFORM_X11)
-                        drivers::X11ReleaseVideoOpenGL(videoState->x11.opengl);
-#						endif
+#					elif defined(FPL_SUBPLATFORM_X11)
+						drivers::X11ReleaseVideoOpenGL(appState->window.x11, videoState->x11.opengl);
+#					endif
 					} break;
-#					endif // FPL_ENABLE_VIDEO_OPENGL
+#				endif // FPL_ENABLE_VIDEO_OPENGL
 
-#					if defined(FPL_ENABLE_VIDEO_SOFTWARE)
+#				if defined(FPL_ENABLE_VIDEO_SOFTWARE)
 					case VideoDriverType::Software:
 					{
-#						if defined(FPL_PLATFORM_WIN32)
+#					if defined(FPL_PLATFORM_WIN32)
 						drivers::Win32ReleaseVideoSoftware(videoState->win32.software);
-#						elif defined(FPL_SUBPLATFORM_X11)
-#						endif
+#					elif defined(FPL_SUBPLATFORM_X11)
+#					endif
 					} break;
-#					endif // FPL_ENABLE_VIDEO_SOFTWARE
+#				endif // FPL_ENABLE_VIDEO_SOFTWARE
 
 					default:
 					{
 					} break;
 				}
 
-#				if defined(FPL_ENABLE_VIDEO_SOFTWARE)
+#			if defined(FPL_ENABLE_VIDEO_SOFTWARE)
 				fpl::video::VideoBackBuffer &backbuffer = videoState->softwareBackbuffer;
 				if(backbuffer.pixels != nullptr) {
 					memory::MemoryAlignedFree(backbuffer.pixels);
 				}
 				backbuffer = {};
-#				endif
-                
-                *videoState = {};
+#			endif
 			}
 		}
 
-		fpl_internal FPL_FUNC_SETUP_WINDOW_FOR_VIDEO(PrepareWindowForVideoAfter) {
-			switch(videoSettings.driver) {
-#				if defined(FPL_ENABLE_VIDEO_OPENGL)
-				case VideoDriverType::OpenGL:
-				{
-#				if defined(FPL_PLATFORM_WIN32)
-					if(!drivers::Win32PrepareWindowForOpenGL(appState->win32, appState->window.win32, videoSettings)) {
-						return false;
-					}
-#				endif
-				} break;
-#				endif // FPL_ENABLE_VIDEO_OPENGL
-
-				default:
-				{
-				} break;
-			}
-			return true;
-		}
-
-		fpl_internal void UnloadVideoApi(VideoState *videoState) {
+		fpl_internal void ReleaseVideoState(platform::PlatformAppState *appState, VideoState *videoState) {
 			FPL_LOG_BLOCK;
 
 			switch(videoState->activeDriver) {
@@ -10247,7 +10402,8 @@ namespace fpl {
 #				if defined(FPL_PLATFORM_WIN32)
 					drivers::Win32UnloadVideoOpenGLApi(videoState->win32.opengl.api);
 #				elif defined(FPL_SUBPLATFORM_X11)
-                    drivers::X11UnloadVideoOpenGLApi(videoState->x11.opengl.api);
+					drivers::X11ReleaseVisualForVideoOpenGL(appState->x11.api, videoState->x11.opengl.visual);
+					drivers::X11UnloadVideoOpenGLApi(videoState->x11.opengl.api);
 #				endif
 				}; break;
 #			endif
@@ -10262,9 +10418,10 @@ namespace fpl {
 				default:
 					break;
 			}
+			videoState = {};
 		}
 
-		fpl_internal bool LoadVideoApi(const VideoDriverType driver, VideoState *videoState) {
+		fpl_internal bool LoadVideoState(const VideoDriverType driver, VideoState *videoState) {
 			FPL_LOG_BLOCK;
 
 			bool result = true;
@@ -10276,15 +10433,8 @@ namespace fpl {
 #				if defined(FPL_PLATFORM_WIN32)
 					result = drivers::Win32LoadVideoOpenGLApi(videoState->win32.opengl.api);
 #				elif defined(FPL_SUBPLATFORM_X11)
-                    result = drivers::X11LoadVideoOpenGLApi(videoState->x11.opengl.api);
+					result = drivers::X11LoadVideoOpenGLApi(videoState->x11.opengl.api);
 #				endif
-				}; break;
-#			endif
-
-#			if defined(FPL_ENABLE_VIDEO_SOFTWARE)
-				case VideoDriverType::Software:
-				{
-					// Nothing todo
 				}; break;
 #			endif
 
@@ -10304,7 +10454,7 @@ namespace fpl {
 			videoState->activeDriver = driver;
 
 			// Allocate backbuffer context if needed
-#			if defined(FPL_ENABLE_VIDEO_SOFTWARE)
+#		if defined(FPL_ENABLE_VIDEO_SOFTWARE)
 			if(driver == VideoDriverType::Software) {
 				fpl::video::VideoBackBuffer &backbuffer = videoState->softwareBackbuffer;
 				backbuffer.width = windowWidth;
@@ -10315,7 +10465,7 @@ namespace fpl {
 				backbuffer.pixels = (uint32_t *)memory::MemoryAlignedAllocate(size, 4);
 				if(backbuffer.pixels == nullptr) {
 					common::PushError("Failed allocating video software backbuffer of size %xu bytes", size);
-					ReleaseVideo(appState, videoState);
+					ShutdownVideo(appState, videoState);
 					return false;
 				}
 
@@ -10330,7 +10480,7 @@ namespace fpl {
 					}
 				}
 			}
-#			endif // FPL_ENABLE_VIDEO_SOFTWARE
+#		endif // FPL_ENABLE_VIDEO_SOFTWARE
 
 			bool videoInitResult = false;
 			switch(driver) {
@@ -10340,7 +10490,7 @@ namespace fpl {
 #				if defined(FPL_PLATFORM_WIN32)
 					videoInitResult = drivers::Win32InitVideoOpenGL(appState->win32, appState->window.win32, videoSettings, videoState->win32.opengl);
 #				elif defined(FPL_SUBPLATFORM_X11)
-                    videoInitResult = drivers::X11InitVideoOpenGL(appState->x11, appState->window.x11, videoSettings, videoState->x11.opengl);
+					videoInitResult = drivers::X11InitVideoOpenGL(appState->x11, appState->window.x11, videoSettings, videoState->x11.opengl);
 #				endif
 				} break;
 #			endif // FPL_ENABLE_VIDEO_OPENGL
@@ -10362,7 +10512,7 @@ namespace fpl {
 			}
 			if(!videoInitResult) {
 				FPL_ASSERT(fpl::GetPlatformErrorCount() > 0);
-				ReleaseVideo(appState, videoState);
+				ShutdownVideo(appState, videoState);
 				return false;
 			}
 
@@ -10383,16 +10533,76 @@ namespace fpl {
 #if defined(FPL_ENABLE_WINDOW)
 namespace fpl {
 	namespace common_window {
-		fpl_internal bool InitWindow(const Settings &initSettings, WindowSettings &currentWindowSettings, platform::PlatformAppState *appState, platform::callback_SetupWindowForVideo *setupWindowForVideoCallback) {
+		fpl_internal FPL_FUNC_PRE_SETUP_WINDOW(PreSetupWindowDefault) {
+			FPL_ASSERT(appState != nullptr);
+			bool result = false;
+
+#		if defined(FPL_ENABLE_VIDEO)
+			if(initFlags & InitFlags::Video) {
+				common_video::VideoState *videoState = common_video::GetVideoState(appState);
+				switch(initSettings.video.driver) {
+#				if defined(FPL_ENABLE_VIDEO_OPENGL)
+					case VideoDriverType::OpenGL:
+					{
+#					if defined(FPL_SUBPLATFORM_X11)
+						drivers::X11VideoOpenGLVisual &vis = videoState->x11.opengl.visual;
+						result = drivers::X11InitVisualForVideoOpenGL(appState->x11.api, appState->window.x11, videoState->x11.opengl.api, vis);
+						if(result) {
+							FPL_ASSERT(vis.visualInfo != nullptr);
+							outResult.x11.visual = vis.visualInfo->visual;
+							outResult.x11.colorDepth = vis.visualInfo->depth;
+						}
+#					endif
+					} break;
+#				endif // FPL_ENABLE_VIDEO_OPENGL
+
+					default:
+					{
+					} break;
+				}
+			}
+#		endif // FPL_ENABLE_VIDEO
+
+			return(result);
+		}
+
+		fpl_internal FPL_FUNC_POST_SETUP_WINDOW(PostSetupWindowDefault) {
+			FPL_ASSERT(appState != nullptr);
+
+#		if defined(FPL_ENABLE_VIDEO)
+			if(initFlags & InitFlags::Video) {
+				switch(initSettings.video.driver) {
+#				if defined(FPL_ENABLE_VIDEO_OPENGL)
+					case VideoDriverType::OpenGL:
+					{
+#					if defined(FPL_PLATFORM_WIN32)
+						if(!drivers::Win32PostSetupWindowForOpenGL(appState->win32, appState->window.win32, initSettings.video)) {
+							return false;
+						}
+#					endif
+					} break;
+#				endif // FPL_ENABLE_VIDEO_OPENGL
+
+					default:
+					{
+					} break;
+				}
+			}
+#		endif // FPL_ENABLE_VIDEO
+
+			return false;
+		}
+
+		fpl_internal bool InitWindow(const Settings &initSettings, WindowSettings &currentWindowSettings, platform::PlatformAppState *appState, const platform::SetupWindowCallbacks &setupCallbacks) {
 			FPL_LOG_BLOCK;
 
 			bool result = false;
 			if(appState != nullptr) {
-#		if defined(FPL_PLATFORM_WIN32)
-				result = platform_win32::Win32InitWindow(initSettings, currentWindowSettings, appState, appState->win32, appState->window.win32, setupWindowForVideoCallback);
-#       elif defined(FPL_SUBPLATFORM_X11)
-                result = subplatform_x11::X11InitWindow(initSettings, currentWindowSettings, appState, appState->x11, appState->window.x11);
-#       endif
+#			if defined(FPL_PLATFORM_WIN32)
+				result = platform_win32::Win32InitWindow(initSettings, currentWindowSettings, appState, appState->win32, appState->window.win32, setupCallbacks);
+#			elif defined(FPL_SUBPLATFORM_X11)
+				result = subplatform_x11::X11InitWindow(initSettings, currentWindowSettings, appState, appState->x11, appState->window.x11, setupCallbacks);
+#			endif
 			}
 			return (result);
 		}
@@ -10401,11 +10611,11 @@ namespace fpl {
 			FPL_LOG_BLOCK;
 
 			if(appState != nullptr) {
-#		if defined(FPL_PLATFORM_WIN32)
+#			if defined(FPL_PLATFORM_WIN32)
 				platform_win32::Win32ReleaseWindow(initState.win32, appState->win32, appState->window.win32);
-#       elif defined(FPL_SUBPLATFORM_X11)
-                subplatform_x11::X11ReleaseWindow(appState->x11, appState->window.x11);
-#		endif
+#			elif defined(FPL_SUBPLATFORM_X11)
+				subplatform_x11::X11ReleaseWindow(appState->x11, appState->window.x11);
+#			endif
 			}
 		}
 	} // common_window
@@ -10640,7 +10850,7 @@ namespace fpl {
 			if(video.mem != nullptr) {
 #			if defined(FPL_ENABLE_VIDEO_SOFTWARE)
 				if(appState->currentSettings.video.driver == VideoDriverType::Software) {
-					common_video::ReleaseVideo(appState, videoState);
+					common_video::ShutdownVideo(appState, videoState);
 					result = common_video::InitVideo(VideoDriverType::Software, appState->currentSettings.video, width, height, appState, videoState);
 				}
 #			endif
@@ -10720,18 +10930,19 @@ namespace fpl {
 				FPL_LOG("Core", "Release Audio");
 				common_audio::AudioState *audioState = common_audio::GetAudioState(appState);
 				if(audioState != nullptr) {
+					// @TODO(final): Rename to ShutdownAudio
 					common_audio::ReleaseAudio(audioState);
 				}
 			}
 #		endif
 
-		// Release video
+		// Shutdown video (Release context only)
 #		if defined(FPL_ENABLE_VIDEO)
 			{
-				FPL_LOG("Core", "Release Video");
 				common_video::VideoState *videoState = common_video::GetVideoState(appState);
 				if(videoState != nullptr) {
-					common_video::ReleaseVideo(appState, videoState);
+					FPL_LOG("Core", "Shutdown Video for Driver '%s'", video::GetVideoDriverString(videoState->activeDriver));
+					common_video::ShutdownVideo(appState, videoState);
 				}
 			}
 #		endif
@@ -10744,13 +10955,13 @@ namespace fpl {
 			}
 #		endif
 
-		// Release video state & apis
+		// Release video state
 #		if defined(FPL_ENABLE_VIDEO)
 			{
 				common_video::VideoState *videoState = common_video::GetVideoState(appState);
 				if(videoState != nullptr) {
-					FPL_LOG("Core", "Unload Video API for Driver '%s'", video::GetVideoDriverString(videoState->activeDriver));
-					common_video::UnloadVideoApi(videoState);
+					FPL_LOG("Core", "Release Video for Driver '%s'", video::GetVideoDriverString(videoState->activeDriver));
+					common_video::ReleaseVideoState(appState, videoState);
 				}
 			}
 #		endif
@@ -10772,7 +10983,7 @@ namespace fpl {
 				// Release sub platforms
 				{
 #				if defined(FPL_SUBPLATFORM_X11)
-                    FPL_LOG("Core", "Release X11 Subplatform");
+					FPL_LOG("Core", "Release X11 Subplatform");
 					subplatform_x11::X11ReleaseSubplatform(appState->x11);
 #				endif
 #				if defined(FPL_SUBPLATFORM_POSIX)
@@ -10783,7 +10994,7 @@ namespace fpl {
 
 				// Release platform applicatiom state memory
 				FPL_LOG("Core", "Release allocated Platform App State Memory");
-				memory::MemoryAlignedFree(appState);
+				memory::MemoryFree(appState);
 				platform::global__AppState = nullptr;
 			}
 
@@ -10816,29 +11027,29 @@ namespace fpl {
 
 		// Allocate platform app state memory (By boundary of 16-bytes)
 		size_t platformAppStateSize = FPL_ALIGNED_SIZE(sizeof(platform::PlatformAppState), 16);
-               
-        // Include video/audio state memory in app state memory as well
-        #if defined(FPL_ENABLE_VIDEO)
-        size_t videoMemoryOffset = 0;
-        if(initFlags & InitFlags::Video) {
-            platformAppStateSize += platform::SIZE_PADDING;
-            videoMemoryOffset = platformAppStateSize;
-            platformAppStateSize += sizeof(common_video::VideoState);
-        }
-        #endif
-        
-        #if defined(FPL_ENABLE_AUDIO)
-        size_t audioMemoryOffset = 0;
-        if(initFlags & InitFlags::Audio) {
-            platformAppStateSize += platform::SIZE_PADDING;
-            audioMemoryOffset = platformAppStateSize;
-            platformAppStateSize += sizeof(common_audio::AudioState);
-        }
-        #endif
-        
+
+		// Include video/audio state memory in app state memory as well
+#if defined(FPL_ENABLE_VIDEO)
+		size_t videoMemoryOffset = 0;
+		if(initFlags & InitFlags::Video) {
+			platformAppStateSize += platform::SIZE_PADDING;
+			videoMemoryOffset = platformAppStateSize;
+			platformAppStateSize += sizeof(common_video::VideoState);
+		}
+#endif
+
+#if defined(FPL_ENABLE_AUDIO)
+		size_t audioMemoryOffset = 0;
+		if(initFlags & InitFlags::Audio) {
+			platformAppStateSize += platform::SIZE_PADDING;
+			audioMemoryOffset = platformAppStateSize;
+			platformAppStateSize += sizeof(common_audio::AudioState);
+		}
+#endif
+
 		FPL_LOG("Core", "Allocate Platform App State Memory of size '%zu':", platformAppStateSize);
 		FPL_ASSERT(platform::global__AppState == nullptr);
-		void *platformAppStateMemory = memory::MemoryAlignedAllocate(platformAppStateSize, 16);
+		void *platformAppStateMemory = memory::MemoryAllocate(platformAppStateSize);
 		if(platformAppStateMemory == nullptr) {
 			FPL_LOG("Core", "Failed Allocating Platform App State Memory of size '%zu'", platformAppStateSize);
 			common::PushError("Failed allocating app state memory of size '%zu'", platformAppStateSize);
@@ -10876,8 +11087,8 @@ namespace fpl {
 #	endif // FPL_SUBPLATFORM_POSIX
 
 #	if defined(FPL_SUBPLATFORM_X11)
-        {
-            FPL_LOG("Core", "Initialize X11 Subplatform:");
+		{
+			FPL_LOG("Core", "Initialize X11 Subplatform:");
 			if(!subplatform_x11::X11InitSubplatform(appState->x11)) {
 				FPL_LOG("Core", "Failed initializing X11 Subplatform!");
 				common::PushError("Failed initializing X11 Subplatform");
@@ -10885,7 +11096,7 @@ namespace fpl {
 				return false;
 			}
 			FPL_LOG("Core", "Successfully initialized X11 Subplatform");
-        }
+		}
 #	endif // FPL_SUBPLATFORM_X11
 
 		// Initialize the actual platform (There can only be one at a time!)
@@ -10908,8 +11119,8 @@ namespace fpl {
 #	if defined(FPL_ENABLE_VIDEO)
 		if(appState->initFlags & InitFlags::Video) {
 			FPL_LOG("Core", "Init video state:");
-            appState->video.mem = (uint8_t *)platformAppStateMemory + videoMemoryOffset;
-            appState->video.memSize = sizeof(common_video::VideoState);
+			appState->video.mem = (uint8_t *)platformAppStateMemory + videoMemoryOffset;
+			appState->video.memSize = sizeof(common_video::VideoState);
 			common_video::VideoState *videoState = common_video::GetVideoState(appState);
 			FPL_ASSERT(videoState != nullptr);
 
@@ -10917,7 +11128,7 @@ namespace fpl {
 			const char *videoDriverString = video::GetVideoDriverString(videoDriver);
 			FPL_LOG("Core", "Load Video API for Driver '%s':", videoDriverString);
 			{
-				if(!common_video::LoadVideoApi(videoDriver, videoState)) {
+				if(!common_video::LoadVideoState(videoDriver, videoState)) {
 					FPL_LOG("Core", "Failed loading Video API for Driver '%s'!", videoDriverString);
 					common_init::ReleasePlatformStates(initState, appState);
 					return false;
@@ -10931,7 +11142,10 @@ namespace fpl {
 #	if defined(FPL_ENABLE_WINDOW)
 		if(appState->initFlags & InitFlags::Window) {
 			FPL_LOG("Core", "Init Window:");
-			if(!common_window::InitWindow(initSettings, appState->currentSettings.window, appState, common_video::PrepareWindowForVideoAfter)) {
+			platform::SetupWindowCallbacks winCallbacks = {};
+			winCallbacks.postSetup = common_window::PostSetupWindowDefault;
+			winCallbacks.preSetup = common_window::PreSetupWindowDefault;
+			if(!common_window::InitWindow(initSettings, appState->currentSettings.window, appState, winCallbacks)) {
 				FPL_LOG("Core", "Failed initializing Window!");
 				common::PushError("Failed initialization window");
 				common_init::ReleasePlatformStates(initState, appState);
@@ -10969,8 +11183,8 @@ namespace fpl {
 	// Init Audio
 #	if defined(FPL_ENABLE_AUDIO)
 		if(appState->initFlags & InitFlags::Audio) {
-            appState->audio.mem = (uint8_t *)platformAppStateMemory + audioMemoryOffset;
-            appState->audio.memSize = sizeof(common_audio::AudioState);
+			appState->audio.mem = (uint8_t *)platformAppStateMemory + audioMemoryOffset;
+			appState->audio.memSize = sizeof(common_audio::AudioState);
 			const char *audioDriverName = audio::GetAudioDriverString(initSettings.audio.driver);
 			FPL_LOG("Core", "Init Audio with Driver '%s':", audioDriverName);
 			common_audio::AudioState *audioState = common_audio::GetAudioState(appState);
