@@ -1261,7 +1261,7 @@ namespace fpl {
 		fpl_common_api void AtomicStorePtr(volatile void **dest, const void *value);
 
 		/** \}*/
-	}
+	} // atomics
 
 	//! Hardware functions
 	namespace hardware {
@@ -1309,7 +1309,7 @@ namespace fpl {
 		fpl_platform_api MemoryInfos GetSystemMemoryInfos();
 
 		/** \}*/
-	}
+	} // hardware
 
 	/**
 	  * \defgroup Settings Settings and configurations
@@ -1508,10 +1508,8 @@ namespace fpl {
 		result.deviceFormat.type = AudioFormatType::S16;
 
 		result.driver = AudioDriverType::None;
-#	if defined(FPL_PLATFORM_WIN32)
-#		if defined(FPL_ENABLE_AUDIO_DIRECTSOUND)
+#	if defined(FPL_ENABLE_AUDIO_DIRECTSOUND)
 		result.driver = AudioDriverType::DirectSound;
-#		endif
 #	endif
 		return(result);
 	}
@@ -1701,7 +1699,7 @@ namespace fpl {
 		fpl_platform_api void DynamicLibraryUnload(DynamicLibraryHandle &handle);
 
 		/** \}*/
-	}
+	} // library
 
 	//! Console functions
 	namespace console {
@@ -1745,7 +1743,7 @@ namespace fpl {
 		fpl_platform_api const char ConsoleWaitForCharInput();
 
 		/** \}*/
-	}
+	} // console
 
 	//! Threading functions
 	namespace threading {
@@ -1975,7 +1973,7 @@ namespace fpl {
 		fpl_platform_api bool SignalSet(SignalHandle &signal);
 
 		/** \}*/
-	}
+	} // threading
 
 	//! Memory allocation, clearing and copy functions
 	namespace memory {
@@ -2030,7 +2028,7 @@ namespace fpl {
 		fpl_common_api void MemoryAlignedFree(void *ptr);
 
 		/** \}*/
-	}
+	} // memory
 
 	//! Timing and measurement functions
 	namespace timings {
@@ -2055,7 +2053,7 @@ namespace fpl {
 		fpl_platform_api uint64_t GetTimeInMilliseconds();
 
 		/** \}*/
-	}
+	} // timings
 
 	//! String functions
 	namespace strings {
@@ -2186,7 +2184,7 @@ namespace fpl {
 		fpl_platform_api char *FormatAnsiString(char *ansiDestBuffer, const uint32_t maxAnsiDestBufferLen, const char *format, ...);
 
 		/** \}*/
-	}
+	} // strings
 
 	//! Files & directory functions and types
 	namespace files {
@@ -2431,7 +2429,7 @@ namespace fpl {
 		fpl_platform_api void ListFilesEnd(FileEntry &lastEntry);
 
 		/** \}*/
-	}
+	} // files
 
 	//! Directory and paths functions
 	namespace paths {
@@ -2502,7 +2500,7 @@ namespace fpl {
 		fpl_common_api char *CombinePath(char *destPath, const uint32_t maxDestPathLen, const uint32_t pathCount, ...);
 
 		/** \}*/
-	}
+	} // paths
 
 #if defined(FPL_ENABLE_WINDOW)
 	//! Window based functions and types
@@ -3026,7 +3024,7 @@ namespace fpl {
 		fpl_platform_api bool SetClipboardText(const wchar_t *wideSource);
 
 		/** \}*/
-	};
+	} // window
 #endif // FPL_ENABLE_WINDOW
 
 #if defined(FPL_ENABLE_VIDEO)
@@ -3124,7 +3122,7 @@ namespace fpl {
 		fpl_common_api void VideoFlip();
 
 		/** \}*/
-	};
+	} // video
 #endif // FPL_ENABLE_VIDEO
 
 #if defined(FPL_ENABLE_AUDIO)
@@ -3276,9 +3274,10 @@ namespace fpl {
 		}
 
 		/** \}*/
-	};
+	} // audio
 #endif // FPL_ENABLE_AUDIO
-}
+
+} // fpl
 
 //
 // Expand all namespaces if the callers wants this
@@ -3424,12 +3423,12 @@ namespace fpl {
 
 		struct PlatformAppState;
 		fpl_globalvar PlatformAppState* global__AppState = nullptr;
-	}
+	} // platform
 
 	namespace common {
 		fpl_internal void PushError(const char *format, ...);
-	}
-}
+	} // common
+} // fpl
 #endif // FPL_PLATFORM_CONSTANTS_DEFINED
 
 // ****************************************************************************
@@ -6222,7 +6221,7 @@ namespace fpl {
 			return (true);
 		}
 
-	} // platform
+	} // platform_win32
 
 	//
 	// Win32 Atomics
@@ -7864,7 +7863,7 @@ namespace fpl {
 #	else
 #		error "This POSIX compiler/platform is not supported!"
 #	endif
-	}
+	} // atomics
 
 	//
 	// POSIX Timings
@@ -7885,7 +7884,7 @@ namespace fpl {
 			uint64_t result = t.tv_sec * 1000 + (uint64_t)(t.tv_nsec / 1.0e6);
 			return(result);
 		}
-	}
+	} // timings
 
 	//
 	// POSIX Threading
@@ -8126,7 +8125,7 @@ namespace fpl {
 			}
 			return(result);
 		}
-	}
+	} // threading
 
 	//
 	// POSIX Library
@@ -8160,14 +8159,14 @@ namespace fpl {
 				handle = {};
 			}
 		}
-	}
+	} // library
 
 
 	//
 	// POSIX Console
 	//
 	namespace console {
-	}
+	} // console
 
 	//
 	// POSIX Memory
@@ -8194,7 +8193,7 @@ namespace fpl {
 			size_t storedSize = *(size_t *)basePtr;
 			::munmap(basePtr, storedSize);
 		}
-	}
+	} // memory
 
 	//
 	// POSIX Files
@@ -8960,28 +8959,14 @@ namespace fpl {
 #if !defined(FPL_VIDEO_DRIVERS_IMPLEMENTED)
 #	define FPL_VIDEO_DRIVERS_IMPLEMENTED
 
-//
-// Includes for drivers must be on root level!
-//
-#	if defined(FPL_ENABLE_VIDEO_OPENGL)
-#		if defined(FPL_SUBPLATFORM_X11)
-#			include <GL/glx.h> // XVisualInfo, GLXContext, GLXDrawable
-#       endif
-#   endif
-
-namespace fpl {
-	namespace drivers {
-
 // ############################################################################
 //
 // > VIDEO_DRIVER_OPENGL_WIN32
 //
 // ############################################################################
-#if defined(FPL_ENABLE_VIDEO_OPENGL)
-#	if defined(FPL_PLATFORM_WIN32)
-		//
-		// OpenGL Constants and Function-Prototypes
-		//
+#if defined(FPL_ENABLE_VIDEO_OPENGL) && defined(FPL_PLATFORM_WIN32)
+namespace fpl {
+	namespace drivers {
 #		define FPL_GL_CONTEXT_FLAG_FORWARD_COMPATIBLE_BIT 0x0001
 #		define FPL_GL_CONTEXT_FLAG_DEBUG_BIT 0x00000002
 #		define FPL_GL_CONTEXT_FLAG_ROBUST_ACCESS_BIT 0x00000004
@@ -9228,17 +9213,20 @@ namespace fpl {
 				glState.renderingContext = nullptr;
 			}
 		}
-#	endif // FPL_PLATFORM_WIN32
-#endif // FPL_ENABLE_VIDEO_OPENGL
+	} // drivers
+} // fpl
+#endif // FPL_ENABLE_VIDEO_OPENGL && FPL_PLATFORM_WIN32
 
 // ############################################################################
 //
 // > VIDEO_DRIVER_OPENGL_X11
 //
 // ############################################################################
-#if defined(FPL_ENABLE_VIDEO_OPENGL)
-#	if defined(FPL_SUBPLATFORM_X11)
-		// GLX function prototypes
+#if defined(FPL_ENABLE_VIDEO_OPENGL) && defined(FPL_SUBPLATFORM_X11)
+#	include <GL/glx.h> // XVisualInfo, GLXContext, GLXDrawable
+
+namespace fpl {
+	namespace drivers {
 #		define FPL_FUNC_GL_X_CHOOSE_VISUAL(name) XVisualInfo* name(Display *dpy, int screen, int *attribList)
 		typedef FPL_FUNC_GL_X_CHOOSE_VISUAL(fpl_func_glx_glXChooseVisual);
 #		define FPL_FUNC_GL_X_CREATE_CONTEXT(name) GLXContext name(Display *dpy, XVisualInfo *vis, GLXContext shareList, Bool direct)
@@ -9329,29 +9317,35 @@ namespace fpl {
 			return (result);
 		}
 
-		struct X11VideoOpenGLVisual {
-			XVisualInfo *visualInfo;
-		};
-
 		struct X11VideoOpenGLState {
 			X11VideoOpenGLApi api;
-			X11VideoOpenGLVisual visual;
+			GLXFBConfig fbConfig;
 			GLXContext context;
 			bool isActiveContext;
 		};
 
-		fpl_internal void X11ReleaseVisualForVideoOpenGL(const subplatform_x11::X11Api &x11Api, X11VideoOpenGLVisual &visual) {
-			if(visual.visualInfo != nullptr) {
-				x11Api.XFree(visual.visualInfo);
-				visual.visualInfo = nullptr;
+		fpl_internal_inline bool X11SetPreWindowSetupForOpenGL(const subplatform_x11::X11Api &x11Api, const subplatform_x11::X11WindowState &windowState, const X11VideoOpenGLState &glState, subplatform_x11::X11PreWindowSetupResult &outResult) {
+			const X11VideoOpenGLApi &glApi = glState.api;
+			FPL_ASSERT(glState.fbConfig != nullptr);
+			XVisualInfo *visualInfo = glApi.glXGetVisualFromFBConfig(windowState.display, glState.fbConfig);
+			if(visualInfo == nullptr) {
+				return false;
 			}
+			outResult.visual = visualInfo->visual;
+			outResult.colorDepth = visualInfo->depth;
+			x11Api.XFree(visualInfo);
+			return true;
 		}
 
-		fpl_internal bool X11InitVisualForVideoOpenGL(const subplatform_x11::X11Api &x11Api, const subplatform_x11::X11WindowState &windowState, const X11VideoOpenGLApi &glApi, X11VideoOpenGLVisual &visual) {
-			FPL_ASSERT(visual.visualInfo == nullptr);
+		fpl_internal bool X11InitFrameBufferConfigVideoOpenGL(const subplatform_x11::X11Api &x11Api, const subplatform_x11::X11WindowState &windowState, X11VideoOpenGLState &glState) {
+			const X11VideoOpenGLApi &glApi = glState.api;
 
 			int attr[32];
 			int* p = attr;
+#if 0
+			* p++ = GLX_RGBA;
+			*p++ = GLX_DOUBLEBUFFER;
+#endif
 			*p++ = GLX_X_VISUAL_TYPE; *p++ = GLX_TRUE_COLOR;
 			*p++ = GLX_DOUBLEBUFFER;  *p++ = True;
 			*p++ = GLX_RED_SIZE;      *p++ = 8;
@@ -9364,20 +9358,12 @@ namespace fpl {
 			int configCount = 0;
 			GLXFBConfig *configs = glApi.glXChooseFBConfig(windowState.display, windowState.screen, attr, &configCount);
 			if(configs == nullptr || !configCount) {
-				X11ReleaseVisualForVideoOpenGL(x11Api, visual);
+				glState.fbConfig = nullptr;
 				return false;
 			}
 
-			GLXFBConfig firstConfig = configs[0];
-			XVisualInfo *visualInfo = glApi.glXGetVisualFromFBConfig(windowState.display, firstConfig);
-            x11Api.XFree(configs);
-
-            if(visualInfo == nullptr) {
-				X11ReleaseVisualForVideoOpenGL(x11Api, visual);
-				return false;
-			}
-			
-            visual.visualInfo = visualInfo;
+			glState.fbConfig = configs[0];
+			x11Api.XFree(configs);
 
 			return true;
 		}
@@ -9401,38 +9387,51 @@ namespace fpl {
 
 		fpl_internal bool X11InitVideoOpenGL(const subplatform_x11::X11SubplatformState &subplatform, const subplatform_x11::X11WindowState &windowState, const VideoSettings &videoSettings, X11VideoOpenGLState &glState) {
 			const X11VideoOpenGLApi &glApi = glState.api;
-			const X11VideoOpenGLVisual &vis = glState.visual;
+			const subplatform_x11::X11Api &x11Api = subplatform.api;
 
-			if(vis.visualInfo == nullptr) {
+			if(glState.fbConfig == nullptr) {
+				FPL_LOG("GLX", "No frame buffer configuration found");
 				return false;
 			}
 
-			glState.context = glApi.glXCreateContext(windowState.display, vis.visualInfo, nullptr, GL_TRUE);
-			if(glState.context == nullptr) {
+			XVisualInfo *visualInfo = glApi.glXGetVisualFromFBConfig(windowState.display, glState.fbConfig);
+			if(visualInfo == nullptr) {
+				FPL_LOG("GLX", "Failed getting visual info from display '%p' and frame buffer config '%p'", windowState.display, glState.fbConfig);
 				return false;
 			}
 
-			if(!glApi.glXMakeCurrent(windowState.display, windowState.window, glState.context)) {
+			bool result = false;
+			glState.context = glApi.glXCreateContext(windowState.display, visualInfo, nullptr, GL_TRUE);
+			if(glState.context != nullptr) {
+				if(glApi.glXMakeCurrent(windowState.display, windowState.window, glState.context)) {
+					glState.isActiveContext = true;
+					result = true;
+				} else {
+					FPL_LOG("GLX", "Failed activating rendering context '%p' on display '%p' and window '%d'", glState.context, windowState.display, (int)windowState.window);
+				}
+			} else {
+				FPL_LOG("GLX", "Failed creating rendering context on display '%p' and window '%d' from visual info '%p'", windowState.display, (int)windowState.window, visualInfo);
+			}
+
+			x11Api.XFree(visualInfo);
+
+			if(!result) {
 				X11ReleaseVideoOpenGL(windowState, glState);
-				return false;
 			}
-
-			glState.isActiveContext = true;
-
-			return true;
+			return (result);
 		}
-#	endif // FPL_SUBPLATFORM_X11
-
-#endif // FPL_ENABLE_VIDEO_OPENGL
-
-#	if defined(FPL_ENABLE_VIDEO_SOFTWARE)
+	} // drivers
+} // fpl
+#endif // FPL_ENABLE_VIDEO_OPENGL && FPL_SUBPLATFORM_X11
 
 // ############################################################################
 //
 // > VIDEO_DRIVER_SOFTWARE_WIN32
 //
 // ############################################################################
-#		if defined(FPL_PLATFORM_WIN32)
+#if defined(FPL_ENABLE_VIDEO_SOFTWARE) && defined(FPL_PLATFORM_WIN32)
+namespace fpl {
+	namespace drivers {
 		struct Win32VideoSoftwareState {
 			BITMAPINFO bitmapInfo;
 		};
@@ -9452,11 +9451,10 @@ namespace fpl {
 		fpl_internal void Win32ReleaseVideoSoftware(Win32VideoSoftwareState &softwareState) {
 			softwareState = {};
 		}
-#		endif // FPL_PLATFORM_WIN32
+	} // drivers
+} // fpl
+#	endif // FPL_ENABLE_VIDEO_SOFTWARE && FPL_PLATFORM_WIN32
 
-#	endif // FPL_ENABLE_VIDEO_SOFTWARE
-	}
-}
 #endif // FPL_VIDEO_DRIVERS_IMPLEMENTED
 
 // ****************************************************************************
@@ -9475,14 +9473,8 @@ namespace fpl {
 #if defined(FPL_ENABLE_AUDIO_DIRECTSOUND)
 #	include <mmreg.h>
 #	include <dsound.h>
-#endif
 namespace fpl {
 	namespace drivers {
-
-#	if defined(FPL_ENABLE_AUDIO_DIRECTSOUND)
-		//
-		// DirectSound
-		//
 #		define FPL_FUNC_DIRECT_SOUND_CREATE(name) HRESULT WINAPI name(const GUID* pcGuidDevice, LPDIRECTSOUND *ppDS8, LPUNKNOWN pUnkOuter)
 		typedef FPL_FUNC_DIRECT_SOUND_CREATE(func_DirectSoundCreate);
 #		define FPL_FUNC_DIRECT_SOUND_ENUMERATE_A(name) HRESULT WINAPI name(LPDSENUMCALLBACKA pDSEnumCallback, LPVOID pContext)
@@ -9905,10 +9897,11 @@ namespace fpl {
 				}
 			}
 		}
-#	endif //FPL_ENABLE_AUDIO_DIRECTSOUND
 
 	} // drivers
 } // fpl
+#endif // FPL_ENABLE_AUDIO_DIRECTSOUND
+
 #endif // FPL_AUDIO_DRIVERS_IMPLEMENTED
 
 // %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -10402,7 +10395,7 @@ namespace fpl {
 #				if defined(FPL_PLATFORM_WIN32)
 					drivers::Win32UnloadVideoOpenGLApi(videoState->win32.opengl.api);
 #				elif defined(FPL_SUBPLATFORM_X11)
-					drivers::X11ReleaseVisualForVideoOpenGL(appState->x11.api, videoState->x11.opengl.visual);
+					videoState->x11.opengl.fbConfig = nullptr;
 					drivers::X11UnloadVideoOpenGLApi(videoState->x11.opengl.api);
 #				endif
 				}; break;
@@ -10545,12 +10538,8 @@ namespace fpl {
 					case VideoDriverType::OpenGL:
 					{
 #					if defined(FPL_SUBPLATFORM_X11)
-						drivers::X11VideoOpenGLVisual &vis = videoState->x11.opengl.visual;
-						result = drivers::X11InitVisualForVideoOpenGL(appState->x11.api, appState->window.x11, videoState->x11.opengl.api, vis);
-						if(result) {
-							FPL_ASSERT(vis.visualInfo != nullptr);
-							outResult.x11.visual = vis.visualInfo->visual;
-							outResult.x11.colorDepth = vis.visualInfo->depth;
+						if(drivers::X11InitFrameBufferConfigVideoOpenGL(appState->x11.api, appState->window.x11, videoState->x11.opengl)) {
+							result = X11SetPreWindowSetupForOpenGL(appState->x11.api, appState->window.x11, videoState->x11.opengl, outResult.x11);
 						}
 #					endif
 					} break;
@@ -11000,7 +10989,7 @@ namespace fpl {
 
 			initState.isInitialized = false;
 		}
-	} // common
+	} // common_init
 
 	fpl_common_api void ReleasePlatform() {
 		FPL_LOG_BLOCK;
