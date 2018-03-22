@@ -4213,7 +4213,7 @@ namespace fpl {
 		//
 #       define FPL_FUNC_X11_X_FREE(name) int name(void *data)
 		typedef FPL_FUNC_X11_X_FREE(fpl_func_x11_XFree);
-#       define FPL_FUNC_X11_X_FLUSH(name) void name(Display *display)
+#       define FPL_FUNC_X11_X_FLUSH(name) int name(Display *display)
 		typedef FPL_FUNC_X11_X_FLUSH(fpl_func_x11_XFlush);
 #       define FPL_FUNC_X11_X_OPEN_DISPLAY(name) Display *name(char *display_name)
 		typedef FPL_FUNC_X11_X_OPEN_DISPLAY(fpl_func_x11_XOpenDisplay);
@@ -4231,13 +4231,13 @@ namespace fpl {
 		typedef FPL_FUNC_X11_X_CREATE_COLORMAP(fpl_func_x11_XCreateColormap);
 #       define FPL_FUNC_X11_X_DEFAULT_COLORMAP(name) Colormap name(Display *display, int screen_number)
 		typedef FPL_FUNC_X11_X_DEFAULT_COLORMAP(fpl_func_x11_XDefaultColormap);
-#       define FPL_FUNC_X11_X_FREE_COLORMAP(name) void name(Display *display, Colormap colormap)
+#       define FPL_FUNC_X11_X_FREE_COLORMAP(name) int name(Display *display, Colormap colormap)
 		typedef FPL_FUNC_X11_X_FREE_COLORMAP(fpl_func_x11_XFreeColormap);
-#       define FPL_FUNC_X11_X_MAP_WINDOW(name) void name(Display *display, Window w)
+#       define FPL_FUNC_X11_X_MAP_WINDOW(name) int name(Display *display, Window w)
 		typedef FPL_FUNC_X11_X_MAP_WINDOW(fpl_func_x11_XMapWindow);
-#       define FPL_FUNC_X11_X_UNMAP_WINDOW(name) void name(Display *display, Window w)
+#       define FPL_FUNC_X11_X_UNMAP_WINDOW(name) int name(Display *display, Window w)
 		typedef FPL_FUNC_X11_X_UNMAP_WINDOW(fpl_func_x11_XUnmapWindow);
-#       define FPL_FUNC_X11_X_STORE_NAME(name) void name(Display *display, Window w, char *windowName)
+#       define FPL_FUNC_X11_X_STORE_NAME(name) int name(Display *display, Window w, char *window_name)
 		typedef FPL_FUNC_X11_X_STORE_NAME(fpl_func_x11_XStoreName);
 #       define FPL_FUNC_X11_X_DEFAULT_VISUAL(name) Visual *name(Display *display, int screen_number)
 		typedef FPL_FUNC_X11_X_DEFAULT_VISUAL(fpl_func_x11_XDefaultVisual);
@@ -4245,6 +4245,7 @@ namespace fpl {
 		typedef FPL_FUNC_X11_X_DEFAULT_DEPTH(fpl_func_x11_XDefaultDepth);
 #       define FPL_FUNC_X11_X_SET_ERROR_HANDLER(name) XErrorHandler name(XErrorHandler handler)
 		typedef FPL_FUNC_X11_X_SET_ERROR_HANDLER(fpl_func_x11_XSetErrorHandler);
+        
 
 		struct X11Api {
 			void *libHandle;
@@ -8658,14 +8659,19 @@ namespace fpl {
 		fpl_internal void X11ReleaseWindow(const X11SubplatformState &subplatform, X11WindowState &windowState) {
 			const X11Api &x11Api = subplatform.api;
 			if(windowState.window) {
+                FPL_LOG("X11", "Hide window '%d' from display '%p'", (int)windowState.window, windowState.display);
+                x11Api.XUnmapWindow(windowState.display, windowState.window);
+                FPL_LOG("X11", "Destroy window '%d' on display '%p'", (int)windowState.window, windowState.display);
 				x11Api.XDestroyWindow(windowState.display, windowState.window);
 				windowState.window = 0;
 			}
 			if(windowState.colorMap) {
+                FPL_LOG("X11", "Release color map '%d' from display '%p'", (int)windowState.colorMap, windowState.display);
 				x11Api.XFreeColormap(windowState.display, windowState.colorMap);
 				windowState.colorMap = 0;
 			}
 			if(windowState.display) {
+                FPL_LOG("X11", "Close display '%p'", windowState.display);
 				x11Api.XCloseDisplay(windowState.display);
 				windowState.display = nullptr;
 			}
@@ -8674,18 +8680,27 @@ namespace fpl {
 
 		fpl_internal bool X11InitWindow(const Settings &initSettings, WindowSettings &currentWindowSettings, platform::PlatformAppState *appState, X11SubplatformState &subplatform, X11WindowState &windowState, const platform::SetupWindowCallbacks &setupCallbacks) {
 			const X11Api &x11Api = subplatform.api;
-			windowState.display = x11Api.XOpenDisplay(nullptr);
+            
+            FPL_LOG("X11", "Open default Display");
+			windowState.display = XOpenDisplay(nullptr);
 			if(windowState.display == nullptr) {
+                FPL_LOG("X11", "Failed opening default Display!");
 				return false;
 			}
+            FPL_LOG("X11", "Successfully opened default Display: %p", windowState.display);
 
+            FPL_LOG("X11", "Get default screen from display '%p'", windowState.display);
 			windowState.screen = x11Api.XDefaultScreen(windowState.display);
+            FPL_LOG("X11", "Got default screen from display '%p': %d", windowState.display, windowState.screen);
 
+            FPL_LOG("X11", "Get root window from display '%p' and screen '%d'", windowState.display, windowState.screen);
 			windowState.root = x11Api.XRootWindow(windowState.display, windowState.screen);
+            FPL_LOG("X11", "Got root window from display '%p' and screen '%d': %d", windowState.display, windowState.screen, (int)windowState.root);
 
 			bool usePreSetupWindow = false;
 			platform::PreSetupWindowResult setupResult = {};
 			if(setupCallbacks.preSetup != nullptr) {
+                FPL_LOG("X11", "Call Pre-Setup for Window");
 				usePreSetupWindow = setupCallbacks.preSetup(appState, appState->initFlags, initSettings, setupResult);
 			}
 
@@ -8693,25 +8708,35 @@ namespace fpl {
 			int colorDepth = 0;
 			Colormap colormap;
 			if(usePreSetupWindow) {
+                FPL_LOG("X11", "Got visual '%p' and color depth '%d' from pre-setup", setupResult.x11.visual, setupResult.x11.colorDepth);
 				FPL_ASSERT(setupResult.x11.visual != nullptr);
 				visual = setupResult.x11.visual;
 				colorDepth = setupResult.x11.colorDepth;
 				colormap = x11Api.XCreateColormap(windowState.display, windowState.root, visual, AllocNone);
 			} else {
-				colormap = x11Api.XDefaultColormap(windowState.display, windowState.root);
+                FPL_LOG("X11", "Using default colormap, visual, color depth");
 				visual = x11Api.XDefaultVisual(windowState.display, windowState.root);
 				colorDepth = x11Api.XDefaultDepth(windowState.display, windowState.root);
+				colormap = x11Api.XDefaultColormap(windowState.display, windowState.root);
 			}
 
-			windowState.colorMap = colormap;
+            FPL_LOG("X11", "Using visual: %p", visual);
+            FPL_LOG("X11", "Using color depth: %d", colorDepth);
+            FPL_LOG("X11", "Using color map: %d", (int)colormap);
+            
+            windowState.colorMap = colormap;
 
 			XSetWindowAttributes swa;
 			swa.colormap = colormap;
 			swa.event_mask = StructureNotifyMask;
 
+            // @TODO(final): Proper window size
 			uint32_t windowWidth = 640;
 			uint32_t windowHeight = 640;
+            
+            // @TODO(final): Fullscreen support
 
+            FPL_LOG("X11", "Create window with (Display='%p', Root='%d', Size=%dx%d, Colordepth='%d', visual='%p', colormap='%d'", windowState.display, (int)windowState.root, windowWidth, windowHeight, colorDepth, visual, (int)swa.colormap);
 			windowState.window = x11Api.XCreateWindow(windowState.display,
 													  windowState.root,
 													  0,
@@ -8725,12 +8750,15 @@ namespace fpl {
 													  CWColormap | CWEventMask,
 													  &swa);
 			if(!windowState.window) {
+                FPL_LOG("X11", "Failed creating window with (Display='%p', Root='%d', Size=%dx%d, Colordepth='%d', visual='%p', colormap='%d'!", windowState.display, (int)windowState.root, windowWidth, windowHeight, colorDepth, visual, (int)swa.colormap);
 				X11ReleaseWindow(subplatform, windowState);
 				return false;
 			}
+            FPL_LOG("X11", "Successfully created window with (Display='%p', Root='%d', Size=%dx%d, Colordepth='%d', visual='%p', colormap='%d': %d", windowState.display, (int)windowState.root, windowWidth, windowHeight, colorDepth, visual, (int)swa.colormap, (int)windowState.window);
 
 			char nameBuffer[1024] = {};
 			strings::CopyAnsiString("Unnamed FPL X11 Window", nameBuffer, FPL_ARRAYCOUNT(nameBuffer));
+            FPL_LOG("X11", "Show window '%d' on display '%p' with title '%s'", (int)windowState.window, windowState.display, nameBuffer);
 			x11Api.XStoreName(windowState.display, windowState.window, nameBuffer);
 			x11Api.XMapWindow(windowState.display, windowState.window);
 
@@ -9239,9 +9267,9 @@ namespace fpl {
 		typedef FPL_FUNC_GL_X_MAKE_CURRENT(fpl_func_glx_glXMakeCurrent);
 #		define FPL_FUNC_GL_X_SWAP_BUFFERS(name) void name(Display *dpy, GLXDrawable drawable)
 		typedef FPL_FUNC_GL_X_SWAP_BUFFERS(fpl_func_glx_glXSwapBuffers);
-#		define FPL_FUNC_GL_X_GET_PROC_ADDRESS(name) void *name(const GLubyte *procname)
+#		define FPL_FUNC_GL_X_GET_PROC_ADDRESS(name) void *name(const GLubyte *procName)
 		typedef FPL_FUNC_GL_X_GET_PROC_ADDRESS(fpl_func_glx_glXGetProcAddress);
-#		define FPL_FUNC_GL_X_CHOOSE_FB_CONFIG(name) GLXFBConfig *name(Display *dpy, int screen, const int *attrib_list,  int *nelements)
+#		define FPL_FUNC_GL_X_CHOOSE_FB_CONFIG(name) GLXFBConfig *name(Display *dpy, int screen, const int *attrib_list, int *nelements)
 		typedef FPL_FUNC_GL_X_CHOOSE_FB_CONFIG(fpl_func_glx_glXChooseFBConfig);
 #		define FPL_FUNC_GL_X_GET_FB_CONFIGS(name) GLXFBConfig *name(Display *dpy, int screen, int *nelements)
 		typedef FPL_FUNC_GL_X_GET_FB_CONFIGS(fpl_func_glx_glXGetFBConfigs);
@@ -9251,9 +9279,11 @@ namespace fpl {
 		typedef FPL_FUNC_GL_X_GET_FB_CONFIG_ATTRIB(fpl_func_glx_glXGetFBConfigAttrib);
 #		define FPL_FUNC_GL_X_CREATE_WINDOW(name) GLXWindow name(Display *dpy, GLXFBConfig config, Window win,  const int *attrib_list)
 		typedef FPL_FUNC_GL_X_CREATE_WINDOW(fpl_func_glx_glXCreateWindow);
-#		define FPL_FUNC_GL_X_QUERY_EXTENSION(name) Bool name(Display *dpy,  int *errorBase,  int *eventBase)
+#		define FPL_FUNC_GL_X_QUERY_EXTENSION(name) Bool name(Display *dpy, int *errorBase, int *eventBase)
 		typedef FPL_FUNC_GL_X_QUERY_EXTENSION(fpl_func_glx_glXQueryExtension);
-
+#		define FPL_FUNC_GL_X_QUERY_EXTENSIONS_STRING(name) const char *name(Display *dpy, int screen)
+		typedef FPL_FUNC_GL_X_QUERY_EXTENSIONS_STRING(fpl_func_glx_glXQueryExtensionsString);
+                
 		struct X11VideoOpenGLApi {
 			void *libHandle;
 			fpl_func_glx_glXChooseVisual *glXChooseVisual;
@@ -9269,6 +9299,7 @@ namespace fpl {
 			fpl_func_glx_glXGetFBConfigAttrib *glXGetFBConfigAttrib;
 			fpl_func_glx_glXCreateWindow *glXCreateWindow;
 			fpl_func_glx_glXQueryExtension *glXQueryExtension;
+            fpl_func_glx_glXQueryExtensionsString *glXQueryExtensionsString;
 		};
 
 		fpl_internal void X11UnloadVideoOpenGLApi(X11VideoOpenGLApi &api) {
@@ -9285,8 +9316,8 @@ namespace fpl {
 			FPL_LOG_BLOCK;
 
 			const char* libFileNames[] = {
-				"libGLX.so",
-				"libGLX.so.0",
+				"libGL.so.1",
+				"libGL.so",
 			};
 			bool result = false;
 			for(uint32_t index = 0; index < FPL_ARRAYCOUNT(libFileNames); ++index) {
@@ -9308,6 +9339,7 @@ namespace fpl {
 					FPL_POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, api.glXGetFBConfigAttrib, fpl_func_glx_glXGetFBConfigAttrib, "glXGetFBConfigAttrib");
 					FPL_POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, api.glXCreateWindow, fpl_func_glx_glXCreateWindow, "glXCreateWindow");
 					FPL_POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, api.glXQueryExtension, fpl_func_glx_glXQueryExtension, "glXQueryExtension");
+					FPL_POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, api.glXQueryExtensionsString, fpl_func_glx_glXQueryExtensionsString, "glXQueryExtensionsString");
 					FPL_LOG("GLX", "Successfully loaded GLX Api from Library '%s'", libName);
 					result = true;
 					break;
@@ -9327,25 +9359,44 @@ namespace fpl {
 		fpl_internal_inline bool X11SetPreWindowSetupForOpenGL(const subplatform_x11::X11Api &x11Api, const subplatform_x11::X11WindowState &windowState, const X11VideoOpenGLState &glState, subplatform_x11::X11PreWindowSetupResult &outResult) {
 			const X11VideoOpenGLApi &glApi = glState.api;
 			FPL_ASSERT(glState.fbConfig != nullptr);
+            
+            FPL_LOG("GLX", "Get visual info from display '%p' and frame buffer config '%p'", windowState.display, glState.fbConfig);
 			XVisualInfo *visualInfo = glApi.glXGetVisualFromFBConfig(windowState.display, glState.fbConfig);
 			if(visualInfo == nullptr) {
+                FPL_LOG("GLX", "Failed getting visual info from display '%p' and frame buffer config '%p'", windowState.display, glState.fbConfig);
 				return false;
 			}
+			FPL_LOG("GLX", "Successfully got visual info from display '%p' and frame buffer config '%p': %p", windowState.display, glState.fbConfig, visualInfo);
+            
+            FPL_LOG("GLX", "Using visual: %p", visualInfo->visual);
+            FPL_LOG("GLX", "Using color depth: %d", visualInfo->depth);
+			
 			outResult.visual = visualInfo->visual;
 			outResult.colorDepth = visualInfo->depth;
+            
+            FPL_LOG("GLX", "Release visual info '%p'", visualInfo);
 			x11Api.XFree(visualInfo);
+            
 			return true;
 		}
 
 		fpl_internal bool X11InitFrameBufferConfigVideoOpenGL(const subplatform_x11::X11Api &x11Api, const subplatform_x11::X11WindowState &windowState, X11VideoOpenGLState &glState) {
 			const X11VideoOpenGLApi &glApi = glState.api;
+            
+            FPL_LOG("GLX", "Query OpenGL extension on display '%p'", windowState.display);
+            if (!glApi.glXQueryExtension(windowState.display, nullptr, nullptr)) {
+                FPL_LOG("GLX", "OpenGL GLX Extension is not supported by the active display '%p'", windowState.display);
+                return false;
+            }
+            
+            // @NOTE(final): Required for AMD Catalyst Drivers?
+            const char *extensionString = glApi.glXQueryExtensionsString(windowState.display, windowState.screen);
+            if (extensionString != nullptr) {
+                FPL_LOG("GLX", "OpenGL GLX extensions: %s", extensionString);
+            }
 
 			int attr[32];
 			int* p = attr;
-#if 0
-			* p++ = GLX_RGBA;
-			*p++ = GLX_DOUBLEBUFFER;
-#endif
 			*p++ = GLX_X_VISUAL_TYPE; *p++ = GLX_TRUE_COLOR;
 			*p++ = GLX_DOUBLEBUFFER;  *p++ = True;
 			*p++ = GLX_RED_SIZE;      *p++ = 8;
@@ -9355,31 +9406,34 @@ namespace fpl {
 			*p++ = GLX_STENCIL_SIZE;  *p++ = 8;
 			*p++ = 0;
 
+            FPL_LOG("GLX", "Get framebuffer configuration from display '%p' and screen '%d'", windowState.display, windowState.screen);
 			int configCount = 0;
 			GLXFBConfig *configs = glApi.glXChooseFBConfig(windowState.display, windowState.screen, attr, &configCount);
 			if(configs == nullptr || !configCount) {
+                FPL_LOG("GLX", "No framebuffer configuration from display '%p' and screen '%d' found!", windowState.display, windowState.screen);
 				glState.fbConfig = nullptr;
 				return false;
 			}
-
 			glState.fbConfig = configs[0];
+            FPL_LOG("GLX", "Successfully got framebuffer configuration from display '%p' and screen '%d': %p", windowState.display, windowState.screen, glState.fbConfig);
+            
+            FPL_LOG("GLX", "Release %d framebuffer configurations", configCount);
 			x11Api.XFree(configs);
 
 			return true;
 		}
 
 		fpl_internal void X11ReleaseVideoOpenGL(const subplatform_x11::X11WindowState &windowState, X11VideoOpenGLState &glState) {
-			// @NOTE(final): Visual is released before the api is released.
-			// Do never release it here!
-
 			const X11VideoOpenGLApi &glApi = glState.api;
 
 			if(glState.isActiveContext) {
+                FPL_LOG("GLX", "Deactivate GLX rendering context for display '%p'", windowState.display);
 				glApi.glXMakeCurrent(windowState.display, 0, nullptr);
 				glState.isActiveContext = false;
 			}
 
 			if(glState.context != nullptr) {
+                FPL_LOG("GLX", "Destroy GLX rendering context '%p' for display '%p'", glState.context, windowState.display);
 				glApi.glXDestroyContext(windowState.display, glState.context);
 				glState.context = nullptr;
 			}
@@ -9393,27 +9447,46 @@ namespace fpl {
 				FPL_LOG("GLX", "No frame buffer configuration found");
 				return false;
 			}
+			
+#define USE_NEW_CTX 0
 
+#if !USE_NEW_CTX
+            FPL_LOG("GLX", "Get visual info from display '%p' and frame buffer config '%p'", windowState.display, glState.fbConfig);
 			XVisualInfo *visualInfo = glApi.glXGetVisualFromFBConfig(windowState.display, glState.fbConfig);
 			if(visualInfo == nullptr) {
 				FPL_LOG("GLX", "Failed getting visual info from display '%p' and frame buffer config '%p'", windowState.display, glState.fbConfig);
 				return false;
 			}
+            FPL_LOG("GLX", "Successfully got visual info from display '%p' and frame buffer config '%p': %p", windowState.display, glState.fbConfig, visualInfo);
+#endif
 
 			bool result = false;
+            
+#if USE_NEW_CTX
+            FPL_LOG("GLX", "Create GLX rendering context on display '%p' and frame buffer config '%p'", windowState.display, glState.fbConfig);
+            glState.context = glApi.glXCreateNewContext(windowState.display, glState.fbConfig, GLX_RGBA_TYPE, nullptr, GL_TRUE);
+#else
+            FPL_LOG("GLX", "Create GLX rendering context on display '%p' and visual info '%p'", windowState.display, visualInfo);
 			glState.context = glApi.glXCreateContext(windowState.display, visualInfo, nullptr, GL_TRUE);
+#endif
+            
 			if(glState.context != nullptr) {
+                FPL_LOG("GLX", "Activate GLX rendering context '%p' on display '%p' and window '%d'", glState.context, windowState.display, (int)windowState.window);
 				if(glApi.glXMakeCurrent(windowState.display, windowState.window, glState.context)) {
+                    FPL_LOG("GLX", "Successfully activated GLX rendering context '%p' on display '%p' and window '%d'", glState.context, windowState.display, (int)windowState.window);
 					glState.isActiveContext = true;
 					result = true;
 				} else {
-					FPL_LOG("GLX", "Failed activating rendering context '%p' on display '%p' and window '%d'", glState.context, windowState.display, (int)windowState.window);
+					FPL_LOG("GLX", "Failed activating GLX rendering context '%p' on display '%p' and window '%d'", glState.context, windowState.display, (int)windowState.window);
 				}
 			} else {
-				FPL_LOG("GLX", "Failed creating rendering context on display '%p' and window '%d' from visual info '%p'", windowState.display, (int)windowState.window, visualInfo);
+				FPL_LOG("GLX", "Failed creating GLX rendering context on display '%p' and visual info '%p'", windowState.display, visualInfo);
 			}
 
+#if !USE_NEW_CTX
+            FPL_LOG("GLX", "Release visual info '%p'", visualInfo);
 			x11Api.XFree(visualInfo);
+#endif
 
 			if(!result) {
 				X11ReleaseVideoOpenGL(windowState, glState);
