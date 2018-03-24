@@ -4359,6 +4359,7 @@ typedef struct fpl__X11WindowState {
 	Colormap colorMap;
 	Window window;
     Atom wmDeleteWindow;
+    fplKey keyMap[256];
 } fpl__X11WindowState;
 
 typedef struct fpl__X11PreWindowSetupResult {
@@ -8834,6 +8835,228 @@ fpl_internal void fpl__X11ReleaseWindow(const fpl__X11SubplatformState *subplatf
 	FPL_CLEAR_STRUCT(windowState);
 }
 
+fpl_internal fplKey fpl__X11TranslateKeySymbol(const KeySym keySym) {
+	switch (keySym) {
+		case XK_BackSpace:
+			return fplKey_Backspace;
+		case XK_Tab:
+			return fplKey_Tab;
+
+		case XK_Return:
+			return fplKey_Enter;
+
+		case XK_Pause:
+			return fplKey_Pause;
+		case XK_Caps_Lock:
+			return fplKey_CapsLock;
+
+		case XK_Escape:
+			return fplKey_Escape;
+		case XK_space:
+			return fplKey_Space;
+		case XK_Page_Up:
+			return fplKey_PageUp;
+		case XK_Page_Down:
+			return fplKey_PageDown;
+		case XK_End:
+			return fplKey_End;
+		case XK_Home:
+			return fplKey_Home;
+		case XK_Left:
+			return fplKey_Left;
+		case XK_Up:
+			return fplKey_Up;
+		case XK_Right:
+			return fplKey_Right;
+		case XK_Down:
+			return fplKey_Down;
+		case XK_Print:
+			return fplKey_Print;
+		case XK_Insert:
+			return fplKey_Insert;
+		case XK_Delete:
+			return fplKey_Delete;
+
+		case XK_0:
+			return fplKey_0;
+		case XK_1:
+			return fplKey_1;
+		case XK_2:
+			return fplKey_2;
+		case XK_3:
+			return fplKey_3;
+		case XK_4:
+			return fplKey_4;
+		case XK_5:
+			return fplKey_5;
+		case XK_6:
+			return fplKey_6;
+		case XK_7:
+			return fplKey_7;
+		case XK_8:
+			return fplKey_8;
+		case XK_9:
+			return fplKey_9;
+
+		case XK_a:
+			return fplKey_A;
+		case XK_b:
+			return fplKey_B;
+		case XK_c:
+			return fplKey_C;
+		case XK_d:
+			return fplKey_D;
+		case XK_e:
+			return fplKey_E;
+		case XK_f:
+			return fplKey_F;
+		case XK_g:
+			return fplKey_G;
+		case XK_h:
+			return fplKey_H;
+		case XK_i:
+			return fplKey_I;
+		case XK_j:
+			return fplKey_J;
+		case XK_k:
+			return fplKey_K;
+		case XK_l:
+			return fplKey_L;
+		case XK_m:
+			return fplKey_M;
+		case XK_n:
+			return fplKey_N;
+		case XK_o:
+			return fplKey_O;
+		case XK_p:
+			return fplKey_P;
+		case XK_q:
+			return fplKey_Q;
+		case XK_r:
+			return fplKey_R;
+		case XK_s:
+			return fplKey_S;
+		case XK_t:
+			return fplKey_T;
+		case XK_u:
+			return fplKey_U;
+		case XK_v:
+			return fplKey_V;
+		case XK_w:
+			return fplKey_W;
+		case XK_x:
+			return fplKey_X;
+		case XK_y:
+			return fplKey_Y;
+		case XK_z:
+			return fplKey_Z;
+
+		case XK_Super_L:
+			return fplKey_LeftWin;
+		case XK_Super_R:
+			return fplKey_RightWin;
+
+		case XK_KP_0:
+			return fplKey_NumPad0;
+		case XK_KP_1:
+			return fplKey_NumPad1;
+		case XK_KP_2:
+			return fplKey_NumPad2;
+		case XK_KP_3:
+			return fplKey_NumPad3;
+		case XK_KP_4:
+			return fplKey_NumPad4;
+		case XK_KP_5:
+			return fplKey_NumPad5;
+		case XK_KP_6:
+			return fplKey_NumPad6;
+		case XK_KP_7:
+			return fplKey_NumPad7;
+		case XK_KP_8:
+			return fplKey_NumPad8;
+		case XK_KP_9:
+			return fplKey_NumPad9;
+		case XK_KP_Multiply:
+			return fplKey_Multiply;
+		case XK_KP_Add:
+			return fplKey_Add;
+		case XK_KP_Subtract:
+			return fplKey_Substract;
+		case XK_KP_Delete:
+			return fplKey_Decimal;
+		case XK_KP_Divide:
+			return fplKey_Divide;
+		case XK_F1:
+			return fplKey_F1;
+		case XK_F2:
+			return fplKey_F2;
+		case XK_F3:
+			return fplKey_F3;
+		case XK_F4:
+			return fplKey_F4;
+		case XK_F5:
+			return fplKey_F5;
+		case XK_F6:
+			return fplKey_F6;
+		case XK_F7:
+			return fplKey_F7;
+		case XK_F8:
+			return fplKey_F8;
+		case XK_F9:
+			return fplKey_F9;
+		case XK_F10:
+			return fplKey_F10;
+		case XK_F11:
+			return fplKey_F11;
+		case XK_F12:
+			return fplKey_F12;
+		case XK_F13:
+			return fplKey_F13;
+		case XK_F14:
+			return fplKey_F14;
+		case XK_F15:
+			return fplKey_F15;
+		case XK_F16:
+			return fplKey_F16;
+		case XK_F17:
+			return fplKey_F17;
+		case XK_F18:
+			return fplKey_F18;
+		case XK_F19:
+			return fplKey_F19;
+		case XK_F20:
+			return fplKey_F20;
+		case XK_F21:
+			return fplKey_F21;
+		case XK_F22:
+			return fplKey_F22;
+		case XK_F23:
+			return fplKey_F23;
+		case XK_F24:
+			return fplKey_F24;
+
+		case XK_Shift_L:
+			return fplKey_LeftShift;
+		case XK_Shift_R:
+			return fplKey_RightShift;
+		case XK_Control_L:
+			return fplKey_LeftControl;
+		case XK_Control_R:
+			return fplKey_RightControl;
+        case XK_Meta_L:
+		case XK_Alt_L:
+			return fplKey_LeftAlt;
+        case XK_Mode_switch:
+        case XK_ISO_Level3_Shift:
+        case XK_Meta_R:
+		case XK_Alt_R:
+			return fplKey_RightAlt;
+
+		default:
+			return fplKey_None;
+	}
+}
+
 fpl_internal bool fpl__X11InitWindow(const fplSettings *initSettings, fplWindowSettings *currentWindowSettings, fpl__PlatformAppState *appState, fpl__X11SubplatformState *subplatform, fpl__X11WindowState *windowState, const fpl__SetupWindowCallbacks *setupCallbacks) {
 	const fpl__X11Api *x11Api = &subplatform->api;
 
@@ -8931,23 +9154,23 @@ fpl_internal bool fpl__X11InitWindow(const fplSettings *initSettings, fplWindowS
 	x11Api->XStoreName(windowState->display, windowState->window, nameBuffer);
 	x11Api->XMapWindow(windowState->display, windowState->window);
     
+    FPL_ASSERT(FPL_ARRAYCOUNT(windowState->keyMap) >= 256);
+
+    // XLib: Valid key range is 8 to 255
+    FPL_LOG("X11", "Build X11 Keymap");
+    FPL_CLEAR_STRUCT(windowState->keyMap);
+    for (int keyCode = 8; keyCode < 256; ++keyCode) {
+        int dummy = 0;
+        KeySym *keySyms = x11Api->XGetKeyboardMapping(windowState->display, keyCode, 1, &dummy);
+        KeySym keySym = keySyms[0];
+        fplKey mappedKey = fpl__X11TranslateKeySymbol(keySym);
+        windowState->keyMap[keyCode] = mappedKey;
+        x11Api->XFree(keySyms);
+    }
+    
     appState->window.isRunning = true;
 
 	return true;
-}
-
-fpl_internal fplKey fpl__X11TranslateKey(const KeySym keySym) {
-    switch (keySym) {
-        case XK_Escape:
-            return fplKey_Escape;
-        case XK_Tab:
-            return fplKey_Tab;
-        
-        // @TODO(final): Handle all the keys here, look a the win32 key translation
-            
-        default:
-            return fplKey_None;
-    }
 }
 
 fpl_internal fplKeyboardModifierFlags fpl__X11TranslateModifierFlags(const int state) {
@@ -8980,7 +9203,6 @@ fpl_internal void fpl__X11PushMouseEvent(const fplMouseEventType eventType, cons
 
 fpl_internal bool fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatform, fpl__PlatformWindowState *winState, XEvent *ev) {
     const fpl__X11WindowState *x11WinState = &winState->x11;
-    const fpl__X11Api *x11Api = &subplatform->api;
     bool result = true;
     switch (ev->type) {
         case ConfigureNotify:
@@ -9010,15 +9232,9 @@ fpl_internal bool fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatfor
             int keyState = ev->xkey.state;
             int keyCode = ev->xkey.keycode;
             bool isDown = ev->type == KeyPress;
-            
-            int dummy = 0;
-            
-            // @SPEED(final): Key-mapping table!!!
-            // @MEMORY(final): Allocating memory for every key press/release is insane!!!
-            KeySym* keySyms = x11Api->XGetKeyboardMapping(x11WinState->display, keyCode, 1, &dummy);
-            KeySym keySym = keySyms[0];
-            fplKey mappedKey = fpl__X11TranslateKey(keySym);
-            x11Api->XFree(keySyms);
+
+            FPL_ASSERT(keyCode >= 0 && keyCode < FPL_ARRAYCOUNT(windowState->keyMap));
+            fplKey mappedKey = x11WinState->keyMap[keyCode];
             
             fplEvent newEvent = FPL_ZERO_INIT;
             newEvent.type = fplEventType_Keyboard;
@@ -9098,6 +9314,8 @@ fpl_platform_api bool fplPushEvent() {
 
 fpl_platform_api void fplUpdateGameControllers() {
 	// @IMPLEMENT(final): X11 fplUpdateGameControllers
+    // #include <linux/joystick.h>
+    // https://linux.die.net/man/3/joystick_init
 }
 
 fpl_platform_api bool fplIsWindowRunning() {
