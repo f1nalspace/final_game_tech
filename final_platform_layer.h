@@ -4031,7 +4031,6 @@ typedef struct fpl__Win32WindowState {
 	HDC deviceContext;
 	HCURSOR defaultCursor;
 	fpl__Win32LastWindowInfo lastFullscreenInfo;
-	bool isRunning;
 	bool isCursorActive;
 } fpl__Win32WindowState;
 #endif // FPL_ENABLE_WINDOW
@@ -4201,6 +4200,9 @@ typedef struct {
 //
 // ############################################################################
 #if defined(FPL_SUBPLATFORM_X11)
+
+#include <X11/keysym.h> // Keyboard symbols (XK_Escape, etc.)
+
 //
 // X11 Api
 //
@@ -4236,6 +4238,29 @@ typedef FPL__FUNC_X11_X_STORE_NAME(fpl__func_x11_XStoreName);
 typedef FPL__FUNC_X11_X_DEFAULT_VISUAL(fpl__func_x11_XDefaultVisual);
 #define FPL__FUNC_X11_X_DEFAULT_DEPTH(name) int name(Display *display, int screen_number)
 typedef FPL__FUNC_X11_X_DEFAULT_DEPTH(fpl__func_x11_XDefaultDepth);
+#define FPL__FUNC_X11_X_INTERN_ATOM(name) Atom name(Display *display, char *atom_name, Bool only_if_exists)
+typedef FPL__FUNC_X11_X_INTERN_ATOM(fpl__func_x11_XInternAtom);
+#define FPL__FUNC_X11_X_SET_WM_PROTOCOLS(name) Status name(Display *display, Window w, Atom *protocols, int count)
+typedef FPL__FUNC_X11_X_SET_WM_PROTOCOLS(fpl__func_x11_XSetWMProtocols);
+#define FPL__FUNC_X11_X_PENDING(name) int name(Display *display)
+typedef FPL__FUNC_X11_X_PENDING(fpl__func_x11_XPending);
+#define FPL__FUNC_X11_X_SYNC(name) int name(Display *display, Bool discard)
+typedef FPL__FUNC_X11_X_SYNC(fpl__func_x11_XSync);
+#define FPL__FUNC_X11_X_NEXT_EVENT(name) int name(Display *display, XEvent *event_return)
+typedef FPL__FUNC_X11_X_NEXT_EVENT(fpl__func_x11_XNextEvent);
+#define FPL__FUNC_X11_X_PEEK_EVENT(name) int name(Display *display, XEvent *event_return)
+typedef FPL__FUNC_X11_X_PEEK_EVENT(fpl__func_x11_XPeekEvent);
+#define FPL__FUNC_X11_X_GET_WINDOW_ATTRIBUTES(name) Status name(Display *display, Window w, XWindowAttributes *window_attributes_return)
+typedef FPL__FUNC_X11_X_GET_WINDOW_ATTRIBUTES(fpl__func_x11_XGetWindowAttributes);
+#define FPL__FUNC_X11_X_RESIZE_WINDOW(name) int name(Display *display, Window w, unsigned int width, unsigned int height)
+typedef FPL__FUNC_X11_X_RESIZE_WINDOW(fpl__func_x11_XResizeWindow);
+#define FPL__FUNC_X11_X_MOVE_WINDOW(name) int name(Display *display, Window w, int x, int y)
+typedef FPL__FUNC_X11_X_MOVE_WINDOW(fpl__func_x11_XMoveWindow);
+#define FPL__FUNC_X11_X_GET_KEYBOARD_MAPPING(name) KeySym *name(Display *display, KeyCode first_keycode, int keycode_count, int *keysyms_per_keycode_return)
+typedef FPL__FUNC_X11_X_GET_KEYBOARD_MAPPING(fpl__func_x11_XGetKeyboardMapping);
+
+
+
 
 typedef struct fpl__X11Api {
 	void *libHandle;
@@ -4255,6 +4280,16 @@ typedef struct fpl__X11Api {
 	fpl__func_x11_XStoreName *XStoreName;
 	fpl__func_x11_XDefaultVisual *XDefaultVisual;
 	fpl__func_x11_XDefaultDepth *XDefaultDepth;
+    fpl__func_x11_XInternAtom *XInternAtom;
+    fpl__func_x11_XSetWMProtocols *XSetWMProtocols;
+    fpl__func_x11_XPending *XPending;
+    fpl__func_x11_XSync *XSync;
+    fpl__func_x11_XNextEvent *XNextEvent;
+    fpl__func_x11_XPeekEvent *XPeekEvent;
+    fpl__func_x11_XGetWindowAttributes *XGetWindowAttributes;
+    fpl__func_x11_XResizeWindow *XResizeWindow;
+    fpl__func_x11_XMoveWindow *XMoveWindow;
+    fpl__func_x11_XGetKeyboardMapping *XGetKeyboardMapping;
 } fpl__X11Api;
 
 fpl_internal void fpl__UnloadX11Api(fpl__X11Api *x11Api) {
@@ -4277,6 +4312,7 @@ fpl_internal bool fpl__LoadX11Api(fpl__X11Api *x11Api) {
 		const char *libName = libFileNames[index];
 		void *libHandle = x11Api->libHandle = dlopen(libName, FPL__POSIX_DL_LOADTYPE);
 		if (libHandle != fpl_null) {
+            
 			FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, x11Api->XFlush, fpl__func_x11_XFlush, "XFlush");
 			FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, x11Api->XFree, fpl__func_x11_XFree, "XFree");
 			FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, x11Api->XOpenDisplay, fpl__func_x11_XOpenDisplay, "XOpenDisplay");
@@ -4293,6 +4329,17 @@ fpl_internal bool fpl__LoadX11Api(fpl__X11Api *x11Api) {
 			FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, x11Api->XStoreName, fpl__func_x11_XStoreName, "XStoreName");
 			FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, x11Api->XDefaultVisual, fpl__func_x11_XDefaultVisual, "XDefaultVisual");
 			FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, x11Api->XDefaultDepth, fpl__func_x11_XDefaultDepth, "XDefaultDepth");
+            FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, x11Api->XInternAtom, fpl__func_x11_XInternAtom, "XInternAtom");
+            FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, x11Api->XSetWMProtocols, fpl__func_x11_XSetWMProtocols, "XSetWMProtocols");
+            FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, x11Api->XPending, fpl__func_x11_XPending, "XPending");
+            FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, x11Api->XSync, fpl__func_x11_XSync, "XSync");
+            FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, x11Api->XNextEvent, fpl__func_x11_XNextEvent, "XNextEvent");
+            FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, x11Api->XPeekEvent, fpl__func_x11_XPeekEvent, "XPeekEvent");
+            FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, x11Api->XGetWindowAttributes, fpl__func_x11_XGetWindowAttributes, "XGetWindowAttributes");
+            FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, x11Api->XResizeWindow, fpl__func_x11_XResizeWindow, "XResizeWindow");
+            FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, x11Api->XMoveWindow, fpl__func_x11_XMoveWindow, "XMoveWindow");
+            FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, x11Api->XGetKeyboardMapping, fpl__func_x11_XGetKeyboardMapping, "XGetKeyboardMapping");
+            
 			result = true;
 			break;
 		}
@@ -4311,6 +4358,7 @@ typedef struct fpl__X11WindowState {
 	Window root;
 	Colormap colorMap;
 	Window window;
+    Atom wmDeleteWindow;
 } fpl__X11WindowState;
 
 typedef struct fpl__X11PreWindowSetupResult {
@@ -4358,6 +4406,7 @@ typedef struct {
 
 typedef struct {
 	fpl__EventQueue eventQueue;
+    bool isRunning;
 	union {
 #	if defined(FPL_PLATFORM_WIN32)
 		fpl__Win32WindowState win32;
@@ -5699,7 +5748,7 @@ LRESULT CALLBACK fpl__Win32MessageProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 		case WM_DESTROY:
 		case WM_CLOSE:
 		{
-			win32Window->isRunning = false;
+            appState->window.isRunning = false;
 		} break;
 
 		case WM_SIZE:
@@ -5755,7 +5804,7 @@ LRESULT CALLBACK fpl__Win32MessageProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 			if (wasDown != isDown) {
 				if (isDown) {
 					if (keyCode == VK_F4 && altKeyWasDown) {
-						win32Window->isRunning = 0;
+						appState->window.isRunning = false;
 					}
 				}
 			}
@@ -5986,7 +6035,7 @@ fpl_internal bool fpl__Win32InitWindow(const fplSettings *initSettings, fplWindo
 	// Cursor is visible at start
 	windowState->defaultCursor = windowClass.hCursor;
 	windowState->isCursorActive = true;
-	windowState->isRunning = true;
+	platAppState->window.isRunning = true;
 
 	return true;
 }
@@ -7425,7 +7474,7 @@ fpl_platform_api void fplSetWindowCursorEnabled(const bool value) {
 	windowState->isCursorActive = value;
 }
 
-fpl_platform_api bool fplPushWindowEvent() {
+fpl_platform_api bool fplPushEvent() {
 	FPL_ASSERT(fpl__global__AppState != fpl_null);
 	const fpl__Win32Api *wapi = &fpl__global__AppState->win32.winApi;
 	bool result = false;
@@ -7467,7 +7516,7 @@ fpl_platform_api bool fplWindowUpdate() {
 			wapi->user.translateMessage(&msg);
 			win32_dispatchMessage(&msg);
 		}
-		result = windowState->isRunning;
+		result = appState->window.isRunning;
 	}
 
 	return(result);
@@ -7475,8 +7524,7 @@ fpl_platform_api bool fplWindowUpdate() {
 
 fpl_platform_api bool fplIsWindowRunning() {
 	FPL_ASSERT(fpl__global__AppState != fpl_null);
-	const fpl__Win32WindowState *windowState = &fpl__global__AppState->window.win32;
-	bool result = windowState->isRunning;
+	bool result = fpl__global__AppState->window.isRunning;
 	return(result);
 }
 
@@ -8836,19 +8884,28 @@ fpl_internal bool fpl__X11InitWindow(const fplSettings *initSettings, fplWindowS
 
 	XSetWindowAttributes swa;
 	swa.colormap = colormap;
-	swa.event_mask = StructureNotifyMask;
+	swa.event_mask = StructureNotifyMask | KeyPressMask | KeyReleaseMask | ButtonPressMask | ButtonReleaseMask | PointerMotionMask | ButtonMotionMask;
 
-	// @TODO(final): Proper window size
-	uint32_t windowWidth = 640;
-	uint32_t windowHeight = 640;
-
+    int windowX = 0;
+	int windowY = 0;
+	int windowWidth;
+	int windowHeight;
+	if ((initSettings->window.windowWidth > 0) &&
+		(initSettings->window.windowHeight > 0)) {
+		windowWidth = initSettings->window.windowWidth;
+		windowHeight = initSettings->window.windowHeight;
+	} else {
+		windowWidth = 400;
+		windowHeight = 400;
+	}
+	
 	// @TODO(final): Fullscreen support
 
 	FPL_LOG("X11", "Create window with (Display='%p', Root='%d', Size=%dx%d, Colordepth='%d', visual='%p', colormap='%d'", windowState->display, (int)windowState->root, windowWidth, windowHeight, colorDepth, visual, (int)swa.colormap);
 	windowState->window = x11Api->XCreateWindow(windowState->display,
                                             windowState->root,
-											  0,
-											  0,
+											  windowX,
+											  windowY,
 											  windowWidth,
 											  windowHeight,
 											  0,
@@ -8863,19 +8920,180 @@ fpl_internal bool fpl__X11InitWindow(const fplSettings *initSettings, fplWindowS
 		return false;
 	}
 	FPL_LOG("X11", "Successfully created window with (Display='%p', Root='%d', Size=%dx%d, Colordepth='%d', visual='%p', colormap='%d': %d", windowState->display, (int)windowState->root, windowWidth, windowHeight, colorDepth, visual, (int)swa.colormap, (int)windowState->window);
+    
+    char wm_delete_window_name[100] = "WM_DELETE_WINDOW";
+    windowState->wmDeleteWindow = x11Api->XInternAtom(windowState->display, wm_delete_window_name, False);
+    x11Api->XSetWMProtocols(windowState->display, windowState->window, &windowState->wmDeleteWindow, 1);
 
 	char nameBuffer[1024] = {};
 	fplCopyAnsiString("Unnamed FPL X11 Window", nameBuffer, FPL_ARRAYCOUNT(nameBuffer));
 	FPL_LOG("X11", "Show window '%d' on display '%p' with title '%s'", (int)windowState->window, windowState->display, nameBuffer);
 	x11Api->XStoreName(windowState->display, windowState->window, nameBuffer);
 	x11Api->XMapWindow(windowState->display, windowState->window);
+    
+    appState->window.isRunning = true;
 
 	return true;
 }
 
+fpl_internal fplKey fpl__X11TranslateKey(const KeySym keySym) {
+    switch (keySym) {
+        case XK_Escape:
+            return fplKey_Escape;
+        case XK_Tab:
+            return fplKey_Tab;
+        
+        // @TODO(final): Handle all the keys here, look a the win32 key translation
+            
+        default:
+            return fplKey_None;
+    }
+}
+
+fpl_internal fplKeyboardModifierFlags fpl__X11TranslateModifierFlags(const int state) {
+    fplKeyboardModifierFlags result = fplKeyboardModifierFlags_None;
+    if (state & ShiftMask) {
+        result |= fplKeyboardModifierFlags_Shift;
+    }
+    if (state & ControlMask) {
+        result |= fplKeyboardModifierFlags_Ctrl;
+    }
+    if (state & Mod1Mask) {
+        result |= fplKeyboardModifierFlags_Alt;
+    }
+    if (state & Mod4Mask) {
+        result |= fplKeyboardModifierFlags_Super;
+    }
+    return(result);
+}
+
+fpl_internal void fpl__X11PushMouseEvent(const fplMouseEventType eventType, const fplMouseButtonType mouseButton, const int x, const int y, const float wheelDelta) {
+    fplEvent newEvent = FPL_ZERO_INIT;
+    newEvent.type = fplEventType_Mouse;
+    newEvent.mouse.type = eventType;
+    newEvent.mouse.mouseButton = mouseButton;
+    newEvent.mouse.mouseX = x;
+    newEvent.mouse.mouseY = y;
+    newEvent.mouse.wheelDelta = wheelDelta;
+    fpl__PushEvent(&newEvent);
+}
+
+fpl_internal bool fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatform, fpl__PlatformWindowState *winState, XEvent *ev) {
+    const fpl__X11WindowState *x11WinState = &winState->x11;
+    const fpl__X11Api *x11Api = &subplatform->api;
+    bool result = true;
+    switch (ev->type) {
+        case ConfigureNotify:
+        {
+            // Window resized
+            fplEvent newEvent = FPL_ZERO_INIT;
+            newEvent.type = fplEventType_Window;
+            newEvent.window.type = fplWindowEventType_Resized;
+            newEvent.window.width = ev->xconfigure.width;
+            newEvent.window.height = ev->xconfigure.height;
+            fpl__PushEvent(&newEvent);
+        } break;
+        
+        case ClientMessage:
+        {
+            if ((Atom)ev->xclient.data.l[0] == x11WinState->wmDeleteWindow) {
+                // Window exiting
+                winState->isRunning = false;
+                result = false;
+            }
+        } break;
+        
+        case KeyPress:
+        case KeyRelease:
+        {
+            // Keyboard down/up
+            int keyState = ev->xkey.state;
+            int keyCode = ev->xkey.keycode;
+            bool isDown = ev->type == KeyPress;
+            
+            int dummy = 0;
+            
+            // @SPEED(final): Key-mapping table!!!
+            // @MEMORY(final): Allocating memory for every key press/release is insane!!!
+            KeySym* keySyms = x11Api->XGetKeyboardMapping(x11WinState->display, keyCode, 1, &dummy);
+            KeySym keySym = keySyms[0];
+            fplKey mappedKey = fpl__X11TranslateKey(keySym);
+            x11Api->XFree(keySyms);
+            
+            fplEvent newEvent = FPL_ZERO_INIT;
+            newEvent.type = fplEventType_Keyboard;
+            newEvent.keyboard.keyCode = keyCode;
+            newEvent.keyboard.mappedKey = mappedKey;
+            newEvent.keyboard.type = isDown ? fplKeyboardEventType_KeyDown : fplKeyboardEventType_KeyUp;
+            newEvent.keyboard.modifiers = fpl__X11TranslateModifierFlags(keyState);
+            
+            fpl__PushEvent(&newEvent);
+        } break;
+        
+        case ButtonPress:
+        {
+            // Mouse down
+            int x = ev->xbutton.x;
+            int y = ev->xbutton.y;
+            if (ev->xbutton.button == Button1) {
+                fpl__X11PushMouseEvent(fplMouseEventType_ButtonDown, fplMouseButtonType_Left, x, y, 0);
+            } else if (ev->xbutton.button == Button2) {
+                fpl__X11PushMouseEvent(fplMouseEventType_ButtonDown, fplMouseButtonType_Middle, x, y, 0);
+            } else if (ev->xbutton.button == Button3) {
+                fpl__X11PushMouseEvent(fplMouseEventType_ButtonDown, fplMouseButtonType_Right, x, y, 0);
+            } else if (ev->xbutton.button == Button4) {
+                fpl__X11PushMouseEvent(fplMouseEventType_Wheel, fplMouseButtonType_None, x, y, 1.0);
+            } else if (ev->xbutton.button == Button5) {
+                fpl__X11PushMouseEvent(fplMouseEventType_Wheel, fplMouseButtonType_None, x, y, -1.0);
+            }
+        } break;
+        
+        case ButtonRelease:
+        {
+            // Mouse up
+            int x = ev->xbutton.x;
+            int y = ev->xbutton.y;
+            if (ev->xbutton.button == Button1) {
+                fpl__X11PushMouseEvent(fplMouseEventType_ButtonUp, fplMouseButtonType_Left, x, y, 0);
+            } else if (ev->xbutton.button == Button2) {
+                fpl__X11PushMouseEvent(fplMouseEventType_ButtonUp, fplMouseButtonType_Middle, x, y, 0);
+            } else if (ev->xbutton.button == Button3) {
+                fpl__X11PushMouseEvent(fplMouseEventType_ButtonUp, fplMouseButtonType_Right, x, y, 0);
+            }
+            
+        } break;
+        
+        case MotionNotify:
+        {
+            // Mouse move
+            fpl__X11PushMouseEvent(fplMouseEventType_Move, fplMouseButtonType_None, ev->xmotion.x, ev->xmotion.y, 0);
+        } break;
+    
+        case Expose:
+        {
+            // Repaint
+        } break;
+            
+        default:
+            break;
+    }
+
+    return(result);
+}
+
 fpl_platform_api bool fplPushEvent() {
-	// @IMPLEMENT(final): X11 fplPushEvent
-	return false;
+    fpl__PlatformAppState *appState = fpl__global__AppState;
+    FPL_ASSERT(appState != fpl_null);
+    const fpl__X11SubplatformState *subplatform = &appState->x11;
+    const fpl__X11Api *x11Api = &subplatform->api;
+    const fpl__X11WindowState *windowState = &appState->window.x11;
+    bool result = false;
+    if (x11Api->XPending(windowState->display)) {
+        XEvent ev;
+        x11Api->XNextEvent(windowState->display, &ev);
+        result = fpl__X11HandleEvent(&appState->x11, &appState->window, &ev);
+    }
+	return (result);
 }
 
 fpl_platform_api void fplUpdateGameControllers() {
@@ -8883,13 +9101,27 @@ fpl_platform_api void fplUpdateGameControllers() {
 }
 
 fpl_platform_api bool fplIsWindowRunning() {
-	// @IMPLEMENT(final): X11 fplIsWindowRunning
-	return false;
+    FPL_ASSERT(fpl__global__AppState != fpl_null);
+    bool result = fpl__global__AppState->window.isRunning;
+	return(result);
 }
 
 fpl_platform_api bool fplWindowUpdate() {
-	// @IMPLEMENT(final): X11 fplWindowUpdate
-	return false;
+    fpl__PlatformAppState *appState = fpl__global__AppState;
+    FPL_ASSERT(appState != fpl_null);
+    const fpl__X11SubplatformState *subplatform = &appState->x11;
+    const fpl__X11Api *x11Api = &subplatform->api;
+    const fpl__X11WindowState *windowState = &appState->window.x11;
+    bool result = false;
+    int pendingCount = x11Api->XPending(windowState->display);
+    while (pendingCount--) {
+        XEvent ev;
+        x11Api->XNextEvent(windowState->display, &ev);
+        fpl__X11HandleEvent(&appState->x11, &appState->window, &ev);
+    }
+    x11Api->XFlush(windowState->display);
+    result = appState->window.isRunning;
+    return(result);
 }
 
 fpl_platform_api void fplSetWindowCursorEnabled(const bool value) {
@@ -8897,13 +9129,29 @@ fpl_platform_api void fplSetWindowCursorEnabled(const bool value) {
 }
 
 fpl_platform_api fplWindowSize fplGetWindowArea() {
+    fpl__PlatformAppState *appState = fpl__global__AppState;
+    FPL_ASSERT(appState != fpl_null);
+    const fpl__X11SubplatformState *subplatform = &appState->x11;
+    const fpl__X11Api *x11Api = &subplatform->api;
+    const fpl__X11WindowState *windowState = &appState->window.x11;
+    
+    XWindowAttributes attribs;
+    x11Api->XGetWindowAttributes(windowState->display, windowState->window, &attribs);
+       
 	fplWindowSize result = FPL_ZERO_INIT;
-	// @IMPLEMENT(final): X11 fplGetWindowArea
+    result.width = attribs.width;
+    result.height = attribs.height;    
 	return(result);
 }
 
 fpl_platform_api void fplSetWindowArea(const uint32_t width, const uint32_t height) {
-	// @IMPLEMENT(final): X11 fplSetWindowArea
+    fpl__PlatformAppState *appState = fpl__global__AppState;
+    FPL_ASSERT(appState != fpl_null);
+    const fpl__X11SubplatformState *subplatform = &appState->x11;
+    const fpl__X11Api *x11Api = &subplatform->api;
+    const fpl__X11WindowState *windowState = &appState->window.x11;
+    x11Api->XResizeWindow(windowState->display, windowState->window, width, height);
+    x11Api->XFlush(windowState->display);
 }
 
 fpl_platform_api bool fplIsWindowResizable() {
@@ -8926,17 +9174,40 @@ fpl_platform_api bool fplIsWindowFullscreen() {
 }
 
 fpl_platform_api fplWindowPosition fplGetWindowPosition() {
+    fpl__PlatformAppState *appState = fpl__global__AppState;
+    FPL_ASSERT(appState != fpl_null);
+    const fpl__X11SubplatformState *subplatform = &appState->x11;
+    const fpl__X11Api *x11Api = &subplatform->api;
+    const fpl__X11WindowState *windowState = &appState->window.x11;
+    
+    XWindowAttributes attribs;
+    x11Api->XGetWindowAttributes(windowState->display, windowState->window, &attribs);
+       
 	fplWindowPosition result = FPL_ZERO_INIT;
-	// @IMPLEMENT(final): X11 fplGetWindowPosition
-	return(result);
+    result.left = attribs.x;
+    result.top = attribs.y; 
+    
+    return(result);
 }
 
 fpl_platform_api void fplSetWindowPosition(const int32_t left, const int32_t top) {
-	// @IMPLEMENT(final): X11 fplSetWindowPosition
+    fpl__PlatformAppState *appState = fpl__global__AppState;
+    FPL_ASSERT(appState != fpl_null);
+    const fpl__X11SubplatformState *subplatform = &appState->x11;
+    const fpl__X11Api *x11Api = &subplatform->api;
+    const fpl__X11WindowState *windowState = &appState->window.x11;
+    x11Api->XMoveWindow(windowState->display, windowState->window, left, top);
 }
 
 fpl_platform_api void fplSetWindowTitle(const char *title) {
-	// @IMPLEMENT(final): X11 fplSetWindowTitle
+    fpl__PlatformAppState *appState = fpl__global__AppState;
+    FPL_ASSERT(appState != fpl_null);
+    const fpl__X11SubplatformState *subplatform = &appState->x11;
+    const fpl__X11Api *x11Api = &subplatform->api;
+    const fpl__X11WindowState *windowState = &appState->window.x11;
+    char nameBuffer[256];
+    fplCopyAnsiString(title, nameBuffer, FPL_ARRAYCOUNT(nameBuffer));
+    x11Api->XStoreName(windowState->display, windowState->window, nameBuffer);
 }
 
 fpl_platform_api char *fplGetClipboardAnsiText(char *dest, const uint32_t maxDestLen) {
@@ -11031,7 +11302,21 @@ fpl_common_api void fplVideoFlip() {
 			default:
 				break;
 		}
-#	endif // FPL_PLATFORM_WIN32
+#   elif defined(FPL_SUBPLATFORM_X11)
+        const fpl__X11WindowState *x11WinState = &appState->window.x11;
+        switch (appState->currentSettings.video.driver) {
+#		if defined(FPL_ENABLE_VIDEO_OPENGL)
+			case fplVideoDriverType_OpenGL:
+			{
+                const fpl__X11VideoOpenGLApi *glApi = &videoState->x11.opengl.api;
+                glApi->glXSwapBuffers(x11WinState->display, x11WinState->window);
+			} break;
+#		endif
+
+            default:
+				break;
+        }
+#	endif // FPL_PLATFORM
 	}
 }
 #endif // FPL_ENABLE_VIDEO
