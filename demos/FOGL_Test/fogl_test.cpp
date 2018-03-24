@@ -2,14 +2,13 @@
 #define USE_FPL_OPENGL_CONTEXT_CREATION 0
 
 #define FPL_IMPLEMENTATION
-#define FPL_AUTO_NAMESPACE
 #if !USE_FPL_OPENGL_CONTEXT_CREATION
 #	define FPL_NO_VIDEO_OPENGL
 #endif
-#include "final_platform_layer.hpp"
+#include <final_platform_layer.h>
 
 #define FDYNGL_IMPLEMENTATION
-#include "final_dynamic_opengl.hpp"
+#include <final_dynamic_opengl.hpp>
 
 static GLuint CreateShaderType(GLenum type, const char *source) {
 	GLuint shaderId = glCreateShader(type);
@@ -24,8 +23,8 @@ static GLuint CreateShaderType(GLenum type, const char *source) {
 		glGetShaderiv(shaderId, GL_INFO_LOG_LENGTH, &infoLen);
 		char *info = (char *)FPL_STACKALLOCATE(infoLen);
 		glGetShaderInfoLog(shaderId, infoLen, &infoLen, info);
-		ConsoleFormatError("Failed compiling %s shader!\n", (type == GL_VERTEX_SHADER ? "vertex" : "fragment"));
-		ConsoleFormatError("%s\n", info);
+		fplConsoleFormatError("Failed compiling %s shader!\n", (type == GL_VERTEX_SHADER ? "vertex" : "fragment"));
+		fplConsoleFormatError("%s\n", info);
 	}
 
 	return(shaderId);
@@ -50,8 +49,8 @@ static GLuint CreateShaderProgram(const char *name, const char *vertexSource, co
 
 		char *info = (char *)FPL_STACKALLOCATE(infoLen);
 		glGetProgramInfoLog(programId, infoLen, &infoLen, info);
-		ConsoleFormatError("Failed linking '%s' shader!\n", name);
-		ConsoleFormatError("%s\n", info);
+		fplConsoleFormatError("Failed linking '%s' shader!\n", name);
+		fplConsoleFormatError("%s\n", info);
 	}
 
 	glDeleteShader(fragmentShader);
@@ -64,26 +63,26 @@ static void RunModern(const fdyngl::OpenGLContext *context) {
 	const char *version = (const char *)glGetString(GL_VERSION);
 	const char *vendor = (const char *)glGetString(GL_VENDOR);
 	const char *renderer = (const char *)glGetString(GL_RENDERER);
-	ConsoleFormatOut("OpenGL version: %s\n", version);
-	ConsoleFormatOut("OpenGL vendor: %s\n", vendor);
-	ConsoleFormatOut("OpenGL renderer: %s\n", renderer);
+	fplConsoleFormatOut("OpenGL version: %s\n", version);
+	fplConsoleFormatOut("OpenGL vendor: %s\n", vendor);
+	fplConsoleFormatOut("OpenGL renderer: %s\n", renderer);
 
 	GLuint vertexArrayID;
 	glGenVertexArrays(1, &vertexArrayID);
 	glBindVertexArray(vertexArrayID);
 
 	const char *glslVersion = (const char *)glGetString(GL_SHADING_LANGUAGE_VERSION);
-	ConsoleFormatOut("OpenGL GLSL Version %s:\n", glslVersion);
+	fplConsoleFormatOut("OpenGL GLSL Version %s:\n", glslVersion);
 
 	int profileMask;
 	int contextFlags;
 	glGetIntegerv(GL_CONTEXT_PROFILE_MASK, &profileMask);
 	glGetIntegerv(GL_CONTEXT_FLAGS, &contextFlags);
-	ConsoleFormatOut("OpenGL supported profiles:\n");
-	ConsoleFormatOut("\tCore: %s\n", ((profileMask & GL_CONTEXT_CORE_PROFILE_BIT) ? "yes" : "no"));
-	ConsoleFormatOut("\tForward: %s\n", ((contextFlags & GL_CONTEXT_FLAG_FORWARD_COMPATIBLE_BIT) ? "yes" : "no"));
+	fplConsoleFormatOut("OpenGL supported profiles:\n");
+	fplConsoleFormatOut("\tCore: %s\n", ((profileMask & GL_CONTEXT_CORE_PROFILE_BIT) ? "yes" : "no"));
+	fplConsoleFormatOut("\tForward: %s\n", ((contextFlags & GL_CONTEXT_FLAG_FORWARD_COMPATIBLE_BIT) ? "yes" : "no"));
 
-	ConsoleOut("Running modern opengl\n");
+	fplConsoleOut("Running modern opengl\n");
 
 	const char vertexSource[] = {
 		"#version 330 core\n"
@@ -125,8 +124,8 @@ static void RunModern(const fdyngl::OpenGLContext *context) {
 	glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(float) * 2, nullptr);
 
 	glClearColor(0.39f, 0.58f, 0.93f, 1.0f);
-	while (WindowUpdate()) {
-		WindowSize windowArea = GetWindowArea();
+	while (fplWindowUpdate()) {
+		fplWindowSize windowArea = fplGetWindowArea();
 		glViewport(0, 0, windowArea.width, windowArea.height);
 
 		glClear(GL_COLOR_BUFFER_BIT);
@@ -134,7 +133,7 @@ static void RunModern(const fdyngl::OpenGLContext *context) {
 		glDrawArrays(GL_TRIANGLES, 0, 3);
 
 #if USE_FPL_OPENGL_CONTEXT_CREATION
-		VideoFlip();
+		fplVideoFlip();
 #else
 		fdyngl::PresentOpenGL(*context);
 #endif
@@ -150,39 +149,39 @@ static void RunModern(const fdyngl::OpenGLContext *context) {
 
 int main(int argc, char **args) {
 	int result = 0;
-	Settings settings = DefaultSettings();
+	fplSettings settings = fplDefaultSettings();
 
-	InitFlags initFlags;
+	fplInitFlags initFlags;
 #if USE_FPL_OPENGL_CONTEXT_CREATION
-	initFlags = InitFlags::Video;
-	settings.video.driver = VideoDriverType::OpenGL;
+	initFlags = fplInitFlags_Video;
+	settings.video.driver = fplVideoDriverType_OpenGL;
 #if !USE_LEGACY_OPENGL
-	CopyAnsiString("FPL Modern OpenGL", settings.window.windowTitle, FPL_ARRAYCOUNT(settings.window.windowTitle));
-	settings.video.opengl.compabilityFlags = OpenGLCompabilityFlags::Core;
+	fplCopyAnsiString("FPL Modern OpenGL", settings.window.windowTitle, FPL_ARRAYCOUNT(settings.window.windowTitle));
+	settings.video.opengl.compabilityFlags = fplOpenGLCompabilityFlags_Core;
 	settings.video.opengl.majorVersion = 3;
 	settings.video.opengl.minorVersion = 3;
 #else
-	CopyAnsiString("FPL Legacy OpenGL", settings.window.windowTitle, FPL_ARRAYCOUNT(settings.window.windowTitle));
-	settings.video.profile = VideoCompabilityProfile::Legacy;
+	fplCopyAnsiString("FPL Legacy OpenGL", settings.window.windowTitle, FPL_ARRAYCOUNT(settings.window.windowTitle));
+	settings.video.profile = fplVideoCompabilityProfile_Legacy;
 #endif
 #else
-	initFlags = InitFlags::Window;
+	initFlags = fplInitFlags_Window;
 #endif
 
-	if (InitPlatform(initFlags, settings)) {
+	if (fplPlatformInit(initFlags, &settings)) {
 #if !USE_FPL_OPENGL_CONTEXT_CREATION
 		fdyngl::OpenGLContextCreationParameters contextCreationParams = {};
 #	if !USE_LEGACY_OPENGL
-		CopyAnsiString("DYNGL Modern OpenGL", settings.window.windowTitle, FPL_ARRAYCOUNT(settings.window.windowTitle));
+		fplCopyAnsiString("DYNGL Modern OpenGL", settings.window.windowTitle, FPL_ARRAYCOUNT(settings.window.windowTitle));
 		contextCreationParams.profile = fdyngl::OpenGLProfileType::CoreProfile;
 		contextCreationParams.majorVersion = 3;
 		contextCreationParams.minorVersion = 3;
 #	else
-		CopyAnsiString("DYNGL Legacy OpenGL", settings.window.windowTitle, FPL_ARRAYCOUNT(settings.window.windowTitle));
+		fplCopyAnsiString("DYNGL Legacy OpenGL", settings.window.windowTitle, FPL_ARRAYCOUNT(settings.window.windowTitle));
 		contextCreationParams.profile = fdyngl::OpenGLProfileType::LegacyProfile;
 #	endif
 #	if defined(FDYNGL_PLATFORM_WIN32)
-		contextCreationParams.windowHandle.win32.deviceContext = fpl::platform::global__AppState->window.win32.deviceContext;
+		contextCreationParams.windowHandle.win32.deviceContext = fpl__global__AppState->window.win32.deviceContext;
 #	endif
 		fdyngl::OpenGLContext glContext = {};
 		if (fdyngl::LoadOpenGL(false)) {
@@ -199,7 +198,7 @@ int main(int argc, char **args) {
 			fdyngl::UnloadOpenGL();
 		}
 #endif
-		ReleasePlatform();
+		fplPlatformRelease();
 		result = 0;
 	} else {
 		result = -1;

@@ -13,7 +13,6 @@
     <ClCompile Include="fpl_imgui.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="..\..\final_platform_layer.hpp" />
     <ClInclude Include="dependencies\imgui\include\imgui\imconfig.h">
       <Filter>imgui</Filter>
     </ClInclude>
@@ -32,6 +31,7 @@
     <ClInclude Include="dependencies\imgui\include\imgui\stb_truetype.h">
       <Filter>imgui</Filter>
     </ClInclude>
+    <ClInclude Include="..\..\final_platform_layer.h" />
   </ItemGroup>
   <ItemGroup>
     <Filter Include="imgui">

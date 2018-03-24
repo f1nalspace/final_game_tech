@@ -167,7 +167,7 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClInclude Include="..\..\final_dynamic_opengl.hpp" />
-    <ClInclude Include="..\..\final_platform_layer.hpp" />
+    <ClInclude Include="..\..\final_platform_layer.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="fogl_test.cpp" />

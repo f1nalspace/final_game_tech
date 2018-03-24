@@ -1,12 +1,12 @@
 #define FPL_IMPLEMENTATION
 #define FPL_NO_AUDIO
 #define FPL_LOGGING
-#include <final_platform_layer.hpp>
+#include <final_platform_layer.h>
 
 // @TODO(final): Use final_dynamic_opengl here, so we dont need any linking like any other opengl demo
 #include <GL/gl.h>
 
-#define JUST_INIT 
+//#define JUST_INIT 
 
 #if !defined(JUST_INIT)
 
@@ -96,41 +96,39 @@ static void ImGUIRenderDrawLists(ImDrawData* draw_data) {
 
 static char clipboardBuffer[1024];
 static const char *ClipboardGetFunc(void *user) {
-	char *result = fpl::window::GetClipboardAnsiText(clipboardBuffer, FPL_ARRAYCOUNT(clipboardBuffer));
+	char *result = fplGetClipboardAnsiText(clipboardBuffer, FPL_ARRAYCOUNT(clipboardBuffer));
 	return(result);
 }
 static void ClipboardSetFunc(void *user, const char *text) {
-	fpl::window::SetClipboardText(text);
+	fplSetClipboardAnsiText(text);
 }
 
 static void InitImGUI() {
-    using namespace fpl::window;
-    
 	ImGuiIO& io = ImGui::GetIO();
 
 	io.GetClipboardTextFn = ClipboardGetFunc;
 	io.SetClipboardTextFn = ClipboardSetFunc;
 	io.RenderDrawListsFn = ImGUIRenderDrawLists;
 	io.IniFilename = nullptr;
-	io.KeyMap[ImGuiKey_Tab] = (uint32_t)Key::Key_Tab;
-	io.KeyMap[ImGuiKey_LeftArrow] = (uint32_t)Key::Key_Left;
-	io.KeyMap[ImGuiKey_RightArrow] = (uint32_t)Key::Key_Right;
-	io.KeyMap[ImGuiKey_UpArrow] = (uint32_t)Key::Key_Up;
-	io.KeyMap[ImGuiKey_DownArrow] = (uint32_t)Key::Key_Down;
-	io.KeyMap[ImGuiKey_PageUp] = (uint32_t)Key::Key_PageUp;
-	io.KeyMap[ImGuiKey_PageDown] = (uint32_t)Key::Key_PageDown;
-	io.KeyMap[ImGuiKey_Home] = (uint32_t)Key::Key_Home;
-	io.KeyMap[ImGuiKey_End] = (uint32_t)Key::Key_End;
-	io.KeyMap[ImGuiKey_Delete] = (uint32_t)Key::Key_Delete;
-	io.KeyMap[ImGuiKey_Backspace] = (uint32_t)Key::Key_Backspace;
-	io.KeyMap[ImGuiKey_Enter] = (uint32_t)Key::Key_Enter;
-	io.KeyMap[ImGuiKey_Escape] = (uint32_t)Key::Key_Escape;
-	io.KeyMap[ImGuiKey_A] = (uint32_t)Key::Key_A;
-	io.KeyMap[ImGuiKey_C] = (uint32_t)Key::Key_C;
-	io.KeyMap[ImGuiKey_V] = (uint32_t)Key::Key_V;
-	io.KeyMap[ImGuiKey_X] = (uint32_t)Key::Key_X;
-	io.KeyMap[ImGuiKey_Y] = (uint32_t)Key::Key_Y;
-	io.KeyMap[ImGuiKey_Z] = (uint32_t)Key::Key_Z;
+	io.KeyMap[ImGuiKey_Tab] = (uint32_t)fplKey_Tab;
+	io.KeyMap[ImGuiKey_LeftArrow] = (uint32_t)fplKey_Left;
+	io.KeyMap[ImGuiKey_RightArrow] = (uint32_t)fplKey_Right;
+	io.KeyMap[ImGuiKey_UpArrow] = (uint32_t)fplKey_Up;
+	io.KeyMap[ImGuiKey_DownArrow] = (uint32_t)fplKey_Down;
+	io.KeyMap[ImGuiKey_PageUp] = (uint32_t)fplKey_PageUp;
+	io.KeyMap[ImGuiKey_PageDown] = (uint32_t)fplKey_PageDown;
+	io.KeyMap[ImGuiKey_Home] = (uint32_t)fplKey_Home;
+	io.KeyMap[ImGuiKey_End] = (uint32_t)fplKey_End;
+	io.KeyMap[ImGuiKey_Delete] = (uint32_t)fplKey_Delete;
+	io.KeyMap[ImGuiKey_Backspace] = (uint32_t)fplKey_Backspace;
+	io.KeyMap[ImGuiKey_Enter] = (uint32_t)fplKey_Enter;
+	io.KeyMap[ImGuiKey_Escape] = (uint32_t)fplKey_Escape;
+	io.KeyMap[ImGuiKey_A] = (uint32_t)fplKey_A;
+	io.KeyMap[ImGuiKey_C] = (uint32_t)fplKey_C;
+	io.KeyMap[ImGuiKey_V] = (uint32_t)fplKey_V;
+	io.KeyMap[ImGuiKey_X] = (uint32_t)fplKey_X;
+	io.KeyMap[ImGuiKey_Y] = (uint32_t)fplKey_Y;
+	io.KeyMap[ImGuiKey_Z] = (uint32_t)fplKey_Z;
 
 	io.Fonts->AddFontDefault();
 
@@ -162,17 +160,17 @@ static void ReleaseImGUI() {
 	}
 }
 
-static void ImGUIKeyEvent(uint64_t keyCode, fpl::window::Key mappedKey, fpl::window::KeyboardModifierFlags modifiers, bool down) {
+static void ImGUIKeyEvent(uint64_t keyCode, fplKey mappedKey, fplKeyboardModifierFlags modifiers, bool down) {
 	ImGuiIO& io = ImGui::GetIO();
-	if (mappedKey != fpl::window::Key::Key_None) {
+	if (mappedKey != fplKey_None) {
 		io.KeysDown[(uint32_t)mappedKey] = down;
 	} else {
 		io.KeysDown[keyCode] = down;
 	}
-	io.KeyCtrl = modifiers & fpl::window::KeyboardModifierFlags::Ctrl;
-	io.KeyShift = modifiers & fpl::window::KeyboardModifierFlags::Shift;
-	io.KeyAlt = modifiers & fpl::window::KeyboardModifierFlags::Alt;
-	io.KeySuper = modifiers & fpl::window::KeyboardModifierFlags::Super;
+	io.KeyCtrl = modifiers & fplKeyboardModifierFlags_Ctrl;
+	io.KeyShift = modifiers & fplKeyboardModifierFlags_Shift;
+	io.KeyAlt = modifiers & fplKeyboardModifierFlags_Alt;
+	io.KeySuper = modifiers & fplKeyboardModifierFlags_Super;
 }
 
 static bool show_test_window = true;
@@ -180,10 +178,8 @@ static bool show_another_window = false;
 static ImVec4 clear_color = ImColor(114, 144, 154);
 
 static void UpdateAndRender(const float deltaTime) {
-    using namespace fpl::window;
-    
 	ImGuiIO& io = ImGui::GetIO();
-	WindowSize windowArea = GetWindowArea();
+	fplWindowSize windowArea = fplGetWindowArea();
 	io.DeltaTime = deltaTime;
 	io.DisplaySize.x = (float)windowArea.width;
 	io.DisplaySize.y = (float)windowArea.height;
@@ -200,7 +196,7 @@ static void UpdateAndRender(const float deltaTime) {
 	}
 	currentMouseWheelDelta = 0.0f;
 
-	SetWindowCursorEnabled(!io.MouseDrawCursor);
+	fplSetWindowCursorEnabled(!io.MouseDrawCursor);
 
 	ImGui::NewFrame();
 
@@ -236,41 +232,39 @@ static void UpdateAndRender(const float deltaTime) {
 }
 
 int main(int argc, char **args) {
-    using namespace fpl::window;
-    
 	int result = 0;
-	fpl::Settings settings = fpl::DefaultSettings();
-	fpl::strings::CopyAnsiString("ImGUI Example", settings.window.windowTitle, FPL_ARRAYCOUNT(settings.window.windowTitle) - 1);
+	fplSettings settings = fplDefaultSettings();
+	fplCopyAnsiString("ImGUI Example", settings.window.windowTitle, FPL_ARRAYCOUNT(settings.window.windowTitle) - 1);
 	settings.window.windowWidth = 1280;
 	settings.window.windowHeight = 720;
-	settings.video.driver = fpl::VideoDriverType::OpenGL;
-	if (fpl::InitPlatform(fpl::InitFlags::Video, settings)) {
-        
+	settings.video.driver = fplVideoDriverType_OpenGL;
+	if (fplPlatformInit(fplInitFlags_Video, &settings)) {
+
 		InitImGUI();
 
 		ImGuiIO& io = ImGui::GetIO();
 
-		double lastTime = fpl::timings::GetHighResolutionTimeInSeconds();
+		double lastTime = fplGetTimeInSeconds();
 		float lastDeltaTime = 1.0f / 60.0f;
 
-		while (IsWindowRunning()) {
-			WindowUpdate();
+		while (fplIsWindowRunning()) {
+			fplWindowUpdate();
 
-			Event event;
-			while (PollWindowEvent(event)) {
+			fplEvent event;
+			while (fplPollEvent(&event)) {
 				switch (event.type) {
-					case EventType::Keyboard:
+					case fplEventType_Keyboard:
 					{
 						switch (event.keyboard.type) {
-							case KeyboardEventType::KeyDown:
+							case fplKeyboardEventType_KeyDown:
 							{
 								ImGUIKeyEvent(event.keyboard.keyCode, event.keyboard.mappedKey, event.keyboard.modifiers, true);
 							} break;
-							case KeyboardEventType::KeyUp:
+							case fplKeyboardEventType_KeyUp:
 							{
 								ImGUIKeyEvent(event.keyboard.keyCode, event.keyboard.mappedKey, event.keyboard.modifiers, false);
 							} break;
-							case KeyboardEventType::CharInput:
+							case fplKeyboardEventType_CharInput:
 							{
 								if (event.keyboard.keyCode > 0 && event.keyboard.keyCode < 0x10000) {
 									io.AddInputCharacter(ImWchar(event.keyboard.keyCode));
@@ -278,27 +272,27 @@ int main(int argc, char **args) {
 							} break;
 						}
 					} break;
-					case EventType::Mouse:
+					case fplEventType_Mouse:
 					{
 						switch (event.mouse.type) {
-							case MouseEventType::Move:
+							case fplMouseEventType_Move:
 							{
 								currentMousePosition[0] = event.mouse.mouseX;
 								currentMousePosition[1] = event.mouse.mouseY;
 							} break;
-							case MouseEventType::Wheel:
+							case fplMouseEventType_Wheel:
 							{
 								currentMouseWheelDelta += event.mouse.wheelDelta;
 								currentMousePosition[0] = event.mouse.mouseX;
 								currentMousePosition[1] = event.mouse.mouseY;
 							} break;
-							case MouseEventType::ButtonDown:
+							case fplMouseEventType_ButtonDown:
 							{
 								currentMouseStates[(int32_t)event.mouse.mouseButton] = true;
 								currentMousePosition[0] = event.mouse.mouseX;
 								currentMousePosition[1] = event.mouse.mouseY;
 							} break;
-							case MouseEventType::ButtonUp:
+							case fplMouseEventType_ButtonUp:
 							{
 								currentMouseStates[(int32_t)event.mouse.mouseButton] = false;
 								currentMousePosition[0] = event.mouse.mouseX;
@@ -306,16 +300,16 @@ int main(int argc, char **args) {
 							} break;
 						}
 					} break;
-                    default:
-                        break;
+					default:
+						break;
 				}
 			}
 
 			UpdateAndRender(lastDeltaTime);
 
-			fpl::video::VideoFlip();
+			fplVideoFlip();
 
-			double currentTime = fpl::timings::GetHighResolutionTimeInSeconds();
+			double currentTime = fplGetTimeInSeconds();
 			lastDeltaTime = lastTime > 0.0 ? (float)(currentTime - lastTime) : (float)(1.0f / 60.0f);
 			lastTime = currentTime;
 		}
@@ -323,7 +317,7 @@ int main(int argc, char **args) {
 		ReleaseImGUI();
 		ImGui::Shutdown();
 
-		fpl::ReleasePlatform();
+		fplPlatformRelease();
 		result = 0;
 	} else {
 		result = -1;
@@ -332,13 +326,13 @@ int main(int argc, char **args) {
 }
 #else
 int main(int argc, char *args[]) {
-    if (fpl::InitPlatform(fpl::InitFlags::Video)) {
-        const char *renderer = (const char *)glGetString(GL_RENDERER);
-        fpl::console::ConsoleFormatOut("%s\n", renderer);
-        fpl::ReleasePlatform();
-        return 0;
-    } else {
-        return -1;
-    }
+	if (fplPlatformInit(fplInitFlags_Video, fpl_null)) {
+		const char *renderer = (const char *)glGetString(GL_RENDERER);
+		fplConsoleFormatOut("%s\n", renderer);
+		fplPlatformRelease();
+		return 0;
+	} else {
+		return -1;
+	}
 }
 #endif

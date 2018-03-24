@@ -4,7 +4,7 @@
     <ClCompile Include="fpl_test.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="..\..\final_platform_layer.hpp" />
     <ClInclude Include="final_test.h" />
+    <ClInclude Include="..\..\final_platform_layer.h" />
   </ItemGroup>
 </Project>

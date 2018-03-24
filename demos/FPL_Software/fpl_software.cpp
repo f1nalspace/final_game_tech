@@ -1,6 +1,5 @@
-#define FPL_AUTO_NAMESPACE
 #define FPL_NO_AUDIO
-#include "final_platform_layer.hpp"
+#include <final_platform_layer.h>
 
 struct RandomSeries {
 	uint16_t index;
@@ -8,7 +7,7 @@ struct RandomSeries {
 
 static uint16_t RandomU16(RandomSeries &series) {
 	series.index ^= (series.index << 13);
-    series.index ^= (series.index >> 9);
+	series.index ^= (series.index >> 9);
 	series.index ^= (series.index << 7);
 	return (series.index);
 }
@@ -19,14 +18,14 @@ static uint8_t RandomByte(RandomSeries &series) {
 }
 
 int main(int argc, char **args) {
-	Settings settings = DefaultSettings();
-	CopyAnsiString("Software Rendering Example", settings.window.windowTitle, FPL_ARRAYCOUNT(settings.window.windowTitle) - 1);
-	settings.video.driver = VideoDriverType::Software;
+	fplSettings settings = fplDefaultSettings();
+	fplCopyAnsiString("Software Rendering Example", settings.window.windowTitle, FPL_ARRAYCOUNT(settings.window.windowTitle) - 1);
+	settings.video.driver = fplVideoDriverType_Software;
 	settings.video.isAutoSize = true;
-	if (InitPlatform(InitFlags::Video, settings)) {
-		RandomSeries series = {1337};
-		while (WindowUpdate()) {
-			VideoBackBuffer *backBuffer = GetVideoBackBuffer();
+	if (fplPlatformInit(fplInitFlags_Video, &settings)) {
+		RandomSeries series = { 1337 };
+		while (fplWindowUpdate()) {
+			fplVideoBackBuffer *backBuffer = fplGetVideoBackBuffer();
 			for (uint32_t y = 0; y < backBuffer->height; ++y) {
 				uint32_t *p = (uint32_t *)((uint8_t *)backBuffer->pixels + y * backBuffer->lineWidth);
 				for (uint32_t x = 0; x < backBuffer->width; ++x) {
@@ -41,9 +40,9 @@ int main(int argc, char **args) {
 					*p++ = color;
 				}
 			}
-			VideoFlip();
+			fplVideoFlip();
 		}
-		ReleasePlatform();
+		fplPlatformRelease();
 	}
 	return 0;
 }

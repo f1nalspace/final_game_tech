@@ -160,7 +160,7 @@
     <ClCompile Include="ftt_tiletracingdemo.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="..\..\final_platform_layer.hpp" />
+    <ClInclude Include="..\..\final_platform_layer.h" />
     <ClInclude Include="..\..\final_tiletrace.hpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

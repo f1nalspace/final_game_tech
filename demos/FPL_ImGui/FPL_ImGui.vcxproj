@@ -178,7 +178,7 @@
     <ClCompile Include="fpl_imgui.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="..\..\final_platform_layer.hpp" />
+    <ClInclude Include="..\..\final_platform_layer.h" />
     <ClInclude Include="dependencies\imgui\include\imgui\imconfig.h" />
     <ClInclude Include="dependencies\imgui\include\imgui\imgui.h" />
     <ClInclude Include="dependencies\imgui\include\imgui\imgui_internal.h" />

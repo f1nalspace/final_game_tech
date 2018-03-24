@@ -1,8 +1,7 @@
 #define FPL_IMPLEMENTATION
 #define FPL_NO_VIDEO_SOFTWARE
 #define FPL_NO_AUDIO
-#define FPL_AUTO_NAMESPACE
-#include "final_platform_layer.hpp"
+#include <final_platform_layer.h>
 
 #include <GL\GL.h>
 
@@ -113,11 +112,11 @@ static void LoadGLExtensions() {
 #define MODERN_OPENGL 1
 
 static void RunLegacy() {
-	ConsoleOut("Running legacy opengl\n");
+	fplConsoleOut("Running legacy opengl\n");
 
 	glClearColor(0.39f, 0.58f, 0.93f, 1.0f);
-	while (WindowUpdate()) {
-		WindowSize windowArea = GetWindowArea();
+	while (fplWindowUpdate()) {
+		fplWindowSize windowArea = fplGetWindowArea();
 		glViewport(0, 0, windowArea.width, windowArea.height);
 
 		glClear(GL_COLOR_BUFFER_BIT);
@@ -127,7 +126,8 @@ static void RunLegacy() {
 		glVertex2f(-0.5f, -0.5f);
 		glVertex2f(0.5f, -0.5f);
 		glEnd();
-		VideoFlip();
+
+		fplVideoFlip();
 	}
 }
 
@@ -144,8 +144,8 @@ static GLuint CreateShaderType(GLenum type, const char *source) {
 		glGetShaderiv(shaderId, GL_INFO_LOG_LENGTH, &infoLen);
 		char *info = (char *)FPL_STACKALLOCATE(infoLen);
 		glGetShaderInfoLog(shaderId, infoLen, &infoLen, info);
-		ConsoleFormatError("Failed compiling %s shader!\n", (type == GL_VERTEX_SHADER ? "vertex" : "fragment"));
-		ConsoleFormatError("%s\n", info);
+		fplConsoleFormatError("Failed compiling %s shader!\n", (type == GL_VERTEX_SHADER ? "vertex" : "fragment"));
+		fplConsoleFormatError("%s\n", info);
 	}
 
 	return(shaderId);
@@ -170,8 +170,8 @@ static GLuint CreateShaderProgram(const char *name, const char *vertexSource, co
 
 		char *info = (char *)FPL_STACKALLOCATE(infoLen);
 		glGetProgramInfoLog(programId, infoLen, &infoLen, info);
-		ConsoleFormatError("Failed linking '%s' shader!\n", name);
-		ConsoleFormatError("%s\n", info);
+		fplConsoleFormatError("Failed linking '%s' shader!\n", name);
+		fplConsoleFormatError("%s\n", info);
 	}
 
 	glDeleteShader(fragmentShader);
@@ -188,17 +188,17 @@ static bool RunModern() {
 	glBindVertexArray(vertexArrayID);
 
 	const char *glslVersion = (const char *)glGetString(GL_SHADING_LANGUAGE_VERSION);
-	ConsoleFormatOut("OpenGL GLSL Version %s:\n", glslVersion);
+	fplConsoleFormatOut("OpenGL GLSL Version %s:\n", glslVersion);
 
 	int profileMask;
 	int contextFlags;
 	glGetIntegerv(GL_CONTEXT_PROFILE_MASK, &profileMask);
 	glGetIntegerv(GL_CONTEXT_FLAGS, &contextFlags);
-	ConsoleFormatOut("OpenGL supported profiles:\n");
-	ConsoleFormatOut("\tCore: %s\n", ((profileMask & GL_CONTEXT_CORE_PROFILE_BIT) ? "yes" : "no"));
-	ConsoleFormatOut("\tForward: %s\n", ((contextFlags & GL_CONTEXT_FLAG_FORWARD_COMPATIBLE_BIT) ? "yes" : "no"));
+	fplConsoleFormatOut("OpenGL supported profiles:\n");
+	fplConsoleFormatOut("\tCore: %s\n", ((profileMask & GL_CONTEXT_CORE_PROFILE_BIT) ? "yes" : "no"));
+	fplConsoleFormatOut("\tForward: %s\n", ((contextFlags & GL_CONTEXT_FLAG_FORWARD_COMPATIBLE_BIT) ? "yes" : "no"));
 
-	ConsoleOut("Running modern opengl\n");
+	fplConsoleOut("Running modern opengl\n");
 
 	const char vertexSource[] = {
 		"#version 330 core\n"
@@ -240,15 +240,15 @@ static bool RunModern() {
 	glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(float) * 2, nullptr);
 
 	glClearColor(0.39f, 0.58f, 0.93f, 1.0f);
-	while (WindowUpdate()) {
-		WindowSize windowArea = GetWindowArea();
+	while (fplWindowUpdate()) {
+		fplWindowSize windowArea = fplGetWindowArea();
 		glViewport(0, 0, windowArea.width, windowArea.height);
 
 		glClear(GL_COLOR_BUFFER_BIT);
 
 		glDrawArrays(GL_TRIANGLES, 0, 3);
 
-		VideoFlip();
+		fplVideoFlip();
 	}
 
 	glDisableVertexAttribArray(0);
@@ -262,25 +262,25 @@ static bool RunModern() {
 
 int main(int argc, char **args) {
 	int result = 0;
-	Settings settings = DefaultSettings();
-	settings.video.driver = VideoDriverType::OpenGL;
+	fplSettings settings = fplDefaultSettings();
+	settings.video.driver = fplVideoDriverType_OpenGL;
 #if MODERN_OPENGL
-	CopyAnsiString("FPL Modern OpenGL", settings.window.windowTitle, FPL_ARRAYCOUNT(settings.window.windowTitle));
-	settings.video.graphics.opengl.compabilityFlags = OpenGLCompabilityFlags::Core;
+	fplCopyAnsiString("FPL Modern OpenGL", settings.window.windowTitle, FPL_ARRAYCOUNT(settings.window.windowTitle));
+	settings.video.graphics.opengl.compabilityFlags = fplOpenGLCompabilityFlags_Core;
 	settings.video.graphics.opengl.majorVersion = 3;
 	settings.video.graphics.opengl.minorVersion = 3;
 #else
-	CopyAnsiString("FPL Legacy OpenGL", settings.window.windowTitle, FPL_ARRAYCOUNT(settings.window.windowTitle));
-	settings.video.graphics.opengl.compabilityFlags = OpenGLCompabilityFlags::Legacy;
+	fplCopyAnsiString("FPL Legacy OpenGL", settings.window.windowTitle, FPL_ARRAYCOUNT(settings.window.windowTitle));
+	settings.video.graphics.opengl.compabilityFlags = fplOpenGLCompabilityFlags_Legacy;
 #endif
-	if (InitPlatform(InitFlags::Video, settings)) {
+	if (fplPlatformInit(fplInitFlags_Video, &settings)) {
 
 		const char *version = (const char *)glGetString(GL_VERSION);
 		const char *vendor = (const char *)glGetString(GL_VENDOR);
 		const char *renderer = (const char *)glGetString(GL_RENDERER);
-		ConsoleFormatOut("OpenGL version: %s\n", version);
-		ConsoleFormatOut("OpenGL vendor: %s\n", vendor);
-		ConsoleFormatOut("OpenGL renderer: %s\n", renderer);
+		fplConsoleFormatOut("OpenGL version: %s\n", version);
+		fplConsoleFormatOut("OpenGL vendor: %s\n", vendor);
+		fplConsoleFormatOut("OpenGL renderer: %s\n", renderer);
 
 	#if MODERN_OPENGL
 		RunModern();
@@ -288,7 +288,7 @@ int main(int argc, char **args) {
 		RunLegacy();
 	#endif
 
-		ReleasePlatform();
+		fplPlatformRelease();
 		result = 0;
 	} else {
 		result = -1;

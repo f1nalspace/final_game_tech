@@ -1,7 +1,6 @@
 #pragma once
 
-#define FPL_AUTO_NAMESPACE
-#include "final_platform_layer.hpp"
+#include <final_platform_layer.h>
 
 struct BitmapInfoheader {
 	uint32_t biSize;
@@ -27,7 +26,7 @@ struct BitmapFileHeader {
 };
 #pragma pack(pop)
 
-fpl_constant uint32_t BITMAP_FORMAT_RGB = 0L;
+constexpr uint32_t BITMAP_FORMAT_RGB = 0L;
 
 static void SaveBitmapRGB24(uint8_t *source, uint32_t width, uint32_t height, uint32_t scanline, const char *targetFilePath) {
 	assert(scanline == (width * 3));
@@ -47,12 +46,12 @@ static void SaveBitmapRGB24(uint8_t *source, uint32_t width, uint32_t height, ui
 	bfh.bfSize = (uint32_t)(sizeof(BitmapFileHeader) + bih.biSize + bih.biSizeImage);
 	bfh.bfOffBits = (uint32_t)(sizeof(BitmapFileHeader) + bih.biSize);
 
-	FileHandle handle = CreateBinaryFile(targetFilePath);
-	if (handle.isValid) {
-		WriteFileBlock32(handle, &bfh, sizeof(BitmapFileHeader));
-		WriteFileBlock32(handle, &bih, sizeof(BitmapInfoheader));
-		WriteFileBlock32(handle, source, bih.biSizeImage);
-		CloseFile(handle);
+	fplFileHandle handle;
+	if (fplCreateAnsiBinaryFile(targetFilePath, &handle)) {
+		fplWriteFileBlock32(&handle, &bfh, sizeof(BitmapFileHeader));
+		fplWriteFileBlock32(&handle, &bih, sizeof(BitmapInfoheader));
+		fplWriteFileBlock32(&handle, source, bih.biSizeImage);
+		fplCloseFile(&handle);
 	}
 }
 

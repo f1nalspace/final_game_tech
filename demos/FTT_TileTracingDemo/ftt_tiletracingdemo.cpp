@@ -1,20 +1,19 @@
 #define FPL_IMPLEMENTATION
 #define FPL_NO_AUDIO
-#define FPL_AUTO_NAMESPACE
-#include "final_platform_layer.hpp"
+#include "final_platform_layer.h"
 
 #include <GL\GL.h>
 
 #define FTT_IMPLEMENTATION
 #include "final_tiletrace.hpp"
 
-fpl_constant int TileMapCountW = 36;
-fpl_constant int TileMapCountH = 62;
+constexpr int TileMapCountW = 36;
+constexpr int TileMapCountH = 62;
 
-fpl_constant float TileSize = 1.0f;
-fpl_constant float AreaSizeW = TileMapCountW * TileSize;
-fpl_constant float AreaSizeH = TileMapCountH * TileSize;
-fpl_constant float AspectRatio = AreaSizeW / AreaSizeH;
+constexpr float TileSize = 1.0f;
+constexpr float AreaSizeW = TileMapCountW * TileSize;
+constexpr float AreaSizeH = TileMapCountH * TileSize;
+constexpr float AspectRatio = AreaSizeW / AreaSizeH;
 
 static uint8_t TileMap[TileMapCountW * TileMapCountH] = {
 	1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,
@@ -98,12 +97,12 @@ static void DrawTile(const int32_t x, const int32_t y, bool filled) {
 
 int main(int argc, char **args) {
 	int result = 0;
-	Settings settings = DefaultSettings();
-	CopyAnsiString("Tile-Tracing Example", settings.window.windowTitle, FPL_ARRAYCOUNT(settings.window.windowTitle) - 1);
-	settings.video.driver = VideoDriverType::OpenGL;
-	if (InitPlatform(InitFlags::Video, settings)) {
-		SetWindowArea(640, 480);
-		SetWindowPosition(0, 0);
+	fplSettings settings = fplDefaultSettings();
+	fplCopyAnsiString("Tile-Tracing Example", settings.window.windowTitle, FPL_ARRAYCOUNT(settings.window.windowTitle) - 1);
+	settings.video.driver = fplVideoDriverType_OpenGL;
+	if (fplPlatformInit(fplInitFlags_Video, &settings)) {
+		fplSetWindowArea(640, 480);
+		fplSetWindowPosition(0, 0);
 
 		glEnable(GL_DEPTH_TEST);
 		glDepthFunc(GL_LEQUAL);
@@ -113,18 +112,18 @@ int main(int argc, char **args) {
 
 		ftt::TileTracer tracer({ TileMapCountW, TileMapCountH }, &TileMap[0]);
 
-		while (WindowUpdate()) {
-			Event ev;
-			while (PollWindowEvent(ev)) {
+		while (fplWindowUpdate()) {
+			fplEvent ev;
+			while (fplPollEvent(&ev)) {
 				switch (ev.type) {
-					case EventType::Keyboard:
+					case fplEventType_Keyboard:
 					{
 						switch (ev.keyboard.type) {
-							case KeyboardEventType::KeyDown:
-							case KeyboardEventType::KeyUp:
+							case fplKeyboardEventType_KeyDown:
+							case fplKeyboardEventType_KeyUp:
 							{
-								bool isDown = ev.keyboard.type == KeyboardEventType::KeyDown;
-								if (ev.keyboard.mappedKey == Key::Key_Space) {
+								bool isDown = ev.keyboard.type == fplKeyboardEventType_KeyDown;
+								if (ev.keyboard.mappedKey == fplKey_Space) {
 									if (isDown != doNextStep) {
 										doNextStep = isDown;
 									}
@@ -137,16 +136,16 @@ int main(int argc, char **args) {
 				}
 			}
 
-		#if 1
+#if 1
 			tracer.Next();
-		#else
+#else
 			if (doNextStep) {
 				tracer.Next();
 				doNextStep = false;
 			}
-		#endif
+#endif
 
-			WindowSize windowArea = GetWindowArea();
+			fplWindowSize windowArea = fplGetWindowArea();
 
 			const float halfAreaWidth = AreaSizeW * 0.5f;
 			const float halfAreaHeight = AreaSizeH * 0.5f;
@@ -261,10 +260,10 @@ int main(int argc, char **args) {
 				glLineWidth(1.0f);
 			}
 
-			VideoFlip();
+			fplVideoFlip();
 		}
 
-		ReleasePlatform();
+		fplPlatformRelease();
 		result = 0;
 	} else {
 		result = -1;
