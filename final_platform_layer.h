@@ -8393,7 +8393,7 @@ fpl_platform_api bool fplCreateBinaryAnsiFile(const char *filePath, fplFileHandl
 	if (filePath != fpl_null) {
 		int posixFileHandle;
 		do {
-			posixFileHandle = open(filePath, O_WRONLY | O_CREAT | O_TRUNC);
+			posixFileHandle = open(filePath, O_WRONLY | O_CREAT | O_TRUNC, 0666);
 		} while (posixFileHandle == -1 && errno == EINTR);
 		if (posixFileHandle != -1) {
 			outHandle->isValid = true;
@@ -8555,11 +8555,59 @@ fpl_platform_api bool fplFileCopy(const char *sourceFilePath, const char *target
 		fpl__ArgumentNullError("Target file path");
 		return false;
 	}
-	bool result = false;
+    
+    if (access(sourceFilePath, F_OK) == -1) {
+        fpl__PushError("Source file '%s' does not exits", sourceFilePath);
+        return false;
+    }
+    if (!overwrite && access(sourceFilePath, F_OK) != -1) {
+        fpl__PushError("Target file '%s' already exits", targetFilePath);
+        return false;
+    }
+    
+    int inputFileHandle;
+    do {
+        inputFileHandle = open(sourceFilePath, O_RDONLY);
+    } while (inputFileHandle == -1 && errno == EINTR);
+    if (inputFileHandle == -1) {
+        fpl__PushError("Failed open source file '%s', error code: %d", sourceFilePath, inputFileHandle);
+        return false;
+    }
+    
+    int outputFileHandle;
+    do {
+        outputFileHandle = open(targetFilePath, O_WRONLY | O_CREAT | O_TRUNC, 0666);
+    } while (outputFileHandle == -1 && errno == EINTR);
+    if (outputFileHandle == -1) {
+        close(inputFileHandle);
+        fpl__PushError("Failed creating target file '%s', error code: %d", targetFilePath, inputFileHandle);
+        return false;
+    }
 
-	// @IMPLEMENT(final): POSIX FileCopy - there is no built-in copy-file function in POSIX so we open a file and buffer copy it over
+    uint8_t buffer[1024 * 10]; // 10 kb buffer
+       
+    for (;;) {
+        ssize_t readbytes;
+        do {
+            readbytes = read(inputFileHandle, buffer, FPL_ARRAYCOUNT(buffer));
+        } while (readbytes == -1 && errno == EINTR);
+        if (readbytes > 0) {
+            ssize_t writtenBytes;
+            do {
+                writtenBytes = write(outputFileHandle, buffer, readbytes);
+            } while (writtenBytes == -1 && errno == EINTR);
+            if (writtenBytes <= 0) {
+                break;
+            }
+        } else {
+            break;
+        }
+    }
+    
+    close(outputFileHandle);
+    close(inputFileHandle);
 
-	return(result);
+	return(true);
 }
 
 fpl_platform_api bool fplFileMove(const char *sourceFilePath, const char *targetFilePath) {
@@ -9456,6 +9504,7 @@ fpl_platform_api bool fplSetClipboardWideText(const wchar_t *wideSource) {
 // ############################################################################
 #if defined(FPL_PLATFORM_LINUX)
 #   include <ctype.h> // isspace
+#   include <pwd.h> // getpwuid
 
 fpl_internal void fpl__LinuxReleasePlatform(fpl__PlatformInitState *initState, fpl__PlatformAppState *appState) {
 	FPL_LOG_BLOCK;
@@ -9558,13 +9607,46 @@ fpl_platform_api fplMemoryInfos fplGetSystemMemoryInfos() {
 }
 
 fpl_platform_api char *fplGetExecutableFilePath(char *destPath, const uint32_t maxDestLen) {
-    // @IMPLEMENT(final): Linux fplGetExecutableFilePath
+    if (destPath == fpl_null) {
+        fpl__ArgumentNullError("Dest path");
+        return fpl_null;
+    }
+    if (maxDestLen == 0) {
+        fpl__ArgumentZeroError("Max dest len");
+        return fpl_null;
+    }
+    char buf[1024];
+    if (readlink("/proc/self/exe", buf, FPL_ARRAYCOUNT(buf) - 1)) {
+        int len = fplGetAnsiStringLength(buf);
+        char *lastP = buf + (len - 1);
+        char *p = lastP;
+        while (p != buf) {
+            if (*p == '/') {
+                len = (lastP - buf) + 1;
+                break;
+            }
+            --p;
+        }
+        uint32_t requiredLen = len + 1;
+        if (maxDestLen < requiredLen) {
+            fpl__ArgumentSizeTooSmallError("Max dest len", len, requiredLen);
+            return fpl_null;
+        }
+        char *result = fplCopyAnsiStringLen(buf, len, destPath, maxDestLen);
+        return(result);
+    }
 	return fpl_null;
 }
 
 fpl_platform_api char *fplGetHomePath(char *destPath, const uint32_t maxDestLen) {
-    // @IMPLEMENT(final): Linux fplGetHomePath
-	return fpl_null;
+    const char *homeDir = getenv("HOME");
+    if (homeDir == fpl_null) {
+        int userId = getuid();
+        passwd *userPwd = getpwuid(userId);
+        homeDir = userPwd->pw_dir;
+    }
+    char *result = fplCopyAnsiString(homeDir, destPath, maxDestLen);
+    return(result);
 }
 #endif // FPL_PLATFORM_LINUX
 
