@@ -125,7 +125,8 @@ static void RunModern(const fdyngl::OpenGLContext *context) {
 
 	glClearColor(0.39f, 0.58f, 0.93f, 1.0f);
 	while (fplWindowUpdate()) {
-		fplWindowSize windowArea = fplGetWindowArea();
+		fplWindowSize windowArea;
+		FPL_ASSERT(fplGetWindowArea(&windowArea));
 		glViewport(0, 0, windowArea.width, windowArea.height);
 
 		glClear(GL_COLOR_BUFFER_BIT);
@@ -149,7 +150,8 @@ static void RunModern(const fdyngl::OpenGLContext *context) {
 
 int main(int argc, char **args) {
 	int result = 0;
-	fplSettings settings = fplDefaultSettings();
+	fplSettings settings;
+	fplSetDefaultSettings(&settings);
 
 	fplInitFlags initFlags;
 #if USE_FPL_OPENGL_CONTEXT_CREATION

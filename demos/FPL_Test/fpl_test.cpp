@@ -11,8 +11,8 @@ static void TestInit() {
 	ft::Msg("Test InitPlatform with All init flags\n");
 	{
 		fplClearPlatformErrors();
-		bool result = fplPlatformInit(fplInitFlags_All, nullptr);
-		FT_IS_TRUE(result);
+		fplInitResultType result = fplPlatformInit(fplInitFlags_All, nullptr);
+		FT_ASSERT(result == fplInitResultType_Success);
 		const char *errorStr = fplGetPlatformError();
 		ft::AssertStringEquals("", errorStr);
 		fplPlatformRelease();
@@ -20,8 +20,8 @@ static void TestInit() {
 	ft::Msg("Test InitPlatform with None init flags\n");
 	{
 		fplClearPlatformErrors();
-		bool result = fplPlatformInit(fplInitFlags_None, fpl_null);
-		FT_IS_TRUE(result);
+		fplInitResultType result = fplPlatformInit(fplInitFlags_None, fpl_null);
+		FT_ASSERT(result == fplInitResultType_Success);
 		const char *errorStr = fplGetPlatformError();
 		ft::AssertStringEquals("", errorStr);
 		fplPlatformRelease();
@@ -317,17 +317,17 @@ static void TestHardware() {
 	fplGetProcessorName(cpuNameBuffer, FPL_ARRAYCOUNT(cpuNameBuffer));
 	ft::Msg("Processor name:\n%s\n", cpuNameBuffer);
 
-	uint32_t coreCount = fplGetProcessorCoreCount();
-	ft::Msg("Processor cores:%d\n", coreCount);
+	size_t coreCount = fplGetProcessorCoreCount();
+	ft::Msg("Processor cores:%z\n", coreCount);
 
 	fplMemoryInfos memInfos = fplGetSystemMemoryInfos();
-	ft::Msg("Physical total memory (bytes):%zu\n", memInfos.totalPhysicalSize);
-	ft::Msg("Physical available memory (bytes):%zu\n", memInfos.availablePhysicalSize);
-	ft::Msg("Physical used memory (bytes):%zu\n", memInfos.usedPhysicalSize);
-	ft::Msg("Virtual total memory (bytes):%zu\n", memInfos.totalVirtualSize);
-	ft::Msg("Virtual used memory (bytes):%zu\n", memInfos.usedVirtualSize);
-	ft::Msg("Page total memory (bytes):%zu\n", memInfos.totalPageSize);
-	ft::Msg("Page used memory (bytes):%zu\n", memInfos.usedPageSize);
+	ft::Msg("Physical total memory (bytes):%z\n", memInfos.totalPhysicalSize);
+	ft::Msg("Physical available memory (bytes):%z\n", memInfos.availablePhysicalSize);
+	ft::Msg("Physical used memory (bytes):%z\n", memInfos.usedPhysicalSize);
+	ft::Msg("Virtual total memory (bytes):%z\n", memInfos.totalVirtualSize);
+	ft::Msg("Virtual used memory (bytes):%z\n", memInfos.usedVirtualSize);
+	ft::Msg("Page total memory (bytes):%z\n", memInfos.totalPageSize);
+	ft::Msg("Page used memory (bytes):%z\n", memInfos.usedPageSize);
 }
 
 
@@ -346,26 +346,26 @@ static void SingleThreadProc(const fplThreadHandle *context, void *data) {
 	fplThreadSleep(d->sleepFor);
 }
 
-static void SimpleMultiThreadTest(const uint32_t threadCount) {
+static void SimpleMultiThreadTest(const size_t threadCount) {
 	ft::Line();
 	ThreadData threadData[FPL__MAX_THREAD_COUNT] = {};
-	for(uint32_t threadIndex = 0; threadIndex < threadCount; ++threadIndex) {
-		threadData[threadIndex].num = threadIndex + 1;
-		threadData[threadIndex].sleepFor = (1 + threadIndex) * 500;
+	for(size_t threadIndex = 0; threadIndex < threadCount; ++threadIndex) {
+		threadData[threadIndex].num = (int)(threadIndex + 1);
+		threadData[threadIndex].sleepFor = (int)(1 + threadIndex) * 500;
 	}
 	fplThreadHandle *threads[FPL__MAX_THREAD_COUNT];
 	ft::Msg("Start %d threads\n", threadCount);
-	for(uint32_t threadIndex = 0; threadIndex < threadCount; ++threadIndex) {
+	for(size_t threadIndex = 0; threadIndex < threadCount; ++threadIndex) {
 		threads[threadIndex] = fplThreadCreate(SingleThreadProc, &threadData[threadIndex]);
 	}
 	ft::Msg("Wait all %d threads for exit\n", threadCount);
 	fplThreadWaitForAll(threads, threadCount, UINT32_MAX);
 	ft::Msg("All %d threads are done\n", threadCount);
-	for(uint32_t threadIndex = 0; threadIndex < threadCount; ++threadIndex) {
+	for(size_t threadIndex = 0; threadIndex < threadCount; ++threadIndex) {
 		FT_EXPECTS(fplThreadState_Stopped, threads[threadIndex]->currentState);
 	}
 	ft::Msg("Destroy %d threads\n", threadCount);
-	for(uint32_t threadIndex = 0; threadIndex < threadCount; ++threadIndex) {
+	for(size_t threadIndex = 0; threadIndex < threadCount; ++threadIndex) {
 		fplThreadDestroy(threads[threadIndex]);
 	}
 }
@@ -463,14 +463,14 @@ static void SyncThreadsTest() {
 		fplThreadHandle *threads[2];
 		uint32_t threadCount = FPL_ARRAYCOUNT(threads);
 
-		ft::Msg("Start %d threads\n", threadCount);
+		ft::Msg("Start %z threads\n", threadCount);
 		threads[0] = fplThreadCreate(ReadDataThreadProc, &readData);
 		threads[1] = fplThreadCreate(WriteDataThreadProc, &writeData);
 
-		ft::Msg("Wait for %d threads to exit\n", threadCount);
+		ft::Msg("Wait for %z threads to exit\n", threadCount);
 		fplThreadWaitForAll(threads, threadCount, UINT32_MAX);
 
-		ft::Msg("Release resources for %d threads\n", threadCount);
+		ft::Msg("Release resources for %z threads\n", threadCount);
 		for(uint32_t index = 0; index < threadCount; ++index) {
 			fplThreadDestroy(threads[index]);
 		}
@@ -478,28 +478,28 @@ static void SyncThreadsTest() {
 	}
 }
 
-static void ConditionThreadsTest(const uint32_t threadCount) {
+static void ConditionThreadsTest(const size_t threadCount) {
 	FT_ASSERT(threadCount > 1);
 
 	ft::Line();
-	ft::Msg("Condition test for %d threads\n", threadCount);
+	ft::Msg("Condition test for %z threads\n", threadCount);
 
 	MasterThreadData masterData = {};
 	masterData.base.num = 1;
 	masterData.mutex = fplMutexCreate();
 
 	SlaveThreadData slaveDatas[FPL__MAX_THREAD_COUNT] = {};
-	uint32_t slaveThreadCount = threadCount - 1;
-	for(uint32_t threadIndex = 0; threadIndex < slaveThreadCount; ++threadIndex) {
-		slaveDatas[threadIndex].base.num = 2 + threadIndex;
+	size_t slaveThreadCount = threadCount - 1;
+	for(size_t threadIndex = 0; threadIndex < slaveThreadCount; ++threadIndex) {
+		slaveDatas[threadIndex].base.num = (int)(2 + threadIndex);
 		slaveDatas[threadIndex].mutex = &masterData.mutex;
 		slaveDatas[threadIndex].signal = fplSignalCreate();
 		masterData.signals[masterData.signalCount++] = &slaveDatas[threadIndex].signal;
 	}
 
-	ft::Msg("Start %d slave threads, 1 master thread\n", slaveThreadCount);
+	ft::Msg("Start %z slave threads, 1 master thread\n", slaveThreadCount);
 	fplThreadHandle *threads[FPL__MAX_THREAD_COUNT];
-	for(uint32_t threadIndex = 0; threadIndex < threadCount; ++threadIndex) {
+	for(size_t threadIndex = 0; threadIndex < threadCount; ++threadIndex) {
 		if(threadIndex == slaveThreadCount) {
 			threads[threadIndex] = fplThreadCreate(ThreadMasterProc, &masterData);
 		} else {
@@ -507,15 +507,15 @@ static void ConditionThreadsTest(const uint32_t threadCount) {
 		}
 	}
 
-	ft::Msg("Wait for %d threads to exit\n", threadCount);
+	ft::Msg("Wait for %z threads to exit\n", threadCount);
 	fplThreadWaitForAll(threads, threadCount, UINT32_MAX);
 
-	ft::Msg("Release resources for %d threads\n", threadCount);
-	for(uint32_t threadIndex = 0; threadIndex < slaveThreadCount; ++threadIndex) {
+	ft::Msg("Release resources for %z threads\n", threadCount);
+	for(size_t threadIndex = 0; threadIndex < slaveThreadCount; ++threadIndex) {
 		fplSignalDestroy(&slaveDatas[threadIndex].signal);
 	}
 	fplMutexDestroy(&masterData.mutex);
-	for(uint32_t threadIndex = 0; threadIndex < threadCount; ++threadIndex) {
+	for(size_t threadIndex = 0; threadIndex < threadCount; ++threadIndex) {
 		fplThreadHandle *thread = threads[threadIndex];
 		FT_EXPECTS(fplThreadState_Stopped, thread->currentState);
 		fplThreadDestroy(thread);
@@ -558,8 +558,8 @@ static void TestThreading() {
 		//
         // Multi threads test
 		//
-        uint32_t coreCount =fplGetProcessorCoreCount();
-        int32_t threadCountForCores = coreCount > 2 ? coreCount - 1 : 1;
+        size_t coreCount =fplGetProcessorCoreCount();
+        size_t threadCountForCores = coreCount > 2 ? coreCount - 1 : 1;
         {
             SimpleMultiThreadTest(2);
             SimpleMultiThreadTest(3);
@@ -814,20 +814,20 @@ static void TestAtomics() {
 static void TestStrings() {
 	ft::Msg("Test ansi string length\n");
 	{
-		uint32_t actual = fplGetAnsiStringLength(nullptr);
-		ft::AssertU32Equals(0, actual);
+		size_t actual = fplGetAnsiStringLength(nullptr);
+		ft::AssertSizeEquals(0, actual);
 	}
 	{
-		uint32_t actual = fplGetAnsiStringLength("");
-		ft::AssertU32Equals(0, actual);
+		size_t actual = fplGetAnsiStringLength("");
+		ft::AssertSizeEquals(0, actual);
 	}
 	{
-		uint32_t actual = fplGetAnsiStringLength("ABC");
-		ft::AssertU32Equals(3, actual);
+		size_t actual = fplGetAnsiStringLength("ABC");
+		ft::AssertSizeEquals(3, actual);
 	}
 	{
-		uint32_t actual = fplGetAnsiStringLength("ABC Hello World!");
-		ft::AssertU32Equals(16, actual);
+		size_t actual = fplGetAnsiStringLength("ABC Hello World!");
+		ft::AssertSizeEquals(16, actual);
 	}
 	{
 		char buffer[32];
@@ -835,26 +835,26 @@ static void TestStrings() {
 		buffer[1] = 'B';
 		buffer[2] = 'C';
 		buffer[3] = 0;
-		uint32_t actual = fplGetAnsiStringLength(buffer);
-		ft::AssertU32Equals(3, actual);
+		size_t actual = fplGetAnsiStringLength(buffer);
+		ft::AssertSizeEquals(3, actual);
 	}
 
 	ft::Msg("Test wide string length\n");
 	{
-		uint32_t actual = fplGetWideStringLength(nullptr);
-		ft::AssertU32Equals(0, actual);
+		size_t actual = fplGetWideStringLength(nullptr);
+		ft::AssertSizeEquals(0, actual);
 	}
 	{
-		uint32_t actual = fplGetWideStringLength(L"");
-		ft::AssertU32Equals(0, actual);
+		size_t actual = fplGetWideStringLength(L"");
+		ft::AssertSizeEquals(0, actual);
 	}
 	{
-		uint32_t actual = fplGetWideStringLength(L"ABC");
-		ft::AssertU32Equals(3, actual);
+		size_t actual = fplGetWideStringLength(L"ABC");
+		ft::AssertSizeEquals(3, actual);
 	}
 	{
-		uint32_t actual = fplGetWideStringLength(L"ABC Hello World!");
-		ft::AssertU32Equals(16, actual);
+		size_t actual = fplGetWideStringLength(L"ABC Hello World!");
+		ft::AssertSizeEquals(16, actual);
 	}
 	{
 		wchar_t buffer[32];
@@ -862,8 +862,8 @@ static void TestStrings() {
 		buffer[1] = 'B';
 		buffer[2] = 'C';
 		buffer[3] = 0;
-		uint32_t actual = fplGetWideStringLength(buffer);
-		ft::AssertU32Equals(3, actual);
+		size_t actual = fplGetWideStringLength(buffer);
+		ft::AssertSizeEquals(3, actual);
 	}
 
 	ft::Msg("Test string equal\n");

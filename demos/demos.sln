@@ -30,6 +30,8 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "FPL_Test", "FPL_Test\FPL_Te
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "FPL_C", "FPL_C\FPL_C.vcxproj", "{E604E511-50CF-4F97-917E-CA2DC4AD30EB}"
 EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "FPL_NoCRT", "FPL_NoCRT\FPL_NoCRT.vcxproj", "{071A2132-7FA8-41C3-9A76-982FD02299ED}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x64 = Debug|x64
@@ -118,6 +120,14 @@ Global
 		{E604E511-50CF-4F97-917E-CA2DC4AD30EB}.Release|x64.Build.0 = Release|x64
 		{E604E511-50CF-4F97-917E-CA2DC4AD30EB}.Release|x86.ActiveCfg = Release|Win32
 		{E604E511-50CF-4F97-917E-CA2DC4AD30EB}.Release|x86.Build.0 = Release|Win32
+		{071A2132-7FA8-41C3-9A76-982FD02299ED}.Debug|x64.ActiveCfg = Debug|x64
+		{071A2132-7FA8-41C3-9A76-982FD02299ED}.Debug|x64.Build.0 = Debug|x64
+		{071A2132-7FA8-41C3-9A76-982FD02299ED}.Debug|x86.ActiveCfg = Debug|Win32
+		{071A2132-7FA8-41C3-9A76-982FD02299ED}.Debug|x86.Build.0 = Debug|Win32
+		{071A2132-7FA8-41C3-9A76-982FD02299ED}.Release|x64.ActiveCfg = Release|x64
+		{071A2132-7FA8-41C3-9A76-982FD02299ED}.Release|x64.Build.0 = Release|x64
+		{071A2132-7FA8-41C3-9A76-982FD02299ED}.Release|x86.ActiveCfg = Release|Win32
+		{071A2132-7FA8-41C3-9A76-982FD02299ED}.Release|x86.Build.0 = Release|Win32
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

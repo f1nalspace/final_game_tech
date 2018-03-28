@@ -2,12 +2,11 @@
 #include <final_platform_layer.h>
 
 int main(int argc, char **args) {
-	fplSettings settings = fplDefaultSettings();
+	fplSettings settings;
+	fplSetDefaultSettings(&settings);
 	if (fplPlatformInit(fplInitFlags_All, &settings)) {
 		while (fplWindowUpdate()) {
-			fplEvent event;
-			while (fplPollEvent(&event)) {
-			}
+			fplClearEvents();
 			fplVideoFlip();
 		}
 		fplPlatformRelease();

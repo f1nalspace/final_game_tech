@@ -2648,7 +2648,8 @@ int main(int argc, char **argv) {
 
 	const char *mediaFilePath = argv[1];
 
-	fplSettings settings = fplDefaultSettings();
+	fplSettings settings;
+	fplSetDefaultSettings(&settings);
 	fplCopyAnsiString("FPL FFmpeg Demo", settings.window.windowTitle, FPL_ARRAYCOUNT(settings.window.windowTitle));
 #if USE_HARDWARE_RENDERING
 	settings.video.driver = fplVideoDriverType_OpenGL;
@@ -2697,7 +2698,7 @@ int main(int argc, char **argv) {
 	state.isInfiniteBuffer = state.settings.isInfiniteBuffer;
 	state.loop = state.settings.isLoop ? 1 : 0;
 
-	state.viewport = fplGetWindowArea();
+	FPL_ASSERT(fplGetWindowArea(&state.viewport));
 
 	// Load media
 	if (!LoadMedia(state, mediaFilePath, nativeAudioFormat)) {

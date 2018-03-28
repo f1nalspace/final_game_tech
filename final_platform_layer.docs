@@ -10,13 +10,12 @@
 
 	\section section_overview Overview
 
-	Final Platform Layer is a cross-platform single-header-file development library designed to abstract the underlying platform to a very simple and easy to use low-level api for accessing input devices (keyboard, mouse, gamepad), audio playback, window handling, IO handling (files, directories, paths), multithreading (threads, mutex, signals) and graphics software or hardware rendering initialization.<br>
+	Final Platform Layer is a single-header-file C99 development library designed to abstract the underlying platform to a very simple and easy to use api for accessing input devices (keyboard, mouse, gamepad), playback audio samples, window handling, IO handling (files, directories, paths), multithreading (threads, mutex, signals) and graphics software or hardware rendering initialization.<br>
 
-	The main focus is game/simulation development, so the default settings will create a window, setup a opengl rendering context and initialize audio playback on any platform.<br>
+	The main focus is game/media/simulation development, so the default settings will create a window, setup a opengl rendering context and initialize audio playback on any platform.<br>
+	The only dependencies are built-in operating system libraries, a C99 complaint compiler.<br>
 	<br>
-	Right know FPL has support for Windows only, but Linux support is already in progress and more platforms are planned.<br>
-	<br>
-	FPL is written in C99 for seamless integration into any codebase.<br>
+	Right know FPL supports the platforms Windows/Linux with the architectures x86/x64.<br>
 	<br>
 	Final Platform Layer is released under the \subpage page_license "MIT License". This license allows you to use FPL freely in any software.<br>
 	<br>
@@ -46,14 +45,16 @@
 	\section section_intro Introduction to FPL
 
 	\subsection subsection_whatisfpl What is FPL?
-	Final Platform Layer is a cross-platform single-header-file development library designed to abstract the underlying platform to a very simple and easy to use low-level api for accessing input devices (keyboard, mouse, gamepad), audio playback, window handling, IO handling (files, directories, paths), multithreading (threads, mutex, signals) and graphics software or hardware rendering initialization.<br>
 
-	The main focus is game/simulation development, so the default settings will create a window, setup a opengl rendering context and initialize audio playback on any platform.<br>
-	<br>
-	Right know FPL has support for Windows only, but Linux support is already in progress and more platforms are planned.<br>
-	-> For more details see the page about the current \subpage page_platform_status.<br>
-	<br>
-	FPL is written in C99 for seamless integration into any codebase.<br>
+	Final Platform Layer is a single-header-file C99 development library designed to abstract the underlying platform to a very simple and easy to use api for:<br>
+	- Accessing input devices (Keyboard, Mouse, Gamepad)
+	- Playback of audio samples
+	- Window handling
+	- IO handling (Files, Directories, Paths)
+	- Multithreading (Threads, Mutex, Signals)
+	- Graphics Software or Hardware Rendering initialization.
+	
+	The main focus is game/media/simulation development, so the default settings will create a window, setup a opengl rendering context and initialize audio playback on any platform.<br>
 	<br>
 	Final Platform Layer is released under the \subpage page_license "MIT License". This license allows you to use FPL freely in any software.<br>
 
@@ -70,15 +71,13 @@
 	\subsection subsection_supported_platforms Which platforms are supported by FPL?
 	Right know FPL supports just a couple of x86/x64 platforms, but some are already in progress and more are planned:
 
-	- Windows (32-bit and 64-bit)
-	- Linux (In progress)
+	- Windows (x86/x64)
+	- Linux (x86/x64, Partially)
 
+	For more details see the \subpage page_platform_status .
+	
 	\subsection subsection_supported_compilers Which compilers are supported by FPL?
-	FPL should compile on every modern C99 compiler, but is tested on a couple of compilers only:
-
-	- MSVC
-	- GCC
-	- Clang
+	FPL should compile on any C99 complaint compiler, such as MSVC 2015+, GCC, Clang, etc.
 
 	\subsection section_features What can FPL do?
 	Read ahead a detailed feature overview of FPL:
@@ -98,7 +97,6 @@
 		- OpenGL 3.x or higher (Modern)
 		- Software backbuffer
 	- Audio asyncronous playback
-		- DirectSound
 	- Memory
 		- Allocation and de-allocation
 		- Custom alignment support
@@ -111,7 +109,7 @@
 		- Load / Store
 		- Memory barriers
 	- Shared library
-		- Loading of shared libraries (DLL on windows, .so on Linux)
+		- Loading of shared libraries (DLL on Windows, .so on Linux/Unix)
 		- Function lookup
 	- IO
 		- Path functions
@@ -139,6 +137,7 @@
 	- Console
 		- Standard/Error out
 		- Formatting
+		- Key input
 	- Threading
 		- Thread
 		- Mutex
@@ -160,7 +159,7 @@
 	\section section_usage How to use FPL?
 	In one of your C/C++ translation units include this:
 
-	\code{.cpp}
+	\code{.c}
 	#define FPL_IMPLEMENTATION
 	#include "final_platform_layer.h"
 	\endcode
@@ -169,7 +168,7 @@
 
 	Provide the typical main entry point with at least the initialization and release of the platform:
 
-	\code{.cpp}
+	\code{.c}
 	int main(int argc, char **args) {
 		// Initialize the platform
 		if (fplPlatformInit(fplInitFlags_All, fpl_null)) {
@@ -190,7 +189,7 @@
 	To use FPL in multiple translation units, i recommend creating a separated "final_platform_layer.c" in the same directory FPL is located and define the implementation there only:<br>
 	<br>
 	<b>final_platform_layer.c</b>:
-	\code{.cpp}
+	\code{.c}
 	#define FPL_IMPLEMENTATION
 	#include "final_platform_layer.h"
 	\endcode
@@ -198,7 +197,7 @@
 	This way FPL implementation is compiled once and can be used everywhere.<br>
 
 	\section subsection_usage_requirements What do i need to get started?
-	The only dependencies are built-in operating system libraries, a C99 complaint compiler and the C-Runtime.<br>
+	The only dependencies are built-in operating system libraries and a C99 complaint compiler.<br>
 	Depending on the compiler and platform - linking to one system library may be required:
 	<br>
 	\subsection subsection_usage_win32 Win32
@@ -207,10 +206,15 @@
 	\subsection subsection_usage_linux Linux
 	- Link against "libld.so"
 
-	\section subsection_usage_options Options
+	\subsection subsection_usage_nocrt No C-Runtime
+	By default FPL uses the C-Run-Time library but its usage is optional.<br>
+	For more details see the page \subpage page_nocrt
 
+	\section subsection_usage_options Options
 	See \subpage page_compiler_options for all compile time options.
 */
+
+
 
 /*!
 	\page page_tutorials Tutorials
@@ -247,7 +251,7 @@
 
 	In one of your C/C++ translation units include this:
 
-	\code{.cpp}
+	\code{.c}
 	#define FPL_IMPLEMENTATION
 	#include "final_platform_layer.h"
 	\endcode
@@ -258,7 +262,7 @@
 
 	Simply provide the typical main entry point:<br>
 
-	\code{.cpp}
+	\code{.c}
 	int main(int argc, char **args) {
 		// code goes here
 	}
@@ -266,9 +270,9 @@
 
 	\section section_otutorial_initialization_simple Initialization
 
-	To initialize FPL you need to call \ref fplPlatformInit() (inside the main \ref section_otutorial_initialization_entrypoint) and provide the desired \ref fplInitFlags :
+	To initialize FPL you need to call \ref fplPlatformInit() (inside the main \ref section_otutorial_initialization_entrypoint) and provide the desired \ref fplInitFlags and either NULL or a pointer as settings parameter:
 
-	\code{.cpp}
+	\code{.c}
 	int main(int argc, char **args) {
 		// With defaults (Window, Video, Audio)
 		fplPlatformInit(fplInitFlags_All, fpl_null);
@@ -277,18 +281,22 @@
 		fplPlatformInit(fplInitFlags_Audio, fpl_null);
 
 		// Only window and audio
-		fplPlatformInit(fplInitFlags_Window | fplInitFlags_Audio);
+		fplPlatformInit(fplInitFlags_Window | fplInitFlags_Audio, fpl_null);
 
 		return 0;
 	}
 	\endcode
 
-	\section section_otutorial_initialization_with_settings Initialization with settings
+	Is is recommend to always pass a settings parameter, but it uses default when passing NULL as well.<br>
+	To initialize a settings container to default values you simply call \ref fplSetDefaultSettings() with a pointer to your local settings container.
+
+	\section section_otutorial_initialization_with_settings Initialization with custom settings
 
 	To initialize FPL with custom settings you need to call \ref fplPlatformInit() and provide the desired \ref fplInitFlags and the \ref fplSettings parameter:
 
-	\code{.cpp}
-	fplSettings settings = fplDefaultSettings();
+	\code{.c}
+	fplSettings settings;
+	fplSetDefaultSettings(&settings);
 
 	// change the settings here
 
@@ -298,7 +306,7 @@
 	\section section_otutorial_initialization_release Release
 
 	When you are done, you release FPL with the call \ref fplPlatformRelease():
-	\code{.cpp}
+	\code{.c}
 	fplPlatformRelease();
 	\endcode
 
@@ -306,14 +314,17 @@
 
 	There is no guarantee that \ref fplPlatformInit() will always work with the fplSettings you specified, maybe the audio device does not support a sample rate of 1337 Khz or your video card does not support OpenGL version 3.7 - who knows.<br>
 	<br>
-	Therefore you should always check the result of the \ref fplPlatformInit() call! The result is a simple bool indicating whether the initialization failed or was successful - its that easy.<br>
+	Therefore you should always check the result of the \ref fplPlatformInit() call!<br>
+	The result is a \ref fplInitResultType enum which is fplInitResultType_Success when initialization succeeded.<br>
+	You can cast the result type to bool, so you can simply use it as a condition.<br>
 	<br>
-	Also you should release the platform when the initialization was successful only! If something goes wrong the resources are already cleaned up by FPL.<br>
+	Also you should release the platform when the initialization was successful only!<br>
+	If something goes wrong the remaining resources are already cleaned up by FPL automatically.<br>
 	<br>
 	In addition you should use \ref fplGetPlatformError() to print out the actual error when the initialization fails!<br>
 
 	<b>Bad:</b> (But will work)
-	\code{.cpp}
+	\code{.c}
 	if (fplPlatformInit(fplInitFlags_All, fpl_null)) {
 		// your code here
 	}
@@ -321,7 +332,7 @@
 	\endcode
 
 	<b>Good:</b>
-	\code{.cpp}
+	\code{.c}
 	if (fplPlatformInit(fplInitFlags_All, fpl_null)) {
 		// your code here
 		fplPlatformRelease();
@@ -329,13 +340,26 @@
 	\endcode
 
 	<b>Better:</b>
-	\code{.cpp}
+	\code{.c}
 	if (fplPlatformInit(fplInitFlags_All, fpl_null)) {
 		// your code here
 		fplPlatformRelease();
 	} else {
 		const char *errStr = fplGetPlatformError();
 		fplConsoleFormatError("FPL-ERROR: %s\n", errStr);
+	}
+	\endcode
+
+	<b>Even Better:</b>
+	\code{.c}
+	fplInitResultType initResult;
+	if ((initResult = fplPlatformInit(fplInitFlags_All, fpl_null)) == fplInitResultType_Success) {
+		// your code here
+		fplPlatformRelease();
+	} else {
+		const char *errStr = fplGetPlatformError();
+		const char *initResultStr = fplGetInitResultTypeString(initResult);
+		fplConsoleFormatError("FPL-ERROR[%s]: %s\n", initResultStr, errStr);
 	}
 	\endcode
 
@@ -355,7 +379,7 @@
 	This either returns a empty string indicating everything is fine or a constant string with a valid error message.<br>
 
 	Example:
-	\code{.cpp}
+	\code{.c}
 	const char *errStr = fplGetPlatformError();
 	// Do something with the error string
 	\endcode
@@ -365,7 +389,7 @@
 	If you just want to check if there was an error, you can call \ref fplGetPlatformErrorCount() to use the number of errors as a condition.<br>
 
 	Example:
-	\code{.cpp}
+	\code{.c}
 	if (fplGetPlatformErrorCount()) {
 		// Print out the error message
 	}
@@ -376,7 +400,7 @@
 	Errors will never be cleared by FPL! You have to do this yourself using \ref fplClearPlatformErrors() .<br>
 
 	Example:
-	\code{.cpp}
+	\code{.c}
 	fplClearPlatformErrors();
 	\endcode
 
@@ -384,7 +408,7 @@
 	Keep in mind that any platform error is reported in the output of the error console automatically!<br>
 	If you dont want to do that, then simply define the preprocessor directive for ignoring this behavior - before including this library with implementation enabled:
 
-	\code{.cpp}
+	\code{.c}
 	#define FPL_NO_ERROR_IN_CONSOLE
 	#define FPL_IMPLEMENTATION
 	#include <final_platform_layer.h>
@@ -400,7 +424,7 @@
 	To create a window you add the \ref fplInitFlags_Window flag to the \ref fplInitFlags parameter in the \ref fplPlatformInit() call.<br>
 	It makes no sense to create a window alone, so we combine it at least with something else, like for example: a video context or audio playback.<br>
 
-	\code{.cpp}
+	\code{.c}
 	fplPlatformInit(fplInitFlags_Window | fplInitFlags_Video, fpl_null);
 	\endcode
 
@@ -412,7 +436,7 @@
 	<br>
 	For that there is a single function call required to process these events -> \ref fplWindowUpdate().
 
-	\code{.cpp}
+	\code{.c}
 	while (fplWindowUpdate()) {
 		// your code goes here
 	}
@@ -433,7 +457,7 @@
 	Each event is copied into the \ref fplEvent parameter which you can handle or not.<br>
 	If there are no events left, the function returns false and you are done.
 
-	\code{.cpp}
+	\code{.c}
 	fplEvent currentEvent;
 	while (fplPollEvent(&currentEvent)) {
 		// ... Handling the event
@@ -444,7 +468,7 @@
 
 	Each event has a \ref fplEvent.type field which you can check on to read the actual data (Keyboard, Mouse, Window, etc.).
 
-	\code{.cpp}
+	\code{.c}
 	fplEvent currentEvent;
 	while (fplPollEvent(&currentEvent)) {
 		switch (currentEvent.type) {
@@ -479,7 +503,7 @@
 
 	Mouse event data are stored in the \ref fplMouseEvent structure.
 
-	\code{.cpp}
+	\code{.c}
 	switch (currentEvent.mouse.type) {
 		case fplMouseEventType_ButtonDown:
 		{
@@ -502,7 +526,7 @@
 	<br>
 	You can either check for the original \ref fplKeyboardEvent.keyCode or use the fplKeyboardEvent.mappedKey field - which is much easier and less error prone.<br>
 
-	\code{.cpp}
+	\code{.c}
 	switch (currentEvent.keyboard.type) {
 		case fplKeyboardEventType_KeyDown:
 		{
@@ -532,7 +556,7 @@
 
 	Gamepad event data are stored in the \ref fplGamepadEvent structure.<br>
 
-	\code{.cpp}
+	\code{.c}
 	switch (currentEvent.gamepad.type) {
 		case fplGamepadEventType_Connected:
 		{
@@ -561,7 +585,7 @@
 
 	Window event data are stored in the \ref fplWindowEvent structure.<br>
 
-	\code{.cpp}
+	\code{.c}
 	switch (currentEvent.window.type) {
 		case fplWindowEventType_Resized:
 		{
@@ -606,7 +630,7 @@
 	<br>
 	But this is not the recommended way to initialize video output, due to the fact that you are responsible for handling any video output yourself.<br>
 
-	\code{.cpp}
+	\code{.c}
 	if (fplPlatformInit(fplInitFlags_Video)) {
 		// ... your code here
 	}
@@ -618,8 +642,9 @@
 	<br>
 	You do that by simply setting the \ref fplVideoDriverType field in your \ref fplVideoSettings structure which is included in the \ref fplSettings structure to the \ref fplPlatformInit() call.
 
-	\code{.cpp}
-	fplSettings settings = fplDefaultSettings();
+	\code{.c}
+	fplSettings settings;
+	fplSetDefaultSettings(&settings);
 	fplVideoSettings &videoSettings = settings.video;
 
 	// Forcing the video driver to be OpenGL
@@ -644,7 +669,7 @@
 
 	Example (Disable OpenGL Video Driver):
 
-	\code{.cpp}
+	\code{.c}
 	#define FPL_NO_VIDEO_OPENGL
 	#define FPL_IMPLEMENTATION
 	#include <final_platform_layer.h>
@@ -654,7 +679,7 @@
 
 	To compile out all video output code you define the FPL_NO_VIDEO preprocessor directive.
 
-	\code{.cpp}
+	\code{.c}
 	#define FPL_NO_VIDEO
 	#define FPL_IMPLEMENTATION
 	#include <final_platform_layer.h>
@@ -679,8 +704,9 @@
 	<br>
 	This will work in ~99% on all supported platforms - if not please post a issue for that platform/configuration/video-card ;-)
 
-	\code{.cpp}
-	fplSettings settings = fplDefaultSettings();
+	\code{.c}
+	fplSettings settings;
+	fplSetDefaultSettings(&settings);
 	fplVideoSettings &videoSettings = settings.video;
 
 	// Forcing the video driver to be legacy OpenGL
@@ -716,8 +742,9 @@
 	- Set the \ref fplOpenGLVideoSettings.compabilityFlags to either a \ref fplOpenGLCompabilityFlags_Core or \ref fplOpenGLCompabilityFlags_Compability
 	- Optionally add the fplOpenGLCompabilityFlags_Forward flag for removing obsolete functions
 
-	\code{.cpp}
-	fplSettings settings = fplDefaultSettings();
+	\code{.c}
+	fplSettings settings;
+	fplSetDefaultSettings(&settings);
 	fplVideoSettings &videoSettings = settings.video;
 
 	// Forcing the video driver to be modern OpenGL with Core profile and for GL version 3.3
@@ -760,8 +787,9 @@
 
 	FPL supports software video output as well, which will work on any platform.<br>
 
-	\code{.cpp}
-	fplSettings settings = fplDefaultSettings();
+	\code{.c}
+	fplSettings settings;
+	fplSetDefaultSettings(&settings);
 	fplVideoSettings &videoSettings = settings.video;
 
 	// Forcing the video driver to be software
@@ -791,7 +819,7 @@
 
 	<b>Example (Filling all pixels to purple):</b>
 
-	\code{.cpp}
+	\code{.c}
 	fplVideoBackBuffer *backBuffer = fplGetVideoBackBuffer();
 	for (uint32_t y = 0; y < backBuffer->height; ++y) {
 		uint32_t *p = (uint32_t *)((uint8_t *)backBuffer->pixels + y * backBuffer->lineWidth);
@@ -812,7 +840,7 @@
 	\note This viewport should not be greater than the actual window area dimension!
 
 	<b>Example (Resize window event):</b>
-	\code{.cpp}
+	\code{.c}
 	fplVideoBackBuffer *backBuffer = fplGetVideoBackBuffer();
 	backBuffer->useOutputRect = true;
 	while (fplWindowUpdate()) {
@@ -833,7 +861,7 @@
 	\endcode
 
 	<b>Example (Always before the draw call):</b>
-	\code{.cpp}
+	\code{.c}
 	fplVideoBackBuffer *backBuffer = fplGetVideoBackBuffer();
 	backBuffer->useOutputRect = true;
 	while (fplWindowUpdate()) {
@@ -872,7 +900,7 @@
 
 	To initialize audio playback with default settings (Interleaved, 48 KHz, 2 Channels, signed 16-bit integer format) you have to set the \ref fplInitFlags_Audio flag in the \ref fplPlatformInit() call and ensure that audio is not disabled by a preprocessor directive (FPL_NO_AUDIO).<br>
 
-	\code{.cpp}
+	\code{.c}
 	if (fplPlatformInit(fplInitFlags_Audio, fpl_null)) {
 		// ... your code here
 	}
@@ -883,12 +911,13 @@
 	Next is to specify the client user callback which gets invoked regularly when the audio device requires new samples to play.<br>
 	This \ref fpl_audio_client_read_callback "client callback" can be set up in the \ref fplAudioSettings.clientReadCallback field from the \ref fplSettings.audio or changed by calling \ref fplSetAudioClientReadCallback() :<br>
 
-	\code{.cpp}
+	\code{.c}
 	static uint32_t MyAudioPlaybackCallback(const fplAudioDeviceFormat *nativeFormat, const uint32_t frameCount, void *outputSamples, void *userData) {
 		// ... Fill audio frames here
 	}
 
-	fplSettings settings = fplDefaultSettings();
+	fplSettings settings;
+	fplSetDefaultSettings(&settings);
 	fplAudioSettings &audioSettings = settings->audio;
 	audioSettings.clientReadCallback = MyAudioPlaybackCallback;
 	audioSettings.userData = // ... pointer to some user data
@@ -904,8 +933,9 @@
 
 	You can change several audio settings (Sample rate, Number of Channels, Format, etc.) before initializing the audio playback like this:<br>
 
-	\code{.cpp}
-	fplSettings settings = fplDefaultSettings();
+	\code{.c}
+	fplSettings settings;
+	fplSetDefaultSettings(&settings);
 	fplAudioSettings &audioSettings = settings.audio;
 	audioSettings.clientReadCallback = MyAudioPlaybackCallback;
 	audioSettings.userData = // ... pointer to some user data
@@ -925,8 +955,9 @@
 	By default FPL uses the first available audio driver which is supported on your platform.<br>
 	If you want to force FPL to use a certain audio driver, you can do this by changing the \ref fplAudioSettings.driver field in the \ref fplAudioSettings structure:<br>
 
-	\code{.cpp}
-	fplSettings settings = fplDefaultSettings();
+	\code{.c}
+	fplSettings settings;
+	fplSetDefaultSettings(&settings);
 	fplAudioSettings &audioSettings = settings.audio;
 
 	// Forcing to use the DirectSound audio driver
@@ -987,7 +1018,7 @@
 
 	\section section_otutorial_audio_writesamples_s16 Writing 16-bit signed integer samples
 
-	\code{.cpp}
+	\code{.c}
 	static uint32_t MyAudioPlaybackCallback(const fplAudioDeviceFormat *nativeFormat, const uint32_t frameCount, void *outputSamples, void *userData) {
 		uint32_t result = 0;
 		if (nativeFormat->type == fplAudioFormatType_S16) {
@@ -1027,12 +1058,13 @@
 	\subsection subsection_faq_inwhatlanguage In what language is FPL written?
 	Final Platform Layer is written in C99.<br>
 	Is uses default integral and boolean types <stdint.h> and <stdbool.h>.<br>
-	For certain features, printf, vprintf the C Runtime are used.<br>
-	FPL has a low static memory footprint.<br>
+	<br>
+	For certain features such as printf(), getchar() the C Runtime are used, but you can disable the usage of the CRT if you want.<br>
+	FPL uses static low memory footprint.<br>
 
 	\subsection subsection_faq_whyshouldiuse Why should i use FPL?
 	If you want a hassle free platform abstraction library, FPL is the way to go.<br>
-	- You dont have any linking madness
+	- No linking madness
 	- No configuration needed
 	- No build-scripts required
 	- It just compiles
@@ -1063,8 +1095,8 @@
 	- ImGUI
 	- FFMPEG
 
-	But it wont work with other platform abstraction libraries, like GLUT, SFML, SDL etc.<br>
-	All these other platform abstract libraries have their own way of providing the main entry point and are not compability with each other.
+	But it wont work with other platform abstraction libraries, like SDL, SFML, GLUT, GLFW etc.<br>
+	All these other platform abstraction libraries have their own way of providing the main entry point and are not compability with each other.
 
 	\section section_additional_notes Additional notes
 
@@ -1121,31 +1153,49 @@
 */
 
 /*!
-	\page page_platform_status Platform Status
-	\tableofcontents
+	\page page_nocrt How to disable the use of the CRT in FPL
 
-	\section section_supported_platforms_archs Supported platforms / architectures
+	\section section_nocrt_consequences Consequences of disabling the CRT
 
-	Current state of supported platforms/architectures:
+	If you disable the CRT you lose a lot of functionality which we today take for granted:<br>
 
-	- Windows (Win32)
-		- x86
-		- x86_64
-		- x64
-	<br><br>
-	- Linux (POSIX, In progress)
-		- x86
-		- x86_64
-		- x64
+	- No "stdio.h" or "stdlib" ...
+	- No "math.h" or "string.h" ...
+	- No 32-bit <> 64-bit integer operations on certain platforms
+	- No console input/output
+	- No C++ exceptions
+	- Limited security checks
+	- Automatic entry point mapping to main() or WinMain()
+	- Limited floating point operations
+	- Limited stack size
+	- Weird compile errors on some compilers/platforms
 
-	\section section_planned_platforms_archs Planned platforms / architectures
+	So if you are fine with that the next section explains how to do that.
+	Some limitations can be corrected by setup some flags in the compiler, such as stack size, security checks, etc.
 
-	This platforms/architectures are planned for the future:
+	\section section_nocrt_definitions Disable the CRT in FPL
 
-	- Unix (POSIX, Planned)
-		- x86
-		- x86_64
-		- x64
+	If you got here i expect that you know what you are doing.<br>
+	Also i expect you already disabled the CRT by compiler flags as well.<br>
+	So this section will explain how to disable CRT in FPL only.
+
+	To disable the use of the C-Runtime Library you need to set certain preprocessor definitions:
+
+	- Disable the use of the CRT (FPL_NO_CRT)
+	- Set either console (FPL_APPTYPE_CONSOLE) or window application (FPL_APPTYPE_WINDOW) type explicitly
+	- Disable it only in the main translation unit
+
+	\code{.c}
+	#define FPL_NO_CRT // Disable CRT support in FPL
+	#define FPL_APPTYPE_CONSOLE // or FPL_APPTYPE_WINDOW
+	#define FPL_IMPLEMENTATION // FPL_NO_CRT must be set set in the implementation only
+	#include <final_platform_layer.h>
+	\endcode
+
+	\section section_nocrt_notes Notes
+
+	Right know FPL have No-CRT support for Win32 only!<br>
+	If you need this for other platforms let me know.
 */
 
 /*!
@@ -1154,107 +1204,123 @@
 
 	\section section_compiler_options_preprocessor_opts Preprocessor options
 
-	<b>You can control which features are included in the compilation and which are not using the following C processor defines:</b>
+	<table>
+		<tr><th>Category</th><th>Macro definition</th><th>Description</th><th>Default</th></tr>
+		<tr>
+			<td>System</td>
+			<td>FPL_IMPLEMENTATION</td>
+			<td>
+				Define this to include the actual implementation code.<br>
+				Set this only once per translation unit, otherwise you will get linking errors.
+			</td>
+			<td>Not set by default</td>
+		</tr>
+		<tr>
+			<td>System</td>
+			<td>FPL_API_AS_PRIVATE</td>
+			<td>
+				Define this to make all functions be private ( <b>static</b> ).<br>
+				This means that all function calls can be called from one translation unit only.
+			</td>
+			<td>By default all FPL functions are defined as ( <b>extern</b> )</td>
+		</tr>
+		<tr>
+			<td>System</td>
+			<td>FPL_DEBUG</td>
+			<td>
+				Define this to enable the "Debug" configuration.<br>
+				When set assertions and some debug related features are enabled.
+			</td>
+			<td>By default this is auto-detected by compiler settings.</td>
+		</tr>
+		<tr>
+			<td>System</td>
+			<td>FPL_RELEASE</td>
+			<td>
+				Define this to enable the "Release" configuration.<br>
+				When set all DEBUG features are compiled out entirely.
+			</td>
+			<td>By default this is auto-detected by compiler settings.</td>
+		</tr>
 
-	\code{.cpp}
-	#define FPL_IMPLEMENTATION
-	\endcode
+		<tr>
+			<td>Assertions</td>
+			<td>FPL_NO_ASSERTIONS</td>
+			<td>Define this to disable all internal assertions.</td>
+			<td>Not set by default</td>
+		</tr>
+		<tr>
+			<td>Assertions</td>
+			<td>FPL_FORCE_ASSERTIONS</td>
+			<td>Define this to enable internal assertions always, even in debug builds.</td>
+			<td>
+			Not set by default.<br>
+			\note When enabled all assertions will use a simple null-pointer assertion macro always!
+			</td>
+		</tr>
+		<tr>
+			<td>Assertions</td>
+			<td>FPL_NO_C_ASSERT</td>
+			<td>Define this to disable C runtime assert.</td>
+			<td>
+			Not set by default.<br>
+			\note Has no effect when FPL_FORCE_ASSERTIONS is set!
+			</td>
+		</tr>
 
-	Define this to include the actual implementation code.
-	Set this only once per translation unit, otherwise you will get linking errors.
+		<tr>
+			<td>Window</td>
+			<td>FPL_NO_WINDOW</td>
+			<td>Define this to disable window support entirely.</td>
+			<td>Not set by default</td>
+		</tr>
 
-	\code{.cpp}
-	#define FPL_API_AS_PRIVATE
-	\endcode
+		<tr>
+			<td>Video</td>
+			<td>FPL_NO_VIDEO</td>
+			<td>Define this to disable video support entirely.</td>
+			<td>Not set by default</td>
+		</tr>
+		<tr>
+			<td>Video</td>
+			<td>FPL_NO_VIDEO_OPENGL</td>
+			<td>Define this to disable the opengl video driver.</td>
+			<td>Not set by default</td>
+		</tr>
+		<tr>
+			<td>Video</td>
+			<td>FPL_NO_VIDEO_SOFTWARE</td>
+			<td>Define this to disable the software video driver.</td>
+			<td>Not set by default</td>
+		</tr>
 
-	Define this to make all functions be private ( <b>static</b> ). This means that all function calls can be called from one translation unit only.<br>
-	By default all FPL functions are defined as ( <b>extern</b> ).
+		<tr>
+			<td>Audio</td>
+			<td>FPL_NO_AUDIO</td>
+			<td>Define this to disable audio support entirely.</td>
+			<td>Not set by default</td>
+		</tr>
+		<tr>
+			<td>Audio</td>
+			<td>FPL_NO_AUDIO_DIRECTSOUND</td>
+			<td>Define this to disable directsound support entirely.</td>
+			<td>Not set by default</td>
+		</tr>
 
-	\code{.cpp}
-	#define FPL_DEBUG
-	\endcode
+		<tr>
+			<td>Error handling</td>
+			<td>FPL_NO_MULTIPLE_ERRORSTATES</td>
+			<td>Define this to use a single error state for \ref fplGetPlatformError() instead of multiple ones.</td>
+			<td>Not set by default</td>
+		</tr>
+		<tr>
+			<td>Error handling</td>
+			<td>FPL_NO_ERROR_IN_CONSOLE</td>
+			<td>Define this to disable printing any platform specific errors to the console.</td>
+			<td>By default all platform specific error will be printed to the error console.</td>
+		</tr>
 
-	Define this to enable the "Debug" configuration which means that certain features like assertions are compiled out in FPL_RELEASE configuration.<br>
-	By default FPL detects this by checking special preprocessor defines, but should be set for any development built.
-
-	\code{.cpp}
-	#define FPL_RELEASE
-	\endcode
-
-	Define this to enable the "Release" configuration which means that all DEBUG features are compiler out entirely.<br>
-	By default FPL detects this by checking special preprocessor defines, but should be set for any release or shipping built.
-
-	\code{.cpp}
-	#define FPL_NO_ASSERTIONS
-	\endcode
-
-	Define this to disable all internal assertions.
-	By default assertions are enabled when a "Debug" configuration is detected or the FPL_DEBUG define is set.
-
-	\code{.cpp}
-	#define FPL_FORCE_ASSERTIONS
-	\endcode
-
-	Define this to enable internal assertions always, even in debug builds.
-	\note When enabled all assertions will use a simple null-pointe assertion macro always!
-
-	\code{.cpp}
-	#define FPL_NO_C_ASSERT
-	\endcode
-
-	Define this to disable C runtime assert.
-	Has no effect when FPL_FORCE_ASSERTIONS is set!
-
-	\code{.cpp}
-	#define FPL_NO_WINDOW
-	\endcode
-
-	Define this to disable window support entirely.
-
-	\code{.cpp}
-	#define FPL_NO_VIDEO
-	\endcode
-
-	Define this to disable any rendering device entirely.
-
-	\code{.cpp}
-	#define FPL_NO_VIDEO_OPENGL
-	\endcode
-
-	Define this to disable opengl rendering support entirely.
-
-	\code{.cpp}
-	#define FPL_NO_VIDEO_SOFTWARE
-	\endcode
-
-	Define this to disable software rendering support entirely.
-
-	\code{.cpp}
-	#define FPL_NO_AUDIO
-	\endcode
-
-	Define this to disable audio playback entirely.
-
-	\code{.cpp}
-	#define FPL_NO_AUDIO_DIRECTSOUND
-	\endcode
-
-	Define this to disable directsound support entirely.
-	By default this enabled when the win32 platform is detected.
-
-	\code{.cpp}
-	#define FPL_NO_MULTIPLE_ERRORSTATES
-	\endcode
-
-	Define this to use a single error state for \ref fplGetPlatformError() instead of multiple ones.<br>
-	By default multiple error states are used.
-
-	\code{.cpp}
-	#define FPL_NO_ERROR_IN_CONSOLE
-	\endcode
-
-	Define this to disable printing any platform specific errors to the console.<br>
-	By default all platform specific error will be printed to the error console.
+	</table>	
 
 	\section section_compiler_options_detection Platform/Compiler detection
 
@@ -1266,7 +1332,7 @@
 
 	All this defines have no value set, there are just "defined" - use always defined() for checking them.
 
-	\code{.cpp}
+	\code{.c}
 	#if defined(FPL_PLATFORM_WIN32)
 		// ... Any win32 code you may need
 	#endif // FPL_PLATFORM_WIN32
@@ -1284,7 +1350,7 @@
 
 	To prevent code duplication for platform combinations, FPL uses sub-platforms - which are no real platforms, but rather principles or standards the actual operating system is built-on.<br>
 	For example "Linux" is detected as FPL_PLATFORM_LINUX but uses POSIX as a sub-platform FPL_SUBPLATFORM_POSIX.<br>
-	Another example is "FreeBSD" which is a unix-based operation system which uses POSIX standards as well, so it uses the same posix code linux uses.<br>
+	Another example is "FreeBSD" which is a unix-based operation system which uses POSIX standards as well, so it uses the same posix sub platform.<br>
 */
 
 /*!
@@ -1293,7 +1359,7 @@
 
 	\section section_maincpp1 main.cpp
 
-	\code{.cpp}
+	\code{.c}
 	#define FPL_IMPLEMENTATION
 	#include "final_platform_layer.h"
 
@@ -1318,7 +1384,7 @@
 
 	\section section_maincpp2 main.cpp
 
-	\code{.cpp}
+	\code{.c}
 	#define FPL_IMPLEMENTATION
 	#include "final_platform_layer.h"
 
@@ -1359,7 +1425,7 @@
 
 	\section section_maincpp3 main.cpp
 
-	\code{.cpp}
+	\code{.c}
 	#define FPL_IMPLEMENTATION
 	#include "final_platform_layer.h"
 
@@ -1372,7 +1438,8 @@
 		int result = 0;
 
 		// Legacy opengl is default, so we force it to be forward or backward compability
-		fplSettings settings = fplDefaultSettings();
+		fplSettings settings;
+		fplSetDefaultSettings(&settings);
 		settings.video.driver = fplVideoDriverType_OpenGL;
 		settings.video.opengl.compabilityFlags = fplOpenGLCompabilityFlags_Core;
 		settings.video.opengl.majorVersion = 3;
@@ -1405,7 +1472,7 @@
 
 	\section section_maincpp4 main.cpp
 
-	\code{.cpp}
+	\code{.c}
 	#define FPL_IMPLEMENTATION
 	#define FPL_NO_WINDOW
 	#include <final_platform_layer.h>
@@ -1448,7 +1515,8 @@
 		int result = -1;
 
 		// Initialize to default settings which is 48 KHz and 2 Channels
-		fplSettings settings = fplDefaultSettings();
+		fplSettings settings;
+		fplSetDefaultSettings(&settings);
 
 		// Optionally overwrite audio settings if needed
 

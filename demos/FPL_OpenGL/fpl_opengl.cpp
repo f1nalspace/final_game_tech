@@ -116,7 +116,8 @@ static void RunLegacy() {
 
 	glClearColor(0.39f, 0.58f, 0.93f, 1.0f);
 	while (fplWindowUpdate()) {
-		fplWindowSize windowArea = fplGetWindowArea();
+		fplWindowSize windowArea;
+		FPL_ASSERT(fplGetWindowArea(&windowArea));
 		glViewport(0, 0, windowArea.width, windowArea.height);
 
 		glClear(GL_COLOR_BUFFER_BIT);
@@ -241,7 +242,8 @@ static bool RunModern() {
 
 	glClearColor(0.39f, 0.58f, 0.93f, 1.0f);
 	while (fplWindowUpdate()) {
-		fplWindowSize windowArea = fplGetWindowArea();
+		fplWindowSize windowArea;
+		FPL_ASSERT(fplGetWindowArea(&windowArea));
 		glViewport(0, 0, windowArea.width, windowArea.height);
 
 		glClear(GL_COLOR_BUFFER_BIT);
@@ -262,7 +264,8 @@ static bool RunModern() {
 
 int main(int argc, char **args) {
 	int result = 0;
-	fplSettings settings = fplDefaultSettings();
+	fplSettings settings;
+	fplSetDefaultSettings(&settings);
 	settings.video.driver = fplVideoDriverType_OpenGL;
 #if MODERN_OPENGL
 	fplCopyAnsiString("FPL Modern OpenGL", settings.window.windowTitle, FPL_ARRAYCOUNT(settings.window.windowTitle));

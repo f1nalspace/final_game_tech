@@ -55,7 +55,8 @@ int main(int argc, char **args) {
 	int result = -1;
 
 	// Initialize to default settings which is 48 KHz and 2 Channels
-	fplSettings settings = fplDefaultSettings();
+	fplSettings settings;
+	fplSetDefaultSettings(&settings);
 
 	// Optionally overwrite audio settings if needed
 

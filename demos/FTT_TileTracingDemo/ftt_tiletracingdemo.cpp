@@ -97,7 +97,8 @@ static void DrawTile(const int32_t x, const int32_t y, bool filled) {
 
 int main(int argc, char **args) {
 	int result = 0;
-	fplSettings settings = fplDefaultSettings();
+	fplSettings settings;
+	fplSetDefaultSettings(&settings);
 	fplCopyAnsiString("Tile-Tracing Example", settings.window.windowTitle, FPL_ARRAYCOUNT(settings.window.windowTitle) - 1);
 	settings.video.driver = fplVideoDriverType_OpenGL;
 	if (fplPlatformInit(fplInitFlags_Video, &settings)) {
@@ -145,7 +146,8 @@ int main(int argc, char **args) {
 			}
 #endif
 
-			fplWindowSize windowArea = fplGetWindowArea();
+			fplWindowSize windowArea;
+			FPL_ASSERT(fplGetWindowArea(&windowArea));
 
 			const float halfAreaWidth = AreaSizeW * 0.5f;
 			const float halfAreaHeight = AreaSizeH * 0.5f;
