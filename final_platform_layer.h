@@ -929,12 +929,18 @@ SOFTWARE.
 //! Null
 #define fpl_null NULL
 
+#if defined(FPL_IS_CPP)
+#   define fpl_extern
+#else
+#   define fpl_extern extern
+#endif
+
 #if defined(FPL_API_AS_PRIVATE)
 	//! Private api call
 #	define fpl_api static
 #else
 	//! Public api call
-#	define fpl_api extern
+#	define fpl_api fpl_extern
 #endif // FPL_API_AS_PRIVATE
 
 //! Platform api definition
@@ -7536,8 +7542,8 @@ fpl_platform_api char *fplFormatAnsiStringArgs(char *ansiDestBuffer, const size_
 		fpl__PushError("Format parameter are '%s' are invalid!", format);
 		return fpl_null;
 	}
-	uint32_t requiredMaxAnsiDestBufferLen = charCount + 1;
-	if((int)maxAnsiDestBufferLen < requiredMaxAnsiDestBufferLen) {
+	size_t requiredMaxAnsiDestBufferLen = charCount + 1;
+	if(maxAnsiDestBufferLen < requiredMaxAnsiDestBufferLen) {
 		fpl__ArgumentSizeTooSmallError("Max ansi dest len", maxAnsiDestBufferLen, requiredMaxAnsiDestBufferLen);
 		return fpl_null;
 	}
@@ -8424,12 +8430,12 @@ fpl_platform_api bool fplThreadWaitForOne(fplThreadHandle *thread, const uint32_
 	return (result);
 }
 
-fpl_platform_api bool fplThreadWaitForAll(fplThreadHandle *threads[], const uint32_t count, const uint32_t maxMilliseconds) {
+fpl_platform_api bool fplThreadWaitForAll(fplThreadHandle *threads[], const size_t count, const uint32_t maxMilliseconds) {
 	bool result = fpl__PosixThreadWaitForMultiple(threads, count, count, maxMilliseconds);
 	return(result);
 }
 
-fpl_platform_api bool fplThreadWaitForAny(fplThreadHandle *threads[], const uint32_t count, const uint32_t maxMilliseconds) {
+fpl_platform_api bool fplThreadWaitForAny(fplThreadHandle *threads[], const size_t count, const uint32_t maxMilliseconds) {
 	bool result = fpl__PosixThreadWaitForMultiple(threads, 1, count, maxMilliseconds);
 	return(result);
 }
@@ -8580,14 +8586,14 @@ fpl_platform_api bool fplSignalWaitForOne(fplMutexHandle *mutex, fplSignalHandle
 	return(true);
 }
 
-fpl_platform_api bool fplSignalWaitForAll(fplMutexHandle *mutex, fplSignalHandle *signals[], const uint32_t count, const uint32_t maxMilliseconds) {
+fpl_platform_api bool fplSignalWaitForAll(fplMutexHandle *mutex, fplSignalHandle *signals[], const size_t count, const uint32_t maxMilliseconds) {
 	const fpl__PlatformAppState *appState = fpl__global__AppState;
 	const fpl__PThreadApi *pthreadApi = &appState->posix.pthreadApi;
 	bool result = fpl__PosixSignalWaitForMultiple(pthreadApi, mutex, signals, count, count, maxMilliseconds);
 	return(result);
 }
 
-fpl_platform_api bool fplSignalWaitForAny(fplMutexHandle *mutex, fplSignalHandle *signals[], const uint32_t count, const uint32_t maxMilliseconds) {
+fpl_platform_api bool fplSignalWaitForAny(fplMutexHandle *mutex, fplSignalHandle *signals[], const size_t count, const uint32_t maxMilliseconds) {
 	const fpl__PlatformAppState *appState = fpl__global__AppState;
 	const fpl__PThreadApi *pthreadApi = &appState->posix.pthreadApi;
 	bool result = fpl__PosixSignalWaitForMultiple(pthreadApi, mutex, signals, 1, count, maxMilliseconds);
@@ -9009,7 +9015,7 @@ fpl_platform_api void fplListFilesEnd(fplFileEntry *lastEntry) {
 // ############################################################################
 #if defined(FPL_SUBPLATFORM_STD_STRINGS)
 // @NOTE(final): stdio.h is already included
-fpl_platform_api char *fplWideStringToAnsiString(const wchar_t *wideSource, const uint32_t maxWideSourceLen, char *ansiDest, const uint32_t maxAnsiDestLen) {
+fpl_platform_api char *fplWideStringToAnsiString(const wchar_t *wideSource, const size_t maxWideSourceLen, char *ansiDest, const size_t maxAnsiDestLen) {
 	if(wideSource == fpl_null) {
 		fpl__ArgumentNullError("Wide source");
 		return fpl_null;
@@ -9018,8 +9024,8 @@ fpl_platform_api char *fplWideStringToAnsiString(const wchar_t *wideSource, cons
 		fpl__ArgumentNullError("Ansi dest");
 		return fpl_null;
 	}
-	uint32_t requiredLen = wcstombs(fpl_null, wideSource, maxWideSourceLen);
-	uint32_t minRequiredLen = requiredLen + 1;
+	size_t requiredLen = wcstombs(fpl_null, wideSource, maxWideSourceLen);
+	size_t minRequiredLen = requiredLen + 1;
 	if(maxAnsiDestLen < minRequiredLen) {
 		fpl__ArgumentSizeTooSmallError("Max ansi dest len", maxAnsiDestLen, minRequiredLen);
 		return fpl_null;
@@ -9028,7 +9034,7 @@ fpl_platform_api char *fplWideStringToAnsiString(const wchar_t *wideSource, cons
 	ansiDest[requiredLen] = 0;
 	return(ansiDest);
 }
-fpl_platform_api char *fplWideStringToUTF8String(const wchar_t *wideSource, const uint32_t maxWideSourceLen, char *utf8Dest, const uint32_t maxUtf8DestLen) {
+fpl_platform_api char *fplWideStringToUTF8String(const wchar_t *wideSource, const size_t maxWideSourceLen, char *utf8Dest, const size_t maxUtf8DestLen) {
 	if(wideSource == fpl_null) {
 		fpl__ArgumentNullError("Wide source");
 		return fpl_null;
@@ -9038,8 +9044,8 @@ fpl_platform_api char *fplWideStringToUTF8String(const wchar_t *wideSource, cons
 		return fpl_null;
 	}
 	// @TODO(final): UTF-8!
-	uint32_t requiredLen = wcstombs(fpl_null, wideSource, maxWideSourceLen);
-	uint32_t minRequiredLen = requiredLen + 1;
+	size_t requiredLen = wcstombs(fpl_null, wideSource, maxWideSourceLen);
+	size_t minRequiredLen = requiredLen + 1;
 	if(maxUtf8DestLen < minRequiredLen) {
 		fpl__ArgumentSizeTooSmallError("Max utf8 dest len", maxUtf8DestLen, minRequiredLen);
 		return fpl_null;
@@ -9048,7 +9054,7 @@ fpl_platform_api char *fplWideStringToUTF8String(const wchar_t *wideSource, cons
 	utf8Dest[requiredLen] = 0;
 	return(utf8Dest);
 }
-fpl_platform_api wchar_t *fplAnsiStringToWideString(const char *ansiSource, const uint32_t ansiSourceLen, wchar_t *wideDest, const uint32_t maxWideDestLen) {
+fpl_platform_api wchar_t *fplAnsiStringToWideString(const char *ansiSource, const size_t ansiSourceLen, wchar_t *wideDest, const size_t maxWideDestLen) {
 	if(ansiSource == fpl_null) {
 		fpl__ArgumentNullError("Ansi source");
 		return fpl_null;
@@ -9057,8 +9063,8 @@ fpl_platform_api wchar_t *fplAnsiStringToWideString(const char *ansiSource, cons
 		fpl__ArgumentNullError("Wide dest");
 		return fpl_null;
 	}
-	uint32_t requiredLen = mbstowcs(fpl_null, ansiSource, ansiSourceLen);
-	uint32_t minRequiredLen = requiredLen + 1;
+	size_t requiredLen = mbstowcs(fpl_null, ansiSource, ansiSourceLen);
+	size_t minRequiredLen = requiredLen + 1;
 	if(maxWideDestLen < minRequiredLen) {
 		fpl__ArgumentSizeTooSmallError("Max wide dest len", maxWideDestLen, minRequiredLen);
 		return fpl_null;
@@ -9067,7 +9073,7 @@ fpl_platform_api wchar_t *fplAnsiStringToWideString(const char *ansiSource, cons
 	wideDest[requiredLen] = 0;
 	return(wideDest);
 }
-fpl_platform_api wchar_t *fplUTF8StringToWideString(const char *utf8Source, const uint32_t utf8SourceLen, wchar_t *wideDest, const uint32_t maxWideDestLen) {
+fpl_platform_api wchar_t *fplUTF8StringToWideString(const char *utf8Source, const size_t utf8SourceLen, wchar_t *wideDest, const size_t maxWideDestLen) {
 	if(utf8Source == fpl_null) {
 		fpl__ArgumentNullError("UTF8 source");
 		return fpl_null;
@@ -9077,8 +9083,8 @@ fpl_platform_api wchar_t *fplUTF8StringToWideString(const char *utf8Source, cons
 		return fpl_null;
 	}
 	// @TODO(final): UTF-8!
-	uint32_t requiredLen = mbstowcs(fpl_null, utf8Source, utf8SourceLen);
-	uint32_t minRequiredLen = requiredLen + 1;
+	size_t requiredLen = mbstowcs(fpl_null, utf8Source, utf8SourceLen);
+	size_t minRequiredLen = requiredLen + 1;
 	if(maxWideDestLen < minRequiredLen) {
 		fpl__ArgumentSizeTooSmallError("Max wide dest len", maxWideDestLen, minRequiredLen);
 		return fpl_null;
@@ -9087,7 +9093,53 @@ fpl_platform_api wchar_t *fplUTF8StringToWideString(const char *utf8Source, cons
 	wideDest[requiredLen] = 0;
 	return(wideDest);
 }
-fpl_platform_api char *fplFormatAnsiString(char *ansiDestBuffer, const uint32_t maxAnsiDestBufferLen, const char *format, ...) {
+
+fpl_platform_api char *fplFormatAnsiStringArgs(char *ansiDestBuffer, const size_t maxAnsiDestBufferLen, const char *format, va_list argList) {
+	if(ansiDestBuffer == fpl_null) {
+		fpl__ArgumentNullError("Ansi dest buffer");
+		return fpl_null;
+	}
+	if(maxAnsiDestBufferLen == 0) {
+		fpl__ArgumentZeroError("Max ansi dest len");
+		return fpl_null;
+	}
+	if(format == fpl_null) {
+		fpl__ArgumentNullError("Format");
+		return fpl_null;
+	}
+	if(argList == fpl_null) {
+		fpl__ArgumentNullError("Arg list");
+		return fpl_null;
+	}
+	// @NOTE(final): Need to clear the first character, otherwise vsnprintf() does weird things... O_o
+	ansiDestBuffer[0] = 0;
+
+	int charCount = 0;
+#	if defined(FPL_NO_CRT)
+#		if defined(FPL_USERFUNC_vsnprintf)
+			charCount = FPL_USERFUNC_vsnprintf(ansiDestBuffer, maxAnsiDestBufferLen, format, argList);
+#		else
+			charCount = 0;
+#		endif
+#	else
+	charCount = vsnprintf(ansiDestBuffer, maxAnsiDestBufferLen, format, argList);
+#	endif
+
+	if(charCount < 0) {
+		fpl__PushError("Format parameter are '%s' are invalid!", format);
+		return fpl_null;
+	}
+	size_t requiredMaxAnsiDestBufferLen = charCount + 1;
+	if(maxAnsiDestBufferLen < requiredMaxAnsiDestBufferLen) {
+		fpl__ArgumentSizeTooSmallError("Max ansi dest len", maxAnsiDestBufferLen, requiredMaxAnsiDestBufferLen);
+		return fpl_null;
+	}
+	ansiDestBuffer[charCount] = 0;
+	char *result = ansiDestBuffer;
+	return(result);
+}
+
+fpl_platform_api char *fplFormatAnsiString(char *ansiDestBuffer, const size_t maxAnsiDestBufferLen, const char *format, ...) {
 	if(ansiDestBuffer == fpl_null) {
 		fpl__ArgumentNullError("Ansi dest buffer");
 		return fpl_null;
@@ -9102,22 +9154,8 @@ fpl_platform_api char *fplFormatAnsiString(char *ansiDestBuffer, const uint32_t 
 	}
 	va_list argList;
 	va_start(argList, format);
-	// @NOTE(final): Need to clear the first character, otherwise vsnprintf() does weird things... O_o
-	ansiDestBuffer[0] = 0;
-	int charCount = vsnprintf(ansiDestBuffer, maxAnsiDestBufferLen, format, argList);
-	if(charCount < 0) {
-		fpl__PushError("Format parameter are '%s' are invalid!", format);
-		return fpl_null;
-	}
-	uint32_t minAnsiDestBufferLen = charCount + 1;
-	if(maxAnsiDestBufferLen < minAnsiDestBufferLen) {
-		fpl__ArgumentSizeTooSmallError("Max ansi dest len", maxAnsiDestBufferLen, minAnsiDestBufferLen);
-		return fpl_null;
-	}
+	char *result = fplFormatAnsiStringArgs(ansiDestBuffer, maxAnsiDestBufferLen, format, argList);
 	va_end(argList);
-	FPL_ASSERT(charCount > 0);
-	ansiDestBuffer[charCount] = 0;
-	char *result = ansiDestBuffer;
 	return(result);
 }
 #endif // FPL_SUBPLATFORM_STD_STRINGS
@@ -9715,7 +9753,12 @@ fpl_platform_api void fplSetWindowCursorEnabled(const bool value) {
 	// @IMPLEMENT(final): X11 fplSetWindowCursorEnabled
 }
 
-fpl_platform_api fplWindowSize fplGetWindowArea() {
+fpl_platform_api bool fplGetWindowArea(fplWindowSize *outSize) {
+    if (outSize == fpl_null) {
+        fpl__ArgumentNullError("Out Size");
+        return false;
+    }  
+    
 	fpl__PlatformAppState *appState = fpl__global__AppState;
 	FPL_ASSERT(appState != fpl_null);
 	const fpl__X11SubplatformState *subplatform = &appState->x11;
@@ -9725,10 +9768,9 @@ fpl_platform_api fplWindowSize fplGetWindowArea() {
 	XWindowAttributes attribs;
 	x11Api->XGetWindowAttributes(windowState->display, windowState->window, &attribs);
 
-	fplWindowSize result = FPL_ZERO_INIT;
-	result.width = attribs.width;
-	result.height = attribs.height;
-	return(result);
+	outSize->width = attribs.width;
+	outSize->height = attribs.height;
+	return(true);
 }
 
 fpl_platform_api void fplSetWindowArea(const uint32_t width, const uint32_t height) {
@@ -9760,7 +9802,12 @@ fpl_platform_api bool fplIsWindowFullscreen() {
 	return false;
 }
 
-fpl_platform_api fplWindowPosition fplGetWindowPosition() {
+fpl_platform_api bool fplGetWindowPosition(fplWindowPosition *outPos) {
+    if (outPos == fpl_null) {
+        fpl__ArgumentNullError("Out pos");
+        return false;
+    }   
+    
 	fpl__PlatformAppState *appState = fpl__global__AppState;
 	FPL_ASSERT(appState != fpl_null);
 	const fpl__X11SubplatformState *subplatform = &appState->x11;
@@ -9770,11 +9817,10 @@ fpl_platform_api fplWindowPosition fplGetWindowPosition() {
 	XWindowAttributes attribs;
 	x11Api->XGetWindowAttributes(windowState->display, windowState->window, &attribs);
 
-	fplWindowPosition result = FPL_ZERO_INIT;
-	result.left = attribs.x;
-	result.top = attribs.y;
+	outPos->left = attribs.x;
+	outPos->top = attribs.y;
 
-	return(result);
+	return(true);
 }
 
 fpl_platform_api void fplSetWindowPosition(const int32_t left, const int32_t top) {
@@ -9840,12 +9886,12 @@ fpl_internal bool fpl__LinuxInitPlatform(const fplInitFlags initFlags, const fpl
 //
 // Linux Hardware
 //
-fpl_platform_api uint32_t fplGetProcessorCoreCount() {
-	uint32_t result = sysconf(_SC_NPROCESSORS_ONLN);
+fpl_platform_api size_t fplGetProcessorCoreCount() {
+	size_t result = sysconf(_SC_NPROCESSORS_ONLN);
 	return(result);
 }
 
-fpl_platform_api char *fplGetProcessorName(char *destBuffer, const uint32_t maxDestBufferLen) {
+fpl_platform_api char *fplGetProcessorName(char *destBuffer, const size_t maxDestBufferLen) {
 	if(destBuffer == fpl_null) {
 		fpl__ArgumentNullError("Dest buffer");
 		return fpl_null;
@@ -9860,8 +9906,8 @@ fpl_platform_api char *fplGetProcessorName(char *destBuffer, const uint32_t maxD
 		char buffer[256];
 		char line[256];
 		const size_t maxBufferSize = FPL_ARRAYCOUNT(buffer);
-		int32_t readSize = maxBufferSize;
-		int32_t readPos = 0;
+		size_t readSize = maxBufferSize;
+		size_t readPos = 0;
 		bool found = false;
 		int bytesRead = 0;
 		while((bytesRead = fread(&buffer[readPos], readSize, 1, fileHandle)) > 0) {
@@ -9869,7 +9915,7 @@ fpl_platform_api char *fplGetProcessorName(char *destBuffer, const uint32_t maxD
 			char *p = &buffer[0];
 			while(*p) {
 				if(*p == '\n') {
-					int32_t len = p - lastP;
+					int len = p - lastP;
 					FPL_ASSERT(len > 0);
 					if(fplIsStringEqualLen(lastP, 10, "model name", 10)) {
 						fplCopyAnsiStringLen(lastP, len, line, FPL_ARRAYCOUNT(line));
@@ -9884,7 +9930,7 @@ fpl_platform_api char *fplGetProcessorName(char *destBuffer, const uint32_t maxD
 				break;
 			}
 
-			int32_t remaining = &buffer[maxBufferSize] - lastP;
+			int remaining = &buffer[maxBufferSize] - lastP;
 			FPL_ASSERT(remaining >= 0);
 			if(remaining > 0) {
 				// Buffer does not contain a line separator - copy back to remaining characters to the line
@@ -9927,7 +9973,7 @@ fpl_platform_api fplMemoryInfos fplGetSystemMemoryInfos() {
 	return(result);
 }
 
-fpl_platform_api char *fplGetExecutableFilePath(char *destPath, const uint32_t maxDestLen) {
+fpl_platform_api char *fplGetExecutableFilePath(char *destPath, const size_t maxDestLen) {
 	if(destPath == fpl_null) {
 		fpl__ArgumentNullError("Dest path");
 		return fpl_null;
@@ -9948,7 +9994,7 @@ fpl_platform_api char *fplGetExecutableFilePath(char *destPath, const uint32_t m
 			}
 			--p;
 		}
-		uint32_t requiredLen = len + 1;
+		size_t requiredLen = len + 1;
 		if(maxDestLen < requiredLen) {
 			fpl__ArgumentSizeTooSmallError("Max dest len", len, requiredLen);
 			return fpl_null;
@@ -9959,7 +10005,7 @@ fpl_platform_api char *fplGetExecutableFilePath(char *destPath, const uint32_t m
 	return fpl_null;
 }
 
-fpl_platform_api char *fplGetHomePath(char *destPath, const uint32_t maxDestLen) {
+fpl_platform_api char *fplGetHomePath(char *destPath, const size_t maxDestLen) {
 	const char *homeDir = getenv("HOME");
 	if(homeDir == fpl_null) {
 		int userId = getuid();
