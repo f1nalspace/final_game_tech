@@ -128,6 +128,7 @@ SOFTWARE.
 	- Changed: fplConsoleFormatOut/fplConsoleFormatError is now common_api instead of platform_api
 	- Changed: FPL uses a keyMap for mapping OS key codes to fplKey for every platform
 	- Changed: [Win32] Console does not cache the output/input/error handles
+	- Changed: [Win32] fplConsole* uses ReadFile/WriteFile instead of ReadConsole/WriteConsole
 	- Fixed: [Win32] Console was always allocated
 	- Fixed: No CRT stub defintions such as memset and RTC was added for all compilers which is wrong
 	- Fixed: Several bugfixes
