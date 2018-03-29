@@ -3,7 +3,7 @@
 #define FPL_APPTYPE_CONSOLE
 
 #include <stdint.h>
-#include <varargs.h>
+#include <stdarg.h>
 
 int dummy_vsnprintf(char *buf, size_t bufLen, const char *format, va_list argList);
 #define FPL_USERFUNC_vsnprintf dummy_vsnprintf
