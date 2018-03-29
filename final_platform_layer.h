@@ -115,7 +115,7 @@ SOFTWARE.
 
 /*!
 	\file final_platform_layer.h
-	\version v0.7.0.0 beta
+	\version v0.7.1.0 beta
 	\author Torsten Spaete
 	\brief Final Platform Layer (FPL) - A Open source C single file header platform abstraction layer library.
 */
