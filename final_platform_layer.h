@@ -129,6 +129,7 @@ SOFTWARE.
 	- Changed: FPL uses a keyMap for mapping OS key codes to fplKey for every platform
 	- Changed: [Win32] Console does not cache the output/input/error handles
 	- Changed: [Win32] fplConsole* uses ReadFile/WriteFile instead of ReadConsole/WriteConsole
+	- Changed: BSD Platform is detected as a Unix Platform, but has its own subplatform as well
 	- Fixed: [Win32] Console was always allocated
 	- Fixed: No CRT stub defintions such as memset and RTC was added for all compilers which is wrong
 	- Fixed: Several bugfixes
