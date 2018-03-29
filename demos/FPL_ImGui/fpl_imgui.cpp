@@ -179,8 +179,8 @@ static ImVec4 clear_color = ImColor(114, 144, 154);
 
 static void UpdateAndRender(const float deltaTime) {
 	ImGuiIO& io = ImGui::GetIO();
-	fplWindowSize windowArea;
-	FPL_ASSERT(fplGetWindowArea(&windowArea));
+	fplWindowSize windowArea = {};
+	fplGetWindowArea(&windowArea);
 	io.DeltaTime = deltaTime;
 	io.DisplaySize.x = (float)windowArea.width;
 	io.DisplaySize.y = (float)windowArea.height;
