@@ -153,10 +153,10 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="main.cpp" />
+    <ClCompile Include="fpl_console.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="..\..\final_platform_layer.hpp" />
+    <ClInclude Include="..\..\final_platform_layer.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

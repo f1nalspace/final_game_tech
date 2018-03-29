@@ -281,18 +281,18 @@ typedef FFMPEG_SWR_INIT(ffmpeg_swr_init_func);
 typedef FFMPEG_SWR_SET_COMPENSATION(ffmpeg_swr_set_compensation_func);
 
 #define FFMPEG_GET_FUNCTION_ADDRESS(libHandle, libName, target, type, name) \
-	target = (type *)GetDynamicLibraryProc(libHandle, name); \
+	target = (type *)fplGetDynamicLibraryProc(&libHandle, name); \
 	if (target == nullptr) { \
-		ConsoleFormatError("[FFMPEG] Failed getting '%s' from library '%s'!", name, libName); \
+		fplConsoleFormatError("[FFMPEG] Failed getting '%s' from library '%s'!", name, libName); \
 		return false; \
 	}
 
 struct FFMPEGContext {
-	DynamicLibraryHandle avFormatLib;
-	DynamicLibraryHandle avCodecLib;
-	DynamicLibraryHandle avUtilLib;
-	DynamicLibraryHandle swScaleLib;
-	DynamicLibraryHandle swResampleLib;
+	fplDynamicLibraryHandle avFormatLib;
+	fplDynamicLibraryHandle avCodecLib;
+	fplDynamicLibraryHandle avUtilLib;
+	fplDynamicLibraryHandle swScaleLib;
+	fplDynamicLibraryHandle swResampleLib;
 
 	// Format
 	ffmpeg_av_register_all_func *av_register_all;
@@ -386,11 +386,11 @@ struct FFMPEGContext {
 
 static void ReleaseFFMPEG(FFMPEGContext &ffmpeg) {
 #if !USE_FFMPEG_STATIC_LINKING
-	DynamicLibraryUnload(ffmpeg.swResampleLib);
-	DynamicLibraryUnload(ffmpeg.swScaleLib);
-	DynamicLibraryUnload(ffmpeg.avUtilLib);
-	DynamicLibraryUnload(ffmpeg.avCodecLib);
-	DynamicLibraryUnload(ffmpeg.avFormatLib);
+	fplDynamicLibraryUnload(&ffmpeg.swResampleLib);
+	fplDynamicLibraryUnload(&ffmpeg.swScaleLib);
+	fplDynamicLibraryUnload(&ffmpeg.avUtilLib);
+	fplDynamicLibraryUnload(&ffmpeg.avCodecLib);
+	fplDynamicLibraryUnload(&ffmpeg.avFormatLib);
 #endif
 }
 
@@ -402,11 +402,11 @@ static bool LoadFFMPEG(FFMPEGContext &ffmpeg) {
 	const char *swScaleLibFile = "swscale-5.dll";
 	const char *swResampleLibFile = "swresample-3.dll";
 
-	DynamicLibraryHandle avFormatLib = ffmpeg.avFormatLib = DynamicLibraryLoad(avFormatLibFile);
-	DynamicLibraryHandle avCodecLib = ffmpeg.avCodecLib = DynamicLibraryLoad(avCodecLibFile);
-	DynamicLibraryHandle avUtilLib = ffmpeg.avUtilLib = DynamicLibraryLoad(avUtilLibFile);
-	DynamicLibraryHandle swScaleLib = ffmpeg.swScaleLib = DynamicLibraryLoad(swScaleLibFile);
-	DynamicLibraryHandle swResampleLib = ffmpeg.swResampleLib = DynamicLibraryLoad(swResampleLibFile);
+	fplDynamicLibraryHandle avFormatLib = ffmpeg.avFormatLib = fplDynamicLibraryLoad(avFormatLibFile);
+	fplDynamicLibraryHandle avCodecLib = ffmpeg.avCodecLib = fplDynamicLibraryLoad(avCodecLibFile);
+	fplDynamicLibraryHandle avUtilLib = ffmpeg.avUtilLib = fplDynamicLibraryLoad(avUtilLibFile);
+	fplDynamicLibraryHandle swScaleLib = ffmpeg.swScaleLib = fplDynamicLibraryLoad(swScaleLibFile);
+	fplDynamicLibraryHandle swResampleLib = ffmpeg.swResampleLib = fplDynamicLibraryLoad(swResampleLibFile);
 #endif
 
 	//

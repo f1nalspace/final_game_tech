@@ -1,7 +1,6 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup>
-    <ClInclude Include="..\..\final_platform_layer.hpp" />
     <ClInclude Include="utils.h" />
     <ClInclude Include="..\..\final_dynamic_opengl.hpp" />
     <ClInclude Include="stb_truetype.h" />
@@ -9,6 +8,7 @@
     <ClInclude Include="shaders.h" />
     <ClInclude Include="defines.h" />
     <ClInclude Include="ffmpeg.h" />
+    <ClInclude Include="..\..\final_platform_layer.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="fpl_ffmpeg.cpp" />

@@ -145,7 +145,7 @@
     <ClCompile Include="fpl_test.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="..\..\final_platform_layer.hpp" />
+    <ClInclude Include="..\..\final_platform_layer.h" />
     <ClInclude Include="final_test.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

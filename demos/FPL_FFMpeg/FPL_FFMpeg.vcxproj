@@ -162,7 +162,7 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClInclude Include="..\..\final_dynamic_opengl.hpp" />
-    <ClInclude Include="..\..\final_platform_layer.hpp" />
+    <ClInclude Include="..\..\final_platform_layer.h" />
     <ClInclude Include="defines.h" />
     <ClInclude Include="ffmpeg.h" />
     <ClInclude Include="maths.h" />

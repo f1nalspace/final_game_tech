@@ -2,7 +2,7 @@
 #define FPL_NO_AUDIO
 #define FPL_NO_VIDEO
 #define FPL_NO_WINDOW
-#include <final_platform_layer.hpp>
+#include <final_platform_layer.h>
 
 #define FT_IMPLEMENTATION
 #include "final_test.h"
@@ -10,21 +10,21 @@
 static void TestInit() {
 	ft::Msg("Test InitPlatform with All init flags\n");
 	{
-		fpl::ClearPlatformErrors();
-		bool result = fpl::InitPlatform(fpl::InitFlags::All);
-		FT_IS_TRUE(result);
-		const char *errorStr = fpl::GetPlatformError();
+		fplClearPlatformErrors();
+		fplInitResultType result = fplPlatformInit(fplInitFlags_All, nullptr);
+		FT_ASSERT(result == fplInitResultType_Success);
+		const char *errorStr = fplGetPlatformError();
 		ft::AssertStringEquals("", errorStr);
-		fpl::ReleasePlatform();
+		fplPlatformRelease();
 	}
 	ft::Msg("Test InitPlatform with None init flags\n");
 	{
-		fpl::ClearPlatformErrors();
-		bool result = fpl::InitPlatform(fpl::InitFlags::None);
-		FT_IS_TRUE(result);
-		const char *errorStr = fpl::GetPlatformError();
+		fplClearPlatformErrors();
+		fplInitResultType result = fplPlatformInit(fplInitFlags_None, fpl_null);
+		FT_ASSERT(result == fplInitResultType_Success);
+		const char *errorStr = fplGetPlatformError();
 		ft::AssertStringEquals("", errorStr);
-		fpl::ReleasePlatform();
+		fplPlatformRelease();
 	}
 }
 
@@ -237,102 +237,102 @@ static void TestMemory() {
 	ft::Msg("Test normal allocation and deallocation\n");
 	{
 		size_t memSize = FPL_KILOBYTES(42);
-		uint8_t *mem = (uint8_t *)fpl::memory::MemoryAllocate(memSize);
+		uint8_t *mem = (uint8_t *)fplMemoryAllocate(memSize);
 		for(size_t i = 0; i < memSize; ++i) {
 			uint8_t value = *mem++;
 			ft::AssertU8Equals(0, value);
 		}
-		fpl::memory::MemoryFree(mem);
+		fplMemoryFree(mem);
 	}
 	{
 		size_t memSize = FPL_MEGABYTES(512);
-		void *mem = fpl::memory::MemoryAllocate(memSize);
+		void *mem = fplMemoryAllocate(memSize);
 		FT_IS_NOT_NULL(mem);
-		fpl::memory::MemoryFree(mem);
+		fplMemoryFree(mem);
 	}
 
 	ft::Msg("Test aligned allocation and deallocation\n");
 	{
 		size_t memSize = FPL_KILOBYTES(42);
-		uint8_t *mem = (uint8_t *)fpl::memory::MemoryAlignedAllocate(memSize, 16);
+		uint8_t *mem = (uint8_t *)fplMemoryAlignedAllocate(memSize, 16);
 		for(size_t i = 0; i < memSize; ++i) {
 			uint8_t value = *(mem + i);
 			ft::AssertU8Equals(0, value);
 		}
-		fpl::memory::MemoryAlignedFree(mem);
+		fplMemoryAlignedFree(mem);
 	}
 	{
 		size_t memSize = FPL_MEGABYTES(512);
-		void *mem = fpl::memory::MemoryAlignedAllocate(memSize, 16);
+		void *mem = fplMemoryAlignedAllocate(memSize, 16);
 		FT_IS_NOT_NULL(mem);
-		fpl::memory::MemoryAlignedFree(mem);
+		fplMemoryAlignedFree(mem);
 	}
 }
 
 static void TestPaths() {
-	if(fpl::InitPlatform(fpl::InitFlags::None)) {
+	if(fplPlatformInit(fplInitFlags_None, fpl_null)) {
 
 		char homePathBuffer[1024] = {};
-		fpl::paths::GetHomePath(homePathBuffer, FPL_ARRAYCOUNT(homePathBuffer));
+		fplGetHomePath(homePathBuffer, FPL_ARRAYCOUNT(homePathBuffer));
 		ft::Msg("Home Path:\n%s\n", homePathBuffer);
 
 		char exeFilePathBuffer[1024] = {};
-		fpl::paths::GetExecutableFilePath(exeFilePathBuffer, FPL_ARRAYCOUNT(exeFilePathBuffer));
+		fplGetExecutableFilePath(exeFilePathBuffer, FPL_ARRAYCOUNT(exeFilePathBuffer));
 		ft::Msg("Executable file Path:\n%s\n", exeFilePathBuffer);
 
 		char extractedPathBuffer[1024] = {};
-		fpl::paths::ExtractFilePath(exeFilePathBuffer, extractedPathBuffer, FPL_ARRAYCOUNT(extractedPathBuffer));
+		fplExtractFilePath(exeFilePathBuffer, extractedPathBuffer, FPL_ARRAYCOUNT(extractedPathBuffer));
 		ft::Msg("Extracted path:\n%s\n", extractedPathBuffer);
 
-		char *exeFileName = fpl::paths::ExtractFileName(exeFilePathBuffer);
+		const char *exeFileName = fplExtractFileName(exeFilePathBuffer);
 		ft::Msg("Extracted filename:\n%s\n", exeFileName);
 
-		char *exeFileExt = fpl::paths::ExtractFileExtension(exeFilePathBuffer);
+		const char *exeFileExt = fplExtractFileExtension(exeFilePathBuffer);
 		ft::Msg("Extracted extension:\n%s\n", exeFileExt);
 
 		char combinedPathBuffer[1024 * 10] = {};
-		fpl::paths::CombinePath(combinedPathBuffer, FPL_ARRAYCOUNT(combinedPathBuffer), 4, "Hallo", "Welt", "der", "Programmierer");
+		fplPathCombine(combinedPathBuffer, FPL_ARRAYCOUNT(combinedPathBuffer), 4, "Hallo", "Welt", "der", "Programmierer");
 		ft::Msg("Combined path:\n%s\n", combinedPathBuffer);
 
 		char changedFileExtBuffer[1024] = {};
-		fpl::paths::ChangeFileExtension(exeFilePathBuffer, ".obj", changedFileExtBuffer, FPL_ARRAYCOUNT(changedFileExtBuffer));
+		fplChangeFileExtension(exeFilePathBuffer, ".obj", changedFileExtBuffer, FPL_ARRAYCOUNT(changedFileExtBuffer));
 		ft::Msg("Changed file ext 1:\n%s\n", changedFileExtBuffer);
-		fpl::paths::ChangeFileExtension(exeFileName, ".obj", changedFileExtBuffer, FPL_ARRAYCOUNT(changedFileExtBuffer));
+		fplChangeFileExtension(exeFileName, ".obj", changedFileExtBuffer, FPL_ARRAYCOUNT(changedFileExtBuffer));
 		ft::Msg("Changed file ext 2:\n%s\n", changedFileExtBuffer);
-		fpl::paths::ChangeFileExtension(".dll", ".obj", changedFileExtBuffer, FPL_ARRAYCOUNT(changedFileExtBuffer));
+		fplChangeFileExtension(".dll", ".obj", changedFileExtBuffer, FPL_ARRAYCOUNT(changedFileExtBuffer));
 		ft::Msg("Changed file ext 3:\n%s\n", changedFileExtBuffer);
-		fpl::paths::ChangeFileExtension("", ".obj", changedFileExtBuffer, FPL_ARRAYCOUNT(changedFileExtBuffer));
+		fplChangeFileExtension("", ".obj", changedFileExtBuffer, FPL_ARRAYCOUNT(changedFileExtBuffer));
 		ft::Msg("Changed file ext 4:\n%s\n", changedFileExtBuffer);
-		fpl::paths::ChangeFileExtension(".dll", "", changedFileExtBuffer, FPL_ARRAYCOUNT(changedFileExtBuffer));
+		fplChangeFileExtension(".dll", "", changedFileExtBuffer, FPL_ARRAYCOUNT(changedFileExtBuffer));
 		ft::Msg("Changed file ext 5:\n%s\n", changedFileExtBuffer);
-		fpl::paths::ChangeFileExtension("", "", changedFileExtBuffer, FPL_ARRAYCOUNT(changedFileExtBuffer));
+		fplChangeFileExtension("", "", changedFileExtBuffer, FPL_ARRAYCOUNT(changedFileExtBuffer));
 		ft::Msg("Changed file ext 5:\n%s\n", changedFileExtBuffer);
 
-		fpl::ReleasePlatform();
+		fplPlatformRelease();
 	}
 }
 
 static void TestHardware() {
 	char cpuNameBuffer[1024] = {};
-	fpl::hardware::GetProcessorName(cpuNameBuffer, FPL_ARRAYCOUNT(cpuNameBuffer));
+	fplGetProcessorName(cpuNameBuffer, FPL_ARRAYCOUNT(cpuNameBuffer));
 	ft::Msg("Processor name:\n%s\n", cpuNameBuffer);
 
-	uint32_t coreCount = fpl::hardware::GetProcessorCoreCount();
-	ft::Msg("Processor cores:%d\n", coreCount);
+	size_t coreCount = fplGetProcessorCoreCount();
+	ft::Msg("Processor cores:%z\n", coreCount);
 
-	fpl::hardware::MemoryInfos memInfos = fpl::hardware::GetSystemMemoryInfos();
-	ft::Msg("Physical total memory (bytes):%zu\n", memInfos.totalPhysicalSize);
-	ft::Msg("Physical available memory (bytes):%zu\n", memInfos.availablePhysicalSize);
-	ft::Msg("Physical used memory (bytes):%zu\n", memInfos.usedPhysicalSize);
-	ft::Msg("Virtual total memory (bytes):%zu\n", memInfos.totalVirtualSize);
-	ft::Msg("Virtual used memory (bytes):%zu\n", memInfos.usedVirtualSize);
-	ft::Msg("Page total memory (bytes):%zu\n", memInfos.totalPageSize);
-	ft::Msg("Page used memory (bytes):%zu\n", memInfos.usedPageSize);
+	fplMemoryInfos memInfos = fplGetSystemMemoryInfos();
+	ft::Msg("Physical total memory (bytes):%z\n", memInfos.totalPhysicalSize);
+	ft::Msg("Physical available memory (bytes):%z\n", memInfos.availablePhysicalSize);
+	ft::Msg("Physical used memory (bytes):%z\n", memInfos.usedPhysicalSize);
+	ft::Msg("Virtual total memory (bytes):%z\n", memInfos.totalVirtualSize);
+	ft::Msg("Virtual used memory (bytes):%z\n", memInfos.usedVirtualSize);
+	ft::Msg("Page total memory (bytes):%z\n", memInfos.totalPageSize);
+	ft::Msg("Page used memory (bytes):%z\n", memInfos.usedPageSize);
 }
 
 
 
-static void EmptyThreadproc(const fpl::threading::ThreadContext &context, void *data) {
+static void EmptyThreadproc(const fplThreadHandle *context, void *data) {
 }
 
 struct ThreadData {
@@ -340,76 +340,76 @@ struct ThreadData {
 	int sleepFor;
 };
 
-static void SingleThreadProc(const fpl::threading::ThreadContext &context, void *data) {
+static void SingleThreadProc(const fplThreadHandle *context, void *data) {
 	ThreadData *d = (ThreadData *)data;
 	ft::Msg("Sleep in thread %d for %d ms\n", d->num, d->sleepFor);
-	fpl::threading::ThreadSleep(d->sleepFor);
+	fplThreadSleep(d->sleepFor);
 }
 
-static void SimpleMultiThreadTest(const uint32_t threadCount) {
+static void SimpleMultiThreadTest(const size_t threadCount) {
 	ft::Line();
-	ThreadData threadData[fpl::common::MAX_THREAD_COUNT] = {};
-	for(uint32_t threadIndex = 0; threadIndex < threadCount; ++threadIndex) {
-		threadData[threadIndex].num = threadIndex + 1;
-		threadData[threadIndex].sleepFor = (1 + threadIndex) * 500;
+	ThreadData threadData[FPL__MAX_THREAD_COUNT] = {};
+	for(size_t threadIndex = 0; threadIndex < threadCount; ++threadIndex) {
+		threadData[threadIndex].num = (int)(threadIndex + 1);
+		threadData[threadIndex].sleepFor = (int)(1 + threadIndex) * 500;
 	}
-	fpl::threading::ThreadContext *threads[fpl::common::MAX_THREAD_COUNT];
+	fplThreadHandle *threads[FPL__MAX_THREAD_COUNT];
 	ft::Msg("Start %d threads\n", threadCount);
-	for(uint32_t threadIndex = 0; threadIndex < threadCount; ++threadIndex) {
-		threads[threadIndex] = fpl::threading::ThreadCreate(SingleThreadProc, &threadData[threadIndex]);
+	for(size_t threadIndex = 0; threadIndex < threadCount; ++threadIndex) {
+		threads[threadIndex] = fplThreadCreate(SingleThreadProc, &threadData[threadIndex]);
 	}
 	ft::Msg("Wait all %d threads for exit\n", threadCount);
-	fpl::threading::ThreadWaitForAll(threads, threadCount);
+	fplThreadWaitForAll(threads, threadCount, UINT32_MAX);
 	ft::Msg("All %d threads are done\n", threadCount);
-	for(uint32_t threadIndex = 0; threadIndex < threadCount; ++threadIndex) {
-		FT_EXPECTS(fpl::threading::ThreadState::Stopped, threads[threadIndex]->currentState);
+	for(size_t threadIndex = 0; threadIndex < threadCount; ++threadIndex) {
+		FT_EXPECTS(fplThreadState_Stopped, threads[threadIndex]->currentState);
 	}
 	ft::Msg("Destroy %d threads\n", threadCount);
-	for(uint32_t threadIndex = 0; threadIndex < threadCount; ++threadIndex) {
-		fpl::threading::ThreadDestroy(threads[threadIndex]);
+	for(size_t threadIndex = 0; threadIndex < threadCount; ++threadIndex) {
+		fplThreadDestroy(threads[threadIndex]);
 	}
 }
 
 struct SlaveThreadData {
 	ThreadData base;
-	fpl::threading::ThreadMutex *mutex;
-	fpl::threading::ThreadSignal signal;
+	fplMutexHandle *mutex;
+	fplSignalHandle signal;
 };
 
 struct MasterThreadData {
 	ThreadData base;
-	fpl::threading::ThreadMutex mutex;
-	fpl::threading::ThreadSignal *signals[fpl::common::MAX_SIGNAL_COUNT];
+	fplMutexHandle mutex;
+	fplSignalHandle *signals[FPL__MAX_SIGNAL_COUNT];
 	uint32_t signalCount;
 };
 
-static void ThreadSlaveProc(const fpl::threading::ThreadContext &context, void *data) {
+static void ThreadSlaveProc(const fplThreadHandle *context, void *data) {
 	SlaveThreadData *d = (SlaveThreadData *)data;
 
 	ft::Msg("Slave-Thread %d waits for signal\n", d->base.num);
-	fpl::threading::SignalWaitForOne(*d->mutex, d->signal);
+	fplSignalWaitForOne(d->mutex, &d->signal, UINT32_MAX);
 	ft::Msg("Got signal on Slave-Thread %d\n", d->base.num);
 
 	ft::Msg("Slave-Thread %d is done\n", d->base.num);
 }
 
-static void ThreadMasterProc(const fpl::threading::ThreadContext &context, void *data) {
+static void ThreadMasterProc(const fplThreadHandle *context, void *data) {
 	MasterThreadData *d = (MasterThreadData *)data;
 	ft::Msg("Master-Thread %d waits for 5 seconds\n", d->base.num);
-	fpl::threading::ThreadSleep(5000);
+	fplThreadSleep(5000);
 
 	ft::Msg("Master-Thread %d sets %d signals\n", d->base.num, d->signalCount);
-	fpl::threading::MutexLock(d->mutex);
+	fplMutexLock(&d->mutex, UINT32_MAX);
 	for(uint32_t signalIndex = 0; signalIndex < d->signalCount; ++signalIndex) {
-		fpl::threading::SignalSet(*d->signals[signalIndex]);
+		fplSignalSet(d->signals[signalIndex]);
 	}
-	fpl::threading::MutexUnlock(d->mutex);
+	fplMutexUnlock(&d->mutex);
 
 	ft::Msg("Master-Thread %d is done\n", d->base.num);
 }
 
 struct MutableThreadData {
-	fpl::threading::ThreadMutex lock;
+	fplMutexHandle lock;
 	volatile int32_t value;
 	bool useLock;
 };
@@ -426,16 +426,16 @@ struct ReadThreadData {
 	int32_t expectedValue;
 };
 
-static void WriteDataThreadProc(const fpl::threading::ThreadContext &context, void *data) {
+static void WriteDataThreadProc(const fplThreadHandle *context, void *data) {
 	WriteThreadData *d = (WriteThreadData *)data;
-	fpl::threading::ThreadSleep(d->base.sleepFor);
-	fpl::atomics::AtomicStoreS32(&d->data->value, d->valueToWrite);
+	fplThreadSleep(d->base.sleepFor);
+	fplAtomicStoreS32(&d->data->value, d->valueToWrite);
 }
 
-static void ReadDataThreadProc(const fpl::threading::ThreadContext &context, void *data) {
+static void ReadDataThreadProc(const fplThreadHandle *context, void *data) {
 	ReadThreadData *d = (ReadThreadData *)data;
-	fpl::threading::ThreadSleep(d->base.sleepFor);
-	int32_t actualValue = fpl::atomics::AtomicLoadS32(&d->data->value);
+	fplThreadSleep(d->base.sleepFor);
+	int32_t actualValue = fplAtomicLoadS32(&d->data->value);
 	FT_EXPECTS(d->expectedValue, actualValue);
 }
 
@@ -444,7 +444,7 @@ static void SyncThreadsTest() {
 	ft::Msg("Sync test for 1 reader and 1 writer\n");
 	{
 		MutableThreadData mutableData = {};
-		mutableData.lock = fpl::threading::MutexCreate();
+		mutableData.lock = fplMutexCreate();
 		mutableData.useLock = false;
 		mutableData.value = 0;
 
@@ -460,84 +460,84 @@ static void SyncThreadsTest() {
 		writeData.data = &mutableData;
 		writeData.valueToWrite = 42;
 
-		fpl::threading::ThreadContext *threads[2];
+		fplThreadHandle *threads[2];
 		uint32_t threadCount = FPL_ARRAYCOUNT(threads);
 
-		ft::Msg("Start %d threads\n", threadCount);
-		threads[0] = fpl::threading::ThreadCreate(ReadDataThreadProc, &readData);
-		threads[1] = fpl::threading::ThreadCreate(WriteDataThreadProc, &writeData);
+		ft::Msg("Start %z threads\n", threadCount);
+		threads[0] = fplThreadCreate(ReadDataThreadProc, &readData);
+		threads[1] = fplThreadCreate(WriteDataThreadProc, &writeData);
 
-		ft::Msg("Wait for %d threads to exit\n", threadCount);
-		fpl::threading::ThreadWaitForAll(threads, threadCount);
+		ft::Msg("Wait for %z threads to exit\n", threadCount);
+		fplThreadWaitForAll(threads, threadCount, UINT32_MAX);
 
-		ft::Msg("Release resources for %d threads\n", threadCount);
+		ft::Msg("Release resources for %z threads\n", threadCount);
 		for(uint32_t index = 0; index < threadCount; ++index) {
-			fpl::threading::ThreadDestroy(threads[index]);
+			fplThreadDestroy(threads[index]);
 		}
-		fpl::threading::MutexDestroy(mutableData.lock);
+		fplMutexDestroy(&mutableData.lock);
 	}
 }
 
-static void ConditionThreadsTest(const uint32_t threadCount) {
+static void ConditionThreadsTest(const size_t threadCount) {
 	FT_ASSERT(threadCount > 1);
 
 	ft::Line();
-	ft::Msg("Condition test for %d threads\n", threadCount);
+	ft::Msg("Condition test for %z threads\n", threadCount);
 
 	MasterThreadData masterData = {};
 	masterData.base.num = 1;
-	masterData.mutex = fpl::threading::MutexCreate();
+	masterData.mutex = fplMutexCreate();
 
-	SlaveThreadData slaveDatas[fpl::common::MAX_THREAD_COUNT] = {};
-	uint32_t slaveThreadCount = threadCount - 1;
-	for(uint32_t threadIndex = 0; threadIndex < slaveThreadCount; ++threadIndex) {
-		slaveDatas[threadIndex].base.num = 2 + threadIndex;
+	SlaveThreadData slaveDatas[FPL__MAX_THREAD_COUNT] = {};
+	size_t slaveThreadCount = threadCount - 1;
+	for(size_t threadIndex = 0; threadIndex < slaveThreadCount; ++threadIndex) {
+		slaveDatas[threadIndex].base.num = (int)(2 + threadIndex);
 		slaveDatas[threadIndex].mutex = &masterData.mutex;
-		slaveDatas[threadIndex].signal = fpl::threading::SignalCreate();
+		slaveDatas[threadIndex].signal = fplSignalCreate();
 		masterData.signals[masterData.signalCount++] = &slaveDatas[threadIndex].signal;
 	}
 
-	ft::Msg("Start %d slave threads, 1 master thread\n", slaveThreadCount);
-	fpl::threading::ThreadContext *threads[fpl::common::MAX_THREAD_COUNT];
-	for(uint32_t threadIndex = 0; threadIndex < threadCount; ++threadIndex) {
+	ft::Msg("Start %z slave threads, 1 master thread\n", slaveThreadCount);
+	fplThreadHandle *threads[FPL__MAX_THREAD_COUNT];
+	for(size_t threadIndex = 0; threadIndex < threadCount; ++threadIndex) {
 		if(threadIndex == slaveThreadCount) {
-			threads[threadIndex] = fpl::threading::ThreadCreate(ThreadMasterProc, &masterData);
+			threads[threadIndex] = fplThreadCreate(ThreadMasterProc, &masterData);
 		} else {
-			threads[threadIndex] = fpl::threading::ThreadCreate(ThreadSlaveProc, &slaveDatas[threadIndex]);
+			threads[threadIndex] = fplThreadCreate(ThreadSlaveProc, &slaveDatas[threadIndex]);
 		}
 	}
 
-	ft::Msg("Wait for %d threads to exit\n", threadCount);
-	fpl::threading::ThreadWaitForAll(threads, threadCount);
+	ft::Msg("Wait for %z threads to exit\n", threadCount);
+	fplThreadWaitForAll(threads, threadCount, UINT32_MAX);
 
-	ft::Msg("Release resources for %d threads\n", threadCount);
-	for(uint32_t threadIndex = 0; threadIndex < slaveThreadCount; ++threadIndex) {
-		fpl::threading::SignalDestroy(slaveDatas[threadIndex].signal);
+	ft::Msg("Release resources for %z threads\n", threadCount);
+	for(size_t threadIndex = 0; threadIndex < slaveThreadCount; ++threadIndex) {
+		fplSignalDestroy(&slaveDatas[threadIndex].signal);
 	}
-	fpl::threading::MutexDestroy(masterData.mutex);
-	for(uint32_t threadIndex = 0; threadIndex < threadCount; ++threadIndex) {
-		fpl::threading::ThreadContext *thread = threads[threadIndex];
-		FT_EXPECTS(fpl::threading::ThreadState::Stopped, thread->currentState);
-		fpl::threading::ThreadDestroy(thread);
+	fplMutexDestroy(&masterData.mutex);
+	for(size_t threadIndex = 0; threadIndex < threadCount; ++threadIndex) {
+		fplThreadHandle *thread = threads[threadIndex];
+		FT_EXPECTS(fplThreadState_Stopped, thread->currentState);
+		fplThreadDestroy(thread);
 	}
 }
 
 static void TestThreading() {
-	if(fpl::InitPlatform(fpl::InitFlags::None)) {
+	if(fplPlatformInit(fplInitFlags_None, fpl_null)) {
 		//
 		// Single threading test
 		//
 		ft::Line();
 		ft::Msg("Test 1 empty thread\n");
 		{
-			fpl::threading::ThreadContext *thread;
+			fplThreadHandle *thread;
 			ft::Msg("Start thread\n");
-			thread = fpl::threading::ThreadCreate(EmptyThreadproc, nullptr);
+			thread = fplThreadCreate(EmptyThreadproc, nullptr);
 			ft::Msg("Wait thread for exit\n");
-			fpl::threading::ThreadWaitForOne(thread);
+			fplThreadWaitForOne(thread, UINT32_MAX);
 			ft::Msg("Thread is done\n");
-			FT_EXPECTS(fpl::threading::ThreadState::Stopped, thread->currentState);
-			fpl::threading::ThreadDestroy(thread);
+			FT_EXPECTS(fplThreadState_Stopped, thread->currentState);
+			fplThreadDestroy(thread);
 		}
 
 		ft::Line();
@@ -547,19 +547,19 @@ static void TestThreading() {
 			threadData.num = 1;
 			threadData.sleepFor = 3000;
 			ft::Msg("Start thread %d\n", threadData.num);
-			fpl::threading::ThreadContext *thread = fpl::threading::ThreadCreate(SingleThreadProc, &threadData);
+			fplThreadHandle *thread = fplThreadCreate(SingleThreadProc, &threadData);
 			ft::Msg("Wait thread %d for exit\n", threadData.num);
-			fpl::threading::ThreadWaitForOne(thread);
+			fplThreadWaitForOne(thread, UINT32_MAX);
 			ft::Msg("Thread %d is done\n", threadData.num);
-			FT_EXPECTS(fpl::threading::ThreadState::Stopped, thread->currentState);
-			fpl::threading::ThreadDestroy(thread);
+			FT_EXPECTS(fplThreadState_Stopped, thread->currentState);
+			fplThreadDestroy(thread);
 		}
 
 		//
         // Multi threads test
 		//
-        uint32_t coreCount = fpl::hardware::GetProcessorCoreCount();
-        int32_t threadCountForCores = coreCount > 2 ? coreCount - 1 : 1;
+        size_t coreCount =fplGetProcessorCoreCount();
+        size_t threadCountForCores = coreCount > 2 ? coreCount - 1 : 1;
         {
             SimpleMultiThreadTest(2);
             SimpleMultiThreadTest(3);
@@ -584,34 +584,34 @@ static void TestThreading() {
 			ConditionThreadsTest(threadCountForCores);
         }
 
-		fpl::ReleasePlatform();
+		fplPlatformRelease();
 	}
 }
 
 static void TestFiles() {
 	ft::Msg("Test File Exists\n");
 	{
-		bool nonExisting = fpl::files::FileExists("C:\\Windows\\i_am_not_existing.lib");
+		bool nonExisting = fplFileExists("C:\\Windows\\i_am_not_existing.lib");
 		FPL_ASSERT(!nonExisting);
-		bool notepadExists = fpl::files::FileExists("C:\\Windows\\notepad.exe");
+		bool notepadExists = fplFileExists("C:\\Windows\\notepad.exe");
 		FPL_ASSERT(notepadExists);
 	}
 	ft::Msg("Test File Size\n");
 	{
-		uint32_t emptySize = fpl::files::GetFileSize32("C:\\Windows\\i_am_not_existing.lib");
+		uint32_t emptySize = fplGetFileSizeFromPath32("C:\\Windows\\i_am_not_existing.lib");
 		FPL_ASSERT(emptySize == 0);
-		uint32_t notepadSize = fpl::files::GetFileSize32("C:\\Windows\\notepad.exe");
+		uint32_t notepadSize = fplGetFileSizeFromPath32("C:\\Windows\\notepad.exe");
 		FPL_ASSERT(notepadSize > 0);
 	}
 	ft::Msg("Test Directory Iterations\n");
 	{
-		fpl::files::FileEntry fileEntry;
-		if(ListFilesBegin("C:\\*", fileEntry)) {
+		fplFileEntry fileEntry;
+		if(fplListFilesBegin("C:\\*", &fileEntry)) {
 			ft::Msg("%s\n", fileEntry.path);
-			while(ListFilesNext(fileEntry)) {
+			while(fplListFilesNext(&fileEntry)) {
 				ft::Msg("%s\n", fileEntry.path);
 			}
-			ListFilesEnd(fileEntry);
+			fplListFilesEnd(&fileEntry);
 		}
 	}
 }
@@ -622,7 +622,7 @@ static void TestAtomics() {
 		const uint32_t expectedBefore = 42;
 		const uint32_t expectedAfter = 1337;
 		volatile uint32_t t = expectedBefore;
-		uint32_t r = fpl::atomics::AtomicExchangeU32(&t, expectedAfter);
+		uint32_t r = fplAtomicExchangeU32(&t, expectedAfter);
 		ft::AssertU32Equals(expectedBefore, r);
 		ft::AssertU32Equals(expectedAfter, (uint32_t)t);
 	}
@@ -632,7 +632,7 @@ static void TestAtomics() {
 		const uint32_t exchangeValue = -1;
 		const uint32_t expectedAfter = (uint32_t)UINT32_MAX;
 		volatile uint32_t t = expectedBefore;
-		uint32_t r = fpl::atomics::AtomicExchangeU32(&t, exchangeValue);
+		uint32_t r = fplAtomicExchangeU32(&t, exchangeValue);
 		ft::AssertU32Equals(expectedBefore, r);
 		ft::AssertU32Equals(expectedAfter, (uint32_t)t);
 	}
@@ -642,7 +642,7 @@ static void TestAtomics() {
 		const uint32_t exchangeValue = expectedBefore;
 		const uint32_t expectedAfter = exchangeValue;
 		volatile uint32_t t = expectedBefore;
-		uint32_t r = fpl::atomics::AtomicExchangeU32(&t, exchangeValue);
+		uint32_t r = fplAtomicExchangeU32(&t, exchangeValue);
 		ft::AssertU32Equals(expectedBefore, r);
 		ft::AssertU32Equals(expectedAfter, (uint32_t)t);
 	}
@@ -652,7 +652,7 @@ static void TestAtomics() {
 		const int32_t exchangeValue = 1337;
 		const int32_t expectedAfter = exchangeValue;
 		volatile int32_t t = expectedBefore;
-		int32_t r = fpl::atomics::AtomicExchangeS32(&t, exchangeValue);
+		int32_t r = fplAtomicExchangeS32(&t, exchangeValue);
 		ft::AssertS32Equals(expectedBefore, r);
 		ft::AssertS32Equals(expectedAfter, (int32_t)t);
 	}
@@ -662,7 +662,7 @@ static void TestAtomics() {
 		const int32_t exchangeValue = -1;
 		const int32_t expectedAfter = exchangeValue;
 		volatile int32_t t = expectedBefore;
-		int32_t r = fpl::atomics::AtomicExchangeS32(&t, exchangeValue);
+		int32_t r = fplAtomicExchangeS32(&t, exchangeValue);
 		ft::AssertS32Equals(expectedBefore, r);
 		ft::AssertS32Equals(expectedAfter, (int32_t)t);
 	}
@@ -672,7 +672,7 @@ static void TestAtomics() {
 		const int32_t exchangeValue = expectedBefore;
 		const int32_t expectedAfter = exchangeValue;
 		volatile int32_t t = expectedBefore;
-		int32_t r = fpl::atomics::AtomicExchangeS32(&t, exchangeValue);
+		int32_t r = fplAtomicExchangeS32(&t, exchangeValue);
 		ft::AssertS32Equals(expectedBefore, r);
 		ft::AssertS32Equals(expectedAfter, (int32_t)t);
 	}
@@ -682,7 +682,7 @@ static void TestAtomics() {
 		const uint64_t expectedBefore = 42;
 		const uint64_t expectedAfter = 1337;
 		volatile uint64_t t = expectedBefore;
-		uint64_t r = fpl::atomics::AtomicExchangeU64(&t, expectedAfter);
+		uint64_t r = fplAtomicExchangeU64(&t, expectedAfter);
 		ft::AssertU64Equals(expectedBefore, r);
 		ft::AssertU64Equals(expectedAfter, (uint64_t)t);
 	}
@@ -692,7 +692,7 @@ static void TestAtomics() {
 		const uint64_t exchangeValue = -1;
 		const uint64_t expectedAfter = (uint64_t)UINT64_MAX;
 		volatile uint64_t t = expectedBefore;
-		uint64_t r = fpl::atomics::AtomicExchangeU64(&t, exchangeValue);
+		uint64_t r = fplAtomicExchangeU64(&t, exchangeValue);
 		ft::AssertU64Equals(expectedBefore, r);
 		ft::AssertU64Equals(expectedAfter, (uint64_t)t);
 	}
@@ -702,7 +702,7 @@ static void TestAtomics() {
 		const uint64_t exchangeValue = expectedBefore;
 		const uint64_t expectedAfter = exchangeValue;
 		volatile uint64_t t = expectedBefore;
-		uint64_t r = fpl::atomics::AtomicExchangeU64(&t, exchangeValue);
+		uint64_t r = fplAtomicExchangeU64(&t, exchangeValue);
 		ft::AssertU64Equals(expectedBefore, r);
 		ft::AssertU64Equals(expectedAfter, (uint64_t)t);
 	}
@@ -712,7 +712,7 @@ static void TestAtomics() {
 		const int64_t exchangeValue = 1337;
 		const int64_t expectedAfter = exchangeValue;
 		volatile int64_t t = expectedBefore;
-		int64_t r = fpl::atomics::AtomicExchangeS64(&t, exchangeValue);
+		int64_t r = fplAtomicExchangeS64(&t, exchangeValue);
 		ft::AssertS64Equals(expectedBefore, r);
 		ft::AssertS64Equals(expectedAfter, (int64_t)t);
 	}
@@ -722,7 +722,7 @@ static void TestAtomics() {
 		const int64_t exchangeValue = -1;
 		const int64_t expectedAfter = exchangeValue;
 		volatile int64_t t = expectedBefore;
-		int64_t r = fpl::atomics::AtomicExchangeS64(&t, exchangeValue);
+		int64_t r = fplAtomicExchangeS64(&t, exchangeValue);
 		ft::AssertS64Equals(expectedBefore, r);
 		ft::AssertS64Equals(expectedAfter, (int64_t)t);
 	}
@@ -732,7 +732,7 @@ static void TestAtomics() {
 		const int64_t exchangeValue = expectedBefore;
 		const int64_t expectedAfter = exchangeValue;
 		volatile int64_t t = expectedBefore;
-		int64_t r = fpl::atomics::AtomicExchangeS64(&t, exchangeValue);
+		int64_t r = fplAtomicExchangeS64(&t, exchangeValue);
 		ft::AssertS64Equals(expectedBefore, r);
 		ft::AssertS64Equals(expectedAfter, (int64_t)t);
 	}
@@ -742,7 +742,7 @@ static void TestAtomics() {
 		volatile uint32_t value = 3;
 		uint32_t comparand = 3;
 		uint32_t exchange = 11;
-		uint32_t after = fpl::atomics::AtomicCompareAndExchangeU32(&value, comparand, exchange);
+		uint32_t after = fplAtomicCompareAndExchangeU32(&value, comparand, exchange);
 		ft::AssertU32Equals((uint32_t)11, (uint32_t)value);
 		ft::AssertU32Equals((uint32_t)3, after);
 	}
@@ -751,7 +751,7 @@ static void TestAtomics() {
 		volatile uint32_t value = 5;
 		uint32_t comparand = 3;
 		uint32_t exchange = 11;
-		uint32_t after = fpl::atomics::AtomicCompareAndExchangeU32(&value, comparand, exchange);
+		uint32_t after = fplAtomicCompareAndExchangeU32(&value, comparand, exchange);
 		ft::AssertU32Equals((uint32_t)5, (uint32_t)value);
 		ft::AssertU32Equals((uint32_t)5, after);
 	}
@@ -760,7 +760,7 @@ static void TestAtomics() {
 		volatile int32_t value = -3;
 		int32_t comparand = -3;
 		int32_t exchange = 11;
-		int32_t after = fpl::atomics::AtomicCompareAndExchangeS32(&value, comparand, exchange);
+		int32_t after = fplAtomicCompareAndExchangeS32(&value, comparand, exchange);
 		ft::AssertS32Equals((int32_t)11, (int32_t)value);
 		ft::AssertS32Equals((int32_t)-3, after);
 	}
@@ -769,7 +769,7 @@ static void TestAtomics() {
 		volatile int32_t value = -5;
 		int32_t comparand = -3;
 		int32_t exchange = 11;
-		int32_t after = fpl::atomics::AtomicCompareAndExchangeS32(&value, comparand, exchange);
+		int32_t after = fplAtomicCompareAndExchangeS32(&value, comparand, exchange);
 		ft::AssertS32Equals((int32_t)-5, (int32_t)value);
 		ft::AssertS32Equals((int32_t)-5, after);
 	}
@@ -778,7 +778,7 @@ static void TestAtomics() {
 		volatile uint64_t value = 3;
 		uint64_t comparand = 3;
 		uint64_t exchange = 11;
-		uint64_t after = fpl::atomics::AtomicCompareAndExchangeU64(&value, comparand, exchange);
+		uint64_t after = fplAtomicCompareAndExchangeU64(&value, comparand, exchange);
 		ft::AssertU64Equals((uint64_t)11, (uint64_t)value);
 		ft::AssertU64Equals((uint64_t)3, after);
 	}
@@ -787,7 +787,7 @@ static void TestAtomics() {
 		volatile uint64_t value = 5;
 		uint64_t comparand = 3;
 		uint64_t exchange = 11;
-		uint64_t after = fpl::atomics::AtomicCompareAndExchangeU64(&value, comparand, exchange);
+		uint64_t after = fplAtomicCompareAndExchangeU64(&value, comparand, exchange);
 		ft::AssertU64Equals((uint64_t)5, (uint64_t)value);
 		ft::AssertU64Equals((uint64_t)5, after);
 	}
@@ -796,7 +796,7 @@ static void TestAtomics() {
 		volatile int64_t value = -3;
 		int64_t comparand = -3;
 		int64_t exchange = 11;
-		int64_t after = fpl::atomics::AtomicCompareAndExchangeS64(&value, comparand, exchange);
+		int64_t after = fplAtomicCompareAndExchangeS64(&value, comparand, exchange);
 		ft::AssertS64Equals((int64_t)11, (int64_t)value);
 		ft::AssertS64Equals((int64_t)-3, after);
 	}
@@ -805,7 +805,7 @@ static void TestAtomics() {
 		volatile int64_t value = -5;
 		int64_t comparand = -3;
 		int64_t exchange = 11;
-		int64_t after = fpl::atomics::AtomicCompareAndExchangeS64(&value, comparand, exchange);
+		int64_t after = fplAtomicCompareAndExchangeS64(&value, comparand, exchange);
 		ft::AssertS64Equals((int64_t)-5, (int64_t)value);
 		ft::AssertS64Equals((int64_t)-5, after);
 	}
@@ -814,20 +814,20 @@ static void TestAtomics() {
 static void TestStrings() {
 	ft::Msg("Test ansi string length\n");
 	{
-		uint32_t actual = fpl::strings::GetAnsiStringLength(nullptr);
-		ft::AssertU32Equals(0, actual);
+		size_t actual = fplGetAnsiStringLength(nullptr);
+		ft::AssertSizeEquals(0, actual);
 	}
 	{
-		uint32_t actual = fpl::strings::GetAnsiStringLength("");
-		ft::AssertU32Equals(0, actual);
+		size_t actual = fplGetAnsiStringLength("");
+		ft::AssertSizeEquals(0, actual);
 	}
 	{
-		uint32_t actual = fpl::strings::GetAnsiStringLength("ABC");
-		ft::AssertU32Equals(3, actual);
+		size_t actual = fplGetAnsiStringLength("ABC");
+		ft::AssertSizeEquals(3, actual);
 	}
 	{
-		uint32_t actual = fpl::strings::GetAnsiStringLength("ABC Hello World!");
-		ft::AssertU32Equals(16, actual);
+		size_t actual = fplGetAnsiStringLength("ABC Hello World!");
+		ft::AssertSizeEquals(16, actual);
 	}
 	{
 		char buffer[32];
@@ -835,26 +835,26 @@ static void TestStrings() {
 		buffer[1] = 'B';
 		buffer[2] = 'C';
 		buffer[3] = 0;
-		uint32_t actual = fpl::strings::GetAnsiStringLength(buffer);
-		ft::AssertU32Equals(3, actual);
+		size_t actual = fplGetAnsiStringLength(buffer);
+		ft::AssertSizeEquals(3, actual);
 	}
 
 	ft::Msg("Test wide string length\n");
 	{
-		uint32_t actual = fpl::strings::GetWideStringLength(nullptr);
-		ft::AssertU32Equals(0, actual);
+		size_t actual = fplGetWideStringLength(nullptr);
+		ft::AssertSizeEquals(0, actual);
 	}
 	{
-		uint32_t actual = fpl::strings::GetWideStringLength(L"");
-		ft::AssertU32Equals(0, actual);
+		size_t actual = fplGetWideStringLength(L"");
+		ft::AssertSizeEquals(0, actual);
 	}
 	{
-		uint32_t actual = fpl::strings::GetWideStringLength(L"ABC");
-		ft::AssertU32Equals(3, actual);
+		size_t actual = fplGetWideStringLength(L"ABC");
+		ft::AssertSizeEquals(3, actual);
 	}
 	{
-		uint32_t actual = fpl::strings::GetWideStringLength(L"ABC Hello World!");
-		ft::AssertU32Equals(16, actual);
+		size_t actual = fplGetWideStringLength(L"ABC Hello World!");
+		ft::AssertSizeEquals(16, actual);
 	}
 	{
 		wchar_t buffer[32];
@@ -862,115 +862,115 @@ static void TestStrings() {
 		buffer[1] = 'B';
 		buffer[2] = 'C';
 		buffer[3] = 0;
-		uint32_t actual = fpl::strings::GetWideStringLength(buffer);
-		ft::AssertU32Equals(3, actual);
+		size_t actual = fplGetWideStringLength(buffer);
+		ft::AssertSizeEquals(3, actual);
 	}
 
 	ft::Msg("Test string equal\n");
 	{
-		bool res = fpl::strings::IsStringEqual(nullptr, nullptr);
+		bool res = fplIsStringEqual(nullptr, nullptr);
 		FT_EXPECTS(true, res);
 	}
 	{
-		bool res = fpl::strings::IsStringEqual(nullptr, 0, nullptr, 0);
+		bool res = fplIsStringEqualLen(nullptr, 0, nullptr, 0);
 		FT_EXPECTS(true, res);
 	}
 	{
-		bool res = fpl::strings::IsStringEqual(nullptr, "");
+		bool res = fplIsStringEqual(nullptr, "");
 		FT_EXPECTS(false, res);
 	}
 	{
-		bool res = fpl::strings::IsStringEqual("B", "A");
+		bool res = fplIsStringEqual("B", "A");
 		FT_EXPECTS(false, res);
 	}
 	{
-		bool res = fpl::strings::IsStringEqual("A", "A");
+		bool res = fplIsStringEqual("A", "A");
 		FT_EXPECTS(true, res);
 	}
 	{
-		bool res = fpl::strings::IsStringEqual("Hello", "World");
+		bool res = fplIsStringEqual("Hello", "World");
 		FT_EXPECTS(false, res);
 	}
 	{
-		bool res = fpl::strings::IsStringEqual("World", "World");
+		bool res = fplIsStringEqual("World", "World");
 		FT_EXPECTS(true, res);
 	}
 	{
-		bool res = fpl::strings::IsStringEqual("B", 1, "A", 1);
+		bool res = fplIsStringEqualLen("B", 1, "A", 1);
 		FT_EXPECTS(false, res);
 	}
 	{
-		bool res = fpl::strings::IsStringEqual("A", 1, "A", 1);
+		bool res = fplIsStringEqualLen("A", 1, "A", 1);
 		FT_EXPECTS(true, res);
 	}
 	{
-		bool res = fpl::strings::IsStringEqual("Hello", 5, "World", 5);
+		bool res = fplIsStringEqualLen("Hello", 5, "World", 5);
 		FT_EXPECTS(false, res);
 	}
 	{
-		bool res = fpl::strings::IsStringEqual("Hello", 3, "World", 5);
+		bool res = fplIsStringEqualLen("Hello", 3, "World", 5);
 		FT_EXPECTS(false, res);
 	}
 	{
-		bool res = fpl::strings::IsStringEqual("World", 5, "Hello", 3);
+		bool res = fplIsStringEqualLen("World", 5, "Hello", 3);
 		FT_EXPECTS(false, res);
 	}
 	{
-		bool res = fpl::strings::IsStringEqual("Hello", 5, "Hello", 5);
+		bool res = fplIsStringEqualLen("Hello", 5, "Hello", 5);
 		FT_EXPECTS(true, res);
 	}
 	{
-		bool res = fpl::strings::IsStringEqual("Hello", 3, "Hello", 3);
+		bool res = fplIsStringEqualLen("Hello", 3, "Hello", 3);
 		FT_EXPECTS(true, res);
 	}
 
 	ft::Msg("Test format ansi string\n");
 	{
-		char *res = fpl::strings::FormatAnsiString(nullptr, 0, nullptr);
+		char *res = fplFormatAnsiString(nullptr, 0, nullptr);
 		FT_EXPECTS(nullptr, res);
 	}
 	{
 		char buffer[1];
-		char *res = fpl::strings::FormatAnsiString(buffer, 0, "");
+		char *res = fplFormatAnsiString(buffer, 0, "");
 		FT_EXPECTS(nullptr, res);
 	}
 	{
 		char buffer[1];
-		char *res = fpl::strings::FormatAnsiString(buffer, FPL_ARRAYCOUNT(buffer), "A");
+		char *res = fplFormatAnsiString(buffer, FPL_ARRAYCOUNT(buffer), "A");
 		FT_EXPECTS(nullptr, res);
 	}
 	{
 		char buffer[2];
-		char *res = fpl::strings::FormatAnsiString(buffer, FPL_ARRAYCOUNT(buffer), "A");
-		bool matches = fpl::strings::IsStringEqual("A", 1, res, 1);
+		char *res = fplFormatAnsiString(buffer, FPL_ARRAYCOUNT(buffer), "A");
+		bool matches = fplIsStringEqualLen("A", 1, res, 1);
 		FT_EXPECTS(true, matches);
 	}
 	{
 		char buffer[5];
-		char *res = fpl::strings::FormatAnsiString(buffer, FPL_ARRAYCOUNT(buffer), "Hello");
+		char *res = fplFormatAnsiString(buffer, FPL_ARRAYCOUNT(buffer), "Hello");
 		FT_EXPECTS(nullptr, res);
 	}
 	{
 		char buffer[6];
-		char *res = fpl::strings::FormatAnsiString(buffer, FPL_ARRAYCOUNT(buffer), "Hello");
-		bool r = fpl::strings::IsStringEqual("Hello", 5, res, 5);
+		char *res = fplFormatAnsiString(buffer, FPL_ARRAYCOUNT(buffer), "Hello");
+		bool r = fplIsStringEqualLen("Hello", 5, res, 5);
 		FT_EXPECTS(true, r);
 	}
 	{
 		char buffer[6];
-		char *res = fpl::strings::FormatAnsiString(buffer, FPL_ARRAYCOUNT(buffer), "%s", "Hello");
-		bool r = fpl::strings::IsStringEqual("Hello", 5, res, 5);
+		char *res = fplFormatAnsiString(buffer, FPL_ARRAYCOUNT(buffer), "%s", "Hello");
+		bool r = fplIsStringEqualLen("Hello", 5, res, 5);
 		FT_EXPECTS(true, r);
 	}
 	{
 		char buffer[20];
-		char *res = fpl::strings::FormatAnsiString(buffer, FPL_ARRAYCOUNT(buffer), "%4xd-%2d-%2d %2d:%2d:%2d", 2009, 11, 17, 13, 47, 25);
+		char *res = fplFormatAnsiString(buffer, FPL_ARRAYCOUNT(buffer), "%4xd-%2d-%2d %2d:%2d:%2d", 2009, 11, 17, 13, 47, 25);
 		FT_EXPECTS(nullptr, res);
 	}
 	{
 		char buffer[20];
-		char *res = fpl::strings::FormatAnsiString(buffer, FPL_ARRAYCOUNT(buffer), "%4d-%2d-%2d %2d:%2d:%2d", 2009, 11, 17, 13, 47, 25);
-		bool r = fpl::strings::IsStringEqual("2009-11-17 13:47:25", res);
+		char *res = fplFormatAnsiString(buffer, FPL_ARRAYCOUNT(buffer), "%4d-%2d-%2d %2d:%2d:%2d", 2009, 11, 17, 13, 47, 25);
+		bool r = fplIsStringEqual("2009-11-17 13:47:25", res);
 		FT_EXPECTS(true, r);
 	}
 }
