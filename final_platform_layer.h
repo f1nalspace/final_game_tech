@@ -69,7 +69,7 @@ int main(int argc, char **args){
 		while (fplWindowUpdate()) {
 			// Handle actual window events
 			fplEvent ev;
-			while (fplPollWindowEvent(ev)) {
+			while (fplPollEvent(ev)) {
 				/// ...
 			}
 
@@ -123,6 +123,15 @@ SOFTWARE.
 /*!
 	\page page_changelog Changelog
 	\tableofcontents
+
+	## v0.7.1.0 beta:
+	- Changed: fplConsoleFormatOut/fplConsoleFormatError is now common_api instead of platform_api
+	- Changed: FPL uses a keyMap for mapping OS key codes to fplKey for every platform
+	- Changed: [Win32] Console does not cache the output/input/error handles
+	- Fixed: [Win32] Console was always allocated
+	- Fixed: No CRT stub defintions such as memset and RTC was added for all compilers which is wrong
+	- Fixed: Several bugfixes
+	- New: Added stubs for Unix Platform
 
 	## v0.7.0.0 beta:
 	- Changed: Switched to C99
@@ -657,8 +666,10 @@ SOFTWARE.
 #	define FPL_SUBPLATFORM_STD_STRINGS
 #	define FPL_SUBPLATFORM_STD_CONSOLE
 #elif defined(__FreeBSD__) || defined(__NetBSD__) || defined(__OpenBSD__) || defined(__DragonFly__) || defined(__bsdi__)
-#	define FPL_PLATFORM_BSD
+	// @NOTE(final): BSD is treated as a subplatform for now
+#	define FPL_PLATFORM_UNIX
 #	define FPL_PLATFORM_NAME "BSD"
+#	define FPL_SUBPLATFORM_BSD
 #	define FPL_SUBPLATFORM_POSIX
 #	define FPL_SUBPLATFORM_X11
 #	define FPL_SUBPLATFORM_STD_STRINGS
@@ -675,17 +686,6 @@ SOFTWARE.
 #else
 #	error "This platform is not supported!"
 #endif // FPL_PLATFORM
-
-//
-// When C-Runtime is disabled we cannot use any function from the C-Standard Library <stdio.h> or <stdlib.h>
-//
-#if defined(FPL_NO_CRT)
-#	undef FPL_SUBPLATFORM_STD_CONSOLE
-#	undef FPL_SUBPLATFORM_STD_STRINGS
-#	if !defined(FPL_USERFUNC_vsnprintf)
-#		error "You need to provide a replacement for vsnprintf() set to FPL_USERFUNC_vsnprintf!"
-#	endif
-#endif
 
 //
 // Architecture detection (x86, x64)
@@ -734,6 +734,28 @@ SOFTWARE.
 #endif // FPL_COMPILER
 
 //
+// No-CRT Support is limited to Win32 for now
+//
+#if defined(FPL_NO_CRT)
+#	if !defined(FPL_COMPILER_MSVC)
+#		error "C-Runtime cannot be disabled on this compiler/platform!"
+#	endif
+#endif
+
+//
+// When C-Runtime is disabled we cannot use any function from the C-Standard Library <stdio.h> or <stdlib.h>
+//
+#if defined(FPL_NO_CRT)
+#	undef FPL_SUBPLATFORM_STD_CONSOLE
+#	undef FPL_SUBPLATFORM_STD_STRINGS
+#	if !defined(FPL_USERFUNC_vsnprintf)
+#		error "You need to provide a replacement for vsnprintf() set to FPL_USERFUNC_vsnprintf!"
+#	endif
+#endif
+
+
+
+//
 // Application type detection
 // - Can be disabled by FPL_NO_APPTYPE
 // - Must be explicitly set for No-CRT on Win32
@@ -742,7 +764,7 @@ SOFTWARE.
 #	error "Its now allowed to define both FPL_APPTYPE_CONSOLE and FPL_APPTYPE_WINDOW!"
 #endif
 #if defined(FPL_NO_CRT)
-#	if defined(FPL_PLATFORM_WIN32) && (!defined(FPL_APPTYPE_CONSOLE) && !defined(FPL_APPTYPE_WINDOW))
+#	if !defined(FPL_APPTYPE_CONSOLE) && !defined(FPL_APPTYPE_WINDOW)
 #		error "In 'No-CRT' mode you need to define either FPL_APPTYPE_CONSOLE or FPL_APPTYPE_WINDOW manually!"
 #	endif
 #elif !defined(FPL_NO_APPTYPE) && !(defined(FPL_APPTYPE_CONSOLE) || defined(FPL_APPTYPE_WINDOW))
@@ -1047,19 +1069,14 @@ SOFTWARE.
 #if defined(FPL_IS_CPP)
 	//! Macro for overloading enum operators in C++
 #	define FPL_ENUM_AS_FLAGS_OPERATORS(etype) \
-	inline etype operator | (etype lhs, etype rhs) { \
-		return (etype)(static_cast<int>(lhs) | static_cast<int>(rhs)); \
+	inline etype operator | (etype a, etype b) { \
+		return static_cast<etype>(static_cast<int>(a) | static_cast<int>(b)); \
 	} \
-	inline bool operator & (const etype lhs, const etype rhs) { \
-		return (static_cast<int>(lhs) & static_cast<int>(rhs)) == static_cast<int>(rhs); \
+	inline bool operator & (etype a, etype b) { \
+		return (static_cast<etype>(static_cast<int>(a) & static_cast<int>(b))) == b; \
 	} \
-	inline etype& operator |= (etype &lhs, etype rhs) { \
-		lhs = (etype)(static_cast<int>(lhs) | static_cast<int>(rhs)); \
-		return lhs; \
-	} \
-	inline etype& operator &= (etype &lhs, etype rhs) { \
-		lhs = (etype)(static_cast<int>(lhs) & static_cast<int>(rhs)); \
-		return lhs; \
+	inline etype& operator |= (etype &a, etype b) { \
+		return a = a | b; \
 	}
 #else
 	//! No need to overload operators for enums in C99
@@ -1447,6 +1464,9 @@ typedef enum fplInitFlags {
 	fplInitFlags_All = fplInitFlags_Window | fplInitFlags_Video | fplInitFlags_Audio
 } fplInitFlags;
 
+//! InitFlags operator overloads for C++
+FPL_ENUM_AS_FLAGS_OPERATORS(fplInitFlags);
+
 //! Init result type
 typedef enum fplInitResultType {
 	//! Window creation failed
@@ -1822,31 +1842,32 @@ fpl_platform_api void fplDynamicLibraryUnload(fplDynamicLibraryHandle *handle);
 	*/
 fpl_platform_api void fplConsoleOut(const char *text);
 /**
-  * \brief Writes the given formatted text to the standard output console buffer.
-  * \param format The format used for writing into the standard output console.
-  * \param ... The dynamic arguments used for formatting the text.
-  * \note This is most likely just a wrapper call to vfprintf(stdout)
-  */
-fpl_platform_api void fplConsoleFormatOut(const char *format, ...);
-/**
   * \brief Writes the given text to the standard error console buffer.
   * \param text The text to write into standard error console.
   * \note This is most likely just a wrapper call to fprintf(stderr)
   */
 fpl_platform_api void fplConsoleError(const char *text);
 /**
-  * \brief Writes the given formatted text to the standard error console buffer.
-  * \param format The format used for writing into the standard error console.
-  * \param ... The dynamic arguments used for formatting the text.
-  * \note This is most likely just a wrapper call to vfprintf(stderr)
-  */
-fpl_platform_api void fplConsoleFormatError(const char *format, ...);
-/**
   * \brief Wait for a character to be typed in the console input and return it
   * \note This is most likely just a wrapper call to getchar()
   * \return Character typed in in the console input
   */
 fpl_platform_api const char fplConsoleWaitForCharInput();
+
+/**
+  * \brief Writes the given formatted text to the standard output console buffer.
+  * \param format The format used for writing into the standard output console.
+  * \param ... The dynamic arguments used for formatting the text.
+  * \note This is most likely just a wrapper call to vfprintf(stdout)
+  */
+fpl_common_api void fplConsoleFormatOut(const char *format, ...);
+/**
+  * \brief Writes the given formatted text to the standard error console buffer.
+  * \param format The format used for writing into the standard error console.
+  * \param ... The dynamic arguments used for formatting the text.
+  * \note This is most likely just a wrapper call to vfprintf(stderr)
+  */
+fpl_common_api void fplConsoleFormatError(const char *format, ...);
 
 /** \}*/
 
@@ -2285,7 +2306,8 @@ fpl_platform_api wchar_t *fplUTF8StringToWideString(const char *utf8Source, cons
   * \note This is most likely just a wrapper call to vsnprintf()
   * \return Pointer to the first character in the destination buffer or fpl_null.
   */
-fpl_platform_api char *fplFormatAnsiString(char *ansiDestBuffer, const size_t maxAnsiDestBufferLen, const char *format, ...);
+
+fpl_common_api char *fplFormatAnsiString(char *ansiDestBuffer, const size_t maxAnsiDestBufferLen, const char *format, ...);
 /**
   * \brief Fills out the given destination ansi string buffer with a formatted string, using the format specifier and the arguments list.
   * \param ansiDestBuffer The 8-bit destination ansi string buffer.
@@ -2295,7 +2317,7 @@ fpl_platform_api char *fplFormatAnsiString(char *ansiDestBuffer, const size_t ma
   * \note This is most likely just a wrapper call to vsnprintf()
   * \return Pointer to the first character in the destination buffer or fpl_null.
   */
-fpl_platform_api char *fplFormatAnsiStringArgs(char *ansiDestBuffer, const size_t maxAnsiDestBufferLen, const char *format, va_list argList);
+fpl_common_api char *fplFormatAnsiStringArgs(char *ansiDestBuffer, const size_t maxAnsiDestBufferLen, const char *format, va_list argList);
 
 /** \}*/
 
@@ -3391,9 +3413,6 @@ fpl_inline uint32_t fplGetAudioBufferSizeInBytes(const fplAudioFormatType format
 /** \}*/
 #endif // FPL_ENABLE_AUDIO
 
-//! InitFlags operator overloads for C++
-FPL_ENUM_AS_FLAGS_OPERATORS(fplInitFlags);
-
 #endif // FPL_INCLUDE_H
 
 // ****************************************************************************
@@ -3473,16 +3492,10 @@ FPL_ENUM_AS_FLAGS_OPERATORS(fplInitFlags);
 #if defined(FPL_COMPILER_MSVC)
 
 #if defined(__cplusplus)
-extern "C" int _fltused = 0;
-#else
-int _fltused = 0;
-#endif
-
-#endif // FPL_COMPILER_MSVC
-
-#if defined(__cplusplus)
 extern "C" {
 #endif
+
+	int _fltused = 0;
 
 	//
 	// Intrinsics
@@ -3509,10 +3522,11 @@ extern "C" {
 	void __fastcall _RTC_CheckStackVars(void *_Esp, struct _RTC_framedesc *_Fd) {
 
 	}
-
 #if defined(__cplusplus)
 };
 #endif
+
+#endif // FPL_COMPILER_MSVC
 
 #endif // FPL_NO_CRT
 
@@ -4157,9 +4171,7 @@ typedef struct fpl__Win32XInputState {
 } fpl__Win32XInputState;
 
 typedef struct fpl__Win32ConsoleState {
-	HANDLE inputHandle;
-	HANDLE outputHandle;
-	HANDLE errorHandle;
+	bool isAllocated;
 } fpl__Win32ConsoleState;
 
 typedef struct fpl__Win32InitState {
@@ -4357,6 +4369,23 @@ typedef struct fpl__LinuxAppState {
 
 // ############################################################################
 //
+// > TYPES_UNIX
+//
+// ############################################################################
+#if defined(FPL_PLATFORM_UNIX)
+typedef struct fpl__UnixInitState {
+	//! Dummy field
+	int dummy;
+} fpl__UnixInitState;
+
+typedef struct fpl__UnixAppState {
+	//! Dummy field
+	int dummy;
+} fpl__UnixAppState;
+#endif // FPL_PLATFORM_UNIX
+
+// ############################################################################
+//
 // > TYPES_X11
 //
 // ############################################################################
@@ -4419,9 +4448,6 @@ typedef FPL__FUNC_X11_X_RESIZE_WINDOW(fpl__func_x11_XResizeWindow);
 typedef FPL__FUNC_X11_X_MOVE_WINDOW(fpl__func_x11_XMoveWindow);
 #define FPL__FUNC_X11_X_GET_KEYBOARD_MAPPING(name) KeySym *name(Display *display, KeyCode first_keycode, int keycode_count, int *keysyms_per_keycode_return)
 typedef FPL__FUNC_X11_X_GET_KEYBOARD_MAPPING(fpl__func_x11_XGetKeyboardMapping);
-
-
-
 
 typedef struct fpl__X11Api {
 	void *libHandle;
@@ -4521,7 +4547,6 @@ typedef struct fpl__X11WindowState {
 	Colormap colorMap;
 	Window window;
 	Atom wmDeleteWindow;
-	fplKey keyMap[256];
 } fpl__X11WindowState;
 
 typedef struct fpl__X11PreWindowSetupResult {
@@ -4554,6 +4579,8 @@ typedef struct fpl__PlatformInitState {
 		fpl__Win32InitState win32;
 #	elif defined(FPL_PLATFORM_LINUX)
 		fpl__LinuxInitState linux;
+#	elif defined(FPL_PLATFORM_UNIX)
+		fpl__UnixInitState unix;
 #	endif               
 	};
 } fpl__PlatformInitState;
@@ -4569,6 +4596,7 @@ typedef struct fpl__EventQueue {
 
 typedef struct fpl__PlatformWindowState {
 	fpl__EventQueue eventQueue;
+	fplKey keyMap[256];
 	bool isRunning;
 
 #if defined(FPL_PLATFORM_WIN32)
@@ -4629,6 +4657,8 @@ struct fpl__PlatformAppState {
 		fpl__Win32AppState win32;
 #	elif defined(FPL_PLATFORM_LINUX)
 		fpl__LinuxAppState linux;
+#	elif defined(FPL_PLATFORM_UNIX)
+		fpl__UnixAppState linux;
 #	endif
 	};
 };
@@ -4821,9 +4851,22 @@ fpl_internal_inline fplThreadHandle *fpl__GetFreeThread() {
 	return(result);
 }
 
+#if defined(FPL_ENABLE_WINDOW)
+fpl_internal_inline fplKey fpl__GetMappedKey(const fpl__PlatformWindowState *windowState, const uint64_t keyCode) {
+	fplKey result;
+	if(keyCode < FPL_ARRAYCOUNT(windowState->keyMap))
+		result = windowState->keyMap[keyCode];
+	else
+		result = fplKey_None;
+	return(result);
+}
+#endif
+
 //
 // Common Strings
 //
+#if !defined(FPL__COMMON_STRINGS_DEFINED)
+#define FPL__COMMON_STRINGS_DEFINED
 
 fpl_common_api bool fplIsStringEqualLen(const char *a, const size_t aLen, const char *b, const size_t bLen) {
 	if((a == fpl_null) || (b == fpl_null)) {
@@ -4937,9 +4980,107 @@ fpl_common_api wchar_t *fplCopyWideString(const wchar_t *source, wchar_t *dest, 
 	return(result);
 }
 
+fpl_common_api char *fplFormatAnsiStringArgs(char *ansiDestBuffer, const size_t maxAnsiDestBufferLen, const char *format, va_list argList) {
+	if(ansiDestBuffer == fpl_null) {
+		fpl__ArgumentNullError("Ansi dest buffer");
+		return fpl_null;
+	}
+	if(maxAnsiDestBufferLen == 0) {
+		fpl__ArgumentZeroError("Max ansi dest len");
+		return fpl_null;
+	}
+	if(format == fpl_null) {
+		fpl__ArgumentNullError("Format");
+		return fpl_null;
+	}
+	if(argList == fpl_null) {
+		fpl__ArgumentNullError("Arg list");
+		return fpl_null;
+	}
+	// @NOTE(final): Need to clear the first character, otherwise vsnprintf() does weird things... O_o
+	ansiDestBuffer[0] = 0;
+
+	int charCount = 0;
+#	if defined(FPL_NO_CRT)
+#		if defined(FPL_USERFUNC_vsnprintf)
+	charCount = FPL_USERFUNC_vsnprintf(ansiDestBuffer, maxAnsiDestBufferLen, format, argList);
+#		else
+	charCount = 0;
+#		endif
+#	else
+	charCount = vsnprintf(ansiDestBuffer, maxAnsiDestBufferLen, format, argList);
+#	endif
+
+	if(charCount < 0) {
+		fpl__PushError("Format parameter are '%s' are invalid!", format);
+		return fpl_null;
+	}
+	size_t requiredMaxAnsiDestBufferLen = charCount + 1;
+	if(maxAnsiDestBufferLen < requiredMaxAnsiDestBufferLen) {
+		fpl__ArgumentSizeTooSmallError("Max ansi dest len", maxAnsiDestBufferLen, requiredMaxAnsiDestBufferLen);
+		return fpl_null;
+	}
+	ansiDestBuffer[charCount] = 0;
+	char *result = ansiDestBuffer;
+	return(result);
+}
+
+fpl_common_api char *fplFormatAnsiString(char *ansiDestBuffer, const size_t maxAnsiDestBufferLen, const char *format, ...) {
+	if(ansiDestBuffer == fpl_null) {
+		fpl__ArgumentNullError("Ansi dest buffer");
+		return fpl_null;
+	}
+	if(maxAnsiDestBufferLen == 0) {
+		fpl__ArgumentZeroError("Max ansi dest len");
+		return fpl_null;
+	}
+	if(format == fpl_null) {
+		fpl__ArgumentNullError("Format");
+		return fpl_null;
+	}
+	va_list argList;
+	va_start(argList, format);
+	char *result = fplFormatAnsiStringArgs(ansiDestBuffer, maxAnsiDestBufferLen, format, argList);
+	va_end(argList);
+	return(result);
+}
+#endif // FPL__COMMON_STRINGS_DEFINED
+
+//
+// Common Console
+//
+#if !defined(FPL__COMMON_CONSOLE_DEFINED)
+#define FPL__COMMON_CONSOLE_DEFINED
+
+fpl_common_api void fplConsoleFormatOut(const char *format, ...) {
+	char buffer[1024 * 10];
+	va_list argList;
+	va_start(argList, format);
+	char *str = fplFormatAnsiStringArgs(buffer, FPL_ARRAYCOUNT(buffer), format, argList);
+	va_end(argList);
+	if(str != fpl_null) {
+		fplConsoleOut(str);
+	}
+}
+
+fpl_common_api void fplConsoleFormatError(const char *format, ...) {
+	char buffer[1024];
+	va_list argList;
+	va_start(argList, format);
+	char *str = fplFormatAnsiStringArgs(buffer, FPL_ARRAYCOUNT(buffer), format, argList);
+	va_end(argList);
+	if(str != fpl_null) {
+		fplConsoleError(str);
+	}
+}
+#endif // FPL__COMMON_CONSOLE_DEFINED
+
 //
 // Common Memory
 //
+#if !defined(FPL__COMMON_MEMORY_DEFINED)
+#define FPL__COMMON_MEMORY_DEFINED
+
 fpl_common_api void *fplMemoryAlignedAllocate(const size_t size, const size_t alignment) {
 	if(!size) {
 		fpl__ArgumentZeroError("Size");
@@ -5059,10 +5200,14 @@ fpl_common_api void fplMemoryCopy(const void *sourceMem, const size_t sourceSize
 		FPL__MEMORY_COPY(uint8_t, sourceMem, sourceSize, targetMem, 0, 0);
 	}
 }
+#endif // FPL__COMMON_MEMORY_DEFINED
 
 //
 // Common Atomics
 //
+#if !defined(FPL__COMMON_ATOMICS_DEFINED)
+#define FPL__COMMON_ATOMICS_DEFINED
+
 fpl_common_api void *fplAtomicExchangePtr(volatile void **target, const void *value) {
 	FPL_ASSERT(target != fpl_null);
 #if defined(FPL_ARCH_X64)
@@ -5119,10 +5264,14 @@ fpl_common_api void fplAtomicStorePtr(volatile void **dest, const void *value) {
 #	error "Unsupported architecture/platform!"
 #endif  // FPL_ARCH
 }
+#endif // FPL__COMMON_ATOMICS_DEFINED
 
 //
 // Common Paths
 //
+#if !defined(FPL__COMMON_PATHS_DEFINED)
+#define FPL__COMMON_PATHS_DEFINED
+
 fpl_common_api char *fplExtractFilePath(const char *sourcePath, char *destPath, const size_t maxDestLen) {
 	if(sourcePath == fpl_null) {
 		fpl__ArgumentNullError("Source path");
@@ -5296,8 +5445,13 @@ fpl_common_api char *fplPathCombine(char *destPath, const size_t maxDestPathLen,
 	va_end(vargs);
 	return destPath;
 }
+#endif // FPL__COMMON_PATHS_DEFINED
 
 #if defined(FPL_ENABLE_WINDOW)
+
+#if !defined(FPL__COMMON_WINDOW_DEFINED)
+#define FPL__COMMON_WINDOW_DEFINED
+
 fpl_common_api bool fplPollEvent(fplEvent *ev) {
 	fpl__PlatformAppState *appState = fpl__global__AppState;
 	FPL_ASSERT(appState != fpl_null);
@@ -5321,6 +5475,8 @@ fpl_common_api void fplClearEvents() {
 	fplAtomicExchangeU32(&eventQueue->pollIndex, 0);
 	fplAtomicExchangeU32(&eventQueue->pushCount, 0);
 }
+#endif // FPL__COMMON_WINDOW_DEFINED
+
 #endif // FPL_ENABLE_WINDOW
 
 fpl_common_api const char *fplGetPlatformError() {
@@ -5368,7 +5524,7 @@ fpl_common_api const fplSettings *fplGetCurrentSettings() {
 	FPL_ASSERT(fpl__global__AppState != fpl_null);
 	const fpl__PlatformAppState *appState = fpl__global__AppState;
 	return &appState->currentSettings;
-	}
+}
 
 fpl_common_api void fplSetDefaultVideoSettings(fplVideoSettings *video) {
 	FPL_CLEAR_STRUCT(video);
@@ -5482,7 +5638,7 @@ fpl_internal bool fpl__Win32LeaveFullscreen() {
 		result = (wapi->user.ChangeDisplaySettingsA(fpl_null, CDS_RESET) == DISP_CHANGE_SUCCESSFUL);
 	} else {
 		result = true;
-}
+	}
 
 	return(result);
 }
@@ -5691,251 +5847,11 @@ fpl_internal_inline void fpl__Win32PushMouseEvent(const fplMouseEventType mouseE
 	fpl__PushEvent(&newEvent);
 }
 
-fpl_internal fplKey fpl__Win32MapVirtualKey(const uint64_t keyCode) {
-	switch(keyCode) {
-		case VK_BACK:
-			return fplKey_Backspace;
-		case VK_TAB:
-			return fplKey_Tab;
-
-		case VK_CLEAR:
-			return fplKey_Clear;
-		case VK_RETURN:
-			return fplKey_Enter;
-
-		case VK_SHIFT:
-			return fplKey_Shift;
-		case VK_CONTROL:
-			return fplKey_Control;
-		case VK_MENU:
-			return fplKey_Alt;
-		case VK_PAUSE:
-			return fplKey_Pause;
-		case VK_CAPITAL:
-			return fplKey_CapsLock;
-
-		case VK_ESCAPE:
-			return fplKey_Escape;
-		case VK_SPACE:
-			return fplKey_Space;
-		case VK_PRIOR:
-			return fplKey_PageUp;
-		case VK_NEXT:
-			return fplKey_PageDown;
-		case VK_END:
-			return fplKey_End;
-		case VK_HOME:
-			return fplKey_Home;
-		case VK_LEFT:
-			return fplKey_Left;
-		case VK_UP:
-			return fplKey_Up;
-		case VK_RIGHT:
-			return fplKey_Right;
-		case VK_DOWN:
-			return fplKey_Down;
-		case VK_SELECT:
-			return fplKey_Select;
-		case VK_PRINT:
-			return fplKey_Print;
-		case VK_EXECUTE:
-			return fplKey_Execute;
-		case VK_SNAPSHOT:
-			return fplKey_Snapshot;
-		case VK_INSERT:
-			return fplKey_Insert;
-		case VK_DELETE:
-			return fplKey_Delete;
-		case VK_HELP:
-			return fplKey_Help;
-
-		case 0x30:
-			return fplKey_0;
-		case 0x31:
-			return fplKey_1;
-		case 0x32:
-			return fplKey_2;
-		case 0x33:
-			return fplKey_3;
-		case 0x34:
-			return fplKey_4;
-		case 0x35:
-			return fplKey_5;
-		case 0x36:
-			return fplKey_6;
-		case 0x37:
-			return fplKey_7;
-		case 0x38:
-			return fplKey_8;
-		case 0x39:
-			return fplKey_9;
-
-		case 0x41:
-			return fplKey_A;
-		case 0x42:
-			return fplKey_B;
-		case 0x43:
-			return fplKey_C;
-		case 0x44:
-			return fplKey_D;
-		case 0x45:
-			return fplKey_E;
-		case 0x46:
-			return fplKey_F;
-		case 0x47:
-			return fplKey_G;
-		case 0x48:
-			return fplKey_H;
-		case 0x49:
-			return fplKey_I;
-		case 0x4A:
-			return fplKey_J;
-		case 0x4B:
-			return fplKey_K;
-		case 0x4C:
-			return fplKey_L;
-		case 0x4D:
-			return fplKey_M;
-		case 0x4E:
-			return fplKey_N;
-		case 0x4F:
-			return fplKey_O;
-		case 0x50:
-			return fplKey_P;
-		case 0x51:
-			return fplKey_Q;
-		case 0x52:
-			return fplKey_R;
-		case 0x53:
-			return fplKey_S;
-		case 0x54:
-			return fplKey_T;
-		case 0x55:
-			return fplKey_U;
-		case 0x56:
-			return fplKey_V;
-		case 0x57:
-			return fplKey_W;
-		case 0x58:
-			return fplKey_X;
-		case 0x59:
-			return fplKey_Y;
-		case 0x5A:
-			return fplKey_Z;
-
-		case VK_LWIN:
-			return fplKey_LeftWin;
-		case VK_RWIN:
-			return fplKey_RightWin;
-		case VK_APPS:
-			return fplKey_Apps;
-
-		case VK_SLEEP:
-			return fplKey_Sleep;
-		case VK_NUMPAD0:
-			return fplKey_NumPad0;
-		case VK_NUMPAD1:
-			return fplKey_NumPad1;
-		case VK_NUMPAD2:
-			return fplKey_NumPad2;
-		case VK_NUMPAD3:
-			return fplKey_NumPad3;
-		case VK_NUMPAD4:
-			return fplKey_NumPad4;
-		case VK_NUMPAD5:
-			return fplKey_NumPad5;
-		case VK_NUMPAD6:
-			return fplKey_NumPad6;
-		case VK_NUMPAD7:
-			return fplKey_NumPad7;
-		case VK_NUMPAD8:
-			return fplKey_NumPad8;
-		case VK_NUMPAD9:
-			return fplKey_NumPad9;
-		case VK_MULTIPLY:
-			return fplKey_Multiply;
-		case VK_ADD:
-			return fplKey_Add;
-		case VK_SEPARATOR:
-			return fplKey_Separator;
-		case VK_SUBTRACT:
-			return fplKey_Substract;
-		case VK_DECIMAL:
-			return fplKey_Decimal;
-		case VK_DIVIDE:
-			return fplKey_Divide;
-		case VK_F1:
-			return fplKey_F1;
-		case VK_F2:
-			return fplKey_F2;
-		case VK_F3:
-			return fplKey_F3;
-		case VK_F4:
-			return fplKey_F4;
-		case VK_F5:
-			return fplKey_F5;
-		case VK_F6:
-			return fplKey_F6;
-		case VK_F7:
-			return fplKey_F7;
-		case VK_F8:
-			return fplKey_F8;
-		case VK_F9:
-			return fplKey_F9;
-		case VK_F10:
-			return fplKey_F10;
-		case VK_F11:
-			return fplKey_F11;
-		case VK_F12:
-			return fplKey_F12;
-		case VK_F13:
-			return fplKey_F13;
-		case VK_F14:
-			return fplKey_F14;
-		case VK_F15:
-			return fplKey_F15;
-		case VK_F16:
-			return fplKey_F16;
-		case VK_F17:
-			return fplKey_F17;
-		case VK_F18:
-			return fplKey_F18;
-		case VK_F19:
-			return fplKey_F19;
-		case VK_F20:
-			return fplKey_F20;
-		case VK_F21:
-			return fplKey_F21;
-		case VK_F22:
-			return fplKey_F22;
-		case VK_F23:
-			return fplKey_F23;
-		case VK_F24:
-			return fplKey_F24;
-
-		case VK_LSHIFT:
-			return fplKey_LeftShift;
-		case VK_RSHIFT:
-			return fplKey_RightShift;
-		case VK_LCONTROL:
-			return fplKey_LeftControl;
-		case VK_RCONTROL:
-			return fplKey_RightControl;
-		case VK_LMENU:
-			return fplKey_LeftAlt;
-		case VK_RMENU:
-			return fplKey_RightAlt;
-
-		default:
-			return fplKey_None;
-	}
-}
-
-fpl_internal_inline void fpl__Win32PushKeyboardEvent(const fplKeyboardEventType keyboardEventType, const uint64_t keyCode, const fplKeyboardModifierFlags modifiers, const bool isDown) {
+fpl_internal_inline void fpl__Win32PushKeyboardEvent(const fpl__PlatformWindowState *windowState, const fplKeyboardEventType keyboardEventType, const uint64_t keyCode, const fplKeyboardModifierFlags modifiers, const bool isDown) {
 	fplEvent newEvent = FPL_ZERO_INIT;
 	newEvent.type = fplEventType_Keyboard;
 	newEvent.keyboard.keyCode = keyCode;
-	newEvent.keyboard.mappedKey = fpl__Win32MapVirtualKey(keyCode);
+	newEvent.keyboard.mappedKey = fpl__GetMappedKey(windowState, keyCode);
 	newEvent.keyboard.type = keyboardEventType;
 	newEvent.keyboard.modifiers = modifiers;
 	fpl__PushEvent(&newEvent);
@@ -5995,6 +5911,7 @@ LRESULT CALLBACK fpl__Win32MessageProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 			bool wasDown = ((int)(lParam & (1 << 30)) != 0);
 			bool isDown = ((int)(lParam & (1 << 31)) == 0);
 
+			// @TODO(final): Is it possible to detect the key state from the MSG?
 			bool altKeyWasDown = fpl__Win32IsKeyDown(wapi, VK_MENU);
 			bool shiftKeyWasDown = fpl__Win32IsKeyDown(wapi, VK_LSHIFT);
 			bool ctrlKeyWasDown = fpl__Win32IsKeyDown(wapi, VK_LCONTROL);
@@ -6014,7 +5931,7 @@ LRESULT CALLBACK fpl__Win32MessageProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 			if(superKeyWasDown) {
 				modifiers |= fplKeyboardModifierFlags_Super;
 			}
-			fpl__Win32PushKeyboardEvent(keyEventType, keyCode, modifiers, isDown);
+			fpl__Win32PushKeyboardEvent(&appState->window, keyEventType, keyCode, modifiers, isDown);
 
 			if(wasDown != isDown) {
 				if(isDown) {
@@ -6031,7 +5948,7 @@ LRESULT CALLBACK fpl__Win32MessageProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 			if(wParam >= 0 && wParam < 256) {
 				uint64_t keyCode = wParam;
 				fplKeyboardModifierFlags modifiers = fplKeyboardModifierFlags_None;
-				fpl__Win32PushKeyboardEvent(fplKeyboardEventType_CharInput, keyCode, modifiers, 0);
+				fpl__Win32PushKeyboardEvent(&appState->window, fplKeyboardEventType_CharInput, keyCode, modifiers, 0);
 			}
 		} break;
 
@@ -6357,7 +6274,7 @@ fpl_internal fpl__Win32CommandLineUTF8Arguments fpl__Win32ParseWideArguments(LPW
 				}
 				LocalFree(actualArgs);
 			}
-}
+		}
 		FreeLibrary(shellapiLibrary);
 		shellapiLibrary = fpl_null;
 	}
@@ -6443,11 +6360,256 @@ fpl_internal void fpl__Win32ReleasePlatform(fpl__PlatformInitState *initState, f
 	fpl__Win32AppState *win32AppState = &appState->win32;
 	fpl__Win32InitState *win32InitState = &initState->win32;
 
-	FreeConsole();
+	if(win32AppState->console.isAllocated) {
+		FreeConsole();
+		win32AppState->console.isAllocated = false;
+	}
 
 	fpl__Win32UnloadXInputApi(&win32AppState->xinput.xinputApi);
 	fpl__Win32UnloadApi(&win32AppState->winApi);
 }
+
+#if defined(FPL_ENABLE_WINDOW)
+fpl_internal fplKey fpl__Win32MapVirtualKey(const uint64_t keyCode) {
+	switch(keyCode) {
+		case VK_BACK:
+			return fplKey_Backspace;
+		case VK_TAB:
+			return fplKey_Tab;
+
+		case VK_CLEAR:
+			return fplKey_Clear;
+		case VK_RETURN:
+			return fplKey_Enter;
+
+		case VK_SHIFT:
+			return fplKey_Shift;
+		case VK_CONTROL:
+			return fplKey_Control;
+		case VK_MENU:
+			return fplKey_Alt;
+		case VK_PAUSE:
+			return fplKey_Pause;
+		case VK_CAPITAL:
+			return fplKey_CapsLock;
+
+		case VK_ESCAPE:
+			return fplKey_Escape;
+		case VK_SPACE:
+			return fplKey_Space;
+		case VK_PRIOR:
+			return fplKey_PageUp;
+		case VK_NEXT:
+			return fplKey_PageDown;
+		case VK_END:
+			return fplKey_End;
+		case VK_HOME:
+			return fplKey_Home;
+		case VK_LEFT:
+			return fplKey_Left;
+		case VK_UP:
+			return fplKey_Up;
+		case VK_RIGHT:
+			return fplKey_Right;
+		case VK_DOWN:
+			return fplKey_Down;
+		case VK_SELECT:
+			return fplKey_Select;
+		case VK_PRINT:
+			return fplKey_Print;
+		case VK_EXECUTE:
+			return fplKey_Execute;
+		case VK_SNAPSHOT:
+			return fplKey_Snapshot;
+		case VK_INSERT:
+			return fplKey_Insert;
+		case VK_DELETE:
+			return fplKey_Delete;
+		case VK_HELP:
+			return fplKey_Help;
+
+		case 0x30:
+			return fplKey_0;
+		case 0x31:
+			return fplKey_1;
+		case 0x32:
+			return fplKey_2;
+		case 0x33:
+			return fplKey_3;
+		case 0x34:
+			return fplKey_4;
+		case 0x35:
+			return fplKey_5;
+		case 0x36:
+			return fplKey_6;
+		case 0x37:
+			return fplKey_7;
+		case 0x38:
+			return fplKey_8;
+		case 0x39:
+			return fplKey_9;
+
+		case 0x41:
+			return fplKey_A;
+		case 0x42:
+			return fplKey_B;
+		case 0x43:
+			return fplKey_C;
+		case 0x44:
+			return fplKey_D;
+		case 0x45:
+			return fplKey_E;
+		case 0x46:
+			return fplKey_F;
+		case 0x47:
+			return fplKey_G;
+		case 0x48:
+			return fplKey_H;
+		case 0x49:
+			return fplKey_I;
+		case 0x4A:
+			return fplKey_J;
+		case 0x4B:
+			return fplKey_K;
+		case 0x4C:
+			return fplKey_L;
+		case 0x4D:
+			return fplKey_M;
+		case 0x4E:
+			return fplKey_N;
+		case 0x4F:
+			return fplKey_O;
+		case 0x50:
+			return fplKey_P;
+		case 0x51:
+			return fplKey_Q;
+		case 0x52:
+			return fplKey_R;
+		case 0x53:
+			return fplKey_S;
+		case 0x54:
+			return fplKey_T;
+		case 0x55:
+			return fplKey_U;
+		case 0x56:
+			return fplKey_V;
+		case 0x57:
+			return fplKey_W;
+		case 0x58:
+			return fplKey_X;
+		case 0x59:
+			return fplKey_Y;
+		case 0x5A:
+			return fplKey_Z;
+
+		case VK_LWIN:
+			return fplKey_LeftWin;
+		case VK_RWIN:
+			return fplKey_RightWin;
+		case VK_APPS:
+			return fplKey_Apps;
+
+		case VK_SLEEP:
+			return fplKey_Sleep;
+		case VK_NUMPAD0:
+			return fplKey_NumPad0;
+		case VK_NUMPAD1:
+			return fplKey_NumPad1;
+		case VK_NUMPAD2:
+			return fplKey_NumPad2;
+		case VK_NUMPAD3:
+			return fplKey_NumPad3;
+		case VK_NUMPAD4:
+			return fplKey_NumPad4;
+		case VK_NUMPAD5:
+			return fplKey_NumPad5;
+		case VK_NUMPAD6:
+			return fplKey_NumPad6;
+		case VK_NUMPAD7:
+			return fplKey_NumPad7;
+		case VK_NUMPAD8:
+			return fplKey_NumPad8;
+		case VK_NUMPAD9:
+			return fplKey_NumPad9;
+		case VK_MULTIPLY:
+			return fplKey_Multiply;
+		case VK_ADD:
+			return fplKey_Add;
+		case VK_SEPARATOR:
+			return fplKey_Separator;
+		case VK_SUBTRACT:
+			return fplKey_Substract;
+		case VK_DECIMAL:
+			return fplKey_Decimal;
+		case VK_DIVIDE:
+			return fplKey_Divide;
+		case VK_F1:
+			return fplKey_F1;
+		case VK_F2:
+			return fplKey_F2;
+		case VK_F3:
+			return fplKey_F3;
+		case VK_F4:
+			return fplKey_F4;
+		case VK_F5:
+			return fplKey_F5;
+		case VK_F6:
+			return fplKey_F6;
+		case VK_F7:
+			return fplKey_F7;
+		case VK_F8:
+			return fplKey_F8;
+		case VK_F9:
+			return fplKey_F9;
+		case VK_F10:
+			return fplKey_F10;
+		case VK_F11:
+			return fplKey_F11;
+		case VK_F12:
+			return fplKey_F12;
+		case VK_F13:
+			return fplKey_F13;
+		case VK_F14:
+			return fplKey_F14;
+		case VK_F15:
+			return fplKey_F15;
+		case VK_F16:
+			return fplKey_F16;
+		case VK_F17:
+			return fplKey_F17;
+		case VK_F18:
+			return fplKey_F18;
+		case VK_F19:
+			return fplKey_F19;
+		case VK_F20:
+			return fplKey_F20;
+		case VK_F21:
+			return fplKey_F21;
+		case VK_F22:
+			return fplKey_F22;
+		case VK_F23:
+			return fplKey_F23;
+		case VK_F24:
+			return fplKey_F24;
+
+		case VK_LSHIFT:
+			return fplKey_LeftShift;
+		case VK_RSHIFT:
+			return fplKey_RightShift;
+		case VK_LCONTROL:
+			return fplKey_LeftControl;
+		case VK_RCONTROL:
+			return fplKey_RightControl;
+		case VK_LMENU:
+			return fplKey_LeftAlt;
+		case VK_RMENU:
+			return fplKey_RightAlt;
+
+		default:
+			return fplKey_None;
+	}
+}
+#endif
 
 fpl_internal bool fpl__Win32InitPlatform(const fplInitFlags initFlags, const fplSettings *initSettings, fpl__PlatformInitState *initState, fpl__PlatformAppState *appState) {
 	fpl__Win32InitState *win32InitState = &initState->win32;
@@ -6481,10 +6643,22 @@ fpl_internal bool fpl__Win32InitPlatform(const fplInitFlags initFlags, const fpl
 	fpl__Win32LoadXInputApi(&win32AppState->xinput.xinputApi);
 
 	// Init console
-	AllocConsole();
-	win32AppState->console.inputHandle = GetStdHandle(STD_INPUT_HANDLE);
-	win32AppState->console.outputHandle = GetStdHandle(STD_OUTPUT_HANDLE);
-	win32AppState->console.errorHandle = GetStdHandle(STD_ERROR_HANDLE);
+	if(!(initFlags & fplInitFlags_Window)) {
+		HANDLE tmpOut = GetStdHandle(STD_OUTPUT_HANDLE);
+		if(tmpOut == fpl_null) {
+			// @TODO(final): This case seems to never be executed, even on non-CRT
+			AllocConsole();
+			win32AppState->console.isAllocated = true;
+		}
+	}
+
+	// Init keymap
+#	if defined(FPL_ENABLE_WINDOW)
+	FPL_CLEAR_STRUCT(appState->window.keyMap);
+	for(int i = 0; i < 256; ++i) {
+		appState->window.keyMap[i] = fpl__Win32MapVirtualKey(i);
+	}
+#	endif
 
 	return (true);
 }
@@ -6706,11 +6880,11 @@ fpl_platform_api char *fplGetProcessorName(char *destBuffer, const size_t maxDes
 #	undef CPU_BRAND_BUFFER_SIZE
 
 	return(destBuffer);
-	}
+}
 
-	//
-	// Win32 Threading
-	//
+//
+// Win32 Threading
+//
 fpl_internal DWORD WINAPI fpl__Win32ThreadProc(void *data) {
 	fplThreadHandle *thread = (fplThreadHandle *)data;
 	FPL_ASSERT(thread != fpl_null);
@@ -6908,59 +7082,33 @@ fpl_platform_api bool fplSignalSet(fplSignalHandle *signal) {
 // Win32 Console
 //
 fpl_platform_api void fplConsoleOut(const char *text) {
-	FPL_ASSERT(fpl__global__AppState != fpl_null);
-	const fpl__Win32AppState *win32AppState = &fpl__global__AppState->win32;
 	DWORD charsToWrite = (DWORD)fplGetAnsiStringLength(text);
 	DWORD writtenChars = 0;
-	WriteConsoleA(win32AppState->console.outputHandle, text, charsToWrite, &writtenChars, fpl_null);
+	HANDLE handle = GetStdHandle(STD_OUTPUT_HANDLE);
+	WriteFile(handle, text, charsToWrite, &writtenChars, fpl_null);
 }
 
 fpl_platform_api void fplConsoleError(const char *text) {
-	FPL_ASSERT(fpl__global__AppState != fpl_null);
-	const fpl__Win32AppState *win32AppState = &fpl__global__AppState->win32;
 	DWORD charsToWrite = (DWORD)fplGetAnsiStringLength(text);
 	DWORD writtenChars = 0;
-	WriteConsoleA(win32AppState->console.errorHandle, text, charsToWrite, &writtenChars, fpl_null);
-}
-
-fpl_platform_api void fplConsoleFormatOut(const char *format, ...) {
-	char buffer[1024 * 10];
-	va_list argList;
-	va_start(argList, format);
-	char *str = fplFormatAnsiStringArgs(buffer, FPL_ARRAYCOUNT(buffer), format, argList);
-	va_end(argList);
-	if(str != fpl_null) {
-		fplConsoleOut(str);
-	}
-}
-
-fpl_platform_api void fplConsoleFormatError(const char *format, ...) {
-	char buffer[1024];
-	va_list argList;
-	va_start(argList, format);
-	char *str = fplFormatAnsiStringArgs(buffer, FPL_ARRAYCOUNT(buffer), format, argList);
-	va_end(argList);
-	if(str != fpl_null) {
-		fplConsoleError(str);
-	}
+	HANDLE handle = GetStdHandle(STD_ERROR_HANDLE);
+	WriteFile(handle, text, charsToWrite, &writtenChars, fpl_null);
 }
 
 fpl_platform_api const char fplConsoleWaitForCharInput() {
-	FPL_ASSERT(fpl__global__AppState != fpl_null);
-	const fpl__Win32AppState *win32AppState = &fpl__global__AppState->win32;
-	HANDLE inputHandle = win32AppState->console.inputHandle;
+	HANDLE handle = GetStdHandle(STD_INPUT_HANDLE);
 	DWORD savedMode;
-	GetConsoleMode(inputHandle, &savedMode);
-	SetConsoleMode(inputHandle, ENABLE_PROCESSED_INPUT);
+	GetConsoleMode(handle, &savedMode);
+	SetConsoleMode(handle, ENABLE_PROCESSED_INPUT);
 	char result = 0;
-	if(WaitForSingleObject(inputHandle, INFINITE) == WAIT_OBJECT_0) {
+	if(WaitForSingleObject(handle, INFINITE) == WAIT_OBJECT_0) {
 		DWORD charsRead = 0;
 		char inputBuffer[2] = FPL_ZERO_INIT;
-		if(ReadConsoleA(win32AppState->console.inputHandle, inputBuffer, 1, &charsRead, fpl_null) != 0) {
+		if(ReadFile(handle, inputBuffer, 1, &charsRead, fpl_null) != 0) {
 			result = inputBuffer[0];
 		}
 	}
-	SetConsoleMode(inputHandle, savedMode);
+	SetConsoleMode(handle, savedMode);
 	return (result);
 }
 
@@ -7505,71 +7653,6 @@ fpl_platform_api wchar_t *fplUTF8StringToWideString(const char *utf8Source, cons
 	MultiByteToWideChar(CP_UTF8, 0, utf8Source, (int)utf8SourceLen, wideDest, (int)maxWideDestLen);
 	wideDest[requiredLen] = 0;
 	return(wideDest);
-}
-
-fpl_platform_api char *fplFormatAnsiStringArgs(char *ansiDestBuffer, const size_t maxAnsiDestBufferLen, const char *format, va_list argList) {
-	if(ansiDestBuffer == fpl_null) {
-		fpl__ArgumentNullError("Ansi dest buffer");
-		return fpl_null;
-	}
-	if(maxAnsiDestBufferLen == 0) {
-		fpl__ArgumentZeroError("Max ansi dest len");
-		return fpl_null;
-	}
-	if(format == fpl_null) {
-		fpl__ArgumentNullError("Format");
-		return fpl_null;
-	}
-	if(argList == fpl_null) {
-		fpl__ArgumentNullError("Arg list");
-		return fpl_null;
-	}
-	// @NOTE(final): Need to clear the first character, otherwise vsnprintf() does weird things... O_o
-	ansiDestBuffer[0] = 0;
-
-	int charCount = 0;
-#	if defined(FPL_NO_CRT)
-#		if defined(FPL_USERFUNC_vsnprintf)
-			charCount = FPL_USERFUNC_vsnprintf(ansiDestBuffer, maxAnsiDestBufferLen, format, argList);
-#		else
-			charCount = 0;
-#		endif
-#	else
-	charCount = vsnprintf(ansiDestBuffer, maxAnsiDestBufferLen, format, argList);
-#	endif
-
-	if(charCount < 0) {
-		fpl__PushError("Format parameter are '%s' are invalid!", format);
-		return fpl_null;
-	}
-	size_t requiredMaxAnsiDestBufferLen = charCount + 1;
-	if(maxAnsiDestBufferLen < requiredMaxAnsiDestBufferLen) {
-		fpl__ArgumentSizeTooSmallError("Max ansi dest len", maxAnsiDestBufferLen, requiredMaxAnsiDestBufferLen);
-		return fpl_null;
-	}
-	ansiDestBuffer[charCount] = 0;
-	char *result = ansiDestBuffer;
-	return(result);
-}
-
-fpl_platform_api char *fplFormatAnsiString(char *ansiDestBuffer, const size_t maxAnsiDestBufferLen, const char *format, ...) {
-	if(ansiDestBuffer == fpl_null) {
-		fpl__ArgumentNullError("Ansi dest buffer");
-		return fpl_null;
-	}
-	if(maxAnsiDestBufferLen == 0) {
-		fpl__ArgumentZeroError("Max ansi dest len");
-		return fpl_null;
-	}
-	if(format == fpl_null) {
-		fpl__ArgumentNullError("Format");
-		return fpl_null;
-	}
-	va_list argList;
-	va_start(argList, format);
-	char *result = fplFormatAnsiStringArgs(ansiDestBuffer, maxAnsiDestBufferLen, format, argList);
-	va_end(argList);
-	return(result);
 }
 
 //
@@ -9093,71 +9176,6 @@ fpl_platform_api wchar_t *fplUTF8StringToWideString(const char *utf8Source, cons
 	wideDest[requiredLen] = 0;
 	return(wideDest);
 }
-
-fpl_platform_api char *fplFormatAnsiStringArgs(char *ansiDestBuffer, const size_t maxAnsiDestBufferLen, const char *format, va_list argList) {
-	if(ansiDestBuffer == fpl_null) {
-		fpl__ArgumentNullError("Ansi dest buffer");
-		return fpl_null;
-	}
-	if(maxAnsiDestBufferLen == 0) {
-		fpl__ArgumentZeroError("Max ansi dest len");
-		return fpl_null;
-	}
-	if(format == fpl_null) {
-		fpl__ArgumentNullError("Format");
-		return fpl_null;
-	}
-	if(argList == fpl_null) {
-		fpl__ArgumentNullError("Arg list");
-		return fpl_null;
-	}
-	// @NOTE(final): Need to clear the first character, otherwise vsnprintf() does weird things... O_o
-	ansiDestBuffer[0] = 0;
-
-	int charCount = 0;
-#	if defined(FPL_NO_CRT)
-#		if defined(FPL_USERFUNC_vsnprintf)
-			charCount = FPL_USERFUNC_vsnprintf(ansiDestBuffer, maxAnsiDestBufferLen, format, argList);
-#		else
-			charCount = 0;
-#		endif
-#	else
-	charCount = vsnprintf(ansiDestBuffer, maxAnsiDestBufferLen, format, argList);
-#	endif
-
-	if(charCount < 0) {
-		fpl__PushError("Format parameter are '%s' are invalid!", format);
-		return fpl_null;
-	}
-	size_t requiredMaxAnsiDestBufferLen = charCount + 1;
-	if(maxAnsiDestBufferLen < requiredMaxAnsiDestBufferLen) {
-		fpl__ArgumentSizeTooSmallError("Max ansi dest len", maxAnsiDestBufferLen, requiredMaxAnsiDestBufferLen);
-		return fpl_null;
-	}
-	ansiDestBuffer[charCount] = 0;
-	char *result = ansiDestBuffer;
-	return(result);
-}
-
-fpl_platform_api char *fplFormatAnsiString(char *ansiDestBuffer, const size_t maxAnsiDestBufferLen, const char *format, ...) {
-	if(ansiDestBuffer == fpl_null) {
-		fpl__ArgumentNullError("Ansi dest buffer");
-		return fpl_null;
-	}
-	if(maxAnsiDestBufferLen == 0) {
-		fpl__ArgumentZeroError("Max ansi dest len");
-		return fpl_null;
-	}
-	if(format == fpl_null) {
-		fpl__ArgumentNullError("Format");
-		return fpl_null;
-	}
-	va_list argList;
-	va_start(argList, format);
-	char *result = fplFormatAnsiStringArgs(ansiDestBuffer, maxAnsiDestBufferLen, format, argList);
-	va_end(argList);
-	return(result);
-}
 #endif // FPL_SUBPLATFORM_STD_STRINGS
 
 // ############################################################################
@@ -9174,25 +9192,9 @@ fpl_platform_api void fplConsoleOut(const char *text) {
 		fprintf(stdout, "%s", text);
 	}
 }
-fpl_platform_api void fplConsoleFormatOut(const char *format, ...) {
-	if(format != fpl_null) {
-		va_list vaList;
-		va_start(vaList, format);
-		vfprintf(stdout, format, vaList);
-		va_end(vaList);
-	}
-}
 fpl_platform_api void fplConsoleError(const char *text) {
 	if(text != fpl_null) {
 		fprintf(stderr, "%s", text);
-	}
-}
-fpl_platform_api void fplConsoleFormatError(const char *format, ...) {
-	if(format != fpl_null) {
-		va_list vaList;
-		va_start(vaList, format);
-		vfprintf(stderr, format, vaList);
-		va_end(vaList);
 	}
 }
 fpl_platform_api const char fplConsoleWaitForCharInput() {
@@ -9561,17 +9563,17 @@ fpl_internal bool fpl__X11InitWindow(const fplSettings *initSettings, fplWindowS
 	x11Api->XStoreName(windowState->display, windowState->window, nameBuffer);
 	x11Api->XMapWindow(windowState->display, windowState->window);
 
-	FPL_ASSERT(FPL_ARRAYCOUNT(windowState->keyMap) >= 256);
+	FPL_ASSERT(FPL_ARRAYCOUNT(appState->window.keyMap) >= 256);
 
 	// XLib: Valid key range is 8 to 255
 	FPL_LOG("X11", "Build X11 Keymap");
-	FPL_CLEAR_STRUCT(windowState->keyMap);
+	FPL_CLEAR_STRUCT(appState->window.keyMap);
 	for(int keyCode = 8; keyCode < 256; ++keyCode) {
 		int dummy = 0;
 		KeySym *keySyms = x11Api->XGetKeyboardMapping(windowState->display, keyCode, 1, &dummy);
 		KeySym keySym = keySyms[0];
 		fplKey mappedKey = fpl__X11TranslateKeySymbol(keySym);
-		windowState->keyMap[keyCode] = mappedKey;
+		appState->window.keyMap[keyCode] = mappedKey;
 		x11Api->XFree(keySyms);
 	}
 
@@ -9640,13 +9642,10 @@ fpl_internal bool fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatfor
 			int keyCode = ev->xkey.keycode;
 			bool isDown = ev->type == KeyPress;
 
-			FPL_ASSERT(keyCode >= 0 && keyCode < FPL_ARRAYCOUNT(windowState->keyMap));
-			fplKey mappedKey = x11WinState->keyMap[keyCode];
-
 			fplEvent newEvent = FPL_ZERO_INIT;
 			newEvent.type = fplEventType_Keyboard;
 			newEvent.keyboard.keyCode = keyCode;
-			newEvent.keyboard.mappedKey = mappedKey;
+			newEvent.keyboard.mappedKey = fpl__GetMappedKey(winState, keyCode);
 			newEvent.keyboard.type = isDown ? fplKeyboardEventType_KeyDown : fplKeyboardEventType_KeyUp;
 			newEvent.keyboard.modifiers = fpl__X11TranslateModifierFlags(keyState);
 
@@ -9754,11 +9753,11 @@ fpl_platform_api void fplSetWindowCursorEnabled(const bool value) {
 }
 
 fpl_platform_api bool fplGetWindowArea(fplWindowSize *outSize) {
-    if (outSize == fpl_null) {
-        fpl__ArgumentNullError("Out Size");
-        return false;
-    }  
-    
+	if(outSize == fpl_null) {
+		fpl__ArgumentNullError("Out Size");
+		return false;
+	}
+
 	fpl__PlatformAppState *appState = fpl__global__AppState;
 	FPL_ASSERT(appState != fpl_null);
 	const fpl__X11SubplatformState *subplatform = &appState->x11;
@@ -9803,11 +9802,11 @@ fpl_platform_api bool fplIsWindowFullscreen() {
 }
 
 fpl_platform_api bool fplGetWindowPosition(fplWindowPosition *outPos) {
-    if (outPos == fpl_null) {
-        fpl__ArgumentNullError("Out pos");
-        return false;
-    }   
-    
+	if(outPos == fpl_null) {
+		fpl__ArgumentNullError("Out pos");
+		return false;
+	}
+
 	fpl__PlatformAppState *appState = fpl__global__AppState;
 	FPL_ASSERT(appState != fpl_null);
 	const fpl__X11SubplatformState *subplatform = &appState->x11;
@@ -9973,6 +9972,9 @@ fpl_platform_api fplMemoryInfos fplGetSystemMemoryInfos() {
 	return(result);
 }
 
+//
+// Linux Paths
+//
 fpl_platform_api char *fplGetExecutableFilePath(char *destPath, const size_t maxDestLen) {
 	if(destPath == fpl_null) {
 		fpl__ArgumentNullError("Dest path");
@@ -10016,6 +10018,71 @@ fpl_platform_api char *fplGetHomePath(char *destPath, const size_t maxDestLen) {
 	return(result);
 }
 #endif // FPL_PLATFORM_LINUX
+
+// ############################################################################
+//
+// > UNIX_PLATFORM
+//
+// ############################################################################
+#if defined(FPL_PLATFORM_UNIX)
+fpl_internal void fpl__UnixReleasePlatform(fpl__PlatformInitState *initState, fpl__PlatformAppState *appState) {
+	FPL_LOG_BLOCK;
+}
+
+fpl_internal bool fpl__UnixInitPlatform(const fplInitFlags initFlags, const fplSettings *initSettings, fpl__PlatformInitState *initState, fpl__PlatformAppState *appState) {
+	FPL_LOG_BLOCK;
+	return true;
+}
+
+//
+// Unix Hardware
+//
+fpl_platform_api size_t fplGetProcessorCoreCount() {
+	size_t result = 1;
+	// @IMPLEMENT(final): Unix fplGetProcessorCoreCount
+	return(result);
+}
+
+fpl_platform_api char *fplGetProcessorName(char *destBuffer, const size_t maxDestBufferLen) {
+	if(destBuffer == fpl_null) {
+		fpl__ArgumentNullError("Dest buffer");
+		return fpl_null;
+	}
+	if(maxDestBufferLen == 0) {
+		fpl__ArgumentZeroError("Max dest buffer len");
+		return fpl_null;
+	}
+	// @IMPLEMENT(final): Unix fplGetProcessorName
+	return(fpl_null);
+}
+
+fpl_platform_api fplMemoryInfos fplGetSystemMemoryInfos() {
+	fplMemoryInfos result = FPL_ZERO_INIT;
+	// @IMPLEMENT(final): Unix fplGetSystemMemoryInfos
+	return(result);
+}
+
+//
+// Unix Paths
+//
+fpl_platform_api char *fplGetExecutableFilePath(char *destPath, const size_t maxDestLen) {
+	if(destPath == fpl_null) {
+		fpl__ArgumentNullError("Dest path");
+		return fpl_null;
+	}
+	if(maxDestLen == 0) {
+		fpl__ArgumentZeroError("Max dest len");
+		return fpl_null;
+	}
+	// @IMPLEMENT(final): Unix fplGetExecutableFilePath
+	return fpl_null;
+}
+
+fpl_platform_api char *fplGetHomePath(char *destPath, const size_t maxDestLen) {
+	// @IMPLEMENT(final): Unix fplGetHomePath
+	return fpl_null;
+}
+#endif // FPL_PLATFORM_UNIX
 
 // ****************************************************************************
 //
@@ -10350,6 +10417,7 @@ fpl_internal bool fpl__X11LoadVideoOpenGLApi(fpl__X11VideoOpenGLApi *api) {
 		"libGL.so.1",
 		"libGL.so",
 	};
+
 	bool result = false;
 	for(uint32_t index = 0; index < FPL_ARRAYCOUNT(libFileNames); ++index) {
 		const char *libName = libFileNames[index];
@@ -10599,8 +10667,37 @@ typedef FPL__FUNC_DIRECT_SOUND_ENUMERATE_A(func_DirectSoundEnumerateA);
 static GUID FPL__IID_IDirectSoundNotify = { 0xb0210783, 0x89cd, 0x11d0, {0xaf, 0x08, 0x00, 0xa0, 0xc9, 0x25, 0xcd, 0x16} };
 #define FPL__DIRECTSOUND_MAX_PERIODS 4
 
-typedef struct fpl__DirectSoundState {
+typedef struct fpl__DirectSoundApi {
 	HMODULE dsoundLibrary;
+	func_DirectSoundCreate *DirectSoundCreate;
+	func_DirectSoundEnumerateA *DirectSoundEnumerateA;
+} fpl__DirectSoundApi;
+
+fpl_internal void fpl__UnloadDirectSoundApi(fpl__DirectSoundApi *dsoundApi) {
+	FPL_ASSERT(dsoundApi != fpl_null);
+	if(dsoundApi->dsoundLibrary != fpl_null) {
+		FreeLibrary(dsoundApi->dsoundLibrary);
+	}
+	FPL_CLEAR_STRUCT(dsoundApi);
+}
+
+fpl_internal bool fpl__LoadDirectSoundApi(fpl__DirectSoundApi *dsoundApi) {
+	FPL_ASSERT(dsoundApi != fpl_null);
+
+	const char *dsoundLibraryName = "dsound.dll";
+	HMODULE library = dsoundApi->dsoundLibrary = LoadLibraryA(dsoundLibraryName);
+	if(library == fpl_null) {
+		fpl__PushError("Failed loading library '%s'", dsoundLibraryName);
+		return false;
+	}
+	FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(library, dsoundLibraryName, dsoundApi->DirectSoundCreate, func_DirectSoundCreate, "DirectSoundCreate");
+	FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(library, dsoundLibraryName, dsoundApi->DirectSoundEnumerateA, func_DirectSoundEnumerateA, "DirectSoundEnumerateA");
+
+	return true;
+}
+
+typedef struct fpl__DirectSoundState {
+	fpl__DirectSoundApi api;
 	LPDIRECTSOUND directSound;
 	LPDIRECTSOUNDBUFFER primaryBuffer;
 	LPDIRECTSOUNDBUFFER secondaryBuffer;
@@ -10639,48 +10736,45 @@ fpl_internal BOOL CALLBACK fpl__GetDeviceCallbackDirectSound(LPGUID lpGuid, LPCS
 
 fpl_internal uint32_t fpl__GetDevicesDirectSound(fpl__DirectSoundState *dsoundState, fplAudioDeviceInfo *deviceInfos, uint32_t maxDeviceCount) {
 	uint32_t result = 0;
-	func_DirectSoundEnumerateA *directSoundEnumerateA = (func_DirectSoundEnumerateA *)GetProcAddress(dsoundState->dsoundLibrary, "DirectSoundEnumerateA");
-	if(directSoundEnumerateA != fpl_null) {
-		fpl__DirectSoundDeviceInfos infos = FPL_ZERO_INIT;
-		infos.maxDeviceCount = maxDeviceCount;
-		infos.deviceInfos = deviceInfos;
-		directSoundEnumerateA(fpl__GetDeviceCallbackDirectSound, &infos);
-		result = infos.foundDeviceCount;
-	}
+	const fpl__DirectSoundApi *dsoundApi = &dsoundState->api;
+	fpl__DirectSoundDeviceInfos infos = FPL_ZERO_INIT;
+	infos.maxDeviceCount = maxDeviceCount;
+	infos.deviceInfos = deviceInfos;
+	dsoundApi->DirectSoundEnumerateA(fpl__GetDeviceCallbackDirectSound, &infos);
+	result = infos.foundDeviceCount;
 	return(result);
 }
 
 fpl_internal bool fpl__ReleaseDirectSound(const fpl__CommonAudioState *commonAudio, fpl__DirectSoundState *dsoundState) {
-	if(dsoundState->dsoundLibrary != fpl_null) {
-		if(dsoundState->stopEvent != fpl_null) {
-			CloseHandle(dsoundState->stopEvent);
-		}
-
-		for(uint32_t i = 0; i < commonAudio->internalFormat.periods; ++i) {
-			if(dsoundState->notifyEvents[i]) {
-				CloseHandle(dsoundState->notifyEvents[i]);
-			}
-		}
-
-		if(dsoundState->notify != fpl_null) {
-			IDirectSoundNotify_Release(dsoundState->notify);
-		}
-
-		if(dsoundState->secondaryBuffer != fpl_null) {
-			IDirectSoundBuffer_Release(dsoundState->secondaryBuffer);
-		}
-
-		if(dsoundState->primaryBuffer != fpl_null) {
-			IDirectSoundBuffer_Release(dsoundState->primaryBuffer);
-		}
-
-		if(dsoundState->directSound != fpl_null) {
-			IDirectSound_Release(dsoundState->directSound);
-		}
-
-		FreeLibrary(dsoundState->dsoundLibrary);
-		FPL_CLEAR_STRUCT(dsoundState);
+	if(dsoundState->stopEvent != fpl_null) {
+		CloseHandle(dsoundState->stopEvent);
 	}
+
+	for(uint32_t i = 0; i < commonAudio->internalFormat.periods; ++i) {
+		if(dsoundState->notifyEvents[i]) {
+			CloseHandle(dsoundState->notifyEvents[i]);
+		}
+	}
+
+	if(dsoundState->notify != fpl_null) {
+		IDirectSoundNotify_Release(dsoundState->notify);
+	}
+
+	if(dsoundState->secondaryBuffer != fpl_null) {
+		IDirectSoundBuffer_Release(dsoundState->secondaryBuffer);
+	}
+
+	if(dsoundState->primaryBuffer != fpl_null) {
+		IDirectSoundBuffer_Release(dsoundState->primaryBuffer);
+	}
+
+	if(dsoundState->directSound != fpl_null) {
+		IDirectSound_Release(dsoundState->directSound);
+	}
+
+	fpl__UnloadDirectSoundApi(&dsoundState->api);
+
+	FPL_CLEAR_STRUCT(dsoundState);
 
 	return true;
 }
@@ -10698,9 +10792,8 @@ fpl_internal fplAudioResult fpl__InitDirectSound(const fplAudioSettings *audioSe
 	const fpl__Win32Api *apiFuncs = &win32AppState->winApi;
 
 	// Load direct sound library
-	dsoundState->dsoundLibrary = LoadLibraryA("dsound.dll");
-	func_DirectSoundCreate *directSoundCreate = (func_DirectSoundCreate *)GetProcAddress(dsoundState->dsoundLibrary, "DirectSoundCreate");
-	if(directSoundCreate == fpl_null) {
+	fpl__DirectSoundApi *dsoundApi = &dsoundState->api;
+	if(!fpl__LoadDirectSoundApi(dsoundApi)) {
 		fpl__ReleaseDirectSound(commonAudio, dsoundState);
 		return fplAudioResult_Failed;
 	}
@@ -10710,7 +10803,7 @@ fpl_internal fplAudioResult fpl__InitDirectSound(const fplAudioSettings *audioSe
 	if(fplGetAnsiStringLength(audioSettings->deviceInfo.name) > 0) {
 		deviceId = &audioSettings->deviceInfo.id.dshow;
 	}
-	if(!SUCCEEDED(directSoundCreate(deviceId, &dsoundState->directSound, fpl_null))) {
+	if(!SUCCEEDED(dsoundApi->DirectSoundCreate(deviceId, &dsoundState->directSound, fpl_null))) {
 		fpl__ReleaseDirectSound(commonAudio, dsoundState);
 		return fplAudioResult_Failed;
 	}
@@ -10736,7 +10829,7 @@ fpl_internal fplAudioResult fpl__InitDirectSound(const fplAudioSettings *audioSe
 #		if defined(FPL_ENABLE_WINDOW)
 	if(appState->initFlags & fplInitFlags_Window) {
 		windowHandle = appState->window.win32.windowHandle;
-}
+	}
 #		endif
 	if(windowHandle == fpl_null) {
 		windowHandle = apiFuncs->user.GetDesktopWindow();
@@ -10783,10 +10876,10 @@ fpl_internal fplAudioResult fpl__InitDirectSound(const fplAudioSettings *audioSe
 	if(fpl__Win32IsEqualGuid(pActualFormat->SubFormat, FPL__GUID_KSDATAFORMAT_SUBTYPE_IEEE_FLOAT)) {
 		if(pActualFormat->Format.wBitsPerSample == 64) {
 			internalFormat.type = fplAudioFormatType_F64;
-				} else {
+		} else {
 			internalFormat.type = fplAudioFormatType_F32;
 		}
-			} else {
+	} else {
 		switch(pActualFormat->Format.wBitsPerSample) {
 			case 8:
 				internalFormat.type = fplAudioFormatType_U8;
@@ -10859,7 +10952,7 @@ fpl_internal fplAudioResult fpl__InitDirectSound(const fplAudioSettings *audioSe
 	}
 
 	return fplAudioResult_Success;
-		}
+}
 
 fpl_internal_inline void fpl__StopMainLoopDirectSound(fpl__DirectSoundState *dsoundState) {
 	dsoundState->breakMainLoop = true;
@@ -11020,6 +11113,20 @@ fpl_internal void fpl__DirectSoundMainLoop(const fpl__CommonAudioState *commonAu
 	}
 }
 #endif // FPL_ENABLE_AUDIO_DIRECTSOUND
+
+// ############################################################################
+//
+// > AUDIO_DRIVER_ALSA
+//
+// ############################################################################
+#if defined(FPL_ENABLE_AUDIO_ALSA)
+#	include <alsa/asoundlib.h>
+
+typedef struct fpl__AlsaSoundState {
+	void *alsaLibrary;
+} fpl__AlsaSoundState;
+
+#endif
 
 #endif // FPL_AUDIO_DRIVERS_IMPLEMENTED
 
@@ -11768,10 +11875,10 @@ fpl_common_api fplAudioResult fplStopAudio() {
 		if(audioState->isAsyncDriver) {
 			// Asynchronous drivers (Has their own thread)
 			fpl__AudioStopDevice(audioState);
-} else {
-	// Synchronous drivers
+		} else {
+			// Synchronous drivers
 
-	// The audio worker thread is most likely in a wait state, so let it stop properly.
+			// The audio worker thread is most likely in a wait state, so let it stop properly.
 			fpl__AudioDeviceStopMainLoop(audioState);
 
 			// We need to wait for the worker thread to become available for work before returning.
@@ -11779,7 +11886,7 @@ fpl_common_api fplAudioResult fplStopAudio() {
 			fplSignalWaitForOne(&audioState->lock, &audioState->stopSignal, UINT32_MAX);
 			result = fplAudioResult_Success;
 		}
-}
+	}
 	fplMutexUnlock(&audioState->lock);
 
 	return result;
@@ -12001,7 +12108,7 @@ fpl_common_api void fplVideoFlip() {
 			default:
 				break;
 		}
-#	endif // FPL_PLATFORM
+#	endif // FPL_PLATFORM || FPL_SUBPLATFORM
 	}
 }
 #endif // FPL_ENABLE_VIDEO
@@ -12072,6 +12179,9 @@ fpl_internal void fpl__ReleasePlatformStates(fpl__PlatformInitState *initState, 
 #		elif defined(FPL_PLATFORM_LINUX)
 			FPL_LOG("Core", "Release Linux Platform");
 			fpl__LinuxReleasePlatform(initState, appState);
+#		elif defined(FPL_PLATFORM_UNIX)
+			FPL_LOG("Core", "Release Unix Platform");
+			fpl__UnixReleasePlatform(initState, appState);
 #		endif
 		}
 
@@ -12168,6 +12278,9 @@ fpl_common_api fplInitResultType fplPlatformInit(const fplInitFlags initFlags, c
 		appState->initFlags |= fplInitFlags_Window;
 	}
 #	endif
+#	if !defined(FPL_ENABLE_WINDOW)
+	appState->initFlags = (fplInitFlags)(appState->initFlags & ~fplInitFlags_Window);
+#	endif
 
 	// Initialize sub-platforms
 #	if defined(FPL_SUBPLATFORM_POSIX)
@@ -12178,9 +12291,9 @@ fpl_common_api fplInitResultType fplPlatformInit(const fplInitFlags initFlags, c
 			fpl__PushError("Failed initializing POSIX Subplatform");
 			fpl__ReleasePlatformStates(initState, appState);
 			return fplInitResultType_FailedPlatform;
-	}
+		}
 		FPL_LOG("Core", "Successfully initialized POSIX Subplatform");
-}
+	}
 #	endif // FPL_SUBPLATFORM_POSIX
 
 #	if defined(FPL_SUBPLATFORM_X11)
@@ -12203,6 +12316,8 @@ fpl_common_api fplInitResultType fplPlatformInit(const fplInitFlags initFlags, c
 	isInitialized = fpl__Win32InitPlatform(appState->initFlags, &appState->initSettings, initState, appState);
 #   elif defined(FPL_PLATFORM_LINUX)
 	isInitialized = fpl__LinuxInitPlatform(appState->initFlags, &appState->initSettings, initState, appState);
+#   elif defined(FPL_PLATFORM_UNIX)
+	isInitialized = fpl__UnixInitPlatform(appState->initFlags, &appState->initSettings, initState, appState);
 #	endif
 
 	if(!isInitialized) {
@@ -12249,7 +12364,7 @@ fpl_common_api fplInitResultType fplPlatformInit(const fplInitFlags initFlags, c
 			return fplInitResultType_FailedWindow;
 		}
 		FPL_LOG("Core", "Successfully initialized Window");
-		}
+	}
 #	endif // FPL_ENABLE_WINDOW
 
 	// Init Video
@@ -12298,12 +12413,9 @@ fpl_common_api fplInitResultType fplPlatformInit(const fplInitFlags initFlags, c
 
 	initState->isInitialized = true;
 	return fplInitResultType_Success;
-	}
+}
 
 #endif // FPL_SYSTEM_INIT_DEFINED
-
-
-
 
 // %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 //
@@ -12369,3 +12481,5 @@ void __stdcall mainCRTStartup(void) {
 #endif // FPL_NO_CRT
 
 #endif // FPL_IMPLEMENTATION && !FPL_IMPLEMENTED
+
+// end-of-file
