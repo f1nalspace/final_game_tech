@@ -272,6 +272,8 @@ int main(int argc, char **args) {
 									io.AddInputCharacter(ImWchar(event.keyboard.keyCode));
 								}
 							} break;
+                            default:
+                                break;
 						}
 					} break;
 					case fplEventType_Mouse:
@@ -300,6 +302,8 @@ int main(int argc, char **args) {
 								currentMousePosition[0] = event.mouse.mouseX;
 								currentMousePosition[1] = event.mouse.mouseY;
 							} break;
+                            default:
+                                break;
 						}
 					} break;
 					default:
