@@ -132,7 +132,8 @@ SOFTWARE.
 	## v0.7.2.0 beta:
 	- Changed: Signature of fplGetRunningMemoryInfos() changed
 	- Changed: Renamed fplGetSystemMemoryInfos to fplGetRunningMemoryInfos
-	- New: Added enum fplArchType
+	- Changed: Added "p" prefix to linux and unix app state
+    - New: Added enum fplArchType
 	- New: Added fplGetRunningArchitectureType()
 	- New: Added fplGetArchTypeString()
 	- New: Added enum fplPlatformType
@@ -150,7 +151,7 @@ SOFTWARE.
 	- New: [Win32] Implemented fplGetCurrentUsername()
 	- New: [Win32] Implemented fplGetOperatingSystemInfos()
 	- New: [Win32] Implemented fplGetRunningArchitectureType()
-
+	
 	## v0.7.1.0 beta:
 	- Changed: fplConsoleFormatOut/fplConsoleFormatError is now common_api instead of platform_api
 	- Changed: FPL uses a keyMap for mapping OS key codes to fplKey for every platform
@@ -4715,9 +4716,9 @@ typedef struct fpl__PlatformInitState {
 #	if defined(FPL_PLATFORM_WIN32)
 		fpl__Win32InitState win32;
 #	elif defined(FPL_PLATFORM_LINUX)
-		fpl__LinuxInitState linux;
+		fpl__LinuxInitState plinux;
 #	elif defined(FPL_PLATFORM_UNIX)
-		fpl__UnixInitState unix;
+		fpl__UnixInitState punix;
 #	endif               
 	};
 } fpl__PlatformInitState;
@@ -4793,9 +4794,9 @@ struct fpl__PlatformAppState {
 #	if defined(FPL_PLATFORM_WIN32)
 		fpl__Win32AppState win32;
 #	elif defined(FPL_PLATFORM_LINUX)
-		fpl__LinuxAppState linux;
+		fpl__LinuxAppState plinux;
 #	elif defined(FPL_PLATFORM_UNIX)
-		fpl__UnixAppState linux;
+		fpl__UnixAppState plinux;
 #	endif
 	};
 };
