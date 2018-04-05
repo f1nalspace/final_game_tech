@@ -5,23 +5,28 @@ final_platform_layer.h
 	About
 -------------------------------------------------------------------------------
 
-A Open-Source Single-File-Header C99 Platform Abstraction Layer Library.
+Final Platform Layer is a Single-Header-File cross-platform C development library designed to abstract the underlying platform to a simple and easy to use api - providing low level access to (Window, Video, Audio, Input, File/Path IO, Threads, Memory, Hardware, etc.).
 
-Final Platform Layer is a single-header-file C99 development library designed to abstract the underlying platform to a very simple and easy to use api for accessing input devices (keyboard, mouse, gamepad), playback audio samples, window handling, IO handling (files, directories, paths), multithreading (threads, mutex, signals) and graphics software or hardware rendering initialization.
+The main focus is game/media/simulation development, so the default settings will create a window, setup a OpenGL rendering context and initialize audio playback on any platform.
 
-The main focus is game/media/simulation development, so the default settings will create a window, setup a opengl rendering context and initialize audio playback on any platform.
+It is written in C99 for simplicity and best portability, but is C++ compatible as well.
+
+FPL supports the platforms Windows/Linux/Unix for the architectures x86/x64.
+
 The only dependencies are built-in operating system libraries and a C99 complaint compiler.
+
+It is licensed under the MIT-License. This license allows you to use FPL freely in any software.
 
 -------------------------------------------------------------------------------
 	Getting started
 -------------------------------------------------------------------------------
 
-- Drop this file into any C/C++ projects you want and include it in any place you want.
-- In your main translation unit provide the typical main() entry point.
-- Define FPL_IMPLEMENTATION before including this header file in the translation units you want  the source to be compiled in.
+- Drop this file into any C/C++ projects you want and include it in any place you want
+- In your main translation unit provide the typical main() entry point
+- Define FPL_IMPLEMENTATION in at least one translation unit before including this header file
 - Init the platform using fplPlatformInit()
-- Use the features you want.
-- Release the platform when you are done using fplPlatformRelease().
+- Use the features you want
+- Release the platform when you are done using fplPlatformRelease()
 
 -------------------------------------------------------------------------------
 	Usage: Hello world console application
@@ -115,14 +120,36 @@ SOFTWARE.
 
 /*!
 	\file final_platform_layer.h
-	\version v0.7.1.0 beta
+	\version v0.7.2.0 beta
 	\author Torsten Spaete
-	\brief Final Platform Layer (FPL) - A Open source C single file header platform abstraction layer library.
+	\brief Final Platform Layer (FPL) - A C99 Single-Header-File Platform Abstract Library
 */
 
 /*!
 	\page page_changelog Changelog
 	\tableofcontents
+
+	## v0.7.2.0 beta:
+	- Changed: Signature of fplGetRunningMemoryInfos() changed
+	- Changed: Renamed fplGetSystemMemoryInfos to fplGetRunningMemoryInfos
+	- New: Added enum fplArchType
+	- New: Added fplGetRunningArchitectureType()
+	- New: Added fplGetArchTypeString()
+	- New: Added enum fplPlatformType
+	- New: Added fplGetPlatformType()
+	- New: Added fplGetPlatformTypeString()
+	- New: Added struct fplVersionInfo
+	- New: Added struct fplOSInfos
+	- New: Added fplGetOperatingSystemInfos()
+	- New: Added fplGetCurrentUsername()
+
+	- Changed: [Docs] Updated all documentations to match the current state
+	- Fixed: [Docs] Missing brief for fpl_extern
+
+	- Changed: [MSVC] Removed the compiler specific No-CRT block such as _fltused, etc. -> The caller is responsible for this!
+	- New: [Win32] Implemented fplGetCurrentUsername()
+	- New: [Win32] Implemented fplGetOperatingSystemInfos()
+	- New: [Win32] Implemented fplGetRunningArchitectureType()
 
 	## v0.7.1.0 beta:
 	- Changed: fplConsoleFormatOut/fplConsoleFormatError is now common_api instead of platform_api
@@ -546,12 +573,12 @@ SOFTWARE.
 
 	\section section_platform_status_supported_platforms Supported Platforms
 
-	- Win32, Win64
+	- Windows
 	- Linux (Partially, In-Progress)
+	- Unix (Partially, In-Progress)
 
 	\section section_platform_status_planned_platforms Planned Platforms
 
-	- Unix (BSD)
 	- MacOSX
 */
 
@@ -561,9 +588,10 @@ SOFTWARE.
 
 	\section section_todo_required In progress / Todo
 
-	- Linux
+	- POSIX
 		- Files & Path
 			- File/Dir iteration
+	- Linux/Unix
 		- Window (X11)
 			- Toggle Fullscreen
 			- Toggle Resizable
@@ -572,17 +600,17 @@ SOFTWARE.
 			- Opengl (GLX)
 				- Modern context creation
 			- Software backbuffer (X11)
-		- Audio
-			- Alsa driver
+	- Audio
+		- Alsa driver
 	- Win32
 		- Window
 			- Fix cursor hide/show
 
 	\section section_todo_planned Planned
 
-	- Unix (BSD) Platform
-
 	- MacOSX Platform
+
+	- Current Date/Time functions
 
 	- Window:
 		- [Linux] Wayland
@@ -611,6 +639,7 @@ SOFTWARE.
 		- File-IO
 		- Paths
 		- Strings
+		- Hardware
 
 	- DLL-Export support
 
@@ -622,12 +651,6 @@ SOFTWARE.
 		- Set application/window icon
 		- Unicode/UTF-8 Support for character input
 		- Open/Save file/folder dialog
-
-	\section section_todo_optional Optional
-
-	- No C runtime support (vprintf, console out)
-
-	- Pack/Unpack functions (Handle endianess)
 */
 
 // ****************************************************************************
@@ -751,11 +774,9 @@ SOFTWARE.
 #	undef FPL_SUBPLATFORM_STD_CONSOLE
 #	undef FPL_SUBPLATFORM_STD_STRINGS
 #	if !defined(FPL_USERFUNC_vsnprintf)
-#		error "You need to provide a replacement for vsnprintf() set to FPL_USERFUNC_vsnprintf!"
+#		error "You need to provide a replacement for vsnprintf() by defining FPL_USERFUNC_vsnprintf!"
 #	endif
 #endif
-
-
 
 //
 // Application type detection
@@ -780,7 +801,7 @@ SOFTWARE.
 #endif
 
 //
-// Compiler depended settings and detections
+// Compiler settings
 //
 #if defined(FPL_COMPILER_MSVC)
 	//! Disable noexcept compiler warning for C++
@@ -954,8 +975,10 @@ SOFTWARE.
 #define fpl_null NULL
 
 #if defined(FPL_IS_CPP)
+	//! No additional extern definition required for C++
 #   define fpl_extern
 #else
+	//! Require extern definition on C99
 #   define fpl_extern extern
 #endif
 
@@ -1124,7 +1147,7 @@ SOFTWARE.
 // ----------------------------------------------------------------------------
 /**
   * \defgroup Atomics Atomic functions
-  * \brief Atomic functions, like AtomicCompareAndExchange, AtomicReadFence, etc.
+  * \brief Atomic functions such as Compare And Exchange, Fences, Loads, Stores, etc.
   * \{
   */
 // ----------------------------------------------------------------------------
@@ -1401,11 +1424,65 @@ fpl_common_api void fplAtomicStorePtr(volatile void **dest, const void *value);
 
 /** \}*/
 
+// ----------------------------------------------------------------------------
 /**
-  * \defgroup Hardware Hardware functions
-  * \brief Hardware functions, like GetProcessorCoreCount, GetProcessorName, etc.
+  * \defgroup OS Operating system infos
+  * \brief Retrievement of operating system informations
   * \{
+  *
   */
+// ----------------------------------------------------------------------------
+
+//! Version info container
+typedef struct fplVersionInfo {
+	//! Major version
+	uint16_t major;
+	//! Minor version
+	uint16_t minor;
+	//! Fix version
+	uint16_t fix;
+	//! Build version
+	uint16_t build;
+} fplVersionInfo;
+
+//! Operating system info container
+typedef struct fplOSInfos {
+	//! Name of the system
+	char systemName[256];
+	//! Name of the kernel
+	char kernelName[256];
+	//! System version
+	fplVersionInfo systemVersion;
+	//! Kernel version
+	fplVersionInfo kernelVersion;
+} fplOSInfos;
+
+/**
+  * \brief Returns the basic infos of the operating system
+  * \param outInfos Pointer to a \ref fplOSInfos structure
+  * \note This may be called without initializing the platform
+  * \return True when the infos could be retrieved, false otherwise.
+  */
+fpl_platform_api bool fplGetOperatingSystemInfos(fplOSInfos *outInfos);
+
+/**
+  * \brief Returns the username of the current logged-in user
+  * \param nameBuffer Name buffer
+  * \param maxNameBufferLen Max name buffer length
+  * \return True when a username could be retrieved, false otherwise.
+  */
+fpl_platform_api bool fplGetCurrentUsername(char *nameBuffer, size_t maxNameBufferLen);
+
+/** \}*/
+
+// ----------------------------------------------------------------------------
+/**
+  * \defgroup Hardware Hardware infos
+  * \brief Retrievement of hardware informations
+  * \{
+  *
+  */
+// ----------------------------------------------------------------------------
 
 //! Memory informations
 typedef struct fplMemoryInfos {
@@ -1425,6 +1502,45 @@ typedef struct fplMemoryInfos {
 	uint64_t usedPageSize;
 } fplMemoryInfos;
 
+//! Architecture type
+typedef enum fplArchType {
+	//! Unknown architecture
+	fplArchType_Unknown = 0,
+	//! X86 architecture
+	fplArchType_x86,
+	//! X86_64 architecture
+	fplArchType_x86_64,
+	//! X64 architecture
+	fplArchType_x64,
+	//! ARM32 architecture
+	fplArchType_Arm32,
+	//! ARM64 architecture
+	fplArchType_Arm64,
+} fplArchType;
+
+/**
+  * \brief Returns the string representation of the given architecture type
+  * \param type Architecture type
+  * \return Returns a string for the given architecture type
+  */
+fpl_inline const char *fplGetArchTypeString(const fplArchType type) {
+	switch(type) {
+		case fplArchType_x86:
+			return "x86";
+		case fplArchType_x86_64:
+			return "x86_64";
+		case fplArchType_x64:
+			return "x64";
+		case fplArchType_Arm32:
+			return "Arm32";
+		case fplArchType_Arm64:
+			return "Arm64";
+		case fplArchType_Unknown:
+		default:
+			return "Unknown";
+	}
+}
+
 /**
   * \brief Returns the total number of processor cores.
   * \return Number of processor cores.
@@ -1440,17 +1556,26 @@ fpl_platform_api size_t fplGetProcessorCoreCount();
 fpl_platform_api char *fplGetProcessorName(char *destBuffer, const size_t maxDestBufferLen);
 /**
   * \brief Returns the current system memory informations.
-  * \return Current system memory informations.
+  * \param outInfos Pointer to a \ref fplMemoryInfos structure
+  * \return Returns true when memory infos could be retrieved, otherwise false
   */
-fpl_platform_api fplMemoryInfos fplGetSystemMemoryInfos();
+fpl_platform_api bool fplGetRunningMemoryInfos(fplMemoryInfos *outInfos);
+
+/**
+  * \brief Returns the current architecture
+  * \return \ref fplArchType
+  */
+fpl_platform_api fplArchType fplGetRunningArchitectureType();
 
 /** \}*/
 
+// ----------------------------------------------------------------------------
 /**
   * \defgroup Settings Settings and configurations
   * \brief Video/audio/window settings
   * \{
   */
+// ----------------------------------------------------------------------------
 
 //! Initialization flags (Window, Video, etc.)
 typedef enum fplInitFlags {
@@ -1729,11 +1854,43 @@ fpl_common_api const fplSettings *fplGetCurrentSettings();
 
 /** \}*/
 
+// ----------------------------------------------------------------------------
 /**
-  * \defgroup Initialization Initialization functions
-  * \brief Initialization and release functions
+  * \defgroup Platform Platform functions
+  * \brief Platform functions
   * \{
   */
+// ----------------------------------------------------------------------------
+
+//! Platform type
+typedef enum fplPlatformType {
+	//! Unknown platform
+	fplPlatformType_Unknown = 0,
+	//! Windows platform
+	fplPlatformType_Windows,
+	//! Linux platform
+	fplPlatformType_Linux,
+	//! Unix platform
+	fplPlatformType_Unix,
+} fplPlatformType;
+
+/**
+  * \brief Returns the string representation of the given platform type
+  * \param type Platform type
+  * \return Returns a string for the given platform type
+  */
+fpl_inline const char *fplGetPlatformTypeString(const fplPlatformType type) {
+	switch(type) {
+		case fplPlatformType_Windows:
+			return "Windows";
+		case fplPlatformType_Linux:
+			return "Linux";
+		case fplPlatformType_Unix:
+			return "Unix";
+		default:
+			return "Unknown";
+	}
+}
 
 /**
   * \brief Initializes the platform layer.
@@ -1748,14 +1905,21 @@ fpl_common_api fplInitResultType fplPlatformInit(const fplInitFlags initFlags, c
   * \note Can only be called when \ref fplPlatformInit() was successful.
   */
 fpl_common_api void fplPlatformRelease();
+/**
+  * \brief Returns the type of the platform
+  * \return \ref fplPlatformType
+  */
+fpl_common_api fplPlatformType fplGetPlatformType();
 
 /** \}*/
 
+// ----------------------------------------------------------------------------
 /**
   * \defgroup ErrorHandling Error Handling
   * \brief Functions for error handling
   * \{
   */
+// ----------------------------------------------------------------------------
 
   /**
 	* \brief Returns the last internal error string
@@ -1784,11 +1948,13 @@ fpl_common_api void fplClearPlatformErrors();
 
 /** \}*/
 
+// ----------------------------------------------------------------------------
 /**
   * \defgroup DynamicLibrary Dynamic library loading
   * \brief Loading dynamic libraries and retrieving the procedure addresses.
   * \{
   */
+// ----------------------------------------------------------------------------
 
 //! Internal library handle union
 typedef union fplInternalDynamicLibraryHandle {
@@ -1831,11 +1997,13 @@ fpl_platform_api void fplDynamicLibraryUnload(fplDynamicLibraryHandle *handle);
 
 /** \}*/
 
+// ----------------------------------------------------------------------------
 /**
   * \defgroup Console Console functions
   * \brief Console out/in functions
   * \{
   */
+// ----------------------------------------------------------------------------
 
   /**
 	* \brief Writes the given text to the standard output console buffer.
@@ -1873,11 +2041,13 @@ fpl_common_api void fplConsoleFormatError(const char *format, ...);
 
 /** \}*/
 
+// ----------------------------------------------------------------------------
 /**
-  * \defgroup Threading Threading routines
+  * \defgroup Threading Threading and syncronisation routines
   * \brief Tons of functions for multithreading, mutex and signal creation and handling
   * \{
   */
+// ----------------------------------------------------------------------------
 
   //! Thread state
 typedef enum fplThreadStates {
@@ -2103,11 +2273,13 @@ fpl_platform_api bool fplSignalSet(fplSignalHandle *signal);
 
 /** \}*/
 
+// ----------------------------------------------------------------------------
 /**
   * \defgroup Memory Memory functions
   * \brief Memory allocation, clearing and copy functions
   * \{
   */
+// ----------------------------------------------------------------------------
 
 /**
   * \brief Clears the given memory by the given size to zero.
@@ -2162,11 +2334,13 @@ fpl_common_api void fplMemoryAlignedFree(void *ptr);
 
 /** \}*/
 
+// ----------------------------------------------------------------------------
 /**
   * \defgroup Timings Timing functions
   * \brief Functions for retrieving timebased informations
   * \{
   */
+// ----------------------------------------------------------------------------
 
 /**
   * \brief Returns the current system clock in seconds with the highest precision possible.
@@ -2184,11 +2358,13 @@ fpl_platform_api uint64_t fplGetTimeInMilliseconds();
 
 /** \}*/
 
+// ----------------------------------------------------------------------------
 /**
   * \defgroup Strings String manipulation functions
   * \brief Functions for converting/manipulating strings
   * \{
   */
+// ----------------------------------------------------------------------------
 
   /**
 	* \brief Returns true when both ansi strings are equal with enforcing the given length.
@@ -2323,11 +2499,13 @@ fpl_common_api char *fplFormatAnsiStringArgs(char *ansiDestBuffer, const size_t 
 
 /** \}*/
 
+// ----------------------------------------------------------------------------
 /**
   * \defgroup Files Files/IO functions
   * \brief Tons of file and directory IO functions
   * \{
   */
+// ----------------------------------------------------------------------------
 
 //! Internal file handle union
 typedef union fplInternalFileHandle {
@@ -2565,11 +2743,13 @@ fpl_platform_api void fplListFilesEnd(fplFileEntry *lastEntry);
 
 /** \}*/
 
+// ----------------------------------------------------------------------------
 /**
   * \defgroup Paths Path functions
   * \brief Functions for retrieving paths like HomePath, ExecutablePath, etc.
   * \{
   */
+// ----------------------------------------------------------------------------
 
 // @TODO(final): Support wide path for 'paths' as well
 
@@ -2634,11 +2814,13 @@ fpl_common_api char *fplPathCombine(char *destPath, const size_t maxDestPathLen,
 /** \}*/
 
 #if defined(FPL_ENABLE_WINDOW)
+// ----------------------------------------------------------------------------
 /**
 * \defgroup WindowEvents Window events
 * \brief Window event structures
 * \{
 */
+// ----------------------------------------------------------------------------
 
 //! Mapped keys (Based on MS Virtual-Key-Codes, mostly directly mapped from ASCII)
 typedef enum fplKey {
@@ -3166,11 +3348,13 @@ fpl_platform_api bool fplSetClipboardWideText(const wchar_t *wideSource);
 #endif // FPL_ENABLE_WINDOW
 
 #if defined(FPL_ENABLE_VIDEO)
+// ----------------------------------------------------------------------------
 /**
   * \defgroup Video Video functions
   * \brief Functions for retrieving or resizing the video buffer
   * \{
   */
+// ----------------------------------------------------------------------------
 
 //! Video rectangle
 typedef struct fplVideoRect {
@@ -3262,11 +3446,13 @@ fpl_common_api void fplVideoFlip();
 #endif // FPL_ENABLE_VIDEO
 
 #if defined(FPL_ENABLE_AUDIO)
+// ----------------------------------------------------------------------------
 /**
   * \defgroup Audio Audio functions
   * \brief Functions for start/stop playing audio and retrieving/changing some audio related settings.
   * \{
   */
+// ----------------------------------------------------------------------------
 
 //! Audio result
 typedef enum fplAudioResult {
@@ -3481,57 +3667,6 @@ fpl_inline uint32_t fplGetAudioBufferSizeInBytes(const fplAudioFormatType format
 #	include <stdlib.h> // wcstombs, mbstowcs, getenv
 #endif
 
-// ############################################################################
-//
-// No C-Runtime Support
-//
-// This block contains stuff to make FPL compilable without the CRT.
-//
-// ############################################################################
-#if defined(FPL_NO_CRT)
-
-// @STUPID(final): MSVC requires this for No-CRT always, stupid compiler -.-
-#if defined(FPL_COMPILER_MSVC)
-
-#if defined(__cplusplus)
-extern "C" {
-#endif
-
-	int _fltused = 0;
-
-	//
-	// Intrinsics
-	//
-#	pragma function(memset)
-	void *memset(void *dest, int value, size_t count) {
-		fplMemorySet(dest, value, count);
-		return (dest);
-	}
-
-#	pragma function(memcpy)
-	void *memcpy(void *dest, const void *source, size_t count) {
-		fplMemoryCopy(source, count, dest);
-		return (dest);
-	}
-
-	//
-	// Run-Time-Checks
-	//
-	void __cdecl _RTC_InitBase(void) {
-	}
-	void __cdecl _RTC_Shutdown(void) {
-	}
-	void __fastcall _RTC_CheckStackVars(void *_Esp, struct _RTC_framedesc *_Fd) {
-
-	}
-#if defined(__cplusplus)
-};
-#endif
-
-#endif // FPL_COMPILER_MSVC
-
-#endif // FPL_NO_CRT
-
 //
 // Very simple logging system
 //
@@ -3645,9 +3780,9 @@ typedef FPL__XINPUT_GET_STATE(fpl__win32_func_XInputGetState);
 FPL__XINPUT_GET_STATE(fpl__Win32XInputGetStateStub) {
 	return(ERROR_DEVICE_NOT_CONNECTED);
 }
-#define FPL_XINPUT_GET_CAPABILITIES(name) DWORD WINAPI name(DWORD dwUserIndex, DWORD dwFlags, XINPUT_CAPABILITIES* pCapabilities)
-typedef FPL_XINPUT_GET_CAPABILITIES(fpl__win32_func_XInputGetCapabilities);
-FPL_XINPUT_GET_CAPABILITIES(fpl__Win32XInputGetCapabilitiesStub) {
+#define FPL__XINPUT_GET_CAPABILITIES(name) DWORD WINAPI name(DWORD dwUserIndex, DWORD dwFlags, XINPUT_CAPABILITIES* pCapabilities)
+typedef FPL__XINPUT_GET_CAPABILITIES(fpl__win32_func_XInputGetCapabilities);
+FPL__XINPUT_GET_CAPABILITIES(fpl__Win32XInputGetCapabilitiesStub) {
 	return(ERROR_DEVICE_NOT_CONNECTED);
 }
 typedef struct fpl__Win32XInputApi {
@@ -6819,6 +6954,135 @@ fpl_platform_api void fplAtomicStoreS64(volatile int64_t *dest, const int64_t va
 }
 
 //
+// Win32 OS
+//
+#define FPL__FUNC_KERNEL32_GetVersion(name) DWORD name()
+typedef FPL__FUNC_KERNEL32_GetVersion(fpl__func_kernel32_GetVersion);
+#define FPL__FUNC_KERNEL32_GetVersionExA(name) BOOL WINAPI name(LPOSVERSIONINFOA lpVersionInfo)
+typedef FPL__FUNC_KERNEL32_GetVersionExA(fpl__func_kernel32_GetVersionEx);
+
+fpl_internal const char *fpl__Win32GetVersionName(DWORD major, DWORD minor) {
+	const char *result;
+	if(major == 5 && minor == 0) {
+		result = "Windows 2000";
+	} else if(major == 5 && minor == 1) {
+		result = "Windows XP";
+	} else if(major == 5 && minor == 2) {
+		result = "Windows XP";
+	} else if(major == 6 && minor == 0) {
+		result = "Windows Vista";
+	} else if(major == 6 && minor == 1) {
+		result = "Windows 7";
+	} else if(major == 6 && minor == 2) {
+		result = "Windows 8";
+	} else if(major == 6 && minor == 3) {
+		result = "Windows 8.1";
+	} else if(major == 10) {
+		result = "Windows 10";
+	} else {
+		result = "Windows";
+	}
+	return(result);
+}
+
+fpl_platform_api bool fplGetOperatingSystemInfos(fplOSInfos *outInfos) {
+	if(outInfos == fpl_null) {
+		fpl__ArgumentNullError("Out infos");
+		return false;
+	}
+
+	// @NOTE(final): GetVersion() and GetVersionExA() is deprecated as of windows 8.1 O_o
+	HMODULE kernelLib = LoadLibraryA("kernel32.dll");
+	if(kernelLib == fpl_null) {
+		fpl__PushError("Kernel32 library could not be loaded!");
+		return false;
+	}
+	fpl__func_kernel32_GetVersion *getVersionProc = (fpl__func_kernel32_GetVersion *)GetProcAddress(kernelLib, "GetVersion");
+	fpl__func_kernel32_GetVersionEx *getVersionExProc = (fpl__func_kernel32_GetVersionEx *)GetProcAddress(kernelLib, "GetVersionExA");
+	FreeLibrary(kernelLib);
+
+	FPL_CLEAR_STRUCT(outInfos);
+
+	bool result = false;
+	DWORD dwVersion = 0;
+	if(getVersionExProc != fpl_null) {
+		OSVERSIONINFOA info = FPL_ZERO_INIT;
+		info.dwOSVersionInfoSize = sizeof(info);
+		if(getVersionExProc(&info) == TRUE) {
+			FPL_ASSERT(info.dwMajorVersion <= UINT16_MAX);
+			outInfos->systemVersion.major = (uint16_t)info.dwMajorVersion;
+			FPL_ASSERT(info.dwMinorVersion <= UINT16_MAX);
+			outInfos->systemVersion.minor = (uint16_t)info.dwMinorVersion;
+			FPL_ASSERT(info.dwBuildNumber <= UINT16_MAX);
+			outInfos->systemVersion.build = (uint16_t)info.dwBuildNumber;
+
+			const char *versionName = fpl__Win32GetVersionName(info.dwMajorVersion, info.dwMinorVersion);
+			fplCopyAnsiString(versionName, outInfos->systemName, FPL_ARRAYCOUNT(outInfos->systemName));
+
+			result = true;
+		}
+	} else if(getVersionProc != fpl_null) {
+		dwVersion = getVersionProc();
+
+		DWORD major = (DWORD)(LOBYTE(LOWORD(dwVersion)));
+		DWORD minor = (DWORD)(HIBYTE(LOWORD(dwVersion)));
+		DWORD build = 0;
+		if(dwVersion < 0x80000000) {
+			build = (DWORD)((DWORD)(HIWORD(dwVersion)));
+		}
+
+		FPL_ASSERT(major <= UINT16_MAX);
+		outInfos->systemVersion.major = (uint16_t)major;
+		FPL_ASSERT(minor <= UINT16_MAX);
+		outInfos->systemVersion.minor = (uint16_t)minor;
+		FPL_ASSERT(build <= UINT16_MAX);
+		outInfos->systemVersion.build = (uint16_t)build;
+
+		const char *versionName = fpl__Win32GetVersionName(major, minor);
+		fplCopyAnsiString(versionName, outInfos->systemName, FPL_ARRAYCOUNT(outInfos->systemName));
+
+		result = dwVersion > 0;
+	}
+
+	return(result);
+}
+
+#define FPL__FUNC_ADV32_GetUserNameA(name) BOOL WINAPI name(LPSTR lpBuffer, LPDWORD pcbBuffer)
+typedef FPL__FUNC_ADV32_GetUserNameA(fpl__func_adv32_GetUserNameA);
+
+fpl_platform_api bool fplGetCurrentUsername(char *nameBuffer, size_t maxNameBufferLen) {
+	if(nameBuffer == fpl_null) {
+		fpl__ArgumentNullError("Name buffer");
+		return false;
+	}
+	if(maxNameBufferLen == 0) {
+		fpl__ArgumentZeroError("Max name buffer len");
+		return false;
+	}
+
+	const char *libName = "advapi32.dll";
+	HMODULE adv32Lib = LoadLibraryA(libName);
+	if(adv32Lib == fpl_null) {
+		fpl__PushError("Failed loading library '%s'", libName);
+		return false;
+	}
+	fpl__func_adv32_GetUserNameA *getUserNameProc = (fpl__func_adv32_GetUserNameA *)GetProcAddress(adv32Lib, "GetUserNameA");
+
+	bool result = false;
+	if(getUserNameProc != fpl_null) {
+		DWORD size = (DWORD)maxNameBufferLen;
+		if(getUserNameProc(nameBuffer, &size) == TRUE) {
+			result = true;
+		}
+	}
+
+	if(adv32Lib != fpl_null) {
+		FreeLibrary(adv32Lib);
+	}
+	return(result);
+}
+
+//
 // Win32 Hardware
 //
 fpl_platform_api size_t fplGetProcessorCoreCount() {
@@ -6829,19 +7093,57 @@ fpl_platform_api size_t fplGetProcessorCoreCount() {
 	return(result);
 }
 
-fpl_platform_api fplMemoryInfos fplGetSystemMemoryInfos() {
-	fplMemoryInfos result = FPL_ZERO_INIT;
+#define FPL__WIN32_PROCESSOR_ARCHITECTURE_ARM64 12
+
+fpl_platform_api fplArchType fplGetRunningArchitectureType() {
+	fplArchType result;
+	SYSTEM_INFO sysInfo = FPL_ZERO_INIT;
+	GetSystemInfo(&sysInfo);
+	switch(sysInfo.wProcessorArchitecture) {
+		case PROCESSOR_ARCHITECTURE_AMD64:
+			result = fplArchType_x86_64;
+			break;
+		case PROCESSOR_ARCHITECTURE_IA64:
+			result = fplArchType_x64;
+			break;
+		case PROCESSOR_ARCHITECTURE_ARM:
+			result = fplArchType_Arm32;
+			break;
+		case FPL__WIN32_PROCESSOR_ARCHITECTURE_ARM64:
+			result = fplArchType_Arm64;
+			break;
+		case PROCESSOR_ARCHITECTURE_UNKNOWN:
+			result = fplArchType_Unknown;
+			break;
+		case PROCESSOR_ARCHITECTURE_INTEL:
+		default:
+			result = fplArchType_x86;
+			break;
+	}
+	return(result);
+}
+
+fpl_platform_api bool fplGetRunningMemoryInfos(fplMemoryInfos *outInfos) {
+	if(outInfos == fpl_null) {
+		fpl__ArgumentNullError("Out infos");
+		return false;
+	}
+
 	MEMORYSTATUSEX statex = FPL_ZERO_INIT;
 	statex.dwLength = sizeof(statex);
 	ULONGLONG totalMemorySize;
+	bool result = false;
 	if(GetPhysicallyInstalledSystemMemory(&totalMemorySize) && GlobalMemoryStatusEx(&statex)) {
-		result.totalPhysicalSize = totalMemorySize * 1024ull;
-		result.availablePhysicalSize = statex.ullTotalPhys;
-		result.usedPhysicalSize = result.availablePhysicalSize - statex.ullAvailPhys;
-		result.totalVirtualSize = statex.ullTotalVirtual;
-		result.usedVirtualSize = result.totalVirtualSize - statex.ullAvailVirtual;
-		result.totalPageSize = statex.ullTotalPageFile;
-		result.usedPageSize = result.totalPageSize - statex.ullAvailPageFile;
+		FPL_CLEAR_STRUCT(outInfos);
+		// @NOTE(final): Requires _allmul when CRT is disabled
+		outInfos->totalPhysicalSize = totalMemorySize * 1024ull;
+		outInfos->availablePhysicalSize = statex.ullTotalPhys;
+		outInfos->usedPhysicalSize = outInfos->availablePhysicalSize - statex.ullAvailPhys;
+		outInfos->totalVirtualSize = statex.ullTotalVirtual;
+		outInfos->usedVirtualSize = outInfos->totalVirtualSize - statex.ullAvailVirtual;
+		outInfos->totalPageSize = statex.ullTotalPageFile;
+		outInfos->usedPageSize = outInfos->totalPageSize - statex.ullAvailPageFile;
+		result = true;
 	}
 	return(result);
 }
@@ -7568,6 +7870,7 @@ fpl_platform_api double fplGetTimeInSeconds() {
 	const fpl__Win32InitState *initState = &fpl__global__InitState.win32;
 	LARGE_INTEGER time;
 	QueryPerformanceCounter(&time);
+	// @FIXME(final): This will not compile when CRT is disabled -> Requires _ltod3
 	double result = time.QuadPart / (double)initState->performanceFrequency.QuadPart;
 	return(result);
 }
@@ -7590,7 +7893,7 @@ fpl_platform_api char *fplWideStringToAnsiString(const wchar_t *wideSource, cons
 		return fpl_null;
 	}
 	int requiredLen = WideCharToMultiByte(CP_ACP, 0, wideSource, (int)maxWideSourceLen, fpl_null, 0, fpl_null, fpl_null);
-	int minRequiredLen = requiredLen + 1;
+	size_t minRequiredLen = requiredLen + 1;
 	if(maxAnsiDestLen < minRequiredLen) {
 		fpl__ArgumentSizeTooSmallError("Max ansi dest len", maxAnsiDestLen, minRequiredLen);
 		return fpl_null;
@@ -7609,7 +7912,7 @@ fpl_platform_api char *fplWideStringToUTF8String(const wchar_t *wideSource, cons
 		return fpl_null;
 	}
 	int requiredLen = WideCharToMultiByte(CP_UTF8, 0, wideSource, (int)maxWideSourceLen, fpl_null, 0, fpl_null, fpl_null);
-	int minRequiredLen = requiredLen + 1;
+	size_t minRequiredLen = requiredLen + 1;
 	if(maxUtf8DestLen < minRequiredLen) {
 		fpl__ArgumentSizeTooSmallError("Max utf8 dest len", maxUtf8DestLen, minRequiredLen);
 		return fpl_null;
@@ -7628,7 +7931,7 @@ fpl_platform_api wchar_t *fplAnsiStringToWideString(const char *ansiSource, cons
 		return fpl_null;
 	}
 	int requiredLen = MultiByteToWideChar(CP_ACP, 0, ansiSource, (int)ansiSourceLen, fpl_null, 0);
-	int minRequiredLen = requiredLen + 1;
+	size_t minRequiredLen = requiredLen + 1;
 	if(maxWideDestLen < minRequiredLen) {
 		fpl__ArgumentSizeTooSmallError("Max wide dest len", maxWideDestLen, minRequiredLen);
 		return fpl_null;
@@ -7647,7 +7950,7 @@ fpl_platform_api wchar_t *fplUTF8StringToWideString(const char *utf8Source, cons
 		return fpl_null;
 	}
 	int requiredLen = MultiByteToWideChar(CP_UTF8, 0, utf8Source, (int)utf8SourceLen, fpl_null, 0);
-	int minRequiredLen = requiredLen + 1;
+	size_t minRequiredLen = requiredLen + 1;
 	if(maxWideDestLen < minRequiredLen) {
 		fpl__ArgumentSizeTooSmallError("Max wide dest len", maxWideDestLen, minRequiredLen);
 		return fpl_null;
@@ -9885,6 +10188,19 @@ fpl_internal bool fpl__LinuxInitPlatform(const fplInitFlags initFlags, const fpl
 }
 
 //
+// Linux OS
+//
+fpl_platform_api bool fplGetOperatingSystemInfos(fplOSInfos *outInfos) {
+	// @IMPLEMENT(final): Linux fplGetOperatingSystemInfos
+	return false;
+}
+
+fpl_platform_api bool fplGetCurrentUsername(char *nameBuffer, size_t maxNameBufferLen) {
+	// @IMPLEMENT(final): Linux fplGetCurrentUsername
+	return false;
+}
+
+//
 // Linux Hardware
 //
 fpl_platform_api size_t fplGetProcessorCoreCount() {
@@ -9968,10 +10284,14 @@ fpl_platform_api char *fplGetProcessorName(char *destBuffer, const size_t maxDes
 	return(result);
 }
 
-fpl_platform_api fplMemoryInfos fplGetSystemMemoryInfos() {
-	fplMemoryInfos result = FPL_ZERO_INIT;
-	// @IMPLEMENT(final): Linux fplGetSystemMemoryInfos
-	return(result);
+fpl_platform_api bool fplGetRunningMemoryInfos(fplMemoryInfos *outInfos) {
+	// @IMPLEMENT(final): Linux fplGetRunningMemoryInfos
+	return(false);
+}
+
+fpl_platform_api fplArchType fplGetRunningArchitectureType() {
+	// @IMPLEMENT(final): Linux fplGetRunningArchitectureType
+	return(fplArchType_Unknown);
 }
 
 //
@@ -10037,6 +10357,19 @@ fpl_internal bool fpl__UnixInitPlatform(const fplInitFlags initFlags, const fplS
 }
 
 //
+// Unix OS
+//
+fpl_platform_api bool fplGetOperatingSystemInfos(fplOSInfos *outInfos) {
+	// @IMPLEMENT(final): Unix fplGetOperatingSystemInfos
+	return false;
+}
+
+fpl_platform_api bool fplGetCurrentUsername(char *nameBuffer, size_t maxNameBufferLen) {
+	// @IMPLEMENT(final): Unix fplGetCurrentUsername
+	return false;
+}
+
+//
 // Unix Hardware
 //
 fpl_platform_api size_t fplGetProcessorCoreCount() {
@@ -10058,10 +10391,14 @@ fpl_platform_api char *fplGetProcessorName(char *destBuffer, const size_t maxDes
 	return(fpl_null);
 }
 
-fpl_platform_api fplMemoryInfos fplGetSystemMemoryInfos() {
-	fplMemoryInfos result = FPL_ZERO_INIT;
-	// @IMPLEMENT(final): Unix fplGetSystemMemoryInfos
-	return(result);
+fpl_platform_api bool fplGetRunningMemoryInfos(fplMemoryInfos *outInfos) {
+	// @IMPLEMENT(final): Unix fplGetRunningMemoryInfos
+	return(false);
+}
+
+fpl_platform_api fplArchType fplGetRunningArchitectureType() {
+	// @IMPLEMENT(final): Unix fplGetRunningArchitectureType
+	return(fplArchType_Unknown);
 }
 
 //
@@ -12415,6 +12752,20 @@ fpl_common_api fplInitResultType fplPlatformInit(const fplInitFlags initFlags, c
 
 	initState->isInitialized = true;
 	return fplInitResultType_Success;
+}
+
+fpl_common_api fplPlatformType fplGetPlatformType() {
+	fplPlatformType result;
+#if defined(FPL_PLATFORM_WIN32)
+	result = fplPlatformType_Windows;
+#elif defined(FPL_PLATFORM_LINUX)
+	result = fplPlatformType_Linux;
+#elif defined(FPL_PLATFORM_UNIX)
+	result = fplPlatformType_Unix;
+#else
+	result = fplPlatformType_Unknown;
+#endif
+	return(result);
 }
 
 #endif // FPL_SYSTEM_INIT_DEFINED

@@ -10,16 +10,14 @@
 
 	\section section_overview Overview
 
-	Final Platform Layer is a single-header-file C99 development library designed to abstract the underlying platform to a very simple and easy to use api for accessing input devices (keyboard, mouse, gamepad), playback audio samples, window handling, IO handling (files, directories, paths), multithreading (threads, mutex, signals) and graphics software or hardware rendering initialization.<br>
-
-	The main focus is game/media/simulation development, so the default settings will create a window, setup a opengl rendering context and initialize audio playback on any platform.<br>
-	The only dependencies are built-in operating system libraries, a C99 complaint compiler.<br>
+	Final Platform Layer is a Single-Header-File cross-platform C development library designed to abstract the underlying platform to a simple and easy to use api - providing low level access to (Window, Video, Audio, Input, File/Path IO, Threads, Memory, Hardware, etc.).<br>
 	<br>
-	Right know FPL supports the platforms Windows/Linux with the architectures x86/x64.<br>
+	The main focus is game/media/simulation development, so the default settings will create a window, setup a OpenGL rendering context and initialize audio playback on any platform.<br>
 	<br>
-	Final Platform Layer is released under the \subpage page_license "MIT License". This license allows you to use FPL freely in any software.<br>
+	FPL supports the platforms Windows/Linux/Unix for the architectures x86/x64.<br>
+	The only dependencies are built-in operating system libraries and a C99 complaint compiler.<br>
 	<br>
-	This is the FPL documentation main page.
+	It is released under the \subpage page_license "MIT License". This license allows you to use FPL freely in any software.<br>
 
 	\section section_using_this_documentation How to use this documentation?
 	Use the following links to learn more about FPL:
@@ -33,7 +31,7 @@
 	- \subpage page_todo
 	- \subpage page_license
 
-	I hope you find all the informations you need. If not please drop a issue on the github project page and i answer it as soon as possible!
+	I hope you find all the informations you need. If not please drop a issue on the github project page and i address it as soon as possible!
 
 	Thanks for using, have a great day!
 */
@@ -46,15 +44,17 @@
 
 	\subsection subsection_whatisfpl What is FPL?
 
-	Final Platform Layer is a single-header-file C99 development library designed to abstract the underlying platform to a very simple and easy to use api for:<br>
+	Final Platform Layer is a Single-Header-File cross-platform C development library designed to abstract the underlying platform to a very simple and easy to use api - providing low level access to:<br>
+	- Single window creation and handling
+	- Graphics Software or Hardware Rendering initialization.
+	- Playback of raw audio samples
 	- Accessing input devices (Keyboard, Mouse, Gamepad)
-	- Playback of audio samples
-	- Window handling
 	- IO handling (Files, Directories, Paths)
 	- Multithreading (Threads, Mutex, Signals)
-	- Graphics Software or Hardware Rendering initialization.
+	- Allocating memory
+	- Retrieve hardware & os informations
 	
-	The main focus is game/media/simulation development, so the default settings will create a window, setup a opengl rendering context and initialize audio playback on any platform.<br>
+	The main focus is game/media/simulation development, so the default settings will create a window, setup a OpenGL rendering context and initialize audio playback on any platform.<br>
 	<br>
 	Final Platform Layer is released under the \subpage page_license "MIT License". This license allows you to use FPL freely in any software.<br>
 
@@ -73,8 +73,9 @@
 
 	- Windows (x86/x64)
 	- Linux (x86/x64, Partially)
+	- Unix (x86/x64, Partially)
 
-	For more details see the \subpage page_platform_status .
+	For more details see the page: \subpage page_platform_status
 	
 	\subsection subsection_supported_compilers Which compilers are supported by FPL?
 	FPL should compile on any C99 complaint compiler, such as MSVC 2015+, GCC, Clang, etc.
@@ -96,7 +97,7 @@
 		- OpenGL 1.x (Legacy)
 		- OpenGL 3.x or higher (Modern)
 		- Software backbuffer
-	- Audio asyncronous playback
+	- Raw audio asyncronous playback
 	- Memory
 		- Allocation and de-allocation
 		- Custom alignment support
@@ -149,7 +150,7 @@
 	- Define <b>FPL_IMPLEMENTATION</b> in at least one translation unit before including this header file!
 	- Ready to go.
 
-	For more details see the \subpage page_usage, \subpage page_tutorials and \subpage page_examples pages.
+	For more details see the pages: \subpage page_usage / \subpage page_tutorials / \subpage page_examples.
 */
 
 /*!
@@ -1050,28 +1051,25 @@
 
 	\subsection subsection_faq_license What are the license requirements for FPL?
 	Final Platform Layer is released under the \subpage page_license "MIT License".<br>
-	This license allows you to use FPL freely in any non-commerical or commercial software.<br>
+	This license allows you to use FPL freely in any software.<br>
 
 	\subsection subsection_faq_costs I did pay for FPL, did i get ripped-of?
 	Yes you are! FPL is full open source and costs nothing.
 
 	\subsection subsection_faq_inwhatlanguage In what language is FPL written?
-	Final Platform Layer is written in C99.<br>
-	Is uses default integral and boolean types <stdint.h> and <stdbool.h>.<br>
-	<br>
-	For certain features such as printf(), getchar() the C Runtime are used, but you can disable the usage of the CRT if you want.<br>
-	FPL uses static low memory footprint.<br>
+	Final Platform Layer is written in C99 for simplicity and best portability, but is C++ compatible as well.<br>
+	It uses default integral and boolean types <stdint.h> and <stdbool.h>.<br>
+	For certain features such as printf(), getchar() the C Runtime are used, but you can disable it if needed.<br>
+	It uses a fixed and small memory footprint and handles memory very gracefully.<br>
 
-	\subsection subsection_faq_whyshouldiuse Why should i use FPL?
-	If you want a hassle free platform abstraction library, FPL is the way to go.<br>
-	- No linking madness
-	- No configuration needed
-	- No build-scripts required
-	- It just compiles
-	- You decide how you integrate it; not the library
-
-	Also even when you use FPL you still can use other libraries and ignore features you dont need.<br>
-	For example FPL provides a few atomic operations - but you can use std::atomic or other libraries if you want to.<br>
+	\subsection subsection_faq_whyshouldiuse What makes it different from other platform abstraction libraries, such as SDL/SFML etc. ?
+	- FPL is designed to require bare minimum linking to the OS (kernel32.lib / libld.so) only.
+	- It does not require any dependencies or build-systems to get it running.
+	- It has a lightweight feature set (Single window, Graphics api initialization, Raw audio samples playback, Input handling, Multithreading, Path/File IO, Atomics, OS/HW-Infos etc.)
+	- No data hiding -> everything is accessible.
+	- It uses a fixed and small memory footprint and handles memory very gracefully.
+	- It can be controlled by a configuration structure in very detail at startup.
+	- You decide how to integrate it; not the library
 
 	\subsection subsection_faq_whyisfplsobig Why is FPL so big?
 	Final Platform Layer contains headers and implementations for all supported platforms with all the function prototypes for linking operating system functions dynamically.<br>
@@ -1081,6 +1079,7 @@
 	Yes it does have some limitations, because it cannot do everything for you:
 	- There is no audio DSP going on, so you have to convert the samples into the proper format (Sample rate, Channels, Format type) FPL expects.
 	- There is no rendering functions included, except for presenting the current frame. So you have to load and call the correct api functions yourself.
+	- FPL has a lightweight feature set, so it may miss some features
 
 	\subsection subsection_faq_thirdparty_libs Can FPL handle third party libraries?
 	Yes actually it works very well with other libraries - in fact there are several demo projects in the repository which shows that.<br>
@@ -1095,24 +1094,8 @@
 	- ImGUI
 	- FFMPEG
 
-	But it wont work with other platform abstraction libraries, like SDL, SFML, GLUT, GLFW etc.<br>
+	But it wont work with other platform abstraction libraries such as SDL, SFML, GLUT, GLFW etc.<br>
 	All these other platform abstraction libraries have their own way of providing the main entry point and are not compability with each other.
-
-	\section section_additional_notes Additional notes
-
-	\subsection subsection_additional_notes_audio Audio
-	This library uses the operating system libraries to initialize a playback audio device.<br>
-	To get any audio samples to play you need to set the callback function with \ref fplAudioSettings.clientReadCallback or \ref fplSetAudioClientReadCallback() before start playing the audio using fplPlayAudio().<br>
-	<br>
-	This callback will be automatically called when audio device requires more samples to play.<br>
-	<br>
-	It is expected that the audio samples are filled in properly by the native format of the device, see \ref fplAudioDeviceFormat.<br>
-	<br>
-	This library does not provide any functionality for doing any kind of DSP.<br>
-	<br>
-	To start and stop the playback, you need to call \ref fplPlayAudio() and \ref fplStopAudio() respectively.<br>
-	<br>
-	There is no guarantee that you get a audio device with the exact same format you specified back, but S16 with 48 KHz is a common format which almost every audio card supports.<br>
 */
 
 /*!
@@ -1121,20 +1104,20 @@
 
 	<b>I am happy that you want to support this project!</b><br>
 	<br>
-	I created this project alone, so i really appreciate any kind of contributions.<br>
+	I created and maintain this project alone, so i really appreciate any kind of contributions.<br>
 	<br>
 	There are several ways to help this project:<br>
 	- Test the library for any hardware/platform/compiler configuration you have access to and report the result -> This helps a lot!
 	- Report any bugs you find
 	- Improving this documentation by sending in new tutorials/examples, point me to typos etc.
-	- Write pull-requests for fixed bugs
-	- Write new demos
-	- Recommend this project
-	- Give me feedback
+	- Send me pull-requests
+	- Write new demos/samples/examples
+	- Recommend this project to your collegues, friends, etc.
+	- Send in feedback
 
-	And lastly if you want to contact me for another reason, just drop a message in some way (Github issue, Private message, Socials etc.).<br>
+	And lastly if you want to contact me for another reason, just drop a message in some way (Github issue, Private message, Mail, Community etc.).<br>
 	<br>
-	Thanks a lot!<br>
+	Thanks for using!<br>
 */
 
 /*!
@@ -1154,36 +1137,39 @@
 
 /*!
 	\page page_nocrt How to disable the use of the CRT in FPL
+	\tableofcontents
 
 	\section section_nocrt_consequences Consequences of disabling the CRT
 
 	If you disable the CRT you lose a lot of functionality which we today take for granted:<br>
 
-	- No "stdio.h" or "stdlib" ...
-	- No "math.h" or "string.h" ...
-	- No 32-bit <> 64-bit integer operations on certain platforms
+	- No functions from "stdio.h" or "stdlib" ...
+	- No functions from "math.h" or "string.h" ...
+	- Limited 64-bit integer operations on some platforms
 	- No console input/output
 	- No C++ exceptions
 	- Limited security checks
-	- Automatic entry point mapping to main() or WinMain()
-	- Limited floating point operations
+	- No automatic entry point mapping to main() or WinMain()
+	- Limited floating point operations on some platforms
 	- Limited stack size
-	- Weird compile errors on some compilers/platforms
 
-	So if you are fine with that the next section explains how to do that.
-	Some limitations can be corrected by setup some flags in the compiler, such as stack size, security checks, etc.
+	Some limitations can be corrected by setup some flags in the compiler, such as stack size, security checks, etc.<br>
+	<br>
+	So if you are fine with that, the next section describes how to do disable the CRT usage in FPL.
 
-	\section section_nocrt_definitions Disable the CRT in FPL
+	\section section_nocrt_requirements Requirements for disabling the CRT in FPL
 
-	If you got here i expect that you know what you are doing.<br>
-	Also i expect you already disabled the CRT by compiler flags as well.<br>
-	So this section will explain how to disable CRT in FPL only.
+	- You have read the \ref section_nocrt_consequences
+	- You know what you are doing
+	- You already disabled the CRT by compiler settings
+	- You fixed the security checks and stack size by compiler settings
+
+	\section bsection_nocrt_disableit Disable the CRT in FPL
 
 	To disable the use of the C-Runtime Library you need to set certain preprocessor definitions:
 
-	- Disable the use of the CRT (FPL_NO_CRT)
-	- Set either console (FPL_APPTYPE_CONSOLE) or window application (FPL_APPTYPE_WINDOW) type explicitly
-	- Disable it only in the main translation unit
+	- Define FPL_NO_CRT in your main translation unit
+	- Define explicitly the application type FPL_APPTYPE_CONSOLE or FPL_APPTYPE_WINDOW
 
 	\code{.c}
 	#define FPL_NO_CRT // Disable CRT support in FPL
@@ -1192,10 +1178,38 @@
 	#include <final_platform_layer.h>
 	\endcode
 
+	\section section_nocrt_provfunccrt Providing intrinsics (Mini-CRT)
+
+	Some compilers such as MSVC require certain stuff to compile properly.<br>
+	You are responsible to provide that stuff if you get compile errors.<br>
+	<br>
+	A few errors you may get:
+
+	Runtime check:
+	- unresolved external symbol __RTC_Shutdown
+	- unresolved external symbol __RTC_InitBase
+	- unresolved external symbol __RTC_CheckEsp
+	- unresolved external symbol __RTC_CheckStackVars
+
+	Float:
+	- unresolved external symbol __fltused -> Global used in MSVC
+	- unresolved external symbol __ltod3 -> Double division intrinsic
+
+	Integer:
+	- unresolved external symbol __allmul -> Long-Long integer multiplication intrinsic
+
+	Other:
+	- unresolved external symbol __memset -> memset intrinsic (May use fplMemorySet)
+	- unresolved external symbol __memcpy -> memcpy intrinsic (May use fplMemoryCopy)
+
+	To solve this compile errors i recommend using a mini-crt library or write all the functions yourself.<br>
+	<br>
+	For more details see:<br>
+	https://handmade.network/wiki/2824-tutorial_how_to_avoid_c_c++_runtime_on_windows
+
 	\section section_nocrt_notes Notes
 
-	Right know FPL have No-CRT support for Win32 only!<br>
-	If you need this for other platforms let me know.
+	Right know FPL have No-CRT support for Win32 only! If you need this for other platforms let me know.
 */
 
 /*!
@@ -1318,6 +1332,39 @@
 			<td>FPL_NO_ERROR_IN_CONSOLE</td>
 			<td>Define this to disable printing any platform specific errors to the console.</td>
 			<td>By default all platform specific error will be printed to the error console.</td>
+		</tr>
+
+		<tr>
+			<td>C-Runtime</td>
+			<td>FPL_NO_CRT</td>
+			<td>Define this to disable the usage of functions from the CRT.</td>
+			<td>This is not set by default.</td>
+		</tr>
+
+		<tr>
+			<td>Application</td>
+			<td>FPL_NO_APPTYPE</td>
+			<td>Define this to disable the application type detection.</td>
+			<td>By default this are not set and the application type is detected automatically.</td>
+		</tr>
+		<tr>
+			<td>Application</td>
+			<td>FPL_APPTYPE_CONSOLE</td>
+			<td>Define this to force your application to be a console application.<br>When this is set the window support will be compiled out!</td>
+			<td>By default this are set when FPL_NO_WINDOW is defined.</td>
+		</tr>
+		<tr>
+			<td>Application</td>
+			<td>FPL_APPTYPE_WINDOW</td>
+			<td>Define this to force your application to be a windowed application.</td>
+			<td>By default this are set when FPL_NO_WINDOW is _not_ defined.</td>
+		</tr>
+
+		<tr>
+			<td>User functions</td>
+			<td>FPL_USERFUNC_vsnprintf</td>
+			<td>Define this to provide a replacement for vsnprintf() when FPL_NO_CRT is set.</td>
+			<td>By default this is not set.</td>
 		</tr>
 
 	</table>	

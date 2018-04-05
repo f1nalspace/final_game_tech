@@ -28,6 +28,31 @@ static void TestInit() {
 	}
 }
 
+static void TestOSInfos() {
+	ft::Msg("Get Platform Type\n");
+	{
+		fplPlatformType platType = fplGetPlatformType();
+		FT_ASSERT(fplPlatformType_Unknown != platType);
+	}
+	ft::Msg("Get OS Type\n");
+	{
+		fplOSInfos osInfos = {};
+		bool r = fplGetOperatingSystemInfos(&osInfos);
+		FT_IS_TRUE(r);
+		fplConsoleFormatOut("System Name: %s\n", osInfos.systemName);
+		fplConsoleFormatOut("System Version: %d.%d.%d.%d\n", osInfos.systemVersion.major, osInfos.systemVersion.minor, osInfos.systemVersion.fix, osInfos.systemVersion.build);
+		fplConsoleFormatOut("Kernel Name: %s\n", osInfos.kernelName);
+		fplConsoleFormatOut("Kernel Version: %d.%d.%d.%d\n", osInfos.kernelVersion.major, osInfos.kernelVersion.minor, osInfos.kernelVersion.fix, osInfos.kernelVersion.build);
+	}
+	ft::Msg("Get User Infos\n");
+	{
+		char nameBuffer[256] = {};
+		bool r = fplGetCurrentUsername(nameBuffer, FPL_ARRAYCOUNT(nameBuffer));
+		FT_IS_TRUE(r);
+		fplConsoleFormatOut("Current Username: %s\n", nameBuffer);
+	}
+}
+
 static void TestSizes() {
 	// @NOTE(final): This may be pretty useless, because stdint.h guarantees the size
 	FT_EXPECTS(1, sizeof(uint8_t));
@@ -315,22 +340,26 @@ static void TestPaths() {
 static void TestHardware() {
 	char cpuNameBuffer[1024] = {};
 	fplGetProcessorName(cpuNameBuffer, FPL_ARRAYCOUNT(cpuNameBuffer));
-	ft::Msg("Processor name:\n%s\n", cpuNameBuffer);
+	ft::Msg("Processor name: %s\n", cpuNameBuffer);
 
 	size_t coreCount = fplGetProcessorCoreCount();
-	ft::Msg("Processor cores:%z\n", coreCount);
+	ft::Msg("Processor cores: %z\n", coreCount);
 
-	fplMemoryInfos memInfos = fplGetSystemMemoryInfos();
-	ft::Msg("Physical total memory (bytes):%z\n", memInfos.totalPhysicalSize);
-	ft::Msg("Physical available memory (bytes):%z\n", memInfos.availablePhysicalSize);
-	ft::Msg("Physical used memory (bytes):%z\n", memInfos.usedPhysicalSize);
-	ft::Msg("Virtual total memory (bytes):%z\n", memInfos.totalVirtualSize);
-	ft::Msg("Virtual used memory (bytes):%z\n", memInfos.usedVirtualSize);
-	ft::Msg("Page total memory (bytes):%z\n", memInfos.totalPageSize);
-	ft::Msg("Page used memory (bytes):%z\n", memInfos.usedPageSize);
+	fplMemoryInfos memInfos;
+	if(fplGetRunningMemoryInfos(&memInfos)) {
+		ft::Msg("Physical total memory (bytes): %z\n", memInfos.totalPhysicalSize);
+		ft::Msg("Physical available memory (bytes): %z\n", memInfos.availablePhysicalSize);
+		ft::Msg("Physical used memory (bytes): %z\n", memInfos.usedPhysicalSize);
+		ft::Msg("Virtual total memory (bytes): %z\n", memInfos.totalVirtualSize);
+		ft::Msg("Virtual used memory (bytes): %z\n", memInfos.usedVirtualSize);
+		ft::Msg("Page total memory (bytes): %z\n", memInfos.totalPageSize);
+		ft::Msg("Page used memory (bytes): %z\n", memInfos.usedPageSize);
+	}
+
+	fplArchType archType = fplGetRunningArchitectureType();
+	const char *archStr = fplGetArchTypeString(archType);
+	ft::Msg("System archicture: %s\n", archStr);
 }
-
-
 
 static void EmptyThreadproc(const fplThreadHandle *context, void *data) {
 }
@@ -977,6 +1006,8 @@ static void TestStrings() {
 
 
 int main(int argc, char *args[]) {
+	TestOSInfos();
+	TestHardware();
 	TestSizes();
 	TestMacros();
 	TestAtomics();

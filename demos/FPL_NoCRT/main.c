@@ -10,6 +10,8 @@ int dummy_vsnprintf(char *buf, size_t bufLen, const char *format, va_list argLis
 
 #include <final_platform_layer.h>
 
+#include "tinycrt.h"
+
 int dummy_vsnprintf(char *buf, size_t bufLen, const char *format, va_list argList) {
 	return 0;
 }
