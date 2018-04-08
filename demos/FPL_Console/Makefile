@@ -3,6 +3,8 @@ APP_NAME = FPL_Console
 SOURCE_FILES = fpl_console.cpp
 LIBS = -ldl
 INCLUDES = -I../../
+ARCH_TYPE = x64
+PLAFORM_NAME = Linux
 
 # Auto detect release type/platform/architecture
 DEBUG ?= 1
@@ -13,10 +15,8 @@ else
 	CFLAGS=-DNDEBUG
 	RELEASE_TYPE = release
 endif
-ARCH_TYPE = x64
-PLAFORM_NAME = Linux
 
-# Do not modify starting
+# Do not modify the lines below
 BUILD_BASE_DIR =../bin/$(APP_NAME)
 EXECUTABLE = $(APP_NAME)
 BUILD_DIR = $(BUILD_BASE_DIR)/$(PLAFORM_NAME)-$(ARCH_TYPE)-$(RELEASE_TYPE)
