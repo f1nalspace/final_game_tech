@@ -120,7 +120,7 @@ SOFTWARE.
 
 /*!
 	\file final_platform_layer.h
-	\version v0.7.2.0 beta
+	\version v0.7.3.0 beta
 	\author Torsten Spaete
 	\brief Final Platform Layer (FPL) - A C99 Single-Header-File Platform Abstract Library
 */
@@ -128,6 +128,9 @@ SOFTWARE.
 /*!
 	\page page_changelog Changelog
 	\tableofcontents
+
+	## v0.7.3.0 beta:
+	- Fixed: Fixed name mismatch in api CloseFile -> fplCloseFile
 
 	## v0.7.2.0 beta:
 	- Changed: Signature of fplGetRunningMemoryInfos() changed
