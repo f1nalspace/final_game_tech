@@ -131,6 +131,7 @@ SOFTWARE.
 
 	## v0.7.3.0 beta:
 	- Fixed: Fixed name mismatch in api CloseFile -> fplCloseFile
+	- Fixed: Windows.h wrong case-sens in include
 
 	## v0.7.2.0 beta:
 	- Changed: Signature of fplGetRunningMemoryInfos() changed
@@ -1128,7 +1129,7 @@ SOFTWARE.
 #	if !defined(WIN32_LEAN_AND_MEAN)
 #		define WIN32_LEAN_AND_MEAN 1
 #	endif
-#	include <windows.h> // Win32 api
+#	include <Windows.h> // Win32 api
 #endif // FPL_PLATFORM_WIN32
 
 #if defined(FPL_SUBPLATFORM_POSIX)
