@@ -132,6 +132,11 @@ SOFTWARE.
 	## v0.7.3.0 beta:
 	- Fixed: Fixed name mismatch in api CloseFile -> fplCloseFile
 	- Fixed: Windows.h wrong case-sens in include
+	- Fixed: ShlObj.h wrong case-sens in include
+	- Fixed: Xinput.h wrong case-sens in include
+	- Fixed: Corrected wrong doxygen defines
+	- Fixed: Correct a few clang compile warnings
+	- Changed: fplConsoleWaitForCharInput returns char instead of const char
 
 	## v0.7.2.0 beta:
 	- Changed: Signature of fplGetRunningMemoryInfos() changed
@@ -1391,7 +1396,6 @@ fpl_common_api void *fplAtomicLoadPtr(volatile void **source);
   * Ensures that memory operations are completed before the write.
   * \param dest The destination to write to.
   * \param value The value to exchange with.
-  * \return Returns the source value.
   */
 fpl_platform_api void fplAtomicStoreU32(volatile uint32_t *dest, const uint32_t value);
 /**
@@ -1399,7 +1403,6 @@ fpl_platform_api void fplAtomicStoreU32(volatile uint32_t *dest, const uint32_t 
   * Ensures that memory operations are completed before the write.
   * \param dest The destination to write to.
   * \param value The value to exchange with.
-  * \return Returns the source value.
   */
 fpl_platform_api void fplAtomicStoreU64(volatile uint64_t *dest, const uint64_t value);
 /**
@@ -1407,7 +1410,6 @@ fpl_platform_api void fplAtomicStoreU64(volatile uint64_t *dest, const uint64_t 
   * Ensures that memory operations are completed before the write.
   * \param dest The destination to write to.
   * \param value The value to exchange with.
-  * \return Returns the source value.
   */
 fpl_platform_api void fplAtomicStoreS32(volatile int32_t *dest, const int32_t value);
 /**
@@ -1415,7 +1417,6 @@ fpl_platform_api void fplAtomicStoreS32(volatile int32_t *dest, const int32_t va
   * Ensures that memory operations are completed before the write.
   * \param dest The destination to write to.
   * \param value The value to exchange with.
-  * \return Returns the source value.
   */
 fpl_platform_api void fplAtomicStoreS64(volatile int64_t *dest, const int64_t value);
 /**
@@ -1423,7 +1424,6 @@ fpl_platform_api void fplAtomicStoreS64(volatile int64_t *dest, const int64_t va
   * Ensures that memory operations are completed before the write.
   * \param dest The destination to write to.
   * \param value The value to exchange with.
-  * \return Returns the source value.
   */
 fpl_common_api void fplAtomicStorePtr(volatile void **dest, const void *value);
 
@@ -1619,9 +1619,6 @@ typedef enum fplInitResultType {
 
 //! Returns the string representation of a \ref fplInitResultType
 fpl_inline const char *fplGetInitResultTypeString(const fplInitResultType type) {
-	if(type) {
-		return "Success";
-	}
 	switch(type) {
 		case fplInitResultType_AlreadyInitialized:
 			return "Already initialized";
@@ -1635,6 +1632,8 @@ fpl_inline const char *fplGetInitResultTypeString(const fplInitResultType type) 
 			return "Failed initializing audio";
 		case fplInitResultType_FailedWindow:
 			return "Failed initializing window";
+		case fplInitResultType_Success:
+			return "Success";
 		default:
 			return "";
 	}
@@ -1892,8 +1891,10 @@ fpl_inline const char *fplGetPlatformTypeString(const fplPlatformType type) {
 			return "Linux";
 		case fplPlatformType_Unix:
 			return "Unix";
-		default:
+		case fplPlatformType_Unknown:
 			return "Unknown";
+		default:
+			return "";
 	}
 }
 
@@ -2027,7 +2028,7 @@ fpl_platform_api void fplConsoleError(const char *text);
   * \note This is most likely just a wrapper call to getchar()
   * \return Character typed in in the console input
   */
-fpl_platform_api const char fplConsoleWaitForCharInput();
+fpl_platform_api char fplConsoleWaitForCharInput();
 
 /**
   * \brief Writes the given formatted text to the standard output console buffer.
@@ -2318,7 +2319,6 @@ fpl_platform_api void *fplMemoryAllocate(const size_t size);
   * \brief Releases the memory allocated from the operating system.
   * \param ptr Pointer to the allocated memory.
   * \warning This should never be called with a aligned memory pointer! For freeing aligned memory, use \ref fplMemoryAlignedFree() instead.
-  * \return Pointer to the new allocated memory.
   */
 fpl_platform_api void fplMemoryFree(void *ptr);
 /**
@@ -2333,7 +2333,6 @@ fpl_common_api void *fplMemoryAlignedAllocate(const size_t size, const size_t al
   * \brief Releases the aligned memory allocated from the operating system.
   * \param ptr Pointer to the aligned allocated memory.
   * \warning This should never be called with a not-aligned memory pointer! For freeing not-aligned memory, use \ref fplMemoryFree() instead.
-  * \return Pointer to the new allocated memory.
   */
 fpl_common_api void fplMemoryAlignedFree(void *ptr);
 
@@ -2661,7 +2660,7 @@ fpl_platform_api uint32_t fplGetFilePosition32(const fplFileHandle *fileHandle);
   * \brief Closes the given file and releases the underlying resources and clears the handle to zero.
   * \param fileHandle Reference to the file handle.
   */
-fpl_platform_api void CloseFile(fplFileHandle *fileHandle);
+fpl_platform_api void fplCloseFile(fplFileHandle *fileHandle);
 
 // @TODO(final): Add 64-bit file operations
 // @TODO(final): Add wide file operations
@@ -3753,9 +3752,9 @@ fpl_internal void fpl__PushError(const char *format, ...);
 // ############################################################################
 #if defined(FPL_PLATFORM_WIN32)
 #	include <windowsx.h>	// Macros for window messages
-#	include <shlobj.h>		// SHGetFolderPath
+#	include <ShlObj.h>		// SHGetFolderPath
 #	include <intrin.h>		// Interlock*
-#	include <xinput.h>		// XInputGetState
+#	include <Xinput.h>		// XInputGetState
 
 #	if defined(FPL_IS_CPP)
 #		define fpl__Win32IsEqualGuid(a, b) InlineIsEqualGUID(a, b)
@@ -6839,10 +6838,10 @@ fpl_platform_api uint64_t fplAtomicExchangeU64(volatile uint64_t *target, const 
 fpl_platform_api int64_t fplAtomicExchangeS64(volatile int64_t *target, const int64_t value) {
 	FPL_ASSERT(target != fpl_null);
 #	if defined(FPL_ARCH_X64)
-	int64_t result = _InterlockedExchange64((volatile long long *)target, value);
+	int64_t result = _InterlockedExchange64((volatile LONG64 *)target, value);
 #	else
 	// @NOTE(final): Why does MSVC have no _InterlockedExchange64 on x86???
-	int64_t result = _InterlockedCompareExchange64((volatile long long *)target, value, value);
+	int64_t result = _InterlockedCompareExchange64((volatile LONG64 *)target, value, value);
 #	endif
 	return (result);
 }
@@ -6865,7 +6864,7 @@ fpl_platform_api uint64_t fplAtomicAddU64(volatile uint64_t *value, const uint64
 fpl_platform_api int64_t fplAtomicAddS64(volatile int64_t *value, const int64_t addend) {
 	FPL_ASSERT(value != fpl_null);
 #	if defined(FPL_ARCH_X64)
-	int64_t result = _InterlockedExchangeAdd64((volatile long long *)value, addend);
+	int64_t result = _InterlockedExchangeAdd64((volatile LONG64 *)value, addend);
 #	else
 		// @NOTE(final): Why does MSVC have no _InterlockedExchangeAdd64 on x86???
 	int64_t oldValue = fplAtomicLoadS64(value);
@@ -6893,7 +6892,7 @@ fpl_platform_api uint64_t fplAtomicCompareAndExchangeU64(volatile uint64_t *dest
 }
 fpl_platform_api int64_t fplAtomicCompareAndExchangeS64(volatile int64_t *dest, const int64_t comparand, const int64_t exchange) {
 	FPL_ASSERT(dest != fpl_null);
-	int64_t result = _InterlockedCompareExchange64((volatile long long *)dest, exchange, comparand);
+	int64_t result = _InterlockedCompareExchange64((volatile LONG64 *)dest, exchange, comparand);
 	return (result);
 }
 
@@ -6935,7 +6934,7 @@ fpl_platform_api int32_t fplAtomicLoadS32(volatile int32_t *source) {
 	return(result);
 }
 fpl_platform_api int64_t fplAtomicLoadS64(volatile int64_t *source) {
-	int64_t result = _InterlockedCompareExchange64((volatile __int64 *)source, 0, 0);
+	int64_t result = _InterlockedCompareExchange64((volatile LONG64 *)source, 0, 0);
 	return(result);
 }
 
@@ -6950,11 +6949,11 @@ fpl_platform_api void fplAtomicStoreS32(volatile int32_t *dest, const int32_t va
 }
 fpl_platform_api void fplAtomicStoreS64(volatile int64_t *dest, const int64_t value) {
 #if defined(FPL_ARCH_X64)
-	_InterlockedExchange64((volatile __int64 *)dest, value);
+	_InterlockedExchange64((volatile LONG64 *)dest, value);
 #else
 	// @NOTE(final): Why does MSVC have no _InterlockedExchange64 on x86???
 	int64_t oldValue = fplAtomicLoadS64(dest);
-	_InterlockedCompareExchange64((volatile __int64 *)dest, value, oldValue);
+	_InterlockedCompareExchange64((volatile LONG64 *)dest, value, oldValue);
 #endif
 }
 
@@ -7404,7 +7403,7 @@ fpl_platform_api void fplConsoleError(const char *text) {
 	WriteFile(handle, text, charsToWrite, &writtenChars, fpl_null);
 }
 
-fpl_platform_api const char fplConsoleWaitForCharInput() {
+fpl_platform_api char fplConsoleWaitForCharInput() {
 	HANDLE handle = GetStdHandle(STD_INPUT_HANDLE);
 	DWORD savedMode;
 	GetConsoleMode(handle, &savedMode);
@@ -9507,7 +9506,7 @@ fpl_platform_api void fplConsoleError(const char *text) {
 		fprintf(stderr, "%s", text);
 	}
 }
-fpl_platform_api const char fplConsoleWaitForCharInput() {
+fpl_platform_api char fplConsoleWaitForCharInput() {
 	int c = getchar();
 	const char result = (c >= 0 && c < 256) ? (char)c : 0;
 	return(result);

@@ -53,7 +53,7 @@ if %BUILD_TYPE%=="Debug" (
 )
 
 set STD_STANDARD=c++11
-set IGNORED_WARNINGS=
+set IGNORED_WARNINGS=-Wno-c++98-compat-pedantic -Wno-old-style-cast -Wno-reserved-id-macro -Wno-unused-parameter -Wno-gnu-zero-variadic-macro-arguments -Wno-unused-variable -Wno-unused-function -Wno-covered-switch-default
 rmdir /s /q %BUILD_DIR%
 mkdir %BUILD_DIR%
 echo Building %APP_NAME%/%PLATFORM_NAME%-%ARCH_NAME%-%BUILD_TYPE%
