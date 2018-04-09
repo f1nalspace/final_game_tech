@@ -56,6 +56,18 @@ extern "C" {
 #		undef B
 	}
 
+	__declspec(naked) void _alldiv() {
+		__asm
+		{
+		}
+	}
+
+	__declspec(naked) void _aulldiv() {
+		__asm
+		{
+		}
+	}
+
 	__declspec(naked) void _dtol3() {
 		__asm
 		{

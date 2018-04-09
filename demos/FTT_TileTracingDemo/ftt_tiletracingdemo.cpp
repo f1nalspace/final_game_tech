@@ -147,7 +147,7 @@ int main(int argc, char **args) {
 #endif
 
 			fplWindowSize windowArea;
-			FPL_ASSERT(fplGetWindowArea(&windowArea));
+			fplGetWindowArea(&windowArea);
 
 			const float halfAreaWidth = AreaSizeW * 0.5f;
 			const float halfAreaHeight = AreaSizeH * 0.5f;

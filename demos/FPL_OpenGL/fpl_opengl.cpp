@@ -243,7 +243,7 @@ static bool RunModern() {
 	glClearColor(0.39f, 0.58f, 0.93f, 1.0f);
 	while (fplWindowUpdate()) {
 		fplWindowSize windowArea;
-		FPL_ASSERT(fplGetWindowArea(&windowArea));
+		fplGetWindowArea(&windowArea);
 		glViewport(0, 0, windowArea.width, windowArea.height);
 
 		glClear(GL_COLOR_BUFFER_BIT);
