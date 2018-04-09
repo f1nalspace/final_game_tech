@@ -2650,6 +2650,7 @@ int main(int argc, char **argv) {
 
 	fplSettings settings;
 	fplSetDefaultSettings(&settings);
+
 	fplCopyAnsiString("FPL FFmpeg Demo", settings.window.windowTitle, FPL_ARRAYCOUNT(settings.window.windowTitle));
 #if USE_HARDWARE_RENDERING
 	settings.video.driver = fplVideoDriverType_OpenGL;
@@ -2723,9 +2724,9 @@ int main(int argc, char **argv) {
 	//
 	// App loop
 	//
-	double lastTime = fplGetTimeInSeconds();
+	double lastTime = fplGetTimeInSecondsHP();
 	double remainingTime = 0.0;
-	double lastRefreshTime = fplGetTimeInSeconds();
+	double lastRefreshTime = fplGetTimeInSecondsHP();
 	int refreshCount = 0;
 	while (fplWindowUpdate()) {
 		//
@@ -2776,7 +2777,7 @@ int main(int argc, char **argv) {
 		}
 
 		// Update time
-		double now = fplGetTimeInSeconds();
+		double now = fplGetTimeInSecondsHP();
 		double refreshDelta = now - lastRefreshTime;
 		if (refreshDelta >= 1.0) {
 			lastRefreshTime = now;

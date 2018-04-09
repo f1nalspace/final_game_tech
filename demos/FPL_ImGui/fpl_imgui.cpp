@@ -6,10 +6,6 @@
 // @TODO(final): Use final_dynamic_opengl here, so we dont need any linking like any other opengl demo
 #include <GL/gl.h>
 
-//#define JUST_INIT 
-
-#if !defined(JUST_INIT)
-
 #define IMGUI_DISABLE_OBSOLETE_FUNCTIONS 1
 #include <imgui/imgui.h>
 
@@ -246,7 +242,7 @@ int main(int argc, char **args) {
 
 		ImGuiIO& io = ImGui::GetIO();
 
-		double lastTime = fplGetTimeInSeconds();
+		double lastTime = fplGetTimeInSecondsHP();
 		float lastDeltaTime = 1.0f / 60.0f;
 
 		while (fplIsWindowRunning()) {
@@ -315,7 +311,7 @@ int main(int argc, char **args) {
 
 			fplVideoFlip();
 
-			double currentTime = fplGetTimeInSeconds();
+			double currentTime = fplGetTimeInSecondsHP();
 			lastDeltaTime = lastTime > 0.0 ? (float)(currentTime - lastTime) : (float)(1.0f / 60.0f);
 			lastTime = currentTime;
 		}
@@ -330,15 +326,3 @@ int main(int argc, char **args) {
 	}
 	return(result);
 }
-#else
-int main(int argc, char *args[]) {
-	if (fplPlatformInit(fplInitFlags_Video, fpl_null)) {
-		const char *renderer = (const char *)glGetString(GL_RENDERER);
-		fplConsoleFormatOut("%s\n", renderer);
-		fplPlatformRelease();
-		return 0;
-	} else {
-		return -1;
-	}
-}
-#endif

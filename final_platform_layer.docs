@@ -1220,12 +1220,22 @@
 
 	<table>
 		<tr><th>Category</th><th>Macro definition</th><th>Description</th><th>Default</th></tr>
+
 		<tr>
 			<td>System</td>
 			<td>FPL_IMPLEMENTATION</td>
 			<td>
 				Define this to include the actual implementation code.<br>
 				Set this only once per translation unit, otherwise you will get linking errors.
+			</td>
+			<td>Not set by default</td>
+		</tr>
+		<tr>
+			<td>System</td>
+			<td>FPL_NO_ENTRYPOINT</td>
+			<td>
+				Define this to disable any entry point inclusion in the implementation.<br>
+				This is useful when you use FPL in multiple translation units, but want your main entry point to be included only once.
 			</td>
 			<td>Not set by default</td>
 		</tr>

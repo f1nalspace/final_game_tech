@@ -130,19 +130,41 @@ SOFTWARE.
 	\tableofcontents
 
 	## v0.7.3.0 beta:
-	- Fixed: Fixed name mismatch in api CloseFile -> fplCloseFile
-	- Fixed: Windows.h wrong case-sens in include
-	- Fixed: ShlObj.h wrong case-sens in include
-	- Fixed: Xinput.h wrong case-sens in include
-	- Fixed: Corrected wrong doxygen defines
-	- Fixed: Correct a few clang compile warnings
 	- Changed: fplConsoleWaitForCharInput returns char instead of const char
+	- Changed: Added isDecorated field to fplWindowSettings
+	- Changed: Added isFloating field to fplWindowSettings
+	- Changed: Renamed fplSetWindowTitle() -> fplSetWindowAnsiTitle()
+	- Changed: Renamed fplGetTimeInSeconds() -> fplGetTimeInSecondsHP()
+	- Changed: Renamed fplGetTimeInMilliseconds() -> fplGetTimeInMillisecondsLP()
+	- Changed: Copy Ansi/Wide String pushes error for buffer range error
+	- Fixed: Fixed api name mismatch CloseFile() -> fplCloseFile()
+	- Fixed: Corrected wrong doxygen defines
+	- Fixed: Corrected most clang compile warnings
+	- New: Added fplIsWindowDecorated() / fplSetWindowDecorated()
+	- New: Added fplIsWindowFloating() / fplSetWindowFloating()
+	- New: Added fplSetWindowWideTitle()
+	- New: Added fplGetTimeInMillisecondsHP()
+	- New: Added fplGetTimeInSecondsLP()
+	- New: Added FPL_NO_ENTRYPOINT
+
+	- Changed: [Win32] fplAtomicExchangeS64() / fplAtomicAddS64() / fplAtomicStoreS64() uses _Interlocked* operatings directly for x86
+	- Fixed: [Win32] Corrected wrong case-sensitivity in includes
+	- Fixed: [Win32] Fixed Cursor visibility was not properly changeable
+	- Fixed: [Win32] Function prototype macros was not properly named
+	- New: [Win32] Implemented fplIsWindowDecorated() / fplSetWindowDecorated()
+	- New: [Win32] Implemented fplIsWindowFloating() / fplSetWindowFloating()
+	- New: [Win32] Implemented fplSetWindowWideTitle()
+	- New: [Win32] Implemented fplGetTimeInMillisecondsHP()
+	- New: [Win32] Implemented fplGetTimeInSecondsLP()
+	- New: [POSIX] Implemented fplGetTimeInMillisecondsHP()
+	- New: [POSIX] Implemented fplGetTimeInSecondsLP()
+
 
 	## v0.7.2.0 beta:
 	- Changed: Signature of fplGetRunningMemoryInfos() changed
 	- Changed: Renamed fplGetSystemMemoryInfos to fplGetRunningMemoryInfos
 	- Changed: Added "p" prefix to linux and unix app state
-    - New: Added enum fplArchType
+	- New: Added enum fplArchType
 	- New: Added fplGetRunningArchitectureType()
 	- New: Added fplGetArchTypeString()
 	- New: Added enum fplPlatformType
@@ -160,7 +182,7 @@ SOFTWARE.
 	- New: [Win32] Implemented fplGetCurrentUsername()
 	- New: [Win32] Implemented fplGetOperatingSystemInfos()
 	- New: [Win32] Implemented fplGetRunningArchitectureType()
-	
+
 	## v0.7.1.0 beta:
 	- Changed: fplConsoleFormatOut/fplConsoleFormatError is now common_api instead of platform_api
 	- Changed: FPL uses a keyMap for mapping OS key codes to fplKey for every platform
@@ -605,6 +627,8 @@ SOFTWARE.
 		- Window (X11)
 			- Toggle Fullscreen
 			- Toggle Resizable
+			- Toggle Decorated
+			- Toggle Floating
 			- Show/Hide Cursor
 		- Video
 			- Opengl (GLX)
@@ -612,9 +636,6 @@ SOFTWARE.
 			- Software backbuffer (X11)
 	- Audio
 		- Alsa driver
-	- Win32
-		- Window
-			- Fix cursor hide/show
 
 	\section section_todo_planned Planned
 
@@ -622,8 +643,15 @@ SOFTWARE.
 
 	- Current Date/Time functions
 
+	- App:
+		- Custom icon from image (File/Memory)
+
 	- Window:
 		- [Linux] Wayland
+
+		- Custom cursor from image (File/Memory)
+		- Unicode/UTF-8 Support for character input
+		- Open/Save file/folder dialog
 
 	- Audio:
 		- Support for channel mapping
@@ -656,11 +684,6 @@ SOFTWARE.
 	- Multimonitor-Support
 
 	- Unicode-Support for commandline arguments (Win32)
-
-	- Window
-		- Set application/window icon
-		- Unicode/UTF-8 Support for character input
-		- Open/Save file/folder dialog
 */
 
 // ****************************************************************************
@@ -1808,6 +1831,10 @@ typedef struct fplWindowSettings {
 	uint32_t fullscreenHeight;
 	//! Is window resizable
 	bool isResizable;
+	//! Is window decorated
+	bool isDecorated;
+	//! Is floating
+	bool isFloating;
 	//! Is window in fullscreen mode
 	bool isFullscreen;
 } fplWindowSettings;
@@ -2345,20 +2372,30 @@ fpl_common_api void fplMemoryAlignedFree(void *ptr);
   * \{
   */
 // ----------------------------------------------------------------------------
-
 /**
-  * \brief Returns the current system clock in seconds with the highest precision possible.
-  * \return Returns number of second since some fixed starting point (OS start, System start, etc).
+  * \brief Returns the current system clock in seconds in high precision (micro/nano seconds)
+  * \return Returns number of seconds since some fixed starting point (OS start, System start, etc).
   * \note Can only be used to calculate a difference in time!
   */
-fpl_platform_api double fplGetTimeInSeconds();
-
+fpl_platform_api double fplGetTimeInSecondsHP();
 /**
-  * \brief Returns the current system in milliseconds without deeper precision.
+  * \brief Returns the current system clock in seconds in low precision (milliseconds)
+  * \return Returns number of seconds since some fixed starting point (OS start, System start, etc).
+  * \note Can only be used to calculate a difference in time!
+  */
+fpl_platform_api uint64_t fplGetTimeInSecondsLP();
+/**
+  * \brief Returns the current system in milliseconds in high precision (micro/nano seconds)
   * \return Returns number of milliseconds since some fixed starting point (OS start, System start, etc).
   * \note Can only be used to calculate a difference in time!
   */
-fpl_platform_api uint64_t fplGetTimeInMilliseconds();
+fpl_platform_api double fplGetTimeInMillisecondsHP();
+/**
+  * \brief Returns the current system in milliseconds in low precision (milliseconds)
+  * \return Returns number of milliseconds since some fixed starting point (OS start, System start, etc).
+  * \note Can only be used to calculate a difference in time!
+  */
+fpl_platform_api uint64_t fplGetTimeInMillisecondsLP();
 
 /** \}*/
 
@@ -3273,7 +3310,7 @@ fpl_platform_api bool fplGetWindowArea(fplWindowSize *outSize);
 fpl_platform_api void fplSetWindowArea(const uint32_t width, const uint32_t height);
 /**
   * \brief Returns true when the window is resizable.
-  * \return True when the window resizable, otherwise false.
+  * \return True when the window is resizable, otherwise false.
   */
 fpl_platform_api bool fplIsWindowResizable();
 /**
@@ -3281,6 +3318,26 @@ fpl_platform_api bool fplIsWindowResizable();
   * \param value Set this to true for making the window resizable or false for making it static
   */
 fpl_platform_api void fplSetWindowResizeable(const bool value);
+/**
+  * \brief Returns true when the window is decorated.
+  * \return True when the window is decorated, otherwise false.
+  */
+fpl_platform_api bool fplIsWindowDecorated();
+/**
+  * \brief Enables or disables the window decoration (Titlebar, Border, etc.).
+  * \param value Set this to true for making the window decorated or false for making it without decoration
+  */
+fpl_platform_api void fplSetWindowDecorated(const bool value);
+/**
+  * \brief Returns true when the window is floating.
+  * \return True when the window is floating, otherwise false.
+  */
+fpl_platform_api bool fplIsWindowFloating();
+/**
+  * \brief Enables or disables the window floating (Top-most)
+  * \param value Set this to true for making the window floated or false for making it not floated
+  */
+fpl_platform_api void fplSetWindowFloating(const bool value);
 /**
   * \brief Enables or disables fullscreen mode.
   * \param value Set this to true for changing the window to fullscreen or false for switching it back to window mode.
@@ -3308,10 +3365,15 @@ fpl_platform_api bool fplGetWindowPosition(fplWindowPosition *outPos);
   */
 fpl_platform_api void fplSetWindowPosition(const int32_t left, const int32_t top);
 /**
-  * \brief Sets the window title.
+  * \brief Sets the window title from a ansi string.
   * \param title New title ansi string
   */
-fpl_platform_api void fplSetWindowTitle(const char *title);
+fpl_platform_api void fplSetWindowAnsiTitle(const char *ansiTitle);
+/**
+  * \brief Sets the window title from a wide string.
+  * \param title New title wide string
+  */
+fpl_platform_api void fplSetWindowWideTitle(const wchar_t *wideTitle);
 
 /*\}*/
 
@@ -3715,7 +3777,7 @@ struct fplLogBlock {
 #if !defined(FPL_PLATFORM_CONSTANTS_DEFINED)
 #define FPL_PLATFORM_CONSTANTS_DEFINED
 
-#if defined(FPL_PLATFORM_WIN32)
+#if defined(FPL_PLATFORM_WIN32) && !defined(FPL_NO_ENTRYPOINT)
 // @NOTE(final): Required for access "main" from the actual win32 entry point
 fpl_main int main(int argc, char **args);
 #endif // FPL_PLATFORM_WIN32
@@ -3839,170 +3901,184 @@ fpl_internal void fpl__Win32LoadXInputApi(fpl__Win32XInputApi *xinputApi) {
 //
 
 // GDI32
-#define FPL__FUNC_WIN32_CHOOSE_PIXEL_FORMAT(name) int WINAPI name(HDC hdc, CONST PIXELFORMATDESCRIPTOR *ppfd)
-typedef FPL__FUNC_WIN32_CHOOSE_PIXEL_FORMAT(fpl__win32_func_ChoosePixelFormat);
-#define FPL__FUNC_WIN32_SET_PIXEL_FORMAT(name) BOOL WINAPI name(HDC hdc, int format, CONST PIXELFORMATDESCRIPTOR *ppfd)
-typedef FPL__FUNC_WIN32_SET_PIXEL_FORMAT(fpl__win32_func_SetPixelFormat);
-#define FPL__FUNC_WIN32_DESCRIPE_PIXEL_FORMAT(name) int WINAPI name(HDC hdc, int iPixelFormat, UINT nBytes, LPPIXELFORMATDESCRIPTOR ppfd)
-typedef FPL__FUNC_WIN32_DESCRIPE_PIXEL_FORMAT(fpl__win32_func_DescribePixelFormat);
-#define FPL__FUNC_WIN32_GET_DEVICE_CAPS(name) int WINAPI name(HDC hdc, int index)
-typedef FPL__FUNC_WIN32_GET_DEVICE_CAPS(fpl__win32_func_GetDeviceCaps);
-#define FPL__FUNC_WIN32_STRETCH_DIBITS(name) int WINAPI name(HDC hdc, int xDest, int yDest, int DestWidth, int DestHeight, int xSrc, int ySrc, int SrcWidth, int SrcHeight, CONST VOID *lpBits, CONST BITMAPINFO *lpbmi, UINT iUsage, DWORD rop)
-typedef FPL__FUNC_WIN32_STRETCH_DIBITS(fpl__win32_func_StretchDIBits);
-#define FPL__FUNC_WIN32_DELETE_OBJECT(name) BOOL WINAPI name( _In_ HGDIOBJ ho)
-typedef FPL__FUNC_WIN32_DELETE_OBJECT(fpl__win32_func_DeleteObject);
-#define FPL__FUNC_WIN32_SWAP_BUFFERS(name) BOOL WINAPI name(HDC)
-typedef FPL__FUNC_WIN32_SWAP_BUFFERS(fpl__win32_func_SwapBuffers);
+#define FPL__FUNC_WIN32_ChoosePixelFormat(name) int WINAPI name(HDC hdc, CONST PIXELFORMATDESCRIPTOR *ppfd)
+typedef FPL__FUNC_WIN32_ChoosePixelFormat(fpl__win32_func_ChoosePixelFormat);
+#define FPL__FUNC_WIN32_SetPixelFormat(name) BOOL WINAPI name(HDC hdc, int format, CONST PIXELFORMATDESCRIPTOR *ppfd)
+typedef FPL__FUNC_WIN32_SetPixelFormat(fpl__win32_func_SetPixelFormat);
+#define FPL__FUNC_WIN32_DescribePixelFormat(name) int WINAPI name(HDC hdc, int iPixelFormat, UINT nBytes, LPPIXELFORMATDESCRIPTOR ppfd)
+typedef FPL__FUNC_WIN32_DescribePixelFormat(fpl__win32_func_DescribePixelFormat);
+#define FPL__FUNC_WIN32_GetDeviceCaps(name) int WINAPI name(HDC hdc, int index)
+typedef FPL__FUNC_WIN32_GetDeviceCaps(fpl__win32_func_GetDeviceCaps);
+#define FPL__FUNC_WIN32_StretchDIBits(name) int WINAPI name(HDC hdc, int xDest, int yDest, int DestWidth, int DestHeight, int xSrc, int ySrc, int SrcWidth, int SrcHeight, CONST VOID *lpBits, CONST BITMAPINFO *lpbmi, UINT iUsage, DWORD rop)
+typedef FPL__FUNC_WIN32_StretchDIBits(fpl__win32_func_StretchDIBits);
+#define FPL__FUNC_WIN32_DeleteObject(name) BOOL WINAPI name( _In_ HGDIOBJ ho)
+typedef FPL__FUNC_WIN32_DeleteObject(fpl__win32_func_DeleteObject);
+#define FPL__FUNC_WIN32_SwapBuffers(name) BOOL WINAPI name(HDC)
+typedef FPL__FUNC_WIN32_SwapBuffers(fpl__win32_func_SwapBuffers);
 
 // ShellAPI
-#define FPL__FUNC_WIN32_COMMAND_LINE_TO_ARGV_W(name) LPWSTR* WINAPI name(LPCWSTR lpCmdLine, int *pNumArgs)
-typedef FPL__FUNC_WIN32_COMMAND_LINE_TO_ARGV_W(fpl__win32_func_CommandLineToArgvW);
-#define FPL__FUNC_WIN32_SH_GET_FOLDER_PATH_A(name) HRESULT WINAPI name(HWND hwnd, int csidl, HANDLE hToken, DWORD dwFlags, LPSTR pszPath)
-typedef FPL__FUNC_WIN32_SH_GET_FOLDER_PATH_A(fpl__win32_func_SHGetFolderPathA);
-#define FPL__FUNC_WIN32_SH_GET_FOLDER_PATH_W(name) HRESULT WINAPI name(HWND hwnd, int csidl, HANDLE hToken, DWORD dwFlags, LPWSTR pszPath)
-typedef FPL__FUNC_WIN32_SH_GET_FOLDER_PATH_W(fpl__win32_func_SHGetFolderPathW);
+#define FPL__FUNC_WIN32_CommandLineToArgvW(name) LPWSTR* WINAPI name(LPCWSTR lpCmdLine, int *pNumArgs)
+typedef FPL__FUNC_WIN32_CommandLineToArgvW(fpl__win32_func_CommandLineToArgvW);
+#define FPL__FUNC_WIN32_SHGetFolderPathA(name) HRESULT WINAPI name(HWND hwnd, int csidl, HANDLE hToken, DWORD dwFlags, LPSTR pszPath)
+typedef FPL__FUNC_WIN32_SHGetFolderPathA(fpl__win32_func_SHGetFolderPathA);
+#define FPL__FUNC_WIN32_SHGetFolderPathW(name) HRESULT WINAPI name(HWND hwnd, int csidl, HANDLE hToken, DWORD dwFlags, LPWSTR pszPath)
+typedef FPL__FUNC_WIN32_SHGetFolderPathW(fpl__win32_func_SHGetFolderPathW);
 
 // User32
-#define FPL__FUNC_WIN32_REGISTER_CLASS_EX_A(name) ATOM WINAPI name(CONST WNDCLASSEXA *)
-typedef FPL__FUNC_WIN32_REGISTER_CLASS_EX_A(fpl__win32_func_RegisterClassExA);
-#define FPL__FUNC_WIN32_REGISTER_CLASS_EX_W(name) ATOM WINAPI name(CONST WNDCLASSEXW *)
-typedef FPL__FUNC_WIN32_REGISTER_CLASS_EX_W(fpl__win32_func_RegisterClassExW);
-#define FPL__FUNC_WIN32_UNREGISTER_CLASS_EX_A(name) BOOL WINAPI name(LPCSTR lpClassName, HINSTANCE hInstance)
-typedef FPL__FUNC_WIN32_UNREGISTER_CLASS_EX_A(fpl__win32_func_UnregisterClassA);
-#define FPL__FUNC_WIN32_UNREGISTER_CLASS_EX_W(name) BOOL WINAPI name(LPCWSTR lpClassName, HINSTANCE hInstance)
-typedef FPL__FUNC_WIN32_UNREGISTER_CLASS_EX_W(fpl__win32_func_UnregisterClassW);
-#define FPL__FUNC_WIN32_SHOW_WINDOW(name) BOOL WINAPI name(HWND hWnd, int nCmdShow)
-typedef FPL__FUNC_WIN32_SHOW_WINDOW(fpl__win32_func_ShowWindow);
-#define FPL__FUNC_WIN32_DESTROY_WINDOW(name) BOOL WINAPI name(HWND hWnd)
-typedef FPL__FUNC_WIN32_DESTROY_WINDOW(fpl__win32_func_DestroyWindow);
-#define FPL__FUNC_WIN32_UPDATE_WINDOW(name) BOOL WINAPI name(HWND hWnd)
-typedef FPL__FUNC_WIN32_UPDATE_WINDOW(fpl__win32_func_UpdateWindow);
-#define FPL__FUNC_WIN32_TRANSLATE_MESSAGE(name) BOOL WINAPI name(CONST MSG *lpMsg)
-typedef FPL__FUNC_WIN32_TRANSLATE_MESSAGE(fpl__win32_func_TranslateMessage);
-#define FPL__FUNC_WIN32_DISPATCH_MESSAGE_A(name) LRESULT WINAPI name(CONST MSG *lpMsg)
-typedef FPL__FUNC_WIN32_DISPATCH_MESSAGE_A(fpl__win32_func_DispatchMessageA);
-#define FPL__FUNC_WIN32_DISPATCH_MESSAGE_W(name) LRESULT WINAPI name(CONST MSG *lpMsg)
-typedef FPL__FUNC_WIN32_DISPATCH_MESSAGE_W(fpl__win32_func_DispatchMessageW);
-#define FPL__FUNC_WIN32_PEEK_MESSAGE_A(name) BOOL WINAPI name(LPMSG lpMsg, HWND hWnd, UINT wMsgFilterMin, UINT wMsgFilterMax, UINT wRemoveMsg)
-typedef FPL__FUNC_WIN32_PEEK_MESSAGE_A(fpl__win32_func_PeekMessageA);
-#define FPL__FUNC_WIN32_PEEK_MESSAGE_W(name) BOOL WINAPI name(LPMSG lpMsg, HWND hWnd, UINT wMsgFilterMin, UINT wMsgFilterMax, UINT wRemoveMsg)
-typedef FPL__FUNC_WIN32_PEEK_MESSAGE_W(fpl__win32_func_PeekMessageW);
-#define FPL__FUNC_WIN32_DEF_WINDOW_PROC_A(name) LRESULT WINAPI name(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam)
-typedef FPL__FUNC_WIN32_DEF_WINDOW_PROC_A(fpl__win32_func_DefWindowProcA);
-#define FPL__FUNC_WIN32_DEF_WINDOW_PROC_W(name) LRESULT WINAPI name(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam)
-typedef FPL__FUNC_WIN32_DEF_WINDOW_PROC_W(fpl__win32_func_DefWindowProcW);
-#define FPL__FUNC_WIN32_CREATE_WINDOW_EX_W(name) HWND WINAPI name(DWORD dwExStyle, LPCWSTR lpClassName, LPCWSTR lpWindowName, DWORD dwStyle, int X, int Y, int nWidth, int nHeight, HWND hWndParent, HMENU hMenu, HINSTANCE hInstance, LPVOID lpParam)
-typedef FPL__FUNC_WIN32_CREATE_WINDOW_EX_W(fpl__win32_func_CreateWindowExW);
-#define FPL__FUNC_WIN32_CREATE_WINDOW_EX_A(name) HWND WINAPI name(DWORD dwExStyle, LPCSTR lpClassName, PCSTR lpWindowName, DWORD dwStyle, int X, int Y, int nWidth, int nHeight, HWND hWndParent, HMENU hMenu, HINSTANCE hInstance, LPVOID lpParam)
-typedef FPL__FUNC_WIN32_CREATE_WINDOW_EX_A(fpl__win32_func_CreateWindowExA);
-#define FPL__FUNC_WIN32_SET_WINDOW_POS(name) BOOL WINAPI name(HWND hWnd, HWND hWndInsertAfter, int X, int Y, int cx, int cy, UINT uFlags)
-typedef FPL__FUNC_WIN32_SET_WINDOW_POS(fpl__win32_func_SetWindowPos);
-#define FPL__FUNC_WIN32_GET_WINDOW_PLACEMENT(name) BOOL WINAPI name(HWND hWnd, WINDOWPLACEMENT *lpwndpl)
-typedef FPL__FUNC_WIN32_GET_WINDOW_PLACEMENT(fpl__win32_func_GetWindowPlacement);
-#define FPL__FUNC_WIN32_SET_WINDOW_PLACEMENT(name) BOOL WINAPI name(HWND hWnd, CONST WINDOWPLACEMENT *lpwndpl)
-typedef FPL__FUNC_WIN32_SET_WINDOW_PLACEMENT(fpl__win32_func_SetWindowPlacement);
-#define FPL__FUNC_WIN32_GET_CLIENT_RECT(name) BOOL WINAPI name(HWND hWnd, LPRECT lpRect)
-typedef FPL__FUNC_WIN32_GET_CLIENT_RECT(fpl__win32_func_GetClientRect);
-#define FPL__FUNC_WIN32_GET_WINDOW_RECT(name) BOOL WINAPI name(HWND hWnd, LPRECT lpRect)
-typedef FPL__FUNC_WIN32_GET_WINDOW_RECT(fpl__win32_func_GetWindowRect);
-#define FPL__FUNC_WIN32_ADJUST_WINDOW_RECT(name) BOOL WINAPI name(LPRECT lpRect, DWORD dwStyle, BOOL bMenu)
-typedef FPL__FUNC_WIN32_ADJUST_WINDOW_RECT(fpl__win32_func_AdjustWindowRect);
-#define FPL__FUNC_WIN32_GET_ASYNC_KEY_STATE(name) SHORT WINAPI name(int vKey)
-typedef FPL__FUNC_WIN32_GET_ASYNC_KEY_STATE(fpl__win32_func_GetAsyncKeyState);
-#define FPL__FUNC_WIN32_MAP_VIRTUAL_KEY_A(name) UINT WINAPI name(UINT uCode, UINT uMapType)
-typedef FPL__FUNC_WIN32_MAP_VIRTUAL_KEY_A(fpl__win32_func_MapVirtualKeyA);
-#define FPL__FUNC_WIN32_MAP_VIRTUAL_KEY_W(name) UINT WINAPI name(UINT uCode, UINT uMapType)
-typedef FPL__FUNC_WIN32_MAP_VIRTUAL_KEY_W(fpl__win32_func_MapVirtualKeyW);
-#define FPL__FUNC_WIN32_SET_CURSOR(name) HCURSOR WINAPI name(HCURSOR hCursor)
-typedef FPL__FUNC_WIN32_SET_CURSOR(fpl__win32_func_SetCursor);
-#define FPL__FUNC_WIN32_GET_CURSOR(name) HCURSOR WINAPI name(VOID)
-typedef FPL__FUNC_WIN32_GET_CURSOR(fpl__win32_func_GetCursor);
-#define FPL__FUNC_WIN32_LOAD_CURSOR_A(name) HCURSOR WINAPI name(HINSTANCE hInstance, LPCSTR lpCursorName)
-typedef FPL__FUNC_WIN32_LOAD_CURSOR_A(fpl__win32_func_LoadCursorA);
-#define FPL__FUNC_WIN32_LOAD_CURSOR_W(name) HCURSOR WINAPI name(HINSTANCE hInstance, LPCWSTR lpCursorName)
-typedef FPL__FUNC_WIN32_LOAD_CURSOR_W(fpl__win32_func_LoadCursorW);
-#define FPL__FUNC_WIN32_LOAD_ICON_A(name) HICON WINAPI name(HINSTANCE hInstance, LPCSTR lpIconName)
-typedef FPL__FUNC_WIN32_LOAD_ICON_A(fpl__win32_func_LoadIconA);
-#define FPL__FUNC_WIN32_LOAD_ICON_W(name) HICON WINAPI name(HINSTANCE hInstance, LPCWSTR lpIconName)
-typedef FPL__FUNC_WIN32_LOAD_ICON_W(fpl__win32_func_LoadIconW);
-#define FPL__FUNC_WIN32_SET_WINDOW_TEXT_A(name) BOOL WINAPI name(HWND hWnd, LPCSTR lpString)
-typedef FPL__FUNC_WIN32_SET_WINDOW_TEXT_A(fpl__win32_func_SetWindowTextA);
-#define FPL__FUNC_WIN32_SET_WINDOW_TEXT_W(name) BOOL WINAPI name(HWND hWnd, LPCWSTR lpString)
-typedef FPL__FUNC_WIN32_SET_WINDOW_TEXT_W(fpl__win32_func_SetWindowTextW);
-#define FPL__FUNC_WIN32_SET_WINDOW_LONG_A(name) LONG WINAPI name(HWND hWnd, int nIndex, LONG dwNewLong)
-typedef FPL__FUNC_WIN32_SET_WINDOW_LONG_A(fpl__win32_func_SetWindowLongA);
-#define FPL__FUNC_WIN32_SET_WINDOW_LONG_W(name) LONG WINAPI name(HWND hWnd, int nIndex, LONG dwNewLong)
-typedef FPL__FUNC_WIN32_SET_WINDOW_LONG_W(fpl__win32_func_SetWindowLongW);
-#define FPL__FUNC_WIN32_GET_WINDOW_LONG_A(name) LONG WINAPI name(HWND hWnd, int nIndex)
-typedef FPL__FUNC_WIN32_GET_WINDOW_LONG_A(fpl__win32_func_GetWindowLongA);
-#define FPL__FUNC_WIN32_GET_WINDOW_LONG_W(name) LONG WINAPI name(HWND hWnd, int nIndex)
-typedef FPL__FUNC_WIN32_GET_WINDOW_LONG_W(fpl__win32_func_GetWindowLongW);
+#define FPL__FUNC_WIN32_RegisterClassExA(name) ATOM WINAPI name(CONST WNDCLASSEXA *)
+typedef FPL__FUNC_WIN32_RegisterClassExA(fpl__win32_func_RegisterClassExA);
+#define FPL__FUNC_WIN32_RegisterClassExW(name) ATOM WINAPI name(CONST WNDCLASSEXW *)
+typedef FPL__FUNC_WIN32_RegisterClassExW(fpl__win32_func_RegisterClassExW);
+#define FPL__FUNC_WIN32_UnregisterClassA(name) BOOL WINAPI name(LPCSTR lpClassName, HINSTANCE hInstance)
+typedef FPL__FUNC_WIN32_UnregisterClassA(fpl__win32_func_UnregisterClassA);
+#define FPL__FUNC_WIN32_UnregisterClassW(name) BOOL WINAPI name(LPCWSTR lpClassName, HINSTANCE hInstance)
+typedef FPL__FUNC_WIN32_UnregisterClassW(fpl__win32_func_UnregisterClassW);
+#define FPL__FUNC_WIN32_ShowWindow(name) BOOL WINAPI name(HWND hWnd, int nCmdShow)
+typedef FPL__FUNC_WIN32_ShowWindow(fpl__win32_func_ShowWindow);
+#define FPL__FUNC_WIN32_DestroyWindow(name) BOOL WINAPI name(HWND hWnd)
+typedef FPL__FUNC_WIN32_DestroyWindow(fpl__win32_func_DestroyWindow);
+#define FPL__FUNC_WIN32_UpdateWindow(name) BOOL WINAPI name(HWND hWnd)
+typedef FPL__FUNC_WIN32_UpdateWindow(fpl__win32_func_UpdateWindow);
+#define FPL__FUNC_WIN32_TranslateMessage(name) BOOL WINAPI name(CONST MSG *lpMsg)
+typedef FPL__FUNC_WIN32_TranslateMessage(fpl__win32_func_TranslateMessage);
+#define FPL__FUNC_WIN32_DispatchMessageA(name) LRESULT WINAPI name(CONST MSG *lpMsg)
+typedef FPL__FUNC_WIN32_DispatchMessageA(fpl__win32_func_DispatchMessageA);
+#define FPL__FUNC_WIN32_DispatchMessageW(name) LRESULT WINAPI name(CONST MSG *lpMsg)
+typedef FPL__FUNC_WIN32_DispatchMessageW(fpl__win32_func_DispatchMessageW);
+#define FPL__FUNC_WIN32_PeekMessageA(name) BOOL WINAPI name(LPMSG lpMsg, HWND hWnd, UINT wMsgFilterMin, UINT wMsgFilterMax, UINT wRemoveMsg)
+typedef FPL__FUNC_WIN32_PeekMessageA(fpl__win32_func_PeekMessageA);
+#define FPL__FUNC_WIN32_PeekMessageW(name) BOOL WINAPI name(LPMSG lpMsg, HWND hWnd, UINT wMsgFilterMin, UINT wMsgFilterMax, UINT wRemoveMsg)
+typedef FPL__FUNC_WIN32_PeekMessageW(fpl__win32_func_PeekMessageW);
+#define FPL__FUNC_WIN32_DefWindowProcA(name) LRESULT WINAPI name(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam)
+typedef FPL__FUNC_WIN32_DefWindowProcA(fpl__win32_func_DefWindowProcA);
+#define FPL__FUNC_WIN32_DefWindowProcW(name) LRESULT WINAPI name(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam)
+typedef FPL__FUNC_WIN32_DefWindowProcW(fpl__win32_func_DefWindowProcW);
+#define FPL__FUNC_WIN32_CreateWindowExW(name) HWND WINAPI name(DWORD dwExStyle, LPCWSTR lpClassName, LPCWSTR lpWindowName, DWORD dwStyle, int X, int Y, int nWidth, int nHeight, HWND hWndParent, HMENU hMenu, HINSTANCE hInstance, LPVOID lpParam)
+typedef FPL__FUNC_WIN32_CreateWindowExW(fpl__win32_func_CreateWindowExW);
+#define FPL__FUNC_WIN32_CreateWindowExA(name) HWND WINAPI name(DWORD dwExStyle, LPCSTR lpClassName, PCSTR lpWindowName, DWORD dwStyle, int X, int Y, int nWidth, int nHeight, HWND hWndParent, HMENU hMenu, HINSTANCE hInstance, LPVOID lpParam)
+typedef FPL__FUNC_WIN32_CreateWindowExA(fpl__win32_func_CreateWindowExA);
+#define FPL__FUNC_WIN32_SetWindowPos(name) BOOL WINAPI name(HWND hWnd, HWND hWndInsertAfter, int X, int Y, int cx, int cy, UINT uFlags)
+typedef FPL__FUNC_WIN32_SetWindowPos(fpl__win32_func_SetWindowPos);
+#define FPL__FUNC_WIN32_GetWindowPlacement(name) BOOL WINAPI name(HWND hWnd, WINDOWPLACEMENT *lpwndpl)
+typedef FPL__FUNC_WIN32_GetWindowPlacement(fpl__win32_func_GetWindowPlacement);
+#define FPL__FUNC_WIN32_SetWindowPlacement(name) BOOL WINAPI name(HWND hWnd, CONST WINDOWPLACEMENT *lpwndpl)
+typedef FPL__FUNC_WIN32_SetWindowPlacement(fpl__win32_func_SetWindowPlacement);
+#define FPL__FUNC_WIN32_GetClientRect(name) BOOL WINAPI name(HWND hWnd, LPRECT lpRect)
+typedef FPL__FUNC_WIN32_GetClientRect(fpl__win32_func_GetClientRect);
+#define FPL__FUNC_WIN32_GetWindowRect(name) BOOL WINAPI name(HWND hWnd, LPRECT lpRect)
+typedef FPL__FUNC_WIN32_GetWindowRect(fpl__win32_func_GetWindowRect);
+#define FPL__FUNC_WIN32_AdjustWindowRect(name) BOOL WINAPI name(LPRECT lpRect, DWORD dwStyle, BOOL bMenu)
+typedef FPL__FUNC_WIN32_AdjustWindowRect(fpl__win32_func_AdjustWindowRect);
+#define FPL__FUNC_WIN32_ClientToScreen(name) BOOL name(HWND hWnd, LPPOINT lpPoint)
+typedef FPL__FUNC_WIN32_ClientToScreen(fpl__func_win32_ClientToScreen);
+#define FPL__FUNC_WIN32_GetAsyncKeyState(name) SHORT WINAPI name(int vKey)
+typedef FPL__FUNC_WIN32_GetAsyncKeyState(fpl__win32_func_GetAsyncKeyState);
+#define FPL__FUNC_WIN32_MapVirtualKeyA(name) UINT WINAPI name(UINT uCode, UINT uMapType)
+typedef FPL__FUNC_WIN32_MapVirtualKeyA(fpl__win32_func_MapVirtualKeyA);
+#define FPL__FUNC_WIN32_MapVirtualKeyW(name) UINT WINAPI name(UINT uCode, UINT uMapType)
+typedef FPL__FUNC_WIN32_MapVirtualKeyW(fpl__win32_func_MapVirtualKeyW);
+#define FPL__FUNC_WIN32_SetCursor(name) HCURSOR WINAPI name(HCURSOR hCursor)
+typedef FPL__FUNC_WIN32_SetCursor(fpl__win32_func_SetCursor);
+#define FPL__FUNC_WIN32_GetCursor(name) HCURSOR WINAPI name(VOID)
+typedef FPL__FUNC_WIN32_GetCursor(fpl__win32_func_GetCursor);
+#define FPL__WIN32_FUNC_GetCursorPos(name) BOOL WINAPI name(LPPOINT lpPoint)
+typedef FPL__WIN32_FUNC_GetCursorPos(fpl__win32_func_GetCursorPos);
+#define FPL__WIN32_FUNC_WindowFromPoint(name) HWND WINAPI name(POINT Point)
+typedef FPL__WIN32_FUNC_WindowFromPoint(fpl__win32_func_WindowFromPoint);
+#define FPL__WIN32_FUNC_ClientToScreen(name) BOOL WINAPI name(HWND hWnd, LPPOINT lpPoint)
+typedef FPL__WIN32_FUNC_ClientToScreen(fpl__win32_func_ClientToScreen);
+#define FPL__WIN32_FUNC_PtInRect(name) BOOL WINAPI name(CONST RECT *lprc, POINT pt)
+typedef FPL__WIN32_FUNC_PtInRect(fpl__win32_func_PtInRect);
+#define FPL__FUNC_WIN32_LoadCursorA(name) HCURSOR WINAPI name(HINSTANCE hInstance, LPCSTR lpCursorName)
+typedef FPL__FUNC_WIN32_LoadCursorA(fpl__win32_func_LoadCursorA);
+#define FPL__FUNC_WIN32_LoadCursorW(name) HCURSOR WINAPI name(HINSTANCE hInstance, LPCWSTR lpCursorName)
+typedef FPL__FUNC_WIN32_LoadCursorW(fpl__win32_func_LoadCursorW);
+#define FPL__FUNC_WIN32_LoadIconA(name) HICON WINAPI name(HINSTANCE hInstance, LPCSTR lpIconName)
+typedef FPL__FUNC_WIN32_LoadIconA(fpl__win32_func_LoadIconA);
+#define FPL__FUNC_WIN32_LoadIconW(name) HICON WINAPI name(HINSTANCE hInstance, LPCWSTR lpIconName)
+typedef FPL__FUNC_WIN32_LoadIconW(fpl__win32_func_LoadIconW);
+#define FPL__FUNC_WIN32_SetWindowTextA(name) BOOL WINAPI name(HWND hWnd, LPCSTR lpString)
+typedef FPL__FUNC_WIN32_SetWindowTextA(fpl__win32_func_SetWindowTextA);
+#define FPL__FUNC_WIN32_SetWindowTextW(name) BOOL WINAPI name(HWND hWnd, LPCWSTR lpString)
+typedef FPL__FUNC_WIN32_SetWindowTextW(fpl__win32_func_SetWindowTextW);
+#define FPL__FUNC_WIN32_SetWindowLongA(name) LONG WINAPI name(HWND hWnd, int nIndex, LONG dwNewLong)
+typedef FPL__FUNC_WIN32_SetWindowLongA(fpl__win32_func_SetWindowLongA);
+#define FPL__FUNC_WIN32_SetWindowLongW(name) LONG WINAPI name(HWND hWnd, int nIndex, LONG dwNewLong)
+typedef FPL__FUNC_WIN32_SetWindowLongW(fpl__win32_func_SetWindowLongW);
+#define FPL__FUNC_WIN32_GetWindowLongA(name) LONG WINAPI name(HWND hWnd, int nIndex)
+typedef FPL__FUNC_WIN32_GetWindowLongA(fpl__win32_func_GetWindowLongA);
+#define FPL__FUNC_WIN32_GetWindowLongW(name) LONG WINAPI name(HWND hWnd, int nIndex)
+typedef FPL__FUNC_WIN32_GetWindowLongW(fpl__win32_func_GetWindowLongW);
 
 #if defined(FPL_ARCH_X64)
-#define FPL__FUNC_WIN32_SET_WINDOW_LONG_PTR_A(name) LONG_PTR WINAPI name(HWND hWnd, int nIndex, LONG_PTR dwNewLong)
-typedef FPL__FUNC_WIN32_SET_WINDOW_LONG_PTR_A(fpl__win32_func_SetWindowLongPtrA);
-#define FPL__FUNC_WIN32_SET_WINDOW_LONG_PTR_W(name) LONG_PTR WINAPI name(HWND hWnd, int nIndex, LONG_PTR dwNewLong)
-typedef FPL__FUNC_WIN32_SET_WINDOW_LONG_PTR_W(fpl__win32_func_SetWindowLongPtrW);
-#define FPL__FUNC_WIN32_GET_WINDOW_LONG_PTR_A(name) LONG_PTR WINAPI name(HWND hWnd, int nIndex)
-typedef FPL__FUNC_WIN32_GET_WINDOW_LONG_PTR_A(fpl__win32_func_GetWindowLongPtrA);
-#define FPL__FUNC_WIN32_GET_WINDOW_LONG_PTR_W(name) LONG_PTR WINAPI name(HWND hWnd, int nIndex)
-typedef FPL__FUNC_WIN32_GET_WINDOW_LONG_PTR_W(fpl__win32_func_GetWindowLongPtrW);
+#define FPL__FUNC_WIN32_SetWindowLongPtrA(name) LONG_PTR WINAPI name(HWND hWnd, int nIndex, LONG_PTR dwNewLong)
+typedef FPL__FUNC_WIN32_SetWindowLongPtrA(fpl__win32_func_SetWindowLongPtrA);
+#define FPL__FUNC_WIN32_SetWindowLongPtrW(name) LONG_PTR WINAPI name(HWND hWnd, int nIndex, LONG_PTR dwNewLong)
+typedef FPL__FUNC_WIN32_SetWindowLongPtrW(fpl__win32_func_SetWindowLongPtrW);
+#define FPL__FUNC_WIN32_GetWindowLongPtrA(name) LONG_PTR WINAPI name(HWND hWnd, int nIndex)
+typedef FPL__FUNC_WIN32_GetWindowLongPtrA(fpl__win32_func_GetWindowLongPtrA);
+#define FPL__FUNC_WIN32_GetWindowLongPtrW(name) LONG_PTR WINAPI name(HWND hWnd, int nIndex)
+typedef FPL__FUNC_WIN32_GetWindowLongPtrW(fpl__win32_func_GetWindowLongPtrW);
 #endif
 
-#define FPL__FUNC_WIN32_RELEASE_DC(name) int WINAPI name(HWND hWnd, HDC hDC)
-typedef FPL__FUNC_WIN32_RELEASE_DC(fpl__win32_func_ReleaseDC);
-#define FPL__FUNC_WIN32_GET_DC(name) HDC WINAPI name(HWND hWnd)
-typedef FPL__FUNC_WIN32_GET_DC(fpl__win32_func_GetDC);
-#define FPL__FUNC_WIN32_CHANGE_DISPLAY_SETTINGS_A(name) LONG WINAPI name(DEVMODEA* lpDevMode, DWORD dwFlags)
-typedef FPL__FUNC_WIN32_CHANGE_DISPLAY_SETTINGS_A(fpl__win32_func_ChangeDisplaySettingsA);
-#define FPL__FUNC_WIN32_CHANGE_DISPLAY_SETTINGS_W(name) LONG WINAPI name(DEVMODEW* lpDevMode, DWORD dwFlags)
-typedef FPL__FUNC_WIN32_CHANGE_DISPLAY_SETTINGS_W(fpl__win32_func_ChangeDisplaySettingsW);
-#define FPL__FUNC_WIN32_ENUM_DISPLAY_SETTINGS_A(name) BOOL WINAPI name(LPCSTR lpszDeviceName, DWORD iModeNum, DEVMODEA* lpDevMode)
-typedef FPL__FUNC_WIN32_ENUM_DISPLAY_SETTINGS_A(fpl__win32_func_EnumDisplaySettingsA);
-#define FPL__FUNC_WIN32_ENUM_DISPLAY_SETTINGS_W(name) BOOL WINAPI name(LPCWSTR lpszDeviceName, DWORD iModeNum, DEVMODEW* lpDevMode)
-typedef FPL__FUNC_WIN32_ENUM_DISPLAY_SETTINGS_W(fpl__win32_func_EnumDisplaySettingsW);
-#define FPL__FUNC_WIN32_OPEN_CLIPBOARD(name) BOOL WINAPI name(HWND hWndNewOwner)
-typedef FPL__FUNC_WIN32_OPEN_CLIPBOARD(fpl__win32_func_OpenClipboard);
-#define FPL__FUNC_WIN32_CLOSE_CLIPBOARD(name) BOOL WINAPI name(VOID)
-typedef FPL__FUNC_WIN32_CLOSE_CLIPBOARD(fpl__win32_func_CloseClipboard);
-#define FPL__FUNC_WIN32_EMPTY_CLIPBOARD(name) BOOL WINAPI name(VOID)
-typedef FPL__FUNC_WIN32_EMPTY_CLIPBOARD(fpl__win32_func_EmptyClipboard);
-#define FPL__FUNC_WIN32_IS_CLIPBOARD_FORMAT_AVAILABLE(name) BOOL WINAPI name(UINT format)
-typedef FPL__FUNC_WIN32_IS_CLIPBOARD_FORMAT_AVAILABLE(fpl__win32_func_IsClipboardFormatAvailable);
-#define FPL__FUNC_WIN32_SET_CLIPBOARD_DATA(name) HANDLE WINAPI name(UINT uFormat, HANDLE hMem)
-typedef FPL__FUNC_WIN32_SET_CLIPBOARD_DATA(fpl__win32_func_SetClipboardData);
-#define FPL__FUNC_WIN32_GET_CLIPBOARD_DATA(name) HANDLE WINAPI name(UINT uFormat)
-typedef FPL__FUNC_WIN32_GET_CLIPBOARD_DATA(fpl__win32_func_GetClipboardData);
-#define FPL__FUNC_WIN32_GET_DESKTOP_WINDOW(name) HWND WINAPI name(VOID)
-typedef FPL__FUNC_WIN32_GET_DESKTOP_WINDOW(fpl__win32_func_GetDesktopWindow);
-#define FPL__FUNC_WIN32_GET_FOREGROUND_WINDOW(name) HWND WINAPI name(VOID)
-typedef FPL__FUNC_WIN32_GET_FOREGROUND_WINDOW(fpl__win32_func_GetForegroundWindow);
-#define FPL__FUNC_WIN32_IS_ZOOMED(name) BOOL WINAPI name(HWND hWnd)
-typedef FPL__FUNC_WIN32_IS_ZOOMED(fpl__win32_func_IsZoomed);
-#define FPL__FUNC_WIN32_SEND_MESSAGE_A(name) LRESULT WINAPI name(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam)
-typedef FPL__FUNC_WIN32_SEND_MESSAGE_A(fpl__win32_func_SendMessageA);
-#define FPL__FUNC_WIN32_SEND_MESSAGE_W(name) LRESULT WINAPI name(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam)
-typedef FPL__FUNC_WIN32_SEND_MESSAGE_W(fpl__win32_func_SendMessageW);
-#define FPL__FUNC_WIN32_GET_MONITOR_INFO_A(name) BOOL WINAPI name(HMONITOR hMonitor, LPMONITORINFO lpmi)
-typedef FPL__FUNC_WIN32_GET_MONITOR_INFO_A(fpl__win32_func_GetMonitorInfoA);
-#define FPL__FUNC_WIN32_GET_MONITOR_INFO_W(name) BOOL WINAPI name(HMONITOR hMonitor, LPMONITORINFO lpmi)
-typedef FPL__FUNC_WIN32_GET_MONITOR_INFO_W(fpl__win32_func_GetMonitorInfoW);
-#define FPL__FUNC_WIN32_MONITOR_FROM_RECT(name) HMONITOR WINAPI name(LPCRECT lprc, DWORD dwFlags)
-typedef FPL__FUNC_WIN32_MONITOR_FROM_RECT(fpl__win32_func_MonitorFromRect);
-#define FPL__FUNC_WIN32_MONITOR_FROM_WINDOW(name) HMONITOR WINAPI name(HWND hwnd, DWORD dwFlags)
-typedef FPL__FUNC_WIN32_MONITOR_FROM_WINDOW(fpl__win32_func_MonitorFromWindow);
+#define FPL__FUNC_WIN32_ReleaseDC(name) int WINAPI name(HWND hWnd, HDC hDC)
+typedef FPL__FUNC_WIN32_ReleaseDC(fpl__win32_func_ReleaseDC);
+#define FPL__FUNC_WIN32_GetDC(name) HDC WINAPI name(HWND hWnd)
+typedef FPL__FUNC_WIN32_GetDC(fpl__win32_func_GetDC);
+#define FPL__FUNC_WIN32_ChangeDisplaySettingsA(name) LONG WINAPI name(DEVMODEA* lpDevMode, DWORD dwFlags)
+typedef FPL__FUNC_WIN32_ChangeDisplaySettingsA(fpl__win32_func_ChangeDisplaySettingsA);
+#define FPL__FUNC_WIN32_ChangeDisplaySettingsW(name) LONG WINAPI name(DEVMODEW* lpDevMode, DWORD dwFlags)
+typedef FPL__FUNC_WIN32_ChangeDisplaySettingsW(fpl__win32_func_ChangeDisplaySettingsW);
+#define FPL__FUNC_WIN32_EnumDisplaySettingsA(name) BOOL WINAPI name(LPCSTR lpszDeviceName, DWORD iModeNum, DEVMODEA* lpDevMode)
+typedef FPL__FUNC_WIN32_EnumDisplaySettingsA(fpl__win32_func_EnumDisplaySettingsA);
+#define FPL__FUNC_WIN32_EnumDisplaySettingsW(name) BOOL WINAPI name(LPCWSTR lpszDeviceName, DWORD iModeNum, DEVMODEW* lpDevMode)
+typedef FPL__FUNC_WIN32_EnumDisplaySettingsW(fpl__win32_func_EnumDisplaySettingsW);
+#define FPL__FUNC_WIN32_OpenClipboard(name) BOOL WINAPI name(HWND hWndNewOwner)
+typedef FPL__FUNC_WIN32_OpenClipboard(fpl__win32_func_OpenClipboard);
+#define FPL__FUNC_WIN32_CloseClipboard(name) BOOL WINAPI name(VOID)
+typedef FPL__FUNC_WIN32_CloseClipboard(fpl__win32_func_CloseClipboard);
+#define FPL__FUNC_WIN32_EmptyClipboard(name) BOOL WINAPI name(VOID)
+typedef FPL__FUNC_WIN32_EmptyClipboard(fpl__win32_func_EmptyClipboard);
+#define FPL__FUNC_WIN32_IsClipboardFormatAvailable(name) BOOL WINAPI name(UINT format)
+typedef FPL__FUNC_WIN32_IsClipboardFormatAvailable(fpl__win32_func_IsClipboardFormatAvailable);
+#define FPL__FUNC_WIN32_SetClipboardData(name) HANDLE WINAPI name(UINT uFormat, HANDLE hMem)
+typedef FPL__FUNC_WIN32_SetClipboardData(fpl__win32_func_SetClipboardData);
+#define FPL__FUNC_WIN32_GetClipboardData(name) HANDLE WINAPI name(UINT uFormat)
+typedef FPL__FUNC_WIN32_GetClipboardData(fpl__win32_func_GetClipboardData);
+#define FPL__FUNC_WIN32_GetDesktopWindow(name) HWND WINAPI name(VOID)
+typedef FPL__FUNC_WIN32_GetDesktopWindow(fpl__win32_func_GetDesktopWindow);
+#define FPL__FUNC_WIN32_GetForegroundWindow(name) HWND WINAPI name(VOID)
+typedef FPL__FUNC_WIN32_GetForegroundWindow(fpl__win32_func_GetForegroundWindow);
+#define FPL__FUNC_WIN32_IsZoomed(name) BOOL WINAPI name(HWND hWnd)
+typedef FPL__FUNC_WIN32_IsZoomed(fpl__win32_func_IsZoomed);
+#define FPL__FUNC_WIN32_SendMessageA(name) LRESULT WINAPI name(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam)
+typedef FPL__FUNC_WIN32_SendMessageA(fpl__win32_func_SendMessageA);
+#define FPL__FUNC_WIN32_SendMessageW(name) LRESULT WINAPI name(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam)
+typedef FPL__FUNC_WIN32_SendMessageW(fpl__win32_func_SendMessageW);
+#define FPL__FUNC_WIN32_GetMonitorInfoA(name) BOOL WINAPI name(HMONITOR hMonitor, LPMONITORINFO lpmi)
+typedef FPL__FUNC_WIN32_GetMonitorInfoA(fpl__win32_func_GetMonitorInfoA);
+#define FPL__FUNC_WIN32_GetMonitorInfoW(name) BOOL WINAPI name(HMONITOR hMonitor, LPMONITORINFO lpmi)
+typedef FPL__FUNC_WIN32_GetMonitorInfoW(fpl__win32_func_GetMonitorInfoW);
+#define FPL__FUNC_WIN32_MonitorFromRect(name) HMONITOR WINAPI name(LPCRECT lprc, DWORD dwFlags)
+typedef FPL__FUNC_WIN32_MonitorFromRect(fpl__win32_func_MonitorFromRect);
+#define FPL__FUNC_WIN32_MonitorFromWindow(name) HMONITOR WINAPI name(HWND hwnd, DWORD dwFlags)
+typedef FPL__FUNC_WIN32_MonitorFromWindow(fpl__win32_func_MonitorFromWindow);
+#define FPL__WIN32_FUNC_RegisterRawInputDevices(name) BOOL WINAPI name(PCRAWINPUTDEVICE pRawInputDevices, UINT uiNumDevices, UINT cbSize)
+typedef FPL__WIN32_FUNC_RegisterRawInputDevices(fpl__win32_func_RegisterRawInputDevices);
+#define FPL__WIN32_FUNC_ClipCursor(name) BOOL WINAPI name(CONST RECT *lpRect)
+typedef FPL__WIN32_FUNC_ClipCursor(fpl__win32_func_ClipCursor);
 
 // OLE32
-#define FPL__FUNC_WIN32_WIN32_CO_INITIALIZE_EX(name) HRESULT WINAPI name(LPVOID pvReserved, DWORD  dwCoInit)
-typedef FPL__FUNC_WIN32_WIN32_CO_INITIALIZE_EX(fpl__win32_func_CoInitializeEx);
-#define FPL__FUNC_WIN32_WIN32_CO_UNINITIALIZE(name) void WINAPI name(void)
-typedef FPL__FUNC_WIN32_WIN32_CO_UNINITIALIZE(fpl__win32_func_CoUninitialize);
-#define FPL__FUNC_WIN32_WIN32_CO_CREATE_INSTANCE(name) HRESULT WINAPI name(REFCLSID rclsid, LPUNKNOWN pUnkOuter, DWORD dwClsContext, REFIID riid, LPVOID *ppv)
-typedef FPL__FUNC_WIN32_WIN32_CO_CREATE_INSTANCE(fpl__win32_func_CoCreateInstance);
-#define FPL__FUNC_WIN32_WIN32_CO_TASK_MEM_FREE(name) void WINAPI name(LPVOID pv)
-typedef FPL__FUNC_WIN32_WIN32_CO_TASK_MEM_FREE(fpl__win32_func_CoTaskMemFree);
-#define FPL__FUNC_WIN32_WIN32_PROP_VARIANT_CLEAR(name) HRESULT WINAPI name(PROPVARIANT *pvar)
-typedef FPL__FUNC_WIN32_WIN32_PROP_VARIANT_CLEAR(fpl__win32_func_PropVariantClear);
+#define FPL__FUNC_WIN32_CoInitializeEx(name) HRESULT WINAPI name(LPVOID pvReserved, DWORD  dwCoInit)
+typedef FPL__FUNC_WIN32_CoInitializeEx(fpl__win32_func_CoInitializeEx);
+#define FPL__FUNC_WIN32_CoUninitialize(name) void WINAPI name(void)
+typedef FPL__FUNC_WIN32_CoUninitialize(fpl__win32_func_CoUninitialize);
+#define FPL__FUNC_WIN32_CoCreateInstance(name) HRESULT WINAPI name(REFCLSID rclsid, LPUNKNOWN pUnkOuter, DWORD dwClsContext, REFIID riid, LPVOID *ppv)
+typedef FPL__FUNC_WIN32_CoCreateInstance(fpl__win32_func_CoCreateInstance);
+#define FPL__FUNC_WIN32_CoTaskMemFree(name) void WINAPI name(LPVOID pv)
+typedef FPL__FUNC_WIN32_CoTaskMemFree(fpl__win32_func_CoTaskMemFree);
+#define FPL__FUNC_WIN32_PropVariantClear(name) HRESULT WINAPI name(PROPVARIANT *pvar)
+typedef FPL__FUNC_WIN32_PropVariantClear(fpl__win32_func_PropVariantClear);
 
 typedef struct fpl__Win32GdiApi {
 	HMODULE gdiLibrary;
@@ -4073,14 +4149,12 @@ typedef struct fpl__Win32UserApi {
 	fpl__win32_func_ChangeDisplaySettingsW *ChangeDisplaySettingsW;
 	fpl__win32_func_EnumDisplaySettingsA *EnumDisplaySettingsA;
 	fpl__win32_func_EnumDisplaySettingsW *EnumDisplaySettingsW;
-
 	fpl__win32_func_OpenClipboard *OpenClipboard;
 	fpl__win32_func_CloseClipboard *CloseClipboard;
 	fpl__win32_func_EmptyClipboard *EmptyClipboard;
 	fpl__win32_func_IsClipboardFormatAvailable *IsClipboardFormatAvailable;
 	fpl__win32_func_SetClipboardData *SetClipboardData;
 	fpl__win32_func_GetClipboardData *GetClipboardData;
-
 	fpl__win32_func_GetDesktopWindow *GetDesktopWindow;
 	fpl__win32_func_GetForegroundWindow *GetForegroundWindow;
 	fpl__win32_func_IsZoomed *IsZoomed;
@@ -4090,6 +4164,12 @@ typedef struct fpl__Win32UserApi {
 	fpl__win32_func_GetMonitorInfoW *GetMonitorInfoW;
 	fpl__win32_func_MonitorFromRect *MonitorFromRect;
 	fpl__win32_func_MonitorFromWindow *MonitorFromWindow;
+	fpl__win32_func_GetCursorPos *GetCursorPos;
+	fpl__win32_func_WindowFromPoint *WindowFromPoint;
+	fpl__win32_func_ClientToScreen *ClientToScreen;
+	fpl__win32_func_PtInRect *PtInRect;
+	fpl__win32_func_RegisterRawInputDevices *RegisterRawInputDevices;
+	fpl__win32_func_ClipCursor *ClipCursor;
 } fpl__Win32UserApi;
 
 typedef struct fpl__Win32OleApi {
@@ -4182,6 +4262,8 @@ fpl_internal bool fpl__Win32LoadApi(fpl__Win32Api *wapi) {
 		FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(library, userLibraryName, wapi->user.GetCursor, fpl__win32_func_GetCursor, "GetCursor");
 		FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(library, userLibraryName, wapi->user.LoadCursorA, fpl__win32_func_LoadCursorA, "LoadCursorA");
 		FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(library, userLibraryName, wapi->user.LoadCursorW, fpl__win32_func_LoadCursorW, "LoadCursorW");
+		FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(library, userLibraryName, wapi->user.GetCursorPos, fpl__win32_func_GetCursorPos, "GetCursorPos");
+		FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(library, userLibraryName, wapi->user.WindowFromPoint, fpl__win32_func_WindowFromPoint, "WindowFromPoint");
 		FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(library, userLibraryName, wapi->user.LoadIconA, fpl__win32_func_LoadIconA, "LoadCursorA");
 		FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(library, userLibraryName, wapi->user.LoadIconW, fpl__win32_func_LoadIconW, "LoadIconW");
 		FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(library, userLibraryName, wapi->user.SetWindowTextA, fpl__win32_func_SetWindowTextA, "SetWindowTextA");
@@ -4191,12 +4273,12 @@ fpl_internal bool fpl__Win32LoadApi(fpl__Win32Api *wapi) {
 		FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(library, userLibraryName, wapi->user.GetWindowLongA, fpl__win32_func_GetWindowLongA, "GetWindowLongA");
 		FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(library, userLibraryName, wapi->user.GetWindowLongW, fpl__win32_func_GetWindowLongW, "GetWindowLongW");
 
-#				if defined(FPL_ARCH_X64)
+#		if defined(FPL_ARCH_X64)
 		FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(library, userLibraryName, wapi->user.SetWindowLongPtrA, fpl__win32_func_SetWindowLongPtrA, "SetWindowLongPtrA");
 		FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(library, userLibraryName, wapi->user.SetWindowLongPtrW, fpl__win32_func_SetWindowLongPtrW, "SetWindowLongPtrW");
 		FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(library, userLibraryName, wapi->user.GetWindowLongPtrA, fpl__win32_func_GetWindowLongPtrA, "GetWindowLongPtrA");
 		FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(library, userLibraryName, wapi->user.GetWindowLongPtrW, fpl__win32_func_GetWindowLongPtrW, "GetWindowLongPtrW");
-#				endif
+#		endif
 
 		FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(library, userLibraryName, wapi->user.ReleaseDC, fpl__win32_func_ReleaseDC, "ReleaseDC");
 		FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(library, userLibraryName, wapi->user.GetDC, fpl__win32_func_GetDC, "GetDC");
@@ -4204,16 +4286,13 @@ fpl_internal bool fpl__Win32LoadApi(fpl__Win32Api *wapi) {
 		FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(library, userLibraryName, wapi->user.ChangeDisplaySettingsW, fpl__win32_func_ChangeDisplaySettingsW, "ChangeDisplaySettingsW");
 		FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(library, userLibraryName, wapi->user.EnumDisplaySettingsA, fpl__win32_func_EnumDisplaySettingsA, "EnumDisplaySettingsA");
 		FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(library, userLibraryName, wapi->user.EnumDisplaySettingsW, fpl__win32_func_EnumDisplaySettingsW, "EnumDisplaySettingsW");
-
 		FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(library, userLibraryName, wapi->user.OpenClipboard, fpl__win32_func_OpenClipboard, "OpenClipboard");
 		FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(library, userLibraryName, wapi->user.CloseClipboard, fpl__win32_func_CloseClipboard, "CloseClipboard");
 		FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(library, userLibraryName, wapi->user.EmptyClipboard, fpl__win32_func_EmptyClipboard, "EmptyClipboard");
 		FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(library, userLibraryName, wapi->user.SetClipboardData, fpl__win32_func_SetClipboardData, "SetClipboardData");
 		FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(library, userLibraryName, wapi->user.GetClipboardData, fpl__win32_func_GetClipboardData, "GetClipboardData");
-
 		FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(library, userLibraryName, wapi->user.GetDesktopWindow, fpl__win32_func_GetDesktopWindow, "GetDesktopWindow");
 		FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(library, userLibraryName, wapi->user.GetForegroundWindow, fpl__win32_func_GetForegroundWindow, "GetForegroundWindow");
-
 		FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(library, userLibraryName, wapi->user.IsZoomed, fpl__win32_func_IsZoomed, "IsZoomed");
 		FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(library, userLibraryName, wapi->user.SendMessageA, fpl__win32_func_SendMessageA, "SendMessageA");
 		FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(library, userLibraryName, wapi->user.SendMessageW, fpl__win32_func_SendMessageW, "SendMessageW");
@@ -4221,6 +4300,10 @@ fpl_internal bool fpl__Win32LoadApi(fpl__Win32Api *wapi) {
 		FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(library, userLibraryName, wapi->user.GetMonitorInfoW, fpl__win32_func_GetMonitorInfoW, "GetMonitorInfoW");
 		FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(library, userLibraryName, wapi->user.MonitorFromRect, fpl__win32_func_MonitorFromRect, "MonitorFromRect");
 		FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(library, userLibraryName, wapi->user.MonitorFromWindow, fpl__win32_func_MonitorFromWindow, "MonitorFromWindow");
+		FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(library, userLibraryName, wapi->user.ClientToScreen, fpl__win32_func_ClientToScreen, "ClientToScreen");
+		FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(library, userLibraryName, wapi->user.PtInRect, fpl__win32_func_PtInRect, "PtInRect");
+		FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(library, userLibraryName, wapi->user.RegisterRawInputDevices, fpl__win32_func_RegisterRawInputDevices, "RegisterRawInputDevices");
+		FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(library, userLibraryName, wapi->user.ClipCursor, fpl__win32_func_ClipCursor, "ClipCursor");
 	}
 
 	// GDI32
@@ -4346,6 +4429,7 @@ typedef struct fpl__Win32WindowState {
 	HCURSOR defaultCursor;
 	fpl__Win32LastWindowInfo lastFullscreenInfo;
 	bool isCursorActive;
+	bool isFrameInteraction;
 } fpl__Win32WindowState;
 #endif // FPL_ENABLE_WINDOW
 
@@ -4882,16 +4966,16 @@ typedef struct fpl__SetupWindowCallbacks {
 	do { \
 		size_t copiedBytes = 0; \
 		if (sizeof(T) > sizeof(uint8_t)) { \
-			T *sourceDataBlock = (T *)(source); \
-			T *sourceDataBlockEnd = (T *)(source) + (sourceSize >> shift); \
+			const T *sourceDataBlock = (const T *)(source); \
+			const T *sourceDataBlockEnd = (const T *)(source) + (sourceSize >> shift); \
 			T *destDataBlock = (T *)(dest); \
 			while (sourceDataBlock != sourceDataBlockEnd) { \
 				*destDataBlock++ = *sourceDataBlock++; \
 				copiedBytes += sizeof(T); \
 			} \
 		} \
-		uint8_t *sourceData8 = (uint8_t *)source + copiedBytes; \
-		uint8_t *sourceData8End = (uint8_t *)source + sourceSize; \
+		const uint8_t *sourceData8 = (const uint8_t *)source + copiedBytes; \
+		const uint8_t *sourceData8End = (const uint8_t *)source + sourceSize; \
 		uint8_t *destData8 = (uint8_t *)dest + copiedBytes; \
 		while (sourceData8 != sourceData8End) { \
 			*destData8++ = *sourceData8++; \
@@ -5070,18 +5154,22 @@ fpl_common_api size_t fplGetWideStringLength(const wchar_t *str) {
 }
 
 fpl_common_api char *fplCopyAnsiStringLen(const char *source, const size_t sourceLen, char *dest, const size_t maxDestLen) {
-	char *result = fpl_null;
-	if((source != fpl_null && dest != fpl_null) && ((sourceLen + 1) <= maxDestLen)) {
-		result = dest;
+	if(source != fpl_null && dest != fpl_null) {
+		size_t requiredLen = sourceLen + 1;
+		if(maxDestLen < requiredLen) {
+			fpl__ArgumentSizeTooSmallError("Max dest len", maxDestLen, requiredLen);
+			return fpl_null;
+		}
+		char *result = dest;
 		size_t index = 0;
 		while(index++ < sourceLen) {
 			*dest++ = *source++;
 		}
 		*dest = 0;
+		return(result);
 	} else {
-		// @TODO(final): Do we want to push a error here?
+		return(fpl_null);
 	}
-	return(result);
 }
 
 fpl_common_api char *fplCopyAnsiString(const char *source, char *dest, const size_t maxDestLen) {
@@ -5089,25 +5177,27 @@ fpl_common_api char *fplCopyAnsiString(const char *source, char *dest, const siz
 	if(source != fpl_null) {
 		size_t sourceLen = fplGetAnsiStringLength(source);
 		result = fplCopyAnsiStringLen(source, sourceLen, dest, maxDestLen);
-	} else {
-		// @TODO(final): Do we want to push a error here?
 	}
 	return(result);
 }
 
 fpl_common_api wchar_t *fplCopyWideStringLen(const wchar_t *source, const size_t sourceLen, wchar_t *dest, const size_t maxDestLen) {
-	wchar_t *result = fpl_null;
-	if((source != fpl_null && dest != fpl_null) && ((sourceLen + 1) <= maxDestLen)) {
-		result = dest;
+	if(source != fpl_null && dest != fpl_null) {
+		size_t requiredLen = sourceLen + 1;
+		if(maxDestLen < requiredLen) {
+			fpl__ArgumentSizeTooSmallError("Max dest len", maxDestLen, requiredLen);
+			return fpl_null;
+		}
+		wchar_t *result = dest;
 		size_t index = 0;
 		while(index++ < sourceLen) {
 			*dest++ = *source++;
 		}
 		*dest = 0;
+		return(result);
 	} else {
-		// @TODO(final): Do we want to push a error here?
+		return(fpl_null);
 	}
-	return(result);
 }
 
 fpl_common_api wchar_t *fplCopyWideString(const wchar_t *source, wchar_t *dest, const size_t maxDestLen) {
@@ -5115,8 +5205,6 @@ fpl_common_api wchar_t *fplCopyWideString(const wchar_t *source, wchar_t *dest, 
 	if(source != fpl_null) {
 		size_t sourceLen = fplGetWideStringLength(source);
 		result = fplCopyWideStringLen(source, sourceLen, dest, maxDestLen);
-	} else {
-		// @TODO(final): Do we want to push a error here?
 	}
 	return(result);
 }
@@ -5703,8 +5791,10 @@ fpl_common_api void fplSetDefaultWindowSettings(fplWindowSettings *window) {
 	window->windowHeight = 600;
 	window->fullscreenWidth = 0;
 	window->fullscreenHeight = 0;
-	window->isResizable = true;
 	window->isFullscreen = false;
+	window->isResizable = true;
+	window->isDecorated = true;
+	window->isFloating = false;
 }
 
 fpl_common_api void fplSetDefaultInputSettings(fplInputSettings *input) {
@@ -5738,22 +5828,43 @@ fpl_common_api void fplSetDefaultSettings(fplSettings *settings) {
 #	endif
 
 #if defined(FPL_ENABLE_WINDOW)
-typedef struct fpl__Win32WindowStyle {
-	DWORD style;
-	DWORD exStyle;
-} fpl__Win32WindowStyle;
 
-#define FPL__Win32ResizeableWindowStyle WS_THICKFRAME | WS_SYSMENU | WS_MINIMIZEBOX | WS_MAXIMIZEBOX | WS_VISIBLE
-#define FPL__Win32ResizeableWindowExtendedStyle WS_EX_LEFT
+fpl_internal_inline DWORD fpl__Win32GetWindowStyle(const fplWindowSettings *settings) {
+	DWORD result = WS_CLIPSIBLINGS | WS_CLIPCHILDREN;
+	if(settings->isFullscreen) {
+		result |= WS_POPUP;
+	} else {
+		result |= WS_SYSMENU | WS_MINIMIZEBOX;
 
-#define FPL__Win32NonResizableWindowStyle WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX | WS_VISIBLE
-#define FPL__Win32NonResizableWindowExtendedStyle WS_EX_LEFT
+		if(settings->isDecorated) {
+			result |= WS_CAPTION;
+			if(settings->isResizable) {
+				result |= WS_MAXIMIZEBOX | WS_THICKFRAME;
+			}
+		} else {
+			result |= WS_POPUP;
+		}
+	}
+	return(result);
+}
 
-#define FPL__Win32FullscreenWindowStyle WS_POPUP | WS_VISIBLE
-#define FPL__Win32FullscreenWindowExtendedStyle WS_EX_APPWINDOW | WS_EX_TOPMOST
+fpl_internal_inline DWORD fpl__Win32GetWindowExStyle(const fplWindowSettings *settings) {
+	DWORD result = WS_EX_APPWINDOW;
+	if(settings->isFullscreen || settings->isFloating) {
+		result |= WS_EX_TOPMOST;
+	}
+	return(result);
+}
+
+fpl_internal_inline void fpl__Win32UpdateWindowStyles(const fplWindowSettings *settings, const fpl__Win32WindowState *windowState) {
+	FPL_ASSERT(fpl__global__AppState != fpl_null);
+	DWORD style = fpl__Win32GetWindowStyle(settings);
+	DWORD exStyle = fpl__Win32GetWindowExStyle(settings);
+	fpl__win32_SetWindowLong(windowState->windowHandle, GWL_STYLE, style);
+	fpl__win32_SetWindowLong(windowState->windowHandle, GWL_EXSTYLE, exStyle);
+}
 
 fpl_internal bool fpl__Win32LeaveFullscreen() {
-	// @TODO(final): The old window rect may be wrong when the display was changed (Turn off, Orientation, Grid Position, Screen res).
 	FPL_ASSERT(fpl__global__AppState != fpl_null);
 	const fpl__PlatformAppState *platState = fpl__global__AppState;
 	const fpl__Win32AppState *win32State = &platState->win32;
@@ -5770,6 +5881,7 @@ fpl_internal bool fpl__Win32LeaveFullscreen() {
 	wapi->user.SetWindowPlacement(windowHandle, &fullscreenInfo->placement);
 	wapi->user.SetWindowPos(windowHandle, fpl_null, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
 
+	// @NOTE(final): No need to handle minimized here because it is unlikly that you switch to fullscreen mode when the app is minimized
 	if(fullscreenInfo->isMaximized) {
 		fpl__win32_SendMessage(windowHandle, WM_SYSCOMMAND, SC_MAXIMIZE, 0);
 	}
@@ -5819,12 +5931,11 @@ fpl_internal bool fpl__Win32EnterFullscreen(const uint32_t fullscreenWidth, cons
 			useColourBits = wapi->gdi.GetDeviceCaps(deviceContext, BITSPIXEL);
 		}
 
-		// @TODO(final): Is this correct to assume the fullscreen rect is at (0, 0, w - 1, h - 1)?
 		RECT windowRect;
 		windowRect.left = 0;
 		windowRect.top = 0;
-		windowRect.right = windowRect.left + (useFullscreenWidth - 1);
-		windowRect.bottom = windowRect.left + (useFullscreenHeight - 1);
+		windowRect.right = windowRect.left + useFullscreenWidth;
+		windowRect.bottom = windowRect.left + useFullscreenHeight;
 
 		WINDOWPLACEMENT placement = FPL_ZERO_INIT;
 		placement.length = sizeof(placement);
@@ -6003,6 +6114,72 @@ fpl_internal_inline bool fpl__Win32IsKeyDown(const fpl__Win32Api *wapi, const ui
 	return(result);
 }
 
+fpl_internal_inline bool fpl__Win32IsCursorInWindow(const fpl__Win32Api *wapi, const fpl__Win32WindowState *win32Window) {
+	POINT pos;
+	if(!wapi->user.GetCursorPos(&pos)) {
+		return false;
+	}
+	// Not this window?
+	if(wapi->user.WindowFromPoint(pos) != win32Window->windowHandle) {
+		return false;
+	}
+
+	// Cursor in client rect?
+	RECT area;
+	wapi->user.GetClientRect(win32Window->windowHandle, &area);
+	wapi->user.ClientToScreen(win32Window->windowHandle, (POINT *)&area.left);
+	wapi->user.ClientToScreen(win32Window->windowHandle, (POINT *)&area.right);
+
+	bool result = wapi->user.PtInRect(&area, pos) == TRUE;
+	return(result);
+}
+
+fpl_internal void fpl__Win32LoadCursor(const fpl__Win32Api *wapi, const fpl__Win32WindowState *window) {
+	if(window->isCursorActive) {
+		wapi->user.SetCursor(fpl__win32_LoadCursor(fpl_null, IDC_ARROW));
+	} else {
+		wapi->user.SetCursor(fpl_null);
+	}
+}
+
+fpl_internal void fpl__Win32UpdateClipRect(const fpl__Win32Api *wapi, const fpl__Win32WindowState *window) {
+	if(window != fpl_null) {
+		RECT clipRect;
+		wapi->user.GetClientRect(window->windowHandle, &clipRect);
+		wapi->user.ClientToScreen(window->windowHandle, (POINT *)&clipRect.left);
+		wapi->user.ClientToScreen(window->windowHandle, (POINT *)&clipRect.right);
+		wapi->user.ClipCursor(&clipRect);
+	} else {
+		wapi->user.ClipCursor(fpl_null);
+	}
+}
+
+fpl_internal void fpl__Win32SetCursorState(const fpl__Win32Api *wapi, fpl__Win32WindowState *window, const bool state) {
+	if(!state) {
+		fpl__Win32UpdateClipRect(wapi, window);
+		const RAWINPUTDEVICE rid = { 0x01, 0x02, 0, window->windowHandle };
+		if(!wapi->user.RegisterRawInputDevices(&rid, 1, sizeof(rid))) {
+			fpl__PushError("Failed register raw input mouse device for window handle '%p'", window->windowHandle);
+		}
+	} else {
+		fpl__Win32UpdateClipRect(wapi, fpl_null);
+		const RAWINPUTDEVICE rid = { 0x01, 0x02, RIDEV_REMOVE, fpl_null };
+		if(!wapi->user.RegisterRawInputDevices(&rid, 1, sizeof(rid))) {
+			fpl__PushError("Failed to unregister raw input mouse device");
+		}
+	}
+	if(fpl__Win32IsCursorInWindow(wapi, window)) {
+		fpl__Win32LoadCursor(wapi, window);
+	}
+}
+
+fpl_internal_inline void fpl__Win32ShowCursor(const fpl__Win32Api *wapi, fpl__Win32WindowState *window) {
+	fpl__Win32SetCursorState(wapi, window, false);
+}
+fpl_internal_inline void fpl__Win32HideCursor(const fpl__Win32Api *wapi, fpl__Win32WindowState *window) {
+	fpl__Win32SetCursorState(wapi, window, true);
+}
+
 LRESULT CALLBACK fpl__Win32MessageProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 	FPL_ASSERT(fpl__global__AppState != fpl_null);
 	fpl__PlatformAppState *appState = fpl__global__AppState;
@@ -6014,6 +6191,8 @@ LRESULT CALLBACK fpl__Win32MessageProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 	if(!win32Window->windowHandle) {
 		return fpl__win32_DefWindowProc(hwnd, msg, wParam, lParam);
 	}
+
+	// @TODO(final): Handle WM_DISPLAYCHANGE 
 
 	LRESULT result = 0;
 	switch(msg) {
@@ -6084,25 +6263,97 @@ LRESULT CALLBACK fpl__Win32MessageProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 		} break;
 
 		case WM_CHAR:
+		case WM_SYSCHAR:
+		case WM_UNICHAR:
 		{
-			// @TODO(final): Add unicode support (WM_UNICHAR)!
-			if(wParam >= 0 && wParam < 256) {
-				uint64_t keyCode = wParam;
-				fplKeyboardModifierFlags modifiers = fplKeyboardModifierFlags_None;
-				fpl__Win32PushKeyboardEvent(&appState->window, fplKeyboardEventType_CharInput, keyCode, modifiers, 0);
+			if((msg == WM_UNICHAR) && (wParam == UNICODE_NOCHAR)) {
+				// @NOTE(final): WM_UNICHAR was sent by a third-party input method. Do not add any chars here!
+				return TRUE;
 			}
+
+			uint64_t keyCode = wParam;
+			fpl__Win32PushKeyboardEvent(&appState->window, fplKeyboardEventType_CharInput, keyCode, fplKeyboardModifierFlags_None, 0);
+
+			return 0;
 		} break;
 
 		case WM_ACTIVATE:
 		{
+		} break;
+
+		case WM_MOUSEACTIVATE:
+		{
+			// @NOTE(final): User starts to click/move the window frame
+			if(HIWORD(lParam) == WM_LBUTTONDOWN) {
+				if(LOWORD(lParam) == HTCLOSE || LOWORD(lParam) == HTMINBUTTON || LOWORD(lParam) == HTMAXBUTTON) {
+					win32Window->isFrameInteraction = true;
+				}
+			}
+		} break;
+
+		case WM_CAPTURECHANGED:
+		{
+			// User is done with interaction with the the window frame
+			if(lParam == 0 && win32Window->isFrameInteraction) {
+				// Hide cursor when needed
+				if(!win32Window->isCursorActive) {
+					fpl__Win32HideCursor(wapi, win32Window);
+				}
+				win32Window->isFrameInteraction = false;
+			}
+		} break;
+
+		case WM_SETFOCUS:
+		{
 			fplEvent newEvent = FPL_ZERO_INIT;
 			newEvent.type = fplEventType_Window;
-			if(wParam == WA_INACTIVE) {
-				newEvent.window.type = fplWindowEventType_LostFocus;
-			} else {
-				newEvent.window.type = fplWindowEventType_GotFocus;
-			}
+			newEvent.window.type = fplWindowEventType_GotFocus;
 			fpl__PushEvent(&newEvent);
+
+			// @NOTE(final): Do not disable the cursor while the user interacts with the window frame
+			if(win32Window->isFrameInteraction) {
+				break;
+			}
+
+			// Hide cursor when needed
+			if(!win32Window->isCursorActive) {
+				fpl__Win32HideCursor(wapi, win32Window);
+			}
+
+			return 0;
+		} break;
+
+		case WM_KILLFOCUS:
+		{
+			// Restore cursor when needed
+			if(!win32Window->isCursorActive) {
+				fpl__Win32ShowCursor(wapi, win32Window);
+			}
+
+			fplEvent newEvent = FPL_ZERO_INIT;
+			newEvent.type = fplEventType_Window;
+			newEvent.window.type = fplWindowEventType_LostFocus;
+			fpl__PushEvent(&newEvent);
+
+			return 0;
+		} break;
+
+		case WM_ENTERSIZEMOVE:
+		case WM_ENTERMENULOOP:
+		{
+			// Restore cursor when needed
+			if(!win32Window->isCursorActive) {
+				fpl__Win32ShowCursor(wapi, win32Window);
+			}
+		} break;
+
+		case WM_EXITSIZEMOVE:
+		case WM_EXITMENULOOP:
+		{
+			// Hide cursor when needed
+			if(!win32Window->isCursorActive) {
+				fpl__Win32HideCursor(wapi, win32Window);
+			}
 		} break;
 
 		case WM_LBUTTONDOWN:
@@ -6149,13 +6400,10 @@ LRESULT CALLBACK fpl__Win32MessageProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 
 		case WM_SETCURSOR:
 		{
-			// @TODO(final): This is not right to assume default cursor always, because the size cursor does not work this way!
-			if(win32Window->isCursorActive) {
-				HCURSOR cursor = wapi->user.GetCursor();
-				wapi->user.SetCursor(cursor);
-			} else {
-				wapi->user.SetCursor(fpl_null);
-				return 1;
+			// @NOTE(final): Load cursor only when we are in the window client area
+			if(LOWORD(lParam) == HTCLIENT) {
+				fpl__Win32LoadCursor(wapi, win32Window);
+				return TRUE;
 			}
 		} break;
 
@@ -6225,26 +6473,12 @@ fpl_internal bool fpl__Win32InitWindow(const fplSettings *initSettings, fplWindo
 	fplCopyAnsiString(windowTitle, currentWindowSettings->windowTitle, FPL_ARRAYCOUNT(currentWindowSettings->windowTitle));
 #endif
 
-#if 0
-	win32_char windowTitleBuffer[1024];
-	const win32_char *defaultTitle = FPL_WIN32_UNNAMED_WINDOW;
-	win32_ansiToString(defaultTitle, fplGetAnsiStringLength(defaultTitle), windowTitleBuffer, FPL_ARRAYCOUNT(windowTitleBuffer));
-	currentWindowSettings->isFullscreen = false;
-	if(fplGetAnsiStringLength(initWindowSettings->windowTitle) > 0) {
-		win32_ansiToString(initWindowSettings->windowTitle, fplGetAnsiStringLength(initWindowSettings->windowTitle), windowTitleBuffer, FPL_ARRAYCOUNT(windowTitleBuffer));
-	}
-#endif
-
 	// Create window
-	DWORD style;
-	DWORD exStyle;
+	DWORD style = fpl__Win32GetWindowStyle(&initSettings->window);
+	DWORD exStyle = fpl__Win32GetWindowExStyle(&initSettings->window);
 	if(initSettings->window.isResizable) {
-		style = FPL__Win32ResizeableWindowStyle;
-		exStyle = FPL__Win32ResizeableWindowExtendedStyle;
 		currentWindowSettings->isResizable = true;
 	} else {
-		style = FPL__Win32NonResizableWindowStyle;
-		exStyle = FPL__Win32NonResizableWindowExtendedStyle;
 		currentWindowSettings->isResizable = false;
 	}
 
@@ -6354,7 +6588,7 @@ fpl_internal fpl__Win32CommandLineUTF8Arguments fpl__Win32ParseWideArguments(LPW
 					executableFilePathLen++;
 				}
 				size_t sourceLen = fplGetWideStringLength(executableFilePathArgs[i]);
-				int destLen = WideCharToMultiByte(CP_UTF8, 0, executableFilePathArgs[i], (int)sourceLen, fpl_null, 0, 0, 0);
+				int destLen = WideCharToMultiByte(CP_UTF8, 0, executableFilePathArgs[i], (int)sourceLen, fpl_null, 0, fpl_null, fpl_null);
 				executableFilePathLen += destLen;
 			}
 
@@ -6366,7 +6600,7 @@ fpl_internal fpl__Win32CommandLineUTF8Arguments fpl__Win32ParseWideArguments(LPW
 				actualArgs = commandLineToArgvW(cmdLine, &actualArgumentCount);
 				for(int i = 0; i < actualArgumentCount; ++i) {
 					size_t sourceLen = fplGetWideStringLength(actualArgs[i]);
-					int destLen = WideCharToMultiByte(CP_UTF8, 0, actualArgs[i], (int)sourceLen, fpl_null, 0, 0, 0);
+					int destLen = WideCharToMultiByte(CP_UTF8, 0, actualArgs[i], (int)sourceLen, fpl_null, 0, fpl_null, fpl_null);
 					actualArgumentsLen += destLen;
 				}
 			}
@@ -6393,8 +6627,8 @@ fpl_internal fpl__Win32CommandLineUTF8Arguments fpl__Win32ParseWideArguments(LPW
 					}
 					wchar_t *sourceArg = executableFilePathArgs[i];
 					size_t sourceArgLen = fplGetWideStringLength(sourceArg);
-					int destArgLen = WideCharToMultiByte(CP_UTF8, 0, sourceArg, (int)sourceArgLen, fpl_null, 0, 0, 0);
-					WideCharToMultiByte(CP_UTF8, 0, sourceArg, (int)sourceArgLen, destArg, destArgLen, 0, 0);
+					int destArgLen = WideCharToMultiByte(CP_UTF8, 0, sourceArg, (int)sourceArgLen, fpl_null, 0, fpl_null, fpl_null);
+					WideCharToMultiByte(CP_UTF8, 0, sourceArg, (int)sourceArgLen, destArg, destArgLen, fpl_null, fpl_null);
 					destArg += destArgLen;
 				}
 				*destArg++ = 0;
@@ -6408,8 +6642,8 @@ fpl_internal fpl__Win32CommandLineUTF8Arguments fpl__Win32ParseWideArguments(LPW
 					args.args[1 + i] = destArg;
 					wchar_t *sourceArg = actualArgs[i];
 					size_t sourceArgLen = fplGetWideStringLength(sourceArg);
-					int destArgLen = WideCharToMultiByte(CP_UTF8, 0, sourceArg, (int)sourceArgLen, fpl_null, 0, 0, 0);
-					WideCharToMultiByte(CP_UTF8, 0, sourceArg, (int)sourceArgLen, destArg, destArgLen, 0, 0);
+					int destArgLen = WideCharToMultiByte(CP_UTF8, 0, sourceArg, (int)sourceArgLen, fpl_null, 0, fpl_null, fpl_null);
+					WideCharToMultiByte(CP_UTF8, 0, sourceArg, (int)sourceArgLen, destArg, destArgLen, fpl_null, fpl_null);
 					destArg += destArgLen;
 					*destArg++ = 0;
 				}
@@ -6427,7 +6661,6 @@ fpl_internal fpl__Win32CommandLineUTF8Arguments fpl__Win32ParseAnsiArguments(LPS
 	if(cmdLine != fpl_null) {
 		size_t ansiSourceLen = fplGetAnsiStringLength(cmdLine);
 		int wideDestLen = MultiByteToWideChar(CP_ACP, 0, cmdLine, (int)ansiSourceLen, fpl_null, 0);
-		// @TODO(final): Can we use a stack allocation here?
 		wchar_t *wideCmdLine = (wchar_t *)fplMemoryAllocate(sizeof(wchar_t) * (wideDestLen + 1));
 		MultiByteToWideChar(CP_ACP, 0, cmdLine, (int)ansiSourceLen, wideCmdLine, wideDestLen);
 		wideCmdLine[wideDestLen] = 0;
@@ -6787,7 +7020,7 @@ fpl_internal bool fpl__Win32InitPlatform(const fplInitFlags initFlags, const fpl
 	if(!(initFlags & fplInitFlags_Window)) {
 		HANDLE tmpOut = GetStdHandle(STD_OUTPUT_HANDLE);
 		if(tmpOut == fpl_null) {
-			// @TODO(final): This case seems to never be executed, even on non-CRT
+			// @TODO(final): This case seems to never be executed even on non-CRT -> When do i need to call AllocConsole()?
 			AllocConsole();
 			win32AppState->console.isAllocated = true;
 		}
@@ -6867,10 +7100,10 @@ fpl_platform_api int64_t fplAtomicAddS64(volatile int64_t *value, const int64_t 
 	int64_t result = _InterlockedExchangeAdd64((volatile LONG64 *)value, addend);
 #	else
 		// @NOTE(final): Why does MSVC have no _InterlockedExchangeAdd64 on x86???
-	int64_t oldValue = fplAtomicLoadS64(value);
+	int64_t oldValue = _InterlockedCompareExchange64((volatile LONG64 *)value, 0, 0);
 	int64_t newValue = oldValue + addend;
 	int64_t result = oldValue;
-	fplAtomicStoreS64(value, newValue);
+	_InterlockedCompareExchange64((volatile LONG64 *)value, newValue, oldValue);
 #	endif
 	return (result);
 }
@@ -6952,7 +7185,7 @@ fpl_platform_api void fplAtomicStoreS64(volatile int64_t *dest, const int64_t va
 	_InterlockedExchange64((volatile LONG64 *)dest, value);
 #else
 	// @NOTE(final): Why does MSVC have no _InterlockedExchange64 on x86???
-	int64_t oldValue = fplAtomicLoadS64(dest);
+	int64_t oldValue = _InterlockedCompareExchange64((volatile LONG64 *)dest, 0, 0);
 	_InterlockedCompareExchange64((volatile LONG64 *)dest, value, oldValue);
 #endif
 }
@@ -7428,7 +7661,7 @@ fpl_platform_api void *fplMemoryAllocate(const size_t size) {
 		fpl__ArgumentZeroError("Size");
 		return fpl_null;
 	}
-	void *result = VirtualAlloc(0, size, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+	void *result = VirtualAlloc(fpl_null, size, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
 	if(result == fpl_null) {
 		fpl__PushError("Failed allocating memory of %xu bytes", size);
 	}
@@ -7870,16 +8103,28 @@ fpl_platform_api char *fplGetHomePath(char *destPath, const size_t maxDestLen) {
 //
 // Win32 Timings
 //
-fpl_platform_api double fplGetTimeInSeconds() {
+fpl_platform_api double fplGetTimeInSecondsHP() {
 	const fpl__Win32InitState *initState = &fpl__global__InitState.win32;
 	LARGE_INTEGER time;
 	QueryPerformanceCounter(&time);
-	// @FIXME(final): This will not compile when CRT is disabled -> Requires _ltod3
 	double result = time.QuadPart / (double)initState->performanceFrequency.QuadPart;
 	return(result);
 }
 
-fpl_platform_api uint64_t fplGetTimeInMilliseconds() {
+fpl_platform_api uint64_t fplGetTimeInSecondsLP() {
+	uint64_t result = (uint64_t)GetTickCount() / 1000;
+	return(result);
+}
+
+fpl_platform_api double fplGetTimeInMillisecondsHP() {
+	const fpl__Win32InitState *initState = &fpl__global__InitState.win32;
+	LARGE_INTEGER time;
+	QueryPerformanceCounter(&time);
+	double result = (double)(time.QuadPart / initState->performanceFrequency.QuadPart) * 1000.0;
+	return(result);
+}
+
+fpl_platform_api uint64_t fplGetTimeInMillisecondsLP() {
 	uint64_t result = GetTickCount();
 	return(result);
 }
@@ -8042,10 +8287,8 @@ fpl_platform_api void fplSetWindowArea(const uint32_t width, const uint32_t heig
 
 fpl_platform_api bool fplIsWindowResizable() {
 	FPL_ASSERT(fpl__global__AppState != fpl_null);
-	const fpl__Win32AppState *appState = &fpl__global__AppState->win32;
-	const fpl__Win32WindowState *windowState = &fpl__global__AppState->window.win32;
-	DWORD style = fpl__win32_GetWindowLong(windowState->windowHandle, GWL_STYLE);
-	bool result = (style & WS_THICKFRAME) > 0;
+	const fpl__PlatformAppState *appState = fpl__global__AppState;
+	bool result = appState->currentSettings.window.isResizable;
 	return(result);
 }
 
@@ -8053,29 +8296,50 @@ fpl_platform_api void fplSetWindowResizeable(const bool value) {
 	FPL_ASSERT(fpl__global__AppState != fpl_null);
 	fpl__PlatformAppState *appState = fpl__global__AppState;
 	const fpl__Win32WindowState *windowState = &appState->window.win32;
-	const fpl__Win32AppState *win32State = &appState->win32;
 	if(!appState->currentSettings.window.isFullscreen) {
-		DWORD style;
-		DWORD exStyle;
-		if(value) {
-			style = FPL__Win32ResizeableWindowStyle;
-			exStyle = FPL__Win32ResizeableWindowExtendedStyle;
-		} else {
-			style = FPL__Win32NonResizableWindowStyle;
-			exStyle = FPL__Win32NonResizableWindowExtendedStyle;
-		}
-		fpl__win32_SetWindowLong(windowState->windowHandle, GWL_STYLE, style);
-		fpl__win32_SetWindowLong(windowState->windowHandle, GWL_EXSTYLE, exStyle);
 		appState->currentSettings.window.isResizable = value;
+		fpl__Win32UpdateWindowStyles(&appState->currentSettings.window, windowState);
+	}
+}
+
+fpl_platform_api bool fplIsWindowDecorated() {
+	FPL_ASSERT(fpl__global__AppState != fpl_null);
+	const fpl__PlatformAppState *appState = fpl__global__AppState;
+	bool result = appState->currentSettings.window.isDecorated;
+	return(result);
+}
+
+fpl_platform_api void fplSetWindowDecorated(const bool value) {
+	FPL_ASSERT(fpl__global__AppState != fpl_null);
+	fpl__PlatformAppState *appState = fpl__global__AppState;
+	const fpl__Win32WindowState *windowState = &appState->window.win32;
+	if(!appState->currentSettings.window.isFullscreen) {
+		appState->currentSettings.window.isDecorated = value;
+		fpl__Win32UpdateWindowStyles(&appState->currentSettings.window, windowState);
+	}
+}
+
+fpl_platform_api bool fplIsWindowFloating() {
+	FPL_ASSERT(fpl__global__AppState != fpl_null);
+	const fpl__PlatformAppState *appState = fpl__global__AppState;
+	bool result = appState->currentSettings.window.isFloating;
+	return(result);
+}
+
+fpl_platform_api void fplSetWindowFloating(const bool value) {
+	FPL_ASSERT(fpl__global__AppState != fpl_null);
+	fpl__PlatformAppState *appState = fpl__global__AppState;
+	const fpl__Win32WindowState *windowState = &appState->window.win32;
+	if(!appState->currentSettings.window.isFullscreen) {
+		appState->currentSettings.window.isFloating = value;
+		fpl__Win32UpdateWindowStyles(&appState->currentSettings.window, windowState);
 	}
 }
 
 fpl_platform_api bool fplIsWindowFullscreen() {
 	FPL_ASSERT(fpl__global__AppState != fpl_null);
-	const fpl__Win32WindowState *windowState = &fpl__global__AppState->window.win32;
-	HWND windowHandle = windowState->windowHandle;
-	DWORD style = fpl__win32_GetWindowLong(windowHandle, GWL_STYLE);
-	bool result = (style & FPL__Win32FullscreenWindowStyle) > 0;
+	fpl__PlatformAppState *appState = fpl__global__AppState;
+	bool result = appState->currentSettings.window.isFullscreen;
 	return(result);
 }
 
@@ -8151,15 +8415,22 @@ fpl_platform_api bool fplGetWindowPosition(fplWindowPosition *outPos) {
 	return(result);
 }
 
-fpl_platform_api void fplSetWindowTitle(const char *title) {
+fpl_platform_api void fplSetWindowAnsiTitle(const char *ansiTitle) {
 	FPL_ASSERT(fpl__global__AppState != fpl_null);
 	const fpl__Win32AppState *appState = &fpl__global__AppState->win32;
 	const fpl__Win32WindowState *windowState = &fpl__global__AppState->window.win32;
 	const fpl__Win32Api *wapi = &appState->winApi;
-
-	// @TODO(final): Add function for setting the unicode window title!
 	HWND handle = windowState->windowHandle;
-	wapi->user.SetWindowTextA(handle, title);
+	wapi->user.SetWindowTextA(handle, ansiTitle);
+}
+
+fpl_platform_api void fplSetWindowWideTitle(const wchar_t *wideTitle) {
+	FPL_ASSERT(fpl__global__AppState != fpl_null);
+	const fpl__Win32AppState *appState = &fpl__global__AppState->win32;
+	const fpl__Win32WindowState *windowState = &fpl__global__AppState->window.win32;
+	const fpl__Win32Api *wapi = &appState->winApi;
+	HWND handle = windowState->windowHandle;
+	wapi->user.SetWindowTextW(handle, wideTitle);
 }
 
 fpl_platform_api void fplSetWindowPosition(const int32_t left, const int32_t top) {
@@ -8188,7 +8459,6 @@ fpl_platform_api void fplSetWindowPosition(const int32_t left, const int32_t top
 }
 
 fpl_platform_api void fplSetWindowCursorEnabled(const bool value) {
-	// @BUG(final): Changing cursor visibility does not work reliable on win32, find a alternative!
 	FPL_ASSERT(fpl__global__AppState != fpl_null);
 	fpl__Win32WindowState *windowState = &fpl__global__AppState->window.win32;
 	windowState->isCursorActive = value;
@@ -8334,6 +8604,8 @@ fpl_platform_api bool fplSetClipboardWideText(const wchar_t *wideSource) {
 	return(result);
 }
 
+#if !defined(FPL_NO_ENTRYPOINT)
+
 #	if defined(UNICODE)
 
 int WINAPI wWinMain(HINSTANCE appInstance, HINSTANCE prevInstance, LPWSTR cmdLine, int cmdShow) {
@@ -8352,6 +8624,8 @@ int WINAPI WinMain(HINSTANCE appInstance, HINSTANCE prevInstance, LPSTR cmdLine,
 	return(result);
 }
 #	endif // UNICODE
+
+#endif // FPL_NO_ENTRYPOINT
 
 #endif // FPL_ENABLE_WINDOW
 
@@ -8692,7 +8966,7 @@ fpl_platform_api void fplAtomicStoreS64(volatile int64_t *dest, const int64_t va
 //
 // POSIX Timings
 //
-fpl_platform_api double fplGetTimeInSeconds() {
+fpl_platform_api double fplGetTimeInSecondsHP() {
 	// @TODO(final): Do we need to take the performance frequency into account?
 	timespec t;
 	clock_gettime(CLOCK_MONOTONIC, &t);
@@ -8700,11 +8974,20 @@ fpl_platform_api double fplGetTimeInSeconds() {
 	return(result);
 }
 
-fpl_platform_api uint64_t fplGetTimeInMilliseconds() {
-	// @TODO(final): Find a faster way to get the milliseconds
+fpl_platform_api uint64_t fplGetTimeInSecondsLP() {
+	uint64_t result = (uint64_t)time(fpl_null);
+	return(result);
+}
+
+fpl_platform_api double fplGetTimeInMillisecondsHP() {
 	timespec t;
 	clock_gettime(CLOCK_MONOTONIC, &t);
-	uint64_t result = t.tv_sec * 1000 + (uint64_t)(t.tv_nsec / 1.0e6);
+	double result = ((double)t.tv_sec + ((double)t.tv_nsec * 1e-9)) * 1000.0;
+	return(result);
+}
+
+fpl_platform_api uint64_t fplGetTimeInMillisecondsLP() {
+	uint64_t result = (uint64_t)time(fpl_null) * 1000;
 	return(result);
 }
 
@@ -8772,7 +9055,7 @@ fpl_platform_api fplThreadHandle *fplThreadCreate(fpl_run_thread_function *runFu
 		int threadRes = -1;
 		if(condRes == 0) {
 			thread->isValid = true;
-			// @TODO(final): Better pthread id!
+			// @TODO(final): Better thread id (pthread_t)
 			fplMemoryCopy(&thread->internalHandle.posix.thread, FPL_MIN(sizeof(thread->id), sizeof(thread->internalHandle.posix.thread)), &thread->id);
 			do {
 				threadRes = pthreadApi->pthread_create(&thread->internalHandle.posix.thread, fpl_null, fpl__PosixThreadProc, (void *)thread);
@@ -9840,7 +10123,7 @@ fpl_internal bool fpl__X11InitWindow(const fplSettings *initSettings, fplWindowS
 		windowHeight = 400;
 	}
 
-	// @TODO(final): Fullscreen support
+	// @TODO(final): X11 Fullscreen support
 
 	FPL_LOG("X11", "Create window with (Display='%p', Root='%d', Size=%dx%d, Colordepth='%d', visual='%p', colormap='%d'", windowState->display, (int)windowState->root, windowWidth, windowHeight, colorDepth, visual, (int)swa.colormap);
 	windowState->window = x11Api->XCreateWindow(windowState->display,
@@ -10100,6 +10383,24 @@ fpl_platform_api void fplSetWindowResizeable(const bool value) {
 	// @IMPLEMENT(final): X11 fplSetWindowResizeable
 }
 
+fpl_platform_api bool fplIsWindowDecorated() {
+	// @IMPLEMENT(final): X11 fplIsWindowDecorated
+	return false;
+}
+
+fpl_platform_api void fplSetWindowDecorated(const bool value) {
+	// @IMPLEMENT(final): X11 fplSetWindowDecorated
+}
+
+fpl_platform_api bool fplIsWindowFloating() {
+	// @IMPLEMENT(final): X11 fplIsWindowFloating
+	return false;
+}
+
+fpl_platform_api void fplSetWindowFloating(const bool value) {
+	// @IMPLEMENT(final): X11 fplSetWindowFloating
+}
+
 fpl_platform_api bool fplSetWindowFullscreen(const bool value, const uint32_t fullscreenWidth, const uint32_t fullscreenHeight, const uint32_t refreshRate) {
 	// @IMPLEMENT(final): X11 fplSetWindowFullscreen
 	return false;
@@ -10140,15 +10441,19 @@ fpl_platform_api void fplSetWindowPosition(const int32_t left, const int32_t top
 	x11Api->XMoveWindow(windowState->display, windowState->window, left, top);
 }
 
-fpl_platform_api void fplSetWindowTitle(const char *title) {
+fpl_platform_api void fplSetWindowAnsiTitle(const char *ansiTitle) {
 	fpl__PlatformAppState *appState = fpl__global__AppState;
 	FPL_ASSERT(appState != fpl_null);
 	const fpl__X11SubplatformState *subplatform = &appState->x11;
 	const fpl__X11Api *x11Api = &subplatform->api;
 	const fpl__X11WindowState *windowState = &appState->window.x11;
 	char nameBuffer[256];
-	fplCopyAnsiString(title, nameBuffer, FPL_ARRAYCOUNT(nameBuffer));
+	fplCopyAnsiString(ansiTitle, nameBuffer, FPL_ARRAYCOUNT(nameBuffer));
 	x11Api->XStoreName(windowState->display, windowState->window, nameBuffer);
+}
+
+fpl_platform_api void fplSetWindowWideTitle(const char *wideTitle) {
+	// @IMPLEMENT(final): X11 fplSetWindowWideTitle
 }
 
 fpl_platform_api char *fplGetClipboardAnsiText(char *dest, const uint32_t maxDestLen) {
@@ -11441,7 +11746,7 @@ fpl_internal void fpl__DirectSoundMainLoop(const fpl__CommonAudioState *commonAu
 			void* pLockPtr2;
 			DWORD actualLockSize2;
 			if(FAILED(IDirectSoundBuffer_Lock(dsoundState->secondaryBuffer, lockOffset, lockSize, &pLockPtr, &actualLockSize, &pLockPtr2, &actualLockSize2, 0))) {
-				// @TODO(final): Handle error
+				fpl__PushError("Failed to lock directsound secondary buffer '%p' for offset/size (%lu / %lu)!", dsoundState->secondaryBuffer, lockOffset, lockSize);
 				break;
 			}
 
@@ -12033,7 +12338,6 @@ fpl_internal bool fpl__InitVideo(const fplVideoDriverType driver, const fplVideo
 
 		// Clear to black by default
 		// @NOTE(final): Bitmap is top-down, 0xAABBGGRR
-		// @TODO(final): Backbuffer endianess???
 		uint32_t *p = backbuffer->pixels;
 		for(uint32_t y = 0; y < backbuffer->height; ++y) {
 			uint32_t color = 0xFF000000;
@@ -12475,7 +12779,7 @@ fpl_internal void fpl__ReleasePlatformStates(fpl__PlatformInitState *initState, 
 		FPL_LOG("Core", "Release Audio");
 		fpl__AudioState *audioState = fpl__GetAudioState(appState);
 		if(audioState != fpl_null) {
-			// @TODO(final): Rename to ShutdownAudio
+			// @TODO(final): Rename to ShutdownAudio?
 			fpl__ReleaseAudio(audioState);
 		}
 	}
@@ -12511,7 +12815,7 @@ fpl_internal void fpl__ReleasePlatformStates(fpl__PlatformInitState *initState, 
 	}
 #	endif
 
-	// @TODO(final): Release audio state here
+	// @TODO(final): Release audio state here?
 
 	if(appState != fpl_null) {
 		// Release actual platform (There can only be one platform!)
@@ -12781,7 +13085,7 @@ fpl_common_api fplPlatformType fplGetPlatformType() {
 // This block contains entry points required when CRT is disabled.
 //
 // %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-#if defined(FPL_NO_CRT)
+#if defined(FPL_NO_CRT) && !defined(FPL_NO_ENTRYPOINT)
 
 // ****************************************************************************
 //
@@ -12831,7 +13135,7 @@ void __stdcall mainCRTStartup(void) {
 // Non-Win32 Platforms (No CRT)
 //
 // ****************************************************************************
-// @TODO(final): Is it possible to disable CRT on Linux too?
+// @TODO(final): Support for not using libC in linux as well
 
 #endif // FPL_PLATFORM
 
