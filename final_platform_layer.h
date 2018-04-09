@@ -129,6 +129,9 @@ SOFTWARE.
 	\page page_changelog Changelog
 	\tableofcontents
 
+	## v0.7.4.0 beta:
+	- Fixed: [Win32] Removed x64 detected for fplAtomicStoreS64 and fplAtomicExchangeS64 and use _InterlockedExchange*64 directly
+
 	## v0.7.3.0 beta:
 	- Changed: fplConsoleWaitForCharInput returns char instead of const char
 	- Changed: Added isDecorated field to fplWindowSettings
@@ -7087,12 +7090,7 @@ fpl_platform_api uint64_t fplAtomicExchangeU64(volatile uint64_t *target, const 
 }
 fpl_platform_api int64_t fplAtomicExchangeS64(volatile int64_t *target, const int64_t value) {
 	FPL_ASSERT(target != fpl_null);
-#	if defined(FPL_ARCH_X64)
 	int64_t result = _InterlockedExchange64((volatile LONG64 *)target, value);
-#	else
-	// @NOTE(final): Why does MSVC have no _InterlockedExchange64 on x86???
-	int64_t result = _InterlockedCompareExchange64((volatile LONG64 *)target, value, value);
-#	endif
 	return (result);
 }
 
@@ -7113,16 +7111,8 @@ fpl_platform_api uint64_t fplAtomicAddU64(volatile uint64_t *value, const uint64
 }
 fpl_platform_api int64_t fplAtomicAddS64(volatile int64_t *value, const int64_t addend) {
 	FPL_ASSERT(value != fpl_null);
-#	if defined(FPL_ARCH_X64)
 	int64_t result = _InterlockedExchangeAdd64((volatile LONG64 *)value, addend);
-#	else
-		// @NOTE(final): Why does MSVC have no _InterlockedExchangeAdd64 on x86???
-	int64_t oldValue = _InterlockedCompareExchange64((volatile LONG64 *)value, 0, 0);
-	int64_t newValue = oldValue + addend;
-	int64_t result = oldValue;
-	_InterlockedCompareExchange64((volatile LONG64 *)value, newValue, oldValue);
-#	endif
-	return (result);
+	return(result);
 }
 
 fpl_platform_api uint32_t fplAtomicCompareAndExchangeU32(volatile uint32_t *dest, const uint32_t comparand, const uint32_t exchange) {
@@ -7198,13 +7188,7 @@ fpl_platform_api void fplAtomicStoreS32(volatile int32_t *dest, const int32_t va
 	_InterlockedExchange((volatile long *)dest, value);
 }
 fpl_platform_api void fplAtomicStoreS64(volatile int64_t *dest, const int64_t value) {
-#if defined(FPL_ARCH_X64)
 	_InterlockedExchange64((volatile LONG64 *)dest, value);
-#else
-	// @NOTE(final): Why does MSVC have no _InterlockedExchange64 on x86???
-	int64_t oldValue = _InterlockedCompareExchange64((volatile LONG64 *)dest, 0, 0);
-	_InterlockedCompareExchange64((volatile LONG64 *)dest, value, oldValue);
-#endif
 }
 
 //
