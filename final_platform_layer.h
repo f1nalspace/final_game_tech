@@ -8741,7 +8741,7 @@ fpl_internal bool fpl__PosixThreadWaitForMultiple(fplThreadHandle *threads[], co
 	}
 
 	volatile uint32_t completeCount = 0;
-	volatile uint64_t startTime = fplGetTimeInMilliseconds();
+	volatile uint64_t startTime = fplGetTimeInMillisecondsLP();
 	bool result = false;
 	while(completeCount < minCount) {
 		for(uint32_t index = 0; index < maxCount; ++index) {
@@ -8759,7 +8759,7 @@ fpl_internal bool fpl__PosixThreadWaitForMultiple(fplThreadHandle *threads[], co
 			}
 			fplThreadSleep(10);
 		}
-		if((maxMilliseconds != UINT32_MAX) && (fplGetTimeInMilliseconds() - startTime) >= maxMilliseconds) {
+		if((maxMilliseconds != UINT32_MAX) && (fplGetTimeInMillisecondsLP() - startTime) >= maxMilliseconds) {
 			result = false;
 			break;
 		}
@@ -8799,7 +8799,7 @@ fpl_internal bool fpl__PosixSignalWaitForMultiple(const fpl__PThreadApi *pthread
 
 
 	volatile uint32_t signaledCount = 0;
-	volatile uint64_t startTime = fplGetTimeInMilliseconds();
+	volatile uint64_t startTime = fplGetTimeInMillisecondsLP();
 	bool result = false;
 	while(signaledCount < minCount) {
 		for(uint32_t index = 0; index < maxCount; ++index) {
@@ -8817,7 +8817,7 @@ fpl_internal bool fpl__PosixSignalWaitForMultiple(const fpl__PThreadApi *pthread
 				}
 			}
 		}
-		if((maxMilliseconds != UINT32_MAX) && (fplGetTimeInMilliseconds() - startTime) >= maxMilliseconds) {
+		if((maxMilliseconds != UINT32_MAX) && (fplGetTimeInMillisecondsLP() - startTime) >= maxMilliseconds) {
 			result = false;
 			break;
 		}
@@ -10452,7 +10452,7 @@ fpl_platform_api void fplSetWindowAnsiTitle(const char *ansiTitle) {
 	x11Api->XStoreName(windowState->display, windowState->window, nameBuffer);
 }
 
-fpl_platform_api void fplSetWindowWideTitle(const char *wideTitle) {
+fpl_platform_api void fplSetWindowWideTitle(const wchar_t *wideTitle) {
 	// @IMPLEMENT(final): X11 fplSetWindowWideTitle
 }
 
