@@ -134,8 +134,6 @@ SOFTWARE.
 	- Changed: Added isDecorated field to fplWindowSettings
 	- Changed: Added isFloating field to fplWindowSettings
 	- Changed: Renamed fplSetWindowTitle() -> fplSetWindowAnsiTitle()
-	- Changed: Renamed fplGetTimeInSeconds() -> fplGetTimeInSecondsHP()
-	- Changed: Renamed fplGetTimeInMilliseconds() -> fplGetTimeInMillisecondsLP()
 	- Changed: Copy Ansi/Wide String pushes error for buffer range error
 	- Fixed: Fixed api name mismatch CloseFile() -> fplCloseFile()
 	- Fixed: Corrected wrong doxygen defines
@@ -144,7 +142,9 @@ SOFTWARE.
 	- New: Added fplIsWindowFloating() / fplSetWindowFloating()
 	- New: Added fplSetWindowWideTitle()
 	- New: Added fplGetTimeInMillisecondsHP()
+	- New: Added fplGetTimeInMillisecondsLP()
 	- New: Added fplGetTimeInSecondsLP()
+	- New: Added fplGetTimeInSecondsHP()
 	- New: Added FPL_NO_ENTRYPOINT
 
 	- Changed: [Win32] fplAtomicExchangeS64() / fplAtomicAddS64() / fplAtomicStoreS64() uses _Interlocked* operatings directly for x86
@@ -154,10 +154,14 @@ SOFTWARE.
 	- New: [Win32] Implemented fplIsWindowDecorated() / fplSetWindowDecorated()
 	- New: [Win32] Implemented fplIsWindowFloating() / fplSetWindowFloating()
 	- New: [Win32] Implemented fplSetWindowWideTitle()
+	- New: [Win32] Implemented fplGetTimeInMillisecondsLP()
 	- New: [Win32] Implemented fplGetTimeInMillisecondsHP()
 	- New: [Win32] Implemented fplGetTimeInSecondsLP()
+	- New: [Win32] Implemented fplGetTimeInSecondsHP()
+	- New: [POSIX] Implemented fplGetTimeInMillisecondsLP()
 	- New: [POSIX] Implemented fplGetTimeInMillisecondsHP()
 	- New: [POSIX] Implemented fplGetTimeInSecondsLP()
+	- New: [POSIX] Implemented fplGetTimeInSecondsHP()
 
 
 	## v0.7.2.0 beta:
@@ -2385,17 +2389,29 @@ fpl_platform_api double fplGetTimeInSecondsHP();
   */
 fpl_platform_api uint64_t fplGetTimeInSecondsLP();
 /**
-  * \brief Returns the current system in milliseconds in high precision (micro/nano seconds)
+  * \brief Returns the current system clock in seconds in default precision
+  * \return Returns number of seconds since some fixed starting point (OS start, System start, etc).
+  * \note Can only be used to calculate a difference in time. There is no guarantee to get high precision here, use for high precision \ref fplGetTimeInSecondsHP() instead!
+  */
+fpl_platform_api double fplGetTimeInSeconds();
+/**
+  * \brief Returns the current system clock in milliseconds in high precision (micro/nano seconds)
   * \return Returns number of milliseconds since some fixed starting point (OS start, System start, etc).
   * \note Can only be used to calculate a difference in time!
   */
 fpl_platform_api double fplGetTimeInMillisecondsHP();
 /**
-  * \brief Returns the current system in milliseconds in low precision (milliseconds)
+  * \brief Returns the current system clock in milliseconds in low precision (milliseconds)
   * \return Returns number of milliseconds since some fixed starting point (OS start, System start, etc).
   * \note Can only be used to calculate a difference in time!
   */
 fpl_platform_api uint64_t fplGetTimeInMillisecondsLP();
+/**
+  * \brief Returns the current system clock in milliseconds
+  * \return Returns number of milliseconds since some fixed starting point (OS start, System start, etc).
+  * \note Can only be used to calculate a difference in time!
+  */
+fpl_platform_api uint64_t fplGetTimeInMilliseconds();
 
 /** \}*/
 
@@ -4445,6 +4461,7 @@ typedef struct fpl__Win32WindowState {
 #	include <sys/types.h> // data types
 #	include <sys/stat.h> // mkdir
 #	include <sys/errno.h> // errno
+#	include <sys/time.h> // gettimeofday
 #	include <signal.h> // pthread_kill
 #	include <time.h> // clock_gettime, nanosleep
 #	include <dlfcn.h> // dlopen, dlclose
@@ -8116,6 +8133,11 @@ fpl_platform_api uint64_t fplGetTimeInSecondsLP() {
 	return(result);
 }
 
+fpl_platform_api double fplGetTimeInSeconds() {
+	double result = fplGetTimeInSecondsHP();
+	return(result);
+}
+
 fpl_platform_api double fplGetTimeInMillisecondsHP() {
 	const fpl__Win32InitState *initState = &fpl__global__InitState.win32;
 	LARGE_INTEGER time;
@@ -8126,6 +8148,11 @@ fpl_platform_api double fplGetTimeInMillisecondsHP() {
 
 fpl_platform_api uint64_t fplGetTimeInMillisecondsLP() {
 	uint64_t result = GetTickCount();
+	return(result);
+}
+
+fpl_platform_api uint64_t fplGetTimeInMilliseconds() {
+	uint64_t result = fplGetTimeInMillisecondsLP();
 	return(result);
 }
 
@@ -8741,7 +8768,7 @@ fpl_internal bool fpl__PosixThreadWaitForMultiple(fplThreadHandle *threads[], co
 	}
 
 	volatile uint32_t completeCount = 0;
-	volatile uint64_t startTime = fplGetTimeInMillisecondsLP();
+	volatile uint64_t startTime = fplGetTimeInMilliseconds();
 	bool result = false;
 	while(completeCount < minCount) {
 		for(uint32_t index = 0; index < maxCount; ++index) {
@@ -8759,7 +8786,7 @@ fpl_internal bool fpl__PosixThreadWaitForMultiple(fplThreadHandle *threads[], co
 			}
 			fplThreadSleep(10);
 		}
-		if((maxMilliseconds != UINT32_MAX) && (fplGetTimeInMillisecondsLP() - startTime) >= maxMilliseconds) {
+		if((maxMilliseconds != UINT32_MAX) && (fplGetTimeInMilliseconds() - startTime) >= maxMilliseconds) {
 			result = false;
 			break;
 		}
@@ -8799,7 +8826,7 @@ fpl_internal bool fpl__PosixSignalWaitForMultiple(const fpl__PThreadApi *pthread
 
 
 	volatile uint32_t signaledCount = 0;
-	volatile uint64_t startTime = fplGetTimeInMillisecondsLP();
+	volatile uint64_t startTime = fplGetTimeInMilliseconds();
 	bool result = false;
 	while(signaledCount < minCount) {
 		for(uint32_t index = 0; index < maxCount; ++index) {
@@ -8817,7 +8844,7 @@ fpl_internal bool fpl__PosixSignalWaitForMultiple(const fpl__PThreadApi *pthread
 				}
 			}
 		}
-		if((maxMilliseconds != UINT32_MAX) && (fplGetTimeInMillisecondsLP() - startTime) >= maxMilliseconds) {
+		if((maxMilliseconds != UINT32_MAX) && (fplGetTimeInMilliseconds() - startTime) >= maxMilliseconds) {
 			result = false;
 			break;
 		}
@@ -8979,6 +9006,13 @@ fpl_platform_api uint64_t fplGetTimeInSecondsLP() {
 	return(result);
 }
 
+fpl_platform_api double fplGetTimeInSeconds() {
+    struct timeval  tv;
+    gettimeofday(&tv, fpl_null);
+    double result = (double)tv.tv_sec + ((double)tv.tv_usec * 1e-6);
+    return(result);
+}
+
 fpl_platform_api double fplGetTimeInMillisecondsHP() {
 	timespec t;
 	clock_gettime(CLOCK_MONOTONIC, &t);
@@ -8989,6 +9023,13 @@ fpl_platform_api double fplGetTimeInMillisecondsHP() {
 fpl_platform_api uint64_t fplGetTimeInMillisecondsLP() {
 	uint64_t result = (uint64_t)time(fpl_null) * 1000;
 	return(result);
+}
+
+fpl_platform_api uint64_t fplGetTimeInMilliseconds() {
+    struct timeval  tv;
+    gettimeofday(&tv, fpl_null);
+    uint64_t result = tv.tv_sec * 1000 + ((uint64_t)tv.tv_usec / 1000);
+    return(result);
 }
 
 //
