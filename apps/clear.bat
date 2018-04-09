@@ -5,4 +5,5 @@ del /q *.sdf
 rmdir /q /s .vs
 rmdir /q /s immediates
 rmdir /q /s bin
-del /q data/*.txt
+rmdir /q /s ProtParser\obj
+del /q data\*.txt
