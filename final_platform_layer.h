@@ -3382,12 +3382,12 @@ fpl_platform_api bool fplGetWindowPosition(fplWindowPosition *outPos);
 fpl_platform_api void fplSetWindowPosition(const int32_t left, const int32_t top);
 /**
   * \brief Sets the window title from a ansi string.
-  * \param title New title ansi string
+  * \param ansiTitle New title ansi string
   */
 fpl_platform_api void fplSetWindowAnsiTitle(const char *ansiTitle);
 /**
   * \brief Sets the window title from a wide string.
-  * \param title New title wide string
+  * \param wideTitle New title wide string
   */
 fpl_platform_api void fplSetWindowWideTitle(const wchar_t *wideTitle);
 
