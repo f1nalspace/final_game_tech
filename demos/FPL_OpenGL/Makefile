@@ -1,7 +1,7 @@
 # Project
 APP_NAME = FPL_OpenGL
 SOURCE_FILES = fpl_opengl.cpp
-LIBS = -ldl
+LIBS = -ldl -lGL
 INCLUDES = -I../../
 
 # Auto detect release type/platform/architecture
