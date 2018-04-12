@@ -27,3 +27,4 @@
 /demos/FPL_FFMpeg/dependencies/ffmpeg/bin/*.dll
 /docs_fpl/html
 /demos/**/.kdev4
+/demos/**/.idea
