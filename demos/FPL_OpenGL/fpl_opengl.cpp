@@ -92,7 +92,7 @@ static void *GLProcAddress(const char *name) {
 	fpl__VideoState *videoState = (fpl__VideoState *)fpl__global__AppState->video.mem;
 	FPL_ASSERT(videoState != nullptr);
 	FPL_ASSERT(videoState->win32.opengl.api.wglGetProcAddress != nullptr);
-	void *result = videoState->win32.opengl.api.wglGetProcAddress((const GLubyte *)name);
+	void *result = videoState->win32.opengl.api.wglGetProcAddress(name);
 	return(result);
 }
 #else
