@@ -3,7 +3,7 @@
 #define FPL_NO_AUDIO
 #include <final_platform_layer.h>
 
-#include <GL\GL.h>
+#include <GL/gl.h>
 
 #ifndef APIENTRY
 #define APIENTRY
@@ -15,6 +15,8 @@ typedef ptrdiff_t GLsizeiptr;
 typedef ptrdiff_t GLintptr;
 typedef char GLchar;
 
+#ifndef GL_CONTEXT_PROFILE_MASK
+
 #define GL_CONTEXT_PROFILE_MASK           0x9126
 #define GL_CONTEXT_FLAGS                  0x821E
 
@@ -24,6 +26,8 @@ typedef char GLchar;
 #define GL_CONTEXT_FLAG_NO_ERROR_BIT			0x00000008
 #define GL_CONTEXT_CORE_PROFILE_BIT				0x00000001
 #define GL_CONTEXT_COMPATIBILITY_PROFILE_BIT	0x00000002
+
+#endif // GL_CONTEXT_PROFILE_MASK
 
 #define GL_COMPILE_STATUS                 0x8B81
 #define GL_INFO_LOG_LENGTH                0x8B84
@@ -83,30 +87,48 @@ static PFNGLDISABLEVERTEXATTRIBARRAYPROC glDisableVertexAttribArray = nullptr;
 static PFNGLVERTEXATTRIBPOINTERPROC glVertexAttribPointer = nullptr;
 static PFNGLDELETEVERTEXARRAYSPROC glDeleteVertexArrays = nullptr;
 
-static void LoadGLExtensions() {
-	glCreateShader = (PFNGLCREATESHADERPROC)wglGetProcAddress("glCreateShader");
-	glShaderSource = (PFNGLSHADERSOURCEPROC)wglGetProcAddress("glShaderSource");
-	glCompileShader = (PFNGLCOMPILESHADERPROC)wglGetProcAddress("glCompileShader");
-	glGetShaderiv = (PFNGLGETSHADERIVPROC)wglGetProcAddress("glGetShaderiv");
-	glAttachShader = (PFNGLATTACHSHADERPROC)wglGetProcAddress("glAttachShader");
-	glCreateProgram = (PFNGLCREATEPROGRAMPROC)wglGetProcAddress("glCreateProgram");
-	glGetShaderInfoLog = (PFNGLGETSHADERINFOLOGPROC)wglGetProcAddress("glGetShaderInfoLog");
-	glLinkProgram = (PFNGLLINKPROGRAMPROC)wglGetProcAddress("glLinkProgram");
-	glValidateProgram = (PFNGLVALIDATEPROGRAMPROC)wglGetProcAddress("glValidateProgram");
-	glGetProgramiv = (PFNGLGETPROGRAMIVPROC)wglGetProcAddress("glGetProgramiv");
-	glGetProgramInfoLog = (PFNGLGETPROGRAMINFOLOGPROC)wglGetProcAddress("glGetProgramInfoLog");
-	glDeleteShader = (PFNGLDELETESHADERPROC)wglGetProcAddress("glDeleteShader");
-	glUseProgram = (PFNGLUSEPROGRAMPROC)wglGetProcAddress("glUseProgram");
+#if defined(FPL_PLATFORM_WIN32)
+static void *GLProcAddress(const char *name) {
+	fpl__VideoState *videoState = (fpl__VideoState *)fpl__global__AppState->video.mem;
+	FPL_ASSERT(videoState != nullptr);
+	FPL_ASSERT(videoState->win32.opengl.api.wglGetProcAddress != nullptr);
+	void *result = videoState->win32.opengl.api.wglGetProcAddress((const GLubyte *)name);
+	return(result);
+}
+#else
+static void *GLProcAddress(const char *name) {
+	fpl__VideoState *videoState = (fpl__VideoState *)fpl__global__AppState->video.mem;
+	FPL_ASSERT(videoState != nullptr);
+	FPL_ASSERT(videoState->x11.opengl.api.glXGetProcAddress != nullptr);
+	void *result = videoState->x11.opengl.api.glXGetProcAddress((const GLubyte *)name);
+	return(result);
+}
+#endif
 
-	glGenVertexArrays = (PFNGLGENVERTEXARRAYSPROC)wglGetProcAddress("glGenVertexArrays");
-	glBindVertexArray = (PFNGLBINDVERTEXARRAYPROC)wglGetProcAddress("glBindVertexArray");
-	glGenBuffers = (PFNGLGENBUFFERSPROC)wglGetProcAddress("glGenBuffers");
-	glBindBuffer = (PFNGLBINDBUFFERPROC)wglGetProcAddress("glBindBuffer");
-	glBufferData = (PFNGLBUFFERDATAPROC)wglGetProcAddress("glBufferData");
-	glEnableVertexAttribArray = (PFNGLENABLEVERTEXATTRIBARRAYPROC)wglGetProcAddress("glEnableVertexAttribArray");
-	glDisableVertexAttribArray = (PFNGLENABLEVERTEXATTRIBARRAYPROC)wglGetProcAddress("glDisableVertexAttribArray");
-	glVertexAttribPointer = (PFNGLVERTEXATTRIBPOINTERPROC)wglGetProcAddress("glVertexAttribPointer");
-	glDeleteVertexArrays = (PFNGLDELETEVERTEXARRAYSPROC)wglGetProcAddress("glDeleteVertexArrays");
+static void LoadGLExtensions() {
+	glCreateShader = (PFNGLCREATESHADERPROC)GLProcAddress("glCreateShader");
+	glShaderSource = (PFNGLSHADERSOURCEPROC)GLProcAddress("glShaderSource");
+	glCompileShader = (PFNGLCOMPILESHADERPROC)GLProcAddress("glCompileShader");
+	glGetShaderiv = (PFNGLGETSHADERIVPROC)GLProcAddress("glGetShaderiv");
+	glAttachShader = (PFNGLATTACHSHADERPROC)GLProcAddress("glAttachShader");
+	glCreateProgram = (PFNGLCREATEPROGRAMPROC)GLProcAddress("glCreateProgram");
+	glGetShaderInfoLog = (PFNGLGETSHADERINFOLOGPROC)GLProcAddress("glGetShaderInfoLog");
+	glLinkProgram = (PFNGLLINKPROGRAMPROC)GLProcAddress("glLinkProgram");
+	glValidateProgram = (PFNGLVALIDATEPROGRAMPROC)GLProcAddress("glValidateProgram");
+	glGetProgramiv = (PFNGLGETPROGRAMIVPROC)GLProcAddress("glGetProgramiv");
+	glGetProgramInfoLog = (PFNGLGETPROGRAMINFOLOGPROC)GLProcAddress("glGetProgramInfoLog");
+	glDeleteShader = (PFNGLDELETESHADERPROC)GLProcAddress("glDeleteShader");
+	glUseProgram = (PFNGLUSEPROGRAMPROC)GLProcAddress("glUseProgram");
+
+	glGenVertexArrays = (PFNGLGENVERTEXARRAYSPROC)GLProcAddress("glGenVertexArrays");
+	glBindVertexArray = (PFNGLBINDVERTEXARRAYPROC)GLProcAddress("glBindVertexArray");
+	glGenBuffers = (PFNGLGENBUFFERSPROC)GLProcAddress("glGenBuffers");
+	glBindBuffer = (PFNGLBINDBUFFERPROC)GLProcAddress("glBindBuffer");
+	glBufferData = (PFNGLBUFFERDATAPROC)GLProcAddress("glBufferData");
+	glEnableVertexAttribArray = (PFNGLENABLEVERTEXATTRIBARRAYPROC)GLProcAddress("glEnableVertexAttribArray");
+	glDisableVertexAttribArray = (PFNGLENABLEVERTEXATTRIBARRAYPROC)GLProcAddress("glDisableVertexAttribArray");
+	glVertexAttribPointer = (PFNGLVERTEXATTRIBPOINTERPROC)GLProcAddress("glVertexAttribPointer");
+	glDeleteVertexArrays = (PFNGLDELETEVERTEXARRAYSPROC)GLProcAddress("glDeleteVertexArrays");
 }
 
 #define MODERN_OPENGL 1
@@ -138,12 +160,14 @@ static GLuint CreateShaderType(GLenum type, const char *source) {
 	glShaderSource(shaderId, 1, &source, nullptr);
 	glCompileShader(shaderId);
 
+	char info[1024 * 10] = {};
+
 	GLint compileResult;
 	glGetShaderiv(shaderId, GL_COMPILE_STATUS, &compileResult);
 	if (!compileResult) {
 		GLint infoLen;
 		glGetShaderiv(shaderId, GL_INFO_LOG_LENGTH, &infoLen);
-		char *info = (char *)FPL_STACKALLOCATE(infoLen);
+		FPL_ASSERT(infoLen <= FPL_ARRAYCOUNT(info));
 		glGetShaderInfoLog(shaderId, infoLen, &infoLen, info);
 		fplConsoleFormatError("Failed compiling %s shader!\n", (type == GL_VERTEX_SHADER ? "vertex" : "fragment"));
 		fplConsoleFormatError("%s\n", info);
@@ -163,13 +187,14 @@ static GLuint CreateShaderProgram(const char *name, const char *vertexSource, co
 	glLinkProgram(programId);
 	glValidateProgram(programId);
 
+	char info[1024 * 10] = {};
+
 	GLint linkResult;
 	glGetProgramiv(programId, GL_LINK_STATUS, &linkResult);
 	if (!linkResult) {
 		GLint infoLen;
 		glGetProgramiv(programId, GL_INFO_LOG_LENGTH, &infoLen);
-
-		char *info = (char *)FPL_STACKALLOCATE(infoLen);
+		FPL_ASSERT(infoLen <= FPL_ARRAYCOUNT(info));
 		glGetProgramInfoLog(programId, infoLen, &infoLen, info);
 		fplConsoleFormatError("Failed linking '%s' shader!\n", name);
 		fplConsoleFormatError("%s\n", info);
