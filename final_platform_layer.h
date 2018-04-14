@@ -130,7 +130,8 @@ SOFTWARE.
 	\tableofcontents
 
 	## v0.7.4.0 beta:
-	- Fixed: [Win32] Removed x64 detected for fplAtomicStoreS64 and fplAtomicExchangeS64 and use _InterlockedExchange*64 directly
+	- Fixed: [Win32] Removed x64 detection for fplAtomicStoreS64 and fplAtomicExchangeS64 and use _InterlockedExchange*64 directly
+  	- Changed: [GLX] Implemented modern opengl context creation
 
 	## v0.7.3.0 beta:
 	- Changed: fplConsoleWaitForCharInput returns char instead of const char
@@ -11026,34 +11027,48 @@ fpl_internal void fpl__Win32ReleaseVideoOpenGL(fpl__Win32VideoOpenGLState *glSta
 #if defined(FPL_ENABLE_VIDEO_OPENGL) && defined(FPL_SUBPLATFORM_X11)
 #	include <GL/glx.h> // XVisualInfo, GLXContext, GLXDrawable
 
-#define FPL__FUNC_GL_X_CHOOSE_VISUAL(name) XVisualInfo* name(Display *dpy, int screen, int *attribList)
-typedef FPL__FUNC_GL_X_CHOOSE_VISUAL(fpl__func_glx_glXChooseVisual);
-#define FPL__FUNC_GL_X_CREATE_CONTEXT(name) GLXContext name(Display *dpy, XVisualInfo *vis, GLXContext shareList, Bool direct)
-typedef FPL__FUNC_GL_X_CREATE_CONTEXT(fpl__func_glx_glXCreateContext);
-#define FPL__FUNC_GL_X_CREATE_NEW_CONTEXT(name) GLXContext name(Display *dpy, GLXFBConfig config, int render_type, GLXContext share_list, Bool direct)
-typedef FPL__FUNC_GL_X_CREATE_NEW_CONTEXT(fpl__func_glx_glXCreateNewContext);
-#define FPL__FUNC_GL_X_DESTROY_CONTEXT(name) void name(Display *dpy, GLXContext ctx)
-typedef FPL__FUNC_GL_X_DESTROY_CONTEXT(fpl__func_glx_glXDestroyContext);
-#define FPL__FUNC_GL_X_MAKE_CURRENT(name) Bool name(Display *dpy, GLXDrawable drawable, GLXContext ctx)
-typedef FPL__FUNC_GL_X_MAKE_CURRENT(fpl__func_glx_glXMakeCurrent);
-#define FPL__FUNC_GL_X_SWAP_BUFFERS(name) void name(Display *dpy, GLXDrawable drawable)
-typedef FPL__FUNC_GL_X_SWAP_BUFFERS(fpl__func_glx_glXSwapBuffers);
-#define FPL__FUNC_GL_X_GET_PROC_ADDRESS(name) void *name(const GLubyte *procName)
-typedef FPL__FUNC_GL_X_GET_PROC_ADDRESS(fpl__func_glx_glXGetProcAddress);
-#define FPL__FUNC_GL_X_CHOOSE_FB_CONFIG(name) GLXFBConfig *name(Display *dpy, int screen, const int *attrib_list, int *nelements)
-typedef FPL__FUNC_GL_X_CHOOSE_FB_CONFIG(fpl__func_glx_glXChooseFBConfig);
-#define FPL__FUNC_GL_X_GET_FB_CONFIGS(name) GLXFBConfig *name(Display *dpy, int screen, int *nelements)
-typedef FPL__FUNC_GL_X_GET_FB_CONFIGS(fpl__func_glx_glXGetFBConfigs);
-#define FPL__FUNC_GL_X_GET_VISUAL_FROM_FB_CONFIG(name) XVisualInfo *name(Display *dpy, GLXFBConfig config)
-typedef FPL__FUNC_GL_X_GET_VISUAL_FROM_FB_CONFIG(fpl__func_glx_glXGetVisualFromFBConfig);
-#define FPL__FUNC_GL_X_GET_FB_CONFIG_ATTRIB(name) int name(Display *dpy, GLXFBConfig config, int attribute, int *value)
-typedef FPL__FUNC_GL_X_GET_FB_CONFIG_ATTRIB(fpl__func_glx_glXGetFBConfigAttrib);
-#define FPL__FUNC_GL_X_CREATE_WINDOW(name) GLXWindow name(Display *dpy, GLXFBConfig config, Window win,  const int *attrib_list)
-typedef FPL__FUNC_GL_X_CREATE_WINDOW(fpl__func_glx_glXCreateWindow);
-#define FPL__FUNC_GL_X_QUERY_EXTENSION(name) Bool name(Display *dpy, int *errorBase, int *eventBase)
-typedef FPL__FUNC_GL_X_QUERY_EXTENSION(fpl__func_glx_glXQueryExtension);
-#define FPL__FUNC_GL_X_QUERY_EXTENSIONS_STRING(name) const char *name(Display *dpy, int screen)
-typedef FPL__FUNC_GL_X_QUERY_EXTENSIONS_STRING(fpl__func_glx_glXQueryExtensionsString);
+#define FPL__FUNC_GLX_glXChooseVisual(name) XVisualInfo* name(Display *dpy, int screen, int *attribList)
+typedef FPL__FUNC_GLX_glXChooseVisual(fpl__func_glx_glXChooseVisual);
+#define FPL__FUNC_GLX_glXCreateContext(name) GLXContext name(Display *dpy, XVisualInfo *vis, GLXContext shareList, Bool direct)
+typedef FPL__FUNC_GLX_glXCreateContext(fpl__func_glx_glXCreateContext);
+#define FPL__FUNC_GLX_glXCreateNewContext(name) GLXContext name(Display *dpy, GLXFBConfig config, int render_type, GLXContext share_list, Bool direct)
+typedef FPL__FUNC_GLX_glXCreateNewContext(fpl__func_glx_glXCreateNewContext);
+#define FPL__FUNC_GLX_glXDestroyContext(name) void name(Display *dpy, GLXContext ctx)
+typedef FPL__FUNC_GLX_glXDestroyContext(fpl__func_glx_glXDestroyContext);
+#define FPL__FUNC_GLX_glXMakeCurrent(name) Bool name(Display *dpy, GLXDrawable drawable, GLXContext ctx)
+typedef FPL__FUNC_GLX_glXMakeCurrent(fpl__func_glx_glXMakeCurrent);
+#define FPL__FUNC_GLX_glXSwapBuffers(name) void name(Display *dpy, GLXDrawable drawable)
+typedef FPL__FUNC_GLX_glXSwapBuffers(fpl__func_glx_glXSwapBuffers);
+#define FPL__FUNC_GLX_glXGetProcAddress(name) void *name(const GLubyte *procName)
+typedef FPL__FUNC_GLX_glXGetProcAddress(fpl__func_glx_glXGetProcAddress);
+#define FPL__FUNC_GLX_glXChooseFBConfig(name) GLXFBConfig *name(Display *dpy, int screen, const int *attrib_list, int *nelements)
+typedef FPL__FUNC_GLX_glXChooseFBConfig(fpl__func_glx_glXChooseFBConfig);
+#define FPL__FUNC_GLX_glXGetFBConfigs(name) GLXFBConfig *name(Display *dpy, int screen, int *nelements)
+typedef FPL__FUNC_GLX_glXGetFBConfigs(fpl__func_glx_glXGetFBConfigs);
+#define FPL__FUNC_GLX_glXGetVisualFromFBConfig(name) XVisualInfo *name(Display *dpy, GLXFBConfig config)
+typedef FPL__FUNC_GLX_glXGetVisualFromFBConfig(fpl__func_glx_glXGetVisualFromFBConfig);
+#define FPL__FUNC_GLX_glXGetFBConfigAttrib(name) int name(Display *dpy, GLXFBConfig config, int attribute, int *value)
+typedef FPL__FUNC_GLX_glXGetFBConfigAttrib(fpl__func_glx_glXGetFBConfigAttrib);
+#define FPL__FUNC_GLX_glXCreateWindow(name) GLXWindow name(Display *dpy, GLXFBConfig config, Window win,  const int *attrib_list)
+typedef FPL__FUNC_GLX_glXCreateWindow(fpl__func_glx_glXCreateWindow);
+#define FPL__FUNC_GLX_glXQueryExtension(name) Bool name(Display *dpy, int *errorBase, int *eventBase)
+typedef FPL__FUNC_GLX_glXQueryExtension(fpl__func_glx_glXQueryExtension);
+#define FPL__FUNC_GLX_glXQueryExtensionsString(name) const char *name(Display *dpy, int screen)
+typedef FPL__FUNC_GLX_glXQueryExtensionsString(fpl__func_glx_glXQueryExtensionsString);
+
+// Modern GLX
+#define FPL__FUNC_GLX_glXCreateContextAttribsARB(name) GLXContext name(Display *dpy, GLXFBConfig config, GLXContext share_context, Bool direct, const int *attrib_list)
+typedef FPL__FUNC_GLX_glXCreateContextAttribsARB(fpl__func_glx_glXCreateContextAttribsARB);
+
+#define FPL__GLX_CONTEXT_MAJOR_VERSION_ARB 0x2091
+#define FPL__GLX_CONTEXT_MINOR_VERSION_ARB 0x2092
+#define FPL__GLX_CONTEXT_FLAGS_ARB 0x2094
+#define FPL__GLX_CONTEXT_PROFILE_MASK_ARB 0x9126
+
+#define FPL__GLX_CONTEXT_DEBUG_BIT_ARB 0x0001
+#define FPL__GLX_CONTEXT_FORWARD_COMPATIBLE_BIT_ARB 0x0002
+#define FPL__GLX_CONTEXT_CORE_PROFILE_BIT_ARB 0x00000001
+#define FPL__GLX_CONTEXT_COMPATIBILITY_PROFILE_BIT_ARB 0x00000002
 
 typedef struct fpl__X11VideoOpenGLApi {
 	void *libHandle;
@@ -11071,6 +11086,8 @@ typedef struct fpl__X11VideoOpenGLApi {
 	fpl__func_glx_glXCreateWindow *glXCreateWindow;
 	fpl__func_glx_glXQueryExtension *glXQueryExtension;
 	fpl__func_glx_glXQueryExtensionsString *glXQueryExtensionsString;
+
+	fpl__func_glx_glXCreateContextAttribsARB *glXCreateContextAttribsARB;
 } fpl__X11VideoOpenGLApi;
 
 fpl_internal void fpl__X11UnloadVideoOpenGLApi(fpl__X11VideoOpenGLApi *api) {
@@ -11130,6 +11147,9 @@ typedef struct fpl__X11VideoOpenGLState {
 
 fpl_internal_inline bool fpl__X11SetPreWindowSetupForOpenGL(const fpl__X11Api *x11Api, const fpl__X11WindowState *windowState, const fpl__X11VideoOpenGLState *glState, fpl__X11PreWindowSetupResult *outResult) {
 	const fpl__X11VideoOpenGLApi *glApi = &glState->api;
+
+	// @TODO(final): Detect GLX version and use FBConfig only when version is >= 1.3 / Fallback to glXChooseVisual
+
 	FPL_ASSERT(glState->fbConfig != fpl_null);
 
 	FPL_LOG("GLX", "Get visual info from display '%p' and frame buffer config '%p'", windowState->display, glState->fbConfig);
@@ -11167,16 +11187,33 @@ fpl_internal bool fpl__X11InitFrameBufferConfigVideoOpenGL(const fpl__X11Api *x1
 		FPL_LOG("GLX", "OpenGL GLX extensions: %s", extensionString);
 	}
 
-	int attr[32];
-	int* p = attr;
-	*p++ = GLX_X_VISUAL_TYPE; *p++ = GLX_TRUE_COLOR;
-	*p++ = GLX_DOUBLEBUFFER;  *p++ = True;
-	*p++ = GLX_RED_SIZE;      *p++ = 8;
-	*p++ = GLX_GREEN_SIZE;    *p++ = 8;
-	*p++ = GLX_BLUE_SIZE;     *p++ = 8;
-	*p++ = GLX_DEPTH_SIZE;    *p++ = 24;
-	*p++ = GLX_STENCIL_SIZE;  *p++ = 8;
-	*p++ = 0;
+	// @TODO(final): Detect GLX version and use FBConfig only when version is >= 1.3
+
+	int attr[32] = FPL_ZERO_INIT;
+	int attrIndex = 0;
+
+	attr[attrIndex++] = GLX_X_VISUAL_TYPE;
+	attr[attrIndex++] = GLX_TRUE_COLOR;
+
+	attr[attrIndex++] = GLX_DOUBLEBUFFER;
+	attr[attrIndex++] = True;
+
+	attr[attrIndex++] = GLX_RED_SIZE;
+	attr[attrIndex++] = 8;
+
+	attr[attrIndex++] = GLX_GREEN_SIZE;
+	attr[attrIndex++] = 8;
+
+	attr[attrIndex++] = GLX_BLUE_SIZE;
+	attr[attrIndex++] = 8;
+
+	attr[attrIndex++] = GLX_DEPTH_SIZE;
+	attr[attrIndex++] = 24;
+
+	attr[attrIndex++] = GLX_STENCIL_SIZE;
+	attr[attrIndex++] = 8;
+
+	attr[attrIndex] = 0;
 
 	FPL_LOG("GLX", "Get framebuffer configuration from display '%p' and screen '%d'", windowState->display, windowState->screen);
 	int configCount = 0;
@@ -11212,14 +11249,15 @@ fpl_internal void fpl__X11ReleaseVideoOpenGL(const fpl__X11WindowState *windowSt
 }
 
 fpl_internal bool fpl__X11InitVideoOpenGL(const fpl__X11SubplatformState *subplatform, const fpl__X11WindowState *windowState, const fplVideoSettings *videoSettings, fpl__X11VideoOpenGLState *glState) {
-	const fpl__X11VideoOpenGLApi *glApi = &glState->api;
 	const fpl__X11Api *x11Api = &subplatform->api;
+	fpl__X11VideoOpenGLApi *glApi = &glState->api;
 
 	if(glState->fbConfig == fpl_null) {
 		FPL_LOG("GLX", "No frame buffer configuration found");
 		return false;
 	}
 
+// @TODO(final): Do we want to use glXCreateNewContext always?
 #define USE_NEW_CTX 0
 
 #if !USE_NEW_CTX
@@ -11232,37 +11270,142 @@ fpl_internal bool fpl__X11InitVideoOpenGL(const fpl__X11SubplatformState *subpla
 	FPL_LOG("GLX", "Successfully got visual info from display '%p' and frame buffer config '%p': %p", windowState->display, glState->fbConfig, visualInfo);
 #endif
 
-	bool result = false;
+	//
+	// Create legacy context
+	//
+	GLXContext legacyRenderingContext;
 
 #if USE_NEW_CTX
-	FPL_LOG("GLX", "Create GLX rendering context on display '%p' and frame buffer config '%p'", windowState->display, glState->fbConfig);
-	glState->context = glApi->glXCreateNewContext(windowState->display, glState->fbConfig, GLX_RGBA_TYPE, fpl_null, GL_TRUE);
+	FPL_LOG("GLX", "Create GLX legacy rendering context on display '%p' and frame buffer config '%p'", windowState->display, glState->fbConfig);
+	legacyRenderingContext = glApi->glXCreateNewContext(windowState->display, glState->fbConfig, GLX_RGBA_TYPE, fpl_null, GL_TRUE);
+	if (!legacyRenderingContext) {
+		FPL_LOG("GLX", "Failed creating GLX legacy rendering context on display '%p' and frame buffer config '%p'", windowState->display, glState->fbConfig);
+		goto failed_x11_glx;
+	}
 #else
-	FPL_LOG("GLX", "Create GLX rendering context on display '%p' and visual info '%p'", windowState->display, visualInfo);
-	glState->context = glApi->glXCreateContext(windowState->display, visualInfo, fpl_null, GL_TRUE);
+	FPL_LOG("GLX", "Create GLX legacy rendering context on display '%p' and visual info '%p'", windowState->display, visualInfo);
+	legacyRenderingContext = glApi->glXCreateContext(windowState->display, visualInfo, fpl_null, GL_TRUE);
+	if (!legacyRenderingContext) {
+		FPL_LOG("GLX", "Failed creating GLX legacy rendering context on display '%p' and visual info '%p'", windowState->display, visualInfo);
+		goto failed_x11_glx;
+	}
 #endif
 
-	if(glState->context != fpl_null) {
-		FPL_LOG("GLX", "Activate GLX rendering context '%p' on display '%p' and window '%d'", glState->context, windowState->display, (int)windowState->window);
-		if(glApi->glXMakeCurrent(windowState->display, windowState->window, glState->context)) {
-			FPL_LOG("GLX", "Successfully activated GLX rendering context '%p' on display '%p' and window '%d'", glState->context, windowState->display, (int)windowState->window);
-			glState->isActiveContext = true;
-			result = true;
-		} else {
-			FPL_LOG("GLX", "Failed activating GLX rendering context '%p' on display '%p' and window '%d'", glState->context, windowState->display, (int)windowState->window);
-		}
+	FPL_LOG("GLX", "Activate GLX legacy rendering context '%p' on display '%p' and window '%d'", legacyRenderingContext, windowState->display, (int)windowState->window);
+	if(!glApi->glXMakeCurrent(windowState->display, windowState->window, legacyRenderingContext)) {
+		FPL_LOG("GLX", "Failed activating GLX legacy rendering context '%p' on display '%p' and window '%d'", legacyRenderingContext, windowState->display, (int)windowState->window);
+		goto failed_x11_glx;
 	} else {
-		FPL_LOG("GLX", "Failed creating GLX rendering context on display '%p' and visual info '%p'", windowState->display, visualInfo);
+		FPL_LOG("GLX", "Successfully activated GLX legacy rendering context '%p' on display '%p' and window '%d'", legacyRenderingContext, windowState->display, (int) windowState->window);
 	}
 
+	//
+	// Load extensions
+	//
+	glApi->glXCreateContextAttribsARB = (fpl__func_glx_glXCreateContextAttribsARB *)glApi->glXGetProcAddress((const GLubyte *)"glXCreateContextAttribsARB");
+
+	// Disable rendering context
+	glApi->glXMakeCurrent(windowState->display, 0, fpl_null);
+
+	GLXContext activeRenderingContext;
+
+	if(videoSettings->graphics.opengl.compabilityFlags != fplOpenGLCompabilityFlags_Legacy) {
+		// @NOTE(final): This is only available in OpenGL 3.0+
+		if(!(videoSettings->graphics.opengl.majorVersion >= 3 && videoSettings->graphics.opengl.minorVersion >= 0)) {
+			fpl__PushError("You have not specified the 'majorVersion' and 'minorVersion' in the VideoSettings");
+			goto failed_x11_glx;
+		}
+
+		if(glApi->glXCreateContextAttribsARB == fpl_null) {
+			fpl__PushError("glXCreateContextAttribsARB is not available, modern OpenGL is not available for your video card");
+			goto failed_x11_glx;
+		}
+
+		int flags = 0;
+		int profile = 0;
+		if(videoSettings->graphics.opengl.compabilityFlags & fplOpenGLCompabilityFlags_Core) {
+			profile = FPL__GLX_CONTEXT_CORE_PROFILE_BIT_ARB;
+		} else if(videoSettings->graphics.opengl.compabilityFlags & fplOpenGLCompabilityFlags_Compability) {
+			profile = FPL__GLX_CONTEXT_COMPATIBILITY_PROFILE_BIT_ARB;
+		} else {
+			fpl__PushError("No opengl compability profile selected, please specific Core OpenGLCompabilityFlags_Core or OpenGLCompabilityFlags_Compability");
+			goto failed_x11_glx;
+		}
+		if(videoSettings->graphics.opengl.compabilityFlags & fplOpenGLCompabilityFlags_Forward) {
+			flags = FPL__GLX_CONTEXT_FORWARD_COMPATIBLE_BIT_ARB;
+		}
+
+		int contextAttribIndex = 0;
+		int contextAttribList[32] = FPL_ZERO_INIT;
+		contextAttribList[contextAttribIndex++] = FPL__GLX_CONTEXT_MAJOR_VERSION_ARB;
+		contextAttribList[contextAttribIndex++] = videoSettings->graphics.opengl.majorVersion;
+		contextAttribList[contextAttribIndex++] = FPL__GLX_CONTEXT_MINOR_VERSION_ARB;
+		contextAttribList[contextAttribIndex++] = videoSettings->graphics.opengl.minorVersion;
+		contextAttribList[contextAttribIndex++] = FPL__GLX_CONTEXT_PROFILE_MASK_ARB;
+		contextAttribList[contextAttribIndex++] = profile;
+		if(flags > 0) {
+			contextAttribList[contextAttribIndex++] = FPL__GLX_CONTEXT_FLAGS_ARB;
+			contextAttribList[contextAttribIndex++] = flags;
+		}
+		contextAttribList[contextAttribIndex] = 0;
+
+		GLXContext modernRenderingContext = glApi->glXCreateContextAttribsARB(windowState->display, glState->fbConfig, fpl_null, True, contextAttribList);
+		if(!modernRenderingContext) {
+			fpl__PushError("Warning: Failed creating Modern OpenGL Rendering Context for version (%d.%d) and compability flags (%d) -> Fallback to legacy context", videoSettings->graphics.opengl.majorVersion, videoSettings->graphics.opengl.minorVersion, videoSettings->graphics.opengl.compabilityFlags);
+
+			// Fallback to legacy rendering context
+			glApi->glXMakeCurrent(windowState->display, windowState->window, legacyRenderingContext);
+			activeRenderingContext = legacyRenderingContext;
+		} else {
+			if (!glApi->glXMakeCurrent(windowState->display, windowState->window, modernRenderingContext)) {
+				fpl__PushError(
+						"Warning: Failed activating Modern OpenGL Rendering Context for version (%d.%d) and compability flags (%d) -> Fallback to legacy context",
+						videoSettings->graphics.opengl.majorVersion, videoSettings->graphics.opengl.minorVersion,
+						videoSettings->graphics.opengl.compabilityFlags);
+
+				// Destroy modern rendering context
+				glApi->glXDestroyContext(windowState->display, modernRenderingContext);
+
+				// Fallback to legacy rendering context
+				glApi->glXMakeCurrent(windowState->display, windowState->window, legacyRenderingContext);
+				activeRenderingContext = legacyRenderingContext;
+			} else {
+				// Destroy legacy rendering context
+				glApi->glXDestroyContext(windowState->display, legacyRenderingContext);
+				legacyRenderingContext = fpl_null;
+				activeRenderingContext = modernRenderingContext;
+			}
+		}
+	} else {
+		// Caller wants legacy context
+		glApi->glXMakeCurrent(windowState->display, windowState->window, legacyRenderingContext);
+		activeRenderingContext = legacyRenderingContext;
+	}
+
+	bool result;
+
+	FPL_ASSERT(activeRenderingContext != fpl_null);
+	glState->context = activeRenderingContext;
+	glState->isActiveContext = true;
+	result = true;
+	goto done_x11_glx;
+
+failed_x11_glx:
+	result = false;
+
+done_x11_glx:
 #if !USE_NEW_CTX
 	FPL_LOG("GLX", "Release visual info '%p'", visualInfo);
 	x11Api->XFree(visualInfo);
 #endif
 
 	if(!result) {
+		if (legacyRenderingContext) {
+			glApi->glXDestroyContext(windowState->display, legacyRenderingContext);
+		}
 		fpl__X11ReleaseVideoOpenGL(windowState, glState);
 	}
+
 	return (result);
 }
 #endif // FPL_ENABLE_VIDEO_OPENGL && FPL_SUBPLATFORM_X11
