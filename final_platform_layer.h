@@ -10945,7 +10945,7 @@ fpl_internal bool fpl__Win32InitVideoOpenGL(const fpl__Win32AppState *appState, 
 		} else if(videoSettings->graphics.opengl.compabilityFlags & fplOpenGLCompabilityFlags_Compability) {
 			profile = FPL_WGL_CONTEXT_COMPATIBILITY_PROFILE_BIT_ARB;
 		} else {
-			fpl__PushError("No opengl compability profile selected, please specific Core OpenGLCompabilityFlags::Core or OpenGLCompabilityFlags::Compability");
+			fpl__PushError("No opengl compability profile selected, please specific Core fplOpenGLCompabilityFlags_Core or fplOpenGLCompabilityFlags_Compability");
 			return false;
 		}
 		if(videoSettings->graphics.opengl.compabilityFlags & fplOpenGLCompabilityFlags_Forward) {
