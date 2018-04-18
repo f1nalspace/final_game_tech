@@ -38,7 +38,7 @@ static void TestOSInfos() {
 	{
 		fplOSInfos osInfos = {};
 		bool r = fplGetOperatingSystemInfos(&osInfos);
-		FT_IS_TRUE(r);
+		//FT_IS_TRUE(r);
 		fplConsoleFormatOut("System Name: %s\n", osInfos.systemName);
 		fplConsoleFormatOut("System Version: %d.%d.%d.%d\n", osInfos.systemVersion.major, osInfos.systemVersion.minor, osInfos.systemVersion.fix, osInfos.systemVersion.build);
 		fplConsoleFormatOut("Kernel Name: %s\n", osInfos.kernelName);
@@ -48,7 +48,7 @@ static void TestOSInfos() {
 	{
 		char nameBuffer[256] = {};
 		bool r = fplGetCurrentUsername(nameBuffer, FPL_ARRAYCOUNT(nameBuffer));
-		FT_IS_TRUE(r);
+		//FT_IS_TRUE(r);
 		fplConsoleFormatOut("Current Username: %s\n", nameBuffer);
 	}
 }
@@ -399,44 +399,6 @@ static void SimpleMultiThreadTest(const size_t threadCount) {
 	}
 }
 
-struct SlaveThreadData {
-	ThreadData base;
-	fplMutexHandle *mutex;
-	fplSignalHandle signal;
-};
-
-struct MasterThreadData {
-	ThreadData base;
-	fplMutexHandle mutex;
-	fplSignalHandle *signals[FPL__MAX_SIGNAL_COUNT];
-	uint32_t signalCount;
-};
-
-static void ThreadSlaveProc(const fplThreadHandle *context, void *data) {
-	SlaveThreadData *d = (SlaveThreadData *)data;
-
-	ft::Msg("Slave-Thread %d waits for signal\n", d->base.num);
-	fplSignalWaitForOne(d->mutex, &d->signal, UINT32_MAX);
-	ft::Msg("Got signal on Slave-Thread %d\n", d->base.num);
-
-	ft::Msg("Slave-Thread %d is done\n", d->base.num);
-}
-
-static void ThreadMasterProc(const fplThreadHandle *context, void *data) {
-	MasterThreadData *d = (MasterThreadData *)data;
-	ft::Msg("Master-Thread %d waits for 5 seconds\n", d->base.num);
-	fplThreadSleep(5000);
-
-	ft::Msg("Master-Thread %d sets %d signals\n", d->base.num, d->signalCount);
-	fplMutexLock(&d->mutex, UINT32_MAX);
-	for(uint32_t signalIndex = 0; signalIndex < d->signalCount; ++signalIndex) {
-		fplSignalSet(d->signals[signalIndex]);
-	}
-	fplMutexUnlock(&d->mutex);
-
-	ft::Msg("Master-Thread %d is done\n", d->base.num);
-}
-
 struct MutableThreadData {
 	fplMutexHandle lock;
 	volatile int32_t value;
@@ -492,14 +454,14 @@ static void SyncThreadsTest() {
 		fplThreadHandle *threads[2];
 		uint32_t threadCount = FPL_ARRAYCOUNT(threads);
 
-		ft::Msg("Start %z threads\n", threadCount);
+		ft::Msg("Start %zu threads\n", threadCount);
 		threads[0] = fplThreadCreate(ReadDataThreadProc, &readData);
 		threads[1] = fplThreadCreate(WriteDataThreadProc, &writeData);
 
-		ft::Msg("Wait for %z threads to exit\n", threadCount);
+		ft::Msg("Wait for %zu threads to exit\n", threadCount);
 		fplThreadWaitForAll(threads, threadCount, UINT32_MAX);
 
-		ft::Msg("Release resources for %z threads\n", threadCount);
+		ft::Msg("Release resources for %zu threads\n", threadCount);
 		for(uint32_t index = 0; index < threadCount; ++index) {
 			fplThreadDestroy(threads[index]);
 		}
@@ -507,11 +469,51 @@ static void SyncThreadsTest() {
 	}
 }
 
+struct SlaveThreadData {
+	ThreadData base;
+	fplMutexHandle *mutex;
+	fplSignalHandle signal;
+	bool isSignaled;
+};
+
+struct MasterThreadData {
+	ThreadData base;
+	fplMutexHandle mutex;
+	fplSignalHandle *signals[FPL__MAX_SIGNAL_COUNT];
+	uint32_t signalCount;
+};
+
+static void ThreadSlaveProc(const fplThreadHandle *context, void *data) {
+	SlaveThreadData *d = (SlaveThreadData *)data;
+
+	ft::Msg("Slave-Thread %d waits for signal\n", d->base.num);
+	fplSignalWaitForOne(d->mutex, &d->signal, UINT32_MAX);
+	d->isSignaled = true;
+	ft::Msg("Got signal on Slave-Thread %d\n", d->base.num);
+
+	ft::Msg("Slave-Thread %d is done\n", d->base.num);
+}
+
+static void ThreadMasterProc(const fplThreadHandle *context, void *data) {
+	MasterThreadData *d = (MasterThreadData *)data;
+	ft::Msg("Master-Thread %d waits for 5 seconds\n", d->base.num);
+	fplThreadSleep(5000);
+
+	fplMutexLock(&d->mutex, UINT32_MAX);
+	for(uint32_t signalIndex = 0; signalIndex < d->signalCount; ++signalIndex) {
+		ft::Msg("Master-Thread %d sets signal %d\n", d->base.num, signalIndex);
+		fplSignalSet(d->signals[signalIndex]);
+	}
+	fplMutexUnlock(&d->mutex);
+
+	ft::Msg("Master-Thread %d is done\n", d->base.num);
+}
+
 static void ConditionThreadsTest(const size_t threadCount) {
 	FT_ASSERT(threadCount > 1);
 
 	ft::Line();
-	ft::Msg("Condition test for %z threads\n", threadCount);
+	ft::Msg("Condition test for %zu threads\n", threadCount);
 
 	MasterThreadData masterData = {};
 	masterData.base.num = 1;
@@ -521,12 +523,13 @@ static void ConditionThreadsTest(const size_t threadCount) {
 	size_t slaveThreadCount = threadCount - 1;
 	for(size_t threadIndex = 0; threadIndex < slaveThreadCount; ++threadIndex) {
 		slaveDatas[threadIndex].base.num = (int)(2 + threadIndex);
-		slaveDatas[threadIndex].mutex = &masterData.mutex;
 		slaveDatas[threadIndex].signal = fplSignalCreate();
-		masterData.signals[masterData.signalCount++] = &slaveDatas[threadIndex].signal;
+		slaveDatas[threadIndex].mutex = &masterData.mutex;
+		size_t i = masterData.signalCount++;
+		masterData.signals[i] = &slaveDatas[threadIndex].signal;
 	}
 
-	ft::Msg("Start %z slave threads, 1 master thread\n", slaveThreadCount);
+	ft::Msg("Start %zu slave threads, 1 master thread\n", slaveThreadCount);
 	fplThreadHandle *threads[FPL__MAX_THREAD_COUNT];
 	for(size_t threadIndex = 0; threadIndex < threadCount; ++threadIndex) {
 		if(threadIndex == slaveThreadCount) {
@@ -536,12 +539,13 @@ static void ConditionThreadsTest(const size_t threadCount) {
 		}
 	}
 
-	ft::Msg("Wait for %z threads to exit\n", threadCount);
+	ft::Msg("Wait for %zu threads to exit\n", threadCount);
 	fplThreadWaitForAll(threads, threadCount, UINT32_MAX);
 
-	ft::Msg("Release resources for %z threads\n", threadCount);
-	for(size_t threadIndex = 0; threadIndex < slaveThreadCount; ++threadIndex) {
-		fplSignalDestroy(&slaveDatas[threadIndex].signal);
+	ft::Msg("Release resources for %zu threads\n", threadCount);
+	for(size_t slaveIndex = 0; slaveIndex < slaveThreadCount; ++slaveIndex) {
+		FT_IS_TRUE(slaveDatas[slaveIndex].isSignaled);
+		fplSignalDestroy(&slaveDatas[slaveIndex].signal);
 	}
 	fplMutexDestroy(&masterData.mutex);
 	for(size_t threadIndex = 0; threadIndex < threadCount; ++threadIndex) {
