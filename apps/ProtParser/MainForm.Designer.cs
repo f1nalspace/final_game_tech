@@ -42,19 +42,30 @@
             this.label2 = new System.Windows.Forms.Label();
             this.label1 = new System.Windows.Forms.Label();
             this.tbPrefix = new System.Windows.Forms.TextBox();
+            this.menuStrip1 = new System.Windows.Forms.MenuStrip();
+            this.fileMenu = new System.Windows.Forms.ToolStripMenuItem();
+            this.fileNewItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.fileOpenItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.fileSaveAsItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.toolStripMenuItem1 = new System.Windows.Forms.ToolStripSeparator();
+            this.fileExitItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.openFileDialog = new System.Windows.Forms.OpenFileDialog();
+            this.saveFileDialog = new System.Windows.Forms.SaveFileDialog();
+            this.fileSave = new System.Windows.Forms.ToolStripMenuItem();
             this.panel1.SuspendLayout();
             this.groupBox1.SuspendLayout();
+            this.menuStrip1.SuspendLayout();
             this.SuspendLayout();
             // 
             // tbSource
             // 
             this.tbSource.Dock = System.Windows.Forms.DockStyle.Left;
             this.tbSource.Font = new System.Drawing.Font("Courier New", 9.75F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
-            this.tbSource.Location = new System.Drawing.Point(0, 100);
+            this.tbSource.Location = new System.Drawing.Point(0, 124);
             this.tbSource.Multiline = true;
             this.tbSource.Name = "tbSource";
             this.tbSource.ScrollBars = System.Windows.Forms.ScrollBars.Both;
-            this.tbSource.Size = new System.Drawing.Size(344, 299);
+            this.tbSource.Size = new System.Drawing.Size(344, 275);
             this.tbSource.TabIndex = 0;
             this.tbSource.Text = resources.GetString("tbSource.Text");
             this.tbSource.WordWrap = false;
@@ -62,9 +73,9 @@
             // 
             // splitter1
             // 
-            this.splitter1.Location = new System.Drawing.Point(344, 100);
+            this.splitter1.Location = new System.Drawing.Point(344, 124);
             this.splitter1.Name = "splitter1";
-            this.splitter1.Size = new System.Drawing.Size(3, 299);
+            this.splitter1.Size = new System.Drawing.Size(3, 275);
             this.splitter1.TabIndex = 1;
             this.splitter1.TabStop = false;
             // 
@@ -72,12 +83,12 @@
             // 
             this.tbTarget.Dock = System.Windows.Forms.DockStyle.Fill;
             this.tbTarget.Font = new System.Drawing.Font("Courier New", 9.75F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
-            this.tbTarget.Location = new System.Drawing.Point(347, 100);
+            this.tbTarget.Location = new System.Drawing.Point(347, 124);
             this.tbTarget.Multiline = true;
             this.tbTarget.Name = "tbTarget";
             this.tbTarget.ReadOnly = true;
             this.tbTarget.ScrollBars = System.Windows.Forms.ScrollBars.Both;
-            this.tbTarget.Size = new System.Drawing.Size(348, 299);
+            this.tbTarget.Size = new System.Drawing.Size(348, 275);
             this.tbTarget.TabIndex = 2;
             this.tbTarget.WordWrap = false;
             // 
@@ -85,7 +96,7 @@
             // 
             this.panel1.Controls.Add(this.groupBox1);
             this.panel1.Dock = System.Windows.Forms.DockStyle.Top;
-            this.panel1.Location = new System.Drawing.Point(0, 0);
+            this.panel1.Location = new System.Drawing.Point(0, 24);
             this.panel1.Name = "panel1";
             this.panel1.Size = new System.Drawing.Size(695, 100);
             this.panel1.TabIndex = 3;
@@ -185,6 +196,79 @@
             this.tbPrefix.Text = "FPL__WIN32_FUNC_";
             this.tbPrefix.TextChanged += new System.EventHandler(this.tbPrefix_TextChanged);
             // 
+            // menuStrip1
+            // 
+            this.menuStrip1.Items.AddRange(new System.Windows.Forms.ToolStripItem[] {
+            this.fileMenu});
+            this.menuStrip1.Location = new System.Drawing.Point(0, 0);
+            this.menuStrip1.Name = "menuStrip1";
+            this.menuStrip1.Size = new System.Drawing.Size(695, 24);
+            this.menuStrip1.TabIndex = 4;
+            this.menuStrip1.Text = "menuStrip1";
+            // 
+            // fileMenu
+            // 
+            this.fileMenu.DropDownItems.AddRange(new System.Windows.Forms.ToolStripItem[] {
+            this.fileNewItem,
+            this.fileOpenItem,
+            this.fileSave,
+            this.fileSaveAsItem,
+            this.toolStripMenuItem1,
+            this.fileExitItem});
+            this.fileMenu.Name = "fileMenu";
+            this.fileMenu.Size = new System.Drawing.Size(37, 20);
+            this.fileMenu.Text = "File";
+            // 
+            // fileNewItem
+            // 
+            this.fileNewItem.Name = "fileNewItem";
+            this.fileNewItem.Size = new System.Drawing.Size(152, 22);
+            this.fileNewItem.Text = "New";
+            this.fileNewItem.Click += new System.EventHandler(this.fileNewItem_Click);
+            // 
+            // fileOpenItem
+            // 
+            this.fileOpenItem.Name = "fileOpenItem";
+            this.fileOpenItem.Size = new System.Drawing.Size(152, 22);
+            this.fileOpenItem.Text = "Open...";
+            this.fileOpenItem.Click += new System.EventHandler(this.fileOpenItem_Click);
+            // 
+            // fileSaveAsItem
+            // 
+            this.fileSaveAsItem.Name = "fileSaveAsItem";
+            this.fileSaveAsItem.Size = new System.Drawing.Size(152, 22);
+            this.fileSaveAsItem.Text = "Save as...";
+            this.fileSaveAsItem.Click += new System.EventHandler(this.fileSaveAsItem_Click);
+            // 
+            // toolStripMenuItem1
+            // 
+            this.toolStripMenuItem1.Name = "toolStripMenuItem1";
+            this.toolStripMenuItem1.Size = new System.Drawing.Size(149, 6);
+            // 
+            // fileExitItem
+            // 
+            this.fileExitItem.Name = "fileExitItem";
+            this.fileExitItem.Size = new System.Drawing.Size(152, 22);
+            this.fileExitItem.Text = "Exit";
+            this.fileExitItem.Click += new System.EventHandler(this.fileExitItem_Click);
+            // 
+            // openFileDialog
+            // 
+            this.openFileDialog.DefaultExt = "txt";
+            this.openFileDialog.Filter = "Text files|*.txt";
+            // 
+            // saveFileDialog
+            // 
+            this.saveFileDialog.DefaultExt = "txt";
+            this.saveFileDialog.Filter = "Text files|*.txt";
+            // 
+            // fileSave
+            // 
+            this.fileSave.Name = "fileSave";
+            this.fileSave.ShortcutKeys = ((System.Windows.Forms.Keys)((System.Windows.Forms.Keys.Control | System.Windows.Forms.Keys.S)));
+            this.fileSave.Size = new System.Drawing.Size(152, 22);
+            this.fileSave.Text = "Save";
+            // 
             // MainForm
             // 
             this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 13F);
@@ -194,12 +278,16 @@
             this.Controls.Add(this.splitter1);
             this.Controls.Add(this.tbSource);
             this.Controls.Add(this.panel1);
+            this.Controls.Add(this.menuStrip1);
+            this.MainMenuStrip = this.menuStrip1;
             this.Name = "MainForm";
-            this.Text = "Function prototype parser";
+            this.Text = "Prototype Generator";
             this.Load += new System.EventHandler(this.MainForm_Load);
             this.panel1.ResumeLayout(false);
             this.groupBox1.ResumeLayout(false);
             this.groupBox1.PerformLayout();
+            this.menuStrip1.ResumeLayout(false);
+            this.menuStrip1.PerformLayout();
             this.ResumeLayout(false);
             this.PerformLayout();
 
@@ -220,6 +308,16 @@
         private System.Windows.Forms.TextBox tbLoadLibHandle;
         private System.Windows.Forms.TextBox tbLoadLibFieldPrefix;
         private System.Windows.Forms.TextBox tbLoadLibName;
+        private System.Windows.Forms.MenuStrip menuStrip1;
+        private System.Windows.Forms.ToolStripMenuItem fileMenu;
+        private System.Windows.Forms.ToolStripMenuItem fileNewItem;
+        private System.Windows.Forms.ToolStripMenuItem fileOpenItem;
+        private System.Windows.Forms.ToolStripMenuItem fileSaveAsItem;
+        private System.Windows.Forms.ToolStripSeparator toolStripMenuItem1;
+        private System.Windows.Forms.ToolStripMenuItem fileExitItem;
+        private System.Windows.Forms.OpenFileDialog openFileDialog;
+        private System.Windows.Forms.SaveFileDialog saveFileDialog;
+        private System.Windows.Forms.ToolStripMenuItem fileSave;
     }
 }
 
