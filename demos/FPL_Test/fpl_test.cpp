@@ -522,7 +522,7 @@ static void ConditionThreadsTest(const size_t threadCount) {
 	SlaveThreadData slaveDatas[FPL__MAX_THREAD_COUNT] = {};
 	size_t slaveThreadCount = threadCount - 1;
 	for(size_t threadIndex = 0; threadIndex < slaveThreadCount; ++threadIndex) {
-		slaveDatas[threadIndex].base.num = (int)(2 + threadIndex);
+		slaveDatas[threadIndex].base.num = masterData.base.num + threadIndex + 1;
 		slaveDatas[threadIndex].signal = fplSignalCreate();
 		slaveDatas[threadIndex].mutex = &masterData.mutex;
 		size_t i = masterData.signalCount++;
@@ -532,10 +532,10 @@ static void ConditionThreadsTest(const size_t threadCount) {
 	ft::Msg("Start %zu slave threads, 1 master thread\n", slaveThreadCount);
 	fplThreadHandle *threads[FPL__MAX_THREAD_COUNT];
 	for(size_t threadIndex = 0; threadIndex < threadCount; ++threadIndex) {
-		if(threadIndex == slaveThreadCount) {
+		if(threadIndex == 0) {
 			threads[threadIndex] = fplThreadCreate(ThreadMasterProc, &masterData);
 		} else {
-			threads[threadIndex] = fplThreadCreate(ThreadSlaveProc, &slaveDatas[threadIndex]);
+			threads[threadIndex] = fplThreadCreate(ThreadSlaveProc, &slaveDatas[threadIndex - 1]);
 		}
 	}
 

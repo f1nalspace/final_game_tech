@@ -120,7 +120,7 @@ SOFTWARE.
 
 /*!
 	\file final_platform_layer.h
-	\version v0.7.4.0 beta
+	\version v0.7.5.0 beta
 	\author Torsten Spaete
 	\brief Final Platform Layer (FPL) - A C99 Single-Header-File Platform Abstract Library
 */
@@ -129,9 +129,16 @@ SOFTWARE.
 	\page page_changelog Changelog
 	\tableofcontents
 
+	## v0.7.5.0 beta:
+	- Changed: Updated documentations a lot
+	- Changed: [GLX] Use glXCreateContext with visual info caching for GLX < 1.3 and glXCreateNewContext for GLX >= 1.3
+	- Changed: [POSIX] All FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK are wrapped around a do-while loop so it can "break" properly.
+	- Changed: Refactoring internal audio system
+	- New: [ALSA] Added experimental ALSA playback support
+
 	## v0.7.4.0 beta:
 	- Fixed: [Win32] Removed x64 detection for fplAtomicStoreS64 and fplAtomicExchangeS64 and use _InterlockedExchange*64 directly
-  	- Changed: [GLX] Implemented modern opengl context creation
+	- Changed: [GLX] Implemented modern opengl context creation
 
 	## v0.7.3.0 beta:
 	- Changed: fplConsoleWaitForCharInput returns char instead of const char
@@ -939,6 +946,10 @@ SOFTWARE.
 		//! DirectSound support is only available on Win32
 #		define FPL_SUPPORT_AUDIO_DIRECTSOUND
 #	endif
+#	if !defined(FPL_NO_AUDIO_ALSA) && defined(FPL_PLATFORM_LINUX)
+		//! ALSA support is only available on POSIX
+#		define FPL_SUPPORT_AUDIO_ALSA
+#	endif
 #endif // FPL_SUPPORT_AUDIO
 
 // Remove video support when window is disabled
@@ -983,6 +994,10 @@ SOFTWARE.
 #	if defined(FPL_SUPPORT_AUDIO_DIRECTSOUND)
 		//! Enable DirectSound Audio
 #		define FPL_ENABLE_AUDIO_DIRECTSOUND
+#	endif
+#	if defined(FPL_SUPPORT_AUDIO_ALSA)
+		//! Enable ALSA Audio
+#		define FPL_ENABLE_AUDIO_ALSA
 #	endif
 #endif // FPL_SUPPORT_AUDIO
 
@@ -1129,8 +1144,15 @@ SOFTWARE.
 //! Returns the number of bytes for the given terabytes
 #define FPL_TERABYTES(value) ((FPL_GIGABYTES(value) * 1024ull))
 
-//! Manually allocate memory on the stack (Use this with care!)
-#define FPL_STACKALLOCATE(size) _alloca(size)
+#if defined(FPL_PLATFORM_WIN32)
+	//! Manually allocate memory on the stack (Win32)
+#	include <malloc.h>
+#	define FPL_STACKALLOCATE(size) _alloca(size)
+#else
+	//! Manually allocate memory on the stack (Others)
+#	include <alloca.h>
+#	define FPL_STACKALLOCATE(size) alloca(size)
+#endif
 
 #if defined(FPL_IS_CPP)
 	//! Macro for overloading enum operators in C++
@@ -1741,6 +1763,8 @@ typedef enum fplAudioDriverType {
 	fplAudioDriverType_Auto,
 	//! DirectSound
 	fplAudioDriverType_DirectSound,
+	//! ALSA
+	fplAudioDriverType_Alsa,
 } fplAudioDriverType;
 
 //! Audio format type
@@ -1785,6 +1809,10 @@ typedef union fplAudioDeviceID {
 	//! DirectShow Device GUID
 	GUID dshow;
 #endif
+#if defined(FPL_ENABLE_AUDIO_ALSA)
+	//! ALSA Device Name
+	char alsa[256];
+#endif
 	//! Dummy field (When no drivers are available)
 	int dummy;
 } fplAudioDeviceID;
@@ -1797,6 +1825,24 @@ typedef struct fplAudioDeviceInfo {
 	fplAudioDeviceID id;
 } fplAudioDeviceInfo;
 
+#if defined(FPL_ENABLE_AUDIO_ALSA)
+//! ALSA driver specific settings
+typedef struct fplAlsaAudioSettings {
+	//! Disable the usage of MMap in ALSA
+	bool noMMap;
+} fplAlsaAudioSettings;
+#endif
+
+//! Driver specific audio settings
+typedef union fplSpecificAudioSettings {
+#if defined(FPL_ENABLE_AUDIO_ALSA)
+	//! Alsa specific settings
+	fplAlsaAudioSettings alsa;
+#endif
+	//! Dummy field (When no drivers are available)
+	int dummy;
+} fplSpecificAudioSettings;
+
 //! Audio Client Read Callback Function
 typedef uint32_t(fpl_audio_client_read_callback)(const fplAudioDeviceFormat *deviceFormat, const uint32_t frameCount, void *outputSamples, void *userData);
 
@@ -1806,6 +1852,8 @@ typedef struct fplAudioSettings {
 	fplAudioDeviceFormat deviceFormat;
 	//! The device info
 	fplAudioDeviceInfo deviceInfo;
+	//! Specific settings
+	fplSpecificAudioSettings specific;
 	//! The callback for retrieving audio data from the client
 	fpl_audio_client_read_callback *clientReadCallback;
 	//! The targeted driver
@@ -2169,14 +2217,21 @@ typedef struct fplMutexHandle {
 	bool isValid;
 } fplMutexHandle;
 
+#if defined(FPL_SUBPLATFORM_POSIX)
+typedef struct fplInternalSignalHandlePosix {
+    pthread_cond_t condition;
+    bool isSignaled;
+} fplInternalSignalHandlePosix;
+#endif
+
 //! Internal signal handle union
 typedef union fplInternalSignalHandle {
 #if defined(FPL_PLATFORM_WIN32)
 	//! Win32 event handle
 	HANDLE win32EventHandle;
 #elif defined(FPL_SUBPLATFORM_POSIX)
-	//! Posix condition
-	pthread_cond_t posixCondition;
+	//! Posix handle
+    fplInternalSignalHandlePosix posix;
 #endif
 } fplInternalSignalHandle;
 
@@ -3548,6 +3603,8 @@ typedef enum fplAudioResult {
 	fplAudioResult_DeviceAlreadyStopped,
 	fplAudioResult_DeviceAlreadyStarted,
 	fplAudioResult_DeviceBusy,
+	fplAudioResult_NoDeviceFound,
+	fplAudioResult_ApiFailed,
 	fplAudioResult_Failed,
 } fplAudioResult;
 
@@ -4558,28 +4615,32 @@ fpl_internal bool fpl__PThreadLoadApi(fpl__PThreadApi *pthreadApi) {
 		void *libHandle = pthreadApi->libHandle = dlopen(libName, FPL__POSIX_DL_LOADTYPE);
 		if(libHandle != fpl_null) {
 			// pthread_t
-			FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, pthreadApi->pthread_create, fpl__pthread_func_pthread_create, "pthread_create");
-			FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, pthreadApi->pthread_kill, fpl__pthread_func_pthread_kill, "pthread_kill");
-			FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, pthreadApi->pthread_join, fpl__pthread_func_pthread_join, "pthread_join");
-			FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, pthreadApi->pthread_exit, fpl__pthread_func_pthread_exit, "pthread_exit");
-			FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, pthreadApi->pthread_yield, fpl__pthread_func_pthread_yield, "pthread_yield");
+			do {
+				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, pthreadApi->pthread_create, fpl__pthread_func_pthread_create, "pthread_create");
+				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, pthreadApi->pthread_kill, fpl__pthread_func_pthread_kill, "pthread_kill");
+				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, pthreadApi->pthread_join, fpl__pthread_func_pthread_join, "pthread_join");
+				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, pthreadApi->pthread_exit, fpl__pthread_func_pthread_exit, "pthread_exit");
+				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, pthreadApi->pthread_yield, fpl__pthread_func_pthread_yield, "pthread_yield");
 
-			// pthread_mutex_t
-			FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, pthreadApi->pthread_mutex_init, fpl__pthread_func_pthread_mutex_init, "pthread_mutex_init");
-			FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, pthreadApi->pthread_mutex_destroy, fpl__pthread_func_pthread_mutex_destroy, "pthread_mutex_destroy");
-			FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, pthreadApi->pthread_mutex_lock, fpl__pthread_func_pthread_mutex_lock, "pthread_mutex_lock");
-			FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, pthreadApi->pthread_mutex_trylock, fpl__pthread_func_pthread_mutex_trylock, "pthread_mutex_trylock");
-			FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, pthreadApi->pthread_mutex_unlock, fpl__pthread_func_pthread_mutex_unlock, "pthread_mutex_unlock");
+				// pthread_mutex_t
+				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, pthreadApi->pthread_mutex_init, fpl__pthread_func_pthread_mutex_init, "pthread_mutex_init");
+				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, pthreadApi->pthread_mutex_destroy, fpl__pthread_func_pthread_mutex_destroy, "pthread_mutex_destroy");
+				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, pthreadApi->pthread_mutex_lock, fpl__pthread_func_pthread_mutex_lock, "pthread_mutex_lock");
+				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, pthreadApi->pthread_mutex_trylock, fpl__pthread_func_pthread_mutex_trylock, "pthread_mutex_trylock");
+				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, pthreadApi->pthread_mutex_unlock, fpl__pthread_func_pthread_mutex_unlock, "pthread_mutex_unlock");
 
-			// pthread_cond_t
-			FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, pthreadApi->pthread_cond_init, fpl__pthread_func_pthread_cond_init, "pthread_cond_init");
-			FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, pthreadApi->pthread_cond_destroy, fpl__pthread_func_pthread_cond_destroy, "pthread_cond_destroy");
-			FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, pthreadApi->pthread_cond_timedwait, fpl__pthread_func_pthread_cond_timedwait, "pthread_cond_timedwait");
-			FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, pthreadApi->pthread_cond_wait, fpl__pthread_func_pthread_cond_wait, "pthread_cond_wait");
-			FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, pthreadApi->pthread_cond_broadcast, fpl__pthread_func_pthread_cond_broadcast, "pthread_cond_broadcast");
-			FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, pthreadApi->pthread_cond_signal, fpl__pthread_func_pthread_cond_signal, "pthread_cond_signal");
-			result = true;
-			break;
+				// pthread_cond_t
+				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, pthreadApi->pthread_cond_init, fpl__pthread_func_pthread_cond_init, "pthread_cond_init");
+				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, pthreadApi->pthread_cond_destroy, fpl__pthread_func_pthread_cond_destroy, "pthread_cond_destroy");
+				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, pthreadApi->pthread_cond_timedwait, fpl__pthread_func_pthread_cond_timedwait, "pthread_cond_timedwait");
+				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, pthreadApi->pthread_cond_wait, fpl__pthread_func_pthread_cond_wait, "pthread_cond_wait");
+				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, pthreadApi->pthread_cond_broadcast, fpl__pthread_func_pthread_cond_broadcast, "pthread_cond_broadcast");
+				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, pthreadApi->pthread_cond_signal, fpl__pthread_func_pthread_cond_signal, "pthread_cond_signal");
+				result = true;
+			} while(0);
+			if(result) {
+				break;
+			}
 		}
 		fpl__PThreadUnloadApi(pthreadApi);
 	}
@@ -4746,36 +4807,38 @@ fpl_internal bool fpl__LoadX11Api(fpl__X11Api *x11Api) {
 		const char *libName = libFileNames[index];
 		void *libHandle = x11Api->libHandle = dlopen(libName, FPL__POSIX_DL_LOADTYPE);
 		if(libHandle != fpl_null) {
-
-			FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, x11Api->XFlush, fpl__func_x11_XFlush, "XFlush");
-			FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, x11Api->XFree, fpl__func_x11_XFree, "XFree");
-			FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, x11Api->XOpenDisplay, fpl__func_x11_XOpenDisplay, "XOpenDisplay");
-			FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, x11Api->XCloseDisplay, fpl__func_x11_XCloseDisplay, "XCloseDisplay");
-			FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, x11Api->XDefaultScreen, fpl__func_x11_XDefaultScreen, "XDefaultScreen");
-			FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, x11Api->XRootWindow, fpl__func_x11_XRootWindow, "XRootWindow");
-			FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, x11Api->XCreateWindow, fpl__func_x11_XCreateWindow, "XCreateWindow");
-			FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, x11Api->XDestroyWindow, fpl__func_x11_XDestroyWindow, "XDestroyWindow");
-			FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, x11Api->XCreateColormap, fpl__func_x11_XCreateColormap, "XCreateColormap");
-			FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, x11Api->XFreeColormap, fpl__func_x11_XFreeColormap, "XFreeColormap");
-			FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, x11Api->XDefaultColormap, fpl__func_x11_XDefaultColormap, "XDefaultColormap");
-			FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, x11Api->XMapWindow, fpl__func_x11_XMapWindow, "XMapWindow");
-			FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, x11Api->XUnmapWindow, fpl__func_x11_XUnmapWindow, "XUnmapWindow");
-			FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, x11Api->XStoreName, fpl__func_x11_XStoreName, "XStoreName");
-			FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, x11Api->XDefaultVisual, fpl__func_x11_XDefaultVisual, "XDefaultVisual");
-			FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, x11Api->XDefaultDepth, fpl__func_x11_XDefaultDepth, "XDefaultDepth");
-			FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, x11Api->XInternAtom, fpl__func_x11_XInternAtom, "XInternAtom");
-			FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, x11Api->XSetWMProtocols, fpl__func_x11_XSetWMProtocols, "XSetWMProtocols");
-			FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, x11Api->XPending, fpl__func_x11_XPending, "XPending");
-			FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, x11Api->XSync, fpl__func_x11_XSync, "XSync");
-			FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, x11Api->XNextEvent, fpl__func_x11_XNextEvent, "XNextEvent");
-			FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, x11Api->XPeekEvent, fpl__func_x11_XPeekEvent, "XPeekEvent");
-			FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, x11Api->XGetWindowAttributes, fpl__func_x11_XGetWindowAttributes, "XGetWindowAttributes");
-			FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, x11Api->XResizeWindow, fpl__func_x11_XResizeWindow, "XResizeWindow");
-			FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, x11Api->XMoveWindow, fpl__func_x11_XMoveWindow, "XMoveWindow");
-			FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, x11Api->XGetKeyboardMapping, fpl__func_x11_XGetKeyboardMapping, "XGetKeyboardMapping");
-
-			result = true;
-			break;
+			do {
+				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, x11Api->XFlush, fpl__func_x11_XFlush, "XFlush");
+				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, x11Api->XFree, fpl__func_x11_XFree, "XFree");
+				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, x11Api->XOpenDisplay, fpl__func_x11_XOpenDisplay, "XOpenDisplay");
+				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, x11Api->XCloseDisplay, fpl__func_x11_XCloseDisplay, "XCloseDisplay");
+				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, x11Api->XDefaultScreen, fpl__func_x11_XDefaultScreen, "XDefaultScreen");
+				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, x11Api->XRootWindow, fpl__func_x11_XRootWindow, "XRootWindow");
+				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, x11Api->XCreateWindow, fpl__func_x11_XCreateWindow, "XCreateWindow");
+				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, x11Api->XDestroyWindow, fpl__func_x11_XDestroyWindow, "XDestroyWindow");
+				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, x11Api->XCreateColormap, fpl__func_x11_XCreateColormap, "XCreateColormap");
+				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, x11Api->XFreeColormap, fpl__func_x11_XFreeColormap, "XFreeColormap");
+				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, x11Api->XDefaultColormap, fpl__func_x11_XDefaultColormap, "XDefaultColormap");
+				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, x11Api->XMapWindow, fpl__func_x11_XMapWindow, "XMapWindow");
+				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, x11Api->XUnmapWindow, fpl__func_x11_XUnmapWindow, "XUnmapWindow");
+				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, x11Api->XStoreName, fpl__func_x11_XStoreName, "XStoreName");
+				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, x11Api->XDefaultVisual, fpl__func_x11_XDefaultVisual, "XDefaultVisual");
+				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, x11Api->XDefaultDepth, fpl__func_x11_XDefaultDepth, "XDefaultDepth");
+				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, x11Api->XInternAtom, fpl__func_x11_XInternAtom, "XInternAtom");
+				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, x11Api->XSetWMProtocols, fpl__func_x11_XSetWMProtocols, "XSetWMProtocols");
+				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, x11Api->XPending, fpl__func_x11_XPending, "XPending");
+				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, x11Api->XSync, fpl__func_x11_XSync, "XSync");
+				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, x11Api->XNextEvent, fpl__func_x11_XNextEvent, "XNextEvent");
+				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, x11Api->XPeekEvent, fpl__func_x11_XPeekEvent, "XPeekEvent");
+				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, x11Api->XGetWindowAttributes, fpl__func_x11_XGetWindowAttributes, "XGetWindowAttributes");
+				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, x11Api->XResizeWindow, fpl__func_x11_XResizeWindow, "XResizeWindow");
+				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, x11Api->XMoveWindow, fpl__func_x11_XMoveWindow, "XMoveWindow");
+				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, x11Api->XGetKeyboardMapping, fpl__func_x11_XGetKeyboardMapping, "XGetKeyboardMapping");
+				result = true;
+			} while(0);
+			if(result) {
+				break;
+			}
 		}
 		fpl__UnloadX11Api(x11Api);
 	}
@@ -5800,8 +5863,11 @@ fpl_common_api void fplSetDefaultAudioSettings(fplAudioSettings *audio) {
 	audio->deviceFormat.type = fplAudioFormatType_S16;
 
 	audio->driver = fplAudioDriverType_None;
-#	if defined(FPL_ENABLE_AUDIO_DIRECTSOUND)
+#	if defined(FPL_PLATFORM_WIN32) && defined(FPL_ENABLE_AUDIO_DIRECTSOUND)
 	audio->driver = fplAudioDriverType_DirectSound;
+#	endif
+#	if defined(FPL_PLATFORM_LINUX) && defined(FPL_ENABLE_AUDIO_ALSA)
+	audio->driver = fplAudioDriverType_Alsa;
 #	endif
 }
 
@@ -8818,7 +8884,7 @@ fpl_internal bool fpl__PosixSignalWaitForMultiple(const fpl__PThreadApi *pthread
 			fplSignalHandle *signal = signals[index];
 			if(!isSignaled[index]) {
 				timespec t = fpl__CreateWaitTimeSpec(smallWaitDuration);
-				int condRes = pthreadApi->pthread_cond_timedwait(&signal->internalHandle.posixCondition, &mutex->internalHandle.posixMutex, &t);
+				int condRes = pthreadApi->pthread_cond_timedwait(&signal->internalHandle.posix.condition, &mutex->internalHandle.posixMutex, &t);
 				if(condRes == 0) {
 					isSignaled[index] = true;
 					++signaledCount;
@@ -8992,10 +9058,10 @@ fpl_platform_api uint64_t fplGetTimeInSecondsLP() {
 }
 
 fpl_platform_api double fplGetTimeInSeconds() {
-    struct timeval  tv;
-    gettimeofday(&tv, fpl_null);
-    double result = (double)tv.tv_sec + ((double)tv.tv_usec * 1e-6);
-    return(result);
+	struct timeval  tv;
+	gettimeofday(&tv, fpl_null);
+	double result = (double)tv.tv_sec + ((double)tv.tv_usec * 1e-6);
+	return(result);
 }
 
 fpl_platform_api double fplGetTimeInMillisecondsHP() {
@@ -9011,10 +9077,10 @@ fpl_platform_api uint64_t fplGetTimeInMillisecondsLP() {
 }
 
 fpl_platform_api uint64_t fplGetTimeInMilliseconds() {
-    struct timeval  tv;
-    gettimeofday(&tv, fpl_null);
-    uint64_t result = tv.tv_sec * 1000 + ((uint64_t)tv.tv_usec / 1000);
-    return(result);
+	struct timeval  tv;
+	gettimeofday(&tv, fpl_null);
+	uint64_t result = tv.tv_sec * 1000 + ((uint64_t)tv.tv_usec / 1000);
+	return(result);
 }
 
 //
@@ -9230,11 +9296,11 @@ fpl_platform_api fplSignalHandle fplSignalCreate() {
 	const fpl__PThreadApi *pthreadApi = &appState->posix.pthreadApi;
 	if(pthreadApi->libHandle == fpl_null) {
 		fpl__PushError("PThread api not loaded");
-		fplSignalHandle emtpy = FPL_ZERO_INIT;
-		return(emtpy);
+		fplSignalHandle empty = FPL_ZERO_INIT;
+		return(empty);
 	}
 	fplSignalHandle result = FPL_ZERO_INIT;
-	int condRes = fpl__PosixConditionCreate(pthreadApi, &result.internalHandle.posixCondition);
+	int condRes = fpl__PosixConditionCreate(pthreadApi, &result.internalHandle.posix.condition);
 	result.isValid = (condRes == 0);
 	return(result);
 }
@@ -9248,7 +9314,7 @@ fpl_platform_api void fplSignalDestroy(fplSignalHandle *signal) {
 	}
 	if(signal != fpl_null) {
 		if(signal->isValid) {
-			pthread_cond_t *handle = &signal->internalHandle.posixCondition;
+			pthread_cond_t *handle = &signal->internalHandle.posix.condition;
 			pthreadApi->pthread_cond_destroy(handle);
 		}
 		FPL_CLEAR_STRUCT(signal);
@@ -9278,12 +9344,15 @@ fpl_platform_api bool fplSignalWaitForOne(fplMutexHandle *mutex, fplSignalHandle
 		fpl__PushError("Mutex is not valid");
 		return(false);
 	}
-	if(maxMilliseconds != UINT32_MAX) {
-		timespec t = fpl__CreateWaitTimeSpec(maxMilliseconds);
-		pthreadApi->pthread_cond_timedwait(&signal->internalHandle.posixCondition, &mutex->internalHandle.posixMutex, &t);
-	} else {
-		pthreadApi->pthread_cond_wait(&signal->internalHandle.posixCondition, &mutex->internalHandle.posixMutex);
-	}
+	while (!signal->internalHandle.posix.isSignaled) {
+        if (maxMilliseconds != UINT32_MAX) {
+            timespec t = fpl__CreateWaitTimeSpec(maxMilliseconds);
+            pthreadApi->pthread_cond_timedwait(&signal->internalHandle.posix.condition, &mutex->internalHandle.posixMutex, &t);
+        } else {
+            pthreadApi->pthread_cond_wait(&signal->internalHandle.posix.condition, &mutex->internalHandle.posixMutex);
+        }
+    }
+    signal->internalHandle.posix.isSignaled = false;
 	return(true);
 }
 
@@ -9314,7 +9383,8 @@ fpl_platform_api bool fplSignalSet(fplSignalHandle *signal) {
 	}
 	bool result = false;
 	if(signal->isValid) {
-		pthread_cond_t *handle = &signal->internalHandle.posixCondition;
+		pthread_cond_t *handle = &signal->internalHandle.posix.condition;
+        signal->internalHandle.posix.isSignaled = true;
 		int condRes = pthreadApi->pthread_cond_signal(handle);
 		pthreadApi->pthread_cond_broadcast(handle);
 		result = (condRes == 0);
@@ -10183,10 +10253,10 @@ fpl_internal bool fpl__X11InitWindow(const fplSettings *initSettings, fplWindowS
 
 	FPL_ASSERT(FPL_ARRAYCOUNT(appState->window.keyMap) >= 256);
 
-	// XLib: Valid key range is 8 to 255
+	// @NOTE(final): Valid key range for XLib is 8 to 255
 	FPL_LOG("X11", "Build X11 Keymap");
 	FPL_CLEAR_STRUCT(appState->window.keyMap);
-	for(int keyCode = 8; keyCode < 256; ++keyCode) {
+	for(int keyCode = 8; keyCode <= 255; ++keyCode) {
 		int dummy = 0;
 		KeySym *keySyms = x11Api->XGetKeyboardMapping(windowState->display, keyCode, 1, &dummy);
 		KeySym keySym = keySyms[0];
@@ -10513,12 +10583,9 @@ fpl_platform_api bool fplSetClipboardWideText(const wchar_t *wideSource) {
 #   include <pwd.h> // getpwuid
 
 fpl_internal void fpl__LinuxReleasePlatform(fpl__PlatformInitState *initState, fpl__PlatformAppState *appState) {
-	FPL_LOG_BLOCK;
 }
 
 fpl_internal bool fpl__LinuxInitPlatform(const fplInitFlags initFlags, const fplSettings *initSettings, fpl__PlatformInitState *initState, fpl__PlatformAppState *appState) {
-	FPL_LOG_BLOCK;
-
 	return true;
 }
 
@@ -10683,11 +10750,9 @@ fpl_platform_api char *fplGetHomePath(char *destPath, const size_t maxDestLen) {
 // ############################################################################
 #if defined(FPL_PLATFORM_UNIX)
 fpl_internal void fpl__UnixReleasePlatform(fpl__PlatformInitState *initState, fpl__PlatformAppState *appState) {
-	FPL_LOG_BLOCK;
 }
 
 fpl_internal bool fpl__UnixInitPlatform(const fplInitFlags initFlags, const fplSettings *initSettings, fpl__PlatformInitState *initState, fpl__PlatformAppState *appState) {
-	FPL_LOG_BLOCK;
 	return true;
 }
 
@@ -11027,6 +11092,8 @@ fpl_internal void fpl__Win32ReleaseVideoOpenGL(fpl__Win32VideoOpenGLState *glSta
 #if defined(FPL_ENABLE_VIDEO_OPENGL) && defined(FPL_SUBPLATFORM_X11)
 #	include <GL/glx.h> // XVisualInfo, GLXContext, GLXDrawable
 
+#define FPL__FUNC_GLX_glXQueryVersion(name) Bool name(Display *dpy,  int *major,  int *minor)
+typedef FPL__FUNC_GLX_glXQueryVersion(fpl__func_glx_glXQueryVersion);
 #define FPL__FUNC_GLX_glXChooseVisual(name) XVisualInfo* name(Display *dpy, int screen, int *attribList)
 typedef FPL__FUNC_GLX_glXChooseVisual(fpl__func_glx_glXChooseVisual);
 #define FPL__FUNC_GLX_glXCreateContext(name) GLXContext name(Display *dpy, XVisualInfo *vis, GLXContext shareList, Bool direct)
@@ -11072,6 +11139,7 @@ typedef FPL__FUNC_GLX_glXCreateContextAttribsARB(fpl__func_glx_glXCreateContextA
 
 typedef struct fpl__X11VideoOpenGLApi {
 	void *libHandle;
+	fpl__func_glx_glXQueryVersion *glXQueryVersion;
 	fpl__func_glx_glXChooseVisual *glXChooseVisual;
 	fpl__func_glx_glXCreateContext *glXCreateContext;
 	fpl__func_glx_glXDestroyContext *glXDestroyContext;
@@ -11091,8 +11159,6 @@ typedef struct fpl__X11VideoOpenGLApi {
 } fpl__X11VideoOpenGLApi;
 
 fpl_internal void fpl__X11UnloadVideoOpenGLApi(fpl__X11VideoOpenGLApi *api) {
-	FPL_LOG_BLOCK;
-
 	if(api->libHandle != fpl_null) {
 		FPL_LOG("GLX", "Unload Api (Library '%p')", api->libHandle);
 		dlclose(api->libHandle);
@@ -11101,8 +11167,6 @@ fpl_internal void fpl__X11UnloadVideoOpenGLApi(fpl__X11VideoOpenGLApi *api) {
 }
 
 fpl_internal bool fpl__X11LoadVideoOpenGLApi(fpl__X11VideoOpenGLApi *api) {
-	FPL_LOG_BLOCK;
-
 	const char* libFileNames[] = {
 		"libGL.so.1",
 		"libGL.so",
@@ -11115,23 +11179,28 @@ fpl_internal bool fpl__X11LoadVideoOpenGLApi(fpl__X11VideoOpenGLApi *api) {
 		void *libHandle = api->libHandle = dlopen(libName, FPL__POSIX_DL_LOADTYPE);
 		if(libHandle != fpl_null) {
 			FPL_LOG("GLX", "Library Found: '%s', Resolving Procedures", libName);
-			FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, api->glXChooseVisual, fpl__func_glx_glXChooseVisual, "glXChooseVisual");
-			FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, api->glXCreateContext, fpl__func_glx_glXCreateContext, "glXCreateContext");
-			FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, api->glXDestroyContext, fpl__func_glx_glXDestroyContext, "glXDestroyContext");
-			FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, api->glXCreateNewContext, fpl__func_glx_glXCreateNewContext, "glXCreateNewContext");
-			FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, api->glXMakeCurrent, fpl__func_glx_glXMakeCurrent, "glXMakeCurrent");
-			FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, api->glXSwapBuffers, fpl__func_glx_glXSwapBuffers, "glXSwapBuffers");
-			FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, api->glXGetProcAddress, fpl__func_glx_glXGetProcAddress, "glXGetProcAddress");
-			FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, api->glXChooseFBConfig, fpl__func_glx_glXChooseFBConfig, "glXChooseFBConfig");
-			FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, api->glXGetFBConfigs, fpl__func_glx_glXGetFBConfigs, "glXGetFBConfigs");
-			FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, api->glXGetVisualFromFBConfig, fpl__func_glx_glXGetVisualFromFBConfig, "glXGetVisualFromFBConfig");
-			FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, api->glXGetFBConfigAttrib, fpl__func_glx_glXGetFBConfigAttrib, "glXGetFBConfigAttrib");
-			FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, api->glXCreateWindow, fpl__func_glx_glXCreateWindow, "glXCreateWindow");
-			FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, api->glXQueryExtension, fpl__func_glx_glXQueryExtension, "glXQueryExtension");
-			FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, api->glXQueryExtensionsString, fpl__func_glx_glXQueryExtensionsString, "glXQueryExtensionsString");
-			FPL_LOG("GLX", "Successfully loaded GLX Api from Library '%s'", libName);
-			result = true;
-			break;
+			do {
+				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, api->glXQueryVersion, fpl__func_glx_glXQueryVersion, "glXQueryVersion");
+				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, api->glXChooseVisual, fpl__func_glx_glXChooseVisual, "glXChooseVisual");
+				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, api->glXCreateContext, fpl__func_glx_glXCreateContext, "glXCreateContext");
+				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, api->glXDestroyContext, fpl__func_glx_glXDestroyContext, "glXDestroyContext");
+				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, api->glXCreateNewContext, fpl__func_glx_glXCreateNewContext, "glXCreateNewContext");
+				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, api->glXMakeCurrent, fpl__func_glx_glXMakeCurrent, "glXMakeCurrent");
+				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, api->glXSwapBuffers, fpl__func_glx_glXSwapBuffers, "glXSwapBuffers");
+				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, api->glXGetProcAddress, fpl__func_glx_glXGetProcAddress, "glXGetProcAddress");
+				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, api->glXChooseFBConfig, fpl__func_glx_glXChooseFBConfig, "glXChooseFBConfig");
+				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, api->glXGetFBConfigs, fpl__func_glx_glXGetFBConfigs, "glXGetFBConfigs");
+				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, api->glXGetVisualFromFBConfig, fpl__func_glx_glXGetVisualFromFBConfig, "glXGetVisualFromFBConfig");
+				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, api->glXGetFBConfigAttrib, fpl__func_glx_glXGetFBConfigAttrib, "glXGetFBConfigAttrib");
+				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, api->glXCreateWindow, fpl__func_glx_glXCreateWindow, "glXCreateWindow");
+				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, api->glXQueryExtension, fpl__func_glx_glXQueryExtension, "glXQueryExtension");
+				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, api->glXQueryExtensionsString, fpl__func_glx_glXQueryExtensionsString, "glXQueryExtensionsString");
+				result = true;
+			} while(0);
+			if(result) {
+				FPL_LOG("GLX", "Successfully loaded GLX Api from Library '%s'", libName);
+				break;
+			}
 		}
 		fpl__X11UnloadVideoOpenGLApi(api);
 	}
@@ -11141,39 +11210,23 @@ fpl_internal bool fpl__X11LoadVideoOpenGLApi(fpl__X11VideoOpenGLApi *api) {
 typedef struct fpl__X11VideoOpenGLState {
 	fpl__X11VideoOpenGLApi api;
 	GLXFBConfig fbConfig;
+	XVisualInfo *visualInfo;
 	GLXContext context;
 	bool isActiveContext;
 } fpl__X11VideoOpenGLState;
 
-fpl_internal_inline bool fpl__X11SetPreWindowSetupForOpenGL(const fpl__X11Api *x11Api, const fpl__X11WindowState *windowState, const fpl__X11VideoOpenGLState *glState, fpl__X11PreWindowSetupResult *outResult) {
-	const fpl__X11VideoOpenGLApi *glApi = &glState->api;
-
-	// @TODO(final): Detect GLX version and use FBConfig only when version is >= 1.3 / Fallback to glXChooseVisual
-
-	FPL_ASSERT(glState->fbConfig != fpl_null);
-
-	FPL_LOG("GLX", "Get visual info from display '%p' and frame buffer config '%p'", windowState->display, glState->fbConfig);
-	XVisualInfo *visualInfo = glApi->glXGetVisualFromFBConfig(windowState->display, glState->fbConfig);
-	if(visualInfo == fpl_null) {
-		FPL_LOG("GLX", "Failed getting visual info from display '%p' and frame buffer config '%p'", windowState->display, glState->fbConfig);
-		return false;
-	}
-	FPL_LOG("GLX", "Successfully got visual info from display '%p' and frame buffer config '%p': %p", windowState->display, glState->fbConfig, visualInfo);
-
-	FPL_LOG("GLX", "Using visual: %p", visualInfo->visual);
-	FPL_LOG("GLX", "Using color depth: %d", visualInfo->depth);
-
-	outResult->visual = visualInfo->visual;
-	outResult->colorDepth = visualInfo->depth;
-
-	FPL_LOG("GLX", "Release visual info '%p'", visualInfo);
-	x11Api->XFree(visualInfo);
-
-	return true;
-}
-
 fpl_internal bool fpl__X11InitFrameBufferConfigVideoOpenGL(const fpl__X11Api *x11Api, const fpl__X11WindowState *windowState, fpl__X11VideoOpenGLState *glState) {
 	const fpl__X11VideoOpenGLApi *glApi = &glState->api;
+
+	FPL_LOG("GLX", "Query GLX version for display '%p'", windowState->display);
+	int major = 0, minor = 0;
+	if(!glApi->glXQueryVersion(windowState->display, &major, &minor)) {
+		FPL_LOG("GLX", "Failed querying GLX version for display '%p'", windowState->display);
+		return false;
+	}
+	FPL_LOG("GLX", "Successfully queried GLX version for display '%p': %d.%d", windowState->display, major, minor);
+
+	// @NOTE(final): Required for AMD Drivers?
 
 	FPL_LOG("GLX", "Query OpenGL extension on display '%p'", windowState->display);
 	if(!glApi->glXQueryExtension(windowState->display, fpl_null, fpl_null)) {
@@ -11181,13 +11234,10 @@ fpl_internal bool fpl__X11InitFrameBufferConfigVideoOpenGL(const fpl__X11Api *x1
 		return false;
 	}
 
-	// @NOTE(final): Required for AMD Catalyst Drivers?
 	const char *extensionString = glApi->glXQueryExtensionsString(windowState->display, windowState->screen);
 	if(extensionString != fpl_null) {
 		FPL_LOG("GLX", "OpenGL GLX extensions: %s", extensionString);
 	}
-
-	// @TODO(final): Detect GLX version and use FBConfig only when version is >= 1.3
 
 	int attr[32] = FPL_ZERO_INIT;
 	int attrIndex = 0;
@@ -11215,24 +11265,74 @@ fpl_internal bool fpl__X11InitFrameBufferConfigVideoOpenGL(const fpl__X11Api *x1
 
 	attr[attrIndex] = 0;
 
-	FPL_LOG("GLX", "Get framebuffer configuration from display '%p' and screen '%d'", windowState->display, windowState->screen);
-	int configCount = 0;
-	GLXFBConfig *configs = glApi->glXChooseFBConfig(windowState->display, windowState->screen, attr, &configCount);
-	if(configs == fpl_null || !configCount) {
-		FPL_LOG("GLX", "No framebuffer configuration from display '%p' and screen '%d' found!", windowState->display, windowState->screen);
-		glState->fbConfig = fpl_null;
-		return false;
-	}
-	glState->fbConfig = configs[0];
-	FPL_LOG("GLX", "Successfully got framebuffer configuration from display '%p' and screen '%d': %p", windowState->display, windowState->screen, glState->fbConfig);
+	if(major > 1 || (major == 1 && minor >= 3)) {
+		// Use frame buffer config approach (GLX >= 1.3)
+		FPL_LOG("GLX", "Get framebuffer configuration from display '%p' and screen '%d'", windowState->display, windowState->screen);
+		int configCount = 0;
+		GLXFBConfig *configs = glApi->glXChooseFBConfig(windowState->display, windowState->screen, attr, &configCount);
+		if(configs == fpl_null || !configCount) {
+			FPL_LOG("GLX", "No framebuffer configuration from display '%p' and screen '%d' found!", windowState->display, windowState->screen);
+			glState->fbConfig = fpl_null;
+			return false;
+		}
+		glState->fbConfig = configs[0];
+		glState->visualInfo = fpl_null;
+		FPL_LOG("GLX", "Successfully got framebuffer configuration from display '%p' and screen '%d': %p", windowState->display, windowState->screen, glState->fbConfig);
 
-	FPL_LOG("GLX", "Release %d framebuffer configurations", configCount);
-	x11Api->XFree(configs);
+		FPL_LOG("GLX", "Release %d framebuffer configurations", configCount);
+		x11Api->XFree(configs);
+	} else {
+		// Use choose visual (Old way)
+		FPL_LOG("GLX", "Choose visual from display '%p' and screen '%d'", windowState->display, windowState->screen);
+		XVisualInfo *visualInfo = glApi->glXChooseVisual(windowState->display, windowState->screen, attr);
+		if(visualInfo == fpl_null) {
+			FPL_LOG("GLX", "No visual info for display '%p' and screen '%d' found!", windowState->display, windowState->screen);
+			return false;
+		}
+		glState->visualInfo = visualInfo;
+		glState->fbConfig = fpl_null;
+		FPL_LOG("GLX", "Successfully got visual info from display '%p' and screen '%d': %p", windowState->display, windowState->screen, glState->visualInfo);
+	}
 
 	return true;
 }
 
-fpl_internal void fpl__X11ReleaseVideoOpenGL(const fpl__X11WindowState *windowState, fpl__X11VideoOpenGLState *glState) {
+fpl_internal_inline bool fpl__X11SetPreWindowSetupForOpenGL(const fpl__X11Api *x11Api, const fpl__X11WindowState *windowState, const fpl__X11VideoOpenGLState *glState, fpl__X11PreWindowSetupResult *outResult) {
+	const fpl__X11VideoOpenGLApi *glApi = &glState->api;
+
+	if(glState->fbConfig != fpl_null) {
+		FPL_LOG("GLX", "Get visual info from display '%p' and frame buffer config '%p'", windowState->display, glState->fbConfig);
+		XVisualInfo *visualInfo = glApi->glXGetVisualFromFBConfig(windowState->display, glState->fbConfig);
+		if(visualInfo == fpl_null) {
+			FPL_LOG("GLX", "Failed getting visual info from display '%p' and frame buffer config '%p'", windowState->display, glState->fbConfig);
+			return false;
+		}
+		FPL_LOG("GLX", "Successfully got visual info from display '%p' and frame buffer config '%p': %p", windowState->display, glState->fbConfig, visualInfo);
+
+		FPL_LOG("GLX", "Using visual: %p", visualInfo->visual);
+		FPL_LOG("GLX", "Using color depth: %d", visualInfo->depth);
+
+		outResult->visual = visualInfo->visual;
+		outResult->colorDepth = visualInfo->depth;
+
+		FPL_LOG("GLX", "Release visual info '%p'", visualInfo);
+		x11Api->XFree(visualInfo);
+	} else if(glState->visualInfo != fpl_null) {
+		FPL_LOG("GLX", "Using existing visual info: %p", glState->visualInfo);
+		FPL_LOG("GLX", "Using visual: %p", glState->visualInfo->visual);
+		FPL_LOG("GLX", "Using color depth: %d", glState->visualInfo->depth);
+		outResult->visual = glState->visualInfo->visual;
+		outResult->colorDepth = glState->visualInfo->depth;
+	} else {
+		FPL_LOG("GLX", "No visual info or frame buffer config defined!");
+		return false;
+	}
+
+	return true;
+}
+
+fpl_internal void fpl__X11ReleaseVideoOpenGL(const fpl__X11SubplatformState *subplatform, const fpl__X11WindowState *windowState, fpl__X11VideoOpenGLState *glState) {
+	const fpl__X11Api *x11Api = &subplatform->api;
 	const fpl__X11VideoOpenGLApi *glApi = &glState->api;
 
 	if(glState->isActiveContext) {
@@ -11246,57 +11346,51 @@ fpl_internal void fpl__X11ReleaseVideoOpenGL(const fpl__X11WindowState *windowSt
 		glApi->glXDestroyContext(windowState->display, glState->context);
 		glState->context = fpl_null;
 	}
+
+	if(glState->visualInfo != fpl_null) {
+		FPL_LOG("GLX", "Destroy visual info '%p' (Fallback)", glState->visualInfo);
+		x11Api->XFree(glState->visualInfo);
+		glState->visualInfo = fpl_null;
+	}
 }
 
 fpl_internal bool fpl__X11InitVideoOpenGL(const fpl__X11SubplatformState *subplatform, const fpl__X11WindowState *windowState, const fplVideoSettings *videoSettings, fpl__X11VideoOpenGLState *glState) {
 	const fpl__X11Api *x11Api = &subplatform->api;
 	fpl__X11VideoOpenGLApi *glApi = &glState->api;
 
-	if(glState->fbConfig == fpl_null) {
-		FPL_LOG("GLX", "No frame buffer configuration found");
-		return false;
-	}
-
-// @TODO(final): Do we want to use glXCreateNewContext always?
-#define USE_NEW_CTX 0
-
-#if !USE_NEW_CTX
-	FPL_LOG("GLX", "Get visual info from display '%p' and frame buffer config '%p'", windowState->display, glState->fbConfig);
-	XVisualInfo *visualInfo = glApi->glXGetVisualFromFBConfig(windowState->display, glState->fbConfig);
-	if(visualInfo == fpl_null) {
-		FPL_LOG("GLX", "Failed getting visual info from display '%p' and frame buffer config '%p'", windowState->display, glState->fbConfig);
-		return false;
-	}
-	FPL_LOG("GLX", "Successfully got visual info from display '%p' and frame buffer config '%p': %p", windowState->display, glState->fbConfig, visualInfo);
-#endif
-
 	//
 	// Create legacy context
 	//
 	GLXContext legacyRenderingContext;
-
-#if USE_NEW_CTX
-	FPL_LOG("GLX", "Create GLX legacy rendering context on display '%p' and frame buffer config '%p'", windowState->display, glState->fbConfig);
-	legacyRenderingContext = glApi->glXCreateNewContext(windowState->display, glState->fbConfig, GLX_RGBA_TYPE, fpl_null, GL_TRUE);
-	if (!legacyRenderingContext) {
-		FPL_LOG("GLX", "Failed creating GLX legacy rendering context on display '%p' and frame buffer config '%p'", windowState->display, glState->fbConfig);
+	if(glState->fbConfig != fpl_null) {
+		FPL_LOG("GLX", "Create GLX legacy rendering context on display '%p' and frame buffer config '%p'", windowState->display, glState->fbConfig);
+		legacyRenderingContext = glApi->glXCreateNewContext(windowState->display, glState->fbConfig, GLX_RGBA_TYPE, fpl_null, GL_TRUE);
+		if(!legacyRenderingContext) {
+			FPL_LOG("GLX", "Failed creating GLX legacy rendering context on display '%p' and frame buffer config '%p'", windowState->display, glState->fbConfig);
+			goto failed_x11_glx;
+		}
+		FPL_LOG("GLX", "Successfully created GLX legacy rendering context '%p' on display '%p' and frame buffer config '%p'", legacyRenderingContext, windowState->display, glState->fbConfig);
+	} else if(glState->visualInfo != fpl_null) {
+		FPL_LOG("GLX", "Create GLX legacy rendering context on display '%p' and visual info '%p'", windowState->display, glState->visualInfo);
+		legacyRenderingContext = glApi->glXCreateContext(windowState->display, glState->visualInfo, fpl_null, GL_TRUE);
+		if(!legacyRenderingContext) {
+			FPL_LOG("GLX", "Failed creating GLX legacy rendering context on display '%p' and visual info '%p'", windowState->display, glState->visualInfo);
+			goto failed_x11_glx;
+		}
+	} else {
+		FPL_LOG("GLX", "No visual info or frame buffer config defined!");
 		goto failed_x11_glx;
 	}
-#else
-	FPL_LOG("GLX", "Create GLX legacy rendering context on display '%p' and visual info '%p'", windowState->display, visualInfo);
-	legacyRenderingContext = glApi->glXCreateContext(windowState->display, visualInfo, fpl_null, GL_TRUE);
-	if (!legacyRenderingContext) {
-		FPL_LOG("GLX", "Failed creating GLX legacy rendering context on display '%p' and visual info '%p'", windowState->display, visualInfo);
-		goto failed_x11_glx;
-	}
-#endif
 
+	//
+	// Activate legacy context
+	//
 	FPL_LOG("GLX", "Activate GLX legacy rendering context '%p' on display '%p' and window '%d'", legacyRenderingContext, windowState->display, (int)windowState->window);
 	if(!glApi->glXMakeCurrent(windowState->display, windowState->window, legacyRenderingContext)) {
 		FPL_LOG("GLX", "Failed activating GLX legacy rendering context '%p' on display '%p' and window '%d'", legacyRenderingContext, windowState->display, (int)windowState->window);
 		goto failed_x11_glx;
 	} else {
-		FPL_LOG("GLX", "Successfully activated GLX legacy rendering context '%p' on display '%p' and window '%d'", legacyRenderingContext, windowState->display, (int) windowState->window);
+		FPL_LOG("GLX", "Successfully activated GLX legacy rendering context '%p' on display '%p' and window '%d'", legacyRenderingContext, windowState->display, (int)windowState->window);
 	}
 
 	//
@@ -11304,7 +11398,7 @@ fpl_internal bool fpl__X11InitVideoOpenGL(const fpl__X11SubplatformState *subpla
 	//
 	glApi->glXCreateContextAttribsARB = (fpl__func_glx_glXCreateContextAttribsARB *)glApi->glXGetProcAddress((const GLubyte *)"glXCreateContextAttribsARB");
 
-	// Disable rendering context
+	// Disable legacy rendering context
 	glApi->glXMakeCurrent(windowState->display, 0, fpl_null);
 
 	GLXContext activeRenderingContext;
@@ -11357,13 +11451,13 @@ fpl_internal bool fpl__X11InitVideoOpenGL(const fpl__X11SubplatformState *subpla
 			glApi->glXMakeCurrent(windowState->display, windowState->window, legacyRenderingContext);
 			activeRenderingContext = legacyRenderingContext;
 		} else {
-			if (!glApi->glXMakeCurrent(windowState->display, windowState->window, modernRenderingContext)) {
+			if(!glApi->glXMakeCurrent(windowState->display, windowState->window, modernRenderingContext)) {
 				fpl__PushError(
-						"Warning: Failed activating Modern OpenGL Rendering Context for version (%d.%d) and compability flags (%d) -> Fallback to legacy context",
-						videoSettings->graphics.opengl.majorVersion, videoSettings->graphics.opengl.minorVersion,
-						videoSettings->graphics.opengl.compabilityFlags);
+					"Warning: Failed activating Modern OpenGL Rendering Context for version (%d.%d) and compability flags (%d) -> Fallback to legacy context",
+					videoSettings->graphics.opengl.majorVersion, videoSettings->graphics.opengl.minorVersion,
+					videoSettings->graphics.opengl.compabilityFlags);
 
-				// Destroy modern rendering context
+			// Destroy modern rendering context
 				glApi->glXDestroyContext(windowState->display, modernRenderingContext);
 
 				// Fallback to legacy rendering context
@@ -11394,16 +11488,18 @@ failed_x11_glx:
 	result = false;
 
 done_x11_glx:
-#if !USE_NEW_CTX
-	FPL_LOG("GLX", "Release visual info '%p'", visualInfo);
-	x11Api->XFree(visualInfo);
-#endif
+	if(glState->visualInfo != fpl_null) {
+		// If there is a cached visual info, get rid of it now - regardless of its result
+		FPL_LOG("GLX", "Destroy visual info '%p'", glState->visualInfo);
+		x11Api->XFree(glState->visualInfo);
+		glState->visualInfo = fpl_null;
+	}
 
 	if(!result) {
-		if (legacyRenderingContext) {
+		if(legacyRenderingContext) {
 			glApi->glXDestroyContext(windowState->display, legacyRenderingContext);
 		}
-		fpl__X11ReleaseVideoOpenGL(windowState, glState);
+		fpl__X11ReleaseVideoOpenGL(subplatform, windowState, glState);
 	}
 
 	return (result);
@@ -11447,10 +11543,19 @@ fpl_internal void fpl__Win32ReleaseVideoSoftware(fpl__Win32VideoSoftwareState *s
 #if !defined(FPL_AUDIO_DRIVERS_IMPLEMENTED) && defined(FPL_ENABLE_AUDIO)
 #	define FPL_AUDIO_DRIVERS_IMPLEMENTED
 
+typedef enum fpl__AudioDeviceState {
+	fpl__AudioDeviceState_Uninitialized = 0,
+	fpl__AudioDeviceState_Stopped,
+	fpl__AudioDeviceState_Started,
+	fpl__AudioDeviceState_Starting,
+	fpl__AudioDeviceState_Stopping,
+} fpl__AudioDeviceState;
+
 typedef struct fpl__CommonAudioState {
 	fplAudioDeviceFormat internalFormat;
 	fpl_audio_client_read_callback *clientReadCallback;
 	void *clientUserData;
+	volatile fpl__AudioDeviceState state;
 } fpl__CommonAudioState;
 
 fpl_internal_inline uint32_t fpl__ReadAudioFramesFromClient(const fpl__CommonAudioState *commonAudio, uint32_t frameCount, void *pSamples) {
@@ -11466,6 +11571,11 @@ fpl_internal_inline uint32_t fpl__ReadAudioFramesFromClient(const fpl__CommonAud
 static GUID FPL__GUID_KSDATAFORMAT_SUBTYPE_PCM = { 0x00000001, 0x0000, 0x0010, {0x80, 0x00, 0x00, 0xaa, 0x00, 0x38, 0x9b, 0x71} };
 static GUID FPL__GUID_KSDATAFORMAT_SUBTYPE_IEEE_FLOAT = { 0x00000003, 0x0000, 0x0010, {0x80, 0x00, 0x00, 0xaa, 0x00, 0x38, 0x9b, 0x71} };
 #endif
+
+// Forward declarations
+fpl_internal fpl__AudioDeviceState fpl__AudioGetDeviceState(fpl__CommonAudioState *audioState);
+fpl_internal bool fpl__IsAudioDeviceInitialized(fpl__CommonAudioState *audioState);
+fpl_internal bool fpl__IsAudioDeviceStarted(fpl__CommonAudioState *audioState);
 
 // ############################################################################
 //
@@ -11512,7 +11622,7 @@ fpl_internal bool fpl__LoadDirectSoundApi(fpl__DirectSoundApi *dsoundApi) {
 	return true;
 }
 
-typedef struct fpl__DirectSoundState {
+typedef struct fpl__DirectSoundAudioState {
 	fpl__DirectSoundApi api;
 	LPDIRECTSOUND directSound;
 	LPDIRECTSOUNDBUFFER primaryBuffer;
@@ -11522,7 +11632,7 @@ typedef struct fpl__DirectSoundState {
 	HANDLE stopEvent;
 	uint32_t lastProcessedFrame;
 	bool breakMainLoop;
-} fpl__DirectSoundState;
+} fpl__DirectSoundAudioState;
 
 typedef struct fpl__DirectSoundDeviceInfos {
 	uint32_t foundDeviceCount;
@@ -11550,7 +11660,7 @@ fpl_internal BOOL CALLBACK fpl__GetDeviceCallbackDirectSound(LPGUID lpGuid, LPCS
 	return FALSE;
 }
 
-fpl_internal uint32_t fpl__GetDevicesDirectSound(fpl__DirectSoundState *dsoundState, fplAudioDeviceInfo *deviceInfos, uint32_t maxDeviceCount) {
+fpl_internal uint32_t fpl__GetDevicesDirectSound(fpl__DirectSoundAudioState *dsoundState, fplAudioDeviceInfo *deviceInfos, uint32_t maxDeviceCount) {
 	uint32_t result = 0;
 	const fpl__DirectSoundApi *dsoundApi = &dsoundState->api;
 	fpl__DirectSoundDeviceInfos infos = FPL_ZERO_INIT;
@@ -11561,7 +11671,7 @@ fpl_internal uint32_t fpl__GetDevicesDirectSound(fpl__DirectSoundState *dsoundSt
 	return(result);
 }
 
-fpl_internal bool fpl__ReleaseDirectSound(const fpl__CommonAudioState *commonAudio, fpl__DirectSoundState *dsoundState) {
+fpl_internal bool fpl__AudioReleaseDirectSound(const fpl__CommonAudioState *commonAudio, fpl__DirectSoundAudioState *dsoundState) {
 	if(dsoundState->stopEvent != fpl_null) {
 		CloseHandle(dsoundState->stopEvent);
 	}
@@ -11595,7 +11705,7 @@ fpl_internal bool fpl__ReleaseDirectSound(const fpl__CommonAudioState *commonAud
 	return true;
 }
 
-fpl_internal fplAudioResult fpl__InitDirectSound(const fplAudioSettings *audioSettings, fpl__CommonAudioState *commonAudio, fpl__DirectSoundState *dsoundState) {
+fpl_internal fplAudioResult fpl__AudioInitDirectSound(const fplAudioSettings *audioSettings, fpl__CommonAudioState *commonAudio, fpl__DirectSoundAudioState *dsoundState) {
 #ifdef __cplusplus
 	GUID guid_IID_IDirectSoundNotify = FPL__IID_IDirectSoundNotify;
 #else
@@ -11610,8 +11720,8 @@ fpl_internal fplAudioResult fpl__InitDirectSound(const fplAudioSettings *audioSe
 	// Load direct sound library
 	fpl__DirectSoundApi *dsoundApi = &dsoundState->api;
 	if(!fpl__LoadDirectSoundApi(dsoundApi)) {
-		fpl__ReleaseDirectSound(commonAudio, dsoundState);
-		return fplAudioResult_Failed;
+		fpl__AudioReleaseDirectSound(commonAudio, dsoundState);
+		return fplAudioResult_ApiFailed;
 	}
 
 	// Load direct sound object
@@ -11620,8 +11730,8 @@ fpl_internal fplAudioResult fpl__InitDirectSound(const fplAudioSettings *audioSe
 		deviceId = &audioSettings->deviceInfo.id.dshow;
 	}
 	if(!SUCCEEDED(dsoundApi->DirectSoundCreate(deviceId, &dsoundState->directSound, fpl_null))) {
-		fpl__ReleaseDirectSound(commonAudio, dsoundState);
-		return fplAudioResult_Failed;
+		fpl__AudioReleaseDirectSound(commonAudio, dsoundState);
+		return fplAudioResult_NoDeviceFound;
 	}
 
 	// Setup wave format ex
@@ -11642,18 +11752,18 @@ fpl_internal fplAudioResult fpl__InitDirectSound(const fplAudioSettings *audioSe
 
 	// Get either local window handle or desktop handle
 	HWND windowHandle = fpl_null;
-#		if defined(FPL_ENABLE_WINDOW)
+#	if defined(FPL_ENABLE_WINDOW)
 	if(appState->initFlags & fplInitFlags_Window) {
 		windowHandle = appState->window.win32.windowHandle;
 	}
-#		endif
+#	endif
 	if(windowHandle == fpl_null) {
 		windowHandle = apiFuncs->user.GetDesktopWindow();
 	}
 
 	// The cooperative level must be set before doing anything else
 	if(FAILED(IDirectSound_SetCooperativeLevel(dsoundState->directSound, windowHandle, (audioSettings->preferExclusiveMode) ? DSSCL_EXCLUSIVE : DSSCL_PRIORITY))) {
-		fpl__ReleaseDirectSound(commonAudio, dsoundState);
+		fpl__AudioReleaseDirectSound(commonAudio, dsoundState);
 		return fplAudioResult_Failed;
 	}
 
@@ -11662,20 +11772,20 @@ fpl_internal fplAudioResult fpl__InitDirectSound(const fplAudioSettings *audioSe
 	descDSPrimary.dwSize = sizeof(DSBUFFERDESC);
 	descDSPrimary.dwFlags = DSBCAPS_PRIMARYBUFFER | DSBCAPS_CTRLVOLUME;
 	if(FAILED(IDirectSound_CreateSoundBuffer(dsoundState->directSound, &descDSPrimary, &dsoundState->primaryBuffer, fpl_null))) {
-		fpl__ReleaseDirectSound(commonAudio, dsoundState);
+		fpl__AudioReleaseDirectSound(commonAudio, dsoundState);
 		return fplAudioResult_Failed;
 	}
 
 	// Set format
 	if(FAILED(IDirectSoundBuffer_SetFormat(dsoundState->primaryBuffer, (WAVEFORMATEX*)&wf))) {
-		fpl__ReleaseDirectSound(commonAudio, dsoundState);
+		fpl__AudioReleaseDirectSound(commonAudio, dsoundState);
 		return fplAudioResult_Failed;
 	}
 
 	// Get the required size in bytes
 	DWORD requiredSize;
 	if(FAILED(IDirectSoundBuffer_GetFormat(dsoundState->primaryBuffer, fpl_null, 0, &requiredSize))) {
-		fpl__ReleaseDirectSound(commonAudio, dsoundState);
+		fpl__AudioReleaseDirectSound(commonAudio, dsoundState);
 		return fplAudioResult_Failed;
 	}
 
@@ -11683,7 +11793,7 @@ fpl_internal fplAudioResult fpl__InitDirectSound(const fplAudioSettings *audioSe
 	char rawdata[1024];
 	WAVEFORMATEXTENSIBLE* pActualFormat = (WAVEFORMATEXTENSIBLE*)rawdata;
 	if(FAILED(IDirectSoundBuffer_GetFormat(dsoundState->primaryBuffer, (WAVEFORMATEX*)pActualFormat, requiredSize, fpl_null))) {
-		fpl__ReleaseDirectSound(commonAudio, dsoundState);
+		fpl__AudioReleaseDirectSound(commonAudio, dsoundState);
 		return fplAudioResult_Failed;
 	}
 
@@ -11731,13 +11841,13 @@ fpl_internal fplAudioResult fpl__InitDirectSound(const fplAudioSettings *audioSe
 	descDS.dwBufferBytes = (DWORD)internalFormat.bufferSizeInBytes;
 	descDS.lpwfxFormat = (WAVEFORMATEX*)&wf;
 	if(FAILED(IDirectSound_CreateSoundBuffer(dsoundState->directSound, &descDS, &dsoundState->secondaryBuffer, fpl_null))) {
-		fpl__ReleaseDirectSound(commonAudio, dsoundState);
+		fpl__AudioReleaseDirectSound(commonAudio, dsoundState);
 		return fplAudioResult_Failed;
 	}
 
 	// Notifications are set up via a DIRECTSOUNDNOTIFY object which is retrieved from the buffer.
 	if(FAILED(IDirectSoundBuffer_QueryInterface(dsoundState->secondaryBuffer, guid_IID_IDirectSoundNotify, (void**)&dsoundState->notify))) {
-		fpl__ReleaseDirectSound(commonAudio, dsoundState);
+		fpl__AudioReleaseDirectSound(commonAudio, dsoundState);
 		return fplAudioResult_Failed;
 	}
 
@@ -11747,7 +11857,7 @@ fpl_internal fplAudioResult fpl__InitDirectSound(const fplAudioSettings *audioSe
 	for(uint32_t i = 0; i < internalFormat.periods; ++i) {
 		dsoundState->notifyEvents[i] = CreateEventA(fpl_null, false, false, fpl_null);
 		if(dsoundState->notifyEvents[i] == fpl_null) {
-			fpl__ReleaseDirectSound(commonAudio, dsoundState);
+			fpl__AudioReleaseDirectSound(commonAudio, dsoundState);
 			return fplAudioResult_Failed;
 		}
 
@@ -11756,26 +11866,26 @@ fpl_internal fplAudioResult fpl__InitDirectSound(const fplAudioSettings *audioSe
 		notifyPoints[i].hEventNotify = dsoundState->notifyEvents[i];
 	}
 	if(FAILED(IDirectSoundNotify_SetNotificationPositions(dsoundState->notify, internalFormat.periods, notifyPoints))) {
-		fpl__ReleaseDirectSound(commonAudio, dsoundState);
+		fpl__AudioReleaseDirectSound(commonAudio, dsoundState);
 		return fplAudioResult_Failed;
 	}
 
 	// Create stop event
 	dsoundState->stopEvent = CreateEventA(fpl_null, false, false, fpl_null);
 	if(dsoundState->stopEvent == fpl_null) {
-		fpl__ReleaseDirectSound(commonAudio, dsoundState);
+		fpl__AudioReleaseDirectSound(commonAudio, dsoundState);
 		return fplAudioResult_Failed;
 	}
 
 	return fplAudioResult_Success;
 }
 
-fpl_internal_inline void fpl__StopMainLoopDirectSound(fpl__DirectSoundState *dsoundState) {
+fpl_internal_inline void fpl__AudioStopMainLoopDirectSound(fpl__DirectSoundAudioState *dsoundState) {
 	dsoundState->breakMainLoop = true;
 	SetEvent(dsoundState->stopEvent);
 }
 
-fpl_internal bool fpl__GetCurrentFrameDirectSound(const fpl__CommonAudioState *commonAudio, fpl__DirectSoundState *dsoundState, uint32_t* pCurrentPos) {
+fpl_internal bool fpl__GetCurrentFrameDirectSound(const fpl__CommonAudioState *commonAudio, fpl__DirectSoundAudioState *dsoundState, uint32_t* pCurrentPos) {
 	FPL_ASSERT(pCurrentPos != fpl_null);
 	*pCurrentPos = 0;
 
@@ -11790,7 +11900,7 @@ fpl_internal bool fpl__GetCurrentFrameDirectSound(const fpl__CommonAudioState *c
 	return true;
 }
 
-fpl_internal uint32_t fpl__GetAvailableFramesDirectSound(const fpl__CommonAudioState *commonAudio, fpl__DirectSoundState *dsoundState) {
+fpl_internal uint32_t fpl__GetAvailableFramesDirectSound(const fpl__CommonAudioState *commonAudio, fpl__DirectSoundAudioState *dsoundState) {
 	// Get current frame from current play position
 	uint32_t currentFrame;
 	if(!fpl__GetCurrentFrameDirectSound(commonAudio, dsoundState, &currentFrame)) {
@@ -11814,7 +11924,7 @@ fpl_internal uint32_t fpl__GetAvailableFramesDirectSound(const fpl__CommonAudioS
 	return totalFrameCount - committedSize;
 }
 
-fpl_internal uint32_t fpl__WaitForFramesDirectSound(const fpl__CommonAudioState *commonAudio, fpl__DirectSoundState *dsoundState) {
+fpl_internal uint32_t fpl__WaitForFramesDirectSound(const fpl__CommonAudioState *commonAudio, fpl__DirectSoundAudioState *dsoundState) {
 	FPL_ASSERT(commonAudio->internalFormat.sampleRate > 0);
 	FPL_ASSERT(commonAudio->internalFormat.periods > 0);
 
@@ -11845,7 +11955,7 @@ fpl_internal uint32_t fpl__WaitForFramesDirectSound(const fpl__CommonAudioState 
 	return fpl__GetAvailableFramesDirectSound(commonAudio, dsoundState);
 }
 
-fpl_internal bool fpl__StopDirectSound(fpl__DirectSoundState *dsoundState) {
+fpl_internal bool fpl__AudioStopDirectSound(fpl__DirectSoundAudioState *dsoundState) {
 	FPL_ASSERT(dsoundState->secondaryBuffer != fpl_null);
 	if(FAILED(IDirectSoundBuffer_Stop(dsoundState->secondaryBuffer))) {
 		return false;
@@ -11854,7 +11964,7 @@ fpl_internal bool fpl__StopDirectSound(fpl__DirectSoundState *dsoundState) {
 	return true;
 }
 
-fpl_internal fplAudioResult fpl__StartDirectSound(const fpl__CommonAudioState *commonAudio, fpl__DirectSoundState *dsoundState) {
+fpl_internal fplAudioResult fpl__AudioStartDirectSound(const fpl__CommonAudioState *commonAudio, fpl__DirectSoundAudioState *dsoundState) {
 	FPL_ASSERT(commonAudio->internalFormat.channels > 0);
 	FPL_ASSERT(commonAudio->internalFormat.periods > 0);
 	uint32_t audioSampleSizeBytes = fplGetAudioSampleSizeInBytes(commonAudio->internalFormat.type);
@@ -11883,7 +11993,7 @@ fpl_internal fplAudioResult fpl__StartDirectSound(const fpl__CommonAudioState *c
 	return fplAudioResult_Success;
 }
 
-fpl_internal void fpl__DirectSoundMainLoop(const fpl__CommonAudioState *commonAudio, fpl__DirectSoundState *dsoundState) {
+fpl_internal void fpl__AudioRunMainLoopDirectSound(const fpl__CommonAudioState *commonAudio, fpl__DirectSoundAudioState *dsoundState) {
 	FPL_ASSERT(commonAudio->internalFormat.channels > 0);
 	uint32_t audioSampleSizeBytes = fplGetAudioSampleSizeInBytes(commonAudio->internalFormat.type);
 	FPL_ASSERT(audioSampleSizeBytes > 0);
@@ -11934,15 +12044,689 @@ fpl_internal void fpl__DirectSoundMainLoop(const fpl__CommonAudioState *commonAu
 //
 // > AUDIO_DRIVER_ALSA
 //
+// Based on mini_al.h
+//
 // ############################################################################
 #if defined(FPL_ENABLE_AUDIO_ALSA)
 #	include <alsa/asoundlib.h>
 
-typedef struct fpl__AlsaSoundState {
-	void *alsaLibrary;
-} fpl__AlsaSoundState;
+#define FPL__ALSA_FUNC_snd_pcm_open(name) int name(snd_pcm_t **pcm, const char *name, snd_pcm_stream_t stream, int mode)
+typedef FPL__ALSA_FUNC_snd_pcm_open(fpl__alsa_func_snd_pcm_open);
+#define FPL__ALSA_FUNC_snd_pcm_close(name) int name(snd_pcm_t *pcm)
+typedef FPL__ALSA_FUNC_snd_pcm_close(fpl__alsa_func_snd_pcm_close);
+#define FPL__ALSA_FUNC_snd_pcm_hw_params_sizeof(name) size_t name(void)
+typedef FPL__ALSA_FUNC_snd_pcm_hw_params_sizeof(fpl__alsa_func_snd_pcm_hw_params_sizeof);
+#define FPL__ALSA_FUNC_snd_pcm_hw_params(name) int name(snd_pcm_t *pcm, snd_pcm_hw_params_t *params)
+typedef FPL__ALSA_FUNC_snd_pcm_hw_params(fpl__alsa_func_snd_pcm_hw_params);
+#define FPL__ALSA_FUNC_snd_pcm_hw_params_any(name) int name(snd_pcm_t *pcm, snd_pcm_hw_params_t *params)
+typedef FPL__ALSA_FUNC_snd_pcm_hw_params_any(fpl__alsa_func_snd_pcm_hw_params_any);
+#define FPL__ALSA_FUNC_snd_pcm_hw_params_set_format(name) int name(snd_pcm_t *pcm, snd_pcm_hw_params_t *params, snd_pcm_format_t val)
+typedef FPL__ALSA_FUNC_snd_pcm_hw_params_set_format(fpl__alsa_func_snd_pcm_hw_params_set_format);
+#define FPL__ALSA_FUNC_snd_pcm_hw_params_set_format_first(name) int name(snd_pcm_t *pcm, snd_pcm_hw_params_t *params, snd_pcm_format_t *format)
+typedef FPL__ALSA_FUNC_snd_pcm_hw_params_set_format_first(fpl__alsa_func_snd_pcm_hw_params_set_format_first);
+#define FPL__ALSA_FUNC_snd_pcm_hw_params_get_format_mask(name) void name(snd_pcm_hw_params_t *params, snd_pcm_format_mask_t *mask)
+typedef FPL__ALSA_FUNC_snd_pcm_hw_params_get_format_mask(fpl__alsa_func_snd_pcm_hw_params_get_format_mask);
+#define FPL__ALSA_FUNC_snd_pcm_hw_params_set_channels_near(name) int name(snd_pcm_t *pcm, snd_pcm_hw_params_t *params, unsigned int *val)
+typedef FPL__ALSA_FUNC_snd_pcm_hw_params_set_channels_near(fpl__alsa_func_snd_pcm_hw_params_set_channels_near);
+#define FPL__ALSA_FUNC_snd_pcm_hw_params_set_rate_resample(name) int name(snd_pcm_t *pcm, snd_pcm_hw_params_t *params, unsigned int val)
+typedef FPL__ALSA_FUNC_snd_pcm_hw_params_set_rate_resample(fpl__alsa_func_snd_pcm_hw_params_set_rate_resample);
+#define FPL__ALSA_FUNC_snd_pcm_hw_params_set_rate_near(name) int name(snd_pcm_t *pcm, snd_pcm_hw_params_t *params, unsigned int *val, int *dir)
+typedef FPL__ALSA_FUNC_snd_pcm_hw_params_set_rate_near(fpl__alsa_func_snd_pcm_hw_params_set_rate_near);
+#define FPL__ALSA_FUNC_snd_pcm_hw_params_set_buffer_size_near(name) int name(snd_pcm_t *pcm, snd_pcm_hw_params_t *params, snd_pcm_uframes_t *val)
+typedef FPL__ALSA_FUNC_snd_pcm_hw_params_set_buffer_size_near(fpl__alsa_func_snd_pcm_hw_params_set_buffer_size_near);
+#define FPL__ALSA_FUNC_snd_pcm_hw_params_set_periods_near(name) int name(snd_pcm_t *pcm, snd_pcm_hw_params_t *params, unsigned int *val, int *dir)
+typedef FPL__ALSA_FUNC_snd_pcm_hw_params_set_periods_near(fpl__alsa_func_snd_pcm_hw_params_set_periods_near);
+#define FPL__ALSA_FUNC_snd_pcm_hw_params_set_access(name) int name(snd_pcm_t *pcm, snd_pcm_hw_params_t *params, snd_pcm_access_t _access)
+typedef FPL__ALSA_FUNC_snd_pcm_hw_params_set_access(fpl__alsa_func_snd_pcm_hw_params_set_access);
+#define FPL__ALSA_FUNC_snd_pcm_hw_params_get_format(name) int name(const snd_pcm_hw_params_t *params, snd_pcm_format_t *val)
+typedef FPL__ALSA_FUNC_snd_pcm_hw_params_get_format(fpl__alsa_func_snd_pcm_hw_params_get_format);
+#define FPL__ALSA_FUNC_snd_pcm_hw_params_get_channels(name) int name(const snd_pcm_hw_params_t *params, unsigned int *val)
+typedef FPL__ALSA_FUNC_snd_pcm_hw_params_get_channels(fpl__alsa_func_snd_pcm_hw_params_get_channels);
+#define FPL__ALSA_FUNC_snd_pcm_hw_params_get_rate(name) int name(const snd_pcm_hw_params_t *params, unsigned int *val, int *dir)
+typedef FPL__ALSA_FUNC_snd_pcm_hw_params_get_rate(fpl__alsa_func_snd_pcm_hw_params_get_rate);
+#define FPL__ALSA_FUNC_snd_pcm_hw_params_get_buffer_size(name) int name(const snd_pcm_hw_params_t *params, snd_pcm_uframes_t *val)
+typedef FPL__ALSA_FUNC_snd_pcm_hw_params_get_buffer_size(fpl__alsa_func_snd_pcm_hw_params_get_buffer_size);
+#define FPL__ALSA_FUNC_snd_pcm_hw_params_get_periods(name) int name(const snd_pcm_hw_params_t *params, unsigned int *val, int *dir)
+typedef FPL__ALSA_FUNC_snd_pcm_hw_params_get_periods(fpl__alsa_func_snd_pcm_hw_params_get_periods);
+#define FPL__ALSA_FUNC_snd_pcm_hw_params_get_access(name) int name(const snd_pcm_hw_params_t *params, snd_pcm_access_t *_access)
+typedef FPL__ALSA_FUNC_snd_pcm_hw_params_get_access(fpl__alsa_func_snd_pcm_hw_params_get_access);
+#define FPL__ALSA_FUNC_snd_pcm_hw_params_get_sbits(name) int name(const snd_pcm_hw_params_t *params)
+typedef FPL__ALSA_FUNC_snd_pcm_hw_params_get_sbits(fpl__alsa_func_snd_pcm_hw_params_get_sbits);
+#define FPL__ALSA_FUNC_snd_pcm_sw_params_sizeof(name) size_t name(void)
+typedef FPL__ALSA_FUNC_snd_pcm_sw_params_sizeof(fpl__alsa_func_snd_pcm_sw_params_sizeof);
+#define FPL__ALSA_FUNC_snd_pcm_sw_params_current(name) int name(snd_pcm_t *pcm, snd_pcm_sw_params_t *params)
+typedef FPL__ALSA_FUNC_snd_pcm_sw_params_current(fpl__alsa_func_snd_pcm_sw_params_current);
+#define FPL__ALSA_FUNC_snd_pcm_sw_params_set_avail_min(name) int name(snd_pcm_t *pcm, snd_pcm_sw_params_t *params, snd_pcm_uframes_t val)
+typedef FPL__ALSA_FUNC_snd_pcm_sw_params_set_avail_min(fpl__alsa_func_snd_pcm_sw_params_set_avail_min);
+#define FPL__ALSA_FUNC_snd_pcm_sw_params_set_start_threshold(name) int name(snd_pcm_t *pcm, snd_pcm_sw_params_t *params, snd_pcm_uframes_t val)
+typedef FPL__ALSA_FUNC_snd_pcm_sw_params_set_start_threshold(fpl__alsa_func_snd_pcm_sw_params_set_start_threshold);
+#define FPL__ALSA_FUNC_snd_pcm_sw_params(name) int name(snd_pcm_t *pcm, snd_pcm_sw_params_t *params)
+typedef FPL__ALSA_FUNC_snd_pcm_sw_params(fpl__alsa_func_snd_pcm_sw_params);
+#define FPL__ALSA_FUNC_snd_pcm_format_mask_sizeof(name) size_t name(void)
+typedef FPL__ALSA_FUNC_snd_pcm_format_mask_sizeof(fpl__alsa_func_snd_pcm_format_mask_sizeof);
+#define FPL__ALSA_FUNC_snd_pcm_format_mask_test(name) int name(const snd_pcm_format_mask_t *mask, snd_pcm_format_t val)
+typedef FPL__ALSA_FUNC_snd_pcm_format_mask_test(fpl__alsa_func_snd_pcm_format_mask_test);
+#define FPL__ALSA_FUNC_snd_pcm_get_chmap(name) snd_pcm_chmap_t *name(snd_pcm_t *pcm)
+typedef FPL__ALSA_FUNC_snd_pcm_get_chmap(fpl__alsa_func_snd_pcm_get_chmap);
+#define FPL__ALSA_FUNC_snd_pcm_prepare(name) int name(snd_pcm_t *pcm)
+typedef FPL__ALSA_FUNC_snd_pcm_prepare(fpl__alsa_func_snd_pcm_prepare);
+#define FPL__ALSA_FUNC_snd_pcm_start(name) int name(snd_pcm_t *pcm)
+typedef FPL__ALSA_FUNC_snd_pcm_start(fpl__alsa_func_snd_pcm_start);
+#define FPL__ALSA_FUNC_snd_pcm_drop(name) int name(snd_pcm_t *pcm)
+typedef FPL__ALSA_FUNC_snd_pcm_drop(fpl__alsa_func_snd_pcm_drop);
+#define FPL__ALSA_FUNC_snd_device_name_hint(name) int name(int card, const char *iface, void ***hints)
+typedef FPL__ALSA_FUNC_snd_device_name_hint(fpl__alsa_func_snd_device_name_hint);
+#define FPL__ALSA_FUNC_snd_device_name_get_hint(name) char *name(const void *hint, const char *id)
+typedef FPL__ALSA_FUNC_snd_device_name_get_hint(fpl__alsa_func_snd_device_name_get_hint);
+#define FPL__ALSA_FUNC_snd_card_get_index(name) int name(const char *name)
+typedef FPL__ALSA_FUNC_snd_card_get_index(fpl__alsa_func_snd_card_get_index);
+#define FPL__ALSA_FUNC_snd_device_name_free_hint(name) int name(void **hints)
+typedef FPL__ALSA_FUNC_snd_device_name_free_hint(fpl__alsa_func_snd_device_name_free_hint);
+#define FPL__ALSA_FUNC_snd_pcm_mmap_begin(name) int name(snd_pcm_t *pcm, const snd_pcm_channel_area_t **areas, snd_pcm_uframes_t *offset, snd_pcm_uframes_t *frames)
+typedef FPL__ALSA_FUNC_snd_pcm_mmap_begin(fpl__alsa_func_snd_pcm_mmap_begin);
+#define FPL__ALSA_FUNC_snd_pcm_mmap_commit(name) snd_pcm_sframes_t name(snd_pcm_t *pcm, snd_pcm_uframes_t offset, snd_pcm_uframes_t frames)
+typedef FPL__ALSA_FUNC_snd_pcm_mmap_commit(fpl__alsa_func_snd_pcm_mmap_commit);
+#define FPL__ALSA_FUNC_snd_pcm_recover(name) int name(snd_pcm_t *pcm, int err, int silent)
+typedef FPL__ALSA_FUNC_snd_pcm_recover(fpl__alsa_func_snd_pcm_recover);
+#define FPL__ALSA_FUNC_snd_pcm_writei(name) snd_pcm_sframes_t name(snd_pcm_t *pcm, const void *buffer, snd_pcm_uframes_t size)
+typedef FPL__ALSA_FUNC_snd_pcm_writei(fpl__alsa_func_snd_pcm_writei);
+#define FPL__ALSA_FUNC_snd_pcm_avail(name) snd_pcm_sframes_t name(snd_pcm_t *pcm)
+typedef FPL__ALSA_FUNC_snd_pcm_avail(fpl__alsa_func_snd_pcm_avail);
+#define FPL__ALSA_FUNC_snd_pcm_avail_update(name) snd_pcm_sframes_t name(snd_pcm_t *pcm)
+typedef FPL__ALSA_FUNC_snd_pcm_avail_update(fpl__alsa_func_snd_pcm_avail_update);
+#define FPL__ALSA_FUNC_snd_pcm_wait(name) int name(snd_pcm_t *pcm, int timeout)
+typedef FPL__ALSA_FUNC_snd_pcm_wait(fpl__alsa_func_snd_pcm_wait);
 
-#endif
+typedef struct fpl__AlsaAudioApi {
+	void *libHandle;
+	fpl__alsa_func_snd_pcm_open *snd_pcm_open;
+	fpl__alsa_func_snd_pcm_close *snd_pcm_close;
+	fpl__alsa_func_snd_pcm_hw_params_sizeof *snd_pcm_hw_params_sizeof;
+    fpl__alsa_func_snd_pcm_hw_params *snd_pcm_hw_params;
+	fpl__alsa_func_snd_pcm_hw_params_any *snd_pcm_hw_params_any;
+	fpl__alsa_func_snd_pcm_hw_params_set_format *snd_pcm_hw_params_set_format;
+	fpl__alsa_func_snd_pcm_hw_params_set_format_first *snd_pcm_hw_params_set_format_first;
+	fpl__alsa_func_snd_pcm_hw_params_get_format_mask *snd_pcm_hw_params_get_format_mask;
+	fpl__alsa_func_snd_pcm_hw_params_set_channels_near *snd_pcm_hw_params_set_channels_near;
+	fpl__alsa_func_snd_pcm_hw_params_set_rate_resample *snd_pcm_hw_params_set_rate_resample;
+	fpl__alsa_func_snd_pcm_hw_params_set_rate_near *snd_pcm_hw_params_set_rate_near;
+	fpl__alsa_func_snd_pcm_hw_params_set_buffer_size_near *snd_pcm_hw_params_set_buffer_size_near;
+	fpl__alsa_func_snd_pcm_hw_params_set_periods_near *snd_pcm_hw_params_set_periods_near;
+	fpl__alsa_func_snd_pcm_hw_params_set_access *snd_pcm_hw_params_set_access;
+	fpl__alsa_func_snd_pcm_hw_params_get_format *snd_pcm_hw_params_get_format;
+	fpl__alsa_func_snd_pcm_hw_params_get_channels *snd_pcm_hw_params_get_channels;
+	fpl__alsa_func_snd_pcm_hw_params_get_rate *snd_pcm_hw_params_get_rate;
+	fpl__alsa_func_snd_pcm_hw_params_get_buffer_size *snd_pcm_hw_params_get_buffer_size;
+	fpl__alsa_func_snd_pcm_hw_params_get_periods *snd_pcm_hw_params_get_periods;
+	fpl__alsa_func_snd_pcm_hw_params_get_access *snd_pcm_hw_params_get_access;
+	fpl__alsa_func_snd_pcm_hw_params_get_sbits *snd_pcm_hw_params_get_sbits;
+	fpl__alsa_func_snd_pcm_sw_params_sizeof *snd_pcm_sw_params_sizeof;
+	fpl__alsa_func_snd_pcm_sw_params_current *snd_pcm_sw_params_current;
+	fpl__alsa_func_snd_pcm_sw_params_set_avail_min *snd_pcm_sw_params_set_avail_min;
+	fpl__alsa_func_snd_pcm_sw_params_set_start_threshold *snd_pcm_sw_params_set_start_threshold;
+	fpl__alsa_func_snd_pcm_sw_params *snd_pcm_sw_params;
+	fpl__alsa_func_snd_pcm_format_mask_sizeof *snd_pcm_format_mask_sizeof;
+	fpl__alsa_func_snd_pcm_format_mask_test *snd_pcm_format_mask_test;
+	fpl__alsa_func_snd_pcm_get_chmap *snd_pcm_get_chmap;
+	fpl__alsa_func_snd_pcm_prepare *snd_pcm_prepare;
+	fpl__alsa_func_snd_pcm_start *snd_pcm_start;
+	fpl__alsa_func_snd_pcm_drop *snd_pcm_drop;
+	fpl__alsa_func_snd_device_name_hint *snd_device_name_hint;
+	fpl__alsa_func_snd_device_name_get_hint *snd_device_name_get_hint;
+	fpl__alsa_func_snd_card_get_index *snd_card_get_index;
+	fpl__alsa_func_snd_device_name_free_hint *snd_device_name_free_hint;
+	fpl__alsa_func_snd_pcm_mmap_begin *snd_pcm_mmap_begin;
+	fpl__alsa_func_snd_pcm_mmap_commit *snd_pcm_mmap_commit;
+	fpl__alsa_func_snd_pcm_recover *snd_pcm_recover;
+    fpl__alsa_func_snd_pcm_writei *snd_pcm_writei;
+	fpl__alsa_func_snd_pcm_avail *snd_pcm_avail;
+	fpl__alsa_func_snd_pcm_avail_update *snd_pcm_avail_update;
+	fpl__alsa_func_snd_pcm_wait *snd_pcm_wait;
+} fpl__AlsaAudioApi;
+
+typedef struct fpl__AlsaAudioState {
+	fpl__AlsaAudioApi api;
+	snd_pcm_t* pcmDevice;
+	void *intermediaryBuffer;
+	bool isUsingMMap;
+	bool breakMainLoop;
+} fpl__AlsaAudioState;
+
+fpl_internal void fpl__UnloadAlsaApi(fpl__AlsaAudioApi *alsaApi) {
+	FPL_ASSERT(alsaApi != fpl_null);
+	if(alsaApi->libHandle != fpl_null) {
+		dlclose(alsaApi->libHandle);
+	}
+	FPL_CLEAR_STRUCT(alsaApi);
+}
+
+fpl_internal bool fpl__LoadAlsaApi(fpl__AlsaAudioApi *alsaApi) {
+	FPL_ASSERT(alsaApi != fpl_null);
+	const char* libraryNames[] = {
+		"libasound.so",
+	};
+	bool result = false;
+	for(uint32_t index = 0; index < FPL_ARRAYCOUNT(libraryNames); ++index) {
+		const char * libName = libraryNames[index];
+		void *libHandle = alsaApi->libHandle = dlopen(libName, FPL__POSIX_DL_LOADTYPE);
+		if(libHandle != fpl_null) {
+			do {
+				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, alsaApi->snd_pcm_open, fpl__alsa_func_snd_pcm_open, "snd_pcm_open");
+				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, alsaApi->snd_pcm_close, fpl__alsa_func_snd_pcm_close, "snd_pcm_close");
+				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, alsaApi->snd_pcm_hw_params_sizeof, fpl__alsa_func_snd_pcm_hw_params_sizeof, "snd_pcm_hw_params_sizeof");
+                FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, alsaApi->snd_pcm_hw_params, fpl__alsa_func_snd_pcm_hw_params, "snd_pcm_hw_params");
+				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, alsaApi->snd_pcm_hw_params_any, fpl__alsa_func_snd_pcm_hw_params_any, "snd_pcm_hw_params_any");
+				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, alsaApi->snd_pcm_hw_params_set_format, fpl__alsa_func_snd_pcm_hw_params_set_format, "snd_pcm_hw_params_set_format");
+				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, alsaApi->snd_pcm_hw_params_set_format_first, fpl__alsa_func_snd_pcm_hw_params_set_format_first, "snd_pcm_hw_params_set_format_first");
+				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, alsaApi->snd_pcm_hw_params_get_format_mask, fpl__alsa_func_snd_pcm_hw_params_get_format_mask, "snd_pcm_hw_params_get_format_mask");
+				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, alsaApi->snd_pcm_hw_params_set_channels_near, fpl__alsa_func_snd_pcm_hw_params_set_channels_near, "snd_pcm_hw_params_set_channels_near");
+				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, alsaApi->snd_pcm_hw_params_set_rate_resample, fpl__alsa_func_snd_pcm_hw_params_set_rate_resample, "snd_pcm_hw_params_set_rate_resample");
+				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, alsaApi->snd_pcm_hw_params_set_rate_near, fpl__alsa_func_snd_pcm_hw_params_set_rate_near, "snd_pcm_hw_params_set_rate_near");
+				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, alsaApi->snd_pcm_hw_params_set_buffer_size_near, fpl__alsa_func_snd_pcm_hw_params_set_buffer_size_near, "snd_pcm_hw_params_set_buffer_size_near");
+				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, alsaApi->snd_pcm_hw_params_set_periods_near, fpl__alsa_func_snd_pcm_hw_params_set_periods_near, "snd_pcm_hw_params_set_periods_near");
+				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, alsaApi->snd_pcm_hw_params_set_access, fpl__alsa_func_snd_pcm_hw_params_set_access, "snd_pcm_hw_params_set_access");
+				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, alsaApi->snd_pcm_hw_params_get_format, fpl__alsa_func_snd_pcm_hw_params_get_format, "snd_pcm_hw_params_get_format");
+				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, alsaApi->snd_pcm_hw_params_get_channels, fpl__alsa_func_snd_pcm_hw_params_get_channels, "snd_pcm_hw_params_get_channels");
+				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, alsaApi->snd_pcm_hw_params_get_rate, fpl__alsa_func_snd_pcm_hw_params_get_rate, "snd_pcm_hw_params_get_rate");
+				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, alsaApi->snd_pcm_hw_params_get_buffer_size, fpl__alsa_func_snd_pcm_hw_params_get_buffer_size, "snd_pcm_hw_params_get_buffer_size");
+				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, alsaApi->snd_pcm_hw_params_get_periods, fpl__alsa_func_snd_pcm_hw_params_get_periods, "snd_pcm_hw_params_get_periods");
+				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, alsaApi->snd_pcm_hw_params_get_access, fpl__alsa_func_snd_pcm_hw_params_get_access, "snd_pcm_hw_params_get_access");
+				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, alsaApi->snd_pcm_hw_params_get_sbits, fpl__alsa_func_snd_pcm_hw_params_get_sbits, "snd_pcm_hw_params_get_sbits");
+				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, alsaApi->snd_pcm_sw_params_sizeof, fpl__alsa_func_snd_pcm_sw_params_sizeof, "snd_pcm_sw_params_sizeof");
+				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, alsaApi->snd_pcm_sw_params_current, fpl__alsa_func_snd_pcm_sw_params_current, "snd_pcm_sw_params_current");
+				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, alsaApi->snd_pcm_sw_params_set_avail_min, fpl__alsa_func_snd_pcm_sw_params_set_avail_min, "snd_pcm_sw_params_set_avail_min");
+				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, alsaApi->snd_pcm_sw_params_set_start_threshold, fpl__alsa_func_snd_pcm_sw_params_set_start_threshold, "snd_pcm_sw_params_set_start_threshold");
+				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, alsaApi->snd_pcm_sw_params, fpl__alsa_func_snd_pcm_sw_params, "snd_pcm_sw_params");
+				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, alsaApi->snd_pcm_format_mask_sizeof, fpl__alsa_func_snd_pcm_format_mask_sizeof, "snd_pcm_format_mask_sizeof");
+				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, alsaApi->snd_pcm_format_mask_test, fpl__alsa_func_snd_pcm_format_mask_test, "snd_pcm_format_mask_test");
+				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, alsaApi->snd_pcm_get_chmap, fpl__alsa_func_snd_pcm_get_chmap, "snd_pcm_get_chmap");
+				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, alsaApi->snd_pcm_prepare, fpl__alsa_func_snd_pcm_prepare, "snd_pcm_prepare");
+				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, alsaApi->snd_pcm_start, fpl__alsa_func_snd_pcm_start, "snd_pcm_start");
+				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, alsaApi->snd_pcm_drop, fpl__alsa_func_snd_pcm_drop, "snd_pcm_drop");
+				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, alsaApi->snd_device_name_hint, fpl__alsa_func_snd_device_name_hint, "snd_device_name_hint");
+				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, alsaApi->snd_device_name_get_hint, fpl__alsa_func_snd_device_name_get_hint, "snd_device_name_get_hint");
+				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, alsaApi->snd_card_get_index, fpl__alsa_func_snd_card_get_index, "snd_card_get_index");
+				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, alsaApi->snd_device_name_free_hint, fpl__alsa_func_snd_device_name_free_hint, "snd_device_name_free_hint");
+				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, alsaApi->snd_pcm_mmap_begin, fpl__alsa_func_snd_pcm_mmap_begin, "snd_pcm_mmap_begin");
+				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, alsaApi->snd_pcm_mmap_commit, fpl__alsa_func_snd_pcm_mmap_commit, "snd_pcm_mmap_commit");
+				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, alsaApi->snd_pcm_recover, fpl__alsa_func_snd_pcm_recover, "snd_pcm_recover");
+				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, alsaApi->snd_pcm_writei, fpl__alsa_func_snd_pcm_writei, "snd_pcm_writei");
+				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, alsaApi->snd_pcm_avail, fpl__alsa_func_snd_pcm_avail, "snd_pcm_avail");
+				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, alsaApi->snd_pcm_avail_update, fpl__alsa_func_snd_pcm_avail_update, "snd_pcm_avail_update");
+				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, alsaApi->snd_pcm_wait, fpl__alsa_func_snd_pcm_wait, "snd_pcm_wait");
+				result = true;
+			} while(0);
+			if(result) {
+				break;
+			}
+		}
+		fpl__UnloadAlsaApi(alsaApi);
+	}
+	return(result);
+}
+
+fpl_internal uint32_t fpl__AudioWaitForFramesAlsa(const fplAudioDeviceFormat *deviceFormat, fpl__AlsaAudioState *alsaState, bool *requiresRestart) {
+	FPL_ASSERT(commonAudio != fpl_null && deviceFormat != fpl_null);
+	if(requiresRestart != fpl_null) {
+		*requiresRestart = false;
+	}
+	const fpl__AlsaAudioApi *alsaApi = &alsaState->api;
+	uint32_t periodSizeInFrames = deviceFormat->bufferSizeInFrames / deviceFormat->periods;
+	while(!alsaState->breakMainLoop) {
+		const int timeoutInMilliseconds = 10;
+		int waitResult = alsaApi->snd_pcm_wait(alsaState->pcmDevice, timeoutInMilliseconds);
+		if(waitResult < 0) {
+			if(waitResult == -EPIPE) {
+				if(alsaApi->snd_pcm_recover(alsaState->pcmDevice, waitResult, 1) < 0) {
+					return 0;
+				}
+				if(requiresRestart != fpl_null) {
+					*requiresRestart = true;
+				}
+			}
+		}
+
+		if(alsaState->breakMainLoop) {
+			return 0;
+		}
+
+		snd_pcm_sframes_t framesAvailable = alsaApi->snd_pcm_avail_update(alsaState->pcmDevice);
+		if(framesAvailable < 0) {
+			if(framesAvailable == -EPIPE) {
+				if(alsaApi->snd_pcm_recover(alsaState->pcmDevice, framesAvailable, 1) < 0) {
+					return 0;
+				}
+				if(requiresRestart != fpl_null) {
+					*requiresRestart = true;
+				}
+				framesAvailable = alsaApi->snd_pcm_avail_update(alsaState->pcmDevice);
+				if(framesAvailable < 0) {
+					return 0;
+				}
+			}
+		}
+
+		// Keep the returned number of samples consistent and based on the period size.
+		if(framesAvailable >= periodSizeInFrames) {
+			return periodSizeInFrames;
+		}
+
+		// We'll get here if the loop was terminated. Just return whatever's available.
+		framesAvailable = alsaApi->snd_pcm_avail_update(alsaState->pcmDevice);
+		if(framesAvailable < 0) {
+			return 0;
+		}
+		return framesAvailable;
+	}
+}
+
+fpl_internal bool fpl__GetAudioFramesFromClientAlsa(fpl__CommonAudioState *commonAudio, fpl__AlsaAudioState *alsaState) {
+	FPL_ASSERT(commonAudio != fpl_null && alsaState != fpl_null);
+	const fpl__AlsaAudioApi *alsaApi = &alsaState->api;
+
+	if(!fpl__IsAudioDeviceStarted(commonAudio) && fpl__AudioGetDeviceState(commonAudio) != fpl__AudioDeviceState_Starting) {
+		return false;
+	}
+	if(alsaState->breakMainLoop) {
+		return false;
+	}
+
+	if(alsaState->isUsingMMap) {
+		// mmap path
+		bool requiresRestart;
+		uint32_t framesAvailable = fpl__AudioWaitForFramesAlsa(&commonAudio->internalFormat, alsaState, &requiresRestart);
+		if(framesAvailable == 0) {
+			return false;
+		}
+		if(alsaState->breakMainLoop) {
+			return false;
+		}
+
+		const snd_pcm_channel_area_t* channelAreas;
+		snd_pcm_uframes_t mappedOffset;
+		snd_pcm_uframes_t mappedFrames = framesAvailable;
+		while(framesAvailable > 0) {
+			int result = alsaApi->snd_pcm_mmap_begin(alsaState->pcmDevice, &channelAreas, &mappedOffset, &mappedFrames);
+			if(result < 0) {
+				return false;
+			}
+			if(mappedFrames > 0) {
+				void *bufferPtr = (uint8_t *)channelAreas[0].addr + ((channelAreas[0].first + (mappedOffset * channelAreas[0].step)) / 8);
+				fpl__ReadAudioFramesFromClient(commonAudio, mappedFrames, bufferPtr);
+			}
+			result = alsaApi->snd_pcm_mmap_commit(alsaState->pcmDevice, mappedOffset, mappedFrames);
+			if(result < 0 || (snd_pcm_uframes_t)result != mappedFrames) {
+				alsaApi->snd_pcm_recover(alsaState->pcmDevice, result, 1);
+				return false;
+			}
+			framesAvailable -= mappedFrames;
+			if(requiresRestart) {
+				if(alsaApi->snd_pcm_start(alsaState->pcmDevice) < 0) {
+					return false;
+				}
+			}
+		}
+	} else {
+		// readi/writei path
+		while(!alsaState->breakMainLoop) {
+			uint32_t framesAvailable = fpl__AudioWaitForFramesAlsa(&commonAudio->internalFormat, alsaState, fpl_null);
+			if(framesAvailable == 0) {
+				continue;
+			}
+			if(alsaState->breakMainLoop) {
+				return false;
+			}
+			fpl__ReadAudioFramesFromClient(commonAudio, framesAvailable, alsaState->intermediaryBuffer);
+			snd_pcm_sframes_t framesWritten = alsaApi->snd_pcm_writei(alsaState->pcmDevice, alsaState->intermediaryBuffer, framesAvailable);
+			if(framesWritten < 0) {
+				if(framesWritten == -EAGAIN) {
+					// Keep trying
+					continue;
+				} else if(framesWritten == -EPIPE) {
+					// Underrun -> Recover and try again
+					if(alsaApi->snd_pcm_recover(alsaState->pcmDevice, framesWritten, 1) < 0) {
+						FPL_LOG("ALSA", "Failed to recover device after underrun!");
+						return false;
+					}
+					framesWritten = alsaApi->snd_pcm_writei(alsaState->pcmDevice, alsaState->intermediaryBuffer, framesAvailable);
+					if(framesWritten < 0) {
+						FPL_LOG("ALSA", "Failed to write data to the PCM device!");
+						return false;
+					}
+					// Success
+					break;
+				} else {
+					FPL_LOG("ALSA", "Failed to write audio frames from client, error code: %d!", framesWritten);
+					return false;
+				}
+			} else {
+				// Success
+				break;
+			}
+		}
+	}
+	return true;
+}
+
+fpl_internal_inline void fpl__AudioStopMainLoopAlsa(fpl__AlsaAudioState *alsaState) {
+	FPL_ASSERT(alsaState != fpl_null);
+	alsaState->breakMainLoop = true;
+}
+
+fpl_internal bool fpl__AudioReleaseAlsa(const fpl__CommonAudioState *commonAudio, fpl__AlsaAudioState *alsaState) {
+	FPL_ASSERT(commonAudio != fpl_null && alsaState != fpl_null);
+	fpl__AlsaAudioApi *alsaApi = &alsaState->api;
+	if(alsaState->pcmDevice != fpl_null) {
+		alsaApi->snd_pcm_close(alsaState->pcmDevice);
+		alsaState->pcmDevice = fpl_null;
+		if(alsaState->intermediaryBuffer != fpl_null) {
+			fplMemoryFree(alsaState->intermediaryBuffer);
+			alsaState->intermediaryBuffer = fpl_null;
+		}
+	}
+	fpl__UnloadAlsaApi(alsaApi);
+	FPL_CLEAR_STRUCT(alsaState);
+	return true;
+}
+
+fpl_internal fplAudioResult fpl__AudioStartAlsa(fpl__CommonAudioState *commonAudio, fpl__AlsaAudioState *alsaState) {
+	FPL_ASSERT(commonAudio != fpl_null && alsaState != fpl_null);
+	const fpl__AlsaAudioApi *alsaApi = &alsaState->api;
+
+	// Prepare the device
+	if(alsaApi->snd_pcm_prepare(alsaState->pcmDevice) < 0) {
+		FPL_LOG("ALSA", "Failed to prepare PCM device '%p'!", alsaState->pcmDevice);
+		return fplAudioResult_Failed;
+	}
+
+	// Get initial frames to fill from the client
+	if(!fpl__GetAudioFramesFromClientAlsa(commonAudio, alsaState)) {
+		FPL_LOG("ALSA", "Failed to get initial audio frames from client!");
+		return fplAudioResult_Failed;
+	}
+
+	if(alsaState->isUsingMMap) {
+		if(alsaApi->snd_pcm_start(alsaState->pcmDevice) < 0) {
+			FPL_LOG("ALSA", "Failed to start PCM device '%p'!", alsaState->pcmDevice);
+			return fplAudioResult_Failed;
+		}
+	}
+
+	return fplAudioResult_Success;
+}
+
+fpl_internal bool fpl__AudioStopAlsa(fpl__AlsaAudioState *alsaState) {
+	FPL_ASSERT(alsaState != fpl_null);
+	const fpl__AlsaAudioApi *alsaApi = &alsaState->api;
+	if(alsaApi->snd_pcm_drop(alsaState->pcmDevice)) {
+		FPL_LOG("ALSA", "Failed to drop the PCM device '%p'!", alsaState->pcmDevice);
+		return false;
+	}
+	return true;
+}
+
+fpl_internal_inline snd_pcm_format_t fpl__MapAudioFormatToAlsaFormat(fplAudioFormatType format) {
+	switch(format) {
+		case fplAudioFormatType_U8:
+			return SND_PCM_FORMAT_U8;
+		case fplAudioFormatType_S16:
+			return SND_PCM_FORMAT_S16_LE;
+		case fplAudioFormatType_S24:
+			return SND_PCM_FORMAT_S24_3LE;
+		case fplAudioFormatType_S32:
+			return SND_PCM_FORMAT_S32_LE;
+		case fplAudioFormatType_F32:
+			return SND_PCM_FORMAT_FLOAT_LE;
+		default:
+			return SND_PCM_FORMAT_UNKNOWN;
+	}
+}
+
+fpl_internal void fpl__AudioRunMainLoopAlsa(fpl__CommonAudioState *commonAudio, fpl__AlsaAudioState *alsaState) {
+	FPL_ASSERT(alsaState != fpl_null);
+	alsaState->breakMainLoop = false;
+	while(!alsaState->breakMainLoop && fpl__GetAudioFramesFromClientAlsa(commonAudio, alsaState)) {
+	}
+}
+
+fpl_internal_inline fplAudioFormatType fpl__MapAlsaFormatToAudioFormat(snd_pcm_format_t format) {
+	switch(format) {
+		case SND_PCM_FORMAT_U8:
+			return fplAudioFormatType_U8;
+		case SND_PCM_FORMAT_S16_LE:
+			return fplAudioFormatType_S16;
+		case SND_PCM_FORMAT_S24_3LE:
+			return fplAudioFormatType_S24;
+		case SND_PCM_FORMAT_S32_LE:
+			return fplAudioFormatType_S32;
+		case SND_PCM_FORMAT_FLOAT_LE:
+			return fplAudioFormatType_F32;
+		default:
+			return fplAudioFormatType_None;
+	}
+}
+
+fpl_internal fplAudioResult fpl__AudioInitAlsa(const fplAudioSettings *audioSettings, fpl__CommonAudioState *commonAudio, fpl__AlsaAudioState *alsaState) {
+#	define FPL__ALSA_INIT_ERROR(ret, format, ...) do { \
+		FPL_LOG("ALSA", format, __VA_ARGS__); \
+		fpl__AudioReleaseAlsa(commonAudio, alsaState); \
+		return fplAudioResult_Failed; \
+	} while (0)
+
+	// Load ALSA library
+	fpl__AlsaAudioApi *alsaApi = &alsaState->api;
+	if(!fpl__LoadAlsaApi(alsaApi)) {
+		FPL__ALSA_INIT_ERROR(fplAudioResult_ApiFailed, "Failed loading ALSA api!");
+	}
+
+	//
+	// Open PCM Device
+	//
+	char deviceName[256] = FPL_ZERO_INIT;
+	snd_pcm_stream_t stream = SND_PCM_STREAM_PLAYBACK;
+	if(fplGetAnsiStringLength(audioSettings->deviceInfo.name) > 0) {
+		// @TODO(final): Support for forced audio device ALSA
+		FPL__ALSA_INIT_ERROR(fplAudioResult_NoDeviceFound, "Forced audio device on ALSA is not supported yet!");
+	} else {
+		const char *defaultDeviceNames[16];
+		int defaultDeviceCount = 0;
+		defaultDeviceNames[defaultDeviceCount++] = "default";
+		if(!audioSettings->preferExclusiveMode) {
+			defaultDeviceNames[defaultDeviceCount++] = "dmix";
+			defaultDeviceNames[defaultDeviceCount++] = "dmix:0";
+			defaultDeviceNames[defaultDeviceCount++] = "dmix:0,0";
+		}
+		defaultDeviceNames[defaultDeviceCount++] = "hw";
+		defaultDeviceNames[defaultDeviceCount++] = "hw:0";
+		defaultDeviceNames[defaultDeviceCount++] = "hw:0,0";
+
+		bool isDeviceOpen = false;
+		for(size_t defaultDeviceIndex = 0; defaultDeviceIndex < defaultDeviceCount; ++defaultDeviceIndex) {
+			const char *defaultDeviceName = defaultDeviceNames[defaultDeviceIndex];
+			FPL_LOG("ALSA", "Opening PCM audio device '%s'", defaultDeviceName);
+			if(alsaApi->snd_pcm_open(&alsaState->pcmDevice, defaultDeviceName, stream, 0) == 0) {
+				FPL_LOG("ALSA", "Successfully opened PCM audio device '%s'", defaultDeviceName);
+				isDeviceOpen = true;
+				fplCopyAnsiString(defaultDeviceName, deviceName, FPL_ARRAYCOUNT(deviceName));
+				break;
+			} else {
+				FPL_LOG("ALSA", "Failed opening PCM audio device '%s'!", defaultDeviceName);
+			}
+		}
+		if(!isDeviceOpen) {
+			FPL__ALSA_INIT_ERROR(fplAudioResult_NoDeviceFound, "No PCM audio device found!");
+		}
+	}
+
+	//
+	// Get hardware parameters
+	//
+	FPL_ASSERT(alsaState->pcmDevice != fpl_null);
+	FPL_ASSERT(fplGetAnsiStringLength(deviceName) > 0);
+
+	FPL_LOG("ALSA", "Get hardware parameters from device '%s'", deviceName);
+	size_t hardwareParamsSize = alsaApi->snd_pcm_hw_params_sizeof();
+	snd_pcm_hw_params_t *hardwareParams = (snd_pcm_hw_params_t *)FPL_STACKALLOCATE(hardwareParamsSize);
+	fplMemoryClear(hardwareParams, hardwareParamsSize);
+	if(alsaApi->snd_pcm_hw_params_any(alsaState->pcmDevice, hardwareParams) < 0) {
+		FPL__ALSA_INIT_ERROR(fplAudioResult_Failed, "Failed getting hardware parameters from device '%s'!", deviceName);
+	}
+	FPL_LOG("ALSA", "Successfullyy got hardware parameters from device '%s'", deviceName);
+
+	//
+	// Access mode (Interleaved MMap or Standard readi/writei)
+	//
+	alsaState->isUsingMMap = false;
+	if(!audioSettings->specific.alsa.noMMap) {
+		if(alsaApi->snd_pcm_hw_params_set_access(alsaState->pcmDevice, hardwareParams, SND_PCM_ACCESS_MMAP_INTERLEAVED) == 0) {
+			alsaState->isUsingMMap = true;
+		} else {
+			FPL_LOG("ALSA", "Failed setting MMap access mode for device '%s', trying fallback to standard mode!", deviceName);
+		}
+	}
+	if(!alsaState->isUsingMMap) {
+		if(alsaApi->snd_pcm_hw_params_set_access(alsaState->pcmDevice, hardwareParams, SND_PCM_ACCESS_RW_INTERLEAVED) < 0) {
+			FPL__ALSA_INIT_ERROR(fplAudioResult_Failed, "Failed setting default access mode for device '%s'!", deviceName);
+		}
+	}
+
+	//
+	// Get format
+	//
+
+	// Get all supported formats
+	size_t formatMaskSize = alsaApi->snd_pcm_format_mask_sizeof();
+	snd_pcm_format_mask_t *formatMask = (snd_pcm_format_mask_t *)FPL_STACKALLOCATE(formatMaskSize);
+	fplMemoryClear(formatMask, formatMaskSize);
+	alsaApi->snd_pcm_hw_params_get_format_mask(hardwareParams, formatMask);
+
+	snd_pcm_format_t foundFormat;
+	snd_pcm_format_t preferredFormat = fpl__MapAudioFormatToAlsaFormat(audioSettings->deviceFormat.type);
+	if(!alsaApi->snd_pcm_format_mask_test(formatMask, preferredFormat)) {
+		// The required format is not supported. Try a list of default formats.
+		snd_pcm_format_t defaultFormats[] = {
+			SND_PCM_FORMAT_FLOAT_LE,
+			SND_PCM_FORMAT_S32_LE,
+			SND_PCM_FORMAT_S24_3LE,
+			SND_PCM_FORMAT_S16_LE,
+			SND_PCM_FORMAT_U8,
+		};
+		foundFormat = SND_PCM_FORMAT_UNKNOWN;
+		for(size_t defaultFormatIndex = 0; defaultFormatIndex < FPL_ARRAYCOUNT(defaultFormats); ++defaultFormatIndex) {
+			snd_pcm_format_t defaultFormat = defaultFormats[defaultFormatIndex];
+			if(alsaApi->snd_pcm_format_mask_test(formatMask, defaultFormat)) {
+				foundFormat = defaultFormat;
+				break;
+			}
+		}
+	} else {
+		foundFormat = preferredFormat;
+	}
+	if(foundFormat == SND_PCM_FORMAT_UNKNOWN) {
+		FPL__ALSA_INIT_ERROR(fplAudioResult_Failed, "No supported audio format for device '%s' found!", deviceName);
+	}
+
+	//
+	// Set format
+	//
+	fplAudioFormatType internalFormatType = fpl__MapAlsaFormatToAudioFormat(foundFormat);
+	if(alsaApi->snd_pcm_hw_params_set_format(alsaState->pcmDevice, hardwareParams, foundFormat) < 0) {
+		FPL__ALSA_INIT_ERROR(fplAudioResult_Failed, "Failed setting PCM format '%s' for device '%s'!", fplGetAudioFormatString(internalFormatType), deviceName);
+	}
+
+	//
+	// Set channels
+	//
+	uint32_t internalChannels = audioSettings->deviceFormat.channels;
+	if(alsaApi->snd_pcm_hw_params_set_channels_near(alsaState->pcmDevice, hardwareParams, &internalChannels) < 0) {
+		FPL__ALSA_INIT_ERROR(fplAudioResult_Failed, "Failed setting PCM channels '%lu' for device '%s'!", internalChannels, deviceName);
+	}
+
+	//
+	// Set sample rate
+	//
+
+	// @NOTE(final): We disable the resampling of the sample rate to not get caught into any driver bugs
+	alsaApi->snd_pcm_hw_params_set_rate_resample(alsaState->pcmDevice, hardwareParams, 0);
+
+	uint32_t internalSampleRate = audioSettings->deviceFormat.sampleRate;
+	if(alsaApi->snd_pcm_hw_params_set_rate_near(alsaState->pcmDevice, hardwareParams, &internalSampleRate, 0) < 0) {
+		FPL__ALSA_INIT_ERROR(fplAudioResult_Failed, "Failed setting PCM sample rate '%lu' for device '%s'!", internalSampleRate, deviceName);
+	}
+
+	//
+	// Set periods
+	//
+	uint32_t internalPeriods = audioSettings->deviceFormat.periods;
+	int periodsDir = 0;
+	if(alsaApi->snd_pcm_hw_params_set_periods_near(alsaState->pcmDevice, hardwareParams, &internalPeriods, &periodsDir) < 0) {
+		FPL__ALSA_INIT_ERROR(fplAudioResult_Failed, "Failed setting PCM periods '%lu' for device '%s'!", internalPeriods, deviceName);
+	}
+
+	//
+	// Set buffer size
+	//
+	snd_pcm_uframes_t actualBufferSize = audioSettings->deviceFormat.bufferSizeInFrames;
+	if(alsaApi->snd_pcm_hw_params_set_buffer_size_near(alsaState->pcmDevice, hardwareParams, &actualBufferSize) < 0) {
+		FPL__ALSA_INIT_ERROR(fplAudioResult_Failed, "Failed setting PCM buffer size '%lu' for device '%s'!", actualBufferSize, deviceName);
+	}
+	uint32_t internalBufferSizeInFrame = actualBufferSize;
+
+	//
+	// Set hardware parameters
+	//
+	if(alsaApi->snd_pcm_hw_params(alsaState->pcmDevice, hardwareParams) < 0) {
+		FPL__ALSA_INIT_ERROR(fplAudioResult_Failed, "Failed to install PCM hardware parameters for device '%s'!", deviceName);
+	}
+
+	// Set internal format
+	fplAudioDeviceFormat internalFormat = FPL_ZERO_INIT;
+	internalFormat.type = internalFormatType;
+	internalFormat.channels = internalChannels;
+	internalFormat.sampleRate = internalSampleRate;
+	internalFormat.periods = internalPeriods;
+	internalFormat.bufferSizeInFrames = internalBufferSizeInFrame;
+	internalFormat.bufferSizeInBytes = internalFormat.bufferSizeInFrames * internalFormat.channels * fplGetAudioSampleSizeInBytes(internalFormat.type);
+	commonAudio->internalFormat = internalFormat;
+
+	//
+	// Software parameters
+	//
+	size_t softwareParamsSize = alsaApi->snd_pcm_sw_params_sizeof();
+	snd_pcm_sw_params_t *softwareParams = (snd_pcm_sw_params_t *)FPL_STACKALLOCATE(softwareParamsSize);
+	fplMemoryClear(softwareParams, softwareParamsSize);
+	if(alsaApi->snd_pcm_sw_params_current(alsaState->pcmDevice, softwareParams) < 0) {
+		FPL__ALSA_INIT_ERROR(fplAudioResult_Failed, "Failed to get software parameters for device '%s'!", deviceName);
+	}
+	snd_pcm_uframes_t minAvailableFrames = (internalFormat.sampleRate / 1000) * 1;
+	if(alsaApi->snd_pcm_sw_params_set_avail_min(alsaState->pcmDevice, softwareParams, minAvailableFrames) < 0) {
+		FPL__ALSA_INIT_ERROR(fplAudioResult_Failed, "Failed to set software available min for device '%s'!", deviceName);
+	}
+	if(!alsaState->isUsingMMap) {
+		if(alsaApi->snd_pcm_sw_params_set_start_threshold(alsaState->pcmDevice, softwareParams, minAvailableFrames) < 0) {
+			FPL__ALSA_INIT_ERROR(fplAudioResult_Failed, "Failed to set start threshold of '%lu' for device '%s'!", minAvailableFrames, deviceName);
+		}
+	}
+	if(alsaApi->snd_pcm_sw_params(alsaState->pcmDevice, softwareParams) < 0) {
+		FPL__ALSA_INIT_ERROR(fplAudioResult_Failed, "Failed to install PCM software parameters for device '%s'!", deviceName);
+	}
+
+	if(!alsaState->isUsingMMap) {
+		alsaState->intermediaryBuffer = fplMemoryAllocate(internalFormat.bufferSizeInBytes);
+		if(alsaState->intermediaryBuffer == fpl_null) {
+			FPL__ALSA_INIT_ERROR(fplAudioResult_Failed, "Failed allocating intermediary buffer of size '%lu' for device '%s'!", internalFormat.bufferSizeInBytes, deviceName);
+		}
+	}
+
+	// @NOTE(final): We do not ALSA support channel mapping right know, so we limit it to mono or stereo
+	FPL_ASSERT(internalFormat.channels <= 2);
+
+#undef FPL__ALSA_INIT_ERROR
+
+	return fplAudioResult_Success;
+}
+
+#endif // FPL_ENABLE_AUDIO_ALSA
 
 #endif // FPL_AUDIO_DRIVERS_IMPLEMENTED
 
@@ -11955,14 +12739,6 @@ typedef struct fpl__AlsaSoundState {
 //
 // %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 #if defined(FPL_ENABLE_AUDIO)
-typedef enum fpl__AudioDeviceState {
-	fpl__AudioDeviceState_Uninitialized = 0,
-	fpl__AudioDeviceState_Stopped,
-	fpl__AudioDeviceState_Started,
-	fpl__AudioDeviceState_Starting,
-	fpl__AudioDeviceState_Stopping,
-} fpl__AudioDeviceState;
-
 typedef struct fpl__AudioState {
 	fpl__CommonAudioState common;
 
@@ -11971,7 +12747,6 @@ typedef struct fpl__AudioState {
 	fplSignalHandle startSignal;
 	fplSignalHandle stopSignal;
 	fplSignalHandle wakeupSignal;
-	volatile fpl__AudioDeviceState state;
 	volatile fplAudioResult workResult;
 
 	fplAudioDriverType activeDriver;
@@ -11982,7 +12757,10 @@ typedef struct fpl__AudioState {
 
 	union {
 #	if defined(FPL_ENABLE_AUDIO_DIRECTSOUND)
-		fpl__DirectSoundState dsound;
+		fpl__DirectSoundAudioState dsound;
+#	endif
+#	if defined(FPL_ENABLE_AUDIO_ALSA)
+        fpl__AlsaAudioState alsa;
 #	endif
 	};
 } fpl__AudioState;
@@ -11996,14 +12774,21 @@ fpl_internal_inline fpl__AudioState *fpl__GetAudioState(fpl__PlatformAppState *a
 	return(result);
 }
 
-fpl_internal void fpl__AudioDeviceStopMainLoop(fpl__AudioState *audioState) {
+fpl_internal void fpl__StopAudioDeviceMainLoop(fpl__AudioState *audioState) {
 	FPL_ASSERT(audioState->activeDriver > fplAudioDriverType_Auto);
 	switch(audioState->activeDriver) {
 
 #	if defined(FPL_ENABLE_AUDIO_DIRECTSOUND)
 		case fplAudioDriverType_DirectSound:
 		{
-			fpl__StopMainLoopDirectSound(&audioState->dsound);
+			fpl__AudioStopMainLoopDirectSound(&audioState->dsound);
+		} break;
+#	endif
+
+#	if defined(FPL_ENABLE_AUDIO_ALSA)
+		case fplAudioDriverType_Alsa:
+		{
+			fpl__AudioStopMainLoopAlsa(&audioState->alsa);
 		} break;
 #	endif
 
@@ -12012,7 +12797,7 @@ fpl_internal void fpl__AudioDeviceStopMainLoop(fpl__AudioState *audioState) {
 	}
 }
 
-fpl_internal bool fpl__AudioReleaseDevice(fpl__AudioState *audioState) {
+fpl_internal bool fpl__ReleaseAudioDevice(fpl__AudioState *audioState) {
 	FPL_ASSERT(audioState->activeDriver > fplAudioDriverType_Auto);
 	bool result = false;
 	switch(audioState->activeDriver) {
@@ -12020,7 +12805,14 @@ fpl_internal bool fpl__AudioReleaseDevice(fpl__AudioState *audioState) {
 #	if defined(FPL_ENABLE_AUDIO_DIRECTSOUND)
 		case fplAudioDriverType_DirectSound:
 		{
-			result = fpl__ReleaseDirectSound(&audioState->common, &audioState->dsound);
+			result = fpl__AudioReleaseDirectSound(&audioState->common, &audioState->dsound);
+		} break;
+#	endif
+
+#	if defined(FPL_ENABLE_AUDIO_ALSA)
+		case fplAudioDriverType_Alsa:
+		{
+			result = fpl__AudioReleaseAlsa(&audioState->common, &audioState->alsa);
 		} break;
 #	endif
 
@@ -12030,7 +12822,7 @@ fpl_internal bool fpl__AudioReleaseDevice(fpl__AudioState *audioState) {
 	return (result);
 }
 
-fpl_internal bool fpl__AudioStopDevice(fpl__AudioState *audioState) {
+fpl_internal bool fpl__StopAudioDevice(fpl__AudioState *audioState) {
 	FPL_ASSERT(audioState->activeDriver > fplAudioDriverType_Auto);
 	bool result = false;
 	switch(audioState->activeDriver) {
@@ -12038,7 +12830,14 @@ fpl_internal bool fpl__AudioStopDevice(fpl__AudioState *audioState) {
 #	if defined(FPL_ENABLE_AUDIO_DIRECTSOUND)
 		case fplAudioDriverType_DirectSound:
 		{
-			result = fpl__StopDirectSound(&audioState->dsound);
+			result = fpl__AudioStopDirectSound(&audioState->dsound);
+		} break;
+#	endif
+
+#	if defined(FPL_ENABLE_AUDIO_ALSA)
+		case fplAudioDriverType_Alsa:
+		{
+			result = fpl__AudioStopAlsa(&audioState->alsa);
 		} break;
 #	endif
 
@@ -12048,7 +12847,7 @@ fpl_internal bool fpl__AudioStopDevice(fpl__AudioState *audioState) {
 	return (result);
 }
 
-fpl_internal fplAudioResult fpl__AudioStartDevice(fpl__AudioState *audioState) {
+fpl_internal fplAudioResult fpl__StartAudioDevice(fpl__AudioState *audioState) {
 	FPL_ASSERT(audioState->activeDriver > fplAudioDriverType_Auto);
 	fplAudioResult result = fplAudioResult_Failed;
 	switch(audioState->activeDriver) {
@@ -12056,7 +12855,14 @@ fpl_internal fplAudioResult fpl__AudioStartDevice(fpl__AudioState *audioState) {
 #	if defined(FPL_ENABLE_AUDIO_DIRECTSOUND)
 		case fplAudioDriverType_DirectSound:
 		{
-			result = fpl__StartDirectSound(&audioState->common, &audioState->dsound);
+			result = fpl__AudioStartDirectSound(&audioState->common, &audioState->dsound);
+		} break;
+#	endif
+
+#	if defined(FPL_ENABLE_AUDIO_ALSA)
+		case fplAudioDriverType_Alsa:
+		{
+			result = fpl__AudioStartAlsa(&audioState->common, &audioState->alsa);
 		} break;
 #	endif
 
@@ -12066,14 +12872,21 @@ fpl_internal fplAudioResult fpl__AudioStartDevice(fpl__AudioState *audioState) {
 	return (result);
 }
 
-fpl_internal void fpl__AudioDeviceMainLoop(fpl__AudioState *audioState) {
+fpl_internal void fpl__RunAudioDeviceMainLoop(fpl__AudioState *audioState) {
 	FPL_ASSERT(audioState->activeDriver > fplAudioDriverType_Auto);
 	switch(audioState->activeDriver) {
 
 #	if defined(FPL_ENABLE_AUDIO_DIRECTSOUND)
 		case fplAudioDriverType_DirectSound:
 		{
-			fpl__DirectSoundMainLoop(&audioState->common, &audioState->dsound);
+			fpl__AudioRunMainLoopDirectSound(&audioState->common, &audioState->dsound);
+		} break;
+#	endif
+
+#	if defined(FPL_ENABLE_AUDIO_ALSA)
+		case fplAudioDriverType_Alsa:
+		{
+			fpl__AudioRunMainLoopAlsa(&audioState->common, &audioState->alsa);
 		} break;
 #	endif
 
@@ -12085,22 +12898,23 @@ fpl_internal void fpl__AudioDeviceMainLoop(fpl__AudioState *audioState) {
 fpl_internal_inline bool fpl__IsAudioDriverAsync(fplAudioDriverType audioDriver) {
 	switch(audioDriver) {
 		case fplAudioDriverType_DirectSound:
+		case fplAudioDriverType_Alsa:
 			return false;
 		default:
 			return false;
 	}
 }
 
-fpl_internal_inline void fpl__AudioSetDeviceState(fpl__AudioState *audioState, fpl__AudioDeviceState newState) {
+fpl_internal_inline void fpl__AudioSetDeviceState(fpl__CommonAudioState *audioState, fpl__AudioDeviceState newState) {
 	fplAtomicStoreU32((volatile uint32_t *)&audioState->state, (uint32_t)newState);
 }
 
-fpl_internal_inline fpl__AudioDeviceState fpl__AudioGetDeviceState(fpl__AudioState *audioState) {
+fpl_internal fpl__AudioDeviceState fpl__AudioGetDeviceState(fpl__CommonAudioState *audioState) {
 	fpl__AudioDeviceState result = (fpl__AudioDeviceState)fplAtomicLoadU32((volatile uint32_t *)&audioState->state);
 	return(result);
 }
 
-fpl_internal_inline bool fpl__IsAudioDeviceInitialized(fpl__AudioState *audioState) {
+fpl_internal bool fpl__IsAudioDeviceInitialized(fpl__CommonAudioState *audioState) {
 	if(audioState == fpl_null) {
 		return false;
 	}
@@ -12108,7 +12922,7 @@ fpl_internal_inline bool fpl__IsAudioDeviceInitialized(fpl__AudioState *audioSta
 	return(state != fpl__AudioDeviceState_Uninitialized);
 }
 
-fpl_internal_inline bool fpl__IsAudioDeviceStarted(fpl__AudioState *audioState) {
+fpl_internal bool fpl__IsAudioDeviceStarted(fpl__CommonAudioState *audioState) {
 	if(audioState == fpl_null) {
 		return false;
 	}
@@ -12123,6 +12937,7 @@ fpl_internal void fpl__AudioWorkerThread(const fplThreadHandle *thread, void *da
 #endif
 
 	fpl__AudioState *audioState = (fpl__AudioState *)data;
+	fpl__CommonAudioState *commonAudioState = &audioState->common;
 	FPL_ASSERT(audioState != fpl_null);
 	FPL_ASSERT(audioState->activeDriver != fplAudioDriverType_None);
 
@@ -12132,10 +12947,10 @@ fpl_internal void fpl__AudioWorkerThread(const fplThreadHandle *thread, void *da
 
 	for(;;) {
 		// Stop the device at the start of the iteration always
-		fpl__AudioStopDevice(audioState);
+		fpl__StopAudioDevice(audioState);
 
 		// Let the other threads know that the device has been stopped.
-		fpl__AudioSetDeviceState(audioState, fpl__AudioDeviceState_Stopped);
+		fpl__AudioSetDeviceState(commonAudioState, fpl__AudioDeviceState_Stopped);
 		fplSignalSet(&audioState->stopSignal);
 
 		// We wait until the audio device gets wake up
@@ -12145,26 +12960,26 @@ fpl_internal void fpl__AudioWorkerThread(const fplThreadHandle *thread, void *da
 		audioState->workResult = fplAudioResult_Success;
 
 		// Just break if we're terminating.
-		if(fpl__AudioGetDeviceState(audioState) == fpl__AudioDeviceState_Uninitialized) {
+		if(fpl__AudioGetDeviceState(commonAudioState) == fpl__AudioDeviceState_Uninitialized) {
 			break;
 		}
 
 		// Expect that the device is currently be started by the client
-		FPL_ASSERT(fpl__AudioGetDeviceState(audioState) == fpl__AudioDeviceState_Starting);
+		FPL_ASSERT(fpl__AudioGetDeviceState(commonAudioState) == fpl__AudioDeviceState_Starting);
 
 		// Start audio device
-		audioState->workResult = fpl__AudioStartDevice(audioState);
+		audioState->workResult = fpl__StartAudioDevice(audioState);
 		if(audioState->workResult != fplAudioResult_Success) {
 			fplSignalSet(&audioState->startSignal);
 			continue;
 		}
 
 		// The audio device is started, mark it as such
-		fpl__AudioSetDeviceState(audioState, fpl__AudioDeviceState_Started);
+		fpl__AudioSetDeviceState(commonAudioState, fpl__AudioDeviceState_Started);
 		fplSignalSet(&audioState->startSignal);
 
 		// Enter audio device main loop
-		fpl__AudioDeviceMainLoop(audioState);
+		fpl__RunAudioDeviceMainLoop(audioState);
 	}
 
 	// Signal to stop any audio threads, in case there are some waiting
@@ -12183,20 +12998,23 @@ fpl_internal void fpl__ReleaseAudio(fpl__AudioState *audioState) {
 	const fpl__Win32Api *wapi = &fpl__global__AppState->win32.winApi;
 #endif
 
-	if(fpl__IsAudioDeviceInitialized(audioState)) {
+	fpl__CommonAudioState *commonAudioState = &audioState->common;
+
+	if(fpl__IsAudioDeviceInitialized(commonAudioState)) {
 
 		// Wait until the audio device is stopped
-		if(fpl__IsAudioDeviceStarted(audioState)) {
+		if(fpl__IsAudioDeviceStarted(commonAudioState)) {
 			while(fplStopAudio() == fplAudioResult_DeviceBusy) {
 				fplThreadSleep(1);
 			}
 		}
 
 		// Putting the device into an uninitialized state will make the worker thread return.
-		fpl__AudioSetDeviceState(audioState, fpl__AudioDeviceState_Uninitialized);
+		fpl__AudioSetDeviceState(commonAudioState, fpl__AudioDeviceState_Uninitialized);
 
 		// Wake up the worker thread and wait for it to properly terminate.
 		fplSignalSet(&audioState->wakeupSignal);
+
 		fplThreadWaitForOne(audioState->workerThread, UINT32_MAX);
 		fplThreadDestroy(audioState->workerThread);
 
@@ -12207,7 +13025,7 @@ fpl_internal void fpl__ReleaseAudio(fpl__AudioState *audioState) {
 		fplMutexDestroy(&audioState->lock);
 
 		// Release audio device
-		fpl__AudioReleaseDevice(audioState);
+		fpl__ReleaseAudioDevice(audioState);
 
 		// Clear audio state
 		FPL_CLEAR_STRUCT(audioState);
@@ -12279,6 +13097,7 @@ fpl_internal fplAudioResult fpl__InitAudio(const fplAudioSettings *audioSettings
 	if(audioSettings->driver == fplAudioDriverType_Auto) {
 		// @NOTE(final): Add all audio drivers here, regardless of the platform.
 		propeDrivers[driverCount++] = fplAudioDriverType_DirectSound;
+		propeDrivers[driverCount++] = fplAudioDriverType_Alsa;
 	} else {
 		// @NOTE(final): Forced audio driver
 		propeDrivers[driverCount++] = audioSettings->driver;
@@ -12293,9 +13112,19 @@ fpl_internal fplAudioResult fpl__InitAudio(const fplAudioSettings *audioSettings
 #		if defined(FPL_ENABLE_AUDIO_DIRECTSOUND)
 			case fplAudioDriverType_DirectSound:
 			{
-				initResult = fpl__InitDirectSound(audioSettings, &audioState->common, &audioState->dsound);
+				initResult = fpl__AudioInitDirectSound(audioSettings, &audioState->common, &audioState->dsound);
 				if(initResult != fplAudioResult_Success) {
-					fpl__ReleaseDirectSound(&audioState->common, &audioState->dsound);
+					fpl__AudioReleaseDirectSound(&audioState->common, &audioState->dsound);
+				}
+			} break;
+#		endif
+
+#		if defined(FPL_ENABLE_AUDIO_ALSA)
+			case fplAudioDriverType_Alsa:
+			{
+				initResult = fpl__AudioInitAlsa(audioSettings, &audioState->common, &audioState->alsa);
+				if(initResult != fplAudioResult_Success) {
+					fpl__AudioReleaseAlsa(&audioState->common, &audioState->alsa);
 				}
 			} break;
 #		endif
@@ -12325,10 +13154,10 @@ fpl_internal fplAudioResult fpl__InitAudio(const fplAudioSettings *audioSettings
 		// Wait for the worker thread to put the device into the stopped state.
 		fplSignalWaitForOne(&audioState->lock, &audioState->stopSignal, UINT32_MAX);
 	} else {
-		fpl__AudioSetDeviceState(audioState, fpl__AudioDeviceState_Stopped);
+		fpl__AudioSetDeviceState(&audioState->common, fpl__AudioDeviceState_Stopped);
 	}
 
-	FPL_ASSERT(fpl__AudioGetDeviceState(audioState) == fpl__AudioDeviceState_Stopped);
+	FPL_ASSERT(fpl__AudioGetDeviceState(&audioState->common) == fpl__AudioDeviceState_Stopped);
 
 	return(fplAudioResult_Success);
 }
@@ -12387,7 +13216,6 @@ fpl_internal_inline fpl__VideoState *fpl__GetVideoState(fpl__PlatformAppState *a
 }
 
 fpl_internal void fpl__ShutdownVideo(fpl__PlatformAppState *appState, fpl__VideoState *videoState) {
-	FPL_LOG_BLOCK;
 	FPL_ASSERT(appState != fpl_null);
 	if(videoState != fpl_null) {
 		switch(videoState->activeDriver) {
@@ -12397,7 +13225,7 @@ fpl_internal void fpl__ShutdownVideo(fpl__PlatformAppState *appState, fpl__Video
 #			if defined(FPL_PLATFORM_WIN32)
 				fpl__Win32ReleaseVideoOpenGL(&videoState->win32.opengl);
 #			elif defined(FPL_SUBPLATFORM_X11)
-				fpl__X11ReleaseVideoOpenGL(&appState->window.x11, &videoState->x11.opengl);
+				fpl__X11ReleaseVideoOpenGL(&appState->x11, &appState->window.x11, &videoState->x11.opengl);
 #			endif
 			} break;
 #		endif // FPL_ENABLE_VIDEO_OPENGL
@@ -12428,8 +13256,6 @@ fpl_internal void fpl__ShutdownVideo(fpl__PlatformAppState *appState, fpl__Video
 }
 
 fpl_internal void fpl__ReleaseVideoState(fpl__PlatformAppState *appState, fpl__VideoState *videoState) {
-	FPL_LOG_BLOCK;
-
 	switch(videoState->activeDriver) {
 #	if defined(FPL_ENABLE_VIDEO_OPENGL)
 		case fplVideoDriverType_OpenGL:
@@ -12457,8 +13283,6 @@ fpl_internal void fpl__ReleaseVideoState(fpl__PlatformAppState *appState, fpl__V
 }
 
 fpl_internal bool fpl__LoadVideoState(const fplVideoDriverType driver, fpl__VideoState *videoState) {
-	FPL_LOG_BLOCK;
-
 	bool result = true;
 
 	switch(driver) {
@@ -12480,8 +13304,6 @@ fpl_internal bool fpl__LoadVideoState(const fplVideoDriverType driver, fpl__Vide
 }
 
 fpl_internal bool fpl__InitVideo(const fplVideoDriverType driver, const fplVideoSettings *videoSettings, const uint32_t windowWidth, const uint32_t windowHeight, fpl__PlatformAppState *appState, fpl__VideoState *videoState) {
-	FPL_LOG_BLOCK;
-
 	// @NOTE(final): Video drivers are platform independent, so we cannot have to same system as audio.
 	FPL_ASSERT(appState != fpl_null);
 	FPL_ASSERT(videoState != fpl_null);
@@ -12620,8 +13442,6 @@ fpl_internal FPL__FUNC_POST_SETUP_WINDOW(fpl__PostSetupWindowDefault) {
 }
 
 fpl_internal bool fpl__InitWindow(const fplSettings *initSettings, fplWindowSettings *currentWindowSettings, fpl__PlatformAppState *appState, const fpl__SetupWindowCallbacks *setupCallbacks) {
-	FPL_LOG_BLOCK;
-
 	bool result = false;
 	if(appState != fpl_null) {
 #	if defined(FPL_PLATFORM_WIN32)
@@ -12634,8 +13454,6 @@ fpl_internal bool fpl__InitWindow(const fplSettings *initSettings, fplWindowSett
 }
 
 fpl_internal void fpl__ReleaseWindow(const fpl__PlatformInitState *initState, fpl__PlatformAppState *appState) {
-	FPL_LOG_BLOCK;
-
 	if(appState != fpl_null) {
 #	if defined(FPL_PLATFORM_WIN32)
 		fpl__Win32ReleaseWindow(&initState->win32, &appState->win32, &appState->window.win32);
@@ -12662,7 +13480,9 @@ fpl_common_api fplAudioResult fplStopAudio() {
 		return fplAudioResult_Failed;
 	}
 
-	if(fpl__AudioGetDeviceState(audioState) == fpl__AudioDeviceState_Uninitialized) {
+	fpl__CommonAudioState *commonAudioState = &audioState->common;
+
+	if(fpl__AudioGetDeviceState(commonAudioState) == fpl__AudioDeviceState_Uninitialized) {
 		return fplAudioResult_DeviceNotInitialized;
 	}
 
@@ -12670,31 +13490,31 @@ fpl_common_api fplAudioResult fplStopAudio() {
 	fplMutexLock(&audioState->lock, UINT32_MAX);
 	{
 		// Check if the device is already stopped
-		if(fpl__AudioGetDeviceState(audioState) == fpl__AudioDeviceState_Stopping) {
+		if(fpl__AudioGetDeviceState(commonAudioState) == fpl__AudioDeviceState_Stopping) {
 			fplMutexUnlock(&audioState->lock);
 			return fplAudioResult_DeviceAlreadyStopped;
 		}
-		if(fpl__AudioGetDeviceState(audioState) == fpl__AudioDeviceState_Stopped) {
+		if(fpl__AudioGetDeviceState(commonAudioState) == fpl__AudioDeviceState_Stopped) {
 			fplMutexUnlock(&audioState->lock);
 			return fplAudioResult_DeviceAlreadyStopped;
 		}
 
 		// The device needs to be in a started state. If it's not, we just let the caller know the device is busy.
-		if(fpl__AudioGetDeviceState(audioState) != fpl__AudioDeviceState_Started) {
+		if(fpl__AudioGetDeviceState(commonAudioState) != fpl__AudioDeviceState_Started) {
 			fplMutexUnlock(&audioState->lock);
 			return fplAudioResult_DeviceBusy;
 		}
 
-		fpl__AudioSetDeviceState(audioState, fpl__AudioDeviceState_Stopping);
+		fpl__AudioSetDeviceState(commonAudioState, fpl__AudioDeviceState_Stopping);
 
 		if(audioState->isAsyncDriver) {
 			// Asynchronous drivers (Has their own thread)
-			fpl__AudioStopDevice(audioState);
+			fpl__StopAudioDevice(audioState);
 		} else {
 			// Synchronous drivers
 
 			// The audio worker thread is most likely in a wait state, so let it stop properly.
-			fpl__AudioDeviceStopMainLoop(audioState);
+			fpl__StopAudioDeviceMainLoop(audioState);
 
 			// We need to wait for the worker thread to become available for work before returning.
 			// @NOTE(final): The audio worker thread will be the one who puts the device into the stopped state.
@@ -12714,7 +13534,9 @@ fpl_common_api fplAudioResult fplPlayAudio() {
 		return fplAudioResult_Failed;
 	}
 
-	if(!fpl__IsAudioDeviceInitialized(audioState)) {
+	fpl__CommonAudioState *commonAudioState = &audioState->common;
+
+	if(!fpl__IsAudioDeviceInitialized(commonAudioState)) {
 		return fplAudioResult_DeviceNotInitialized;
 	}
 
@@ -12722,27 +13544,27 @@ fpl_common_api fplAudioResult fplPlayAudio() {
 	fplMutexLock(&audioState->lock, UINT32_MAX);
 	{
 		// Be a bit more descriptive if the device is already started or is already in the process of starting.
-		if(fpl__AudioGetDeviceState(audioState) == fpl__AudioDeviceState_Starting) {
+		if(fpl__AudioGetDeviceState(commonAudioState) == fpl__AudioDeviceState_Starting) {
 			fplMutexUnlock(&audioState->lock);
 			return fplAudioResult_DeviceAlreadyStarted;
 		}
-		if(fpl__AudioGetDeviceState(audioState) == fpl__AudioDeviceState_Started) {
+		if(fpl__AudioGetDeviceState(commonAudioState) == fpl__AudioDeviceState_Started) {
 			fplMutexUnlock(&audioState->lock);
 			return fplAudioResult_DeviceAlreadyStarted;
 		}
 
 		// The device needs to be in a stopped state. If it's not, we just let the caller know the device is busy.
-		if(fpl__AudioGetDeviceState(audioState) != fpl__AudioDeviceState_Stopped) {
+		if(fpl__AudioGetDeviceState(commonAudioState) != fpl__AudioDeviceState_Stopped) {
 			fplMutexUnlock(&audioState->lock);
 			return fplAudioResult_DeviceBusy;
 		}
 
-		fpl__AudioSetDeviceState(audioState, fpl__AudioDeviceState_Starting);
+		fpl__AudioSetDeviceState(commonAudioState, fpl__AudioDeviceState_Starting);
 
 		if(audioState->isAsyncDriver) {
 			// Asynchronous drivers (Has their own thread)
-			fpl__AudioStartDevice(audioState);
-			fpl__AudioSetDeviceState(audioState, fpl__AudioDeviceState_Started);
+			fpl__StartAudioDevice(audioState);
+			fpl__AudioSetDeviceState(commonAudioState, fpl__AudioDeviceState_Started);
 		} else {
 			// Synchronous drivers
 			fplSignalSet(&audioState->wakeupSignal);
@@ -12775,7 +13597,7 @@ fpl_common_api void fplSetAudioClientReadCallback(fpl_audio_client_read_callback
 		return;
 	}
 	if(audioState->activeDriver > fplAudioDriverType_Auto) {
-		if(fpl__AudioGetDeviceState(audioState) == fpl__AudioDeviceState_Stopped) {
+		if(fpl__AudioGetDeviceState(&audioState->common) == fpl__AudioDeviceState_Stopped) {
 			audioState->common.clientReadCallback = newCallback;
 			audioState->common.clientUserData = userData;
 		}
@@ -12937,8 +13759,6 @@ fpl_common_api void fplVideoFlip() {
 #define FPL_SYSTEM_INIT_DEFINED
 
 fpl_internal void fpl__ReleasePlatformStates(fpl__PlatformInitState *initState, fpl__PlatformAppState *appState) {
-	FPL_LOG_BLOCK;
-
 	FPL_ASSERT(initState != fpl_null);
 
 	// Release audio
@@ -13021,8 +13841,6 @@ fpl_internal void fpl__ReleasePlatformStates(fpl__PlatformInitState *initState, 
 }
 
 fpl_common_api void fplPlatformRelease() {
-	FPL_LOG_BLOCK;
-
 	// Exit out if platform is not initialized
 	fpl__PlatformInitState *initState = &fpl__global__InitState;
 	if(!initState->isInitialized) {
@@ -13035,8 +13853,6 @@ fpl_common_api void fplPlatformRelease() {
 }
 
 fpl_common_api fplInitResultType fplPlatformInit(const fplInitFlags initFlags, const fplSettings *initSettings) {
-	FPL_LOG_BLOCK;
-
 	// Exit out if platform is already initialized
 	if(fpl__global__InitState.isInitialized) {
 		fpl__PushError("Platform is already initialized");

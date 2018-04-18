@@ -188,14 +188,27 @@
 	\section subsection_usage_multiple_translation_units How to use FPL in multiple translation units?
 
 	To use FPL in multiple translation units, i recommend creating a separated "final_platform_layer.c" in the same directory FPL is located and define the implementation there only:<br>
-	<br>
+
 	<b>final_platform_layer.c</b>:
 	\code{.c}
 	#define FPL_IMPLEMENTATION
 	#include "final_platform_layer.h"
 	\endcode
-	<br>
+
 	This way FPL implementation is compiled once and can be used everywhere.<br>
+
+	\section subsection_usage_static_library How to use FPL in a static library?
+
+	To use FPL in or as a static library, i recommend creating a separated translation unit for that but with disabled entry point inclusion:
+
+	<b>final_platform_layer.c</b>:
+	\code{.c}
+	#define FPL_IMPLEMENTATION
+	#define FPL_NO_ENTRYPOINT // Disable any entry point inclusions
+	#include "final_platform_layer.h"
+	\endcode
+
+	This way FPL implementation is compiled in the static library properly and can be used by just including the static library and include the header file only.<br>
 
 	\section subsection_usage_requirements What do i need to get started?
 	The only dependencies are built-in operating system libraries and a C99 complaint compiler.<br>
@@ -1143,9 +1156,8 @@
 
 	If you disable the CRT you lose a lot of functionality which we today take for granted:<br>
 
-	- No functions from "stdio.h" or "stdlib" ...
-	- No functions from "math.h" or "string.h" ...
-	- Limited 64-bit integer operations on some platforms
+	- No functions from the entire C standard library stack, such as "stdio.h" / "stdlib", / "math.h" / "string.h", etc.
+	- No or limited integer mul/div operations on some platforms
 	- No console input/output
 	- No C++ exceptions
 	- Limited security checks
@@ -1153,7 +1165,7 @@
 	- Limited floating point operations on some platforms
 	- Limited stack size
 
-	Some limitations can be corrected by setup some flags in the compiler, such as stack size, security checks, etc.<br>
+	Some limitations can be corrected by setting up the compiler properly, such as stack size, security checks, etc.<br>
 	<br>
 	So if you are fine with that, the next section describes how to do disable the CRT usage in FPL.
 
@@ -1168,8 +1180,8 @@
 
 	To disable the use of the C-Runtime Library you need to set certain preprocessor definitions:
 
-	- Define FPL_NO_CRT in your main translation unit
-	- Define explicitly the application type FPL_APPTYPE_CONSOLE or FPL_APPTYPE_WINDOW
+	- Define FPL_NO_CRT in all translation units where FPL implementation is included
+	- In your main translation unit you need to define the application type FPL_APPTYPE_CONSOLE or FPL_APPTYPE_WINDOW explicitly
 
 	\code{.c}
 	#define FPL_NO_CRT // Disable CRT support in FPL
