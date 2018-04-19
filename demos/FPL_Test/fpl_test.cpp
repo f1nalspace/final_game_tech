@@ -435,7 +435,7 @@ static void SyncThreadsTest() {
 	ft::Msg("Sync test for 1 reader and 1 writer\n");
 	{
 		MutableThreadData mutableData = {};
-		mutableData.lock = fplMutexCreate();
+		FT_IS_TRUE(fplMutexInit(&mutableData.lock));
 		mutableData.useLock = false;
 		mutableData.value = 0;
 
@@ -471,14 +471,12 @@ static void SyncThreadsTest() {
 
 struct SlaveThreadData {
 	ThreadData base;
-	fplMutexHandle *mutex;
 	fplSignalHandle signal;
 	bool isSignaled;
 };
 
 struct MasterThreadData {
 	ThreadData base;
-	fplMutexHandle mutex;
 	fplSignalHandle *signals[FPL__MAX_SIGNAL_COUNT];
 	uint32_t signalCount;
 };
@@ -487,7 +485,7 @@ static void ThreadSlaveProc(const fplThreadHandle *context, void *data) {
 	SlaveThreadData *d = (SlaveThreadData *)data;
 
 	ft::Msg("Slave-Thread %d waits for signal\n", d->base.num);
-	fplSignalWaitForOne(d->mutex, &d->signal, UINT32_MAX);
+	fplSignalWaitForOne(&d->signal, UINT32_MAX);
 	d->isSignaled = true;
 	ft::Msg("Got signal on Slave-Thread %d\n", d->base.num);
 
@@ -499,12 +497,10 @@ static void ThreadMasterProc(const fplThreadHandle *context, void *data) {
 	ft::Msg("Master-Thread %d waits for 5 seconds\n", d->base.num);
 	fplThreadSleep(5000);
 
-	fplMutexLock(&d->mutex, UINT32_MAX);
 	for(uint32_t signalIndex = 0; signalIndex < d->signalCount; ++signalIndex) {
 		ft::Msg("Master-Thread %d sets signal %d\n", d->base.num, signalIndex);
 		fplSignalSet(d->signals[signalIndex]);
 	}
-	fplMutexUnlock(&d->mutex);
 
 	ft::Msg("Master-Thread %d is done\n", d->base.num);
 }
@@ -517,14 +513,12 @@ static void ConditionThreadsTest(const size_t threadCount) {
 
 	MasterThreadData masterData = {};
 	masterData.base.num = 1;
-	masterData.mutex = fplMutexCreate();
 
 	SlaveThreadData slaveDatas[FPL__MAX_THREAD_COUNT] = {};
 	size_t slaveThreadCount = threadCount - 1;
 	for(size_t threadIndex = 0; threadIndex < slaveThreadCount; ++threadIndex) {
-		slaveDatas[threadIndex].base.num = masterData.base.num + threadIndex + 1;
-		slaveDatas[threadIndex].signal = fplSignalCreate();
-		slaveDatas[threadIndex].mutex = &masterData.mutex;
+		slaveDatas[threadIndex].base.num = masterData.base.num + (int)threadIndex + 1;
+		FT_IS_TRUE(fplSignalInit(&slaveDatas[threadIndex].signal));
 		size_t i = masterData.signalCount++;
 		masterData.signals[i] = &slaveDatas[threadIndex].signal;
 	}
@@ -547,7 +541,6 @@ static void ConditionThreadsTest(const size_t threadCount) {
 		FT_IS_TRUE(slaveDatas[slaveIndex].isSignaled);
 		fplSignalDestroy(&slaveDatas[slaveIndex].signal);
 	}
-	fplMutexDestroy(&masterData.mutex);
 	for(size_t threadIndex = 0; threadIndex < threadCount; ++threadIndex) {
 		fplThreadHandle *thread = threads[threadIndex];
 		FT_EXPECTS(fplThreadState_Stopped, thread->currentState);
@@ -589,16 +582,16 @@ static void TestThreading() {
 		}
 
 		//
-        // Multi threads test
+		// Multi threads test
 		//
-        size_t coreCount =fplGetProcessorCoreCount();
-        size_t threadCountForCores = coreCount > 2 ? coreCount - 1 : 1;
-        {
-            SimpleMultiThreadTest(2);
-            SimpleMultiThreadTest(3);
-            SimpleMultiThreadTest(4);
-            SimpleMultiThreadTest(threadCountForCores);
-        }
+		size_t coreCount = fplGetProcessorCoreCount();
+		size_t threadCountForCores = coreCount > 2 ? coreCount - 1 : 1;
+		{
+			SimpleMultiThreadTest(2);
+			SimpleMultiThreadTest(3);
+			SimpleMultiThreadTest(4);
+			SimpleMultiThreadTest(threadCountForCores);
+		}
 
 		//
 		// Sync tests
@@ -610,12 +603,12 @@ static void TestThreading() {
 		//
 		// Condition tests
 		//
-        {
-            ConditionThreadsTest(2);
+		{
+			ConditionThreadsTest(2);
 			ConditionThreadsTest(3);
-            ConditionThreadsTest(4);
+			ConditionThreadsTest(4);
 			ConditionThreadsTest(threadCountForCores);
-        }
+		}
 
 		fplPlatformRelease();
 	}
