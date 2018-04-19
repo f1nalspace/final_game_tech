@@ -129,6 +129,9 @@ SOFTWARE.
 	\page page_changelog Changelog
 	\tableofcontents
 
+	## v0.7.5.1 beta:
+    - Fixed: [GLX] Fallback to glXCreateContext was not working properly
+
 	## v0.7.5.0 beta:
 	- Changed: Updated documentations
 	- Changed: Small refactoring of the internal audio system
@@ -11234,11 +11237,18 @@ fpl_internal bool fpl__X11InitFrameBufferConfigVideoOpenGL(const fpl__X11Api *x1
 		FPL_LOG("GLX", "OpenGL GLX extensions: %s", extensionString);
 	}
 
+	bool isModern = major > 1 || (major == 1 && minor >= 3);
+
 	int attr[32] = FPL_ZERO_INIT;
 	int attrIndex = 0;
 
 	attr[attrIndex++] = GLX_X_VISUAL_TYPE;
 	attr[attrIndex++] = GLX_TRUE_COLOR;
+
+	if (!isModern) {
+        attr[attrIndex++] = GLX_RGBA;
+        attr[attrIndex++] = True;
+    }
 
 	attr[attrIndex++] = GLX_DOUBLEBUFFER;
 	attr[attrIndex++] = True;
@@ -11260,7 +11270,7 @@ fpl_internal bool fpl__X11InitFrameBufferConfigVideoOpenGL(const fpl__X11Api *x1
 
 	attr[attrIndex] = 0;
 
-	if(major > 1 || (major == 1 && minor >= 3)) {
+	if(isModern) {
 		// Use frame buffer config approach (GLX >= 1.3)
 		FPL_LOG("GLX", "Get framebuffer configuration from display '%p' and screen '%d'", windowState->display, windowState->screen);
 		int configCount = 0;
@@ -11398,7 +11408,7 @@ fpl_internal bool fpl__X11InitVideoOpenGL(const fpl__X11SubplatformState *subpla
 
 	GLXContext activeRenderingContext;
 
-	if(videoSettings->graphics.opengl.compabilityFlags != fplOpenGLCompabilityFlags_Legacy) {
+	if((videoSettings->graphics.opengl.compabilityFlags != fplOpenGLCompabilityFlags_Legacy) && (glState->fbConfig != fpl_null)) {
 		// @NOTE(final): This is only available in OpenGL 3.0+
 		if(!(videoSettings->graphics.opengl.majorVersion >= 3 && videoSettings->graphics.opengl.minorVersion >= 0)) {
 			fpl__PushError("You have not specified the 'majorVersion' and 'minorVersion' in the VideoSettings");
