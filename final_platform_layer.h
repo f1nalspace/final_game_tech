@@ -130,11 +130,17 @@ SOFTWARE.
 	\tableofcontents
 
 	## v0.7.5.0 beta:
-	- Changed: Updated documentations a lot
+	- Changed: Updated documentations
+	- Changed: Small refactoring of the internal audio system
+	- Changed: Renamed fplMutexCreate to fplMutexInit + signature change (Returns bool, Mutex pointer argument)
+	- Changed: Renamed fplSignalCreate to fplSignalInit + signature change (Returns bool, Signal pointer argument)
+	- Changed: Removed mutex parameter from SignalWaitFor*
+
 	- Changed: [GLX] Use glXCreateContext with visual info caching for GLX < 1.3 and glXCreateNewContext for GLX >= 1.3
 	- Changed: [POSIX] All FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK are wrapped around a do-while loop so it can "break" properly.
-	- Changed: Refactoring internal audio system
-	- New: [ALSA] Added experimental ALSA playback support
+	- Removed: [POSIX] All signal functions removed
+	- New: [ALSA] Added rudimentary ALSA playback support
+	- New: [Linux] Implemented signal functions using eventfd
 
 	## v0.7.4.0 beta:
 	- Fixed: [Win32] Removed x64 detection for fplAtomicStoreS64 and fplAtomicExchangeS64 and use _InterlockedExchange*64 directly
@@ -646,11 +652,12 @@ SOFTWARE.
 			- Toggle Floating
 			- Show/Hide Cursor
 		- Video
-			- Opengl (GLX)
-				- Modern context creation
 			- Software backbuffer (X11)
+	- Unix
+ 		- eventfd for Unix
+
 	- Audio
-		- Alsa driver
+		- Finalize Alsa driver (Device selection)
 
 	\section section_todo_planned Planned
 
@@ -662,8 +669,6 @@ SOFTWARE.
 		- Custom icon from image (File/Memory)
 
 	- Window:
-		- [Linux] Wayland
-
 		- Custom cursor from image (File/Memory)
 		- Unicode/UTF-8 Support for character input
 		- Open/Save file/folder dialog
@@ -672,6 +677,7 @@ SOFTWARE.
 		- Support for channel mapping
 		- PulseAudio driver
 		- WASAPI audio driver
+		- OpenAL audio driver
 
 	- Video:
 		- [Win32] Direct2D
@@ -2157,26 +2163,14 @@ typedef struct fplThreadHandle fplThreadHandle;
 //! Run function type definition for CreateThread
 typedef void (fpl_run_thread_function)(const fplThreadHandle *thread, void *data);
 
-#if defined(FPL_SUBPLATFORM_POSIX)
-//! Posix internal thread handle
-typedef struct fplPosixInternalThreadHandle {
-	//! Thread
-	pthread_t thread;
-	//! Mutex
-	pthread_mutex_t mutex;
-	//! Stop condition
-	pthread_cond_t stopCondition;
-} fplPosixInternalThreadHandle;
-#endif
-
 //! Internal thread handle union
 typedef union fplInternalThreadHandle {
 #if defined(FPL_PLATFORM_WIN32)
 	//! Win32 thread handle
 	HANDLE win32ThreadHandle;
 #elif defined(FPL_SUBPLATFORM_POSIX)
-	//! Posix thread handle
-	fplPosixInternalThreadHandle posix;
+	//! POSIX thread
+	pthread_t posixThread;
 #endif
 } fplInternalThreadHandle;
 
@@ -2217,22 +2211,17 @@ typedef struct fplMutexHandle {
 	bool isValid;
 } fplMutexHandle;
 
-#if defined(FPL_SUBPLATFORM_POSIX)
-typedef struct fplInternalSignalHandlePosix {
-    pthread_cond_t condition;
-    bool isSignaled;
-} fplInternalSignalHandlePosix;
-#endif
-
 //! Internal signal handle union
 typedef union fplInternalSignalHandle {
 #if defined(FPL_PLATFORM_WIN32)
 	//! Win32 event handle
 	HANDLE win32EventHandle;
-#elif defined(FPL_SUBPLATFORM_POSIX)
-	//! Posix handle
-    fplInternalSignalHandlePosix posix;
+#elif defined(FPL_PLATFORM_LINUX)
+	//! Linux event handle
+	int linuxEventHandle;
 #endif
+	//! Dummy field
+	int dummy;
 } fplInternalSignalHandle;
 
 //! Signal handle
@@ -2253,12 +2242,12 @@ fpl_inline fplThreadState fplGetThreadState(fplThreadHandle *thread) {
 }
 
 /**
-  * \brief Creates a thread and return a handle to it.
+  * \brief Creates and runs a thread and returns the handle to it.
   * \param runFunc Function prototype called when this thread starts.
   * \param data User data passed to the run function.
-  * \note Use \ref fplThreadDestroy() with this thread context when you dont need this thread anymore. You can only have 64 threads suspended/running at the same time!
+  * \note Use \ref fplThreadDestroy() with this thread context when you dont need this thread anymore. You can only have 64 threads running at the same time!
   * \warning Do not free this thread context directly! Use \ref fplThreadDestroy() instead.
-  * \return Pointer to a internal stored thread-context or return fpl_null when the limit of current threads has been reached.
+  * \return Pointer to the thread handle or fpl_null when the limit of current threads has been reached.
   */
 fpl_platform_api fplThreadHandle *fplThreadCreate(fpl_run_thread_function *runFunc, void *data);
 /**
@@ -2299,73 +2288,78 @@ fpl_platform_api bool fplThreadWaitForAll(fplThreadHandle *threads[], const size
 fpl_platform_api bool fplThreadWaitForAny(fplThreadHandle *threads[], const size_t count, const uint32_t maxMilliseconds);
 
 /**
-  * \brief Creates a mutex and returns a copy of the handle to it.
+  * \brief Initializes the given mutex
+  * \param mutex Pointer to a mutex handle
   * \note Use \ref fplMutexDestroy() when you are done with this mutex.
-  * \return Copy of the handle to the mutex.
+  * \return True when the mutex was initialized or false otherwise.
   */
-fpl_platform_api fplMutexHandle fplMutexCreate();
+fpl_platform_api bool fplMutexInit(fplMutexHandle *mutex);
 /**
   * \brief Releases the given mutex and clears the structure to zero.
-  * \param mutex The mutex reference to destroy.
+  * \param mutex Pointer to a mutex handle
   */
 fpl_platform_api void fplMutexDestroy(fplMutexHandle *mutex);
 /**
   * \brief Locks the given mutex and ensures that other threads will wait until it gets unlocked or the timeout has been reached.
-  * \param mutex The mutex reference to lock
+  * \param mutex Pointer to a mutex handle
   * \param maxMilliseconds Optional number of milliseconds to wait. When this is set to UINT32_MAX it may wait infinitly. (Default: UINT32_MAX)
   * \returns True when mutex was locked or false otherwise.
   */
 fpl_platform_api bool fplMutexLock(fplMutexHandle *mutex, const uint32_t maxMilliseconds);
 /**
  * \brief Unlocks the given mutex
- * \param mutex The mutex reference to unlock
+ * \param mutex Pointer to a mutex handle
  * \returns True when mutex was unlocked or false otherwise.
  */
 fpl_platform_api bool fplMutexUnlock(fplMutexHandle *mutex);
 
 /**
-  * \brief Creates a signal and returns a copy of the handle to it.
+  * \brief Initializes the given signal
+  * \param signal Pointer to a signal handle
   * \note Use \ref fplSignalDestroy() when you are done with this signal.
-  * \return Copy of the handle to the signal.
+  * \return True when initialization was successful, false otherwise.
   */
-fpl_platform_api fplSignalHandle fplSignalCreate();
+fpl_platform_api bool fplSignalInit(fplSignalHandle *signal);
 /**
   * \brief Releases the given signal and clears the structure to zero.
-  * \param signal The signal reference to destroy.
+  * \param signal Pointer to a signal handle
   */
 fpl_platform_api void fplSignalDestroy(fplSignalHandle *signal);
 /**
   * \brief Waits until the given signal are waked up.
-  * \param mutex The mutex reference
-  * \param signal The signal reference to signal.
+  * \param signal Pointer to a signal handle
   * \param maxMilliseconds Optional number of milliseconds to wait. When this is set to UINT32_MAX it may wait infinitly. (Default: UINT32_MAX)
   * \return Returns true when the signal woke up or the timeout has been reached, otherwise false.
   */
-fpl_platform_api bool fplSignalWaitForOne(fplMutexHandle *mutex, fplSignalHandle *signal, const uint32_t maxMilliseconds);
+fpl_platform_api bool fplSignalWaitForOne(fplSignalHandle *signal, const uint32_t maxMilliseconds);
 /**
   * \brief Waits until all the given signal are waked up.
-  * \param mutex The mutex reference
   * \param signals Array of signals
   * \param count Number of signals
   * \param maxMilliseconds Optional number of milliseconds to wait. When this is set to UINT32_MAX it may wait infinitly. (Default: UINT32_MAX)
   * \return Returns true when all signals woke up or the timeout has been reached, otherwise false.
   */
-fpl_platform_api bool fplSignalWaitForAll(fplMutexHandle *mutex, fplSignalHandle *signals[], const size_t count, const uint32_t maxMilliseconds);
+fpl_platform_api bool fplSignalWaitForAll(fplSignalHandle *signals[], const size_t count, const uint32_t maxMilliseconds);
 /**
   * \brief Waits until any of the given signals wakes up or the timeout has been reached.
-  * \param mutex The mutex reference
   * \param signals Array of signals
   * \param count Number of signals
   * \param maxMilliseconds Optional number of milliseconds to wait. When this is set to UINT32_MAX it may wait infinitly. (Default: UINT32_MAX)
   * \return Returns true when any of the signals woke up or the timeout has been reached, otherwise false.
   */
-fpl_platform_api bool fplSignalWaitForAny(fplMutexHandle *mutex, fplSignalHandle *signals[], const size_t count, const uint32_t maxMilliseconds);
+fpl_platform_api bool fplSignalWaitForAny(fplSignalHandle *signals[], const size_t count, const uint32_t maxMilliseconds);
 /**
   * \brief Sets the signal and wakes up the given signal.
-  * \param signal The reference to the signal
-  * \return Returns true when the signal was set and woke up, otherwise false.
+  * \param signal Pointer to a signal handle
+  * \return Returns true when the signal was set and broadcasted or false otherwise.
   */
 fpl_platform_api bool fplSignalSet(fplSignalHandle *signal);
+/**
+  * \brief Resets the signal.
+  * \param signal Pointer to a signal handle
+  * \return Returns true when the signal was reset, false otherwise.
+  */
+fpl_platform_api bool fplSignalReset(fplSignalHandle *signal);
 
 /** \}*/
 
@@ -4988,7 +4982,7 @@ typedef union fpl__PreSetupWindowResult {
 #if defined(FPL_SUBPLATFORM_X11)
 	fpl__X11PreWindowSetupResult x11;
 #endif
-	//! Dummy field when no subplatforms are available
+	//! Dummy field
 	int dummy;
 } fpl__PreSetupWindowResult;
 
@@ -7575,11 +7569,19 @@ fpl_platform_api bool fplThreadWaitForAny(fplThreadHandle *threads[], const size
 	return(result);
 }
 
-fpl_platform_api fplMutexHandle fplMutexCreate() {
-	fplMutexHandle result = FPL_ZERO_INIT;
-	InitializeCriticalSection(&result.internalHandle.win32CriticalSection);
-	result.isValid = true;
-	return(result);
+fpl_platform_api bool fplMutexInit(fplMutexHandle *mutex) {
+	if(mutex == fpl_null) {
+		fpl__ArgumentNullError("Mutex");
+		return false;
+	}
+	if(mutex->isValid) {
+		fpl__PushError("Mutex '%p' is already initialized!", mutex);
+		return false;
+	}
+	FPL_CLEAR_STRUCT(mutex);
+	InitializeCriticalSection(&mutex->internalHandle.win32CriticalSection);
+	mutex->isValid = true;
+	return true;
 }
 
 fpl_platform_api void fplMutexDestroy(fplMutexHandle *mutex) {
@@ -7619,16 +7621,26 @@ fpl_platform_api bool fplMutexUnlock(fplMutexHandle *mutex) {
 	return true;
 }
 
-fpl_platform_api fplSignalHandle fplSignalCreate() {
-	fplSignalHandle result = FPL_ZERO_INIT;
-	HANDLE handle = CreateEventA(fpl_null, FALSE, FALSE, fpl_null);
-	if(handle != fpl_null) {
-		result.isValid = true;
-		result.internalHandle.win32EventHandle = handle;
-	} else {
-		fpl__PushError("Failed creating signal (Win32 event): %d", GetLastError());
+fpl_platform_api bool fplSignalInit(fplSignalHandle *signal) {
+	if(signal == fpl_null) {
+		fpl__ArgumentNullError("Signal");
+		return false;
 	}
-	return(result);
+	if(signal->isValid) {
+		fpl__PushError("Signal '%p' is already initialized!", signal);
+		return false;
+	}
+	FPL_CLEAR_STRUCT(signal);
+
+	HANDLE handle = CreateEventA(fpl_null, FALSE, FALSE, fpl_null);
+	if(handle == fpl_null) {
+		fpl__PushError("Failed creating signal (Win32 event): %d", GetLastError());
+		return false;
+	}
+
+	signal->isValid = true;
+	signal->internalHandle.win32EventHandle = handle;
+	return(true);
 }
 
 fpl_platform_api void fplSignalDestroy(fplSignalHandle *signal) {
@@ -7645,11 +7657,7 @@ fpl_platform_api void fplSignalDestroy(fplSignalHandle *signal) {
 	FPL_CLEAR_STRUCT(signal);
 }
 
-fpl_platform_api bool fplSignalWaitForOne(fplMutexHandle *mutex, fplSignalHandle *signal, const uint32_t maxMilliseconds) {
-	if(mutex == fpl_null) {
-		fpl__ArgumentNullError("Mutex");
-		return false;
-	}
+fpl_platform_api bool fplSignalWaitForOne(fplSignalHandle *signal, const uint32_t maxMilliseconds) {
 	if(signal == fpl_null) {
 		fpl__ArgumentNullError("Signal");
 		return false;
@@ -7663,12 +7671,12 @@ fpl_platform_api bool fplSignalWaitForOne(fplMutexHandle *mutex, fplSignalHandle
 	return(result);
 }
 
-fpl_platform_api bool fplSignalWaitForAll(fplMutexHandle *mutex, fplSignalHandle *signals[], const size_t count, const uint32_t maxMilliseconds) {
+fpl_platform_api bool fplSignalWaitForAll(fplSignalHandle *signals[], const size_t count, const uint32_t maxMilliseconds) {
 	bool result = fpl__Win32SignalWaitForMultiple((fplSignalHandle **)signals, count, true, maxMilliseconds);
 	return(result);
 }
 
-fpl_platform_api bool fplSignalWaitForAny(fplMutexHandle *mutex, fplSignalHandle *signals[], const size_t count, const uint32_t maxMilliseconds) {
+fpl_platform_api bool fplSignalWaitForAny(fplSignalHandle *signals[], const size_t count, const uint32_t maxMilliseconds) {
 	bool result = fpl__Win32SignalWaitForMultiple((fplSignalHandle **)signals, count, false, maxMilliseconds);
 	return(result);
 }
@@ -7684,6 +7692,20 @@ fpl_platform_api bool fplSignalSet(fplSignalHandle *signal) {
 	}
 	HANDLE handle = signal->internalHandle.win32EventHandle;
 	bool result = SetEvent(handle) == TRUE;
+	return(result);
+}
+
+fpl_platform_api bool fplSignalReset(fplSignalHandle *signal) {
+	if(signal == fpl_null) {
+		fpl__ArgumentNullError("Signal");
+		return false;
+	}
+	if(signal->internalHandle.win32EventHandle == fpl_null) {
+		fpl__PushError("Signal handle are not allowed to be null");
+		return false;
+	}
+	HANDLE handle = signal->internalHandle.win32EventHandle;
+	bool result = ResetEvent(handle) == TRUE;
 	return(result);
 }
 
@@ -8777,7 +8799,7 @@ fpl_internal int fpl__PosixConditionCreate(const fpl__PThreadApi *pthreadApi, pt
 	return(condRes);
 }
 
-fpl_internal_inline timespec fpl__CreateWaitTimeSpec(const uint32_t milliseconds) {
+fpl_internal_inline void fpl__InitWaitTimeSpec(const uint32_t milliseconds, timespec *outSpec) {
 	time_t secs = milliseconds / 1000;
 	uint64_t nanoSecs = (milliseconds - (secs * 1000)) * 1000000;
 	if(nanoSecs >= 1000000000) {
@@ -8785,11 +8807,9 @@ fpl_internal_inline timespec fpl__CreateWaitTimeSpec(const uint32_t milliseconds
 		nanoSecs -= (addonSecs * 1000000000);
 		secs += addonSecs;
 	}
-	timespec result;
-	clock_gettime(CLOCK_REALTIME, &result);
-	result.tv_sec += secs;
-	result.tv_nsec += nanoSecs;
-	return(result);
+	clock_gettime(CLOCK_REALTIME, outSpec);
+	outSpec->tv_sec += secs;
+	outSpec->tv_nsec += nanoSecs;
 }
 
 fpl_internal bool fpl__PosixThreadWaitForMultiple(fplThreadHandle *threads[], const uint32_t minCount, const uint32_t maxCount, const uint32_t maxMilliseconds) {
@@ -8813,13 +8833,13 @@ fpl_internal bool fpl__PosixThreadWaitForMultiple(fplThreadHandle *threads[], co
 		}
 	}
 
-	volatile bool isRunning[FPL__MAX_THREAD_COUNT];
+	bool isRunning[FPL__MAX_THREAD_COUNT];
 	for(uint32_t index = 0; index < maxCount; ++index) {
 		isRunning[index] = true;
 	}
 
-	volatile uint32_t completeCount = 0;
-	volatile uint64_t startTime = fplGetTimeInMilliseconds();
+	uint32_t completeCount = 0;
+	uint64_t startTime = fplGetTimeInMilliseconds();
 	bool result = false;
 	while(completeCount < minCount) {
 		for(uint32_t index = 0; index < maxCount; ++index) {
@@ -8845,67 +8865,9 @@ fpl_internal bool fpl__PosixThreadWaitForMultiple(fplThreadHandle *threads[], co
 	return(result);
 }
 
-fpl_internal bool fpl__PosixSignalWaitForMultiple(const fpl__PThreadApi *pthreadApi, fplMutexHandle *mutex, fplSignalHandle *signals[], const uint32_t minCount, const uint32_t maxCount, const uint32_t maxMilliseconds, const uint32_t smallWaitDuration = 5) {
-	if(pthreadApi->libHandle == fpl_null) {
-		fpl__PushError("PThread api not loaded");
-		return false;
-	}
-	if(signals == fpl_null) {
-		fpl__ArgumentNullError("Signals");
-		return false;
-	}
-	if(maxCount > FPL__MAX_SIGNAL_COUNT) {
-		fpl__ArgumentSizeTooBigError("Max count", maxCount, FPL__MAX_SIGNAL_COUNT);
-		return false;
-	}
-	for(uint32_t index = 0; index < maxCount; ++index) {
-		fplSignalHandle *signal = signals[index];
-		if(signal == fpl_null) {
-			fpl__PushError("Signal for index '%d' are not allowed to be null", index);
-			return false;
-		}
-		if(!signal->isValid) {
-			fpl__PushError("Signal for index '%d' is not valid", index);
-			return false;
-		}
-	}
-
-	volatile bool isSignaled[FPL__MAX_SIGNAL_COUNT];
-	for(uint32_t index = 0; index < maxCount; ++index) {
-		isSignaled[index] = false;
-	}
-
-
-	volatile uint32_t signaledCount = 0;
-	volatile uint64_t startTime = fplGetTimeInMilliseconds();
-	bool result = false;
-	while(signaledCount < minCount) {
-		for(uint32_t index = 0; index < maxCount; ++index) {
-			fplSignalHandle *signal = signals[index];
-			if(!isSignaled[index]) {
-				timespec t = fpl__CreateWaitTimeSpec(smallWaitDuration);
-				int condRes = pthreadApi->pthread_cond_timedwait(&signal->internalHandle.posix.condition, &mutex->internalHandle.posixMutex, &t);
-				if(condRes == 0) {
-					isSignaled[index] = true;
-					++signaledCount;
-					if(signaledCount >= minCount) {
-						result = true;
-						break;
-					}
-				}
-			}
-		}
-		if((maxMilliseconds != UINT32_MAX) && (fplGetTimeInMilliseconds() - startTime) >= maxMilliseconds) {
-			result = false;
-			break;
-		}
-	}
-	return(result);
-}
-
-	//
-	// POSIX Atomics
-	//
+//
+// POSIX Atomics
+//
 #if defined(FPL_COMPILER_GCC)
 // @NOTE(final): See: https://gcc.gnu.org/onlinedocs/gcc/_005f_005fsync-Builtins.html#g_t_005f_005fsync-Builtins
 fpl_platform_api void fplAtomicReadFence() {
@@ -9095,16 +9057,13 @@ fpl_platform_api void fplThreadDestroy(fplThreadHandle *thread) {
 		return;
 	}
 	if(thread != fpl_null && thread->isValid) {
-		pthread_t threadHandle = thread->internalHandle.posix.thread;
-		pthread_mutex_t *mutexHandle = &thread->internalHandle.posix.mutex;
-		pthread_cond_t *condHandle = &thread->internalHandle.posix.stopCondition;
+		pthread_t threadHandle = thread->internalHandle.posixThread;
 
 		// If thread is not stopped yet, kill it and wait for termination
 		if(pthreadApi->pthread_kill(threadHandle, 0) == 0) {
 			pthreadApi->pthread_join(threadHandle, fpl_null);
 		}
-		pthreadApi->pthread_cond_destroy(condHandle);
-		pthreadApi->pthread_mutex_destroy(mutexHandle);
+
 		fplAtomicStoreU32((volatile uint32_t *)&thread->currentState, (uint32_t)fplThreadState_Stopped);
 		FPL_CLEAR_STRUCT(thread);
 	}
@@ -9127,39 +9086,19 @@ fpl_platform_api fplThreadHandle *fplThreadCreate(fpl_run_thread_function *runFu
 		thread->isValid = false;
 		thread->isStopping = false;
 
-		// Create mutex
-		int mutexRes = fpl__PosixMutexCreate(pthreadApi, &thread->internalHandle.posix.mutex);
-		if(mutexRes != 0) {
-			fpl__PushError("Failed creating pthread mutex, error code: %d", mutexRes);
-		}
-
-		// Create stop condition
-		int condRes = -1;
-		if(mutexRes == 0) {
-			condRes = fpl__PosixConditionCreate(pthreadApi, &thread->internalHandle.posix.stopCondition);
-			if(condRes != 0) {
-				fpl__PushError("Failed creating pthread condition, error code: %d", condRes);
-				pthreadApi->pthread_mutex_destroy(&thread->internalHandle.posix.mutex);
-			}
-		}
-
 		// Create thread
-		int threadRes = -1;
-		if(condRes == 0) {
-			thread->isValid = true;
-			// @TODO(final): Better thread id (pthread_t)
-			fplMemoryCopy(&thread->internalHandle.posix.thread, FPL_MIN(sizeof(thread->id), sizeof(thread->internalHandle.posix.thread)), &thread->id);
-			do {
-				threadRes = pthreadApi->pthread_create(&thread->internalHandle.posix.thread, fpl_null, fpl__PosixThreadProc, (void *)thread);
-			} while(threadRes == EAGAIN);
-			if(threadRes != 0) {
-				fpl__PushError("Failed creating pthread, error code: %d", threadRes);
-				pthreadApi->pthread_cond_destroy(&thread->internalHandle.posix.stopCondition);
-				pthreadApi->pthread_mutex_destroy(&thread->internalHandle.posix.mutex);
-			}
+		// @TODO(final): Better thread id (pthread_t)
+		thread->currentState = fplThreadState_Starting;
+		fplMemoryCopy(&thread->internalHandle.posixThread, FPL_MIN(sizeof(thread->id), sizeof(thread->internalHandle.posixThread)), &thread->id);
+		int threadRes;
+		do {
+			threadRes = pthreadApi->pthread_create(&thread->internalHandle.posixThread, fpl_null, fpl__PosixThreadProc, (void *)thread);
+		} while(threadRes == EAGAIN);
+		if(threadRes != 0) {
+			fpl__PushError("Failed creating pthread, error code: %d", threadRes);
 		}
-
 		if(threadRes == 0) {
+			thread->isValid = true;
 			result = thread;
 		} else {
 			FPL_CLEAR_STRUCT(thread);
@@ -9179,18 +9118,8 @@ fpl_platform_api bool fplThreadWaitForOne(fplThreadHandle *thread, const uint32_
 	}
 	bool result = false;
 	if(thread != fpl_null && thread->isValid) {
-		// Set a flag and signal indicating that this thread is being stopped
-		pthread_mutex_t *mutexHandle = &thread->internalHandle.posix.mutex;
-		pthread_cond_t *condHandle = &thread->internalHandle.posix.stopCondition;
-		if(fpl__PosixMutexLock(pthreadApi, mutexHandle)) {
-			thread->isStopping = true;
-			pthreadApi->pthread_cond_signal(condHandle);
-			pthreadApi->pthread_cond_broadcast(condHandle);
-			fpl__PosixMutexUnlock(pthreadApi, mutexHandle);
-		}
-
 		// Wait until it shuts down
-		pthread_t threadHandle = thread->internalHandle.posix.thread;
+		pthread_t threadHandle = thread->internalHandle.posixThread;
 		int joinRes = pthreadApi->pthread_join(threadHandle, fpl_null);
 		result = (joinRes == 0);
 	}
@@ -9223,18 +9152,29 @@ fpl_platform_api void fplThreadSleep(const uint32_t milliseconds) {
 	nanosleep(&input, &output);
 }
 
-fpl_platform_api fplMutexHandle fplMutexCreate() {
+fpl_platform_api bool fplMutexInit(fplMutexHandle *mutex) {
+	if(mutex == fpl_null) {
+		fpl__ArgumentNullError("Mutex");
+		return false;
+	}
+	if(mutex->isValid) {
+		fpl__PushError("Mutex '%p' is already initialized!", mutex);
+		return false;
+	}
 	const fpl__PlatformAppState *appState = fpl__global__AppState;
 	const fpl__PThreadApi *pthreadApi = &appState->posix.pthreadApi;
 	if(pthreadApi->libHandle == fpl_null) {
 		fpl__PushError("PThread api not loaded");
-		fplMutexHandle empty = FPL_ZERO_INIT;
-		return(empty);
+		return false;
 	}
-	fplMutexHandle result = FPL_ZERO_INIT;
-	int mutexRes = fpl__PosixMutexCreate(pthreadApi, &result.internalHandle.posixMutex);
-	result.isValid = (mutexRes == 0);
-	return(result);
+	FPL_CLEAR_STRUCT(mutex);
+	int mutexRes = fpl__PosixMutexCreate(pthreadApi, &mutex->internalHandle.posixMutex);
+	if(mutexRes != 0) {
+		fpl__PushError("Failed creating POSIX condition!");
+		return false;
+	}
+	mutex->isValid = true;
+	return(true);
 }
 
 fpl_platform_api void fplMutexDestroy(fplMutexHandle *mutex) {
@@ -9289,107 +9229,6 @@ fpl_platform_api bool fplMutexUnlock(fplMutexHandle *mutex) {
 		result = fpl__PosixMutexUnlock(pthreadApi, handle);
 	}
 	return (result);
-}
-
-fpl_platform_api fplSignalHandle fplSignalCreate() {
-	const fpl__PlatformAppState *appState = fpl__global__AppState;
-	const fpl__PThreadApi *pthreadApi = &appState->posix.pthreadApi;
-	if(pthreadApi->libHandle == fpl_null) {
-		fpl__PushError("PThread api not loaded");
-		fplSignalHandle empty = FPL_ZERO_INIT;
-		return(empty);
-	}
-	fplSignalHandle result = FPL_ZERO_INIT;
-	int condRes = fpl__PosixConditionCreate(pthreadApi, &result.internalHandle.posix.condition);
-	result.isValid = (condRes == 0);
-	return(result);
-}
-
-fpl_platform_api void fplSignalDestroy(fplSignalHandle *signal) {
-	const fpl__PlatformAppState *appState = fpl__global__AppState;
-	const fpl__PThreadApi *pthreadApi = &appState->posix.pthreadApi;
-	if(pthreadApi->libHandle == fpl_null) {
-		fpl__PushError("PThread api not loaded");
-		return;
-	}
-	if(signal != fpl_null) {
-		if(signal->isValid) {
-			pthread_cond_t *handle = &signal->internalHandle.posix.condition;
-			pthreadApi->pthread_cond_destroy(handle);
-		}
-		FPL_CLEAR_STRUCT(signal);
-	}
-}
-
-fpl_platform_api bool fplSignalWaitForOne(fplMutexHandle *mutex, fplSignalHandle *signal, const uint32_t maxMilliseconds) {
-	if(mutex == fpl_null) {
-		fpl__ArgumentNullError("Mutex");
-		return false;
-	}
-	if(signal == fpl_null) {
-		fpl__ArgumentNullError("Signal");
-		return false;
-	}
-	const fpl__PlatformAppState *appState = fpl__global__AppState;
-	const fpl__PThreadApi *pthreadApi = &appState->posix.pthreadApi;
-	if(pthreadApi->libHandle == fpl_null) {
-		fpl__PushError("PThread api not loaded");
-		return false;
-	}
-	if(!signal->isValid) {
-		fpl__PushError("Signal is not valid");
-		return(false);
-	}
-	if(!mutex->isValid) {
-		fpl__PushError("Mutex is not valid");
-		return(false);
-	}
-	while (!signal->internalHandle.posix.isSignaled) {
-        if (maxMilliseconds != UINT32_MAX) {
-            timespec t = fpl__CreateWaitTimeSpec(maxMilliseconds);
-            pthreadApi->pthread_cond_timedwait(&signal->internalHandle.posix.condition, &mutex->internalHandle.posixMutex, &t);
-        } else {
-            pthreadApi->pthread_cond_wait(&signal->internalHandle.posix.condition, &mutex->internalHandle.posixMutex);
-        }
-    }
-    signal->internalHandle.posix.isSignaled = false;
-	return(true);
-}
-
-fpl_platform_api bool fplSignalWaitForAll(fplMutexHandle *mutex, fplSignalHandle *signals[], const size_t count, const uint32_t maxMilliseconds) {
-	const fpl__PlatformAppState *appState = fpl__global__AppState;
-	const fpl__PThreadApi *pthreadApi = &appState->posix.pthreadApi;
-	bool result = fpl__PosixSignalWaitForMultiple(pthreadApi, mutex, signals, count, count, maxMilliseconds);
-	return(result);
-}
-
-fpl_platform_api bool fplSignalWaitForAny(fplMutexHandle *mutex, fplSignalHandle *signals[], const size_t count, const uint32_t maxMilliseconds) {
-	const fpl__PlatformAppState *appState = fpl__global__AppState;
-	const fpl__PThreadApi *pthreadApi = &appState->posix.pthreadApi;
-	bool result = fpl__PosixSignalWaitForMultiple(pthreadApi, mutex, signals, 1, count, maxMilliseconds);
-	return(result);
-}
-
-fpl_platform_api bool fplSignalSet(fplSignalHandle *signal) {
-	if(signal == fpl_null) {
-		fpl__ArgumentNullError("Signal");
-		return false;
-	}
-	const fpl__PlatformAppState *appState = fpl__global__AppState;
-	const fpl__PThreadApi *pthreadApi = &appState->posix.pthreadApi;
-	if(pthreadApi->libHandle == fpl_null) {
-		fpl__PushError("PThread api not loaded");
-		return false;
-	}
-	bool result = false;
-	if(signal->isValid) {
-		pthread_cond_t *handle = &signal->internalHandle.posix.condition;
-        signal->internalHandle.posix.isSignaled = true;
-		int condRes = pthreadApi->pthread_cond_signal(handle);
-		pthreadApi->pthread_cond_broadcast(handle);
-		result = (condRes == 0);
-	}
-	return(result);
 }
 
 //
@@ -10581,6 +10420,10 @@ fpl_platform_api bool fplSetClipboardWideText(const wchar_t *wideSource) {
 #if defined(FPL_PLATFORM_LINUX)
 #   include <ctype.h> // isspace
 #   include <pwd.h> // getpwuid
+#	include <sys/eventfd.h> // eventfd
+#	include <sys/epoll.h> // epoll_create, epoll_ctl, epoll_wait
+#	include <sys/select.h> // select
+#	include <unistd.h> // write
 
 fpl_internal void fpl__LinuxReleasePlatform(fpl__PlatformInitState *initState, fpl__PlatformAppState *appState) {
 }
@@ -10600,6 +10443,158 @@ fpl_platform_api bool fplGetOperatingSystemInfos(fplOSInfos *outInfos) {
 fpl_platform_api bool fplGetCurrentUsername(char *nameBuffer, size_t maxNameBufferLen) {
 	// @IMPLEMENT(final): Linux fplGetCurrentUsername
 	return false;
+}
+
+//
+// Linux Threading
+//
+fpl_platform_api bool fplSignalInit(fplSignalHandle *signal) {
+	if(signal == fpl_null) {
+		fpl__ArgumentNullError("Signal");
+		return false;
+	}
+	if(signal->isValid) {
+		fpl__PushError("Signal '%p' is already valid", signal);
+		return false;
+	}
+
+	int linuxEventHandle = eventfd(0, EFD_CLOEXEC);
+	if(linuxEventHandle == -1) {
+		fpl__PushError("Failed initializing signal '%p'", signal);
+		return false;
+	}
+
+	FPL_CLEAR_STRUCT(signal);
+    signal->isValid = true;
+	signal->internalHandle.linuxEventHandle = linuxEventHandle;
+	return(true);
+}
+
+fpl_platform_api void fplSignalDestroy(fplSignalHandle *signal) {
+	if(signal == fpl_null) {
+		fpl__ArgumentNullError("Signal");
+		return;
+	}
+	if(!signal->isValid) {
+		fpl__PushError("Signal '%p' is not valid", signal);
+		return;
+	}
+	close(signal->internalHandle.linuxEventHandle);
+	FPL_CLEAR_STRUCT(signal);
+}
+
+fpl_platform_api bool fplSignalWaitForOne(fplSignalHandle *signal, const uint32_t maxMilliseconds) {
+	if(signal == fpl_null) {
+		fpl__ArgumentNullError("Signal");
+		return false;
+	}
+	if(!signal->isValid) {
+		fpl__PushError("Signal '%p' is not valid", signal);
+		return(false);
+	}
+	int ev = signal->internalHandle.linuxEventHandle;
+	if(maxMilliseconds == UINT32_MAX) {
+		uint64_t value;
+		read(ev, &value, sizeof(value));
+		return true;
+	} else {
+		fd_set f;
+		FD_ZERO(&f);
+		FD_SET(ev, &f);
+		struct timeval t = { 0, maxMilliseconds * 1000 };
+		int selectResult = select(1, &f, NULL, NULL, &t);
+		if(selectResult == 0) {
+			// Timeout
+			return false;
+		} else if(selectResult == -1) {
+			// Error
+			return false;
+		} else {
+			return true;
+		}
+	}
+}
+
+fpl_internal bool fpl__LinuxSignalWaitForMultiple(fplSignalHandle *signals[], const uint32_t minCount, const uint32_t maxCount, const uint32_t maxMilliseconds) {
+	if(signals == fpl_null) {
+		fpl__ArgumentNullError("Signals");
+		return false;
+	}
+	if(maxCount > FPL__MAX_SIGNAL_COUNT) {
+		fpl__ArgumentSizeTooBigError("Max count", maxCount, FPL__MAX_SIGNAL_COUNT);
+		return false;
+	}
+	for(uint32_t index = 0; index < maxCount; ++index) {
+		fplSignalHandle *signal = signals[index];
+		if(signal == fpl_null) {
+			fpl__PushError("Signal for index '%d' are not allowed to be null", index);
+			return false;
+		}
+		if(!signal->isValid) {
+			fpl__PushError("Signal '%p' for index '%d' is not valid", signal, index);
+			return false;
+		}
+	}
+
+	int e = epoll_create(maxCount);
+	FPL_ASSERT(e != 0);
+
+	// Register events and map each to the array index
+	struct epoll_event events[FPL__MAX_SIGNAL_COUNT];
+	for(int i = 0; i < maxCount; i++) {
+		events[i].events = EPOLLIN;
+		events[i].data.u32 = i;
+		int x = epoll_ctl(e, EPOLL_CTL_ADD, signals[i]->internalHandle.linuxEventHandle, events + i);
+		FPL_ASSERT(x == 0);
+	}
+
+	// Wait
+	int timeout = maxMilliseconds == UINT32_MAX ? -1 : maxMilliseconds;
+	int eventsResult = -1;
+	int waiting = minCount;
+	struct epoll_event revent[FPL__MAX_SIGNAL_COUNT];
+	while(waiting > 0) {
+		int ret = epoll_wait(e, revent, waiting, timeout);
+		if(ret == 0) {
+			if(minCount == maxCount) {
+				eventsResult = -1;
+			}
+			break;
+		}
+		for(int i = 0; i < ret; i++) {
+			epoll_ctl(e, EPOLL_CTL_DEL, signals[revent[i].data.u32]->internalHandle.linuxEventHandle, NULL);
+		}
+		eventsResult = revent[0].data.u32;
+		waiting -= ret;
+	}
+	close(e);
+	bool result = (waiting == 0);
+	return(result);
+}
+
+fpl_platform_api bool fplSignalWaitForAll(fplSignalHandle *signals[], const size_t count, const uint32_t maxMilliseconds) {
+	bool result = fpl__LinuxSignalWaitForMultiple(signals, count, count, maxMilliseconds);
+	return(result);
+}
+
+fpl_platform_api bool fplSignalWaitForAny(fplSignalHandle *signals[], const size_t count, const uint32_t maxMilliseconds) {
+	bool result = fpl__LinuxSignalWaitForMultiple(signals, 1, count, maxMilliseconds);
+	return(result);
+}
+
+fpl_platform_api bool fplSignalSet(fplSignalHandle *signal) {
+	if(signal == fpl_null) {
+		fpl__ArgumentNullError("Signal");
+		return false;
+	}
+	if(!signal->isValid) {
+		fpl__PushError("Signal '%p' is not valid", signal);
+		return(false);
+	}
+	uint64_t value = 1;
+	int writtenBytes = write(signal->internalHandle.linuxEventHandle, &value, sizeof(value));
+	bool result = writtenBytes == sizeof(value);
+	return(result);
 }
 
 //
@@ -12142,7 +12137,7 @@ typedef struct fpl__AlsaAudioApi {
 	fpl__alsa_func_snd_pcm_open *snd_pcm_open;
 	fpl__alsa_func_snd_pcm_close *snd_pcm_close;
 	fpl__alsa_func_snd_pcm_hw_params_sizeof *snd_pcm_hw_params_sizeof;
-    fpl__alsa_func_snd_pcm_hw_params *snd_pcm_hw_params;
+	fpl__alsa_func_snd_pcm_hw_params *snd_pcm_hw_params;
 	fpl__alsa_func_snd_pcm_hw_params_any *snd_pcm_hw_params_any;
 	fpl__alsa_func_snd_pcm_hw_params_set_format *snd_pcm_hw_params_set_format;
 	fpl__alsa_func_snd_pcm_hw_params_set_format_first *snd_pcm_hw_params_set_format_first;
@@ -12178,7 +12173,7 @@ typedef struct fpl__AlsaAudioApi {
 	fpl__alsa_func_snd_pcm_mmap_begin *snd_pcm_mmap_begin;
 	fpl__alsa_func_snd_pcm_mmap_commit *snd_pcm_mmap_commit;
 	fpl__alsa_func_snd_pcm_recover *snd_pcm_recover;
-    fpl__alsa_func_snd_pcm_writei *snd_pcm_writei;
+	fpl__alsa_func_snd_pcm_writei *snd_pcm_writei;
 	fpl__alsa_func_snd_pcm_avail *snd_pcm_avail;
 	fpl__alsa_func_snd_pcm_avail_update *snd_pcm_avail_update;
 	fpl__alsa_func_snd_pcm_wait *snd_pcm_wait;
@@ -12214,7 +12209,7 @@ fpl_internal bool fpl__LoadAlsaApi(fpl__AlsaAudioApi *alsaApi) {
 				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, alsaApi->snd_pcm_open, fpl__alsa_func_snd_pcm_open, "snd_pcm_open");
 				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, alsaApi->snd_pcm_close, fpl__alsa_func_snd_pcm_close, "snd_pcm_close");
 				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, alsaApi->snd_pcm_hw_params_sizeof, fpl__alsa_func_snd_pcm_hw_params_sizeof, "snd_pcm_hw_params_sizeof");
-                FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, alsaApi->snd_pcm_hw_params, fpl__alsa_func_snd_pcm_hw_params, "snd_pcm_hw_params");
+				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, alsaApi->snd_pcm_hw_params, fpl__alsa_func_snd_pcm_hw_params, "snd_pcm_hw_params");
 				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, alsaApi->snd_pcm_hw_params_any, fpl__alsa_func_snd_pcm_hw_params_any, "snd_pcm_hw_params_any");
 				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, alsaApi->snd_pcm_hw_params_set_format, fpl__alsa_func_snd_pcm_hw_params_set_format, "snd_pcm_hw_params_set_format");
 				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, alsaApi->snd_pcm_hw_params_set_format_first, fpl__alsa_func_snd_pcm_hw_params_set_format_first, "snd_pcm_hw_params_set_format_first");
@@ -12760,7 +12755,7 @@ typedef struct fpl__AudioState {
 		fpl__DirectSoundAudioState dsound;
 #	endif
 #	if defined(FPL_ENABLE_AUDIO_ALSA)
-        fpl__AlsaAudioState alsa;
+		fpl__AlsaAudioState alsa;
 #	endif
 	};
 } fpl__AudioState;
@@ -12954,7 +12949,7 @@ fpl_internal void fpl__AudioWorkerThread(const fplThreadHandle *thread, void *da
 		fplSignalSet(&audioState->stopSignal);
 
 		// We wait until the audio device gets wake up
-		fplSignalWaitForOne(&audioState->lock, &audioState->wakeupSignal, UINT32_MAX);
+		fplSignalWaitForOne(&audioState->wakeupSignal, UINT32_MAX);
 
 		// Default result code.
 		audioState->workResult = fplAudioResult_Success;
@@ -13070,23 +13065,19 @@ fpl_internal fplAudioResult fpl__InitAudio(const fplAudioSettings *audioSettings
 #endif
 
 	// Create mutex and signals
-	audioState->lock = fplMutexCreate();
-	if(!audioState->lock.isValid) {
+	if(!fplMutexInit(&audioState->lock)) {
 		fpl__ReleaseAudio(audioState);
 		return fplAudioResult_Failed;
 	}
-	audioState->wakeupSignal = fplSignalCreate();
-	if(!audioState->wakeupSignal.isValid) {
+	if(!fplSignalInit(&audioState->wakeupSignal)) {
 		fpl__ReleaseAudio(audioState);
 		return fplAudioResult_Failed;
 	}
-	audioState->startSignal = fplSignalCreate();
-	if(!audioState->startSignal.isValid) {
+	if(!fplSignalInit(&audioState->startSignal)) {
 		fpl__ReleaseAudio(audioState);
 		return fplAudioResult_Failed;
 	}
-	audioState->stopSignal = fplSignalCreate();
-	if(!audioState->stopSignal.isValid) {
+	if(!fplSignalInit(&audioState->stopSignal)) {
 		fpl__ReleaseAudio(audioState);
 		return fplAudioResult_Failed;
 	}
@@ -13152,7 +13143,7 @@ fpl_internal fplAudioResult fpl__InitAudio(const fplAudioSettings *audioSettings
 			return fplAudioResult_Failed;
 		}
 		// Wait for the worker thread to put the device into the stopped state.
-		fplSignalWaitForOne(&audioState->lock, &audioState->stopSignal, UINT32_MAX);
+		fplSignalWaitForOne(&audioState->stopSignal, UINT32_MAX);
 	} else {
 		fpl__AudioSetDeviceState(&audioState->common, fpl__AudioDeviceState_Stopped);
 	}
@@ -13518,7 +13509,7 @@ fpl_common_api fplAudioResult fplStopAudio() {
 
 			// We need to wait for the worker thread to become available for work before returning.
 			// @NOTE(final): The audio worker thread will be the one who puts the device into the stopped state.
-			fplSignalWaitForOne(&audioState->lock, &audioState->stopSignal, UINT32_MAX);
+			fplSignalWaitForOne(&audioState->stopSignal, UINT32_MAX);
 			result = fplAudioResult_Success;
 		}
 	}
@@ -13571,7 +13562,7 @@ fpl_common_api fplAudioResult fplPlayAudio() {
 
 			// Wait for the worker thread to finish starting the device.
 			// @NOTE(final): The audio worker thread will be the one who puts the device into the started state.
-			fplSignalWaitForOne(&audioState->lock, &audioState->startSignal, UINT32_MAX);
+			fplSignalWaitForOne(&audioState->startSignal, UINT32_MAX);
 			result = audioState->workResult;
 		}
 	}
