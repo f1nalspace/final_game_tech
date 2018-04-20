@@ -505,11 +505,11 @@ static void ThreadMasterProc(const fplThreadHandle *context, void *data) {
 	ft::Msg("Master-Thread %d is done\n", d->base.num);
 }
 
-static void ConditionThreadsTest(const size_t threadCount) {
+static void ThreadSignalsTest(const size_t threadCount) {
 	FT_ASSERT(threadCount > 1);
 
 	ft::Line();
-	ft::Msg("Condition test for %zu threads\n", threadCount);
+	ft::Msg("Signals test for %zu threads\n", threadCount);
 
 	MasterThreadData masterData = {};
 	masterData.base.num = 1;
@@ -601,13 +601,13 @@ static void TestThreading() {
 		}
 
 		//
-		// Condition tests
+		// Signal tests
 		//
 		{
-			ConditionThreadsTest(2);
-			ConditionThreadsTest(3);
-			ConditionThreadsTest(4);
-			ConditionThreadsTest(threadCountForCores);
+            ThreadSignalsTest(2);
+            ThreadSignalsTest(3);
+            ThreadSignalsTest(4);
+            ThreadSignalsTest(threadCountForCores);
 		}
 
 		fplPlatformRelease();

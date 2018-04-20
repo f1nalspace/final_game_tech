@@ -8908,7 +8908,6 @@ void *fpl__PosixThreadProc(void *data) {
 	if(thread->runFunc != fpl_null) {
 		thread->runFunc(thread, thread->data);
 	}
-	thread->internalHandle.posixThread = fpl_null;
 	fplAtomicStoreU32((volatile uint32_t *)&thread->currentState, (uint32_t)fplThreadState_Stopped);
 	pthreadApi->pthread_exit(data);
 	return 0;
@@ -8939,10 +8938,6 @@ fpl_internal int fpl__PosixMutexCreate(const fpl__PThreadApi *pthreadApi, pthrea
 		mutexRes = pthreadApi->pthread_mutex_init(handle, fpl_null);
 	} while(mutexRes == EAGAIN);
 	return(mutexRes);
-}
-
-fpl_internal int fpl__PosixConditionCreate(const fpl__PThreadApi *pthreadApi, pthread_cond_t *handle) {
-	return(condRes);
 }
 
 fpl_internal_inline void fpl__InitWaitTimeSpec(const uint32_t milliseconds, timespec *outSpec) {
@@ -9448,7 +9443,7 @@ fpl_platform_api bool fplConditionWait(fplConditionVariable *condition, fplMutex
 		return false;
 	}
 	pthread_cond_t *cond = &condition->internalHandle.posixCondition;
-	pthread_mutex_t *mut = &mutex->internalHandle.posixMutexHandle;
+	pthread_mutex_t *mut = &mutex->internalHandle.posixMutex;
 	bool result = pthreadApi->pthread_cond_wait(cond, mut) == 0;
 	return(result);
 }
