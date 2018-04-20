@@ -120,7 +120,7 @@ SOFTWARE.
 
 /*!
 	\file final_platform_layer.h
-	\version v0.7.5.0 beta
+	\version v0.7.6.0 beta
 	\author Torsten Spaete
 	\brief Final Platform Layer (FPL) - A C99 Single-Header-File Platform Abstract Library
 */
@@ -128,6 +128,26 @@ SOFTWARE.
 /*!
 	\page page_changelog Changelog
 	\tableofcontents
+
+	## v0.7.6.0 beta:
+	- Changed: Renamed fplGetRunningArchitectureType to fplGetRunningArchitecture
+	- Changed: Renamed fplThreadDestroy() to fplThreadTerminate() + signature changed (Returns bool)
+	- Changed: fplSignalInit() + new parameter "isSetInitially"
+	- New: Added struct fplConditionVariable
+	- New: Added fplConditionInit()
+	- New: Added fplConditionDestroy()
+	- New: Added fplConditionWait()
+	- New: Added fplConditionSignal()
+	- New: Added fplConditionBroadcast()
+
+	- Changed: [Win32] Thread resources are automatically cleaned up when a thread is done running
+	- Changed: [POSIX] Thread resources are automatically cleaned up when a thread is done running
+	- Changed: [Win32] fplSignalInit updated to support isSetInitially
+	- Changed: [Linux] fplSignalInit updated to support isSetInitially
+	- Fixed: [GLX] Fallback to glXCreateContext was not working properly
+	- New: [Linux] Implemented fplGetCurrentUsername
+	- New: [Win32] Implemented all fplCondition*
+	- New: [POSIX] Implemented all fplCondition*
 
 	## v0.7.5.0 beta:
 	- Changed: Updated documentations
@@ -641,6 +661,8 @@ SOFTWARE.
 
 	\section section_todo_required In progress / Todo
 
+	- Source
+		- Collapse down repeatable codes like argument checking, api from app state using macros
 	- POSIX
 		- Files & Path
 			- File/Dir iteration
@@ -653,8 +675,9 @@ SOFTWARE.
 			- Show/Hide Cursor
 		- Video
 			- Software backbuffer (X11)
-	- Unix
- 		- eventfd for Unix
+	- Threading
+		- eventfd for Unix
+		- Semaphores
 
 	- Audio
 		- Finalize Alsa driver (Device selection)
@@ -1621,7 +1644,7 @@ fpl_platform_api char *fplGetProcessorName(char *destBuffer, const size_t maxDes
 /**
   * \brief Returns the current system memory informations.
   * \param outInfos Pointer to a \ref fplMemoryInfos structure
-  * \return Returns true when memory infos could be retrieved, otherwise false
+  * \return Returns true when memory infos could be retrieved, false otherwise.
   */
 fpl_platform_api bool fplGetRunningMemoryInfos(fplMemoryInfos *outInfos);
 
@@ -1629,7 +1652,7 @@ fpl_platform_api bool fplGetRunningMemoryInfos(fplMemoryInfos *outInfos);
   * \brief Returns the current architecture
   * \return \ref fplArchType
   */
-fpl_platform_api fplArchType fplGetRunningArchitectureType();
+fpl_platform_api fplArchType fplGetRunningArchitecture();
 
 /** \}*/
 
@@ -2232,6 +2255,26 @@ typedef struct fplSignalHandle {
 	bool isValid;
 } fplSignalHandle;
 
+//! Internal condition variable
+typedef union fplInternalConditionVariable {
+#if defined(FPL_PLATFORM_WIN32)
+	//! Win32 condition variable
+	CONDITION_VARIABLE win32Condition;
+#elif defined(FPL_SUBPLATFORM_POSIX)
+	//! POSIX condition variable
+	pthread_cond_t posixCondition;
+#endif	//! Dummy field
+	int dummy;
+} fplInternalConditionVariable;
+
+//! Condition variable
+typedef struct fplConditionVariable {
+	//! The internal condition handle
+	fplInternalConditionVariable internalHandle;
+	//! Is it valid
+	bool isValid;
+} fplConditionVariable;
+
 //! Returns the current thread state from the given thread
 fpl_inline fplThreadState fplGetThreadState(fplThreadHandle *thread) {
 	if(thread == fpl_null) {
@@ -2242,12 +2285,12 @@ fpl_inline fplThreadState fplGetThreadState(fplThreadHandle *thread) {
 }
 
 /**
-  * \brief Creates and runs a thread and returns the handle to it.
+  * \brief Creates and starts a thread and returns the handle to it.
   * \param runFunc Function prototype called when this thread starts.
   * \param data User data passed to the run function.
-  * \note Use \ref fplThreadDestroy() with this thread context when you dont need this thread anymore. You can only have 64 threads running at the same time!
-  * \warning Do not free this thread context directly! Use \ref fplThreadDestroy() instead.
-  * \return Pointer to the thread handle or fpl_null when the limit of current threads has been reached.
+  * \note The resources are automatically cleaned up when the thread terminates.
+  * \warning Do not free this thread context directly!
+  * \return Pointer to the thread handle or fpl_null when the limit of active threads has been reached.
   */
 fpl_platform_api fplThreadHandle *fplThreadCreate(fpl_run_thread_function *runFunc, void *data);
 /**
@@ -2257,12 +2300,14 @@ fpl_platform_api fplThreadHandle *fplThreadCreate(fpl_run_thread_function *runFu
   */
 fpl_platform_api void fplThreadSleep(const uint32_t milliseconds);
 /**
-  * \brief Stop the given thread and release all underlying resources.
-  * \param thread Thread
-  * \note This thread context may get re-used for another thread in the future!
+  * \brief Forced the given thread to stop and release all underlying resources.
+  * \param thread Thread handle
+  * \note This thread context may get re-used for another thread in the future.
+  * \note Will return false for already terminated threads.
   * \warning Do not free the given thread context manually!
+  * \return Returns true when the thread was terminated, false otherwise.
   */
-fpl_platform_api void fplThreadDestroy(fplThreadHandle *thread);
+fpl_platform_api bool fplThreadTerminate(fplThreadHandle *thread);
 /**
   * \brief Wait until the given thread is done running or the given timeout has been reached.
   * \param thread Thread
@@ -2316,10 +2361,11 @@ fpl_platform_api bool fplMutexUnlock(fplMutexHandle *mutex);
 /**
   * \brief Initializes the given signal
   * \param signal Pointer to a signal handle
-  * \note Use \ref fplSignalDestroy() when you are done with this signal.
+  * \param isSetInitially Signal is set initially or not
+  * \note Use \ref fplSignalDestroy() when you are done with this Signal.
   * \return True when initialization was successful, false otherwise.
   */
-fpl_platform_api bool fplSignalInit(fplSignalHandle *signal);
+fpl_platform_api bool fplSignalInit(fplSignalHandle *signal, bool isSetInitially);
 /**
   * \brief Releases the given signal and clears the structure to zero.
   * \param signal Pointer to a signal handle
@@ -2328,7 +2374,7 @@ fpl_platform_api void fplSignalDestroy(fplSignalHandle *signal);
 /**
   * \brief Waits until the given signal are waked up.
   * \param signal Pointer to a signal handle
-  * \param maxMilliseconds Optional number of milliseconds to wait. When this is set to UINT32_MAX it may wait infinitly. (Default: UINT32_MAX)
+  * \param maxMilliseconds Number of milliseconds to wait. When this is set to UINT32_MAX it may wait infinitly.
   * \return Returns true when the signal woke up or the timeout has been reached, otherwise false.
   */
 fpl_platform_api bool fplSignalWaitForOne(fplSignalHandle *signal, const uint32_t maxMilliseconds);
@@ -2336,7 +2382,7 @@ fpl_platform_api bool fplSignalWaitForOne(fplSignalHandle *signal, const uint32_
   * \brief Waits until all the given signal are waked up.
   * \param signals Array of signals
   * \param count Number of signals
-  * \param maxMilliseconds Optional number of milliseconds to wait. When this is set to UINT32_MAX it may wait infinitly. (Default: UINT32_MAX)
+  * \param maxMilliseconds Number of milliseconds to wait. When this is set to UINT32_MAX it may wait infinitly.
   * \return Returns true when all signals woke up or the timeout has been reached, otherwise false.
   */
 fpl_platform_api bool fplSignalWaitForAll(fplSignalHandle *signals[], const size_t count, const uint32_t maxMilliseconds);
@@ -2344,7 +2390,7 @@ fpl_platform_api bool fplSignalWaitForAll(fplSignalHandle *signals[], const size
   * \brief Waits until any of the given signals wakes up or the timeout has been reached.
   * \param signals Array of signals
   * \param count Number of signals
-  * \param maxMilliseconds Optional number of milliseconds to wait. When this is set to UINT32_MAX it may wait infinitly. (Default: UINT32_MAX)
+  * \param maxMilliseconds Number of milliseconds to wait. When this is set to UINT32_MAX it may wait infinitly.
   * \return Returns true when any of the signals woke up or the timeout has been reached, otherwise false.
   */
 fpl_platform_api bool fplSignalWaitForAny(fplSignalHandle *signals[], const size_t count, const uint32_t maxMilliseconds);
@@ -2360,6 +2406,39 @@ fpl_platform_api bool fplSignalSet(fplSignalHandle *signal);
   * \return Returns true when the signal was reset, false otherwise.
   */
 fpl_platform_api bool fplSignalReset(fplSignalHandle *signal);
+
+/**
+  * \brief Initializes the given condition
+  * \param condition Pointer to a \ref fplConditionVariable
+  * \note Use \ref fplSignalDestroy() when you are done with this Signal.
+  * \return True when initialization was successful, false otherwise.
+  */
+fpl_platform_api bool fplConditionInit(fplConditionVariable *condition);
+/**
+  * \brief Releases the given condition and clears the structure to zero.
+  * \param condition Pointer to a \ref fplConditionVariable
+  */
+fpl_platform_api void fplConditionDestroy(fplConditionVariable *condition);
+/**
+  * \brief Sleeps on the given condition and releases the mutex when done.
+  * \param condition Pointer to a \ref fplConditionVariable
+  * \param mutex Pointer to a \ref fplMutexHandle
+  * \param maxMilliseconds Number of milliseconds to wait. When this is set to UINT32_MAX it may wait infinitly.
+  * \return True when the function succeeds, false otherwise.
+  */
+fpl_platform_api bool fplConditionWait(fplConditionVariable *condition, fplMutexHandle *mutex, uint32_t maxMilliseconds);
+/**
+  * \brief Wakes up one thread which waits on the given condition.
+  * \param condition Pointer to a \ref fplConditionVariable
+  * \return True when the function succeeds, false otherwise.
+  */
+fpl_platform_api bool fplConditionSignal(fplConditionVariable *condition);
+/**
+  * \brief Wakes up all threads which waits on the given condition.
+  * \param condition Pointer to a \ref fplConditionVariable
+  * \return True when the function succeeds, false otherwise.
+  */
+fpl_platform_api bool fplConditionBroadcast(fplConditionVariable *condition);
 
 /** \}*/
 
@@ -7394,7 +7473,7 @@ fpl_platform_api size_t fplGetProcessorCoreCount() {
 
 #define FPL__WIN32_PROCESSOR_ARCHITECTURE_ARM64 12
 
-fpl_platform_api fplArchType fplGetRunningArchitectureType() {
+fpl_platform_api fplArchType fplGetRunningArchitecture() {
 	fplArchType result;
 	SYSTEM_INFO sysInfo = FPL_ZERO_INIT;
 	GetSystemInfo(&sysInfo);
@@ -7492,12 +7571,15 @@ fpl_internal DWORD WINAPI fpl__Win32ThreadProc(void *data) {
 	fplThreadHandle *thread = (fplThreadHandle *)data;
 	FPL_ASSERT(thread != fpl_null);
 	fplAtomicStoreU32((volatile uint32_t *)&thread->currentState, (uint32_t)fplThreadState_Running);
-	DWORD result = 0;
 	if(thread->runFunc != fpl_null) {
 		thread->runFunc(thread, thread->data);
 	}
+	HANDLE handle = thread->internalHandle.win32ThreadHandle;
+	CloseHandle(handle);
+	thread->internalHandle.win32ThreadHandle = fpl_null;
 	fplAtomicStoreU32((volatile uint32_t *)&thread->currentState, (uint32_t)fplThreadState_Stopped);
-	return(result);
+	ExitThread(0);
+	return(0);
 }
 
 fpl_platform_api fplThreadHandle *fplThreadCreate(fpl_run_thread_function *runFunc, void *data) {
@@ -7528,21 +7610,22 @@ fpl_platform_api void fplThreadSleep(const uint32_t milliseconds) {
 	Sleep((DWORD)milliseconds);
 }
 
-fpl_platform_api void fplThreadDestroy(fplThreadHandle *thread) {
+fpl_platform_api bool fplThreadTerminate(fplThreadHandle *thread) {
 	if(thread == fpl_null) {
 		fpl__ArgumentNullError("Thread");
-		return;
+		return false;
 	}
-	if(thread->internalHandle.win32ThreadHandle == fpl_null) {
-		fpl__PushError("Win32 thread handle are not allowed to be null");
-		return;
+	if(thread->isValid && (fplGetThreadState(thread) != fplThreadState_Stopped)) {
+		fplAtomicStoreU32((volatile uint32_t *)&thread->currentState, (uint32_t)fplThreadState_Stopping);
+		HANDLE handle = thread->internalHandle.win32ThreadHandle;
+		TerminateThread(handle, 0);
+		CloseHandle(handle);
+		fplAtomicStoreU32((volatile uint32_t *)&thread->currentState, (uint32_t)fplThreadState_Stopped);
+		FPL_CLEAR_STRUCT(thread);
+		return true;
+	} else {
+		return false;
 	}
-	fplAtomicStoreU32((volatile uint32_t *)&thread->currentState, (uint32_t)fplThreadState_Stopping);
-	HANDLE handle = thread->internalHandle.win32ThreadHandle;
-	TerminateThread(handle, 0);
-	CloseHandle(handle);
-	fplAtomicStoreU32((volatile uint32_t *)&thread->currentState, (uint32_t)fplThreadState_Stopped);
-	FPL_CLEAR_STRUCT(thread);
 }
 
 fpl_platform_api bool fplThreadWaitForOne(fplThreadHandle *thread, const uint32_t maxMilliseconds) {
@@ -7621,7 +7704,7 @@ fpl_platform_api bool fplMutexUnlock(fplMutexHandle *mutex) {
 	return true;
 }
 
-fpl_platform_api bool fplSignalInit(fplSignalHandle *signal) {
+fpl_platform_api bool fplSignalInit(fplSignalHandle *signal, bool isSetInitially) {
 	if(signal == fpl_null) {
 		fpl__ArgumentNullError("Signal");
 		return false;
@@ -7632,7 +7715,7 @@ fpl_platform_api bool fplSignalInit(fplSignalHandle *signal) {
 	}
 	FPL_CLEAR_STRUCT(signal);
 
-	HANDLE handle = CreateEventA(fpl_null, FALSE, FALSE, fpl_null);
+	HANDLE handle = CreateEventA(fpl_null, FALSE, isSetInitially ? TRUE : FALSE, fpl_null);
 	if(handle == fpl_null) {
 		fpl__PushError("Failed creating signal (Win32 event): %d", GetLastError());
 		return false;
@@ -7707,6 +7790,73 @@ fpl_platform_api bool fplSignalReset(fplSignalHandle *signal) {
 	HANDLE handle = signal->internalHandle.win32EventHandle;
 	bool result = ResetEvent(handle) == TRUE;
 	return(result);
+}
+
+fpl_platform_api bool fplConditionInit(fplConditionVariable *condition) {
+	if(condition == fpl_null) {
+		fpl__ArgumentNullError("Condition");
+		return false;
+	}
+	FPL_CLEAR_STRUCT(condition);
+	InitializeConditionVariable(&condition->internalHandle.win32Condition);
+	condition->isValid = true;
+	return true;
+}
+
+fpl_platform_api void fplConditionDestroy(fplConditionVariable *condition) {
+	if(condition == fpl_null) {
+		fpl__ArgumentNullError("Condition");
+		return;
+	}
+	FPL_CLEAR_STRUCT(condition);
+}
+
+fpl_platform_api bool fplConditionWait(fplConditionVariable *condition, fplMutexHandle *mutex, uint32_t maxMilliseconds) {
+	if(condition == fpl_null) {
+		fpl__ArgumentNullError("Condition");
+		return false;
+	}
+	if(mutex == fpl_null) {
+		fpl__ArgumentNullError("Condition");
+		return false;
+	}
+	if(!condition->isValid) {
+		fpl__PushError("Condition is not valid!");
+		return false;
+	}
+	if(!mutex->isValid) {
+		fpl__PushError("Mutex is not valid!");
+		return false;
+	}
+	DWORD timeout = maxMilliseconds == UINT32_MAX ? INFINITE : maxMilliseconds;
+	bool result = SleepConditionVariableCS(&condition->internalHandle.win32Condition, &mutex->internalHandle.win32CriticalSection, timeout) != 0;
+	return(result);
+}
+
+fpl_platform_api bool fplConditionSignal(fplConditionVariable *condition) {
+	if(condition == fpl_null) {
+		fpl__ArgumentNullError("Condition");
+		return false;
+	}
+	if(!condition->isValid) {
+		fpl__PushError("Condition is not valid!");
+		return false;
+	}
+	WakeConditionVariable(&condition->internalHandle.win32Condition);
+	return true;
+}
+
+fpl_platform_api bool fplConditionBroadcast(fplConditionVariable *condition) {
+	if(condition == fpl_null) {
+		fpl__ArgumentNullError("Condition");
+		return false;
+	}
+	if(!condition->isValid) {
+		fpl__PushError("Condition is not valid!");
+		return false;
+	}
+	WakeAllConditionVariable(&condition->internalHandle.win32Condition);
+	return true;
 }
 
 //
@@ -8758,8 +8908,9 @@ void *fpl__PosixThreadProc(void *data) {
 	if(thread->runFunc != fpl_null) {
 		thread->runFunc(thread, thread->data);
 	}
+	thread->internalHandle.posixThread = fpl_null;
 	fplAtomicStoreU32((volatile uint32_t *)&thread->currentState, (uint32_t)fplThreadState_Stopped);
-	pthreadApi->pthread_exit(fpl_null);
+	pthreadApi->pthread_exit(data);
 	return 0;
 }
 
@@ -8791,11 +8942,6 @@ fpl_internal int fpl__PosixMutexCreate(const fpl__PThreadApi *pthreadApi, pthrea
 }
 
 fpl_internal int fpl__PosixConditionCreate(const fpl__PThreadApi *pthreadApi, pthread_cond_t *handle) {
-	*handle = PTHREAD_COND_INITIALIZER;
-	int condRes;
-	do {
-		condRes = pthreadApi->pthread_cond_init(handle, fpl_null);
-	} while(condRes == EAGAIN);
 	return(condRes);
 }
 
@@ -9048,24 +9194,28 @@ fpl_platform_api uint64_t fplGetTimeInMilliseconds() {
 //
 // POSIX Threading
 //
-fpl_platform_api void fplThreadDestroy(fplThreadHandle *thread) {
+fpl_platform_api bool fplThreadTerminate(fplThreadHandle *thread) {
+	if(thread == fpl_null) {
+		fpl__ArgumentNullError("Thread");
+		return false;
+	}
 	FPL_ASSERT(fpl__global__AppState != fpl_null);
 	const fpl__PlatformAppState *appState = fpl__global__AppState;
 	const fpl__PThreadApi *pthreadApi = &appState->posix.pthreadApi;
 	if(pthreadApi->libHandle == fpl_null) {
 		fpl__PushError("PThread api not loaded");
-		return;
+		return false;
 	}
-	if(thread != fpl_null && thread->isValid) {
+	if(thread->isValid && (fplGetThreadState(thread) != fplThreadState_Stopped)) {
 		pthread_t threadHandle = thread->internalHandle.posixThread;
-
-		// If thread is not stopped yet, kill it and wait for termination
 		if(pthreadApi->pthread_kill(threadHandle, 0) == 0) {
 			pthreadApi->pthread_join(threadHandle, fpl_null);
 		}
-
 		fplAtomicStoreU32((volatile uint32_t *)&thread->currentState, (uint32_t)fplThreadState_Stopped);
 		FPL_CLEAR_STRUCT(thread);
+		return true;
+	} else {
+		return false;
 	}
 }
 
@@ -9229,6 +9379,118 @@ fpl_platform_api bool fplMutexUnlock(fplMutexHandle *mutex) {
 		result = fpl__PosixMutexUnlock(pthreadApi, handle);
 	}
 	return (result);
+}
+
+fpl_platform_api bool fplConditionInit(fplConditionVariable *condition) {
+	if(condition == fpl_null) {
+		fpl__ArgumentNullError("Condition");
+		return false;
+	}
+	const fpl__PlatformAppState *appState = fpl__global__AppState;
+	const fpl__PThreadApi *pthreadApi = &appState->posix.pthreadApi;
+	if(pthreadApi->libHandle == fpl_null) {
+		fpl__PushError("PThread api not loaded");
+		return false;
+	}
+	FPL_CLEAR_STRUCT(condition);
+
+	pthread_cond_t *handle = &condition->internalHandle.posixCondition;
+	*handle = PTHREAD_COND_INITIALIZER;
+	int condRes;
+	do {
+		condRes = pthreadApi->pthread_cond_init(handle, fpl_null);
+	} while(condRes == EAGAIN);
+	if(condRes == 0) {
+		condition->isValid = true;
+	}
+	return(condition->isValid);
+}
+
+fpl_platform_api void fplConditionDestroy(fplConditionVariable *condition) {
+	if(condition == fpl_null) {
+		fpl__ArgumentNullError("Condition");
+		return;
+	}
+	const fpl__PlatformAppState *appState = fpl__global__AppState;
+	const fpl__PThreadApi *pthreadApi = &appState->posix.pthreadApi;
+	if(pthreadApi->libHandle == fpl_null) {
+		fpl__PushError("PThread api not loaded");
+		return;
+	}
+	if(condition->isValid) {
+		pthread_cond_t *handle = &condition->internalHandle.posixCondition;
+		pthreadApi->pthread_cond_destroy(handle);
+	}
+	FPL_CLEAR_STRUCT(condition);
+}
+
+fpl_platform_api bool fplConditionWait(fplConditionVariable *condition, fplMutexHandle *mutex, uint32_t maxMilliseconds) {
+	if(condition == fpl_null) {
+		fpl__ArgumentNullError("Condition");
+		return false;
+	}
+	if(mutex == fpl_null) {
+		fpl__ArgumentNullError("Condition");
+		return false;
+	}
+	if(!condition->isValid) {
+		fpl__PushError("Condition is not valid!");
+		return false;
+	}
+	if(!mutex->isValid) {
+		fpl__PushError("Mutex is not valid!");
+		return false;
+	}
+	const fpl__PlatformAppState *appState = fpl__global__AppState;
+	const fpl__PThreadApi *pthreadApi = &appState->posix.pthreadApi;
+	if(pthreadApi->libHandle == fpl_null) {
+		fpl__PushError("PThread api not loaded");
+		return false;
+	}
+	pthread_cond_t *cond = &condition->internalHandle.posixCondition;
+	pthread_mutex_t *mut = &mutex->internalHandle.posixMutexHandle;
+	bool result = pthreadApi->pthread_cond_wait(cond, mut) == 0;
+	return(result);
+}
+
+fpl_platform_api bool fplConditionSignal(fplConditionVariable *condition) {
+	if(condition == fpl_null) {
+		fpl__ArgumentNullError("Condition");
+		return false;
+	}
+	if(!condition->isValid) {
+		fpl__PushError("Condition is not valid!");
+		return false;
+	}
+	const fpl__PlatformAppState *appState = fpl__global__AppState;
+	const fpl__PThreadApi *pthreadApi = &appState->posix.pthreadApi;
+	if(pthreadApi->libHandle == fpl_null) {
+		fpl__PushError("PThread api not loaded");
+		return false;
+	}
+	pthread_cond_t *handle = &condition->internalHandle.posixCondition;
+	bool result = pthreadApi->pthread_cond_signal(handle) == 0;
+	return(result);
+}
+
+fpl_platform_api bool fplConditionBroadcast(fplConditionVariable *condition) {
+	if(condition == fpl_null) {
+		fpl__ArgumentNullError("Condition");
+		return false;
+	}
+	if(!condition->isValid) {
+		fpl__PushError("Condition is not valid!");
+		return false;
+	}
+	const fpl__PlatformAppState *appState = fpl__global__AppState;
+	const fpl__PThreadApi *pthreadApi = &appState->posix.pthreadApi;
+	if(pthreadApi->libHandle == fpl_null) {
+		fpl__PushError("PThread api not loaded");
+		return false;
+	}
+	pthread_cond_t *handle = &condition->internalHandle.posixCondition;
+	bool result = pthreadApi->pthread_cond_broadcast(handle) == 0;
+	return(result);
 }
 
 //
@@ -10441,14 +10703,22 @@ fpl_platform_api bool fplGetOperatingSystemInfos(fplOSInfos *outInfos) {
 }
 
 fpl_platform_api bool fplGetCurrentUsername(char *nameBuffer, size_t maxNameBufferLen) {
-	// @IMPLEMENT(final): Linux fplGetCurrentUsername
-	return false;
+	uid_t uid = geteuid();
+	struct passwd *pw = getpwuid(uid);
+	bool result = false;
+	if(pw != fpl_null) {
+		fplCopyAnsiString(pw->pw_name, nameBuffer, maxNameBufferLen);
+		result = true;
+	} else {
+		FPL_LOG("Linux", "Cannot find username from UID '%u'", uid);
+	}
+	return(result);
 }
 
 //
 // Linux Threading
 //
-fpl_platform_api bool fplSignalInit(fplSignalHandle *signal) {
+fpl_platform_api bool fplSignalInit(fplSignalHandle *signal, bool isSetInitially) {
 	if(signal == fpl_null) {
 		fpl__ArgumentNullError("Signal");
 		return false;
@@ -10458,14 +10728,14 @@ fpl_platform_api bool fplSignalInit(fplSignalHandle *signal) {
 		return false;
 	}
 
-	int linuxEventHandle = eventfd(0, EFD_CLOEXEC);
+	int linuxEventHandle = eventfd(isSetInitially ? 1 : 0, EFD_CLOEXEC);
 	if(linuxEventHandle == -1) {
 		fpl__PushError("Failed initializing signal '%p'", signal);
 		return false;
 	}
 
 	FPL_CLEAR_STRUCT(signal);
-    signal->isValid = true;
+	signal->isValid = true;
 	signal->internalHandle.linuxEventHandle = linuxEventHandle;
 	return(true);
 }
@@ -10686,8 +10956,8 @@ fpl_platform_api bool fplGetRunningMemoryInfos(fplMemoryInfos *outInfos) {
 	return(false);
 }
 
-fpl_platform_api fplArchType fplGetRunningArchitectureType() {
-	// @IMPLEMENT(final): Linux fplGetRunningArchitectureType
+fpl_platform_api fplArchType fplGetRunningArchitecture() {
+	// @IMPLEMENT(final): Linux fplGetRunningArchitecture
 	return(fplArchType_Unknown);
 }
 
@@ -10791,7 +11061,7 @@ fpl_platform_api bool fplGetRunningMemoryInfos(fplMemoryInfos *outInfos) {
 	return(false);
 }
 
-fpl_platform_api fplArchType fplGetRunningArchitectureType() {
+fpl_platform_api fplArchType fplGetRunningArchitecture() {
 	// @IMPLEMENT(final): Unix fplGetRunningArchitectureType
 	return(fplArchType_Unknown);
 }
@@ -11234,11 +11504,18 @@ fpl_internal bool fpl__X11InitFrameBufferConfigVideoOpenGL(const fpl__X11Api *x1
 		FPL_LOG("GLX", "OpenGL GLX extensions: %s", extensionString);
 	}
 
+	bool isModern = major > 1 || (major == 1 && minor >= 3);
+
 	int attr[32] = FPL_ZERO_INIT;
 	int attrIndex = 0;
 
 	attr[attrIndex++] = GLX_X_VISUAL_TYPE;
 	attr[attrIndex++] = GLX_TRUE_COLOR;
+
+	if(!isModern) {
+		attr[attrIndex++] = GLX_RGBA;
+		attr[attrIndex++] = True;
+	}
 
 	attr[attrIndex++] = GLX_DOUBLEBUFFER;
 	attr[attrIndex++] = True;
@@ -11260,7 +11537,7 @@ fpl_internal bool fpl__X11InitFrameBufferConfigVideoOpenGL(const fpl__X11Api *x1
 
 	attr[attrIndex] = 0;
 
-	if(major > 1 || (major == 1 && minor >= 3)) {
+	if(isModern) {
 		// Use frame buffer config approach (GLX >= 1.3)
 		FPL_LOG("GLX", "Get framebuffer configuration from display '%p' and screen '%d'", windowState->display, windowState->screen);
 		int configCount = 0;
@@ -11398,7 +11675,7 @@ fpl_internal bool fpl__X11InitVideoOpenGL(const fpl__X11SubplatformState *subpla
 
 	GLXContext activeRenderingContext;
 
-	if(videoSettings->graphics.opengl.compabilityFlags != fplOpenGLCompabilityFlags_Legacy) {
+	if((videoSettings->graphics.opengl.compabilityFlags != fplOpenGLCompabilityFlags_Legacy) && (glState->fbConfig != fpl_null)) {
 		// @NOTE(final): This is only available in OpenGL 3.0+
 		if(!(videoSettings->graphics.opengl.majorVersion >= 3 && videoSettings->graphics.opengl.minorVersion >= 0)) {
 			fpl__PushError("You have not specified the 'majorVersion' and 'minorVersion' in the VideoSettings");
@@ -13011,7 +13288,7 @@ fpl_internal void fpl__ReleaseAudio(fpl__AudioState *audioState) {
 		fplSignalSet(&audioState->wakeupSignal);
 
 		fplThreadWaitForOne(audioState->workerThread, UINT32_MAX);
-		fplThreadDestroy(audioState->workerThread);
+		fplThreadTerminate(audioState->workerThread);
 
 		// Release signals and thread
 		fplSignalDestroy(&audioState->stopSignal);
@@ -13069,15 +13346,15 @@ fpl_internal fplAudioResult fpl__InitAudio(const fplAudioSettings *audioSettings
 		fpl__ReleaseAudio(audioState);
 		return fplAudioResult_Failed;
 	}
-	if(!fplSignalInit(&audioState->wakeupSignal)) {
+	if(!fplSignalInit(&audioState->wakeupSignal, false)) {
 		fpl__ReleaseAudio(audioState);
 		return fplAudioResult_Failed;
 	}
-	if(!fplSignalInit(&audioState->startSignal)) {
+	if(!fplSignalInit(&audioState->startSignal, false)) {
 		fpl__ReleaseAudio(audioState);
 		return fplAudioResult_Failed;
 	}
-	if(!fplSignalInit(&audioState->stopSignal)) {
+	if(!fplSignalInit(&audioState->stopSignal, false)) {
 		fpl__ReleaseAudio(audioState);
 		return fplAudioResult_Failed;
 	}
@@ -13790,7 +14067,7 @@ fpl_internal void fpl__ReleasePlatformStates(fpl__PlatformInitState *initState, 
 		if(videoState != fpl_null) {
 			FPL_LOG("Core", "Release Video for Driver '%s'", fplGetVideoDriverString(videoState->activeDriver));
 			fpl__ReleaseVideoState(appState, videoState);
-		}
+	}
 	}
 #	endif
 
@@ -13869,7 +14146,7 @@ fpl_common_api fplInitResultType fplPlatformInit(const fplInitFlags initFlags, c
 		platformAppStateSize += FPL__SIZE_PADDING;
 		audioMemoryOffset = platformAppStateSize;
 		platformAppStateSize += sizeof(fpl__AudioState);
-	}
+}
 #endif
 
 	FPL_LOG("Core", "Allocate Platform App State Memory of size '%zu':", platformAppStateSize);
@@ -13966,7 +14243,7 @@ fpl_common_api fplInitResultType fplPlatformInit(const fplInitFlags initFlags, c
 				FPL_LOG("Core", "Failed loading Video API for Driver '%s'!", videoDriverString);
 				fpl__ReleasePlatformStates(initState, appState);
 				return fplInitResultType_FailedVideo;
-			}
+	}
 		}
 		FPL_LOG("Core", "Successfully loaded Video API for Driver '%s'", videoDriverString);
 	}

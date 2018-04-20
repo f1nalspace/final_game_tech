@@ -258,10 +258,10 @@ inline bool InitPacketQueue(PacketQueue &queue) {
 	if(!fplMutexInit(&queue.lock)) {
 		return false;
 	}
-	if(!fplSignalInit(&queue.addedSignal)) {
+	if(!fplSignalInit(&queue.addedSignal, false)) {
 		return false;
 	}
-	if(!fplSignalInit(&queue.freeSignal)) {
+	if(!fplSignalInit(&queue.freeSignal, false)) {
 		return false;
 	}
 	return true;
@@ -412,7 +412,7 @@ static bool InitFrameQueue(FrameQueue &queue, int32_t capacity, volatile uint32_
 	if(!fplMutexInit(&queue.lock)) {
 		return false;
 	}
-	if(!fplSignalInit(&queue.signal)) {
+	if(!fplSignalInit(&queue.signal, false)) {
 		return false;
 	}
 
@@ -525,10 +525,10 @@ static bool InitReader(ReaderContext &outReader) {
 	if(!fplMutexInit(&outReader.lock)) {
 		return false;
 	}
-	if(!fplSignalInit(&outReader.stopSignal)) {
+	if(!fplSignalInit(&outReader.stopSignal, false)) {
 		return false;
 	}
-	if(!fplSignalInit(&outReader.resumeSignal)) {
+	if(!fplSignalInit(&outReader.resumeSignal, false)) {
 		return false;
 	}
 	if(!InitPacketQueue(outReader.packetQueue)) {
@@ -548,7 +548,7 @@ static void StopReader(ReaderContext &reader) {
 	reader.stopRequest = 1;
 	fplSignalSet(&reader.stopSignal);
 	fplThreadWaitForOne(reader.thread, UINT32_MAX);
-	fplThreadDestroy(reader.thread);
+	fplThreadTerminate(reader.thread);
 	reader.thread = nullptr;
 }
 
@@ -590,10 +590,10 @@ static bool InitDecoder(Decoder &outDecoder, PlayerState *state, ReaderContext *
 	if(!fplMutexInit(&outDecoder.lock)) {
 		return false;
 	}
-	if(!fplSignalInit(&outDecoder.stopSignal)) {
+	if(!fplSignalInit(&outDecoder.stopSignal, false)) {
 		return false;
 	}
-	if(!fplSignalInit(&outDecoder.resumeSignal)) {
+	if(!fplSignalInit(&outDecoder.resumeSignal, false)) {
 		return false;
 	}
 	if(!InitPacketQueue(outDecoder.packetsQueue)) {
@@ -624,7 +624,7 @@ static void StopDecoder(Decoder &decoder) {
 	decoder.stopRequest = 1;
 	fplSignalSet(&decoder.stopSignal);
 	fplThreadWaitForOne(decoder.thread, UINT32_MAX);
-	fplThreadDestroy(decoder.thread);
+	fplThreadTerminate(decoder.thread);
 	decoder.thread = nullptr;
 	FlushPacketQueue(decoder.packetsQueue);
 }
@@ -725,7 +725,7 @@ static bool InitTexture(Texture &texture, const uint32_t w, const uint32_t h, co
 #endif
 
 	return true;
-	}
+}
 
 inline uint8_t *LockTexture(Texture &texture) {
 	uint8_t *result;
@@ -1418,7 +1418,7 @@ static int SyncronizeAudio(PlayerState *state, const uint32_t sampleCount) {
 			state->audio.audioDiffAvgCount = 0;
 			state->audio.audioDiffCum = 0;
 		}
-}
+	}
 	return(result);
 }
 
@@ -1496,8 +1496,8 @@ static void AudioDecodingThreadProc(const fplThreadHandle *thread, void *userDat
 				QueueSamples(*decoder, sourceFrame, targetFrame, decoder->pktSerial);
 				ffmpeg.av_frame_unref(sourceFrame);
 				hasDecodedFrame = false;
-	}
-}
+			}
+		}
 	}
 	ffmpeg.av_frame_free(&sourceFrame);
 }
@@ -1873,13 +1873,13 @@ static void PacketReadThreadProc(const fplThreadHandle *thread, void *userData) 
 					ffmpeg.av_packet_unref(&srcPacket);
 				}
 				hasPendingPacket = false;
-				}
+			}
 			skipWait = true;
 		}
 	}
 
 	fplConsoleOut("Reader thread stopped.\n");
-			}
+}
 
 static bool OpenStreamComponent(const char *mediaFilePath, const int32_t streamIndex, AVStream *stream, MediaStream &outStream) {
 	// Get codec name
@@ -2028,9 +2028,9 @@ static void DisplayVideoFrame(PlayerState *state) {
 		left, bottom, uMin, vMin,
 		// Top left
 		left, top, uMin, vMax,
-};
+	};
 
-// Enable vertex array buffer
+	// Enable vertex array buffer
 	glBindVertexArray(state->video.vao);
 	glBindBuffer(GL_ARRAY_BUFFER, state->video.vertexBufferId);
 	// Update vertex array buffer with new rectangle
@@ -2147,7 +2147,7 @@ static double ComputeVideoDelay(const PlayerState *state, const double delay) {
 static void VideoRefresh(PlayerState *state, double &remainingTime, int &displayCount) {
 	if(!state->isPaused && GetMasterSyncType(state) == AVSyncType::ExternalClock && state->isRealTime) {
 		UpdateExternalClockSpeed(state);
-}
+	}
 	if(state->video.stream.isValid) {
 	retry:
 		if(GetFrameQueueRemainingCount(state->video.decoder.frameQueue) > 0) {
@@ -2634,6 +2634,12 @@ int main(int argc, char **argv) {
 		return -1;
 	}
 
+	fplArchType arch = fplGetRunningArchitecture();
+	if(!(arch == fplArchType_x64 || arch == fplArchType_x86_64)) {
+		fplConsoleError("Only x64 architecture is supported for this demo!");
+		return -1;
+	}
+
 	const char *mediaFilePath = argv[1];
 
 	fplSettings settings;
@@ -2773,22 +2779,22 @@ int main(int argc, char **argv) {
 			ConsoleFormatOut("FPS: %d\n", refreshCount);
 #endif
 			refreshCount = 0;
-	}
+		}
 		double delta = now - lastTime;
 		lastTime = now;
 #if PRINT_MEMORY_STATS
 		PrintMemStats();
 #endif
-	}
+		}
 
 
 release:
 	// Stop audio
 	if(state.audio.stream.isValid) {
 		fplStopAudio();
-}
+	}
 
-// Stop reader and decoders
+	// Stop reader and decoders
 	StopReader(state.reader);
 	if(state.video.stream.isValid) {
 		StopDecoder(state.video.decoder);

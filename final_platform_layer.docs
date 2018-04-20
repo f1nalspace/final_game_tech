@@ -45,14 +45,14 @@
 	\subsection subsection_whatisfpl What is FPL?
 
 	Final Platform Layer is a Single-Header-File cross-platform C development library designed to abstract the underlying platform to a very simple and easy to use api - providing low level access to:<br>
-	- Single window creation and handling
+	- Single Window creation and handling
 	- Graphics Software or Hardware Rendering initialization.
-	- Playback of raw audio samples
-	- Accessing input devices (Keyboard, Mouse, Gamepad)
+	- Playback of raw Audio Samples
+	- Accessing Input Devices (Keyboard, Mouse, Gamepad)
 	- IO handling (Files, Directories, Paths)
-	- Multithreading (Threads, Mutex, Signals)
-	- Allocating memory
-	- Retrieve hardware & os informations
+	- Multithreading (Threads, Mutexes, Signals, Conditions)
+	- Allocating Memory
+	- Retrieve Hardware & OS Informations
 	
 	The main focus is game/media/simulation development, so the default settings will create a window, setup a OpenGL rendering context and initialize audio playback on any platform.<br>
 	<br>
@@ -84,7 +84,7 @@
 	Read ahead a detailed feature overview of FPL:
 
 	- Window
-		- Create and handle a single window
+		- Create and handle a Single Window
 		- Fullscreen toggling
 		- Event handling
 		- Clipboard string reading and writing
@@ -92,43 +92,51 @@
 		- Text input
 		- Keyboard
 		- Mouse
-		- Game controllers
+		- Game Controllers
 	- Video:
+		- Driver selection
 		- OpenGL 1.x (Legacy)
 		- OpenGL 3.x or higher (Modern)
-		- Software backbuffer
-	- Raw audio asyncronous playback
+		- Software Backbuffer
+	- Audio:
+		- Driver selection
+		- Raw audio asyncronous playback
+		- Device iteration and selection
 	- Memory
-		- Allocation and de-allocation
-		- Custom alignment support
-		- Fast clear and copy
+		- Allocation and De-allocation
+		- Custom Alignment functions
+		- Fast Clear/Set and Copy
 	- Atomics
 		- Support for 8,16,32,64 bit signed and unsigned integer types
 		- Support for void pointer type
-		- Compare and exchange
+		- Compare and Exchange (CAS)
 		- Add / Exchange
 		- Load / Store
-		- Memory barriers
+		- Memory Barriers
 	- Shared library
-		- Loading of shared libraries (DLL on Windows, .so on Linux/Unix)
-		- Function lookup
+		- Loading of Shared Libraries (DLL on Windows, .so on Linux/Unix)
+		- Function Pointer Lookup
 	- IO
 		- Path functions
-			- Query user home directory
-			- Query executable path
-			- Extract filename, extension and path
-			- Combine paths
-			- Change file extension
+			- Query User Home Directory
+			- Query Executable Path
+			- Extract Filename, Extension and Path
+			- Combine Paths
+			- Change File Extension
 		- Files/Directories
-			- Reading and writing binary files (32-bit only, 64-bit are planned)
-			- Iterating over files/directories
+			- Reading and Writing of Binary Files (32-bit only, 64-bit are planned)
+			- Iterating over Files/Directories
 			- Rename/Copy/Delete/Move operations
 	- Hardware infos retrievement
-		- Query processor infos (Core count, Name)
-		- Query current memory state (Physical size, virtual size, page size, etc.)
+		- Query Processor Infos (Core Count, Name)
+		- Query Current Memory State (Physical size, Virtual Size, Page Size, etc.)
+		- Query System Architecture
+	- OS infos retrievement
+		- Query loggedin Username
+		- Query OS Infos (Name, Version)
 	- Timings
-		- Get number of seconds with high precision used for profiling and delta calculations
-		- Get number of milliseconds with low precision user for simple measurement
+		- Get number of seconds (Low and High precision) used for profiling and delta calculations
+		- Get number of milliseconds (Low and High precision) user for simple measurement
 	- String conversion functions
 		- Ansistring <-> Widestring
 		- UTF-8 <-> Widestring
@@ -137,12 +145,13 @@
 		- Formatting
 	- Console
 		- Standard/Error out
-		- Formatting
-		- Key input
+		- Formatted out
+		- Char input
 	- Threading
-		- Thread
-		- Mutex
-		- Signal
+		- Threads
+		- Mutexes
+		- Signals
+		- Condition-Variables
 
 	\subsection section_getstarted How do i get started with FPL?
 	- You download the latest <a href="https://github.com/f1nalspace/final_game_tech/blob/master/final_platform_layer.h">"final_platform_layer.h"</a> file.
@@ -245,6 +254,13 @@
 
 	\subsection subsection_otutorial_input Input
 	\subpage page_otutorial_input_events <br>
+
+	\subsection subsection_otutorial_threading Multithreading
+	\subpage page_otutorial_threading_threads <br>
+	\subpage page_otutorial_threading_mutexes <br>
+	\subpage page_otutorial_threading_signals <br>
+	\subpage page_otutorial_threading_conditions <br>
+	\subpage page_otutorial_threading_sync <br>
 
 	\subsection subsection_otutorial_video Video
 	\subpage page_otutorial_video_general <br>
@@ -619,6 +635,7 @@
 
 /*!
 	\page page_otutorial_input_events Input events
+	\tableofcontents
 
 	\section section_page_otutorial_input_events_overview Overview
 
@@ -630,6 +647,7 @@
 
 /*!
 	\page page_otutorial_video_general Initialization & Overview
+	\tableofcontents
 
 	\section otutorial_video_general_init Initialize a video context
 
@@ -711,6 +729,7 @@
 
 /*!
 	\page page_otutorial_video_legacy_opengl Legacy OpenGL
+	\tableofcontents
 
 	\section section_otutorial_video_legacy_opengl_init Initialize Legacy OpenGL
 
@@ -747,6 +766,7 @@
 
 /*!
 	\page page_otutorial_video_modern_opengl Modern OpenGL
+	\tableofcontents
 
 	\section section_otutorial_video_modern_opengl_init Initialize a modern OpenGL Rendering Context
 
@@ -796,6 +816,7 @@
 
 /*!
 	\page page_otutorial_video_software Software Output
+	\tableofcontents
 
 	\section section_otutorial_video_software_init Initialize a Software Backbuffer
 
@@ -909,6 +930,7 @@
 
 /*!
 	\page page_otutorial_audio_general Initialization & Usage
+	\tableofcontents
 
 	\section section_otutorial_audio_general_default_init Default initialization
 
@@ -1005,6 +1027,7 @@
 
 /*!
 	\page page_otutorial_audio_writesamples Writing audio samples
+	\tableofcontents
 
 	\section section_otutorial_audio_writesamples_overview Overview
 
@@ -1054,6 +1077,95 @@
 
 	\note FPL does not provide any functionality for doing any kind of DSP or format conversion!<br>
 	\note You are responsible for filling out the samples in the correct format your audio device expects!
+*/
+
+/*!
+	\page page_otutorial_threading_threads Threads
+	\tableofcontents
+
+	\section section_otutorial_threading_threads_overview Overview
+	In this section you will learn the Basics about creating and handling of Threads.<br>
+	With Threads you can run multiple pieces of Code in parallel.<br>
+	<br>
+	Threads require the use of \subpage page_otutorial_threading_sync to solve sharing issues and deadlocks.
+
+	\section section_otutorial_threading_threads_create Creating a Thread
+	To create a thread you call \ref fplThreadCreate() with a \ref fpl_run_thread_function "callback" and a user pointer passed as arguments.<br>
+	This thread is automatically started and will run your user code almost immediatly.<br>
+	\note The internal thread resources will be cleaned up automatically after your code is finished running.<br>
+
+	\section section_otutorial_threading_threads_wait Waiting/Joining for Threads to Exit
+
+	\subsection subsection_otutorial_threading_threads_wait_single Wait for a single Thread to Exit
+	To wait for a single Thread to finish, you simply call \ref fplThreadWaitForOne() with the thread handle as argument.
+
+	\subsection subsection_otutorial_threading_threads_wait_multiple Wait for multiple Threads to Exit
+	To wait for a multiple Threads to finish, you have two choices:<br>
+	- Wait for all terminates to finish: \ref fplThreadWaitForAll()
+	- Wait for at least one thread to finish: \ref fplThreadWaitForAny()
+
+	\section section_otutorial_threading_threads_terminate Terminate a thread
+	Sometimes you need a way to forcefully terminate a thread.<br>
+	For this you can call \ref fplThreadTerminate() with the thread handle in question.
+	<br>
+	\note Using this will almost immediatly terminates the thread and releases its resources.
+	\note Its safe to call this when a thread is already terminated.
+
+	\section section_otutorial_threading_threads_states Query Thread State
+	There is just one function to query the thread state -> \ref fplGetThreadState() .<br>
+	If a thread is stopped or in the process of getting stopped it will return \ref fplThreadState_Stopped or \ref fplThreadState_Stopping respectively.<br>
+	If a thread is started or in the process of getting started it will return \ref fplThreadState_Running or \ref fplThreadState_Starting respectively.<br>
+	\note Use with care only!
+
+	\section section_otutorial_threading_threads_notes Notes
+	\note Your code should always ensure that it will exit eventually.<br>
+	To ensure this there are several \subpage page_otutorial_threading_sync you can use to achieve this.
+*/
+
+/*!
+	\page page_otutorial_threading_mutexes Mutexes
+	\tableofcontents
+
+	\section section_otutorial_threading_mutexes_overview Overview
+	This section explains how to create and handling of mutexes.<br>
+	A mutex is a OS Kernel mechanism used to prevent certain operations to happen on multiple threads simultaneously.<br>
+	In short you can lock Threads to wait until it gets unlocked by the calling Thread.
+
+	\section section_otutorial_threading_mutexes_init Initialize a Mutex
+	To initialize a mutex you call \ref fplMutexInit() with a pointer to a \ref fplMutexHandle .
+	After the initialization is done, you can start locking and unlocking it.<br>
+	When you are done with the mutex call \ref fplMutexDestroy() to release its internal resources.
+
+	\section section_otutorial_threading_mutexes_lock Locking a Mutex
+	Locking a mutex is simply done by calling \ref fplMutexLock() .<br>
+	If this mutex is not locked yet, it will be locked by the calling thread.<br>
+	It this mutex is already locked, the thread will wait forever until it gets unlocked.
+
+	\section section_otutorial_threading_mutexes_unlock Unlocking a Mutex
+	Unlocking is done by calling \ref fplMutexUnlock() .<br>
+	If this mutex is locked and the thread matches the owner thread, it will be unlocked.<br>
+	In every other case the result if the call will be false, indicating that either it was not locked at all or the thread owner does not match.
+*/
+
+/*!
+	\page page_otutorial_threading_signals Signals
+	\tableofcontents
+
+	\section section_otutorial_threading_signals_init Initialize a Signal
+	To initialize a Signal you just call \ref fplSignalInit() with a pointer to a \ref fplSignalHandle .
+*/
+
+/*!
+	\page page_otutorial_threading_conditions Condition-Variables
+	\tableofcontents
+
+	\section otutorial_threading_conditions_init Initialize a Condition-Variable
+	To initialize a Condition-Variable you just call \ref fplConditionInit() with a pointer to a \ref fplConditionVariable .
+*/
+
+/*!
+	\page page_otutorial_threading_sync Syncronisation Methods
+	\tableofcontents
 */
 
 /*!

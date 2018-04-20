@@ -356,7 +356,7 @@ static void TestHardware() {
 		ft::Msg("Page used memory (bytes): %z\n", memInfos.usedPageSize);
 	}
 
-	fplArchType archType = fplGetRunningArchitectureType();
+	fplArchType archType = fplGetRunningArchitecture();
 	const char *archStr = fplGetArchTypeString(archType);
 	ft::Msg("System archicture: %s\n", archStr);
 }
@@ -390,12 +390,11 @@ static void SimpleMultiThreadTest(const size_t threadCount) {
 	ft::Msg("Wait all %d threads for exit\n", threadCount);
 	fplThreadWaitForAll(threads, threadCount, UINT32_MAX);
 	ft::Msg("All %d threads are done\n", threadCount);
+
+	ft::Msg("Terminate %d threads\n", threadCount);
 	for(size_t threadIndex = 0; threadIndex < threadCount; ++threadIndex) {
 		FT_EXPECTS(fplThreadState_Stopped, threads[threadIndex]->currentState);
-	}
-	ft::Msg("Destroy %d threads\n", threadCount);
-	for(size_t threadIndex = 0; threadIndex < threadCount; ++threadIndex) {
-		fplThreadDestroy(threads[threadIndex]);
+		fplThreadTerminate(threads[threadIndex]);
 	}
 }
 
@@ -463,7 +462,8 @@ static void SyncThreadsTest() {
 
 		ft::Msg("Release resources for %zu threads\n", threadCount);
 		for(uint32_t index = 0; index < threadCount; ++index) {
-			fplThreadDestroy(threads[index]);
+			FT_EXPECTS(fplThreadState_Stopped, threads[index]->currentState);
+			fplThreadTerminate(threads[index]);
 		}
 		fplMutexDestroy(&mutableData.lock);
 	}
@@ -518,7 +518,7 @@ static void ConditionThreadsTest(const size_t threadCount) {
 	size_t slaveThreadCount = threadCount - 1;
 	for(size_t threadIndex = 0; threadIndex < slaveThreadCount; ++threadIndex) {
 		slaveDatas[threadIndex].base.num = masterData.base.num + (int)threadIndex + 1;
-		FT_IS_TRUE(fplSignalInit(&slaveDatas[threadIndex].signal));
+		FT_IS_TRUE(fplSignalInit(&slaveDatas[threadIndex].signal, false));
 		size_t i = masterData.signalCount++;
 		masterData.signals[i] = &slaveDatas[threadIndex].signal;
 	}
@@ -544,7 +544,7 @@ static void ConditionThreadsTest(const size_t threadCount) {
 	for(size_t threadIndex = 0; threadIndex < threadCount; ++threadIndex) {
 		fplThreadHandle *thread = threads[threadIndex];
 		FT_EXPECTS(fplThreadState_Stopped, thread->currentState);
-		fplThreadDestroy(thread);
+		fplThreadTerminate(thread);
 	}
 }
 
@@ -563,7 +563,7 @@ static void TestThreading() {
 			fplThreadWaitForOne(thread, UINT32_MAX);
 			ft::Msg("Thread is done\n");
 			FT_EXPECTS(fplThreadState_Stopped, thread->currentState);
-			fplThreadDestroy(thread);
+			fplThreadTerminate(thread);
 		}
 
 		ft::Line();
@@ -578,7 +578,7 @@ static void TestThreading() {
 			fplThreadWaitForOne(thread, UINT32_MAX);
 			ft::Msg("Thread %d is done\n", threadData.num);
 			FT_EXPECTS(fplThreadState_Stopped, thread->currentState);
-			fplThreadDestroy(thread);
+			fplThreadTerminate(thread);
 		}
 
 		//
