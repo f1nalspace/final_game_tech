@@ -505,8 +505,10 @@ static void ThreadMasterProc(const fplThreadHandle *context, void *data) {
 	ft::Msg("Master-Thread %d is done\n", d->base.num);
 }
 
-static void ThreadSignalsTest(const size_t threadCount) {
-	FT_ASSERT(threadCount > 1);
+static void ThreadSignalsTest(const size_t slaveCount) {
+	FT_ASSERT(slaveCount > 0);
+
+	size_t threadCount = slaveCount + 1;
 
 	ft::Line();
 	ft::Msg("Signals test for %zu threads\n", threadCount);
@@ -515,15 +517,14 @@ static void ThreadSignalsTest(const size_t threadCount) {
 	masterData.base.num = 1;
 
 	SlaveThreadData slaveDatas[FPL__MAX_THREAD_COUNT] = {};
-	size_t slaveThreadCount = threadCount - 1;
-	for(size_t threadIndex = 0; threadIndex < slaveThreadCount; ++threadIndex) {
+	for(size_t threadIndex = 0; threadIndex < slaveCount; ++threadIndex) {
 		slaveDatas[threadIndex].base.num = masterData.base.num + (int)threadIndex + 1;
 		FT_IS_TRUE(fplSignalInit(&slaveDatas[threadIndex].signal, false));
 		size_t i = masterData.signalCount++;
 		masterData.signals[i] = &slaveDatas[threadIndex].signal;
 	}
 
-	ft::Msg("Start %zu slave threads, 1 master thread\n", slaveThreadCount);
+	ft::Msg("Start %zu slave threads, 1 master thread\n", slaveCount);
 	fplThreadHandle *threads[FPL__MAX_THREAD_COUNT];
 	for(size_t threadIndex = 0; threadIndex < threadCount; ++threadIndex) {
 		if(threadIndex == 0) {
@@ -537,7 +538,7 @@ static void ThreadSignalsTest(const size_t threadCount) {
 	fplThreadWaitForAll(threads, threadCount, UINT32_MAX);
 
 	ft::Msg("Release resources for %zu threads\n", threadCount);
-	for(size_t slaveIndex = 0; slaveIndex < slaveThreadCount; ++slaveIndex) {
+	for(size_t slaveIndex = 0; slaveIndex < slaveCount; ++slaveIndex) {
 		FT_IS_TRUE(slaveDatas[slaveIndex].isSignaled);
 		fplSignalDestroy(&slaveDatas[slaveIndex].signal);
 	}
@@ -548,8 +549,95 @@ static void ThreadSignalsTest(const size_t threadCount) {
 	}
 }
 
+struct ConditionThreadSharedData {
+	fplMutexHandle mutex;
+	fplConditionVariable cond;
+};
+
+struct ConditionMasterThreadData {
+	ThreadData base;
+	ConditionThreadSharedData *shared;
+	size_t slaveCount;
+};
+
+struct ConditionSlaveThreadData {
+	ThreadData base;
+	ConditionThreadSharedData *shared;
+};
+
+static void ConditionThreadSlaveProc(const fplThreadHandle *context, void *data) {
+	ConditionSlaveThreadData *slaveData = (ConditionSlaveThreadData *)data;
+	int id = slaveData->base.num;
+	ft::Msg("Started Slave-Thread %d\n", id);
+	if (fplMutexLock(&slaveData->shared->mutex, UINT32_MAX)) {
+		ft::Msg("Wait for Condition on Slave-Thread %d\n", id);
+		fplConditionWait(&slaveData->shared->cond, &slaveData->shared->mutex, UINT32_MAX);
+		fplMutexUnlock(&slaveData->shared->mutex);
+	}
+	ft::Msg("Finished Slave-Thread %d\n", id);
+}
+
+static void ConditionThreadMasterProc(const fplThreadHandle *context, void *data) {
+	ConditionMasterThreadData *masterData = (ConditionMasterThreadData *)data;
+	int id = masterData->base.num;
+	ft::Msg("Started Master-Thread %d\n", id);
+	ft::Msg("Sleep 5 secs in Master-Thread %d\n", id);
+	fplThreadSleep(5000);
+	if (masterData->slaveCount == 1) {
+		ft::Msg("Signal Condition in Master-Thread %d\n", id);
+		fplConditionSignal(&masterData->shared->cond);
+	} else {
+		ft::Msg("Broadcast Condition in Master-Thread %d\n", id);
+		fplConditionBroadcast(&masterData->shared->cond);
+	}
+	ft::Msg("Finished Master-Thread %d\n", id);
+}
+
+static void ThreadConditionsTest(size_t slaveCount) {
+	ft::Line();
+	ft::Msg("Thread Condition Test for %d Slave-Threads\n", slaveCount);
+
+	size_t threadCount = slaveCount + 1;
+
+	ConditionThreadSharedData shared = {};
+	FT_ASSERT(fplMutexInit(&shared.mutex));
+	FT_ASSERT(fplConditionInit(&shared.cond));
+
+	fplThreadHandle *threads[FPL__MAX_THREAD_COUNT];
+
+	fplThreadHandle *masterThread;
+	ConditionMasterThreadData masterData = {};
+	masterData.base.num = 1;
+	masterData.shared = &shared;
+	masterData.slaveCount = slaveCount;
+
+	ConditionSlaveThreadData slaveDatas[FPL__MAX_THREAD_COUNT] = {};
+
+	ft::Msg("Start %zu slave threads, 1 master thread\n", slaveCount);
+	for (int threadIndex = 0; threadIndex < slaveCount; ++threadIndex) {
+		slaveDatas[threadIndex].base.num = masterData.base.num + threadIndex + 1;
+		slaveDatas[threadIndex].shared = &shared;
+		threads[threadIndex] = fplThreadCreate(ConditionThreadSlaveProc, &slaveDatas[threadIndex]);
+	}
+	threads[slaveCount] = fplThreadCreate(ConditionThreadMasterProc, &masterData);
+	ft::Msg("Wait for %d Threads to complete\n", threadCount);
+	fplThreadWaitForAll(threads, threadCount, UINT32_MAX);
+
+	ft::Msg("Release resources for %zu threads\n", threadCount);
+	for(size_t threadIndex = 0; threadIndex < threadCount; ++threadIndex) {
+		fplThreadHandle *thread = threads[threadIndex];
+		FT_EXPECTS(fplThreadState_Stopped, thread->currentState);
+		fplThreadTerminate(thread);
+	}
+	fplConditionDestroy(&shared.cond);
+	fplMutexDestroy(&shared.mutex);
+}
+
 static void TestThreading() {
 	if(fplPlatformInit(fplInitFlags_None, fpl_null)) {
+		size_t coreCount = fplGetProcessorCoreCount();
+		size_t threadCountForCores = coreCount > 2 ? coreCount - 1 : 1;
+
 		//
 		// Single threading test
 		//
@@ -584,8 +672,6 @@ static void TestThreading() {
 		//
 		// Multi threads test
 		//
-		size_t coreCount = fplGetProcessorCoreCount();
-		size_t threadCountForCores = coreCount > 2 ? coreCount - 1 : 1;
 		{
 			SimpleMultiThreadTest(2);
 			SimpleMultiThreadTest(3);
@@ -601,9 +687,21 @@ static void TestThreading() {
 		}
 
 		//
+		// Condition tests
+		//
+		{
+			ThreadConditionsTest(1);
+			ThreadConditionsTest(2);
+			ThreadConditionsTest(3);
+			ThreadConditionsTest(4);
+			ThreadConditionsTest(threadCountForCores);
+		}
+
+		//
 		// Signal tests
 		//
 		{
+			ThreadSignalsTest(1);
             ThreadSignalsTest(2);
             ThreadSignalsTest(3);
             ThreadSignalsTest(4);
