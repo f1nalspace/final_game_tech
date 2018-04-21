@@ -683,6 +683,7 @@ SOFTWARE.
 	- Threading
 		- eventfd for Unix
 		- Semaphores
+		- TryMutexLock
 
 	- Audio
 		- Finalize Alsa driver (Device selection)
