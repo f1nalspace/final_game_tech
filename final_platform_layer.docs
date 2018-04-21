@@ -1099,7 +1099,7 @@
     void RunMyThread() {
         int myData = 42;
         fplThread *thread = fplThreadCreate(MyThreadProc, &myData);
-        fplThreadWaitForOne(thread, UINT32_MAX);
+        fplThreadWaitForOne(thread, FPL_TIMEOUT_INFINITE);
     }
     \endcode
 
@@ -1118,7 +1118,7 @@
 
 	\code{.c}
 	// Wait until the thread is finished
-	fplThreadWaitForOne(thread, UINT32_MAX);
+	fplThreadWaitForOne(thread, FPL_TIMEOUT_INFINITE);
 
 	// ... or
 
@@ -1131,7 +1131,7 @@
 
 	\code{.c}
 	// Wait until one of the threads is finished
-	fplThreadWaitForAny(threads, numOfThreads, UINT32_MAX);
+	fplThreadWaitForAny(threads, numOfThreads, FPL_TIMEOUT_INFINITE);
 
 	// ... or
 
@@ -1144,7 +1144,7 @@
 
 	\code{.c}
 	// Wait until all of the threads are finished
-	fplThreadWaitForAll(threads, numOfThreads, UINT32_MAX);
+	fplThreadWaitForAll(threads, numOfThreads, FPL_TIMEOUT_INFINITE);
 
 	// ... or
 
@@ -1252,8 +1252,68 @@
 	fplSignalDestroy(&mutex);
     \endcode
 
-	\section section_otutorial_threading_signals_waiting Waiting on a Signal
-	To let one Thread to wait until a Signal is set, you simply call \ref fplSignalWaitForOne() with a \ref fplSignalHandle and a timeout as parameters.
+	\section section_otutorial_threading_signals_wait Waiting for Signal
+
+	\subsection subsection_otutorial_threading_signals_wait_single Wait for a single Single to be set
+	To let a Thread wait until a Signal is set, you simply call \ref fplSignalWaitForOne() with the \ref fplSignalHandle as argument and a timeout parameter.
+
+	\code{.c}
+	// Wait until the Signal is set
+	fplSignalWaitForOne(thread, FPL_TIMEOUT_INFINITE);
+
+	// ... or
+
+	// Wait at max for 5 seconds or until the Signal is set
+	fplSignalWaitForOne(thread, 5000);
+    \endcode
+
+	\subsection subsection_otutorial_threading_signals_wait_any Wait for any Signal to be set
+	To wait until at least one Signal is set you simply call \ref fplSignalWaitForAny() with a array of \ref fplSignalHandle , the number of Signals and a timeout parameter.
+
+	\code{.c}
+	// Wait until one of the Signal is set
+	fplSignalWaitForAny(signals, numOfSignals, FPL_TIMEOUT_INFINITE);
+
+	// ... or
+
+	// Wait at max for 5 seconds or until one of the Signal is set
+	fplSignalWaitForAny(signals, numOfSignals, 5000);
+    \endcode
+
+	\subsection subsection_otutorial_threading_signals_wait_all Wait for all Signals to be set
+	To wait until all Signals are set you simply call \ref fplSignalWaitForAll() with a array of \ref fplSignalHandle , the number of Signals and a timeout parameter.
+
+	\code{.c}
+	// Wait until all of the Signals are set
+	fplSignalWaitForAll(signals, numOfSignals, FPL_TIMEOUT_INFINITE);
+
+	// ... or
+
+	// Wait at max for 5 seconds or until all of the Signal are set
+	fplSignalWaitForAll(signals, numOfSignals, 5000);
+    \endcode
+
+	\section section_otutorial_threading_signals_set Setting a Signal
+	To set a Signal and wakeup all waiting Threads you just call \ref fplSignalSet() with the \ref fplSignalHandle as argument.
+	\note Unlike \ref fplConditionVariable , setting a Signal is not Thread-Safe so you should ensure that only one Thread at a time will set it!
+
+	\code{.c}
+	// Use a mutex or another syncronisation method to ensure that only one Thread can set the Signal
+	fplMutexLock(&mutex);
+	fplSignalSet(signal);
+	fplMutexUnlock(&mutex);
+    \endcode
+
+	\section section_otutorial_threading_signals_reset Resetting a Signal
+	To reset a Signal you just call \ref fplSignalReset() with the \ref fplSignalHandle as argument.
+	\note Unlike \ref fplConditionVariable , resetting a Signal is not Thread-Safe so you should ensure that only one Thread at a time will set it!
+
+	\code{.c}
+	// Use a mutex or another syncronisation method to ensure that only one Thread can reset the Signal
+	fplMutexLock(&mutex);
+	fplSignalReset(signal);
+	fplMutexUnlock(&mutex);
+    \endcode
 */
 
 /*!
@@ -1263,27 +1323,67 @@
 	\section section_otutorial_threading_conditions_overview Overview
 	This section explains how to create and handling of Condition-Variables.<br>
 	A condition variable is a User-Level Object used to let threads wait until a condition variable is signaled or broadcasted.<br>
-	Unlike Signals, Condition-Variables requires you to use a \ref fplMutexHandle as a locking mechanism.<br>
+	Unlike \subpage page_otutorial_threading_signals, Condition-Variables requires you to use a \ref fplMutexHandle as a locking mechanism.<br>
 	They cannot be shared across process boundaries but the number of Condition-Variables is only limited by the amount of memory you have.
 
 	\section otutorial_threading_conditions_init Initialize a Condition-Variable
 	To initialize a Condition-Variable you just call \ref fplConditionInit() with a \ref fplConditionVariable as a argument.<br>
 	When you are done with that Condition-Variable you need to call \ref fplConditionDestroy() to release its internal resources.
 
+	\code{.c}
+	fplConditionVariable condition;
+	if (!fplConditionInit(&condition)) {
+	    // Error: Condition-Variable failed initializing -> This is most likely never to happen
+	}
+
+	// ... Condition-Variable is not required anymore
+	fplConditionDestroy(&condition);
+    \endcode
+
 	\section otutorial_threading_conditions_wait_single Waiting on a Condition-Variable
-	To let a thread wait on a Condition-Variable you simply call \ref fplConditionWait() with a \ref fplConditionVariable and a \ref fplMutexHandle as argument.
-	Also you need to specify the amount of milliseconds you want the thread to wait. If UINT32_MAX is passed it will wait forever.<br>
+	To let a thread wait on a Condition-Variable you simply call \ref fplConditionWait() with a \ref fplConditionVariable and a \ref fplMutexHandle as argument.<br>
+	Also you need to specify the amount of milliseconds you want the thread to wait. If \ref FPL_TIMEOUT_INFINITE is passed it will wait forever.<br>
+	\note Conditions must be called inside a locked critical-section or undefined behavior may happen.
+
+	\code{.c}
+	fplMutexLock(&mutex);
+	{
+		// Wait until the condition is signaled or broadcasted
+		fplConditionWait(&condition, &mutex, FPL_TIMEOUT_INFINITE);
+
+		// ... or
+
+		// Wait at max for 5 seconds for a signal or broadcast on the condition
+		fplConditionWait(&condition, &mutex, 5000);
+	}
+	fplMutexUnlock(&mutex);
+
+	// ... Condition-Variable is not required anymore
+	fplConditionDestroy(&condition);
+    \endcode
 
 	\section otutorial_threading_conditions_wait_multiple Waiting on multiple Condition-Variables?
 	A thread can only wait on one single condition variable at a time - if you need to wait on multiple conditions, you should consider using \subpage page_otutorial_threading_signals .
 
-	\section otutorial_threading_conditions_signal Signaling a Condition-Variable to one waiting Thread
+	\section otutorial_threading_conditions_signal Send a Signal to a Condition-Variable to one waiting Thread
 	To signal a Condition-Variable to one single waiting Thread you need to call \ref fplConditionSignal() with the \ref fplConditionVariable in question.<br>
-	If you want to let multiple threads waits on the same condition you should use \ref fplConditionBroadcast() instead.
+	If you want to let multiple threads waits on the same condition you should use \ref fplConditionBroadcast() instead.<br>
+	\note Unlike Signals Condition-Variables does not need a Mutex to Signal a Condition-Variable.
 
-	\section otutorial_threading_conditions_broadcast Signaling a Condition-Variable to all waiting Threads
+	\code{.c}
+	// Send a Signal to the Condition-Variable to one waiting Thread
+	fplConditionSignal(&cond);
+    \endcode
+
+	\section otutorial_threading_conditions_broadcast Send a Broadcast to a Condition-Variable to all waiting Threads
 	To broadcast a Condition-Variable to multiple waiting threads you need to call \ref  fplConditionBroadcast() with the \ref fplConditionVariable in question.<br>
-	If you just need a single thread to wait on the condition you should use \ref fplConditionSignal() instead.
+	If you just need a single thread to wait on the condition you should use \ref fplConditionSignal() instead.<br>
+	\note Unlike Signals Condition-Variables does not need a Mutex to Broadcast a Condition-Variable.
+
+	\code{.c}
+	// Broadcast a Signal to the Condition-Variable to all waiting Threads
+	fplConditionBroadcast(&cond);
+    \endcode
 */
 
 /*!
