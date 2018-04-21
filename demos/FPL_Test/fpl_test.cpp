@@ -396,7 +396,7 @@ static void SimpleMultiThreadTest(const size_t threadCount) {
 		threads[threadIndex] = fplThreadCreate(SingleThreadProc, &threadData[threadIndex]);
 	}
 	ft::Msg("Wait all %d threads for exit\n", threadCount);
-	fplThreadWaitForAll(threads, threadCount, UINT32_MAX);
+	fplThreadWaitForAll(threads, threadCount, FPL_TIMEOUT_INFINITE);
 	ft::Msg("All %d threads are done\n", threadCount);
 
 	ft::Msg("Terminate %d threads\n", threadCount);
@@ -466,7 +466,7 @@ static void SyncThreadsTest() {
 		threads[1] = fplThreadCreate(WriteDataThreadProc, &writeData);
 
 		ft::Msg("Wait for %zu threads to exit\n", threadCount);
-		fplThreadWaitForAll(threads, threadCount, UINT32_MAX);
+		fplThreadWaitForAll(threads, threadCount, FPL_TIMEOUT_INFINITE);
 
 		ft::Msg("Release resources for %zu threads\n", threadCount);
 		for(uint32_t index = 0; index < threadCount; ++index) {
@@ -493,7 +493,7 @@ static void ThreadSlaveProc(const fplThreadHandle *context, void *data) {
 	SlaveThreadData *d = (SlaveThreadData *)data;
 
 	ft::Msg("Slave-Thread %d waits for signal\n", d->base.num);
-	fplSignalWaitForOne(&d->signal, UINT32_MAX);
+	fplSignalWaitForOne(&d->signal, FPL_TIMEOUT_INFINITE);
 	d->isSignaled = true;
 	ft::Msg("Got signal on Slave-Thread %d\n", d->base.num);
 
@@ -543,7 +543,7 @@ static void ThreadSignalsTest(const size_t slaveCount) {
 	}
 
 	ft::Msg("Wait for %zu threads to exit\n", threadCount);
-	fplThreadWaitForAll(threads, threadCount, UINT32_MAX);
+	fplThreadWaitForAll(threads, threadCount, FPL_TIMEOUT_INFINITE);
 
 	ft::Msg("Release resources for %zu threads\n", threadCount);
 	for(size_t slaveIndex = 0; slaveIndex < slaveCount; ++slaveIndex) {
@@ -577,11 +577,12 @@ static void ConditionThreadSlaveProc(const fplThreadHandle *context, void *data)
 	ConditionSlaveThreadData *slaveData = (ConditionSlaveThreadData *)data;
 	int id = slaveData->base.num;
 	ft::Msg("Started Slave-Thread %d\n", id);
-	if (fplMutexLock(&slaveData->shared->mutex)) {
+	fplMutexLock(&slaveData->shared->mutex);
+	{
 		ft::Msg("Wait for Condition on Slave-Thread %d\n", id);
-		fplConditionWait(&slaveData->shared->cond, &slaveData->shared->mutex, UINT32_MAX);
-		fplMutexUnlock(&slaveData->shared->mutex);
+		fplConditionWait(&slaveData->shared->cond, &slaveData->shared->mutex, FPL_TIMEOUT_INFINITE);
 	}
+	fplMutexUnlock(&slaveData->shared->mutex);
 	ft::Msg("Finished Slave-Thread %d\n", id);
 }
 
@@ -613,7 +614,6 @@ static void ThreadConditionsTest(size_t slaveCount) {
 
 	fplThreadHandle *threads[FPL__MAX_THREAD_COUNT];
 
-	fplThreadHandle *masterThread;
 	ConditionMasterThreadData masterData = {};
 	masterData.base.num = 1;
 	masterData.shared = &shared;
@@ -629,7 +629,7 @@ static void ThreadConditionsTest(size_t slaveCount) {
 	}
 	threads[slaveCount] = fplThreadCreate(ConditionThreadMasterProc, &masterData);
 	ft::Msg("Wait for %d Threads to complete\n", threadCount);
-	fplThreadWaitForAll(threads, threadCount, UINT32_MAX);
+	fplThreadWaitForAll(threads, threadCount, FPL_TIMEOUT_INFINITE);
 
 	ft::Msg("Release resources for %zu threads\n", threadCount);
 	for(size_t threadIndex = 0; threadIndex < threadCount; ++threadIndex) {
@@ -656,7 +656,7 @@ static void TestThreading() {
 			ft::Msg("Start thread\n");
 			thread = fplThreadCreate(EmptyThreadproc, nullptr);
 			ft::Msg("Wait thread for exit\n");
-			fplThreadWaitForOne(thread, UINT32_MAX);
+			fplThreadWaitForOne(thread, FPL_TIMEOUT_INFINITE);
 			ft::Msg("Thread is done\n");
 			FT_EXPECTS(fplThreadState_Stopped, thread->currentState);
 			fplThreadTerminate(thread);
@@ -671,7 +671,7 @@ static void TestThreading() {
 			ft::Msg("Start thread %d\n", threadData.num);
 			fplThreadHandle *thread = fplThreadCreate(SingleThreadProc, &threadData);
 			ft::Msg("Wait thread %d for exit\n", threadData.num);
-			fplThreadWaitForOne(thread, UINT32_MAX);
+			fplThreadWaitForOne(thread, FPL_TIMEOUT_INFINITE);
 			ft::Msg("Thread %d is done\n", threadData.num);
 			FT_EXPECTS(fplThreadState_Stopped, thread->currentState);
 			fplThreadTerminate(thread);

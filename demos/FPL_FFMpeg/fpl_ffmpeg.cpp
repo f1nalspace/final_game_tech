@@ -232,7 +232,7 @@ inline bool AquirePacket(PacketQueue &queue, PacketList *&packet) {
 }
 
 static void FlushPacketQueue(PacketQueue &queue) {
-	fplMutexLock(&queue.lock, UINT32_MAX);
+	fplMutexLock(&queue.lock);
 	PacketList *p = queue.first;
 	while(p != nullptr) {
 		PacketList *n = p->next;
@@ -258,17 +258,17 @@ inline bool InitPacketQueue(PacketQueue &queue) {
 	if(!fplMutexInit(&queue.lock)) {
 		return false;
 	}
-	if(!fplSignalInit(&queue.addedSignal, false)) {
+	if(!fplSignalInit(&queue.addedSignal, fplSignalValue_Unset)) {
 		return false;
 	}
-	if(!fplSignalInit(&queue.freeSignal, false)) {
+	if(!fplSignalInit(&queue.freeSignal, fplSignalValue_Unset)) {
 		return false;
 	}
 	return true;
 }
 
 inline void PushPacket(PacketQueue &queue, PacketList *packet) {
-	fplMutexLock(&queue.lock, UINT32_MAX);
+	fplMutexLock(&queue.lock);
 	{
 		packet->next = nullptr;
 		if(IsFlushPacket(packet)) {
@@ -294,7 +294,7 @@ inline void PushPacket(PacketQueue &queue, PacketList *packet) {
 
 inline bool PopPacket(PacketQueue &queue, PacketList *&packet) {
 	bool result = false;
-	fplMutexLock(&queue.lock, UINT32_MAX);
+	fplMutexLock(&queue.lock);
 	{
 		if(queue.first != nullptr) {
 			PacketList *p = queue.first;
@@ -342,7 +342,7 @@ inline bool PushFlushPacket(PacketQueue &queue) {
 }
 
 inline void StartPacketQueue(PacketQueue &queue) {
-	fplMutexLock(&queue.lock, UINT32_MAX);
+	fplMutexLock(&queue.lock);
 	assert(PushFlushPacket(queue));
 	fplMutexUnlock(&queue.lock);
 }
@@ -412,7 +412,7 @@ static bool InitFrameQueue(FrameQueue &queue, int32_t capacity, volatile uint32_
 	if(!fplMutexInit(&queue.lock)) {
 		return false;
 	}
-	if(!fplSignalInit(&queue.signal, false)) {
+	if(!fplSignalInit(&queue.signal, fplSignalValue_Unset)) {
 		return false;
 	}
 
@@ -442,7 +442,7 @@ static Frame *PeekFrameQueueLast(FrameQueue &queue) {
 }
 
 static bool PeekWritableFromFrameQueue(FrameQueue &queue, Frame *&frame) {
-	fplMutexLock(&queue.lock, UINT32_MAX);
+	fplMutexLock(&queue.lock);
 	if(queue.count >= queue.capacity || *queue.stopped) {
 		fplMutexUnlock(&queue.lock);
 		return false;
@@ -458,7 +458,7 @@ static bool PeekWritableFromFrameQueue(FrameQueue &queue, Frame *&frame) {
 }
 
 static bool PeekReadableFromFrameQueue(FrameQueue &queue, Frame *&frame) {
-	fplMutexLock(&queue.lock, UINT32_MAX);
+	fplMutexLock(&queue.lock);
 	if((queue.count - queue.readIndexShown) <= 0 || *queue.stopped) {
 		fplMutexUnlock(&queue.lock);
 		return false;
@@ -476,7 +476,7 @@ static bool PeekReadableFromFrameQueue(FrameQueue &queue, Frame *&frame) {
 static void NextWritable(FrameQueue &queue) {
 	queue.writeIndex = (queue.writeIndex + 1) % queue.capacity;
 
-	fplMutexLock(&queue.lock, UINT32_MAX);
+	fplMutexLock(&queue.lock);
 	queue.count++;
 	fplSignalSet(&queue.signal);
 	fplMutexUnlock(&queue.lock);
@@ -491,7 +491,7 @@ static void NextReadable(FrameQueue &queue) {
 	FreeFrameData(&queue.frames[queue.readIndex]);
 	queue.readIndex = (queue.readIndex + 1) % queue.capacity;
 
-	fplMutexLock(&queue.lock, UINT32_MAX);
+	fplMutexLock(&queue.lock);
 	queue.count--;
 	fplSignalSet(&queue.signal);
 	fplMutexUnlock(&queue.lock);
@@ -525,10 +525,10 @@ static bool InitReader(ReaderContext &outReader) {
 	if(!fplMutexInit(&outReader.lock)) {
 		return false;
 	}
-	if(!fplSignalInit(&outReader.stopSignal, false)) {
+	if(!fplSignalInit(&outReader.stopSignal, fplSignalValue_Unset)) {
 		return false;
 	}
-	if(!fplSignalInit(&outReader.resumeSignal, false)) {
+	if(!fplSignalInit(&outReader.resumeSignal, fplSignalValue_Unset)) {
 		return false;
 	}
 	if(!InitPacketQueue(outReader.packetQueue)) {
@@ -547,7 +547,7 @@ static void DestroyReader(ReaderContext &reader) {
 static void StopReader(ReaderContext &reader) {
 	reader.stopRequest = 1;
 	fplSignalSet(&reader.stopSignal);
-	fplThreadWaitForOne(reader.thread, UINT32_MAX);
+	fplThreadWaitForOne(reader.thread, FPL_TIMEOUT_INFINITE);
 	fplThreadTerminate(reader.thread);
 	reader.thread = nullptr;
 }
@@ -590,10 +590,10 @@ static bool InitDecoder(Decoder &outDecoder, PlayerState *state, ReaderContext *
 	if(!fplMutexInit(&outDecoder.lock)) {
 		return false;
 	}
-	if(!fplSignalInit(&outDecoder.stopSignal, false)) {
+	if(!fplSignalInit(&outDecoder.stopSignal, fplSignalValue_Unset)) {
 		return false;
 	}
-	if(!fplSignalInit(&outDecoder.resumeSignal, false)) {
+	if(!fplSignalInit(&outDecoder.resumeSignal, fplSignalValue_Unset)) {
 		return false;
 	}
 	if(!InitPacketQueue(outDecoder.packetsQueue)) {
@@ -623,7 +623,7 @@ static void StartDecoder(Decoder &decoder, fpl_run_thread_function *decoderThrea
 static void StopDecoder(Decoder &decoder) {
 	decoder.stopRequest = 1;
 	fplSignalSet(&decoder.stopSignal);
-	fplThreadWaitForOne(decoder.thread, UINT32_MAX);
+	fplThreadWaitForOne(decoder.thread, FPL_TIMEOUT_INFINITE);
 	fplThreadTerminate(decoder.thread);
 	decoder.thread = nullptr;
 	FlushPacketQueue(decoder.packetsQueue);
@@ -1299,7 +1299,7 @@ static void VideoDecodingThreadProc(const fplThreadHandle *thread, void *userDat
 	bool hasDecodedFrame = false;
 	for(;;) {
 		// Wait for any signal (Available packet, Free frame, Stopped, Wake up)
-		fplSignalWaitForAny(waitSignals, FPL_ARRAYCOUNT(waitSignals), UINT32_MAX);
+		fplSignalWaitForAny(waitSignals, FPL_ARRAYCOUNT(waitSignals), FPL_TIMEOUT_INFINITE);
 
 		// Stop decoder
 		if(decoder->stopRequest) {
@@ -1451,7 +1451,7 @@ static void AudioDecodingThreadProc(const fplThreadHandle *thread, void *userDat
 	bool hasDecodedFrame = false;
 	for(;;) {
 		// Wait for any signal (Available packet, Free frame, Stopped, Wake up)
-		fplSignalWaitForAny(waitSignals, FPL_ARRAYCOUNT(waitSignals), UINT32_MAX);
+		fplSignalWaitForAny(waitSignals, FPL_ARRAYCOUNT(waitSignals), FPL_TIMEOUT_INFINITE);
 
 		// Stop decoder
 		if(decoder->stopRequest) {
@@ -1720,7 +1720,7 @@ static void PacketReadThreadProc(const fplThreadHandle *thread, void *userData) 
 	for(;;) {
 		// Wait for any signal or skip wait
 		if(!skipWait) {
-			fplSignalWaitForAny(waitSignals, FPL_ARRAYCOUNT(waitSignals), UINT32_MAX);
+			fplSignalWaitForAny(waitSignals, FPL_ARRAYCOUNT(waitSignals), FPL_TIMEOUT_INFINITE);
 		} else {
 			skipWait = false;
 		}
@@ -2191,7 +2191,7 @@ static void VideoRefresh(PlayerState *state, double &remainingTime, int &display
 			}
 
 			// @TODO(final): Why do we need to lock the frame queue here?
-			fplMutexLock(&state->video.decoder.frameQueue.lock, UINT32_MAX);
+			fplMutexLock(&state->video.decoder.frameQueue.lock);
 			if(!isnan(vp->pts)) {
 				UpdateVideoClock(state, vp->pts, vp->serial);
 			}
