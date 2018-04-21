@@ -129,6 +129,9 @@ SOFTWARE.
 	\page page_changelog Changelog
 	\tableofcontents
 
+	## v0.7.7.0 beta:
+	- New: Added fplMutexTryLock
+
 	## v0.7.6.0 beta:
 	- Changed: Renamed fplGetRunningArchitectureType to fplGetRunningArchitecture
 	- Changed: Renamed fplThreadDestroy() to fplThreadTerminate() + signature changed (Returns bool)
@@ -2411,11 +2414,17 @@ fpl_platform_api bool fplMutexInit(fplMutexHandle *mutex);
   */
 fpl_platform_api void fplMutexDestroy(fplMutexHandle *mutex);
 /**
-  * \brief Locks the given mutex and ensures that other threads will wait until it gets unlocked or the timeout has been reached.
+  * \brief Locks the given mutex and blocks other threads.
   * \param mutex Pointer to a mutex handle
   * \returns True when mutex was locked or false otherwise.
   */
 fpl_platform_api bool fplMutexLock(fplMutexHandle *mutex);
+/**
+  * \brief Tries to lock the given mutex without blocking other threads.
+  * \param mutex Pointer to a mutex handle
+  * \returns True when mutex was locked or false when mutex is already locked.
+  */
+fpl_platform_api bool fplMutexTryLock(fplMutexHandle *mutex);
 /**
  * \brief Unlocks the given mutex
  * \param mutex Pointer to a mutex handle
@@ -7713,6 +7722,19 @@ fpl_platform_api bool fplMutexLock(fplMutexHandle *mutex) {
 	return true;
 }
 
+fpl_platform_api bool fplMutexTryLock(fplMutexHandle *mutex) {
+	if(mutex == fpl_null) {
+		fpl__ArgumentNullError("Mutex");
+		return false;
+	}
+	if(!mutex->isValid) {
+		fpl__PushError("Mutex parameter must be valid");
+		return false;
+	}
+	bool result = TryEnterCriticalSection(&mutex->internalHandle.win32CriticalSection) == TRUE;
+	return(result);
+}
+
 fpl_platform_api bool fplMutexUnlock(fplMutexHandle *mutex) {
 	if(mutex == fpl_null) {
 		fpl__ArgumentNullError("Mutex");
@@ -8945,6 +8967,15 @@ fpl_internal bool fpl__PosixMutexLock(const fpl__PThreadApi *pthreadApi, pthread
 	return(result);
 }
 
+fpl_internal bool fpl__PosixMutexTryLock(const fpl__PThreadApi *pthreadApi, pthread_mutex_t *handle) {
+	int lockRes;
+	do {
+		lockRes = pthreadApi->pthread_mutex_trylock(handle);
+	} while(lockRes == EAGAIN);
+	bool result = (lockRes == 0);
+	return(result);
+}
+
 fpl_internal bool fpl__PosixMutexUnlock(const fpl__PThreadApi *pthreadApi, pthread_mutex_t *handle) {
 	int unlockRes;
 	do {
@@ -9379,6 +9410,25 @@ fpl_platform_api bool fplMutexLock(fplMutexHandle *mutex) {
 	if(mutex->isValid) {
 		pthread_mutex_t *handle = &mutex->internalHandle.posixMutex;
 		result = fpl__PosixMutexLock(pthreadApi, handle);
+	}
+	return (result);
+}
+
+fpl_platform_api bool fplMutexTryLock(fplMutexHandle *mutex) {
+	if(mutex == fpl_null) {
+		fpl__ArgumentNullError("Mutex");
+		return false;
+	}
+	const fpl__PlatformAppState *appState = fpl__global__AppState;
+	const fpl__PThreadApi *pthreadApi = &appState->posix.pthreadApi;
+	if(pthreadApi->libHandle == fpl_null) {
+		fpl__PushError("PThread api not loaded");
+		return false;
+	}
+	bool result = false;
+	if(mutex->isValid) {
+		pthread_mutex_t *handle = &mutex->internalHandle.posixMutex;
+		result = fpl__PosixMutexTryLock(pthreadApi, handle);
 	}
 	return (result);
 }
