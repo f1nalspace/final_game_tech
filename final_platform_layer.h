@@ -132,13 +132,18 @@ SOFTWARE.
 	## v0.7.6.0 beta:
 	- Changed: Renamed fplGetRunningArchitectureType to fplGetRunningArchitecture
 	- Changed: Renamed fplThreadDestroy() to fplThreadTerminate() + signature changed (Returns bool)
-	- Changed: fplSignalInit() + new parameter "isSetInitially"
+	- Changed: fplSignalInit() + new parameter "initialValue"
+    - Changed: All functions which uses timeout uses fplTimeoutValue instead of uint32_t
+    - Changed: Removed timeout parameter from fplMutexLock()
 	- New: Added struct fplConditionVariable
+    - New: Added enum fplSignalValue
 	- New: Added fplConditionInit()
 	- New: Added fplConditionDestroy()
 	- New: Added fplConditionWait()
 	- New: Added fplConditionSignal()
 	- New: Added fplConditionBroadcast()
+    - New: Added typedef fplTimeoutValue
+    - New: Added constant FPL_TIMEOUT_INFINITE
 
 	- Changed: [Win32] Thread resources are automatically cleaned up when a thread is done running
 	- Changed: [POSIX] Thread resources are automatically cleaned up when a thread is done running
@@ -2161,13 +2166,65 @@ fpl_common_api void fplConsoleFormatError(const char *format, ...);
 
 // ----------------------------------------------------------------------------
 /**
+  * \defgroup Timings Timing functions
+  * \brief Functions for retrieving timebased informations
+  * \{
+  */
+// ----------------------------------------------------------------------------
+
+/**
+  * \brief Returns the current system clock in seconds in high precision (micro/nano seconds)
+  * \return Returns number of seconds since some fixed starting point (OS start, System start, etc).
+  * \note Can only be used to calculate a difference in time!
+  */
+fpl_platform_api double fplGetTimeInSecondsHP();
+/**
+  * \brief Returns the current system clock in seconds in low precision (milliseconds)
+  * \return Returns number of seconds since some fixed starting point (OS start, System start, etc).
+  * \note Can only be used to calculate a difference in time!
+  */
+fpl_platform_api uint64_t fplGetTimeInSecondsLP();
+/**
+  * \brief Returns the current system clock in seconds in default precision
+  * \return Returns number of seconds since some fixed starting point (OS start, System start, etc).
+  * \note Can only be used to calculate a difference in time. There is no guarantee to get high precision here, use for high precision \ref fplGetTimeInSecondsHP() instead!
+  */
+fpl_platform_api double fplGetTimeInSeconds();
+/**
+  * \brief Returns the current system clock in milliseconds in high precision (micro/nano seconds)
+  * \return Returns number of milliseconds since some fixed starting point (OS start, System start, etc).
+  * \note Can only be used to calculate a difference in time!
+  */
+fpl_platform_api double fplGetTimeInMillisecondsHP();
+/**
+  * \brief Returns the current system clock in milliseconds in low precision (milliseconds)
+  * \return Returns number of milliseconds since some fixed starting point (OS start, System start, etc).
+  * \note Can only be used to calculate a difference in time!
+  */
+fpl_platform_api uint64_t fplGetTimeInMillisecondsLP();
+/**
+  * \brief Returns the current system clock in milliseconds
+  * \return Returns number of milliseconds since some fixed starting point (OS start, System start, etc).
+  * \note Can only be used to calculate a difference in time!
+  */
+fpl_platform_api uint64_t fplGetTimeInMilliseconds();
+
+/** \}*/
+
+// ----------------------------------------------------------------------------
+/**
   * \defgroup Threading Threading and syncronisation routines
   * \brief Tons of functions for multithreading, mutex and signal creation and handling
   * \{
   */
 // ----------------------------------------------------------------------------
 
-  //! Thread state
+//! Type definition for a timeout value in milliseconds
+typedef uint32_t fplTimeoutValue;
+//! Infinite timeout constant
+#define FPL_TIMEOUT_INFINITE UINT32_MAX
+
+//! Thread state
 typedef enum fplThreadStates {
 	//! Thread is stopped
 	fplThreadState_Stopped = 0,
@@ -2255,6 +2312,14 @@ typedef struct fplSignalHandle {
 	bool isValid;
 } fplSignalHandle;
 
+//! Signal value enumeration
+typedef enum fplSignalValue {
+    //! Value is unset
+    fplSignalValue_Unset = 0,
+    //! Value is set
+    fplSignalValue_Set = 1,
+} fplSignalValue;
+
 //! Internal condition variable
 typedef union fplInternalConditionVariable {
 #if defined(FPL_PLATFORM_WIN32)
@@ -2311,26 +2376,26 @@ fpl_platform_api bool fplThreadTerminate(fplThreadHandle *thread);
 /**
   * \brief Wait until the given thread is done running or the given timeout has been reached.
   * \param thread Thread
-  * \param maxMilliseconds Optional number of milliseconds to wait. When this is set to UINT32_MAX it may wait infinitly. (Default: UINT32_MAX)
+  * \param timeout Number of milliseconds to wait. When this is set to \ref FPL_TIMEOUT_INFINITE it will wait infinitly.
   * \return Returns true when the thread completes or when the timeout has been reached.
   */
-fpl_platform_api bool fplThreadWaitForOne(fplThreadHandle *thread, const uint32_t maxMilliseconds);
+fpl_platform_api bool fplThreadWaitForOne(fplThreadHandle *thread, const fplTimeoutValue timeout);
 /**
   * \brief Wait until all given threads are done running or the given timeout has been reached.
   * \param threads Array of threads
   * \param count Number of threads in the array
-  * \param maxMilliseconds Optional number of milliseconds to wait. When this is set to UINT32_MAX it may wait infinitly. (Default: UINT32_MAX)
+  * \param timeout Number of milliseconds to wait. When this is set to \ref FPL_TIMEOUT_INFINITE it will wait infinitly.
   * \return Returns true when all threads completes or when the timeout has been reached.
   */
-fpl_platform_api bool fplThreadWaitForAll(fplThreadHandle *threads[], const size_t count, const uint32_t maxMilliseconds);
+fpl_platform_api bool fplThreadWaitForAll(fplThreadHandle *threads[], const size_t count, const fplTimeoutValue timeout);
 /**
   * \brief Wait until one of given threads is done running or the given timeout has been reached.
   * \param threads Array of threads
   * \param count Number of threads in the array
-  * \param maxMilliseconds Optional number of milliseconds to wait. When this is set to UINT32_MAX it may wait infinitly. (Default: UINT32_MAX)
+  * \param timeout Number of milliseconds to wait. When this is set to \ref FPL_TIMEOUT_INFINITE it will wait infinitly.
   * \return Returns true when one thread completes or when the timeout has been reached.
   */
-fpl_platform_api bool fplThreadWaitForAny(fplThreadHandle *threads[], const size_t count, const uint32_t maxMilliseconds);
+fpl_platform_api bool fplThreadWaitForAny(fplThreadHandle *threads[], const size_t count, const fplTimeoutValue timeout);
 
 /**
   * \brief Initializes the given mutex
@@ -2347,10 +2412,9 @@ fpl_platform_api void fplMutexDestroy(fplMutexHandle *mutex);
 /**
   * \brief Locks the given mutex and ensures that other threads will wait until it gets unlocked or the timeout has been reached.
   * \param mutex Pointer to a mutex handle
-  * \param maxMilliseconds Optional number of milliseconds to wait. When this is set to UINT32_MAX it may wait infinitly. (Default: UINT32_MAX)
   * \returns True when mutex was locked or false otherwise.
   */
-fpl_platform_api bool fplMutexLock(fplMutexHandle *mutex, const uint32_t maxMilliseconds);
+fpl_platform_api bool fplMutexLock(fplMutexHandle *mutex);
 /**
  * \brief Unlocks the given mutex
  * \param mutex Pointer to a mutex handle
@@ -2361,11 +2425,11 @@ fpl_platform_api bool fplMutexUnlock(fplMutexHandle *mutex);
 /**
   * \brief Initializes the given signal
   * \param signal Pointer to a signal handle
-  * \param isSetInitially Signal is set initially or not
+  * \param initialValue Initial value the signal is set to
   * \note Use \ref fplSignalDestroy() when you are done with this Signal.
   * \return True when initialization was successful, false otherwise.
   */
-fpl_platform_api bool fplSignalInit(fplSignalHandle *signal, bool isSetInitially);
+fpl_platform_api bool fplSignalInit(fplSignalHandle *signal, const fplSignalValue initialValue);
 /**
   * \brief Releases the given signal and clears the structure to zero.
   * \param signal Pointer to a signal handle
@@ -2374,26 +2438,26 @@ fpl_platform_api void fplSignalDestroy(fplSignalHandle *signal);
 /**
   * \brief Waits until the given signal are waked up.
   * \param signal Pointer to a signal handle
-  * \param maxMilliseconds Number of milliseconds to wait. When this is set to UINT32_MAX it may wait infinitly.
+  * \param timeout Number of milliseconds to wait. When this is set to \ref FPL_TIMEOUT_INFINITE it will wait infinitly.
   * \return Returns true when the signal woke up or the timeout has been reached, otherwise false.
   */
-fpl_platform_api bool fplSignalWaitForOne(fplSignalHandle *signal, const uint32_t maxMilliseconds);
+fpl_platform_api bool fplSignalWaitForOne(fplSignalHandle *signal, const fplTimeoutValue timeout);
 /**
   * \brief Waits until all the given signal are waked up.
   * \param signals Array of signals
   * \param count Number of signals
-  * \param maxMilliseconds Number of milliseconds to wait. When this is set to UINT32_MAX it may wait infinitly.
+  * \param timeout Number of milliseconds to wait. When this is set to \ref FPL_TIMEOUT_INFINITE it will wait infinitly.
   * \return Returns true when all signals woke up or the timeout has been reached, otherwise false.
   */
-fpl_platform_api bool fplSignalWaitForAll(fplSignalHandle *signals[], const size_t count, const uint32_t maxMilliseconds);
+fpl_platform_api bool fplSignalWaitForAll(fplSignalHandle *signals[], const size_t count, const fplTimeoutValue timeout);
 /**
   * \brief Waits until any of the given signals wakes up or the timeout has been reached.
   * \param signals Array of signals
   * \param count Number of signals
-  * \param maxMilliseconds Number of milliseconds to wait. When this is set to UINT32_MAX it may wait infinitly.
+  * \param timeout Number of milliseconds to wait. When this is set to \ref FPL_TIMEOUT_INFINITE it will wait infinitly.
   * \return Returns true when any of the signals woke up or the timeout has been reached, otherwise false.
   */
-fpl_platform_api bool fplSignalWaitForAny(fplSignalHandle *signals[], const size_t count, const uint32_t maxMilliseconds);
+fpl_platform_api bool fplSignalWaitForAny(fplSignalHandle *signals[], const size_t count, const fplTimeoutValue timeout);
 /**
   * \brief Sets the signal and wakes up the given signal.
   * \param signal Pointer to a signal handle
@@ -2423,10 +2487,10 @@ fpl_platform_api void fplConditionDestroy(fplConditionVariable *condition);
   * \brief Sleeps on the given condition and releases the mutex when done.
   * \param condition Pointer to a \ref fplConditionVariable
   * \param mutex Pointer to a \ref fplMutexHandle
-  * \param maxMilliseconds Number of milliseconds to wait. When this is set to UINT32_MAX it may wait infinitly.
+  * \param timeout Number of milliseconds to wait. When this is set to \ref FPL_TIMEOUT_INFINITE it will wait infinitly.
   * \return True when the function succeeds, false otherwise.
   */
-fpl_platform_api bool fplConditionWait(fplConditionVariable *condition, fplMutexHandle *mutex, uint32_t maxMilliseconds);
+fpl_platform_api bool fplConditionWait(fplConditionVariable *condition, fplMutexHandle *mutex, const fplTimeoutValue timeout);
 /**
   * \brief Wakes up one thread which waits on the given condition.
   * \param condition Pointer to a \ref fplConditionVariable
@@ -2498,52 +2562,6 @@ fpl_common_api void *fplMemoryAlignedAllocate(const size_t size, const size_t al
   * \warning This should never be called with a not-aligned memory pointer! For freeing not-aligned memory, use \ref fplMemoryFree() instead.
   */
 fpl_common_api void fplMemoryAlignedFree(void *ptr);
-
-/** \}*/
-
-// ----------------------------------------------------------------------------
-/**
-  * \defgroup Timings Timing functions
-  * \brief Functions for retrieving timebased informations
-  * \{
-  */
-// ----------------------------------------------------------------------------
-/**
-  * \brief Returns the current system clock in seconds in high precision (micro/nano seconds)
-  * \return Returns number of seconds since some fixed starting point (OS start, System start, etc).
-  * \note Can only be used to calculate a difference in time!
-  */
-fpl_platform_api double fplGetTimeInSecondsHP();
-/**
-  * \brief Returns the current system clock in seconds in low precision (milliseconds)
-  * \return Returns number of seconds since some fixed starting point (OS start, System start, etc).
-  * \note Can only be used to calculate a difference in time!
-  */
-fpl_platform_api uint64_t fplGetTimeInSecondsLP();
-/**
-  * \brief Returns the current system clock in seconds in default precision
-  * \return Returns number of seconds since some fixed starting point (OS start, System start, etc).
-  * \note Can only be used to calculate a difference in time. There is no guarantee to get high precision here, use for high precision \ref fplGetTimeInSecondsHP() instead!
-  */
-fpl_platform_api double fplGetTimeInSeconds();
-/**
-  * \brief Returns the current system clock in milliseconds in high precision (micro/nano seconds)
-  * \return Returns number of milliseconds since some fixed starting point (OS start, System start, etc).
-  * \note Can only be used to calculate a difference in time!
-  */
-fpl_platform_api double fplGetTimeInMillisecondsHP();
-/**
-  * \brief Returns the current system clock in milliseconds in low precision (milliseconds)
-  * \return Returns number of milliseconds since some fixed starting point (OS start, System start, etc).
-  * \note Can only be used to calculate a difference in time!
-  */
-fpl_platform_api uint64_t fplGetTimeInMillisecondsLP();
-/**
-  * \brief Returns the current system clock in milliseconds
-  * \return Returns number of milliseconds since some fixed starting point (OS start, System start, etc).
-  * \note Can only be used to calculate a difference in time!
-  */
-fpl_platform_api uint64_t fplGetTimeInMilliseconds();
 
 /** \}*/
 
@@ -6833,7 +6851,7 @@ fpl_internal fpl__Win32CommandLineUTF8Arguments fpl__Win32ParseAnsiArguments(LPS
 	return(result);
 }
 
-fpl_internal bool fpl__Win32ThreadWaitForMultiple(fplThreadHandle *threads[], const size_t count, const bool waitForAll, const uint32_t maxMilliseconds) {
+fpl_internal bool fpl__Win32ThreadWaitForMultiple(fplThreadHandle *threads[], const size_t count, const bool waitForAll, const fplTimeoutValue timeout) {
 	if(threads == fpl_null) {
 		fpl__ArgumentNullError("Threads");
 		return false;
@@ -6856,12 +6874,13 @@ fpl_internal bool fpl__Win32ThreadWaitForMultiple(fplThreadHandle *threads[], co
 		HANDLE handle = thread->internalHandle.win32ThreadHandle;
 		threadHandles[index] = handle;
 	}
-	DWORD code = WaitForMultipleObjects((DWORD)count, threadHandles, waitForAll ? TRUE : FALSE, maxMilliseconds < UINT32_MAX ? maxMilliseconds : INFINITE);
+	DWORD t = timeout == FPL_TIMEOUT_INFINITE ? INFINITE : timeout;
+	DWORD code = WaitForMultipleObjects((DWORD)count, threadHandles, waitForAll ? TRUE : FALSE, t);
 	bool result = (code != WAIT_TIMEOUT) && (code != WAIT_FAILED);
 	return(result);
 }
 
-fpl_internal bool fpl__Win32SignalWaitForMultiple(fplSignalHandle *signals[], const size_t count, const bool waitForAll, const uint32_t maxMilliseconds) {
+fpl_internal bool fpl__Win32SignalWaitForMultiple(fplSignalHandle *signals[], const size_t count, const bool waitForAll, const fplTimeoutValue timeout) {
 	if(signals == fpl_null) {
 		fpl__ArgumentNullError("Signals");
 		return false;
@@ -6884,7 +6903,8 @@ fpl_internal bool fpl__Win32SignalWaitForMultiple(fplSignalHandle *signals[], co
 		HANDLE handle = availableSignal->internalHandle.win32EventHandle;
 		signalHandles[index] = handle;
 	}
-	DWORD code = WaitForMultipleObjects((DWORD)count, signalHandles, waitForAll ? TRUE : FALSE, maxMilliseconds < UINT32_MAX ? maxMilliseconds : INFINITE);
+    DWORD t = timeout == FPL_TIMEOUT_INFINITE ? INFINITE : timeout;
+	DWORD code = WaitForMultipleObjects((DWORD)count, signalHandles, waitForAll ? TRUE : FALSE, t);
 	bool result = (code != WAIT_TIMEOUT) && (code != WAIT_FAILED);
 	return(result);
 }
@@ -7628,7 +7648,7 @@ fpl_platform_api bool fplThreadTerminate(fplThreadHandle *thread) {
 	}
 }
 
-fpl_platform_api bool fplThreadWaitForOne(fplThreadHandle *thread, const uint32_t maxMilliseconds) {
+fpl_platform_api bool fplThreadWaitForOne(fplThreadHandle *thread, const fplTimeoutValue timeout) {
 	if(thread == fpl_null) {
 		fpl__ArgumentNullError("Thread");
 		return false;
@@ -7638,17 +7658,18 @@ fpl_platform_api bool fplThreadWaitForOne(fplThreadHandle *thread, const uint32_
 		return false;
 	}
 	HANDLE handle = thread->internalHandle.win32ThreadHandle;
-	bool result = (WaitForSingleObject(handle, maxMilliseconds < UINT32_MAX ? maxMilliseconds : INFINITE) == WAIT_OBJECT_0);
+	DWORD t = timeout == FPL_INFINITE_MS ? INFINITE : timeout;
+	bool result = (WaitForSingleObject(handle, t) == WAIT_OBJECT_0);
 	return(result);
 }
 
-fpl_platform_api bool fplThreadWaitForAll(fplThreadHandle *threads[], const size_t count, const uint32_t maxMilliseconds) {
-	bool result = fpl__Win32ThreadWaitForMultiple(threads, count, true, maxMilliseconds);
+fpl_platform_api bool fplThreadWaitForAll(fplThreadHandle *threads[], const size_t count, const fplTimeoutValue timeout) {
+	bool result = fpl__Win32ThreadWaitForMultiple(threads, count, true, timeout);
 	return(result);
 }
 
-fpl_platform_api bool fplThreadWaitForAny(fplThreadHandle *threads[], const size_t count, const uint32_t maxMilliseconds) {
-	bool result = fpl__Win32ThreadWaitForMultiple(threads, count, false, maxMilliseconds);
+fpl_platform_api bool fplThreadWaitForAny(fplThreadHandle *threads[], const size_t count, const fplTimeoutValue timeout) {
+	bool result = fpl__Win32ThreadWaitForMultiple(threads, count, false, timeout);
 	return(result);
 }
 
@@ -7678,7 +7699,7 @@ fpl_platform_api void fplMutexDestroy(fplMutexHandle *mutex) {
 	FPL_CLEAR_STRUCT(mutex);
 }
 
-fpl_platform_api bool fplMutexLock(fplMutexHandle *mutex, const uint32_t maxMilliseconds) {
+fpl_platform_api bool fplMutexLock(fplMutexHandle *mutex) {
 	if(mutex == fpl_null) {
 		fpl__ArgumentNullError("Mutex");
 		return false;
@@ -7704,7 +7725,7 @@ fpl_platform_api bool fplMutexUnlock(fplMutexHandle *mutex) {
 	return true;
 }
 
-fpl_platform_api bool fplSignalInit(fplSignalHandle *signal, bool isSetInitially) {
+fpl_platform_api bool fplSignalInit(fplSignalHandle *signal, const fplSignalValue initialValue) {
 	if(signal == fpl_null) {
 		fpl__ArgumentNullError("Signal");
 		return false;
@@ -7715,7 +7736,7 @@ fpl_platform_api bool fplSignalInit(fplSignalHandle *signal, bool isSetInitially
 	}
 	FPL_CLEAR_STRUCT(signal);
 
-	HANDLE handle = CreateEventA(fpl_null, FALSE, isSetInitially ? TRUE : FALSE, fpl_null);
+	HANDLE handle = CreateEventA(fpl_null, FALSE, (initialValue == fplSignalValue_Set) ? TRUE : FALSE, fpl_null);
 	if(handle == fpl_null) {
 		fpl__PushError("Failed creating signal (Win32 event): %d", GetLastError());
 		return false;
@@ -7740,7 +7761,7 @@ fpl_platform_api void fplSignalDestroy(fplSignalHandle *signal) {
 	FPL_CLEAR_STRUCT(signal);
 }
 
-fpl_platform_api bool fplSignalWaitForOne(fplSignalHandle *signal, const uint32_t maxMilliseconds) {
+fpl_platform_api bool fplSignalWaitForOne(fplSignalHandle *signal, const fplTimeoutValue timeout) {
 	if(signal == fpl_null) {
 		fpl__ArgumentNullError("Signal");
 		return false;
@@ -7750,17 +7771,18 @@ fpl_platform_api bool fplSignalWaitForOne(fplSignalHandle *signal, const uint32_
 		return false;
 	}
 	HANDLE handle = signal->internalHandle.win32EventHandle;
-	bool result = (WaitForSingleObject(handle, maxMilliseconds < UINT32_MAX ? maxMilliseconds : INFINITE) == WAIT_OBJECT_0);
+	DWORD t = timeout == FPL_TIMEOUT_INFINITE ? INFINITE : timeout;
+	bool result = (WaitForSingleObject(handle, t) == WAIT_OBJECT_0);
 	return(result);
 }
 
-fpl_platform_api bool fplSignalWaitForAll(fplSignalHandle *signals[], const size_t count, const uint32_t maxMilliseconds) {
-	bool result = fpl__Win32SignalWaitForMultiple((fplSignalHandle **)signals, count, true, maxMilliseconds);
+fpl_platform_api bool fplSignalWaitForAll(fplSignalHandle *signals[], const size_t count, const fplTimeoutValue timeout) {
+	bool result = fpl__Win32SignalWaitForMultiple((fplSignalHandle **)signals, count, true, timeout);
 	return(result);
 }
 
-fpl_platform_api bool fplSignalWaitForAny(fplSignalHandle *signals[], const size_t count, const uint32_t maxMilliseconds) {
-	bool result = fpl__Win32SignalWaitForMultiple((fplSignalHandle **)signals, count, false, maxMilliseconds);
+fpl_platform_api bool fplSignalWaitForAny(fplSignalHandle *signals[], const size_t count, const fplTimeoutValue timeout) {
+	bool result = fpl__Win32SignalWaitForMultiple((fplSignalHandle **)signals, count, false, timeout);
 	return(result);
 }
 
@@ -7811,7 +7833,7 @@ fpl_platform_api void fplConditionDestroy(fplConditionVariable *condition) {
 	FPL_CLEAR_STRUCT(condition);
 }
 
-fpl_platform_api bool fplConditionWait(fplConditionVariable *condition, fplMutexHandle *mutex, uint32_t maxMilliseconds) {
+fpl_platform_api bool fplConditionWait(fplConditionVariable *condition, fplMutexHandle *mutex, const fplTimeoutValue timeout) {
 	if(condition == fpl_null) {
 		fpl__ArgumentNullError("Condition");
 		return false;
@@ -7828,8 +7850,8 @@ fpl_platform_api bool fplConditionWait(fplConditionVariable *condition, fplMutex
 		fpl__PushError("Mutex is not valid!");
 		return false;
 	}
-	DWORD timeout = maxMilliseconds == UINT32_MAX ? INFINITE : maxMilliseconds;
-	bool result = SleepConditionVariableCS(&condition->internalHandle.win32Condition, &mutex->internalHandle.win32CriticalSection, timeout) != 0;
+	DWORD t = timeout == UINT32_MAX ? INFINITE : timeout;
+	bool result = SleepConditionVariableCS(&condition->internalHandle.win32Condition, &mutex->internalHandle.win32CriticalSection, t) != 0;
 	return(result);
 }
 
@@ -8953,7 +8975,7 @@ fpl_internal_inline void fpl__InitWaitTimeSpec(const uint32_t milliseconds, time
 	outSpec->tv_nsec += nanoSecs;
 }
 
-fpl_internal bool fpl__PosixThreadWaitForMultiple(fplThreadHandle *threads[], const uint32_t minCount, const uint32_t maxCount, const uint32_t maxMilliseconds) {
+fpl_internal bool fpl__PosixThreadWaitForMultiple(fplThreadHandle *threads[], const uint32_t minCount, const uint32_t maxCount, const fplTimeoutValue timeout) {
 	if(threads == fpl_null) {
 		fpl__ArgumentNullError("Threads");
 		return false;
@@ -8998,7 +9020,7 @@ fpl_internal bool fpl__PosixThreadWaitForMultiple(fplThreadHandle *threads[], co
 			}
 			fplThreadSleep(10);
 		}
-		if((maxMilliseconds != UINT32_MAX) && (fplGetTimeInMilliseconds() - startTime) >= maxMilliseconds) {
+		if((timeout != FPL_TIMEOUT_INFINITE) && (fplGetTimeInMilliseconds() - startTime) >= timeout) {
 			result = false;
 			break;
 		}
@@ -9254,7 +9276,7 @@ fpl_platform_api fplThreadHandle *fplThreadCreate(fpl_run_thread_function *runFu
 	return(result);
 }
 
-fpl_platform_api bool fplThreadWaitForOne(fplThreadHandle *thread, const uint32_t maxMilliseconds) {
+fpl_platform_api bool fplThreadWaitForOne(fplThreadHandle *thread, const fplTimeoutValue timeout) {
 	const fpl__PlatformAppState *appState = fpl__global__AppState;
 	const fpl__PThreadApi *pthreadApi = &appState->posix.pthreadApi;
 	if(pthreadApi->libHandle == fpl_null) {
@@ -9265,19 +9287,22 @@ fpl_platform_api bool fplThreadWaitForOne(fplThreadHandle *thread, const uint32_
 	if(thread != fpl_null && thread->isValid) {
 		// Wait until it shuts down
 		pthread_t threadHandle = thread->internalHandle.posixThread;
+
+		// @TODO(final): POSIX Use timeout in fplThreadWaitForOne
+
 		int joinRes = pthreadApi->pthread_join(threadHandle, fpl_null);
 		result = (joinRes == 0);
 	}
 	return (result);
 }
 
-fpl_platform_api bool fplThreadWaitForAll(fplThreadHandle *threads[], const size_t count, const uint32_t maxMilliseconds) {
-	bool result = fpl__PosixThreadWaitForMultiple(threads, count, count, maxMilliseconds);
+fpl_platform_api bool fplThreadWaitForAll(fplThreadHandle *threads[], const size_t count, const fplTimeoutValue timeout) {
+	bool result = fpl__PosixThreadWaitForMultiple(threads, count, count, timeout);
 	return(result);
 }
 
-fpl_platform_api bool fplThreadWaitForAny(fplThreadHandle *threads[], const size_t count, const uint32_t maxMilliseconds) {
-	bool result = fpl__PosixThreadWaitForMultiple(threads, 1, count, maxMilliseconds);
+fpl_platform_api bool fplThreadWaitForAny(fplThreadHandle *threads[], const size_t count, const fplTimeoutValue timeout) {
+	bool result = fpl__PosixThreadWaitForMultiple(threads, 1, count, timeout);
 	return(result);
 }
 
@@ -9338,7 +9363,7 @@ fpl_platform_api void fplMutexDestroy(fplMutexHandle *mutex) {
 	}
 }
 
-fpl_platform_api bool fplMutexLock(fplMutexHandle *mutex, const uint32_t maxMilliseconds) {
+fpl_platform_api bool fplMutexLock(fplMutexHandle *mutex) {
 	if(mutex == fpl_null) {
 		fpl__ArgumentNullError("Mutex");
 		return false;
@@ -9419,7 +9444,7 @@ fpl_platform_api void fplConditionDestroy(fplConditionVariable *condition) {
 	FPL_CLEAR_STRUCT(condition);
 }
 
-fpl_platform_api bool fplConditionWait(fplConditionVariable *condition, fplMutexHandle *mutex, uint32_t maxMilliseconds) {
+fpl_platform_api bool fplConditionWait(fplConditionVariable *condition, fplMutexHandle *mutex, const fplTimeoutValue timeout) {
 	if(condition == fpl_null) {
 		fpl__ArgumentNullError("Condition");
 		return false;
@@ -9444,7 +9469,14 @@ fpl_platform_api bool fplConditionWait(fplConditionVariable *condition, fplMutex
 	}
 	pthread_cond_t *cond = &condition->internalHandle.posixCondition;
 	pthread_mutex_t *mut = &mutex->internalHandle.posixMutex;
-	bool result = pthreadApi->pthread_cond_wait(cond, mut) == 0;
+    bool result;
+	if (timeout == FPL_TIMEOUT_INFINITE) {
+        result = pthreadApi->pthread_cond_wait(cond, mut) == 0;
+    } else {
+	    timespec t;
+        fpl__InitWaitTimeSpec(timeout, &t);
+        result = pthreadApi->pthread_cond_timedwait(cond, mut, &t) == 0;
+	}
 	return(result);
 }
 
@@ -10713,7 +10745,7 @@ fpl_platform_api bool fplGetCurrentUsername(char *nameBuffer, size_t maxNameBuff
 //
 // Linux Threading
 //
-fpl_platform_api bool fplSignalInit(fplSignalHandle *signal, bool isSetInitially) {
+fpl_platform_api bool fplSignalInit(fplSignalHandle *signal, const fplSignalValue initialValue) {
 	if(signal == fpl_null) {
 		fpl__ArgumentNullError("Signal");
 		return false;
@@ -10723,7 +10755,7 @@ fpl_platform_api bool fplSignalInit(fplSignalHandle *signal, bool isSetInitially
 		return false;
 	}
 
-	int linuxEventHandle = eventfd(isSetInitially ? 1 : 0, EFD_CLOEXEC);
+	int linuxEventHandle = eventfd((initialValue == fplSignalValue_Set) ? 1 : 0, EFD_CLOEXEC);
 	if(linuxEventHandle == -1) {
 		fpl__PushError("Failed initializing signal '%p'", signal);
 		return false;
@@ -10748,7 +10780,7 @@ fpl_platform_api void fplSignalDestroy(fplSignalHandle *signal) {
 	FPL_CLEAR_STRUCT(signal);
 }
 
-fpl_platform_api bool fplSignalWaitForOne(fplSignalHandle *signal, const uint32_t maxMilliseconds) {
+fpl_platform_api bool fplSignalWaitForOne(fplSignalHandle *signal, const fplTimeoutValue timeout) {
 	if(signal == fpl_null) {
 		fpl__ArgumentNullError("Signal");
 		return false;
@@ -10758,7 +10790,7 @@ fpl_platform_api bool fplSignalWaitForOne(fplSignalHandle *signal, const uint32_
 		return(false);
 	}
 	int ev = signal->internalHandle.linuxEventHandle;
-	if(maxMilliseconds == UINT32_MAX) {
+	if(timeout == FPL_TIMEOUT_INFINITE) {
 		uint64_t value;
 		read(ev, &value, sizeof(value));
 		return true;
@@ -10766,7 +10798,7 @@ fpl_platform_api bool fplSignalWaitForOne(fplSignalHandle *signal, const uint32_
 		fd_set f;
 		FD_ZERO(&f);
 		FD_SET(ev, &f);
-		struct timeval t = { 0, maxMilliseconds * 1000 };
+		struct timeval t = { 0, timeout * 1000 };
 		int selectResult = select(1, &f, NULL, NULL, &t);
 		if(selectResult == 0) {
 			// Timeout
@@ -10780,7 +10812,7 @@ fpl_platform_api bool fplSignalWaitForOne(fplSignalHandle *signal, const uint32_
 	}
 }
 
-fpl_internal bool fpl__LinuxSignalWaitForMultiple(fplSignalHandle *signals[], const uint32_t minCount, const uint32_t maxCount, const uint32_t maxMilliseconds) {
+fpl_internal bool fpl__LinuxSignalWaitForMultiple(fplSignalHandle *signals[], const uint32_t minCount, const uint32_t maxCount, const fplTimeoutValue timeout) {
 	if(signals == fpl_null) {
 		fpl__ArgumentNullError("Signals");
 		return false;
@@ -10814,12 +10846,12 @@ fpl_internal bool fpl__LinuxSignalWaitForMultiple(fplSignalHandle *signals[], co
 	}
 
 	// Wait
-	int timeout = maxMilliseconds == UINT32_MAX ? -1 : maxMilliseconds;
+	int t = timeout == FPL_TIMEOUT_INFINITE ? -1 : timeout;
 	int eventsResult = -1;
 	int waiting = minCount;
 	struct epoll_event revent[FPL__MAX_SIGNAL_COUNT];
 	while(waiting > 0) {
-		int ret = epoll_wait(e, revent, waiting, timeout);
+		int ret = epoll_wait(e, revent, waiting, t);
 		if(ret == 0) {
 			if(minCount == maxCount) {
 				eventsResult = -1;
@@ -10837,13 +10869,13 @@ fpl_internal bool fpl__LinuxSignalWaitForMultiple(fplSignalHandle *signals[], co
 	return(result);
 }
 
-fpl_platform_api bool fplSignalWaitForAll(fplSignalHandle *signals[], const size_t count, const uint32_t maxMilliseconds) {
-	bool result = fpl__LinuxSignalWaitForMultiple(signals, count, count, maxMilliseconds);
+fpl_platform_api bool fplSignalWaitForAll(fplSignalHandle *signals[], const size_t count, const fplTimeoutValue timeout) {
+	bool result = fpl__LinuxSignalWaitForMultiple(signals, count, count, timeout);
 	return(result);
 }
 
-fpl_platform_api bool fplSignalWaitForAny(fplSignalHandle *signals[], const size_t count, const uint32_t maxMilliseconds) {
-	bool result = fpl__LinuxSignalWaitForMultiple(signals, 1, count, maxMilliseconds);
+fpl_platform_api bool fplSignalWaitForAny(fplSignalHandle *signals[], const size_t count, const fplTimeoutValue timeout) {
+	bool result = fpl__LinuxSignalWaitForMultiple(signals, 1, count, timeout);
 	return(result);
 }
 
