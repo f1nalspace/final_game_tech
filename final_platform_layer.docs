@@ -1093,18 +1093,23 @@
 	This thread is automatically started and will run your user code almost immediatly.<br>
 
     \code{.c}
-    static void MyThreadProc(const fplThreadHandle *context, void *data) {
+    void MyThreadProc(const fplThreadHandle *context, void *data) {
         // ... do something here
     }
-    static void RunMyThread() {
+    void RunMyThread() {
         int myData = 42;
         fplThread *thread = fplThreadCreate(MyThreadProc, &myData);
         fplThreadWaitForOne(thread, UINT32_MAX);
     }
     \endcode
 
-	\note The internal thread resources will be cleaned up automatically after your code has finished running.<br>
-	\warning When a Thread has finished running you cannot use the same \ref fplThreadHandle anymore -> It may be reassigned to another thread in the future.<br>
+	\note The internal Thread resources will be cleaned up automatically after your code has finished running.<br>
+	\warning When a Thread has finished running you cannot use the same \ref fplThreadHandle anymore -> It may be reassigned to another Thread in the future.<br>
+
+	\section section_otutorial_threading_threads_destroy Destroying a Thread?
+	You dont have to manually release the Thread resources, this will be cleaned up automatically when either the Thread ends naturally or when it was terminated forcefully using \ref fplThreadTerminate() .
+	<br>
+	\warning Do not call \ref fplThreadTerminate() to stop or release a Thread! Let the thread exit naturally.
 
 	\section section_otutorial_threading_threads_wait Waiting/Joining for Threads to Exit
 
@@ -1112,37 +1117,56 @@
 	To wait for a single Thread to finish, you simply call \ref fplThreadWaitForOne() with the thread handle as argument and a timeout parameter.
 
 	\code{.c}
-	// Wait forever
+	// Wait until the thread is finished
 	fplThreadWaitForOne(thread, UINT32_MAX);
 
 	// ... or
 
-	// Wait for 5 seconds at max
+	// Wait at max for 5 seconds to finish the thread
 	fplThreadWaitForOne(thread, 5000);
     \endcode
 
 	\subsection subsection_otutorial_threading_threads_wait_any Wait for any Thread to Exit
 	To wait until at least one Thread had finished you simply call \ref fplThreadWaitForAny() with a array of \ref fplThreadHandle , the number of threads and a timeout parameter.
 
-	\subsection subsection_otutorial_threading_threads_wait_any Wait for all Threads to Exit
-	To wait for all Threads to finished you simply call \ref fplThreadWaitForAll() with a array of \ref fplThreadHandle , the number of threads and a timeout parameter.
+	\code{.c}
+	// Wait until one of the threads is finished
+	fplThreadWaitForAny(threads, numOfThreads, UINT32_MAX);
+
+	// ... or
+
+	// Wait at max for 5 seconds to finish at least one of the threads
+	fplThreadWaitForAny(threads, numOfThreads, 5000);
+    \endcode
+
+	\subsection subsection_otutorial_threading_threads_wait_all Wait for all Threads to Exit
+	To wait for all Threads to be finished you simply call \ref fplThreadWaitForAll() with a array of \ref fplThreadHandle , the number of threads and a timeout parameter.
+
+	\code{.c}
+	// Wait until all of the threads are finished
+	fplThreadWaitForAll(threads, numOfThreads, UINT32_MAX);
+
+	// ... or
+
+	// Wait at max for 5 seconds to finish all threads
+	fplThreadWaitForAll(threads, numOfThreads, 5000);
+    \endcode
 
 	\section section_otutorial_threading_threads_terminate Terminate a thread
-	Sometimes you need a way to forcefully terminate a thread.<br>
-	For this you can call \ref fplThreadTerminate() with the thread handle in question.
+	Sometimes you need a way to forcefully terminate a thread. For this you can call \ref fplThreadTerminate() with the thread handle in question.
 	<br>
 	\note Using this will almost immediatly terminates the thread and releases its resources.
-	\note Its safe to call this when a thread is already terminated.
+	\note It is safe to call this when a thread is already terminated.
 
 	\section section_otutorial_threading_threads_states Query Thread State
 	There is just one function to query the thread state -> \ref fplGetThreadState() .<br>
 	If a thread is stopped or in the process of getting stopped it will return \ref fplThreadState_Stopped or \ref fplThreadState_Stopping respectively.<br>
 	If a thread is started or in the process of getting started it will return \ref fplThreadState_Running or \ref fplThreadState_Starting respectively.<br>
-	\note Use with care only!
 
 	\section section_otutorial_threading_threads_notes Notes
 	\note Your code should always ensure that it will exit eventually.<br>
-	To ensure this there are several \subpage page_otutorial_threading_sync you can use to achieve this.
+	To ensure this there are several \subpage page_otutorial_threading_sync you can use to achieve this.<br>
+	\note It is bad pratice to "Terminate" a thread, you should design your code to let threads end naturally.
 */
 
 /*!
@@ -1159,29 +1183,77 @@
 	After the initialization is done, you can start locking and unlocking it.<br>
 	When you are done with the mutex call \ref fplMutexDestroy() to release its internal resources.
 
-	\section section_otutorial_threading_mutexes_lock Locking a Mutex
-	Locking a mutex is simply done by calling \ref fplMutexLock() .<br>
-	If this mutex is not locked yet, it will be locked by the calling thread.<br>
-	It this mutex is already locked, the thread will wait forever until it gets unlocked.
+	\code{.c}
+	fplMutexHandle mutex;
+	if (!fplMutexInit(&mutex)) {
+	    // Error: Mutex failed initializing -> Too many active mutexes for this process
+	}
 
-	\section section_otutorial_threading_mutexes_unlock Unlocking a Mutex
+	// ... Mutex is not required anymore
+	fplMutexDestroy(&mutex);
+    \endcode
+
+	\section section_otutorial_threading_mutexes_locking Locking/Unlocking a Mutex
+
+	\subsection subsection_otutorial_threading_mutexes_locking_lock Locking a Mutex
+	Locking a mutex is simply done by calling \ref fplMutexLock() .<br>
+	If this mutex is not locked yet, it will be locked by the calling thread and the return value will be true.<br>
+	It this mutex is already locked, the thread will wait forever until it gets unlocked by another thread and will return false.<br>
+	<br>
+	\note You should always unlock the \ref fplMutexHandle as soon as possible - on the same callstack.<br>
+
+	\subsection subsection_otutorial_threading_mutexes_locking_unlock Unlocking a Mutex
 	Unlocking is done by calling \ref fplMutexUnlock() .<br>
-	If this mutex is locked and the thread matches the owner thread, it will be unlocked.<br>
-	In every other case the result if the call will be false, indicating that either it was not locked at all or the thread owner does not match.
+	The mutex will be unlocked when it was locked before and return true.<br>
+	If the mutex was not locked, it will fail and return false in this case.
+
+    \subsection subsection_otutorial_threading_mutexes_locking_example Example
+
+	\code{.c}
+	fplMutexLock(&mutex);
+	{
+	    // Do something with shared data here
+	}
+	fplMutexUnlock(&mutex);
+
+	if (fplMutexLock(&mutex)) {
+    	// Do something here as the "first" thread locking the mutex
+	    fplMutexUnlock(&mutex);
+	}
+    \endcode
+
+    \note It is recommend to put a opening/closing brace to mark the code inside the lock as critical code.
 */
 
 /*!
 	\page page_otutorial_threading_signals Signals
 	\tableofcontents
 
-	\section section_otutorial_threading_signals_overview
+	\section section_otutorial_threading_signals_overview Overview
 	This section explains how to create and handling of Signals.<br>
 	A signal is a Kernel-Level object used to notify one or multiple waiting threads.<br>
-	They can be shared across process boundaries and may be used as standalone locks to shared data, but the number of Signals are limited by the OS that can be allocated at a time.<br>
+	It internally contains a Value which is either \ref fplSignalValue_Set or \ref fplSignalValue_Unset.<br>
+	When this values gets changed, all threads which waits on that Signal will wakeup.<br>
+	They can be shared across process boundaries and may be used as standalone locks to shared data, but the number of Signals are limited by the OS that can be allocated at a time.
 
 	\section section_otutorial_threading_signals_init Initialize a Signal
 	To initialize a Signal you just call \ref fplSignalInit() with a \ref fplSignalHandle as a argument.<br>
-	Also you need to specify if the signal starts as set or unset as a second argument.
+	Also you need to specify if the signal starts as \ref fplSignalValue_Set or \ref fplSignalValue_Unset as a second argument.<br>
+	When you are done with that Signal you need to call \ref fplSignalDestroy() to release its internal resources.
+
+	\code{.c}
+	fplSignalHandle mutex;
+	// Initialize a signal as "unset"
+	if (!fplSignalInit(&mutex, fplSignalValue_Unset)) {
+	    // Error: Signal failed initializing -> Too many active signals
+	}
+
+	// ... Signal is not required anymore
+	fplSignalDestroy(&mutex);
+    \endcode
+
+	\section section_otutorial_threading_signals_waiting Waiting on a Signal
+	To let one Thread to wait until a Signal is set, you simply call \ref fplSignalWaitForOne() with a \ref fplSignalHandle and a timeout as parameters.
 */
 
 /*!
@@ -1191,7 +1263,7 @@
 	\section section_otutorial_threading_conditions_overview Overview
 	This section explains how to create and handling of Condition-Variables.<br>
 	A condition variable is a User-Level Object used to let threads wait until a condition variable is signaled or broadcasted.<br>
-	Unless Signals, Condition-Variables requires you to use a \ref fplMutex as a locking mechanism.<br>
+	Unlike Signals, Condition-Variables requires you to use a \ref fplMutexHandle as a locking mechanism.<br>
 	They cannot be shared across process boundaries but the number of Condition-Variables is only limited by the amount of memory you have.
 
 	\section otutorial_threading_conditions_init Initialize a Condition-Variable
@@ -1217,6 +1289,12 @@
 /*!
 	\page page_otutorial_threading_sync Syncronisation Methods
 	\tableofcontents
+
+	- TODO(final): Explain why we need this
+
+	- TODO(final): Add examples of solving race conditions (Mutexes, Signals, Condition-Variables, Atomics)
+
+	- TODO(final): Add a comparison table to show the difference between the object types.
 */
 
 /*!
