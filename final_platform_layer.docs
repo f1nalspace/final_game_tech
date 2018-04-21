@@ -1086,23 +1086,46 @@
 	\section section_otutorial_threading_threads_overview Overview
 	In this section you will learn the Basics about creating and handling of Threads.<br>
 	With Threads you can run multiple pieces of Code in parallel.<br>
-	<br>
-	Threads require the use of \subpage page_otutorial_threading_sync to solve sharing issues and deadlocks.
+	Threads require the use of \subpage page_otutorial_threading_sync to prevent race conditions.
 
 	\section section_otutorial_threading_threads_create Creating a Thread
 	To create a thread you call \ref fplThreadCreate() with a \ref fpl_run_thread_function "callback" and a user pointer passed as arguments.<br>
 	This thread is automatically started and will run your user code almost immediatly.<br>
-	\note The internal thread resources will be cleaned up automatically after your code is finished running.<br>
+
+    \code{.c}
+    static void MyThreadProc(const fplThreadHandle *context, void *data) {
+        // ... do something here
+    }
+    static void RunMyThread() {
+        int myData = 42;
+        fplThread *thread = fplThreadCreate(MyThreadProc, &myData);
+        fplThreadWaitForOne(thread, UINT32_MAX);
+    }
+    \endcode
+
+	\note The internal thread resources will be cleaned up automatically after your code has finished running.<br>
+	\warning When a Thread has finished running you cannot use the same \ref fplThreadHandle anymore -> It may be reassigned to another thread in the future.<br>
 
 	\section section_otutorial_threading_threads_wait Waiting/Joining for Threads to Exit
 
 	\subsection subsection_otutorial_threading_threads_wait_single Wait for a single Thread to Exit
-	To wait for a single Thread to finish, you simply call \ref fplThreadWaitForOne() with the thread handle as argument.
+	To wait for a single Thread to finish, you simply call \ref fplThreadWaitForOne() with the thread handle as argument and a timeout parameter.
 
-	\subsection subsection_otutorial_threading_threads_wait_multiple Wait for multiple Threads to Exit
-	To wait for a multiple Threads to finish, you have two choices:<br>
-	- Wait for all terminates to finish: \ref fplThreadWaitForAll()
-	- Wait for at least one thread to finish: \ref fplThreadWaitForAny()
+	\code{.c}
+	// Wait forever
+	fplThreadWaitForOne(thread, UINT32_MAX);
+
+	// ... or
+
+	// Wait for 5 seconds at max
+	fplThreadWaitForOne(thread, 5000);
+    \endcode
+
+	\subsection subsection_otutorial_threading_threads_wait_any Wait for any Thread to Exit
+	To wait until at least one Thread had finished you simply call \ref fplThreadWaitForAny() with a array of \ref fplThreadHandle , the number of threads and a timeout parameter.
+
+	\subsection subsection_otutorial_threading_threads_wait_any Wait for all Threads to Exit
+	To wait for all Threads to finished you simply call \ref fplThreadWaitForAll() with a array of \ref fplThreadHandle , the number of threads and a timeout parameter.
 
 	\section section_otutorial_threading_threads_terminate Terminate a thread
 	Sometimes you need a way to forcefully terminate a thread.<br>
@@ -1127,9 +1150,9 @@
 	\tableofcontents
 
 	\section section_otutorial_threading_mutexes_overview Overview
-	This section explains how to create and handling of mutexes.<br>
-	A mutex is a OS Kernel mechanism used to prevent certain operations to happen on multiple threads simultaneously.<br>
-	In short you can lock Threads to wait until it gets unlocked by the calling Thread.
+	This section explains how to create and handling of Mutexes.<br>
+	A mutex is a Kernel-Level object used to prevent race conditions when multiple threads access the same data.<br>
+	With a mutex you can ensure that only one thread at a time can access data.
 
 	\section section_otutorial_threading_mutexes_init Initialize a Mutex
 	To initialize a mutex you call \ref fplMutexInit() with a pointer to a \ref fplMutexHandle .
@@ -1151,16 +1174,44 @@
 	\page page_otutorial_threading_signals Signals
 	\tableofcontents
 
+	\section section_otutorial_threading_signals_overview
+	This section explains how to create and handling of Signals.<br>
+	A signal is a Kernel-Level object used to notify one or multiple waiting threads.<br>
+	They can be shared across process boundaries and may be used as standalone locks to shared data, but the number of Signals are limited by the OS that can be allocated at a time.<br>
+
 	\section section_otutorial_threading_signals_init Initialize a Signal
-	To initialize a Signal you just call \ref fplSignalInit() with a pointer to a \ref fplSignalHandle .
+	To initialize a Signal you just call \ref fplSignalInit() with a \ref fplSignalHandle as a argument.<br>
+	Also you need to specify if the signal starts as set or unset as a second argument.
 */
 
 /*!
 	\page page_otutorial_threading_conditions Condition-Variables
 	\tableofcontents
 
+	\section section_otutorial_threading_conditions_overview Overview
+	This section explains how to create and handling of Condition-Variables.<br>
+	A condition variable is a User-Level Object used to let threads wait until a condition variable is signaled or broadcasted.<br>
+	Unless Signals, Condition-Variables requires you to use a \ref fplMutex as a locking mechanism.<br>
+	They cannot be shared across process boundaries but the number of Condition-Variables is only limited by the amount of memory you have.
+
 	\section otutorial_threading_conditions_init Initialize a Condition-Variable
-	To initialize a Condition-Variable you just call \ref fplConditionInit() with a pointer to a \ref fplConditionVariable .
+	To initialize a Condition-Variable you just call \ref fplConditionInit() with a \ref fplConditionVariable as a argument.<br>
+	When you are done with that Condition-Variable you need to call \ref fplConditionDestroy() to release its internal resources.
+
+	\section otutorial_threading_conditions_wait_single Waiting on a Condition-Variable
+	To let a thread wait on a Condition-Variable you simply call \ref fplConditionWait() with a \ref fplConditionVariable and a \ref fplMutexHandle as argument.
+	Also you need to specify the amount of milliseconds you want the thread to wait. If UINT32_MAX is passed it will wait forever.<br>
+
+	\section otutorial_threading_conditions_wait_multiple Waiting on multiple Condition-Variables?
+	A thread can only wait on one single condition variable at a time - if you need to wait on multiple conditions, you should consider using \subpage page_otutorial_threading_signals .
+
+	\section otutorial_threading_conditions_signal Signaling a Condition-Variable to one waiting Thread
+	To signal a Condition-Variable to one single waiting Thread you need to call \ref fplConditionSignal() with the \ref fplConditionVariable in question.<br>
+	If you want to let multiple threads waits on the same condition you should use \ref fplConditionBroadcast() instead.
+
+	\section otutorial_threading_conditions_broadcast Signaling a Condition-Variable to all waiting Threads
+	To broadcast a Condition-Variable to multiple waiting threads you need to call \ref  fplConditionBroadcast() with the \ref fplConditionVariable in question.<br>
+	If you just need a single thread to wait on the condition you should use \ref fplConditionSignal() instead.
 */
 
 /*!
