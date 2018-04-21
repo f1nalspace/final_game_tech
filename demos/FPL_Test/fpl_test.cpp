@@ -8,6 +8,7 @@
 #include "final_test.h"
 
 static void TestInit() {
+    ft::Line();
 	ft::Msg("Test InitPlatform with All init flags\n");
 	{
 		fplClearPlatformErrors();
@@ -29,6 +30,7 @@ static void TestInit() {
 }
 
 static void TestOSInfos() {
+    ft::Line();
 	ft::Msg("Get Platform Type\n");
 	{
 		fplPlatformType platType = fplGetPlatformType();
@@ -54,6 +56,7 @@ static void TestOSInfos() {
 }
 
 static void TestSizes() {
+    ft::Line();
 	// @NOTE(final): This may be pretty useless, because stdint.h guarantees the size
 	FT_EXPECTS(1, sizeof(uint8_t));
 	FT_EXPECTS(1, sizeof(int8_t));
@@ -75,6 +78,7 @@ static void TestSizes() {
 }
 
 static void TestMacros() {
+    ft::Line();
 	//
 	// FPL_ARRAYCOUNT
 	//
@@ -259,6 +263,7 @@ static void TestMacros() {
 }
 
 static void TestMemory() {
+    ft::Line();
 	ft::Msg("Test normal allocation and deallocation\n");
 	{
 		size_t memSize = FPL_KILOBYTES(42);
@@ -295,6 +300,7 @@ static void TestMemory() {
 }
 
 static void TestPaths() {
+    ft::Line();
 	if(fplPlatformInit(fplInitFlags_None, fpl_null)) {
 
 		char homePathBuffer[1024] = {};
@@ -338,6 +344,8 @@ static void TestPaths() {
 }
 
 static void TestHardware() {
+    ft::Line();
+
 	char cpuNameBuffer[1024] = {};
 	fplGetProcessorName(cpuNameBuffer, FPL_ARRAYCOUNT(cpuNameBuffer));
 	ft::Msg("Processor name: %s\n", cpuNameBuffer);
@@ -519,7 +527,7 @@ static void ThreadSignalsTest(const size_t slaveCount) {
 	SlaveThreadData slaveDatas[FPL__MAX_THREAD_COUNT] = {};
 	for(size_t threadIndex = 0; threadIndex < slaveCount; ++threadIndex) {
 		slaveDatas[threadIndex].base.num = masterData.base.num + (int)threadIndex + 1;
-		FT_IS_TRUE(fplSignalInit(&slaveDatas[threadIndex].signal, false));
+		FT_IS_TRUE(fplSignalInit(&slaveDatas[threadIndex].signal, fplSignalValue_Unset));
 		size_t i = masterData.signalCount++;
 		masterData.signals[i] = &slaveDatas[threadIndex].signal;
 	}
@@ -569,7 +577,7 @@ static void ConditionThreadSlaveProc(const fplThreadHandle *context, void *data)
 	ConditionSlaveThreadData *slaveData = (ConditionSlaveThreadData *)data;
 	int id = slaveData->base.num;
 	ft::Msg("Started Slave-Thread %d\n", id);
-	if (fplMutexLock(&slaveData->shared->mutex, UINT32_MAX)) {
+	if (fplMutexLock(&slaveData->shared->mutex)) {
 		ft::Msg("Wait for Condition on Slave-Thread %d\n", id);
 		fplConditionWait(&slaveData->shared->cond, &slaveData->shared->mutex, UINT32_MAX);
 		fplMutexUnlock(&slaveData->shared->mutex);
@@ -713,6 +721,7 @@ static void TestThreading() {
 }
 
 static void TestFiles() {
+    ft::Line();
 	ft::Msg("Test File Exists\n");
 	{
 		bool nonExisting = fplFileExists("C:\\Windows\\i_am_not_existing.lib");
@@ -741,7 +750,8 @@ static void TestFiles() {
 }
 
 static void TestAtomics() {
-	ft::Msg("Test AtomicExchangeU32 with different values\n");
+    ft::Line();
+    ft::Msg("Test AtomicExchangeU32 with different values\n");
 	{
 		const uint32_t expectedBefore = 42;
 		const uint32_t expectedAfter = 1337;
@@ -936,7 +946,8 @@ static void TestAtomics() {
 }
 
 static void TestStrings() {
-	ft::Msg("Test ansi string length\n");
+    ft::Line();
+    ft::Msg("Test ansi string length\n");
 	{
 		size_t actual = fplGetAnsiStringLength(nullptr);
 		ft::AssertSizeEquals(0, actual);
