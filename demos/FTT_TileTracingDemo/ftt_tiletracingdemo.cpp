@@ -1,3 +1,25 @@
+/*
+-------------------------------------------------------------------------------
+Name:
+	FTT | TileTracingDemo
+Description:
+	This demo shows how to use the "Final Tile Tracing" library.
+	FTT is a library for converting a Solid-Tilemap
+	into connected line segments - using a image contour tracing algorythmn.
+	This is useful to get create proper collision shapes in physics engines
+	such as Box2D.
+Requirements:
+	- C++
+	- Final Platform Layer v0.7+
+Author:
+	Torsten Spaete
+Changelog:
+	## 2018-04-23:
+	- Initial creation of this description block
+	- Forced Visual-Studio-Project to compile in C++ always
+-------------------------------------------------------------------------------
+*/
+
 #define FPL_IMPLEMENTATION
 #define FPL_NO_AUDIO
 #include "final_platform_layer.h"
@@ -97,8 +119,7 @@ static void DrawTile(const int32_t x, const int32_t y, bool filled) {
 
 int main(int argc, char **args) {
 	int result = 0;
-	fplSettings settings;
-	fplSetDefaultSettings(&settings);
+	fplSettings settings = fplMakeDefaultSettings();
 	fplCopyAnsiString("Tile-Tracing Example", settings.window.windowTitle, FPL_ARRAYCOUNT(settings.window.windowTitle) - 1);
 	settings.video.driver = fplVideoDriverType_OpenGL;
 	if (fplPlatformInit(fplInitFlags_Video, &settings)) {

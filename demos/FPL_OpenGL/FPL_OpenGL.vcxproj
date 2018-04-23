@@ -106,7 +106,7 @@
       <WarningLevel>Level3</WarningLevel>
       <Optimization>Disabled</Optimization>
       <PreprocessorDefinitions>WIN32;_DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <CompileAs>CompileAsCpp</CompileAs>
+      <CompileAs>CompileAsC</CompileAs>
       <IntrinsicFunctions>true</IntrinsicFunctions>
     </ClCompile>
     <Link>
@@ -121,7 +121,7 @@
       <WarningLevel>Level3</WarningLevel>
       <Optimization>Disabled</Optimization>
       <PreprocessorDefinitions>_DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <CompileAs>CompileAsCpp</CompileAs>
+      <CompileAs>CompileAsC</CompileAs>
       <ExceptionHandling>false</ExceptionHandling>
       <IntrinsicFunctions>true</IntrinsicFunctions>
     </ClCompile>
@@ -139,7 +139,7 @@
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <PreprocessorDefinitions>WIN32;NDEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <CompileAs>CompileAsCpp</CompileAs>
+      <CompileAs>CompileAsC</CompileAs>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -157,7 +157,7 @@
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <PreprocessorDefinitions>NDEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <CompileAs>CompileAsCpp</CompileAs>
+      <CompileAs>CompileAsC</CompileAs>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -167,7 +167,7 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="fpl_opengl.cpp" />
+    <ClCompile Include="fpl_opengl.c" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\..\final_platform_layer.h" />

@@ -1,3 +1,20 @@
+/*
+-------------------------------------------------------------------------------
+Name:
+	FPL-Demo | NoCRT
+Description:
+	Compiling a FPL Hello-World Console Application without the need of the CRT
+Requirements:
+	- Win32 / MSVC
+Author:
+	Torsten Spaete
+Changelog:
+	## 2018-04-23:
+	- Initial creation of this description block
+	- Forced Visual-Studio-Project to compile in C always
+-------------------------------------------------------------------------------
+*/
+
 #define FPL_IMPLEMENTATION
 #define FPL_NO_CRT
 #define FPL_APPTYPE_CONSOLE

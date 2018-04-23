@@ -1,60 +1,75 @@
 /*
+-------------------------------------------------------------------------------
+Name:
+	FPL-Demo | FFmpeg
 
-Custom FFMPEG Media Player Demo based on FPL and ffplay.c
-Written by Torsten Spaete
-
-[x] Reads packets from stream and queues them up
-[x] Decodes video and audio packets and queues them up as well
-[x] FFMPEG functions are loaded dynamically
-[x] Linked list for packet queue
-[x] Handle PTS/DTS to schedule video frame
-[x] Syncronize video to audio
-[x] Fix memory leak (There was no leak at all)
-[x] Support for FFMPEG static linking
-[x] Rewrite Frame Queue to support Peek in Previous, Current and Next frame
-[x] Introduce serials
-[x] Introduce null and flush packet
-[x] Restart
-[x] Frame dropping using prev/next frame
-[x] Pause/Resume
-[x] OpenGL Video Rendering
-[x] Syncronize audio to video
-[x] Use same ffmpeg name from every dynamic function
-[x] Fix bug for WMV always dropping nearly every frame (TimeBase was wrong all the time)
-[x] Aspect ratio calculation
-[x] Fullscreen toggling
-[x] Modern OpenGL 3.3
-[ ] OSD
-[ ] Seeking (+/- 5 secs)
-[ ] Frame by frame stepping
-[ ] Support for audio format change while playing
-[ ] Support for video format change while playing
-[x] Image format conversion (YUY2, YUV > RGB24 etc.)
-	[x] GLSL (YUV420P for now)
-	[x] Slow CPU implementation (YUV420P for now)
-[ ] Audio format conversion (Downsampling, Upsampling, S16 > F32 etc.)
-	[ ] Slow CPU implementation
-	[ ] Planar (Non-interleaved) samples to (Interleaved) Non-planar samples conversion
-[ ] Composite video rendering
-	[ ] Bitmap rect blitting
-	[ ] Subtitle Decoding and Compositing
-[ ] UI
-	[ ] Current Time
-	[ ] Buttons
-	[ ] File dialog
-	[ ] Seekbar
-	[ ] Playlist
-	[ ] Audio visualizer (FFT)
-
-Docs:
-- http://dranger.com/ffmpeg/tutorial01.html
-- https://blogs.gentoo.org/lu_zero/2015/10/15/deprecating-avpicture/
-- https://blogs.gentoo.org/lu_zero/2016/03/29/new-avcodec-api/
-- https://www.codeproject.com/tips/489450/creating-custom-ffmpeg-io-context
+Description:
+	Custom FFmpeg Media Player Demo based on FPL and ffplay.c
 
 Requirements:
-- Custom ffmpeg win64 build from https://ffmpeg.zeranoe.com/builds/
+	- C++ Compiler
+	- Platform x64 / Win32
+	- ffmpeg-20171123-a60b242-win64-shared (http://ffmpeg.zeranoe.com/builds/)
+	- ffmpeg-20171123-a60b242-win64-dev (http://ffmpeg.zeranoe.com/builds/)
 
+Author:
+	Torsten Spaete
+
+Changelog:
+	## 2018-04-23:
+	- Initial creation of this description block
+	- Forced Visual-Studio-Project to compile in C++ always
+
+Features/Planned:
+	[x] Reads packets from stream and queues them up
+	[x] Decodes video and audio packets and queues them up as well
+	[x] FFmpeg functions are loaded dynamically
+	[x] Linked list for packet queue
+	[x] Handle PTS/DTS to schedule video frame
+	[x] Syncronize video to audio
+	[x] Fix memory leak (There was no leak at all)
+	[x] Support for FFmpeg static linking
+	[x] Rewrite Frame Queue to support Peek in Previous, Current and Next frame
+	[x] Introduce serials
+	[x] Introduce null and flush packet
+	[x] Restart
+	[x] Frame dropping using prev/next frame
+	[x] Pause/Resume
+	[x] OpenGL Video Rendering
+	[x] Syncronize audio to video
+	[x] Use same FFmpeg name from every dynamic function
+	[x] Fix bug for WMV always dropping nearly every frame (TimeBase was wrong all the time)
+	[x] Aspect ratio calculation
+	[x] Fullscreen toggling
+	[x] Modern OpenGL 3.3
+	[ ] OSD
+	[ ] Seeking (+/- 5 secs)
+	[ ] Frame by frame stepping
+	[ ] Support for audio format change while playing
+	[ ] Support for video format change while playing
+	[x] Image format conversion (YUY2, YUV > RGB24 etc.)
+		[x] GLSL (YUV420P for now)
+		[x] Slow CPU implementation (YUV420P for now)
+	[ ] Audio format conversion (Downsampling, Upsampling, S16 > F32 etc.)
+		[ ] Slow CPU implementation
+		[ ] Planar (Non-interleaved) samples to (Interleaved) Non-planar samples conversion
+	[ ] Composite video rendering
+		[ ] Bitmap rect blitting
+		[ ] Subtitle Decoding and Compositing
+	[ ] UI
+		[ ] Current Time
+		[ ] Buttons
+		[ ] File dialog
+		[ ] Seekbar
+		[ ] Playlist
+		[ ] Audio visualizer (FFT)
+
+Resources:
+	- http://dranger.com/ffmpeg/tutorial01.html
+	- https://blogs.gentoo.org/lu_zero/2015/10/15/deprecating-avpicture/
+	- https://blogs.gentoo.org/lu_zero/2016/03/29/new-avcodec-api/
+	- https://www.codeproject.com/tips/489450/creating-custom-ffmpeg-io-context	
+-------------------------------------------------------------------------------
 */
 
 #define FPL_IMPLEMENTATION
@@ -547,7 +562,7 @@ static void DestroyReader(ReaderContext &reader) {
 static void StopReader(ReaderContext &reader) {
 	reader.stopRequest = 1;
 	fplSignalSet(&reader.stopSignal);
-	fplThreadWaitForOne(reader.thread, FPL_TIMEOUT_INFINITE);
+	fplThreadWaitForOne(reader.thread, UINT32_MAX);
 	fplThreadTerminate(reader.thread);
 	reader.thread = nullptr;
 }
@@ -623,7 +638,7 @@ static void StartDecoder(Decoder &decoder, fpl_run_thread_function *decoderThrea
 static void StopDecoder(Decoder &decoder) {
 	decoder.stopRequest = 1;
 	fplSignalSet(&decoder.stopSignal);
-	fplThreadWaitForOne(decoder.thread, FPL_TIMEOUT_INFINITE);
+	fplThreadWaitForOne(decoder.thread, UINT32_MAX);
 	fplThreadTerminate(decoder.thread);
 	decoder.thread = nullptr;
 	FlushPacketQueue(decoder.packetsQueue);
@@ -1299,7 +1314,7 @@ static void VideoDecodingThreadProc(const fplThreadHandle *thread, void *userDat
 	bool hasDecodedFrame = false;
 	for(;;) {
 		// Wait for any signal (Available packet, Free frame, Stopped, Wake up)
-		fplSignalWaitForAny(waitSignals, FPL_ARRAYCOUNT(waitSignals), FPL_TIMEOUT_INFINITE);
+		fplSignalWaitForAny(waitSignals, FPL_ARRAYCOUNT(waitSignals), UINT32_MAX);
 
 		// Stop decoder
 		if(decoder->stopRequest) {
@@ -1451,7 +1466,7 @@ static void AudioDecodingThreadProc(const fplThreadHandle *thread, void *userDat
 	bool hasDecodedFrame = false;
 	for(;;) {
 		// Wait for any signal (Available packet, Free frame, Stopped, Wake up)
-		fplSignalWaitForAny(waitSignals, FPL_ARRAYCOUNT(waitSignals), FPL_TIMEOUT_INFINITE);
+		fplSignalWaitForAny(waitSignals, FPL_ARRAYCOUNT(waitSignals), UINT32_MAX);
 
 		// Stop decoder
 		if(decoder->stopRequest) {
@@ -1720,7 +1735,7 @@ static void PacketReadThreadProc(const fplThreadHandle *thread, void *userData) 
 	for(;;) {
 		// Wait for any signal or skip wait
 		if(!skipWait) {
-			fplSignalWaitForAny(waitSignals, FPL_ARRAYCOUNT(waitSignals), FPL_TIMEOUT_INFINITE);
+			fplSignalWaitForAny(waitSignals, FPL_ARRAYCOUNT(waitSignals), UINT32_MAX);
 		} else {
 			skipWait = false;
 		}
@@ -2642,8 +2657,7 @@ int main(int argc, char **argv) {
 
 	const char *mediaFilePath = argv[1];
 
-	fplSettings settings;
-	fplSetDefaultSettings(&settings);
+	fplSettings settings = fplMakeDefaultSettings();
 
 	fplCopyAnsiString("FPL FFmpeg Demo", settings.window.windowTitle, FPL_ARRAYCOUNT(settings.window.windowTitle));
 #if USE_HARDWARE_RENDERING

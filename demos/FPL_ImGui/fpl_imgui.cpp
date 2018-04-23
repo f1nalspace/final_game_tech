@@ -1,3 +1,21 @@
+/*
+-------------------------------------------------------------------------------
+Name:
+	FPL-Demo | ImGui
+Description:
+	Full implementation for running ImGui with all features
+Requirements:
+	- C++ Compiler
+	- ImGui v1.51 (Included in demo)
+Author:
+	Torsten Spaete
+Changelog:
+	## 2018-04-23:
+	- Initial creation of this description block
+	- Forced Visual-Studio-Project to compile in C++ always
+-------------------------------------------------------------------------------
+*/
+
 #define FPL_IMPLEMENTATION
 #define FPL_NO_AUDIO
 #define FPL_LOGGING
@@ -92,8 +110,10 @@ static void ImGUIRenderDrawLists(ImDrawData* draw_data) {
 
 static char clipboardBuffer[1024];
 static const char *ClipboardGetFunc(void *user) {
-	char *result = fplGetClipboardAnsiText(clipboardBuffer, FPL_ARRAYCOUNT(clipboardBuffer));
-	return(result);
+	if(fplGetClipboardAnsiText(clipboardBuffer, FPL_ARRAYCOUNT(clipboardBuffer))) {
+		return clipboardBuffer;
+	}
+	return nullptr;
 }
 static void ClipboardSetFunc(void *user, const char *text) {
 	fplSetClipboardAnsiText(text);
@@ -230,8 +250,7 @@ static void UpdateAndRender(const float deltaTime) {
 
 int main(int argc, char **args) {
 	int result = 0;
-	fplSettings settings;
-	fplSetDefaultSettings(&settings);
+	fplSettings settings = fplMakeDefaultSettings();
 	fplCopyAnsiString("ImGUI Example", settings.window.windowTitle, FPL_ARRAYCOUNT(settings.window.windowTitle) - 1);
 	settings.window.windowWidth = 1280;
 	settings.window.windowHeight = 720;

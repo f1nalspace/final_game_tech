@@ -4,6 +4,6 @@
     <ClInclude Include="..\..\final_platform_layer.h" />
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="fpl_opengl.cpp" />
+    <ClCompile Include="fpl_opengl.c" />
   </ItemGroup>
 </Project>

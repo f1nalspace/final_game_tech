@@ -2,15 +2,26 @@
 <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup>
     <ClInclude Include="utils.h" />
-    <ClInclude Include="..\..\final_dynamic_opengl.hpp" />
-    <ClInclude Include="stb_truetype.h" />
     <ClInclude Include="maths.h" />
     <ClInclude Include="shaders.h" />
     <ClInclude Include="defines.h" />
     <ClInclude Include="ffmpeg.h" />
-    <ClInclude Include="..\..\final_platform_layer.h" />
+    <ClInclude Include="..\..\final_dynamic_opengl.hpp">
+      <Filter>deps</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\final_platform_layer.h">
+      <Filter>deps</Filter>
+    </ClInclude>
+    <ClInclude Include="stb_truetype.h">
+      <Filter>deps</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="fpl_ffmpeg.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <Filter Include="deps">
+      <UniqueIdentifier>{caa0bca5-3173-4b2c-bc43-458a43c54948}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
 </Project>
