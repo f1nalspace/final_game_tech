@@ -131,22 +131,26 @@ SOFTWARE.
 
 	## v0.7.7.0 beta:
 	- New: Added fplMutexTryLock
+	- New: Added fplMakeDefaultSettings
+	- New: Added fplStringAppend / fplStringAppendLen
+    - Changed: Changed fplGetClipboardAnsiText to return bool instead of char *
+    - Changed: Changed fplGetClipboardWideText to return bool instead of wchar_t *
 
 	## v0.7.6.0 beta:
 	- Changed: Renamed fplGetRunningArchitectureType to fplGetRunningArchitecture
 	- Changed: Renamed fplThreadDestroy() to fplThreadTerminate() + signature changed (Returns bool)
 	- Changed: fplSignalInit() + new parameter "initialValue"
-    - Changed: All functions which uses timeout uses fplTimeoutValue instead of uint32_t
-    - Changed: Removed timeout parameter from fplMutexLock()
+	- Changed: All functions which uses timeout uses fplTimeoutValue instead of uint32_t
+	- Changed: Removed timeout parameter from fplMutexLock()
 	- New: Added struct fplConditionVariable
-    - New: Added enum fplSignalValue
+	- New: Added enum fplSignalValue
 	- New: Added fplConditionInit()
 	- New: Added fplConditionDestroy()
 	- New: Added fplConditionWait()
 	- New: Added fplConditionSignal()
 	- New: Added fplConditionBroadcast()
-    - New: Added typedef fplTimeoutValue
-    - New: Added constant FPL_TIMEOUT_INFINITE
+	- New: Added typedef fplTimeoutValue
+	- New: Added constant FPL_TIMEOUT_INFINITE
 
 	- Changed: [Win32] Thread resources are automatically cleaned up when a thread is done running
 	- Changed: [POSIX] Thread resources are automatically cleaned up when a thread is done running
@@ -1971,7 +1975,11 @@ typedef struct fplSettings {
   * \note This will not change the active settings! To change the actual settings you have to pass this settings container to a argument in \ref fplPlatformInit().
   */
 fpl_common_api void fplSetDefaultSettings(fplSettings *settings);
-
+/**
+  * \brief Creates a full settings struct containing default values
+  * \return Settings structure
+  */
+fpl_common_api fplSettings fplMakeDefaultSettings();
 /**
   * \brief Returns the current settings
   */
@@ -2318,10 +2326,10 @@ typedef struct fplSignalHandle {
 
 //! Signal value enumeration
 typedef enum fplSignalValue {
-    //! Value is unset
-    fplSignalValue_Unset = 0,
-    //! Value is set
-    fplSignalValue_Set = 1,
+	//! Value is unset
+	fplSignalValue_Unset = 0,
+	//! Value is set
+	fplSignalValue_Set = 1,
 } fplSignalValue;
 
 //! Internal condition variable
@@ -2600,6 +2608,24 @@ fpl_common_api bool fplIsStringEqualLen(const char *a, const size_t aLen, const 
   * \return True when strings matches, otherwise false.
   */
 fpl_common_api bool fplIsStringEqual(const char *a, const char *b);
+/**
+  * \brief Appends the source string to the given buffer
+  * \param appended Appending string
+  * \param appendedLen Length of the source string
+  * \param buffer Target buffer
+  * \param maxBufferLen Max length of the target buffer
+  * \return Pointer to the first character or fpl_null.
+  */
+fpl_common_api char *fplStringAppendLen(const char *appended, const size_t appendedLen, char *buffer, size_t maxBufferLen);
+
+/**
+  * \brief Appends the source string to the given buffer
+  * \param appended Appending string
+  * \param buffer Target buffer
+  * \param maxBufferLen Max length of the target buffer
+  * \return Pointer to the first character or fpl_null.
+  */
+fpl_common_api char *fplStringAppend(const char *appended, char *buffer, size_t maxBufferLen);
 /**
   * \brief Returns the number of characters of the given 8-bit Ansi string.
   * \param str The 8-bit ansi string
@@ -3563,16 +3589,16 @@ fpl_platform_api void fplSetWindowWideTitle(const wchar_t *wideTitle);
 	* \brief Returns the current clipboard ansi text.
 	* \param dest The destination ansi string buffer to write the clipboard text into.
 	* \param maxDestLen The total number of characters available in the destination buffer.
-	* \return Pointer to the first character in the clipboard text or fpl_null otherwise.
+	* \return True when the clipboard contained text which is copied into the dest buffer, fpl_null otherwise.
 	*/
-fpl_platform_api char *fplGetClipboardAnsiText(char *dest, const uint32_t maxDestLen);
+fpl_platform_api bool fplGetClipboardAnsiText(char *dest, const uint32_t maxDestLen);
 /**
   * \brief Returns the current clipboard wide text.
   * \param dest The destination wide string buffer to write the clipboard text into.
   * \param maxDestLen The total number of characters available in the destination buffer.
-  * \return Pointer to the first character in the clipboard text or fpl_null otherwise.
+  * \return True when the clipboard contained text which is copied into the dest buffer, fpl_null otherwise.
   */
-fpl_platform_api wchar_t *fplGetClipboardWideText(wchar_t *dest, const uint32_t maxDestLen);
+fpl_platform_api bool fplGetClipboardWideText(wchar_t *dest, const uint32_t maxDestLen);
 /**
   * \brief Overwrites the current clipboard ansi text with the given one.
   * \param ansiSource The new clipboard ansi string.
@@ -5318,6 +5344,43 @@ fpl_common_api bool fplIsStringEqual(const char *a, const char *b) {
 	return(result);
 }
 
+fpl_common_api char *fplStringAppendLen(const char *appended, const size_t appendedLen, char *buffer, size_t maxBufferLen) {
+	if(buffer == fpl_null) {
+		fpl__ArgumentNullError("Buffer");
+		return fpl_null;
+	}
+	if(maxBufferLen == 0) {
+		fpl__ArgumentZeroError("Max buffer length");
+		return fpl_null;
+	}
+	if(appendedLen == 0) {
+		// Nothing to append
+		return buffer;
+	}
+	size_t curBufferLen = fplGetAnsiStringLength(buffer);
+	size_t requiredSize = curBufferLen + appendedLen + 1;
+	if(requiredSize > maxBufferLen) {
+		fpl__ArgumentSizeTooSmallError("Max buffer length", maxBufferLen, requiredSize);
+		return fpl_null;
+	}
+
+	char *str = buffer + curBufferLen;
+	size_t i = 0;
+	while(i < appendedLen) {
+		*str++ = appended[i++];
+	}
+	*str = 0;
+
+	// @TODO(final): Useless return, return the last written character instead
+	return(buffer);
+}
+
+fpl_common_api char *fplStringAppend(const char *appended, char *buffer, size_t maxBufferLen) {
+	size_t appendedLen = fplGetAnsiStringLength(appended);
+	char *result = fplStringAppendLen(appended, appendedLen, buffer, maxBufferLen);
+	return(result);
+}
+
 fpl_common_api size_t fplGetAnsiStringLength(const char *str) {
 	uint32_t result = 0;
 	if(str != fpl_null) {
@@ -5355,6 +5418,7 @@ fpl_common_api char *fplCopyAnsiStringLen(const char *source, const size_t sourc
 	} else {
 		return(fpl_null);
 	}
+	// @TODO(final): Useless return, return the last written character instead
 }
 
 fpl_common_api char *fplCopyAnsiString(const char *source, char *dest, const size_t maxDestLen) {
@@ -5383,6 +5447,7 @@ fpl_common_api wchar_t *fplCopyWideStringLen(const wchar_t *source, const size_t
 	} else {
 		return(fpl_null);
 	}
+	// @TODO(final): Useless return, return the last written character instead
 }
 
 fpl_common_api wchar_t *fplCopyWideString(const wchar_t *source, wchar_t *dest, const size_t maxDestLen) {
@@ -5435,8 +5500,9 @@ fpl_common_api char *fplFormatAnsiStringArgs(char *ansiDestBuffer, const size_t 
 		return fpl_null;
 	}
 	ansiDestBuffer[charCount] = 0;
-	char *result = ansiDestBuffer;
-	return(result);
+
+	// @TODO(final): Useless return, return the last written character instead
+	return(ansiDestBuffer);
 }
 
 fpl_common_api char *fplFormatAnsiString(char *ansiDestBuffer, const size_t maxAnsiDestBufferLen, const char *format, ...) {
@@ -5819,6 +5885,8 @@ fpl_common_api char *fplChangeFileExtension(const char *filePath, const char *ne
 		fplCopyAnsiStringLen(filePath, copyLen, destPath, maxDestLen);
 		char *destExtPtr = destPath + copyLen;
 		fplCopyAnsiStringLen(newFileExtension, extLen, destExtPtr, maxDestLen - copyLen);
+
+		// @TODO(final): Useless return, return the last written character instead
 		result = destPath;
 	}
 	return(result);
@@ -5857,6 +5925,8 @@ fpl_common_api char *fplPathCombine(char *destPath, const size_t maxDestPathLen,
 	}
 	*currentDestPtr = 0;
 	va_end(vargs);
+
+	// @TODO(final): Useless return, return the last written character instead
 	return destPath;
 }
 #endif // FPL__COMMON_PATHS_DEFINED
@@ -5996,6 +6066,12 @@ fpl_common_api void fplSetDefaultSettings(fplSettings *settings) {
 	fplSetDefaultVideoSettings(&settings->video);
 	fplSetDefaultAudioSettings(&settings->audio);
 	fplSetDefaultInputSettings(&settings->input);
+}
+
+fpl_common_api fplSettings fplMakeDefaultSettings() {
+	fplSettings result;
+	fplSetDefaultSettings(&result);
+	return(result);
 }
 #endif // FPL_COMMON_DEFINED
 
@@ -6913,7 +6989,7 @@ fpl_internal bool fpl__Win32SignalWaitForMultiple(fplSignalHandle *signals[], co
 		HANDLE handle = availableSignal->internalHandle.win32EventHandle;
 		signalHandles[index] = handle;
 	}
-    DWORD t = timeout == FPL_TIMEOUT_INFINITE ? INFINITE : timeout;
+	DWORD t = timeout == FPL_TIMEOUT_INFINITE ? INFINITE : timeout;
 	DWORD code = WaitForMultipleObjects((DWORD)count, signalHandles, waitForAll ? TRUE : FALSE, t);
 	bool result = (code != WAIT_TIMEOUT) && (code != WAIT_FAILED);
 	return(result);
@@ -7591,6 +7667,7 @@ fpl_platform_api char *fplGetProcessorName(char *destBuffer, const size_t maxDes
 
 #	undef CPU_BRAND_BUFFER_SIZE
 
+	// @TODO(final): Useless return, return the last written character instead
 	return(destBuffer);
 }
 
@@ -8444,6 +8521,8 @@ fpl_platform_api char *fplWideStringToAnsiString(const wchar_t *wideSource, cons
 	}
 	WideCharToMultiByte(CP_ACP, 0, wideSource, (int)maxWideSourceLen, ansiDest, (int)maxAnsiDestLen, fpl_null, fpl_null);
 	ansiDest[requiredLen] = 0;
+
+	// @TODO(final): Useless return, return the last written character instead
 	return(ansiDest);
 }
 fpl_platform_api char *fplWideStringToUTF8String(const wchar_t *wideSource, const size_t maxWideSourceLen, char *utf8Dest, const size_t maxUtf8DestLen) {
@@ -8463,6 +8542,8 @@ fpl_platform_api char *fplWideStringToUTF8String(const wchar_t *wideSource, cons
 	}
 	WideCharToMultiByte(CP_UTF8, 0, wideSource, (int)maxWideSourceLen, utf8Dest, (int)maxUtf8DestLen, fpl_null, fpl_null);
 	utf8Dest[requiredLen] = 0;
+
+	// @TODO(final): Useless return, return the last written character instead
 	return(utf8Dest);
 }
 fpl_platform_api wchar_t *fplAnsiStringToWideString(const char *ansiSource, const size_t ansiSourceLen, wchar_t *wideDest, const size_t maxWideDestLen) {
@@ -8482,6 +8563,8 @@ fpl_platform_api wchar_t *fplAnsiStringToWideString(const char *ansiSource, cons
 	}
 	MultiByteToWideChar(CP_ACP, 0, ansiSource, (int)ansiSourceLen, wideDest, (int)maxWideDestLen);
 	wideDest[requiredLen] = 0;
+
+	// @TODO(final): Useless return, return the last written character instead
 	return(wideDest);
 }
 fpl_platform_api wchar_t *fplUTF8StringToWideString(const char *utf8Source, const size_t utf8SourceLen, wchar_t *wideDest, const size_t maxWideDestLen) {
@@ -8501,6 +8584,8 @@ fpl_platform_api wchar_t *fplUTF8StringToWideString(const char *utf8Source, cons
 	}
 	MultiByteToWideChar(CP_UTF8, 0, utf8Source, (int)utf8SourceLen, wideDest, (int)maxWideDestLen);
 	wideDest[requiredLen] = 0;
+
+	// @TODO(final): Useless return, return the last written character instead
 	return(wideDest);
 }
 
@@ -8813,19 +8898,20 @@ fpl_platform_api bool fplIsWindowRunning() {
 	return(result);
 }
 
-fpl_platform_api char *fplGetClipboardAnsiText(char *dest, const uint32_t maxDestLen) {
+fpl_platform_api bool fplGetClipboardAnsiText(char *dest, const uint32_t maxDestLen) {
 	FPL_ASSERT(fpl__global__AppState != fpl_null);
 	const fpl__Win32AppState *appState = &fpl__global__AppState->win32;
 	const fpl__Win32WindowState *windowState = &fpl__global__AppState->window.win32;
 	const fpl__Win32Api *wapi = &appState->winApi;
-	char *result = fpl_null;
+	bool result = false;
 	if(wapi->user.OpenClipboard(windowState->windowHandle)) {
 		if(wapi->user.IsClipboardFormatAvailable(CF_TEXT)) {
 			HGLOBAL dataHandle = wapi->user.GetClipboardData(CF_TEXT);
 			if(dataHandle != fpl_null) {
 				const char *stringValue = (const char *)GlobalLock(dataHandle);
-				result = fplCopyAnsiString(stringValue, dest, maxDestLen);
+				fplCopyAnsiString(stringValue, dest, maxDestLen);
 				GlobalUnlock(dataHandle);
+				result = true;
 			}
 		}
 		wapi->user.CloseClipboard();
@@ -8833,19 +8919,20 @@ fpl_platform_api char *fplGetClipboardAnsiText(char *dest, const uint32_t maxDes
 	return(result);
 }
 
-fpl_platform_api wchar_t *fplGetClipboardWideText(wchar_t *dest, const uint32_t maxDestLen) {
+fpl_platform_api bool fplGetClipboardWideText(wchar_t *dest, const uint32_t maxDestLen) {
 	FPL_ASSERT(fpl__global__AppState != fpl_null);
 	const fpl__Win32AppState *appState = &fpl__global__AppState->win32;
 	const fpl__Win32WindowState *windowState = &fpl__global__AppState->window.win32;
 	const fpl__Win32Api *wapi = &appState->winApi;
-	wchar_t *result = fpl_null;
+	bool result = false;
 	if(wapi->user.OpenClipboard(windowState->windowHandle)) {
 		if(wapi->user.IsClipboardFormatAvailable(CF_UNICODETEXT)) {
 			HGLOBAL dataHandle = wapi->user.GetClipboardData(CF_UNICODETEXT);
 			if(dataHandle != fpl_null) {
 				const wchar_t *stringValue = (const wchar_t *)GlobalLock(dataHandle);
-				result = fplCopyWideString(stringValue, dest, maxDestLen);
+				fplCopyWideString(stringValue, dest, maxDestLen);
 				GlobalUnlock(dataHandle);
+				result = true;
 			}
 		}
 		wapi->user.CloseClipboard();
@@ -9520,13 +9607,13 @@ fpl_platform_api bool fplConditionWait(fplConditionVariable *condition, fplMutex
 	}
 	pthread_cond_t *cond = &condition->internalHandle.posixCondition;
 	pthread_mutex_t *mut = &mutex->internalHandle.posixMutex;
-    bool result;
-	if (timeout == FPL_TIMEOUT_INFINITE) {
-        result = pthreadApi->pthread_cond_wait(cond, mut) == 0;
-    } else {
-	    timespec t;
-        fpl__InitWaitTimeSpec(timeout, &t);
-        result = pthreadApi->pthread_cond_timedwait(cond, mut, &t) == 0;
+	bool result;
+	if(timeout == FPL_TIMEOUT_INFINITE) {
+		result = pthreadApi->pthread_cond_wait(cond, mut) == 0;
+	} else {
+		timespec t;
+		fpl__InitWaitTimeSpec(timeout, &t);
+		result = pthreadApi->pthread_cond_timedwait(cond, mut, &t) == 0;
 	}
 	return(result);
 }
@@ -10057,7 +10144,7 @@ fpl_platform_api wchar_t *fplUTF8StringToWideString(const char *utf8Source, cons
 fpl_platform_api void fplConsoleOut(const char *text) {
 	if(text != fpl_null) {
 		fprintf(stdout, "%s", text);
-	}
+}
 }
 fpl_platform_api void fplConsoleError(const char *text) {
 	if(text != fpl_null) {
@@ -10731,14 +10818,14 @@ fpl_platform_api void fplSetWindowWideTitle(const wchar_t *wideTitle) {
 	// @IMPLEMENT(final): X11 fplSetWindowWideTitle
 }
 
-fpl_platform_api char *fplGetClipboardAnsiText(char *dest, const uint32_t maxDestLen) {
+fpl_platform_api bool fplGetClipboardAnsiText(char *dest, const uint32_t maxDestLen) {
 	// @IMPLEMENT(final): X11 fplGetClipboardAnsiText
-	return fpl_null;
+	return false;
 }
 
-fpl_platform_api wchar_t *fplGetClipboardWideText(wchar_t *dest, const uint32_t maxDestLen) {
+fpl_platform_api bool fplGetClipboardWideText(wchar_t *dest, const uint32_t maxDestLen) {
 	// @IMPLEMENT(final): X11 fplGetClipboardWideText
-	return fpl_null;
+	return false;
 }
 
 fpl_platform_api bool fplSetClipboardAnsiText(const char *ansiSource) {
@@ -11843,7 +11930,7 @@ done_x11_glx:
 		FPL_LOG("GLX", "Destroy visual info '%p'", glState->visualInfo);
 		x11Api->XFree(glState->visualInfo);
 		glState->visualInfo = fpl_null;
-	}
+}
 
 	if(!result) {
 		if(legacyRenderingContext) {
@@ -13065,7 +13152,7 @@ fpl_internal fplAudioResult fpl__AudioInitAlsa(const fplAudioSettings *audioSett
 		alsaState->intermediaryBuffer = fplMemoryAllocate(internalFormat.bufferSizeInBytes);
 		if(alsaState->intermediaryBuffer == fpl_null) {
 			FPL__ALSA_INIT_ERROR(fplAudioResult_Failed, "Failed allocating intermediary buffer of size '%lu' for device '%s'!", internalFormat.bufferSizeInBytes, deviceName);
-		}
+}
 	}
 
 	// @NOTE(final): We do not ALSA support channel mapping right know, so we limit it to mono or stereo
@@ -13559,7 +13646,7 @@ fpl_internal_inline fpl__VideoState *fpl__GetVideoState(fpl__PlatformAppState *a
 		result = (fpl__VideoState *)appState->video.mem;
 	}
 	return(result);
-}
+	}
 
 fpl_internal void fpl__ShutdownVideo(fpl__PlatformAppState *appState, fpl__VideoState *videoState) {
 	FPL_ASSERT(appState != fpl_null);
@@ -13598,8 +13685,8 @@ fpl_internal void fpl__ShutdownVideo(fpl__PlatformAppState *appState, fpl__Video
 		}
 		FPL_CLEAR_STRUCT(backbuffer);
 #	endif
+		}
 	}
-}
 
 fpl_internal void fpl__ReleaseVideoState(fpl__PlatformAppState *appState, fpl__VideoState *videoState) {
 	switch(videoState->activeDriver) {
@@ -13626,7 +13713,7 @@ fpl_internal void fpl__ReleaseVideoState(fpl__PlatformAppState *appState, fpl__V
 			break;
 	}
 	FPL_CLEAR_STRUCT(videoState);
-}
+	}
 
 fpl_internal bool fpl__LoadVideoState(const fplVideoDriverType driver, fpl__VideoState *videoState) {
 	bool result = true;
@@ -13680,8 +13767,8 @@ fpl_internal bool fpl__InitVideo(const fplVideoDriverType driver, const fplVideo
 			for(uint32_t x = 0; x < backbuffer->width; ++x) {
 				*p++ = color;
 			}
+			}
 		}
-	}
 #		endif // FPL_ENABLE_VIDEO_SOFTWARE
 
 	bool videoInitResult = false;
@@ -13719,7 +13806,7 @@ fpl_internal bool fpl__InitVideo(const fplVideoDriverType driver, const fplVideo
 	}
 
 	return true;
-}
+	}
 #endif // FPL_ENABLE_VIDEO
 
 // %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -13781,11 +13868,11 @@ fpl_internal FPL__FUNC_POST_SETUP_WINDOW(fpl__PostSetupWindowDefault) {
 			{
 			} break;
 		}
-	}
+			}
 #endif // FPL_ENABLE_VIDEO
 
 	return false;
-}
+		}
 
 fpl_internal bool fpl__InitWindow(const fplSettings *initSettings, fplWindowSettings *currentWindowSettings, fpl__PlatformAppState *appState, const fpl__SetupWindowCallbacks *setupCallbacks) {
 	bool result = false;
@@ -14092,8 +14179,8 @@ fpl_common_api void fplVideoFlip() {
 				break;
 		}
 #	endif // FPL_PLATFORM || FPL_SUBPLATFORM
-	}
-}
+			}
+		}
 #endif // FPL_ENABLE_VIDEO
 
 // %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -14145,7 +14232,7 @@ fpl_internal void fpl__ReleasePlatformStates(fpl__PlatformInitState *initState, 
 		if(videoState != fpl_null) {
 			FPL_LOG("Core", "Release Video for Driver '%s'", fplGetVideoDriverString(videoState->activeDriver));
 			fpl__ReleaseVideoState(appState, videoState);
-	}
+		}
 	}
 #	endif
 
@@ -14184,7 +14271,7 @@ fpl_internal void fpl__ReleasePlatformStates(fpl__PlatformInitState *initState, 
 		fpl__global__AppState = fpl_null;
 	}
 	initState->isInitialized = false;
-}
+		}
 
 fpl_common_api void fplPlatformRelease() {
 	// Exit out if platform is not initialized
@@ -14215,7 +14302,7 @@ fpl_common_api fplInitResultType fplPlatformInit(const fplInitFlags initFlags, c
 		platformAppStateSize += FPL__SIZE_PADDING;
 		videoMemoryOffset = platformAppStateSize;
 		platformAppStateSize += sizeof(fpl__VideoState);
-	}
+}
 #endif
 
 #if defined(FPL_ENABLE_AUDIO)
@@ -14224,7 +14311,7 @@ fpl_common_api fplInitResultType fplPlatformInit(const fplInitFlags initFlags, c
 		platformAppStateSize += FPL__SIZE_PADDING;
 		audioMemoryOffset = platformAppStateSize;
 		platformAppStateSize += sizeof(fpl__AudioState);
-}
+	}
 #endif
 
 	FPL_LOG("Core", "Allocate Platform App State Memory of size '%zu':", platformAppStateSize);
@@ -14283,7 +14370,7 @@ fpl_common_api fplInitResultType fplPlatformInit(const fplInitFlags initFlags, c
 			return fplInitResultType_FailedPlatform;
 		}
 		FPL_LOG("Core", "Successfully initialized X11 Subplatform");
-	}
+		}
 #	endif // FPL_SUBPLATFORM_X11
 
 		// Initialize the actual platform (There can only be one at a time!)
@@ -14321,7 +14408,7 @@ fpl_common_api fplInitResultType fplPlatformInit(const fplInitFlags initFlags, c
 				FPL_LOG("Core", "Failed loading Video API for Driver '%s'!", videoDriverString);
 				fpl__ReleasePlatformStates(initState, appState);
 				return fplInitResultType_FailedVideo;
-	}
+			}
 		}
 		FPL_LOG("Core", "Successfully loaded Video API for Driver '%s'", videoDriverString);
 	}
@@ -14390,7 +14477,7 @@ fpl_common_api fplInitResultType fplPlatformInit(const fplInitFlags initFlags, c
 
 	initState->isInitialized = true;
 	return fplInitResultType_Success;
-}
+		}
 
 fpl_common_api fplPlatformType fplGetPlatformType() {
 	fplPlatformType result;
