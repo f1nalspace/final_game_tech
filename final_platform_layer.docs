@@ -201,23 +201,24 @@
 	<b>final_platform_layer.c</b>:
 	\code{.c}
 	#define FPL_IMPLEMENTATION
+	#define FPL_NO_ENTRYPOINT // Disable the entry point inclusion
 	#include "final_platform_layer.h"
 	\endcode
 
 	This way FPL implementation is compiled once and can be used everywhere.<br>
+	<br>
+	In your main translation unit you just include the entry point only using the preprocessor define FPL_ENTRYPOINT.
 
-	\section subsection_usage_static_library How to use FPL in a static library?
-
-	To use FPL in or as a static library, i recommend creating a separated translation unit for that but with disabled entry point inclusion:
-
-	<b>final_platform_layer.c</b>:
+	<b>main_translation_unit.c</b>:
 	\code{.c}
-	#define FPL_IMPLEMENTATION
-	#define FPL_NO_ENTRYPOINT // Disable any entry point inclusions
+	#define FPL_ENTRYPOINT // Integrate entrypoint only
 	#include "final_platform_layer.h"
 	\endcode
 
-	This way FPL implementation is compiled in the static library properly and can be used by just including the static library and include the header file only.<br>
+	\section subsection_usage_static_library How to use FPL in a static library?
+
+	To use FPL as a/in static library you do the same steps required for using FPL in multiple translation units.
+	See \ref subsection_usage_multiple_translation_units for more details.
 
 	\section subsection_usage_requirements What do i need to get started?
 	The only dependencies are built-in operating system libraries and a C99 complaint compiler.<br>
@@ -1587,10 +1588,19 @@
 			<td>System</td>
 			<td>FPL_NO_ENTRYPOINT</td>
 			<td>
-				Define this to disable any entry point inclusion in the implementation.<br>
+				Define this to disable the entry point inclusion.<br>
 				This is useful when you use FPL in multiple translation units, but want your main entry point to be included only once.
 			</td>
 			<td>Not set by default</td>
+		</tr>
+		<tr>
+			<td>System</td>
+			<td>FPL_ENTRYPOINT</td>
+			<td>
+				Force the inclusion of the main entry point.<br>
+				If you use FPL as a static library you need to set this in your main translation unit only.
+			</td>
+			<td>Automatically set when FPL_IMPLEMENTATION is defined, but only when FPL_NO_ENTRYPOINT is _not_ defined</td>
 		</tr>
 		<tr>
 			<td>System</td>
