@@ -133,6 +133,10 @@ static void ProcessEvents(Input *currentInput, Input *prevInput, bool &isWindowA
 					case fplKeyboardEventType_KeyDown:
 					case fplKeyboardEventType_KeyUp:
 					{
+						if (!currentKeyboardController->isConnected) {
+							currentKeyboardController->isConnected = true;
+						}
+
 						bool isDown = (event.keyboard.type == fplKeyboardEventType_KeyDown) ? 1 : 0;
 						switch(event.keyboard.mappedKey) {
 							case fplKey_F1:
