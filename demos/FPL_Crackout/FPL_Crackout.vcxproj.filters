@@ -1,0 +1,13 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <ClCompile Include="fpl_crackout.cpp" />
+    <ClCompile Include="game.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="game.h" />
+    <ClInclude Include="..\..\final_platform_layer.h" />
+    <ClInclude Include="..\..\final_dynamic_opengl.h" />
+    <ClInclude Include="utils.h" />
+  </ItemGroup>
+</Project>
