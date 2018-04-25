@@ -16,6 +16,9 @@ Author:
 	Torsten Spaete
 
 Changelog:
+	## 2018-04-25:
+	- Fixed compile errors after FGL has changed to C99
+
 	## 2018-04-23:
 	- Initial creation of this description block
 	- Forced Visual-Studio-Project to compile in C++ always
@@ -86,8 +89,8 @@ Resources:
 #include "stb_truetype.h"
 
 #if USE_HARDWARE_RENDERING
-#	define FDYNGL_IMPLEMENTATION
-#	include <final_dynamic_opengl.hpp>
+#	define FGL_IMPLEMENTATION
+#	include <final_dynamic_opengl.h>
 #	include "shaders.h"
 #endif
 
@@ -2676,7 +2679,7 @@ int main(int argc, char **argv) {
 	}
 
 #if USE_HARDWARE_RENDERING
-	if(!fdyngl::LoadOpenGL()) {
+	if(!fglLoadOpenGL(true)) {
 		fplPlatformRelease();
 		return -1;
 	}
@@ -2827,7 +2830,7 @@ release:
 
 	// Release platform
 #if USE_HARDWARE_RENDERING
-	fdyngl::UnloadOpenGL();
+	fglUnloadOpenGL();
 #endif
 	fplPlatformRelease();
 
