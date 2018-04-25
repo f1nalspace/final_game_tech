@@ -16,7 +16,7 @@ Changelog:
 -------------------------------------------------------------------------------
 */
 
-#define FPL_NO_AUDIO
+#define FPL_ENTRYPOINT // Force the inclusion of the entry point
 #include <final_platform_layer.h>
 
 typedef struct RandomSeries {
