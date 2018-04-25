@@ -13,9 +13,9 @@ using namespace std;
 
 static const string HeaderIdent = "\t";
 static const string BodyIdent = "\t";
-static const string StaticDefineName = "FDYNGL_STATIC";
-static const string GLApiDefineName = "FDYNGL_GLAPI";
-static const string APIEntryDefineName = "FDYNGL_APIENTRY";
+static const string StaticDefineName = "FGL_STATIC";
+static const string GLApiDefineName = "FGL_GLAPI";
+static const string APIEntryDefineName = "FGL_APIENTRY";
 static const string GetProcAddressName = "GetOpenGLProcAddress_Internal";
 
 struct GLConstant {
@@ -484,14 +484,7 @@ int main(int argc, char *args[]) {
 		const vector<GLConstant> constantList = constants[it.first];
 		for (auto constant : constantList) {
 			if (Trim(constant.name) != version && constant.value.size() > 0) {
-				string ctype = string("uint32_t");
-				if (constant.value.find("0x", 0) == 0) {
-					string hexValue = ParseHex(constant.value.substr(2));
-					if (hexValue.size() > 8) {
-						ctype = string("uint64_t");
-					}
-				}
-				headerOutStream << HeaderIdent << "\tstatic const " << ctype << " " << constant.name << " = " << constant.value << ";" << endl;
+				headerOutStream << HeaderIdent << "#\tdefine " << constant.name << " " << constant.value << endl;
 			}
 		}
 
