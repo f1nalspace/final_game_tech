@@ -137,6 +137,7 @@ SOFTWARE.
 	- Changed: Changed fplGetClipboardAnsiText() to return bool instead of char *
 	- Changed: Changed fplGetClipboardWideText() to return bool instead of wchar_t *
 	- Changed: Entry point definition is not included in the implementation anymore -> Its a separated block controlled by FPL_ENTRYPOINT
+	- Fixed: Never detected Win32 Path separator (Wrong define check)
 
 	## v0.7.6.0 beta:
 	- Changed: Renamed fplGetRunningArchitectureType to fplGetRunningArchitecture
@@ -4059,7 +4060,7 @@ struct fplLogBlock {
 #if !defined(FPL_PLATFORM_CONSTANTS_DEFINED)
 #define FPL_PLATFORM_CONSTANTS_DEFINED
 
-#if defined(FPL__PLATFORM_WIN32)
+#if defined(FPL_PLATFORM_WIN32)
 #	define FPL__PATH_SEPARATOR '\\'
 #	define FPL__FILE_EXT_SEPARATOR '.'
 #else
