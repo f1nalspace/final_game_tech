@@ -130,11 +130,12 @@ SOFTWARE.
 	\tableofcontents
 
 	## v0.7.7.0 beta:
-	- New: Added fplMutexTryLock
-	- New: Added fplMakeDefaultSettings
-	- New: Added fplStringAppend / fplStringAppendLen
-	- Changed: Changed fplGetClipboardAnsiText to return bool instead of char *
-	- Changed: Changed fplGetClipboardWideText to return bool instead of wchar_t *
+	- New: Added fplMutexTryLock()
+	- New: Added fplMakeDefaultSettings()
+	- New: Added fplStringAppend() / fplStringAppendLen()
+	- New: Added fplDebugBreak()
+	- Changed: Changed fplGetClipboardAnsiText() to return bool instead of char *
+	- Changed: Changed fplGetClipboardWideText() to return bool instead of wchar_t *
 	- Changed: Entry point definition is not included in the implementation anymore -> Its a separated block controlled by FPL_ENTRYPOINT
 
 	## v0.7.6.0 beta:
@@ -841,6 +842,9 @@ SOFTWARE.
 #elif defined(__GNUC__) && !defined(__clang__)
 	//! GCC compiler detected
 #	define FPL_COMPILER_GCC
+#elif defined(__CC_ARM)
+	//! ARM compiler detected
+#	define FPL_COMPILER_ARM
 #elif defined(_MSC_VER)
 	//! Visual studio compiler detected
 #	define FPL_COMPILER_MSVC
@@ -850,13 +854,44 @@ SOFTWARE.
 #endif // FPL_COMPILER
 
 //
-// No-CRT Support is limited to Win32 for now
+// Static/Inline/Extern/Internal
 //
-#if defined(FPL_NO_CRT)
-#	if !defined(FPL_COMPILER_MSVC)
-#		error "C-Runtime cannot be disabled on this compiler/platform!"
-#	endif
+
+//! Global persistent variable
+#define fpl_globalvar static
+//! Local persistent variable
+#define fpl_localvar static
+//! Private/Internal function
+#define fpl_internal static
+//! Inline function
+#define fpl_inline inline
+//! Internal inlined function
+#define fpl_internal_inline inline
+//! Null
+#define fpl_null NULL
+
+#if defined(FPL_IS_CPP)
+	//! No additional extern definition required for C++
+#   define fpl_extern
+#else
+	//! Require extern definition on C99
+#   define fpl_extern extern
 #endif
+
+#if defined(FPL_API_AS_PRIVATE)
+	//! Private api call
+#	define fpl_api static
+#else
+	//! Public api call
+#	define fpl_api fpl_extern
+#endif // FPL_API_AS_PRIVATE
+
+//! Platform api definition
+#define fpl_platform_api fpl_api
+//! Common api definition
+#define fpl_common_api fpl_api
+//! Main entry point api definition
+#define fpl_main
 
 //
 // When C-Runtime is disabled we cannot use any function from the C-Standard Library <stdio.h> or <stdlib.h>
@@ -940,6 +975,64 @@ SOFTWARE.
 	//! Function name macro (Other compilers)
 #   define FPL_FUNCTION_NAME __FUNCTION__
 #endif // FPL_COMPILER
+
+//
+// Force inline
+//
+#if defined(FPL_COMPILER_GCC) && (__GNUC__ >= 4)
+#	define fpl_force_inline __attribute__((__always_inline__))
+#elif defined(FPL_COMPILER_MSVC) && (_MSC_VER >= 1200)
+#	define fpl_force_inline __forceinline
+#else
+#	define fpl_force_inline inline
+#endif
+
+//
+// Debug-Break
+// Based on: https://stackoverflow.com/questions/173618/is-there-a-portable-equivalent-to-debugbreak-debugbreak
+//
+#if defined(__has_builtin)
+#	if __has_builtin(__builtin_debugtrap)
+		//! Stop on a line in the debugger (Trap)
+#		define fplDebugBreak() __builtin_debugtrap()
+#	elif __has_builtin(__debugbreak)
+		//! Stop on a line in the debugger (Break)
+#		define fplDebugBreak() __debugbreak
+#	endif
+#endif
+#if !defined(fplDebugBreak)
+#	if defined(FPL_COMPILER_MSVC) || defined(FPL_COMPILER_INTEL)
+		//! Triggers a breakout in the debugger (MSVC/Intel)
+#		define fplDebugBreak() __debugbreak()
+#	elif defined(FPL_COMPILER_ARM)
+		//! Triggers a breakout in the debugger (Arm)
+#		define fplDebugBreak() __breakpoint(42)
+#	elif defined(FPL_ARCH_X86) || defined(FPL_ARCH_X64)
+		//! Triggers a breakout in the debugger (X86/64)
+		static fpl_force_inline void fplDebugBreak() { __asm__ __volatile__("int $03"); }
+#	elif defined(__thumb__)
+		//! Triggers a breakout in the debugger (ARM Thumb mode)
+		static fpl_force_inline void fplDebugBreak() { __asm__ __volatile__(".inst 0xde01"); }
+#	elif defined(FPL_ARCH_ARM64)
+		//! Triggers a breakout in the debugger (ARM64)
+		static fpl_force_inline void fplDebugBreak() { __asm__ __volatile__(".inst 0xd4200000"); }
+#	elif defined(FPL_ARCH_ARM32)
+		//! Triggers a breakout in the debugger (ARM32)
+		static fpl_force_inline void fplDebugBreak() { __asm__ __volatile__(".inst 0xe7f001f0"); }
+#	elif defined(FPL_COMPILER_GCC)
+		//! Triggers a breakout in the debugger (GCC)
+		define fplDebugBreak() __builtin_trap()
+#	else
+#		include	<signal.h>
+#		if defined(SIGTRAP)
+			//! Triggers a breakout in the debugger (Sigtrap)
+#			define fplDebugBreak() raise(SIGTRAP)
+#		else
+			//! Triggers a breakout in the debugger (Sigabort)
+#			define fplDebugBreak() raise(SIGABRT)
+#		endif
+#	endif
+#endif
 
 //
 // Options & Feature detection
@@ -1063,53 +1156,6 @@ SOFTWARE.
 	//! Expand namespaces at the header end always
 #	define FPL_ENABLE_AUTO_NAMESPACE
 #endif
-
-//
-// Static/Inline/Extern/Internal
-//
-//! Global persistent variable
-#define fpl_globalvar static
-//! Local persistent variable
-#define fpl_localvar static
-//! Private/Internal function
-#define fpl_internal static
-//! Inline function
-#define fpl_inline inline
-//! Internal inlined function
-#define fpl_internal_inline inline
-//! Null
-#define fpl_null NULL
-
-#if defined(FPL_IS_CPP)
-	//! No additional extern definition required for C++
-#   define fpl_extern
-#else
-	//! Require extern definition on C99
-#   define fpl_extern extern
-#endif
-
-#if defined(FPL_API_AS_PRIVATE)
-	//! Private api call
-#	define fpl_api static
-#else
-	//! Public api call
-#	define fpl_api fpl_extern
-#endif // FPL_API_AS_PRIVATE
-
-//! Platform api definition
-#if defined(FPL_IS_CPP)
-	//! Disable function name mangling in C++
-#	define fpl_no_function_name_mangling extern "C"
-#else
-	//! No function name mangling on C
-#	define fpl_no_function_name_mangling
-#endif
-//! Platform api definition
-#define fpl_platform_api fpl_no_function_name_mangling fpl_api
-//! Common api definition
-#define fpl_common_api fpl_no_function_name_mangling fpl_api
-//! Main entry point api definition
-#define fpl_main
 
 //
 // Assertions
@@ -8897,6 +8943,8 @@ fpl_platform_api bool fplWindowUpdate() {
 
 	bool result = false;
 
+	fplClearEvents();
+
 	// Poll gamepad controller states
 	fpl__Win32PollControllers(&appState->currentSettings, win32InitState, &win32AppState->xinput);
 
@@ -10694,6 +10742,9 @@ fpl_platform_api bool fplWindowUpdate() {
 	const fpl__X11Api *x11Api = &subplatform->api;
 	const fpl__X11WindowState *windowState = &appState->window.x11;
 	bool result = false;
+
+	fplClearEvents();
+
 	int pendingCount = x11Api->XPending(windowState->display);
 	while(pendingCount--) {
 		XEvent ev;
