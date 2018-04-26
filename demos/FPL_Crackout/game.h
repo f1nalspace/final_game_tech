@@ -1,31 +1,62 @@
 #pragma once
 
-#include <final_platform_layer.h>
+#include <stdlib.h>
 
-// The only reason why this demo require C++ -.-
-#include <glm/glm.hpp>
-#include <glm/gtc/constants.hpp>
-#include <glm/gtx/vector_angle.hpp>
+#include <final_platform_layer.h>
 
 #include <Box2D/Box2D.h>
 
-struct ButtonState {
-	bool isDown = false;
-	glm::int32 halfTransitionCount = 0;
+struct Vec2f {
+	float x;
+	float y;
+};
+inline Vec2f MakeVec2f(float x, float y) {
+	Vec2f result;
+	result.x = x;
+	result.y = y;
+	return(result);
+}
 
-	inline bool WasPressed() const {
-		bool result =
-			((halfTransitionCount > 1) ||
-			((halfTransitionCount == 1) && (isDown)));
-		return(result);
-	}
-	ButtonState() {}
+struct Vec4f {
+	float x;
+	float y;
+	float z;
+	float w;
+};
+inline Vec4f MakeVec4f(float x, float y, float z, float w) {
+	Vec4f result;
+	result.x = x;
+	result.y = y;
+	result.z = z;
+	result.w = w;
+	return(result);
+}
+
+struct Vec2i {
+	int x;
+	int y;
+};
+inline Vec2i MakeVec2i(int x, int y) {
+	Vec2i result;
+	result.x = x;
+	result.y = y;
+	return(result);
+}
+
+struct ButtonState {
+	bool isDown;
+	int halfTransitionCount;
 };
 
+inline bool WasPressed(const ButtonState &state) {
+	bool result = ((state.halfTransitionCount > 1) || ((state.halfTransitionCount == 1) && (state.isDown)));
+	return(result);
+}
+
 struct Controller {
-	bool isConnected = false;
-	bool isAnalog = false;
-	glm::vec2 analogMovement = glm::vec2(0, 0);
+	bool isConnected;
+	bool isAnalog;
+	Vec2f analogMovement;
 	union {
 		struct {
 			ButtonState moveUp;
@@ -38,42 +69,42 @@ struct Controller {
 			ButtonState actionRight;
 			ButtonState editorToggle;
 		};
-		ButtonState buttons[9] = {};
+		ButtonState buttons[9];
 	};
-	Controller() {}
 };
 
 struct Mouse {
-	glm::ivec2 pos = glm::vec2(0, 0);
-	glm::f32 wheelDelta = 0;
+	Vec2i pos;
+	float wheelDelta;
 	union {
 		struct {
 			ButtonState left;
 			ButtonState middle;
 			ButtonState right;
 		};
-		ButtonState buttons[3] = {};
+		ButtonState buttons[3];
 	};
-	Mouse() {}
 };
 
 struct Input {
-	glm::f32 deltaTime = 0.0f;
+	float deltaTime;
 	union {
 		struct {
 			Controller keyboard;
 			Controller gamepad[4];
 		};
-		Controller controllers[5] = {};
+		Controller controllers[5];
 	};
-	Mouse mouse = {};
-	glm::ivec2 windowSize = glm::vec2(0, 0);
-	Input() {}
+	int defaultControllerIndex;
+	Mouse mouse;
+	Vec2i windowSize;
 };
 
 struct GameState;
 
 extern GameState *GameCreate();
 extern void GameDestroy(GameState *state);
-extern void GameUpdate(GameState &state, const Input &input);
+extern void GameInput(GameState &state, const Input &input, bool isActive);
+extern void GameUpdate(GameState &state, const Input &input, bool isActive);
 extern void GameDraw(GameState &state);
+extern bool IsGameExiting(GameState &state);

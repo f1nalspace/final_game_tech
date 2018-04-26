@@ -7,23 +7,34 @@ Description:
 Requirements:
 	- C++ Compiler
 	- GLM
+	- Box2D
 	- Final Dynamic OpenGL
 Author:
 	Torsten Spaete
 Changelog:
+	## 2018-04-26:
+	- Game implemented
 	## 2018-04-24:
-	- Initial creation of this description block
-State:
-	- Incomplete
+	- Initial creation
+Todo:
+	- Sprites (Assets are already there)
+	- Text rendering (Score, Lives, Level + Seed)
+	- Main menu
+	- Pause menu (Detect pause)
+	- Music
+	- Sound
+	- Multiball
+	- Brick types (Harder, Metal)
+	- Items (Ball speed, Paddle grow, Autoglue, Multiball, Player Up)
 -------------------------------------------------------------------------------
 */
 
 #define FPL_IMPLEMENTATION
 #include <final_platform_layer.h>
 
-#include "game.cpp"
+#include <math.h> // abs
 
-#include "utils.h"
+#include "game.cpp"
 
 static void UpdateKeyboardButtonState(const bool isDown, ButtonState &targetButton) {
 	if(isDown != targetButton.isDown) {
@@ -37,7 +48,21 @@ static void UpdateDigitalButtonState(const bool isDown, const ButtonState &oldSt
 	newState.halfTransitionCount = (oldState.isDown != newState.isDown) ? 1 : 0;
 }
 
-static void ProcessEvents(Input *currentInput, Input *prevInput, bool &isWindowActive) {
+static void UpdateDefaultController(Input *currentInput, int newIndex) {
+	if(newIndex != -1) {
+		currentInput->defaultControllerIndex = newIndex;
+	} else {
+		currentInput->defaultControllerIndex = -1;
+		for(int i = FPL_ARRAYCOUNT(currentInput->controllers) - 1; i > 0; i--) {
+			if(currentInput->controllers[i].isConnected) {
+				currentInput->defaultControllerIndex = i;
+				break;
+			}
+		}
+	}
+}
+
+static void ProcessEvents(Input *currentInput, Input *prevInput, bool &isWindowActive, Vec2i &lastMousePos) {
 	Controller *currentKeyboardController = &currentInput->keyboard;
 	Controller *prevKeyboardController = &prevInput->keyboard;
 	fplEvent event;
@@ -58,25 +83,26 @@ static void ProcessEvents(Input *currentInput, Input *prevInput, bool &isWindowA
 			case fplEventType_Gamepad:
 			{
 				// @CLEANUP: For now we just use the device index, but later it should be "added" to the controllers array and remembered somehow
-				glm::u32 controllerIndex = 1 + event.gamepad.deviceIndex;
-				assert(controllerIndex < ArrayCount(currentInput->controllers));
-
+				uint32_t controllerIndex = 1 + event.gamepad.deviceIndex;
+				FPL_ASSERT(controllerIndex < FPL_ARRAYCOUNT(currentInput->controllers));
 				Controller *currentController = &currentInput->controllers[controllerIndex];
 				Controller *prevController = &prevInput->controllers[controllerIndex];
 				switch(event.gamepad.type) {
 					case fplGamepadEventType_Connected:
 					{
 						currentController->isConnected = true;
+						UpdateDefaultController(currentInput, controllerIndex);
 					} break;
 					case fplGamepadEventType_Disconnected:
 					{
 						currentController->isConnected = false;
+						UpdateDefaultController(currentInput, -1);
 					} break;
 					case fplGamepadEventType_StateChanged:
 					{
 						fplGamepadState &padstate = event.gamepad.state;
 						assert(currentController->isConnected);
-						if(glm::abs<float>(padstate.leftStickX) > 0.0f || glm::abs<float>(padstate.leftStickY) > 0.0f) {
+						if(abs(padstate.leftStickX) > 0.0f || abs(padstate.leftStickY) > 0.0f) {
 							currentController->isAnalog = true;
 							currentController->analogMovement.x = padstate.leftStickX;
 							currentController->analogMovement.y = padstate.leftStickY;
@@ -87,7 +113,6 @@ static void ProcessEvents(Input *currentInput, Input *prevInput, bool &isWindowA
 							UpdateDigitalButtonState(padstate.dpadLeft.isDown, prevController->moveLeft, currentController->moveLeft);
 							UpdateDigitalButtonState(padstate.dpadRight.isDown, prevController->moveRight, currentController->moveRight);
 						}
-
 						UpdateDigitalButtonState(padstate.actionA.isDown, prevController->actionDown, currentController->actionDown);
 						UpdateDigitalButtonState(padstate.actionB.isDown, prevController->actionRight, currentController->actionRight);
 						UpdateDigitalButtonState(padstate.actionX.isDown, prevController->actionLeft, currentController->actionLeft);
@@ -101,7 +126,7 @@ static void ProcessEvents(Input *currentInput, Input *prevInput, bool &isWindowA
 				switch(event.mouse.type) {
 					case fplMouseEventType_Move:
 					{
-						currentInput->mouse.pos = glm::ivec2(event.mouse.mouseX, event.mouse.mouseY);
+						currentInput->mouse.pos = lastMousePos = MakeVec2i(event.mouse.mouseX, event.mouse.mouseY);
 					} break;
 
 					case fplMouseEventType_ButtonDown:
@@ -133,10 +158,12 @@ static void ProcessEvents(Input *currentInput, Input *prevInput, bool &isWindowA
 					case fplKeyboardEventType_KeyDown:
 					case fplKeyboardEventType_KeyUp:
 					{
-						if (!currentKeyboardController->isConnected) {
+						if(!currentKeyboardController->isConnected) {
 							currentKeyboardController->isConnected = true;
+							if(currentInput->defaultControllerIndex == -1) {
+								UpdateDefaultController(currentInput, 0);
+							}
 						}
-
 						bool isDown = (event.keyboard.type == fplKeyboardEventType_KeyDown) ? 1 : 0;
 						switch(event.keyboard.mappedKey) {
 							case fplKey_F1:
@@ -174,50 +201,118 @@ int main(int argc, char *argv[]) {
 	settings.video.driver = fplVideoDriverType_OpenGL;
 	settings.video.graphics.opengl.compabilityFlags = fplOpenGLCompabilityFlags_Legacy;
 	settings.video.isVSync = true;
+	fplCopyAnsiString("FPL Demo | Crackout", settings.window.windowTitle, FPL_ARRAYCOUNT(settings.window.windowTitle));
 	int result = 0;
 	if(fplPlatformInit(fplInitFlags_All, &settings)) {
 		GameState *game = GameCreate();
 		if(game != nullptr) {
+			const double TargetDeltaTime = 1.0 / 60.0;
+
 			Input inputs[2] = {};
 			Input *curInput = &inputs[0];
 			Input *prevInput = &inputs[1];
-			bool gameActive = true;
+			Vec2i lastMousePos = MakeVec2i(-1, -1);
+			bool isWindowActive = true;
+			curInput->defaultControllerIndex = -1;
+
+			uint32_t frameCount = 0;
+			uint32_t updateCount = 0;
 			double lastTime = fplGetTimeInSecondsHP();
-			double targetDeltaTime = 1.0 / 60.0;
-			double accumulatedDelta = 0.0;
-			while(fplWindowUpdate()) {
-				ProcessEvents(curInput, prevInput, gameActive);
+			double fpsTimerInSecs = fplGetTimeInSecondsHP();
+			double frameAccumulator = TargetDeltaTime;
+
+			while(!IsGameExiting(*game) && fplWindowUpdate()) {
+				// Window size
 				fplWindowSize winArea;
 				if(fplGetWindowArea(&winArea)) {
 					curInput->windowSize.x = winArea.width;
 					curInput->windowSize.y = winArea.height;
 				}
-				if(gameActive) {
-					curInput->deltaTime = (glm::f32)targetDeltaTime;
-#if 1
-					while(accumulatedDelta >= targetDeltaTime) {
-						GameUpdate(*game, *curInput);
-						accumulatedDelta -= targetDeltaTime;
-					}
-#else
-					GameUpdate(*game, *curInput);
-#endif
-					GameDraw(*game);
-				} else {
-					lastTime = fplGetTimeInSecondsHP();
-				}
-				fplVideoFlip();
 
-				if(gameActive) {
-					double deltaTime = fplGetTimeInSecondsHP() - lastTime;
-					accumulatedDelta += deltaTime;
-					accumulatedDelta = glm::min<double>(accumulatedDelta, 0.1);
+				// Remember previous keyboard and mouse state
+				Controller *currentKeyboardController = &curInput->keyboard;
+				Controller *prevKeyboardController = &prevInput->keyboard;
+				Mouse *currentMouse = &curInput->mouse;
+				Mouse *prevMouse = &prevInput->mouse;
+				*currentKeyboardController = {};
+				*currentMouse = {};
+				currentKeyboardController->isConnected = prevKeyboardController->isConnected;
+				for(uint32_t buttonIndex = 0; buttonIndex < FPL_ARRAYCOUNT(currentKeyboardController->buttons); ++buttonIndex) {
+					currentKeyboardController->buttons[buttonIndex].isDown = prevKeyboardController->buttons[buttonIndex].isDown;
+				}
+				for(uint32_t buttonIndex = 0; buttonIndex < FPL_ARRAYCOUNT(currentMouse->buttons); ++buttonIndex) {
+					currentMouse->buttons[buttonIndex] = prevMouse->buttons[buttonIndex];
+					currentMouse->buttons[buttonIndex].halfTransitionCount = 0;
+				}
+				currentMouse->pos = lastMousePos;
+
+				// Remember previous gamepad connected states
+				for(uint32_t controllerIndex = 1; controllerIndex < FPL_ARRAYCOUNT(curInput->controllers); ++controllerIndex) {
+					Controller *currentGamepadController = &curInput->controllers[controllerIndex];
+					Controller *prevGamepadController = &prevInput->controllers[controllerIndex];
+					currentGamepadController->isConnected = prevGamepadController->isConnected;
+					currentGamepadController->isAnalog = prevGamepadController->isAnalog;
+				}
+
+				// Set time states
+				curInput->deltaTime = (float)TargetDeltaTime;
+
+				// Events
+				ProcessEvents(curInput, prevInput, isWindowActive, lastMousePos);
+
+				// Game Update
+				GameInput(*game, *curInput, isWindowActive);
+#if 1
+				while(frameAccumulator >= TargetDeltaTime) {
+					GameUpdate(*game, *curInput, isWindowActive);
+					frameAccumulator -= TargetDeltaTime;
+					++updateCount;
+				}
+#else
+				GameUpdate(*game, *curInput, isWindowActive);
+				++updateCount;
+#endif
+
+				// @TODO(final): Yield thread when we are running too fast
+				{
+					double endWorkTime = fplGetTimeInSecondsHP();
+					double workDuration = endWorkTime - lastTime;
+				}
+
+				// Render
+				GameDraw(*game);
+				fplVideoFlip();
+				++frameCount;
+
+				// Timing
+				double endTime = fplGetTimeInSecondsHP();
+				double frameDuration = endTime - lastTime;
+				frameAccumulator += frameDuration;
+				frameAccumulator = FPL_MIN(0.1, frameAccumulator);
+				lastTime = endTime;
+				if(endTime >= (fpsTimerInSecs + 1.0)) {
+					fpsTimerInSecs = endTime;
+					char charBuffer[256];
+					fplFormatAnsiString(charBuffer, FPL_ARRAYCOUNT(charBuffer), "Fps: %d, Ups: %d\n", frameCount, updateCount);
+					OutputDebugStringA(charBuffer);
+					frameCount = 0;
+					updateCount = 0;
+				}
+
+				// Swap input
+				{
+					Input *tmp = curInput;
+					curInput = prevInput;
+					prevInput = tmp;
 				}
 			}
 			GameDestroy(game);
+		} else {
+			result = -1;
 		}
 		fplPlatformRelease();
 	} else {
+		result = -1;
 	}
 	return (result);
 }

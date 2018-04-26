@@ -2,12 +2,20 @@
 <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup>
     <ClCompile Include="fpl_crackout.cpp" />
-    <ClCompile Include="game.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="game.h" />
-    <ClInclude Include="..\..\final_platform_layer.h" />
-    <ClInclude Include="..\..\final_dynamic_opengl.h" />
-    <ClInclude Include="utils.h" />
+    <ClInclude Include="game.cpp" />
+    <ClInclude Include="..\..\final_platform_layer.h">
+      <Filter>dependencies</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\final_dynamic_opengl.h">
+      <Filter>dependencies</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <Filter Include="dependencies">
+      <UniqueIdentifier>{b6f6e775-8850-40cc-a8d6-7f5d2b26fb8e}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
 </Project>
