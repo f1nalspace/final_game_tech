@@ -136,8 +136,11 @@ SOFTWARE.
 	- New: Added fplDebugBreak()
 	- Changed: Changed fplGetClipboardAnsiText() to return bool instead of char *
 	- Changed: Changed fplGetClipboardWideText() to return bool instead of wchar_t *
-	- Changed: Entry point definition is not included in the implementation anymore -> Its a separated block controlled by FPL_ENTRYPOINT
+	- Changed: Entry point definition implementation is now a separated block and controlled by FPL_ENTRYPOINT
+	- Changed: MSVC compiler warnings are only disabled inside the implementation block
 	- Fixed: Never detected Win32 Path separator (Wrong define check)
+	- Fixed: MSVC compiler warnings was overwritten always, now uses push/pop
+	- Fixed: MSVC _Interlocked* functions has no signature for unsigned, so we use either LONG or LONG64
 
 	## v0.7.6.0 beta:
 	- Changed: Renamed fplGetRunningArchitectureType to fplGetRunningArchitecture
@@ -1023,19 +1026,19 @@ SOFTWARE.
 #		define fplDebugBreak() __breakpoint(42)
 #	elif defined(FPL_ARCH_X86) || defined(FPL_ARCH_X64)
 		//! Triggers a breakout in the debugger (X86/64)
-		static fpl_force_inline void fplDebugBreak() { __asm__ __volatile__("int $03"); }
+fpl_force_inline void fplDebugBreak() { __asm__ __volatile__("int $03"); }
 #	elif defined(__thumb__)
 		//! Triggers a breakout in the debugger (ARM Thumb mode)
-		static fpl_force_inline void fplDebugBreak() { __asm__ __volatile__(".inst 0xde01"); }
+fpl_force_inline void fplDebugBreak() { __asm__ __volatile__(".inst 0xde01"); }
 #	elif defined(FPL_ARCH_ARM64)
 		//! Triggers a breakout in the debugger (ARM64)
-		static fpl_force_inline void fplDebugBreak() { __asm__ __volatile__(".inst 0xd4200000"); }
+fpl_force_inline void fplDebugBreak() { __asm__ __volatile__(".inst 0xd4200000"); }
 #	elif defined(FPL_ARCH_ARM32)
 		//! Triggers a breakout in the debugger (ARM32)
-		static fpl_force_inline void fplDebugBreak() { __asm__ __volatile__(".inst 0xe7f001f0"); }
+fpl_force_inline void fplDebugBreak() { __asm__ __volatile__(".inst 0xe7f001f0"); }
 #	elif defined(FPL_COMPILER_GCC)
 		//! Triggers a breakout in the debugger (GCC)
-		define fplDebugBreak() __builtin_trap()
+define fplDebugBreak() __builtin_trap()
 #	else
 #		include	<signal.h>
 #		if defined(SIGTRAP)
@@ -4022,6 +4025,29 @@ fpl_main int main(int argc, char **args);
 // ****************************************************************************
 #if defined(FPL_IMPLEMENTATION) && !defined(FPL_IMPLEMENTED)
 #define FPL_IMPLEMENTED
+
+//
+// Compiler warnings
+//
+#if defined(FPL_COMPILER_MSVC)
+	//! Don't spill our preferences to the outside
+#	pragma warning( push )
+
+	//! Disable noexcept compiler warning for C++
+#	pragma warning( disable : 4577 )
+	//! Disable "switch statement contains 'default' but no 'case' labels" compiler warning for C++
+#	pragma warning( disable : 4065 )
+	//! Disable "conditional expression is constant" warning
+#	pragma warning( disable : 4127 )
+	//! Disable "unreferenced formal parameter" warning
+#	pragma warning( disable : 4100 )
+	//! Disable "nonstandard extension used: nameless struct/union" warning
+#	pragma warning( disable : 4201 )
+	//! Disable "local variable is initialized but not referenced" warning
+#	pragma warning( disable : 4189 )
+	//! Disable "nonstandard extension used: non-constant aggregate initializer" warning
+#	pragma warning( disable : 4204 )
+#endif // FPL_COMPILER
 
 // Only include C-Runtime functions when CRT is enabled
 #if !defined(FPL_NO_CRT)
@@ -7402,12 +7428,12 @@ fpl_platform_api void fplAtomicReadWriteFence() {
 
 fpl_platform_api uint32_t fplAtomicExchangeU32(volatile uint32_t *target, const uint32_t value) {
 	FPL_ASSERT(target != fpl_null);
-	uint32_t result = _InterlockedExchange((volatile long *)target, value);
+	uint32_t result = _InterlockedExchange((volatile LONG *)target, value);
 	return (result);
 }
 fpl_platform_api int32_t fplAtomicExchangeS32(volatile int32_t *target, const int32_t value) {
 	FPL_ASSERT(target != fpl_null);
-	int32_t result = _InterlockedExchange((volatile long *)target, value);
+	int32_t result = _InterlockedExchange((volatile LONG *)target, value);
 	return (result);
 }
 fpl_platform_api uint64_t fplAtomicExchangeU64(volatile uint64_t *target, const uint64_t value) {
@@ -7423,12 +7449,12 @@ fpl_platform_api int64_t fplAtomicExchangeS64(volatile int64_t *target, const in
 
 fpl_platform_api uint32_t fplAtomicAddU32(volatile uint32_t *value, const uint32_t addend) {
 	FPL_ASSERT(value != fpl_null);
-	uint32_t result = _InterlockedExchangeAdd((volatile long *)value, addend);
+	uint32_t result = _InterlockedExchangeAdd((volatile LONG *)value, addend);
 	return (result);
 }
 fpl_platform_api int32_t fplAtomicAddS32(volatile int32_t *value, const int32_t addend) {
 	FPL_ASSERT(value != fpl_null);
-	int32_t result = _InterlockedExchangeAdd((volatile long *)value, addend);
+	int32_t result = _InterlockedExchangeAdd((volatile LONG *)value, addend);
 	return (result);
 }
 fpl_platform_api uint64_t fplAtomicAddU64(volatile uint64_t *value, const uint64_t addend) {
@@ -7444,12 +7470,12 @@ fpl_platform_api int64_t fplAtomicAddS64(volatile int64_t *value, const int64_t 
 
 fpl_platform_api uint32_t fplAtomicCompareAndExchangeU32(volatile uint32_t *dest, const uint32_t comparand, const uint32_t exchange) {
 	FPL_ASSERT(dest != fpl_null);
-	uint32_t result = _InterlockedCompareExchange((volatile long *)dest, exchange, comparand);
+	uint32_t result = _InterlockedCompareExchange((volatile LONG *)dest, exchange, comparand);
 	return (result);
 }
 fpl_platform_api int32_t fplAtomicCompareAndExchangeS32(volatile int32_t *dest, const int32_t comparand, const int32_t exchange) {
 	FPL_ASSERT(dest != fpl_null);
-	int32_t result = _InterlockedCompareExchange((volatile long *)dest, exchange, comparand);
+	int32_t result = _InterlockedCompareExchange((volatile LONG *)dest, exchange, comparand);
 	return (result);
 }
 fpl_platform_api uint64_t fplAtomicCompareAndExchangeU64(volatile uint64_t *dest, const uint64_t comparand, const uint64_t exchange) {
@@ -7465,13 +7491,13 @@ fpl_platform_api int64_t fplAtomicCompareAndExchangeS64(volatile int64_t *dest, 
 
 fpl_platform_api bool fplIsAtomicCompareAndExchangeU32(volatile uint32_t *dest, const uint32_t comparand, const uint32_t exchange) {
 	FPL_ASSERT(dest != fpl_null);
-	uint32_t value = _InterlockedCompareExchange((volatile long *)dest, exchange, comparand);
+	uint32_t value = _InterlockedCompareExchange((volatile LONG *)dest, exchange, comparand);
 	bool result = (value == comparand);
 	return (result);
 }
 fpl_platform_api bool fplIsAtomicCompareAndExchangeS32(volatile int32_t *dest, const int32_t comparand, const int32_t exchange) {
 	FPL_ASSERT(dest != fpl_null);
-	int32_t value = _InterlockedCompareExchange((volatile long *)dest, exchange, comparand);
+	int32_t value = _InterlockedCompareExchange((volatile LONG *)dest, exchange, comparand);
 	bool result = (value == comparand);
 	return (result);
 }
@@ -7489,7 +7515,7 @@ fpl_platform_api bool fplIsAtomicCompareAndExchangeS64(volatile int64_t *dest, c
 }
 
 fpl_platform_api uint32_t fplAtomicLoadU32(volatile uint32_t *source) {
-	uint32_t result = _InterlockedCompareExchange((volatile long *)source, 0, 0);
+	uint32_t result = _InterlockedCompareExchange((volatile LONG *)source, 0, 0);
 	return(result);
 }
 fpl_platform_api uint64_t fplAtomicLoadU64(volatile uint64_t *source) {
@@ -7497,7 +7523,7 @@ fpl_platform_api uint64_t fplAtomicLoadU64(volatile uint64_t *source) {
 	return(result);
 }
 fpl_platform_api int32_t fplAtomicLoadS32(volatile int32_t *source) {
-	int32_t result = _InterlockedCompareExchange((volatile long *)source, 0, 0);
+	int32_t result = _InterlockedCompareExchange((volatile LONG *)source, 0, 0);
 	return(result);
 }
 fpl_platform_api int64_t fplAtomicLoadS64(volatile int64_t *source) {
@@ -7506,13 +7532,13 @@ fpl_platform_api int64_t fplAtomicLoadS64(volatile int64_t *source) {
 }
 
 fpl_platform_api void fplAtomicStoreU32(volatile uint32_t *dest, const uint32_t value) {
-	_InterlockedExchange((volatile long *)dest, value);
+	_InterlockedExchange((volatile LONG *)dest, value);
 }
 fpl_platform_api void fplAtomicStoreU64(volatile uint64_t *dest, const uint64_t value) {
 	_InterlockedExchange64((volatile LONG64 *)dest, value);
 }
 fpl_platform_api void fplAtomicStoreS32(volatile int32_t *dest, const int32_t value) {
-	_InterlockedExchange((volatile long *)dest, value);
+	_InterlockedExchange((volatile LONG *)dest, value);
 }
 fpl_platform_api void fplAtomicStoreS64(volatile int64_t *dest, const int64_t value) {
 	_InterlockedExchange64((volatile LONG64 *)dest, value);
@@ -14562,6 +14588,11 @@ fpl_common_api fplPlatformType fplGetPlatformType() {
 
 #endif // FPL_SYSTEM_INIT_DEFINED
 
+#if defined(FPL_COMPILER_MSVC)
+	//! Don't spill our preferences to the outside
+#	pragma warning( pop )
+#endif
+
 #endif // FPL_IMPLEMENTATION && !FPL_IMPLEMENTED
 
 // ****************************************************************************
@@ -14635,10 +14666,5 @@ int WINAPI WinMain(HINSTANCE appInstance, HINSTANCE prevInstance, LPSTR cmdLine,
 #	endif // FPL_PLATFORM_WIN32
 
 #endif // FPL_ENTRYPOINT && !FPL_ENTRYPOINT_IMPLEMENTED
-
-#if defined(FPL_COMPILER_MSVC)
-	//! Don't spill our preferences to the outside
-#	pragma warning( pop )
-#endif
 
 // end-of-file
