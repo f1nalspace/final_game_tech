@@ -43,6 +43,25 @@ inline Vec2i MakeVec2i(int x, int y) {
 	return(result);
 }
 
+struct UVRect {
+	float uMin;
+	float vMin;
+	float uMax;
+	float vMax;
+};
+
+inline UVRect UVRectFromTile(const Vec2i &imageSize, const Vec2i &tileSize, const int border, const Vec2i &pos) {
+	Vec2f texel = MakeVec2f(1.0f / (float)imageSize.x, 1.0f / (float)imageSize.y);
+	int imgX = pos.x * tileSize.x + border * pos.x;
+	int imgY = pos.y * tileSize.y + border * pos.y;
+	UVRect result;
+	result.uMin = imgX * texel.x;
+	result.vMin = imgY * texel.y;
+	result.uMax = result.uMin + tileSize.x * texel.x;
+	result.vMax = result.vMin + tileSize.y * texel.y;
+	return(result);
+}
+
 struct ButtonState {
 	bool isDown;
 	int halfTransitionCount;
