@@ -938,10 +938,23 @@ SOFTWARE.
 // Compiler settings
 //
 #if defined(FPL_COMPILER_MSVC)
+	//! Don't spill our preferences to the outside
+#	pragma warning( push )
+
 	//! Disable noexcept compiler warning for C++
 #	pragma warning( disable : 4577 )
 	//! Disable "switch statement contains 'default' but no 'case' labels" compiler warning for C++
 #	pragma warning( disable : 4065 )
+	//! Disable "conditional expression is constant" warning
+#	pragma warning( disable : 4127 )
+	//! Disable "unreferenced formal parameter" warning
+#	pragma warning( disable : 4100 )
+	//! Disable "nonstandard extension used: nameless struct/union" warning
+#	pragma warning( disable : 4201 )
+	//! Disable "local variable is initialized but not referenced" warning
+#	pragma warning( disable : 4189 )
+	//! Disable "nonstandard extension used: non-constant aggregate initializer" warning
+#	pragma warning( disable : 4204 )
 
 #	if defined(_DEBUG) || (!defined(NDEBUG))
 		//! Debug mode detected
@@ -7389,7 +7402,7 @@ fpl_platform_api void fplAtomicReadWriteFence() {
 
 fpl_platform_api uint32_t fplAtomicExchangeU32(volatile uint32_t *target, const uint32_t value) {
 	FPL_ASSERT(target != fpl_null);
-	uint32_t result = _InterlockedExchange((volatile unsigned long *)target, value);
+	uint32_t result = _InterlockedExchange((volatile long *)target, value);
 	return (result);
 }
 fpl_platform_api int32_t fplAtomicExchangeS32(volatile int32_t *target, const int32_t value) {
@@ -7410,7 +7423,7 @@ fpl_platform_api int64_t fplAtomicExchangeS64(volatile int64_t *target, const in
 
 fpl_platform_api uint32_t fplAtomicAddU32(volatile uint32_t *value, const uint32_t addend) {
 	FPL_ASSERT(value != fpl_null);
-	uint32_t result = _InterlockedExchangeAdd((volatile unsigned long *)value, addend);
+	uint32_t result = _InterlockedExchangeAdd((volatile long *)value, addend);
 	return (result);
 }
 fpl_platform_api int32_t fplAtomicAddS32(volatile int32_t *value, const int32_t addend) {
@@ -7431,7 +7444,7 @@ fpl_platform_api int64_t fplAtomicAddS64(volatile int64_t *value, const int64_t 
 
 fpl_platform_api uint32_t fplAtomicCompareAndExchangeU32(volatile uint32_t *dest, const uint32_t comparand, const uint32_t exchange) {
 	FPL_ASSERT(dest != fpl_null);
-	uint32_t result = _InterlockedCompareExchange((volatile unsigned long *)dest, exchange, comparand);
+	uint32_t result = _InterlockedCompareExchange((volatile long *)dest, exchange, comparand);
 	return (result);
 }
 fpl_platform_api int32_t fplAtomicCompareAndExchangeS32(volatile int32_t *dest, const int32_t comparand, const int32_t exchange) {
@@ -7452,7 +7465,7 @@ fpl_platform_api int64_t fplAtomicCompareAndExchangeS64(volatile int64_t *dest, 
 
 fpl_platform_api bool fplIsAtomicCompareAndExchangeU32(volatile uint32_t *dest, const uint32_t comparand, const uint32_t exchange) {
 	FPL_ASSERT(dest != fpl_null);
-	uint32_t value = _InterlockedCompareExchange((volatile unsigned long *)dest, exchange, comparand);
+	uint32_t value = _InterlockedCompareExchange((volatile long *)dest, exchange, comparand);
 	bool result = (value == comparand);
 	return (result);
 }
@@ -7476,7 +7489,7 @@ fpl_platform_api bool fplIsAtomicCompareAndExchangeS64(volatile int64_t *dest, c
 }
 
 fpl_platform_api uint32_t fplAtomicLoadU32(volatile uint32_t *source) {
-	uint32_t result = _InterlockedCompareExchange((volatile unsigned long *)source, 0, 0);
+	uint32_t result = _InterlockedCompareExchange((volatile long *)source, 0, 0);
 	return(result);
 }
 fpl_platform_api uint64_t fplAtomicLoadU64(volatile uint64_t *source) {
@@ -7493,7 +7506,7 @@ fpl_platform_api int64_t fplAtomicLoadS64(volatile int64_t *source) {
 }
 
 fpl_platform_api void fplAtomicStoreU32(volatile uint32_t *dest, const uint32_t value) {
-	_InterlockedExchange((volatile unsigned long *)dest, value);
+	_InterlockedExchange((volatile long *)dest, value);
 }
 fpl_platform_api void fplAtomicStoreU64(volatile uint64_t *dest, const uint64_t value) {
 	_InterlockedExchange64((volatile LONG64 *)dest, value);
@@ -7754,7 +7767,6 @@ fpl_internal DWORD WINAPI fpl__Win32ThreadProc(void *data) {
 	thread->internalHandle.win32ThreadHandle = fpl_null;
 	fplAtomicStoreU32((volatile uint32_t *)&thread->currentState, (uint32_t)fplThreadState_Stopped);
 	ExitThread(0);
-	return(0);
 }
 
 fpl_platform_api fplThreadHandle *fplThreadCreate(fpl_run_thread_function *runFunc, void *data) {
@@ -12232,7 +12244,7 @@ fpl_internal fplAudioResult fpl__AudioInitDirectSound(const fplAudioSettings *au
 	wf.Format.wFormatTag = WAVE_FORMAT_EXTENSIBLE;
 	wf.Format.nChannels = (WORD)audioSettings->deviceFormat.channels;
 	wf.Format.nSamplesPerSec = (DWORD)audioSettings->deviceFormat.sampleRate;
-	wf.Format.wBitsPerSample = fplGetAudioSampleSizeInBytes(audioSettings->deviceFormat.type) * 8;
+	wf.Format.wBitsPerSample = (WORD)fplGetAudioSampleSizeInBytes(audioSettings->deviceFormat.type) * 8;
 	wf.Format.nBlockAlign = (wf.Format.nChannels * wf.Format.wBitsPerSample) / 8;
 	wf.Format.nAvgBytesPerSec = wf.Format.nBlockAlign * wf.Format.nSamplesPerSec;
 	wf.Samples.wValidBitsPerSample = wf.Format.wBitsPerSample;
@@ -14623,5 +14635,10 @@ int WINAPI WinMain(HINSTANCE appInstance, HINSTANCE prevInstance, LPSTR cmdLine,
 #	endif // FPL_PLATFORM_WIN32
 
 #endif // FPL_ENTRYPOINT && !FPL_ENTRYPOINT_IMPLEMENTED
+
+#if defined(FPL_COMPILER_MSVC)
+	//! Don't spill our preferences to the outside
+#	pragma warning( pop )
+#endif
 
 // end-of-file
