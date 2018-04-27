@@ -690,6 +690,26 @@ static void TestAtomics() {
 		ft::AssertU32Equals(expectedBefore, r);
 		ft::AssertU32Equals(expectedAfter, (uint32_t)t);
 	}
+	ft::Msg("Test AtomicExchangeU32 with UINT32_MAX\n");
+	{
+		const uint32_t expectedBefore = 1;
+		const uint32_t exchangeValue = UINT32_MAX;
+		const uint32_t expectedAfter = exchangeValue;
+		volatile uint32_t t = expectedBefore;
+		uint32_t r = fplAtomicExchangeU32(&t, exchangeValue);
+		ft::AssertU32Equals(expectedBefore, r);
+		ft::AssertU32Equals(expectedAfter, (uint32_t)t);
+	}
+	ft::Msg("Test AtomicExchangeU32 with INT32_MAX + 1\n");
+	{
+		const uint32_t expectedBefore = 1;
+		const uint32_t exchangeValue = INT32_MAX + 1;
+		const uint32_t expectedAfter = exchangeValue;
+		volatile uint32_t t = expectedBefore;
+		uint32_t r = fplAtomicExchangeU32(&t, exchangeValue);
+		ft::AssertU32Equals(expectedBefore, r);
+		ft::AssertU32Equals(expectedAfter, (uint32_t)t);
+	}
 	ft::Msg("Test AtomicExchangeS32 with different values\n");
 	{
 		const int32_t expectedBefore = 42;
@@ -744,6 +764,26 @@ static void TestAtomics() {
 	{
 		const uint64_t expectedBefore = 1;
 		const uint64_t exchangeValue = expectedBefore;
+		const uint64_t expectedAfter = exchangeValue;
+		volatile uint64_t t = expectedBefore;
+		uint64_t r = fplAtomicExchangeU64(&t, exchangeValue);
+		ft::AssertU64Equals(expectedBefore, r);
+		ft::AssertU64Equals(expectedAfter, (uint64_t)t);
+	}
+	ft::Msg("Test AtomicExchangeU64 with UINT64_MAX\n");
+	{
+		const uint64_t expectedBefore = 1;
+		const uint64_t exchangeValue = UINT64_MAX;
+		const uint64_t expectedAfter = exchangeValue;
+		volatile uint64_t t = expectedBefore;
+		uint64_t r = fplAtomicExchangeU64(&t, exchangeValue);
+		ft::AssertU64Equals(expectedBefore, r);
+		ft::AssertU64Equals(expectedAfter, (uint64_t)t);
+	}
+	ft::Msg("Test AtomicExchangeU64 with INT64_MAX + 1\n");
+	{
+		const uint64_t expectedBefore = 1;
+		const uint64_t exchangeValue = INT64_MAX + 1;
 		const uint64_t expectedAfter = exchangeValue;
 		volatile uint64_t t = expectedBefore;
 		uint64_t r = fplAtomicExchangeU64(&t, exchangeValue);
