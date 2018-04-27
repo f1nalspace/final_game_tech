@@ -9,6 +9,8 @@ Requirements:
 Author:
 	Torsten Spaete
 Changelog:
+	## 2018-04-27:
+	- Added wrap test for unsigned integers for AtomicExchange
 	## 2018-04-23:
 	- Initial creation of this description block
 	- Forced Visual-Studio-Project to compile in C++ always
