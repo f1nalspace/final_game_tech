@@ -7,7 +7,7 @@
 #include <glm/gtc/constants.hpp>
 #include <glm/gtx/vector_angle.hpp>
 
-#include <Box2D\Box2D.cpp>
+#include <Box2D/Box2D.cpp>
 
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb/stb_image.h>
@@ -30,23 +30,23 @@ constexpr float WorldWidth = 20.0f;
 constexpr float WorldHeight = WorldWidth / GameAspect;
 const glm::vec2 WorldRadius = glm::vec2(WorldWidth, WorldHeight) * 0.5f;
 
-constexpr float FrameRadius = WorldWidth * 0.015f;
+constexpr float FrameRadius = WorldWidth * 0.025f;
 
 constexpr float KillAreaExtent = WorldHeight * 0.5f;
 constexpr float KillAreaDepth = WorldHeight * 0.25f;
 constexpr float KillAreaOffset = WorldHeight * 0.1f;
 constexpr float KillAreaTop = -(WorldHeight * 0.5f + KillAreaOffset);
 
-constexpr float BallRadius = WorldWidth * 0.01f;
+constexpr float BallRadius = WorldWidth * 0.015f;
 constexpr float BallDiameter = BallRadius * 2.0f;
-constexpr float BallSpeed = 6.0f;
+constexpr float BallSpeed = 7.0f;
 
 constexpr float AreaPadding = BallRadius * 2.0f;
 const float BottomAreaDepth = WorldRadius.y * 0.25f;
 const float AreaHalfWidth = WorldRadius.x - FrameRadius * 2.0f;
 const float AreaHalfHeight = WorldRadius.y - FrameRadius * 0.5f - BottomAreaDepth;
 
-constexpr float PaddleSpeed = 70.0f;
+constexpr float PaddleSpeed = 100.0f;
 const glm::vec2 PaddleRadius = glm::vec2(BallRadius * 3, BallRadius);
 const float PaddleLineY = -WorldRadius.y + PaddleRadius.y;
 const float PaddleGlueOffsetY = PaddleRadius.y * 2 + BallRadius * 0.25f;
@@ -54,8 +54,8 @@ const float PaddleGlueOffsetY = PaddleRadius.y * 2 + BallRadius * 0.25f;
 const float PaddleAspect = (PaddleRadius.x + BallRadius) / PaddleRadius.y;
 
 constexpr float BrickSpacing = WorldWidth / 1000.0f;
-constexpr int MaxBrickCols = 25;
-constexpr int MaxBrickRows = 13;
+constexpr int MaxBrickCols = 17;
+constexpr int MaxBrickRows = 11;
 const float SpaceForBricksX = ((AreaHalfWidth - AreaPadding) * 2.0f) - (MaxBrickCols - 1) * BrickSpacing;
 const float SpaceForBricksY = ((AreaHalfHeight - AreaPadding) * 2.0f) - (MaxBrickRows - 1) * BrickSpacing;
 const glm::vec2 BrickRadius = glm::vec2(SpaceForBricksX / (float)MaxBrickCols, SpaceForBricksY / (float)MaxBrickRows) * 0.5f;
@@ -86,8 +86,8 @@ public:
 
 // Brick UVs
 enum class BrickType : int32_t {
-	None = 0,
-	Solid,
+	NoBrick = 0,
+	Solid
 };
 const Vec2i BrickTileSize = MakeVec2i(30, 24);
 const Vec2i BricksTilesetSize = MakeVec2i(34, 28);
@@ -104,7 +104,7 @@ static BricksUVsClass BricksUVs = {};
 const Vec2i BackgroundTileSize = MakeVec2i(16, 16);
 const Vec2i BackgroundTextureSize = MakeVec2i(38, 20);
 enum class BackgroundType : int32_t {
-	None = 0,
+	NoBackground = 0,
 	Default,
 };
 class BackgroundUVsClass : public ArrayInitializer<BackgroundType, UVRect> {
@@ -117,7 +117,7 @@ static BackgroundUVsClass BackgroundUVs = {};
 
 // Frame UVs
 enum class FrameType : int32_t {
-	None = 0,
+	NoFrame = 0,
 
 	TopLeftEdge, // Top left edge (16x16)
 	TopFill, // Normal tile (8x16)
@@ -169,7 +169,7 @@ public:
 static FrameUVsClass FrameUVs = {};
 
 enum class EntityType : int32_t {
-	None = 0,
+	NoEntity = 0,
 	Ball,
 	Paddle,
 	Brick,
@@ -447,6 +447,7 @@ static void LoadLevel(GameState &state, int levelSeed) {
 					bodyDef.angle = 0.0f;
 					bodyDef.linearDamping = 0;
 					bodyDef.angularDamping = 0;
+                    bodyDef.bullet = true;
 					brick.body = body = world->CreateBody(&bodyDef);
 					body->SetUserData(brickEntity);
 
@@ -688,13 +689,12 @@ static bool LoadAssets(GameState &state) {
 	LoadTexture(state.dataPath, "frame.bmp", false, state.assets.frameTexture);
 
 	TextureImage bgImage = LoadTextureImage(state.dataPath, "bg.bmp");
-
-	TextureImage bgTileImage0 = CreateImageTile(bgImage, 2, 2, 16, 16);
-	LoadTexture(bgTileImage0, true, state.assets.bgTextures[BackgroundType::Default]);
-
-	FreeTextureImage(bgTileImage0);
-
-	FreeTextureImage(bgImage);
+	if (bgImage.data != nullptr) {
+        TextureImage bgTileImage0 = CreateImageTile(bgImage, 2, 2, 16, 16);
+        LoadTexture(bgTileImage0, true, state.assets.bgTextures[BackgroundType::Default]);
+        FreeTextureImage(bgTileImage0);
+        FreeTextureImage(bgImage);
+    }
 
 	return true;
 }

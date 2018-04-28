@@ -31,10 +31,11 @@ Todo:
 
 #define FPL_IMPLEMENTATION
 #include <final_platform_layer.h>
+#undef GL_VERSION_1_1
 
 #include <math.h> // abs
 
-#include "game.cpp"
+#include "game.h"
 
 static void UpdateKeyboardButtonState(const bool isDown, ButtonState &targetButton) {
 	if(isDown != targetButton.isDown) {
@@ -294,7 +295,7 @@ int main(int argc, char *argv[]) {
 					fpsTimerInSecs = endTime;
 					char charBuffer[256];
 					fplFormatAnsiString(charBuffer, FPL_ARRAYCOUNT(charBuffer), "Fps: %d, Ups: %d\n", frameCount, updateCount);
-					OutputDebugStringA(charBuffer);
+					//OutputDebugStringA(charBuffer);
 					frameCount = 0;
 					updateCount = 0;
 				}
