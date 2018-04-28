@@ -18,7 +18,7 @@
 #include "game.h"
 
 #define DRAW_NORMALS 0
-#define DRAW_DEBUG 1
+#define DRAW_DEBUG 0
 
 constexpr float Pi32 = glm::pi<float>();
 constexpr float Tau32 = Pi32 * 2.0f;
@@ -30,8 +30,7 @@ constexpr float WorldWidth = 20.0f;
 constexpr float WorldHeight = WorldWidth / GameAspect;
 const glm::vec2 WorldRadius = glm::vec2(WorldWidth, WorldHeight) * 0.5f;
 
-constexpr float SideBorderRadius = WorldWidth * 0.015f;
-constexpr float TopBorderRadius = WorldWidth * 0.015f;
+constexpr float FrameRadius = WorldWidth * 0.015f;
 
 constexpr float KillAreaExtent = WorldHeight * 0.5f;
 constexpr float KillAreaDepth = WorldHeight * 0.25f;
@@ -40,21 +39,22 @@ constexpr float KillAreaTop = -(WorldHeight * 0.5f + KillAreaOffset);
 
 constexpr float BallRadius = WorldWidth * 0.01f;
 constexpr float BallDiameter = BallRadius * 2.0f;
-constexpr float BallSpeed = 8.0f;
+constexpr float BallSpeed = 6.0f;
 
 constexpr float AreaPadding = BallRadius * 2.0f;
 const float BottomAreaDepth = WorldRadius.y * 0.25f;
-const float AreaHalfWidth = WorldRadius.x - SideBorderRadius * 2.0f;
-const float AreaHalfHeight = WorldRadius.y - TopBorderRadius * 0.5f - BottomAreaDepth;
+const float AreaHalfWidth = WorldRadius.x - FrameRadius * 2.0f;
+const float AreaHalfHeight = WorldRadius.y - FrameRadius * 0.5f - BottomAreaDepth;
 
 constexpr float PaddleSpeed = 70.0f;
-const glm::vec2 PaddleRadius = glm::vec2(BallRadius * 5, BallRadius);
+const glm::vec2 PaddleRadius = glm::vec2(BallRadius * 3, BallRadius);
 const float PaddleLineY = -WorldRadius.y + PaddleRadius.y;
 const float PaddleGlueOffsetY = PaddleRadius.y * 2 + BallRadius * 0.25f;
 
+const float PaddleAspect = (PaddleRadius.x + BallRadius) / PaddleRadius.y;
 
-constexpr float BrickSpacing = BallRadius * 0.75f;
-constexpr int MaxBrickCols = 15;
+constexpr float BrickSpacing = WorldWidth / 1000.0f;
+constexpr int MaxBrickCols = 25;
 constexpr int MaxBrickRows = 13;
 const float SpaceForBricksX = ((AreaHalfWidth - AreaPadding) * 2.0f) - (MaxBrickCols - 1) * BrickSpacing;
 const float SpaceForBricksY = ((AreaHalfHeight - AreaPadding) * 2.0f) - (MaxBrickRows - 1) * BrickSpacing;
@@ -62,13 +62,119 @@ const glm::vec2 BrickRadius = glm::vec2(SpaceForBricksX / (float)MaxBrickCols, S
 
 const glm::vec2 Gravity = glm::vec2(0, -10);
 
+// @NOTE(final): CPP is such garbage!
+// It cannot handle array index initializer such as [index] = value :-(
+// So we need this nonsense just to initialize a static array -.-
+template <typename TEnumType, typename TValueType>
+class ArrayInitializer {
+protected:
+	TValueType a[256];
+public:
+	ArrayInitializer() {
+		fplMemoryClear(a, sizeof(TValueType) * FPL_ARRAYCOUNT(a));
+	}
+	const TValueType &operator [] (TEnumType eindex) const {
+		return a[(int)eindex];
+	}
+	TValueType &operator [] (TEnumType eindex) {
+		return a[(int)eindex];
+	}
+	void Set(TEnumType e, const TValueType &value) {
+		a[(int)e] = value;
+	}
+};
+
+// Brick UVs
+enum class BrickType : int32_t {
+	None = 0,
+	Solid,
+};
+const Vec2i BrickTileSize = MakeVec2i(30, 24);
+const Vec2i BricksTilesetSize = MakeVec2i(34, 28);
+const int BrickTilesetBorder = 2;
+class BricksUVsClass : public ArrayInitializer<BrickType, UVRect> {
+public:
+	BricksUVsClass() {
+		Set(BrickType::Solid, UVRectFromTile(BricksTilesetSize, BrickTileSize, BrickTilesetBorder, MakeVec2i(0, 0)));
+	}
+};
+static BricksUVsClass BricksUVs = {};
+
+// Background UVs
+const Vec2i BackgroundTileSize = MakeVec2i(16, 16);
+const Vec2i BackgroundTextureSize = MakeVec2i(38, 20);
+enum class BackgroundType : int32_t {
+	None = 0,
+	Default,
+};
+class BackgroundUVsClass : public ArrayInitializer<BackgroundType, UVRect> {
+public:
+	BackgroundUVsClass() {
+		Set(BackgroundType::Default, UVRectFromPos(BackgroundTextureSize, BackgroundTileSize, MakeVec2i(2, 2)));
+	}
+};
+static BackgroundUVsClass BackgroundUVs = {};
+
+// Frame UVs
+enum class FrameType : int32_t {
+	None = 0,
+
+	TopLeftEdge, // Top left edge (16x16)
+	TopFill, // Normal tile (8x16)
+	TopMarks, // Marked tile (16x16)
+	TopBegin, // Left (8x16)
+	TopEnd, // Right (8x16)
+	TopRightEdge, // Top right edge (16x16)
+
+	LeftFill, // Normal tile (16x8)
+	LeftStart, // Top (16x8)
+	LeftMarks, // Marked tile (16x16)
+	LeftEnd, // Bottom (16x8)
+	LeftBottomEdge, // Left bottom edge (16x16)
+
+	RightFill, // Normal tile (16x8)
+	RightStart, // Top (16x8)
+	RightMarks, // Marked tile (16x16)
+	RightEnd, // Bottom (16x8)
+	RightBottomEdge, // Right bottom edge (16x16)
+};
+const Vec2i FrameTopFillSize = MakeVec2i(8, 16);
+const Vec2i FrameTopTileSize = MakeVec2i(16, 16);
+const Vec2i FrameSideFillSize = MakeVec2i(16, 8);
+const Vec2i FrameSideTileSize = MakeVec2i(16, 16);
+const Vec2i FrameTextureSize = MakeVec2i(86, 86);
+class FrameUVsClass : public ArrayInitializer<FrameType, UVRect> {
+public:
+	FrameUVsClass() {
+		Set(FrameType::TopLeftEdge, UVRectFromPos(FrameTextureSize, FrameTopTileSize, MakeVec2i(2, 2)));
+		Set(FrameType::TopFill, UVRectFromPos(FrameTextureSize, FrameTopFillSize, MakeVec2i(20, 2)));
+		Set(FrameType::TopMarks, UVRectFromPos(FrameTextureSize, FrameTopFillSize, MakeVec2i(40, 2)));
+		Set(FrameType::TopBegin, UVRectFromPos(FrameTextureSize, FrameTopFillSize, MakeVec2i(30, 2)));
+		Set(FrameType::TopEnd, UVRectFromPos(FrameTextureSize, FrameTopFillSize, MakeVec2i(58, 2)));
+		Set(FrameType::TopRightEdge, UVRectFromPos(FrameTextureSize, FrameTopTileSize, MakeVec2i(68, 2)));
+
+		Set(FrameType::LeftFill, UVRectFromPos(FrameTextureSize, FrameSideFillSize, MakeVec2i(2, 20)));
+		Set(FrameType::LeftStart, UVRectFromPos(FrameTextureSize, FrameSideFillSize, MakeVec2i(2, 30)));
+		Set(FrameType::LeftMarks, UVRectFromPos(FrameTextureSize, FrameSideTileSize, MakeVec2i(2, 40)));
+		Set(FrameType::LeftEnd, UVRectFromPos(FrameTextureSize, FrameSideFillSize, MakeVec2i(2, 58)));
+		Set(FrameType::LeftBottomEdge, UVRectFromPos(FrameTextureSize, FrameSideTileSize, MakeVec2i(2, 68)));
+
+		Set(FrameType::RightFill, UVRectFromPos(FrameTextureSize, FrameSideFillSize, MakeVec2i(68, 20)));
+		Set(FrameType::RightStart, UVRectFromPos(FrameTextureSize, FrameSideFillSize, MakeVec2i(68, 30)));
+		Set(FrameType::RightMarks, UVRectFromPos(FrameTextureSize, FrameSideTileSize, MakeVec2i(68, 40)));
+		Set(FrameType::RightEnd, UVRectFromPos(FrameTextureSize, FrameSideFillSize, MakeVec2i(68, 58)));
+		Set(FrameType::RightBottomEdge, UVRectFromPos(FrameTextureSize, FrameSideTileSize, MakeVec2i(68, 68)));
+	}
+};
+static FrameUVsClass FrameUVs = {};
+
 enum class EntityType : int32_t {
 	None = 0,
 	Ball,
-	Border,
-	KillArea,
-	Brick,
 	Paddle,
+	Brick,
+	Frame,
+	KillArea,
 };
 
 struct Ball {
@@ -84,19 +190,6 @@ struct Paddle {
 	Ball *gluedBall;
 };
 
-enum class BrickType : int32_t {
-	None = 0,
-	Solid,
-};
-
-// @NOTE(final): Tileset is loaded bottom-up, so it matches OpenGL coordinate system
-const Vec2i BrickPixelSize = MakeVec2i(62, 30);
-const Vec2i BrickTilesetSize = MakeVec2i(320, 160);
-static UVRect BrickTilesetUVs[] = {
-	{0}, // None
-	UVRectFromTile(BrickTilesetSize, BrickPixelSize, 1, MakeVec2i(0, 0)), // Solid (Red)
-};
-
 struct Brick {
 	b2Body *body;
 	BrickType type;
@@ -107,8 +200,10 @@ struct Brick {
 	bool isDead;
 };
 
-struct Border {
-	b2Body *body;
+struct Frame {
+	b2Body *top;
+	b2Body *left;
+	b2Body *right;
 };
 
 struct KillArea {
@@ -121,7 +216,7 @@ struct Entity {
 		Ball ball;
 		Paddle paddle;
 		Brick brick;
-		Border border;
+		Frame frame;
 		KillArea killArea;
 	};
 };
@@ -142,7 +237,10 @@ public:
 
 struct Assets {
 	GLuint ballTexture;
-	GLuint bricksTileset;
+	GLuint bricksTexture;
+	GLuint paddleTexture;
+	GLuint frameTexture;
+	ArrayInitializer<BackgroundType, GLuint> bgTextures;
 };
 
 struct GameState {
@@ -154,7 +252,7 @@ struct GameState {
 
 	b2World *world;
 
-	Entity border[3];
+	Entity frame;
 	Entity ball;
 	Entity paddle;
 	Entity killArea;
@@ -184,7 +282,7 @@ inline int RandomInt(int size) {
 
 static void DrawCircleVertices(const float r, const int segments) {
 	float alpha = Tau32 / (float)segments;
-	for(int i = 0; i <= segments; ++i) {
+	for (int i = 0; i <= segments; ++i) {
 		float a = i * alpha;
 		float c = glm::cos(a) * r;
 		float s = glm::sin(a) * r;
@@ -204,16 +302,16 @@ static void DrawNormal(const glm::vec2 &p, const glm::vec2 &n, float d) {
 	glEnd();
 }
 
-static GLuint AllocateTexture(uint32_t width, uint32_t height, void *data) {
+static GLuint AllocateTexture(const uint32_t width, const uint32_t height, const void *data, const bool repeatable) {
 	GLuint handle;
 	glGenTextures(1, &handle);
 	glBindTexture(GL_TEXTURE_2D, handle);
 	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, data);
 
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, repeatable ? GL_REPEAT : GL_CLAMP);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, repeatable ? GL_REPEAT : GL_CLAMP);
 
 	glBindTexture(GL_TEXTURE_2D, 0);
 
@@ -222,7 +320,7 @@ static GLuint AllocateTexture(uint32_t width, uint32_t height, void *data) {
 
 static void ClearWorld(b2World *world) {
 	b2Body *body = world->GetBodyList();
-	while(body != nullptr) {
+	while (body != nullptr) {
 		b2Body *next = body->GetNext();
 		world->DestroyBody(body);
 		body = next;
@@ -258,40 +356,33 @@ static void LoadLevel(GameState &state, int levelSeed) {
 		b2Body *body;
 
 		b2PolygonShape sideShape = b2PolygonShape();
-		sideShape.SetAsBox(SideBorderRadius, hh + KillAreaExtent);
+		sideShape.SetAsBox(FrameRadius, hh + KillAreaExtent);
 		b2PolygonShape topShape = b2PolygonShape();
-		topShape.SetAsBox(hw, TopBorderRadius);
+		topShape.SetAsBox(hw, FrameRadius);
+
+		Entity *frameEntity = &state.frame;
+		*frameEntity = {};
+		frameEntity->type = EntityType::Frame;
+		Frame &frame = frameEntity->frame;
 
 		// Right
-		Entity *rightEntity = &state.border[0];
-		*rightEntity = {};
-		rightEntity->type = EntityType::Border;
-		Border &right = rightEntity->border;
-		bodyDef.position = b2Vec2(hw - SideBorderRadius, -KillAreaExtent);
-		right.body = body = world->CreateBody(&bodyDef);
-		body->SetUserData(rightEntity);
+		bodyDef.position = b2Vec2(hw - FrameRadius, -KillAreaExtent);
+		frame.right = body = world->CreateBody(&bodyDef);
+		body->SetUserData(frameEntity);
 		fixtureDef.shape = &sideShape;
 		body->CreateFixture(&fixtureDef);
 
 		// Top
-		Entity *topEntity = &state.border[1];
-		*topEntity = {};
-		topEntity->type = EntityType::Border;
-		Border &top = topEntity->border;
-		bodyDef.position = b2Vec2(0, hh - TopBorderRadius);
-		top.body = body = world->CreateBody(&bodyDef);
-		body->SetUserData(topEntity);
+		bodyDef.position = b2Vec2(0, hh - FrameRadius);
+		frame.top = body = world->CreateBody(&bodyDef);
+		body->SetUserData(frameEntity);
 		fixtureDef.shape = &topShape;
 		body->CreateFixture(&fixtureDef);
 
 		// Left
-		Entity *leftEntity = &state.border[2];
-		*leftEntity = {};
-		leftEntity->type = EntityType::Border;
-		Border &left = leftEntity->border;
-		bodyDef.position = b2Vec2(-hw + SideBorderRadius, -KillAreaExtent);
-		left.body = body = world->CreateBody(&bodyDef);
-		body->SetUserData(leftEntity);
+		bodyDef.position = b2Vec2(-hw + FrameRadius, -KillAreaExtent);
+		frame.left = body = world->CreateBody(&bodyDef);
+		body->SetUserData(frameEntity);
 		fixtureDef.shape = &sideShape;
 		body->CreateFixture(&fixtureDef);
 	}
@@ -334,14 +425,14 @@ static void LoadLevel(GameState &state, int levelSeed) {
 	{
 		b2Body *body;
 		float halfWidth = (MaxBrickCols * BrickRadius.x) - ((MaxBrickCols - 1) * BrickSpacing * 0.5f);
-		float brickY = WorldRadius.y - TopBorderRadius * 2.0f - AreaPadding - BrickRadius.y;
+		float brickY = WorldRadius.y - FrameRadius * 2.0f - AreaPadding - BrickRadius.y;
 		state.numActiveBricks = 0;
-		for(int row = 0; row < MaxBrickRows; ++row) {
+		for (int row = 0; row < MaxBrickRows; ++row) {
 			//float brickX = -WorldRadius.x + SideBorderRadius * 2.0f - AreaPadding + BrickRadius.x;
-			float brickX = -WorldRadius.x + SideBorderRadius * 2.0f + AreaPadding + BrickRadius.x;
-			for(int col = 0; col < MaxBrickCols; ++col) {
+			float brickX = -WorldRadius.x + FrameRadius * 2.0f + AreaPadding + BrickRadius.x;
+			for (int col = 0; col < MaxBrickCols; ++col) {
 				BrickType brickType = state.bricksMap[row * MaxBrickCols + col];
-				if(brickType == BrickType::Solid) {
+				if (brickType == BrickType::Solid) {
 					Entity *brickEntity = &state.activeBricks[state.numActiveBricks++];
 					*brickEntity = {};
 					brickEntity->type = EntityType::Brick;
@@ -493,57 +584,127 @@ static void LoadLevel(GameState &state, int levelSeed) {
 	GlueBallOnPaddle(state, &state.ball.ball);
 }
 
-static bool LoadTexture(const char *dataPath, const char *filename, GLuint &outTexture) {
+struct TextureImage {
+	int width;
+	int height;
+	int components;
+	uint8_t *data;
+};
+
+static void FreeTextureImage(TextureImage &img) {
+	stbi_image_free(img.data);
+	img = {};
+}
+
+static TextureImage CreateImageTile(TextureImage &source, int x, int y, int w, int h) {
+	FPL_ASSERT(source.components == 4);
+	TextureImage result = {};
+	result.width = w;
+	result.height = h;
+	result.components = 4;
+	result.data = (uint8_t *)STBI_MALLOC(w * h * 4);
+	int sourceScanline = source.width * 4;
+	int destScanline = w * 4;
+	int dstY = 0;
+	for (int srcY = y; srcY < (y + h); ++srcY) {
+		int dstX = 0;
+		for (int srcX = x; srcX < (x + w); ++srcX) {
+			uint8_t *src = source.data + (srcY * sourceScanline + srcX * 4);
+			uint8_t *dst = result.data + (dstY * destScanline + dstX * 4);
+			uint32_t *srcPixel = (uint32_t *)src;
+			uint32_t *dstPixel = (uint32_t *)dst;
+			*dstPixel = *srcPixel;
+			++dstX;
+		}
+		++dstY;
+	}
+	return(result);
+}
+
+static TextureImage LoadTextureImage(const char *dataPath, const char *filename) {
+	TextureImage result = {};
+
 	char filePath[1024];
 	fplCopyAnsiString(dataPath, filePath, FPL_ARRAYCOUNT(filePath));
 	fplPathCombine(filePath, FPL_ARRAYCOUNT(filePath), 2, dataPath, filename);
 
 	fplFileHandle file;
-	if(!fplOpenAnsiBinaryFile(filePath, &file)) {
+	if (fplOpenAnsiBinaryFile(filePath, &file)) {
+		uint32_t fileLen = fplGetFileSizeFromHandle32(&file);
+		uint8_t *fileBuffer = (uint8_t *)fplMemoryAllocate(fileLen);
+		if (fileBuffer != nullptr) {
+			if (fplReadFileBlock32(&file, fileLen, fileBuffer, fileLen) == fileLen) {
+				int imageWidth = 0;
+				int imageHeight = 0;
+				int imageComponents = 0;
+				stbi_set_flip_vertically_on_load(0);
+				stbi_uc *imageData = stbi_load_from_memory(fileBuffer, fileLen, &imageWidth, &imageHeight, &imageComponents, 4);
+				if (imageData != nullptr) {
+					result.width = imageWidth;
+					result.height = imageHeight;
+					result.components = imageComponents;
+					result.data = imageData;
+				} else {
+					fplConsoleFormatError("Image file '%s' of size '%lu' is broken!\n", filePath, fileLen);
+				}
+			} else {
+				fplConsoleFormatError("Failed reading file of size '%lu'!\n", fileLen);
+			}
+			fplMemoryFree(fileBuffer);
+		} else {
+			fplConsoleFormatError("Failed allocating memory of size '%lu'!\n", fileLen);
+		}
+		fplCloseFile(&file);
+	} else {
 		fplConsoleFormatError("Image file '%s' could not be found!\n", filePath);
+	}
+	return(result);
+}
+
+static bool LoadTexture(const TextureImage &image, const bool repeatable, GLuint &outTexture) {
+	bool result = false;
+	GLuint texId = AllocateTexture(image.width, image.height, image.data, repeatable);
+	if (texId > 0) {
+		outTexture = texId;
+		result = true;
+	}
+	return(result);
+}
+
+static bool LoadTexture(const char *dataPath, const char *filename, const bool repeatable, GLuint &outTexture) {
+	TextureImage image = LoadTextureImage(dataPath, filename);
+	if (image.data == nullptr) {
 		return false;
 	}
-	uint32_t fileLen = fplGetFileSizeFromHandle32(&file);
-	uint8_t *fileBuffer = (uint8_t *)fplMemoryAllocate(fileLen);
-	bool result = false;
-	if(fileBuffer != nullptr) {
-		if(fplReadFileBlock32(&file, fileLen, fileBuffer, fileLen) == fileLen) {
-			int imageWidth = 0;
-			int imageHeight = 0;
-			int imageComponents = 0;
-			stbi_set_flip_vertically_on_load(0);
-			stbi_uc *imageData = stbi_load_from_memory(fileBuffer, fileLen, &imageWidth, &imageHeight, &imageComponents, 4);
-			if(imageData != nullptr) {
-				GLuint texId = AllocateTexture(imageWidth, imageHeight, imageData);
-				if(texId > 0) {
-					outTexture = texId;
-					result = true;
-				}
-				stbi_image_free(imageData);
-			} else {
-				fplConsoleFormatError("Image file '%s' of size '%lu' is broken!\n", filePath, fileLen);
-			}
-		} else {
-			fplConsoleFormatError("Failed reading file of size '%lu'!\n", fileLen);
-		}
-		fplMemoryFree(fileBuffer);
-	} else {
-		fplConsoleFormatError("Failed allocating memory of size '%lu'!\n", fileLen);
-	}
-	fplCloseFile(&file);
+	bool result = LoadTexture(image, repeatable, outTexture);
+	FreeTextureImage(image);
 	return(result);
 }
 
 static bool LoadAssets(GameState &state) {
-	LoadTexture(state.dataPath, "ball.png", state.assets.ballTexture);
-	LoadTexture(state.dataPath, "bricks.png", state.assets.bricksTileset);
+	LoadTexture(state.dataPath, "ball.bmp", false, state.assets.ballTexture);
+	LoadTexture(state.dataPath, "bricks.bmp", false, state.assets.bricksTexture);
+	LoadTexture(state.dataPath, "paddle.bmp", false, state.assets.paddleTexture);
+	LoadTexture(state.dataPath, "frame.bmp", false, state.assets.frameTexture);
+
+	TextureImage bgImage = LoadTextureImage(state.dataPath, "bg.bmp");
+
+	TextureImage bgTileImage0 = CreateImageTile(bgImage, 2, 2, 16, 16);
+	LoadTexture(bgTileImage0, true, state.assets.bgTextures[BackgroundType::Default]);
+
+	FreeTextureImage(bgTileImage0);
+
+	FreeTextureImage(bgImage);
+
 	return true;
 }
 
 static bool GameInit(GameState &state) {
-	if(!fglLoadOpenGL(true)) {
+	if (!fglLoadOpenGL(true)) {
 		return false;
 	}
+
+	fplConsoleFormatOut("%f\n", PaddleAspect);
 
 	fplGetExecutableFilePath(state.dataPath, FPL_ARRAYCOUNT(state.dataPath));
 	fplExtractFilePath(state.dataPath, state.dataPath, FPL_ARRAYCOUNT(state.dataPath));
@@ -579,7 +740,7 @@ static bool GameInit(GameState &state) {
 
 static void GameRelease(GameState &state) {
 	ClearWorld(state.world);
-	if(state.world != nullptr) {
+	if (state.world != nullptr) {
 		delete state.world;
 		state.world = nullptr;
 	}
@@ -587,7 +748,7 @@ static void GameRelease(GameState &state) {
 }
 
 extern void GameDestroy(GameState *state) {
-	if(state != nullptr) {
+	if (state != nullptr) {
 		GameRelease(*state);
 		state->~GameState();
 		fplMemoryFree(state);
@@ -596,11 +757,11 @@ extern void GameDestroy(GameState *state) {
 
 extern GameState *GameCreate() {
 	void *stateMem = fplMemoryAllocate(sizeof(GameState));
-	if(stateMem == nullptr) {
+	if (stateMem == nullptr) {
 		return nullptr;
 	}
 	GameState *state = (GameState *)stateMem;
-	if(!GameInit(*state)) {
+	if (!GameInit(*state)) {
 		GameDestroy(state);
 		state = nullptr;
 	}
@@ -639,13 +800,13 @@ static void SetRandomLevel(GameState &state, int seed) {
 	state.levelSeed = seed;
 	int halfColCount = (MaxBrickCols - 1) / 2;
 	bool reverse = RandomInt(100) > 25;
-	for(int row = 0; row < MaxBrickRows; ++row) {
+	for (int row = 0; row < MaxBrickRows; ++row) {
 #if ALL_BRICKS
 		int randomColCount = halfColCount;
 #else
 		int randomColCount = RandomInt(halfColCount);
 #endif
-		for(int col = 0; col < randomColCount; ++col) {
+		for (int col = 0; col < randomColCount; ++col) {
 			int c = reverse ? (halfColCount - 1 - col) : col;
 			int leftCol = c;
 			int rightCol = (MaxBrickCols - 1) - c;
@@ -655,7 +816,7 @@ static void SetRandomLevel(GameState &state, int seed) {
 #if ALL_BRICKS
 		state.bricksMap[row * MaxBrickCols + halfColCount] = BrickType::Solid;
 #else
-		if(Random01() > 0.5f) {
+		if (Random01() > 0.5f) {
 			state.bricksMap[row * MaxBrickCols + halfColCount] = BrickType::Solid;
 		}
 #endif
@@ -665,20 +826,20 @@ static void SetRandomLevel(GameState &state, int seed) {
 }
 
 static void EntersKillArea(GameState &state, Entity &other) {
-	if(other.type == EntityType::Ball) {
+	if (other.type == EntityType::Ball) {
 		Ball *ball = &other.ball;
 		Paddle &paddle = state.paddle.paddle;
 		ball->isDead = true;
-	} else if(other.type == EntityType::Brick) {
+	} else if (other.type == EntityType::Brick) {
 		Brick &brick = other.brick;
 		brick.isDead = true;
 	}
 }
 
 static void HandleBallCollision(GameState &state, Ball &ball, Entity &other, b2Contact &contact) {
-	if(other.type == EntityType::Brick) {
+	if (other.type == EntityType::Brick) {
 		Brick &brick = other.brick;
-		if(!brick.requestHit && !brick.isDead) {
+		if (!brick.requestHit && !brick.isDead) {
 			// @TODO(final): Score
 			// @TODO(final): Save contact info so we can add an impulse to "simulate" hit-by-ball
 			brick.requestHit = true;
@@ -709,12 +870,12 @@ static CollisionPair GetCollisionPair(b2Contact* contact) {
 	FPL_ASSERT(bodyA != nullptr && bodyB != nullptr);
 	void *dataA = bodyA->GetUserData();
 	void *dataB = bodyB->GetUserData();
-	if(dataA != nullptr && dataB != nullptr) {
+	if (dataA != nullptr && dataB != nullptr) {
 		Entity *entityA = (Entity *)dataA;
 		Entity *entityB = (Entity *)dataB;
 
 		// Sort entity by type
-		if(entityA->type > entityB->type) {
+		if (entityA->type > entityB->type) {
 			entityB = (Entity *)dataA;
 			entityA = (Entity *)dataB;
 			fixtureB = contact->GetFixtureA();
@@ -734,16 +895,16 @@ static CollisionPair GetCollisionPair(b2Contact* contact) {
 
 static void HandleContactCollision(GameState &state, b2Contact *contact) {
 	CollisionPair pair = GetCollisionPair(contact);
-	if(pair.entityA->type == EntityType::Ball) {
+	if (pair.entityA->type == EntityType::Ball) {
 		HandleBallCollision(state, pair.entityA->ball, *pair.entityB, *contact);
 	}
 }
 
 static void HandlePreCollision(GameState &state, b2Contact* contact) {
 	CollisionPair pair = GetCollisionPair(contact);
-	if(pair.entityA->type == EntityType::KillArea) {
+	if (pair.entityA->type == EntityType::KillArea) {
 		EntersKillArea(state, *pair.entityB);
-	} else if(pair.entityB->type == EntityType::KillArea) {
+	} else if (pair.entityB->type == EntityType::KillArea) {
 		EntersKillArea(state, *pair.entityA);
 	}
 }
@@ -765,25 +926,25 @@ extern bool IsGameExiting(GameState &state) {
 }
 
 extern void GameInput(GameState &state, const Input &input, bool isActive) {
-	if(!isActive) {
+	if (!isActive) {
 		return;
 	}
 
 	// Single player input
 	Paddle &paddle = state.paddle.paddle;
-	if(input.defaultControllerIndex != -1) {
+	if (input.defaultControllerIndex != -1) {
 		FPL_ASSERT(input.defaultControllerIndex < FPL_ARRAYCOUNT(input.controllers));
 		const Controller &controller = input.controllers[input.defaultControllerIndex];
-		if(controller.isConnected) {
-			if(controller.moveLeft.isDown) {
+		if (controller.isConnected) {
+			if (controller.moveLeft.isDown) {
 				paddle.body->ApplyLinearImpulse(paddle.speed * b2Vec2(-1, 0), paddle.body->GetPosition(), true);
-			} else if(controller.moveRight.isDown) {
+			} else if (controller.moveRight.isDown) {
 				paddle.body->ApplyLinearImpulse(paddle.speed * b2Vec2(1, 0), paddle.body->GetPosition(), true);
 			}
-			if(WasPressed(controller.actionDown) && paddle.gluedBall != nullptr) {
+			if (WasPressed(controller.actionDown) && paddle.gluedBall != nullptr) {
 				LaunchBall(state);
 			}
-			if(WasPressed(controller.editorToggle)) {
+			if (WasPressed(controller.editorToggle)) {
 				LoadLevel(state, state.levelSeed + 1);
 			}
 		}
@@ -791,13 +952,13 @@ extern void GameInput(GameState &state, const Input &input, bool isActive) {
 }
 
 extern void GameUpdate(GameState &state, const Input &input, bool isActive) {
-	if(!isActive) {
+	if (!isActive) {
 		return;
 	}
 
 	// Compute viewport
 	Vec2i viewSize = MakeVec2i(input.windowSize.x, (int)(input.windowSize.x / GameAspect));
-	if(viewSize.y > input.windowSize.y) {
+	if (viewSize.y > input.windowSize.y) {
 		viewSize.y = input.windowSize.y;
 		viewSize.x = (int)(input.windowSize.y * GameAspect);
 	}
@@ -807,10 +968,10 @@ extern void GameUpdate(GameState &state, const Input &input, bool isActive) {
 
 	// Move glued ball
 	Paddle &paddle = state.paddle.paddle;
-	if(paddle.gluedBall == nullptr && state.ball.ball.isDead) {
+	if (paddle.gluedBall == nullptr && state.ball.ball.isDead) {
 		GlueBallOnPaddle(state, &state.ball.ball);
 	}
-	if(paddle.gluedBall != nullptr) {
+	if (paddle.gluedBall != nullptr) {
 		Ball *ball = paddle.gluedBall;
 		b2Vec2 gluePos = paddle.body->GetPosition() + b2Vec2(0, PaddleGlueOffsetY);
 		ball->body->SetTransform(gluePos, 0);
@@ -823,14 +984,14 @@ extern void GameUpdate(GameState &state, const Input &input, bool isActive) {
 		const float angleCorrection = 15.0f;
 		float squaredAngles[] = { 0, 90, 180, 270, 360 };
 		Ball &ball = state.ball.ball;
-		if(ball.isMoving) {
+		if (ball.isMoving) {
 			b2Vec2 vel = ball.body->GetLinearVelocity();
 			b2Vec2 dir = vel;
 			dir.Normalize();
 			float a = glm::atan<float>(dir.y, dir.x);
 			float deg = glm::degrees<float>(a);
-			for(int i = 0; i < FPL_ARRAYCOUNT(squaredAngles); ++i) {
-				if(glm::abs<float>(deg) > (squaredAngles[i] - angleTolerance) && glm::abs<float>(deg) < (squaredAngles[i] + angleTolerance)) {
+			for (int i = 0; i < FPL_ARRAYCOUNT(squaredAngles); ++i) {
+				if (glm::abs<float>(deg) > (squaredAngles[i] - angleTolerance) && glm::abs<float>(deg) < (squaredAngles[i] + angleTolerance)) {
 					deg += (glm::abs(deg) - squaredAngles[i] > 0 ? 1 : -1) * angleCorrection;
 					a = glm::radians<float>(deg);
 				}
@@ -843,10 +1004,10 @@ extern void GameUpdate(GameState &state, const Input &input, bool isActive) {
 
 	// Make all bricks dynamic when hit
 	const float hitStrength = 0.5f;
-	for(size_t i = 0; i < state.numActiveBricks; ++i) {
+	for (size_t i = 0; i < state.numActiveBricks; ++i) {
 		Entity &brickEntity = state.activeBricks[i];
 		Brick &brick = brickEntity.brick;
-		if(brick.requestHit && !brick.isDead && !brick.isHit) {
+		if (brick.requestHit && !brick.isDead && !brick.isHit) {
 			brick.body->SetType(b2BodyType::b2_dynamicBody);
 			b2Vec2 impulse = hitStrength * -b2Vec2(brick.hitNormal.x, brick.hitNormal.y);
 			b2Vec2 point = b2Vec2(brick.hitPoint.x, brick.hitPoint.y);
@@ -856,15 +1017,15 @@ extern void GameUpdate(GameState &state, const Input &input, bool isActive) {
 	}
 
 	// Remove dead bricks
-	if(state.numActiveBricks > 0) {
-		for(size_t i = 0, c = state.numActiveBricks; i < c; ++i) {
-			if(state.activeBricks[i].brick.isDead) {
+	if (state.numActiveBricks > 0) {
+		for (size_t i = 0, c = state.numActiveBricks; i < c; ++i) {
+			if (state.activeBricks[i].brick.isDead) {
 				Entity temp = state.activeBricks[i];
-				if(temp.brick.body != nullptr) {
+				if (temp.brick.body != nullptr) {
 					state.world->DestroyBody(temp.brick.body);
 				}
 				temp = {};
-				if(i < state.numActiveBricks - 1) {
+				if (i < state.numActiveBricks - 1) {
 					state.activeBricks[i] = state.activeBricks[state.numActiveBricks - 1];
 					state.activeBricks[state.numActiveBricks - 1] = temp;
 					state.activeBricks[i].brick.body->SetUserData(&state.activeBricks[i]);
@@ -872,28 +1033,32 @@ extern void GameUpdate(GameState &state, const Input &input, bool isActive) {
 				--state.numActiveBricks;
 			}
 		}
-		if(state.numActiveBricks == 0) {
+		if (state.numActiveBricks == 0) {
 			// Level done
 			LoadLevel(state, state.levelSeed + 1);
 		}
 	}
 
 	// Run physics simulation
-	state.world->Step(input.deltaTime, 6, 2);
+	state.world->Step(input.deltaTime, 10, 10);
 	state.world->ClearForces();
 }
 
-static void DrawSprite(const GLuint texId, const float rx, const float ry, const float uMin = 0.0f, const float vMin = 0.0f, const float uMax = 1.0f, const float vMax = 1.0f) {
+static void DrawSprite(const GLuint texId, const float rx, const float ry, const float uMin = 0.0f, const float vMin = 0.0f, const float uMax = 1.0f, const float vMax = 1.0f, const float xoffset = 0, const float yoffset = 0) {
 	glEnable(GL_TEXTURE_2D);
 	glBindTexture(GL_TEXTURE_2D, texId);
 	glBegin(GL_QUADS);
-	glTexCoord2f(uMax, vMax); glVertex2f(rx, ry);
-	glTexCoord2f(uMin, vMax); glVertex2f(-rx, ry);
-	glTexCoord2f(uMin, vMin); glVertex2f(-rx, -ry);
-	glTexCoord2f(uMax, vMin); glVertex2f(rx, -ry);
+	glTexCoord2f(uMax, vMax); glVertex2f(xoffset + rx, yoffset + ry);
+	glTexCoord2f(uMin, vMax); glVertex2f(xoffset + -rx, yoffset + ry);
+	glTexCoord2f(uMin, vMin); glVertex2f(xoffset + -rx, yoffset + -ry);
+	glTexCoord2f(uMax, vMin); glVertex2f(xoffset + rx, yoffset + -ry);
 	glEnd();
 	glBindTexture(GL_TEXTURE_2D, 0);
 	glDisable(GL_TEXTURE_2D);
+}
+
+static void DrawSprite(const GLuint texId, float rx, float ry, const UVRect &uv, const float xoffset = 0, const float yoffset = 0) {
+	DrawSprite(texId, rx, ry, uv.uMin, uv.vMax, uv.uMax, uv.vMin, xoffset, yoffset);
 }
 
 extern void GameDraw(GameState &state) {
@@ -907,31 +1072,86 @@ extern void GameDraw(GameState &state) {
 
 	glMatrixMode(GL_PROJECTION);
 	glLoadIdentity();
-	float scale = 1.1f;
+	float scale = 1.0f;
 	glOrtho(-w * scale, w*scale, -h * scale, h*scale, 0.0f, 1.0f);
 
 	glMatrixMode(GL_MODELVIEW);
 	glLoadIdentity();
 
+	// Increase radius a tiny bit to match collision shape
+	const float ROffset = WorldWidth / 1000.0f;
+
+	// Background
+	{
+		GLuint bgTex = state.assets.bgTextures[BackgroundType::Default];
+		float uMax = (float)(int)(WorldRadius.x / FrameRadius);
+		float vMax = (float)(int)(WorldRadius.y / FrameRadius);
+		UVRect bgUV = BackgroundUVs[BackgroundType::Default];
+		DrawSprite(bgTex, WorldRadius.x - FrameRadius * 2, WorldRadius.y - FrameRadius, 0.0f, vMax, uMax, 0.0f, 0, -FrameRadius);
+	}
+
+	// Frame
+	{
+		GLuint frameTex = state.assets.frameTexture;
+		UVRect topLeftEdgeUV = FrameUVs[FrameType::TopLeftEdge];
+		UVRect topRightEdgeUV = FrameUVs[FrameType::TopRightEdge];
+		UVRect topFillUV = FrameUVs[FrameType::TopFill];
+		UVRect bottomLeftEdgeUV = FrameUVs[FrameType::LeftBottomEdge];
+		UVRect bottomRightEdgeUV = FrameUVs[FrameType::RightBottomEdge];
+		UVRect leftFillUV = FrameUVs[FrameType::LeftFill];
+		UVRect rightFillUV = FrameUVs[FrameType::RightFill];
+
+		// Top
+		DrawSprite(frameTex, FrameRadius, FrameRadius, topLeftEdgeUV, -WorldRadius.x + FrameRadius, WorldRadius.y - FrameRadius);
+		DrawSprite(frameTex, WorldRadius.x - FrameRadius * 2, FrameRadius, topFillUV, 0, WorldRadius.y - FrameRadius);
+		DrawSprite(frameTex, FrameRadius, FrameRadius, topRightEdgeUV, WorldRadius.x - FrameRadius, WorldRadius.y - FrameRadius);
+
+		// Left
+		DrawSprite(frameTex, FrameRadius, FrameRadius, bottomLeftEdgeUV, -WorldRadius.x + FrameRadius, -WorldRadius.y + FrameRadius);
+		DrawSprite(frameTex, FrameRadius, WorldRadius.y - FrameRadius * 2, leftFillUV, -WorldRadius.x + FrameRadius, 0);
+
+		// Right
+		DrawSprite(frameTex, FrameRadius, FrameRadius, bottomRightEdgeUV, WorldRadius.x - FrameRadius, -WorldRadius.y + FrameRadius);
+		DrawSprite(frameTex, FrameRadius, WorldRadius.y - FrameRadius * 2, rightFillUV, WorldRadius.x - FrameRadius, 0);
+	}
+
 	// Ball
 	{
-		b2Vec2 ballPos = state.ball.ball.body->GetPosition();
+		const Ball &ball = state.ball.ball;
+		b2Vec2 ballPos = ball.body->GetPosition();
+		float ballRot = ball.body->GetAngle();
 		glPushMatrix();
 		glTranslatef(ballPos.x, ballPos.y, 0);
+		glRotatef(glm::degrees<float>(ballRot), 0, 0, 1);
 		glColor4f(1, 1, 1, 1);
-		DrawSprite(state.assets.ballTexture, BallRadius, BallRadius, 0.0f, 1.0f, 1.0f, 0.0f);
+		DrawSprite(state.assets.ballTexture, BallRadius + ROffset, BallRadius + ROffset, 0.0f, 1.0f, 1.0f, 0.0f);
+		glPopMatrix();
+	}
+
+	// Paddle
+	{
+		const Paddle &paddle = state.paddle.paddle;
+		b2Vec2 paddlePos = paddle.body->GetPosition();
+		float paddleRot = paddle.body->GetAngle();
+		glPushMatrix();
+		glTranslatef(paddlePos.x, paddlePos.y, 0);
+		glRotatef(glm::degrees<float>(paddleRot), 0, 0, 1);
+		glColor4f(1, 1, 1, 1);
+		DrawSprite(state.assets.paddleTexture, PaddleRadius.x + BallRadius + ROffset, PaddleRadius.y + ROffset, 0.0f, 1.0f, 1.0f, 0.0f);
 		glPopMatrix();
 	}
 
 	// Bricks
-	for(size_t i = 0; i < state.numActiveBricks; ++i) {
+	for (size_t i = 0; i < state.numActiveBricks; ++i) {
 		const Brick &brick = state.activeBricks[i].brick;
 		b2Vec2 brickPos = brick.body->GetPosition();
-		UVRect brickUV = BrickTilesetUVs[(int)brick.type];
+		float brickRot = brick.body->GetAngle();
+		UVRect brickUV = BricksUVs[brick.type];
 		glPushMatrix();
 		glTranslatef(brickPos.x, brickPos.y, 0);
+		glRotatef(glm::degrees<float>(brickRot), 0, 0, 1);
 		glColor4f(1, 1, 1, 1);
-		DrawSprite(state.assets.bricksTileset, BrickRadius.x, BrickRadius.y, brickUV.uMin, brickUV.vMax, brickUV.uMax, brickUV.vMin);
+		DrawSprite(state.assets.bricksTexture, BrickRadius.x, BrickRadius.y, brickUV);
 		glPopMatrix();
 	}
 
@@ -939,8 +1159,8 @@ extern void GameDraw(GameState &state) {
 	// Bodies
 	const float normalLen = w * 0.025f;
 	b2Body *body = state.world->GetBodyList();
-	while(body != nullptr) {
-		if(body->GetUserData() == nullptr) {
+	while (body != nullptr) {
+		if (body->GetUserData() == nullptr) {
 			body = body->GetNext();
 			continue;
 		}
@@ -948,8 +1168,8 @@ extern void GameDraw(GameState &state) {
 		b2Fixture *fixture = body->GetFixtureList();
 		b2Vec2 bodyPos = body->GetPosition();
 		float bodyRot = body->GetAngle();
-		while(fixture != nullptr) {
-			switch(fixture->GetType()) {
+		while (fixture != nullptr) {
+			switch (fixture->GetType()) {
 				case b2Shape::Type::e_circle:
 				{
 					b2CircleShape *circle = (b2CircleShape *)fixture->GetShape();
@@ -970,12 +1190,12 @@ extern void GameDraw(GameState &state) {
 
 					glColor4f(1, 1, 1, 1);
 					glBegin(GL_LINE_LOOP);
-					for(int i = 0; i < poly->m_count; ++i) {
+					for (int i = 0; i < poly->m_count; ++i) {
 						b2Vec2 v = poly->m_vertices[i];
 						glVertex2fv(&v.x);
 					}
 					glEnd();
-					for(int i = 0; i < poly->m_count; ++i) {
+					for (int i = 0; i < poly->m_count; ++i) {
 						b2Vec2 a = poly->m_vertices[i];
 						b2Vec2 b = poly->m_vertices[(i + 1) % poly->m_count];
 						b2Vec2 n = poly->m_normals[i];
@@ -999,7 +1219,7 @@ extern void GameDraw(GameState &state) {
 					glTranslatef(bodyPos.x, bodyPos.y, 0);
 					glRotatef(glm::degrees<float>(bodyRot), 0, 0, 1);
 					b2ChainShape *chain = (b2ChainShape *)fixture->GetShape();
-					for(int i = 0, c = chain->GetChildCount(); i < c; ++i) {
+					for (int i = 0, c = chain->GetChildCount(); i < c; ++i) {
 						b2EdgeShape edge;
 						chain->GetChildEdge(&edge, i);
 						b2Vec2 a = edge.m_vertex1;
@@ -1027,9 +1247,9 @@ extern void GameDraw(GameState &state) {
 				} break;
 #endif
 
-			}
+	}
 			fixture = fixture->GetNext();
-		}
+}
 		body = body->GetNext();
 	}
 #endif
