@@ -103,7 +103,7 @@ SOFTWARE.
 
 /*!
 	\file final_dynamic_opengl.h
-	\version v0.3.0.0 beta
+	\version v0.3.1.0 beta
 	\author Torsten Spaete
 	\brief Final Dynamic OpenGL (FGL) - A open source C99 single file header OpenGL-Loader library.
 */
@@ -111,6 +111,9 @@ SOFTWARE.
 /*!
 	\page page_changelog Changelog
 	\tableofcontents
+
+	## v0.3.1.0 beta:
+	- Fixed: Fixed tons of compile errors on linux
 
 	## v0.3.0.0 beta:
 	- Changed: Transition from C++ to C99
@@ -165,12 +168,19 @@ SOFTWARE.
 //
 // Includes
 //
-//#include <stddef.h>
+#include <stddef.h> // ptrdiff_t
 #include <stdint.h> // uint32_t
 #include <stdlib.h> // NULL
 #include <stdbool.h> // bool
 
 #define fgl_null NULL
+
+//! Macro for initialize a struct to zero
+#if defined(FGL_IS_CPP)
+#	define FGL_ZERO_INIT {}
+#else
+#	define FGL_ZERO_INIT {0}
+#endif
 
 //
 // Platform detection
@@ -179,14 +189,10 @@ SOFTWARE.
 #	define FGL_PLATFORM_WIN32
 #elif defined(__linux__) || defined(__gnu_linux__) || defined(linux)
 #	define FGL_PLATFORM_LINUX
-#	define FGL_SUBPLATFORM POSIX
-#	define FGL_SUBPLATFORM_X11
-#	define FGL_SUBPLATFORM_GLX
+#	define FGL_PLATFORM_POSIX
 #elif defined(__unix__) || defined(_POSIX_VERSION)
 #	define FGL_PLATFORM_UNIX
-#	define FGL_SUBPLATFORM POSIX
-#	define FGL_SUBPLATFORM_X11
-#	define FGL_SUBPLATFORM_GLX
+#	define FGL_PLATFORM_POSIX
 #else
 #	error "This platform/compiler is not supported!"
 #endif
@@ -242,11 +248,12 @@ SOFTWARE.
 #			define WIN32_LEAN_AND_MEAN 1
 #	endif
 #	include <Windows.h>
-#elif defined(FGL_SUBPLATFORM_X11)
-#	include<X11/X.h>
-#	include<X11/Xlib.h>
-#	include <GL/gl.h>
-#	include <GL/glx.h>
+#elif defined(FGL_PLATFORM_POSIX)
+#	include <dlfcn.h> // dlopen
+#	include <X11/X.h>
+#	include <X11/Xlib.h>
+//#	include <GL/gl.h>
+//#	include <GL/glx.h>
 #endif
 
 //
@@ -322,7 +329,7 @@ extern "C" {
 	} fglOpenGLContextCreationParameters;
 
 	inline fglOpenGLContextCreationParameters MakeDefaultOpenGLContextCreationParameters() {
-		fglOpenGLContextCreationParameters result = { 0 };
+		fglOpenGLContextCreationParameters result = FGL_ZERO_INIT;
 		result.majorVersion = 3;
 		result.minorVersion = 3;
 		result.profile = fglOpenGLProfileType_LegacyProfile;
@@ -4491,7 +4498,7 @@ typedef FGL_FUNC_WGL_CREATE_CONTEXT_ATTRIBS_ARB(win32_func_wglCreateContextAttri
 #define FGL_FUNC_WGL_SWAP_INTERVAL_EXT(name) BOOL WINAPI name(int interval)
 typedef FGL_FUNC_WGL_SWAP_INTERVAL_EXT(win32_func_wglSwapIntervalEXT);
 
-#elif defined(FGL_SUBPLATFORM_GLX)
+#elif defined(FGL_PLATFORM_POSIX)
 #define FGL_FUNC_GLX_GET_PROC_ADDRESS(name) void *name(const char *name)
 typedef FGL_FUNC_GLX_GET_PROC_ADDRESS(glx_func_glXGetProcAddress);
 #endif
@@ -4525,7 +4532,7 @@ typedef struct fglOpenGLState {
 				win32_func_wglSwapIntervalEXT *wglSwapIntervalExt;
 			} opengl32;
 		} win32;
-#		elif defined(FGL_PLATFORM_POSIX) && defined(FGL_PLATFORM_GLX)
+#		elif defined(FGL_PLATFORM_POSIX)
 		struct {
 			void *libraryHandle;
 			glx_func_glXGetProcAddress *glXGetProcAddress;
@@ -4556,7 +4563,7 @@ static void *fgl__GetOpenGLProcAddress(const fglOpenGLState *state, const char *
 	if(result == fgl_null) {
 		result = state->win32.opengl32.wglGetProcAddress(name);
 	}
-#	elif defined(FGL_PLATFORM_POSIX) && defined(FGL_PLATFORM_GLX)
+#	elif defined(FGL_PLATFORM_POSIX)
 	result = dlsym(state->posix_glx.libraryHandle, name);
 	if(result == fgl_null) {
 		result = state->posix_glx.glXGetProcAddress(name);
@@ -5708,8 +5715,8 @@ static bool fgl__LoadOpenGL(fglOpenGLState *state) {
 	state->win32.opengl32.libraryHandle = glLibraryHandle;
 #	elif defined(FGL_PLATFORM_POSIX)
 	const char *posixLibraryNames[] = {
-		"libGL.so",
 		"libGL.so.1",
+		"libGL.so",
 	};
 	void *glLibraryHandle = fgl_null;
 	for(int i = 0; i < FGL_ARRAYCOUNT(posixLibraryNames); ++i) {
@@ -5742,7 +5749,7 @@ static void fgl__UnloadOpenGL(fglOpenGLState *state) {
 		if(state->win32.user32.libraryHandle != fgl_null) {
 			FreeLibrary(state->win32.user32.libraryHandle);
 		}
-#		elif defined(FGL_PLATFORM_POSIX) && defined(FGL_PLATFORM_GLX)
+#		elif defined(FGL_PLATFORM_POSIX)
 		if(state->posix_glx.libraryHandle != fgl_null) {
 			dlclose(state->posix_glx.libraryHandle);
 		}
@@ -5770,7 +5777,7 @@ static void fgl__DestroyOpenGLContext(fglOpenGLState *state, fglOpenGLContext *c
 		context->windowHandle.win32.deviceContext = fgl_null;
 		context->windowHandle.win32.requireToReleaseDC = false;
 	}
-#	elif defined(FGL_PLATFORM_POSIX) && defined(FGL_PLATFORM_GLX)
+#	elif defined(FGL_PLATFORM_POSIX)
 #	endif
 	memset(context, 0, sizeof(*context));
 }
@@ -5853,13 +5860,13 @@ static bool fgl__CreateOpenGLContext(fglOpenGLState *state, const fglOpenGLConte
 
 	outContext->renderingContext.win32.renderingContext = legacyRenderingContext;
 	outContext->isValid = true;
-#	elif defined(FGL_PLATFORM_POSIX) && defined(FGL_PLATFORM_GLX)
+#	elif defined(FGL_PLATFORM_POSIX)
 		// @TODO(final): Implement GLX context creation
 #	endif
 	return (outContext->isValid);
 }
 
-static fglOpenGLState globalOpenGLState = { 0 };
+static fglOpenGLState globalOpenGLState = FGL_ZERO_INIT;
 
 fdyngl_api bool fglCreateOpenGLContext(const fglOpenGLContextCreationParameters *contextCreationParams, fglOpenGLContext *outContext) {
 	fglOpenGLState *state = &globalOpenGLState;
