@@ -141,6 +141,7 @@ SOFTWARE.
 	- Fixed: Never detected Win32 Path separator (Wrong define check)
 	- Fixed: MSVC compiler warnings was overwritten always, now uses push/pop
 	- Fixed: MSVC _Interlocked* functions has no signature for unsigned, so we use either LONG or LONG64
+    - Fixed: [POSIX] Create/Open*BinaryFile was wrong named
 
 	## v0.7.6.0 beta:
 	- Changed: Renamed fplGetRunningArchitectureType to fplGetRunningArchitecture
@@ -1026,19 +1027,19 @@ SOFTWARE.
 #		define fplDebugBreak() __breakpoint(42)
 #	elif defined(FPL_ARCH_X86) || defined(FPL_ARCH_X64)
 		//! Triggers a breakout in the debugger (X86/64)
-fpl_force_inline void fplDebugBreak() { __asm__ __volatile__("int $03"); }
+static fpl_force_inline void fplDebugBreak() { __asm__ __volatile__("int $03"); }
 #	elif defined(__thumb__)
 		//! Triggers a breakout in the debugger (ARM Thumb mode)
-fpl_force_inline void fplDebugBreak() { __asm__ __volatile__(".inst 0xde01"); }
+static fpl_force_inline void fplDebugBreak() { __asm__ __volatile__(".inst 0xde01"); }
 #	elif defined(FPL_ARCH_ARM64)
 		//! Triggers a breakout in the debugger (ARM64)
-fpl_force_inline void fplDebugBreak() { __asm__ __volatile__(".inst 0xd4200000"); }
+static fpl_force_inline void fplDebugBreak() { __asm__ __volatile__(".inst 0xd4200000"); }
 #	elif defined(FPL_ARCH_ARM32)
 		//! Triggers a breakout in the debugger (ARM32)
-fpl_force_inline void fplDebugBreak() { __asm__ __volatile__(".inst 0xe7f001f0"); }
+static fpl_force_inline void fplDebugBreak() { __asm__ __volatile__(".inst 0xe7f001f0"); }
 #	elif defined(FPL_COMPILER_GCC)
 		//! Triggers a breakout in the debugger (GCC)
-define fplDebugBreak() __builtin_trap()
+#       define fplDebugBreak() __builtin_trap()
 #	else
 #		include	<signal.h>
 #		if defined(SIGTRAP)
@@ -9818,7 +9819,7 @@ fpl_platform_api void fplMemoryFree(void *ptr) {
 //
 // POSIX Files
 //
-fpl_platform_api bool fplOpenBinaryAnsiFile(const char *filePath, fplFileHandle *outHandle) {
+fpl_platform_api bool fplOpenAnsiBinaryFile(const char *filePath, fplFileHandle *outHandle) {
 	if(filePath != fpl_null && outHandle != fpl_null) {
 		FPL_CLEAR_STRUCT(outHandle);
 		int posixFileHandle;
@@ -9837,13 +9838,13 @@ fpl_platform_api bool fplOpenBinaryWideFile(const wchar_t *filePath, fplFileHand
 	if(filePath != fpl_null && outHandle != fpl_null) {
 		char utf8FilePath[1024] = FPL_ZERO_INIT;
 		fplWideStringToAnsiString(filePath, fplGetWideStringLength(filePath), utf8FilePath, FPL_ARRAYCOUNT(utf8FilePath));
-		bool result = fplOpenBinaryAnsiFile(utf8FilePath, outHandle);
+		bool result = fplOpenAnsiBinaryFile(utf8FilePath, outHandle);
 		return(result);
 	}
 	return false;
 }
 
-fpl_platform_api bool fplCreateBinaryAnsiFile(const char *filePath, fplFileHandle *outHandle) {
+fpl_platform_api bool fplCreateAnsiBinaryFile(const char *filePath, fplFileHandle *outHandle) {
 	if(filePath != fpl_null) {
 		int posixFileHandle;
 		do {
@@ -9857,11 +9858,11 @@ fpl_platform_api bool fplCreateBinaryAnsiFile(const char *filePath, fplFileHandl
 	}
 	return false;
 }
-fpl_platform_api bool fplCreateBinaryWideFile(const wchar_t *filePath, fplFileHandle *outHandle) {
+fpl_platform_api bool fplCreateWideBinaryFile(const wchar_t *filePath, fplFileHandle *outHandle) {
 	if(filePath != fpl_null && outHandle != fpl_null) {
 		char utf8FilePath[1024] = FPL_ZERO_INIT;
 		fplWideStringToAnsiString(filePath, fplGetWideStringLength(filePath), utf8FilePath, FPL_ARRAYCOUNT(utf8FilePath));
-		bool result = fplCreateBinaryAnsiFile(utf8FilePath, outHandle);
+		bool result = fplCreateAnsiBinaryFile(utf8FilePath, outHandle);
 		return(result);
 	}
 	return false;
