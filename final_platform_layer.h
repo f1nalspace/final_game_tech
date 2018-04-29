@@ -142,6 +142,7 @@ SOFTWARE.
 	- Fixed: MSVC compiler warnings was overwritten always, now uses push/pop
 	- Fixed: MSVC _Interlocked* functions has no signature for unsigned, so we use either LONG or LONG64
     - Fixed: [POSIX] Create/Open*BinaryFile was wrong named
+	- Fixed: [Win32] fplMemoryFree actually never freed any memory
 
 	## v0.7.6.0 beta:
 	- Changed: Renamed fplGetRunningArchitectureType to fplGetRunningArchitecture
@@ -8142,7 +8143,7 @@ fpl_platform_api void fplMemoryFree(void *ptr) {
 		fpl__ArgumentNullError("Pointer");
 		return;
 	}
-	VirtualFree(ptr, 0, MEM_FREE);
+	VirtualFree(ptr, 0, MEM_RELEASE);
 }
 
 //
