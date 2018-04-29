@@ -10636,9 +10636,7 @@ fpl_internal bool fpl__X11InitWindow(const fplSettings *initSettings, fplWindowS
 	}
 
 	if (initSettings->window.isFullscreen) {
-	    currentWindowSettings->isFullscreen = fplSetWindowFullscreen(true, 0, 0, 0);
-	} else {
-        currentWindowSettings->isFullscreen = false;
+	    fplSetWindowFullscreen(true, initSettings->window.fullscreenWidth, initSettings->window.fullscreenHeight, 0);
 	}
 
 	appState->window.isRunning = true;
@@ -10882,6 +10880,8 @@ fpl_platform_api bool fplSetWindowFullscreen(const bool value, const uint32_t fu
     const fpl__X11SubplatformState *subplatform = &appState->x11;
     const fpl__X11Api *x11Api = &subplatform->api;
     const fpl__X11WindowState *windowState = &appState->window.x11;
+
+    // https://stackoverflow.com/questions/10897503/opening-a-fullscreen-opengl-window
 
     XEvent xev = FPL_ZERO_INIT;
     xev.type = ClientMessage;
