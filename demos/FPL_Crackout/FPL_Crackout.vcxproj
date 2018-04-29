@@ -20,7 +20,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="fpl_crackout.cpp" />
-    <ClInclude Include="game.cpp" />
+    <ClCompile Include="game.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\..\final_dynamic_opengl.h" />
