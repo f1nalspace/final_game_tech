@@ -999,7 +999,7 @@ SOFTWARE.
 // Force inline
 //
 #if defined(FPL_COMPILER_GCC) && (__GNUC__ >= 4)
-#	define fpl_force_inline __attribute__((__always_inline__))
+#	define fpl_force_inline __attribute__((__always_inline__)) inline
 #elif defined(FPL_COMPILER_MSVC) && (_MSC_VER >= 1200)
 #	define fpl_force_inline __forceinline
 #else
