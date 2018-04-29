@@ -141,8 +141,12 @@ SOFTWARE.
 	- Fixed: Never detected Win32 Path separator (Wrong define check)
 	- Fixed: MSVC compiler warnings was overwritten always, now uses push/pop
 	- Fixed: MSVC _Interlocked* functions has no signature for unsigned, so we use either LONG or LONG64
+
+    - New: [X11] Implemented fplIsWindowFullscreen
+    - New: [X11] Implemented basic fplSetWindowFullscreen
     - Fixed: [POSIX] Create/Open*BinaryFile was wrong named
 	- Fixed: [Win32] fplMemoryFree actually never freed any memory
+
 
 	## v0.7.6.0 beta:
 	- Changed: Renamed fplGetRunningArchitectureType to fplGetRunningArchitecture
@@ -4997,6 +5001,8 @@ typedef FPL__FUNC_X11_X_RESIZE_WINDOW(fpl__func_x11_XResizeWindow);
 typedef FPL__FUNC_X11_X_MOVE_WINDOW(fpl__func_x11_XMoveWindow);
 #define FPL__FUNC_X11_X_GET_KEYBOARD_MAPPING(name) KeySym *name(Display *display, KeyCode first_keycode, int keycode_count, int *keysyms_per_keycode_return)
 typedef FPL__FUNC_X11_X_GET_KEYBOARD_MAPPING(fpl__func_x11_XGetKeyboardMapping);
+#define FPL__FUNC_X11_XSendEvent(name) Status name(Display *display, Window w, Bool propagate, long event_mask, XEvent *event_send)
+typedef FPL__FUNC_X11_XSendEvent(fpl__func_x11_XSendEvent);
 
 typedef struct fpl__X11Api {
 	void *libHandle;
@@ -5026,6 +5032,7 @@ typedef struct fpl__X11Api {
 	fpl__func_x11_XResizeWindow *XResizeWindow;
 	fpl__func_x11_XMoveWindow *XMoveWindow;
 	fpl__func_x11_XGetKeyboardMapping *XGetKeyboardMapping;
+    fpl__func_x11_XSendEvent *XSendEvent;
 } fpl__X11Api;
 
 fpl_internal void fpl__UnloadX11Api(fpl__X11Api *x11Api) {
@@ -5076,6 +5083,7 @@ fpl_internal bool fpl__LoadX11Api(fpl__X11Api *x11Api) {
 				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, x11Api->XResizeWindow, fpl__func_x11_XResizeWindow, "XResizeWindow");
 				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, x11Api->XMoveWindow, fpl__func_x11_XMoveWindow, "XMoveWindow");
 				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, x11Api->XGetKeyboardMapping, fpl__func_x11_XGetKeyboardMapping, "XGetKeyboardMapping");
+                FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, x11Api->XSendEvent, fpl__func_x11_XSendEvent, "XSendEvent");
 				result = true;
 			} while(0);
 			if(result) {
@@ -5097,7 +5105,9 @@ typedef struct fpl__X11WindowState {
 	Window root;
 	Colormap colorMap;
 	Window window;
+	Atom wmState;
 	Atom wmDeleteWindow;
+	Atom wmStateFullscreen;
 } fpl__X11WindowState;
 
 typedef struct fpl__X11PreWindowSetupResult {
@@ -10599,9 +10609,11 @@ fpl_internal bool fpl__X11InitWindow(const fplSettings *initSettings, fplWindowS
 	}
 	FPL_LOG("X11", "Successfully created window with (Display='%p', Root='%d', Size=%dx%d, Colordepth='%d', visual='%p', colormap='%d': %d", windowState->display, (int)windowState->root, windowWidth, windowHeight, colorDepth, visual, (int)swa.colormap, (int)windowState->window);
 
-	char wm_delete_window_name[100] = "WM_DELETE_WINDOW";
-	windowState->wmDeleteWindow = x11Api->XInternAtom(windowState->display, wm_delete_window_name, False);
+	windowState->wmDeleteWindow = x11Api->XInternAtom(windowState->display, "WM_DELETE_WINDOW", False);
 	x11Api->XSetWMProtocols(windowState->display, windowState->window, &windowState->wmDeleteWindow, 1);
+
+    windowState->wmState = x11Api->XInternAtom(windowState->display, "_NET_WM_STATE", False);
+    windowState->wmStateFullscreen = x11Api->XInternAtom(windowState->display, "_NET_WM_STATE_FULLSCREEN", False);
 
 	char nameBuffer[1024] = FPL_ZERO_INIT;
 	fplCopyAnsiString("Unnamed FPL X11 Window", nameBuffer, FPL_ARRAYCOUNT(nameBuffer));
@@ -10621,6 +10633,12 @@ fpl_internal bool fpl__X11InitWindow(const fplSettings *initSettings, fplWindowS
 		fplKey mappedKey = fpl__X11TranslateKeySymbol(keySym);
 		appState->window.keyMap[keyCode] = mappedKey;
 		x11Api->XFree(keySyms);
+	}
+
+	if (initSettings->window.isFullscreen) {
+	    currentWindowSettings->isFullscreen = fplSetWindowFullscreen(true, 0, 0, 0);
+	} else {
+        currentWindowSettings->isFullscreen = false;
 	}
 
 	appState->window.isRunning = true;
@@ -10859,13 +10877,32 @@ fpl_platform_api void fplSetWindowFloating(const bool value) {
 }
 
 fpl_platform_api bool fplSetWindowFullscreen(const bool value, const uint32_t fullscreenWidth, const uint32_t fullscreenHeight, const uint32_t refreshRate) {
-	// @IMPLEMENT(final): X11 fplSetWindowFullscreen
-	return false;
+    fpl__PlatformAppState *appState = fpl__global__AppState;
+    FPL_ASSERT(appState != fpl_null);
+    const fpl__X11SubplatformState *subplatform = &appState->x11;
+    const fpl__X11Api *x11Api = &subplatform->api;
+    const fpl__X11WindowState *windowState = &appState->window.x11;
+
+    XEvent xev = FPL_ZERO_INIT;
+    xev.type = ClientMessage;
+    xev.xclient.window = windowState->window;
+    xev.xclient.message_type = windowState->wmState;
+    xev.xclient.format = 32;
+    xev.xclient.data.l[0] = value ? 1 : 0;
+    xev.xclient.data.l[1] = windowState->wmStateFullscreen;
+    xev.xclient.data.l[2] = 0;
+    bool result = x11Api->XSendEvent(windowState->display, windowState->root, False, SubstructureRedirectMask | SubstructureNotifyMask, &xev) != 0;
+    if (result) {
+        appState->currentSettings.window.isFullscreen = value;
+    }
+    return(result);
 }
 
 fpl_platform_api bool fplIsWindowFullscreen() {
-	// @IMPLEMENT(final): X11 fplIsWindowFullscreen
-	return false;
+    fpl__PlatformAppState *appState = fpl__global__AppState;
+    FPL_ASSERT(appState != fpl_null);
+    bool result = appState->currentSettings.window.isFullscreen;
+	return(result);
 }
 
 fpl_platform_api bool fplGetWindowPosition(fplWindowPosition *outPos) {
