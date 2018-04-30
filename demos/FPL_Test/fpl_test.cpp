@@ -68,7 +68,7 @@ static void TestOSInfos() {
 	{
 		char nameBuffer[256] = {};
 		bool r = fplGetCurrentUsername(nameBuffer, FPL_ARRAYCOUNT(nameBuffer));
-		//FT_IS_TRUE(r);
+		FT_IS_TRUE(r);
 		fplConsoleFormatOut("Current Username: %s\n", nameBuffer);
 	}
 }
@@ -1049,7 +1049,8 @@ static void TestStrings() {
 	{
 		char buffer[2];
 		char *res = fplFormatAnsiString(buffer, FPL_ARRAYCOUNT(buffer), "A");
-		bool matches = fplIsStringEqualLen("A", 1, res, 1);
+        FT_IS_NOT_NULL(res);
+		bool matches = fplIsStringEqualLen("A", 1, buffer, 1);
 		FT_EXPECTS(true, matches);
 	}
 	{
@@ -1060,13 +1061,15 @@ static void TestStrings() {
 	{
 		char buffer[6];
 		char *res = fplFormatAnsiString(buffer, FPL_ARRAYCOUNT(buffer), "Hello");
-		bool r = fplIsStringEqualLen("Hello", 5, res, 5);
+        FT_IS_NOT_NULL(res);
+		bool r = fplIsStringEqualLen("Hello", 5, buffer, 5);
 		FT_EXPECTS(true, r);
 	}
 	{
 		char buffer[6];
 		char *res = fplFormatAnsiString(buffer, FPL_ARRAYCOUNT(buffer), "%s", "Hello");
-		bool r = fplIsStringEqualLen("Hello", 5, res, 5);
+		FT_IS_NOT_NULL(res);
+		bool r = fplIsStringEqualLen("Hello", 5, buffer, 5);
 		FT_EXPECTS(true, r);
 	}
 	{
@@ -1077,7 +1080,8 @@ static void TestStrings() {
 	{
 		char buffer[20];
 		char *res = fplFormatAnsiString(buffer, FPL_ARRAYCOUNT(buffer), "%4d-%2d-%2d %2d:%2d:%2d", 2009, 11, 17, 13, 47, 25);
-		bool r = fplIsStringEqual("2009-11-17 13:47:25", res);
+        FT_IS_NOT_NULL(res);
+		bool r = fplIsStringEqual("2009-11-17 13:47:25", buffer);
 		FT_EXPECTS(true, r);
 	}
 }
