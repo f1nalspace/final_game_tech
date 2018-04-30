@@ -31,7 +31,6 @@ Todo:
 
 #define FPL_IMPLEMENTATION
 #include <final_platform_layer.h>
-#undef GL_VERSION_1_1
 
 #include <math.h> // abs
 
