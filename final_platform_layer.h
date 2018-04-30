@@ -153,6 +153,7 @@ SOFTWARE.
 	- Changed: Renamed fplThreadDestroy() to fplThreadTerminate() + signature changed (Returns bool)
 	- Changed: fplSignalInit() + new parameter "initialValue"
 	- Changed: All functions which uses timeout uses fplTimeoutValue instead of uint32_t
+  	- Changed: All string buffer writing functions returns the last written character instead
 	- Changed: Removed timeout parameter from fplMutexLock()
 	- New: Added struct fplConditionVariable
 	- New: Added enum fplSignalValue
@@ -5495,9 +5496,7 @@ fpl_common_api char *fplStringAppendLen(const char *appended, const size_t appen
 		*str++ = appended[i++];
 	}
 	*str = 0;
-
-	// @TODO(final): Useless return, return the last written character instead
-	return(buffer);
+	return(str);
 }
 
 fpl_common_api char *fplStringAppend(const char *appended, char *buffer, size_t maxBufferLen) {
@@ -5533,17 +5532,16 @@ fpl_common_api char *fplCopyAnsiStringLen(const char *source, const size_t sourc
 			fpl__ArgumentSizeTooSmallError("Max dest len", maxDestLen, requiredLen);
 			return fpl_null;
 		}
-		char *result = dest;
+		char *out = dest;
 		size_t index = 0;
 		while(index++ < sourceLen) {
-			*dest++ = *source++;
+			*out++ = *source++;
 		}
-		*dest = 0;
-		return(result);
+		*out = 0;
+		return(out);
 	} else {
 		return(fpl_null);
 	}
-	// @TODO(final): Useless return, return the last written character instead
 }
 
 fpl_common_api char *fplCopyAnsiString(const char *source, char *dest, const size_t maxDestLen) {
@@ -5562,17 +5560,16 @@ fpl_common_api wchar_t *fplCopyWideStringLen(const wchar_t *source, const size_t
 			fpl__ArgumentSizeTooSmallError("Max dest len", maxDestLen, requiredLen);
 			return fpl_null;
 		}
-		wchar_t *result = dest;
+		wchar_t *out = dest;
 		size_t index = 0;
 		while(index++ < sourceLen) {
-			*dest++ = *source++;
+			*out++ = *source++;
 		}
-		*dest = 0;
-		return(result);
+		*out = 0;
+		return(out);
 	} else {
 		return(fpl_null);
 	}
-	// @TODO(final): Useless return, return the last written character instead
 }
 
 fpl_common_api wchar_t *fplCopyWideString(const wchar_t *source, wchar_t *dest, const size_t maxDestLen) {
@@ -5626,8 +5623,7 @@ fpl_common_api char *fplFormatAnsiStringArgs(char *ansiDestBuffer, const size_t 
 	}
 	ansiDestBuffer[charCount] = 0;
 
-	// @TODO(final): Useless return, return the last written character instead
-	return(ansiDestBuffer);
+	return(&ansiDestBuffer[charCount]);
 }
 
 fpl_common_api char *fplFormatAnsiString(char *ansiDestBuffer, const size_t maxAnsiDestBufferLen, const char *format, ...) {
@@ -6009,10 +6005,7 @@ fpl_common_api char *fplChangeFileExtension(const char *filePath, const char *ne
 		// Copy parts
 		fplCopyAnsiStringLen(filePath, copyLen, destPath, maxDestLen);
 		char *destExtPtr = destPath + copyLen;
-		fplCopyAnsiStringLen(newFileExtension, extLen, destExtPtr, maxDestLen - copyLen);
-
-		// @TODO(final): Useless return, return the last written character instead
-		result = destPath;
+		result = fplCopyAnsiStringLen(newFileExtension, extLen, destExtPtr, maxDestLen - copyLen);
 	}
 	return(result);
 }
@@ -6051,8 +6044,7 @@ fpl_common_api char *fplPathCombine(char *destPath, const size_t maxDestPathLen,
 	*currentDestPtr = 0;
 	va_end(vargs);
 
-	// @TODO(final): Useless return, return the last written character instead
-	return destPath;
+	return currentDestPtr;
 }
 #endif // FPL__COMMON_PATHS_DEFINED
 
