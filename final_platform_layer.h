@@ -5660,7 +5660,7 @@ fpl_common_api void fplConsoleFormatOut(const char *format, ...) {
 	char *str = fplFormatAnsiStringArgs(buffer, FPL_ARRAYCOUNT(buffer), format, argList);
 	va_end(argList);
 	if(str != fpl_null) {
-		fplConsoleOut(str);
+		fplConsoleOut(buffer);
 	}
 }
 
@@ -5671,7 +5671,7 @@ fpl_common_api void fplConsoleFormatError(const char *format, ...) {
 	char *str = fplFormatAnsiStringArgs(buffer, FPL_ARRAYCOUNT(buffer), format, argList);
 	va_end(argList);
 	if(str != fpl_null) {
-		fplConsoleError(str);
+		fplConsoleError(buffer);
 	}
 }
 #endif // FPL__COMMON_CONSOLE_DEFINED
