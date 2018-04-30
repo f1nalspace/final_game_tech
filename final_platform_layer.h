@@ -7774,12 +7774,11 @@ fpl_platform_api char *fplGetProcessorName(char *destBuffer, const size_t maxDes
 
 	// Copy result back to the dest buffer
 	size_t sourceLen = fplGetAnsiStringLength(cpuBrandBuffer);
-	fplCopyAnsiStringLen(cpuBrandBuffer, sourceLen, destBuffer, maxDestBufferLen);
+	char *result = fplCopyAnsiStringLen(cpuBrandBuffer, sourceLen, destBuffer, maxDestBufferLen);
 
 #	undef CPU_BRAND_BUFFER_SIZE
 
-	// @TODO(final): Useless return, return the last written character instead
-	return(destBuffer);
+	return(result);
 }
 
 //
@@ -8632,8 +8631,7 @@ fpl_platform_api char *fplWideStringToAnsiString(const wchar_t *wideSource, cons
 	WideCharToMultiByte(CP_ACP, 0, wideSource, (int)maxWideSourceLen, ansiDest, (int)maxAnsiDestLen, fpl_null, fpl_null);
 	ansiDest[requiredLen] = 0;
 
-	// @TODO(final): Useless return, return the last written character instead
-	return(ansiDest);
+	return(&ansiDest[requiredLen]);
 }
 fpl_platform_api char *fplWideStringToUTF8String(const wchar_t *wideSource, const size_t maxWideSourceLen, char *utf8Dest, const size_t maxUtf8DestLen) {
 	if(wideSource == fpl_null) {
@@ -8653,8 +8651,7 @@ fpl_platform_api char *fplWideStringToUTF8String(const wchar_t *wideSource, cons
 	WideCharToMultiByte(CP_UTF8, 0, wideSource, (int)maxWideSourceLen, utf8Dest, (int)maxUtf8DestLen, fpl_null, fpl_null);
 	utf8Dest[requiredLen] = 0;
 
-	// @TODO(final): Useless return, return the last written character instead
-	return(utf8Dest);
+	return(&utf8Dest[requiredLen]);
 }
 fpl_platform_api wchar_t *fplAnsiStringToWideString(const char *ansiSource, const size_t ansiSourceLen, wchar_t *wideDest, const size_t maxWideDestLen) {
 	if(ansiSource == fpl_null) {
@@ -8674,8 +8671,7 @@ fpl_platform_api wchar_t *fplAnsiStringToWideString(const char *ansiSource, cons
 	MultiByteToWideChar(CP_ACP, 0, ansiSource, (int)ansiSourceLen, wideDest, (int)maxWideDestLen);
 	wideDest[requiredLen] = 0;
 
-	// @TODO(final): Useless return, return the last written character instead
-	return(wideDest);
+	return(&wideDest[requiredLen]);
 }
 fpl_platform_api wchar_t *fplUTF8StringToWideString(const char *utf8Source, const size_t utf8SourceLen, wchar_t *wideDest, const size_t maxWideDestLen) {
 	if(utf8Source == fpl_null) {
@@ -8695,8 +8691,7 @@ fpl_platform_api wchar_t *fplUTF8StringToWideString(const char *utf8Source, cons
 	MultiByteToWideChar(CP_UTF8, 0, utf8Source, (int)utf8SourceLen, wideDest, (int)maxWideDestLen);
 	wideDest[requiredLen] = 0;
 
-	// @TODO(final): Useless return, return the last written character instead
-	return(wideDest);
+	return(&wideDest[requiredLen]);
 }
 
 //
@@ -10578,8 +10573,6 @@ fpl_internal bool fpl__X11InitWindow(const fplSettings *initSettings, fplWindowS
 		windowWidth = 400;
 		windowHeight = 400;
 	}
-
-	// @TODO(final): X11 Fullscreen support
 
 	FPL_LOG("X11", "Create window with (Display='%p', Root='%d', Size=%dx%d, Colordepth='%d', visual='%p', colormap='%d'", windowState->display, (int)windowState->root, windowWidth, windowHeight, colorDepth, visual, (int)swa.colormap);
 	windowState->window = x11Api->XCreateWindow(windowState->display,
