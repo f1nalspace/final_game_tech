@@ -12,13 +12,15 @@ Requirements:
 Author:
 	Torsten Spaete
 Changelog:
+	## 2018-05-05:
+	- Updated description & todo
 	## 2018-04-26:
 	- Game implemented
 	## 2018-04-24:
 	- Initial creation
 Todo:
-	- Sprites (Assets are already there)
-	- Text rendering (Score, Lives, Level + Seed)
+	- Add Score + Lifes
+	- Text rendering (Score, Lifes, Level + Seed)
 	- Main menu
 	- Pause menu (Detect pause)
 	- Music
@@ -26,6 +28,7 @@ Todo:
 	- Multiball
 	- Brick types (Harder, Metal)
 	- Items (Ball speed, Paddle grow, Autoglue, Multiball, Player Up)
+	- Re-create sprites in HD
 -------------------------------------------------------------------------------
 */
 
