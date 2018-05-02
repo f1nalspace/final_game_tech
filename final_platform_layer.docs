@@ -1658,39 +1658,45 @@
 		<tr>
 			<td>Window</td>
 			<td>FPL_NO_WINDOW</td>
-			<td>Define this to disable window support entirely.</td>
+			<td>Define this to disable Window Support entirely.</td>
 			<td>Not set by default</td>
 		</tr>
 
 		<tr>
 			<td>Video</td>
 			<td>FPL_NO_VIDEO</td>
-			<td>Define this to disable video support entirely.</td>
+			<td>Define this to disable Video Support entirely.</td>
 			<td>Not set by default</td>
 		</tr>
 		<tr>
 			<td>Video</td>
 			<td>FPL_NO_VIDEO_OPENGL</td>
-			<td>Define this to disable the opengl video driver.</td>
+			<td>Define this to disable the OpenGL Video Driver.</td>
 			<td>Not set by default</td>
 		</tr>
 		<tr>
 			<td>Video</td>
 			<td>FPL_NO_VIDEO_SOFTWARE</td>
-			<td>Define this to disable the software video driver.</td>
+			<td>Define this to disable the Software Video Driver.</td>
 			<td>Not set by default</td>
 		</tr>
 
 		<tr>
 			<td>Audio</td>
 			<td>FPL_NO_AUDIO</td>
-			<td>Define this to disable audio support entirely.</td>
+			<td>Define this to disable Audio Support entirely.</td>
 			<td>Not set by default</td>
 		</tr>
 		<tr>
 			<td>Audio</td>
 			<td>FPL_NO_AUDIO_DIRECTSOUND</td>
-			<td>Define this to disable directsound support entirely.</td>
+			<td>Define this to disable DirectSound support entirely.</td>
+			<td>Not set by default</td>
+		</tr>
+		<tr>
+			<td>Audio</td>
+			<td>FPL_NO_AUDIO_ALSA</td>
+			<td>Define this to disable ALSA support entirely.</td>
 			<td>Not set by default</td>
 		</tr>
 
