@@ -27,6 +27,19 @@ Changelog:
 #define FT_IMPLEMENTATION
 #include "final_test.h"
 
+static void TestColdInit() {
+	ft::Msg("Test Cold-Initialize of InitPlatform\n");
+	{
+		size_t errorCount = fplGetPlatformErrorCount();
+		ft::AssertSizeEquals(0, errorCount);
+		fplInitResultType result = fplPlatformInit(fplInitFlags_None, nullptr);
+		FT_ASSERT(result == fplInitResultType_Success);
+		const char *errorStr = fplGetPlatformError();
+		ft::AssertStringEquals("", errorStr);
+		fplPlatformRelease();
+	}
+}
+
 static void TestInit() {
 	ft::Msg("Test InitPlatform with All init flags\n");
 	{
@@ -42,9 +55,22 @@ static void TestInit() {
 		fplClearPlatformErrors();
 		fplInitResultType result = fplPlatformInit(fplInitFlags_None, fpl_null);
 		FT_ASSERT(result == fplInitResultType_Success);
+		const fplSettings *settings = fplGetCurrentSettings();
+		FT_IS_NOT_NULL(settings);
 		const char *errorStr = fplGetPlatformError();
 		ft::AssertStringEquals("", errorStr);
 		fplPlatformRelease();
+	}
+	ft::Msg("Test fplGetCurrentSettings in non-initialized state\n");
+	{
+		FT_IS_FALSE(fpl__global__InitState.isInitialized);
+		fplClearPlatformErrors();
+		const fplSettings *settings = fplGetCurrentSettings();
+		FT_IS_NULL(settings);
+		size_t errorCount = fplGetPlatformErrorCount();
+		ft::AssertSizeEquals(1, errorCount);
+		const char *errorStr = fplGetPlatformError();
+		ft::AssertStringNotEquals("", errorStr);
 	}
 }
 
@@ -1088,6 +1114,8 @@ static void TestStrings() {
 
 
 int main(int argc, char *args[]) {
+	TestColdInit();
+	TestInit();
 	TestOSInfos();
 	TestHardware();
 	TestSizes();
@@ -1098,6 +1126,5 @@ int main(int argc, char *args[]) {
 	TestFiles();
 	TestStrings();
 	TestThreading();
-	TestInit();
 	return 0;
 }
