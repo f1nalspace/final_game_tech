@@ -11,7 +11,7 @@ The main focus is game/media/simulation development, so the default settings wil
 
 It is written in C99 for simplicity and best portability, but is C++ compatible as well.
 
-FPL supports the platforms Windows/Linux for the architectures x86/x64.
+FPL supports the platforms Windows/Linux/Unix for the architectures x86/x64.
 
 The only dependencies are built-in operating system libraries and a C99 complaint compiler.
 
@@ -697,8 +697,6 @@ SOFTWARE.
 
 	\section section_todo_required In progress / Todo
 
-	- Source
-		- Collapse down repeatable codes like argument checking, api from app state using macros
 	- POSIX
 		- Files & Path
 			- File/Dir iteration
@@ -713,6 +711,9 @@ SOFTWARE.
 	- Threading
 		- eventfd for Unix
 		- Semaphores
+
+	- Input
+		- Gamepad support for Linux
 
 	- Audio
 		- Finalize Alsa driver (Device selection)
@@ -733,9 +734,9 @@ SOFTWARE.
 
 	- Audio:
 		- Support for channel mapping
+		- OpenAL audio driver
 		- PulseAudio driver
 		- WASAPI audio driver
-		- OpenAL audio driver
 
 	- Video:
 		- [Win32] Direct2D
