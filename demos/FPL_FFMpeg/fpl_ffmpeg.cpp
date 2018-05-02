@@ -2685,13 +2685,15 @@ int main(int argc, char **argv) {
 	}
 #endif
 
-	fplAudioDeviceFormat nativeAudioFormat = fplGetAudioHardwareFormat();
-
 	PlayerState state = {};
 
-	//
+	// Get native audio format
+	fplAudioDeviceFormat nativeAudioFormat;
+	if(!fplGetAudioHardwareFormat(&nativeAudioFormat)) {
+		goto release;
+	}
+
 	// Load ffmpeg libraries
-	//
 	if(!LoadFFMPEG(ffmpeg)) {
 		goto release;
 	}
