@@ -136,6 +136,7 @@ SOFTWARE.
 	- Changed: fplGetAudioHardwareFormat returns bool and requires a outFormat argument now
 	- Changed: fplSetAudioClientReadCallback returns bool now
 	- Fixed: Fixed GCC warning -Wwrite-strings
+	- Fixed: fplDebugBreak() was missing function braces for __debugbreak
 
 	- Changed: [POSIX] Removed all pthread checks, because there is already a check for platform initialization
 
@@ -1034,7 +1035,7 @@ SOFTWARE.
 #		define fplDebugBreak() __builtin_debugtrap()
 #	elif __has_builtin(__debugbreak)
 		//! Stop on a line in the debugger (Break)
-#		define fplDebugBreak() __debugbreak
+#		define fplDebugBreak() __debugbreak()
 #	endif
 #endif
 #if !defined(fplDebugBreak)
