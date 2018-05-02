@@ -1004,10 +1004,13 @@ SOFTWARE.
 // Force inline
 //
 #if defined(FPL_COMPILER_GCC) && (__GNUC__ >= 4)
+	//! Force inline (GCC)
 #	define fpl_force_inline __attribute__((__always_inline__)) inline
 #elif defined(FPL_COMPILER_MSVC) && (_MSC_VER >= 1200)
+	//! Force inline (MSVC)
 #	define fpl_force_inline __forceinline
 #else
+	//! Force inline
 #	define fpl_force_inline inline
 #endif
 
