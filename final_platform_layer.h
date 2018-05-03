@@ -135,11 +135,27 @@ SOFTWARE.
 	- Changed: All public checks for fpl__global__AppState returns proper error now
 	- Changed: fplGetAudioHardwareFormat returns bool and requires a outFormat argument now
 	- Changed: fplSetAudioClientReadCallback returns bool now
+	- Changed: fplListFiles* is renamed to fplListDir*
+	- Changed: fplListDir* argument for fplFileEntry is renamed to entry for all 3 functions
+	- Changed. fplFileEntry stores the fullPath instead of the name + internal root infos
 	- Fixed: Fixed GCC warning -Wwrite-strings
 	- Fixed: fplDebugBreak() was missing function braces for __debugbreak
+	- New: Added fplEnforcePathSeparatorLen()
+	- New: Added fplEnforcePathSeparator()
+	- New: Added fileSize field to fplFileEntry
+	- New: Added struct fplFilePermissions
+	- New: Added enum fplFilePermissionMasks
+	- Changed: Introduced fplFilePermissions in fplFileEntry
+	- Changed: Removed flag fplFileAttributeFlags_ReadOnly from fplFileAttributeFlags
 
-	- Changed: [POSIX] Removed all pthread checks, because there is already a check for platform initialization
+	- Changed: [POSIX] Removed all pthread checks, because there is a check for platform initialization now
+	- New: [POSIX] Implemented fplListDirBegin
+	- New: [POSIX] Implemented fplListDirNext
+	- New: [POSIX] Implemented fplListDirEnd
 
+	- New: [Win32] Fill out fileSize for fplFileEntry in fplListDir*
+	- Changed: [Win32] Changed fplListDir* to support fplFilePermissions
+	
 	## v0.7.7.0 beta:
 	- New: Added fplMutexTryLock()
 	- New: Added fplMakeDefaultSettings()
@@ -746,8 +762,8 @@ SOFTWARE.
 		- [POSIX] Vulkan
 
 	- Networking (UDP, TCP)
-		- [Win32] WinSock
-		- [POSIX] Socket
+		- [Win32] WinSock (https://www.binarytides.com/winsock-socket-programming-tutorial/)
+		- [POSIX] Socket (https://www.binarytides.com/socket-programming-c-linux-tutorial/)
 
 	- Documentation
 		- Audio details
@@ -1326,6 +1342,7 @@ static fpl_force_inline void fplDebugBreak() { __asm__ __volatile__(".inst 0xe7f
 
 #if defined(FPL_SUBPLATFORM_POSIX)
 #	include <pthread.h> // pthread_t, pthread_mutex_, pthread_cond_, pthread_barrier_
+#	include <dirent.h> // DIR, dirent
 #endif // FPL_SUBPLATFORM_POSIX
 
 #if defined(FPL_SUBPLATFORM_X11)
@@ -2690,32 +2707,45 @@ fpl_common_api void fplMemoryAlignedFree(void *ptr);
 	* \param b Second string
 	* \param bLen Number of characters for the second string
 	* \note Len parameters does not include the null-terminator!
-	* \return True when strings matches, otherwise false.
+	* \return True when both strings matches, otherwise false.
 	*/
 fpl_common_api bool fplIsStringEqualLen(const char *a, const size_t aLen, const char *b, const size_t bLen);
 /**
   * \brief Returns true when both ansi strings are equal.
   * \param a First string
   * \param b Second string
-  * \return True when strings matches, otherwise false.
+  * \return True when both strings matches, otherwise false.
   */
 fpl_common_api bool fplIsStringEqual(const char *a, const char *b);
+/**
+  * \brief Ensures that the given string always ends with a path separator with size constrained
+  * \param path Path string
+  * \param maxPathLen Max length of the path
+  * \return Pointer to the last character or fpl_null.
+  */
+fpl_common_api char *fplEnforcePathSeparatorLen(char *path, size_t maxPathLen);
+/**
+  * \brief Ensures that the given string always ends with a path separator
+  * \param path Path string
+  * \return Pointer to the last character or fpl_null.
+  * \note This function is unsafe as it does not know the maximum length of the string!
+  */
+fpl_common_api char *fplEnforcePathSeparator(char *path);
 /**
   * \brief Appends the source string to the given buffer
   * \param appended Appending string
   * \param appendedLen Length of the source string
   * \param buffer Target buffer
   * \param maxBufferLen Max length of the target buffer
-  * \return Pointer to the first character or fpl_null.
+  * \return Pointer to the last character or fpl_null.
   */
 fpl_common_api char *fplStringAppendLen(const char *appended, const size_t appendedLen, char *buffer, size_t maxBufferLen);
-
 /**
   * \brief Appends the source string to the given buffer
   * \param appended Appending string
   * \param buffer Target buffer
   * \param maxBufferLen Max length of the target buffer
-  * \return Pointer to the first character or fpl_null.
+  * \return Pointer to the last character or fpl_null.
   */
 fpl_common_api char *fplStringAppend(const char *appended, char *buffer, size_t maxBufferLen);
 /**
@@ -2739,7 +2769,7 @@ fpl_common_api size_t fplGetWideStringLength(const wchar_t *str);
   * \param dest The 8-bit destination ansi string buffer.
   * \param maxDestLen The total number of characters available in the destination buffer.
   * \note Null terminator is included always. Does not allocate any memory.
-  * \return Returns the pointer to the first character in the destination buffer or fpl_null when either the dest buffer is too small or the source string is invalid.
+  * \return Returns the pointer to the last written character or fpl_null.
   */
 fpl_common_api char *fplCopyAnsiStringLen(const char *source, const size_t sourceLen, char *dest, const size_t maxDestLen);
 /**
@@ -2748,7 +2778,7 @@ fpl_common_api char *fplCopyAnsiStringLen(const char *source, const size_t sourc
   * \param dest The 8-bit destination ansi string buffer.
   * \param maxDestLen The total number of characters available in the destination buffer.
   * \note Null terminator is included always. Does not allocate any memory.
-  * \return Returns the pointer to the first character in the destination buffer or fpl_null when either the dest buffer is too small or the source string is invalid.
+  * \return Returns the pointer to the last written character or fpl_null.
   */
 fpl_common_api char *fplCopyAnsiString(const char *source, char *dest, const size_t maxDestLen);
 /**
@@ -2758,7 +2788,7 @@ fpl_common_api char *fplCopyAnsiString(const char *source, char *dest, const siz
   * \param dest The 16-bit destination wide string buffer.
   * \param maxDestLen The total number of characters available in the destination buffer.
   * \note Null terminator is included always. Does not allocate any memory.
-  * \return Returns the pointer to the first character in the destination buffer or fpl_null when either the dest buffer is too small or the source string is invalid.
+  * \return Returns the pointer to the last written character or fpl_null.
   */
 fpl_common_api wchar_t *fplCopyWideStringLen(const wchar_t *source, const size_t sourceLen, wchar_t *dest, const size_t maxDestLen);
 /**
@@ -2767,7 +2797,7 @@ fpl_common_api wchar_t *fplCopyWideStringLen(const wchar_t *source, const size_t
   * \param dest The 16-bit destination wide string buffer.
   * \param maxDestLen The total number of characters available in the destination buffer.
   * \note Null terminator is included always. Does not allocate any memory.
-  * \return Returns the pointer to the first character in the destination buffer or fpl_null when either the dest buffer is too small or the source string is invalid.
+  * \return Returns the pointer to the last written character or fpl_null.
   */
 fpl_common_api wchar_t *fplCopyWideString(const wchar_t *source, wchar_t *dest, const size_t maxDestLen);
 /**
@@ -2777,7 +2807,7 @@ fpl_common_api wchar_t *fplCopyWideString(const wchar_t *source, wchar_t *dest, 
   * \param ansiDest The 8-bit destination ansi string buffer.
   * \param maxAnsiDestLen The total number of characters available in the destination buffer.
   * \note Null terminator is included always. Does not allocate any memory.
-  * \return Returns the pointer to the first character in the destination buffer or fpl_null when either the dest buffer is too small or the source string is invalid.
+  * \return Returns the pointer to the last written character or fpl_null.
   */
 fpl_platform_api char *fplWideStringToAnsiString(const wchar_t *wideSource, const size_t maxWideSourceLen, char *ansiDest, const size_t maxAnsiDestLen);
 /**
@@ -2787,7 +2817,7 @@ fpl_platform_api char *fplWideStringToAnsiString(const wchar_t *wideSource, cons
   * \param utf8Dest The 8-bit destination ansi string buffer.
   * \param maxUtf8DestLen The total number of characters available in the destination buffer.
   * \note Null terminator is included always. Does not allocate any memory.
-  * \return Returns the pointer to the first character in the destination buffer or fpl_null when either the dest buffer is too small or the source string is invalid.
+  * \return Returns the pointer to the last written character or fpl_null.
   */
 fpl_platform_api char *fplWideStringToUTF8String(const wchar_t *wideSource, const size_t maxWideSourceLen, char *utf8Dest, const size_t maxUtf8DestLen);
 /**
@@ -2797,7 +2827,7 @@ fpl_platform_api char *fplWideStringToUTF8String(const wchar_t *wideSource, cons
   * \param wideDest The 16-bit destination wide string buffer.
   * \param maxWideDestLen The total number of characters available in the destination buffer.
   * \note Null terminator is included always. Does not allocate any memory.
-  * \return Returns the pointer to the first character in the destination buffer or fpl_null when either the dest buffer is too small or the source string is invalid.
+  * \return Returns the pointer to the last written character or fpl_null.
   */
 fpl_platform_api wchar_t *fplAnsiStringToWideString(const char *ansiSource, const size_t ansiSourceLen, wchar_t *wideDest, const size_t maxWideDestLen);
 /**
@@ -2807,7 +2837,7 @@ fpl_platform_api wchar_t *fplAnsiStringToWideString(const char *ansiSource, cons
   * \param wideDest The 16-bit destination wide string buffer.
   * \param maxWideDestLen The total number of characters available in the destination buffer.
   * \note Null terminator is included always. Does not allocate any memory.
-  * \return Returns the pointer to the first character in the destination buffer or fpl_null when either the dest buffer is too small or the source string is invalid.
+  * \return Returns the pointer to the last written character or fpl_null.
   */
 fpl_platform_api wchar_t *fplUTF8StringToWideString(const char *utf8Source, const size_t utf8SourceLen, wchar_t *wideDest, const size_t maxWideDestLen);
 /**
@@ -2817,9 +2847,8 @@ fpl_platform_api wchar_t *fplUTF8StringToWideString(const char *utf8Source, cons
   * \param format The string format.
   * \param ... Variable arguments.
   * \note This is most likely just a wrapper call to vsnprintf()
-  * \return Pointer to the first character in the destination buffer or fpl_null.
+  * \return Pointer to the last written character or fpl_null.
   */
-
 fpl_common_api char *fplFormatAnsiString(char *ansiDestBuffer, const size_t maxAnsiDestBufferLen, const char *format, ...);
 /**
   * \brief Fills out the given destination ansi string buffer with a formatted string, using the format specifier and the arguments list.
@@ -2881,47 +2910,108 @@ typedef enum fplFileEntryType {
 	fplFileEntryType_Directory
 } fplFileEntryType;
 
+//! File permission flags
+typedef enum fplFilePermissionFlags {
+	//! All (Read, Write, Execute, Search)
+	fplFilePermissionFlags_All = 0,
+	//! CanExecute
+	fplFilePermissionFlags_CanExecuteSearch = 1 << 0,
+	//! CanWrite
+	fplFilePermissionFlags_CanWrite = 1 << 1,
+	//! CanRead
+	fplFilePermissionFlags_CanRead = 1 << 2,
+} fplFilePermissionFlags;
+//! fplFilePermissionFlags operator overloads for C++
+FPL_ENUM_AS_FLAGS_OPERATORS(fplFilePermissionFlags);
+
+//! File permission types
+typedef enum fplFilePermissionMasks {
+	//! No mask
+	fplFilePermissionMasks_None = 0,
+	//! User
+	fplFilePermissionMasks_User = 0xFF0000,
+	//! Group
+	fplFilePermissionMasks_Group = 0x00FF00,
+	//! Owner
+	fplFilePermissionMasks_Owner = 0x0000FF,
+} fplFilePermissionMasks;
+//! fplFilePermissionMasks operator overloads for C++
+FPL_ENUM_AS_FLAGS_OPERATORS(fplFilePermissionMasks);
+
+//! File permissions mask
+typedef union fplFilePermissions {
+	struct {
+		//! User flags
+		uint8_t user;
+		//! Group flags
+		uint8_t group;
+		//! Owner flags
+		uint8_t owner;
+		//! Unused
+		uint8_t unused;
+	};
+	//! UMask
+	uint32_t umask;
+} fplFilePermissions;
+
 //! File attribute flags (Normal, Readonly, Hidden, etc.)
 typedef enum fplFileAttributeFlags {
 	//! No attributes
 	fplFileAttributeFlags_None = 0,
 	//! Normal
-	fplFileAttributeFlags_Normal = 1 << 0,
-	//! Readonly
-	fplFileAttributeFlags_ReadOnly = 1 << 1,
+	fplFileAttributeFlags_Normal = 1 << 1,
 	//! Hidden
 	fplFileAttributeFlags_Hidden = 1 << 2,
-	//! Archive
-	fplFileAttributeFlags_Archive = 1 << 3,
 	//! System
-	fplFileAttributeFlags_System = 1 << 4
+	fplFileAttributeFlags_System = 1 << 3,
+	//! Archive
+	fplFileAttributeFlags_Archive = 1 << 4
 } fplFileAttributeFlags;
 //! FileAttributeFlags operator overloads for C++
 FPL_ENUM_AS_FLAGS_OPERATORS(fplFileAttributeFlags);
 
-//! Maximum length of a file entry path
-#define FPL_MAX_FILEENTRY_PATH_LENGTH 1024
+#if defined(FPL_PLATFORM_WIN32)
+	//! Maximum length of a full path (Win32)
+#	define FPL_MAX_FILEENTRY_FULLPATH_LENGTH (512 + 1)
+#else
+	//! Maximum length of a full path (Non win32)
+#	define FPL_MAX_FILEENTRY_FULLPATH_LENGTH (2048 + 1)
+#endif
 
 //! Internal file entry handle
-typedef struct fplInternalFileEntryHandle {
+typedef union fplInternalFileEntryHandle {
 #if defined(FPL_PLATFORM_WIN32)
 	//! Win32 file handle
 	HANDLE win32FileHandle;
 #elif defined(FPL_SUBPLATFORM_POSIX)
-	//! Posix file handle
-	int posixFileHandle;
+	//! Posix directory handle
+	DIR *posixDirHandle;
 #endif
 } fplInternalFileEntryHandle;
 
-//! Entry for storing current file informations (path, type, attributes, etc.)
+//! Internal root file info
+typedef struct fplInternalFileRootInfo {
+	//! Saved root path
+	const char *rootPath;
+	//! Saved filter wildcard
+	const char *filter;
+} fplInternalFileRootInfo;
+
+//! Entry for storing current file informations (name, type, attributes, etc.)
 typedef struct fplFileEntry {
-	//! File path
-	char path[FPL_MAX_FILEENTRY_PATH_LENGTH];
+	//! Full path
+	char fullPath[FPL_MAX_FILEENTRY_FULLPATH_LENGTH];
 	//! Internal file handle
 	fplInternalFileEntryHandle internalHandle;
+	//! Internal root info
+	fplInternalFileRootInfo internalRoot;
+	//! Size (Zero when not a file)
+	size_t size;
+	//! Permissions
+	fplFilePermissions permissions;
 	//! Entry type
 	fplFileEntryType type;
-	//! File attributes
+	//! Attributes
 	fplFileAttributeFlags attributes;
 } fplFileEntry;
 
@@ -3058,23 +3148,28 @@ fpl_platform_api bool fplDirectoryExists(const char *path);
 fpl_platform_api bool fplDirectoryRemove(const char *path);
 /**
   * \brief Iterates through files / directories in the given directory.
-  * \param pathAndFilter The path with its included after the path separator.
-  * \param firstEntry The reference to a file entry.
-  * \note The path must contain the filter as well.
+  * \param path The full path
+  * \param filter The filter wildcard (If empty or null it will not filter anything at all)
+  * \param entry The reference to a file entry.
+  * \note This function is not recursive, so it will traverse the first level only!
+  * \note When no first entry is found, the resources are automatically cleaned up.
   * \return Returns true when there was a first entry found otherwise false.
   */
-fpl_platform_api bool fplListFilesBegin(const char *pathAndFilter, fplFileEntry *firstEntry);
+fpl_platform_api bool fplListDirBegin(const char *path, const char *filter, fplFileEntry *entry);
 /**
   * \brief Gets the next file entry from iterating through files / directories.
-  * \param nextEntry The reference to the current file entry.
+  * \param entry The reference to the current file entry.
+  * \note This function is not recursive, so it will traverse the first level only!
+  * \note When no next entry is found, the resources are automatically cleaned up.
   * \return Returns true when there was a next file otherwise false if not.
   */
-fpl_platform_api bool fplListFilesNext(fplFileEntry *nextEntry);
+fpl_platform_api bool fplListDirNext(fplFileEntry *entry);
 /**
   * \brief Releases opened resources from iterating through files / directories.
-  * \param lastEntry The reference to the last file entry.
+  * \note Its safe to call this when entry is already closed
+  * \param entry The reference to the last file entry.
   */
-fpl_platform_api void fplListFilesEnd(fplFileEntry *lastEntry);
+fpl_platform_api void fplListDirEnd(fplFileEntry *entry);
 
 /** \}*/
 
@@ -4124,15 +4219,17 @@ struct fplLogBlock {
 #define FPL_PLATFORM_CONSTANTS_DEFINED
 
 #if defined(FPL_PLATFORM_WIN32)
-#	define FPL__PATH_SEPARATOR '\\'
-#	define FPL__FILE_EXT_SEPARATOR '.'
+#	define FPL_PATH_SEPARATOR '\\'
+#	define FPL_FILE_EXT_SEPARATOR '.'
+#	define FPL_MAX_FILE_PATH_LENGTH (MAX_PATH + 1)
 #else
-#	define FPL__PATH_SEPARATOR '/'
-#	define FPL__FILE_EXT_SEPARATOR '.'
+#	define FPL_PATH_SEPARATOR '/'
+#	define FPL_FILE_EXT_SEPARATOR '.'
+#	define FPL_MAX_FILE_PATH_LENGTH (2048 + 1)
 #endif
 
 // One cacheline worth of padding
-#define FPL__SIZE_PADDING 64
+#define FPL__ARBITARY_PADDING 64
 
 fpl_globalvar struct fpl__PlatformAppState *fpl__global__AppState = fpl_null;
 
@@ -5551,6 +5648,51 @@ fpl_common_api bool fplIsStringEqual(const char *a, const char *b) {
 	return(result);
 }
 
+fpl_common_api char *fplEnforcePathSeparatorLen(char *path, size_t maxPathLen) {
+	FPL__CheckArgumentNull(path, fpl_null);
+	FPL__CheckArgumentZero(maxPathLen, fpl_null);
+	char *end = path;
+	while(*end) {
+		end++;
+	}
+	size_t len = end - path;
+	char *result = fpl_null;
+	if(len > 0) {
+		if(path[len - 1] != FPL_PATH_SEPARATOR) {
+			if(len + 1 <= maxPathLen) {
+				path[len] = FPL_PATH_SEPARATOR;
+				path[len + 1] = 0;
+				result = &path[len + 1];
+			} else {
+				fpl__PushError("Cannot append path separator: Max length '%zu' of path '%s' is exceeded", maxPathLen, path);
+			}
+		} else {
+			result = &path[len];
+		}
+	}
+	return(result);
+}
+
+fpl_common_api char *fplEnforcePathSeparator(char *path) {
+	FPL__CheckArgumentNull(path, fpl_null);
+	char *end = path;
+	while(*end) {
+		end++;
+	}
+	size_t len = end - path;
+	char *result = fpl_null;
+	if(len > 0) {
+		if(path[len - 1] != FPL_PATH_SEPARATOR) {
+			path[len] = FPL_PATH_SEPARATOR;
+			path[len + 1] = 0;
+			result = &path[len + 1];
+		} else {
+			result = &path[len];
+		}
+	}
+	return(result);
+}
+
 fpl_common_api char *fplStringAppendLen(const char *appended, const size_t appendedLen, char *buffer, size_t maxBufferLen) {
 	FPL__CheckArgumentNull(appended, fpl_null);
 	FPL__CheckArgumentZero(maxBufferLen, fpl_null);
@@ -5887,7 +6029,7 @@ fpl_common_api char *fplExtractFilePath(const char *sourcePath, char *destPath, 
 		int copyLen = 0;
 		char *chPtr = (char *)sourcePath;
 		while(*chPtr) {
-			if(*chPtr == FPL__PATH_SEPARATOR) {
+			if(*chPtr == FPL_PATH_SEPARATOR) {
 				copyLen = (int)(chPtr - sourcePath);
 			}
 			++chPtr;
@@ -5906,7 +6048,7 @@ fpl_common_api const char *fplExtractFileExtension(const char *sourcePath) {
 		if(filename) {
 			const char *chPtr = filename;
 			while(*chPtr) {
-				if(*chPtr == FPL__FILE_EXT_SEPARATOR) {
+				if(*chPtr == FPL_FILE_EXT_SEPARATOR) {
 					result = chPtr;
 					break;
 				}
@@ -5923,7 +6065,7 @@ fpl_common_api const char *fplExtractFileName(const char *sourcePath) {
 		result = sourcePath;
 		const char *chPtr = sourcePath;
 		while(*chPtr) {
-			if(*chPtr == FPL__PATH_SEPARATOR) {
+			if(*chPtr == FPL_PATH_SEPARATOR) {
 				result = chPtr + 1;
 			}
 			++chPtr;
@@ -5947,7 +6089,7 @@ fpl_common_api char *fplChangeFileExtension(const char *filePath, const char *ne
 		char *chPtr = (char *)filePath;
 		char *lastPathSeparatorPtr = fpl_null;
 		while(*chPtr) {
-			if(*chPtr == FPL__PATH_SEPARATOR) {
+			if(*chPtr == FPL_PATH_SEPARATOR) {
 				lastPathSeparatorPtr = chPtr;
 			}
 			++chPtr;
@@ -5960,7 +6102,7 @@ fpl_common_api char *fplChangeFileExtension(const char *filePath, const char *ne
 		}
 		char *lastExtSeparatorPtr = fpl_null;
 		while(*chPtr) {
-			if(*chPtr == FPL__FILE_EXT_SEPARATOR) {
+			if(*chPtr == FPL_FILE_EXT_SEPARATOR) {
 				lastExtSeparatorPtr = chPtr;
 			}
 			++chPtr;
@@ -5996,7 +6138,7 @@ fpl_common_api char *fplPathCombine(char *destPath, const size_t maxDestPathLen,
 		fplCopyAnsiStringLen(path, pathLen, currentDestPtr, maxDestPathLen - curDestPosition);
 		currentDestPtr += pathLen;
 		if(requireSeparator) {
-			*currentDestPtr++ = FPL__PATH_SEPARATOR;
+			*currentDestPtr++ = FPL_PATH_SEPARATOR;
 		}
 		curDestPosition += requiredPathLen;
 	}
@@ -6927,7 +7069,7 @@ fpl_api fpl__Win32CommandLineUTF8Arguments fpl__Win32ParseWideArguments(LPWSTR c
 			args.count = 1 + actualArgumentCount;
 			size_t totalStringLen = executableFilePathLen + actualArgumentsLen + args.count;
 			size_t singleArgStringSize = sizeof(char) * (totalStringLen);
-			size_t arbitaryPadding = FPL__SIZE_PADDING;
+			size_t arbitaryPadding = FPL__ARBITARY_PADDING;
 			size_t argArraySize = sizeof(char **) * args.count;
 			size_t totalArgSize = singleArgStringSize + arbitaryPadding + argArraySize;
 
@@ -8186,10 +8328,12 @@ fpl_platform_api bool fplDirectoryRemove(const char *path) {
 	bool result = RemoveDirectoryA(path) > 0;
 	return(result);
 }
-fpl_internal_inline void fpl__Win32FillFileEntry(const WIN32_FIND_DATAA *findData, fplFileEntry *entry) {
+fpl_internal_inline void fpl__Win32FillFileEntry(const char *rootPath, const WIN32_FIND_DATAA *findData, fplFileEntry *entry) {
 	FPL_ASSERT(findData != fpl_null);
 	FPL_ASSERT(entry != fpl_null);
-	fplCopyAnsiStringLen(findData->cFileName, fplGetAnsiStringLength(findData->cFileName), entry->path, FPL_ARRAYCOUNT(entry->path));
+	fplCopyAnsiString(rootPath, entry->fullPath, FPL_ARRAYCOUNT(entry->fullPath));
+	fplEnforcePathSeparatorLen(entry->fullPath, FPL_ARRAYCOUNT(entry->fullPath));
+	fplStringAppend(findData->cFileName, entry->fullPath, FPL_ARRAYCOUNT(entry->fullPath));
 	entry->type = fplFileEntryType_Unknown;
 	if(findData->dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
 		entry->type = fplFileEntryType_Directory;
@@ -8201,15 +8345,15 @@ fpl_internal_inline void fpl__Win32FillFileEntry(const WIN32_FIND_DATAA *findDat
 		(findData->dwFileAttributes & FILE_ATTRIBUTE_SYSTEM)) {
 		entry->type = fplFileEntryType_File;
 	}
+
+	// @TODO(final): Win32 Read ACL for full permission detection!
 	entry->attributes = fplFileAttributeFlags_None;
+	entry->permissions.umask = 0;
 	if(findData->dwFileAttributes & FILE_ATTRIBUTE_NORMAL) {
 		entry->attributes = fplFileAttributeFlags_Normal;
 	} else {
 		if(findData->dwFileAttributes & FILE_ATTRIBUTE_HIDDEN) {
 			entry->attributes |= fplFileAttributeFlags_Hidden;
-		}
-		if(findData->dwFileAttributes & FILE_ATTRIBUTE_READONLY) {
-			entry->attributes |= fplFileAttributeFlags_ReadOnly;
 		}
 		if(findData->dwFileAttributes & FILE_ATTRIBUTE_ARCHIVE) {
 			entry->attributes |= fplFileAttributeFlags_Archive;
@@ -8217,41 +8361,64 @@ fpl_internal_inline void fpl__Win32FillFileEntry(const WIN32_FIND_DATAA *findDat
 		if(findData->dwFileAttributes & FILE_ATTRIBUTE_SYSTEM) {
 			entry->attributes |= fplFileAttributeFlags_System;
 		}
+		entry->permissions.user |= fplFilePermissionFlags_CanWrite;
+		entry->permissions.user |= fplFilePermissionFlags_CanRead;
+		entry->permissions.user |= fplFilePermissionFlags_CanExecuteSearch;
+		if((findData->dwFileAttributes & FILE_ATTRIBUTE_READONLY) || (findData->dwFileAttributes & FILE_ATTRIBUTE_SYSTEM)) {
+			entry->permissions.user &= ~fplFilePermissionFlags_CanWrite;
+		}
+	}
+	if(entry->type == fplFileEntryType_File) {
+		ULARGE_INTEGER ul;
+		ul.LowPart = findData->nFileSizeLow;
+		ul.HighPart = findData->nFileSizeHigh;
+		entry->size = (size_t)ul.QuadPart;
+	} else {
+		entry->size = 0;
 	}
 }
-fpl_platform_api bool fplListFilesBegin(const char *pathAndFilter, fplFileEntry *firstEntry) {
-	FPL__CheckArgumentNull(pathAndFilter, false);
-	FPL__CheckArgumentNull(firstEntry, false);
-	bool result = false;
+fpl_platform_api bool fplListDirBegin(const char *path, const char *filter, fplFileEntry *entry) {
+	FPL__CheckArgumentNull(path, false);
+	FPL__CheckArgumentNull(entry, false);
+	if(fplGetAnsiStringLength(filter) == 0) {
+		filter = "*";
+	}
 	WIN32_FIND_DATAA findData;
+	char pathAndFilter[MAX_PATH + 1] = FPL_ZERO_INIT;
+	fplCopyAnsiString(path, pathAndFilter, FPL_ARRAYCOUNT(pathAndFilter));
+	fplEnforcePathSeparatorLen(pathAndFilter, FPL_ARRAYCOUNT(pathAndFilter));
+	fplStringAppend(filter, pathAndFilter, FPL_ARRAYCOUNT(pathAndFilter));
 	HANDLE searchHandle = FindFirstFileA(pathAndFilter, &findData);
+	bool result = false;
 	if(searchHandle != INVALID_HANDLE_VALUE) {
-		FPL_CLEAR_STRUCT(firstEntry);
-		firstEntry->internalHandle.win32FileHandle = searchHandle;
-		fpl__Win32FillFileEntry(&findData, firstEntry);
+		FPL_CLEAR_STRUCT(entry);
+		entry->internalHandle.win32FileHandle = searchHandle;
+		entry->internalRoot.rootPath = path;
+		entry->internalRoot.filter = filter;
+		fpl__Win32FillFileEntry(path, &findData, entry);
 		result = true;
 	}
 	return(result);
 }
-fpl_platform_api bool fplListFilesNext(fplFileEntry *nextEntry) {
-	FPL__CheckArgumentNull(nextEntry, false);
+fpl_platform_api bool fplListDirNext(fplFileEntry *entry) {
+	FPL__CheckArgumentNull(entry, false);
 	bool result = false;
-	if(nextEntry->internalHandle.win32FileHandle != INVALID_HANDLE_VALUE) {
-		HANDLE searchHandle = nextEntry->internalHandle.win32FileHandle;
+	if(entry->internalHandle.win32FileHandle != INVALID_HANDLE_VALUE) {
+		HANDLE searchHandle = entry->internalHandle.win32FileHandle;
 		WIN32_FIND_DATAA findData;
 		if(FindNextFileA(searchHandle, &findData)) {
-			fpl__Win32FillFileEntry(&findData, nextEntry);
+			fpl__Win32FillFileEntry(entry->internalRoot.rootPath, &findData, entry);
 			result = true;
 		}
 	}
 	return(result);
 }
-fpl_platform_api void fplListFilesEnd(fplFileEntry *lastEntry) {
-	FPL__CheckArgumentNullNoRet(lastEntry);
-	if(lastEntry->internalHandle.win32FileHandle != INVALID_HANDLE_VALUE) {
-		HANDLE searchHandle = lastEntry->internalHandle.win32FileHandle;
+fpl_platform_api void fplListDirEnd(fplFileEntry *entry) {
+	FPL__CheckArgumentNullNoRet(entry);
+	if(entry->internalHandle.win32FileHandle != INVALID_HANDLE_VALUE) {
+		HANDLE searchHandle = entry->internalHandle.win32FileHandle;
 		FindClose(searchHandle);
-		FPL_CLEAR_STRUCT(lastEntry);
+		FPL_CLEAR_STRUCT(entry);
 	}
 }
 
@@ -9376,12 +9543,12 @@ fpl_platform_api void *fplMemoryAllocate(const size_t size) {
 	FPL__CheckArgumentZero(size, fpl_null);
 	// @NOTE(final): MAP_ANONYMOUS ensures that the memory is cleared to zero.
 	// Allocate empty memory to hold the size + some arbitary padding + the actual data
-	size_t newSize = sizeof(size_t) + FPL__SIZE_PADDING + size;
+	size_t newSize = sizeof(size_t) + FPL__ARBITARY_PADDING + size;
 	void *basePtr = mmap(fpl_null, newSize, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
 	// Write the size at the beginning
 	*(size_t *)basePtr = newSize;
 	// The resulting address starts after the arbitary padding
-	void *result = (uint8_t *)basePtr + sizeof(size_t) + FPL__SIZE_PADDING;
+	void *result = (uint8_t *)basePtr + sizeof(size_t) + FPL__ARBITARY_PADDING;
 	return(result);
 }
 
@@ -9646,25 +9813,112 @@ fpl_platform_api bool fplRemoveDirectory(const char *path) {
 	bool result = rmdir(path) == 0;
 	return(result);
 }
-fpl_platform_api bool fplListFilesBegin(const char *pathAndFilter, fplFileEntry *firstEntry) {
-	FPL__CheckArgumentNull(pathAndFilter, false);
-	FPL__CheckArgumentNull(firstEntry, false);
-	// @IMPLEMENT(final): POSIX fplListFilesBegin
-	FPL_CLEAR_STRUCT(firstEntry);
-	return false;
-}
-fpl_platform_api bool fplListFilesNext(fplFileEntry *nextEntry) {
-	FPL__CheckArgumentNull(nextEntry, false);
-	if(nextEntry->internalHandle.posixFileHandle) {
-		// @IMPLEMENT(final): POSIX fplListFilesNext
+
+fpl_internal void fpl__PosixFillFileEntry(struct dirent *dp, fplFileEntry *entry) {
+	FPL_ASSERT((dp != fpl_null) && (entry != fpl_null));
+	fplCopyAnsiString(entry->internalRoot.rootPath, entry->fullPath, FPL_ARRAYCOUNT(entry->fullPath));
+	fplEnforcePathSeparatorLen(entry->fullPath, FPL_ARRAYCOUNT(entry->fullPath));
+	fplCopyAnsiString(dp->d_name, entry->fullPath, FPL_ARRAYCOUNT(entry->fullPath));
+	entry->type = fplFileEntryType_Unknown;
+	entry->attributes = fplFileAttributeFlags_None;
+	entry->size = 0;
+	entry->permissions.umask = 0;
+	struct stat sb;
+	if(stat(entry->fullPath, &sb) == 0) {
+		if(S_ISDIR(sb.st_mode)) {
+			entry->type = fplFileEntryType_Directory;
+		} else if(S_ISREG(sb.st_mode)) {
+			entry->type = fplFileEntryType_File;
+		}
+		entry->size = sb.st_size;
+		if(dp->d_name[0] == '.') {
+			// @NOTE(final): Any filename starting with dot is hidden in POSIX
+			entry->attributes |= fplFileAttributeFlags_Hidden;
+		}
+		if(sb.st_mode & S_IRUSR) {
+			entry->permissions.user |= fplFilePermissionFlags_CanRead;
+		}
+		if(sb.st_mode & S_IWUSR) {
+			entry->permissions.user |= fplFilePermissionFlags_CanWrite;
+		}
+		if(sb.st_mode & S_IXUSR) {
+			entry->permissions.user |= fplFilePermissionFlags_CanExecuteSearch;
+		}
+		if(sb.st_mode & S_IRGRP) {
+			entry->permissions.group |= fplFilePermissionFlags_CanRead;
+		}
+		if(sb.st_mode & S_IWGRP) {
+			entry->permissions.group |= fplFilePermissionFlags_CanWrite;
+		}
+		if(sb.st_mode & S_IXGRP) {
+			entry->permissions.group |= fplFilePermissionFlags_CanExecuteSearch;
+		}
+		if(sb.st_mode & S_IROTH) {
+			entry->permissions.owner |= fplFilePermissionFlags_CanRead;
+		}
+		if(sb.st_mode & S_IWOTH) {
+			entry->permissions.owner |= fplFilePermissionFlags_CanWrite;
+		}
+		if(sb.st_mode & S_IXOTH) {
+			entry->permissions.owner |= fplFilePermissionFlags_CanExecuteSearch;
+		}
 	}
-	return false;
 }
-fpl_platform_api void fplListFilesEnd(fplFileEntry *lastEntry) {
-	FPL__CheckArgumentNullNoRet(lastEntry);
-	if(lastEntry->internalHandle.posixFileHandle) {
-		// @IMPLEMENT(final): POSIX fplListFilesEnd
-		FPL_CLEAR_STRUCT(lastEntry);
+
+fpl_internal bool fpl__IsMatchWildcardAnsiString(const char *search, const char *wildcard) {
+	// @TODO(final): POSIX Implement wildcard string match
+	return true;
+}
+
+fpl_platform_api bool fplListDirBegin(const char *path, const char *filter, fplFileEntry *entry) {
+	FPL__CheckArgumentNull(path, false);
+	FPL__CheckArgumentNull(entry, false);
+	DIR *dir = opendir(path);
+	if(dir == fpl_null) {
+		return false;
+	}
+	if(fplGetAnsiStringLength(filter) == 0) {
+		filter = "*";
+	}
+	FPL_CLEAR_STRUCT(entry);
+	entry->internalHandle.posixDirHandle = dir;
+	entry->internalRoot.rootPath = path;
+	entry->internalRoot.filter = filter;
+	bool result = fplListDirNext(entry);
+	return(result);
+}
+
+fpl_platform_api bool fplListDirNext(fplFileEntry *entry) {
+	FPL__CheckArgumentNull(entry, false);
+	bool result = false;
+	if(entry->internalHandle.posixDirHandle != fpl_null) {
+		struct dirent *dp = readdir(entry->internalHandle.posixDirHandle);
+		do {
+			if(dp == fpl_null) {
+				break;
+			}
+			bool isMatch = fpl__IsMatchWildcardAnsiString(dp->d_name, entry->internalRoot.filter);
+			if(isMatch) {
+				break;
+			}
+			dp = readdir(entry->internalHandle.posixDirHandle);
+		} while(dp != fpl_null);
+		if(dp == fpl_null) {
+			closedir(entry->internalHandle.posixDirHandle);
+			FPL_CLEAR_STRUCT(entry);
+		} else {
+			fpl__PosixFillFileEntry(dp, entry);
+			result = true;
+		}
+	}
+	return(result);
+}
+
+fpl_platform_api void fplListDirEnd(fplFileEntry *entry) {
+	FPL__CheckArgumentNullNoRet(entry);
+	if(entry->internalHandle.posixDirHandle != fpl_null) {
+		closedir(entry->internalHandle.posixDirHandle);
+		FPL_CLEAR_STRUCT(entry);
 	}
 }
 #endif // FPL_SUBPLATFORM_POSIX
@@ -13846,7 +14100,7 @@ fpl_common_api fplInitResultType fplPlatformInit(const fplInitFlags initFlags, c
 #if defined(FPL_ENABLE_VIDEO)
 	size_t videoMemoryOffset = 0;
 	if(initFlags & fplInitFlags_Video) {
-		platformAppStateSize += FPL__SIZE_PADDING;
+		platformAppStateSize += FPL__ARBITARY_PADDING;
 		videoMemoryOffset = platformAppStateSize;
 		platformAppStateSize += sizeof(fpl__VideoState);
 	}
@@ -13855,7 +14109,7 @@ fpl_common_api fplInitResultType fplPlatformInit(const fplInitFlags initFlags, c
 #if defined(FPL_ENABLE_AUDIO)
 	size_t audioMemoryOffset = 0;
 	if(initFlags & fplInitFlags_Audio) {
-		platformAppStateSize += FPL__SIZE_PADDING;
+		platformAppStateSize += FPL__ARBITARY_PADDING;
 		audioMemoryOffset = platformAppStateSize;
 		platformAppStateSize += sizeof(fpl__AudioState);
 	}

@@ -661,30 +661,55 @@ static void TestThreading() {
 }
 
 static void TestFiles() {
+#if defined(FPL_PLATFORM_WIN32)
+	const char *testNotExistingFile = "C:\\Windows\\i_am_not_existing.lib";
+	const char *testExistingFile = "C:\\Windows\\notepad.exe";
+	const char *testRootPath = "C:\\";
+	const char *testRootFilter = "Program*";
+#else
+	const char *testNotExistingFile = "/i_am_not_existing.whatever";
+	const char *testExistingFile = "/usr/bin/sh";
+	const char *testRootPath = "/";
+	const char *testRootFilter = "us*";
+#endif
+
 	ft::Msg("Test File Exists\n");
 	{
-		bool nonExisting = fplFileExists("C:\\Windows\\i_am_not_existing.lib");
-		FPL_ASSERT(!nonExisting);
-		bool notepadExists = fplFileExists("C:\\Windows\\notepad.exe");
-		FPL_ASSERT(notepadExists);
+		bool nonExisting = fplFileExists(testNotExistingFile);
+		FT_IS_FALSE(nonExisting);
+		bool existing = fplFileExists(testExistingFile);
+		FT_IS_TRUE(existing);
 	}
 	ft::Msg("Test File Size\n");
 	{
-		uint32_t emptySize = fplGetFileSizeFromPath32("C:\\Windows\\i_am_not_existing.lib");
+		uint32_t emptySize = fplGetFileSizeFromPath32(testNotExistingFile);
 		FPL_ASSERT(emptySize == 0);
-		uint32_t notepadSize = fplGetFileSizeFromPath32("C:\\Windows\\notepad.exe");
-		FPL_ASSERT(notepadSize > 0);
+		uint32_t existingSize = fplGetFileSizeFromPath32(testExistingFile);
+		FPL_ASSERT(existingSize > 0);
 	}
-	ft::Msg("Test Directory Iterations\n");
+	ft::Msg("Test Directory Iterations without filter\n");
 	{
-		fplFileEntry fileEntry;
-		if(fplListFilesBegin("C:\\*", &fileEntry)) {
-			ft::Msg("%s\n", fileEntry.path);
-			while(fplListFilesNext(&fileEntry)) {
-				ft::Msg("%s\n", fileEntry.path);
-			}
-			fplListFilesEnd(&fileEntry);
+		fplFileEntry fileEntry = {};
+		for(bool r = fplListDirBegin(testRootPath, "*.*", &fileEntry); r; r = fplListDirNext(&fileEntry)) {
+			ft::Msg("%s\n", fileEntry.fullPath);
 		}
+		fplListDirEnd(&fileEntry);
+	}
+	ft::Msg("Test Directory Iterations with all filter\n");
+	{
+		fplFileEntry fileEntry = {};
+		for(bool r = fplListDirBegin(testRootPath, "*", &fileEntry); r; r = fplListDirNext(&fileEntry)) {
+			ft::Msg("%s\n", fileEntry.fullPath);
+		}
+		fplListDirEnd(&fileEntry);
+	}
+	ft::Msg("Test Directory Iterations with root filter '%s'\n", testRootFilter);
+	{
+		fplFileEntry fileEntry = {};
+		bool r = fplListDirBegin(testRootPath, testRootFilter, &fileEntry);
+		ft::Msg("%s\n", fileEntry.fullPath);
+		FT_IS_TRUE(r);
+		fplListDirEnd(&fileEntry);
 	}
 }
 
@@ -731,7 +756,7 @@ static void TestAtomics() {
 	ft::Msg("Test AtomicExchangeU32 with INT32_MAX + 1\n");
 	{
 		const uint32_t expectedBefore = 1;
-		const uint32_t exchangeValue = INT32_MAX + 1;
+		const uint32_t exchangeValue = (uint32_t)INT32_MAX + 1;
 		const uint32_t expectedAfter = exchangeValue;
 		volatile uint32_t t = expectedBefore;
 		uint32_t r = fplAtomicExchangeU32(&t, exchangeValue);
@@ -811,7 +836,7 @@ static void TestAtomics() {
 	ft::Msg("Test AtomicExchangeU64 with INT64_MAX + 1\n");
 	{
 		const uint64_t expectedBefore = 1;
-		const uint64_t exchangeValue = INT64_MAX + 1;
+		const uint64_t exchangeValue = (uint64_t)INT64_MAX + 1;
 		const uint64_t expectedAfter = exchangeValue;
 		volatile uint64_t t = expectedBefore;
 		uint64_t r = fplAtomicExchangeU64(&t, exchangeValue);
@@ -1075,7 +1100,7 @@ static void TestStrings() {
 	{
 		char buffer[2];
 		char *res = fplFormatAnsiString(buffer, FPL_ARRAYCOUNT(buffer), "A");
-        FT_IS_NOT_NULL(res);
+		FT_IS_NOT_NULL(res);
 		bool matches = fplIsStringEqualLen("A", 1, buffer, 1);
 		FT_EXPECTS(true, matches);
 	}
@@ -1087,7 +1112,7 @@ static void TestStrings() {
 	{
 		char buffer[6];
 		char *res = fplFormatAnsiString(buffer, FPL_ARRAYCOUNT(buffer), "Hello");
-        FT_IS_NOT_NULL(res);
+		FT_IS_NOT_NULL(res);
 		bool r = fplIsStringEqualLen("Hello", 5, buffer, 5);
 		FT_EXPECTS(true, r);
 	}
@@ -1106,7 +1131,7 @@ static void TestStrings() {
 	{
 		char buffer[20];
 		char *res = fplFormatAnsiString(buffer, FPL_ARRAYCOUNT(buffer), "%4d-%2d-%2d %2d:%2d:%2d", 2009, 11, 17, 13, 47, 25);
-        FT_IS_NOT_NULL(res);
+		FT_IS_NOT_NULL(res);
 		bool r = fplIsStringEqual("2009-11-17 13:47:25", buffer);
 		FT_EXPECTS(true, r);
 	}
