@@ -33,6 +33,8 @@ Todo:
 */
 
 #define FPL_IMPLEMENTATION
+#define FPL_LOGGING
+#define FPL_LOG_TO_DEBUGOUT
 #include <final_platform_layer.h>
 
 #include <math.h> // abs
