@@ -137,7 +137,8 @@ SOFTWARE.
 	- Changed: fplSetAudioClientReadCallback returns bool now
 	- Changed: fplListFiles* is renamed to fplListDir*
 	- Changed: fplListDir* argument for fplFileEntry is renamed to entry for all 3 functions
-	- Changed. fplFileEntry stores the fullPath instead of the name + internal root infos
+	- Changed. fplFileEntry stores the fullPath instead of the name + internal root infos	- Changed: Introduced fplFilePermissions in fplFileEntry
+	- Changed: Removed flag fplFileAttributeFlags_ReadOnly from fplFileAttributeFlags
 	- Fixed: Fixed GCC warning -Wwrite-strings
 	- Fixed: fplDebugBreak() was missing function braces for __debugbreak
 	- New: Added fplEnforcePathSeparatorLen()
@@ -145,8 +146,8 @@ SOFTWARE.
 	- New: Added fileSize field to fplFileEntry
 	- New: Added struct fplFilePermissions
 	- New: Added enum fplFilePermissionMasks
-	- Changed: Introduced fplFilePermissions in fplFileEntry
-	- Changed: Removed flag fplFileAttributeFlags_ReadOnly from fplFileAttributeFlags
+	- New: Added fplDebugOut()
+	- New: Added fplDebugFormatOut()
 
 	- Changed: [POSIX] Removed all pthread checks, because there is a check for platform initialization now
 	- New: [POSIX] Implemented fplListDirBegin
@@ -2243,17 +2244,41 @@ fpl_platform_api void fplDynamicLibraryUnload(fplDynamicLibraryHandle *handle);
 
 // ----------------------------------------------------------------------------
 /**
+  * \defgroup Debug Debug functions
+  * \brief Useful debug functions
+  * \{
+  */
+// ----------------------------------------------------------------------------
+
+/**
+  * \brief Writes the given text into the debugger output stream
+  * \param text The text to write into the debugger output stream
+  * \note This function will only work in IDEs such as MSVC
+  */
+fpl_platform_api void fplDebugOut(const char *text);
+/**
+  * \brief Writes the given formatted text into the debugger output stream
+  * \param format The format used for writing into the debugger output stream
+  * \param ... The dynamic arguments used for formatting the text.
+  * \note This function will only work in IDEs such as MSVC
+  */
+fpl_common_api void fplDebugFormatOut(const char *format, ...);
+
+/** \}*/
+
+// ----------------------------------------------------------------------------
+/**
   * \defgroup Console Console functions
   * \brief Console out/in functions
   * \{
   */
 // ----------------------------------------------------------------------------
 
-  /**
-	* \brief Writes the given text to the standard output console buffer.
-	* \param text The text to write into standard output console.
-	* \note This is most likely just a wrapper call to fprintf(stdout)
-	*/
+/**
+  * \brief Writes the given text to the standard output console buffer.
+  * \param text The text to write into standard output console.
+  * \note This is most likely just a wrapper call to fprintf(stdout)
+  */
 fpl_platform_api void fplConsoleOut(const char *text);
 /**
   * \brief Writes the given text to the standard error console buffer.
@@ -4209,6 +4234,29 @@ struct fplLogBlock {
 #endif
 
 #define FPL_CLEAR_STRUCT(ptr) fplMemoryClear((void *)(ptr), sizeof(*(ptr)))
+
+//
+// Debug out
+//
+#if defined(FPL_PLATFORM_WIN32)
+fpl_platform_api void fplDebugOut(const char *text) {
+	OutputDebugStringA(text);
+}
+#else
+fpl_platform_api void fplDebugOut(const char *text) {
+	// @TODO(final): For now this does nothing on all other platforms
+}
+#endif
+fpl_common_api void fplDebugFormatOut(const char *format, ...) {
+	if (format != fpl_null) {
+		char buffer[1024];
+		va_list argList;
+		va_start(argList, format);
+		fplFormatAnsiStringArgs(buffer, FPL_ARRAYCOUNT(buffer), format, argList);
+		va_end(argList);
+		fplDebugOut(buffer);
+	}
+}
 
 // ############################################################################
 //
