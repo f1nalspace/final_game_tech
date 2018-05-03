@@ -191,6 +191,13 @@ static void ProcessEvents(Input *currentInput, Input *prevInput, bool &isWindowA
 							case fplKey_Space:
 								UpdateKeyboardButtonState(isDown, currentKeyboardController->actionDown);
 								break;
+							case fplKey_F:
+							{
+								if (!isDown) {
+									bool wasFullscreen = fplIsWindowFullscreen();
+									fplSetWindowFullscreen(!wasFullscreen, 0, 0, 0);
+								}
+							} break;
 						}
 					} break;
 				}
@@ -210,6 +217,8 @@ int main(int argc, char *argv[]) {
 		GameState *game = GameCreate();
 		if(game != nullptr) {
 			const double TargetDeltaTime = 1.0 / 60.0;
+
+			fplSetWindowCursorEnabled(false);
 
 			Input inputs[2] = {};
 			Input *curInput = &inputs[0];
@@ -309,6 +318,9 @@ int main(int argc, char *argv[]) {
 					prevInput = tmp;
 				}
 			}
+
+			fplSetWindowCursorEnabled(true);
+
 			GameDestroy(game);
 		} else {
 			result = -1;
