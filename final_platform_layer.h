@@ -4048,6 +4048,8 @@ fpl_inline const char *fplGetAudioDriverString(fplAudioDriverType driver) {
 			return "Auto";
 		case fplAudioDriverType_DirectSound:
 			return "DirectSound";
+        case fplAudioDriverType_Alsa:
+            return "ALSA";
 		case fplAudioDriverType_None:
 			return "None";
 		default:
@@ -5613,13 +5615,13 @@ fpl_internal_inline void fpl__ArgumentRangeError(const char *paramName, const si
 		return (ret); \
 	}
 #define FPL__CheckPlatform(ret) \
-	if((!fpl__global__InitState.isInitialized) || (fpl__global__AppState == fpl_null)) { \
-		fpl__PushError("Platform is not initialized"); \
+	if(fpl__global__AppState == fpl_null) { \
+		fpl__PushError("[%s] Platform is not initialized", FPL_FUNCTION_NAME); \
 		return (ret); \
 	}
 #define FPL__CheckPlatformNoRet() \
-	if((!fpl__global__InitState.isInitialized) || (fpl__global__AppState == fpl_null)) { \
-		fpl__PushError("Platform is not initialized"); \
+	if(fpl__global__AppState == fpl_null) { \
+		fpl__PushError("[%s] Platform is not initialized", FPL_FUNCTION_NAME); \
 		return; \
 	}
 
