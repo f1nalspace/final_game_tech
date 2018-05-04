@@ -148,15 +148,17 @@ SOFTWARE.
 	- New: Added enum fplFilePermissionMasks
 	- New: Added fplDebugOut()
 	- New: Added fplDebugFormatOut()
+	- New: Added fplWindowShutdown()
 
 	- Changed: [POSIX] Removed all pthread checks, because there is a check for platform initialization now
 	- New: [POSIX] Implemented fplListDirBegin
 	- New: [POSIX] Implemented fplListDirNext
 	- New: [POSIX] Implemented fplListDirEnd
-
-	- New: [Win32] Fill out fileSize for fplFileEntry in fplListDir*
+	- New: [X11] Implemented fplWindowShutdown()
 	- Changed: [Win32] Changed fplListDir* to support fplFilePermissions
 	- Changed: [Win32] Showing cursor does not clip cursor anymore
+	- New: [Win32] Fill out fileSize for fplFileEntry in fplListDir*
+	- New: [Win32] Implemented fplWindowShutdown()
 
 	## v0.7.7.0 beta:
 	- New: Added fplMutexTryLock()
@@ -3701,6 +3703,10 @@ typedef struct fplWindowPosition {
   */
 fpl_platform_api bool fplIsWindowRunning();
 /**
+  * \brief Closes the window and stops the event loop
+  */
+fpl_platform_api void fplWindowShutdown();
+/**
   * \brief Processes the message queue of the window.
   * \note This will update the game controller states as well.
   * \return True when the window is still active, otherwise false.
@@ -4565,6 +4571,8 @@ typedef FPL__FUNC_WIN32_MonitorFromWindow(fpl__win32_func_MonitorFromWindow);
 typedef FPL__WIN32_FUNC_RegisterRawInputDevices(fpl__win32_func_RegisterRawInputDevices);
 #define FPL__WIN32_FUNC_ClipCursor(name) BOOL WINAPI name(CONST RECT *lpRect)
 typedef FPL__WIN32_FUNC_ClipCursor(fpl__win32_func_ClipCursor);
+#define FPL__FUNC_WIN32_PostQuitMessage(name) VOID WINAPI name(int nExitCode)
+typedef FPL__FUNC_WIN32_PostQuitMessage(fpl__win32_func_PostQuitMessage);
 
 // OLE32
 #define FPL__FUNC_WIN32_CoInitializeEx(name) HRESULT WINAPI name(LPVOID pvReserved, DWORD  dwCoInit)
@@ -4668,6 +4676,7 @@ typedef struct fpl__Win32UserApi {
 	fpl__win32_func_PtInRect *PtInRect;
 	fpl__win32_func_RegisterRawInputDevices *RegisterRawInputDevices;
 	fpl__win32_func_ClipCursor *ClipCursor;
+	fpl__win32_func_PostQuitMessage *PostQuitMessage;
 } fpl__Win32UserApi;
 
 typedef struct fpl__Win32OleApi {
@@ -4805,6 +4814,7 @@ fpl_internal bool fpl__Win32LoadApi(fpl__Win32Api *wapi) {
 		FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(library, userLibraryName, wapi->user.PtInRect, fpl__win32_func_PtInRect, "PtInRect");
 		FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(library, userLibraryName, wapi->user.RegisterRawInputDevices, fpl__win32_func_RegisterRawInputDevices, "RegisterRawInputDevices");
 		FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(library, userLibraryName, wapi->user.ClipCursor, fpl__win32_func_ClipCursor, "ClipCursor");
+		FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(library, userLibraryName, wapi->user.PostQuitMessage, fpl__win32_func_PostQuitMessage, "PostQuitMessage");
 	}
 
 	// GDI32
@@ -5286,6 +5296,7 @@ typedef struct fpl__X11WindowState {
 	Colormap colorMap;
 	Window window;
 	Atom wmState;
+	Atom wmProtocols;
 	Atom wmDeleteWindow;
 	Atom wmStateFullscreen;
 } fpl__X11WindowState;
@@ -8911,6 +8922,17 @@ fpl_platform_api bool fplIsWindowRunning() {
 	return(result);
 }
 
+fpl_platform_api void fplWindowShutdown() {
+	FPL__CheckPlatformNoRet();
+	fpl__PlatformAppState *appState = fpl__global__AppState;
+	const fpl__Win32AppState *win32AppState = &appState->win32;
+	if (appState->window.isRunning) {
+		appState->window.isRunning = false;
+		const fpl__Win32Api *wapi = &win32AppState->winApi;
+		wapi->user.PostQuitMessage(0);
+	}
+}
+
 fpl_platform_api bool fplGetClipboardAnsiText(char *dest, const uint32_t maxDestLen) {
 	FPL__CheckPlatform(false);
 	const fpl__Win32AppState *appState = &fpl__global__AppState->win32;
@@ -10419,15 +10441,18 @@ fpl_internal bool fpl__X11InitWindow(const fplSettings *initSettings, fplWindowS
 	FPL_LOG("X11", "Successfully created window with (Display='%p', Root='%d', Size=%dx%d, Colordepth='%d', visual='%p', colormap='%d': %d", windowState->display, (int)windowState->root, windowWidth, windowHeight, colorDepth, visual, (int)swa.colormap, (int)windowState->window);
 
 	char wmDeleteWindowId[100];
+	char wmProtocolsId[100];
 	char wmStateId[100];
 	char wmStateFullscreen[100];
 	fplCopyAnsiString("WM_DELETE_WINDOW", wmDeleteWindowId, FPL_ARRAYCOUNT(wmDeleteWindowId));
+	fplCopyAnsiString("WM_PROTOCOLS", wmProtocolsId, FPL_ARRAYCOUNT(wmProtocolsId));
 	fplCopyAnsiString("_NET_WM_STATE", wmStateId, FPL_ARRAYCOUNT(wmStateId));
 	fplCopyAnsiString("_NET_WM_STATE_FULLSCREEN", wmStateFullscreen, FPL_ARRAYCOUNT(wmStateFullscreen));
 	windowState->wmDeleteWindow = x11Api->XInternAtom(windowState->display, wmDeleteWindowId, False);
-	x11Api->XSetWMProtocols(windowState->display, windowState->window, &windowState->wmDeleteWindow, 1);
 	windowState->wmState = x11Api->XInternAtom(windowState->display, wmStateId, False);
 	windowState->wmStateFullscreen = x11Api->XInternAtom(windowState->display, wmStateFullscreen, False);
+	x11Api->XSetWMProtocols(windowState->display, windowState->window, &windowState->wmDeleteWindow, 1);
+	windowState->wmProtocols = x11Api->XInternAtom(windowState->display, wmProtocolsId, False);
 
 	char nameBuffer[1024] = FPL_ZERO_INIT;
 	fplCopyAnsiString("Unnamed FPL X11 Window", nameBuffer, FPL_ARRAYCOUNT(nameBuffer));
@@ -10605,6 +10630,25 @@ fpl_platform_api bool fplIsWindowRunning() {
 	FPL__CheckPlatform(false);
 	bool result = fpl__global__AppState->window.isRunning;
 	return(result);
+}
+
+fpl_platform_api void fplWindowShutdown() {
+	FPL__CheckPlatformNoRet();
+	fpl__PlatformAppState *appState = fpl__global__AppState;
+	if (appState->window.isRunning) {
+		appState->window.isRunning = false;
+		const fpl__X11SubplatformState *subplatform = &appState->x11;
+		const fpl__X11Api *x11Api = &subplatform->api;
+		const fpl__X11WindowState *windowState = &appState->window.x11;
+		XEvent ev = FPL_ZERO_INIT;
+		xev.type = ClientMessage;
+		xev.xclient.window = windowState->window;
+		xev.xclient.message_type = windowState->wmProtocols;
+		xev.xclient.format = 32;
+		ev.xclient.data.l[0] = windowState->wmDeleteWindow;
+		ev.xclient.data.l[1] = 0;
+		x11Api->XSendEvent(windowState->display, windowState->root, False, SubstructureRedirectMask | SubstructureNotifyMask, &xev);
+	}
 }
 
 fpl_platform_api bool fplWindowUpdate() {
@@ -13534,7 +13578,7 @@ fpl_internal void fpl__ShutdownVideo(fpl__PlatformAppState *appState, fpl__Video
 #			elif defined(FPL_SUBPLATFORM_X11)
 				fpl__X11ReleaseVideoOpenGL(&appState->x11, &appState->window.x11, &videoState->x11.opengl);
 #			endif
-			} break;
+} break;
 #		endif // FPL_ENABLE_VIDEO_OPENGL
 
 #		if defined(FPL_ENABLE_VIDEO_SOFTWARE)
@@ -13550,7 +13594,7 @@ fpl_internal void fpl__ShutdownVideo(fpl__PlatformAppState *appState, fpl__Video
 			default:
 			{
 			} break;
-		}
+}
 
 #	if defined(FPL_ENABLE_VIDEO_SOFTWARE)
 		fplVideoBackBuffer *backbuffer = &videoState->softwareBackbuffer;
@@ -13601,7 +13645,7 @@ fpl_internal bool fpl__LoadVideoState(const fplVideoDriverType driver, fpl__Vide
 #		elif defined(FPL_SUBPLATFORM_X11)
 			result = fpl__X11LoadVideoOpenGLApi(&videoState->x11.opengl.api);
 #		endif
-		}; break;
+}; break;
 #	endif
 
 		default:
@@ -13655,7 +13699,7 @@ fpl_internal bool fpl__InitVideo(const fplVideoDriverType driver, const fplVideo
 #		elif defined(FPL_SUBPLATFORM_X11)
 			videoInitResult = fpl__X11InitVideoOpenGL(&appState->x11, &appState->window.x11, videoSettings, &videoState->x11.opengl);
 #		endif
-		} break;
+} break;
 #	endif // FPL_ENABLE_VIDEO_OPENGL
 
 #	if defined(FPL_ENABLE_VIDEO_SOFTWARE)
@@ -13706,9 +13750,9 @@ fpl_internal FPL__FUNC_PRE_SETUP_WINDOW(fpl__PreSetupWindowDefault) {
 #			if defined(FPL_SUBPLATFORM_X11)
 				if (fpl__X11InitFrameBufferConfigVideoOpenGL(&appState->x11.api, &appState->window.x11, &videoState->x11.opengl)) {
 					result = fpl__X11SetPreWindowSetupForOpenGL(&appState->x11.api, &appState->window.x11, &videoState->x11.opengl, &outResult->x11);
-				}
+}
 #			endif
-			} break;
+} break;
 #		endif // FPL_ENABLE_VIDEO_OPENGL
 
 			default:
@@ -13733,7 +13777,7 @@ fpl_internal FPL__FUNC_POST_SETUP_WINDOW(fpl__PostSetupWindowDefault) {
 #			if defined(FPL_PLATFORM_WIN32)
 				if (!fpl__Win32PostSetupWindowForOpenGL(&appState->win32, &appState->window.win32, &initSettings->video)) {
 					return false;
-				}
+}
 #			endif
 			} break;
 #		endif // FPL_ENABLE_VIDEO_OPENGL
@@ -13756,7 +13800,7 @@ fpl_internal bool fpl__InitWindow(const fplSettings *initSettings, fplWindowSett
 #	elif defined(FPL_SUBPLATFORM_X11)
 		result = fpl__X11InitWindow(initSettings, currentWindowSettings, appState, &appState->x11, &appState->window.x11, setupCallbacks);
 #	endif
-	}
+}
 	return (result);
 }
 
@@ -13767,7 +13811,7 @@ fpl_internal void fpl__ReleaseWindow(const fpl__PlatformInitState *initState, fp
 #	elif defined(FPL_SUBPLATFORM_X11)
 		fpl__X11ReleaseWindow(&appState->x11, &appState->window.x11);
 #	endif
-	}
+}
 }
 #endif // FPL_ENABLE_WINDOW
 
@@ -14043,10 +14087,10 @@ fpl_common_api void fplVideoFlip() {
 
 			default:
 				break;
-		}
+			}
 #	endif // FPL_PLATFORM || FPL_SUBPLATFORM
+		}
 	}
-}
 #endif // FPL_ENABLE_VIDEO
 
 // %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -14068,8 +14112,8 @@ fpl_internal void fpl__ReleasePlatformStates(fpl__PlatformInitState *initState, 
 		if (audioState != fpl_null) {
 			// @TODO(final): Rename to ShutdownAudio?
 			fpl__ReleaseAudio(audioState);
-		}
-	}
+}
+}
 #	endif
 
 	// Shutdown video (Release context only)
@@ -14129,13 +14173,13 @@ fpl_internal void fpl__ReleasePlatformStates(fpl__PlatformInitState *initState, 
 			FPL_LOG("Core", "Release POSIX Subplatform");
 			fpl__PosixReleaseSubplatform(&appState->posix);
 #		endif
-		}
+	}
 
-		// Release platform applicatiom state memory
+	// Release platform applicatiom state memory
 		FPL_LOG("Core", "Release allocated Platform App State Memory");
 		fplMemoryFree(appState);
 		fpl__global__AppState = fpl_null;
-	}
+}
 	initState->isInitialized = false;
 }
 
@@ -14221,7 +14265,7 @@ fpl_common_api fplInitResultType fplPlatformInit(const fplInitFlags initFlags, c
 			fpl__PushError("Failed initializing POSIX Subplatform");
 			fpl__ReleasePlatformStates(initState, appState);
 			return fplInitResultType_FailedPlatform;
-		}
+	}
 		FPL_LOG("Core", "Successfully initialized POSIX Subplatform");
 	}
 #	endif // FPL_SUBPLATFORM_POSIX
@@ -14234,9 +14278,9 @@ fpl_common_api fplInitResultType fplPlatformInit(const fplInitFlags initFlags, c
 			fpl__PushError("Failed initializing X11 Subplatform");
 			fpl__ReleasePlatformStates(initState, appState);
 			return fplInitResultType_FailedPlatform;
-		}
+}
 		FPL_LOG("Core", "Successfully initialized X11 Subplatform");
-	}
+}
 #	endif // FPL_SUBPLATFORM_X11
 
 		// Initialize the actual platform (There can only be one at a time!)
