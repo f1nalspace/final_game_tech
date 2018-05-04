@@ -4219,9 +4219,7 @@ fpl_main int main(int argc, char **args);
 #	endif
 #	define FPL_LOG_FORMAT(what, format) "[" what "] " format "\n"
 #	if defined(FPL_LOG_FORMAT_FUNCTION)
-#		define FPL_LOG(what, format, ...) do { \
-			FPL_LOG_FORMAT_FUNCTION(FPL_LOG_FORMAT(what, format), ## __VA_ARGS__); \
-		} while (0)
+#		define FPL_LOG(what, format, ...) FPL_LOG_FORMAT_FUNCTION(FPL_LOG_FORMAT(what, format), ## __VA_ARGS__)
 #	else
 #		define FPL_LOG(what, format, ...)
 #	endif
@@ -10641,13 +10639,13 @@ fpl_platform_api void fplWindowShutdown() {
 		const fpl__X11Api *x11Api = &subplatform->api;
 		const fpl__X11WindowState *windowState = &appState->window.x11;
 		XEvent ev = FPL_ZERO_INIT;
-		xev.type = ClientMessage;
-		xev.xclient.window = windowState->window;
-		xev.xclient.message_type = windowState->wmProtocols;
-		xev.xclient.format = 32;
+        ev.type = ClientMessage;
+        ev.xclient.window = windowState->window;
+        ev.xclient.message_type = windowState->wmProtocols;
+        ev.xclient.format = 32;
 		ev.xclient.data.l[0] = windowState->wmDeleteWindow;
 		ev.xclient.data.l[1] = 0;
-		x11Api->XSendEvent(windowState->display, windowState->root, False, SubstructureRedirectMask | SubstructureNotifyMask, &xev);
+		x11Api->XSendEvent(windowState->display, windowState->root, False, SubstructureRedirectMask | SubstructureNotifyMask, &ev);
 	}
 }
 
@@ -12863,7 +12861,7 @@ fpl_internal_inline fplAudioFormatType fpl__MapAlsaFormatToAudioFormat(snd_pcm_f
 
 fpl_internal fplAudioResult fpl__AudioInitAlsa(const fplAudioSettings *audioSettings, fpl__CommonAudioState *commonAudio, fpl__AlsaAudioState *alsaState) {
 #	define FPL__ALSA_INIT_ERROR(ret, format, ...) do { \
-		FPL_LOG("ALSA", format, __VA_ARGS__); \
+		FPL_LOG("ALSA", format, ## __VA_ARGS__); \
 		fpl__AudioReleaseAlsa(commonAudio, alsaState); \
 		return fplAudioResult_Failed; \
 	} while (0)
