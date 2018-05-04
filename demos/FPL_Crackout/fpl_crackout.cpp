@@ -171,9 +171,6 @@ static void ProcessEvents(Input *currentInput, Input *prevInput, bool &isWindowA
 						}
 						bool isDown = (event.keyboard.type == fplKeyboardEventType_KeyDown) ? 1 : 0;
 						switch(event.keyboard.mappedKey) {
-							case fplKey_F1:
-								UpdateKeyboardButtonState(isDown, currentKeyboardController->editorToggle);
-								break;
 							case fplKey_A:
 							case fplKey_Left:
 								UpdateKeyboardButtonState(isDown, currentKeyboardController->moveLeft);
@@ -199,6 +196,10 @@ static void ProcessEvents(Input *currentInput, Input *prevInput, bool &isWindowA
 									bool wasFullscreen = fplIsWindowFullscreen();
 									fplSetWindowFullscreen(!wasFullscreen, 0, 0, 0);
 								}
+							} break;
+							case fplKey_Escape:
+							{
+								fplWindowShutdown();
 							} break;
 						}
 					} break;
