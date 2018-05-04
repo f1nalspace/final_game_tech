@@ -668,7 +668,7 @@ static void TestFiles() {
 	const char *testRootFilter = "Program*";
 #else
 	const char *testNotExistingFile = "/i_am_not_existing.whatever";
-	const char *testExistingFile = "/usr/bin/sh";
+	const char *testExistingFile = "/usr/sbin/nologin";
 	const char *testRootPath = "/";
 	const char *testRootFilter = "us*";
 #endif
