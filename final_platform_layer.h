@@ -139,6 +139,7 @@ SOFTWARE.
 	- Changed: fplListDir* argument for fplFileEntry is renamed to entry for all 3 functions
 	- Changed. fplFileEntry stores the fullPath instead of the name + internal root infos	- Changed: Introduced fplFilePermissions in fplFileEntry
 	- Changed: Removed flag fplFileAttributeFlags_ReadOnly from fplFileAttributeFlags
+ 	- Fixed: Fixed a ton of wrong inline definitions
 	- Fixed: Fixed GCC warning -Wwrite-strings
 	- Fixed: fplDebugBreak() was missing function braces for __debugbreak
 	- New: Added fplEnforcePathSeparatorLen()
@@ -149,14 +150,16 @@ SOFTWARE.
 	- New: Added fplDebugOut()
 	- New: Added fplDebugFormatOut()
 	- New: Added fplWindowShutdown()
+ 	- New: Added macro FPL_STRUCT_SET
 
 	- Changed: [POSIX] Removed all pthread checks, because there is a check for platform initialization now
+	- Changed: [Win32] Changed fplListDir* to support fplFilePermissions
+	- Changed: [Win32] Showing cursor does not clip cursor anymore
+ 	- Fixed: [POSIX] Fixed a ton of C99 compile errors
 	- New: [POSIX] Implemented fplListDirBegin
 	- New: [POSIX] Implemented fplListDirNext
 	- New: [POSIX] Implemented fplListDirEnd
 	- New: [X11] Implemented fplWindowShutdown()
-	- Changed: [Win32] Changed fplListDir* to support fplFilePermissions
-	- Changed: [Win32] Showing cursor does not clip cursor anymore
 	- New: [Win32] Fill out fileSize for fplFileEntry in fplListDir*
 	- New: [Win32] Implemented fplWindowShutdown()
 
@@ -896,9 +899,24 @@ SOFTWARE.
 #endif // FPL_COMPILER
 
 //
+// Macros needs to set on certain compiler/platform configurations
+//
+#if defined(FPL_IS_C99) && defined(FPL_SUBPLATFORM_POSIX)
+#   if defined(FPL_PLATFORM_LINUX)
+        //! Enable features such as MAP_ANONYMOUS for mmap, clock_gettime, readlink, nanosleep etc.
+#       define _GNU_SOURCE 1
+#   elif defined(FPL_PLATFORM_UNIX)
+#       if defined(FPL_SUBPLATFORM_BSD)
+#           define _BSD_SOURCE
+#       else
+#           define _XOPEN_SOURCE 500
+#       endif
+#   endif
+#endif
+
+//
 // Static/Inline/Extern/Internal
 //
-
 //! Global persistent variable
 #define fpl_globalvar static
 //! Local persistent variable
@@ -1210,10 +1228,6 @@ static fpl_force_inline void fplDebugBreak() { __asm__ __volatile__(".inst 0xe7f
 	//! Allow multiple error states
 #	define FPL_ENABLE_MULTIPLE_ERRORSTATES
 #endif
-#if defined(FPL_AUTO_NAMESPACE)
-	//! Expand namespaces at the header end always
-#	define FPL_ENABLE_AUTO_NAMESPACE
-#endif
 
 //
 // Assertions
@@ -1264,11 +1278,16 @@ static fpl_force_inline void fplDebugBreak() { __asm__ __volatile__(".inst 0xe7f
 //
 // Macro functions
 //
-//! Macro for initialize a struct to zero
 #if defined(FPL_IS_C99)
+    //! Initialize a struct to zero (C99)
 #	define FPL_ZERO_INIT {0}
+    //! Sets a struct pointer to the given value (C99)
+#	define FPL_STRUCT_SET(ptr, type, value) *(ptr) = (type)value
 #else
+    //! Initialize a struct to zero (C++)
 #	define FPL_ZERO_INIT {}
+    //! Sets a struct pointer to the given value (C++)
+#	define FPL_STRUCT_SET(ptr, type, value) *(ptr) = value
 #endif
 
 //! Returns the element count from a static array,
@@ -2490,14 +2509,7 @@ typedef struct fplConditionVariable {
 } fplConditionVariable;
 
 //! Returns the current thread state from the given thread
-fpl_inline fplThreadState fplGetThreadState(fplThreadHandle *thread) {
-	if (thread == fpl_null) {
-		return fplThreadState_Stopped;
-	}
-	fplThreadState result = (fplThreadState)fplAtomicLoadU32((volatile uint32_t *)&thread->currentState);
-	return(result);
-}
-
+fpl_common_api fplThreadState fplGetThreadState(fplThreadHandle *thread);
 /**
   * \brief Creates and starts a thread and returns the handle to it.
   * \param runFunc Function prototype called when this thread starts.
@@ -3868,25 +3880,6 @@ fpl_inline fplVideoRect fplCreateVideoRectFromLTRB(int32_t left, int32_t top, in
 	return(result);
 }
 
-/**
-  * \brief Returns the string for the given video driver
-  * \param driver The audio driver
-  * \return String for the given audio driver
-  */
-fpl_inline const char *fplGetVideoDriverString(fplVideoDriverType driver) {
-	switch (driver) {
-		case fplVideoDriverType_OpenGL:
-			return "OpenGL";
-		case fplVideoDriverType_Software:
-			return "Software";
-		case fplVideoDriverType_None:
-			return "None";
-		default:
-			return "";
-	}
-}
-
-
 //! Video backbuffer container. Use this for accessing the pixels directly. Use with care!
 typedef struct fplVideoBackBuffer {
 	//! The 32-bit pixel top-down array, format: 0xAABBGGRR. Do not modify before WindowUpdate
@@ -3905,6 +3898,12 @@ typedef struct fplVideoBackBuffer {
 	bool useOutputRect;
 } fplVideoBackBuffer;
 
+/**
+  * \brief Returns the string for the given video driver
+  * \param driver The audio driver
+  * \return String for the given audio driver
+  */
+fpl_common_api const char *fplGetVideoDriverString(fplVideoDriverType driver);
 /**
   * \brief Returns the pointer to the video software context.
   * \warning Do not release this memory by any means, otherwise you will corrupt heap memory!
@@ -3986,77 +3985,24 @@ fpl_common_api bool fplSetAudioClientReadCallback(fpl_audio_client_read_callback
   * \return Number of devices found.
   */
 fpl_common_api uint32_t fplGetAudioDevices(fplAudioDeviceInfo *devices, uint32_t maxDeviceCount);
-
 /**
   * \brief Returns the number of bytes required to write one sample with one channel
   * \param format The audio format
   * \return Number of bytes for one sample with one channel
   */
-fpl_inline uint32_t fplGetAudioSampleSizeInBytes(const fplAudioFormatType format) {
-	switch (format) {
-		case fplAudioFormatType_U8:
-			return 1;
-		case fplAudioFormatType_S16:
-			return 2;
-		case fplAudioFormatType_S24:
-			return 3;
-		case fplAudioFormatType_S32:
-		case fplAudioFormatType_F32:
-			return 4;
-		case fplAudioFormatType_S64:
-		case fplAudioFormatType_F64:
-			return 8;
-		default:
-			return 0;
-	}
-}
-
+fpl_common_api uint32_t fplGetAudioSampleSizeInBytes(const fplAudioFormatType format);
 /**
   * \brief Returns the string for the given format type
   * \param format The audio format
   * \return String for the given format type
   */
-fpl_inline const char *fplGetAudioFormatString(const fplAudioFormatType format) {
-	switch (format) {
-		case fplAudioFormatType_U8:
-			return "U8";
-		case fplAudioFormatType_S16:
-			return "S16";
-		case fplAudioFormatType_S24:
-			return "S24";
-		case fplAudioFormatType_S32:
-			return "S32";
-		case fplAudioFormatType_S64:
-			return "S64";
-		case fplAudioFormatType_F32:
-			return "F32";
-		case fplAudioFormatType_F64:
-			return "F64";
-		default:
-			return "None";
-	}
-}
-
+fpl_common_api const char *fplGetAudioFormatString(const fplAudioFormatType format);
 /**
   * \brief Returns the string for the given audio driver
   * \param driver The audio driver
   * \return String for the given audio driver
   */
-fpl_inline const char *fplGetAudioDriverString(fplAudioDriverType driver) {
-	switch (driver) {
-		case fplAudioDriverType_Auto:
-			return "Auto";
-		case fplAudioDriverType_DirectSound:
-			return "DirectSound";
-        case fplAudioDriverType_Alsa:
-            return "ALSA";
-		case fplAudioDriverType_None:
-			return "None";
-		default:
-			return "";
-	}
-}
-
+fpl_common_api const char *fplGetAudioDriverString(fplAudioDriverType driver);
 /**
   * \brief Returns the total frame count for given sample rate and buffer size in milliseconds
   * \param sampleRate The sample rate in Hz
@@ -4067,7 +4013,6 @@ fpl_inline uint32_t fplGetAudioBufferSizeInFrames(uint32_t sampleRate, uint32_t 
 	uint32_t result = (sampleRate / 1000) * bufferSizeInMilliSeconds;
 	return(result);
 }
-
 /**
   * \brief Returns the number of bytes required for one interleaved audio frame - containing all the channels
   * \param format The audio format
@@ -4078,7 +4023,6 @@ fpl_inline uint32_t fplGetAudioFrameSizeInBytes(const fplAudioFormatType format,
 	uint32_t result = fplGetAudioSampleSizeInBytes(format) * channelCount;
 	return(result);
 }
-
 /**
   * \brief Returns the total number of bytes for the buffer and the given parameters
   * \param format The audio format
@@ -4954,8 +4898,8 @@ typedef struct fpl__Win32WindowState {
 //
 // ############################################################################
 #if defined(FPL_SUBPLATFORM_POSIX)
-#	include <sys/mman.h> // mmap, munmap
 #	include <sys/types.h> // data types
+#	include <sys/mman.h> // mmap, munmap
 #	include <sys/stat.h> // mkdir
 #	include <sys/errno.h> // errno
 #	include <sys/time.h> // gettimeofday
@@ -5416,7 +5360,7 @@ struct fpl__PlatformAppState {
 };
 
 #if defined(FPL_ENABLE_WINDOW)
-fpl_internal_inline void fpl__PushEvent(const fplEvent *event) {
+fpl_internal void fpl__PushEvent(const fplEvent *event) {
 	fpl__PlatformAppState *appState = fpl__global__AppState;
 	FPL_ASSERT(appState != fpl_null);
 	fpl__EventQueue *eventQueue = &appState->window.eventQueue;
@@ -5568,19 +5512,19 @@ fpl_internal void fpl__PushError(const char *format, ...) {
 // Argument Errors
 //
 
-fpl_internal_inline void fpl__ArgumentNullError(const char *paramName) {
+fpl_internal void fpl__ArgumentNullError(const char *paramName) {
 	fpl__PushError("%s parameter are not allowed to be null", paramName);
 }
-fpl_internal_inline void fpl__ArgumentZeroError(const char *paramName) {
+fpl_internal void fpl__ArgumentZeroError(const char *paramName) {
 	fpl__PushError("%s parameter must be greater than zero", paramName);
 }
-fpl_internal_inline void fpl__ArgumentMinError(const char *paramName, const size_t value, const size_t minValue) {
+fpl_internal void fpl__ArgumentMinError(const char *paramName, const size_t value, const size_t minValue) {
 	fpl__PushError("%s parameter '%zu' must be greater or equal than '%zu'", paramName, value, minValue);
 }
-fpl_internal_inline void fpl__ArgumentMaxError(const char *paramName, const size_t value, const size_t maxValue) {
+fpl_internal void fpl__ArgumentMaxError(const char *paramName, const size_t value, const size_t maxValue) {
 	fpl__PushError("%s parameter '%zu' must be less or equal than '%zu'", paramName, value, maxValue);
 }
-fpl_internal_inline void fpl__ArgumentRangeError(const char *paramName, const size_t value, const size_t minValue, const size_t maxValue) {
+fpl_internal void fpl__ArgumentRangeError(const char *paramName, const size_t value, const size_t minValue, const size_t maxValue) {
 	fpl__PushError("%s parameter '%zu' must be in range of '%zu' to '%zu'", paramName, value, minValue, maxValue);
 }
 
@@ -5649,7 +5593,7 @@ typedef struct fpl__ThreadState {
 
 fpl_globalvar fpl__ThreadState fpl__global__ThreadState = FPL_ZERO_INIT;
 
-fpl_internal_inline fplThreadHandle *fpl__GetFreeThread() {
+fpl_internal fplThreadHandle *fpl__GetFreeThread() {
 	fplThreadHandle *result = fpl_null;
 	for (uint32_t index = 0; index < FPL__MAX_THREAD_COUNT; ++index) {
 		fplThreadHandle *thread = fpl__global__ThreadState.threads + index;
@@ -5663,7 +5607,7 @@ fpl_internal_inline fplThreadHandle *fpl__GetFreeThread() {
 }
 
 #if defined(FPL_ENABLE_WINDOW)
-fpl_internal_inline fplKey fpl__GetMappedKey(const fpl__PlatformWindowState *windowState, const uint64_t keyCode) {
+fpl_internal fplKey fpl__GetMappedKey(const fpl__PlatformWindowState *windowState, const uint64_t keyCode) {
 	fplKey result;
 	if (keyCode < FPL_ARRAYCOUNT(windowState->keyMap))
 		result = windowState->keyMap[keyCode];
@@ -6081,6 +6025,17 @@ fpl_common_api void fplAtomicStorePtr(volatile void **dest, const void *value) {
 #endif  // FPL_ARCH
 }
 #endif // FPL__COMMON_ATOMICS_DEFINED
+
+//
+// Common Threading
+//
+fpl_common_api fplThreadState fplGetThreadState(fplThreadHandle *thread) {
+    if (thread == fpl_null) {
+        return fplThreadState_Stopped;
+    }
+    fplThreadState result = (fplThreadState)fplAtomicLoadU32((volatile uint32_t *)&thread->currentState);
+    return(result);
+}
 
 //
 // Common Paths
@@ -9048,6 +9003,19 @@ fpl_internal bool fpl__PosixInitSubplatform(const fplInitFlags initFlags, const 
 	return true;
 }
 
+fpl_internal void fpl__InitWaitTimeSpec(const uint32_t milliseconds, struct timespec *outSpec) {
+    time_t secs = milliseconds / 1000;
+    uint64_t nanoSecs = (milliseconds - (secs * 1000)) * 1000000;
+    if (nanoSecs >= 1000000000) {
+        time_t addonSecs = (time_t)(nanoSecs / 1000000000);
+        nanoSecs -= (addonSecs * 1000000000);
+        secs += addonSecs;
+    }
+    clock_gettime(CLOCK_REALTIME, outSpec);
+    outSpec->tv_sec += secs;
+    outSpec->tv_nsec += nanoSecs;
+}
+
 void *fpl__PosixThreadProc(void *data) {
 	FPL_ASSERT(fpl__global__AppState != fpl_null);
 	const fpl__PThreadApi *pthreadApi = &fpl__global__AppState->posix.pthreadApi;
@@ -9090,25 +9058,12 @@ fpl_internal bool fpl__PosixMutexUnlock(const fpl__PThreadApi *pthreadApi, pthre
 }
 
 fpl_internal int fpl__PosixMutexCreate(const fpl__PThreadApi *pthreadApi, pthread_mutex_t *handle) {
-	*handle = PTHREAD_MUTEX_INITIALIZER;
+	FPL_STRUCT_SET(handle, pthread_mutex_t, PTHREAD_MUTEX_INITIALIZER);
 	int mutexRes;
 	do {
 		mutexRes = pthreadApi->pthread_mutex_init(handle, fpl_null);
 	} while (mutexRes == EAGAIN);
 	return(mutexRes);
-}
-
-fpl_internal_inline void fpl__InitWaitTimeSpec(const uint32_t milliseconds, timespec *outSpec) {
-	time_t secs = milliseconds / 1000;
-	uint64_t nanoSecs = (milliseconds - (secs * 1000)) * 1000000;
-	if (nanoSecs >= 1000000000) {
-		time_t addonSecs = (time_t)(nanoSecs / 1000000000);
-		nanoSecs -= (addonSecs * 1000000000);
-		secs += addonSecs;
-	}
-	clock_gettime(CLOCK_REALTIME, outSpec);
-	outSpec->tv_sec += secs;
-	outSpec->tv_nsec += nanoSecs;
 }
 
 fpl_internal bool fpl__PosixThreadWaitForMultiple(fplThreadHandle *threads[], const uint32_t minCount, const uint32_t maxCount, const fplTimeoutValue timeout) {
@@ -9301,7 +9256,7 @@ fpl_platform_api void fplAtomicStoreS64(volatile int64_t *dest, const int64_t va
 //
 fpl_platform_api double fplGetTimeInSecondsHP() {
 	// @TODO(final): Do we need to take the performance frequency into account?
-	timespec t;
+	struct timespec t;
 	clock_gettime(CLOCK_MONOTONIC, &t);
 	double result = (double)t.tv_sec + ((double)t.tv_nsec * 1e-9);
 	return(result);
@@ -9320,7 +9275,7 @@ fpl_platform_api double fplGetTimeInSeconds() {
 }
 
 fpl_platform_api double fplGetTimeInMillisecondsHP() {
-	timespec t;
+	struct timespec t;
 	clock_gettime(CLOCK_MONOTONIC, &t);
 	double result = ((double)t.tv_sec + ((double)t.tv_nsec * 1e-9)) * 1000.0;
 	return(result);
@@ -9430,7 +9385,7 @@ fpl_platform_api void fplThreadSleep(const uint32_t milliseconds) {
 		s = 0;
 		ms = milliseconds;
 	}
-	timespec input, output;
+	struct timespec input, output;
 	input.tv_sec = s;
 	input.tv_nsec = ms * 1000000;
 	nanosleep(&input, &output);
@@ -9556,7 +9511,7 @@ fpl_platform_api bool fplConditionWait(fplConditionVariable *condition, fplMutex
 	if (timeout == FPL_TIMEOUT_INFINITE) {
 		result = pthreadApi->pthread_cond_wait(cond, mut) == 0;
 	} else {
-		timespec t;
+		struct timespec t;
 		fpl__InitWaitTimeSpec(timeout, &t);
 		result = pthreadApi->pthread_cond_timedwait(cond, mut, &t) == 0;
 	}
@@ -11106,7 +11061,7 @@ fpl_platform_api char *fplGetHomePath(char *destPath, const size_t maxDestLen) {
 	const char *homeDir = getenv("HOME");
 	if (homeDir == fpl_null) {
 		int userId = getuid();
-		passwd *userPwd = getpwuid(userId);
+		struct passwd *userPwd = getpwuid(userId);
 		homeDir = userPwd->pw_dir;
 	}
 	char *result = fplCopyAnsiString(homeDir, destPath, maxDestLen);
@@ -11652,7 +11607,7 @@ fpl_internal bool fpl__X11InitFrameBufferConfigVideoOpenGL(const fpl__X11Api *x1
 	return true;
 }
 
-fpl_internal_inline bool fpl__X11SetPreWindowSetupForOpenGL(const fpl__X11Api *x11Api, const fpl__X11WindowState *windowState, const fpl__X11VideoOpenGLState *glState, fpl__X11PreWindowSetupResult *outResult) {
+fpl_internal bool fpl__X11SetPreWindowSetupForOpenGL(const fpl__X11Api *x11Api, const fpl__X11WindowState *windowState, const fpl__X11VideoOpenGLState *glState, fpl__X11PreWindowSetupResult *outResult) {
 	const fpl__X11VideoOpenGLApi *glApi = &glState->api;
 
 	if (glState->fbConfig != fpl_null) {
@@ -11913,7 +11868,7 @@ typedef struct fpl__CommonAudioState {
 	volatile fpl__AudioDeviceState state;
 } fpl__CommonAudioState;
 
-fpl_internal_inline uint32_t fpl__ReadAudioFramesFromClient(const fpl__CommonAudioState *commonAudio, uint32_t frameCount, void *pSamples) {
+fpl_internal uint32_t fpl__ReadAudioFramesFromClient(const fpl__CommonAudioState *commonAudio, uint32_t frameCount, void *pSamples) {
 	uint32_t outputSamplesWritten = 0;
 	if (commonAudio->clientReadCallback != fpl_null) {
 		outputSamplesWritten = commonAudio->clientReadCallback(&commonAudio->internalFormat, frameCount, pSamples, commonAudio->clientUserData);
@@ -12763,7 +12718,7 @@ fpl_internal bool fpl__GetAudioFramesFromClientAlsa(fpl__CommonAudioState *commo
 	return true;
 }
 
-fpl_internal_inline void fpl__AudioStopMainLoopAlsa(fpl__AlsaAudioState *alsaState) {
+fpl_internal void fpl__AudioStopMainLoopAlsa(fpl__AlsaAudioState *alsaState) {
 	FPL_ASSERT(alsaState != fpl_null);
 	alsaState->breakMainLoop = true;
 }
@@ -12820,7 +12775,7 @@ fpl_internal bool fpl__AudioStopAlsa(fpl__AlsaAudioState *alsaState) {
 	return true;
 }
 
-fpl_internal_inline snd_pcm_format_t fpl__MapAudioFormatToAlsaFormat(fplAudioFormatType format) {
+fpl_internal snd_pcm_format_t fpl__MapAudioFormatToAlsaFormat(fplAudioFormatType format) {
 	switch (format) {
 		case fplAudioFormatType_U8:
 			return SND_PCM_FORMAT_U8;
@@ -12844,7 +12799,7 @@ fpl_internal void fpl__AudioRunMainLoopAlsa(fpl__CommonAudioState *commonAudio, 
 	}
 }
 
-fpl_internal_inline fplAudioFormatType fpl__MapAlsaFormatToAudioFormat(snd_pcm_format_t format) {
+fpl_internal fplAudioFormatType fpl__MapAlsaFormatToAudioFormat(snd_pcm_format_t format) {
 	switch (format) {
 		case SND_PCM_FORMAT_U8:
 			return fplAudioFormatType_U8;
@@ -13120,7 +13075,7 @@ typedef struct fpl__AudioState {
 	};
 } fpl__AudioState;
 
-fpl_internal_inline fpl__AudioState *fpl__GetAudioState(fpl__PlatformAppState *appState) {
+fpl_internal fpl__AudioState *fpl__GetAudioState(fpl__PlatformAppState *appState) {
 	FPL_ASSERT(appState != fpl_null);
 	fpl__AudioState *result = fpl_null;
 	if (appState->audio.mem != fpl_null) {
@@ -13250,7 +13205,7 @@ fpl_internal void fpl__RunAudioDeviceMainLoop(fpl__AudioState *audioState) {
 	}
 }
 
-fpl_internal_inline bool fpl__IsAudioDriverAsync(fplAudioDriverType audioDriver) {
+fpl_internal bool fpl__IsAudioDriverAsync(fplAudioDriverType audioDriver) {
 	switch (audioDriver) {
 		case fplAudioDriverType_DirectSound:
 		case fplAudioDriverType_Alsa:
@@ -13260,7 +13215,7 @@ fpl_internal_inline bool fpl__IsAudioDriverAsync(fplAudioDriverType audioDriver)
 	}
 }
 
-fpl_internal_inline void fpl__AudioSetDeviceState(fpl__CommonAudioState *audioState, fpl__AudioDeviceState newState) {
+fpl_internal void fpl__AudioSetDeviceState(fpl__CommonAudioState *audioState, fpl__AudioDeviceState newState) {
 	fplAtomicStoreU32((volatile uint32_t *)&audioState->state, (uint32_t)newState);
 }
 
@@ -13557,7 +13512,7 @@ typedef struct fpl__VideoState {
 #	endif
 } fpl__VideoState;
 
-fpl_internal_inline fpl__VideoState *fpl__GetVideoState(fpl__PlatformAppState *appState) {
+fpl_internal fpl__VideoState *fpl__GetVideoState(fpl__PlatformAppState *appState) {
 	FPL_ASSERT(appState != fpl_null);
 	fpl__VideoState *result = fpl_null;
 	if (appState->video.mem != fpl_null) {
@@ -13824,6 +13779,61 @@ fpl_internal void fpl__ReleaseWindow(const fpl__PlatformInitState *initState, fp
 //
 // %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 #if defined(FPL_ENABLE_AUDIO)
+fpl_common_api uint32_t fplGetAudioSampleSizeInBytes(const fplAudioFormatType format) {
+    switch (format) {
+        case fplAudioFormatType_U8:
+            return 1;
+        case fplAudioFormatType_S16:
+            return 2;
+        case fplAudioFormatType_S24:
+            return 3;
+        case fplAudioFormatType_S32:
+        case fplAudioFormatType_F32:
+            return 4;
+        case fplAudioFormatType_S64:
+        case fplAudioFormatType_F64:
+            return 8;
+        default:
+            return 0;
+    }
+}
+
+fpl_common_api const char *fplGetAudioFormatString(const fplAudioFormatType format) {
+    switch (format) {
+        case fplAudioFormatType_U8:
+            return "U8";
+        case fplAudioFormatType_S16:
+            return "S16";
+        case fplAudioFormatType_S24:
+            return "S24";
+        case fplAudioFormatType_S32:
+            return "S32";
+        case fplAudioFormatType_S64:
+            return "S64";
+        case fplAudioFormatType_F32:
+            return "F32";
+        case fplAudioFormatType_F64:
+            return "F64";
+        default:
+            return "None";
+    }
+}
+
+fpl_common_api const char *fplGetAudioDriverString(fplAudioDriverType driver) {
+    switch (driver) {
+        case fplAudioDriverType_Auto:
+            return "Auto";
+        case fplAudioDriverType_DirectSound:
+            return "DirectSound";
+        case fplAudioDriverType_Alsa:
+            return "ALSA";
+        case fplAudioDriverType_None:
+            return "None";
+        default:
+            return "";
+    }
+}
+
 fpl_common_api fplAudioResult fplStopAudio() {
 	FPL__CheckPlatform(fplAudioResult_PlatformNotInitialized);
 	fpl__AudioState *audioState = fpl__GetAudioState(fpl__global__AppState);
@@ -13991,6 +14001,19 @@ fpl_common_api uint32_t fplGetAudioDevices(fplAudioDeviceInfo *devices, uint32_t
 //
 // %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 #if defined(FPL_ENABLE_VIDEO)
+fpl_common_api const char *fplGetVideoDriverString(fplVideoDriverType driver) {
+    switch (driver) {
+        case fplVideoDriverType_OpenGL:
+            return "OpenGL";
+        case fplVideoDriverType_Software:
+            return "Software";
+        case fplVideoDriverType_None:
+            return "None";
+        default:
+            return "";
+    }
+}
+
 fpl_common_api fplVideoBackBuffer *fplGetVideoBackBuffer() {
 	FPL__CheckPlatform(fpl_null);
 	fpl__PlatformAppState *appState = fpl__global__AppState;
