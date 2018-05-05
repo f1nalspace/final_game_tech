@@ -7,11 +7,13 @@ cmake_minimum_required(VERSION 3.10)
 # -----------------------------------------------------------------------------
 project(FPL_OpenGL)
 
+set(CMAKE_C_FLAGS "-std=c99")
+
 set(MY_EXTERNAL_LIBS GL)
 
 set(MY_HEADER_FILES "../../final_platform_layer.h")
 
-set(MY_SOURCE_FILES fpl_opengl.cpp)
+set(MY_SOURCE_FILES fpl_opengl.c)
 
 # -----------------------------------------------------------------------------
 #

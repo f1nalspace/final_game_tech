@@ -7,13 +7,15 @@ cmake_minimum_required(VERSION 3.10)
 # -----------------------------------------------------------------------------
 project(FPL_Audio)
 
-set(MY_EXTERNAL_LIBS "")
+set(CMAKE_C_FLAGS "-std=c99")
+
+set(MY_EXTERNAL_LIBS m)
 
 set(MY_HEADER_FILES ../../final_platform_layer.h)
 
 set(MY_INCLUDE_DIRS "")
 
-set(MY_SOURCE_FILES fpl_audio.cpp)
+set(MY_SOURCE_FILES fpl_audio.c)
 
 # -----------------------------------------------------------------------------
 #
