@@ -722,7 +722,7 @@ static bool GameInit(GameState &state) {
 
 	glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
 	glLineWidth(1.0f);
-	glClearColor(0.1f, 0.2f, 0.3f, 1.0f);
+	glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
 
 	LoadAssets(state);
 
@@ -942,11 +942,8 @@ extern void GameInput(GameState &state, const Input &input, bool isActive) {
 			} else if (controller.moveRight.isDown) {
 				paddle.body->ApplyLinearImpulse(paddle.speed * b2Vec2(1, 0), paddle.body->GetPosition(), true);
 			}
-			if (WasPressed(controller.actionDown) && paddle.gluedBall != nullptr) {
+			if (controller.actionDown.isDown && paddle.gluedBall != nullptr) {
 				LaunchBall(state);
-			}
-			if (WasPressed(controller.editorToggle)) {
-				LoadLevel(state, state.levelSeed + 1);
 			}
 		}
 	}
@@ -1004,7 +1001,7 @@ extern void GameUpdate(GameState &state, const Input &input, bool isActive) {
 	}
 
 	// Make all bricks dynamic when hit
-	const float hitStrength = 0.5f;
+	const float hitStrength = 2.5f;
 	for (size_t i = 0; i < state.numActiveBricks; ++i) {
 		Entity &brickEntity = state.activeBricks[i];
 		Brick &brick = brickEntity.brick;

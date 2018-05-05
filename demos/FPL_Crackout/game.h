@@ -96,9 +96,8 @@ struct Controller {
 			ButtonState actionDown;
 			ButtonState actionLeft;
 			ButtonState actionRight;
-			ButtonState editorToggle;
 		};
-		ButtonState buttons[9];
+		ButtonState buttons[8];
 	};
 };
 

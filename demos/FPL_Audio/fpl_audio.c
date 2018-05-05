@@ -93,16 +93,18 @@ int main(int argc, char **args) {
 	// Initialize the platform with audio enabled and the settings
 	if (fplPlatformInit(fplInitFlags_Audio, &settings)) {
 		// Print out the native audio format
-		fplAudioDeviceFormat nativeFormat = fplGetAudioHardwareFormat();
-		// You can overwrite the client read callback and user data if you want to
-		fplSetAudioClientReadCallback(FillAudioBuffer, &audioTest);
-		// Start audio playback (This will start calling clientReadCallback regulary)
-		if (fplPlayAudio() == fplAudioResult_Success) {
-			fplConsoleFormatOut("Audio with %lu KHz and %lu channels is playing, press any key to stop playback...\n", nativeFormat.sampleRate, nativeFormat.channels);
-			// Wait for any key presses
-			fplConsoleWaitForCharInput();
-			// Stop audio playback
-			fplStopAudio();
+		fplAudioDeviceFormat nativeFormat;
+		if(fplGetAudioHardwareFormat(&nativeFormat)) {
+			// You can overwrite the client read callback and user data if you want to
+			fplSetAudioClientReadCallback(FillAudioBuffer, &audioTest);
+			// Start audio playback (This will start calling clientReadCallback regulary)
+			if(fplPlayAudio() == fplAudioResult_Success) {
+				fplConsoleFormatOut("Audio with %lu KHz and %lu channels is playing, press any key to stop playback...\n", nativeFormat.sampleRate, nativeFormat.channels);
+				// Wait for any key presses
+				fplConsoleWaitForCharInput();
+				// Stop audio playback
+				fplStopAudio();
+			}
 		}
 		// Release the platform
 		fplPlatformRelease();

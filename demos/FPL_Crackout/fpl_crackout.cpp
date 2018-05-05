@@ -12,13 +12,15 @@ Requirements:
 Author:
 	Torsten Spaete
 Changelog:
+	## 2018-05-05:
+	- Updated description & todo
 	## 2018-04-26:
 	- Game implemented
 	## 2018-04-24:
 	- Initial creation
 Todo:
-	- Sprites (Assets are already there)
-	- Text rendering (Score, Lives, Level + Seed)
+	- Add Score + Lifes
+	- Text rendering (Score, Lifes, Level + Seed)
 	- Main menu
 	- Pause menu (Detect pause)
 	- Music
@@ -26,10 +28,13 @@ Todo:
 	- Multiball
 	- Brick types (Harder, Metal)
 	- Items (Ball speed, Paddle grow, Autoglue, Multiball, Player Up)
+	- Re-create sprites in HD
 -------------------------------------------------------------------------------
 */
 
 #define FPL_IMPLEMENTATION
+#define FPL_LOGGING
+#define FPL_LOG_TO_DEBUGOUT
 #include <final_platform_layer.h>
 
 #include <math.h> // abs
@@ -166,9 +171,6 @@ static void ProcessEvents(Input *currentInput, Input *prevInput, bool &isWindowA
 						}
 						bool isDown = (event.keyboard.type == fplKeyboardEventType_KeyDown) ? 1 : 0;
 						switch(event.keyboard.mappedKey) {
-							case fplKey_F1:
-								UpdateKeyboardButtonState(isDown, currentKeyboardController->editorToggle);
-								break;
 							case fplKey_A:
 							case fplKey_Left:
 								UpdateKeyboardButtonState(isDown, currentKeyboardController->moveLeft);
@@ -188,6 +190,17 @@ static void ProcessEvents(Input *currentInput, Input *prevInput, bool &isWindowA
 							case fplKey_Space:
 								UpdateKeyboardButtonState(isDown, currentKeyboardController->actionDown);
 								break;
+							case fplKey_F:
+							{
+								if (!isDown) {
+									bool wasFullscreen = fplIsWindowFullscreen();
+									fplSetWindowFullscreen(!wasFullscreen, 0, 0, 0);
+								}
+							} break;
+							case fplKey_Escape:
+							{
+								fplWindowShutdown();
+							} break;
 						}
 					} break;
 				}
@@ -207,6 +220,8 @@ int main(int argc, char *argv[]) {
 		GameState *game = GameCreate();
 		if(game != nullptr) {
 			const double TargetDeltaTime = 1.0 / 60.0;
+
+			fplSetWindowCursorEnabled(false);
 
 			Input inputs[2] = {};
 			Input *curInput = &inputs[0];
@@ -306,6 +321,9 @@ int main(int argc, char *argv[]) {
 					prevInput = tmp;
 				}
 			}
+
+			fplSetWindowCursorEnabled(true);
+
 			GameDestroy(game);
 		} else {
 			result = -1;

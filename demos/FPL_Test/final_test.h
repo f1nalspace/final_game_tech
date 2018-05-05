@@ -85,6 +85,13 @@ namespace ft {
 		const char *r = strstr(expectedStr, actualStr);
 		FT_NOT_EXPECTS(nullptr, r);
 	}
+	ft_api void AssertStringNotEquals(const char *expectedStr, const char *actualStr) {
+		bool match = false;
+		FT_NOT_EXPECTS(nullptr, expectedStr);
+		FT_NOT_EXPECTS(nullptr, actualStr);
+		const char *r = strstr(expectedStr, actualStr);
+		FT_EXPECTS(nullptr, r);
+	}
 
 	ft_api void AssertU8Equals(const uint8_t expectedValue, const uint8_t actualValue) {
 		bool passed = (expectedValue == actualValue);

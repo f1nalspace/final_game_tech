@@ -76,6 +76,8 @@ Resources:
 */
 
 #define FPL_IMPLEMENTATION
+#define FPL_LOGGING
+#define FPL_LOG_TO_DEBUGOUT
 #include <final_platform_layer.h>
 
 #include <assert.h> // assert
@@ -2685,13 +2687,15 @@ int main(int argc, char **argv) {
 	}
 #endif
 
-	fplAudioDeviceFormat nativeAudioFormat = fplGetAudioHardwareFormat();
-
 	PlayerState state = {};
 
-	//
+	// Get native audio format
+	fplAudioDeviceFormat nativeAudioFormat;
+	if(!fplGetAudioHardwareFormat(&nativeAudioFormat)) {
+		goto release;
+	}
+
 	// Load ffmpeg libraries
-	//
 	if(!LoadFFMPEG(ffmpeg)) {
 		goto release;
 	}
