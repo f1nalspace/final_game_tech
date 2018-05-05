@@ -129,6 +129,9 @@ SOFTWARE.
 	\page page_changelog Changelog
 	\tableofcontents
 
+    ## v0.7.9.0 beta:
+    - Changed: [GLX] Added types such as XVisualInfo directly without relying on glx.h
+
 	## v0.7.8.0 beta:
 	- Changed: Collapsed down all argument checking using macros
 	- Changed: Use FPL_CLEAR_STRUCT only when it is appropriate
@@ -11393,7 +11396,47 @@ fpl_internal void fpl__Win32ReleaseVideoOpenGL(fpl__Win32VideoOpenGLState *glSta
 //
 // ############################################################################
 #if defined(FPL_ENABLE_VIDEO_OPENGL) && defined(FPL_SUBPLATFORM_X11)
-#	include <GL/glx.h> // XVisualInfo, GLXContext, GLXDrawable
+#ifndef __gl_h_
+typedef uint8_t GLubyte;
+#endif
+#ifndef GLX_H
+typedef struct {
+  Visual *visual;
+  VisualID visualid;
+  int screen;
+  int depth;
+#if defined(__cplusplus) || defined(c_plusplus)
+  int c_class;					/* C++ */
+#else
+  int class;
+#endif
+  unsigned long red_mask;
+  unsigned long green_mask;
+  unsigned long blue_mask;
+  int colormap_size;
+  int bits_per_rgb;
+} XVisualInfo;
+
+typedef XID GLXDrawable;
+typedef XID GLXWindow;
+typedef void GLXContext_Void;
+typedef GLXContext_Void* GLXContext;
+typedef void GLXFBConfig_Void;
+typedef GLXFBConfig_Void* GLXFBConfig;
+
+#define GLX_RGBA 4
+#define GLX_DOUBLEBUFFER 5
+#define GLX_RED_SIZE 8
+#define GLX_GREEN_SIZE 9
+#define GLX_BLUE_SIZE 10
+#define GLX_ALPHA_SIZE 11
+#define GLX_DEPTH_SIZE 12
+#define GLX_STENCIL_SIZE 13
+
+#define GLX_X_VISUAL_TYPE 0x22
+#define GLX_TRUE_COLOR 0x8002
+#define GLX_RGBA_TYPE 0x8014
+#endif
 
 #define FPL__FUNC_GLX_glXQueryVersion(name) Bool name(Display *dpy,  int *major,  int *minor)
 typedef FPL__FUNC_GLX_glXQueryVersion(fpl__func_glx_glXQueryVersion);
@@ -11674,7 +11717,7 @@ fpl_internal bool fpl__X11InitVideoOpenGL(const fpl__X11SubplatformState *subpla
 	GLXContext legacyRenderingContext;
 	if (glState->fbConfig != fpl_null) {
 		FPL_LOG("GLX", "Create GLX legacy rendering context on display '%p' and frame buffer config '%p'", windowState->display, glState->fbConfig);
-		legacyRenderingContext = glApi->glXCreateNewContext(windowState->display, glState->fbConfig, GLX_RGBA_TYPE, fpl_null, GL_TRUE);
+		legacyRenderingContext = glApi->glXCreateNewContext(windowState->display, glState->fbConfig, GLX_RGBA_TYPE, fpl_null, 1);
 		if (!legacyRenderingContext) {
 			FPL_LOG("GLX", "Failed creating GLX legacy rendering context on display '%p' and frame buffer config '%p'", windowState->display, glState->fbConfig);
 			goto failed_x11_glx;
@@ -11682,7 +11725,7 @@ fpl_internal bool fpl__X11InitVideoOpenGL(const fpl__X11SubplatformState *subpla
 		FPL_LOG("GLX", "Successfully created GLX legacy rendering context '%p' on display '%p' and frame buffer config '%p'", legacyRenderingContext, windowState->display, glState->fbConfig);
 	} else if (glState->visualInfo != fpl_null) {
 		FPL_LOG("GLX", "Create GLX legacy rendering context on display '%p' and visual info '%p'", windowState->display, glState->visualInfo);
-		legacyRenderingContext = glApi->glXCreateContext(windowState->display, glState->visualInfo, fpl_null, GL_TRUE);
+		legacyRenderingContext = glApi->glXCreateContext(windowState->display, glState->visualInfo, fpl_null, 1);
 		if (!legacyRenderingContext) {
 			FPL_LOG("GLX", "Failed creating GLX legacy rendering context on display '%p' and visual info '%p'", windowState->display, glState->visualInfo);
 			goto failed_x11_glx;
