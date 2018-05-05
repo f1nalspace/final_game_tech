@@ -1,6 +1,6 @@
 # Project
 APP_NAME = FOGL_Test
-SOURCE_FILES = fogl_test.cpp
+SOURCE_FILES = fogl_test.c
 LIBS = -ldl
 INCLUDES = -I../../
 
@@ -27,7 +27,7 @@ prepare:
 	mkdir -p $(BUILD_DIR)
 
 build:
-	g++ -std=c++11 $(CFLAGS) $(INCLUDES) $(SOURCE_FILES) $(LIBS) -o $(BUILD_DIR)/$(EXECUTABLE)
+	gcc -std=c99 $(CFLAGS) $(INCLUDES) $(SOURCE_FILES) $(LIBS) -o $(BUILD_DIR)/$(EXECUTABLE)
 
 clean:
 	rm -rf $(BUILD_DIR)
