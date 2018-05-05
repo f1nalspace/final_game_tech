@@ -1,6 +1,6 @@
 # Project
 APP_NAME = FPL_OpenGL
-SOURCE_FILES = fpl_opengl.cpp
+SOURCE_FILES = fpl_opengl.c
 LIBS = -ldl -lGL
 INCLUDES = -I../../
 
@@ -27,7 +27,7 @@ prepare:
 	mkdir -p $(BUILD_DIR)
 
 build:
-	g++ -std=c++11 $(CFLAGS) $(INCLUDES) $(SOURCE_FILES) $(LIBS) -o $(BUILD_DIR)/$(EXECUTABLE)
+	gcc -std=c99 $(CFLAGS) $(INCLUDES) $(SOURCE_FILES) $(LIBS) -o $(BUILD_DIR)/$(EXECUTABLE)
 
 clean:
 	rm -rf $(BUILD_DIR)
