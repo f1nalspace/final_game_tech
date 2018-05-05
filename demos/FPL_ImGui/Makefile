@@ -6,7 +6,7 @@ SOURCE_FILES = \
 	$(IMGUI_PATH)imgui/imgui.cpp \
 	$(IMGUI_PATH)imgui/imgui_draw.cpp \
 	$(IMGUI_PATH)imgui/imgui_demo.cpp
-LIBS = -ldl -lGL
+LIBS = -lm -ldl -lGL
 INCLUDES = -I../../ -I$(IMGUI_PATH)
 
 # Auto detect release type/platform/architecture

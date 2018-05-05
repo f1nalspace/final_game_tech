@@ -10,6 +10,8 @@ Requirements:
 Author:
 	Torsten Spaete
 Changelog:
+    ## 2018-05-05:
+    - Added m to linker flags in CMakeLists and Makefile
 	## 2018-04-23:
 	- Initial creation of this description block
 	- Forced Visual-Studio-Project to compile in C++ always
