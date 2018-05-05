@@ -103,7 +103,7 @@ SOFTWARE.
 
 /*!
 	\file final_dynamic_opengl.h
-	\version v0.3.1.0 beta
+	\version v0.3.2.0 beta
 	\author Torsten Spaete
 	\brief Final Dynamic OpenGL (FGL) - A open source C99 single file header OpenGL-Loader library.
 */
@@ -111,6 +111,9 @@ SOFTWARE.
 /*!
 	\page page_changelog Changelog
 	\tableofcontents
+
+	## v0.3.2.0 beta:
+	- Fixed: Fixed incompatibilties with C99
 
 	## v0.3.1.0 beta:
 	- Fixed: Fixed tons of compile errors on linux
@@ -176,10 +179,10 @@ SOFTWARE.
 #define fgl_null NULL
 
 //! Macro for initialize a struct to zero
-#if defined(FGL_IS_CPP)
-#	define FGL_ZERO_INIT {}
-#else
+#if defined(FGL_IS_C99)
 #	define FGL_ZERO_INIT {0}
+#else
+#	define FGL_ZERO_INIT {}
 #endif
 
 //
@@ -252,8 +255,6 @@ SOFTWARE.
 #	include <dlfcn.h> // dlopen
 #	include <X11/X.h>
 #	include <X11/Xlib.h>
-//#	include <GL/gl.h>
-//#	include <GL/glx.h>
 #endif
 
 //
@@ -328,13 +329,8 @@ extern "C" {
 		bool forwardCompability;
 	} fglOpenGLContextCreationParameters;
 
-	inline fglOpenGLContextCreationParameters MakeDefaultOpenGLContextCreationParameters() {
-		fglOpenGLContextCreationParameters result = FGL_ZERO_INIT;
-		result.majorVersion = 3;
-		result.minorVersion = 3;
-		result.profile = fglOpenGLProfileType_LegacyProfile;
-		return(result);
-	}
+    //! Sets the context parameters to default values
+    fdyngl_api void fglSetDefaultOpenGLContextCreationParameters(fglOpenGLContextCreationParameters *outParams);
 
 	//! Create a opengl context
 	fdyngl_api bool fglCreateOpenGLContext(const fglOpenGLContextCreationParameters *contextCreationParams, fglOpenGLContext *outContext);
@@ -4543,6 +4539,15 @@ typedef struct fglOpenGLState {
 	bool isLoaded;
 } fglOpenGLState;
 
+static void fgl__ClearMemory(void *mem, size_t size) {
+    if (mem != fgl_null) {
+        uint8_t *p = (uint8_t *)mem;
+        while (size > 0) {
+            *p++ = 0;
+        }
+    }
+}
+
 static void fgl__SetLastError(fglOpenGLState *state, const char *format, ...) {
 	assert(state != fgl_null);
 	if(format != fgl_null) {
@@ -5867,6 +5872,13 @@ static bool fgl__CreateOpenGLContext(fglOpenGLState *state, const fglOpenGLConte
 }
 
 static fglOpenGLState globalOpenGLState = FGL_ZERO_INIT;
+
+fdyngl_api void fglSetDefaultOpenGLContextCreationParameters(fglOpenGLContextCreationParameters *outParams) {
+    fgl__ClearMemory(outParams, sizeof(*outParams));
+    outParams->majorVersion = 3;
+    outParams->minorVersion = 3;
+    outParams->profile = fglOpenGLProfileType_LegacyProfile;
+}
 
 fdyngl_api bool fglCreateOpenGLContext(const fglOpenGLContextCreationParameters *contextCreationParams, fglOpenGLContext *outContext) {
 	fglOpenGLState *state = &globalOpenGLState;
