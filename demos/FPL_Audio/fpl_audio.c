@@ -92,6 +92,8 @@ static bool FillConversionBuffer(AudioData *audioData, const fplAudioDeviceForma
 		}
 	} else {
 		LoadedWave *wave = &audioData->loadedWave;
+		// Good resource and best explaination so far:
+		// https://stackoverflow.com/questions/26123310/what-is-the-correct-method-to-upsample
 		if(wave->samplesPerSecond < nativeFormat->sampleRate) {
 			// @TODO(final): Upsampling (22100 > 48000, etc.)
 		} else if(wave->samplesPerSecond > nativeFormat->sampleRate) {
