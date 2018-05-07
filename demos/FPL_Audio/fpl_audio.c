@@ -57,10 +57,12 @@ static void FreeAudioData(AudioData *audioData) {
 }
 
 static bool InitAudioData(const fplAudioDeviceFormat *nativeFormat, AudioData *audioData) {
-	const char *testWaveFile = "C:\\Users\\X123713\\Music\\fla22k_02.wav";
+	char filePath[1024];
+	fplGetHomePath(filePath, FPL_ARRAYCOUNT(filePath));
+	fplPathCombine(filePath, FPL_ARRAYCOUNT(filePath), 3, filePath, "Music", "fla22k_02.wav");
 
-	if (!LoadWaveFromFile(testWaveFile, &audioData->loadedWave)) {
-		fplConsoleFormatError("Failed loading wave-file '%s': %s\n", testWaveFile, audioData->loadedWave.lastError);
+	if (!LoadWaveFromFile(filePath, &audioData->loadedWave)) {
+		fplConsoleFormatError("Failed loading wave-file '%s': %s\n", filePath, audioData->loadedWave.lastError);
 	}
 
 	audioData->conversionBuffer.maxSampleCount = MAX_AUDIOBUFFER_SAMPLE_COUNT;
