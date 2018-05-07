@@ -131,6 +131,7 @@ SOFTWARE.
 
     ## v0.7.9.0 beta:
     - Changed: [GLX] Added types such as XVisualInfo directly without relying on glx.h
+	- Fixed: [Win32] Console window was not working anymore the second time fplPlatformInit was called
 
 	## v0.7.8.0 beta:
 	- Changed: Collapsed down all argument checking using macros
@@ -7501,9 +7502,8 @@ fpl_internal bool fpl__Win32InitPlatform(const fplInitFlags initFlags, const fpl
 
 	// Init console
 	if (!(initFlags & fplInitFlags_Window)) {
-		HANDLE tmpOut = GetStdHandle(STD_OUTPUT_HANDLE);
-		if (tmpOut == fpl_null) {
-			// @TODO(final): This case seems to never be executed even on non-CRT -> When do i need to call AllocConsole()?
+		HWND consoleHandle = GetConsoleWindow();
+		if (consoleHandle == fpl_null) {
 			AllocConsole();
 			win32AppState->console.isAllocated = true;
 		}
