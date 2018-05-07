@@ -93,12 +93,11 @@ static bool FillConversionBuffer(AudioData *audioData, const fplAudioDeviceForma
 	} else {
 		LoadedWave *wave = &audioData->loadedWave;
 		if(wave->samplesPerSecond < nativeFormat->sampleRate) {
-			// Upsampling
+			// @TODO(final): Upsampling (22100 > 48000, etc.)
 		} else if(wave->samplesPerSecond > nativeFormat->sampleRate) {
-			// Downsampling
+			// @TODO(final): Downsampling (48000 > 22100, etc.)
 		} else {
-			// Copy (S16 only for now)
-			FPL_ASSERT(wave->bytesPerSample == 2);
+			// @TODO(final): Plain format conversion (S16 <> F32, etc.)
 		}
 	}
 	return audioData->conversionBuffer.samplesRemaining > 0;
@@ -157,40 +156,6 @@ static uint32_t FillAudioBuffer(const fplAudioDeviceFormat *nativeFormat, const 
 			}
 		}
 	}
-
-#if 0
-	if(!audioData->loadedWave.isValid) {
-		uint32_t halfWavePeriod = audioData->wavePeriod / 2;
-		for(uint32_t frameIndex = 0; frameIndex < frameCount; ++frameIndex) {
-			int16_t sampleValue;
-			if(audioData->useSquareWave) {
-				sampleValue = ((audioData->runningSampleIndex / halfWavePeriod) % 2) ? (int16_t)audioData->toneVolume : -(int16_t)audioData->toneVolume;
-			} else {
-				float t = 2.0f * PI32 * (float)audioData->runningSampleIndex / (float)audioData->wavePeriod;
-				sampleValue = (int16_t)(sinf(t) * audioData->toneVolume);
-			}
-			for(uint32_t channelIndex = 0; channelIndex < nativeFormat->channels; ++channelIndex) {
-				*outSamples++ = sampleValue;
-			}
-			++audioData->runningSampleIndex;
-			++result;
-		}
-	} else {
-		FPL_ASSERT(audioData->loadedWave.bytesPerSample == 2);
-		uint32_t sourceChannelCount = audioData->loadedWave.channelCount;
-		uint32_t targetChannelCount = nativeFormat->channels;
-		for(uint32_t frameIndex = 0; frameIndex < frameCount; ++frameIndex) {
-			uint32_t sampleIndex = audioData->runningSampleIndex;
-			for(uint32_t channelIndex = 0; channelIndex < audioData->loadedWave.channelCount; ++channelIndex) {
-				int16_t sampleValue = 0;
-				*outSamples++ = sampleValue;
-			}
-			audioData->runningSampleIndex = (audioData->runningSampleIndex + 1) % audioData->loadedWave.sampleCount;
-			++result;
-		}
-	}
-#endif
-
 	return result;
 }
 
