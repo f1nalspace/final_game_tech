@@ -131,6 +131,8 @@ SOFTWARE.
 
     ## v0.7.9.0 beta:
     - Changed: [GLX] Added types such as XVisualInfo directly without relying on glx.h
+	- Changed: Changed from inline to api call for fplGetAudioBufferSizeInFrames/fplGetAudioFrameSizeInBytes/fplGetAudioBufferSizeInBytes
+	- Changed: Changed from inline to api call for fplGetArchTypeString / fplGetInitResultTypeString / fplGetPlatformTypeString
 	- Fixed: [Win32] Console window was not working anymore the second time fplPlatformInit was called
 
 	## v0.7.8.0 beta:
@@ -1759,23 +1761,7 @@ typedef enum fplArchType {
   * \param type Architecture type
   * \return Returns a string for the given architecture type
   */
-fpl_inline const char *fplGetArchTypeString(const fplArchType type) {
-	switch (type) {
-		case fplArchType_x86:
-			return "x86";
-		case fplArchType_x86_64:
-			return "x86_64";
-		case fplArchType_x64:
-			return "x64";
-		case fplArchType_Arm32:
-			return "Arm32";
-		case fplArchType_Arm64:
-			return "Arm64";
-		case fplArchType_Unknown:
-		default:
-			return "Unknown";
-	}
-}
+fpl_common_api const char *fplGetArchTypeString(const fplArchType type);
 
 /**
   * \brief Returns the total number of processor cores.
@@ -1849,26 +1835,7 @@ typedef enum fplInitResultType {
 } fplInitResultType;
 
 //! Returns the string representation of a \ref fplInitResultType
-fpl_inline const char *fplGetInitResultTypeString(const fplInitResultType type) {
-	switch (type) {
-		case fplInitResultType_AlreadyInitialized:
-			return "Already initialized";
-		case fplInitResultType_FailedAllocatingMemory:
-			return "Failed allocating memory";
-		case fplInitResultType_FailedPlatform:
-			return "Failed initializing platform";
-		case fplInitResultType_FailedVideo:
-			return "Failed initializing video";
-		case fplInitResultType_FailedAudio:
-			return "Failed initializing audio";
-		case fplInitResultType_FailedWindow:
-			return "Failed initializing window";
-		case fplInitResultType_Success:
-			return "Success";
-		default:
-			return "";
-	}
-}
+fpl_common_api const char *fplGetInitResultTypeString(const fplInitResultType type);
 
 //! Video driver type
 typedef enum fplVideoDriverType {
@@ -2148,20 +2115,7 @@ typedef enum fplPlatformType {
   * \param type Platform type
   * \return Returns a string for the given platform type
   */
-fpl_inline const char *fplGetPlatformTypeString(const fplPlatformType type) {
-	switch (type) {
-		case fplPlatformType_Windows:
-			return "Windows";
-		case fplPlatformType_Linux:
-			return "Linux";
-		case fplPlatformType_Unix:
-			return "Unix";
-		case fplPlatformType_Unknown:
-			return "Unknown";
-		default:
-			return "";
-	}
-}
+fpl_common_api const char *fplGetPlatformTypeString(const fplPlatformType type);
 
 /**
   * \brief Initializes the platform layer.
@@ -4013,20 +3967,14 @@ fpl_common_api const char *fplGetAudioDriverString(fplAudioDriverType driver);
   * \param bufferSizeInMilliSeconds The buffer size in number of milliseconds
   * \return Number of frames
   */
-fpl_inline uint32_t fplGetAudioBufferSizeInFrames(uint32_t sampleRate, uint32_t bufferSizeInMilliSeconds) {
-	uint32_t result = (sampleRate / 1000) * bufferSizeInMilliSeconds;
-	return(result);
-}
+fpl_common_api uint32_t fplGetAudioBufferSizeInFrames(uint32_t sampleRate, uint32_t bufferSizeInMilliSeconds);
 /**
   * \brief Returns the number of bytes required for one interleaved audio frame - containing all the channels
   * \param format The audio format
   * \param channelCount The number of channels
   * \return Number of bytes for one frame in bytes
   */
-fpl_inline uint32_t fplGetAudioFrameSizeInBytes(const fplAudioFormatType format, const uint32_t channelCount) {
-	uint32_t result = fplGetAudioSampleSizeInBytes(format) * channelCount;
-	return(result);
-}
+fpl_common_api uint32_t fplGetAudioFrameSizeInBytes(const fplAudioFormatType format, const uint32_t channelCount);
 /**
   * \brief Returns the total number of bytes for the buffer and the given parameters
   * \param format The audio format
@@ -4034,11 +3982,7 @@ fpl_inline uint32_t fplGetAudioFrameSizeInBytes(const fplAudioFormatType format,
   * \param frameCount The number of frames
   * \return Total number of bytes for the buffer
   */
-fpl_inline uint32_t fplGetAudioBufferSizeInBytes(const fplAudioFormatType format, const uint32_t channelCount, const uint32_t frameCount) {
-	uint32_t frameSize = fplGetAudioFrameSizeInBytes(format, channelCount);
-	uint32_t result = frameSize * frameCount;
-	return(result);
-}
+fpl_common_api uint32_t fplGetAudioBufferSizeInBytes(const fplAudioFormatType format, const uint32_t channelCount, const uint32_t frameCount);
 
 /** \}*/
 #endif // FPL_ENABLE_AUDIO
@@ -6324,6 +6268,45 @@ fpl_common_api fplSettings fplMakeDefaultSettings() {
 	fplSettings result;
 	fplSetDefaultSettings(&result);
 	return(result);
+}
+
+fpl_common_api const char *fplGetInitResultTypeString(const fplInitResultType type) {
+	switch (type) {
+		case fplInitResultType_AlreadyInitialized:
+			return "Already initialized";
+		case fplInitResultType_FailedAllocatingMemory:
+			return "Failed allocating memory";
+		case fplInitResultType_FailedPlatform:
+			return "Failed initializing platform";
+		case fplInitResultType_FailedVideo:
+			return "Failed initializing video";
+		case fplInitResultType_FailedAudio:
+			return "Failed initializing audio";
+		case fplInitResultType_FailedWindow:
+			return "Failed initializing window";
+		case fplInitResultType_Success:
+			return "Success";
+		default:
+			return "";
+	}
+}
+
+fpl_common_api const char *fplGetArchTypeString(const fplArchType type) {
+	switch (type) {
+		case fplArchType_x86:
+			return "x86";
+		case fplArchType_x86_64:
+			return "x86_64";
+		case fplArchType_x64:
+			return "x64";
+		case fplArchType_Arm32:
+			return "Arm32";
+		case fplArchType_Arm64:
+			return "Arm64";
+		case fplArchType_Unknown:
+		default:
+			return "Unknown";
+	}
 }
 #endif // FPL_COMMON_DEFINED
 
@@ -13877,6 +13860,20 @@ fpl_common_api const char *fplGetAudioDriverString(fplAudioDriverType driver) {
     }
 }
 
+fpl_common_api uint32_t fplGetAudioBufferSizeInFrames(uint32_t sampleRate, uint32_t bufferSizeInMilliSeconds) {
+	uint32_t result = (sampleRate / 1000) * bufferSizeInMilliSeconds;
+	return(result);
+}
+fpl_common_api uint32_t fplGetAudioFrameSizeInBytes(const fplAudioFormatType format, const uint32_t channelCount) {
+	uint32_t result = fplGetAudioSampleSizeInBytes(format) * channelCount;
+	return(result);
+}
+fpl_common_api uint32_t fplGetAudioBufferSizeInBytes(const fplAudioFormatType format, const uint32_t channelCount, const uint32_t frameCount) {
+	uint32_t frameSize = fplGetAudioFrameSizeInBytes(format, channelCount);
+	uint32_t result = frameSize * frameCount;
+	return(result);
+}
+
 fpl_common_api fplAudioResult fplStopAudio() {
 	FPL__CheckPlatform(fplAudioResult_PlatformNotInitialized);
 	fpl__AudioState *audioState = fpl__GetAudioState(fpl__global__AppState);
@@ -14247,6 +14244,21 @@ fpl_internal void fpl__ReleasePlatformStates(fpl__PlatformInitState *initState, 
 		fpl__global__AppState = fpl_null;
 }
 	initState->isInitialized = false;
+}
+
+fpl_common_api const char *fplGetPlatformTypeString(const fplPlatformType type) {
+	switch (type) {
+		case fplPlatformType_Windows:
+			return "Windows";
+		case fplPlatformType_Linux:
+			return "Linux";
+		case fplPlatformType_Unix:
+			return "Unix";
+		case fplPlatformType_Unknown:
+			return "Unknown";
+		default:
+			return "";
+	}
 }
 
 fpl_common_api void fplPlatformRelease() {
