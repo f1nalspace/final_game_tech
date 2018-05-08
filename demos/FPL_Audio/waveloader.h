@@ -4,14 +4,21 @@
 #include <final_platform_layer.h>
 
 typedef struct LoadedWave {
-	//! Sample count per channel
+	//! Total frame count
 	uint32_t sampleCount;
+	//! Samples per second (Frequency in Hz)
 	uint32_t samplesPerSecond;
+	//! Bytes per sample
 	uint32_t bytesPerSample;
+	//! Format type
+	fplAudioFormatType formatType;
+	//! Number of channels
 	uint32_t channelCount;
-	//! Interleaved samples
+	//! Interleaved samples (Max of 2 channels)
 	uint8_t *samples;
+	//! Last error string
 	char lastError[1024];
+	//! Is valid boolean flag
 	bool isValid;
 } LoadedWave;
 

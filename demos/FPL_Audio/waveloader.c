@@ -1,7 +1,5 @@
 #include "waveloader.h"
 
-#include <mmreg.h>
-
 #define RIFF_ID(a, b, c, d) (((uint32_t)(a) << 0) | ((uint32_t)(b) << 8) | ((uint32_t)(c) << 16) | ((uint32_t)(d) << 24))
 
 #pragma pack(push, 1)
@@ -107,6 +105,18 @@ extern bool LoadWaveFromBuffer(const uint8_t *buffer, const size_t bufferSize, L
 						outWave->samplesPerSecond = waveFormat.samplesPerSecond;
 						outWave->sampleCount = sampleCount;
 						outWave->bytesPerSample = bytesPerSample;
+
+						outWave->formatType = fplAudioFormatType_None;
+						if(bytesPerSample == 1) {
+							outWave->formatType = fplAudioFormatType_U8;
+						} else if (bytesPerSample == 2) {
+							outWave->formatType = fplAudioFormatType_S16;
+						} else if (bytesPerSample == 3) {
+							outWave->formatType = fplAudioFormatType_S24;
+						} else if (bytesPerSample == 4) {
+							outWave->formatType = fplAudioFormatType_S32;
+						}
+
 						size_t sampleMemorySize = bytesPerSample * channelCount * sampleCount;
 						FPL_ASSERT(sampleMemorySize == dataSize);
 						outWave->samples = fplMemoryAllocate(sampleMemorySize);
@@ -117,7 +127,7 @@ extern bool LoadWaveFromBuffer(const uint8_t *buffer, const size_t bufferSize, L
 
 					case WaveFormatTags_IEEEFloat:
 					{
-						WaveError(outWave, "IEEE float wave format not implemented yet!");
+						WaveError(outWave, "IEEE Float Wave Format is not supported yet!");
 						return false;
 					} break;
 				}
