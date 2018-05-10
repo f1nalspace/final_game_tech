@@ -137,6 +137,8 @@ SOFTWARE.
 	- New: Added fplThreadYield()
 	- New: [Win32] Implemented fplThreadYield()
 	- New: [POSIX] Implemented fplThreadYield()
+    - New: [Linux] Implemented fplGetRunningArchitecture()
+    - New: [Linux] Implemented fplGetOperatingSystemInfos()
 	- Fixed: [Win32] Console window was not working anymore the second time fplPlatformInit was called
 
 
@@ -1681,14 +1683,23 @@ fpl_common_api void fplAtomicStorePtr(volatile void **dest, const void *value);
 
 //! Version info container
 typedef struct fplVersionInfo {
-	//! Major version
-	uint16_t major;
-	//! Minor version
-	uint16_t minor;
-	//! Fix version
-	uint16_t fix;
-	//! Build version
-	uint16_t build;
+    //! Full name
+    char fullName[256];
+    union {
+        // @TODO(final): Dont use decimals for version numbers, just use char array of max size of 3 -> 16.04 is not the same as 16.4!
+    	struct {
+			//! Major version
+			uint16_t major;
+			//! Minor version
+			uint16_t minor;
+			//! Fix version
+			uint16_t fix;
+			//! Build version
+			uint16_t build;
+		};
+    	//! Version number as array
+		uint16_t values[4];
+	};
 } fplVersionInfo;
 
 //! Operating system info container
@@ -10790,6 +10801,7 @@ fpl_platform_api bool fplSetClipboardWideText(const wchar_t *wideSource) {
 #	include <sys/eventfd.h> // eventfd
 #	include <sys/epoll.h> // epoll_create, epoll_ctl, epoll_wait
 #	include <sys/select.h> // select
+#	include <sys/utsname.h> // uname
 #	include <unistd.h> // write
 
 fpl_internal void fpl__LinuxReleasePlatform(fpl__PlatformInitState *initState, fpl__PlatformAppState *appState) {
@@ -10802,9 +10814,42 @@ fpl_internal bool fpl__LinuxInitPlatform(const fplInitFlags initFlags, const fpl
 //
 // Linux OS
 //
+fpl_internal void fpl__ParseVersionString(const char *versionStr, fplVersionInfo *versionInfo) {
+	fplCopyAnsiString(versionStr, versionInfo->fullName, FPL_ARRAYCOUNT(versionInfo->fullName));
+	if (versionStr != fpl_null) {
+        const char *p = versionStr;
+        for (int i = 0; i < 4; ++i) {
+            int v = 0;
+            while (isdigit(*p)) {
+                int dec = (int) (*p) - '0';
+                v = v * 10 + dec;
+                ++p;
+            }
+            if (v > UINT16_MAX) v = UINT16_MAX;
+            versionInfo->values[i] = (uint16_t) v;
+            if (*p != '.' && *p != '-') break;
+            ++p;
+        }
+    }
+}
+
 fpl_platform_api bool fplGetOperatingSystemInfos(fplOSInfos *outInfos) {
-	// @IMPLEMENT(final): Linux fplGetOperatingSystemInfos
-	return false;
+	bool result = false;
+	struct utsname nameInfos;
+	if (uname(&nameInfos) == 0) {
+		const char *kernelName = nameInfos.sysname;
+		const char *kernelVersion = nameInfos.release;
+		const char *systemName = nameInfos.version;
+		fplCopyAnsiString(kernelName, outInfos->kernelName, FPL_ARRAYCOUNT(outInfos->kernelName));
+		fplCopyAnsiString(systemName, outInfos->systemName, FPL_ARRAYCOUNT(outInfos->systemName));
+        fpl__ParseVersionString(kernelVersion, &outInfos->kernelVersion);
+
+		// @TODO(final): Get linux distro version into systemVersion
+        // cat /etc/os-release
+
+		result = true;
+	}
+	return(result);
 }
 
 fpl_platform_api bool fplGetCurrentUsername(char *nameBuffer, size_t maxNameBufferLen) {
@@ -11034,8 +11079,18 @@ fpl_platform_api bool fplGetRunningMemoryInfos(fplMemoryInfos *outInfos) {
 }
 
 fpl_platform_api fplArchType fplGetRunningArchitecture() {
-	// @IMPLEMENT(final): Linux fplGetRunningArchitecture
-	return(fplArchType_Unknown);
+    fplArchType result = fplArchType_Unknown;
+    struct utsname nameInfos;
+    if (uname(&nameInfos) == 0) {
+        const char *machineName = nameInfos.machine;
+        if (fplIsStringEqual("x86_64", machineName) || fplIsStringEqual("amd64", machineName)) {
+            result = fplArchType_x86_64;
+        } else {
+            // @TODO(final): Detect other running CPU architectures (pure x64, arm32, arm64)
+            result = fplArchType_x86;
+        }
+    }
+    return(result);
 }
 
 //
