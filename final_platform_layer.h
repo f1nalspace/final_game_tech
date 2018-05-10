@@ -133,6 +133,7 @@ SOFTWARE.
     - Changed: [GLX] Added types such as XVisualInfo directly without relying on glx.h
 	- Changed: Changed from inline to api call for fplGetAudioBufferSizeInFrames/fplGetAudioFrameSizeInBytes/fplGetAudioBufferSizeInBytes
 	- Changed: Changed from inline to api call for fplGetArchTypeString / fplGetInitResultTypeString / fplGetPlatformTypeString
+	- Changed: Moved FPL_CLEAR_STRUCT to public api
 	- Fixed: [Win32] Console window was not working anymore the second time fplPlatformInit was called
 
 	## v0.7.8.0 beta:
