@@ -162,11 +162,13 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="audiosystem.c" />
     <ClCompile Include="fpl_audio.c" />
     <ClCompile Include="waveloader.c" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\..\final_platform_layer.h" />
+    <ClInclude Include="audiosystem.h" />
     <ClInclude Include="waveloader.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

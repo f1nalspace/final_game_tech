@@ -3,9 +3,11 @@
   <ItemGroup>
     <ClInclude Include="..\..\final_platform_layer.h" />
     <ClInclude Include="waveloader.h" />
+    <ClInclude Include="audiosystem.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="fpl_audio.c" />
     <ClCompile Include="waveloader.c" />
+    <ClCompile Include="audiosystem.c" />
   </ItemGroup>
 </Project>

@@ -119,6 +119,7 @@ extern bool LoadWaveFromBuffer(const uint8_t *buffer, const size_t bufferSize, L
 
 						size_t sampleMemorySize = bytesPerSample * channelCount * sampleCount;
 						FPL_ASSERT(sampleMemorySize == dataSize);
+						outWave->samplesSize = sampleMemorySize;
 						outWave->samples = fplMemoryAllocate(sampleMemorySize);
 						fplMemoryCopy(data, sampleMemorySize, outWave->samples);
 						outWave->isValid = true;

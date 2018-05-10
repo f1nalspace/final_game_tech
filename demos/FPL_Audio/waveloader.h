@@ -14,6 +14,8 @@ typedef struct LoadedWave {
 	fplAudioFormatType formatType;
 	//! Number of channels
 	uint32_t channelCount;
+	//! Size of samples in bytes
+	size_t samplesSize;
 	//! Interleaved samples (Max of 2 channels)
 	uint8_t *samples;
 	//! Last error string
