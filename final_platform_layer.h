@@ -1296,6 +1296,9 @@ static fpl_force_inline void fplDebugBreak() { __asm__ __volatile__(".inst 0xe7f
 #	define FPL_STRUCT_SET(ptr, type, value) *(ptr) = value
 #endif
 
+//! Clears the given struct pointer to zero
+#define FPL_CLEAR_STRUCT(ptr) fplMemoryClear((void *)(ptr), sizeof(*(ptr)))
+
 //! Returns the element count from a static array,
 #define FPL_ARRAYCOUNT(arr) (sizeof(arr) / sizeof((arr)[0]))
 
@@ -4141,9 +4144,6 @@ struct fplLogBlock {
 #   define FPL_LOG_FUNCTION(what)
 #   define FPL_LOG_BLOCK
 #endif
-
-//! Clears the given struct pointer to zero
-#define FPL_CLEAR_STRUCT(ptr) fplMemoryClear((void *)(ptr), sizeof(*(ptr)))
 
 //
 // Debug out
