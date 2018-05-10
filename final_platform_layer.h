@@ -9376,7 +9376,7 @@ fpl_platform_api bool fplThreadWaitForAny(fplThreadHandle *threads[], const size
 	return(result);
 }
 
-fpl_platform_api void fplThreadYield() {
+fpl_platform_api bool fplThreadYield() {
 	FPL__CheckPlatform(false);
 	const fpl__PlatformAppState *appState = fpl__global__AppState;
 	const fpl__PThreadApi *pthreadApi = &appState->posix.pthreadApi;
