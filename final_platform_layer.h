@@ -120,7 +120,7 @@ SOFTWARE.
 
 /*!
 	\file final_platform_layer.h
-	\version v0.7.9.0 beta
+	\version v0.8.0.0 beta
 	\author Torsten Spaete
 	\brief Final Platform Layer (FPL) - A C99 Single-Header-File Platform Abstract Library
 */
@@ -129,7 +129,7 @@ SOFTWARE.
 	\page page_changelog Changelog
 	\tableofcontents
 
-	## v0.7.9.0 beta:
+	## v0.8.0.0 beta:
 	- Changed: Changed from inline to api call for fplGetAudioBufferSizeInFrames/fplGetAudioFrameSizeInBytes/fplGetAudioBufferSizeInBytes
 	- Changed: Changed from inline to api call for fplGetArchTypeString / fplGetInitResultTypeString / fplGetPlatformTypeString
 	- Changed: Moved FPL_CLEAR_STRUCT to public api
