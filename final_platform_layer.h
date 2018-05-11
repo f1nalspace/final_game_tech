@@ -130,16 +130,19 @@ SOFTWARE.
 	\tableofcontents
 
 	## v0.7.9.0 beta:
-	- Changed: [GLX] Added types such as XVisualInfo directly without relying on glx.h
 	- Changed: Changed from inline to api call for fplGetAudioBufferSizeInFrames/fplGetAudioFrameSizeInBytes/fplGetAudioBufferSizeInBytes
 	- Changed: Changed from inline to api call for fplGetArchTypeString / fplGetInitResultTypeString / fplGetPlatformTypeString
 	- Changed: Moved FPL_CLEAR_STRUCT to public api
 	- New: Added fplThreadYield()
+
+	- Changed: [GLX] Added types such as XVisualInfo directly without relying on glx.h
+	- Fixed: [Win32] Console window was not working anymore the second time fplPlatformInit was called
+ 	- Fixed: [GLX] XVisualInfo was manually defined, now we use Xutil.h
 	- New: [Win32] Implemented fplThreadYield()
 	- New: [POSIX] Implemented fplThreadYield()
     - New: [Linux] Implemented fplGetRunningArchitecture()
     - New: [Linux] Implemented fplGetOperatingSystemInfos()
-	- Fixed: [Win32] Console window was not working anymore the second time fplPlatformInit was called
+    - New: [X11] Implemented Video Software output for X11
 
 
 	## v0.7.8.0 beta:
@@ -1387,6 +1390,7 @@ static fpl_force_inline void fplDebugBreak() { __asm__ __volatile__(".inst 0xe7f
 #if defined(FPL_SUBPLATFORM_X11)
 #   include <X11/X.h> // Window
 #   include <X11/Xlib.h> // Display
+#   include<X11/Xutil.h> // XVisualInfo
 #endif // FPL_SUBPLATFORM_X11
 
 // ****************************************************************************
@@ -5106,6 +5110,21 @@ typedef FPL__FUNC_X11_X_MOVE_WINDOW(fpl__func_x11_XMoveWindow);
 typedef FPL__FUNC_X11_X_GET_KEYBOARD_MAPPING(fpl__func_x11_XGetKeyboardMapping);
 #define FPL__FUNC_X11_XSendEvent(name) Status name(Display *display, Window w, Bool propagate, long event_mask, XEvent *event_send)
 typedef FPL__FUNC_X11_XSendEvent(fpl__func_x11_XSendEvent);
+#define FPL__FUNC_X11_XMatchVisualInfo(name) Status name(Display* display, int screen, int depth, int clazz, XVisualInfo* vinfo_return)
+typedef FPL__FUNC_X11_XMatchVisualInfo(fpl__func_x11_XMatchVisualInfo);
+#define FPL__FUNC_X11_XCreateGC(name) GC name(Display* display, Drawable d, unsigned long valuemask, XGCValues* values)
+typedef FPL__FUNC_X11_XCreateGC(fpl__func_x11_XCreateGC);
+#define FPL__FUNC_X11_XGetImage(name) XImage *name(Display* display, Drawable d, int x, int y, unsigned int width, unsigned int height, unsigned long plane_mask, int format)
+typedef FPL__FUNC_X11_XGetImage(fpl__func_x11_XGetImage);
+#define FPL__FUNC_X11_XCreateImage(name) XImage *name(Display *display, Visual *visual, unsigned int depth, int format, int offset, char *data, unsigned int width, unsigned int height, int bitmap_pad, int bytes_per_line)
+typedef FPL__FUNC_X11_XCreateImage(fpl__func_x11_XCreateImage);
+#define FPL__FUNC_X11_XPutImage(name) int name(Display *display, Drawable d, GC gc, XImage *image, int src_x, int src_y, int dest_x, int	dest_y, unsigned int width, unsigned int height)
+typedef FPL__FUNC_X11_XPutImage(fpl__func_x11_XPutImage);
+#define FPL__FUNC_X11_XMapRaised(name) int name(Display *display, Window w)
+typedef FPL__FUNC_X11_XMapRaised(fpl__func_x11_XMapRaised);
+#define FPL__FUNC_X11_XCreatePixmap(name) Pixmap name(Display * display, Drawable d, unsigned int width, unsigned int height, unsigned int depth)
+typedef FPL__FUNC_X11_XCreatePixmap(fpl__func_x11_XCreatePixmap);
+
 
 typedef struct fpl__X11Api {
 	void *libHandle;
@@ -5136,6 +5155,13 @@ typedef struct fpl__X11Api {
 	fpl__func_x11_XMoveWindow *XMoveWindow;
 	fpl__func_x11_XGetKeyboardMapping *XGetKeyboardMapping;
 	fpl__func_x11_XSendEvent *XSendEvent;
+    fpl__func_x11_XMatchVisualInfo *XMatchVisualInfo;
+    fpl__func_x11_XCreateGC *XCreateGC;
+    fpl__func_x11_XGetImage *XGetImage;
+    fpl__func_x11_XPutImage *XPutImage;
+    fpl__func_x11_XMapRaised *XMapRaised;
+    fpl__func_x11_XCreateImage *XCreateImage;
+    fpl__func_x11_XCreatePixmap *XCreatePixmap;
 } fpl__X11Api;
 
 fpl_internal void fpl__UnloadX11Api(fpl__X11Api *x11Api) {
@@ -5187,6 +5213,13 @@ fpl_internal bool fpl__LoadX11Api(fpl__X11Api *x11Api) {
 				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, x11Api->XMoveWindow, fpl__func_x11_XMoveWindow, "XMoveWindow");
 				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, x11Api->XGetKeyboardMapping, fpl__func_x11_XGetKeyboardMapping, "XGetKeyboardMapping");
 				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, x11Api->XSendEvent, fpl__func_x11_XSendEvent, "XSendEvent");
+                FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, x11Api->XMatchVisualInfo, fpl__func_x11_XMatchVisualInfo, "XMatchVisualInfo");
+                FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, x11Api->XCreateGC, fpl__func_x11_XCreateGC, "XCreateGC");
+                FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, x11Api->XGetImage, fpl__func_x11_XGetImage, "XGetImage");
+                FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, x11Api->XPutImage, fpl__func_x11_XPutImage, "XPutImage");
+                FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, x11Api->XMapRaised, fpl__func_x11_XMapRaised, "XMapRaised");
+                FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, x11Api->XCreateImage, fpl__func_x11_XCreateImage, "XCreateImage");
+                FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(libHandle, libName, x11Api->XCreatePixmap, fpl__func_x11_XCreatePixmap, "XCreatePixmap");
 				result = true;
 			} while (0);
 			if (result) {
@@ -5208,6 +5241,7 @@ typedef struct fpl__X11WindowState {
 	Window root;
 	Colormap colorMap;
 	Window window;
+	Visual *visual;
 	Atom wmState;
 	Atom wmProtocols;
 	Atom wmDeleteWindow;
@@ -10371,6 +10405,7 @@ fpl_internal bool fpl__X11InitWindow(const fplSettings *initSettings, fplWindowS
 		colorDepth = x11Api->XDefaultDepth(windowState->display, windowState->root);
 		colormap = x11Api->XDefaultColormap(windowState->display, windowState->root);
 	}
+    int flags = CWColormap | CWEventMask | CWBorderPixel | CWBackPixel | CWBitGravity | CWWinGravity;
 
 	FPL_LOG("X11", "Using visual: %p", visual);
 	FPL_LOG("X11", "Using color depth: %d", colorDepth);
@@ -10378,9 +10413,12 @@ fpl_internal bool fpl__X11InitWindow(const fplSettings *initSettings, fplWindowS
 
 	windowState->colorMap = colormap;
 
-	XSetWindowAttributes swa;
+	XSetWindowAttributes swa = FPL_ZERO_INIT;
 	swa.colormap = colormap;
 	swa.event_mask = StructureNotifyMask | KeyPressMask | KeyReleaseMask | ButtonPressMask | ButtonReleaseMask | PointerMotionMask | ButtonMotionMask;
+	swa.background_pixel = WhitePixel(windowState->display, windowState->screen);
+    swa.bit_gravity = NorthWestGravity;
+    swa.win_gravity = NorthWestGravity;
 
 	int windowX = 0;
 	int windowY = 0;
@@ -10406,7 +10444,7 @@ fpl_internal bool fpl__X11InitWindow(const fplSettings *initSettings, fplWindowS
 												colorDepth,
 												InputOutput,
 												visual,
-												CWColormap | CWEventMask,
+												flags,
 												&swa);
 	if (!windowState->window) {
 		FPL_LOG("X11", "Failed creating window with (Display='%p', Root='%d', Size=%dx%d, Colordepth='%d', visual='%p', colormap='%d'!", windowState->display, (int)windowState->root, windowWidth, windowHeight, colorDepth, visual, (int)swa.colormap);
@@ -10414,6 +10452,8 @@ fpl_internal bool fpl__X11InitWindow(const fplSettings *initSettings, fplWindowS
 		return false;
 	}
 	FPL_LOG("X11", "Successfully created window with (Display='%p', Root='%d', Size=%dx%d, Colordepth='%d', visual='%p', colormap='%d': %d", windowState->display, (int)windowState->root, windowWidth, windowHeight, colorDepth, visual, (int)swa.colormap, (int)windowState->window);
+
+    windowState->visual = visual;
 
 	char wmDeleteWindowId[100];
 	char wmProtocolsId[100];
@@ -10434,6 +10474,7 @@ fpl_internal bool fpl__X11InitWindow(const fplSettings *initSettings, fplWindowS
 	FPL_LOG("X11", "Show window '%d' on display '%p' with title '%s'", (int)windowState->window, windowState->display, nameBuffer);
 	x11Api->XStoreName(windowState->display, windowState->window, nameBuffer);
 	x11Api->XMapWindow(windowState->display, windowState->window);
+    x11Api->XFlush(windowState->display);
 
 	FPL_ASSERT(FPL_ARRAYCOUNT(appState->window.keyMap) >= 256);
 
@@ -10453,7 +10494,7 @@ fpl_internal bool fpl__X11InitWindow(const fplSettings *initSettings, fplWindowS
 		fplSetWindowFullscreen(true, initSettings->window.fullscreenWidth, initSettings->window.fullscreenHeight, 0);
 	}
 
-	appState->window.isRunning = true;
+    appState->window.isRunning = true;
 
 	return true;
 }
@@ -10486,19 +10527,30 @@ fpl_internal void fpl__X11PushMouseEvent(const fplMouseEventType eventType, cons
 	fpl__PushEvent(&newEvent);
 }
 
-fpl_internal bool fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatform, fpl__PlatformWindowState *winState, XEvent *ev) {
-	FPL_ASSERT((subplatform != fpl_null) && (winState != fpl_null) && (ev != fpl_null));
-	const fpl__X11WindowState *x11WinState = &winState->x11;
+fpl_internal bool fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatform, fpl__PlatformAppState *appState, XEvent *ev) {
+	FPL_ASSERT((subplatform != fpl_null) && (appState != fpl_null) && (ev != fpl_null));
+	fpl__PlatformWindowState *winState = &appState->window;
+	fpl__X11WindowState *x11WinState = &winState->x11;
 	bool result = true;
 	switch (ev->type) {
 		case ConfigureNotify:
 		{
+#			if defined(FPL_ENABLE_VIDEO_SOFTWARE)
+            if (appState->currentSettings.video.driver == fplVideoDriverType_Software) {
+                if (appState->initSettings.video.isAutoSize) {
+                    uint32_t w = (uint32_t)ev->xconfigure.width;
+                    uint32_t h = (uint32_t)ev->xconfigure.height;
+                    fplResizeVideoBackBuffer(w, h);
+                }
+            }
+#			endif
+
 			// Window resized
 			fplEvent newEvent = FPL_ZERO_INIT;
 			newEvent.type = fplEventType_Window;
 			newEvent.window.type = fplWindowEventType_Resized;
-			newEvent.window.width = ev->xconfigure.width;
-			newEvent.window.height = ev->xconfigure.height;
+			newEvent.window.width = (uint32_t)ev->xconfigure.width;
+			newEvent.window.height = (uint32_t)ev->xconfigure.height;
 			fpl__PushEvent(&newEvent);
 		} break;
 
@@ -10590,7 +10642,7 @@ fpl_platform_api bool fplPushEvent() {
 	if (x11Api->XPending(windowState->display)) {
 		XEvent ev;
 		x11Api->XNextEvent(windowState->display, &ev);
-		result = fpl__X11HandleEvent(&appState->x11, &appState->window, &ev);
+		result = fpl__X11HandleEvent(&appState->x11, appState, &ev);
 	}
 	return (result);
 }
@@ -10638,7 +10690,7 @@ fpl_platform_api bool fplWindowUpdate() {
 	while (pendingCount--) {
 		XEvent ev;
 		x11Api->XNextEvent(windowState->display, &ev);
-		fpl__X11HandleEvent(&appState->x11, &appState->window, &ev);
+		fpl__X11HandleEvent(&appState->x11, appState, &ev);
 	}
 	x11Api->XFlush(windowState->display);
 	result = appState->window.isRunning;
@@ -11461,23 +11513,6 @@ fpl_internal void fpl__Win32ReleaseVideoOpenGL(fpl__Win32VideoOpenGLState *glSta
 typedef uint8_t GLubyte;
 #endif
 #ifndef GLX_H
-typedef struct {
-	Visual *visual;
-	VisualID visualid;
-	int screen;
-	int depth;
-#if defined(__cplusplus) || defined(c_plusplus)
-	int c_class;					/* C++ */
-#else
-	int class;
-#endif
-	unsigned long red_mask;
-	unsigned long green_mask;
-	unsigned long blue_mask;
-	int colormap_size;
-	int bits_per_rgb;
-} XVisualInfo;
-
 typedef XID GLXDrawable;
 typedef XID GLXWindow;
 typedef void GLXContext_Void;
@@ -11919,6 +11954,68 @@ done_x11_glx:
 	return (result);
 }
 #endif // FPL_ENABLE_VIDEO_OPENGL && FPL_SUBPLATFORM_X11
+
+// ############################################################################
+//
+// > VIDEO_DRIVER_SOFTWARE_X11
+//
+// ############################################################################
+#if defined(FPL_ENABLE_VIDEO_SOFTWARE) && defined(FPL_SUBPLATFORM_X11)
+typedef struct fpl__X11VideoSoftwareState {
+	GC graphicsContext;
+    XImage *buffer;
+} fpl__X11VideoSoftwareState;
+
+fpl_internal bool fpl__X11SetPreWindowSetupForSoftware(const fpl__X11Api *x11Api, const fpl__X11WindowState *windowState, const fpl__X11VideoSoftwareState *softwareState, fpl__X11PreWindowSetupResult *outResult) {
+    XVisualInfo vinfo = FPL_ZERO_INIT;
+    if(!x11Api->XMatchVisualInfo(windowState->display, windowState->screen, 32, DirectColor, &vinfo)) {
+        if(!x11Api->XMatchVisualInfo(windowState->display, windowState->screen, 24, DirectColor, &vinfo)) {
+            /* No proper color depth available */
+            x11Api->XCloseDisplay(windowState->display); /* Close X communication */
+            FPL_LOG("X11", "No visual info found for either 32 or 24-bit colors!");
+            return false;
+        }
+    }
+    outResult->visual = vinfo.visual;
+    outResult->colorDepth = vinfo.depth;
+    return true;
+}
+
+fpl_internal void fpl__X11ReleaseVideoSoftware(const fpl__X11SubplatformState *subplatform, const fpl__X11WindowState *windowState, fpl__X11VideoSoftwareState *softwareState) {
+	const fpl__X11Api *x11Api = &subplatform->api;
+
+	if (softwareState->buffer != fpl_null) {
+	    // @NOTE(final): Dont use XDestroyImage here, as it points to the backbuffer memory directly - which is released later
+        softwareState->buffer = fpl_null;
+	}
+
+	if (softwareState->graphicsContext != fpl_null) {
+        softwareState->graphicsContext = fpl_null;
+	}
+}
+
+fpl_internal bool fpl__X11InitVideoSoftware(const fpl__X11SubplatformState *subplatform, const fpl__X11WindowState *windowState, const fplVideoSettings *videoSettings, const fplVideoBackBuffer *backbuffer, fpl__X11VideoSoftwareState *softwareState) {
+	const fpl__X11Api *x11Api = &subplatform->api;
+
+    // Based on: https://bbs.archlinux.org/viewtopic.php?id=225741
+	softwareState->graphicsContext = x11Api->XCreateGC(windowState->display, windowState->window, 0, 0);
+    if (softwareState->graphicsContext == fpl_null) {
+        return false;
+    }
+
+    softwareState->buffer = x11Api->XCreateImage(windowState->display, windowState->visual, 24, ZPixmap, 0, (char *)backbuffer->pixels, backbuffer->width, backbuffer->height, 32, (int)backbuffer->lineWidth);
+    if (softwareState->buffer == fpl_null) {
+        fpl__X11ReleaseVideoSoftware(subplatform, windowState, softwareState);
+        return false;
+    }
+
+    // Initial draw pixels to the window
+    x11Api->XPutImage(windowState->display, windowState->window, softwareState->graphicsContext, softwareState->buffer, 0, 0, 0, 0, backbuffer->width, backbuffer->height);
+    x11Api->XSync(windowState->display, False);
+
+    return (true);
+}
+#endif // FPL_ENABLE_VIDEO_SOFTWARE && FPL_SUBPLATFORM_X11
 
 // ############################################################################
 //
@@ -13584,7 +13681,7 @@ fpl_internal fplAudioResult fpl__InitAudio(const fplAudioSettings *audioSettings
 #if defined(FPL_ENABLE_VIDEO)
 
 #if defined(FPL_PLATFORM_WIN32)
-typedef struct fpl__Win32VideoState {
+typedef union fpl__Win32VideoState {
 #	if defined(FPL_ENABLE_VIDEO_OPENGL)
 	fpl__Win32VideoOpenGLState opengl;
 #	endif
@@ -13595,9 +13692,12 @@ typedef struct fpl__Win32VideoState {
 #endif // FPL_PLATFORM_WIN32
 
 #if defined(FPL_SUBPLATFORM_X11)
-typedef struct fpl__X11VideoState {
+typedef union fpl__X11VideoState {
 #	if defined(FPL_ENABLE_VIDEO_OPENGL)
 	fpl__X11VideoOpenGLState opengl;
+#	endif
+#	if defined(FPL_ENABLE_VIDEO_SOFTWARE)
+	fpl__X11VideoSoftwareState software;
 #	endif
 } fpl__X11VideoState;
 #endif // FPL_SUBPLATFORM_X11
@@ -13646,6 +13746,7 @@ fpl_internal void fpl__ShutdownVideo(fpl__PlatformAppState *appState, fpl__Video
 #			if defined(FPL_PLATFORM_WIN32)
 				fpl__Win32ReleaseVideoSoftware(&videoState->win32.software);
 #			elif defined(FPL_SUBPLATFORM_X11)
+				fpl__X11ReleaseVideoSoftware(&appState->x11, &appState->window.x11, &videoState->x11.software);
 #			endif
 			} break;
 #		endif // FPL_ENABLE_VIDEO_SOFTWARE
@@ -13721,7 +13822,7 @@ fpl_internal bool fpl__InitVideo(const fplVideoDriverType driver, const fplVideo
 	videoState->activeDriver = driver;
 
 	// Allocate backbuffer context if needed
-#		if defined(FPL_ENABLE_VIDEO_SOFTWARE)
+#	if defined(FPL_ENABLE_VIDEO_SOFTWARE)
 	if (driver == fplVideoDriverType_Software) {
 		fplVideoBackBuffer *backbuffer = &videoState->softwareBackbuffer;
 		backbuffer->width = windowWidth;
@@ -13746,7 +13847,7 @@ fpl_internal bool fpl__InitVideo(const fplVideoDriverType driver, const fplVideo
 			}
 		}
 	}
-#		endif // FPL_ENABLE_VIDEO_SOFTWARE
+#	endif // FPL_ENABLE_VIDEO_SOFTWARE
 
 	bool videoInitResult = false;
 	switch (driver) {
@@ -13767,6 +13868,7 @@ fpl_internal bool fpl__InitVideo(const fplVideoDriverType driver, const fplVideo
 #		if defined(FPL_PLATFORM_WIN32)
 			videoInitResult = fpl__Win32InitVideoSoftware(&videoState->softwareBackbuffer, &videoState->win32.software);
 #		elif defined(FPL_SUBPLATFORM_X11)
+			videoInitResult = fpl__X11InitVideoSoftware(&appState->x11, &appState->window.x11, videoSettings, &videoState->softwareBackbuffer, &videoState->x11.software);
 #		endif
 		} break;
 #	endif // FPL_ENABLE_VIDEO_SOFTWARE
@@ -13810,6 +13912,15 @@ fpl_internal FPL__FUNC_PRE_SETUP_WINDOW(fpl__PreSetupWindowDefault) {
 				if (fpl__X11InitFrameBufferConfigVideoOpenGL(&appState->x11.api, &appState->window.x11, &videoState->x11.opengl)) {
 					result = fpl__X11SetPreWindowSetupForOpenGL(&appState->x11.api, &appState->window.x11, &videoState->x11.opengl, &outResult->x11);
 				}
+#			endif
+			} break;
+#		endif // FPL_ENABLE_VIDEO_OPENGL
+
+#		if defined(FPL_ENABLE_VIDEO_SOFTWARE)
+            case fplVideoDriverType_Software:
+			{
+#			if defined(FPL_SUBPLATFORM_X11)
+                result = fpl__X11SetPreWindowSetupForSoftware(&appState->x11.api, &appState->window.x11, &videoState->x11.software, &outResult->x11);
 #			endif
 			} break;
 #		endif // FPL_ENABLE_VIDEO_OPENGL
@@ -14223,6 +14334,17 @@ fpl_common_api void fplVideoFlip() {
 			{
 				const fpl__X11VideoOpenGLApi *glApi = &videoState->x11.opengl.api;
 				glApi->glXSwapBuffers(x11WinState->display, x11WinState->window);
+			} break;
+#		endif
+
+#		if defined(FPL_ENABLE_VIDEO_SOFTWARE)
+            case fplVideoDriverType_Software:
+			{
+				const fpl__X11Api *x11Api = &appState->x11.api;
+				const fpl__X11VideoSoftwareState *softwareState = &videoState->x11.software;
+                const fplVideoBackBuffer *backbuffer = &videoState->softwareBackbuffer;
+                x11Api->XPutImage(x11WinState->display, x11WinState->window, softwareState->graphicsContext, softwareState->buffer, 0, 0, 0, 0, backbuffer->width, backbuffer->height);
+                x11Api->XSync(x11WinState->display, False);
 			} break;
 #		endif
 
