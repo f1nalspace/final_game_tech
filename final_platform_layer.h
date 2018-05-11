@@ -739,15 +739,13 @@ SOFTWARE.
 
 	- POSIX
 		- Files & Path
-			- File/Dir iteration
+			- File wildcard matching
 	- Linux/Unix
 		- Window (X11)
 			- Toggle Resizable
 			- Toggle Decorated
 			- Toggle Floating
 			- Show/Hide Cursor
-		- Video
-			- Software backbuffer (X11)
 	- Threading
 		- eventfd for Unix
 		- Semaphores
