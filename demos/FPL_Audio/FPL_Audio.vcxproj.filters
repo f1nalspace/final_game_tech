@@ -2,8 +2,12 @@
 <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup>
     <ClInclude Include="..\..\final_platform_layer.h" />
+    <ClInclude Include="waveloader.h" />
+    <ClInclude Include="audiosystem.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="fpl_audio.c" />
+    <ClCompile Include="waveloader.c" />
+    <ClCompile Include="audiosystem.c" />
   </ItemGroup>
 </Project>

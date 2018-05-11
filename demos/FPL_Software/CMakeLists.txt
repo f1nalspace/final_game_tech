@@ -5,18 +5,15 @@ cmake_minimum_required(VERSION 3.10)
 # Project settings
 #
 # -----------------------------------------------------------------------------
-project(FOGL_Test)
+project(FPL_Software)
 
 set(CMAKE_C_FLAGS "-std=c99")
 
 set(MY_EXTERNAL_LIBS "")
 
 set(MY_HEADER_FILES ../../final_platform_layer.h)
-set(MY_HEADER_FILES ../../final_dynamic_opengl.h)
 
-set(MY_INCLUDE_DIRS "")
-
-set(MY_SOURCE_FILES fogl_test.c)
+set(MY_SOURCE_FILES fpl_software.c final_platform_layer.c )
 
 # -----------------------------------------------------------------------------
 #

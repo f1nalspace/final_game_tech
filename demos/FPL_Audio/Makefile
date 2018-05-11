@@ -1,7 +1,7 @@
 # Project
 APP_NAME = FPL_Audio
-SOURCE_FILES = fpl_audio.cpp
-LIBS = -ldl
+SOURCE_FILES = fpl_audio.c waveloader.c
+LIBS = -ldl -lm
 INCLUDES = -I../../
 
 # Auto detect release type/platform/architecture
@@ -27,7 +27,7 @@ prepare:
 	mkdir -p $(BUILD_DIR)
 
 build:
-	g++ -std=c++11 $(CFLAGS) $(INCLUDES) $(SOURCE_FILES) $(LIBS) -o $(BUILD_DIR)/$(EXECUTABLE)
+	gcc -std=c99 $(CFLAGS) $(INCLUDES) $(SOURCE_FILES) $(LIBS) -o $(BUILD_DIR)/$(EXECUTABLE)
 
 clean:
 	rm -rf $(BUILD_DIR)

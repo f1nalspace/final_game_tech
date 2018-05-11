@@ -11,6 +11,9 @@ Requirements:
 Author:
 	Torsten Spaete
 Changelog:
+	## 2018-05-05:
+ 	- Fixed CMakeLists compile errors
+ 	- Fixed Makefile compile errors
 	## 2018-04-24:
 	- Fixed compile errors (FPL api change)
 	## 2018-04-23:

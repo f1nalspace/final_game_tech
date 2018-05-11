@@ -705,8 +705,6 @@ static bool GameInit(GameState &state) {
 		return false;
 	}
 
-	fplConsoleFormatOut("%f\n", PaddleAspect);
-
 	fplGetExecutableFilePath(state.dataPath, FPL_ARRAYCOUNT(state.dataPath));
 	fplExtractFilePath(state.dataPath, state.dataPath, FPL_ARRAYCOUNT(state.dataPath));
 	fplPathCombine(state.dataPath, FPL_ARRAYCOUNT(state.dataPath), 2, state.dataPath, "data");

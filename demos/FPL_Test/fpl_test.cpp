@@ -9,6 +9,8 @@ Requirements:
 Author:
 	Torsten Spaete
 Changelog:
+    ## 2018-05-10:
+    - Small bugfixes
 	## 2018-04-27:
 	- Added wrap test for unsigned integers for AtomicExchange
 	## 2018-04-23:
@@ -389,7 +391,7 @@ static void TestHardware() {
 	ft::Msg("Processor name: %s\n", cpuNameBuffer);
 
 	size_t coreCount = fplGetProcessorCoreCount();
-	ft::Msg("Processor cores: %z\n", coreCount);
+	ft::Msg("Processor cores: %zu\n", coreCount);
 
 	fplMemoryInfos memInfos;
 	if(fplGetRunningMemoryInfos(&memInfos)) {

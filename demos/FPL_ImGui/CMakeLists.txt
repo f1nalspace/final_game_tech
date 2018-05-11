@@ -7,9 +7,7 @@ cmake_minimum_required(VERSION 3.10)
 # -----------------------------------------------------------------------------
 project(FPL_ImGui)
 
-set(MY_EXTERNAL_LIBS
-        GL
-        )
+set(MY_EXTERNAL_LIBS m GL)
 
 set(MY_HEADER_FILES
         ../../final_platform_layer.h
