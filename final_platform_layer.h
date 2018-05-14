@@ -12169,7 +12169,7 @@ fpl_internal BOOL CALLBACK fpl__GetDeviceCallbackDirectSound(LPGUID lpGuid, LPCS
 	return FALSE;
 }
 
-fpl_internal uint32_t fpl__GetDevicesDirectSound(fpl__DirectSoundAudioState *dsoundState, fplAudioDeviceInfo *deviceInfos, uint32_t maxDeviceCount) {
+fpl_internal uint32_t fpl__GetAudioDevicesDirectSound(fpl__DirectSoundAudioState *dsoundState, fplAudioDeviceInfo *deviceInfos, uint32_t maxDeviceCount) {
 	uint32_t result = 0;
 	const fpl__DirectSoundApi *dsoundApi = &dsoundState->api;
 	fpl__DirectSoundDeviceInfos infos = FPL_ZERO_INIT;
@@ -13235,6 +13235,105 @@ fpl_internal fplAudioResult fpl__AudioInitAlsa(const fplAudioSettings *audioSett
 	return fplAudioResult_Success;
 }
 
+fpl_internal uint32_t fpl__GetAudioDevicesAlsa(fpl__AlsaAudioState *alsaState, fplAudioDeviceInfo *deviceInfos, uint32_t maxDeviceCount) {
+    const fpl__AlsaAudioApi *alsaApi = &alsaState->api;
+    char** ppDeviceHints;
+    if (alsaApi->snd_device_name_hint(-1, "pcm", (void ***)&ppDeviceHints) < 0) {
+        return 0;
+    }
+    uint32_t result = 0;
+    char** ppNextDeviceHint = ppDeviceHints;
+    while (*ppNextDeviceHint != NULL) {
+        char* name = alsaApi->snd_device_name_get_hint(*ppNextDeviceHint, "NAME");
+        char* desc = alsaApi->snd_device_name_get_hint(*ppNextDeviceHint, "DESC");
+        char* ioid = alsaApi->snd_device_name_get_hint(*ppNextDeviceHint, "IOID");
+
+        // Only include output or default devices
+        bool allowDevice = false;
+        if (fplIsStringEqual(name, "default") || fplIsStringEqual(name, "pulse")) {
+			allowDevice = true;
+        } else {
+        	if (fplIsStringEqual(ioid, "Output")) {
+				allowDevice = true;
+        	}
+        }
+
+        if (allowDevice) {
+            // @TODO(final): There are linebreaks in descriptions O_o
+
+            /*
+Name: default -> Playback/recording through the PulseAudio sound server ((null))
+Name: pulse -> PulseAudio Sound Server ((null))
+Name: surround21:CARD=PCH,DEV=0 -> HDA Intel PCH, ALC1150 Analog
+2.1 Surround output to Front and Subwoofer speakers (Output)
+Name: surround40:CARD=PCH,DEV=0 -> HDA Intel PCH, ALC1150 Analog
+4.0 Surround output to Front and Rear speakers (Output)
+Name: surround41:CARD=PCH,DEV=0 -> HDA Intel PCH, ALC1150 Analog
+4.1 Surround output to Front, Rear and Subwoofer speakers (Output)
+Name: surround50:CARD=PCH,DEV=0 -> HDA Intel PCH, ALC1150 Analog
+5.0 Surround output to Front, Center and Rear speakers (Output)
+Name: surround51:CARD=PCH,DEV=0 -> HDA Intel PCH, ALC1150 Analog
+5.1 Surround output to Front, Center, Rear and Subwoofer speakers (Output)
+Name: surround71:CARD=PCH,DEV=0 -> HDA Intel PCH, ALC1150 Analog
+7.1 Surround output to Front, Center, Side, Rear and Woofer speakers (Output)
+Name: hdmi:CARD=NVidia,DEV=0 -> HDA NVidia, HDMI 0
+HDMI Audio Output (Output)
+Name: hdmi:CARD=NVidia,DEV=1 -> HDA NVidia, HDMI 1
+HDMI Audio Output (Output)
+Name: hdmi:CARD=NVidia,DEV=2 -> HDA NVidia, HDMI 2
+HDMI Audio Output (Output)
+Name: hdmi:CARD=NVidia,DEV=3 -> HDA NVidia, HDMI 3
+HDMI Audio Output (Output)
+Name: dmix:CARD=NVidia,DEV=3 -> HDA NVidia, HDMI 0
+Direct sample mixing device (Output)
+Name: dmix:CARD=NVidia,DEV=7 -> HDA NVidia, HDMI 1
+Direct sample mixing device (Output)
+Name: dmix:CARD=NVidia,DEV=8 -> HDA NVidia, HDMI 2
+Direct sample mixing device (Output)
+Name: dmix:CARD=NVidia,DEV=9 -> HDA NVidia, HDMI 3
+Direct sample mixing device (Output)
+Name: dsnoop:CARD=NVidia,DEV=3 -> HDA NVidia, HDMI 0
+Direct sample snooping device (Output)
+Name: dsnoop:CARD=NVidia,DEV=7 -> HDA NVidia, HDMI 1
+Direct sample snooping device (Output)
+Name: dsnoop:CARD=NVidia,DEV=8 -> HDA NVidia, HDMI 2
+Direct sample snooping device (Output)
+Name: dsnoop:CARD=NVidia,DEV=9 -> HDA NVidia, HDMI 3
+Direct sample snooping device (Output)
+Name: hw:CARD=NVidia,DEV=3 -> HDA NVidia, HDMI 0
+Direct hardware device without any conversions (Output)
+Name: hw:CARD=NVidia,DEV=7 -> HDA NVidia, HDMI 1
+Direct hardware device without any conversions (Output)
+Name: hw:CARD=NVidia,DEV=8 -> HDA NVidia, HDMI 2
+Direct hardware device without any conversions (Output)
+Name: hw:CARD=NVidia,DEV=9 -> HDA NVidia, HDMI 3
+Direct hardware device without any conversions (Output)
+Name: plughw:CARD=NVidia,DEV=3 -> HDA NVidia, HDMI 0
+Hardware device with all software conversions (Output)
+Name: plughw:CARD=NVidia,DEV=7 -> HDA NVidia, HDMI 1
+Hardware device with all software conversions (Output)
+Name: plughw:CARD=NVidia,DEV=8 -> HDA NVidia, HDMI 2
+Hardware device with all software conversions (Output)
+Name: plughw:CARD=NVidia,DEV=9 -> HDA NVidia, HDMI 3
+Hardware device with all software conversions (Output)
+        */
+
+
+			fplConsoleFormatOut("Name: %s -> %s (%s)\n", name, desc, ioid);
+		}
+
+        free(ioid);
+        free(desc);
+        free(name);
+
+        ppNextDeviceHint += 1;
+    }
+
+    alsaApi->snd_device_name_free_hint((void**)ppDeviceHints);
+
+    return(result);
+}
+
 #endif // FPL_ENABLE_AUDIO_ALSA
 
 #endif // FPL_AUDIO_DRIVERS_IMPLEMENTED
@@ -14207,9 +14306,17 @@ fpl_common_api uint32_t fplGetAudioDevices(fplAudioDeviceInfo *devices, uint32_t
 #		if defined(FPL_ENABLE_AUDIO_DIRECTSOUND)
 			case fplAudioDriverType_DirectSound:
 			{
-				result = fpl__GetDevicesDirectSound(&audioState->dsound, devices, maxDeviceCount);
+				result = fpl__GetAudioDevicesDirectSound(&audioState->dsound, devices, maxDeviceCount);
 			} break;
 #		endif
+
+#		if defined(FPL_ENABLE_AUDIO_ALSA)
+			case fplAudioDriverType_Alsa:
+			{
+				result = fpl__GetAudioDevicesAlsa(&audioState->alsa, devices, maxDeviceCount);
+			} break;
+#		endif
+
 			default:
 				break;
 		}
