@@ -15,7 +15,7 @@ set(MY_HEADER_FILES ../../final_platform_layer.h)
 
 set(MY_INCLUDE_DIRS "")
 
-set(MY_SOURCE_FILES fpl_audio.c waveloader.c)
+set(MY_SOURCE_FILES fpl_audio.c audiosystem.c waveloader.c)
 
 # -----------------------------------------------------------------------------
 #
