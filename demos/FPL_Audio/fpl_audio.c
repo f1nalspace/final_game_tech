@@ -10,6 +10,8 @@ Requirements:
 Author:
 	Torsten Spaete
 Changelog:
+ 	## 2018-05-13
+ 	- Fixed Makefiles (Missing audiosystem.c)
 	## 2018-05-09
 	- Introduced audio system -> Prepare for mixing
 	- Add support for audio format conversions
@@ -30,8 +32,8 @@ Changelog:
 -------------------------------------------------------------------------------
 */
 
-#define FPL_IMPLEMENTATION
 #define FPL_NO_WINDOW
+#define FPL_IMPLEMENTATION
 #include <final_platform_layer.h>
 #include <math.h> // sinf
 
