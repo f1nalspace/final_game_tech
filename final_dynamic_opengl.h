@@ -4800,8 +4800,8 @@ typedef struct fglPosixOpenGLApi {
 } fglPosixOpenGLApi;
 
 static void fgl__PosixUnloadOpenGL(fglPosixOpenGLApi *state) {
-	if(state->posix_glx.libraryHandle != fgl_null) {
-		dlclose(state->posix_glx.libraryHandle);
+	if(state->libraryHandle != fgl_null) {
+		dlclose(state->libraryHandle);
 	}
 	fgl__ClearMemory(state, sizeof(*state));
 }
@@ -4815,7 +4815,7 @@ static bool fgl__PosixLoadOpenGL(struct fglOpenGLState *state, fglPosixOpenGLApi
 	for(int i = 0; i < FGL_ARRAYCOUNT(posixLibraryNames); ++i) {
 		glLibraryHandle = dlopen(posixLibraryNames[i], RTLD_NOW);
 		if(glLibraryHandle != fgl_null) {
-			api->glXGetProcAddress = (glx_func_glXGetProcAddress *)dlsym(glLibraryHandle, "glXGetProcAddress");
+			api->glXGetProcAddress = (fgl_func_posix_glx_glXGetProcAddress *)dlsym(glLibraryHandle, "glXGetProcAddress");
 			break;
 		}
 	}
@@ -4841,7 +4841,7 @@ typedef struct fglOpenGLState {
 #		if defined(FGL_PLATFORM_WIN32)
 		fglWin32OpenGLApi win32;
 #		elif defined(FGL_PLATFORM_POSIX)
-		fglWin32OpenGLApi posix;
+		fglPosixOpenGLApi posix;
 #		endif
 	};
 	char lastError[256];
@@ -4869,9 +4869,9 @@ static void *fgl__GetOpenGLProcAddress(const fglOpenGLState *state, const char *
 		result = state->win32.opengl32.wglGetProcAddress(name);
 	}
 #	elif defined(FGL_PLATFORM_POSIX)
-	result = dlsym(state->posix_glx.libraryHandle, name);
+	result = dlsym(state->posix.libraryHandle, name);
 	if(result == fgl_null) {
-		result = state->posix_glx.glXGetProcAddress(name);
+		result = state->posix.glXGetProcAddress(name);
 	}
 #	endif
 	return(result);
@@ -5982,7 +5982,7 @@ static bool fgl__LoadOpenGL(fglOpenGLState *state) {
 		return false;
 	}
 #elif defined(FGL_PLATFORM_POSIX)
-	if(!fgl__PosixLoadOpenGL(state, &state->posix_glx)) {
+	if(!fgl__PosixLoadOpenGL(state, &state->posix)) {
 		return false;
 	}
 #endif
@@ -5996,7 +5996,7 @@ static void fgl__UnloadOpenGL(fglOpenGLState *state) {
 #if defined(FGL_PLATFORM_WIN32)
 		fgl__Win32UnloadOpenGL(&state->win32);
 #elif defined(FGL_PLATFORM_POSIX)
-		fgl__PosixUnloadOpenGL(&state->posix_glx);
+		fgl__PosixUnloadOpenGL(&state->posix);
 #endif
 	}
 	fgl__ClearMemory(state, sizeof(*state));
@@ -6012,7 +6012,7 @@ static void fgl__DestroyOpenGLContext(fglOpenGLState *state, fglOpenGLContext *c
 #if defined(FGL_PLATFORM_WIN32)
 	fgl__Win32DestroyOpenGLContext(&state->win32, context);
 #elif defined(FGL_PLATFORM_POSIX)
-	fgl__PosixDestroyOpenGLContext(&state->posix_glx, context);
+	fgl__PosixDestroyOpenGLContext(&state->posix, context);
 #endif
 	fgl__ClearMemory(context, sizeof(*context));
 }
@@ -6040,7 +6040,7 @@ static bool fgl__CreateOpenGLContext(fglOpenGLState *state, const fglOpenGLConte
 		return false;
 	}
 #	elif defined(FGL_PLATFORM_POSIX)
-	if(!fgl__PosixCreateOpenGLContext(state, &state->posix_glx, contextCreationParams, outContext)) {
+	if(!fgl__PosixCreateOpenGLContext(state, &state->posix, contextCreationParams, outContext)) {
 		return false;
 	}
 #	endif
