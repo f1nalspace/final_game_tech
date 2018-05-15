@@ -6,11 +6,15 @@ Description:
 	This demo is used to test all the things. It is basically a unit-test.
 Requirements:
 	- C++
+	- Final Platform Layer
 Author:
 	Torsten Spaete
 Changelog:
-    ## 2018-05-10:
-    - Small bugfixes
+	## 2018-05-15:
+	- Corrected for api change in FPL v0.8.1+
+	- Added semaphores sync test
+	## 2018-05-10:
+	- Small bugfixes
 	## 2018-04-27:
 	- Added wrap test for unsigned integers for AtomicExchange
 	## 2018-04-23:
@@ -32,11 +36,11 @@ Changelog:
 static void TestColdInit() {
 	ft::Msg("Test Cold-Initialize of InitPlatform\n");
 	{
-		size_t errorCount = fplGetPlatformErrorCount();
+		size_t errorCount = fplGetErrorCount();
 		ft::AssertSizeEquals(0, errorCount);
 		fplInitResultType result = fplPlatformInit(fplInitFlags_None, nullptr);
 		FT_ASSERT(result == fplInitResultType_Success);
-		const char *errorStr = fplGetPlatformError();
+		const char *errorStr = fplGetLastError();
 		ft::AssertStringEquals("", errorStr);
 		fplPlatformRelease();
 	}
@@ -45,33 +49,33 @@ static void TestColdInit() {
 static void TestInit() {
 	ft::Msg("Test InitPlatform with All init flags\n");
 	{
-		fplClearPlatformErrors();
+		fplClearErrors();
 		fplInitResultType result = fplPlatformInit(fplInitFlags_All, nullptr);
 		FT_ASSERT(result == fplInitResultType_Success);
-		const char *errorStr = fplGetPlatformError();
+		const char *errorStr = fplGetLastError();
 		ft::AssertStringEquals("", errorStr);
 		fplPlatformRelease();
 	}
 	ft::Msg("Test InitPlatform with None init flags\n");
 	{
-		fplClearPlatformErrors();
+		fplClearErrors();
 		fplInitResultType result = fplPlatformInit(fplInitFlags_None, fpl_null);
 		FT_ASSERT(result == fplInitResultType_Success);
 		const fplSettings *settings = fplGetCurrentSettings();
 		FT_IS_NOT_NULL(settings);
-		const char *errorStr = fplGetPlatformError();
+		const char *errorStr = fplGetLastError();
 		ft::AssertStringEquals("", errorStr);
 		fplPlatformRelease();
 	}
 	ft::Msg("Test fplGetCurrentSettings in non-initialized state\n");
 	{
 		FT_IS_FALSE(fpl__global__InitState.isInitialized);
-		fplClearPlatformErrors();
+		fplClearErrors();
 		const fplSettings *settings = fplGetCurrentSettings();
 		FT_IS_NULL(settings);
-		size_t errorCount = fplGetPlatformErrorCount();
+		size_t errorCount = fplGetErrorCount();
 		ft::AssertSizeEquals(1, errorCount);
-		const char *errorStr = fplGetPlatformError();
+		const char *errorStr = fplGetLastError();
 		ft::AssertStringNotEquals("", errorStr);
 	}
 }
@@ -447,9 +451,8 @@ static void SimpleMultiThreadTest(const size_t threadCount) {
 }
 
 struct MutableThreadData {
-	fplMutexHandle lock;
+	fplSemaphoreHandle semaphore;
 	volatile int32_t value;
-	bool useLock;
 };
 
 struct WriteThreadData {
@@ -466,24 +469,24 @@ struct ReadThreadData {
 
 static void WriteDataThreadProc(const fplThreadHandle *context, void *data) {
 	WriteThreadData *d = (WriteThreadData *)data;
+	ft::Msg("Sleep in thread %d for %d ms\n", d->base.num, d->base.sleepFor);
 	fplThreadSleep(d->base.sleepFor);
 	fplAtomicStoreS32(&d->data->value, d->valueToWrite);
 }
 
 static void ReadDataThreadProc(const fplThreadHandle *context, void *data) {
 	ReadThreadData *d = (ReadThreadData *)data;
+	ft::Msg("Sleep in thread %d for %d ms\n", d->base.num, d->base.sleepFor);
 	fplThreadSleep(d->base.sleepFor);
 	int32_t actualValue = fplAtomicLoadS32(&d->data->value);
 	FT_EXPECTS(d->expectedValue, actualValue);
 }
 
-static void SyncThreadsTest() {
+static void SyncThreadsTestAtomics() {
 	ft::Line();
-	ft::Msg("Sync test for 1 reader and 1 writer\n");
+	ft::Msg("Sync test for 1 reader and 1 writer using atomics\n");
 	{
 		MutableThreadData mutableData = {};
-		FT_IS_TRUE(fplMutexInit(&mutableData.lock));
-		mutableData.useLock = false;
 		mutableData.value = 0;
 
 		ReadThreadData readData = {};
@@ -513,7 +516,56 @@ static void SyncThreadsTest() {
 			FT_EXPECTS(fplThreadState_Stopped, threads[index]->currentState);
 			fplThreadTerminate(threads[index]);
 		}
-		fplMutexDestroy(&mutableData.lock);
+	}
+}
+
+static void WriteDataSemaphoreThreadProc(const fplThreadHandle *context, void *data) {
+	WriteThreadData *d = (WriteThreadData *)data;
+	ft::Msg("Sleep in thread %d for %d ms\n", d->base.num, d->base.sleepFor);
+	fplThreadSleep(d->base.sleepFor);
+	ft::Msg("Wait for semaphore in thread %d\n", d->base.num);
+	fplSemaphoreWait(&d->data->semaphore, FPL_TIMEOUT_INFINITE);
+	int32_t v = d->data->value;
+	if(d->base.num % 2 == 0) {
+		v--;
+	} else {
+		v++;
+	}
+	d->data->value = v;
+	fplSemaphorePost(&d->data->semaphore);
+}
+
+static void SyncThreadsTestSemaphores(const uint32_t numWriters) {
+	FT_IS_TRUE(numWriters >= 2);
+
+	ft::Line();
+	ft::Msg("Sync test for %lu writers using semaphores\n", numWriters);
+	{
+		MutableThreadData mutableData = {};
+		FT_IS_TRUE(fplSemaphoreInit(&mutableData.semaphore, (numWriters - 1)));
+		mutableData.value = 0;
+
+		WriteThreadData writeDatas[FPL__MAX_THREAD_COUNT] = {};
+		fplThreadHandle *threads[FPL__MAX_THREAD_COUNT] = {};
+		ft::Msg("Start %lu threads\n", numWriters);
+		for(uint32_t i = 0; i < numWriters; ++i) {
+			writeDatas[i].base.num = i + 1;
+			writeDatas[i].base.sleepFor = 3000;
+			writeDatas[i].data = &mutableData;
+			threads[i] = fplThreadCreate(WriteDataSemaphoreThreadProc, &writeDatas[i]);
+		}
+
+		ft::Msg("Wait for %lu threads to exit\n", numWriters);
+		fplThreadWaitForAll(threads, numWriters, UINT32_MAX);
+		int32_t expectedValue = (numWriters % 2 == 0) ? 0 : 1;
+		ft::AssertS32Equals(expectedValue, mutableData.value);
+
+		ft::Msg("Release resources for %lu threads\n", numWriters);
+		for(uint32_t index = 0; index < numWriters; ++index) {
+			FT_EXPECTS(fplThreadState_Stopped, threads[index]->currentState);
+			fplThreadTerminate(threads[index]);
+		}
+		fplSemaphoreDestroy(&mutableData.semaphore);
 	}
 }
 
@@ -645,7 +697,11 @@ static void TestThreading() {
 		// Sync tests
 		//
 		{
-			SyncThreadsTest();
+			SyncThreadsTestAtomics();
+			SyncThreadsTestSemaphores(2);
+			SyncThreadsTestSemaphores(3);
+			SyncThreadsTestSemaphores(4);
+			SyncThreadsTestSemaphores(threadCountForCores);
 		}
 
 		//
