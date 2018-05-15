@@ -25,10 +25,10 @@ Changelog:
 
 int main(int argc, char *args[]) {
 	if (fplPlatformInit(fplInitFlags_All, NULL)) {
-		fplConsoleOut("Hello World");
-		fplConsoleFormatOut("%s %s %d", "Hello", "World", 42);
-		fplConsoleError("Error: Hello World!");
-		fplConsoleFormatError("Error: %s %s %d!", "Hello", "World", 42);
+		fplConsoleOut("Hello World\n");
+		fplConsoleFormatOut("%s %s %d\n", "Hello", "World", 42);
+		fplConsoleError("Error: Hello World!\n");
+		fplConsoleFormatError("Error: %s %s %d!\n", "Hello", "World", 42);
 		fplConsoleOut("Press enter a key: ");
 		int key = fplConsoleWaitForCharInput();
 		fplConsoleFormatOut("You pressed '%c'\n", key);
