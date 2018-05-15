@@ -102,7 +102,7 @@ int main(int argc, char **args) {
 		return -1;
 	}
 
-	fplAudioDeviceInfo audioDeviceInfos[16] = FPL_ZERO_INIT;
+	fplAudioDeviceInfo audioDeviceInfos[64] = FPL_ZERO_INIT;
 	uint32_t deviceCount = fplGetAudioDevices(audioDeviceInfos, FPL_ARRAYCOUNT(audioDeviceInfos));
 	if(deviceCount > 0) {
 		settings.audio.deviceInfo = audioDeviceInfos[0];
