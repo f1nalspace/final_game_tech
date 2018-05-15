@@ -352,7 +352,7 @@
 	Also you should release the platform when the initialization was successful only!<br>
 	If something goes wrong the remaining resources are already cleaned up by FPL automatically.<br>
 	<br>
-	In addition you should use \ref fplGetPlatformError() to print out the actual error when the initialization fails!<br>
+	In addition you should use \ref fplGetLastError() to print out the actual error when the initialization fails!<br>
 
 	<b>Bad:</b> (But will work)
 	\code{.c}
@@ -376,7 +376,7 @@
 		// your code here
 		fplPlatformRelease();
 	} else {
-		const char *errStr = fplGetPlatformError();
+		const char *errStr = fplGetLastError();
 		fplConsoleFormatError("FPL-ERROR: %s\n", errStr);
 	}
 	\endcode
@@ -388,7 +388,7 @@
 		// your code here
 		fplPlatformRelease();
 	} else {
-		const char *errStr = fplGetPlatformError();
+		const char *errStr = fplGetLastError();
 		const char *initResultStr = fplGetInitResultTypeString(initResult);
 		fplConsoleFormatError("FPL-ERROR[%s]: %s\n", initResultStr, errStr);
 	}
@@ -406,33 +406,33 @@
 
 	\section section_otutorial_errorhandling_getlatest Get latest error
 
-	In case something goes wrong you can always call \ref fplGetPlatformError() - at any time, regardless if it is initialized or not.<br>
+	In case something goes wrong you can always call \ref fplGetLastError() - at any time, regardless if it is initialized or not.<br>
 	This either returns a empty string indicating everything is fine or a constant string with a valid error message.<br>
 
 	Example:
 	\code{.c}
-	const char *errStr = fplGetPlatformError();
+	const char *errStr = fplGetLastError();
 	// Do something with the error string
 	\endcode
 
 	\section section_otutorial_errorhandling_count Was there a error?
 
-	If you just want to check if there was an error, you can call \ref fplGetPlatformErrorCount() to use the number of errors as a condition.<br>
+	If you just want to check if there was an error, you can call \ref fplGetErrorCount() to use the number of errors as a condition.<br>
 
 	Example:
 	\code{.c}
-	if (fplGetPlatformErrorCount()) {
+	if (fplGetErrorCount()) {
 		// Print out the error message
 	}
 	\endcode
 
 	\section section_otutorial_errorhandling_clear Clearing the errors
 
-	Errors will never be cleared by FPL! You have to do this yourself using \ref fplClearPlatformErrors() .<br>
+	Errors will never be cleared by FPL! You have to do this yourself using \ref fplClearErrors() .<br>
 
 	Example:
 	\code{.c}
-	fplClearPlatformErrors();
+	fplClearErrors();
 	\endcode
 
 	\section section_otutorial_errorhandling_note Note
@@ -1701,16 +1701,16 @@
 		</tr>
 
 		<tr>
-			<td>Error handling</td>
-			<td>FPL_NO_MULTIPLE_ERRORSTATES</td>
-			<td>Define this to use a single error state for \ref fplGetPlatformError() instead of multiple ones.</td>
+			<td>Logging</td>
+			<td>FPL_LOGGING</td>
+			<td>Define this to enable logging.</td>
 			<td>Not set by default</td>
 		</tr>
 		<tr>
-			<td>Error handling</td>
-			<td>FPL_NO_ERROR_IN_CONSOLE</td>
-			<td>Define this to disable printing any platform specific errors to the console.</td>
-			<td>By default all platform specific error will be printed to the error console.</td>
+			<td>Logging</td>
+			<td>FPL_LOG_MULTIPLE_WRITERS</td>
+			<td>Define this to support multiple log writers, so you can have a writer for each log level.</td>
+			<td>Not set by default</td>
 		</tr>
 
 		<tr>
