@@ -150,7 +150,7 @@ SOFTWARE.
 	- New: Added fplSemaphoreWait()
 	- New: Added fplSemaphoreTryWait()
 	- New: Added fplSemaphoreValue()
-	- New: Added fplSemaphorePost()
+	- New: Added fplSemaphoreRelease()
 
 	- Changed: [ALSA] Allow user selection of audio device id
 	- Fixed: [Win32] WaitForMultipleObjects >= WAIT_OBJECT_0 bugfix
@@ -753,78 +753,81 @@ SOFTWARE.
 
 	- Windows
 	- Linux (Partially, In-Progress)
-	- Unix (Partially, In-Progress)
 
 	\section section_platform_status_planned_platforms Planned Platforms
+
+	- Rasberry Pi
+	- Unix (BSD family)
+
+	\section section_platform_status_optional_platforms Optional Platforms
 
 	- MacOSX
 */
 
 /*!
-	\page page_todo ToDo / Planned (Random order)
+	\page page_todo ToDo / Planned (Top priority order)
 	\tableofcontents
 
-	\section section_todo_required In progress / Todo
+	\section section_todo_inprogress In progress
+	
+	- Correct all function documentations!
 
-	- Files & Path
-		- File wildcard matching (POSIX)
+	- Input
+		- Gamepad support (Linux)
+
 	- Window (X11)
 		- Toggle Resizable (X11)
 		- Toggle Decorated (X11)
 		- Toggle Floating (X11)
 		- Show/Hide Cursor (X11)
-	- Threading
-		- Signals for Unix (eventfd)
 
-	- Input
-		- Gamepad support (Linux)
+	- Files & Path
+		- File wildcard matching (POSIX)
 
 	\section section_todo_planned Planned
-
-	- MacOSX Platform
-
-	- Current Date/Time functions
 
 	- App:
 		- Custom icon from image (File/Memory)
 
-	- Window:
-		- Custom cursor from image (File/Memory)
-		- Unicode/UTF-8 Support for character input
-		- Open/Save file/folder dialog
-
-	- Audio:
-		- Support for channel mapping
-		- OpenAL audio driver
-		- PulseAudio driver
-		- WASAPI audio driver
-
-	- Video:
-		- [Win32] Direct2D
-		- [Win32] Direct3D
-		- [Win32] Vulkan
-		- [POSIX] Vulkan
+	- DLL-Export support
 
 	- Networking (UDP, TCP)
-		- [Win32] WinSock (https://www.binarytides.com/winsock-socket-programming-tutorial/)
-		- [POSIX] Socket (https://www.binarytides.com/socket-programming-c-linux-tutorial/)
+		- [Win32] WinSock
+		- [POSIX] Socket
+
+	- Unicode-Support for commandline arguments (Win32)
+
+	- Multimonitor-Support
+
+	- Date/Time functions
+
+	- Audio:
+		- OpenAL audio driver
+		- Support for channel mapping
 
 	- Documentation
 		- Audio details
 		- Window details
 		- Memory
 		- Atomics
-		- Multi-Threading
+		- Threading (Semaphores, Syncronisation)
 		- File-IO
 		- Paths
 		- Strings
 		- Hardware
 
-	- DLL-Export support
+	- Video:
+		- [Win32] Direct3D
+		- [Win32] Vulkan
+		- [POSIX] Vulkan
 
-	- Multimonitor-Support
+	- Threading
+		- Signals (POSIX, Non-Linux)
 
-	- Unicode-Support for commandline arguments (Win32)
+	\section section_todo_optional Optional
+
+	- Window:
+		- Custom cursor from image (File/Memory)
 */
 
 // ****************************************************************************
@@ -2883,7 +2886,7 @@ fpl_platform_api int32_t fplSemaphoreValue(fplSemaphoreHandle *semaphore);
   * \brief Increments the semaphore value by one
   * \param semaphore Pointer to a \ref fplSemaphoreHandle
   */
-fpl_platform_api bool fplSemaphorePost(fplSemaphoreHandle *semaphore);
+fpl_platform_api bool fplSemaphoreRelease(fplSemaphoreHandle *semaphore);
 
 /** \}*/
 
@@ -8547,18 +8550,18 @@ fpl_platform_api int32_t fplSemaphoreValue(fplSemaphoreHandle *semaphore) {
 	return(result);
 }
 
-fpl_platform_api bool fplSemaphorePost(fplSemaphoreHandle *semaphore) {
+fpl_platform_api bool fplSemaphoreRelease(fplSemaphoreHandle *semaphore) {
 	FPL__CheckArgumentNull(semaphore, false);
 	if(!semaphore->isValid) {
 		FPL_ERROR(FPL__MODULE_THREADING, "Semaphore '%p' is not valid", semaphore);
 		return false;
 	}
 	bool result = true;
-	fplAtomicAddS32(&semaphore->internalHandle.win32.value, 1);
+	int32_t prevValue = fplAtomicAddS32(&semaphore->internalHandle.win32.value, 1);
 	if(ReleaseSemaphore(semaphore->internalHandle.win32.handle, 1, fpl_null) == FALSE) {
 		// Restore value when it fails
-		FPL_ERROR(FPL__MODULE_THREADING, "Failed incrementing semaphore '%p'", semaphore);
-		fplAtomicAddS32(&semaphore->internalHandle.win32.value, -1);
+		FPL_ERROR(FPL__MODULE_THREADING, "Failed releasing the semaphore '%p'", semaphore);
+		fplAtomicStoreS32(&semaphore->internalHandle.win32.value, prevValue);
 		result = false;
 	}
 	return(result);
@@ -10097,7 +10100,7 @@ fpl_platform_api int32_t fplSemaphoreValue(fplSemaphoreHandle *semaphore) {
     return((int32_t)value);
 }
 
-fpl_platform_api bool fplSemaphorePost(fplSemaphoreHandle *semaphore) {
+fpl_platform_api bool fplSemaphoreRelease(fplSemaphoreHandle *semaphore) {
     FPL__CheckArgumentNull(semaphore, false);
     if(!semaphore->isValid) {
         FPL_ERROR(FPL__MODULE_THREADING, "Semaphore '%p' is not valid", semaphore);
