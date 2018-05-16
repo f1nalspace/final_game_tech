@@ -532,22 +532,23 @@ static void WriteDataSemaphoreThreadProc(const fplThreadHandle *context, void *d
 		v++;
 	}
 	d->data->value = v;
-	fplSemaphorePost(&d->data->semaphore);
+	fplSemaphoreRelease(&d->data->semaphore);
 }
 
-static void SyncThreadsTestSemaphores(const uint32_t numWriters) {
+static void SyncThreadsTestSemaphores(const size_t numWriters) {
 	FT_IS_TRUE(numWriters >= 2);
 
 	ft::Line();
-	ft::Msg("Sync test for %lu writers using semaphores\n", numWriters);
+	ft::Msg("Sync test for %zu writers using semaphores\n", numWriters);
 	{
 		MutableThreadData mutableData = {};
-		FT_IS_TRUE(fplSemaphoreInit(&mutableData.semaphore, (numWriters - 1)));
+		uint32_t initialValue = (uint32_t)numWriters - 1;
+		FT_IS_TRUE(fplSemaphoreInit(&mutableData.semaphore, initialValue));
 		mutableData.value = 0;
 
 		WriteThreadData writeDatas[FPL__MAX_THREAD_COUNT] = {};
 		fplThreadHandle *threads[FPL__MAX_THREAD_COUNT] = {};
-		ft::Msg("Start %lu threads\n", numWriters);
+		ft::Msg("Start %zu threads\n", numWriters);
 		for(uint32_t i = 0; i < numWriters; ++i) {
 			writeDatas[i].base.num = i + 1;
 			writeDatas[i].base.sleepFor = 3000;
@@ -555,12 +556,12 @@ static void SyncThreadsTestSemaphores(const uint32_t numWriters) {
 			threads[i] = fplThreadCreate(WriteDataSemaphoreThreadProc, &writeDatas[i]);
 		}
 
-		ft::Msg("Wait for %lu threads to exit\n", numWriters);
+		ft::Msg("Wait for %zu threads to exit\n", numWriters);
 		fplThreadWaitForAll(threads, numWriters, UINT32_MAX);
 		int32_t expectedValue = (numWriters % 2 == 0) ? 0 : 1;
 		ft::AssertS32Equals(expectedValue, mutableData.value);
 
-		ft::Msg("Release resources for %lu threads\n", numWriters);
+		ft::Msg("Release resources for %zu threads\n", numWriters);
 		for(uint32_t index = 0; index < numWriters; ++index) {
 			FT_EXPECTS(fplThreadState_Stopped, threads[index]->currentState);
 			fplThreadTerminate(threads[index]);
