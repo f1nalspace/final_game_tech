@@ -73,7 +73,6 @@
 
 	- Windows (x86/x64)
 	- Linux (x86/x64, Partially)
-	- Unix (x86/x64, Partially)
 
 	For more details see the page: \subpage page_platform_status
 	
@@ -152,6 +151,7 @@
 		- Mutexes
 		- Signals
 		- Condition-Variables
+		- Semaphores
 
 	\subsection section_getstarted How do i get started with FPL?
 	- You download the latest <a href="https://github.com/f1nalspace/final_game_tech/blob/master/final_platform_layer.h">"final_platform_layer.h"</a> file.
@@ -261,6 +261,7 @@
 	\subpage page_otutorial_threading_mutexes <br>
 	\subpage page_otutorial_threading_signals <br>
 	\subpage page_otutorial_threading_conditions <br>
+	\subpage page_otutorial_threading_semaphores <br>
 	\subpage page_otutorial_threading_sync <br>
 
 	\subsection subsection_otutorial_video Video
@@ -299,9 +300,9 @@
 	}
 	\endcode
 
-	\section section_otutorial_initialization_simple Initialization
+	\section section_otutorial_initialization_simple Initialization with default settings
 
-	To initialize FPL you need to call \ref fplPlatformInit() (inside the main \ref section_otutorial_initialization_entrypoint) and provide the desired \ref fplInitFlags and either NULL or a pointer as settings parameter:
+	Call \ref fplPlatformInit() (inside the main \ref section_otutorial_initialization_entrypoint) and provide the desired \ref fplInitFlags and \ref fpl_null as argument, to initialize FPL with default settings.
 
 	\code{.c}
 	int main(int argc, char **args) {
@@ -318,12 +319,12 @@
 	}
 	\endcode
 
-	Is is recommend to always pass a settings parameter, but it uses default when passing NULL as well.<br>
-	To initialize a settings container to default values you simply call \ref fplSetDefaultSettings() with a pointer to your local settings container.
+	Is is recommend to always pass a settings argument, but it uses default when passing \ref fpl_null as well.<br>
+	Call \ref fplSetDefaultSettings() with a pointer to your local settings container, to initialize the settings container to default values.
 
 	\section section_otutorial_initialization_with_settings Initialization with custom settings
 
-	To initialize FPL with custom settings you need to call \ref fplPlatformInit() and provide the desired \ref fplInitFlags and the \ref fplSettings parameter:
+	Call \ref fplPlatformInit() (inside the main \ref section_otutorial_initialization_entrypoint) and provide the desired \ref fplInitFlags and a pointer to \ref fplSettings argument, to initialize FPL with custom settings.
 
 	\code{.c}
 	fplSettings settings;
@@ -336,7 +337,8 @@
 
 	\section section_otutorial_initialization_release Release
 
-	When you are done, you release FPL with the call \ref fplPlatformRelease():
+	Call \ref fplPlatformRelease() , when you are done and want to release the platform resources.
+
 	\code{.c}
 	fplPlatformRelease();
 	\endcode
@@ -353,6 +355,15 @@
 	If something goes wrong the remaining resources are already cleaned up by FPL automatically.<br>
 	<br>
 	In addition you should use \ref fplGetLastError() to print out the actual error when the initialization fails!<br>
+
+	<b>Very bad:</b> (But will work)
+	\code{.c}
+	fplPlatformInit(fplInitFlags_All, fpl_null);
+
+	// your code here
+
+	fplPlatformRelease();
+	\endcode
 
 	<b>Bad:</b> (But will work)
 	\code{.c}
@@ -381,7 +392,7 @@
 	}
 	\endcode
 
-	<b>Even Better:</b>
+	<b>Much better:</b>
 	\code{.c}
 	fplInitResultType initResult;
 	if ((initResult = fplPlatformInit(fplInitFlags_All, fpl_null)) == fplInitResultType_Success) {
@@ -397,7 +408,7 @@
 	See the \subpage page_otutorial_errorhandling page for more details about error handling.
 
 	\section section_otutorial_initialization_tips Tips
-	After releasing FPL you can call \ref fplPlatformInit() again if needed - for example: Finding the proper audio device, Testing for OpenGL compability, etc. may require you call \ref fplPlatformInit() and \ref fplPlatformRelease() multiple times.
+	After releasing FPL you can call \ref fplPlatformInit() again if needed - for example: Finding the proper audio device, Testing for OpenGL compability, etc. may require you to call \ref fplPlatformInit() and \ref fplPlatformRelease() multiple times.
 */
 
 /*!
@@ -452,7 +463,7 @@
 
 	\section section_otutorial_window_creation_init Initialization
 
-	To create a window you add the \ref fplInitFlags_Window flag to the \ref fplInitFlags parameter in the \ref fplPlatformInit() call.<br>
+	To create a window you add the \ref fplInitFlags_Window flag to the \ref fplInitFlags argument in the \ref fplPlatformInit() call.<br>
 	It makes no sense to create a window alone, so we combine it at least with something else, like for example: a video context or audio playback.<br>
 
 	\code{.c}
@@ -465,7 +476,8 @@
 	This is required due to the fact that operating systems uses a event-based system to communicate with the window and your app.<br>
 	If no communication happens with your window and your app, the window will no longer be responsive - so make sure to communicate properly.<br>
 	<br>
-	For that there is a single function call required to process these events -> \ref fplWindowUpdate().
+	Call \ref fplWindowUpdate(), to process all these events in a while loop.<br>
+	If the function returns false, your application has exited and needs to be shutdown properly.
 
 	\code{.c}
 	while (fplWindowUpdate()) {
@@ -484,9 +496,8 @@
 
 	\section section_otutorial_window_events_polling Polling the events
 
-	To poll the events from the internal queue you simply call the correspondending function \ref fplPollEvent() in a while-loop inside your actual main-loop.<br>
-	Each event is copied into the \ref fplEvent parameter which you can handle or not.<br>
-	If there are no events left, the function returns false and you are done.
+	Call \ref fplPollEvent() in a while-loop inside your actual main-loop with a pointer to a \ref fplEvent argument, to poll the next event from the internal queue.<br>
+	Each event is copied into the \ref fplEvent argument which you can handle or not. If there are no events left, the function returns false.
 
 	\code{.c}
 	fplEvent currentEvent;
@@ -631,7 +642,6 @@
 
 	FPL does not cache the events from the previous update. If you dont handle the event - the data is lost!<br>
 	You are responsible for caching the data if needed.<br>
-	Also you must always poll each event to ensure that the internal queue will not get full!
 */
 
 /*!
@@ -761,7 +771,7 @@
 
 	\subsection subsection_otutorial_video_legacy_opengl_usage_present Presenting your frame
 
-	To swap the backbuffer with the frontbuffer in the window you have to call the \ref fplVideoFlip() function.<br>
+	Call \ref fplVideoFlip() to present the frame to the screen.<br>
 	Its recommend to call this after each draw call of your frame at the end of the main-loop.
 */
 
@@ -806,7 +816,7 @@
 
 	\subsection subsection_otutorial_video_modern_opengl_present Presenting your frame
 
-	To swap the backbuffer with the frontbuffer in the window you have to call the \ref fplVideoFlip() function.<br>
+	Call \ref fplVideoFlip() to present the frame to the screen.<br>
 	Its recommend to call this after each draw call of your frame at the end of the main-loop.
 
 	\section section_otutorial_video_modern_opengl_notes Notes
@@ -821,7 +831,8 @@
 
 	\section section_otutorial_video_software_init Initialize a Software Backbuffer
 
-	FPL supports software video output as well, which will work on any platform.<br>
+	To initialize software rendering output you simply set the the \ref fplInitFlags_Video flag in the \ref fplPlatformInit() call and change the video driver type to \ref fplVideoDriverType_Software.<br>
+	Call \ref fplGetVideoBackBuffer() to get access to the pixel data.
 
 	\code{.c}
 	fplSettings settings;
@@ -843,7 +854,7 @@
 
 	\subsection subsection_otutorial_video_software_present Presenting your frame
 
-	To update the frontbuffer in the window with the pixels you may have changed you have to call the \ref fplVideoFlip() function.<br>
+	Call \ref fplVideoFlip() to draw the pixels from the backbuffer to the window.<br>
 	Its recommend to call this after each draw call of your frame at the end of the main-loop.
 
 	\subsection subsection_otutorial_video_software_drawing Drawing
@@ -919,14 +930,14 @@
 	By default the video backbuffer is automatically resized when the dimension of the window area changes.<br>
 	If you want to manually do this, you disable this feature in the \ref fplVideoSettings.isAutoSize field - in the \ref fplSettings.video configuration section.<br>
 	<br>
-	To force the backbuffer to be resized to a fixed dimension you have to call \ref fplResizeVideoBackBuffer() with a new width and height.
-	<br>
+	Call \ref fplResizeVideoBackBuffer() with a new width and height as argument, to force the backbuffer to be resized to the new dimension.<br>
+
 	\warning Do not call this method while you are modifing pixels!
 
 	\section section_otutorial_video_software_notes Notes
 
-	There is no software rendering functions built-in! If you want to draw for example a circle, you have to roll out your own drawCircle() function - which may uses Bresenham as its base or something.<br>
-	Vertical syncronisation is not supported for software video drivers!
+	- There are no software rendering functions built-in! If you want to draw for example a circle, you have to roll out your own drawCircle() function - which may uses Bresenham as its base or something.<br>
+	- Vertical syncronisation is not supported for software video drivers!
 */
 
 /*!
@@ -1012,9 +1023,8 @@
 	\section section_otutorial_audio_general_playing_and_stopping Start and stop playing the audio samples
 
 	After the initialization the audio device is stopped always.<br>
-	To start requesting and playing audio samples you have to call the \ref fplPlayAudio() function.<br>
-	<br>
-	To stop the audio playback you call the opposite \ref fplStopAudio() function.
+	Call \ref fplPlayAudio(), to start requesting and play audio samples.<br>
+	Call \ref fplStopAudio(), to stop the audio playback.<br>
 
 	\note If you are about to release the platform using \ref fplPlatformRelease() you should always call \ref fplStopAudio() before!
 
@@ -1023,7 +1033,7 @@
 	There is no guarantee that you get the desired audio format you specified back!<br>
 	You should always check the \ref fplAudioDeviceFormat "nativeAudioFormat" in your client callback and convert/write the correct samples the audio device expects!<br>
 	<br>
-	How to write samples is explained here: \subpage page_otutorial_audio_writesamples
+	For more details see the page: \subpage page_otutorial_audio_writesamples
 */
 
 /*!
@@ -1040,11 +1050,11 @@
 
 	All these informations are provided by the \ref fpl_audio_client_read_callback callback function.<br>
 	<br>
-	To get this information before the audio playback is started, you can query it by calling \ref fplGetAudioHardwareFormat() .
+	Call \ref fplGetAudioHardwareFormat(), to get this information before the audio playback is started.
 
 	\section section_otutorial_audio_writesamples_functions Useful functions
 
-	To help with sample computation there are several inline functions available:
+	To help with sample computation there are several functions available:
 
 	- \ref fplGetAudioHardwareFormat()
 	- \ref fplGetAudioBufferSizeInFrames()
@@ -1076,8 +1086,8 @@
 
 	\section section_otutorial_audio_writesamples_notes Notes
 
-	\note FPL does not provide any functionality for doing any kind of DSP or format conversion!<br>
-	\note You are responsible for filling out the samples in the correct format your audio device expects!
+	- FPL does not provide any functionality for doing any kind of DSP or format conversion!<br>
+	- You are responsible for filling out the samples in the correct format your audio device expects!
 */
 
 /*!
@@ -1090,8 +1100,7 @@
 	Threads require the use of \subpage page_otutorial_threading_sync to prevent race conditions.
 
 	\section section_otutorial_threading_threads_create Creating a Thread
-	To create a thread you call \ref fplThreadCreate() with a \ref fpl_run_thread_function "callback" and a user pointer passed as arguments.<br>
-	This thread is automatically started and will run your user code almost immediatly.<br>
+	Call \ref fplThreadCreate() with a pointer to \ref fpl_run_thread_function "callback" and a user pointer argument, to create and immediately run a Thread.<br>
 
     \code{.c}
     void MyThreadProc(const fplThreadHandle *context, void *data) {
@@ -1115,7 +1124,7 @@
 	\section section_otutorial_threading_threads_wait Waiting/Joining for Threads to Exit
 
 	\subsection subsection_otutorial_threading_threads_wait_single Wait for a single Thread to Exit
-	To wait for a single Thread to finish, you simply call \ref fplThreadWaitForOne() with the thread handle as argument and a timeout parameter.
+	Call \ref fplThreadWaitForOne() with a pointer to \ref fplThreadHandle and a \ref fplTimeoutValue argument, to wait for a single Thread to finish.
 
 	\code{.c}
 	// Wait until the thread is finished
@@ -1128,7 +1137,7 @@
     \endcode
 
 	\subsection subsection_otutorial_threading_threads_wait_any Wait for any Thread to Exit
-	To wait until at least one Thread had finished you simply call \ref fplThreadWaitForAny() with a array of \ref fplThreadHandle , the number of threads and a timeout parameter.
+	Call \ref fplThreadWaitForAny() with a array of \ref fplThreadHandle, the number of threads and a \ref fplTimeoutValue argument to wait until at least one Thread had finished.
 
 	\code{.c}
 	// Wait until one of the threads is finished
@@ -1141,7 +1150,7 @@
     \endcode
 
 	\subsection subsection_otutorial_threading_threads_wait_all Wait for all Threads to Exit
-	To wait for all Threads to be finished you simply call \ref fplThreadWaitForAll() with a array of \ref fplThreadHandle , the number of threads and a timeout parameter.
+	Call \ref fplThreadWaitForAll() with a array of \ref fplThreadHandle , the number of threads and a \ref fplTimeoutValue argument, to wait for all Threads to be finished.
 
 	\code{.c}
 	// Wait until all of the threads are finished
@@ -1154,19 +1163,17 @@
     \endcode
 
 	\section section_otutorial_threading_threads_terminate Terminate a thread
-	Sometimes you need a way to forcefully terminate a thread. For this you can call \ref fplThreadTerminate() with the thread handle in question.
-	<br>
+	Call \ref fplThreadTerminate() with a pointer to \ref fplThreadHandle as argument, to forcefully terminate a thread.
 	\note Using this will almost immediatly terminates the thread and releases its resources.
 	\note It is safe to call this when a thread is already terminated.
 
-	\section section_otutorial_threading_threads_states Query Thread State
-	There is just one function to query the thread state -> \ref fplGetThreadState() .<br>
+	\section section_otutorial_threading_threads_states Query the Thread State
+	Call \ref fplGetThreadState() with a pointer to \ref fplThreadHandle as argument, to query the current state.<br>
 	If a thread is stopped or in the process of getting stopped it will return \ref fplThreadState_Stopped or \ref fplThreadState_Stopping respectively.<br>
 	If a thread is started or in the process of getting started it will return \ref fplThreadState_Running or \ref fplThreadState_Starting respectively.<br>
 
 	\section section_otutorial_threading_threads_notes Notes
-	\note Your code should always ensure that it will exit eventually.<br>
-	To ensure this there are several \subpage page_otutorial_threading_sync you can use to achieve this.<br>
+	\note Your code should always ensure that it will exit eventually. You can use \subpage page_otutorial_threading_sync to achieve this.<br>
 	\note It is bad pratice to "Terminate" a thread, you should design your code to let threads end naturally.
 */
 
@@ -1176,18 +1183,18 @@
 
 	\section section_otutorial_threading_mutexes_overview Overview
 	This section explains how to create and handling of Mutexes.<br>
-	A mutex is a Kernel-Level object used to prevent race conditions when multiple threads access the same data.<br>
-	With a mutex you can ensure that only one thread at a time can access data.
+	A mutex is a Kernel-Level object used to prevent race conditions when multiple Threads access the same code section.<br>
+	With a Mutex you can ensure that only one thread at a time can access a code section.
 
 	\section section_otutorial_threading_mutexes_init Initialize a Mutex
-	To initialize a mutex you call \ref fplMutexInit() with a pointer to a \ref fplMutexHandle .
+	Call \ref fplMutexInit() with a pointer to \ref fplMutexHandle argument, to initialize a Mutex.<br>
 	After the initialization is done, you can start locking and unlocking it.<br>
-	When you are done with the mutex call \ref fplMutexDestroy() to release its internal resources.
+	When you are done with the Mutex call \ref fplMutexDestroy() to release its internal resources.
 
 	\code{.c}
 	fplMutexHandle mutex;
 	if (!fplMutexInit(&mutex)) {
-	    // Error: Mutex failed initializing -> Too many active mutexes for this process
+	    // Error: Mutex failed initializing -> Too many active mutexes for this process or already initialized
 	}
 
 	// ... Mutex is not required anymore
@@ -1197,28 +1204,41 @@
 	\section section_otutorial_threading_mutexes_locking Locking/Unlocking a Mutex
 
 	\subsection subsection_otutorial_threading_mutexes_locking_lock Locking a Mutex
-	Locking a mutex is simply done by calling \ref fplMutexLock() .<br>
-	If this mutex is not locked yet, it will be locked by the calling thread and the return value will be true.<br>
-	It this mutex is already locked, the thread will wait forever until it gets unlocked by another thread and will return false.<br>
-	<br>
+	Call \ref fplMutexLock() with a pointer to \ref fplMutexHandle as argument, to lock a Mutex.<br>
+	It this Mutex is already locked, the current Thread will wait forever until it gets unlocked by the owner Thread.<br>
+	If this Mutex is not locked yet, it will be locked by the calling Thread.<br>
+
 	\note You should always unlock the \ref fplMutexHandle as soon as possible - on the same callstack.<br>
 
 	\subsection subsection_otutorial_threading_mutexes_locking_unlock Unlocking a Mutex
-	Unlocking is done by calling \ref fplMutexUnlock() .<br>
-	The mutex will be unlocked when it was locked before and return true.<br>
-	If the mutex was not locked, it will fail and return false in this case.
+	Call \ref fplMutexUnlock() with a pointer to \ref fplMutexHandle as argument, to unlock a Mutex.<br>
+	The Mutex will be unlocked only when this function is called from the owner Thread.<br>
+	If this Mutex was not locked or the owner Thread does not match it will fail.
+
+	\subsection subsection_otutorial_threading_mutexes_locking_probe Trying to lock a Mutex
+	Call \ref fplMutexLock() with a pointer to \ref fplMutexHandle as argument, to try to lock a Mutex.<br>
+	If the Mutex is already locked, the current Thread will not be blocked and the function returns false.<br>
+	If this Mutex is not locked yet, it will be locked by the calling Thread.<br>
 
     \subsection subsection_otutorial_threading_mutexes_locking_example Example
 
 	\code{.c}
+	// Lock down the execution of a code section to one Thread at a time
 	fplMutexLock(&mutex);
 	{
-	    // Do something with shared data here
+	    // Do something in this critical section here
 	}
 	fplMutexUnlock(&mutex);
 
+	// Locking a mutex can fail, so ensure that you check the result
 	if (fplMutexLock(&mutex)) {
-    	// Do something here as the "first" thread locking the mutex
+    	// Do something in this critical section here
+	    fplMutexUnlock(&mutex);
+	}
+
+	// Dont wait for the mutex to be unlocked, just try to lock it
+	if (fplMutexTryLock(&mutex)) {
+    	// Do something in this critical section here
 	    fplMutexUnlock(&mutex);
 	}
     \endcode
@@ -1231,22 +1251,22 @@
 	\tableofcontents
 
 	\section section_otutorial_threading_signals_overview Overview
-	This section explains how to create and handling of Signals.<br>
-	A signal is a Kernel-Level object used to notify one or multiple waiting threads.<br>
+	This section explains how to create and manage Signals.<br>
+	A Signal is a Kernel-Level object used to notify one or multiple waiting Threads.<br>
 	It internally contains a Value which is either \ref fplSignalValue_Set or \ref fplSignalValue_Unset.<br>
-	When this values gets changed, all threads which waits on that Signal will wakeup.<br>
+	When this values gets changed, all Threads which waits on that Signal will wakeup.<br>
 	They can be shared across process boundaries and may be used as standalone locks to shared data, but the number of Signals are limited by the OS that can be allocated at a time.
 
 	\section section_otutorial_threading_signals_init Initialize a Signal
-	To initialize a Signal you just call \ref fplSignalInit() with a \ref fplSignalHandle as a argument.<br>
-	Also you need to specify if the signal starts as \ref fplSignalValue_Set or \ref fplSignalValue_Unset as a second argument.<br>
+	Call \ref fplSignalInit() with a pointer to \ref fplSignalHandle as a argument, to initialize a Signal.<br>
+	Also you need to specify if the Signal starts as \ref fplSignalValue_Set or \ref fplSignalValue_Unset as a second argument.<br>
 	When you are done with that Signal you need to call \ref fplSignalDestroy() to release its internal resources.
 
 	\code{.c}
 	fplSignalHandle mutex;
-	// Initialize a signal as "unset"
+	// Initialize a Signal as "unset"
 	if (!fplSignalInit(&mutex, fplSignalValue_Unset)) {
-	    // Error: Signal failed initializing -> Too many active signals
+	    // Error: Signal failed initializing -> Too many active Signals
 	}
 
 	// ... Signal is not required anymore
@@ -1255,8 +1275,8 @@
 
 	\section section_otutorial_threading_signals_wait Waiting for Signal
 
-	\subsection subsection_otutorial_threading_signals_wait_single Wait for a single Single to be set
-	To let a Thread wait until a Signal is set, you simply call \ref fplSignalWaitForOne() with the \ref fplSignalHandle as argument and a timeout parameter.
+	\subsection subsection_otutorial_threading_signals_wait_single Wait for a single Signal to be set
+	Call \ref fplSignalWaitForOne() with a pointer to \ref fplSignalHandle and a \ref fplTimeoutValue argument, to let the current Thread wait until the Signal is set.
 
 	\code{.c}
 	// Wait until the Signal is set
@@ -1269,7 +1289,7 @@
     \endcode
 
 	\subsection subsection_otutorial_threading_signals_wait_any Wait for any Signal to be set
-	To wait until at least one Signal is set you simply call \ref fplSignalWaitForAny() with a array of \ref fplSignalHandle , the number of Signals and a timeout parameter.
+	Call \ref fplSignalWaitForAny() with a array of \ref fplSignalHandle, the number of Signals and a \ref fplTimeoutValue argument, to let the current Thread wait until at least one Signal is set.
 
 	\code{.c}
 	// Wait until one of the Signal is set
@@ -1282,7 +1302,7 @@
     \endcode
 
 	\subsection subsection_otutorial_threading_signals_wait_all Wait for all Signals to be set
-	To wait until all Signals are set you simply call \ref fplSignalWaitForAll() with a array of \ref fplSignalHandle , the number of Signals and a timeout parameter.
+	Call \ref fplSignalWaitForAll() with a array of \ref fplSignalHandle , the number of Signals and a \ref fplTimeoutValue argument, to let the current Thread wait until all Signals are set.
 
 	\code{.c}
 	// Wait until all of the Signals are set
@@ -1295,7 +1315,7 @@
     \endcode
 
 	\section section_otutorial_threading_signals_set Setting a Signal
-	To set a Signal and wakeup all waiting Threads you just call \ref fplSignalSet() with the \ref fplSignalHandle as argument.
+	Call \ref fplSignalSet() with a pointer to \ref fplSignalHandle as argument, to set a Signal and wakeup all waiting Threads.<br>
 	\note Unlike \ref fplConditionVariable , setting a Signal is not Thread-Safe so you should ensure that only one Thread at a time will set it!
 
 	\code{.c}
@@ -1306,7 +1326,7 @@
     \endcode
 
 	\section section_otutorial_threading_signals_reset Resetting a Signal
-	To reset a Signal you just call \ref fplSignalReset() with the \ref fplSignalHandle as argument.
+	Call \ref fplSignalReset() with a pointer to \ref fplSignalHandle as argument, to reset a Signal.<br>
 	\note Unlike \ref fplConditionVariable , resetting a Signal is not Thread-Safe so you should ensure that only one Thread at a time will set it!
 
 	\code{.c}
@@ -1323,18 +1343,18 @@
 
 	\section section_otutorial_threading_conditions_overview Overview
 	This section explains how to create and handling of Condition-Variables.<br>
-	A condition variable is a User-Level Object used to let threads wait until a condition variable is signaled or broadcasted.<br>
+	A Condition-Variable is a User-Level Object used to let Threads wait until a Condition-Variable is signaled or broadcasted.<br>
 	Unlike \subpage page_otutorial_threading_signals, Condition-Variables requires you to use a \ref fplMutexHandle as a locking mechanism.<br>
 	They cannot be shared across process boundaries but the number of Condition-Variables is only limited by the amount of memory you have.
 
 	\section otutorial_threading_conditions_init Initialize a Condition-Variable
-	To initialize a Condition-Variable you just call \ref fplConditionInit() with a \ref fplConditionVariable as a argument.<br>
+	Call \ref fplConditionInit() with a pointer to \ref fplConditionVariable as a argument, to initialize a Condition-Variable.<br>
 	When you are done with that Condition-Variable you need to call \ref fplConditionDestroy() to release its internal resources.
 
 	\code{.c}
 	fplConditionVariable condition;
 	if (!fplConditionInit(&condition)) {
-	    // Error: Condition-Variable failed initializing -> This is most likely never to happen
+	    // Error: Condition-Variable failed initializing -> This will most likely never happen
 	}
 
 	// ... Condition-Variable is not required anymore
@@ -1342,48 +1362,108 @@
     \endcode
 
 	\section otutorial_threading_conditions_wait_single Waiting on a Condition-Variable
-	To let a thread wait on a Condition-Variable you simply call \ref fplConditionWait() with a \ref fplConditionVariable and a \ref fplMutexHandle as argument.<br>
-	Also you need to specify the amount of milliseconds you want the thread to wait. If \ref FPL_TIMEOUT_INFINITE is passed it will wait forever.<br>
+	Call \ref fplConditionWait() with a pointer to \ref fplConditionVariable and a pointer to \ref fplMutexHandle as argument, to let a thread wait on that Condition-Variable.<br>
+	Also you need to specify the amount of milliseconds you want the Thread to wait. If \ref FPL_TIMEOUT_INFINITE is passed it will wait forever.<br>
 	\note Conditions must be called inside a locked critical-section or undefined behavior may happen.
 
 	\code{.c}
 	fplMutexLock(&mutex);
 	{
-		// Wait until the condition is signaled or broadcasted
+		// Wait until the Condition-Variable is signaled or broadcasted
 		fplConditionWait(&condition, &mutex, FPL_TIMEOUT_INFINITE);
 
 		// ... or
 
-		// Wait at max for 5 seconds for a signal or broadcast on the condition
+		// Wait at max for 5 seconds for a signal or broadcast on the Condition-Variable
 		fplConditionWait(&condition, &mutex, 5000);
 	}
 	fplMutexUnlock(&mutex);
-
-	// ... Condition-Variable is not required anymore
-	fplConditionDestroy(&condition);
     \endcode
 
 	\section otutorial_threading_conditions_wait_multiple Waiting on multiple Condition-Variables?
-	A thread can only wait on one single condition variable at a time - if you need to wait on multiple conditions, you should consider using \subpage page_otutorial_threading_signals .
+	A Thread can only wait on one single Condition-Variable at a time - if you need to wait on multiple Condition-Variables, you should consider using \subpage page_otutorial_threading_signals .
 
 	\section otutorial_threading_conditions_signal Send a Signal to a Condition-Variable to one waiting Thread
-	To signal a Condition-Variable to one single waiting Thread you need to call \ref fplConditionSignal() with the \ref fplConditionVariable in question.<br>
-	If you want to let multiple threads waits on the same condition you should use \ref fplConditionBroadcast() instead.<br>
-	\note Unlike Signals Condition-Variables does not need a Mutex to Signal a Condition-Variable.
+	Call \ref fplConditionSignal() with a pointer to \ref fplConditionVariable, to signal any waiting Threads.<br>
+	If you want to let multiple Threads waits on the same Condition-Variable you should use \ref fplConditionBroadcast() instead.<br>
+	\note Unlike Signals Condition-Variables does not need a Mutex for signaling.
 
 	\code{.c}
 	// Send a Signal to the Condition-Variable to one waiting Thread
 	fplConditionSignal(&cond);
     \endcode
 
-	\section otutorial_threading_conditions_broadcast Send a Broadcast to a Condition-Variable to all waiting Threads
-	To broadcast a Condition-Variable to multiple waiting threads you need to call \ref  fplConditionBroadcast() with the \ref fplConditionVariable in question.<br>
-	If you just need a single thread to wait on the condition you should use \ref fplConditionSignal() instead.<br>
-	\note Unlike Signals Condition-Variables does not need a Mutex to Broadcast a Condition-Variable.
+	\section otutorial_threading_conditions_broadcast Send a Condition-Variable Broadcast to all waiting Threads
+	Call \ref fplConditionBroadcast() with a pointer to \ref fplConditionVariable, to signal all waiting Threads.<br>
+	If you just need a single Thread to wait on the Condition-Variable you should use \ref fplConditionSignal() instead.<br>
+	\note Unlike Signals Condition-Variables does not need a Mutex for signaling a Condition-Variable.
 
 	\code{.c}
 	// Broadcast a Signal to the Condition-Variable to all waiting Threads
 	fplConditionBroadcast(&cond);
+    \endcode
+*/
+
+/*!
+	\page page_otutorial_threading_semaphores Semaphores
+	\tableofcontents
+
+	\section section_otutorial_threading_semaphores_overview Overview
+	This section explains how to create and manage semaphores.<br>
+	Semaphores are similar to \subpage page_otutorial_threading_mutexes "Mutexes" but has one major difference: Any Thread can release it!<br>
+	It internally uses a atomic counter which gets incremented and decremented.
+
+	\section otutorial_threading_semaphores_init Initialize a Semaphore
+	Call \ref fplSemaphoreInit() to initialize a Semaphore with a \ref fplSemaphoreHandle as a argument. In addition you need to specify the initial value for the Semaphore to start with.<br>
+	Call \ref fplSemaphoreDestroy() when you are done with that Semaphore to let it releases its internal resources.
+
+	\code{.c}
+	fplSemaphoreHandle semaphore;
+	if (!fplSemaphoreInit(&semaphore, 1)) {
+	    // Error: Semaphore failed initializing -> This will most likely never happen
+	}
+
+	// ... Semaphore is not required anymore and no threads are waiting on it
+	fplSemaphoreDestroy(&semaphore);
+    \endcode
+
+	\section otutorial_threading_semaphores_wait Waiting/Locking a Semaphore
+	Call \ref fplSemaphoreWait() to let a Thread wait and decrement the Semaphores value with a \ref fplSemaphoreHandle as argument.<br>
+	If the Semaphores value is greater than zero, then the decrement will happen and the function returns immediatly.<br>
+	If the Semaphores value is zero then the Thread will wait until it is possible to decrement the value.<br>
+	Also you need to specify the amount of milliseconds you want the thread to wait. If \ref FPL_TIMEOUT_INFINITE is passed it will wait forever.<br>
+
+	\code{.c}
+	// Wait until the Semaphores value is > 0
+	fplSemaphoreWait(&semaphore, FPL_TIMEOUT_INFINITE);
+
+	// ... or
+
+	// Wait at max for 5 seconds to the Semaphores value to be > 0
+	fplSemaphoreWait(&semaphore, 5000);
+    \endcode
+
+	\section otutorial_threading_semaphores_wait_multiple Waiting on multiple Semaphores?
+	A thread can only wait on one single Semaphore at a time - if you need to wait on multiple Semaphores, you should consider using \subpage page_otutorial_threading_signals .
+
+	\section subsection_otutorial_threading_semaphores_trywait Trying to wait on a Semaphore
+	\ref fplSemaphoreTryWait() is the same as \ref fplSemaphoreWait() , except that if the decrement cannot immediately performed, the current Thread will not be _blocked_.
+
+	\section otutorial_threading_semaphores_post Releasing the Semaphore
+	Call \ref fplSemaphoreRelease() with the \ref fplSemaphoreHandle in question, to release a Semaphore and signal all waiting Threads.<br>	 
+
+	\code{.c}
+	// Release a Semaphore and signal all waiting Threads
+	fplSemaphoreRelease(&semaphore);
+    \endcode
+
+	\section otutorial_threading_semaphores_getvalue Reading the Value from the Semaphore
+	Call \ref fplSemaphoreValue() to get the current value from the Semaphore.
+
+	\code{.c}
+	int32_t currentValue = fplSemaphoreValue(&semaphore);
+
+	// ... so something with the value here
     \endcode
 */
 
@@ -1393,7 +1473,7 @@
 
 	- TODO(final): Explain why we need this
 
-	- TODO(final): Add examples of solving race conditions (Mutexes, Signals, Condition-Variables, Atomics)
+	- TODO(final): Add examples of solving race conditions (Mutexes, Signals, Condition-Variables, Semaphores, Atomics)
 
 	- TODO(final): Add a comparison table to show the difference between the object types.
 */
@@ -1415,12 +1495,11 @@
 	Final Platform Layer is written in C99 for simplicity and best portability, but is C++ compatible as well.<br>
 	It uses default integral and boolean types <stdint.h> and <stdbool.h>.<br>
 	For certain features such as printf(), getchar() the C Runtime are used, but you can disable it if needed.<br>
-	It uses a fixed and small memory footprint and handles memory very gracefully.<br>
 
 	\subsection subsection_faq_whyshouldiuse What makes it different from other platform abstraction libraries, such as SDL/SFML etc. ?
 	- FPL is designed to require bare minimum linking to the OS (kernel32.lib / libld.so) only.
 	- It does not require any dependencies or build-systems to get it running.
-	- It has a lightweight feature set (Single window, Graphics api initialization, Raw audio samples playback, Input handling, Multithreading, Path/File IO, Atomics, OS/HW-Infos etc.)
+	- It has a lightweight feature set
 	- No data hiding -> everything is accessible.
 	- It uses a fixed and small memory footprint and handles memory very gracefully.
 	- It can be controlled by a configuration structure in very detail at startup.
@@ -1464,11 +1543,11 @@
 	There are several ways to help this project:<br>
 	- Test the library for any hardware/platform/compiler configuration you have access to and report the result -> This helps a lot!
 	- Report any bugs you find
-	- Improving this documentation by sending in new tutorials/examples, point me to typos etc.
-	- Send me pull-requests
+	- Improve this documentation by sending in new tutorials/examples, fix typos etc.
+	- Send in pull-requests
 	- Write new demos/samples/examples
-	- Recommend this project to your collegues, friends, etc.
-	- Send in feedback
+	- Recommend this project
+	- **Send in feedback**
 
 	And lastly if you want to contact me for another reason, just drop a message in some way (Github issue, Private message, Mail, Community etc.).<br>
 	<br>
