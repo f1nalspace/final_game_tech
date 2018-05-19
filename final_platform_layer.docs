@@ -14,7 +14,7 @@
 	<br>
 	The main focus is game/media/simulation development, so the default settings will create a window, setup a OpenGL rendering context and initialize audio playback on any platform.<br>
 	<br>
-	FPL supports the platforms Windows/Linux/Unix for the architectures x86/x64.<br>
+	FPL supports the platforms Windows/Linux for the architectures x86/x64.<br>
 	The only dependencies are built-in operating system libraries and a C99 complaint compiler.<br>
 	<br>
 	It is released under the \subpage page_license "MIT License". This license allows you to use FPL freely in any software.<br>
@@ -113,7 +113,7 @@
 		- Load / Store
 		- Memory Barriers
 	- Shared library
-		- Loading of Shared Libraries (DLL on Windows, .so on Linux/Unix)
+		- Loading of Shared Libraries (DLL on Windows, .so on Linux)
 		- Function Pointer Lookup
 	- IO
 		- Path functions
