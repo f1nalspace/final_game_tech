@@ -136,6 +136,8 @@ SOFTWARE.
 	- Changed: Renamed fplGetPlatformErrorFromIndex() to fplGetErrorByIndex()
 	- Changed: Renamed fplGetPlatformError() to fplGetLastError()
 	- Changed: Refactored logging system
+    - Changed: Updated comments
+	- Fixed: fplAnsiString<->WideString conversion enforces ANSI locale (Non Win32)
 	- New: Added enum fplLogLevel
 	- New: Added enum fplLogWriterFlags
 	- New: Added struct fplLogWriter
@@ -151,6 +153,7 @@ SOFTWARE.
 	- New: Added fplSemaphoreTryWait()
 	- New: Added fplSemaphoreValue()
 	- New: Added fplSemaphoreRelease()
+	- New: Added fplIsStringMatchWildcard()
 
 	- Changed: [ALSA] Allow user selection of audio device id
 	- Fixed: [Win32] WaitForMultipleObjects >= WAIT_OBJECT_0 bugfix
@@ -769,7 +772,7 @@ SOFTWARE.
 	\tableofcontents
 
 	\section section_todo_inprogress In progress
-	
+
 	- Correct all function documentations!
 
 	- Input
@@ -780,9 +783,6 @@ SOFTWARE.
 		- Toggle Decorated (X11)
 		- Toggle Floating (X11)
 		- Show/Hide Cursor (X11)
-
-	- Files & Path
-		- File wildcard matching (POSIX)
 
 	\section section_todo_planned Planned
 
@@ -823,6 +823,9 @@ SOFTWARE.
 
 	- Threading
 		- Signals (POSIX, Non-Linux)
+
+	- Window:
+		- Minimize/Maximize
 
 	\section section_todo_optional Optional
 
@@ -2957,15 +2960,22 @@ fpl_common_api void fplMemoryAlignedFree(void *ptr);
   */
 // ----------------------------------------------------------------------------
 
-  /**
-	* \brief Returns true when both ansi strings are equal with enforcing the given length.
-	* \param a First string
-	* \param aLen Number of characters for the first string
-	* \param b Second string
-	* \param bLen Number of characters for the second string
-	* \note Len parameters does not include the null-terminator!
-	* \return True when both strings matches, otherwise false.
-	*/
+/**
+  * \brief Returns true when the source string matches the given wildcard
+  * \param source Source string
+  * \param wildcard Wildcard string
+  * \return True when source string matches wildcard, false otherwise.
+  */
+fpl_common_api bool fplIsStringMatchWildcard(const char *source, const char *wildcard);
+/**
+  * \brief Returns true when both ansi strings are equal with enforcing the given length.
+  * \param a First string
+  * \param aLen Number of characters for the first string
+  * \param b Second string
+  * \param bLen Number of characters for the second string
+  * \note Len parameters does not include the null-terminator!
+  * \return True when both strings matches, otherwise false.
+  */
 fpl_common_api bool fplIsStringEqualLen(const char *a, const size_t aLen, const char *b, const size_t bLen);
 /**
   * \brief Returns true when both ansi strings are equal.
@@ -4380,6 +4390,7 @@ fpl_main int main(int argc, char **args);
 #if !defined(FPL_NO_CRT)
 #	include <stdio.h> // stdin, stdout, stderr, fprintf, vfprintf, vsnprintf, getchar
 #	include <stdlib.h> // wcstombs, mbstowcs, getenv
+#	include <locale.h> // setlocale, struct lconv, localeconv
 #endif
 
 //
@@ -4500,7 +4511,7 @@ fpl_platform_api void fplDebugOut(const char *text) {
 }
 #else
 fpl_platform_api void fplDebugOut(const char *text) {
-	// @TODO(final): For now this does nothing on all other platforms
+	// @NOTE(final): For now this does nothing on all other platforms
 }
 #endif
 fpl_common_api void fplDebugFormatOut(const char *format, ...) {
@@ -5272,13 +5283,13 @@ typedef struct fpl__PThreadApi {
 	fpl__pthread_func_pthread_cond_broadcast *pthread_cond_broadcast;
 	fpl__pthread_func_pthread_cond_signal *pthread_cond_signal;
 
-    fpl__pthread_func_sem_init *sem_init;
-    fpl__pthread_func_sem_destroy *sem_destroy;
-    fpl__pthread_func_sem_wait *sem_wait;
-    fpl__pthread_func_sem_timedwait *sem_timedwait;
-    fpl__pthread_func_sem_trywait *sem_trywait;
-    fpl__pthread_func_sem_post *sem_post;
-    fpl__pthread_func_sem_getvalue *sem_getvalue;
+	fpl__pthread_func_sem_init *sem_init;
+	fpl__pthread_func_sem_destroy *sem_destroy;
+	fpl__pthread_func_sem_wait *sem_wait;
+	fpl__pthread_func_sem_timedwait *sem_timedwait;
+	fpl__pthread_func_sem_trywait *sem_trywait;
+	fpl__pthread_func_sem_post *sem_post;
+	fpl__pthread_func_sem_getvalue *sem_getvalue;
 } fpl__PThreadApi;
 
 #define FPL__POSIX_DL_LOADTYPE RTLD_NOW
@@ -5325,13 +5336,13 @@ fpl_internal bool fpl__PThreadLoadApi(fpl__PThreadApi *pthreadApi) {
 				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi->pthread_cond_signal, fpl__pthread_func_pthread_cond_signal, "pthread_cond_signal");
 
 				// sem_t
-                FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi->sem_init, fpl__pthread_func_sem_init, "sem_init");
-                FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi->sem_destroy, fpl__pthread_func_sem_destroy, "sem_destroy");
-                FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi->sem_wait, fpl__pthread_func_sem_wait, "sem_wait");
-                FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi->sem_timedwait, fpl__pthread_func_sem_timedwait, "sem_timedwait");
-                FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi->sem_trywait, fpl__pthread_func_sem_trywait, "sem_trywait");
-                FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi->sem_post, fpl__pthread_func_sem_post, "sem_post");
-                FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi->sem_getvalue, fpl__pthread_func_sem_getvalue, "sem_getvalue");
+				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi->sem_init, fpl__pthread_func_sem_init, "sem_init");
+				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi->sem_destroy, fpl__pthread_func_sem_destroy, "sem_destroy");
+				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi->sem_wait, fpl__pthread_func_sem_wait, "sem_wait");
+				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi->sem_timedwait, fpl__pthread_func_sem_timedwait, "sem_timedwait");
+				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi->sem_trywait, fpl__pthread_func_sem_trywait, "sem_trywait");
+				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi->sem_post, fpl__pthread_func_sem_post, "sem_post");
+				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi->sem_getvalue, fpl__pthread_func_sem_getvalue, "sem_getvalue");
 
 				result = true;
 			} while(0);
@@ -5517,7 +5528,6 @@ fpl_internal void fpl__UnloadX11Api(fpl__X11Api *x11Api) {
 }
 
 fpl_internal bool fpl__LoadX11Api(fpl__X11Api *x11Api) {
-	// @TODO(final): Correct order of libX11*.so files to prope
 	const char* libFileNames[] = {
 		"libX11.so",
 		"libX11.so.7",
@@ -5949,6 +5959,42 @@ fpl_internal fplKey fpl__GetMappedKey(const fpl__PlatformWindowState *windowStat
 //
 #if !defined(FPL__COMMON_STRINGS_DEFINED)
 #define FPL__COMMON_STRINGS_DEFINED
+
+fpl_common_api bool fplIsStringMatchWildcard(const char *source, const char *wildcard) {
+	// Supported patterns: 
+	// * = Match zero or more characters
+	// ? = Match one character
+	if(source == fpl_null || wildcard == fpl_null) {
+		return false;
+	}
+	const char *s = source;
+	const char *w = wildcard;
+	while(*w) {
+		if(*w == '?') {
+			if(!*s) {
+				return false;
+			}
+			++s;
+		} else if(*w == '*') {
+			while(*s) {
+				char nw = w[1];
+				if(nw != 0) {
+					if((*s == nw) || (nw == '?') || (nw == '*')) {
+						break;
+					}
+				}
+				++s;
+			}
+		} else {
+			if(*s != *w) {
+				return false;
+			}
+			++s;
+		}
+		++w;
+	}
+	return true;
+}
 
 fpl_common_api bool fplIsStringEqualLen(const char *a, const size_t aLen, const char *b, const size_t bLen) {
 	if((a == fpl_null) || (b == fpl_null)) {
@@ -7034,15 +7080,13 @@ fpl_internal void fpl__Win32UpdateClipRect(const fpl__Win32Api *wapi, const fpl_
 }
 
 fpl_internal void fpl__Win32SetCursorState(const fpl__Win32Api *wapi, fpl__Win32WindowState *window, const bool state) {
-	// @TODO(final): Win32 cursor toggle ClipRect only in fullscreen mode!
+	// @NOTE(final): We use RAWINPUT to remove the mouse device entirely when it needs to be hidden
 	if(!state) {
-		//fpl__Win32UpdateClipRect(wapi, window);
 		const RAWINPUTDEVICE rid = { 0x01, 0x02, 0, window->windowHandle };
 		if(!wapi->user.RegisterRawInputDevices(&rid, 1, sizeof(rid))) {
 			FPL_ERROR(FPL__MODULE_WINDOW, "Failed register raw input mouse device for window handle '%p'", window->windowHandle);
 		}
 	} else {
-		//fpl__Win32UpdateClipRect(wapi, fpl_null);
 		const RAWINPUTDEVICE rid = { 0x01, 0x02, RIDEV_REMOVE, fpl_null };
 		if(!wapi->user.RegisterRawInputDevices(&rid, 1, sizeof(rid))) {
 			FPL_ERROR(FPL__MODULE_WINDOW, "Failed to unregister raw input mouse device");
@@ -7071,8 +7115,6 @@ LRESULT CALLBACK fpl__Win32MessageProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 	if(!win32Window->windowHandle) {
 		return fpl__win32_DefWindowProc(hwnd, msg, wParam, lParam);
 	}
-
-	// @TODO(final): Handle WM_DISPLAYCHANGE 
 
 	LRESULT result = 0;
 	switch(msg) {
@@ -7114,13 +7156,10 @@ LRESULT CALLBACK fpl__Win32MessageProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 			uint64_t keyCode = wParam;
 			bool wasDown = ((int)(lParam & (1 << 30)) != 0);
 			bool isDown = ((int)(lParam & (1 << 31)) == 0);
-
-			// @TODO(final): Is it possible to detect the key state from the MSG?
 			bool altKeyWasDown = fpl__Win32IsKeyDown(wapi, VK_MENU);
 			bool shiftKeyWasDown = fpl__Win32IsKeyDown(wapi, VK_LSHIFT);
 			bool ctrlKeyWasDown = fpl__Win32IsKeyDown(wapi, VK_LCONTROL);
 			bool superKeyWasDown = fpl__Win32IsKeyDown(wapi, VK_LMENU);
-
 			fplKeyboardEventType keyEventType = isDown ? fplKeyboardEventType_KeyDown : fplKeyboardEventType_KeyUp;
 			fplKeyboardModifierFlags modifiers = fplKeyboardModifierFlags_None;
 			if(altKeyWasDown) {
@@ -7135,7 +7174,6 @@ LRESULT CALLBACK fpl__Win32MessageProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 			if(superKeyWasDown) {
 				modifiers |= fplKeyboardModifierFlags_Super;
 			}
-			// @TODO(final): Win32 IsRepeat for keyboard input!
 			fpl__Win32PushKeyboardEvent(&appState->window, keyEventType, keyCode, modifiers, isDown);
 			if(wasDown != isDown) {
 				if(isDown) {
@@ -9790,7 +9828,6 @@ fpl_platform_api fplThreadHandle *fplThreadCreate(fpl_run_thread_function *runFu
 		thread->isStopping = false;
 
 		// Create thread
-		// @TODO(final): Better thread id (pthread_t)
 		thread->currentState = fplThreadState_Starting;
 		fplMemoryCopy(&thread->internalHandle.posixThread, FPL_MIN(sizeof(thread->id), sizeof(thread->internalHandle.posixThread)), &thread->id);
 		int threadRes;
@@ -10017,101 +10054,101 @@ fpl_platform_api bool fplConditionBroadcast(fplConditionVariable *condition) {
 }
 
 fpl_platform_api bool fplSemaphoreInit(fplSemaphoreHandle *semaphore, const uint32_t initialValue) {
-    FPL__CheckArgumentNull(semaphore, false);
-    FPL__CheckArgumentMax(initialValue, INT32_MAX, false);
-    if(semaphore->isValid) {
-        FPL_ERROR(FPL__MODULE_THREADING, "Semaphore '%p' is already initialized", semaphore);
-        return false;
-    }
-    FPL__CheckPlatform(false);
-    const fpl__PlatformAppState *appState = fpl__global__AppState;
-    const fpl__PThreadApi *pthreadApi = &appState->posix.pthreadApi;
-    FPL_CLEAR_STRUCT(semaphore);
-    int res = pthreadApi->sem_init(&semaphore->internalHandle.posixHandle, 0, (int)initialValue);
-    if(res < 0) {
-        FPL_ERROR(FPL__MODULE_THREADING, "Failed creating semaphore");
-        return false;
-    }
-    semaphore->isValid = true;
-    return true;
+	FPL__CheckArgumentNull(semaphore, false);
+	FPL__CheckArgumentMax(initialValue, INT32_MAX, false);
+	if(semaphore->isValid) {
+		FPL_ERROR(FPL__MODULE_THREADING, "Semaphore '%p' is already initialized", semaphore);
+		return false;
+	}
+	FPL__CheckPlatform(false);
+	const fpl__PlatformAppState *appState = fpl__global__AppState;
+	const fpl__PThreadApi *pthreadApi = &appState->posix.pthreadApi;
+	FPL_CLEAR_STRUCT(semaphore);
+	int res = pthreadApi->sem_init(&semaphore->internalHandle.posixHandle, 0, (int)initialValue);
+	if(res < 0) {
+		FPL_ERROR(FPL__MODULE_THREADING, "Failed creating semaphore");
+		return false;
+	}
+	semaphore->isValid = true;
+	return true;
 }
 
 fpl_platform_api void fplSemaphoreDestroy(fplSemaphoreHandle *semaphore) {
-    FPL__CheckPlatformNoRet();
-    const fpl__PlatformAppState *appState = fpl__global__AppState;
-    const fpl__PThreadApi *pthreadApi = &appState->posix.pthreadApi;
-    if(semaphore != fpl_null) {
-        if (semaphore->isValid) {
-            pthreadApi->sem_destroy(&semaphore->internalHandle.posixHandle);
-        }
-        FPL_CLEAR_STRUCT(semaphore);
-    }
+	FPL__CheckPlatformNoRet();
+	const fpl__PlatformAppState *appState = fpl__global__AppState;
+	const fpl__PThreadApi *pthreadApi = &appState->posix.pthreadApi;
+	if(semaphore != fpl_null) {
+		if(semaphore->isValid) {
+			pthreadApi->sem_destroy(&semaphore->internalHandle.posixHandle);
+		}
+		FPL_CLEAR_STRUCT(semaphore);
+	}
 }
 
 fpl_platform_api bool fplSemaphoreWait(fplSemaphoreHandle *semaphore, const fplTimeoutValue timeout) {
-    FPL__CheckArgumentNull(semaphore, false);
-    if(!semaphore->isValid) {
-        FPL_ERROR(FPL__MODULE_THREADING, "Semaphore '%p' is not valid", semaphore);
-        return false;
-    }
-    FPL__CheckPlatform(false);
-    const fpl__PlatformAppState *appState = fpl__global__AppState;
-    const fpl__PThreadApi *pthreadApi = &appState->posix.pthreadApi;
-    int res;
-    if (timeout == FPL_TIMEOUT_INFINITE) {
-        res = pthreadApi->sem_wait(&semaphore->internalHandle.posixHandle);
-    } else {
-        struct timespec t;
-        fpl__InitWaitTimeSpec(timeout, &t);
-        res = pthreadApi->sem_timedwait(&semaphore->internalHandle.posixHandle, &t);
-    }
-    bool result = res == 0;
-    return(result);
+	FPL__CheckArgumentNull(semaphore, false);
+	if(!semaphore->isValid) {
+		FPL_ERROR(FPL__MODULE_THREADING, "Semaphore '%p' is not valid", semaphore);
+		return false;
+	}
+	FPL__CheckPlatform(false);
+	const fpl__PlatformAppState *appState = fpl__global__AppState;
+	const fpl__PThreadApi *pthreadApi = &appState->posix.pthreadApi;
+	int res;
+	if(timeout == FPL_TIMEOUT_INFINITE) {
+		res = pthreadApi->sem_wait(&semaphore->internalHandle.posixHandle);
+	} else {
+		struct timespec t;
+		fpl__InitWaitTimeSpec(timeout, &t);
+		res = pthreadApi->sem_timedwait(&semaphore->internalHandle.posixHandle, &t);
+	}
+	bool result = res == 0;
+	return(result);
 }
 
 fpl_platform_api bool fplSemaphoreTryWait(fplSemaphoreHandle *semaphore) {
-    FPL__CheckArgumentNull(semaphore, false);
-    if(!semaphore->isValid) {
-        FPL_ERROR(FPL__MODULE_THREADING, "Semaphore '%p' is not valid", semaphore);
-        return false;
-    }
-    FPL__CheckPlatform(false);
-    const fpl__PlatformAppState *appState = fpl__global__AppState;
-    const fpl__PThreadApi *pthreadApi = &appState->posix.pthreadApi;
-    int res = pthreadApi->sem_trywait(&semaphore->internalHandle.posixHandle);
-    bool result = (res == 0);
-    return(result);
+	FPL__CheckArgumentNull(semaphore, false);
+	if(!semaphore->isValid) {
+		FPL_ERROR(FPL__MODULE_THREADING, "Semaphore '%p' is not valid", semaphore);
+		return false;
+	}
+	FPL__CheckPlatform(false);
+	const fpl__PlatformAppState *appState = fpl__global__AppState;
+	const fpl__PThreadApi *pthreadApi = &appState->posix.pthreadApi;
+	int res = pthreadApi->sem_trywait(&semaphore->internalHandle.posixHandle);
+	bool result = (res == 0);
+	return(result);
 }
 
 fpl_platform_api int32_t fplSemaphoreValue(fplSemaphoreHandle *semaphore) {
-    FPL__CheckArgumentNull(semaphore, false);
-    if(!semaphore->isValid) {
-        FPL_ERROR(FPL__MODULE_THREADING, "Semaphore '%p' is not valid", semaphore);
-        return false;
-    }
-    FPL__CheckPlatform(0);
-    const fpl__PlatformAppState *appState = fpl__global__AppState;
-    const fpl__PThreadApi *pthreadApi = &appState->posix.pthreadApi;
-    int value = 0;
-    int res = pthreadApi->sem_getvalue(&semaphore->internalHandle.posixHandle, &value);
-    if (res < 0) {
-        return 0;
-    }
-    return((int32_t)value);
+	FPL__CheckArgumentNull(semaphore, false);
+	if(!semaphore->isValid) {
+		FPL_ERROR(FPL__MODULE_THREADING, "Semaphore '%p' is not valid", semaphore);
+		return false;
+	}
+	FPL__CheckPlatform(0);
+	const fpl__PlatformAppState *appState = fpl__global__AppState;
+	const fpl__PThreadApi *pthreadApi = &appState->posix.pthreadApi;
+	int value = 0;
+	int res = pthreadApi->sem_getvalue(&semaphore->internalHandle.posixHandle, &value);
+	if(res < 0) {
+		return 0;
+	}
+	return((int32_t)value);
 }
 
 fpl_platform_api bool fplSemaphoreRelease(fplSemaphoreHandle *semaphore) {
-    FPL__CheckArgumentNull(semaphore, false);
-    if(!semaphore->isValid) {
-        FPL_ERROR(FPL__MODULE_THREADING, "Semaphore '%p' is not valid", semaphore);
-        return false;
-    }
-    FPL__CheckPlatform(0);
-    const fpl__PlatformAppState *appState = fpl__global__AppState;
-    const fpl__PThreadApi *pthreadApi = &appState->posix.pthreadApi;
-    int res = pthreadApi->sem_post(&semaphore->internalHandle.posixHandle);
-    bool result = (res == 0);
-    return(result);
+	FPL__CheckArgumentNull(semaphore, false);
+	if(!semaphore->isValid) {
+		FPL_ERROR(FPL__MODULE_THREADING, "Semaphore '%p' is not valid", semaphore);
+		return false;
+	}
+	FPL__CheckPlatform(0);
+	const fpl__PlatformAppState *appState = fpl__global__AppState;
+	const fpl__PThreadApi *pthreadApi = &appState->posix.pthreadApi;
+	int res = pthreadApi->sem_post(&semaphore->internalHandle.posixHandle);
+	bool result = (res == 0);
+	return(result);
 }
 
 //
@@ -10475,11 +10512,6 @@ fpl_internal void fpl__PosixFillFileEntry(struct dirent *dp, fplFileEntry *entry
 	}
 }
 
-fpl_internal bool fpl__IsMatchWildcardAnsiString(const char *search, const char *wildcard) {
-	// @TODO(final): POSIX Implement wildcard string match
-	return true;
-}
-
 fpl_platform_api bool fplListDirBegin(const char *path, const char *filter, fplFileEntry *entry) {
 	FPL__CheckArgumentNull(path, false);
 	FPL__CheckArgumentNull(entry, false);
@@ -10507,7 +10539,7 @@ fpl_platform_api bool fplListDirNext(fplFileEntry *entry) {
 			if(dp == fpl_null) {
 				break;
 			}
-			bool isMatch = fpl__IsMatchWildcardAnsiString(dp->d_name, entry->internalRoot.filter);
+			bool isMatch = fplIsStringMatchWildcard(dp->d_name, entry->internalRoot.filter);
 			if(isMatch) {
 				break;
 			}
@@ -10543,19 +10575,21 @@ fpl_platform_api void fplListDirEnd(fplFileEntry *entry) {
 #if defined(FPL_SUBPLATFORM_STD_STRINGS)
 // @NOTE(final): stdio.h is already included
 fpl_platform_api char *fplWideStringToAnsiString(const wchar_t *wideSource, const size_t maxWideSourceLen, char *ansiDest, const size_t maxAnsiDestLen) {
+	// @NOTE(final): Changes the locale to ANSI temporary
 	FPL__CheckArgumentNull(wideSource, fpl_null);
 	FPL__CheckArgumentNull(ansiDest, fpl_null);
-	size_t requiredLen = wcstombs(fpl_null, wideSource, maxWideSourceLen);
+	const char* lastLocale = setlocale(LC_CTYPE, fpl_null);
+	setlocale(LC_CTYPE, "C"); size_t requiredLen = wcstombs(fpl_null, wideSource, maxWideSourceLen); setlocale(LC_CTYPE, lastLocale);
 	size_t minRequiredLen = requiredLen + 1;
 	FPL__CheckArgumentMin(maxAnsiDestLen, minRequiredLen, fpl_null);
-	wcstombs(ansiDest, wideSource, maxWideSourceLen);
+	setlocale(LC_CTYPE, "C"); wcstombs(ansiDest, wideSource, maxWideSourceLen); setlocale(LC_CTYPE, lastLocale);
 	ansiDest[requiredLen] = 0;
 	return(ansiDest);
 }
 fpl_platform_api char *fplWideStringToUTF8String(const wchar_t *wideSource, const size_t maxWideSourceLen, char *utf8Dest, const size_t maxUtf8DestLen) {
+	// @NOTE(final): Expect locale to be UTF-8
 	FPL__CheckArgumentNull(wideSource, fpl_null);
 	FPL__CheckArgumentNull(utf8Dest, fpl_null);
-	// @TODO(final): UTF-8!
 	size_t requiredLen = wcstombs(fpl_null, wideSource, maxWideSourceLen);
 	size_t minRequiredLen = requiredLen + 1;
 	FPL__CheckArgumentMin(maxUtf8DestLen, minRequiredLen, fpl_null);
@@ -10564,19 +10598,21 @@ fpl_platform_api char *fplWideStringToUTF8String(const wchar_t *wideSource, cons
 	return(utf8Dest);
 }
 fpl_platform_api wchar_t *fplAnsiStringToWideString(const char *ansiSource, const size_t ansiSourceLen, wchar_t *wideDest, const size_t maxWideDestLen) {
+	// @NOTE(final): Changes the locale to ANSI temporary
 	FPL__CheckArgumentNull(ansiSource, fpl_null);
 	FPL__CheckArgumentNull(wideDest, fpl_null);
-	size_t requiredLen = mbstowcs(fpl_null, ansiSource, ansiSourceLen);
+	const char* lastLocale = setlocale(LC_CTYPE, fpl_null);
+	setlocale(LC_CTYPE, "C");	size_t requiredLen = mbstowcs(fpl_null, ansiSource, ansiSourceLen);	setlocale(LC_CTYPE, lastLocale);
 	size_t minRequiredLen = requiredLen + 1;
 	FPL__CheckArgumentMin(maxWideDestLen, minRequiredLen, fpl_null);
-	mbstowcs(wideDest, ansiSource, ansiSourceLen);
+	setlocale(LC_CTYPE, "C");	mbstowcs(wideDest, ansiSource, ansiSourceLen);	setlocale(LC_CTYPE, lastLocale);
 	wideDest[requiredLen] = 0;
 	return(wideDest);
 }
 fpl_platform_api wchar_t *fplUTF8StringToWideString(const char *utf8Source, const size_t utf8SourceLen, wchar_t *wideDest, const size_t maxWideDestLen) {
+	// @NOTE(final): Expect locale to be UTF-8
 	FPL__CheckArgumentNull(utf8Source, fpl_null);
 	FPL__CheckArgumentNull(wideDest, fpl_null);
-	// @TODO(final): UTF-8!
 	size_t requiredLen = mbstowcs(fpl_null, utf8Source, utf8SourceLen);
 	size_t minRequiredLen = requiredLen + 1;
 	FPL__CheckArgumentMin(maxWideDestLen, minRequiredLen, fpl_null);
@@ -11650,7 +11686,7 @@ fpl_platform_api fplArchType fplGetRunningArchitecture() {
 		if(fplIsStringEqual("x86_64", machineName) || fplIsStringEqual("amd64", machineName)) {
 			result = fplArchType_x86_64;
 		} else {
-			// @TODO(final): Detect other running CPU architectures (pure x64, arm32, arm64)
+			// @TODO(final): Detect other running CPU architectures (x64, Arm32, Arm64)
 			result = fplArchType_x86;
 		}
 	}
@@ -14940,7 +14976,6 @@ fpl_internal void fpl__ReleasePlatformStates(fpl__PlatformInitState *initState, 
 		FPL_LOG_DEBUG("Core", "Release Audio");
 		fpl__AudioState *audioState = fpl__GetAudioState(appState);
 		if(audioState != fpl_null) {
-			// @TODO(final): Rename to ShutdownAudio?
 			fpl__ReleaseAudio(audioState);
 		}
 	}
@@ -14975,8 +15010,6 @@ fpl_internal void fpl__ReleasePlatformStates(fpl__PlatformInitState *initState, 
 		}
 	}
 #	endif
-
-	// @TODO(final): Release audio state here?
 
 	if(appState != fpl_null) {
 		// Release actual platform (There can only be one platform!)
