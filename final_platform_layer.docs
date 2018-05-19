@@ -811,8 +811,8 @@
 	You can either use a thirdparty C/C++ library for doing that for you or use/write your own OpenGL loader. FPL should work in both ways.<br>
 	<br>
 	List of tested OpenGL loaders:
-	- <a href="https://github.com/f1nalspace/final_game_tech/blob/master/final_dynamic_opengl.hpp">Final Dynamic OpenGL</a>
-	- <a href="http://glew.sourceforge.net/">Glew</a>
+	- <a href="https://github.com/f1nalspace/final_game_tech/blob/master/final_dynamic_opengl.h">Final Dynamic OpenGL</a>
+	- Glew
 
 	\subsection subsection_otutorial_video_modern_opengl_present Presenting your frame
 
@@ -1636,9 +1636,6 @@
 	- unresolved external symbol __memcpy -> memcpy intrinsic (May use fplMemoryCopy)
 
 	To solve this compile errors i recommend using a mini-crt library or write all the functions yourself.<br>
-	<br>
-	For more details see:<br>
-	https://handmade.network/wiki/2824-tutorial_how_to_avoid_c_c++_runtime_on_windows
 
 	\section section_nocrt_notes Notes
 
