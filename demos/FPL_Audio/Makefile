@@ -1,6 +1,6 @@
 # Project
 APP_NAME = FPL_Audio
-SOURCE_FILES = fpl_audio.c waveloader.c audiosystem.c
+SOURCE_FILES = fpl_audio.c
 LIBS = -ldl -lm
 INCLUDES = -I../../ -I../additions/
 

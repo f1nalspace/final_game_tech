@@ -11,11 +11,11 @@ set(CMAKE_C_FLAGS "-std=c99")
 
 set(MY_EXTERNAL_LIBS m)
 
-set(MY_HEADER_FILES ../../final_platform_layer.h)
+set(MY_INCLUDE_DIRS ../../ ../additions/)
 
-set(MY_INCLUDE_DIRS ../additions)
+set(MY_HEADER_FILES ../../final_platform_layer.h ../additions/final_audiosystem.h ../additions/final_waveloader.h)
 
-set(MY_SOURCE_FILES fpl_audio.c audiosystem.c waveloader.c)
+set(MY_SOURCE_FILES fpl_audio.c)
 
 # -----------------------------------------------------------------------------
 #

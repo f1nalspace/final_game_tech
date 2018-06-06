@@ -40,7 +40,7 @@ Changelog:
 #include <math.h> // sinf
 
 #define FINAL_AUDIOSYSTEM_IMPLEMENTATION
-#include "final_audiosystem.h"
+#include <final_audiosystem.h>
 
 static const float PI32 = 3.14159265359f;
 
