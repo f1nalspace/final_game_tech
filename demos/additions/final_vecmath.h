@@ -160,10 +160,6 @@ union Vec4f {
 		float a;
 	};
 	struct {
-		Vec3f xyz;
-		float w;
-	};
-	struct {
 		Vec2f xy;
 		float ignored0;
 		float ignored1;
