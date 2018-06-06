@@ -13,11 +13,11 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 set(MY_EXTERNAL_LIBS "")
 
-set(MY_HEADER_FILES "../../final_platform_layer.h")
+set(MY_INCLUDE_DIRS "../dependencies/" "../additions/")
 
-set(MY_INCLUDE_DIRS "./dependencies/")
+set(MY_HEADER_FILES "../../final_platform_layer.h" "final_game.h" "final_gameplatform.h")
 
-set(MY_SOURCE_FILES fpl_crackout.cpp game.cpp)
+set(MY_SOURCE_FILES fpl_crackout.cpp final_gameplatform.cpp)
 
 # -----------------------------------------------------------------------------
 #

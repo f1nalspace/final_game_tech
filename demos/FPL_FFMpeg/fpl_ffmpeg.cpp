@@ -9,13 +9,17 @@ Description:
 Requirements:
 	- C++ Compiler
 	- Platform x64 / Win32
-	- ffmpeg-20171123-a60b242-win64-shared (http://ffmpeg.zeranoe.com/builds/)
-	- ffmpeg-20171123-a60b242-win64-dev (http://ffmpeg.zeranoe.com/builds/)
+	- ffmpeg-4.0-win64-shared (http://ffmpeg.zeranoe.com/builds/)
+	- ffmpeg-4.0-win64-dev (http://ffmpeg.zeranoe.com/builds/)
 
 Author:
 	Torsten Spaete
 
 Changelog:
+	## 2018-06-06
+	- Refactored files
+	- Upgraded to FFMPEG 4.0
+
 	## 2018-05-15:
 	- Fixed compile errors
 	- Added USE_FLIP_V_PICTURE_IN_SOFTWARE
@@ -95,7 +99,7 @@ Resources:
 #include "ffmpeg.h"
 
 #define STB_TRUETYPE_IMPLEMENTATION
-#include "stb_truetype.h"
+#include <stb_truetype.h>
 
 #if USE_HARDWARE_RENDERING
 #	define FGL_IMPLEMENTATION
@@ -2023,7 +2027,7 @@ static bool IsRealTime(AVFormatContext *s) {
 		!strcmp(s->iformat->name, "sdp")) {
 		return true;
 	}
-	if (s->pb && (!strncmp(s->filename, "rtp:", 4) || !strncmp(s->filename, "udp:", 4))) {
+	if (s->pb && (!strncmp(s->url, "rtp:", 4) || !strncmp(s->url, "udp:", 4))) {
 		return true;
 	}
 	return false;
@@ -2709,9 +2713,6 @@ int main(int argc, char **argv) {
 	if (!LoadFFMPEG(ffmpeg)) {
 		goto release;
 	}
-
-	// Register all formats and codecs
-	ffmpeg.av_register_all();
 
 	// Init flush packet
 	ffmpeg.av_init_packet(&globalFlushPacket);

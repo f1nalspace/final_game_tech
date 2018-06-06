@@ -2,7 +2,7 @@
 APP_NAME = FPL_Audio
 SOURCE_FILES = fpl_audio.c waveloader.c audiosystem.c
 LIBS = -ldl -lm
-INCLUDES = -I../../
+INCLUDES = -I../../ -I../additions/
 
 # Auto detect release type/platform/architecture
 DEBUG ?= 1

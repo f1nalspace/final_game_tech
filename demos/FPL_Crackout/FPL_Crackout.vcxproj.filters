@@ -4,18 +4,31 @@
     <ClCompile Include="fpl_crackout.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="game.h" />
-    <ClInclude Include="game.cpp" />
     <ClInclude Include="..\..\final_platform_layer.h">
       <Filter>dependencies</Filter>
     </ClInclude>
     <ClInclude Include="..\..\final_dynamic_opengl.h">
       <Filter>dependencies</Filter>
     </ClInclude>
+    <ClInclude Include="..\additions\final_fontloader.h">
+      <Filter>additions</Filter>
+    </ClInclude>
+    <ClInclude Include="..\additions\final_game.h">
+      <Filter>additions</Filter>
+    </ClInclude>
+    <ClInclude Include="..\additions\final_vecmath.h">
+      <Filter>additions</Filter>
+    </ClInclude>
+    <ClInclude Include="..\additions\final_gameplatform.h">
+      <Filter>additions</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="dependencies">
       <UniqueIdentifier>{b6f6e775-8850-40cc-a8d6-7f5d2b26fb8e}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="additions">
+      <UniqueIdentifier>{d91dcf2f-8b0e-41ff-ad53-02110b7d764a}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
 </Project>

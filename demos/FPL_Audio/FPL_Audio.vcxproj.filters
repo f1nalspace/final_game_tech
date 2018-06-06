@@ -1,13 +1,25 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup>
-    <ClInclude Include="..\..\final_platform_layer.h" />
-    <ClInclude Include="waveloader.h" />
-    <ClInclude Include="audiosystem.h" />
+    <ClInclude Include="..\additions\final_audiosystem.h">
+      <Filter>additions</Filter>
+    </ClInclude>
+    <ClInclude Include="..\additions\final_waveloader.h">
+      <Filter>additions</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\final_platform_layer.h">
+      <Filter>dependencies</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="fpl_audio.c" />
-    <ClCompile Include="waveloader.c" />
-    <ClCompile Include="audiosystem.c" />
+  </ItemGroup>
+  <ItemGroup>
+    <Filter Include="additions">
+      <UniqueIdentifier>{acee3852-ddac-4723-8b9d-3966ce31102f}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="dependencies">
+      <UniqueIdentifier>{7704e56d-be57-474e-bb09-de3dad18bce5}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
 </Project>

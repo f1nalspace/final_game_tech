@@ -10,6 +10,8 @@ Requirements:
 Author:
 	Torsten Spaete
 Changelog:
+	## 2018-06-06
+	- Refactored files
  	## 2018-05-13
  	- Fixed Makefiles (Missing audiosystem.c)
 	## 2018-05-09
@@ -37,7 +39,8 @@ Changelog:
 #include <final_platform_layer.h>
 #include <math.h> // sinf
 
-#include "audiosystem.h"
+#define FINAL_AUDIOSYSTEM_IMPLEMENTATION
+#include "final_audiosystem.h"
 
 static const float PI32 = 3.14159265359f;
 

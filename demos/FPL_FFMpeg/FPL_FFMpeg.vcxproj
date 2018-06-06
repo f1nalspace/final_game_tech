@@ -69,28 +69,28 @@
   </ImportGroup>
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
-    <IncludePath>..\..\;dependencies\ffmpeg\include\;$(IncludePath)</IncludePath>
+    <IncludePath>..\..\;..\dependencies\ffmpeg\include\;..\dependencies\stb\;$(IncludePath)</IncludePath>
     <OutDir>$(SolutionDir)bin\$(ProjectName)\Windows-$(Platform)-$(Configuration)\</OutDir>
     <IntDir>$(SolutionDir)immediates\$(ProjectName)\Windows-$(Platform)-$(Configuration)\</IntDir>
-    <LibraryPath>..\..\;dependencies\ffmpeg\lib;$(LibraryPath)</LibraryPath>
+    <LibraryPath>..\..\;..\dependencies\ffmpeg\lib;$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
-    <IncludePath>..\..\;dependencies\ffmpeg\include\;$(IncludePath)</IncludePath>
+    <IncludePath>..\..\;..\dependencies\ffmpeg\include\;..\dependencies\stb\;$(IncludePath)</IncludePath>
     <OutDir>$(SolutionDir)bin\$(ProjectName)\Windows-$(Platform)-$(Configuration)\</OutDir>
     <IntDir>$(SolutionDir)immediates\$(ProjectName)\Windows-$(Platform)-$(Configuration)\</IntDir>
-    <LibraryPath>..\..\;dependencies\ffmpeg\lib;$(LibraryPath)</LibraryPath>
+    <LibraryPath>..\..\;..\dependencies\ffmpeg\lib;$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
-    <IncludePath>..\..\;dependencies\ffmpeg\include\;$(IncludePath)</IncludePath>
+    <IncludePath>..\..\;..\dependencies\ffmpeg\include\;..\dependencies\stb\;$(IncludePath)</IncludePath>
     <OutDir>$(SolutionDir)bin\$(ProjectName)\Windows-$(Platform)-$(Configuration)\</OutDir>
     <IntDir>$(SolutionDir)immediates\$(ProjectName)\Windows-$(Platform)-$(Configuration)\</IntDir>
-    <LibraryPath>..\..\;dependencies\ffmpeg\lib;$(LibraryPath)</LibraryPath>
+    <LibraryPath>..\..\;..\dependencies\ffmpeg\lib;$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
-    <IncludePath>..\..\;dependencies\ffmpeg\include\;$(IncludePath)</IncludePath>
+    <IncludePath>..\..\;..\dependencies\ffmpeg\include\;..\dependencies\stb\;$(IncludePath)</IncludePath>
     <OutDir>$(SolutionDir)bin\$(ProjectName)\Windows-$(Platform)-$(Configuration)\</OutDir>
     <IntDir>$(SolutionDir)immediates\$(ProjectName)\Windows-$(Platform)-$(Configuration)\</IntDir>
-    <LibraryPath>..\..\;dependencies\ffmpeg\lib;$(LibraryPath)</LibraryPath>
+    <LibraryPath>..\..\;..\dependencies\ffmpeg\lib;$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ClCompile>
@@ -105,7 +105,7 @@
       </AdditionalDependencies>
     </Link>
     <PostBuildEvent>
-      <Command>xcopy /c /y "$(ProjectDir)dependencies\ffmpeg\bin\*.dll" "$(SolutionDir)bin\$(ProjectName)\Windows-$(Platform)-$(Configuration)\"</Command>
+      <Command>xcopy /c /y "$(SolutionDir)dependencies\ffmpeg\bin\*.dll" "$(SolutionDir)bin\$(ProjectName)\Windows-$(Platform)-$(Configuration)\"</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
@@ -121,7 +121,7 @@
       </AdditionalDependencies>
     </Link>
     <PostBuildEvent>
-      <Command>xcopy /c /y "$(ProjectDir)dependencies\ffmpeg\bin\*.dll" "$(SolutionDir)bin\$(ProjectName)\Windows-$(Platform)-$(Configuration)\"</Command>
+      <Command>xcopy /c /y "$(SolutionDir)dependencies\ffmpeg\bin\*.dll" "$(SolutionDir)bin\$(ProjectName)\Windows-$(Platform)-$(Configuration)\"</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
@@ -141,7 +141,7 @@
       </AdditionalDependencies>
     </Link>
     <PostBuildEvent>
-      <Command>xcopy /c /y "$(ProjectDir)dependencies\ffmpeg\bin\*.dll" "$(SolutionDir)bin\$(ProjectName)\Windows-$(Platform)-$(Configuration)\"</Command>
+      <Command>xcopy /c /y "$(SolutionDir)dependencies\ffmpeg\bin\*.dll" "$(SolutionDir)bin\$(ProjectName)\Windows-$(Platform)-$(Configuration)\"</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -161,7 +161,7 @@
       </AdditionalDependencies>
     </Link>
     <PostBuildEvent>
-      <Command>xcopy /c /y "$(ProjectDir)dependencies\ffmpeg\bin\*.dll" "$(SolutionDir)bin\$(ProjectName)\Windows-$(Platform)-$(Configuration)\"</Command>
+      <Command>xcopy /c /y "$(SolutionDir)dependencies\ffmpeg\bin\*.dll" "$(SolutionDir)bin\$(ProjectName)\Windows-$(Platform)-$(Configuration)\"</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
@@ -171,7 +171,6 @@
     <ClInclude Include="ffmpeg.h" />
     <ClInclude Include="maths.h" />
     <ClInclude Include="shaders.h" />
-    <ClInclude Include="stb_truetype.h" />
     <ClInclude Include="utils.h" />
   </ItemGroup>
   <ItemGroup>

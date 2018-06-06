@@ -13,7 +13,7 @@ set(MY_EXTERNAL_LIBS m)
 
 set(MY_HEADER_FILES ../../final_platform_layer.h)
 
-set(MY_INCLUDE_DIRS "")
+set(MY_INCLUDE_DIRS ../additions)
 
 set(MY_SOURCE_FILES fpl_audio.c audiosystem.c waveloader.c)
 

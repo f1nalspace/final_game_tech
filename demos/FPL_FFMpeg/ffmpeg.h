@@ -18,14 +18,11 @@ extern "C" {
 // AVFormat
 //
 
-// av_register_all
-#define FFMPEG_AV_REGISTER_ALL_FUNC(name) void name(void)
-typedef FFMPEG_AV_REGISTER_ALL_FUNC(ffmpeg_av_register_all_func);
 // avformat_network_init
-#define FFMPEG_AVFORMAT_NETWORK_INIT_FUNC(name) void name(void)
+#define FFMPEG_AVFORMAT_NETWORK_INIT_FUNC(name) int name(void)
 typedef FFMPEG_AVFORMAT_NETWORK_INIT_FUNC(ffmpeg_avformat_network_init_func);
 // avformat_network_deinit
-#define FFMPEG_AVFORMAT_NETWORK_DEINIT_FUNC(name) void name(void)
+#define FFMPEG_AVFORMAT_NETWORK_DEINIT_FUNC(name) int name(void)
 typedef FFMPEG_AVFORMAT_NETWORK_DEINIT_FUNC(ffmpeg_avformat_network_deinit_func);
 // avformat_close_input
 #define FFMPEG_AVFORMAT_CLOSE_INPUT_FUNC(name) void name(struct AVFormatContext **s)
@@ -295,7 +292,6 @@ struct FFMPEGContext {
 	fplDynamicLibraryHandle swResampleLib;
 
 	// Format
-	ffmpeg_av_register_all_func *av_register_all;
 	ffmpeg_avformat_network_init_func *avformat_network_init;
 	ffmpeg_avformat_network_deinit_func *avformat_network_deinit;
 	ffmpeg_avformat_close_input_func *avformat_close_input;
@@ -413,7 +409,6 @@ static bool LoadFFMPEG(FFMPEGContext &ffmpeg) {
 	// AVFormat
 	//
 #if !USE_FFMPEG_STATIC_LINKING
-	FFMPEG_GET_FUNCTION_ADDRESS(avFormatLib, avFormatLibFile, ffmpeg.av_register_all, ffmpeg_av_register_all_func, "av_register_all");
 	FFMPEG_GET_FUNCTION_ADDRESS(avFormatLib, avFormatLibFile, ffmpeg.avformat_network_init, ffmpeg_avformat_network_init_func, "avformat_network_init");
 	FFMPEG_GET_FUNCTION_ADDRESS(avFormatLib, avFormatLibFile, ffmpeg.avformat_network_deinit, ffmpeg_avformat_network_deinit_func, "avformat_network_deinit");
 	FFMPEG_GET_FUNCTION_ADDRESS(avFormatLib, avFormatLibFile, ffmpeg.avformat_close_input, ffmpeg_avformat_close_input_func, "avformat_close_input");
@@ -435,7 +430,6 @@ static bool LoadFFMPEG(FFMPEGContext &ffmpeg) {
 	FFMPEG_GET_FUNCTION_ADDRESS(avFormatLib, avFormatLibFile, ffmpeg.avio_size, ffmpeg_avio_size_func, "avio_size");
 	FFMPEG_GET_FUNCTION_ADDRESS(avFormatLib, avFormatLibFile, ffmpeg.avio_seek, ffmpeg_avio_seek_func, "avio_seek");
 #else
-	ffmpeg.av_register_all = av_register_all;
 	ffmpeg.avformat_network_init = avformat_network_init;
 	ffmpeg.avformat_network_deinit = avformat_network_deinit;
 	ffmpeg.avformat_close_input = avformat_close_input;

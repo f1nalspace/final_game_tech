@@ -20,12 +20,14 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="fpl_crackout.cpp" />
-    <ClCompile Include="game.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\..\final_dynamic_opengl.h" />
     <ClInclude Include="..\..\final_platform_layer.h" />
-    <ClInclude Include="game.h" />
+    <ClInclude Include="..\additions\final_fontloader.h" />
+    <ClInclude Include="..\additions\final_game.h" />
+    <ClInclude Include="..\additions\final_gameplatform.h" />
+    <ClInclude Include="..\additions\final_vecmath.h" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <VCProjectVersion>15.0</VCProjectVersion>
@@ -83,25 +85,25 @@
     <LinkIncremental>true</LinkIncremental>
     <OutDir>$(SolutionDir)bin\$(ProjectName)\Windows-$(Platform)-$(Configuration)\</OutDir>
     <IntDir>$(SolutionDir)immediates\$(ProjectName)\Windows-$(Platform)-$(Configuration)\</IntDir>
-    <IncludePath>..\..\;dependencies;$(VC_IncludePath);$(WindowsSDK_IncludePath);</IncludePath>
+    <IncludePath>..\..\;..\additions;..\dependencies;$(VC_IncludePath);$(WindowsSDK_IncludePath);</IncludePath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <LinkIncremental>true</LinkIncremental>
     <OutDir>$(SolutionDir)bin\$(ProjectName)\Windows-$(Platform)-$(Configuration)\</OutDir>
     <IntDir>$(SolutionDir)immediates\$(ProjectName)\Windows-$(Platform)-$(Configuration)\</IntDir>
-    <IncludePath>..\..\;dependencies;$(VC_IncludePath);$(WindowsSDK_IncludePath);</IncludePath>
+    <IncludePath>..\..\;..\additions;..\dependencies;$(VC_IncludePath);$(WindowsSDK_IncludePath);</IncludePath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <LinkIncremental>false</LinkIncremental>
     <OutDir>$(SolutionDir)bin\$(ProjectName)\Windows-$(Platform)-$(Configuration)\</OutDir>
     <IntDir>$(SolutionDir)immediates\$(ProjectName)\Windows-$(Platform)-$(Configuration)\</IntDir>
-    <IncludePath>..\..\;dependencies;$(VC_IncludePath);$(WindowsSDK_IncludePath);</IncludePath>
+    <IncludePath>..\..\;..\additions;..\dependencies;$(VC_IncludePath);$(WindowsSDK_IncludePath);</IncludePath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <LinkIncremental>false</LinkIncremental>
     <OutDir>$(SolutionDir)bin\$(ProjectName)\Windows-$(Platform)-$(Configuration)\</OutDir>
     <IntDir>$(SolutionDir)immediates\$(ProjectName)\Windows-$(Platform)-$(Configuration)\</IntDir>
-    <IncludePath>..\..\;dependencies;$(VC_IncludePath);$(WindowsSDK_IncludePath);</IncludePath>
+    <IncludePath>..\..\;..\additions;..\dependencies;$(VC_IncludePath);$(WindowsSDK_IncludePath);</IncludePath>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <ClCompile>

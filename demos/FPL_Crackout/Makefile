@@ -2,7 +2,7 @@
 APP_NAME = FPL_Crackout
 SOURCE_FILES = fpl_crackout.cpp game.cpp
 LIBS = -ldl
-INCLUDES = -I../../ -I./dependencies/
+INCLUDES = -I../../ -I../dependencies/ -I../additions/
 
 # Auto detect release type/platform/architecture
 DEBUG ?= 1

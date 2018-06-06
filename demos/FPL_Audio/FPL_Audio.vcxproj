@@ -73,25 +73,25 @@
     <LinkIncremental>true</LinkIncremental>
     <OutDir>$(SolutionDir)bin\$(ProjectName)\Windows-$(Platform)-$(Configuration)\</OutDir>
     <IntDir>$(SolutionDir)immediates\$(ProjectName)\Windows-$(Platform)-$(Configuration)\</IntDir>
-    <IncludePath>..\..\;$(IncludePath)</IncludePath>
+    <IncludePath>..\..\;..\additions;$(IncludePath)</IncludePath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <LinkIncremental>true</LinkIncremental>
     <OutDir>$(SolutionDir)bin\$(ProjectName)\Windows-$(Platform)-$(Configuration)\</OutDir>
     <IntDir>$(SolutionDir)immediates\$(ProjectName)\Windows-$(Platform)-$(Configuration)\</IntDir>
-    <IncludePath>..\..\;$(IncludePath)</IncludePath>
+    <IncludePath>..\..\;..\additions;$(IncludePath)</IncludePath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <LinkIncremental>false</LinkIncremental>
     <OutDir>$(SolutionDir)bin\$(ProjectName)\Windows-$(Platform)-$(Configuration)\</OutDir>
     <IntDir>$(SolutionDir)immediates\$(ProjectName)\Windows-$(Platform)-$(Configuration)\</IntDir>
-    <IncludePath>..\..\;$(IncludePath)</IncludePath>
+    <IncludePath>..\..\;..\additions;$(IncludePath)</IncludePath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <LinkIncremental>false</LinkIncremental>
     <OutDir>$(SolutionDir)bin\$(ProjectName)\Windows-$(Platform)-$(Configuration)\</OutDir>
     <IntDir>$(SolutionDir)immediates\$(ProjectName)\Windows-$(Platform)-$(Configuration)\</IntDir>
-    <IncludePath>..\..\;$(IncludePath)</IncludePath>
+    <IncludePath>..\..\;..\additions;$(IncludePath)</IncludePath>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ClCompile>
@@ -162,14 +162,12 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="audiosystem.c" />
     <ClCompile Include="fpl_audio.c" />
-    <ClCompile Include="waveloader.c" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\..\final_platform_layer.h" />
-    <ClInclude Include="audiosystem.h" />
-    <ClInclude Include="waveloader.h" />
+    <ClInclude Include="..\additions\final_audiosystem.h" />
+    <ClInclude Include="..\additions\final_waveloader.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
