@@ -103,7 +103,7 @@ SOFTWARE.
 
 /*!
 	\file final_dynamic_opengl.h
-	\version v0.3.3.0 beta
+	\version v0.3.4.0 beta
 	\author Torsten Spaete
 	\brief Final Dynamic OpenGL (FGL) - A open source C99 single file header OpenGL-Loader library.
 */
@@ -111,6 +111,10 @@ SOFTWARE.
 /*!
 	\page page_changelog Changelog
 	\tableofcontents
+
+    ## v0.3.4.0 beta:
+    - Fixed: Removed fglOpenGLState struct dependency for fgl__SetLastError()
+    - Fixed: Removed fglOpenGLState struct dependency for Win32/X11 opengl functions
 
 	## v0.3.3.0 beta:
 	- Changed: Prevent including FGL before any other OpenGL library/header
@@ -4485,7 +4489,7 @@ static void fgl__ClearMemory(void *mem, size_t size) {
 	}
 }
 
-static void fgl__SetLastError(struct fglOpenGLState *state, const char *format, ...);
+static void fgl__SetLastError(const char *format, ...);
 
 #if defined(FGL_PLATFORM_WIN32)
 // User32.dll
@@ -4590,11 +4594,11 @@ static void fgl__Win32UnloadOpenGL(fglWin32OpenGLApi *api) {
 	fgl__ClearMemory(api, sizeof(*api));
 }
 
-static bool fgl__Win32LoadOpenGL(struct fglOpenGLState *state, fglWin32OpenGLApi *api) {
+static bool fgl__Win32LoadOpenGL(fglWin32OpenGLApi *api) {
 	// user.dll
 	api->user32.libraryHandle = LoadLibraryA("user32.dll");
 	if(api->user32.libraryHandle == fgl_null) {
-		fgl__SetLastError(state, "Failed loading win32 user32.dll!");
+		fgl__SetLastError("Failed loading win32 user32.dll!");
 		return false;
 	}
 	api->user32.GetDC = (fgl_func_win32_user32_GetDC *)GetProcAddress(api->user32.libraryHandle, "GetDC");
@@ -4603,7 +4607,7 @@ static bool fgl__Win32LoadOpenGL(struct fglOpenGLState *state, fglWin32OpenGLApi
 	// gdi.dll
 	api->gdi32.libraryHandle = LoadLibraryA("gdi32.dll");
 	if(api->gdi32.libraryHandle == fgl_null) {
-		fgl__SetLastError(state, "Failed loading win32 gdi32.dll!");
+		fgl__SetLastError("Failed loading win32 gdi32.dll!");
 		return false;
 	}
 	api->gdi32.ChoosePixelFormat = (fgl_func_win32_gdi32_ChoosePixelFormat *)GetProcAddress(api->gdi32.libraryHandle, "ChoosePixelFormat");
@@ -4627,7 +4631,7 @@ static bool fgl__Win32LoadOpenGL(struct fglOpenGLState *state, fglWin32OpenGLApi
 		}
 	}
 	if(glLibraryHandle == fgl_null) {
-		fgl__SetLastError(state, "Failed loading win32 opengl32.dll!");
+		fgl__SetLastError("Failed loading win32 opengl32.dll!");
 		return false;
 	}
 	api->opengl32.libraryHandle = glLibraryHandle;
@@ -4647,13 +4651,13 @@ static void fgl__Win32DestroyOpenGLContext(fglWin32OpenGLApi *api, fglOpenGLCont
 	}
 }
 
-static bool fgl__Win32CreateOpenGLContext(struct fglOpenGLState *state, fglWin32OpenGLApi *api, const fglOpenGLContextCreationParameters *contextCreationParams, fglOpenGLContext *outContext) {
+static bool fgl__Win32CreateOpenGLContext(fglWin32OpenGLApi *api, const fglOpenGLContextCreationParameters *contextCreationParams, fglOpenGLContext *outContext) {
 	HDC deviceContext = contextCreationParams->windowHandle.win32.deviceContext;
 	HWND handle = contextCreationParams->windowHandle.win32.windowHandle;
 	bool requireToReleaseDC = false;
 	if(deviceContext == fgl_null) {
 		if(handle == fgl_null) {
-			fgl__SetLastError(state, "Missing win32 window handle in opengl context creation!");
+			fgl__SetLastError("Missing win32 window handle in opengl context creation!");
 			return false;
 		}
 		deviceContext = api->user32.GetDC(handle);
@@ -4676,13 +4680,13 @@ static bool fgl__Win32CreateOpenGLContext(struct fglOpenGLState *state, fglWin32
 
 	int pixelFormat = api->gdi32.ChoosePixelFormat(deviceContext, &pfd);
 	if(!pixelFormat) {
-		fgl__SetLastError(state, "Failed win32 choosing pixel format for device context '%p'!", deviceContext);
+		fgl__SetLastError("Failed win32 choosing pixel format for device context '%p'!", deviceContext);
 		fgl__Win32DestroyOpenGLContext(api, outContext);
 		return false;
 	}
 
 	if(!api->gdi32.SetPixelFormat(deviceContext, pixelFormat, &pfd)) {
-		fgl__SetLastError(state, "Failed win32 setting pixel format '%d' for device context '%p'!", pixelFormat, deviceContext);
+		fgl__SetLastError("Failed win32 setting pixel format '%d' for device context '%p'!", pixelFormat, deviceContext);
 		fgl__Win32DestroyOpenGLContext(api, outContext);
 		return false;
 	}
@@ -4691,13 +4695,13 @@ static bool fgl__Win32CreateOpenGLContext(struct fglOpenGLState *state, fglWin32
 
 	HGLRC legacyRenderingContext = api->opengl32.wglCreateContext(deviceContext);
 	if(!legacyRenderingContext) {
-		fgl__SetLastError(state, "Failed win32 creating opengl legacy rendering context for device context '%p'!", deviceContext);
+		fgl__SetLastError("Failed win32 creating opengl legacy rendering context for device context '%p'!", deviceContext);
 		fgl__Win32DestroyOpenGLContext(api, outContext);
 		return false;
 	}
 
 	if(!api->opengl32.wglMakeCurrent(deviceContext, legacyRenderingContext)) {
-		fgl__SetLastError(state, "Failed win32 activating opengl legacy rendering context '%p' for device context '%p'!", legacyRenderingContext, deviceContext);
+		fgl__SetLastError("Failed win32 activating opengl legacy rendering context '%p' for device context '%p'!", legacyRenderingContext, deviceContext);
 		fgl__Win32DestroyOpenGLContext(api, outContext);
 		return false;
 	}
@@ -4712,17 +4716,17 @@ static bool fgl__Win32CreateOpenGLContext(struct fglOpenGLState *state, fglWin32
 		// @NOTE(final): This is only available in OpenGL 3.0+
 
 		if(!(contextCreationParams->majorVersion >= 3 && contextCreationParams->minorVersion >= 0)) {
-			fgl__SetLastError(state, "You have not specified the 'majorVersion' and 'minorVersion' in the Context Creation Params!");
+			fgl__SetLastError("You have not specified the 'majorVersion' and 'minorVersion' in the Context Creation Params!");
 			fgl__Win32DestroyOpenGLContext(api, outContext);
 			return false;
 		}
 		if(api->opengl32.wglChoosePixelFormatARB == fgl_null) {
-			fgl__SetLastError(state, "wglChoosePixelFormatARB is not available, modern OpenGL is not available for your video card");
+			fgl__SetLastError("wglChoosePixelFormatARB is not available, modern OpenGL is not available for your video card");
 			fgl__Win32DestroyOpenGLContext(api, outContext);
 			return false;
 		}
 		if(api->opengl32.wglCreateContextAttribsARB == fgl_null) {
-			fgl__SetLastError(state, "wglCreateContextAttribsARB is not available, modern OpenGL is not available for your video card");
+			fgl__SetLastError("wglCreateContextAttribsARB is not available, modern OpenGL is not available for your video card");
 			fgl__Win32DestroyOpenGLContext(api, outContext);
 			return false;
 		}
@@ -4734,7 +4738,7 @@ static bool fgl__Win32CreateOpenGLContext(struct fglOpenGLState *state, fglWin32
 		} else if(contextCreationParams->profile == fglOpenGLProfileType_CompabilityProfile) {
 			profile = FGL_WGL_CONTEXT_COMPATIBILITY_PROFILE_BIT_ARB;
 		} else {
-			fgl__SetLastError(state, "No opengl compability profile selected, please specific either fglOpenGLProfileType_CoreProfile or fglOpenGLProfileType_CompabilityProfile");
+			fgl__SetLastError("No opengl compability profile selected, please specific either fglOpenGLProfileType_CoreProfile or fglOpenGLProfileType_CompabilityProfile");
 			fgl__Win32DestroyOpenGLContext(api, outContext);
 			return false;
 		}
@@ -4759,7 +4763,7 @@ static bool fgl__Win32CreateOpenGLContext(struct fglOpenGLState *state, fglWin32
 		HGLRC modernRenderingContext = api->opengl32.wglCreateContextAttribsARB(deviceContext, 0, contextAttribList);
 		if(modernRenderingContext) {
 			if(!api->opengl32.wglMakeCurrent(deviceContext, modernRenderingContext)) {
-				fgl__SetLastError(state, "Warning: Failed activating Modern OpenGL Rendering Context for version (%d.%d) and profile (%d) and DC '%x') -> Fallback to legacy context", contextCreationParams->majorVersion, contextCreationParams->minorVersion, contextCreationParams->profile, deviceContext);
+				fgl__SetLastError("Warning: Failed activating Modern OpenGL Rendering Context for version (%d.%d) and profile (%d) and DC '%x') -> Fallback to legacy context", contextCreationParams->majorVersion, contextCreationParams->minorVersion, contextCreationParams->profile, deviceContext);
 
 				api->opengl32.wglDeleteContext(modernRenderingContext);
 				modernRenderingContext = fgl_null;
@@ -4774,7 +4778,7 @@ static bool fgl__Win32CreateOpenGLContext(struct fglOpenGLState *state, fglWin32
 				activeRenderingContext = modernRenderingContext;
 			}
 		} else {
-			fgl__SetLastError(state, "Warning: Failed creating Modern OpenGL Rendering Context for version (%d.%d) and profile (%d) and DC '%x') -> Fallback to legacy context", contextCreationParams->majorVersion, contextCreationParams->minorVersion, contextCreationParams->profile, deviceContext);
+			fgl__SetLastError("Warning: Failed creating Modern OpenGL Rendering Context for version (%d.%d) and profile (%d) and DC '%x') -> Fallback to legacy context", contextCreationParams->majorVersion, contextCreationParams->minorVersion, contextCreationParams->profile, deviceContext);
 
 			// Fallback to legacy context
 			api->opengl32.wglMakeCurrent(deviceContext, legacyRenderingContext);
@@ -4799,14 +4803,14 @@ typedef struct fglPosixOpenGLApi {
 	fgl_func_posix_glx_glXGetProcAddress *glXGetProcAddress;
 } fglPosixOpenGLApi;
 
-static void fgl__PosixUnloadOpenGL(fglPosixOpenGLApi *state) {
-	if(state->libraryHandle != fgl_null) {
-		dlclose(state->libraryHandle);
+static void fgl__PosixUnloadOpenGL(fglPosixOpenGLApi *api) {
+	if(api->libraryHandle != fgl_null) {
+		dlclose(api->libraryHandle);
 	}
-	fgl__ClearMemory(state, sizeof(*state));
+	fgl__ClearMemory(api, sizeof(*api));
 }
 
-static bool fgl__PosixLoadOpenGL(struct fglOpenGLState *state, fglPosixOpenGLApi *api) {
+static bool fgl__PosixLoadOpenGL(fglPosixOpenGLApi *api) {
 	const char *posixLibraryNames[] = {
 		"libGL.so.1",
 		"libGL.so",
@@ -4820,13 +4824,13 @@ static bool fgl__PosixLoadOpenGL(struct fglOpenGLState *state, fglPosixOpenGLApi
 		}
 	}
 	if(glLibraryHandle == fgl_null) {
-		fgl__SetLastError(state, "Failed loading posix libGL.so!");
+		fgl__SetLastError("Failed loading posix libGL.so!");
 		return false;
 	}
 	api->libraryHandle = glLibraryHandle;
 }
 
-static bool fgl__PosixCreateOpenGLContext(struct fglOpenGLState *state, fglPosixOpenGLApi *api, const fglOpenGLContextCreationParameters *contextCreationParams, fglOpenGLContext *outContext) {
+static bool fgl__PosixCreateOpenGLContext(fglPosixOpenGLApi *api, const fglOpenGLContextCreationParameters *contextCreationParams, fglOpenGLContext *outContext) {
 	// @TODO(final): Implement POSIX/GLX context creation
 	return false;
 }
@@ -4848,8 +4852,10 @@ typedef struct fglOpenGLState {
 	bool isLoaded;
 } fglOpenGLState;
 
-static void fgl__SetLastError(fglOpenGLState *state, const char *format, ...) {
-	assert(state != fgl_null);
+static fglOpenGLState fgl__globalOpenGLState = FGL_ZERO_INIT;
+
+static void fgl__SetLastError(const char *format, ...) {
+	fglOpenGLState *state = &fgl__globalOpenGLState;
 	if(format != fgl_null) {
 		va_list argList;
 		va_start(argList, format);
@@ -5978,11 +5984,11 @@ static void fgl__LoadOpenGLExtensions(const fglOpenGLState *state) {
 static bool fgl__LoadOpenGL(fglOpenGLState *state) {
 	assert(state != fgl_null);
 #if defined(FGL_PLATFORM_WIN32)
-	if(!fgl__Win32LoadOpenGL(state, &state->win32)) {
+	if(!fgl__Win32LoadOpenGL(&state->win32)) {
 		return false;
 	}
 #elif defined(FGL_PLATFORM_POSIX)
-	if(!fgl__PosixLoadOpenGL(state, &state->posix)) {
+	if(!fgl__PosixLoadOpenGL(&state->posix)) {
 		return false;
 	}
 #endif
@@ -6006,7 +6012,7 @@ static void fgl__DestroyOpenGLContext(fglOpenGLState *state, fglOpenGLContext *c
 	assert(state != fgl_null);
 	assert(context != fgl_null);
 	if(!state->isLoaded) {
-		fgl__SetLastError(state, "OpenGL library was not loaded!");
+		fgl__SetLastError("OpenGL library was not loaded!");
 		return;
 	}
 #if defined(FGL_PLATFORM_WIN32)
@@ -6019,35 +6025,33 @@ static void fgl__DestroyOpenGLContext(fglOpenGLState *state, fglOpenGLContext *c
 
 static bool fgl__CreateOpenGLContext(fglOpenGLState *state, const fglOpenGLContextCreationParameters *contextCreationParams, fglOpenGLContext *outContext) {
 	if(state == fgl_null) {
-		fgl__SetLastError(state, "State is missing!");
+		fgl__SetLastError("State is missing!");
 		return false;
 	}
 	if(contextCreationParams == fgl_null) {
-		fgl__SetLastError(state, "Context creation params is missing!");
+		fgl__SetLastError("Context creation params is missing!");
 		return false;
 	}
 	if(outContext == fgl_null) {
-		fgl__SetLastError(state, "Out context is missing!");
+		fgl__SetLastError("Out context is missing!");
 		return false;
 	}
 	if(!state->isLoaded) {
-		fgl__SetLastError(state, "OpenGL library is not loaded!");
+		fgl__SetLastError("OpenGL library is not loaded!");
 		return false;
 	}
 	fgl__ClearMemory(outContext, sizeof(*outContext));
 #	if defined(FGL_PLATFORM_WIN32)
-	if(!fgl__Win32CreateOpenGLContext(state, &state->win32, contextCreationParams, outContext)) {
+	if(!fgl__Win32CreateOpenGLContext(&state->win32, contextCreationParams, outContext)) {
 		return false;
 	}
 #	elif defined(FGL_PLATFORM_POSIX)
-	if(!fgl__PosixCreateOpenGLContext(state, &state->posix, contextCreationParams, outContext)) {
+	if(!fgl__PosixCreateOpenGLContext(&state->posix, contextCreationParams, outContext)) {
 		return false;
 	}
 #	endif
 	return (outContext->isValid);
 }
-
-static fglOpenGLState globalOpenGLState = FGL_ZERO_INIT;
 
 fdyngl_api void fglSetDefaultOpenGLContextCreationParameters(fglOpenGLContextCreationParameters *outParams) {
 	fgl__ClearMemory(outParams, sizeof(*outParams));
@@ -6057,7 +6061,7 @@ fdyngl_api void fglSetDefaultOpenGLContextCreationParameters(fglOpenGLContextCre
 }
 
 fdyngl_api bool fglCreateOpenGLContext(const fglOpenGLContextCreationParameters *contextCreationParams, fglOpenGLContext *outContext) {
-	fglOpenGLState *state = &globalOpenGLState;
+	fglOpenGLState *state = &fgl__globalOpenGLState;
 	if(!state->isLoaded) {
 		if(!fgl__LoadOpenGL(state)) {
 			assert(fgl__GetStringLen(state->lastError) > 0);
@@ -6072,19 +6076,19 @@ fdyngl_api bool fglCreateOpenGLContext(const fglOpenGLContextCreationParameters 
 }
 
 fdyngl_api void fglDestroyOpenGLContext(fglOpenGLContext *context) {
-	fglOpenGLState *state = &globalOpenGLState;
+	fglOpenGLState *state = &fgl__globalOpenGLState;
 	fgl__DestroyOpenGLContext(state, context);
 }
 
 fdyngl_api void fglLoadOpenGLFunctions() {
-	fglOpenGLState *state = &globalOpenGLState;
+	fglOpenGLState *state = &fgl__globalOpenGLState;
 	if(state->isLoaded) {
 		fgl__LoadOpenGLExtensions(state);
 	}
 }
 
 fdyngl_api bool fglLoadOpenGL(const bool loadFunctions) {
-	fglOpenGLState *state = &globalOpenGLState;
+	fglOpenGLState *state = &fgl__globalOpenGLState;
 	if(!state->isLoaded) {
 		if(!fgl__LoadOpenGL(state)) {
 			assert(fgl__GetStringLen(state->lastError) > 0);
@@ -6098,7 +6102,7 @@ fdyngl_api bool fglLoadOpenGL(const bool loadFunctions) {
 }
 
 fdyngl_api void fglUnloadOpenGL() {
-	fglOpenGLState *state = &globalOpenGLState;
+	fglOpenGLState *state = &fgl__globalOpenGLState;
 	fgl__UnloadOpenGL(state);
 	assert(!state->isLoaded);
 }
@@ -6107,7 +6111,7 @@ fdyngl_api void fglPresentOpenGL(const fglOpenGLContext *context) {
 	if(context == fgl_null) {
 		return;
 	}
-	const fglOpenGLState *state = &globalOpenGLState;
+	const fglOpenGLState *state = &fgl__globalOpenGLState;
 #	if defined(FGL_PLATFORM_WIN32)
 	if(context->windowHandle.win32.deviceContext != fgl_null) {
 		state->win32.gdi32.SwapBuffers(context->windowHandle.win32.deviceContext);
@@ -6116,7 +6120,7 @@ fdyngl_api void fglPresentOpenGL(const fglOpenGLContext *context) {
 }
 
 fdyngl_api const char *fglGetLastError() {
-	const fglOpenGLState *state = &globalOpenGLState;
+	const fglOpenGLState *state = &fgl__globalOpenGLState;
 	return state->lastError;
 }
 
