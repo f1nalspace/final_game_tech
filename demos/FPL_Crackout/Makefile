@@ -1,6 +1,6 @@
 # Project
 APP_NAME = FPL_Crackout
-SOURCE_FILES = fpl_crackout.cpp game.cpp
+SOURCE_FILES = fpl_crackout.cpp
 LIBS = -ldl
 INCLUDES = -I../../ -I../dependencies/ -I../additions/
 
