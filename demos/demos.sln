@@ -38,6 +38,8 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "FPL_StaticLib_Client", "FPL
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "FPL_Crackout", "FPL_Crackout\FPL_Crackout.vcxproj", "{70E43E83-848B-4DAA-BE62-8EDEC86B3044}"
 EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "FPL_Towadev", "FPL_Towadev\FPL_Towadev.vcxproj", "{4E7070B3-008C-4C21-8E26-6637DC547F89}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x64 = Debug|x64
@@ -158,6 +160,14 @@ Global
 		{70E43E83-848B-4DAA-BE62-8EDEC86B3044}.Release|x64.Build.0 = Release|x64
 		{70E43E83-848B-4DAA-BE62-8EDEC86B3044}.Release|x86.ActiveCfg = Release|Win32
 		{70E43E83-848B-4DAA-BE62-8EDEC86B3044}.Release|x86.Build.0 = Release|Win32
+		{4E7070B3-008C-4C21-8E26-6637DC547F89}.Debug|x64.ActiveCfg = Debug|x64
+		{4E7070B3-008C-4C21-8E26-6637DC547F89}.Debug|x64.Build.0 = Debug|x64
+		{4E7070B3-008C-4C21-8E26-6637DC547F89}.Debug|x86.ActiveCfg = Debug|Win32
+		{4E7070B3-008C-4C21-8E26-6637DC547F89}.Debug|x86.Build.0 = Debug|Win32
+		{4E7070B3-008C-4C21-8E26-6637DC547F89}.Release|x64.ActiveCfg = Release|x64
+		{4E7070B3-008C-4C21-8E26-6637DC547F89}.Release|x64.Build.0 = Release|x64
+		{4E7070B3-008C-4C21-8E26-6637DC547F89}.Release|x86.ActiveCfg = Release|Win32
+		{4E7070B3-008C-4C21-8E26-6637DC547F89}.Release|x86.Build.0 = Release|Win32
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

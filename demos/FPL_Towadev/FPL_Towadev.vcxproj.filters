@@ -1,0 +1,25 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <ClCompile Include="fpl_towadev.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <Filter Include="additions">
+      <UniqueIdentifier>{4813d015-1763-4bcf-99a7-ff9422494f91}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="..\additions\final_fontloader.h">
+      <Filter>additions</Filter>
+    </ClInclude>
+    <ClInclude Include="..\additions\final_game.h">
+      <Filter>additions</Filter>
+    </ClInclude>
+    <ClInclude Include="..\additions\final_vecmath.h">
+      <Filter>additions</Filter>
+    </ClInclude>
+    <ClInclude Include="..\additions\final_gameplatform.h">
+      <Filter>additions</Filter>
+    </ClInclude>
+  </ItemGroup>
+</Project>
