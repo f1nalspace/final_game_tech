@@ -40,15 +40,15 @@ typedef struct FontGlyph {
 	uint32_t charCode;
 } FontGlyph;
 
-typedef struct FontInfo {
+struct FontInfo {
 	float ascent;
 	float descent;
 	float lineHeight;
 	float baseline;
 	float spaceAdvance;
-} FontInfo;
+};
 
-typedef struct Font {
+struct LoadedFont {
 	uint8_t *atlasAlphaBitmap;
 	FontGlyph *glyphs;
 	uint32_t atlasWidth;
@@ -58,7 +58,7 @@ typedef struct Font {
 	FontInfo info;
 	float *defaultAdvance;
 	float *kerningTable;
-} Font;
+};
 
 inline float GetFontBaseline(const FontInfo *fontInfo) {
 	float result = fontInfo->baseline;
@@ -80,11 +80,11 @@ inline float GetFontLineAdvance(const FontInfo *fontInfo) {
 	return(result);
 }
 
-extern float GetTextWidth(const char *text, const size_t textLen, const Font *font, const float maxCharHeight);
-extern float GetFontCharacterAdvance(const Font *font, const uint32_t *codePoint, const uint32_t *nextCodePoint);
-extern bool LoadFontFromFile(const char *dataPath, const char *filename, const uint32_t fontIndex, const float fontSize, const uint32_t firstChar, const uint32_t lastChar, const uint32_t atlasWidth, const uint32_t atlasHeight, Font *outFont);
-extern bool LoadFontFromMemory(const void *data, const size_t dataSize, const uint32_t fontIndex, const float fontSize, const uint32_t firstChar, const uint32_t lastChar, const uint32_t  atlasWidth, const uint32_t atlasHeight, Font *outFont);
-extern void ReleaseFont(Font *font);
+extern float GetTextWidth(const char *text, const size_t textLen, const LoadedFont *font, const float maxCharHeight);
+extern float GetFontCharacterAdvance(const LoadedFont *font, const uint32_t *codePoint, const uint32_t *nextCodePoint);
+extern bool LoadFontFromFile(const char *dataPath, const char *filename, const uint32_t fontIndex, const float fontSize, const uint32_t firstChar, const uint32_t lastChar, const uint32_t atlasWidth, const uint32_t atlasHeight, LoadedFont *outFont);
+extern bool LoadFontFromMemory(const void *data, const size_t dataSize, const uint32_t fontIndex, const float fontSize, const uint32_t firstChar, const uint32_t lastChar, const uint32_t  atlasWidth, const uint32_t atlasHeight, LoadedFont *outFont);
+extern void ReleaseFont(LoadedFont *font);
 
 #endif // FINAL_FONTLOADER_H
 
@@ -94,7 +94,7 @@ extern void ReleaseFont(Font *font);
 #define STB_TRUETYPE_IMPLEMENTATION
 #include <stb/stb_truetype.h>
 
-extern float GetTextWidth(const char *text, const size_t textLen, const Font *font, const float maxCharHeight) {
+extern float GetTextWidth(const char *text, const size_t textLen, const LoadedFont *font, const float maxCharHeight) {
 	float result = 0;
 	if(font != nullptr) {
 		for(uint32_t textPos = 0; textPos < textLen; ++textPos) {
@@ -114,7 +114,7 @@ extern float GetTextWidth(const char *text, const size_t textLen, const Font *fo
 	return(result);
 }
 
-extern float GetFontCharacterAdvance(const Font *font, const uint32_t *codePoint, const uint32_t *nextCodePoint) {
+extern float GetFontCharacterAdvance(const LoadedFont *font, const uint32_t *codePoint, const uint32_t *nextCodePoint) {
 	float result = 0;
 	if(codePoint) {
 		const FontGlyph *glyph = font->glyphs + *codePoint;
@@ -127,7 +127,7 @@ extern float GetFontCharacterAdvance(const Font *font, const uint32_t *codePoint
 	return(result);
 }
 
-extern bool LoadFontFromMemory(const void *data, const size_t dataSize, const uint32_t fontIndex, const float fontSize, const uint32_t firstChar, const uint32_t lastChar, const uint32_t  atlasWidth, const uint32_t atlasHeight, Font *outFont) {
+extern bool LoadFontFromMemory(const void *data, const size_t dataSize, const uint32_t fontIndex, const float fontSize, const uint32_t firstChar, const uint32_t lastChar, const uint32_t  atlasWidth, const uint32_t atlasHeight, LoadedFont *outFont) {
 	if(data == fpl_null || dataSize == 0) {
 		return false;
 	}
@@ -189,7 +189,7 @@ extern bool LoadFontFromMemory(const void *data, const size_t dataSize, const ui
 
 		// Max height is always ascent + descent
 		float heightPx = ascentPx + descentPx;
-		assert(heightPx * fontScale == 1.0f);
+		//assert(heightPx * fontScale == 1.0f);
 
 		// Calculate line height
 		float lineGapPx = lineGapRaw * pixelScale;
@@ -249,12 +249,11 @@ extern bool LoadFontFromMemory(const void *data, const size_t dataSize, const ui
 			for(uint32_t nextCharIndex = charIndex + 1; nextCharIndex < lastChar; ++nextCharIndex) {
 				float kerningPx = stbtt_GetCodepointKernAdvance(&fontInfo, charIndex, nextCharIndex) * pixelScale;
 				if(kerningPx != 0) {
-					float widthPx = (float)(leftInfo->x1 - leftInfo->x0);
-					assert(widthPx > 0);
-					float kerning = kerningPx / (float)widthPx;
-					uint32_t a = (uint32_t)(charIndex - firstChar);
-					uint32_t b = (uint32_t)(nextCharIndex - firstChar);
-					kerningTable[a * charCount + b] = kerning;
+					int widthPx = leftInfo->x1 - leftInfo->x0 + 1;
+                    float kerning = kerningPx / (float)widthPx;
+                    uint32_t a = (uint32_t) (charIndex - firstChar);
+                    uint32_t b = (uint32_t) (nextCharIndex - firstChar);
+                    kerningTable[a * charCount + b] = kerning;
 				}
 			}
 		}
@@ -289,7 +288,7 @@ extern bool LoadFontFromMemory(const void *data, const size_t dataSize, const ui
 	return(result);
 }
 
-extern bool LoadFontFromFile(const char *dataPath, const char *filename, const uint32_t fontIndex, const float fontSize, const uint32_t firstChar, const uint32_t lastChar, const uint32_t atlasWidth, const uint32_t atlasHeight, Font *outFont) {
+extern bool LoadFontFromFile(const char *dataPath, const char *filename, const uint32_t fontIndex, const float fontSize, const uint32_t firstChar, const uint32_t lastChar, const uint32_t atlasWidth, const uint32_t atlasHeight, LoadedFont *outFont) {
 	if(dataPath == fpl_null || filename == fpl_null) {
 		return false;
 	}
@@ -320,7 +319,7 @@ extern bool LoadFontFromFile(const char *dataPath, const char *filename, const u
 	return(result);
 }
 
-extern void ReleaseFont(Font *font) {
+extern void ReleaseFont(LoadedFont *font) {
 	if(font != fpl_null) {
 		fplMemoryFree(font->kerningTable);
 		fplMemoryFree(font->glyphs);
