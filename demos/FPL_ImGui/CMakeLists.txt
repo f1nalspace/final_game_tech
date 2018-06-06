@@ -14,14 +14,14 @@ set(MY_HEADER_FILES
         )
 
 set(MY_INCLUDE_DIRS
-        dependencies/imgui/include/
+        ../dependencies/imgui/include/
         )
 
 set(MY_SOURCE_FILES
         fpl_imgui.cpp
-        dependencies/imgui/include/imgui/imgui.cpp
-        dependencies/imgui/include/imgui/imgui_draw.cpp
-        dependencies/imgui/include/imgui/imgui_demo.cpp
+        ../dependencies/imgui/include/imgui/imgui.cpp
+        ../dependencies/imgui/include/imgui/imgui_draw.cpp
+        ../dependencies/imgui/include/imgui/imgui_demo.cpp
         )
 
 # -----------------------------------------------------------------------------

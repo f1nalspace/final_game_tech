@@ -1,6 +1,6 @@
 # Project
 APP_NAME = FPL_ImGui
-IMGUI_PATH = ./dependencies/imgui/include/
+IMGUI_PATH = ../dependencies/imgui/include/
 SOURCE_FILES = \
 	fpl_imgui.cpp \
 	$(IMGUI_PATH)imgui/imgui.cpp \
