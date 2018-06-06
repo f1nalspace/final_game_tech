@@ -115,6 +115,7 @@ SOFTWARE.
     ## v0.3.4.0 beta:
     - Fixed: Removed fglOpenGLState struct dependency for fgl__SetLastError()
     - Fixed: Removed fglOpenGLState struct dependency for Win32/X11 opengl functions
+    - Fixed: GLX initialization was not working anymore
 
 	## v0.3.3.0 beta:
 	- Changed: Prevent including FGL before any other OpenGL library/header
@@ -4828,6 +4829,7 @@ static bool fgl__PosixLoadOpenGL(fglPosixOpenGLApi *api) {
 		return false;
 	}
 	api->libraryHandle = glLibraryHandle;
+	return(true);
 }
 
 static bool fgl__PosixCreateOpenGLContext(fglPosixOpenGLApi *api, const fglOpenGLContextCreationParameters *contextCreationParams, fglOpenGLContext *outContext) {
