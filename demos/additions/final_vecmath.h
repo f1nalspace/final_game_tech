@@ -413,7 +413,7 @@ inline Mat2f Mat2MultTranspose(const Mat2f &a, const Mat2f &b) {
 
 
 
-inline Mat4f &operator *(const Mat4f &a, const Mat4f &b) {
+inline Mat4f operator *(const Mat4f &a, const Mat4f &b) {
 	Mat4f result;
 	for(int i = 0; i < 16; i += 4) {
 		for(int j = 0; j < 4; ++j) {
@@ -435,7 +435,7 @@ const static Vec4f ColorLightGray = V4f(0.3f, 0.3f, 0.3f, 1.0f);
 const static Vec4f ColorDarkGray = V4f(0.2f, 0.2f, 0.2f, 1.0f);
 
 inline Pixel RGBA32ToPixel(const uint32_t rgba) {
-	Pixel result = { (rgba >> 0) & 0xFF, (rgba >> 8) & 0xFF, (rgba >> 16) & 0xFF, (rgba >> 24) & 0xFF };
+	Pixel result = { (uint8_t)((rgba >> 0) & 0xFF), (uint8_t)((rgba >> 8) & 0xFF), (uint8_t)((rgba >> 16) & 0xFF), (uint8_t)((rgba >> 24) & 0xFF) };
 	return(result);
 }
 
