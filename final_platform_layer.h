@@ -120,7 +120,7 @@ SOFTWARE.
 
 /*!
 	\file final_platform_layer.h
-	\version v0.8.1.0 beta
+	\version v0.8.2.0 beta
 	\author Torsten Spaete
 	\brief Final Platform Layer (FPL) - A C99 Single-Header-File Platform Abstract Library
 */
@@ -128,6 +128,15 @@ SOFTWARE.
 /*!
 	\page page_changelog Changelog
 	\tableofcontents
+
+	## v0.8.2.0 beta:
+	- New: Added fplKey´s for OEM keys (Plus, Comma, Minus, Period)
+	- New: Added fplKey´s for Media & Audio keys
+
+	- New: [Win32] OEM keys mapping
+	- New: [Win32] Media & Audio key mapping
+
+	- New: [X11] OEM keys mapping
 
 	## v0.8.1.0 beta:
 	- Changed: Locked error states to multiple and removed FPL_NO_MULTIPLE_ERRORSTATES
@@ -3662,7 +3671,24 @@ typedef enum fplKey {
 	fplKey_LeftAlt = 0xA4,
 	fplKey_RightAlt = 0xA5,
 
-	// 0xA6-0xFE: Dont care
+	// 0xA6-0xAC: Dont care
+
+	fplKey_VolumeMute = 0xAD,
+	fplKey_VolumeDown = 0xAE,
+	fplKey_VolumeUp = 0xAF,
+	fplKey_MediaNextTrack = 0xB0,
+	fplKey_MediaPrevTrack = 0xB1,
+	fplKey_MediaStop = 0xB2,
+	fplKey_MediaPlayPause = 0xB3,
+
+	// 0xB4-0xBA Dont care
+
+	fplKey_Plus = 0xBB,
+	fplKey_Comma = 0xBC,
+	fplKey_Minus = 0xBD,
+	fplKey_Period = 0xBE,
+
+	// 0xBF-0xFE Dont care
 } fplKey;
 
 //! Window event type (Resized, PositionChanged, etc.)
@@ -7871,6 +7897,30 @@ fpl_internal fplKey fpl__Win32MapVirtualKey(const uint64_t keyCode) {
 		case VK_RMENU:
 			return fplKey_RightAlt;
 
+		case VK_VOLUME_MUTE:
+			return fplKey_VolumeMute;
+		case VK_VOLUME_DOWN:
+			return fplKey_VolumeDown;
+		case VK_VOLUME_UP:
+			return fplKey_VolumeUp;
+		case VK_MEDIA_NEXT_TRACK:
+			return fplKey_MediaNextTrack;
+		case VK_MEDIA_PREV_TRACK:
+			return fplKey_MediaPrevTrack;
+		case VK_MEDIA_STOP:
+			return fplKey_MediaStop;
+		case VK_MEDIA_PLAY_PAUSE:
+			return fplKey_MediaPlayPause;
+
+		case VK_OEM_PLUS:
+			return fplKey_Plus;
+		case VK_OEM_COMMA:
+			return fplKey_Comma;
+		case VK_OEM_MINUS:
+			return fplKey_Minus;
+		case VK_OEM_PERIOD:
+			return fplKey_Period;
+
 		default:
 			return fplKey_None;
 	}
@@ -10907,6 +10957,15 @@ fpl_internal fplKey fpl__X11TranslateKeySymbol(const KeySym keySym) {
 		case XK_Meta_R:
 		case XK_Alt_R:
 			return fplKey_RightAlt;
+
+		case XK_comma:
+			return fplKey_Comma;
+		case XK_minus:
+			return fplKey_Minus;
+		case XK_period:
+			return fplKey_Period;
+		case XK_equal:
+			return fplKey_Plus; // @TODO(final): Equal = Plus on X11?
 
 		default:
 			return fplKey_None;
