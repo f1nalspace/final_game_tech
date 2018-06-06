@@ -288,7 +288,7 @@ public:
 };
 
 struct FontAsset {
-	Font desc;
+	LoadedFont desc;
 	GLuint texture;
 };
 
