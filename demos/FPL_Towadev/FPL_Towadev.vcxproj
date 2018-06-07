@@ -22,9 +22,12 @@
     <ClCompile Include="fpl_towadev.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="..\..\final_dynamic_opengl.h" />
+    <ClInclude Include="..\..\final_platform_layer.h" />
     <ClInclude Include="..\additions\final_fontloader.h" />
     <ClInclude Include="..\additions\final_game.h" />
     <ClInclude Include="..\additions\final_gameplatform.h" />
+    <ClInclude Include="..\additions\final_render.h" />
     <ClInclude Include="..\additions\final_vecmath.h" />
   </ItemGroup>
   <PropertyGroup Label="Globals">

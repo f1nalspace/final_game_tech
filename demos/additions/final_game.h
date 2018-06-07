@@ -22,34 +22,7 @@ License:
 
 #include "final_vecmath.h"
 
-struct UVRect {
-	float uMin;
-	float vMin;
-	float uMax;
-	float vMax;
-};
 
-inline UVRect UVRectFromTile(const Vec2i &imageSize, const Vec2i &tileSize, const int border, const Vec2i &pos) {
-	Vec2f texel = V2f(1.0f / (float)imageSize.x, 1.0f / (float)imageSize.y);
-	int imgX = border + pos.x * tileSize.x + border * pos.x;
-	int imgY = border + pos.y * tileSize.y + border * pos.y;
-	UVRect result;
-	result.uMin = imgX * texel.x;
-	result.vMin = imgY * texel.y;
-	result.uMax = result.uMin + tileSize.x * texel.x;
-	result.vMax = result.vMin + tileSize.y * texel.y;
-	return(result);
-}
-
-inline UVRect UVRectFromPos(const Vec2i &imageSize, const Vec2i &partSize, const Vec2i &pos) {
-	Vec2f texel = V2f(1.0f / (float)imageSize.x, 1.0f / (float)imageSize.y);
-	UVRect result;
-	result.uMin = pos.x * texel.x;
-	result.vMin = pos.y * texel.y;
-	result.uMax = result.uMin + partSize.x * texel.x;
-	result.vMax = result.vMin + partSize.y * texel.y;
-	return(result);
-}
 
 struct ButtonState {
 	bool isDown;
@@ -117,7 +90,7 @@ extern GameMemory GameCreate();
 extern void GameDestroy(GameMemory &gameMemory);
 extern void GameInput(GameMemory &gameMemory, const Input &input, bool isActive);
 extern void GameUpdate(GameMemory &gameMemory, const Input &input, bool isActive);
-extern void GameDraw(GameMemory &gameMemory);
+extern void GameRender(GameMemory &gameMemory, const float alpha);
 extern bool IsGameExiting(GameMemory &gameMemory);
 
 #endif // FINAL_GAME_H

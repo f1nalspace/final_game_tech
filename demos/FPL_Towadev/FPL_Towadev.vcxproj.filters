@@ -7,6 +7,9 @@
     <Filter Include="additions">
       <UniqueIdentifier>{4813d015-1763-4bcf-99a7-ff9422494f91}</UniqueIdentifier>
     </Filter>
+    <Filter Include="dependencies">
+      <UniqueIdentifier>{146d6bd5-f359-4e9f-a27f-b7b14dd3a6bf}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\additions\final_fontloader.h">
@@ -19,6 +22,15 @@
       <Filter>additions</Filter>
     </ClInclude>
     <ClInclude Include="..\additions\final_gameplatform.h">
+      <Filter>additions</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\final_dynamic_opengl.h">
+      <Filter>dependencies</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\final_platform_layer.h">
+      <Filter>dependencies</Filter>
+    </ClInclude>
+    <ClInclude Include="..\additions\final_render.h">
       <Filter>additions</Filter>
     </ClInclude>
   </ItemGroup>

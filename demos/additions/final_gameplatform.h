@@ -18,7 +18,12 @@ License:
 #error "C++ is required for this to run!"
 #endif
 
-extern int GameMain(const char *title);
+struct GameConfiguration {
+	const char *title;
+	bool hideMouseCursor;
+};
+
+extern int GameMain(const GameConfiguration &config);
 
 #endif // FINAL_GAMEPLATFORM_H
 
@@ -196,19 +201,21 @@ static void ProcessEvents(Input *currentInput, Input *prevInput, bool &isWindowA
 	}
 }
 
-extern int GameMain(const char *title) {
+extern int GameMain(const GameConfiguration &config) {
 	fplSettings settings = fplMakeDefaultSettings();
 	settings.video.driver = fplVideoDriverType_OpenGL;
 	settings.video.graphics.opengl.compabilityFlags = fplOpenGLCompabilityFlags_Legacy;
 	settings.video.isVSync = true;
-	fplCopyAnsiString(title, settings.window.windowTitle, FPL_ARRAYCOUNT(settings.window.windowTitle));
+	fplCopyAnsiString(config.title, settings.window.windowTitle, FPL_ARRAYCOUNT(settings.window.windowTitle));
 	int result = 0;
 	if(fplPlatformInit(fplInitFlags_All, &settings)) {
 		GameMemory gameMem = GameCreate();
 		if(gameMem.base != nullptr) {
 			const double TargetDeltaTime = 1.0 / 60.0;
 
-			fplSetWindowCursorEnabled(false);
+			if(config.hideMouseCursor) {
+				fplSetWindowCursorEnabled(false);
+			}
 
 			Input inputs[2] = {};
 			Input *curInput = &inputs[0];
@@ -282,7 +289,8 @@ extern int GameMain(const char *title) {
 				}
 
 				// Render
-				GameDraw(gameMem);
+				float alpha = (float)frameAccumulator / (float)TargetDeltaTime;
+				GameDraw(gameMem, alpha);
 				fplVideoFlip();
 				++frameCount;
 
@@ -309,7 +317,9 @@ extern int GameMain(const char *title) {
 				}
 			}
 
-			fplSetWindowCursorEnabled(true);
+			if(config.hideMouseCursor) {
+				fplSetWindowCursorEnabled(true);
+			}
 
 			GameDestroy(gameMem);
 		} else {

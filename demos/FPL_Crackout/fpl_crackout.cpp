@@ -62,6 +62,9 @@ Todo:
 #define FINAL_FONTLOADER_IMPLEMENTATION
 #include <final_fontloader.h>
 
+#define FINAL_RENDER_IMPLEMENTATION
+#include <final_render.h>
+
 #include <final_game.h>
 
 constexpr float Pi32 = glm::pi<float>();
@@ -335,8 +338,7 @@ struct GameState {
 	char dataPath[1024];
 	Assets assets;
 
-	Vec2i viewSize;
-	Vec2i viewOffset;
+	Viewport viewport;
 
 	b2World *world;
 
@@ -778,18 +780,6 @@ static bool LoadTexture(const char *dataPath, const char *filename, const bool r
 	return(result);
 }
 
-static uint8_t *LoadFileContent(const char *filename) {
-	uint8_t *result = nullptr;
-	fplFileHandle file;
-	if(fplOpenAnsiBinaryFile(filename, &file)) {
-		uint32_t len = fplGetFileSizeFromHandle32(&file);
-		result = (uint8_t *)fplMemoryAllocate(len);
-		fplReadFileBlock32(&file, len, result, len);
-		fplCloseFile(&file);
-	}
-	return(result);
-}
-
 static bool LoadAssets(GameState &state) {
 	LoadTexture(state.dataPath, "ball.bmp", false, state.assets.ballTexture);
 	LoadTexture(state.dataPath, "bricks.bmp", false, state.assets.bricksTexture);
@@ -804,12 +794,12 @@ static bool LoadAssets(GameState &state) {
 		FreeTextureImage(bgImage);
 	}
 
-	LoadFontFromFile(state.dataPath, "hemi_head_bd_it.ttf", 0, 36.0f, 32, 126, 512, 512, &state.assets.fontMenu.desc);
+	LoadFontFromFile(state.dataPath, "hemi_head_bd_it.ttf", 0, 36.0f, 32, 127, 512, 512, &state.assets.fontMenu.desc);
 	if(state.assets.fontMenu.desc.atlasAlphaBitmap != nullptr) {
 		state.assets.fontMenu.texture = AllocateTexture(state.assets.fontMenu.desc.atlasWidth, state.assets.fontMenu.desc.atlasHeight, state.assets.fontMenu.desc.atlasAlphaBitmap, false, true);
 	}
 
-	LoadFontFromFile(state.dataPath, "hemi_head_bd_it.ttf", 0, 18.0f, 32, 126, 512, 512, &state.assets.fontHud.desc);
+	LoadFontFromFile(state.dataPath, "hemi_head_bd_it.ttf", 0, 18.0f, 32, 127, 512, 512, &state.assets.fontHud.desc);
 	if(state.assets.fontHud.desc.atlasAlphaBitmap != nullptr) {
 		state.assets.fontHud.texture = AllocateTexture(state.assets.fontHud.desc.atlasWidth, state.assets.fontHud.desc.atlasHeight, state.assets.fontHud.desc.atlasAlphaBitmap, false, true);
 	}
@@ -1217,16 +1207,7 @@ extern void GameUpdate(GameMemory &gameMemory, const Input &input, bool isActive
 	}
 
 	GameState *state = (GameState *)gameMemory.base;
-
-	// Compute viewport
-	Vec2i viewSize = V2i(input.windowSize.x, (int)(input.windowSize.x / GameAspect));
-	if(viewSize.y > input.windowSize.y) {
-		viewSize.y = input.windowSize.y;
-		viewSize.x = (int)(input.windowSize.y * GameAspect);
-	}
-	Vec2i viewOffset = V2i((input.windowSize.x - viewSize.x) / 2, (input.windowSize.y - viewSize.y) / 2);
-	state->viewSize = viewSize;
-	state->viewOffset = viewOffset;
+	state->viewport = ComputeViewportByAspect(input.windowSize, GameAspect);
 
 	if(state->mode == GameMode::Play) {
 		UpdatePlayMode(*state, input);
@@ -1554,15 +1535,13 @@ static void DrawTitleMenuMode(GameState &state) {
 	}
 }
 
-extern void GameDraw(GameMemory &gameMemory) {
+extern void GameDraw(GameMemory &gameMemory, const float alpha) {
 	GameState *state = (GameState *)gameMemory.base;
 
 	const float w = WorldRadius.x;
 	const float h = WorldRadius.y;
 
-	Vec2i viewSize = state->viewSize;
-	Vec2i viewOffset = state->viewOffset;
-	glViewport(viewOffset.x, viewOffset.y, viewSize.x, viewSize.y);
+	glViewport(state->viewport.x, state->viewport.y, state->viewport.w, state->viewport.h);
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
 	glMatrixMode(GL_PROJECTION);
@@ -1584,6 +1563,9 @@ extern void GameDraw(GameMemory &gameMemory) {
 #include <final_gameplatform.h>
 
 int main(int argc, char *argv[]) {
-	int result = GameMain("FPL Demo | Crackout");
+	GameConfiguration config = {};
+	config.title = "FPL Demo | Crackout";
+	config.hideMouseCursor = true;
+	int result = GameMain(config);
 	return(result);
 }
