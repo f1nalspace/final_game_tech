@@ -33,6 +33,8 @@ Todo:
 
 #include <final_game.h>
 
+constexpr float RadToDeg = 180.0f / (float)M_PI;
+
 constexpr float GameAspect = 16.0f / 9.0f;
 constexpr float WorldWidth = 20.0f;
 constexpr float WorldHeight = WorldWidth / GameAspect;
@@ -42,6 +44,7 @@ constexpr float WorldRadiusH = WorldHeight * 0.5f;
 constexpr float TileSize = 1.0f;
 constexpr int TileCountX = (int)(WorldWidth / TileSize);
 constexpr int TileCountY = (int)(WorldHeight / TileSize);
+constexpr int TotalTileCount = TileCountX * TileCountY;
 
 constexpr float GridWidth = TileSize * (float)TileCountX;
 constexpr float GridHeight = TileSize * (float)TileCountY;
@@ -57,6 +60,7 @@ enum class TileType {
 
 struct Tile {
 	TileType type;
+	bool isOccupied;
 };
 
 struct Waypoint {
@@ -68,7 +72,8 @@ struct Waypoint {
 
 struct CreepData {
 	Vec4f color;
-	float radius;
+	float renderRadius;
+	float collisionRadius;
 	float speed;
 	uint64_t hp;
 };
@@ -76,7 +81,8 @@ struct CreepData {
 inline CreepData MakeCreepData(const Vec4f &color, const float radius, const float speed, const uint64_t hp) {
 	CreepData result;
 	result.color = color;
-	result.radius = radius;
+	result.renderRadius = radius;
+	result.collisionRadius = radius;
 	result.speed = speed;
 	result.hp = hp;
 	return(result);
@@ -86,12 +92,12 @@ struct Creep {
 	CreepData data;
 	Vec2f prevPosition;
 	Vec2f position;
-	float radius;
+	Vec2f facingDirection;
 	float speed;
+	bool isDead;
 	const Waypoint *targetWaypoint;
 	Vec2f targetPos;
 	bool hasTarget;
-	bool isDead;
 };
 
 struct CreepSpawner {
@@ -105,12 +111,18 @@ struct CreepSpawner {
 	bool isActive;
 };
 
+struct Tower {
+	Vec2f position;
+	Creep *targetEnemy;
+	float detectionRadius;
+	bool hasTarget;
+};
+
 struct GameState {
 	Viewport viewport;
 	Camera2D camera;
 	Vec2f mouseWorldPos;
-	Tile *tiles;
-	size_t tileCount;
+	Tile tiles[TotalTileCount];
 	Waypoint *firstWaypoint;
 	Waypoint *lastWaypoint;
 	Creep enemies[100];
@@ -175,9 +187,16 @@ static Waypoint *AddWaypoint(GameState &state, const Vec2i &tilePos, const Vec2f
 	return(waypoint);
 }
 
+inline Tile *GetTile(GameState &state, const Vec2i &tilePos) {
+	if ((tilePos.x >= 0 && tilePos.x < TileCountX) && (tilePos.x >= 0 && tilePos.x < TileCountX)) {
+		return &state.tiles[tilePos.y * TileCountX + tilePos.x];
+	}
+	return nullptr;
+}
+
 inline Vec2i SetTile(GameState &state, const int x, const int y, const TileType type) {
 	int index = y * TileCountX + x;
-	assert(index >= 0 && index < state.tileCount);
+	assert(index >= 0 && index < TotalTileCount);
 	state.tiles[index].type = type;
 	Vec2i result = { x, y };
 	return(result);
@@ -188,7 +207,6 @@ static void SpawnEnemy(GameState &state, const Vec2f &spawnPos, const Vec2f &exi
 	Creep &enemy = state.enemies[state.enemyCount++];
 	enemy.data = data;
 	enemy.position = enemy.prevPosition = spawnPos;
-	enemy.radius = data.radius;
 	enemy.speed = data.speed;
 	if (state.firstWaypoint != nullptr) {
 		enemy.targetWaypoint = state.firstWaypoint;
@@ -197,6 +215,7 @@ static void SpawnEnemy(GameState &state, const Vec2f &spawnPos, const Vec2f &exi
 		enemy.targetWaypoint = nullptr;
 		enemy.targetPos = exitPos;
 	}
+	enemy.facingDirection = Vec2Normalize(enemy.targetPos - enemy.position);
 	enemy.hasTarget = true;
 }
 
@@ -253,9 +272,6 @@ static bool GameInit(GameState &state) {
 	state.camera.offset.x = 0;
 	state.camera.offset.y = 0;
 
-	state.tileCount = TileCountX * TileCountY;
-	state.tiles = (Tile *)fplMemoryAllocate(sizeof(Tile) * state.tileCount);
-
 	// Setup tiles
 	int ys[] = { 1, TileCountY - 2 };
 	for (int y = 0; y < FPL_ARRAYCOUNT(ys); ++y) {
@@ -283,7 +299,7 @@ static bool GameInit(GameState &state) {
 	// Setup spawner
 	Vec2f spawnPos = TileToWorld(spawnTilePos, V2f(TileSize, TileSize) * 0.5f);
 	Vec2f exitPos = TileToWorld(exitTilePos, V2f(TileSize, TileSize) * 0.5f);
-	CreepData enemyTemplate = MakeCreepData(V4f(1, 1, 1, 1), TileSize * 0.5f, 1.5, 100);
+	CreepData enemyTemplate = MakeCreepData(V4f(1, 1, 1, 1), TileSize * 0.25f, 1.5, 100);
 	SetupSpawner(state.enemySpawner, spawnPos, exitPos, 3.0f, 1.5f, 20, enemyTemplate);
 
 	return(true);
@@ -321,6 +337,28 @@ extern void GameInput(GameMemory &gameMemory, const Input &input, bool isActive)
 		return;
 	}
 	GameState *state = (GameState *)gameMemory.base;
+
+	float scale = state->camera.scale;
+	state->viewport = ComputeViewportByAspect(input.windowSize, GameAspect);
+	state->camera.worldToPixels = (state->viewport.w / (float)WorldWidth) * scale;
+	state->camera.pixelsToWorld = 1.0f / state->camera.worldToPixels;
+
+	int mouseCenterX = (input.mouse.pos.x - input.windowSize.w / 2);
+	int mouseCenterY = (input.windowSize.h - 1 - input.mouse.pos.y) - input.windowSize.h / 2;
+
+	state->mouseWorldPos.x = (mouseCenterX * state->camera.pixelsToWorld) - state->camera.offset.x;
+	state->mouseWorldPos.y = (mouseCenterY * state->camera.pixelsToWorld) - state->camera.offset.y;
+
+	float deltaH = WorldHeight - GridHeight;
+	Vec2i mouseTilePos = WorldToTile(V2f(state->mouseWorldPos.x, state->mouseWorldPos.y - deltaH * 0.5f));
+	if (WasPressed(input.mouse.left)) {
+		Tile *mouseTile = GetTile(*state, mouseTilePos);
+		if (mouseTile != nullptr) {
+			if (mouseTile->type == TileType::None && !mouseTile->isOccupied) {
+				mouseTile->isOccupied = true;
+			}
+		}
+	}
 }
 
 static Vec2i FindTilePosByTile(const GameState &state, const TileType type) {
@@ -347,14 +385,14 @@ static void SetCreepNextTarget(GameState &state, Creep &creep) {
 		if (waypoint.next != nullptr) {
 			creep.targetPos = TileToWorld(waypoint.next->tilePos, V2f(TileSize, TileSize) * 0.5f);
 			creep.targetWaypoint = waypoint.next;
-			creep.hasTarget = true;
 		} else {
 			creep.targetWaypoint = nullptr;
 			Vec2i exitTilePos = FindTilePosByTile(state, TileType::Exit);
 			assert(exitTilePos.x > -1 && exitTilePos.y > -1);
 			creep.targetPos = TileToWorld(exitTilePos, V2f(TileSize, TileSize) * 0.5f);
-			creep.hasTarget = true;
 		}
+		creep.hasTarget = true;
+		creep.facingDirection = Vec2Normalize(creep.targetPos - creep.position);
 	} else {
 		creep.hasTarget = false;
 		CreepReachedExit(state, creep);
@@ -367,17 +405,6 @@ extern void GameUpdate(GameMemory &gameMemory, const Input &input, bool isActive
 	}
 
 	GameState *state = (GameState *)gameMemory.base;
-
-	float scale = state->camera.scale;
-	state->viewport = ComputeViewportByAspect(input.windowSize, GameAspect);
-	state->camera.worldToPixels = (state->viewport.w / (float)WorldWidth) * scale;
-	state->camera.pixelsToWorld = 1.0f / state->camera.worldToPixels;
-
-	int mouseCenterX = (input.mouse.pos.x - input.windowSize.w / 2);
-	int mouseCenterY = (input.windowSize.h - 1 - input.mouse.pos.y) - input.windowSize.h / 2;
-
-	state->mouseWorldPos.x = (mouseCenterX * state->camera.pixelsToWorld) - state->camera.offset.x;
-	state->mouseWorldPos.y = (mouseCenterY * state->camera.pixelsToWorld) - state->camera.offset.y;
 
 	for (size_t enemyIndex = 0; enemyIndex < state->enemyCount; ++enemyIndex) {
 		Creep &enemy = state->enemies[enemyIndex];
@@ -404,6 +431,14 @@ static void DrawTile(int x, int y) {
 	glVertex2f(xpos, ypos);
 	glVertex2f(xpos + TileSize, ypos);
 	glEnd();
+}
+
+static void DrawNormal(const Vec2f &pos, const Vec2f &normal, const float length) {
+	glBegin(GL_LINES);
+	glVertex2f(pos.x, pos.y);
+	glVertex2f(pos.x + normal.x * length, pos.y + normal.y * length);
+	glEnd();
+
 }
 
 extern void GameDraw(GameMemory &gameMemory, const float alpha) {
@@ -459,10 +494,18 @@ extern void GameDraw(GameMemory &gameMemory, const float alpha) {
 				glColor4f(0.1f, 1.0f, 0.2f, 1.0f);
 				DrawTile(x, y);
 			}
+			if (tile.isOccupied) {
+				glColor4f(1, 1, 0.5f, 1);
+				glPointSize(0.25f * state->camera.worldToPixels);
+				glBegin(GL_POINTS);
+				glVertex2f(xpos + TileSize * 0.5f, ypos + TileSize * 0.5f);
+				glEnd();
+				glPointSize(1);
+			}
 		}
 	}
 
-	glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
+	glColor4f(1.0f, 1.0f, 1.0f, 0.25f);
 	glBegin(GL_LINES);
 	for (int y = 0; y <= TileCountY; ++y) {
 		glVertex2f(GridOriginX, GridOriginY + y * TileSize);
@@ -474,7 +517,7 @@ extern void GameDraw(GameMemory &gameMemory, const float alpha) {
 	}
 	glEnd();
 
-	const float WaypointDirectionWidth = 0.3f;
+	const float WaypointDirectionWidth = 0.35f;
 	for (Waypoint *waypoint = state->firstWaypoint; waypoint; waypoint = waypoint->next) {
 		glColor4f(1, 0, 1, 1);
 		glPointSize(0.25f * state->camera.worldToPixels);
@@ -484,10 +527,7 @@ extern void GameDraw(GameMemory &gameMemory, const float alpha) {
 		glPointSize(1);
 
 		glColor4f(1, 1, 1, 1);
-		glBegin(GL_LINES);
-		glVertex2f(waypoint->position.x, waypoint->position.y);
-		glVertex2f(waypoint->position.x + waypoint->direction.x * WaypointDirectionWidth, waypoint->position.y + waypoint->direction.y * WaypointDirectionWidth);
-		glEnd();
+		DrawNormal(waypoint->position, waypoint->direction, WaypointDirectionWidth);
 
 		if (waypoint->next == state->firstWaypoint) {
 			break;
@@ -501,7 +541,8 @@ extern void GameDraw(GameMemory &gameMemory, const float alpha) {
 	glEnd();
 	glPointSize(1);
 
-	Vec2i mouseTilePos = WorldToTile(state->mouseWorldPos);
+	float deltaH = WorldHeight - GridHeight;
+	Vec2i mouseTilePos = WorldToTile(V2f(state->mouseWorldPos.x, state->mouseWorldPos.y - deltaH * 0.5f));
 	Vec2f mouseTileWorld = TileToWorld(mouseTilePos);
 	glColor4f(0.0f, 1.0f, 1.0f, 1.0f);
 	glBegin(GL_LINE_LOOP);
@@ -515,12 +556,27 @@ extern void GameDraw(GameMemory &gameMemory, const float alpha) {
 		Creep &enemy = state->enemies[enemyIndex];
 		if (!enemy.isDead) {
 			Vec2f enemyPos = Vec2Lerp(enemy.prevPosition, alpha, enemy.position);
+			float rot = atan2f(enemy.facingDirection.y, enemy.facingDirection.x);
 			glColor4fv(&enemy.data.color.m[0]);
+			glPushMatrix();
+			glTranslatef(enemyPos.x, enemyPos.y, 0);
+			glRotatef(rot * RadToDeg, 0, 0, 1);
+#if 0
 			glPointSize(enemy.radius * state->camera.worldToPixels);
 			glBegin(GL_POINTS);
 			glVertex2f(enemyPos.x, enemyPos.y);
 			glEnd();
 			glPointSize(1);
+#else
+			float r = enemy.data.renderRadius;
+			glBegin(GL_POLYGON);
+			glVertex2f(+r, 0);
+			glVertex2f(-r, +r);
+			glVertex2f(-r, -r);
+			glEnd();
+			glPopMatrix();
+#endif
+
 			enemy.prevPosition = enemy.position;
 		}
 	}
