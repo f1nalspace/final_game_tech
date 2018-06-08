@@ -115,7 +115,7 @@ const glm::vec2 BrickRadius = glm::vec2(SpaceForBricksX / (float)MaxBrickCols, S
 
 const glm::vec2 Gravity = glm::vec2(0, -10);
 
-// @NOTE(final): CPP is such garbage!
+// @BAD(final): CPP is such garbage!
 // It cannot handle array index initializer such as [index] = value :-(
 // So we need this nonsense just to initialize a static array -.-
 template <typename TEnumType, typename TValueType>
@@ -276,7 +276,7 @@ struct Entity {
 
 struct GameState;
 
-// @NOTE(final): Such a bad design decision from Box2D to force classes on us
+// @BAD(final): Such a bad design decision from Box2D to force classes on us
 class GameContactListener : public b2ContactListener {
 private:
 	GameState *gameState;
