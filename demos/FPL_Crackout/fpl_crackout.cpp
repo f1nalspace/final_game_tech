@@ -724,7 +724,6 @@ static TextureImage LoadTextureImage(const char *dataPath, const char *filename)
 	TextureImage result = {};
 
 	char filePath[1024];
-	fplCopyAnsiString(dataPath, filePath, FPL_ARRAYCOUNT(filePath));
 	fplPathCombine(filePath, FPL_ARRAYCOUNT(filePath), 2, dataPath, filename);
 
 	fplFileHandle file;
