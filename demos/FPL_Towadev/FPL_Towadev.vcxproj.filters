@@ -33,5 +33,8 @@
     <ClInclude Include="..\additions\final_render.h">
       <Filter>additions</Filter>
     </ClInclude>
+    <ClInclude Include="..\additions\final_xml.h">
+      <Filter>additions</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>

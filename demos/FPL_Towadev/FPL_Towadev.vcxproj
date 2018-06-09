@@ -29,6 +29,7 @@
     <ClInclude Include="..\additions\final_gameplatform.h" />
     <ClInclude Include="..\additions\final_render.h" />
     <ClInclude Include="..\additions\final_vecmath.h" />
+    <ClInclude Include="..\additions\final_xml.h" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <VCProjectVersion>15.0</VCProjectVersion>
@@ -119,6 +120,9 @@
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
     </Link>
+    <PostBuildEvent>
+      <Command>xcopy /c /y "$(ProjectDir)data" "$(SolutionDir)bin\$(ProjectName)\Windows-$(Platform)-$(Configuration)\data\"</Command>
+    </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ClCompile>
@@ -133,6 +137,9 @@
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
     </Link>
+    <PostBuildEvent>
+      <Command>xcopy /c /y "$(ProjectDir)data" "$(SolutionDir)bin\$(ProjectName)\Windows-$(Platform)-$(Configuration)\data\"</Command>
+    </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <ClCompile>
@@ -151,6 +158,9 @@
       <OptimizeReferences>true</OptimizeReferences>
       <GenerateDebugInformation>true</GenerateDebugInformation>
     </Link>
+    <PostBuildEvent>
+      <Command>xcopy /c /y "$(ProjectDir)data" "$(SolutionDir)bin\$(ProjectName)\Windows-$(Platform)-$(Configuration)\data\"</Command>
+    </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <ClCompile>
@@ -169,6 +179,9 @@
       <OptimizeReferences>true</OptimizeReferences>
       <GenerateDebugInformation>true</GenerateDebugInformation>
     </Link>
+    <PostBuildEvent>
+      <Command>xcopy /c /y "$(ProjectDir)data" "$(SolutionDir)bin\$(ProjectName)\Windows-$(Platform)-$(Configuration)\data\"</Command>
+    </PostBuildEvent>
   </ItemDefinitionGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

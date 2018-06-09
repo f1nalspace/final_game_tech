@@ -34,6 +34,9 @@ Todo:
 #define FINAL_FONTLOADER_IMPLEMENTATION
 #include <final_fontloader.h>
 
+#define FXML_IMPLEMENTATION
+#include <final_xml.h>
+
 #include <final_game.h>
 
 constexpr float RadToDeg = 180.0f / (float)M_PI;
@@ -85,10 +88,24 @@ struct CreepData {
 	float renderRadius;
 	float collisionRadius;
 	float speed;
-	uint64_t hp;
+	float hp;
 };
 
-inline CreepData MakeCreepData(const float renderRadius, const float collisionRadius, const float speed, const uint64_t hp, const Vec4f &color, const CreepStyle style) {
+struct CreepMultiplier {
+	float hp;
+	float speed;
+	float scale;
+};
+
+inline CreepMultiplier MakeCreepMultiplier(const float hp, const float speed, const float scale) {
+	CreepMultiplier result = {};
+	result.hp = hp;
+	result.speed = speed;
+	result.scale = scale;
+	return(result);
+}
+
+inline CreepData MakeCreepData(const float renderRadius, const float collisionRadius, const float speed, const float hp, const Vec4f &color, const CreepStyle style) {
 	CreepData result;
 	result.renderRadius = renderRadius;
 	result.collisionRadius = collisionRadius;
@@ -107,7 +124,7 @@ struct Creep {
 	Vec2f targetPos;
 	const Waypoint *targetWaypoint;
 	float speed;
-	uint64_t hp;
+	float hp;
 	bool hasTarget;
 	bool isDead;
 };
@@ -127,10 +144,10 @@ struct BulletData {
 	float renderRadius;
 	float collisionRadius;
 	float speed;
-	uint64_t damage;
+	float damage;
 };
 
-inline BulletData MakeBulletData(const float renderRadius, const float collisionRadius, const float speed, const uint64_t damage) {
+inline BulletData MakeBulletData(const float renderRadius, const float collisionRadius, const float speed, const float damage) {
 	BulletData result = {};
 	result.renderRadius = renderRadius;
 	result.collisionRadius = collisionRadius;
@@ -161,13 +178,15 @@ inline TowerData MakeTowerData(const float structureRadius, const float detectio
 
 struct Wave {
 	CreepData enemyTemplate;
+	CreepMultiplier enemyMultiplier;
 	size_t enemyCount;
 	float cooldown;
 };
 
-inline Wave MakeWave(const CreepData &enemyTemplate, const size_t enemyCount, const float cooldown) {
+inline Wave MakeWave(const CreepData &enemyTemplate, const CreepMultiplier &enemyMultiplier, const size_t enemyCount, const float cooldown) {
 	Wave result = {};
 	result.enemyTemplate = enemyTemplate;
+	result.enemyMultiplier = enemyMultiplier;
 	result.enemyCount = enemyCount;
 	result.cooldown = cooldown;
 	return(result);
@@ -198,10 +217,10 @@ static const TowerData TowerDefinitions[] = {
 		/* gunTubeLength: */ TileSize * 0.55f,
 		/* gunCooldown: */ 0.3f,
 		MakeBulletData(
-			/* renderRadius: */ TileSize * 0.1f,
-			/* collisionRadius: */ TileSize * 0.1f,
-			/* speed: */ 6.0f,
-			/* damage: */ 25
+		/* renderRadius: */ TileSize * 0.1f,
+		/* collisionRadius: */ TileSize * 0.1f,
+		/* speed: */ 6.0f,
+		/* damage: */ 15
 		)
 	),
 };
@@ -209,7 +228,7 @@ static const TowerData TowerDefinitions[] = {
 static const CreepData CreepDefinitions[] = {
 	MakeCreepData(
 		/* renderRadius: */ TileSize * 0.25f,
-		/* collisionRadius: */ TileSize * 0.25f,
+		/* collisionRadius: */ TileSize * 0.2f,
 		/* speed: */ 1.0,
 		/* hp: */ 100,
 		/* color: */ V4f(1, 1, 1, 1),
@@ -220,6 +239,19 @@ static const CreepData CreepDefinitions[] = {
 static const Wave Waves[] = {
 	MakeWave(
 		/* enemyTemplate: */ CreepDefinitions[0],
+		/* enemyMultiplier */ MakeCreepMultiplier(1.0f, 1.0f, 1.0f),
+		/* enemyCount: */ 10,
+		/* cooldown: */ 2.0f
+	),
+	MakeWave(
+		/* enemyTemplate: */ CreepDefinitions[0],
+		/* enemyMultiplier */ MakeCreepMultiplier(1.125f, 1.05f, 1.05f),
+		/* enemyCount: */ 10,
+		/* cooldown: */ 2.1f
+	),
+	MakeWave(
+		/* enemyTemplate: */ CreepDefinitions[0],
+		/* enemyMultiplier */ MakeCreepMultiplier(1.25f, 1.1f, 1.1f),
 		/* enemyCount: */ 10,
 		/* cooldown: */ 2.0f
 	),
@@ -243,29 +275,92 @@ struct GameState {
 	Vec2i mouseTilePos;
 	Waypoint *firstWaypoint;
 	Waypoint *lastWaypoint;
+	size_t activeEnemyCount;
 	size_t enemyCount;
 	size_t towerCount;
 	size_t bulletCount;
-	size_t waveIndex;
+	int selectedTowerIndex;
+	int waveIndex;
 	bool isExiting;
 };
 
-static GLuint AllocateTexture(const uint32_t width, const uint32_t height, const void *data, const bool repeatable, const bool isAlphaOnly = false) {
-	GLuint handle;
-	glGenTextures(1, &handle);
-	glBindTexture(GL_TEXTURE_2D, handle);
-	GLuint internalFormat = isAlphaOnly ? GL_ALPHA8 : GL_RGBA8;
-	GLenum format = isAlphaOnly ? GL_ALPHA : GL_RGBA;
-	glTexImage2D(GL_TEXTURE_2D, 0, internalFormat, width, height, 0, format, GL_UNSIGNED_BYTE, data);
+inline Vec2f TileToWorld(const Vec2i &tilePos, const Vec2f &offset = V2f(0, 0)) {
+	Vec2f result = {
+		GridOriginX + tilePos.x * TileSize,
+		GridOriginY + (TileCountY - 1 - tilePos.y) * TileSize
+	};
+	result += offset;
+	return(result);
+}
 
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, repeatable ? GL_REPEAT : GL_CLAMP);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, repeatable ? GL_REPEAT : GL_CLAMP);
+inline Vec2i WorldToTile(const Vec2f &worldPos) {
+	float x = worldPos.x + WorldWidth * 0.5f;
+	float y = worldPos.y + WorldHeight * 0.5f;
+	Vec2i result = {
+		(int)floorf((x) / TileSize),
+		TileCountY - 1 - (int)floorf((y) / TileSize)
+	};
+	return(result);
+}
 
-	glBindTexture(GL_TEXTURE_2D, 0);
+namespace render {
+	static GLuint AllocateTexture(const uint32_t width, const uint32_t height, const void *data, const bool repeatable, const bool isAlphaOnly = false) {
+		GLuint handle;
+		glGenTextures(1, &handle);
+		glBindTexture(GL_TEXTURE_2D, handle);
+		GLuint internalFormat = isAlphaOnly ? GL_ALPHA8 : GL_RGBA8;
+		GLenum format = isAlphaOnly ? GL_ALPHA : GL_RGBA;
+		glTexImage2D(GL_TEXTURE_2D, 0, internalFormat, width, height, 0, format, GL_UNSIGNED_BYTE, data);
 
-	return(handle);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, repeatable ? GL_REPEAT : GL_CLAMP);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, repeatable ? GL_REPEAT : GL_CLAMP);
+
+		glBindTexture(GL_TEXTURE_2D, 0);
+
+		return(handle);
+	}
+
+	static void DrawTile(const int x, const int y, const bool isFilled, const Vec4f &color) {
+		Vec2f pos = TileToWorld(V2i(x, y));
+		glColor4fv(&color.r);
+		glBegin(isFilled ? GL_QUADS : GL_LINE_LOOP);
+		glVertex2f(pos.x + TileSize, pos.y + TileSize);
+		glVertex2f(pos.x, pos.y + TileSize);
+		glVertex2f(pos.x, pos.y);
+		glVertex2f(pos.x + TileSize, pos.y);
+		glEnd();
+	}
+
+	static void DrawPoint(const Camera2D &camera, const float x, const float y, const float radius, const Vec4f &color) {
+		glColor4fv(&color.r);
+		glPointSize(radius * 2.0f * camera.worldToPixels);
+		glBegin(GL_POINTS);
+		glVertex2f(x, y);
+		glEnd();
+		glPointSize(1);
+	}
+
+	static void DrawCircle(const float centerX, const float centerY, const float radius, const bool isFilled, const Vec4f &color, const int segments = 16) {
+		float seg = ((float)M_PI * 2.0f) / (float)segments;
+		glColor4fv(&color.r);
+		glBegin(isFilled ? GL_POLYGON : GL_LINE_LOOP);
+		for (int segmentIndex = 0; segmentIndex < segments; ++segmentIndex) {
+			float x = centerX + cosf(segmentIndex * seg) * radius;
+			float y = centerY + sinf(segmentIndex * seg) * radius;
+			glVertex2f(x, y);
+		}
+		glEnd();
+	}
+
+	static void DrawNormal(const Vec2f &pos, const Vec2f &normal, const float length, const Vec4f &color) {
+		glColor4fv(&color.r);
+		glBegin(GL_LINES);
+		glVertex2f(pos.x, pos.y);
+		glVertex2f(pos.x + normal.x * length, pos.y + normal.y * length);
+		glEnd();
+	}
 }
 
 static void GameRelease(GameState &state) {
@@ -274,27 +369,8 @@ static void GameRelease(GameState &state) {
 }
 
 namespace tiles {
-	inline Vec2f TileToWorld(const Vec2i &tilePos, const Vec2f &offset = V2f(0, 0)) {
-		Vec2f result = {
-			GridOriginX + tilePos.x * TileSize,
-			GridOriginY + (TileCountY - 1 - tilePos.y) * TileSize
-		};
-		result += offset;
-		return(result);
-	}
-
-	inline Vec2i WorldToTile(const Vec2f &worldPos) {
-		float x = worldPos.x + WorldWidth * 0.5f;
-		float y = worldPos.y + WorldHeight * 0.5f;
-		Vec2i result = {
-			(int)floorf((x) / TileSize),
-			TileCountY - 1 - (int)floorf((y) / TileSize)
-		};
-		return(result);
-	}
-
 	inline Tile *GetTile(GameState &state, const Vec2i &tilePos) {
-		if((tilePos.x >= 0 && tilePos.x < TileCountX) && (tilePos.x >= 0 && tilePos.x < TileCountX)) {
+		if ((tilePos.x >= 0 && tilePos.x < TileCountX) && (tilePos.x >= 0 && tilePos.x < TileCountX)) {
 			return &state.tiles[tilePos.y * TileCountX + tilePos.x];
 		}
 		return nullptr;
@@ -309,10 +385,10 @@ namespace tiles {
 	}
 
 	static Vec2i FindTilePosByTile(const GameState &state, const TileType type) {
-		for(int y = 0; y < TileCountY; ++y) {
-			for(int x = 0; x < TileCountX; ++x) {
+		for (int y = 0; y < TileCountY; ++y) {
+			for (int x = 0; x < TileCountX; ++x) {
 				int index = y * TileCountX + x;
-				if(state.tiles[index].type == type) {
+				if (state.tiles[index].type == type) {
 					return V2i(x, y);
 				}
 			}
@@ -326,9 +402,9 @@ namespace waypoints {
 	static Waypoint *AddWaypoint(GameState &state, const Vec2i &tilePos, const Vec2f &dir) {
 		Waypoint *waypoint = (Waypoint *)fplMemoryAllocate(sizeof(Waypoint));
 		waypoint->tilePos = tilePos;
-		waypoint->position = tiles::TileToWorld(tilePos, V2f(TileSize, TileSize) * 0.5f);
+		waypoint->position = TileToWorld(tilePos, V2f(TileSize, TileSize) * 0.5f);
 		waypoint->direction = dir;
-		if(state.firstWaypoint == nullptr) {
+		if (state.firstWaypoint == nullptr) {
 			state.firstWaypoint = state.lastWaypoint = waypoint;
 		} else {
 			state.lastWaypoint->next = waypoint;
@@ -340,23 +416,28 @@ namespace waypoints {
 
 namespace towers {
 	inline bool CanPlaceTower(GameState &state, const Vec2i &tilePos) {
-		if(state.towerCount == FPL_ARRAYCOUNT(state.towers)) {
+		if ((state.selectedTowerIndex < 0) || !(state.selectedTowerIndex < FPL_ARRAYCOUNT(TowerDefinitions))) {
+			return false;
+		}
+		if (state.towerCount == FPL_ARRAYCOUNT(state.towers)) {
 			return false;
 		}
 		Tile *tile = tiles::GetTile(state, tilePos);
-		if(tile == nullptr) {
+		if (tile == nullptr) {
 			return false;
 		}
 		bool result = (!tile->isOccupied && tile->type == TileType::None);
 		return(result);
 	}
 
-	static Tower *PlaceTower(GameState &state, const Vec2i &tilePos, const TowerData &data) {
+	static Tower *PlaceTower(GameState &state, const Vec2i &tilePos) {
+		const TowerData &data = TowerDefinitions[state.selectedTowerIndex];
+
 		assert(state.towerCount < FPL_ARRAYCOUNT(state.towers));
 		Tower *tower = &state.towers[state.towerCount++];
 		FPL_CLEAR_STRUCT(tower);
 		tower->data = data;
-		tower->position = tiles::TileToWorld(tilePos, V2f(TileSize, TileSize) * 0.5f);
+		tower->position = TileToWorld(tilePos, V2f(TileSize, TileSize) * 0.5f);
 		tower->facingAngle = (float)M_PI * 0.5f; // Face north by default
 
 		Tile *tile = tiles::GetTile(state, tilePos);
@@ -375,6 +456,26 @@ namespace towers {
 		bullet->data = tower.data.bullet;
 		bullet->velocity = targetDir * bullet->data.speed;
 	}
+
+	static void DrawTower(const Camera2D &camera, const TowerData &tower, const Vec2f &pos, const float angle) {
+		// @TODO(final): Mulitple tower styles
+		render::DrawPoint(camera, pos.x, pos.y, tower.structureRadius, V4f(1, 1, 0.5f, 1));
+
+		glColor4f(1, 0.85f, 0.5f, 1);
+		glLineWidth(3.0f);
+		glPushMatrix();
+		glTranslatef(pos.x, pos.y, 0);
+		glRotatef(angle * RadToDeg, 0, 0, 1);
+		glBegin(GL_LINES);
+		glVertex2f(tower.gunTubeLength, 0);
+		glVertex2f(0, 0);
+		glEnd();
+		glLineWidth(2.0f);
+		glPopMatrix();
+
+		render::DrawCircle(pos.x, pos.y, tower.detectionRadius, false, V4f(1, 1, 1, 0.5f));
+		render::DrawCircle(pos.x, pos.y, tower.unlockRadius, false, V4f(1, 0.5f, 1, 0.4f));
+	}
 }
 
 namespace creeps {
@@ -386,9 +487,9 @@ namespace creeps {
 		enemy->position = enemy->prevPosition = spawnPos;
 		enemy->speed = data.speed;
 		enemy->hp = data.hp;
-		if(state.firstWaypoint != nullptr) {
+		if (state.firstWaypoint != nullptr) {
 			enemy->targetWaypoint = state.firstWaypoint;
-			enemy->targetPos = tiles::TileToWorld(state.firstWaypoint->tilePos, V2f(TileSize, TileSize) * 0.5f);
+			enemy->targetPos = TileToWorld(state.firstWaypoint->tilePos, V2f(TileSize, TileSize) * 0.5f);
 		} else {
 			enemy->targetWaypoint = nullptr;
 			enemy->targetPos = exitPos;
@@ -398,14 +499,14 @@ namespace creeps {
 	}
 
 	static void UpdateSpawner(GameState &state, const float deltaTime) {
-		if(state.enemySpawner.isActive) {
+		if (state.enemySpawner.isActive) {
 			assert(state.enemySpawner.remainingCount > 0);
 			assert(state.enemySpawner.spawnTimer > 0);
 			state.enemySpawner.spawnTimer -= deltaTime;
-			if(state.enemySpawner.spawnTimer <= 0) {
+			if (state.enemySpawner.spawnTimer <= 0) {
 				SpawnEnemy(state, state.enemySpawner.spawnPosition, state.enemySpawner.exitPosition, state.enemySpawner.spawnTemplate);
 				--state.enemySpawner.remainingCount;
-				if(state.enemySpawner.remainingCount == 0) {
+				if (state.enemySpawner.remainingCount == 0) {
 					state.enemySpawner.spawnTimer = 0;
 					state.enemySpawner.isActive = false;
 				} else {
@@ -431,18 +532,18 @@ namespace creeps {
 	}
 
 	static void SetCreepNextTarget(GameState &state, Creep &creep) {
-		Vec2i creepTilePos = tiles::WorldToTile(creep.position);
-		if(creep.targetWaypoint != nullptr) {
+		Vec2i creepTilePos = WorldToTile(creep.position);
+		if (creep.targetWaypoint != nullptr) {
 			Waypoint waypoint = *creep.targetWaypoint;
 			assert(Vec2Length(waypoint.direction) == 1);
-			if(waypoint.next != nullptr) {
-				creep.targetPos = tiles::TileToWorld(waypoint.next->tilePos, V2f(TileSize, TileSize) * 0.5f);
+			if (waypoint.next != nullptr) {
+				creep.targetPos = TileToWorld(waypoint.next->tilePos, V2f(TileSize, TileSize) * 0.5f);
 				creep.targetWaypoint = waypoint.next;
 			} else {
 				creep.targetWaypoint = nullptr;
 				Vec2i exitTilePos = tiles::FindTilePosByTile(state, TileType::Exit);
 				assert(exitTilePos.x > -1 && exitTilePos.y > -1);
-				creep.targetPos = tiles::TileToWorld(exitTilePos, V2f(TileSize, TileSize) * 0.5f);
+				creep.targetPos = TileToWorld(exitTilePos, V2f(TileSize, TileSize) * 0.5f);
 			}
 			creep.hasTarget = true;
 			creep.facingDirection = Vec2Normalize(creep.targetPos - creep.position);
@@ -452,27 +553,69 @@ namespace creeps {
 		}
 	}
 
-	static void SetupWave(GameState &state, const size_t waveIndex) {
+	static void SetupWave(GameState &state, const int waveIndex) {
+		const Wave wave = Waves[waveIndex];
 		Vec2i spawnTilePos = tiles::FindTilePosByTile(state, TileType::SpawnPoint);
 		Vec2i exitTilePos = tiles::FindTilePosByTile(state, TileType::Exit);
-		state.waveIndex = 0;
-		Vec2f spawnPos = tiles::TileToWorld(spawnTilePos, V2f(TileSize, TileSize) * 0.5f);
-		Vec2f exitPos = tiles::TileToWorld(exitTilePos, V2f(TileSize, TileSize) * 0.5f);
-		const CreepData &enemyTemplate = Waves[state.waveIndex].enemyTemplate;
-		SetupSpawner(state.enemySpawner, spawnPos, exitPos, 3.0f, 1.5f, 20, enemyTemplate);
+		state.waveIndex = waveIndex;
+		state.activeEnemyCount = wave.enemyCount;
+		Vec2f spawnPos = TileToWorld(spawnTilePos, V2f(TileSize, TileSize) * 0.5f);
+		Vec2f exitPos = TileToWorld(exitTilePos, V2f(TileSize, TileSize) * 0.5f);
+		CreepData enemyTemplate = wave.enemyTemplate;
+		enemyTemplate.hp *= wave.enemyMultiplier.hp;
+		enemyTemplate.speed *= wave.enemyMultiplier.speed;
+		enemyTemplate.collisionRadius *= wave.enemyMultiplier.scale;
+		SetupSpawner(state.enemySpawner, spawnPos, exitPos, 5.0f, wave.cooldown, wave.enemyCount, enemyTemplate);
 	}
 
 	static void EnemyHit(GameState &state, Creep &enemy, const Bullet &bullet) {
-		uint64_t dmg = FPL_MIN(enemy.hp, bullet.data.damage);
-		enemy.hp -= dmg;
-		if(enemy.hp == 0) {
+		enemy.hp -= bullet.data.damage;
+		if (enemy.hp <= 0) {
+			enemy.hp = 0;
 			enemy.isDead = true;
+		}
+	}
+
+	static void AllEnemiesKilled(GameState &state) {
+		if (state.waveIndex < FPL_ARRAYCOUNT(Waves)) {
+			SetupWave(state, state.waveIndex + 1);
 		}
 	}
 }
 
+static void LoadLevel(const char *dataPath, const char *filename) {
+	char filePath[1024];
+	fplPathCombine(filePath, FPL_ARRAYCOUNT(filePath), 2, dataPath, filename);
+
+	fplFileHandle file;
+	if (fplOpenAnsiBinaryFile(filePath, &file)) {
+		uint32_t dataSize = fplGetFileSizeFromHandle32(&file);
+		char *data = (char *)fplMemoryAllocate(dataSize);
+		fplReadFileBlock32(&file, dataSize, data, dataSize);
+		fxmlContext ctx = {};
+		if (fxmlInitFromMemory(data, dataSize, &ctx)) {
+			fxmlTag root = {};
+			if (fxmlParse(&ctx, &root)) {
+
+			}
+			fxmlFree(&ctx);
+		}
+		fplMemoryFree(data);
+		fplCloseFile(&file);
+	}
+}
+
+static void LoadAssets(GameState &state) {
+	char dataPath[1024];
+	fplGetExecutableFilePath(dataPath, FPL_ARRAYCOUNT(dataPath));
+	fplExtractFilePath(dataPath, dataPath, FPL_ARRAYCOUNT(dataPath));
+	fplPathCombine(dataPath, FPL_ARRAYCOUNT(dataPath), 2, dataPath, "data");
+
+	LoadLevel(dataPath, "level1.tmx");
+}
+
 static bool GameInit(GameState &state) {
-	if(!fglLoadOpenGL(true)) {
+	if (!fglLoadOpenGL(true)) {
 		return false;
 	}
 
@@ -491,22 +634,24 @@ static bool GameInit(GameState &state) {
 
 	glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
 
+	LoadAssets(state);
+
 	state.camera.scale = 1.0f;
 	state.camera.offset.x = 0;
 	state.camera.offset.y = 0;
 
 	// Setup tiles
 	int ys[] = { 1, TileCountY - 2 };
-	for(int y = 0; y < FPL_ARRAYCOUNT(ys); ++y) {
+	for (int y = 0; y < FPL_ARRAYCOUNT(ys); ++y) {
 		int row = ys[y];
-		for(int x = 1; x < TileCountX - 1; ++x) {
+		for (int x = 1; x < TileCountX - 1; ++x) {
 			tiles::SetTile(state, x, row, TileType::EnemyPath);
 		}
 	}
 	int xs[] = { 1, TileCountX - 2 };
-	for(int x = 0; x < FPL_ARRAYCOUNT(xs); ++x) {
+	for (int x = 0; x < FPL_ARRAYCOUNT(xs); ++x) {
 		int col = xs[x];
-		for(int y = 1; y < TileCountY - 1; ++y) {
+		for (int y = 1; y < TileCountY - 1; ++y) {
 			tiles::SetTile(state, col, y, TileType::EnemyPath);
 		}
 	}
@@ -522,6 +667,9 @@ static bool GameInit(GameState &state) {
 	// Setup initial wave and spawner
 	creeps::SetupWave(state, 0);
 
+	// Initial selected tower
+	state.selectedTowerIndex = 0;
+
 	return(true);
 }
 
@@ -529,11 +677,11 @@ extern GameMemory GameCreate() {
 	GameMemory result = {};
 	result.size = FPL_MEGABYTES(16);
 	result.base = fplMemoryAllocate(result.size);
-	if(result.base == nullptr) {
+	if (result.base == nullptr) {
 		return {};
 	}
 	GameState *state = (GameState *)result.base;
-	if(!GameInit(*state)) {
+	if (!GameInit(*state)) {
 		GameDestroy(result);
 		state = nullptr;
 	}
@@ -553,7 +701,7 @@ extern bool IsGameExiting(GameMemory &gameMemory) {
 }
 
 extern void GameInput(GameMemory &gameMemory, const Input &input, bool isActive) {
-	if(!isActive) {
+	if (!isActive) {
 		return;
 	}
 	GameState *state = (GameState *)gameMemory.base;
@@ -570,17 +718,16 @@ extern void GameInput(GameMemory &gameMemory, const Input &input, bool isActive)
 	state->mouseWorldPos.y = (mouseCenterY * state->camera.pixelsToWorld) - state->camera.offset.y;
 
 	float deltaH = WorldHeight - GridHeight;
-	state->mouseTilePos = tiles::WorldToTile(V2f(state->mouseWorldPos.x, state->mouseWorldPos.y - deltaH * 0.5f));
-	if(WasPressed(input.mouse.left)) {
-		if(towers::CanPlaceTower(*state, state->mouseTilePos)) {
-			const TowerData &tower = TowerDefinitions[0];
-			towers::PlaceTower(*state, state->mouseTilePos, tower);
+	state->mouseTilePos = WorldToTile(V2f(state->mouseWorldPos.x, state->mouseWorldPos.y - deltaH * 0.5f));
+	if (WasPressed(input.mouse.left)) {
+		if (towers::CanPlaceTower(*state, state->mouseTilePos)) {
+			towers::PlaceTower(*state, state->mouseTilePos);
 		}
 	}
 }
 
 extern void GameUpdate(GameMemory &gameMemory, const Input &input, bool isActive) {
-	if(!isActive) {
+	if (!isActive) {
 		return;
 	}
 
@@ -589,14 +736,14 @@ extern void GameUpdate(GameMemory &gameMemory, const Input &input, bool isActive
 	//
 	// Move enemies
 	//
-	for(size_t enemyIndex = 0; enemyIndex < state->enemyCount; ++enemyIndex) {
+	for (size_t enemyIndex = 0; enemyIndex < state->enemyCount; ++enemyIndex) {
 		Creep &enemy = state->enemies[enemyIndex];
-		if(!enemy.isDead && enemy.hasTarget) {
+		if (!enemy.isDead && enemy.hasTarget) {
 			Vec2f distance = enemy.targetPos - enemy.position;
 			Vec2f direction = Vec2Normalize(distance);
 			float minRadius = TileSize * 0.05f;
 			enemy.position += direction * enemy.speed * input.deltaTime;
-			if(Vec2Dot(distance, distance) <= minRadius * minRadius) {
+			if (Vec2Dot(distance, distance) <= minRadius * minRadius) {
 				creeps::SetCreepNextTarget(*state, enemy);
 			}
 		}
@@ -611,35 +758,35 @@ extern void GameUpdate(GameMemory &gameMemory, const Input &input, bool isActive
 	// Face weapon to locked on target
 	// Fire to target
 	//
-	for(size_t towerIndex = 0; towerIndex < state->towerCount; ++towerIndex) {
+	for (size_t towerIndex = 0; towerIndex < state->towerCount; ++towerIndex) {
 		Tower &tower = state->towers[towerIndex];
-		if(tower.hasTarget) {
+		if (tower.hasTarget) {
 			assert(tower.targetEnemy != nullptr);
 			Vec2f distance = tower.targetEnemy->position - tower.position;
 			assert(tower.data.unlockRadius >= tower.data.detectionRadius);
-			if(tower.targetEnemy->isDead || Vec2Dot(distance, distance) > tower.data.unlockRadius * tower.data.unlockRadius) {
+			if (tower.targetEnemy->isDead || Vec2Dot(distance, distance) > tower.data.unlockRadius * tower.data.unlockRadius) {
 				tower.targetEnemy = nullptr;
 				tower.hasTarget = false;
 			}
 		}
-		if(!tower.hasTarget) {
+		if (!tower.hasTarget) {
 			float nearestEnemyDistance = FLT_MAX;
 			Creep *nearestEnemy = nullptr;
-			for(size_t enemyIndex = 0; enemyIndex < state->enemyCount; ++enemyIndex) {
+			for (size_t enemyIndex = 0; enemyIndex < state->enemyCount; ++enemyIndex) {
 				Creep *testEnemy = &state->enemies[enemyIndex];
 				float distance = Vec2Length(testEnemy->position - tower.position);
-				if((distance <= tower.data.detectionRadius) && (nearestEnemyDistance > distance)) {
+				if ((distance <= tower.data.detectionRadius) && (nearestEnemyDistance > distance)) {
 					nearestEnemy = testEnemy;
 					nearestEnemyDistance = distance;
 				}
 			}
-			if(nearestEnemy != nullptr) {
+			if (nearestEnemy != nullptr) {
 				tower.targetEnemy = nearestEnemy;
 				tower.hasTarget = true;
 				tower.gunTimer = tower.data.gunCooldown;
 			}
 		}
-		if(tower.hasTarget) {
+		if (tower.hasTarget) {
 			assert(tower.targetEnemy != nullptr);
 			// @TODO(final): Much better prediction scheme (Multiply delta time by some factor computed by: Tower cooldown, Bullet speed, Distance to target + Prediction change percentage modifier)
 			Vec2f predictedPosition = tower.targetEnemy->position + tower.targetEnemy->facingDirection * tower.targetEnemy->speed * input.deltaTime;
@@ -658,65 +805,52 @@ extern void GameUpdate(GameMemory &gameMemory, const Input &input, bool isActive
 	//
 	// Move and collide bullets
 	//
-	for(size_t bulletIndex = 0; bulletIndex < state->bulletCount; ++bulletIndex) {
+	for (size_t bulletIndex = 0; bulletIndex < state->bulletCount; ++bulletIndex) {
 		Bullet &bullet = state->bullets[bulletIndex];
-		assert(!bullet.isDestroyed);
-		bullet.position += bullet.velocity * input.deltaTime;
-		for(size_t enemyIndex = 0; enemyIndex < state->enemyCount; ++enemyIndex) {
-			Creep &enemy = state->enemies[enemyIndex];
-			if(!enemy.isDead) {
-				Vec2f distance = enemy.position - bullet.position;
-				float bothRadi = bullet.data.collisionRadius + enemy.data.collisionRadius;
-				float d = Vec2Dot(distance, distance);
-				if(d < bothRadi) {
-					bullet.isDestroyed = true;
-					creeps::EnemyHit(*state, enemy, bullet);
-					break;
+		if (!bullet.isDestroyed) {
+			bullet.position += bullet.velocity * input.deltaTime;
+			for (size_t enemyIndex = 0; enemyIndex < state->enemyCount; ++enemyIndex) {
+				Creep &enemy = state->enemies[enemyIndex];
+				if (!enemy.isDead) {
+					Vec2f distance = enemy.position - bullet.position;
+					float bothRadi = bullet.data.collisionRadius + enemy.data.collisionRadius;
+					float d = Vec2Dot(distance, distance);
+					if (d < bothRadi) {
+						bullet.isDestroyed = true;
+						creeps::EnemyHit(*state, enemy, bullet);
+						break;
+					}
 				}
 			}
 		}
 	}
-}
 
-namespace render {
-	static void DrawTile(const int x, const int y, const bool isFilled, const Vec4f &color) {
-		Vec2f pos = tiles::TileToWorld(V2i(x, y));
-		glColor4fv(&color.r);
-		glBegin(isFilled ? GL_QUADS : GL_LINE_LOOP);
-		glVertex2f(pos.x + TileSize, pos.y + TileSize);
-		glVertex2f(pos.x, pos.y + TileSize);
-		glVertex2f(pos.x, pos.y);
-		glVertex2f(pos.x + TileSize, pos.y);
-		glEnd();
-	}
-
-	static void DrawPoint(const Camera2D &camera, const float x, const float y, const float radius, const Vec4f &color) {
-		glColor4fv(&color.r);
-		glPointSize(radius * 2.0f * camera.worldToPixels);
-		glBegin(GL_POINTS);
-		glVertex2f(x, y);
-		glEnd();
-		glPointSize(1);
-	}
-
-	static void DrawCircle(const float centerX, const float centerY, const float radius, const bool isFilled, const Vec4f &color, const int segments = 16) {
-		float seg = ((float)M_PI * 2.0f) / (float)segments;
-		glColor4fv(&color.r);
-		glBegin(isFilled ? GL_POLYGON : GL_LINE_LOOP);
-		for(int segmentIndex = 0; segmentIndex < segments; ++segmentIndex) {
-			float x = centerX + cosf(segmentIndex * seg) * radius;
-			float y = centerY + sinf(segmentIndex * seg) * radius;
-			glVertex2f(x, y);
+	//
+	// Remove dead enemies and destroyed bullets
+	//
+	for (size_t bulletIndex = 0; bulletIndex < state->bulletCount; ++bulletIndex) {
+		Bullet &bullet = state->bullets[bulletIndex];
+		if (bullet.isDestroyed) {
+			if (bulletIndex < state->bulletCount - 1) {
+				const Bullet &lastBullet = state->bullets[state->bulletCount - 1];
+				bullet = lastBullet;
+			}
+			--state->bulletCount;
 		}
-		glEnd();
 	}
-
-	static void DrawNormal(const Vec2f &pos, const Vec2f &normal, const float length, const Vec4f &color) {
-		glColor4fv(&color.r);
-		glBegin(GL_LINES);
-		glVertex2f(pos.x, pos.y);
-		glVertex2f(pos.x + normal.x * length, pos.y + normal.y * length);
-		glEnd();
+	for (size_t enemyIndex = 0; enemyIndex < state->enemyCount; ++enemyIndex) {
+		Creep &enemy = state->enemies[enemyIndex];
+		if (enemy.isDead) {
+			if (enemyIndex < state->enemyCount - 1) {
+				const Creep &lastEnemy = state->enemies[state->enemyCount - 1];
+				enemy = lastEnemy;
+			}
+			--state->enemyCount;
+			--state->activeEnemyCount;
+		}
+	}
+	if (state->activeEnemyCount == 0) {
+		creeps::AllEnemiesKilled(*state);
 	}
 }
 
@@ -760,14 +894,14 @@ extern void GameDraw(GameMemory &gameMemory, const float alpha) {
 	//
 	// Tiles
 	//
-	for(int y = 0; y < TileCountY; ++y) {
-		for(int x = 0; x < TileCountX; ++x) {
+	for (int y = 0; y < TileCountY; ++y) {
+		for (int x = 0; x < TileCountX; ++x) {
 			const Tile &tile = state->tiles[y * TileCountX + x];
-			if(tile.type == TileType::EnemyPath) {
+			if (tile.type == TileType::EnemyPath) {
 				render::DrawTile(x, y, true, V4f(0.0f, 0.0f, 1.0f, 1.0f));
-			} else if(tile.type == TileType::SpawnPoint) {
+			} else if (tile.type == TileType::SpawnPoint) {
 				render::DrawTile(x, y, true, V4f(0.0f, 1.0f, 1.0f, 1.0f));
-			} else if(tile.type == TileType::Exit) {
+			} else if (tile.type == TileType::Exit) {
 				render::DrawTile(x, y, true, V4f(0.1f, 1.0f, 0.2f, 1.0f));
 			}
 		}
@@ -778,11 +912,11 @@ extern void GameDraw(GameMemory &gameMemory, const float alpha) {
 	//
 	glColor4f(1.0f, 1.0f, 1.0f, 0.25f);
 	glBegin(GL_LINES);
-	for(int y = 0; y <= TileCountY; ++y) {
+	for (int y = 0; y <= TileCountY; ++y) {
 		glVertex2f(GridOriginX, GridOriginY + y * TileSize);
 		glVertex2f(GridOriginX + TileCountX * TileSize, GridOriginY + y * TileSize);
 	}
-	for(int x = 0; x <= TileCountX; ++x) {
+	for (int x = 0; x <= TileCountX; ++x) {
 		glVertex2f(GridOriginX + x * TileSize, GridOriginY);
 		glVertex2f(GridOriginX + x * TileSize, GridOriginY + TileCountY * TileSize);
 	}
@@ -791,25 +925,30 @@ extern void GameDraw(GameMemory &gameMemory, const float alpha) {
 	//
 	// Waypoints
 	//
-	for(Waypoint *waypoint = state->firstWaypoint; waypoint; waypoint = waypoint->next) {
+	for (Waypoint *waypoint = state->firstWaypoint; waypoint; waypoint = waypoint->next) {
 		render::DrawPoint(state->camera, waypoint->position.x, waypoint->position.y, 0.25f, V4f(1, 0, 1, 1));
 		render::DrawNormal(waypoint->position, waypoint->direction, waypoints::WaypointDirectionWidth, V4f(1, 1, 1, 1));
-		if(waypoint->next == state->firstWaypoint) {
+		if (waypoint->next == state->firstWaypoint) {
 			break;
 		}
 	}
 
 	// Hover tile
-	render::DrawTile(state->mouseTilePos.x, state->mouseTilePos.y, false, V4f(0.0f, 1.0f, 1.0f, 1.0f));
+	Vec4f hoverColor;
+	if (towers::CanPlaceTower(*state, state->mouseTilePos))
+		hoverColor = V4f(0.1f, 1.0f, 0.1f, 1.0f);
+	else
+		hoverColor = V4f(1.0f, 0.1f, 0.1f, 1.0f);
+	render::DrawTile(state->mouseTilePos.x, state->mouseTilePos.y, false, hoverColor);
 
 	//
 	// Enemies
 	//
-	for(size_t enemyIndex = 0; enemyIndex < state->enemyCount; ++enemyIndex) {
+	for (size_t enemyIndex = 0; enemyIndex < state->enemyCount; ++enemyIndex) {
 		Creep &enemy = state->enemies[enemyIndex];
-		if(!enemy.isDead) {
+		if (!enemy.isDead) {
 			Vec2f enemyPos = Vec2Lerp(enemy.prevPosition, alpha, enemy.position);
-			switch(enemy.data.style) {
+			switch (enemy.data.style) {
 				case CreepStyle::Triangle:
 				{
 					float angle = atan2f(enemy.facingDirection.y, enemy.facingDirection.x);
@@ -839,58 +978,20 @@ extern void GameDraw(GameMemory &gameMemory, const float alpha) {
 	//
 	// Towers
 	//
-	for(size_t towerIndex = 0; towerIndex < state->towerCount; ++towerIndex) {
-		Tower &tower = state->towers[towerIndex];
-		render::DrawPoint(state->camera, tower.position.x, tower.position.y, tower.data.structureRadius, V4f(1, 1, 0.5f, 1));
-
-		// @TODO(final): Mulitple tower styles
-		glColor4f(1, 0.85f, 0.5f, 1);
-		glLineWidth(3.0f);
-		glPushMatrix();
-		glTranslatef(tower.position.x, tower.position.y, 0);
-		glRotatef(tower.facingAngle * RadToDeg, 0, 0, 1);
-		glBegin(GL_LINES);
-		glVertex2f(tower.data.gunTubeLength, 0);
-		glVertex2f(0, 0);
-		glEnd();
-		glLineWidth(2.0f);
-		glPopMatrix();
-
-		render::DrawCircle(tower.position.x, tower.position.y, tower.data.detectionRadius, false, V4f(1, 1, 1, 0.5f));
-		render::DrawCircle(tower.position.x, tower.position.y, tower.data.unlockRadius, false, V4f(1, 0.5f, 1, 0.4f));
+	for (size_t towerIndex = 0; towerIndex < state->towerCount; ++towerIndex) {
+		const Tower &tower = state->towers[towerIndex];
+		towers::DrawTower(state->camera, tower.data, tower.position, tower.facingAngle);
 	}
 
 	//
 	// Bullets
 	//
-	for(size_t bulletIndex = 0; bulletIndex < state->bulletCount; ++bulletIndex) {
+	for (size_t bulletIndex = 0; bulletIndex < state->bulletCount; ++bulletIndex) {
 		Bullet &bullet = state->bullets[bulletIndex];
-		Vec2f bulletPos = Vec2Lerp(bullet.prevPosition, alpha, bullet.position);
-		render::DrawPoint(state->camera, bulletPos.x, bulletPos.y, bullet.data.renderRadius, V4f(1, 0, 0, 1));
-		bullet.prevPosition = bullet.position;
-	}
-
-	//
-	// Remove dead enemies and destroyed bullets
-	//
-	for(size_t bulletIndex = 0; bulletIndex < state->bulletCount; ++bulletIndex) {
-		Bullet &bullet = state->bullets[bulletIndex];
-		if(bullet.isDestroyed) {
-			if(bulletIndex < state->bulletCount - 1) {
-				const Bullet &lastBullet = state->bullets[state->bulletCount - 1];
-				bullet = lastBullet;
-			}
-			--state->bulletCount;
-		}
-	}
-	for(size_t enemyIndex = 0; enemyIndex < state->enemyCount; ++enemyIndex) {
-		Creep &enemy = state->enemies[enemyIndex];
-		if(enemy.isDead) {
-			if(enemyIndex < state->enemyCount - 1) {
-				const Creep &lastEnemy = state->enemies[state->enemyCount - 1];
-				enemy = lastEnemy;
-			}
-			--state->enemyCount;
+		if (!bullet.isDestroyed) {
+			Vec2f bulletPos = Vec2Lerp(bullet.prevPosition, alpha, bullet.position);
+			render::DrawPoint(state->camera, bulletPos.x, bulletPos.y, bullet.data.renderRadius, V4f(1, 0, 0, 1));
+			bullet.prevPosition = bullet.position;
 		}
 	}
 }
