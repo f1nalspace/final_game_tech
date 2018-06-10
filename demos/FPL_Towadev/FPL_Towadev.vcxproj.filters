@@ -36,5 +36,6 @@
     <ClInclude Include="..\additions\final_xml.h">
       <Filter>additions</Filter>
     </ClInclude>
+    <ClInclude Include="fpl_towadev.h" />
   </ItemGroup>
 </Project>

@@ -22,8 +22,6 @@ License:
 
 #include "final_vecmath.h"
 
-
-
 struct ButtonState {
 	bool isDown;
 	int halfTransitionCount;

@@ -30,6 +30,7 @@
     <ClInclude Include="..\additions\final_render.h" />
     <ClInclude Include="..\additions\final_vecmath.h" />
     <ClInclude Include="..\additions\final_xml.h" />
+    <ClInclude Include="fpl_towadev.h" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <VCProjectVersion>15.0</VCProjectVersion>

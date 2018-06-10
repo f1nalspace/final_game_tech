@@ -40,7 +40,7 @@
   <object id="10" name="spawn1" type="Spawn" gid="17" x="0" y="128" width="64" height="64">
    <properties>
     <property name="cooldown" type="float" value="2"/>
-    <property name="enemy" value="first"/>
+    <property name="enemy" value="The Quad"/>
     <property name="initialCooldown" type="float" value="5"/>
    </properties>
   </object>

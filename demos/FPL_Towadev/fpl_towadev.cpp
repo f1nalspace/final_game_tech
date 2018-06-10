@@ -41,276 +41,11 @@ Changelog:
 
 #include <final_game.h>
 
-constexpr float RadToDeg = 180.0f / (float)M_PI;
-
-constexpr float GameAspect = 16.0f / 9.0f;
-constexpr float WorldWidth = 20.0f;
-constexpr float WorldHeight = WorldWidth / GameAspect;
-constexpr float WorldRadiusW = WorldWidth * 0.5f;
-constexpr float WorldRadiusH = WorldHeight * 0.5f;
-
-constexpr float TileSize = 1.0f;
-constexpr int TileCountX = (int)(WorldWidth / TileSize);
-constexpr int TileCountY = (int)(WorldHeight / TileSize);
-constexpr int TotalTileCount = TileCountX * TileCountY;
-
-constexpr float GridWidth = TileSize * (float)TileCountX;
-constexpr float GridHeight = TileSize * (float)TileCountY;
-constexpr float GridOriginX = -WorldRadiusW + ((WorldWidth - GridWidth) * 0.5f);
-constexpr float GridOriginY = -WorldRadiusH + ((WorldHeight - GridHeight) * 0.5f);
-
-struct TilesetInfo {
-	uint32_t tileCount;
-	uint32_t columnCount;
-};
-
-enum class EntityType {
-	None = 0,
-	SpawnRight,
-	SpawnLeft,
-	SpawnDown,
-	SpawnUp,
-	WaypointRight,
-	WaypointLeft,
-	WaypointDown,
-	WaypointUp,
-	Goal,
-};
-class EntitiesTilesetMappingClass : public ArrayInitializer<uint32_t, EntityType, 16> {
-public:
-	EntitiesTilesetMappingClass() : ArrayInitializer() {
-		Set(1, EntityType::SpawnRight);
-		Set(2, EntityType::SpawnLeft);
-		Set(3, EntityType::SpawnDown);
-		Set(4, EntityType::SpawnUp);
-		Set(5, EntityType::WaypointRight);
-		Set(6, EntityType::WaypointLeft);
-		Set(7, EntityType::WaypointDown);
-		Set(8, EntityType::WaypointUp);
-		Set(9, EntityType::Goal);
-	}
-};
-static const TilesetInfo TilesetEntitiesInfo = { 16, 4 };
-static const EntitiesTilesetMappingClass TilesetEntitiesToTypeMapping = EntitiesTilesetMappingClass();
-
-enum class WayType {
-	None = 0,
-	Horizontal,
-	Vertical,
-	Cross,
-	EdgeUpLeft,
-	EdgeUpRight,
-	EdgeDownLeft,
-	EdgeDownRight,
-	EndUp,
-	EndDown,
-	EndLeft,
-	EndRight,
-};
-class WayTilesetMappingClass : public ArrayInitializer<uint32_t, WayType, 16> {
-public:
-	WayTilesetMappingClass() : ArrayInitializer() {
-		Set(1, WayType::Horizontal);
-		Set(2, WayType::Vertical);
-		Set(3, WayType::Cross);
-		Set(5, WayType::EdgeUpLeft);
-		Set(6, WayType::EdgeUpRight);
-		Set(7, WayType::EndUp);
-		Set(9, WayType::EdgeDownLeft);
-		Set(10, WayType::EdgeDownRight);
-		Set(11, WayType::EndDown);
-		Set(13, WayType::EndLeft);
-		Set(14, WayType::EndRight);
-	}
-};
-static const TilesetInfo TilesetWayInfo = { 16, 4 };
-static const WayTilesetMappingClass TilesetWayToTypeMapping = WayTilesetMappingClass();
-
-struct SpawnData {
-	Vec2f direction;
-	float initialCooldown;
-	float cooldown;
-	char enemyId[256];
-};
-
-enum class ObjectType {
-	None = 0,
-	Spawn,
-};
-
-struct ObjectData {
-	ObjectType type;
-	Vec2i tilePos;
-	union {
-		SpawnData spawn;
-	};
-};
-
-struct LevelData {
-	const char *id;
-	uint32_t wayLayer[TotalTileCount];
-	uint32_t entitiesLayer[TotalTileCount];
-	ObjectData objects[256];
-	size_t objectCount;
-	uint32_t wayFirstGid;
-	uint32_t entitiesFirstGid;
-	uint32_t tileWidth;
-	uint32_t tileHeight;
-};
-
-struct Tile {
-	WayType wayType;
-	EntityType entityType;
-	bool isOccupied;
-};
-
-struct Waypoint {
-	Vec2i tilePos;
-	Vec2f position;
-	Vec2f direction;
-	struct Waypoint *next;
-};
-
-enum class CreepStyle {
-	None,
-	Quad,
-	Triangle
-};
-
-struct CreepData {
-	Vec4f color;
-	const char *id;
-	float renderRadius;
-	float collisionRadius;
-	float speed;
-	float hp;
-	CreepStyle style;
-};
-
-struct CreepMultiplier {
-	float hp;
-	float speed;
-	float scale;
-};
-
-inline CreepMultiplier MakeCreepMultiplier(const float hp, const float speed, const float scale) {
-	CreepMultiplier result = {};
-	result.hp = hp;
-	result.speed = speed;
-	result.scale = scale;
-	return(result);
-}
-
-inline CreepData MakeCreepData(const char *id, const float renderRadius, const float collisionRadius, const float speed, const float hp, const Vec4f &color, const CreepStyle style) {
-	CreepData result = {};
-	result.id = id;
-	result.renderRadius = renderRadius;
-	result.collisionRadius = collisionRadius;
-	result.speed = speed;
-	result.hp = hp;
-	result.color = color;
-	result.style = style;
-	return(result);
-}
-
-struct Creep {
-	CreepData data;
-	Vec2f prevPosition;
-	Vec2f position;
-	Vec2f facingDirection;
-	Vec2f targetPos;
-	const Waypoint *targetWaypoint;
-	float speed;
-	float hp;
-	bool hasTarget;
-	bool isDead;
-};
-
-struct CreepSpawner {
-	CreepData spawnTemplate;
-	Vec2f spawnPosition;
-	Vec2f exitPosition;
-	size_t totalCount;
-	size_t remainingCount;
-	float spawnTimer;
-	float cooldown;
-	bool isActive;
-};
-
-struct BulletData {
-	float renderRadius;
-	float collisionRadius;
-	float speed;
-	float damage;
-};
-
-inline BulletData MakeBulletData(const float renderRadius, const float collisionRadius, const float speed, const float damage) {
-	BulletData result = {};
-	result.renderRadius = renderRadius;
-	result.collisionRadius = collisionRadius;
-	result.speed = speed;
-	result.damage = damage;
-	return(result);
-}
-
-struct TowerData {
-	BulletData bullet;
-	const char *id;
-	float structureRadius;
-	float detectionRadius;
-	float unlockRadius;
-	float gunTubeLength;
-	float gunCooldown;
-};
-
-inline TowerData MakeTowerData(const char *id, const float structureRadius, const float detectionRadius, const float unlockRadius, const float gunTubeLength, const float gunCooldown, const BulletData &bullet) {
-	TowerData result = {};
-	result.id = id;
-	result.structureRadius = structureRadius;
-	result.detectionRadius = detectionRadius;
-	result.unlockRadius = unlockRadius;
-	result.gunTubeLength = gunTubeLength;
-	result.gunCooldown = gunCooldown;
-	result.bullet = bullet;
-	return(result);
-}
-
-struct Wave {
-	const char *level;
-	CreepMultiplier enemyMultiplier;
-	size_t enemyCount;
-	float cooldown;
-};
-
-inline Wave MakeWave(const char *level, const CreepMultiplier &enemyMultiplier, const size_t enemyCount, const float cooldown) {
-	Wave result = {};
-	result.level = level;
-	result.enemyMultiplier = enemyMultiplier;
-	result.enemyCount = enemyCount;
-	result.cooldown = cooldown;
-	return(result);
-}
-
-struct Tower {
-	TowerData data;
-	Vec2f position;
-	Creep *targetEnemy;
-	float facingAngle;
-	float gunTimer;
-	bool hasTarget;
-};
-
-struct Bullet {
-	BulletData data;
-	Vec2f prevPosition;
-	Vec2f position;
-	Vec2f velocity;
-	bool isDestroyed;
-};
+#include "fpl_towadev.h"
 
 static const TowerData TowerDefinitions[] = {
 	MakeTowerData(
-		/* id: */ "basic",
+		/* id: */ "Newbie Tower",
 		/* structureRadius: */ TileSize * 0.35f,
 		/* detectionRadius: */ TileSize * 2.0f,
 		/* unlockRadius: */ TileSize * 2.25f,
@@ -327,7 +62,7 @@ static const TowerData TowerDefinitions[] = {
 
 static const CreepData CreepDefinitions[] = {
 	MakeCreepData(
-		/* id: */ "first",
+		/* id: */ "The Quad",
 		/* renderRadius: */ TileSize * 0.25f,
 		/* collisionRadius: */ TileSize * 0.2f,
 		/* speed: */ 1.0,
@@ -341,70 +76,56 @@ static const Wave Waves[] = {
 	MakeWave(
 		/* level: */ "level1",
 		/* enemyMultiplier */ MakeCreepMultiplier(1.0f, 1.0f, 1.0f),
-		/* enemyCount: */ 10,
-		/* cooldown: */ 2.0f
+		/* enemyCount: */ 10
 	),
 	MakeWave(
 		/* level: */ "level1",
 		/* enemyMultiplier */ MakeCreepMultiplier(1.125f, 1.05f, 1.05f),
-		/* enemyCount: */ 10,
-		/* cooldown: */ 2.1f
+		/* enemyCount: */ 10
 	),
 	MakeWave(
 		/* level: */ "level1",
 		/* enemyMultiplier */ MakeCreepMultiplier(1.25f, 1.1f, 1.1f),
-		/* enemyCount: */ 10,
-		/* cooldown: */ 2.0f
+		/* enemyCount: */ 10
 	),
 };
 
-struct FontAsset {
-	LoadedFont desc;
-	GLint texture;
-};
-
-struct GameState {
-	GameMemory mem;
-	Creep enemies[100];
-	Tower towers[100];
-	Bullet bullets[10000];
-	Tile tiles[TotalTileCount];
-	CreepSpawner spawners[16];
-	LevelData levelData;
-	FontAsset hudFont;
-	size_t spawnerCount;
-	Camera2D camera;
-	Viewport viewport;
-	Vec2f mouseWorldPos;
-	Vec2i mouseTilePos;
-	Waypoint *firstWaypoint;
-	Waypoint *lastWaypoint;
-	size_t activeEnemyCount;
-	size_t enemyCount;
-	size_t towerCount;
-	size_t bulletCount;
-	int selectedTowerIndex;
-	int waveIndex;
-	bool isExiting;
-};
-
-inline Vec2f TileToWorld(const Vec2i &tilePos, const Vec2f &offset = V2f(0, 0)) {
-	Vec2f result = {
-		GridOriginX + tilePos.x * TileSize,
-		GridOriginY + (TileCountY - 1 - tilePos.y) * TileSize
-	};
-	result += offset;
-	return(result);
+// Forward declarations
+namespace level {
+	static Vec2i FindTilePosByEntityType(const GameState &state, const EntityType type);
+	static void SetupWave(GameState &state, const int waveIndex);
 }
 
-inline Vec2i WorldToTile(const Vec2f &worldPos) {
-	float x = worldPos.x + WorldWidth * 0.5f;
-	float y = worldPos.y + WorldHeight * 0.5f;
-	Vec2i result = {
-		(int)floorf((x) / TileSize),
-		TileCountY - 1 - (int)floorf((y) / TileSize)
-	};
-	return(result);
+namespace utils {
+	static int StringToInt(const char *str, int def = 0) {
+		int result = def;
+		if (str != nullptr) {
+			bool isNegative = false;
+			const char *p = str;
+			if (*p == '-') {
+				isNegative = true;
+				++p;
+			}
+			uint32_t value = 0;
+			while (isdigit(*p)) {
+				short v = *p - '0';
+				value = value * 10 + v;
+				++p;
+			}
+			if (isNegative) {
+				result = -(int)value;
+			} else {
+				result = value;
+			}
+		}
+		return(result);
+	}
+
+	static float StringToFloat(const char *str) {
+		// @TODO(final): Implement this yourself!
+		float result = (float)atof(str);
+		return(result);
+	}
 }
 
 namespace render {
@@ -464,112 +185,6 @@ namespace render {
 		glVertex2f(pos.x, pos.y);
 		glVertex2f(pos.x + normal.x * length, pos.y + normal.y * length);
 		glEnd();
-	}
-}
-
-static void ReleaseGame(GameState &state) {
-	fglUnloadOpenGL();
-}
-
-namespace tiles {
-	inline Tile *GetTile(GameState &state, const Vec2i &tilePos) {
-		if ((tilePos.x >= 0 && tilePos.x < TileCountX) && (tilePos.x >= 0 && tilePos.x < TileCountX)) {
-			return &state.tiles[tilePos.y * TileCountX + tilePos.x];
-		}
-		return nullptr;
-	}
-
-	static Vec2i FindTilePosByEntityType(const GameState &state, const EntityType type) {
-		for (int y = 0; y < TileCountY; ++y) {
-			for (int x = 0; x < TileCountX; ++x) {
-				int index = y * TileCountX + x;
-				if (state.tiles[index].entityType == type) {
-					return V2i(x, y);
-				}
-			}
-		}
-		return V2i(-1, -1);
-	}
-}
-
-namespace waypoints {
-	constexpr float WaypointDirectionWidth = 0.35f;
-	static Waypoint *AddWaypoint(GameState &state, const Vec2i &tilePos, const Vec2f &dir) {
-		Waypoint *waypoint = (Waypoint *)fplMemoryAllocate(sizeof(Waypoint));
-		waypoint->tilePos = tilePos;
-		waypoint->position = TileToWorld(tilePos, V2f(TileSize, TileSize) * 0.5f);
-		waypoint->direction = dir;
-		if (state.firstWaypoint == nullptr) {
-			state.firstWaypoint = state.lastWaypoint = waypoint;
-		} else {
-			state.lastWaypoint->next = waypoint;
-			state.lastWaypoint = waypoint;
-		}
-		return(waypoint);
-	}
-}
-
-namespace towers {
-	inline bool CanPlaceTower(GameState &state, const Vec2i &tilePos) {
-		if ((state.selectedTowerIndex < 0) || !(state.selectedTowerIndex < FPL_ARRAYCOUNT(TowerDefinitions))) {
-			return false;
-		}
-		if (state.towerCount == FPL_ARRAYCOUNT(state.towers)) {
-			return false;
-		}
-		Tile *tile = tiles::GetTile(state, tilePos);
-		if (tile == nullptr) {
-			return false;
-		}
-		bool result = (!tile->isOccupied && (tile->entityType == EntityType::None) && (tile->wayType == WayType::None));
-		return(result);
-	}
-
-	static Tower *PlaceTower(GameState &state, const Vec2i &tilePos) {
-		const TowerData &data = TowerDefinitions[state.selectedTowerIndex];
-
-		assert(state.towerCount < FPL_ARRAYCOUNT(state.towers));
-		Tower *tower = &state.towers[state.towerCount++];
-		FPL_CLEAR_STRUCT(tower);
-		tower->data = data;
-		tower->position = TileToWorld(tilePos, V2f(TileSize, TileSize) * 0.5f);
-		tower->facingAngle = (float)M_PI * 0.5f; // Face north by default
-
-		Tile *tile = tiles::GetTile(state, tilePos);
-		assert(!tile->isOccupied);
-		tile->isOccupied = true;
-
-		return(tower);
-	}
-
-	static void ShootBullet(GameState &state, Tower &tower) {
-		assert(state.bulletCount < FPL_ARRAYCOUNT(state.bullets));
-		Bullet *bullet = &state.bullets[state.bulletCount++];
-		FPL_CLEAR_STRUCT(bullet);
-		Vec2f targetDir = V2f(cosf(tower.facingAngle), sinf(tower.facingAngle));
-		bullet->position = bullet->prevPosition = tower.position + targetDir * tower.data.gunTubeLength;
-		bullet->data = tower.data.bullet;
-		bullet->velocity = targetDir * bullet->data.speed;
-	}
-
-	static void DrawTower(const Camera2D &camera, const TowerData &tower, const Vec2f &pos, const float angle) {
-		// @TODO(final): Mulitple tower styles
-		render::DrawPoint(camera, pos.x, pos.y, tower.structureRadius, V4f(1, 1, 0.5f, 1));
-
-		glColor4f(1, 0.85f, 0.5f, 1);
-		glLineWidth(3.0f);
-		glPushMatrix();
-		glTranslatef(pos.x, pos.y, 0);
-		glRotatef(angle * RadToDeg, 0, 0, 1);
-		glBegin(GL_LINES);
-		glVertex2f(tower.gunTubeLength, 0);
-		glVertex2f(0, 0);
-		glEnd();
-		glLineWidth(2.0f);
-		glPopMatrix();
-
-		render::DrawCircle(pos.x, pos.y, tower.detectionRadius, false, V4f(1, 1, 1, 0.5f));
-		render::DrawCircle(pos.x, pos.y, tower.unlockRadius, false, V4f(1, 0.5f, 1, 0.4f));
 	}
 }
 
@@ -636,7 +251,7 @@ namespace creeps {
 				creep.targetWaypoint = waypoint.next;
 			} else {
 				creep.targetWaypoint = nullptr;
-				Vec2i goalTilePos = tiles::FindTilePosByEntityType(state, EntityType::Goal);
+				Vec2i goalTilePos = level::FindTilePosByEntityType(state, EntityType::Goal);
 				assert(goalTilePos.x > -1 && goalTilePos.y > -1);
 				creep.targetPos = TileToWorld(goalTilePos, V2f(TileSize, TileSize) * 0.5f);
 			}
@@ -657,14 +272,308 @@ namespace creeps {
 		return nullptr;
 	}
 
+	static void EnemyHit(GameState &state, Creep &enemy, const Bullet &bullet) {
+		enemy.hp -= bullet.data.damage;
+		if (enemy.hp <= 0) {
+			enemy.hp = 0;
+			enemy.isDead = true;
+		}
+	}
+
+	static void AllEnemiesKilled(GameState &state) {
+		if (state.waveIndex < FPL_ARRAYCOUNT(Waves)) {
+			level::SetupWave(state, state.waveIndex + 1);
+		}
+	}
+}
+
+namespace level {
+	inline Tile *GetTile(GameState &state, const Vec2i &tilePos) {
+		if ((tilePos.x >= 0 && tilePos.x < TileCountX) && (tilePos.x >= 0 && tilePos.x < TileCountX)) {
+			return &state.tiles[tilePos.y * TileCountX + tilePos.x];
+		}
+		return nullptr;
+	}
+
+	static Vec2i FindTilePosByEntityType(const GameState &state, const EntityType type) {
+		for (int y = 0; y < TileCountY; ++y) {
+			for (int x = 0; x < TileCountX; ++x) {
+				int index = y * TileCountX + x;
+				if (state.tiles[index].entityType == type) {
+					return V2i(x, y);
+				}
+			}
+		}
+		return V2i(-1, -1);
+	}
+
+	constexpr float WaypointDirectionWidth = 0.35f;
+	static Waypoint *AddWaypoint(GameState &state, const Vec2i &tilePos, const Vec2f &dir) {
+		Waypoint *waypoint = (Waypoint *)fplMemoryAllocate(sizeof(Waypoint));
+		waypoint->tilePos = tilePos;
+		waypoint->position = TileToWorld(tilePos, V2f(TileSize, TileSize) * 0.5f);
+		waypoint->direction = dir;
+		if (state.firstWaypoint == nullptr) {
+			state.firstWaypoint = state.lastWaypoint = waypoint;
+		} else {
+			state.lastWaypoint->next = waypoint;
+			state.lastWaypoint = waypoint;
+		}
+		return(waypoint);
+	}
+
+	static void ParseLevelLayer(fxmlTag *childTag, const uint32_t mapWidth, const uint32_t mapHeight, uint32_t *outData) {
+		fxmlTag *dataTag = fxmlFindTagByName(childTag, "data");
+		if (dataTag != nullptr) {
+			const char *encodingStr = fxmlGetAttributeValue(dataTag, "encoding");
+			if (strcmp(encodingStr, "csv") == 0) {
+				const char *p = dataTag->value;
+				int index = 0;
+				while (*p) {
+					if (isdigit(*p)) {
+						uint32_t tileValue = 0;
+						while (isdigit(*p)) {
+							short v = *p - '0';
+							tileValue = tileValue * 10 + v;
+							++p;
+						}
+						int row = index / (int)mapWidth;
+						int col = index % (int)mapWidth;
+						assert(row >= 0 && row < (int)mapHeight);
+						assert(row >= 0 && row < TileCountY);
+						assert(col >= 0 && col < TileCountX);
+						int tileIndex = row * TileCountX + col;
+						outData[tileIndex] = tileValue;
+					} else if (*p == ',') {
+						++p;
+						++index;
+					} else {
+						++p;
+					}
+				}
+			}
+		}
+	}
+
+	static void ParseLevelObjects(fxmlTag *objectGroupTag, LevelData &level) {
+		assert(level.tileWidth > 0);
+		assert(level.tileHeight > 0);
+		fxmlTag *childTag = objectGroupTag->firstChild;
+		while (childTag != nullptr) {
+			if (childTag->type == fxmlTagType_Element) {
+				if (strcmp(childTag->name, "object") == 0) {
+					int gid = utils::StringToInt(fxmlGetAttributeValue(childTag, "gid"));
+					int x = utils::StringToInt(fxmlGetAttributeValue(childTag, "x"), -1);
+					int y = utils::StringToInt(fxmlGetAttributeValue(childTag, "y"), -1);
+					int w = utils::StringToInt(fxmlGetAttributeValue(childTag, "width"), 0);
+					int h = utils::StringToInt(fxmlGetAttributeValue(childTag, "height"), 0);
+					float cx = (float)x + (float)w * 0.5f;
+					float cy = (float)y - (float)h * 0.5f;
+					int tileX = (int)floorf(cx / (float)level.tileWidth);
+					int tileY = (int)floorf(cy / (float)level.tileHeight);
+					Vec2i tilePos = V2i(tileX, tileY);
+
+					uint32_t tileId = (gid > 0) ? ((gid - level.entitiesFirstGid) + 1) : 0;
+					EntityType entityType = TilesetEntitiesToTypeMapping[tileId];
+
+					ObjectData tmpObj = {};
+					tmpObj.tilePos = tilePos;
+					const char *typeName = fxmlGetAttributeValue(childTag, "type");
+					if (strcmp(typeName, "Spawn") == 0) {
+						tmpObj.type = ObjectType::Spawn;
+						switch (entityType) {
+							case EntityType::SpawnDown:
+								tmpObj.spawn.direction = V2f(0.0f, -1.0f);
+								break;
+							case EntityType::SpawnUp:
+								tmpObj.spawn.direction = V2f(0.0f, 1.0f);
+								break;
+							case EntityType::SpawnLeft:
+								tmpObj.spawn.direction = V2f(-1.0f, 0.0f);
+								break;
+							case EntityType::SpawnRight:
+								tmpObj.spawn.direction = V2f(1.0f, 0.0f);
+								break;
+							default:
+								assert(!"Unsupported entity type for spawn!");
+								break;
+						}
+
+						fxmlTag *propertiesTag = fxmlFindTagByName(childTag, "properties");
+						if (propertiesTag != nullptr) {
+							fxmlTag *propTag = propertiesTag->firstChild;
+							while (propTag != nullptr) {
+								const char *name = fxmlGetAttributeValue(propTag, "name");
+								const char *value = fxmlGetAttributeValue(propTag, "value");
+								if (strcmp(name, "enemy") == 0) {
+									strcpy_s(tmpObj.spawn.enemyId, FPL_ARRAYCOUNT(tmpObj.spawn.enemyId), value);
+								} else if (strcmp(name, "initialCooldown") == 0) {
+									tmpObj.spawn.initialCooldown = utils::StringToFloat(value);
+								} else if (strcmp(name, "cooldown") == 0) {
+									tmpObj.spawn.cooldown = utils::StringToFloat(value);
+								}
+								propTag = propTag->next;
+							}
+						}
+
+					}
+					if (tmpObj.type != ObjectType::None) {
+						assert(level.objectCount < FPL_ARRAYCOUNT(level.objects));
+						ObjectData &obj = level.objects[level.objectCount++];
+						obj = tmpObj;
+					}
+				}
+			}
+			childTag = childTag->next;
+		}
+	}
+
+	static bool ParseLevel(fxmlTag *root, LevelData &level) {
+		bool result = false;
+		fxmlTag *mapTag = fxmlFindTagByName(root, "map");
+		if (mapTag == nullptr) {
+			return false;
+		}
+		int mapWidth = utils::StringToInt(fxmlGetAttributeValue(mapTag, "width"));
+		int mapHeight = utils::StringToInt(fxmlGetAttributeValue(mapTag, "height"));
+		if ((mapWidth != TileCountX) || (mapHeight != TileCountY)) {
+			return false;
+		}
+
+		const char *orientation = fxmlGetAttributeValue(mapTag, "orientation");
+		if (strcmp(orientation, "orthogonal") != 0) {
+			return false;
+		}
+
+		int tileWidth = utils::StringToInt(fxmlGetAttributeValue(mapTag, "tilewidth"));
+		int tileHeight = utils::StringToInt(fxmlGetAttributeValue(mapTag, "tileheight"));
+		if ((tileWidth == 0) || (tileHeight == 0)) {
+			return false;
+		}
+
+		level.tileWidth = tileWidth;
+		level.tileHeight = tileHeight;
+
+		fxmlTag *childTag = mapTag->firstChild;
+		level.wayFirstGid = 0;
+		level.entitiesFirstGid = 0;
+		while (childTag) {
+			if (childTag->type == fxmlTagType_Element) {
+				if (strcmp(childTag->name, "tileset") == 0) {
+					const char *tilesetName = fxmlGetAttributeValue(childTag, "name");
+					int firstGid = utils::StringToInt(fxmlGetAttributeValue(childTag, "firstgid"));
+					if (strcmp(tilesetName, "way") == 0) {
+						level.wayFirstGid = firstGid;
+					} else if (strcmp(tilesetName, "entities") == 0) {
+						level.entitiesFirstGid = firstGid;
+					}
+				} else if (strcmp(childTag->name, "layer") == 0) {
+					const char *layerName = fxmlGetAttributeValue(childTag, "name");
+					if (strcmp(layerName, "way") == 0) {
+						ParseLevelLayer(childTag, mapWidth, mapHeight, level.wayLayer);
+					} else if (strcmp(layerName, "entities") == 0) {
+						ParseLevelLayer(childTag, mapWidth, mapHeight, level.entitiesLayer);
+					}
+				} else if (strcmp(childTag->name, "objectgroup") == 0) {
+					const char *objectGroupName = fxmlGetAttributeValue(childTag, "name");
+					if (strcmp(objectGroupName, "objects") == 0) {
+						ParseLevelObjects(childTag, level);
+					}
+				}
+			}
+			childTag = childTag->next;
+		}
+
+		return(true);
+	}
+
+	static bool LoadLevel(const char *dataPath, const char *filename, GameState &state) {
+		bool result = false;
+
+		char filePath[1024];
+		fplPathCombine(filePath, FPL_ARRAYCOUNT(filePath), 2, dataPath, filename);
+
+		fplFileHandle file;
+		if (fplOpenAnsiBinaryFile(filePath, &file)) {
+			uint32_t dataSize = fplGetFileSizeFromHandle32(&file);
+			char *data = (char *)fplMemoryAllocate(dataSize);
+			fplReadFileBlock32(&file, dataSize, data, dataSize);
+			fxmlContext ctx = {};
+			if (fxmlInitFromMemory(data, dataSize, &ctx)) {
+				fxmlTag root = {};
+				if (fxmlParse(&ctx, &root)) {
+					LevelData &level = state.levelData;
+					level = {};
+					if (ParseLevel(&root, level)) {
+
+						// @TODO(final): Move to SetupWave()
+
+						// Tiles
+						for (int y = 0; y < TileCountY; ++y) {
+							for (int x = 0; x < TileCountX; ++x) {
+								int tileIndex = y * TileCountX + x;
+								uint32_t wayValue = state.levelData.wayLayer[tileIndex] > 0 ? ((level.wayLayer[tileIndex] - level.wayFirstGid) + 1) : 0;
+								uint32_t entityValue = state.levelData.entitiesLayer[tileIndex] > 0 ? ((level.entitiesLayer[tileIndex] - level.entitiesFirstGid) + 1) : 0;
+								Tile tile = {};
+								tile.wayType = TilesetWayToTypeMapping[wayValue];
+								tile.entityType = TilesetEntitiesToTypeMapping[entityValue];
+								state.tiles[tileIndex] = tile;
+							}
+						}
+
+						// Make waypoints
+						for (int y = 0; y < TileCountY; ++y) {
+							for (int x = 0; x < TileCountX; ++x) {
+								int tileIndex = y * TileCountX + x;
+								const Tile &tile = state.tiles[tileIndex];
+								switch (tile.entityType) {
+									case EntityType::WaypointRight:
+									case EntityType::WaypointLeft:
+									case EntityType::WaypointDown:
+									case EntityType::WaypointUp:
+									{
+										Vec2f dir;
+										if (tile.entityType == EntityType::WaypointRight) {
+											dir = V2f(1, 0);
+										} else if (tile.entityType == EntityType::WaypointLeft) {
+											dir = V2f(-1, 0);
+										} else if (tile.entityType == EntityType::WaypointDown) {
+											dir = V2f(0, -1);
+										} else {
+											assert(tile.entityType == EntityType::WaypointUp);
+											dir = V2f(0, 1);
+										}
+										AddWaypoint(state, V2i(x, y), dir);
+									} break;
+								}
+							}
+						}
+
+						result = true;
+					}
+				}
+				fxmlFree(&ctx);
+			}
+			fplMemoryFree(data);
+			fplCloseFile(&file);
+		}
+
+		return(result);
+	}
+
 	static void SetupWave(GameState &state, const int waveIndex) {
 		const Wave &wave = Waves[waveIndex];
 		state.waveIndex = waveIndex;
 		state.activeEnemyCount = wave.enemyCount;
 
-		// @TODO(final): Load level here
+		if (state.activeLevelId == nullptr || strcmp(state.activeLevelId, wave.levelId) != 0) {
+			char levelFilePath[1024];
+			fplCopyAnsiString(wave.levelId, levelFilePath, FPL_ARRAYCOUNT(levelFilePath));
+			fplChangeFileExtension(levelFilePath, ".tmx", levelFilePath, FPL_ARRAYCOUNT(levelFilePath));
+			level::LoadLevel(state.dataPath, levelFilePath, state);
+		}
 
-		Vec2i goalTilePos = tiles::FindTilePosByEntityType(state, EntityType::Goal);
+		Vec2i goalTilePos = level::FindTilePosByEntityType(state, EntityType::Goal);
 		if (goalTilePos.x == -1) {
 			return;
 		}
@@ -678,7 +587,7 @@ namespace creeps {
 					const SpawnData &data = obj.spawn;
 					Vec2i spawnTilePos = obj.tilePos;
 
-					const CreepData *creepData = FindEnemyById(state, data.enemyId);
+					const CreepData *creepData = creeps::FindEnemyById(state, data.enemyId);
 					assert(creepData != nullptr);
 
 					assert(state.spawnerCount < FPL_ARRAYCOUNT(state.spawners));
@@ -689,309 +598,89 @@ namespace creeps {
 					enemyTemplate.hp *= wave.enemyMultiplier.hp;
 					enemyTemplate.speed *= wave.enemyMultiplier.speed;
 					enemyTemplate.collisionRadius *= wave.enemyMultiplier.scale;
-					SetupSpawner(spawner, spawnPos, goalPos, data.initialCooldown, data.cooldown, wave.enemyCount, enemyTemplate);
+					creeps::SetupSpawner(spawner, spawnPos, goalPos, data.initialCooldown, data.cooldown, wave.enemyCount, enemyTemplate);
 				} break;
 			}
 		}
 	}
+}
 
-	static void EnemyHit(GameState &state, Creep &enemy, const Bullet &bullet) {
-		enemy.hp -= bullet.data.damage;
-		if (enemy.hp <= 0) {
-			enemy.hp = 0;
-			enemy.isDead = true;
+namespace towers {
+	inline bool CanPlaceTower(GameState &state, const Vec2i &tilePos) {
+		if ((state.selectedTowerIndex < 0) || !(state.selectedTowerIndex < FPL_ARRAYCOUNT(TowerDefinitions))) {
+			return false;
 		}
+		if (state.towerCount == FPL_ARRAYCOUNT(state.towers)) {
+			return false;
+		}
+		Tile *tile = level::GetTile(state, tilePos);
+		if (tile == nullptr) {
+			return false;
+		}
+		bool result = (!tile->isOccupied && (tile->entityType == EntityType::None) && (tile->wayType == WayType::None));
+		return(result);
 	}
 
-	static void AllEnemiesKilled(GameState &state) {
-		if (state.waveIndex < FPL_ARRAYCOUNT(Waves)) {
-			SetupWave(state, state.waveIndex + 1);
-		}
+	static Tower *PlaceTower(GameState &state, const Vec2i &tilePos) {
+		const TowerData &data = TowerDefinitions[state.selectedTowerIndex];
+
+		assert(state.towerCount < FPL_ARRAYCOUNT(state.towers));
+		Tower *tower = &state.towers[state.towerCount++];
+		FPL_CLEAR_STRUCT(tower);
+		tower->data = data;
+		tower->position = TileToWorld(tilePos, V2f(TileSize, TileSize) * 0.5f);
+		tower->facingAngle = (float)M_PI * 0.5f; // Face north by default
+
+		Tile *tile = level::GetTile(state, tilePos);
+		assert(!tile->isOccupied);
+		tile->isOccupied = true;
+
+		return(tower);
+	}
+
+	static void ShootBullet(GameState &state, Tower &tower) {
+		assert(state.bulletCount < FPL_ARRAYCOUNT(state.bullets));
+		Bullet *bullet = &state.bullets[state.bulletCount++];
+		FPL_CLEAR_STRUCT(bullet);
+		Vec2f targetDir = V2f(cosf(tower.facingAngle), sinf(tower.facingAngle));
+		bullet->position = bullet->prevPosition = tower.position + targetDir * tower.data.gunTubeLength;
+		bullet->data = tower.data.bullet;
+		bullet->velocity = targetDir * bullet->data.speed;
+	}
+
+	static void DrawTower(const Camera2D &camera, const TowerData &tower, const Vec2f &pos, const float angle) {
+		// @TODO(final): Mulitple tower styles
+		render::DrawPoint(camera, pos.x, pos.y, tower.structureRadius, V4f(1, 1, 0.5f, 1));
+
+		glColor4f(1, 0.85f, 0.5f, 1);
+		glLineWidth(3.0f);
+		glPushMatrix();
+		glTranslatef(pos.x, pos.y, 0);
+		glRotatef(angle * RadToDeg, 0, 0, 1);
+		glBegin(GL_LINES);
+		glVertex2f(tower.gunTubeLength, 0);
+		glVertex2f(0, 0);
+		glEnd();
+		glLineWidth(2.0f);
+		glPopMatrix();
+
+		render::DrawCircle(pos.x, pos.y, tower.detectionRadius, false, V4f(1, 1, 1, 0.5f));
+		render::DrawCircle(pos.x, pos.y, tower.unlockRadius, false, V4f(1, 0.5f, 1, 0.4f));
 	}
 }
 
-static int StringToInt(const char *str, int def = 0) {
-	int result = def;
-	if (str != nullptr) {
-		bool isNegative = false;
-		const char *p = str;
-		if (*p == '-') {
-			isNegative = true;
-			++p;
-		}
-		uint32_t value = 0;
-		while (isdigit(*p)) {
-			short v = *p - '0';
-			value = value * 10 + v;
-			++p;
-		}
-		if (isNegative) {
-			result = -(int)value;
-		} else {
-			result = value;
-		}
-	}
-	return(result);
-}
-
-static float StringToFloat(const char *str) {
-	// @TODO(final): Implement this yourself!
-	float result = (float)atof(str);
-	return(result);
-}
-
-static void ParseLevelLayer(fxmlTag *childTag, const uint32_t mapWidth, const uint32_t mapHeight, uint32_t *outData) {
-	fxmlTag *dataTag = fxmlFindTagByName(childTag, "data");
-	if (dataTag != nullptr) {
-		const char *encodingStr = fxmlGetAttributeValue(dataTag, "encoding");
-		if (strcmp(encodingStr, "csv") == 0) {
-			const char *p = dataTag->value;
-			int index = 0;
-			while (*p) {
-				if (isdigit(*p)) {
-					uint32_t tileValue = 0;
-					while (isdigit(*p)) {
-						short v = *p - '0';
-						tileValue = tileValue * 10 + v;
-						++p;
-					}
-					int row = index / (int)mapWidth;
-					int col = index % (int)mapWidth;
-					assert(row >= 0 && row < (int)mapHeight);
-					assert(row >= 0 && row < TileCountY);
-					assert(col >= 0 && col < TileCountX);
-					int tileIndex = row * TileCountX + col;
-					outData[tileIndex] = tileValue;
-				} else if (*p == ',') {
-					++p;
-					++index;
-				} else {
-					++p;
-				}
-			}
-		}
-	}
-}
-
-static void ParseLevelObjects(fxmlTag *objectGroupTag, LevelData &level) {
-	assert(level.tileWidth > 0);
-	assert(level.tileHeight > 0);
-	fxmlTag *childTag = objectGroupTag->firstChild;
-	while (childTag != nullptr) {
-		if (childTag->type == fxmlTagType_Element) {
-			if (strcmp(childTag->name, "object") == 0) {
-				int gid = StringToInt(fxmlGetAttributeValue(childTag, "gid"));
-				int x = StringToInt(fxmlGetAttributeValue(childTag, "x"), -1);
-				int y = StringToInt(fxmlGetAttributeValue(childTag, "y"), -1);
-				int w = StringToInt(fxmlGetAttributeValue(childTag, "width"), 0);
-				int h = StringToInt(fxmlGetAttributeValue(childTag, "height"), 0);
-				float cx = (float)x + (float)w * 0.5f;
-				float cy = (float)y - (float)h * 0.5f;
-				int tileX = (int)floorf(cx / (float)level.tileWidth);
-				int tileY = (int)floorf(cy / (float)level.tileHeight);
-				Vec2i tilePos = V2i(tileX, tileY);
-
-				uint32_t tileId = (gid > 0) ? ((gid - level.entitiesFirstGid) + 1) : 0;
-				EntityType entityType = TilesetEntitiesToTypeMapping[tileId];
-
-				ObjectData tmpObj = {};
-				tmpObj.tilePos = tilePos;
-				const char *typeName = fxmlGetAttributeValue(childTag, "type");
-				if (strcmp(typeName, "Spawn") == 0) {
-					tmpObj.type = ObjectType::Spawn;
-					switch (entityType) {
-						case EntityType::SpawnDown:
-							tmpObj.spawn.direction = V2f(0.0f, -1.0f);
-							break;
-						case EntityType::SpawnUp:
-							tmpObj.spawn.direction = V2f(0.0f, 1.0f);
-							break;
-						case EntityType::SpawnLeft:
-							tmpObj.spawn.direction = V2f(-1.0f, 0.0f);
-							break;
-						case EntityType::SpawnRight:
-							tmpObj.spawn.direction = V2f(1.0f, 0.0f);
-							break;
-						default:
-							assert(!"Unsupported entity type for spawn!");
-							break;
-					}
-
-					fxmlTag *propertiesTag = fxmlFindTagByName(childTag, "properties");
-					if (propertiesTag != nullptr) {
-						fxmlTag *propTag = propertiesTag->firstChild;
-						while (propTag != nullptr) {
-							const char *name = fxmlGetAttributeValue(propTag, "name");
-							const char *value = fxmlGetAttributeValue(propTag, "value");
-							if (strcmp(name, "enemy") == 0) {
-								strcpy_s(tmpObj.spawn.enemyId, FPL_ARRAYCOUNT(tmpObj.spawn.enemyId), value);
-							} else if (strcmp(name, "initialCooldown") == 0) {
-								tmpObj.spawn.initialCooldown = StringToFloat(value);
-							} else if (strcmp(name, "cooldown") == 0) {
-								tmpObj.spawn.cooldown = StringToFloat(value);
-							}
-							propTag = propTag->next;
-						}
-					}
-
-				}
-				if (tmpObj.type != ObjectType::None) {
-					assert(level.objectCount < FPL_ARRAYCOUNT(level.objects));
-					ObjectData &obj = level.objects[level.objectCount++];
-					obj = tmpObj;
-				}
-			}
-		}
-		childTag = childTag->next;
-	}
-}
-
-static bool ParseLevel(fxmlTag *root, LevelData &level) {
-	bool result = false;
-	fxmlTag *mapTag = fxmlFindTagByName(root, "map");
-	if (mapTag == nullptr) {
-		return false;
-	}
-	int mapWidth = StringToInt(fxmlGetAttributeValue(mapTag, "width"));
-	int mapHeight = StringToInt(fxmlGetAttributeValue(mapTag, "height"));
-	if ((mapWidth != TileCountX) || (mapHeight != TileCountY)) {
-		return false;
-	}
-
-	const char *orientation = fxmlGetAttributeValue(mapTag, "orientation");
-	if (strcmp(orientation, "orthogonal") != 0) {
-		return false;
-	}
-
-	int tileWidth = StringToInt(fxmlGetAttributeValue(mapTag, "tilewidth"));
-	int tileHeight = StringToInt(fxmlGetAttributeValue(mapTag, "tileheight"));
-	if ((tileWidth == 0) || (tileHeight == 0)) {
-		return false;
-	}
-
-	level.tileWidth = tileWidth;
-	level.tileHeight = tileHeight;
-
-	fxmlTag *childTag = mapTag->firstChild;
-	level.wayFirstGid = 0;
-	level.entitiesFirstGid = 0;
-	while (childTag) {
-		if (childTag->type == fxmlTagType_Element) {
-			if (strcmp(childTag->name, "tileset") == 0) {
-				const char *tilesetName = fxmlGetAttributeValue(childTag, "name");
-				int firstGid = StringToInt(fxmlGetAttributeValue(childTag, "firstgid"));
-				if (strcmp(tilesetName, "way") == 0) {
-					level.wayFirstGid = firstGid;
-				} else if (strcmp(tilesetName, "entities") == 0) {
-					level.entitiesFirstGid = firstGid;
-				}
-			} else if (strcmp(childTag->name, "layer") == 0) {
-				const char *layerName = fxmlGetAttributeValue(childTag, "name");
-				if (strcmp(layerName, "way") == 0) {
-					ParseLevelLayer(childTag, mapWidth, mapHeight, level.wayLayer);
-				} else if (strcmp(layerName, "entities") == 0) {
-					ParseLevelLayer(childTag, mapWidth, mapHeight, level.entitiesLayer);
-				}
-			} else if (strcmp(childTag->name, "objectgroup") == 0) {
-				const char *objectGroupName = fxmlGetAttributeValue(childTag, "name");
-				if (strcmp(objectGroupName, "objects") == 0) {
-					ParseLevelObjects(childTag, level);
-				}
-			}
-		}
-		childTag = childTag->next;
-	}
-
-	return(true);
-}
-
-static bool LoadLevel(const char *dataPath, const char *filename, GameState &state) {
-	bool result = false;
-
-	char filePath[1024];
-	fplPathCombine(filePath, FPL_ARRAYCOUNT(filePath), 2, dataPath, filename);
-
-	fplFileHandle file;
-	if (fplOpenAnsiBinaryFile(filePath, &file)) {
-		uint32_t dataSize = fplGetFileSizeFromHandle32(&file);
-		char *data = (char *)fplMemoryAllocate(dataSize);
-		fplReadFileBlock32(&file, dataSize, data, dataSize);
-		fxmlContext ctx = {};
-		if (fxmlInitFromMemory(data, dataSize, &ctx)) {
-			fxmlTag root = {};
-			if (fxmlParse(&ctx, &root)) {
-				LevelData &level = state.levelData;
-				level = {};
-				if (ParseLevel(&root, level)) {
-
-					// @TODO(final): Move to SetupWave()
-
-					// Tiles
-					for (int y = 0; y < TileCountY; ++y) {
-						for (int x = 0; x < TileCountX; ++x) {
-							int tileIndex = y * TileCountX + x;
-							uint32_t wayValue = state.levelData.wayLayer[tileIndex] > 0 ? ((level.wayLayer[tileIndex] - level.wayFirstGid) + 1) : 0;
-							uint32_t entityValue = state.levelData.entitiesLayer[tileIndex] > 0 ? ((level.entitiesLayer[tileIndex] - level.entitiesFirstGid) + 1) : 0;
-							Tile tile = {};
-							tile.wayType = TilesetWayToTypeMapping[wayValue];
-							tile.entityType = TilesetEntitiesToTypeMapping[entityValue];
-							state.tiles[tileIndex] = tile;
-						}
-					}
-
-					// Make waypoints
-					for (int y = 0; y < TileCountY; ++y) {
-						for (int x = 0; x < TileCountX; ++x) {
-							int tileIndex = y * TileCountX + x;
-							const Tile &tile = state.tiles[tileIndex];
-							switch (tile.entityType) {
-								case EntityType::WaypointRight:
-								case EntityType::WaypointLeft:
-								case EntityType::WaypointDown:
-								case EntityType::WaypointUp:
-								{
-									Vec2f dir;
-									if (tile.entityType == EntityType::WaypointRight) {
-										dir = V2f(1, 0);
-									} else if (tile.entityType == EntityType::WaypointLeft) {
-										dir = V2f(-1, 0);
-									} else if (tile.entityType == EntityType::WaypointDown) {
-										dir = V2f(0, -1);
-									} else {
-										assert(tile.entityType == EntityType::WaypointUp);
-										dir = V2f(0, 1);
-									}
-									waypoints::AddWaypoint(state, V2i(x, y), dir);
-								} break;
-							}
-						}
-					}
-
-					result = true;
-				}
-			}
-			fxmlFree(&ctx);
-		}
-		fplMemoryFree(data);
-		fplCloseFile(&file);
-	}
-
-	return(result);
-}
-
-static void LoadAssets(GameState &state) {
-	char dataPath[1024];
-	fplGetExecutableFilePath(dataPath, FPL_ARRAYCOUNT(dataPath));
-	fplExtractFilePath(dataPath, dataPath, FPL_ARRAYCOUNT(dataPath));
-	fplPathCombine(dataPath, FPL_ARRAYCOUNT(dataPath), 2, dataPath, "data");
-
-	LoadLevel(dataPath, "level1.tmx", state);
+static void ReleaseGame(GameState &state) {
+	fglUnloadOpenGL();
 }
 
 static bool InitGame(GameState &state, GameMemory &gameMemory) {
 	if (!fglLoadOpenGL(true)) {
 		return false;
 	}
+
+	fplGetExecutableFilePath(state.dataPath, FPL_ARRAYCOUNT(state.dataPath));
+	fplExtractFilePath(state.dataPath, state.dataPath, FPL_ARRAYCOUNT(state.dataPath));
+	fplPathCombine(state.dataPath, FPL_ARRAYCOUNT(state.dataPath), 2, state.dataPath, "data");
 
 	state.mem = gameMemory;
 
@@ -1010,40 +699,12 @@ static bool InitGame(GameState &state, GameMemory &gameMemory) {
 
 	glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
 
-	LoadAssets(state);
-
 	state.camera.scale = 1.0f;
 	state.camera.offset.x = 0;
 	state.camera.offset.y = 0;
 
-#if 0
-	// Setup tiles
-	int ys[] = { 1, TileCountY - 2 };
-	for (int y = 0; y < FPL_ARRAYCOUNT(ys); ++y) {
-		int row = ys[y];
-		for (int x = 1; x < TileCountX - 1; ++x) {
-			tiles::SetTile(state, x, row, TileType::EnemyPath);
-		}
-	}
-	int xs[] = { 1, TileCountX - 2 };
-	for (int x = 0; x < FPL_ARRAYCOUNT(xs); ++x) {
-		int col = xs[x];
-		for (int y = 1; y < TileCountY - 1; ++y) {
-			tiles::SetTile(state, col, y, TileType::EnemyPath);
-		}
-	}
-	tiles::SetTile(state, 0, 1, TileType::SpawnPoint);
-	tiles::SetTile(state, 1, 3, TileType::Exit);
-	tiles::SetTile(state, 1, 2, TileType::None);
-
-	// Add waypoints
-	waypoints::AddWaypoint(state, V2i(TileCountX - 2, 1), V2f(0, -1));
-	waypoints::AddWaypoint(state, V2i(TileCountX - 2, TileCountY - 2), V2f(-1, 0));
-	waypoints::AddWaypoint(state, V2i(1, TileCountY - 2), V2f(0, 1));
-#endif
-
-	// Setup initial wave and spawner
-	creeps::SetupWave(state, 0);
+	// Setup initial wave
+	level::SetupWave(state, 0);
 
 	// Initial selected tower
 	state.selectedTowerIndex = 0;
@@ -1320,7 +981,7 @@ extern void GameDraw(GameMemory &gameMemory, const float alpha) {
 	//
 	for (Waypoint *waypoint = state->firstWaypoint; waypoint; waypoint = waypoint->next) {
 		render::DrawPoint(state->camera, waypoint->position.x, waypoint->position.y, 0.25f, V4f(1, 0, 1, 1));
-		render::DrawNormal(waypoint->position, waypoint->direction, waypoints::WaypointDirectionWidth, V4f(1, 1, 1, 1));
+		render::DrawNormal(waypoint->position, waypoint->direction, level::WaypointDirectionWidth, V4f(1, 1, 1, 1));
 		if (waypoint->next == state->firstWaypoint) {
 			break;
 		}
