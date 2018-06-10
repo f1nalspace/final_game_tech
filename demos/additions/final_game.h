@@ -83,7 +83,8 @@ struct Input {
 
 struct GameMemory {
 	void *base;
-	size_t size;
+	size_t capacity;
+	size_t used;
 };
 
 extern GameMemory GameCreate();

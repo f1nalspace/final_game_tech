@@ -65,6 +65,8 @@ Todo:
 #define FINAL_RENDER_IMPLEMENTATION
 #include <final_render.h>
 
+#include <final_arrayinitializer.h>
+
 #include <final_game.h>
 
 constexpr float Pi32 = glm::pi<float>();
@@ -115,28 +117,6 @@ const glm::vec2 BrickRadius = glm::vec2(SpaceForBricksX / (float)MaxBrickCols, S
 
 const glm::vec2 Gravity = glm::vec2(0, -10);
 
-// @BAD(final): CPP is such garbage!
-// It cannot handle array index initializer such as [index] = value :-(
-// So we need this nonsense just to initialize a static array -.-
-template <typename TEnumType, typename TValueType>
-class ArrayInitializer {
-protected:
-	TValueType a[256];
-public:
-	ArrayInitializer() {
-		fplMemoryClear(a, sizeof(TValueType) * FPL_ARRAYCOUNT(a));
-	}
-	const TValueType &operator [] (TEnumType eindex) const {
-		return a[(int)eindex];
-	}
-	TValueType &operator [] (TEnumType eindex) {
-		return a[(int)eindex];
-	}
-	void Set(TEnumType e, const TValueType &value) {
-		a[(int)e] = value;
-	}
-};
-
 // Brick UVs
 enum class BrickType : int32_t {
 	NoBrick = 0,
@@ -145,7 +125,7 @@ enum class BrickType : int32_t {
 const Vec2i BrickTileSize = V2i(30, 24);
 const Vec2i BricksTilesetSize = V2i(34, 28);
 const int BrickTilesetBorder = 2;
-class BricksUVsClass : public ArrayInitializer<BrickType, UVRect> {
+class BricksUVsClass : public ArrayInitializer<BrickType, UVRect, 256> {
 public:
 	BricksUVsClass() {
 		Set(BrickType::Solid, UVRectFromTile(BricksTilesetSize, BrickTileSize, BrickTilesetBorder, V2i(0, 0)));
@@ -160,7 +140,7 @@ enum class BackgroundType : int32_t {
 	NoBackground = 0,
 	Default,
 };
-class BackgroundUVsClass : public ArrayInitializer<BackgroundType, UVRect> {
+class BackgroundUVsClass : public ArrayInitializer<BackgroundType, UVRect, 256> {
 public:
 	BackgroundUVsClass() {
 		Set(BackgroundType::Default, UVRectFromPos(BackgroundTextureSize, BackgroundTileSize, V2i(2, 2)));
@@ -196,7 +176,7 @@ const Vec2i FrameTopTileSize = V2i(16, 16);
 const Vec2i FrameSideFillSize = V2i(16, 8);
 const Vec2i FrameSideTileSize = V2i(16, 16);
 const Vec2i FrameTextureSize = V2i(86, 86);
-class FrameUVsClass : public ArrayInitializer<FrameType, UVRect> {
+class FrameUVsClass : public ArrayInitializer<FrameType, UVRect, 256> {
 public:
 	FrameUVsClass() {
 		Set(FrameType::TopLeftEdge, UVRectFromPos(FrameTextureSize, FrameTopTileSize, V2i(2, 2)));
@@ -300,7 +280,7 @@ struct Assets {
 	GLuint bricksTexture;
 	GLuint paddleTexture;
 	GLuint frameTexture;
-	ArrayInitializer<BackgroundType, GLuint> bgTextures;
+	ArrayInitializer<BackgroundType, GLuint, 256> bgTextures;
 	FontAsset fontMenu;
 	FontAsset fontHud;
 };
@@ -878,12 +858,13 @@ extern void GameDestroy(GameMemory &gameMemory) {
 
 extern GameMemory GameCreate() {
 	GameMemory result = {};
-	result.size = sizeof(GameState);
-	result.base = fplMemoryAllocate(result.size);
+	result.capacity = sizeof(GameState) + FPL_MEGABYTES(16);
+	result.base = fplMemoryAllocate(result.capacity);
 	if(result.base == nullptr) {
 		return {};
 	}
 	GameState *state = (GameState *)result.base;
+	result.used = sizeof(GameState);
 	if(!GameInit(*state)) {
 		GameDestroy(result);
 		state = nullptr;
