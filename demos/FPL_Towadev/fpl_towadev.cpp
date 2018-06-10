@@ -12,7 +12,6 @@ Author:
 Changelog:
 	## 2018-06-05:
 	- Initial creation
-Todo:
 -------------------------------------------------------------------------------
 */
 
@@ -23,7 +22,8 @@ Todo:
 
 #include <math.h> // fabs
 
-#include <vector>
+#include <string.h>
+#include <stdlib.h>
 
 #define FGL_IMPLEMENTATION
 #include <final_dynamic_opengl.h>
@@ -36,6 +36,8 @@ Todo:
 
 #define FXML_IMPLEMENTATION
 #include <final_xml.h>
+
+#include <final_arrayinitializer.h>
 
 #include <final_game.h>
 
@@ -57,15 +59,108 @@ constexpr float GridHeight = TileSize * (float)TileCountY;
 constexpr float GridOriginX = -WorldRadiusW + ((WorldWidth - GridWidth) * 0.5f);
 constexpr float GridOriginY = -WorldRadiusH + ((WorldHeight - GridHeight) * 0.5f);
 
-enum class TileType {
-	None,
-	EnemyPath,
-	SpawnPoint,
-	Exit,
+struct TilesetInfo {
+	uint32_t tileCount;
+	uint32_t columnCount;
+};
+
+enum class EntityType {
+	None = 0,
+	SpawnRight,
+	SpawnLeft,
+	SpawnDown,
+	SpawnUp,
+	WaypointRight,
+	WaypointLeft,
+	WaypointDown,
+	WaypointUp,
+	Goal,
+};
+class EntitiesTilesetMappingClass : public ArrayInitializer<uint32_t, EntityType, 16> {
+public:
+	EntitiesTilesetMappingClass() : ArrayInitializer() {
+		Set(1, EntityType::SpawnRight);
+		Set(2, EntityType::SpawnLeft);
+		Set(3, EntityType::SpawnDown);
+		Set(4, EntityType::SpawnUp);
+		Set(5, EntityType::WaypointRight);
+		Set(6, EntityType::WaypointLeft);
+		Set(7, EntityType::WaypointDown);
+		Set(8, EntityType::WaypointUp);
+		Set(9, EntityType::Goal);
+	}
+};
+static const TilesetInfo TilesetEntitiesInfo = { 16, 4 };
+static const EntitiesTilesetMappingClass TilesetEntitiesToTypeMapping = EntitiesTilesetMappingClass();
+
+enum class WayType {
+	None = 0,
+	Horizontal,
+	Vertical,
+	Cross,
+	EdgeUpLeft,
+	EdgeUpRight,
+	EdgeDownLeft,
+	EdgeDownRight,
+	EndUp,
+	EndDown,
+	EndLeft,
+	EndRight,
+};
+class WayTilesetMappingClass : public ArrayInitializer<uint32_t, WayType, 16> {
+public:
+	WayTilesetMappingClass() : ArrayInitializer() {
+		Set(1, WayType::Horizontal);
+		Set(2, WayType::Vertical);
+		Set(3, WayType::Cross);
+		Set(5, WayType::EdgeUpLeft);
+		Set(6, WayType::EdgeUpRight);
+		Set(7, WayType::EndUp);
+		Set(9, WayType::EdgeDownLeft);
+		Set(10, WayType::EdgeDownRight);
+		Set(11, WayType::EndDown);
+		Set(13, WayType::EndLeft);
+		Set(14, WayType::EndRight);
+	}
+};
+static const TilesetInfo TilesetWayInfo = { 16, 4 };
+static const WayTilesetMappingClass TilesetWayToTypeMapping = WayTilesetMappingClass();
+
+struct SpawnData {
+	Vec2f direction;
+	float initialCooldown;
+	float cooldown;
+	char enemyId[256];
+};
+
+enum class ObjectType {
+	None = 0,
+	Spawn,
+};
+
+struct ObjectData {
+	ObjectType type;
+	Vec2i tilePos;
+	union {
+		SpawnData spawn;
+	};
+};
+
+struct LevelData {
+	const char *id;
+	uint32_t wayLayer[TotalTileCount];
+	uint32_t entitiesLayer[TotalTileCount];
+	ObjectData objects[256];
+	size_t objectCount;
+	uint32_t wayFirstGid;
+	uint32_t entitiesFirstGid;
+	uint32_t tileWidth;
+	uint32_t tileHeight;
 };
 
 struct Tile {
-	TileType type;
+	WayType wayType;
+	EntityType entityType;
 	bool isOccupied;
 };
 
@@ -84,11 +179,12 @@ enum class CreepStyle {
 
 struct CreepData {
 	Vec4f color;
-	CreepStyle style;
+	const char *id;
 	float renderRadius;
 	float collisionRadius;
 	float speed;
 	float hp;
+	CreepStyle style;
 };
 
 struct CreepMultiplier {
@@ -105,8 +201,9 @@ inline CreepMultiplier MakeCreepMultiplier(const float hp, const float speed, co
 	return(result);
 }
 
-inline CreepData MakeCreepData(const float renderRadius, const float collisionRadius, const float speed, const float hp, const Vec4f &color, const CreepStyle style) {
-	CreepData result;
+inline CreepData MakeCreepData(const char *id, const float renderRadius, const float collisionRadius, const float speed, const float hp, const Vec4f &color, const CreepStyle style) {
+	CreepData result = {};
+	result.id = id;
 	result.renderRadius = renderRadius;
 	result.collisionRadius = collisionRadius;
 	result.speed = speed;
@@ -158,6 +255,7 @@ inline BulletData MakeBulletData(const float renderRadius, const float collision
 
 struct TowerData {
 	BulletData bullet;
+	const char *id;
 	float structureRadius;
 	float detectionRadius;
 	float unlockRadius;
@@ -165,8 +263,9 @@ struct TowerData {
 	float gunCooldown;
 };
 
-inline TowerData MakeTowerData(const float structureRadius, const float detectionRadius, const float unlockRadius, const float gunTubeLength, const float gunCooldown, const BulletData &bullet) {
+inline TowerData MakeTowerData(const char *id, const float structureRadius, const float detectionRadius, const float unlockRadius, const float gunTubeLength, const float gunCooldown, const BulletData &bullet) {
 	TowerData result = {};
+	result.id = id;
 	result.structureRadius = structureRadius;
 	result.detectionRadius = detectionRadius;
 	result.unlockRadius = unlockRadius;
@@ -177,15 +276,15 @@ inline TowerData MakeTowerData(const float structureRadius, const float detectio
 }
 
 struct Wave {
-	CreepData enemyTemplate;
+	const char *level;
 	CreepMultiplier enemyMultiplier;
 	size_t enemyCount;
 	float cooldown;
 };
 
-inline Wave MakeWave(const CreepData &enemyTemplate, const CreepMultiplier &enemyMultiplier, const size_t enemyCount, const float cooldown) {
+inline Wave MakeWave(const char *level, const CreepMultiplier &enemyMultiplier, const size_t enemyCount, const float cooldown) {
 	Wave result = {};
-	result.enemyTemplate = enemyTemplate;
+	result.level = level;
 	result.enemyMultiplier = enemyMultiplier;
 	result.enemyCount = enemyCount;
 	result.cooldown = cooldown;
@@ -211,6 +310,7 @@ struct Bullet {
 
 static const TowerData TowerDefinitions[] = {
 	MakeTowerData(
+		/* id: */ "basic",
 		/* structureRadius: */ TileSize * 0.35f,
 		/* detectionRadius: */ TileSize * 2.0f,
 		/* unlockRadius: */ TileSize * 2.25f,
@@ -227,6 +327,7 @@ static const TowerData TowerDefinitions[] = {
 
 static const CreepData CreepDefinitions[] = {
 	MakeCreepData(
+		/* id: */ "first",
 		/* renderRadius: */ TileSize * 0.25f,
 		/* collisionRadius: */ TileSize * 0.2f,
 		/* speed: */ 1.0,
@@ -238,19 +339,19 @@ static const CreepData CreepDefinitions[] = {
 
 static const Wave Waves[] = {
 	MakeWave(
-		/* enemyTemplate: */ CreepDefinitions[0],
+		/* level: */ "level1",
 		/* enemyMultiplier */ MakeCreepMultiplier(1.0f, 1.0f, 1.0f),
 		/* enemyCount: */ 10,
 		/* cooldown: */ 2.0f
 	),
 	MakeWave(
-		/* enemyTemplate: */ CreepDefinitions[0],
+		/* level: */ "level1",
 		/* enemyMultiplier */ MakeCreepMultiplier(1.125f, 1.05f, 1.05f),
 		/* enemyCount: */ 10,
 		/* cooldown: */ 2.1f
 	),
 	MakeWave(
-		/* enemyTemplate: */ CreepDefinitions[0],
+		/* level: */ "level1",
 		/* enemyMultiplier */ MakeCreepMultiplier(1.25f, 1.1f, 1.1f),
 		/* enemyCount: */ 10,
 		/* cooldown: */ 2.0f
@@ -263,12 +364,15 @@ struct FontAsset {
 };
 
 struct GameState {
+	GameMemory mem;
 	Creep enemies[100];
 	Tower towers[100];
 	Bullet bullets[10000];
 	Tile tiles[TotalTileCount];
+	CreepSpawner spawners[16];
+	LevelData levelData;
 	FontAsset hudFont;
-	CreepSpawner enemySpawner;
+	size_t spawnerCount;
 	Camera2D camera;
 	Viewport viewport;
 	Vec2f mouseWorldPos;
@@ -363,8 +467,7 @@ namespace render {
 	}
 }
 
-static void GameRelease(GameState &state) {
-	fplMemoryFree(state.tiles);
+static void ReleaseGame(GameState &state) {
 	fglUnloadOpenGL();
 }
 
@@ -376,19 +479,11 @@ namespace tiles {
 		return nullptr;
 	}
 
-	inline Vec2i SetTile(GameState &state, const int x, const int y, const TileType type) {
-		int index = y * TileCountX + x;
-		assert(index >= 0 && index < TotalTileCount);
-		state.tiles[index].type = type;
-		Vec2i result = { x, y };
-		return(result);
-	}
-
-	static Vec2i FindTilePosByTile(const GameState &state, const TileType type) {
+	static Vec2i FindTilePosByEntityType(const GameState &state, const EntityType type) {
 		for (int y = 0; y < TileCountY; ++y) {
 			for (int x = 0; x < TileCountX; ++x) {
 				int index = y * TileCountX + x;
-				if (state.tiles[index].type == type) {
+				if (state.tiles[index].entityType == type) {
 					return V2i(x, y);
 				}
 			}
@@ -426,7 +521,7 @@ namespace towers {
 		if (tile == nullptr) {
 			return false;
 		}
-		bool result = (!tile->isOccupied && tile->type == TileType::None);
+		bool result = (!tile->isOccupied && (tile->entityType == EntityType::None) && (tile->wayType == WayType::None));
 		return(result);
 	}
 
@@ -498,19 +593,19 @@ namespace creeps {
 		enemy->hasTarget = true;
 	}
 
-	static void UpdateSpawner(GameState &state, const float deltaTime) {
-		if (state.enemySpawner.isActive) {
-			assert(state.enemySpawner.remainingCount > 0);
-			assert(state.enemySpawner.spawnTimer > 0);
-			state.enemySpawner.spawnTimer -= deltaTime;
-			if (state.enemySpawner.spawnTimer <= 0) {
-				SpawnEnemy(state, state.enemySpawner.spawnPosition, state.enemySpawner.exitPosition, state.enemySpawner.spawnTemplate);
-				--state.enemySpawner.remainingCount;
-				if (state.enemySpawner.remainingCount == 0) {
-					state.enemySpawner.spawnTimer = 0;
-					state.enemySpawner.isActive = false;
+	static void UpdateSpawner(GameState &state, CreepSpawner &spawner, const float deltaTime) {
+		if (spawner.isActive) {
+			assert(spawner.remainingCount > 0);
+			assert(spawner.spawnTimer > 0);
+			spawner.spawnTimer -= deltaTime;
+			if (spawner.spawnTimer <= 0) {
+				SpawnEnemy(state, spawner.spawnPosition, spawner.exitPosition, spawner.spawnTemplate);
+				--spawner.remainingCount;
+				if (spawner.remainingCount == 0) {
+					spawner.spawnTimer = 0;
+					spawner.isActive = false;
 				} else {
-					state.enemySpawner.spawnTimer = state.enemySpawner.cooldown;
+					spawner.spawnTimer = spawner.cooldown;
 				}
 			}
 		}
@@ -541,9 +636,9 @@ namespace creeps {
 				creep.targetWaypoint = waypoint.next;
 			} else {
 				creep.targetWaypoint = nullptr;
-				Vec2i exitTilePos = tiles::FindTilePosByTile(state, TileType::Exit);
-				assert(exitTilePos.x > -1 && exitTilePos.y > -1);
-				creep.targetPos = TileToWorld(exitTilePos, V2f(TileSize, TileSize) * 0.5f);
+				Vec2i goalTilePos = tiles::FindTilePosByEntityType(state, EntityType::Goal);
+				assert(goalTilePos.x > -1 && goalTilePos.y > -1);
+				creep.targetPos = TileToWorld(goalTilePos, V2f(TileSize, TileSize) * 0.5f);
 			}
 			creep.hasTarget = true;
 			creep.facingDirection = Vec2Normalize(creep.targetPos - creep.position);
@@ -553,19 +648,51 @@ namespace creeps {
 		}
 	}
 
+	static const CreepData *FindEnemyById(GameState &state, const char *id) {
+		for (int i = 0; i < FPL_ARRAYCOUNT(CreepDefinitions); ++i) {
+			if (strcmp(CreepDefinitions[i].id, id) == 0) {
+				return &CreepDefinitions[i];
+			}
+		}
+		return nullptr;
+	}
+
 	static void SetupWave(GameState &state, const int waveIndex) {
-		const Wave wave = Waves[waveIndex];
-		Vec2i spawnTilePos = tiles::FindTilePosByTile(state, TileType::SpawnPoint);
-		Vec2i exitTilePos = tiles::FindTilePosByTile(state, TileType::Exit);
+		const Wave &wave = Waves[waveIndex];
 		state.waveIndex = waveIndex;
 		state.activeEnemyCount = wave.enemyCount;
-		Vec2f spawnPos = TileToWorld(spawnTilePos, V2f(TileSize, TileSize) * 0.5f);
-		Vec2f exitPos = TileToWorld(exitTilePos, V2f(TileSize, TileSize) * 0.5f);
-		CreepData enemyTemplate = wave.enemyTemplate;
-		enemyTemplate.hp *= wave.enemyMultiplier.hp;
-		enemyTemplate.speed *= wave.enemyMultiplier.speed;
-		enemyTemplate.collisionRadius *= wave.enemyMultiplier.scale;
-		SetupSpawner(state.enemySpawner, spawnPos, exitPos, 5.0f, wave.cooldown, wave.enemyCount, enemyTemplate);
+
+		// @TODO(final): Load level here
+
+		Vec2i goalTilePos = tiles::FindTilePosByEntityType(state, EntityType::Goal);
+		if (goalTilePos.x == -1) {
+			return;
+		}
+		Vec2f goalPos = TileToWorld(goalTilePos, V2f(TileSize, TileSize) * 0.5f);
+
+		for (size_t objectIndex = 0; objectIndex < state.levelData.objectCount; ++objectIndex) {
+			ObjectData &obj = state.levelData.objects[objectIndex];
+			switch (obj.type) {
+				case ObjectType::Spawn:
+				{
+					const SpawnData &data = obj.spawn;
+					Vec2i spawnTilePos = obj.tilePos;
+
+					const CreepData *creepData = FindEnemyById(state, data.enemyId);
+					assert(creepData != nullptr);
+
+					assert(state.spawnerCount < FPL_ARRAYCOUNT(state.spawners));
+					CreepSpawner &spawner = state.spawners[state.spawnerCount++];
+					spawner = {};
+					Vec2f spawnPos = TileToWorld(spawnTilePos, V2f(TileSize, TileSize) * 0.5f);
+					CreepData enemyTemplate = *creepData;
+					enemyTemplate.hp *= wave.enemyMultiplier.hp;
+					enemyTemplate.speed *= wave.enemyMultiplier.speed;
+					enemyTemplate.collisionRadius *= wave.enemyMultiplier.scale;
+					SetupSpawner(spawner, spawnPos, goalPos, data.initialCooldown, data.cooldown, wave.enemyCount, enemyTemplate);
+				} break;
+			}
+		}
 	}
 
 	static void EnemyHit(GameState &state, Creep &enemy, const Bullet &bullet) {
@@ -583,7 +710,204 @@ namespace creeps {
 	}
 }
 
-static void LoadLevel(const char *dataPath, const char *filename) {
+static int StringToInt(const char *str, int def = 0) {
+	int result = def;
+	if (str != nullptr) {
+		bool isNegative = false;
+		const char *p = str;
+		if (*p == '-') {
+			isNegative = true;
+			++p;
+		}
+		uint32_t value = 0;
+		while (isdigit(*p)) {
+			short v = *p - '0';
+			value = value * 10 + v;
+			++p;
+		}
+		if (isNegative) {
+			result = -(int)value;
+		} else {
+			result = value;
+		}
+	}
+	return(result);
+}
+
+static float StringToFloat(const char *str) {
+	// @TODO(final): Implement this yourself!
+	float result = (float)atof(str);
+	return(result);
+}
+
+static void ParseLevelLayer(fxmlTag *childTag, const uint32_t mapWidth, const uint32_t mapHeight, uint32_t *outData) {
+	fxmlTag *dataTag = fxmlFindTagByName(childTag, "data");
+	if (dataTag != nullptr) {
+		const char *encodingStr = fxmlGetAttributeValue(dataTag, "encoding");
+		if (strcmp(encodingStr, "csv") == 0) {
+			const char *p = dataTag->value;
+			int index = 0;
+			while (*p) {
+				if (isdigit(*p)) {
+					uint32_t tileValue = 0;
+					while (isdigit(*p)) {
+						short v = *p - '0';
+						tileValue = tileValue * 10 + v;
+						++p;
+					}
+					int row = index / (int)mapWidth;
+					int col = index % (int)mapWidth;
+					assert(row >= 0 && row < (int)mapHeight);
+					assert(row >= 0 && row < TileCountY);
+					assert(col >= 0 && col < TileCountX);
+					int tileIndex = row * TileCountX + col;
+					outData[tileIndex] = tileValue;
+				} else if (*p == ',') {
+					++p;
+					++index;
+				} else {
+					++p;
+				}
+			}
+		}
+	}
+}
+
+static void ParseLevelObjects(fxmlTag *objectGroupTag, LevelData &level) {
+	assert(level.tileWidth > 0);
+	assert(level.tileHeight > 0);
+	fxmlTag *childTag = objectGroupTag->firstChild;
+	while (childTag != nullptr) {
+		if (childTag->type == fxmlTagType_Element) {
+			if (strcmp(childTag->name, "object") == 0) {
+				int gid = StringToInt(fxmlGetAttributeValue(childTag, "gid"));
+				int x = StringToInt(fxmlGetAttributeValue(childTag, "x"), -1);
+				int y = StringToInt(fxmlGetAttributeValue(childTag, "y"), -1);
+				int w = StringToInt(fxmlGetAttributeValue(childTag, "width"), 0);
+				int h = StringToInt(fxmlGetAttributeValue(childTag, "height"), 0);
+				float cx = (float)x + (float)w * 0.5f;
+				float cy = (float)y - (float)h * 0.5f;
+				int tileX = (int)floorf(cx / (float)level.tileWidth);
+				int tileY = (int)floorf(cy / (float)level.tileHeight);
+				Vec2i tilePos = V2i(tileX, tileY);
+
+				uint32_t tileId = (gid > 0) ? ((gid - level.entitiesFirstGid) + 1) : 0;
+				EntityType entityType = TilesetEntitiesToTypeMapping[tileId];
+
+				ObjectData tmpObj = {};
+				tmpObj.tilePos = tilePos;
+				const char *typeName = fxmlGetAttributeValue(childTag, "type");
+				if (strcmp(typeName, "Spawn") == 0) {
+					tmpObj.type = ObjectType::Spawn;
+					switch (entityType) {
+						case EntityType::SpawnDown:
+							tmpObj.spawn.direction = V2f(0.0f, -1.0f);
+							break;
+						case EntityType::SpawnUp:
+							tmpObj.spawn.direction = V2f(0.0f, 1.0f);
+							break;
+						case EntityType::SpawnLeft:
+							tmpObj.spawn.direction = V2f(-1.0f, 0.0f);
+							break;
+						case EntityType::SpawnRight:
+							tmpObj.spawn.direction = V2f(1.0f, 0.0f);
+							break;
+						default:
+							assert(!"Unsupported entity type for spawn!");
+							break;
+					}
+
+					fxmlTag *propertiesTag = fxmlFindTagByName(childTag, "properties");
+					if (propertiesTag != nullptr) {
+						fxmlTag *propTag = propertiesTag->firstChild;
+						while (propTag != nullptr) {
+							const char *name = fxmlGetAttributeValue(propTag, "name");
+							const char *value = fxmlGetAttributeValue(propTag, "value");
+							if (strcmp(name, "enemy") == 0) {
+								strcpy_s(tmpObj.spawn.enemyId, FPL_ARRAYCOUNT(tmpObj.spawn.enemyId), value);
+							} else if (strcmp(name, "initialCooldown") == 0) {
+								tmpObj.spawn.initialCooldown = StringToFloat(value);
+							} else if (strcmp(name, "cooldown") == 0) {
+								tmpObj.spawn.cooldown = StringToFloat(value);
+							}
+							propTag = propTag->next;
+						}
+					}
+
+				}
+				if (tmpObj.type != ObjectType::None) {
+					assert(level.objectCount < FPL_ARRAYCOUNT(level.objects));
+					ObjectData &obj = level.objects[level.objectCount++];
+					obj = tmpObj;
+				}
+			}
+		}
+		childTag = childTag->next;
+	}
+}
+
+static bool ParseLevel(fxmlTag *root, LevelData &level) {
+	bool result = false;
+	fxmlTag *mapTag = fxmlFindTagByName(root, "map");
+	if (mapTag == nullptr) {
+		return false;
+	}
+	int mapWidth = StringToInt(fxmlGetAttributeValue(mapTag, "width"));
+	int mapHeight = StringToInt(fxmlGetAttributeValue(mapTag, "height"));
+	if ((mapWidth != TileCountX) || (mapHeight != TileCountY)) {
+		return false;
+	}
+
+	const char *orientation = fxmlGetAttributeValue(mapTag, "orientation");
+	if (strcmp(orientation, "orthogonal") != 0) {
+		return false;
+	}
+
+	int tileWidth = StringToInt(fxmlGetAttributeValue(mapTag, "tilewidth"));
+	int tileHeight = StringToInt(fxmlGetAttributeValue(mapTag, "tileheight"));
+	if ((tileWidth == 0) || (tileHeight == 0)) {
+		return false;
+	}
+
+	level.tileWidth = tileWidth;
+	level.tileHeight = tileHeight;
+
+	fxmlTag *childTag = mapTag->firstChild;
+	level.wayFirstGid = 0;
+	level.entitiesFirstGid = 0;
+	while (childTag) {
+		if (childTag->type == fxmlTagType_Element) {
+			if (strcmp(childTag->name, "tileset") == 0) {
+				const char *tilesetName = fxmlGetAttributeValue(childTag, "name");
+				int firstGid = StringToInt(fxmlGetAttributeValue(childTag, "firstgid"));
+				if (strcmp(tilesetName, "way") == 0) {
+					level.wayFirstGid = firstGid;
+				} else if (strcmp(tilesetName, "entities") == 0) {
+					level.entitiesFirstGid = firstGid;
+				}
+			} else if (strcmp(childTag->name, "layer") == 0) {
+				const char *layerName = fxmlGetAttributeValue(childTag, "name");
+				if (strcmp(layerName, "way") == 0) {
+					ParseLevelLayer(childTag, mapWidth, mapHeight, level.wayLayer);
+				} else if (strcmp(layerName, "entities") == 0) {
+					ParseLevelLayer(childTag, mapWidth, mapHeight, level.entitiesLayer);
+				}
+			} else if (strcmp(childTag->name, "objectgroup") == 0) {
+				const char *objectGroupName = fxmlGetAttributeValue(childTag, "name");
+				if (strcmp(objectGroupName, "objects") == 0) {
+					ParseLevelObjects(childTag, level);
+				}
+			}
+		}
+		childTag = childTag->next;
+	}
+
+	return(true);
+}
+
+static bool LoadLevel(const char *dataPath, const char *filename, GameState &state) {
+	bool result = false;
+
 	char filePath[1024];
 	fplPathCombine(filePath, FPL_ARRAYCOUNT(filePath), 2, dataPath, filename);
 
@@ -596,13 +920,63 @@ static void LoadLevel(const char *dataPath, const char *filename) {
 		if (fxmlInitFromMemory(data, dataSize, &ctx)) {
 			fxmlTag root = {};
 			if (fxmlParse(&ctx, &root)) {
+				LevelData &level = state.levelData;
+				level = {};
+				if (ParseLevel(&root, level)) {
 
+					// @TODO(final): Move to SetupWave()
+
+					// Tiles
+					for (int y = 0; y < TileCountY; ++y) {
+						for (int x = 0; x < TileCountX; ++x) {
+							int tileIndex = y * TileCountX + x;
+							uint32_t wayValue = state.levelData.wayLayer[tileIndex] > 0 ? ((level.wayLayer[tileIndex] - level.wayFirstGid) + 1) : 0;
+							uint32_t entityValue = state.levelData.entitiesLayer[tileIndex] > 0 ? ((level.entitiesLayer[tileIndex] - level.entitiesFirstGid) + 1) : 0;
+							Tile tile = {};
+							tile.wayType = TilesetWayToTypeMapping[wayValue];
+							tile.entityType = TilesetEntitiesToTypeMapping[entityValue];
+							state.tiles[tileIndex] = tile;
+						}
+					}
+
+					// Make waypoints
+					for (int y = 0; y < TileCountY; ++y) {
+						for (int x = 0; x < TileCountX; ++x) {
+							int tileIndex = y * TileCountX + x;
+							const Tile &tile = state.tiles[tileIndex];
+							switch (tile.entityType) {
+								case EntityType::WaypointRight:
+								case EntityType::WaypointLeft:
+								case EntityType::WaypointDown:
+								case EntityType::WaypointUp:
+								{
+									Vec2f dir;
+									if (tile.entityType == EntityType::WaypointRight) {
+										dir = V2f(1, 0);
+									} else if (tile.entityType == EntityType::WaypointLeft) {
+										dir = V2f(-1, 0);
+									} else if (tile.entityType == EntityType::WaypointDown) {
+										dir = V2f(0, -1);
+									} else {
+										assert(tile.entityType == EntityType::WaypointUp);
+										dir = V2f(0, 1);
+									}
+									waypoints::AddWaypoint(state, V2i(x, y), dir);
+								} break;
+							}
+						}
+					}
+
+					result = true;
+				}
 			}
 			fxmlFree(&ctx);
 		}
 		fplMemoryFree(data);
 		fplCloseFile(&file);
 	}
+
+	return(result);
 }
 
 static void LoadAssets(GameState &state) {
@@ -611,13 +985,15 @@ static void LoadAssets(GameState &state) {
 	fplExtractFilePath(dataPath, dataPath, FPL_ARRAYCOUNT(dataPath));
 	fplPathCombine(dataPath, FPL_ARRAYCOUNT(dataPath), 2, dataPath, "data");
 
-	LoadLevel(dataPath, "level1.tmx");
+	LoadLevel(dataPath, "level1.tmx", state);
 }
 
-static bool GameInit(GameState &state) {
+static bool InitGame(GameState &state, GameMemory &gameMemory) {
 	if (!fglLoadOpenGL(true)) {
 		return false;
 	}
+
+	state.mem = gameMemory;
 
 	glEnable(GL_DEPTH_TEST);
 	glDepthFunc(GL_LEQUAL);
@@ -640,6 +1016,7 @@ static bool GameInit(GameState &state) {
 	state.camera.offset.x = 0;
 	state.camera.offset.y = 0;
 
+#if 0
 	// Setup tiles
 	int ys[] = { 1, TileCountY - 2 };
 	for (int y = 0; y < FPL_ARRAYCOUNT(ys); ++y) {
@@ -663,6 +1040,7 @@ static bool GameInit(GameState &state) {
 	waypoints::AddWaypoint(state, V2i(TileCountX - 2, 1), V2f(0, -1));
 	waypoints::AddWaypoint(state, V2i(TileCountX - 2, TileCountY - 2), V2f(-1, 0));
 	waypoints::AddWaypoint(state, V2i(1, TileCountY - 2), V2f(0, 1));
+#endif
 
 	// Setup initial wave and spawner
 	creeps::SetupWave(state, 0);
@@ -675,13 +1053,14 @@ static bool GameInit(GameState &state) {
 
 extern GameMemory GameCreate() {
 	GameMemory result = {};
-	result.size = FPL_MEGABYTES(16);
-	result.base = fplMemoryAllocate(result.size);
+	result.capacity = sizeof(GameState) + FPL_MEGABYTES(16);
+	result.base = fplMemoryAllocate(result.capacity);
 	if (result.base == nullptr) {
 		return {};
 	}
 	GameState *state = (GameState *)result.base;
-	if (!GameInit(*state)) {
+	result.used = sizeof(GameState);
+	if (!InitGame(*state, result)) {
 		GameDestroy(result);
 		state = nullptr;
 	}
@@ -690,7 +1069,7 @@ extern GameMemory GameCreate() {
 
 extern void GameDestroy(GameMemory &gameMemory) {
 	GameState *state = (GameState *)gameMemory.base;
-	GameRelease(*state);
+	ReleaseGame(*state);
 	state->~GameState();
 	fplMemoryFree(state);
 }
@@ -749,7 +1128,11 @@ extern void GameUpdate(GameMemory &gameMemory, const Input &input, bool isActive
 		}
 	}
 
-	creeps::UpdateSpawner(*state, input.deltaTime);
+	// Update spawners
+	for (size_t spawnerIndex = 0; spawnerIndex < state->spawnerCount; ++spawnerIndex) {
+		CreepSpawner &spawner = state->spawners[spawnerIndex];
+		creeps::UpdateSpawner(*state, spawner, input.deltaTime);
+	}
 
 	//
 	// Tower update:
@@ -897,15 +1280,25 @@ extern void GameDraw(GameMemory &gameMemory, const float alpha) {
 	for (int y = 0; y < TileCountY; ++y) {
 		for (int x = 0; x < TileCountX; ++x) {
 			const Tile &tile = state->tiles[y * TileCountX + x];
-			if (tile.type == TileType::EnemyPath) {
+			if (tile.wayType != WayType::None) {
 				render::DrawTile(x, y, true, V4f(0.0f, 0.0f, 1.0f, 1.0f));
-			} else if (tile.type == TileType::SpawnPoint) {
-				render::DrawTile(x, y, true, V4f(0.0f, 1.0f, 1.0f, 1.0f));
-			} else if (tile.type == TileType::Exit) {
-				render::DrawTile(x, y, true, V4f(0.1f, 1.0f, 0.2f, 1.0f));
+			}
+			switch (tile.entityType) {
+				case EntityType::Goal:
+				{
+					render::DrawTile(x, y, true, V4f(0.1f, 1.0f, 0.2f, 1.0f));
+				} break;
 			}
 		}
 	}
+
+	// Spawners
+	for (size_t spawnerIndex = 0; spawnerIndex < state->spawnerCount; ++spawnerIndex) {
+		const CreepSpawner &spawner = state->spawners[spawnerIndex];
+		Vec2i tilePos = WorldToTile(spawner.spawnPosition);
+		render::DrawTile(tilePos.x, tilePos.y, true, V4f(0.0f, 1.0f, 1.0f, 1.0f));
+	}
+
 
 	//
 	// Grid
