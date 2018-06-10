@@ -58,6 +58,18 @@ extern "C" {
 		fxmlTagType_Attribute,
 	} fxmlTagType;
 
+	typedef struct fxmlString {
+		const char *start;
+		size_t len;
+	} fxmlString;
+
+	typedef struct fxmlMemory {
+		void *base;
+		struct fxmlMemory *next;
+		size_t used;
+		size_t capacity;
+	} fxmlMemory;
+
 	typedef struct fxmlTag {
 		char *name;
 		char *value;
@@ -74,8 +86,8 @@ extern "C" {
 		const void *data;
 		const char *ptr;
 		size_t size;
-		void *firstMem;
-		void *lastMem;
+		fxmlMemory *firstMem;
+		fxmlMemory *lastMem;
 		fxmlTag *root;
 		fxmlTag *curParent;
 	} fxmlContext;
@@ -83,6 +95,10 @@ extern "C" {
 	fxml_api bool fxmlInitFromMemory(const void *data, const size_t dataSize, fxmlContext *outContext);
 	fxml_api bool fxmlParse(fxmlContext *context, fxmlTag *outRoot);
 	fxml_api void fxmlFree(fxmlContext *context);
+	fxml_api fxmlTag *fxmlFindTagByName(fxmlTag *tag, const char *name);
+	fxml_api fxmlTag *fxmlFindAttributeByName(fxmlTag *tag, const char *name);
+	fxml_api const char *fxmlGetAttributeValue(fxmlTag *tag, const char *attrName);
+	fxml_api const char *fxmlGetTagValue(fxmlTag *tag, const char *tagName);
 
 #ifdef __cplusplus
 }
@@ -94,18 +110,24 @@ extern "C" {
 #define FXML_IMPLEMENTED
 
 #define FXML__MIN_ALLOC_SIZE 64
+#define FXML__MIN_TAG_ALLOC_COUNT 16
 
-typedef struct fxml__Memory {
-	void *base;
-	struct fxml__Memory *next;
-	size_t used;
-	size_t capacity;
-} fxml__Memory;
-
-typedef struct fxml__string {
-	const char *start;
-	size_t len;
-} fxml__string;
+static bool fxml__IsEqualString(const char *a, const char *b) {
+	if ((a == fxml_null) && (b == fxml_null)) {
+		return true;
+	}
+	while (true) {
+		if (!*a && !*b) {
+			break;
+		}
+		if ((!*a && *b) || (*a && !*b) || (*a != *b)) {
+			return false;
+		}
+		++a;
+		++b;
+	}
+	return(true);
+}
 
 static size_t fxml__ComputeBlockSize(const size_t size) {
 	size_t result = FXML__MIN_ALLOC_SIZE;
@@ -115,9 +137,9 @@ static size_t fxml__ComputeBlockSize(const size_t size) {
 	return(result);
 }
 
-static void *fxml__AllocMemory(fxmlContext *context, const size_t size) {
+static void *fxml__AllocMemory(fxmlContext *context, const size_t size, const size_t allocCount) {
 	if (context->lastMem != fxml_null) {
-		fxml__Memory *mem = (fxml__Memory *)context->lastMem;
+		fxmlMemory *mem = context->lastMem;
 		if ((mem->used + size) <= mem->capacity) {
 			void *result = (uint8_t *)mem->base + mem->used;
 			mem->used += size;
@@ -125,21 +147,22 @@ static void *fxml__AllocMemory(fxmlContext *context, const size_t size) {
 		}
 	}
 
-	size_t blockSize = fxml__ComputeBlockSize(size);
-	size_t totalSize = sizeof(fxml__Memory) + sizeof(intptr_t) + blockSize;
+	size_t sizeRequired = size * allocCount;
+	size_t blockSize = fxml__ComputeBlockSize(sizeRequired);
+	size_t totalSize = sizeof(fxmlMemory) + sizeof(intptr_t) + blockSize;
 	void *blockBase = FXML_MALLOC(totalSize);
 	FXML_MEMSET(blockBase, 0, totalSize);
 
-	fxml__Memory *newBlock = (fxml__Memory *)blockBase;
+	fxmlMemory *newBlock = (fxmlMemory *)blockBase;
 	newBlock->capacity = blockSize;
 	newBlock->used = 0;
-	newBlock->base = (uint8_t *)blockBase + sizeof(fxml__Memory) + sizeof(intptr_t);
+	newBlock->base = (uint8_t *)blockBase + sizeof(fxmlMemory) + sizeof(intptr_t);
 	newBlock->next = fxml_null;
 
 	if (context->lastMem == fxml_null) {
 		context->firstMem = context->lastMem = newBlock;
 	} else {
-		fxml__Memory *lastMem = (fxml__Memory *)context->lastMem;
+		fxmlMemory *lastMem = (fxmlMemory *)context->lastMem;
 		lastMem->next = newBlock;
 		context->lastMem = newBlock;
 	}
@@ -150,12 +173,12 @@ static void *fxml__AllocMemory(fxmlContext *context, const size_t size) {
 }
 
 static fxmlTag *fxml__AllocTag(fxmlContext *context) {
-	fxmlTag *mem = (fxmlTag *)fxml__AllocMemory(context, sizeof(fxmlTag));
+	fxmlTag *mem = (fxmlTag *)fxml__AllocMemory(context, sizeof(fxmlTag), FXML__MIN_TAG_ALLOC_COUNT);
 	return(mem);
 }
 
-static char *fxml__AllocString(fxmlContext *context, const fxml__string *str) {
-	char *mem = (char *)fxml__AllocMemory(context, sizeof(char) * (str->len + 1));
+static char *fxml__AllocString(fxmlContext *context, const fxmlString *str) {
+	char *mem = (char *)fxml__AllocMemory(context, sizeof(char) * (str->len + 1), 1);
 	size_t len = str->len;
 	char *p = mem;
 	while (len > 0) {
@@ -199,7 +222,7 @@ inline bool fxml__IsWhitespace(const char c) {
 	return(result);
 }
 
-static void fxml__ParseIdent(fxmlContext *context, fxml__string *outIdent) {
+static void fxml__ParseIdent(fxmlContext *context, fxmlString *outIdent) {
 	assert(fxml__IsAlpha(*context->ptr));
 	const char *start = context->ptr;
 	++context->ptr;
@@ -212,7 +235,7 @@ static void fxml__ParseIdent(fxmlContext *context, fxml__string *outIdent) {
 	}
 }
 
-static bool fxml__ParseAttribute(fxmlContext *context, fxml__string *outName, fxml__string *outValue) {
+static bool fxml__ParseAttribute(fxmlContext *context, fxmlString *outName, fxmlString *outValue) {
 	bool result = false;
 	if (fxml__IsAlpha(*context->ptr)) {
 		fxml__ParseIdent(context, outName);
@@ -260,8 +283,8 @@ static void fxml__AddAttribute(fxmlTag *parent, fxmlTag *attr) {
 static void fxml__ParseAttributes(fxmlContext *context, fxmlTag *parent) {
 	while (*context->ptr) {
 		fxml__SkipWhitespaces(context);
-		fxml__string attrName = FXML_ZERO_INIT;
-		fxml__string attrValue = FXML_ZERO_INIT;
+		fxmlString attrName = FXML_ZERO_INIT;
+		fxmlString attrValue = FXML_ZERO_INIT;
 		if (!fxml__ParseAttribute(context, &attrName, &attrValue)) {
 			break;
 		} else {
@@ -290,7 +313,7 @@ static void fxml__ParseDeclaration(fxmlContext *context) {
 	context->ptr += 2;
 
 	assert(fxml__IsAlpha(*context->ptr));
-	fxml__string declName = FXML_ZERO_INIT;
+	fxmlString declName = FXML_ZERO_INIT;
 	fxml__ParseIdent(context, &declName);
 
 	fxmlTag *declTag = fxml__AllocTag(context);
@@ -328,7 +351,7 @@ static void fxml__ParseTag(fxmlContext *context, fxml__ParseTagResult *outResult
 		context->ptr++;
 	}
 	assert(fxml__IsAlpha(*context->ptr));
-	fxml__string identStr = FXML_ZERO_INIT;
+	fxmlString identStr = FXML_ZERO_INIT;
 	fxml__ParseIdent(context, &identStr);
 
 	if (context->ptr[0] == ':') {
@@ -362,7 +385,7 @@ static void fxml__ParseInnerText(fxmlContext *context, fxmlTag *tag) {
 	while (context->ptr[0] && context->ptr[0] != '<') {
 		++context->ptr;
 	}
-	fxml__string value = FXML_ZERO_INIT;
+	fxmlString value = FXML_ZERO_INIT;
 	value.len = context->ptr - start;
 	value.start = start;
 	tag->value = fxml__AllocString(context, &value);
@@ -414,14 +437,60 @@ fxml_api bool fxmlParse(fxmlContext *context, fxmlTag *outRoot) {
 
 fxml_api void fxmlFree(fxmlContext *context) {
 	if (context != fxml_null) {
-		fxml__Memory *mem = (fxml__Memory *)context->firstMem;
+		fxmlMemory *mem = context->firstMem;
 		while (mem != fxml_null) {
-			fxml__Memory *next = mem->next;
-			void *blockBase = (uint8_t *)mem->base - sizeof(uintptr_t) - sizeof(fxml__Memory);
+			fxmlMemory *next = mem->next;
+			void *blockBase = (uint8_t *)mem->base - sizeof(uintptr_t) - sizeof(fxmlMemory);
 			FXML_FREE(blockBase);
 			mem = next;
 		}
 	}
+}
+
+fxml_api fxmlTag *fxmlFindTagByName(fxmlTag *tag, const char *name) {
+	fxmlTag *result = fxml_null;
+	if (tag != fxml_null) {
+		fxmlTag *searchTag = tag->firstChild;
+		while (searchTag != fxml_null) {
+			if (searchTag->type == fxmlTagType_Element && fxml__IsEqualString(searchTag->name, name)) {
+				result = searchTag;
+				break;
+			}
+			searchTag = searchTag->next;
+		}
+	}
+	return(result);
+}
+
+fxml_api fxmlTag *fxmlFindAttributeByName(fxmlTag *tag, const char *name) {
+	fxmlTag *result = fxml_null;
+	if (tag != fxml_null) {
+		fxmlTag *searchAttr = tag->firstAttribute;
+		while (searchAttr != fxml_null) {
+			if (searchAttr->type == fxmlTagType_Attribute && fxml__IsEqualString(searchAttr->name, name)) {
+				result = searchAttr;
+				break;
+			}
+			searchAttr = searchAttr->next;
+		}
+	}
+	return(result);
+}
+
+fxml_api const char *fxmlGetAttributeValue(fxmlTag *tag, const char *attrName) {
+	fxmlTag *foundAttr = fxmlFindAttributeByName(tag, attrName);
+	if (foundAttr != fxml_null) {
+		return foundAttr->value;
+	}
+	return fxml_null;
+}
+
+fxml_api const char *fxmlGetTagValue(fxmlTag *tag, const char *tagName) {
+	fxmlTag *foundTag = fxmlFindTagByName(tag, tagName);
+	if (foundTag != fxml_null) {
+		return foundTag->value;
+	}
+	return fxml_null;
 }
 
 #endif // FXML_IMPLEMENTATION
