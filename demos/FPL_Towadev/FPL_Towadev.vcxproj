@@ -23,13 +23,15 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\..\final_dynamic_opengl.h" />
+    <ClInclude Include="..\..\final_memory.h" />
     <ClInclude Include="..\..\final_platform_layer.h" />
+    <ClInclude Include="..\..\final_xml.h" />
     <ClInclude Include="..\additions\final_fontloader.h" />
     <ClInclude Include="..\additions\final_game.h" />
     <ClInclude Include="..\additions\final_gameplatform.h" />
+    <ClInclude Include="..\additions\final_opengl_render.h" />
     <ClInclude Include="..\additions\final_render.h" />
-    <ClInclude Include="..\additions\final_vecmath.h" />
-    <ClInclude Include="..\additions\final_xml.h" />
+    <ClInclude Include="..\additions\final_math.h" />
     <ClInclude Include="fpl_towadev.h" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
@@ -122,7 +124,7 @@
       <GenerateDebugInformation>true</GenerateDebugInformation>
     </Link>
     <PostBuildEvent>
-      <Command>xcopy /c /y "$(ProjectDir)data" "$(SolutionDir)bin\$(ProjectName)\Windows-$(Platform)-$(Configuration)\data\"</Command>
+      <Command>xcopy /c /s /y "$(ProjectDir)data" "$(SolutionDir)bin\$(ProjectName)\Windows-$(Platform)-$(Configuration)\data\"</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
@@ -139,7 +141,7 @@
       <GenerateDebugInformation>true</GenerateDebugInformation>
     </Link>
     <PostBuildEvent>
-      <Command>xcopy /c /y "$(ProjectDir)data" "$(SolutionDir)bin\$(ProjectName)\Windows-$(Platform)-$(Configuration)\data\"</Command>
+      <Command>xcopy /c /s /y "$(ProjectDir)data" "$(SolutionDir)bin\$(ProjectName)\Windows-$(Platform)-$(Configuration)\data\"</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
@@ -160,7 +162,7 @@
       <GenerateDebugInformation>true</GenerateDebugInformation>
     </Link>
     <PostBuildEvent>
-      <Command>xcopy /c /y "$(ProjectDir)data" "$(SolutionDir)bin\$(ProjectName)\Windows-$(Platform)-$(Configuration)\data\"</Command>
+      <Command>xcopy /c /s /y "$(ProjectDir)data" "$(SolutionDir)bin\$(ProjectName)\Windows-$(Platform)-$(Configuration)\data\"</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -181,7 +183,7 @@
       <GenerateDebugInformation>true</GenerateDebugInformation>
     </Link>
     <PostBuildEvent>
-      <Command>xcopy /c /y "$(ProjectDir)data" "$(SolutionDir)bin\$(ProjectName)\Windows-$(Platform)-$(Configuration)\data\"</Command>
+      <Command>xcopy /c /s /y "$(ProjectDir)data" "$(SolutionDir)bin\$(ProjectName)\Windows-$(Platform)-$(Configuration)\data\"</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

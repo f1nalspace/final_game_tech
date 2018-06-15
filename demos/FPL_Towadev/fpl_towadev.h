@@ -1,7 +1,11 @@
 #ifndef FPL_TOWADEV_H
 #define FPL_TOWADEV_H
 
-#include "final_vecmath.h"
+#include <final_math.h>
+
+#include <final_fontloader.h>
+
+#include <final_render.h>
 
 constexpr float RadToDeg = 180.0f / (float)M_PI;
 
@@ -11,15 +15,30 @@ constexpr float WorldHeight = WorldWidth / GameAspect;
 constexpr float WorldRadiusW = WorldWidth * 0.5f;
 constexpr float WorldRadiusH = WorldHeight * 0.5f;
 
-constexpr float TileSize = 1.0f;
-constexpr int TileCountX = (int)(WorldWidth / TileSize);
-constexpr int TileCountY = (int)(WorldHeight / TileSize);
+constexpr int TileCountX = 20;
+constexpr int TileCountY = 11;
+constexpr float TileWidth = WorldWidth / (float)TileCountX;
+constexpr float TileHeight = WorldHeight / (float)(TileCountY + 1);
+const Vec2f TileExt = V2f(TileWidth, TileHeight) * 0.5f;
+constexpr float MaxTileSize = FPL_MAX(TileWidth, TileHeight);
 constexpr int TotalTileCount = TileCountX * TileCountY;
 
-constexpr float GridWidth = TileSize * (float)TileCountX;
-constexpr float GridHeight = TileSize * (float)TileCountY;
+/*
+constexpr float HudWidth = WorldWidth;
+constexpr float HudHeight = TileHeight;
+constexpr float HudOriginX = -WorldRadiusW;
+constexpr float HudOriginY = WorldRadiusH - HudHeight;
+*/
+
+constexpr float ControlsWidth = WorldWidth;
+constexpr float ControlsHeight = TileHeight;
+constexpr float ControlsOriginX = -WorldRadiusW;
+constexpr float ControlsOriginY = -WorldRadiusH;
+
+constexpr float GridWidth = TileWidth * (float)TileCountX;
+constexpr float GridHeight = TileHeight * (float)TileCountY;
 constexpr float GridOriginX = -WorldRadiusW + ((WorldWidth - GridWidth) * 0.5f);
-constexpr float GridOriginY = -WorldRadiusH + ((WorldHeight - GridHeight) * 0.5f);
+constexpr float GridOriginY = -WorldRadiusH + ControlsHeight;
 
 struct TilesetInfo {
 	uint32_t tileCount;
@@ -89,28 +108,48 @@ static const TilesetInfo TilesetWayInfo = { 16, 4 };
 static const WayTilesetMappingClass TilesetWayToTypeMapping = WayTilesetMappingClass();
 
 struct SpawnData {
+	char enemyId[256];
 	Vec2f direction;
 	float initialCooldown;
 	float cooldown;
-	char enemyId[256];
+	size_t enemyCount;
+};
+
+struct WaypointData {
+	Vec2f direction;
 };
 
 enum class ObjectType {
 	None = 0,
 	Spawn,
+	Waypoint,
+	Goal,
 };
+
+inline const char *ObjectTypeToString(const ObjectType type) {
+	switch(type) {
+		case ObjectType::Spawn:
+			return "Spawn";
+		case ObjectType::Waypoint:
+			return "Waypoint";
+		case ObjectType::Goal:
+			return "Goal";
+		default:
+			return "None";
+	}
+}
 
 struct ObjectData {
 	ObjectType type;
 	Vec2i tilePos;
 	union {
 		SpawnData spawn;
+		WaypointData waypoint;
 	};
 };
 
 struct LevelData {
 	uint32_t wayLayer[TotalTileCount];
-	uint32_t entitiesLayer[TotalTileCount];
 	ObjectData objects[256];
 	size_t objectCount;
 	uint32_t wayFirstGid;
@@ -138,51 +177,54 @@ enum class CreepStyle {
 	Triangle
 };
 
+struct CreepMultiplier {
+	float hp;
+	float bounty;
+	float speed;
+	float scale;
+};
+inline CreepMultiplier MakeCreepMultiplier(const float scale, const float speed, const float hp, const float bounty) {
+	CreepMultiplier result = {};
+	result.scale = scale;
+	result.speed = speed;
+	result.hp = hp;
+	result.bounty = bounty;
+	return(result);
+}
+
 struct CreepData {
 	Vec4f color;
 	const char *id;
 	float renderRadius;
 	float collisionRadius;
 	float speed;
-	float hp;
+	int hp;
+	int bounty;
 	CreepStyle style;
 };
-
-struct CreepMultiplier {
-	float hp;
-	float speed;
-	float scale;
-};
-
-inline CreepMultiplier MakeCreepMultiplier(const float hp, const float speed, const float scale) {
-	CreepMultiplier result = {};
-	result.hp = hp;
-	result.speed = speed;
-	result.scale = scale;
-	return(result);
-}
-
-inline CreepData MakeCreepData(const char *id, const float renderRadius, const float collisionRadius, const float speed, const float hp, const Vec4f &color, const CreepStyle style) {
+inline CreepData MakeCreepData(const char *id, const float renderRadius, const float collisionRadius, const float speed, const int hp, const int bounty, const Vec4f &color, const CreepStyle style) {
 	CreepData result = {};
 	result.id = id;
 	result.renderRadius = renderRadius;
 	result.collisionRadius = collisionRadius;
 	result.speed = speed;
 	result.hp = hp;
+	result.bounty = bounty;
 	result.color = color;
 	result.style = style;
 	return(result);
 }
 
 struct Creep {
-	CreepData data;
+	const CreepData *data;
+	uint64_t id;
 	Vec2f prevPosition;
 	Vec2f position;
 	Vec2f facingDirection;
 	Vec2f targetPos;
 	const Waypoint *targetWaypoint;
 	float speed;
-	float hp;
+	int hp;
 	bool hasTarget;
 	bool isDead;
 };
@@ -202,10 +244,9 @@ struct BulletData {
 	float renderRadius;
 	float collisionRadius;
 	float speed;
-	float damage;
+	int damage;
 };
-
-inline BulletData MakeBulletData(const float renderRadius, const float collisionRadius, const float speed, const float damage) {
+inline BulletData MakeBulletData(const float renderRadius, const float collisionRadius, const float speed, const int damage) {
 	BulletData result = {};
 	result.renderRadius = renderRadius;
 	result.collisionRadius = collisionRadius;
@@ -221,10 +262,12 @@ struct TowerData {
 	float detectionRadius;
 	float unlockRadius;
 	float gunTubeLength;
+	float gunTubeThickness;
 	float gunCooldown;
+	float gunRotationSpeed;
+	int costs;
 };
-
-inline TowerData MakeTowerData(const char *id, const float structureRadius, const float detectionRadius, const float unlockRadius, const float gunTubeLength, const float gunCooldown, const BulletData &bullet) {
+inline TowerData MakeTowerData(const char *id, const float structureRadius, const float detectionRadius, const float unlockRadius, const float gunTubeLength, const float gunCooldown, const float gunTubeThickness, const float gunRotationSpeed, int costs, const BulletData &bullet) {
 	TowerData result = {};
 	result.id = id;
 	result.structureRadius = structureRadius;
@@ -232,35 +275,43 @@ inline TowerData MakeTowerData(const char *id, const float structureRadius, cons
 	result.unlockRadius = unlockRadius;
 	result.gunTubeLength = gunTubeLength;
 	result.gunCooldown = gunCooldown;
+	result.gunTubeThickness = gunTubeThickness;
+	result.gunRotationSpeed = gunRotationSpeed;
+	result.costs = costs;
 	result.bullet = bullet;
 	return(result);
 }
 
-struct Wave {
+struct WaveData {
 	const char *levelId;
 	CreepMultiplier enemyMultiplier;
-	size_t enemyCount;
+	float startupCooldown;
+	int completionBounty;
 };
-
-inline Wave MakeWave(const char *levelId, const CreepMultiplier &enemyMultiplier, const size_t enemyCount) {
-	Wave result = {};
+inline WaveData MakeWaveData(const char *levelId, const CreepMultiplier &enemyMultiplier, const float startupCooldown, const int completionBounty) {
+	WaveData result = {};
 	result.levelId = levelId;
 	result.enemyMultiplier = enemyMultiplier;
-	result.enemyCount = enemyCount;
+	result.startupCooldown = startupCooldown;
+	result.completionBounty = completionBounty;
 	return(result);
 }
 
 struct Tower {
-	TowerData data;
+	const TowerData *data;
 	Vec2f position;
 	Creep *targetEnemy;
 	float facingAngle;
+	float targetAngle[2];
+	float rotationTimer[2];
 	float gunTimer;
 	bool hasTarget;
+	bool canFire;
+	bool gunIsRotating;
 };
 
 struct Bullet {
-	BulletData data;
+	const BulletData *data;
 	Vec2f prevPosition;
 	Vec2f position;
 	Vec2f velocity;
@@ -269,40 +320,63 @@ struct Bullet {
 
 struct FontAsset {
 	LoadedFont desc;
-	GLint texture;
+	GLuint texture;
+};
+
+enum class WaveState {
+	Stopped = 0,
+	Starting,
+	Running,
+	Won,
+	Lost
 };
 
 struct GameState {
 	GameMemory mem;
-	Creep enemies[100];
-	Tower towers[100];
-	Bullet bullets[10000];
-	Tile tiles[TotalTileCount];
-	CreepSpawner spawners[16];
+
 	LevelData levelData;
+	Tile tiles[TotalTileCount];
+	Creep enemies[1024];
+	Tower towers[256];
+	Bullet bullets[10240];
+	CreepSpawner spawners[16];
+
 	char activeLevelId[256];
+
 	FontAsset hudFont;
-	char dataPath[1024];
-	size_t spawnerCount;
+	FontAsset overlayFont;
+
 	Camera2D camera;
 	Viewport viewport;
 	Vec2f mouseWorldPos;
 	Vec2i mouseTilePos;
+
+	char dataPath[1024];
+
 	Waypoint *firstWaypoint;
 	Waypoint *lastWaypoint;
-	size_t activeEnemyCount;
+
+	size_t remainingEnemyCount;
 	size_t enemyCount;
 	size_t towerCount;
 	size_t bulletCount;
+	size_t spawnerCount;
+
+	uint64_t creepIdCounter;
+	float waveCooldown;
+	WaveState waveState;
 	int selectedTowerIndex;
-	int waveIndex;
+	int activeWaveIndex;
+	int money;
+	int lifes;
+
 	bool isExiting;
 };
 
 inline Vec2f TileToWorld(const Vec2i &tilePos, const Vec2f &offset = V2f(0, 0)) {
 	Vec2f result = {
-		GridOriginX + tilePos.x * TileSize,
-		GridOriginY + (TileCountY - 1 - tilePos.y) * TileSize
+		GridOriginX + tilePos.x * TileWidth,
+		GridOriginY + (TileCountY - 1 - tilePos.y) * TileHeight
 	};
 	result += offset;
 	return(result);
@@ -312,9 +386,14 @@ inline Vec2i WorldToTile(const Vec2f &worldPos) {
 	float x = worldPos.x + WorldWidth * 0.5f;
 	float y = worldPos.y + WorldHeight * 0.5f;
 	Vec2i result = {
-		(int)floorf((x) / TileSize),
-		TileCountY - 1 - (int)floorf((y) / TileSize)
+		(int)floorf((x) / TileWidth),
+		TileCountY - 1 - (int)floorf((y - ControlsHeight) / TileHeight)
 	};
+	return(result);
+}
+
+inline bool IsValidTile(const Vec2i &tilePos) {
+	bool result = !(tilePos.x < 0 || tilePos.x >(TileCountX - 1) || tilePos.y < 0 || tilePos.y >(TileCountY - 1));
 	return(result);
 }
 
