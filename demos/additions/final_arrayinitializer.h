@@ -1,5 +1,19 @@
+/*
+Name:
+	Final Array Initializer
+Description:
+	Class for simulating indexed/named array initializer.
+
+	This file is part of the final_framework.
+License:
+	MIT License
+	Copyright 2018 Torsten Spaete
+*/
+
 #ifndef FINAL_ARRAYINITIALIZER_H
 #define FINAL_ARRAYINITIALIZER_H
+
+#include <final_platform_layer.h>
 
 // @BAD(final): CPP is such garbage!
 // It cannot handle array index initializer such as [index] = value :-(

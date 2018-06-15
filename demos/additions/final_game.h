@@ -14,13 +14,11 @@ License:
 #ifndef FINAL_GAME_H
 #define FINAL_GAME_H
 
-#if !defined(__cplusplus)
-#error "C++ is required for this to run!"
+#if !(defined(__cplusplus) && ((__cplusplus >= 201103L) || (defined(_MSC_VER) && _MSC_VER >= 1900)))
+#error "C++/11 compiler not detected!"
 #endif
 
-#include <final_platform_layer.h>
-
-#include "final_vecmath.h"
+#include "final_math.h"
 
 struct ButtonState {
 	bool isDown;
@@ -89,7 +87,7 @@ extern GameMemory GameCreate();
 extern void GameDestroy(GameMemory &gameMemory);
 extern void GameInput(GameMemory &gameMemory, const Input &input, bool isActive);
 extern void GameUpdate(GameMemory &gameMemory, const Input &input, bool isActive);
-extern void GameRender(GameMemory &gameMemory, const float alpha);
+extern void GameRender(GameMemory &gameMemory, const float alpha, const float deltaTime);
 extern bool IsGameExiting(GameMemory &gameMemory);
 
 #endif // FINAL_GAME_H

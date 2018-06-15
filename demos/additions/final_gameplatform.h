@@ -14,13 +14,14 @@ License:
 #ifndef FINAL_GAMEPLATFORM_H
 #define FINAL_GAMEPLATFORM_H
 
-#if !defined(__cplusplus)
-#error "C++ is required for this to run!"
+#if !(defined(__cplusplus) && ((__cplusplus >= 201103L) || (defined(_MSC_VER) && _MSC_VER >= 1900)))
+#error "C++/11 compiler not detected!"
 #endif
 
 struct GameConfiguration {
 	const char *title;
 	bool hideMouseCursor;
+	bool disableInactiveDetection;
 };
 
 extern int GameMain(const GameConfiguration &config);
@@ -29,6 +30,8 @@ extern int GameMain(const GameConfiguration &config);
 
 #if defined(FINAL_GAMEPLATFORM_IMPLEMENTATION) && !defined(FINAL_GAMEPLATFORM_IMPLEMENTED)
 #define FINAL_GAMEPLATFORM_IMPLEMENTED
+
+#include <final_platform_layer.h>
 
 #include "final_game.h"
 
@@ -270,10 +273,11 @@ extern int GameMain(const GameConfiguration &config) {
 				ProcessEvents(curInput, prevInput, isWindowActive, lastMousePos);
 
 				// Game Update
-				GameInput(gameMem, *curInput, isWindowActive);
+				bool gameActive = config.disableInactiveDetection ? true : isWindowActive;
+				GameInput(gameMem, *curInput, gameActive);
 #if 1
 				while(frameAccumulator >= TargetDeltaTime) {
-					GameUpdate(gameMem, *curInput, isWindowActive);
+					GameUpdate(gameMem, *curInput, gameActive);
 					frameAccumulator -= TargetDeltaTime;
 					++updateCount;
 				}
@@ -290,7 +294,7 @@ extern int GameMain(const GameConfiguration &config) {
 
 				// Render
 				float alpha = (float)frameAccumulator / (float)TargetDeltaTime;
-				GameDraw(gameMem, alpha);
+				GameRender(gameMem, alpha, curInput->deltaTime);
 				fplVideoFlip();
 				++frameCount;
 

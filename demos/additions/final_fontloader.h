@@ -13,30 +13,22 @@ License:
 #ifndef FINAL_FONTLOADER_H
 #define FINAL_FONTLOADER_H
 
+#if !(defined(__cplusplus) && ((__cplusplus >= 201103L) || (defined(_MSC_VER) && _MSC_VER >= 1900)))
+#error "C++/11 compiler not detected!"
+#endif
+
 #ifndef FINAL_FONTLOADER_BETTERQUALITY
 #define FINAL_FONTLOADER_BETTERQUALITY 0
 #endif
 
 #include <final_platform_layer.h>
 
-#include <math.h> // fabsf
-
-typedef struct FontVec2f {
-	float x;
-	float y;
-} FontVec2f;
-
-inline FontVec2f MakeFontVec2f(const float x, const float y) {
-	FontVec2f result;
-	result.x = x;
-	result.y = y;
-	return(result);
-}
+#include "final_math.h"
 
 typedef struct FontGlyph {
-	FontVec2f alignPercentage;
-	FontVec2f uvMin, uvMax;
-	FontVec2f charSize;
+	Vec2f alignPercentage;
+	Vec2f uvMin, uvMax;
+	Vec2f charSize;
 	uint32_t charCode;
 } FontGlyph;
 
@@ -143,7 +135,7 @@ extern bool LoadFontFromMemory(const void *data, const size_t dataSize, const ui
 	bool result = false;
 	if(stbtt_InitFont(&fontInfo, (const unsigned char *)data, fontOffset)) {
 		uint32_t charCount = (lastChar - firstChar) + 1;
-		uint8_t *atlasAlphaBitmap = (uint8_t *)fplMemoryAllocate(atlasWidth * atlasHeight);
+		uint8_t *atlasAlphaBitmap = (uint8_t *)fplMemoryAllocate(atlasWidth * atlasHeight * 4);
 #if FINAL_FONTLOADER_BETTERQUALITY
 		stbtt_packedchar *packedChars = (stbtt_packedchar *)fplMemoryAllocate(charCount * sizeof(stbtt_packedchar));
 
@@ -157,8 +149,8 @@ extern bool LoadFontFromMemory(const void *data, const size_t dataSize, const ui
 		stbtt_pack_range *ranges[1] = {
 			&characterRange,
 		};
+		stbtt_PackSetOversampling(&packContext, 4, 4);
 		stbtt_PackBegin(&packContext, atlasAlphaBitmap, atlasWidth, atlasHeight, atlasWidth, 0, 0);
-		stbtt_PackSetOversampling(&packContext, 1, 1);
 		stbtt_PackFontRanges(&packContext, (const unsigned char *)data, fontIndex, ranges[0], 1);
 		stbtt_PackEnd(&packContext);
 #else
@@ -216,13 +208,13 @@ extern bool LoadFontFromMemory(const void *data, const size_t dataSize, const ui
 			float uMax = sourceInfo->x1 * texelU;
 			float vMin = sourceInfo->y1 * texelV;
 			float vMax = sourceInfo->y0 * texelV;
-			destInfo->uvMin = MakeFontVec2f(uMin, vMin);
-			destInfo->uvMax = MakeFontVec2f(uMax, vMax);
+			destInfo->uvMin = V2f(uMin, vMin);
+			destInfo->uvMax = V2f(uMax, vMax);
 
 			// Compute character size
 			int charWidthInPixels = (sourceInfo->x1 - sourceInfo->x0) + 1;
 			int charHeightInPixels = (sourceInfo->y1 - sourceInfo->y0) + 1;
-			destInfo->charSize = MakeFontVec2f((float)charWidthInPixels * fontScale, (float)charHeightInPixels * fontScale);
+			destInfo->charSize = V2f((float)charWidthInPixels * fontScale, (float)charHeightInPixels * fontScale);
 
 			// Move the character half the size to the right - so we are left aligned
 			float xoffset = destInfo->charSize.x * 0.5f;
@@ -250,10 +242,10 @@ extern bool LoadFontFromMemory(const void *data, const size_t dataSize, const ui
 				float kerningPx = stbtt_GetCodepointKernAdvance(&fontInfo, charIndex, nextCharIndex) * pixelScale;
 				if(kerningPx != 0) {
 					int widthPx = leftInfo->x1 - leftInfo->x0 + 1;
-                    float kerning = kerningPx / (float)widthPx;
-                    uint32_t a = (uint32_t) (charIndex - firstChar);
-                    uint32_t b = (uint32_t) (nextCharIndex - firstChar);
-                    kerningTable[a * charCount + b] = kerning;
+					float kerning = kerningPx / (float)widthPx;
+					uint32_t a = (uint32_t)(charIndex - firstChar);
+					uint32_t b = (uint32_t)(nextCharIndex - firstChar);
+					kerningTable[a * charCount + b] = kerning;
 				}
 			}
 		}
