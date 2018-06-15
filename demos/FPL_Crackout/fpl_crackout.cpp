@@ -9,6 +9,8 @@ Requirements:
 	- GLM
 	- Box2D
 	- Final Dynamic OpenGL
+	- Final Memory
+	- Final Framework
 Author:
 	Torsten Spaete
 Changelog:
@@ -41,17 +43,10 @@ Todo:
 #define FPL_LOG_TO_DEBUGOUT
 #include <final_platform_layer.h>
 
-#include <math.h> // fabs
-
-#include <vector>
-
 #define FGL_IMPLEMENTATION
 #include <final_dynamic_opengl.h>
 
-#define GLM_ENABLE_EXPERIMENTAL 1
-#include <glm/glm.hpp>
-#include <glm/gtc/constants.hpp>
-#include <glm/gtx/vector_angle.hpp>
+#include <final_math.h>
 
 #define BOX2D_IMPLEMENTATION
 #include <Box2D/Box2D.h>
@@ -62,15 +57,18 @@ Todo:
 #define FINAL_FONTLOADER_IMPLEMENTATION
 #include <final_fontloader.h>
 
+#define FMEM_IMPLEMENTATION
+#include <final_memory.h>
+
 #define FINAL_RENDER_IMPLEMENTATION
 #include <final_render.h>
+
+#define FINAL_OPENGL_RENDER_IMPLEMENTATION
+#include <final_opengl_render.h>
 
 #include <final_arrayinitializer.h>
 
 #include <final_game.h>
-
-constexpr float Pi32 = glm::pi<float>();
-constexpr float Tau32 = Pi32 * 2.0f;
 
 //
 // Game constants
@@ -83,7 +81,7 @@ constexpr int InitialLevelSeed = 1;
 constexpr float GameAspect = 16.0f / 9.0f;
 constexpr float WorldWidth = 20.0f;
 constexpr float WorldHeight = WorldWidth / GameAspect;
-const glm::vec2 WorldRadius = glm::vec2(WorldWidth, WorldHeight) * 0.5f;
+const Vec2f WorldRadius = V2f(WorldWidth, WorldHeight) * 0.5f;
 
 constexpr float FrameRadius = WorldWidth * 0.025f;
 
@@ -102,7 +100,7 @@ const float AreaHalfWidth = WorldRadius.x - FrameRadius * 2.0f;
 const float AreaHalfHeight = WorldRadius.y - FrameRadius * 0.5f - BottomAreaDepth;
 
 constexpr float PaddleSpeed = 100.0f;
-const glm::vec2 PaddleRadius = glm::vec2(BallRadius * 3, BallRadius);
+const Vec2f PaddleRadius = V2f(BallRadius * 3, BallRadius);
 const float PaddleLineY = -WorldRadius.y + PaddleRadius.y;
 const float PaddleGlueOffsetY = PaddleRadius.y * 2 + BallRadius * 0.25f;
 
@@ -113,9 +111,9 @@ constexpr int MaxBrickCols = 17;
 constexpr int MaxBrickRows = 11;
 const float SpaceForBricksX = ((AreaHalfWidth - AreaPadding) * 2.0f) - (MaxBrickCols - 1) * BrickSpacing;
 const float SpaceForBricksY = ((AreaHalfHeight - AreaPadding) * 2.0f) - (MaxBrickRows - 1) * BrickSpacing;
-const glm::vec2 BrickRadius = glm::vec2(SpaceForBricksX / (float)MaxBrickCols, SpaceForBricksY / (float)MaxBrickRows) * 0.5f;
+const Vec2f BrickRadius = V2f(SpaceForBricksX / (float)MaxBrickCols, SpaceForBricksY / (float)MaxBrickRows) * 0.5f;
 
-const glm::vec2 Gravity = glm::vec2(0, -10);
+const Vec2f Gravity = V2f(0, -10);
 
 // Brick UVs
 enum class BrickType : int32_t {
@@ -356,45 +354,7 @@ inline int RandomInt(int size) {
 	return(result);
 }
 
-static void DrawCircleVertices(const float r, const int segments) {
-	float alpha = Tau32 / (float)segments;
-	for(int i = 0; i <= segments; ++i) {
-		float a = i * alpha;
-		float c = glm::cos(a) * r;
-		float s = glm::sin(a) * r;
-		glVertex2f(c, s);
-	}
-}
-static void DrawCircle(float r, bool isFilled, const int segments = 24) {
-	glBegin(isFilled ? GL_POLYGON : GL_LINE_STRIP);
-	DrawCircleVertices(r, segments);
-	glEnd();
-}
 
-static void DrawNormal(const glm::vec2 &p, const glm::vec2 &n, float d) {
-	glBegin(GL_LINES);
-	glVertex2f(p.x, p.y);
-	glVertex2f(p.x + n.x * d, p.y + n.y * d);
-	glEnd();
-}
-
-static GLuint AllocateTexture(const uint32_t width, const uint32_t height, const void *data, const bool repeatable, const bool isAlphaOnly = false) {
-	GLuint handle;
-	glGenTextures(1, &handle);
-	glBindTexture(GL_TEXTURE_2D, handle);
-	GLuint internalFormat = isAlphaOnly ? GL_ALPHA8 : GL_RGBA8;
-	GLenum format = isAlphaOnly ? GL_ALPHA : GL_RGBA;
-	glTexImage2D(GL_TEXTURE_2D, 0, internalFormat, width, height, 0, format, GL_UNSIGNED_BYTE, data);
-
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, repeatable ? GL_REPEAT : GL_CLAMP);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, repeatable ? GL_REPEAT : GL_CLAMP);
-
-	glBindTexture(GL_TEXTURE_2D, 0);
-
-	return(handle);
-}
 
 static void ClearWorld(b2World *world) {
 	b2Body *body = world->GetBodyList();
@@ -741,7 +701,7 @@ static TextureImage LoadTextureImage(const char *dataPath, const char *filename)
 
 static bool LoadTexture(const TextureImage &image, const bool repeatable, GLuint &outTexture) {
 	bool result = false;
-	GLuint texId = AllocateTexture(image.width, image.height, image.data, repeatable);
+	GLuint texId = AllocateTexture(image.width, image.height, image.data, repeatable, GL_NEAREST);
 	if(texId > 0) {
 		outTexture = texId;
 		result = true;
@@ -775,12 +735,12 @@ static bool LoadAssets(GameState &state) {
 
 	LoadFontFromFile(state.dataPath, "hemi_head_bd_it.ttf", 0, 36.0f, 32, 127, 512, 512, &state.assets.fontMenu.desc);
 	if(state.assets.fontMenu.desc.atlasAlphaBitmap != nullptr) {
-		state.assets.fontMenu.texture = AllocateTexture(state.assets.fontMenu.desc.atlasWidth, state.assets.fontMenu.desc.atlasHeight, state.assets.fontMenu.desc.atlasAlphaBitmap, false, true);
+		state.assets.fontMenu.texture = AllocateTexture(state.assets.fontMenu.desc.atlasWidth, state.assets.fontMenu.desc.atlasHeight, state.assets.fontMenu.desc.atlasAlphaBitmap, false, GL_NEAREST, true);
 	}
 
 	LoadFontFromFile(state.dataPath, "hemi_head_bd_it.ttf", 0, 18.0f, 32, 127, 512, 512, &state.assets.fontHud.desc);
 	if(state.assets.fontHud.desc.atlasAlphaBitmap != nullptr) {
-		state.assets.fontHud.texture = AllocateTexture(state.assets.fontHud.desc.atlasWidth, state.assets.fontHud.desc.atlasHeight, state.assets.fontHud.desc.atlasAlphaBitmap, false, true);
+		state.assets.fontHud.texture = AllocateTexture(state.assets.fontHud.desc.atlasWidth, state.assets.fontHud.desc.atlasHeight, state.assets.fontHud.desc.atlasAlphaBitmap, false, GL_NEAREST, true);
 	}
 
 	return true;
@@ -889,8 +849,8 @@ static void LaunchBall(GameState &state) {
 	ball->isDead = false;
 	ball->body->SetType(b2BodyType::b2_dynamicBody);
 	float newAngle = startAngle + (Random01() > 0.5f ? -1 : 1) * Random01() * spreadAngle;
-	float a = glm::radians<float>(newAngle);
-	b2Vec2 direction = b2Vec2(glm::cos(a), glm::sin(a));
+	float a = Radians(newAngle);
+	b2Vec2 direction = b2Vec2(Cosine(a), Sine(a));
 	ball->body->ApplyLinearImpulse(ball->speed * direction, ball->body->GetPosition(), true);
 	paddle.gluedBall = nullptr;
 }
@@ -1124,15 +1084,15 @@ static void UpdatePlayMode(GameState &state, const Input &input) {
 			b2Vec2 vel = ball.body->GetLinearVelocity();
 			b2Vec2 dir = vel;
 			dir.Normalize();
-			float a = glm::atan<float>(dir.y, dir.x);
-			float deg = glm::degrees<float>(a);
+			float a = ArcTan2(dir.y, dir.x);
+			float deg = Degrees(a);
 			for(int i = 0; i < FPL_ARRAYCOUNT(squaredAngles); ++i) {
-				if(glm::abs<float>(deg) > (squaredAngles[i] - angleTolerance) && glm::abs<float>(deg) < (squaredAngles[i] + angleTolerance)) {
-					deg += (glm::abs(deg) - squaredAngles[i] > 0 ? 1 : -1) * angleCorrection;
-					a = glm::radians<float>(deg);
+				if(Abs(deg) > (squaredAngles[i] - angleTolerance) && Abs(deg) < (squaredAngles[i] + angleTolerance)) {
+					deg += (Abs(deg) - squaredAngles[i] > 0 ? 1 : -1) * angleCorrection;
+					a = Radians(deg);
 				}
 			}
-			dir = b2Vec2(glm::cos(a), glm::sin(a));
+			dir = b2Vec2(Cosine(a), Sine(a));
 			dir *= ball.speed;
 			ball.body->SetLinearVelocity(dir);
 		}
@@ -1194,58 +1154,7 @@ extern void GameUpdate(GameMemory &gameMemory, const Input &input, bool isActive
 	}
 }
 
-static void DrawSprite(const GLuint texId, const float rx, const float ry, const float uMin = 0.0f, const float vMin = 0.0f, const float uMax = 1.0f, const float vMax = 1.0f, const float xoffset = 0, const float yoffset = 0) {
-	glEnable(GL_TEXTURE_2D);
-	glBindTexture(GL_TEXTURE_2D, texId);
-	glBegin(GL_QUADS);
-	glTexCoord2f(uMax, vMax); glVertex2f(xoffset + rx, yoffset + ry);
-	glTexCoord2f(uMin, vMax); glVertex2f(xoffset + -rx, yoffset + ry);
-	glTexCoord2f(uMin, vMin); glVertex2f(xoffset + -rx, yoffset + -ry);
-	glTexCoord2f(uMax, vMin); glVertex2f(xoffset + rx, yoffset + -ry);
-	glEnd();
-	glBindTexture(GL_TEXTURE_2D, 0);
-	glDisable(GL_TEXTURE_2D);
-}
 
-static void DrawSprite(const GLuint texId, float rx, float ry, const UVRect &uv, const float xoffset = 0, const float yoffset = 0) {
-	DrawSprite(texId, rx, ry, uv.uMin, uv.vMax, uv.uMax, uv.vMin, xoffset, yoffset);
-}
-
-static void DrawTextFont(const char *text, const size_t textLen, const FontAsset *font, const float x, const float y, const float maxCharHeight, const float sx, const float sy) {
-	if(font != nullptr) {
-		float textWidth = GetTextWidth(text, textLen, &font->desc, maxCharHeight);
-		float textHeight = 0;
-		for(uint32_t textPos = 0; textPos < textLen; ++textPos) {
-			char at = text[textPos];
-			uint32_t codePoint = at - font->desc.firstChar;
-			if(codePoint >= 0 && codePoint < font->desc.charCount) {
-				const FontGlyph *glyph = &font->desc.glyphs[codePoint];
-				Vec2f size = V2f(glyph->charSize.x, glyph->charSize.y) * maxCharHeight;
-				textHeight = FPL_MAX(textHeight, size.h);
-			}
-		}
-		float xpos = x - textWidth * 0.5f + textWidth * 0.5f * sx;
-		float ypos = y + textHeight * 0.5f * sy;
-		for(uint32_t textPos = 0; textPos < textLen; ++textPos) {
-			char at = text[textPos];
-			char atNext = textPos < (textLen - 1) ? (text[textPos + 1]) : 0;
-			uint32_t codePoint = at - font->desc.firstChar;
-			float advance;
-			if(codePoint >= 0 && codePoint < font->desc.charCount) {
-				const FontGlyph *glyph = &font->desc.glyphs[codePoint];
-				Vec2f offset = V2f(xpos, ypos);
-				offset += V2f(glyph->charSize.x * glyph->alignPercentage.x, glyph->charSize.y * glyph->alignPercentage.y) * maxCharHeight;
-				Vec2f size = V2f(glyph->charSize.x, glyph->charSize.y) * maxCharHeight;
-				DrawSprite(font->texture, size.x * 0.5f, size.y * 0.5f, glyph->uvMin.x, glyph->uvMin.y, glyph->uvMax.x, glyph->uvMax.y, offset.x, offset.y);
-				uint32_t nextCodePoint = (atNext > 0) ? atNext - font->desc.firstChar : 0;
-				advance = GetFontCharacterAdvance(&font->desc, &codePoint, (atNext > 0) ? &nextCodePoint : nullptr) * maxCharHeight;
-			} else {
-				advance = font->desc.info.spaceAdvance * maxCharHeight;
-			}
-			xpos += advance;
-		}
-	}
-}
 
 static void DrawField(GameState &state) {
 	// Background
@@ -1300,7 +1209,7 @@ static void DrawPlayMode(GameState &state) {
 		float ballRot = ball.body->GetAngle();
 		glPushMatrix();
 		glTranslatef(ballPos.x, ballPos.y, 0);
-		glRotatef(glm::degrees<float>(ballRot), 0, 0, 1);
+		glRotatef(Degrees(ballRot), 0, 0, 1);
 		glColor4f(1, 1, 1, 1);
 		DrawSprite(state.assets.ballTexture, BallRadius + ROffset, BallRadius + ROffset, 0.0f, 1.0f, 1.0f, 0.0f);
 		glPopMatrix();
@@ -1313,7 +1222,7 @@ static void DrawPlayMode(GameState &state) {
 		float paddleRot = paddle.body->GetAngle();
 		glPushMatrix();
 		glTranslatef(paddlePos.x, paddlePos.y, 0);
-		glRotatef(glm::degrees<float>(paddleRot), 0, 0, 1);
+		glRotatef(Degrees(paddleRot), 0, 0, 1);
 		glColor4f(1, 1, 1, 1);
 		DrawSprite(state.assets.paddleTexture, PaddleRadius.x + BallRadius + ROffset, PaddleRadius.y + ROffset, 0.0f, 1.0f, 1.0f, 0.0f);
 		glPopMatrix();
@@ -1327,7 +1236,7 @@ static void DrawPlayMode(GameState &state) {
 		UVRect brickUV = BricksUVs[brick.type];
 		glPushMatrix();
 		glTranslatef(brickPos.x, brickPos.y, 0);
-		glRotatef(glm::degrees<float>(brickRot), 0, 0, 1);
+		glRotatef(Degrees(brickRot), 0, 0, 1);
 		glColor4f(1, 1, 1, 1);
 		DrawSprite(state.assets.bricksTexture, BrickRadius.x, BrickRadius.y, brickUV);
 		glPopMatrix();
@@ -1441,15 +1350,15 @@ static void DrawPlayMode(GameState &state) {
 	glColor4f(0, 0, 0, 1);
 
 	fplFormatAnsiString(textBuffer, FPL_ARRAYCOUNT(textBuffer), "Lifes: %d", state.lifes);
-	DrawTextFont(textBuffer, fplGetAnsiStringLength(textBuffer), &state.assets.fontHud, -WorldRadius.x + FrameRadius * 2.0f + textFrameMargin, textTopMiddle, textSize, 1.0f, 0.0f);
+	DrawTextFont(textBuffer, fplGetAnsiStringLength(textBuffer), &state.assets.fontHud.desc, state.assets.fontHud.texture, -WorldRadius.x + FrameRadius * 2.0f + textFrameMargin, textTopMiddle, textSize, 1.0f, 0.0f);
 
 	fplFormatAnsiString(textBuffer, FPL_ARRAYCOUNT(textBuffer), "Level: %d", (state.levelsCompleted + 1));
- 	DrawTextFont(textBuffer, fplGetAnsiStringLength(textBuffer), &state.assets.fontHud, 0, textTopMiddle, textSize, 0.0f, 0.0f);
+ 	DrawTextFont(textBuffer, fplGetAnsiStringLength(textBuffer), &state.assets.fontHud.desc, state.assets.fontHud.texture, 0, textTopMiddle, textSize, 0.0f, 0.0f);
 
 	fplFormatAnsiString(textBuffer, FPL_ARRAYCOUNT(textBuffer), "Score: %d", state.score);
 	size_t textCount = fplGetAnsiStringLength(textBuffer);
 	float textWidth = GetTextWidth(textBuffer, textCount, &state.assets.fontHud.desc, textSize);
-	DrawTextFont(textBuffer, textCount, &state.assets.fontHud, WorldRadius.x - FrameRadius * 2.0f - textFrameMargin - textWidth, textTopMiddle, textSize, 1.0f, 0.0f);
+	DrawTextFont(textBuffer, textCount, &state.assets.fontHud.desc, state.assets.fontHud.texture, WorldRadius.x - FrameRadius * 2.0f - textFrameMargin - textWidth, textTopMiddle, textSize, 1.0f, 0.0f);
 }
 
 static void BeginMenu(GameState &state) {
@@ -1473,7 +1382,7 @@ static bool PushMenuItem(GameState &state, MenuRenderState &menuRender, const ch
 	} else {
 		glColor4f(1, 1, 1, 1);
 	}
-	DrawTextFont(itemText, fplGetAnsiStringLength(itemText), &state.assets.fontMenu, 0.0f, menuRender.ypos, menuRender.fontHeight, 0.0f, 0.0f);
+	DrawTextFont(itemText, fplGetAnsiStringLength(itemText), &state.assets.fontMenu.desc, state.assets.fontMenu.texture, 0.0f, menuRender.ypos, menuRender.fontHeight, 0.0f, 0.0f);
 	menuRender.ypos -= menuRender.fontHeight;
 	return(result);
 }
@@ -1487,7 +1396,7 @@ static void DrawTitleMenuMode(GameState &state) {
 	float titleFontSize = 2.75f;
 	float titlePosY = WorldRadius.y - WorldHeight * 0.35f;
 	glColor4f(1, 1, 1, 1);
-	DrawTextFont(titleText, fplGetAnsiStringLength(titleText), &state.assets.fontMenu, 0.0f, titlePosY, titleFontSize, 0.0f, 0.0f);
+	DrawTextFont(titleText, fplGetAnsiStringLength(titleText), &state.assets.fontMenu.desc, state.assets.fontMenu.texture, 0.0f, titlePosY, titleFontSize, 0.0f, 0.0f);
 
 	if(state.mode == GameMode::Title || state.mode == GameMode::GameOver) {
 		// Title screen
@@ -1495,7 +1404,7 @@ static void DrawTitleMenuMode(GameState &state) {
 		const float smallFontSize = 0.9f;
 		const float smallPosY = -WorldRadius.y + WorldHeight * 0.275f;
 		glColor4f(1, 1, 1, 1);
-		DrawTextFont(smallText, fplGetAnsiStringLength(smallText), &state.assets.fontMenu, 0.0f, smallPosY, smallFontSize, 0.0f, 0.0f);
+		DrawTextFont(smallText, fplGetAnsiStringLength(smallText), &state.assets.fontMenu.desc, state.assets.fontMenu.texture, 0.0f, smallPosY, smallFontSize, 0.0f, 0.0f);
 	} else {
 		// Menu screen
 		assert(state.mode == GameMode::Menu);
@@ -1515,7 +1424,7 @@ static void DrawTitleMenuMode(GameState &state) {
 	}
 }
 
-extern void GameDraw(GameMemory &gameMemory, const float alpha) {
+extern void GameRender(GameMemory &gameMemory, const float alpha, const float deltaTime) {
 	GameState *state = (GameState *)gameMemory.base;
 
 	const float w = WorldRadius.x;

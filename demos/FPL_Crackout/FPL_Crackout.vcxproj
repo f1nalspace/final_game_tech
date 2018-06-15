@@ -28,8 +28,9 @@
     <ClInclude Include="..\additions\final_fontloader.h" />
     <ClInclude Include="..\additions\final_game.h" />
     <ClInclude Include="..\additions\final_gameplatform.h" />
+    <ClInclude Include="..\additions\final_math.h" />
+    <ClInclude Include="..\additions\final_opengl_render.h" />
     <ClInclude Include="..\additions\final_render.h" />
-    <ClInclude Include="..\additions\final_vecmath.h" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <VCProjectVersion>15.0</VCProjectVersion>

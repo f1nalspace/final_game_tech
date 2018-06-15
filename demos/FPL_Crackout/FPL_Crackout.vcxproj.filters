@@ -16,9 +16,6 @@
     <ClInclude Include="..\additions\final_game.h">
       <Filter>additions</Filter>
     </ClInclude>
-    <ClInclude Include="..\additions\final_vecmath.h">
-      <Filter>additions</Filter>
-    </ClInclude>
     <ClInclude Include="..\additions\final_gameplatform.h">
       <Filter>additions</Filter>
     </ClInclude>
@@ -26,6 +23,12 @@
       <Filter>additions</Filter>
     </ClInclude>
     <ClInclude Include="..\additions\final_arrayinitializer.h">
+      <Filter>additions</Filter>
+    </ClInclude>
+    <ClInclude Include="..\additions\final_opengl_render.h">
+      <Filter>additions</Filter>
+    </ClInclude>
+    <ClInclude Include="..\additions\final_math.h">
       <Filter>additions</Filter>
     </ClInclude>
   </ItemGroup>
