@@ -15,7 +15,7 @@ constexpr float WorldHeight = WorldWidth / GameAspect;
 constexpr float WorldRadiusW = WorldWidth * 0.5f;
 constexpr float WorldRadiusH = WorldHeight * 0.5f;
 
-constexpr int TileCountX = 20;
+constexpr int TileCountX = 21;
 constexpr int TileCountY = 11;
 constexpr float TileWidth = WorldWidth / (float)TileCountX;
 constexpr float TileHeight = WorldHeight / (float)(TileCountY + 1);
@@ -301,6 +301,7 @@ struct Tower {
 	const TowerData *data;
 	Vec2f position;
 	Creep *targetEnemy;
+	uint64_t targetId;
 	float facingAngle;
 	float targetAngle[2];
 	float rotationTimer[2];
@@ -318,17 +319,24 @@ struct Bullet {
 	bool isDestroyed;
 };
 
-struct FontAsset {
-	LoadedFont desc;
-	GLuint texture;
-};
-
 enum class WaveState {
 	Stopped = 0,
 	Starting,
 	Running,
 	Won,
 	Lost
+};
+
+struct FontAsset {
+	LoadedFont desc;
+	GLuint texture;
+};
+
+struct Assets {
+	char dataPath[1024];
+	FontAsset hudFont;
+	FontAsset overlayFont;
+	GLint radiantTexture;
 };
 
 struct GameState {
@@ -341,17 +349,14 @@ struct GameState {
 	Bullet bullets[10240];
 	CreepSpawner spawners[16];
 
-	char activeLevelId[256];
+	Assets assets;
 
-	FontAsset hudFont;
-	FontAsset overlayFont;
+	char activeLevelId[256];
 
 	Camera2D camera;
 	Viewport viewport;
 	Vec2f mouseWorldPos;
 	Vec2i mouseTilePos;
-
-	char dataPath[1024];
 
 	Waypoint *firstWaypoint;
 	Waypoint *lastWaypoint;
