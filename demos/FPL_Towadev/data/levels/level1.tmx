@@ -1,37 +1,51 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<map version="1.0" tiledversion="1.1.5" orientation="orthogonal" renderorder="right-up" width="20" height="10" tilewidth="64" tileheight="64" infinite="0" nextobjectid="30">
+<map version="1.0" tiledversion="1.1.5" orientation="orthogonal" renderorder="right-up" width="21" height="11" tilewidth="64" tileheight="64" infinite="0" nextobjectid="46">
  <tileset firstgid="1" name="way" tilewidth="64" tileheight="64" tilecount="16" columns="4">
   <image source="way_tileset.png" width="256" height="256"/>
  </tileset>
  <tileset firstgid="17" name="entities" tilewidth="64" tileheight="64" tilecount="16" columns="4">
   <image source="entities_tileset.png" width="256" height="256"/>
  </tileset>
- <layer name="way" width="20" height="10">
+ <layer name="way" width="21" height="11">
   <data encoding="csv">
-0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
-1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,6,0,
-0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2,0,
-0,7,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2,0,
-0,2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2,0,
-0,2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2,0,
-0,2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2,0,
-0,2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2,0,
-0,2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2,0,
-0,9,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,10,0
+0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+0,0,0,5,1,6,0,5,1,6,0,5,1,6,0,5,1,6,0,0,0,
+0,0,0,2,0,2,0,2,0,2,0,2,0,2,0,2,0,2,0,0,0,
+1,1,1,10,0,2,0,2,0,9,1,10,0,2,0,2,0,9,1,1,1,
+0,0,0,0,0,2,0,2,0,0,0,0,0,2,0,2,0,0,0,0,0,
+0,0,0,0,0,9,1,10,0,0,0,0,0,9,1,10,0,0,0,0,0,
+0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
 </data>
  </layer>
  <objectgroup name="objects">
-  <object id="10" name="spawn1" type="Spawn" gid="17" x="0" y="128" width="64" height="64">
+  <object id="10" name="spawn1" type="Spawn" gid="17" x="0" y="384" width="64" height="64">
    <properties>
     <property name="cooldown" type="float" value="1.5"/>
     <property name="enemy" value="The Quad"/>
-    <property name="enemyCount" type="int" value="20"/>
+    <property name="enemyCount" type="int" value="25"/>
     <property name="initialCooldown" type="float" value="0"/>
    </properties>
   </object>
-  <object id="24" name="goal" type="Goal" gid="25" x="64" y="256" width="64" height="64"/>
-  <object id="27" name="wp1" type="Waypoint" gid="23" x="1152" y="128" width="64" height="64"/>
-  <object id="28" name="wp2" type="Waypoint" gid="22" x="1152" y="640" width="64" height="64"/>
-  <object id="29" name="wp3" type="Waypoint" gid="24" x="64" y="640" width="64" height="64"/>
+  <object id="24" name="goal" type="Goal" gid="25" x="1280" y="384" width="64" height="64"/>
+  <object id="30" name="wp1" type="Waypoint" gid="24" x="192" y="384" width="64" height="64"/>
+  <object id="31" name="wp2" type="Waypoint" gid="21" x="192" y="256" width="64" height="64"/>
+  <object id="32" name="wp3" type="Waypoint" gid="23" x="320" y="256" width="64" height="64"/>
+  <object id="33" name="wp4" type="Waypoint" gid="21" x="320" y="512" width="64" height="64"/>
+  <object id="34" name="wp5" type="Waypoint" gid="24" x="448" y="512" width="64" height="64"/>
+  <object id="35" name="wp6" type="Waypoint" gid="21" x="448" y="256" width="64" height="64"/>
+  <object id="36" name="wp7" type="Waypoint" gid="23" x="576" y="256" width="64" height="64"/>
+  <object id="37" name="wp8" type="Waypoint" gid="21" x="576" y="384" width="64" height="64"/>
+  <object id="38" name="wp9" type="Waypoint" gid="24" x="704" y="384" width="64" height="64"/>
+  <object id="39" name="wp10" type="Waypoint" gid="21" x="704" y="256" width="64" height="64"/>
+  <object id="40" name="wp11" type="Waypoint" gid="23" x="832" y="256" width="64" height="64"/>
+  <object id="41" name="wp12" type="Waypoint" gid="21" x="832" y="512" width="64" height="64"/>
+  <object id="42" name="wp13" type="Waypoint" gid="24" x="960" y="512" width="64" height="64"/>
+  <object id="43" name="wp14" type="Waypoint" gid="21" x="960" y="256" width="64" height="64"/>
+  <object id="44" name="wp15" type="Waypoint" gid="23" x="1088" y="256" width="64" height="64"/>
+  <object id="45" name="wp16" type="Waypoint" gid="21" x="1088" y="384" width="64" height="64"/>
  </objectgroup>
 </map>
