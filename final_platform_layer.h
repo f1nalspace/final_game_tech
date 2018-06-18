@@ -132,6 +132,7 @@ SOFTWARE.
 	## v0.8.2.0 beta:
 	- New: Added fplKey´s for OEM keys (Plus, Comma, Minus, Period)
 	- New: Added fplKey´s for Media & Audio keys
+	- Fixed: FPL_ENUM_AS_FLAGS_OPERATORS had invalid signature for operator overloadings and missed some operators
 
 	- New: [Win32] OEM keys mapping
 	- New: [Win32] Media & Audio key mapping
@@ -1383,11 +1384,23 @@ static fpl_force_inline void fplDebugBreak() { __asm__ __volatile__(".inst 0xe7f
 	inline etype operator | (etype a, etype b) { \
 		return static_cast<etype>(static_cast<int>(a) | static_cast<int>(b)); \
 	} \
-	inline bool operator & (etype a, etype b) { \
-		return (static_cast<etype>(static_cast<int>(a) & static_cast<int>(b))) == b; \
-	} \
 	inline etype& operator |= (etype &a, etype b) { \
 		return a = a | b; \
+	} \
+	inline etype operator & (etype a, etype b) { \
+		return static_cast<etype>(static_cast<int>(a) & static_cast<int>(b)); \
+	} \
+	inline etype& operator &= (etype &a, etype b) { \
+		return a = a & b; \
+	} \
+	inline etype operator ~ (etype a) { \
+		return static_cast<etype>(~static_cast<int>(a)); \
+	} \
+	inline etype operator ^ (etype a, etype b) { \
+		return static_cast<etype>(static_cast<int>(a) ^ static_cast<int>(b)); \
+	} \
+	inline etype& operator ^= (etype &a, etype b) { \
+		return a = a ^ b; \
 	}
 #else
 	//! No need to overload operators for enums in C99
