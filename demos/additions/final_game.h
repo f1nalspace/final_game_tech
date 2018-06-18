@@ -45,8 +45,9 @@ struct Controller {
 			ButtonState actionLeft;
 			ButtonState actionRight;
 			ButtonState actionBack;
+			ButtonState debugToggle;
 		};
-		ButtonState buttons[9];
+		ButtonState buttons[10];
 	};
 };
 

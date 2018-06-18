@@ -192,6 +192,9 @@ static void ProcessEvents(Input *currentInput, Input *prevInput, bool &isWindowA
 									fplSetWindowFullscreen(!wasFullscreen, 0, 0, 0);
 								}
 							} break;
+							case fplKey_F4:
+								UpdateKeyboardButtonState(isDown, currentKeyboardController->debugToggle);
+								break;
 							case fplKey_Escape:
 							{
 								UpdateKeyboardButtonState(isDown, currentKeyboardController->actionBack);
