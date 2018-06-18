@@ -108,7 +108,7 @@ static void ConvertYUV420PToRGB32(uint8_t *destData[8], int32_t destLineSize[8],
 	constexpr uint32_t YPLANE = 0;
 	constexpr uint32_t UPLANE = 1;
 	constexpr uint32_t VPLANE = 2;
-	const bool dstBGRA = (flags & ConversionFlags::DstBGRA);
+	const bool dstBGRA = (flags & ConversionFlags::DstBGRA) == ConversionFlags::DstBGRA;
 	for (int32_t y = 0; y < height; ++y) {
 		uint32_t *dst32 = (uint32_t *)((uint8_t *)destData[0] + y * destLineSize[0]);
 		uint8_t *srcY = sourceData[YPLANE] + y * sourceLineSize[YPLANE];
