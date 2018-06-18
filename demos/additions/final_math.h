@@ -23,11 +23,11 @@ License:
 #define _USE_MATH_DEFINES
 #include <math.h>
 
-static const float Pi32 = (float)M_PI;
-static const float Tau32 = (float)M_PI * 2.0f;
-static const float Deg2Rad = (float)M_PI / 180.0f;
-static const float Rad2Deg = 180.0f / (float)M_PI;
-static const float Epsilon = FLT_EPSILON;
+constexpr float Pi32 = (float)M_PI;
+constexpr float Tau32 = (float)M_PI * 2.0f;
+constexpr float Deg2Rad = (float)M_PI / 180.0f;
+constexpr float Rad2Deg = 180.0f / (float)M_PI;
+constexpr float Epsilon = FLT_EPSILON;
 
 inline float Cosine(const float angle) {
 	float result = cosf(angle);
@@ -287,6 +287,19 @@ union Pixel {
 
 inline float ScalarLerp(float a, float t, float b) {
 	float result = (1.0f - t) * a + t * b;
+	return(result);
+}
+
+inline float GetBestAngleDistance(float a0, float a1) {
+	float max = Pi32 * 2;
+	float da = fmodf(a1 - a0, max);
+	float result = fmodf(2.0f * da, max) - da;
+	return(result);
+}
+
+inline float AngleLerp(float a, float t, float b) {
+	float angleDistance = GetBestAngleDistance(a, b);
+	float result = ScalarLerp(a, t, a + angleDistance);
 	return(result);
 }
 
