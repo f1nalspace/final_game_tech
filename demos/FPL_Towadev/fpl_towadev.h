@@ -255,6 +255,19 @@ inline BulletData MakeBulletData(const float renderRadius, const float collision
 	return(result);
 }
 
+enum class FireRangeTestType {
+	InSight = 0,
+	LineTrace,
+};
+
+enum class EnemyPredictionFlags : int32_t {
+	None = 0,
+	WeaponCooldown = 1 << 0,
+	BulletDistance = 1 << 1,
+	All = WeaponCooldown | BulletDistance,
+};
+FPL_ENUM_AS_FLAGS_OPERATORS(EnemyPredictionFlags);
+
 struct TowerData {
 	BulletData bullet;
 	const char *id;
@@ -265,9 +278,12 @@ struct TowerData {
 	float gunTubeThickness;
 	float gunCooldown;
 	float gunRotationSpeed;
+	FireRangeTestType enemyRangeTestType;
+	EnemyPredictionFlags enemyPredictionFlags;
 	int costs;
+	bool onlyFireOnLockedTarget;
 };
-inline TowerData MakeTowerData(const char *id, const float structureRadius, const float detectionRadius, const float unlockRadius, const float gunTubeLength, const float gunCooldown, const float gunTubeThickness, const float gunRotationSpeed, int costs, const BulletData &bullet) {
+inline TowerData MakeTowerData(const char *id, const float structureRadius, const float detectionRadius, const float unlockRadius, const float gunTubeLength, const float gunCooldown, const float gunTubeThickness, const float gunRotationSpeed, const int costs, const FireRangeTestType enemyRangeTestType, const EnemyPredictionFlags enemyPredictionFlags, const BulletData &bullet) {
 	TowerData result = {};
 	result.id = id;
 	result.structureRadius = structureRadius;
@@ -278,6 +294,8 @@ inline TowerData MakeTowerData(const char *id, const float structureRadius, cons
 	result.gunTubeThickness = gunTubeThickness;
 	result.gunRotationSpeed = gunRotationSpeed;
 	result.costs = costs;
+	result.enemyRangeTestType = enemyRangeTestType;
+	result.enemyPredictionFlags = enemyPredictionFlags;
 	result.bullet = bullet;
 	return(result);
 }
@@ -316,6 +334,7 @@ struct Bullet {
 	Vec2f prevPosition;
 	Vec2f position;
 	Vec2f velocity;
+	bool hasHit;
 	bool isDestroyed;
 };
 
@@ -376,6 +395,7 @@ struct GameState {
 	int lifes;
 
 	bool isExiting;
+	bool isDebugRendering;
 };
 
 inline Vec2f TileToWorld(const Vec2i &tilePos, const Vec2f &offset = V2f(0, 0)) {
