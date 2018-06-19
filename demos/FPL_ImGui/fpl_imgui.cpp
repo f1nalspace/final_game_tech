@@ -10,6 +10,8 @@ Requirements:
 Author:
 	Torsten Spaete
 Changelog:
+	## 2018-06-19
+	- Corrected for FPL enum operator changes
 	## 2018-06-06
 	- Refactored files
     ## 2018-05-05:
@@ -187,10 +189,10 @@ static void ImGUIKeyEvent(uint64_t keyCode, fplKey mappedKey, fplKeyboardModifie
 	} else {
 		io.KeysDown[keyCode] = down;
 	}
-	io.KeyCtrl = modifiers & fplKeyboardModifierFlags_Ctrl;
-	io.KeyShift = modifiers & fplKeyboardModifierFlags_Shift;
-	io.KeyAlt = modifiers & fplKeyboardModifierFlags_Alt;
-	io.KeySuper = modifiers & fplKeyboardModifierFlags_Super;
+	io.KeyCtrl = (modifiers & fplKeyboardModifierFlags_Ctrl) == fplKeyboardModifierFlags_Ctrl;
+	io.KeyShift = (modifiers & fplKeyboardModifierFlags_Shift) == fplKeyboardModifierFlags_Shift;
+	io.KeyAlt = (modifiers & fplKeyboardModifierFlags_Alt) == fplKeyboardModifierFlags_Alt;
+	io.KeySuper = (modifiers & fplKeyboardModifierFlags_Super) == fplKeyboardModifierFlags_Super;
 }
 
 static bool show_test_window = true;
