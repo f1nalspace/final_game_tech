@@ -18,6 +18,10 @@ Author:
 	Torsten Spaete
 
 Changelog:
+	## 2018-06-19:
+	- Started a very basic immediate mode UI system
+	- Prepare for command buffer rendering
+	- Draw tower preview on mouse tile
 	## 2018-06-18:
 	- Simplified tower rotation
 	- Added prediction flags & enemy range test type
@@ -161,9 +165,9 @@ static const WaveData WaveDefinitions[] = {
 	),
 	MakeWaveData(
 		/* level: */ "Level1",
-		/* enemyMultiplier */ MakeCreepMultiplier(1.45f, 1.45f, 1.45f, 1.45f),
+		/* enemyMultiplier */ MakeCreepMultiplier(1.5f, 1.6f, 2.00f, 2.5f),
 		/* startupCooldown: */ 3.0f,
-		/* completionBounty: */ 50
+		/* completionBounty: */ 100
 	),
 };
 
@@ -231,6 +235,60 @@ namespace level {
 }
 namespace game {
 	static void NewGame(GameState &state);
+}
+
+namespace ui {
+	static void UIBegin(UIContext &ctx, const Input &input, const Vec2f &mousePos) {
+		ctx.hot = 0;
+		ctx.input = {};
+		ctx.input.userPosition = mousePos;
+		ctx.input.leftButton = input.mouse.left;
+	}
+
+	inline bool UIIsActive(const UIContext &ctx) {
+		bool result = ctx.active > 0;
+		return(result);
+	}
+
+	inline Vec2f GetUIButtonExt(const Vec2f &radius) {
+		Vec2f result = radius;
+		return(result);
+	}
+
+	inline bool IsInsideButton(UIContext &ctx, const Vec2f &pos, const Vec2f &radius) {
+		bool result = Abs(ctx.input.userPosition.x - pos.x) <= radius.w && Abs(ctx.input.userPosition.y - pos.y) <= radius.h;
+		return(result);
+	}
+
+	static bool UIButton(UIContext &ctx, const UIID id, const Vec2f &pos, const Vec2f &radius) {
+		bool result = false;
+		if(ctx.active == id) {
+			if(WasPressed(ctx.input.leftButton)) {
+				if(ctx.hot == id) {
+					result = true;
+				}
+				ctx.active = 0;
+			}
+		} else if(ctx.hot == id) {
+			if(ctx.input.leftButton.isDown) {
+				ctx.active = id;
+			}
+		}
+		if(IsInsideButton(ctx, pos, radius)) {
+			ctx.hot = id;
+		}
+
+		bool isHover = ctx.hot == id;
+		glColor4f(1, 1, 1, isHover ? 0.5f : 1.0f);
+		glBegin(GL_QUADS);
+		glVertex2f(pos.x + radius.w, pos.y + radius.h);
+		glVertex2f(pos.x - radius.w, pos.y + radius.h);
+		glVertex2f(pos.x - radius.w, pos.y - radius.h);
+		glVertex2f(pos.x + radius.w, pos.y - radius.h);
+		glEnd();
+
+		return(result);
+	}
 }
 
 namespace utils {
@@ -784,22 +842,32 @@ namespace level {
 }
 
 namespace towers {
-	inline bool CanPlaceTower(GameState &state, const Vec2i &tilePos, const TowerData *tower) {
+	enum class CanPlaceTowerResult {
+		Success = 0,
+		NoTowerSelected,
+		TooManyTowers,
+		TileOccupied,
+		NotEnoughMoney,
+	};
+
+	inline CanPlaceTowerResult CanPlaceTower(GameState &state, const Vec2i &tilePos, const TowerData *tower) {
 		if((state.selectedTowerIndex < 0) || !(state.selectedTowerIndex < FPL_ARRAYCOUNT(TowerDefinitions))) {
-			return false;
+			return CanPlaceTowerResult::NoTowerSelected;
 		}
 		if(state.towerCount == FPL_ARRAYCOUNT(state.towers)) {
-			return false;
+			return CanPlaceTowerResult::TooManyTowers;
 		}
 		Tile *tile = level::GetTile(state, tilePos);
 		if(tile == nullptr) {
-			return false;
+			return CanPlaceTowerResult::TileOccupied;
 		}
 		if(tile->isOccupied || tile->entityType != EntityType::None || tile->wayType != WayType::None) {
-			return false;
+			return CanPlaceTowerResult::TileOccupied;
 		}
-		bool result = (state.money >= tower->costs);
-		return(result);
+		if(state.money < tower->costs) {
+			return CanPlaceTowerResult::NotEnoughMoney;
+		}
+		return(CanPlaceTowerResult::Success);
 	}
 
 	static Tower *PlaceTower(GameState &state, const Vec2i &tilePos, const TowerData *data) {
@@ -974,11 +1042,11 @@ namespace towers {
 		}
 	}
 
-	static void DrawTower(const Assets &assets, const Camera2D &camera, const TowerData &tower, const Vec2f &pos, const float angle) {
-			// @TODO(final): Mulitple tower styles
-		DrawPoint(camera, pos.x, pos.y, tower.structureRadius, V4f(1, 1, 0.5f, 1));
+	static void DrawTower(const Assets &assets, const Camera2D &camera, const TowerData &tower, const Vec2f &pos, const float angle, const float alpha, const bool drawRadius) {
+		// @TODO(final): Mulitple tower styles
+		DrawPoint(camera, pos.x, pos.y, tower.structureRadius, V4f(1, 1, 0.5f, alpha));
 
-		glColor4f(1, 0.85f, 0.5f, 1);
+		glColor4f(1, 0.85f, 0.5f, alpha);
 		glLineWidth(camera.worldToPixels * tower.gunTubeThickness);
 		glPushMatrix();
 		glTranslatef(pos.x, pos.y, 0);
@@ -990,13 +1058,12 @@ namespace towers {
 		glLineWidth(2.0f);
 		glPopMatrix();
 
-		glColor4f(0.2f, 1, 0.2f, 0.25f);
-		DrawSprite(assets.radiantTexture, tower.detectionRadius, tower.detectionRadius, 0.0f, 0.0f, 1.0f, 1.0f, pos.x, pos.y);
-		glColor4f(1, 0.25f, 0.25f, 0.25f);
-		DrawSprite(assets.radiantTexture, tower.unlockRadius, tower.unlockRadius, 0.0f, 0.0f, 1.0f, 1.0f, pos.x, pos.y);
-
-		//DrawCircle(pos.x, pos.y, tower.detectionRadius, false, V4f(1, 1, 1, 0.5f));
-		//DrawCircle(pos.x, pos.y, tower.unlockRadius, false, V4f(1, 0.5f, 1, 0.4f));
+		if(drawRadius) {
+			glColor4f(0.2f, 1, 0.2f, alpha*0.25f);
+			DrawSprite(assets.radiantTexture, tower.detectionRadius, tower.detectionRadius, 0.0f, 0.0f, 1.0f, 1.0f, pos.x, pos.y);
+			glColor4f(1, 0.25f, 0.25f, alpha*0.25f);
+			DrawSprite(assets.radiantTexture, tower.unlockRadius, tower.unlockRadius, 0.0f, 0.0f, 1.0f, 1.0f, pos.x, pos.y);
+		}
 	}
 }
 
@@ -1130,11 +1197,13 @@ extern bool IsGameExiting(GameMemory &gameMemory) {
 	return state->isExiting;
 }
 
-extern void GameInput(GameMemory &gameMemory, const Input &input, bool isActive) {
-	if(!isActive) {
+extern void GameInput(GameMemory &gameMemory, const Input &input) {
+	if(!input.isActive) {
 		return;
 	}
 	GameState *state = (GameState *)gameMemory.base;
+
+	ui::UIBegin(state->ui, input, state->mouseWorldPos);
 
 	// Debug input
 	const Controller &keyboardController = input.controllers[0];
@@ -1158,10 +1227,10 @@ extern void GameInput(GameMemory &gameMemory, const Input &input, bool isActive)
 		state->mouseTilePos = WorldToTile(state->mouseWorldPos);
 
 		// Tower placement
-		if(WasPressed(input.mouse.left)) {
+		if(WasPressed(input.mouse.left) && !ui::UIIsActive(state->ui)) {
 			if(state->selectedTowerIndex > -1) {
 				const TowerData *tower = &TowerDefinitions[state->selectedTowerIndex];
-				if(towers::CanPlaceTower(*state, state->mouseTilePos, tower)) {
+				if(towers::CanPlaceTower(*state, state->mouseTilePos, tower) == towers::CanPlaceTowerResult::Success) {
 					towers::PlaceTower(*state, state->mouseTilePos, tower);
 				}
 			}
@@ -1169,8 +1238,8 @@ extern void GameInput(GameMemory &gameMemory, const Input &input, bool isActive)
 	}
 }
 
-extern void GameUpdate(GameMemory &gameMemory, const Input &input, bool isActive) {
-	if(!isActive) {
+extern void GameUpdate(GameMemory &gameMemory, const Input &input) {
+	if(!input.isActive) {
 		return;
 	}
 
@@ -1344,9 +1413,18 @@ static void DrawControls(GameState &state) {
 	glVertex2f(ControlsOriginX + ControlsWidth - lineWidthWorld, ControlsOriginY + lineWidthWorld);
 	glEnd();
 	glLineWidth(2);
+
+	float buttonPadding = lineWidthWorld + (MaxTileSize * 0.15f);
+	float buttonHeight = ControlsHeight - buttonPadding * 2.0f;
+
+	Vec2f buttonRadius = V2f(buttonHeight * 0.5f);
+	Vec2f buttonExt = ui::GetUIButtonExt(buttonRadius);
+	if(ui::UIButton(state.ui, "Tower", V2f(ControlsOriginX + buttonPadding + buttonExt.w, ControlsOriginY + buttonPadding + buttonExt.h), buttonRadius)) {
+		fplDebugFormatOut("Tower button pressed");
+	}
 }
 
-extern void GameRender(GameMemory &gameMemory, const float alpha, const float deltaTime) {
+extern void GameRender(GameMemory &gameMemory, CommandBuffer &renderCommands, const float alpha, const float deltaTime) {
 	GameState *state = (GameState *)gameMemory.base;
 	const float w = WorldRadiusW;
 	const float h = WorldRadiusH;
@@ -1499,11 +1577,21 @@ extern void GameRender(GameMemory &gameMemory, const float alpha, const float de
 	// Hover tile
 	if(state->selectedTowerIndex > -1 && IsValidTile(state->mouseTilePos)) {
 		const TowerData *tower = &TowerDefinitions[state->selectedTowerIndex];
+
+		towers::CanPlaceTowerResult placeRes = towers::CanPlaceTower(*state, state->mouseTilePos, tower);
 		Vec4f hoverColor;
-		if(towers::CanPlaceTower(*state, state->mouseTilePos, tower))
+		if(placeRes == towers::CanPlaceTowerResult::Success) {
 			hoverColor = V4f(0.1f, 1.0f, 0.1f, 1.0f);
-		else
+		} else {
 			hoverColor = V4f(1.0f, 0.1f, 0.1f, 1.0f);
+		}
+
+		if(placeRes == towers::CanPlaceTowerResult::Success || placeRes == towers::CanPlaceTowerResult::NotEnoughMoney) {
+			float alpha = placeRes == towers::CanPlaceTowerResult::Success ? 0.5f : 0.2f;
+			Vec2f towerCenter = TileToWorld(state->mouseTilePos, TileExt);
+			towers::DrawTower(state->assets, state->camera, *tower, towerCenter, Pi32 * 0.5f, alpha, true);
+		}
+
 		render::DrawTile(state->mouseTilePos.x, state->mouseTilePos.y, false, hoverColor);
 	}
 
@@ -1580,7 +1668,7 @@ extern void GameRender(GameMemory &gameMemory, const float alpha, const float de
 	//
 	for(size_t towerIndex = 0; towerIndex < state->towerCount; ++towerIndex) {
 		const Tower &tower = state->towers[towerIndex];
-		towers::DrawTower(state->assets, state->camera, *tower.data, tower.position, tower.facingAngle);
+		towers::DrawTower(state->assets, state->camera, *tower.data, tower.position, tower.facingAngle, 1.0f, false);
 
 		if(state->isDebugRendering) {
 			if(tower.hasTarget) {
@@ -1650,6 +1738,12 @@ extern void GameRender(GameMemory &gameMemory, const float alpha, const float de
 	DrawControls(*state);
 }
 
+extern void GameUpdateAndRender(GameMemory &gameMemory, const Input &input, CommandBuffer &renderCommands, const float alpha) {
+	GameInput(gameMemory, input);
+	GameUpdate(gameMemory, input);
+	GameRender(gameMemory, renderCommands, alpha, input.deltaTime);
+}
+
 #define FINAL_GAMEPLATFORM_IMPLEMENTATION
 #include <final_gameplatform.h>
 
@@ -1657,6 +1751,7 @@ int main(int argc, char *argv[]) {
 	GameConfiguration config = {};
 	config.title = "FPL Demo | Towadev";
 	config.disableInactiveDetection = true;
+	config.noUpdateRenderSeparation = true;
 	gamelog::Verbose("Startup game application '%s'", config.title);
 	int result = GameMain(config);
 	return(result);

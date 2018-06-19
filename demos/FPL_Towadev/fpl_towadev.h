@@ -23,13 +23,6 @@ const Vec2f TileExt = V2f(TileWidth, TileHeight) * 0.5f;
 constexpr float MaxTileSize = FPL_MAX(TileWidth, TileHeight);
 constexpr int TotalTileCount = TileCountX * TileCountY;
 
-/*
-constexpr float HudWidth = WorldWidth;
-constexpr float HudHeight = TileHeight;
-constexpr float HudOriginX = -WorldRadiusW;
-constexpr float HudOriginY = WorldRadiusH - HudHeight;
-*/
-
 constexpr float ControlsWidth = WorldWidth;
 constexpr float ControlsHeight = TileHeight;
 constexpr float ControlsOriginX = -WorldRadiusW;
@@ -39,6 +32,19 @@ constexpr float GridWidth = TileWidth * (float)TileCountX;
 constexpr float GridHeight = TileHeight * (float)TileCountY;
 constexpr float GridOriginX = -WorldRadiusW + ((WorldWidth - GridWidth) * 0.5f);
 constexpr float GridOriginY = -WorldRadiusH + ControlsHeight;
+
+typedef void *UIID;
+
+struct UIInput {
+	Vec2f userPosition;
+	ButtonState leftButton;
+};
+
+struct UIContext {
+	UIInput input;
+	UIID hot;
+	UIID active;
+};
 
 struct TilesetInfo {
 	uint32_t tileCount;
@@ -371,6 +377,8 @@ struct GameState {
 	Assets assets;
 
 	char activeLevelId[256];
+
+	UIContext ui;
 
 	Camera2D camera;
 	Viewport viewport;
