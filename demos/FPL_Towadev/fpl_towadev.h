@@ -33,6 +33,9 @@ constexpr float GridHeight = TileHeight * (float)TileCountY;
 constexpr float GridOriginX = -WorldRadiusW + ((WorldWidth - GridWidth) * 0.5f);
 constexpr float GridOriginY = -WorldRadiusH + ControlsHeight;
 
+const Vec4f TextBackColor = V4f(0.2f, 0.2f, 0.8f, 1);
+const Vec4f TextForeColor = V4f(1, 1, 1, 1);
+
 typedef void *UIID;
 
 struct UIInput {
@@ -133,7 +136,7 @@ enum class ObjectType {
 };
 
 inline const char *ObjectTypeToString(const ObjectType type) {
-	switch(type) {
+	switch (type) {
 		case ObjectType::Spawn:
 			return "Spawn";
 		case ObjectType::Waypoint:
@@ -266,6 +269,11 @@ enum class FireRangeTestType {
 	LineTrace,
 };
 
+enum class EnemyLockTargetMode {
+	Any,
+	LockedOn
+};
+
 enum class EnemyPredictionFlags : int32_t {
 	None = 0,
 	WeaponCooldown = 1 << 0,
@@ -286,10 +294,10 @@ struct TowerData {
 	float gunRotationSpeed;
 	FireRangeTestType enemyRangeTestType;
 	EnemyPredictionFlags enemyPredictionFlags;
+	EnemyLockTargetMode enemyLockOnMode;
 	int costs;
-	bool onlyFireOnLockedTarget;
 };
-inline TowerData MakeTowerData(const char *id, const float structureRadius, const float detectionRadius, const float unlockRadius, const float gunTubeLength, const float gunCooldown, const float gunTubeThickness, const float gunRotationSpeed, const int costs, const FireRangeTestType enemyRangeTestType, const EnemyPredictionFlags enemyPredictionFlags, const BulletData &bullet) {
+inline TowerData MakeTowerData(const char *id, const float structureRadius, const float detectionRadius, const float unlockRadius, const float gunTubeLength, const float gunCooldown, const float gunTubeThickness, const float gunRotationSpeed, const int costs, const FireRangeTestType enemyRangeTestType, const EnemyPredictionFlags enemyPredictionFlags, const EnemyLockTargetMode enemyLockOnMode, const BulletData &bullet) {
 	TowerData result = {};
 	result.id = id;
 	result.structureRadius = structureRadius;
@@ -302,6 +310,7 @@ inline TowerData MakeTowerData(const char *id, const float structureRadius, cons
 	result.costs = costs;
 	result.enemyRangeTestType = enemyRangeTestType;
 	result.enemyPredictionFlags = enemyPredictionFlags;
+	result.enemyLockOnMode = enemyLockOnMode;
 	result.bullet = bullet;
 	return(result);
 }
@@ -388,7 +397,7 @@ struct GameState {
 	Waypoint *firstWaypoint;
 	Waypoint *lastWaypoint;
 
-	size_t remainingEnemyCount;
+	size_t totalEnemyCount;
 	size_t enemyCount;
 	size_t towerCount;
 	size_t bulletCount;

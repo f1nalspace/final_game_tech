@@ -409,6 +409,11 @@ inline Vec2f Vec2Lerp(const Vec2f &a, float t, const Vec2f &b) {
 	return(result);
 }
 
+inline bool IsVec2Equals(const Vec2i &a, const Vec2i &b) {
+	bool result = a.x == b.x && a.y == b.y;
+	return(result);
+}
+
 //
 // Vec3f
 //
