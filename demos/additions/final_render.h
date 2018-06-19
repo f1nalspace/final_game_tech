@@ -88,7 +88,7 @@ enum class TextureWrapMode {
 
 struct TextureOperation {
 	TextureHandle *handle;
-	void *data;
+	const void *data;
 	TextureOperationType type;
 	TextureFilterType filter;
 	TextureWrapMode wrap;
@@ -109,12 +109,20 @@ struct CommandBuffer {
 enum class CommandType {
 	None = 0,
 	Clear,
-	Viewport
+	Viewport,
+	Matrix,
+	Rectangle,
+	Vertices,
+	Sprite,
 };
 
 struct CommandHeader {
 	size_t dataSize;
 	CommandType type;
+};
+
+struct MatrixCommand {
+	Mat4f mat;
 };
 
 enum class ClearFlags : uint32_t {
@@ -143,10 +151,18 @@ struct RectangleCommand {
 	bool isFilled;
 };
 
+enum class VerticesDrawMode {
+	Points,
+	Lines,
+	Triangles,
+	Polygon
+};
+
 struct VerticesCommand {
 	Vec4f color;
-	Vec2f *points;
+	const Vec2f *points;
 	size_t pointCount;
+	VerticesDrawMode drawMode;
 	float lineWidth;
 	bool isFilled;
 };
@@ -160,13 +176,31 @@ struct SpriteCommand {
 	TextureHandle texture;
 };
 
+extern void InitCommandBuffer(CommandBuffer &buffer, fmemMemoryBlock block);
+extern void ResetCommandBuffer(CommandBuffer &buffer);
 extern void PushClear(CommandBuffer &buffer, const Vec4f &color, const ClearFlags flags);
 extern void PushViewport(CommandBuffer &buffer, const int x, const int y, const int w, const int h);
+extern void PushMatrix(CommandBuffer &buffer, const Mat4f &mat);
+extern void PushRectangle(CommandBuffer &buffer, const Vec2f &bottomLeft, const Vec2f &size, const Vec4f &color, const bool isFilled, const float lineWidth);
+extern void PushVertices(CommandBuffer &buffer, const Vec2f *points, const size_t pointCount, const bool copyPoints, const Vec4f &color, const VerticesDrawMode drawMode, const float lineWidth);
+extern void PushSprite(CommandBuffer &buffer, const Vec2f &position, const Vec2f &ext, const TextureHandle texture, const Vec4f &color, const Vec2f &uvMin, const Vec2f &uvMax);
+extern void PushSprite(CommandBuffer &buffer, const Vec2f &position, const Vec2f &ext, const TextureHandle texture, const Vec4f &color, const UVRect &uvRect);
+extern void UploadTexture(CommandBuffer &buffer, TextureHandle *targetTexture, const void *data, const uint32_t width, const uint32_t height, const uint32_t bytesPerPixel, const TextureOperationType type, const TextureFilterType filter, const TextureWrapMode wrap, const bool isTopDown, const bool isPreMultiplied);
+extern void ReleaseTexture(CommandBuffer &buffer, TextureHandle *targetTexture);
 
 #endif // FINAL_RENDER_H
 
 #if defined(FINAL_RENDER_IMPLEMENTATION) && !defined(FINAL_RENDER_IMPLEMENTED)
 #define FINAL_RENDER_IMPLEMENTED
+
+extern void InitCommandBuffer(CommandBuffer &buffer, fmemMemoryBlock block) {
+	buffer.memory = block;
+	buffer.textureOperationCount = 0;
+}
+
+extern void ResetCommandBuffer(CommandBuffer &buffer) {
+	buffer.memory.used = 0;
+}
 
 static CommandHeader *PushHeader(CommandBuffer &buffer, const CommandType type) {
 	CommandHeader *result = (CommandHeader *)fmemPush(&buffer.memory, sizeof(CommandHeader), fmemPushFlags_None);
@@ -188,12 +222,20 @@ static T *PushTypes(CommandBuffer &buffer, CommandHeader *header, const size_t c
 	return nullptr;
 }
 
+extern void PushMatrix(CommandBuffer &buffer, const Mat4f &mat) {
+	CommandHeader *header = PushHeader(buffer, CommandType::Clear);
+	MatrixCommand *cmd = PushTypes<MatrixCommand>(buffer, header);
+	if(cmd != nullptr) {
+		cmd->mat = mat;
+	}
+}
+
 extern void PushClear(CommandBuffer &buffer, const Vec4f &color, const ClearFlags flags) {
 	CommandHeader *header = PushHeader(buffer, CommandType::Clear);
-	ClearCommand *clearCmd = PushTypes<ClearCommand>(buffer, header);
-	if(clearCmd != nullptr) {
-		clearCmd->color = color;
-		clearCmd->flags = flags;
+	ClearCommand *cmd = PushTypes<ClearCommand>(buffer, header);
+	if(cmd != nullptr) {
+		cmd->color = color;
+		cmd->flags = flags;
 	}
 }
 
@@ -205,6 +247,81 @@ extern void PushViewport(CommandBuffer &buffer, const int x, const int y, const 
 		cmd->y = y;
 		cmd->w = w;
 		cmd->h = h;
+	}
+}
+
+extern void PushRectangle(CommandBuffer &buffer, const Vec2f &bottomLeft, const Vec2f &size, const Vec4f &color, const bool isFilled, const float lineWidth) {
+	CommandHeader *header = PushHeader(buffer, CommandType::Rectangle);
+	RectangleCommand *cmd = PushTypes<RectangleCommand>(buffer, header);
+	if(cmd != nullptr) {
+		cmd->bottomLeft = bottomLeft;
+		cmd->size = size;
+		cmd->color = color;
+		cmd->isFilled = isFilled;
+		cmd->lineWidth = lineWidth;
+	}
+}
+
+extern void PushVertices(CommandBuffer &buffer, const Vec2f *points, const size_t pointCount, const bool copyPoints, const Vec4f &color, const VerticesDrawMode drawMode, const float lineWidth) {
+	CommandHeader *header = PushHeader(buffer, CommandType::Vertices);
+	VerticesCommand *cmd = PushTypes<VerticesCommand>(buffer, header);
+	if(cmd != nullptr) {
+		if(copyPoints) {
+			Vec2f *dstPoints = PushTypes<Vec2f>(buffer, header, pointCount);
+			for(size_t i = 0; i < pointCount; ++i) {
+				dstPoints[i] = points[i];
+			}
+			cmd->points = dstPoints;
+		} else {
+			cmd->points = points;
+		}
+		cmd->pointCount = pointCount;
+		cmd->color = color;
+		cmd->drawMode = drawMode;
+		cmd->lineWidth = lineWidth;
+	}
+}
+
+extern void PushSprite(CommandBuffer &buffer, const Vec2f &position, const Vec2f &ext, const TextureHandle texture, const Vec4f &color, const Vec2f &uvMin, const Vec2f &uvMax) {
+	CommandHeader *header = PushHeader(buffer, CommandType::Sprite);
+	SpriteCommand *cmd = PushTypes<SpriteCommand>(buffer, header);
+	if(cmd != nullptr) {
+		cmd->position = position;
+		cmd->ext = ext;
+		cmd->texture = texture;
+		cmd->color = color;
+		cmd->uvMin = uvMin;
+		cmd->uvMax = uvMax;
+	}
+}
+
+extern void PushSprite(CommandBuffer &buffer, const Vec2f &position, const Vec2f &ext, const TextureHandle texture, const Vec4f &color, const UVRect &uvRect) {
+	PushSprite(buffer, position, ext, texture, color, V2f(uvRect.uMin, uvRect.vMin), V2f(uvRect.uMax, uvRect.vMax));
+}
+
+extern void UploadTexture(CommandBuffer &buffer, TextureHandle *targetTexture, const void *data, const uint32_t width, const uint32_t height, const uint32_t bytesPerPixel, const TextureOperationType type, const TextureFilterType filter, const TextureWrapMode wrap, const bool isTopDown, const bool isPreMultiplied) {
+	if(buffer.textureOperationCount < FPL_ARRAYCOUNT(buffer.textureOperations)) {
+		TextureOperation *op = &buffer.textureOperations[buffer.textureOperationCount++];
+		*op = {};
+		op->data = data;
+		op->width = width;
+		op->height = height;
+		op->bytesPerPixel = bytesPerPixel;
+		op->type = TextureOperationType::Upload;
+		op->wrap = wrap;
+		op->filter = filter;
+		op->handle = targetTexture;
+		op->isPreMultiplied = isPreMultiplied;
+		op->isTopDown = isTopDown;
+	}
+}
+
+extern void ReleaseTexture(CommandBuffer &buffer, TextureHandle *targetTexture) {
+	if(buffer.textureOperationCount < FPL_ARRAYCOUNT(buffer.textureOperations)) {
+		TextureOperation *op = &buffer.textureOperations[buffer.textureOperationCount++];
+		*op = {};
+		op->handle = targetTexture;
+		op->type = TextureOperationType::Release;
 	}
 }
 

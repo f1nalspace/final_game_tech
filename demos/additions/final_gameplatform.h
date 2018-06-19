@@ -22,6 +22,7 @@ struct GameConfiguration {
 	const char *title;
 	bool hideMouseCursor;
 	bool disableInactiveDetection;
+	bool noUpdateRenderSeparation;
 };
 
 extern int GameMain(const GameConfiguration &config);
@@ -32,6 +33,9 @@ extern int GameMain(const GameConfiguration &config);
 #define FINAL_GAMEPLATFORM_IMPLEMENTED
 
 #include <final_platform_layer.h>
+
+#define FGL_IMPLEMENATTION
+#include <final_dynamic_opengl.h>
 
 #include "final_game.h"
 
@@ -207,135 +211,159 @@ static void ProcessEvents(Input *currentInput, Input *prevInput, bool &isWindowA
 	}
 }
 
+static void RenderCommandsByOpenGL() {
+
+}
+
 extern int GameMain(const GameConfiguration &config) {
 	fplSettings settings = fplMakeDefaultSettings();
 	settings.video.driver = fplVideoDriverType_OpenGL;
 	settings.video.graphics.opengl.compabilityFlags = fplOpenGLCompabilityFlags_Legacy;
 	settings.video.isVSync = true;
 	fplCopyAnsiString(config.title, settings.window.windowTitle, FPL_ARRAYCOUNT(settings.window.windowTitle));
-	int result = 0;
-	if(fplPlatformInit(fplInitFlags_All, &settings)) {
-		GameMemory gameMem = GameCreate();
-		if(gameMem.base != nullptr) {
-			const double TargetDeltaTime = 1.0 / 60.0;
 
-			if(config.hideMouseCursor) {
-				fplSetWindowCursorEnabled(false);
+	if(!fplPlatformInit(fplInitFlags_All, &settings)) {
+		return -1;
+	}
+
+	bool wasError = false;
+
+	GameMemory gameMem = GameCreate();
+	fmemMemoryBlock renderCommandMemory = {};
+	CommandBuffer renderCommands = {};
+	if(gameMem.base == nullptr) {
+		wasError = true;
+	}
+
+	if(!fmemInit(&renderCommandMemory, fmemType_Growable, FMEM_MEGABYTES(32))) {
+		wasError = true;
+	}
+
+	if(!wasError) {
+		const double TargetDeltaTime = 1.0 / 60.0;
+
+		if(config.hideMouseCursor) {
+			fplSetWindowCursorEnabled(false);
+		}
+
+		Input inputs[2] = {};
+		Input *curInput = &inputs[0];
+		Input *prevInput = &inputs[1];
+		Vec2i lastMousePos = V2i(-1, -1);
+		bool isWindowActive = true;
+		curInput->defaultControllerIndex = -1;
+
+		uint32_t frameCount = 0;
+		uint32_t updateCount = 0;
+		double lastTime = fplGetTimeInSecondsHP();
+		double fpsTimerInSecs = fplGetTimeInSecondsHP();
+		double frameAccumulator = TargetDeltaTime;
+
+		InitCommandBuffer(renderCommands, renderCommandMemory);
+		while(!IsGameExiting(gameMem) && fplWindowUpdate()) {
+			// Window size
+			fplWindowSize winArea;
+			if(fplGetWindowArea(&winArea)) {
+				curInput->windowSize.x = winArea.width;
+				curInput->windowSize.y = winArea.height;
 			}
 
-			Input inputs[2] = {};
-			Input *curInput = &inputs[0];
-			Input *prevInput = &inputs[1];
-			Vec2i lastMousePos = V2i(-1, -1);
-			bool isWindowActive = true;
-			curInput->defaultControllerIndex = -1;
+			// Remember previous keyboard and mouse state
+			Controller *currentKeyboardController = &curInput->keyboard;
+			Controller *prevKeyboardController = &prevInput->keyboard;
+			Mouse *currentMouse = &curInput->mouse;
+			Mouse *prevMouse = &prevInput->mouse;
+			*currentKeyboardController = {};
+			*currentMouse = {};
+			currentKeyboardController->isConnected = prevKeyboardController->isConnected;
+			for(uint32_t buttonIndex = 0; buttonIndex < FPL_ARRAYCOUNT(currentKeyboardController->buttons); ++buttonIndex) {
+				currentKeyboardController->buttons[buttonIndex].isDown = prevKeyboardController->buttons[buttonIndex].isDown;
+			}
+			for(uint32_t buttonIndex = 0; buttonIndex < FPL_ARRAYCOUNT(currentMouse->buttons); ++buttonIndex) {
+				currentMouse->buttons[buttonIndex] = prevMouse->buttons[buttonIndex];
+				currentMouse->buttons[buttonIndex].halfTransitionCount = 0;
+			}
+			currentMouse->pos = lastMousePos;
 
-			uint32_t frameCount = 0;
-			uint32_t updateCount = 0;
-			double lastTime = fplGetTimeInSecondsHP();
-			double fpsTimerInSecs = fplGetTimeInSecondsHP();
-			double frameAccumulator = TargetDeltaTime;
+			// Remember previous gamepad connected states
+			for(uint32_t controllerIndex = 1; controllerIndex < FPL_ARRAYCOUNT(curInput->controllers); ++controllerIndex) {
+				Controller *currentGamepadController = &curInput->controllers[controllerIndex];
+				Controller *prevGamepadController = &prevInput->controllers[controllerIndex];
+				currentGamepadController->isConnected = prevGamepadController->isConnected;
+				currentGamepadController->isAnalog = prevGamepadController->isAnalog;
+			}
 
-			while(!IsGameExiting(gameMem) && fplWindowUpdate()) {
-				// Window size
-				fplWindowSize winArea;
-				if(fplGetWindowArea(&winArea)) {
-					curInput->windowSize.x = winArea.width;
-					curInput->windowSize.y = winArea.height;
-				}
+			// Events
+			ProcessEvents(curInput, prevInput, isWindowActive, lastMousePos);
+			curInput->isActive = config.disableInactiveDetection ? true : isWindowActive;
+			curInput->deltaTime = (float)TargetDeltaTime;
 
-				// Remember previous keyboard and mouse state
-				Controller *currentKeyboardController = &curInput->keyboard;
-				Controller *prevKeyboardController = &prevInput->keyboard;
-				Mouse *currentMouse = &curInput->mouse;
-				Mouse *prevMouse = &prevInput->mouse;
-				*currentKeyboardController = {};
-				*currentMouse = {};
-				currentKeyboardController->isConnected = prevKeyboardController->isConnected;
-				for(uint32_t buttonIndex = 0; buttonIndex < FPL_ARRAYCOUNT(currentKeyboardController->buttons); ++buttonIndex) {
-					currentKeyboardController->buttons[buttonIndex].isDown = prevKeyboardController->buttons[buttonIndex].isDown;
-				}
-				for(uint32_t buttonIndex = 0; buttonIndex < FPL_ARRAYCOUNT(currentMouse->buttons); ++buttonIndex) {
-					currentMouse->buttons[buttonIndex] = prevMouse->buttons[buttonIndex];
-					currentMouse->buttons[buttonIndex].halfTransitionCount = 0;
-				}
-				currentMouse->pos = lastMousePos;
-
-				// Remember previous gamepad connected states
-				for(uint32_t controllerIndex = 1; controllerIndex < FPL_ARRAYCOUNT(curInput->controllers); ++controllerIndex) {
-					Controller *currentGamepadController = &curInput->controllers[controllerIndex];
-					Controller *prevGamepadController = &prevInput->controllers[controllerIndex];
-					currentGamepadController->isConnected = prevGamepadController->isConnected;
-					currentGamepadController->isAnalog = prevGamepadController->isAnalog;
-				}
-
-				// Set time states
-				curInput->deltaTime = (float)TargetDeltaTime;
-
-				// Events
-				ProcessEvents(curInput, prevInput, isWindowActive, lastMousePos);
-
-				// Game Update
-				bool gameActive = config.disableInactiveDetection ? true : isWindowActive;
-				GameInput(gameMem, *curInput, gameActive);
+			// Game Update
+			if(config.noUpdateRenderSeparation) {
+				// @TODO(final): Compute interpolation alpha
+				float alpha = 1.0f;
+				GameUpdateAndRender(gameMem, *curInput, renderCommands, alpha);
+			} else {
+				GameInput(gameMem, *curInput);
 #if 1
 				while(frameAccumulator >= TargetDeltaTime) {
-					GameUpdate(gameMem, *curInput, gameActive);
+					GameUpdate(gameMem, *curInput);
 					frameAccumulator -= TargetDeltaTime;
 					++updateCount;
 				}
 #else
-				GameUpdate(gameMem, *curInput, isWindowActive);
+				GameUpdate(gameMem, *curInput);
 				++updateCount;
 #endif
+				}
 
 				// @TODO(final): Yield thread when we are running too fast
-				{
-					double endWorkTime = fplGetTimeInSecondsHP();
-					double workDuration = endWorkTime - lastTime;
-				}
+			double endWorkTime = fplGetTimeInSecondsHP();
+			double workDuration = endWorkTime - lastTime;
 
-				// Render
+			// Render
+			if(!config.noUpdateRenderSeparation) {
 				float alpha = (float)frameAccumulator / (float)TargetDeltaTime;
-				GameRender(gameMem, alpha, curInput->deltaTime);
-				fplVideoFlip();
-				++frameCount;
+				GameRender(gameMem, renderCommands, alpha, curInput->deltaTime);
+			}
+			fplVideoFlip();
+			++frameCount;
 
-				// Timing
-				double endTime = fplGetTimeInSecondsHP();
-				double frameDuration = endTime - lastTime;
-				frameAccumulator += frameDuration;
-				frameAccumulator = FPL_MIN(0.1, frameAccumulator);
-				lastTime = endTime;
-				if(endTime >= (fpsTimerInSecs + 1.0)) {
-					fpsTimerInSecs = endTime;
-					char charBuffer[256];
-					fplFormatAnsiString(charBuffer, FPL_ARRAYCOUNT(charBuffer), "Fps: %d, Ups: %d\n", frameCount, updateCount);
-					//OutputDebugStringA(charBuffer);
-					frameCount = 0;
-					updateCount = 0;
-				}
-
-				// Swap input
-				{
-					Input *tmp = curInput;
-					curInput = prevInput;
-					prevInput = tmp;
-				}
+			// Timing
+			double endTime = fplGetTimeInSecondsHP();
+			double frameDuration = endTime - lastTime;
+			frameAccumulator += frameDuration;
+			frameAccumulator = FPL_MIN(0.1, frameAccumulator);
+			lastTime = endTime;
+			if(endTime >= (fpsTimerInSecs + 1.0)) {
+				fpsTimerInSecs = endTime;
+#if 0
+				char charBuffer[256];
+				fplFormatAnsiString(charBuffer, FPL_ARRAYCOUNT(charBuffer), "Fps: %d, Ups: %d\n", frameCount, updateCount);
+				OutputDebugStringA(charBuffer);
+#endif
+				frameCount = 0;
+				updateCount = 0;
 			}
 
-			if(config.hideMouseCursor) {
-				fplSetWindowCursorEnabled(true);
+			// Swap input
+			{
+				Input *tmp = curInput;
+				curInput = prevInput;
+				prevInput = tmp;
 			}
-
-			GameDestroy(gameMem);
-		} else {
-			result = -1;
 		}
-		fplPlatformRelease();
-	} else {
-		result = -1;
+
+		if(config.hideMouseCursor) {
+			fplSetWindowCursorEnabled(true);
+		}
+
+		GameDestroy(gameMem);
 	}
+
+	fplPlatformRelease();
+
+	int result = wasError ? -1 : 0;
 	return (result);
 }
 

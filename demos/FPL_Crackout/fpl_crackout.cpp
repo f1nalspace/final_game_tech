@@ -995,8 +995,8 @@ extern bool IsGameExiting(GameMemory &gameMemory) {
 	return state->isExiting;
 }
 
-extern void GameInput(GameMemory &gameMemory, const Input &input, bool isActive) {
-	if(!isActive) {
+extern void GameInput(GameMemory &gameMemory, const Input &input) {
+	if(!input.isActive) {
 		return;
 	}
 
@@ -1141,8 +1141,8 @@ static void UpdatePlayMode(GameState &state, const Input &input) {
 	state.world->ClearForces();
 }
 
-extern void GameUpdate(GameMemory &gameMemory, const Input &input, bool isActive) {
-	if(!isActive) {
+extern void GameUpdate(GameMemory &gameMemory, const Input &input) {
+	if(!input.isActive) {
 		return;
 	}
 
@@ -1424,7 +1424,7 @@ static void DrawTitleMenuMode(GameState &state) {
 	}
 }
 
-extern void GameRender(GameMemory &gameMemory, const float alpha, const float deltaTime) {
+extern void GameRender(GameMemory &gameMemory, CommandBuffer &renderCommands, const float alpha, const float deltaTime) {
 	GameState *state = (GameState *)gameMemory.base;
 
 	const float w = WorldRadius.x;
@@ -1448,6 +1448,9 @@ extern void GameRender(GameMemory &gameMemory, const float alpha, const float de
 	}
 }
 
+extern void GameUpdateAndRender(GameMemory &gameMemory, const Input &input, CommandBuffer &renderCommands, const float alpha) {
+}
+
 #define FINAL_GAMEPLATFORM_IMPLEMENTATION
 #include <final_gameplatform.h>
 
@@ -1455,6 +1458,7 @@ int main(int argc, char *argv[]) {
 	GameConfiguration config = {};
 	config.title = "FPL Demo | Crackout";
 	config.hideMouseCursor = true;
+	config.noUpdateRenderSeparation = false;
 	int result = GameMain(config);
 	return(result);
 }

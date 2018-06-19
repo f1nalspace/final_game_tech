@@ -19,6 +19,7 @@ License:
 #endif
 
 #include "final_math.h"
+#include "final_render.h"
 
 struct ButtonState {
 	bool isDown;
@@ -73,9 +74,10 @@ struct Input {
 		};
 		Controller controllers[5];
 	};
-	int defaultControllerIndex;
 	Mouse mouse;
 	Vec2i windowSize;
+	int defaultControllerIndex;
+	bool isActive;
 };
 
 struct GameMemory {
@@ -86,9 +88,10 @@ struct GameMemory {
 
 extern GameMemory GameCreate();
 extern void GameDestroy(GameMemory &gameMemory);
-extern void GameInput(GameMemory &gameMemory, const Input &input, bool isActive);
-extern void GameUpdate(GameMemory &gameMemory, const Input &input, bool isActive);
-extern void GameRender(GameMemory &gameMemory, const float alpha, const float deltaTime);
+extern void GameInput(GameMemory &gameMemory, const Input &input);
+extern void GameUpdate(GameMemory &gameMemory, const Input &input);
+extern void GameRender(GameMemory &gameMemory, CommandBuffer &renderCommands, const float alpha, const float deltaTime);
+extern void GameUpdateAndRender(GameMemory &gameMemory, const Input &input, CommandBuffer &renderCommands, const float alpha);
 extern bool IsGameExiting(GameMemory &gameMemory);
 
 #endif // FINAL_GAME_H
