@@ -134,8 +134,8 @@ SOFTWARE.
 	- Changed: Signature of fplDynamicLibraryLoad changed (Returns bool + Target handle parameter)
 	- Fixed: Corrected code documentation for all categories
 	- Fixed: FPL_ENUM_AS_FLAGS_OPERATORS had invalid signature for operator overloadings and missed some operators
-	- New: Added fplKey´s for OEM keys (Plus, Comma, Minus, Period)
-	- New: Added fplKey´s for Media & Audio keys
+	- New: Added fplKeyï¿½s for OEM keys (Plus, Comma, Minus, Period)
+	- New: Added fplKeyï¿½s for Media & Audio keys
 	- New: Added fplWindowEventType_Maximized / fplWindowEventType_Minimized / fplWindowEventType_Restored
 	- New: Added documentation category: Assertions & Debug
 	- New: Added documentation category: Storage class identifiers
@@ -15453,6 +15453,11 @@ fpl_common_api fplPlatformType fplGetPlatformType() {
 #if defined(FPL_COMPILER_MSVC)
 	//! Don't spill our preferences to the outside
 #	pragma warning( pop )
+#endif
+
+// Undef None from X11
+#ifdef None
+#undef None
 #endif
 
 #endif // FPL_IMPLEMENTATION && !FPL_IMPLEMENTED
