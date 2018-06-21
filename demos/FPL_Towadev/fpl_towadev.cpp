@@ -83,7 +83,7 @@ Changelog:
 
 #include <string.h>
 #include <stdlib.h>
-#include <varargs.h>
+#include <stdarg.h>
 
 #define FGL_IMPLEMENTATION
 #include <final_dynamic_opengl.h>
@@ -153,7 +153,7 @@ static const CreepData CreepDefinitions[] = {
 
 static const WaveData WaveDefinitions[] = {
 	MakeWaveData(
-		/* level: */ "Level1",
+		/* level: */ "level1",
 		/* startupCooldown: */ 3.0f,
 		/* completionBounty: */ 20,
 		/* spawners: */
@@ -254,7 +254,7 @@ namespace ui {
 		return(result);
 	}
 
-	static bool UIButton(UIContext &ctx, const UIID id, const Vec2f &pos, const Vec2f &radius) {
+	static bool UIButton(UIContext &ctx, const UIID &id, const Vec2f &pos, const Vec2f &radius) {
 		bool result = false;
 		if(ctx.active == id) {
 			if(WasPressed(ctx.input.leftButton)) {

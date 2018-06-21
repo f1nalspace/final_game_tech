@@ -36,7 +36,7 @@ constexpr float GridOriginY = -WorldRadiusH + ControlsHeight;
 const Vec4f TextBackColor = V4f(0.2f, 0.2f, 0.8f, 1);
 const Vec4f TextForeColor = V4f(1, 1, 1, 1);
 
-typedef void *UIID;
+typedef const void *UIID;
 
 struct UIInput {
 	Vec2f userPosition;
