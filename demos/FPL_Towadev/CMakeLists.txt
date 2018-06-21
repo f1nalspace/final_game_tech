@@ -15,7 +15,7 @@ set(MY_EXTERNAL_LIBS "")
 
 set(MY_INCLUDE_DIRS ../dependencies/ ../additions/)
 
-set(MY_HEADER_FILES ../../final_platform_layer.h ../additions/final_game.h ../additions/final_gameplatform.h)
+set(MY_HEADER_FILES ../../final_platform_layer.h)
 
 set(MY_SOURCE_FILES fpl_towadev.cpp)
 

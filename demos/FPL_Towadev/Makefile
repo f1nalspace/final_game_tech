@@ -28,6 +28,7 @@ prepare:
 
 build:
 	g++ -std=c++11 $(CFLAGS) $(INCLUDES) $(SOURCE_FILES) $(LIBS) -o $(BUILD_DIR)/$(EXECUTABLE)
+	cp -R data $(BUILD_DIR)
 
 clean:
 	rm -rf $(BUILD_DIR)
