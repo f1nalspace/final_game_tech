@@ -415,6 +415,14 @@ fmem_api uint8_t *fmemPush(fmemMemoryBlock *block, const size_t size, const fmem
 		searchBlock = header->next;
 	}
 
+	// Stupid compiler, i dont care about crosses initialization for labels
+	fmemMemoryBlock *newBlock;
+	fmemMemoryBlock *tailBlock;
+	fmemBlockHeader *newHeader;
+	fmemBlockHeader *tailHeader;
+	size_t blockSize;
+
+
 	// @NOTE(final): Do not initialize, because i want all code paths below to set a result
 	uint8_t *result;
 
@@ -430,7 +438,7 @@ fmem_api uint8_t *fmemPush(fmemMemoryBlock *block, const size_t size, const fmem
 	}
 
 	// Find tail block to append on
-	fmemMemoryBlock *tailBlock = fmem_null;
+	tailBlock = fmem_null;
 	if(block->base != fmem_null) {
 		tailBlock = block;
 		while(tailBlock != fmem_null) {
@@ -443,8 +451,8 @@ fmem_api uint8_t *fmemPush(fmemMemoryBlock *block, const size_t size, const fmem
 	}
 
 	// Allocate new block
-	size_t blockSize = fmem__ComputeBlockSize(size);
-	fmemBlockHeader *newHeader = fmem__AllocateBlock(blockSize, 0);
+	blockSize = fmem__ComputeBlockSize(size);
+	newHeader = fmem__AllocateBlock(blockSize, 0);
 	if(newHeader == fmem_null) {
 		result = fmem_null;
 		goto done;
@@ -461,7 +469,7 @@ fmem_api uint8_t *fmemPush(fmemMemoryBlock *block, const size_t size, const fmem
 	}
 
 	// Setup next block
-	fmemMemoryBlock *newBlock = FMEM__GETBLOCK(newHeader);
+	newBlock = FMEM__GETBLOCK(newHeader);
 	newBlock->base = (uint8_t *)newHeader + FMEM__OFFSET_TO_DATA;
 	newBlock->size = blockSize - FMEM__OFFSET_TO_DATA;
 	newBlock->type = tailBlock->type;
@@ -470,7 +478,7 @@ fmem_api uint8_t *fmemPush(fmemMemoryBlock *block, const size_t size, const fmem
 
 	// Append next block to tail
 	newHeader->prev = tailBlock;
-	fmemBlockHeader *tailHeader = FMEM__GETHEADER(tailBlock);
+	tailHeader = FMEM__GETHEADER(tailBlock);
 	tailHeader->next = newBlock;
 
 	result = (uint8_t *)newBlock->base;
