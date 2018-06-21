@@ -130,14 +130,26 @@ SOFTWARE.
 	\tableofcontents
 
 	## v0.8.2.0 beta:
+	- Changed: Ensures const correctness on all functions
+	- Changed: Signature of fplDynamicLibraryLoad changed (Returns bool + Target handle parameter)
+	- Fixed: Corrected code documentation for all categories
+	- Fixed: FPL_ENUM_AS_FLAGS_OPERATORS had invalid signature for operator overloadings and missed some operators
 	- New: Added fplKey´s for OEM keys (Plus, Comma, Minus, Period)
 	- New: Added fplKey´s for Media & Audio keys
-	- Fixed: FPL_ENUM_AS_FLAGS_OPERATORS had invalid signature for operator overloadings and missed some operators
+	- New: Added fplWindowEventType_Maximized / fplWindowEventType_Minimized / fplWindowEventType_Restored
+	- New: Added documentation category: Assertions & Debug
+	- New: Added documentation category: Storage class identifiers
+	- New: Added documentation category: Constants
+	- New: Added documentation category: Function macros
 
+	- Changed: [Win32] Correct fplDynamicLibraryLoad to match signature change
 	- New: [Win32] OEM keys mapping
 	- New: [Win32] Media & Audio key mapping
+	- New: [Win32] Handle window maximized/minimized and restored events
 
 	- New: [X11] OEM keys mapping
+
+	- Changed: [POSIX] Correct fplDynamicLibraryLoad to match signature change
 
 	## v0.8.1.0 beta:
 	- Changed: Locked error states to multiple and removed FPL_NO_MULTIPLE_ERRORSTATES
@@ -146,7 +158,7 @@ SOFTWARE.
 	- Changed: Renamed fplGetPlatformErrorFromIndex() to fplGetErrorByIndex()
 	- Changed: Renamed fplGetPlatformError() to fplGetLastError()
 	- Changed: Refactored logging system
-    - Changed: Updated comments
+	- Changed: Updated comments
 	- Fixed: fplAnsiString<->WideString conversion enforces ANSI locale (Non Win32)
 	- New: Added enum fplLogLevel
 	- New: Added enum fplLogWriterFlags
@@ -783,21 +795,21 @@ SOFTWARE.
 
 	\section section_todo_inprogress In progress
 
-	- Correct all function documentations!
-
 	- Input
 		- Gamepad support (Linux)
 
-	- Window (X11)
+	- Window
 		- Toggle Resizable (X11)
 		- Toggle Decorated (X11)
 		- Toggle Floating (X11)
 		- Show/Hide Cursor (X11)
-
-	\section section_todo_planned Planned
+		- Minimize/Maximize (X11)
+		- Minimize/Maximize (Win32)
 
 	- App:
 		- Custom icon from image (File/Memory)
+
+	\section section_todo_planned Planned
 
 	- DLL-Export support
 
@@ -816,31 +828,28 @@ SOFTWARE.
 		- Support for channel mapping
 
 	- Documentation
-		- Audio details
-		- Window details
+		- Window
+		- Debug & Logging
 		- Memory
 		- Atomics
-		- Threading (Semaphores, Syncronisation)
+		- Threading (Syncronisation)
 		- File-IO
 		- Paths
 		- Strings
 		- Hardware
 
-	- Video:
-		- [Win32] Direct3D
-		- [Win32] Vulkan
-		- [POSIX] Vulkan
-
 	- Threading
 		- Signals (POSIX, Non-Linux)
-
-	- Window:
-		- Minimize/Maximize
 
 	\section section_todo_optional Optional
 
 	- Window:
 		- Custom cursor from image (File/Memory)
+
+	- Video:
+		- [Win32] Direct3D
+		- [Win32] Vulkan
+		- [POSIX] Vulkan
 */
 
 // ****************************************************************************
@@ -968,8 +977,15 @@ SOFTWARE.
 #endif
 
 //
-// Static/Inline/Extern/Internal
+// Storage class identifiers
 //
+
+/**
+  * \defgroup StorageClassIdents Storage class identifiers
+  * \brief This category contains storage class identifiers, such as static, extern, inline, etc.
+  * \{
+  */
+
 //! Global persistent variable
 #define fpl_globalvar static
 //! Local persistent variable
@@ -980,22 +996,20 @@ SOFTWARE.
 #define fpl_inline inline
 //! Internal inlined function
 #define fpl_internal_inline inline
-//! Null
-#define fpl_null NULL
 
 #if defined(FPL_IS_CPP)
-	//! No additional extern definition required for C++
+	//! External call
 #   define fpl_extern
 #else
-	//! Require extern definition on C99
+	//! External call
 #   define fpl_extern extern
 #endif
 
 #if defined(FPL_API_AS_PRIVATE)
-	//! Private api call
+	//! Api call
 #	define fpl_api static
 #else
-	//! Public api call
+	//! Api call
 #	define fpl_api fpl_extern
 #endif // FPL_API_AS_PRIVATE
 
@@ -1005,6 +1019,22 @@ SOFTWARE.
 #define fpl_common_api fpl_api
 //! Main entry point api definition
 #define fpl_main
+
+//
+// Force inline
+//
+#if defined(FPL_COMPILER_GCC) && (__GNUC__ >= 4)
+	//! Force inline
+#	define fpl_force_inline __attribute__((__always_inline__)) inline
+#elif defined(FPL_COMPILER_MSVC) && (_MSC_VER >= 1200)
+	//! Force inline
+#	define fpl_force_inline __forceinline
+#else
+	//! Force inline
+#	define fpl_force_inline inline
+#endif
+
+/** \}*/
 
 //
 // When C-Runtime is disabled we cannot use any function from the C-Standard Library <stdio.h> or <stdlib.h>
@@ -1103,67 +1133,6 @@ SOFTWARE.
 #endif // FPL_COMPILER
 
 //
-// Force inline
-//
-#if defined(FPL_COMPILER_GCC) && (__GNUC__ >= 4)
-	//! Force inline (GCC)
-#	define fpl_force_inline __attribute__((__always_inline__)) inline
-#elif defined(FPL_COMPILER_MSVC) && (_MSC_VER >= 1200)
-	//! Force inline (MSVC)
-#	define fpl_force_inline __forceinline
-#else
-	//! Force inline
-#	define fpl_force_inline inline
-#endif
-
-//
-// Debug-Break
-// Based on: https://stackoverflow.com/questions/173618/is-there-a-portable-equivalent-to-debugbreak-debugbreak
-//
-#if defined(__has_builtin)
-#	if __has_builtin(__builtin_debugtrap)
-		//! Stop on a line in the debugger (Trap)
-#		define fplDebugBreak() __builtin_debugtrap()
-#	elif __has_builtin(__debugbreak)
-		//! Stop on a line in the debugger (Break)
-#		define fplDebugBreak() __debugbreak()
-#	endif
-#endif
-#if !defined(fplDebugBreak)
-#	if defined(FPL_COMPILER_MSVC) || defined(FPL_COMPILER_INTEL)
-		//! Triggers a breakout in the debugger (MSVC/Intel)
-#		define fplDebugBreak() __debugbreak()
-#	elif defined(FPL_COMPILER_ARM)
-		//! Triggers a breakout in the debugger (Arm)
-#		define fplDebugBreak() __breakpoint(42)
-#	elif defined(FPL_ARCH_X86) || defined(FPL_ARCH_X64)
-		//! Triggers a breakout in the debugger (X86/64)
-static fpl_force_inline void fplDebugBreak() { __asm__ __volatile__("int $03"); }
-#	elif defined(__thumb__)
-		//! Triggers a breakout in the debugger (ARM Thumb mode)
-static fpl_force_inline void fplDebugBreak() { __asm__ __volatile__(".inst 0xde01"); }
-#	elif defined(FPL_ARCH_ARM64)
-		//! Triggers a breakout in the debugger (ARM64)
-static fpl_force_inline void fplDebugBreak() { __asm__ __volatile__(".inst 0xd4200000"); }
-#	elif defined(FPL_ARCH_ARM32)
-		//! Triggers a breakout in the debugger (ARM32)
-static fpl_force_inline void fplDebugBreak() { __asm__ __volatile__(".inst 0xe7f001f0"); }
-#	elif defined(FPL_COMPILER_GCC)
-		//! Triggers a breakout in the debugger (GCC)
-#       define fplDebugBreak() __builtin_trap()
-#	else
-#		include	<signal.h>
-#		if defined(SIGTRAP)
-			//! Triggers a breakout in the debugger (Sigtrap)
-#			define fplDebugBreak() raise(SIGTRAP)
-#		else
-			//! Triggers a breakout in the debugger (Sigabort)
-#			define fplDebugBreak() raise(SIGABRT)
-#		endif
-#	endif
-#endif
-
-//
 // Options & Feature detection
 //
 
@@ -1248,6 +1217,7 @@ static fpl_force_inline void fplDebugBreak() { __asm__ __volatile__(".inst 0xe7f
 	//! Enable Window
 #	define FPL_ENABLE_WINDOW
 #endif
+
 #if defined(FPL_SUPPORT_VIDEO)
 	//! Enable Video
 #	define FPL_ENABLE_VIDEO
@@ -1260,6 +1230,7 @@ static fpl_force_inline void fplDebugBreak() { __asm__ __volatile__(".inst 0xe7f
 #		define FPL_ENABLE_VIDEO_SOFTWARE
 #	endif
 #endif // FPL_SUPPORT_VIDEO
+
 #if defined(FPL_SUPPORT_AUDIO)
 	//! Enable Audio
 #	define FPL_ENABLE_AUDIO
@@ -1273,9 +1244,25 @@ static fpl_force_inline void fplDebugBreak() { __asm__ __volatile__(".inst 0xe7f
 #	endif
 #endif // FPL_SUPPORT_AUDIO
 
+#if defined(FPL_LOGGING)
+	//! Enable logging
+#   define FPL_ENABLE_LOGGING
+#	if defined(FPL_LOG_MULTIPLE_WRITERS)
+		//! Enable multiple writers
+#		define FPL_ENABLE_LOG_MULTIPLE_WRITERS
+#	endif
+#endif
+
 //
-// Assertions
+// Assertions & Debug
 //
+
+/**
+  * \defgroup Debug Assertion & Debug
+  * \brief This category contains assertion & debug macro functions
+  * \{
+  */
+
 #if defined(FPL_ENABLE_ASSERTIONS)
 #	if defined(FPL_ENABLE_C_ASSERT) && !defined(FPL_FORCE_ASSERTIONS)
 #		include <assert.h>
@@ -1299,20 +1286,54 @@ static fpl_force_inline void fplDebugBreak() { __asm__ __volatile__(".inst 0xe7f
 #	define FPL_STATICASSERT(exp)
 #endif // FPL_ENABLE_ASSERTIONS
 
-//! This will full-on crash when something is not implemented always.
-#define FPL_NOT_IMPLEMENTED {*(int *)0 = 0xBAD;}
-
 //
-// Logging
+// Debug-Break
+// Based on: https://stackoverflow.com/questions/173618/is-there-a-portable-equivalent-to-debugbreak-debugbreak
 //
-#if defined(FPL_LOGGING)
-	//! Enable logging
-#   define FPL_ENABLE_LOGGING
-#	if defined(FPL_LOG_MULTIPLE_WRITERS)
-		//! Enable multiple writers
-#		define FPL_ENABLE_LOG_MULTIPLE_WRITERS
+#if defined(__has_builtin)
+#	if __has_builtin(__builtin_debugtrap)
+		//! Stop on a line in the debugger (Trap)
+#		define fplDebugBreak() __builtin_debugtrap()
+#	elif __has_builtin(__debugbreak)
+		//! Stop on a line in the debugger (Break)
+#		define fplDebugBreak() __debugbreak()
 #	endif
 #endif
+#if !defined(fplDebugBreak)
+#	if defined(FPL_COMPILER_MSVC) || defined(FPL_COMPILER_INTEL)
+		//! Triggers a breakout in the debugger (MSVC/Intel)
+#		define fplDebugBreak() __debugbreak()
+#	elif defined(FPL_COMPILER_ARM)
+		//! Triggers a breakout in the debugger (Arm)
+#		define fplDebugBreak() __breakpoint(42)
+#	elif defined(FPL_ARCH_X86) || defined(FPL_ARCH_X64)
+		//! Triggers a breakout in the debugger (X86/64)
+static fpl_force_inline void fplDebugBreak() { __asm__ __volatile__("int $03"); }
+#	elif defined(__thumb__)
+		//! Triggers a breakout in the debugger (ARM Thumb mode)
+static fpl_force_inline void fplDebugBreak() { __asm__ __volatile__(".inst 0xde01"); }
+#	elif defined(FPL_ARCH_ARM64)
+		//! Triggers a breakout in the debugger (ARM64)
+static fpl_force_inline void fplDebugBreak() { __asm__ __volatile__(".inst 0xd4200000"); }
+#	elif defined(FPL_ARCH_ARM32)
+		//! Triggers a breakout in the debugger (ARM32)
+static fpl_force_inline void fplDebugBreak() { __asm__ __volatile__(".inst 0xe7f001f0"); }
+#	elif defined(FPL_COMPILER_GCC)
+		//! Triggers a breakout in the debugger (GCC)
+#       define fplDebugBreak() __builtin_trap()
+#	else
+#		include	<signal.h>
+#		if defined(SIGTRAP)
+			//! Triggers a breakout in the debugger (Sigtrap)
+#			define fplDebugBreak() raise(SIGTRAP)
+#		else
+			//! Triggers a breakout in the debugger (Sigabort)
+#			define fplDebugBreak() raise(SIGABRT)
+#		endif
+#	endif
+#endif
+
+/** \}*/
 
 //
 // Types & Limits
@@ -1326,6 +1347,16 @@ static fpl_force_inline void fplDebugBreak() { __asm__ __volatile__(".inst 0xe7f
 //
 // Macro functions
 //
+
+/**
+  * \defgroup Macros Function macros
+  * \brief This category contains several useful macro functions
+  * \{
+  */
+
+//! This will full-on crash when something is not implemented always.
+#define FPL_NOT_IMPLEMENTED {*(int *)0 = 0xBAD;}
+
 #if defined(FPL_IS_C99)
 	//! Initialize a struct to zero (C99)
 #	define FPL_ZERO_INIT {0}
@@ -1349,15 +1380,15 @@ static fpl_force_inline void fplDebugBreak() { __asm__ __volatile__(".inst 0xe7f
 
 //! Returns the offset for the value to satisfy the given alignment boundary
 #define FPL_ALIGNMENT_OFFSET(value, alignment) ( (((alignment) > 1) && (((value) & ((alignment) - 1)) != 0)) ? ((alignment) - ((value) & (alignment - 1))) : 0)           
-//! Returns the given size extended o to satisfy the given alignment boundary
+//! Returns the given size extended to satisfy the given alignment boundary
 #define FPL_ALIGNED_SIZE(size, alignment) (((size) > 0 && (alignment) > 0) ? ((size) + FPL_ALIGNMENT_OFFSET(size, alignment)) : (size))
 //! Returns true when the given pointer address is aligned to the given alignment
 #define FPL_IS_ALIGNED(ptr, alignment) (((uintptr_t)(const void *)(ptr)) % (alignment) == 0)
 
 //! Returns the smallest value
-#define FPL_MIN(a, b) ((a) < (b)) ? (a) : (b)
+#define FPL_MIN(a, b) ((a) < (b) ? (a) : (b))
 //! Returns the biggest value
-#define FPL_MAX(a, b) ((a) > (b)) ? (a) : (b)
+#define FPL_MAX(a, b) ((a) > (b) ? (a) : (b))
 
 //! Returns the number of bytes for the given kilobytes
 #define FPL_KILOBYTES(value) (((value) * 1024ull))
@@ -1377,6 +1408,8 @@ static fpl_force_inline void fplDebugBreak() { __asm__ __volatile__(".inst 0xe7f
 #	include <alloca.h>
 #	define FPL_STACKALLOCATE(size) alloca(size)
 #endif
+
+/** \}*/
 
 #if defined(FPL_IS_CPP)
 	//! Macro for overloading enum operators in C++
@@ -1441,11 +1474,21 @@ static fpl_force_inline void fplDebugBreak() { __asm__ __volatile__(".inst 0xe7f
 //
 // Constants
 //
+
+/**
+  * \defgroup Constants Constants
+  * \brief This category contains constants
+  * \{
+  */
+
+//! Null
+#define fpl_null NULL
+
 #if defined(FPL_PLATFORM_WIN32)
 	//! Maximum length of a filename (Win32)
 #	define FPL_MAX_FILENAME_LENGTH (MAX_PATH + 1)
 	//! Maximum length of a path (Win32)
-#	define FPL_MAX_PATH_LENGTH (MAX_PATH + MAX_PATH + 1)
+#	define FPL_MAX_PATH_LENGTH (MAX_PATH * 2 + 1)
 	//! Path separator character (Win32)
 #	define FPL_PATH_SEPARATOR '\\'
 	//! File extension character (Win32)
@@ -1461,6 +1504,8 @@ static fpl_force_inline void fplDebugBreak() { __asm__ __volatile__(".inst 0xe7f
 #	define FPL_FILE_EXT_SEPARATOR '.'
 #endif
 
+/** \}*/
+
 // ****************************************************************************
 // ****************************************************************************
 //
@@ -1471,274 +1516,273 @@ static fpl_force_inline void fplDebugBreak() { __asm__ __volatile__(".inst 0xe7f
 
 // ----------------------------------------------------------------------------
 /**
-  * \defgroup Atomics Atomic functions
-  * \brief Atomic functions such as Compare And Exchange, Fences, Loads, Stores, etc.
+  * \defgroup Atomics Atomic operations
+  * \brief This category contains functions for handling atomic operations, such as Add, Compare And/Or Exchange, Fences, Loads/Stores, etc.
   * \{
   */
 // ----------------------------------------------------------------------------
 
 /**
-  * \brief Insert a memory read fence/barrier.
-  *
-  * This will complete previous reads before future reads and prevents the compiler from reordering memory reads across this fence.
+  * \brief Inserts a memory read fence/barrier.
+  * \note This will complete previous reads before future reads and prevents the compiler from reordering memory reads across this fence.
   */
 fpl_platform_api void fplAtomicReadFence();
 /**
-  * \brief Insert a memory write fence/barrier.
-  * This will complete previous writes before future writes and prevents the compiler from reordering memory writes across this fence.
+  * \brief Inserts a memory write fence/barrier.
+  * \note This will complete previous writes before future writes and prevents the compiler from reordering memory writes across this fence.
   */
 fpl_platform_api void fplAtomicWriteFence();
 /**
-  * \brief Insert a memory read/write fence/barrier.
-  * This will complete previous reads/writes before future reads/writes and prevents the compiler from reordering memory access across this fence.
+  * \brief Inserts a memory read/write fence/barrier.
+  * \note This will complete previous reads/writes before future reads/writes and prevents the compiler from reordering memory access across this fence.
   */
 fpl_platform_api void fplAtomicReadWriteFence();
 
 /**
-  * \brief Replace a 32-bit unsigned integer with the given value atomically.
-  * Ensures that memory operations are completed in order.
-  * \param target The target value to write into.
-  * \param value The source value used for exchange.
+  * \brief Replaces a 32-bit unsigned integer with the given value atomically.
+  * \param target The target value to write into
+  * \param value The source value used for exchange
   * \return Returns the initial value before the replacement.
+  * \note Ensures that memory operations are completed in order.
   */
 fpl_platform_api uint32_t fplAtomicExchangeU32(volatile uint32_t *target, const uint32_t value);
 /**
-  * \brief Replace a 64-bit unsigned integer with the given value atomically.
-  * Ensures that memory operations are completed in order.
-  * \param target The target value to write into.
-  * \param value The source value used for exchange.
+  * \brief Replaces a 64-bit unsigned integer with the given value atomically.
+  * \param target The target value to write into
+  * \param value The source value used for exchange
   * \return Returns the initial value before the replacement.
+  * \note Ensures that memory operations are completed in order.
   */
 fpl_platform_api uint64_t fplAtomicExchangeU64(volatile uint64_t *target, const uint64_t value);
 /**
-  * \brief Replace a 32-bit signed integer with the given value atomically.
-  * Ensures that memory operations are completed in order.
-  * \param target The target value to write into.
-  * \param value The source value used for exchange.
+  * \brief Replaces a 32-bit signed integer with the given value atomically.
+  * \param target The target value to write into
+  * \param value The source value used for exchange
   * \return Returns the initial value before the replacement.
+  * \note Ensures that memory operations are completed in order.
   */
 fpl_platform_api int32_t fplAtomicExchangeS32(volatile int32_t *target, const int32_t value);
 /**
-  * \brief Replace a 64-bit signed integer with the given value atomically.
-  * Ensures that memory operations are completed in order.
-  * \param target The target value to write into.
-  * \param value The source value used for exchange.
+  * \brief Replaces a 64-bit signed integer with the given value atomically.
+  * \param target The target value to write into
+  * \param value The source value used for exchange
   * \return Returns the initial value before the replacement.
+  * \note Ensures that memory operations are completed in order.
   */
 fpl_platform_api int64_t fplAtomicExchangeS64(volatile int64_t *target, const int64_t value);
 /**
-  * \brief Replace a pointer with the given value atomically.
-  * Ensures that memory operations are completed in order.
-  * \param target The target value to write into.
-  * \param value The source value used for exchange.
+  * \brief Replaces a pointer with the given value atomically.
+  * \param target The target value to write into
+  * \param value The source value used for exchange
   * \return Returns the initial value before the replacement.
+  * \note Ensures that memory operations are completed in order.
   */
 fpl_common_api void *fplAtomicExchangePtr(volatile void **target, const void *value);
 
 /**
   * \brief Adds a 32-bit unsigned integer to the value by the given addend atomically.
-  * Ensures that memory operations are completed in order.
-  * \param value The target value to append to.
-  * \param addend The value used for adding.
+  * \param value The target value to append to
+  * \param addend The value used for adding
   * \return Returns the initial value before the append.
+  * \note Ensures that memory operations are completed in order.
   */
 fpl_platform_api uint32_t fplAtomicAddU32(volatile uint32_t *value, const uint32_t addend);
 /**
   * \brief Adds a 64-bit unsigned integer to the value by the given addend atomically.
-  * Ensures that memory operations are completed in order.
-  * \param value The target value to append to.
-  * \param addend The value used for adding.
+  * \param value The target value to append to
+  * \param addend The value used for adding
   * \return Returns the initial value before the append.
+  * \note Ensures that memory operations are completed in order.
   */
 fpl_platform_api uint64_t fplAtomicAddU64(volatile uint64_t *value, const uint64_t addend);
 /**
   * \brief Adds a 32-bit signed integer to the value by the given addend atomically.
-  * Ensures that memory operations are completed in order.
-  * \param value The target value to append to.
-  * \param addend The value used for adding.
+  * \param value The target value to append to
+  * \param addend The value used for adding
   * \return Returns the initial value before the append.
+  * \note Ensures that memory operations are completed in order.
   */
 fpl_platform_api int32_t fplAtomicAddS32(volatile int32_t *value, const int32_t addend);
 /**
   * \brief Adds a 64-bit signed integer to the value by the given addend atomically.
-  * Ensures that memory operations are completed in order.
-  * \param value The target value to append to.
-  * \param addend The value used for adding.
+  * \param value The target value to append to
+  * \param addend The value used for adding
   * \return Returns the initial value before the append.
+  * \note Ensures that memory operations are completed in order.
   */
 fpl_platform_api int64_t fplAtomicAddS64(volatile int64_t *value, const int64_t addend);
 
 /**
   * \brief Compares a 32-bit unsigned integer with a comparand and exchange it when comparand matches destination.
-  * Ensures that memory operations are completed in order.
-  * \param dest The target value to write into.
-  * \param comparand The value to compare with.
-  * \param exchange The value to exchange with.
+  * \param dest The target value to write into
+  * \param comparand The value to compare with
+  * \param exchange The value to exchange with
+  * \return Returns the value of the destination before the exchange, regardless of the result.
+  * \note Ensures that memory operations are completed in order.
   * \note Use \ref fplIsAtomicCompareAndExchangeU32() when you want to check if the exchange has happened or not.
-  * \return Returns the dest before the exchange, regardless of the result.
   */
 fpl_platform_api uint32_t fplAtomicCompareAndExchangeU32(volatile uint32_t *dest, const uint32_t comparand, const uint32_t exchange);
 /**
   * \brief Compares a 64-bit unsigned integer with a comparand and exchange it when comparand matches destination.
-  * Ensures that memory operations are completed in order.
-  * \param dest The target value to write into.
-  * \param comparand The value to compare with.
-  * \param exchange The value to exchange with.
-  * \note Use \ref fplIsAtomicCompareAndExchangeU64() when you want to check if the exchange has happened or not.
+  * \param dest The target value to write into
+  * \param comparand The value to compare with
+  * \param exchange The value to exchange with
   * \return Returns the value of the destination before the exchange, regardless of the result.
+  * \note Ensures that memory operations are completed in order.
+  * \note Use \ref fplIsAtomicCompareAndExchangeU64() when you want to check if the exchange has happened or not.
   */
 fpl_platform_api uint64_t fplAtomicCompareAndExchangeU64(volatile uint64_t *dest, const uint64_t comparand, const uint64_t exchange);
 /**
   * \brief Compares a 32-bit signed integer with a comparand and exchange it when comparand matches destination.
-  * Ensures that memory operations are completed in order.
-  * \param dest The target value to write into.
-  * \param comparand The value to compare with.
-  * \param exchange The value to exchange with.
-  * \note Use \ref fplIsAtomicCompareAndExchangeS32() when you want to check if the exchange has happened or not.
+  * \param dest The target value to write into
+  * \param comparand The value to compare with
+  * \param exchange The value to exchange with
   * \return Returns the value of the destination before the exchange, regardless of the result.
+  * \note Ensures that memory operations are completed in order.
+  * \note Use \ref fplIsAtomicCompareAndExchangeS32() when you want to check if the exchange has happened or not.
   */
 fpl_platform_api int32_t fplAtomicCompareAndExchangeS32(volatile int32_t *dest, const int32_t comparand, const int32_t exchange);
 /**
   * \brief Compares a 64-bit signed integer with a comparand and exchange it when comparand matches destination.
-  * Ensures that memory operations are completed in order.
-  * \param dest The target value to write into.
-  * \param comparand The value to compare with.
-  * \param exchange The value to exchange with.
-  * \note Use \ref fplIsAtomicCompareAndExchangeS64() when you want to check if the exchange has happened or not.
+  * \param dest The target value to write into
+  * \param comparand The value to compare with
+  * \param exchange The value to exchange with
   * \return Returns the value of the destination before the exchange, regardless of the result.
+  * \note Ensures that memory operations are completed in order.
+  * \note Use \ref fplIsAtomicCompareAndExchangeS64() when you want to check if the exchange has happened or not.
   */
 fpl_platform_api int64_t fplAtomicCompareAndExchangeS64(volatile int64_t *dest, const int64_t comparand, const int64_t exchange);
 /**
   * \brief Compares a pointer with a comparand and exchange it when comparand matches destination.
-  * Ensures that memory operations are completed in order.
-  * \param dest The target value to write into.
-  * \param comparand The value to compare with.
-  * \param exchange The value to exchange with.
-  * \note Use \ref fplIsAtomicCompareAndExchangePtr() when you want to check if the exchange has happened or not.
+  * \param dest The target value to write into
+  * \param comparand The value to compare with
+  * \param exchange The value to exchange with
   * \return Returns the value of the destination before the exchange, regardless of the result.
+  * \note Ensures that memory operations are completed in order.
+  * \note Use \ref fplIsAtomicCompareAndExchangePtr() when you want to check if the exchange has happened or not.
   */
 fpl_common_api void *fplAtomicCompareAndExchangePtr(volatile void **dest, const void *comparand, const void *exchange);
 
 /**
   * \brief Compares a 32-bit unsigned integer with a comparand and exchange it when comparand matches destination and returns a bool indicating the result.
-  * Ensures that memory operations are completed in order.
-  * \param dest The target value to write into.
-  * \param comparand The value to compare with.
-  * \param exchange The value to exchange with.
-  * \return Returns true when the exchange happened, otherwise false.
+  * \param dest The target value to write into
+  * \param comparand The value to compare with
+  * \param exchange The value to exchange with
+  * \return Returns true when the exchange happened, false otherwise.
+  * \note Ensures that memory operations are completed in order.
   */
 fpl_platform_api bool fplIsAtomicCompareAndExchangeU32(volatile uint32_t *dest, const uint32_t comparand, const uint32_t exchange);
 /**
   * \brief Compares a 64-bit unsigned integer with a comparand and exchange it when comparand matches destination and returns a bool indicating the result.
-  * Ensures that memory operations are completed in order.
-  * \param dest The target value to write into.
-  * \param comparand The value to compare with.
-  * \param exchange The value to exchange with.
-  * \return Returns true when the exchange happened, otherwise false.
+  * \param dest The target value to write into
+  * \param comparand The value to compare with
+  * \param exchange The value to exchange with
+  * \return Returns true when the exchange happened, false otherwise.
+  * \note Ensures that memory operations are completed in order.
   */
 fpl_platform_api bool fplIsAtomicCompareAndExchangeU64(volatile uint64_t *dest, const uint64_t comparand, const uint64_t exchange);
 /**
   * \brief Compares a 32-bit signed integer with a comparand and exchange it when comparand matches destination and returns a bool indicating the result.
-  * Ensures that memory operations are completed in order.
-  * \param dest The target value to write into.
-  * \param comparand The value to compare with.
-  * \param exchange The value to exchange with.
-  * \return Returns true when the exchange happened, otherwise false.
+  * \param dest The target value to write into
+  * \param comparand The value to compare with
+  * \param exchange The value to exchange with
+  * \return Returns true when the exchange happened, false otherwise.
+  * \note Ensures that memory operations are completed in order.
   */
 fpl_platform_api bool fplIsAtomicCompareAndExchangeS32(volatile int32_t *dest, const int32_t comparand, const int32_t exchange);
 /**
   * \brief Compares a 64-bit signed integer with a comparand and exchange it when comparand matches destination and returns a bool indicating the result.
-  * Ensures that memory operations are completed in order.
-  * \param dest The target value to write into.
-  * \param comparand The value to compare with.
-  * \param exchange The value to exchange with.
-  * \return Returns true when the exchange happened, otherwise false.
+  * \param dest The target value to write into
+  * \param comparand The value to compare with
+  * \param exchange The value to exchange with
+  * \return Returns true when the exchange happened, false otherwise.
+  * \note Ensures that memory operations are completed in order.
   */
 fpl_platform_api bool fplIsAtomicCompareAndExchangeS64(volatile int64_t *dest, const int64_t comparand, const int64_t exchange);
 /**
   * \brief Compares a pointer with a comparand and exchange it when comparand matches destination and returns a bool indicating the result.
-  * Ensures that memory operations are completed in order.
-  * \param dest The target value to write into.
-  * \param comparand The value to compare with.
-  * \param exchange The value to exchange with.
-  * \return Returns true when the exchange happened, otherwise false.
+  * \param dest The target value to write into
+  * \param comparand The value to compare with
+  * \param exchange The value to exchange with
+  * \return Returns true when the exchange happened, false otherwise.
+  * \note Ensures that memory operations are completed in order.
   */
 fpl_common_api bool fplIsAtomicCompareAndExchangePtr(volatile void **dest, const void *comparand, const void *exchange);
 
 /**
   * \brief Loads the 32-bit unsigned value atomically and returns the value.
-  * Ensures that memory operations are completed before the read.
-  * \param source The source value to read from.
+  * \param source The source value to read from
+  * \return Returns the atomically loaded source value
+  * \note Ensures that memory operations are completed before the read.
   * \note This may use a CAS instruction when there is no suitable compiler intrinsics found.
-  * \return Returns the source value.
   */
 fpl_platform_api uint32_t fplAtomicLoadU32(volatile uint32_t *source);
 /**
   * \brief Loads the 64-bit unsigned value atomically and returns the value.
-  * Ensures that memory operations are completed before the read.
-  * \param source The source value to read from.
+  * \param source The source value to read from
+  * \return Returns the atomically loaded source value
+  * \note Ensures that memory operations are completed before the read.
   * \note This may use a CAS instruction when there is no suitable compiler intrinsics found.
-  * \return Returns the source value.
   */
 fpl_platform_api uint64_t fplAtomicLoadU64(volatile uint64_t *source);
 /**
   * \brief Loads the 32-bit signed value atomically and returns the value.
-  * Ensures that memory operations are completed before the read.
-  * \param source The source value to read from.
+  * \param source The source value to read from
+  * \return Returns the atomically loaded source value
+  * \note Ensures that memory operations are completed before the read.
   * \note This may use a CAS instruction when there is no suitable compiler intrinsics found.
-  * \return Returns the source value.
   */
 fpl_platform_api int32_t fplAtomicLoadS32(volatile int32_t *source);
 /**
   * \brief Loads the 64-bit signed value atomically and returns the value.
-  * Ensures that memory operations are completed before the read.
-  * \param source The source value to read from.
+  * \param source The source value to read from
+  * \return Returns the atomically loaded source value
+  * \note Ensures that memory operations are completed before the read.
   * \note This may use a CAS instruction when there is no suitable compiler intrinsics found.
-  * \return Returns the source value.
   */
 fpl_platform_api int64_t fplAtomicLoadS64(volatile int64_t *source);
 /**
   * \brief Loads the pointer value atomically and returns the value.
-  * Ensures that memory operations are completed before the read.
-  * \param source The source value to read from.
+  * \note Ensures that memory operations are completed before the read.
   * \note This may use a CAS instruction when there is no suitable compiler intrinsics found.
-  * \return Returns the source value.
+  * \param source The source value to read from
+  * \return Returns the atomically loaded source value
   */
 fpl_common_api void *fplAtomicLoadPtr(volatile void **source);
 
 /**
   * \brief Overwrites the 32-bit unsigned value atomically.
-  * Ensures that memory operations are completed before the write.
-  * \param dest The destination to write to.
-  * \param value The value to exchange with.
+  * \param dest The destination to write to
+  * \param value The value to exchange with
+  * \note Ensures that memory operations are completed before the write.
   */
 fpl_platform_api void fplAtomicStoreU32(volatile uint32_t *dest, const uint32_t value);
 /**
   * \brief Overwrites the 64-bit unsigned value atomically.
-  * Ensures that memory operations are completed before the write.
-  * \param dest The destination to write to.
-  * \param value The value to exchange with.
+  * \param dest The destination to write to
+  * \param value The value to exchange with
+  * \note Ensures that memory operations are completed before the write.
   */
 fpl_platform_api void fplAtomicStoreU64(volatile uint64_t *dest, const uint64_t value);
 /**
   * \brief Overwrites the 32-bit signed value atomically.
-  * Ensures that memory operations are completed before the write.
-  * \param dest The destination to write to.
-  * \param value The value to exchange with.
+  * \param dest The destination to write to
+  * \param value The value to exchange with
+  * \note Ensures that memory operations are completed before the write.
   */
 fpl_platform_api void fplAtomicStoreS32(volatile int32_t *dest, const int32_t value);
 /**
   * \brief Overwrites the 64-bit signed value atomically.
-  * Ensures that memory operations are completed before the write.
-  * \param dest The destination to write to.
-  * \param value The value to exchange with.
+  * \param dest The destination to write to
+  * \param value The value to exchange with
+  * \note Ensures that memory operations are completed before the write.
   */
 fpl_platform_api void fplAtomicStoreS64(volatile int64_t *dest, const int64_t value);
 /**
   * \brief Overwrites the pointer value atomically.
-  * Ensures that memory operations are completed before the write.
-  * \param dest The destination to write to.
-  * \param value The value to exchange with.
+  * \param dest The destination to write to
+  * \param value The value to exchange with
+  * \note Ensures that memory operations are completed before the write.
   */
 fpl_common_api void fplAtomicStorePtr(volatile void **dest, const void *value);
 
@@ -1747,13 +1791,13 @@ fpl_common_api void fplAtomicStorePtr(volatile void **dest, const void *value);
 // ----------------------------------------------------------------------------
 /**
   * \defgroup OS Operating system infos
-  * \brief Retrievement of operating system informations
+  * \brief This category contains functions for retrievement several operating system informations such as version, name etc.
   * \{
   *
   */
 // ----------------------------------------------------------------------------
 
-//! Version info container
+//! A structure that contains version information
 typedef struct fplVersionInfo {
 	//! Full name
 	char fullName[256];
@@ -1774,7 +1818,7 @@ typedef struct fplVersionInfo {
 	};
 } fplVersionInfo;
 
-//! Operating system info container
+//! A structure that contains operating system infos
 typedef struct fplOSInfos {
 	//! Name of the system
 	char systemName[256];
@@ -1787,33 +1831,33 @@ typedef struct fplOSInfos {
 } fplOSInfos;
 
 /**
-  * \brief Returns the basic infos of the operating system
-  * \param outInfos Pointer to a \ref fplOSInfos structure
+  * \brief Gets system informations from the operating system
+  * \param outInfos The target \ref fplOSInfos structure
+  * \return Returns true when the infos could be retrieved, false otherwise.
   * \note This may be called without initializing the platform
-  * \return True when the infos could be retrieved, false otherwise.
   */
 fpl_platform_api bool fplGetOperatingSystemInfos(fplOSInfos *outInfos);
 
 /**
-  * \brief Returns the username of the current logged-in user
-  * \param nameBuffer Name buffer
-  * \param maxNameBufferLen Max name buffer length
-  * \return True when a username could be retrieved, false otherwise.
+  * \brief Gets the username of the current logged-in user
+  * \param nameBuffer The target buffer
+  * \param maxNameBufferLen The max length of the target buffer
+  * \return Returns true when a username could be retrieved, false otherwise.
   */
-fpl_platform_api bool fplGetCurrentUsername(char *nameBuffer, size_t maxNameBufferLen);
+fpl_platform_api bool fplGetCurrentUsername(char *nameBuffer, const size_t maxNameBufferLen);
 
 /** \}*/
 
 // ----------------------------------------------------------------------------
 /**
   * \defgroup Hardware Hardware infos
-  * \brief Retrievement of hardware informations
+  * \brief This category contains functions for retrievement hardware informations such as memory usage, cpu infos, etc.
   * \{
   *
   */
 // ----------------------------------------------------------------------------
 
-//! Memory informations
+//! A structure that contains informations about current memory usage
 typedef struct fplMemoryInfos {
 	//! Total size of physical memory in bytes (Amount of RAM installed)
 	uint64_t totalPhysicalSize;
@@ -1831,15 +1875,15 @@ typedef struct fplMemoryInfos {
 	uint64_t usedPageSize;
 } fplMemoryInfos;
 
-//! Architecture type
+//! An enumeration of architecture types
 typedef enum fplArchType {
 	//! Unknown architecture
 	fplArchType_Unknown = 0,
 	//! X86 architecture
 	fplArchType_x86,
-	//! X86_64 architecture
+	//! X86 with 64-bit architecture
 	fplArchType_x86_64,
-	//! X64 architecture
+	//! X64 only architecture
 	fplArchType_x64,
 	//! ARM32 architecture
 	fplArchType_Arm32,
@@ -1848,35 +1892,34 @@ typedef enum fplArchType {
 } fplArchType;
 
 /**
-  * \brief Returns the string representation of the given architecture type
-  * \param type Architecture type
+  * \brief Gets the string representation of the given architecture type
+  * \param type The \ref fplArchType enumeration value
   * \return Returns a string for the given architecture type
   */
 fpl_common_api const char *fplGetArchTypeString(const fplArchType type);
 
 /**
-  * \brief Returns the total number of processor cores.
-  * \return Number of processor cores.
+  * \brief Retrieves the total number of processor cores.
+  * \return Returns the total number of processor cores.
   */
 fpl_platform_api size_t fplGetProcessorCoreCount();
 /**
-  * \brief Returns the name of the processor.
-  * The processor name is written in the destination buffer.
-  * \param destBuffer The character buffer to write the processor name into.
-  * \param maxDestBufferLen The total number of characters available in the destination character buffer.
-  * \return Name of the processor.
+  * \brief Retrieves the name of the processor.
+  * \param destBuffer The destination buffer
+  * \param maxDestBufferLen The max length of the destination buffer
+  * \return Returns a pointer to the last written character or \ref fpl_null otherwise.
   */
 fpl_platform_api char *fplGetProcessorName(char *destBuffer, const size_t maxDestBufferLen);
 /**
-  * \brief Returns the current system memory informations.
-  * \param outInfos Pointer to a \ref fplMemoryInfos structure
-  * \return Returns true when memory infos could be retrieved, false otherwise.
+  * \brief Retrieves the current system memory usage.
+  * \param outInfos The target \ref fplMemoryInfos structure
+  * \return Returns true when the memory infos was retrieved, false otherwise.
   */
 fpl_platform_api bool fplGetRunningMemoryInfos(fplMemoryInfos *outInfos);
 
 /**
-  * \brief Returns the current architecture
-  * \return \ref fplArchType
+  * \brief Gets the running architecture type
+  * \return Returns the running architecture type
   */
 fpl_platform_api fplArchType fplGetRunningArchitecture();
 
@@ -1884,13 +1927,13 @@ fpl_platform_api fplArchType fplGetRunningArchitecture();
 
 // ----------------------------------------------------------------------------
 /**
-  * \defgroup Settings Settings and configurations
-  * \brief Video/audio/window settings
+  * \defgroup Settings Settings & Configurations
+  * \brief This category contains global settings structures/enumerations and functions to initialize/set them
   * \{
   */
 // ----------------------------------------------------------------------------
 
-//! Initialization flags (Window, Video, etc.)
+//! An enumeration of initialization flags
 typedef enum fplInitFlags {
 	//! No init flags
 	fplInitFlags_None = 0,
@@ -1907,7 +1950,7 @@ typedef enum fplInitFlags {
 //! InitFlags operator overloads for C++
 FPL_ENUM_AS_FLAGS_OPERATORS(fplInitFlags);
 
-//! Init result type
+//! An emenumeration of init result types
 typedef enum fplInitResultType {
 	//! Window creation failed
 	fplInitResultType_FailedWindow = -40,
@@ -1925,10 +1968,14 @@ typedef enum fplInitResultType {
 	fplInitResultType_Success = 1,
 } fplInitResultType;
 
-//! Returns the string representation of a \ref fplInitResultType
+/**
+  * \brief Gets the string representation of a init result type.
+  * \param type The init result type \ref fplInitResultType
+  * \return Returns the string representation of a init result type.
+  */
 fpl_common_api const char *fplGetInitResultTypeString(const fplInitResultType type);
 
-//! Video driver type
+//! An enumeration of video driver types
 typedef enum fplVideoDriverType {
 	//! No video driver
 	fplVideoDriverType_None = 0,
@@ -1939,7 +1986,7 @@ typedef enum fplVideoDriverType {
 } fplVideoDriverType;
 
 #if defined(FPL_ENABLE_VIDEO_OPENGL)
-//! OpenGL compability flags
+//! An enumeration of OpenGL compability flags
 typedef enum fplOpenGLCompabilityFlags {
 	//! Use legacy context
 	fplOpenGLCompabilityFlags_Legacy = 0,
@@ -1951,7 +1998,7 @@ typedef enum fplOpenGLCompabilityFlags {
 	fplOpenGLCompabilityFlags_Forward = 1 << 3,
 } fplOpenGLCompabilityFlags;
 
-//! OpenGL video settings container
+//! A structure that contains OpenGL video settings
 typedef struct fplOpenGLVideoSettings {
 	//! Compability flags
 	fplOpenGLCompabilityFlags compabilityFlags;
@@ -1962,7 +2009,7 @@ typedef struct fplOpenGLVideoSettings {
 } fplOpenGLVideoSettings;
 #endif // FPL_ENABLE_VIDEO_OPENGL
 
-//! Graphics Api settings union
+//! A union that contains graphics api settings
 typedef union fplGraphicsApiSettings {
 #if defined(FPL_ENABLE_VIDEO_OPENGL)
 	//! OpenGL settings
@@ -1972,7 +2019,7 @@ typedef union fplGraphicsApiSettings {
 	int dummy;
 } fplGraphicsApiSettings;
 
-//! Video settings container (Driver, Flags, Version, VSync, etc.)
+//! A structure that contains video settings such as driver, vsync, api-settings etc.
 typedef struct fplVideoSettings {
 	//! Video driver type
 	fplVideoDriverType driver;
@@ -1986,12 +2033,12 @@ typedef struct fplVideoSettings {
 
 /**
   * \brief Resets the given video settings to default values
-  * \param video Video settings
+  * \param video The target \ref fplVideoSettings structure
   * \note This will not change any video settings! To change the actual settings you have to pass the entire \ref fplSettings container to a argument in \ref fplPlatformInit().
   */
 fpl_common_api void fplSetDefaultVideoSettings(fplVideoSettings *video);
 
-//! Audio driver type
+//! An enumeration of audio driver types
 typedef enum fplAudioDriverType {
 	//! No audio driver
 	fplAudioDriverType_None = 0,
@@ -2003,7 +2050,7 @@ typedef enum fplAudioDriverType {
 	fplAudioDriverType_Alsa,
 } fplAudioDriverType;
 
-//! Audio format type
+//! An enumeration of audio format types
 typedef enum fplAudioFormatType {
 	// No audio format
 	fplAudioFormatType_None = 0,
@@ -2023,7 +2070,7 @@ typedef enum fplAudioFormatType {
 	fplAudioFormatType_F64,
 } fplAudioFormatType;
 
-//! Audio device format
+//! A structure containing audio device format properties, such as type, samplerate, channels, etc.
 typedef struct fplAudioDeviceFormat {
 	//! Audio format
 	fplAudioFormatType type;
@@ -2039,7 +2086,7 @@ typedef struct fplAudioDeviceFormat {
 	uint32_t bufferSizeInFrames;
 } fplAudioDeviceFormat;
 
-//! Audio device id union
+//! A union containing a id of the underlying driver
 typedef union fplAudioDeviceID {
 #if defined(FPL_ENABLE_AUDIO_DIRECTSOUND)
 	//! DirectShow Device GUID
@@ -2053,7 +2100,7 @@ typedef union fplAudioDeviceID {
 	int dummy;
 } fplAudioDeviceID;
 
-//! Audio device info
+//! A structure containing the name and the id of the audio device
 typedef struct fplAudioDeviceInfo {
 	//! Device name
 	char name[256];
@@ -2062,14 +2109,14 @@ typedef struct fplAudioDeviceInfo {
 } fplAudioDeviceInfo;
 
 #if defined(FPL_ENABLE_AUDIO_ALSA)
-//! ALSA driver specific settings
+//! A structure containing settings for the ALSA audio driver
 typedef struct fplAlsaAudioSettings {
 	//! Disable the usage of MMap in ALSA
 	bool noMMap;
 } fplAlsaAudioSettings;
 #endif
 
-//! Driver specific audio settings
+//! A union containing driver specific audio settings
 typedef union fplSpecificAudioSettings {
 #if defined(FPL_ENABLE_AUDIO_ALSA)
 	//! Alsa specific settings
@@ -2079,10 +2126,17 @@ typedef union fplSpecificAudioSettings {
 	int dummy;
 } fplSpecificAudioSettings;
 
-//! Audio Client Read Callback Function
+/**
+  * \brief A callback for reading audio samples from the client
+  * \param deviceFormat The pointer to the \ref fplAudioDeviceFormat structure, the audio cards expects
+  * \param frameCount The numbers if frames the client should write at max
+  * \param outputSamples The pointer to the target samples
+  * \param userData The pointer to the user data specified in \ref fplAudioSettings
+  * \return Returns the number written frames
+  */
 typedef uint32_t(fpl_audio_client_read_callback)(const fplAudioDeviceFormat *deviceFormat, const uint32_t frameCount, void *outputSamples, void *userData);
 
-//! Audio settings
+//! A structure containing audio settings, such as format, device info, callbacks, driver, etc.
 typedef struct fplAudioSettings {
 	//! The device format
 	fplAudioDeviceFormat deviceFormat;
@@ -2092,24 +2146,24 @@ typedef struct fplAudioSettings {
 	fplSpecificAudioSettings specific;
 	//! The callback for retrieving audio data from the client
 	fpl_audio_client_read_callback *clientReadCallback;
+	//! User data pointer for client read callback
+	void *userData;
 	//! The targeted driver
 	fplAudioDriverType driver;
 	//! Audio buffer in milliseconds
 	uint32_t bufferSizeInMilliSeconds;
 	//! Is exclude mode prefered
 	bool preferExclusiveMode;
-	//! User data pointer for client read callback
-	void *userData;
 } fplAudioSettings;
 
 /**
   * \brief Resets the given audio settings to default settings (S16 PCM, 48 KHz, 2 Channels)
-  * \param audio Audio settings
+  * \param audio The target \ref fplAudioSettings structure
   * \note This will not change any audio settings! To change the actual settings you have to pass the entire \ref fplSettings container to a argument in \ref fplPlatformInit().
   */
 fpl_common_api void fplSetDefaultAudioSettings(fplAudioSettings *audio);
 
-//! Window settings (Size, Title etc.)
+//! A structure containing window settings, such as size, title etc.
 typedef struct fplWindowSettings {
 	//! Window title
 	char windowTitle[256];
@@ -2133,12 +2187,12 @@ typedef struct fplWindowSettings {
 
 /**
   * \brief Resets the given window settings container to default settings
-  * \param window Window settings
+  * \param window The target \ref fplWindowSettings structure
   * \note This will not change any window settings! To change the actual settings you have to pass the entire \ref fplSettings container to a argument in \ref fplPlatformInit().
   */
 fpl_common_api void fplSetDefaultWindowSettings(fplWindowSettings *window);
 
-//! Input settings
+//! A structure containing input settings
 typedef struct fplInputSettings {
 	//! Frequency in ms for detecting new or removed controllers (Default: 100 ms)
 	uint32_t controllerDetectionFrequency;
@@ -2146,12 +2200,12 @@ typedef struct fplInputSettings {
 
 /**
   * \brief Resets the given input settings contains to default values.
-  * \param input Input settings
+  * \param input The target \ref fplInputSettings structure
   * \note This will not change any input settings! To change the actual settings you have to pass the entire \ref fplSettings container to a argument in \ref fplPlatformInit().
   */
 fpl_common_api void fplSetDefaultInputSettings(fplInputSettings *input);
 
-//! Settings container (Window, Video, etc)
+//! A structure containg settings, such as window, video, etc.
 typedef struct fplSettings {
 	//! Window settings
 	fplWindowSettings window;
@@ -2165,17 +2219,18 @@ typedef struct fplSettings {
 
 /**
   * \brief Resets the given settings container to default values for window, video, audio, etc.
-  * \param settings Settings
+  * \param settings The target \ref fplSettings structure
   * \note This will not change the active settings! To change the actual settings you have to pass this settings container to a argument in \ref fplPlatformInit().
   */
 fpl_common_api void fplSetDefaultSettings(fplSettings *settings);
 /**
-  * \brief Creates a full settings struct containing default values
-  * \return Settings structure
+  * \brief Creates a full settings structure containing default values
+  * \return Returns a defaulted \ref fplSettings structure
   */
 fpl_common_api fplSettings fplMakeDefaultSettings();
 /**
-  * \brief Returns the current settings
+  * \brief Gets the current settings
+  * \return Returns a pointer to the \ref fplSettings structure
   */
 fpl_common_api const fplSettings *fplGetCurrentSettings();
 
@@ -2184,12 +2239,12 @@ fpl_common_api const fplSettings *fplGetCurrentSettings();
 // ----------------------------------------------------------------------------
 /**
   * \defgroup Platform Platform functions
-  * \brief Platform functions
+  * \brief This category contains structures, enumerations and functions for initializing/releasing the platform.
   * \{
   */
 // ----------------------------------------------------------------------------
 
-//! Platform type
+//! An enumeration of platform types
 typedef enum fplPlatformType {
 	//! Unknown platform
 	fplPlatformType_Unknown = 0,
@@ -2202,18 +2257,18 @@ typedef enum fplPlatformType {
 } fplPlatformType;
 
 /**
-  * \brief Returns the string representation of the given platform type
-  * \param type Platform type
-  * \return Returns a string for the given platform type
+  * \brief Gets the string representation of the given platform type
+  * \param type The platform type \ref fplPlatformType
+  * \return Returns the string representation for the given platform type \ref fplPlatformType
   */
 fpl_common_api const char *fplGetPlatformTypeString(const fplPlatformType type);
 
 /**
   * \brief Initializes the platform layer.
-  * \param initFlags Optional init flags used for enable certain features, like video/audio etc. (Default: \ref fplInitFlags_All)
-  * \param initSettings Optional initialization settings which can be passed to control the platform layer behavior or systems.
+  * \param initFlags The init flags \ref fplInitFlags used for enable certain features, like video/audio etc.
+  * \param initSettings The \ref fplSettings structure to control the platform layer behavior or systems, if null is passed here default values are used automatically.
+  * \return Returns \ref fplInitResultType indicating the result of the platform initialization
   * \note \ref fplPlatformRelease() must be called when you are done! After \ref fplPlatformRelease() has been called you can call this function again if needed.
-  * \return Returns a \ref fplInitResultType . Will return \ref fplInitResultType_AlreadyInitialized when the platform layers is already initialized.
   */
 fpl_common_api fplInitResultType fplPlatformInit(const fplInitFlags initFlags, const fplSettings *initSettings);
 /**
@@ -2222,8 +2277,8 @@ fpl_common_api fplInitResultType fplPlatformInit(const fplInitFlags initFlags, c
   */
 fpl_common_api void fplPlatformRelease();
 /**
-  * \brief Returns the type of the platform
-  * \return \ref fplPlatformType
+  * \brief Gets the type of the platform
+  * \return Returns the platform type \ref fplPlatformType
   */
 fpl_common_api fplPlatformType fplGetPlatformType();
 
@@ -2232,12 +2287,12 @@ fpl_common_api fplPlatformType fplGetPlatformType();
 // ----------------------------------------------------------------------------
 /**
   * \defgroup Logging Logging
-  * \brief Functions for controlling the logging
+  * \brief This category contains functions and types for controlling logging output
   * \{
   */
 // ----------------------------------------------------------------------------
 
-//! Log level enumeration
+//! An enumeration of log levels
 typedef enum fplLogLevel {
 	//! All
 	fplLogLevel_All = -1,
@@ -2256,10 +2311,14 @@ typedef enum fplLogLevel {
 } fplLogLevel;
 
 #if defined(FPL_ENABLE_LOGGING)
-//! User function callback for printing a log message
+/**
+  * \brief A callback for printing a log message
+  * \param level The log level \ref fplLogLevel
+  * \param message The log message string
+  */
 typedef void (fplFuncLogCallback)(const fplLogLevel level, const char *message);
 
-//! Log writer flags
+//! An enumeration of log writer flags
 typedef enum fplLogWriterFlags {
 	//! No appender flags
 	fplLogWriterFlags_None = 0,
@@ -2273,19 +2332,19 @@ typedef enum fplLogWriterFlags {
 //! Log writer flags enumeration operators
 FPL_ENUM_AS_FLAGS_OPERATORS(fplLogWriterFlags);
 
-//! Log writer for console
+//! A structure containing console logging properties
 typedef struct fplLogWriterConsole {
 	//! Enable this to log to the error console instead
 	bool logToError;
 } fplLogWriterConsole;
 
-//! Log writer for custom output
+//! A structure containing properties custom logging properties
 typedef struct fplLogWriterCustom {
 	//! User callback
 	fplFuncLogCallback *callback;
 } fplLogWriterCustom;
 
-//! Log writer container
+//! A structure containing log writer settings
 typedef struct fplLogWriter {
 	//! Flags
 	fplLogWriterFlags flags;
@@ -2295,10 +2354,9 @@ typedef struct fplLogWriter {
 	fplLogWriterCustom custom;
 } fplLogWriter;
 
-//! Log settings container
+//! A structure containing log settings
 typedef struct fplLogSettings {
 #if defined(FPL_ENABLE_LOG_MULTIPLE_WRITERS)
-	//! Writers mapped to log level
 	union {
 		//! All writers
 		fplLogWriter writers[6];
@@ -2329,26 +2387,26 @@ typedef struct fplLogSettings {
 
 /**
   * \brief Overwrites the current log settings
-  * \param params Pointer to a \ref fplLogSettings
+  * \param params The source \ref fplLogSettings structure
   * \note This function can be called regardless of the initialization state!
   */
 fpl_common_api void fplSetLogSettings(const fplLogSettings *params);
 /**
-  * \brief Returns the current log settings
+  * \brief Gets the current log settings
+  * \return Returns a pointer the \ref fplLogSettings structure
   * \note This function can be called regardless of the initialization state!
-  * \return Const Pointer to a \ref fplLogSettings
   */
 fpl_common_api const fplLogSettings *fplGetLogSettings();
 /**
   * \brief Changes the current maximum log level to the given value
-  * \param maxLevel New maximum log level
+  * \param maxLevel The new maximum log level \ref fplLogLevel
   * \note This function can be called regardless of the initialization state!
   */
 fpl_common_api void fplSetMaxLogLevel(const fplLogLevel maxLevel);
 /**
-  * \brief Returns the current maximum allowed log level
+  * \brief Gets the current maximum allowed log level
+  * \return Returns the current maximum log level \ref fplLogLevel
   * \note This function can be called regardless of the initialization state!
-  * \return Current maximum log level
   */
 fpl_common_api fplLogLevel fplGetMaxLogLevel();
 #endif // FPL_ENABLE_LOGGING
@@ -2357,29 +2415,29 @@ fpl_common_api fplLogLevel fplGetMaxLogLevel();
 
 // ----------------------------------------------------------------------------
 /**
-  * \defgroup ErrorHandling Error Handling / Logging
-  * \brief Functions for error handling and logging
+  * \defgroup ErrorHandling Error Handling
+  * \brief This category contains functions for handling errors
   * \{
   */
 // ----------------------------------------------------------------------------
 
 /**
-  * \brief Returns the last internal error string
+  * \brief Gets the last internal error string
+  * \return Returns the last error string or empty string when there was no error.
   * \note This function can be called regardless of the initialization state!
-  * \return Last error string or empty string when there was no error.
   */
 fpl_common_api const char *fplGetLastError();
 /**
-  * \brief Returns the last error string from the given index
+  * \brief Gets the last error string from the given index
   * \param index The index
+  * \return Returns the last error string from the given index or empty when there was no error.
   * \note This function can be called regardless of the initialization state!
-  * \return Last error string from the given index or empty when there was no error.
   */
 fpl_common_api const char *fplGetErrorByIndex(const size_t index);
 /**
-  * \brief Returns the count of total last errors
+  * \brief Gets the count of total last errors
   * \note This function can be called regardless of the initialization state!
-  * \return Number of last errors or zero when there was no error.
+  * \return Returns the number of last errors or zero when there was no error.
   */
 fpl_common_api size_t fplGetErrorCount();
 /**
@@ -2393,12 +2451,12 @@ fpl_common_api void fplClearErrors();
 // ----------------------------------------------------------------------------
 /**
   * \defgroup DynamicLibrary Dynamic library loading
-  * \brief Loading dynamic libraries and retrieving the procedure addresses.
+  * \brief This category contains functions for loading dynamic libraries.
   * \{
   */
 // ----------------------------------------------------------------------------
 
-//! Internal library handle union
+//! A union containing the library handle for any platform
 typedef union fplInternalDynamicLibraryHandle {
 #if defined(FPL_PLATFORM_WIN32)
 	//! Win32 library handle
@@ -2409,7 +2467,7 @@ typedef union fplInternalDynamicLibraryHandle {
 #endif
 } fplInternalDynamicLibraryHandle;
 
-  //! Handle to a loaded dynamic library
+//! A structure containing the internal handle to a dynamic library
 typedef struct fplDynamicLibraryHandle {
 	//! Internal library handle
 	fplInternalDynamicLibraryHandle internalHandle;
@@ -2418,22 +2476,22 @@ typedef struct fplDynamicLibraryHandle {
 } fplDynamicLibraryHandle;
 
 /**
-  * \brief Loads a dynamic library and returns the loaded handle for it.
+  * \brief Loads a dynamic library and returns if the load was successful or not.
   * \param libraryFilePath The path to the library with included file extension (.dll / .so)
-  * \note To check for success, just check the DynamicLibraryHandle.isValid field from the result.
-  * \return Handle container of the loaded library.
+  * \param outHandle The output handle \ref fplDynamicLibraryHandle
+  * \return Returns true when the library was loaded successfully, false otherwise.
   */
-fpl_platform_api fplDynamicLibraryHandle fplDynamicLibraryLoad(const char *libraryFilePath);
+fpl_platform_api bool fplDynamicLibraryLoad(const char *libraryFilePath, fplDynamicLibraryHandle *outHandle);
 /**
   * \brief Returns the dynamic library procedure address for the given procedure name.
-  * \param handle Handle to the loaded library
-  * \param name Name of the procedure
-  * \return Procedure address for the given procedure name or fpl_null when procedure not found or library is not loaded.
+  * \param handle The \ref fplDynamicLibraryHandle handle to the loaded library
+  * \param name The name of the procedure
+  * \return Returns the procedure address for the given procedure name or \ref fpl_null when procedure not found or library is not loaded.
   */
 fpl_platform_api void *fplGetDynamicLibraryProc(const fplDynamicLibraryHandle *handle, const char *name);
 /**
   * \brief Unloads the loaded library and resets the handle to zero.
-  * \param handle Loaded dynamic library handle
+  * \param handle The library handle \ref fplDynamicLibraryHandle
   */
 fpl_platform_api void fplDynamicLibraryUnload(fplDynamicLibraryHandle *handle);
 
@@ -2441,8 +2499,7 @@ fpl_platform_api void fplDynamicLibraryUnload(fplDynamicLibraryHandle *handle);
 
 // ----------------------------------------------------------------------------
 /**
-  * \defgroup Debug Debug functions
-  * \brief Useful debug functions
+  * \defgroup Debug Debug
   * \{
   */
 // ----------------------------------------------------------------------------
@@ -2466,7 +2523,7 @@ fpl_common_api void fplDebugFormatOut(const char *format, ...);
 // ----------------------------------------------------------------------------
 /**
   * \defgroup Console Console functions
-  * \brief Console out/in functions
+  * \brief This category contains function for handling console in/out
   * \{
   */
 // ----------------------------------------------------------------------------
@@ -2484,23 +2541,23 @@ fpl_platform_api void fplConsoleOut(const char *text);
   */
 fpl_platform_api void fplConsoleError(const char *text);
 /**
-  * \brief Wait for a character to be typed in the console input and return it
+  * \brief Wait for a character to be typed in the console input and return it.
   * \note This is most likely just a wrapper call to getchar()
-  * \return Character typed in in the console input
+  * \return Returns the character typed in in the console input
   */
 fpl_platform_api char fplConsoleWaitForCharInput();
 
 /**
   * \brief Writes the given formatted text to the standard output console buffer.
-  * \param format The format used for writing into the standard output console.
-  * \param ... The dynamic arguments used for formatting the text.
+  * \param format The format used for writing into the standard output console
+  * \param ... The dynamic arguments used for formatting the text
   * \note This is most likely just a wrapper call to vfprintf(stdout)
   */
 fpl_common_api void fplConsoleFormatOut(const char *format, ...);
 /**
   * \brief Writes the given formatted text to the standard error console buffer.
-  * \param format The format used for writing into the standard error console.
-  * \param ... The dynamic arguments used for formatting the text.
+  * \param format The format used for writing into the standard error console
+  * \param ... The dynamic arguments used for formatting the text
   * \note This is most likely just a wrapper call to vfprintf(stderr)
   */
 fpl_common_api void fplConsoleFormatError(const char *format, ...);
@@ -2510,44 +2567,44 @@ fpl_common_api void fplConsoleFormatError(const char *format, ...);
 // ----------------------------------------------------------------------------
 /**
   * \defgroup Timings Timing functions
-  * \brief Functions for retrieving timebased informations
+  * \brief This category contains functions for time comparisons
   * \{
   */
 // ----------------------------------------------------------------------------
 
 /**
-  * \brief Returns the current system clock in seconds in high precision (micro/nano seconds)
-  * \return Returns number of seconds since some fixed starting point (OS start, System start, etc).
+  * \brief Gets the current system clock in seconds in high precision (micro/nano seconds).
+  * \return Returns the number of seconds since some fixed starting point (OS start, System start, etc).
   * \note Can only be used to calculate a difference in time!
   */
 fpl_platform_api double fplGetTimeInSecondsHP();
 /**
-  * \brief Returns the current system clock in seconds in low precision (milliseconds)
-  * \return Returns number of seconds since some fixed starting point (OS start, System start, etc).
+  * \brief Gets the current system clock in seconds in low precision (milliseconds).
+  * \return Returns the number of seconds since some fixed starting point (OS start, System start, etc).
   * \note Can only be used to calculate a difference in time!
   */
 fpl_platform_api uint64_t fplGetTimeInSecondsLP();
 /**
-  * \brief Returns the current system clock in seconds in default precision
-  * \return Returns number of seconds since some fixed starting point (OS start, System start, etc).
+  * \brief Gets the current system clock in seconds in default precision.
+  * \return Returns the number of seconds since some fixed starting point (OS start, System start, etc).
   * \note Can only be used to calculate a difference in time. There is no guarantee to get high precision here, use for high precision \ref fplGetTimeInSecondsHP() instead!
   */
 fpl_platform_api double fplGetTimeInSeconds();
 /**
-  * \brief Returns the current system clock in milliseconds in high precision (micro/nano seconds)
-  * \return Returns number of milliseconds since some fixed starting point (OS start, System start, etc).
+  * \brief Gets the current system clock in milliseconds in high precision (micro/nano seconds)
+  * \return Returns the number of milliseconds since some fixed starting point (OS start, System start, etc).
   * \note Can only be used to calculate a difference in time!
   */
 fpl_platform_api double fplGetTimeInMillisecondsHP();
 /**
-  * \brief Returns the current system clock in milliseconds in low precision (milliseconds)
-  * \return Returns number of milliseconds since some fixed starting point (OS start, System start, etc).
+  * \brief Gets the current system clock in milliseconds in low precision (milliseconds)
+  * \return Returns the number of milliseconds since some fixed starting point (OS start, System start, etc).
   * \note Can only be used to calculate a difference in time!
   */
 fpl_platform_api uint64_t fplGetTimeInMillisecondsLP();
 /**
-  * \brief Returns the current system clock in milliseconds
-  * \return Returns number of milliseconds since some fixed starting point (OS start, System start, etc).
+  * \brief Gets the current system clock in milliseconds
+  * \return Returns the number of milliseconds since some fixed starting point (OS start, System start, etc).
   * \note Can only be used to calculate a difference in time!
   */
 fpl_platform_api uint64_t fplGetTimeInMilliseconds();
@@ -2557,17 +2614,17 @@ fpl_platform_api uint64_t fplGetTimeInMilliseconds();
 // ----------------------------------------------------------------------------
 /**
   * \defgroup Threading Threading and syncronisation routines
-  * \brief Tons of functions for multithreading, mutex and signal creation and handling
+  * \brief This category contains functions/types for dealing with concurrent programming, such as threads, mutexes, conditions, etc.
   * \{
   */
 // ----------------------------------------------------------------------------
 
-//! Type definition for a timeout value in milliseconds
+//! A type definition for a timeout value in milliseconds
 typedef uint32_t fplTimeoutValue;
 //! Infinite timeout constant
 #define FPL_TIMEOUT_INFINITE UINT32_MAX
 
-//! Thread state
+//! An enumeration of thread states
 typedef enum fplThreadStates {
 	//! Thread is stopped
 	fplThreadState_Stopped = 0,
@@ -2579,25 +2636,29 @@ typedef enum fplThreadStates {
 	fplThreadState_Stopping,
 } fplThreadStates;
 
-//! Thread state type definition
+//! A type definition for mapping \ref fplThreadState into a 32-bit integer
 typedef uint32_t fplThreadState;
 
-typedef struct fplThreadHandle fplThreadHandle;
-//! Run function type definition for CreateThread
-typedef void (fpl_run_thread_function)(const fplThreadHandle *thread, void *data);
+/**
+  * \brief A callback to execute user code from a \ref fplThreadHandle
+  * \param thread The thread handle \ref fplThreadHandle
+  * \param data The user data pointer
+  */
+//! Run function type definition for \ref fplThreadCreate()
+typedef void (fpl_run_thread_function)(const struct fplThreadHandle *thread, void *data);
 
-//! Internal thread handle union
+//! A union containing the thread handle for any platform
 typedef union fplInternalThreadHandle {
 #if defined(FPL_PLATFORM_WIN32)
 	//! Win32 thread handle
 	HANDLE win32ThreadHandle;
 #elif defined(FPL_SUBPLATFORM_POSIX)
-	//! POSIX thread
+	//! POSIX thread handle
 	pthread_t posixThread;
 #endif
 } fplInternalThreadHandle;
 
-//! Thread handle
+//! The thread handle structure
 typedef struct fplThreadHandle {
 	//! The internal thread handle
 	fplInternalThreadHandle internalHandle;
@@ -2615,22 +2676,28 @@ typedef struct fplThreadHandle {
 	volatile bool isStopping;
 } fplThreadHandle;
 
-//! Internal semaphore handle union
+#if defined(FPL_PLATFORM_WIN32)
+//! A structure containing the semaphore handle and the value for win32
+typedef struct fplInternalSemaphoreHandleWin32 {
+	//! Semaphore handle
+	HANDLE handle;
+	//! Semaphore value
+	volatile int32_t value;
+} fplInternalSemaphoreHandleWin32;
+#endif
+
+//! A union containing the internal semaphore handle for any platform
 typedef union fplInternalSemaphoreHandle {
 #if defined(FPL_PLATFORM_WIN32)
-	//! Win32
-	struct {
-		//! Win32 semaphore handle
-		HANDLE handle;
-		//! Semaphore value
-		volatile int32_t value;
-	} win32;
+	//! Win32 semaphore handle
+	fplInternalSemaphoreHandleWin32 win32;
 #elif defined(FPL_SUBPLATFORM_POSIX)
+	//! Posix semaphore handle
 	sem_t posixHandle;
 #endif
 } fplInternalSemaphoreHandle;
 
-//! Semaphore handle
+//! The semaphore handle structure
 typedef struct fplSemaphoreHandle {
 	//! The internal semaphore handle
 	fplInternalSemaphoreHandle internalHandle;
@@ -2638,7 +2705,7 @@ typedef struct fplSemaphoreHandle {
 	bool isValid;
 } fplSemaphoreHandle;
 
-//! Internal mutex handle union
+//! A union containing the internal mutex handle for any platform
 typedef union fplInternalMutexHandle {
 #if defined(FPL_PLATFORM_WIN32)
 	//! Win32 mutex handle
@@ -2649,7 +2716,7 @@ typedef union fplInternalMutexHandle {
 #endif
 } fplInternalMutexHandle;
 
-//! Mutex handle
+//! The mutex handle structure
 typedef struct fplMutexHandle {
 	//! The internal mutex handle
 	fplInternalMutexHandle internalHandle;
@@ -2657,7 +2724,7 @@ typedef struct fplMutexHandle {
 	bool isValid;
 } fplMutexHandle;
 
-//! Internal signal handle union
+//! A union containing the internal signal handle for any platform
 typedef union fplInternalSignalHandle {
 #if defined(FPL_PLATFORM_WIN32)
 	//! Win32 event handle
@@ -2666,11 +2733,9 @@ typedef union fplInternalSignalHandle {
 	//! Linux event handle
 	int linuxEventHandle;
 #endif
-	//! Dummy field
-	int dummy;
 } fplInternalSignalHandle;
 
-//! Signal handle
+//! The signal handle structure
 typedef struct fplSignalHandle {
 	//! The internal signal handle
 	fplInternalSignalHandle internalHandle;
@@ -2678,7 +2743,7 @@ typedef struct fplSignalHandle {
 	bool isValid;
 } fplSignalHandle;
 
-//! Signal value enumeration
+//! An enumeration of signal values
 typedef enum fplSignalValue {
 	//! Value is unset
 	fplSignalValue_Unset = 0,
@@ -2686,7 +2751,7 @@ typedef enum fplSignalValue {
 	fplSignalValue_Set = 1,
 } fplSignalValue;
 
-//! Internal condition variable
+//! A union containing the internal condition variable for any platform
 typedef union fplInternalConditionVariable {
 #if defined(FPL_PLATFORM_WIN32)
 	//! Win32 condition variable
@@ -2695,10 +2760,9 @@ typedef union fplInternalConditionVariable {
 	//! POSIX condition variable
 	pthread_cond_t posixCondition;
 #endif	//! Dummy field
-	int dummy;
 } fplInternalConditionVariable;
 
-//! Condition variable
+//! The condition variable structure
 typedef struct fplConditionVariable {
 	//! The internal condition handle
 	fplInternalConditionVariable internalHandle;
@@ -2706,15 +2770,19 @@ typedef struct fplConditionVariable {
 	bool isValid;
 } fplConditionVariable;
 
-//! Returns the current thread state from the given thread
+/**
+  * \brief Gets the current thread state for the given thread
+  * \param thread The thread handle \ref fplThreadHandle
+  * \return Returns the current thread state \ref fplThreadState for the given thread
+  */
 fpl_common_api fplThreadState fplGetThreadState(fplThreadHandle *thread);
 /**
   * \brief Creates and starts a thread and returns the handle to it.
-  * \param runFunc Function prototype called when this thread starts.
-  * \param data User data passed to the run function.
-  * \note The resources are automatically cleaned up when the thread terminates.
+  * \param runFunc The pointer to the \ref fpl_run_thread_function
+  * \param data The user data pointer passed to the execution function callback
+  * \return Returns a pointer to the \ref fplThreadHandle structure or \ref fpl_null when the limit of active threads has been reached.
   * \warning Do not free this thread context directly!
-  * \return Pointer to the thread handle or fpl_null when the limit of active threads has been reached.
+  * \note The resources are automatically cleaned up when the thread terminates.
   */
 fpl_platform_api fplThreadHandle *fplThreadCreate(fpl_run_thread_function *runFunc, void *data);
 /**
@@ -2729,187 +2797,190 @@ fpl_platform_api void fplThreadSleep(const uint32_t milliseconds);
   */
 fpl_platform_api bool fplThreadYield();
 /**
-  * \brief Forced the given thread to stop and release all underlying resources.
-  * \param thread Thread handle
-  * \note This thread context may get re-used for another thread in the future.
-  * \note Will return false for already terminated threads.
+  * \brief Forces the given thread to stop and release all underlying resources.
+  * \param thread The pointer to the \ref fplThreadHandle structure
+  * \return True when the thread was terminated, false otherwise.
   * \warning Do not free the given thread context manually!
-  * \return Returns true when the thread was terminated, false otherwise.
+  * \note This thread context may get re-used for another thread in the future.
+  * \note Returns true when the threads was terminated, false otherwise.
   */
 fpl_platform_api bool fplThreadTerminate(fplThreadHandle *thread);
 /**
   * \brief Wait until the given thread is done running or the given timeout has been reached.
-  * \param thread Thread
-  * \param timeout Number of milliseconds to wait. When this is set to \ref FPL_TIMEOUT_INFINITE it will wait infinitly.
-  * \return Returns true when the thread completes or when the timeout has been reached.
+  * \param thread The pointer to the \ref fplThreadHandle structure
+  * \param timeout The number of milliseconds to wait. When this is set to \ref FPL_TIMEOUT_INFINITE it will wait infinitly.
+  * \return Returns true when the thread completes or when the timeout has been reached, false otherwise.
   */
 fpl_platform_api bool fplThreadWaitForOne(fplThreadHandle *thread, const fplTimeoutValue timeout);
 /**
   * \brief Wait until all given threads are done running or the given timeout has been reached.
-  * \param threads Array of threads
-  * \param count Number of threads in the array
-  * \param timeout Number of milliseconds to wait. When this is set to \ref FPL_TIMEOUT_INFINITE it will wait infinitly.
-  * \return Returns true when all threads completes or when the timeout has been reached.
+  * \param threads The array \ref fplThreadHandle pointers
+  * \param count The number of threads in the array
+  * \param timeout The number of milliseconds to wait. When this is set to \ref FPL_TIMEOUT_INFINITE it will wait infinitly.
+  * \return Returns true when all threads completes or when the timeout has been reached, false otherwise.
   */
 fpl_platform_api bool fplThreadWaitForAll(fplThreadHandle *threads[], const size_t count, const fplTimeoutValue timeout);
 /**
   * \brief Wait until one of given threads is done running or the given timeout has been reached.
-  * \param threads Array of threads
-  * \param count Number of threads in the array
-  * \param timeout Number of milliseconds to wait. When this is set to \ref FPL_TIMEOUT_INFINITE it will wait infinitly.
-  * \return Returns true when one thread completes or when the timeout has been reached.
+  * \param threads The array \ref fplThreadHandle pointers
+  * \param count The number of threads in the array
+  * \param timeout The number of milliseconds to wait. When this is set to \ref FPL_TIMEOUT_INFINITE it will wait infinitly.
+  * \return Returns true when one thread completes or when the timeout has been reached, false otherwise.
   */
 fpl_platform_api bool fplThreadWaitForAny(fplThreadHandle *threads[], const size_t count, const fplTimeoutValue timeout);
 
 /**
   * \brief Initializes the given mutex
-  * \param mutex Pointer to a mutex handle
+  * \param mutex The pointer to the \ref fplMutexHandle structure
+  * \return Returns true when the mutex was initialized, false otherwise.
   * \note Use \ref fplMutexDestroy() when you are done with this mutex.
-  * \return True when the mutex was initialized or false otherwise.
   */
 fpl_platform_api bool fplMutexInit(fplMutexHandle *mutex);
 /**
   * \brief Releases the given mutex and clears the structure to zero.
-  * \param mutex Pointer to a mutex handle
+  * \param mutex The pointer to the \ref fplMutexHandle structure
   */
 fpl_platform_api void fplMutexDestroy(fplMutexHandle *mutex);
 /**
-  * \brief Locks the given mutex and blocks other threads.
-  * \param mutex Pointer to a mutex handle
-  * \returns True when mutex was locked or false otherwise.
+  * \brief Locks the given mutex and blocks any other threads.
+  * \param mutex The pointer to the \ref fplMutexHandle structure
+  * \returns Returns true when the mutex was locked, false otherwise.
   */
 fpl_platform_api bool fplMutexLock(fplMutexHandle *mutex);
 /**
   * \brief Tries to lock the given mutex without blocking other threads.
-  * \param mutex Pointer to a mutex handle
-  * \returns True when mutex was locked or false when mutex is already locked.
+  * \param mutex The pointer to the \ref fplMutexHandle structure
+  * \returns Returns true when the mutex was locked, false otherwise.
   */
 fpl_platform_api bool fplMutexTryLock(fplMutexHandle *mutex);
 /**
  * \brief Unlocks the given mutex
- * \param mutex Pointer to a mutex handle
- * \returns True when mutex was unlocked or false otherwise.
+ * \param mutex The pointer to the \ref fplMutexHandle structure
+ * \returns Returns true when the mutex was unlocked, false otherwise.
  */
 fpl_platform_api bool fplMutexUnlock(fplMutexHandle *mutex);
 
 /**
   * \brief Initializes the given signal
-  * \param signal Pointer to a signal handle
-  * \param initialValue Initial value the signal is set to
-  * \note Use \ref fplSignalDestroy() when you are done with this Signal.
-  * \return True when initialization was successful, false otherwise.
+  * \param signal The pointer to the \ref fplSignalHandle structure
+  * \param initialValue The initial value the signal is set to
+  * \return Returns true when initialization was successful, false otherwise.
+  * \note Use \ref fplSignalDestroy() when you are done with this Signal to release it.
   */
 fpl_platform_api bool fplSignalInit(fplSignalHandle *signal, const fplSignalValue initialValue);
 /**
   * \brief Releases the given signal and clears the structure to zero.
-  * \param signal Pointer to a signal handle
+  * \param signal The pointer to the \ref fplSignalHandle structure
   */
 fpl_platform_api void fplSignalDestroy(fplSignalHandle *signal);
 /**
   * \brief Waits until the given signal are waked up.
-  * \param signal Pointer to a signal handle
-  * \param timeout Number of milliseconds to wait. When this is set to \ref FPL_TIMEOUT_INFINITE it will wait infinitly.
-  * \return Returns true when the signal woke up or the timeout has been reached, otherwise false.
+  * \param signal The pointer to the \ref fplSignalHandle structure
+  * \param timeout The number of milliseconds to wait. When this is set to \ref FPL_TIMEOUT_INFINITE it will wait infinitly.
+  * \return Retrns true when the signal woke up or the timeout has been reached, false otherwise.
   */
 fpl_platform_api bool fplSignalWaitForOne(fplSignalHandle *signal, const fplTimeoutValue timeout);
 /**
   * \brief Waits until all the given signal are waked up.
-  * \param signals Array of signals
-  * \param count Number of signals
-  * \param timeout Number of milliseconds to wait. When this is set to \ref FPL_TIMEOUT_INFINITE it will wait infinitly.
-  * \return Returns true when all signals woke up or the timeout has been reached, otherwise false.
+  * \param signals The array of \ref fplSignalHandle pointers
+  * \param count The number of signals in the array
+  * \param timeout The number of milliseconds to wait. When this is set to \ref FPL_TIMEOUT_INFINITE it will wait infinitly.
+  * \return Returns true when all signals woke up or the timeout has been reached, false otherwise.
   */
 fpl_platform_api bool fplSignalWaitForAll(fplSignalHandle *signals[], const size_t count, const fplTimeoutValue timeout);
 /**
   * \brief Waits until any of the given signals wakes up or the timeout has been reached.
-  * \param signals Array of signals
-  * \param count Number of signals
-  * \param timeout Number of milliseconds to wait. When this is set to \ref FPL_TIMEOUT_INFINITE it will wait infinitly.
-  * \return Returns true when any of the signals woke up or the timeout has been reached, otherwise false.
+  * \param signals The array of \ref fplSignalHandle pointers
+  * \param count The number of signals in the array
+  * \param timeout The number of milliseconds to wait. When this is set to \ref FPL_TIMEOUT_INFINITE it will wait infinitly.
+  * \return Returns true when any of the signals woke up or the timeout has been reached, false otherwise.
   */
 fpl_platform_api bool fplSignalWaitForAny(fplSignalHandle *signals[], const size_t count, const fplTimeoutValue timeout);
 /**
   * \brief Sets the signal and wakes up the given signal.
-  * \param signal Pointer to a signal handle
+  * \param signal The pointer to the \ref fplSignalHandle structure
   * \return Returns true when the signal was set and broadcasted or false otherwise.
   */
 fpl_platform_api bool fplSignalSet(fplSignalHandle *signal);
 /**
   * \brief Resets the signal.
-  * \param signal Pointer to a signal handle
+  * \param signal The pointer to the \ref fplSignalHandle structure
   * \return Returns true when the signal was reset, false otherwise.
   */
 fpl_platform_api bool fplSignalReset(fplSignalHandle *signal);
 
 /**
-  * \brief Initializes the given condition
-  * \param condition Pointer to a \ref fplConditionVariable
-  * \note Use \ref fplSignalDestroy() when you are done with this Signal.
-  * \return True when initialization was successful, false otherwise.
+  * \brief Initialize
+  s the given condition
+  * \param condition The pointer to the \ref fplConditionVariable structure
+  * \return Returns true when initialization was successful, false otherwise.
+  * \note Use \ref fplSignalDestroy() when you are done with this Condition Variable to release its resources.
   */
 fpl_platform_api bool fplConditionInit(fplConditionVariable *condition);
 /**
   * \brief Releases the given condition and clears the structure to zero.
-  * \param condition Pointer to a \ref fplConditionVariable
+  * \param condition The pointer to the \ref fplConditionVariable structure
   */
 fpl_platform_api void fplConditionDestroy(fplConditionVariable *condition);
 /**
   * \brief Sleeps on the given condition and releases the mutex when done.
-  * \param condition Pointer to a \ref fplConditionVariable
-  * \param mutex Pointer to a \ref fplMutexHandle
-  * \param timeout Number of milliseconds to wait. When this is set to \ref FPL_TIMEOUT_INFINITE it will wait infinitly.
-  * \return True when the function succeeds, false otherwise.
+  * \param condition The pointer to the \ref fplConditionVariable structure
+  * \param mutex The pointer to the mutex handle \ref fplMutexHandle structure
+  * \param timeout The number of milliseconds to wait. When this is set to \ref FPL_TIMEOUT_INFINITE it will wait infinitly.
+  * \return Returns true when the function succeeds, false otherwise.
   */
 fpl_platform_api bool fplConditionWait(fplConditionVariable *condition, fplMutexHandle *mutex, const fplTimeoutValue timeout);
 /**
   * \brief Wakes up one thread which waits on the given condition.
-  * \param condition Pointer to a \ref fplConditionVariable
-  * \return True when the function succeeds, false otherwise.
+  * \param condition The pointer to the \ref fplConditionVariable structure
+  * \return Returns true when the function succeeds, false otherwise.
   */
 fpl_platform_api bool fplConditionSignal(fplConditionVariable *condition);
 /**
   * \brief Wakes up all threads which waits on the given condition.
-  * \param condition Pointer to a \ref fplConditionVariable
-  * \return True when the function succeeds, false otherwise.
+  * \param condition The pointer to the \ref fplConditionVariable structure
+  * \return Returns true when the function succeeds, false otherwise.
   */
 fpl_platform_api bool fplConditionBroadcast(fplConditionVariable *condition);
 
 /**
   * \brief Initializes the semaphore with the given initial value
-  * \param semaphore Pointer to a \ref fplSemaphoreHandle
+  * \param semaphore The pointer to the \ref fplSemaphoreHandle structure
   * \param initialValue The initial value
-  * \return True when the semaphores got initialized, false otherwise.
+  * \return Returns true when the semaphores got initialized, false otherwise.
   */
 fpl_platform_api bool fplSemaphoreInit(fplSemaphoreHandle *semaphore, const uint32_t initialValue);
 /**
   * \brief Releases the internal semaphore resources
-  * \param semaphore Pointer to a \ref fplSemaphoreHandle
+  * \param semaphore The pointer to the \ref fplSemaphoreHandle structure
   * \warning Do not call this when a thread is still waiting on this semaphore
   */
 fpl_platform_api void fplSemaphoreDestroy(fplSemaphoreHandle *semaphore);
 /**
   * \brief Waits for the semaphore until it get signaled or the timeout has been reached.
-  * \note When a semaphore got signaled, the semaphore value is decreased by one.
-  * \param semaphore Pointer to a \ref fplSemaphoreHandle
-  * \param timeout Number of milliseconds to wait. When this is set to \ref FPL_TIMEOUT_INFINITE it will wait infinitly.
+  * \param semaphore The pointer to the \ref fplSemaphoreHandle structure
+  * \param timeout The number of milliseconds to wait. When this is set to \ref FPL_TIMEOUT_INFINITE it will wait infinitly.
   * \return Returns true when the semaphore got signaled, false otherwise.
+  * \note When a semaphore got signaled, the semaphore value is decreased by one.
   */
 fpl_platform_api bool fplSemaphoreWait(fplSemaphoreHandle *semaphore, const fplTimeoutValue timeout);
 /**
   * \brief Tries to wait for the semaphore until it get signaled or return immediatly.
-  * \note When a semaphore got signaled, the semaphore value is decreased by one.
-  * \param semaphore Pointer to a \ref fplSemaphoreHandle
+  * \param semaphore The pointer to the \ref fplSemaphoreHandle structure
   * \return Returns true when the semaphore got signaled, false otherwise.
+  * \note When a semaphore got signaled, the semaphore value is decreased by one.
   */
 fpl_platform_api bool fplSemaphoreTryWait(fplSemaphoreHandle *semaphore);
 /**
-  * \brief Returns the current semaphore value
-  * \param semaphore Pointer to a \ref fplSemaphoreHandle
+  * \brief Gets the current semaphore value
+  * \param semaphore The pointer to the \ref fplSemaphoreHandle structure
+  * \return Returns the current semaphore value
   */
 fpl_platform_api int32_t fplSemaphoreValue(fplSemaphoreHandle *semaphore);
 /**
   * \brief Increments the semaphore value by one
-  * \param semaphore Pointer to a \ref fplSemaphoreHandle
+  * \param semaphore The pointer to the \ref fplSemaphoreHandle structure
+  * \return Returns true when semaphore was incremented, false otherwise.
   */
 fpl_platform_api bool fplSemaphoreRelease(fplSemaphoreHandle *semaphore);
 
@@ -2918,56 +2989,56 @@ fpl_platform_api bool fplSemaphoreRelease(fplSemaphoreHandle *semaphore);
 // ----------------------------------------------------------------------------
 /**
   * \defgroup Memory Memory functions
-  * \brief Memory allocation, clearing and copy functions
+  * \brief The category contains functions for allocating/manipulating memory
   * \{
   */
 // ----------------------------------------------------------------------------
 
 /**
   * \brief Clears the given memory by the given size to zero.
-  * \param mem Pointer to the memory.
-  * \param size Size in bytes to be cleared to zero.
+  * \param mem The pointer to the memory
+  * \param size The size in bytes to be cleared to zero
   */
 fpl_common_api void fplMemoryClear(void *mem, const size_t size);
 /**
   * \brief Sets the given memory by the given size to the given value.
-  * \param mem Pointer to the memory.
-  * \param value Value
-  * \param size Size in bytes to be cleared to zero.
+  * \param mem The pointer to the memory
+  * \param value The value to be set
+  * \param size The size in bytes to be cleared to zero
   */
 fpl_common_api void fplMemorySet(void *mem, const uint8_t value, const size_t size);
 /**
   * \brief Copies the given source memory with its length to the target memory.
-  * \param sourceMem Pointer to the source memory to copy from.
-  * \param sourceSize Size in bytes to be copied.
-  * \param targetMem Pointer to the target memory to copy to.
+  * \param sourceMem The pointer to the source memory to copy from
+  * \param sourceSize The size in bytes to be copied
+  * \param targetMem The pointer to the target memory to copy into
   */
 fpl_common_api void fplMemoryCopy(const void *sourceMem, const size_t sourceSize, void *targetMem);
 /**
   * \brief Allocates memory from the operating system by the given size.
-  * \param size Size to by allocated in bytes.
-  * \note The memory is guaranteed to be initialized by zero.
+  * \param size The size to by allocated in bytes.
+  * \return Returns a pointer to the new allocated memory.
   * \warning Alignment is not ensured here, the OS decides how to handle this. If you want to force a specific alignment use \ref fplMemoryAlignedAllocate() instead.
-  * \return Pointer to the new allocated memory.
+  * \note The memory is guaranteed to be initialized by zero.
   */
 fpl_platform_api void *fplMemoryAllocate(const size_t size);
 /**
   * \brief Releases the memory allocated from the operating system.
-  * \param ptr Pointer to the allocated memory.
+  * \param ptr The pointer to the allocated memory
   * \warning This should never be called with a aligned memory pointer! For freeing aligned memory, use \ref fplMemoryAlignedFree() instead.
   */
 fpl_platform_api void fplMemoryFree(void *ptr);
 /**
   * \brief Allocates aligned memory from the operating system by the given alignment.
-  * \param size Size amount in bytes
-  * \param alignment Alignment in bytes (Needs to be a power-of-two!)
+  * \param size The size amount in bytes
+  * \param alignment The alignment in bytes (Must be a power-of-two!)
+  * \return Returns the pointer to the new allocated aligned memory.
   * \note The memory is guaranteed to be initialized by zero.
-  * \return Pointer to the new allocated aligned memory.
   */
 fpl_common_api void *fplMemoryAlignedAllocate(const size_t size, const size_t alignment);
 /**
   * \brief Releases the aligned memory allocated from the operating system.
-  * \param ptr Pointer to the aligned allocated memory.
+  * \param ptr The pointer to the aligned allocated memory
   * \warning This should never be called with a not-aligned memory pointer! For freeing not-aligned memory, use \ref fplMemoryFree() instead.
   */
 fpl_common_api void fplMemoryAlignedFree(void *ptr);
@@ -2976,177 +3047,175 @@ fpl_common_api void fplMemoryAlignedFree(void *ptr);
 
 // ----------------------------------------------------------------------------
 /**
-  * \defgroup Strings String manipulation functions
-  * \brief Functions for converting/manipulating strings
+  * \defgroup Strings String functions
+  * \brief This category contains tons of functions for converting/manipulating strings
   * \{
   */
 // ----------------------------------------------------------------------------
 
 /**
-  * \brief Returns true when the source string matches the given wildcard
-  * \param source Source string
-  * \param wildcard Wildcard string
-  * \return True when source string matches wildcard, false otherwise.
+  * \brief Matches the given string by the given wildcard and returns a boolean indicating the match.
+  * \param source The source string
+  * \param wildcard The wildcard string
+  * \return Returns true when source string matches the wildcard, false otherwise.
   */
 fpl_common_api bool fplIsStringMatchWildcard(const char *source, const char *wildcard);
 /**
-  * \brief Returns true when both ansi strings are equal with enforcing the given length.
-  * \param a First string
-  * \param aLen Number of characters for the first string
-  * \param b Second string
-  * \param bLen Number of characters for the second string
+  * \brief Compares two strings with constrained lengths and returns a boolean indicating the equality.
+  * \param a The first string
+  * \param aLen The number of characters for the first string
+  * \param b The second string
+  * \param bLen The number of characters for the second string
+  * \return Returns true when both strings are equal, false otherwise.
   * \note Len parameters does not include the null-terminator!
-  * \return True when both strings matches, otherwise false.
   */
 fpl_common_api bool fplIsStringEqualLen(const char *a, const size_t aLen, const char *b, const size_t bLen);
 /**
-  * \brief Returns true when both ansi strings are equal.
-  * \param a First string
-  * \param b Second string
-  * \return True when both strings matches, otherwise false.
+  * \brief Compares two strings and returns a boolean indicating the equality.
+  * \param a The first string
+  * \param b The second string
+  * \return Returns true when both strings are equal, false otherwise.
   */
 fpl_common_api bool fplIsStringEqual(const char *a, const char *b);
 /**
-  * \brief Ensures that the given string always ends with a path separator with size constrained
-  * \param path Path string
-  * \param maxPathLen Max length of the path
-  * \return Pointer to the last character or fpl_null.
+  * \brief Ensures that the given string always ends with a path separator with length constrained
+  * \param path The target path string
+  * \param maxPathLen The max length of the target path
+  * \return Returns a pointer to the last written character or \ref fpl_null.
   */
 fpl_common_api char *fplEnforcePathSeparatorLen(char *path, size_t maxPathLen);
 /**
   * \brief Ensures that the given string always ends with a path separator
-  * \param path Path string
-  * \return Pointer to the last character or fpl_null.
+  * \param path The path string
+  * \return Returns a pointer to the last written character or \ref fpl_null.
   * \note This function is unsafe as it does not know the maximum length of the string!
   */
 fpl_common_api char *fplEnforcePathSeparator(char *path);
 /**
   * \brief Appends the source string to the given buffer
-  * \param appended Appending string
-  * \param appendedLen Length of the source string
-  * \param buffer Target buffer
-  * \param maxBufferLen Max length of the target buffer
-  * \return Pointer to the last character or fpl_null.
+  * \param appended The appending source string
+  * \param appendedLen The length of the appending source string
+  * \param buffer The target buffer
+  * \param maxBufferLen The max length of the target buffer
+  * \return Returns a pointer to the last written character or \ref fpl_null.
   */
 fpl_common_api char *fplStringAppendLen(const char *appended, const size_t appendedLen, char *buffer, size_t maxBufferLen);
 /**
   * \brief Appends the source string to the given buffer
-  * \param appended Appending string
-  * \param buffer Target buffer
-  * \param maxBufferLen Max length of the target buffer
-  * \return Pointer to the last character or fpl_null.
+  * \param appended The appending source string
+  * \param buffer The target buffer
+  * \param maxBufferLen The max length of the target buffer
+  * \return Returns a pointer to the last written character or \ref fpl_null.
   */
 fpl_common_api char *fplStringAppend(const char *appended, char *buffer, size_t maxBufferLen);
 /**
-  * \brief Returns the number of characters of the given 8-bit Ansi string.
+  * \brief Counts the number of ansi characters without including the zero terminator.
   * \param str The 8-bit ansi string
-  * \note Null terminator is not included!
-  * \return Returns the character length or zero when the input string is fpl_null.
+  * \return Returns the number of characters of the given 8-bit Ansi string or zero when the input string is fpl_null.
   */
 fpl_common_api size_t fplGetAnsiStringLength(const char *str);
 /**
-  * \brief Returns the number of characters of the given 16-bit wide string.
+  * \brief Counts the number of wide characters without including the zero terminator.
   * \param str The 16-bit wide string
-  * \note Null terminator is not included!
-  * \return Returns the character length or zero when the input string is fpl_null.
+  * \return Returns the number of characters of the given 16-bit Wide string or zero when the input string is fpl_null.
   */
 fpl_common_api size_t fplGetWideStringLength(const wchar_t *str);
 /**
-  * \brief Copies the given 8-bit source ansi string with a fixed length into a destination ansi string.
-  * \param source The 8-bit source ansi string.
-  * \param sourceLen The number of characters to copy.
-  * \param dest The 8-bit destination ansi string buffer.
-  * \param maxDestLen The total number of characters available in the destination buffer.
-  * \note Null terminator is included always. Does not allocate any memory.
-  * \return Returns the pointer to the last written character or fpl_null.
+  * \brief Copies the given 8-bit source ansi string with a constrained length into a destination ansi string.
+  * \param source The 8-bit source ansi string
+  * \param sourceLen The number of characters to copy
+  * \param dest The 8-bit destination ansi string buffer
+  * \param maxDestLen The total number of characters available in the destination buffer
+  * \return Returns the pointer to the last written character or \ref fpl_null.
+  * \note Null terminator is included always.
   */
 fpl_common_api char *fplCopyAnsiStringLen(const char *source, const size_t sourceLen, char *dest, const size_t maxDestLen);
 /**
   * \brief Copies the given 8-bit source ansi string into a destination ansi string.
-  * \param source The 8-bit source ansi string.
-  * \param dest The 8-bit destination ansi string buffer.
-  * \param maxDestLen The total number of characters available in the destination buffer.
-  * \note Null terminator is included always. Does not allocate any memory.
-  * \return Returns the pointer to the last written character or fpl_null.
+  * \param source The 8-bit source ansi string
+  * \param dest The 8-bit destination ansi string buffer
+  * \param maxDestLen The total number of characters available in the destination buffer
+  * \return Returns the pointer to the last written character or \ref fpl_null.
+  * \note Null terminator is included always.
   */
 fpl_common_api char *fplCopyAnsiString(const char *source, char *dest, const size_t maxDestLen);
 /**
   * \brief Copies the given 16-bit source wide string with a fixed length into a destination wide string.
-  * \param source The 16-bit source wide string.
-  * \param sourceLen The number of characters to copy.
-  * \param dest The 16-bit destination wide string buffer.
-  * \param maxDestLen The total number of characters available in the destination buffer.
-  * \note Null terminator is included always. Does not allocate any memory.
-  * \return Returns the pointer to the last written character or fpl_null.
+  * \param source The 16-bit source wide string
+  * \param sourceLen The number of characters to copy
+  * \param dest The 16-bit destination wide string buffer
+  * \param maxDestLen The total number of characters available in the destination buffer
+  * \return Returns the pointer to the last written character or \ref fpl_null.
+  * \note Null terminator is included always.
   */
 fpl_common_api wchar_t *fplCopyWideStringLen(const wchar_t *source, const size_t sourceLen, wchar_t *dest, const size_t maxDestLen);
 /**
   * \brief Copies the given 16-bit source wide string into a destination wide string.
-  * \param source The 16-bit source wide string.
-  * \param dest The 16-bit destination wide string buffer.
-  * \param maxDestLen The total number of characters available in the destination buffer.
-  * \note Null terminator is included always. Does not allocate any memory.
-  * \return Returns the pointer to the last written character or fpl_null.
+  * \param source The 16-bit source wide string
+  * \param dest The 16-bit destination wide string buffer
+  * \param maxDestLen The total number of characters available in the destination buffer
+  * \return Returns the pointer to the last written character or \ref fpl_null.
+  * \note Null terminator is included always.
   */
 fpl_common_api wchar_t *fplCopyWideString(const wchar_t *source, wchar_t *dest, const size_t maxDestLen);
 /**
   * \brief Converts the given 16-bit source wide string with length in a 8-bit ansi string.
-  * \param wideSource The 16-bit source wide string.
-  * \param maxWideSourceLen The number of characters of the source wide string.
-  * \param ansiDest The 8-bit destination ansi string buffer.
-  * \param maxAnsiDestLen The total number of characters available in the destination buffer.
-  * \note Null terminator is included always. Does not allocate any memory.
-  * \return Returns the pointer to the last written character or fpl_null.
+  * \param wideSource The 16-bit source wide string
+  * \param maxWideSourceLen The number of characters of the source wide string
+  * \param ansiDest The 8-bit destination ansi string buffer
+  * \param maxAnsiDestLen The total number of characters available in the destination buffer
+  * \return Returns the pointer to the last written character or \ref fpl_null.
+  * \note Null terminator is included always.
   */
 fpl_platform_api char *fplWideStringToAnsiString(const wchar_t *wideSource, const size_t maxWideSourceLen, char *ansiDest, const size_t maxAnsiDestLen);
 /**
   * \brief Converts the given 16-bit source wide string with length in a 8-bit UTF-8 ansi string.
-  * \param wideSource The 16-bit source wide string.
-  * \param maxWideSourceLen The number of characters of the source wide string.
-  * \param utf8Dest The 8-bit destination ansi string buffer.
-  * \param maxUtf8DestLen The total number of characters available in the destination buffer.
-  * \note Null terminator is included always. Does not allocate any memory.
-  * \return Returns the pointer to the last written character or fpl_null.
+  * \param wideSource The 16-bit source wide string
+  * \param maxWideSourceLen The number of characters of the source wide string
+  * \param utf8Dest The 8-bit destination ansi string buffer
+  * \param maxUtf8DestLen The total number of characters available in the destination buffer
+  * \return Returns the pointer to the last written character or \ref fpl_null.
+  * \note Null terminator is included always.
   */
 fpl_platform_api char *fplWideStringToUTF8String(const wchar_t *wideSource, const size_t maxWideSourceLen, char *utf8Dest, const size_t maxUtf8DestLen);
 /**
   * \brief Converts the given 8-bit source ansi string with length in a 16-bit wide string.
-  * \param ansiSource The 8-bit source ansi string.
-  * \param ansiSourceLen The number of characters of the source wide string.
-  * \param wideDest The 16-bit destination wide string buffer.
-  * \param maxWideDestLen The total number of characters available in the destination buffer.
+  * \param ansiSource The 8-bit source ansi string
+  * \param ansiSourceLen The number of characters of the source wide string
+  * \param wideDest The 16-bit destination wide string buffer
+  * \param maxWideDestLen The total number of characters available in the destination buffer
+  * \return Returns the pointer to the last written character or \ref fpl_null.
   * \note Null terminator is included always. Does not allocate any memory.
-  * \return Returns the pointer to the last written character or fpl_null.
   */
 fpl_platform_api wchar_t *fplAnsiStringToWideString(const char *ansiSource, const size_t ansiSourceLen, wchar_t *wideDest, const size_t maxWideDestLen);
 /**
   * \brief Converts the given 8-bit UTF-8 source ansi string with length in a 16-bit wide string.
-  * \param utf8Source The 8-bit source ansi string.
-  * \param utf8SourceLen The number of characters of the source wide string.
-  * \param wideDest The 16-bit destination wide string buffer.
-  * \param maxWideDestLen The total number of characters available in the destination buffer.
-  * \note Null terminator is included always. Does not allocate any memory.
-  * \return Returns the pointer to the last written character or fpl_null.
+  * \param utf8Source The 8-bit source ansi string
+  * \param utf8SourceLen The number of characters of the source wide string
+  * \param wideDest The 16-bit destination wide string buffer
+  * \param maxWideDestLen The total number of characters available in the destination buffer
+  * \return Returns the pointer to the last written character or \ref fpl_null.
+  * \note Null terminator is included always.
   */
 fpl_platform_api wchar_t *fplUTF8StringToWideString(const char *utf8Source, const size_t utf8SourceLen, wchar_t *wideDest, const size_t maxWideDestLen);
 /**
   * \brief Fills out the given destination ansi string buffer with a formatted string, using the format specifier and variable arguments.
-  * \param ansiDestBuffer The 8-bit destination ansi string buffer.
-  * \param maxAnsiDestBufferLen The total number of characters available in the destination buffer.
-  * \param format The string format.
-  * \param ... Variable arguments.
+  * \param ansiDestBuffer The 8-bit destination ansi string buffer
+  * \param maxAnsiDestBufferLen The total number of characters available in the destination buffer
+  * \param format The string format
+  * \param ... The variable arguments
+  * \return Returns the pointer to the last written character or \ref fpl_null.
   * \note This is most likely just a wrapper call to vsnprintf()
-  * \return Pointer to the last written character or fpl_null.
   */
 fpl_common_api char *fplFormatAnsiString(char *ansiDestBuffer, const size_t maxAnsiDestBufferLen, const char *format, ...);
 /**
   * \brief Fills out the given destination ansi string buffer with a formatted string, using the format specifier and the arguments list.
-  * \param ansiDestBuffer The 8-bit destination ansi string buffer.
-  * \param maxAnsiDestBufferLen The total number of characters available in the destination buffer.
-  * \param format The string format.
-  * \param argList Arguments list.
+  * \param ansiDestBuffer The 8-bit destination ansi string buffer
+  * \param maxAnsiDestBufferLen The total number of characters available in the destination buffer
+  * \param format The string format
+  * \param argList The arguments list
+  * \return Returns the pointer to the first character in the destination buffer or \ref fpl_null.
   * \note This is most likely just a wrapper call to vsnprintf()
-  * \return Pointer to the first character in the destination buffer or fpl_null.
   */
 fpl_common_api char *fplFormatAnsiStringArgs(char *ansiDestBuffer, const size_t maxAnsiDestBufferLen, const char *format, va_list argList);
 
@@ -3155,12 +3224,12 @@ fpl_common_api char *fplFormatAnsiStringArgs(char *ansiDestBuffer, const size_t 
 // ----------------------------------------------------------------------------
 /**
   * \defgroup Files Files/IO functions
-  * \brief Tons of file and directory IO functions
+  * \brief This category contains and types and functions for handling files & directories
   * \{
   */
 // ----------------------------------------------------------------------------
 
-//! Internal file handle union
+//! A union containing the internal file handle for any platform
 typedef union fplInternalFileHandle {
 #if defined(FPL_PLATFORM_WIN32)
 	//! Win32 file handle
@@ -3171,7 +3240,7 @@ typedef union fplInternalFileHandle {
 #endif
 } fplInternalFileHandle;
 
-//! Handle to a loaded/created file
+//! The file handle structure
 typedef struct fplFileHandle {
 	//! Internal file handle
 	fplInternalFileHandle internalHandle;
@@ -3179,7 +3248,7 @@ typedef struct fplFileHandle {
 	bool isValid;
 } fplFileHandle;
 
-//! File position mode (Beginning, Current, End)
+//! An enumeration of file position modes (Beginning, Current, End)
 typedef enum fplFilePositionMode {
 	//! Starts from the beginning
 	fplFilePositionMode_Beginning = 0,
@@ -3189,7 +3258,7 @@ typedef enum fplFilePositionMode {
 	fplFilePositionMode_End
 } fplFilePositionMode;
 
-//! File entry type (File, Directory, etc.)
+//! An enumeration of file entry types (File, Directory, etc.)
 typedef enum fplFileEntryType {
 	//! Unknown entry type
 	fplFileEntryType_Unknown = 0,
@@ -3199,7 +3268,7 @@ typedef enum fplFileEntryType {
 	fplFileEntryType_Directory
 } fplFileEntryType;
 
-//! File permission flags
+//! An enumeration of file permission flags
 typedef enum fplFilePermissionFlags {
 	//! All (Read, Write, Execute, Search)
 	fplFilePermissionFlags_All = 0,
@@ -3213,7 +3282,7 @@ typedef enum fplFilePermissionFlags {
 //! fplFilePermissionFlags operator overloads for C++
 FPL_ENUM_AS_FLAGS_OPERATORS(fplFilePermissionFlags);
 
-//! File permission types
+//! An enumeration of file permission types
 typedef enum fplFilePermissionMasks {
 	//! No mask
 	fplFilePermissionMasks_None = 0,
@@ -3227,7 +3296,7 @@ typedef enum fplFilePermissionMasks {
 //! fplFilePermissionMasks operator overloads for C++
 FPL_ENUM_AS_FLAGS_OPERATORS(fplFilePermissionMasks);
 
-//! File permissions mask
+//! A union containing the file permissions (UMask)
 typedef union fplFilePermissions {
 	struct {
 		//! User flags
@@ -3243,7 +3312,7 @@ typedef union fplFilePermissions {
 	uint32_t umask;
 } fplFilePermissions;
 
-//! File attribute flags (Normal, Readonly, Hidden, etc.)
+//! An enumeratation of file attribute flags (Normal, Readonly, Hidden, etc.)
 typedef enum fplFileAttributeFlags {
 	//! No attributes
 	fplFileAttributeFlags_None = 0,
@@ -3259,7 +3328,7 @@ typedef enum fplFileAttributeFlags {
 //! FileAttributeFlags operator overloads for C++
 FPL_ENUM_AS_FLAGS_OPERATORS(fplFileAttributeFlags);
 
-//! Internal file entry handle
+//! A union containing the internal file handle for any platform
 typedef union fplInternalFileEntryHandle {
 #if defined(FPL_PLATFORM_WIN32)
 	//! Win32 file handle
@@ -3270,7 +3339,7 @@ typedef union fplInternalFileEntryHandle {
 #endif
 } fplInternalFileEntryHandle;
 
-//! Internal root file info
+//! A structure containing the internal root file informations
 typedef struct fplInternalFileRootInfo {
 	//! Saved root path
 	const char *rootPath;
@@ -3278,7 +3347,7 @@ typedef struct fplInternalFileRootInfo {
 	const char *filter;
 } fplInternalFileRootInfo;
 
-//! Entry for storing current file informations (name, type, attributes, etc.)
+//! A structure containing the informations for a file or directory (name, type, attributes, etc.)
 typedef struct fplFileEntry {
 	//! Full path
 	char fullPath[FPL_MAX_PATH_LENGTH];
@@ -3298,69 +3367,69 @@ typedef struct fplFileEntry {
 
 /**
   * \brief Opens a binary file for reading from a ansi string path and returns the handle of it.
-  * \param filePath Ansi file path.
-  * \param outHandle Pointer to the file handle
-  * \return True when binary ansi file was opened, false otherwise
+  * \param filePath The ansi file path
+  * \param outHandle The pointer to the \ref fplFileHandle structure
+  * \return Returns true when binary ansi file was opened, false otherwise.
   */
 fpl_platform_api bool fplOpenAnsiBinaryFile(const char *filePath, fplFileHandle *outHandle);
 /**
   * \brief Opens a binary file for reading from a wide string path and returns the handle of it.
-  * \param filePath Wide file path.
-  * \param outHandle Pointer to the file handle
-  * \return True when binary wide file was opened, false otherwise
+  * \param filePath The wide file path
+  * \param outHandle The pointer to the \ref fplFileHandle structure
+  * \return Returns true when binary wide file was opened, false otherwise.
   */
 fpl_platform_api bool fplOpenWideBinaryFile(const wchar_t *filePath, fplFileHandle *outHandle);
 /**
   * \brief Create a binary file for writing to the given ansi string path and returns the handle of it.
-  * \param filePath Ansi file path.
-  * \param outHandle Pointer to the file handle
-  * \return True when binary ansi file was created, false otherwise
+  * \param filePath The Ansi file path
+  * \param outHandle The pointer to the \ref fplFileHandle structure
+  * \return Returns true when binary ansi file was created, false otherwise.
   */
 fpl_platform_api bool fplCreateAnsiBinaryFile(const char *filePath, fplFileHandle *outHandle);
 /**
   * \brief Create a binary file for writing to the given wide string path and returns the handle of it.
-  * \param filePath Wide file path.
-  * \param outHandle Pointer to the file handle
-  * \return True when binary wide file was created, false otherwise
+  * \param filePath The wide file path
+  * \param outHandle The pointer to the \ref fplFileHandle structure
+  * \return Returns true when binary wide file was created, false otherwise.
   */
 fpl_platform_api bool fplCreateWideBinaryFile(const wchar_t *filePath, fplFileHandle *outHandle);
 /**
-  * \brief Reads a block from the given file handle and returns the number of bytes read.
-  * \param fileHandle Reference to the file handle.
-  * \param sizeToRead Number of bytes to read.
-  * \param targetBuffer Target memory to write into.
-  * \param maxTargetBufferSize Total number of bytes available in the target buffer.
+  * \brief Reads a block from the given file and returns the number of read bytes.
+  * \param fileHandle The pointer to the \ref fplFileHandle structure
+  * \param sizeToRead The number of bytes to read
+  * \param targetBuffer The target memory to write into
+  * \param maxTargetBufferSize Total number of bytes available in the target buffer
+  * \return Returns the number of bytes read or zero.
   * \note Its limited to files < 2 GB.
-  * \return Number of bytes read or zero.
   */
 fpl_platform_api uint32_t fplReadFileBlock32(const fplFileHandle *fileHandle, const uint32_t sizeToRead, void *targetBuffer, const uint32_t maxTargetBufferSize);
 /**
-  * \brief Writes a block to the given file handle and returns the number of bytes written.
-  * \param fileHandle Reference to the file handle.
-  * \param sourceBuffer Source memory to read from.
-  * \param sourceSize Number of bytes to write.
+  * \brief Writes a block to the given file and returns the number of written bytes.
+  * \param fileHandle The pointer to the file handle \ref fplFileHandle
+  * \param sourceBuffer Source memory to read from
+  * \param sourceSize Number of bytes to write
+  * \return Returns the number of bytes written or zero.
   * \note Its limited to files < 2 GB.
-  * \return Number of bytes written or zero.
   */
 fpl_platform_api uint32_t fplWriteFileBlock32(const fplFileHandle *fileHandle, void *sourceBuffer, const uint32_t sourceSize);
 /**
   * \brief Sets the current file position by the given position, depending on the mode its absolute or relative.
-  * \param fileHandle Reference to the file handle.
+  * \param fileHandle The pointer to the \ref fplFileHandle structure
   * \param position Position in bytes
   * \param mode Position mode
   * \note Its limited to files < 2 GB.
   */
 fpl_platform_api void fplSetFilePosition32(const fplFileHandle *fileHandle, const int32_t position, const fplFilePositionMode mode);
 /**
-  * \brief Returns the current file position in bytes.
-  * \param fileHandle Reference to the file handle.
+  * \brief Gets the current file position in bytes.
+  * \param fileHandle The pointer to the \ref fplFileHandle structure
+  * \return Returns the current file position in bytes.
   * \note Its limited to files < 2 GB.
-  * \return Current file position in bytes.
   */
 fpl_platform_api uint32_t fplGetFilePosition32(const fplFileHandle *fileHandle);
 /**
   * \brief Closes the given file and releases the underlying resources and clears the handle to zero.
-  * \param fileHandle Reference to the file handle.
+  * \param fileHandle The pointer to the \ref fplFileHandle structure
   */
 fpl_platform_api void fplCloseFile(fplFileHandle *fileHandle);
 
@@ -3368,87 +3437,87 @@ fpl_platform_api void fplCloseFile(fplFileHandle *fileHandle);
 // @TODO(final): Add wide file operations
 
 /**
-  * \brief Returns the 32-bit file size in bytes for the given file.
-  * \param filePath Ansi path to the file.
+  * \brief Gets the file size in bytes for the given file, limited to a max size of 32-bit.
+  * \param filePath The ansi path to the file.
+  * \return Returns the file size in bytes or zero.
   * \note Its limited to files < 2 GB.
-  * \return File size in bytes or zero.
   */
 fpl_platform_api uint32_t fplGetFileSizeFromPath32(const char *filePath);
 /**
-  * \brief Returns the 32-bit file size in bytes for a opened file.
-  * \param fileHandle Reference to the file handle.
+  * \brief Gets the file size in bytes for a opened file, limited to a max size of 32-bit.
+  * \param fileHandle The pointer to the \ref fplFileHandle structure
+  * \return Returns the file size in bytes or zero.
   * \note Its limited to files < 2 GB.
-  * \return File size in bytes or zero.
   */
 fpl_platform_api uint32_t fplGetFileSizeFromHandle32(const fplFileHandle *fileHandle);
 /**
-  * \brief Returns true when the given file physically exists.
-  * \param filePath Ansi path to the file.
-  * \return True when the file exists, otherwise false.
+  * \brief Checks if the file exists and returns a boolean indicating the existance.
+  * \param filePath The ansi path to the file
+  * \return Returns true when the file exists, false otherwise.
   */
 fpl_platform_api bool fplFileExists(const char *filePath);
 /**
   * \brief Copies the given source file to the target path and returns true when copy was successful.
-  * \param sourceFilePath Ansi source file path.
-  * \param targetFilePath Ansi target file path.
-  * \param overwrite When true the target file always be overwritten, otherwise it will return false when file already exists.
-  * \return True when the file was copied, otherwise false.
+  * \param sourceFilePath The ansi source file path
+  * \param targetFilePath The ansi target file path
+  * \param overwrite The overwrite boolean indicating if the file can be overwritten or not
+  * \return Returns true when the file was copied, false otherwise.
   */
 fpl_platform_api bool fplFileCopy(const char *sourceFilePath, const char *targetFilePath, const bool overwrite);
 /**
   * \brief Movies the given source file to the target file and returns true when the move was successful.
-  * \param sourceFilePath Ansi source file path.
-  * \param targetFilePath Ansi target file path.
-  * \return True when the file was moved, otherwise false.
+  * \param sourceFilePath The ansi source file path
+  * \param targetFilePath The ansi target file path
+  * \return Returns true when the file was moved, false otherwise.
   */
 fpl_platform_api bool fplFileMove(const char *sourceFilePath, const char *targetFilePath);
 /**
   * \brief Deletes the given file without confirmation and returns true when the deletion was successful.
-  * \param filePath Ansi path to the file.
-  * \return True when the file was deleted, otherwise false.
+  * \param filePath The ansi path to the file
+  * \return Returns true when the file was deleted, false otherwise.
   */
 fpl_platform_api bool fplFileDelete(const char *filePath);
 
 /**
   * \brief Creates all the directories in the given path.
-  * \param path Ansi path to the directory.
-  * \return True when at least one directory was created, otherwise false.
+  * \param path The Ansi path to the directory
+  * \return Returns true when at least one directory was created, false otherwise.
   */
 fpl_platform_api bool fplDirectoriesCreate(const char *path);
 /**
-  * \brief Returns true when the given directory physically exists.
-  * \param path Ansi path to the directory.
-  * \return True when the directory exists, otherwise false.
+  * \brief Checks if the given directory exists and returns a boolean indicating its existance.
+  * \param path The ansi path to the directory
+  * \return Returns true when the directory exists, false otherwise.
   */
 fpl_platform_api bool fplDirectoryExists(const char *path);
 /**
   * \brief Deletes the given empty directory without confirmation and returns true when the deletion was successful.
-  * \param path Ansi path to the directory.
-  * \return True when the empty directory was deleted, otherwise false.
+  * \param path The ansi path to the directory.
+  * \return Returns true when the empty directory was deleted, false otherwise.
   */
 fpl_platform_api bool fplDirectoryRemove(const char *path);
 /**
   * \brief Iterates through files / directories in the given directory.
   * \param path The full path
   * \param filter The filter wildcard (If empty or null it will not filter anything at all)
-  * \param entry The reference to a file entry.
+  * \param entry The pointer to the \ref fplFileEntry structure
+  * \return Returns true when there was a first entry found, false otherwise.
   * \note This function is not recursive, so it will traverse the first level only!
-  * \note When no first entry is found, the resources are automatically cleaned up.
-  * \return Returns true when there was a first entry found otherwise false.
+  * \note When no first entry are found, the resources are automatically cleaned up.
   */
 fpl_platform_api bool fplListDirBegin(const char *path, const char *filter, fplFileEntry *entry);
 /**
   * \brief Gets the next file entry from iterating through files / directories.
-  * \param entry The reference to the current file entry.
-  * \note This function is not recursive, so it will traverse the first level only!
-  * \note When no next entry is found, the resources are automatically cleaned up.
+  * \param entry The pointer to the \ref fplFileEntry structure
   * \return Returns true when there was a next file otherwise false if not.
+  * \note This function is not recursive, so it will traverse the first level only!
+  * \note When no next entry are found, the resources are automatically cleaned up.
   */
 fpl_platform_api bool fplListDirNext(fplFileEntry *entry);
 /**
   * \brief Releases opened resources from iterating through files / directories.
-  * \note Its safe to call this when entry is already closed
-  * \param entry The reference to the last file entry.
+  * \param entry The pointer to the \ref fplFileEntry structure
+  * \note Its safe to call this when the file entry is already closed.
   */
 fpl_platform_api void fplListDirEnd(fplFileEntry *entry);
 
@@ -3457,68 +3526,63 @@ fpl_platform_api void fplListDirEnd(fplFileEntry *entry);
 // ----------------------------------------------------------------------------
 /**
   * \defgroup Paths Path functions
-  * \brief Functions for retrieving paths like HomePath, ExecutablePath, etc.
+  * \brief This category contains functions for retrieving and building paths
   * \{
   */
 // ----------------------------------------------------------------------------
 
-// @TODO(final): Support wide path for 'paths' as well
+// @TODO(final): Support wide strings for 'paths' as well
 
 /**
-  * \brief Returns the full path to this executable, including the executable file name.
-  * \param destPath Destination buffer
-  * \param maxDestLen Total number of characters available in the destination buffer.
-  * \note Result is written in the destination buffer.
-  * \return Returns the pointer to the first character in the destination buffer or fpl_null.
+  * \brief Gets the full path to this executable, including the executable file name.
+  * \param destPath The destination buffer
+  * \param maxDestLen The total number of characters available in the destination buffer
+  * \return Returns the pointer to the last written character in the destination buffer or \ref fpl_null.
   */
 fpl_platform_api char *fplGetExecutableFilePath(char *destPath, const size_t maxDestLen);
 /**
-  * \brief Returns the full path to your home directory.
-  * \param destPath Destination buffer
-  * \param maxDestLen Total number of characters available in the destination buffer.
-  * \note Result is written in the destination buffer.
-  * \return Returns the pointer to the first character in the destination buffer or fpl_null.
+  * \brief Gets the full path to your home directory.
+  * \param destPath The destination buffer
+  * \param maxDestLen The total number of characters available in the destination buffer
+  * \return Returns the pointer to the last written character in the destination buffer or \ref fpl_null.
   */
 fpl_platform_api char *fplGetHomePath(char *destPath, const size_t maxDestLen);
 /**
-  * \brief Returns the path from the given source path.
-  * \param sourcePath Source path to extract from.
-  * \param destPath Destination buffer
-  * \param maxDestLen Total number of characters available in the destination buffer.
-  * \note Result is written in the destination buffer.
-  * \return Returns the pointer to the first character in the destination buffer or fpl_null.
+  * \brief Extracts the directory path from the given file path.
+  * \param sourcePath The source path to extract from
+  * \param destPath The destination buffer
+  * \param maxDestLen The total number of characters available in the destination buffer
+  * \return Returns the pointer to the last written character in the destination buffer or \ref fpl_null.
   */
 fpl_common_api char *fplExtractFilePath(const char *sourcePath, char *destPath, const size_t maxDestLen);
 /**
-  * \brief Returns the file extension from the given source path.
-  * \param sourcePath Source path to extract from.
+  * \brief Extracts the file extension from the given source path.
+  * \param sourcePath The source path to extract from
   * \return Returns the pointer to the first character of the extension.
   */
 fpl_common_api const char *fplExtractFileExtension(const char *sourcePath);
 /**
-  * \brief Returns the file name including the file extension from the given source path.
-  * \param sourcePath Source path to extract from.
+  * \brief Extracts the file name including the file extension from the given source path.
+  * \param sourcePath The source path to extract from
   * \return Returns the pointer to the first character of the filename.
   */
 fpl_common_api const char *fplExtractFileName(const char *sourcePath);
 /**
-  * \brief Changes the file extension on the given source path and writes the result into the destination path.
-  * \param filePath File path to search for the extension.
-  * \param newFileExtension New file extension.
-  * \param destPath Destination buffer
-  * \param maxDestLen Total number of characters available in the destination buffer.
-  * \note Result is written in the destination buffer.
-  * \return Returns the pointer to the first character in the destination buffer or fpl_null.
+  * \brief Changes the file extension on the given source path and writes the result into a destination buffer.
+  * \param filePath The File path to search for the extension
+  * \param newFileExtension The new file extension
+  * \param destPath The destination buffer
+  * \param maxDestLen The total number of characters available in the destination buffer
+  * \return Returns the pointer to the last written character in the destination buffer or \ref fpl_null.
   */
 fpl_common_api char *fplChangeFileExtension(const char *filePath, const char *newFileExtension, char *destPath, const size_t maxDestLen);
 /**
-  * \brief Combines all included path by the systems path separator.
-  * \param destPath Destination buffer
-  * \param maxDestPathLen Total number of characters available in the destination buffer.
-  * \param pathCount Number of dynamic path arguments.
-  * \param ... Dynamic path arguments.
-  * \note Result is written in the destination buffer.
-  * \return Returns the pointer to the first character in the destination buffer or fpl_null.
+  * \brief Combines all given paths by the systems path separator.
+  * \param destPath The destination buffer
+  * \param maxDestPathLen The total number of characters available in the destination buffer
+  * \param pathCount The number of dynamic path arguments
+  * \param ... The dynamic path arguments
+  * \return Returns the pointer to the last written character in the destination buffer or \ref fpl_null.
   */
 fpl_common_api char *fplPathCombine(char *destPath, const size_t maxDestPathLen, const size_t pathCount, ...);
 
@@ -3528,12 +3592,12 @@ fpl_common_api char *fplPathCombine(char *destPath, const size_t maxDestPathLen,
 // ----------------------------------------------------------------------------
 /**
 * \defgroup WindowEvents Window events
-* \brief Window event structures
+* \brief This category contains types/functions for handling window events
 * \{
 */
 // ----------------------------------------------------------------------------
 
-//! Mapped keys (Based on MS Virtual-Key-Codes, mostly directly mapped from ASCII)
+//! An enumeration of mapped keys (Based on MS Virtual-Key-Codes, mostly directly mapped from ASCII)
 typedef enum fplKey {
 	fplKey_None = 0,
 
@@ -3704,7 +3768,7 @@ typedef enum fplKey {
 	// 0xBF-0xFE Dont care
 } fplKey;
 
-//! Window event type (Resized, PositionChanged, etc.)
+//! An enumeration of window event types (Resized, PositionChanged, etc.)
 typedef enum fplWindowEventType {
 	//! None window event type
 	fplWindowEventType_None = 0,
@@ -3714,9 +3778,15 @@ typedef enum fplWindowEventType {
 	fplWindowEventType_GotFocus,
 	//! Window lost focus
 	fplWindowEventType_LostFocus,
+	//! Window has been minimized
+	fplWindowEventType_Minimized,
+	//! Window has been maximized
+	fplWindowEventType_Maximized,
+	//! Window has been restored
+	fplWindowEventType_Restored,
 } fplWindowEventType;
 
-//! Window event data (Size, Position, etc.)
+//! A structure containing window event data (Size, Position, etc.)
 typedef struct fplWindowEvent {
 	//! Window event type
 	fplWindowEventType type;
@@ -3726,7 +3796,7 @@ typedef struct fplWindowEvent {
 	uint32_t height;
 } fplWindowEvent;
 
-//! Keyboard event type (KeyDown, KeyUp, Char, ...)
+//! An enumeration of keyboard event types (KeyDown, KeyUp, Char, ...)
 typedef enum fplKeyboardEventType {
 	//! None key event type
 	fplKeyboardEventType_None = 0,
@@ -3738,7 +3808,7 @@ typedef enum fplKeyboardEventType {
 	fplKeyboardEventType_CharInput,
 } fplKeyboardEventType;
 
-//! Keyboard modifier flags (Alt, Ctrl, ...)
+//! An enumeration of keyboard modifier flags (Alt, Ctrl, ...)
 typedef enum fplKeyboardModifierFlags {
 	//! No modifiers
 	fplKeyboardModifierFlags_None = 0,
@@ -3754,7 +3824,7 @@ typedef enum fplKeyboardModifierFlags {
 //! KeyboardModifierFlags operator overloads for C++
 FPL_ENUM_AS_FLAGS_OPERATORS(fplKeyboardModifierFlags);
 
-//! Keyboard event data (Type, Keycode, Mapped key, etc.)
+//! A structure containing keyboard event data (Type, Keycode, Mapped key, etc.)
 typedef struct fplKeyboardEvent {
 	//! Keyboard event type
 	fplKeyboardEventType type;
@@ -3766,7 +3836,7 @@ typedef struct fplKeyboardEvent {
 	fplKeyboardModifierFlags modifiers;
 } fplKeyboardEvent;
 
-//! Mouse event type (Move, ButtonDown, ...)
+//! An enumeration of mouse event types (Move, ButtonDown, ...)
 typedef enum fplMouseEventType {
 	//! No mouse event type
 	fplMouseEventType_None,
@@ -3780,7 +3850,7 @@ typedef enum fplMouseEventType {
 	fplMouseEventType_Wheel,
 } fplMouseEventType;
 
-//! Mouse button type (Left, Right, ...)
+//! An enumeration of mouse button types (Left, Right, ...)
 typedef enum fplMouseButtonType {
 	//! No mouse button
 	fplMouseButtonType_None = -1,
@@ -3792,7 +3862,7 @@ typedef enum fplMouseButtonType {
 	fplMouseButtonType_Middle = 2,
 } fplMouseButtonType;
 
-//! Mouse event data (Type, Button, Position, etc.)
+//! A structure containing mouse event data (Type, Button, Position, etc.)
 typedef struct fplMouseEvent {
 	//! Mouse event type
 	fplMouseEventType type;
@@ -3806,7 +3876,7 @@ typedef struct fplMouseEvent {
 	float wheelDelta;
 } fplMouseEvent;
 
-//! Gamepad event type (Connected, Disconnected, StateChanged, etc.)
+//! An enumeration of gamepad event types (Connected, Disconnected, StateChanged, etc.)
 typedef enum fplGamepadEventType {
 	//! No gamepad event
 	fplGamepadEventType_None = 0,
@@ -3818,13 +3888,13 @@ typedef enum fplGamepadEventType {
 	fplGamepadEventType_StateChanged,
 } fplGamepadEventType;
 
-//! Gamepad button (IsDown, etc.)
+//! A structure containing properties for a gamepad button (IsDown, etc.)
 typedef struct fplGamepadButton {
 	//! Is button down
 	bool isDown;
 } fplGamepadButton;
 
-//! Gamepad state data
+//! A structure containing the entire gamepad state
 typedef struct fplGamepadState {
 	union {
 		struct {
@@ -3880,7 +3950,7 @@ typedef struct fplGamepadState {
 	float rightTrigger;
 } fplGamepadState;
 
-//! Gamepad event data (Type, Device, State, etc.)
+//! A structure containing gamepad event data (Type, Device, State, etc.)
 typedef struct fplGamepadEvent {
 	//! Gamepad event type
 	fplGamepadEventType type;
@@ -3890,7 +3960,7 @@ typedef struct fplGamepadEvent {
 	fplGamepadState state;
 } fplGamepadEvent;
 
-//! Event type (Window, Keyboard, Mouse, ...)
+//! An enumeration of event types (Window, Keyboard, Mouse, ...)
 typedef enum fplEventType {
 	//! None event type
 	fplEventType_None = 0,
@@ -3904,7 +3974,7 @@ typedef enum fplEventType {
 	fplEventType_Gamepad,
 } fplEventType;
 
-//! Event data (Type, Window, Keyboard, Mouse, etc.)
+//! A structure containing event data for all event types (Window, Keyboard, Mouse, etc.)
 typedef struct fplEvent {
 	//! Event type
 	fplEventType type;
@@ -3921,9 +3991,9 @@ typedef struct fplEvent {
 } fplEvent;
 
 /**
-  * \brief Gets the top event from the internal event queue and removes it.
-  * \param ev Reference to an event
-  * \return Returns false when there are no events left, otherwise true.
+  * \brief Polls the next event from the internal event queue and removes it.
+  * \param ev The pointer to the \ref fplEvent structure
+  * \return Returns false when there are no events left, true otherwise.
   */
 fpl_common_api bool fplPollEvent(fplEvent *ev);
 /**
@@ -3933,7 +4003,7 @@ fpl_common_api bool fplPollEvent(fplEvent *ev);
 fpl_common_api void fplClearEvents();
 /**
   * \brief Reads the next window event from the OS and pushes it into the internal queue.
-  * \return Returns true when there was a event from the OS, otherwise true.
+  * \return Returns true when there was a event from the OS, false otherwise.
   * \note Use this only if dont use \ref fplWindowUpdate() and want to handle the events more granular!
   */
 fpl_platform_api bool fplPushEvent();
@@ -3947,11 +4017,11 @@ fpl_platform_api void fplUpdateGameControllers();
 
 /**
   * \defgroup WindowBase Window functions
-  * \brief Functions for reading/setting/handling the window
+  * \brief This category contains functions for handling the window
   * \{
   */
 
-  //! Window size in screen coordinates
+//! A structure containing the size a window
 typedef struct fplWindowSize {
 	//! Width in screen coordinates
 	uint32_t width;
@@ -3959,7 +4029,7 @@ typedef struct fplWindowSize {
 	uint32_t height;
 } fplWindowSize;
 
-//! Window position in screen coordinates
+//! A structure containing the position of a window
 typedef struct fplWindowPosition {
 	//! Left position in screen coordinates
 	int32_t left;
@@ -3968,8 +4038,8 @@ typedef struct fplWindowPosition {
 } fplWindowPosition;
 
 /**
-  * \brief Returns true when the window is active.
-  * \return True when the window is active, otherwise false.
+  * \brief Gets the window running state as boolean.
+  * \return Returns true when the window is running, false otherwise.
   */
 fpl_platform_api bool fplIsWindowRunning();
 /**
@@ -3978,91 +4048,91 @@ fpl_platform_api bool fplIsWindowRunning();
 fpl_platform_api void fplWindowShutdown();
 /**
   * \brief Processes the message queue of the window.
+  * \return Returns true when the window is still active, false otherwise.
   * \note This will update the game controller states as well.
-  * \return True when the window is still active, otherwise false.
   */
 fpl_platform_api bool fplWindowUpdate();
 /**
   * \brief Enables or disables the window cursor.
-  * \param value Set this to true for enabling the cursor or false for disabling the cursor.
+  * \param value The new cursor visibility state
   */
 fpl_platform_api void fplSetWindowCursorEnabled(const bool value);
 /**
-  * \brief Returns the inner window area.
-  * \param outSize Pointer to a window size container
-  * \return True when we got the window area from the current window or false otherwise.
+  * \brief Retrieves the inner window area.
+  * \param outSize The pointer to the \ref fplWindowSize structure
+  * \return Returns true when we got the window area from the current window, false otherwise.
   */
 fpl_platform_api bool fplGetWindowArea(fplWindowSize *outSize);
 /**
   * \brief Resizes the window to fit the inner area to the given size.
-  * \param width Width in screen units
-  * \param height Height in screen units
+  * \param width The width in screen units
+  * \param height The height in screen units
   */
 fpl_platform_api void fplSetWindowArea(const uint32_t width, const uint32_t height);
 /**
-  * \brief Returns true when the window is resizable.
-  * \return True when the window is resizable, otherwise false.
+  * \brief Gets the window resizable state as boolean.
+  * \return Returns true when the window is resizable, false otherwise.
   */
 fpl_platform_api bool fplIsWindowResizable();
 /**
   * \brief Enables or disables the ability to resize the window.
-  * \param value Set this to true for making the window resizable or false for making it static
+  * \param value The new resizable state
   */
 fpl_platform_api void fplSetWindowResizeable(const bool value);
 /**
-  * \brief Returns true when the window is decorated.
-  * \return True when the window is decorated, otherwise false.
+  * \brief Gets the window decorated state as boolean.
+  * \return Returns true when the window is decorated, false otherwise.
   */
 fpl_platform_api bool fplIsWindowDecorated();
 /**
   * \brief Enables or disables the window decoration (Titlebar, Border, etc.).
-  * \param value Set this to true for making the window decorated or false for making it without decoration
+  * \param value The new decorated state
   */
 fpl_platform_api void fplSetWindowDecorated(const bool value);
 /**
-  * \brief Returns true when the window is floating.
-  * \return True when the window is floating, otherwise false.
+  * \brief Gets the window floating state as boolean.
+  * \return Returns true when the window is floating, false otherwise.
   */
 fpl_platform_api bool fplIsWindowFloating();
 /**
   * \brief Enables or disables the window floating (Top-most)
-  * \param value Set this to true for making the window floated or false for making it not floated
+  * \param value The new floating state
   */
 fpl_platform_api void fplSetWindowFloating(const bool value);
 /**
   * \brief Enables or disables fullscreen mode.
-  * \param value Set this to true for changing the window to fullscreen or false for switching it back to window mode.
-  * \param fullscreenWidth Optional fullscreen width in screen units. When set to zero the desktop default is being used. (Default: 0)
-  * \param fullscreenHeight Optional fullscreen height in screen units. When set to zero the desktop default is being used. (Default: 0)
-  * \param refreshRate Optional refresh rate in screen units. When set to zero the desktop default is being used. (Default: 0)
-  * \return True when the window was changed to the desire fullscreen mode, false when otherwise.
+  * \param value The new fullscreen state
+  * \param fullscreenWidth The fullscreen width in screen units. When set to zero the desktop default is being used.
+  * \param fullscreenHeight The fullscreen height in screen units. When set to zero the desktop default is being used.
+  * \param refreshRate The refresh rate in Hz. When set to zero the desktop default is being used.
+  * \return Returns true when the window was changed to the desire fullscreen mode, false otherwise.
   */
 fpl_platform_api bool fplSetWindowFullscreen(const bool value, const uint32_t fullscreenWidth, const uint32_t fullscreenHeight, const uint32_t refreshRate);
 /**
-  * \brief Returns true when the window is in fullscreen mode
-  * \return True when the window is in fullscreen mode, otherwise false.
+  * \brief Gets the window fullscreen state as boolean.
+  * \return Returns true when the window is in fullscreen mode, false otherwise.
   */
 fpl_platform_api bool fplIsWindowFullscreen();
 /**
-  * \brief Returns the absolute window position.
-  * \param outPos Pointer to a window position container
-  * \return True when we got the position otherwise false.
+  * \brief Retrieves the absolute window position.
+  * \param outPos The pointer to the \ref fplWindowPosition structure
+  * \return Returns true when we got the position, false otherwise.
   */
 fpl_platform_api bool fplGetWindowPosition(fplWindowPosition *outPos);
 /**
-  * \brief Sets the window absolut position to the given coordinates.
-  * \param left Left position in screen units.
-  * \param top Top position in screen units.
+  * \brief Changes the window absolut position to the given coordinates.
+  * \param left The left position in screen units
+  * \param top The top position in screen units
   */
 fpl_platform_api void fplSetWindowPosition(const int32_t left, const int32_t top);
 /**
-  * \brief Sets the window title from a ansi string.
-  * \param ansiTitle New title ansi string
+  * \brief Changes the window title to the given ansi string.
+  * \param ansiTitle The title ansi string
   */
 fpl_platform_api void fplSetWindowAnsiTitle(const char *ansiTitle);
 /**
-  * \brief Sets the window title from a wide string.
-  * \param wideTitle New title wide string
+  * \brief Changes the window title to the given wide string.
+  * \param wideTitle The title wide string
   */
 fpl_platform_api void fplSetWindowWideTitle(const wchar_t *wideTitle);
 
@@ -4070,34 +4140,34 @@ fpl_platform_api void fplSetWindowWideTitle(const wchar_t *wideTitle);
 
 /**
   * \defgroup WindowClipboard Clipboard functions
-  * \brief Functions for reading/writing clipboard data
+  * \brief This category contains functions for reading/writing clipboard data
   * \{
   */
 
   /**
-	* \brief Returns the current clipboard ansi text.
+	* \brief Retrieves the current clipboard ansi text.
 	* \param dest The destination ansi string buffer to write the clipboard text into.
 	* \param maxDestLen The total number of characters available in the destination buffer.
-	* \return True when the clipboard contained text which is copied into the dest buffer, fpl_null otherwise.
+	* \return Returns true when the clipboard contained text which is copied into the dest buffer, \ref fpl_null otherwise.
 	*/
 fpl_platform_api bool fplGetClipboardAnsiText(char *dest, const uint32_t maxDestLen);
 /**
-  * \brief Returns the current clipboard wide text.
+  * \brief Retrieves the current clipboard wide text.
   * \param dest The destination wide string buffer to write the clipboard text into.
   * \param maxDestLen The total number of characters available in the destination buffer.
-  * \return True when the clipboard contained text which is copied into the dest buffer, fpl_null otherwise.
+  * \return Returns true when the clipboard contained text which is copied into the dest buffer, \ref fpl_null otherwise.
   */
 fpl_platform_api bool fplGetClipboardWideText(wchar_t *dest, const uint32_t maxDestLen);
 /**
   * \brief Overwrites the current clipboard ansi text with the given one.
   * \param ansiSource The new clipboard ansi string.
-  * \return Returns true when the text in the clipboard was changed, otherwise false.
+  * \return Returns true when the text in the clipboard was changed, false otherwise.
   */
 fpl_platform_api bool fplSetClipboardAnsiText(const char *ansiSource);
 /**
   * \brief Overwrites the current clipboard wide text with the given one.
   * \param wideSource The new clipboard wide string.
-  * \return Returns true when the text in the clipboard was changed, otherwise false.
+  * \return Returns true when the text in the clipboard was changed, false otherwise.
   */
 fpl_platform_api bool fplSetClipboardWideText(const wchar_t *wideSource);
 
@@ -4108,12 +4178,12 @@ fpl_platform_api bool fplSetClipboardWideText(const wchar_t *wideSource);
 // ----------------------------------------------------------------------------
 /**
   * \defgroup Video Video functions
-  * \brief Functions for retrieving or resizing the video buffer
+  * \brief This category contains functions for retrieving or resizing the video buffer
   * \{
   */
 // ----------------------------------------------------------------------------
 
-//! Video rectangle
+//! A structure defining a video rectangles position and size
 typedef struct fplVideoRect {
 	//! Left position in pixels
 	int32_t x;
@@ -4126,19 +4196,19 @@ typedef struct fplVideoRect {
 } fplVideoRect;
 
 /**
-  * \brief Makes a video rectangle from a LT-RB rectangle
-  * \param left Left position in screen units.
-  * \param top Top position in screen units.
-  * \param right Right position in screen units.
-  * \param bottom Bottom position in screen units.
-  * \return Computed video rectangle
+  * \brief Makes a video rectangle from a LTRB rectangle
+  * \param left The left position in screen units
+  * \param top The top position in screen units
+  * \param right The right position in screen units
+  * \param bottom The bottom position in screen units
+  * \return Returns the computed video rectangle \ref fplVideoRect
   */
 fpl_inline fplVideoRect fplCreateVideoRectFromLTRB(int32_t left, int32_t top, int32_t right, int32_t bottom) {
 	fplVideoRect result = { left, top, (right - left) + 1, (bottom - top) + 1 };
 	return(result);
 }
 
-//! Video backbuffer container. Use this for accessing the pixels directly. Use with care!
+//! A structure containing video backbuffer properties
 typedef struct fplVideoBackBuffer {
 	//! The 32-bit pixel top-down array, format: 0xAABBGGRR. Do not modify before WindowUpdate
 	uint32_t *pixels;
@@ -4157,32 +4227,32 @@ typedef struct fplVideoBackBuffer {
 } fplVideoBackBuffer;
 
 /**
-  * \brief Returns the string for the given video driver
-  * \param driver The audio driver
-  * \return String for the given audio driver
+  * \brief Gets a string which represents the given video driver
+  * \param driver The video driver type \ref fplVideoDriverType
+  * \return Returns a string for the given video driver type
   */
 fpl_common_api const char *fplGetVideoDriverString(fplVideoDriverType driver);
 /**
-  * \brief Returns the pointer to the video software context.
+  * \brief Retrieves the pointer to the current video backbuffer.
+  * \return Returns the pointer to the current \ref fplVideoBackBuffer.
   * \warning Do not release this memory by any means, otherwise you will corrupt heap memory!
-  * \return Pointer to the video backbuffer.
   */
 fpl_common_api fplVideoBackBuffer *fplGetVideoBackBuffer();
 /**
   * \brief Resizes the current video backbuffer.
-  * \param width Width in pixels.
-  * \param height Height in pixels.
-  * \return Returns true when video back buffer could be resized or false otherwise.
+  * \param width The width in pixels
+  * \param height The height in pixels
+  * \return Returns true when video back buffer could be resized, false otherwise.
   */
 fpl_common_api bool fplResizeVideoBackBuffer(const uint32_t width, const uint32_t height);
 /**
-  * \brief Returns the current video driver type used.
-  * \return The current video driver type used.
+  * \brief Gets the current video driver
+  * \return Returns the current video driver type \ref fplVideoDriverType
   */
 fpl_common_api fplVideoDriverType fplGetVideoDriver();
 
 /**
-  * \brief Forces the window to redraw or to swap the back/front buffer.
+  * \brief Forces the window to be redrawn or to swap the back/front buffer.
   */
 fpl_common_api void fplVideoFlip();
 
@@ -4193,12 +4263,12 @@ fpl_common_api void fplVideoFlip();
 // ----------------------------------------------------------------------------
 /**
   * \defgroup Audio Audio functions
-  * \brief Functions for start/stop playing audio and retrieving/changing some audio related settings.
+  * \brief This category contains functions for start/stop playing audio and retrieving/changing some audio related settings.
   * \{
   */
 // ----------------------------------------------------------------------------
 
-//! Audio result
+//! An enumeration of audio results
 typedef enum fplAudioResult {
 	fplAudioResult_None = 0,
 	fplAudioResult_Success,
@@ -4214,78 +4284,81 @@ typedef enum fplAudioResult {
 
 /**
   * \brief Start playing asyncronous audio.
-  * \return Audio result code.
+  * \return Returns the audio result \ref fplAudioResult
   */
 fpl_common_api fplAudioResult fplPlayAudio();
 /**
   * \brief Stop playing asyncronous audio.
-  * \return Audio result code.
+  * \return Returns the audio result \ref fplAudioResult
   */
 fpl_common_api fplAudioResult fplStopAudio();
 /**
-  * \brief Returns the native format for the current audio device.
-  * \param outFormat Pointer to the \ref fplAudioDeviceFormat
-  * \return True when a hardware format was active, false otherwise.
+  * \brief Retrieves the native format for the current audio device.
+  * \param outFormat The pointer to the \ref fplAudioDeviceFormat structure
+  * \return Returns true when a hardware format was active, false otherwise.
   */
 fpl_common_api bool fplGetAudioHardwareFormat(fplAudioDeviceFormat *outFormat);
 /**
   * \brief Overwrites the audio client read callback.
-  * \param newCallback Pointer to the client read callback.
-  * \param userData Pointer to the client/user data.
+  * \param newCallback The pointer to the \ref fpl_audio_client_read_callback callback
+  * \param userData The pointer to the client/user data
+  * \return Returns true when a audio device is ready and the callback was set, false otherwise.
   * \note This has no effect when audio is already playing, you have to call it when audio is in a stopped state!
-  * \return True when a audio device is ready and the callback was set, false otherwise.
   */
 fpl_common_api bool fplSetAudioClientReadCallback(fpl_audio_client_read_callback *newCallback, void *userData);
 /**
-  * \brief Gets all playback audio devices.
-  * \param devices Target device id array.
-  * \param maxDeviceCount Total number of devices available in the devices array.
-  * \return Number of devices found.
+  * \brief Retrieves all playback audio devices.
+  * \param devices A array of audio device info \ref fplAudioDeviceInfo
+  * \param maxDeviceCount The total number of devices available in the devices array.
+  * \return Returns the number of devices found.
   */
 fpl_common_api uint32_t fplGetAudioDevices(fplAudioDeviceInfo *devices, uint32_t maxDeviceCount);
 /**
-  * \brief Returns the number of bytes required to write one sample with one channel
-  * \param format The audio format
-  * \return Number of bytes for one sample with one channel
+  * \brief Computes the number of bytes required to write one sample with one channel.
+  * \param format The audio format type \ref fplAudioFormatType
+  * \return Returns the number of bytes for one sample with one channel
   */
 fpl_common_api uint32_t fplGetAudioSampleSizeInBytes(const fplAudioFormatType format);
 /**
-  * \brief Returns the string for the given format type
-  * \param format The audio format
-  * \return String for the given format type
+  * \brief Gets the string which represents the given audio format type.
+  * \param format The audio format type \ref fplAudioFormatType
+  * \return Returns a string for the given audio format type
   */
 fpl_common_api const char *fplGetAudioFormatString(const fplAudioFormatType format);
 /**
-  * \brief Returns the string for the given audio driver
-  * \param driver The audio driver
-  * \return String for the given audio driver
+  * \brief Gets the string which represents the given audio driver type.
+  * \param driver The audio driver type \ref fplAudioDriverType
+  * \return Returns a string for the given audio driver type
   */
 fpl_common_api const char *fplGetAudioDriverString(fplAudioDriverType driver);
 /**
-  * \brief Returns the total frame count for given sample rate and buffer size in milliseconds
+  * \brief Computes the total number of frames for given sample rate and buffer size.
   * \param sampleRate The sample rate in Hz
-  * \param bufferSizeInMilliSeconds The buffer size in number of milliseconds
-  * \return Number of frames
+  * \param bufferSizeInMilliSeconds The buffer size in milliseconds
+  * \return Returns the total number of frames for given sample rate and buffer size
   */
 fpl_common_api uint32_t fplGetAudioBufferSizeInFrames(uint32_t sampleRate, uint32_t bufferSizeInMilliSeconds);
 /**
-  * \brief Returns the number of bytes required for one interleaved audio frame - containing all the channels
+  * \brief Computes the number of bytes required for one interleaved audio frame - containing all the channels.
   * \param format The audio format
   * \param channelCount The number of channels
-  * \return Number of bytes for one frame in bytes
+  * \return Returns the number of bytes for one frame in bytes
   */
 fpl_common_api uint32_t fplGetAudioFrameSizeInBytes(const fplAudioFormatType format, const uint32_t channelCount);
 /**
-  * \brief Returns the total number of bytes for the buffer and the given parameters
+  * \brief Computes the total number of bytes for the buffer and the given parameters
   * \param format The audio format
   * \param channelCount The number of channels
   * \param frameCount The number of frames
-  * \return Total number of bytes for the buffer
+  * \return Returns the total number of bytes for the buffer
   */
 fpl_common_api uint32_t fplGetAudioBufferSizeInBytes(const fplAudioFormatType format, const uint32_t channelCount, const uint32_t frameCount);
 
 /** \}*/
 #endif // FPL_ENABLE_AUDIO
+
+// Ignore any doxygen documentation from here
+//! \cond FPL_IGNORE_DOXYGEN
 
 // ****************************************************************************
 //
@@ -4833,6 +4906,8 @@ typedef FPL__FUNC_WIN32_GetDesktopWindow(fpl__win32_func_GetDesktopWindow);
 typedef FPL__FUNC_WIN32_GetForegroundWindow(fpl__win32_func_GetForegroundWindow);
 #define FPL__FUNC_WIN32_IsZoomed(name) BOOL WINAPI name(HWND hWnd)
 typedef FPL__FUNC_WIN32_IsZoomed(fpl__win32_func_IsZoomed);
+#define FPL__FUNC_WIN32_IsIconic(name) BOOL WINAPI name(HWND hWnd)
+typedef FPL__FUNC_WIN32_IsIconic(fpl__win32_func_IsIconic);
 #define FPL__FUNC_WIN32_SendMessageA(name) LRESULT WINAPI name(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam)
 typedef FPL__FUNC_WIN32_SendMessageA(fpl__win32_func_SendMessageA);
 #define FPL__FUNC_WIN32_SendMessageW(name) LRESULT WINAPI name(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam)
@@ -4942,6 +5017,7 @@ typedef struct fpl__Win32UserApi {
 	fpl__win32_func_GetDesktopWindow *GetDesktopWindow;
 	fpl__win32_func_GetForegroundWindow *GetForegroundWindow;
 	fpl__win32_func_IsZoomed *IsZoomed;
+	fpl__win32_func_IsIconic *IsIconic;
 	fpl__win32_func_SendMessageA *SendMessageA;
 	fpl__win32_func_SendMessageW *SendMessageW;
 	fpl__win32_func_GetMonitorInfoA *GetMonitorInfoA;
@@ -5082,6 +5158,7 @@ fpl_internal bool fpl__Win32LoadApi(fpl__Win32Api *wapi) {
 		FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(FPL__MODULE_WIN32, library, userLibraryName, wapi->user.GetDesktopWindow, fpl__win32_func_GetDesktopWindow, "GetDesktopWindow");
 		FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(FPL__MODULE_WIN32, library, userLibraryName, wapi->user.GetForegroundWindow, fpl__win32_func_GetForegroundWindow, "GetForegroundWindow");
 		FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(FPL__MODULE_WIN32, library, userLibraryName, wapi->user.IsZoomed, fpl__win32_func_IsZoomed, "IsZoomed");
+		FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(FPL__MODULE_WIN32, library, userLibraryName, wapi->user.IsIconic, fpl__win32_func_IsIconic, "IsIconic");
 		FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(FPL__MODULE_WIN32, library, userLibraryName, wapi->user.SendMessageA, fpl__win32_func_SendMessageA, "SendMessageA");
 		FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(FPL__MODULE_WIN32, library, userLibraryName, wapi->user.SendMessageW, fpl__win32_func_SendMessageW, "SendMessageW");
 		FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(FPL__MODULE_WIN32, library, userLibraryName, wapi->user.GetMonitorInfoA, fpl__win32_func_GetMonitorInfoA, "GetMonitorInfoA");
@@ -5206,6 +5283,7 @@ typedef struct fpl__Win32LastWindowInfo {
 	DWORD style;
 	DWORD exStyle;
 	bool isMaximized;
+	bool isMinimized;
 	bool wasResolutionChanged;
 } fpl__Win32LastWindowInfo;
 
@@ -6834,6 +6912,27 @@ fpl_internal_inline void fpl__Win32UpdateWindowStyles(const fplWindowSettings *s
 	fpl__win32_SetWindowLong(windowState->windowHandle, GWL_EXSTYLE, exStyle);
 }
 
+fpl_internal void fpl__Win32SaveWindowState(const fpl__Win32Api *wapi, fpl__Win32LastWindowInfo *target, HWND windowHandle) {
+	target->isMaximized = !!wapi->user.IsZoomed(windowHandle);
+	target->isMinimized = !!wapi->user.IsIconic(windowHandle);
+	target->style = fpl__win32_GetWindowLong(windowHandle, GWL_STYLE);
+	target->exStyle = fpl__win32_GetWindowLong(windowHandle, GWL_EXSTYLE);
+	wapi->user.GetWindowPlacement(windowHandle, &target->placement);
+}
+
+fpl_internal void fpl__Win32RestoreWindowState(const fpl__Win32Api *wapi, const fpl__Win32LastWindowInfo *target, HWND windowHandle) {
+	FPL_ASSERT(target->style > 0 && target->exStyle > 0);
+	fpl__win32_SetWindowLong(windowHandle, GWL_STYLE, target->style);
+	fpl__win32_SetWindowLong(windowHandle, GWL_EXSTYLE, target->exStyle);
+	wapi->user.SetWindowPlacement(windowHandle, &target->placement);
+	wapi->user.SetWindowPos(windowHandle, fpl_null, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
+	if(target->isMaximized) {
+		fpl__win32_SendMessage(windowHandle, WM_SYSCOMMAND, SC_MAXIMIZE, 0);
+	} else if(target->isMinimized) {
+		fpl__win32_SendMessage(windowHandle, WM_SYSCOMMAND, SC_MINIMIZE, 0);
+	}
+}
+
 fpl_internal bool fpl__Win32LeaveFullscreen() {
 	const fpl__PlatformAppState *platState = fpl__global__AppState;
 	FPL_ASSERT(platState != fpl_null);
@@ -6842,19 +6941,8 @@ fpl_internal bool fpl__Win32LeaveFullscreen() {
 	const fplWindowSettings *settings = &platState->currentSettings.window;
 	const fpl__Win32WindowState *win32Window = &platState->window.win32;
 	const fpl__Win32LastWindowInfo *fullscreenInfo = &win32Window->lastFullscreenInfo;
-
 	HWND windowHandle = win32Window->windowHandle;
-	FPL_ASSERT(fullscreenInfo->style > 0 && fullscreenInfo->exStyle > 0);
-	fpl__win32_SetWindowLong(windowHandle, GWL_STYLE, fullscreenInfo->style);
-	fpl__win32_SetWindowLong(windowHandle, GWL_EXSTYLE, fullscreenInfo->exStyle);
-	wapi->user.SetWindowPlacement(windowHandle, &fullscreenInfo->placement);
-	wapi->user.SetWindowPos(windowHandle, fpl_null, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
-
-	// @NOTE(final): No need to handle minimized here because it is unlikly that you switch to fullscreen mode when the app is minimized
-	if(fullscreenInfo->isMaximized) {
-		fpl__win32_SendMessage(windowHandle, WM_SYSCOMMAND, SC_MAXIMIZE, 0);
-	}
-
+	fpl__Win32RestoreWindowState(wapi, fullscreenInfo, windowHandle);
 	bool result;
 	if(fullscreenInfo->wasResolutionChanged) {
 		result = (wapi->user.ChangeDisplaySettingsA(fpl_null, CDS_RESET) == DISP_CHANGE_SUCCESSFUL);
@@ -7075,6 +7163,15 @@ fpl_internal_inline void fpl__Win32PushKeyboardEvent(const fpl__PlatformWindowSt
 	fpl__PushEvent(&newEvent);
 }
 
+fpl_internal_inline void fpl__Win32PushWindowEvent(const fplWindowEventType windowType, const uint32_t w, uint32_t h) {
+	fplEvent newEvent = FPL_ZERO_INIT;
+	newEvent.type = fplEventType_Window;
+	newEvent.window.type = windowType;
+	newEvent.window.width = w;
+	newEvent.window.height = h;
+	fpl__PushEvent(&newEvent);
+}
+
 fpl_internal_inline bool fpl__Win32IsKeyDown(const fpl__Win32Api *wapi, const uint64_t keyCode) {
 	bool result = (wapi->user.GetAsyncKeyState((int)keyCode) & 0x8000) > 0;
 	return(result);
@@ -7166,23 +7263,25 @@ LRESULT CALLBACK fpl__Win32MessageProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 		case WM_SIZE:
 		{
 			// @TODO(final): Win32 Detect minimize/maximize here
+			DWORD newWidth = LOWORD(lParam);
+			DWORD newHeight = HIWORD(lParam);
+			if(wParam == SIZE_MAXIMIZED) {
+				fpl__Win32PushWindowEvent(fplWindowEventType_Maximized, newWidth, newHeight);
+			} else if(wParam == SIZE_MINIMIZED) {
+				fpl__Win32PushWindowEvent(fplWindowEventType_Minimized, newWidth, newHeight);
+			} else if(wParam == SIZE_RESTORED) {
+				fpl__Win32PushWindowEvent(fplWindowEventType_Restored, newWidth, newHeight);
+			}
 
 #			if defined(FPL_ENABLE_VIDEO_SOFTWARE)
 			if(appState->currentSettings.video.driver == fplVideoDriverType_Software) {
 				if(appState->initSettings.video.isAutoSize) {
-					uint32_t w = LOWORD(lParam);
-					uint32_t h = HIWORD(lParam);
-					fplResizeVideoBackBuffer(w, h);
+					fplResizeVideoBackBuffer(newWidth, newHeight);
 				}
 			}
 #			endif
 
-			fplEvent newEvent = FPL_ZERO_INIT;
-			newEvent.type = fplEventType_Window;
-			newEvent.window.type = fplWindowEventType_Resized;
-			newEvent.window.width = LOWORD(lParam);
-			newEvent.window.height = HIWORD(lParam);
-			fpl__PushEvent(&newEvent);
+			fpl__Win32PushWindowEvent(fplWindowEventType_Resized, newWidth, newHeight);
 
 			return 0;
 		} break;
@@ -8214,7 +8313,7 @@ fpl_platform_api bool fplGetOperatingSystemInfos(fplOSInfos *outInfos) {
 
 #define FPL__FUNC_ADV32_GetUserNameA(name) BOOL WINAPI name(LPSTR lpBuffer, LPDWORD pcbBuffer)
 typedef FPL__FUNC_ADV32_GetUserNameA(fpl__func_adv32_GetUserNameA);
-fpl_platform_api bool fplGetCurrentUsername(char *nameBuffer, size_t maxNameBufferLen) {
+fpl_platform_api bool fplGetCurrentUsername(char *nameBuffer, const size_t maxNameBufferLen) {
 	FPL__CheckArgumentNull(nameBuffer, false);
 	FPL__CheckArgumentZero(maxNameBufferLen, false);
 	const char *libName = "advapi32.dll";
@@ -9157,13 +9256,15 @@ fpl_platform_api wchar_t *fplUTF8StringToWideString(const char *utf8Source, cons
 //
 // Win32 Library
 //
-fpl_platform_api fplDynamicLibraryHandle fplDynamicLibraryLoad(const char *libraryFilePath) {
-	fplDynamicLibraryHandle result = FPL_ZERO_INIT;
-	if(libraryFilePath != fpl_null) {
+fpl_platform_api bool fplDynamicLibraryLoad(const char *libraryFilePath, fplDynamicLibraryHandle *outHandle) {
+	bool result = false;
+	if(libraryFilePath != fpl_null && outHandle != fpl_null) {
 		HMODULE libModule = LoadLibraryA(libraryFilePath);
 		if(libModule != fpl_null) {
-			result.internalHandle.win32LibraryHandle = libModule;
-			result.isValid = true;
+			FPL_CLEAR_STRUCT(outHandle);
+			outHandle->internalHandle.win32LibraryHandle = libModule;
+			outHandle->isValid = true;
+			result = true;
 		}
 	}
 	return(result);
@@ -9289,13 +9390,10 @@ fpl_platform_api bool fplSetWindowFullscreen(const bool value, const uint32_t fu
 	HWND windowHandle = windowState->windowHandle;
 	// Save current window info if not already fullscreen
 	if(!windowSettings->isFullscreen) {
-		fullscreenState->isMaximized = !!wapi->user.IsZoomed(windowHandle);
-		if(fullscreenState->isMaximized) {
+		fpl__Win32SaveWindowState(wapi, fullscreenState, windowHandle);
+		if(fullscreenState->isMaximized || fullscreenState->isMinimized) {
 			fpl__win32_SendMessage(windowHandle, WM_SYSCOMMAND, SC_RESTORE, 0);
 		}
-		fullscreenState->style = fpl__win32_GetWindowLong(windowHandle, GWL_STYLE);
-		fullscreenState->exStyle = fpl__win32_GetWindowLong(windowHandle, GWL_EXSTYLE);
-		wapi->user.GetWindowPlacement(windowHandle, &fullscreenState->placement);
 	}
 
 	if(value) {
@@ -10217,13 +10315,15 @@ fpl_platform_api bool fplSemaphoreRelease(fplSemaphoreHandle *semaphore) {
 //
 // POSIX Library
 //
-fpl_platform_api fplDynamicLibraryHandle fplDynamicLibraryLoad(const char *libraryFilePath) {
-	fplDynamicLibraryHandle result = FPL_ZERO_INIT;
-	if(libraryFilePath != fpl_null) {
+fpl_platform_api bool fplDynamicLibraryLoad(const char *libraryFilePath, fplDynamicLibraryHandle *outHandle) {
+	bool result = false;
+	if(libraryFilePath != fpl_null && outHandle != fpl_null) {
 		void *p = dlopen(libraryFilePath, FPL__POSIX_DL_LOADTYPE);
 		if(p != fpl_null) {
-			result.internalHandle.posixLibraryHandle = p;
-			result.isValid = true;
+			FPL_CLEAR_STRUCT(outHandle);
+			outHandle->internalHandle.posixLibraryHandle = p;
+			outHandle->isValid = true;
+			result = true;
 		}
 	}
 	return(result);
@@ -11526,7 +11626,7 @@ fpl_platform_api bool fplGetOperatingSystemInfos(fplOSInfos *outInfos) {
 	return(result);
 }
 
-fpl_platform_api bool fplGetCurrentUsername(char *nameBuffer, size_t maxNameBufferLen) {
+fpl_platform_api bool fplGetCurrentUsername(char *nameBuffer, const size_t maxNameBufferLen) {
 	FPL__CheckArgumentNull(nameBuffer, false);
 	FPL__CheckArgumentZero(maxNameBufferLen, false);
 	uid_t uid = geteuid();
@@ -11826,7 +11926,7 @@ fpl_platform_api bool fplGetOperatingSystemInfos(fplOSInfos *outInfos) {
 	return false;
 }
 
-fpl_platform_api bool fplGetCurrentUsername(char *nameBuffer, size_t maxNameBufferLen) {
+fpl_platform_api bool fplGetCurrentUsername(char *nameBuffer, const size_t maxNameBufferLen) {
 	// @IMPLEMENT(final): Unix fplGetCurrentUsername
 	return false;
 }
@@ -15428,5 +15528,7 @@ int WINAPI WinMain(HINSTANCE appInstance, HINSTANCE prevInstance, LPSTR cmdLine,
 #	endif // FPL_PLATFORM_WIN32
 
 #endif // FPL_ENTRYPOINT && !FPL_ENTRYPOINT_IMPLEMENTED
+
+//! \endcond
 
 // end-of-file

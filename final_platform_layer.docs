@@ -1363,7 +1363,7 @@
 
 	\section otutorial_threading_conditions_wait_single Waiting on a Condition-Variable
 	Call \ref fplConditionWait() with a pointer to \ref fplConditionVariable and a pointer to \ref fplMutexHandle as argument, to let a thread wait on that Condition-Variable.<br>
-	Also you need to specify the amount of milliseconds you want the Thread to wait. If \ref FPL_TIMEOUT_INFINITE is passed it will wait forever.<br>
+	Also you need to specify the amount of milliseconds you want the Thread to wait. If FPL_TIMEOUT_INFINITE is passed it will wait forever.<br>
 	\note Conditions must be called inside a locked critical-section or undefined behavior may happen.
 
 	\code{.c}
@@ -1431,7 +1431,7 @@
 	Call \ref fplSemaphoreWait() to let a Thread wait and decrement the Semaphores value with a \ref fplSemaphoreHandle as argument.<br>
 	If the Semaphores value is greater than zero, then the decrement will happen and the function returns immediatly.<br>
 	If the Semaphores value is zero then the Thread will wait until it is possible to decrement the value.<br>
-	Also you need to specify the amount of milliseconds you want the thread to wait. If \ref FPL_TIMEOUT_INFINITE is passed it will wait forever.<br>
+	Also you need to specify the amount of milliseconds you want the thread to wait. If FPL_TIMEOUT_INFINITE is passed it will wait forever.<br>
 
 	\code{.c}
 	// Wait until the Semaphores value is > 0
@@ -1715,7 +1715,7 @@
 		<tr>
 			<td>Assertions</td>
 			<td>FPL_FORCE_ASSERTIONS</td>
-			<td>Define this to enable internal assertions always, even in debug builds.</td>
+			<td>Define this to enable internal assertions always, even in release builds.</td>
 			<td>
 			Not set by default.<br>
 			\note When enabled all assertions will use a simple null-pointer assertion macro always!
@@ -1829,7 +1829,7 @@
 	Like every other C/C++ program, FPL uses compiler defines to detect the proper platform/architecture and used compiler.<br>
 	If you need this information for whatever reason you can simply compare the defines:
 
-	- FPL_PLATFORM_WIN32 or FPL_PLATFORM_LINUX or FPL_PLATFORM_FREEBSD ...
+	- FPL_PLATFORM_WIN32 or FPL_PLATFORM_LINUX or FPL_PLATFORM_UNIX ...
 	- FPL_ARCH_X64 or FPL_ARCH_X86 or FPL_ARCH_ARM64 ...
 
 	All this defines have no value set, there are just "defined" - use always defined() for checking them.
