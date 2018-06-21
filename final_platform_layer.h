@@ -134,13 +134,15 @@ SOFTWARE.
 	- Changed: Signature of fplDynamicLibraryLoad changed (Returns bool + Target handle parameter)
 	- Fixed: Corrected code documentation for all categories
 	- Fixed: FPL_ENUM_AS_FLAGS_OPERATORS had invalid signature for operator overloadings and missed some operators
-	- New: Added fplKey�s for OEM keys (Plus, Comma, Minus, Period)
-	- New: Added fplKey�s for Media & Audio keys
+    - New: Forward declare thread handle for thread callback
+	- New: Added fplKey for OEM keys (Plus, Comma, Minus, Period)
+	- New: Added fplKey for Media & Audio keys
 	- New: Added fplWindowEventType_Maximized / fplWindowEventType_Minimized / fplWindowEventType_Restored
 	- New: Added documentation category: Assertions & Debug
 	- New: Added documentation category: Storage class identifiers
 	- New: Added documentation category: Constants
 	- New: Added documentation category: Function macros
+    - New: Undef None always as last action of the implementation block (such a annoying thing)
 
 	- Changed: [Win32] Correct fplDynamicLibraryLoad to match signature change
 	- New: [Win32] OEM keys mapping
@@ -2639,13 +2641,15 @@ typedef enum fplThreadStates {
 //! A type definition for mapping \ref fplThreadState into a 32-bit integer
 typedef uint32_t fplThreadState;
 
+//! Forward declare thread handle
+typedef struct fplThreadHandle fplThreadHandle;
 /**
   * \brief A callback to execute user code from a \ref fplThreadHandle
   * \param thread The thread handle \ref fplThreadHandle
   * \param data The user data pointer
   */
 //! Run function type definition for \ref fplThreadCreate()
-typedef void (fpl_run_thread_function)(const struct fplThreadHandle *thread, void *data);
+typedef void (fpl_run_thread_function)(const fplThreadHandle *thread, void *data);
 
 //! A union containing the thread handle for any platform
 typedef union fplInternalThreadHandle {
