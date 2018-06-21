@@ -18,6 +18,8 @@ License:
 #error "C++/11 compiler not detected!"
 #endif
 
+#include <final_platform_layer.h>
+
 #include "final_math.h"
 #include "final_render.h"
 
@@ -67,6 +69,7 @@ struct Mouse {
 
 struct Input {
 	float deltaTime;
+	float framesPerSeconds;
 	union {
 		struct {
 			Controller keyboard;
@@ -86,11 +89,21 @@ struct GameMemory {
 	size_t used;
 };
 
+enum class GameWindowActiveType : uint32_t {
+	None = 0,
+	GotFocus = 1 << 0,
+	LostFocus = 1 << 1,
+	Minimized = 1 << 2,
+	Maximized = 1 << 3,
+	Restored = 1 << 4,
+};
+FPL_ENUM_AS_FLAGS_OPERATORS(GameWindowActiveType);
+
 extern GameMemory GameCreate();
 extern void GameDestroy(GameMemory &gameMemory);
 extern void GameInput(GameMemory &gameMemory, const Input &input);
 extern void GameUpdate(GameMemory &gameMemory, const Input &input);
-extern void GameRender(GameMemory &gameMemory, CommandBuffer &renderCommands, const float alpha, const float deltaTime);
+extern void GameRender(GameMemory &gameMemory, CommandBuffer &renderCommands, const float alpha);
 extern void GameUpdateAndRender(GameMemory &gameMemory, const Input &input, CommandBuffer &renderCommands, const float alpha);
 extern bool IsGameExiting(GameMemory &gameMemory);
 

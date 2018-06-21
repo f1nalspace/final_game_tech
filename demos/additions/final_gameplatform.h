@@ -65,7 +65,7 @@ static void UpdateDefaultController(Input *currentInput, int newIndex) {
 	}
 }
 
-static void ProcessEvents(Input *currentInput, Input *prevInput, bool &isWindowActive, Vec2i &lastMousePos) {
+static void ProcessEvents(Input *currentInput, Input *prevInput, GameWindowActiveType &windowActiveType, Vec2i &lastMousePos) {
 	Controller *currentKeyboardController = &currentInput->keyboard;
 	Controller *prevKeyboardController = &prevInput->keyboard;
 	fplEvent event;
@@ -75,10 +75,19 @@ static void ProcessEvents(Input *currentInput, Input *prevInput, bool &isWindowA
 			{
 				switch(event.window.type) {
 					case fplWindowEventType_GotFocus:
-						isWindowActive = true;
+						windowActiveType = GameWindowActiveType::GotFocus;
+						break;
+					case fplWindowEventType_Restored:
+						windowActiveType = GameWindowActiveType::Restored;
+						break;
+					case fplWindowEventType_Maximized:
+						windowActiveType = GameWindowActiveType::Maximized;
 						break;
 					case fplWindowEventType_LostFocus:
-						isWindowActive = false;
+						windowActiveType = GameWindowActiveType::LostFocus;
+						break;
+					case fplWindowEventType_Minimized:
+						windowActiveType = GameWindowActiveType::Minimized;
 						break;
 				}
 			} break;
@@ -250,7 +259,7 @@ extern int GameMain(const GameConfiguration &config) {
 		Input *curInput = &inputs[0];
 		Input *prevInput = &inputs[1];
 		Vec2i lastMousePos = V2i(-1, -1);
-		bool isWindowActive = true;
+		GameWindowActiveType windowActiveType[2] = { GameWindowActiveType::None, GameWindowActiveType::None };
 		curInput->defaultControllerIndex = -1;
 
 		uint32_t frameCount = 0;
@@ -258,6 +267,7 @@ extern int GameMain(const GameConfiguration &config) {
 		double lastTime = fplGetTimeInSecondsHP();
 		double fpsTimerInSecs = fplGetTimeInSecondsHP();
 		double frameAccumulator = TargetDeltaTime;
+		double lastFramesPerSecond = 0.0;
 
 		InitCommandBuffer(renderCommands, renderCommandMemory);
 		while(!IsGameExiting(gameMem) && fplWindowUpdate()) {
@@ -269,6 +279,7 @@ extern int GameMain(const GameConfiguration &config) {
 			}
 
 			// Remember previous keyboard and mouse state
+			windowActiveType[1] = windowActiveType[0];
 			Controller *currentKeyboardController = &curInput->keyboard;
 			Controller *prevKeyboardController = &prevInput->keyboard;
 			Mouse *currentMouse = &curInput->mouse;
@@ -294,9 +305,23 @@ extern int GameMain(const GameConfiguration &config) {
 			}
 
 			// Events
-			ProcessEvents(curInput, prevInput, isWindowActive, lastMousePos);
-			curInput->isActive = config.disableInactiveDetection ? true : isWindowActive;
+			ProcessEvents(curInput, prevInput, windowActiveType[0], lastMousePos);
+			if(config.disableInactiveDetection) {
+				curInput->isActive = (windowActiveType[0] & GameWindowActiveType::Minimized) != GameWindowActiveType::Minimized;
+			} else {
+				curInput->isActive = ((windowActiveType[0] & GameWindowActiveType::Minimized) != GameWindowActiveType::Minimized) && ((windowActiveType[0] & GameWindowActiveType::LostFocus) != GameWindowActiveType::LostFocus);
+			}
 			curInput->deltaTime = (float)TargetDeltaTime;
+			curInput->framesPerSeconds = (float)lastFramesPerSecond;
+
+			if(windowActiveType[0] != windowActiveType[1]) {
+				// We dont want to have delta time jumps
+				lastTime = fplGetTimeInSecondsHP();
+				lastFramesPerSecond = 0.0f;
+				fpsTimerInSecs = fplGetTimeInSecondsHP();
+				updateCount = frameCount = 0;
+				frameAccumulator = TargetDeltaTime;
+			}
 
 			// Game Update
 			if(config.noUpdateRenderSeparation) {
@@ -317,14 +342,14 @@ extern int GameMain(const GameConfiguration &config) {
 #endif
 				}
 
-				// @TODO(final): Yield thread when we are running too fast
+					// @TODO(final): Yield thread when we are running too fast
 			double endWorkTime = fplGetTimeInSecondsHP();
 			double workDuration = endWorkTime - lastTime;
 
 			// Render
 			if(!config.noUpdateRenderSeparation) {
 				float alpha = (float)frameAccumulator / (float)TargetDeltaTime;
-				GameRender(gameMem, renderCommands, alpha, curInput->deltaTime);
+				GameRender(gameMem, renderCommands, alpha);
 			}
 			fplVideoFlip();
 			++frameCount;
@@ -332,6 +357,7 @@ extern int GameMain(const GameConfiguration &config) {
 			// Timing
 			double endTime = fplGetTimeInSecondsHP();
 			double frameDuration = endTime - lastTime;
+			lastFramesPerSecond = 1.0f / frameDuration;
 			frameAccumulator += frameDuration;
 			frameAccumulator = FPL_MIN(0.1, frameAccumulator);
 			lastTime = endTime;
@@ -352,19 +378,19 @@ extern int GameMain(const GameConfiguration &config) {
 				curInput = prevInput;
 				prevInput = tmp;
 			}
-		}
+			}
 
 		if(config.hideMouseCursor) {
 			fplSetWindowCursorEnabled(true);
 		}
 
 		GameDestroy(gameMem);
-	}
+		}
 
 	fplPlatformRelease();
 
 	int result = wasError ? -1 : 0;
 	return (result);
-}
+	}
 
 #endif // FINAL_GAMEPLATFORM_IMPLEMENTATION
