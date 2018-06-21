@@ -22,14 +22,7 @@
 </data>
  </layer>
  <objectgroup name="objects">
-  <object id="10" name="spawn1" type="Spawn" gid="17" x="0" y="384" width="64" height="64">
-   <properties>
-    <property name="cooldown" type="float" value="1.5"/>
-    <property name="enemy" value="The Quad"/>
-    <property name="enemyCount" type="int" value="25"/>
-    <property name="initialCooldown" type="float" value="0"/>
-   </properties>
-  </object>
+  <object id="10" name="spawn1" type="Spawn" gid="17" x="0" y="384" width="64" height="64"/>
   <object id="24" name="goal" type="Goal" gid="25" x="1280" y="384" width="64" height="64"/>
   <object id="30" name="wp1" type="Waypoint" gid="24" x="192" y="384" width="64" height="64"/>
   <object id="31" name="wp2" type="Waypoint" gid="21" x="192" y="256" width="64" height="64"/>
