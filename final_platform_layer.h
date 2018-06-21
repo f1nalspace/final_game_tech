@@ -142,7 +142,7 @@ SOFTWARE.
 	- New: Added documentation category: Storage class identifiers
 	- New: Added documentation category: Constants
 	- New: Added documentation category: Function macros
-    - New: Undef None always as last action of the implementation block (such a annoying thing)
+    - New: Undef None/Success defines when defined as last action of the implementation block
 
 	- Changed: [Win32] Correct fplDynamicLibraryLoad to match signature change
 	- New: [Win32] OEM keys mapping
@@ -15459,9 +15459,12 @@ fpl_common_api fplPlatformType fplGetPlatformType() {
 #	pragma warning( pop )
 #endif
 
-// Undef None from X11
+// Undef constant defines from X11
 #ifdef None
 #undef None
+#endif
+#ifdef Success
+#undef Success
 #endif
 
 #endif // FPL_IMPLEMENTATION && !FPL_IMPLEMENTED
