@@ -22,6 +22,7 @@ License:
 
 #define _USE_MATH_DEFINES
 #include <math.h>
+#include <float.h>
 
 constexpr float Pi32 = (float)M_PI;
 constexpr float Tau32 = (float)M_PI * 2.0f;
