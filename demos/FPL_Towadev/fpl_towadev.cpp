@@ -6,6 +6,7 @@ Name:
 Description:
 	A tower defence clone.
 	Levels are loaded from .TMX files (Tiled-Editor).
+	Waves & Enemies are defined as constant arrays.
 	Written in C++ (C-Style).
 
 Requirements:
@@ -18,6 +19,10 @@ Author:
 	Torsten Spaete
 
 Changelog:
+	## 2018-06-20:
+	- Refactoring
+	- WaveData have now a list of SpawnerData, so we can have multiple & different spawners for each wave.
+	- Fixed overlay font atlas was too small
 	## 2018-06-19:
 	- Started a very basic immediate mode UI system
 	- Prepare for command buffer rendering
@@ -121,16 +126,16 @@ static const TowerData TowerDefinitions[] = {
 		/* gunTubeThickness: */ MaxTileSize * 0.2f,
 		/* gunRotationSpeed: */ 4.0f,
 		/* costs: */ 50,
-		/* enemyRangeTestType: */ FireRangeTestType::LineTrace,
+		/* enemyRangeTestType: */ FireRangeTestType::InSight,
 		/* enemyPredictionFlags: */ EnemyPredictionFlags::All,
 		/* enemyLockOnMode: */ EnemyLockTargetMode::LockedOn,
 		MakeBulletData(
-		/* renderRadius: */ MaxTileSize * 0.05f,
-		/* collisionRadius: */ MaxTileSize * 0.05f,
-		/* speed: */ 2.5f,
-		/* damage: */ 15
-	)
-),
+			/* renderRadius: */ MaxTileSize * 0.05f,
+			/* collisionRadius: */ MaxTileSize * 0.05f,
+			/* speed: */ 2.5f,
+			/* damage: */ 15
+		)
+	),
 };
 
 static const CreepData CreepDefinitions[] = {
@@ -149,27 +154,13 @@ static const CreepData CreepDefinitions[] = {
 static const WaveData WaveDefinitions[] = {
 	MakeWaveData(
 		/* level: */ "Level1",
-		/* enemyMultiplier */ MakeCreepMultiplier(1.0f, 1.0f, 1.0f, 1.0f),
 		/* startupCooldown: */ 3.0f,
-		/* completionBounty: */ 10
-	),
-	MakeWaveData(
-		/* level: */ "Level1",
-		/* enemyMultiplier */ MakeCreepMultiplier(1.1f, 1.15f, 1.5f, 2.0f),
-		/* startupCooldown: */ 3.0f,
-		/* completionBounty: */ 20
-	),
-	MakeWaveData(
-		/* level: */ "Level1",
-		/* enemyMultiplier */ MakeCreepMultiplier(1.2f, 1.3f, 2.0f, 2.5f),
-		/* startupCooldown: */ 3.0f,
-		/* completionBounty: */ 40
-	),
-	MakeWaveData(
-		/* level: */ "Level1",
-		/* enemyMultiplier */ MakeCreepMultiplier(1.3f, 1.35f, 4.00f, 3.0f),
-		/* startupCooldown: */ 3.0f,
-		/* completionBounty: */ 60
+		/* completionBounty: */ 20,
+		/* spawners: */
+		{
+			MakeSpawnData("spawn1", "The Quad", SpawnerStartMode::Fixed, 0, 1.5f, 25),
+			MakeSpawnData("spawn1", "The Quad", SpawnerStartMode::AfterTheLast, 0, 1.0f, 10),
+		}
 	),
 };
 
@@ -185,11 +176,11 @@ namespace gamelog {
 	static void Write(const LogLevel level, const char *format, va_list argList) {
 		char msg[1024];
 		fplFormatAnsiStringArgs(msg, FPL_ARRAYCOUNT(msg), format, argList);
-		if (level == LogLevel::Fatal)
+		if(level == LogLevel::Fatal)
 			fplDebugOut("Fatal: ");
-		else if (level == LogLevel::Error)
+		else if(level == LogLevel::Error)
 			fplDebugOut("Error: ");
-		else if (level == LogLevel::Warning)
+		else if(level == LogLevel::Warning)
 			fplDebugOut("Warning: ");
 		fplDebugFormatOut("%s\n", msg);
 	}
@@ -232,11 +223,12 @@ namespace gamelog {
 
 // Forward declarations
 namespace level {
-	static Vec2i FindTilePosByEntityType(const GameState &state, const EntityType type);
+	static Vec2i FindTilePosByEntityType(const Level &level, const EntityType type);
 	static void LoadWave(GameState &state, const int waveIndex);
 }
 namespace game {
 	static void NewGame(GameState &state);
+	static void SetSlowdown(GameState &state, const float duration, const WaveState nextState);
 }
 
 namespace ui {
@@ -264,19 +256,19 @@ namespace ui {
 
 	static bool UIButton(UIContext &ctx, const UIID id, const Vec2f &pos, const Vec2f &radius) {
 		bool result = false;
-		if (ctx.active == id) {
-			if (WasPressed(ctx.input.leftButton)) {
-				if (ctx.hot == id) {
+		if(ctx.active == id) {
+			if(WasPressed(ctx.input.leftButton)) {
+				if(ctx.hot == id) {
 					result = true;
 				}
 				ctx.active = 0;
 			}
-		} else if (ctx.hot == id) {
-			if (ctx.input.leftButton.isDown) {
+		} else if(ctx.hot == id) {
+			if(ctx.input.leftButton.isDown) {
 				ctx.active = id;
 			}
 		}
-		if (IsInsideButton(ctx, pos, radius)) {
+		if(IsInsideButton(ctx, pos, radius)) {
 			ctx.hot = id;
 		}
 
@@ -296,20 +288,20 @@ namespace ui {
 namespace utils {
 	static int StringToInt(const char *str, int def = 0) {
 		int result = def;
-		if (str != nullptr) {
+		if(str != nullptr) {
 			bool isNegative = false;
 			const char *p = str;
-			if (*p == '-') {
+			if(*p == '-') {
 				isNegative = true;
 				++p;
 			}
 			uint32_t value = 0;
-			while (isdigit(*p)) {
+			while(isdigit(*p)) {
 				short v = *p - '0';
 				value = value * 10 + v;
 				++p;
 			}
-			if (isNegative) {
+			if(isNegative) {
 				result = -(int)value;
 			} else {
 				result = value;
@@ -339,18 +331,18 @@ namespace render {
 }
 
 namespace creeps {
-	static void SpawnEnemy(GameState &state, const Vec2f &spawnPos, const Vec2f &exitPos, const CreepData *data) {
-		assert(state.enemyCount < FPL_ARRAYCOUNT(state.enemies));
-		Creep *enemy = &state.enemies[state.enemyCount++];
+	static void SpawnEnemy(Creeps &enemies, const Waypoints &waypoints, const Vec2f &spawnPos, const Vec2f &exitPos, const CreepData *data) {
+		assert(enemies.count < FPL_ARRAYCOUNT(enemies.list));
+		Creep *enemy = &enemies.list[enemies.count++];
 		FPL_CLEAR_STRUCT(enemy);
-		enemy->id = ++state.creepIdCounter;
+		enemy->id = ++enemies.creepIdCounter;
 		enemy->data = data;
 		enemy->position = enemy->prevPosition = spawnPos;
 		enemy->speed = data->speed;
 		enemy->hp = data->hp;
-		if (state.firstWaypoint != nullptr) {
-			enemy->targetWaypoint = state.firstWaypoint;
-			enemy->targetPos = TileToWorld(state.firstWaypoint->tilePos, TileExt);
+		if(waypoints.first != nullptr) {
+			enemy->targetWaypoint = waypoints.first;
+			enemy->targetPos = TileToWorld(waypoints.first->tilePos, TileExt);
 		} else {
 			enemy->targetWaypoint = nullptr;
 			enemy->targetPos = exitPos;
@@ -359,17 +351,17 @@ namespace creeps {
 		enemy->hasTarget = true;
 	}
 
-	static void UpdateSpawner(GameState &state, CreepSpawner &spawner, const float deltaTime) {
-		if (spawner.isActive) {
+	static void UpdateSpawner(Creeps &enemies, CreepSpawner &spawner, const Waypoints &waypoints, const float deltaTime) {
+		if(spawner.isActive) {
 			assert(spawner.remainingCount > 0);
 			assert(spawner.cooldown > 0);
-			if (spawner.spawnTimer > 0) {
+			if(spawner.spawnTimer > 0) {
 				spawner.spawnTimer -= deltaTime;
 			}
-			if (spawner.spawnTimer <= 0) {
-				SpawnEnemy(state, spawner.spawnPosition, spawner.exitPosition, &spawner.spawnTemplate);
+			if(spawner.spawnTimer <= 0) {
+				SpawnEnemy(enemies, waypoints, spawner.spawnPosition, spawner.exitPosition, &spawner.spawnTemplate);
 				--spawner.remainingCount;
-				if (spawner.remainingCount == 0) {
+				if(spawner.remainingCount == 0) {
 					spawner.spawnTimer = 0;
 					spawner.isActive = false;
 				} else {
@@ -379,9 +371,9 @@ namespace creeps {
 		}
 	}
 
-	static void AddSpawner(GameState &state, const Vec2i &spawnTilePos, const Vec2i &goalTilePos, const float initialCooldown, const float cooldown, const size_t count, const CreepData &spawnTemplate) {
-		assert(state.spawnerCount < FPL_ARRAYCOUNT(state.spawners));
-		CreepSpawner &spawner = state.spawners[state.spawnerCount++];
+	static void AddSpawner(CreepSpawners &spawners, const Vec2i &spawnTilePos, const Vec2i &goalTilePos, const float initialCooldown, const float cooldown, const size_t count, const SpawnerStartMode startMode, const CreepData &spawnTemplate) {
+		assert(spawners.count < FPL_ARRAYCOUNT(spawners.list));
+		CreepSpawner &spawner = spawners.list[spawners.count++];
 		spawner = {};
 		spawner.spawnPosition = TileToWorld(spawnTilePos, TileExt);
 		spawner.exitPosition = TileToWorld(goalTilePos, TileExt);
@@ -390,10 +382,11 @@ namespace creeps {
 		spawner.totalCount = count;
 		spawner.remainingCount = count;
 		spawner.spawnTemplate = spawnTemplate;
-		spawner.isActive = true;
+		spawner.isActive = (startMode == SpawnerStartMode::Fixed);
+		spawner.startMode = startMode;
 	}
 
-	static void CreepDead(Creep &enemy) {
+	static void CreepDead(GameState &state, Creep &enemy) {
 		enemy.id = 0;
 		enemy.hasTarget = false;
 		enemy.targetWaypoint = nullptr;
@@ -402,23 +395,24 @@ namespace creeps {
 	}
 
 	static void CreepReachedExit(GameState &state, Creep &enemy) {
-		CreepDead(enemy);
-		state.lifes--;
-		if (state.lifes <= 0) {
-			state.lifes = 0;
-			state.waveState = WaveState::Lost;
+		CreepDead(state, enemy);
+		state.stats.lifes--;
+		if(state.wave.isActive && state.stats.lifes <= 0) {
+			state.stats.lifes = 0;
+			state.wave.isActive = false;
+			game::SetSlowdown(state, 2.0f, WaveState::Lost);
 		}
 	}
 
 	static void SetCreepNextTarget(GameState &state, Creep &enemy) {
-		Vec2i goalTilePos = level::FindTilePosByEntityType(state, EntityType::Goal);
+		Vec2i goalTilePos = level::FindTilePosByEntityType(state.level, EntityType::Goal);
 		assert(goalTilePos.x > -1 && goalTilePos.y > -1);
 		Vec2i creepTilePos = WorldToTile(enemy.position);
-		if (enemy.targetWaypoint != nullptr) {
+		if(enemy.targetWaypoint != nullptr) {
 			const Waypoint waypoint = *enemy.targetWaypoint;
 			assert(Vec2Length(waypoint.direction) == 1);
 			Vec2f creepDir = waypoint.direction;
-			if (waypoint.next != nullptr) {
+			if(waypoint.next != nullptr) {
 				enemy.targetPos = TileToWorld(waypoint.next->tilePos, TileExt);
 				enemy.targetWaypoint = waypoint.next;
 			} else {
@@ -435,8 +429,8 @@ namespace creeps {
 	}
 
 	static const CreepData *FindEnemyById(GameState &state, const char *id) {
-		for (int i = 0; i < FPL_ARRAYCOUNT(CreepDefinitions); ++i) {
-			if (strcmp(CreepDefinitions[i].id, id) == 0) {
+		for(int i = 0; i < FPL_ARRAYCOUNT(CreepDefinitions); ++i) {
+			if(strcmp(CreepDefinitions[i].id, id) == 0) {
 				return &CreepDefinitions[i];
 			}
 		}
@@ -445,34 +439,34 @@ namespace creeps {
 
 	static void CreepHit(GameState &state, Creep &enemy, const Bullet &bullet) {
 		enemy.hp -= bullet.data->damage;
-		if (enemy.hp <= 0) {
-			CreepDead(enemy);
-			state.money += enemy.data->bounty;
+		if(enemy.hp <= 0) {
+			CreepDead(state, enemy);
+			state.stats.money += enemy.data->bounty;
 		}
 	}
 
 	static void AllEnemiesKilled(GameState &state) {
-		state.waveState = WaveState::Won;
-		state.money += WaveDefinitions[state.activeWaveIndex].completionBounty;
-		if (state.activeWaveIndex < (FPL_ARRAYCOUNT(WaveDefinitions) - 1)) {
-			level::LoadWave(state, state.activeWaveIndex + 1);
+		state.wave.state = WaveState::Won;
+		state.stats.money += WaveDefinitions[state.wave.activeIndex].completionBounty;
+		if(state.wave.activeIndex < (FPL_ARRAYCOUNT(WaveDefinitions) - 1)) {
+			level::LoadWave(state, state.wave.activeIndex + 1);
 		}
 	}
 }
 
 namespace level {
-	inline Tile *GetTile(GameState &state, const Vec2i &tilePos) {
-		if ((tilePos.x >= 0 && tilePos.x < TileCountX) && (tilePos.x >= 0 && tilePos.x < TileCountX)) {
-			return &state.tiles[tilePos.y * TileCountX + tilePos.x];
+	inline Tile *GetTile(Level &level, const Vec2i &tilePos) {
+		if((tilePos.x >= 0 && tilePos.x < TileCountX) && (tilePos.x >= 0 && tilePos.x < TileCountX)) {
+			return &level.tiles[tilePos.y * TileCountX + tilePos.x];
 		}
 		return nullptr;
 	}
 
-	static Vec2i FindTilePosByEntityType(const GameState &state, const EntityType type) {
-		for (int y = 0; y < TileCountY; ++y) {
-			for (int x = 0; x < TileCountX; ++x) {
+	static Vec2i FindTilePosByEntityType(const Level &level, const EntityType type) {
+		for(int y = 0; y < TileCountY; ++y) {
+			for(int x = 0; x < TileCountX; ++x) {
 				int index = y * TileCountX + x;
-				if (state.tiles[index].entityType == type) {
+				if(level.tiles[index].entityType == type) {
 					return V2i(x, y);
 				}
 			}
@@ -482,41 +476,37 @@ namespace level {
 
 	constexpr float WaypointDirectionWidth = 0.35f;
 
-	static void ClearWaypoints(GameState &state) {
-		Waypoint *waypoint = state.firstWaypoint;
-		while (waypoint != nullptr) {
-			Waypoint *next = waypoint->next;
-			fplMemoryFree(waypoint);
-			waypoint = next;
-		}
-		state.firstWaypoint = state.lastWaypoint = nullptr;
+	static void ClearWaypoints(Waypoints &waypoints) {
+		waypoints.first = waypoints.last = nullptr;
+		waypoints.used = 0;
 	}
 
-	static Waypoint *AddWaypoint(GameState &state, const Vec2i &tilePos, const Vec2f &dir) {
-		Waypoint *waypoint = (Waypoint *)fplMemoryAllocate(sizeof(Waypoint));
+	static Waypoint *AddWaypoint(Waypoints &waypoints, const Vec2i &tilePos, const Vec2f &dir) {
+		assert(waypoints.used < FPL_ARRAYCOUNT(waypoints.freeList));
+		Waypoint *waypoint = &waypoints.freeList[waypoints.used++];
 		waypoint->tilePos = tilePos;
 		waypoint->position = TileToWorld(tilePos, TileExt);
 		waypoint->direction = dir;
-		if (state.firstWaypoint == nullptr) {
-			state.firstWaypoint = state.lastWaypoint = waypoint;
+		if(waypoints.first == nullptr) {
+			waypoints.first = waypoints.last = waypoint;
 		} else {
-			state.lastWaypoint->next = waypoint;
-			state.lastWaypoint = waypoint;
+			waypoints.last->next = waypoint;
+			waypoints.last = waypoint;
 		}
 		return(waypoint);
 	}
 
 	static void ParseLevelLayer(fxmlTag *childTag, const uint32_t mapWidth, const uint32_t mapHeight, uint32_t *outData) {
 		fxmlTag *dataTag = fxmlFindTagByName(childTag, "data");
-		if (dataTag != nullptr) {
+		if(dataTag != nullptr) {
 			const char *encodingStr = fxmlGetAttributeValue(dataTag, "encoding");
-			if (strcmp(encodingStr, "csv") == 0) {
+			if(strcmp(encodingStr, "csv") == 0) {
 				const char *p = dataTag->value;
 				int index = 0;
-				while (*p) {
-					if (isdigit(*p)) {
+				while(*p) {
+					if(isdigit(*p)) {
 						uint32_t tileValue = 0;
-						while (isdigit(*p)) {
+						while(isdigit(*p)) {
 							short v = *p - '0';
 							tileValue = tileValue * 10 + v;
 							++p;
@@ -528,7 +518,7 @@ namespace level {
 						assert(col >= 0 && col < TileCountX);
 						int tileIndex = row * TileCountX + col;
 						outData[tileIndex] = tileValue;
-					} else if (*p == ',') {
+					} else if(*p == ',') {
 						++p;
 						++index;
 					} else {
@@ -543,9 +533,9 @@ namespace level {
 		assert(level.tileWidth > 0);
 		assert(level.tileHeight > 0);
 		fxmlTag *childTag = objectGroupTag->firstChild;
-		while (childTag != nullptr) {
-			if (childTag->type == fxmlTagType_Element) {
-				if (strcmp(childTag->name, "object") == 0) {
+		while(childTag != nullptr) {
+			if(childTag->type == fxmlTagType_Element) {
+				if(strcmp(childTag->name, "object") == 0) {
 					int gid = utils::StringToInt(fxmlGetAttributeValue(childTag, "gid"));
 					int x = utils::StringToInt(fxmlGetAttributeValue(childTag, "x"), -1);
 					int y = utils::StringToInt(fxmlGetAttributeValue(childTag, "y"), -1);
@@ -563,9 +553,11 @@ namespace level {
 					ObjectData tmpObj = {};
 					tmpObj.tilePos = tilePos;
 					const char *typeName = fxmlGetAttributeValue(childTag, "type");
-					if (strcmp(typeName, "Spawn") == 0) {
+					const char *objName = fxmlGetAttributeValue(childTag, "name");
+					if(strcmp(typeName, "Spawn") == 0) {
 						tmpObj.type = ObjectType::Spawn;
-						switch (entityType) {
+						fplCopyAnsiString(objName, tmpObj.spawn.spawnId, FPL_ARRAYCOUNT(tmpObj.spawn.spawnId));
+						switch(entityType) {
 							case EntityType::SpawnDown:
 								tmpObj.spawn.direction = V2f(0.0f, -1.0f);
 								break;
@@ -584,26 +576,17 @@ namespace level {
 						}
 
 						fxmlTag *propertiesTag = fxmlFindTagByName(childTag, "properties");
-						if (propertiesTag != nullptr) {
+						if(propertiesTag != nullptr) {
 							fxmlTag *propTag = propertiesTag->firstChild;
-							while (propTag != nullptr) {
+							while(propTag != nullptr) {
 								const char *name = fxmlGetAttributeValue(propTag, "name");
 								const char *value = fxmlGetAttributeValue(propTag, "value");
-								if (strcmp(name, "enemy") == 0) {
-									strcpy_s(tmpObj.spawn.enemyId, FPL_ARRAYCOUNT(tmpObj.spawn.enemyId), value);
-								} else if (strcmp(name, "initialCooldown") == 0) {
-									tmpObj.spawn.initialCooldown = utils::StringToFloat(value);
-								} else if (strcmp(name, "cooldown") == 0) {
-									tmpObj.spawn.cooldown = utils::StringToFloat(value);
-								} else if (strcmp(name, "enemyCount") == 0) {
-									tmpObj.spawn.enemyCount = utils::StringToInt(value);
-								}
 								propTag = propTag->nextSibling;
 							}
 						}
-					} else if (strcmp(typeName, "Waypoint") == 0) {
+					} else if(strcmp(typeName, "Waypoint") == 0) {
 						tmpObj.type = ObjectType::Waypoint;
-						switch (entityType) {
+						switch(entityType) {
 							case EntityType::WaypointDown:
 								tmpObj.waypoint.direction = V2f(0.0f, -1.0f);
 								break;
@@ -620,11 +603,11 @@ namespace level {
 								assert(!"Unsupported entity type for waypoint!");
 								break;
 						}
-					} else if (strcmp(typeName, "Goal") == 0) {
+					} else if(strcmp(typeName, "Goal") == 0) {
 						tmpObj.type = ObjectType::Goal;
 					}
 
-					if (tmpObj.type != ObjectType::None) {
+					if(tmpObj.type != ObjectType::None) {
 						assert(level.objectCount < FPL_ARRAYCOUNT(level.objects));
 						ObjectData &obj = level.objects[level.objectCount++];
 						obj = tmpObj;
@@ -638,23 +621,23 @@ namespace level {
 	static bool ParseLevel(fxmlTag *root, LevelData &level) {
 		bool result = false;
 		fxmlTag *mapTag = fxmlFindTagByName(root, "map");
-		if (mapTag == nullptr) {
+		if(mapTag == nullptr) {
 			return false;
 		}
 		int mapWidth = utils::StringToInt(fxmlGetAttributeValue(mapTag, "width"));
 		int mapHeight = utils::StringToInt(fxmlGetAttributeValue(mapTag, "height"));
-		if ((mapWidth > TileCountX) || (mapHeight > TileCountY)) {
+		if((mapWidth > TileCountX) || (mapHeight > TileCountY)) {
 			return false;
 		}
 
 		const char *orientation = fxmlGetAttributeValue(mapTag, "orientation");
-		if (strcmp(orientation, "orthogonal") != 0) {
+		if(strcmp(orientation, "orthogonal") != 0) {
 			return false;
 		}
 
 		int tileWidth = utils::StringToInt(fxmlGetAttributeValue(mapTag, "tilewidth"));
 		int tileHeight = utils::StringToInt(fxmlGetAttributeValue(mapTag, "tileheight"));
-		if ((tileWidth == 0) || (tileHeight == 0)) {
+		if((tileWidth == 0) || (tileHeight == 0)) {
 			return false;
 		}
 
@@ -664,24 +647,24 @@ namespace level {
 		fxmlTag *childTag = mapTag->firstChild;
 		level.wayFirstGid = 0;
 		level.entitiesFirstGid = 0;
-		while (childTag) {
-			if (childTag->type == fxmlTagType_Element) {
-				if (strcmp(childTag->name, "tileset") == 0) {
+		while(childTag) {
+			if(childTag->type == fxmlTagType_Element) {
+				if(strcmp(childTag->name, "tileset") == 0) {
 					const char *tilesetName = fxmlGetAttributeValue(childTag, "name");
 					int firstGid = utils::StringToInt(fxmlGetAttributeValue(childTag, "firstgid"));
-					if (strcmp(tilesetName, "way") == 0) {
+					if(strcmp(tilesetName, "way") == 0) {
 						level.wayFirstGid = firstGid;
-					} else if (strcmp(tilesetName, "entities") == 0) {
+					} else if(strcmp(tilesetName, "entities") == 0) {
 						level.entitiesFirstGid = firstGid;
 					}
-				} else if (strcmp(childTag->name, "layer") == 0) {
+				} else if(strcmp(childTag->name, "layer") == 0) {
 					const char *layerName = fxmlGetAttributeValue(childTag, "name");
-					if (strcmp(layerName, "way") == 0) {
+					if(strcmp(layerName, "way") == 0) {
 						ParseLevelLayer(childTag, mapWidth, mapHeight, level.wayLayer);
 					}
-				} else if (strcmp(childTag->name, "objectgroup") == 0) {
+				} else if(strcmp(childTag->name, "objectgroup") == 0) {
 					const char *objectGroupName = fxmlGetAttributeValue(childTag, "name");
-					if (strcmp(objectGroupName, "objects") == 0) {
+					if(strcmp(objectGroupName, "objects") == 0) {
 						ParseLevelObjects(childTag, level);
 					}
 				}
@@ -701,39 +684,39 @@ namespace level {
 		gamelog::Verbose("Loading level '%s'", filePath);
 
 		fplFileHandle file;
-		if (fplOpenAnsiBinaryFile(filePath, &file)) {
+		if(fplOpenAnsiBinaryFile(filePath, &file)) {
 			uint32_t dataSize = fplGetFileSizeFromHandle32(&file);
 			char *data = (char *)fplMemoryAllocate(dataSize);
 			fplReadFileBlock32(&file, dataSize, data, dataSize);
 			fxmlContext ctx = {};
-			if (fxmlInitFromMemory(data, dataSize, &ctx)) {
+			if(fxmlInitFromMemory(data, dataSize, &ctx)) {
 				fxmlTag root = {};
-				if (fxmlParse(&ctx, &root)) {
+				if(fxmlParse(&ctx, &root)) {
 					outLevel = {};
-					if (ParseLevel(&root, outLevel)) {
+					if(ParseLevel(&root, outLevel)) {
 						// Tiles
-						for (int y = 0; y < TileCountY; ++y) {
-							for (int x = 0; x < TileCountX; ++x) {
+						for(int y = 0; y < TileCountY; ++y) {
+							for(int x = 0; x < TileCountX; ++x) {
 								int tileIndex = y * TileCountX + x;
 								uint32_t wayValue = outLevel.wayLayer[tileIndex] > 0 ? ((outLevel.wayLayer[tileIndex] - outLevel.wayFirstGid) + 1) : 0;
 								Tile tile = {};
 								tile.wayType = TilesetWayToTypeMapping[wayValue];
 								tile.entityType = EntityType::None;
-								state.tiles[tileIndex] = tile;
+								state.level.tiles[tileIndex] = tile;
 							}
 						}
 
 						// Make waypoints/goal
-						for (size_t objIndex = 0; objIndex < outLevel.objectCount; ++objIndex) {
+						for(size_t objIndex = 0; objIndex < outLevel.objectCount; ++objIndex) {
 							const ObjectData &obj = outLevel.objects[objIndex];
-							if (IsValidTile(obj.tilePos)) {
+							if(IsValidTile(obj.tilePos)) {
 								int tileIndex = obj.tilePos.y * TileCountX + obj.tilePos.x;
-								switch (obj.type) {
+								switch(obj.type) {
 									case ObjectType::Goal:
-										state.tiles[tileIndex].entityType = EntityType::Goal;
+										state.level.tiles[tileIndex].entityType = EntityType::Goal;
 										break;
 									case ObjectType::Waypoint:
-										AddWaypoint(state, obj.tilePos, obj.waypoint.direction);
+										AddWaypoint(state.waypoints, obj.tilePos, obj.waypoint.direction);
 										break;
 									default:
 										break;
@@ -761,92 +744,135 @@ namespace level {
 
 	static void ClearWave(GameState &state) {
 		gamelog::Verbose("Clear Wave");
-		state.totalEnemyCount = 0;
-		state.enemyCount = 0;
-		state.spawnerCount = 0;
-		for (size_t towerIndex = 0; towerIndex < state.towerCount; ++towerIndex) {
-			state.towers[towerIndex].hasTarget = false;
-			state.towers[towerIndex].targetEnemy = nullptr;
-			state.towers[towerIndex].targetId = 0;
+		state.wave.totalEnemyCount = 0;
+		state.wave.isActive = false;
+		state.enemies.count = 0;
+		state.spawners.count = 0;
+		for(size_t towerIndex = 0; towerIndex < state.towers.count; ++towerIndex) {
+			Tower &tower = state.towers.list[towerIndex];
+			tower.hasTarget = false;
+			tower.targetEnemy = nullptr;
+			tower.targetId = 0;
 		}
 	}
 
 	static void ClearLevel(GameState &state) {
 		gamelog::Verbose("Clear Level");
-		state.towerCount = 0;
-		state.selectedTowerIndex = -1;
+		state.towers.count = 0;
+		state.towers.selectedIndex = -1;
 		ClearWave(state);
-		ClearWaypoints(state);
+		ClearWaypoints(state.waypoints);
+	}
+
+	static const ObjectData *FindSpawnObjectById(const Level &level, const char *spawnId) {
+		for(size_t objectIndex = 0; objectIndex < level.data.objectCount; ++objectIndex) {
+			const ObjectData *obj = &level.data.objects[objectIndex];
+			if(obj->type == ObjectType::Spawn) {
+				if(fplIsStringEqual(obj->spawn.spawnId, spawnId)) {
+					return(obj);
+				}
+			}
+		}
+		return(nullptr);
 	}
 
 	static void LoadWave(GameState &state, const int waveIndex) {
 		const WaveData &wave = WaveDefinitions[waveIndex];
 
-		state.waveState = WaveState::Stopped;
+		state.wave.state = WaveState::Stopped;
 
 		gamelog::Verbose("Setup wave '%d'", waveIndex);
 
-		if (state.activeLevelId == nullptr || strcmp(state.activeLevelId, wave.levelId) != 0) {
-			gamelog::Verbose("Active level '%s' is different from '%s'", state.activeLevelId, wave.levelId);
+		if(state.level.activeId == nullptr || strcmp(state.level.activeId, wave.levelId) != 0) {
+			gamelog::Verbose("Active level '%s' is different from '%s'", state.level.activeId, wave.levelId);
 			ClearLevel(state);
 			char levelFilename[1024];
 			fplCopyAnsiString(wave.levelId, levelFilename, FPL_ARRAYCOUNT(levelFilename));
 			fplChangeFileExtension(levelFilename, ".tmx", levelFilename, FPL_ARRAYCOUNT(levelFilename));
-			if (LoadLevel(state, state.assets.dataPath, levelFilename, state.levelData)) {
-				fplCopyAnsiString(wave.levelId, state.activeLevelId, FPL_ARRAYCOUNT(state.activeLevelId));
+			if(LoadLevel(state, state.assets.dataPath, levelFilename, state.level.data)) {
+				fplCopyAnsiString(wave.levelId, state.level.activeId, FPL_ARRAYCOUNT(state.level.activeId));
 			} else {
 				gamelog::Error("Failed loading level '%s'!", levelFilename);
 				return;
 			}
-			state.selectedTowerIndex = 0;
+			state.towers.selectedIndex = 0;
 		}
 
-		if (state.totalEnemyCount > 0 || state.firstWaypoint != nullptr || state.spawnerCount > 0) {
+		if(state.wave.totalEnemyCount > 0 || state.waypoints.first != nullptr || state.spawners.count > 0) {
 			ClearWave(state);
 		}
 
-		if (fplGetAnsiStringLength(state.activeLevelId) == 0) {
+		if(fplGetAnsiStringLength(state.level.activeId) == 0) {
 			gamelog::Error("No level loaded!");
 			return;
 		}
 
-		Vec2i goalTilePos = level::FindTilePosByEntityType(state, EntityType::Goal);
-		if (!IsValidTile(goalTilePos)) {
-			gamelog::Error("No goal entity in level '%s' found!", state.activeLevelId);
+		Vec2i goalTilePos = level::FindTilePosByEntityType(state.level, EntityType::Goal);
+		if(!IsValidTile(goalTilePos)) {
+			gamelog::Error("No goal entity in level '%s' found!", state.level.activeId);
 			return;
 		}
 
-		state.activeWaveIndex = waveIndex;
-		state.totalEnemyCount = 0;
-		for (size_t objectIndex = 0; objectIndex < state.levelData.objectCount; ++objectIndex) {
-			ObjectData &obj = state.levelData.objects[objectIndex];
+		state.wave.activeIndex = waveIndex;
+		state.wave.totalEnemyCount = 0;
+		for(size_t objectIndex = 0; objectIndex < state.level.data.objectCount; ++objectIndex) {
+			ObjectData &obj = state.level.data.objects[objectIndex];
 			Vec2i objTilePos = obj.tilePos;
-			if (!IsValidTile(objTilePos)) {
+			if(!IsValidTile(objTilePos)) {
 				gamelog::Warning("Invalid tile position '%d x %d for Object '%zu:%s'!", objTilePos.x, objTilePos.y, objectIndex, ObjectTypeToString(obj.type));
 				continue;
 			}
-			switch (obj.type) {
+#if 0
+			switch(obj.type) {
 				case ObjectType::Spawn:
 				{
 					const SpawnData &data = obj.spawn;
 					const CreepData *creepData = creeps::FindEnemyById(state, data.enemyId);
-					if (creepData != nullptr) {
+					if(creepData != nullptr) {
 						CreepData enemyTemplate = *creepData;
 						enemyTemplate.hp = (int)((float)enemyTemplate.hp * wave.enemyMultiplier.hp);
 						enemyTemplate.bounty = (int)((float)enemyTemplate.bounty * wave.enemyMultiplier.bounty);
 						enemyTemplate.speed *= wave.enemyMultiplier.speed;
 						enemyTemplate.collisionRadius *= wave.enemyMultiplier.scale;
-						creeps::AddSpawner(state, objTilePos, goalTilePos, data.initialCooldown, data.cooldown, data.enemyCount, enemyTemplate);
+						creeps::AddSpawner(state.spawners, objTilePos, goalTilePos, data.initialCooldown, data.cooldown, data.enemyCount, enemyTemplate);
 					} else {
 						gamelog::Warning("Enemy by id '%s' does not exists!", data.enemyId);
 					}
-					state.totalEnemyCount += data.enemyCount;
+					state.wave.totalEnemyCount += data.enemyCount;
 				} break;
 			}
+#endif
 		}
 
-		state.waveState = WaveState::Starting;
-		state.waveCooldown = wave.startupCooldown;
+		for(size_t spawnerIndex = 0; spawnerIndex < wave.spawnerCount; ++spawnerIndex) {
+			const SpawnData &spawnerFromWave = wave.spawners[spawnerIndex];
+			if(spawnerFromWave.enemyCount == 0) {
+				continue;
+				gamelog::Warning("No enemies for Spawner '%s'!", spawnerFromWave.spawnId);
+			}
+			const ObjectData *spawnObj = FindSpawnObjectById(state.level, spawnerFromWave.spawnId);
+			if(spawnObj == nullptr) {
+				continue;
+				gamelog::Warning("Spawner by id '%s' does not exists!", spawnerFromWave.spawnId);
+			}
+			Vec2i objTilePos = spawnObj->tilePos;
+			if(!IsValidTile(objTilePos)) {
+				gamelog::Warning("Invalid tile position '%d x %d for Spawner '%s'!", objTilePos.x, objTilePos.y, spawnObj->spawn.spawnId);
+				continue;
+			}
+			const CreepData *creepData = creeps::FindEnemyById(state, spawnerFromWave.enemyId);
+			if(creepData == nullptr) {
+				continue;
+				gamelog::Warning("Enemy by id '%s' does not exists!", spawnerFromWave.enemyId);
+			}
+			CreepData enemyTemplate = *creepData;
+			creeps::AddSpawner(state.spawners, objTilePos, goalTilePos, spawnerFromWave.initialCooldown, spawnerFromWave.cooldown, spawnerFromWave.enemyCount, spawnerFromWave.startMode, enemyTemplate);
+			state.wave.totalEnemyCount += spawnerFromWave.enemyCount;
+		}
+
+		state.wave.state = WaveState::Starting;
+		state.wave.isActive = true;
+		state.wave.warmupTimer = wave.startupCooldown;
 	}
 }
 
@@ -860,38 +886,39 @@ namespace towers {
 	};
 
 	inline CanPlaceTowerResult CanPlaceTower(GameState &state, const Vec2i &tilePos, const TowerData *tower) {
-		if ((state.selectedTowerIndex < 0) || !(state.selectedTowerIndex < FPL_ARRAYCOUNT(TowerDefinitions))) {
+		if((state.towers.selectedIndex < 0) || !(state.towers.selectedIndex < FPL_ARRAYCOUNT(TowerDefinitions))) {
 			return CanPlaceTowerResult::NoTowerSelected;
 		}
-		if (state.towerCount == FPL_ARRAYCOUNT(state.towers)) {
+		if(state.towers.count == FPL_ARRAYCOUNT(state.towers.list)) {
 			return CanPlaceTowerResult::TooManyTowers;
 		}
-		Tile *tile = level::GetTile(state, tilePos);
-		if (tile == nullptr) {
+		Tile *tile = level::GetTile(state.level, tilePos);
+		if(tile == nullptr) {
 			return CanPlaceTowerResult::TileOccupied;
 		}
-		if (tile->isOccupied || tile->entityType != EntityType::None || tile->wayType != WayType::None) {
+		if(tile->isOccupied || tile->entityType != EntityType::None || tile->wayType != WayType::None) {
 			return CanPlaceTowerResult::TileOccupied;
 		}
-		if (state.money < tower->costs) {
+		if(state.stats.money < tower->costs) {
 			return CanPlaceTowerResult::NotEnoughMoney;
 		}
 		return(CanPlaceTowerResult::Success);
 	}
 
 	static Tower *PlaceTower(GameState &state, const Vec2i &tilePos, const TowerData *data) {
-		assert(state.towerCount < FPL_ARRAYCOUNT(state.towers));
-		Tower *tower = &state.towers[state.towerCount++];
+		assert(state.towers.count < FPL_ARRAYCOUNT(state.towers.list));
+		Tower *tower = &state.towers.list[state.towers.count++];
 		*tower = {};
 		tower->data = data;
 		tower->position = TileToWorld(tilePos, TileExt);
 		tower->facingAngle = (float)M_PI * 0.5f; // Face north by default
 
-		Tile *tile = level::GetTile(state, tilePos);
+		Tile *tile = level::GetTile(state.level, tilePos);
 		assert(!tile->isOccupied);
 		tile->isOccupied = true;
 
-		state.money -= data->costs;
+		assert(state.stats.money >= data->costs);
+		state.stats.money -= data->costs;
 
 		return(tower);
 	}
@@ -900,9 +927,9 @@ namespace towers {
 		Vec2f result;
 
 		// First we compute how many frames we need until we can actually fire (Weapon cooldown)
-		if (tower.data->enemyPredictionFlags != EnemyPredictionFlags::None) {
+		if(tower.data->enemyPredictionFlags != EnemyPredictionFlags::None) {
 			float framesRequiredToFire;
-			if ((tower.data->enemyPredictionFlags & EnemyPredictionFlags::WeaponCooldown) == EnemyPredictionFlags::WeaponCooldown) {
+			if((tower.data->enemyPredictionFlags & EnemyPredictionFlags::WeaponCooldown) == EnemyPredictionFlags::WeaponCooldown) {
 				framesRequiredToFire = (tower.gunTimer / deltaTime);
 			} else {
 				framesRequiredToFire = 0;
@@ -915,7 +942,7 @@ namespace towers {
 
 			// Second we compute how many frames we need the bullet to move to the predicted position
 			float framesRequiredForBullet;
-			if ((tower.data->enemyPredictionFlags & EnemyPredictionFlags::BulletDistance) == EnemyPredictionFlags::BulletDistance) {
+			if((tower.data->enemyPredictionFlags & EnemyPredictionFlags::BulletDistance) == EnemyPredictionFlags::BulletDistance) {
 				assert(tower.data->bullet.speed > 0);
 				float bulletDistance = Vec2Length(distanceToEnemy) / (tower.data->bullet.speed / deltaTime);
 				framesRequiredForBullet = (bulletDistance / deltaTime);
@@ -937,7 +964,7 @@ namespace towers {
 		Vec2f predictedEnemyPosition = PredictEnemyPosition(tower, enemy, deltaTime);
 		Vec2f distanceToEnemy = predictedEnemyPosition - tower.position;
 		bool result;
-		if (tower.data->enemyRangeTestType == FireRangeTestType::LineTrace) {
+		if(tower.data->enemyRangeTestType == FireRangeTestType::LineTrace) {
 			float maxDistance = Vec2Length(distanceToEnemy) + enemy.data->collisionRadius;
 			LineCastInput input = {};
 			input.p1 = tower.position + lookDirection * tower.data->gunTubeLength;
@@ -947,7 +974,7 @@ namespace towers {
 			result = LineCastCircle(input, enemy.position, enemy.data->collisionRadius, output);
 		} else {
 			float projDistance = Vec2Dot(distanceToEnemy, lookDirection);
-			if (projDistance > 0) {
+			if(projDistance > 0) {
 				Vec2f lookPos = tower.position + lookDirection * projDistance;
 				float dot = Vec2Dot(predictedEnemyPosition, lookPos);
 				float det = predictedEnemyPosition.x * lookPos.y - predictedEnemyPosition.y * lookPos.x;
@@ -960,9 +987,9 @@ namespace towers {
 		return(result);
 	}
 
-	static void ShootBullet(GameState &state, Tower &tower) {
-		assert(state.bulletCount < FPL_ARRAYCOUNT(state.bullets));
-		Bullet *bullet = &state.bullets[state.bulletCount++];
+	static void ShootBullet(Bullets &bullets, Tower &tower) {
+		assert(bullets.count < FPL_ARRAYCOUNT(bullets.list));
+		Bullet *bullet = &bullets.list[bullets.count++];
 		*bullet = {};
 		Vec2f targetDir = V2f(Cosine(tower.facingAngle), Sine(tower.facingAngle));
 		bullet->position = bullet->prevPosition = tower.position + targetDir * tower.data->gunTubeLength;
@@ -975,13 +1002,13 @@ namespace towers {
 	static void UpdateTower(GameState &state, Tower &tower, const float deltaTime) {
 		// Remove lost or dead target
 		// @NOTE(final): Dead enemies can be immediately reused in the next frame, so we cannot use isDead only
-		if (tower.hasTarget) {
+		if(tower.hasTarget) {
 			assert(tower.targetEnemy != nullptr);
 			Vec2f distance = tower.targetEnemy->position - tower.position;
 			assert(tower.data->unlockRadius >= tower.data->detectionRadius);
-			if (tower.targetEnemy->isDead ||
+			if(tower.targetEnemy->isDead ||
 				(tower.targetEnemy->id != tower.targetId) ||
-				(Vec2Length(distance) > tower.data->unlockRadius)) {
+			   (Vec2Length(distance) > tower.data->unlockRadius)) {
 				tower.targetEnemy = nullptr;
 				tower.hasTarget = false;
 				tower.targetId = 0;
@@ -989,20 +1016,20 @@ namespace towers {
 		}
 
 		// Detect a new target
-		if (!tower.hasTarget) {
+		if(!tower.hasTarget) {
 			float bestEnemyDistance = FLT_MAX;
 			Creep *bestEnemy = nullptr;
-			for (size_t enemyIndex = 0; enemyIndex < state.enemyCount; ++enemyIndex) {
-				Creep *testEnemy = &state.enemies[enemyIndex];
-				if (!testEnemy->isDead) {
+			for(size_t enemyIndex = 0; enemyIndex < state.enemies.count; ++enemyIndex) {
+				Creep *testEnemy = &state.enemies.list[enemyIndex];
+				if(!testEnemy->isDead) {
 					float distanceRadius = Vec2Length(testEnemy->position - tower.position);
-					if (distanceRadius < bestEnemyDistance) {
+					if(distanceRadius < bestEnemyDistance) {
 						bestEnemy = testEnemy;
 						bestEnemyDistance = distanceRadius;
 					}
 				}
 			}
-			if (bestEnemy != nullptr && bestEnemyDistance <= tower.data->detectionRadius) {
+			if(bestEnemy != nullptr && bestEnemyDistance <= tower.data->detectionRadius) {
 				tower.targetEnemy = bestEnemy;
 				tower.targetId = bestEnemy->id;
 				tower.hasTarget = true;
@@ -1010,7 +1037,7 @@ namespace towers {
 		}
 
 		// Weapon cooldown
-		if (!tower.canFire && tower.gunTimer > 0) {
+		if(!tower.canFire && tower.gunTimer > 0) {
 			tower.gunTimer -= deltaTime;
 		} else {
 			tower.gunTimer = 0;
@@ -1020,7 +1047,7 @@ namespace towers {
 		//
 		// Rotate gun
 		//
-		if (tower.hasTarget) {
+		if(tower.hasTarget) {
 			assert(tower.targetEnemy != nullptr);
 			Creep *enemy = tower.targetEnemy;
 			assert(enemy->id == tower.targetId);
@@ -1033,24 +1060,24 @@ namespace towers {
 		//
 		// Shoot
 		//
-		if (tower.data->enemyLockOnMode == EnemyLockTargetMode::Any) {
-			for (size_t enemyIndex = 0; enemyIndex < state.enemyCount; ++enemyIndex) {
-				Creep &enemy = state.enemies[enemyIndex];
-				if (!enemy.isDead) {
+		if(tower.data->enemyLockOnMode == EnemyLockTargetMode::Any) {
+			for(size_t enemyIndex = 0; enemyIndex < state.enemies.count; ++enemyIndex) {
+				Creep &enemy = state.enemies.list[enemyIndex];
+				if(!enemy.isDead) {
 					bool inFireRange = towers::InFireRange(tower, enemy, deltaTime);
-					if (inFireRange && tower.canFire) {
-						ShootBullet(state, tower);
+					if(inFireRange && tower.canFire) {
+						ShootBullet(state.bullets, tower);
 					}
 				}
 			}
-		} else if (tower.data->enemyLockOnMode == EnemyLockTargetMode::LockedOn) {
-			if (tower.hasTarget) {
+		} else if(tower.data->enemyLockOnMode == EnemyLockTargetMode::LockedOn) {
+			if(tower.hasTarget) {
 				assert(tower.targetEnemy != nullptr);
 				Creep *enemy = tower.targetEnemy;
 				assert(!enemy->isDead);
 				bool inFireRange = towers::InFireRange(tower, *enemy, deltaTime);
-				if (inFireRange && tower.canFire) {
-					ShootBullet(state, tower);
+				if(inFireRange && tower.canFire) {
+					ShootBullet(state.bullets, tower);
 				}
 			}
 		}
@@ -1072,7 +1099,7 @@ namespace towers {
 		glLineWidth(2.0f);
 		glPopMatrix();
 
-		if (drawRadius) {
+		if(drawRadius) {
 			glColor4f(0.2f, 1, 0.2f, alpha*0.25f);
 			DrawSprite(assets.radiantTexture, tower.detectionRadius, tower.detectionRadius, 0.0f, 0.0f, 1.0f, 1.0f, pos.x, pos.y);
 			glColor4f(1, 0.25f, 0.25f, alpha*0.25f);
@@ -1082,6 +1109,14 @@ namespace towers {
 }
 
 namespace game {
+	static void SetSlowdown(GameState &state, const float duration, const WaveState nextState) {
+		assert(!state.isSlowDown);
+		state.isSlowDown = true;
+		state.slowdownScale = 0.0f;
+		state.slowdownTimer[0] = state.slowdownTimer[1] = duration;
+		state.waveStateAfterSlowdown = nextState;
+	}
+
 	static void ReleaseFontAsset(FontAsset &font) {
 		glDeleteTextures(1, &font.texture);
 		ReleaseFont(&font.desc);
@@ -1098,24 +1133,26 @@ namespace game {
 		int width, height, comp;
 		uint8_t *data = stbi_load(filePath, &width, &height, &comp, 4);
 		GLuint result = 0;
-		if (data != nullptr) {
+		if(data != nullptr) {
 			result = AllocateTexture(width, height, data, false, GL_LINEAR, false);
 		}
 		return(result);
 	}
 
 	static void LoadAssets(Assets &assets) {
-		const char *fontFilename = "SulphurPoint-Bold.otf";
 		char fontDataPath[1024];
-		char texturesDataPath[1024];
+
+		const char *fontFilename = "SulphurPoint-Bold.otf";
 		fplPathCombine(fontDataPath, FPL_ARRAYCOUNT(fontDataPath), 2, assets.dataPath, "fonts");
-		fplPathCombine(texturesDataPath, FPL_ARRAYCOUNT(texturesDataPath), 2, assets.dataPath, "textures");
-		if (LoadFontFromFile(fontDataPath, fontFilename, 0, 36.0f, 32, 127, 512, 512, &assets.hudFont.desc)) {
+		if(LoadFontFromFile(fontDataPath, fontFilename, 0, 36.0f, 32, 127, 256, 256, &assets.hudFont.desc)) {
 			assets.hudFont.texture = AllocateTexture(assets.hudFont.desc.atlasWidth, assets.hudFont.desc.atlasHeight, assets.hudFont.desc.atlasAlphaBitmap, false, GL_LINEAR, true);
 		}
-		if (LoadFontFromFile(fontDataPath, fontFilename, 0, 172.0f, 32, 127, 1024, 1024, &assets.overlayFont.desc)) {
+		if(LoadFontFromFile(fontDataPath, fontFilename, 0, 240.0f, 32, 127, 4096, 4096, &assets.overlayFont.desc)) {
 			assets.overlayFont.texture = AllocateTexture(assets.overlayFont.desc.atlasWidth, assets.overlayFont.desc.atlasHeight, assets.overlayFont.desc.atlasAlphaBitmap, false, GL_LINEAR, true);
 		}
+
+		char texturesDataPath[1024];
+		fplPathCombine(texturesDataPath, FPL_ARRAYCOUNT(texturesDataPath), 2, assets.dataPath, "textures");
 		assets.radiantTexture = LoadTexture(texturesDataPath, "radiant.png");
 	}
 
@@ -1133,9 +1170,9 @@ namespace game {
 		state.camera.offset.x = 0;
 		state.camera.offset.y = 0;
 
-		// Initial values from first wave?
-		state.money = 100;
-		state.lifes = 10;
+		// @TODO(final): Initial values from first wave?
+		state.stats.money = 100;
+		state.stats.lifes = 3;
 
 		// Load initial wave
 		level::LoadWave(state, 0);
@@ -1144,7 +1181,7 @@ namespace game {
 	static bool InitGame(GameState &state, GameMemory &gameMemory) {
 		gamelog::Verbose("Initialize Game");
 
-		if (!fglLoadOpenGL(true)) {
+		if(!fglLoadOpenGL(true)) {
 			gamelog::Fatal("Failed loading opengl!");
 			return false;
 		}
@@ -1177,6 +1214,84 @@ namespace game {
 
 		return(true);
 	}
+
+	static void DrawHUD(GameState &state) {
+		constexpr float hudPadding = MaxTileSize * 0.075f;
+		constexpr float hudOriginX = -WorldRadiusW;
+		constexpr float hudOriginY = WorldRadiusH;
+		constexpr float hudFontHeight = TileHeight * 0.4f;
+		constexpr float outlineOffset = hudFontHeight * 0.05f;
+		const FontAsset &font = state.assets.hudFont;
+		{
+			char text[256];
+			fplFormatAnsiString(text, FPL_ARRAYCOUNT(text), "%s", state.level.activeId);
+			Vec2f textPos = V2f(hudOriginX + WorldRadiusW, hudOriginY - hudPadding - hudFontHeight * 0.5f);
+			glColor4fv(&TextBackColor.m[0]);
+			DrawTextFont(text, fplGetAnsiStringLength(text), &font.desc, font.texture, textPos.x + outlineOffset, textPos.y - outlineOffset, hudFontHeight, 0.0f, 0.0f);
+			glColor4fv(&TextForeColor.m[0]);
+			DrawTextFont(text, fplGetAnsiStringLength(text), &font.desc, font.texture, textPos.x, textPos.y, hudFontHeight, 0.0f, 0.0f);
+
+			fplFormatAnsiString(text, FPL_ARRAYCOUNT(text), "Wave: %d / %zu", (state.wave.activeIndex + 1), FPL_ARRAYCOUNT(WaveDefinitions));
+			textPos.y -= hudFontHeight;
+			glColor4fv(&TextBackColor.m[0]);
+			DrawTextFont(text, fplGetAnsiStringLength(text), &font.desc, font.texture, textPos.x + outlineOffset, textPos.y - outlineOffset, hudFontHeight, 0.0f, 0.0f);
+			glColor4fv(&TextForeColor.m[0]);
+			DrawTextFont(text, fplGetAnsiStringLength(text), &font.desc, font.texture, textPos.x, textPos.y, hudFontHeight, 0.0f, 0.0f);
+		}
+		{
+			char text[256];
+			fplFormatAnsiString(text, FPL_ARRAYCOUNT(text), "$: %d", state.stats.money);
+			Vec2f textPos = V2f(hudOriginX + hudPadding, hudOriginY - hudPadding - hudFontHeight * 0.5f);
+			glColor4fv(&TextBackColor.m[0]);
+			DrawTextFont(text, fplGetAnsiStringLength(text), &font.desc, font.texture, textPos.x + outlineOffset, textPos.y - outlineOffset, hudFontHeight, 1.0f, 0.0f);
+			glColor4fv(&TextForeColor.m[0]);
+			DrawTextFont(text, fplGetAnsiStringLength(text), &font.desc, font.texture, textPos.x, textPos.y, hudFontHeight, 1.0f, 0.0f);
+		}
+		{
+			char text[256];
+			fplFormatAnsiString(text, FPL_ARRAYCOUNT(text), "HP: %d", state.stats.lifes);
+			Vec2f textPos = V2f(hudOriginX + WorldWidth - hudPadding, hudOriginY - hudPadding - hudFontHeight * 0.5f);
+			glColor4fv(&TextBackColor.m[0]);
+			DrawTextFont(text, fplGetAnsiStringLength(text), &font.desc, font.texture, textPos.x + outlineOffset, textPos.y - outlineOffset, hudFontHeight, -1.0f, 0.0f);
+			glColor4fv(&TextForeColor.m[0]);
+			DrawTextFont(text, fplGetAnsiStringLength(text), &font.desc, font.texture, textPos.x, textPos.y, hudFontHeight, -1.0f, 0.0f);
+		}
+	}
+
+	static void DrawControls(GameState &state) {
+		//
+		// Controls Background
+		//
+		glColor4f(0.2f, 0.2f, 0.2f, 1.0f);
+		glBegin(GL_QUADS);
+		glVertex2f(ControlsOriginX + ControlsWidth, ControlsOriginY + ControlsHeight);
+		glVertex2f(ControlsOriginX, ControlsOriginY + ControlsHeight);
+		glVertex2f(ControlsOriginX, ControlsOriginY);
+		glVertex2f(ControlsOriginX + ControlsWidth, ControlsOriginY);
+		glEnd();
+
+		// Controls Border
+		float lineWidth = 2.0f;
+		float lineWidthWorld = lineWidth * state.camera.pixelsToWorld * 0.5f;
+		glColor4f(0.5f, 0.5f, 0.5f, 1.0f);
+		glLineWidth(lineWidth);
+		glBegin(GL_LINE_LOOP);
+		glVertex2f(ControlsOriginX + ControlsWidth - lineWidthWorld, ControlsOriginY + ControlsHeight - lineWidthWorld);
+		glVertex2f(ControlsOriginX + lineWidthWorld, ControlsOriginY + ControlsHeight - lineWidthWorld);
+		glVertex2f(ControlsOriginX + lineWidthWorld, ControlsOriginY + lineWidthWorld);
+		glVertex2f(ControlsOriginX + ControlsWidth - lineWidthWorld, ControlsOriginY + lineWidthWorld);
+		glEnd();
+		glLineWidth(2);
+
+		float buttonPadding = lineWidthWorld + (MaxTileSize * 0.15f);
+		float buttonHeight = ControlsHeight - buttonPadding * 2.0f;
+
+		Vec2f buttonRadius = V2f(buttonHeight * 0.5f);
+		Vec2f buttonExt = ui::GetUIButtonExt(buttonRadius);
+		if(ui::UIButton(state.ui, "Tower", V2f(ControlsOriginX + buttonPadding + buttonExt.w, ControlsOriginY + buttonPadding + buttonExt.h), buttonRadius)) {
+			fplDebugFormatOut("Tower button pressed");
+		}
+	}
 }
 
 extern GameMemory GameCreate() {
@@ -1184,13 +1299,13 @@ extern GameMemory GameCreate() {
 	GameMemory result = {};
 	result.capacity = sizeof(GameState) + FPL_MEGABYTES(16);
 	result.base = fplMemoryAllocate(result.capacity);
-	if (result.base == nullptr) {
+	if(result.base == nullptr) {
 		gamelog::Fatal("Failed allocating Game State memory of '%zu' bytes!", result.capacity);
 		return {};
 	}
 	GameState *state = (GameState *)result.base;
 	result.used = sizeof(GameState);
-	if (!game::InitGame(*state, result)) {
+	if(!game::InitGame(*state, result)) {
 		gamelog::Fatal("Failed initializing Game!");
 		GameDestroy(result);
 		state = nullptr;
@@ -1212,7 +1327,7 @@ extern bool IsGameExiting(GameMemory &gameMemory) {
 }
 
 extern void GameInput(GameMemory &gameMemory, const Input &input) {
-	if (!input.isActive) {
+	if(!input.isActive) {
 		return;
 	}
 	GameState *state = (GameState *)gameMemory.base;
@@ -1221,7 +1336,7 @@ extern void GameInput(GameMemory &gameMemory, const Input &input) {
 
 	// Debug input
 	const Controller &keyboardController = input.controllers[0];
-	if (WasPressed(keyboardController.debugToggle)) {
+	if(WasPressed(keyboardController.debugToggle)) {
 		state->isDebugRendering = !state->isDebugRendering;
 	}
 
@@ -1237,14 +1352,15 @@ extern void GameInput(GameMemory &gameMemory, const Input &input) {
 	state->mouseWorldPos.x = (mouseCenterX * state->camera.pixelsToWorld) - state->camera.offset.x;
 	state->mouseWorldPos.y = (mouseCenterY * state->camera.pixelsToWorld) - state->camera.offset.y;
 
-	if (state->waveState == WaveState::Running || state->waveState == WaveState::Starting) {
+	if(state->wave.state == WaveState::Running || state->wave.state == WaveState::Starting) {
+		// Update tile position from mouse
 		state->mouseTilePos = WorldToTile(state->mouseWorldPos);
 
 		// Tower placement
-		if (WasPressed(input.mouse.left) && !ui::UIIsActive(state->ui)) {
-			if (state->selectedTowerIndex > -1) {
-				const TowerData *tower = &TowerDefinitions[state->selectedTowerIndex];
-				if (towers::CanPlaceTower(*state, state->mouseTilePos, tower) == towers::CanPlaceTowerResult::Success) {
+		if(WasPressed(input.mouse.left) && !ui::UIIsActive(state->ui)) {
+			if(state->towers.selectedIndex > -1) {
+				const TowerData *tower = &TowerDefinitions[state->towers.selectedIndex];
+				if(towers::CanPlaceTower(*state, state->mouseTilePos, tower) == towers::CanPlaceTowerResult::Success) {
 					towers::PlaceTower(*state, state->mouseTilePos, tower);
 				}
 			}
@@ -1253,65 +1369,83 @@ extern void GameInput(GameMemory &gameMemory, const Input &input) {
 }
 
 extern void GameUpdate(GameMemory &gameMemory, const Input &input) {
-	if (!input.isActive) {
+	if(!input.isActive) {
 		return;
 	}
 
-#if 1
 	GameState *state = (GameState *)gameMemory.base;
 
+	float dtScale = 1.0f;
+	if(state->isSlowDown) {
+		assert(state->slowdownTimer[1] > 0);
+		if(state->slowdownTimer[0] > 0.0f) {
+			state->slowdownTimer[0] -= input.deltaTime;
+		} else {
+			state->slowdownTimer[0] = 0;
+			if(state->wave.state != state->waveStateAfterSlowdown) {
+				state->wave.state = state->waveStateAfterSlowdown;
+			}
+		}
+		float t = 1.0f - (state->slowdownTimer[0] / state->slowdownTimer[1]);
+		dtScale = ScalarLerp(1.0f, t, state->slowdownScale);
+	}
+	const float dt = input.deltaTime * dtScale;
+
+	state->deltaTime = dt;
+	state->framesPerSecond = input.framesPerSeconds;
+
 	// Startup wave
-	if (state->waveState == WaveState::Starting) {
-		state->waveCooldown -= input.deltaTime;
-		if (state->waveCooldown <= 0.0f) {
-			state->waveCooldown = 0;
-			state->waveState = WaveState::Running;
+	if(state->wave.state == WaveState::Starting) {
+		state->wave.warmupTimer -= dt;
+		if(state->wave.warmupTimer <= 0.0f) {
+			state->wave.warmupTimer = 0;
+			state->wave.state = WaveState::Running;
 		}
 	}
 
-	if (state->waveState == WaveState::Running) {
+	if(state->wave.state == WaveState::Running) {
 		//
 		// Move enemies
 		//
-		for (size_t enemyIndex = 0; enemyIndex < state->enemyCount; ++enemyIndex) {
-			Creep &enemy = state->enemies[enemyIndex];
-			if (!enemy.isDead && enemy.hasTarget) {
+		for(size_t enemyIndex = 0; enemyIndex < state->enemies.count; ++enemyIndex) {
+			Creep &enemy = state->enemies.list[enemyIndex];
+			if(!enemy.isDead && enemy.hasTarget) {
 				Vec2f distance = enemy.targetPos - enemy.position;
 				float minRadius = MaxTileSize * 0.05f;
-				enemy.position += enemy.facingDirection * enemy.speed * input.deltaTime;
-				if (Vec2Dot(distance, distance) <= minRadius * minRadius) {
+				enemy.position += enemy.facingDirection * enemy.speed * dt;
+				if(Vec2Dot(distance, distance) <= minRadius * minRadius) {
 					creeps::SetCreepNextTarget(*state, enemy);
 				}
 			}
 		}
 
 		// Update spawners
-		for (size_t spawnerIndex = 0; spawnerIndex < state->spawnerCount; ++spawnerIndex) {
-			CreepSpawner &spawner = state->spawners[spawnerIndex];
-			creeps::UpdateSpawner(*state, spawner, input.deltaTime);
+		for(size_t spawnerIndex = 0; spawnerIndex < state->spawners.count; ++spawnerIndex) {
+			CreepSpawner &spawner = state->spawners.list[spawnerIndex];
+			creeps::UpdateSpawner(state->enemies, spawner, state->waypoints, dt);
 		}
 
 		// Update towers
-		for (size_t towerIndex = 0; towerIndex < state->towerCount; ++towerIndex) {
-			Tower &tower = state->towers[towerIndex];
-			towers::UpdateTower(*state, tower, input.deltaTime);
+		for(size_t towerIndex = 0; towerIndex < state->towers.count; ++towerIndex) {
+			Tower &tower = state->towers.list[towerIndex];
+			towers::UpdateTower(*state, tower, dt);
 		}
 
 		//
 		// Move and collide bullets
 		//
-		for (size_t bulletIndex = 0; bulletIndex < state->bulletCount; ++bulletIndex) {
-			Bullet &bullet = state->bullets[bulletIndex];
-			if (!bullet.isDestroyed) {
-				bullet.position += bullet.velocity * input.deltaTime;
-				if (!bullet.hasHit) {
-					for (size_t enemyIndex = 0; enemyIndex < state->enemyCount; ++enemyIndex) {
-						Creep &enemy = state->enemies[enemyIndex];
-						if (!enemy.isDead) {
+		for(size_t bulletIndex = 0; bulletIndex < state->bullets.count; ++bulletIndex) {
+			Bullet &bullet = state->bullets.list[bulletIndex];
+			if(!bullet.isDestroyed) {
+				bullet.position += bullet.velocity * dt;
+				if(!bullet.hasHit) {
+					for(size_t enemyIndex = 0; enemyIndex < state->enemies.count; ++enemyIndex) {
+						Creep &enemy = state->enemies.list[enemyIndex];
+						if(!enemy.isDead) {
 							Vec2f distance = enemy.position - bullet.position;
 							float bothRadi = bullet.data->collisionRadius + enemy.data->collisionRadius;
 							float d = Vec2Dot(distance, distance);
-							if (d < bothRadi) {
+							if(d < bothRadi) {
 								bullet.hasHit = true;
 								creeps::CreepHit(*state, enemy, bullet);
 								break;
@@ -1319,11 +1453,11 @@ extern void GameUpdate(GameMemory &gameMemory, const Input &input) {
 						}
 					}
 				}
-				if (!bullet.hasHit) {
-					if (((bullet.position.x + bullet.data->renderRadius) > WorldRadiusW) ||
+				if(!bullet.hasHit) {
+					if(((bullet.position.x + bullet.data->renderRadius) > WorldRadiusW) ||
 						((bullet.position.y + bullet.data->renderRadius) > WorldRadiusH) ||
-						((bullet.position.y - bullet.data->renderRadius) < -WorldRadiusH) ||
-						((bullet.position.x - bullet.data->renderRadius) < -WorldRadiusW)) {
+					   ((bullet.position.y - bullet.data->renderRadius) < -WorldRadiusH) ||
+					   ((bullet.position.x - bullet.data->renderRadius) < -WorldRadiusW)) {
 						bullet.isDestroyed = true;
 					}
 				}
@@ -1333,112 +1467,59 @@ extern void GameUpdate(GameMemory &gameMemory, const Input &input) {
 		//
 		// Remove dead enemies and destroyed bullets
 		//
-		for (size_t bulletIndex = 0; bulletIndex < state->bulletCount; ++bulletIndex) {
-			Bullet &bullet = state->bullets[bulletIndex];
-			if (bullet.hasHit) {
+		for(size_t bulletIndex = 0; bulletIndex < state->bullets.count; ++bulletIndex) {
+			Bullet &bullet = state->bullets.list[bulletIndex];
+			if(bullet.hasHit) {
 				bullet.isDestroyed = true;
 			}
-			if (bullet.isDestroyed) {
-				if (bulletIndex < state->bulletCount - 1) {
-					const Bullet &lastBullet = state->bullets[state->bulletCount - 1];
+			if(bullet.isDestroyed) {
+				if(bulletIndex < state->bullets.count - 1) {
+					const Bullet &lastBullet = state->bullets.list[state->bullets.count - 1];
 					bullet = lastBullet;
 				}
-				--state->bulletCount;
+				--state->bullets.count;
 			}
 		}
 		size_t deadEnemyCount = 0;
-		for (size_t enemyIndex = 0; enemyIndex < state->enemyCount; ++enemyIndex) {
-			Creep &enemy = state->enemies[enemyIndex];
-			if (enemy.isDead) {
+		size_t nonDeadEnemyCount = 0;
+		for(size_t enemyIndex = 0; enemyIndex < state->enemies.count; ++enemyIndex) {
+			Creep &enemy = state->enemies.list[enemyIndex];
+			if(enemy.isDead) {
 				++deadEnemyCount;
+			} else {
+				++nonDeadEnemyCount;
 			}
 		}
-		if (state->totalEnemyCount == deadEnemyCount) {
+
+		if(state->wave.totalEnemyCount == deadEnemyCount) {
 			creeps::AllEnemiesKilled(*state);
+		} else {
+			bool hasActiveSpawners = false;
+			CreepSpawner *nextSpawner = nullptr;
+			for(size_t spawnerIndex = 0; spawnerIndex < state->spawners.count; ++spawnerIndex) {
+				CreepSpawner *spawner = &state->spawners.list[spawnerIndex];
+				if(spawner->isActive) {
+					hasActiveSpawners = true;
+					break;
+				} else {
+					if(nextSpawner == nullptr && spawner->startMode == SpawnerStartMode::AfterTheLast) {
+						nextSpawner = spawner;
+					}
+				}
+			}
+			if(nonDeadEnemyCount == 0 && !hasActiveSpawners) {
+				// All enemies but not all from all spawners has been killed
+				if(nextSpawner != nullptr) {
+					nextSpawner->isActive = true;
+					nextSpawner->spawnTimer = nextSpawner->cooldown;
+					nextSpawner->remainingCount = nextSpawner->totalCount;
+				}
+			}
 		}
 	}
-#endif
 }
 
-static void DrawHUD(GameState &state) {
-	constexpr float hudPadding = MaxTileSize * 0.075f;
-	constexpr float hudOriginX = -WorldRadiusW;
-	constexpr float hudOriginY = WorldRadiusH;
-	constexpr float hudFontHeight = TileHeight * 0.4f;
-	constexpr float outlineOffset = hudFontHeight * 0.05f;
-	const FontAsset &font = state.assets.hudFont;
-	{
-		char text[256];
-		fplFormatAnsiString(text, FPL_ARRAYCOUNT(text), "%s", state.activeLevelId);
-		Vec2f textPos = V2f(hudOriginX + WorldRadiusW, hudOriginY - hudPadding - hudFontHeight * 0.5f);
-		glColor4fv(&TextBackColor.m[0]);
-		DrawTextFont(text, fplGetAnsiStringLength(text), &font.desc, font.texture, textPos.x + outlineOffset, textPos.y - outlineOffset, hudFontHeight, 0.0f, 0.0f);
-		glColor4fv(&TextForeColor.m[0]);
-		DrawTextFont(text, fplGetAnsiStringLength(text), &font.desc, font.texture, textPos.x, textPos.y, hudFontHeight, 0.0f, 0.0f);
-
-		fplFormatAnsiString(text, FPL_ARRAYCOUNT(text), "Wave: %d / %zu", (state.activeWaveIndex + 1), FPL_ARRAYCOUNT(WaveDefinitions));
-		textPos.y -= hudFontHeight;
-		glColor4fv(&TextBackColor.m[0]);
-		DrawTextFont(text, fplGetAnsiStringLength(text), &font.desc, font.texture, textPos.x + outlineOffset, textPos.y - outlineOffset, hudFontHeight, 0.0f, 0.0f);
-		glColor4fv(&TextForeColor.m[0]);
-		DrawTextFont(text, fplGetAnsiStringLength(text), &font.desc, font.texture, textPos.x, textPos.y, hudFontHeight, 0.0f, 0.0f);
-	}
-	{
-		char text[256];
-		fplFormatAnsiString(text, FPL_ARRAYCOUNT(text), "$: %d", state.money);
-		Vec2f textPos = V2f(hudOriginX + hudPadding, hudOriginY - hudPadding - hudFontHeight * 0.5f);
-		glColor4fv(&TextBackColor.m[0]);
-		DrawTextFont(text, fplGetAnsiStringLength(text), &font.desc, font.texture, textPos.x + outlineOffset, textPos.y - outlineOffset, hudFontHeight, 1.0f, 0.0f);
-		glColor4fv(&TextForeColor.m[0]);
-		DrawTextFont(text, fplGetAnsiStringLength(text), &font.desc, font.texture, textPos.x, textPos.y, hudFontHeight, 1.0f, 0.0f);
-	}
-	{
-		char text[256];
-		fplFormatAnsiString(text, FPL_ARRAYCOUNT(text), "HP: %d", state.lifes);
-		Vec2f textPos = V2f(hudOriginX + WorldWidth - hudPadding, hudOriginY - hudPadding - hudFontHeight * 0.5f);
-		glColor4fv(&TextBackColor.m[0]);
-		DrawTextFont(text, fplGetAnsiStringLength(text), &font.desc, font.texture, textPos.x + outlineOffset, textPos.y - outlineOffset, hudFontHeight, -1.0f, 0.0f);
-		glColor4fv(&TextForeColor.m[0]);
-		DrawTextFont(text, fplGetAnsiStringLength(text), &font.desc, font.texture, textPos.x, textPos.y, hudFontHeight, -1.0f, 0.0f);
-	}
-}
-
-static void DrawControls(GameState &state) {
-	//
-	// Controls Background
-	//
-	glColor4f(0.2f, 0.2f, 0.2f, 1.0f);
-	glBegin(GL_QUADS);
-	glVertex2f(ControlsOriginX + ControlsWidth, ControlsOriginY + ControlsHeight);
-	glVertex2f(ControlsOriginX, ControlsOriginY + ControlsHeight);
-	glVertex2f(ControlsOriginX, ControlsOriginY);
-	glVertex2f(ControlsOriginX + ControlsWidth, ControlsOriginY);
-	glEnd();
-
-	// Controls Border
-	float lineWidth = 2.0f;
-	float lineWidthWorld = lineWidth * state.camera.pixelsToWorld * 0.5f;
-	glColor4f(0.5f, 0.5f, 0.5f, 1.0f);
-	glLineWidth(lineWidth);
-	glBegin(GL_LINE_LOOP);
-	glVertex2f(ControlsOriginX + ControlsWidth - lineWidthWorld, ControlsOriginY + ControlsHeight - lineWidthWorld);
-	glVertex2f(ControlsOriginX + lineWidthWorld, ControlsOriginY + ControlsHeight - lineWidthWorld);
-	glVertex2f(ControlsOriginX + lineWidthWorld, ControlsOriginY + lineWidthWorld);
-	glVertex2f(ControlsOriginX + ControlsWidth - lineWidthWorld, ControlsOriginY + lineWidthWorld);
-	glEnd();
-	glLineWidth(2);
-
-	float buttonPadding = lineWidthWorld + (MaxTileSize * 0.15f);
-	float buttonHeight = ControlsHeight - buttonPadding * 2.0f;
-
-	Vec2f buttonRadius = V2f(buttonHeight * 0.5f);
-	Vec2f buttonExt = ui::GetUIButtonExt(buttonRadius);
-	if (ui::UIButton(state.ui, "Tower", V2f(ControlsOriginX + buttonPadding + buttonExt.w, ControlsOriginY + buttonPadding + buttonExt.h), buttonRadius)) {
-		fplDebugFormatOut("Tower button pressed");
-	}
-}
-
-extern void GameRender(GameMemory &gameMemory, CommandBuffer &renderCommands, const float alpha, const float deltaTime) {
+extern void GameRender(GameMemory &gameMemory, CommandBuffer &renderCommands, const float alpha) {
 	GameState *state = (GameState *)gameMemory.base;
 	const float w = WorldRadiusW;
 	const float h = WorldRadiusH;
@@ -1455,83 +1536,13 @@ extern void GameRender(GameMemory &gameMemory, CommandBuffer &renderCommands, co
 	glLoadIdentity();
 	glTranslatef(state->camera.offset.x, state->camera.offset.y, 0);
 
-#if 0
-	DrawPoint(state->camera, state->mouseWorldPos.x, state->mouseWorldPos.y, MaxTileSize * 0.25f, V4f(1, 1, 1, 1));
-
-	Vec2f towerPos = V2f(0, 0);
-	float towerRadius = MaxTileSize * 0.4f;
-	float gunLength = MaxTileSize;
-	static float faceAngle = -0.1f;
-
-	Vec2f distance = state->mouseWorldPos - towerPos;
-	Vec2f dirToEnemy = Vec2Normalize(distance);
-	float targetAngle = Vec2AxisToAngle(dirToEnemy);
-
-	Vec2f faceDir = Vec2AngleToAxis(faceAngle);
-
-	char textBuffer[256];
-	float textSize = MaxTileSize;
-	fplFormatAnsiString(textBuffer, FPL_ARRAYCOUNT(textBuffer), "%f", targetAngle);
-	glColor4f(1, 1, 1, 1);
-	DrawTextFont(textBuffer, strlen(textBuffer), &state->assets.hudFont.desc, state->assets.hudFont.texture, -WorldRadiusW, WorldRadiusH - textSize, textSize, 1.0f, -1.0f);
-	fplFormatAnsiString(textBuffer, FPL_ARRAYCOUNT(textBuffer), "%f", faceAngle);
-	glColor4f(1, 1, 1, 1);
-
-	float m = GetShortestAngleDist(faceAngle, targetAngle);
-	DrawTextFont(textBuffer, strlen(textBuffer), &state->assets.hudFont.desc, state->assets.hudFont.texture, -WorldRadiusW, WorldRadiusH - textSize * 2.0f, textSize, 1.0f, -1.0f);
-	fplFormatAnsiString(textBuffer, FPL_ARRAYCOUNT(textBuffer), "%f", m);
-	glColor4f(1, 1, 1, 1);
-	DrawTextFont(textBuffer, strlen(textBuffer), &state->assets.hudFont.desc, state->assets.hudFont.texture, -WorldRadiusW, WorldRadiusH - textSize * 3.0f, textSize, 1.0f, -1.0f);
-
-	float deltaAngle = m;
-
-	faceAngle += deltaAngle * deltaTime;
-
-	DrawPoint(state->camera, towerPos.x, towerPos.y, towerRadius, V4f(0, 0, 1, 1));
-	glColor4f(1, 0, 0, 1);
-	glLineWidth(2);
-	glBegin(GL_LINES);
-	glVertex2f(towerPos.x, towerPos.y);
-	glVertex2f(towerPos.x + faceDir.x * gunLength, towerPos.y + faceDir.y * gunLength);
-	glEnd();
-	glLineWidth(2);
-
-	glColor4f(0, 1, 0, 1);
-	glLineWidth(2);
-	glBegin(GL_LINES);
-	glVertex2f(towerPos.x, towerPos.y);
-	glVertex2f(towerPos.x + dirToEnemy.x * gunLength, towerPos.y + dirToEnemy.y * gunLength);
-	glEnd();
-	glLineWidth(2);
-#endif
-
-#if 0
-	glColor4f(0.0f, 1.0f, 0.0f, 1.0f);
-	glBegin(GL_QUADS);
-	glVertex2f(WorldRadius.x, WorldRadius.y);
-	glVertex2f(-WorldRadius.x, WorldRadius.y);
-	glVertex2f(-WorldRadius.x, -WorldRadius.y);
-	glVertex2f(WorldRadius.x, -WorldRadius.y);
-	glEnd();
-#endif
-
-#if 0
-	glColor4f(0.0f, 1.0f, 1.0f, 1.0f);
-	glBegin(GL_QUADS);
-	glVertex2f(GridOriginX + GridWidth, GridOriginY + GridHeight);
-	glVertex2f(GridOriginX, GridOriginY + GridHeight);
-	glVertex2f(GridOriginX, GridOriginY);
-	glVertex2f(GridOriginX + GridWidth, GridOriginY);
-	glEnd();
-#endif
-
 	//
 	// Tiles
 	//
-	for (int y = 0; y < TileCountY; ++y) {
-		for (int x = 0; x < TileCountX; ++x) {
-			const Tile &tile = state->tiles[y * TileCountX + x];
-			if (tile.wayType != WayType::None) {
+	for(int y = 0; y < TileCountY; ++y) {
+		for(int x = 0; x < TileCountX; ++x) {
+			const Tile &tile = state->level.tiles[y * TileCountX + x];
+			if(tile.wayType != WayType::None) {
 				// @TODO(final): Draw sprite for this way tile
 				render::DrawTile(x, y, true, V4f(0.0f, 0.0f, 1.0f, 1.0f));
 			}
@@ -1539,10 +1550,10 @@ extern void GameRender(GameMemory &gameMemory, CommandBuffer &renderCommands, co
 	}
 
 	// Draw tile entities
-	for (int y = 0; y < TileCountY; ++y) {
-		for (int x = 0; x < TileCountX; ++x) {
-			const Tile &tile = state->tiles[y * TileCountX + x];
-			switch (tile.entityType) {
+	for(int y = 0; y < TileCountY; ++y) {
+		for(int x = 0; x < TileCountX; ++x) {
+			const Tile &tile = state->level.tiles[y * TileCountX + x];
+			switch(tile.entityType) {
 				case EntityType::Goal:
 				{
 					// @TODO(final): Draw goal sprite
@@ -1555,8 +1566,8 @@ extern void GameRender(GameMemory &gameMemory, CommandBuffer &renderCommands, co
 	//
 	// Spawners
 	//
-	for (size_t spawnerIndex = 0; spawnerIndex < state->spawnerCount; ++spawnerIndex) {
-		const CreepSpawner &spawner = state->spawners[spawnerIndex];
+	for(size_t spawnerIndex = 0; spawnerIndex < state->spawners.count; ++spawnerIndex) {
+		const CreepSpawner &spawner = state->spawners.list[spawnerIndex];
 		Vec2i tilePos = WorldToTile(spawner.spawnPosition);
 		// @TODO(final): Draw spawner sprite
 		render::DrawTile(tilePos.x, tilePos.y, true, V4f(0.0f, 1.0f, 1.0f, 1.0f));
@@ -1569,38 +1580,38 @@ extern void GameRender(GameMemory &gameMemory, CommandBuffer &renderCommands, co
 	//
 	glColor4f(1.0f, 1.0f, 1.0f, 0.25f);
 	glBegin(GL_LINES);
-	for (int y = 0; y <= TileCountY; ++y) {
+	for(int y = 0; y <= TileCountY; ++y) {
 		glVertex2f(GridOriginX, GridOriginY + y * TileHeight);
 		glVertex2f(GridOriginX + TileCountX * TileWidth, GridOriginY + y * TileHeight);
 	}
-	for (int x = 0; x <= TileCountX; ++x) {
+	for(int x = 0; x <= TileCountX; ++x) {
 		glVertex2f(GridOriginX + x * TileWidth, GridOriginY);
 		glVertex2f(GridOriginX + x * TileWidth, GridOriginY + TileCountY * TileHeight);
 	}
 	glEnd();
 #endif
 
-	if (state->isDebugRendering) {
+	if(state->isDebugRendering) {
 		// Waypoints
-		for (Waypoint *waypoint = state->firstWaypoint; waypoint; waypoint = waypoint->next) {
+		for(Waypoint *waypoint = state->waypoints.first; waypoint != nullptr; waypoint = waypoint->next) {
 			DrawPoint(state->camera, waypoint->position.x, waypoint->position.y, MaxTileSize * 0.15f, V4f(1, 0, 1, 1));
 			DrawNormal(waypoint->position, waypoint->direction, level::WaypointDirectionWidth, V4f(1, 1, 1, 1));
 		}
 	}
 
 	// Hover tile
-	if (state->selectedTowerIndex > -1 && IsValidTile(state->mouseTilePos)) {
-		const TowerData *tower = &TowerDefinitions[state->selectedTowerIndex];
+	if(state->towers.selectedIndex > -1 && IsValidTile(state->mouseTilePos)) {
+		const TowerData *tower = &TowerDefinitions[state->towers.selectedIndex];
 
 		towers::CanPlaceTowerResult placeRes = towers::CanPlaceTower(*state, state->mouseTilePos, tower);
 		Vec4f hoverColor;
-		if (placeRes == towers::CanPlaceTowerResult::Success) {
+		if(placeRes == towers::CanPlaceTowerResult::Success) {
 			hoverColor = V4f(0.1f, 1.0f, 0.1f, 1.0f);
 		} else {
 			hoverColor = V4f(1.0f, 0.1f, 0.1f, 1.0f);
 		}
 
-		if (placeRes == towers::CanPlaceTowerResult::Success || placeRes == towers::CanPlaceTowerResult::NotEnoughMoney) {
+		if(placeRes == towers::CanPlaceTowerResult::Success || placeRes == towers::CanPlaceTowerResult::NotEnoughMoney) {
 			float alpha = placeRes == towers::CanPlaceTowerResult::Success ? 0.5f : 0.2f;
 			Vec2f towerCenter = TileToWorld(state->mouseTilePos, TileExt);
 			towers::DrawTower(state->assets, state->camera, *tower, towerCenter, Pi32 * 0.5f, alpha, true);
@@ -1612,13 +1623,13 @@ extern void GameRender(GameMemory &gameMemory, CommandBuffer &renderCommands, co
 	//
 	// Enemies
 	//
-	for (size_t enemyIndex = 0; enemyIndex < state->enemyCount; ++enemyIndex) {
-		Creep &enemy = state->enemies[enemyIndex];
-		if (!enemy.isDead && enemy.id > 0) {
+	for(size_t enemyIndex = 0; enemyIndex < state->enemies.count; ++enemyIndex) {
+		Creep &enemy = state->enemies.list[enemyIndex];
+		if(!enemy.isDead && enemy.id > 0) {
 			Vec2f enemyPos = Vec2Lerp(enemy.prevPosition, alpha, enemy.position);
 
 			// Mesh
-			switch (enemy.data->style) {
+			switch(enemy.data->style) {
 				case CreepStyle::Triangle:
 				{
 					float angle = ArcTan2(enemy.facingDirection.y, enemy.facingDirection.x);
@@ -1680,15 +1691,15 @@ extern void GameRender(GameMemory &gameMemory, CommandBuffer &renderCommands, co
 	//
 	// Towers
 	//
-	for (size_t towerIndex = 0; towerIndex < state->towerCount; ++towerIndex) {
-		const Tower &tower = state->towers[towerIndex];
+	for(size_t towerIndex = 0; towerIndex < state->towers.count; ++towerIndex) {
+		const Tower &tower = state->towers.list[towerIndex];
 		towers::DrawTower(state->assets, state->camera, *tower.data, tower.position, tower.facingAngle, 1.0f, false);
 
-		if (state->isDebugRendering) {
-			if (tower.hasTarget) {
+		if(state->isDebugRendering) {
+			if(tower.hasTarget) {
 				assert(tower.targetEnemy != nullptr);
 				const Creep *target = tower.targetEnemy;
-				if ((target->id > 0) && (target->id == tower.targetId)) {
+				if((target->id > 0) && (target->id == tower.targetId)) {
 					DrawCircle(target->position.x, target->position.y, target->data->collisionRadius, false, V4f(1, 0, 0, 1), 32);
 
 					Vec2f lookDirection = Vec2AngleToAxis(tower.facingAngle);
@@ -1702,7 +1713,7 @@ extern void GameRender(GameMemory &gameMemory, CommandBuffer &renderCommands, co
 					float det = Vec2Cross(target->position, lookPos);
 					float angle = ArcTan2(det, dot);
 
-					if (angle >= -ShotAngleTolerance && angle <= ShotAngleTolerance) {
+					if(angle >= -ShotAngleTolerance && angle <= ShotAngleTolerance) {
 						Vec2f sightPos1 = tower.position + Vec2AngleToAxis(tower.facingAngle - ShotAngleTolerance) * projDistance;
 						Vec2f sightPos2 = tower.position + Vec2AngleToAxis(tower.facingAngle + ShotAngleTolerance) * projDistance;
 						glColor4f(1, 0, 0, 0.5);
@@ -1723,9 +1734,9 @@ extern void GameRender(GameMemory &gameMemory, CommandBuffer &renderCommands, co
 	//
 	// Bullets
 	//
-	for (size_t bulletIndex = 0; bulletIndex < state->bulletCount; ++bulletIndex) {
-		Bullet &bullet = state->bullets[bulletIndex];
-		if (!bullet.isDestroyed) {
+	for(size_t bulletIndex = 0; bulletIndex < state->bullets.count; ++bulletIndex) {
+		Bullet &bullet = state->bullets.list[bulletIndex];
+		if(!bullet.isDestroyed) {
 			Vec2f bulletPos = Vec2Lerp(bullet.prevPosition, alpha, bullet.position);
 			// @TODO(final): Use sprites for bullets
 			DrawPoint(state->camera, bulletPos.x, bulletPos.y, bullet.data->renderRadius, V4f(1, 0, 0, 1));
@@ -1736,18 +1747,20 @@ extern void GameRender(GameMemory &gameMemory, CommandBuffer &renderCommands, co
 	//
 	// Overlay
 	//
-	if (state->waveState == WaveState::Starting) {
+	if(state->wave.state == WaveState::Starting) {
 		const FontAsset &font = state->assets.overlayFont;
 		char text[128];
-		fplFormatAnsiString(text, FPL_ARRAYCOUNT(text), "%d", (int)ceilf(state->waveCooldown));
-		glColor4f(1, 1, 1, 1);
+		fplFormatAnsiString(text, FPL_ARRAYCOUNT(text), "%d", (int)ceilf(state->wave.warmupTimer));
 		Vec2f textPos = V2f(0, 0);
 		float overlayFontHeight = WorldWidth * 0.25f;
+		float foffset = overlayFontHeight * 0.01f;
+		glColor4fv(&TextBackColor.m[0]);
 		DrawTextFont(text, fplGetAnsiStringLength(text), &font.desc, font.texture, textPos.x, textPos.y, overlayFontHeight, 0.0f, 0.0f);
-	} else if (state->waveState == WaveState::Won || state->waveState == WaveState::Lost) {
+		glColor4fv(&TextForeColor.m[0]);
+		DrawTextFont(text, fplGetAnsiStringLength(text), &font.desc, font.texture, textPos.x + foffset, textPos.y - foffset, overlayFontHeight, 0.0f, 0.0f);
+	} else if(state->wave.state == WaveState::Won || state->wave.state == WaveState::Lost) {
 		const FontAsset &font = state->assets.overlayFont;
-		const char *text = state->waveState == WaveState::Won ? "You Win!" : "Game Over!";
-
+		const char *text = state->wave.state == WaveState::Won ? "You Win!" : "Game Over!";
 		Vec2f textPos = V2f(0, 0);
 		float overlayFontHeight = WorldWidth * 0.15f;
 		float foffset = overlayFontHeight * 0.01f;
@@ -1757,28 +1770,31 @@ extern void GameRender(GameMemory &gameMemory, CommandBuffer &renderCommands, co
 		DrawTextFont(text, fplGetAnsiStringLength(text), &font.desc, font.texture, textPos.x + foffset, textPos.y - foffset, overlayFontHeight, 0.0f, 0.0f);
 	}
 
-	if (state->isDebugRendering) {
+	if(state->isDebugRendering) {
 		const FontAsset &font = state->assets.hudFont;
 		char text[256];
-		fplFormatAnsiString(text, FPL_ARRAYCOUNT(text), "Enemies: %03zu/%03zu, Bullets: %03zu, Towers: %03zu, Spawners: %03zu", state->enemyCount, state->totalEnemyCount, state->bulletCount, state->towerCount, state->spawnerCount);
+		fplFormatAnsiString(text, FPL_ARRAYCOUNT(text), "Enemies: %03zu/%03zu, Bullets: %03zu, Towers: %03zu, Spawners: %03zu", state->enemies.count, state->wave.totalEnemyCount, state->bullets.count, state->towers.count, state->spawners.count);
 		glColor4f(1, 1, 1, 1);
 		float padding = MaxTileSize * 0.1f;
 		Vec2f textPos = V2f(GridOriginX + padding, GridOriginY + padding);
 		float fontHeight = MaxTileSize * 0.5f;
 		DrawTextFont(text, fplGetAnsiStringLength(text), &font.desc, font.texture, textPos.x, textPos.y, fontHeight, 1.0f, 1.0f);
+
+		fplFormatAnsiString(text, FPL_ARRAYCOUNT(text), "Fps: %.5f, Delta: %.5f", state->framesPerSecond, state->deltaTime);
+		DrawTextFont(text, fplGetAnsiStringLength(text), &font.desc, font.texture, textPos.x + GridWidth - padding * 2.0f, textPos.y, fontHeight, -1.0f, 1.0f);
 	}
 
 	//
 	// HUD & Controls
 	//
-	DrawHUD(*state);
-	DrawControls(*state);
+	game::DrawHUD(*state);
+	game::DrawControls(*state);
 }
 
 extern void GameUpdateAndRender(GameMemory &gameMemory, const Input &input, CommandBuffer &renderCommands, const float alpha) {
 	GameInput(gameMemory, input);
 	GameUpdate(gameMemory, input);
-	GameRender(gameMemory, renderCommands, alpha, input.deltaTime);
+	GameRender(gameMemory, renderCommands, alpha);
 }
 
 #define FINAL_GAMEPLATFORM_IMPLEMENTATION

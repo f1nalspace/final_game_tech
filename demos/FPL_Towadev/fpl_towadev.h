@@ -116,13 +116,31 @@ public:
 static const TilesetInfo TilesetWayInfo = { 16, 4 };
 static const WayTilesetMappingClass TilesetWayToTypeMapping = WayTilesetMappingClass();
 
+enum class SpawnerStartMode {
+	Fixed = 0,
+	AfterTheLast,
+};
+
 struct SpawnData {
-	char enemyId[256];
+	char spawnId[128];
+	char enemyId[128];
 	Vec2f direction;
 	float initialCooldown;
 	float cooldown;
 	size_t enemyCount;
+	SpawnerStartMode startMode;
 };
+
+inline SpawnData MakeSpawnData(const char *spawnId, const char *enemyId, const SpawnerStartMode startMode, const float initialCooldown, const float cooldown, const size_t enemyCount) {
+	SpawnData result = {};
+	fplCopyAnsiString(spawnId, result.spawnId, FPL_ARRAYCOUNT(result.spawnId));
+	fplCopyAnsiString(enemyId, result.enemyId, FPL_ARRAYCOUNT(result.enemyId));
+	result.initialCooldown = initialCooldown;
+	result.cooldown = cooldown;
+	result.enemyCount = enemyCount;
+	result.startMode = startMode;
+	return(result);
+}
 
 struct WaypointData {
 	Vec2f direction;
@@ -136,7 +154,7 @@ enum class ObjectType {
 };
 
 inline const char *ObjectTypeToString(const ObjectType type) {
-	switch (type) {
+	switch(type) {
 		case ObjectType::Spawn:
 			return "Spawn";
 		case ObjectType::Waypoint:
@@ -247,6 +265,7 @@ struct CreepSpawner {
 	float spawnTimer;
 	float cooldown;
 	bool isActive;
+	SpawnerStartMode startMode;
 };
 
 struct BulletData {
@@ -318,15 +337,23 @@ inline TowerData MakeTowerData(const char *id, const float structureRadius, cons
 struct WaveData {
 	const char *levelId;
 	CreepMultiplier enemyMultiplier;
+	SpawnData spawners[16];
+	size_t spawnerCount;
 	float startupCooldown;
 	int completionBounty;
 };
-inline WaveData MakeWaveData(const char *levelId, const CreepMultiplier &enemyMultiplier, const float startupCooldown, const int completionBounty) {
+
+template<size_t N>
+inline WaveData MakeWaveData(const char *levelId, const float startupCooldown, const int completionBounty, const SpawnData(&spawners)[N]) {
 	WaveData result = {};
 	result.levelId = levelId;
-	result.enemyMultiplier = enemyMultiplier;
 	result.startupCooldown = startupCooldown;
 	result.completionBounty = completionBounty;
+	assert(N <= FPL_ARRAYCOUNT(result.spawners));
+	result.spawnerCount = N;
+	for(size_t i = 0; i < N; ++i) {
+		result.spawners[i] = spawners[i];
+	}
 	return(result);
 }
 
@@ -336,12 +363,9 @@ struct Tower {
 	Creep *targetEnemy;
 	uint64_t targetId;
 	float facingAngle;
-	float targetAngle[2];
-	float rotationTimer[2];
 	float gunTimer;
 	bool hasTarget;
 	bool canFire;
-	bool gunIsRotating;
 };
 
 struct Bullet {
@@ -373,19 +397,67 @@ struct Assets {
 	GLint radiantTexture;
 };
 
+struct Waypoints {
+	Waypoint freeList[128];
+	Waypoint *first;
+	Waypoint *last;
+	size_t used;
+};
+
+struct Creeps {
+	uint64_t creepIdCounter;
+	Creep list[1024];
+	size_t count;
+};
+
+struct Bullets {
+	Bullet list[10240];
+	size_t count;
+};
+
+struct Towers {
+	Tower list[256];
+	size_t count;
+	int selectedIndex;
+};
+
+struct CreepSpawners {
+	CreepSpawner list[16];
+	size_t count;
+};
+
+struct Level {
+	LevelData data;
+	Tile tiles[TotalTileCount];
+	char activeId[256];
+};
+
+struct Wave {
+	size_t totalEnemyCount;
+	float warmupTimer;
+	WaveState state;
+	int activeIndex;
+	bool isActive;
+};
+
+struct Stats {
+	int money;
+	int lifes;
+};
+
 struct GameState {
 	GameMemory mem;
 
-	LevelData levelData;
-	Tile tiles[TotalTileCount];
-	Creep enemies[1024];
-	Tower towers[256];
-	Bullet bullets[10240];
-	CreepSpawner spawners[16];
+	Level level;
+	Towers towers;
+	Bullets bullets;
+	Creeps enemies;
+	Waypoints waypoints;
+	CreepSpawners spawners;
 
 	Assets assets;
 
-	char activeLevelId[256];
+	Wave wave;
 
 	UIContext ui;
 
@@ -394,22 +466,15 @@ struct GameState {
 	Vec2f mouseWorldPos;
 	Vec2i mouseTilePos;
 
-	Waypoint *firstWaypoint;
-	Waypoint *lastWaypoint;
+	Stats stats;
 
-	size_t totalEnemyCount;
-	size_t enemyCount;
-	size_t towerCount;
-	size_t bulletCount;
-	size_t spawnerCount;
+	float deltaTime;
+	float framesPerSecond;
 
-	uint64_t creepIdCounter;
-	float waveCooldown;
-	WaveState waveState;
-	int selectedTowerIndex;
-	int activeWaveIndex;
-	int money;
-	int lifes;
+	float slowdownTimer[2];
+	float slowdownScale;
+	bool isSlowDown;
+	WaveState waveStateAfterSlowdown;
 
 	bool isExiting;
 	bool isDebugRendering;
