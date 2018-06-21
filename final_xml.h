@@ -1,5 +1,5 @@
 /***
-final_xml.h
+final_xml.h - v0.1 alpha
 
 -------------------------------------------------------------------------------
 	About
@@ -71,6 +71,15 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+-------------------------------------------------------------------------------
+	Changelog
+-------------------------------------------------------------------------------
+
+## v0.1 alpha
+- Initial version
+
+
 ***/
 
 #ifndef FXML_H
@@ -192,19 +201,19 @@ extern "C" {
 #define FXML__MIN_ALLOC_SIZE 64
 #define FXML__MIN_TAG_ALLOC_COUNT 16
 
-inline bool fxml__IsAlpha(const char c) {
+static inline bool fxml__IsAlpha(const char c) {
 	bool result = (c >= 65 && c <= 90) || (c >= 97 && c <= 122);
 	return(result);
 }
-inline bool fxml__IsNumeric(const char c) {
+static inline bool fxml__IsNumeric(const char c) {
 	bool result = (c >= 48 && c <= 57);
 	return(result);
 }
-inline bool fxml__IsAlphaNumeric(const char c) {
+static inline bool fxml__IsAlphaNumeric(const char c) {
 	bool result = fxml__IsAlpha(c) || fxml__IsNumeric(c);
 	return(result);
 }
-inline bool fxml__IsWhitespace(const char c) {
+static inline bool fxml__IsWhitespace(const char c) {
 	bool result = c == ' ' || c == '\t' || c == '\n' || c == '\r';
 	return(result);
 }
@@ -272,7 +281,7 @@ static void *fxml__AllocMemory(fxmlContext *context, const size_t size, const si
 	return(result);
 }
 
-inline fxmlTag *fxml__AllocTag(fxmlContext *context) {
+static fxmlTag *fxml__AllocTag(fxmlContext *context) {
 	fxmlTag *mem = (fxmlTag *)fxml__AllocMemory(context, sizeof(fxmlTag), FXML__MIN_TAG_ALLOC_COUNT);
 	return(mem);
 }
@@ -296,6 +305,7 @@ static char *fxml__AllocStringDecode(fxmlContext *context, const fxmlString *str
 	const char *srcPartStart = str->start;
 	char *dst = mem;
 	size_t srcLen = str->len;
+	size_t destLen;
 	while(src < srcEnd) {
 		if(*src == '&') {
 			++src;
@@ -352,7 +362,7 @@ static char *fxml__AllocStringDecode(fxmlContext *context, const fxmlString *str
 	}
 
 done:
-	size_t destLen = dst - mem;
+	destLen = dst - mem;
 	dst[destLen] = 0;
 	return(mem);
 }
