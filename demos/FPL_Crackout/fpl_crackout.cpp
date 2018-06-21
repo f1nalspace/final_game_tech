@@ -1424,7 +1424,7 @@ static void DrawTitleMenuMode(GameState &state) {
 	}
 }
 
-extern void GameRender(GameMemory &gameMemory, CommandBuffer &renderCommands, const float alpha, const float deltaTime) {
+extern void GameRender(GameMemory &gameMemory, CommandBuffer &renderCommands, const float alpha) {
 	GameState *state = (GameState *)gameMemory.base;
 
 	const float w = WorldRadius.x;
