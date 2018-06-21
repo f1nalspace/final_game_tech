@@ -39,7 +39,7 @@ fxmlContext ctx = FXML_ZERO_INIT;
 if(fxmlInitFromMemory(xml1, strlen(xml1), &ctx)) {
 	fxmlTag root = FXML_ZERO_INIT;
 	if(fxmlParse(&ctx, &root)) {
-		// Parsed result is stored in root tag, including all children and attributes
+		// Parsed result is stored in the root tag, including all childrens and attributes
 	}
 	fxmlFree(&ctx);
 }
@@ -107,16 +107,15 @@ SOFTWARE.
 #	define FXML_ASSERT assert
 #endif
 
+// Useful macros
 #if defined(FXML_IS_C99)
-	//! Initialize a struct to zero (C99)
 #	define FXML_ZERO_INIT {0}
 #else
-	//! Initialize a struct to zero (C++)
 #	define FXML_ZERO_INIT {}
 #endif
-
 #define FXML_ARRAYCOUNT(arr) (sizeof(arr) / sizeof((arr)[0]))
 
+// Includes
 #include <stdint.h>
 #include <stdbool.h>
 #include <stddef.h>
