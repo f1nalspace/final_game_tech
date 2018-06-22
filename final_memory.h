@@ -1,5 +1,5 @@
 /***
-final_memory.h - v0.1 alpha
+final_memory.h
 
 -------------------------------------------------------------------------------
 	About
@@ -144,15 +144,30 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
-
--------------------------------------------------------------------------------
-	Changelog
--------------------------------------------------------------------------------
-
-## v0.1 alpha
-- Initial version
-
 ***/
+
+/*!
+	\file final_memory.h
+	\version v0.1.0 alpha
+	\author Torsten Spaete
+	\brief Final Memory (FMEM) - A open source C99 single file header memory library.
+*/
+
+/*!
+	\page page_changelog Changelog
+	\tableofcontents
+
+    ## v0.1.0 alpha:
+	- Initial version
+*/
+
+/*!
+	\page page_todo Todo
+	\tableofcontents
+
+	- Removal of single memory blocks
+
+*/
 
 #ifndef FMEM_H
 #define FMEM_H
@@ -429,7 +444,6 @@ fmem_api uint8_t *fmemPush(fmemMemoryBlock *block, const size_t size, const fmem
 	fmemBlockHeader *newHeader;
 	fmemBlockHeader *tailHeader;
 	size_t blockSize;
-
 
 	// @NOTE(final): Do not initialize, because i want all code paths below to set a result
 	uint8_t *result;
