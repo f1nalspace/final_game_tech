@@ -24,7 +24,7 @@ Changelog:
 #include <final_platform_layer.h>
 
 int main(int argc, char *args[]) {
-	if (fplPlatformInit(fplInitFlags_All, NULL)) {
+	if (fplPlatformInit(fplInitFlags_All, fpl_null)) {
 		fplConsoleOut("Hello World\n");
 		fplConsoleFormatOut("%s %s %d\n", "Hello", "World", 42);
 		fplConsoleError("Error: Hello World!\n");
