@@ -344,6 +344,36 @@ static void TestMemory() {
 		FT_IS_NOT_NULL(mem);
 		fplMemoryAlignedFree(mem);
 	}
+
+	ft::Msg("Test memory clear\n");
+	{
+		size_t memSize = 100;
+		uint8_t *mem = (uint8_t *)fplMemoryAllocate(memSize);
+		for(size_t i = 0; i < memSize; ++i) {
+			mem[i] = (uint8_t)i; // Dont care about wrap
+		}
+		fplMemorySet(mem, 0, memSize);
+		for(size_t i = 0; i < memSize; ++i) {
+			uint8_t value = *mem++;
+			ft::AssertU8Equals(0, value);
+		}
+		fplMemoryFree(mem);
+	}
+
+	ft::Msg("Test memory set\n");
+	{
+		size_t memSize = 100;
+		uint8_t *mem = (uint8_t *)fplMemoryAllocate(memSize);
+		for(size_t i = 0; i < memSize; ++i) {
+			mem[i] = (uint8_t)i; // Dont care about wrap
+		}
+		fplMemorySet(mem, 128, memSize);
+		for(size_t i = 0; i < memSize; ++i) {
+			uint8_t value = *mem++;
+			ft::AssertU8Equals(128, value);
+		}
+		fplMemoryFree(mem);
+	}
 }
 
 static void TestPaths() {
@@ -716,8 +746,8 @@ static void TestThreading() {
 		}
 
 		fplPlatformRelease();
+		}
 	}
-}
 
 static void TestFiles() {
 #if defined(FPL_PLATFORM_WIN32)
@@ -1196,16 +1226,15 @@ static void TestStrings() {
 	}
 }
 
-
 int main(int argc, char *args[]) {
 	TestColdInit();
+	TestMemory();
 	TestInit();
 	TestOSInfos();
 	TestHardware();
 	TestSizes();
 	TestMacros();
 	TestAtomics();
-	TestMemory();
 	TestPaths();
 	TestFiles();
 	TestStrings();
