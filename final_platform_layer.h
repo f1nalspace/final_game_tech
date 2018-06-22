@@ -122,7 +122,7 @@ SOFTWARE.
 	\file final_platform_layer.h
 	\version v0.8.2.0 beta
 	\author Torsten Spaete
-	\brief Final Platform Layer (FPL) - A C99 Single-Header-File Platform Abstract Library
+	\brief Final Platform Layer (FPL) - A C99 Single-Header-File Platform Abstraction Library
 */
 
 /*!
@@ -134,7 +134,8 @@ SOFTWARE.
 	- Changed: Signature of fplDynamicLibraryLoad changed (Returns bool + Target handle parameter)
 	- Fixed: Corrected code documentation for all categories
 	- Fixed: FPL_ENUM_AS_FLAGS_OPERATORS had invalid signature for operator overloadings and missed some operators
-    - New: Forward declare thread handle for thread callback
+	- Fixed: Fixed fplMemorySet was not working for values > 0
+	- New: Forward declare thread handle for thread callback
 	- New: Added fplKey for OEM keys (Plus, Comma, Minus, Period)
 	- New: Added fplKey for Media & Audio keys
 	- New: Added fplWindowEventType_Maximized / fplWindowEventType_Minimized / fplWindowEventType_Restored
@@ -142,16 +143,25 @@ SOFTWARE.
 	- New: Added documentation category: Storage class identifiers
 	- New: Added documentation category: Constants
 	- New: Added documentation category: Function macros
-    - New: Undef None/Success defines when defined as last action of the implementation block
+	- New: Undef annoying defined constants such as None, Success, etc.
+	- New: Added fplImageType enumeration
+	- New: Added fplImageSource structure
+	- New: Added icons as fplImageSource array to fplWindowSettings
 
 	- Changed: [Win32] Correct fplDynamicLibraryLoad to match signature change
+	- Changed: [Win32] Corrected function prototype macro names
+	- Fixed: [Win32] ClientToScreen prototype was defined twice
 	- New: [Win32] OEM keys mapping
 	- New: [Win32] Media & Audio key mapping
 	- New: [Win32] Handle window maximized/minimized and restored events
+	- New: [Win32] Load small/big icon from the fplWindowSettings icon imagesources
 
+	- Changed: [X11] Corrected function prototype macro names
 	- New: [X11] OEM keys mapping
 
+	- Changed: [X11] Corrected function prototype macro names
 	- Changed: [POSIX] Correct fplDynamicLibraryLoad to match signature change
+	- Changed: [POSIX] Use of pthread_timedjoin_np to support timeout in fplThreadWaitForOne when available (GNU extension)
 
 	## v0.8.1.0 beta:
 	- Changed: Locked error states to multiple and removed FPL_NO_MULTIPLE_ERRORSTATES
@@ -805,11 +815,11 @@ SOFTWARE.
 		- Toggle Decorated (X11)
 		- Toggle Floating (X11)
 		- Show/Hide Cursor (X11)
-		- Minimize/Maximize (X11)
-		- Minimize/Maximize (Win32)
+		- Minimize/Maximize/Restore (X11)
+		- Minimize/Maximize/Restore (Win32)
 
 	- App:
-		- Custom icon from image (File/Memory)
+		- Custom icon from image (X11)
 
 	\section section_todo_planned Planned
 
@@ -2165,10 +2175,32 @@ typedef struct fplAudioSettings {
   */
 fpl_common_api void fplSetDefaultAudioSettings(fplAudioSettings *audio);
 
+//! An enumeration of image types
+typedef enum fplImageType {
+	//! No image type
+	fplImageType_None = 0,
+	//! RGBA image type
+	fplImageType_RGBA,
+} fplImageType;
+
+//! A structure containing data for working with a image source
+typedef struct fplImageSource {
+	//! Pointer to the source data
+	const uint8_t *data;
+	//! Width in pixels
+	uint32_t width;
+	//! Height in pixels
+	uint32_t height;
+	//! Image type
+	fplImageType type;
+} fplImageSource;
+
 //! A structure containing window settings, such as size, title etc.
 typedef struct fplWindowSettings {
 	//! Window title
 	char windowTitle[256];
+	//! Window icons (0 = Small, 1 = Large)
+	fplImageSource icons[2];
 	//! Window width in screen coordinates
 	uint32_t windowWidth;
 	//! Window height in screen coordinates
@@ -4361,6 +4393,9 @@ fpl_common_api uint32_t fplGetAudioBufferSizeInBytes(const fplAudioFormatType fo
 /** \}*/
 #endif // FPL_ENABLE_AUDIO
 
+#if defined(FPL_ENABLE_WINDOW)
+#endif
+
 // Ignore any doxygen documentation from here
 //! \cond FPL_IGNORE_DOXYGEN
 
@@ -4700,14 +4735,14 @@ fpl_internal void fpl__PushError(const fplLogLevel level, const char *format, ..
 //
 // XInput
 //
-#define FPL__XINPUT_GET_STATE(name) DWORD WINAPI name(DWORD dwUserIndex, XINPUT_STATE *pState)
-typedef FPL__XINPUT_GET_STATE(fpl__win32_func_XInputGetState);
-FPL__XINPUT_GET_STATE(fpl__Win32XInputGetStateStub) {
+#define FPL__FUNC_XINPUT_XInputGetState(name) DWORD WINAPI name(DWORD dwUserIndex, XINPUT_STATE *pState)
+typedef FPL__FUNC_XINPUT_XInputGetState(fpl__win32_func_XInputGetState);
+FPL__FUNC_XINPUT_XInputGetState(fpl__Win32XInputGetStateStub) {
 	return(ERROR_DEVICE_NOT_CONNECTED);
 }
-#define FPL__XINPUT_GET_CAPABILITIES(name) DWORD WINAPI name(DWORD dwUserIndex, DWORD dwFlags, XINPUT_CAPABILITIES* pCapabilities)
-typedef FPL__XINPUT_GET_CAPABILITIES(fpl__win32_func_XInputGetCapabilities);
-FPL__XINPUT_GET_CAPABILITIES(fpl__Win32XInputGetCapabilitiesStub) {
+#define FPL__FUNC_XINPUT_XInputGetCapabilities(name) DWORD WINAPI name(DWORD dwUserIndex, DWORD dwFlags, XINPUT_CAPABILITIES* pCapabilities)
+typedef FPL__FUNC_XINPUT_XInputGetCapabilities(fpl__win32_func_XInputGetCapabilities);
+FPL__FUNC_XINPUT_XInputGetCapabilities(fpl__Win32XInputGetCapabilitiesStub) {
 	return(ERROR_DEVICE_NOT_CONNECTED);
 }
 typedef struct fpl__Win32XInputApi {
@@ -4774,6 +4809,10 @@ typedef FPL__FUNC_WIN32_StretchDIBits(fpl__win32_func_StretchDIBits);
 typedef FPL__FUNC_WIN32_DeleteObject(fpl__win32_func_DeleteObject);
 #define FPL__FUNC_WIN32_SwapBuffers(name) BOOL WINAPI name(HDC)
 typedef FPL__FUNC_WIN32_SwapBuffers(fpl__win32_func_SwapBuffers);
+#define FPL__FUNC_WIN32_CreateDIBSection(name) HBITMAP WINAPI name(HDC hdc, CONST BITMAPINFO *pbmi, UINT usage, VOID **ppvBits, HANDLE hSection, DWORD offset)
+typedef FPL__FUNC_WIN32_CreateDIBSection(fpl__win32_func_CreateDIBSection);
+#define FPL__FUNC_WIN32_CreateBitmap(name) HBITMAP WINAPI name(int nWidth, int nHeight, UINT nPlanes, UINT nBitCount, CONST VOID *lpBits)
+typedef FPL__FUNC_WIN32_CreateBitmap(fpl__win32_func_CreateBitmap);
 
 // ShellAPI
 #define FPL__FUNC_WIN32_CommandLineToArgvW(name) LPWSTR* WINAPI name(LPCWSTR lpCmdLine, int *pNumArgs)
@@ -4829,7 +4868,7 @@ typedef FPL__FUNC_WIN32_GetWindowRect(fpl__win32_func_GetWindowRect);
 #define FPL__FUNC_WIN32_AdjustWindowRect(name) BOOL WINAPI name(LPRECT lpRect, DWORD dwStyle, BOOL bMenu)
 typedef FPL__FUNC_WIN32_AdjustWindowRect(fpl__win32_func_AdjustWindowRect);
 #define FPL__FUNC_WIN32_ClientToScreen(name) BOOL name(HWND hWnd, LPPOINT lpPoint)
-typedef FPL__FUNC_WIN32_ClientToScreen(fpl__func_win32_ClientToScreen);
+typedef FPL__FUNC_WIN32_ClientToScreen(fpl__win32_func_ClientToScreen);
 #define FPL__FUNC_WIN32_GetAsyncKeyState(name) SHORT WINAPI name(int vKey)
 typedef FPL__FUNC_WIN32_GetAsyncKeyState(fpl__win32_func_GetAsyncKeyState);
 #define FPL__FUNC_WIN32_MapVirtualKeyA(name) UINT WINAPI name(UINT uCode, UINT uMapType)
@@ -4840,14 +4879,12 @@ typedef FPL__FUNC_WIN32_MapVirtualKeyW(fpl__win32_func_MapVirtualKeyW);
 typedef FPL__FUNC_WIN32_SetCursor(fpl__win32_func_SetCursor);
 #define FPL__FUNC_WIN32_GetCursor(name) HCURSOR WINAPI name(VOID)
 typedef FPL__FUNC_WIN32_GetCursor(fpl__win32_func_GetCursor);
-#define FPL__WIN32_FUNC_GetCursorPos(name) BOOL WINAPI name(LPPOINT lpPoint)
-typedef FPL__WIN32_FUNC_GetCursorPos(fpl__win32_func_GetCursorPos);
-#define FPL__WIN32_FUNC_WindowFromPoint(name) HWND WINAPI name(POINT Point)
-typedef FPL__WIN32_FUNC_WindowFromPoint(fpl__win32_func_WindowFromPoint);
-#define FPL__WIN32_FUNC_ClientToScreen(name) BOOL WINAPI name(HWND hWnd, LPPOINT lpPoint)
-typedef FPL__WIN32_FUNC_ClientToScreen(fpl__win32_func_ClientToScreen);
-#define FPL__WIN32_FUNC_PtInRect(name) BOOL WINAPI name(CONST RECT *lprc, POINT pt)
-typedef FPL__WIN32_FUNC_PtInRect(fpl__win32_func_PtInRect);
+#define FPL__FUNC_WIN32_GetCursorPos(name) BOOL WINAPI name(LPPOINT lpPoint)
+typedef FPL__FUNC_WIN32_GetCursorPos(fpl__win32_func_GetCursorPos);
+#define FPL__FUNC_WIN32_WindowFromPoint(name) HWND WINAPI name(POINT Point)
+typedef FPL__FUNC_WIN32_WindowFromPoint(fpl__win32_func_WindowFromPoint);
+#define FPL__FUNC_WIN32_PtInRect(name) BOOL WINAPI name(CONST RECT *lprc, POINT pt)
+typedef FPL__FUNC_WIN32_PtInRect(fpl__win32_func_PtInRect);
 #define FPL__FUNC_WIN32_LoadCursorA(name) HCURSOR WINAPI name(HINSTANCE hInstance, LPCSTR lpCursorName)
 typedef FPL__FUNC_WIN32_LoadCursorA(fpl__win32_func_LoadCursorA);
 #define FPL__FUNC_WIN32_LoadCursorW(name) HCURSOR WINAPI name(HINSTANCE hInstance, LPCWSTR lpCursorName)
@@ -4924,12 +4961,14 @@ typedef FPL__FUNC_WIN32_GetMonitorInfoW(fpl__win32_func_GetMonitorInfoW);
 typedef FPL__FUNC_WIN32_MonitorFromRect(fpl__win32_func_MonitorFromRect);
 #define FPL__FUNC_WIN32_MonitorFromWindow(name) HMONITOR WINAPI name(HWND hwnd, DWORD dwFlags)
 typedef FPL__FUNC_WIN32_MonitorFromWindow(fpl__win32_func_MonitorFromWindow);
-#define FPL__WIN32_FUNC_RegisterRawInputDevices(name) BOOL WINAPI name(PCRAWINPUTDEVICE pRawInputDevices, UINT uiNumDevices, UINT cbSize)
-typedef FPL__WIN32_FUNC_RegisterRawInputDevices(fpl__win32_func_RegisterRawInputDevices);
-#define FPL__WIN32_FUNC_ClipCursor(name) BOOL WINAPI name(CONST RECT *lpRect)
-typedef FPL__WIN32_FUNC_ClipCursor(fpl__win32_func_ClipCursor);
+#define FPL__FUNC_WIN32_RegisterRawInputDevices(name) BOOL WINAPI name(PCRAWINPUTDEVICE pRawInputDevices, UINT uiNumDevices, UINT cbSize)
+typedef FPL__FUNC_WIN32_RegisterRawInputDevices(fpl__win32_func_RegisterRawInputDevices);
+#define FPL__FUNC_WIN32_ClipCursor(name) BOOL WINAPI name(CONST RECT *lpRect)
+typedef FPL__FUNC_WIN32_ClipCursor(fpl__win32_func_ClipCursor);
 #define FPL__FUNC_WIN32_PostQuitMessage(name) VOID WINAPI name(int nExitCode)
 typedef FPL__FUNC_WIN32_PostQuitMessage(fpl__win32_func_PostQuitMessage);
+#define FPL__FUNC_WIN32_CreateIconIndirect(name) HICON WINAPI name(PICONINFO piconinfo)
+typedef FPL__FUNC_WIN32_CreateIconIndirect(fpl__win32_func_CreateIconIndirect);
 
 // OLE32
 #define FPL__FUNC_WIN32_CoInitializeEx(name) HRESULT WINAPI name(LPVOID pvReserved, DWORD  dwCoInit)
@@ -4952,6 +4991,8 @@ typedef struct fpl__Win32GdiApi {
 	fpl__win32_func_StretchDIBits *StretchDIBits;
 	fpl__win32_func_DeleteObject *DeleteObject;
 	fpl__win32_func_SwapBuffers *SwapBuffers;
+	fpl__win32_func_CreateDIBSection *CreateDIBSection;
+	fpl__win32_func_CreateBitmap *CreateBitmap;
 } fpl__Win32GdiApi;
 
 typedef struct fpl__Win32ShellApi {
@@ -5035,6 +5076,7 @@ typedef struct fpl__Win32UserApi {
 	fpl__win32_func_RegisterRawInputDevices *RegisterRawInputDevices;
 	fpl__win32_func_ClipCursor *ClipCursor;
 	fpl__win32_func_PostQuitMessage *PostQuitMessage;
+	fpl__win32_func_CreateIconIndirect *CreateIconIndirect;
 } fpl__Win32UserApi;
 
 typedef struct fpl__Win32OleApi {
@@ -5174,6 +5216,7 @@ fpl_internal bool fpl__Win32LoadApi(fpl__Win32Api *wapi) {
 		FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(FPL__MODULE_WIN32, library, userLibraryName, wapi->user.RegisterRawInputDevices, fpl__win32_func_RegisterRawInputDevices, "RegisterRawInputDevices");
 		FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(FPL__MODULE_WIN32, library, userLibraryName, wapi->user.ClipCursor, fpl__win32_func_ClipCursor, "ClipCursor");
 		FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(FPL__MODULE_WIN32, library, userLibraryName, wapi->user.PostQuitMessage, fpl__win32_func_PostQuitMessage, "PostQuitMessage");
+		FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(FPL__MODULE_WIN32, library, userLibraryName, wapi->user.CreateIconIndirect, fpl__win32_func_CreateIconIndirect, "CreateIconIndirect");
 	}
 
 	// GDI32
@@ -5192,6 +5235,8 @@ fpl_internal bool fpl__Win32LoadApi(fpl__Win32Api *wapi) {
 		FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(FPL__MODULE_WIN32, library, gdiLibraryName, wapi->gdi.DeleteObject, fpl__win32_func_DeleteObject, "DeleteObject");
 		FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(FPL__MODULE_WIN32, library, gdiLibraryName, wapi->gdi.SwapBuffers, fpl__win32_func_SwapBuffers, "SwapBuffers");
 		FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(FPL__MODULE_WIN32, library, gdiLibraryName, wapi->gdi.GetDeviceCaps, fpl__win32_func_GetDeviceCaps, "GetDeviceCaps");
+		FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(FPL__MODULE_WIN32, library, gdiLibraryName, wapi->gdi.CreateDIBSection, fpl__win32_func_CreateDIBSection, "CreateDIBSection");
+		FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(FPL__MODULE_WIN32, library, gdiLibraryName, wapi->gdi.CreateBitmap, fpl__win32_func_CreateBitmap, "CreateBitmap");
 	}
 
 	// OLE32
@@ -5333,40 +5378,42 @@ typedef struct fpl__Win32WindowState {
 		break; \
 	}
 
-#define FPL__FUNC_PTHREAD_CREATE(name) int name(pthread_t *, const pthread_attr_t *, void *(*__start_routine) (void *), void *)
-typedef FPL__FUNC_PTHREAD_CREATE(fpl__pthread_func_pthread_create);
-#define FPL__FUNC_PTHREAD_KILL(name) int name(pthread_t thread, int sig)
-typedef FPL__FUNC_PTHREAD_KILL(fpl__pthread_func_pthread_kill);
-#define FPL__FUNC_PTHREAD_JOIN(name) int name(pthread_t __th, void **__thread_return)
-typedef FPL__FUNC_PTHREAD_JOIN(fpl__pthread_func_pthread_join);
-#define FPL__FUNC_PTHREAD_EXIT(name) void name(void *__retval)
-typedef FPL__FUNC_PTHREAD_EXIT(fpl__pthread_func_pthread_exit);
-#define FPL__FUNC_PTHREAD_YIELD(name) int name(void)
-typedef FPL__FUNC_PTHREAD_YIELD(fpl__pthread_func_pthread_yield);
+#define FPL__FUNC_PTHREAD_pthread_create(name) int name(pthread_t *, const pthread_attr_t *, void *(*__start_routine) (void *), void *)
+typedef FPL__FUNC_PTHREAD_pthread_create(fpl__pthread_func_pthread_create);
+#define FPL__FUNC_PTHREAD_pthread_kill(name) int name(pthread_t thread, int sig)
+typedef FPL__FUNC_PTHREAD_pthread_kill(fpl__pthread_func_pthread_kill);
+#define FPL__FUNC_PTHREAD_pthread_join(name) int name(pthread_t __th, void **retval)
+typedef FPL__FUNC_PTHREAD_pthread_join(fpl__pthread_func_pthread_join);
+#define FPL__FUNC_PTHREAD_pthread_exit(name) void name(void *__retval)
+typedef FPL__FUNC_PTHREAD_pthread_exit(fpl__pthread_func_pthread_exit);
+#define FPL__FUNC_PTHREAD_pthread_yield(name) int name(void)
+typedef FPL__FUNC_PTHREAD_pthread_yield(fpl__pthread_func_pthread_yield);
+#define FPL__FUNC_PTHREAD_pthread_timedjoin_np(name) int name(pthread_t thread, void **retval, const struct timespec *abstime)
+typedef FPL__FUNC_PTHREAD_pthread_timedjoin_np(fpl__pthread_func_pthread_timedjoin_np);
 
-#define FPL__FUNC_PTHREAD_MUTEX_INIT(name) int name(pthread_mutex_t *mutex, const pthread_mutexattr_t *attr)
-typedef FPL__FUNC_PTHREAD_MUTEX_INIT(fpl__pthread_func_pthread_mutex_init);
-#define FPL__FUNC_PTHREAD_MUTEX_DESTROY(name) int name(pthread_mutex_t *mutex)
-typedef FPL__FUNC_PTHREAD_MUTEX_DESTROY(fpl__pthread_func_pthread_mutex_destroy);
-#define FPL__FUNC_PTHREAD_MUTEX_LOCK(name) int name(pthread_mutex_t *mutex)
-typedef FPL__FUNC_PTHREAD_MUTEX_LOCK(fpl__pthread_func_pthread_mutex_lock);
-#define FPL__FUNC_PTHREAD_MUTEX_TRYLOCK(name) int name(pthread_mutex_t *mutex)
-typedef FPL__FUNC_PTHREAD_MUTEX_TRYLOCK(fpl__pthread_func_pthread_mutex_trylock);
-#define FPL__FUNC_PTHREAD_MUTEX_UNLOCK(name) int name(pthread_mutex_t *mutex)
-typedef FPL__FUNC_PTHREAD_MUTEX_UNLOCK(fpl__pthread_func_pthread_mutex_unlock);
+#define FPL__FUNC_PTHREAD_pthread_mutex_init(name) int name(pthread_mutex_t *mutex, const pthread_mutexattr_t *attr)
+typedef FPL__FUNC_PTHREAD_pthread_mutex_init(fpl__pthread_func_pthread_mutex_init);
+#define FPL__FUNC_PTHREAD_pthread_mutex_destroy(name) int name(pthread_mutex_t *mutex)
+typedef FPL__FUNC_PTHREAD_pthread_mutex_destroy(fpl__pthread_func_pthread_mutex_destroy);
+#define FPL__FUNC_PTHREAD_pthread_mutex_lock(name) int name(pthread_mutex_t *mutex)
+typedef FPL__FUNC_PTHREAD_pthread_mutex_lock(fpl__pthread_func_pthread_mutex_lock);
+#define FPL__FUNC_PTHREAD_pthread_mutex_trylock(name) int name(pthread_mutex_t *mutex)
+typedef FPL__FUNC_PTHREAD_pthread_mutex_trylock(fpl__pthread_func_pthread_mutex_trylock);
+#define FPL__FUNC_PTHREAD_pthread_mutex_unlock(name) int name(pthread_mutex_t *mutex)
+typedef FPL__FUNC_PTHREAD_pthread_mutex_unlock(fpl__pthread_func_pthread_mutex_unlock);
 
-#define FPL__FUNC_PTHREAD_COND_INIT(name) int name(pthread_cond_t *cond, const pthread_condattr_t *attr)
-typedef FPL__FUNC_PTHREAD_COND_INIT(fpl__pthread_func_pthread_cond_init);
-#define FPL__FUNC_PTHREAD_COND_DESTROY(name) int name(pthread_cond_t *cond)
-typedef FPL__FUNC_PTHREAD_COND_DESTROY(fpl__pthread_func_pthread_cond_destroy);
-#define FPL__FUNC_PTHREAD_COND_TIMEDWAIT(name) int name(pthread_cond_t *cond, pthread_mutex_t *mutex, const struct timespec *abstime)
-typedef FPL__FUNC_PTHREAD_COND_TIMEDWAIT(fpl__pthread_func_pthread_cond_timedwait);
-#define FPL__FUNC_PTHREAD_COND_WAIT(name) int name(pthread_cond_t *cond, pthread_mutex_t *mutex)
-typedef FPL__FUNC_PTHREAD_COND_WAIT(fpl__pthread_func_pthread_cond_wait);
-#define FPL__FUNC_PTHREAD_COND_BROADCAST(name) int name(pthread_cond_t *cond)
-typedef FPL__FUNC_PTHREAD_COND_BROADCAST(fpl__pthread_func_pthread_cond_broadcast);
-#define FPL__FUNC_PTHREAD_COND_SIGNAL(name) int name(pthread_cond_t *cond)
-typedef FPL__FUNC_PTHREAD_COND_SIGNAL(fpl__pthread_func_pthread_cond_signal);
+#define FPL__FUNC_PTHREAD_pthread_cond_init(name) int name(pthread_cond_t *cond, const pthread_condattr_t *attr)
+typedef FPL__FUNC_PTHREAD_pthread_cond_init(fpl__pthread_func_pthread_cond_init);
+#define FPL__FUNC_PTHREAD_pthread_cond_destroy(name) int name(pthread_cond_t *cond)
+typedef FPL__FUNC_PTHREAD_pthread_cond_destroy(fpl__pthread_func_pthread_cond_destroy);
+#define FPL__FUNC_PTHREAD_pthread_cond_timedwait(name) int name(pthread_cond_t *cond, pthread_mutex_t *mutex, const struct timespec *abstime)
+typedef FPL__FUNC_PTHREAD_pthread_cond_timedwait(fpl__pthread_func_pthread_cond_timedwait);
+#define FPL__FUNC_PTHREAD_pthread_cond_wait(name) int name(pthread_cond_t *cond, pthread_mutex_t *mutex)
+typedef FPL__FUNC_PTHREAD_pthread_cond_wait(fpl__pthread_func_pthread_cond_wait);
+#define FPL__FUNC_PTHREAD_pthread_cond_broadcast(name) int name(pthread_cond_t *cond)
+typedef FPL__FUNC_PTHREAD_pthread_cond_broadcast(fpl__pthread_func_pthread_cond_broadcast);
+#define FPL__FUNC_PTHREAD_pthread_cond_signal(name) int name(pthread_cond_t *cond)
+typedef FPL__FUNC_PTHREAD_pthread_cond_signal(fpl__pthread_func_pthread_cond_signal);
 
 #define FPL__FUNC_PTHREAD_sem_init(name) int name(sem_t *__sem, int __pshared, unsigned int __value)
 typedef FPL__FUNC_PTHREAD_sem_init(fpl__pthread_func_sem_init);
@@ -5390,6 +5437,7 @@ typedef struct fpl__PThreadApi {
 	fpl__pthread_func_pthread_join *pthread_join;
 	fpl__pthread_func_pthread_exit *pthread_exit;
 	fpl__pthread_func_pthread_yield *pthread_yield;
+	fpl__pthread_func_pthread_timedjoin_np *pthread_timedjoin_np;
 
 	fpl__pthread_func_pthread_mutex_init *pthread_mutex_init;
 	fpl__pthread_func_pthread_mutex_destroy *pthread_mutex_destroy;
@@ -5433,13 +5481,15 @@ fpl_internal bool fpl__PThreadLoadApi(fpl__PThreadApi *pthreadApi) {
 		const char * libName = libpthreadFileNames[index];
 		void *libHandle = pthreadApi->libHandle = dlopen(libName, FPL__POSIX_DL_LOADTYPE);
 		if(libHandle != fpl_null) {
-			// pthread_t
+			FPL_CLEAR_STRUCT(pthreadApi);
 			do {
+				// pthread_t
 				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi->pthread_create, fpl__pthread_func_pthread_create, "pthread_create");
 				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi->pthread_kill, fpl__pthread_func_pthread_kill, "pthread_kill");
 				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi->pthread_join, fpl__pthread_func_pthread_join, "pthread_join");
 				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi->pthread_exit, fpl__pthread_func_pthread_exit, "pthread_exit");
 				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi->pthread_yield, fpl__pthread_func_pthread_yield, "pthread_yield");
+				pthreadApi->pthread_timedjoin_np = (fpl__pthread_func_pthread_timedjoin_np *)dlsym(libHandle, "pthread_timedjoin_np");
 
 				// pthread_mutex_t
 				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi->pthread_mutex_init, fpl__pthread_func_pthread_mutex_init, "pthread_mutex_init");
@@ -5532,58 +5582,58 @@ typedef struct fpl__UnixAppState {
 //
 // X11 Api
 //
-#define FPL__FUNC_X11_X_FREE(name) int name(void *data)
-typedef FPL__FUNC_X11_X_FREE(fpl__func_x11_XFree);
-#define FPL__FUNC_X11_X_FLUSH(name) int name(Display *display)
-typedef FPL__FUNC_X11_X_FLUSH(fpl__func_x11_XFlush);
-#define FPL__FUNC_X11_X_OPEN_DISPLAY(name) Display *name(char *display_name)
-typedef FPL__FUNC_X11_X_OPEN_DISPLAY(fpl__func_x11_XOpenDisplay);
-#define FPL__FUNC_X11_X_CLOSE_DISPLAY(name) int name(Display *display)
-typedef FPL__FUNC_X11_X_CLOSE_DISPLAY(fpl__func_x11_XCloseDisplay);
-#define FPL__FUNC_X11_X_DEFAULT_SCREEN(name) int name(Display *display)
-typedef FPL__FUNC_X11_X_DEFAULT_SCREEN(fpl__func_x11_XDefaultScreen);
-#define FPL__FUNC_X11_X_ROOT_WINDOW(name) Window name(Display *display, int screen_number)
-typedef FPL__FUNC_X11_X_ROOT_WINDOW(fpl__func_x11_XRootWindow);
-#define FPL__FUNC_X11_X_CREATE_WINDOW(name) Window name(Display *display, Window parent, int x, int y, unsigned int width, unsigned int height, unsigned int border_width, int depth, unsigned int clazz, Visual *visual, unsigned long valuemask, XSetWindowAttributes *attributes)
-typedef FPL__FUNC_X11_X_CREATE_WINDOW(fpl__func_x11_XCreateWindow);
-#define FPL__FUNC_X11_X_DESTROY_WINDOW(name) int name(Display *display, Window w)
-typedef FPL__FUNC_X11_X_DESTROY_WINDOW(fpl__func_x11_XDestroyWindow);
-#define FPL__FUNC_X11_X_CREATE_COLORMAP(name) Colormap name(Display *display, Window w, Visual *visual, int alloc)
-typedef FPL__FUNC_X11_X_CREATE_COLORMAP(fpl__func_x11_XCreateColormap);
-#define FPL__FUNC_X11_X_DEFAULT_COLORMAP(name) Colormap name(Display *display, int screen_number)
-typedef FPL__FUNC_X11_X_DEFAULT_COLORMAP(fpl__func_x11_XDefaultColormap);
-#define FPL__FUNC_X11_X_FREE_COLORMAP(name) int name(Display *display, Colormap colormap)
-typedef FPL__FUNC_X11_X_FREE_COLORMAP(fpl__func_x11_XFreeColormap);
-#define FPL__FUNC_X11_X_MAP_WINDOW(name) int name(Display *display, Window w)
-typedef FPL__FUNC_X11_X_MAP_WINDOW(fpl__func_x11_XMapWindow);
-#define FPL__FUNC_X11_X_UNMAP_WINDOW(name) int name(Display *display, Window w)
-typedef FPL__FUNC_X11_X_UNMAP_WINDOW(fpl__func_x11_XUnmapWindow);
-#define FPL__FUNC_X11_X_STORE_NAME(name) int name(Display *display, Window w, char *window_name)
-typedef FPL__FUNC_X11_X_STORE_NAME(fpl__func_x11_XStoreName);
-#define FPL__FUNC_X11_X_DEFAULT_VISUAL(name) Visual *name(Display *display, int screen_number)
-typedef FPL__FUNC_X11_X_DEFAULT_VISUAL(fpl__func_x11_XDefaultVisual);
-#define FPL__FUNC_X11_X_DEFAULT_DEPTH(name) int name(Display *display, int screen_number)
-typedef FPL__FUNC_X11_X_DEFAULT_DEPTH(fpl__func_x11_XDefaultDepth);
-#define FPL__FUNC_X11_X_INTERN_ATOM(name) Atom name(Display *display, char *atom_name, Bool only_if_exists)
-typedef FPL__FUNC_X11_X_INTERN_ATOM(fpl__func_x11_XInternAtom);
-#define FPL__FUNC_X11_X_SET_WM_PROTOCOLS(name) Status name(Display *display, Window w, Atom *protocols, int count)
-typedef FPL__FUNC_X11_X_SET_WM_PROTOCOLS(fpl__func_x11_XSetWMProtocols);
-#define FPL__FUNC_X11_X_PENDING(name) int name(Display *display)
-typedef FPL__FUNC_X11_X_PENDING(fpl__func_x11_XPending);
-#define FPL__FUNC_X11_X_SYNC(name) int name(Display *display, Bool discard)
-typedef FPL__FUNC_X11_X_SYNC(fpl__func_x11_XSync);
-#define FPL__FUNC_X11_X_NEXT_EVENT(name) int name(Display *display, XEvent *event_return)
-typedef FPL__FUNC_X11_X_NEXT_EVENT(fpl__func_x11_XNextEvent);
-#define FPL__FUNC_X11_X_PEEK_EVENT(name) int name(Display *display, XEvent *event_return)
-typedef FPL__FUNC_X11_X_PEEK_EVENT(fpl__func_x11_XPeekEvent);
-#define FPL__FUNC_X11_X_GET_WINDOW_ATTRIBUTES(name) Status name(Display *display, Window w, XWindowAttributes *window_attributes_return)
-typedef FPL__FUNC_X11_X_GET_WINDOW_ATTRIBUTES(fpl__func_x11_XGetWindowAttributes);
-#define FPL__FUNC_X11_X_RESIZE_WINDOW(name) int name(Display *display, Window w, unsigned int width, unsigned int height)
-typedef FPL__FUNC_X11_X_RESIZE_WINDOW(fpl__func_x11_XResizeWindow);
-#define FPL__FUNC_X11_X_MOVE_WINDOW(name) int name(Display *display, Window w, int x, int y)
-typedef FPL__FUNC_X11_X_MOVE_WINDOW(fpl__func_x11_XMoveWindow);
-#define FPL__FUNC_X11_X_GET_KEYBOARD_MAPPING(name) KeySym *name(Display *display, KeyCode first_keycode, int keycode_count, int *keysyms_per_keycode_return)
-typedef FPL__FUNC_X11_X_GET_KEYBOARD_MAPPING(fpl__func_x11_XGetKeyboardMapping);
+#define FPL__FUNC_X11_XFree(name) int name(void *data)
+typedef FPL__FUNC_X11_XFree(fpl__func_x11_XFree);
+#define FPL__FUNC_X11_XFlush(name) int name(Display *display)
+typedef FPL__FUNC_X11_XFlush(fpl__func_x11_XFlush);
+#define FPL__FUNC_X11_XOpenDisplay(name) Display *name(char *display_name)
+typedef FPL__FUNC_X11_XOpenDisplay(fpl__func_x11_XOpenDisplay);
+#define FPL__FUNC_X11_XCloseDisplay(name) int name(Display *display)
+typedef FPL__FUNC_X11_XCloseDisplay(fpl__func_x11_XCloseDisplay);
+#define FPL__FUNC_X11_XDefaultScreen(name) int name(Display *display)
+typedef FPL__FUNC_X11_XDefaultScreen(fpl__func_x11_XDefaultScreen);
+#define FPL__FUNC_X11_XRootWindow(name) Window name(Display *display, int screen_number)
+typedef FPL__FUNC_X11_XRootWindow(fpl__func_x11_XRootWindow);
+#define FPL__FUNC_X11_XCreateWindow(name) Window name(Display *display, Window parent, int x, int y, unsigned int width, unsigned int height, unsigned int border_width, int depth, unsigned int clazz, Visual *visual, unsigned long valuemask, XSetWindowAttributes *attributes)
+typedef FPL__FUNC_X11_XCreateWindow(fpl__func_x11_XCreateWindow);
+#define FPL__FUNC_X11_XDestroyWindow(name) int name(Display *display, Window w)
+typedef FPL__FUNC_X11_XDestroyWindow(fpl__func_x11_XDestroyWindow);
+#define FPL__FUNC_X11_XCreateColormap(name) Colormap name(Display *display, Window w, Visual *visual, int alloc)
+typedef FPL__FUNC_X11_XCreateColormap(fpl__func_x11_XCreateColormap);
+#define FPL__FUNC_X11_XDefaultColormap(name) Colormap name(Display *display, int screen_number)
+typedef FPL__FUNC_X11_XDefaultColormap(fpl__func_x11_XDefaultColormap);
+#define FPL__FUNC_X11_XFreeColormap(name) int name(Display *display, Colormap colormap)
+typedef FPL__FUNC_X11_XFreeColormap(fpl__func_x11_XFreeColormap);
+#define FPL__FUNC_X11_XMapWindow(name) int name(Display *display, Window w)
+typedef FPL__FUNC_X11_XMapWindow(fpl__func_x11_XMapWindow);
+#define FPL__FUNC_X11_XUnmapWindow(name) int name(Display *display, Window w)
+typedef FPL__FUNC_X11_XUnmapWindow(fpl__func_x11_XUnmapWindow);
+#define FPL__FUNC_X11_XStoreName(name) int name(Display *display, Window w, char *window_name)
+typedef FPL__FUNC_X11_XStoreName(fpl__func_x11_XStoreName);
+#define FPL__FUNC_X11_XDefaultVisual(name) Visual *name(Display *display, int screen_number)
+typedef FPL__FUNC_X11_XDefaultVisual(fpl__func_x11_XDefaultVisual);
+#define FPL__FUNC_X11_XDefaultDepth(name) int name(Display *display, int screen_number)
+typedef FPL__FUNC_X11_XDefaultDepth(fpl__func_x11_XDefaultDepth);
+#define FPL__FUNC_X11_XInternAtom(name) Atom name(Display *display, char *atom_name, Bool only_if_exists)
+typedef FPL__FUNC_X11_XInternAtom(fpl__func_x11_XInternAtom);
+#define FPL__FUNC_X11_XSetWMProtocols(name) Status name(Display *display, Window w, Atom *protocols, int count)
+typedef FPL__FUNC_X11_XSetWMProtocols(fpl__func_x11_XSetWMProtocols);
+#define FPL__FUNC_X11_XPending(name) int name(Display *display)
+typedef FPL__FUNC_X11_XPending(fpl__func_x11_XPending);
+#define FPL__FUNC_X11_XSync(name) int name(Display *display, Bool discard)
+typedef FPL__FUNC_X11_XSync(fpl__func_x11_XSync);
+#define FPL__FUNC_X11_XNextEvent(name) int name(Display *display, XEvent *event_return)
+typedef FPL__FUNC_X11_XNextEvent(fpl__func_x11_XNextEvent);
+#define FPL__FUNC_X11_XPeekEvent(name) int name(Display *display, XEvent *event_return)
+typedef FPL__FUNC_X11_XPeekEvent(fpl__func_x11_XPeekEvent);
+#define FPL__FUNC_X11_XGetWindowAttributes(name) Status name(Display *display, Window w, XWindowAttributes *window_attributes_return)
+typedef FPL__FUNC_X11_XGetWindowAttributes(fpl__func_x11_XGetWindowAttributes);
+#define FPL__FUNC_X11_XResizeWindow(name) int name(Display *display, Window w, unsigned int width, unsigned int height)
+typedef FPL__FUNC_X11_XResizeWindow(fpl__func_x11_XResizeWindow);
+#define FPL__FUNC_X11_XMoveWindow(name) int name(Display *display, Window w, int x, int y)
+typedef FPL__FUNC_X11_XMoveWindow(fpl__func_x11_XMoveWindow);
+#define FPL__FUNC_X11_XGetKeyboardMapping(name) KeySym *name(Display *display, KeyCode first_keycode, int keycode_count, int *keysyms_per_keycode_return)
+typedef FPL__FUNC_X11_XGetKeyboardMapping(fpl__func_x11_XGetKeyboardMapping);
 #define FPL__FUNC_X11_XSendEvent(name) Status name(Display *display, Window w, Bool propagate, long event_mask, XEvent *event_send)
 typedef FPL__FUNC_X11_XSendEvent(fpl__func_x11_XSendEvent);
 #define FPL__FUNC_X11_XMatchVisualInfo(name) Status name(Display* display, int screen, int depth, int clazz, XVisualInfo* vinfo_return)
@@ -5895,19 +5945,42 @@ typedef struct fpl__SetupWindowCallbacks {
 // Clearing memory in chunks
 #define FPL__MEMORY_SET(T, memory, size, shift, mask, value) \
 	do { \
-		size_t clearedBytes = 0; \
+		size_t setBytes = 0; \
+		if (sizeof(T) > sizeof(uint8_t)) { \
+			T setValue = 0; \
+			for (int bytesIncrement = 0; bytesIncrement < sizeof(T); ++bytesIncrement) { \
+				int bitShift = bytesIncrement * 8; \
+				setValue |= ((T)value << bitShift); \
+			} \
+			T *dataBlock = (T *)(memory); \
+			T *dataBlockEnd = (T *)(memory) + (size >> shift); \
+			while (dataBlock != dataBlockEnd) { \
+				*dataBlock++ = setValue; \
+				setBytes += sizeof(T); \
+			} \
+		} \
+		uint8_t *data8 = (uint8_t *)memory + setBytes; \
+		uint8_t *data8End = (uint8_t *)memory + size; \
+		while (data8 != data8End) { \
+			*data8++ = value; \
+		} \
+	} while (0);
+
+#define FPL__MEMORY_CLEAR(T, memory, size, shift, mask) \
+	do { \
+		size_t clearBytes = 0; \
 		if (sizeof(T) > sizeof(uint8_t)) { \
 			T *dataBlock = (T *)(memory); \
 			T *dataBlockEnd = (T *)(memory) + (size >> shift); \
 			while (dataBlock != dataBlockEnd) { \
-				*dataBlock++ = value; \
-				clearedBytes += sizeof(T); \
+				*dataBlock++ = 0; \
+				clearBytes += sizeof(T); \
 			} \
 		} \
-		uint8_t *data8 = (uint8_t *)memory + clearedBytes; \
+		uint8_t *data8 = (uint8_t *)memory + clearBytes; \
 		uint8_t *data8End = (uint8_t *)memory + size; \
 		while (data8 != data8End) { \
-			*data8++ = value; \
+			*data8++ = 0; \
 		} \
 	} while (0);
 
@@ -6430,13 +6503,13 @@ fpl_common_api void fplMemoryClear(void *mem, const size_t size) {
 	FPL__CheckArgumentNullNoRet(mem);
 	FPL__CheckArgumentZeroNoRet(size);
 	if(size % 8 == 0) {
-		FPL__MEMORY_SET(uint64_t, mem, size, FPL__MEM_SHIFT_64, FPL__MEM_MASK_64, 0);
+		FPL__MEMORY_CLEAR(uint64_t, mem, size, FPL__MEM_SHIFT_64, FPL__MEM_MASK_64);
 	} else if(size % 4 == 0) {
-		FPL__MEMORY_SET(uint32_t, mem, size, FPL__MEM_SHIFT_32, FPL__MEM_MASK_32, 0);
+		FPL__MEMORY_CLEAR(uint32_t, mem, size, FPL__MEM_SHIFT_32, FPL__MEM_MASK_32);
 	} else if(size % 2 == 0) {
-		FPL__MEMORY_SET(uint16_t, mem, size, FPL__MEM_SHIFT_16, FPL__MEM_MASK_16, 0);
+		FPL__MEMORY_CLEAR(uint16_t, mem, size, FPL__MEM_SHIFT_16, FPL__MEM_MASK_16);
 	} else {
-		FPL__MEMORY_SET(uint8_t, mem, size, 0, 0, 0);
+		FPL__MEMORY_CLEAR(uint8_t, mem, size, 0, 0);
 	}
 }
 
@@ -7477,6 +7550,73 @@ LRESULT CALLBACK fpl__Win32MessageProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 	return (result);
 }
 
+fpl_internal HICON fpl__Win32LoadIconFromImageSource(const fpl__Win32Api *wapi, const HINSTANCE appInstance, const fplImageSource *imageSource) {
+	FPL_ASSERT(imageSource != fpl_null);
+	HICON result = 0;
+	if(imageSource->width > 0 && imageSource->height > 0 && imageSource->data > 0) {
+		BITMAPV5HEADER bi = FPL_ZERO_INIT;
+		bi.bV5Size = sizeof(bi);
+		bi.bV5Width = (LONG)imageSource->width;
+		bi.bV5Height = -(LONG)imageSource->height;
+		bi.bV5Planes = 1;
+		bi.bV5BitCount = 32;
+		bi.bV5Compression = BI_BITFIELDS;
+		bi.bV5RedMask = 0x00ff0000;
+		bi.bV5GreenMask = 0x0000ff00;
+		bi.bV5BlueMask = 0x000000ff;
+		bi.bV5AlphaMask = 0xff000000;
+
+		uint8_t* targetData = fpl_null;
+		HDC dc = wapi->user.GetDC(fpl_null);
+		HBITMAP colorBitmap = wapi->gdi.CreateDIBSection(dc, (BITMAPINFO*)&bi, DIB_RGB_COLORS, (void**)&targetData, fpl_null, (DWORD)0);
+		if(colorBitmap == fpl_null) {
+			fpl__PushError(fplLogLevel_Error, "Failed to create DIBSection from image with size %lu x %lu", imageSource->width, imageSource->height);
+		}
+		wapi->user.ReleaseDC(fpl_null, dc);
+
+		HBITMAP maskBitmap = wapi->gdi.CreateBitmap(imageSource->width, imageSource->height, 1, 1, fpl_null);
+		if(maskBitmap == fpl_null) {
+			fpl__PushError(fplLogLevel_Error, "Failed to create Bitmap Mask from image with size %lu x %lu", imageSource->width, imageSource->height);
+		}
+
+		if(colorBitmap != fpl_null && maskBitmap != fpl_null) {
+			FPL_ASSERT(targetData != fpl_null);
+			uint8_t *dst = targetData;
+			const uint8_t *src = imageSource->data;
+
+			if(imageSource->type == fplImageType_RGBA) {
+				for(uint32_t i = 0; i < imageSource->width * imageSource->height; ++i) {
+					dst[0] = src[2]; // R > B
+					dst[1] = src[1]; // G > G
+					dst[2] = src[0]; // B > R
+					dst[3] = src[3]; // A > A
+					src += 4;
+					dst += 4;
+				}
+				ICONINFO ii = FPL_ZERO_INIT;
+				ii.fIcon = TRUE;
+				ii.xHotspot = 0;
+				ii.yHotspot = 0;
+				ii.hbmMask = maskBitmap;
+				ii.hbmColor = colorBitmap;
+				result = wapi->user.CreateIconIndirect(&ii);
+			} else {
+				fpl__PushError(fplLogLevel_Warning, "Image source type '%d' for icon is not supported", imageSource->type);
+			}
+		}
+		if(colorBitmap != fpl_null) {
+			wapi->gdi.DeleteObject(colorBitmap);
+		}
+		if(maskBitmap != fpl_null) {
+			wapi->gdi.DeleteObject(maskBitmap);
+		}
+	}
+	if(result == 0) {
+		result = fpl__win32_LoadIcon(appInstance, IDI_APPLICATION);
+	}
+	return(result);
+}
+
 fpl_internal bool fpl__Win32InitWindow(const fplSettings *initSettings, fplWindowSettings *currentWindowSettings, fpl__PlatformAppState *platAppState, fpl__Win32AppState *appState, fpl__Win32WindowState *windowState, const fpl__SetupWindowCallbacks *setupCallbacks) {
 	FPL_ASSERT(appState != fpl_null);
 	const fpl__Win32Api *wapi = &appState->winApi;
@@ -7490,8 +7630,8 @@ fpl_internal bool fpl__Win32InitWindow(const fplSettings *initSettings, fplWindo
 	windowClass.cbSize = sizeof(windowClass);
 	windowClass.style = CS_HREDRAW | CS_VREDRAW;
 	windowClass.hCursor = fpl__win32_LoadCursor(windowClass.hInstance, IDC_ARROW);
-	windowClass.hIcon = fpl__win32_LoadIcon(windowClass.hInstance, IDI_APPLICATION);
-	windowClass.hIconSm = fpl__win32_LoadIcon(windowClass.hInstance, IDI_APPLICATION);
+	windowClass.hIconSm = fpl__Win32LoadIconFromImageSource(wapi, windowClass.hInstance, &initWindowSettings->icons[0]);
+	windowClass.hIcon = fpl__Win32LoadIconFromImageSource(wapi, windowClass.hInstance, &initWindowSettings->icons[1]);
 	windowClass.lpszClassName = FPL__WIN32_CLASSNAME;
 	windowClass.lpfnWndProc = fpl__Win32MessageProc;
 	windowClass.style |= CS_OWNDC;
@@ -10020,10 +10160,18 @@ fpl_platform_api bool fplThreadWaitForOne(fplThreadHandle *thread, const fplTime
 	const fpl__PThreadApi *pthreadApi = &appState->posix.pthreadApi;
 	bool result = false;
 	if(thread != fpl_null && thread->isValid) {
-		// Wait until it shuts down
 		pthread_t threadHandle = thread->internalHandle.posixThread;
-		// @TODO(final): POSIX Use timeout in fplThreadWaitForOne
-		int joinRes = pthreadApi->pthread_join(threadHandle, fpl_null);
+
+		// @NOTE(final): We optionally use the GNU extension "pthread_timedjoin_np" to support joining with a timeout.
+		int joinRes;
+		if((pthreadApi->pthread_timedjoin_np != fpl_null) && (timeout != FPL_TIMEOUT_INFINITE)) {
+			struct timespec t;
+			fpl__InitWaitTimeSpec(timeout, &t);
+			joinRes = pthreadApi->pthread_timedjoin_np(threadHandle, fpl_null, &t);
+		} else {
+			joinRes = pthreadApi->pthread_join(threadHandle, fpl_null);
+		}
+
 		result = (joinRes == 0);
 	}
 	return (result);
@@ -12021,21 +12169,21 @@ fpl_platform_api char *fplGetHomePath(char *destPath, const size_t maxDestLen) {
 #define FPL_WGL_SWAP_EXCHANGE_ARB 0x2028
 #define FPL_WGL_TYPE_RGBA_ARB 0x202B
 
-#define FPL__FUNC_WGL_MAKE_CURRENT(name) BOOL WINAPI name(HDC deviceContext, HGLRC renderingContext)
-typedef FPL__FUNC_WGL_MAKE_CURRENT(fpl__win32_func_wglMakeCurrent);
-#define FPL__FUNC_WGL_GET_PROC_ADDRESS(name) PROC WINAPI name(LPCSTR procedure)
-typedef FPL__FUNC_WGL_GET_PROC_ADDRESS(fpl__win32_func_wglGetProcAddress);
-#define FPL__FUNC_WGL_DELETE_CONTEXT(name) BOOL WINAPI name(HGLRC renderingContext)
-typedef FPL__FUNC_WGL_DELETE_CONTEXT(fpl__win32_func_wglDeleteContext);
-#define FPL__FUNC_WGL_CREATE_CONTEXT(name) HGLRC WINAPI name(HDC deviceContext)
-typedef FPL__FUNC_WGL_CREATE_CONTEXT(fpl__win32_func_wglCreateContext);
+#define FPL__FUNC_WGL_wglMakeCurrent(name) BOOL WINAPI name(HDC deviceContext, HGLRC renderingContext)
+typedef FPL__FUNC_WGL_wglMakeCurrent(fpl__win32_func_wglMakeCurrent);
+#define FPL__FUNC_WGL_wglGetProcAddress(name) PROC WINAPI name(LPCSTR procedure)
+typedef FPL__FUNC_WGL_wglGetProcAddress(fpl__win32_func_wglGetProcAddress);
+#define FPL__FUNC_WGL_wglDeleteContext(name) BOOL WINAPI name(HGLRC renderingContext)
+typedef FPL__FUNC_WGL_wglDeleteContext(fpl__win32_func_wglDeleteContext);
+#define FPL__FUNC_WGL_wglCreateContext(name) HGLRC WINAPI name(HDC deviceContext)
+typedef FPL__FUNC_WGL_wglCreateContext(fpl__win32_func_wglCreateContext);
 
-#define FPL__FUNC_WGL_CHOOSE_PIXEL_FORMAT_ARB(name) BOOL WINAPI name(HDC hdc, const int *piAttribIList, const FLOAT *pfAttribFList, UINT nMaxFormats, int *piFormats, UINT *nNumFormats)
-typedef FPL__FUNC_WGL_CHOOSE_PIXEL_FORMAT_ARB(fpl__win32_func_wglChoosePixelFormatARB);
-#define FPL__FUNC_WGL_CREATE_CONTEXT_ATTRIBS_ARB(name) HGLRC WINAPI name(HDC hDC, HGLRC hShareContext, const int *attribList)
-typedef FPL__FUNC_WGL_CREATE_CONTEXT_ATTRIBS_ARB(fpl__win32_func_wglCreateContextAttribsARB);
-#define FPL__FUNC_WGL_SWAP_INTERVAL_EXT(name) BOOL WINAPI name(int interval)
-typedef FPL__FUNC_WGL_SWAP_INTERVAL_EXT(fpl__win32_func_wglSwapIntervalEXT);
+#define FPL__FUNC_WGL_wglChoosePixelFormatARB(name) BOOL WINAPI name(HDC hdc, const int *piAttribIList, const FLOAT *pfAttribFList, UINT nMaxFormats, int *piFormats, UINT *nNumFormats)
+typedef FPL__FUNC_WGL_wglChoosePixelFormatARB(fpl__win32_func_wglChoosePixelFormatARB);
+#define FPL__FUNC_WGL_wglCreateContextAttribsARB(name) HGLRC WINAPI name(HDC hDC, HGLRC hShareContext, const int *attribList)
+typedef FPL__FUNC_WGL_wglCreateContextAttribsARB(fpl__win32_func_wglCreateContextAttribsARB);
+#define FPL__FUNC_WGL_wglSwapIntervalEXT(name) BOOL WINAPI name(int interval)
+typedef FPL__FUNC_WGL_wglSwapIntervalEXT(fpl__win32_func_wglSwapIntervalEXT);
 
 typedef struct fpl__Win32OpenGLApi {
 	HMODULE openglLibrary;
@@ -12818,10 +12966,10 @@ fpl_internal bool fpl__IsAudioDeviceStarted(fpl__CommonAudioState *audioState);
 #	include <mmreg.h>
 #	include <dsound.h>
 
-#define FPL__FUNC_DIRECT_SOUND_CREATE(name) HRESULT WINAPI name(const GUID* pcGuidDevice, LPDIRECTSOUND *ppDS8, LPUNKNOWN pUnkOuter)
-typedef FPL__FUNC_DIRECT_SOUND_CREATE(func_DirectSoundCreate);
-#define FPL__FUNC_DIRECT_SOUND_ENUMERATE_A(name) HRESULT WINAPI name(LPDSENUMCALLBACKA pDSEnumCallback, LPVOID pContext)
-typedef FPL__FUNC_DIRECT_SOUND_ENUMERATE_A(func_DirectSoundEnumerateA);
+#define FPL__FUNC_DSOUND_DirectSoundCreate(name) HRESULT WINAPI name(const GUID* pcGuidDevice, LPDIRECTSOUND *ppDS8, LPUNKNOWN pUnkOuter)
+typedef FPL__FUNC_DSOUND_DirectSoundCreate(func_DirectSoundCreate);
+#define FPL__FUNC_DSOUND_DirectSoundEnumerateA(name) HRESULT WINAPI name(LPDSENUMCALLBACKA pDSEnumCallback, LPVOID pContext)
+typedef FPL__FUNC_DSOUND_DirectSoundEnumerateA(func_DirectSoundEnumerateA);
 static GUID FPL__IID_IDirectSoundNotify = { 0xb0210783, 0x89cd, 0x11d0, {0xaf, 0x08, 0x00, 0xa0, 0xc9, 0x25, 0xcd, 0x16} };
 #define FPL__DIRECTSOUND_MAX_PERIODS 4
 
@@ -14519,7 +14667,7 @@ fpl_internal void fpl__ShutdownVideo(fpl__PlatformAppState *appState, fpl__Video
 #			elif defined(FPL_SUBPLATFORM_X11)
 				fpl__X11ReleaseVideoSoftware(&appState->x11, &appState->window.x11, &videoState->x11.software);
 #			endif
-			} break;
+		} break;
 #		endif // FPL_ENABLE_VIDEO_SOFTWARE
 
 			default:
@@ -14531,7 +14679,7 @@ fpl_internal void fpl__ShutdownVideo(fpl__PlatformAppState *appState, fpl__Video
 		fplVideoBackBuffer *backbuffer = &videoState->softwareBackbuffer;
 		if(backbuffer->pixels != fpl_null) {
 			fplMemoryAlignedFree(backbuffer->pixels);
-		}
+			}
 		FPL_CLEAR_STRUCT(backbuffer);
 #	endif
 	}
@@ -14576,12 +14724,12 @@ fpl_internal bool fpl__LoadVideoState(const fplVideoDriverType driver, fpl__Vide
 #		elif defined(FPL_SUBPLATFORM_X11)
 			result = fpl__X11LoadVideoOpenGLApi(&videoState->x11.opengl.api);
 #		endif
-		}; break;
+	}; break;
 #	endif
 
 		default:
 			break;
-	}
+}
 	return(result);
 }
 
@@ -14615,7 +14763,7 @@ fpl_internal bool fpl__InitVideo(const fplVideoDriverType driver, const fplVideo
 			uint32_t color = 0xFF000000;
 			for(uint32_t x = 0; x < backbuffer->width; ++x) {
 				*p++ = color;
-			}
+}
 		}
 	}
 #	endif // FPL_ENABLE_VIDEO_SOFTWARE
@@ -14641,7 +14789,7 @@ fpl_internal bool fpl__InitVideo(const fplVideoDriverType driver, const fplVideo
 #		elif defined(FPL_SUBPLATFORM_X11)
 			videoInitResult = fpl__X11InitVideoSoftware(&appState->x11, &appState->window.x11, videoSettings, &videoState->softwareBackbuffer, &videoState->x11.software);
 #		endif
-		} break;
+	} break;
 #	endif // FPL_ENABLE_VIDEO_SOFTWARE
 
 		default:
@@ -14693,14 +14841,14 @@ fpl_internal FPL__FUNC_PRE_SETUP_WINDOW(fpl__PreSetupWindowDefault) {
 #			if defined(FPL_SUBPLATFORM_X11)
 				result = fpl__X11SetPreWindowSetupForSoftware(&appState->x11.api, &appState->window.x11, &videoState->x11.software, &outResult->x11);
 #			endif
-			} break;
+		} break;
 #		endif // FPL_ENABLE_VIDEO_OPENGL
 
 			default:
 			{
 			} break;
-		}
 	}
+}
 #	endif // FPL_ENABLE_VIDEO
 
 	return(result);
@@ -14741,7 +14889,7 @@ fpl_internal bool fpl__InitWindow(const fplSettings *initSettings, fplWindowSett
 #	elif defined(FPL_SUBPLATFORM_X11)
 		result = fpl__X11InitWindow(initSettings, currentWindowSettings, appState, &appState->x11, &appState->window.x11, setupCallbacks);
 #	endif
-	}
+}
 	return (result);
 }
 
@@ -14752,7 +14900,7 @@ fpl_internal void fpl__ReleaseWindow(const fpl__PlatformInitState *initState, fp
 #	elif defined(FPL_SUBPLATFORM_X11)
 		fpl__X11ReleaseWindow(&appState->x11, &appState->window.x11);
 #	endif
-	}
+}
 }
 #endif // FPL_ENABLE_WINDOW
 
@@ -15033,7 +15181,7 @@ fpl_common_api fplVideoBackBuffer *fplGetVideoBackBuffer() {
 			result = &videoState->softwareBackbuffer;
 		}
 #	endif
-	}
+}
 	return(result);
 }
 
@@ -15054,7 +15202,7 @@ fpl_common_api bool fplResizeVideoBackBuffer(const uint32_t width, const uint32_
 		if(videoState->activeDriver == fplVideoDriverType_Software) {
 			fpl__ShutdownVideo(appState, videoState);
 			result = fpl__InitVideo(fplVideoDriverType_Software, &appState->currentSettings.video, width, height, appState, videoState);
-		}
+}
 #	endif
 	}
 	return (result);
@@ -15091,8 +15239,8 @@ fpl_common_api void fplVideoFlip() {
 						wapi->gdi.StretchDIBits(win32WindowState->deviceContext, 0, 0, area.width, area.height, 0, 0, 0, 0, fpl_null, fpl_null, DIB_RGB_COLORS, BLACKNESS);
 					}
 					wapi->gdi.StretchDIBits(win32WindowState->deviceContext, targetX, targetY, targetWidth, targetHeight, 0, 0, sourceWidth, sourceHeight, backbuffer->pixels, &software->bitmapInfo, DIB_RGB_COLORS, SRCCOPY);
-				}
-			} break;
+	}
+} break;
 #		endif
 
 #		if defined(FPL_ENABLE_VIDEO_OPENGL)
@@ -15153,7 +15301,7 @@ fpl_internal void fpl__ReleasePlatformStates(fpl__PlatformInitState *initState, 
 		fpl__AudioState *audioState = fpl__GetAudioState(appState);
 		if(audioState != fpl_null) {
 			fpl__ReleaseAudio(audioState);
-		}
+}
 	}
 #	endif
 
@@ -15212,9 +15360,9 @@ fpl_internal void fpl__ReleasePlatformStates(fpl__PlatformInitState *initState, 
 			FPL_LOG_DEBUG("Core", "Release POSIX Subplatform");
 			fpl__PosixReleaseSubplatform(&appState->posix);
 #		endif
-		}
+	}
 
-		// Release platform applicatiom state memory
+	// Release platform applicatiom state memory
 		FPL_LOG_DEBUG(FPL__MODULE_CORE, "Release allocated Platform App State Memory");
 		fplMemoryFree(appState);
 		fpl__global__AppState = fpl_null;
@@ -15318,7 +15466,7 @@ fpl_common_api fplInitResultType fplPlatformInit(const fplInitFlags initFlags, c
 			FPL_CRITICAL("Core", "Failed initializing POSIX Subplatform!");
 			fpl__ReleasePlatformStates(initState, appState);
 			return fplInitResultType_FailedPlatform;
-		}
+	}
 		FPL_LOG_DEBUG("Core", "Successfully initialized POSIX Subplatform");
 	}
 #	endif // FPL_SUBPLATFORM_POSIX
@@ -15330,7 +15478,7 @@ fpl_common_api fplInitResultType fplPlatformInit(const fplInitFlags initFlags, c
 			FPL_CRITICAL("Core", "Failed initializing X11 Subplatform!");
 			fpl__ReleasePlatformStates(initState, appState);
 			return fplInitResultType_FailedPlatform;
-		}
+}
 		FPL_LOG_DEBUG("Core", "Successfully initialized X11 Subplatform");
 	}
 #	endif // FPL_SUBPLATFORM_X11
@@ -15459,14 +15607,6 @@ fpl_common_api fplPlatformType fplGetPlatformType() {
 #	pragma warning( pop )
 #endif
 
-// Undef constant defines from X11
-#ifdef None
-#undef None
-#endif
-#ifdef Success
-#undef Success
-#endif
-
 #endif // FPL_IMPLEMENTATION && !FPL_IMPLEMENTED
 
 // ****************************************************************************
@@ -15540,6 +15680,35 @@ int WINAPI WinMain(HINSTANCE appInstance, HINSTANCE prevInstance, LPSTR cmdLine,
 #	endif // FPL_PLATFORM_WIN32
 
 #endif // FPL_ENTRYPOINT && !FPL_ENTRYPOINT_IMPLEMENTED
+
+// Undef useless constants for callers
+#if !defined(FPL_NO_UNDEF)
+
+#	if defined(FPL_SUBPLATFORM_X11)
+#		undef Bool
+#		undef Expose
+#		undef KeyPress
+#		undef KeyRelease
+#		undef FocusIn
+#		undef FocusOut
+#		undef FontChange
+#		undef None
+#		undef Success
+#		undef Status
+#		undef Unsorted
+#	endif // FPL_SUBPLATFORM_X11
+
+#	if defined(FPL_PLATFORM_WIN32)
+#		undef TRUE
+#		undef FALSE
+#		undef far
+#		undef near
+#		undef IN
+#		undef OUT
+#		undef OPTIONAL
+#	endif // FPL_SUBPLATFORM_X11
+
+#endif // !FPL_NO_UNDEF
 
 //! \endcond
 
