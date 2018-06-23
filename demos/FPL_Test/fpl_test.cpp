@@ -1224,12 +1224,59 @@ static void TestStrings() {
 		bool r = fplIsStringEqual("2009-11-17 13:47:25", buffer);
 		FT_EXPECTS(true, r);
 	}
+
+	ft::Msg("Test fplS32ToString\n");
+	{
+		char smallBuffer[2];
+		char bigBuffer[16];
+		FT_IS_NULL(fplS32ToString(0, 0, nullptr));
+		FT_IS_NULL(fplS32ToString(0, 4, nullptr));
+		FT_IS_NULL(fplS32ToString(11, FPL_ARRAYCOUNT(smallBuffer), smallBuffer));
+		FT_IS_NOT_NULL(fplS32ToString(7, FPL_ARRAYCOUNT(smallBuffer), smallBuffer));
+		ft::AssertStringEquals("7", smallBuffer);
+		FT_IS_NOT_NULL(fplS32ToString(129, FPL_ARRAYCOUNT(bigBuffer), bigBuffer));
+		ft::AssertStringEquals("129", bigBuffer);
+		FT_IS_NOT_NULL(fplS32ToString(1337, FPL_ARRAYCOUNT(bigBuffer), bigBuffer));
+		ft::AssertStringEquals("1337", bigBuffer);
+		FT_IS_NOT_NULL(fplS32ToString(-1234567, FPL_ARRAYCOUNT(bigBuffer), bigBuffer));
+		ft::AssertStringEquals("-1234567", bigBuffer);
+	}
+
+	ft::Msg("Test fplStringToS32\n");
+	{
+		ft::AssertS32Equals(0, fplStringToS32(fpl_null));
+		ft::AssertS32Equals(0, fplStringToS32(""));
+		ft::AssertS32Equals(0, fplStringToS32("bullshit"));
+		ft::AssertS32Equals(0, fplStringToS32("0x"));
+		ft::AssertS32Equals(0, fplStringToS32("0xFFBBCCDD"));
+		ft::AssertS32Equals(0, fplStringToS32("0"));
+		ft::AssertS32Equals(7, fplStringToS32("7"));
+		ft::AssertS32Equals(10, fplStringToS32("10"));
+		ft::AssertS32Equals(1337, fplStringToS32("1337"));
+		ft::AssertS32Equals(-1234567, fplStringToS32("-1234567"));
+	}
+
+	ft::Msg("Test fplStringToS32Len\n");
+	{
+		ft::AssertS32Equals(0, fplStringToS32Len(fpl_null, 0));
+		ft::AssertS32Equals(0, fplStringToS32Len(fpl_null, 1));
+		ft::AssertS32Equals(0, fplStringToS32Len("", 0));
+		ft::AssertS32Equals(0, fplStringToS32Len("123", 0));
+		ft::AssertS32Equals(0, fplStringToS32Len("bullshit", 8));
+		ft::AssertS32Equals(0, fplStringToS32Len("0x", 2));
+		ft::AssertS32Equals(0, fplStringToS32Len("0xFFBBCCDD", 10));
+		ft::AssertS32Equals(0, fplStringToS32Len("0", 1));
+		ft::AssertS32Equals(7, fplStringToS32Len("7", 1));
+		ft::AssertS32Equals(10, fplStringToS32Len("10", 2));
+		ft::AssertS32Equals(1337, fplStringToS32Len("1337", 4));
+		ft::AssertS32Equals(-1234567, fplStringToS32Len("-1234567", 8));
+	}
 }
 
 int main(int argc, char *args[]) {
 	TestColdInit();
-	TestMemory();
 	TestInit();
+	TestMemory();
 	TestOSInfos();
 	TestHardware();
 	TestSizes();
