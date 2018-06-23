@@ -134,6 +134,7 @@ SOFTWARE.
 	- New: Added fplStringToS32Len
 	- New: Added fplS32ToString
 	- Changed: fplVersionInfo is now parsed as char[4] instead of uint32_t
+	- Fixed: [Win32] fplGetTimeInMillisecondsHP was not returning a proper double value
 
 	## v0.8.2.0 beta:
 	- Changed: Ensures const correctness on all functions
@@ -9422,7 +9423,7 @@ fpl_platform_api double fplGetTimeInMillisecondsHP() {
 	const fpl__Win32InitState *initState = &fpl__global__InitState.win32;
 	LARGE_INTEGER time;
 	QueryPerformanceCounter(&time);
-	double result = (double)(time.QuadPart / initState->performanceFrequency.QuadPart) * 1000.0;
+	double result = (time.QuadPart / (double)initState->performanceFrequency.QuadPart) * 1000.0;
 	return(result);
 }
 
