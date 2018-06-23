@@ -1040,9 +1040,13 @@ extern void GameInput(GameMemory &gameMemory, const Input &input) {
 				case GameMode::Menu:
 				{
 					if(WasPressed(controller->moveDown)) {
-						state->menu.itemIndex = (state->menu.itemIndex + 1) % state->menu.itemCount;
+						if (state->menu.itemIndex < (state->menu.itemCount - 1)) {
+							++state->menu.itemIndex;
+						}
 					} else if(WasPressed(controller->moveUp)) {
-						state->menu.itemIndex = (state->menu.itemIndex + -1) % state->menu.itemCount;
+ 						if (state->menu.itemIndex > 0) {
+							--state->menu.itemIndex;
+						}
 					}
 					if(WasPressed(controller->actionDown)) {
 						if(state->menu.hotID != nullptr) {
@@ -1099,7 +1103,7 @@ static void UpdatePlayMode(GameState &state, const Input &input) {
 	}
 
 	// Make all bricks dynamic when hit
-	const float hitStrength = 2.5f;
+	const float hitStrength = 1.5f;
 	for(size_t i = 0; i < state.numActiveBricks; ++i) {
 		Entity &brickEntity = state.activeBricks[i];
 		Brick &brick = brickEntity.brick;
