@@ -19,6 +19,9 @@ Author:
 	Torsten Spaete
 
 Changelog:
+	## 2018-06-25:
+	- Introduced Tower Buttons
+	- Write selected tower name
 	## 2018-06-20:
 	- Refactoring
 	- WaveData have now a list of SpawnerData, so we can have multiple & different spawners for each wave.
@@ -117,7 +120,7 @@ constexpr float ShotAngleTolerance = (Pi32 * 0.1f) * 0.5f;
 
 static const TowerData TowerDefinitions[] = {
 	MakeTowerData(
-		/* id: */ "Newbie Tower",
+		/* id: */ "First Tower",
 		/* structureRadius: */ MaxTileSize * 0.35f,
 		/* detectionRadius: */ MaxTileSize * 2.25f,
 		/* unlockRadius: */ MaxTileSize * 2.3f,
@@ -134,6 +137,26 @@ static const TowerData TowerDefinitions[] = {
 			/* collisionRadius: */ MaxTileSize * 0.05f,
 			/* speed: */ 2.5f,
 			/* damage: */ 15
+		)
+	),
+	MakeTowerData(
+		/* id: */ "Second Tower",
+		/* structureRadius: */ MaxTileSize * 0.35f,
+		/* detectionRadius: */ MaxTileSize * 2.15f,
+		/* unlockRadius: */ MaxTileSize * 2.2f,
+		/* gunTubeLength: */ MaxTileSize * 0.4f,
+		/* gunCooldown: */ 0.2f,
+		/* gunTubeThickness: */ MaxTileSize * 0.15f,
+		/* gunRotationSpeed: */ 6.0f,
+		/* costs: */ 100,
+		/* enemyRangeTestType: */ FireRangeTestType::InSight,
+		/* enemyPredictionFlags: */ EnemyPredictionFlags::All,
+		/* enemyLockOnMode: */ EnemyLockTargetMode::LockedOn,
+		MakeBulletData(
+			/* renderRadius: */ MaxTileSize * 0.04f,
+			/* collisionRadius: */ MaxTileSize * 0.04f,
+			/* speed: */ 3.5f,
+			/* damage: */ 8
 		)
 	),
 };
@@ -232,11 +255,17 @@ namespace game {
 }
 
 namespace ui {
-	static void UIBegin(UIContext &ctx, const Input &input, const Vec2f &mousePos) {
-		ctx.hot = 0;
+	static void UIBegin(UIContext &ctx, GameState *gameState, const Input &input, const Vec2f &mousePos) {
 		ctx.input = {};
+		ctx.hot = 0;
+		ctx.gameState = gameState;
 		ctx.input.userPosition = mousePos;
 		ctx.input.leftButton = input.mouse.left;
+	}
+
+	inline bool UIIsHot(const UIContext &ctx) {
+		bool result = ctx.hot > 0;
+		return(result);
 	}
 
 	inline bool UIIsActive(const UIContext &ctx) {
@@ -254,8 +283,18 @@ namespace ui {
 		return(result);
 	}
 
-	static bool UIButton(UIContext &ctx, const UIID &id, const Vec2f &pos, const Vec2f &radius) {
+	enum class UIButtonState {
+		None = 0,
+		Hover,
+		Down,
+	};
+	typedef void(UIButtonDrawFunction)(GameState &gameState, const Vec2f &pos, const Vec2f &radius, const UIButtonState buttonState, void *userData);
+
+	static bool UIButton(UIContext &ctx, const UIID &id, const Vec2f &pos, const Vec2f &radius, UIButtonDrawFunction *drawFunc, void *userData) {
 		bool result = false;
+		if(IsInsideButton(ctx, pos, radius)) {
+			ctx.hot = id;
+		}
 		if(ctx.active == id) {
 			if(WasPressed(ctx.input.leftButton)) {
 				if(ctx.hot == id) {
@@ -268,10 +307,19 @@ namespace ui {
 				ctx.active = id;
 			}
 		}
-		if(IsInsideButton(ctx, pos, radius)) {
-			ctx.hot = id;
+
+		UIButtonState buttonState = UIButtonState::None;
+		if(ctx.hot == id) {
+			if(ctx.active == ctx.hot) {
+				buttonState = UIButtonState::Down;
+			} else {
+				buttonState = UIButtonState::Hover;
+			}
 		}
 
+		drawFunc(*ctx.gameState, pos, radius, buttonState, userData);
+
+#if 0
 		bool isHover = ctx.hot == id;
 		glColor4f(1, 1, 1, isHover ? 0.5f : 1.0f);
 		glBegin(GL_QUADS);
@@ -280,6 +328,7 @@ namespace ui {
 		glVertex2f(pos.x - radius.w, pos.y - radius.h);
 		glVertex2f(pos.x + radius.w, pos.y - radius.h);
 		glEnd();
+#endif
 
 		return(result);
 	}
@@ -327,6 +376,37 @@ namespace render {
 		glVertex2f(pos.x, pos.y);
 		glVertex2f(pos.x + TileWidth, pos.y);
 		glEnd();
+	}
+
+	static void DrawLineStipple(const Vec2f &a, const Vec2f &b, const float stippleWidth, const int modCount) {
+		// @NOTE(final): Expect line width and color to be set already
+		assert(stippleWidth > 0);
+		Vec2f ab = b - a;
+		float d = Vec2Length(ab);
+		Vec2f n = ab / d;
+		int secCount = (d > stippleWidth) ? (int)(d / stippleWidth) : 1;
+		assert(secCount > 0);
+		glBegin(GL_LINES);
+		for(int sec = 0; sec < secCount; ++sec) {
+			float t = sec / (float)secCount;
+			Vec2f start = Vec2Lerp(a, t, b);
+			Vec2f end = start + n * stippleWidth;
+			if(sec % modCount == 0) {
+				glVertex2f(start.x, start.y);
+				glVertex2f(end.x, end.y);
+			}
+		}
+		glEnd();
+	}
+
+	static void DrawLineLoopStipple(const Vec2f *points, const size_t pointCount, const float stippleWidth, const int modCount) {
+		assert(pointCount >= 2);
+		// @NOTE(final): Expect line width and color to be set already
+		for(size_t pointIndex = 0; pointIndex < pointCount; ++pointIndex) {
+			Vec2f a = points[pointIndex];
+			Vec2f b = points[(pointIndex + 1) % pointCount];
+			DrawLineStipple(a, b, stippleWidth, modCount);
+		}
 	}
 }
 
@@ -456,7 +536,7 @@ namespace creeps {
 
 namespace level {
 	inline Tile *GetTile(Level &level, const Vec2i &tilePos) {
-		if((tilePos.x >= 0 && tilePos.x < TileCountX) && (tilePos.x >= 0 && tilePos.x < TileCountX)) {
+		if(IsValidTile(tilePos)) {
 			return &level.tiles[tilePos.y * TileCountX + tilePos.x];
 		}
 		return nullptr;
@@ -1083,27 +1163,30 @@ namespace towers {
 		}
 	}
 
-	static void DrawTower(const Assets &assets, const Camera2D &camera, const TowerData &tower, const Vec2f &pos, const float angle, const float alpha, const bool drawRadius) {
+	static void DrawTower(const Assets &assets, const Camera2D &camera, const TowerData &tower, const Vec2f &pos, const Vec2f &maxRadius, const float angle, const float alpha, const bool drawRadius) {
+		assert(MaxTileRadius > 0);
+		float scale = FPL_MAX(maxRadius.x, maxRadius.y) / MaxTileRadius;
+
 		// @TODO(final): Mulitple tower styles
-		DrawPoint(camera, pos.x, pos.y, tower.structureRadius, V4f(1, 1, 0.5f, alpha));
+		DrawPoint(camera, pos.x, pos.y, tower.structureRadius * scale, V4f(1, 1, 0.5f, alpha));
 
 		glColor4f(1, 0.85f, 0.5f, alpha);
-		glLineWidth(camera.worldToPixels * tower.gunTubeThickness);
+		glLineWidth(camera.worldToPixels * tower.gunTubeThickness * scale);
 		glPushMatrix();
 		glTranslatef(pos.x, pos.y, 0);
 		glRotatef(angle * RadToDeg, 0, 0, 1);
 		glBegin(GL_LINES);
-		glVertex2f(tower.gunTubeLength, 0);
+		glVertex2f(tower.gunTubeLength * scale, 0);
 		glVertex2f(0, 0);
 		glEnd();
-		glLineWidth(2.0f);
 		glPopMatrix();
+		glLineWidth(DefaultLineWidth);
 
 		if(drawRadius) {
 			glColor4f(0.2f, 1, 0.2f, alpha*0.25f);
-			DrawSprite(assets.radiantTexture, tower.detectionRadius, tower.detectionRadius, 0.0f, 0.0f, 1.0f, 1.0f, pos.x, pos.y);
+			DrawSprite(assets.radiantTexture, tower.detectionRadius * scale, tower.detectionRadius * scale, 0.0f, 0.0f, 1.0f, 1.0f, pos.x, pos.y);
 			glColor4f(1, 0.25f, 0.25f, alpha*0.25f);
-			DrawSprite(assets.radiantTexture, tower.unlockRadius, tower.unlockRadius, 0.0f, 0.0f, 1.0f, 1.0f, pos.x, pos.y);
+			DrawSprite(assets.radiantTexture, tower.unlockRadius * scale, tower.unlockRadius * scale, 0.0f, 0.0f, 1.0f, 1.0f, pos.x, pos.y);
 		}
 	}
 }
@@ -1202,7 +1285,7 @@ namespace game {
 		glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
 
 		glEnable(GL_LINE_SMOOTH);
-		glLineWidth(2.0f);
+		glLineWidth(DefaultLineWidth);
 
 		glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
 
@@ -1258,6 +1341,32 @@ namespace game {
 		}
 	}
 
+	static void DrawTowerControl(GameState &gameState, const Vec2f &pos, const Vec2f &radius, const ui::UIButtonState buttonState, void *userData) {
+		int towerDataIndex = (int)(uintptr_t)(userData);
+		assert(towerDataIndex >= 0 && towerDataIndex < FPL_ARRAYCOUNT(TowerDefinitions));
+		const TowerData *towerData = &TowerDefinitions[towerDataIndex];
+		float alpha = 0.75f;
+		if(buttonState == ui::UIButtonState::Hover) {
+			alpha = 1.0f;
+		}
+		towers::DrawTower(gameState.assets, gameState.camera, *towerData, pos, radius, Pi32 * 0.5f, alpha, false);
+
+		// Draw selection frame
+		if(gameState.towers.selectedIndex == towerDataIndex) {
+			Vec2f borderVecs[] = {
+				V2f(pos.x + radius.w, pos.y + radius.h),
+				V2f(pos.x - radius.w, pos.y + radius.h),
+				V2f(pos.x - radius.w, pos.y - radius.h),
+				V2f(pos.x + radius.w, pos.y - radius.h),
+			};
+			float stippleWidth = (FPL_MIN(radius.x, radius.y) * 2.0f) / 10.0f;
+			glColor4f(1.0f, 1.0f, 1.0f, alpha);
+			glLineWidth(1.0f);
+			render::DrawLineLoopStipple(borderVecs, 4, stippleWidth, 3);
+			glLineWidth(DefaultLineWidth);
+		}
+	}
+
 	static void DrawControls(GameState &state) {
 		//
 		// Controls Background
@@ -1281,17 +1390,36 @@ namespace game {
 		glVertex2f(ControlsOriginX + lineWidthWorld, ControlsOriginY + lineWidthWorld);
 		glVertex2f(ControlsOriginX + ControlsWidth - lineWidthWorld, ControlsOriginY + lineWidthWorld);
 		glEnd();
-		glLineWidth(2);
+		glLineWidth(DefaultLineWidth);
 
-		float buttonPadding = lineWidthWorld + (MaxTileSize * 0.15f);
-		float buttonHeight = ControlsHeight - buttonPadding * 2.0f;
-
+		// Tower buttons
+		float buttonPadding = MaxTileSize * 0.1f;
+		float buttonMargin = lineWidthWorld + (MaxTileSize * 0.15f);
+		float buttonHeight = ControlsHeight - buttonMargin * 2.0f;
 		Vec2f buttonRadius = V2f(buttonHeight * 0.5f);
-		Vec2f buttonExt = ui::GetUIButtonExt(buttonRadius);
-		if(ui::UIButton(state.ui, "Tower", V2f(ControlsOriginX + buttonPadding + buttonExt.w, ControlsOriginY + buttonPadding + buttonExt.h), buttonRadius)) {
-			fplDebugFormatOut("Tower button pressed");
+		Vec2f buttonOutputRadius = ui::GetUIButtonExt(buttonRadius);
+		for(int towerIndex = 0; towerIndex < FPL_ARRAYCOUNT(TowerDefinitions); ++towerIndex) {
+			void *buttonId = (void *)&TowerDefinitions[towerIndex]; // Totally dont care about const removal here
+			float buttonX = ControlsOriginX + buttonMargin + (towerIndex * (buttonOutputRadius.w * 2.0f) + (FPL_MAX(0, towerIndex - 1) * buttonPadding));
+			float buttonY = ControlsOriginY + buttonMargin;
+			if(ui::UIButton(state.ui, buttonId, V2f(buttonX + buttonRadius.w, buttonY + buttonRadius.h), buttonRadius, DrawTowerControl, (void *)(uintptr_t)towerIndex)) {
+				state.towers.selectedIndex = towerIndex;
+			}
 		}
+
+		if(state.towers.selectedIndex > -1) {
+			const FontAsset &font = state.assets.hudFont;
+			float fontHeight = MaxTileSize * 0.4f;
+			const TowerData &towerData = TowerDefinitions[state.towers.selectedIndex];
+			Vec2f textPos = V2f(ControlsOriginX + ControlsWidth - lineWidthWorld - buttonMargin, ControlsOriginY + ControlsHeight);
+			char textBuffer[256];
+			fplFormatAnsiString(textBuffer, FPL_ARRAYCOUNT(textBuffer), "[ %s ]", towerData.id);
+			glColor4fv(&TextForeColor.m[0]);
+			DrawTextFont(textBuffer, fplGetAnsiStringLength(textBuffer), &font.desc, font.texture, textPos.x, textPos.y, fontHeight, -1.0f, 0.0f);
+		}
+
 	}
+
 }
 
 extern GameMemory GameCreate() {
@@ -1332,7 +1460,7 @@ extern void GameInput(GameMemory &gameMemory, const Input &input) {
 	}
 	GameState *state = (GameState *)gameMemory.base;
 
-	ui::UIBegin(state->ui, input, state->mouseWorldPos);
+	ui::UIBegin(state->ui, state, input, state->mouseWorldPos);
 
 	// Debug input
 	const Controller &keyboardController = input.controllers[0];
@@ -1357,7 +1485,7 @@ extern void GameInput(GameMemory &gameMemory, const Input &input) {
 		state->mouseTilePos = WorldToTile(state->mouseWorldPos);
 
 		// Tower placement
-		if(WasPressed(input.mouse.left) && !ui::UIIsActive(state->ui)) {
+		if(WasPressed(input.mouse.left) && !ui::UIIsHot(state->ui)) {
 			if(state->towers.selectedIndex > -1) {
 				const TowerData *tower = &TowerDefinitions[state->towers.selectedIndex];
 				if(towers::CanPlaceTower(*state, state->mouseTilePos, tower) == towers::CanPlaceTowerResult::Success) {
@@ -1614,7 +1742,7 @@ extern void GameRender(GameMemory &gameMemory, CommandBuffer &renderCommands, co
 		if(placeRes == towers::CanPlaceTowerResult::Success || placeRes == towers::CanPlaceTowerResult::NotEnoughMoney) {
 			float alpha = placeRes == towers::CanPlaceTowerResult::Success ? 0.5f : 0.2f;
 			Vec2f towerCenter = TileToWorld(state->mouseTilePos, TileExt);
-			towers::DrawTower(state->assets, state->camera, *tower, towerCenter, Pi32 * 0.5f, alpha, true);
+			towers::DrawTower(state->assets, state->camera, *tower, towerCenter, V2f(MaxTileRadius), Pi32 * 0.5f, alpha, true);
 		}
 
 		render::DrawTile(state->mouseTilePos.x, state->mouseTilePos.y, false, hoverColor);
@@ -1681,7 +1809,7 @@ extern void GameRender(GameMemory &gameMemory, CommandBuffer &renderCommands, co
 				glVertex2f(barX, barY);
 				glVertex2f(barX + barWidth, barY);
 				glEnd();
-				glLineWidth(2);
+				glLineWidth(DefaultLineWidth);
 			}
 
 			enemy.prevPosition = enemy.position;
@@ -1693,7 +1821,7 @@ extern void GameRender(GameMemory &gameMemory, CommandBuffer &renderCommands, co
 	//
 	for(size_t towerIndex = 0; towerIndex < state->towers.count; ++towerIndex) {
 		const Tower &tower = state->towers.list[towerIndex];
-		towers::DrawTower(state->assets, state->camera, *tower.data, tower.position, tower.facingAngle, 1.0f, false);
+		towers::DrawTower(state->assets, state->camera, *tower.data, tower.position, V2f(MaxTileRadius), tower.facingAngle, 1.0f, false);
 
 		if(state->isDebugRendering) {
 			if(tower.hasTarget) {
@@ -1724,7 +1852,7 @@ extern void GameRender(GameMemory &gameMemory, CommandBuffer &renderCommands, co
 						glVertex2f(tower.position.x, tower.position.y);
 						glVertex2f(sightPos2.x, sightPos2.y);
 						glEnd();
-						glLineWidth(2);
+						glLineWidth(DefaultLineWidth);
 					}
 				}
 			}
@@ -1743,6 +1871,10 @@ extern void GameRender(GameMemory &gameMemory, CommandBuffer &renderCommands, co
 			bullet.prevPosition = bullet.position;
 		}
 	}
+
+	//
+	// Selected tower text
+	//
 
 	//
 	// Overlay

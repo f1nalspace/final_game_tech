@@ -15,12 +15,15 @@ constexpr float WorldHeight = WorldWidth / GameAspect;
 constexpr float WorldRadiusW = WorldWidth * 0.5f;
 constexpr float WorldRadiusH = WorldHeight * 0.5f;
 
+constexpr float DefaultLineWidth = 2.0f;
+
 constexpr int TileCountX = 21;
 constexpr int TileCountY = 11;
 constexpr float TileWidth = WorldWidth / (float)TileCountX;
 constexpr float TileHeight = WorldHeight / (float)(TileCountY + 1);
 const Vec2f TileExt = V2f(TileWidth, TileHeight) * 0.5f;
 constexpr float MaxTileSize = FPL_MAX(TileWidth, TileHeight);
+constexpr float MaxTileRadius = MaxTileSize * 0.5f;
 constexpr int TotalTileCount = TileCountX * TileCountY;
 
 constexpr float ControlsWidth = WorldWidth;
@@ -47,6 +50,7 @@ struct UIContext {
 	UIInput input;
 	UIID hot;
 	UIID active;
+	struct GameState *gameState;
 };
 
 struct TilesetInfo {
