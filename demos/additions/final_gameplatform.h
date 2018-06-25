@@ -220,8 +220,8 @@ static void ProcessEvents(Input *currentInput, Input *prevInput, GameWindowActiv
 	}
 }
 
-static void RenderCommandsByOpenGL() {
-
+static void RenderCommandsByOpenGL(CommandBuffer &renderCommands) {
+	
 }
 
 extern int GameMain(const GameConfiguration &config) {
@@ -268,6 +268,7 @@ extern int GameMain(const GameConfiguration &config) {
 		double fpsTimerInSecs = fplGetTimeInSecondsHP();
 		double frameAccumulator = TargetDeltaTime;
 		double lastFramesPerSecond = 0.0;
+		double lastFrameTime = 0.0;
 
 		InitCommandBuffer(renderCommands, renderCommandMemory);
 		while(!IsGameExiting(gameMem) && fplWindowUpdate()) {
@@ -325,8 +326,12 @@ extern int GameMain(const GameConfiguration &config) {
 
 			// Game Update
 			if(config.noUpdateRenderSeparation) {
-				// @TODO(final): Compute interpolation alpha
-				float alpha = 1.0f;
+				float alpha;
+				if(lastFrameTime > 0) {
+					alpha = 1.0f - (float)(lastFrameTime / TargetDeltaTime);
+				} else {
+					alpha = 1.0f;
+				}
 				GameUpdateAndRender(gameMem, *curInput, renderCommands, alpha);
 			} else {
 				GameInput(gameMem, *curInput);
@@ -335,14 +340,14 @@ extern int GameMain(const GameConfiguration &config) {
 					GameUpdate(gameMem, *curInput);
 					frameAccumulator -= TargetDeltaTime;
 					++updateCount;
-				}
+			}
 #else
 				GameUpdate(gameMem, *curInput);
 				++updateCount;
 #endif
-				}
+		}
 
-					// @TODO(final): Yield thread when we are running too fast
+			// @TODO(final): Yield thread when we are running too fast
 			double endWorkTime = fplGetTimeInSecondsHP();
 			double workDuration = endWorkTime - lastTime;
 
@@ -357,9 +362,12 @@ extern int GameMain(const GameConfiguration &config) {
 			// Timing
 			double endTime = fplGetTimeInSecondsHP();
 			double frameDuration = endTime - lastTime;
+			lastFrameTime = frameDuration;
 			lastFramesPerSecond = 1.0f / frameDuration;
-			frameAccumulator += frameDuration;
-			frameAccumulator = FPL_MIN(0.1, frameAccumulator);
+			if(!config.noUpdateRenderSeparation) {
+				frameAccumulator += frameDuration;
+				frameAccumulator = FPL_MIN(0.1, frameAccumulator);
+	}
 			lastTime = endTime;
 			if(endTime >= (fpsTimerInSecs + 1.0)) {
 				fpsTimerInSecs = endTime;
@@ -378,19 +386,21 @@ extern int GameMain(const GameConfiguration &config) {
 				curInput = prevInput;
 				prevInput = tmp;
 			}
-			}
+}
 
 		if(config.hideMouseCursor) {
 			fplSetWindowCursorEnabled(true);
 		}
 
 		GameDestroy(gameMem);
-		}
+	}
+
+	fmemFree(&renderCommandMemory);
 
 	fplPlatformRelease();
 
 	int result = wasError ? -1 : 0;
 	return (result);
-	}
+}
 
 #endif // FINAL_GAMEPLATFORM_IMPLEMENTATION
