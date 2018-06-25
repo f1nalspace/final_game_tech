@@ -79,7 +79,7 @@ extern void DrawTextFont(const char *text, const size_t textLen, const LoadedFon
 			if(codePoint >= 0 && codePoint < fontDesc->charCount) {
 				const FontGlyph *glyph = &fontDesc->glyphs[codePoint];
 				Vec2f offset = V2f(xpos, ypos);
-				offset += V2f(glyph->charSize.x * glyph->alignPercentage.x, glyph->charSize.y * glyph->alignPercentage.y) * maxCharHeight;
+				offset += Vec2Hadamard(glyph->charSize, glyph->alignPercentage) * textHeight;
 				Vec2f size = V2f(glyph->charSize.x, glyph->charSize.y) * maxCharHeight;
 				DrawSprite(fontTexture, size.x * 0.5f, size.y * 0.5f, glyph->uvMin.x, glyph->uvMin.y, glyph->uvMax.x, glyph->uvMax.y, offset.x, offset.y);
 				uint32_t nextCodePoint = (atNext > 0) ? atNext - fontDesc->firstChar : 0;
