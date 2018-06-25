@@ -316,6 +316,21 @@ inline Vec2f& operator*=(Vec2f &a, float value) {
 	a = a * value;
 	return(a);
 }
+
+inline Vec2f operator/(const Vec2f &a, float b) {
+	Vec2f result = V2f(a.x / b, a.y / b);
+	return(result);
+}
+inline Vec2f operator/(float b, const Vec2f &a) {
+	Vec2f result = V2f(a.x / b, a.y / b);
+	return(result);
+}
+inline Vec2f& operator/=(Vec2f &a, float value) {
+	a = a / value;
+	return(a);
+}
+
+
 inline Vec2f operator-(const Vec2f &a) {
 	Vec2f result = V2f(-a.x, -a.y);
 	return(result);
