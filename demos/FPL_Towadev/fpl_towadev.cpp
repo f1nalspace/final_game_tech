@@ -92,7 +92,7 @@ Changelog:
 #include <final_dynamic_opengl.h>
 
 #define FINAL_FONTLOADER_IMPLEMENTATION
-#define FINAL_FONTLOADER_BETTERQUALITY 0
+#define FINAL_FONTLOADER_BETTERQUALITY 1
 #include <final_fontloader.h>
 
 #define FMEM_IMPLEMENTATION
@@ -1224,13 +1224,14 @@ namespace game {
 
 	static void LoadAssets(Assets &assets) {
 		char fontDataPath[1024];
-
 		const char *fontFilename = "SulphurPoint-Bold.otf";
 		fplPathCombine(fontDataPath, FPL_ARRAYCOUNT(fontDataPath), 2, assets.dataPath, "fonts");
-		if(LoadFontFromFile(fontDataPath, fontFilename, 0, 36.0f, 32, 127, 256, 256, &assets.hudFont.desc)) {
+		//const char *fontDataPath = "c:\\windows\\fonts";
+		//const char *fontFilename = "times.ttf";
+		if(LoadFontFromFile(fontDataPath, fontFilename, 0, 36.0f, 32, 128, 512, 512, false, &assets.hudFont.desc)) {
 			assets.hudFont.texture = AllocateTexture(assets.hudFont.desc.atlasWidth, assets.hudFont.desc.atlasHeight, assets.hudFont.desc.atlasAlphaBitmap, false, GL_LINEAR, true);
 		}
-		if(LoadFontFromFile(fontDataPath, fontFilename, 0, 240.0f, 32, 127, 4096, 4096, &assets.overlayFont.desc)) {
+		if(LoadFontFromFile(fontDataPath, fontFilename, 0, 240.0f, 32, 128, 4096, 4096, false, &assets.overlayFont.desc)) {
 			assets.overlayFont.texture = AllocateTexture(assets.overlayFont.desc.atlasWidth, assets.overlayFont.desc.atlasHeight, assets.overlayFont.desc.atlasAlphaBitmap, false, GL_LINEAR, true);
 		}
 
@@ -1411,7 +1412,7 @@ namespace game {
 			const FontAsset &font = state.assets.hudFont;
 			float fontHeight = MaxTileSize * 0.4f;
 			const TowerData &towerData = TowerDefinitions[state.towers.selectedIndex];
-			Vec2f textPos = V2f(ControlsOriginX + ControlsWidth - lineWidthWorld - buttonMargin, ControlsOriginY + ControlsHeight);
+			Vec2f textPos = V2f(ControlsOriginX + ControlsWidth - lineWidthWorld - buttonMargin, ControlsOriginY + ControlsHeight * 0.5f);
 			char textBuffer[256];
 			fplFormatAnsiString(textBuffer, FPL_ARRAYCOUNT(textBuffer), "[ %s ]", towerData.id);
 			glColor4fv(&TextForeColor.m[0]);
@@ -1660,6 +1661,25 @@ extern void GameRender(GameMemory &gameMemory, CommandBuffer &renderCommands, co
 	glLoadIdentity();
 	glOrtho(-w * invScale, w * invScale, -h * invScale, h * invScale, 0.0f, 1.0f);
 
+#if 0
+	// Font rendering test
+	glLineWidth(1.0f);
+	glColor4f(0, 1, 0, 1);
+	glBegin(GL_LINES);
+	glVertex2f(w, 0);
+	glVertex2f(-w, 0);
+	glVertex2f(0, h);
+	glVertex2f(0, -h);
+	glEnd();
+	glLineWidth(DefaultLineWidth);
+
+	const FontAsset *fontAsset = &state->assets.hudFont;
+	const char *text = "Hello World!";
+	glColor4f(1, 1, 1, 1);
+	DrawTextFont(text, fplGetAnsiStringLength(text), &fontAsset->desc, fontAsset->texture, 0.0f, 0.0f, MaxTileSize * 2.0f, 0.0f, 1.0f);
+#endif
+
+#if 1
 	glMatrixMode(GL_MODELVIEW);
 	glLoadIdentity();
 	glTranslatef(state->camera.offset.x, state->camera.offset.y, 0);
@@ -1921,6 +1941,7 @@ extern void GameRender(GameMemory &gameMemory, CommandBuffer &renderCommands, co
 	//
 	game::DrawHUD(*state);
 	game::DrawControls(*state);
+#endif
 }
 
 extern void GameUpdateAndRender(GameMemory &gameMemory, const Input &input, CommandBuffer &renderCommands, const float alpha) {
