@@ -3,14 +3,19 @@
 Name:
 	FPL-Demo | ImageViewer
 Description:
-	Very simple opengl based image viewer
+	Very simple opengl based image viewer.
+	Loads up pictures in multiple threads using a lock-free MPMC queue.
+	Texture Allocate/Release is done in the main thread.
 Requirements:
 	- C99 Compiler
 	- Final Dynamic OpenGL
+	- Final Memory
 	- STBimage
 Author:
 	Torsten Spaete
 Changelog:
+	## 2018-06-26
+	- Multithreaded MPMC picture load
 	## 2018-06-23
 	- Initial version
 -------------------------------------------------------------------------------
@@ -27,66 +32,206 @@ Changelog:
 
 #include <string.h>
 #include <assert.h>
+#include <malloc.h>
 
-#define MAX_PICTURE_FILE_COUNT 1024
 typedef struct PictureFile {
 	char filename[FPL_MAX_FILENAME_LENGTH];
+	struct PictureFile *next;
 } PictureFile;
 
-typedef enum PictureFormatType {
-	PictureFormatType_None = 0,
-	PictureFormatType_RGB8,
-	PictureFormatType_RGBA8,
-} PictureFormatType;
+typedef enum LoadedPictureStateType {
+	LoadedPictureState_Error = -1,
+	LoadedPictureState_Unloaded = 0,
+	LoadedPictureState_LoadingData,
+	LoadedPictureState_ToUpload,
+	LoadedPictureState_Discard,
+	LoadedPictureState_Ready,
+} LoadedPictureStateType;
 
-typedef struct ActivePicture {
+typedef int32_t LoadedPictureState;
+
+typedef struct LoadedPicture {
 	char filePath[FPL_MAX_PATH_LENGTH];
-	size_t index;
+	uint8_t *data;
+	size_t fileIndex;
 	uint32_t width;
 	uint32_t height;
+	uint32_t components;
 	GLuint textureId;
-	bool isLoaded;
-} ActivePicture;
+	volatile LoadedPictureState state;
+} LoadedPicture;
+
+typedef struct PictureLoadThread {
+	struct ViewerState *state;
+	fplMutexHandle mutex;
+	fplConditionVariable cond;
+	fplThreadHandle *thread;
+	volatile bool shutdown;
+} PictureLoadThread;
+
+#define MAX_LOADED_SIDE_PICTURE_COUNT 6
+#define MAX_LOADED_PICTURE_COUNT MAX_LOADED_SIDE_PICTURE_COUNT + 1 + MAX_LOADED_SIDE_PICTURE_COUNT
+#define MAX_LOAD_QUEUE_COUNT 32
+#define MAX_LOAD_THREAD_COUNT 4
+
+FPL_STATICASSERT(MAX_LOAD_QUEUE_COUNT >= MAX_LOADED_PICTURE_COUNT);
+
+typedef struct LoadQueueValue {
+	int fileIndex;
+	int pictureIndex;
+} LoadQueueValue;
+
+typedef struct LoadQueueEntry {
+	LoadQueueValue value;
+	volatile size_t seq;
+} LoadQueueEntry;
+
+// Queue based on: https://github.com/mstump/queues/blob/master/include/mpmc-bounded-queue.hpp
+#define CACHE_LINE_SIZE 64
+typedef char CacheLinePad[CACHE_LINE_SIZE];
+typedef struct LoadQueue {
+	CacheLinePad pad0;
+	size_t size;
+	size_t mask;
+	LoadQueueEntry buffer[MAX_LOAD_QUEUE_COUNT];
+	CacheLinePad pad1;
+	volatile size_t headSeq;
+	CacheLinePad pad2;
+	volatile size_t tailSeq;
+	CacheLinePad pad3;
+	volatile int shutdown;
+	CacheLinePad pad4;
+} LoadQueue;
 
 typedef struct ViewerState {
 	char picturesPath[FPL_MAX_PATH_LENGTH];
-	PictureFile pictureFiles[MAX_PICTURE_FILE_COUNT];
-	ActivePicture activePicture;
+	PictureFile *pictureFiles;
+	size_t pictureFileCapacity;
 	size_t pictureFileCount;
+	int activeFileIndex;
+
+	LoadedPicture loadedPictures[MAX_LOADED_PICTURE_COUNT];
+	int viewPictureIndex;
+
+	PictureLoadThread loadThreadData[MAX_LOAD_THREAD_COUNT];
+	fplThreadHandle *loadThreads[MAX_LOAD_THREAD_COUNT];
+
+	LoadQueue loadQueue;
 } ViewerState;
+
+static void InitQueue(LoadQueue *queue) {
+	FPL_CLEAR_STRUCT(queue);
+	queue->size = MAX_LOAD_QUEUE_COUNT;
+	queue->mask = queue->size - 1;
+	queue->headSeq = queue->tailSeq = 0;
+	for(int i = 0; i < queue->size; ++i) {
+		queue->buffer[i].seq = i;
+	}
+}
+
+static void ShutdownQueue(LoadQueue *queue) {
+	queue->shutdown = 1;
+}
+
+static bool TryQueueEnqueue(volatile LoadQueue *queue, const LoadQueueValue value) {
+	assert((queue->size != 0) && ((queue->size & (~queue->size + 1)) == queue->size));
+	size_t headSeq = fplAtomicLoadSize(&queue->headSeq);
+	while(!queue->shutdown) {
+		size_t index = headSeq & queue->mask;
+		volatile LoadQueueEntry *entry = &queue->buffer[index];
+		size_t entrySeq = fplAtomicLoadSize(&entry->seq);
+		intptr_t dif = (intptr_t)entrySeq - (intptr_t)headSeq;
+		if(dif == 0) {
+			if(fplIsAtomicCompareAndExchangeSize(&queue->headSeq, headSeq, headSeq + 1)) {
+				entry->value = value;
+				fplAtomicStoreSize(&entry->seq, headSeq + 1);
+				return(true);
+			}
+		} else if(dif < 0) {
+			return(false);
+		} else {
+			headSeq = fplAtomicLoadSize(&queue->headSeq);
+		}
+	}
+	return(false);
+}
+
+static bool TryQueueDequeue(volatile LoadQueue *queue, volatile LoadQueueValue *value) {
+	assert((queue->size != 0) && ((queue->size & (~queue->size + 1)) == queue->size));
+	size_t tailSeq = fplAtomicLoadSize(&queue->tailSeq);
+	while(!queue->shutdown) {
+		size_t index = tailSeq & queue->mask;
+		volatile LoadQueueEntry *entry = &queue->buffer[index];
+		size_t entrySeq = fplAtomicLoadSize(&entry->seq);
+		intptr_t dif = (intptr_t)entrySeq - (intptr_t)(tailSeq + 1);
+		if(dif == 0) {
+			if(fplIsAtomicCompareAndExchangeSize(&queue->tailSeq, tailSeq, tailSeq + 1)) {
+				*value = entry->value;
+				fplAtomicStoreSize(&entry->seq, tailSeq + queue->mask + 1);
+				return(true);
+			}
+		} else if(dif < 0) {
+			return(false);
+		} else {
+			tailSeq = fplAtomicLoadSize(&queue->tailSeq);
+		}
+	}
+	return(false);
+}
 
 static bool IsImageFile(const char *filePath) {
 	const char *ext = fplExtractFileExtension(filePath);
-	bool result = (_stricmp(ext, ".jpg") == 0) || (_stricmp(ext, ".jpeg") == 0) || (_stricmp(ext, ".png") == 0) || (_stricmp(ext, ".bmp") == 0);
+	bool result;
+	if(ext != fpl_null) {
+		result = (_stricmp(ext, ".jpg") == 0) || (_stricmp(ext, ".jpeg") == 0) || (_stricmp(ext, ".png") == 0) || (_stricmp(ext, ".bmp") == 0);
+	} else {
+		result = false;
+	}
 	return(result);
 }
 
-static void PushPictureFile(ViewerState *state, const fplFileEntry *entry) {
-	assert(state->pictureFileCount < FPL_ARRAYCOUNT(state->pictureFiles));
+static void ClearPictures(ViewerState *state) {
+	if(state->pictureFiles != fpl_null) {
+		free(state->pictureFiles);
+		state->pictureFiles = fpl_null;
+	}
+	state->pictureFileCount = 0;
+	state->pictureFileCapacity = 0;
+	state->picturesPath[0] = 0;
+}
+
+static void AddPictureFile(ViewerState *state, const fplFileEntry *entry) {
+	assert(state->pictureFileCount <= state->pictureFileCapacity);
+	if(state->pictureFileCapacity == 0) {
+		state->pictureFileCapacity = 1;
+		state->pictureFiles = malloc(sizeof(PictureFile) * state->pictureFileCapacity);
+	} else if(state->pictureFileCount == state->pictureFileCapacity) {
+		state->pictureFileCapacity *= 2;
+		state->pictureFiles = realloc(state->pictureFiles, sizeof(PictureFile) * state->pictureFileCapacity);
+	}
 	PictureFile *pictureFile = &state->pictureFiles[state->pictureFileCount++];
 	const char *filename = fplExtractFileName(entry->fullPath);
 	fplCopyAnsiString(filename, pictureFile->filename, FPL_ARRAYCOUNT(pictureFile->filename));
 }
 
 static bool LoadPicturesPath(ViewerState *state, const char *path) {
-	state->pictureFileCount = 0;
-	state->picturesPath[0] = 0;
-	if (fplDirectoryExists(path)) {
+	ClearPictures(state);
+	if(fplDirectoryExists(path)) {
 		fplCopyAnsiString(path, state->picturesPath, FPL_ARRAYCOUNT(state->picturesPath));
 		fplFileEntry entry;
-		if (fplListDirBegin(path, "*", &entry)) {
-			if (IsImageFile(entry.fullPath)) {
-				PushPictureFile(state, &entry);
+		if(fplListDirBegin(path, "*", &entry)) {
+			if(entry.type == fplFileEntryType_File && IsImageFile(entry.fullPath)) {
+				AddPictureFile(state, &entry);
 			}
-			while (fplListDirNext(&entry)) {
-				if (IsImageFile(entry.fullPath)) {
-					PushPictureFile(state, &entry);
+			while(fplListDirNext(&entry)) {
+				if(entry.type == fplFileEntryType_File && IsImageFile(entry.fullPath)) {
+					AddPictureFile(state, &entry);
 				}
 			}
 			fplListDirEnd(&entry);
 		}
-	} else if (fplFileExists(path)) {
-		if (IsImageFile(path)) {
+	} else if(fplFileExists(path)) {
+		if(IsImageFile(path)) {
 			fplExtractFilePath(path, state->picturesPath, FPL_ARRAYCOUNT(state->picturesPath));
 			state->pictureFileCount = 1;
 			const char *filename = fplExtractFileName(path);
@@ -135,49 +280,148 @@ static GLuint AllocateTexture(const uint32_t width, const uint32_t height, const
 	return(handle);
 }
 
-static void LoadPicture(ViewerState *state, const size_t index) {
-	fplDebugFormatOut("-------------------\n");
-
-	double s, e;
-
-	assert(state->picturesPath != fpl_null);
-	assert(index >= 0 && index < state->pictureFileCount);
-	if (state->activePicture.isLoaded) {
-		s = fplGetTimeInMillisecondsHP();
-		ReleaseTexture(&state->activePicture.textureId);
-		state->activePicture.filePath[0] = 0;
-		state->activePicture.isLoaded = false;
-		e = fplGetTimeInMillisecondsHP();
-		fplDebugFormatOut("Release: %f ms\n", (e - s));
+static void ShutdownLoadThreads(ViewerState *state) {
+	size_t threadCount = FPL_ARRAYCOUNT(state->loadThreads);
+	for(size_t i = 0; i < threadCount; ++i) {
+		state->loadThreadData[i].shutdown = true;
+		fplConditionSignal(&state->loadThreadData[i].cond);
 	}
-	PictureFile *picFile = &state->pictureFiles[index];
-	assert(picFile->filename != fpl_null);
-	fplPathCombine(state->activePicture.filePath, FPL_ARRAYCOUNT(state->activePicture.filePath), 2, state->picturesPath, picFile->filename);
+	fplThreadWaitForAll(state->loadThreads, threadCount, 3000);
+}
 
-	int w, h, comp;
-	s = fplGetTimeInMillisecondsHP();
-	uint8_t *data = stbi_load(state->activePicture.filePath, &w, &h, &comp, 0);
-	e = fplGetTimeInMillisecondsHP();
-	fplDebugFormatOut("Load: %f ms\n", (e - s));
-	if (data != fpl_null) {
-		assert(w > 0 && h > 0 && comp > 0);
-		s = fplGetTimeInMillisecondsHP();
-		state->activePicture.textureId = AllocateTexture(w, h, comp, data, false, GL_LINEAR);
-		e = fplGetTimeInMillisecondsHP();
-		state->activePicture.width = w;
-		state->activePicture.height = h;
-		state->activePicture.index = index;
-		state->activePicture.isLoaded = true;
-		fplDebugFormatOut("Upload: %f ms\n", (e - s));
-		s = fplGetTimeInMillisecondsHP();
-		stbi_image_free(data);
-		e = fplGetTimeInMillisecondsHP();
-		fplDebugFormatOut("Free: %f\n", (e - s));
+
+
+static void LoadPictureThreadProc(const fplThreadHandle *thread, void *data) {
+	PictureLoadThread *loadThread = (PictureLoadThread *)data;
+	ViewerState *state = loadThread->state;
+	volatile LoadQueueValue valueToLoad = FPL_ZERO_INIT;
+	volatile bool hasValue = false;
+	while(!loadThread->shutdown) {
+		fplConditionWait(&loadThread->cond, &loadThread->mutex, 50);
+		if(loadThread->shutdown) {
+			break;
+		}
+
+		if(!hasValue) {
+			if(TryQueueDequeue(&state->loadQueue, &valueToLoad)) {
+				hasValue = true;
+			}
+		}
+
+		if(hasValue) {
+			assert(valueToLoad.fileIndex >= 0 && valueToLoad.fileIndex < state->pictureFileCount);
+			assert(valueToLoad.pictureIndex >= 0 && valueToLoad.pictureIndex < FPL_ARRAYCOUNT(state->loadedPictures));
+			LoadedPicture *loadedPic = &state->loadedPictures[valueToLoad.pictureIndex];
+			const PictureFile *picFile = &state->pictureFiles[valueToLoad.fileIndex];
+			if(loadedPic->state == LoadedPictureState_Discard) {
+				continue;
+			}
+			if(loadedPic->state == LoadedPictureState_Unloaded) {
+				fplAtomicStoreS32(&loadedPic->state, LoadedPictureState_LoadingData);
+
+				loadedPic->fileIndex = valueToLoad.fileIndex;
+				assert(picFile->filename != fpl_null);
+				fplPathCombine(loadedPic->filePath, FPL_ARRAYCOUNT(loadedPic->filePath), 2, state->picturesPath, picFile->filename);
+				loadedPic->width = loadedPic->height = 0;
+				loadedPic->data = fpl_null;
+				loadedPic->components = 0;
+
+				fplDebugFormatOut("Load picture '%s'[%d]\n", loadedPic->filePath, loadedPic->fileIndex);
+
+				int w, h, comp;
+				uint8_t *data = stbi_load(loadedPic->filePath, &w, &h, &comp, 4);
+				if(data != fpl_null) {
+					loadedPic->width = w;
+					loadedPic->height = h;
+					loadedPic->components = 4;
+					loadedPic->data = data;
+					fplAtomicStoreS32(&loadedPic->state, LoadedPictureState_ToUpload);
+				} else {
+					fplAtomicStoreS32(&loadedPic->state, LoadedPictureState_Error);
+				}
+			}
+			hasValue = false;
+		}
+	}
+}
+
+static void DiscardAll(ViewerState *state) {
+	for(int i = 0; i < FPL_ARRAYCOUNT(state->loadedPictures); ++i) {
+		if(state->loadedPictures[i].state != LoadedPictureState_Unloaded) {
+			fplAtomicStoreS32(&state->loadedPictures[i].state, LoadedPictureState_Discard);
+		}
+	}
+}
+
+static void ChangeViewPicture(ViewerState *state, const int offset, const bool forceReload) {
+	if(state->pictureFileCount == 0) {
+		assert(state->viewPictureIndex == -1);
+		assert(state->activeFileIndex == -1);
+		return;
+	}
+	int capacity = FPL_ARRAYCOUNT(state->loadedPictures);
+	bool loadPictures = false;
+	int viewIndex = state->viewPictureIndex;
+	if(state->viewPictureIndex == -1 || forceReload) {
+		viewIndex = capacity / 2;
+		DiscardAll(state);
+		loadPictures = true;
+	} else {
+		viewIndex = state->viewPictureIndex + offset;
+		if(viewIndex < 0 || viewIndex == capacity) {
+			viewIndex = capacity / 2;
+			DiscardAll(state);
+			loadPictures = true;
+		}
+	}
+	state->viewPictureIndex = viewIndex;
+
+	state->activeFileIndex = FPL_MAX(FPL_MIN(state->activeFileIndex + offset, (int)state->pictureFileCount - 1), 0);
+
+
+	if(loadPictures) {
+		assert(state->viewPictureIndex == (FPL_ARRAYCOUNT(state->loadedPictures) / 2));
+		assert(state->activeFileIndex >= 0 && state->activeFileIndex < (int)state->pictureFileCount);
+		int maxpreloadSideCount = FPL_ARRAYCOUNT(state->loadedPictures) / 2;
+		int preloadCountLeft;
+		int preloadCountRight;
+		if(state->activeFileIndex > 0) {
+			preloadCountLeft = FPL_MIN(state->activeFileIndex, maxpreloadSideCount);
+		} else {
+			preloadCountLeft = 0;
+		}
+		if(state->activeFileIndex < ((int)state->pictureFileCount - 1)) {
+			int diff = (int)state->pictureFileCount - state->activeFileIndex;
+			preloadCountRight = FPL_MAX(FPL_MIN(diff, maxpreloadSideCount), 0);
+		} else {
+			preloadCountRight = 0;
+		}
+		LoadQueueValue newValue;
+		newValue.fileIndex = state->activeFileIndex;
+		newValue.pictureIndex = state->viewPictureIndex;
+		TryQueueEnqueue(&state->loadQueue, newValue);
+		for(int i = 1; i <= preloadCountLeft; ++i) {
+			if((state->activeFileIndex - i) >= 0) {
+				newValue.fileIndex = state->activeFileIndex - i;
+				newValue.pictureIndex = state->viewPictureIndex - i;
+				TryQueueEnqueue(&state->loadQueue, newValue);
+			}
+		}
+		for(int i = 1; i <= preloadCountRight; ++i) {
+			if((state->activeFileIndex + i) < state->pictureFileCount) {
+				newValue.fileIndex = state->activeFileIndex + i;
+				newValue.pictureIndex = state->viewPictureIndex + i;
+				TryQueueEnqueue(&state->loadQueue, newValue);
+			}
+		}
+		for(size_t i = 0; i < FPL_ARRAYCOUNT(state->loadThreads); ++i) {
+			fplConditionSignal(&state->loadThreadData[i].cond);
+		}
 	}
 }
 
 int main(int argc, char **argv) {
-	if (argc < 2) {
+	if(argc < 2) {
 		return -1;
 	}
 
@@ -185,31 +429,78 @@ int main(int argc, char **argv) {
 	fplSettings settings;
 	fplSetDefaultSettings(&settings);
 	settings.video.driver = fplVideoDriverType_OpenGL;
-	if (fplPlatformInit(fplInitFlags_Video, &settings)) {
-		if (fglLoadOpenGL(true)) {
+	fplCopyAnsiString("FPL Demo - Image Viewer", settings.window.windowTitle, FPL_ARRAYCOUNT(settings.window.windowTitle));
+
+	if(fplPlatformInit(fplInitFlags_Video, &settings)) {
+		if(fglLoadOpenGL(true)) {
 
 			glClearColor(0, 0, 0, 1);
 			glEnable(GL_TEXTURE_RECTANGLE);
+			glEnable(GL_BLEND);
+			glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
 			ViewerState state = FPL_ZERO_INIT;
-			if (LoadPicturesPath(&state, argv[1])) {
-				LoadPicture(&state, 0);
+			state.viewPictureIndex = -1;
+			state.activeFileIndex = -1;
+
+			InitQueue(&state.loadQueue);
+
+			for(size_t i = 0; i < FPL_ARRAYCOUNT(state.loadThreads); ++i) {
+				assert(fplMutexInit(&state.loadThreadData[i].mutex));
+				assert(fplConditionInit(&state.loadThreadData[i].cond));
+				state.loadThreadData[i].state = &state;
+				state.loadThreads[i] = fplThreadCreate(LoadPictureThreadProc, &state.loadThreadData[i]);
 			}
 
-			while (fplWindowUpdate()) {
+			if(LoadPicturesPath(&state, argv[1])) {
+				state.activeFileIndex = 0;
+				ChangeViewPicture(&state, 0, true);
+			}
+
+			fplKey activeKey = fplKey_None;
+			uint64_t activeKeyStart = 0;
+			const int ActiveKeyThreshold = 150;
+			while(fplWindowUpdate()) {
+				// Events
 				fplEvent ev;
-				while (fplPollEvent(&ev)) {
-					switch (ev.type) {
+				while(fplPollEvent(&ev)) {
+					switch(ev.type) {
 						case fplEventType_Keyboard:
 						{
-							if (ev.keyboard.type == fplKeyboardEventType_KeyUp) {
-								if (ev.keyboard.mappedKey == fplKey_Left) {
-									if (state.activePicture.index > 0) {
-										LoadPicture(&state, state.activePicture.index - 1);
+							if(ev.keyboard.type == fplKeyboardEventType_KeyUp) {
+								activeKey = fplKey_None;
+								activeKeyStart = 0;
+								if(ev.keyboard.mappedKey == fplKey_Space) {
+									ChangeViewPicture(&state, 0, true);
+								} else if(ev.keyboard.mappedKey == fplKey_Left) {
+									if(state.activeFileIndex > 0) {
+										ChangeViewPicture(&state, -1, false);
 									}
-								} else if (ev.keyboard.mappedKey == fplKey_Right) {
-									if (state.activePicture.index < (state.pictureFileCount - 1)) {
-										LoadPicture(&state, state.activePicture.index + 1);
+								} else if(ev.keyboard.mappedKey == fplKey_Right) {
+									if(state.activeFileIndex < ((int)state.pictureFileCount - 1)) {
+										ChangeViewPicture(&state, +1, false);
+									}
+								}
+							} else if(ev.keyboard.type == fplKeyboardEventType_KeyDown) {
+								bool isActiveKeyRepeat;
+								if(activeKey != ev.keyboard.mappedKey) {
+									activeKey = ev.keyboard.mappedKey;
+									activeKeyStart = fplGetTimeInMillisecondsLP();
+									isActiveKeyRepeat = false;
+								} else {
+									isActiveKeyRepeat = (fplGetTimeInMillisecondsLP() - activeKeyStart) >= ActiveKeyThreshold;
+								}
+								if(ev.keyboard.mappedKey == fplKey_Left) {
+									if(activeKey == ev.keyboard.mappedKey && isActiveKeyRepeat) {
+										if(state.activeFileIndex > 0) {
+											ChangeViewPicture(&state, -1, false);
+										}
+									}
+								} else if(ev.keyboard.mappedKey == fplKey_Right) {
+									if(activeKey == ev.keyboard.mappedKey && isActiveKeyRepeat) {
+										if(state.activeFileIndex < ((int)state.pictureFileCount - 1)) {
+											ChangeViewPicture(&state, +1, false);
+										}
 									}
 								}
 							}
@@ -217,9 +508,35 @@ int main(int argc, char **argv) {
 					}
 				}
 
+				// Discard or upload textures
+				for(size_t i = 0; i < FPL_ARRAYCOUNT(state.loadedPictures); ++i) {
+					LoadedPicture *loadedPic = &state.loadedPictures[i];
+					if(loadedPic->state == LoadedPictureState_Discard) {
+						if(loadedPic->textureId > 0) {
+							fplDebugFormatOut("Release texture '%s'[%d]\n", loadedPic->filePath, loadedPic->fileIndex);
+							ReleaseTexture(&loadedPic->textureId);
+						}
+						loadedPic->state = LoadedPictureState_Unloaded;
+					} else if(loadedPic->state == LoadedPictureState_ToUpload) {
+						assert(loadedPic->textureId == 0);
+						assert(loadedPic->data != fpl_null);
+						assert(loadedPic->width > 0 && loadedPic->height > 0);
+						assert(loadedPic->components > 0);
+						fplDebugFormatOut("Allocate texture '%s'[%d] with size (%lu x %lu) and %lu components\n", loadedPic->filePath, loadedPic->fileIndex, loadedPic->width, loadedPic->height, loadedPic->components);
+						loadedPic->textureId = AllocateTexture(loadedPic->width, loadedPic->height, loadedPic->components, loadedPic->data, false, GL_LINEAR);
+						stbi_image_free(loadedPic->data);
+						loadedPic->data = fpl_null;
+						if(loadedPic->textureId > 0) {
+							fplAtomicStoreS32(&loadedPic->state, LoadedPictureState_Ready);
+						} else {
+							fplAtomicStoreS32(&loadedPic->state, LoadedPictureState_Error);
+						}
+					}
+				}
+
 				int w, h;
 				fplWindowSize winSize;
-				if (fplGetWindowArea(&winSize)) {
+				if(fplGetWindowArea(&winSize)) {
 					w = winSize.width;
 					h = winSize.height;
 				} else {
@@ -234,6 +551,14 @@ int main(int argc, char **argv) {
 				float screenW = (float)w;
 				float screenH = (float)h;
 
+				int blockCount = FPL_ARRAYCOUNT(state.loadedPictures);
+				float maxBlockW = (screenW * 0.75f);
+				float blockPadding = (maxBlockW / (float)blockCount) * 0.1f;
+				float blockH = (screenH * 0.05f);
+				float blockW = ((maxBlockW - ((float)(blockCount - 1) * blockPadding)) / (float)blockCount);
+				float blocksLeft = -(maxBlockW * 0.5f);
+				float blocksBottom = (-screenH * 0.5f + blockPadding);
+
 				glClear(GL_COLOR_BUFFER_BIT);
 
 				glViewport(0, 0, w, h);
@@ -243,48 +568,115 @@ int main(int argc, char **argv) {
 				glMatrixMode(GL_MODELVIEW);
 				glLoadIdentity();
 
-				float texW = (float)state.activePicture.width;
-				float texH = (float)state.activePicture.height;
-				float aspect = texH > 0 ? texW / texH : 0;
-				assert(aspect != 0);
+				if(state.viewPictureIndex > -1) {
+					assert(state.viewPictureIndex < FPL_ARRAYCOUNT(state.loadedPictures));
+					const LoadedPicture *loadedPic = &state.loadedPictures[state.viewPictureIndex];
+					if(loadedPic->state == LoadedPictureState_Ready) {
+						float texW = (float)loadedPic->width;
+						float texH = (float)loadedPic->height;
+						float aspect = texH > 0 ? texW / texH : 1;
+						assert(aspect != 0);
 
-				float targetHeight = screenW / aspect;
-				float viewWidth = screenW;
-				float viewHeight = screenH;
-				float viewX;
-				float viewY;
-				if (targetHeight > screenH) {
-					viewHeight = screenH;
-					viewWidth = screenH * aspect;
-					viewX = screenLeft + (screenW - viewWidth) * 0.5f;
-					viewY = screenBottom;
-				} else {
-					viewWidth = screenW;
-					viewHeight = screenW / aspect;
-					viewX = screenLeft;
-					viewY = screenBottom + (screenH - viewHeight) * 0.5f;
+						float viewWidth;
+						float viewHeight;
+						float viewX;
+						float viewY;
+						if(texW > screenW || texH > screenH) {
+							float targetHeight = screenW / aspect;
+							if(targetHeight > screenH) {
+								viewHeight = screenH;
+								viewWidth = screenH * aspect;
+								viewX = screenLeft + (screenW - viewWidth) * 0.5f;
+								viewY = screenBottom;
+							} else {
+								viewWidth = screenW;
+								viewHeight = screenW / aspect;
+								viewX = screenLeft;
+								viewY = screenBottom + (screenH - viewHeight) * 0.5f;
+							}
+						} else {
+							viewWidth = texW;
+							viewHeight = texH;
+							viewX = screenLeft + (screenW - viewWidth) * 0.5f;
+							viewY = screenBottom + (screenH - viewHeight) * 0.5f;
+						}
+						float viewLeft = viewX;
+						float viewRight = viewX + viewWidth;
+						float viewBottom = viewY;
+						float viewTop = viewY + viewHeight;
+
+						glBindTexture(GL_TEXTURE_RECTANGLE, loadedPic->textureId);
+						glColor4f(1, 1, 1, 1);
+						glBegin(GL_QUADS);
+						glTexCoord2f(texW, 0.0f); glVertex2f(viewRight, viewTop);
+						glTexCoord2f(0.0f, 0.0f); glVertex2f(viewLeft, viewTop);
+						glTexCoord2f(0.0f, texH); glVertex2f(viewLeft, viewBottom);
+						glTexCoord2f(texW, texH); glVertex2f(viewRight, viewBottom);
+						glEnd();
+						glBindTexture(GL_TEXTURE_RECTANGLE, 0);
+					}
 				}
-				float viewLeft = viewX;
-				float viewRight = viewX + viewWidth;
-				float viewBottom = viewY;
-				float viewTop = viewY + viewHeight;
 
-				glBindTexture(GL_TEXTURE_RECTANGLE, state.activePicture.textureId);
-				glColor4f(1, 1, 1, 1);
-				glBegin(GL_QUADS);
-				glTexCoord2f(texW, 0.0f); glVertex2f(viewRight, viewTop);
-				glTexCoord2f(0.0f, 0.0f); glVertex2f(viewLeft, viewTop);
-				glTexCoord2f(0.0f, texH); glVertex2f(viewLeft, viewBottom);
-				glTexCoord2f(texW, texH); glVertex2f(viewRight, viewBottom);
-				glEnd();
-				glBindTexture(GL_TEXTURE_RECTANGLE, 0);
+				for(int i = 0; i < blockCount; ++i) {
+					float bx = blocksLeft + (float)i * blockW + ((float)i * blockPadding);
+					float by = blocksBottom;
+					const LoadedPicture *loadedPic = &state.loadedPictures[i];
 
+					if(loadedPic->state != LoadedPictureState_Unloaded) {
+						switch(loadedPic->state) {
+							case LoadedPictureState_LoadingData:
+								glColor4f(0, 0, 1, 0.5f);
+								break;
+							case LoadedPictureState_Ready:
+								glColor4f(0, 1, 0, 0.5f);
+								break;
+							case LoadedPictureState_ToUpload:
+								glColor4f(0, 0.5f, 0.5f, 0.5f);
+								break;
+							case LoadedPictureState_Discard:
+								glColor4f(0.75f, 0.25f, 0.0f, 0.5f);
+								break;
+							case LoadedPictureState_Error:
+								glColor4f(1.0, 0.0f, 0.0f, 0.5f);
+								break;
+							default:
+								assert(!"Invalid loaded picture state!");
+								break;
+						}
+						glBegin(GL_QUADS);
+						glVertex2f(bx + blockW, by + blockW);
+						glVertex2f(bx, by + blockW);
+						glVertex2f(bx, by);
+						glVertex2f(bx + blockW, by);
+						glEnd();
+					}
+
+					if(i == state.viewPictureIndex) {
+						glColor4f(0, 1, 0, 1);
+					} else {
+						glColor4f(1, 1, 1, 0.5f);
+					}
+					glLineWidth(2);
+					glBegin(GL_LINE_LOOP);
+					glVertex2f(bx + blockW, by + blockW);
+					glVertex2f(bx, by + blockW);
+					glVertex2f(bx, by);
+					glVertex2f(bx + blockW, by);
+					glEnd();
+					glLineWidth(1);
+				}
 				fplVideoFlip();
 			}
+
+			ShutdownQueue(&state.loadQueue);
+			ShutdownLoadThreads(&state);
+			ClearPictures(&state);
+
 			fglUnloadOpenGL();
 		} else {
 			returnCode = -1;
 		}
+
 		fplPlatformRelease();
 	} else {
 		returnCode = -1;
