@@ -733,12 +733,12 @@ static bool LoadAssets(GameState &state) {
 		FreeTextureImage(bgImage);
 	}
 
-	LoadFontFromFile(state.dataPath, "hemi_head_bd_it.ttf", 0, 36.0f, 32, 127, 512, 512, &state.assets.fontMenu.desc);
+	LoadFontFromFile(state.dataPath, "hemi_head_bd_it.ttf", 0, 36.0f, 32, 127, 512, 512, true, &state.assets.fontMenu.desc);
 	if(state.assets.fontMenu.desc.atlasAlphaBitmap != nullptr) {
 		state.assets.fontMenu.texture = AllocateTexture(state.assets.fontMenu.desc.atlasWidth, state.assets.fontMenu.desc.atlasHeight, state.assets.fontMenu.desc.atlasAlphaBitmap, false, GL_NEAREST, true);
 	}
 
-	LoadFontFromFile(state.dataPath, "hemi_head_bd_it.ttf", 0, 18.0f, 32, 127, 512, 512, &state.assets.fontHud.desc);
+	LoadFontFromFile(state.dataPath, "hemi_head_bd_it.ttf", 0, 18.0f, 32, 127, 512, 512, true, &state.assets.fontHud.desc);
 	if(state.assets.fontHud.desc.atlasAlphaBitmap != nullptr) {
 		state.assets.fontHud.texture = AllocateTexture(state.assets.fontHud.desc.atlasWidth, state.assets.fontHud.desc.atlasHeight, state.assets.fontHud.desc.atlasAlphaBitmap, false, GL_NEAREST, true);
 	}
@@ -1361,8 +1361,8 @@ static void DrawPlayMode(GameState &state) {
 
 	fplFormatAnsiString(textBuffer, FPL_ARRAYCOUNT(textBuffer), "Score: %d", state.score);
 	size_t textCount = fplGetAnsiStringLength(textBuffer);
-	float textWidth = GetTextWidth(textBuffer, textCount, &state.assets.fontHud.desc, textSize);
-	DrawTextFont(textBuffer, textCount, &state.assets.fontHud.desc, state.assets.fontHud.texture, WorldRadius.x - FrameRadius * 2.0f - textFrameMargin - textWidth, textTopMiddle, textSize, 1.0f, 0.0f);
+	Vec2f textBounds = GetTextSize(textBuffer, textCount, &state.assets.fontHud.desc, textSize);
+	DrawTextFont(textBuffer, textCount, &state.assets.fontHud.desc, state.assets.fontHud.texture, WorldRadius.x - FrameRadius * 2.0f - textFrameMargin - textBounds.w, textTopMiddle, textSize, 1.0f, 0.0f);
 }
 
 static void BeginMenu(GameState &state) {
