@@ -58,32 +58,23 @@ extern void DrawPoint(const Camera2D &camera, const float x, const float y, cons
 
 extern void DrawTextFont(const char *text, const size_t textLen, const LoadedFont *fontDesc, const GLuint fontTexture, const float x, const float y, const float maxCharHeight, const float sx, const float sy) {
 	if(fontDesc != nullptr) {
-		float textWidth = GetTextWidth(text, textLen, fontDesc, maxCharHeight);
-		float textHeight = 0;
-		for(uint32_t textPos = 0; textPos < textLen; ++textPos) {
-			char at = text[textPos];
-			uint32_t codePoint = at - fontDesc->firstChar;
-			if(codePoint >= 0 && codePoint < fontDesc->charCount) {
-				const FontGlyph *glyph = &fontDesc->glyphs[codePoint];
-				Vec2f size = V2f(glyph->charSize.x, glyph->charSize.y) * maxCharHeight;
-				textHeight = FPL_MAX(textHeight, size.h);
-			}
-		}
-		float xpos = x - textWidth * 0.5f + textWidth * 0.5f * sx;
-		float ypos = y + textHeight * 0.5f * sy;
+		Vec2f textSize = GetTextSize(text, textLen, fontDesc, maxCharHeight);
+		float xpos = x - textSize.w * 0.5f + (textSize.w * 0.5f * sx);
+		float ypos = y - textSize.h * 0.5f + (textSize.h * 0.5f * sy);
+		uint32_t lastChar = fontDesc->firstChar + (fontDesc->charCount - 1);
 		for(uint32_t textPos = 0; textPos < textLen; ++textPos) {
 			char at = text[textPos];
 			char atNext = textPos < (textLen - 1) ? (text[textPos + 1]) : 0;
-			uint32_t codePoint = at - fontDesc->firstChar;
 			float advance;
-			if(codePoint >= 0 && codePoint < fontDesc->charCount) {
+			if((uint32_t)at >= fontDesc->firstChar && (uint32_t)at <= lastChar) {
+				uint32_t codePoint = at - fontDesc->firstChar;
 				const FontGlyph *glyph = &fontDesc->glyphs[codePoint];
+				Vec2f size = glyph->charSize * maxCharHeight;
 				Vec2f offset = V2f(xpos, ypos);
-				offset += Vec2Hadamard(glyph->charSize, glyph->alignPercentage) * textHeight;
-				Vec2f size = V2f(glyph->charSize.x, glyph->charSize.y) * maxCharHeight;
+				offset += glyph->offset * maxCharHeight;
+				offset += V2f(size.x, -size.y) * 0.5f;
 				DrawSprite(fontTexture, size.x * 0.5f, size.y * 0.5f, glyph->uvMin.x, glyph->uvMin.y, glyph->uvMax.x, glyph->uvMax.y, offset.x, offset.y);
-				uint32_t nextCodePoint = (atNext > 0) ? atNext - fontDesc->firstChar : 0;
-				advance = GetFontCharacterAdvance(fontDesc, &codePoint, (atNext > 0) ? &nextCodePoint : nullptr) * maxCharHeight;
+				advance = GetFontCharacterAdvance(fontDesc, at, atNext) * maxCharHeight;
 			} else {
 				advance = fontDesc->info.spaceAdvance * maxCharHeight;
 			}
