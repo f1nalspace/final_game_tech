@@ -20,6 +20,7 @@ Author:
 Changelog:
 	## 2018-06-29
 	- Changed to use new keyboard/mouse button state
+	- No asserts for important functions anymore
 
 	## 2018-06-28
 	- Fixed crash for loading some weird image format constellations
