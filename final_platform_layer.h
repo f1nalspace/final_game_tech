@@ -130,24 +130,31 @@ SOFTWARE.
 	\tableofcontents
 
 	## v0.8.3.0 beta:
-	- New: Added fplStringToS32
-	- New: Added fplStringToS32Len
-	- New: Added fplS32ToString
-	- New: Added fplAtomicLoadSize
-	- New: Added fplAtomicStoreSize
-	- New: Added fplAtomicExchangeSize
-	- New: Added fplAtomicCompareAndExchangeSize
-	- New: Added fplIsAtomicCompareAndExchangeSize
-	- New: Added fplAtomicAddSize
-	- New: Added fplAtomicIncU32
-	- New: Added fplAtomicIncU64
-	- New: Added fplAtomicIncS32
-	- New: Added fplAtomicIncS64
-	- New: Added fplAtomicIncSize
+	- Changed: fplVersionInfo is now parsed as char[4] instead of uint32_t
+	- Changed: fplMouseEvent / fplKeyboardEvent uses fplButtonState instead of a bool for the state
+	- Changed: Replaced fplMouseEventType_ButtonDown / fplMouseEventType_ButtonUp with fplMouseEventType_Button
+	- Changed: Replaced fplKeyboardEventType_KeyDown / fplKeyboardEventType_KeyUp with fplKeyboardEventType_Button
+	- New: Added function fplStringToS32
+	- New: Added function fplStringToS32Len
+	- New: Added function fplS32ToString
+	- New: Added function fplAtomicLoadSize
+	- New: Added function fplAtomicStoreSize
+	- New: Added function fplAtomicExchangeSize
+	- New: Added function fplAtomicCompareAndExchangeSize
+	- New: Added function fplIsAtomicCompareAndExchangeSize
+	- New: Added function fplAtomicAddSize
+	- New: Added function fplAtomicIncU32
+	- New: Added function fplAtomicIncU64
+	- New: Added function fplAtomicIncS32
+	- New: Added function fplAtomicIncS64
+	- New: Added function fplAtomicIncSize
 	- New: Added macro FPL_IS_POWEROFTWO
 	- New: Introduced FPL_CPU_32BIT and FPL_CPU_64BIT
 	- New: fplAtomic*Ptr uses FPL_CPU_ instead of FPL_ARCH_ now
-	- Changed: fplVersionInfo is now parsed as char[4] instead of uint32_t
+	- New: Added enumeration fplButtonState
+
+	- Changed: [Win32] Changed keyboard and mouse handling to use fplButtonState now
+	- Changed: [X11] Changed keyboard and mouse handling to use fplButtonState now
 	- Fixed: [Win32] fplGetTimeInMillisecondsHP was not returning a proper double value
 	- Fixed: [Win32] Fixed crash when using fplThreadTerminate while threads are already exiting
 	- Fixed: [Win32] fplThreadWaitForAll/fplThreadWaitForAny was not working properly when threads was already in the process of exiting naturally
@@ -2361,8 +2368,10 @@ fpl_common_api void fplSetDefaultWindowSettings(fplWindowSettings *window);
 
 //! A structure containing input settings
 typedef struct fplInputSettings {
-	//! Frequency in ms for detecting new or removed controllers (Default: 100 ms)
+	//! Frequency in ms for detecting new or removed controllers (Default: 200)
 	uint32_t controllerDetectionFrequency;
+	//! Skip repeated key presses and just push when button state was different
+	bool skipKeyRepeats;
 } fplInputSettings;
 
 /**
@@ -3989,19 +3998,26 @@ typedef struct fplWindowEvent {
 	uint32_t height;
 } fplWindowEvent;
 
-//! An enumeration of keyboard event types (KeyDown, KeyUp, Char, ...)
+typedef enum fplButtonState {
+	//! Key released
+	fplButtonState_Release = 0,
+	//! Key pressed
+	fplButtonState_Press = 1,
+	//! Key is hold down
+	fplButtonState_Repeat = 2,
+} fplButtonState;
+
+//! An enumeration of keyboard event types
 typedef enum fplKeyboardEventType {
 	//! None key event type
 	fplKeyboardEventType_None = 0,
-	//! Key is down
-	fplKeyboardEventType_KeyDown,
-	//! Key was released
-	fplKeyboardEventType_KeyUp,
+	//! Key button event
+	fplKeyboardEventType_Button,
 	//! Character was entered
-	fplKeyboardEventType_CharInput,
+	fplKeyboardEventType_Input,
 } fplKeyboardEventType;
 
-//! An enumeration of keyboard modifier flags (Alt, Ctrl, ...)
+//! An enumeration of keyboard modifier flags
 typedef enum fplKeyboardModifierFlags {
 	//! No modifiers
 	fplKeyboardModifierFlags_None = 0,
@@ -4019,14 +4035,16 @@ FPL_ENUM_AS_FLAGS_OPERATORS(fplKeyboardModifierFlags);
 
 //! A structure containing keyboard event data (Type, Keycode, Mapped key, etc.)
 typedef struct fplKeyboardEvent {
-	//! Keyboard event type
-	fplKeyboardEventType type;
 	//! Raw key code
 	uint64_t keyCode;
-	//! Mapped key
-	fplKey mappedKey;
+	//! Keyboard event type
+	fplKeyboardEventType type;
 	//! Keyboard modifiers
 	fplKeyboardModifierFlags modifiers;
+	//! Button state
+	fplButtonState buttonState;
+	//! Mapped key
+	fplKey mappedKey;
 } fplKeyboardEvent;
 
 //! An enumeration of mouse event types (Move, ButtonDown, ...)
@@ -4035,11 +4053,9 @@ typedef enum fplMouseEventType {
 	fplMouseEventType_None,
 	//! Mouse position has been changed
 	fplMouseEventType_Move,
-	//! Mouse button is down
-	fplMouseEventType_ButtonDown,
-	//! Mouse button was released
-	fplMouseEventType_ButtonUp,
-	//! Mouse wheel up/down
+	//! Mouse button event
+	fplMouseEventType_Button,
+	//! Mouse wheel event
 	fplMouseEventType_Wheel,
 } fplMouseEventType;
 
@@ -4061,6 +4077,8 @@ typedef struct fplMouseEvent {
 	fplMouseEventType type;
 	//! Mouse button
 	fplMouseButtonType mouseButton;
+	//! Button state
+	fplButtonState buttonState;
 	//! Mouse X-Position
 	int32_t mouseX;
 	//! Mouse Y-Position
@@ -5978,6 +5996,8 @@ typedef struct fpl__EventQueue {
 typedef struct fpl__PlatformWindowState {
 	fpl__EventQueue eventQueue;
 	fplKey keyMap[256];
+	fplButtonState keyStates[256];
+	fplButtonState mouseStates[5];
 	bool isRunning;
 
 #if defined(FPL_PLATFORM_WIN32)
@@ -6045,6 +6065,15 @@ struct fpl__PlatformAppState {
 };
 
 #if defined(FPL_ENABLE_WINDOW)
+fpl_internal fplKey fpl__GetMappedKey(const fpl__PlatformWindowState *windowState, const uint64_t keyCode) {
+	fplKey result;
+	if(keyCode < FPL_ARRAYCOUNT(windowState->keyMap))
+		result = windowState->keyMap[keyCode];
+	else
+		result = fplKey_None;
+	return(result);
+}
+
 fpl_internal void fpl__PushEvent(const fplEvent *event) {
 	fpl__PlatformAppState *appState = fpl__global__AppState;
 	FPL_ASSERT(appState != fpl_null);
@@ -6054,6 +6083,104 @@ fpl_internal void fpl__PushEvent(const fplEvent *event) {
 		FPL_ASSERT(eventIndex < FPL__MAX_EVENT_COUNT);
 		eventQueue->events[eventIndex] = *event;
 	}
+}
+
+fpl_internal_inline void fpl__PushWindowEvent(const fplWindowEventType windowType, const uint32_t w, uint32_t h) {
+	fplEvent newEvent = FPL_ZERO_INIT;
+	newEvent.type = fplEventType_Window;
+	newEvent.window.type = windowType;
+	newEvent.window.width = w;
+	newEvent.window.height = h;
+	fpl__PushEvent(&newEvent);
+}
+
+fpl_internal_inline void fpl__PushKeyboardButtonEvent(const uint64_t keyCode, const fplKey mappedKey, const fplKeyboardModifierFlags modifiers, const fplButtonState buttonState) {
+	fplEvent newEvent = FPL_ZERO_INIT;
+	newEvent.type = fplEventType_Keyboard;
+	newEvent.keyboard.type = fplKeyboardEventType_Button;
+	newEvent.keyboard.keyCode = keyCode;
+	newEvent.keyboard.modifiers = modifiers;
+	newEvent.keyboard.buttonState = buttonState;
+	newEvent.keyboard.mappedKey = mappedKey;
+	fpl__PushEvent(&newEvent);
+}
+
+fpl_internal_inline void fpl__PushKeyboardInputEvent(const uint64_t keyCode, const fplKey mappedKey) {
+	fplEvent newEvent = FPL_ZERO_INIT;
+	newEvent.type = fplEventType_Keyboard;
+	newEvent.keyboard.type = fplKeyboardEventType_Input;
+	newEvent.keyboard.keyCode = keyCode;
+	newEvent.keyboard.mappedKey = mappedKey;
+	fpl__PushEvent(&newEvent);
+}
+
+fpl_internal_inline void fpl__PushMouseButtonEvent(const int32_t x, const int32_t y, const fplMouseButtonType mouseButton, const fplButtonState buttonState) {
+	fplEvent newEvent = FPL_ZERO_INIT;
+	newEvent.type = fplEventType_Mouse;
+	newEvent.mouse.type = fplMouseEventType_Button;
+	newEvent.mouse.mouseX = x;
+	newEvent.mouse.mouseY = y;
+	newEvent.mouse.mouseButton = mouseButton;
+	newEvent.mouse.buttonState = buttonState;
+	fpl__PushEvent(&newEvent);
+}
+
+fpl_internal_inline void fpl__PushMouseWheelEvent(const int32_t x, const int32_t y, const float wheelDelta) {
+	fplEvent newEvent = FPL_ZERO_INIT;
+	newEvent.type = fplEventType_Mouse;
+	newEvent.mouse.type = fplMouseEventType_Wheel;
+	newEvent.mouse.mouseButton = fplMouseButtonType_None;
+	newEvent.mouse.mouseX = x;
+	newEvent.mouse.mouseY = y;
+	newEvent.mouse.wheelDelta = wheelDelta;
+	fpl__PushEvent(&newEvent);
+}
+
+fpl_internal_inline void fpl__PushMouseMoveEvent(const int32_t x, const int32_t y) {
+	fplEvent newEvent = FPL_ZERO_INIT;
+	newEvent.type = fplEventType_Mouse;
+	newEvent.mouse.type = fplMouseEventType_Move;
+	newEvent.mouse.mouseButton = fplMouseButtonType_None;
+	newEvent.mouse.mouseX = x;
+	newEvent.mouse.mouseY = y;
+	fpl__PushEvent(&newEvent);
+}
+
+
+fpl_internal_inline void fpl__HandleKeyboardButtonEvent(fpl__PlatformWindowState *windowState, const uint64_t keyCode, const fplKeyboardModifierFlags modifiers, const fplButtonState buttonState) {
+	FPL_ASSERT(buttonState != fplButtonState_Repeat);
+	fplKey mappedKey = fpl__GetMappedKey(windowState, keyCode);
+	bool repeat = false;
+	if(keyCode < FPL_ARRAYCOUNT(windowState->keyStates)) {
+		if((buttonState == fplButtonState_Release) && (windowState->keyStates[mappedKey] == fplButtonState_Release)) {
+			return;
+		}
+		if((buttonState == fplButtonState_Press) && (windowState->keyStates[mappedKey] == fplButtonState_Press)) {
+			repeat = true;
+		}
+		windowState->keyStates[keyCode] = buttonState;
+	}
+	fpl__PushKeyboardButtonEvent(keyCode, mappedKey, modifiers, repeat ? fplButtonState_Repeat : buttonState);
+}
+
+fpl_internal_inline void fpl__HandleKeyboardInputEvent(fpl__PlatformWindowState *windowState, const uint64_t keyCode) {
+	fplKey mappedKey = fpl__GetMappedKey(windowState, keyCode);
+	fpl__PushKeyboardInputEvent(keyCode, mappedKey);
+}
+
+fpl_internal_inline void fpl__HandleMouseButtonEvent(fpl__PlatformWindowState *windowState, const int32_t x, const int32_t y, const fplMouseButtonType mouseButton, const fplButtonState buttonState) {
+	if(mouseButton < FPL_ARRAYCOUNT(windowState->mouseStates)) {
+		windowState->mouseStates[(int)mouseButton] = buttonState;
+	}
+	fpl__PushMouseButtonEvent(x, y, mouseButton, buttonState);
+}
+
+fpl_internal_inline void fpl__HandleMouseMoveEvent(fpl__PlatformWindowState *windowState, const int32_t x, const int32_t y) {
+	fpl__PushMouseMoveEvent(x, y);
+}
+
+fpl_internal_inline void fpl__HandleMouseWheelEvent(fpl__PlatformWindowState *windowState, const int32_t x, const int32_t y, const float wheelDelta) {
+	fpl__PushMouseWheelEvent(x, y, wheelDelta);
 }
 
 typedef union fpl__PreSetupWindowResult {
@@ -6295,14 +6422,6 @@ fpl_internal fplThreadHandle *fpl__GetFreeThread() {
 }
 
 #if defined(FPL_ENABLE_WINDOW)
-fpl_internal fplKey fpl__GetMappedKey(const fpl__PlatformWindowState *windowState, const uint64_t keyCode) {
-	fplKey result;
-	if(keyCode < FPL_ARRAYCOUNT(windowState->keyMap))
-		result = windowState->keyMap[keyCode];
-	else
-		result = fplKey_None;
-	return(result);
-}
 #endif
 
 //
@@ -7514,39 +7633,6 @@ fpl_internal void fpl__Win32PollControllers(const fplSettings *settings, const f
 	}
 }
 
-fpl_internal_inline void fpl__Win32PushMouseEvent(const fplMouseEventType mouseEventType, const fplMouseButtonType mouseButton, const LPARAM lParam, const WPARAM wParam) {
-	fplEvent newEvent = FPL_ZERO_INIT;
-	newEvent.type = fplEventType_Mouse;
-	newEvent.mouse.type = mouseEventType;
-	newEvent.mouse.mouseX = GET_X_LPARAM(lParam);
-	newEvent.mouse.mouseY = GET_Y_LPARAM(lParam);
-	newEvent.mouse.mouseButton = mouseButton;
-	if(mouseEventType == fplMouseEventType_Wheel) {
-		short zDelta = GET_WHEEL_DELTA_WPARAM(wParam);
-		newEvent.mouse.wheelDelta = (zDelta / (float)WHEEL_DELTA);
-	}
-	fpl__PushEvent(&newEvent);
-}
-
-fpl_internal_inline void fpl__Win32PushKeyboardEvent(const fpl__PlatformWindowState *windowState, const fplKeyboardEventType keyboardEventType, const uint64_t keyCode, const fplKeyboardModifierFlags modifiers, const bool isDown) {
-	fplEvent newEvent = FPL_ZERO_INIT;
-	newEvent.type = fplEventType_Keyboard;
-	newEvent.keyboard.keyCode = keyCode;
-	newEvent.keyboard.mappedKey = fpl__GetMappedKey(windowState, keyCode);
-	newEvent.keyboard.type = keyboardEventType;
-	newEvent.keyboard.modifiers = modifiers;
-	fpl__PushEvent(&newEvent);
-}
-
-fpl_internal_inline void fpl__Win32PushWindowEvent(const fplWindowEventType windowType, const uint32_t w, uint32_t h) {
-	fplEvent newEvent = FPL_ZERO_INIT;
-	newEvent.type = fplEventType_Window;
-	newEvent.window.type = windowType;
-	newEvent.window.width = w;
-	newEvent.window.height = h;
-	fpl__PushEvent(&newEvent);
-}
-
 fpl_internal_inline bool fpl__Win32IsKeyDown(const fpl__Win32Api *wapi, const uint64_t keyCode) {
 	bool result = (wapi->user.GetAsyncKeyState((int)keyCode) & 0x8000) > 0;
 	return(result);
@@ -7637,15 +7723,15 @@ LRESULT CALLBACK fpl__Win32MessageProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 
 		case WM_SIZE:
 		{
-			// @TODO(final): Win32 Detect minimize/maximize here
+			// @TODO(final): Win32 save maximize/minimize state here
 			DWORD newWidth = LOWORD(lParam);
 			DWORD newHeight = HIWORD(lParam);
 			if(wParam == SIZE_MAXIMIZED) {
-				fpl__Win32PushWindowEvent(fplWindowEventType_Maximized, newWidth, newHeight);
+				fpl__PushWindowEvent(fplWindowEventType_Maximized, newWidth, newHeight);
 			} else if(wParam == SIZE_MINIMIZED) {
-				fpl__Win32PushWindowEvent(fplWindowEventType_Minimized, newWidth, newHeight);
+				fpl__PushWindowEvent(fplWindowEventType_Minimized, newWidth, newHeight);
 			} else if(wParam == SIZE_RESTORED) {
-				fpl__Win32PushWindowEvent(fplWindowEventType_Restored, newWidth, newHeight);
+				fpl__PushWindowEvent(fplWindowEventType_Restored, newWidth, newHeight);
 			}
 
 #			if defined(FPL_ENABLE_VIDEO_SOFTWARE)
@@ -7656,7 +7742,7 @@ LRESULT CALLBACK fpl__Win32MessageProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 			}
 #			endif
 
-			fpl__Win32PushWindowEvent(fplWindowEventType_Resized, newWidth, newHeight);
+			fpl__PushWindowEvent(fplWindowEventType_Resized, newWidth, newHeight);
 
 			return 0;
 		} break;
@@ -7667,30 +7753,30 @@ LRESULT CALLBACK fpl__Win32MessageProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 		case WM_KEYUP:
 		{
 			uint64_t keyCode = wParam;
-			bool wasDown = ((int)(lParam & (1 << 30)) != 0);
 			bool isDown = ((int)(lParam & (1 << 31)) == 0);
-			bool altKeyWasDown = fpl__Win32IsKeyDown(wapi, VK_MENU);
-			bool shiftKeyWasDown = fpl__Win32IsKeyDown(wapi, VK_LSHIFT);
-			bool ctrlKeyWasDown = fpl__Win32IsKeyDown(wapi, VK_LCONTROL);
-			bool superKeyWasDown = fpl__Win32IsKeyDown(wapi, VK_LMENU);
-			fplKeyboardEventType keyEventType = isDown ? fplKeyboardEventType_KeyDown : fplKeyboardEventType_KeyUp;
+			bool wasDown = ((int)(lParam & (1 << 30)) != 0);
+			bool altKeyIsDown = fpl__Win32IsKeyDown(wapi, VK_MENU);
+			bool shiftKeyIsDown = fpl__Win32IsKeyDown(wapi, VK_LSHIFT);
+			bool ctrlKeyIsDown = fpl__Win32IsKeyDown(wapi, VK_LCONTROL);
+			bool superKeyIsDown = fpl__Win32IsKeyDown(wapi, VK_LMENU);
+			fplButtonState keyState = isDown ? fplButtonState_Press : fplButtonState_Release;
 			fplKeyboardModifierFlags modifiers = fplKeyboardModifierFlags_None;
-			if(altKeyWasDown) {
+			if(altKeyIsDown) {
 				modifiers |= fplKeyboardModifierFlags_Alt;
 			}
-			if(shiftKeyWasDown) {
+			if(shiftKeyIsDown) {
 				modifiers |= fplKeyboardModifierFlags_Shift;
 			}
-			if(ctrlKeyWasDown) {
+			if(ctrlKeyIsDown) {
 				modifiers |= fplKeyboardModifierFlags_Ctrl;
 			}
-			if(superKeyWasDown) {
+			if(superKeyIsDown) {
 				modifiers |= fplKeyboardModifierFlags_Super;
 			}
-			fpl__Win32PushKeyboardEvent(&appState->window, keyEventType, keyCode, modifiers, isDown);
+			fpl__HandleKeyboardButtonEvent(&appState->window, keyCode, modifiers, keyState);
 			if(wasDown != isDown) {
 				if(isDown) {
-					if(keyCode == VK_F4 && altKeyWasDown) {
+					if(keyCode == VK_F4 && altKeyIsDown) {
 						appState->window.isRunning = false;
 					}
 				}
@@ -7706,7 +7792,7 @@ LRESULT CALLBACK fpl__Win32MessageProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 				return TRUE;
 			}
 			uint64_t keyCode = wParam;
-			fpl__Win32PushKeyboardEvent(&appState->window, fplKeyboardEventType_CharInput, keyCode, fplKeyboardModifierFlags_None, 0);
+			fpl__HandleKeyboardInputEvent(&appState->window, keyCode);
 			return 0;
 		} break;
 
@@ -7786,44 +7872,46 @@ LRESULT CALLBACK fpl__Win32MessageProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 
 		case WM_LBUTTONDOWN:
 		case WM_LBUTTONUP:
-		{
-			fplMouseEventType mouseEventType;
-			if(msg == WM_LBUTTONDOWN) {
-				mouseEventType = fplMouseEventType_ButtonDown;
-			} else {
-				mouseEventType = fplMouseEventType_ButtonUp;
-			}
-			fpl__Win32PushMouseEvent(mouseEventType, fplMouseButtonType_Left, lParam, wParam);
-		} break;
 		case WM_RBUTTONDOWN:
 		case WM_RBUTTONUP:
-		{
-			fplMouseEventType mouseEventType;
-			if(msg == WM_RBUTTONDOWN) {
-				mouseEventType = fplMouseEventType_ButtonDown;
-			} else {
-				mouseEventType = fplMouseEventType_ButtonUp;
-			}
-			fpl__Win32PushMouseEvent(mouseEventType, fplMouseButtonType_Right, lParam, wParam);
-		} break;
 		case WM_MBUTTONDOWN:
 		case WM_MBUTTONUP:
 		{
-			fplMouseEventType mouseEventType;
-			if(msg == WM_MBUTTONDOWN) {
-				mouseEventType = fplMouseEventType_ButtonDown;
+			fplButtonState buttonState;
+			if(msg == WM_LBUTTONDOWN || msg == WM_RBUTTONDOWN || msg == WM_MBUTTONDOWN) {
+				buttonState = fplButtonState_Press;
 			} else {
-				mouseEventType = fplMouseEventType_ButtonUp;
+				buttonState = fplButtonState_Release;
 			}
-			fpl__Win32PushMouseEvent(mouseEventType, fplMouseButtonType_Middle, lParam, wParam);
+			fplMouseButtonType mouseButton;
+			if(msg == WM_LBUTTONDOWN || msg == WM_LBUTTONUP) {
+				mouseButton = fplMouseButtonType_Left;
+			} else if(msg == WM_RBUTTONDOWN || msg == WM_RBUTTONUP) {
+				mouseButton = fplMouseButtonType_Right;
+			} else if(msg == WM_MBUTTONDOWN || msg == WM_MBUTTONUP) {
+				mouseButton = fplMouseButtonType_Middle;
+			} else {
+				mouseButton = fplMouseButtonType_None;
+			}
+			if(mouseButton != fplMouseButtonType_None) {
+				int32_t mouseX = GET_X_LPARAM(lParam);
+				int32_t mouseY = GET_Y_LPARAM(lParam);
+				fpl__HandleMouseButtonEvent(&appState->window, mouseX, mouseY, mouseButton, buttonState);
+			}
 		} break;
 		case WM_MOUSEMOVE:
 		{
-			fpl__Win32PushMouseEvent(fplMouseEventType_Move, fplMouseButtonType_None, lParam, wParam);
+			int32_t mouseX = GET_X_LPARAM(lParam);
+			int32_t mouseY = GET_Y_LPARAM(lParam);
+			fpl__HandleMouseMoveEvent(&appState->window, mouseX, mouseY);
 		} break;
 		case WM_MOUSEWHEEL:
 		{
-			fpl__Win32PushMouseEvent(fplMouseEventType_Wheel, fplMouseButtonType_None, lParam, wParam);
+			int32_t mouseX = GET_X_LPARAM(lParam);
+			int32_t mouseY = GET_Y_LPARAM(lParam);
+			short zDelta = GET_WHEEL_DELTA_WPARAM(wParam);
+			float wheelDelta = zDelta / (float)WHEEL_DELTA;
+			fpl__HandleMouseWheelEvent(&appState->window, mouseX, mouseY, wheelDelta);
 		} break;
 
 		case WM_SETCURSOR:
@@ -11760,17 +11848,6 @@ fpl_internal fplKeyboardModifierFlags fpl__X11TranslateModifierFlags(const int s
 	return(result);
 }
 
-fpl_internal void fpl__X11PushMouseEvent(const fplMouseEventType eventType, const fplMouseButtonType mouseButton, const int x, const int y, const float wheelDelta) {
-	fplEvent newEvent = FPL_ZERO_INIT;
-	newEvent.type = fplEventType_Mouse;
-	newEvent.mouse.type = eventType;
-	newEvent.mouse.mouseButton = mouseButton;
-	newEvent.mouse.mouseX = x;
-	newEvent.mouse.mouseY = y;
-	newEvent.mouse.wheelDelta = wheelDelta;
-	fpl__PushEvent(&newEvent);
-}
-
 fpl_internal bool fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatform, fpl__PlatformAppState *appState, XEvent *ev) {
 	FPL_ASSERT((subplatform != fpl_null) && (appState != fpl_null) && (ev != fpl_null));
 	fpl__PlatformWindowState *winState = &appState->window;
@@ -11790,12 +11867,7 @@ fpl_internal bool fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatfor
 #			endif
 
 			// Window resized
-			fplEvent newEvent = FPL_ZERO_INIT;
-			newEvent.type = fplEventType_Window;
-			newEvent.window.type = fplWindowEventType_Resized;
-			newEvent.window.width = (uint32_t)ev->xconfigure.width;
-			newEvent.window.height = (uint32_t)ev->xconfigure.height;
-			fpl__PushEvent(&newEvent);
+			fpl__PushWindowEvent(fplWindowEventType_Resized, (uint32_t)ev->xconfigure.width, (uint32_t)ev->xconfigure.height);
 		} break;
 
 		case ClientMessage:
@@ -11810,19 +11882,12 @@ fpl_internal bool fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatfor
 		case KeyPress:
 		case KeyRelease:
 		{
-			// Keyboard down/up
+			// Keyboard button down/up
 			int keyState = ev->xkey.state;
 			int keyCode = ev->xkey.keycode;
 			bool isDown = ev->type == KeyPress;
-
-			fplEvent newEvent = FPL_ZERO_INIT;
-			newEvent.type = fplEventType_Keyboard;
-			newEvent.keyboard.keyCode = keyCode;
-			newEvent.keyboard.mappedKey = fpl__GetMappedKey(winState, keyCode);
-			newEvent.keyboard.type = isDown ? fplKeyboardEventType_KeyDown : fplKeyboardEventType_KeyUp;
-			newEvent.keyboard.modifiers = fpl__X11TranslateModifierFlags(keyState);
-
-			fpl__PushEvent(&newEvent);
+			fplButtonState btnState = isDown ? fplButtonState_Press : fplButtonState_Release;
+			fpl__HandleKeyboardButtonEvent(winState, keyCode, fpl__X11TranslateModifierFlags(keyState), btnState);
 		} break;
 
 		case ButtonPress:
@@ -11831,15 +11896,15 @@ fpl_internal bool fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatfor
 			int x = ev->xbutton.x;
 			int y = ev->xbutton.y;
 			if(ev->xbutton.button == Button1) {
-				fpl__X11PushMouseEvent(fplMouseEventType_ButtonDown, fplMouseButtonType_Left, x, y, 0);
+				fpl__HandleMouseButtonEvent(winState, x, y, fplMouseButtonType_Left, fplButtonState_Press);
 			} else if(ev->xbutton.button == Button2) {
-				fpl__X11PushMouseEvent(fplMouseEventType_ButtonDown, fplMouseButtonType_Middle, x, y, 0);
+				fpl__HandleMouseButtonEvent(winState, x, y, fplMouseButtonType_Middle, fplButtonState_Press);
 			} else if(ev->xbutton.button == Button3) {
-				fpl__X11PushMouseEvent(fplMouseEventType_ButtonDown, fplMouseButtonType_Right, x, y, 0);
+				fpl__HandleMouseButtonEvent(winState, x, y, fplMouseButtonType_Right, fplButtonState_Press);
 			} else if(ev->xbutton.button == Button4) {
-				fpl__X11PushMouseEvent(fplMouseEventType_Wheel, fplMouseButtonType_None, x, y, 1.0);
+				fpl__HandleMouseWheelEvent(winState, x, y, 1.0f);
 			} else if(ev->xbutton.button == Button5) {
-				fpl__X11PushMouseEvent(fplMouseEventType_Wheel, fplMouseButtonType_None, x, y, -1.0);
+				fpl__HandleMouseWheelEvent(winState, x, y, -1.0f);
 			}
 		} break;
 
@@ -11849,11 +11914,11 @@ fpl_internal bool fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatfor
 			int x = ev->xbutton.x;
 			int y = ev->xbutton.y;
 			if(ev->xbutton.button == Button1) {
-				fpl__X11PushMouseEvent(fplMouseEventType_ButtonUp, fplMouseButtonType_Left, x, y, 0);
+				fpl__HandleMouseButtonEvent(winState, x, y, fplMouseButtonType_Left, fplButtonState_Release);
 			} else if(ev->xbutton.button == Button2) {
-				fpl__X11PushMouseEvent(fplMouseEventType_ButtonUp, fplMouseButtonType_Middle, x, y, 0);
+				fpl__HandleMouseButtonEvent(winState, x, y, fplMouseButtonType_Middle, fplButtonState_Release);
 			} else if(ev->xbutton.button == Button3) {
-				fpl__X11PushMouseEvent(fplMouseEventType_ButtonUp, fplMouseButtonType_Right, x, y, 0);
+				fpl__HandleMouseButtonEvent(winState, x, y, fplMouseButtonType_Right, fplButtonState_Release);
 			}
 
 		} break;
@@ -11861,7 +11926,7 @@ fpl_internal bool fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatfor
 		case MotionNotify:
 		{
 			// Mouse move
-			fpl__X11PushMouseEvent(fplMouseEventType_Move, fplMouseButtonType_None, ev->xmotion.x, ev->xmotion.y, 0);
+			fpl__HandleMouseMoveEvent(winState, ev->xmotion.x, ev->xmotion.y);
 		} break;
 
 		case Expose:
@@ -15168,7 +15233,7 @@ fpl_internal bool fpl__InitVideo(const fplVideoDriverType driver, const fplVideo
 		{
 			FPL_ERROR(FPL__MODULE_VIDEO, "Unsupported video driver '%s' for this platform", fplGetVideoDriverString(videoSettings->driver));
 		} break;
-	}
+		}
 	if(!videoInitResult) {
 		FPL_ASSERT(fplGetErrorCount() > 0);
 		fpl__ShutdownVideo(appState, videoState);
@@ -15176,7 +15241,7 @@ fpl_internal bool fpl__InitVideo(const fplVideoDriverType driver, const fplVideo
 	}
 
 	return true;
-}
+	}
 #endif // FPL_ENABLE_VIDEO
 
 // %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -15224,7 +15289,7 @@ fpl_internal FPL__FUNC_PRE_SETUP_WINDOW(fpl__PreSetupWindowDefault) {
 #	endif // FPL_ENABLE_VIDEO
 
 	return(result);
-}
+			}
 
 fpl_internal FPL__FUNC_POST_SETUP_WINDOW(fpl__PostSetupWindowDefault) {
 	FPL_ASSERT(appState != fpl_null);
@@ -15273,7 +15338,7 @@ fpl_internal void fpl__ReleaseWindow(const fpl__PlatformInitState *initState, fp
 		fpl__X11ReleaseWindow(&appState->x11, &appState->window.x11);
 #	endif
 	}
-}
+	}
 #endif // FPL_ENABLE_WINDOW
 
 // %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -15562,7 +15627,7 @@ fpl_common_api fplVideoDriverType fplGetVideoDriver() {
 	const fpl__PlatformAppState *appState = fpl__global__AppState;
 	fplVideoDriverType result = appState->currentSettings.video.driver;
 	return(result);
-}
+		}
 
 fpl_common_api bool fplResizeVideoBackBuffer(const uint32_t width, const uint32_t height) {
 	FPL__CheckPlatform(false);
@@ -15738,9 +15803,9 @@ fpl_internal void fpl__ReleasePlatformStates(fpl__PlatformInitState *initState, 
 		FPL_LOG_DEBUG(FPL__MODULE_CORE, "Release allocated Platform App State Memory");
 		fplMemoryFree(appState);
 		fpl__global__AppState = fpl_null;
-	}
+		}
 	initState->isInitialized = false;
-}
+	}
 
 fpl_common_api const char *fplGetPlatformTypeString(const fplPlatformType type) {
 	switch(type) {
@@ -15956,7 +16021,7 @@ fpl_common_api fplInitResultType fplPlatformInit(const fplInitFlags initFlags, c
 
 	initState->isInitialized = true;
 	return fplInitResultType_Success;
-}
+	}
 
 fpl_common_api fplPlatformType fplGetPlatformType() {
 	fplPlatformType result;
