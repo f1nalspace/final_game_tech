@@ -1,11 +1,13 @@
 /*
 Name:
 	Final Render
+
 Description:
 	Contains structures for computing render specific stuff and
 	has a render command system.
 
 	This file is part of the final_framework.
+
 License:
 	MIT License
 	Copyright 2018 Torsten Spaete
