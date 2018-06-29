@@ -547,10 +547,11 @@
 
 	\code{.c}
 	switch (currentEvent.mouse.type) {
-		case fplMouseEventType_ButtonDown:
+		case fplMouseEventType_Button:
 		{
 			fplMouseButtonType button = currentEvent.mouse.button;
-			// ... do something with the mouse button
+			fplButtonState state = currentEvent.mouse.buttonState;
+			// ... do something with the mouse button and the state
 		} break;
 
 		case fplMouseEventType_Move:
@@ -570,20 +571,26 @@
 
 	\code{.c}
 	switch (currentEvent.keyboard.type) {
-		case fplKeyboardEventType_KeyDown:
+		case fplKeyboardEventType_KeyButton:
 		{
+			fplButtonState state = currentEvent.keyboard.buttonState;
+
 			// ... Handle the key code
 			uint64_t keyCode = currentEvent.keyboard.keyCode;
-			if (keyCode == 65 || keyCode == 97) {
-				// Letter A is held down
+			if (state >= fplButtonState_Pressed) {
+				if (keyCode == 65 || keyCode == 97) {
+					// Letter A is held down
+				}
 			}
 
 			// or
 
 			// ... handle the mapped key
 			fplKey mappedKey = currentEvent.keyboard.mappedKey;
-			if (mappedKey == fplKey_F1) {
-				// F1 key held down
+			if (state == fplButtonState_Released) {
+				if (mappedKey == fplKey_F1) {
+					// F1 key pressed
+				}
 			}
 		} break;
 
