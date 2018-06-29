@@ -2,12 +2,16 @@
 -------------------------------------------------------------------------------
 Name:
 	FPL-Demo | StaticLib_Client
+
 Description:
 	Client application using the FPL static library
+
 Requirements:
 	StaticLib_Host (Static-Library)
+
 Author:
 	Torsten Spaete
+
 Changelog:
 	## 2018-04-24:
 	- Initial creation of this description block

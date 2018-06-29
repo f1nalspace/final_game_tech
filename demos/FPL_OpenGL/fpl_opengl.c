@@ -2,16 +2,21 @@
 -------------------------------------------------------------------------------
 Name:
 	FPL-Demo | OpenGL
+
 Description:
 	This demo showcases the initialization and rendering of legacy and modern OpenGL.
+
 Requirements:
 	No requirements
+
 Author:
 	Torsten Spaete
+
 Changelog:
  	## 2018-05-5:
  	- Fixed CMakeLists to compile properly
  	- Fixed Makefile to compile properly
+
 	## 2018-04-23:
 	- Initial creation of this description block
 	- Changed from C++ to C99

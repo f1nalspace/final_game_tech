@@ -2,31 +2,41 @@
 -------------------------------------------------------------------------------
 Name:
 	FPL-Demo | Audio
+
 Description:
 	This demo shows how to play a contiguous sine or square wave.
 	Also it can play uncompressed PCM wave data with simple resampling support.
+
 Requirements:
 	- C-Runtime (sinf)
+
 Author:
 	Torsten Spaete
+
 Changelog:
 	## 2018-06-06
 	- Refactored files
+
  	## 2018-05-13
  	- Fixed Makefiles (Missing audiosystem.c)
+
 	## 2018-05-09
 	- Introduced audio system -> Prepare for mixing
 	- Add support for audio format conversions
+
 	## 2018-05-08
 	- Simple Up/Down sampling
 	- Add waveloader.c to makefiles
 	- Use optional argument as wavefile to load
+
 	## 2018-05-07
 	- Introduce sample buffering
 	- Written a simple wave file loader
+
 	## 2018-05-05:
 	- Fixed CMakeLists to compile properly
 	- Fixed Makefile to compile properly
+
 	## 2018-04-23:
 	- Initial creation of this description block
 	- Changed from C++ to C99

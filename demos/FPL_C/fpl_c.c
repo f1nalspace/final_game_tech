@@ -2,12 +2,16 @@
 -------------------------------------------------------------------------------
 Name:
 	FPL-Demo | C
+
 Description:
 	Simple Platform-Initialization to test compilation in C99
+
 Requirements:
 	No requirements
+
 Author:
 	Torsten Spaete
+
 Changelog:
 	## 2018-04-23:
 	- Initial creation of this description block

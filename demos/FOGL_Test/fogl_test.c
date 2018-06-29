@@ -2,20 +2,26 @@
 -------------------------------------------------------------------------------
 Name:
 	FOGL | Test
+
 Description:
 	This demo shows how to use the "Final Dynamic OpenGL" library, which is a
 	full OpenGL-Header and Loader.
+
 Requirements:
 	- C++
 	- Final Platform Layer v0.7.7+
+
 Author:
 	Torsten Spaete
+
 Changelog:
 	## 2018-05-05:
  	- Fixed CMakeLists compile errors
  	- Fixed Makefile compile errors
+
 	## 2018-04-24:
 	- Fixed compile errors (FPL api change)
+
 	## 2018-04-23:
 	- Initial creation of this description block
 	- Forced Visual-Studio-Project to compile in C++ always

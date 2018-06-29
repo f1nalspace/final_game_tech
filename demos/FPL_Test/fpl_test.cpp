@@ -2,21 +2,31 @@
 -------------------------------------------------------------------------------
 Name:
 	FPL-Demo | Test
+
 Description:
 	This demo is used to test all the things. It is basically a unit-test.
+
 Requirements:
 	- C++
 	- Final Platform Layer
+
 Author:
 	Torsten Spaete
+
 Changelog:
+	## 2018-06-29
+	- Added condition-variable tests
+
 	## 2018-05-15:
 	- Corrected for api change in FPL v0.8.1+
 	- Added semaphores sync test
+
 	## 2018-05-10:
 	- Small bugfixes
+
 	## 2018-04-27:
 	- Added wrap test for unsigned integers for AtomicExchange
+
 	## 2018-04-23:
 	- Initial creation of this description block
 	- Forced Visual-Studio-Project to compile in C++ always

@@ -2,16 +2,21 @@
 -------------------------------------------------------------------------------
 Name:
 	FPL-Demo | Software
+
 Description:
 	Simple demo drawing random pixels with software graphics rendering
+
 Requirements:
 	No requirements
+
 Author:
 	Torsten Spaete
+
 Changelog:
  	## 2018-05-11:
  	- Added CMakeLists.txt
  	- Fixed Makefile was not working anymore
+
 	## 2018-04-23:
 	- Initial creation of this description block
 	- Changed from C++ to C99

@@ -2,18 +2,25 @@
 -------------------------------------------------------------------------------
 Name:
 	FTT | TileTracingDemo
+
 Description:
 	This demo shows how to use the "Final Tile Tracing" library.
 	FTT is a library for converting a Solid-Tilemap
 	into connected line segments - using a image contour tracing algorythmn.
 	This is useful to get create proper collision shapes in physics engines
 	such as Box2D.
+
 Requirements:
 	- C++
 	- Final Platform Layer v0.7+
+
 Author:
 	Torsten Spaete
+
 Changelog:
+	## 2018-06-29
+	- Changed to use new keyboard/mouse button state
+
 	## 2018-04-23:
 	- Initial creation of this description block
 	- Forced Visual-Studio-Project to compile in C++ always
@@ -141,10 +148,9 @@ int main(int argc, char **args) {
 					case fplEventType_Keyboard:
 					{
 						switch (ev.keyboard.type) {
-							case fplKeyboardEventType_KeyDown:
-							case fplKeyboardEventType_KeyUp:
+							case fplKeyboardEventType_Button:
 							{
-								bool isDown = ev.keyboard.type == fplKeyboardEventType_KeyDown;
+								bool isDown = (ev.keyboard.buttonState >= fplButtonState_Press);
 								if (ev.keyboard.mappedKey == fplKey_Space) {
 									if (isDown != doNextStep) {
 										doNextStep = isDown;

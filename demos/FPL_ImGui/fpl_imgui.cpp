@@ -2,20 +2,30 @@
 -------------------------------------------------------------------------------
 Name:
 	FPL-Demo | ImGui
+
 Description:
 	Full implementation for running ImGui with all features
+
 Requirements:
 	- C++ Compiler
 	- ImGui v1.51 (Included in demo)
+
 Author:
 	Torsten Spaete
+
 Changelog:
+	## 2018-06-29
+	- Changed to use new keyboard/mouse button state
+
 	## 2018-06-19
 	- Corrected for FPL enum operator changes
+
 	## 2018-06-06
 	- Refactored files
+
     ## 2018-05-05:
     - Added m to linker flags in CMakeLists and Makefile
+
 	## 2018-04-23:
 	- Initial creation of this description block
 	- Forced Visual-Studio-Project to compile in C++ always
@@ -279,15 +289,12 @@ int main(int argc, char **args) {
 					case fplEventType_Keyboard:
 					{
 						switch (event.keyboard.type) {
-							case fplKeyboardEventType_KeyDown:
+							case fplKeyboardEventType_Button:
 							{
-								ImGUIKeyEvent(event.keyboard.keyCode, event.keyboard.mappedKey, event.keyboard.modifiers, true);
+								bool isDown = event.keyboard.buttonState >= fplButtonState_Press;
+								ImGUIKeyEvent(event.keyboard.keyCode, event.keyboard.mappedKey, event.keyboard.modifiers, isDown);
 							} break;
-							case fplKeyboardEventType_KeyUp:
-							{
-								ImGUIKeyEvent(event.keyboard.keyCode, event.keyboard.mappedKey, event.keyboard.modifiers, false);
-							} break;
-							case fplKeyboardEventType_CharInput:
+							case fplKeyboardEventType_Input:
 							{
 								if (event.keyboard.keyCode > 0 && event.keyboard.keyCode < 0x10000) {
 									io.AddInputCharacter(ImWchar(event.keyboard.keyCode));
@@ -311,15 +318,9 @@ int main(int argc, char **args) {
 								currentMousePosition[0] = event.mouse.mouseX;
 								currentMousePosition[1] = event.mouse.mouseY;
 							} break;
-							case fplMouseEventType_ButtonDown:
+							case fplMouseEventType_Button:
 							{
-								currentMouseStates[(int32_t)event.mouse.mouseButton] = true;
-								currentMousePosition[0] = event.mouse.mouseX;
-								currentMousePosition[1] = event.mouse.mouseY;
-							} break;
-							case fplMouseEventType_ButtonUp:
-							{
-								currentMouseStates[(int32_t)event.mouse.mouseButton] = false;
+								currentMouseStates[(int32_t)event.mouse.mouseButton] = event.mouse.buttonState >= fplButtonState_Press;
 								currentMousePosition[0] = event.mouse.mouseX;
 								currentMousePosition[1] = event.mouse.mouseY;
 							} break;

@@ -1,3 +1,23 @@
+/*
+-------------------------------------------------------------------------------
+Name:
+	FXML | Test
+
+Description:
+	This demo shows how to use the "Final XML" library, a simple XML parser.
+
+Requirements:
+	- C99
+
+Author:
+	Torsten Spaete
+
+Changelog:
+	## 2018-06-29
+	- Initial version
+-------------------------------------------------------------------------------
+*/
+
 #define FXML_IMPLEMENTATION
 #include <final_xml.h>
 

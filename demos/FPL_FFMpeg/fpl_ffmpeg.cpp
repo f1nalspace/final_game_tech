@@ -16,6 +16,9 @@ Author:
 	Torsten Spaete
 
 Changelog:
+	## 2018-06-29
+	- Changed to use new keyboard/mouse button state
+
 	## 2018-06-06
 	- Refactored files
 	- Upgraded to FFMPEG 4.0
@@ -2763,16 +2766,18 @@ int main(int argc, char **argv) {
 			switch (ev.type) {
 				case fplEventType_Keyboard:
 				{
-					if (ev.keyboard.type == fplKeyboardEventType_KeyUp) {
-						switch (ev.keyboard.mappedKey) {
-							case fplKey_Space:
-							{
-								TogglePause(&state);
-							} break;
-							case fplKey_F:
-							{
-								ToggleFullscreen(&state);
-							} break;
+					if (ev.keyboard.type == fplKeyboardEventType_Button) {
+						if(ev.keyboard.buttonState == fplButtonState_Release) {
+							switch(ev.keyboard.mappedKey) {
+								case fplKey_Space:
+								{
+									TogglePause(&state);
+								} break;
+								case fplKey_F:
+								{
+									ToggleFullscreen(&state);
+								} break;
+							}
 						}
 					}
 				} break;
