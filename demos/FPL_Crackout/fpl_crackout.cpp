@@ -2,8 +2,10 @@
 -------------------------------------------------------------------------------
 Name:
 	FPL-Demo | Crackout
+
 Description:
 	A breakout-like game based on FPL
+
 Requirements:
 	- C++ Compiler
 	- GLM
@@ -11,21 +13,28 @@ Requirements:
 	- Final Dynamic OpenGL
 	- Final Memory
 	- Final Framework
+
 Author:
 	Torsten Spaete
+
 Changelog:
 	## 2018-06-06
 	- Refactored files
+
 	## 2018-06-04:
 	- Added Score & Lifes
 	- Simple Text HUD
 	- Simple Menu
+
 	## 2018-05-05:
 	- Updated description & todo
+
 	## 2018-04-26:
 	- Game implemented
+
 	## 2018-04-24:
 	- Initial creation
+
 Todo:
 	- Main menu
 	- Pause menu (Detect pause)
@@ -40,7 +49,6 @@ Todo:
 
 #define FPL_IMPLEMENTATION
 #define FPL_LOGGING
-#define FPL_LOG_TO_DEBUGOUT
 #include <final_platform_layer.h>
 
 #define FGL_IMPLEMENTATION
@@ -1011,9 +1019,9 @@ extern void GameInput(GameMemory &gameMemory, const Input &input) {
 				{
 					// Single player input
 					Paddle &paddle = state->paddle.paddle;
-					if(controller->moveLeft.isDown) {
+					if(IsDown(controller->moveLeft)) {
 						paddle.body->ApplyLinearImpulse(paddle.speed * b2Vec2(-1, 0), paddle.body->GetPosition(), true);
-					} else if(controller->moveRight.isDown) {
+					} else if(IsDown(controller->moveRight)) {
 						paddle.body->ApplyLinearImpulse(paddle.speed * b2Vec2(1, 0), paddle.body->GetPosition(), true);
 					}
 					if(WasPressed(controller->actionDown) && paddle.gluedBall != nullptr) {
@@ -1023,7 +1031,7 @@ extern void GameInput(GameMemory &gameMemory, const Input &input) {
 
 				case GameMode::Title:
 				{
-					if(controller->moveLeft.isDown || controller->moveRight.isDown || controller->actionDown.isDown) {
+					if(WasPressed(controller->moveLeft) || WasPressed(controller->moveRight) || WasPressed(controller->actionDown)) {
 						state->mode = GameMode::Menu;
 						state->menu = {};
 						state->menu.section = MenuSection::Main;
@@ -1032,7 +1040,7 @@ extern void GameInput(GameMemory &gameMemory, const Input &input) {
 
 				case GameMode::GameOver:
 				{
-					if(controller->moveLeft.isDown || controller->moveRight.isDown || controller->actionDown.isDown) {
+					if(WasPressed(controller->moveLeft) || WasPressed(controller->moveRight) || WasPressed(controller->actionDown)) {
 						state->mode = GameMode::Title;
 					}
 				};

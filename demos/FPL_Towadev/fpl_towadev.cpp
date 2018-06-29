@@ -22,46 +22,56 @@ Changelog:
 	## 2018-06-25:
 	- Introduced Tower Buttons
 	- Write selected tower name
+
 	## 2018-06-20:
 	- Refactoring
 	- WaveData have now a list of SpawnerData, so we can have multiple & different spawners for each wave.
 	- Fixed overlay font atlas was too small
+
 	## 2018-06-19:
 	- Started a very basic immediate mode UI system
 	- Prepare for command buffer rendering
 	- Draw tower preview on mouse tile
 	- Bugfixes
+
 	## 2018-06-18:
 	- Simplified tower rotation
 	- Added prediction flags & enemy range test type
 	- Changed enemy detection using new flags and range test
+
 	## 2018-06-16:
 	- Changed enemy detection and fire on non-targets as well
 	- Made tower rotation really bad
+
 	## 2018-06-15:
 	- Improved enemy position prediction for towers
 	- Improved gun rotation
 	- Cooldown only after tower has fired
+
 	## 2018-06-14:
 	- Improved HUD rendering
 	- Added background for controls/UI rendering
 	- Added simple gun rotation
+
 	## 2018-06-11:
 	- Heavy refactoring
 	- Small bugfixes
 	- Render enemy hp as a colored progressbar
 	- Render wave cooldown timer
 	- Introduced wave state
+
 	## 2018-06-10:
 	- Removed entity tile layer from TMX map
 	- Waypoints / Goal are now loaded from objects
 	- Introduced money and bounty
 	- Show current money in HUD
+
 	## 2018-06-09:
 	- Tons of bugfixes (Waypoints, Target detection, etc.)
 	- Added lots of new properties
 	- Added simple HUD showing wave & lifes
 	- Improved enemy spawner to support multiple spawners per wave
+
 	## 2018-06-08:
 	- Improved enemy target
 	- Removed fixed towers
@@ -69,12 +79,15 @@ Changelog:
 	- Removed fixed tilemap
 	- Added basic TMX parsing support
 	- Tiles are now loaded from TMX layers
+
 	## 2018-06-07:
 	- Added enemy spawner
 	- Added fixed towers with instant lock-on
 	- Added bullet shoot from towers with a cooldown
+
 	## 2018-06-06:
 	- Improved enemy movement
+
 	## 2018-06-05:
 	- Initial creation
 -------------------------------------------------------------------------------
@@ -303,7 +316,7 @@ namespace ui {
 				ctx.active = 0;
 			}
 		} else if(ctx.hot == id) {
-			if(ctx.input.leftButton.isDown) {
+			if(ctx.input.leftButton.state == fplButtonState_Press) {
 				ctx.active = id;
 			}
 		}
@@ -1679,7 +1692,7 @@ extern void GameRender(GameMemory &gameMemory, CommandBuffer &renderCommands, co
 	DrawTextFont(text, fplGetAnsiStringLength(text), &fontAsset->desc, fontAsset->texture, 0.0f, 0.0f, MaxTileSize * 2.0f, 0.0f, 1.0f);
 #endif
 
-#if 1
+#if 0
 	glMatrixMode(GL_MODELVIEW);
 	glLoadIdentity();
 	glTranslatef(state->camera.offset.x, state->camera.offset.y, 0);
@@ -1935,13 +1948,13 @@ extern void GameRender(GameMemory &gameMemory, CommandBuffer &renderCommands, co
 		fplFormatAnsiString(text, FPL_ARRAYCOUNT(text), "Fps: %.5f, Delta: %.5f", state->framesPerSecond, state->deltaTime);
 		DrawTextFont(text, fplGetAnsiStringLength(text), &font.desc, font.texture, textPos.x + GridWidth - padding * 2.0f, textPos.y, fontHeight, -1.0f, 1.0f);
 	}
+#endif
 
 	//
 	// HUD & Controls
 	//
-	game::DrawHUD(*state);
+	//game::DrawHUD(*state);
 	game::DrawControls(*state);
-#endif
 }
 
 extern void GameUpdateAndRender(GameMemory &gameMemory, const Input &input, CommandBuffer &renderCommands, const float alpha) {
