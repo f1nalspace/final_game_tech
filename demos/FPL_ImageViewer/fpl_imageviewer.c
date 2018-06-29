@@ -36,6 +36,7 @@ Changelog:
 */
 
 #define FPL_IMPLEMENTATION
+#define FPL_LOGGING
 #include <final_platform_layer.h>
 
 #define FGL_IMPLEMENTATION
@@ -45,7 +46,6 @@ Changelog:
 #include <stb/stb_image.h>
 
 #include <string.h>
-#include <assert.h>
 #include <malloc.h>
 
 typedef struct PictureFile {
@@ -214,7 +214,7 @@ static void ClearPictureFiles(ViewerState *state) {
 }
 
 static void AddPictureFile(ViewerState *state, const fplFileEntry *entry) {
-	assert(state->pictureFileCount <= state->pictureFileCapacity);
+	FPL_ASSERT(state->pictureFileCount <= state->pictureFileCapacity);
 	if(state->pictureFileCapacity == 0) {
 		state->pictureFileCapacity = 1;
 		state->pictureFiles = malloc(sizeof(PictureFile) * state->pictureFileCapacity);
@@ -256,7 +256,7 @@ static bool LoadPicturesPath(ViewerState *state, const char *path) {
 }
 
 static void ReleaseTexture(GLuint *target) {
-	assert(*target > 0);
+	FPL_ASSERT(*target > 0);
 	glDeleteTextures(1, target);
 	*target = 0;
 }
@@ -324,8 +324,8 @@ static void LoadPictureThreadProc(const fplThreadHandle *thread, void *data) {
 		}
 
 		if(hasValue) {
-			assert(valueToLoad.fileIndex >= 0 && valueToLoad.fileIndex < state->pictureFileCount);
-			assert(valueToLoad.pictureIndex >= 0 && valueToLoad.pictureIndex < state->viewPicturesCapacity);
+			FPL_ASSERT(valueToLoad.fileIndex >= 0 && valueToLoad.fileIndex < state->pictureFileCount);
+			FPL_ASSERT(valueToLoad.pictureIndex >= 0 && valueToLoad.pictureIndex < state->viewPicturesCapacity);
 			ViewPicture *loadedPic = &state->viewPictures[valueToLoad.pictureIndex];
 			const PictureFile *picFile = &state->pictureFiles[valueToLoad.fileIndex];
 			if(fplAtomicLoadS32(&loadedPic->state) == LoadedPictureState_Discard) {
@@ -335,7 +335,7 @@ static void LoadPictureThreadProc(const fplThreadHandle *thread, void *data) {
 				fplAtomicStoreS32(&loadedPic->state, LoadedPictureState_LoadingData);
 
 				loadedPic->fileIndex = valueToLoad.fileIndex;
-				assert(picFile->filename != fpl_null);
+				FPL_ASSERT(picFile->filename != fpl_null);
 				fplPathCombine(loadedPic->filePath, FPL_ARRAYCOUNT(loadedPic->filePath), 2, state->picturesPath, picFile->filename);
 				loadedPic->width = loadedPic->height = 0;
 				loadedPic->data = fpl_null;
@@ -363,8 +363,8 @@ static void LoadPictureThreadProc(const fplThreadHandle *thread, void *data) {
 static void InitLoadThreads(ViewerState *state, const size_t threadCount) {
 	state->loadThreadCount = threadCount;
 	for(size_t i = 0; i < state->loadThreadCount; ++i) {
-		assert(fplMutexInit(&state->loadThreadData[i].mutex));
-		assert(fplConditionInit(&state->loadThreadData[i].condition));
+		fplMutexInit(&state->loadThreadData[i].mutex);
+		fplConditionInit(&state->loadThreadData[i].condition);
 		state->loadThreadData[i].state = state;
 		state->loadThreadData[i].shutdown = false;
 		state->loadThreads[i] = fplThreadCreate(LoadPictureThreadProc, &state->loadThreadData[i]);
@@ -392,8 +392,8 @@ static void DiscardAll(ViewerState *state) {
 static void QueueUpPictures(ViewerState *state) {
 	int capacity = (int)state->viewPicturesCapacity;
 	int maxSidePreloadCount = capacity / 2;
-	assert(state->viewPictureIndex == maxSidePreloadCount);
-	assert(state->activeFileIndex >= 0 && state->activeFileIndex < (int)state->pictureFileCount);
+	FPL_ASSERT(state->viewPictureIndex == maxSidePreloadCount);
+	FPL_ASSERT(state->activeFileIndex >= 0 && state->activeFileIndex < (int)state->pictureFileCount);
 	int preloadCountLeft;
 	int preloadCountRight;
 	if(state->activeFileIndex > 0) {
@@ -412,14 +412,14 @@ static void QueueUpPictures(ViewerState *state) {
 	LoadQueueValue newValue;
 	newValue.fileIndex = state->activeFileIndex;
 	newValue.pictureIndex = state->viewPictureIndex;
-	assert(TryQueueEnqueue(&state->loadQueue, newValue));
+	TryQueueEnqueue(&state->loadQueue, newValue);
 
 	// Enqueu pictures from the left side
 	for(int i = 1; i <= preloadCountLeft; ++i) {
 		if((state->activeFileIndex - i) >= 0) {
 			newValue.fileIndex = state->activeFileIndex - i;
 			newValue.pictureIndex = state->viewPictureIndex - i;
-			assert(TryQueueEnqueue(&state->loadQueue, newValue));
+			TryQueueEnqueue(&state->loadQueue, newValue);
 		}
 	}
 
@@ -428,7 +428,7 @@ static void QueueUpPictures(ViewerState *state) {
 		if((state->activeFileIndex + i) < state->pictureFileCount) {
 			newValue.fileIndex = state->activeFileIndex + i;
 			newValue.pictureIndex = state->viewPictureIndex + i;
-			assert(TryQueueEnqueue(&state->loadQueue, newValue));
+			TryQueueEnqueue(&state->loadQueue, newValue);
 		}
 	}
 
@@ -440,8 +440,8 @@ static void QueueUpPictures(ViewerState *state) {
 
 static void ChangeViewPicture(ViewerState *state, const int offset, const bool forceReload) {
 	if(state->pictureFileCount == 0) {
-		assert(state->viewPictureIndex == -1);
-		assert(state->activeFileIndex == -1);
+		FPL_ASSERT(state->viewPictureIndex == -1);
+		FPL_ASSERT(state->activeFileIndex == -1);
 		return;
 	}
 	int capacity = (int)state->viewPicturesCapacity;
@@ -513,7 +513,7 @@ int main(int argc, char **argv) {
 			state.viewPicturesCapacity = viewPicturesCapacity;
 			state.loadQueueCapacity = queueCapacity;
 
-			assert(FPL_IS_POWEROFTWO(queueCapacity));
+			FPL_ASSERT(FPL_IS_POWEROFTWO(queueCapacity));
 			InitQueue(&state.loadQueue, queueCapacity);
 
 			// Load initial pictures path
@@ -607,10 +607,10 @@ int main(int argc, char **argv) {
 							fplDebugFormatOut("Release texture '%s'[%d]\n", loadedPic->filePath, loadedPic->fileIndex);
 							ReleaseTexture(&loadedPic->textureId);
 						}
-						assert(loadedPic->textureId == 0);
-						assert(loadedPic->data != fpl_null);
-						assert(loadedPic->width > 0 && loadedPic->height > 0);
-						assert(loadedPic->components > 0);
+						FPL_ASSERT(loadedPic->textureId == 0);
+						FPL_ASSERT(loadedPic->data != fpl_null);
+						FPL_ASSERT(loadedPic->width > 0 && loadedPic->height > 0);
+						FPL_ASSERT(loadedPic->components > 0);
 						fplDebugFormatOut("Allocate texture '%s'[%d]\n", loadedPic->filePath, loadedPic->fileIndex);
 						loadedPic->textureId = AllocateTexture(loadedPic->width, loadedPic->height, loadedPic->components, loadedPic->data, false, GL_LINEAR);
 						stbi_image_free(loadedPic->data);
@@ -664,13 +664,13 @@ int main(int argc, char **argv) {
 				glLoadIdentity();
 
 				if(state.viewPictureIndex > -1) {
-					assert(state.viewPictureIndex < FPL_ARRAYCOUNT(state.viewPictures));
+					FPL_ASSERT(state.viewPictureIndex < FPL_ARRAYCOUNT(state.viewPictures));
 					const ViewPicture *loadedPic = &state.viewPictures[state.viewPictureIndex];
 					if(loadedPic->state == LoadedPictureState_Ready) {
 						float texW = (float)loadedPic->width;
 						float texH = (float)loadedPic->height;
 						float aspect = texH > 0 ? texW / texH : 1;
-						assert(aspect != 0);
+						FPL_ASSERT(aspect != 0);
 
 						float viewWidth;
 						float viewHeight;
@@ -735,7 +735,7 @@ int main(int argc, char **argv) {
 								glColor4f(1.0, 0.0f, 0.0f, 0.5f);
 								break;
 							default:
-								assert(!"Invalid loaded picture state!");
+								FPL_ASSERT(!"Invalid loaded picture state!");
 								break;
 						}
 						glBegin(GL_QUADS);
