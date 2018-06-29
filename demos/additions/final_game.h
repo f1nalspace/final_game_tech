@@ -1,14 +1,20 @@
 /*
 Name:
 	Final Game
+
 Description:
 	Structures, Functions for setting up a game quickly.
 	Also declares extern functions for init/kill/update/render a game instance.
 
 	This file is part of the final_framework.
+
 License:
 	MIT License
 	Copyright 2018 Torsten Spaete
+
+Changelog:
+	## 2018-06-29
+	- Changed to use new keyboard/mouse button state
 */
 
 #ifndef FINAL_GAME_H
@@ -24,12 +30,16 @@ License:
 #include "final_render.h"
 
 struct ButtonState {
-	bool isDown;
+	fplButtonState state;
 	int halfTransitionCount;
 };
 
 inline bool WasPressed(const ButtonState &state) {
-	bool result = ((state.halfTransitionCount > 1) || ((state.halfTransitionCount == 1) && (state.isDown)));
+	bool result = ((state.halfTransitionCount > 1) || ((state.halfTransitionCount == 1) && (state.state == fplButtonState_Release)));
+	return(result);
+}
+inline bool IsDown(const ButtonState &state) {
+	bool result = state.state >= fplButtonState_Press;
 	return(result);
 }
 
@@ -48,9 +58,10 @@ struct Controller {
 			ButtonState actionLeft;
 			ButtonState actionRight;
 			ButtonState actionBack;
+			ButtonState actionStart;
 			ButtonState debugToggle;
 		};
-		ButtonState buttons[10];
+		ButtonState buttons[11];
 	};
 };
 
