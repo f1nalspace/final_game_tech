@@ -21,6 +21,11 @@
   <ItemGroup>
     <ClCompile Include="fpl_imageviewer.c" />
   </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="..\..\final_platform_layer.h" />
+    <ClInclude Include="..\dependencies\stb\stb_image.h" />
+    <ClInclude Include="..\dependencies\stb\stb_truetype.h" />
+  </ItemGroup>
   <PropertyGroup Label="Globals">
     <VCProjectVersion>15.0</VCProjectVersion>
     <ProjectGuid>{6DE47F7B-70B5-4242-95B9-7FF6A3C25608}</ProjectGuid>

@@ -3,4 +3,20 @@
   <ItemGroup>
     <ClCompile Include="fpl_imageviewer.c" />
   </ItemGroup>
+  <ItemGroup>
+    <Filter Include="dependencies">
+      <UniqueIdentifier>{674da484-ff03-4b52-8377-77f279b758ab}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="..\..\final_platform_layer.h">
+      <Filter>dependencies</Filter>
+    </ClInclude>
+    <ClInclude Include="..\dependencies\stb\stb_image.h">
+      <Filter>dependencies</Filter>
+    </ClInclude>
+    <ClInclude Include="..\dependencies\stb\stb_truetype.h">
+      <Filter>dependencies</Filter>
+    </ClInclude>
+  </ItemGroup>
 </Project>
