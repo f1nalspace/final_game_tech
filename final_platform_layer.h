@@ -154,6 +154,7 @@ SOFTWARE.
 	- New: Added enumeration fplButtonState
 
 	- Changed: [Win32] Changed keyboard and mouse handling to use fplButtonState now
+	- Changed: [Win32] Changed fplListDirBegin/fplListDirNext to ignore . and ..
 	- Changed: [X11] Changed keyboard and mouse handling to use fplButtonState now
 	- Fixed: [Win32] fplGetTimeInMillisecondsHP was not returning a proper double value
 	- Fixed: [Win32] Fixed crash when using fplThreadTerminate while threads are already exiting
@@ -9667,8 +9668,17 @@ fpl_platform_api bool fplListDirBegin(const char *path, const char *filter, fplF
 		entry->internalHandle.win32FileHandle = searchHandle;
 		entry->internalRoot.rootPath = path;
 		entry->internalRoot.filter = filter;
-		fpl__Win32FillFileEntry(path, &findData, entry);
-		result = true;
+
+		bool foundNext = true;
+		while (foundNext) {
+			if (fplIsStringEqual(".", findData.cFileName) || fplIsStringEqual("..", findData.cFileName)) {
+				foundNext = FindNextFileA(searchHandle, &findData) == TRUE;
+			} else {
+				result = true;
+				fpl__Win32FillFileEntry(path, &findData, entry);
+				break;
+			}
+		}
 	}
 	return(result);
 }
@@ -9678,10 +9688,19 @@ fpl_platform_api bool fplListDirNext(fplFileEntry *entry) {
 	if(entry->internalHandle.win32FileHandle != INVALID_HANDLE_VALUE) {
 		HANDLE searchHandle = entry->internalHandle.win32FileHandle;
 		WIN32_FIND_DATAA findData;
-		if(FindNextFileA(searchHandle, &findData)) {
-			fpl__Win32FillFileEntry(entry->internalRoot.rootPath, &findData, entry);
-			result = true;
-		}
+		bool foundNext;
+		do {
+			foundNext = FindNextFileA(searchHandle, &findData) == TRUE;
+			if (foundNext) {
+				if (fplIsStringEqual(".", findData.cFileName) || fplIsStringEqual("..", findData.cFileName)) {
+					continue;
+				} else {
+					fpl__Win32FillFileEntry(entry->internalRoot.rootPath, &findData, entry);
+					result = true;
+					break;
+				}
+			}
+		} while (foundNext);
 	}
 	return(result);
 }
