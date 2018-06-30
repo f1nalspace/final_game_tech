@@ -395,9 +395,15 @@ struct FontAsset {
 };
 
 struct Assets {
-	char dataPath[1024];
+	TowerData towerDefinitions[256];
+	CreepData creepDefinitions[128];
+	WaveData waveDefinitions[128];
 	FontAsset hudFont;
 	FontAsset overlayFont;
+	char dataPath[1024];
+	size_t towerDefinitionCount;
+	size_t creepDefinitionCount;
+	size_t waveDefinitionCount;
 	GLint radiantTexture;
 };
 
@@ -420,8 +426,8 @@ struct Bullets {
 };
 
 struct Towers {
-	Tower list[256];
-	size_t count;
+	Tower activeList[128];
+	size_t activeCount;
 	int selectedIndex;
 };
 

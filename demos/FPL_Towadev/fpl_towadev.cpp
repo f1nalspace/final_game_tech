@@ -141,7 +141,7 @@ Todo:
 
 #include "fpl_towadev.h"
 
-constexpr float ShotAngleTolerance = (Pi32 * 0.1f) * 0.5f;
+constexpr float ShotAngleTolerance = (Pi32 * 0.05f);
 
 static const TowerData TowerDefinitions[] = {
 	MakeTowerData(
@@ -523,9 +523,9 @@ namespace creeps {
 	}
 
 	static const CreepData *FindEnemyById(GameState &state, const char *id) {
-		for (int i = 0; i < FPL_ARRAYCOUNT(CreepDefinitions); ++i) {
-			if (strcmp(CreepDefinitions[i].id, id) == 0) {
-				return &CreepDefinitions[i];
+		for (int i = 0; i < state.assets.creepDefinitionCount; ++i) {
+			if (strcmp(state.assets.creepDefinitions[i].id, id) == 0) {
+				return &state.assets.creepDefinitions[i];
 			}
 		}
 		return nullptr;
@@ -541,8 +541,8 @@ namespace creeps {
 
 	static void AllEnemiesKilled(GameState &state) {
 		state.wave.state = WaveState::Won;
-		state.stats.money += WaveDefinitions[state.wave.activeIndex].completionBounty;
-		if (state.wave.activeIndex < (FPL_ARRAYCOUNT(WaveDefinitions) - 1)) {
+		state.stats.money += state.assets.waveDefinitions[state.wave.activeIndex].completionBounty;
+		if (state.wave.activeIndex < (state.assets.waveDefinitionCount - 1)) {
 			level::LoadWave(state, state.wave.activeIndex + 1);
 		}
 	}
@@ -842,8 +842,8 @@ namespace level {
 		state.wave.isActive = false;
 		state.enemies.count = 0;
 		state.spawners.count = 0;
-		for (size_t towerIndex = 0; towerIndex < state.towers.count; ++towerIndex) {
-			Tower &tower = state.towers.list[towerIndex];
+		for (size_t towerIndex = 0; towerIndex < state.towers.activeCount; ++towerIndex) {
+			Tower &tower = state.towers.activeList[towerIndex];
 			tower.hasTarget = false;
 			tower.targetEnemy = nullptr;
 			tower.targetId = 0;
@@ -852,7 +852,7 @@ namespace level {
 
 	static void ClearLevel(GameState &state) {
 		gamelog::Verbose("Clear Level");
-		state.towers.count = 0;
+		state.towers.activeCount = 0;
 		state.towers.selectedIndex = -1;
 		ClearWave(state);
 		ClearWaypoints(state.waypoints);
@@ -871,7 +871,7 @@ namespace level {
 	}
 
 	static void LoadWave(GameState &state, const int waveIndex) {
-		const WaveData &wave = WaveDefinitions[waveIndex];
+		const WaveData &wave = state.assets.waveDefinitions[waveIndex];
 
 		state.wave.state = WaveState::Stopped;
 
@@ -979,10 +979,10 @@ namespace towers {
 	};
 
 	inline CanPlaceTowerResult CanPlaceTower(GameState &state, const Vec2i &tilePos, const TowerData *tower) {
-		if ((state.towers.selectedIndex < 0) || !(state.towers.selectedIndex < FPL_ARRAYCOUNT(TowerDefinitions))) {
+		if ((state.towers.selectedIndex < 0) || !(state.towers.selectedIndex < state.assets.towerDefinitionCount)) {
 			return CanPlaceTowerResult::NoTowerSelected;
 		}
-		if (state.towers.count == FPL_ARRAYCOUNT(state.towers.list)) {
+		if (state.towers.activeCount == FPL_ARRAYCOUNT(state.towers.activeList)) {
 			return CanPlaceTowerResult::TooManyTowers;
 		}
 		Tile *tile = level::GetTile(state.level, tilePos);
@@ -999,8 +999,8 @@ namespace towers {
 	}
 
 	static Tower *PlaceTower(GameState &state, const Vec2i &tilePos, const TowerData *data) {
-		assert(state.towers.count < FPL_ARRAYCOUNT(state.towers.list));
-		Tower *tower = &state.towers.list[state.towers.count++];
+		assert(state.towers.activeCount < FPL_ARRAYCOUNT(state.towers.activeList));
+		Tower *tower = &state.towers.activeList[state.towers.activeCount++];
 		*tower = {};
 		tower->data = data;
 		tower->position = TileToWorld(tilePos, TileExt);
@@ -1236,11 +1236,41 @@ namespace game {
 	}
 
 	static void LoadAssets(Assets &assets) {
+		// Towers/Enemies/Waves
+		assets.creepDefinitionCount = 0;
+		assets.towerDefinitionCount = 0;
+		assets.waveDefinitionCount = 0;
+
+		// @TEMPORARY(final): For now we push all the static const arrays
+		for (size_t i = 0; i < FPL_ARRAYCOUNT(TowerDefinitions); ++i) {
+			FPL_ASSERT(assets.towerDefinitionCount < FPL_ARRAYCOUNT(assets.towerDefinitions));
+			const TowerData *src = &TowerDefinitions[i];
+			size_t idx = assets.towerDefinitionCount++;
+			TowerData *dst = &assets.towerDefinitions[idx];
+			*dst = *src;
+			gamelog::Info("Added tower definition[%zu]: '%s'", idx, dst->id);
+		}
+		for (size_t i = 0; i < FPL_ARRAYCOUNT(CreepDefinitions); ++i) {
+			FPL_ASSERT(assets.creepDefinitionCount < FPL_ARRAYCOUNT(assets.creepDefinitions));
+			const CreepData *src = &CreepDefinitions[i];
+			size_t idx = assets.creepDefinitionCount++;
+			CreepData *dst = &assets.creepDefinitions[idx];
+			*dst = *src;
+			gamelog::Info("Added creep definition[%zu]: '%s'", idx, dst->id);
+		}
+		for (size_t i = 0; i < FPL_ARRAYCOUNT(WaveDefinitions); ++i) {
+			FPL_ASSERT(assets.waveDefinitionCount < FPL_ARRAYCOUNT(assets.waveDefinitions));
+			const WaveData *src = &WaveDefinitions[i];
+			size_t idx = assets.waveDefinitionCount++;
+			WaveData *dst = &assets.waveDefinitions[idx];
+			*dst = *src;
+			gamelog::Info("Added wave definition[%zu]: Level:'%s', Spawners:%zu", idx, dst->levelId, dst->spawnerCount);
+		}
+
+		// Fonts
 		char fontDataPath[1024];
 		const char *fontFilename = "SulphurPoint-Bold.otf";
 		fplPathCombine(fontDataPath, FPL_ARRAYCOUNT(fontDataPath), 2, assets.dataPath, "fonts");
-		//const char *fontDataPath = "c:\\windows\\fonts";
-		//const char *fontFilename = "times.ttf";
 		if (LoadFontFromFile(fontDataPath, fontFilename, 0, 36.0f, 32, 128, 512, 512, false, &assets.hudFont.desc)) {
 			assets.hudFont.texture = AllocateTexture(assets.hudFont.desc.atlasWidth, assets.hudFont.desc.atlasHeight, assets.hudFont.desc.atlasAlphaBitmap, false, GL_LINEAR, true);
 		}
@@ -1248,6 +1278,7 @@ namespace game {
 			assets.overlayFont.texture = AllocateTexture(assets.overlayFont.desc.atlasWidth, assets.overlayFont.desc.atlasHeight, assets.overlayFont.desc.atlasAlphaBitmap, false, GL_LINEAR, true);
 		}
 
+		// Textures
 		char texturesDataPath[1024];
 		fplPathCombine(texturesDataPath, FPL_ARRAYCOUNT(texturesDataPath), 2, assets.dataPath, "textures");
 		assets.radiantTexture = LoadTexture(texturesDataPath, "radiant.png");
@@ -1328,7 +1359,7 @@ namespace game {
 			glColor4fv(&TextForeColor.m[0]);
 			DrawTextFont(text, fplGetAnsiStringLength(text), &font.desc, font.texture, textPos.x, textPos.y, hudFontHeight, 0.0f, 0.0f);
 
-			fplFormatAnsiString(text, FPL_ARRAYCOUNT(text), "Wave: %d / %zu", (state.wave.activeIndex + 1), FPL_ARRAYCOUNT(WaveDefinitions));
+			fplFormatAnsiString(text, FPL_ARRAYCOUNT(text), "Wave: %d / %zu", (state.wave.activeIndex + 1), state.assets.waveDefinitionCount);
 			textPos.y -= hudFontHeight;
 			glColor4fv(&TextBackColor.m[0]);
 			DrawTextFont(text, fplGetAnsiStringLength(text), &font.desc, font.texture, textPos.x + outlineOffset, textPos.y - outlineOffset, hudFontHeight, 0.0f, 0.0f);
@@ -1357,8 +1388,8 @@ namespace game {
 
 	static void DrawTowerControl(GameState &gameState, const Vec2f &pos, const Vec2f &radius, const ui::UIButtonState buttonState, void *userData) {
 		int towerDataIndex = (int)(uintptr_t)(userData);
-		assert(towerDataIndex >= 0 && towerDataIndex < FPL_ARRAYCOUNT(TowerDefinitions));
-		const TowerData *towerData = &TowerDefinitions[towerDataIndex];
+		assert(towerDataIndex >= 0 && towerDataIndex < gameState.assets.towerDefinitionCount);
+		const TowerData *towerData = &gameState.assets.towerDefinitions[towerDataIndex];
 		float alpha = 0.75f;
 		if (buttonState == ui::UIButtonState::Hover) {
 			alpha = 1.0f;
@@ -1412,8 +1443,8 @@ namespace game {
 		float buttonHeight = ControlsHeight - buttonMargin * 2.0f;
 		Vec2f buttonRadius = V2f(buttonHeight * 0.5f);
 		Vec2f buttonOutputRadius = ui::GetUIButtonExt(buttonRadius);
-		for (int towerIndex = 0; towerIndex < FPL_ARRAYCOUNT(TowerDefinitions); ++towerIndex) {
-			void *buttonId = (void *)&TowerDefinitions[towerIndex]; // Totally dont care about const removal here
+		for (int towerIndex = 0; towerIndex < state.assets.towerDefinitionCount; ++towerIndex) {
+			void *buttonId = (void *)&state.assets.towerDefinitions[towerIndex]; // Totally dont care about const removal here
 			float buttonX = ControlsOriginX + buttonMargin + (towerIndex * (buttonOutputRadius.w * 2.0f) + (FPL_MAX(0, towerIndex - 1) * buttonPadding));
 			float buttonY = ControlsOriginY + buttonMargin;
 			if (ui::UIButton(state.ui, buttonId, V2f(buttonX + buttonRadius.w, buttonY + buttonRadius.h), buttonRadius, DrawTowerControl, (void *)(uintptr_t)towerIndex)) {
@@ -1424,7 +1455,7 @@ namespace game {
 		if (state.towers.selectedIndex > -1) {
 			const FontAsset &font = state.assets.hudFont;
 			float fontHeight = MaxTileSize * 0.4f;
-			const TowerData &towerData = TowerDefinitions[state.towers.selectedIndex];
+			const TowerData &towerData = state.assets.towerDefinitions[state.towers.selectedIndex];
 			Vec2f textPos = V2f(ControlsOriginX + ControlsWidth - lineWidthWorld - buttonMargin, ControlsOriginY + ControlsHeight * 0.5f);
 			char textBuffer[256];
 			fplFormatAnsiString(textBuffer, FPL_ARRAYCOUNT(textBuffer), "[%s / $%d]", towerData.id, towerData.costs);
@@ -1501,7 +1532,7 @@ extern void GameInput(GameMemory &gameMemory, const Input &input) {
 		// Tower placement
 		if (WasPressed(input.mouse.left) && !ui::UIIsHot(state->ui)) {
 			if (state->towers.selectedIndex > -1) {
-				const TowerData *tower = &TowerDefinitions[state->towers.selectedIndex];
+				const TowerData *tower = &state->assets.towerDefinitions[state->towers.selectedIndex];
 				if (towers::CanPlaceTower(*state, state->mouseTilePos, tower) == towers::CanPlaceTowerResult::Success) {
 					towers::PlaceTower(*state, state->mouseTilePos, tower);
 				}
@@ -1568,8 +1599,8 @@ extern void GameUpdate(GameMemory &gameMemory, const Input &input) {
 		}
 
 		// Update towers
-		for (size_t towerIndex = 0; towerIndex < state->towers.count; ++towerIndex) {
-			Tower &tower = state->towers.list[towerIndex];
+		for (size_t towerIndex = 0; towerIndex < state->towers.activeCount; ++towerIndex) {
+			Tower &tower = state->towers.activeList[towerIndex];
 			towers::UpdateTower(*state, tower, dt);
 		}
 
@@ -1762,7 +1793,7 @@ extern void GameRender(GameMemory &gameMemory, CommandBuffer &renderCommands, co
 
 	// Hover tile
 	if (state->towers.selectedIndex > -1 && IsValidTile(state->mouseTilePos)) {
-		const TowerData *tower = &TowerDefinitions[state->towers.selectedIndex];
+		const TowerData *tower = &state->assets.towerDefinitions[state->towers.selectedIndex];
 
 		towers::CanPlaceTowerResult placeRes = towers::CanPlaceTower(*state, state->mouseTilePos, tower);
 		Vec4f hoverColor;
@@ -1852,8 +1883,8 @@ extern void GameRender(GameMemory &gameMemory, CommandBuffer &renderCommands, co
 	//
 	// Towers
 	//
-	for (size_t towerIndex = 0; towerIndex < state->towers.count; ++towerIndex) {
-		const Tower &tower = state->towers.list[towerIndex];
+	for (size_t towerIndex = 0; towerIndex < state->towers.activeCount; ++towerIndex) {
+		const Tower &tower = state->towers.activeList[towerIndex];
 		towers::DrawTower(state->assets, state->camera, *tower.data, tower.position, V2f(MaxTileRadius), tower.facingAngle, 1.0f, false);
 
 		if (state->isDebugRendering) {
@@ -1938,7 +1969,7 @@ extern void GameRender(GameMemory &gameMemory, CommandBuffer &renderCommands, co
 	if (state->isDebugRendering) {
 		const FontAsset &font = state->assets.hudFont;
 		char text[256];
-		fplFormatAnsiString(text, FPL_ARRAYCOUNT(text), "Enemies: %03zu/%03zu, Bullets: %03zu, Towers: %03zu, Spawners: %03zu", state->enemies.count, state->wave.totalEnemyCount, state->bullets.count, state->towers.count, state->spawners.count);
+		fplFormatAnsiString(text, FPL_ARRAYCOUNT(text), "Enemies: %03zu/%03zu, Bullets: %03zu, Towers: %03zu, Spawners: %03zu", state->enemies.count, state->wave.totalEnemyCount, state->bullets.count, state->towers.activeCount, state->spawners.count);
 		glColor4f(1, 1, 1, 1);
 		float padding = MaxTileSize * 0.1f;
 		Vec2f textPos = V2f(GridOriginX + padding, GridOriginY + padding);
