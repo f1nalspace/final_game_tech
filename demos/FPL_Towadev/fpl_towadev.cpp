@@ -769,6 +769,157 @@ namespace level {
 		return(true);
 	}
 
+	static FileContents LoadEntireFile(const char *filePath) {
+		FileContents result = {};
+		fplFileHandle file;
+		if (fplOpenAnsiBinaryFile(filePath, &file)) {
+			result.size = fplGetFileSizeFromHandle32(&file);
+			result.data = (uint8_t *)fplMemoryAllocate(result.size);
+			fplReadFileBlock32(&file, (uint32_t)result.size, result.data, (uint32_t)result.size);
+			fplCloseFile(&file);
+		}
+		return(result);
+	}
+
+	static const char *FindNodeValue(fxmlTag *rootTag, const char *nodeName) {
+		fxmlTag *foundTag = fxmlFindTagByName(rootTag, nodeName);
+		if (foundTag != nullptr) {
+			return foundTag->value;
+		}
+		return nullptr;
+	}
+
+	static void LoadCreepDefinitions(Assets &assets, const char *filename) {
+		char filePath[FPL_MAX_PATH_LENGTH];
+		fplPathCombine(filePath, FPL_ARRAYCOUNT(filePath), 3, assets.dataPath, "levels", filename);
+		FileContents fileData = LoadEntireFile(filePath);
+		if (fileData.data != nullptr) {
+			fxmlContext ctx = {};
+			if (fxmlInitFromMemory(fileData.data, fileData.size, &ctx)) {
+				fxmlTag root = {};
+				if (fxmlParse(&ctx, &root)) {
+					fxmlTag *creepDefinitionsTag = fxmlFindTagByName(&root, "CreepDefinitions");
+					if (creepDefinitionsTag != nullptr) {
+						for (fxmlTag *creepTag = creepDefinitionsTag->firstChild; creepTag; creepTag = creepTag->nextSibling) {
+							if (strcmp("CreepData", creepTag->name) == 0) {
+								const char *creepId = fxmlGetAttributeValue(creepTag, "id");
+								FPL_ASSERT(assets.creepDefinitionCount < FPL_ARRAYCOUNT(assets.creepDefinitions));
+								CreepData *creepData = &assets.creepDefinitions[assets.creepDefinitionCount++];
+								*creepData = {};
+								fplCopyAnsiString(creepId, creepData->id, FPL_ARRAYCOUNT(creepData->id));
+								creepData->renderRadius = MaxTileSize * utils::StringToFloat(FindNodeValue(creepTag, "renderRadius"));
+								creepData->collisionRadius = MaxTileSize * utils::StringToFloat(FindNodeValue(creepTag, "collisionRadius"));
+								creepData->speed = utils::StringToFloat(FindNodeValue(creepTag, "speed"));
+								creepData->hp = utils::StringToInt(FindNodeValue(creepTag, "hp"));
+								creepData->bounty = utils::StringToInt(FindNodeValue(creepTag, "bounty"));
+								creepData->color = V4f(1, 1, 1, 1);
+								creepData->style = CreepStyle::Quad;
+							}
+						}
+					}
+				}
+			}
+			fplMemoryFree(fileData.data);
+		}
+	}
+
+	static void LoadTowerDefinitions(Assets &assets, const char *filename) {
+		char filePath[FPL_MAX_PATH_LENGTH];
+		fplPathCombine(filePath, FPL_ARRAYCOUNT(filePath), 3, assets.dataPath, "levels", filename);
+		FileContents fileData = LoadEntireFile(filePath);
+		if (fileData.data != nullptr) {
+			fxmlContext ctx = {};
+			if (fxmlInitFromMemory(fileData.data, fileData.size, &ctx)) {
+				fxmlTag root = {};
+				if (fxmlParse(&ctx, &root)) {
+					fxmlTag *towerDefinitionsTag = fxmlFindTagByName(&root, "TowerDefinitions");
+					if (towerDefinitionsTag != nullptr) {
+						for (fxmlTag *towerTag = towerDefinitionsTag->firstChild; towerTag; towerTag = towerTag->nextSibling) {
+							if (strcmp("TowerData", towerTag->name) == 0) {
+								const char *towerId = fxmlGetAttributeValue(towerTag, "id");
+								FPL_ASSERT(assets.towerDefinitionCount < FPL_ARRAYCOUNT(assets.towerDefinitions));
+								TowerData *towerData = &assets.towerDefinitions[assets.towerDefinitionCount++];
+								*towerData = {};
+								fplCopyAnsiString(towerId, towerData->id, FPL_ARRAYCOUNT(towerData->id));
+								towerData->detectionRadius = MaxTileSize * utils::StringToFloat(FindNodeValue(towerTag, "detectionRadius"));
+								towerData->unlockRadius = MaxTileSize * utils::StringToFloat(FindNodeValue(towerTag, "unlockRadius"));
+								towerData->structureRadius = MaxTileSize * utils::StringToFloat(FindNodeValue(towerTag, "structureRadius"));
+								towerData->gunTubeLength = MaxTileSize * utils::StringToFloat(FindNodeValue(towerTag, "gunTubeLength"));
+								towerData->gunCooldown = utils::StringToFloat(FindNodeValue(towerTag, "gunCooldown"));
+								towerData->gunTubeThickness = MaxTileSize * utils::StringToFloat(FindNodeValue(towerTag, "gunTubeThickness"));
+								towerData->gunRotationSpeed = utils::StringToFloat(FindNodeValue(towerTag, "gunRotationSpeed"));
+								towerData->enemyRangeTestType = FireRangeTestType::InSight;
+								towerData->enemyPredictionFlags = EnemyPredictionFlags::All;
+								towerData->enemyLockOnMode = EnemyLockTargetMode::LockedOn;
+								towerData->costs = utils::StringToInt(fxmlGetAttributeValue(towerTag, "costs"));
+								fxmlTag *bulletTag = fxmlFindTagByName(towerTag, "bullet");
+								if (bulletTag != nullptr) {
+									towerData->bullet.renderRadius = MaxTileSize * utils::StringToFloat(FindNodeValue(bulletTag, "renderRadius"));
+									towerData->bullet.collisionRadius = MaxTileSize * utils::StringToFloat(FindNodeValue(bulletTag, "collisionRadius"));
+									towerData->bullet.speed = utils::StringToFloat(FindNodeValue(bulletTag, "speed"));
+									towerData->bullet.damage = utils::StringToInt(FindNodeValue(bulletTag, "damage"));
+								}
+							}
+						}
+					}
+				}
+			}
+			fplMemoryFree(fileData.data);
+		}
+	}
+
+	static void LoadWaveDefinitions(Assets &assets, const char *filename) {
+		char filePath[FPL_MAX_PATH_LENGTH];
+		fplPathCombine(filePath, FPL_ARRAYCOUNT(filePath), 3, assets.dataPath, "levels", filename);
+		FileContents fileData = LoadEntireFile(filePath);
+		if (fileData.data != nullptr) {
+			fxmlContext ctx = {};
+			if (fxmlInitFromMemory(fileData.data, fileData.size, &ctx)) {
+				fxmlTag root = {};
+				if (fxmlParse(&ctx, &root)) {
+					fxmlTag *waveDefinitionsTag = fxmlFindTagByName(&root, "WaveDefinitions");
+					if (waveDefinitionsTag != nullptr) {
+						for (fxmlTag *waveTag = waveDefinitionsTag->firstChild; waveTag; waveTag = waveTag->nextSibling) {
+							if (strcmp("WaveData", waveTag->name) == 0) {
+								const char *levelId = fxmlGetAttributeValue(waveTag, "level");
+								FPL_ASSERT(assets.waveDefinitionCount < FPL_ARRAYCOUNT(assets.waveDefinitions));
+								WaveData *waveData = &assets.waveDefinitions[assets.waveDefinitionCount++];
+								*waveData = {};
+								fplCopyAnsiString(levelId, waveData->levelId, FPL_ARRAYCOUNT(waveData->levelId));
+								waveData->startupCooldown = utils::StringToFloat(FindNodeValue(waveTag, "startupCooldown"));
+								waveData->spawnerCount = 0;
+								waveData->completionBounty = utils::StringToInt(FindNodeValue(waveTag, "completionBounty"));
+								fxmlTag *spawnersTag = fxmlFindTagByName(waveTag, "spawners");
+								if (spawnersTag != nullptr) {
+									for (fxmlTag *spawnTag = spawnersTag->firstChild; spawnTag; spawnTag = spawnTag->nextSibling) {
+										if (strcmp("SpawnData", spawnTag->name) == 0) {
+											FPL_ASSERT(waveData->spawnerCount < FPL_ARRAYCOUNT(waveData->spawners));
+											SpawnData *spawnData = &waveData->spawners[waveData->spawnerCount++];
+											const char *spawnId = fxmlGetAttributeValue(spawnTag, "id");
+											const char *enemyId = fxmlGetAttributeValue(spawnTag, "enemy");
+											fplCopyAnsiString(spawnId, spawnData->spawnId, FPL_ARRAYCOUNT(spawnData->spawnId));
+											fplCopyAnsiString(enemyId, spawnData->enemyId, FPL_ARRAYCOUNT(spawnData->enemyId));
+											spawnData->initialCooldown = utils::StringToFloat(FindNodeValue(spawnTag, "initialCooldown"));
+											spawnData->cooldown = utils::StringToFloat(FindNodeValue(spawnTag, "cooldown"));
+											spawnData->enemyCount = utils::StringToInt(FindNodeValue(spawnTag, "enemyCount"));
+											const char *startModeString = FindNodeValue(spawnTag, "startMode");
+											if (strcmp("AfterTheLast", startModeString) == 0) {
+												spawnData->startMode = SpawnerStartMode::AfterTheLast;
+											} else {
+												spawnData->startMode = SpawnerStartMode::Fixed;
+											}
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+			fplMemoryFree(fileData.data);
+		}
+	}
+
 	static bool LoadLevel(GameState &state, const char *dataPath, const char *filename, LevelData &outLevel) {
 		bool result = false;
 
@@ -777,13 +928,10 @@ namespace level {
 
 		gamelog::Verbose("Loading level '%s'", filePath);
 
-		fplFileHandle file;
-		if (fplOpenAnsiBinaryFile(filePath, &file)) {
-			uint32_t dataSize = fplGetFileSizeFromHandle32(&file);
-			char *data = (char *)fplMemoryAllocate(dataSize);
-			fplReadFileBlock32(&file, dataSize, data, dataSize);
+		FileContents fileData = LoadEntireFile(filePath);
+		if (fileData.data != nullptr) {
 			fxmlContext ctx = {};
-			if (fxmlInitFromMemory(data, dataSize, &ctx)) {
+			if (fxmlInitFromMemory(fileData.data, fileData.size, &ctx)) {
 				fxmlTag root = {};
 				if (fxmlParse(&ctx, &root)) {
 					outLevel = {};
@@ -827,8 +975,7 @@ namespace level {
 				}
 				fxmlFree(&ctx);
 			}
-			fplMemoryFree(data);
-			fplCloseFile(&file);
+			fplMemoryFree(fileData.data);
 		} else {
 			gamelog::Error("Level file '%s' could not be found!", filePath);
 		}
@@ -1235,12 +1382,19 @@ namespace game {
 		return(result);
 	}
 
+
+
 	static void LoadAssets(Assets &assets) {
 		// Towers/Enemies/Waves
 		assets.creepDefinitionCount = 0;
 		assets.towerDefinitionCount = 0;
 		assets.waveDefinitionCount = 0;
 
+		level::LoadCreepDefinitions(assets, "creeps.xml");
+		level::LoadTowerDefinitions(assets, "towers.xml");
+		level::LoadWaveDefinitions(assets, "waves.xml");
+
+#if 0
 		// @TEMPORARY(final): For now we push all the static const arrays
 		for (size_t i = 0; i < FPL_ARRAYCOUNT(TowerDefinitions); ++i) {
 			FPL_ASSERT(assets.towerDefinitionCount < FPL_ARRAYCOUNT(assets.towerDefinitions));
@@ -1249,7 +1403,7 @@ namespace game {
 			TowerData *dst = &assets.towerDefinitions[idx];
 			*dst = *src;
 			gamelog::Info("Added tower definition[%zu]: '%s'", idx, dst->id);
-		}
+	}
 		for (size_t i = 0; i < FPL_ARRAYCOUNT(CreepDefinitions); ++i) {
 			FPL_ASSERT(assets.creepDefinitionCount < FPL_ARRAYCOUNT(assets.creepDefinitions));
 			const CreepData *src = &CreepDefinitions[i];
@@ -1266,6 +1420,7 @@ namespace game {
 			*dst = *src;
 			gamelog::Info("Added wave definition[%zu]: Level:'%s', Spawners:%zu", idx, dst->levelId, dst->spawnerCount);
 		}
+#endif
 
 		// Fonts
 		char fontDataPath[1024];
@@ -1282,7 +1437,7 @@ namespace game {
 		char texturesDataPath[1024];
 		fplPathCombine(texturesDataPath, FPL_ARRAYCOUNT(texturesDataPath), 2, assets.dataPath, "textures");
 		assets.radiantTexture = LoadTexture(texturesDataPath, "radiant.png");
-	}
+}
 
 	static void ReleaseGame(GameState &state) {
 		gamelog::Verbose("Release Game");
@@ -1986,7 +2141,7 @@ extern void GameRender(GameMemory &gameMemory, CommandBuffer &renderCommands, co
 	//
 	game::DrawHUD(*state);
 	game::DrawControls(*state);
-}
+			}
 
 extern void GameUpdateAndRender(GameMemory &gameMemory, const Input &input, CommandBuffer &renderCommands, const float alpha) {
 	GameInput(gameMemory, input);

@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CreepDefinitions>
+    <CreepData id="The Quad">
+        <renderRadius>0.25</renderRadius>
+        <collisionRadius>0.2</collisionRadius>
+        <speed>1.0</speed>
+        <hp>80</hp>
+        <bounty>1</bounty>
+        <color>255,255,255,255</color>
+        <style>Quad</style>
+    </CreepData>
+</CreepDefinitions>

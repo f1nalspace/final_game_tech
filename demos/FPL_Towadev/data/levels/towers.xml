@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TowerDefinitions>
+    <TowerData id="First Tower" costs="50">
+        <detectionRadius>2.25</detectionRadius>
+        <unlockRadius>2.3</unlockRadius>
+        <structureRadius>0.35</structureRadius>
+        <gunTubeLength>0.55</gunTubeLength>
+        <gunCooldown>0.35</gunCooldown>
+        <gunTubeThickness>0.2</gunTubeThickness>
+        <gunRotationSpeed>4.0</gunRotationSpeed>
+        <enemyRangeTestType>InSight</enemyRangeTestType>
+        <enemyPredictionFlags>All</enemyPredictionFlags>
+        <enemyLockOnMode>LockedOn</enemyLockOnMode>
+        <bullet>
+            <renderRadius>0.05</renderRadius>
+            <collisionRadius>0.05</collisionRadius>
+            <speed>2.5</speed>
+            <damage>15</damage>
+        </bullet>
+    </TowerData>
+</TowerDefinitions>

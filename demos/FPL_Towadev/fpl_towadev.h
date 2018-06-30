@@ -41,6 +41,11 @@ const Vec4f TextForeColor = V4f(1, 1, 1, 1);
 
 typedef const void *UIID;
 
+struct FileContents {
+	size_t size;
+	uint8_t *data;
+};
+
 struct UIInput {
 	Vec2f userPosition;
 	ButtonState leftButton;
@@ -225,7 +230,7 @@ inline CreepMultiplier MakeCreepMultiplier(const float scale, const float speed,
 
 struct CreepData {
 	Vec4f color;
-	const char *id;
+	char id[128];
 	float renderRadius;
 	float collisionRadius;
 	float speed;
@@ -235,7 +240,7 @@ struct CreepData {
 };
 inline CreepData MakeCreepData(const char *id, const float renderRadius, const float collisionRadius, const float speed, const int hp, const int bounty, const Vec4f &color, const CreepStyle style) {
 	CreepData result = {};
-	result.id = id;
+	fplCopyAnsiString(id, result.id, FPL_ARRAYCOUNT(result.id));
 	result.renderRadius = renderRadius;
 	result.collisionRadius = collisionRadius;
 	result.speed = speed;
@@ -307,7 +312,7 @@ FPL_ENUM_AS_FLAGS_OPERATORS(EnemyPredictionFlags);
 
 struct TowerData {
 	BulletData bullet;
-	const char *id;
+	char id[64];
 	float structureRadius;
 	float detectionRadius;
 	float unlockRadius;
@@ -322,7 +327,7 @@ struct TowerData {
 };
 inline TowerData MakeTowerData(const char *id, const float structureRadius, const float detectionRadius, const float unlockRadius, const float gunTubeLength, const float gunCooldown, const float gunTubeThickness, const float gunRotationSpeed, const int costs, const FireRangeTestType enemyRangeTestType, const EnemyPredictionFlags enemyPredictionFlags, const EnemyLockTargetMode enemyLockOnMode, const BulletData &bullet) {
 	TowerData result = {};
-	result.id = id;
+	fplCopyAnsiString(id, result.id, FPL_ARRAYCOUNT(result.id));
 	result.structureRadius = structureRadius;
 	result.detectionRadius = detectionRadius;
 	result.unlockRadius = unlockRadius;
@@ -339,7 +344,7 @@ inline TowerData MakeTowerData(const char *id, const float structureRadius, cons
 }
 
 struct WaveData {
-	const char *levelId;
+	char levelId[64];
 	CreepMultiplier enemyMultiplier;
 	SpawnData spawners[16];
 	size_t spawnerCount;
@@ -350,7 +355,7 @@ struct WaveData {
 template<size_t N>
 inline WaveData MakeWaveData(const char *levelId, const float startupCooldown, const int completionBounty, const SpawnData(&spawners)[N]) {
 	WaveData result = {};
-	result.levelId = levelId;
+	fplCopyAnsiString(levelId, result.levelId, FPL_ARRAYCOUNT(result.levelId));
 	result.startupCooldown = startupCooldown;
 	result.completionBounty = completionBounty;
 	assert(N <= FPL_ARRAYCOUNT(result.spawners));
