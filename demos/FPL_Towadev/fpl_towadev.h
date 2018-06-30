@@ -261,7 +261,7 @@ struct Creep {
 };
 
 struct CreepSpawner {
-	CreepData spawnTemplate;
+	const CreepData *spawnTemplate;
 	Vec2f spawnPosition;
 	Vec2f exitPosition;
 	size_t totalCount;
