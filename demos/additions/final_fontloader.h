@@ -1,14 +1,20 @@
 /*
 Name:
 	Final Font Loader
+
 Description:
 	Simple font loader using STB_truetype.
 
 	This file is part of the final_framework.
+
 License:
 	MIT License
 	Copyright 2018 Torsten Spaete
+
 Changelog:
+    ## 2018-06-30
+    - Fixed crash on ReleaseFont when not using kerning
+
 	## 2018-06-27
 	- Fixed font baking was totally busted
 	- Removed GetTextWidth()
@@ -325,7 +331,9 @@ extern bool LoadFontFromFile(const char *dataPath, const char *filename, const u
 
 extern void ReleaseFont(LoadedFont *font) {
 	if(font != fpl_null) {
-		fplMemoryFree(font->kerningTable);
+		if (font->hasKerningTable) {
+			fplMemoryFree(font->kerningTable);
+		}
 		fplMemoryFree(font->glyphs);
 		fplMemoryFree(font->atlasAlphaBitmap);
 		FPL_CLEAR_STRUCT(font);
