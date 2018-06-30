@@ -885,6 +885,9 @@ SOFTWARE.
 	- Threading
 		- Signals (POSIX, Non-Linux)
 
+	- Window
+		- Realtime resize (fiber)
+
 	\section section_todo_optional Optional
 
 	- Window:
