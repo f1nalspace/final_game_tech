@@ -152,6 +152,7 @@ SOFTWARE.
 	- New: Introduced FPL_CPU_32BIT and FPL_CPU_64BIT
 	- New: fplAtomic*Ptr uses FPL_CPU_ instead of FPL_ARCH_ now
 	- New: Added enumeration fplButtonState
+	- New: Added field multiSamplingCount to fplOpenGLVideoSettings
 
 	- Changed: [Win32] Changed keyboard and mouse handling to use fplButtonState now
 	- Changed: [Win32] Changed fplListDirBegin/fplListDirNext to ignore . and ..
@@ -161,6 +162,7 @@ SOFTWARE.
 	- Fixed: [Win32] Fixed crash when using fplThreadTerminate while threads are already exiting
 	- Fixed: [Win32] fplThreadWaitForAll/fplThreadWaitForAny was not working properly when threads was already in the process of exiting naturally
 	- Fixed: [POSIX] Fixed crash when using fplThreadTerminate while threads are already exiting
+	- New: [Win32] Support for wglChoosePixelFormat and multi sampling
 
 	## v0.8.2.0 beta:
 	- Changed: Ensures const correctness on all functions
@@ -857,7 +859,6 @@ SOFTWARE.
 	\section section_todo_planned Planned
 
 	- Window
-		- Support for wglChoosePixelFormatARB (Multisampling support -> fpl__PreSetupWindowDefault, Temporary window/context!)
 		- Realtime resize (fiber)
 
 	- DLL-Export support
@@ -2164,6 +2165,8 @@ typedef struct fplOpenGLVideoSettings {
 	uint32_t majorVersion;
 	//! Desired minor version
 	uint32_t minorVersion;
+	//! Multisampling count
+	uint8_t multiSamplingCount;
 } fplOpenGLVideoSettings;
 #endif // FPL_ENABLE_VIDEO_OPENGL
 
@@ -5523,10 +5526,11 @@ typedef struct fpl__Win32WindowState {
 #else
 	char windowClass[256];
 #endif
+	fpl__Win32LastWindowInfo lastFullscreenInfo;
 	HWND windowHandle;
 	HDC deviceContext;
 	HCURSOR defaultCursor;
-	fpl__Win32LastWindowInfo lastFullscreenInfo;
+	int pixelFormat;
 	bool isCursorActive;
 	bool isFrameInteraction;
 } fpl__Win32WindowState;
@@ -8013,6 +8017,12 @@ fpl_internal bool fpl__Win32InitWindow(const fplSettings *initSettings, fplWindo
 	FPL_ASSERT(appState != fpl_null);
 	const fpl__Win32Api *wapi = &appState->winApi;
 	const fplWindowSettings *initWindowSettings = &initSettings->window;
+
+	// Presetup window
+	fpl__PreSetupWindowResult preSetupResult = FPL_ZERO_INIT;
+	if (setupCallbacks->preSetup != fpl_null) {
+		setupCallbacks->preSetup(platAppState, platAppState->initFlags, &platAppState->initSettings, &preSetupResult);
+	}
 
 	// Register window class
 	fpl__win32_WNDCLASSEX windowClass = FPL_ZERO_INIT;
@@ -12628,11 +12638,14 @@ fpl_platform_api char *fplGetHomePath(char *destPath, const size_t maxDestLen) {
 #define FPL_WGL_DOUBLE_BUFFER_ARB 0x2011
 #define FPL_WGL_PIXEL_TYPE_ARB 0x2013
 #define FPL_WGL_COLOR_BITS_ARB 0x2014
+#define FPL_WGL_ALPHA_BITS_ARB 0x201B
 #define FPL_WGL_DEPTH_BITS_ARB 0x2022
 #define FPL_WGL_STENCIL_BITS_ARB 0x2023
 #define FPL_WGL_FULL_ACCELERATION_ARB 0x2027
 #define FPL_WGL_SWAP_EXCHANGE_ARB 0x2028
 #define FPL_WGL_TYPE_RGBA_ARB 0x202B
+#define FPL_WGL_SAMPLE_BUFFERS_ARB 0x2041
+#define FPL_WGL_SAMPLES_ARB 0x2042
 
 #define FPL__FUNC_WGL_wglMakeCurrent(name) BOOL WINAPI name(HDC deviceContext, HGLRC renderingContext)
 typedef FPL__FUNC_WGL_wglMakeCurrent(fpl__win32_func_wglMakeCurrent);
@@ -12687,6 +12700,98 @@ typedef struct fpl__Win32VideoOpenGLState {
 	fpl__Win32OpenGLApi api;
 } fpl__Win32VideoOpenGLState;
 
+fpl_internal LRESULT CALLBACK fpl__Win32TemporaryWindowProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) {
+	fpl__Win32AppState *appState = &fpl__global__AppState->win32;
+	const fpl__Win32Api *wapi = &appState->winApi;
+	switch (message) {
+		case WM_CLOSE:
+			wapi->user.PostQuitMessage(0);
+			break;
+		default:
+			return wapi->user.DefWindowProcA(hWnd, message, wParam, lParam);
+	}
+	return 0;
+}
+
+fpl_internal bool fpl__Win32PreSetupWindowForOpenGL(fpl__Win32AppState *appState, fpl__Win32WindowState *windowState, const fplVideoSettings *videoSettings) {
+	const fpl__Win32Api *wapi = &appState->winApi;
+
+	windowState->pixelFormat = 0;
+
+	if (videoSettings->graphics.opengl.compabilityFlags != fplOpenGLCompabilityFlags_Legacy) {
+		fpl__Win32OpenGLApi glApi;
+		if (fpl__Win32LoadVideoOpenGLApi(&glApi)) {
+			// Register temporary window class
+			WNDCLASSEXA windowClass = FPL_ZERO_INIT;
+			windowClass.cbSize = sizeof(windowClass);
+			windowClass.style = CS_HREDRAW | CS_VREDRAW | CS_OWNDC;
+			windowClass.lpfnWndProc = fpl__Win32TemporaryWindowProc;
+			windowClass.hInstance = GetModuleHandleA(fpl_null);
+			windowClass.hCursor = fpl__win32_LoadCursor(fpl_null, IDC_ARROW);
+			windowClass.lpszClassName = "FPL_Temp_GL_Window";
+			if (wapi->user.RegisterClassExA(&windowClass)) {
+				// Create temporary window
+				HWND tempWindowHandle = wapi->user.CreateWindowExA(0, windowClass.lpszClassName, "FPL Temp GL Window", 0, 0, 0, 1, 1, fpl_null, fpl_null, windowClass.hInstance, fpl_null);
+				if (tempWindowHandle != fpl_null) {
+					// Get temporary device context
+					HDC tempDC = wapi->user.GetDC(tempWindowHandle);
+					if (tempDC != fpl_null) {
+						// Get legacy pixel format
+						PIXELFORMATDESCRIPTOR fakePFD = FPL_ZERO_INIT;
+						fakePFD.nSize = sizeof(fakePFD);
+						fakePFD.nVersion = 1;
+						fakePFD.dwFlags = PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL | PFD_DOUBLEBUFFER;
+						fakePFD.iPixelType = PFD_TYPE_RGBA;
+						fakePFD.cColorBits = 32;
+						fakePFD.cAlphaBits = 8;
+						fakePFD.cDepthBits = 24;
+						int fakePFDID = wapi->gdi.ChoosePixelFormat(tempDC, &fakePFD);
+						if (fakePFDID != 0) {
+							if (wapi->gdi.SetPixelFormat(tempDC, fakePFDID, &fakePFD)) {
+								// Create temporary rendering context
+								HGLRC tempCtx = glApi.wglCreateContext(tempDC);
+								if (tempCtx != fpl_null) {
+									if (glApi.wglMakeCurrent(tempDC, tempCtx)) {
+										glApi.wglChoosePixelFormatARB = (fpl__win32_func_wglChoosePixelFormatARB *)glApi.wglGetProcAddress("wglChoosePixelFormatARB");
+										if (glApi.wglChoosePixelFormatARB != fpl_null) {
+											int multisampleCount = (int)videoSettings->graphics.opengl.multiSamplingCount;
+											const int pixelAttribs[] = {
+												FPL_WGL_DRAW_TO_WINDOW_ARB, 1,
+												FPL_WGL_SUPPORT_OPENGL_ARB, 1,
+												FPL_WGL_DOUBLE_BUFFER_ARB, 1,
+												FPL_WGL_PIXEL_TYPE_ARB, FPL_WGL_TYPE_RGBA_ARB,
+												FPL_WGL_ACCELERATION_ARB, FPL_WGL_FULL_ACCELERATION_ARB,
+												FPL_WGL_COLOR_BITS_ARB, 32,
+												FPL_WGL_ALPHA_BITS_ARB, 8,
+												FPL_WGL_DEPTH_BITS_ARB, 24,
+												FPL_WGL_STENCIL_BITS_ARB, 8,
+												FPL_WGL_SAMPLE_BUFFERS_ARB, (multisampleCount > 0) ? 1 : 0,
+												FPL_WGL_SAMPLES_ARB, multisampleCount,
+												0
+											};
+											int pixelFormat;
+											UINT numFormats;
+											if (glApi.wglChoosePixelFormatARB(tempDC, pixelAttribs, NULL, 1, &pixelFormat, &numFormats)) {
+												windowState->pixelFormat = pixelFormat;
+											}
+										}
+										glApi.wglMakeCurrent(fpl_null, fpl_null);
+									}
+									glApi.wglDeleteContext(tempCtx);
+								}
+							}
+						}
+						wapi->user.ReleaseDC(tempWindowHandle, tempDC);
+					}
+					wapi->user.DestroyWindow(tempWindowHandle);
+				}
+			}
+			fpl__Win32UnloadVideoOpenGLApi(&glApi);
+		}
+	}
+	return(true);
+}
+
 fpl_internal bool fpl__Win32PostSetupWindowForOpenGL(fpl__Win32AppState *appState, fpl__Win32WindowState *windowState, const fplVideoSettings *videoSettings) {
 	const fpl__Win32Api *wapi = &appState->winApi;
 
@@ -12696,24 +12801,38 @@ fpl_internal bool fpl__Win32PostSetupWindowForOpenGL(fpl__Win32AppState *appStat
 	HDC deviceContext = windowState->deviceContext;
 	HWND handle = windowState->windowHandle;
 	PIXELFORMATDESCRIPTOR pfd = FPL_ZERO_INIT;
-	pfd.nSize = sizeof(pfd);
-	pfd.nVersion = 1;
-	pfd.dwFlags = PFD_DOUBLEBUFFER | PFD_SUPPORT_OPENGL | PFD_DRAW_TO_WINDOW;
-	pfd.iPixelType = PFD_TYPE_RGBA;
-	pfd.cColorBits = 32;
-	pfd.cDepthBits = 24;
-	pfd.cAlphaBits = 8;
-	pfd.iLayerType = PFD_MAIN_PLANE;
-	int pixelFormat = wapi->gdi.ChoosePixelFormat(deviceContext, &pfd);
-	if (!pixelFormat) {
-		FPL_ERROR(FPL__MODULE_VIDEO_OPENGL, "Failed choosing RGBA Legacy Pixelformat for Color/Depth/Alpha (%d,%d,%d) and DC '%x'", pfd.cColorBits, pfd.cDepthBits, pfd.cAlphaBits, deviceContext);
-		return false;
+	
+	// We may got a pixel format from the pre setup
+	bool pixelFormatSet = false;
+	if (windowState->pixelFormat != 0) {
+		wapi->gdi.DescribePixelFormat(deviceContext, windowState->pixelFormat, sizeof(pfd), &pfd);
+		pixelFormatSet = wapi->gdi.SetPixelFormat(deviceContext, windowState->pixelFormat, &pfd);
+		if (!pixelFormatSet) {
+			FPL_ERROR(FPL__MODULE_VIDEO_OPENGL, "Failed setting Pixelformat '%d' from pre setup", windowState->pixelFormat);
+		}
 	}
-	if (!wapi->gdi.SetPixelFormat(deviceContext, pixelFormat, &pfd)) {
-		FPL_ERROR(FPL__MODULE_VIDEO_OPENGL, "Failed setting RGBA Pixelformat '%d' for Color/Depth/Alpha (%d,%d,%d and DC '%x')", pixelFormat, pfd.cColorBits, pfd.cDepthBits, pfd.cAlphaBits, deviceContext);
-		return false;
+	if (!pixelFormatSet) {
+		FPL_CLEAR_STRUCT(&pfd);
+		pfd.nSize = sizeof(pfd);
+		pfd.nVersion = 1;
+		pfd.dwFlags = PFD_DOUBLEBUFFER | PFD_SUPPORT_OPENGL | PFD_DRAW_TO_WINDOW;
+		pfd.iPixelType = PFD_TYPE_RGBA;
+		pfd.cColorBits = 32;
+		pfd.cDepthBits = 24;
+		pfd.cAlphaBits = 8;
+		pfd.cStencilBits = 8;
+		pfd.iLayerType = PFD_MAIN_PLANE;
+		int pixelFormat = wapi->gdi.ChoosePixelFormat(deviceContext, &pfd);
+		if (!pixelFormat) {
+			FPL_ERROR(FPL__MODULE_VIDEO_OPENGL, "Failed choosing RGBA Legacy Pixelformat for Color/Depth/Alpha (%d,%d,%d) and DC '%x'", pfd.cColorBits, pfd.cDepthBits, pfd.cAlphaBits, deviceContext);
+			return false;
+		}
+		wapi->gdi.DescribePixelFormat(deviceContext, pixelFormat, sizeof(pfd), &pfd);
+		if (!wapi->gdi.SetPixelFormat(deviceContext, pixelFormat, &pfd)) {
+			FPL_ERROR(FPL__MODULE_VIDEO_OPENGL, "Failed setting RGBA Pixelformat '%d' for Color/Depth/Alpha (%d,%d,%d and DC '%x')", pixelFormat, pfd.cColorBits, pfd.cDepthBits, pfd.cAlphaBits, deviceContext);
+			return false;
+		}
 	}
-	wapi->gdi.DescribePixelFormat(deviceContext, pixelFormat, sizeof(pfd), &pfd);
 	return true;
 }
 
@@ -13019,7 +13138,7 @@ fpl_internal bool fpl__X11InitFrameBufferConfigVideoOpenGL(const fpl__X11Api *x1
 	}
 
 	bool isModern = major > 1 || (major == 1 && minor >= 3);
-
+		
 	int attr[32] = FPL_ZERO_INIT;
 	int attrIndex = 0;
 
@@ -13041,6 +13160,9 @@ fpl_internal bool fpl__X11InitFrameBufferConfigVideoOpenGL(const fpl__X11Api *x1
 	attr[attrIndex++] = 8;
 
 	attr[attrIndex++] = GLX_BLUE_SIZE;
+	attr[attrIndex++] = 8;
+
+	attr[attrIndex++] = GLX_ALPHA_SIZE;
 	attr[attrIndex++] = 8;
 
 	attr[attrIndex++] = GLX_DEPTH_SIZE;
@@ -14684,13 +14806,13 @@ fpl_internal void fpl__StopAudioDeviceMainLoop(fpl__AudioState *audioState) {
 		case fplAudioDriverType_Alsa:
 		{
 			fpl__AudioStopMainLoopAlsa(&audioState->alsa);
-	} break;
+		} break;
 #	endif
 
 		default:
 			break;
-}
 	}
+}
 
 fpl_internal bool fpl__ReleaseAudioDevice(fpl__AudioState *audioState) {
 	FPL_ASSERT(audioState->activeDriver > fplAudioDriverType_Auto);
@@ -14708,14 +14830,14 @@ fpl_internal bool fpl__ReleaseAudioDevice(fpl__AudioState *audioState) {
 		case fplAudioDriverType_Alsa:
 		{
 			result = fpl__AudioReleaseAlsa(&audioState->common, &audioState->alsa);
-	} break;
+		} break;
 #	endif
 
 		default:
 			break;
-}
-	return (result);
 	}
+	return (result);
+}
 
 fpl_internal bool fpl__StopAudioDevice(fpl__AudioState *audioState) {
 	FPL_ASSERT(audioState->activeDriver > fplAudioDriverType_Auto);
@@ -14733,14 +14855,14 @@ fpl_internal bool fpl__StopAudioDevice(fpl__AudioState *audioState) {
 		case fplAudioDriverType_Alsa:
 		{
 			result = fpl__AudioStopAlsa(&audioState->alsa);
-	} break;
+		} break;
 #	endif
 
 		default:
 			break;
-}
-	return (result);
 	}
+	return (result);
+}
 
 fpl_internal fplAudioResult fpl__StartAudioDevice(fpl__AudioState *audioState) {
 	FPL_ASSERT(audioState->activeDriver > fplAudioDriverType_Auto);
@@ -14758,14 +14880,14 @@ fpl_internal fplAudioResult fpl__StartAudioDevice(fpl__AudioState *audioState) {
 		case fplAudioDriverType_Alsa:
 		{
 			result = fpl__AudioStartAlsa(&audioState->common, &audioState->alsa);
-	} break;
+		} break;
 #	endif
 
 		default:
 			break;
-}
-	return (result);
 	}
+	return (result);
+}
 
 fpl_internal void fpl__RunAudioDeviceMainLoop(fpl__AudioState *audioState) {
 	FPL_ASSERT(audioState->activeDriver > fplAudioDriverType_Auto);
@@ -14782,13 +14904,13 @@ fpl_internal void fpl__RunAudioDeviceMainLoop(fpl__AudioState *audioState) {
 		case fplAudioDriverType_Alsa:
 		{
 			fpl__AudioRunMainLoopAlsa(&audioState->common, &audioState->alsa);
-	} break;
+		} break;
 #	endif
 
 		default:
 			break;
-}
 	}
+}
 
 fpl_internal bool fpl__IsAudioDriverAsync(fplAudioDriverType audioDriver) {
 	switch (audioDriver) {
@@ -15017,18 +15139,18 @@ fpl_internal fplAudioResult fpl__InitAudio(const fplAudioSettings *audioSettings
 				if (initResult != fplAudioResult_Success) {
 					fpl__AudioReleaseAlsa(&audioState->common, &audioState->alsa);
 				}
-		} break;
+			} break;
 #		endif
 
 			default:
 				break;
-	}
+		}
 		if (initResult == fplAudioResult_Success) {
 			audioState->activeDriver = propeDriver;
 			audioState->isAsyncDriver = fpl__IsAudioDriverAsync(propeDriver);
 			break;
 		}
-}
+	}
 
 	if (initResult != fplAudioResult_Success) {
 		fpl__ReleaseAudio(audioState);
@@ -15292,12 +15414,17 @@ fpl_internal FPL__FUNC_PRE_SETUP_WINDOW(fpl__PreSetupWindowDefault) {
 #		if defined(FPL_ENABLE_VIDEO_OPENGL)
 			case fplVideoDriverType_OpenGL:
 			{
+#			if defined(FPL_PLATFORM_WIN32)
+				if (!fpl__Win32PreSetupWindowForOpenGL(&appState->win32, &appState->window.win32, &initSettings->video)) {
+					return false;
+				}
+#			endif
 #			if defined(FPL_SUBPLATFORM_X11)
 				if (fpl__X11InitFrameBufferConfigVideoOpenGL(&appState->x11.api, &appState->window.x11, &videoState->x11.opengl)) {
 					result = fpl__X11SetPreWindowSetupForOpenGL(&appState->x11.api, &appState->window.x11, &videoState->x11.opengl, &outResult->x11);
-		}
+				}
 #			endif
-	} break;
+			} break;
 #		endif // FPL_ENABLE_VIDEO_OPENGL
 
 #		if defined(FPL_ENABLE_VIDEO_SOFTWARE)
@@ -15306,14 +15433,14 @@ fpl_internal FPL__FUNC_PRE_SETUP_WINDOW(fpl__PreSetupWindowDefault) {
 #			if defined(FPL_SUBPLATFORM_X11)
 				result = fpl__X11SetPreWindowSetupForSoftware(&appState->x11.api, &appState->window.x11, &videoState->x11.software, &outResult->x11);
 #			endif
-} break;
+			} break;
 #		endif // FPL_ENABLE_VIDEO_OPENGL
 
 			default:
 			{
 			} break;
+		}
 	}
-}
 #	endif // FPL_ENABLE_VIDEO
 
 	return(result);
@@ -15601,15 +15728,15 @@ fpl_common_api uint32_t fplGetAudioDevices(fplAudioDeviceInfo *devices, uint32_t
 			case fplAudioDriverType_Alsa:
 			{
 				result = fpl__GetAudioDevicesAlsa(&audioState->alsa, devices, maxDeviceCount);
-		} break;
+			} break;
 #		endif
 
 			default:
 				break;
+		}
 	}
-}
 	return(result);
-	}
+}
 #endif // FPL_ENABLE_AUDIO
 
 // %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -15825,13 +15952,13 @@ fpl_internal void fpl__ReleasePlatformStates(fpl__PlatformInitState *initState, 
 			FPL_LOG_DEBUG("Core", "Release POSIX Subplatform");
 			fpl__PosixReleaseSubplatform(&appState->posix);
 #		endif
-	}
+		}
 
-	// Release platform applicatiom state memory
+		// Release platform applicatiom state memory
 		FPL_LOG_DEBUG(FPL__MODULE_CORE, "Release allocated Platform App State Memory");
 		fplMemoryFree(appState);
 		fpl__global__AppState = fpl_null;
-}
+	}
 	initState->isInitialized = false;
 }
 
@@ -15933,7 +16060,7 @@ fpl_common_api fplInitResultType fplPlatformInit(const fplInitFlags initFlags, c
 			return fplInitResultType_FailedPlatform;
 		}
 		FPL_LOG_DEBUG("Core", "Successfully initialized POSIX Subplatform");
-}
+	}
 #	endif // FPL_SUBPLATFORM_POSIX
 
 #	if defined(FPL_SUBPLATFORM_X11)
