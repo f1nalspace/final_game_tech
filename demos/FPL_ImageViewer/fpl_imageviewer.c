@@ -41,6 +41,8 @@ Changelog:
 	- Initial version
 
 Todo:
+	- Migrate to modern opengl
+	- Ansi-Aliasing (MSAA -> Requires change in FPL)
 	- Fade in/out
 	- Text rendering display current file (Index/Count)
 -------------------------------------------------------------------------------
@@ -93,10 +95,10 @@ typedef struct PictureLoadThread {
 	volatile bool shutdown;
 } PictureLoadThread;
 
-#define MAX_LOADED_PICTURE_COUNT 32
 #define MAX_LOAD_THREAD_COUNT FPL__MAX_THREAD_COUNT
-#define MAX_LOAD_QUEUE_COUNT MAX_LOAD_THREAD_COUNT / 2
-FPL_STATICASSERT(MAX_LOAD_QUEUE_COUNT >= MAX_LOADED_PICTURE_COUNT);
+#define MAX_VIEW_PICTURE_COUNT MAX_LOAD_THREAD_COUNT * 4
+#define MAX_LOAD_QUEUE_COUNT MAX_VIEW_PICTURE_COUNT * 2
+#define PAGE_INCREMENT_COUNT 10
 
 typedef struct LoadQueueValue {
 	int fileIndex;
@@ -145,7 +147,7 @@ typedef struct ViewerState {
 	size_t folderCount;
 	int activeFileIndex;
 
-	ViewPicture viewPictures[MAX_LOADED_PICTURE_COUNT];
+	ViewPicture viewPictures[MAX_VIEW_PICTURE_COUNT];
 	size_t viewPicturesCapacity;
 	int viewPictureIndex;
 	bool doPictureReload;
@@ -428,7 +430,7 @@ static void DiscardAll(ViewerState *state) {
 static void QueueUpPictures(ViewerState *state) {
 	int capacity = (int)state->viewPicturesCapacity;
 	int maxSidePreloadCount = capacity / 2;
-	FPL_ASSERT(state->viewPictureIndex == maxSidePreloadCount);
+	state->viewPictureIndex = maxSidePreloadCount;
 	FPL_ASSERT(state->activeFileIndex >= 0 && state->activeFileIndex < (int)state->pictureFileCount);
 	int preloadCountLeft;
 	int preloadCountRight;
@@ -574,6 +576,236 @@ size_t RoundToPowerOfTwo(size_t v) {
 	return(v);
 }
 
+static void Init(ViewerState *state) {
+	glClearColor(0, 0, 0, 1);
+	glEnable(GL_TEXTURE_RECTANGLE);
+	glEnable(GL_BLEND);
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+	state->viewPictureIndex = -1;
+	state->activeFileIndex = -1;
+	state->doPictureReload = false;
+
+	// Allocate and startup load threads
+	size_t threadCount;
+	if (state->params.threadCount > 0) {
+		threadCount = FPL_MAX(FPL_MIN(state->params.threadCount, MAX_LOAD_THREAD_COUNT), 1);
+	} else {
+		threadCount = FPL_MAX(FPL_MIN(fplGetProcessorCoreCount(), MAX_LOAD_THREAD_COUNT), 1);
+	}
+	InitLoadThreads(state, threadCount);
+
+	size_t queueCapacity;
+	size_t preloadCapacity;
+	if (FPL_IS_POWEROFTWO(threadCount)) {
+		queueCapacity = threadCount * 2;
+		preloadCapacity = threadCount;
+	} else {
+		queueCapacity = RoundToPowerOfTwo(threadCount) * 2;
+		preloadCapacity = RoundToPowerOfTwo(threadCount);
+	}
+	state->viewPicturesCapacity = preloadCapacity + 1;
+	state->loadQueueCapacity = queueCapacity;
+
+	FPL_ASSERT(FPL_IS_POWEROFTWO(queueCapacity));
+	InitQueue(&state->loadQueue, queueCapacity);
+
+	// Load initial pictures path
+	if (fplGetAnsiStringLength(state->params.path) > 0) {
+		if (LoadPicturesPath(state, state->params.path, state->params.recursive)) {
+			state->activeFileIndex = 0;
+			ChangeViewPicture(state, 0, true);
+		}
+	}
+}
+
+static void UpdateAndRender(ViewerState *state) {
+// Discard textures on the left/right side when the fileIndex is out of bounds
+	if (state->viewPictureIndex != -1) {
+		ViewPicture *currentPic = &state->viewPictures[state->viewPictureIndex];
+		if (currentPic->fileIndex == 0) {
+			for (size_t i = 0; i < state->viewPictureIndex; ++i) {
+				ViewPicture *sidePic = &state->viewPictures[i];
+				fplAtomicStoreS32(&sidePic->state, LoadedPictureState_Discard);
+			}
+		} else if (currentPic->fileIndex == state->pictureFileCount - 1) {
+			for (size_t i = state->viewPictureIndex + 1; i < state->viewPicturesCapacity; ++i) {
+				ViewPicture *sidePic = &state->viewPictures[i];
+				fplAtomicStoreS32(&sidePic->state, LoadedPictureState_Discard);
+			}
+		}
+	}
+
+	// Discard or upload textures
+	for (size_t i = 0; i < state->viewPicturesCapacity; ++i) {
+		ViewPicture *loadedPic = &state->viewPictures[i];
+		if (fplAtomicLoadS32(&loadedPic->state) == LoadedPictureState_Discard) {
+			if (loadedPic->textureId > 0) {
+				fplDebugFormatOut("Release texture '%s'[%d]\n", loadedPic->filePath, loadedPic->fileIndex);
+				ReleaseTexture(&loadedPic->textureId);
+			}
+			fplAtomicStoreS32(&loadedPic->state, LoadedPictureState_Unloaded);
+		} else if (fplAtomicLoadS32(&loadedPic->state) == LoadedPictureState_ToUpload) {
+			if (loadedPic->textureId > 0) {
+				fplDebugFormatOut("Release texture '%s'[%d]\n", loadedPic->filePath, loadedPic->fileIndex);
+				ReleaseTexture(&loadedPic->textureId);
+			}
+			FPL_ASSERT(loadedPic->textureId == 0);
+			FPL_ASSERT(loadedPic->data != fpl_null);
+			FPL_ASSERT(loadedPic->width > 0 && loadedPic->height > 0);
+			FPL_ASSERT(loadedPic->components > 0);
+			fplDebugFormatOut("Allocate texture '%s'[%d]\n", loadedPic->filePath, loadedPic->fileIndex);
+			loadedPic->textureId = AllocateTexture(loadedPic->width, loadedPic->height, loadedPic->components, loadedPic->data, false, GL_LINEAR);
+			stbi_image_free(loadedPic->data);
+			loadedPic->data = fpl_null;
+			if (loadedPic->textureId > 0) {
+				fplAtomicStoreS32(&loadedPic->state, LoadedPictureState_Ready);
+			} else {
+				fplAtomicStoreS32(&loadedPic->state, LoadedPictureState_Error);
+			}
+		}
+	}
+
+	// Start to queue up pictures to load
+	if (state->doPictureReload) {
+		QueueUpPictures(state);
+		state->doPictureReload = false;
+	}
+
+	int w, h;
+	fplWindowSize winSize;
+	if (fplGetWindowArea(&winSize)) {
+		w = winSize.width;
+		h = winSize.height;
+	} else {
+		w = 0;
+		h = 0;
+	}
+
+	float screenLeft = -(float)w * 0.5f;
+	float screenRight = (float)w * 0.5f;
+	float screenBottom = -(float)h * 0.5f;
+	float screenTop = (float)h * 0.5f;
+	float screenW = (float)w;
+	float screenH = (float)h;
+
+	glClear(GL_COLOR_BUFFER_BIT);
+
+	glViewport(0, 0, w, h);
+	glMatrixMode(GL_PROJECTION);
+	glLoadIdentity();
+	glOrtho(screenLeft, screenRight, screenBottom, screenTop, 0.0f, 1.0f);
+	glMatrixMode(GL_MODELVIEW);
+	glLoadIdentity();
+
+	if (state->viewPictureIndex > -1) {
+		FPL_ASSERT(state->viewPictureIndex < FPL_ARRAYCOUNT(state->viewPictures));
+		const ViewPicture *loadedPic = &state->viewPictures[state->viewPictureIndex];
+		if (loadedPic->state == LoadedPictureState_Ready) {
+			float texW = (float)loadedPic->width;
+			float texH = (float)loadedPic->height;
+			float aspect = texH > 0 ? texW / texH : 1;
+			FPL_ASSERT(aspect != 0);
+
+			float viewWidth;
+			float viewHeight;
+			float viewX;
+			float viewY;
+			if (texW > screenW || texH > screenH) {
+				float targetHeight = screenW / aspect;
+				if (targetHeight > screenH) {
+					viewHeight = screenH;
+					viewWidth = screenH * aspect;
+					viewX = screenLeft + (screenW - viewWidth) * 0.5f;
+					viewY = screenBottom;
+				} else {
+					viewWidth = screenW;
+					viewHeight = screenW / aspect;
+					viewX = screenLeft;
+					viewY = screenBottom + (screenH - viewHeight) * 0.5f;
+				}
+			} else {
+				viewWidth = texW;
+				viewHeight = texH;
+				viewX = screenLeft + (screenW - viewWidth) * 0.5f;
+				viewY = screenBottom + (screenH - viewHeight) * 0.5f;
+			}
+			float viewLeft = viewX;
+			float viewRight = viewX + viewWidth;
+			float viewBottom = viewY;
+			float viewTop = viewY + viewHeight;
+
+			glBindTexture(GL_TEXTURE_RECTANGLE, loadedPic->textureId);
+			glColor4f(1, 1, 1, 1);
+			glBegin(GL_QUADS);
+			glTexCoord2f(texW, 0.0f); glVertex2i((int)(viewRight + 0.5f), (int)(viewTop + 0.5f));
+			glTexCoord2f(0.0f, 0.0f); glVertex2i((int)(viewLeft + 0.5f), (int)(viewTop + 0.5f));
+			glTexCoord2f(0.0f, texH); glVertex2i((int)(viewLeft + 0.5f), (int)(viewBottom + 0.5f));
+			glTexCoord2f(texW, texH); glVertex2i((int)(viewRight + 0.5f), (int)(viewBottom + 0.5f));
+			glEnd();
+			glBindTexture(GL_TEXTURE_RECTANGLE, 0);
+		}
+	}
+
+	if (state->params.debug) {
+		int blockCount = (int)state->viewPicturesCapacity;
+		float maxBlockW = ((FPL_MIN(screenW, screenH)) * 0.5f);
+		float blockPadding = (maxBlockW / (float)blockCount) * 0.1f;
+		float blockW = ((maxBlockW - ((float)(blockCount - 1) * blockPadding)) / (float)blockCount);
+		float blockH = blockW;
+		float blocksLeft = -maxBlockW * 0.5f;
+		float blocksBottom = (-screenH * 0.5f + blockPadding);
+		for (int i = 0; i < blockCount; ++i) {
+			float bx = blocksLeft + (float)i * blockW + ((float)i * blockPadding);
+			float by = blocksBottom;
+			const ViewPicture *loadedPic = &state->viewPictures[i];
+
+			if (loadedPic->state != LoadedPictureState_Unloaded) {
+				switch (loadedPic->state) {
+					case LoadedPictureState_LoadingData:
+						glColor4f(0, 0, 1, 0.5f);
+						break;
+					case LoadedPictureState_Ready:
+						glColor4f(0, 1, 0, 0.5f);
+						break;
+					case LoadedPictureState_ToUpload:
+						glColor4f(0, 0.5f, 0.5f, 0.5f);
+						break;
+					case LoadedPictureState_Discard:
+						glColor4f(0.75f, 0.25f, 0.0f, 0.5f);
+						break;
+					case LoadedPictureState_Error:
+						glColor4f(1.0, 0.0f, 0.0f, 0.5f);
+						break;
+					default:
+						FPL_ASSERT(!"Invalid loaded picture state!");
+						break;
+				}
+				glBegin(GL_QUADS);
+				glVertex2f(bx + blockW, by + blockW);
+				glVertex2f(bx, by + blockW);
+				glVertex2f(bx, by);
+				glVertex2f(bx + blockW, by);
+				glEnd();
+			}
+
+			if (i == state->viewPictureIndex) {
+				glColor4f(0, 1, 0, 1);
+			} else {
+				glColor4f(1, 1, 1, 0.5f);
+			}
+			glLineWidth(2);
+			glBegin(GL_LINE_LOOP);
+			glVertex2f(bx + blockW, by + blockW);
+			glVertex2f(bx, by + blockW);
+			glVertex2f(bx, by);
+			glVertex2f(bx + blockW, by);
+			glEnd();
+			glLineWidth(1);
+		}
+	}
+}
+
 int main(int argc, char **argv) {
 	int returnCode = 0;
 	fplSettings settings;
@@ -584,53 +816,11 @@ int main(int argc, char **argv) {
 	if (fplPlatformInit(fplInitFlags_Video, &settings)) {
 		if (fglLoadOpenGL(true)) {
 
-			glClearColor(0, 0, 0, 1);
-			glEnable(GL_TEXTURE_RECTANGLE);
-			glEnable(GL_BLEND);
-			glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-
 			ViewerState state = FPL_ZERO_INIT;
-			state.viewPictureIndex = -1;
-			state.activeFileIndex = -1;
-			state.doPictureReload = false;
-
-			int pageIncrementCount = 10;
-
 			if (argc >= 2) {
 				ParseParameters(&state.params, argc - 1, argv + 1);
 			}
-
-			// Allocate and startup load threads
-			size_t threadCount;
-			if (state.params.threadCount > 0) {
-				threadCount = FPL_MAX(FPL_MIN(state.params.threadCount, FPL__MAX_THREAD_COUNT), 1);
-			} else {
-				threadCount = FPL_MAX(FPL_MIN(fplGetProcessorCoreCount(), FPL__MAX_THREAD_COUNT), 1);
-			}
-			InitLoadThreads(&state, threadCount);
-
-			size_t queueCapacity;
-			size_t preloadCapacity;
-			if (FPL_IS_POWEROFTWO(threadCount)) {
-				queueCapacity = threadCount * 2;
-				preloadCapacity = threadCount;
-			} else {
-				queueCapacity = RoundToPowerOfTwo(threadCount) * 2;
-				preloadCapacity = RoundToPowerOfTwo(threadCount);
-			}
-			state.viewPicturesCapacity = preloadCapacity + 1;
-			state.loadQueueCapacity = queueCapacity;
-
-			FPL_ASSERT(FPL_IS_POWEROFTWO(queueCapacity));
-			InitQueue(&state.loadQueue, queueCapacity);
-
-			// Load initial pictures path
-			if (fplGetAnsiStringLength(state.params.path) > 0) {
-				if (LoadPicturesPath(&state, state.params.path, state.params.recursive)) {
-					state.activeFileIndex = 0;
-					ChangeViewPicture(&state, 0, true);
-				}
-			}
+			Init(&state);
 
 			fplKey activeKey = fplKey_None;
 			uint64_t activeKeyStart = 0;
@@ -679,12 +869,12 @@ int main(int argc, char **argv) {
 											ChangeViewPicture(&state, +1, false);
 										}
 									} else if (ev.keyboard.mappedKey == fplKey_PageDown) {
-										if (state.activeFileIndex < ((int)state.pictureFileCount - pageIncrementCount)) {
-											ChangeViewPicture(&state, pageIncrementCount, false);
+										if (state.activeFileIndex < ((int)state.pictureFileCount - PAGE_INCREMENT_COUNT)) {
+											ChangeViewPicture(&state, PAGE_INCREMENT_COUNT, false);
 										}
 									} else if (ev.keyboard.mappedKey == fplKey_PageUp) {
-										if (state.activeFileIndex > (pageIncrementCount - 1)) {
-											ChangeViewPicture(&state, -pageIncrementCount, false);
+										if (state.activeFileIndex > (PAGE_INCREMENT_COUNT - 1)) {
+											ChangeViewPicture(&state, -PAGE_INCREMENT_COUNT, false);
 										}
 									} else if (ev.keyboard.mappedKey == fplKey_F) {
 										if (!fplIsWindowFullscreen()) {
@@ -699,190 +889,7 @@ int main(int argc, char **argv) {
 					}
 				}
 
-				// Discard textures on the left/right side when the fileIndex is out of bounds
-				if (state.viewPictureIndex != -1) {
-					ViewPicture *currentPic = &state.viewPictures[state.viewPictureIndex];
-					if (currentPic->fileIndex == 0) {
-						for (size_t i = 0; i < state.viewPictureIndex; ++i) {
-							ViewPicture *sidePic = &state.viewPictures[i];
-							fplAtomicStoreS32(&sidePic->state, LoadedPictureState_Discard);
-						}
-					} else if (currentPic->fileIndex == state.pictureFileCount - 1) {
-						for (size_t i = state.viewPictureIndex + 1; i < state.viewPicturesCapacity; ++i) {
-							ViewPicture *sidePic = &state.viewPictures[i];
-							fplAtomicStoreS32(&sidePic->state, LoadedPictureState_Discard);
-						}
-					}
-				}
-
-				// Discard or upload textures
-				for (size_t i = 0; i < state.viewPicturesCapacity; ++i) {
-					ViewPicture *loadedPic = &state.viewPictures[i];
-					if (fplAtomicLoadS32(&loadedPic->state) == LoadedPictureState_Discard) {
-						if (loadedPic->textureId > 0) {
-							fplDebugFormatOut("Release texture '%s'[%d]\n", loadedPic->filePath, loadedPic->fileIndex);
-							ReleaseTexture(&loadedPic->textureId);
-						}
-						fplAtomicStoreS32(&loadedPic->state, LoadedPictureState_Unloaded);
-					} else if (fplAtomicLoadS32(&loadedPic->state) == LoadedPictureState_ToUpload) {
-						if (loadedPic->textureId > 0) {
-							fplDebugFormatOut("Release texture '%s'[%d]\n", loadedPic->filePath, loadedPic->fileIndex);
-							ReleaseTexture(&loadedPic->textureId);
-						}
-						FPL_ASSERT(loadedPic->textureId == 0);
-						FPL_ASSERT(loadedPic->data != fpl_null);
-						FPL_ASSERT(loadedPic->width > 0 && loadedPic->height > 0);
-						FPL_ASSERT(loadedPic->components > 0);
-						fplDebugFormatOut("Allocate texture '%s'[%d]\n", loadedPic->filePath, loadedPic->fileIndex);
-						loadedPic->textureId = AllocateTexture(loadedPic->width, loadedPic->height, loadedPic->components, loadedPic->data, false, GL_LINEAR);
-						stbi_image_free(loadedPic->data);
-						loadedPic->data = fpl_null;
-						if (loadedPic->textureId > 0) {
-							fplAtomicStoreS32(&loadedPic->state, LoadedPictureState_Ready);
-						} else {
-							fplAtomicStoreS32(&loadedPic->state, LoadedPictureState_Error);
-						}
-					}
-				}
-
-				// Start to queue up pictures to load
-				if (state.doPictureReload) {
-					QueueUpPictures(&state);
-					state.doPictureReload = false;
-				}
-
-				int w, h;
-				fplWindowSize winSize;
-				if (fplGetWindowArea(&winSize)) {
-					w = winSize.width;
-					h = winSize.height;
-				} else {
-					w = 0;
-					h = 0;
-				}
-
-				float screenLeft = -(float)w * 0.5f;
-				float screenRight = (float)w * 0.5f;
-				float screenBottom = -(float)h * 0.5f;
-				float screenTop = (float)h * 0.5f;
-				float screenW = (float)w;
-				float screenH = (float)h;
-
-				glClear(GL_COLOR_BUFFER_BIT);
-
-				glViewport(0, 0, w, h);
-				glMatrixMode(GL_PROJECTION);
-				glLoadIdentity();
-				glOrtho(screenLeft, screenRight, screenBottom, screenTop, 0.0f, 1.0f);
-				glMatrixMode(GL_MODELVIEW);
-				glLoadIdentity();
-
-				if (state.viewPictureIndex > -1) {
-					FPL_ASSERT(state.viewPictureIndex < FPL_ARRAYCOUNT(state.viewPictures));
-					const ViewPicture *loadedPic = &state.viewPictures[state.viewPictureIndex];
-					if (loadedPic->state == LoadedPictureState_Ready) {
-						float texW = (float)loadedPic->width;
-						float texH = (float)loadedPic->height;
-						float aspect = texH > 0 ? texW / texH : 1;
-						FPL_ASSERT(aspect != 0);
-
-						float viewWidth;
-						float viewHeight;
-						float viewX;
-						float viewY;
-						if (texW > screenW || texH > screenH) {
-							float targetHeight = screenW / aspect;
-							if (targetHeight > screenH) {
-								viewHeight = screenH;
-								viewWidth = screenH * aspect;
-								viewX = screenLeft + (screenW - viewWidth) * 0.5f;
-								viewY = screenBottom;
-							} else {
-								viewWidth = screenW;
-								viewHeight = screenW / aspect;
-								viewX = screenLeft;
-								viewY = screenBottom + (screenH - viewHeight) * 0.5f;
-							}
-						} else {
-							viewWidth = texW;
-							viewHeight = texH;
-							viewX = screenLeft + (screenW - viewWidth) * 0.5f;
-							viewY = screenBottom + (screenH - viewHeight) * 0.5f;
-						}
-						float viewLeft = viewX;
-						float viewRight = viewX + viewWidth;
-						float viewBottom = viewY;
-						float viewTop = viewY + viewHeight;
-
-						glBindTexture(GL_TEXTURE_RECTANGLE, loadedPic->textureId);
-						glColor4f(1, 1, 1, 1);
-						glBegin(GL_QUADS);
-						glTexCoord2f(texW, 0.0f); glVertex2f(viewRight, viewTop);
-						glTexCoord2f(0.0f, 0.0f); glVertex2f(viewLeft, viewTop);
-						glTexCoord2f(0.0f, texH); glVertex2f(viewLeft, viewBottom);
-						glTexCoord2f(texW, texH); glVertex2f(viewRight, viewBottom);
-						glEnd();
-						glBindTexture(GL_TEXTURE_RECTANGLE, 0);
-					}
-				}
-
-				if (state.params.debug) {
-					int blockCount = (int)state.viewPicturesCapacity;
-					float maxBlockW = ((FPL_MIN(screenW, screenH)) * 0.5f);
-					float blockPadding = (maxBlockW / (float)blockCount) * 0.1f;
-					float blockW = ((maxBlockW - ((float)(blockCount - 1) * blockPadding)) / (float)blockCount);
-					float blockH = blockW;
-					float blocksLeft = -maxBlockW * 0.5f;
-					float blocksBottom = (-screenH * 0.5f + blockPadding);
-					for (int i = 0; i < blockCount; ++i) {
-						float bx = blocksLeft + (float)i * blockW + ((float)i * blockPadding);
-						float by = blocksBottom;
-						const ViewPicture *loadedPic = &state.viewPictures[i];
-
-						if (loadedPic->state != LoadedPictureState_Unloaded) {
-							switch (loadedPic->state) {
-								case LoadedPictureState_LoadingData:
-									glColor4f(0, 0, 1, 0.5f);
-									break;
-								case LoadedPictureState_Ready:
-									glColor4f(0, 1, 0, 0.5f);
-									break;
-								case LoadedPictureState_ToUpload:
-									glColor4f(0, 0.5f, 0.5f, 0.5f);
-									break;
-								case LoadedPictureState_Discard:
-									glColor4f(0.75f, 0.25f, 0.0f, 0.5f);
-									break;
-								case LoadedPictureState_Error:
-									glColor4f(1.0, 0.0f, 0.0f, 0.5f);
-									break;
-								default:
-									FPL_ASSERT(!"Invalid loaded picture state!");
-									break;
-							}
-							glBegin(GL_QUADS);
-							glVertex2f(bx + blockW, by + blockW);
-							glVertex2f(bx, by + blockW);
-							glVertex2f(bx, by);
-							glVertex2f(bx + blockW, by);
-							glEnd();
-						}
-
-						if (i == state.viewPictureIndex) {
-							glColor4f(0, 1, 0, 1);
-						} else {
-							glColor4f(1, 1, 1, 0.5f);
-						}
-						glLineWidth(2);
-						glBegin(GL_LINE_LOOP);
-						glVertex2f(bx + blockW, by + blockW);
-						glVertex2f(bx, by + blockW);
-						glVertex2f(bx, by);
-						glVertex2f(bx + blockW, by);
-						glEnd();
-						glLineWidth(1);
-					}
-				}
+				UpdateAndRender(&state);
 
 				fplVideoFlip();
 			}
