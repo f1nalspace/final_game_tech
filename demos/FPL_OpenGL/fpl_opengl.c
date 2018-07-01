@@ -322,7 +322,7 @@ int main(int argc, char **args) {
 	settings.video.graphics.opengl.compabilityFlags = fplOpenGLCompabilityFlags_Core;
 	settings.video.graphics.opengl.majorVersion = 3;
 	settings.video.graphics.opengl.minorVersion = 3;
-	settings.video.graphics.opengl.multiSamplingCount = 0;
+	settings.video.graphics.opengl.multiSamplingCount = 4;
 #else
 	fplCopyAnsiString("FPL Legacy OpenGL", settings.window.windowTitle, FPL_ARRAYCOUNT(settings.window.windowTitle));
 	settings.video.graphics.opengl.compabilityFlags = fplOpenGLCompabilityFlags_Legacy;
