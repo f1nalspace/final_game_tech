@@ -162,7 +162,8 @@ SOFTWARE.
 	- Fixed: [Win32] Fixed crash when using fplThreadTerminate while threads are already exiting
 	- Fixed: [Win32] fplThreadWaitForAll/fplThreadWaitForAny was not working properly when threads was already in the process of exiting naturally
 	- Fixed: [POSIX] Fixed crash when using fplThreadTerminate while threads are already exiting
-	- New: [Win32] Support for wglChoosePixelFormat and multi sampling
+	- New: [Win32] Support for OpenGL multi sampling context creation
+	- New: [GLX] Support for OpenGL multi sampling context creation
 
 	## v0.8.2.0 beta:
 	- Changed: Ensures const correctness on all functions
@@ -6095,7 +6096,7 @@ fpl_internal void fpl__PushEvent(const fplEvent *event) {
 	}
 }
 
-fpl_internal_inline void fpl__PushWindowEvent(const fplWindowEventType windowType, const uint32_t w, uint32_t h) {
+fpl_internal void fpl__PushWindowEvent(const fplWindowEventType windowType, const uint32_t w, uint32_t h) {
 	fplEvent newEvent = FPL_ZERO_INIT;
 	newEvent.type = fplEventType_Window;
 	newEvent.window.type = windowType;
@@ -6104,7 +6105,7 @@ fpl_internal_inline void fpl__PushWindowEvent(const fplWindowEventType windowTyp
 	fpl__PushEvent(&newEvent);
 }
 
-fpl_internal_inline void fpl__PushKeyboardButtonEvent(const uint64_t keyCode, const fplKey mappedKey, const fplKeyboardModifierFlags modifiers, const fplButtonState buttonState) {
+fpl_internal void fpl__PushKeyboardButtonEvent(const uint64_t keyCode, const fplKey mappedKey, const fplKeyboardModifierFlags modifiers, const fplButtonState buttonState) {
 	fplEvent newEvent = FPL_ZERO_INIT;
 	newEvent.type = fplEventType_Keyboard;
 	newEvent.keyboard.type = fplKeyboardEventType_Button;
@@ -6115,7 +6116,7 @@ fpl_internal_inline void fpl__PushKeyboardButtonEvent(const uint64_t keyCode, co
 	fpl__PushEvent(&newEvent);
 }
 
-fpl_internal_inline void fpl__PushKeyboardInputEvent(const uint64_t keyCode, const fplKey mappedKey) {
+fpl_internal void fpl__PushKeyboardInputEvent(const uint64_t keyCode, const fplKey mappedKey) {
 	fplEvent newEvent = FPL_ZERO_INIT;
 	newEvent.type = fplEventType_Keyboard;
 	newEvent.keyboard.type = fplKeyboardEventType_Input;
@@ -6124,7 +6125,7 @@ fpl_internal_inline void fpl__PushKeyboardInputEvent(const uint64_t keyCode, con
 	fpl__PushEvent(&newEvent);
 }
 
-fpl_internal_inline void fpl__PushMouseButtonEvent(const int32_t x, const int32_t y, const fplMouseButtonType mouseButton, const fplButtonState buttonState) {
+fpl_internal void fpl__PushMouseButtonEvent(const int32_t x, const int32_t y, const fplMouseButtonType mouseButton, const fplButtonState buttonState) {
 	fplEvent newEvent = FPL_ZERO_INIT;
 	newEvent.type = fplEventType_Mouse;
 	newEvent.mouse.type = fplMouseEventType_Button;
@@ -6135,7 +6136,7 @@ fpl_internal_inline void fpl__PushMouseButtonEvent(const int32_t x, const int32_
 	fpl__PushEvent(&newEvent);
 }
 
-fpl_internal_inline void fpl__PushMouseWheelEvent(const int32_t x, const int32_t y, const float wheelDelta) {
+fpl_internal void fpl__PushMouseWheelEvent(const int32_t x, const int32_t y, const float wheelDelta) {
 	fplEvent newEvent = FPL_ZERO_INIT;
 	newEvent.type = fplEventType_Mouse;
 	newEvent.mouse.type = fplMouseEventType_Wheel;
@@ -6146,7 +6147,7 @@ fpl_internal_inline void fpl__PushMouseWheelEvent(const int32_t x, const int32_t
 	fpl__PushEvent(&newEvent);
 }
 
-fpl_internal_inline void fpl__PushMouseMoveEvent(const int32_t x, const int32_t y) {
+fpl_internal void fpl__PushMouseMoveEvent(const int32_t x, const int32_t y) {
 	fplEvent newEvent = FPL_ZERO_INIT;
 	newEvent.type = fplEventType_Mouse;
 	newEvent.mouse.type = fplMouseEventType_Move;
@@ -6157,7 +6158,7 @@ fpl_internal_inline void fpl__PushMouseMoveEvent(const int32_t x, const int32_t 
 }
 
 
-fpl_internal_inline void fpl__HandleKeyboardButtonEvent(fpl__PlatformWindowState *windowState, const uint64_t keyCode, const fplKeyboardModifierFlags modifiers, const fplButtonState buttonState) {
+fpl_internal void fpl__HandleKeyboardButtonEvent(fpl__PlatformWindowState *windowState, const uint64_t keyCode, const fplKeyboardModifierFlags modifiers, const fplButtonState buttonState) {
 	FPL_ASSERT(buttonState != fplButtonState_Repeat);
 	fplKey mappedKey = fpl__GetMappedKey(windowState, keyCode);
 	bool repeat = false;
@@ -6173,23 +6174,23 @@ fpl_internal_inline void fpl__HandleKeyboardButtonEvent(fpl__PlatformWindowState
 	fpl__PushKeyboardButtonEvent(keyCode, mappedKey, modifiers, repeat ? fplButtonState_Repeat : buttonState);
 }
 
-fpl_internal_inline void fpl__HandleKeyboardInputEvent(fpl__PlatformWindowState *windowState, const uint64_t keyCode) {
+fpl_internal void fpl__HandleKeyboardInputEvent(fpl__PlatformWindowState *windowState, const uint64_t keyCode) {
 	fplKey mappedKey = fpl__GetMappedKey(windowState, keyCode);
 	fpl__PushKeyboardInputEvent(keyCode, mappedKey);
 }
 
-fpl_internal_inline void fpl__HandleMouseButtonEvent(fpl__PlatformWindowState *windowState, const int32_t x, const int32_t y, const fplMouseButtonType mouseButton, const fplButtonState buttonState) {
+fpl_internal void fpl__HandleMouseButtonEvent(fpl__PlatformWindowState *windowState, const int32_t x, const int32_t y, const fplMouseButtonType mouseButton, const fplButtonState buttonState) {
 	if (mouseButton < FPL_ARRAYCOUNT(windowState->mouseStates)) {
 		windowState->mouseStates[(int)mouseButton] = buttonState;
 	}
 	fpl__PushMouseButtonEvent(x, y, mouseButton, buttonState);
 }
 
-fpl_internal_inline void fpl__HandleMouseMoveEvent(fpl__PlatformWindowState *windowState, const int32_t x, const int32_t y) {
+fpl_internal void fpl__HandleMouseMoveEvent(fpl__PlatformWindowState *windowState, const int32_t x, const int32_t y) {
 	fpl__PushMouseMoveEvent(x, y);
 }
 
-fpl_internal_inline void fpl__HandleMouseWheelEvent(fpl__PlatformWindowState *windowState, const int32_t x, const int32_t y, const float wheelDelta) {
+fpl_internal void fpl__HandleMouseWheelEvent(fpl__PlatformWindowState *windowState, const int32_t x, const int32_t y, const float wheelDelta) {
 	fpl__PushMouseWheelEvent(x, y, wheelDelta);
 }
 
@@ -12984,6 +12985,8 @@ typedef GLXFBConfig_Void* GLXFBConfig;
 #define GLX_ALPHA_SIZE 11
 #define GLX_DEPTH_SIZE 12
 #define GLX_STENCIL_SIZE 13
+#define GLX_SAMPLE_BUFFERS 0x186a0
+#define GLX_SAMPLES 0x186a1
 
 #define GLX_X_VISUAL_TYPE 0x22
 #define GLX_TRUE_COLOR 0x8002
@@ -13113,7 +13116,7 @@ typedef struct fpl__X11VideoOpenGLState {
 	bool isActiveContext;
 } fpl__X11VideoOpenGLState;
 
-fpl_internal bool fpl__X11InitFrameBufferConfigVideoOpenGL(const fpl__X11Api *x11Api, const fpl__X11WindowState *windowState, fpl__X11VideoOpenGLState *glState) {
+fpl_internal bool fpl__X11InitFrameBufferConfigVideoOpenGL(const fpl__X11Api *x11Api, const fpl__X11WindowState *windowState, const fplVideoSettings *videoSettings, fpl__X11VideoOpenGLState *glState) {
 	const fpl__X11VideoOpenGLApi *glApi = &glState->api;
 
 	FPL_LOG_DEBUG(FPL__MODULE_GLX, "Query GLX version for display '%p'", windowState->display);
@@ -13170,6 +13173,14 @@ fpl_internal bool fpl__X11InitFrameBufferConfigVideoOpenGL(const fpl__X11Api *x1
 
 	attr[attrIndex++] = GLX_STENCIL_SIZE;
 	attr[attrIndex++] = 8;
+
+	if (videoSettings->graphics.opengl.multiSamplingCount > 0) {
+        attr[attrIndex++] = GLX_SAMPLE_BUFFERS;
+        attr[attrIndex++] = 1;
+
+        attr[attrIndex++] = GLX_SAMPLES;
+        attr[attrIndex++] = (int)videoSettings->graphics.opengl.multiSamplingCount;
+	}
 
 	attr[attrIndex] = 0;
 
@@ -15420,7 +15431,7 @@ fpl_internal FPL__FUNC_PRE_SETUP_WINDOW(fpl__PreSetupWindowDefault) {
 				}
 #			endif
 #			if defined(FPL_SUBPLATFORM_X11)
-				if (fpl__X11InitFrameBufferConfigVideoOpenGL(&appState->x11.api, &appState->window.x11, &videoState->x11.opengl)) {
+				if (fpl__X11InitFrameBufferConfigVideoOpenGL(&appState->x11.api, &appState->window.x11, &initSettings->video, &videoState->x11.opengl)) {
 					result = fpl__X11SetPreWindowSetupForOpenGL(&appState->x11.api, &appState->window.x11, &videoState->x11.opengl, &outResult->x11);
 				}
 #			endif
