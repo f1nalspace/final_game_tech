@@ -134,6 +134,7 @@ SOFTWARE.
 	- Changed: fplMouseEvent / fplKeyboardEvent uses fplButtonState instead of a bool for the state
 	- Changed: Replaced fplMouseEventType_ButtonDown / fplMouseEventType_ButtonUp with fplMouseEventType_Button
 	- Changed: Replaced fplKeyboardEventType_KeyDown / fplKeyboardEventType_KeyUp with fplKeyboardEventType_Button
+    - Fixed: Fixed incompabilties with MingW compiler
 	- New: Added function fplStringToS32
 	- New: Added function fplStringToS32Len
 	- New: Added function fplS32ToString
@@ -161,6 +162,7 @@ SOFTWARE.
 	- Fixed: [Win32] fplGetTimeInMillisecondsHP was not returning a proper double value
 	- Fixed: [Win32] Fixed crash when using fplThreadTerminate while threads are already exiting
 	- Fixed: [Win32] fplThreadWaitForAll/fplThreadWaitForAny was not working properly when threads was already in the process of exiting naturally
+    - Fixed: [Win32] Fixed incompabilties with MingW compiler
 	- Fixed: [POSIX] Fixed crash when using fplThreadTerminate while threads are already exiting
 	- New: [Win32] Support for OpenGL multi sampling context creation
 	- New: [GLX] Support for OpenGL multi sampling context creation
@@ -1186,6 +1188,13 @@ SOFTWARE.
 	//! Function name macro (Other compilers)
 #   define FPL_FUNCTION_NAME __FUNCTION__
 #endif // FPL_COMPILER
+
+// MingW compiler hacks
+#if defined(FPL_COMPILER_MINGW)
+#   if !defined(_WIN32_WINNT)
+#       define _WIN32_WINNT 0x0600
+#   endif //!_WIN32_WINNT
+#endif // FPL_COMPILER_MINGW
 
 //
 // Options & Feature detection
@@ -8966,13 +8975,23 @@ fpl_platform_api fplArchType fplGetRunningArchitecture() {
 	return(result);
 }
 
+#define FPL__FUNC_WIN32_KERNEL32_GetPhysicallyInstalledSystemMemory(name) BOOL WINAPI name(PULONGLONG TotalMemoryInKilobytes)
+typedef FPL__FUNC_WIN32_KERNEL32_GetPhysicallyInstalledSystemMemory(fpl__win32_kernel_func_GetPhysicallyInstalledSystemMemory);
 fpl_platform_api bool fplGetRunningMemoryInfos(fplMemoryInfos *outInfos) {
 	FPL__CheckArgumentNull(outInfos, false);
 	MEMORYSTATUSEX statex = FPL_ZERO_INIT;
 	statex.dwLength = sizeof(statex);
 	ULONGLONG totalMemorySize;
 	bool result = false;
-	if (GetPhysicallyInstalledSystemMemory(&totalMemorySize) && GlobalMemoryStatusEx(&statex)) {
+
+	HMODULE kernel32lib = LoadLibraryA("kernel32.dll");
+	if (kernel32lib == fpl_null) {
+	    return false;
+	}
+    fpl__win32_kernel_func_GetPhysicallyInstalledSystemMemory *func = (fpl__win32_kernel_func_GetPhysicallyInstalledSystemMemory *)GetProcAddress(kernel32lib, "GetPhysicallyInstalledSystemMemory");
+	FreeLibrary(kernel32lib);
+
+	if ((func != fpl_null) && func(&totalMemorySize) && GlobalMemoryStatusEx(&statex)) {
 		FPL_CLEAR_STRUCT(outInfos);
 		// @NOTE(final): Requires _allmul when CRT is disabled
 		outInfos->totalPhysicalSize = totalMemorySize * 1024ull;
@@ -12807,7 +12826,7 @@ fpl_internal bool fpl__Win32PostSetupWindowForOpenGL(fpl__Win32AppState *appStat
 	bool pixelFormatSet = false;
 	if (windowState->pixelFormat != 0) {
 		wapi->gdi.DescribePixelFormat(deviceContext, windowState->pixelFormat, sizeof(pfd), &pfd);
-		pixelFormatSet = wapi->gdi.SetPixelFormat(deviceContext, windowState->pixelFormat, &pfd);
+		pixelFormatSet = wapi->gdi.SetPixelFormat(deviceContext, windowState->pixelFormat, &pfd) == TRUE;
 		if (!pixelFormatSet) {
 			FPL_ERROR(FPL__MODULE_VIDEO_OPENGL, "Failed setting Pixelformat '%d' from pre setup", windowState->pixelFormat);
 		}
@@ -13562,6 +13581,7 @@ fpl_internal bool fpl__IsAudioDeviceStarted(fpl__CommonAudioState *audioState);
 // ############################################################################
 #if defined(FPL_ENABLE_AUDIO_DIRECTSOUND)
 #	include <mmreg.h>
+#   include <mmsystem.h>
 #	include <dsound.h>
 
 #define FPL__FUNC_DSOUND_DirectSoundCreate(name) HRESULT WINAPI name(const GUID* pcGuidDevice, LPDIRECTSOUND *ppDS8, LPUNKNOWN pUnkOuter)
