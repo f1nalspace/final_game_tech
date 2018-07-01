@@ -826,10 +826,34 @@
 	Call \ref fplVideoFlip() to present the frame to the screen.<br>
 	Its recommend to call this after each draw call of your frame at the end of the main-loop.
 
+	\subsection subsection_otutorial_video_modern_opengl_multisampling Multisample anti-aliasing (MSAA)
+
+	In a modern OpenGL context you can activate multi sampling antialiasing (MSAA) to get smooth edges with a bit of performance costs out-of-the-box.<br>
+	By default multisampling is disabled. To enable it you simply set your desired multi sampling count in \ref fplOpenGLVideoSettings.multiSamplingCount .<br>
+
+	\code{.c}
+	fplSettings settings;
+	fplSetDefaultSettings(&settings);
+	fplVideoSettings &videoSettings = settings.video;
+
+	// Forcing the video driver to be modern OpenGL with Core profile and for GL version 3.3
+	videoSettings.driver = fplVideoDriverType_OpenGL;
+	videoSettings.opengl.compabilityFlags = fplOpenGLCompabilityFlags_Core;
+	videoSettings.opengl.majorVersion = 3;
+	videoSettings.opengl.minorVersion = 3;
+
+	// Use 4x MSAA
+	videoSettings.opengl.multiSamplingCount = 4;
+
+	if (fplPlatformInit(fplInitFlags_Video, &settings)) {
+		// ... modern context is ready
+	}
+	\endcode
+
 	\section section_otutorial_video_modern_opengl_notes Notes
 	FPL does not provide any opengl types, prototypes or functions - its fully up to the caller how to handle this.
 	<br>
-	Keep in mind that FPL does not work with any OpenGL platform abstraction library like GLFW or GLUT!
+	Keep in mind that FPL does not work with platform abstraction libraries like GLFW or GLUT, but GLEW for example will work just fine.
 */
 
 /*!

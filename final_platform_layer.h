@@ -4017,6 +4017,7 @@ typedef struct fplWindowEvent {
 	uint32_t height;
 } fplWindowEvent;
 
+//! An enumeration of button states
 typedef enum fplButtonState {
 	//! Key released
 	fplButtonState_Release = 0,
