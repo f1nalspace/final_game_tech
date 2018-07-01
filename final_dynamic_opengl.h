@@ -103,7 +103,7 @@ SOFTWARE.
 
 /*!
 	\file final_dynamic_opengl.h
-	\version v0.3.4.0 beta
+	\version v0.3.5.0 beta
 	\author Torsten Spaete
 	\brief Final Dynamic OpenGL (FGL) - A open source C99 single file header OpenGL-Loader library.
 */
@@ -111,6 +111,9 @@ SOFTWARE.
 /*!
 	\page page_changelog Changelog
 	\tableofcontents
+
+ 	## v0.3.5.0 beta:
+ 	- Fixed: Fixed incompabilties with MingW compiler (FARPROC)
 
     ## v0.3.4.0 beta:
     - Fixed: Removed fglOpenGLState struct dependency for fgl__SetLastError()
@@ -4872,9 +4875,9 @@ static void *fgl__GetOpenGLProcAddress(const fglOpenGLState *state, const char *
 	assert(state != fgl_null);
 	void *result = fgl_null;
 #	if defined(FGL_PLATFORM_WIN32)
-	result = GetProcAddress(state->win32.opengl32.libraryHandle, name);
+	result = (void *)GetProcAddress(state->win32.opengl32.libraryHandle, name);
 	if(result == fgl_null) {
-		result = state->win32.opengl32.wglGetProcAddress(name);
+		result = (void *)state->win32.opengl32.wglGetProcAddress(name);
 	}
 #	elif defined(FGL_PLATFORM_POSIX)
 	result = dlsym(state->posix.libraryHandle, name);
