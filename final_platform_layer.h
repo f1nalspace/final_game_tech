@@ -120,7 +120,7 @@ SOFTWARE.
 
 /*!
 	\file final_platform_layer.h
-	\version v0.8.3.0 beta
+	\version v0.8.4.0 beta
 	\author Torsten Spaete
 	\brief Final Platform Layer (FPL) - A C99 Single-Header-File Platform Abstraction Library
 */
@@ -128,6 +128,9 @@ SOFTWARE.
 /*!
 	\page page_changelog Changelog
 	\tableofcontents
+
+	## v0.8.4.0 beta:
+	- Fixed: [Win32] Fullscreen toggling was broken in maximize/minimize mode
 
 	## v0.8.3.0 beta:
 	- Changed: fplVersionInfo is now parsed as char[4] instead of uint32_t
@@ -7529,7 +7532,7 @@ fpl_internal bool fpl__Win32EnterFullscreen(const uint32_t fullscreenWidth, cons
 		WINDOWPLACEMENT placement = FPL_ZERO_INIT;
 		placement.length = sizeof(placement);
 		placement.rcNormalPosition = windowRect;
-		placement.showCmd = SW_SHOW;
+		placement.showCmd = SW_SHOWNORMAL;
 		wapi->user.SetWindowPlacement(windowHandle, &placement);
 		wapi->user.SetWindowPos(windowHandle, fpl_null, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
 		result = true;
@@ -10030,7 +10033,7 @@ fpl_platform_api bool fplSetWindowFullscreen(const bool value, const uint32_t fu
 	if (!windowSettings->isFullscreen) {
 		fpl__Win32SaveWindowState(wapi, fullscreenState, windowHandle);
 		if (fullscreenState->isMaximized || fullscreenState->isMinimized) {
-			fpl__win32_SendMessage(windowHandle, WM_SYSCOMMAND, SC_RESTORE, 0);
+			wapi->user.ShowWindow(windowHandle, SW_RESTORE);
 		}
 	}
 
