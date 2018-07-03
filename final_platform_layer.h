@@ -130,6 +130,8 @@ SOFTWARE.
 	\tableofcontents
 
 	## v0.8.4.0 beta:
+	- New: Skip implementation block when documentation parser is detected (By be disabled -> FPL_NO_SKIP_IMPL_FOR_PARSER)
+	- New: Added macro function FPL_STRUCT_INIT
 	- Fixed: [Win32] Fullscreen toggling was broken in maximize/minimize mode
 
 	## v0.8.3.0 beta:
@@ -1442,11 +1444,15 @@ FPL_STATICASSERT(sizeof(size_t) == sizeof(uint32_t));
 #	define FPL_ZERO_INIT {0}
 	//! Sets a struct pointer to the given value (C99)
 #	define FPL_STRUCT_SET(ptr, type, value) *(ptr) = (type)value
+	//! Inits a struct by the given type (C99)
+#	define FPL_STRUCT_INIT(type, values) (type)values
 #else
 	//! Initialize a struct to zero (C++)
 #	define FPL_ZERO_INIT {}
 	//! Sets a struct pointer to the given value (C++)
 #	define FPL_STRUCT_SET(ptr, type, value) *(ptr) = value
+	//! Inits a struct by the given type (C++)
+#	define FPL_STRUCT_INIT(type, values) {values}
 #endif
 
 //! Clears the given struct pointer to zero
@@ -4680,6 +4686,9 @@ fpl_main int main(int argc, char **args);
 // ****************************************************************************
 #if defined(FPL_IMPLEMENTATION) && !defined(FPL_IMPLEMENTED)
 #define FPL_IMPLEMENTED
+
+// Skip implementation for several parsers such as Intellisense
+#if !defined(__INTELLISENSE__) || defined(FPL_NO_SKIP_IMPL_FOR_PARSER)
 
 // Module constants used for logging
 #define FPL__MODULE_CORE "Core"
@@ -16233,6 +16242,8 @@ fpl_common_api fplPlatformType fplGetPlatformType() {
 	//! Don't spill our preferences to the outside
 #	pragma warning( pop )
 #endif
+
+#endif // !__INTELLISENSE || FPL_NO_SKIP_IMPL_FOR_PARSER
 
 #endif // FPL_IMPLEMENTATION && !FPL_IMPLEMENTED
 
