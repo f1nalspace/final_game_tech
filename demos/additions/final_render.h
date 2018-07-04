@@ -23,6 +23,7 @@ License:
 #include <final_memory.h>
 
 #include "final_math.h"
+#include <final_fontloader.h>
 
 struct UVRect {
 	float uMin;
@@ -102,8 +103,11 @@ struct TextureOperation {
 };
 
 constexpr size_t MAX_TEXTURE_OPERATION_COUNT = 1024;
-struct CommandBuffer {
+constexpr size_t MAX_MATRIX_STACK_COUNT = 32;
+struct RenderState {
 	TextureOperation textureOperations[MAX_TEXTURE_OPERATION_COUNT];
+	Mat4f matrixStack[MAX_MATRIX_STACK_COUNT];
+	size_t matrixTop;
 	fmemMemoryBlock memory;
 	size_t textureOperationCount;
 };
@@ -116,6 +120,7 @@ enum class CommandType {
 	Rectangle,
 	Vertices,
 	Sprite,
+	Text
 };
 
 struct CommandHeader {
@@ -123,8 +128,15 @@ struct CommandHeader {
 	CommandType type;
 };
 
+enum class MatrixMode {
+	Set,
+	Push,
+	Pop
+};
+
 struct MatrixCommand {
 	Mat4f mat;
+	MatrixMode mode;
 };
 
 enum class ClearFlags : uint32_t {
@@ -132,6 +144,7 @@ enum class ClearFlags : uint32_t {
 	Color = 1 << 0,
 	Depth = 1 << 1,
 };
+FPL_ENUM_AS_FLAGS_OPERATORS(ClearFlags);
 
 struct ClearCommand {
 	Vec4f color;
@@ -154,6 +167,7 @@ struct RectangleCommand {
 };
 
 enum class VerticesDrawMode {
+	None,
 	Points,
 	Lines,
 	Triangles,
@@ -165,8 +179,8 @@ struct VerticesCommand {
 	const Vec2f *points;
 	size_t pointCount;
 	VerticesDrawMode drawMode;
-	float lineWidth;
-	bool isFilled;
+	float thickness;
+	bool isLoop;
 };
 
 struct SpriteCommand {
@@ -178,34 +192,49 @@ struct SpriteCommand {
 	TextureHandle texture;
 };
 
-extern void InitCommandBuffer(CommandBuffer &buffer, fmemMemoryBlock block);
-extern void ResetCommandBuffer(CommandBuffer &buffer);
-extern void PushClear(CommandBuffer &buffer, const Vec4f &color, const ClearFlags flags);
-extern void PushViewport(CommandBuffer &buffer, const int x, const int y, const int w, const int h);
-extern void PushMatrix(CommandBuffer &buffer, const Mat4f &mat);
-extern void PushRectangle(CommandBuffer &buffer, const Vec2f &bottomLeft, const Vec2f &size, const Vec4f &color, const bool isFilled, const float lineWidth);
-extern void PushVertices(CommandBuffer &buffer, const Vec2f *points, const size_t pointCount, const bool copyPoints, const Vec4f &color, const VerticesDrawMode drawMode, const float lineWidth);
-extern void PushSprite(CommandBuffer &buffer, const Vec2f &position, const Vec2f &ext, const TextureHandle texture, const Vec4f &color, const Vec2f &uvMin, const Vec2f &uvMax);
-extern void PushSprite(CommandBuffer &buffer, const Vec2f &position, const Vec2f &ext, const TextureHandle texture, const Vec4f &color, const UVRect &uvRect);
-extern void UploadTexture(CommandBuffer &buffer, TextureHandle *targetTexture, const void *data, const uint32_t width, const uint32_t height, const uint32_t bytesPerPixel, const TextureOperationType type, const TextureFilterType filter, const TextureWrapMode wrap, const bool isTopDown, const bool isPreMultiplied);
-extern void ReleaseTexture(CommandBuffer &buffer, TextureHandle *targetTexture);
+struct TextCommand {
+	Vec4f color;
+	Vec2f position;
+	const TextureHandle *texture;
+	const LoadedFont *font;
+	float horizontalAlignment;
+	float verticalAlignment;
+	float maxHeight;
+	size_t textLength;
+};
+
+extern void InitRenderState(RenderState &state, fmemMemoryBlock block);
+extern void ResetRenderState(RenderState &state);
+extern void PushClear(RenderState &state, const Vec4f &color, const ClearFlags flags);
+extern void PushViewport(RenderState &state, const int x, const int y, const int w, const int h);
+extern void PushMatrix(RenderState &state, const Mat4f &mat, const MatrixMode mode = MatrixMode::Push);
+extern void SetMatrix(RenderState &state, const Mat4f &mat);
+extern void PopMatrix(RenderState &state);
+extern void PushRectangle(RenderState &state, const Vec2f &bottomLeft, const Vec2f &size, const Vec4f &color, const bool isFilled, const float lineWidth);
+extern void PushRectangleCenter(RenderState &state, const Vec2f &center, const Vec2f &ext, const Vec4f &color, const bool isFilled, const float lineWidth);
+extern void PushVertices(RenderState &state, const Vec2f *points, const size_t pointCount, const bool copyPoints, const Vec4f &color, const VerticesDrawMode drawMode, const bool isLoop, const float radius);
+extern void PushSprite(RenderState &state, const Vec2f &position, const Vec2f &ext, const TextureHandle texture, const Vec4f &color, const Vec2f &uvMin, const Vec2f &uvMax);
+extern void PushSprite(RenderState &state, const Vec2f &position, const Vec2f &ext, const TextureHandle texture, const Vec4f &color, const UVRect &uvRect);
+extern void PushTexture(RenderState &state, TextureHandle *targetTexture, const void *data, const uint32_t width, const uint32_t height, const uint32_t bytesPerPixel, const TextureFilterType filter, const TextureWrapMode wrap, const bool isTopDown, const bool isPreMultiplied);
+extern void PopTexture(RenderState &state, TextureHandle *targetTexture);
+extern void PushText(RenderState &state, const char *text, const size_t textLen, const LoadedFont *font, const TextureHandle *texture, const Vec2f &position, const float maxHeight, const float horizontalAlignment, const float verticalAlignment, const Vec4f &color);
 
 #endif // FINAL_RENDER_H
 
 #if defined(FINAL_RENDER_IMPLEMENTATION) && !defined(FINAL_RENDER_IMPLEMENTED)
 #define FINAL_RENDER_IMPLEMENTED
 
-extern void InitCommandBuffer(CommandBuffer &buffer, fmemMemoryBlock block) {
-	buffer.memory = block;
-	buffer.textureOperationCount = 0;
+extern void InitRenderState(RenderState &state, fmemMemoryBlock block) {
+	state.memory = block;
+	state.textureOperationCount = 0;
 }
 
-extern void ResetCommandBuffer(CommandBuffer &buffer) {
-	buffer.memory.used = 0;
+extern void ResetRenderState(RenderState &state) {
+	state.memory.used = 0;
 }
 
-static CommandHeader *PushHeader(CommandBuffer &buffer, const CommandType type) {
-	CommandHeader *result = (CommandHeader *)fmemPush(&buffer.memory, sizeof(CommandHeader), fmemPushFlags_None);
+static CommandHeader *PushHeader(RenderState &state, const CommandType type) {
+	CommandHeader *result = (CommandHeader *)fmemPush(&state.memory, sizeof(CommandHeader), fmemPushFlags_None);
 	if(result != nullptr) {
 		result->type = type;
 		result->dataSize = 0;
@@ -214,36 +243,49 @@ static CommandHeader *PushHeader(CommandBuffer &buffer, const CommandType type) 
 }
 
 template<typename T>
-static T *PushTypes(CommandBuffer &buffer, CommandHeader *header, const size_t count = 1, const bool clear = true) {
+static T *PushTypes(RenderState &state, CommandHeader *header, const size_t count = 1, const bool clear = true) {
 	if(header != nullptr) {
 		size_t size = sizeof(T) * count;
-		T *result = (T *)fmemPush(&buffer.memory, size, clear ? fmemPushFlags_Clear : fmemPushFlags_None);
+		T *result = (T *)fmemPush(&state.memory, size, clear ? fmemPushFlags_Clear : fmemPushFlags_None);
 		header->dataSize += size;
 		return(result);
 	}
 	return nullptr;
 }
 
-extern void PushMatrix(CommandBuffer &buffer, const Mat4f &mat) {
-	CommandHeader *header = PushHeader(buffer, CommandType::Clear);
-	MatrixCommand *cmd = PushTypes<MatrixCommand>(buffer, header);
+extern void PushMatrix(RenderState &state, const Mat4f &mat, const MatrixMode mode) {
+	CommandHeader *header = PushHeader(state, CommandType::Matrix);
+	MatrixCommand *cmd = PushTypes<MatrixCommand>(state, header);
 	if(cmd != nullptr) {
 		cmd->mat = mat;
+		cmd->mode = mode;
 	}
 }
 
-extern void PushClear(CommandBuffer &buffer, const Vec4f &color, const ClearFlags flags) {
-	CommandHeader *header = PushHeader(buffer, CommandType::Clear);
-	ClearCommand *cmd = PushTypes<ClearCommand>(buffer, header);
+extern void PopMatrix(RenderState &state) {
+	CommandHeader *header = PushHeader(state, CommandType::Matrix);
+	MatrixCommand *cmd = PushTypes<MatrixCommand>(state, header);
+	if(cmd != nullptr) {
+		cmd->mode = MatrixMode::Pop;
+	}
+}
+
+extern void SetMatrix(RenderState &state, const Mat4f &mat) {
+	PushMatrix(state, mat, MatrixMode::Set);
+}
+
+extern void PushClear(RenderState &state, const Vec4f &color, const ClearFlags flags) {
+	CommandHeader *header = PushHeader(state, CommandType::Clear);
+	ClearCommand *cmd = PushTypes<ClearCommand>(state, header);
 	if(cmd != nullptr) {
 		cmd->color = color;
 		cmd->flags = flags;
 	}
 }
 
-extern void PushViewport(CommandBuffer &buffer, const int x, const int y, const int w, const int h) {
-	CommandHeader *header = PushHeader(buffer, CommandType::Viewport);
-	ViewportCommand *cmd = PushTypes<ViewportCommand>(buffer, header);
+extern void PushViewport(RenderState &state, const int x, const int y, const int w, const int h) {
+	CommandHeader *header = PushHeader(state, CommandType::Viewport);
+	ViewportCommand *cmd = PushTypes<ViewportCommand>(state, header);
 	if(cmd != nullptr) {
 		cmd->x = x;
 		cmd->y = y;
@@ -252,9 +294,9 @@ extern void PushViewport(CommandBuffer &buffer, const int x, const int y, const 
 	}
 }
 
-extern void PushRectangle(CommandBuffer &buffer, const Vec2f &bottomLeft, const Vec2f &size, const Vec4f &color, const bool isFilled, const float lineWidth) {
-	CommandHeader *header = PushHeader(buffer, CommandType::Rectangle);
-	RectangleCommand *cmd = PushTypes<RectangleCommand>(buffer, header);
+extern void PushRectangle(RenderState &state, const Vec2f &bottomLeft, const Vec2f &size, const Vec4f &color, const bool isFilled, const float lineWidth) {
+	CommandHeader *header = PushHeader(state, CommandType::Rectangle);
+	RectangleCommand *cmd = PushTypes<RectangleCommand>(state, header);
 	if(cmd != nullptr) {
 		cmd->bottomLeft = bottomLeft;
 		cmd->size = size;
@@ -264,12 +306,16 @@ extern void PushRectangle(CommandBuffer &buffer, const Vec2f &bottomLeft, const 
 	}
 }
 
-extern void PushVertices(CommandBuffer &buffer, const Vec2f *points, const size_t pointCount, const bool copyPoints, const Vec4f &color, const VerticesDrawMode drawMode, const float lineWidth) {
-	CommandHeader *header = PushHeader(buffer, CommandType::Vertices);
-	VerticesCommand *cmd = PushTypes<VerticesCommand>(buffer, header);
+extern void PushRectangleCenter(RenderState &state, const Vec2f &center, const Vec2f &ext, const Vec4f &color, const bool isFilled, const float lineWidth) {
+	PushRectangle(state, center - ext, ext * 2.0f, color, isFilled, lineWidth);
+}
+
+extern void PushVertices(RenderState &state, const Vec2f *points, const size_t pointCount, const bool copyPoints, const Vec4f &color, const VerticesDrawMode drawMode, const bool isLoop, const float thickness) {
+	CommandHeader *header = PushHeader(state, CommandType::Vertices);
+	VerticesCommand *cmd = PushTypes<VerticesCommand>(state, header);
 	if(cmd != nullptr) {
 		if(copyPoints) {
-			Vec2f *dstPoints = PushTypes<Vec2f>(buffer, header, pointCount);
+			Vec2f *dstPoints = PushTypes<Vec2f>(state, header, pointCount);
 			for(size_t i = 0; i < pointCount; ++i) {
 				dstPoints[i] = points[i];
 			}
@@ -280,13 +326,14 @@ extern void PushVertices(CommandBuffer &buffer, const Vec2f *points, const size_
 		cmd->pointCount = pointCount;
 		cmd->color = color;
 		cmd->drawMode = drawMode;
-		cmd->lineWidth = lineWidth;
+		cmd->thickness = thickness;
+		cmd->isLoop = isLoop;
 	}
 }
 
-extern void PushSprite(CommandBuffer &buffer, const Vec2f &position, const Vec2f &ext, const TextureHandle texture, const Vec4f &color, const Vec2f &uvMin, const Vec2f &uvMax) {
-	CommandHeader *header = PushHeader(buffer, CommandType::Sprite);
-	SpriteCommand *cmd = PushTypes<SpriteCommand>(buffer, header);
+extern void PushSprite(RenderState &state, const Vec2f &position, const Vec2f &ext, const TextureHandle texture, const Vec4f &color, const Vec2f &uvMin, const Vec2f &uvMax) {
+	CommandHeader *header = PushHeader(state, CommandType::Sprite);
+	SpriteCommand *cmd = PushTypes<SpriteCommand>(state, header);
 	if(cmd != nullptr) {
 		cmd->position = position;
 		cmd->ext = ext;
@@ -297,13 +344,13 @@ extern void PushSprite(CommandBuffer &buffer, const Vec2f &position, const Vec2f
 	}
 }
 
-extern void PushSprite(CommandBuffer &buffer, const Vec2f &position, const Vec2f &ext, const TextureHandle texture, const Vec4f &color, const UVRect &uvRect) {
-	PushSprite(buffer, position, ext, texture, color, V2f(uvRect.uMin, uvRect.vMin), V2f(uvRect.uMax, uvRect.vMax));
+extern void PushSprite(RenderState &state, const Vec2f &position, const Vec2f &ext, const TextureHandle texture, const Vec4f &color, const UVRect &uvRect) {
+	PushSprite(state, position, ext, texture, color, V2f(uvRect.uMin, uvRect.vMin), V2f(uvRect.uMax, uvRect.vMax));
 }
 
-extern void UploadTexture(CommandBuffer &buffer, TextureHandle *targetTexture, const void *data, const uint32_t width, const uint32_t height, const uint32_t bytesPerPixel, const TextureOperationType type, const TextureFilterType filter, const TextureWrapMode wrap, const bool isTopDown, const bool isPreMultiplied) {
-	if(buffer.textureOperationCount < FPL_ARRAYCOUNT(buffer.textureOperations)) {
-		TextureOperation *op = &buffer.textureOperations[buffer.textureOperationCount++];
+extern void PushTexture(RenderState &state, TextureHandle *targetTexture, const void *data, const uint32_t width, const uint32_t height, const uint32_t bytesPerPixel, const TextureFilterType filter, const TextureWrapMode wrap, const bool isTopDown, const bool isPreMultiplied) {
+	if(state.textureOperationCount < FPL_ARRAYCOUNT(state.textureOperations)) {
+		TextureOperation *op = &state.textureOperations[state.textureOperationCount++];
 		*op = {};
 		op->data = data;
 		op->width = width;
@@ -318,13 +365,31 @@ extern void UploadTexture(CommandBuffer &buffer, TextureHandle *targetTexture, c
 	}
 }
 
-extern void ReleaseTexture(CommandBuffer &buffer, TextureHandle *targetTexture) {
-	if(buffer.textureOperationCount < FPL_ARRAYCOUNT(buffer.textureOperations)) {
-		TextureOperation *op = &buffer.textureOperations[buffer.textureOperationCount++];
+extern void PopTexture(RenderState &state, TextureHandle *targetTexture) {
+	if(state.textureOperationCount < FPL_ARRAYCOUNT(state.textureOperations)) {
+		TextureOperation *op = &state.textureOperations[state.textureOperationCount++];
 		*op = {};
 		op->handle = targetTexture;
 		op->type = TextureOperationType::Release;
 	}
+}
+
+extern void PushText(RenderState &state, const char *text, const size_t textLen, const LoadedFont *font, const TextureHandle *texture, const Vec2f &position, const float maxHeight, const float horizontalAlignment, const float verticalAlignment, const Vec4f &color) {
+	CommandHeader *header = PushHeader(state, CommandType::Text);
+	TextCommand *cmd = PushTypes<TextCommand>(state, header);
+	if(cmd != nullptr) {
+		cmd->position = position;
+		cmd->texture = texture;
+		cmd->font = font;
+		cmd->color = color;
+		cmd->textLength = textLen;
+		cmd->maxHeight = maxHeight;
+		cmd->horizontalAlignment = horizontalAlignment;
+		cmd->verticalAlignment = verticalAlignment;
+
+	}
+	char *pt = PushTypes<char>(state, header, textLen + 1, false);
+	fplCopyAnsiStringLen(text, textLen, pt, textLen + 1);
 }
 
 extern Viewport ComputeViewportByAspect(const Vec2i &screenSize, const float targetAspect) {

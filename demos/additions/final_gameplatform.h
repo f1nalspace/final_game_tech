@@ -24,6 +24,8 @@ Changelog:
 #error "C++/11 compiler not detected!"
 #endif
 
+#include "final_game.h"
+
 struct GameConfiguration {
 	const char *title;
 	bool hideMouseCursor;
@@ -40,10 +42,17 @@ extern int GameMain(const GameConfiguration &config);
 
 #include <final_platform_layer.h>
 
-#define FGL_IMPLEMENATTION
+#define FMEM_IMPLEMENTATION
+#include <final_memory.h>
+
+#define FINAL_RENDER_IMPLEMENTATION
+#include <final_render.h>
+
+#define FGL_IMPLEMENTATION
 #include <final_dynamic_opengl.h>
 
-#include "final_game.h"
+#define FINAL_OPENGL_RENDER_IMPLEMENTATION
+#include <final_opengl_render.h>
 
 static void UpdateKeyboardButtonState(const fplButtonState state, const ButtonState &oldState, ButtonState &targetButton) {
 	if(state != targetButton.state) {
@@ -231,9 +240,7 @@ static void ProcessEvents(Input *currentInput, Input *prevInput, GameWindowActiv
 	}
 }
 
-static void RenderCommandsByOpenGL(CommandBuffer &renderCommands) {
 
-}
 
 extern int GameMain(const GameConfiguration &config) {
 	fplSettings settings = fplMakeDefaultSettings();
@@ -246,16 +253,21 @@ extern int GameMain(const GameConfiguration &config) {
 		return -1;
 	}
 
+	if(!fglLoadOpenGL(true)) {
+		fplPlatformRelease();
+		return -1;
+	}
+
 	bool wasError = false;
 
 	GameMemory gameMem = GameCreate();
-	fmemMemoryBlock renderCommandMemory = {};
-	CommandBuffer renderCommands = {};
+	fmemMemoryBlock renderStateMemory = {};
+	RenderState renderState = {};
 	if(gameMem.base == nullptr) {
 		wasError = true;
 	}
 
-	if(!fmemInit(&renderCommandMemory, fmemType_Growable, FMEM_MEGABYTES(32))) {
+	if(!fmemInit(&renderStateMemory, fmemType_Growable, FMEM_MEGABYTES(32))) {
 		wasError = true;
 	}
 
@@ -281,7 +293,7 @@ extern int GameMain(const GameConfiguration &config) {
 		double lastFramesPerSecond = 0.0;
 		double lastFrameTime = 0.0;
 
-		InitCommandBuffer(renderCommands, renderCommandMemory);
+		InitRenderState(renderState, renderStateMemory);
 		while(!IsGameExiting(gameMem) && fplWindowUpdate()) {
 			// Window size
 			fplWindowSize winArea;
@@ -335,6 +347,8 @@ extern int GameMain(const GameConfiguration &config) {
 				frameAccumulator = TargetDeltaTime;
 			}
 
+			ResetRenderState(renderState);
+
 			// Game Update
 			if(config.noUpdateRenderSeparation) {
 				float alpha;
@@ -343,7 +357,7 @@ extern int GameMain(const GameConfiguration &config) {
 				} else {
 					alpha = 1.0f;
 				}
-				GameUpdateAndRender(gameMem, *curInput, renderCommands, alpha);
+				GameUpdateAndRender(gameMem, *curInput, renderState, alpha);
 			} else {
 				GameInput(gameMem, *curInput);
 #if 1
@@ -358,15 +372,16 @@ extern int GameMain(const GameConfiguration &config) {
 #endif
 			}
 
-				// @TODO(final): Yield thread when we are running too fast
+			// @TODO(final): Yield thread when we are running too fast
 			double endWorkTime = fplGetTimeInSecondsHP();
 			double workDuration = endWorkTime - lastTime;
 
 			// Render
 			if(!config.noUpdateRenderSeparation) {
 				float alpha = (float)frameAccumulator / (float)TargetDeltaTime;
-				GameRender(gameMem, renderCommands, alpha);
+				GameRender(gameMem, renderState, alpha);
 			}
+			RenderWithOpenGL(renderState);
 			fplVideoFlip();
 			++frameCount;
 
@@ -406,7 +421,9 @@ extern int GameMain(const GameConfiguration &config) {
 		GameDestroy(gameMem);
 	}
 
-	fmemFree(&renderCommandMemory);
+	fmemFree(&renderStateMemory);
+
+	fglUnloadOpenGL();
 
 	fplPlatformRelease();
 
