@@ -12,6 +12,10 @@ License:
 	Copyright 2018 Torsten Spaete
 
 Changelog:
+	## 2018-07-04
+	- Fixed texel border issue by decrease the uv-rect by half a texel
+	- LoadFontFromFile dataPath argument is now optional 
+
     ## 2018-06-30
     - Fixed crash on ReleaseFont when not using kerning
 
@@ -224,10 +228,10 @@ extern bool LoadFontFromMemory(const void *data, const size_t dataSize, const ui
 			destInfo->charCode = firstChar + glyphIndex;
 
 			// Compute UV coords
-			float uMin = sourceInfo->x0 * texelU;
-			float uMax = sourceInfo->x1 * texelU;
-			float vMin = sourceInfo->y1 * texelV;
-			float vMax = sourceInfo->y0 * texelV;
+			float uMin = sourceInfo->x0 * texelU + texelU * 0.5f;
+			float uMax = sourceInfo->x1 * texelU - texelU * 0.5f;
+			float vMin = sourceInfo->y1 * texelV + texelU * 0.5f;
+			float vMax = sourceInfo->y0 * texelV - texelU * 0.5f;
 			destInfo->uvMin = V2f(uMin, vMin);
 			destInfo->uvMax = V2f(uMax, vMax);
 
@@ -299,7 +303,7 @@ extern bool LoadFontFromMemory(const void *data, const size_t dataSize, const ui
 }
 
 extern bool LoadFontFromFile(const char *dataPath, const char *filename, const uint32_t fontIndex, const float fontSize, const uint32_t firstChar, const uint32_t lastChar, const uint32_t atlasWidth, const uint32_t atlasHeight, const bool loadKerning, LoadedFont *outFont) {
-	if(dataPath == fpl_null || filename == fpl_null) {
+	if(filename == fpl_null) {
 		return false;
 	}
 	if(outFont == fpl_null) {
@@ -307,8 +311,12 @@ extern bool LoadFontFromFile(const char *dataPath, const char *filename, const u
 	}
 
 	char filePath[1024];
-	fplCopyAnsiString(dataPath, filePath, FPL_ARRAYCOUNT(filePath));
-	fplPathCombine(filePath, FPL_ARRAYCOUNT(filePath), 2, dataPath, filename);
+	if(dataPath != fpl_null) {
+		fplCopyAnsiString(dataPath, filePath, FPL_ARRAYCOUNT(filePath));
+		fplPathCombine(filePath, FPL_ARRAYCOUNT(filePath), 2, dataPath, filename);
+	} else {
+		fplCopyAnsiString(filename, filePath, FPL_ARRAYCOUNT(filePath));
+	}
 
 	bool result = false;
 
