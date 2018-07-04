@@ -247,6 +247,9 @@ union Mat4f {
 		Vec4f col3;
 		Vec4f col4;
 	};
+	struct {
+		float r[4][4];
+	};
 	float m[16];
 };
 
@@ -265,16 +268,34 @@ inline Mat4f M4f(const Mat4f &other) {
 	return(result);
 }
 
-inline static Mat4f TransformationFromVec2(const Vec2f &p) {
-	Mat4f result = Mat4f();
-	result.col4.x = p.x;
-	result.col4.y = p.y;
-	result.col4.z = 0.0f;
+inline static Mat4f Mat4Ortho(const float left, const float right, const float bottom, const float top, const float zNear, const float zFar) {
+	Mat4f result = M4f();
+	result.r[0][0] = 2.0f / (right - left);
+	result.r[1][1] = 2.0f / (top - bottom);
+	result.r[2][2] = 2.0f / (zFar - zNear);
+	result.r[3][0] = -(right + left) / (right - left);
+	result.r[3][1] = -(top + bottom) / (top - bottom);
+	result.r[3][2] = -(zFar + zNear) / (zFar - zNear);
 	return (result);
 }
 
-inline static Mat4f ScaleFromVec2(const Vec2f &s) {
-	Mat4f result = Mat4f();
+inline static Mat4f Mat4Translation(const Vec4f &p) {
+	Mat4f result = M4f();
+	result.col4 = p;
+	return (result);
+}
+
+inline static Mat4f Mat4Translation(const Vec2f &p) {
+	Mat4f result = M4f();
+	result.col4.x = p.x;
+	result.col4.y = p.y;
+	result.col4.z = 0.0f;
+	result.col4.w = 1.0f;
+	return (result);
+}
+
+inline static Mat4f Mat4Scale(const Vec2f &s) {
+	Mat4f result = M4f();
 	result.col1.x = s.x;
 	result.col2.y = s.y;
 	result.col3.z = 0.0f;
