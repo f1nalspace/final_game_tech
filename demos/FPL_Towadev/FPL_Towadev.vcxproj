@@ -34,6 +34,11 @@
     <ClInclude Include="..\additions\final_math.h" />
     <ClInclude Include="fpl_towadev.h" />
   </ItemGroup>
+  <ItemGroup>
+    <Xml Include="data\levels\creeps.xml" />
+    <Xml Include="data\levels\towers.xml" />
+    <Xml Include="data\levels\waves.xml" />
+  </ItemGroup>
   <PropertyGroup Label="Globals">
     <VCProjectVersion>15.0</VCProjectVersion>
     <ProjectGuid>{4E7070B3-008C-4C21-8E26-6637DC547F89}</ProjectGuid>

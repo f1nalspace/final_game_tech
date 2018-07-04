@@ -1,21 +1,24 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <TowerDefinitions>
-    <TowerData id="First Tower" costs="50">
-        <detectionRadius>2.25</detectionRadius>
-        <unlockRadius>2.3</unlockRadius>
-        <structureRadius>0.35</structureRadius>
-        <gunTubeLength>0.55</gunTubeLength>
-        <gunCooldown>0.35</gunCooldown>
-        <gunTubeThickness>0.2</gunTubeThickness>
-        <gunRotationSpeed>4.0</gunRotationSpeed>
-        <enemyRangeTestType>InSight</enemyRangeTestType>
-        <enemyPredictionFlags>All</enemyPredictionFlags>
-        <enemyLockOnMode>LockedOn</enemyLockOnMode>
-        <bullet>
-            <renderRadius>0.05</renderRadius>
-            <collisionRadius>0.05</collisionRadius>
-            <speed>2.5</speed>
-            <damage>15</damage>
-        </bullet>
-    </TowerData>
+  <TowerData id="First Tower" costs="25">
+    <detectionRadius>2.25</detectionRadius>
+    <unlockRadius>2.25</unlockRadius>
+    <structureRadius>0.2</structureRadius>
+    <gunTubeLength>0.35</gunTubeLength>
+    <gunCooldown>0.35</gunCooldown>
+    <gunTubeThickness>0.2</gunTubeThickness>
+    <gunRotationSpeed>6.0</gunRotationSpeed>
+    <enemyRangeTestType>InSight</enemyRangeTestType>
+    <enemyPredictionFlags>All</enemyPredictionFlags>
+    <enemyLockOnMode>LockedOn</enemyLockOnMode>
+    <bullet>
+      <renderRadius>0.05</renderRadius>
+      <collisionRadius>0.05</collisionRadius>
+      <speed>2.5</speed>
+      <damage>15</damage>
+    </bullet>
+    <upgrades>
+      <upgrade speedmult="1.1" damagemult="1.25" scalemult="1.1" cost="30" />
+    </upgrades>
+  </TowerData>
 </TowerDefinitions>

@@ -19,6 +19,12 @@ Author:
 	Torsten Spaete
 
 Changelog:
+	## 2018-07-03
+	- Fixed collision was broken
+	- Fixed spawner was active while start-cooldown of wave
+	- Fixed enemy prediction was broken
+
+
 	## 2018-06-25:
 	- Introduced Tower Buttons
 	- Write selected tower name
@@ -146,23 +152,23 @@ constexpr float ShotAngleTolerance = (Pi32 * 0.05f);
 static const TowerData TowerDefinitions[] = {
 	MakeTowerData(
 		/* id: */ "First Tower",
-		/* structureRadius: */ MaxTileSize * 0.35f,
-		/* detectionRadius: */ MaxTileSize * 2.25f,
-		/* unlockRadius: */ MaxTileSize * 2.3f,
-		/* gunTubeLength: */ MaxTileSize * 0.55f,
-		/* gunCooldown: */ 0.35f,
-		/* gunTubeThickness: */ MaxTileSize * 0.2f,
-		/* gunRotationSpeed: */ 4.0f,
-		/* costs: */ 50,
-		/* enemyRangeTestType: */ FireRangeTestType::InSight,
-		/* enemyPredictionFlags: */ EnemyPredictionFlags::All,
-		/* enemyLockOnMode: */ EnemyLockTargetMode::LockedOn,
-		MakeBulletData(
-		/* renderRadius: */ MaxTileSize * 0.05f,
-		/* collisionRadius: */ MaxTileSize * 0.05f,
-		/* speed: */ 2.5f,
-		/* damage: */ 15
-	)
+	/* structureRadius: */ MaxTileSize * 0.35f,
+	/* detectionRadius: */ MaxTileSize * 2.25f,
+	/* unlockRadius: */ MaxTileSize * 2.3f,
+	/* gunTubeLength: */ MaxTileSize * 0.55f,
+	/* gunCooldown: */ 0.35f,
+	/* gunTubeThickness: */ MaxTileSize * 0.2f,
+	/* gunRotationSpeed: */ 4.0f,
+	/* costs: */ 50,
+	/* enemyRangeTestType: */ FireRangeTestType::InSight,
+	/* enemyPredictionFlags: */ EnemyPredictionFlags::All,
+	/* enemyLockOnMode: */ EnemyLockTargetMode::LockedOn,
+	MakeBulletData(
+	/* renderRadius: */ MaxTileSize * 0.05f,
+	/* collisionRadius: */ MaxTileSize * 0.05f,
+	/* speed: */ 2.5f,
+	/* damage: */ 15
+)
 ),
 MakeTowerData(
 	/* id: */ "Second Tower",
@@ -189,27 +195,27 @@ MakeTowerData(
 static const CreepData CreepDefinitions[] = {
 	MakeCreepData(
 		/* id: */ "The Quad",
-		/* renderRadius: */ MaxTileSize * 0.25f,
-		/* collisionRadius: */ MaxTileSize * 0.2f,
-		/* speed: */ 1.0,
-		/* hp: */ 100,
-		/* bounty: */ 1,
-		/* color: */ V4f(1, 1, 1, 1),
-		/* style: */ CreepStyle::Quad
-	),
+	/* renderRadius: */ MaxTileSize * 0.25f,
+	/* collisionRadius: */ MaxTileSize * 0.2f,
+	/* speed: */ 1.0,
+	/* hp: */ 100,
+	/* bounty: */ 1,
+	/* color: */ V4f(1, 1, 1, 1),
+	/* style: */ CreepStyle::Quad
+),
 };
 
 static const WaveData WaveDefinitions[] = {
 	MakeWaveData(
 		/* level: */ "level1",
-		/* startupCooldown: */ 3.0f,
-		/* completionBounty: */ 20,
-		/* spawners: */
-		{
-			MakeSpawnData("spawn1", "The Quad", SpawnerStartMode::Fixed, 0, 1.5f, 25),
-			MakeSpawnData("spawn1", "The Quad", SpawnerStartMode::AfterTheLast, 0, 1.0f, 10),
-		}
-	),
+	/* startupCooldown: */ 3.0f,
+	/* completionBounty: */ 20,
+	/* spawners: */
+	{
+		MakeSpawnData("spawn1", "The Quad", SpawnerStartMode::Fixed, 0, 1.5f, 25),
+		MakeSpawnData("spawn1", "The Quad", SpawnerStartMode::AfterTheLast, 0, 1.0f, 10),
+	}
+),
 };
 
 namespace gamelog {
@@ -476,7 +482,7 @@ namespace creeps {
 		spawner.totalCount = count;
 		spawner.remainingCount = count;
 		spawner.spawnTemplate = spawnTemplate;
-		spawner.isActive = (startMode == SpawnerStartMode::Fixed);
+		spawner.isActive = false;
 		spawner.startMode = startMode;
 	}
 
@@ -494,7 +500,7 @@ namespace creeps {
 		if (state.wave.isActive && state.stats.lifes <= 0) {
 			state.stats.lifes = 0;
 			state.wave.isActive = false;
-			game::SetSlowdown(state, 2.0f, WaveState::Lost);
+			game::SetSlowdown(state, 6.0f, WaveState::Lost);
 		}
 	}
 
@@ -540,10 +546,13 @@ namespace creeps {
 	}
 
 	static void AllEnemiesKilled(GameState &state) {
-		state.wave.state = WaveState::Won;
 		state.stats.money += state.assets.waveDefinitions[state.wave.activeIndex].completionBounty;
 		if (state.wave.activeIndex < (state.assets.waveDefinitionCount - 1)) {
 			level::LoadWave(state, state.wave.activeIndex + 1);
+		} else {
+			state.wave.state = WaveState::Won;
+			state.wave.isActive = false;
+			game::SetSlowdown(state, 6.0f, WaveState::Lost);
 		}
 	}
 }
@@ -1080,10 +1089,10 @@ namespace level {
 						gamelog::Warning("Enemy by id '%s' does not exists!", data.enemyId);
 					}
 					state.wave.totalEnemyCount += data.enemyCount;
-				} break;
-			}
-#endif
+			} break;
 		}
+#endif
+	}
 
 		for (size_t spawnerIndex = 0; spawnerIndex < wave.spawnerCount; ++spawnerIndex) {
 			const SpawnData &spawnerFromWave = wave.spawners[spawnerIndex];
@@ -1113,7 +1122,7 @@ namespace level {
 		state.wave.state = WaveState::Starting;
 		state.wave.isActive = true;
 		state.wave.warmupTimer = wave.startupCooldown;
-	}
+}
 }
 
 namespace towers {
@@ -1174,10 +1183,11 @@ namespace towers {
 			} else {
 				framesRequiredToFire = 0;
 			}
-			float timeScale = Max(framesRequiredToFire, 1.0f);
+			float timeScale = 1.0f / Max(framesRequiredToFire, 1.0f);
 
 			// Now we predict the enemy position based on the enemy speed and the number of frames required to fire
-			Vec2f predictedPosition = enemy.position + enemy.facingDirection * enemy.speed * deltaTime * timeScale;
+			Vec2f velocity = enemy.facingDirection * (enemy.speed * 0.5f * deltaTime);
+			Vec2f predictedPosition = enemy.position + velocity / deltaTime;
 			Vec2f distanceToEnemy = predictedPosition - tower.position;
 
 			// Second we compute how many frames we need the bullet to move to the predicted position
@@ -1191,8 +1201,9 @@ namespace towers {
 			}
 
 			// Now we recompute the time scale and the predicted enemy position
-			timeScale = Max(framesRequiredToFire + framesRequiredForBullet, 1.0f);
-			result = enemy.position + enemy.facingDirection * enemy.speed * deltaTime * timeScale;
+			timeScale = 1.0f / Max(framesRequiredToFire + framesRequiredForBullet, 1.0f);
+			velocity = enemy.facingDirection * (enemy.speed * 0.5f * deltaTime);
+			result = enemy.position + velocity / deltaTime;
 		} else {
 			result = enemy.position;
 		}
@@ -1403,7 +1414,7 @@ namespace game {
 			TowerData *dst = &assets.towerDefinitions[idx];
 			*dst = *src;
 			gamelog::Info("Added tower definition[%zu]: '%s'", idx, dst->id);
-	}
+		}
 		for (size_t i = 0; i < FPL_ARRAYCOUNT(CreepDefinitions); ++i) {
 			FPL_ASSERT(assets.creepDefinitionCount < FPL_ARRAYCOUNT(assets.creepDefinitions));
 			const CreepData *src = &CreepDefinitions[i];
@@ -1419,7 +1430,7 @@ namespace game {
 			WaveData *dst = &assets.waveDefinitions[idx];
 			*dst = *src;
 			gamelog::Info("Added wave definition[%zu]: Level:'%s', Spawners:%zu", idx, dst->levelId, dst->spawnerCount);
-		}
+	}
 #endif
 
 		// Fonts
@@ -1453,9 +1464,9 @@ namespace game {
 		state.camera.offset.x = 0;
 		state.camera.offset.y = 0;
 
-		// @TODO(final): Initial values from first wave?
-		state.stats.money = 100;
-		state.stats.lifes = 3;
+		// @TODO(final): Read from game.xml
+		state.stats.money = 50;
+		state.stats.lifes = 10;
 
 		// Load initial wave
 		level::LoadWave(state, 0);
@@ -1728,10 +1739,18 @@ extern void GameUpdate(GameMemory &gameMemory, const Input &input) {
 		if (state->wave.warmupTimer <= 0.0f) {
 			state->wave.warmupTimer = 0;
 			state->wave.state = WaveState::Running;
+			for (size_t spawnerIndex = 0; spawnerIndex < state->spawners.count; ++spawnerIndex) {
+				CreepSpawner &spawner = state->spawners.list[spawnerIndex];
+				if (spawner.startMode == SpawnerStartMode::Fixed) {
+					spawner.isActive = true;
+				}
+			}
 		}
 	}
 
-	if (state->wave.state == WaveState::Running) {
+	bool updateGameCode = state->wave.state == WaveState::Running;
+
+	if (state->wave.state != WaveState::Stopped) {
 		//
 		// Move enemies
 		//
@@ -1754,9 +1773,11 @@ extern void GameUpdate(GameMemory &gameMemory, const Input &input) {
 		}
 
 		// Update towers
-		for (size_t towerIndex = 0; towerIndex < state->towers.activeCount; ++towerIndex) {
-			Tower &tower = state->towers.activeList[towerIndex];
-			towers::UpdateTower(*state, tower, dt);
+		if (updateGameCode) {
+			for (size_t towerIndex = 0; towerIndex < state->towers.activeCount; ++towerIndex) {
+				Tower &tower = state->towers.activeList[towerIndex];
+				towers::UpdateTower(*state, tower, dt);
+			}
 		}
 
 		//
@@ -1773,9 +1794,11 @@ extern void GameUpdate(GameMemory &gameMemory, const Input &input) {
 							Vec2f distance = enemy.position - bullet.position;
 							float bothRadi = bullet.data->collisionRadius + enemy.data->collisionRadius;
 							float d = Vec2Dot(distance, distance);
-							if (d < bothRadi) {
+							if (d < bothRadi * bothRadi) {
 								bullet.hasHit = true;
-								creeps::CreepHit(*state, enemy, bullet);
+								if (updateGameCode) {
+									creeps::CreepHit(*state, enemy, bullet);
+								}
 								break;
 							}
 						}
@@ -1819,28 +1842,30 @@ extern void GameUpdate(GameMemory &gameMemory, const Input &input) {
 			}
 		}
 
-		if (state->wave.totalEnemyCount == deadEnemyCount) {
-			creeps::AllEnemiesKilled(*state);
-		} else {
-			bool hasActiveSpawners = false;
-			CreepSpawner *nextSpawner = nullptr;
-			for (size_t spawnerIndex = 0; spawnerIndex < state->spawners.count; ++spawnerIndex) {
-				CreepSpawner *spawner = &state->spawners.list[spawnerIndex];
-				if (spawner->isActive) {
-					hasActiveSpawners = true;
-					break;
-				} else {
-					if (nextSpawner == nullptr && spawner->startMode == SpawnerStartMode::AfterTheLast) {
-						nextSpawner = spawner;
+		if (updateGameCode) {
+			if (state->wave.totalEnemyCount == deadEnemyCount) {
+				creeps::AllEnemiesKilled(*state);
+			} else {
+				bool hasActiveSpawners = false;
+				CreepSpawner *nextSpawner = nullptr;
+				for (size_t spawnerIndex = 0; spawnerIndex < state->spawners.count; ++spawnerIndex) {
+					CreepSpawner *spawner = &state->spawners.list[spawnerIndex];
+					if (spawner->isActive) {
+						hasActiveSpawners = true;
+						break;
+					} else {
+						if (nextSpawner == nullptr && spawner->startMode == SpawnerStartMode::AfterTheLast) {
+							nextSpawner = spawner;
+						}
 					}
 				}
-			}
-			if (nonDeadEnemyCount == 0 && !hasActiveSpawners) {
-				// All enemies but not all from all spawners has been killed
-				if (nextSpawner != nullptr) {
-					nextSpawner->isActive = true;
-					nextSpawner->spawnTimer = nextSpawner->cooldown;
-					nextSpawner->remainingCount = nextSpawner->totalCount;
+				if (nonDeadEnemyCount == 0 && !hasActiveSpawners) {
+					// All enemies but not all from all spawners has been killed
+					if (nextSpawner != nullptr) {
+						nextSpawner->isActive = true;
+						nextSpawner->spawnTimer = nextSpawner->cooldown;
+						nextSpawner->remainingCount = nextSpawner->totalCount;
+					}
 				}
 			}
 		}
@@ -2141,7 +2166,7 @@ extern void GameRender(GameMemory &gameMemory, CommandBuffer &renderCommands, co
 	//
 	game::DrawHUD(*state);
 	game::DrawControls(*state);
-			}
+}
 
 extern void GameUpdateAndRender(GameMemory &gameMemory, const Input &input, CommandBuffer &renderCommands, const float alpha) {
 	GameInput(gameMemory, input);

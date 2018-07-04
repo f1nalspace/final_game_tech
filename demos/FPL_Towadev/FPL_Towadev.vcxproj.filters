@@ -7,6 +7,9 @@
     <Filter Include="dependencies">
       <UniqueIdentifier>{146d6bd5-f359-4e9f-a27f-b7b14dd3a6bf}</UniqueIdentifier>
     </Filter>
+    <Filter Include="data">
+      <UniqueIdentifier>{aee14815-2d4c-4071-a12a-c0c59776ecc8}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\additions\final_fontloader.h">
@@ -43,5 +46,16 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="fpl_towadev.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <Xml Include="data\levels\creeps.xml">
+      <Filter>data</Filter>
+    </Xml>
+    <Xml Include="data\levels\towers.xml">
+      <Filter>data</Filter>
+    </Xml>
+    <Xml Include="data\levels\waves.xml">
+      <Filter>data</Filter>
+    </Xml>
   </ItemGroup>
 </Project>
