@@ -11,6 +11,7 @@ Author:
 -------------------------------------------------------------------------------
 */
 
+
 #if 0
 #include <stdio.h>
 #include <stddef.h>
@@ -109,7 +110,6 @@ struct Asset {
 struct GameState {
 	Asset debugFont;
 	Viewport viewport;
-	size_t lastRenderMemoryUsed;
 	bool isExiting;
 };
 
@@ -128,35 +128,26 @@ static void Kill(GameState *state) {
 	ReleaseFont(&state->debugFont.font.data);
 }
 
-extern GameMemory GameCreate() {
-	if(!fglLoadOpenGL(true)) {
-		return {};
-	}
-	GameMemory result = {};
-	result.capacity = sizeof(GameState) + FPL_MEGABYTES(16);
-	result.base = fplMemoryAllocate(result.capacity);
-	if(result.base == nullptr) {
-		return {};
-	}
-	GameState *state = new (result.base)GameState;
-	result.used = sizeof(GameState);
+extern bool GameInit(GameMemory &gameMemory) {
+	GameState *state = (GameState *)fmemPush(&gameMemory.persistentMemory, sizeof(GameState), fmemPushFlags_Clear);
+	gameMemory.game = state;
 	if(!Init(*state)) {
-		GameDestroy(result);
+		GameRelease(gameMemory);
+		return(false);
 	}
-	return(result);
+	return(true);
 }
 
-extern void GameDestroy(GameMemory &gameMemory) {
-	GameState *state = (GameState *)gameMemory.base;
+extern void GameRelease(GameMemory &gameMemory) {
+	GameState *state = gameMemory.game;
 	if(state != nullptr) {
 		Kill(state);
-		state->~GameState();
-		fplMemoryFree(state);
 	}
 }
 
 extern bool IsGameExiting(GameMemory &gameMemory) {
-	GameState *state = (GameState *)gameMemory.base;
+	GameState *state = gameMemory.game;
+	FPL_ASSERT(state != nullptr);
 	return state->isExiting;
 }
 
@@ -164,7 +155,8 @@ extern void GameInput(GameMemory &gameMemory, const Input &input) {
 	if(!input.isActive) {
 		return;
 	}
-	GameState *state = (GameState *)gameMemory.base;
+	GameState *state = gameMemory.game;
+	FPL_ASSERT(state != nullptr);
 	state->viewport.x = 0;
 	state->viewport.y = 0;
 	state->viewport.w = input.windowSize.w;
@@ -175,17 +167,19 @@ extern void GameUpdate(GameMemory &gameMemory, const Input &input) {
 	if(!input.isActive) {
 		return;
 	}
-	GameState *state = (GameState *)gameMemory.base;
+	GameState *state = gameMemory.game;
+	FPL_ASSERT(state != nullptr);
 }
 
-extern void GameRender(GameMemory &gameMemory, RenderState &renderState, const float alpha) {
-	GameState *state = (GameState *)gameMemory.base;
+extern void GameRender(GameMemory &gameMemory, const float alpha) {
+	GameState *state = gameMemory.game;
+	FPL_ASSERT(state != nullptr);
+	RenderState &renderState = *gameMemory.render;
 
 	if(state->debugFont.loadState == AssetLoadState::ToUpload) {
 		FPL_ASSERT(state->debugFont.type == AssetType::Font);
 		const LoadedFont &font = state->debugFont.font.data;
 		PushTexture(renderState, &state->debugFont.font.texture, font.atlasAlphaBitmap, font.atlasWidth, font.atlasHeight, 1, TextureFilterType::Linear, TextureWrapMode::ClampToEdge, false, false);
-		state->debugFont.loadState = AssetLoadState::Loaded;
 	}
 
 	PushViewport(renderState, state->viewport.x, state->viewport.y, state->viewport.w, state->viewport.h);
@@ -206,30 +200,23 @@ extern void GameRender(GameMemory &gameMemory, RenderState &renderState, const f
 		V2f(-w * 0.3f, -h * 0.3f),
 		V2f(w * 0.3f, -h * 0.3f),
 	};
-	PushVertices(renderState, verts, FPL_ARRAYCOUNT(verts), true, V4f(0, 1, 1, 1), VerticesDrawMode::Lines, true, 1.0f);
+	PushVertices(renderState, verts, FPL_ARRAYCOUNT(verts), true, V4f(0, 1, 1, 1), DrawMode::Lines, true, 1.0f);
 
 	view = Mat4Translation(V2f(w * 0.25f, -h * 0.1f)) * Mat4Scale(V2f(0.5f, 0.5f));
 	SetMatrix(renderState, proj * view);
-	PushVertices(renderState, verts, FPL_ARRAYCOUNT(verts), true, V4f(1, 0, 1, 1), VerticesDrawMode::Polygon, true, 1.0f);
+	PushVertices(renderState, verts, FPL_ARRAYCOUNT(verts), true, V4f(1, 0, 1, 1), DrawMode::Polygon, true, 1.0f);
 
 	view = Mat4Translation(V2f(0, 0));
 	SetMatrix(renderState, proj * view);
-	char text[256];
-	fplFormatAnsiString(text, FPL_ARRAYCOUNT(text), "Used memory (Render): %zu / %zu", state->lastRenderMemoryUsed, renderState.memory.size);
-	PushText(renderState, text, fplGetAnsiStringLength(text), &state->debugFont.font.data, &state->debugFont.font.texture, V2f(0, 0), h * 0.1f, 0.0f, 0.0f, V4f(1, 0, 0, 1));
-
-	state->lastRenderMemoryUsed = renderState.memory.used;
+	PushText(renderState, "Hello", 5, &state->debugFont.font.data, &state->debugFont.font.texture, V2f(0, 0), h * 0.1f, 0.0f, 0.0f, V4f(1, 0, 0, 1));
 }
 
-extern void GameUpdateAndRender(GameMemory &gameMemory, const Input &input, RenderState &renderState, const float alpha) {
-	GameInput(gameMemory, input);
-	GameUpdate(gameMemory, input);
-	GameRender(gameMemory, renderState, alpha);
+extern void GameUpdateAndRender(GameMemory &gameMemory, const Input &input, const float alpha) {
 }
 
 int main(int argc, char **argv) {
 	GameConfiguration config = {};
-	config.title = "Final's Testbed";
+	config.title = "Final´s Testbed";
 	config.hideMouseCursor = false;
 	config.disableInactiveDetection = true;
 	int result = GameMain(config);
