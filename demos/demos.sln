@@ -46,6 +46,8 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "FMEM_Test", "FMEM_Test\FMEM
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "FPL_ImageViewer", "FPL_ImageViewer\FPL_ImageViewer.vcxproj", "{6DE47F7B-70B5-4242-95B9-7FF6A3C25608}"
 EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Final_Testbed", "Final_Testbed\Final_Testbed.vcxproj", "{03CC7AFC-BC34-4573-89B4-7086B7BA7728}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x64 = Debug|x64
@@ -198,6 +200,14 @@ Global
 		{6DE47F7B-70B5-4242-95B9-7FF6A3C25608}.Release|x64.Build.0 = Release|x64
 		{6DE47F7B-70B5-4242-95B9-7FF6A3C25608}.Release|x86.ActiveCfg = Release|Win32
 		{6DE47F7B-70B5-4242-95B9-7FF6A3C25608}.Release|x86.Build.0 = Release|Win32
+		{03CC7AFC-BC34-4573-89B4-7086B7BA7728}.Debug|x64.ActiveCfg = Debug|x64
+		{03CC7AFC-BC34-4573-89B4-7086B7BA7728}.Debug|x64.Build.0 = Debug|x64
+		{03CC7AFC-BC34-4573-89B4-7086B7BA7728}.Debug|x86.ActiveCfg = Debug|Win32
+		{03CC7AFC-BC34-4573-89B4-7086B7BA7728}.Debug|x86.Build.0 = Debug|Win32
+		{03CC7AFC-BC34-4573-89B4-7086B7BA7728}.Release|x64.ActiveCfg = Release|x64
+		{03CC7AFC-BC34-4573-89B4-7086B7BA7728}.Release|x64.Build.0 = Release|x64
+		{03CC7AFC-BC34-4573-89B4-7086B7BA7728}.Release|x86.ActiveCfg = Release|Win32
+		{03CC7AFC-BC34-4573-89B4-7086B7BA7728}.Release|x86.Build.0 = Release|Win32
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

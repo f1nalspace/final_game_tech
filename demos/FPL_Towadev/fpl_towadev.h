@@ -165,7 +165,7 @@ enum class ObjectType {
 };
 
 inline const char *ObjectTypeToString(const ObjectType type) {
-	switch(type) {
+	switch (type) {
 		case ObjectType::Spawn:
 			return "Spawn";
 		case ObjectType::Waypoint:
@@ -186,12 +186,22 @@ struct ObjectData {
 	};
 };
 
+constexpr size_t MAX_LAYER_COUNT = 8;
+struct LevelLayer {
+	char name[64];
+	uint32_t *data;
+	uint32_t mapWidth;
+	uint32_t mapHeight;
+};
+
 struct LevelData {
-	uint32_t wayLayer[TotalTileCount];
+	LevelLayer layers[MAX_LAYER_COUNT];
 	ObjectData objects[256];
+	size_t layerCount;
 	size_t objectCount;
 	uint32_t wayFirstGid;
 	uint32_t entitiesFirstGid;
+	uint32_t groundFirstGid;
 	uint32_t tileWidth;
 	uint32_t tileHeight;
 };
@@ -354,7 +364,7 @@ inline WaveData MakeWaveData(const char *levelId, const float startupCooldown, c
 	result.completionBounty = completionBounty;
 	assert(N <= FPL_ARRAYCOUNT(result.spawners));
 	result.spawnerCount = N;
-	for(size_t i = 0; i < N; ++i) {
+	for (size_t i = 0; i < N; ++i) {
 		result.spawners[i] = spawners[i];
 	}
 	return(result);
@@ -437,6 +447,7 @@ struct CreepSpawners {
 
 struct Level {
 	LevelData data;
+	// @TODO(final): Dynamic memory (Dimension from LevelData)
 	Tile tiles[TotalTileCount];
 	char activeId[256];
 };

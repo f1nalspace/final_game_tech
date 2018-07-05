@@ -9,11 +9,11 @@
     <color>255,255,255,255</color>
   </CreepData>
   <CreepData id="Enemy-2">
-    <renderRadius>0.25</renderRadius>
-    <collisionRadius>0.3</collisionRadius>
+    <renderRadius>0.15</renderRadius>
+    <collisionRadius>0.2</collisionRadius>
     <speed>1.05</speed>
     <hp>100</hp>
     <bounty>1</bounty>
-    <color>255,255,255,255</color>
+    <color>200,255,255,255</color>
   </CreepData>
 </CreepDefinitions>
