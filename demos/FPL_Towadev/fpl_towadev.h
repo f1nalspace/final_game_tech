@@ -56,6 +56,8 @@ struct UIContext {
 	UIID hot;
 	UIID active;
 	struct GameState *gameState;
+	struct RenderState *renderState;
+	Mat4f viewProjection;
 };
 
 struct TilesetInfo {
@@ -207,12 +209,6 @@ struct Waypoint {
 	struct Waypoint *next;
 };
 
-enum class CreepStyle {
-	None,
-	Quad,
-	Triangle
-};
-
 struct CreepMultiplier {
 	float hp;
 	float bounty;
@@ -236,9 +232,8 @@ struct CreepData {
 	float speed;
 	int hp;
 	int bounty;
-	CreepStyle style;
 };
-inline CreepData MakeCreepData(const char *id, const float renderRadius, const float collisionRadius, const float speed, const int hp, const int bounty, const Vec4f &color, const CreepStyle style) {
+inline CreepData MakeCreepData(const char *id, const float renderRadius, const float collisionRadius, const float speed, const int hp, const int bounty, const Vec4f &color) {
 	CreepData result = {};
 	fplCopyAnsiString(id, result.id, FPL_ARRAYCOUNT(result.id));
 	result.renderRadius = renderRadius;
@@ -247,7 +242,6 @@ inline CreepData MakeCreepData(const char *id, const float renderRadius, const f
 	result.hp = hp;
 	result.bounty = bounty;
 	result.color = color;
-	result.style = style;
 	return(result);
 }
 
@@ -396,7 +390,7 @@ enum class WaveState {
 
 struct FontAsset {
 	LoadedFont desc;
-	GLuint texture;
+	TextureHandle texture;
 };
 
 struct Assets {
@@ -409,7 +403,7 @@ struct Assets {
 	size_t towerDefinitionCount;
 	size_t creepDefinitionCount;
 	size_t waveDefinitionCount;
-	GLint radiantTexture;
+	TextureHandle radiantTexture;
 };
 
 struct Waypoints {
@@ -461,8 +455,6 @@ struct Stats {
 };
 
 struct GameState {
-	GameMemory mem;
-
 	Level level;
 	Towers towers;
 	Bullets bullets;
@@ -477,6 +469,7 @@ struct GameState {
 	UIContext ui;
 
 	Camera2D camera;
+	Mat4f viewProjection;
 	Viewport viewport;
 	Vec2f mouseWorldPos;
 	Vec2i mouseTilePos;
