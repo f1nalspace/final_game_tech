@@ -7,7 +7,6 @@
     <hp>80</hp>
     <bounty>1</bounty>
     <color>255,255,255,255</color>
-    <style>Quad</style>
   </CreepData>
   <CreepData id="Enemy-2">
     <renderRadius>0.25</renderRadius>
@@ -16,6 +15,5 @@
     <hp>100</hp>
     <bounty>1</bounty>
     <color>255,255,255,255</color>
-    <style>Quad</style>
   </CreepData>
 </CreepDefinitions>
