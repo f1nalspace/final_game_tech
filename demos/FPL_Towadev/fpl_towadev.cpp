@@ -11,7 +11,6 @@ Description:
 
 Requirements:
 	- C++ Compiler
-	- Final Dynamic OpenGL
 	- Final XML
 	- Final Framework
 
@@ -19,6 +18,11 @@ Author:
 	Torsten Spaete
 
 Changelog:
+	## 2018-07-05
+	- Corrected for api change in final_game.h
+	- Corrected for api change in final_render.h
+	- Migrated to new render system and removed all opengl calls
+
 	## 2018-07-03
 	- Fixed collision was broken
 	- Fixed spawner was active while start-cooldown of wave
@@ -118,9 +122,6 @@ Todo:
 #include <stdlib.h>
 #include <stdarg.h>
 
-#define FGL_IMPLEMENTATION
-#include <final_dynamic_opengl.h>
-
 #define FINAL_FONTLOADER_IMPLEMENTATION
 #define FINAL_FONTLOADER_BETTERQUALITY 1
 #include <final_fontloader.h>
@@ -130,9 +131,6 @@ Todo:
 
 #define FINAL_RENDER_IMPLEMENTATION
 #include <final_render.h>
-
-#define FINAL_OPENGL_RENDER_IMPLEMENTATION
-#include <final_opengl_render.h>
 
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb/stb_image.h>
@@ -199,8 +197,7 @@ static const CreepData CreepDefinitions[] = {
 		/* speed: */ 1.0,
 		/* hp: */ 100,
 		/* bounty: */ 1,
-		/* color: */ V4f(1, 1, 1, 1),
-		/* style: */ CreepStyle::Quad
+		/* color: */ V4f(1, 1, 1, 1)
 	),
 };
 
@@ -285,10 +282,11 @@ namespace game {
 }
 
 namespace ui {
-	static void UIBegin(UIContext &ctx, GameState *gameState, const Input &input, const Vec2f &mousePos) {
+	static void UIBegin(UIContext &ctx, GameState *gameState, RenderState *renderState, const Input &input, const Vec2f &mousePos) {
 		ctx.input = {};
 		ctx.hot = 0;
 		ctx.gameState = gameState;
+		ctx.renderState = renderState;
 		ctx.input.userPosition = mousePos;
 		ctx.input.leftButton = input.mouse.left;
 	}
@@ -318,7 +316,7 @@ namespace ui {
 		Hover,
 		Down,
 	};
-	typedef void(UIButtonDrawFunction)(GameState &gameState, const Vec2f &pos, const Vec2f &radius, const UIButtonState buttonState, void *userData);
+	typedef void(UIButtonDrawFunction)(GameState &gameState, RenderState &renderState, const Vec2f &pos, const Vec2f &radius, const UIButtonState buttonState, void *userData);
 
 	static bool UIButton(UIContext &ctx, const UIID &id, const Vec2f &pos, const Vec2f &radius, UIButtonDrawFunction *drawFunc, void *userData) {
 		bool result = false;
@@ -347,7 +345,7 @@ namespace ui {
 			}
 		}
 
-		drawFunc(*ctx.gameState, pos, radius, buttonState, userData);
+		drawFunc(*ctx.gameState, *ctx.renderState, pos, radius, buttonState, userData);
 
 		return(result);
 	}
@@ -386,45 +384,42 @@ namespace utils {
 }
 
 namespace render {
-	static void DrawTile(const int x, const int y, const bool isFilled, const Vec4f &color) {
+	static void DrawTile(RenderState &renderState, const int x, const int y, const bool isFilled, const Vec4f &color) {
 		Vec2f pos = TileToWorld(V2i(x, y));
-		glColor4fv(&color.r);
-		glBegin(isFilled ? GL_QUADS : GL_LINE_LOOP);
-		glVertex2f(pos.x + TileWidth, pos.y + TileHeight);
-		glVertex2f(pos.x, pos.y + TileHeight);
-		glVertex2f(pos.x, pos.y);
-		glVertex2f(pos.x + TileWidth, pos.y);
-		glEnd();
+		PushRectangle(renderState, pos, V2f(TileWidth, TileHeight), color, isFilled, 1.0f);
 	}
 
-	static void DrawLineStipple(const Vec2f &a, const Vec2f &b, const float stippleWidth, const int modCount) {
-		// @NOTE(final): Expect line width and color to be set already
+	static void DrawLineStipple(RenderState &renderState, const Vec2f &a, const Vec2f &b, const float stippleWidth, const int modCount, const Vec4f &color, const float lineWidth) {
 		assert(stippleWidth > 0);
 		Vec2f ab = b - a;
 		float d = Vec2Length(ab);
 		Vec2f n = ab / d;
 		int secCount = (d > stippleWidth) ? (int)(d / stippleWidth) : 1;
 		assert(secCount > 0);
-		glBegin(GL_LINES);
+		size_t capacity = secCount * 2;
+		VertexAllocation vertAlloc = AllocateVertices(renderState, capacity, color, DrawMode::Lines, false, lineWidth);
+		Vec2f *p = vertAlloc.verts;
+		size_t count = 0;
 		for(int sec = 0; sec < secCount; ++sec) {
 			float t = sec / (float)secCount;
 			Vec2f start = Vec2Lerp(a, t, b);
 			Vec2f end = start + n * stippleWidth;
 			if(sec % modCount == 0) {
-				glVertex2f(start.x, start.y);
-				glVertex2f(end.x, end.y);
+				*p++ = start;
+				*p++ = end;
+				count += 2;
 			}
 		}
-		glEnd();
+		FPL_ASSERT(count <= capacity);
+		*vertAlloc.count = count;
 	}
 
-	static void DrawLineLoopStipple(const Vec2f *points, const size_t pointCount, const float stippleWidth, const int modCount) {
+	static void DrawLineLoopStipple(RenderState &renderState, const Vec2f *points, const size_t pointCount, const float stippleWidth, const int modCount, const Vec4f &color, const float lineWidth) {
 		assert(pointCount >= 2);
-		// @NOTE(final): Expect line width and color to be set already
 		for(size_t pointIndex = 0; pointIndex < pointCount; ++pointIndex) {
 			Vec2f a = points[pointIndex];
 			Vec2f b = points[(pointIndex + 1) % pointCount];
-			DrawLineStipple(a, b, stippleWidth, modCount);
+			DrawLineStipple(renderState, a, b, stippleWidth, modCount, color, lineWidth);
 		}
 	}
 }
@@ -821,7 +816,6 @@ namespace level {
 								creepData->hp = utils::StringToInt(FindNodeValue(creepTag, "hp"));
 								creepData->bounty = utils::StringToInt(FindNodeValue(creepTag, "bounty"));
 								creepData->color = V4f(1, 1, 1, 1);
-								creepData->style = CreepStyle::Quad;
 							}
 						}
 					}
@@ -1333,30 +1327,27 @@ namespace towers {
 		}
 	}
 
-	static void DrawTower(const Assets &assets, const Camera2D &camera, const TowerData &tower, const Vec2f &pos, const Vec2f &maxRadius, const float angle, const float alpha, const bool drawRadius) {
+	static void DrawTower(RenderState &renderState, const Assets &assets, const Camera2D &camera, const TowerData &tower, const Vec2f &pos, const Vec2f &maxRadius, const float angle, const float alpha, const bool drawRadius) {
 		assert(MaxTileRadius > 0);
 		float scale = FPL_MAX(maxRadius.x, maxRadius.y) / MaxTileRadius;
 
-		// @TODO(final): Mulitple tower styles
-		DrawPoint(camera, pos.x, pos.y, tower.structureRadius * scale, V4f(1, 1, 0.5f, alpha));
+		PushRectangleCenter(renderState, pos, V2f(tower.structureRadius * scale), V4f(1, 1, 0.5f, alpha), true, 0.0f);
 
-		glColor4f(1, 0.85f, 0.5f, alpha);
-		glLineWidth(camera.worldToPixels * tower.gunTubeThickness * scale);
-		glPushMatrix();
-		glTranslatef(pos.x, pos.y, 0);
-		glRotatef(angle * RadToDeg, 0, 0, 1);
-		glBegin(GL_LINES);
-		glVertex2f(tower.gunTubeLength * scale, 0);
-		glVertex2f(0, 0);
-		glEnd();
-		glPopMatrix();
-		glLineWidth(DefaultLineWidth);
+		Vec4f gunColor = V4f(1, 0.85f, 0.5f, alpha);
+		float gunLineWidth = camera.worldToPixels * tower.gunTubeThickness * scale;
+
+		Mat4f m = Mat4Translation(pos) * Mat4RotationZ(angle);
+		PushMatrix(renderState, m);
+		Vec2f gunVerts[] = {
+			V2f(tower.gunTubeLength * scale, 0),
+			V2f(0, 0),
+		};
+		PushVertices(renderState, gunVerts, 2, true, gunColor, DrawMode::Lines, false, gunLineWidth);
+		PopMatrix(renderState);
 
 		if(drawRadius) {
-			glColor4f(0.2f, 1, 0.2f, alpha*0.25f);
-			DrawSprite(assets.radiantTexture, tower.detectionRadius * scale, tower.detectionRadius * scale, 0.0f, 0.0f, 1.0f, 1.0f, pos.x, pos.y);
-			glColor4f(1, 0.25f, 0.25f, alpha*0.25f);
-			DrawSprite(assets.radiantTexture, tower.unlockRadius * scale, tower.unlockRadius * scale, 0.0f, 0.0f, 1.0f, 1.0f, pos.x, pos.y);
+			PushSprite(renderState, pos, V2f(tower.detectionRadius * scale, tower.detectionRadius * scale), assets.radiantTexture, V4f(0.2f, 1, 0.2f, alpha*0.25f), V2f(0, 0), V2f(1, 1));
+			PushSprite(renderState, pos, V2f(tower.unlockRadius * scale, tower.unlockRadius * scale), assets.radiantTexture, V4f(1, 0.25f, 0.25f, alpha*0.25f), V2f(0, 0), V2f(1, 1));
 		}
 	}
 }
@@ -1371,7 +1362,8 @@ namespace game {
 	}
 
 	static void ReleaseFontAsset(FontAsset &font) {
-		glDeleteTextures(1, &font.texture);
+		// @TODO(final): We want to release the font in the platform layer only
+		//glDeleteTextures(1, &font.texture);
 		ReleaseFont(&font.desc);
 	}
 
@@ -1380,21 +1372,19 @@ namespace game {
 		ReleaseFontAsset(assets.hudFont);
 	}
 
-	static GLuint LoadTexture(const char *dataPath, const char *filename) {
+	static void LoadTexture(RenderState &renderState, const char *dataPath, const char *filename, TextureHandle *outHandle) {
 		char filePath[1024];
 		fplPathCombine(filePath, FPL_ARRAYCOUNT(filePath), 2, dataPath, filename);
 		int width, height, comp;
 		uint8_t *data = stbi_load(filePath, &width, &height, &comp, 4);
-		GLuint result = 0;
 		if(data != nullptr) {
-			result = AllocateTexture(width, height, data, false, GL_LINEAR, false);
+			PushTexture(renderState, outHandle, data, width, height, 4, TextureFilterType::Linear, TextureWrapMode::ClampToEdge, false, false);
 		}
-		return(result);
 	}
 
 
 
-	static void LoadAssets(Assets &assets) {
+	static void LoadAssets(Assets &assets, RenderState &renderState) {
 		// Towers/Enemies/Waves
 		assets.creepDefinitionCount = 0;
 		assets.towerDefinitionCount = 0;
@@ -1437,24 +1427,22 @@ namespace game {
 		const char *fontFilename = "SulphurPoint-Bold.otf";
 		fplPathCombine(fontDataPath, FPL_ARRAYCOUNT(fontDataPath), 2, assets.dataPath, "fonts");
 		if(LoadFontFromFile(fontDataPath, fontFilename, 0, 36.0f, 32, 128, 512, 512, false, &assets.hudFont.desc)) {
-			assets.hudFont.texture = AllocateTexture(assets.hudFont.desc.atlasWidth, assets.hudFont.desc.atlasHeight, assets.hudFont.desc.atlasAlphaBitmap, false, GL_LINEAR, true);
+			PushTexture(renderState, &assets.hudFont.texture, assets.hudFont.desc.atlasAlphaBitmap, assets.hudFont.desc.atlasWidth, assets.hudFont.desc.atlasHeight, 1, TextureFilterType::Linear, TextureWrapMode::ClampToEdge, false, false);
 		}
 		if(LoadFontFromFile(fontDataPath, fontFilename, 0, 240.0f, 32, 128, 4096, 4096, false, &assets.overlayFont.desc)) {
-			assets.overlayFont.texture = AllocateTexture(assets.overlayFont.desc.atlasWidth, assets.overlayFont.desc.atlasHeight, assets.overlayFont.desc.atlasAlphaBitmap, false, GL_LINEAR, true);
+			PushTexture(renderState, &assets.overlayFont.texture, assets.overlayFont.desc.atlasAlphaBitmap, assets.overlayFont.desc.atlasWidth, assets.overlayFont.desc.atlasHeight, 1, TextureFilterType::Linear, TextureWrapMode::ClampToEdge, false, false);
 		}
 
 		// Textures
 		char texturesDataPath[1024];
 		fplPathCombine(texturesDataPath, FPL_ARRAYCOUNT(texturesDataPath), 2, assets.dataPath, "textures");
-		assets.radiantTexture = LoadTexture(texturesDataPath, "radiant.png");
+		LoadTexture(renderState, texturesDataPath, "radiant.png", &assets.radiantTexture);
 	}
 
 	static void ReleaseGame(GameState &state) {
 		gamelog::Verbose("Release Game");
-
 		level::ClearLevel(state);
 		ReleaseAssets(state.assets);
-		fglUnloadOpenGL();
 	}
 
 	static void NewGame(GameState &state) {
@@ -1474,41 +1462,19 @@ namespace game {
 	static bool InitGame(GameState &state, GameMemory &gameMemory) {
 		gamelog::Verbose("Initialize Game");
 
-		if(!fglLoadOpenGL(true)) {
-			gamelog::Fatal("Failed loading opengl!");
-			return false;
-		}
-
 		fplGetExecutableFilePath(state.assets.dataPath, FPL_ARRAYCOUNT(state.assets.dataPath));
 		fplExtractFilePath(state.assets.dataPath, state.assets.dataPath, FPL_ARRAYCOUNT(state.assets.dataPath));
 		fplPathCombine(state.assets.dataPath, FPL_ARRAYCOUNT(state.assets.dataPath), 2, state.assets.dataPath, "data");
 		gamelog::Info("Using assets path: %s", state.assets.dataPath);
 
-		glEnable(GL_DEPTH_TEST);
-		glDepthFunc(GL_LEQUAL);
-
-		glEnable(GL_BLEND);
-		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-
-		glDisable(GL_TEXTURE_2D);
-		glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-		glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
-
-		glEnable(GL_LINE_SMOOTH);
-		glLineWidth(DefaultLineWidth);
-
-		glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
-
-		state.mem = gameMemory;
-
-		LoadAssets(state.assets);
+		LoadAssets(state.assets, *gameMemory.render);
 
 		NewGame(state);
 
 		return(true);
 	}
 
-	static void DrawHUD(GameState &state) {
+	static void DrawHUD(GameState &state, RenderState &renderState) {
 		constexpr float hudPadding = MaxTileSize * 0.075f;
 		constexpr float hudOriginX = -WorldRadiusW;
 		constexpr float hudOriginY = WorldRadiusH;
@@ -1519,46 +1485,36 @@ namespace game {
 			char text[256];
 			fplFormatAnsiString(text, FPL_ARRAYCOUNT(text), "%s", state.level.activeId);
 			Vec2f textPos = V2f(hudOriginX + WorldRadiusW, hudOriginY - hudPadding - hudFontHeight * 0.5f);
-			glColor4fv(&TextBackColor.m[0]);
-			DrawTextFont(text, fplGetAnsiStringLength(text), &font.desc, font.texture, textPos.x + outlineOffset, textPos.y - outlineOffset, hudFontHeight, 0.0f, 0.0f);
-			glColor4fv(&TextForeColor.m[0]);
-			DrawTextFont(text, fplGetAnsiStringLength(text), &font.desc, font.texture, textPos.x, textPos.y, hudFontHeight, 0.0f, 0.0f);
+			PushText(renderState, text, fplGetAnsiStringLength(text), &font.desc, &font.texture, V2f(textPos.x + outlineOffset, textPos.y - outlineOffset), hudFontHeight, 0.0f, 0.0f, TextBackColor);
+			PushText(renderState, text, fplGetAnsiStringLength(text), &font.desc, &font.texture, V2f(textPos.x, textPos.y), hudFontHeight, 0.0f, 0.0f, TextForeColor);
 
 			fplFormatAnsiString(text, FPL_ARRAYCOUNT(text), "Wave: %d / %zu", (state.wave.activeIndex + 1), state.assets.waveDefinitionCount);
 			textPos.y -= hudFontHeight;
-			glColor4fv(&TextBackColor.m[0]);
-			DrawTextFont(text, fplGetAnsiStringLength(text), &font.desc, font.texture, textPos.x + outlineOffset, textPos.y - outlineOffset, hudFontHeight, 0.0f, 0.0f);
-			glColor4fv(&TextForeColor.m[0]);
-			DrawTextFont(text, fplGetAnsiStringLength(text), &font.desc, font.texture, textPos.x, textPos.y, hudFontHeight, 0.0f, 0.0f);
+			PushText(renderState, text, fplGetAnsiStringLength(text), &font.desc, &font.texture, V2f(textPos.x + outlineOffset, textPos.y - outlineOffset), hudFontHeight, 0.0f, 0.0f, TextBackColor);
+			PushText(renderState, text, fplGetAnsiStringLength(text), &font.desc, &font.texture, V2f(textPos.x, textPos.y), hudFontHeight, 0.0f, 0.0f, TextForeColor);
 
 			fplFormatAnsiString(text, FPL_ARRAYCOUNT(text), "Enemies: %zu / %zu", state.enemies.count, state.wave.totalEnemyCount);
 			textPos.y -= hudFontHeight;
-			glColor4fv(&TextBackColor.m[0]);
-			DrawTextFont(text, fplGetAnsiStringLength(text), &font.desc, font.texture, textPos.x + outlineOffset, textPos.y - outlineOffset, hudFontHeight, 0.0f, 0.0f);
-			glColor4fv(&TextForeColor.m[0]);
-			DrawTextFont(text, fplGetAnsiStringLength(text), &font.desc, font.texture, textPos.x, textPos.y, hudFontHeight, 0.0f, 0.0f);
+			PushText(renderState, text, fplGetAnsiStringLength(text), &font.desc, &font.texture, V2f(textPos.x + outlineOffset, textPos.y - outlineOffset), hudFontHeight, 0.0f, 0.0f, TextBackColor);
+			PushText(renderState, text, fplGetAnsiStringLength(text), &font.desc, &font.texture, V2f(textPos.x, textPos.y), hudFontHeight, 0.0f, 0.0f, TextForeColor);
 		}
 		{
 			char text[256];
 			fplFormatAnsiString(text, FPL_ARRAYCOUNT(text), "$: %d", state.stats.money);
 			Vec2f textPos = V2f(hudOriginX + hudPadding, hudOriginY - hudPadding - hudFontHeight * 0.5f);
-			glColor4fv(&TextBackColor.m[0]);
-			DrawTextFont(text, fplGetAnsiStringLength(text), &font.desc, font.texture, textPos.x + outlineOffset, textPos.y - outlineOffset, hudFontHeight, 1.0f, 0.0f);
-			glColor4fv(&TextForeColor.m[0]);
-			DrawTextFont(text, fplGetAnsiStringLength(text), &font.desc, font.texture, textPos.x, textPos.y, hudFontHeight, 1.0f, 0.0f);
+			PushText(renderState, text, fplGetAnsiStringLength(text), &font.desc, &font.texture, V2f(textPos.x + outlineOffset, textPos.y - outlineOffset), hudFontHeight, 1.0f, 0.0f, TextBackColor);
+			PushText(renderState, text, fplGetAnsiStringLength(text), &font.desc, &font.texture, V2f(textPos.x, textPos.y), hudFontHeight, 1.0f, 0.0f, TextForeColor);
 		}
 		{
 			char text[256];
 			fplFormatAnsiString(text, FPL_ARRAYCOUNT(text), "HP: %d", state.stats.lifes);
 			Vec2f textPos = V2f(hudOriginX + WorldWidth - hudPadding, hudOriginY - hudPadding - hudFontHeight * 0.5f);
-			glColor4fv(&TextBackColor.m[0]);
-			DrawTextFont(text, fplGetAnsiStringLength(text), &font.desc, font.texture, textPos.x + outlineOffset, textPos.y - outlineOffset, hudFontHeight, -1.0f, 0.0f);
-			glColor4fv(&TextForeColor.m[0]);
-			DrawTextFont(text, fplGetAnsiStringLength(text), &font.desc, font.texture, textPos.x, textPos.y, hudFontHeight, -1.0f, 0.0f);
+			PushText(renderState, text, fplGetAnsiStringLength(text), &font.desc, &font.texture, V2f(textPos.x + outlineOffset, textPos.y - outlineOffset), hudFontHeight, -1.0f, 0.0f, TextBackColor);
+			PushText(renderState, text, fplGetAnsiStringLength(text), &font.desc, &font.texture, V2f(textPos.x, textPos.y), hudFontHeight, -1.0f, 0.0f, TextForeColor);
 		}
 	}
 
-	static void DrawTowerControl(GameState &gameState, const Vec2f &pos, const Vec2f &radius, const ui::UIButtonState buttonState, void *userData) {
+	static void DrawTowerControl(GameState &gameState, RenderState &renderState, const Vec2f &pos, const Vec2f &radius, const ui::UIButtonState buttonState, void *userData) {
 		int towerDataIndex = (int)(uintptr_t)(userData);
 		assert(towerDataIndex >= 0 && towerDataIndex < gameState.assets.towerDefinitionCount);
 		const TowerData *towerData = &gameState.assets.towerDefinitions[towerDataIndex];
@@ -1566,7 +1522,7 @@ namespace game {
 		if(buttonState == ui::UIButtonState::Hover) {
 			alpha = 1.0f;
 		}
-		towers::DrawTower(gameState.assets, gameState.camera, *towerData, pos, radius, Pi32 * 0.5f, alpha, false);
+		towers::DrawTower(renderState, gameState.assets, gameState.camera, *towerData, pos, radius, Pi32 * 0.5f, alpha, false);
 
 		// Draw selection frame
 		if(gameState.towers.selectedIndex == towerDataIndex) {
@@ -1577,37 +1533,31 @@ namespace game {
 				V2f(pos.x + radius.w, pos.y - radius.h),
 			};
 			float stippleWidth = (FPL_MIN(radius.x, radius.y) * 2.0f) / 10.0f;
-			glColor4f(1.0f, 1.0f, 1.0f, alpha);
-			glLineWidth(1.0f);
-			render::DrawLineLoopStipple(borderVecs, 4, stippleWidth, 3);
-			glLineWidth(DefaultLineWidth);
+			Vec4f stippleColor = V4f(1.0f, 1.0f, 1.0f, alpha);
+			float stippleLineWidth = 1.0f;
+			render::DrawLineLoopStipple(renderState, borderVecs, 4, stippleWidth, 3, stippleColor, stippleLineWidth);
 		}
 	}
 
-	static void DrawControls(GameState &state) {
+	static void DrawControls(GameState &state, RenderState &renderState) {
 		//
 		// Controls Background
 		//
-		glColor4f(0.2f, 0.2f, 0.2f, 1.0f);
-		glBegin(GL_QUADS);
-		glVertex2f(ControlsOriginX + ControlsWidth, ControlsOriginY + ControlsHeight);
-		glVertex2f(ControlsOriginX, ControlsOriginY + ControlsHeight);
-		glVertex2f(ControlsOriginX, ControlsOriginY);
-		glVertex2f(ControlsOriginX + ControlsWidth, ControlsOriginY);
-		glEnd();
+		Vec4f backgroundColor = V4f(0.2f, 0.2f, 0.2f, 1.0f);
+		PushRectangle(renderState, V2f(ControlsOriginX, ControlsOriginY), V2f(ControlsWidth, ControlsHeight), backgroundColor, true, 0.0f);
 
 		// Controls Border
 		float lineWidth = 2.0f;
 		float lineWidthWorld = lineWidth * state.camera.pixelsToWorld * 0.5f;
-		glColor4f(0.5f, 0.5f, 0.5f, 1.0f);
-		glLineWidth(lineWidth);
-		glBegin(GL_LINE_LOOP);
-		glVertex2f(ControlsOriginX + ControlsWidth - lineWidthWorld, ControlsOriginY + ControlsHeight - lineWidthWorld);
-		glVertex2f(ControlsOriginX + lineWidthWorld, ControlsOriginY + ControlsHeight - lineWidthWorld);
-		glVertex2f(ControlsOriginX + lineWidthWorld, ControlsOriginY + lineWidthWorld);
-		glVertex2f(ControlsOriginX + ControlsWidth - lineWidthWorld, ControlsOriginY + lineWidthWorld);
-		glEnd();
-		glLineWidth(DefaultLineWidth);
+		Vec4f controlsBorderColor = V4f(0.5f, 0.5f, 0.5f, 1.0f);
+		Vec2f controlsBottomLeft = V2f();
+		Vec2f controlsVerts[] = {
+			V2f(ControlsOriginX + ControlsWidth - lineWidthWorld, ControlsOriginY + ControlsHeight - lineWidthWorld),
+			V2f(ControlsOriginX + lineWidthWorld, ControlsOriginY + ControlsHeight - lineWidthWorld),
+			V2f(ControlsOriginX + lineWidthWorld, ControlsOriginY + lineWidthWorld),
+			V2f(ControlsOriginX + ControlsWidth - lineWidthWorld, ControlsOriginY + lineWidthWorld),
+		};
+		PushVertices(renderState, controlsVerts, 4, true, controlsBorderColor, DrawMode::Lines, true, lineWidth);
 
 		// Tower buttons
 		float buttonPadding = MaxTileSize * 0.1f;
@@ -1631,43 +1581,36 @@ namespace game {
 			Vec2f textPos = V2f(ControlsOriginX + ControlsWidth - lineWidthWorld - buttonMargin, ControlsOriginY + ControlsHeight * 0.5f);
 			char textBuffer[256];
 			fplFormatAnsiString(textBuffer, FPL_ARRAYCOUNT(textBuffer), "[%s / $%d]", towerData.id, towerData.costs);
-			glColor4fv(&TextForeColor.m[0]);
-			DrawTextFont(textBuffer, fplGetAnsiStringLength(textBuffer), &font.desc, font.texture, textPos.x, textPos.y, fontHeight, -1.0f, 0.0f);
+			PushText(renderState, textBuffer, fplGetAnsiStringLength(textBuffer), &font.desc, &font.texture, V2f(textPos.x, textPos.y), fontHeight, -1.0f, 0.0f, TextForeColor);
 		}
 
 	}
-
 }
 
-extern GameMemory GameCreate() {
-	gamelog::Verbose("Create Game");
-	GameMemory result = {};
-	result.capacity = sizeof(GameState) + FPL_MEGABYTES(16);
-	result.base = fplMemoryAllocate(result.capacity);
-	if(result.base == nullptr) {
-		gamelog::Fatal("Failed allocating Game State memory of '%zu' bytes!", result.capacity);
-		return {};
-	}
-	GameState *state = (GameState *)result.base;
-	result.used = sizeof(GameState);
-	if(!game::InitGame(*state, result)) {
+extern bool GameInit(GameMemory &gameMemory) {
+	gamelog::Verbose("Init Game");
+	GameState *state = (GameState *)fmemPush(&gameMemory.persistentMemory, sizeof(GameState), fmemPushFlags_Clear);
+	gameMemory.game = state;
+	if(!game::InitGame(*state, gameMemory)) {
 		gamelog::Fatal("Failed initializing Game!");
-		GameDestroy(result);
-		state = nullptr;
+		GameRelease(gameMemory);
+		return(false);
 	}
-	return(result);
+	return(true);
 }
 
-extern void GameDestroy(GameMemory &gameMemory) {
+extern void GameRelease(GameMemory &gameMemory) {
 	gamelog::Verbose("Destroy Game");
-	GameState *state = (GameState *)gameMemory.base;
-	game::ReleaseGame(*state);
-	state->~GameState();
-	fplMemoryFree(state);
+	GameState *state = gameMemory.game;
+	if(state = nullptr) {
+		game::ReleaseGame(*state);
+		state->~GameState();
+	}
 }
 
 extern bool IsGameExiting(GameMemory &gameMemory) {
-	GameState *state = (GameState *)gameMemory.base;
+	GameState *state = gameMemory.game;
+	FPL_ASSERT(state != nullptr);
 	return state->isExiting;
 }
 
@@ -1675,9 +1618,9 @@ extern void GameInput(GameMemory &gameMemory, const Input &input) {
 	if(!input.isActive) {
 		return;
 	}
-	GameState *state = (GameState *)gameMemory.base;
-
-	ui::UIBegin(state->ui, state, input, state->mouseWorldPos);
+	GameState *state = gameMemory.game;
+	FPL_ASSERT(state != nullptr);
+	RenderState *renderState = gameMemory.render;
 
 	// Debug input
 	const Controller &keyboardController = input.controllers[0];
@@ -1690,6 +1633,16 @@ extern void GameInput(GameMemory &gameMemory, const Input &input) {
 	state->viewport = ComputeViewportByAspect(input.windowSize, GameAspect);
 	state->camera.worldToPixels = (state->viewport.w / (float)WorldWidth) * scale;
 	state->camera.pixelsToWorld = 1.0f / state->camera.worldToPixels;
+
+	const float w = WorldRadiusW;
+	const float h = WorldRadiusH;
+
+	float invScale = 1.0f / state->camera.scale;
+	Mat4f proj = Mat4Ortho(-w * invScale, w * invScale, -h * invScale, h * invScale, 0.0f, 1.0f);
+	Mat4f view = Mat4Translation(state->camera.offset);
+	state->viewProjection = proj * view;
+
+	ui::UIBegin(state->ui, state, renderState, input, state->mouseWorldPos);
 
 	// Mouse
 	int mouseCenterX = (input.mouse.pos.x - input.windowSize.w / 2);
@@ -1718,7 +1671,8 @@ extern void GameUpdate(GameMemory &gameMemory, const Input &input) {
 		return;
 	}
 
-	GameState *state = (GameState *)gameMemory.base;
+	GameState *state = gameMemory.game;
+	FPL_ASSERT(state != nullptr);
 
 	float dtScale = 1.0f;
 	if(state->isSlowDown) {
@@ -1884,41 +1838,17 @@ extern void GameUpdate(GameMemory &gameMemory, const Input &input) {
 	}
 }
 
-extern void GameRender(GameMemory &gameMemory, RenderState &renderState, const float alpha) {
-	GameState *state = (GameState *)gameMemory.base;
+extern void GameRender(GameMemory &gameMemory, const float alpha) {
+	GameState *state = gameMemory.game;
+	FPL_ASSERT(state != nullptr);
+	RenderState &renderState = *gameMemory.render;
+
 	const float w = WorldRadiusW;
 	const float h = WorldRadiusH;
 
-	glViewport(state->viewport.x, state->viewport.y, state->viewport.w, state->viewport.h);
-	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
-	float invScale = 1.0f / state->camera.scale;
-	glMatrixMode(GL_PROJECTION);
-	glLoadIdentity();
-	glOrtho(-w * invScale, w * invScale, -h * invScale, h * invScale, 0.0f, 1.0f);
-
-#if 0
-	// Font rendering test
-	glLineWidth(1.0f);
-	glColor4f(0, 1, 0, 1);
-	glBegin(GL_LINES);
-	glVertex2f(w, 0);
-	glVertex2f(-w, 0);
-	glVertex2f(0, h);
-	glVertex2f(0, -h);
-	glEnd();
-	glLineWidth(DefaultLineWidth);
-
-	const FontAsset *fontAsset = &state->assets.hudFont;
-	const char *text = "Hello World!";
-	glColor4f(1, 1, 1, 1);
-	DrawTextFont(text, fplGetAnsiStringLength(text), &fontAsset->desc, fontAsset->texture, 0.0f, 0.0f, MaxTileSize * 2.0f, 0.0f, 1.0f);
-#endif
-
-#if 1
-	glMatrixMode(GL_MODELVIEW);
-	glLoadIdentity();
-	glTranslatef(state->camera.offset.x, state->camera.offset.y, 0);
+	PushViewport(renderState, state->viewport.x, state->viewport.y, state->viewport.w, state->viewport.h);
+	PushClear(renderState, V4f(0, 0, 0, 1), ClearFlags::Color | ClearFlags::Depth);
+	SetMatrix(renderState, state->viewProjection);
 
 	//
 	// Tiles
@@ -1928,7 +1858,7 @@ extern void GameRender(GameMemory &gameMemory, RenderState &renderState, const f
 			const Tile &tile = state->level.tiles[y * TileCountX + x];
 			if(tile.wayType != WayType::None) {
 				// @TODO(final): Draw sprite for this way tile
-				render::DrawTile(x, y, true, V4f(0.0f, 0.0f, 1.0f, 1.0f));
+				render::DrawTile(renderState, x, y, true, V4f(0.0f, 0.0f, 1.0f, 1.0f));
 			}
 		}
 	}
@@ -1941,7 +1871,7 @@ extern void GameRender(GameMemory &gameMemory, RenderState &renderState, const f
 				case EntityType::Goal:
 				{
 					// @TODO(final): Draw goal sprite
-					render::DrawTile(x, y, true, V4f(0.1f, 1.0f, 0.2f, 1.0f));
+					render::DrawTile(renderState, x, y, true, V4f(0.1f, 1.0f, 0.2f, 1.0f));
 				} break;
 			}
 		}
@@ -1954,32 +1884,37 @@ extern void GameRender(GameMemory &gameMemory, RenderState &renderState, const f
 		const CreepSpawner &spawner = state->spawners.list[spawnerIndex];
 		Vec2i tilePos = WorldToTile(spawner.spawnPosition);
 		// @TODO(final): Draw spawner sprite
-		render::DrawTile(tilePos.x, tilePos.y, true, V4f(0.0f, 1.0f, 1.0f, 1.0f));
+		render::DrawTile(renderState, tilePos.x, tilePos.y, true, V4f(0.0f, 1.0f, 1.0f, 1.0f));
 	}
 
 
-#if 1
 	//
 	// Grid
 	//
-	glColor4f(1.0f, 1.0f, 1.0f, 0.25f);
-	glBegin(GL_LINES);
+	Vec4f gridColor = V4f(1.0f, 1.0f, 1.0f, 0.25f);
+	float gridLineWidth = DefaultLineWidth;
+	size_t totalGridVerts = (TileCountX + 1) * 2 + (TileCountY + 1) * 2;
+	VertexAllocation vertAlloc = AllocateVertices(renderState, totalGridVerts, gridColor, DrawMode::Lines, false, gridLineWidth);
+	Vec2f *gridVertex = vertAlloc.verts;
+	size_t count = 0;
 	for(int y = 0; y <= TileCountY; ++y) {
-		glVertex2f(GridOriginX, GridOriginY + y * TileHeight);
-		glVertex2f(GridOriginX + TileCountX * TileWidth, GridOriginY + y * TileHeight);
+		*gridVertex++ = V2f(GridOriginX, GridOriginY + y * TileHeight);
+		*gridVertex++ = V2f(GridOriginX + TileCountX * TileWidth, GridOriginY + y * TileHeight);
+		count += 2;
 	}
 	for(int x = 0; x <= TileCountX; ++x) {
-		glVertex2f(GridOriginX + x * TileWidth, GridOriginY);
-		glVertex2f(GridOriginX + x * TileWidth, GridOriginY + TileCountY * TileHeight);
+		*gridVertex++ = V2f(GridOriginX + x * TileWidth, GridOriginY);
+		*gridVertex++ = V2f(GridOriginX + x * TileWidth, GridOriginY + TileCountY * TileHeight);
+		count += 2;
 	}
-	glEnd();
-#endif
+	FPL_ASSERT(count == totalGridVerts);
+	*vertAlloc.count = count;
 
 	if(state->isDebugRendering) {
 		// Waypoints
 		for(Waypoint *waypoint = state->waypoints.first; waypoint != nullptr; waypoint = waypoint->next) {
-			DrawPoint(state->camera, waypoint->position.x, waypoint->position.y, MaxTileSize * 0.15f, V4f(1, 0, 1, 1));
-			DrawNormal(waypoint->position, waypoint->direction, level::WaypointDirectionWidth, V4f(1, 1, 1, 1));
+			PushRectangleCenter(renderState, waypoint->position, V2f(MaxTileSize * 0.15f), V4f(1, 0, 1, 1), true, 0.0f);
+			PushLine(renderState, waypoint->position, waypoint->position + waypoint->direction * level::WaypointDirectionWidth, V4f(1, 1, 1, 1), 1.0f);
 		}
 	}
 
@@ -1998,10 +1933,10 @@ extern void GameRender(GameMemory &gameMemory, RenderState &renderState, const f
 		if(placeRes == towers::CanPlaceTowerResult::Success || placeRes == towers::CanPlaceTowerResult::NotEnoughMoney) {
 			float alpha = placeRes == towers::CanPlaceTowerResult::Success ? 0.5f : 0.2f;
 			Vec2f towerCenter = TileToWorld(state->mouseTilePos, TileExt);
-			towers::DrawTower(state->assets, state->camera, *tower, towerCenter, V2f(MaxTileRadius), Pi32 * 0.5f, alpha, true);
+			towers::DrawTower(renderState, state->assets, state->camera, *tower, towerCenter, V2f(MaxTileRadius), Pi32 * 0.5f, alpha, true);
 		}
 
-		render::DrawTile(state->mouseTilePos.x, state->mouseTilePos.y, false, hoverColor);
+		render::DrawTile(renderState, state->mouseTilePos.x, state->mouseTilePos.y, false, hoverColor);
 	}
 
 	//
@@ -2013,29 +1948,7 @@ extern void GameRender(GameMemory &gameMemory, RenderState &renderState, const f
 			Vec2f enemyPos = Vec2Lerp(enemy.prevPosition, alpha, enemy.position);
 
 			// Mesh
-			switch(enemy.data->style) {
-				case CreepStyle::Triangle:
-				{
-					float angle = ArcTan2(enemy.facingDirection.y, enemy.facingDirection.x);
-					float r = enemy.data->renderRadius;
-					glColor4fv(&enemy.data->color.m[0]);
-					glPushMatrix();
-					glTranslatef(enemyPos.x, enemyPos.y, 0);
-					glRotatef(angle * RadToDeg, 0, 0, 1);
-					glBegin(GL_POLYGON);
-					glVertex2f(+r, 0);
-					glVertex2f(-r, +r);
-					glVertex2f(-r, -r);
-					glEnd();
-					glPopMatrix();
-				} break;
-
-				case CreepStyle::Quad:
-				{
-					float r = enemy.data->renderRadius;
-					DrawPoint(state->camera, enemyPos.x, enemyPos.y, r, enemy.data->color);
-				} break;
-			}
+			PushRectangleCenter(renderState, enemyPos, V2f(enemy.data->renderRadius, enemy.data->renderRadius), enemy.data->color, true, 0.0f);
 
 			// HP Bar
 			{
@@ -2048,24 +1961,24 @@ extern void GameRender(GameMemory &gameMemory, RenderState &renderState, const f
 
 				float colorGreen = barScale;
 				float colorRed = 1.0f - colorGreen;
+				Vec4f progressColor = V4f(colorRed, colorGreen, 0.0f, 1.0f);
+				Vec2f progressVerts[] = {
+					V2f(barX + barWidth * barScale, barY + barHeight),
+					V2f(barX, barY + barHeight),
+					V2f(barX, barY),
+					V2f(barX + barWidth * barScale, barY),
+				};
+				PushVertices(renderState, progressVerts, FPL_ARRAYCOUNT(progressVerts), true, progressColor, DrawMode::Polygon, true, 0.0f);
 
-				glColor4f(colorRed, colorGreen, 0.0f, 1.0f);
-				glBegin(GL_QUADS);
-				glVertex2f(barX + barWidth * barScale, barY + barHeight);
-				glVertex2f(barX, barY + barHeight);
-				glVertex2f(barX, barY);
-				glVertex2f(barX + barWidth * barScale, barY);
-				glEnd();
-
-				glColor4f(0.25f, 0.25f, 0.25f, 1.0f);
-				glLineWidth(2);
-				glBegin(GL_LINE_LOOP);
-				glVertex2f(barX + barWidth, barY + barHeight);
-				glVertex2f(barX, barY + barHeight);
-				glVertex2f(barX, barY);
-				glVertex2f(barX + barWidth, barY);
-				glEnd();
-				glLineWidth(DefaultLineWidth);
+				Vec4f borderColor = V4f(0.25f, 0.25f, 0.25f, 1.0f);
+				float borderLineWidth = 2.0f;
+				Vec2f borderVerts[] = {
+					V2f(barX + barWidth, barY + barHeight),
+					V2f(barX, barY + barHeight),
+					V2f(barX, barY),
+					V2f(barX + barWidth, barY),
+				};
+				PushVertices(renderState, borderVerts, FPL_ARRAYCOUNT(borderVerts), true, borderColor, DrawMode::Lines, true, borderLineWidth);
 			}
 
 			enemy.prevPosition = enemy.position;
@@ -2077,21 +1990,21 @@ extern void GameRender(GameMemory &gameMemory, RenderState &renderState, const f
 	//
 	for(size_t towerIndex = 0; towerIndex < state->towers.activeCount; ++towerIndex) {
 		const Tower &tower = state->towers.activeList[towerIndex];
-		towers::DrawTower(state->assets, state->camera, *tower.data, tower.position, V2f(MaxTileRadius), tower.facingAngle, 1.0f, false);
+		towers::DrawTower(renderState, state->assets, state->camera, *tower.data, tower.position, V2f(MaxTileRadius), tower.facingAngle, 1.0f, false);
 
 		if(state->isDebugRendering) {
 			if(tower.hasTarget) {
 				assert(tower.targetEnemy != nullptr);
 				const Creep *target = tower.targetEnemy;
 				if((target->id > 0) && (target->id == tower.targetId)) {
-					DrawCircle(target->position.x, target->position.y, target->data->collisionRadius, false, V4f(1, 0, 0, 1), 32);
+					PushCircle(renderState, target->position, target->data->collisionRadius, 32, V4f(1, 0, 0, 1), false, 1.0f);
 
 					Vec2f lookDirection = Vec2AngleToAxis(tower.facingAngle);
 					Vec2f distanceToEnemy = target->position - tower.position;
 					float projDistance = Vec2Dot(distanceToEnemy, lookDirection);
 					Vec2f lookPos = tower.position + lookDirection * projDistance;
 
-					DrawCircle(lookPos.x, lookPos.y, MaxTileSize * 0.25f, false, V4f(1, 1, 0, 1), 16);
+					PushCircle(renderState, lookPos, MaxTileSize * 0.25f, 16, V4f(1, 1, 0, 1), false, 1.0f);
 
 					float dot = Vec2Dot(target->position, lookPos);
 					float det = Vec2Cross(target->position, lookPos);
@@ -2100,15 +2013,15 @@ extern void GameRender(GameMemory &gameMemory, RenderState &renderState, const f
 					if(angle >= -ShotAngleTolerance && angle <= ShotAngleTolerance) {
 						Vec2f sightPos1 = tower.position + Vec2AngleToAxis(tower.facingAngle - ShotAngleTolerance) * projDistance;
 						Vec2f sightPos2 = tower.position + Vec2AngleToAxis(tower.facingAngle + ShotAngleTolerance) * projDistance;
-						glColor4f(1, 0, 0, 0.5);
-						glLineWidth(1);
-						glBegin(GL_LINES);
-						glVertex2f(tower.position.x, tower.position.y);
-						glVertex2f(sightPos1.x, sightPos1.y);
-						glVertex2f(tower.position.x, tower.position.y);
-						glVertex2f(sightPos2.x, sightPos2.y);
-						glEnd();
-						glLineWidth(DefaultLineWidth);
+						Vec4f sightColor = V4f(1, 0, 0, 0.5);
+						float sightLineWidth = 1.0f;
+						Vec2f sightVec2[] = {
+							V2f(tower.position.x, tower.position.y),
+							V2f(sightPos1.x, sightPos1.y),
+							V2f(tower.position.x, tower.position.y),
+							V2f(sightPos2.x, sightPos2.y),
+						};
+						PushVertices(renderState, sightVec2, FPL_ARRAYCOUNT(sightVec2), true, sightColor, DrawMode::Lines, false, sightLineWidth);
 					}
 				}
 			}
@@ -2123,7 +2036,7 @@ extern void GameRender(GameMemory &gameMemory, RenderState &renderState, const f
 		if(!bullet.isDestroyed) {
 			Vec2f bulletPos = Vec2Lerp(bullet.prevPosition, alpha, bullet.position);
 			// @TODO(final): Use sprites for bullets
-			DrawPoint(state->camera, bulletPos.x, bulletPos.y, bullet.data->renderRadius, V4f(1, 0, 0, 1));
+			PushCircle(renderState, bulletPos, bullet.data->renderRadius, 32, V4f(1, 0, 0, 1), true, 0.0f);
 			bullet.prevPosition = bullet.position;
 		}
 	}
@@ -2142,48 +2055,47 @@ extern void GameRender(GameMemory &gameMemory, RenderState &renderState, const f
 		Vec2f textPos = V2f(0, 0);
 		float overlayFontHeight = WorldWidth * 0.25f;
 		float foffset = overlayFontHeight * 0.01f;
-		glColor4fv(&TextBackColor.m[0]);
-		DrawTextFont(text, fplGetAnsiStringLength(text), &font.desc, font.texture, textPos.x, textPos.y, overlayFontHeight, 0.0f, 0.0f);
-		glColor4fv(&TextForeColor.m[0]);
-		DrawTextFont(text, fplGetAnsiStringLength(text), &font.desc, font.texture, textPos.x + foffset, textPos.y - foffset, overlayFontHeight, 0.0f, 0.0f);
+		PushText(renderState, text, fplGetAnsiStringLength(text), &font.desc, &font.texture, V2f(textPos.x, textPos.y), overlayFontHeight, 0.0f, 0.0f, TextBackColor);
+		PushText(renderState, text, fplGetAnsiStringLength(text), &font.desc, &font.texture, V2f(textPos.x + foffset, textPos.y - foffset), overlayFontHeight, 0.0f, 0.0f, TextForeColor);
 	} else if(state->wave.state == WaveState::Won || state->wave.state == WaveState::Lost) {
 		const FontAsset &font = state->assets.overlayFont;
 		const char *text = state->wave.state == WaveState::Won ? "You Win!" : "Game Over!";
 		Vec2f textPos = V2f(0, 0);
 		float overlayFontHeight = WorldWidth * 0.15f;
 		float foffset = overlayFontHeight * 0.01f;
-		glColor4fv(&TextBackColor.m[0]);
-		DrawTextFont(text, fplGetAnsiStringLength(text), &font.desc, font.texture, textPos.x, textPos.y, overlayFontHeight, 0.0f, 0.0f);
-		glColor4fv(&TextForeColor.m[0]);
-		DrawTextFont(text, fplGetAnsiStringLength(text), &font.desc, font.texture, textPos.x + foffset, textPos.y - foffset, overlayFontHeight, 0.0f, 0.0f);
+		PushText(renderState, text, fplGetAnsiStringLength(text), &font.desc, &font.texture, V2f(textPos.x, textPos.y), overlayFontHeight, 0.0f, 0.0f, TextBackColor);
+		PushText(renderState, text, fplGetAnsiStringLength(text), &font.desc, &font.texture, V2f(textPos.x + foffset, textPos.y - foffset), overlayFontHeight, 0.0f, 0.0f, TextForeColor);
 	}
 
 	if(state->isDebugRendering) {
 		const FontAsset &font = state->assets.hudFont;
 		char text[256];
 		fplFormatAnsiString(text, FPL_ARRAYCOUNT(text), "Enemies: %03zu/%03zu, Bullets: %03zu, Towers: %03zu, Spawners: %03zu", state->enemies.count, state->wave.totalEnemyCount, state->bullets.count, state->towers.activeCount, state->spawners.count);
-		glColor4f(1, 1, 1, 1);
+		Vec4f textColor = V4f(1, 1, 1, 1);
 		float padding = MaxTileSize * 0.1f;
 		Vec2f textPos = V2f(GridOriginX + padding, GridOriginY + padding);
 		float fontHeight = MaxTileSize * 0.5f;
-		DrawTextFont(text, fplGetAnsiStringLength(text), &font.desc, font.texture, textPos.x, textPos.y, fontHeight, 1.0f, 1.0f);
+		PushText(renderState, text, fplGetAnsiStringLength(text), &font.desc, &font.texture, V2f(textPos.x, textPos.y), fontHeight, 1.0f, 1.0f, textColor);
 
+		fplFormatAnsiString(text, FPL_ARRAYCOUNT(text), "Game Memory: %zu / %zu", gameMemory.persistentMemory.used, gameMemory.persistentMemory.size);
+		PushText(renderState, text, fplGetAnsiStringLength(text), &font.desc, &font.texture, V2f(textPos.x + GridWidth - padding * 2.0f, textPos.y + fontHeight * 2), fontHeight, -1.0f, 1.0f, textColor);
+		fplFormatAnsiString(text, FPL_ARRAYCOUNT(text), "Render Memory: %zu / %zu", gameMemory.render->lastMemoryUsage, gameMemory.render->memory.size);
+		PushText(renderState, text, fplGetAnsiStringLength(text), &font.desc, &font.texture, V2f(textPos.x + GridWidth - padding * 2.0f, textPos.y + fontHeight * 1), fontHeight, -1.0f, 1.0f, textColor);
 		fplFormatAnsiString(text, FPL_ARRAYCOUNT(text), "Fps: %.5f, Delta: %.5f", state->framesPerSecond, state->deltaTime);
-		DrawTextFont(text, fplGetAnsiStringLength(text), &font.desc, font.texture, textPos.x + GridWidth - padding * 2.0f, textPos.y, fontHeight, -1.0f, 1.0f);
+		PushText(renderState, text, fplGetAnsiStringLength(text), &font.desc, &font.texture, V2f(textPos.x + GridWidth - padding * 2.0f, textPos.y), fontHeight, -1.0f, 1.0f, textColor);
 	}
-#endif
 
 	//
 	// HUD & Controls
 	//
-	game::DrawHUD(*state);
-	game::DrawControls(*state);
+	game::DrawHUD(*state, renderState);
+	game::DrawControls(*state, renderState);
 }
 
-extern void GameUpdateAndRender(GameMemory &gameMemory, const Input &input, RenderState &renderState, const float alpha) {
+extern void GameUpdateAndRender(GameMemory &gameMemory, const Input &input, const float alpha) {
 	GameInput(gameMemory, input);
 	GameUpdate(gameMemory, input);
-	GameRender(gameMemory, renderState, alpha);
+	GameRender(gameMemory, alpha);
 }
 
 #define FINAL_GAMEPLATFORM_IMPLEMENTATION

@@ -43,6 +43,9 @@
     <ClInclude Include="..\additions\final_math.h">
       <Filter>additions</Filter>
     </ClInclude>
+    <ClInclude Include="..\additions\final_assets.h">
+      <Filter>additions</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="fpl_towadev.cpp" />

@@ -26,6 +26,7 @@
     <ClInclude Include="..\..\final_memory.h" />
     <ClInclude Include="..\..\final_platform_layer.h" />
     <ClInclude Include="..\..\final_xml.h" />
+    <ClInclude Include="..\additions\final_assets.h" />
     <ClInclude Include="..\additions\final_fontloader.h" />
     <ClInclude Include="..\additions\final_game.h" />
     <ClInclude Include="..\additions\final_gameplatform.h" />
