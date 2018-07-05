@@ -10,6 +10,10 @@ Description:
 License:
 	MIT License
 	Copyright 2018 Torsten Spaete
+
+Changelog
+	## 2018-07-05:
+	- Added Mat4RotationX, Mat4RotationY, Mat4RotationZ
 */
 
 #ifndef FINAL_MATH_H
@@ -299,6 +303,39 @@ inline static Mat4f Mat4Scale(const Vec2f &s) {
 	result.col1.x = s.x;
 	result.col2.y = s.y;
 	result.col3.z = 0.0f;
+	return (result);
+}
+
+inline static Mat4f Mat4RotationX(const float angle) {
+	float c = Cosine(angle);
+	float s = Sine(angle);
+	Mat4f result;
+	result.col1 = V4f(1.0f, 0.0f, 0.0f, 0.0f);
+	result.col2 = V4f(0.0f, c, s, 0.0f);
+	result.col3 = V4f(0.0f, -s, c, 0.0f);
+	result.col4 = V4f(0.0f, 0.0f, 0.0f, 1.0f);
+	return (result);
+}
+
+inline static Mat4f Mat4RotationY(const float angle) {
+	float c = Cosine(angle);
+	float s = Sine(angle);
+	Mat4f result;
+	result.col1 = V4f(c, 0.0f, s, 0.0f);
+	result.col2 = V4f(0.0f, 1.0f, 0.0f, 0.0f);
+	result.col3 = V4f(-s, 0.0f, c, 0.0f);
+	result.col4 = V4f(0.0f, 0.0f, 0.0f, 1.0f);
+	return (result);
+}
+
+inline static Mat4f Mat4RotationZ(const float angle) {
+	float c = Cosine(angle);
+	float s = Sine(angle);
+	Mat4f result;
+	result.col1 = V4f(c, s, 0.0f, 0.0f);
+	result.col2 = V4f(-s, c, 0.0f, 0.0f);
+	result.col3 = V4f(0.0f, 0.0f, 1.0f, 0.0f);
+	result.col4 = V4f(0.0f, 0.0f, 0.0f, 1.0f);
 	return (result);
 }
 
