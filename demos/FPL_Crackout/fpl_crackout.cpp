@@ -8,9 +8,7 @@ Description:
 
 Requirements:
 	- C++ Compiler
-	- GLM
 	- Box2D
-	- Final Dynamic OpenGL
 	- Final Memory
 	- Final Framework
 
@@ -18,6 +16,11 @@ Author:
 	Torsten Spaete
 
 Changelog:
+	## 2018-07-05
+	- Corrected for api change in final_game.h
+	- Corrected for api change in final_render.h
+	- Migrated to new render system and removed all opengl calls
+
 	## 2018-06-06
 	- Refactored files
 
@@ -51,22 +54,16 @@ Todo:
 #define FPL_LOGGING
 #include <final_platform_layer.h>
 
-#define FGL_IMPLEMENTATION
-#include <final_dynamic_opengl.h>
-
 #include <final_math.h>
 
 #define BOX2D_IMPLEMENTATION
 #include <Box2D/Box2D.h>
 
-#define STB_IMAGE_IMPLEMENTATION
-#include <stb/stb_image.h>
-
-#define FINAL_FONTLOADER_IMPLEMENTATION
-#include <final_fontloader.h>
-
 #define FMEM_IMPLEMENTATION
 #include <final_memory.h>
+
+#define FINAL_ASSETS_IMPLEMENTATION
+#include <final_assets.h>
 
 #define FINAL_RENDER_IMPLEMENTATION
 #include <final_render.h>
@@ -81,8 +78,8 @@ Todo:
 //
 // Game constants
 //
-#define DRAW_NORMALS 0
-#define DRAW_DEBUG 0
+#define DRAW_NORMALS 1
+#define DRAW_DEBUG 1
 
 constexpr int InitialLevelSeed = 1;
 
@@ -265,7 +262,7 @@ struct GameState;
 // @BAD(final): Such a bad design decision from Box2D to force classes on us
 class GameContactListener : public b2ContactListener {
 private:
-	GameState *gameState;
+	GameState * gameState;
 public:
 	GameContactListener(GameState *gameState) {
 		this->gameState = gameState;
@@ -276,17 +273,12 @@ public:
 	void PostSolve(b2Contact* contact, const b2ContactImpulse* impulse);
 };
 
-struct FontAsset {
-	LoadedFont desc;
-	GLuint texture;
-};
-
 struct Assets {
-	GLuint ballTexture;
-	GLuint bricksTexture;
-	GLuint paddleTexture;
-	GLuint frameTexture;
-	ArrayInitializer<BackgroundType, GLuint, 256> bgTextures;
+	TextureAsset ballTexture;
+	TextureAsset bricksTexture;
+	TextureAsset paddleTexture;
+	TextureAsset frameTexture;
+	ArrayInitializer<BackgroundType, TextureAsset, 256> bgTextures;
 	FontAsset fontMenu;
 	FontAsset fontHud;
 };
@@ -631,99 +623,21 @@ static void LoadLevel(GameState &state, int levelSeed) {
 	GlueBallOnPaddle(state, &state.ball.ball);
 }
 
-struct TextureImage {
-	int width;
-	int height;
-	int components;
-	uint8_t *data;
-};
 
-static void FreeTextureImage(TextureImage &img) {
-	stbi_image_free(img.data);
-	img = {};
-}
-
-static TextureImage CreateImageTile(TextureImage &source, int x, int y, int w, int h) {
-	FPL_ASSERT(source.components == 4);
-	TextureImage result = {};
-	result.width = w;
-	result.height = h;
-	result.components = 4;
-	result.data = (uint8_t *)STBI_MALLOC(w * h * 4);
-	int sourceScanline = source.width * 4;
-	int destScanline = w * 4;
-	int dstY = 0;
-	for(int srcY = y; srcY < (y + h); ++srcY) {
-		int dstX = 0;
-		for(int srcX = x; srcX < (x + w); ++srcX) {
-			uint8_t *src = source.data + (srcY * sourceScanline + srcX * 4);
-			uint8_t *dst = result.data + (dstY * destScanline + dstX * 4);
-			uint32_t *srcPixel = (uint32_t *)src;
-			uint32_t *dstPixel = (uint32_t *)dst;
-			*dstPixel = *srcPixel;
-			++dstX;
-		}
-		++dstY;
-	}
+static bool LoadTexture(const TextureData &source, const bool repeatable, TextureAsset &outTexture) {
+	GLuint texId = AllocateTexture(source.width, source.height, source.data, repeatable, GL_NEAREST);
+	outTexture.texture = ValueToPointer(texId);
+	bool result = texId > 0;
 	return(result);
 }
 
-static TextureImage LoadTextureImage(const char *dataPath, const char *filename) {
-	TextureImage result = {};
-
-	char filePath[1024];
-	fplPathCombine(filePath, FPL_ARRAYCOUNT(filePath), 2, dataPath, filename);
-
-	fplFileHandle file;
-	if(fplOpenAnsiBinaryFile(filePath, &file)) {
-		uint32_t fileLen = fplGetFileSizeFromHandle32(&file);
-		uint8_t *fileBuffer = (uint8_t *)fplMemoryAllocate(fileLen);
-		if(fileBuffer != nullptr) {
-			if(fplReadFileBlock32(&file, fileLen, fileBuffer, fileLen) == fileLen) {
-				int imageWidth = 0;
-				int imageHeight = 0;
-				int imageComponents = 0;
-				stbi_set_flip_vertically_on_load(0);
-				stbi_uc *imageData = stbi_load_from_memory(fileBuffer, fileLen, &imageWidth, &imageHeight, &imageComponents, 4);
-				if(imageData != nullptr) {
-					result.width = imageWidth;
-					result.height = imageHeight;
-					result.components = imageComponents;
-					result.data = imageData;
-				} else {
-					fplConsoleFormatError("Image file '%s' of size '%lu' is broken!\n", filePath, fileLen);
-				}
-			} else {
-				fplConsoleFormatError("Failed reading file of size '%lu'!\n", fileLen);
-			}
-			fplMemoryFree(fileBuffer);
-		} else {
-			fplConsoleFormatError("Failed allocating memory of size '%lu'!\n", fileLen);
-		}
-		fplCloseFile(&file);
-	} else {
-		fplConsoleFormatError("Image file '%s' could not be found!\n", filePath);
-	}
-	return(result);
-}
-
-static bool LoadTexture(const TextureImage &image, const bool repeatable, GLuint &outTexture) {
-	bool result = false;
-	GLuint texId = AllocateTexture(image.width, image.height, image.data, repeatable, GL_NEAREST);
-	if(texId > 0) {
-		outTexture = texId;
-		result = true;
-	}
-	return(result);
-}
-
-static bool LoadTexture(const char *dataPath, const char *filename, const bool repeatable, GLuint &outTexture) {
-	TextureImage image = LoadTextureImage(dataPath, filename);
+static bool LoadTexture(const char *dataPath, const char *filename, const bool repeatable, TextureAsset &outTexture) {
+	TextureData image = LoadTextureData(dataPath, filename);
 	if(image.data == nullptr) {
 		return false;
 	}
 	bool result = LoadTexture(image, repeatable, outTexture);
-	FreeTextureImage(image);
+	FreeTextureData(image);
 	return(result);
 }
 
@@ -733,22 +647,21 @@ static bool LoadAssets(GameState &state) {
 	LoadTexture(state.dataPath, "paddle.bmp", false, state.assets.paddleTexture);
 	LoadTexture(state.dataPath, "frame.bmp", false, state.assets.frameTexture);
 
-	TextureImage bgImage = LoadTextureImage(state.dataPath, "bg.bmp");
+	TextureData bgImage = LoadTextureData(state.dataPath, "bg.bmp");
 	if(bgImage.data != nullptr) {
-		TextureImage bgTileImage0 = CreateImageTile(bgImage, 2, 2, 16, 16);
+		TextureData bgTileImage0 = CreateSubTextureData(bgImage, 2, 2, 16, 16);
 		LoadTexture(bgTileImage0, true, state.assets.bgTextures[BackgroundType::Default]);
-		FreeTextureImage(bgTileImage0);
-		FreeTextureImage(bgImage);
+		FreeTextureData(bgTileImage0);
 	}
+	FreeTextureData(bgImage);
 
-	LoadFontFromFile(state.dataPath, "hemi_head_bd_it.ttf", 0, 36.0f, 32, 127, 512, 512, true, &state.assets.fontMenu.desc);
-	if(state.assets.fontMenu.desc.atlasAlphaBitmap != nullptr) {
-		state.assets.fontMenu.texture = AllocateTexture(state.assets.fontMenu.desc.atlasWidth, state.assets.fontMenu.desc.atlasHeight, state.assets.fontMenu.desc.atlasAlphaBitmap, false, GL_NEAREST, true);
+	if(LoadFontFromFile(state.dataPath, "hemi_head_bd_it.ttf", 0, 36.0f, 32, 127, 512, 512, true, &state.assets.fontMenu.desc)) {
+		GLuint texId = AllocateTexture(state.assets.fontMenu.desc.atlasWidth, state.assets.fontMenu.desc.atlasHeight, state.assets.fontMenu.desc.atlasAlphaBitmap, false, GL_NEAREST, true);
+		state.assets.fontMenu.texture = ValueToPointer(texId);
 	}
-
-	LoadFontFromFile(state.dataPath, "hemi_head_bd_it.ttf", 0, 18.0f, 32, 127, 512, 512, true, &state.assets.fontHud.desc);
-	if(state.assets.fontHud.desc.atlasAlphaBitmap != nullptr) {
-		state.assets.fontHud.texture = AllocateTexture(state.assets.fontHud.desc.atlasWidth, state.assets.fontHud.desc.atlasHeight, state.assets.fontHud.desc.atlasAlphaBitmap, false, GL_NEAREST, true);
+	if(LoadFontFromFile(state.dataPath, "hemi_head_bd_it.ttf", 0, 18.0f, 32, 127, 512, 512, true, &state.assets.fontHud.desc)) {
+		GLuint texId = AllocateTexture(state.assets.fontHud.desc.atlasWidth, state.assets.fontHud.desc.atlasHeight, state.assets.fontHud.desc.atlasAlphaBitmap, false, GL_NEAREST, true);
+		state.assets.fontHud.texture = ValueToPointer(texId);
 	}
 
 	return true;
@@ -762,7 +675,7 @@ static void StartGame(GameState &state) {
 	LoadLevel(state, InitialLevelSeed);
 }
 
-static bool GameInit(GameState &state) {
+static bool InitGame(GameState &state) {
 	if(!fglLoadOpenGL(true)) {
 		return false;
 	}
@@ -788,6 +701,8 @@ static bool GameInit(GameState &state) {
 
 	glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
 
+	glMatrixMode(GL_MODELVIEW);
+
 	LoadAssets(state);
 
 	b2World *world;
@@ -808,7 +723,7 @@ static bool GameInit(GameState &state) {
 	return true;
 }
 
-static void GameRelease(GameState &state) {
+static void ReleaseGame(GameState &state) {
 	ClearWorld(state.world);
 	if(state.world != nullptr) {
 		delete state.world;
@@ -817,27 +732,23 @@ static void GameRelease(GameState &state) {
 	fglUnloadOpenGL();
 }
 
-extern void GameDestroy(GameMemory &gameMemory) {
-	GameState *state = (GameState *)gameMemory.base;
-	GameRelease(*state);
-	state->~GameState();
-	fplMemoryFree(state);
+extern void GameRelease(GameMemory &gameMemory) {
+	GameState *state = gameMemory.game;
+	if(state != nullptr) {
+		ReleaseGame(*state);
+		state->~GameState();
+	}
 }
 
-extern GameMemory GameCreate() {
-	GameMemory result = {};
-	result.capacity = sizeof(GameState) + FPL_MEGABYTES(16);
-	result.base = fplMemoryAllocate(result.capacity);
-	if(result.base == nullptr) {
-		return {};
+extern bool GameInit(GameMemory &gameMemory) {
+	GameState *state = (GameState *)fmemPush(&gameMemory.persistentMemory, sizeof(GameState), fmemPushFlags_Clear);
+	gameMemory.game = state;
+	if(!InitGame(*state)) {
+		GameRelease(gameMemory);
+		return(false);
 	}
-	GameState *state = (GameState *)result.base;
-	result.used = sizeof(GameState);
-	if(!GameInit(*state)) {
-		GameDestroy(result);
-		state = nullptr;
-	}
-	return(result);
+	return(true);
+
 }
 
 static void GlueBallOnPaddle(GameState &state, Ball *ball) {
@@ -884,7 +795,7 @@ static void SetRandomLevel(GameState &state, int seed) {
 			int rightCol = (MaxBrickCols - 1) - c;
 			state.bricksMap[row * MaxBrickCols + leftCol] = BrickType::Solid;
 			state.bricksMap[row * MaxBrickCols + rightCol] = BrickType::Solid;
-		}
+	}
 #if ALL_BRICKS
 		state.bricksMap[row * MaxBrickCols + halfColCount] = BrickType::Solid;
 #else
@@ -892,7 +803,7 @@ static void SetRandomLevel(GameState &state, int seed) {
 			state.bricksMap[row * MaxBrickCols + halfColCount] = BrickType::Solid;
 		}
 #endif
-	}
+		}
 
 #undef ALL_BRICKS
 }
@@ -999,7 +910,8 @@ void GameContactListener::PostSolve(b2Contact* contact, const b2ContactImpulse* 
 }
 
 extern bool IsGameExiting(GameMemory &gameMemory) {
-	GameState *state = (GameState *)gameMemory.base;
+	GameState *state = gameMemory.game;
+	FPL_ASSERT(state != nullptr);
 	return state->isExiting;
 }
 
@@ -1008,7 +920,8 @@ extern void GameInput(GameMemory &gameMemory, const Input &input) {
 		return;
 	}
 
-	GameState *state = (GameState *)gameMemory.base;
+	GameState *state = gameMemory.game;
+	FPL_ASSERT(state != nullptr);
 
 	if(input.defaultControllerIndex != -1) {
 		FPL_ASSERT(input.defaultControllerIndex < FPL_ARRAYCOUNT(input.controllers));
@@ -1048,11 +961,11 @@ extern void GameInput(GameMemory &gameMemory, const Input &input) {
 				case GameMode::Menu:
 				{
 					if(WasPressed(controller->moveDown)) {
-						if (state->menu.itemIndex < (state->menu.itemCount - 1)) {
+						if(state->menu.itemIndex < (state->menu.itemCount - 1)) {
 							++state->menu.itemIndex;
 						}
 					} else if(WasPressed(controller->moveUp)) {
- 						if (state->menu.itemIndex > 0) {
+						if(state->menu.itemIndex > 0) {
 							--state->menu.itemIndex;
 						}
 					}
@@ -1158,7 +1071,8 @@ extern void GameUpdate(GameMemory &gameMemory, const Input &input) {
 		return;
 	}
 
-	GameState *state = (GameState *)gameMemory.base;
+	GameState *state = gameMemory.game;
+	FPL_ASSERT(state != nullptr);
 	state->viewport = ComputeViewportByAspect(input.windowSize, GameAspect);
 
 	if(state->mode == GameMode::Play) {
@@ -1171,7 +1085,7 @@ extern void GameUpdate(GameMemory &gameMemory, const Input &input) {
 static void DrawField(GameState &state) {
 	// Background
 	{
-		GLuint bgTex = state.assets.bgTextures[BackgroundType::Default];
+		GLuint bgTex = PointerToValue<GLuint>(state.assets.bgTextures[BackgroundType::Default].texture);
 		float uMax = (float)(int)(WorldRadius.x / FrameRadius);
 		float vMax = (float)(int)(WorldRadius.y / FrameRadius);
 		UVRect bgUV = BackgroundUVs[BackgroundType::Default];
@@ -1181,7 +1095,7 @@ static void DrawField(GameState &state) {
 
 	// Frame
 	{
-		GLuint frameTex = state.assets.frameTexture;
+		GLuint frameTex = PointerToValue<GLuint>(state.assets.frameTexture.texture);
 		UVRect topLeftEdgeUV = FrameUVs[FrameType::TopLeftEdge];
 		UVRect topRightEdgeUV = FrameUVs[FrameType::TopRightEdge];
 		UVRect topFillUV = FrameUVs[FrameType::TopFill];
@@ -1219,11 +1133,12 @@ static void DrawPlayMode(GameState &state) {
 		const Ball &ball = state.ball.ball;
 		b2Vec2 ballPos = ball.body->GetPosition();
 		float ballRot = ball.body->GetAngle();
+		GLuint texId = PointerToValue<GLuint>(state.assets.ballTexture.texture);
 		glPushMatrix();
 		glTranslatef(ballPos.x, ballPos.y, 0);
 		glRotatef(Degrees(ballRot), 0, 0, 1);
 		glColor4f(1, 1, 1, 1);
-		DrawSprite(state.assets.ballTexture, BallRadius + ROffset, BallRadius + ROffset, 0.0f, 1.0f, 1.0f, 0.0f);
+		DrawSprite(texId, BallRadius + ROffset, BallRadius + ROffset, 0.0f, 1.0f, 1.0f, 0.0f);
 		glPopMatrix();
 	}
 
@@ -1232,11 +1147,12 @@ static void DrawPlayMode(GameState &state) {
 		const Paddle &paddle = state.paddle.paddle;
 		b2Vec2 paddlePos = paddle.body->GetPosition();
 		float paddleRot = paddle.body->GetAngle();
+		GLuint texId = PointerToValue<GLuint>(state.assets.paddleTexture.texture);
 		glPushMatrix();
 		glTranslatef(paddlePos.x, paddlePos.y, 0);
 		glRotatef(Degrees(paddleRot), 0, 0, 1);
 		glColor4f(1, 1, 1, 1);
-		DrawSprite(state.assets.paddleTexture, PaddleRadius.x + BallRadius + ROffset, PaddleRadius.y + ROffset, 0.0f, 1.0f, 1.0f, 0.0f);
+		DrawSprite(texId, PaddleRadius.x + BallRadius + ROffset, PaddleRadius.y + ROffset, 0.0f, 1.0f, 1.0f, 0.0f);
 		glPopMatrix();
 	}
 
@@ -1245,18 +1161,19 @@ static void DrawPlayMode(GameState &state) {
 		const Brick &brick = state.activeBricks[i].brick;
 		b2Vec2 brickPos = brick.body->GetPosition();
 		float brickRot = brick.body->GetAngle();
+		GLuint texId = PointerToValue<GLuint>(state.assets.bricksTexture.texture);
 		UVRect brickUV = BricksUVs[brick.type];
 		glPushMatrix();
 		glTranslatef(brickPos.x, brickPos.y, 0);
 		glRotatef(Degrees(brickRot), 0, 0, 1);
 		glColor4f(1, 1, 1, 1);
-		DrawSprite(state.assets.bricksTexture, BrickRadius.x, BrickRadius.y, brickUV);
+		DrawSprite(texId, BrickRadius.x, BrickRadius.y, brickUV);
 		glPopMatrix();
 	}
 
 #if DRAW_DEBUG
 	// Bodies
-	const float normalLen = w * 0.025f;
+	const float normalLen = WorldWidth * 0.025f;
 	b2Body *body = state.world->GetBodyList();
 	while(body != nullptr) {
 		if(body->GetUserData() == nullptr) {
@@ -1272,11 +1189,10 @@ static void DrawPlayMode(GameState &state) {
 				case b2Shape::Type::e_circle:
 				{
 					b2CircleShape *circle = (b2CircleShape *)fixture->GetShape();
-					glColor4f(1, 1, 1, 1);
 					glPushMatrix();
 					glTranslatef(bodyPos.x + circle->m_p.x, bodyPos.y + circle->m_p.y, 0);
-					glRotatef(glm::degrees<float>(bodyRot), 0, 0, 1);
-					DrawCircle(circle->m_radius, false);
+					glRotatef(Degrees(bodyRot), 0, 0, 1);
+					DrawCircle(0, 0, circle->m_radius, false, V4f(1, 1, 1, 1));
 					glPopMatrix();
 				} break;
 
@@ -1285,7 +1201,7 @@ static void DrawPlayMode(GameState &state) {
 					b2PolygonShape *poly = (b2PolygonShape *)fixture->GetShape();
 					glPushMatrix();
 					glTranslatef(bodyPos.x, bodyPos.y, 0);
-					glRotatef(glm::degrees<float>(bodyRot), 0, 0, 1);
+					glRotatef(Degrees(bodyRot), 0, 0, 1);
 
 					glColor4f(1, 1, 1, 1);
 					glBegin(GL_LINE_LOOP);
@@ -1316,7 +1232,7 @@ static void DrawPlayMode(GameState &state) {
 				{
 					glPushMatrix();
 					glTranslatef(bodyPos.x, bodyPos.y, 0);
-					glRotatef(glm::degrees<float>(bodyRot), 0, 0, 1);
+					glRotatef(Degrees(bodyRot), 0, 0, 1);
 					b2ChainShape *chain = (b2ChainShape *)fixture->GetShape();
 					for(int i = 0, c = chain->GetChildCount(); i < c; ++i) {
 						b2EdgeShape edge;
@@ -1357,21 +1273,22 @@ static void DrawPlayMode(GameState &state) {
 	const float textFrameMargin = BallRadius * 0.25f;
 	const float textSize = 0.65f;
 	const float textTopMiddle = WorldRadius.y - FrameRadius;
+	GLuint fontTexId = PointerToValue<GLuint>(state.assets.fontHud.texture);
 
 	// HUD
 	glColor4f(0, 0, 0, 1);
 
 	fplFormatAnsiString(textBuffer, FPL_ARRAYCOUNT(textBuffer), "Lifes: %d", state.lifes);
-	DrawTextFont(textBuffer, fplGetAnsiStringLength(textBuffer), &state.assets.fontHud.desc, state.assets.fontHud.texture, -WorldRadius.x + FrameRadius * 2.0f + textFrameMargin, textTopMiddle, textSize, 1.0f, 0.0f);
+	DrawTextFont(textBuffer, fplGetAnsiStringLength(textBuffer), &state.assets.fontHud.desc, fontTexId, -WorldRadius.x + FrameRadius * 2.0f + textFrameMargin, textTopMiddle, textSize, 1.0f, 0.0f);
 
 	fplFormatAnsiString(textBuffer, FPL_ARRAYCOUNT(textBuffer), "Level: %d", (state.levelsCompleted + 1));
- 	DrawTextFont(textBuffer, fplGetAnsiStringLength(textBuffer), &state.assets.fontHud.desc, state.assets.fontHud.texture, 0, textTopMiddle, textSize, 0.0f, 0.0f);
+	DrawTextFont(textBuffer, fplGetAnsiStringLength(textBuffer), &state.assets.fontHud.desc, fontTexId, 0, textTopMiddle, textSize, 0.0f, 0.0f);
 
 	fplFormatAnsiString(textBuffer, FPL_ARRAYCOUNT(textBuffer), "Score: %d", state.score);
 	size_t textCount = fplGetAnsiStringLength(textBuffer);
 	Vec2f textBounds = GetTextSize(textBuffer, textCount, &state.assets.fontHud.desc, textSize);
-	DrawTextFont(textBuffer, textCount, &state.assets.fontHud.desc, state.assets.fontHud.texture, WorldRadius.x - FrameRadius * 2.0f - textFrameMargin - textBounds.w, textTopMiddle, textSize, 1.0f, 0.0f);
-}
+	DrawTextFont(textBuffer, textCount, &state.assets.fontHud.desc, fontTexId, WorldRadius.x - FrameRadius * 2.0f - textFrameMargin - textBounds.w, textTopMiddle, textSize, 1.0f, 0.0f);
+	}
 
 static void BeginMenu(GameState &state) {
 	state.menu.itemCount = 0;
@@ -1394,7 +1311,8 @@ static bool PushMenuItem(GameState &state, MenuRenderState &menuRender, const ch
 	} else {
 		glColor4f(1, 1, 1, 1);
 	}
-	DrawTextFont(itemText, fplGetAnsiStringLength(itemText), &state.assets.fontMenu.desc, state.assets.fontMenu.texture, 0.0f, menuRender.ypos, menuRender.fontHeight, 0.0f, 0.0f);
+	GLuint fontTexId = PointerToValue<GLuint>(state.assets.fontMenu.texture);
+	DrawTextFont(itemText, fplGetAnsiStringLength(itemText), &state.assets.fontMenu.desc, fontTexId, 0.0f, menuRender.ypos, menuRender.fontHeight, 0.0f, 0.0f);
 	menuRender.ypos -= menuRender.fontHeight;
 	return(result);
 }
@@ -1408,7 +1326,8 @@ static void DrawTitleMenuMode(GameState &state) {
 	float titleFontSize = 2.75f;
 	float titlePosY = WorldRadius.y - WorldHeight * 0.35f;
 	glColor4f(1, 1, 1, 1);
-	DrawTextFont(titleText, fplGetAnsiStringLength(titleText), &state.assets.fontMenu.desc, state.assets.fontMenu.texture, 0.0f, titlePosY, titleFontSize, 0.0f, 0.0f);
+	GLuint fontTexId = PointerToValue<GLuint>(state.assets.fontMenu.texture);
+	DrawTextFont(titleText, fplGetAnsiStringLength(titleText), &state.assets.fontMenu.desc, fontTexId, 0.0f, titlePosY, titleFontSize, 0.0f, 0.0f);
 
 	if(state.mode == GameMode::Title || state.mode == GameMode::GameOver) {
 		// Title screen
@@ -1416,7 +1335,7 @@ static void DrawTitleMenuMode(GameState &state) {
 		const float smallFontSize = 0.9f;
 		const float smallPosY = -WorldRadius.y + WorldHeight * 0.275f;
 		glColor4f(1, 1, 1, 1);
-		DrawTextFont(smallText, fplGetAnsiStringLength(smallText), &state.assets.fontMenu.desc, state.assets.fontMenu.texture, 0.0f, smallPosY, smallFontSize, 0.0f, 0.0f);
+		DrawTextFont(smallText, fplGetAnsiStringLength(smallText), &state.assets.fontMenu.desc, fontTexId, 0.0f, smallPosY, smallFontSize, 0.0f, 0.0f);
 	} else {
 		// Menu screen
 		assert(state.mode == GameMode::Menu);
@@ -1436,8 +1355,10 @@ static void DrawTitleMenuMode(GameState &state) {
 	}
 }
 
-extern void GameRender(GameMemory &gameMemory, RenderState &renderState, const float alpha) {
-	GameState *state = (GameState *)gameMemory.base;
+extern void GameRender(GameMemory &gameMemory, const float alpha) {
+	GameState *state = gameMemory.game;
+	FPL_ASSERT(state != nullptr);
+	RenderState *renderState = gameMemory.render;
 
 	const float w = WorldRadius.x;
 	const float h = WorldRadius.y;
@@ -1460,7 +1381,7 @@ extern void GameRender(GameMemory &gameMemory, RenderState &renderState, const f
 	}
 }
 
-extern void GameUpdateAndRender(GameMemory &gameMemory, const Input &input, RenderState &renderState, const float alpha) {
+extern void GameUpdateAndRender(GameMemory &gameMemory, const Input &input, const float alpha) {
 }
 
 #define FINAL_GAMEPLATFORM_IMPLEMENTATION

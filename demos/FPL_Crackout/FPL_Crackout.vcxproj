@@ -25,6 +25,7 @@
     <ClInclude Include="..\..\final_dynamic_opengl.h" />
     <ClInclude Include="..\..\final_platform_layer.h" />
     <ClInclude Include="..\additions\final_arrayinitializer.h" />
+    <ClInclude Include="..\additions\final_assets.h" />
     <ClInclude Include="..\additions\final_fontloader.h" />
     <ClInclude Include="..\additions\final_game.h" />
     <ClInclude Include="..\additions\final_gameplatform.h" />
