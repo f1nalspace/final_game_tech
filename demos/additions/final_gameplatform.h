@@ -11,10 +11,6 @@ Description:
 License:
 	MIT License
 	Copyright 2018 Torsten Spaete
-
-Changelog:
-	## 2018-06-29
-	- Changed to use new keyboard/mouse button state
 */
 
 #ifndef FINAL_GAMEPLATFORM_H
@@ -260,14 +256,21 @@ extern int GameMain(const GameConfiguration &config) {
 
 	bool wasError = false;
 
-	GameMemory gameMem = GameCreate();
-	fmemMemoryBlock renderStateMemory = {};
-	RenderState renderState = {};
-	if(gameMem.base == nullptr) {
+	fmemMemoryBlock gameMemoryBlock = {};
+	if(!fmemInit(&gameMemoryBlock, fmemType_Growable, FMEM_MEGABYTES(128))) {
 		wasError = true;
 	}
+	fmemMemoryBlock renderMemoryBlock = {};
+	if(!fmemInit(&renderMemoryBlock, fmemType_Growable, FMEM_MEGABYTES(32))) {
+		wasError = true;
+	}
+	RenderState renderState = {};
+	InitRenderState(renderState, renderMemoryBlock);
 
-	if(!fmemInit(&renderStateMemory, fmemType_Growable, FMEM_MEGABYTES(32))) {
+	GameMemory gameMem = {};
+	gameMem.persistentMemory = gameMemoryBlock;
+	gameMem.render = &renderState;
+	if(!GameInit(gameMem)) {
 		wasError = true;
 	}
 
@@ -293,7 +296,6 @@ extern int GameMain(const GameConfiguration &config) {
 		double lastFramesPerSecond = 0.0;
 		double lastFrameTime = 0.0;
 
-		InitRenderState(renderState, renderStateMemory);
 		while(!IsGameExiting(gameMem) && fplWindowUpdate()) {
 			// Window size
 			fplWindowSize winArea;
@@ -357,7 +359,7 @@ extern int GameMain(const GameConfiguration &config) {
 				} else {
 					alpha = 1.0f;
 				}
-				GameUpdateAndRender(gameMem, *curInput, renderState, alpha);
+				GameUpdateAndRender(gameMem, *curInput, alpha);
 			} else {
 				GameInput(gameMem, *curInput);
 #if 1
@@ -370,16 +372,16 @@ extern int GameMain(const GameConfiguration &config) {
 				GameUpdate(gameMem, *curInput);
 				++updateCount;
 #endif
-			}
+				}
 
-			// @TODO(final): Yield thread when we are running too fast
+				// @TODO(final): Yield thread when we are running too fast
 			double endWorkTime = fplGetTimeInSecondsHP();
 			double workDuration = endWorkTime - lastTime;
 
 			// Render
 			if(!config.noUpdateRenderSeparation) {
 				float alpha = (float)frameAccumulator / (float)TargetDeltaTime;
-				GameRender(gameMem, renderState, alpha);
+				GameRender(gameMem, alpha);
 			}
 			RenderWithOpenGL(renderState);
 			fplVideoFlip();
@@ -418,10 +420,11 @@ extern int GameMain(const GameConfiguration &config) {
 			fplSetWindowCursorEnabled(true);
 		}
 
-		GameDestroy(gameMem);
+		GameRelease(gameMem);
 	}
 
-	fmemFree(&renderStateMemory);
+	fmemFree(&gameMemoryBlock);
+	fmemFree(&renderMemoryBlock);
 
 	fglUnloadOpenGL();
 

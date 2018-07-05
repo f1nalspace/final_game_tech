@@ -110,6 +110,7 @@ struct RenderState {
 	size_t matrixTop;
 	fmemMemoryBlock memory;
 	size_t textureOperationCount;
+	size_t lastMemoryUsage;
 };
 
 enum class CommandType {
@@ -166,7 +167,7 @@ struct RectangleCommand {
 	bool isFilled;
 };
 
-enum class VerticesDrawMode {
+enum class DrawMode {
 	None,
 	Points,
 	Lines,
@@ -174,11 +175,17 @@ enum class VerticesDrawMode {
 	Polygon
 };
 
+struct VertexAllocation {
+	Vec2f *verts;
+	size_t *count;
+};
+
 struct VerticesCommand {
 	Vec4f color;
-	const Vec2f *points;
-	size_t pointCount;
-	VerticesDrawMode drawMode;
+	const Vec2f *verts;
+	size_t capacity;
+	size_t count;
+	DrawMode drawMode;
 	float thickness;
 	bool isLoop;
 };
@@ -212,12 +219,15 @@ extern void SetMatrix(RenderState &state, const Mat4f &mat);
 extern void PopMatrix(RenderState &state);
 extern void PushRectangle(RenderState &state, const Vec2f &bottomLeft, const Vec2f &size, const Vec4f &color, const bool isFilled, const float lineWidth);
 extern void PushRectangleCenter(RenderState &state, const Vec2f &center, const Vec2f &ext, const Vec4f &color, const bool isFilled, const float lineWidth);
-extern void PushVertices(RenderState &state, const Vec2f *points, const size_t pointCount, const bool copyPoints, const Vec4f &color, const VerticesDrawMode drawMode, const bool isLoop, const float radius);
+extern VertexAllocation AllocateVertices(RenderState &state, const size_t capacity, const Vec4f &color, const DrawMode drawMode, const bool isLoop, const float thickness);
+extern void PushVertices(RenderState &state, const Vec2f *verts, const size_t vertexCount, const bool copyVerts, const Vec4f &color, const DrawMode drawMode, const bool isLoop, const float thickness);
 extern void PushSprite(RenderState &state, const Vec2f &position, const Vec2f &ext, const TextureHandle texture, const Vec4f &color, const Vec2f &uvMin, const Vec2f &uvMax);
 extern void PushSprite(RenderState &state, const Vec2f &position, const Vec2f &ext, const TextureHandle texture, const Vec4f &color, const UVRect &uvRect);
 extern void PushTexture(RenderState &state, TextureHandle *targetTexture, const void *data, const uint32_t width, const uint32_t height, const uint32_t bytesPerPixel, const TextureFilterType filter, const TextureWrapMode wrap, const bool isTopDown, const bool isPreMultiplied);
 extern void PopTexture(RenderState &state, TextureHandle *targetTexture);
 extern void PushText(RenderState &state, const char *text, const size_t textLen, const LoadedFont *font, const TextureHandle *texture, const Vec2f &position, const float maxHeight, const float horizontalAlignment, const float verticalAlignment, const Vec4f &color);
+extern void PushCircle(RenderState &state, const Vec2f &position, const float radius, const size_t segmentCount, const Vec4f &color, const bool isFilled, const float lineWidth);
+extern void PushLine(RenderState &state, const Vec2f &a, const Vec2f &b, const Vec4f &color, const float lineWidth);
 
 #endif // FINAL_RENDER_H
 
@@ -230,6 +240,7 @@ extern void InitRenderState(RenderState &state, fmemMemoryBlock block) {
 }
 
 extern void ResetRenderState(RenderState &state) {
+	state.lastMemoryUsage = state.memory.used;
 	state.memory.used = 0;
 }
 
@@ -310,20 +321,40 @@ extern void PushRectangleCenter(RenderState &state, const Vec2f &center, const V
 	PushRectangle(state, center - ext, ext * 2.0f, color, isFilled, lineWidth);
 }
 
-extern void PushVertices(RenderState &state, const Vec2f *points, const size_t pointCount, const bool copyPoints, const Vec4f &color, const VerticesDrawMode drawMode, const bool isLoop, const float thickness) {
+extern VertexAllocation AllocateVertices(RenderState &state, const size_t capacity, const Vec4f &color, const DrawMode drawMode, const bool isLoop, const float thickness) {
+	VertexAllocation result = {};
 	CommandHeader *header = PushHeader(state, CommandType::Vertices);
 	VerticesCommand *cmd = PushTypes<VerticesCommand>(state, header);
 	if(cmd != nullptr) {
-		if(copyPoints) {
-			Vec2f *dstPoints = PushTypes<Vec2f>(state, header, pointCount);
-			for(size_t i = 0; i < pointCount; ++i) {
-				dstPoints[i] = points[i];
+		cmd->capacity = capacity;
+		cmd->count = 0;
+		cmd->color = color;
+		cmd->drawMode = drawMode;
+		cmd->thickness = thickness;
+		cmd->isLoop = isLoop;
+		Vec2f *verts = PushTypes<Vec2f>(state, header, cmd->capacity);
+		cmd->verts = verts;
+		result.verts = verts;
+		result.count = &cmd->count;
+	}
+	return(result);
+}
+
+extern void PushVertices(RenderState &state, const Vec2f *verts, const size_t vertexCount, const bool copyVerts, const Vec4f &color, const DrawMode drawMode, const bool isLoop, const float thickness) {
+	CommandHeader *header = PushHeader(state, CommandType::Vertices);
+	VerticesCommand *cmd = PushTypes<VerticesCommand>(state, header);
+	if(cmd != nullptr) {
+		cmd->capacity = vertexCount;
+		cmd->count = vertexCount;
+		if(copyVerts) {
+			Vec2f *dstVerts = PushTypes<Vec2f>(state, header, vertexCount);
+			for(size_t i = 0; i < vertexCount; ++i) {
+				dstVerts[i] = verts[i];
 			}
-			cmd->points = dstPoints;
+			cmd->verts = dstVerts;
 		} else {
-			cmd->points = points;
+			cmd->verts = verts;
 		}
-		cmd->pointCount = pointCount;
 		cmd->color = color;
 		cmd->drawMode = drawMode;
 		cmd->thickness = thickness;
@@ -374,6 +405,28 @@ extern void PopTexture(RenderState &state, TextureHandle *targetTexture) {
 	}
 }
 
+extern void PushCircle(RenderState &state, const Vec2f &position, const float radius, const size_t segmentCount, const Vec4f &color, const bool isFilled, const float lineWidth) {
+	FPL_ASSERT(segmentCount >= 3);
+	float seg = Tau32 / (float)segmentCount;
+	size_t vertexCapacity = segmentCount;
+	DrawMode drawMode;
+	if(isFilled) {
+		drawMode = DrawMode::Polygon;
+	} else {
+		drawMode = DrawMode::Lines;
+	}
+	VertexAllocation vertAlloc = AllocateVertices(state, vertexCapacity, color, drawMode, true, lineWidth);
+	size_t vertexCount = 0;
+	Vec2f *p = vertAlloc.verts;
+	for(int segmentIndex = 0; segmentIndex < segmentCount; ++segmentIndex) {
+		float x = position.x + Cosine(segmentIndex * seg) * radius;
+		float y = position.y + sinf(segmentIndex * seg) * radius;
+		*p++ = V2f(x, y);
+		++vertexCount;
+	}
+	*vertAlloc.count = vertexCount;
+}
+
 extern void PushText(RenderState &state, const char *text, const size_t textLen, const LoadedFont *font, const TextureHandle *texture, const Vec2f &position, const float maxHeight, const float horizontalAlignment, const float verticalAlignment, const Vec4f &color) {
 	CommandHeader *header = PushHeader(state, CommandType::Text);
 	TextCommand *cmd = PushTypes<TextCommand>(state, header);
@@ -390,6 +443,11 @@ extern void PushText(RenderState &state, const char *text, const size_t textLen,
 	}
 	char *pt = PushTypes<char>(state, header, textLen + 1, false);
 	fplCopyAnsiStringLen(text, textLen, pt, textLen + 1);
+}
+
+extern void PushLine(RenderState &state, const Vec2f &a, const Vec2f &b, const Vec4f &color, const float lineWidth) {
+	Vec2f v[] = { a, b };
+	PushVertices(state, v, 2, true, color, DrawMode::Lines, false, lineWidth);
 }
 
 extern Viewport ComputeViewportByAspect(const Vec2i &screenSize, const float targetAspect) {

@@ -205,9 +205,8 @@ extern void RenderWithOpenGL(RenderState &renderState) {
 					} else if(cmd->mode == MatrixMode::Push) {
 						FPL_ASSERT(renderState.matrixTop < FPL_ARRAYCOUNT(renderState.matrixStack));
 						Mat4f *newMatrix = &renderState.matrixStack[renderState.matrixTop++];
-						// @TODO(final): Not sure if matrix order is correct here!
-						*newMatrix = mvpCur * cmd->mat;
-						mvpCur = *newMatrix;
+						*newMatrix = mvpCur;
+						mvpCur = *newMatrix * cmd->mat;
 					} else if(cmd->mode == MatrixMode::Pop) {
 						FPL_ASSERT(renderState.matrixTop > 0);
 						mvpCur = renderState.matrixStack[--renderState.matrixTop];
@@ -257,24 +256,24 @@ extern void RenderWithOpenGL(RenderState &renderState) {
 					glColor4fv(&cmd->color.m[0]);
 					GLenum drawMode;
 					switch(cmd->drawMode) {
-						case VerticesDrawMode::Lines:
+						case DrawMode::Lines:
 						{
 							glLineWidth(cmd->thickness);
 							drawMode = cmd->isLoop ? GL_LINE_LOOP : GL_LINES;
 						} break;
 
-						case VerticesDrawMode::Points:
+						case DrawMode::Points:
 						{
 							glPointSize(cmd->thickness);
 							drawMode = GL_POINTS;
 						} break;
 
-						case VerticesDrawMode::Polygon:
+						case DrawMode::Polygon:
 						{
 							drawMode = GL_POLYGON;
 						} break;
 
-						case VerticesDrawMode::Triangles:
+						case DrawMode::Triangles:
 						{
 							drawMode = cmd->isLoop ? GL_TRIANGLE_FAN : GL_POLYGON;
 						} break;
@@ -283,8 +282,8 @@ extern void RenderWithOpenGL(RenderState &renderState) {
 							drawMode = GL_POLYGON;
 					}
 					glBegin(drawMode);
-					for(size_t i = 0; i < cmd->pointCount; ++i) {
-						glVertex2fv(&cmd->points[i].m[0]);
+					for(size_t i = 0; i < cmd->count; ++i) {
+						glVertex2fv(&cmd->verts[i].m[0]);
 					}
 					glEnd();
 				} break;

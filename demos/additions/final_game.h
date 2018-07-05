@@ -11,10 +11,6 @@ Description:
 License:
 	MIT License
 	Copyright 2018 Torsten Spaete
-
-Changelog:
-	## 2018-06-29
-	- Changed to use new keyboard/mouse button state
 */
 
 #ifndef FINAL_GAME_H
@@ -28,6 +24,7 @@ Changelog:
 
 #include "final_math.h"
 #include "final_render.h"
+#include "final_memory.h"
 
 struct ButtonState {
 	fplButtonState state;
@@ -95,9 +92,9 @@ struct Input {
 };
 
 struct GameMemory {
-	void *base;
-	size_t capacity;
-	size_t used;
+	fmemMemoryBlock persistentMemory;
+	struct GameState *game;
+	struct RenderState *render;
 };
 
 enum class GameWindowActiveType : uint32_t {
@@ -110,12 +107,12 @@ enum class GameWindowActiveType : uint32_t {
 };
 FPL_ENUM_AS_FLAGS_OPERATORS(GameWindowActiveType);
 
-extern GameMemory GameCreate();
-extern void GameDestroy(GameMemory &gameMemory);
+extern bool GameInit(GameMemory &gameMemory);
+extern void GameRelease(GameMemory &gameMemory);
 extern void GameInput(GameMemory &gameMemory, const Input &input);
 extern void GameUpdate(GameMemory &gameMemory, const Input &input);
-extern void GameRender(GameMemory &gameMemory, RenderState &renderState, const float alpha);
-extern void GameUpdateAndRender(GameMemory &gameMemory, const Input &input, RenderState &renderState, const float alpha);
+extern void GameRender(GameMemory &gameMemory, const float alpha);
+extern void GameUpdateAndRender(GameMemory &gameMemory, const Input &input, const float alpha);
 extern bool IsGameExiting(GameMemory &gameMemory);
 
 #endif // FINAL_GAME_H
