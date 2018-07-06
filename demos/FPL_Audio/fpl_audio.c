@@ -64,11 +64,13 @@ static bool InitAudioData(AudioSystem *audioSys, const char *filePath) {
 	if(!AudioSystemInit(audioSys)) {
 		return false;
 	}
+
+	// Play audio file
 	AudioSource *source = fpl_null;
 	if(filePath != fpl_null) {
 		source = AudioSystemLoadFileSource(audioSys, filePath);
 		if(source != fpl_null) {
-			AudioSystemPlaySource(audioSys, source, true);
+			AudioSystemPlaySource(audioSys, source, true, 0.25f);
 		}
 	}
 
@@ -88,7 +90,7 @@ static bool InitAudioData(AudioSystem *audioSys, const char *filePath) {
 				*samples++ = sampleValue;
 			}
 		}
-		AudioSystemPlaySource(audioSys, source, true);
+		AudioSystemPlaySource(audioSys, source, true, 1.0f);
 	}
 	return(true);
 }
