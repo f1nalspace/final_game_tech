@@ -1,10 +1,12 @@
 /*
 Name:
 	Final Wave Loader
+
 Description:
 	Simple limited wave loader
 
 	This file is part of the final_framework.
+
 License:
 	MIT License
 	Copyright 2018 Torsten Spaete
@@ -165,7 +167,7 @@ extern bool LoadWaveFromBuffer(const uint8_t *buffer, const size_t bufferSize, L
 						size_t sampleMemorySize = bytesPerSample * channelCount * sampleCount;
 						FPL_ASSERT(sampleMemorySize == dataSize);
 						outWave->samplesSize = sampleMemorySize;
-						outWave->samples = fplMemoryAllocate(sampleMemorySize);
+						outWave->samples = (uint8_t *)fplMemoryAllocate(sampleMemorySize);
 						fplMemoryCopy(data, sampleMemorySize, outWave->samples);
 						outWave->isValid = true;
 						result = true;
