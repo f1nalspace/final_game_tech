@@ -54,8 +54,6 @@ Todo:
 #define FPL_LOGGING
 #include <final_platform_layer.h>
 
-#include <final_math.h>
-
 #define BOX2D_IMPLEMENTATION
 #include <Box2D/Box2D.h>
 
@@ -71,15 +69,17 @@ Todo:
 #define FINAL_OPENGL_RENDER_IMPLEMENTATION
 #include <final_opengl_render.h>
 
-#include <final_arrayinitializer.h>
+#include <final_math.h>
+
+#include <final_utils.h>
 
 #include <final_game.h>
 
 //
 // Game constants
 //
-#define DRAW_NORMALS 1
-#define DRAW_DEBUG 1
+#define DRAW_NORMALS 0
+#define DRAW_DEBUG 0
 
 constexpr int InitialLevelSeed = 1;
 
