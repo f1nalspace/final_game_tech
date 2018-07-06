@@ -24,6 +24,7 @@ License:
 
 #include "final_math.h"
 #include "final_render.h"
+#include "final_audiosystem.h"
 #include "final_memory.h"
 
 struct ButtonState {
@@ -95,6 +96,7 @@ struct GameMemory {
 	fmemMemoryBlock persistentMemory;
 	struct GameState *game;
 	struct RenderState *render;
+	struct AudioSystem *audio;
 };
 
 enum class GameWindowActiveType : uint32_t {

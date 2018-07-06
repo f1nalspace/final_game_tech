@@ -41,14 +41,17 @@ extern int GameMain(const GameConfiguration &config);
 #define FMEM_IMPLEMENTATION
 #include <final_memory.h>
 
-#define FINAL_RENDER_IMPLEMENTATION
-#include <final_render.h>
-
 #define FGL_IMPLEMENTATION
 #include <final_dynamic_opengl.h>
 
+#define FINAL_RENDER_IMPLEMENTATION
+#include "final_render.h"
+
+#define FINAL_AUDIOSYSTEM_IMPLEMENTATION
+#include "final_audiosystem.h"
+
 #define FINAL_OPENGL_RENDER_IMPLEMENTATION
-#include <final_opengl_render.h>
+#include "final_opengl_render.h"
 
 static void UpdateKeyboardButtonState(const fplButtonState state, const ButtonState &oldState, ButtonState &targetButton) {
 	if(state != targetButton.state) {
@@ -236,7 +239,11 @@ static void ProcessEvents(Input *currentInput, Input *prevInput, GameWindowActiv
 	}
 }
 
-
+static uint32_t GameAudioPlayback(const fplAudioDeviceFormat *outFormat, const uint32_t frameCount, void *outputSamples, void *userData) {
+	AudioSystem *audioSys = (AudioSystem *)userData;
+	uint32_t result = AudioSystemWriteSamples(audioSys, outFormat, frameCount, (uint8_t *)outputSamples);
+	return(result);
+}
 
 extern int GameMain(const GameConfiguration &config) {
 	fplSettings settings = fplMakeDefaultSettings();
@@ -264,8 +271,20 @@ extern int GameMain(const GameConfiguration &config) {
 	if(!fmemInit(&renderMemoryBlock, fmemType_Growable, FMEM_MEGABYTES(32))) {
 		wasError = true;
 	}
+
+	AudioSystem audioSys = {};
+	if(!AudioSystemInit(&audioSys)) {
+		wasError = true;
+	}
+
+	fplSetAudioClientReadCallback(GameAudioPlayback, &audioSys);
+	if(fplPlayAudio() != fplAudioResult_Success) {
+		wasError = true;
+	}
+
 	RenderState renderState = {};
 	InitRenderState(renderState, renderMemoryBlock);
+	InitOpenGLRenderer();
 
 	GameMemory gameMem = {};
 	gameMem.persistentMemory = gameMemoryBlock;
@@ -414,14 +433,18 @@ extern int GameMain(const GameConfiguration &config) {
 				curInput = prevInput;
 				prevInput = tmp;
 			}
-		}
+			}
 
 		if(config.hideMouseCursor) {
 			fplSetWindowCursorEnabled(true);
 		}
 
 		GameRelease(gameMem);
-	}
+		}
+
+	fplStopAudio();
+
+	AudioSystemShutdown(&audioSys);
 
 	fmemFree(&gameMemoryBlock);
 	fmemFree(&renderMemoryBlock);
@@ -432,6 +455,6 @@ extern int GameMain(const GameConfiguration &config) {
 
 	int result = wasError ? -1 : 0;
 	return (result);
-}
+	}
 
 #endif // FINAL_GAMEPLATFORM_IMPLEMENTATION

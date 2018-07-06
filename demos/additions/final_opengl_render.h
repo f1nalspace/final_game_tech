@@ -23,6 +23,7 @@ extern void DrawTextFont(const char *text, const size_t textLen, const LoadedFon
 extern void DrawCircle(const float centerX, const float centerY, const float radius, const bool isFilled, const Vec4f &color, const int segments = 16);
 extern void DrawNormal(const Vec2f &pos, const Vec2f &normal, const float length, const Vec4f &color);
 extern GLuint AllocateTexture(const uint32_t width, const uint32_t height, const void *data, const bool repeatable, const GLint filter, const bool isAlphaOnly = false);
+extern void InitOpenGLRenderer();
 extern void RenderWithOpenGL(RenderState &renderState);
 
 #endif // FINAL_OPENGL_RENDER_H
@@ -124,6 +125,20 @@ extern GLuint AllocateTexture(const uint32_t width, const uint32_t height, const
 	return(handle);
 }
 
+extern void InitOpenGLRenderer() {
+	glEnable(GL_DEPTH_TEST);
+	glDepthFunc(GL_LEQUAL);
+
+	glEnable(GL_BLEND);
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+	glDisable(GL_TEXTURE_2D);
+	glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+	glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
+
+	glEnable(GL_LINE_SMOOTH);
+}
+
 extern void RenderWithOpenGL(RenderState &renderState) {
 	size_t index = 0;
 	while(renderState.textureOperationCount > 0) {
@@ -148,18 +163,6 @@ extern void RenderWithOpenGL(RenderState &renderState) {
 	glLoadIdentity();
 	glMatrixMode(GL_MODELVIEW);
 	glLoadIdentity();
-
-	glEnable(GL_DEPTH_TEST);
-	glDepthFunc(GL_LEQUAL);
-
-	glEnable(GL_BLEND);
-	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-
-	glDisable(GL_TEXTURE_2D);
-	glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-	glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
-
-	glEnable(GL_LINE_SMOOTH);
 
 	if(renderState.memory.size > sizeof(CommandHeader)) {
 		uint8_t *mem = (uint8_t *)renderState.memory.base;
