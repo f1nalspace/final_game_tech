@@ -7,6 +7,10 @@
 
 #include <final_render.h>
 
+#include <final_utils.h>
+
+#include <final_assets.h>
+
 constexpr float RadToDeg = 180.0f / (float)M_PI;
 
 constexpr float GameAspect = 16.0f / 9.0f;
@@ -17,24 +21,19 @@ constexpr float WorldRadiusH = WorldHeight * 0.5f;
 
 constexpr float DefaultLineWidth = 2.0f;
 
-constexpr int TileCountX = 21;
-constexpr int TileCountY = 11;
-constexpr float TileWidth = WorldWidth / (float)TileCountX;
-constexpr float TileHeight = WorldHeight / (float)(TileCountY + 1);
+constexpr int FieldTileCountX = 21;
+constexpr int FieldTileCountY = 11;
+constexpr float TileWidth = WorldWidth / (float)FieldTileCountX;
+constexpr float TileHeight = WorldHeight / (float)(FieldTileCountY + 1);
 const Vec2f TileExt = V2f(TileWidth, TileHeight) * 0.5f;
 constexpr float MaxTileSize = FPL_MAX(TileWidth, TileHeight);
 constexpr float MaxTileRadius = MaxTileSize * 0.5f;
-constexpr int TotalTileCount = TileCountX * TileCountY;
 
 constexpr float ControlsWidth = WorldWidth;
 constexpr float ControlsHeight = TileHeight;
 constexpr float ControlsOriginX = -WorldRadiusW;
 constexpr float ControlsOriginY = -WorldRadiusH;
 
-constexpr float GridWidth = TileWidth * (float)TileCountX;
-constexpr float GridHeight = TileHeight * (float)TileCountY;
-constexpr float GridOriginX = -WorldRadiusW + ((WorldWidth - GridWidth) * 0.5f);
-constexpr float GridOriginY = -WorldRadiusH + ControlsHeight;
 
 const Vec4f TextBackColor = V4f(0.2f, 0.2f, 0.8f, 1);
 const Vec4f TextForeColor = V4f(1, 1, 1, 1);
@@ -165,7 +164,7 @@ enum class ObjectType {
 };
 
 inline const char *ObjectTypeToString(const ObjectType type) {
-	switch (type) {
+	switch(type) {
 		case ObjectType::Spawn:
 			return "Spawn";
 		case ObjectType::Waypoint:
@@ -204,6 +203,8 @@ struct LevelData {
 	uint32_t groundFirstGid;
 	uint32_t tileWidth;
 	uint32_t tileHeight;
+	uint32_t mapWidth;
+	uint32_t mapHeight;
 };
 
 struct Tile {
@@ -364,7 +365,7 @@ inline WaveData MakeWaveData(const char *levelId, const float startupCooldown, c
 	result.completionBounty = completionBounty;
 	assert(N <= FPL_ARRAYCOUNT(result.spawners));
 	result.spawnerCount = N;
-	for (size_t i = 0; i < N; ++i) {
+	for(size_t i = 0; i < N; ++i) {
 		result.spawners[i] = spawners[i];
 	}
 	return(result);
@@ -398,11 +399,6 @@ enum class WaveState {
 	Lost
 };
 
-struct FontAsset {
-	LoadedFont desc;
-	TextureHandle texture;
-};
-
 struct Assets {
 	TowerData towerDefinitions[256];
 	CreepData creepDefinitions[128];
@@ -413,7 +409,7 @@ struct Assets {
 	size_t towerDefinitionCount;
 	size_t creepDefinitionCount;
 	size_t waveDefinitionCount;
-	TextureHandle radiantTexture;
+	TextureAsset radiantTexture;
 };
 
 struct Waypoints {
@@ -445,11 +441,21 @@ struct CreepSpawners {
 	size_t count;
 };
 
+struct LevelDimension {
+	size_t tileCountX;
+	size_t tileCountY;
+	float gridOriginX;
+	float gridOriginY;
+	float gridWidth;
+	float gridHeight;
+};
+
 struct Level {
 	LevelData data;
-	// @TODO(final): Dynamic memory (Dimension from LevelData)
-	Tile tiles[TotalTileCount];
+	Tile *tiles;
 	char activeId[256];
+	LevelDimension dimension;
+	size_t tileCapacity;
 };
 
 struct Wave {
@@ -499,27 +505,27 @@ struct GameState {
 	bool isDebugRendering;
 };
 
-inline Vec2f TileToWorld(const Vec2i &tilePos, const Vec2f &offset = V2f(0, 0)) {
+inline Vec2f TileToWorld(const LevelDimension &dim, const Vec2i &tilePos, const Vec2f &offset = V2f(0, 0)) {
 	Vec2f result = {
-		GridOriginX + tilePos.x * TileWidth,
-		GridOriginY + (TileCountY - 1 - tilePos.y) * TileHeight
+		dim.gridOriginX + tilePos.x * TileWidth,
+		dim.gridOriginY + (dim.tileCountY - 1 - tilePos.y) * TileHeight
 	};
 	result += offset;
 	return(result);
 }
 
-inline Vec2i WorldToTile(const Vec2f &worldPos) {
+inline Vec2i WorldToTile(const LevelDimension &dim, const Vec2f &worldPos) {
 	float x = worldPos.x + WorldWidth * 0.5f;
 	float y = worldPos.y + WorldHeight * 0.5f;
 	Vec2i result = {
 		(int)floorf((x) / TileWidth),
-		TileCountY - 1 - (int)floorf((y - ControlsHeight) / TileHeight)
+		(int)dim.tileCountY - 1 - (int)floorf((y - ControlsHeight) / TileHeight)
 	};
 	return(result);
 }
 
-inline bool IsValidTile(const Vec2i &tilePos) {
-	bool result = !(tilePos.x < 0 || tilePos.x >(TileCountX - 1) || tilePos.y < 0 || tilePos.y >(TileCountY - 1));
+inline bool IsValidTile(const LevelDimension &dim, const Vec2i &tilePos) {
+	bool result = !(tilePos.x < 0 || tilePos.x > (dim.tileCountX - 1) || tilePos.y < 0 || tilePos.y > (dim.tileCountY - 1));
 	return(result);
 }
 
