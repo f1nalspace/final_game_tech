@@ -22,6 +22,7 @@ License:
 #include <final_math.h>
 #include <final_fontloader.h>
 #include <final_render.h>
+#include <final_memory.h>
 
 struct FontAsset {
 	LoadedFont desc;
@@ -40,6 +41,23 @@ struct TextureAsset {
 	TextureHandle texture;
 };
 
+enum class AssetType {
+	None = 0,
+	Texture,
+	Font,
+};
+
+struct Asset {
+	AssetType type;
+	union {
+		TextureAsset texture;
+		FontAsset font;
+	};
+};
+
+struct AssetSystem {
+};
+
 extern TextureData LoadTextureData(const char *dataPath, const char *filename);
 extern void FreeTextureData(TextureData &texture);
 extern TextureData CreateSubTextureData(TextureData &source, int x, int y, int w, int h);
@@ -54,6 +72,9 @@ extern TextureData CreateSubTextureData(TextureData &source, int x, int y, int w
 
 #define FINAL_FONTLOADER_IMPLEMENTATION
 #include <final_fontloader.h>
+
+#define FMEM_IMPLEMENTATION
+#include <final_memory.h>
 
 extern void FreeTextureData(TextureData &texture) {
 	if(texture.data != nullptr) {
