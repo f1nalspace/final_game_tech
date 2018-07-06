@@ -1,10 +1,12 @@
 /*
 Name:
 	Final Audio System
+
 Description:
 	Audio system for loading mixing/converting audio streams.
 
 	This file is part of the final_framework.
+
 License:
 	MIT License
 	Copyright 2018 Torsten Spaete
@@ -14,6 +16,7 @@ License:
 #define FINAL_AUDIOSYSTEM_H
 
 #include <final_platform_layer.h>
+#include <float.h>
 
 #define MAX_AUDIOBUFFER_SAMPLE_COUNT 4096
 #define MAX_AUDIOBUFFER_BYTES_PER_SAMPLE 4
@@ -24,6 +27,12 @@ typedef struct AudioBuffer {
 	uint32_t framesRemaining;
 	uint32_t sampleIndex;
 } AudioBuffer;
+
+typedef struct AudioMixingBuffer {
+	float samples[MAX_AUDIOBUFFER_CHANNEL_COUNT * MAX_AUDIOBUFFER_SAMPLE_COUNT];
+	uint32_t maxSampleCount;
+	uint32_t samplesUsed;
+} AudioMixingBuffer;
 
 typedef struct AudioSourceID {
 	uint32_t value;
@@ -44,6 +53,7 @@ typedef struct AudioPlayItem {
 	const AudioSource *source;
 	struct AudioPlayItem *next;
 	struct AudioPlayItem *prev;
+	float volume;
 	uint32_t samplesPlayed;
 	bool isRepeat;
 	bool isFinished;
@@ -66,6 +76,7 @@ typedef struct AudioPlayItems {
 
 typedef struct AudioSystem {
 	AudioBuffer conversionBuffer;
+	AudioMixingBuffer mixingBuffer;
 	fplAudioDeviceFormat nativeFormat;
 	AudioSources sources;
 	AudioPlayItems playItems;
@@ -77,7 +88,7 @@ extern void AudioSystemShutdown(AudioSystem *audioSys);
 extern AudioSource *AudioSystemAllocateSource(AudioSystem *audioSys, const uint32_t channels, const uint32_t sampleRate, const fplAudioFormatType type, const uint32_t sampleCount);
 extern AudioSource *AudioSystemLoadFileSource(AudioSystem *audioSys, const char *filePath);
 extern uint32_t AudioSystemWriteSamples(AudioSystem *audioSys, const fplAudioDeviceFormat *outFormat, const uint32_t frameCount, uint8_t *outSamples);
-extern bool AudioSystemPlaySource(AudioSystem *audioSys, const AudioSource *source, const bool repeat);
+extern bool AudioSystemPlaySource(AudioSystem *audioSys, const AudioSource *source, const bool repeat, const float volume);
 
 #endif // FINAL_AUDIOSYSTEM_H
 
@@ -112,6 +123,7 @@ extern bool AudioSystemInit(AudioSystem *audioSys) {
 		return false;
 	}
 	audioSys->conversionBuffer.maxSampleCount = MAX_AUDIOBUFFER_SAMPLE_COUNT;
+	audioSys->mixingBuffer.maxSampleCount = MAX_AUDIOBUFFER_SAMPLE_COUNT;
 	return(true);
 }
 
@@ -166,12 +178,12 @@ extern AudioSource *AudioSystemLoadFileSource(AudioSystem *audioSys, const char 
 	return(source);
 }
 
-extern bool AudioSystemPlaySource(AudioSystem *audioSys, const AudioSource *source, const bool repeat) {
+extern bool AudioSystemPlaySource(AudioSystem *audioSys, const AudioSource *source, const bool repeat, const float volume) {
 	if((audioSys == fpl_null) || (source == fpl_null)) {
 		return false;
 	}
 
-	AudioPlayItem *playItem = AllocateAudioMemory(audioSys, sizeof(AudioPlayItem));
+	AudioPlayItem *playItem = (AudioPlayItem *)AllocateAudioMemory(audioSys, sizeof(AudioPlayItem));
 	if(playItem == fpl_null) {
 		return false;
 	}
@@ -181,6 +193,7 @@ extern bool AudioSystemPlaySource(AudioSystem *audioSys, const AudioSource *sour
 	playItem->source = source;
 	playItem->isFinished = false;
 	playItem->isRepeat = repeat;
+	playItem->volume = volume;
 
 	fplMutexLock(&audioSys->playItems.lock);
 	if(audioSys->playItems.last == fpl_null) {
@@ -256,26 +269,8 @@ static void ConvertFromF32(const float inSampleValue, uint8_t *outSamples, const
 	}
 }
 
-static uint32_t WriteSamples(const float *inSamples, const uint32_t inChannels, uint8_t *outSamples, const uint32_t outChannels, const fplAudioFormatType outFormat) {
-	uint32_t writtenSampleCount = 0;
-	if(inChannels > 0) {
-		if(outChannels != inChannels) {
-			float sampleValue = inSamples[0];
-			for(uint32_t i = 0; i < outChannels; ++i) {
-				ConvertFromF32(sampleValue, outSamples, i, outFormat);
-				++writtenSampleCount;
-			}
-		} else {
-			FPL_ASSERT(inChannels == outChannels);
-			for(uint32_t i = 0; i < inChannels; ++i) {
-				float sampleValue = inSamples[i];
-				ConvertFromF32(sampleValue, outSamples, i, outFormat);
-				++writtenSampleCount;
-			}
-		}
-	}
-	return(writtenSampleCount);
-}
+
+
 
 static void RemovePlayItem(AudioPlayItems *playItems, AudioPlayItem *playItem) {
 	if(playItem->prev != fpl_null) {
@@ -302,7 +297,164 @@ static void RemovePlayItem(AudioPlayItems *playItems, AudioPlayItem *playItem) {
 	--playItems->count;
 }
 
-static bool FillConversionBuffer(AudioSystem *audioSys, const uint32_t outSampleCount) {
+static uint32_t MixSamples(const float *inSamples, const uint32_t inChannels, float *outSamples, const uint32_t outChannels) {
+	uint32_t mixedSampleCount = 0;
+	if(inChannels > 0 && outChannels > 0) {
+		if(inChannels != outChannels) {
+			float sampleValue = inSamples[0];
+			for(uint32_t i = 0; i < outChannels; ++i) {
+				outSamples[i] += sampleValue;
+				++mixedSampleCount;
+			}
+		} else if(inChannels == outChannels) {
+			for(uint32_t i = 0; i < inChannels; ++i) {
+				float sampleValue = inSamples[i];
+				outSamples[i] += sampleValue;
+				++mixedSampleCount;
+			}
+		}
+	}
+	return(mixedSampleCount);
+}
+
+static uint32_t MixPlayItems(AudioSystem *audioSys, const uint32_t maxSampleCount) {
+	const uint32_t outSampleRate = audioSys->nativeFormat.sampleRate;
+	const uint32_t outChannelCount = audioSys->nativeFormat.channels;
+
+	audioSys->mixingBuffer.samplesUsed = 0;
+	fplMemoryClear(audioSys->mixingBuffer.samples, FPL_ARRAYCOUNT(audioSys->mixingBuffer.samples));
+
+	uint32_t maxOutSampleCount = 0;
+
+	AudioPlayItem *item = audioSys->playItems.first;
+	while(item != fpl_null) {
+		FPL_ASSERT(!item->isFinished);
+
+		float *outSamples = audioSys->mixingBuffer.samples;
+
+		const AudioSource *source = item->source;
+		FPL_ASSERT(item->samplesPlayed < source->sampleCount);
+
+		uint32_t inSampleRate = source->samplesPerSeconds;
+		uint32_t inTotalSampleCount = source->sampleCount;
+		uint32_t inChannelCount = source->channels;
+		fplAudioFormatType inFormat = source->format;
+		uint32_t inBytesPerSample = fplGetAudioSampleSizeInBytes(source->format);
+
+		uint8_t *inSamples = source->samples + item->samplesPlayed * (inChannelCount * inBytesPerSample);
+		uint32_t inRemainingSampleCount = inTotalSampleCount - item->samplesPlayed;
+
+		if(inSampleRate == outSampleRate) {
+			// Sample rates are equal, just write out the samples
+			int inSampleCount = FPL_MIN(maxSampleCount, inRemainingSampleCount);
+			for(int i = 0; i < inSampleCount; ++i) {
+				float inSampleValues[MAX_AUDIOBUFFER_CHANNEL_COUNT];
+				for(uint32_t inChannelIndex = 0; inChannelIndex < inChannelCount; ++inChannelIndex) {
+					inSampleValues[inChannelIndex] = ConvertToF32(inSamples, inChannelIndex, inFormat) * item->volume;
+				}
+				inSamples += inBytesPerSample * inChannelCount;
+				++item->samplesPlayed;
+
+				uint32_t writtenSamples = MixSamples(inSampleValues, inChannelCount, outSamples, outChannelCount);
+				outSamples += writtenSamples;
+			}
+		} else if(outSampleRate > 0 && inSampleRate > 0 && inTotalSampleCount > 0) {
+			bool isEven = (outSampleRate > inSampleRate) ? ((outSampleRate % inSampleRate) == 0) : ((inSampleRate % outSampleRate) == 0);
+			if(isEven) {
+				if(outSampleRate > inSampleRate) {
+					// Simple Upsampling (2x, 4x, 6x, 8x, etc.)
+					int upsamplingFactor = outSampleRate / inSampleRate;
+					int inSampleCount = FPL_MIN(maxSampleCount / upsamplingFactor, inRemainingSampleCount);
+					for(int i = 0; i < inSampleCount; ++i) {
+						float inSampleValues[MAX_AUDIOBUFFER_CHANNEL_COUNT];
+						for(uint32_t inChannelIndex = 0; inChannelIndex < inChannelCount; ++inChannelIndex) {
+							inSampleValues[inChannelIndex] = ConvertToF32(inSamples, inChannelIndex, inFormat) * item->volume;
+						}
+						inSamples += inBytesPerSample * inChannelCount;
+						++item->samplesPlayed;
+
+						for(int f = 0; f < upsamplingFactor; ++f) {
+							uint32_t writtenSamples = MixSamples(inSampleValues, inChannelCount, outSamples, outChannelCount);
+							outSamples += writtenSamples;
+						}
+					}
+				} else {
+					// Simple Downsampling (1/2, 1/4, 1/6, 1/8, etc.)
+					FPL_ASSERT(inSampleRate > outSampleRate);
+					int downsamplingCount = inSampleRate / outSampleRate;
+					int inSampleCount = FPL_MIN(maxSampleCount * downsamplingCount, inRemainingSampleCount);
+					for(int i = 0; i < inSampleCount; i += downsamplingCount) {
+						float inSampleValues[MAX_AUDIOBUFFER_CHANNEL_COUNT];
+						uint8_t *inSamplesForIndex = inSamples + (i * inBytesPerSample * inChannelCount);
+						for(uint32_t inChannelIndex = 0; inChannelIndex < inChannelCount; ++inChannelIndex) {
+							inSampleValues[inChannelIndex] = ConvertToF32(inSamplesForIndex, inChannelIndex, inFormat) * item->volume;
+						}
+						item->samplesPlayed += downsamplingCount;
+
+						uint32_t writtenSamples = MixSamples(inSampleValues, inChannelCount, outSamples, outChannelCount);
+						outSamples += writtenSamples;
+					}
+				}
+			} else {
+				// @TODO(final): Convert from odd freqencies such as 22050 Hz to 48000 Hz, etc.
+				// This requires real DSP!
+			}
+		}
+
+		uint32_t outSampleCount = (uint32_t)(outSamples - audioSys->mixingBuffer.samples);
+		maxOutSampleCount = FPL_MAX(maxOutSampleCount, outSampleCount);
+
+		item = item->next;
+	}
+
+	// Remove or repeat play items
+	fplMutexLock(&audioSys->playItems.lock);
+	AudioPlayItem *playItem = audioSys->playItems.first;
+	while(playItem != fpl_null) {
+		AudioPlayItem *next = playItem->next;
+		if(!playItem->isFinished) {
+			if(playItem->samplesPlayed == playItem->source->sampleCount) {
+				playItem->isFinished = true;
+			}
+		}
+		if(playItem->isFinished) {
+			if(!playItem->isRepeat) {
+				RemovePlayItem(&audioSys->playItems, playItem);
+			} else {
+				playItem->isFinished = false;
+				playItem->samplesPlayed = 0;
+			}
+		}
+		playItem = next;
+	}
+	fplMutexUnlock(&audioSys->playItems.lock);
+
+	uint32_t result = maxOutSampleCount / outChannelCount;
+	return(result);
+}
+
+static uint32_t WriteSamples(const float *inSamples, const uint32_t inChannels, uint8_t *outSamples, const uint32_t outChannels, const fplAudioFormatType outFormat) {
+	uint32_t writtenSampleCount = 0;
+	if(inChannels > 0 && outChannels > 0) {
+		if(outChannels != inChannels) {
+			float sampleValue = inSamples[0];
+			for(uint32_t i = 0; i < outChannels; ++i) {
+				ConvertFromF32(sampleValue, outSamples, i, outFormat);
+				++writtenSampleCount;
+			}
+		} else {
+			FPL_ASSERT(inChannels == outChannels);
+			for(uint32_t i = 0; i < inChannels; ++i) {
+				float sampleValue = inSamples[i];
+				ConvertFromF32(sampleValue, outSamples, i, outFormat);
+				++writtenSampleCount;
+			}
+		}
+	}
+	return(writtenSampleCount);
+}
+
+static bool FillConversionBuffer(AudioSystem *audioSys, const uint32_t maxSampleCount) {
 	audioSys->conversionBuffer.framesRemaining = 0;
 	audioSys->conversionBuffer.sampleIndex = 0;
 	uint8_t *outSamples = audioSys->conversionBuffer.samples;
@@ -311,8 +463,16 @@ static bool FillConversionBuffer(AudioSystem *audioSys, const uint32_t outSample
 	uint32_t outSampleRate = audioSys->nativeFormat.sampleRate;
 	fplAudioFormatType outFormat = audioSys->nativeFormat.type;
 
-	// @TODO(final): Support for mixing play-items!
+	uint32_t mixSampleCount = MixPlayItems(audioSys, maxSampleCount);
 
+	for(uint32_t i = 0; i < mixSampleCount; ++i) {
+		float *inMixingSamples = audioSys->mixingBuffer.samples + i * outChannelCount;
+		uint32_t writtenSamples = WriteSamples(inMixingSamples, outChannelCount, outSamples, outChannelCount, outFormat);
+		outSamples += writtenSamples * outBytesPerSample;
+		++audioSys->conversionBuffer.framesRemaining;
+	}
+
+#if 0
 	AudioPlayItem *item = audioSys->playItems.first;
 	if(item == fpl_null) {
 		return false;
@@ -395,26 +555,10 @@ static bool FillConversionBuffer(AudioSystem *audioSys, const uint32_t outSample
 	if(item->samplesPlayed == inTotalSampleCount) {
 		item->isFinished = true;
 	}
-
-	// Remove or repeat play items
-	fplMutexLock(&audioSys->playItems.lock);
-	AudioPlayItem *playItem = audioSys->playItems.first;
-	while(playItem != fpl_null) {
-		AudioPlayItem *next = playItem->next;
-		if(playItem->isFinished) {
-			if(!playItem->isRepeat) {
-				RemovePlayItem(&audioSys->playItems, playItem);
-			} else {
-				playItem->isFinished = false;
-				playItem->samplesPlayed = 0;
-			}
-		}
-		playItem = next;
-	}
-	fplMutexUnlock(&audioSys->playItems.lock);
+#endif
 
 	return audioSys->conversionBuffer.framesRemaining > 0;
-}
+	}
 
 extern uint32_t AudioSystemWriteSamples(AudioSystem *audioSys, const fplAudioDeviceFormat *outFormat, const uint32_t frameCount, uint8_t *outSamples) {
 	FPL_ASSERT(audioSys != NULL);
