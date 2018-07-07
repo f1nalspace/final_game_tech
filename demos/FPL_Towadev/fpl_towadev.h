@@ -188,6 +188,7 @@ struct ObjectData {
 constexpr size_t MAX_LAYER_COUNT = 8;
 struct LevelLayer {
 	char name[64];
+	float opacity;
 	uint32_t *data;
 	uint32_t mapWidth;
 	uint32_t mapHeight;

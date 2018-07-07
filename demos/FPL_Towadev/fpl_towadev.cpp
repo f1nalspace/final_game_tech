@@ -349,7 +349,7 @@ namespace ui {
 }
 
 namespace utils {
-	static int StringToInt(const char *str, int def = 0) {
+	static int StringToInt(const char *str, const int def = 0) {
 		int result = def;
 		if (str != nullptr) {
 			bool isNegative = false;
@@ -373,9 +373,12 @@ namespace utils {
 		return(result);
 	}
 
-	static float StringToFloat(const char *str) {
+	static float StringToFloat(const char *str, const float def = 0.0f) {
 		// @TODO(final): Implement this yourself!
-		float result = (float)atof(str);
+		float result = def;
+		if (str != nullptr) {
+			result = (float)atof(str);
+		}
 		return(result);
 	}
 }
@@ -592,7 +595,14 @@ namespace level {
 		return(waypoint);
 	}
 
-	static void ParseLevelLayer(fxmlTag *childTag, const uint32_t mapWidth, const uint32_t mapHeight, uint32_t *outData) {
+	static void ParseLevelLayer(fxmlTag *childTag, LevelLayer *targetLayer) {
+		const char *layerName = fxmlGetAttributeValue(childTag, "name");
+		fplCopyAnsiString(layerName, targetLayer->name, FPL_ARRAYCOUNT(targetLayer->name));
+		targetLayer->mapWidth = utils::StringToInt(fxmlGetAttributeValue(childTag, "width"));
+		targetLayer->mapHeight = utils::StringToInt(fxmlGetAttributeValue(childTag, "height"));
+		targetLayer->data = (uint32_t *)fplMemoryAllocate(sizeof(uint32_t) * targetLayer->mapWidth * targetLayer->mapHeight);
+		targetLayer->opacity = utils::StringToFloat(fxmlGetAttributeValue(childTag, "opacity"), 1.0f);
+
 		fxmlTag *dataTag = fxmlFindTagByName(childTag, "data");
 		if (dataTag != nullptr) {
 			const char *encodingStr = fxmlGetAttributeValue(dataTag, "encoding");
@@ -607,12 +617,12 @@ namespace level {
 							tileValue = tileValue * 10 + v;
 							++p;
 						}
-						int row = index / (int)mapWidth;
-						int col = index % (int)mapWidth;
-						assert(row >= 0 && row < (int)mapHeight);
-						assert(col >= 0 && col < (int)mapWidth);
-						int tileIndex = row * mapWidth + col;
-						outData[tileIndex] = tileValue;
+						int row = index / (int)targetLayer->mapWidth;
+						int col = index % (int)targetLayer->mapWidth;
+						assert(row >= 0 && row < (int)targetLayer->mapHeight);
+						assert(col >= 0 && col < (int)targetLayer->mapWidth);
+						int tileIndex = row * targetLayer->mapWidth + col;
+						targetLayer->data[tileIndex] = tileValue;
 					} else if (*p == ',') {
 						++p;
 						++index;
@@ -792,14 +802,9 @@ namespace level {
 					LevelTileset *targetTileset = &level.tilesets[level.tilesetCount++];
 					ParseTileset(childTag, *targetTileset);
 				} else if (strcmp(childTag->name, "layer") == 0) {
-					const char *layerName = fxmlGetAttributeValue(childTag, "name");
 					assert(level.layerCount < MAX_LAYER_COUNT);
 					LevelLayer *targetLayer = &level.layers[level.layerCount++];
-					fplCopyAnsiString(layerName, targetLayer->name, FPL_ARRAYCOUNT(targetLayer->name));
-					targetLayer->mapWidth = utils::StringToInt(fxmlGetAttributeValue(childTag, "width"));
-					targetLayer->mapHeight = utils::StringToInt(fxmlGetAttributeValue(childTag, "height"));
-					targetLayer->data = (uint32_t *)fplMemoryAllocate(sizeof(uint32_t) * targetLayer->mapWidth * targetLayer->mapHeight);
-					ParseLevelLayer(childTag, targetLayer->mapWidth, targetLayer->mapHeight, targetLayer->data);
+					ParseLevelLayer(childTag, targetLayer);
 				} else if (strcmp(childTag->name, "objectgroup") == 0) {
 					const char *objectGroupName = fxmlGetAttributeValue(childTag, "name");
 					if (strcmp(objectGroupName, "objects") == 0) {
@@ -1935,7 +1940,7 @@ extern void GameRender(GameMemory &gameMemory, const float alpha) {
 					const UVRect &uvRect = tileset->tileUVs[indexToTilesheet];
 					if (texAsset != nullptr) {
 						Vec2f pos = TileToWorld(state->level.dimension, V2i((int)x, (int)y), TileExt);
-						PushSprite(renderState, pos, TileExt, texAsset->texture, V4f(1, 1, 1, 1), uvRect);
+						PushSprite(renderState, pos, TileExt, texAsset->texture, V4f(1, 1, 1, layer.opacity), uvRect);
 					}
 				}
 			}
