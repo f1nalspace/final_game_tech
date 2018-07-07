@@ -47,20 +47,11 @@ enum class AssetType {
 	Font,
 };
 
-struct Asset {
-	AssetType type;
-	union {
-		TextureAsset texture;
-		FontAsset font;
-	};
-};
-
-struct AssetSystem {
-};
 
 extern TextureData LoadTextureData(const char *dataPath, const char *filename);
 extern void FreeTextureData(TextureData &texture);
 extern TextureData CreateSubTextureData(TextureData &source, int x, int y, int w, int h);
+extern void ReleaseFontAsset(FontAsset &font);
 
 #endif // FINAL_ASSETS_H
 
@@ -77,7 +68,7 @@ extern TextureData CreateSubTextureData(TextureData &source, int x, int y, int w
 #include <final_memory.h>
 
 extern void FreeTextureData(TextureData &texture) {
-	if(texture.data != nullptr) {
+	if (texture.data != nullptr) {
 		stbi_image_free(texture.data);
 		texture.data = nullptr;
 	}
@@ -93,9 +84,9 @@ extern TextureData CreateSubTextureData(TextureData &source, int x, int y, int w
 	int sourceScanline = source.width * 4;
 	int destScanline = w * 4;
 	int dstY = 0;
-	for(int srcY = y; srcY < (y + h); ++srcY) {
+	for (int srcY = y; srcY < (y + h); ++srcY) {
 		int dstX = 0;
-		for(int srcX = x; srcX < (x + w); ++srcX) {
+		for (int srcX = x; srcX < (x + w); ++srcX) {
 			uint8_t *src = source.data + (srcY * sourceScanline + srcX * 4);
 			uint8_t *dst = result.data + (dstY * destScanline + dstX * 4);
 			uint32_t *srcPixel = (uint32_t *)src;
@@ -115,17 +106,17 @@ extern TextureData LoadTextureData(const char *dataPath, const char *filename) {
 	fplPathCombine(filePath, FPL_ARRAYCOUNT(filePath), 2, dataPath, filename);
 
 	fplFileHandle file;
-	if(fplOpenAnsiBinaryFile(filePath, &file)) {
+	if (fplOpenAnsiBinaryFile(filePath, &file)) {
 		uint32_t fileLen = fplGetFileSizeFromHandle32(&file);
 		uint8_t *fileBuffer = (uint8_t *)fplMemoryAllocate(fileLen);
-		if(fileBuffer != nullptr) {
-			if(fplReadFileBlock32(&file, fileLen, fileBuffer, fileLen) == fileLen) {
+		if (fileBuffer != nullptr) {
+			if (fplReadFileBlock32(&file, fileLen, fileBuffer, fileLen) == fileLen) {
 				int imageWidth = 0;
 				int imageHeight = 0;
 				int imageComponents = 0;
 				stbi_set_flip_vertically_on_load(0);
 				stbi_uc *imageData = stbi_load_from_memory(fileBuffer, fileLen, &imageWidth, &imageHeight, &imageComponents, 4);
-				if(imageData != nullptr) {
+				if (imageData != nullptr) {
 					result.width = imageWidth;
 					result.height = imageHeight;
 					result.components = imageComponents;
@@ -145,6 +136,11 @@ extern TextureData LoadTextureData(const char *dataPath, const char *filename) {
 		fplConsoleFormatError("Image file '%s' could not be found!\n", filePath);
 	}
 	return(result);
+}
+
+extern void ReleaseFontAsset(FontAsset &font) {
+	// @TODO(final): Release texture somehow
+	ReleaseFont(&font.desc);
 }
 
 #endif // FINAL_ASSETS_IMPLEMENTATION

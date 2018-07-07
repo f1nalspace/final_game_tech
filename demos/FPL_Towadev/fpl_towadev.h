@@ -193,14 +193,37 @@ struct LevelLayer {
 	uint32_t mapHeight;
 };
 
+struct TileImage {
+	char source[256];
+	uint32_t width;
+	uint32_t height;
+};
+
+struct TilesetRange {
+	int fromGid;
+	int toGid;
+};
+
+constexpr size_t MAX_TILESET_COUNT = 8;
+struct LevelTileset {
+	TileImage image;
+	char name[64];
+	TilesetRange range;
+	uint32_t tileWidth;
+	uint32_t tileHeight;
+	uint32_t tileCount;
+	uint32_t columns;
+	uint32_t firstGid;
+	UVRect *tileUVs;
+};
+
 struct LevelData {
 	LevelLayer layers[MAX_LAYER_COUNT];
+	LevelTileset tilesets[MAX_TILESET_COUNT];
 	ObjectData objects[256];
 	size_t layerCount;
 	size_t objectCount;
-	uint32_t wayFirstGid;
-	uint32_t entitiesFirstGid;
-	uint32_t groundFirstGid;
+	size_t tilesetCount;
 	uint32_t tileWidth;
 	uint32_t tileHeight;
 	uint32_t mapWidth;
@@ -410,6 +433,9 @@ struct Assets {
 	size_t creepDefinitionCount;
 	size_t waveDefinitionCount;
 	TextureAsset radiantTexture;
+	TextureAsset entitiesTilesetTexture;
+	TextureAsset wayTilesetTexture;
+	TextureAsset groundTilesetTexture;
 };
 
 struct Waypoints {
