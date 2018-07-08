@@ -1441,11 +1441,11 @@ namespace game {
 		ReleaseFontAsset(assets.hudFont);
 	}
 
-	static void LoadTextureAsset(RenderState &renderState, const char *dataPath, const char *filename, TextureAsset *outAsset) {
+	static void LoadTextureAsset(RenderState &renderState, const char *dataPath, const char *filename, const bool isTopDown, TextureAsset *outAsset) {
 		char filePath[FPL_MAX_PATH_LENGTH];
 		fplPathCombine(filePath, FPL_ARRAYCOUNT(filePath), 2, dataPath, filename);
 		int width, height, comp;
-		stbi_set_flip_vertically_on_load(1);
+		stbi_set_flip_vertically_on_load(isTopDown ? 0 : 1);
 		uint8_t *data = stbi_load(filePath, &width, &height, &comp, 4);
 		if (data != nullptr) {
 			outAsset->data.data = data;
@@ -1481,10 +1481,10 @@ namespace game {
 		char levelsDataPath[1024];
 		fplPathCombine(texturesDataPath, FPL_ARRAYCOUNT(texturesDataPath), 2, assets.dataPath, "textures");
 		fplPathCombine(levelsDataPath, FPL_ARRAYCOUNT(levelsDataPath), 2, assets.dataPath, "levels");
-		LoadTextureAsset(renderState, texturesDataPath, "radiant.png", &assets.radiantTexture);
-		LoadTextureAsset(renderState, levelsDataPath, "way_tileset.png", &assets.wayTilesetTexture);
-		LoadTextureAsset(renderState, levelsDataPath, "entities_tileset.png", &assets.entitiesTilesetTexture);
-		LoadTextureAsset(renderState, levelsDataPath, "ground_tileset.png", &assets.groundTilesetTexture);
+		LoadTextureAsset(renderState, texturesDataPath, "radiant.png", false, &assets.radiantTexture);
+		LoadTextureAsset(renderState, levelsDataPath, "way_tileset.png", false, &assets.wayTilesetTexture);
+		LoadTextureAsset(renderState, levelsDataPath, "entities_tileset.png", false, &assets.entitiesTilesetTexture);
+		LoadTextureAsset(renderState, levelsDataPath, "ground_tileset.png", false, &assets.groundTilesetTexture);
 	}
 
 	static void ReleaseGame(GameState &state) {
