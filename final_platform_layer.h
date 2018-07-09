@@ -133,6 +133,7 @@ SOFTWARE.
 	- New: Skip implementation block when documentation parser is detected (By be disabled -> FPL_NO_SKIP_IMPL_FOR_PARSER)
 	- New: Added macro function FPL_STRUCT_INIT
 	- Fixed: [Win32] Fullscreen toggling was broken in maximize/minimize mode
+    - Fixed: [POSIX] fplListDirNext() was broken
 
 	## v0.8.3.0 beta:
 	- Changed: fplVersionInfo is now parsed as char[4] instead of uint32_t
@@ -1452,7 +1453,7 @@ FPL_STATICASSERT(sizeof(size_t) == sizeof(uint32_t));
 	//! Sets a struct pointer to the given value (C++)
 #	define FPL_STRUCT_SET(ptr, type, value) *(ptr) = value
 	//! Inits a struct by the given type (C++)
-#	define FPL_STRUCT_INIT(type, ...) {## __VA_ARGS__}
+#	define FPL_STRUCT_INIT(type, ...) {__VA_ARGS__}
 #endif
 
 //! Clears the given struct pointer to zero
@@ -11309,7 +11310,7 @@ fpl_internal void fpl__PosixFillFileEntry(struct dirent *dp, fplFileEntry *entry
 	FPL_ASSERT((dp != fpl_null) && (entry != fpl_null));
 	fplCopyAnsiString(entry->internalRoot.rootPath, entry->fullPath, FPL_ARRAYCOUNT(entry->fullPath));
 	fplEnforcePathSeparatorLen(entry->fullPath, FPL_ARRAYCOUNT(entry->fullPath));
-	fplCopyAnsiString(dp->d_name, entry->fullPath, FPL_ARRAYCOUNT(entry->fullPath));
+	fplStringAppend(dp->d_name, entry->fullPath, FPL_ARRAYCOUNT(entry->fullPath));
 	entry->type = fplFileEntryType_Unknown;
 	entry->attributes = fplFileAttributeFlags_None;
 	entry->size = 0;
@@ -11321,7 +11322,7 @@ fpl_internal void fpl__PosixFillFileEntry(struct dirent *dp, fplFileEntry *entry
 		} else if (S_ISREG(sb.st_mode)) {
 			entry->type = fplFileEntryType_File;
 		}
-		entry->size = sb.st_size;
+		entry->size = (size_t)sb.st_size;
 		if (dp->d_name[0] == '.') {
 			// @NOTE(final): Any filename starting with dot is hidden in POSIX
 			entry->attributes |= fplFileAttributeFlags_Hidden;
