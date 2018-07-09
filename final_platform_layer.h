@@ -134,6 +134,7 @@ SOFTWARE.
 	- New: Added macro function FPL_STRUCT_INIT
 	- Fixed: [Win32] Fullscreen toggling was broken in maximize/minimize mode
     - Fixed: [POSIX] fplListDirNext() was broken
+    - Fixed: [X11] Key up event was never fired (KeyRelease + KeyPress = Key-Repeat)
 
 	## v0.8.3.0 beta:
 	- Changed: fplVersionInfo is now parsed as char[4] instead of uint32_t
@@ -5835,6 +5836,8 @@ typedef FPL__FUNC_X11_XSync(fpl__func_x11_XSync);
 typedef FPL__FUNC_X11_XNextEvent(fpl__func_x11_XNextEvent);
 #define FPL__FUNC_X11_XPeekEvent(name) int name(Display *display, XEvent *event_return)
 typedef FPL__FUNC_X11_XPeekEvent(fpl__func_x11_XPeekEvent);
+#define FPL__FUNC_X11_XEventsQueued(name) int name(Display *display, int mode)
+typedef FPL__FUNC_X11_XEventsQueued(fpl__func_x11_XEventsQueued);
 #define FPL__FUNC_X11_XGetWindowAttributes(name) Status name(Display *display, Window w, XWindowAttributes *window_attributes_return)
 typedef FPL__FUNC_X11_XGetWindowAttributes(fpl__func_x11_XGetWindowAttributes);
 #define FPL__FUNC_X11_XResizeWindow(name) int name(Display *display, Window w, unsigned int width, unsigned int height)
@@ -5859,6 +5862,8 @@ typedef FPL__FUNC_X11_XPutImage(fpl__func_x11_XPutImage);
 typedef FPL__FUNC_X11_XMapRaised(fpl__func_x11_XMapRaised);
 #define FPL__FUNC_X11_XCreatePixmap(name) Pixmap name(Display * display, Drawable d, unsigned int width, unsigned int height, unsigned int depth)
 typedef FPL__FUNC_X11_XCreatePixmap(fpl__func_x11_XCreatePixmap);
+#define FPL__FUNC_X11_XSelectInput(name) int name(Display * display, Window w, long eventMask)
+typedef FPL__FUNC_X11_XSelectInput(fpl__func_x11_XSelectInput);
 
 
 typedef struct fpl__X11Api {
@@ -5885,6 +5890,7 @@ typedef struct fpl__X11Api {
 	fpl__func_x11_XSync *XSync;
 	fpl__func_x11_XNextEvent *XNextEvent;
 	fpl__func_x11_XPeekEvent *XPeekEvent;
+    fpl__func_x11_XEventsQueued *XEventsQueued;
 	fpl__func_x11_XGetWindowAttributes *XGetWindowAttributes;
 	fpl__func_x11_XResizeWindow *XResizeWindow;
 	fpl__func_x11_XMoveWindow *XMoveWindow;
@@ -5897,6 +5903,7 @@ typedef struct fpl__X11Api {
 	fpl__func_x11_XMapRaised *XMapRaised;
 	fpl__func_x11_XCreateImage *XCreateImage;
 	fpl__func_x11_XCreatePixmap *XCreatePixmap;
+    fpl__func_x11_XSelectInput *XSelectInput;
 } fpl__X11Api;
 
 fpl_internal void fpl__UnloadX11Api(fpl__X11Api *x11Api) {
@@ -5942,6 +5949,7 @@ fpl_internal bool fpl__LoadX11Api(fpl__X11Api *x11Api) {
 				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_X11, libHandle, libName, x11Api->XSync, fpl__func_x11_XSync, "XSync");
 				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_X11, libHandle, libName, x11Api->XNextEvent, fpl__func_x11_XNextEvent, "XNextEvent");
 				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_X11, libHandle, libName, x11Api->XPeekEvent, fpl__func_x11_XPeekEvent, "XPeekEvent");
+                FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_X11, libHandle, libName, x11Api->XEventsQueued, fpl__func_x11_XEventsQueued, "XEventsQueued");
 				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_X11, libHandle, libName, x11Api->XGetWindowAttributes, fpl__func_x11_XGetWindowAttributes, "XGetWindowAttributes");
 				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_X11, libHandle, libName, x11Api->XResizeWindow, fpl__func_x11_XResizeWindow, "XResizeWindow");
 				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_X11, libHandle, libName, x11Api->XMoveWindow, fpl__func_x11_XMoveWindow, "XMoveWindow");
@@ -5954,6 +5962,7 @@ fpl_internal bool fpl__LoadX11Api(fpl__X11Api *x11Api) {
 				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_X11, libHandle, libName, x11Api->XMapRaised, fpl__func_x11_XMapRaised, "XMapRaised");
 				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_X11, libHandle, libName, x11Api->XCreateImage, fpl__func_x11_XCreateImage, "XCreateImage");
 				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_X11, libHandle, libName, x11Api->XCreatePixmap, fpl__func_x11_XCreatePixmap, "XCreatePixmap");
+                FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_X11, libHandle, libName, x11Api->XSelectInput, fpl__func_x11_XSelectInput, "XSelectInput");
 				result = true;
 			} while (0);
 			if (result) {
@@ -6181,18 +6190,23 @@ fpl_internal void fpl__PushMouseMoveEvent(const int32_t x, const int32_t y) {
 }
 
 
-fpl_internal void fpl__HandleKeyboardButtonEvent(fpl__PlatformWindowState *windowState, const uint64_t keyCode, const fplKeyboardModifierFlags modifiers, const fplButtonState buttonState) {
-	FPL_ASSERT(buttonState != fplButtonState_Repeat);
+fpl_internal void fpl__HandleKeyboardButtonEvent(fpl__PlatformWindowState *windowState, const uint64_t keyCode, const fplKeyboardModifierFlags modifiers, const fplButtonState buttonState, const bool force) {
 	fplKey mappedKey = fpl__GetMappedKey(windowState, keyCode);
 	bool repeat = false;
-	if (keyCode < FPL_ARRAYCOUNT(windowState->keyStates)) {
-		if ((buttonState == fplButtonState_Release) && (windowState->keyStates[mappedKey] == fplButtonState_Release)) {
-			return;
-		}
-		if ((buttonState == fplButtonState_Press) && (windowState->keyStates[mappedKey] == fplButtonState_Press)) {
-			repeat = true;
-		}
-		windowState->keyStates[keyCode] = buttonState;
+	if (force) {
+        windowState->keyStates[keyCode] = buttonState;
+	} else {
+        FPL_ASSERT(buttonState != fplButtonState_Repeat);
+        if (keyCode < FPL_ARRAYCOUNT(windowState->keyStates)) {
+            if ((buttonState == fplButtonState_Release) &&
+                (windowState->keyStates[mappedKey] == fplButtonState_Release)) {
+                return;
+            }
+            if ((buttonState == fplButtonState_Press) && (windowState->keyStates[mappedKey] == fplButtonState_Press)) {
+                repeat = true;
+            }
+            windowState->keyStates[keyCode] = buttonState;
+        }
 	}
 	fpl__PushKeyboardButtonEvent(keyCode, mappedKey, modifiers, repeat ? fplButtonState_Repeat : buttonState);
 }
@@ -7807,7 +7821,7 @@ LRESULT CALLBACK fpl__Win32MessageProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 			if (superKeyIsDown) {
 				modifiers |= fplKeyboardModifierFlags_Super;
 			}
-			fpl__HandleKeyboardButtonEvent(&appState->window, keyCode, modifiers, keyState);
+			fpl__HandleKeyboardButtonEvent(&appState->window, keyCode, modifiers, keyState, false);
 			if (wasDown != isDown) {
 				if (isDown) {
 					if (keyCode == VK_F4 && altKeyIsDown) {
@@ -11857,6 +11871,9 @@ fpl_internal bool fpl__X11InitWindow(const fplSettings *initSettings, fplWindowS
 	}
 	FPL_LOG_DEBUG(FPL__MODULE_X11, "Successfully created window with (Display='%p', Root='%d', Size=%dx%d, Colordepth='%d', visual='%p', colormap='%d': %d", windowState->display, (int)windowState->root, windowWidth, windowHeight, colorDepth, visual, (int)swa.colormap, (int)windowState->window);
 
+    // Force keyboard and button events
+    x11Api->XSelectInput(windowState->display, windowState->window, KeyPressMask | KeyReleaseMask | ButtonPressMask | ButtonReleaseMask);
+
 	windowState->visual = visual;
 
 	char wmDeleteWindowId[100];
@@ -11924,7 +11941,8 @@ fpl_internal bool fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatfor
 	FPL_ASSERT((subplatform != fpl_null) && (appState != fpl_null) && (ev != fpl_null));
 	fpl__PlatformWindowState *winState = &appState->window;
 	fpl__X11WindowState *x11WinState = &winState->x11;
-	bool result = true;
+    const fpl__X11Api *x11Api = &appState->x11.api;
+    bool result = true;
 	switch (ev->type) {
 		case ConfigureNotify:
 		{
@@ -11951,15 +11969,34 @@ fpl_internal bool fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatfor
 			}
 		} break;
 
-		case KeyPress:
+        case KeyPress:
+        {
+            // Keyboard button down
+            int keyState = ev->xkey.state;
+            int keyCode = ev->xkey.keycode;
+            fpl__HandleKeyboardButtonEvent(winState, (uint64_t)keyCode, fpl__X11TranslateModifierFlags(keyState), fplButtonState_Press, false);
+        } break;
+
 		case KeyRelease:
 		{
-			// Keyboard button down/up
-			int keyState = ev->xkey.state;
-			int keyCode = ev->xkey.keycode;
-			bool isDown = ev->type == KeyPress;
-			fplButtonState btnState = isDown ? fplButtonState_Press : fplButtonState_Release;
-			fpl__HandleKeyboardButtonEvent(winState, keyCode, fpl__X11TranslateModifierFlags(keyState), btnState);
+			// Keyboard button up
+			bool physical = true;
+            if (x11Api->XPending(x11WinState->display)) {
+                XEvent nextEvent;
+                x11Api->XPeekEvent(x11WinState->display, &nextEvent);
+                if (nextEvent.type == KeyPress && nextEvent.xkey.time == ev->xkey.time && nextEvent.xkey.keycode == ev->xkey.keycode) {
+                    // Delete future key press event, as it is a key-repeat
+                    x11Api->XNextEvent(x11WinState->display, ev);
+                    physical = false;
+                }
+            }
+            int keyState = ev->xkey.state;
+            int keyCode = ev->xkey.keycode;
+            if (physical) {
+                fpl__HandleKeyboardButtonEvent(winState, (uint64_t) keyCode, fpl__X11TranslateModifierFlags(keyState), fplButtonState_Release, true);
+            } else {
+                fpl__HandleKeyboardButtonEvent(winState, (uint64_t) keyCode, fpl__X11TranslateModifierFlags(keyState), fplButtonState_Repeat, false);
+            }
 		} break;
 
 		case ButtonPress:
@@ -12023,7 +12060,7 @@ fpl_platform_api bool fplPushEvent() {
 	if (x11Api->XPending(windowState->display)) {
 		XEvent ev;
 		x11Api->XNextEvent(windowState->display, &ev);
-		result = fpl__X11HandleEvent(&appState->x11, appState, &ev);
+        result = fpl__X11HandleEvent(&appState->x11, appState, &ev);
 	}
 	return (result);
 }
@@ -12067,11 +12104,10 @@ fpl_platform_api bool fplWindowUpdate() {
 	const fpl__X11WindowState *windowState = &appState->window.x11;
 	bool result = false;
 	fplClearEvents();
-	int pendingCount = x11Api->XPending(windowState->display);
-	while (pendingCount--) {
+	while (x11Api->XPending(windowState->display)) {
 		XEvent ev;
 		x11Api->XNextEvent(windowState->display, &ev);
-		fpl__X11HandleEvent(&appState->x11, appState, &ev);
+        fpl__X11HandleEvent(&appState->x11, appState, &ev);
 	}
 	x11Api->XFlush(windowState->display);
 	result = appState->window.isRunning;
