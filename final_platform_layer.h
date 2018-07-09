@@ -1445,14 +1445,14 @@ FPL_STATICASSERT(sizeof(size_t) == sizeof(uint32_t));
 	//! Sets a struct pointer to the given value (C99)
 #	define FPL_STRUCT_SET(ptr, type, value) *(ptr) = (type)value
 	//! Inits a struct by the given type (C99)
-#	define FPL_STRUCT_INIT(type, values) (type)values
+#	define FPL_STRUCT_INIT(type, ...) (type){## __VA_ARGS__}
 #else
 	//! Initialize a struct to zero (C++)
 #	define FPL_ZERO_INIT {}
 	//! Sets a struct pointer to the given value (C++)
 #	define FPL_STRUCT_SET(ptr, type, value) *(ptr) = value
 	//! Inits a struct by the given type (C++)
-#	define FPL_STRUCT_INIT(type, values) {values}
+#	define FPL_STRUCT_INIT(type, ...) {## __VA_ARGS__}
 #endif
 
 //! Clears the given struct pointer to zero
