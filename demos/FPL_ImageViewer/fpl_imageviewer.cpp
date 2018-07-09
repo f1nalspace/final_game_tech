@@ -18,6 +18,9 @@ Author:
 	Torsten Spaete
 
 Changelog:
+	## 2018-07-09
+ 	- Fixes for Linux/POSIX
+
 	## 2018-07-08
 	- Extreme refactoring to support modern OpenGL
 	- Implemented custom GLSL filters to try-to-fix quality issues
@@ -66,7 +69,6 @@ Todo:
 
 #define FPL_IMPLEMENTATION
 #define FPL_LOGGING
-#define FPL_FORCE_ASSERTIONS
 #include <final_platform_layer.h>
 
 #define FGL_IMPLEMENTATION
@@ -77,6 +79,12 @@ Todo:
 
 #include <string.h>
 #include <malloc.h>
+
+#if defined(FPL_PLATFORM_WIN32)
+#define CompareStringIgnoreCase _stricmp
+#else
+#define CompareStringIgnoreCase strcasecmp
+#endif
 
 typedef union Vec2f {
 	struct {
@@ -339,7 +347,7 @@ static void InitQueue(LoadQueue *queue, const size_t queueCount) {
 	queue->size = queueCount;
 	queue->mask = queue->size - 1;
 	queue->headSeq = queue->tailSeq = 0;
-	for (int i = 0; i < queue->size; ++i) {
+	for (size_t i = 0; i < queue->size; ++i) {
 		queue->buffer[i].seq = i;
 	}
 }
@@ -396,7 +404,7 @@ static bool IsPictureFile(const char *filePath) {
 	const char *ext = fplExtractFileExtension(filePath);
 	bool result;
 	if (ext != fpl_null) {
-		result = (_stricmp(ext, ".jpg") == 0) || (_stricmp(ext, ".jpeg") == 0) || (_stricmp(ext, ".png") == 0) || (_stricmp(ext, ".bmp") == 0);
+		result = (CompareStringIgnoreCase(ext, ".jpg") == 0) || (CompareStringIgnoreCase(ext, ".jpeg") == 0) || (CompareStringIgnoreCase(ext, ".png") == 0) || (CompareStringIgnoreCase(ext, ".bmp") == 0);
 	} else {
 		result = false;
 	}
@@ -429,9 +437,8 @@ static void AddPictureFile(ViewerState *state, const char *filePath) {
 
 static void AddPicturesFromPath(ViewerState *state, const char *path, const bool recursive) {
 	fplFileEntry entry;
-	bool hasEntry = false;
 	size_t addedPics = 0;
-	for (hasEntry = fplListDirBegin(path, "*", &entry); hasEntry; hasEntry = fplListDirNext(&entry)) {
+	for (bool hasEntry = fplListDirBegin(path, "*", &entry); hasEntry; hasEntry = fplListDirNext(&entry)) {
 		if (!hasEntry) {
 			break;
 		}
@@ -451,6 +458,7 @@ static void AddPicturesFromPath(ViewerState *state, const char *path, const bool
 
 static bool LoadPicturesPath(ViewerState *state, const char *path, const bool recursive) {
 	ClearPictureFiles(state);
+	FPL_LOG_INFO("ImageViewer", "Loading pictures from path '%s'", path);
 	if (fplDirectoryExists(path)) {
 		fplCopyAnsiString(path, state->rootPath, FPL_ARRAYCOUNT(state->rootPath));
 		AddPicturesFromPath(state, state->rootPath, recursive);
@@ -531,7 +539,8 @@ int ReadPictureStreamCallback(void *user, char *data, int size) {
 	if (*ctx->shutdown) {
 		return -1;
 	}
-	uint32_t readBytes = fplReadFileBlock32(&pic->fileStream.handle, size, (void *)data, size);
+	FPL_ASSERT(size >= 0);
+	uint32_t readBytes = fplReadFileBlock32(&pic->fileStream.handle, (uint32_t)size, (void *)data, (uint32_t)size);
 	UpdateStreamProgress(pic);
 	return (int)readBytes;
 }
@@ -591,7 +600,7 @@ static void LoadPictureThreadProc(const fplThreadHandle *thread, void *data) {
 				loadedPic->progress = 0.0f;
 				loadedPic->fileStream.size = 0;
 
-				loadedPic->fileIndex = valueToLoad.fileIndex;
+				loadedPic->fileIndex = (size_t)valueToLoad.fileIndex;
 				FPL_ASSERT(picFile->filePath != fpl_null);
 				fplCopyAnsiString(picFile->filePath, loadedPic->filePath, FPL_ARRAYCOUNT(loadedPic->filePath));
 				loadedPic->width = loadedPic->height = 0;
@@ -599,10 +608,9 @@ static void LoadPictureThreadProc(const fplThreadHandle *thread, void *data) {
 				loadedPic->components = 0;
 
 				int w = 0, h = 0, comp = 0;
-				uint8_t *data;
+				uint8_t *imageData = fpl_null;
 
-				fplDebugFormatOut("Load picture stream '%s'[%d]\n", loadedPic->filePath, loadedPic->fileIndex);
-				data = fpl_null;
+                FPL_LOG_INFO("ImageViewer", "Load picture stream '%s'[%d]", loadedPic->filePath, loadedPic->fileIndex);
 				if (fplOpenAnsiBinaryFile(loadedPic->filePath, &loadedPic->fileStream.handle)) {
 					loadedPic->fileStream.size = fplGetFileSizeFromHandle32(&loadedPic->fileStream.handle);
 					stbi_io_callbacks callbacks;
@@ -613,15 +621,15 @@ static void LoadPictureThreadProc(const fplThreadHandle *thread, void *data) {
 					LoadPictureContext loadCtx;
 					loadCtx.shutdown = &loadThread->shutdown;
 					loadCtx.viewPic = loadedPic;
-					data = stbi_load_from_callbacks(&callbacks, &loadCtx, &w, &h, &comp, 4);
+                    imageData = stbi_load_from_callbacks(&callbacks, &loadCtx, &w, &h, &comp, 4);
 					fplCloseFile(&loadedPic->fileStream.handle);
 				}
-				if (data != fpl_null) {
+				if (imageData != fpl_null) {
 					loadedPic->progress = 0.75f;
-					loadedPic->width = w;
-					loadedPic->height = h;
+					loadedPic->width = (uint32_t)w;
+					loadedPic->height = (uint32_t)h;
 					loadedPic->components = 4;
-					loadedPic->data = data;
+					loadedPic->data = imageData;
 					fplAtomicStoreS32(&loadedPic->state, LoadedPictureState_ToUpload);
 				} else {
 					loadedPic->progress = 1.0f;
@@ -751,7 +759,7 @@ static void ChangeViewPicture(ViewerState *state, const int offset, const bool f
 		DiscardAll(state);
 		ShutdownQueue(&state->loadQueue);
 
-		// Wait for threads to stop loading, but stay running
+		// @TODO(final): Wait for threads to stop loading, but dont shutdown the threads!
 
 		InitQueue(&state->loadQueue, state->loadQueueCapacity);
 		state->doPictureReload = true;
@@ -851,7 +859,7 @@ static GLuint CreateShaderType(GLenum type, const char *name, const char *source
 		shaderId = 0;
 	}
 
-	assert(shaderId > 0);
+	FPL_ASSERT(shaderId > 0);
 
 	return(shaderId);
 }
@@ -883,12 +891,12 @@ static GLuint CreateShaderProgram(const char *name, const char *vertexSource, co
 		glDeleteProgram(programId);
 		programId = 0;
 	}
-	assert(programId > 0);
+	FPL_ASSERT(programId > 0);
 
 	return(programId);
 }
 
-#define CheckGL(func) ((func), assert(glGetError() == GL_NO_ERROR))
+#define CheckGL(func) ((func), FPL_ASSERT(glGetError() == GL_NO_ERROR))
 
 static void Init(ViewerState *state) {
 	glClearColor(0, 0, 0, 1);
@@ -939,7 +947,7 @@ static void Init(ViewerState *state) {
 	glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(GLushort) * 6, &state->quadIndices[0], GL_STATIC_DRAW);
 	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
 
-	assert(glGetError() == GL_NO_ERROR);
+	FPL_ASSERT(glGetError() == GL_NO_ERROR);
 
 	state->viewPictureIndex = -1;
 	state->activeFileIndex = -1;
@@ -990,9 +998,9 @@ inline void BuildModelMat(const float centerX, const float centerY, const float 
 
 static void DrawLinedRectangle(ViewerState *state, const Mat4f *vpMat, const Vec2f pos, const Vec2f ext, const Vec4f color, const float lineWidth) {
 #if USE_GLVERSION >= 2
-	GLuint locVP = glGetUniformLocation(state->colorShaderProgram, "uniVP");
-	GLuint locModel = glGetUniformLocation(state->colorShaderProgram, "uniModel");
-	GLuint locColor = glGetUniformLocation(state->colorShaderProgram, "uniColor");
+	GLint locVP = glGetUniformLocation(state->colorShaderProgram, "uniVP");
+	GLint locModel = glGetUniformLocation(state->colorShaderProgram, "uniModel");
+	GLint locColor = glGetUniformLocation(state->colorShaderProgram, "uniColor");
 
 	glBindBuffer(GL_ARRAY_BUFFER, state->quadVBO);
 	glEnableVertexAttribArray(0);
@@ -1048,9 +1056,9 @@ static void DrawLinedRectangle(ViewerState *state, const Mat4f *vpMat, const Vec
 
 static void DrawSolidRectangle(ViewerState *state, const Mat4f *vpMat, const Mat4f *modelMat, const Vec4f color) {
 #if USE_GLVERSION >= 2
-	GLuint locVP = glGetUniformLocation(state->colorShaderProgram, "uniVP");
-	GLuint locModel = glGetUniformLocation(state->colorShaderProgram, "uniModel");
-	GLuint locColor = glGetUniformLocation(state->colorShaderProgram, "uniColor");
+	GLint locVP = glGetUniformLocation(state->colorShaderProgram, "uniVP");
+	GLint locModel = glGetUniformLocation(state->colorShaderProgram, "uniModel");
+	GLint locColor = glGetUniformLocation(state->colorShaderProgram, "uniColor");
 
 	glBindBuffer(GL_ARRAY_BUFFER, state->quadVBO);
 	glEnableVertexAttribArray(0);
@@ -1086,11 +1094,11 @@ static void DrawSolidRectangle(ViewerState *state, const Mat4f *vpMat, const Mat
 
 static void DrawTexturedRectangle(ViewerState *state, const GLuint textureId, const GLuint programId, const Mat4f *vpMat, const Mat4f *modelMat, const Vec4f color, const Vec2f texSize) {
 #if USE_GLVERSION >= 2
-	GLuint locVP = glGetUniformLocation(programId, "uniVP");
-	GLuint locModel = glGetUniformLocation(programId, "uniModel");
-	GLuint locImage = glGetUniformLocation(programId, "uniImage");
-	GLuint locColor = glGetUniformLocation(programId, "uniColor");
-	GLuint locTexSize = glGetUniformLocation(programId, "uniTexSize");
+	GLint locVP = glGetUniformLocation(programId, "uniVP");
+	GLint locModel = glGetUniformLocation(programId, "uniModel");
+	GLint locImage = glGetUniformLocation(programId, "uniImage");
+	GLint locColor = glGetUniformLocation(programId, "uniColor");
+	GLint locTexSize = glGetUniformLocation(programId, "uniTexSize");
 
 	glBindBuffer(GL_ARRAY_BUFFER, state->quadVBO);
 	glEnableVertexAttribArray(0);
@@ -1142,12 +1150,12 @@ static void UpdateAndRender(ViewerState *state) {
 	if (state->viewPictureIndex != -1) {
 		ViewPicture *currentPic = &state->viewPictures[state->viewPictureIndex];
 		if (currentPic->fileIndex == 0) {
-			for (size_t i = 0; i < state->viewPictureIndex; ++i) {
+			for (int i = 0; i < state->viewPictureIndex; ++i) {
 				ViewPicture *sidePic = &state->viewPictures[i];
 				fplAtomicStoreS32(&sidePic->state, LoadedPictureState_Discard);
 			}
 		} else if (currentPic->fileIndex == state->pictureFileCount - 1) {
-			for (size_t i = state->viewPictureIndex + 1; i < state->viewPicturesCapacity; ++i) {
+			for (int i = state->viewPictureIndex + 1; i < state->viewPicturesCapacity; ++i) {
 				ViewPicture *sidePic = &state->viewPictures[i];
 				fplAtomicStoreS32(&sidePic->state, LoadedPictureState_Discard);
 			}
@@ -1155,7 +1163,7 @@ static void UpdateAndRender(ViewerState *state) {
 	}
 
 	// Discard or upload textures
-	for (size_t i = 0; i < state->viewPicturesCapacity; ++i) {
+	for (int i = 0; i < state->viewPicturesCapacity; ++i) {
 		ViewPicture *loadedPic = &state->viewPictures[i];
 		if (fplAtomicLoadS32(&loadedPic->state) == LoadedPictureState_Discard) {
 			if (loadedPic->textureId > 0) {
@@ -1180,7 +1188,7 @@ static void UpdateAndRender(ViewerState *state) {
 #endif
 			}
 
-			loadedPic->textureId = AllocateTexture(loadedPic->width, loadedPic->height, loadedPic->components, loadedPic->data, false, texFilter);
+			loadedPic->textureId = AllocateTexture(loadedPic->width, loadedPic->height, (uint8_t)loadedPic->components, loadedPic->data, false, texFilter);
 
 			stbi_image_free(loadedPic->data);
 			loadedPic->data = fpl_null;
@@ -1358,7 +1366,7 @@ static void UpdateAndRender(ViewerState *state) {
 		}
 	}
 
-	assert(glGetError() == GL_NO_ERROR);
+	FPL_ASSERT(glGetError() == GL_NO_ERROR);
 }
 
 int main(int argc, char **argv) {
@@ -1376,6 +1384,8 @@ int main(int argc, char **argv) {
 	settings.video.graphics.opengl.compabilityFlags = fplOpenGLCompabilityFlags_Legacy;
 #endif
 	fplCopyAnsiString("FPL Demo - Image Viewer", settings.window.windowTitle, FPL_ARRAYCOUNT(settings.window.windowTitle));
+
+    fplSetMaxLogLevel(fplLogLevel_All);
 
 	if (fplPlatformInit(fplInitFlags_Video, &settings)) {
 		if (fglLoadOpenGL(true)) {
@@ -1419,7 +1429,8 @@ int main(int argc, char **argv) {
 											}
 										}
 									}
-								} else {
+								} else  {
+								    FPL_ASSERT(ev.keyboard.buttonState == fplButtonState_Release);
 									activeKey = fplKey_None;
 									activeKeyStart = 0;
 									if (ev.keyboard.mappedKey == fplKey_Left) {
@@ -1439,11 +1450,7 @@ int main(int argc, char **argv) {
 											ChangeViewPicture(&state, -PAGE_INCREMENT_COUNT, false);
 										}
 									} else if (ev.keyboard.mappedKey == fplKey_F) {
-										if (!fplIsWindowFullscreen()) {
-											fplSetWindowFullscreen(true, 0, 0, 0);
-										} else {
-											fplSetWindowFullscreen(false, 0, 0, 0);
-										}
+                                        fplSetWindowFullscreen(!fplIsWindowFullscreen(), 0, 0, 0);
 									} else if (ev.keyboard.mappedKey == fplKey_P) {
 										state.params.preview = !state.params.preview;
 									} else if (ev.keyboard.mappedKey == fplKey_R) {
@@ -1455,6 +1462,9 @@ int main(int argc, char **argv) {
 								}
 							}
 						} break;
+
+						default:
+						    break;
 					}
 				}
 
