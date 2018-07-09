@@ -9,7 +9,7 @@ Description:
 	Texture Allocate/Release is done in the main thread.
 
 Requirements:
-	- C99 Compiler
+	- C++ Compiler, just because to support R"()"
 	- Final Dynamic OpenGL
 	- Final Memory
 	- STB_image
@@ -19,7 +19,8 @@ Author:
 
 Changelog:
 	## 2018-07-08
-	- All rectangle rendering are now based on a fixed unit cube buffer (A bit broken)
+	- Extreme refactoring to support modern OpenGL
+	- Implemented custom GLSL filters to try-to-fix quality issues
 
 	## 2018-07-03
 	- Prepare for modern opengl
@@ -58,7 +59,10 @@ Todo:
 -------------------------------------------------------------------------------
 */
 
-#define USE_GL2 1
+// 1 = Legacy
+// 2 = Legacy, VBO, Shaders
+// 3 = Modern, VBO, Shaders
+#define USE_GLVERSION 3
 
 #define FPL_IMPLEMENTATION
 #define FPL_LOGGING
@@ -74,22 +78,38 @@ Todo:
 #include <string.h>
 #include <malloc.h>
 
-#define BUFFER_OFFSET(i) ((char *)NULL + (i))
-
 typedef union Vec2f {
 	struct {
 		float x;
 		float y;
 	};
-	struct {
-		float u;
-		float v;
-	};
 	float m[2];
 } Vec2f;
 
 inline Vec2f V2f(const float x, const float y) {
-	Vec2f result = (Vec2f) { x, y };
+	Vec2f result = FPL_STRUCT_INIT(Vec2f, x, y);
+	return(result);
+}
+
+typedef union Vec3f {
+	struct {
+		float x;
+		float y;
+		float z;
+	};
+	struct {
+		Vec2f xy;
+		float unused0;
+	};
+	struct {
+		float unused1;
+		Vec2f yz;
+	};
+	float m[3];
+} Vec3f;
+
+inline Vec3f V3f(const float x, const float y, const float z) {
+	Vec3f result = FPL_STRUCT_INIT(Vec3f, x, y, z);
 	return(result);
 }
 
@@ -100,11 +120,15 @@ typedef union Vec4f {
 		float z;
 		float w;
 	};
+	struct {
+		Vec3f xyz;
+		float unused0;
+	};
 	float m[4];
 } Vec4f;
 
 inline Vec4f V4f(const float x, const float y, const float z, const float w) {
-	Vec4f result = (Vec4f) { x, y, z, w };
+	Vec4f result = FPL_STRUCT_INIT(Vec4f, x, y, z, w);
 	return(result);
 }
 
@@ -137,9 +161,9 @@ inline void SetMat4fOrthoLH(const float left, const float right, const float bot
 	outMat->r[3][2] = -(zFar + zNear) / (zFar - zNear);
 }
 
-inline void SetMat4fTranslation(const float x, const float y, const float z, const float w, Mat4f *outMat) {
+inline void SetMat4fTranslation(const float x, const float y, const float z, Mat4f *outMat) {
 	*outMat = M4f(1.0f);
-	outMat->c[3] = V4f(x, y, z, w);
+	outMat->c[3].xyz = V3f(x, y, z);
 }
 
 inline void SetMat4fScale(const float x, const float y, const float z, Mat4f *outMat) {
@@ -150,9 +174,13 @@ inline void SetMat4fScale(const float x, const float y, const float z, Mat4f *ou
 }
 
 inline void MultMat4f(const Mat4f *a, const Mat4f *b, Mat4f *r) {
-	for (int i = 0; i < 16; i += 4) {
-		for (int j = 0; j < 4; ++j) {
-			r->m[i + j] = (b->m[i + 0] * a->m[j + 0]) + (b->m[i + 1] * a->m[j + 4]) + (b->m[i + 2] * a->m[j + 8]) + (b->m[i + 3] * a->m[j + 12]);
+	for(int i = 0; i < 16; i += 4) {
+		for(int j = 0; j < 4; ++j) {
+			r->m[i + j] =
+				(b->m[i + 0] * a->m[j + 0])
+				+ (b->m[i + 1] * a->m[j + 4])
+				+ (b->m[i + 2] * a->m[j + 8])
+				+ (b->m[i + 3] * a->m[j + 12]);
 		}
 	}
 }
@@ -198,7 +226,7 @@ typedef struct PictureLoadThread {
 	volatile bool shutdown;
 } PictureLoadThread;
 
-#define MAX_LOAD_THREAD_COUNT FPL__MAX_THREAD_COUNT
+#define MAX_LOAD_THREAD_COUNT 64
 #define MAX_VIEW_PICTURE_COUNT MAX_LOAD_THREAD_COUNT * 4
 #define MAX_LOAD_QUEUE_COUNT MAX_VIEW_PICTURE_COUNT * 2
 #define PAGE_INCREMENT_COUNT 10
@@ -247,6 +275,29 @@ typedef struct Vertex {
 	Vec2f texCoord;
 } Vertex;
 
+typedef struct LoadPictureContext {
+	ViewPicture *viewPic;
+	volatile bool *shutdown;
+} LoadPictureContext;
+
+typedef struct Filter {
+	const char *name;
+	GLuint programId;
+} Filter;
+
+typedef enum FilterType {
+	FilterType_Nearest = 0,
+	FilterType_Bilinear,
+#if USE_GLVERSION >= 2
+	FilterType_CubicTriangular,
+	FilterType_CubicBell,
+	FilterType_CubicBSpline,
+	FilterType_CatMullRom,
+	FilterType_Lanczos3,
+#endif
+	FilterType_Count,
+} FilterType;
+
 typedef struct ViewerState {
 	char rootPath[FPL_MAX_PATH_LENGTH];
 	PictureFile *pictureFiles;
@@ -271,19 +322,24 @@ typedef struct ViewerState {
 
 	GLuint vertexArray;
 	GLuint colorShaderProgram;
-	GLuint textureShaderProgram;
+
+	Filter filters[FilterType_Count];
+	size_t activeFilter;
+
 	GLuint quadVBO;
 	GLuint quadIBO;
 	Vertex quadVertices[4];
 	GLushort quadIndices[6];
 } ViewerState;
 
+#include "shadersources.h"
+
 static void InitQueue(LoadQueue *queue, const size_t queueCount) {
 	FPL_CLEAR_STRUCT(queue);
 	queue->size = queueCount;
 	queue->mask = queue->size - 1;
 	queue->headSeq = queue->tailSeq = 0;
-	for (int i = 0; i < queue->size; ++i) {
+	for(int i = 0; i < queue->size; ++i) {
 		queue->buffer[i].seq = i;
 	}
 }
@@ -292,20 +348,20 @@ static void ShutdownQueue(LoadQueue *queue) {
 	queue->shutdown = 1;
 }
 
-static bool TryQueueEnqueue(volatile LoadQueue *queue, const LoadQueueValue value) {
+static bool TryQueueEnqueue(volatile LoadQueue *queue, const volatile LoadQueueValue value) {
 	size_t headSeq = fplAtomicLoadSize(&queue->headSeq);
-	while (!queue->shutdown) {
+	while(!queue->shutdown) {
 		size_t index = headSeq & queue->mask;
 		volatile LoadQueueEntry *entry = &queue->buffer[index];
 		size_t entrySeq = fplAtomicLoadSize(&entry->seq);
 		intptr_t dif = (intptr_t)entrySeq - (intptr_t)headSeq;
-		if (dif == 0) {
-			if (fplIsAtomicCompareAndExchangeSize(&queue->headSeq, headSeq, headSeq + 1)) {
-				entry->value = value;
+		if(dif == 0) {
+			if(fplIsAtomicCompareAndExchangeSize(&queue->headSeq, headSeq, headSeq + 1)) {
+				fplMemoryCopy((const void *)&value, sizeof(value), (void *)&entry->value);
 				fplAtomicStoreSize(&entry->seq, headSeq + 1);
 				return(true);
 			}
-		} else if (dif < 0) {
+		} else if(dif < 0) {
 			return(false);
 		} else {
 			headSeq = fplAtomicLoadSize(&queue->headSeq);
@@ -316,18 +372,18 @@ static bool TryQueueEnqueue(volatile LoadQueue *queue, const LoadQueueValue valu
 
 static bool TryQueueDequeue(volatile LoadQueue *queue, volatile LoadQueueValue *value) {
 	size_t tailSeq = fplAtomicLoadSize(&queue->tailSeq);
-	while (!queue->shutdown) {
+	while(!queue->shutdown) {
 		size_t index = tailSeq & queue->mask;
 		volatile LoadQueueEntry *entry = &queue->buffer[index];
 		size_t entrySeq = fplAtomicLoadSize(&entry->seq);
 		intptr_t dif = (intptr_t)entrySeq - (intptr_t)(tailSeq + 1);
-		if (dif == 0) {
-			if (fplIsAtomicCompareAndExchangeSize(&queue->tailSeq, tailSeq, tailSeq + 1)) {
-				*value = entry->value;
+		if(dif == 0) {
+			if(fplIsAtomicCompareAndExchangeSize(&queue->tailSeq, tailSeq, tailSeq + 1)) {
+				fplMemoryCopy((const void *)&entry->value, sizeof(*value), (void *)value);
 				fplAtomicStoreSize(&entry->seq, tailSeq + queue->mask + 1);
 				return(true);
 			}
-		} else if (dif < 0) {
+		} else if(dif < 0) {
 			return(false);
 		} else {
 			tailSeq = fplAtomicLoadSize(&queue->tailSeq);
@@ -339,7 +395,7 @@ static bool TryQueueDequeue(volatile LoadQueue *queue, volatile LoadQueueValue *
 static bool IsPictureFile(const char *filePath) {
 	const char *ext = fplExtractFileExtension(filePath);
 	bool result;
-	if (ext != fpl_null) {
+	if(ext != fpl_null) {
 		result = (_stricmp(ext, ".jpg") == 0) || (_stricmp(ext, ".jpeg") == 0) || (_stricmp(ext, ".png") == 0) || (_stricmp(ext, ".bmp") == 0);
 	} else {
 		result = false;
@@ -348,7 +404,7 @@ static bool IsPictureFile(const char *filePath) {
 }
 
 static void ClearPictureFiles(ViewerState *state) {
-	if (state->pictureFiles != fpl_null) {
+	if(state->pictureFiles != fpl_null) {
 		free(state->pictureFiles);
 		state->pictureFiles = fpl_null;
 	}
@@ -360,12 +416,12 @@ static void ClearPictureFiles(ViewerState *state) {
 
 static void AddPictureFile(ViewerState *state, const char *filePath) {
 	FPL_ASSERT(state->pictureFileCount <= state->pictureFileCapacity);
-	if (state->pictureFileCapacity == 0) {
+	if(state->pictureFileCapacity == 0) {
 		state->pictureFileCapacity = 1;
-		state->pictureFiles = malloc(sizeof(PictureFile) * state->pictureFileCapacity);
-	} else if (state->pictureFileCount == state->pictureFileCapacity) {
+		state->pictureFiles = (PictureFile *)malloc(sizeof(PictureFile) * state->pictureFileCapacity);
+	} else if(state->pictureFileCount == state->pictureFileCapacity) {
 		state->pictureFileCapacity *= 2;
-		state->pictureFiles = realloc(state->pictureFiles, sizeof(PictureFile) * state->pictureFileCapacity);
+		state->pictureFiles = (PictureFile *)realloc(state->pictureFiles, sizeof(PictureFile) * state->pictureFileCapacity);
 	}
 	PictureFile *pictureFile = &state->pictureFiles[state->pictureFileCount++];
 	fplCopyAnsiString(filePath, pictureFile->filePath, FPL_ARRAYCOUNT(pictureFile->filePath));
@@ -375,31 +431,31 @@ static void AddPicturesFromPath(ViewerState *state, const char *path, const bool
 	fplFileEntry entry;
 	bool hasEntry = false;
 	size_t addedPics = 0;
-	for (hasEntry = fplListDirBegin(path, "*", &entry); hasEntry; hasEntry = fplListDirNext(&entry)) {
-		if (!hasEntry) {
+	for(hasEntry = fplListDirBegin(path, "*", &entry); hasEntry; hasEntry = fplListDirNext(&entry)) {
+		if(!hasEntry) {
 			break;
 		}
-		if (entry.type == fplFileEntryType_File) {
-			if (IsPictureFile(entry.fullPath)) {
+		if(entry.type == fplFileEntryType_File) {
+			if(IsPictureFile(entry.fullPath)) {
 				AddPictureFile(state, entry.fullPath);
 				++addedPics;
 			}
-		} else if (recursive && entry.type == fplFileEntryType_Directory) {
+		} else if(recursive && entry.type == fplFileEntryType_Directory) {
 			AddPicturesFromPath(state, entry.fullPath, true);
 		}
 	}
-	if (addedPics > 0) {
+	if(addedPics > 0) {
 		++state->folderCount;
 	}
 }
 
 static bool LoadPicturesPath(ViewerState *state, const char *path, const bool recursive) {
 	ClearPictureFiles(state);
-	if (fplDirectoryExists(path)) {
+	if(fplDirectoryExists(path)) {
 		fplCopyAnsiString(path, state->rootPath, FPL_ARRAYCOUNT(state->rootPath));
 		AddPicturesFromPath(state, state->rootPath, recursive);
-	} else if (fplFileExists(path)) {
-		if (IsPictureFile(path)) {
+	} else if(fplFileExists(path)) {
+		if(IsPictureFile(path)) {
 			fplExtractFilePath(path, state->rootPath, FPL_ARRAYCOUNT(state->rootPath));
 			state->folderCount = 1;
 			AddPictureFile(state, path);
@@ -448,13 +504,13 @@ static GLuint AllocateTexture(const uint32_t width, const uint32_t height, const
 }
 
 static void ClearViewPictures(ViewerState *state) {
-	for (int i = 0; i < state->viewPicturesCapacity; ++i) {
+	for(int i = 0; i < state->viewPicturesCapacity; ++i) {
 		state->viewPictures[i].state = LoadedPictureState_Unloaded;
 		state->viewPictures[i].progress = 0.0f;
-		if (state->viewPictures[i].textureId > 0) {
+		if(state->viewPictures[i].textureId > 0) {
 			ReleaseTexture(&state->viewPictures[i].textureId);
 		}
-		if (state->viewPictures[i].data != fpl_null) {
+		if(state->viewPictures[i].data != fpl_null) {
 			stbi_image_free(state->viewPictures[i].data);
 		}
 	}
@@ -463,31 +519,42 @@ static void ClearViewPictures(ViewerState *state) {
 
 static void UpdateStreamProgress(ViewPicture *pic) {
 	size_t pos = fplGetFilePosition32(&pic->fileStream.handle);
-	if (pic->fileStream.size > 0) {
+	if(pic->fileStream.size > 0) {
 		pic->progress = pos / (float)pic->fileStream.size;
 	}
 }
 
 int ReadPictureStreamCallback(void *user, char *data, int size) {
 	// fill 'data' with 'size' bytes.  return number of bytes actually read
-	ViewPicture *pic = (ViewPicture *)user;
+	LoadPictureContext *ctx = (LoadPictureContext *)user;
+	ViewPicture *pic = ctx->viewPic;
+	if(*ctx->shutdown) {
+		return -1;
+	}
 	uint32_t readBytes = fplReadFileBlock32(&pic->fileStream.handle, size, (void *)data, size);
 	UpdateStreamProgress(pic);
 	return (int)readBytes;
 }
-int SkipPictureStreamCallback(void *user, int n) {
+void SkipPictureStreamCallback(void *user, int n) {
 	// skip the next 'n' bytes, or 'unget' the last -n bytes if negative
-	ViewPicture *pic = (ViewPicture *)user;
+	LoadPictureContext *ctx = (LoadPictureContext *)user;
+	if(*ctx->shutdown) {
+		return;
+	}
+	ViewPicture *pic = ctx->viewPic;
 	fplSetFilePosition32(&pic->fileStream.handle, n, fplFilePositionMode_Current);
 	UpdateStreamProgress(pic);
-	return 0;
 }
 int EofPictureStreamCallback(void *user) {
 	// returns nonzero if we are at end of file/data
-	ViewPicture *pic = (ViewPicture *)user;
+	LoadPictureContext *ctx = (LoadPictureContext *)user;
+	ViewPicture *pic = ctx->viewPic;
+	if(*ctx->shutdown) {
+		return 1;
+	}
 	int res = 0;
 	size_t pos = fplGetFilePosition32(&pic->fileStream.handle);
-	if (pic->fileStream.size == 0 || pos == pic->fileStream.size) {
+	if(pic->fileStream.size == 0 || pos == pic->fileStream.size) {
 		res = 1;
 	}
 	return(res);
@@ -498,27 +565,27 @@ static void LoadPictureThreadProc(const fplThreadHandle *thread, void *data) {
 	ViewerState *state = loadThread->state;
 	volatile LoadQueueValue valueToLoad = FPL_ZERO_INIT;
 	volatile bool hasValue = false;
-	while (!loadThread->shutdown) {
+	while(!loadThread->shutdown) {
 		fplConditionWait(&loadThread->condition, &loadThread->mutex, 50);
-		if (loadThread->shutdown) {
+		if(loadThread->shutdown) {
 			break;
 		}
 
-		if (!hasValue) {
-			if (TryQueueDequeue(&state->loadQueue, &valueToLoad)) {
+		if(!hasValue) {
+			if(TryQueueDequeue(&state->loadQueue, &valueToLoad)) {
 				hasValue = true;
 			}
 		}
 
-		if (hasValue) {
+		if(hasValue) {
 			FPL_ASSERT(valueToLoad.fileIndex >= 0 && valueToLoad.fileIndex < state->pictureFileCount);
 			FPL_ASSERT(valueToLoad.pictureIndex >= 0 && valueToLoad.pictureIndex < state->viewPicturesCapacity);
 			ViewPicture *loadedPic = &state->viewPictures[valueToLoad.pictureIndex];
 			const PictureFile *picFile = &state->pictureFiles[valueToLoad.fileIndex];
-			if (fplAtomicLoadS32(&loadedPic->state) == LoadedPictureState_Discard) {
+			if(fplAtomicLoadS32(&loadedPic->state) == LoadedPictureState_Discard) {
 				continue;
 			}
-			if (fplAtomicLoadS32(&loadedPic->state) == LoadedPictureState_Unloaded) {
+			if(fplAtomicLoadS32(&loadedPic->state) == LoadedPictureState_Unloaded) {
 				fplAtomicStoreS32(&loadedPic->state, LoadedPictureState_LoadingData);
 
 				loadedPic->progress = 0.0f;
@@ -536,17 +603,20 @@ static void LoadPictureThreadProc(const fplThreadHandle *thread, void *data) {
 
 				fplDebugFormatOut("Load picture stream '%s'[%d]\n", loadedPic->filePath, loadedPic->fileIndex);
 				data = fpl_null;
-				if (fplOpenAnsiBinaryFile(loadedPic->filePath, &loadedPic->fileStream.handle)) {
+				if(fplOpenAnsiBinaryFile(loadedPic->filePath, &loadedPic->fileStream.handle)) {
 					loadedPic->fileStream.size = fplGetFileSizeFromHandle32(&loadedPic->fileStream.handle);
 					stbi_io_callbacks callbacks;
 					callbacks.read = ReadPictureStreamCallback;
 					callbacks.skip = SkipPictureStreamCallback;
 					callbacks.eof = EofPictureStreamCallback;
-					stbi_set_flip_vertically_on_load(1);
-					data = stbi_load_from_callbacks(&callbacks, loadedPic, &w, &h, &comp, 4);
+					stbi_set_flip_vertically_on_load(0);
+					LoadPictureContext loadCtx;
+					loadCtx.shutdown = &loadThread->shutdown;
+					loadCtx.viewPic = loadedPic;
+					data = stbi_load_from_callbacks(&callbacks, &loadCtx, &w, &h, &comp, 4);
 					fplCloseFile(&loadedPic->fileStream.handle);
 				}
-				if (data != fpl_null) {
+				if(data != fpl_null) {
 					loadedPic->progress = 0.75f;
 					loadedPic->width = w;
 					loadedPic->height = h;
@@ -565,7 +635,7 @@ static void LoadPictureThreadProc(const fplThreadHandle *thread, void *data) {
 
 static void InitLoadThreads(ViewerState *state, const size_t threadCount) {
 	state->loadThreadCount = threadCount;
-	for (size_t i = 0; i < state->loadThreadCount; ++i) {
+	for(size_t i = 0; i < state->loadThreadCount; ++i) {
 		fplMutexInit(&state->loadThreadData[i].mutex);
 		fplConditionInit(&state->loadThreadData[i].condition);
 		state->loadThreadData[i].state = state;
@@ -575,19 +645,19 @@ static void InitLoadThreads(ViewerState *state, const size_t threadCount) {
 }
 
 static void ShutdownLoadThreads(ViewerState *state) {
-	for (size_t i = 0; i < state->loadThreadCount; ++i) {
+	for(size_t i = 0; i < state->loadThreadCount; ++i) {
 		state->loadThreadData[i].shutdown = true;
 		fplConditionSignal(&state->loadThreadData[i].condition);
 	}
 	fplThreadWaitForAll(state->loadThreads, state->loadThreadCount, FPL_TIMEOUT_INFINITE);
-	for (size_t i = 0; i < state->loadThreadCount; ++i) {
+	for(size_t i = 0; i < state->loadThreadCount; ++i) {
 		fplConditionDestroy(&state->loadThreadData[i].condition);
 		fplMutexDestroy(&state->loadThreadData[i].mutex);
 	}
 }
 
 static void DiscardAll(ViewerState *state) {
-	for (int i = 0; i < state->viewPicturesCapacity; ++i) {
+	for(int i = 0; i < state->viewPicturesCapacity; ++i) {
 		fplAtomicStoreS32(&state->viewPictures[i].state, LoadedPictureState_Discard);
 	}
 }
@@ -599,12 +669,12 @@ static void QueueUpPictures(ViewerState *state) {
 	FPL_ASSERT(state->activeFileIndex >= 0 && state->activeFileIndex < (int)state->pictureFileCount);
 	int preloadCountLeft;
 	int preloadCountRight;
-	if (state->activeFileIndex > 0) {
+	if(state->activeFileIndex > 0) {
 		preloadCountLeft = FPL_MIN(state->activeFileIndex, maxSidePreloadCount);
 	} else {
 		preloadCountLeft = 0;
 	}
-	if (state->activeFileIndex < ((int)state->pictureFileCount - 1)) {
+	if(state->activeFileIndex < ((int)state->pictureFileCount - 1)) {
 		int diff = (int)state->pictureFileCount - state->activeFileIndex;
 		preloadCountRight = FPL_MAX(FPL_MIN(diff, maxSidePreloadCount), 0);
 	} else {
@@ -618,8 +688,8 @@ static void QueueUpPictures(ViewerState *state) {
 	TryQueueEnqueue(&state->loadQueue, newValue);
 
 	// Enqueu pictures from the left side
-	for (int i = 1; i <= preloadCountLeft; ++i) {
-		if ((state->activeFileIndex - i) >= 0) {
+	for(int i = 1; i <= preloadCountLeft; ++i) {
+		if((state->activeFileIndex - i) >= 0) {
 			newValue.fileIndex = state->activeFileIndex - i;
 			newValue.pictureIndex = state->viewPictureIndex - i;
 			TryQueueEnqueue(&state->loadQueue, newValue);
@@ -627,8 +697,8 @@ static void QueueUpPictures(ViewerState *state) {
 	}
 
 	// Enqueu pictures from the right side
-	for (int i = 1; i <= preloadCountRight; ++i) {
-		if ((state->activeFileIndex + i) < state->pictureFileCount) {
+	for(int i = 1; i <= preloadCountRight; ++i) {
+		if((state->activeFileIndex + i) < state->pictureFileCount) {
 			newValue.fileIndex = state->activeFileIndex + i;
 			newValue.pictureIndex = state->viewPictureIndex + i;
 			TryQueueEnqueue(&state->loadQueue, newValue);
@@ -636,13 +706,25 @@ static void QueueUpPictures(ViewerState *state) {
 	}
 
 	// Wakeup load threads
-	for (size_t i = 0; i < state->loadThreadCount; ++i) {
+	for(size_t i = 0; i < state->loadThreadCount; ++i) {
 		fplConditionSignal(&state->loadThreadData[i].condition);
 	}
 }
 
+static void UpdateWindowTitle(ViewerState *state) {
+	if(state->activeFileIndex > -1) {
+		char titleBuffer[256];
+		const char *filterName = state->filters[state->activeFilter].name;
+		const char *picFilename = fplExtractFileName(state->pictureFiles[state->activeFileIndex].filePath);
+		fplFormatAnsiString(titleBuffer, FPL_ARRAYCOUNT(titleBuffer), "FPL ImageViewer - %s [%s]", picFilename, filterName);
+		fplSetWindowAnsiTitle(titleBuffer);
+	} else {
+		fplSetWindowAnsiTitle("FPL ImageViewer - No pictures found");
+	}
+}
+
 static void ChangeViewPicture(ViewerState *state, const int offset, const bool forceReload) {
-	if (state->pictureFileCount == 0) {
+	if(state->pictureFileCount == 0) {
 		FPL_ASSERT(state->viewPictureIndex == -1);
 		FPL_ASSERT(state->activeFileIndex == -1);
 		return;
@@ -650,12 +732,12 @@ static void ChangeViewPicture(ViewerState *state, const int offset, const bool f
 	int capacity = (int)state->viewPicturesCapacity;
 	bool loadPictures = false;
 	int viewIndex;
-	if (state->viewPictureIndex == -1 || forceReload) {
+	if(state->viewPictureIndex == -1 || forceReload) {
 		viewIndex = capacity / 2;
 		loadPictures = true;
 	} else {
 		viewIndex = state->viewPictureIndex + offset;
-		if (viewIndex < 0 || viewIndex >= capacity) {
+		if(viewIndex < 0 || viewIndex >= capacity) {
 			viewIndex = capacity / 2;
 			loadPictures = true;
 		}
@@ -663,9 +745,14 @@ static void ChangeViewPicture(ViewerState *state, const int offset, const bool f
 	state->viewPictureIndex = viewIndex;
 	state->activeFileIndex = FPL_MAX(FPL_MIN(state->activeFileIndex + offset, (int)state->pictureFileCount - 1), 0);
 
-	if (loadPictures) {
+	UpdateWindowTitle(state);
+
+	if(loadPictures) {
 		DiscardAll(state);
 		ShutdownQueue(&state->loadQueue);
+
+		// Wait for threads to stop loading, but stay running
+
 		InitQueue(&state->loadQueue, state->loadQueueCapacity);
 		state->doPictureReload = true;
 	}
@@ -673,7 +760,7 @@ static void ChangeViewPicture(ViewerState *state, const int offset, const bool f
 
 static uint32_t ParseNumber(const char **p) {
 	uint32_t v = 0;
-	while (isdigit(**p)) {
+	while(isdigit(**p)) {
 		v = v * 10 + (uint8_t)(**p - '0');
 		++*p;
 	}
@@ -683,15 +770,15 @@ static uint32_t ParseNumber(const char **p) {
 static void ParseParameters(ViewerParameters *params, const int argc, char **argv) {
 	FPL_CLEAR_STRUCT(params);
 	params->path = fpl_null;
-	for (int i = 0; i < argc; ++i) {
+	for(int i = 0; i < argc; ++i) {
 		const char *p = argv[i];
-		if (p[0] == '-') {
+		if(p[0] == '-') {
 			++p;
-			if (!isalpha(*p)) {
+			if(!isalpha(*p)) {
 				continue;
 			}
 			const char param = p[0];
-			switch (param) {
+			switch(param) {
 				case 'p':
 					params->preview = true;
 					break;
@@ -704,17 +791,17 @@ static void ParseParameters(ViewerParameters *params, const int argc, char **arg
 				default:
 					continue;
 			}
-			if (param == 't') {
+			if(param == 't') {
 				++p;
-				if (p[0] == '=') {
+				if(p[0] == '=') {
 					++p;
 					params->threadCount = ParseNumber(&p);
 				} else {
 					continue;
 				}
-			} else if (param == 'p') {
+			} else if(param == 'p') {
 				++p;
-				if (p[0] == '=') {
+				if(p[0] == '=') {
 					++p;
 					params->preloadCount = ParseNumber(&p);
 				} else {
@@ -734,14 +821,16 @@ size_t RoundToPowerOfTwo(size_t v) {
 	v |= v >> 4;
 	v |= v >> 8;
 	v |= v >> 16;
-	if (sizeof(size_t) == 8) {
+	if(sizeof(size_t) == 8) {
 		v |= v >> 32;
 	}
 	++v;
 	return(v);
 }
 
-static GLuint CreateShaderType(GLenum type, const char *source) {
+#define BUFFER_OFFSET(i) ((char *)NULL + (i))
+
+static GLuint CreateShaderType(GLenum type, const char *name, const char *source) {
 	GLuint shaderId = glCreateShader(type);
 
 	glShaderSource(shaderId, 1, &source, NULL);
@@ -751,14 +840,18 @@ static GLuint CreateShaderType(GLenum type, const char *source) {
 
 	GLint compileResult;
 	glGetShaderiv(shaderId, GL_COMPILE_STATUS, &compileResult);
-	if (!compileResult) {
+	if(!compileResult) {
 		GLint infoLen;
 		glGetShaderiv(shaderId, GL_INFO_LOG_LENGTH, &infoLen);
 		FPL_ASSERT(infoLen <= FPL_ARRAYCOUNT(info));
 		glGetShaderInfoLog(shaderId, infoLen, &infoLen, info);
-		fplConsoleFormatError("Failed compiling %s shader!\n", (type == GL_VERTEX_SHADER ? "vertex" : "fragment"));
-		fplConsoleFormatError("%s\n", info);
+		fplDebugFormatOut("Failed compiling '%s' %s shader!\n", name, (type == GL_VERTEX_SHADER ? "vertex" : "fragment"));
+		fplDebugFormatOut("%s\n", info);
+		glDeleteShader(shaderId);
+		shaderId = 0;
 	}
+
+	assert(shaderId > 0);
 
 	return(shaderId);
 }
@@ -766,11 +859,13 @@ static GLuint CreateShaderType(GLenum type, const char *source) {
 static GLuint CreateShaderProgram(const char *name, const char *vertexSource, const char *fragmentSource) {
 	GLuint programId = glCreateProgram();
 
-	GLuint vertexShader = CreateShaderType(GL_VERTEX_SHADER, vertexSource);
-	GLuint fragmentShader = CreateShaderType(GL_FRAGMENT_SHADER, fragmentSource);
+	GLuint vertexShader = CreateShaderType(GL_VERTEX_SHADER, name, vertexSource);
+	GLuint fragmentShader = CreateShaderType(GL_FRAGMENT_SHADER, name, fragmentSource);
 
 	glAttachShader(programId, vertexShader);
 	glAttachShader(programId, fragmentShader);
+	glDeleteShader(fragmentShader);
+	glDeleteShader(vertexShader);
 	glLinkProgram(programId);
 	glValidateProgram(programId);
 
@@ -778,95 +873,54 @@ static GLuint CreateShaderProgram(const char *name, const char *vertexSource, co
 
 	GLint linkResult;
 	glGetProgramiv(programId, GL_LINK_STATUS, &linkResult);
-	if (!linkResult) {
+	if(!linkResult) {
 		GLint infoLen;
 		glGetProgramiv(programId, GL_INFO_LOG_LENGTH, &infoLen);
 		FPL_ASSERT(infoLen <= FPL_ARRAYCOUNT(info));
 		glGetProgramInfoLog(programId, infoLen, &infoLen, info);
-		fplConsoleFormatError("Failed linking '%s' shader!\n", name);
-		fplConsoleFormatError("%s\n", info);
+		fplDebugFormatOut("Failed linking '%s' shader!\n", name);
+		fplDebugFormatOut("%s\n", info);
+		glDeleteProgram(programId);
+		programId = 0;
 	}
-
-	glDeleteShader(fragmentShader);
-	glDeleteShader(vertexShader);
+	assert(programId > 0);
 
 	return(programId);
 }
+
+#define CheckGL(func) ((func), assert(glGetError() == GL_NO_ERROR))
 
 static void Init(ViewerState *state) {
 	glClearColor(0, 0, 0, 1);
 	glEnable(GL_TEXTURE_RECTANGLE);
 	glEnable(GL_BLEND);
 	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-	glMatrixMode(GL_MODELVIEW);
 
+#if USE_GLVERSION < 2
 	glClientActiveTexture(GL_TEXTURE0);
+	glMatrixMode(GL_MODELVIEW);
+#endif
 
 	glGenVertexArrays(1, &state->vertexArray);
 	glBindVertexArray(state->vertexArray);
 
-	const char ColorVertexSource[] = {
-		"#version 330 core\n"
-		"\n"
-		"layout(location = 0) in vec4 inPosition;\n"
-		"\n"
-		"uniform mat4 uniMVP;\n"
-		"\n"
-		"void main() {\n"
-		"\tgl_Position = inPosition * uniMVP;\n"
-		"}\n"
-	};
-
-	const char ColorFragmentSource[] = {
-		"#version 330 core\n"
-		"\n"
-		"layout(location = 0) out vec4 outColor;\n"
-		"\n"
-		"uniform vec4 uniColor;\n"
-		"\n"
-		"void main() {\n"
-		"\toutColor = uniColor;\n"
-		"}\n"
-	};
-
-	const char TextureVertexSource[] = {
-		"#version 330 core\n"
-		"\n"
-		"layout(location = 0) in vec4 inPosition;\n"
-		"layout(location = 1) in vec2 inTexcoord;\n"
-		"\n"
-		"out vec2 texCoord;\n"
-		"\n"
-		"uniform mat4 uniMVP;\n"
-		"\n"
-		"void main() {\n"
-		"\tgl_Position = inPosition * uniMVP;\n"
-		"\ttexCoord = inTexcoord;\n"
-		"}\n"
-	};
-
-	const char TextureFragmentSource[] = {
-		"#version 330 core\n"
-		"\n"
-		"layout(location = 0) out vec4 outColor;\n"
-		"\n"
-		"in vec2 texCoord;\n"
-		"uniform vec2 uniTexScale;\n"
-		"uniform vec4 uniColor;\n"
-		"uniform sampler2DRect uniImage;\n"
-		"\n"
-		"void main() {\n"
-		"\toutColor = texture(uniImage, texCoord * uniTexScale) * uniColor;\n"
-		"}\n"
-	};
-
 	state->colorShaderProgram = CreateShaderProgram("Color", ColorVertexSource, ColorFragmentSource);
-	state->textureShaderProgram = CreateShaderProgram("Texture", TextureVertexSource, TextureFragmentSource);
 
-	state->quadVertices[0] = (Vertex) { V4f(1.0f, 1.0f, 0.0f, 1.0f), V2f(1.0f, 1.0f) };
-	state->quadVertices[1] = (Vertex) { V4f(-1.0f, 1.0f, 0.0f, 1.0f), V2f(0.0f, 1.0f) };
-	state->quadVertices[2] = (Vertex) { V4f(-1.0f, -1.0f, 0.0f, 1.0f), V2f(0.0f, 0.0f) };
-	state->quadVertices[3] = (Vertex) { V4f(1.0f, -1.0f, 0.0f, 1.0f), V2f(1.0f, 0.0f) };
+	state->activeFilter = FilterType_Nearest;
+	state->filters[FilterType_Nearest] = FPL_STRUCT_INIT(Filter, "Nearest", CreateShaderProgram("Nearest", FilterVertexSource, NoFilterFragmentSource));
+	state->filters[FilterType_Bilinear] = FPL_STRUCT_INIT(Filter, "Bilinear", CreateShaderProgram("Bilinear", FilterVertexSource, BilinearFilterFragmentSource));
+#if USE_GLVERSION >= 2
+	state->filters[FilterType_CubicTriangular] = FPL_STRUCT_INIT(Filter, "Bicubic (Triangular)", CreateShaderProgram("Bicubic (Triangular)", FilterVertexSource, BicubicTriangularFilterFragmentSource));
+	state->filters[FilterType_CubicBell] = FPL_STRUCT_INIT(Filter, "Bicubic (Bell)", CreateShaderProgram("Bicubic (Bell)", FilterVertexSource, BicubicBellFilterFragmentSource));
+	state->filters[FilterType_CubicBSpline] = FPL_STRUCT_INIT(Filter, "Bicubic (B-Spline)", CreateShaderProgram("Bicubic (B-Spline)", FilterVertexSource, BicubicBSplineFilterFragmentSource));
+	state->filters[FilterType_CatMullRom] = FPL_STRUCT_INIT(Filter, "Bicubic (CatMull-Rom)", CreateShaderProgram("Bicubic (CatMull-Rom)", FilterVertexSource, BicubicCatMullRowFilterFragmentSource));
+	state->filters[FilterType_Lanczos3] = FPL_STRUCT_INIT(Filter, "Lanczos3", CreateShaderProgram("Lanczos3", FilterVertexSource, Lanczos3FilterFragmentSource));
+#endif
+
+	state->quadVertices[0] = FPL_STRUCT_INIT(Vertex, V4f(1.0f, 1.0f, 0.0f, 1.0f), V2f(1.0f, 1.0f));
+	state->quadVertices[1] = FPL_STRUCT_INIT(Vertex, V4f(-1.0f, 1.0f, 0.0f, 1.0f), V2f(0.0f, 1.0f));
+	state->quadVertices[2] = FPL_STRUCT_INIT(Vertex, V4f(-1.0f, -1.0f, 0.0f, 1.0f), V2f(0.0f, 0.0f));
+	state->quadVertices[3] = FPL_STRUCT_INIT(Vertex, V4f(1.0f, -1.0f, 0.0f, 1.0f), V2f(1.0f, 0.0f));
 
 	state->quadIndices[0] = 0;
 	state->quadIndices[1] = 1;
@@ -885,8 +939,7 @@ static void Init(ViewerState *state) {
 	glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(GLushort) * 6, &state->quadIndices[0], GL_STATIC_DRAW);
 	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
 
-	GLenum err = glGetError();
-	assert(err == GL_NO_ERROR);
+	assert(glGetError() == GL_NO_ERROR);
 
 	state->viewPictureIndex = -1;
 	state->activeFileIndex = -1;
@@ -894,7 +947,7 @@ static void Init(ViewerState *state) {
 
 	// Allocate and startup load threads
 	size_t threadCount;
-	if (state->params.threadCount > 0) {
+	if(state->params.threadCount > 0) {
 		threadCount = FPL_MAX(FPL_MIN(state->params.threadCount, MAX_LOAD_THREAD_COUNT), 1);
 	} else {
 		threadCount = FPL_MAX(FPL_MIN(fplGetProcessorCoreCount(), MAX_LOAD_THREAD_COUNT), 1);
@@ -903,7 +956,7 @@ static void Init(ViewerState *state) {
 
 	size_t queueCapacity;
 	size_t preloadCapacity;
-	if (FPL_IS_POWEROFTWO(threadCount)) {
+	if(FPL_IS_POWEROFTWO(threadCount)) {
 		queueCapacity = threadCount * 2;
 		preloadCapacity = threadCount;
 	} else {
@@ -917,28 +970,26 @@ static void Init(ViewerState *state) {
 	InitQueue(&state->loadQueue, queueCapacity);
 
 	// Load initial pictures path
-	if (fplGetAnsiStringLength(state->params.path) > 0) {
-		if (LoadPicturesPath(state, state->params.path, state->params.recursive)) {
+	if(fplGetAnsiStringLength(state->params.path) > 0) {
+		if(LoadPicturesPath(state, state->params.path, state->params.recursive)) {
 			state->activeFileIndex = 0;
 			ChangeViewPicture(state, 0, true);
 		}
 	}
 }
 
-inline Mat4f BuildMVP(const Mat4f *viewProjection, const float centerX, const float centerY, const float scaleX, const float scaleY) {
+inline void BuildModelMat(const float centerX, const float centerY, const float scaleX, const float scaleY, Mat4f *modelView) {
 	Mat4f modelScale;
 	Mat4f modelTranslation;
-	Mat4f modelView;
-	Mat4f mvp;
 	SetMat4fScale(scaleX, scaleY, 1.0f, &modelScale);
-	SetMat4fTranslation(centerX, centerY, 0.0f, 1.0f, &modelTranslation);
-	MultMat4f(&modelTranslation, &modelScale, &modelView);
-	MultMat4f(viewProjection, &modelView, &mvp);
-	return(mvp);
+	SetMat4fTranslation(centerX, centerY, 0.0f, &modelTranslation);
+	MultMat4f(&modelTranslation, &modelScale, modelView);
 }
 
-static void DrawSolidRectangle(ViewerState *state, const Mat4f *mvp, const Vec4f *color) {
-	GLuint locMVP = glGetUniformLocation(state->colorShaderProgram, "uniMVP");
+static void DrawLinedRectangle(ViewerState *state, const Mat4f *vpMat, const Vec2f pos, const Vec2f ext, const Vec4f color, const float lineWidth) {
+#if USE_GLVERSION >= 2
+	GLuint locVP = glGetUniformLocation(state->colorShaderProgram, "uniVP");
+	GLuint locModel = glGetUniformLocation(state->colorShaderProgram, "uniModel");
 	GLuint locColor = glGetUniformLocation(state->colorShaderProgram, "uniColor");
 
 	glBindBuffer(GL_ARRAY_BUFFER, state->quadVBO);
@@ -947,8 +998,67 @@ static void DrawSolidRectangle(ViewerState *state, const Mat4f *mvp, const Vec4f
 
 	glUseProgram(state->colorShaderProgram);
 
-	glUniformMatrix4fv(locMVP, 1, GL_FALSE, &mvp->m[0]);
-	glUniform4fv(locColor, 1, &color->m[0]);
+	Mat4f modelMat;
+
+	glUniformMatrix4fv(locVP, 1, GL_FALSE, &vpMat->m[0]);
+	glUniform4fv(locColor, 1, &color.m[0]);
+
+	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, state->quadIBO);
+
+	// Top
+	BuildModelMat(pos.x, pos.y + ext.y, ext.x, lineWidth * 0.5f, &modelMat);
+	glUniformMatrix4fv(locModel, 1, GL_FALSE, &modelMat.m[0]);
+	glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_SHORT, BUFFER_OFFSET(0));
+
+	// Left
+	BuildModelMat(pos.x - ext.x, pos.y, lineWidth * 0.5f, ext.y, &modelMat);
+	glUniformMatrix4fv(locModel, 1, GL_FALSE, &modelMat.m[0]);
+	glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_SHORT, BUFFER_OFFSET(0));
+
+	// Bottom
+	BuildModelMat(pos.x, pos.y - ext.y, ext.x, lineWidth * 0.5f, &modelMat);
+	glUniformMatrix4fv(locModel, 1, GL_FALSE, &modelMat.m[0]);
+	glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_SHORT, BUFFER_OFFSET(0));
+
+	// Right
+	BuildModelMat(pos.x + ext.x, pos.y, lineWidth * 0.5f, ext.y, &modelMat);
+	glUniformMatrix4fv(locModel, 1, GL_FALSE, &modelMat.m[0]);
+	glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_SHORT, BUFFER_OFFSET(0));
+
+	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+
+	glUseProgram(0);
+
+	glDisableVertexAttribArray(0);
+	glBindBuffer(GL_ARRAY_BUFFER, 0);
+#else
+	glLoadMatrixf(&vpMat->m[0]);
+	glColor4fv(&color.m[0]);
+	glLineWidth(lineWidth);
+	glBegin(GL_LINE_LOOP);
+	glVertex2f(pos.x + ext.x, pos.y + ext.y);
+	glVertex2f(pos.x - ext.x, pos.y + ext.y);
+	glVertex2f(pos.x - ext.x, pos.y - ext.y);
+	glVertex2f(pos.x + ext.x, pos.y - ext.y);
+	glEnd();
+#endif
+}
+
+static void DrawSolidRectangle(ViewerState *state, const Mat4f *vpMat, const Mat4f *modelMat, const Vec4f color) {
+#if USE_GLVERSION >= 2
+	GLuint locVP = glGetUniformLocation(state->colorShaderProgram, "uniVP");
+	GLuint locModel = glGetUniformLocation(state->colorShaderProgram, "uniModel");
+	GLuint locColor = glGetUniformLocation(state->colorShaderProgram, "uniColor");
+
+	glBindBuffer(GL_ARRAY_BUFFER, state->quadVBO);
+	glEnableVertexAttribArray(0);
+	glVertexAttribPointer(0, 4, GL_FLOAT, GL_FALSE, sizeof(Vertex), BUFFER_OFFSET(0));
+
+	glUseProgram(state->colorShaderProgram);
+
+	glUniformMatrix4fv(locVP, 1, GL_FALSE, &vpMat->m[0]);
+	glUniformMatrix4fv(locModel, 1, GL_FALSE, &modelMat->m[0]);
+	glUniform4fv(locColor, 1, &color.m[0]);
 
 	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, state->quadIBO);
 	glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_SHORT, BUFFER_OFFSET(0));
@@ -958,16 +1068,27 @@ static void DrawSolidRectangle(ViewerState *state, const Mat4f *mvp, const Vec4f
 
 	glDisableVertexAttribArray(0);
 	glBindBuffer(GL_ARRAY_BUFFER, 0);
+#else
+	Mat4f mvp;
+	MultMat4f(vpMat, modelMat, &mvp);
+	glLoadMatrixf(&mvp.m[0]);
+	glColor4fv(&color.m[0]);
+	glBegin(GL_QUADS);
+	glVertex2f(state->quadVertices[0].position.x, state->quadVertices[0].position.y);
+	glVertex2f(state->quadVertices[1].position.x, state->quadVertices[1].position.y);
+	glVertex2f(state->quadVertices[2].position.x, state->quadVertices[2].position.y);
+	glVertex2f(state->quadVertices[3].position.x, state->quadVertices[3].position.y);
+	glEnd();
+#endif
 }
 
-static void DrawLinedRectangle(ViewerState *state, const Mat4f *mvp, const Vec4f *color, const float lineWidth) {
-}
-
-static void DrawTexturedRectangle(ViewerState *state, GLuint textureId, const Mat4f *mvp, const Vec4f *color, const Vec2f *texScale) {
-	GLuint locMVP = glGetUniformLocation(state->textureShaderProgram, "uniMVP");
-	GLuint locImage = glGetUniformLocation(state->textureShaderProgram, "uniImage");
-	GLuint locColor = glGetUniformLocation(state->textureShaderProgram, "uniColor");
-	GLuint locTexScale = glGetUniformLocation(state->textureShaderProgram, "uniTexScale");
+static void DrawTexturedRectangle(ViewerState *state, const GLuint textureId, const GLuint programId, const Mat4f *vpMat, const Mat4f *modelMat, const Vec4f color, const Vec2f texSize) {
+#if USE_GLVERSION >= 2
+	GLuint locVP = glGetUniformLocation(programId, "uniVP");
+	GLuint locModel = glGetUniformLocation(programId, "uniModel");
+	GLuint locImage = glGetUniformLocation(programId, "uniImage");
+	GLuint locColor = glGetUniformLocation(programId, "uniColor");
+	GLuint locTexSize = glGetUniformLocation(programId, "uniTexSize");
 
 	glBindBuffer(GL_ARRAY_BUFFER, state->quadVBO);
 	glEnableVertexAttribArray(0);
@@ -977,11 +1098,12 @@ static void DrawTexturedRectangle(ViewerState *state, GLuint textureId, const Ma
 
 	glBindTexture(GL_TEXTURE_RECTANGLE, textureId);
 
-	glUseProgram(state->textureShaderProgram);
+	glUseProgram(programId);
 
-	glUniformMatrix4fv(locMVP, 1, GL_FALSE, &mvp->m[0]);
-	glUniform4fv(locColor, 1, &color->m[0]);
-	glUniform2fv(locTexScale, 1, &texScale->m[0]);
+	glUniformMatrix4fv(locVP, 1, GL_FALSE, &vpMat->m[0]);
+	glUniformMatrix4fv(locModel, 1, GL_FALSE, &modelMat->m[0]);
+	glUniform4fv(locColor, 1, &color.m[0]);
+	glUniform2fv(locTexSize, 1, &texSize.m[0]);
 	glUniform1i(locImage, 0);
 
 	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, state->quadIBO);
@@ -995,19 +1117,35 @@ static void DrawTexturedRectangle(ViewerState *state, GLuint textureId, const Ma
 	glDisableVertexAttribArray(1);
 	glDisableVertexAttribArray(0);
 	glBindBuffer(GL_ARRAY_BUFFER, 0);
+#else
+	Mat4f mvp;
+	MultMat4f(vpMat, modelMat, &mvp);
+	glLoadMatrixf(&mvp.m[0]);
+	glColor4fv(&color.m[0]);
+	glBindTexture(GL_TEXTURE_RECTANGLE, textureId);
+	glBegin(GL_TRIANGLES);
+	glTexCoord2f(state->quadVertices[0].texCoord.x * texSize.x, (1.0f - state->quadVertices[0].texCoord.y) * texSize.y); glVertex2f(state->quadVertices[0].position.x, state->quadVertices[0].position.y);
+	glTexCoord2f(state->quadVertices[1].texCoord.x * texSize.x, (1.0f - state->quadVertices[1].texCoord.y) * texSize.y); glVertex2f(state->quadVertices[1].position.x, state->quadVertices[1].position.y);
+	glTexCoord2f(state->quadVertices[2].texCoord.x * texSize.x, (1.0f - state->quadVertices[2].texCoord.y) * texSize.y); glVertex2f(state->quadVertices[2].position.x, state->quadVertices[2].position.y);
+	glTexCoord2f(state->quadVertices[2].texCoord.x * texSize.x, (1.0f - state->quadVertices[2].texCoord.y) * texSize.y); glVertex2f(state->quadVertices[2].position.x, state->quadVertices[2].position.y);
+	glTexCoord2f(state->quadVertices[3].texCoord.x * texSize.x, (1.0f - state->quadVertices[3].texCoord.y) * texSize.y); glVertex2f(state->quadVertices[3].position.x, state->quadVertices[3].position.y);
+	glTexCoord2f(state->quadVertices[0].texCoord.x * texSize.x, (1.0f - state->quadVertices[0].texCoord.y) * texSize.y); glVertex2f(state->quadVertices[0].position.x, state->quadVertices[0].position.y);
+	glEnd();
+	glBindTexture(GL_TEXTURE_RECTANGLE, 0);
+#endif
 }
 
 static void UpdateAndRender(ViewerState *state) {
-// Discard textures on the left/right side when the fileIndex is out of bounds
-	if (state->viewPictureIndex != -1) {
+	// Discard textures on the left/right side when the fileIndex is out of bounds
+	if(state->viewPictureIndex != -1) {
 		ViewPicture *currentPic = &state->viewPictures[state->viewPictureIndex];
-		if (currentPic->fileIndex == 0) {
-			for (size_t i = 0; i < state->viewPictureIndex; ++i) {
+		if(currentPic->fileIndex == 0) {
+			for(size_t i = 0; i < state->viewPictureIndex; ++i) {
 				ViewPicture *sidePic = &state->viewPictures[i];
 				fplAtomicStoreS32(&sidePic->state, LoadedPictureState_Discard);
 			}
-		} else if (currentPic->fileIndex == state->pictureFileCount - 1) {
-			for (size_t i = state->viewPictureIndex + 1; i < state->viewPicturesCapacity; ++i) {
+		} else if(currentPic->fileIndex == state->pictureFileCount - 1) {
+			for(size_t i = state->viewPictureIndex + 1; i < state->viewPicturesCapacity; ++i) {
 				ViewPicture *sidePic = &state->viewPictures[i];
 				fplAtomicStoreS32(&sidePic->state, LoadedPictureState_Discard);
 			}
@@ -1015,16 +1153,16 @@ static void UpdateAndRender(ViewerState *state) {
 	}
 
 	// Discard or upload textures
-	for (size_t i = 0; i < state->viewPicturesCapacity; ++i) {
+	for(size_t i = 0; i < state->viewPicturesCapacity; ++i) {
 		ViewPicture *loadedPic = &state->viewPictures[i];
-		if (fplAtomicLoadS32(&loadedPic->state) == LoadedPictureState_Discard) {
-			if (loadedPic->textureId > 0) {
+		if(fplAtomicLoadS32(&loadedPic->state) == LoadedPictureState_Discard) {
+			if(loadedPic->textureId > 0) {
 				fplDebugFormatOut("Release texture '%s'[%d]\n", loadedPic->filePath, loadedPic->fileIndex);
 				ReleaseTexture(&loadedPic->textureId);
 			}
 			fplAtomicStoreS32(&loadedPic->state, LoadedPictureState_Unloaded);
-		} else if (fplAtomicLoadS32(&loadedPic->state) == LoadedPictureState_ToUpload) {
-			if (loadedPic->textureId > 0) {
+		} else if(fplAtomicLoadS32(&loadedPic->state) == LoadedPictureState_ToUpload) {
+			if(loadedPic->textureId > 0) {
 				fplDebugFormatOut("Release texture '%s'[%d]\n", loadedPic->filePath, loadedPic->fileIndex);
 				ReleaseTexture(&loadedPic->textureId);
 			}
@@ -1033,10 +1171,18 @@ static void UpdateAndRender(ViewerState *state) {
 			FPL_ASSERT(loadedPic->width > 0 && loadedPic->height > 0);
 			FPL_ASSERT(loadedPic->components > 0);
 			fplDebugFormatOut("Allocate texture '%s'[%d]\n", loadedPic->filePath, loadedPic->fileIndex);
-			loadedPic->textureId = AllocateTexture(loadedPic->width, loadedPic->height, loadedPic->components, loadedPic->data, false, GL_LINEAR);
+			GLint texFilter = GL_NEAREST;
+			if(state->activeFilter == FilterType_Bilinear) {
+#if USE_GLVERSION < 2
+				texFilter = GL_LINEAR;
+#endif
+			}
+
+			loadedPic->textureId = AllocateTexture(loadedPic->width, loadedPic->height, loadedPic->components, loadedPic->data, false, texFilter);
+
 			stbi_image_free(loadedPic->data);
 			loadedPic->data = fpl_null;
-			if (loadedPic->textureId > 0) {
+			if(loadedPic->textureId > 0) {
 				fplAtomicStoreS32(&loadedPic->state, LoadedPictureState_Ready);
 			} else {
 				fplAtomicStoreS32(&loadedPic->state, LoadedPictureState_Error);
@@ -1046,14 +1192,14 @@ static void UpdateAndRender(ViewerState *state) {
 	}
 
 	// Start to queue up pictures to load
-	if (state->doPictureReload) {
+	if(state->doPictureReload) {
 		QueueUpPictures(state);
 		state->doPictureReload = false;
 	}
 
 	int w, h;
 	fplWindowSize winSize;
-	if (fplGetWindowArea(&winSize)) {
+	if(fplGetWindowArea(&winSize)) {
 		w = winSize.width;
 		h = winSize.height;
 	} else {
@@ -1075,26 +1221,25 @@ static void UpdateAndRender(ViewerState *state) {
 	Mat4f view;
 	Mat4f viewProjection;
 	SetMat4fOrthoLH(screenLeft, screenRight, screenBottom, screenTop, 0.0f, 1.0f, &proj);
-	SetMat4fTranslation(0.0f, 0.0f, 0.0f, 1.0f, &view);
+	SetMat4fTranslation(0.0f, 0.0f, 0.0f, &view);
 	MultMat4f(&proj, &view, &viewProjection);
 
-	if (state->viewPictureIndex > -1) {
+	if(state->viewPictureIndex > -1) {
 		FPL_ASSERT(state->viewPictureIndex < FPL_ARRAYCOUNT(state->viewPictures));
 		ViewPicture *loadedPic = &state->viewPictures[state->viewPictureIndex];
 		LoadedPictureState pictureState = fplAtomicLoadS32(&loadedPic->state);
-		if (pictureState == LoadedPictureState_Ready) {
+		if(pictureState == LoadedPictureState_Ready) {
 			float texW = (float)loadedPic->width;
 			float texH = (float)loadedPic->height;
 			float aspect = texH > 0 ? texW / texH : 1;
 			FPL_ASSERT(aspect != 0);
-
 			float viewWidth;
 			float viewHeight;
 			float viewX;
 			float viewY;
-			if (texW > screenW || texH > screenH) {
+			if(texW > screenW || texH > screenH) {
 				float targetHeight = screenW / aspect;
-				if (targetHeight > screenH) {
+				if(targetHeight > screenH) {
 					viewHeight = screenH;
 					viewWidth = screenH * aspect;
 					viewX = screenLeft + (screenW - viewWidth) * 0.5f;
@@ -1115,27 +1260,13 @@ static void UpdateAndRender(ViewerState *state) {
 			float viewRight = viewX + viewWidth;
 			float viewBottom = viewY;
 			float viewTop = viewY + viewHeight;
-			Mat4f mvp = BuildMVP(&viewProjection, viewLeft + viewWidth * 0.5f, viewBottom + viewHeight * 0.5f, viewWidth * 0.5f, viewHeight * 0.5f);
+			Mat4f modelMat;
+			BuildModelMat(viewLeft + viewWidth * 0.5f, viewBottom + viewHeight * 0.5f, viewWidth * 0.5f, viewHeight * 0.5f, &modelMat);
 			Vec4f texColor = V4f(1, 1, 1, 1);
 			Vec2f texScale = V2f(texW, texH);
-
-#if USE_GL2
-			DrawTexturedRectangle(state, loadedPic->textureId, &mvp, &texColor, &texScale);
-#else
-			glLoadMatrixf(&mvp.m[0]);
-			glColor4fv(&texColor.m[0]);
-			glBindTexture(GL_TEXTURE_RECTANGLE, loadedPic->textureId);
-			glBegin(GL_TRIANGLES);
-			glTexCoord2f(state->quadVertices[0].texCoord.x * texW, state->quadVertices[0].texCoord.y * texH); glVertex2f(state->quadVertices[0].position.x, state->quadVertices[0].position.y);
-			glTexCoord2f(state->quadVertices[1].texCoord.x * texW, state->quadVertices[1].texCoord.y * texH); glVertex2f(state->quadVertices[1].position.x, state->quadVertices[1].position.y);
-			glTexCoord2f(state->quadVertices[2].texCoord.x * texW, state->quadVertices[2].texCoord.y * texH); glVertex2f(state->quadVertices[2].position.x, state->quadVertices[2].position.y);
-			glTexCoord2f(state->quadVertices[2].texCoord.x * texW, state->quadVertices[2].texCoord.y * texH); glVertex2f(state->quadVertices[2].position.x, state->quadVertices[2].position.y);
-			glTexCoord2f(state->quadVertices[3].texCoord.x * texW, state->quadVertices[3].texCoord.y * texH); glVertex2f(state->quadVertices[3].position.x, state->quadVertices[3].position.y);
-			glTexCoord2f(state->quadVertices[0].texCoord.x * texW, state->quadVertices[0].texCoord.y * texH); glVertex2f(state->quadVertices[0].position.x, state->quadVertices[0].position.y);
-			glEnd();
-			glBindTexture(GL_TEXTURE_RECTANGLE, 0);
-#endif
-		} else if (pictureState == LoadedPictureState_LoadingData) {
+			GLuint filterProgramId = state->filters[state->activeFilter].programId;
+			DrawTexturedRectangle(state, loadedPic->textureId, filterProgramId, &viewProjection, &modelMat, texColor, texScale);
+		} else if(pictureState == LoadedPictureState_LoadingData) {
 			float progressW = screenW * 0.5f;
 			float progressH = progressW * 0.1f;
 			float progressLeft = screenLeft + (screenW - progressW) * 0.5f;
@@ -1144,44 +1275,21 @@ static void UpdateAndRender(ViewerState *state) {
 			float progressBottom = progressTop - progressH;
 			float percentage = loadedPic->progress;
 
-			percentage = 1.0f;
-
-			float progressExtX = progressW * 0.5f;
-			float progressExtY = progressH * 0.5f;
-			Mat4f mvpProgress = BuildMVP(&viewProjection, progressLeft + progressExtX * percentage, progressBottom + progressExtY, progressExtX * percentage, progressExtY);
-			Mat4f mvpBorder = BuildMVP(&viewProjection, progressLeft + progressExtX, progressBottom + progressExtY, progressExtX, progressExtY);
+			Vec2f progressExt = V2f(progressW * 0.5f, progressH * 0.5f);
+			Mat4f progressModelMat;
+			Mat4f borderModelMat;
+			BuildModelMat(progressLeft + progressExt.x * percentage, progressBottom + progressExt.y, progressExt.x * percentage, progressExt.y, &progressModelMat);
+			BuildModelMat(progressLeft + progressExt.x, progressBottom + progressExt.y, progressExt.x, progressExt.y, &borderModelMat);
 			Vec4f progressColor = V4f(0.25f, 0.25f, 0.25f, 1);
 			Vec4f borderColor = V4f(1, 1, 1, 1);
+			Vec2f progressCenter = V2f(progressLeft + progressExt.x, progressBottom + progressExt.y);
 			float borderLineWidth = 2.0f;
-
-#if USE_GL2
-			DrawSolidRectangle(state, &mvpProgress, &progressColor);
-#else
-			// Progress
-			glLoadMatrixf(&mvpProgress.m[0]);
-			glColor4fv(&progressColor.m[0]);
-			glBegin(GL_QUADS);
-			glVertex2f(1.0f, 1.0f);
-			glVertex2f(-1.0f, 1.0f);
-			glVertex2f(-1.0f, -1.0f);
-			glVertex2f(1.0f, -1.0f);
-			glEnd();
-
-			// Border
-			glLoadMatrixf(&mvpBorder.m[0]);
-			glColor4fv(&borderColor.m[0]);
-			glLineWidth(borderLineWidth);
-			glBegin(GL_LINE_LOOP);
-			glVertex2f(1.0f, 1.0f);
-			glVertex2f(-1.0f, 1.0f);
-			glVertex2f(-1.0f, -1.0f);
-			glVertex2f(1.0f, -1.0f);
-			glEnd();
-#endif
+			DrawSolidRectangle(state, &viewProjection, &progressModelMat, progressColor);
+			DrawLinedRectangle(state, &viewProjection, progressCenter, progressExt, borderColor, borderLineWidth);
 		}
 	}
 
-	if (state->params.preview) {
+	if(state->params.preview) {
 		int blockCount = (int)state->viewPicturesCapacity;
 		float maxBlockW = ((FPL_MIN(screenW, screenH)) * 0.5f);
 		float blockPadding = (maxBlockW / (float)blockCount) * 0.1f;
@@ -1189,19 +1297,23 @@ static void UpdateAndRender(ViewerState *state) {
 		float blockH = blockW;
 		float blocksLeft = -maxBlockW * 0.5f;
 		float blocksBottom = (-screenH * 0.5f + blockPadding);
-		for (int i = 0; i < blockCount; ++i) {
+		Vec2f blockExt = V2f(blockW * 0.5f, blockH * 0.5f);
+		for(int i = 0; i < blockCount; ++i) {
 			float bx = blocksLeft + (float)i * blockW + ((float)i * blockPadding);
 			float by = blocksBottom;
-			Mat4f mvp = BuildMVP(&viewProjection, bx + blockW * 0.5f, by + blockH * 0.5f, blockW * 0.5f, blockH * 0.5f);
-			const ViewPicture *loadedPic = &state->viewPictures[i];
-			if (loadedPic->state != LoadedPictureState_Unloaded) {
-				Vec4f color = (Vec4f) { 0 };
-				switch (loadedPic->state) {
+			Vec2f blockPos = V2f(bx + blockW * 0.5f, by + blockH * 0.5f);
+			Mat4f blockModelMat;
+			BuildModelMat(blockPos.x, blockPos.y, blockExt.x, blockExt.y, &blockModelMat);
+			ViewPicture *loadedPic = &state->viewPictures[i];
+			LoadedPictureState loadState = fplAtomicLoadS32(&loadedPic->state);
+			if(loadState != LoadedPictureState_Unloaded) {
+				Vec4f color = V4f(0, 0, 0, 0);
+				switch(loadState) {
 					case LoadedPictureState_LoadingData:
 						color = V4f(0, 0, 1, 0.5f);
 						break;
 					case LoadedPictureState_Ready:
-						color = V4f(0, 1, 0, 0.5f);
+						color = V4f(1, 1, 1, 1);
 						break;
 					case LoadedPictureState_ToUpload:
 						color = V4f(0, 0.5f, 0.5f, 0.5f);
@@ -1217,54 +1329,34 @@ static void UpdateAndRender(ViewerState *state) {
 						break;
 				}
 
-#if USE_GL2
-				DrawSolidRectangle(state, &mvp, &color);
-#else
-				glLoadMatrixf(&mvp.m[0]);
-				glColor4fv(&color.m[0]);
-				glBegin(GL_TRIANGLES);
-				glVertex2f(state->quadVertices[0].position.x, state->quadVertices[0].position.y);
-				glVertex2f(state->quadVertices[1].position.x, state->quadVertices[1].position.y);
-				glVertex2f(state->quadVertices[2].position.x, state->quadVertices[2].position.y);
-				glVertex2f(state->quadVertices[2].position.x, state->quadVertices[2].position.y);
-				glVertex2f(state->quadVertices[3].position.x, state->quadVertices[3].position.y);
-				glVertex2f(state->quadVertices[0].position.x, state->quadVertices[0].position.y);
-				glEnd();
-#endif
+				DrawSolidRectangle(state, &viewProjection, &blockModelMat, color);
+				if(loadState == LoadedPictureState_Ready) {
+					float texW = (float)loadedPic->width;
+					float texH = (float)loadedPic->height;
+					Vec2f texScale = V2f(texW, texH);
+					GLuint filterProgramId = state->filters[state->activeFilter].programId;
+					DrawTexturedRectangle(state, loadedPic->textureId, filterProgramId, &viewProjection, &blockModelMat, color, texScale);
+				}
 			}
 
 			Vec4f blockColor;
 			float blockLineWidth;
-			if (i == state->viewPictureIndex) {
+			if(i == state->viewPictureIndex) {
 				blockLineWidth = 3;
 				blockColor = V4f(0, 1, 0, 1);
 			} else {
 				blockLineWidth = 2;
-				if (loadedPic->state == LoadedPictureState_Unloaded) {
+				if(loadedPic->state == LoadedPictureState_Unloaded) {
 					blockColor = V4f(1, 1, 1, 0.2f);
 				} else {
 					blockColor = V4f(1, 1, 1, 0.5f);
 				}
 			}
-
-#if USE_GL2
-			DrawLinedRectangle(state, &mvp, &blockColor, blockLineWidth);
-#else
-			glLoadMatrixf(&mvp.m[0]);
-			glColor4fv(&blockColor.m[0]);
-			glLineWidth(blockLineWidth);
-			glBegin(GL_LINE_LOOP);
-			glVertex2f(1.0f, 1.0f);
-			glVertex2f(-1.0f, 1.0f);
-			glVertex2f(-1.0f, -1.0f);
-			glVertex2f(1.0f, -1.0f);
-			glEnd();
-#endif
+			DrawLinedRectangle(state, &viewProjection, blockPos, blockExt, blockColor, blockLineWidth);
 		}
 	}
 
-	GLenum err = glGetError();
-	assert(err == GL_NO_ERROR);
+	assert(glGetError() == GL_NO_ERROR);
 }
 
 int main(int argc, char **argv) {
@@ -1272,18 +1364,21 @@ int main(int argc, char **argv) {
 	fplSettings settings;
 	fplSetDefaultSettings(&settings);
 	settings.video.driver = fplVideoDriverType_OpenGL;
-#if 0
+#if USE_GLVERSION >= 3
 	settings.video.graphics.opengl.compabilityFlags = fplOpenGLCompabilityFlags_Core;
 	settings.video.graphics.opengl.majorVersion = 3;
 	settings.video.graphics.opengl.minorVersion = 3;
+	settings.video.graphics.opengl.multiSamplingCount = 0;
+#else
+	settings.video.graphics.opengl.compabilityFlags = fplOpenGLCompabilityFlags_Legacy;
 #endif
 	fplCopyAnsiString("FPL Demo - Image Viewer", settings.window.windowTitle, FPL_ARRAYCOUNT(settings.window.windowTitle));
 
-	if (fplPlatformInit(fplInitFlags_Video, &settings)) {
-		if (fglLoadOpenGL(true)) {
+	if(fplPlatformInit(fplInitFlags_Video, &settings)) {
+		if(fglLoadOpenGL(true)) {
 
 			ViewerState state = FPL_ZERO_INIT;
-			if (argc >= 2) {
+			if(argc >= 2) {
 				ParseParameters(&state.params, argc - 1, argv + 1);
 			}
 			Init(&state);
@@ -1291,32 +1386,32 @@ int main(int argc, char **argv) {
 			fplKey activeKey = fplKey_None;
 			uint64_t activeKeyStart = 0;
 			const int ActiveKeyThreshold = 150;
-			while (fplWindowUpdate()) {
+			while(fplWindowUpdate()) {
 				// Events
 				fplEvent ev;
-				while (fplPollEvent(&ev)) {
-					switch (ev.type) {
+				while(fplPollEvent(&ev)) {
+					switch(ev.type) {
 						case fplEventType_Keyboard:
 						{
-							if (ev.keyboard.type == fplKeyboardEventType_Button) {
-								if (ev.keyboard.buttonState >= fplButtonState_Press) {
+							if(ev.keyboard.type == fplKeyboardEventType_Button) {
+								if(ev.keyboard.buttonState >= fplButtonState_Press) {
 									bool isActiveKeyRepeat;
-									if (activeKey != ev.keyboard.mappedKey) {
+									if(activeKey != ev.keyboard.mappedKey) {
 										activeKey = ev.keyboard.mappedKey;
 										activeKeyStart = fplGetTimeInMillisecondsLP();
 										isActiveKeyRepeat = false;
 									} else {
 										isActiveKeyRepeat = (fplGetTimeInMillisecondsLP() - activeKeyStart) >= ActiveKeyThreshold;
 									}
-									if (ev.keyboard.mappedKey == fplKey_Left) {
-										if (activeKey == ev.keyboard.mappedKey && isActiveKeyRepeat) {
-											if (state.activeFileIndex > 0) {
+									if(ev.keyboard.mappedKey == fplKey_Left) {
+										if(activeKey == ev.keyboard.mappedKey && isActiveKeyRepeat) {
+											if(state.activeFileIndex > 0) {
 												ChangeViewPicture(&state, -1, false);
 											}
 										}
-									} else if (ev.keyboard.mappedKey == fplKey_Right) {
-										if (activeKey == ev.keyboard.mappedKey && isActiveKeyRepeat) {
-											if (state.activeFileIndex < ((int)state.pictureFileCount - 1)) {
+									} else if(ev.keyboard.mappedKey == fplKey_Right) {
+										if(activeKey == ev.keyboard.mappedKey && isActiveKeyRepeat) {
+											if(state.activeFileIndex < ((int)state.pictureFileCount - 1)) {
 												ChangeViewPicture(&state, +1, false);
 											}
 										}
@@ -1324,32 +1419,35 @@ int main(int argc, char **argv) {
 								} else {
 									activeKey = fplKey_None;
 									activeKeyStart = 0;
-									if (ev.keyboard.mappedKey == fplKey_Space) {
-										ChangeViewPicture(&state, 0, true);
-									} else if (ev.keyboard.mappedKey == fplKey_Left) {
-										if (state.activeFileIndex > 0) {
+									if(ev.keyboard.mappedKey == fplKey_Left) {
+										if(state.activeFileIndex > 0) {
 											ChangeViewPicture(&state, -1, false);
 										}
-									} else if (ev.keyboard.mappedKey == fplKey_Right) {
-										if (state.activeFileIndex < ((int)state.pictureFileCount - 1)) {
+									} else if(ev.keyboard.mappedKey == fplKey_Right) {
+										if(state.activeFileIndex < ((int)state.pictureFileCount - 1)) {
 											ChangeViewPicture(&state, +1, false);
 										}
-									} else if (ev.keyboard.mappedKey == fplKey_PageDown) {
-										if (state.activeFileIndex < ((int)state.pictureFileCount - PAGE_INCREMENT_COUNT)) {
+									} else if(ev.keyboard.mappedKey == fplKey_PageDown) {
+										if(state.activeFileIndex < ((int)state.pictureFileCount - PAGE_INCREMENT_COUNT)) {
 											ChangeViewPicture(&state, PAGE_INCREMENT_COUNT, false);
 										}
-									} else if (ev.keyboard.mappedKey == fplKey_PageUp) {
-										if (state.activeFileIndex > (PAGE_INCREMENT_COUNT - 1)) {
+									} else if(ev.keyboard.mappedKey == fplKey_PageUp) {
+										if(state.activeFileIndex > (PAGE_INCREMENT_COUNT - 1)) {
 											ChangeViewPicture(&state, -PAGE_INCREMENT_COUNT, false);
 										}
-									} else if (ev.keyboard.mappedKey == fplKey_F) {
-										if (!fplIsWindowFullscreen()) {
+									} else if(ev.keyboard.mappedKey == fplKey_F) {
+										if(!fplIsWindowFullscreen()) {
 											fplSetWindowFullscreen(true, 0, 0, 0);
 										} else {
 											fplSetWindowFullscreen(false, 0, 0, 0);
 										}
-									} else if (ev.keyboard.mappedKey == fplKey_P) {
+									} else if(ev.keyboard.mappedKey == fplKey_P) {
 										state.params.preview = !state.params.preview;
+									} else if(ev.keyboard.mappedKey == fplKey_R) {
+										ChangeViewPicture(&state, 0, true);
+									} else if(ev.keyboard.mappedKey == fplKey_T) {
+										state.activeFilter = (state.activeFilter + 1) % FilterType_Count;
+										UpdateWindowTitle(&state);
 									}
 								}
 							}
