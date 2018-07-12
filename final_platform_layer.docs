@@ -1906,7 +1906,7 @@
 
 	int main(int argc, char *args[]) {
 		int result;
-		if (fplPlatformInit(fplInitFlags_None)) {
+		if (fplPlatformInit(fplInitFlags_Console)) {
 			fplConsoleOut("Hello World!");
 			fplPlatformRelease();
 			result = 0;

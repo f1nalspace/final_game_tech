@@ -134,7 +134,9 @@ SOFTWARE.
 	- New: Added macro function FPL_STRUCT_INIT
 	- New: Added enum value fplWindowEventType_DropSingleFile
 	- New: Added structure fplWindowDropFiles
+	- New: Added enum value fplInitFlags_Console
 	- New: [Win32] Support for WM_DROPFILES -> fplWindowEventType_DropSingleFile event
+	- Changed: Use fplInitFlags_Console to activate console or not
 	- Fixed: fplExtractFileExtension was returning wrong result for files with multiple separators
 	- Fixed: [Win32] Fullscreen toggling was broken in maximize/minimize mode
 	- Fixed: [POSIX] fplListDirNext() was broken
@@ -2121,12 +2123,14 @@ fpl_platform_api fplArchType fplGetRunningArchitecture();
 typedef enum fplInitFlags {
 	//! No init flags
 	fplInitFlags_None = 0,
+	//! Create a console window
+	fplInitFlags_Console = 1 << 0,
 	//! Create a single window
-	fplInitFlags_Window = 1 << 0,
+	fplInitFlags_Window = 1 << 1,
 	//! Use a video backbuffer (This flag ensures that \ref fplInitFlags_Window is included always)
-	fplInitFlags_Video = 1 << 1,
+	fplInitFlags_Video = 1 << 2,
 	//! Use asyncronous audio playback
-	fplInitFlags_Audio = 1 << 2,
+	fplInitFlags_Audio = 1 << 3,
 	//! Default init flags for initializing everything
 	fplInitFlags_All = fplInitFlags_Window | fplInitFlags_Video | fplInitFlags_Audio
 } fplInitFlags;
@@ -8753,11 +8757,7 @@ fpl_internal bool fpl__Win32InitPlatform(const fplInitFlags initFlags, const fpl
 	fpl__Win32LoadXInputApi(&win32AppState->xinput.xinputApi);
 
 	// Init console
-#if defined(_CONSOLE)
-	{
-#else
-	if(!(initFlags & fplInitFlags_Window)) {
-#endif
+	if(initFlags & fplInitFlags_Console) {
 		HWND consoleHandle = GetConsoleWindow();
 		if(consoleHandle == fpl_null) {
 			AllocConsole();
@@ -16204,6 +16204,9 @@ fpl_common_api fplInitResultType fplPlatformInit(const fplInitFlags initFlags, c
 #	endif
 #	if !defined(FPL_ENABLE_WINDOW)
 	appState->initFlags = (fplInitFlags)(appState->initFlags & ~fplInitFlags_Window);
+#	endif
+#	if defined(FPL_APPTYPE_CONSOLE)
+		appState->initFlags |= fplInitFlags_Console;
 #	endif
 
 	// Initialize sub-platforms
