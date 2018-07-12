@@ -16,8 +16,17 @@
       <Filter>dependencies</Filter>
     </ClInclude>
     <ClInclude Include="shadersources.h" />
+    <ClInclude Include="imageresources.h" />
+    <ClInclude Include="version.h" />
+    <ClInclude Include="logging.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="fpl_imageviewer.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ResourceCompile Include="FPL_ImageViewer.rc" />
+  </ItemGroup>
+  <ItemGroup>
+    <Image Include="icons.ico" />
   </ItemGroup>
 </Project>
