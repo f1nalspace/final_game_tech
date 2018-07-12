@@ -10,61 +10,6 @@ Author:
 	Torsten Spaete
 -------------------------------------------------------------------------------
 */
-
-
-#if 0
-#include <stdio.h>
-#include <stddef.h>
-#include <stdint.h>
-#include <malloc.h>
-#include <assert.h>
-#include <algorithm>
-int main(int argc, char **argv) {
-	const char *filePath = "C:\\Users\\X123713\\Downloads\\SulphurPoint-Bold.otf";
-	FILE *file;
-	if(fopen_s(&file, filePath, "rb") == 0) {
-		fseek(file, 0, SEEK_END);
-		size_t size = ftell(file);
-		fseek(file, 0, SEEK_SET);
-		uint8_t *mem = (uint8_t *)malloc(size);
-		fread_s(mem, size, size, 1, file);
-		fclose(file);
-
-		printf("const unsigned char dataArray[] = {\n");
-
-		size_t maxColCount = 32;
-		size_t remainingSize = size;
-		const uint8_t *p = mem;
-		size_t outByteCount = 0;
-		while(remainingSize > 0) {
-			size_t colCount = std::min(remainingSize, maxColCount);
-			printf("\t");
-			for(int col = 0; col < colCount; ++col) {
-				uint8_t value = p[col];
-				if(col > 0) {
-					printf(",");
-				}
-				printf("0x%02x", value);
-				++outByteCount;
-			}
-			remainingSize -= colCount;
-			p += colCount;
-			if(remainingSize > 0) {
-				printf(",");
-			}
-			printf("\n");
-		}
-
-		assert(outByteCount == size);
-
-		printf("};\n");
-
-		free(mem);
-	}
-}
-#endif
-
-#if 1
 #define FPL_IMPLEMENTATION
 #include <final_platform_layer.h>
 
@@ -222,4 +167,3 @@ int main(int argc, char **argv) {
 	int result = GameMain(config);
 	return(result);
 }
-#endif
