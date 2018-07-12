@@ -88,10 +88,12 @@ int main(int argc, char *argv[]) {
 					case fplEventType_Keyboard:
 					{
 						switch(ev.keyboard.type) {
-							case fplKeyboardEventType_KeyUp:
+							case fplKeyboardEventType_Button:
 							{
-								if(ev.keyboard.mappedKey == fplKey_Space) {
-									topDown = !topDown;
+								if(ev.keyboard.buttonState == fplButtonState_Release) {
+									if(ev.keyboard.mappedKey == fplKey_Space) {
+										topDown = !topDown;
+									}
 								}
 							} break;
 						}
