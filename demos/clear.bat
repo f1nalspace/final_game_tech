@@ -5,5 +5,6 @@ del /q *.sdf
 rmdir /q /s .vs
 rmdir /q /s immediates
 rmdir /q /s bin
+rmdir /q /s setup
 rmdir /q /s debug
 rmdir /q /s release
