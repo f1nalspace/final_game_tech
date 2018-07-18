@@ -552,7 +552,7 @@ inline Vec2i WorldToTile(const LevelDimension &dim, const Vec2f &worldPos) {
 }
 
 inline bool IsValidTile(const LevelDimension &dim, const Vec2i &tilePos) {
-	bool result = !(tilePos.x < 0 || tilePos.x > (dim.tileCountX - 1) || tilePos.y < 0 || tilePos.y > (dim.tileCountY - 1));
+	bool result = !(tilePos.x < 0 || tilePos.x > ((int)dim.tileCountX - 1) || tilePos.y < 0 || tilePos.y > ((int)dim.tileCountY - 1));
 	return(result);
 }
 

@@ -524,7 +524,7 @@ namespace creeps {
 	}
 
 	static const CreepData *FindEnemyById(GameState &state, const char *id) {
-		for (int i = 0; i < state.assets.creepDefinitionCount; ++i) {
+		for (size_t i = 0; i < state.assets.creepDefinitionCount; ++i) {
 			if (strcmp(state.assets.creepDefinitions[i].id, id) == 0) {
 				return &state.assets.creepDefinitions[i];
 			}
@@ -542,7 +542,7 @@ namespace creeps {
 
 	static void AllEnemiesKilled(GameState &state) {
 		state.stats.money += state.assets.waveDefinitions[state.wave.activeIndex].completionBounty;
-		if (state.wave.activeIndex < (state.assets.waveDefinitionCount - 1)) {
+		if (state.wave.activeIndex < ((int)state.assets.waveDefinitionCount - 1)) {
 			level::LoadWave(state, state.wave.activeIndex + 1);
 		} else {
 			state.wave.state = WaveState::Won;
@@ -1202,7 +1202,7 @@ namespace towers {
 	};
 
 	inline CanPlaceTowerResult CanPlaceTower(GameState &state, const Vec2i &tilePos, const TowerData *tower) {
-		if ((state.towers.selectedIndex < 0) || !(state.towers.selectedIndex < state.assets.towerDefinitionCount)) {
+		if ((state.towers.selectedIndex < 0) || !(state.towers.selectedIndex < (int)state.assets.towerDefinitionCount)) {
 			return CanPlaceTowerResult::NoTowerSelected;
 		}
 		if (state.towers.activeCount == FPL_ARRAYCOUNT(state.towers.activeList)) {
@@ -1563,7 +1563,7 @@ namespace game {
 	}
 
 	static void DrawTowerControl(GameState &gameState, RenderState &renderState, const Vec2f &pos, const Vec2f &radius, const ui::UIButtonState buttonState, void *userData) {
-		int towerDataIndex = (int)(uintptr_t)(userData);
+		size_t towerDataIndex = (size_t)(uintptr_t)(userData);
 		assert(towerDataIndex >= 0 && towerDataIndex < gameState.assets.towerDefinitionCount);
 		const TowerData *towerData = &gameState.assets.towerDefinitions[towerDataIndex];
 		float alpha = 0.75f;
@@ -1613,7 +1613,7 @@ namespace game {
 		float buttonHeight = ControlsHeight - buttonMargin * 2.0f;
 		Vec2f buttonRadius = V2f(buttonHeight * 0.5f);
 		Vec2f buttonOutputRadius = ui::GetUIButtonExt(buttonRadius);
-		for (int towerIndex = 0; towerIndex < state.assets.towerDefinitionCount; ++towerIndex) {
+		for (size_t towerIndex = 0; towerIndex < state.assets.towerDefinitionCount; ++towerIndex) {
 			void *buttonId = (void *)&state.assets.towerDefinitions[towerIndex]; // Totally dont care about const removal here
 			float buttonX = ControlsOriginX + buttonMargin + (towerIndex * (buttonOutputRadius.w * 2.0f) + (FPL_MAX(0, towerIndex - 1) * buttonPadding));
 			float buttonY = ControlsOriginY + buttonMargin;
@@ -1949,8 +1949,8 @@ extern void GameRender(GameMemory &gameMemory, const float alpha) {
 
 
 	if (state->isDebugRendering) {
-		for (int y = 0; y < dim.tileCountY; ++y) {
-			for (int x = 0; x < dim.tileCountX; ++x) {
+		for (size_t y = 0; y < dim.tileCountY; ++y) {
+			for (size_t x = 0; x < dim.tileCountX; ++x) {
 				const Tile &tile = state->level.tiles[y * dim.tileCountX + x];
 				if (tile.wayType != WayType::None) {
 					render::DrawTile(renderState, dim, x, y, true, V4f(0.0f, 0.0f, 1.0f, 0.5f));
@@ -1959,8 +1959,8 @@ extern void GameRender(GameMemory &gameMemory, const float alpha) {
 		}
 
 		// Draw tile entities
-		for (int y = 0; y < dim.tileCountY; ++y) {
-			for (int x = 0; x < dim.tileCountX; ++x) {
+		for (size_t y = 0; y < dim.tileCountY; ++y) {
+			for (size_t x = 0; x < dim.tileCountX; ++x) {
 				const Tile &tile = state->level.tiles[y * dim.tileCountX + x];
 				switch (tile.entityType) {
 					case EntityType::Goal:
@@ -1989,12 +1989,12 @@ extern void GameRender(GameMemory &gameMemory, const float alpha) {
 	VertexAllocation vertAlloc = AllocateVertices(renderState, totalGridVerts, gridColor, DrawMode::Lines, false, gridLineWidth);
 	Vec2f *gridVertex = vertAlloc.verts;
 	size_t count = 0;
-	for (int y = 0; y <= dim.tileCountY; ++y) {
+	for (size_t y = 0; y <= dim.tileCountY; ++y) {
 		*gridVertex++ = V2f(dim.gridOriginX, dim.gridOriginY + y * TileHeight);
 		*gridVertex++ = V2f(dim.gridOriginX + dim.tileCountX * TileWidth, dim.gridOriginY + y * TileHeight);
 		count += 2;
 	}
-	for (int x = 0; x <= dim.tileCountX; ++x) {
+	for (size_t x = 0; x <= dim.tileCountX; ++x) {
 		*gridVertex++ = V2f(dim.gridOriginX + x * TileWidth, dim.gridOriginY);
 		*gridVertex++ = V2f(dim.gridOriginX + x * TileWidth, dim.gridOriginY + dim.tileCountY * TileHeight);
 		count += 2;

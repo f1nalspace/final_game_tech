@@ -418,7 +418,7 @@ extern void PushCircle(RenderState &state, const Vec2f &position, const float ra
 	VertexAllocation vertAlloc = AllocateVertices(state, vertexCapacity, color, drawMode, true, lineWidth);
 	size_t vertexCount = 0;
 	Vec2f *p = vertAlloc.verts;
-	for(int segmentIndex = 0; segmentIndex < segmentCount; ++segmentIndex) {
+	for(size_t segmentIndex = 0; segmentIndex < segmentCount; ++segmentIndex) {
 		float x = position.x + Cosine(segmentIndex * seg) * radius;
 		float y = position.y + sinf(segmentIndex * seg) * radius;
 		*p++ = V2f(x, y);

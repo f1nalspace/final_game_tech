@@ -656,8 +656,8 @@ static void LoadPictureThreadProc(const fplThreadHandle *thread, void *data) {
 		}
 
 		if(hasValue) {
-			FPL_ASSERT(valueToLoad.fileIndex >= 0 && valueToLoad.fileIndex < state->pictureFileCount);
-			FPL_ASSERT(valueToLoad.pictureIndex >= 0 && valueToLoad.pictureIndex < state->viewPicturesCapacity);
+			FPL_ASSERT(valueToLoad.fileIndex >= 0 && valueToLoad.fileIndex < (int)state->pictureFileCount);
+			FPL_ASSERT(valueToLoad.pictureIndex >= 0 && valueToLoad.pictureIndex < (int)state->viewPicturesCapacity);
 			ViewPicture *loadedPic = &state->viewPictures[valueToLoad.pictureIndex];
 			const PictureFile *picFile = &state->pictureFiles[valueToLoad.fileIndex];
 			LoadedPictureState loadState = fplAtomicLoadS32(&loadedPic->state);
