@@ -1618,7 +1618,7 @@ namespace game {
 			float buttonX = ControlsOriginX + buttonMargin + (towerIndex * (buttonOutputRadius.w * 2.0f) + (FPL_MAX(0, towerIndex - 1) * buttonPadding));
 			float buttonY = ControlsOriginY + buttonMargin;
 			if (ui::UIButton(state.ui, buttonId, V2f(buttonX + buttonRadius.w, buttonY + buttonRadius.h), buttonRadius, DrawTowerControl, (void *)(uintptr_t)towerIndex)) {
-				state.towers.selectedIndex = towerIndex;
+				state.towers.selectedIndex = (int)towerIndex;
 			}
 		}
 
@@ -1949,8 +1949,8 @@ extern void GameRender(GameMemory &gameMemory, const float alpha) {
 
 
 	if (state->isDebugRendering) {
-		for (size_t y = 0; y < dim.tileCountY; ++y) {
-			for (size_t x = 0; x < dim.tileCountX; ++x) {
+		for (int y = 0; y < (int)dim.tileCountY; ++y) {
+			for (int x = 0; x < (int)dim.tileCountX; ++x) {
 				const Tile &tile = state->level.tiles[y * dim.tileCountX + x];
 				if (tile.wayType != WayType::None) {
 					render::DrawTile(renderState, dim, x, y, true, V4f(0.0f, 0.0f, 1.0f, 0.5f));
