@@ -130,7 +130,6 @@ SOFTWARE.
 	\tableofcontents
 
 	## v0.8.4.0 beta:
-	- New: Skip implementation block when documentation parser is detected (By be disabled -> FPL_NO_SKIP_IMPL_FOR_PARSER)
 	- New: Added macro function FPL_STRUCT_INIT
 	- New: Added enum value fplWindowEventType_DropSingleFile
 	- New: Added structure fplWindowDropFiles
@@ -4713,9 +4712,6 @@ fpl_main int main(int argc, char **args);
 // ****************************************************************************
 #if defined(FPL_IMPLEMENTATION) && !defined(FPL_IMPLEMENTED)
 #define FPL_IMPLEMENTED
-
-// Skip implementation for several parsers such as Intellisense
-#if !defined(__INTELLISENSE__) || defined(FPL_NO_SKIP_IMPL_FOR_PARSER)
 
 // Module constants used for logging
 #define FPL__MODULE_CORE "Core"
@@ -16361,8 +16357,6 @@ fpl_common_api fplPlatformType fplGetPlatformType() {
 	//! Don't spill our preferences to the outside
 #	pragma warning( pop )
 #endif
-
-#endif // !__INTELLISENSE || FPL_NO_SKIP_IMPL_FOR_PARSER
 
 #endif // FPL_IMPLEMENTATION && !FPL_IMPLEMENTED
 
