@@ -136,9 +136,11 @@ SOFTWARE.
 	- New: Added structure fplWindowDropFiles
 	- New: Added enum value fplInitFlags_Console
 	- New: [Win32] Support for WM_DROPFILES -> fplWindowEventType_DropSingleFile event
+	- Changed: Move fplInitFlags_All out and made it a static constant
 	- Changed: Use fplInitFlags_Console to activate console or not
 	- Fixed: fplExtractFileExtension was returning wrong result for files with multiple separators
 	- Fixed: [Win32] Fullscreen toggling was broken in maximize/minimize mode
+	- Fixed: [Win32] ClientToScreen prototype was missing WINAPI call
 	- Fixed: [POSIX] fplListDirNext() was broken
 	- Fixed: [X11] Key up event was never fired (KeyRelease + KeyPress = Key-Repeat)
 
@@ -2131,13 +2133,13 @@ typedef enum fplInitFlags {
 	fplInitFlags_Video = 1 << 2,
 	//! Use asyncronous audio playback
 	fplInitFlags_Audio = 1 << 3,
-	//! Default init flags for initializing everything
-	fplInitFlags_All = fplInitFlags_Window | fplInitFlags_Video | fplInitFlags_Audio
 } fplInitFlags;
-
-//! InitFlags operator overloads for C++
 FPL_ENUM_AS_FLAGS_OPERATORS(fplInitFlags);
 
+//! Default init flags for initializing everything
+static const fplInitFlags fplInitFlags_All = fplInitFlags_Console | fplInitFlags_Window | fplInitFlags_Video | fplInitFlags_Audio;
+
+//! InitFlags operator overloads for C++
 //! An emenumeration of init result types
 typedef enum fplInitResultType {
 	//! Window creation failed
@@ -5106,7 +5108,7 @@ typedef FPL__FUNC_WIN32_GetClientRect(fpl__win32_func_GetClientRect);
 typedef FPL__FUNC_WIN32_GetWindowRect(fpl__win32_func_GetWindowRect);
 #define FPL__FUNC_WIN32_AdjustWindowRect(name) BOOL WINAPI name(LPRECT lpRect, DWORD dwStyle, BOOL bMenu)
 typedef FPL__FUNC_WIN32_AdjustWindowRect(fpl__win32_func_AdjustWindowRect);
-#define FPL__FUNC_WIN32_ClientToScreen(name) BOOL name(HWND hWnd, LPPOINT lpPoint)
+#define FPL__FUNC_WIN32_ClientToScreen(name) BOOL WINAPI name(HWND hWnd, LPPOINT lpPoint)
 typedef FPL__FUNC_WIN32_ClientToScreen(fpl__win32_func_ClientToScreen);
 #define FPL__FUNC_WIN32_GetAsyncKeyState(name) SHORT WINAPI name(int vKey)
 typedef FPL__FUNC_WIN32_GetAsyncKeyState(fpl__win32_func_GetAsyncKeyState);
@@ -7743,9 +7745,11 @@ fpl_internal_inline bool fpl__Win32IsCursorInWindow(const fpl__Win32Api *wapi, c
 	// Cursor in client rect?
 	RECT area;
 	wapi->user.GetClientRect(win32Window->windowHandle, &area);
-	wapi->user.ClientToScreen(win32Window->windowHandle, (POINT *)&area.left);
-	wapi->user.ClientToScreen(win32Window->windowHandle, (POINT *)&area.right);
+
+	wapi->user.ClientToScreen(win32Window->windowHandle, (LPPOINT)&area.left);
+	wapi->user.ClientToScreen(win32Window->windowHandle, (LPPOINT)&area.right);
 	bool result = wapi->user.PtInRect(&area, pos) == TRUE;
+
 	return(result);
 }
 
@@ -8757,7 +8761,7 @@ fpl_internal bool fpl__Win32InitPlatform(const fplInitFlags initFlags, const fpl
 	fpl__Win32LoadXInputApi(&win32AppState->xinput.xinputApi);
 
 	// Init console
-	if(initFlags & fplInitFlags_Console) {
+	if(!(initFlags & fplInitFlags_Window) && (initFlags & fplInitFlags_Console)) {
 		HWND consoleHandle = GetConsoleWindow();
 		if(consoleHandle == fpl_null) {
 			AllocConsole();
@@ -8774,11 +8778,11 @@ fpl_internal bool fpl__Win32InitPlatform(const fplInitFlags initFlags, const fpl
 #	endif
 
 	return (true);
-	}
+}
 
-	//
-	// Win32 Atomics
-	//
+//
+// Win32 Atomics
+//
 fpl_platform_api void fplAtomicReadFence() {
 	FPL_MEMORY_BARRIER();
 	_ReadBarrier();
@@ -11553,7 +11557,7 @@ fpl_platform_api wchar_t *fplUTF8StringToWideString(const char *utf8Source, cons
 	mbstowcs(wideDest, utf8Source, utf8SourceLen);
 	wideDest[requiredLen] = 0;
 	return(wideDest);
-	}
+}
 #endif // FPL_SUBPLATFORM_STD_STRINGS
 
 // ############################################################################
@@ -11579,7 +11583,7 @@ fpl_platform_api char fplConsoleWaitForCharInput() {
 	int c = getchar();
 	const char result = (c >= 0 && c < 256) ? (char)c : 0;
 	return(result);
-	}
+}
 #endif // FPL_SUBPLATFORM_STD_CONSOLE
 
 // ############################################################################
@@ -12331,7 +12335,7 @@ fpl_platform_api bool fplSetClipboardAnsiText(const char *ansiSource) {
 fpl_platform_api bool fplSetClipboardWideText(const wchar_t *wideSource) {
 	// @IMPLEMENT(final): X11 fplSetClipboardWideText (wide)
 	return false;
-	}
+}
 #endif // FPL_SUBPLATFORM_X11
 
 // ############################################################################
@@ -12674,7 +12678,7 @@ fpl_platform_api char *fplGetHomePath(char *destPath, const size_t maxDestLen) {
 	}
 	char *result = fplCopyAnsiString(homeDir, destPath, maxDestLen);
 	return(result);
-	}
+}
 #endif // FPL_PLATFORM_LINUX
 
 // ############################################################################
@@ -12742,7 +12746,7 @@ fpl_platform_api char *fplGetExecutableFilePath(char *destPath, const size_t max
 fpl_platform_api char *fplGetHomePath(char *destPath, const size_t maxDestLen) {
 	// @IMPLEMENT(final): Unix fplGetHomePath
 	return fpl_null;
-	}
+}
 #endif // FPL_PLATFORM_UNIX
 
 // ****************************************************************************
@@ -13563,7 +13567,7 @@ done_x11_glx:
 	}
 
 	return (result);
-	}
+}
 #endif // FPL_ENABLE_VIDEO_OPENGL && FPL_SUBPLATFORM_X11
 
 // ############################################################################
@@ -13625,7 +13629,7 @@ fpl_internal bool fpl__X11InitVideoSoftware(const fpl__X11SubplatformState *subp
 	x11Api->XSync(windowState->display, False);
 
 	return (true);
-	}
+}
 #endif // FPL_ENABLE_VIDEO_SOFTWARE && FPL_SUBPLATFORM_X11
 
 // ############################################################################
@@ -14962,13 +14966,13 @@ fpl_internal void fpl__StopAudioDeviceMainLoop(fpl__AudioState *audioState) {
 		case fplAudioDriverType_Alsa:
 		{
 			fpl__AudioStopMainLoopAlsa(&audioState->alsa);
-	} break;
+		} break;
 #	endif
 
 		default:
 			break;
-}
 	}
+}
 
 fpl_internal bool fpl__ReleaseAudioDevice(fpl__AudioState *audioState) {
 	FPL_ASSERT(audioState->activeDriver > fplAudioDriverType_Auto);
@@ -14986,14 +14990,14 @@ fpl_internal bool fpl__ReleaseAudioDevice(fpl__AudioState *audioState) {
 		case fplAudioDriverType_Alsa:
 		{
 			result = fpl__AudioReleaseAlsa(&audioState->common, &audioState->alsa);
-	} break;
+		} break;
 #	endif
 
 		default:
 			break;
-}
-	return (result);
 	}
+	return (result);
+}
 
 fpl_internal bool fpl__StopAudioDevice(fpl__AudioState *audioState) {
 	FPL_ASSERT(audioState->activeDriver > fplAudioDriverType_Auto);
@@ -15011,14 +15015,14 @@ fpl_internal bool fpl__StopAudioDevice(fpl__AudioState *audioState) {
 		case fplAudioDriverType_Alsa:
 		{
 			result = fpl__AudioStopAlsa(&audioState->alsa);
-	} break;
+		} break;
 #	endif
 
 		default:
 			break;
-}
-	return (result);
 	}
+	return (result);
+}
 
 fpl_internal fplAudioResult fpl__StartAudioDevice(fpl__AudioState *audioState) {
 	FPL_ASSERT(audioState->activeDriver > fplAudioDriverType_Auto);
@@ -15036,14 +15040,14 @@ fpl_internal fplAudioResult fpl__StartAudioDevice(fpl__AudioState *audioState) {
 		case fplAudioDriverType_Alsa:
 		{
 			result = fpl__AudioStartAlsa(&audioState->common, &audioState->alsa);
-	} break;
+		} break;
 #	endif
 
 		default:
 			break;
-}
-	return (result);
 	}
+	return (result);
+}
 
 fpl_internal void fpl__RunAudioDeviceMainLoop(fpl__AudioState *audioState) {
 	FPL_ASSERT(audioState->activeDriver > fplAudioDriverType_Auto);
@@ -15060,13 +15064,13 @@ fpl_internal void fpl__RunAudioDeviceMainLoop(fpl__AudioState *audioState) {
 		case fplAudioDriverType_Alsa:
 		{
 			fpl__AudioRunMainLoopAlsa(&audioState->common, &audioState->alsa);
-	} break;
+		} break;
 #	endif
 
 		default:
 			break;
-}
 	}
+}
 
 fpl_internal bool fpl__IsAudioDriverAsync(fplAudioDriverType audioDriver) {
 	switch(audioDriver) {
@@ -15295,18 +15299,18 @@ fpl_internal fplAudioResult fpl__InitAudio(const fplAudioSettings *audioSettings
 				if(initResult != fplAudioResult_Success) {
 					fpl__AudioReleaseAlsa(&audioState->common, &audioState->alsa);
 				}
-		} break;
+			} break;
 #		endif
 
 			default:
 				break;
-	}
+		}
 		if(initResult == fplAudioResult_Success) {
 			audioState->activeDriver = propeDriver;
 			audioState->isAsyncDriver = fpl__IsAudioDriverAsync(propeDriver);
 			break;
 		}
-}
+	}
 
 	if(initResult != fplAudioResult_Success) {
 		fpl__ReleaseAudio(audioState);
@@ -15329,7 +15333,7 @@ fpl_internal fplAudioResult fpl__InitAudio(const fplAudioSettings *audioSettings
 	FPL_ASSERT(fpl__AudioGetDeviceState(&audioState->common) == fpl__AudioDeviceState_Stopped);
 
 	return(fplAudioResult_Success);
-	}
+}
 #endif // FPL_ENABLE_AUDIO
 
 // %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -15361,7 +15365,7 @@ typedef union fpl__X11VideoState {
 #	if defined(FPL_ENABLE_VIDEO_SOFTWARE)
 	fpl__X11VideoSoftwareState software;
 #	endif
-	} fpl__X11VideoState;
+} fpl__X11VideoState;
 #endif // FPL_SUBPLATFORM_X11
 
 typedef struct fpl__VideoState {
@@ -15578,9 +15582,9 @@ fpl_internal FPL__FUNC_PRE_SETUP_WINDOW(fpl__PreSetupWindowDefault) {
 #			if defined(FPL_SUBPLATFORM_X11)
 				if(fpl__X11InitFrameBufferConfigVideoOpenGL(&appState->x11.api, &appState->window.x11, &initSettings->video, &videoState->x11.opengl)) {
 					result = fpl__X11SetPreWindowSetupForOpenGL(&appState->x11.api, &appState->window.x11, &videoState->x11.opengl, &outResult->x11);
-			}
+				}
 #			endif
-		} break;
+			} break;
 #		endif // FPL_ENABLE_VIDEO_OPENGL
 
 #		if defined(FPL_ENABLE_VIDEO_SOFTWARE)
@@ -15589,18 +15593,18 @@ fpl_internal FPL__FUNC_PRE_SETUP_WINDOW(fpl__PreSetupWindowDefault) {
 #			if defined(FPL_SUBPLATFORM_X11)
 				result = fpl__X11SetPreWindowSetupForSoftware(&appState->x11.api, &appState->window.x11, &videoState->x11.software, &outResult->x11);
 #			endif
-	} break;
+			} break;
 #		endif // FPL_ENABLE_VIDEO_OPENGL
 
 			default:
 			{
 			} break;
-}
 		}
+	}
 #	endif // FPL_ENABLE_VIDEO
 
 	return(result);
-	}
+}
 
 fpl_internal FPL__FUNC_POST_SETUP_WINDOW(fpl__PostSetupWindowDefault) {
 	FPL_ASSERT(appState != fpl_null);
@@ -15884,15 +15888,15 @@ fpl_common_api uint32_t fplGetAudioDevices(fplAudioDeviceInfo *devices, uint32_t
 			case fplAudioDriverType_Alsa:
 			{
 				result = fpl__GetAudioDevicesAlsa(&audioState->alsa, devices, maxDeviceCount);
-		} break;
+			} break;
 #		endif
 
 			default:
 				break;
+		}
 	}
-}
 	return(result);
-	}
+}
 #endif // FPL_ENABLE_AUDIO
 
 // %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -16108,15 +16112,15 @@ fpl_internal void fpl__ReleasePlatformStates(fpl__PlatformInitState *initState, 
 			FPL_LOG_DEBUG("Core", "Release POSIX Subplatform");
 			fpl__PosixReleaseSubplatform(&appState->posix);
 #		endif
-	}
+		}
 
-	// Release platform applicatiom state memory
+		// Release platform applicatiom state memory
 		FPL_LOG_DEBUG(FPL__MODULE_CORE, "Release allocated Platform App State Memory");
 		fplMemoryFree(appState);
 		fpl__global__AppState = fpl_null;
-}
-	initState->isInitialized = false;
 	}
+	initState->isInitialized = false;
+}
 
 fpl_common_api const char *fplGetPlatformTypeString(const fplPlatformType type) {
 	switch(type) {
@@ -16206,7 +16210,7 @@ fpl_common_api fplInitResultType fplPlatformInit(const fplInitFlags initFlags, c
 	appState->initFlags = (fplInitFlags)(appState->initFlags & ~fplInitFlags_Window);
 #	endif
 #	if defined(FPL_APPTYPE_CONSOLE)
-		appState->initFlags |= fplInitFlags_Console;
+	appState->initFlags |= fplInitFlags_Console;
 #	endif
 
 	// Initialize sub-platforms
@@ -16219,7 +16223,7 @@ fpl_common_api fplInitResultType fplPlatformInit(const fplInitFlags initFlags, c
 			return fplInitResultType_FailedPlatform;
 		}
 		FPL_LOG_DEBUG("Core", "Successfully initialized POSIX Subplatform");
-}
+	}
 #	endif // FPL_SUBPLATFORM_POSIX
 
 #	if defined(FPL_SUBPLATFORM_X11)
@@ -16231,7 +16235,7 @@ fpl_common_api fplInitResultType fplPlatformInit(const fplInitFlags initFlags, c
 			return fplInitResultType_FailedPlatform;
 		}
 		FPL_LOG_DEBUG("Core", "Successfully initialized X11 Subplatform");
-		}
+	}
 #	endif // FPL_SUBPLATFORM_X11
 
 		// Initialize the actual platform (There can only be one at a time!)
@@ -16335,7 +16339,7 @@ fpl_common_api fplInitResultType fplPlatformInit(const fplInitFlags initFlags, c
 
 	initState->isInitialized = true;
 	return fplInitResultType_Success;
-	}
+}
 
 fpl_common_api fplPlatformType fplGetPlatformType() {
 	fplPlatformType result;
