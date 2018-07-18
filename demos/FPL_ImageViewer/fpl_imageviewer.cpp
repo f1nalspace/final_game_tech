@@ -18,6 +18,9 @@ Author:
 	Torsten Spaete
 
 Changelog:
+	## v0.5.1
+	- Changed: Moved progressbar to the top and made it smaller
+
 	## 2018-07-12 (v0.5)
 	- Created icon
 	- Created resource manifest (Win32)
@@ -1562,10 +1565,12 @@ static void UpdateAndRender(ViewerState *state, const float deltaTime) {
 				DrawTexturedRectangle(state, loadedPic->textureId, state->textureTarget, filterProgramId, &viewProjection, &modelMat, texColor, texSize, texScale);
 
 			} else if(pictureState == LoadedPictureState_LoadingData) {
+				float progressPadding = 4;
+				float progressAspect = 400.0f / 10.0f;
 				float progressW = targetRectWidth * 0.5f;
-				float progressH = progressW * 0.1f;
+				float progressH = progressW / progressAspect;
 				float progressLeft = targetRectX + (targetRectWidth - progressW) * 0.5f;
-				float progressBottom = targetRectY + (targetRectHeight - progressH) * 0.5f;
+				float progressBottom = targetRectY + targetRectHeight - progressH - progressPadding;
 				float percentage = loadedPic->progress;
 				Vec2f progressExt = V2f(progressW * 0.5f, progressH * 0.5f);
 				Mat4f progressModelMat;
@@ -1791,6 +1796,12 @@ int main(int argc, char **argv) {
 										if(state.activeFileIndex > (PAGE_INCREMENT_COUNT - 1)) {
 											ChangeViewPicture(&state, -PAGE_INCREMENT_COUNT, false);
 										}
+									} else if(ev.keyboard.mappedKey == fplKey_Home) {
+										int delta = 0 - (int)state.activeFileIndex;
+										ChangeViewPicture(&state, delta, true);
+									} else if(ev.keyboard.mappedKey == fplKey_End) {
+										int delta = (int)state.pictureFileCount - state.activeFileIndex;
+										ChangeViewPicture(&state, delta, true);
 									} else if(ev.keyboard.mappedKey == fplKey_F) {
 										fplSetWindowFullscreen(!fplIsWindowFullscreen(), 0, 0, 0);
 									} else if(ev.keyboard.mappedKey == fplKey_P) {
