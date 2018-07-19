@@ -133,7 +133,7 @@ SOFTWARE.
     - Changed: [X11] Window title uses XChangeProperty now instead of XStoreName
     - New: [X11] Set window icon title using XChangeProperty
     - New: [X11] Give window our process id
-    - New: [X11] Load window icons on startup (Experimental)
+    - New: [X11] Load window icon at startup
     - New: [X11] Added ping support for letting the WM wakeup the window
 
 	## v0.8.4.0 beta:
@@ -878,8 +878,7 @@ SOFTWARE.
 		- Minimize/Maximize/Restore (Win32)
 
  	- Application
-		- Support icon image in gnome (X11)
-		- Support icon title in gnome (X11)
+		- Fix 'Unknown' icon title in gnome (X11)
 
 	\section section_todo_planned Planned
 
