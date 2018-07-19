@@ -11899,16 +11899,13 @@ fpl_internal fplKey fpl__X11TranslateKeySymbol(const KeySym keySym) {
 }
 
 fpl_internal void fpl__X11LoadWindowIcon(const fpl__X11Api *x11Api, fpl__X11WindowState *x11WinState, fplWindowSettings *windowSettings) {
-    // @TODO(final): Setting the window icon on X11 does not fail, but it does not show up in any of the bars
-    // In gnome/ubuntu the icon is always shown as "unset"
-
     int iconSourceCount = 0;
     fplImageSource iconSources[2] = FPL_ZERO_INIT;
 
-    if (windowSettings->icons[0].width > 0) {
+    if (windowSettings->icons[0].width > 0 && windowSettings->icons[0].type == fplImageType_RGBA) {
         iconSources[iconSourceCount++] = windowSettings->icons[0];
     }
-    if (windowSettings->icons[1].width > 0) {
+    if (windowSettings->icons[1].width > 0 && windowSettings->icons[1].type == fplImageType_RGBA) {
         iconSources[iconSourceCount++] = windowSettings->icons[1];
     }
 
@@ -11919,25 +11916,19 @@ fpl_internal void fpl__X11LoadWindowIcon(const fpl__X11Api *x11Api, fpl__X11Wind
         }
 
         // @MEMORY(final): Do not allocate memory here, use a static memory block or introduce a temporary memory arena!
-        uint32_t *data = (uint32_t *) fplMemoryAllocate(sizeof(uint32_t) * targetSize);
-        uint32_t *target = data;
+        unsigned long *data = (unsigned long *) fplMemoryAllocate(sizeof(unsigned long) * targetSize);
+        unsigned long *target = data;
 
         for (int i = 0; i < iconSourceCount; ++i) {
             const fplImageSource *iconSource = iconSources + i;
             FPL_ASSERT(iconSource->type == fplImageType_RGBA);
-            *target++ = (int32_t) iconSource->width;
-            *target++ = (int32_t) iconSource->height;
-            const uint32_t *source = (const uint32_t *)iconSource->data;
+            *target++ = iconSource->width;
+            *target++ = iconSource->height;
             for (int j = 0; j < iconSource->width * iconSource->height; ++j) {
-            	// @TODO(final): Do we need to swap the byte order of the icon in X11?
-#if 0
                 *target++ = (iconSource->data[j * 4 + 0] << 16) |
                             (iconSource->data[j * 4 + 1] << 8) |
                             (iconSource->data[j * 4 + 2] << 0) |
                             (iconSource->data[j * 4 + 3] << 24);
-#else
-                *target++ = *source;
-#endif
             }
         }
 
