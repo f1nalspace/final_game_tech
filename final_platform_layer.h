@@ -120,7 +120,7 @@ SOFTWARE.
 
 /*!
 	\file final_platform_layer.h
-	\version v0.8.4.0 beta
+	\version v0.8.5.0 beta
 	\author Torsten Spaete
 	\brief Final Platform Layer (FPL) - A C99 Single-Header-File Platform Abstraction Library
 */
@@ -128,6 +128,13 @@ SOFTWARE.
 /*!
 	\page page_changelog Changelog
 	\tableofcontents
+
+    ## v0.8.5.0 beta:
+    - Changed: [X11] Window title uses XChangeProperty now instead of XStoreName
+    - New: [X11] Set window icon title using XChangeProperty
+    - New: [X11] Give window our process id
+    - New: [X11] Load window icons on startup (Experimental)
+    - New: [X11] Added ping support for letting the WM wakeup the window
 
 	## v0.8.4.0 beta:
 	- New: Added macro function FPL_STRUCT_INIT
@@ -1566,6 +1573,7 @@ FPL_STATICASSERT(sizeof(size_t) == sizeof(uint32_t));
 #   include <X11/X.h> // Window
 #   include <X11/Xlib.h> // Display
 #   include <X11/Xutil.h> // XVisualInfo
+#   include <X11/Xatom.h> // XA_CARDINAL
 #endif // FPL_SUBPLATFORM_X11
 
 //
@@ -5612,7 +5620,7 @@ typedef struct fpl__Win32WindowState {
 #	include <time.h> // clock_gettime, nanosleep
 #	include <dlfcn.h> // dlopen, dlclose
 #	include <fcntl.h> // open
-#	include <unistd.h> // read, write, close, access, rmdir
+#	include <unistd.h> // read, write, close, access, rmdir, getpid
 
 // Little macro to not write 5 lines of code all the time
 #define FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(mod, libHandle, libName, target, type, name) \
@@ -5852,7 +5860,7 @@ typedef FPL__FUNC_X11_XFreeColormap(fpl__func_x11_XFreeColormap);
 typedef FPL__FUNC_X11_XMapWindow(fpl__func_x11_XMapWindow);
 #define FPL__FUNC_X11_XUnmapWindow(name) int name(Display *display, Window w)
 typedef FPL__FUNC_X11_XUnmapWindow(fpl__func_x11_XUnmapWindow);
-#define FPL__FUNC_X11_XStoreName(name) int name(Display *display, Window w, char *window_name)
+#define FPL__FUNC_X11_XStoreName(name) int name(Display *display, Window w, _Xconst char *window_name)
 typedef FPL__FUNC_X11_XStoreName(fpl__func_x11_XStoreName);
 #define FPL__FUNC_X11_XDefaultVisual(name) Visual *name(Display *display, int screen_number)
 typedef FPL__FUNC_X11_XDefaultVisual(fpl__func_x11_XDefaultVisual);
@@ -5898,6 +5906,20 @@ typedef FPL__FUNC_X11_XMapRaised(fpl__func_x11_XMapRaised);
 typedef FPL__FUNC_X11_XCreatePixmap(fpl__func_x11_XCreatePixmap);
 #define FPL__FUNC_X11_XSelectInput(name) int name(Display * display, Window w, long eventMask)
 typedef FPL__FUNC_X11_XSelectInput(fpl__func_x11_XSelectInput);
+#define FPL__FUNC_X11_XGetWindowProperty(name) int name(Display* display, Window w, Atom prop, long long_offset, long long_length, Bool del, Atom req_type, Atom* actual_type_return, int* actual_format_return, unsigned long* nitems_return, unsigned long*	bytes_after_return, unsigned char**	prop_return)
+typedef FPL__FUNC_X11_XGetWindowProperty(fpl__func_x11_XGetWindowProperty);
+#define FPL__FUNC_X11_XChangeProperty(name) int name(Display* display, Window w, Atom property, Atom type, int format, int mode, _Xconst unsigned char* data, int nelements)
+typedef FPL__FUNC_X11_XChangeProperty(fpl__func_x11_XChangeProperty);
+#define FPL__FUNC_X11_XDeleteProperty(name) int name(Display* display, Window w,Atom prop)
+typedef FPL__FUNC_X11_XDeleteProperty(fpl__func_x11_XDeleteProperty);
+#define FPL__FUNC_X11_XStringListToTextProperty(name) Status name(char** list, int count, XTextProperty* text_prop_return)
+typedef FPL__FUNC_X11_XStringListToTextProperty(fpl__func_x11_XStringListToTextProperty);
+#define FPL__FUNC_X11_XSetWMIconName(name) void name(Display* display, Window w, XTextProperty *text_prop)
+typedef FPL__FUNC_X11_XSetWMIconName(fpl__func_x11_XSetWMIconName);
+#define FPL__FUNC_X11_XSetWMName(name) void name(Display* display, Window w, XTextProperty *text_prop)
+typedef FPL__FUNC_X11_XSetWMName(fpl__func_x11_XSetWMName);
+
+
 
 
 typedef struct fpl__X11Api {
@@ -5938,6 +5960,12 @@ typedef struct fpl__X11Api {
 	fpl__func_x11_XCreateImage *XCreateImage;
 	fpl__func_x11_XCreatePixmap *XCreatePixmap;
 	fpl__func_x11_XSelectInput *XSelectInput;
+	fpl__func_x11_XGetWindowProperty *XGetWindowProperty;
+    fpl__func_x11_XChangeProperty *XChangeProperty;
+    fpl__func_x11_XDeleteProperty *XDeleteProperty;
+    fpl__func_x11_XStringListToTextProperty *XStringListToTextProperty;
+    fpl__func_x11_XSetWMIconName *XSetWMIconName;
+    fpl__func_x11_XSetWMName *XSetWMName;
 } fpl__X11Api;
 
 fpl_internal void fpl__UnloadX11Api(fpl__X11Api *x11Api) {
@@ -5997,6 +6025,13 @@ fpl_internal bool fpl__LoadX11Api(fpl__X11Api *x11Api) {
 				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_X11, libHandle, libName, x11Api->XCreateImage, fpl__func_x11_XCreateImage, "XCreateImage");
 				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_X11, libHandle, libName, x11Api->XCreatePixmap, fpl__func_x11_XCreatePixmap, "XCreatePixmap");
 				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_X11, libHandle, libName, x11Api->XSelectInput, fpl__func_x11_XSelectInput, "XSelectInput");
+				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_X11, libHandle, libName, x11Api->XGetWindowProperty, fpl__func_x11_XGetWindowProperty, "XGetWindowProperty");
+                FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_X11, libHandle, libName, x11Api->XChangeProperty, fpl__func_x11_XChangeProperty, "XChangeProperty");
+                FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_X11, libHandle, libName, x11Api->XDeleteProperty, fpl__func_x11_XDeleteProperty, "XDeleteProperty");
+                FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_X11, libHandle, libName, x11Api->XStringListToTextProperty, fpl__func_x11_XStringListToTextProperty, "XStringListToTextProperty");
+                FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_X11, libHandle, libName, x11Api->XSetWMIconName, fpl__func_x11_XSetWMIconName, "XSetWMIconName");
+                FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_X11, libHandle, libName, x11Api->XSetWMName, fpl__func_x11_XSetWMName, "XSetWMName");
+
 				result = true;
 			} while(0);
 			if(result) {
@@ -6019,10 +6054,16 @@ typedef struct fpl__X11WindowState {
 	Colormap colorMap;
 	Window window;
 	Visual *visual;
-	Atom wmState;
 	Atom wmProtocols;
 	Atom wmDeleteWindow;
-	Atom wmStateFullscreen;
+	Atom netWMStateFullscreen;
+    Atom netWMPing;
+    Atom netWMState;
+    Atom netWMPid;
+    Atom netWMIcon;
+    Atom netWMName;
+    Atom netWMIconName;
+    Atom utf8String;
 } fpl__X11WindowState;
 
 typedef struct fpl__X11PreWindowSetupResult {
@@ -11856,6 +11897,60 @@ fpl_internal fplKey fpl__X11TranslateKeySymbol(const KeySym keySym) {
 	}
 }
 
+fpl_internal void fpl__X11LoadWindowIcon(const fpl__X11Api *x11Api, fpl__X11WindowState *x11WinState, fplWindowSettings *windowSettings) {
+    // @TODO(final): Setting the window icon on X11 does not fail, but it does not show up in any of the bars
+    // In gnome/ubuntu the icon is always shown as "unset"
+
+    int iconSourceCount = 0;
+    fplImageSource iconSources[2] = FPL_ZERO_INIT;
+
+    if (windowSettings->icons[0].width > 0) {
+        iconSources[iconSourceCount++] = windowSettings->icons[0];
+    }
+    if (windowSettings->icons[1].width > 0) {
+        iconSources[iconSourceCount++] = windowSettings->icons[1];
+    }
+
+    if (iconSourceCount > 0) {
+        int targetSize = 0;
+        for (int i = 0; i < iconSourceCount; ++i) {
+            targetSize += 2 + iconSources[i].width * iconSources[i].height;
+        }
+
+        // @MEMORY(final): Do not allocate memory here, use a static memory block or introduce a temporary memory arena!
+        uint32_t *data = (uint32_t *) fplMemoryAllocate(sizeof(uint32_t) * targetSize);
+        uint32_t *target = data;
+
+        for (int i = 0; i < iconSourceCount; ++i) {
+            const fplImageSource *iconSource = iconSources + i;
+            FPL_ASSERT(iconSource->type == fplImageType_RGBA);
+            *target++ = (int32_t) iconSource->width;
+            *target++ = (int32_t) iconSource->height;
+            const uint32_t *source = (const uint32_t *)iconSource->data;
+            for (int j = 0; j < iconSource->width * iconSource->height; ++j) {
+            	// @TODO(final): Do we need to swap the byte order of the icon in X11?
+#if 0
+                *target++ = (iconSource->data[j * 4 + 0] << 16) |
+                            (iconSource->data[j * 4 + 1] << 8) |
+                            (iconSource->data[j * 4 + 2] << 0) |
+                            (iconSource->data[j * 4 + 3] << 24);
+#else
+                *target++ = *source;
+#endif
+            }
+        }
+
+        x11Api->XChangeProperty(x11WinState->display, x11WinState->window, x11WinState->netWMIcon, XA_CARDINAL, 32, PropModeReplace, (unsigned char *) data, targetSize);
+
+        // @MEMORY(final): Do not free memory here, see note above!
+        fplMemoryFree(data);
+    } else {
+        x11Api->XDeleteProperty(x11WinState->display, x11WinState->window, x11WinState->netWMIcon);
+    }
+
+	x11Api->XFlush(x11WinState->display);
+}
+
 fpl_internal bool fpl__X11InitWindow(const fplSettings *initSettings, fplWindowSettings *currentWindowSettings, fpl__PlatformAppState *appState, fpl__X11SubplatformState *subplatform, fpl__X11WindowState *windowState, const fpl__SetupWindowCallbacks *setupCallbacks) {
 	FPL_ASSERT((initSettings != fpl_null) && (currentWindowSettings != fpl_null) && (appState != fpl_null) && (subplatform != fpl_null) && (windowState != fpl_null) && (setupCallbacks != fpl_null));
 	const fpl__X11Api *x11Api = &subplatform->api;
@@ -11908,7 +12003,12 @@ fpl_internal bool fpl__X11InitWindow(const fplSettings *initSettings, fplWindowS
 
 	XSetWindowAttributes swa = FPL_ZERO_INIT;
 	swa.colormap = colormap;
-	swa.event_mask = StructureNotifyMask | KeyPressMask | KeyReleaseMask | ButtonPressMask | ButtonReleaseMask | PointerMotionMask | ButtonMotionMask;
+	swa.event_mask =
+	        StructureNotifyMask |
+            ExposureMask | FocusChangeMask | VisibilityChangeMask |
+            EnterWindowMask | LeaveWindowMask | PropertyChangeMask |
+	        KeyPressMask | KeyReleaseMask |
+            ButtonPressMask | ButtonReleaseMask | PointerMotionMask | ButtonMotionMask;
 	swa.background_pixel = WhitePixel(windowState->display, windowState->screen);
 	swa.bit_gravity = NorthWestGravity;
 	swa.win_gravity = NorthWestGravity;
@@ -11951,24 +12051,56 @@ fpl_internal bool fpl__X11InitWindow(const fplSettings *initSettings, fplWindowS
 
 	windowState->visual = visual;
 
-	char wmDeleteWindowId[100];
-	char wmProtocolsId[100];
-	char wmStateId[100];
-	char wmStateFullscreen[100];
-	fplCopyAnsiString("WM_DELETE_WINDOW", wmDeleteWindowId, FPL_ARRAYCOUNT(wmDeleteWindowId));
-	fplCopyAnsiString("WM_PROTOCOLS", wmProtocolsId, FPL_ARRAYCOUNT(wmProtocolsId));
-	fplCopyAnsiString("_NET_WM_STATE", wmStateId, FPL_ARRAYCOUNT(wmStateId));
-	fplCopyAnsiString("_NET_WM_STATE_FULLSCREEN", wmStateFullscreen, FPL_ARRAYCOUNT(wmStateFullscreen));
-	windowState->wmDeleteWindow = x11Api->XInternAtom(windowState->display, wmDeleteWindowId, False);
-	windowState->wmState = x11Api->XInternAtom(windowState->display, wmStateId, False);
-	windowState->wmStateFullscreen = x11Api->XInternAtom(windowState->display, wmStateFullscreen, False);
-	x11Api->XSetWMProtocols(windowState->display, windowState->window, &windowState->wmDeleteWindow, 1);
-	windowState->wmProtocols = x11Api->XInternAtom(windowState->display, wmProtocolsId, False);
+    char idBuffer[100];
+
+	// Type atoms
+    fplCopyAnsiString("UTF8_STRING", idBuffer, FPL_ARRAYCOUNT(idBuffer));
+    windowState->utf8String = x11Api->XInternAtom(windowState->display, idBuffer, False);
+
+    // Window manager atoms
+    fplCopyAnsiString("WM_DELETE_WINDOW", idBuffer, FPL_ARRAYCOUNT(idBuffer));
+	windowState->wmDeleteWindow = x11Api->XInternAtom(windowState->display, idBuffer, False);
+    fplCopyAnsiString("WM_PROTOCOLS", idBuffer, FPL_ARRAYCOUNT(idBuffer));
+    windowState->wmProtocols = x11Api->XInternAtom(windowState->display, idBuffer, False);
+    fplCopyAnsiString("_NET_WM_STATE", idBuffer, FPL_ARRAYCOUNT(idBuffer));
+	windowState->netWMState = x11Api->XInternAtom(windowState->display, idBuffer, False);
+    fplCopyAnsiString("_NET_WM_PING", idBuffer, FPL_ARRAYCOUNT(idBuffer));
+	windowState->netWMPing = x11Api->XInternAtom(windowState->display, idBuffer, False);
+    fplCopyAnsiString("_NET_WM_STATE_FULLSCREEN", idBuffer, FPL_ARRAYCOUNT(idBuffer));
+	windowState->netWMStateFullscreen = x11Api->XInternAtom(windowState->display, idBuffer, False);
+    fplCopyAnsiString("_NET_WM_PID", idBuffer, FPL_ARRAYCOUNT(idBuffer));
+    windowState->netWMPid = x11Api->XInternAtom(windowState->display, idBuffer, False);
+    fplCopyAnsiString("_NET_WM_ICON", idBuffer, FPL_ARRAYCOUNT(idBuffer));
+    windowState->netWMIcon = x11Api->XInternAtom(windowState->display, idBuffer, False);
+    fplCopyAnsiString("_NET_WM_NAME", idBuffer, FPL_ARRAYCOUNT(idBuffer));
+    windowState->netWMName = x11Api->XInternAtom(windowState->display, idBuffer, False);
+    fplCopyAnsiString("_NET_WM_ICON_NAME", idBuffer, FPL_ARRAYCOUNT(idBuffer));
+    windowState->netWMIconName = x11Api->XInternAtom(windowState->display, idBuffer, False);
+
+    // Register window manager protocols
+    {
+        Atom protocols[] = {
+                windowState->wmDeleteWindow,
+                windowState->netWMPing
+        };
+        x11Api->XSetWMProtocols(windowState->display, windowState->window, protocols, FPL_ARRAYCOUNT(protocols));
+    }
+
+    // Declare our process id
+    {
+        const long pid = getpid();
+        x11Api->XChangeProperty(windowState->display, windowState->window, windowState->netWMPid, XA_CARDINAL, 32, PropModeReplace, (unsigned char*) &pid, 1);
+    }
 
 	char nameBuffer[1024] = FPL_ZERO_INIT;
-	fplCopyAnsiString("Unnamed FPL X11 Window", nameBuffer, FPL_ARRAYCOUNT(nameBuffer));
+    if (fplGetAnsiStringLength(initSettings->window.windowTitle) > 0) {
+        fplCopyAnsiString(initSettings->window.windowTitle, nameBuffer, FPL_ARRAYCOUNT(nameBuffer));
+    } else {
+        fplCopyAnsiString("Unnamed FPL X11 Window", nameBuffer, FPL_ARRAYCOUNT(nameBuffer));
+    }
 	FPL_LOG_DEBUG(FPL__MODULE_X11, "Show window '%d' on display '%p' with title '%s'", (int)windowState->window, windowState->display, nameBuffer);
-	x11Api->XStoreName(windowState->display, windowState->window, nameBuffer);
+	fpl__X11LoadWindowIcon(x11Api, windowState, currentWindowSettings);
+	fplSetWindowAnsiTitle(nameBuffer);
 	x11Api->XMapWindow(windowState->display, windowState->window);
 	x11Api->XFlush(windowState->display);
 
@@ -12012,6 +12144,14 @@ fpl_internal fplKeyboardModifierFlags fpl__X11TranslateModifierFlags(const int s
 	return(result);
 }
 
+fpl_internal unsigned long fpl__X11GetWindowProperty(const fpl__X11Api *x11Api, Display *display, Window window, Atom prop, Atom type, unsigned char** value) {
+	Atom actualType;
+	int actualFormat;
+	unsigned long itemCount, bytesAfter;
+	x11Api->XGetWindowProperty(display, window, prop, 0, LONG_MAX, False, type, &actualType, &actualFormat, &itemCount, &bytesAfter, value);
+	return(itemCount);
+}
+
 fpl_internal bool fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatform, fpl__PlatformAppState *appState, XEvent *ev) {
 	FPL_ASSERT((subplatform != fpl_null) && (appState != fpl_null) && (ev != fpl_null));
 	fpl__PlatformWindowState *winState = &appState->window;
@@ -12037,10 +12177,20 @@ fpl_internal bool fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatfor
 
 		case ClientMessage:
 		{
-			if((Atom)ev->xclient.data.l[0] == x11WinState->wmDeleteWindow) {
-				// Window exiting
-				winState->isRunning = false;
-				result = false;
+			if (ev->xclient.message_type == x11WinState->wmProtocols) {
+				const Atom protocol = (Atom)ev->xclient.data.l[0];
+				if (protocol != None) {
+					if(protocol == x11WinState->wmDeleteWindow) {
+						// Window asked for closing
+						winState->isRunning = false;
+						result = false;
+					} else if (protocol == x11WinState->netWMPing) {
+					    // Window manager asks us if we are still alive
+                        XEvent reply = *ev;
+                        reply.xclient.window = x11WinState->root;
+                        x11Api->XSendEvent(x11WinState->display, x11WinState->root, False, SubstructureNotifyMask | SubstructureRedirectMask, &reply);
+					}
+				}
 			}
 		} break;
 
@@ -12255,10 +12405,10 @@ fpl_platform_api bool fplSetWindowFullscreen(const bool value, const uint32_t fu
 	XEvent xev = FPL_ZERO_INIT;
 	xev.type = ClientMessage;
 	xev.xclient.window = windowState->window;
-	xev.xclient.message_type = windowState->wmState;
+	xev.xclient.message_type = windowState->netWMState;
 	xev.xclient.format = 32;
 	xev.xclient.data.l[0] = value ? 1 : 0;
-	xev.xclient.data.l[1] = windowState->wmStateFullscreen;
+	xev.xclient.data.l[1] = windowState->netWMStateFullscreen;
 	xev.xclient.data.l[2] = 0;
 	bool result = x11Api->XSendEvent(windowState->display, windowState->root, False, SubstructureRedirectMask | SubstructureNotifyMask, &xev) != 0;
 	if(result) {
@@ -12298,6 +12448,9 @@ fpl_platform_api void fplSetWindowPosition(const int32_t left, const int32_t top
 }
 
 fpl_platform_api void fplSetWindowAnsiTitle(const char *ansiTitle) {
+    // @TODO(final): Setting the window title on X11 works, but it wont be set for the icon in the bars
+    // In gnome/ubuntu the icon title is always "Unbekannt" on my german environment.
+
 	FPL__CheckArgumentNullNoRet(ansiTitle);
 	FPL__CheckPlatformNoRet();
 	fpl__PlatformAppState *appState = fpl__global__AppState;
@@ -12306,7 +12459,18 @@ fpl_platform_api void fplSetWindowAnsiTitle(const char *ansiTitle) {
 	const fpl__X11WindowState *windowState = &appState->window.x11;
 	char nameBuffer[256];
 	fplCopyAnsiString(ansiTitle, nameBuffer, FPL_ARRAYCOUNT(nameBuffer));
-	x11Api->XStoreName(windowState->display, windowState->window, nameBuffer);
+
+    x11Api->XChangeProperty(windowState->display, windowState->window,
+                            windowState->netWMName, windowState->utf8String, 8,
+                    PropModeReplace,
+                    (unsigned char*) ansiTitle, (int)fplGetAnsiStringLength(ansiTitle));
+
+    x11Api->XChangeProperty(windowState->display, windowState->window,
+                            windowState->netWMIconName, windowState->utf8String, 8,
+                    PropModeReplace,
+                    (unsigned char*) ansiTitle, (int)fplGetAnsiStringLength(ansiTitle));
+
+    x11Api->XFlush(windowState->display);
 }
 
 fpl_platform_api void fplSetWindowWideTitle(const wchar_t *wideTitle) {
@@ -12346,7 +12510,6 @@ fpl_platform_api bool fplSetClipboardWideText(const wchar_t *wideSource) {
 #	include <sys/epoll.h> // epoll_create, epoll_ctl, epoll_wait
 #	include <sys/select.h> // select
 #	include <sys/utsname.h> // uname
-#	include <unistd.h> // write
 
 fpl_internal void fpl__LinuxReleasePlatform(fpl__PlatformInitState *initState, fpl__PlatformAppState *appState) {
 }
