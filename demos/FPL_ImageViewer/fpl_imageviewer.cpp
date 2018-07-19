@@ -20,6 +20,7 @@ Author:
 Changelog:
 	## v0.5.1
 	- Changed: Moved progressbar to the top and made it smaller
+    - Fixed: 16x16 icon was always loading 32x32
 
 	## 2018-07-12 (v0.5)
 	- Created icon
@@ -80,7 +81,6 @@ Todo:
 
 #define FPL_IMPLEMENTATION
 #define FPL_LOGGING
-#define FPL_NO_SKIP_IMPL_FOR_PARSER
 #include <final_platform_layer.h>
 
 #define FGL_IMPLEMENTATION
@@ -1713,7 +1713,7 @@ int main(int argc, char **argv) {
 
 	// Load icons (Memory are released on shutdown)
 	int iconW, iconH, iconC;
-	uint8_t *icon16Data = stbi_load_from_memory(icon32DataArray, icon32DataArraySize, &iconW, &iconH, &iconC, 4);
+	uint8_t *icon16Data = stbi_load_from_memory(icon16DataArray, icon16DataArraySize, &iconW, &iconH, &iconC, 4);
 	if(icon16Data != fpl_null) {
 		settings.window.icons[0].data = icon16Data;
 		settings.window.icons[0].width = iconW;
