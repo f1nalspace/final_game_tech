@@ -877,8 +877,9 @@ SOFTWARE.
 		- Minimize/Maximize/Restore (X11)
 		- Minimize/Maximize/Restore (Win32)
 
-	- App:
-		- Custom icon from image (X11)
+ 	- Application
+		- Support icon image in gnome (X11)
+		- Support icon title in gnome (X11)
 
 	\section section_todo_planned Planned
 
