@@ -4319,6 +4319,10 @@ fpl_platform_api void fplUpdateGameControllers();
 typedef struct fplKeyboardState {
 	//! Modifier flags
 	fplKeyboardModifierFlags modifiers;
+	//! Key states
+	bool keyStatesRaw[256];
+	//! Mapped button states
+	fplButtonState buttonStatesMapped[256];
 } fplKeyboardState;
 
 
@@ -10489,6 +10493,13 @@ fpl_platform_api bool fplGetKeyboardState(fplKeyboardState *outState) {
 	const fpl__Win32Api *wapi = &appState->winApi;
 	FPL_CLEAR_STRUCT(outState);
 	outState->modifiers = fpl__Win32GetKeyboardModifiers(wapi);
+	for (uint64_t keyCode = 0; keyCode < 256; ++keyCode) {
+		bool down = fpl__Win32IsKeyDown(wapi, keyCode);
+		fplKey key = fpl__GetMappedKey(&fpl__global__AppState->window, keyCode);
+		outState->keyStatesRaw[keyCode] = down;
+		outState->buttonStatesMapped[(int)key] = down ? fplButtonState_Press : fplButtonState_Release;
+	}
+
 	return(true);
 }
 
