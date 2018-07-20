@@ -718,7 +718,7 @@ static void InitApp(AppState *appState) {
 	for (int i = 0; i < FontCount; ++i) {
 		int cpStart = i * CodePointsPerAtlas;
 		int cpEnd = cpStart + (CodePointsPerAtlas - 1);
-		if (LoadFontFromFile(dataPath, "arial.ttf", 0, 36.0f, cpStart, cpEnd, 512, 512, false, &appState->fontData[i])) {
+		if (LoadFontFromFile(dataPath, "NotoSans-Regular.ttf", 0, 36.0f, cpStart, cpEnd, 512, 512, false, &appState->fontData[i])) {
 			appState->fontTextures[i] = AllocateTexture(appState->fontData[i].atlasWidth, appState->fontData[i].atlasHeight, appState->fontData[i].atlasAlphaBitmap, false, GL_LINEAR, true);
 		}
 	}
@@ -764,7 +764,7 @@ static void RenderApp(AppState *appState, const InputState *input, const uint32_
 	glLoadIdentity();
 
 	constexpr float osdFontHeight = w * 0.1f;
-	constexpr float keyFontHeight = w * 0.02f;
+	constexpr float keyFontHeight = w * 0.03f;
 
 	glColor4f(0.0f, 0.0f, 0.0f, 1.0f);
 	DrawTextFont(L"Keyboard", FontCount, appState->fontData, appState->fontTextures, -w, h, osdFontHeight, 1.0f, -1.0f);
