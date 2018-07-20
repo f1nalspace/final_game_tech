@@ -225,7 +225,7 @@ static void ProcessEvents(Input *currentInput, Input *prevInput, GameWindowActiv
 							case fplKey_F4:
 								UpdateKeyboardButtonState(event.keyboard.buttonState, prevKeyboardController->debugToggle, currentKeyboardController->debugToggle);
 								break;
-							case fplKey_Enter:
+							case fplKey_Return:
 								UpdateKeyboardButtonState(event.keyboard.buttonState, prevKeyboardController->actionStart, currentKeyboardController->actionStart);
 								break;
 							case fplKey_Escape:

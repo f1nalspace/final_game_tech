@@ -153,7 +153,7 @@ static void InitImGUI() {
 	io.KeyMap[ImGuiKey_End] = (uint32_t)fplKey_End;
 	io.KeyMap[ImGuiKey_Delete] = (uint32_t)fplKey_Delete;
 	io.KeyMap[ImGuiKey_Backspace] = (uint32_t)fplKey_Backspace;
-	io.KeyMap[ImGuiKey_Enter] = (uint32_t)fplKey_Enter;
+	io.KeyMap[ImGuiKey_Enter] = (uint32_t)fplKey_Return;
 	io.KeyMap[ImGuiKey_Escape] = (uint32_t)fplKey_Escape;
 	io.KeyMap[ImGuiKey_A] = (uint32_t)fplKey_A;
 	io.KeyMap[ImGuiKey_C] = (uint32_t)fplKey_C;
@@ -199,10 +199,10 @@ static void ImGUIKeyEvent(uint64_t keyCode, fplKey mappedKey, fplKeyboardModifie
 	} else {
 		io.KeysDown[keyCode] = down;
 	}
-	io.KeyCtrl = (modifiers & fplKeyboardModifierFlags_Ctrl) == fplKeyboardModifierFlags_Ctrl;
-	io.KeyShift = (modifiers & fplKeyboardModifierFlags_Shift) == fplKeyboardModifierFlags_Shift;
-	io.KeyAlt = (modifiers & fplKeyboardModifierFlags_Alt) == fplKeyboardModifierFlags_Alt;
-	io.KeySuper = (modifiers & fplKeyboardModifierFlags_Super) == fplKeyboardModifierFlags_Super;
+	io.KeyCtrl = ((modifiers & fplKeyboardModifierFlags_LCtrl) == fplKeyboardModifierFlags_LCtrl) || ((modifiers & fplKeyboardModifierFlags_RCtrl) == fplKeyboardModifierFlags_RCtrl);
+	io.KeyShift = ((modifiers & fplKeyboardModifierFlags_LShift) == fplKeyboardModifierFlags_LShift) || ((modifiers & fplKeyboardModifierFlags_RShift) == fplKeyboardModifierFlags_RShift);
+	io.KeyAlt = ((modifiers & fplKeyboardModifierFlags_LAlt) == fplKeyboardModifierFlags_LAlt) || ((modifiers & fplKeyboardModifierFlags_RAlt) == fplKeyboardModifierFlags_RAlt);
+	io.KeySuper = ((modifiers & fplKeyboardModifierFlags_LSuper) == fplKeyboardModifierFlags_LSuper) || ((modifiers & fplKeyboardModifierFlags_RSuper) == fplKeyboardModifierFlags_RSuper);
 }
 
 static bool show_test_window = true;
