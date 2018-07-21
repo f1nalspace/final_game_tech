@@ -763,18 +763,17 @@ static void RenderApp(AppState *appState, const InputState *input, const uint32_
 	glMatrixMode(GL_MODELVIEW);
 	glLoadIdentity();
 
-	constexpr float osdFontHeight = w * 0.1f;
+	constexpr float osdFontHeight = w * 0.05f;
 	constexpr float keyFontHeight = w * 0.03f;
 
-	glColor4f(0.0f, 0.0f, 0.0f, 1.0f);
-	DrawTextFont(L"Keyboard", FontCount, appState->fontData, appState->fontTextures, -w, h, osdFontHeight, 1.0f, -1.0f);
+	glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
+	DrawTextFont(L"Keyboard", FontCount, appState->fontData, appState->fontTextures, 0, h - osdFontHeight, osdFontHeight, 0.0f, 0.0f);
 
 	{
 		float x = 0.0f;
 		float y = 0.0f;
 		glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
 		DrawSprite(appState->keyboardTexture, KeyboardW * 0.5f, KeyboardH * 0.5f, 0.0f, 1.0f, 1.0f, 0.0f, x, y);
-		DrawRect(KeyboardW * 0.5f, KeyboardH * 0.5f, x, y);
 	}
 
 	const KeyDefinitions *keyDefinitions = &keyDefinitionsGerman;
@@ -796,8 +795,6 @@ static void RenderApp(AppState *appState, const InputState *input, const uint32_
 			glColor4f(1.0f, 0.0f, 0.0f, 1.0f);
 			DrawSprite(appState->keyboardTexture, keyW * 0.5f, keyH * 0.5f, key.uv, keyCenterX, keyCenterY);
 		}
-		glColor4f(1.0f, 0.0f, 1.0f, 1.0f);
-		DrawRect(keyW * 0.5f, keyH * 0.5f, keyCenterX, keyCenterY);
 		for (int i = 0; i < key.count; ++i) {
 			KeyCharDef keyChar = key.chars[i];
 			if (down) {
@@ -857,6 +854,7 @@ static void SetButtonStateFromModifier(InputState *input, const fplKeyboardState
 
 int main(int argc, char *argv[]) {
 	fplSettings settings = fplMakeDefaultSettings();
+	fplCopyAnsiString("FPL Input Demo", settings.window.windowTitle, FPL_ARRAYCOUNT(settings.window.windowTitle));
 	fplInitResultType initRes = fplPlatformInit(fplInitFlags_All, &settings);
 	if (initRes == fplInitResultType_Success) {
 		if (fglLoadOpenGL(true)) {
