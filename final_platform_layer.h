@@ -11858,7 +11858,7 @@ fpl_internal fplKey fpl__X11TranslateKeySymbol(const KeySym keySym) {
 			return fplKey_Tab;
 
 		case XK_Return:
-			return fplKey_Enter;
+			return fplKey_Return;
 
 		case XK_Pause:
 			return fplKey_Pause;
@@ -11967,9 +11967,9 @@ fpl_internal fplKey fpl__X11TranslateKeySymbol(const KeySym keySym) {
 			return fplKey_Z;
 
 		case XK_Super_L:
-			return fplKey_LeftWin;
+			return fplKey_LeftSuper;
 		case XK_Super_R:
-			return fplKey_RightWin;
+			return fplKey_RightSuper;
 
 		case XK_KP_0:
 			return fplKey_NumPad0;
@@ -12314,16 +12314,20 @@ fpl_internal bool fpl__X11InitWindow(const fplSettings *initSettings, fplWindowS
 fpl_internal fplKeyboardModifierFlags fpl__X11TranslateModifierFlags(const int state) {
 	fplKeyboardModifierFlags result = fplKeyboardModifierFlags_None;
 	if (state & ShiftMask) {
-		result |= fplKeyboardModifierFlags_Shift;
+		result |= fplKeyboardModifierFlags_LShift;
+		result |= fplKeyboardModifierFlags_RShift;
 	}
 	if (state & ControlMask) {
-		result |= fplKeyboardModifierFlags_Ctrl;
+		result |= fplKeyboardModifierFlags_LCtrl;
+		result |= fplKeyboardModifierFlags_RCtrl;
 	}
 	if (state & Mod1Mask) {
-		result |= fplKeyboardModifierFlags_Alt;
+		result |= fplKeyboardModifierFlags_LAlt;
+		result |= fplKeyboardModifierFlags_RAlt;
 	}
 	if (state & Mod4Mask) {
-		result |= fplKeyboardModifierFlags_Super;
+		result |= fplKeyboardModifierFlags_LSuper;
+		result |= fplKeyboardModifierFlags_RSuper;
 	}
 	return(result);
 }
