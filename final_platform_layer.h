@@ -148,6 +148,7 @@ SOFTWARE.
 	- New: [Win32] Implemented fplGetSystemLocale
 	- New: [Win32] Implemented fplGetUserLocale
 	- New: [Win32] Implemented fplGetInputLocale
+	- New: [X11] Implemented fplGetKeyboardState
 	- New: [X11] Set window icon title using XChangeProperty
 	- New: [X11] Give window our process id
 	- New: [X11] Load window icons on startup (Experimental)
@@ -6016,6 +6017,8 @@ typedef FPL__FUNC_X11_XStringListToTextProperty(fpl__func_x11_XStringListToTextP
 typedef FPL__FUNC_X11_XSetWMIconName(fpl__func_x11_XSetWMIconName);
 #define FPL__FUNC_X11_XSetWMName(name) void name(Display* display, Window w, XTextProperty *text_prop)
 typedef FPL__FUNC_X11_XSetWMName(fpl__func_x11_XSetWMName);
+#define FPL__FUNC_X11_XQueryKeymap(name) int name(Display* display, char [32])
+typedef FPL__FUNC_X11_XQueryKeymap(fpl__func_x11_XQueryKeymap);
 
 
 
@@ -6064,6 +6067,7 @@ typedef struct fpl__X11Api {
 	fpl__func_x11_XStringListToTextProperty *XStringListToTextProperty;
 	fpl__func_x11_XSetWMIconName *XSetWMIconName;
 	fpl__func_x11_XSetWMName *XSetWMName;
+    fpl__func_x11_XQueryKeymap *XQueryKeymap;
 } fpl__X11Api;
 
 fpl_internal void fpl__UnloadX11Api(fpl__X11Api *x11Api) {
@@ -6129,6 +6133,7 @@ fpl_internal bool fpl__LoadX11Api(fpl__X11Api *x11Api) {
 				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_X11, libHandle, libName, x11Api->XStringListToTextProperty, fpl__func_x11_XStringListToTextProperty, "XStringListToTextProperty");
 				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_X11, libHandle, libName, x11Api->XSetWMIconName, fpl__func_x11_XSetWMIconName, "XSetWMIconName");
 				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_X11, libHandle, libName, x11Api->XSetWMName, fpl__func_x11_XSetWMName, "XSetWMName");
+                FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_X11, libHandle, libName, x11Api->XQueryKeymap, fpl__func_x11_XQueryKeymap, "XQueryKeymap");
 
 				result = true;
 			} while (0);
@@ -12683,6 +12688,31 @@ fpl_platform_api bool fplSetClipboardAnsiText(const char *ansiSource) {
 fpl_platform_api bool fplSetClipboardWideText(const wchar_t *wideSource) {
 	// @IMPLEMENT(final): X11 fplSetClipboardWideText (wide)
 	return false;
+}
+
+fpl_platform_api bool fplGetKeyboardState(fplKeyboardState *outState) {
+    FPL__CheckPlatform(false);
+    FPL__CheckArgumentNull(outState, false);
+    fpl__PlatformAppState *appState = fpl__global__AppState;
+    const fpl__X11SubplatformState *subplatform = &appState->x11;
+    const fpl__X11Api *x11Api = &subplatform->api;
+    const fpl__X11WindowState *windowState = &appState->window.x11;
+    char keysReturn[32];
+    bool result = false;
+    if (x11Api->XQueryKeymap(windowState->display, keysReturn) == 0) {
+        FPL_CLEAR_STRUCT(outState);
+        for (int i = 0; i < 32; ++i) {
+            for (int bit = 0; bit < 8; ++bit) {
+                uint64_t keyCode = (uint64_t)(i * bit);
+                int value = (keysReturn[i] >> bit) & 0x01;
+                outState->keyStatesRaw[keyCode] = (value == 1);
+                fplKey mappedKey = fpl__GetMappedKey(&appState->window, keyCode);
+                outState->buttonStatesMapped[(int)mappedKey] = (value == 1) ? fplButtonState_Press : fplButtonState_Release;
+            }
+        }
+        result = true;
+    }
+	return(result);
 }
 #endif // FPL_SUBPLATFORM_X11
 
