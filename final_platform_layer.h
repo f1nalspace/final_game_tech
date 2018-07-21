@@ -129,7 +129,7 @@ SOFTWARE.
 	\page page_changelog Changelog
 	\tableofcontents
 
-	## v0.8.5.0 beta:
+## v0.8.5.0 beta:
 	- Changed: [X11] Window title uses XChangeProperty now instead of XStoreName
 	- Changed: fplKey_Enter renamed to fplKey_Return
 	- Changed: fplKey_LeftWin renamed to fplKey_LeftSuper
@@ -141,7 +141,13 @@ SOFTWARE.
 	- Changed: [Win32] Detection of left/right keyboard modifier flags
 	- New: Added struct fplKeyboardState
 	- New: Added fplGetKeyboardState()
+	- New: Added fplGetSystemLocale
+	- New: Added fplGetUserLocale
+	- New: Added fplGetInputLocale
 	- New: [Win32] Implemented fplGetKeyboardState
+	- New: [Win32] Implemented fplGetSystemLocale
+	- New: [Win32] Implemented fplGetUserLocale
+	- New: [Win32] Implemented fplGetInputLocale
 	- New: [X11] Set window icon title using XChangeProperty
 	- New: [X11] Give window our process id
 	- New: [X11] Load window icons on startup (Experimental)
@@ -4676,8 +4682,51 @@ fpl_common_api uint32_t fplGetAudioBufferSizeInBytes(const fplAudioFormatType fo
 /** \}*/
 #endif // FPL_ENABLE_AUDIO
 
-#if defined(FPL_ENABLE_WINDOW)
-#endif
+// ----------------------------------------------------------------------------
+/**
+  * \defgroup Locales Internationalization functions
+  * \brief This category contains functions for getting localication informations
+  * \{
+  */
+// ----------------------------------------------------------------------------
+
+//! A enumeration of locale formats
+typedef enum fplLocaleFormat {
+	//! No locale format
+	fplLocaleFormat_None = 0,
+	//! ISO-639 format (de-DE, en-US, etc.)
+	fplLocaleFormat_ISO639,
+} fplLocaleFormat;
+
+/**
+  * \brief Gets the user locale in the given target format
+  * \param targetFormat Target \ref fplLocaleFormat
+  * \param buffer Target string buffer for writing the locale into
+  * \param maxBufferLen The maximum length of the buffer
+  * \return Returns true when the function succeeds, false otherwise
+  */
+fpl_platform_api bool fplGetUserLocale(const fplLocaleFormat targetFormat, char *buffer, const size_t maxBufferLen);
+
+/**
+  * \brief Gets the system locale in the given target format
+  * \param targetFormat Target \ref fplLocaleFormat
+  * \param buffer Target string buffer for writing the locale into
+  * \param maxBufferLen The maximum length of the buffer
+  * \return Returns true when the function succeeds, false otherwise
+  */
+fpl_platform_api bool fplGetSystemLocale(const fplLocaleFormat targetFormat, char *buffer, const size_t maxBufferLen);
+
+/**
+  * \brief Gets the input locale in the given target format
+  * \param targetFormat Target \ref fplLocaleFormat
+  * \param buffer Target string buffer for writing the locale into
+  * \param maxBufferLen The maximum length of the buffer
+  * \return Returns true when the function succeeds, false otherwise
+  */
+fpl_platform_api bool fplGetInputLocale(const fplLocaleFormat targetFormat, char *buffer, const size_t maxBufferLen);
+
+/** \}*/
+
 
 // Ignore any doxygen documentation from here
 //! \cond FPL_IGNORE_DOXYGEN
@@ -5259,6 +5308,8 @@ typedef FPL__FUNC_WIN32_ClipCursor(fpl__win32_func_ClipCursor);
 typedef FPL__FUNC_WIN32_PostQuitMessage(fpl__win32_func_PostQuitMessage);
 #define FPL__FUNC_WIN32_CreateIconIndirect(name) HICON WINAPI name(PICONINFO piconinfo)
 typedef FPL__FUNC_WIN32_CreateIconIndirect(fpl__win32_func_CreateIconIndirect);
+#define FPL__FUNC_WIN32_GetKeyboardLayout(name) HKL WINAPI name(DWORD idThread)
+typedef FPL__FUNC_WIN32_GetKeyboardLayout(fpl__win32_func_GetKeyboardLayout);
 
 // OLE32
 #define FPL__FUNC_WIN32_CoInitializeEx(name) HRESULT WINAPI name(LPVOID pvReserved, DWORD  dwCoInit)
@@ -5370,6 +5421,7 @@ typedef struct fpl__Win32UserApi {
 	fpl__win32_func_ClipCursor *ClipCursor;
 	fpl__win32_func_PostQuitMessage *PostQuitMessage;
 	fpl__win32_func_CreateIconIndirect *CreateIconIndirect;
+	fpl__win32_func_GetKeyboardLayout *GetKeyboardLayout;
 } fpl__Win32UserApi;
 
 typedef struct fpl__Win32OleApi {
@@ -5513,6 +5565,7 @@ fpl_internal bool fpl__Win32LoadApi(fpl__Win32Api *wapi) {
 		FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(FPL__MODULE_WIN32, library, userLibraryName, wapi->user.ClipCursor, fpl__win32_func_ClipCursor, "ClipCursor");
 		FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(FPL__MODULE_WIN32, library, userLibraryName, wapi->user.PostQuitMessage, fpl__win32_func_PostQuitMessage, "PostQuitMessage");
 		FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(FPL__MODULE_WIN32, library, userLibraryName, wapi->user.CreateIconIndirect, fpl__win32_func_CreateIconIndirect, "CreateIconIndirect");
+		FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(FPL__MODULE_WIN32, library, userLibraryName, wapi->user.GetKeyboardLayout, fpl__win32_func_GetKeyboardLayout, "GetKeyboardLayout");
 	}
 
 	// GDI32
@@ -6504,6 +6557,9 @@ fpl_internal void fpl__PushError(const fplLogLevel level, const char *format, ..
 // Argument Errors
 //
 
+fpl_internal void fpl__ArgumentInvalidError(const char *paramName) {
+	FPL_ERROR(FPL__MODULE_ARGS, "%s parameter are not valid", paramName);
+}
 fpl_internal void fpl__ArgumentNullError(const char *paramName) {
 	FPL_ERROR(FPL__MODULE_ARGS, "%s parameter are not allowed to be null", paramName);
 }
@@ -6520,6 +6576,16 @@ fpl_internal void fpl__ArgumentRangeError(const char *paramName, const size_t va
 	FPL_ERROR(FPL__MODULE_ARGS, "%s parameter '%zu' must be in range of '%zu' to '%zu'", paramName, value, minValue, maxValue);
 }
 
+#define FPL__CheckArgumentInvalid(arg, cond, ret) \
+	if((cond)) { \
+		fpl__ArgumentInvalidError(#arg); \
+		return (ret); \
+	}
+#define FPL__CheckArgumentInvalidNoRet(arg, cond) \
+	if((cond)) { \
+		fpl__ArgumentInvalidError(#arg); \
+		return; \
+	}
 #define FPL__CheckArgumentNull(arg, ret) \
 	if((arg) == fpl_null) { \
 		fpl__ArgumentNullError(#arg); \
@@ -10504,6 +10570,44 @@ fpl_platform_api bool fplGetKeyboardState(fplKeyboardState *outState) {
 }
 
 #endif // FPL_ENABLE_WINDOW
+
+fpl_internal LCTYPE fpl__Win32GetLocaleLCIDFromFormat(const fplLocaleFormat format) {
+	switch (format) {
+		case fplLocaleFormat_ISO639:
+			return LOCALE_SNAME;
+		default:
+			return LOCALE_SABBREVLANGNAME;
+	}
+}
+
+fpl_platform_api bool fplGetSystemLocale(const fplLocaleFormat targetFormat, char *buffer, const size_t maxBufferLen) {
+	FPL__CheckArgumentInvalid(targetFormat, targetFormat == fplLocaleFormat_None, false);
+	LCTYPE lcType = fpl__Win32GetLocaleLCIDFromFormat(targetFormat);
+	int r = GetLocaleInfoA(LOCALE_SYSTEM_DEFAULT, lcType, buffer, (int)maxBufferLen);
+	bool result = r > 0;
+	return(result);
+}
+
+fpl_platform_api bool fplGetUserLocale(const fplLocaleFormat targetFormat, char *buffer, const size_t maxBufferLen) {
+	FPL__CheckArgumentInvalid(targetFormat, targetFormat == fplLocaleFormat_None, false);
+	LCTYPE lcType = fpl__Win32GetLocaleLCIDFromFormat(targetFormat);
+	int r = GetLocaleInfoA(LOCALE_USER_DEFAULT, lcType, buffer, (int)maxBufferLen);
+	bool result = r > 0;
+	return(result);
+}
+
+fpl_platform_api bool fplGetInputLocale(const fplLocaleFormat targetFormat, char *buffer, const size_t maxBufferLen) {
+	FPL__CheckArgumentInvalid(targetFormat, targetFormat == fplLocaleFormat_None, false);
+	FPL__CheckPlatform(false);
+	const fpl__Win32AppState *appState = &fpl__global__AppState->win32;
+	const fpl__Win32Api *wapi = &appState->winApi;
+	HKL kbLayout = wapi->user.GetKeyboardLayout(GetCurrentThreadId());
+	LCID langId = (DWORD)kbLayout & 0xFFFF;
+	LCTYPE lcType = fpl__Win32GetLocaleLCIDFromFormat(targetFormat);
+	int r = GetLocaleInfoA(langId, lcType, buffer, (int)maxBufferLen);
+	bool result = r > 0;
+	return(result);
+}
 
 #endif // FPL_PLATFORM_WIN32
 

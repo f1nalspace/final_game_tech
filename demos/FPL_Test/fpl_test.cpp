@@ -1332,9 +1332,22 @@ static void TestStrings() {
 	}
 }
 
+static void TestLocalization() {
+	fplPlatformInit(fplInitFlags_None, fpl_null);
+	char buffer[16];
+	FT_IS_TRUE(fplGetSystemLocale(fplLocaleFormat_ISO639, buffer, FPL_ARRAYCOUNT(buffer)));
+	fplConsoleFormatOut("System Locale (ISO-639): %s\n", buffer);
+	FT_IS_TRUE(fplGetUserLocale(fplLocaleFormat_ISO639, buffer, FPL_ARRAYCOUNT(buffer)));
+	fplConsoleFormatOut("User Locale (ISO-639): %s\n", buffer);
+	FT_IS_TRUE(fplGetInputLocale(fplLocaleFormat_ISO639, buffer, FPL_ARRAYCOUNT(buffer)));
+	fplConsoleFormatOut("Input Locale (ISO-639): %s\n", buffer);
+	fplPlatformRelease();
+}
+
 int main(int argc, char *args[]) {
 	TestColdInit();
 	TestInit();
+	TestLocalization();
 	TestMemory();
 	TestOSInfos();
 	TestHardware();
