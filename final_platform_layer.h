@@ -140,11 +140,14 @@ SOFTWARE.
 	- Changed: fplKeyboardModifierFlags_Ctrl are split into left/right part respectively
 	- Changed: [Win32] Detection of left/right keyboard modifier flags
 	- New: Added struct fplKeyboardState
+	- New: Added struct fplGamepadStates
 	- New: Added fplGetKeyboardState()
-	- New: Added fplGetSystemLocale
-	- New: Added fplGetUserLocale
-	- New: Added fplGetInputLocale
+	- New: Added fplGetSystemLocale()
+	- New: Added fplGetUserLocale()
+	- New: Added fplGetInputLocale()
+	- New: Added fplGetGamepadStates()
 	- New: [Win32] Implemented fplGetKeyboardState
+	- New: [Win32] Implemented fplGetGamepadStates
 	- New: [Win32] Implemented fplGetSystemLocale
 	- New: [Win32] Implemented fplGetUserLocale
 	- New: [Win32] Implemented fplGetInputLocale
@@ -4249,6 +4252,9 @@ typedef struct fplGamepadState {
 	float leftTrigger;
 	//! Analog right trigger in range (-1.0 to 1.0f)
 	float rightTrigger;
+
+	//! Is device connected
+	bool isConnected;
 } fplGamepadState;
 
 //! A structure containing gamepad event data (Type, Device, State, etc.)
@@ -4332,12 +4338,23 @@ typedef struct fplKeyboardState {
 	fplButtonState buttonStatesMapped[256];
 } fplKeyboardState;
 
+//! A struct containing the game controller device states
+typedef struct fplGamepadStates {
+	//! Device states
+	fplGamepadState deviceStates[4];
+} fplGamepadStates;
 
 /**
-  * \brief Polls get current keyboard state and writes it out into the given structure.
+  * \brief Gets current keyboard state and writes it out into the given structure.
   * \param outState The pointer to the \ref fplKeyboardState structure
   */
 fpl_platform_api bool fplGetKeyboardState(fplKeyboardState *outState);
+
+/**
+  * \brief Gets current gamepad states and writes it out into the given structure.
+  * \param outState The pointer to the \ref fplGamepadStates structure
+  */
+fpl_platform_api bool fplGetGamepadStates(fplGamepadStates *outStates);
 
 /*\}*/
 
@@ -6067,7 +6084,7 @@ typedef struct fpl__X11Api {
 	fpl__func_x11_XStringListToTextProperty *XStringListToTextProperty;
 	fpl__func_x11_XSetWMIconName *XSetWMIconName;
 	fpl__func_x11_XSetWMName *XSetWMName;
-    fpl__func_x11_XQueryKeymap *XQueryKeymap;
+	fpl__func_x11_XQueryKeymap *XQueryKeymap;
 } fpl__X11Api;
 
 fpl_internal void fpl__UnloadX11Api(fpl__X11Api *x11Api) {
@@ -6133,7 +6150,7 @@ fpl_internal bool fpl__LoadX11Api(fpl__X11Api *x11Api) {
 				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_X11, libHandle, libName, x11Api->XStringListToTextProperty, fpl__func_x11_XStringListToTextProperty, "XStringListToTextProperty");
 				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_X11, libHandle, libName, x11Api->XSetWMIconName, fpl__func_x11_XSetWMIconName, "XSetWMIconName");
 				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_X11, libHandle, libName, x11Api->XSetWMName, fpl__func_x11_XSetWMName, "XSetWMName");
-                FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_X11, libHandle, libName, x11Api->XQueryKeymap, fpl__func_x11_XQueryKeymap, "XQueryKeymap");
+				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_X11, libHandle, libName, x11Api->XQueryKeymap, fpl__func_x11_XQueryKeymap, "XQueryKeymap");
 
 				result = true;
 			} while (0);
@@ -7776,6 +7793,52 @@ fpl_internal_inline float fpl__Win32XInputProcessStickValue(const SHORT value, c
 	return(result);
 }
 
+fpl_internal void fpl__Win32XInputGamepadToGamepadState(const XINPUT_GAMEPAD *pad, fplGamepadState *outState) {
+	outState->isConnected = true;
+
+	// Analog sticks
+	outState->leftStickX = fpl__Win32XInputProcessStickValue(pad->sThumbLX, XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE);
+	outState->leftStickY = fpl__Win32XInputProcessStickValue(pad->sThumbLY, XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE);
+	outState->rightStickX = fpl__Win32XInputProcessStickValue(pad->sThumbRX, XINPUT_GAMEPAD_RIGHT_THUMB_DEADZONE);
+	outState->rightStickY = fpl__Win32XInputProcessStickValue(pad->sThumbRY, XINPUT_GAMEPAD_RIGHT_THUMB_DEADZONE);
+
+	// Triggers
+	outState->leftTrigger = (float)pad->bLeftTrigger / 255.0f;
+	outState->rightTrigger = (float)pad->bRightTrigger / 255.0f;
+
+	// Digital pad buttons
+	if (pad->wButtons & XINPUT_GAMEPAD_DPAD_UP)
+		outState->dpadUp.isDown = true;
+	if (pad->wButtons & XINPUT_GAMEPAD_DPAD_DOWN)
+		outState->dpadDown.isDown = true;
+	if (pad->wButtons & XINPUT_GAMEPAD_DPAD_LEFT)
+		outState->dpadLeft.isDown = true;
+	if (pad->wButtons & XINPUT_GAMEPAD_DPAD_RIGHT)
+		outState->dpadRight.isDown = true;
+
+	// Action buttons
+	if (pad->wButtons & XINPUT_GAMEPAD_A)
+		outState->actionA.isDown = true;
+	if (pad->wButtons & XINPUT_GAMEPAD_B)
+		outState->actionB.isDown = true;
+	if (pad->wButtons & XINPUT_GAMEPAD_X)
+		outState->actionX.isDown = true;
+	if (pad->wButtons & XINPUT_GAMEPAD_Y)
+		outState->actionY.isDown = true;
+
+	// Center buttons
+	if (pad->wButtons & XINPUT_GAMEPAD_START)
+		outState->start.isDown = true;
+	if (pad->wButtons & XINPUT_GAMEPAD_BACK)
+		outState->back.isDown = true;
+
+	// Shoulder buttons
+	if (pad->wButtons & XINPUT_GAMEPAD_LEFT_SHOULDER)
+		outState->leftShoulder.isDown = true;
+	if (pad->wButtons & XINPUT_GAMEPAD_RIGHT_SHOULDER)
+		outState->rightShoulder.isDown = true;
+}
+
 fpl_internal void fpl__Win32PollControllers(const fplSettings *settings, const fpl__Win32InitState *initState, fpl__Win32XInputState *xinputState) {
 	FPL_ASSERT(settings != fpl_null);
 	FPL_ASSERT(xinputState != fpl_null);
@@ -7829,51 +7892,8 @@ fpl_internal void fpl__Win32PollControllers(const fplSettings *settings, const f
 					ev.type = fplEventType_Gamepad;
 					ev.gamepad.type = fplGamepadEventType_StateChanged;
 					ev.gamepad.deviceIndex = controllerIndex;
-
 					XINPUT_GAMEPAD *pad = &controllerState.Gamepad;
-
-					// Analog sticks
-					ev.gamepad.state.leftStickX = fpl__Win32XInputProcessStickValue(pad->sThumbLX, XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE);
-					ev.gamepad.state.leftStickY = fpl__Win32XInputProcessStickValue(pad->sThumbLY, XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE);
-					ev.gamepad.state.rightStickX = fpl__Win32XInputProcessStickValue(pad->sThumbRX, XINPUT_GAMEPAD_RIGHT_THUMB_DEADZONE);
-					ev.gamepad.state.rightStickY = fpl__Win32XInputProcessStickValue(pad->sThumbRY, XINPUT_GAMEPAD_RIGHT_THUMB_DEADZONE);
-
-					// Triggers
-					ev.gamepad.state.leftTrigger = (float)pad->bLeftTrigger / 255.0f;
-					ev.gamepad.state.rightTrigger = (float)pad->bRightTrigger / 255.0f;
-
-					// Digital pad buttons
-					if (pad->wButtons & XINPUT_GAMEPAD_DPAD_UP)
-						ev.gamepad.state.dpadUp.isDown = true;
-					if (pad->wButtons & XINPUT_GAMEPAD_DPAD_DOWN)
-						ev.gamepad.state.dpadDown.isDown = true;
-					if (pad->wButtons & XINPUT_GAMEPAD_DPAD_LEFT)
-						ev.gamepad.state.dpadLeft.isDown = true;
-					if (pad->wButtons & XINPUT_GAMEPAD_DPAD_RIGHT)
-						ev.gamepad.state.dpadRight.isDown = true;
-
-					// Action buttons
-					if (pad->wButtons & XINPUT_GAMEPAD_A)
-						ev.gamepad.state.actionA.isDown = true;
-					if (pad->wButtons & XINPUT_GAMEPAD_B)
-						ev.gamepad.state.actionB.isDown = true;
-					if (pad->wButtons & XINPUT_GAMEPAD_X)
-						ev.gamepad.state.actionX.isDown = true;
-					if (pad->wButtons & XINPUT_GAMEPAD_Y)
-						ev.gamepad.state.actionY.isDown = true;
-
-					// Center buttons
-					if (pad->wButtons & XINPUT_GAMEPAD_START)
-						ev.gamepad.state.start.isDown = true;
-					if (pad->wButtons & XINPUT_GAMEPAD_BACK)
-						ev.gamepad.state.back.isDown = true;
-
-					// Shoulder buttons
-					if (pad->wButtons & XINPUT_GAMEPAD_LEFT_SHOULDER)
-						ev.gamepad.state.leftShoulder.isDown = true;
-					if (pad->wButtons & XINPUT_GAMEPAD_RIGHT_SHOULDER)
-						ev.gamepad.state.rightShoulder.isDown = true;
-
+					fpl__Win32XInputGamepadToGamepadState(pad, &ev.gamepad.state);
 					fpl__PushEvent(&ev);
 				}
 			}
@@ -10570,8 +10590,30 @@ fpl_platform_api bool fplGetKeyboardState(fplKeyboardState *outState) {
 		outState->keyStatesRaw[keyCode] = down;
 		outState->buttonStatesMapped[(int)key] = down ? fplButtonState_Press : fplButtonState_Release;
 	}
-
 	return(true);
+}
+
+fpl_platform_api bool fplGetGamepadStates(fplGamepadStates *outStates) {
+	FPL__CheckArgumentNull(outStates, false);
+	FPL__CheckPlatform(false);
+	const fpl__Win32AppState *appState = &fpl__global__AppState->win32;
+	const fpl__Win32WindowState *windowState = &fpl__global__AppState->window.win32;
+	const fpl__Win32Api *wapi = &appState->winApi;
+	const fpl__Win32XInputState *xinputState = &appState->xinput;
+	FPL_ASSERT(xinputState != fpl_null);
+	FPL_CLEAR_STRUCT(outStates);
+	if (xinputState->xinputApi.xInputGetState != fpl_null) {
+		for (DWORD controllerIndex = 0; controllerIndex < XUSER_MAX_COUNT; ++controllerIndex) {
+			XINPUT_STATE controllerState = FPL_ZERO_INIT;
+			if (xinputState->xinputApi.xInputGetState(controllerIndex, &controllerState) == ERROR_SUCCESS) {
+				XINPUT_GAMEPAD *pad = &controllerState.Gamepad;
+				fplGamepadState *gamepadState = &outStates->deviceStates[controllerIndex];
+				fpl__Win32XInputGamepadToGamepadState(pad, gamepadState);
+			}
+		}
+		return(true);
+	}
+	return(false);
 }
 
 #endif // FPL_ENABLE_WINDOW
@@ -10607,7 +10649,7 @@ fpl_platform_api bool fplGetInputLocale(const fplLocaleFormat targetFormat, char
 	const fpl__Win32AppState *appState = &fpl__global__AppState->win32;
 	const fpl__Win32Api *wapi = &appState->winApi;
 	HKL kbLayout = wapi->user.GetKeyboardLayout(GetCurrentThreadId());
-	LCID langId = (DWORD)kbLayout & 0xFFFF;
+	LCID langId = (DWORD)(intptr_t)kbLayout & 0xFFFF;
 	LCTYPE lcType = fpl__Win32GetLocaleLCIDFromFormat(targetFormat);
 	int r = GetLocaleInfoA(langId, lcType, buffer, (int)maxBufferLen);
 	bool result = r > 0;
@@ -12691,27 +12733,27 @@ fpl_platform_api bool fplSetClipboardWideText(const wchar_t *wideSource) {
 }
 
 fpl_platform_api bool fplGetKeyboardState(fplKeyboardState *outState) {
-    FPL__CheckPlatform(false);
-    FPL__CheckArgumentNull(outState, false);
-    fpl__PlatformAppState *appState = fpl__global__AppState;
-    const fpl__X11SubplatformState *subplatform = &appState->x11;
-    const fpl__X11Api *x11Api = &subplatform->api;
-    const fpl__X11WindowState *windowState = &appState->window.x11;
-    char keysReturn[32];
-    bool result = false;
-    if (x11Api->XQueryKeymap(windowState->display, keysReturn) == 0) {
-        FPL_CLEAR_STRUCT(outState);
-        for (int i = 0; i < 32; ++i) {
-            for (int bit = 0; bit < 8; ++bit) {
-                uint64_t keyCode = (uint64_t)(i * bit);
-                int value = (keysReturn[i] >> bit) & 0x01;
-                outState->keyStatesRaw[keyCode] = (value == 1);
-                fplKey mappedKey = fpl__GetMappedKey(&appState->window, keyCode);
-                outState->buttonStatesMapped[(int)mappedKey] = (value == 1) ? fplButtonState_Press : fplButtonState_Release;
-            }
-        }
-        result = true;
-    }
+	FPL__CheckPlatform(false);
+	FPL__CheckArgumentNull(outState, false);
+	fpl__PlatformAppState *appState = fpl__global__AppState;
+	const fpl__X11SubplatformState *subplatform = &appState->x11;
+	const fpl__X11Api *x11Api = &subplatform->api;
+	const fpl__X11WindowState *windowState = &appState->window.x11;
+	char keysReturn[32];
+	bool result = false;
+	if (x11Api->XQueryKeymap(windowState->display, keysReturn) == 0) {
+		FPL_CLEAR_STRUCT(outState);
+		for (int i = 0; i < 32; ++i) {
+			for (int bit = 0; bit < 8; ++bit) {
+				uint64_t keyCode = (uint64_t)(i * bit);
+				int value = (keysReturn[i] >> bit) & 0x01;
+				outState->keyStatesRaw[keyCode] = (value == 1);
+				fplKey mappedKey = fpl__GetMappedKey(&appState->window, keyCode);
+				outState->buttonStatesMapped[(int)mappedKey] = (value == 1) ? fplButtonState_Press : fplButtonState_Release;
+			}
+		}
+		result = true;
+	}
 	return(result);
 }
 #endif // FPL_SUBPLATFORM_X11
