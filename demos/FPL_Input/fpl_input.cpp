@@ -32,6 +32,31 @@ public:
 	}
 };
 
+char ToLowerCase(char ch) {
+	if (ch >= 'A' && ch <= 'Z') {
+		ch = 'a' + (ch - 'A');
+	}
+	return ch;
+}
+
+static int CompareStringIgnoreCase(const char *a, const char *b) {
+	while (true) {
+		if (!*a && !*b) {
+			break;
+		} else if (!*a || !*b) {
+			return -1;
+		}
+		char ca = ToLowerCase(*a);
+		char cb = ToLowerCase(*b);
+		if (ca < cb || ca > cb) {
+			return (int)ca - (int)cb;
+		}
+		++a;
+		++b;
+	}
+	return(0);
+}
+
 union Vec2f {
 	struct {
 		float x;
@@ -491,6 +516,7 @@ constexpr float KeyboardTexelW = 1.0f / (float)KeyboardImageW;
 constexpr float KeyboardTexelH = 1.0f / (float)KeyboardImageH;
 static const Vec2i KeyboardImageS = V2i(KeyboardImageW, KeyboardImageH);
 static const Vec2i KeyboardSmallKeyS = V2i(68, 68);
+static const Vec2i KeyboardLedS = V2i(11, 11);
 constexpr float KeyboardAspect = KeyboardImageW / (float)KeyboardImageH;
 constexpr float KeyboardW = AppWidth;
 constexpr float KeyboardH = KeyboardW / KeyboardAspect;
@@ -526,13 +552,15 @@ protected:
 		Set(index, def);
 	}
 public:
-	KeyDefinitions() {
+	const char *name;
+	KeyDefinitions(const char *name) {
+		this->name = name;
 	}
 };
 
-class KeyDefinitionsGerman : public KeyDefinitions {
+class KeyDefinitionsDeDE : public KeyDefinitions {
 public:
-	KeyDefinitionsGerman() {
+	KeyDefinitionsDeDE() : KeyDefinitions("de-DE") {
 		AddKeyDef(fplKey_Escape, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(101, 286)), 1, MakeKeyChar(L"Esc"));
 		AddKeyDef(fplKey_F1, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(255, 286)), 1, MakeKeyChar(L"F1"));
 		AddKeyDef(fplKey_F2, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(327, 286)), 1, MakeKeyChar(L"F2"));
@@ -550,7 +578,7 @@ public:
 		AddKeyDef(fplKey_Scroll, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(1388, 286)), 2, MakeKeyChar(L"Scroll", V2f(0.0f, 0.4f)), MakeKeyChar(L"Lock", V2f(0.0f, -0.4f)));
 		AddKeyDef(fplKey_Pause, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(1464, 286)), 1, MakeKeyChar(L"Pause"));
 
-		// [^°]
+		AddKeyDef(fplKey_Oem5, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(102, 382)), 2, MakeKeyChar(L"^", V2f(-0.5f, -0.4f)), MakeKeyChar(L"°", V2f(-0.5f, 0.3f)));
 		AddKeyDef(fplKey_1, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(192, 383)), 2, MakeKeyChar(L"1", V2f(-0.5f, -0.4f)), MakeKeyChar(L"!", V2f(-0.5f, 0.45f)));
 		AddKeyDef(fplKey_2, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(268, 383)), 2, MakeKeyChar(L"2", V2f(-0.5f, -0.4f)), MakeKeyChar(L"\"", V2f(-0.5f, 0.3f)));
 		AddKeyDef(fplKey_3, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(343, 383)), 2, MakeKeyChar(L"3", V2f(-0.5f, -0.4f)), MakeKeyChar(L"§", V2f(-0.5f, 0.45f)));
@@ -561,51 +589,53 @@ public:
 		AddKeyDef(fplKey_8, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(722, 383)), 3, MakeKeyChar(L"8", V2f(-0.5f, -0.4f)), MakeKeyChar(L"(", V2f(-0.5f, 0.45f)), MakeKeyChar(L"[", V2f(0.5f, -0.3f)));
 		AddKeyDef(fplKey_9, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(797, 383)), 3, MakeKeyChar(L"9", V2f(-0.5f, -0.4f)), MakeKeyChar(L")", V2f(-0.5f, 0.45f)), MakeKeyChar(L"]", V2f(0.5f, -0.3f)));
 		AddKeyDef(fplKey_0, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(872, 383)), 3, MakeKeyChar(L"0", V2f(-0.5f, -0.4f)), MakeKeyChar(L"=", V2f(-0.5f, 0.45f)), MakeKeyChar(L"}", V2f(0.5f, -0.3f)));
-		// [ß?\]
-		// [´`]
+		AddKeyDef(fplKey_Oem4, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(950, 381)), 3, MakeKeyChar(L"ß", V2f(-0.5f, -0.4f)), MakeKeyChar(L"?", V2f(-0.5f, 0.45f)), MakeKeyChar(L"\\", V2f(0.5f, -0.3f)));
+		AddKeyDef(fplKey_Oem6, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(1028, 381)), 2, MakeKeyChar(L"´", V2f(-0.5f, -0.75f)), MakeKeyChar(L"`", V2f(-0.5f, 0.2f)));
 		AddKeyDef(fplKey_Backspace, UVRectFromPos(KeyboardImageS, V2i(139, 68), V2i(1105, 381)), 1, MakeKeyChar(L"Back"));
 
+		Vec2f topLeftAlign = V2f(-0.25f, 0.25f);
 		AddKeyDef(fplKey_Tab, UVRectFromPos(KeyboardImageS, V2i(87, 69), V2i(99, 466)), 1, MakeKeyChar(L"Tab"));
-		AddKeyDef(fplKey_Q, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(195, 468)), 1, MakeKeyChar(L"Q"));
-		AddKeyDef(fplKey_W, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(270, 468)), 1, MakeKeyChar(L"W"));
-		AddKeyDef(fplKey_E, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(345, 468)), 2, MakeKeyChar(L"E"), MakeKeyChar(L"€", V2f(0.5f, -0.5f)));
-		AddKeyDef(fplKey_R, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(421, 468)), 1, MakeKeyChar(L"R"));
-		AddKeyDef(fplKey_T, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(496, 468)), 1, MakeKeyChar(L"T"));
-		AddKeyDef(fplKey_Z, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(572, 468)), 1, MakeKeyChar(L"Z"));
-		AddKeyDef(fplKey_U, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(647, 468)), 1, MakeKeyChar(L"U"));
-		AddKeyDef(fplKey_I, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(724, 468)), 1, MakeKeyChar(L"I"));
-		AddKeyDef(fplKey_O, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(800, 468)), 1, MakeKeyChar(L"O"));
-		AddKeyDef(fplKey_P, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(875, 468)), 1, MakeKeyChar(L"P"));
-		// [Ü]
-		// [+*~]
+		AddKeyDef(fplKey_Q, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(195, 468)), 2, MakeKeyChar(L"Q", topLeftAlign), MakeKeyChar(L"@", V2f(0.4f, -0.4f)));
+		AddKeyDef(fplKey_W, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(270, 468)), 1, MakeKeyChar(L"W", topLeftAlign));
+		AddKeyDef(fplKey_E, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(345, 468)), 2, MakeKeyChar(L"E", topLeftAlign)), MakeKeyChar(L"€", V2f(0.4f, -0.4f));
+		AddKeyDef(fplKey_R, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(421, 468)), 1, MakeKeyChar(L"R", topLeftAlign));
+		AddKeyDef(fplKey_T, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(496, 468)), 1, MakeKeyChar(L"T", topLeftAlign));
+		AddKeyDef(fplKey_Z, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(572, 468)), 1, MakeKeyChar(L"Z", topLeftAlign));
+		AddKeyDef(fplKey_U, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(647, 468)), 1, MakeKeyChar(L"U", topLeftAlign));
+		AddKeyDef(fplKey_I, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(724, 468)), 1, MakeKeyChar(L"I", topLeftAlign));
+		AddKeyDef(fplKey_O, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(800, 468)), 1, MakeKeyChar(L"O", topLeftAlign));
+		AddKeyDef(fplKey_P, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(875, 468)), 1, MakeKeyChar(L"P", topLeftAlign));
+		AddKeyDef(fplKey_OemPlus, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(1028, 467)), 3, MakeKeyChar(L"+", V2f(-0.25f, -0.35f)), MakeKeyChar(L"*", V2f(-0.25f, 0.35f)), MakeKeyChar(L"~", V2f(0.4f, -0.35f)));
 		AddKeyDef(fplKey_Return, UVRectFromPos(KeyboardImageS, V2i(131, 152), V2i(1114, 465)), 1, MakeKeyChar(L"Return"));
 
-		// [Shift-Toggle-Key]
-		AddKeyDef(fplKey_A, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(208, 550)), 1, MakeKeyChar(L"A"));
-		AddKeyDef(fplKey_S, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(284, 550)), 1, MakeKeyChar(L"S"));
-		AddKeyDef(fplKey_D, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(359, 550)), 1, MakeKeyChar(L"D"));
-		AddKeyDef(fplKey_F, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(435, 550)), 1, MakeKeyChar(L"F"));
-		AddKeyDef(fplKey_G, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(510, 550)), 1, MakeKeyChar(L"G"));
-		AddKeyDef(fplKey_H, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(585, 550)), 1, MakeKeyChar(L"H"));
-		AddKeyDef(fplKey_J, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(661, 550)), 1, MakeKeyChar(L"J"));
-		AddKeyDef(fplKey_K, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(738, 550)), 1, MakeKeyChar(L"K"));
-		AddKeyDef(fplKey_L, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(813, 550)), 1, MakeKeyChar(L"L"));
-		// [Ö]
-		// [Ä]
-		// [#']
+		// [CapsLock]
+		AddKeyDef(fplKey_A, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(208, 550)), 1, MakeKeyChar(L"A", topLeftAlign));
+		AddKeyDef(fplKey_S, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(284, 550)), 1, MakeKeyChar(L"S", topLeftAlign));
+		AddKeyDef(fplKey_D, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(359, 550)), 1, MakeKeyChar(L"D", topLeftAlign));
+		AddKeyDef(fplKey_F, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(435, 550)), 1, MakeKeyChar(L"F", topLeftAlign));
+		AddKeyDef(fplKey_G, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(510, 550)), 1, MakeKeyChar(L"G", topLeftAlign));
+		AddKeyDef(fplKey_H, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(585, 550)), 1, MakeKeyChar(L"H", topLeftAlign));
+		AddKeyDef(fplKey_J, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(661, 550)), 1, MakeKeyChar(L"J", topLeftAlign));
+		AddKeyDef(fplKey_K, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(738, 550)), 1, MakeKeyChar(L"K", topLeftAlign));
+		AddKeyDef(fplKey_L, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(813, 550)), 1, MakeKeyChar(L"L", topLeftAlign));
+
+		// @TODO(final): fplKey_Oem1 ?????
+		// @TODO(final): fplKey_Oem2 ?????
+		// @TODO(final): fplKey_Oem3 ?????
+		// @TODO(final): fplKey_Oem7 ?????
+		// @TODO(final): fplKey_Oem8 ?????
 
 		AddKeyDef(fplKey_LeftShift, UVRectFromPos(KeyboardImageS, V2i(87, 68), V2i(98, 633)), 1, MakeKeyChar(L"LShift"));
-		// [<>|]
-		AddKeyDef(fplKey_Y, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(195, 634)), 1, MakeKeyChar(L"Y"));
-		AddKeyDef(fplKey_X, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(271, 634)), 1, MakeKeyChar(L"X"));
-		AddKeyDef(fplKey_C, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(346, 634)), 1, MakeKeyChar(L"C"));
-		AddKeyDef(fplKey_V, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(422, 634)), 1, MakeKeyChar(L"V"));
-		AddKeyDef(fplKey_B, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(497, 634)), 1, MakeKeyChar(L"B"));
-		AddKeyDef(fplKey_N, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(572, 634)), 1, MakeKeyChar(L"N"));
-		AddKeyDef(fplKey_M, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(648, 634)), 1, MakeKeyChar(L"M"));
-		// [,;]
-		// [.:]
-		// [-_]
+		AddKeyDef(fplKey_Y, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(195, 634)), 1, MakeKeyChar(L"Y", topLeftAlign));
+		AddKeyDef(fplKey_X, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(271, 634)), 1, MakeKeyChar(L"X", topLeftAlign));
+		AddKeyDef(fplKey_C, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(346, 634)), 1, MakeKeyChar(L"C", topLeftAlign));
+		AddKeyDef(fplKey_V, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(422, 634)), 1, MakeKeyChar(L"V", topLeftAlign));
+		AddKeyDef(fplKey_B, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(497, 634)), 1, MakeKeyChar(L"B", topLeftAlign));
+		AddKeyDef(fplKey_N, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(572, 634)), 1, MakeKeyChar(L"N", topLeftAlign));
+		AddKeyDef(fplKey_M, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(648, 634)), 1, MakeKeyChar(L"M", topLeftAlign));
+		AddKeyDef(fplKey_OemComma, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(800, 633)), 2, MakeKeyChar(L",", V2f(-0.25f, -0.35f)), MakeKeyChar(L";", V2f(-0.25f, 0.4f)));
+		AddKeyDef(fplKey_OemPeriod, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(875, 633)), 2, MakeKeyChar(L".", V2f(-0.25f, -0.35f)), MakeKeyChar(L":", V2f(-0.25f, 0.4f)));
+		AddKeyDef(fplKey_OemMinus, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(954, 630)), 2, MakeKeyChar(L"-", V2f(-0.25f, -0.35f)), MakeKeyChar(L"_", V2f(-0.25f, 0.4f)));
 		AddKeyDef(fplKey_RightShift, UVRectFromPos(KeyboardImageS, V2i(210, 68), V2i(1034, 629)), 1, MakeKeyChar(L"RShift"));
 
 		// Controls
@@ -651,7 +681,142 @@ public:
 	}
 };
 
-static KeyDefinitions keyDefinitionsGerman = KeyDefinitionsGerman();
+class KeyDefinitionsEnUS : public KeyDefinitions {
+public:
+	KeyDefinitionsEnUS() : KeyDefinitions("en-US") {
+		AddKeyDef(fplKey_Escape, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(101, 286)), 1, MakeKeyChar(L"Esc"));
+		AddKeyDef(fplKey_F1, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(255, 286)), 1, MakeKeyChar(L"F1"));
+		AddKeyDef(fplKey_F2, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(327, 286)), 1, MakeKeyChar(L"F2"));
+		AddKeyDef(fplKey_F3, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(402, 286)), 1, MakeKeyChar(L"F3"));
+		AddKeyDef(fplKey_F4, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(478, 286)), 1, MakeKeyChar(L"F4"));
+		AddKeyDef(fplKey_F5, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(606, 286)), 1, MakeKeyChar(L"F5"));
+		AddKeyDef(fplKey_F6, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(678, 286)), 1, MakeKeyChar(L"F6"));
+		AddKeyDef(fplKey_F7, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(754, 286)), 1, MakeKeyChar(L"F7"));
+		AddKeyDef(fplKey_F8, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(829, 286)), 1, MakeKeyChar(L"F8"));
+		AddKeyDef(fplKey_F9, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(953, 286)), 1, MakeKeyChar(L"F9"));
+		AddKeyDef(fplKey_F10, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(1028, 286)), 1, MakeKeyChar(L"F10"));
+		AddKeyDef(fplKey_F11, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(1103, 286)), 1, MakeKeyChar(L"F11"));
+		AddKeyDef(fplKey_F12, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(1178, 286)), 1, MakeKeyChar(L"F12"));
+		AddKeyDef(fplKey_Print, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(1313, 286)), 1, MakeKeyChar(L"Print"));
+		AddKeyDef(fplKey_Scroll, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(1388, 286)), 2, MakeKeyChar(L"Scroll", V2f(0.0f, 0.4f)), MakeKeyChar(L"Lock", V2f(0.0f, -0.4f)));
+		AddKeyDef(fplKey_Pause, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(1464, 286)), 1, MakeKeyChar(L"Pause"));
+
+		// @TODO(final): fplKey_Oem3 `~
+		AddKeyDef(fplKey_1, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(192, 383)), 2, MakeKeyChar(L"1", V2f(-0.5f, -0.4f)), MakeKeyChar(L"!", V2f(-0.5f, 0.45f)));
+		AddKeyDef(fplKey_2, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(268, 383)), 2, MakeKeyChar(L"2", V2f(-0.5f, -0.4f)), MakeKeyChar(L"@", V2f(-0.5f, 0.3f)));
+		AddKeyDef(fplKey_3, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(343, 383)), 2, MakeKeyChar(L"3", V2f(-0.5f, -0.4f)), MakeKeyChar(L"#", V2f(-0.5f, 0.45f)));
+		AddKeyDef(fplKey_4, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(419, 383)), 2, MakeKeyChar(L"4", V2f(-0.5f, -0.4f)), MakeKeyChar(L"$", V2f(-0.5f, 0.45f)));
+		AddKeyDef(fplKey_5, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(494, 383)), 2, MakeKeyChar(L"5", V2f(-0.5f, -0.4f)), MakeKeyChar(L"%", V2f(-0.5f, 0.45f)));
+		AddKeyDef(fplKey_6, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(569, 383)), 2, MakeKeyChar(L"6", V2f(-0.5f, -0.4f)), MakeKeyChar(L"^", V2f(-0.5f, 0.45f)));
+		AddKeyDef(fplKey_7, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(645, 383)), 3, MakeKeyChar(L"7", V2f(-0.5f, -0.4f)), MakeKeyChar(L"&", V2f(-0.5f, 0.45f)), MakeKeyChar(L"{", V2f(0.5f, -0.3f)));
+		AddKeyDef(fplKey_8, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(722, 383)), 3, MakeKeyChar(L"8", V2f(-0.5f, -0.4f)), MakeKeyChar(L"*", V2f(-0.5f, 0.45f)), MakeKeyChar(L"[", V2f(0.5f, -0.3f)));
+		AddKeyDef(fplKey_9, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(797, 383)), 3, MakeKeyChar(L"9", V2f(-0.5f, -0.4f)), MakeKeyChar(L"(", V2f(-0.5f, 0.45f)), MakeKeyChar(L"]", V2f(0.5f, -0.3f)));
+		AddKeyDef(fplKey_0, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(872, 383)), 3, MakeKeyChar(L"0", V2f(-0.5f, -0.4f)), MakeKeyChar(L")", V2f(-0.5f, 0.45f)), MakeKeyChar(L"}", V2f(0.5f, -0.3f)));
+		// @TODO(final): fplKey_OemMinus -*
+		// @TODO(final): fplKey_OemPlus +=
+		AddKeyDef(fplKey_Backspace, UVRectFromPos(KeyboardImageS, V2i(139, 68), V2i(1105, 381)), 1, MakeKeyChar(L"Back"));
+
+		AddKeyDef(fplKey_Tab, UVRectFromPos(KeyboardImageS, V2i(87, 69), V2i(99, 466)), 1, MakeKeyChar(L"Tab"));
+		AddKeyDef(fplKey_Q, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(195, 468)), 1, MakeKeyChar(L"Q"));
+		AddKeyDef(fplKey_W, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(270, 468)), 1, MakeKeyChar(L"W"));
+		AddKeyDef(fplKey_E, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(345, 468)), 2, MakeKeyChar(L"E"), MakeKeyChar(L"€", V2f(0.5f, -0.5f)));
+		AddKeyDef(fplKey_R, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(421, 468)), 1, MakeKeyChar(L"R"));
+		AddKeyDef(fplKey_T, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(496, 468)), 1, MakeKeyChar(L"T"));
+		AddKeyDef(fplKey_Y, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(572, 468)), 1, MakeKeyChar(L"Y"));
+		AddKeyDef(fplKey_U, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(647, 468)), 1, MakeKeyChar(L"U"));
+		AddKeyDef(fplKey_I, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(724, 468)), 1, MakeKeyChar(L"I"));
+		AddKeyDef(fplKey_O, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(800, 468)), 1, MakeKeyChar(L"O"));
+		AddKeyDef(fplKey_P, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(875, 468)), 1, MakeKeyChar(L"P"));
+		// @TODO(final): fplKey_Oem4 [{
+		// @TODO(final): fplKey_Oem6 ]}
+		// @TODO(final): fplKey_Oem5 \|
+		AddKeyDef(fplKey_Return, UVRectFromPos(KeyboardImageS, V2i(131, 152), V2i(1114, 465)), 1, MakeKeyChar(L"Return"));
+
+		// [CapsLock]
+		AddKeyDef(fplKey_A, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(208, 550)), 1, MakeKeyChar(L"A"));
+		AddKeyDef(fplKey_S, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(284, 550)), 1, MakeKeyChar(L"S"));
+		AddKeyDef(fplKey_D, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(359, 550)), 1, MakeKeyChar(L"D"));
+		AddKeyDef(fplKey_F, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(435, 550)), 1, MakeKeyChar(L"F"));
+		AddKeyDef(fplKey_G, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(510, 550)), 1, MakeKeyChar(L"G"));
+		AddKeyDef(fplKey_H, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(585, 550)), 1, MakeKeyChar(L"H"));
+		AddKeyDef(fplKey_J, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(661, 550)), 1, MakeKeyChar(L"J"));
+		AddKeyDef(fplKey_K, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(738, 550)), 1, MakeKeyChar(L"K"));
+		AddKeyDef(fplKey_L, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(813, 550)), 1, MakeKeyChar(L"L"));
+		// @TODO(final): fplKey_Oem1 ;:
+		// @TODO(final): fplKey_Oem7 '"
+
+		AddKeyDef(fplKey_LeftShift, UVRectFromPos(KeyboardImageS, V2i(87, 68), V2i(98, 633)), 1, MakeKeyChar(L"LShift"));
+		// [<>|]
+		AddKeyDef(fplKey_Z, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(195, 634)), 1, MakeKeyChar(L"Z"));
+		AddKeyDef(fplKey_X, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(271, 634)), 1, MakeKeyChar(L"X"));
+		AddKeyDef(fplKey_C, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(346, 634)), 1, MakeKeyChar(L"C"));
+		AddKeyDef(fplKey_V, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(422, 634)), 1, MakeKeyChar(L"V"));
+		AddKeyDef(fplKey_B, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(497, 634)), 1, MakeKeyChar(L"B"));
+		AddKeyDef(fplKey_N, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(572, 634)), 1, MakeKeyChar(L"N"));
+		AddKeyDef(fplKey_M, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(648, 634)), 1, MakeKeyChar(L"M"));
+		// @TODO(final): fplKey_OemComma ,<
+		// @TODO(final): fplKey_OemPeriod .>
+		// @TODO(final): fplKey_Oem2 /?
+		AddKeyDef(fplKey_RightShift, UVRectFromPos(KeyboardImageS, V2i(210, 68), V2i(1034, 629)), 1, MakeKeyChar(L"RShift"));
+
+		// Controls
+		AddKeyDef(fplKey_Insert, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(1313, 384)), 1, MakeKeyChar(L"Ins"));
+		AddKeyDef(fplKey_Home, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(1390, 384)), 1, MakeKeyChar(L"Home"));
+		AddKeyDef(fplKey_PageUp, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(1465, 384)), 2, MakeKeyChar(L"Page", V2f(0.0f, 0.4f)), MakeKeyChar(L"↑", V2f(0.0f, -0.3f)));
+		AddKeyDef(fplKey_Delete, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(1313, 466)), 1, MakeKeyChar(L"Del"));
+		AddKeyDef(fplKey_End, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(1390, 466)), 1, MakeKeyChar(L"End"));
+		AddKeyDef(fplKey_PageDown, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(1464, 466)), 2, MakeKeyChar(L"Page", V2f(0.0f, 0.4f)), MakeKeyChar(L"↓", V2f(0.0f, -0.3f)));
+
+		// Numpad
+		AddKeyDef(fplKey_NumLock, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(1607, 380)), 1, MakeKeyChar(L"Num"));
+		AddKeyDef(fplKey_Divide, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(1682, 380)), 1, MakeKeyChar(L"/"));
+		AddKeyDef(fplKey_Multiply, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(1758, 380)), 1, MakeKeyChar(L"*"));
+		AddKeyDef(fplKey_Substract, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(1835, 380)), 1, MakeKeyChar(L"-"));
+		AddKeyDef(fplKey_NumPad7, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(1607, 465)), 2, MakeKeyChar(L"7", V2f(0.0f, 0.3f)), MakeKeyChar(L"Home", V2f(0.0f, -0.4f)));
+		AddKeyDef(fplKey_NumPad8, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(1682, 465)), 2, MakeKeyChar(L"8", V2f(0.0f, 0.3f)), MakeKeyChar(L"↑", V2f(0.0f, -0.4f)));
+		AddKeyDef(fplKey_NumPad9, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(1758, 465)), 2, MakeKeyChar(L"9", V2f(0.0f, 0.3f)), MakeKeyChar(L"Pg ↑", V2f(0.0f, -0.4f)));
+		AddKeyDef(fplKey_Add, UVRectFromPos(KeyboardImageS, V2i(68, 146), V2i(1835, 467)), 1, MakeKeyChar(L"+"));
+		AddKeyDef(fplKey_NumPad4, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(1607, 548)), 2, MakeKeyChar(L"4", V2f(0.0f, 0.3f)), MakeKeyChar(L"←", V2f(0.0f, -0.4f)));
+		AddKeyDef(fplKey_NumPad5, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(1683, 548)), 1, MakeKeyChar(L"5"));
+		AddKeyDef(fplKey_NumPad6, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(1758, 548)), 2, MakeKeyChar(L"6", V2f(0.0f, 0.3f)), MakeKeyChar(L"→", V2f(0.0f, -0.4f)));
+		AddKeyDef(fplKey_NumPad1, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(1607, 631)), 2, MakeKeyChar(L"1", V2f(0.0f, 0.3f)), MakeKeyChar(L"End", V2f(0.0f, -0.4f)));
+		AddKeyDef(fplKey_NumPad2, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(1682, 631)), 2, MakeKeyChar(L"2", V2f(0.0f, 0.3f)), MakeKeyChar(L"↓", V2f(0.0f, -0.4f)));
+		AddKeyDef(fplKey_NumPad3, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(1758, 631)), 2, MakeKeyChar(L"3", V2f(0.0f, 0.3f)), MakeKeyChar(L"Pg ↓", V2f(0.0f, -0.4f)));
+		// [Enter]
+		AddKeyDef(fplKey_NumPad0, UVRectFromPos(KeyboardImageS, V2i(138, 68), V2i(1610, 709)), 2, MakeKeyChar(L"0", V2f(0.0f, 0.3f)), MakeKeyChar(L"Ins", V2f(0.0f, -0.4f)));
+		AddKeyDef(fplKey_Separator, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(1758, 709)), 2, MakeKeyChar(L",", V2f(0.0f, 0.3f)), MakeKeyChar(L"Del", V2f(0.0f, -0.4f)));
+
+		AddKeyDef(fplKey_Up, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(1392, 631)), 1, MakeKeyChar(L"↑"));
+		AddKeyDef(fplKey_Left, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(1316, 709)), 1, MakeKeyChar(L"←"));
+		AddKeyDef(fplKey_Down, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(1392, 709)), 1, MakeKeyChar(L"↓"));
+		AddKeyDef(fplKey_Right, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(1467, 709)), 1, MakeKeyChar(L"→"));
+
+		AddKeyDef(fplKey_LeftControl, UVRectFromPos(KeyboardImageS, V2i(100, 68), V2i(101, 716)), 1, MakeKeyChar(L"LCtrl"));
+		AddKeyDef(fplKey_LeftSuper, UVRectFromPos(KeyboardImageS, V2i(100, 68), V2i(210, 716)), 1, MakeKeyChar(L"LWin"));
+		AddKeyDef(fplKey_LeftAlt, UVRectFromPos(KeyboardImageS, V2i(100, 68), V2i(319, 716)), 1, MakeKeyChar(L"LAlt"));
+		AddKeyDef(fplKey_Space, UVRectFromPos(KeyboardImageS, V2i(373, 68), V2i(434, 715)), 1, MakeKeyChar(L"Space"));
+		AddKeyDef(fplKey_RightAlt, UVRectFromPos(KeyboardImageS, V2i(100, 68), V2i(824, 717)), 1, MakeKeyChar(L"RAlt"));
+		AddKeyDef(fplKey_RightSuper, UVRectFromPos(KeyboardImageS, V2i(100, 68), V2i(933, 717)), 1, MakeKeyChar(L"RWin"));
+		// [Meta]
+		AddKeyDef(fplKey_RightControl, UVRectFromPos(KeyboardImageS, V2i(100, 68), V2i(1146, 717)), 1, MakeKeyChar(L"RCtrl"));
+	}
+};
+
+static KeyDefinitions keyDefinitionsArray[] = {
+	KeyDefinitionsDeDE(),
+	KeyDefinitionsEnUS(),
+};
+
+struct KeyLedDef {
+	fplKeyboardModifierFlags flag;
+	UVRect uv;
+};
+
+static KeyLedDef KeyLedDefinitions[] = {
+	{fplKeyboardModifierFlags_CapsLock, UVRectFromPos(KeyboardImageS, KeyboardLedS, V2i(1686, 325))},
+	{fplKeyboardModifierFlags_ScrollLock, UVRectFromPos(KeyboardImageS, KeyboardLedS, V2i(1753, 325))},
+	{fplKeyboardModifierFlags_NumLock, UVRectFromPos(KeyboardImageS, KeyboardLedS, V2i(1820, 325))},
+};
 
 constexpr size_t CodePointCount = 10000;
 constexpr size_t CodePointsPerAtlas = 256;
@@ -668,6 +833,7 @@ struct AppState {
 struct InputState {
 	Vec2i mousePos;
 	fplButtonState keyStates[256];
+	fplKeyboardModifierFlags ledStates;
 };
 
 static GLuint LoadTexture(const char *dataPath, const char *filename) {
@@ -766,8 +932,28 @@ static void RenderApp(AppState *appState, const InputState *input, const uint32_
 	constexpr float osdFontHeight = w * 0.05f;
 	constexpr float keyFontHeight = w * 0.03f;
 
+	const KeyDefinitions *keyDefinitions = &keyDefinitionsArray[0];
+	char inputLocale[16];
+	if (fplGetInputLocale(fplLocaleFormat_ISO639, inputLocale, FPL_ARRAYCOUNT(inputLocale))) {
+		for (int keyDefIndex = 0; keyDefIndex < FPL_ARRAYCOUNT(keyDefinitionsArray); ++keyDefIndex) {
+			const KeyDefinitions *testKeyDefinitions = &keyDefinitionsArray[keyDefIndex];
+			if (CompareStringIgnoreCase(testKeyDefinitions->name, inputLocale) == 0) {
+				keyDefinitions = testKeyDefinitions;
+				break;
+			}
+		}
+	}
+	if (keyDefinitions == nullptr) {
+		keyDefinitions = &keyDefinitionsArray[0];
+	}
+	FPL_ASSERT(keyDefinitions != nullptr);
+
+	char textBuffer[256];
 	glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
-	DrawTextFont(L"Keyboard", FontCount, appState->fontData, appState->fontTextures, 0, h - osdFontHeight, osdFontHeight, 0.0f, 0.0f);
+	fplFormatAnsiString(textBuffer, FPL_ARRAYCOUNT(textBuffer), "Keyboard: %s", keyDefinitions->name);
+	wchar_t wideTextBuffer[256];
+	fplAnsiStringToWideString(textBuffer, fplGetAnsiStringLength(textBuffer), wideTextBuffer, FPL_ARRAYCOUNT(wideTextBuffer));
+	DrawTextFont(wideTextBuffer, FontCount, appState->fontData, appState->fontTextures, 0, h - osdFontHeight, osdFontHeight, 0.0f, 0.0f);
 
 	{
 		float x = 0.0f;
@@ -776,7 +962,19 @@ static void RenderApp(AppState *appState, const InputState *input, const uint32_
 		DrawSprite(appState->keyboardTexture, KeyboardW * 0.5f, KeyboardH * 0.5f, 0.0f, 1.0f, 1.0f, 0.0f, x, y);
 	}
 
-	const KeyDefinitions *keyDefinitions = &keyDefinitionsGerman;
+	for (int i = 0; i < FPL_ARRAYCOUNT(KeyLedDefinitions); ++i) {
+		const KeyLedDef keyLedDef = KeyLedDefinitions[i];
+		float keyW = KeyboardW * (keyLedDef.uv.uMax - keyLedDef.uv.uMin);
+		float keyH = KeyboardH * (keyLedDef.uv.vMax - keyLedDef.uv.vMin);
+		float keyOffsetX = KeyboardW * (keyLedDef.uv.uMin);
+		float keyOffsetY = KeyboardH * (1.0f - keyLedDef.uv.vMax);
+		float keyCenterX = 0.0f - KeyboardW * 0.5f + keyOffsetX + keyW * 0.5f;
+		float keyCenterY = 0.0f - KeyboardH * 0.5f + keyOffsetY + keyH * 0.5f;
+		if (input->ledStates & keyLedDef.flag) {
+			glColor4f(1.0f, 0.0f, 0.0f, 1.0f);
+			DrawSprite(appState->keyboardTexture, keyW * 0.5f, keyH * 0.5f, keyLedDef.uv, keyCenterX, keyCenterY);
+		}
+	}
 
 	for (int keyIndex = 0; keyIndex < 256; keyIndex++) {
 		const KeyDef &key = (*keyDefinitions)[(fplKey)keyIndex];
@@ -807,7 +1005,6 @@ static void RenderApp(AppState *appState, const InputState *input, const uint32_
 			DrawTextFont(keyChar.text, FontCount, appState->fontData, appState->fontTextures, x, y, keyFontHeight, 0.0f, 0.0f);
 		}
 	}
-
 #if 0
 	{
 		int pixelsW = 1914;
@@ -840,9 +1037,9 @@ static void RenderApp(AppState *appState, const InputState *input, const uint32_
 		fplFormatAnsiString(textBuffer, FPL_ARRAYCOUNT(textBuffer), "%d x %d (%f x %f)", posX, posY, worldX, worldY);
 		glColor4f(0.0f, 0.0f, 0.0f, 1.0f);
 		DrawTextFont(textBuffer, &appState->fontData, appState->fontTexture, appState->mousePos.x, appState->mousePos.y, osdFontHeight * 0.5f, 1.0f, -1.0f);
-	}
+		}
 #endif
-}
+	}
 
 static void SetButtonStateFromModifier(InputState *input, const fplKeyboardState *kbstate, const fplKeyboardModifierFlags flag, const fplKey key) {
 	if (kbstate->modifiers & flag) {
@@ -873,17 +1070,22 @@ int main(int argc, char *argv[]) {
 							}
 						} break;
 
+#if 1
 						case fplEventType_Keyboard:
 						{
 							if (ev.keyboard.type == fplKeyboardEventType_Button) {
 								input.keyStates[(int)ev.keyboard.mappedKey] = ev.keyboard.buttonState;
 							}
 						} break;
+#endif
 					}
 				}
 
 				fplKeyboardState keyboardState = {};
 				if (fplGetKeyboardState(&keyboardState)) {
+					for (int i = 0; i < 256; ++i) {
+						//input.keyStates[i] = keyboardState.buttonStatesMapped[i];
+					}
 					SetButtonStateFromModifier(&input, &keyboardState, fplKeyboardModifierFlags_LShift, fplKey_LeftShift);
 					SetButtonStateFromModifier(&input, &keyboardState, fplKeyboardModifierFlags_RShift, fplKey_RightShift);
 					SetButtonStateFromModifier(&input, &keyboardState, fplKeyboardModifierFlags_LAlt, fplKey_LeftAlt);
@@ -892,6 +1094,16 @@ int main(int argc, char *argv[]) {
 					SetButtonStateFromModifier(&input, &keyboardState, fplKeyboardModifierFlags_RCtrl, fplKey_RightControl);
 					SetButtonStateFromModifier(&input, &keyboardState, fplKeyboardModifierFlags_LSuper, fplKey_LeftSuper);
 					SetButtonStateFromModifier(&input, &keyboardState, fplKeyboardModifierFlags_RSuper, fplKey_RightSuper);
+					input.ledStates = fplKeyboardModifierFlags_None;
+					if (keyboardState.modifiers & fplKeyboardModifierFlags_CapsLock) {
+						input.ledStates |= fplKeyboardModifierFlags_CapsLock;
+					}
+					if (keyboardState.modifiers & fplKeyboardModifierFlags_ScrollLock) {
+						input.ledStates |= fplKeyboardModifierFlags_ScrollLock;
+					}
+					if (keyboardState.modifiers & fplKeyboardModifierFlags_NumLock) {
+						input.ledStates |= fplKeyboardModifierFlags_NumLock;
+					}
 				}
 
 				fplWindowSize wsize = {};
