@@ -134,11 +134,17 @@ SOFTWARE.
 	- Changed: fplKey_Enter renamed to fplKey_Return
 	- Changed: fplKey_LeftWin renamed to fplKey_LeftSuper
 	- Changed: fplKey_RightWin renamed to fplKey_RightSuper
+	- Changed: fplKey_Plus renamed to fplKey_OemPlus
+	- Changed: fplKey_Minus renamed to fplKey_OemMinus
+	- Changed: fplKey_Comma renamed to fplKey_OemComma
+	- Changed: fplKey_Period renamed to fplKey_OemPeriod
 	- Changed: fplKeyboardModifierFlags_Alt are split into left/right part respectively
 	- Changed: fplKeyboardModifierFlags_Shift are split into left/right part respectively
 	- Changed: fplKeyboardModifierFlags_Super are split into left/right part respectively
 	- Changed: fplKeyboardModifierFlags_Ctrl are split into left/right part respectively
 	- Changed: [Win32] Detection of left/right keyboard modifier flags
+	- Changed: [Win32] Mapping OEM 1-8 keys
+	- Changed: [Win32] Use MapVirtualKeyA to map key code to virtual key
 	- New: Added struct fplKeyboardState
 	- New: Added struct fplGamepadStates
 	- New: Added fplGetKeyboardState()
@@ -146,6 +152,7 @@ SOFTWARE.
 	- New: Added fplGetUserLocale()
 	- New: Added fplGetInputLocale()
 	- New: Added fplGetGamepadStates()
+	- New: Added fplKey_Oem1-fplKey_Oem8
 	- New: [Win32] Implemented fplGetKeyboardState
 	- New: [Win32] Implemented fplGetGamepadStates
 	- New: [Win32] Implemented fplGetSystemLocale
@@ -889,6 +896,7 @@ SOFTWARE.
 
 	- Input
 		- Gamepad support (Linux)
+		- Mapping OEM-Keys (X11)
 
 	- Window
 		- Toggle Resizable (X11)
@@ -3872,7 +3880,7 @@ fpl_common_api char *fplPathCombine(char *destPath, const size_t maxDestPathLen,
 typedef enum fplKey {
 	fplKey_None = 0,
 
-	// 0x07: Undefined
+	// 0x0-0x07: Undefined
 
 	fplKey_Backspace = 0x08,
 	fplKey_Tab = 0x09,
@@ -3890,14 +3898,14 @@ typedef enum fplKey {
 	fplKey_Pause = 0x13,
 	fplKey_CapsLock = 0x14,
 
-	// 0x15: IME-fplKeys
+	// 0x15: IME-Keys
 	// 0x16: Undefined
-	// 0x17-0x19 IME-fplKeys
+	// 0x17-0x19 IME-Keys
 	// 0x1A: Undefined
 
 	fplKey_Escape = 0x1B,
 
-	// 0x1C - 0x1F: IME-fplKeys
+	// 0x1C-0x1F: IME-Keys
 
 	fplKey_Space = 0x20,
 	fplKey_PageUp = 0x21,
@@ -4029,14 +4037,37 @@ typedef enum fplKey {
 	fplKey_MediaStop = 0xB2,
 	fplKey_MediaPlayPause = 0xB3,
 
-	// 0xB4-0xBA Dont care
+	// 0xB4-0xB9 Dont care
 
-	fplKey_Plus = 0xBB,
-	fplKey_Comma = 0xBC,
-	fplKey_Minus = 0xBD,
-	fplKey_Period = 0xBE,
+	//! '/?' for US
+	fplKey_Oem1 = 0xBA,
+	//! '+' for any country
+	fplKey_OemPlus = 0xBB,
+	//! ',' for any country
+	fplKey_OemComma = 0xBC,
+	//! '-' for any country
+	fplKey_OemMinus = 0xBD,
+	//! '.' for any country
+	fplKey_OemPeriod = 0xBE,
+	//! '/?' for US
+	fplKey_Oem2 = 0xBF,
+	//! '`~' for US
+	fplKey_Oem3 = 0xC0,
 
-	// 0xBF-0xFE Dont care
+	// 0xC1-0xD7 Reserved
+	// 0xD8-0xDA Unassigned
+
+	//! '[{' for US
+	fplKey_Oem4 = 0xDB,
+	//! '\|' for US
+	fplKey_Oem5 = 0xDC,
+	//! ']}' for US
+	fplKey_Oem6 = 0xDD,
+	//! ''"' for US
+	fplKey_Oem7 = 0xDE,
+	fplKey_Oem8 = 0xDF,
+
+	// 0xE0-0xFE Dont care
 } fplKey;
 
 //! An enumeration of window event types (Resized, PositionChanged, etc.)
@@ -4122,8 +4153,14 @@ typedef enum fplKeyboardModifierFlags {
 	fplKeyboardModifierFlags_LSuper = 1 << 6,
 	//! Right super key is down
 	fplKeyboardModifierFlags_RSuper = 1 << 7,
+	//! Capslock state is active
+	fplKeyboardModifierFlags_CapsLock = 1 << 8,
+	//! Numlock state is active
+	fplKeyboardModifierFlags_NumLock = 1 << 9,
+	//! Scrolllock state is active
+	fplKeyboardModifierFlags_ScrollLock = 1 << 10,
 } fplKeyboardModifierFlags;
-//! KeyboardModifierFlags operator overloads for C++
+//! fplKeyboardModifierFlags operator overloads for C++
 FPL_ENUM_AS_FLAGS_OPERATORS(fplKeyboardModifierFlags);
 
 //! A structure containing keyboard event data (Type, Keycode, Mapped key, etc.)
@@ -5228,6 +5265,8 @@ typedef FPL__FUNC_WIN32_AdjustWindowRect(fpl__win32_func_AdjustWindowRect);
 typedef FPL__FUNC_WIN32_ClientToScreen(fpl__win32_func_ClientToScreen);
 #define FPL__FUNC_WIN32_GetAsyncKeyState(name) SHORT WINAPI name(int vKey)
 typedef FPL__FUNC_WIN32_GetAsyncKeyState(fpl__win32_func_GetAsyncKeyState);
+#define FPL__FUNC_WIN32_GetKeyState(name) SHORT WINAPI name(int vKey)
+typedef FPL__FUNC_WIN32_GetKeyState(fpl__win32_func_GetKeyState);
 #define FPL__FUNC_WIN32_MapVirtualKeyA(name) UINT WINAPI name(UINT uCode, UINT uMapType)
 typedef FPL__FUNC_WIN32_MapVirtualKeyA(fpl__win32_func_MapVirtualKeyA);
 #define FPL__FUNC_WIN32_MapVirtualKeyW(name) UINT WINAPI name(UINT uCode, UINT uMapType)
@@ -5440,6 +5479,7 @@ typedef struct fpl__Win32UserApi {
 	fpl__win32_func_PostQuitMessage *PostQuitMessage;
 	fpl__win32_func_CreateIconIndirect *CreateIconIndirect;
 	fpl__win32_func_GetKeyboardLayout *GetKeyboardLayout;
+	fpl__win32_func_GetKeyState *GetKeyState;
 } fpl__Win32UserApi;
 
 typedef struct fpl__Win32OleApi {
@@ -5584,6 +5624,7 @@ fpl_internal bool fpl__Win32LoadApi(fpl__Win32Api *wapi) {
 		FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(FPL__MODULE_WIN32, library, userLibraryName, wapi->user.PostQuitMessage, fpl__win32_func_PostQuitMessage, "PostQuitMessage");
 		FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(FPL__MODULE_WIN32, library, userLibraryName, wapi->user.CreateIconIndirect, fpl__win32_func_CreateIconIndirect, "CreateIconIndirect");
 		FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(FPL__MODULE_WIN32, library, userLibraryName, wapi->user.GetKeyboardLayout, fpl__win32_func_GetKeyboardLayout, "GetKeyboardLayout");
+		FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(FPL__MODULE_WIN32, library, userLibraryName, wapi->user.GetKeyState, fpl__win32_func_GetKeyState, "GetKeyState");
 	}
 
 	// GDI32
@@ -7901,8 +7942,13 @@ fpl_internal void fpl__Win32PollControllers(const fplSettings *settings, const f
 	}
 }
 
-fpl_internal_inline bool fpl__Win32IsKeyDown(const fpl__Win32Api *wapi, const uint64_t keyCode) {
-	bool result = (wapi->user.GetAsyncKeyState((int)keyCode) & 0x8000) > 0;
+fpl_internal_inline bool fpl__Win32IsKeyDown(const fpl__Win32Api *wapi, const int virtualKey) {
+	bool result = (wapi->user.GetAsyncKeyState(virtualKey) & 0x8000) != 0;
+	return(result);
+}
+
+fpl_internal_inline bool fpl__Win32IsKeyActive(const fpl__Win32Api *wapi, const int virtualKey) {
+	bool result = (wapi->user.GetKeyState(virtualKey) & 0x0001) != 0;
 	return(result);
 }
 
@@ -7981,6 +8027,9 @@ fpl_internal fplKeyboardModifierFlags fpl__Win32GetKeyboardModifiers(const fpl__
 	bool rCtrlKeyIsDown = fpl__Win32IsKeyDown(wapi, VK_RCONTROL);
 	bool lSuperKeyIsDown = fpl__Win32IsKeyDown(wapi, VK_LWIN);
 	bool rSuperKeyIsDown = fpl__Win32IsKeyDown(wapi, VK_RWIN);
+	bool capsLockActive = fpl__Win32IsKeyActive(wapi, VK_CAPITAL);
+	bool numLockActive = fpl__Win32IsKeyActive(wapi, VK_NUMLOCK);
+	bool scrollLockActive = fpl__Win32IsKeyActive(wapi, VK_SCROLL);
 	if (lAltKeyIsDown) {
 		modifiers |= fplKeyboardModifierFlags_LAlt;
 	}
@@ -8004,6 +8053,15 @@ fpl_internal fplKeyboardModifierFlags fpl__Win32GetKeyboardModifiers(const fpl__
 	}
 	if (rSuperKeyIsDown) {
 		modifiers |= fplKeyboardModifierFlags_RSuper;
+	}
+	if (capsLockActive) {
+		modifiers |= fplKeyboardModifierFlags_CapsLock;
+	}
+	if (numLockActive) {
+		modifiers |= fplKeyboardModifierFlags_NumLock;
+	}
+	if (scrollLockActive) {
+		modifiers |= fplKeyboardModifierFlags_ScrollLock;
 	}
 	return(modifiers);
 }
@@ -8658,8 +8716,8 @@ fpl_internal void fpl__Win32ReleasePlatform(fpl__PlatformInitState *initState, f
 }
 
 #if defined(FPL_ENABLE_WINDOW)
-fpl_internal fplKey fpl__Win32MapVirtualKey(const uint64_t keyCode) {
-	switch (keyCode) {
+fpl_internal fplKey fpl__Win32TranslateVirtualKey(const fpl__Win32Api *wapi, const uint64_t virtualKey) {
+	switch (virtualKey) {
 		case VK_BACK:
 			return fplKey_Backspace;
 		case VK_TAB:
@@ -8908,14 +8966,31 @@ fpl_internal fplKey fpl__Win32MapVirtualKey(const uint64_t keyCode) {
 		case VK_MEDIA_PLAY_PAUSE:
 			return fplKey_MediaPlayPause;
 
-		case VK_OEM_PLUS:
-			return fplKey_Plus;
-		case VK_OEM_COMMA:
-			return fplKey_Comma;
 		case VK_OEM_MINUS:
-			return fplKey_Minus;
+			return fplKey_OemMinus;
+		case VK_OEM_PLUS:
+			return fplKey_OemPlus;
+		case VK_OEM_COMMA:
+			return fplKey_OemComma;
 		case VK_OEM_PERIOD:
-			return fplKey_Period;
+			return fplKey_OemPeriod;
+
+		case VK_OEM_1:
+			return fplKey_Oem1;
+		case VK_OEM_2:
+			return fplKey_Oem2;
+		case VK_OEM_3:
+			return fplKey_Oem3;
+		case VK_OEM_4:
+			return fplKey_Oem4;
+		case VK_OEM_5:
+			return fplKey_Oem5;
+		case VK_OEM_6:
+			return fplKey_Oem6;
+		case VK_OEM_7:
+			return fplKey_Oem7;
+		case VK_OEM_8:
+			return fplKey_Oem8;
 
 		default:
 			return fplKey_None;
@@ -8968,7 +9043,11 @@ fpl_internal bool fpl__Win32InitPlatform(const fplInitFlags initFlags, const fpl
 #	if defined(FPL_ENABLE_WINDOW)
 	FPL_CLEAR_STRUCT(appState->window.keyMap);
 	for (int i = 0; i < 256; ++i) {
-		appState->window.keyMap[i] = fpl__Win32MapVirtualKey(i);
+		int vk = win32AppState->winApi.user.MapVirtualKeyA(MAPVK_VSC_TO_VK, i);
+		if(vk == 0) {
+			vk = i;
+		}
+		appState->window.keyMap[i] = fpl__Win32TranslateVirtualKey(&win32AppState->winApi, vk);
 	}
 #	endif
 
@@ -10584,8 +10663,12 @@ fpl_platform_api bool fplGetKeyboardState(fplKeyboardState *outState) {
 	const fpl__Win32Api *wapi = &appState->winApi;
 	FPL_CLEAR_STRUCT(outState);
 	outState->modifiers = fpl__Win32GetKeyboardModifiers(wapi);
-	for (uint64_t keyCode = 0; keyCode < 256; ++keyCode) {
-		bool down = fpl__Win32IsKeyDown(wapi, keyCode);
+	for (uint32_t keyCode = 0; keyCode < 256; ++keyCode) {
+		int k = wapi->user.MapVirtualKeyA(MAPVK_VSC_TO_VK, keyCode);
+		if(k == 0) {
+			k = (int)keyCode;
+		}
+		bool down = fpl__Win32IsKeyDown(wapi, k);
 		fplKey key = fpl__GetMappedKey(&fpl__global__AppState->window, keyCode);
 		outState->keyStatesRaw[keyCode] = down;
 		outState->buttonStatesMapped[(int)key] = down ? fplButtonState_Press : fplButtonState_Release;
@@ -12115,13 +12198,15 @@ fpl_internal fplKey fpl__X11TranslateKeySymbol(const KeySym keySym) {
 			return fplKey_RightAlt;
 
 		case XK_comma:
-			return fplKey_Comma;
-		case XK_minus:
-			return fplKey_Minus;
+			return fplKey_OemComma;
 		case XK_period:
-			return fplKey_Period;
-		case XK_equal:
-			return fplKey_Plus; // @TODO(final): Equal = Plus on X11?
+			return fplKey_OemPeriod;
+		case XK_minus:
+			return fplKey_OemMinus;
+		case XK_plus:
+			return fplKey_OemPlus;
+
+		// @TODO(final): X11 map OEM1-OEM8 key
 
 		default:
 			return fplKey_None;
