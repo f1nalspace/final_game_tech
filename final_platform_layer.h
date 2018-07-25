@@ -163,6 +163,9 @@ SOFTWARE.
 	- New: [X11] Give window our process id
 	- New: [X11] Load window icons on startup (Experimental)
 	- New: [X11] Added ping support for letting the WM wakeup the window
+	- New: [Linux] Implemented fplGetSystemLocale
+	- New: [Linux] Implemented fplGetUserLocale
+	- New: [Linux] Implemented fplGetInputLocale
 
 	## v0.8.4.0 beta:
 	- New: Added macro function FPL_STRUCT_INIT
@@ -4739,8 +4742,8 @@ fpl_common_api uint32_t fplGetAudioBufferSizeInBytes(const fplAudioFormatType fo
 
 // ----------------------------------------------------------------------------
 /**
-  * \defgroup Locales Internationalization functions
-  * \brief This category contains functions for getting localication informations
+  * \defgroup Internationalisation Internationalisation functions
+  * \brief This category contains functions for getting informations about current locale
   * \{
   */
 // ----------------------------------------------------------------------------
@@ -12851,6 +12854,7 @@ fpl_platform_api bool fplGetKeyboardState(fplKeyboardState *outState) {
 #if defined(FPL_PLATFORM_LINUX)
 #   include <ctype.h> // isspace
 #   include <pwd.h> // getpwuid
+#   include <locale.h> // setlocale
 #	include <sys/eventfd.h> // eventfd
 #	include <sys/epoll.h> // epoll_create, epoll_ctl, epoll_wait
 #	include <sys/select.h> // select
@@ -12860,6 +12864,7 @@ fpl_internal void fpl__LinuxReleasePlatform(fpl__PlatformInitState *initState, f
 }
 
 fpl_internal bool fpl__LinuxInitPlatform(const fplInitFlags initFlags, const fplSettings *initSettings, fpl__PlatformInitState *initState, fpl__PlatformAppState *appState) {
+    setlocale(LC_ALL, "");
 	return true;
 }
 
@@ -13183,6 +13188,46 @@ fpl_platform_api char *fplGetHomePath(char *destPath, const size_t maxDestLen) {
 	char *result = fplCopyAnsiString(homeDir, destPath, maxDestLen);
 	return(result);
 }
+
+fpl_internal void fpl__LinuxLocaleToISO639(const char *source, char *target,  const size_t maxTargetLen) {
+    fplCopyAnsiString(source, target, maxTargetLen);
+    char *p = target;
+    while (*p) {
+        if (*p == '_') {
+            *p = '-';
+        } else if (*p == '.') {
+            *p = '\0';
+            break;
+        }
+        ++p;
+    }
+}
+
+// Linux internationalisation
+fpl_platform_api bool fplGetSystemLocale(const fplLocaleFormat targetFormat, char *buffer, const size_t maxBufferLen) {
+    FPL__CheckArgumentInvalid(targetFormat, targetFormat == fplLocaleFormat_None, false);
+    bool result = true;
+    char *locale = setlocale(LC_CTYPE, NULL);
+	fpl__LinuxLocaleToISO639(locale, buffer, maxBufferLen);
+    return(result);
+}
+
+fpl_platform_api bool fplGetUserLocale(const fplLocaleFormat targetFormat, char *buffer, const size_t maxBufferLen) {
+    FPL__CheckArgumentInvalid(targetFormat, targetFormat == fplLocaleFormat_None, false);
+    bool result = true;
+    char *locale = setlocale(LC_ALL, NULL);
+    fpl__LinuxLocaleToISO639(locale, buffer, maxBufferLen);
+    return(result);
+}
+
+fpl_platform_api bool fplGetInputLocale(const fplLocaleFormat targetFormat, char *buffer, const size_t maxBufferLen) {
+    FPL__CheckArgumentInvalid(targetFormat, targetFormat == fplLocaleFormat_None, false);
+    bool result = true;
+    char *locale = setlocale(LC_ALL, NULL);
+    fpl__LinuxLocaleToISO639(locale, buffer, maxBufferLen);
+    return(result);
+}
+
 #endif // FPL_PLATFORM_LINUX
 
 // ############################################################################
