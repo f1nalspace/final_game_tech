@@ -339,6 +339,15 @@ inline static Mat4f Mat4RotationZ(const float angle) {
 	return (result);
 }
 
+inline static Mat4f Mat4RotationZ(const Mat2f &m) {
+	Mat4f result;
+	result.col1 = V4f(m.col1.x, m.col1.y, 0.0f, 0.0f);
+	result.col2 = V4f(-m.col1.y, m.col1.x, 0.0f, 0.0f);
+	result.col3 = V4f(0.0f, 0.0f, 1.0f, 0.0f);
+	result.col4 = V4f(0.0f, 0.0f, 0.0f, 1.0f);
+	return (result);
+}
+
 union Pixel {
 	struct {
 		uint8_t r, g, b, a;
