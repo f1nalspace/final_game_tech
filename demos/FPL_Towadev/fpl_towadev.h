@@ -339,14 +339,53 @@ enum class EnemyPredictionFlags : int32_t {
 };
 FPL_ENUM_AS_FLAGS_OPERATORS(EnemyPredictionFlags);
 
+enum class PartType {
+	None = 0,
+	FillQuad,
+	StrokeQuad,
+	FillCircle,
+	StrokeCircle,
+	Line,
+};
+
+enum class PartRotationFlags : int32_t {
+	None = 0,
+	ApplyToOffset = 1 << 0,
+	ApplyToTransform = 1 << 1,
+};
+FPL_ENUM_AS_FLAGS_OPERATORS(PartRotationFlags);
+
+struct PartData {
+	PartType type;
+	PartRotationFlags rotFlags;
+
+	Vec2f offset;
+	float orientation;
+
+	Vec4f color;
+	Vec2f ext;
+	float lineWidth;
+	float radius;
+};
+
+struct WeaponTubeData {
+	PartData parts[4];
+	size_t partCount;
+	float length;
+	Vec2f offset;
+};
+
 struct TowerData {
-	BulletData bullet;
 	char id[64];
-	float structureRadius;
+	BulletData bullet;
+	WeaponTubeData tubes[4];
+	size_t tubeCount;
 	float detectionRadius;
 	float unlockRadius;
-	float gunTubeLength;
-	float gunTubeThickness;
+
+	PartData parts[16];
+	size_t partCount;
+
 	float gunCooldown;
 	float gunRotationSpeed;
 	FireRangeTestType enemyRangeTestType;
@@ -354,23 +393,6 @@ struct TowerData {
 	EnemyLockTargetMode enemyLockOnMode;
 	int costs;
 };
-inline TowerData MakeTowerData(const char *id, const float structureRadius, const float detectionRadius, const float unlockRadius, const float gunTubeLength, const float gunCooldown, const float gunTubeThickness, const float gunRotationSpeed, const int costs, const FireRangeTestType enemyRangeTestType, const EnemyPredictionFlags enemyPredictionFlags, const EnemyLockTargetMode enemyLockOnMode, const BulletData &bullet) {
-	TowerData result = {};
-	fplCopyAnsiString(id, result.id, FPL_ARRAYCOUNT(result.id));
-	result.structureRadius = structureRadius;
-	result.detectionRadius = detectionRadius;
-	result.unlockRadius = unlockRadius;
-	result.gunTubeLength = gunTubeLength;
-	result.gunCooldown = gunCooldown;
-	result.gunTubeThickness = gunTubeThickness;
-	result.gunRotationSpeed = gunRotationSpeed;
-	result.costs = costs;
-	result.enemyRangeTestType = enemyRangeTestType;
-	result.enemyPredictionFlags = enemyPredictionFlags;
-	result.enemyLockOnMode = enemyLockOnMode;
-	result.bullet = bullet;
-	return(result);
-}
 
 struct WaveData {
 	char levelId[64];
@@ -380,20 +402,6 @@ struct WaveData {
 	float startupCooldown;
 	int completionBounty;
 };
-
-template<size_t N>
-inline WaveData MakeWaveData(const char *levelId, const float startupCooldown, const int completionBounty, const SpawnData(&spawners)[N]) {
-	WaveData result = {};
-	fplCopyAnsiString(levelId, result.levelId, FPL_ARRAYCOUNT(result.levelId));
-	result.startupCooldown = startupCooldown;
-	result.completionBounty = completionBounty;
-	assert(N <= FPL_ARRAYCOUNT(result.spawners));
-	result.spawnerCount = N;
-	for(size_t i = 0; i < N; ++i) {
-		result.spawners[i] = spawners[i];
-	}
-	return(result);
-}
 
 struct Tower {
 	const TowerData *data;
@@ -552,7 +560,7 @@ inline Vec2i WorldToTile(const LevelDimension &dim, const Vec2f &worldPos) {
 }
 
 inline bool IsValidTile(const LevelDimension &dim, const Vec2i &tilePos) {
-	bool result = !(tilePos.x < 0 || tilePos.x > ((int)dim.tileCountX - 1) || tilePos.y < 0 || tilePos.y > ((int)dim.tileCountY - 1));
+	bool result = !(tilePos.x < 0 || tilePos.x >((int)dim.tileCountX - 1) || tilePos.y < 0 || tilePos.y >((int)dim.tileCountY - 1));
 	return(result);
 }
 
