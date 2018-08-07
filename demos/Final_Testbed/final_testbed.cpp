@@ -74,7 +74,7 @@ static void Kill(GameState *state) {
 }
 
 extern bool GameInit(GameMemory &gameMemory) {
-	GameState *state = (GameState *)fmemPush(&gameMemory.persistentMemory, sizeof(GameState), fmemPushFlags_Clear);
+	GameState *state = (GameState *)fmemPush(gameMemory.memory, sizeof(GameState), fmemPushFlags_Clear);
 	gameMemory.game = state;
 	if(!Init(*state)) {
 		GameRelease(gameMemory);
