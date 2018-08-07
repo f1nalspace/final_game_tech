@@ -148,7 +148,7 @@ SOFTWARE.
 
 /*!
 	\file final_memory.h
-	\version v0.1.0 alpha
+	\version v0.2.0 alpha
 	\author Torsten Spaete
 	\brief Final Memory (FMEM) - A open source C99 single file header memory library.
 */
@@ -157,7 +157,15 @@ SOFTWARE.
 	\page page_changelog Changelog
 	\tableofcontents
 
-    ## v0.1.0 alpha:
+    ## v0.2 alpha:
+	- Added: New function fmemGetHeader
+	- Added: Safety check for fmemBeginTemporary when passing a temporary block as source
+	- Fixed: Memory is no longer wasted
+	- Fixed: Fixed crash when fmemGetTotalSize was passed a fixed-size block
+	- Fixed: Fixed crash when fmemGetRemainingSize was passed a fixed-size block
+	- Changed: fmemType_Fixed does not allocate in sized-block anymore, instead it uses the desired size + meta size
+
+	## v0.1.0 alpha:
 	- Initial version
 */
 
@@ -229,27 +237,49 @@ SOFTWARE.
 #define FMEM_TERABYTES(value) ((FMEM_GIGABYTES(value) * 1024ull))
 
 typedef enum fmemPushFlags {
+	//! No push flags
 	fmemPushFlags_None = 0,
+	//! Clear region to zero
 	fmemPushFlags_Clear = 1 << 0,
 } fmemPushFlags;
 
 typedef enum fmemType {
+	//! Growable block
 	fmemType_Growable = 0,
+	//! Fixed size block
 	fmemType_Fixed,
+	//! Temporary block
 	fmemType_Temporary,
 } fmemType;
 
+typedef enum fmemSizeFlags {
+	//! No size flags
+	fmemSizeFlags_None = 0,
+	//! Returns the size for a single block only
+	fmemSizeFlags_Single = 1 << 0,
+	//! Include size with meta-data
+	fmemSizeFlags_WithMeta = 1 << 1,
+} fmemSizeFlags;
+
 typedef struct fmemBlockHeader {
+	//! Previous block
 	struct fmemMemoryBlock *prev;
+	//! Next block
 	struct fmemMemoryBlock *next;
 } fmemBlockHeader;
 
 typedef struct fmemMemoryBlock {
+	//! Source memory pointer if present
 	void *source;
+	//! Base memory pointer
 	void *base;
+	//! Pointer to a temporary memory block
 	struct fmemMemoryBlock *temporary;
+	//! Total size in bytes
 	size_t size;
+	//! Used size in bytes
 	size_t used;
+	//! Type
 	fmemType type;
 } fmemMemoryBlock;
 
@@ -275,6 +305,8 @@ fmem_api void fmemReset(fmemMemoryBlock *block);
 fmem_api bool fmemBeginTemporary(fmemMemoryBlock *source, fmemMemoryBlock *temporary);
 //! Gives the memory back to source block from the temporary block
 fmem_api void fmemEndTemporary(fmemMemoryBlock *temporary);
+//! Returns the block header pointer for the given block
+fmem_api fmemBlockHeader *fmemGetHeader(fmemMemoryBlock *block);
 
 #endif // FMEM_H
 
@@ -282,15 +314,15 @@ fmem_api void fmemEndTemporary(fmemMemoryBlock *temporary);
 #define FMEM_IMPLEMENTED
 
 //! Default spacing after the header
-#define FMEM__HEADER_SPACING 8
+#define FMEM__HEADER_SPACING sizeof(uintptr_t)
 //! Default block size = Page size
 #define FMEM__MIN_BLOCKSIZE 4096
-//! Offset to data from the header
-#define FMEM__OFFSET_TO_DATA sizeof(fmemBlockHeader) + FMEM__HEADER_SPACING + sizeof(fmemMemoryBlock) + FMEM__HEADER_SPACING
+//! Size of the meta data for the block (Header+Spacing+Block+Spacing)
+#define FMEM__BLOCK_META_SIZE sizeof(fmemBlockHeader) + FMEM__HEADER_SPACING + sizeof(fmemMemoryBlock) + FMEM__HEADER_SPACING
 //! Offset to block from the header
 #define FMEM__OFFSET_TO_BLOCK sizeof(fmemBlockHeader) + FMEM__HEADER_SPACING
 //! Returns the header from the given block
-#define FMEM__GETHEADER(block) (fmemBlockHeader *)((uint8_t *)(block)->base - (FMEM__OFFSET_TO_DATA))
+#define FMEM__GETHEADER(block) (fmemBlockHeader *)((uint8_t *)(block)->base - (FMEM__BLOCK_META_SIZE))
 //! Returns the header from the given block
 #define FMEM__GETBLOCK(header) (fmemMemoryBlock *)((uint8_t *)(header) + FMEM__OFFSET_TO_BLOCK)
 
@@ -300,16 +332,14 @@ inline size_t fmem__GetSpaceAvailableFor(const fmemMemoryBlock *block, const siz
 }
 
 inline size_t fmem__ComputeBlockSize(size_t size) {
-	if(size < FMEM__OFFSET_TO_DATA) {
-		size = FMEM__OFFSET_TO_DATA;
-	}
+	FMEM_ASSERT(size >= FMEM__BLOCK_META_SIZE);
 	size_t count = (size / FMEM__MIN_BLOCKSIZE) + 1;
 	size_t result = count * FMEM__MIN_BLOCKSIZE;
 	return(result);
 }
 
-static fmemBlockHeader *fmem__AllocateBlock(const size_t size, const size_t additionalSize) {
-	size_t blockSize = size + additionalSize;
+static fmemBlockHeader *fmem__AllocateBlock(const size_t blockSize) {
+	FMEM_ASSERT(blockSize >= FMEM__BLOCK_META_SIZE);
 	void *base = FMEM_MALLOC(blockSize);
 	if(base == fmem_null) {
 		return fmem_null;
@@ -326,6 +356,17 @@ static void fmem__FreeBlock(fmemBlockHeader *header) {
 	FMEM_FREE(header);
 }
 
+fmem_api fmemBlockHeader *fmemGetHeader(fmemMemoryBlock *block) {
+	if(block == fmem_null) {
+		return fmem_null;
+	}
+	if(block->base == fmem_null) {
+		return fmem_null;
+	}
+	fmemBlockHeader *header = (fmemBlockHeader *)block->base;
+	return(header);
+}
+
 fmem_api size_t fmemGetRemainingSize(fmemMemoryBlock *block) {
 	if(block == fmem_null) {
 		return 0;
@@ -335,8 +376,11 @@ fmem_api size_t fmemGetRemainingSize(fmemMemoryBlock *block) {
 	while(testBlock != fmem_null) {
 		if(testBlock->base == fmem_null || testBlock->size == 0) {
 			break;
-		} 
+		}
 		result += fmem__GetSpaceAvailableFor(testBlock, 0);
+		if(testBlock->type != fmemType_Growable) {
+			break;
+		}
 		fmemBlockHeader *header = FMEM__GETHEADER(testBlock);
 		testBlock = header->next;
 	}
@@ -353,7 +397,11 @@ fmem_api size_t fmemGetTotalSize(fmemMemoryBlock *block) {
 		if(testBlock->base == fmem_null || testBlock->size == 0) {
 			break;
 		} 
-		result += testBlock->size;
+		size_t sizeForBlock = testBlock->size;
+		result += sizeForBlock;
+		if(testBlock->type != fmemType_Growable) {
+			break;
+		}
 		fmemBlockHeader *header = FMEM__GETHEADER(testBlock);
 		testBlock = header->next;
 	}
@@ -367,15 +415,25 @@ fmem_api bool fmemInit(fmemMemoryBlock *block, const fmemType type, const size_t
 	if(type == fmemType_Fixed && size == 0) {
 		return(false);
 	}
+	if(type == fmemType_Temporary) {
+		return(false);
+	}
 	FMEM_MEMSET(block, 0, sizeof(*block));
 	block->type = type;
 	if(size > 0) {
-		fmemBlockHeader *header = fmem__AllocateBlock(size, FMEM__OFFSET_TO_DATA);
+		size_t blockSize;
+		size_t metaSize = FMEM__BLOCK_META_SIZE;
+		if(type == fmemType_Fixed) {
+			blockSize = size + metaSize;
+		} else {
+			blockSize = fmem__ComputeBlockSize(size + metaSize);
+		}
+		fmemBlockHeader *header = fmem__AllocateBlock(blockSize);
 		if(header == fmem_null) {
 			return(false);
 		}
-		block->base = (uint8_t *)header + FMEM__OFFSET_TO_DATA;
-		block->size = size;
+		block->base = (uint8_t *)header + metaSize;
+		block->size = blockSize - metaSize;
 	}
 	return(true);
 }
@@ -473,8 +531,8 @@ fmem_api uint8_t *fmemPush(fmemMemoryBlock *block, const size_t size, const fmem
 	}
 
 	// Allocate new block
-	blockSize = fmem__ComputeBlockSize(size);
-	newHeader = fmem__AllocateBlock(blockSize, 0);
+	blockSize = fmem__ComputeBlockSize(size + FMEM__BLOCK_META_SIZE);
+	newHeader = fmem__AllocateBlock(blockSize);
 	if(newHeader == fmem_null) {
 		result = fmem_null;
 		goto done;
@@ -482,8 +540,8 @@ fmem_api uint8_t *fmemPush(fmemMemoryBlock *block, const size_t size, const fmem
 
 	if(tailBlock == fmem_null) {
 		// No tail found -> Setup block argument
-		block->size = blockSize - FMEM__OFFSET_TO_DATA;
-		block->base = (uint8_t *)newHeader + FMEM__OFFSET_TO_DATA;
+		block->size = blockSize - FMEM__BLOCK_META_SIZE;
+		block->base = (uint8_t *)newHeader + FMEM__BLOCK_META_SIZE;
 		block->used = size;
 		block->source = fmem_null;
 		result = (uint8_t *)block->base;
@@ -492,8 +550,8 @@ fmem_api uint8_t *fmemPush(fmemMemoryBlock *block, const size_t size, const fmem
 
 	// Setup next block
 	newBlock = FMEM__GETBLOCK(newHeader);
-	newBlock->base = (uint8_t *)newHeader + FMEM__OFFSET_TO_DATA;
-	newBlock->size = blockSize - FMEM__OFFSET_TO_DATA;
+	newBlock->base = (uint8_t *)newHeader + FMEM__BLOCK_META_SIZE;
+	newBlock->size = blockSize - FMEM__BLOCK_META_SIZE;
 	newBlock->type = tailBlock->type;
 	newBlock->source = fmem_null;
 	newBlock->used = size;
