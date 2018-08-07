@@ -171,6 +171,7 @@ SOFTWARE.
 	- New: [Linux] Implemented fplGetSystemLocale
 	- New: [Linux] Implemented fplGetUserLocale
 	- New: [Linux] Implemented fplGetInputLocale
+	- New: [Linux] Experimental support for reading game controllers using linux joystick api (Incomplete)
 	- New: [POSIX] Implemented fplGetFileTimestampsFromPath
 	- New: [POSIX] Implemented fplGetFileTimestampsFromHandle
 
@@ -5990,10 +5991,36 @@ typedef struct fpl__LinuxInitState {
 	int dummy;
 } fpl__LinuxInitState;
 
+#if defined(FPL_ENABLE_WINDOW)
+#define FPL__LINUX_MAX_GAME_CONTROLLER_COUNT 4
+typedef struct fpl__LinuxGameController {
+    char deviceName[512];
+    char displayName[1024];
+    int fd;
+    uint8_t axisCount;
+    uint8_t buttonCount;
+    fplGamepadState state;
+} fpl__LinuxGameController;
+
+typedef struct fpl__LinuxGameControllersState {
+    fpl__LinuxGameController controllers[FPL__LINUX_MAX_GAME_CONTROLLER_COUNT];
+    uint64_t lastCheckTime;
+} fpl__LinuxGameControllersState;
+#endif
+
 typedef struct fpl__LinuxAppState {
-	//! Dummy field
-	int dummy;
+#if defined(FPL_ENABLE_WINDOW)
+    fpl__LinuxGameControllersState controllersState;
+#endif
+    int dummy;
 } fpl__LinuxAppState;
+
+// Forward declarations
+#if defined(FPL_ENABLE_WINDOW)
+fpl_internal void fpl__LinuxFreeGameControllers(fpl__LinuxGameControllersState *controllersState);
+fpl_internal void fpl__LinuxPollGameControllers(const fplSettings *settings, fpl__LinuxGameControllersState *controllersState);
+#endif
+
 #endif // FPL_PLATFORM_LINUX
 
 // ############################################################################
@@ -12732,12 +12759,6 @@ fpl_platform_api bool fplPushEvent() {
 	return (result);
 }
 
-fpl_platform_api void fplUpdateGameControllers() {
-	// @IMPLEMENT(final): X11 fplUpdateGameControllers
-	// #include <linux/joystick.h>
-	// https://linux.die.net/man/3/joystick_init
-}
-
 fpl_platform_api bool fplIsWindowRunning() {
 	FPL__CheckPlatform(false);
 	bool result = fpl__global__AppState->window.isRunning;
@@ -12771,6 +12792,13 @@ fpl_platform_api bool fplWindowUpdate() {
 	const fpl__X11WindowState *windowState = &appState->window.x11;
 	bool result = false;
 	fplClearEvents();
+
+	// Dont like this, maybe a callback would be better?
+#if defined(FPL_PLATFORM_LINUX)
+    fpl__LinuxAppState *linuxAppState = &appState->plinux;
+    fpl__LinuxPollGameControllers(&appState->currentSettings, &linuxAppState->controllersState);
+#endif
+
 	while(x11Api->XPending(windowState->display)) {
 		XEvent ev;
 		x11Api->XNextEvent(windowState->display, &ev);
@@ -12963,6 +12991,15 @@ fpl_platform_api bool fplGetKeyboardState(fplKeyboardState *outState) {
 	}
 	return(result);
 }
+
+fpl_platform_api void fplUpdateGameControllers() {
+    FPL__CheckPlatformNoRet();
+    fpl__PlatformAppState *appState = fpl__global__AppState;
+#if defined(FPL_PLATFORM_LINUX)
+    fpl__LinuxAppState *linuxAppState = &appState->plinux;
+    fpl__LinuxPollGameControllers(&appState->currentSettings, &linuxAppState->controllersState);
+#endif
+}
 #endif // FPL_SUBPLATFORM_X11
 
 // ############################################################################
@@ -12978,8 +13015,12 @@ fpl_platform_api bool fplGetKeyboardState(fplKeyboardState *outState) {
 #	include <sys/epoll.h> // epoll_create, epoll_ctl, epoll_wait
 #	include <sys/select.h> // select
 #	include <sys/utsname.h> // uname
+#	include <linux/joystick.h> // js_event, axis_state, etc.
 
 fpl_internal void fpl__LinuxReleasePlatform(fpl__PlatformInitState *initState, fpl__PlatformAppState *appState) {
+#if defined(FPL_ENABLE_WINDOW)
+    fpl__LinuxFreeGameControllers(&appState->plinux.controllersState);
+#endif
 }
 
 fpl_internal bool fpl__LinuxInitPlatform(const fplInitFlags initFlags, const fplSettings *initSettings, fpl__PlatformInitState *initState, fpl__PlatformAppState *appState) {
@@ -13042,6 +13083,186 @@ fpl_platform_api bool fplGetCurrentUsername(char *nameBuffer, const size_t maxNa
 	}
 	return(result);
 }
+
+//
+// Linux Input
+//
+#if defined(FPL_ENABLE_WINDOW)
+fpl_internal void fpl__LinuxFreeGameControllers(fpl__LinuxGameControllersState *controllersState) {
+    for (int controllerIndex = 0; controllerIndex < FPL_ARRAYCOUNT(controllersState->controllers); ++controllerIndex) {
+        fpl__LinuxGameController *controller = controllersState->controllers + controllerIndex;
+        if (controller->fd > 0) {
+            close(controller->fd);
+            controller->fd = 0;
+        }
+    }
+}
+
+fpl_internal void fpl__LinuxPushGameControllerStateUpdateEvent(const struct js_event *event, fplGamepadState *padState) {
+    // https://github.com/underdoeg/ofxGamepad
+    // https://github.com/elanthis/gamepad
+    // https://gist.github.com/jasonwhite/c5b2048c15993d285130
+
+    fplGamepadButton *buttonMappingTable[12] = FPL_ZERO_INIT;
+    buttonMappingTable[0] = &padState->actionA;
+    buttonMappingTable[1] = &padState->actionB;
+    buttonMappingTable[2] = &padState->actionX;
+    buttonMappingTable[3] = &padState->actionY;
+    buttonMappingTable[4] = &padState->leftShoulder;
+    buttonMappingTable[5] = &padState->rightShoulder;
+    buttonMappingTable[6] = &padState->back;
+    buttonMappingTable[7] = &padState->start;
+    // 8 = XBox-Button
+    buttonMappingTable[9] = &padState->leftThumb;
+    buttonMappingTable[10] = &padState->rightThumb;
+
+    switch (event->type & ~JS_EVENT_INIT) {
+        case JS_EVENT_AXIS: {
+        	switch (event->number) {
+        	    // @TODO(final): Map stick left X/Y = (0, 1)
+                // @TODO(final): Map stick right X/Y = (3, 4)
+                // @TODO(final): Trigger left/right = (2, 5)
+
+        	    // DPad X-Axis
+        		case 6:
+				{
+					if (event->value == -32767) {
+						padState->dpadLeft.isDown = true;
+						padState->dpadRight.isDown = false;
+					} else if (event->value == 32767) {
+						padState->dpadLeft.isDown = false;
+						padState->dpadRight.isDown = true;
+					} else {
+                        padState->dpadLeft.isDown = false;
+                        padState->dpadRight.isDown = false;
+					}
+				} break;
+
+        		// DPad Y-Axis
+                case 7:
+                {
+                    if (event->value == -32767) {
+                        padState->dpadUp.isDown = true;
+                        padState->dpadDown.isDown = false;
+                    } else if (event->value == 32767) {
+                        padState->dpadUp.isDown = false;
+                        padState->dpadDown.isDown = true;
+                    } else {
+                        padState->dpadUp.isDown = false;
+                        padState->dpadDown.isDown = false;
+                    }
+                } break;
+
+        		default:
+        			break;
+        	}
+        } break;
+
+        case JS_EVENT_BUTTON: {
+            if ((event->number >= 0) && (event->number < FPL_ARRAYCOUNT(buttonMappingTable))) {
+                fplGamepadButton *mappedButton = buttonMappingTable[event->number];
+                if (mappedButton != fpl_null) {
+                    mappedButton->isDown = event->value != 0;
+                }
+            }
+        } break;
+
+        default:
+            break;
+    }
+}
+
+fpl_internal void fpl__LinuxPollGameControllers(const fplSettings *settings, fpl__LinuxGameControllersState *controllersState) {
+    if ((controllersState->lastCheckTime == 0) || ((fplGetTimeInMillisecondsLP() - controllersState->lastCheckTime) >= settings->input.controllerDetectionFrequency)) {
+        controllersState->lastCheckTime = fplGetTimeInMillisecondsLP();
+
+        //
+        // Detect disconnected controllers
+        //
+        for (uint32_t controllerIndex = 0; controllerIndex < FPL_ARRAYCOUNT(controllersState->controllers); ++controllerIndex) {
+            fpl__LinuxGameController *controller = controllersState->controllers + controllerIndex;
+            if (controller->fd > 0) {
+                // @TODO(final): Check if device is still active - without reading from it
+            }
+        }
+
+        //
+        // Detect new controllers
+        //
+        const char *deviceNames[] = {
+            "/dev/input/js0",
+        };
+        for (int deviceNameIndex = 0; deviceNameIndex < FPL_ARRAYCOUNT(deviceNames); ++deviceNameIndex) {
+            const char *deviceName = deviceNames[deviceNameIndex];
+            bool alreadyFound = false;
+            int freeIndex = -1;
+            for (uint32_t controllerIndex = 0; controllerIndex < FPL_ARRAYCOUNT(controllersState->controllers); ++controllerIndex) {
+                fpl__LinuxGameController *controller = controllersState->controllers + controllerIndex;
+                if ((controller->fd > 0) && fplIsStringEqual(deviceName, controller->deviceName)) {
+                    alreadyFound = true;
+                    break;
+                }
+                if (controller->fd == 0) {
+                    if (freeIndex == -1) {
+                        freeIndex = controllerIndex;
+                    }
+                }
+            }
+            if (!alreadyFound && freeIndex >= 0) {
+                int fd = open(deviceName, O_RDONLY);
+                if (fd < 0) {
+                    FPL_LOG_ERROR(FPL__MODULE_LINUX, "Failed opening joystick device '%s'", deviceName);
+                    continue;
+                }
+                uint8_t numAxis = 0;
+                uint8_t numButtons = 0;
+                ioctl(fd, JSIOCGAXES, &numAxis);
+                ioctl(fd, JSIOCGBUTTONS, &numButtons);
+                if (numAxis == 0 || numButtons == 0) {
+                    FPL_LOG_ERROR(FPL__MODULE_LINUX, "Joystick device '%s' does not have enough buttons/axis to map to a XInput controller!", deviceName);
+                    close(fd);
+                    continue;
+                }
+                fpl__LinuxGameController *controller = controllersState->controllers + freeIndex;
+                FPL_CLEAR_STRUCT(controller);
+                controller->fd = fd;
+                controller->axisCount = numAxis;
+                controller->buttonCount = numButtons;
+                fplCopyAnsiString(deviceName, controller->deviceName, FPL_ARRAYCOUNT(controller->deviceName));
+                ioctl(fd, JSIOCGNAME(FPL_ARRAYCOUNT(controller->displayName)), controller->displayName);
+                fcntl(fd, F_SETFL, O_NONBLOCK);
+
+                // Connected
+                fplEvent ev = FPL_ZERO_INIT;
+                ev.type = fplEventType_Gamepad;
+                ev.gamepad.type = fplGamepadEventType_Connected;
+                ev.gamepad.deviceIndex = (uint32_t)freeIndex;
+                fpl__PushEvent(&ev);
+            }
+        }
+    }
+
+
+    for (uint32_t controllerIndex = 0; controllerIndex < FPL_ARRAYCOUNT(controllersState->controllers); ++controllerIndex) {
+        fpl__LinuxGameController *controller = controllersState->controllers + controllerIndex;
+        if (controller->fd > 0) {
+            // Update button/axis state
+            struct js_event event;
+            ssize_t res;
+            while((res = read(controller->fd, &event, sizeof(event))) > 0) {
+                fpl__LinuxPushGameControllerStateUpdateEvent(&event, &controller->state);
+            }
+
+            fplEvent ev = FPL_ZERO_INIT;
+            ev.type = fplEventType_Gamepad;
+            ev.gamepad.type = fplGamepadEventType_StateChanged;
+            ev.gamepad.deviceIndex = 0;
+            ev.gamepad.state = controller->state;
+            fpl__PushEvent(&ev);
+        }
+    }
+}
+#endif // FPL_ENABLE_WINDOW
 
 //
 // Linux Threading
