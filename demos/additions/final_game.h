@@ -58,8 +58,9 @@ struct Controller {
 			ButtonState actionBack;
 			ButtonState actionStart;
 			ButtonState debugToggle;
+			ButtonState debugReload;
 		};
-		ButtonState buttons[11];
+		ButtonState buttons[12];
 	};
 };
 
@@ -93,7 +94,7 @@ struct Input {
 };
 
 struct GameMemory {
-	fmemMemoryBlock persistentMemory;
+	struct fmemMemoryBlock *memory;
 	struct GameState *game;
 	struct RenderState *render;
 	struct AudioSystem *audio;

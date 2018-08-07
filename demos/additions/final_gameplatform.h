@@ -225,6 +225,9 @@ static void ProcessEvents(Input *currentInput, Input *prevInput, GameWindowActiv
 							case fplKey_F4:
 								UpdateKeyboardButtonState(event.keyboard.buttonState, prevKeyboardController->debugToggle, currentKeyboardController->debugToggle);
 								break;
+							case fplKey_R:
+								UpdateKeyboardButtonState(event.keyboard.buttonState, prevKeyboardController->debugReload, currentKeyboardController->debugReload);
+								break;
 							case fplKey_Return:
 								UpdateKeyboardButtonState(event.keyboard.buttonState, prevKeyboardController->actionStart, currentKeyboardController->actionStart);
 								break;
@@ -287,7 +290,7 @@ extern int GameMain(const GameConfiguration &config) {
 	InitOpenGLRenderer();
 
 	GameMemory gameMem = {};
-	gameMem.persistentMemory = gameMemoryBlock;
+	gameMem.memory = &gameMemoryBlock;
 	gameMem.render = &renderState;
 	if(!GameInit(gameMem)) {
 		wasError = true;
@@ -391,9 +394,9 @@ extern int GameMain(const GameConfiguration &config) {
 				GameUpdate(gameMem, *curInput);
 				++updateCount;
 #endif
-				}
+			}
 
-				// @TODO(final): Yield thread when we are running too fast
+			// @TODO(final): Yield thread when we are running too fast
 			double endWorkTime = fplGetTimeInSecondsHP();
 			double workDuration = endWorkTime - lastTime;
 
@@ -433,14 +436,14 @@ extern int GameMain(const GameConfiguration &config) {
 				curInput = prevInput;
 				prevInput = tmp;
 			}
-			}
+		}
 
 		if(config.hideMouseCursor) {
 			fplSetWindowCursorEnabled(true);
 		}
 
 		GameRelease(gameMem);
-		}
+	}
 
 	fplStopAudio();
 
@@ -455,6 +458,6 @@ extern int GameMain(const GameConfiguration &config) {
 
 	int result = wasError ? -1 : 0;
 	return (result);
-	}
+}
 
 #endif // FINAL_GAMEPLATFORM_IMPLEMENTATION
