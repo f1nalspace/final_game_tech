@@ -28,7 +28,7 @@ static void TestTemporary() {
 		uint8_t *data;
 
 		fmemMemoryBlock block;
-		fmemAlwaysAssert(fmemInit(&block, fmemType_Growable, 1024));
+		fmemAlwaysAssert(fmemInit(&block, fmemType_Fixed, 1024));
 
 		data = fmemPush(&block, 32, fmemPushFlags_None);
 		size_t savedUsed = block.used;
@@ -131,11 +131,21 @@ static void TestGrowable(const bool withInit, const bool withAlloc) {
 	fmemFree(&block);
 }
 
+static void TestGrowMiddle() {
+	fmemMemoryBlock mainBlock;
+	fmemInit(&mainBlock, fmemType_Growable, 4096);
+
+	fmemPush(&mainBlock, 32 * 1024, fmemPushFlags_None);
+
+	fmemFree(&mainBlock);
+}
+
 int main(int argc, char **args) {
 	TestGrowable(false, false);
 	TestGrowable(true, false);
 	TestGrowable(true, true);
 	TestFixed();
 	TestTemporary();
+	TestGrowMiddle();
 	return 0;
 }
