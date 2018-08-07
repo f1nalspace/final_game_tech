@@ -13099,10 +13099,6 @@ fpl_internal void fpl__LinuxFreeGameControllers(fpl__LinuxGameControllersState *
 }
 
 fpl_internal void fpl__LinuxPushGameControllerStateUpdateEvent(const struct js_event *event, fplGamepadState *padState) {
-    // https://github.com/underdoeg/ofxGamepad
-    // https://github.com/elanthis/gamepad
-    // https://gist.github.com/jasonwhite/c5b2048c15993d285130
-
     fplGamepadButton *buttonMappingTable[12] = FPL_ZERO_INIT;
     buttonMappingTable[0] = &padState->actionA;
     buttonMappingTable[1] = &padState->actionB;
@@ -13173,18 +13169,13 @@ fpl_internal void fpl__LinuxPushGameControllerStateUpdateEvent(const struct js_e
 }
 
 fpl_internal void fpl__LinuxPollGameControllers(const fplSettings *settings, fpl__LinuxGameControllersState *controllersState) {
+    // https://github.com/underdoeg/ofxGamepad
+    // https://github.com/elanthis/gamepad
+    // https://gist.github.com/jasonwhite/c5b2048c15993d285130
+    // https://github.com/Tasssadar/libenjoy/blob/master/src/libenjoy_linux.c
+
     if ((controllersState->lastCheckTime == 0) || ((fplGetTimeInMillisecondsLP() - controllersState->lastCheckTime) >= settings->input.controllerDetectionFrequency)) {
         controllersState->lastCheckTime = fplGetTimeInMillisecondsLP();
-
-        //
-        // Detect disconnected controllers
-        //
-        for (uint32_t controllerIndex = 0; controllerIndex < FPL_ARRAYCOUNT(controllersState->controllers); ++controllerIndex) {
-            fpl__LinuxGameController *controller = controllersState->controllers + controllerIndex;
-            if (controller->fd > 0) {
-                // @TODO(final): Check if device is still active - without reading from it
-            }
-        }
 
         //
         // Detect new controllers
@@ -13248,17 +13239,33 @@ fpl_internal void fpl__LinuxPollGameControllers(const fplSettings *settings, fpl
         if (controller->fd > 0) {
             // Update button/axis state
             struct js_event event;
-            ssize_t res;
-            while((res = read(controller->fd, &event, sizeof(event))) > 0) {
+            for (;;) {
+                errno = 0;
+                if (read(controller->fd, &event, sizeof(event)) < 0) {
+                    if (errno == ENODEV) {
+                        close(controller->fd);
+                        controller->fd = 0;
+
+                        // Disconnected
+                        fplEvent ev = FPL_ZERO_INIT;
+                        ev.type = fplEventType_Gamepad;
+                        ev.gamepad.type = fplGamepadEventType_Disconnected;
+                        ev.gamepad.deviceIndex = controllerIndex;
+                        fpl__PushEvent(&ev);
+                    }
+                    break;
+                }
                 fpl__LinuxPushGameControllerStateUpdateEvent(&event, &controller->state);
             }
 
-            fplEvent ev = FPL_ZERO_INIT;
-            ev.type = fplEventType_Gamepad;
-            ev.gamepad.type = fplGamepadEventType_StateChanged;
-            ev.gamepad.deviceIndex = 0;
-            ev.gamepad.state = controller->state;
-            fpl__PushEvent(&ev);
+            if (controller->fd > 0) {
+                fplEvent ev = FPL_ZERO_INIT;
+                ev.type = fplEventType_Gamepad;
+                ev.gamepad.type = fplGamepadEventType_StateChanged;
+                ev.gamepad.deviceIndex = 0;
+                ev.gamepad.state = controller->state;
+                fpl__PushEvent(&ev);
+            }
         }
     }
 }
