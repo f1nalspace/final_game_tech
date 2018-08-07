@@ -145,6 +145,7 @@ SOFTWARE.
 	- Changed: [Win32] Detection of left/right keyboard modifier flags
 	- Changed: [Win32] Mapping OEM 1-8 keys
 	- Changed: [Win32] Use MapVirtualKeyA to map key code to virtual key
+    - Fixed: [X11] fplMouseEventType_Move event was never created anymore
 	- New: Added struct fplKeyboardState
 	- New: Added struct fplGamepadStates
 	- New: Added fplGetKeyboardState()
@@ -12484,7 +12485,7 @@ fpl_internal bool fpl__X11InitWindow(const fplSettings *initSettings, fplWindowS
 	FPL_LOG_DEBUG(FPL__MODULE_X11, "Successfully created window with (Display='%p', Root='%d', Size=%dx%d, Colordepth='%d', visual='%p', colormap='%d': %d", windowState->display, (int)windowState->root, windowWidth, windowHeight, colorDepth, visual, (int)swa.colormap, (int)windowState->window);
 
 	// Force keyboard and button events
-	x11Api->XSelectInput(windowState->display, windowState->window, KeyPressMask | KeyReleaseMask | ButtonPressMask | ButtonReleaseMask);
+	x11Api->XSelectInput(windowState->display, windowState->window, KeyPressMask | KeyReleaseMask | ButtonPressMask | ButtonReleaseMask | PointerMotionMask | ButtonMotionMask);
 
 	windowState->visual = visual;
 
