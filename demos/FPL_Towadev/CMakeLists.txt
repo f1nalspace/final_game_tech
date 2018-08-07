@@ -34,7 +34,7 @@ set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${MY_EXECUTABLE_PATH})
 
 include_directories(../../ ${MY_INCLUDE_DIRS})
 
-add_executable(${PROJECT_NAME} ${MY_HEADER_FILES} ${MY_SOURCE_FILES})
+add_executable(${PROJECT_NAME} ${MY_SOURCE_FILES})
 
 target_link_libraries(${PROJECT_NAME} ${MY_EXTERNAL_LIBS} ${CMAKE_DL_LIBS})
 
