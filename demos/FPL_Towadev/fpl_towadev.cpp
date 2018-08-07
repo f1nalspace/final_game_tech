@@ -18,6 +18,12 @@ Author:
 	Torsten Spaete
 
 Changelog:
+	## 2018-08-06
+	- Do not use fplMemoryAllocate anymore, use fmemMemoryBlocks from game memory
+	- Removed enemy prediction flags
+	- Enemy prediction is now based on trajectory computation
+	- Support for user-reload towers/creeps/waves data definitions
+
 	## 2018-08-01
 	- Introduced render parts in tower data
 
@@ -368,6 +374,39 @@ namespace utils {
 		StringToFloatArray(str, 4, &result.m[0]);
 		return(result);
 	}
+
+	static FileContents LoadEntireFile(const char *filePath, fmemMemoryBlock *memory) {
+		FileContents result = {};
+		fplFileHandle file;
+		if(fplOpenAnsiBinaryFile(filePath, &file)) {
+			result.info.size = fplGetFileSizeFromHandle32(&file);
+			fplFileTimeStamps timestamps = {};
+			fplGetFileTimestampsFromHandle(&file, &timestamps);
+			result.info.modifyDate = timestamps.lastModifyTime;
+			result.data = (uint8_t *)fmemPush(memory, result.info.size, fmemPushFlags_None);
+			fplReadFileBlock32(&file, (uint32_t)result.info.size, result.data, (uint32_t)result.info.size);
+			fplCloseFile(&file);
+		}
+		return(result);
+	}
+
+	static FileInfo LoadFileInfo(const char *filePath) {
+		FileInfo result = {};
+		fplFileHandle file;
+		if(fplOpenAnsiBinaryFile(filePath, &file)) {
+			result.size = fplGetFileSizeFromHandle32(&file);
+			fplFileTimeStamps timestamps = {};
+			fplGetFileTimestampsFromHandle(&file, &timestamps);
+			result.modifyDate = timestamps.lastModifyTime;
+			fplCloseFile(&file);
+		}
+		return(result);
+	}
+
+	static bool IsEqualFileInfo(const FileInfo &a, const FileInfo &b) {
+		bool result = (a.size == b.size) && (a.modifyDate == b.modifyDate);
+		return(result);
+	}
 }
 
 namespace render {
@@ -622,12 +661,12 @@ namespace level {
 		return(waypoint);
 	}
 
-	static void ParseLevelLayer(fxmlTag *childTag, LevelLayer *targetLayer) {
+	static void ParseLevelLayer(fxmlTag *childTag, LevelLayer *targetLayer, fmemMemoryBlock *memory) {
 		const char *layerName = fxmlGetAttributeValue(childTag, "name");
 		fplCopyAnsiString(layerName, targetLayer->name, FPL_ARRAYCOUNT(targetLayer->name));
 		targetLayer->mapWidth = utils::StringToInt(fxmlGetAttributeValue(childTag, "width"));
 		targetLayer->mapHeight = utils::StringToInt(fxmlGetAttributeValue(childTag, "height"));
-		targetLayer->data = (uint32_t *)fplMemoryAllocate(sizeof(uint32_t) * targetLayer->mapWidth * targetLayer->mapHeight);
+		targetLayer->data = (uint32_t *)fmemPush(memory, sizeof(uint32_t) * targetLayer->mapWidth * targetLayer->mapHeight, fmemPushFlags_Clear);
 		targetLayer->opacity = utils::StringToFloat(fxmlGetAttributeValue(childTag, "opacity"), 1.0f);
 		fxmlTag *dataTag = fxmlFindTagByName(childTag, "data");
 		if(dataTag != nullptr) {
@@ -669,7 +708,7 @@ namespace level {
 		return nullptr;
 	}
 
-	static void ParseLevelObjects(fxmlTag *objectGroupTag, LevelData &level) {
+	static void ParseLevelObjects(fxmlTag *objectGroupTag, LevelData &level, fmemMemoryBlock *memory) {
 		assert(level.tileWidth > 0);
 		assert(level.tileHeight > 0);
 		LevelTileset *entitiesTileset = FindLevelTileset(level, "entities");
@@ -760,7 +799,7 @@ namespace level {
 		}
 	}
 
-	static bool ParseTileset(fxmlTag *tilesetTag, LevelTileset &outTileset) {
+	static bool ParseTileset(fxmlTag *tilesetTag, LevelTileset &outTileset, fmemMemoryBlock *memory) {
 		const char *name = fxmlGetAttributeValue(tilesetTag, "name");
 		fplCopyAnsiString(name, outTileset.name, FPL_ARRAYCOUNT(outTileset.name));
 		outTileset.firstGid = utils::StringToInt(fxmlGetAttributeValue(tilesetTag, "firstgid"));
@@ -779,7 +818,7 @@ namespace level {
 		if((outTileset.tileCount > 0 && outTileset.columns > 0) &&
 			(outTileset.image.width > 0 && outTileset.image.height > 0) &&
 		   (outTileset.tileWidth > 0 && outTileset.tileHeight > 0)) {
-			outTileset.tileUVs = (UVRect *)fplMemoryAllocate(sizeof(UVRect) * outTileset.tileCount);
+			outTileset.tileUVs = (UVRect *)fmemPush(memory, sizeof(UVRect) * outTileset.tileCount, fmemPushFlags_Clear);
 			Vec2i tileSize = V2i(outTileset.tileWidth, outTileset.tileHeight);
 			Vec2i imageSize = V2i(outTileset.image.width, outTileset.image.height);
 			UVRect *p = outTileset.tileUVs;
@@ -793,7 +832,7 @@ namespace level {
 		return(true);
 	}
 
-	static bool ParseLevel(fxmlTag *root, LevelData &level) {
+	static bool ParseLevel(fxmlTag *root, LevelData &level, fmemMemoryBlock *memory) {
 		bool result = false;
 		fxmlTag *mapTag = fxmlFindTagByName(root, "map");
 		if(mapTag == nullptr) {
@@ -826,15 +865,15 @@ namespace level {
 				if(strcmp(childTag->name, "tileset") == 0) {
 					assert(level.tilesetCount < FPL_ARRAYCOUNT(level.tilesets));
 					LevelTileset *targetTileset = &level.tilesets[level.tilesetCount++];
-					ParseTileset(childTag, *targetTileset);
+					ParseTileset(childTag, *targetTileset, memory);
 				} else if(strcmp(childTag->name, "layer") == 0) {
 					assert(level.layerCount < MAX_LAYER_COUNT);
 					LevelLayer *targetLayer = &level.layers[level.layerCount++];
-					ParseLevelLayer(childTag, targetLayer);
+					ParseLevelLayer(childTag, targetLayer, memory);
 				} else if(strcmp(childTag->name, "objectgroup") == 0) {
 					const char *objectGroupName = fxmlGetAttributeValue(childTag, "name");
 					if(strcmp(objectGroupName, "objects") == 0) {
-						ParseLevelObjects(childTag, level);
+						ParseLevelObjects(childTag, level, memory);
 					}
 				}
 			}
@@ -842,18 +881,6 @@ namespace level {
 		}
 
 		return(true);
-	}
-
-	static FileContents LoadEntireFile(const char *filePath) {
-		FileContents result = {};
-		fplFileHandle file;
-		if(fplOpenAnsiBinaryFile(filePath, &file)) {
-			result.size = fplGetFileSizeFromHandle32(&file);
-			result.data = (uint8_t *)fplMemoryAllocate(result.size);
-			fplReadFileBlock32(&file, (uint32_t)result.size, result.data, (uint32_t)result.size);
-			fplCloseFile(&file);
-		}
-		return(result);
 	}
 
 	static const char *GetNodeValue(fxmlTag *rootTag, const char *nodeName) {
@@ -864,14 +891,15 @@ namespace level {
 		return nullptr;
 	}
 
-	static void LoadCreepDefinitions(Assets &assets, const char *filename) {
+	static void LoadCreepDefinitions(Assets &assets, const char *filename, const bool isReload, fmemMemoryBlock *memory) {
 		assets.creepDefinitionCount = 0;
 		char filePath[FPL_MAX_PATH_LENGTH];
 		fplPathCombine(filePath, FPL_ARRAYCOUNT(filePath), 3, assets.dataPath, "levels", filename);
-		FileContents fileData = LoadEntireFile(filePath);
+		FileContents fileData = utils::LoadEntireFile(filePath, memory);
+		assets.creepsFileInfo = fileData.info;
 		if(fileData.data != nullptr) {
 			fxmlContext ctx = {};
-			if(fxmlInitFromMemory(fileData.data, fileData.size, &ctx)) {
+			if(fxmlInitFromMemory(fileData.data, fileData.info.size, &ctx)) {
 				fxmlTag root = {};
 				if(fxmlParse(&ctx, &root)) {
 					fxmlTag *creepDefinitionsTag = fxmlFindTagByName(&root, "CreepDefinitions");
@@ -894,7 +922,6 @@ namespace level {
 					}
 				}
 			}
-			fplMemoryFree(fileData.data);
 		}
 	}
 
@@ -965,16 +992,18 @@ namespace level {
 		}
 	}
 
-	static void LoadTowerDefinitions(Assets &assets, const char *filename) {
+	static void LoadTowerDefinitions(Assets &assets, const char *filename, const bool isReload, fmemMemoryBlock *memory) {
 		assets.towerDefinitionCount = 0;
 		char filePath[FPL_MAX_PATH_LENGTH];
 		fplPathCombine(filePath, FPL_ARRAYCOUNT(filePath), 3, assets.dataPath, "levels", filename);
-		FileContents fileData = LoadEntireFile(filePath);
+		FileContents fileData = utils::LoadEntireFile(filePath, memory);
+		assets.towersFileInfo = fileData.info;
 		if(fileData.data != nullptr) {
 			fxmlContext ctx = {};
-			if(fxmlInitFromMemory(fileData.data, fileData.size, &ctx)) {
+			if(fxmlInitFromMemory(fileData.data, fileData.info.size, &ctx)) {
 				fxmlTag root = {};
 				if(fxmlParse(&ctx, &root)) {
+					size_t towerIndex = 0;
 					fxmlTag *towerDefinitionsTag = fxmlFindTagByName(&root, "TowerDefinitions");
 					if(towerDefinitionsTag != nullptr) {
 						for(fxmlTag *towerTag = towerDefinitionsTag->firstChild; towerTag; towerTag = towerTag->nextSibling) {
@@ -1013,9 +1042,18 @@ namespace level {
 
 								towerData->gunCooldown = utils::StringToFloat(GetNodeValue(towerTag, "gunCooldown"));
 								towerData->gunRotationSpeed = utils::StringToFloat(GetNodeValue(towerTag, "gunRotationSpeed"));
-								towerData->enemyRangeTestType = FireRangeTestType::InSight;
-								towerData->enemyPredictionFlags = EnemyPredictionFlags::All;
+								const char *enemyRangeTestStr = GetNodeValue(towerTag, "enemyRangeTestType");
+								towerData->enemyRangeTestType = FireRangeTestType::NoTest;
+								if(strcmp("LineTrace", enemyRangeTestStr) == 0) {
+									towerData->enemyRangeTestType = FireRangeTestType::LineTrace;
+								} else if(strcmp("InSight", enemyRangeTestStr) == 0) {
+									towerData->enemyRangeTestType = FireRangeTestType::InSight;
+								}
+								const char *enemyLockOnModeStr = GetNodeValue(towerTag, "enemyLockOnMode");
 								towerData->enemyLockOnMode = EnemyLockTargetMode::LockedOn;
+								if(strcmp("Any", enemyLockOnModeStr) == 0) {
+									towerData->enemyLockOnMode = EnemyLockTargetMode::Any;
+								}
 								towerData->costs = utils::StringToInt(fxmlGetAttributeValue(towerTag, "costs"));
 								fxmlTag *bulletTag = fxmlFindTagByName(towerTag, "bullet");
 								if(bulletTag != nullptr) {
@@ -1024,23 +1062,25 @@ namespace level {
 									towerData->bullet.speed = utils::StringToFloat(GetNodeValue(bulletTag, "speed"));
 									towerData->bullet.damage = utils::StringToInt(GetNodeValue(bulletTag, "damage"));
 								}
+
+								++towerIndex;
 							}
 						}
 					}
 				}
 			}
-			fplMemoryFree(fileData.data);
 		}
 	}
 
-	static void LoadWaveDefinitions(Assets &assets, const char *filename) {
+	static void LoadWaveDefinitions(Assets &assets, const char *filename, const bool isReload, fmemMemoryBlock *memory) {
 		assets.waveDefinitionCount = 0;
 		char filePath[FPL_MAX_PATH_LENGTH];
 		fplPathCombine(filePath, FPL_ARRAYCOUNT(filePath), 3, assets.dataPath, "levels", filename);
-		FileContents fileData = LoadEntireFile(filePath);
+		FileContents fileData = utils::LoadEntireFile(filePath, memory);
+		assets.wavesFileInfo = fileData.info;
 		if(fileData.data != nullptr) {
 			fxmlContext ctx = {};
-			if(fxmlInitFromMemory(fileData.data, fileData.size, &ctx)) {
+			if(fxmlInitFromMemory(fileData.data, fileData.info.size, &ctx)) {
 				fxmlTag root = {};
 				if(fxmlParse(&ctx, &root)) {
 					fxmlTag *waveDefinitionsTag = fxmlFindTagByName(&root, "WaveDefinitions");
@@ -1082,7 +1122,6 @@ namespace level {
 					}
 				}
 			}
-			fplMemoryFree(fileData.data);
 		}
 	}
 
@@ -1095,77 +1134,82 @@ namespace level {
 		return nullptr;
 	}
 
-	static bool LoadLevel(GameState &state, const char *dataPath, const char *filename, LevelData &outLevel) {
+	static bool LoadLevel(GameState &state, const char *dataPath, const char *filename, LevelData &outLevel, fmemMemoryBlock *memory) {
 		bool result = false;
 
 		char filePath[1024];
 		fplPathCombine(filePath, FPL_ARRAYCOUNT(filePath), 3, dataPath, "levels", filename);
-
 		gamelog::Verbose("Loading level '%s'", filePath);
 
-		FileContents fileData = LoadEntireFile(filePath);
-		if(fileData.data != nullptr) {
-			fxmlContext ctx = {};
-			if(fxmlInitFromMemory(fileData.data, fileData.size, &ctx)) {
-				fxmlTag root = {};
-				if(fxmlParse(&ctx, &root)) {
-					outLevel = {};
-					if(ParseLevel(&root, outLevel)) {
-						LevelLayer *wayLayer = FindLayerByName(outLevel, "way");
-						assert(wayLayer != nullptr);
+		fmemMemoryBlock tempMem;
+		if(fmemBeginTemporary(&state.transientMem, &tempMem)) {
+			FileContents fileData = utils::LoadEntireFile(filePath, &tempMem);
+			if(fileData.data != nullptr) {
+				fxmlContext ctx = {};
+				if(fxmlInitFromMemory(fileData.data, fileData.info.size, &ctx)) {
+					fxmlTag root = {};
+					if(fxmlParse(&ctx, &root)) {
+						outLevel = {};
+						if(ParseLevel(&root, outLevel, memory)) {
+							LevelLayer *wayLayer = FindLayerByName(outLevel, "way");
+							assert(wayLayer != nullptr);
 
-						// Tiles
-						LevelTileset *wayTileset = FindLevelTileset(outLevel, "way");
-						assert(wayTileset != nullptr);
-						assert(state.level.tiles == nullptr);
-						state.level.dimension.tileCountX = outLevel.mapWidth;
-						state.level.dimension.tileCountY = outLevel.mapHeight;
-						state.level.dimension.gridWidth = outLevel.mapWidth * TileWidth;
-						state.level.dimension.gridHeight = outLevel.mapHeight * TileHeight;
-						state.level.dimension.gridOriginX = -WorldRadiusW + ((WorldWidth - state.level.dimension.gridWidth) * 0.5f);
-						state.level.dimension.gridOriginY = -WorldRadiusH + ControlsHeight;
-						state.level.tiles = (Tile *)fplMemoryAllocate(sizeof(Tile) * outLevel.mapWidth * outLevel.mapHeight);
-						for(size_t y = 0; y < outLevel.mapHeight; ++y) {
-							for(size_t x = 0; x < outLevel.mapWidth; ++x) {
-								size_t tileIndex = y * outLevel.mapWidth + x;
-								uint32_t wayValue = wayLayer->data[tileIndex] > 0 ? ((wayLayer->data[tileIndex] - wayTileset->firstGid) + 1) : 0;
-								Tile tile = {};
-								tile.wayType = TilesetWayToTypeMapping[wayValue];
-								tile.entityType = EntityType::None;
-								state.level.tiles[tileIndex] = tile;
-							}
-						}
-
-						// Make waypoints/goal
-						for(size_t objIndex = 0; objIndex < outLevel.objectCount; ++objIndex) {
-							const ObjectData &obj = outLevel.objects[objIndex];
-							if(IsValidTile(state.level.dimension, obj.tilePos)) {
-								int tileIndex = obj.tilePos.y * outLevel.mapWidth + obj.tilePos.x;
-								switch(obj.type) {
-									case ObjectType::Goal:
-										state.level.tiles[tileIndex].entityType = EntityType::Goal;
-										break;
-									case ObjectType::Waypoint:
-										AddWaypoint(state.waypoints, state.level.dimension, obj.tilePos, obj.waypoint.direction);
-										break;
-									default:
-										break;
+							// Tiles
+							LevelTileset *wayTileset = FindLevelTileset(outLevel, "way");
+							assert(wayTileset != nullptr);
+							assert(state.level.tiles == nullptr);
+							state.level.dimension.tileCountX = outLevel.mapWidth;
+							state.level.dimension.tileCountY = outLevel.mapHeight;
+							state.level.dimension.gridWidth = outLevel.mapWidth * TileWidth;
+							state.level.dimension.gridHeight = outLevel.mapHeight * TileHeight;
+							state.level.dimension.gridOriginX = -WorldRadiusW + ((WorldWidth - state.level.dimension.gridWidth) * 0.5f);
+							state.level.dimension.gridOriginY = -WorldRadiusH + ControlsHeight;
+							state.level.tiles = (Tile *)fmemPush(memory, sizeof(Tile) * outLevel.mapWidth * outLevel.mapHeight, fmemPushFlags_Clear);
+							for(size_t y = 0; y < outLevel.mapHeight; ++y) {
+								for(size_t x = 0; x < outLevel.mapWidth; ++x) {
+									size_t tileIndex = y * outLevel.mapWidth + x;
+									uint32_t wayValue = wayLayer->data[tileIndex] > 0 ? ((wayLayer->data[tileIndex] - wayTileset->firstGid) + 1) : 0;
+									Tile tile = {};
+									tile.wayType = TilesetWayToTypeMapping[wayValue];
+									tile.entityType = EntityType::None;
+									state.level.tiles[tileIndex] = tile;
 								}
 							}
-						}
 
-						result = true;
+							// Make waypoints/goal
+							for(size_t objIndex = 0; objIndex < outLevel.objectCount; ++objIndex) {
+								const ObjectData &obj = outLevel.objects[objIndex];
+								if(IsValidTile(state.level.dimension, obj.tilePos)) {
+									int tileIndex = obj.tilePos.y * outLevel.mapWidth + obj.tilePos.x;
+									switch(obj.type) {
+										case ObjectType::Goal:
+											state.level.tiles[tileIndex].entityType = EntityType::Goal;
+											break;
+										case ObjectType::Waypoint:
+											AddWaypoint(state.waypoints, state.level.dimension, obj.tilePos, obj.waypoint.direction);
+											break;
+										default:
+											break;
+									}
+								}
+							}
+
+							result = true;
+						} else {
+							gamelog::Error("Level file '%s' is not valid!", filePath);
+						}
 					} else {
-						gamelog::Error("Level file '%s' is not valid!", filePath);
+						gamelog::Error("Level file '%s' is not a valid XML file!", filePath);
 					}
-				} else {
-					gamelog::Error("Level file '%s' is not a valid XML file!", filePath);
+					fxmlFree(&ctx);
 				}
-				fxmlFree(&ctx);
+			} else {
+				gamelog::Error("Level file '%s' could not be found!", filePath);
 			}
-			fplMemoryFree(fileData.data);
+
+			fmemEndTemporary(&tempMem);
 		} else {
-			gamelog::Error("Level file '%s' could not be found!", filePath);
+			gamelog::Error("Failed begin temporary memory for load level!");
 		}
 
 		return(result);
@@ -1188,23 +1232,21 @@ namespace level {
 	static void FreeLevel(Level &level) {
 		for(size_t i = 0; i < level.data.layerCount; ++i) {
 			if(level.data.layers[i].data != nullptr) {
-				fplMemoryFree(level.data.layers[i].data);
 				level.data.layers[i].data = nullptr;
 			}
 		}
 		for(size_t i = 0; i < level.data.tilesetCount; ++i) {
 			if(level.data.tilesets[i].tileUVs != nullptr) {
-				fplMemoryFree(level.data.tilesets[i].tileUVs);
 				level.data.tilesets[i].tileUVs = nullptr;
 			}
 		}
 		if(level.tiles != nullptr) {
-			fplMemoryFree(level.tiles);
 			level.tiles = nullptr;
 		}
 		level.data.layerCount = 0;
 		level.data.tilesetCount = 0;
 		level.data.objectCount = 0;
+		fmemReset(&level.levelMem);
 	}
 
 	static void ClearLevel(GameState &state) {
@@ -1241,7 +1283,7 @@ namespace level {
 			char levelFilename[1024];
 			fplCopyAnsiString(wave.levelId, levelFilename, FPL_ARRAYCOUNT(levelFilename));
 			fplChangeFileExtension(levelFilename, ".tmx", levelFilename, FPL_ARRAYCOUNT(levelFilename));
-			if(LoadLevel(state, state.assets.dataPath, levelFilename, state.level.data)) {
+			if(LoadLevel(state, state.assets.dataPath, levelFilename, state.level.data, &state.level.levelMem)) {
 				fplCopyAnsiString(wave.levelId, state.level.activeId, FPL_ARRAYCOUNT(state.level.activeId));
 			} else {
 				gamelog::Error("Failed loading level '%s'!", levelFilename);
@@ -1355,40 +1397,25 @@ namespace towers {
 	}
 
 	static Vec2f PredictEnemyPosition(const Tower &tower, const Creep &enemy, const float deltaTime) {
-		Vec2f result;
-
-		// First we compute how many frames we need until we can actually fire (Weapon cooldown)
-		if(tower.data->enemyPredictionFlags != EnemyPredictionFlags::None) {
-			float framesRequiredToFire;
-			if((tower.data->enemyPredictionFlags & EnemyPredictionFlags::WeaponCooldown) == EnemyPredictionFlags::WeaponCooldown) {
-				framesRequiredToFire = (tower.gunTimer / deltaTime);
-			} else {
-				framesRequiredToFire = 0;
-			}
-			float timeScale = 1.0f / Max(framesRequiredToFire, 1.0f);
-
-			// Now we predict the enemy position based on the enemy speed and the number of frames required to fire
-			Vec2f velocity = enemy.facingDirection * (enemy.speed * 0.5f * deltaTime);
-			Vec2f predictedPosition = enemy.position + velocity / deltaTime;
-			Vec2f distanceToEnemy = predictedPosition - tower.position;
-
-			// Second we compute how many frames we need the bullet to move to the predicted position
-			float framesRequiredForBullet;
-			if((tower.data->enemyPredictionFlags & EnemyPredictionFlags::BulletDistance) == EnemyPredictionFlags::BulletDistance) {
-				assert(tower.data->bullet.speed > 0);
-				float bulletDistance = Vec2Length(distanceToEnemy) / (tower.data->bullet.speed / deltaTime);
-				framesRequiredForBullet = (bulletDistance / deltaTime);
-			} else {
-				framesRequiredForBullet = 0;
-			}
-
-			// Now we recompute the time scale and the predicted enemy position
-			timeScale = 1.0f / Max(framesRequiredToFire + framesRequiredForBullet, 1.0f);
-			velocity = enemy.facingDirection * (enemy.speed * 0.5f * deltaTime);
-			result = enemy.position + velocity / deltaTime;
+		// Based on:
+		// https://gamedev.stackexchange.com/questions/14469/2d-tower-defense-a-bullet-to-an-enemy
+		Vec2f distanceToTarget = enemy.position - tower.position;
+		Vec2f enemyVelocity = enemy.facingDirection * (enemy.speed * deltaTime);
+		Vec2f bulletVelocity = Vec2Normalize(distanceToTarget) * (tower.data->bullet.speed * deltaTime);
+		float a = Vec2Dot(enemyVelocity, enemyVelocity) - Vec2Dot(bulletVelocity, bulletVelocity);
+		float b = 2.0f * Vec2Dot(enemyVelocity, distanceToTarget);
+		float c = Vec2Dot(distanceToTarget, distanceToTarget);
+		float d = -b / (2.0f * a);
+		float q = (float)SquareRoot((b * b) - 4.0f * a * c) / (2.0f * a);
+		float t1 = d - q;
+		float t2 = d + q;
+		float t;
+		if(t1 > t2 && t2 > 0) {
+			t = t2;
 		} else {
-			result = enemy.position;
+			t = t1;
 		}
+		Vec2f result = enemy.position + enemyVelocity * t;
 		return(result);
 	}
 
@@ -1403,7 +1430,7 @@ namespace towers {
 		Vec2f lookDirection = Vec2AngleToAxis(tower.facingAngle);
 		Vec2f predictedEnemyPosition = PredictEnemyPosition(tower, enemy, deltaTime);
 		Vec2f distanceToEnemy = predictedEnemyPosition - tower.position;
-		bool result;
+		bool result = true;
 		if(tower.data->enemyRangeTestType == FireRangeTestType::LineTrace) {
 			float maxDistance = Vec2Length(distanceToEnemy) + enemy.data->collisionRadius;
 			for(size_t tubeIndex = 0; tubeIndex < tower.data->tubeCount; ++tubeIndex) {
@@ -1419,7 +1446,7 @@ namespace towers {
 					break;
 				}
 			}
-		} else {
+		} else if(tower.data->enemyRangeTestType == FireRangeTestType::InSight) {
 			float projDistance = Vec2Dot(distanceToEnemy, lookDirection);
 			if(projDistance > 0) {
 				Vec2f lookPos = tower.position + lookDirection * projDistance;
@@ -1583,34 +1610,43 @@ namespace game {
 		}
 	}
 
-	static void LoadAssets(Assets &assets, RenderState &renderState) {
-		// Towers/Enemies/Waves
-		level::LoadCreepDefinitions(assets, "creeps.xml");
-		level::LoadTowerDefinitions(assets, "towers.xml");
-		level::LoadWaveDefinitions(assets, "waves.xml");
+	static void LoadAssets(GameState &gameState, RenderState &renderState) {
+		fmemMemoryBlock tempMem = {};
+		if(fmemBeginTemporary(&gameState.transientMem, &tempMem)) {
+			Assets &assets = gameState.assets;
 
-		// Fonts
-		char fontDataPath[1024];
-		const char *fontFilename = "SulphurPoint-Bold.otf";
-		fplPathCombine(fontDataPath, FPL_ARRAYCOUNT(fontDataPath), 2, assets.dataPath, "fonts");
-		FontAsset &hudFont = assets.hudFont;
-		if(LoadFontFromFile(fontDataPath, fontFilename, 0, 36.0f, 32, 128, 512, 512, false, &hudFont.desc)) {
-			PushTexture(renderState, &hudFont.texture, hudFont.desc.atlasAlphaBitmap, hudFont.desc.atlasWidth, hudFont.desc.atlasHeight, 1, TextureFilterType::Linear, TextureWrapMode::ClampToEdge, false, false);
-		}
-		FontAsset &overlayFont = assets.overlayFont;
-		if(LoadFontFromFile(fontDataPath, fontFilename, 0, 240.0f, 32, 128, 4096, 4096, false, &overlayFont.desc)) {
-			PushTexture(renderState, &overlayFont.texture, overlayFont.desc.atlasAlphaBitmap, overlayFont.desc.atlasWidth, overlayFont.desc.atlasHeight, 1, TextureFilterType::Linear, TextureWrapMode::ClampToEdge, false, false);
-		}
+			// Towers/Enemies/Waves
+			level::LoadCreepDefinitions(assets, CreepsDataFilename, false, &tempMem);
+			level::LoadTowerDefinitions(assets, TowersDataFilename, false, &tempMem);
+			level::LoadWaveDefinitions(assets, WavesDataFilename, false, &tempMem);
 
-		// Textures
-		char texturesDataPath[1024];
-		char levelsDataPath[1024];
-		fplPathCombine(texturesDataPath, FPL_ARRAYCOUNT(texturesDataPath), 2, assets.dataPath, "textures");
-		fplPathCombine(levelsDataPath, FPL_ARRAYCOUNT(levelsDataPath), 2, assets.dataPath, "levels");
-		LoadTextureAsset(renderState, texturesDataPath, "radiant.png", false, &assets.radiantTexture);
-		LoadTextureAsset(renderState, levelsDataPath, "way_tileset.png", false, &assets.wayTilesetTexture);
-		LoadTextureAsset(renderState, levelsDataPath, "entities_tileset.png", false, &assets.entitiesTilesetTexture);
-		LoadTextureAsset(renderState, levelsDataPath, "ground_tileset.png", false, &assets.groundTilesetTexture);
+			// Fonts
+			char fontDataPath[1024];
+			const char *fontFilename = "SulphurPoint-Bold.otf";
+			fplPathCombine(fontDataPath, FPL_ARRAYCOUNT(fontDataPath), 2, assets.dataPath, "fonts");
+			FontAsset &hudFont = assets.hudFont;
+			if(LoadFontFromFile(fontDataPath, fontFilename, 0, 36.0f, 32, 128, 512, 512, false, &hudFont.desc)) {
+				PushTexture(renderState, &hudFont.texture, hudFont.desc.atlasAlphaBitmap, hudFont.desc.atlasWidth, hudFont.desc.atlasHeight, 1, TextureFilterType::Linear, TextureWrapMode::ClampToEdge, false, false);
+			}
+			FontAsset &overlayFont = assets.overlayFont;
+			if(LoadFontFromFile(fontDataPath, fontFilename, 0, 240.0f, 32, 128, 4096, 4096, false, &overlayFont.desc)) {
+				PushTexture(renderState, &overlayFont.texture, overlayFont.desc.atlasAlphaBitmap, overlayFont.desc.atlasWidth, overlayFont.desc.atlasHeight, 1, TextureFilterType::Linear, TextureWrapMode::ClampToEdge, false, false);
+			}
+
+			// Textures
+			char texturesDataPath[1024];
+			char levelsDataPath[1024];
+			fplPathCombine(texturesDataPath, FPL_ARRAYCOUNT(texturesDataPath), 2, assets.dataPath, "textures");
+			fplPathCombine(levelsDataPath, FPL_ARRAYCOUNT(levelsDataPath), 2, assets.dataPath, "levels");
+			LoadTextureAsset(renderState, texturesDataPath, "radiant.png", false, &assets.radiantTexture);
+			LoadTextureAsset(renderState, levelsDataPath, "way_tileset.png", false, &assets.wayTilesetTexture);
+			LoadTextureAsset(renderState, levelsDataPath, "entities_tileset.png", false, &assets.entitiesTilesetTexture);
+			LoadTextureAsset(renderState, levelsDataPath, "ground_tileset.png", false, &assets.groundTilesetTexture);
+
+			fmemEndTemporary(&tempMem);
+		} else {
+			gamelog::Error("Failed begin temporary memory for assets!");
+		}
 	}
 
 	static void ReleaseGame(GameState &state) {
@@ -1641,7 +1677,21 @@ namespace game {
 		fplPathCombine(state.assets.dataPath, FPL_ARRAYCOUNT(state.assets.dataPath), 2, state.assets.dataPath, "data");
 		gamelog::Info("Using assets path: %s", state.assets.dataPath);
 
-		LoadAssets(state.assets, *gameMemory.render);
+		size_t levelMemorySize = FMEM_MEGABYTES(32);
+		uint8_t *levelMemory = fmemPush(gameMemory.memory, levelMemorySize, fmemPushFlags_None);
+		if(!fmemInitFromSource(&state.level.levelMem, levelMemory, levelMemorySize)) {
+			gamelog::Fatal("Failed pushing %zu level memory!", levelMemory);
+			return(false);
+		}
+
+		size_t transientMemorySize = FMEM_MEGABYTES(8);
+		uint8_t *transientMemory = fmemPush(gameMemory.memory, transientMemorySize, fmemPushFlags_None);
+		if(!fmemInitFromSource(&state.transientMem, transientMemory, transientMemorySize)) {
+			gamelog::Fatal("Failed pushing %zu transient memory!", transientMemorySize);
+			return(false);
+		}
+
+		LoadAssets(state, *gameMemory.render);
 
 		NewGame(state);
 
@@ -1763,7 +1813,7 @@ namespace game {
 
 extern bool GameInit(GameMemory &gameMemory) {
 	gamelog::Verbose("Init Game");
-	GameState *state = (GameState *)fmemPush(&gameMemory.persistentMemory, sizeof(GameState), fmemPushFlags_Clear);
+	GameState *state = (GameState *)fmemPush(gameMemory.memory, sizeof(GameState), fmemPushFlags_Clear);
 	gameMemory.game = state;
 	if(!game::InitGame(*state, gameMemory)) {
 		gamelog::Fatal("Failed initializing Game!");
@@ -1847,6 +1897,29 @@ extern void GameUpdate(GameMemory &gameMemory, const Input &input) {
 
 	GameState *state = gameMemory.game;
 	assert(state != nullptr);
+
+	if(WasPressed(input.keyboard.debugReload)) {
+		char filePathBuffer[FPL_MAX_PATH_LENGTH];
+		fplPathCombine(filePathBuffer, FPL_ARRAYCOUNT(filePathBuffer), 3, state->assets.dataPath, "levels", TowersDataFilename);
+		FileInfo towersFileContents = utils::LoadFileInfo(filePathBuffer);
+		fplPathCombine(filePathBuffer, FPL_ARRAYCOUNT(filePathBuffer), 3, state->assets.dataPath, "levels", CreepsDataFilename);
+		FileInfo creepsFileContents = utils::LoadFileInfo(filePathBuffer);
+		fplPathCombine(filePathBuffer, FPL_ARRAYCOUNT(filePathBuffer), 3, state->assets.dataPath, "levels", WavesDataFilename);
+		FileInfo wavesFileContents = utils::LoadFileInfo(filePathBuffer);
+
+		//utils::IsEqualFileInfo(towersFileContents, state->assets.towersFileInfo)
+		//utils::IsEqualFileInfo(creepsFileContents, state->assets.creepsFileInfo)
+		//utils::IsEqualFileInfo(wavesFileContents, state->assets.wavesFileInfo)
+
+		fmemMemoryBlock tempMem = {};
+		if(fmemBeginTemporary(&state->transientMem, &tempMem)) {
+			level::LoadCreepDefinitions(state->assets, CreepsDataFilename, true, &tempMem);
+			level::LoadTowerDefinitions(state->assets, TowersDataFilename, true, &tempMem);
+			level::LoadWaveDefinitions(state->assets, WavesDataFilename, true, &tempMem);
+			fmemEndTemporary(&tempMem);
+		}
+	}
+
 
 	float dtScale = 1.0f;
 	if(state->isSlowDown) {
@@ -2019,6 +2092,7 @@ extern void GameRender(GameMemory &gameMemory, const float alpha) {
 
 	const float w = WorldRadiusW;
 	const float h = WorldRadiusH;
+	const float dt = state->deltaTime;
 
 	PushViewport(renderState, state->viewport.x, state->viewport.y, state->viewport.w, state->viewport.h);
 	PushClear(renderState, V4f(0, 0, 0, 1), ClearFlags::Color | ClearFlags::Depth);
@@ -2217,11 +2291,7 @@ extern void GameRender(GameMemory &gameMemory, const float alpha) {
 				if((target->id > 0) && (target->id == tower.targetId)) {
 					PushCircle(renderState, target->position, target->data->collisionRadius, 32, V4f(1, 0, 0, 1), false, 1.0f);
 
-					Vec2f lookDirection = Vec2AngleToAxis(tower.facingAngle);
-					Vec2f distanceToEnemy = target->position - tower.position;
-					float projDistance = Vec2Dot(distanceToEnemy, lookDirection);
-					Vec2f lookPos = tower.position + lookDirection * projDistance;
-
+					Vec2f lookPos = towers::PredictEnemyPosition(tower, *target, dt);
 					PushCircle(renderState, lookPos, MaxTileSize * 0.25f, 16, V4f(1, 1, 0, 1), false, 1.0f);
 
 					float dot = Vec2Dot(target->position, lookPos);
@@ -2229,6 +2299,9 @@ extern void GameRender(GameMemory &gameMemory, const float alpha) {
 					float angle = ArcTan2(det, dot);
 
 					if(angle >= -ShotAngleTolerance && angle <= ShotAngleTolerance) {
+						Vec2f lookDirection = Vec2AngleToAxis(tower.facingAngle);
+						Vec2f distanceToEnemy = target->position - tower.position;
+						float projDistance = Vec2Dot(distanceToEnemy, lookDirection);
 						Vec2f sightPos1 = tower.position + Vec2AngleToAxis(tower.facingAngle - ShotAngleTolerance) * projDistance;
 						Vec2f sightPos2 = tower.position + Vec2AngleToAxis(tower.facingAngle + ShotAngleTolerance) * projDistance;
 						Vec4f sightColor = V4f(1, 0, 0, 0.5);
@@ -2295,7 +2368,7 @@ extern void GameRender(GameMemory &gameMemory, const float alpha) {
 		float fontHeight = MaxTileSize * 0.5f;
 		PushText(renderState, text, fplGetAnsiStringLength(text), &font.desc, &font.texture, V2f(textPos.x, textPos.y), fontHeight, 1.0f, 1.0f, textColor);
 
-		fplFormatAnsiString(text, FPL_ARRAYCOUNT(text), "Game Memory: %zu / %zu", gameMemory.persistentMemory.used, gameMemory.persistentMemory.size);
+		fplFormatAnsiString(text, FPL_ARRAYCOUNT(text), "Game Memory: %zu / %zu", gameMemory.memory->used, gameMemory.memory->size);
 		PushText(renderState, text, fplGetAnsiStringLength(text), &font.desc, &font.texture, V2f(textPos.x + dim.gridWidth - padding * 2.0f, textPos.y + fontHeight * 2), fontHeight, -1.0f, 1.0f, textColor);
 		fplFormatAnsiString(text, FPL_ARRAYCOUNT(text), "Render Memory: %zu / %zu", gameMemory.render->lastMemoryUsage, gameMemory.render->memory.size);
 		PushText(renderState, text, fplGetAnsiStringLength(text), &font.desc, &font.texture, V2f(textPos.x + dim.gridWidth - padding * 2.0f, textPos.y + fontHeight * 1), fontHeight, -1.0f, 1.0f, textColor);

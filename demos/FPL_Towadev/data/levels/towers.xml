@@ -4,9 +4,8 @@
     <detectionRadius>2.25</detectionRadius>
     <unlockRadius>2.25</unlockRadius>
     <gunCooldown>0.35</gunCooldown>
-    <gunRotationSpeed>6.0</gunRotationSpeed>
+    <gunRotationSpeed>4.0</gunRotationSpeed>
     <enemyRangeTestType>InSight</enemyRangeTestType>
-    <enemyPredictionFlags>All</enemyPredictionFlags>
     <enemyLockOnMode>LockedOn</enemyLockOnMode>
     <parts>
       <part type="FillQuad" offset="0,0" ext="0.2,0.2" orientation="0"  rotFlags="None" color="0.1,0.3,0.7,1" />

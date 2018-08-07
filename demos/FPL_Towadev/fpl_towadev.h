@@ -38,10 +38,19 @@ constexpr float ControlsOriginY = -WorldRadiusH;
 const Vec4f TextBackColor = V4f(0.2f, 0.2f, 0.8f, 1);
 const Vec4f TextForeColor = V4f(1, 1, 1, 1);
 
+const char *TowersDataFilename = "towers.xml";
+const char *WavesDataFilename = "waves.xml";
+const char *CreepsDataFilename = "creeps.xml";
+
 typedef const void *UIID;
 
-struct FileContents {
+struct FileInfo {
 	size_t size;
+	uint64_t modifyDate;
+};
+
+struct FileContents {
+	FileInfo info;
 	uint8_t *data;
 };
 
@@ -225,6 +234,9 @@ struct LevelData {
 	size_t layerCount;
 	size_t objectCount;
 	size_t tilesetCount;
+	size_t creepsFileSize;
+	size_t towersFileSize;
+	size_t wavesFileSize;
 	uint32_t tileWidth;
 	uint32_t tileHeight;
 	uint32_t mapWidth;
@@ -322,7 +334,8 @@ inline BulletData MakeBulletData(const float renderRadius, const float collision
 }
 
 enum class FireRangeTestType {
-	InSight = 0,
+	NoTest,
+	InSight,
 	LineTrace,
 };
 
@@ -389,7 +402,6 @@ struct TowerData {
 	float gunCooldown;
 	float gunRotationSpeed;
 	FireRangeTestType enemyRangeTestType;
-	EnemyPredictionFlags enemyPredictionFlags;
 	EnemyLockTargetMode enemyLockOnMode;
 	int costs;
 };
@@ -441,6 +453,9 @@ struct Assets {
 	size_t towerDefinitionCount;
 	size_t creepDefinitionCount;
 	size_t waveDefinitionCount;
+	FileInfo towersFileInfo;
+	FileInfo wavesFileInfo;
+	FileInfo creepsFileInfo;
 	TextureAsset radiantTexture;
 	TextureAsset entitiesTilesetTexture;
 	TextureAsset wayTilesetTexture;
@@ -486,10 +501,11 @@ struct LevelDimension {
 };
 
 struct Level {
+	fmemMemoryBlock levelMem;
 	LevelData data;
-	Tile *tiles;
 	char activeId[256];
 	LevelDimension dimension;
+	Tile *tiles;
 	size_t tileCapacity;
 };
 
@@ -513,6 +529,8 @@ struct GameState {
 	Creeps enemies;
 	Waypoints waypoints;
 	CreepSpawners spawners;
+
+	fmemMemoryBlock transientMem;
 
 	Assets assets;
 
