@@ -142,10 +142,15 @@ SOFTWARE.
 	- Changed: fplKeyboardModifierFlags_Shift are split into left/right part respectively
 	- Changed: fplKeyboardModifierFlags_Super are split into left/right part respectively
 	- Changed: fplKeyboardModifierFlags_Ctrl are split into left/right part respectively
+	- Changed: All bool fields in structs are replaced with fpl_b32
+	- Changed: Added COUNTER macro to non-CRT FPL_STATICASSERT
 	- Changed: [Win32] Detection of left/right keyboard modifier flags
 	- Changed: [Win32] Mapping OEM 1-8 keys
 	- Changed: [Win32] Use MapVirtualKeyA to map key code to virtual key
     - Fixed: [X11] fplMouseEventType_Move event was never created anymore
+	- Fixed: Corrected a new comments
+	- Fixed: fpl__HandleKeyboardButtonEvent had incorrect previous state mapping
+	- New: Added typedef fpl_b32 (32-bit boolean type)
 	- New: Added struct fplKeyboardState
 	- New: Added struct fplGamepadStates
 	- New: Added fplGetKeyboardState()
@@ -1394,21 +1399,21 @@ SOFTWARE.
 #		include <assert.h>
 		//! Runtime assert (C Runtime)
 #		define FPL_ASSERT(exp) assert(exp)
-		//! Compile error assert (C Runtime)
+		//! Static assert (C Runtime)
 #		define FPL_STATICASSERT(exp) static_assert(exp, "static_assert")
 #	else
 		//! Runtime assert
 #		define FPL_ASSERT(exp) if(!(exp)) {*(int *)0 = 0;}
-		//! Compile error assert
-#		define FPL_STATICASSERT_(exp, line) \
-			int fpl_static_assert_##line(int static_assert_failed[(exp)?1:-1])
+		//! Static assert
+#		define FPL_STATICASSERT_(exp, line, counter) \
+			int fpl_static_assert_##line_##counter(int static_assert_failed[(exp)?1:-1])
 #		define FPL_STATICASSERT(exp) \
-			FPL_STATICASSERT_(exp, __LINE__)
+			FPL_STATICASSERT_(exp, __LINE__, __COUNTER__)
 #	endif // FPL_ENABLE_C_ASSERT
 #else
-	//! Runtime assertions disabled
+	//! Runtime assert disabled
 #	define FPL_ASSERT(exp)
-	//! Compile time assertions disabled
+	//! Static assert disabled
 #	define FPL_STATICASSERT(exp)
 #endif // FPL_ENABLE_ASSERTIONS
 
@@ -1473,7 +1478,7 @@ static fpl_force_inline void fplDebugBreak() { __asm__ __volatile__(".inst 0xe7f
 //
 // Test sizes
 //
-// @TODO(final): At the moment this is sufficient, but as soon as get to special CPUs, this will break!
+// @TODO(final): At the moment this is sufficient, but as soon as there are special CPUs detected, this will break!
 #if defined(FPL_CPU_64BIT)
 FPL_STATICASSERT(sizeof(uintptr_t) == sizeof(uint64_t));
 FPL_STATICASSERT(sizeof(size_t) == sizeof(uint64_t));
@@ -1481,7 +1486,6 @@ FPL_STATICASSERT(sizeof(size_t) == sizeof(uint64_t));
 FPL_STATICASSERT(sizeof(uintptr_t) == sizeof(uint32_t));
 FPL_STATICASSERT(sizeof(size_t) == sizeof(uint32_t));
 #endif
-
 
 //
 // Macro functions
@@ -1629,6 +1633,8 @@ FPL_STATICASSERT(sizeof(size_t) == sizeof(uint32_t));
 
 //! Null
 #define fpl_null NULL
+//! 32-bit boolean
+typedef uint32_t fpl_b32;
 
 #if defined(FPL_PLATFORM_WIN32)
 	//! Maximum length of a filename (Win32)
@@ -2261,14 +2267,14 @@ typedef union fplGraphicsApiSettings {
 
 //! A structure that contains video settings such as driver, vsync, api-settings etc.
 typedef struct fplVideoSettings {
-	//! Video driver type
-	fplVideoDriverType driver;
-	//! Vertical syncronisation enabled/disabled
-	bool isVSync;
-	//! Backbuffer size is automatically resized. Useable only for software rendering!
-	bool isAutoSize;
 	//! Graphics Api settings
 	fplGraphicsApiSettings graphics;
+	//! Video driver type
+	fplVideoDriverType driver;
+	//! Is vertical syncronisation enabled. Useable only for hardware rendering!
+	fpl_b32 isVSync;
+	//! Is backbuffer automatically resized. Useable only for software rendering!
+	fpl_b32 isAutoSize;
 } fplVideoSettings;
 
 /**
@@ -2352,7 +2358,7 @@ typedef struct fplAudioDeviceInfo {
 //! A structure containing settings for the ALSA audio driver
 typedef struct fplAlsaAudioSettings {
 	//! Disable the usage of MMap in ALSA
-	bool noMMap;
+	fpl_b32 noMMap;
 } fplAlsaAudioSettings;
 #endif
 
@@ -2393,7 +2399,7 @@ typedef struct fplAudioSettings {
 	//! Audio buffer in milliseconds
 	uint32_t bufferSizeInMilliSeconds;
 	//! Is exclude mode prefered
-	bool preferExclusiveMode;
+	fpl_b32 preferExclusiveMode;
 } fplAudioSettings;
 
 /**
@@ -2438,13 +2444,13 @@ typedef struct fplWindowSettings {
 	//! Fullscreen height in screen coordinates
 	uint32_t fullscreenHeight;
 	//! Is window resizable
-	bool isResizable;
+	fpl_b32 isResizable;
 	//! Is window decorated
-	bool isDecorated;
+	fpl_b32 isDecorated;
 	//! Is floating
-	bool isFloating;
+	fpl_b32 isFloating;
 	//! Is window in fullscreen mode
-	bool isFullscreen;
+	fpl_b32 isFullscreen;
 } fplWindowSettings;
 
 /**
@@ -2459,7 +2465,7 @@ typedef struct fplInputSettings {
 	//! Frequency in ms for detecting new or removed controllers (Default: 200)
 	uint32_t controllerDetectionFrequency;
 	//! Skip repeated key presses and just push when button state was different
-	bool skipKeyRepeats;
+	fpl_b32 skipKeyRepeats;
 } fplInputSettings;
 
 /**
@@ -2599,7 +2605,7 @@ FPL_ENUM_AS_FLAGS_OPERATORS(fplLogWriterFlags);
 //! A structure containing console logging properties
 typedef struct fplLogWriterConsole {
 	//! Enable this to log to the error console instead
-	bool logToError;
+	fpl_b32 logToError;
 } fplLogWriterConsole;
 
 //! A structure containing properties custom logging properties
@@ -2646,7 +2652,7 @@ typedef struct fplLogSettings {
 	//! Maximum log level
 	fplLogLevel maxLevel;
 	//! Is initialized (When set to false all values will be set to default values)
-	bool isInitialized;
+	fpl_b32 isInitialized;
 } fplLogSettings;
 
 /**
@@ -2736,7 +2742,7 @@ typedef struct fplDynamicLibraryHandle {
 	//! Internal library handle
 	fplInternalDynamicLibraryHandle internalHandle;
 	//! Library opened successfully
-	bool isValid;
+	fpl_b32 isValid;
 } fplDynamicLibraryHandle;
 
 /**
@@ -2937,9 +2943,9 @@ typedef struct fplThreadHandle {
 	//! Thread state
 	volatile fplThreadState currentState;
 	//! Is this thread valid
-	volatile bool isValid;
+	volatile fpl_b32 isValid;
 	//! Is this thread stopping
-	volatile bool isStopping;
+	volatile fpl_b32 isStopping;
 } fplThreadHandle;
 
 #if defined(FPL_PLATFORM_WIN32)
@@ -2968,7 +2974,7 @@ typedef struct fplSemaphoreHandle {
 	//! The internal semaphore handle
 	fplInternalSemaphoreHandle internalHandle;
 	//! Is it valid
-	bool isValid;
+	fpl_b32 isValid;
 } fplSemaphoreHandle;
 
 //! A union containing the internal mutex handle for any platform
@@ -2987,7 +2993,7 @@ typedef struct fplMutexHandle {
 	//! The internal mutex handle
 	fplInternalMutexHandle internalHandle;
 	//! Is it valid
-	bool isValid;
+	fpl_b32 isValid;
 } fplMutexHandle;
 
 //! A union containing the internal signal handle for any platform
@@ -3006,7 +3012,7 @@ typedef struct fplSignalHandle {
 	//! The internal signal handle
 	fplInternalSignalHandle internalHandle;
 	//! Is it valid
-	bool isValid;
+	fpl_b32 isValid;
 } fplSignalHandle;
 
 //! An enumeration of signal values
@@ -3033,7 +3039,7 @@ typedef struct fplConditionVariable {
 	//! The internal condition handle
 	fplInternalConditionVariable internalHandle;
 	//! Is it valid
-	bool isValid;
+	fpl_b32 isValid;
 } fplConditionVariable;
 
 /**
@@ -3535,7 +3541,7 @@ typedef struct fplFileHandle {
 	//! Internal file handle
 	fplInternalFileHandle internalHandle;
 	//! File opened successfully
-	bool isValid;
+	fpl_b32 isValid;
 } fplFileHandle;
 
 //! An enumeration of file position modes (Beginning, Current, End)
@@ -4267,7 +4273,7 @@ typedef enum fplGamepadEventType {
 //! A structure containing properties for a gamepad button (IsDown, etc.)
 typedef struct fplGamepadButton {
 	//! Is button down
-	bool isDown;
+	fpl_b32 isDown;
 } fplGamepadButton;
 
 //! A structure containing the entire gamepad state
@@ -4326,17 +4332,17 @@ typedef struct fplGamepadState {
 	float rightTrigger;
 
 	//! Is device connected
-	bool isConnected;
+	fpl_b32 isConnected;
 } fplGamepadState;
 
 //! A structure containing gamepad event data (Type, Device, State, etc.)
 typedef struct fplGamepadEvent {
+	//! Full gamepad state
+	fplGamepadState state;
 	//! Gamepad event type
 	fplGamepadEventType type;
 	//! Gamepad device index
 	uint32_t deviceIndex;
-	//! Full gamepad state
-	fplGamepadState state;
 } fplGamepadEvent;
 
 //! An enumeration of event types (Window, Keyboard, Mouse, ...)
@@ -4405,7 +4411,7 @@ typedef struct fplKeyboardState {
 	//! Modifier flags
 	fplKeyboardModifierFlags modifiers;
 	//! Key states
-	bool keyStatesRaw[256];
+	fpl_b32 keyStatesRaw[256];
 	//! Mapped button states
 	fplButtonState buttonStatesMapped[256];
 } fplKeyboardState;
@@ -4638,7 +4644,7 @@ typedef struct fplVideoBackBuffer {
 	//! The output rectangle for displaying the backbuffer (Size may not match backbuffer size!)
 	fplVideoRect outputRect;
 	//! Set this to true to actually use the output rectangle
-	bool useOutputRect;
+	fpl_b32 useOutputRect;
 } fplVideoBackBuffer;
 
 /**
@@ -5531,7 +5537,7 @@ typedef struct fpl__Win32Api {
 	fpl__Win32ShellApi shell;
 	fpl__Win32UserApi user;
 	fpl__Win32OleApi ole;
-	bool isValid;
+	fpl_b32 isValid;
 } fpl__Win32Api;
 
 fpl_internal void fpl__Win32UnloadApi(fpl__Win32Api *wapi) {
@@ -5749,13 +5755,13 @@ fpl_internal bool fpl__Win32LoadApi(fpl__Win32Api *wapi) {
 #endif // UNICODE
 
 typedef struct fpl__Win32XInputState {
-	bool isConnected[XUSER_MAX_COUNT];
+	fpl_b32 isConnected[XUSER_MAX_COUNT];
 	LARGE_INTEGER lastDeviceSearchTime;
 	fpl__Win32XInputApi xinputApi;
 } fpl__Win32XInputState;
 
 typedef struct fpl__Win32ConsoleState {
-	bool isAllocated;
+	fpl_b32 isAllocated;
 } fpl__Win32ConsoleState;
 
 typedef struct fpl__Win32InitState {
@@ -5774,9 +5780,9 @@ typedef struct fpl__Win32LastWindowInfo {
 	WINDOWPLACEMENT placement;
 	DWORD style;
 	DWORD exStyle;
-	bool isMaximized;
-	bool isMinimized;
-	bool wasResolutionChanged;
+	fpl_b32 isMaximized;
+	fpl_b32 isMinimized;
+	fpl_b32 wasResolutionChanged;
 } fpl__Win32LastWindowInfo;
 
 typedef struct fpl__Win32WindowState {
@@ -5790,8 +5796,8 @@ typedef struct fpl__Win32WindowState {
 	HDC deviceContext;
 	HCURSOR defaultCursor;
 	int pixelFormat;
-	bool isCursorActive;
-	bool isFrameInteraction;
+	fpl_b32 isCursorActive;
+	fpl_b32 isFrameInteraction;
 } fpl__Win32WindowState;
 #endif // FPL_ENABLE_WINDOW
 
@@ -6311,7 +6317,7 @@ typedef struct fpl__PlatformInitState {
 #if defined(FPL_SUBPLATFORM_POSIX)
 	fpl__PosixInitState posix;
 #endif
-	bool isInitialized;
+	fpl_b32 isInitialized;
 
 	union {
 #	if defined(FPL_PLATFORM_WIN32)
@@ -6338,7 +6344,7 @@ typedef struct fpl__PlatformWindowState {
 	fplKey keyMap[256];
 	fplButtonState keyStates[256];
 	fplButtonState mouseStates[5];
-	bool isRunning;
+	fpl_b32 isRunning;
 
 #if defined(FPL_PLATFORM_WIN32)
 	fpl__Win32WindowState win32;
@@ -6495,7 +6501,6 @@ fpl_internal void fpl__PushMouseMoveEvent(const int32_t x, const int32_t y) {
 	fpl__PushEvent(&newEvent);
 }
 
-
 fpl_internal void fpl__HandleKeyboardButtonEvent(fpl__PlatformWindowState *windowState, const uint64_t keyCode, const fplKeyboardModifierFlags modifiers, const fplButtonState buttonState, const bool force) {
 	fplKey mappedKey = fpl__GetMappedKey(windowState, keyCode);
 	bool repeat = false;
@@ -6504,11 +6509,10 @@ fpl_internal void fpl__HandleKeyboardButtonEvent(fpl__PlatformWindowState *windo
 	} else {
 		FPL_ASSERT(buttonState != fplButtonState_Repeat);
 		if(keyCode < FPL_ARRAYCOUNT(windowState->keyStates)) {
-			if((buttonState == fplButtonState_Release) &&
-				(windowState->keyStates[mappedKey] == fplButtonState_Release)) {
+			if((buttonState == fplButtonState_Release) && (windowState->keyStates[keyCode] == fplButtonState_Release)) {
 				return;
 			}
-			if((buttonState == fplButtonState_Press) && (windowState->keyStates[mappedKey] == fplButtonState_Press)) {
+			if((buttonState == fplButtonState_Press) && (windowState->keyStates[keyCode] >= fplButtonState_Press)) {
 				repeat = true;
 			}
 			windowState->keyStates[keyCode] = buttonState;
@@ -10453,7 +10457,7 @@ fpl_platform_api void fplSetWindowArea(const uint32_t width, const uint32_t heig
 fpl_platform_api bool fplIsWindowResizable() {
 	FPL__CheckPlatform(false);
 	const fpl__PlatformAppState *appState = fpl__global__AppState;
-	bool result = appState->currentSettings.window.isResizable;
+	bool result = appState->currentSettings.window.isResizable != 0;
 	return(result);
 }
 
@@ -10470,7 +10474,7 @@ fpl_platform_api void fplSetWindowResizeable(const bool value) {
 fpl_platform_api bool fplIsWindowDecorated() {
 	FPL__CheckPlatform(false);
 	const fpl__PlatformAppState *appState = fpl__global__AppState;
-	bool result = appState->currentSettings.window.isDecorated;
+	bool result = appState->currentSettings.window.isDecorated != 0;
 	return(result);
 }
 
@@ -10487,7 +10491,7 @@ fpl_platform_api void fplSetWindowDecorated(const bool value) {
 fpl_platform_api bool fplIsWindowFloating() {
 	FPL__CheckPlatform(false);
 	const fpl__PlatformAppState *appState = fpl__global__AppState;
-	bool result = appState->currentSettings.window.isFloating;
+	bool result = appState->currentSettings.window.isFloating != 0;
 	return(result);
 }
 
@@ -10504,7 +10508,7 @@ fpl_platform_api void fplSetWindowFloating(const bool value) {
 fpl_platform_api bool fplIsWindowFullscreen() {
 	FPL__CheckPlatform(false);
 	fpl__PlatformAppState *appState = fpl__global__AppState;
-	bool result = appState->currentSettings.window.isFullscreen;
+	bool result = appState->currentSettings.window.isFullscreen != 0;
 	return(result);
 }
 
@@ -10536,7 +10540,8 @@ fpl_platform_api bool fplSetWindowFullscreen(const bool value, const uint32_t fu
 		fpl__Win32LeaveFullscreen();
 		windowSettings->isFullscreen = false;
 	}
-	return(windowSettings->isFullscreen);
+	bool result = windowSettings->isFullscreen != 0;
+	return(result);
 }
 
 fpl_platform_api bool fplGetWindowPosition(fplWindowPosition *outPos) {
@@ -10657,14 +10662,14 @@ fpl_platform_api bool fplWindowUpdate() {
 			wapi->user.TranslateMessage(&msg);
 			fpl__win32_DispatchMessage(&msg);
 		}
-		result = appState->window.isRunning;
+		result = appState->window.isRunning != 0;
 	}
 	return(result);
 }
 
 fpl_platform_api bool fplIsWindowRunning() {
 	FPL__CheckPlatform(false);
-	bool result = fpl__global__AppState->window.isRunning;
+	bool result = fpl__global__AppState->window.isRunning != 0;
 	return(result);
 }
 
