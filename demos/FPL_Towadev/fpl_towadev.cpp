@@ -268,7 +268,7 @@ namespace ui {
 				ctx.active = 0;
 			}
 		} else if(ctx.hot == id) {
-			if(ctx.input.leftButton.state == fplButtonState_Press) {
+			if(IsDown(ctx.input.leftButton)) {
 				ctx.active = id;
 			}
 		}
