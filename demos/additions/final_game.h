@@ -28,16 +28,20 @@ License:
 #include "final_memory.h"
 
 struct ButtonState {
-	fplButtonState state;
+	const char *name;
 	int halfTransitionCount;
+	fpl_b32 endedDown;
 };
 
 inline bool WasPressed(const ButtonState &state) {
-	bool result = ((state.halfTransitionCount > 1) || ((state.halfTransitionCount == 1) && (state.state == fplButtonState_Release)));
+	bool result = ((state.halfTransitionCount > 1) || ((state.halfTransitionCount == 1) && (state.endedDown)));
+	if(state.name != nullptr) {
+		fplDebugFormatOut("Was pressed[%s]: %d / %d = %s\n", state.name, state.halfTransitionCount, state.endedDown, (result ? "true" : "false"));
+	}
 	return(result);
 }
 inline bool IsDown(const ButtonState &state) {
-	bool result = state.state >= fplButtonState_Press;
+	bool result = state.endedDown != 0;
 	return(result);
 }
 
@@ -80,6 +84,7 @@ struct Mouse {
 struct Input {
 	float deltaTime;
 	float framesPerSeconds;
+	int frameIndex;
 	union {
 		struct {
 			Controller keyboard;

@@ -53,22 +53,15 @@ extern int GameMain(const GameConfiguration &config);
 #define FINAL_OPENGL_RENDER_IMPLEMENTATION
 #include "final_opengl_render.h"
 
-static void UpdateKeyboardButtonState(const fplButtonState state, const ButtonState &oldState, ButtonState &targetButton) {
-	if(state != targetButton.state) {
-		if(state == fplButtonState_Press && oldState.state == fplButtonState_Release) {
-			targetButton.state = fplButtonState_Press;
-		} else if(state == fplButtonState_Release && oldState.state >= fplButtonState_Press) {
-			targetButton.state = fplButtonState_Release;
-		} else {
-			targetButton.state = state;
-		}
-		++targetButton.halfTransitionCount;
-	}
+static void UpdateKeyboardButtonState(ButtonState &newState, const fpl_b32 isDown) {
+	FPL_ASSERT(newState.endedDown != isDown);
+	newState.endedDown = isDown;
+	++newState.halfTransitionCount;
 }
 
-static void UpdateDigitalButtonState(const bool isDown, const ButtonState &oldState, ButtonState &newState) {
-	newState.state = isDown ? fplButtonState_Press : fplButtonState_Release;
-	newState.halfTransitionCount = (oldState.state != newState.state) ? 1 : 0;
+static void UpdateDigitalButtonState(const ButtonState &oldState, ButtonState &newState, const fpl_b32 isDown) {
+	newState.endedDown = isDown;
+	newState.halfTransitionCount = ((newState.endedDown == oldState.endedDown) ? 0 : 1);
 }
 
 static void UpdateDefaultController(Input *currentInput, int newIndex) {
@@ -86,8 +79,7 @@ static void UpdateDefaultController(Input *currentInput, int newIndex) {
 }
 
 static void ProcessEvents(Input *currentInput, Input *prevInput, GameWindowActiveType &windowActiveType, Vec2i &lastMousePos) {
-	Controller *currentKeyboardController = &currentInput->keyboard;
-	Controller *prevKeyboardController = &prevInput->keyboard;
+	Controller *newKeyboardController = &currentInput->keyboard;
 	fplEvent event;
 	while(fplPollEvent(&event)) {
 		switch(event.type) {
@@ -114,43 +106,43 @@ static void ProcessEvents(Input *currentInput, Input *prevInput, GameWindowActiv
 
 			case fplEventType_Gamepad:
 			{
-				// @CLEANUP: For now we just use the device index, but later it should be "added" to the controllers array and remembered somehow
+				// @TODO(final): For now we just use the device index, but later it should be "added" to the controllers array and remembered somehow
 				uint32_t controllerIndex = 1 + event.gamepad.deviceIndex;
 				FPL_ASSERT(controllerIndex < FPL_ARRAYCOUNT(currentInput->controllers));
-				Controller *currentController = &currentInput->controllers[controllerIndex];
-				Controller *prevController = &prevInput->controllers[controllerIndex];
+				Controller *newController = &currentInput->controllers[controllerIndex];
+				Controller *oldController = &prevInput->controllers[controllerIndex];
 				switch(event.gamepad.type) {
 					case fplGamepadEventType_Connected:
 					{
-						currentController->isConnected = true;
+						newController->isConnected = true;
 						UpdateDefaultController(currentInput, controllerIndex);
 					} break;
 					case fplGamepadEventType_Disconnected:
 					{
-						currentController->isConnected = false;
+						newController->isConnected = false;
 						UpdateDefaultController(currentInput, -1);
 					} break;
 					case fplGamepadEventType_StateChanged:
 					{
 						fplGamepadState &padstate = event.gamepad.state;
-						assert(currentController->isConnected);
-						if(fabs(padstate.leftStickX) > 0.0f || fabs(padstate.leftStickY) > 0.0f) {
-							currentController->isAnalog = true;
-							currentController->analogMovement.x = padstate.leftStickX;
-							currentController->analogMovement.y = padstate.leftStickY;
+						assert(newController->isConnected);
+						if(Abs(padstate.leftStickX) > 0.0f || Abs(padstate.leftStickY) > 0.0f) {
+							newController->isAnalog = true;
+							newController->analogMovement.x = padstate.leftStickX;
+							newController->analogMovement.y = padstate.leftStickY;
 						} else {
-							currentController->isAnalog = false;
-							UpdateDigitalButtonState(padstate.dpadDown.isDown, prevController->moveDown, currentController->moveDown);
-							UpdateDigitalButtonState(padstate.dpadUp.isDown, prevController->moveUp, currentController->moveUp);
-							UpdateDigitalButtonState(padstate.dpadLeft.isDown, prevController->moveLeft, currentController->moveLeft);
-							UpdateDigitalButtonState(padstate.dpadRight.isDown, prevController->moveRight, currentController->moveRight);
+							newController->isAnalog = false;
+							UpdateDigitalButtonState(oldController->moveDown, newController->moveDown, padstate.dpadDown.isDown != 0);
+							UpdateDigitalButtonState(oldController->moveUp, newController->moveUp, padstate.dpadUp.isDown != 0);
+							UpdateDigitalButtonState(oldController->moveLeft, newController->moveLeft, padstate.dpadLeft.isDown != 0);
+							UpdateDigitalButtonState(oldController->moveRight, newController->moveRight, padstate.dpadRight.isDown != 0);
 						}
-						UpdateDigitalButtonState(padstate.actionA.isDown, prevController->actionDown, currentController->actionDown);
-						UpdateDigitalButtonState(padstate.actionB.isDown, prevController->actionRight, currentController->actionRight);
-						UpdateDigitalButtonState(padstate.actionX.isDown, prevController->actionLeft, currentController->actionLeft);
-						UpdateDigitalButtonState(padstate.actionY.isDown, prevController->actionUp, currentController->actionUp);
-						UpdateDigitalButtonState(padstate.back.isDown, prevController->actionBack, currentController->actionBack);
-						UpdateDigitalButtonState(padstate.start.isDown, prevController->actionStart, currentController->actionStart);
+						UpdateDigitalButtonState(oldController->actionDown, newController->actionDown, padstate.actionA.isDown != 0);
+						UpdateDigitalButtonState(oldController->actionRight, newController->actionRight, padstate.actionB.isDown != 0);
+						UpdateDigitalButtonState(oldController->actionLeft, newController->actionLeft, padstate.actionX.isDown != 0);
+						UpdateDigitalButtonState(oldController->actionUp, newController->actionUp, padstate.actionY.isDown != 0);
+						UpdateDigitalButtonState(oldController->actionBack, newController->actionBack, padstate.back.isDown != 0);
+						UpdateDigitalButtonState(oldController->actionStart, newController->actionStart, padstate.start.isDown != 0);
 					} break;
 				}
 			} break;
@@ -165,12 +157,13 @@ static void ProcessEvents(Input *currentInput, Input *prevInput, GameWindowActiv
 
 					case fplMouseEventType_Button:
 					{
+						bool isDown = event.mouse.buttonState >= fplButtonState_Press;
 						if(event.mouse.mouseButton == fplMouseButtonType_Left) {
-							UpdateKeyboardButtonState(event.mouse.buttonState, prevInput->mouse.left, currentInput->mouse.left);
+							UpdateKeyboardButtonState(currentInput->mouse.left, isDown);
 						} else if(event.mouse.mouseButton == fplMouseButtonType_Right) {
-							UpdateKeyboardButtonState(event.mouse.buttonState, prevInput->mouse.right, currentInput->mouse.right);
+							UpdateKeyboardButtonState(currentInput->mouse.right, isDown);
 						} else if(event.mouse.mouseButton == fplMouseButtonType_Middle) {
-							UpdateKeyboardButtonState(event.mouse.buttonState, prevInput->mouse.middle, currentInput->mouse.middle);
+							UpdateKeyboardButtonState(currentInput->mouse.middle, isDown);
 						}
 					} break;
 
@@ -189,51 +182,57 @@ static void ProcessEvents(Input *currentInput, Input *prevInput, GameWindowActiv
 					} break;
 					case fplKeyboardEventType_Button:
 					{
-						if(!currentKeyboardController->isConnected) {
-							currentKeyboardController->isConnected = true;
+						if(!newKeyboardController->isConnected) {
+							newKeyboardController->isConnected = true;
 							if(currentInput->defaultControllerIndex == -1) {
 								UpdateDefaultController(currentInput, 0);
 							}
 						}
-						switch(event.keyboard.mappedKey) {
-							case fplKey_A:
-							case fplKey_Left:
-								UpdateKeyboardButtonState(event.keyboard.buttonState, prevKeyboardController->moveLeft, currentKeyboardController->moveLeft);
-								break;
-							case fplKey_D:
-							case fplKey_Right:
-								UpdateKeyboardButtonState(event.keyboard.buttonState, prevKeyboardController->moveRight, currentKeyboardController->moveRight);
-								break;
-							case fplKey_W:
-							case fplKey_Up:
-								UpdateKeyboardButtonState(event.keyboard.buttonState, prevKeyboardController->moveUp, currentKeyboardController->moveUp);
-								break;
-							case fplKey_S:
-							case fplKey_Down:
-								UpdateKeyboardButtonState(event.keyboard.buttonState, prevKeyboardController->moveDown, currentKeyboardController->moveDown);
-								break;
-							case fplKey_Space:
-								UpdateKeyboardButtonState(event.keyboard.buttonState, prevKeyboardController->actionDown, currentKeyboardController->actionDown);
-								break;
-							case fplKey_F:
-							{
-								if(event.keyboard.buttonState == fplButtonState_Release) {
-									bool wasFullscreen = fplIsWindowFullscreen();
-									fplSetWindowFullscreen(!wasFullscreen, 0, 0, 0);
-								}
-							} break;
-							case fplKey_F4:
-								UpdateKeyboardButtonState(event.keyboard.buttonState, prevKeyboardController->debugToggle, currentKeyboardController->debugToggle);
-								break;
-							case fplKey_R:
-								UpdateKeyboardButtonState(event.keyboard.buttonState, prevKeyboardController->debugReload, currentKeyboardController->debugReload);
-								break;
-							case fplKey_Return:
-								UpdateKeyboardButtonState(event.keyboard.buttonState, prevKeyboardController->actionStart, currentKeyboardController->actionStart);
-								break;
-							case fplKey_Escape:
-								UpdateKeyboardButtonState(event.keyboard.buttonState, prevKeyboardController->actionBack, currentKeyboardController->actionBack);
-								break;
+						bool isDown = event.keyboard.buttonState >= fplButtonState_Press;
+						bool wasDown = event.keyboard.buttonState == fplButtonState_Release || event.keyboard.buttonState == fplButtonState_Repeat;
+						if(isDown != wasDown) {
+							//fplDebugFormatOut("Frame %d, Key button change[%d] = %d\n", currentInput->frameIndex, event.keyboard.keyCode, event.keyboard.buttonState);
+							switch(event.keyboard.mappedKey) {
+								case fplKey_A:
+								case fplKey_Left:
+									UpdateKeyboardButtonState(newKeyboardController->moveLeft, isDown);
+									break;
+								case fplKey_D:
+								case fplKey_Right:
+									UpdateKeyboardButtonState(newKeyboardController->moveRight, isDown);
+									break;
+								case fplKey_W:
+								case fplKey_Up:
+									UpdateKeyboardButtonState(newKeyboardController->moveUp, isDown);
+									break;
+								case fplKey_S:
+								case fplKey_Down:
+									UpdateKeyboardButtonState(newKeyboardController->moveDown, isDown);
+									break;
+								case fplKey_Space:
+									UpdateKeyboardButtonState(newKeyboardController->actionDown, isDown);
+									break;
+								case fplKey_F4:
+									UpdateKeyboardButtonState(newKeyboardController->debugToggle, isDown);
+									break;
+								case fplKey_R:
+									UpdateKeyboardButtonState(newKeyboardController->debugReload, isDown);
+									break;
+								case fplKey_Return:
+									UpdateKeyboardButtonState(newKeyboardController->actionStart, isDown);
+									break;
+								case fplKey_Escape:
+									UpdateKeyboardButtonState(newKeyboardController->actionBack, isDown);
+									break;
+							}
+						} else {
+							//fplDebugFormatOut("Frame %d, Key button press[%d] = %d\n", currentInput->frameIndex, event.keyboard.keyCode, event.keyboard.buttonState);
+						}
+						if(wasDown) {
+							if(event.keyboard.mappedKey == fplKey_F) {
+								bool wasFullscreen = fplIsWindowFullscreen();
+								fplSetWindowFullscreen(!wasFullscreen, 0, 0, 0);
+							}
 						}
 					} break;
 				}
@@ -304,11 +303,11 @@ extern int GameMain(const GameConfiguration &config) {
 		}
 
 		Input inputs[2] = {};
-		Input *curInput = &inputs[0];
-		Input *prevInput = &inputs[1];
+		Input *newInput = &inputs[0];
+		Input *oldInput = &inputs[1];
 		Vec2i lastMousePos = V2i(-1, -1);
 		GameWindowActiveType windowActiveType[2] = { GameWindowActiveType::None, GameWindowActiveType::None };
-		curInput->defaultControllerIndex = -1;
+		newInput->defaultControllerIndex = -1;
 
 		uint32_t frameCount = 0;
 		uint32_t updateCount = 0;
@@ -317,50 +316,56 @@ extern int GameMain(const GameConfiguration &config) {
 		double frameAccumulator = TargetDeltaTime;
 		double lastFramesPerSecond = 0.0;
 		double lastFrameTime = 0.0;
+		int frameIndex = 0;
 
 		while(!IsGameExiting(gameMem) && fplWindowUpdate()) {
 			// Window size
 			fplWindowSize winArea;
 			if(fplGetWindowArea(&winArea)) {
-				curInput->windowSize.x = winArea.width;
-				curInput->windowSize.y = winArea.height;
+				newInput->windowSize.x = winArea.width;
+				newInput->windowSize.y = winArea.height;
 			}
 
 			// Remember previous keyboard and mouse state
 			windowActiveType[1] = windowActiveType[0];
-			Controller *currentKeyboardController = &curInput->keyboard;
-			Controller *prevKeyboardController = &prevInput->keyboard;
-			Mouse *currentMouse = &curInput->mouse;
-			Mouse *prevMouse = &prevInput->mouse;
-			*currentKeyboardController = {};
-			*currentMouse = {};
-			currentKeyboardController->isConnected = prevKeyboardController->isConnected;
-			for(uint32_t buttonIndex = 0; buttonIndex < FPL_ARRAYCOUNT(currentKeyboardController->buttons); ++buttonIndex) {
-				currentKeyboardController->buttons[buttonIndex].state = prevKeyboardController->buttons[buttonIndex].state;
+			Controller *oldKeyboardController = &oldInput->keyboard;
+			Controller *newKeyboardController = &newInput->keyboard;
+			*newKeyboardController = {};
+			newKeyboardController->isConnected = oldKeyboardController->isConnected;
+			newKeyboardController->actionDown.name = "KB-ActionDown";
+
+			Mouse *newMouse = &newInput->mouse;
+			Mouse *oldMouse = &oldInput->mouse;
+			*newMouse = {};
+			for(uint32_t buttonIndex = 0; buttonIndex < FPL_ARRAYCOUNT(newMouse->buttons); ++buttonIndex) {
+				newMouse->buttons[buttonIndex] = oldMouse->buttons[buttonIndex];
+				newMouse->buttons[buttonIndex].halfTransitionCount = 0;
 			}
-			for(uint32_t buttonIndex = 0; buttonIndex < FPL_ARRAYCOUNT(currentMouse->buttons); ++buttonIndex) {
-				currentMouse->buttons[buttonIndex] = prevMouse->buttons[buttonIndex];
-				currentMouse->buttons[buttonIndex].halfTransitionCount = 0;
-			}
-			currentMouse->pos = lastMousePos;
+			newMouse->pos = lastMousePos;
 
 			// Remember previous gamepad connected states
-			for(uint32_t controllerIndex = 1; controllerIndex < FPL_ARRAYCOUNT(curInput->controllers); ++controllerIndex) {
-				Controller *currentGamepadController = &curInput->controllers[controllerIndex];
-				Controller *prevGamepadController = &prevInput->controllers[controllerIndex];
-				currentGamepadController->isConnected = prevGamepadController->isConnected;
-				currentGamepadController->isAnalog = prevGamepadController->isAnalog;
+			for(uint32_t controllerIndex = 1; controllerIndex < FPL_ARRAYCOUNT(newInput->controllers); ++controllerIndex) {
+				Controller *newGamepadController = &newInput->controllers[controllerIndex];
+				Controller *oldGamepadController = &oldInput->controllers[controllerIndex];
+				newGamepadController->isConnected = oldGamepadController->isConnected;
+				newGamepadController->isAnalog = oldGamepadController->isAnalog;
 			}
 
-			// Events
-			ProcessEvents(curInput, prevInput, windowActiveType[0], lastMousePos);
-			if(config.disableInactiveDetection) {
-				curInput->isActive = (windowActiveType[0] & GameWindowActiveType::Minimized) != GameWindowActiveType::Minimized;
-			} else {
-				curInput->isActive = ((windowActiveType[0] & GameWindowActiveType::Minimized) != GameWindowActiveType::Minimized) && ((windowActiveType[0] & GameWindowActiveType::LostFocus) != GameWindowActiveType::LostFocus);
+			for(uint32_t buttonIndex = 0; buttonIndex < FPL_ARRAYCOUNT(newKeyboardController->buttons); ++buttonIndex) {
+				newKeyboardController->buttons[buttonIndex].endedDown = oldKeyboardController->buttons[buttonIndex].endedDown;
 			}
-			curInput->deltaTime = (float)TargetDeltaTime;
-			curInput->framesPerSeconds = (float)lastFramesPerSecond;
+
+			newInput->deltaTime = (float)TargetDeltaTime;
+			newInput->framesPerSeconds = (float)lastFramesPerSecond;
+			newInput->frameIndex = frameIndex++;
+
+			// Events
+			ProcessEvents(newInput, oldInput, windowActiveType[0], lastMousePos);
+			if(config.disableInactiveDetection) {
+				newInput->isActive = (windowActiveType[0] & GameWindowActiveType::Minimized) != GameWindowActiveType::Minimized;
+			} else {
+				newInput->isActive = ((windowActiveType[0] & GameWindowActiveType::Minimized) != GameWindowActiveType::Minimized) && ((windowActiveType[0] & GameWindowActiveType::LostFocus) != GameWindowActiveType::LostFocus);
+			}
 
 			if(windowActiveType[0] != windowActiveType[1]) {
 				// We dont want to have delta time jumps
@@ -381,19 +386,14 @@ extern int GameMain(const GameConfiguration &config) {
 				} else {
 					alpha = 1.0f;
 				}
-				GameUpdateAndRender(gameMem, *curInput, alpha);
+				GameUpdateAndRender(gameMem, *newInput, alpha);
 			} else {
-				GameInput(gameMem, *curInput);
-#if 1
+				GameInput(gameMem, *newInput);
 				while(frameAccumulator >= TargetDeltaTime) {
-					GameUpdate(gameMem, *curInput);
+					GameUpdate(gameMem, *newInput);
 					frameAccumulator -= TargetDeltaTime;
 					++updateCount;
 				}
-#else
-				GameUpdate(gameMem, *curInput);
-				++updateCount;
-#endif
 			}
 
 			// @TODO(final): Yield thread when we are running too fast
@@ -432,9 +432,9 @@ extern int GameMain(const GameConfiguration &config) {
 
 			// Swap input
 			{
-				Input *tmp = curInput;
-				curInput = prevInput;
-				prevInput = tmp;
+				Input *tmp = newInput;
+				newInput = oldInput;
+				oldInput = tmp;
 			}
 		}
 
