@@ -5,19 +5,17 @@ cmake_minimum_required(VERSION 3.10)
 # Project settings
 #
 # -----------------------------------------------------------------------------
-project(FPL_Input)
+project(FMEM_Test)
 
-set(CMAKE_CXX_STANDARD 11)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_CXX_EXTENSIONS OFF)
+set(CMAKE_C_FLAGS "-std=c99")
 
 set(MY_EXTERNAL_LIBS "")
 
-set(MY_INCLUDE_DIRS ../dependencies/)
+set(MY_HEADER_FILES ../../final_memory.h)
 
-set(MY_HEADER_FILES ../../final_platform_layer.h)
+set(MY_INCLUDE_DIRS "")
 
-set(MY_SOURCE_FILES fpl_input.cpp)
+set(MY_SOURCE_FILES fmem_test.c)
 
 # -----------------------------------------------------------------------------
 #
@@ -37,7 +35,3 @@ include_directories(../../ ${MY_INCLUDE_DIRS})
 add_executable(${PROJECT_NAME} ${MY_SOURCE_FILES})
 
 target_link_libraries(${PROJECT_NAME} ${MY_EXTERNAL_LIBS} ${CMAKE_DL_LIBS})
-
-add_custom_command(TARGET FPL_Input POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_directory
-        ${CMAKE_SOURCE_DIR}/data $<TARGET_FILE_DIR:FPL_Input>/data)
