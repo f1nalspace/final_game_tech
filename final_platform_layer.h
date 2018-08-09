@@ -7617,51 +7617,51 @@ fpl_common_api fplThreadState fplGetThreadState(fplThreadHandle *thread) {
 #define FPL__COMMON_FILES_DEFINED
 
 fpl_common_api size_t fplReadFileBlock(const fplFileHandle *fileHandle, const size_t sizeToRead, void *targetBuffer, const size_t maxTargetBufferSize) {
-	if (sizeof(size_t) == sizeof(uint64_t)) {
-		return fplReadFileBlock64(fileHandle, sizeToRead, targetBuffer, maxTargetBufferSize);
-	} else {
-		return fplReadFileBlock32(fileHandle, (uint32_t) sizeToRead, targetBuffer, (uint32_t) maxTargetBufferSize);
-	}
+#if defined(FPL_CPU_64BIT)
+	return fplReadFileBlock64(fileHandle, sizeToRead, targetBuffer, maxTargetBufferSize);
+#else
+	return fplReadFileBlock32(fileHandle, (uint32_t) sizeToRead, targetBuffer, (uint32_t) maxTargetBufferSize);
+#endif
 }
 
 fpl_common_api size_t fplWriteFileBlock(const fplFileHandle *fileHandle, void *sourceBuffer, const size_t sourceSize) {
-	if (sizeof(size_t) == sizeof(uint64_t)) {
-		return fplWriteFileBlock64(fileHandle, sourceBuffer, sourceSize);
-	} else {
-		return fplWriteFileBlock32(fileHandle, sourceBuffer, (uint32_t) sourceSize);
-	}
+#if defined(FPL_CPU_64BIT)
+	return fplWriteFileBlock64(fileHandle, sourceBuffer, sourceSize);
+#else
+	return fplWriteFileBlock32(fileHandle, sourceBuffer, (uint32_t) sourceSize);
+#endif
 }
 
 fpl_common_api size_t fplSetFilePosition(const fplFileHandle *fileHandle, const intptr_t position, const fplFilePositionMode mode) {
-	if (sizeof(size_t) == sizeof(uint64_t)) {
-		return fplSetFilePosition64(fileHandle, position, mode);
-	} else {
-		return fplSetFilePosition32(fileHandle, (int32_t) position, mode);
-	}
+#if defined(FPL_CPU_64BIT)
+	return fplSetFilePosition64(fileHandle, position, mode);
+#else
+	return fplSetFilePosition32(fileHandle, (int32_t) position, mode);
+#endif
 }
 
 fpl_common_api size_t fplGetFilePosition(const fplFileHandle *fileHandle) {
-	if (sizeof(size_t) == sizeof(uint64_t)) {
-		return fplGetFilePosition64(fileHandle);
-	} else {
-		return fplGetFilePosition32(fileHandle);
-	}
+#if defined(FPL_CPU_64BIT)
+	return fplGetFilePosition64(fileHandle);
+#else
+	return fplGetFilePosition32(fileHandle);
+#endif
 }
 
 fpl_common_api size_t fplGetFileSizeFromPath(const char *filePath) {
-	if (sizeof(size_t) == sizeof(uint64_t)) {
-		return fplGetFileSizeFromPath64(filePath);
-	} else {
-		return fplGetFileSizeFromPath32(filePath);
-	}
+#if defined(FPL_CPU_64BIT)
+	return fplGetFileSizeFromPath64(filePath);
+#else
+	return fplGetFileSizeFromPath32(filePath);
+#endif
 }
 
 fpl_common_api size_t fplGetFileSizeFromHandle(const fplFileHandle *fileHandle) {
-	if (sizeof(size_t) == sizeof(uint64_t)) {
-		return fplGetFileSizeFromHandle64(fileHandle);
-	} else {
-		return fplGetFileSizeFromHandle32(fileHandle);
-	}
+#if defined(FPL_CPU_64BIT)
+	return fplGetFileSizeFromHandle64(fileHandle);
+#else
+	return fplGetFileSizeFromHandle32(fileHandle);
+#endif
 }
 
 #endif // FPL__COMMON_FILES_DEFINED
