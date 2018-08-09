@@ -120,7 +120,7 @@ SOFTWARE.
 
 /*!
 	\file final_platform_layer.h
-	\version v0.8.5.0 beta
+	\version v0.9.0.0 beta
 	\author Torsten Spaete
 	\brief Final Platform Layer (FPL) - A C99 Single-Header-File Platform Abstraction Library
 */
@@ -129,8 +129,7 @@ SOFTWARE.
 	\page page_changelog Changelog
 	\tableofcontents
 
-## v0.8.5.0 beta:
-	- Changed: [X11] Window title uses XChangeProperty now instead of XStoreName
+## v0.9.0.0 beta:
 	- Changed: fplKey_Enter renamed to fplKey_Return
 	- Changed: fplKey_LeftWin renamed to fplKey_LeftSuper
 	- Changed: fplKey_RightWin renamed to fplKey_RightSuper
@@ -144,23 +143,41 @@ SOFTWARE.
 	- Changed: fplKeyboardModifierFlags_Ctrl are split into left/right part respectively
 	- Changed: All bool fields in structs are replaced with fpl_b32
 	- Changed: Added COUNTER macro to non-CRT FPL_STATICASSERT
+	- Changed: Renamed fields in fplMemoryInfos to match correct meaning
+	- Changed: String copy functions uses fplMemoryCopy instead of iterating and copy each char
+	- Changed: fplSetFilePosition32 returns now uint32_t instead of void
+    - Changed: Added field timeStamps to fplFileEntry
+	- Changed: [X11] Window title uses XChangeProperty now instead of XStoreName
 	- Changed: [Win32] Detection of left/right keyboard modifier flags
 	- Changed: [Win32] Mapping OEM 1-8 keys
 	- Changed: [Win32] Use MapVirtualKeyA to map key code to virtual key
-    - Fixed: [X11] fplMouseEventType_Move event was never created anymore
-	- Fixed: Corrected a new comments
+	- Fixed: Corrected a ton of comments
 	- Fixed: fpl__HandleKeyboardButtonEvent had incorrect previous state mapping
+	- Fixed: [X11] fplMouseEventType_Move event was never created anymore
 	- New: Added typedef fpl_b32 (32-bit boolean type)
 	- New: Added struct fplKeyboardState
 	- New: Added struct fplGamepadStates
-	- New: Added fplGetKeyboardState()
-	- New: Added fplGetSystemLocale()
-	- New: Added fplGetUserLocale()
-	- New: Added fplGetInputLocale()
-	- New: Added fplGetGamepadStates()
-	- New: Added fplKey_Oem1-fplKey_Oem8
-	- New: Added fplGetFileTimestampsFromPath
-	- New: Added fplGetFileTimestampsFromHandle
+	- New: Added function fplGetKeyboardState()
+	- New: Added function fplGetSystemLocale()
+	- New: Added function fplGetUserLocale()
+	- New: Added function fplGetInputLocale()
+	- New: Added function fplGetGamepadStates()
+	- New: Added function fplKey_Oem1-fplKey_Oem8
+	- New: Added function fplGetFileTimestampsFromPath
+	- New: Added function fplGetFileTimestampsFromHandle
+	- New: Added internal function fpl__ParseTextFile used for parsing /proc/cpuinfo or other device files
+	- New: Added function fplGetFileSizeFromHandle
+	- New: Added function fplGetFileSizeFromHandle64
+	- New: Added function fplGetFileSizeFromPath
+	- New: Added function fplGetFileSizeFromPath64
+	- New: Added function fplGetFilePosition
+	- New: Added function fplGetFilePosition64
+	- New: Added function fplSetFilePosition
+	- New: Added function fplSetFilePosition64
+	- New: Added function fplWriteFileBlock
+	- New: Added function fplWriteFileBlock64
+	- New: Added function fplReadFileBlock
+	- New: Added function fplReadFileBlock64
 	- New: [Win32] Implemented fplGetKeyboardState
 	- New: [Win32] Implemented fplGetGamepadStates
 	- New: [Win32] Implemented fplGetSystemLocale
@@ -168,17 +185,29 @@ SOFTWARE.
 	- New: [Win32] Implemented fplGetInputLocale
 	- New: [Win32] Implemented fplGetFileTimestampsFromPath
 	- New: [Win32] Implemented fplGetFileTimestampsFromHandle
+	- New: [Win32] Implemented fplReadFileBlock64
+	- New: [Win32] Implemented fplWriteFileBlock64
+	- New: [Win32] Implemented fplSetFilePosition64
+	- New: [Win32] Implemented fplGetFilePosition64
+	- New: [Win32] Implemented fplGetFileSizeFromPath64
+	- New: [Win32] Implemented fplGetFileSizeFromHandle64
 	- New: [X11] Implemented fplGetKeyboardState
 	- New: [X11] Set window icon title using XChangeProperty
 	- New: [X11] Give window our process id
-	- New: [X11] Load window icons on startup (Experimental)
+	- New: [X11] Load window icons on startup
 	- New: [X11] Added ping support for letting the WM wakeup the window
 	- New: [Linux] Implemented fplGetSystemLocale
 	- New: [Linux] Implemented fplGetUserLocale
 	- New: [Linux] Implemented fplGetInputLocale
-	- New: [Linux] Experimental support for reading game controllers using linux joystick api (Incomplete)
+	- New: [Linux] Reading game controllers using linux joystick api (Incomplete)
 	- New: [POSIX] Implemented fplGetFileTimestampsFromPath
 	- New: [POSIX] Implemented fplGetFileTimestampsFromHandle
+	- New: [POSIX] Implemented fplReadFileBlock64
+	- New: [POSIX] Implemented fplWriteFileBlock64
+	- New: [POSIX] Implemented fplSetFilePosition64
+	- New: [POSIX] Implemented fplGetFilePosition64
+	- New: [POSIX] Implemented fplGetFileSizeFromPath64
+	- New: [POSIX] Implemented fplGetFileSizeFromHandle64
 
 	## v0.8.4.0 beta:
 	- New: Added macro function FPL_STRUCT_INIT
@@ -2101,20 +2130,22 @@ fpl_platform_api bool fplGetCurrentUsername(char *nameBuffer, const size_t maxNa
 
 //! A structure that contains informations about current memory usage
 typedef struct fplMemoryInfos {
-	//! Total size of physical memory in bytes (Amount of RAM installed)
+	//! Size of physical installed memory in bytes
+	uint64_t installedPhysicalSize;
+	//! Total size of physical memory in bytes (May be less than size of installed physical memory, due to shared memory stuff)
 	uint64_t totalPhysicalSize;
-	//! Available size of physical memory in bytes (May be less than the amount of RAM installed)
-	uint64_t availablePhysicalSize;
-	//! Free size of physical memory in bytes
-	uint64_t usedPhysicalSize;
-	//! Total size of virtual memory in bytes
-	uint64_t totalVirtualSize;
-	//! Used size of virtual memory in bytes
-	uint64_t usedVirtualSize;
-	//! Total page size in bytes
-	uint64_t totalPageSize;
-	//! Used page size in bytes
-	uint64_t usedPageSize;
+	//! Available physical memory in bytes
+	uint64_t freePhysicalSize;
+	//! Total size of memory cache in bytes
+	uint64_t totalCacheSize;
+	//! Available size of the memory cache in bytes
+	uint64_t freeCacheSize;
+	//! Total number of memory pages
+	uint64_t totalPageCount;
+	//! Number of available memory pages
+	uint64_t freePageCount;
+	//! Page size in bytes
+	uint64_t pageSize;
 } fplMemoryInfos;
 
 //! An enumeration of architecture types
@@ -3643,24 +3674,6 @@ typedef struct fplInternalFileRootInfo {
 	const char *filter;
 } fplInternalFileRootInfo;
 
-//! A structure containing the informations for a file or directory (name, type, attributes, etc.)
-typedef struct fplFileEntry {
-	//! Full path
-	char fullPath[FPL_MAX_PATH_LENGTH];
-	//! Internal file handle
-	fplInternalFileEntryHandle internalHandle;
-	//! Internal root info
-	fplInternalFileRootInfo internalRoot;
-	//! Size (Zero when not a file)
-	size_t size;
-	//! Permissions
-	fplFilePermissions permissions;
-	//! Entry type
-	fplFileEntryType type;
-	//! Attributes
-	fplFileAttributeFlags attributes;
-} fplFileEntry;
-
 //! A structure containing filestamps for creation/access/modify date
 typedef struct fplFileTimeStamps {
 	//! Creation timestamp
@@ -3670,6 +3683,26 @@ typedef struct fplFileTimeStamps {
 	//! Last modify timestamp
 	uint64_t lastModifyTime;
 } fplFileTimeStamps;
+
+//! A structure containing the informations for a file or directory (name, type, attributes, etc.)
+typedef struct fplFileEntry {
+	//! Full path
+	char fullPath[FPL_MAX_PATH_LENGTH];
+	//! Internal file handle
+	fplInternalFileEntryHandle internalHandle;
+	//! Internal root info
+	fplInternalFileRootInfo internalRoot;
+	//! Time stamps
+	fplFileTimeStamps timeStamps;
+	//! Permissions
+	fplFilePermissions permissions;
+	//! Entry type
+	fplFileEntryType type;
+	//! Attributes
+	fplFileAttributeFlags attributes;
+	//! Size (Zero when not a file)
+	size_t size;
+} fplFileEntry;
 
 /**
   * \brief Opens a binary file for reading from a ansi string path and returns the handle of it.
@@ -3706,56 +3739,151 @@ fpl_platform_api bool fplCreateWideBinaryFile(const wchar_t *filePath, fplFileHa
   * \param targetBuffer The target memory to write into
   * \param maxTargetBufferSize Total number of bytes available in the target buffer
   * \return Returns the number of bytes read or zero.
-  * \note Its limited to files < 2 GB.
+  * \note Supports max size of 2^31
   */
 fpl_platform_api uint32_t fplReadFileBlock32(const fplFileHandle *fileHandle, const uint32_t sizeToRead, void *targetBuffer, const uint32_t maxTargetBufferSize);
+/**
+  * \brief Reads a block from the given file and returns the number of read bytes.
+  * \param fileHandle The pointer to the \ref fplFileHandle structure
+  * \param sizeToRead The number of bytes to read
+  * \param targetBuffer The target memory to write into
+  * \param maxTargetBufferSize Total number of bytes available in the target buffer
+  * \return Returns the number of bytes read or zero.
+  * \note Supports max size of 2^63
+  */
+fpl_platform_api uint64_t fplReadFileBlock64(const fplFileHandle *fileHandle, const uint64_t sizeToRead, void *targetBuffer, const uint64_t maxTargetBufferSize);
+/**
+  * \brief Reads a block from the given file and returns the number of read bytes.
+  * \param fileHandle The pointer to the \ref fplFileHandle structure
+  * \param sizeToRead The number of bytes to read
+  * \param targetBuffer The target memory to write into
+  * \param maxTargetBufferSize Total number of bytes available in the target buffer
+  * \return Returns the number of bytes read or zero.
+  * \note Depending on the platform/architecture, this supports a max size of 2^31 or 2^63 bytes
+  */
+fpl_platform_api size_t fplReadFileBlock(const fplFileHandle *fileHandle, const size_t sizeToRead, void *targetBuffer, const size_t maxTargetBufferSize);
 /**
   * \brief Writes a block to the given file and returns the number of written bytes.
   * \param fileHandle The pointer to the file handle \ref fplFileHandle
   * \param sourceBuffer Source memory to read from
   * \param sourceSize Number of bytes to write
   * \return Returns the number of bytes written or zero.
-  * \note Its limited to files < 2 GB.
+  * \note Supports max size of 2^31
   */
 fpl_platform_api uint32_t fplWriteFileBlock32(const fplFileHandle *fileHandle, void *sourceBuffer, const uint32_t sourceSize);
+/**
+  * \brief Writes a block to the given file and returns the number of written bytes.
+  * \param fileHandle The pointer to the file handle \ref fplFileHandle
+  * \param sourceBuffer Source memory to read from
+  * \param sourceSize Number of bytes to write
+  * \return Returns the number of bytes written or zero.
+  * \note Supports max size of 2^63
+  */
+fpl_platform_api uint64_t fplWriteFileBlock64(const fplFileHandle *fileHandle, void *sourceBuffer, const uint64_t sourceSize);
+/**
+  * \brief Writes a block to the given file and returns the number of written bytes.
+  * \param fileHandle The pointer to the file handle \ref fplFileHandle
+  * \param sourceBuffer Source memory to read from
+  * \param sourceSize Number of bytes to write
+  * \return Returns the number of bytes written or zero.
+  * \note Depending on the platform/architecture, this supports a max size of 2^31 or 2^63 bytes
+  */
+fpl_common_api size_t fplWriteFileBlock(const fplFileHandle *fileHandle, void *sourceBuffer, const size_t sourceSize);
 /**
   * \brief Sets the current file position by the given position, depending on the mode its absolute or relative.
   * \param fileHandle The pointer to the \ref fplFileHandle structure
   * \param position Position in bytes
   * \param mode Position mode
-  * \note Its limited to files < 2 GB.
+  * \note Supports max size of 2^31
   */
-fpl_platform_api void fplSetFilePosition32(const fplFileHandle *fileHandle, const int32_t position, const fplFilePositionMode mode);
+fpl_platform_api uint32_t fplSetFilePosition32(const fplFileHandle *fileHandle, const int32_t position, const fplFilePositionMode mode);
+/**
+  * \brief Sets the current file position by the given position, depending on the mode its absolute or relative.
+  * \param fileHandle The pointer to the \ref fplFileHandle structure
+  * \param position Position in bytes
+  * \param mode Position mode
+  * \note Supports max size of 2^63
+  */
+fpl_platform_api uint64_t fplSetFilePosition64(const fplFileHandle *fileHandle, const int64_t position, const fplFilePositionMode mode);
+/**
+  * \brief Sets the current file position by the given position, depending on the mode its absolute or relative.
+  * \param fileHandle The pointer to the \ref fplFileHandle structure
+  * \param position Position in bytes
+  * \param mode Position mode
+  * \note Depending on the platform/architecture, this supports a max size of 2^31 or 2^63 bytes
+  */
+fpl_common_api size_t fplSetFilePosition(const fplFileHandle *fileHandle, const intptr_t position, const fplFilePositionMode mode);
 /**
   * \brief Gets the current file position in bytes.
   * \param fileHandle The pointer to the \ref fplFileHandle structure
   * \return Returns the current file position in bytes.
-  * \note Its limited to files < 2 GB.
+  * \note Supports max size of 2^31
   */
 fpl_platform_api uint32_t fplGetFilePosition32(const fplFileHandle *fileHandle);
+/**
+  * \brief Gets the current file position in bytes.
+  * \param fileHandle The pointer to the \ref fplFileHandle structure
+  * \return Returns the current file position in bytes.
+  * \note Supports max size of 2^63
+  */
+fpl_platform_api uint64_t fplGetFilePosition64(const fplFileHandle *fileHandle);
+/**
+  * \brief Gets the current file position in bytes.
+  * \param fileHandle The pointer to the \ref fplFileHandle structure
+  * \return Returns the current file position in bytes.
+  * \note Depending on the platform/architecture, this supports a max size of 2^31 or 2^63 bytes
+  */
+fpl_common_api size_t fplGetFilePosition(const fplFileHandle *fileHandle);
 /**
   * \brief Closes the given file and releases the underlying resources and clears the handle to zero.
   * \param fileHandle The pointer to the \ref fplFileHandle structure
   */
 fpl_platform_api void fplCloseFile(fplFileHandle *fileHandle);
 
-// @TODO(final): Add 64-bit file operations
 // @TODO(final): Add wide file operations
 
 /**
-  * \brief Gets the file size in bytes for the given file, limited to a max size of 32-bit.
+  * \brief Gets the file size in bytes for the given file.
   * \param filePath The ansi path to the file
   * \return Returns the file size in bytes or zero.
-  * \note Its limited to files < 2 GB.
+  * \note Supports max size of 2^31
   */
 fpl_platform_api uint32_t fplGetFileSizeFromPath32(const char *filePath);
 /**
-  * \brief Gets the file size in bytes for a opened file, limited to a max size of 32-bit.
+  * \brief Gets the file size in bytes for the given file.
+  * \param filePath The ansi path to the file
+  * \return Returns the file size in bytes or zero.
+  * \note Supports max size of 2^63
+  */
+fpl_platform_api uint64_t fplGetFileSizeFromPath64(const char *filePath);
+/**
+  * \brief Gets the file size in bytes for the given file.
+  * \param filePath The ansi path to the file
+  * \return Returns the file size in bytes or zero.
+  * \note Depending on the platform/architecture, this supports a max size of 2^31 or 2^63 bytes
+  */
+fpl_platform_api size_t fplGetFileSizeFromPath(const char *filePath);
+/**
+  * \brief Gets the file size in bytes for a opened file.
   * \param fileHandle The pointer to the \ref fplFileHandle structure
   * \return Returns the file size in bytes or zero.
-  * \note Its limited to files < 2 GB.
+  * \note Supports max size of 2^31
   */
 fpl_platform_api uint32_t fplGetFileSizeFromHandle32(const fplFileHandle *fileHandle);
+/**
+  * \brief Gets the file size in bytes for a opened file.
+  * \param fileHandle The pointer to the \ref fplFileHandle structure
+  * \return Returns the file size in bytes or zero.
+  * \note Supports max size of 2^63
+  */
+fpl_platform_api uint64_t fplGetFileSizeFromHandle64(const fplFileHandle *fileHandle);
+/**
+  * \brief Gets the file size in bytes for a opened file.
+  * \param fileHandle The pointer to the \ref fplFileHandle structure
+  * \return Returns the file size in bytes or zero.
+  * \note Depending on the platform/architecture, this supports a max size of 2^31 or 2^63 bytes
+  */
+fpl_common_api size_t fplGetFileSizeFromHandle(const fplFileHandle *fileHandle);
 /**
   * \brief Gets the timestamps for the given file
   * \param filePath The ansi path to the file
@@ -4873,6 +5001,8 @@ fpl_main int main(int argc, char **args);
 //
 // > PLATFORM_CONSTANTS
 //
+// > UTILITY_FUNCTIONS
+//
 // > TYPES
 // > TYPES_WIN32
 // > TYPES_POSIX
@@ -5119,6 +5249,101 @@ fpl_globalvar struct fpl__PlatformAppState *fpl__global__AppState = fpl_null;
 
 fpl_internal void fpl__PushError(const fplLogLevel level, const char *format, ...);
 #endif // FPL_PLATFORM_CONSTANTS_DEFINED
+
+// ############################################################################
+//
+// > UTILITY_FUNCTIONS
+//
+// ############################################################################
+fpl_internal bool fpl__AddLineWhenAnyMatches(const char *line, const char **wildcards, const size_t maxWildcardCount, const size_t maxLineSize, const size_t maxLineCount, char **outLines, size_t *outCount) {
+	for(size_t i = 0; i < maxWildcardCount; ++i) {
+		const char *wildcard = wildcards[i];
+		if(fplIsStringMatchWildcard(line, wildcard)) {
+			size_t index = *outCount;
+			char *target = outLines[index];
+			fplCopyAnsiString(line, target, maxLineSize);
+			*outCount = index + 1;
+			break;
+		}
+	}
+	bool result = *outCount < maxLineCount;
+	return(result);
+}
+
+fpl_internal size_t fpl__ParseTextFile(const char *filePath, const char **wildcards, const size_t maxWildcardCount, const size_t maxLineSize, const size_t maxLineCount, char **outLines) {
+	if(filePath == fpl_null || wildcards == fpl_null || maxWildcardCount == 0 || maxLineSize == 0 || maxLineCount == 0 || outLines == fpl_null) {
+		return(0);
+	}
+	// @NOTE(final): Forced Zero-Terminator is not nessecary here, but we do it here to debug it better
+	// This function supports maxLineSize < FPL_ARRAYCOUNT(buffer)
+	// We allocate the line buffer on the stack because we do not know how large the line will be on compile time
+	size_t result = 0;
+	fplFileHandle fileHandle = FPL_ZERO_INIT;
+	if(fplOpenAnsiBinaryFile(filePath, &fileHandle)) {
+		char *line = (char *)FPL_STACKALLOCATE(maxLineSize);
+		char buffer[256 + 1];
+		const size_t maxBufferSize = FPL_ARRAYCOUNT(buffer) - 1;
+		size_t bytesRead = 0;
+		size_t posLineBytes = 0;
+		bool done = false;
+		while(!done && ((bytesRead = fplReadFileBlock(&fileHandle, maxBufferSize, &buffer[0], maxBufferSize)) > 0)) {
+			buffer[bytesRead] = 0;
+			char *start = &buffer[0];
+			char *p = start;
+			size_t readPos = 0;
+			size_t lineSizeToRead = 0;
+			while(readPos < bytesRead) {
+				if(*p == '\n') {
+					size_t remainingLineBytes = maxLineSize - posLineBytes;
+					char *lineTargetP = line + posLineBytes;
+					if(lineSizeToRead < remainingLineBytes) {
+						fplCopyAnsiStringLen(start, lineSizeToRead, lineTargetP, remainingLineBytes);
+					} else {
+						fplCopyAnsiStringLen(start, remainingLineBytes - 1, lineTargetP, remainingLineBytes);
+					}
+					if(!fpl__AddLineWhenAnyMatches(line, wildcards, maxWildcardCount, maxLineSize, maxLineCount, outLines, &result)) {
+						done = true;
+						break;
+					}
+					start = p + 1;
+					line[0] = 0;
+					lineSizeToRead = 0;
+					posLineBytes = 0;
+				} else {
+					++lineSizeToRead;
+				}
+				++p;
+				++readPos;
+			}
+			if(done) {
+				break;
+			}
+			if(lineSizeToRead > 0) {
+				size_t remainingLineBytes = maxLineSize - posLineBytes;
+				char *lineTargetP = line + posLineBytes;
+				if(lineSizeToRead < remainingLineBytes) {
+					fplCopyAnsiStringLen(start, lineSizeToRead, lineTargetP, remainingLineBytes);
+					posLineBytes += lineSizeToRead;
+					if(bytesRead <= maxBufferSize) {
+						if(!fpl__AddLineWhenAnyMatches(line, wildcards, maxWildcardCount, maxLineSize, maxLineCount, outLines, &result)) {
+							done = true;
+						}
+					}
+				} else {
+					fplCopyAnsiStringLen(start, remainingLineBytes - 1, lineTargetP, remainingLineBytes);
+					line[0] = 0;
+					lineSizeToRead = 0;
+					posLineBytes = 0;
+					if(!fpl__AddLineWhenAnyMatches(line, wildcards, maxWildcardCount, maxLineSize, maxLineCount, outLines, &result)) {
+						done = true;
+					}
+				}
+			}
+		}
+		fplCloseFile(&fileHandle);
+	}
+	return(result);
+}
 
 // ****************************************************************************
 //
@@ -6000,25 +6225,25 @@ typedef struct fpl__LinuxInitState {
 #if defined(FPL_ENABLE_WINDOW)
 #define FPL__LINUX_MAX_GAME_CONTROLLER_COUNT 4
 typedef struct fpl__LinuxGameController {
-    char deviceName[512];
-    char displayName[1024];
-    int fd;
-    uint8_t axisCount;
-    uint8_t buttonCount;
-    fplGamepadState state;
+	char deviceName[512];
+	char displayName[1024];
+	int fd;
+	uint8_t axisCount;
+	uint8_t buttonCount;
+	fplGamepadState state;
 } fpl__LinuxGameController;
 
 typedef struct fpl__LinuxGameControllersState {
-    fpl__LinuxGameController controllers[FPL__LINUX_MAX_GAME_CONTROLLER_COUNT];
-    uint64_t lastCheckTime;
+	fpl__LinuxGameController controllers[FPL__LINUX_MAX_GAME_CONTROLLER_COUNT];
+	uint64_t lastCheckTime;
 } fpl__LinuxGameControllersState;
 #endif
 
 typedef struct fpl__LinuxAppState {
 #if defined(FPL_ENABLE_WINDOW)
-    fpl__LinuxGameControllersState controllersState;
+	fpl__LinuxGameControllersState controllersState;
 #endif
-    int dummy;
+	int dummy;
 } fpl__LinuxAppState;
 
 // Forward declarations
@@ -6792,9 +7017,6 @@ fpl_internal fplThreadHandle *fpl__GetFreeThread() {
 	return(result);
 }
 
-#if defined(FPL_ENABLE_WINDOW)
-#endif
-
 //
 // Common Strings
 //
@@ -6839,12 +7061,11 @@ fpl_common_api bool fplIsStringMatchWildcard(const char *source, const char *wil
 
 fpl_common_api bool fplIsStringEqualLen(const char *a, const size_t aLen, const char *b, const size_t bLen) {
 	if((a == fpl_null) || (b == fpl_null)) {
-		return (a == b);
+		return false;
 	}
 	if(aLen != bLen) {
 		return false;
 	}
-	FPL_ASSERT(aLen == bLen);
 	bool result = true;
 	for(size_t index = 0; index < aLen; ++index) {
 		char aChar = a[index];
@@ -6932,11 +7153,8 @@ fpl_common_api char *fplStringAppendLen(const char *appended, const size_t appen
 	size_t requiredSize = curBufferLen + appendedLen + 1;
 	FPL__CheckArgumentMin(maxBufferLen, requiredSize, fpl_null);
 	char *str = buffer + curBufferLen;
-	size_t i = 0;
-	while(i < appendedLen) {
-		*str++ = appended[i++];
-	}
-	*str = 0;
+	size_t remainingBufferSize = maxBufferLen - (curBufferLen > 0 ? curBufferLen + 1 : 0);
+	fplCopyAnsiStringLen(appended, appendedLen, str, remainingBufferSize);
 	return(str);
 }
 
@@ -6970,13 +7188,10 @@ fpl_common_api char *fplCopyAnsiStringLen(const char *source, const size_t sourc
 	if(source != fpl_null && dest != fpl_null) {
 		size_t requiredLen = sourceLen + 1;
 		FPL__CheckArgumentMin(maxDestLen, requiredLen, fpl_null);
-		char *out = dest;
-		size_t index = 0;
-		while(index++ < sourceLen) {
-			*out++ = *source++;
-		}
-		*out = 0;
-		return(out);
+		fplMemoryCopy(source, sourceLen * sizeof(char), dest);
+		char *result = dest + sourceLen;
+		*result = 0;
+		return(result);
 	} else {
 		return(fpl_null);
 	}
@@ -6995,13 +7210,10 @@ fpl_common_api wchar_t *fplCopyWideStringLen(const wchar_t *source, const size_t
 	if(source != fpl_null && dest != fpl_null) {
 		size_t requiredLen = sourceLen + 1;
 		FPL__CheckArgumentMin(maxDestLen, requiredLen, fpl_null);
-		wchar_t *out = dest;
-		size_t index = 0;
-		while(index++ < sourceLen) {
-			*out++ = *source++;
-		}
-		*out = 0;
-		return(out);
+		fplMemoryCopy(source, sourceLen * sizeof(wchar_t), dest);
+		wchar_t *result = dest + sourceLen;
+		*result = 0;
+		return(result);
 	} else {
 		return(fpl_null);
 	}
@@ -7391,6 +7603,62 @@ fpl_common_api fplThreadState fplGetThreadState(fplThreadHandle *thread) {
 	fplThreadState result = (fplThreadState)fplAtomicLoadU32((volatile uint32_t *)&thread->currentState);
 	return(result);
 }
+
+//
+// Common Files
+//
+#if !defined(FPL__COMMON_FILES_DEFINED)
+#define FPL__COMMON_FILES_DEFINED
+
+fpl_common_api size_t fplReadFileBlock(const fplFileHandle *fileHandle, const size_t sizeToRead, void *targetBuffer, const size_t maxTargetBufferSize) {
+#if defined(FPL_CPU_64BIT)
+	return fplReadFileBlock64(fileHandle, sizeToRead, targetBuffer, maxTargetBufferSize);
+#else
+	return fplReadFileBlock32(fileHandle, (uint32_t)sizeToRead, targetBuffer, (uint32_t)maxTargetBufferSize);
+#endif
+}
+
+fpl_common_api size_t fplWriteFileBlock(const fplFileHandle *fileHandle, void *sourceBuffer, const size_t sourceSize) {
+#if defined(FPL_CPU_64BIT)
+	return fplWriteFileBlock64(fileHandle, sourceBuffer, sourceSize);
+#else
+	return fplWriteFileBlock32(fileHandle, sourceBuffer, (uint32_t)sourceSize);
+#endif
+}
+
+fpl_common_api size_t fplSetFilePosition(const fplFileHandle *fileHandle, const intptr_t position, const fplFilePositionMode mode) {
+#if defined(FPL_CPU_64BIT)
+	return fplSetFilePosition64(fileHandle, position, mode);
+#else
+	return fplSetFilePosition32(fileHandle, (int32_t)position, mode);
+#endif
+}
+
+fpl_common_api size_t fplGetFilePosition(const fplFileHandle *fileHandle) {
+#if defined(FPL_CPU_64BIT)
+	return fplGetFilePosition64(fileHandle);
+#else
+	return fplGetFilePosition32(fileHandle);
+#endif
+}
+
+fpl_common_api size_t fplGetFileSizeFromPath(const char *filePath) {
+#if defined(FPL_CPU_64BIT)
+	return fplGetFileSizeFromPath64(filePath);
+#else
+	return fplGetFileSizeFromPath32(filePath);
+#endif
+}
+
+fpl_common_api size_t fplGetFileSizeFromHandle(const fplFileHandle *fileHandle) {
+#if defined(FPL_CPU_64BIT)
+	return fplGetFileSizeFromHandle64(fileHandle);
+#else
+	return fplGetFileSizeFromHandle32(fileHandle);
+#endif
+}
+
+#endif // FPL__COMMON_FILES_DEFINED
 
 //
 // Common Paths
@@ -8205,8 +8473,8 @@ LRESULT CALLBACK fpl__Win32MessageProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 				if(dragResult != 0) {
 					fpl__PushWindowDropSingleFileEvent(fileBufferA);
 				}
-			}
-		} break;
+	}
+} break;
 
 		case WM_SYSKEYDOWN:
 		case WM_SYSKEYUP:
@@ -9425,28 +9693,38 @@ fpl_platform_api fplArchType fplGetRunningArchitecture() {
 typedef FPL__FUNC_WIN32_KERNEL32_GetPhysicallyInstalledSystemMemory(fpl__win32_kernel_func_GetPhysicallyInstalledSystemMemory);
 fpl_platform_api bool fplGetRunningMemoryInfos(fplMemoryInfos *outInfos) {
 	FPL__CheckArgumentNull(outInfos, false);
-	MEMORYSTATUSEX statex = FPL_ZERO_INIT;
-	statex.dwLength = sizeof(statex);
-	ULONGLONG totalMemorySize;
 	bool result = false;
 
 	HMODULE kernel32lib = LoadLibraryA("kernel32.dll");
 	if(kernel32lib == fpl_null) {
 		return false;
 	}
-	fpl__win32_kernel_func_GetPhysicallyInstalledSystemMemory *func = (fpl__win32_kernel_func_GetPhysicallyInstalledSystemMemory *)GetProcAddress(kernel32lib, "GetPhysicallyInstalledSystemMemory");
+	fpl__win32_kernel_func_GetPhysicallyInstalledSystemMemory *getPhysicallyInstalledSystemMemory = (fpl__win32_kernel_func_GetPhysicallyInstalledSystemMemory *)GetProcAddress(kernel32lib, "GetPhysicallyInstalledSystemMemory");
 	FreeLibrary(kernel32lib);
 
-	if((func != fpl_null) && func(&totalMemorySize) && GlobalMemoryStatusEx(&statex)) {
+	ULONGLONG installedMemorySize = 0;
+	if(getPhysicallyInstalledSystemMemory != fpl_null) {
+		getPhysicallyInstalledSystemMemory(&installedMemorySize);
+	}
+
+	SYSTEM_INFO systemInfo = FPL_ZERO_INIT;
+	GetSystemInfo(&systemInfo);
+
+	MEMORYSTATUSEX statex = FPL_ZERO_INIT;
+	statex.dwLength = sizeof(statex);
+
+	if(GlobalMemoryStatusEx(&statex)) {
 		FPL_CLEAR_STRUCT(outInfos);
-		// @NOTE(final): Requires _allmul when CRT is disabled
-		outInfos->totalPhysicalSize = totalMemorySize * 1024ull;
-		outInfos->availablePhysicalSize = statex.ullTotalPhys;
-		outInfos->usedPhysicalSize = outInfos->availablePhysicalSize - statex.ullAvailPhys;
-		outInfos->totalVirtualSize = statex.ullTotalVirtual;
-		outInfos->usedVirtualSize = outInfos->totalVirtualSize - statex.ullAvailVirtual;
-		outInfos->totalPageSize = statex.ullTotalPageFile;
-		outInfos->usedPageSize = outInfos->totalPageSize - statex.ullAvailPageFile;
+		outInfos->installedPhysicalSize = installedMemorySize * 1024ull;
+		outInfos->totalPhysicalSize = statex.ullTotalPhys;
+		outInfos->freePhysicalSize = statex.ullAvailPhys;
+		outInfos->totalCacheSize = statex.ullTotalVirtual;
+		outInfos->freeCacheSize = statex.ullAvailVirtual;
+		outInfos->pageSize = systemInfo.dwPageSize;
+		if(outInfos->pageSize > 0) {
+			outInfos->totalPageCount = statex.ullTotalPageFile / outInfos->pageSize;
+			outInfos->freePageCount = statex.ullAvailPageFile / outInfos->pageSize;
+		}
 		result = true;
 	}
 	return(result);
@@ -9886,6 +10164,19 @@ fpl_platform_api void fplMemoryFree(void *ptr) {
 //
 // Win32 Files
 //
+fpl_internal uint64_t fpl__Win32ConvertFileTimeToUnixTimestamp(const FILETIME *fileTime) {
+	// Ticks are defined in 100 ns = 10000000 secs
+	// Windows ticks starts at 1601-01-01T00:00:00Z
+	// Unix secs starts at 1970-01-01T00:00:00Z
+	const uint64_t UNIX_TIME_START = 0x019DB1DED53E8000;
+	const uint64_t TICKS_PER_SECOND = 10000000;
+	ULARGE_INTEGER largeInteger;
+	largeInteger.LowPart = fileTime->dwLowDateTime;
+	largeInteger.HighPart = fileTime->dwHighDateTime;
+	uint64_t result = (largeInteger.QuadPart - UNIX_TIME_START) / TICKS_PER_SECOND;
+	return(result);
+}
+
 fpl_platform_api bool fplOpenAnsiBinaryFile(const char *filePath, fplFileHandle *outHandle) {
 	FPL__CheckArgumentNull(outHandle, false);
 	if(filePath != fpl_null) {
@@ -9957,6 +10248,36 @@ fpl_platform_api uint32_t fplReadFileBlock32(const fplFileHandle *fileHandle, co
 	return(result);
 }
 
+fpl_platform_api uint64_t fplReadFileBlock64(const fplFileHandle *fileHandle, const uint64_t sizeToRead, void *targetBuffer, const uint64_t maxTargetBufferSize) {
+	FPL__CheckArgumentNull(fileHandle, 0);
+	FPL__CheckArgumentZero(sizeToRead, 0);
+	FPL__CheckArgumentNull(targetBuffer, 0);
+	if(fileHandle->internalHandle.win32FileHandle == fpl_null) {
+		FPL_ERROR(FPL__MODULE_FILES, "File handle is not opened for reading");
+		return 0;
+	}
+	// @NOTE(final): There is no ReadFile64 function in win32, so we have to read it in chunks
+	uint64_t result = 0;
+	HANDLE win32FileHandle = (HANDLE)fileHandle->internalHandle.win32FileHandle;
+	uint64_t remainingSize = sizeToRead;
+	uint64_t bufferPos = 0;
+	const uint64_t MaxDWORD = (uint64_t)(DWORD)-1;
+	while(remainingSize >= MaxDWORD) {
+		DWORD bytesRead = 0;
+		uint8_t *target = (uint8_t *)targetBuffer + bufferPos;
+		uint64_t size = FPL_MIN(remainingSize, MaxDWORD);
+		FPL_ASSERT(size <= MaxDWORD);
+		if(ReadFile(win32FileHandle, target, (DWORD)size, &bytesRead, fpl_null) == TRUE) {
+			result = bytesRead;
+		} else {
+			break;
+		}
+		remainingSize -= bytesRead;
+		bufferPos += bytesRead;
+	}
+	return(result);
+}
+
 fpl_platform_api uint32_t fplWriteFileBlock32(const fplFileHandle *fileHandle, void *sourceBuffer, const uint32_t sourceSize) {
 	FPL__CheckArgumentNull(fileHandle, 0);
 	FPL__CheckArgumentZero(sourceSize, 0);
@@ -9965,8 +10286,8 @@ fpl_platform_api uint32_t fplWriteFileBlock32(const fplFileHandle *fileHandle, v
 		FPL_ERROR(FPL__MODULE_FILES, "File handle is not opened for writing");
 		return 0;
 	}
-	uint32_t result = 0;
 	HANDLE win32FileHandle = (HANDLE)fileHandle->internalHandle.win32FileHandle;
+	uint32_t result = 0;
 	DWORD bytesWritten = 0;
 	if(WriteFile(win32FileHandle, sourceBuffer, (DWORD)sourceSize, &bytesWritten, fpl_null) == TRUE) {
 		result = bytesWritten;
@@ -9974,8 +10295,38 @@ fpl_platform_api uint32_t fplWriteFileBlock32(const fplFileHandle *fileHandle, v
 	return(result);
 }
 
-fpl_platform_api void fplSetFilePosition32(const fplFileHandle *fileHandle, const int32_t position, const fplFilePositionMode mode) {
-	FPL__CheckArgumentNullNoRet(fileHandle);
+fpl_platform_api uint64_t fplWriteFileBlock64(const fplFileHandle *fileHandle, void *sourceBuffer, const uint64_t sourceSize) {
+	FPL__CheckArgumentNull(fileHandle, 0);
+	FPL__CheckArgumentZero(sourceSize, 0);
+	FPL__CheckArgumentNull(sourceBuffer, 0);
+	if(fileHandle->internalHandle.win32FileHandle == fpl_null) {
+		FPL_ERROR(FPL__MODULE_FILES, "File handle is not opened for writing");
+		return 0;
+	}
+	HANDLE win32FileHandle = (HANDLE)fileHandle->internalHandle.win32FileHandle;
+	uint64_t result = 0;
+	uint64_t bufferPos = 0;
+	uint64_t remainingSize = sourceSize;
+	const uint64_t MaxDWORD = (uint64_t)(DWORD)-1;
+	while(remainingSize >= MaxDWORD) {
+		uint8_t *source = (uint8_t *)sourceBuffer + bufferPos;
+		uint64_t size = FPL_MIN(remainingSize, MaxDWORD);
+		FPL_ASSERT(size <= MaxDWORD);
+		DWORD bytesWritten = 0;
+		if(WriteFile(win32FileHandle, source, (DWORD)size, &bytesWritten, fpl_null) == TRUE) {
+			result = bytesWritten;
+		} else {
+			break;
+		}
+		remainingSize -= bytesWritten;
+		bufferPos += bytesWritten;
+	}
+	return(result);
+}
+
+fpl_platform_api uint32_t fplSetFilePosition32(const fplFileHandle *fileHandle, const int32_t position, const fplFilePositionMode mode) {
+	FPL__CheckArgumentNull(fileHandle, 0);
+	uint32_t result = 0;
 	if(fileHandle->internalHandle.win32FileHandle != INVALID_HANDLE_VALUE) {
 		HANDLE win32FileHandle = (void *)fileHandle->internalHandle.win32FileHandle;
 		DWORD moveMethod = FILE_BEGIN;
@@ -9984,8 +10335,32 @@ fpl_platform_api void fplSetFilePosition32(const fplFileHandle *fileHandle, cons
 		} else if(mode == fplFilePositionMode_End) {
 			moveMethod = FILE_END;
 		}
-		SetFilePointer(win32FileHandle, (LONG)position, fpl_null, moveMethod);
+		DWORD r = 0;
+		r = SetFilePointer(win32FileHandle, (LONG)position, fpl_null, moveMethod);
+		result = (uint32_t)r;
 	}
+	return(result);
+}
+
+fpl_platform_api uint64_t fplSetFilePosition64(const fplFileHandle *fileHandle, const int64_t position, const fplFilePositionMode mode) {
+	FPL__CheckArgumentNull(fileHandle, 0);
+	uint64_t result = 0;
+	if(fileHandle->internalHandle.win32FileHandle != INVALID_HANDLE_VALUE) {
+		HANDLE win32FileHandle = (void *)fileHandle->internalHandle.win32FileHandle;
+		DWORD moveMethod = FILE_BEGIN;
+		if(mode == fplFilePositionMode_Current) {
+			moveMethod = FILE_CURRENT;
+		} else if(mode == fplFilePositionMode_End) {
+			moveMethod = FILE_END;
+		}
+		LARGE_INTEGER r = FPL_ZERO_INIT;
+		LARGE_INTEGER li;
+		li.QuadPart = position;
+		if(SetFilePointerEx(win32FileHandle, li, &r, moveMethod) == TRUE) {
+			result = (uint64_t)r.QuadPart;
+		}
+	}
+	return(result);
 }
 
 fpl_platform_api uint32_t fplGetFilePosition32(const fplFileHandle *fileHandle) {
@@ -10000,6 +10375,21 @@ fpl_platform_api uint32_t fplGetFilePosition32(const fplFileHandle *fileHandle) 
 	return 0;
 }
 
+fpl_platform_api uint64_t fplGetFilePosition64(const fplFileHandle *fileHandle) {
+	FPL__CheckArgumentNull(fileHandle, 0);
+	uint64_t result = 0;
+	if(fileHandle->internalHandle.win32FileHandle != INVALID_HANDLE_VALUE) {
+		HANDLE win32FileHandle = (void *)fileHandle->internalHandle.win32FileHandle;
+		LARGE_INTEGER r = FPL_ZERO_INIT;
+		LARGE_INTEGER li;
+		li.QuadPart = 0;
+		if(SetFilePointerEx(win32FileHandle, li, &r, FILE_CURRENT) == TRUE) {
+			result = (uint64_t)r.QuadPart;
+		}
+	}
+	return 0;
+}
+
 fpl_platform_api void fplCloseFile(fplFileHandle *fileHandle) {
 	if((fileHandle != fpl_null) && (fileHandle->internalHandle.win32FileHandle != INVALID_HANDLE_VALUE)) {
 		HANDLE win32FileHandle = (void *)fileHandle->internalHandle.win32FileHandle;
@@ -10009,37 +10399,54 @@ fpl_platform_api void fplCloseFile(fplFileHandle *fileHandle) {
 }
 
 fpl_platform_api uint32_t fplGetFileSizeFromPath32(const char *filePath) {
+	uint32_t result = 0;
 	if(filePath != fpl_null) {
 		HANDLE win32FileHandle = CreateFileA(filePath, GENERIC_READ, FILE_SHARE_READ, fpl_null, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, fpl_null);
 		if(win32FileHandle != INVALID_HANDLE_VALUE) {
 			DWORD fileSize = GetFileSize(win32FileHandle, fpl_null);
+			result = (uint32_t)fileSize;
 			CloseHandle(win32FileHandle);
-			return fileSize;
 		}
 	}
-	return 0;
+	return(result);
+}
+
+fpl_platform_api uint64_t fplGetFileSizeFromPath64(const char *filePath) {
+	uint64_t result = 0;
+	if(filePath != fpl_null) {
+		HANDLE win32FileHandle = CreateFileA(filePath, GENERIC_READ, FILE_SHARE_READ, fpl_null, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, fpl_null);
+		if(win32FileHandle != INVALID_HANDLE_VALUE) {
+			LARGE_INTEGER li = FPL_ZERO_INIT;
+			if(GetFileSizeEx(win32FileHandle, &li) == TRUE) {
+				result = (uint64_t)li.QuadPart;
+			}
+			CloseHandle(win32FileHandle);
+		}
+	}
+	return(result);
 }
 
 fpl_platform_api uint32_t fplGetFileSizeFromHandle32(const fplFileHandle *fileHandle) {
 	FPL__CheckArgumentNull(fileHandle, 0);
+	uint32_t result = 0;
 	if(fileHandle->internalHandle.win32FileHandle != INVALID_HANDLE_VALUE) {
 		HANDLE win32FileHandle = (void *)fileHandle->internalHandle.win32FileHandle;
 		DWORD fileSize = GetFileSize(win32FileHandle, fpl_null);
-		return fileSize;
+		result = (uint32_t)fileSize;
 	}
-	return 0;
+	return(result);
 }
 
-fpl_internal uint64_t fpl__Win32ConvertFileTimeToUnixTimestamp(const FILETIME *fileTime) {
-	// Ticks are defined in 100 ns = 10000000 secs
-	// Windows ticks starts at 1601-01-01T00:00:00Z
-	// Unix secs starts at 1970-01-01T00:00:00Z
-	const uint64_t UNIX_TIME_START = 0x019DB1DED53E8000;
-	const uint64_t TICKS_PER_SECOND  = 10000000;
-	ULARGE_INTEGER largeInteger;
-	largeInteger.LowPart = fileTime->dwLowDateTime;
-	largeInteger.HighPart = fileTime->dwHighDateTime;
-	uint64_t result = (largeInteger.QuadPart - UNIX_TIME_START) / TICKS_PER_SECOND;
+fpl_platform_api uint64_t fplGetFileSizeFromHandle64(const fplFileHandle *fileHandle) {
+	FPL__CheckArgumentNull(fileHandle, 0);
+	uint64_t result = 0;
+	if(fileHandle->internalHandle.win32FileHandle != INVALID_HANDLE_VALUE) {
+		HANDLE win32FileHandle = (void *)fileHandle->internalHandle.win32FileHandle;
+		LARGE_INTEGER li = FPL_ZERO_INIT;
+		if(GetFileSizeEx(win32FileHandle, &li) == TRUE) {
+			result = (uint64_t)li.QuadPart;
+		}
+	}
 	return(result);
 }
 
@@ -10185,6 +10592,9 @@ fpl_internal_inline void fpl__Win32FillFileEntry(const char *rootPath, const WIN
 	} else {
 		entry->size = 0;
 	}
+	entry->timeStamps.creationTime = fpl__Win32ConvertFileTimeToUnixTimestamp(&findData->ftCreationTime);
+	entry->timeStamps.lastAccessTime = fpl__Win32ConvertFileTimeToUnixTimestamp(&findData->ftLastAccessTime);
+	entry->timeStamps.lastModifyTime = fpl__Win32ConvertFileTimeToUnixTimestamp(&findData->ftLastWriteTime);
 }
 fpl_platform_api bool fplListDirBegin(const char *path, const char *filter, fplFileEntry *entry) {
 	FPL__CheckArgumentNull(path, false);
@@ -11669,48 +12079,69 @@ fpl_platform_api bool fplCreateWideBinaryFile(const wchar_t *filePath, fplFileHa
 	return false;
 }
 
+fpl_internal size_t fpl__PosixReadFileBlock(const fplFileHandle *fileHandle, const size_t sizeToRead, void *targetBuffer, const size_t maxTargetBufferSize) {
+    FPL__CheckArgumentNull(fileHandle, 0);
+    FPL__CheckArgumentZero(sizeToRead, 0);
+    FPL__CheckArgumentNull(targetBuffer, 0);
+    if(!fileHandle->internalHandle.posixFileHandle) {
+        FPL_ERROR(FPL__MODULE_FILES, "File handle is not opened for reading");
+        return 0;
+    }
+    int posixFileHandle = fileHandle->internalHandle.posixFileHandle;
+    ssize_t res;
+    do {
+        res = read(posixFileHandle, targetBuffer, sizeToRead);
+    } while(res == -1 && errno == EINTR);
+    size_t result = 0;
+    if(res != -1) {
+        result = (size_t)res;
+    }
+    return(result);
+}
+
+fpl_platform_api size_t fpl__PosixWriteFileBlock(const fplFileHandle *fileHandle, void *sourceBuffer, const size_t sourceSize) {
+    FPL__CheckArgumentNull(fileHandle, 0);
+    FPL__CheckArgumentZero(sourceSize, 0);
+    FPL__CheckArgumentNull(sourceBuffer, 0);
+    if(!fileHandle->internalHandle.posixFileHandle) {
+        FPL_ERROR(FPL__MODULE_FILES, "File handle is not opened for writing");
+        return 0;
+    }
+    int posixFileHandle = fileHandle->internalHandle.posixFileHandle;
+    ssize_t res;
+    do {
+        res = write(posixFileHandle, sourceBuffer, sourceSize);
+    } while(res == -1 && errno == EINTR);
+    size_t result = 0;
+    if(res != -1) {
+        result = (size_t)res;
+    }
+    return(result);
+}
+
 fpl_platform_api uint32_t fplReadFileBlock32(const fplFileHandle *fileHandle, const uint32_t sizeToRead, void *targetBuffer, const uint32_t maxTargetBufferSize) {
-	FPL__CheckArgumentNull(fileHandle, 0);
-	FPL__CheckArgumentZero(sizeToRead, 0);
-	FPL__CheckArgumentNull(targetBuffer, 0);
-	if(!fileHandle->internalHandle.posixFileHandle) {
-		FPL_ERROR(FPL__MODULE_FILES, "File handle is not opened for reading");
-		return 0;
-	}
-	int posixFileHandle = fileHandle->internalHandle.posixFileHandle;
-	ssize_t res;
-	do {
-		res = read(posixFileHandle, targetBuffer, sizeToRead);
-	} while(res == -1 && errno == EINTR);
-	uint32_t result = 0;
-	if(res != -1) {
-		result = (uint32_t)res;
-	}
+    uint32_t result = (uint32_t)fpl__PosixReadFileBlock(fileHandle, sizeToRead, targetBuffer, maxTargetBufferSize);
+    return(result);
+}
+
+fpl_platform_api uint64_t fplReadFileBlock64(const fplFileHandle *fileHandle, const uint64_t sizeToRead, void *targetBuffer, const uint64_t maxTargetBufferSize) {
+    uint64_t result = (uint64_t)fpl__PosixReadFileBlock(fileHandle, sizeToRead, targetBuffer, maxTargetBufferSize);
 	return(result);
 }
 
 fpl_platform_api uint32_t fplWriteFileBlock32(const fplFileHandle *fileHandle, void *sourceBuffer, const uint32_t sourceSize) {
-	FPL__CheckArgumentNull(fileHandle, 0);
-	FPL__CheckArgumentZero(sourceSize, 0);
-	FPL__CheckArgumentNull(sourceBuffer, 0);
-	if(!fileHandle->internalHandle.posixFileHandle) {
-		FPL_ERROR(FPL__MODULE_FILES, "File handle is not opened for writing");
-		return 0;
-	}
-	int posixFileHandle = fileHandle->internalHandle.posixFileHandle;
-	ssize_t res;
-	do {
-		res = write(posixFileHandle, sourceBuffer, sourceSize);
-	} while(res == -1 && errno == EINTR);
-	uint32_t result = 0;
-	if(res != -1) {
-		result = (uint32_t)res;
-	}
-	return(result);
+    uint32_t result = (uint32_t)fpl__PosixWriteFileBlock(fileHandle, sourceBuffer, sourceSize);
+    return(result);
 }
 
-fpl_platform_api void fplSetFilePosition32(const fplFileHandle *fileHandle, const int32_t position, const fplFilePositionMode mode) {
-	FPL__CheckArgumentNullNoRet(fileHandle);
+fpl_platform_api uint64_t fplWriteFileBlock64(const fplFileHandle *fileHandle, void *sourceBuffer, const uint64_t sourceSize) {
+    uint64_t result = (uint64_t)fpl__PosixWriteFileBlock(fileHandle, sourceBuffer, sourceSize);
+    return(result);
+}
+
+fpl_platform_api uint32_t fplSetFilePosition32(const fplFileHandle *fileHandle, const int32_t position, const fplFilePositionMode mode) {
+	FPL__CheckArgumentNull(fileHandle, 0);
+	uint32_t result = 0;
 	if(fileHandle->internalHandle.posixFileHandle) {
 		int posixFileHandle = fileHandle->internalHandle.posixFileHandle;
 		int whence = SEEK_SET;
@@ -11719,8 +12150,27 @@ fpl_platform_api void fplSetFilePosition32(const fplFileHandle *fileHandle, cons
 		} else if(mode == fplFilePositionMode_End) {
 			whence = SEEK_END;
 		}
-		lseek(posixFileHandle, position, whence);
+		off_t r = lseek(posixFileHandle, position, whence);
+		result = (uint32_t)r;
 	}
+	return(result);
+}
+
+fpl_platform_api uint64_t fplSetFilePosition64(const fplFileHandle *fileHandle, const int64_t position, const fplFilePositionMode mode) {
+    FPL__CheckArgumentNull(fileHandle, 0);
+    uint64_t result = 0;
+    if(fileHandle->internalHandle.posixFileHandle) {
+        int posixFileHandle = fileHandle->internalHandle.posixFileHandle;
+        int whence = SEEK_SET;
+        if(mode == fplFilePositionMode_Current) {
+            whence = SEEK_CUR;
+        } else if(mode == fplFilePositionMode_End) {
+            whence = SEEK_END;
+        }
+        off64_t r = lseek64(posixFileHandle, position, whence);
+        result = (uint64_t)r;
+    }
+    return(result);
 }
 
 fpl_platform_api uint32_t fplGetFilePosition32(const fplFileHandle *fileHandle) {
@@ -11734,6 +12184,19 @@ fpl_platform_api uint32_t fplGetFilePosition32(const fplFileHandle *fileHandle) 
 		}
 	}
 	return(result);
+}
+
+fpl_platform_api uint64_t fplGetFilePosition64(const fplFileHandle *fileHandle) {
+    FPL__CheckArgumentNull(fileHandle, 0);
+    uint64_t result = 0;
+    if(fileHandle != fpl_null && fileHandle->internalHandle.posixFileHandle) {
+        int posixFileHandle = fileHandle->internalHandle.posixFileHandle;
+        off64_t res = lseek64(posixFileHandle, 0, SEEK_CUR);
+        if(res != -1) {
+            result = (uint64_t)res;
+        }
+    }
+    return(result);
 }
 
 fpl_platform_api void fplCloseFile(fplFileHandle *fileHandle) {
@@ -11762,6 +12225,24 @@ fpl_platform_api uint32_t fplGetFileSizeFromPath32(const char *filePath) {
 	return(result);
 }
 
+fpl_platform_api uint64_t fplGetFileSizeFromPath64(const char *filePath) {
+    uint64_t result = 0;
+    if(filePath != fpl_null) {
+        int posixFileHandle;
+        do {
+            posixFileHandle = open(filePath, O_RDONLY);
+        } while(posixFileHandle == -1 && errno == EINTR);
+        if(posixFileHandle != -1) {
+            off64_t res = lseek64(posixFileHandle, 0, SEEK_END);
+            if(res != -1) {
+                result = (uint64_t)res;
+            }
+            close(posixFileHandle);
+        }
+    }
+    return(result);
+}
+
 fpl_platform_api uint32_t fplGetFileSizeFromHandle32(const fplFileHandle *fileHandle) {
 	uint32_t result = 0;
 	if(fileHandle != fpl_null && fileHandle->internalHandle.posixFileHandle) {
@@ -11773,6 +12254,19 @@ fpl_platform_api uint32_t fplGetFileSizeFromHandle32(const fplFileHandle *fileHa
 		}
 	}
 	return(result);
+}
+
+fpl_platform_api uint64_t fplGetFileSizeFromHandle64(const fplFileHandle *fileHandle) {
+    uint64_t result = 0;
+    if(fileHandle != fpl_null && fileHandle->internalHandle.posixFileHandle) {
+        int posixFileHandle = fileHandle->internalHandle.posixFileHandle;
+        off64_t curPos = lseek64(posixFileHandle, 0, SEEK_CUR);
+        if(curPos != -1) {
+            result = (uint64_t)lseek(posixFileHandle, 0, SEEK_END);
+            lseek64(posixFileHandle, curPos, SEEK_SET);
+        }
+    }
+    return(result);
 }
 
 fpl_internal uint64_t fpl__PosixConvertTimespecToUnixTimeStamp(const timespec *spec) {
@@ -12800,8 +13294,8 @@ fpl_platform_api bool fplWindowUpdate() {
 
 	// Dont like this, maybe a callback would be better?
 #if defined(FPL_PLATFORM_LINUX)
-    fpl__LinuxAppState *linuxAppState = &appState->plinux;
-    fpl__LinuxPollGameControllers(&appState->currentSettings, &linuxAppState->controllersState);
+	fpl__LinuxAppState *linuxAppState = &appState->plinux;
+	fpl__LinuxPollGameControllers(&appState->currentSettings, &linuxAppState->controllersState);
 #endif
 
 	while(x11Api->XPending(windowState->display)) {
@@ -12998,11 +13492,11 @@ fpl_platform_api bool fplGetKeyboardState(fplKeyboardState *outState) {
 }
 
 fpl_platform_api void fplUpdateGameControllers() {
-    FPL__CheckPlatformNoRet();
-    fpl__PlatformAppState *appState = fpl__global__AppState;
+	FPL__CheckPlatformNoRet();
+	fpl__PlatformAppState *appState = fpl__global__AppState;
 #if defined(FPL_PLATFORM_LINUX)
-    fpl__LinuxAppState *linuxAppState = &appState->plinux;
-    fpl__LinuxPollGameControllers(&appState->currentSettings, &linuxAppState->controllersState);
+	fpl__LinuxAppState *linuxAppState = &appState->plinux;
+	fpl__LinuxPollGameControllers(&appState->currentSettings, &linuxAppState->controllersState);
 #endif
 }
 #endif // FPL_SUBPLATFORM_X11
@@ -13024,7 +13518,7 @@ fpl_platform_api void fplUpdateGameControllers() {
 
 fpl_internal void fpl__LinuxReleasePlatform(fpl__PlatformInitState *initState, fpl__PlatformAppState *appState) {
 #if defined(FPL_ENABLE_WINDOW)
-    fpl__LinuxFreeGameControllers(&appState->plinux.controllersState);
+	fpl__LinuxFreeGameControllers(&appState->plinux.controllersState);
 #endif
 }
 
@@ -13094,185 +13588,187 @@ fpl_platform_api bool fplGetCurrentUsername(char *nameBuffer, const size_t maxNa
 //
 #if defined(FPL_ENABLE_WINDOW)
 fpl_internal void fpl__LinuxFreeGameControllers(fpl__LinuxGameControllersState *controllersState) {
-    for (int controllerIndex = 0; controllerIndex < FPL_ARRAYCOUNT(controllersState->controllers); ++controllerIndex) {
-        fpl__LinuxGameController *controller = controllersState->controllers + controllerIndex;
-        if (controller->fd > 0) {
-            close(controller->fd);
-            controller->fd = 0;
-        }
-    }
+	for(int controllerIndex = 0; controllerIndex < FPL_ARRAYCOUNT(controllersState->controllers); ++controllerIndex) {
+		fpl__LinuxGameController *controller = controllersState->controllers + controllerIndex;
+		if(controller->fd > 0) {
+			close(controller->fd);
+			controller->fd = 0;
+		}
+	}
 }
 
 fpl_internal void fpl__LinuxPushGameControllerStateUpdateEvent(const struct js_event *event, fplGamepadState *padState) {
-    fplGamepadButton *buttonMappingTable[12] = FPL_ZERO_INIT;
-    buttonMappingTable[0] = &padState->actionA;
-    buttonMappingTable[1] = &padState->actionB;
-    buttonMappingTable[2] = &padState->actionX;
-    buttonMappingTable[3] = &padState->actionY;
-    buttonMappingTable[4] = &padState->leftShoulder;
-    buttonMappingTable[5] = &padState->rightShoulder;
-    buttonMappingTable[6] = &padState->back;
-    buttonMappingTable[7] = &padState->start;
-    // 8 = XBox-Button
-    buttonMappingTable[9] = &padState->leftThumb;
-    buttonMappingTable[10] = &padState->rightThumb;
+	fplGamepadButton *buttonMappingTable[12] = FPL_ZERO_INIT;
+	buttonMappingTable[0] = &padState->actionA;
+	buttonMappingTable[1] = &padState->actionB;
+	buttonMappingTable[2] = &padState->actionX;
+	buttonMappingTable[3] = &padState->actionY;
+	buttonMappingTable[4] = &padState->leftShoulder;
+	buttonMappingTable[5] = &padState->rightShoulder;
+	buttonMappingTable[6] = &padState->back;
+	buttonMappingTable[7] = &padState->start;
+	// 8 = XBox-Button
+	buttonMappingTable[9] = &padState->leftThumb;
+	buttonMappingTable[10] = &padState->rightThumb;
 
-    switch (event->type & ~JS_EVENT_INIT) {
-        case JS_EVENT_AXIS: {
-        	switch (event->number) {
-        	    // @TODO(final): Map stick left X/Y = (0, 1)
-                // @TODO(final): Map stick right X/Y = (3, 4)
-                // @TODO(final): Trigger left/right = (2, 5)
+	switch(event->type & ~JS_EVENT_INIT) {
+		case JS_EVENT_AXIS:
+		{
+			switch(event->number) {
+				// @TODO(final): Map stick left X/Y = (0, 1)
+				// @TODO(final): Map stick right X/Y = (3, 4)
+				// @TODO(final): Trigger left/right = (2, 5)
 
-        	    // DPad X-Axis
-        		case 6:
+				// DPad X-Axis
+				case 6:
 				{
-					if (event->value == -32767) {
+					if(event->value == -32767) {
 						padState->dpadLeft.isDown = true;
 						padState->dpadRight.isDown = false;
-					} else if (event->value == 32767) {
+					} else if(event->value == 32767) {
 						padState->dpadLeft.isDown = false;
 						padState->dpadRight.isDown = true;
 					} else {
-                        padState->dpadLeft.isDown = false;
-                        padState->dpadRight.isDown = false;
+						padState->dpadLeft.isDown = false;
+						padState->dpadRight.isDown = false;
 					}
 				} break;
 
-        		// DPad Y-Axis
-                case 7:
-                {
-                    if (event->value == -32767) {
-                        padState->dpadUp.isDown = true;
-                        padState->dpadDown.isDown = false;
-                    } else if (event->value == 32767) {
-                        padState->dpadUp.isDown = false;
-                        padState->dpadDown.isDown = true;
-                    } else {
-                        padState->dpadUp.isDown = false;
-                        padState->dpadDown.isDown = false;
-                    }
-                } break;
+				// DPad Y-Axis
+				case 7:
+				{
+					if(event->value == -32767) {
+						padState->dpadUp.isDown = true;
+						padState->dpadDown.isDown = false;
+					} else if(event->value == 32767) {
+						padState->dpadUp.isDown = false;
+						padState->dpadDown.isDown = true;
+					} else {
+						padState->dpadUp.isDown = false;
+						padState->dpadDown.isDown = false;
+					}
+				} break;
 
-        		default:
-        			break;
-        	}
-        } break;
+				default:
+					break;
+			}
+		} break;
 
-        case JS_EVENT_BUTTON: {
-            if ((event->number >= 0) && (event->number < FPL_ARRAYCOUNT(buttonMappingTable))) {
-                fplGamepadButton *mappedButton = buttonMappingTable[event->number];
-                if (mappedButton != fpl_null) {
-                    mappedButton->isDown = event->value != 0;
-                }
-            }
-        } break;
+		case JS_EVENT_BUTTON:
+		{
+			if((event->number >= 0) && (event->number < FPL_ARRAYCOUNT(buttonMappingTable))) {
+				fplGamepadButton *mappedButton = buttonMappingTable[event->number];
+				if(mappedButton != fpl_null) {
+					mappedButton->isDown = event->value != 0;
+				}
+			}
+		} break;
 
-        default:
-            break;
-    }
+		default:
+			break;
+	}
 }
 
 fpl_internal void fpl__LinuxPollGameControllers(const fplSettings *settings, fpl__LinuxGameControllersState *controllersState) {
-    // https://github.com/underdoeg/ofxGamepad
-    // https://github.com/elanthis/gamepad
-    // https://gist.github.com/jasonwhite/c5b2048c15993d285130
-    // https://github.com/Tasssadar/libenjoy/blob/master/src/libenjoy_linux.c
+	// https://github.com/underdoeg/ofxGamepad
+	// https://github.com/elanthis/gamepad
+	// https://gist.github.com/jasonwhite/c5b2048c15993d285130
+	// https://github.com/Tasssadar/libenjoy/blob/master/src/libenjoy_linux.c
 
-    if ((controllersState->lastCheckTime == 0) || ((fplGetTimeInMillisecondsLP() - controllersState->lastCheckTime) >= settings->input.controllerDetectionFrequency)) {
-        controllersState->lastCheckTime = fplGetTimeInMillisecondsLP();
+	if((controllersState->lastCheckTime == 0) || ((fplGetTimeInMillisecondsLP() - controllersState->lastCheckTime) >= settings->input.controllerDetectionFrequency)) {
+		controllersState->lastCheckTime = fplGetTimeInMillisecondsLP();
 
-        //
-        // Detect new controllers
-        //
-        const char *deviceNames[] = {
-            "/dev/input/js0",
-        };
-        for (int deviceNameIndex = 0; deviceNameIndex < FPL_ARRAYCOUNT(deviceNames); ++deviceNameIndex) {
-            const char *deviceName = deviceNames[deviceNameIndex];
-            bool alreadyFound = false;
-            int freeIndex = -1;
-            for (uint32_t controllerIndex = 0; controllerIndex < FPL_ARRAYCOUNT(controllersState->controllers); ++controllerIndex) {
-                fpl__LinuxGameController *controller = controllersState->controllers + controllerIndex;
-                if ((controller->fd > 0) && fplIsStringEqual(deviceName, controller->deviceName)) {
-                    alreadyFound = true;
-                    break;
-                }
-                if (controller->fd == 0) {
-                    if (freeIndex == -1) {
-                        freeIndex = controllerIndex;
-                    }
-                }
-            }
-            if (!alreadyFound && freeIndex >= 0) {
-                int fd = open(deviceName, O_RDONLY);
-                if (fd < 0) {
-                    FPL_LOG_ERROR(FPL__MODULE_LINUX, "Failed opening joystick device '%s'", deviceName);
-                    continue;
-                }
-                uint8_t numAxis = 0;
-                uint8_t numButtons = 0;
-                ioctl(fd, JSIOCGAXES, &numAxis);
-                ioctl(fd, JSIOCGBUTTONS, &numButtons);
-                if (numAxis == 0 || numButtons == 0) {
-                    FPL_LOG_ERROR(FPL__MODULE_LINUX, "Joystick device '%s' does not have enough buttons/axis to map to a XInput controller!", deviceName);
-                    close(fd);
-                    continue;
-                }
-                fpl__LinuxGameController *controller = controllersState->controllers + freeIndex;
-                FPL_CLEAR_STRUCT(controller);
-                controller->fd = fd;
-                controller->axisCount = numAxis;
-                controller->buttonCount = numButtons;
-                fplCopyAnsiString(deviceName, controller->deviceName, FPL_ARRAYCOUNT(controller->deviceName));
-                ioctl(fd, JSIOCGNAME(FPL_ARRAYCOUNT(controller->displayName)), controller->displayName);
-                fcntl(fd, F_SETFL, O_NONBLOCK);
+		//
+		// Detect new controllers
+		//
+		const char *deviceNames[] = {
+			"/dev/input/js0",
+		};
+		for(int deviceNameIndex = 0; deviceNameIndex < FPL_ARRAYCOUNT(deviceNames); ++deviceNameIndex) {
+			const char *deviceName = deviceNames[deviceNameIndex];
+			bool alreadyFound = false;
+			int freeIndex = -1;
+			for(uint32_t controllerIndex = 0; controllerIndex < FPL_ARRAYCOUNT(controllersState->controllers); ++controllerIndex) {
+				fpl__LinuxGameController *controller = controllersState->controllers + controllerIndex;
+				if((controller->fd > 0) && fplIsStringEqual(deviceName, controller->deviceName)) {
+					alreadyFound = true;
+					break;
+				}
+				if(controller->fd == 0) {
+					if(freeIndex == -1) {
+						freeIndex = controllerIndex;
+					}
+				}
+			}
+			if(!alreadyFound && freeIndex >= 0) {
+				int fd = open(deviceName, O_RDONLY);
+				if(fd < 0) {
+					FPL_LOG_ERROR(FPL__MODULE_LINUX, "Failed opening joystick device '%s'", deviceName);
+					continue;
+				}
+				uint8_t numAxis = 0;
+				uint8_t numButtons = 0;
+				ioctl(fd, JSIOCGAXES, &numAxis);
+				ioctl(fd, JSIOCGBUTTONS, &numButtons);
+				if(numAxis == 0 || numButtons == 0) {
+					FPL_LOG_ERROR(FPL__MODULE_LINUX, "Joystick device '%s' does not have enough buttons/axis to map to a XInput controller!", deviceName);
+					close(fd);
+					continue;
+				}
+				fpl__LinuxGameController *controller = controllersState->controllers + freeIndex;
+				FPL_CLEAR_STRUCT(controller);
+				controller->fd = fd;
+				controller->axisCount = numAxis;
+				controller->buttonCount = numButtons;
+				fplCopyAnsiString(deviceName, controller->deviceName, FPL_ARRAYCOUNT(controller->deviceName));
+				ioctl(fd, JSIOCGNAME(FPL_ARRAYCOUNT(controller->displayName)), controller->displayName);
+				fcntl(fd, F_SETFL, O_NONBLOCK);
 
-                // Connected
-                fplEvent ev = FPL_ZERO_INIT;
-                ev.type = fplEventType_Gamepad;
-                ev.gamepad.type = fplGamepadEventType_Connected;
-                ev.gamepad.deviceIndex = (uint32_t)freeIndex;
-                fpl__PushEvent(&ev);
-            }
-        }
-    }
+				// Connected
+				fplEvent ev = FPL_ZERO_INIT;
+				ev.type = fplEventType_Gamepad;
+				ev.gamepad.type = fplGamepadEventType_Connected;
+				ev.gamepad.deviceIndex = (uint32_t)freeIndex;
+				fpl__PushEvent(&ev);
+			}
+		}
+	}
 
 
-    for (uint32_t controllerIndex = 0; controllerIndex < FPL_ARRAYCOUNT(controllersState->controllers); ++controllerIndex) {
-        fpl__LinuxGameController *controller = controllersState->controllers + controllerIndex;
-        if (controller->fd > 0) {
-            // Update button/axis state
-            struct js_event event;
-            for (;;) {
-                errno = 0;
-                if (read(controller->fd, &event, sizeof(event)) < 0) {
-                    if (errno == ENODEV) {
-                        close(controller->fd);
-                        controller->fd = 0;
+	for(uint32_t controllerIndex = 0; controllerIndex < FPL_ARRAYCOUNT(controllersState->controllers); ++controllerIndex) {
+		fpl__LinuxGameController *controller = controllersState->controllers + controllerIndex;
+		if(controller->fd > 0) {
+			// Update button/axis state
+			struct js_event event;
+			for(;;) {
+				errno = 0;
+				if(read(controller->fd, &event, sizeof(event)) < 0) {
+					if(errno == ENODEV) {
+						close(controller->fd);
+						controller->fd = 0;
 
-                        // Disconnected
-                        fplEvent ev = FPL_ZERO_INIT;
-                        ev.type = fplEventType_Gamepad;
-                        ev.gamepad.type = fplGamepadEventType_Disconnected;
-                        ev.gamepad.deviceIndex = controllerIndex;
-                        fpl__PushEvent(&ev);
-                    }
-                    break;
-                }
-                fpl__LinuxPushGameControllerStateUpdateEvent(&event, &controller->state);
-            }
+						// Disconnected
+						fplEvent ev = FPL_ZERO_INIT;
+						ev.type = fplEventType_Gamepad;
+						ev.gamepad.type = fplGamepadEventType_Disconnected;
+						ev.gamepad.deviceIndex = controllerIndex;
+						fpl__PushEvent(&ev);
+					}
+					break;
+				}
+				fpl__LinuxPushGameControllerStateUpdateEvent(&event, &controller->state);
+			}
 
-            if (controller->fd > 0) {
-                fplEvent ev = FPL_ZERO_INIT;
-                ev.type = fplEventType_Gamepad;
-                ev.gamepad.type = fplGamepadEventType_StateChanged;
-                ev.gamepad.deviceIndex = 0;
-                ev.gamepad.state = controller->state;
-                fpl__PushEvent(&ev);
-            }
-        }
-    }
+			if(controller->fd > 0) {
+				fplEvent ev = FPL_ZERO_INIT;
+				ev.type = fplEventType_Gamepad;
+				ev.gamepad.type = fplGamepadEventType_StateChanged;
+				ev.gamepad.deviceIndex = 0;
+				ev.gamepad.state = controller->state;
+				fpl__PushEvent(&ev);
+			}
+		}
+	}
 }
 #endif // FPL_ENABLE_WINDOW
 
@@ -13483,8 +13979,12 @@ fpl_platform_api char *fplGetProcessorName(char *destBuffer, const size_t maxDes
 }
 
 fpl_platform_api bool fplGetRunningMemoryInfos(fplMemoryInfos *outInfos) {
-	// @IMPLEMENT(final): Linux fplGetRunningMemoryInfos
-	return(false);
+	FPL__CheckArgumentNull(outInfos, false);
+	bool result = false;
+
+	// https://git.i-scream.org/?p=libstatgrab.git;a=blob;f=src/libstatgrab/memory_stats.c;h=a6f6fb926b72d3b691848202e397e3db58255648;hb=HEAD
+
+	return(result);
 }
 
 fpl_platform_api fplArchType fplGetRunningArchitecture() {
@@ -14530,7 +15030,7 @@ fpl_internal bool fpl__X11InitVideoSoftware(const fpl__X11SubplatformState *subp
 	x11Api->XSync(windowState->display, False);
 
 	return (true);
-}
+	}
 #endif // FPL_ENABLE_VIDEO_SOFTWARE && FPL_SUBPLATFORM_X11
 
 // ############################################################################
@@ -15800,9 +16300,9 @@ fpl_internal uint32_t fpl__GetAudioDevicesAlsa(fpl__AlsaAudioState *alsaState, f
 	alsaApi->snd_device_name_free_hint((void**)ppDeviceHints);
 	if(capacityOverflow > 0) {
 		FPL_ERROR(FPL__MODULE_AUDIO_ALSA, "Capacity of '%lu' for audio device infos has been reached. '%lu' audio devices are not included in the result", maxDeviceCount, capacityOverflow);
-	}
-	return(result);
 }
+	return(result);
+	}
 
 #endif // FPL_ENABLE_AUDIO_ALSA
 
@@ -15840,7 +16340,7 @@ typedef struct fpl__AudioState {
 #	if defined(FPL_ENABLE_AUDIO_ALSA)
 		fpl__AlsaAudioState alsa;
 #	endif
-	};
+};
 } fpl__AudioState;
 
 fpl_internal fpl__AudioState *fpl__GetAudioState(fpl__PlatformAppState *appState) {
@@ -16200,18 +16700,18 @@ fpl_internal fplAudioResult fpl__InitAudio(const fplAudioSettings *audioSettings
 				if(initResult != fplAudioResult_Success) {
 					fpl__AudioReleaseAlsa(&audioState->common, &audioState->alsa);
 				}
-			} break;
+				} break;
 #		endif
 
 			default:
 				break;
-		}
+			}
 		if(initResult == fplAudioResult_Success) {
 			audioState->activeDriver = propeDriver;
 			audioState->isAsyncDriver = fpl__IsAudioDriverAsync(propeDriver);
 			break;
 		}
-	}
+		}
 
 	if(initResult != fplAudioResult_Success) {
 		fpl__ReleaseAudio(audioState);
@@ -16234,7 +16734,7 @@ fpl_internal fplAudioResult fpl__InitAudio(const fplAudioSettings *audioSettings
 	FPL_ASSERT(fpl__AudioGetDeviceState(&audioState->common) == fpl__AudioDeviceState_Stopped);
 
 	return(fplAudioResult_Success);
-}
+	}
 #endif // FPL_ENABLE_AUDIO
 
 // %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -16344,7 +16844,7 @@ fpl_internal void fpl__ReleaseVideoState(fpl__PlatformAppState *appState, fpl__V
 			videoState->x11.opengl.fbConfig = fpl_null;
 			fpl__X11UnloadVideoOpenGLApi(&videoState->x11.opengl.api);
 #		endif
-		}; break;
+	}; break;
 #	endif
 
 #	if defined(FPL_ENABLE_VIDEO_SOFTWARE)
@@ -16356,7 +16856,7 @@ fpl_internal void fpl__ReleaseVideoState(fpl__PlatformAppState *appState, fpl__V
 
 		default:
 			break;
-	}
+}
 	FPL_CLEAR_STRUCT(videoState);
 }
 
@@ -17013,13 +17513,13 @@ fpl_internal void fpl__ReleasePlatformStates(fpl__PlatformInitState *initState, 
 			FPL_LOG_DEBUG("Core", "Release POSIX Subplatform");
 			fpl__PosixReleaseSubplatform(&appState->posix);
 #		endif
-		}
+	}
 
-		// Release platform applicatiom state memory
+	// Release platform applicatiom state memory
 		FPL_LOG_DEBUG(FPL__MODULE_CORE, "Release allocated Platform App State Memory");
 		fplMemoryFree(appState);
 		fpl__global__AppState = fpl_null;
-	}
+}
 	initState->isInitialized = false;
 }
 
@@ -17134,9 +17634,9 @@ fpl_common_api fplInitResultType fplPlatformInit(const fplInitFlags initFlags, c
 			FPL_CRITICAL("Core", "Failed initializing X11 Subplatform!");
 			fpl__ReleasePlatformStates(initState, appState);
 			return fplInitResultType_FailedPlatform;
-		}
+}
 		FPL_LOG_DEBUG("Core", "Successfully initialized X11 Subplatform");
-	}
+		}
 #	endif // FPL_SUBPLATFORM_X11
 
 		// Initialize the actual platform (There can only be one at a time!)
@@ -17240,7 +17740,7 @@ fpl_common_api fplInitResultType fplPlatformInit(const fplInitFlags initFlags, c
 
 	initState->isInitialized = true;
 	return fplInitResultType_Success;
-}
+	}
 
 fpl_common_api fplPlatformType fplGetPlatformType() {
 	fplPlatformType result;
