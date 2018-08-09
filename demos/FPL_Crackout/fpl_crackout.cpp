@@ -19,6 +19,7 @@ Changelog:
     ## 2018-08-09
     - Use IsDown() for launching the ball (More responsive)
     - Use actionDown and actionStart for menu instead "any"
+    - Support analog paddle movement
 
 	## 2018-07-05
 	- Corrected for api change in final_game.h
@@ -936,11 +937,20 @@ extern void GameInput(GameMemory &gameMemory, const Input &input) {
 				{
 					// Single player input
 					Paddle &paddle = state->paddle.paddle;
-					if(IsDown(controller->moveLeft)) {
-						paddle.body->ApplyLinearImpulse(paddle.speed * b2Vec2(-1, 0), paddle.body->GetPosition(), true);
-					} else if(IsDown(controller->moveRight)) {
-						paddle.body->ApplyLinearImpulse(paddle.speed * b2Vec2(1, 0), paddle.body->GetPosition(), true);
+
+					if (controller->isAnalog) {
+						float x = controller->analogMovement.x;
+						if (Abs(x) > 0) {
+							paddle.body->ApplyLinearImpulse(paddle.speed * b2Vec2(x, 0), paddle.body->GetPosition(), true);
+						}
+					} else {
+						if (IsDown(controller->moveLeft)) {
+							paddle.body->ApplyLinearImpulse(paddle.speed * b2Vec2(-1, 0), paddle.body->GetPosition(), true);
+						} else if (IsDown(controller->moveRight)) {
+							paddle.body->ApplyLinearImpulse(paddle.speed * b2Vec2(1, 0), paddle.body->GetPosition(), true);
+						}
 					}
+
 					if(IsDown(controller->actionDown) && paddle.gluedBall != nullptr) {
 						LaunchBall(*state);
 					}
