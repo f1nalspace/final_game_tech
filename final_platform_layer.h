@@ -1663,7 +1663,7 @@ FPL_STATICASSERT(sizeof(size_t) == sizeof(uint32_t));
 //! Null
 #define fpl_null NULL
 //! 32-bit boolean
-typedef uint32_t fpl_b32;
+typedef int32_t fpl_b32;
 
 #if defined(FPL_PLATFORM_WIN32)
 	//! Maximum length of a filename (Win32)
