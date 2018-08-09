@@ -14,6 +14,10 @@ Author:
 	Torsten Spaete
 
 Changelog:
+    ## 2018-08-09
+    - Correction for api change in fplMemoryInfo
+    - Added a new more strings tests
+
 	## 2018-06-29
 	- Added condition-variable tests
 
@@ -429,24 +433,26 @@ static void TestPaths() {
 	}
 }
 
+
 static void TestHardware() {
 	char cpuNameBuffer[1024] = {};
 	fplGetProcessorName(cpuNameBuffer, FPL_ARRAYCOUNT(cpuNameBuffer));
 	ft::Msg("Processor name: %s\n", cpuNameBuffer);
 
 	size_t coreCount = fplGetProcessorCoreCount();
+	FT_ASSERT(coreCount > 0);
 	ft::Msg("Processor cores: %zu\n", coreCount);
 
-	fplMemoryInfos memInfos;
-	if(fplGetRunningMemoryInfos(&memInfos)) {
-		ft::Msg("Physical total memory (bytes): %z\n", memInfos.totalPhysicalSize);
-		ft::Msg("Physical available memory (bytes): %z\n", memInfos.availablePhysicalSize);
-		ft::Msg("Physical used memory (bytes): %z\n", memInfos.usedPhysicalSize);
-		ft::Msg("Virtual total memory (bytes): %z\n", memInfos.totalVirtualSize);
-		ft::Msg("Virtual used memory (bytes): %z\n", memInfos.usedVirtualSize);
-		ft::Msg("Page total memory (bytes): %z\n", memInfos.totalPageSize);
-		ft::Msg("Page used memory (bytes): %z\n", memInfos.usedPageSize);
-	}
+	fplMemoryInfos memInfos = {};
+	FT_ASSERT(fplGetRunningMemoryInfos(&memInfos));
+	ft::Msg("Installed physical memory (bytes): %z\n", memInfos.totalPhysicalSize);
+	ft::Msg("Total physical memory (bytes): %z\n", memInfos.totalPhysicalSize);
+	ft::Msg("Available physical memory (bytes): %z\n", memInfos.freePhysicalSize);
+	ft::Msg("Total cache memory (bytes): %z\n", memInfos.totalCacheSize);
+	ft::Msg("Available cache memory (bytes): %z\n", memInfos.freeCacheSize);
+	ft::Msg("Page size (bytes): %z\n", memInfos.pageSize);
+	ft::Msg("Total number of memory pages: %z\n", memInfos.totalPageCount);
+	ft::Msg("Available number memory pages: %z\n", memInfos.freePageCount);
 
 	fplArchType archType = fplGetRunningArchitecture();
 	const char *archStr = fplGetArchTypeString(archType);
@@ -639,7 +645,7 @@ static void ThreadSlaveProc(const fplThreadHandle *context, void *data) {
 		fplSignalWaitForOne(&d->signal, FPL_TIMEOUT_INFINITE);
 		d->isSuccess = true;
 		ft::Msg("Got signal on Slave-Thread %d\n", d->base.num);
-	} else if (d->testType == ConditionTestType::ConditionSignal) {
+	} else if(d->testType == ConditionTestType::ConditionSignal) {
 		ft::Msg("Slave-Thread %d waits on condition\n", d->base.num);
 		fplConditionWait(&d->condition, &d->mutex, FPL_TIMEOUT_INFINITE);
 		d->isSuccess = true;
@@ -658,7 +664,7 @@ static void ThreadMasterProc(const fplThreadHandle *context, void *data) {
 		if(d->testType == ConditionTestType::Signal) {
 			ft::Msg("Master-Thread %d sets signal %d\n", d->base.num, signalIndex);
 			fplSignalSet(&d->slaveThreads[signalIndex].signal);
-		} else if (d->testType == ConditionTestType::ConditionSignal) {
+		} else if(d->testType == ConditionTestType::ConditionSignal) {
 			ft::Msg("Master-Thread %d sends signal to condition %d\n", d->base.num, signalIndex);
 			fplConditionSignal(&d->slaveThreads[signalIndex].condition);
 		}
@@ -674,7 +680,7 @@ static void ConditionThreadsTest(const size_t threadCount, const ConditionTestTy
 
 	if(testType == ConditionTestType::Signal) {
 		ft::Msg("Signals test for %zu threads\n", threadCount);
-	} else if (testType == ConditionTestType::ConditionSignal) {
+	} else if(testType == ConditionTestType::ConditionSignal) {
 		ft::Msg("Condition-Variable (Single) test for %zu threads\n", threadCount);
 	}
 
@@ -689,7 +695,7 @@ static void ConditionThreadsTest(const size_t threadCount, const ConditionTestTy
 		slaveDatas[threadIndex].testType = testType;
 		if(testType == ConditionTestType::Signal) {
 			FT_IS_TRUE(fplSignalInit(&slaveDatas[threadIndex].signal, fplSignalValue_Unset));
-		} else if (testType == ConditionTestType::ConditionSignal) {
+		} else if(testType == ConditionTestType::ConditionSignal) {
 			FT_IS_TRUE(fplMutexInit(&slaveDatas[threadIndex].mutex));
 			FT_IS_TRUE(fplConditionInit(&slaveDatas[threadIndex].condition));
 		}
@@ -721,7 +727,7 @@ static void ConditionThreadsTest(const size_t threadCount, const ConditionTestTy
 	for(size_t slaveIndex = 0; slaveIndex < slaveThreadCount; ++slaveIndex) {
 		if(testType == ConditionTestType::Signal) {
 			fplSignalDestroy(&slaveDatas[slaveIndex].signal);
-		} else if (testType == ConditionTestType::ConditionSignal) {
+		} else if(testType == ConditionTestType::ConditionSignal) {
 			fplConditionDestroy(&slaveDatas[slaveIndex].condition);
 			fplMutexDestroy(&slaveDatas[slaveIndex].mutex);
 		}
@@ -1157,10 +1163,6 @@ static void TestStrings() {
 		FT_EXPECTS(true, res);
 	}
 	{
-		bool res = fplIsStringEqualLen(nullptr, 0, nullptr, 0);
-		FT_EXPECTS(true, res);
-	}
-	{
 		bool res = fplIsStringEqual(nullptr, "");
 		FT_EXPECTS(false, res);
 	}
@@ -1181,12 +1183,36 @@ static void TestStrings() {
 		FT_EXPECTS(true, res);
 	}
 	{
+		bool res = fplIsStringEqualLen(nullptr, 0, nullptr, 0);
+		FT_EXPECTS(false, res);
+	}
+	{
+		bool res = fplIsStringEqualLen("", 0, nullptr, 0);
+		FT_EXPECTS(false, res);
+	}
+	{
+		bool res = fplIsStringEqualLen(nullptr, 0, "", 0);
+		FT_EXPECTS(false, res);
+	}
+	{
+		bool res = fplIsStringEqualLen("", 0, "", 0);
+		FT_EXPECTS(true, res);
+	}
+	{
 		bool res = fplIsStringEqualLen("B", 1, "A", 1);
 		FT_EXPECTS(false, res);
 	}
 	{
 		bool res = fplIsStringEqualLen("A", 1, "A", 1);
 		FT_EXPECTS(true, res);
+	}
+	{
+		bool res = fplIsStringEqualLen("A", 1, "A", 0);
+		FT_EXPECTS(false, res);
+	}
+	{
+		bool res = fplIsStringEqualLen("A", 1, "B", 1);
+		FT_EXPECTS(false, res);
 	}
 	{
 		bool res = fplIsStringEqualLen("Hello", 5, "World", 5);
