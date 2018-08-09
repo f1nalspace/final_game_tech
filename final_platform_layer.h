@@ -4558,7 +4558,7 @@ fpl_platform_api bool fplGetKeyboardState(fplKeyboardState *outState);
 
 /**
   * \brief Gets current gamepad states and writes it out into the given structure.
-  * \param outState The pointer to the \ref fplGamepadStates structure
+  * \param outStates The pointer to the \ref fplGamepadStates structure
   */
 fpl_platform_api bool fplGetGamepadStates(fplGamepadStates *outStates);
 
