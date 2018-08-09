@@ -947,7 +947,7 @@ extern void GameInput(GameMemory &gameMemory, const Input &input) {
 
 				case GameMode::Title:
 				{
-					if(WasPressed(controller->moveLeft) || WasPressed(controller->moveRight) || WasPressed(controller->actionDown)) {
+					if(WasPressed(controller->actionDown) || WasPressed(controller->actionStart)) {
 						state->mode = GameMode::Menu;
 						state->menu = {};
 						state->menu.section = MenuSection::Main;
@@ -956,7 +956,7 @@ extern void GameInput(GameMemory &gameMemory, const Input &input) {
 
 				case GameMode::GameOver:
 				{
-					if(WasPressed(controller->moveLeft) || WasPressed(controller->moveRight) || WasPressed(controller->actionDown)) {
+					if(WasPressed(controller->actionDown) || WasPressed(controller->actionStart)) {
 						state->mode = GameMode::Title;
 					}
 				};
@@ -972,7 +972,7 @@ extern void GameInput(GameMemory &gameMemory, const Input &input) {
 							--state->menu.itemIndex;
 						}
 					}
-					if(WasPressed(controller->actionDown)) {
+					if(WasPressed(controller->actionDown) || WasPressed(controller->actionStart)) {
 						if(state->menu.hotID != nullptr) {
 							state->menu.itemActivated = true;
 						}
@@ -1334,7 +1334,7 @@ static void DrawTitleMenuMode(GameState &state) {
 
 	if(state.mode == GameMode::Title || state.mode == GameMode::GameOver) {
 		// Title screen
-		const char *smallText = "Press any Key or Button!";
+		const char *smallText = "Press spacebar or action-key!";
 		const float smallFontSize = 0.9f;
 		const float smallPosY = -WorldRadius.y + WorldHeight * 0.275f;
 		glColor4f(1, 1, 1, 1);
