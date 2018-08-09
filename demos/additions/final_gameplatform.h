@@ -67,7 +67,7 @@ static void UpdateKeyboardButtonState(ButtonState &newState, const fpl_b32 isDow
 static bool UpdateDigitalButtonState(const ButtonState &oldState, ButtonState &newState, const fpl_b32 isDown) {
 	newState.endedDown = isDown;
 	newState.halfTransitionCount = ((newState.endedDown == oldState.endedDown) ? 0 : 1);
-	return((bool)newState.endedDown);
+	return(newState.endedDown == 1);
 }
 
 static void UpdateDefaultController(Input *currentInput, int newIndex) {
