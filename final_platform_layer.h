@@ -12269,8 +12269,8 @@ fpl_platform_api uint64_t fplGetFileSizeFromHandle64(const fplFileHandle *fileHa
     return(result);
 }
 
-fpl_internal uint64_t fpl__PosixConvertTimespecToUnixTimeStamp(const timespec *spec) {
-	uint64_t result = spec->tv_sec;
+fpl_internal uint64_t fpl__PosixConvertTimespecToUnixTimeStamp(const struct timespec *spec) {
+	uint64_t result = (uint64_t)spec->tv_sec;
 	return(result);
 }
 
