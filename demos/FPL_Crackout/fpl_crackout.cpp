@@ -16,6 +16,9 @@ Author:
 	Torsten Spaete
 
 Changelog:
+    ## 2018-08-09
+    - Use IsDown() for launching the ball (More responsive)
+
 	## 2018-07-05
 	- Corrected for api change in final_game.h
 	- Corrected for api change in final_render.h
@@ -795,7 +798,7 @@ static void SetRandomLevel(GameState &state, int seed) {
 			int rightCol = (MaxBrickCols - 1) - c;
 			state.bricksMap[row * MaxBrickCols + leftCol] = BrickType::Solid;
 			state.bricksMap[row * MaxBrickCols + rightCol] = BrickType::Solid;
-	}
+		}
 #if ALL_BRICKS
 		state.bricksMap[row * MaxBrickCols + halfColCount] = BrickType::Solid;
 #else
@@ -803,7 +806,7 @@ static void SetRandomLevel(GameState &state, int seed) {
 			state.bricksMap[row * MaxBrickCols + halfColCount] = BrickType::Solid;
 		}
 #endif
-		}
+	}
 
 #undef ALL_BRICKS
 }
@@ -923,7 +926,7 @@ extern void GameInput(GameMemory &gameMemory, const Input &input) {
 	GameState *state = gameMemory.game;
 	FPL_ASSERT(state != nullptr);
 
-	if(input.defaultControllerIndex != -1) {
+	if(input.defaultControllerIndex > -1) {
 		FPL_ASSERT(input.defaultControllerIndex < FPL_ARRAYCOUNT(input.controllers));
 		const Controller *controller = &input.controllers[input.defaultControllerIndex];
 		if(controller->isConnected) {
@@ -937,7 +940,7 @@ extern void GameInput(GameMemory &gameMemory, const Input &input) {
 					} else if(IsDown(controller->moveRight)) {
 						paddle.body->ApplyLinearImpulse(paddle.speed * b2Vec2(1, 0), paddle.body->GetPosition(), true);
 					}
-					if(WasPressed(controller->actionDown) && paddle.gluedBall != nullptr) {
+					if(IsDown(controller->actionDown) && paddle.gluedBall != nullptr) {
 						LaunchBall(*state);
 					}
 				} break;
@@ -1266,7 +1269,7 @@ static void DrawPlayMode(GameState &state) {
 			fixture = fixture->GetNext();
 		}
 		body = body->GetNext();
-	}
+}
 #endif
 
 	char textBuffer[256];
