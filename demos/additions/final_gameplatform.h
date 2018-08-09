@@ -11,6 +11,7 @@ Description:
 Changelog:
 	2018-08-09:
 	- Fixed WasPressed() was not working reliably (defaultControllerIndex issue)
+    - Fixed controller swapping was not working properly
 
 License:
 	MIT License
@@ -63,9 +64,10 @@ static void UpdateKeyboardButtonState(ButtonState &newState, const fpl_b32 isDow
 	++newState.halfTransitionCount;
 }
 
-static void UpdateDigitalButtonState(const ButtonState &oldState, ButtonState &newState, const fpl_b32 isDown) {
+static bool UpdateDigitalButtonState(const ButtonState &oldState, ButtonState &newState, const fpl_b32 isDown) {
 	newState.endedDown = isDown;
 	newState.halfTransitionCount = ((newState.endedDown == oldState.endedDown) ? 0 : 1);
+	return((bool)newState.endedDown);
 }
 
 static void UpdateDefaultController(Input *currentInput, int newIndex) {
@@ -104,7 +106,9 @@ static void ProcessEvents(Input *currentInput, Input *prevInput, GameWindowActiv
 						break;
 					case fplWindowEventType_Minimized:
 						*windowActiveType = GameWindowActiveType::Minimized;
-						break;
+				        break;
+				    default:
+				        break;
 				}
 			} break;
 
@@ -119,7 +123,7 @@ static void ProcessEvents(Input *currentInput, Input *prevInput, GameWindowActiv
 					case fplGamepadEventType_Connected:
 					{
 						newController->isConnected = true;
-						UpdateDefaultController(currentInput, controllerIndex);
+                        UpdateDefaultController(currentInput, controllerIndex);
 					} break;
 					case fplGamepadEventType_Disconnected:
 					{
@@ -130,24 +134,32 @@ static void ProcessEvents(Input *currentInput, Input *prevInput, GameWindowActiv
 					{
 						fplGamepadState &padstate = event.gamepad.state;
 						assert(newController->isConnected);
+						bool changed = false;
 						if(Abs(padstate.leftStickX) > 0.0f || Abs(padstate.leftStickY) > 0.0f) {
 							newController->isAnalog = true;
 							newController->analogMovement.x = padstate.leftStickX;
 							newController->analogMovement.y = padstate.leftStickY;
+                            changed = true;
 						} else {
 							newController->isAnalog = false;
-							UpdateDigitalButtonState(oldController->moveDown, newController->moveDown, padstate.dpadDown.isDown != 0);
-							UpdateDigitalButtonState(oldController->moveUp, newController->moveUp, padstate.dpadUp.isDown != 0);
-							UpdateDigitalButtonState(oldController->moveLeft, newController->moveLeft, padstate.dpadLeft.isDown != 0);
-							UpdateDigitalButtonState(oldController->moveRight, newController->moveRight, padstate.dpadRight.isDown != 0);
+                            changed |= UpdateDigitalButtonState(oldController->moveDown, newController->moveDown, padstate.dpadDown.isDown);
+                            changed |= UpdateDigitalButtonState(oldController->moveUp, newController->moveUp, padstate.dpadUp.isDown);
+                            changed |= UpdateDigitalButtonState(oldController->moveLeft, newController->moveLeft, padstate.dpadLeft.isDown);
+                            changed |= UpdateDigitalButtonState(oldController->moveRight, newController->moveRight, padstate.dpadRight.isDown);
 						}
-						UpdateDigitalButtonState(oldController->actionDown, newController->actionDown, padstate.actionA.isDown != 0);
-						UpdateDigitalButtonState(oldController->actionRight, newController->actionRight, padstate.actionB.isDown != 0);
-						UpdateDigitalButtonState(oldController->actionLeft, newController->actionLeft, padstate.actionX.isDown != 0);
-						UpdateDigitalButtonState(oldController->actionUp, newController->actionUp, padstate.actionY.isDown != 0);
-						UpdateDigitalButtonState(oldController->actionBack, newController->actionBack, padstate.back.isDown != 0);
-						UpdateDigitalButtonState(oldController->actionStart, newController->actionStart, padstate.start.isDown != 0);
+                        changed |= UpdateDigitalButtonState(oldController->actionDown, newController->actionDown, padstate.actionA.isDown);
+                        changed |= UpdateDigitalButtonState(oldController->actionRight, newController->actionRight, padstate.actionB.isDown);
+                        changed |= UpdateDigitalButtonState(oldController->actionLeft, newController->actionLeft, padstate.actionX.isDown);
+                        changed |= UpdateDigitalButtonState(oldController->actionUp, newController->actionUp, padstate.actionY.isDown);
+                        changed |= UpdateDigitalButtonState(oldController->actionBack, newController->actionBack, padstate.back.isDown);
+                        changed |= UpdateDigitalButtonState(oldController->actionStart, newController->actionStart, padstate.start.isDown);
+                        if (changed) {
+                            UpdateDefaultController(currentInput, controllerIndex);
+                        }
 					} break;
+
+				    default:
+				        break;
 				}
 			} break;
 
@@ -161,7 +173,7 @@ static void ProcessEvents(Input *currentInput, Input *prevInput, GameWindowActiv
 
 					case fplMouseEventType_Button:
 					{
-						bool isDown = event.mouse.buttonState >= fplButtonState_Press;
+						bool isDown = (event.mouse.buttonState >= fplButtonState_Press);
 						if(event.mouse.mouseButton == fplMouseButtonType_Left) {
 							UpdateKeyboardButtonState(currentInput->mouse.left, isDown);
 						} else if(event.mouse.mouseButton == fplMouseButtonType_Right) {
@@ -175,22 +187,20 @@ static void ProcessEvents(Input *currentInput, Input *prevInput, GameWindowActiv
 					{
 						currentInput->mouse.wheelDelta = event.mouse.wheelDelta;
 					} break;
+
+				    default:
+				        break;
 				}
 			} break;
 
 			case fplEventType_Keyboard:
 			{
 				switch(event.keyboard.type) {
-					case fplKeyboardEventType_Input:
-					{
-					} break;
 					case fplKeyboardEventType_Button:
 					{
 						if(!newKeyboardController->isConnected) {
 							newKeyboardController->isConnected = true;
-							if(currentInput->defaultControllerIndex == -1) {
-								UpdateDefaultController(currentInput, 0);
-							}
+                            UpdateDefaultController(currentInput, 0);
 						}
 						bool isDown = event.keyboard.buttonState >= fplButtonState_Press;
 						bool wasDown = event.keyboard.buttonState == fplButtonState_Release || event.keyboard.buttonState == fplButtonState_Repeat;
@@ -227,6 +237,8 @@ static void ProcessEvents(Input *currentInput, Input *prevInput, GameWindowActiv
 								case fplKey_Escape:
 									UpdateKeyboardButtonState(newKeyboardController->actionBack, isDown);
 									break;
+							    default:
+							        break;
 							}
 						}
 						if(wasDown) {
@@ -236,8 +248,14 @@ static void ProcessEvents(Input *currentInput, Input *prevInput, GameWindowActiv
 							}
 						}
 					} break;
+
+				    default:
+				        break;
 				}
 			} break;
+
+			default:
+				break;
 		}
 	}
 }
@@ -308,8 +326,7 @@ extern int GameMain(const GameConfiguration &config) {
 		Input *oldInput = &inputs[1];
 		Vec2i lastMousePos = V2i(-1, -1);
 		GameWindowActiveType windowActiveType[2] = { GameWindowActiveType::None, GameWindowActiveType::None };
-		newInput->defaultControllerIndex = -1;
-		oldInput->defaultControllerIndex = -1;
+		newInput->defaultControllerIndex = oldInput->defaultControllerIndex = -1;
 
 		uint32_t frameCount = 0;
 		uint32_t updateCount = 0;
