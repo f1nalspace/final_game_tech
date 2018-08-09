@@ -8,6 +8,10 @@ Description:
 
 	This file is part of the final_framework.
 
+Changelog:
+	2018-08-09:
+	- Fixed WasPressed() was not working reliably (defaultControllerIndex issue)
+
 License:
 	MIT License
 	Copyright 2018 Torsten Spaete
@@ -78,7 +82,7 @@ static void UpdateDefaultController(Input *currentInput, int newIndex) {
 	}
 }
 
-static void ProcessEvents(Input *currentInput, Input *prevInput, GameWindowActiveType &windowActiveType, Vec2i &lastMousePos) {
+static void ProcessEvents(Input *currentInput, Input *prevInput, GameWindowActiveType *windowActiveType, Vec2i *lastMousePos) {
 	Controller *newKeyboardController = &currentInput->keyboard;
 	fplEvent event;
 	while(fplPollEvent(&event)) {
@@ -87,19 +91,19 @@ static void ProcessEvents(Input *currentInput, Input *prevInput, GameWindowActiv
 			{
 				switch(event.window.type) {
 					case fplWindowEventType_GotFocus:
-						windowActiveType = GameWindowActiveType::GotFocus;
+						*windowActiveType = GameWindowActiveType::GotFocus;
 						break;
 					case fplWindowEventType_Restored:
-						windowActiveType = GameWindowActiveType::Restored;
+						*windowActiveType = GameWindowActiveType::Restored;
 						break;
 					case fplWindowEventType_Maximized:
-						windowActiveType = GameWindowActiveType::Maximized;
+						*windowActiveType = GameWindowActiveType::Maximized;
 						break;
 					case fplWindowEventType_LostFocus:
-						windowActiveType = GameWindowActiveType::LostFocus;
+						*windowActiveType = GameWindowActiveType::LostFocus;
 						break;
 					case fplWindowEventType_Minimized:
-						windowActiveType = GameWindowActiveType::Minimized;
+						*windowActiveType = GameWindowActiveType::Minimized;
 						break;
 				}
 			} break;
@@ -152,7 +156,7 @@ static void ProcessEvents(Input *currentInput, Input *prevInput, GameWindowActiv
 				switch(event.mouse.type) {
 					case fplMouseEventType_Move:
 					{
-						currentInput->mouse.pos = lastMousePos = V2i(event.mouse.mouseX, event.mouse.mouseY);
+						currentInput->mouse.pos = *lastMousePos = V2i(event.mouse.mouseX, event.mouse.mouseY);
 					} break;
 
 					case fplMouseEventType_Button:
@@ -191,7 +195,6 @@ static void ProcessEvents(Input *currentInput, Input *prevInput, GameWindowActiv
 						bool isDown = event.keyboard.buttonState >= fplButtonState_Press;
 						bool wasDown = event.keyboard.buttonState == fplButtonState_Release || event.keyboard.buttonState == fplButtonState_Repeat;
 						if(isDown != wasDown) {
-							//fplDebugFormatOut("Frame %d, Key button change[%d] = %d\n", currentInput->frameIndex, event.keyboard.keyCode, event.keyboard.buttonState);
 							switch(event.keyboard.mappedKey) {
 								case fplKey_A:
 								case fplKey_Left:
@@ -225,8 +228,6 @@ static void ProcessEvents(Input *currentInput, Input *prevInput, GameWindowActiv
 									UpdateKeyboardButtonState(newKeyboardController->actionBack, isDown);
 									break;
 							}
-						} else {
-							//fplDebugFormatOut("Frame %d, Key button press[%d] = %d\n", currentInput->frameIndex, event.keyboard.keyCode, event.keyboard.buttonState);
 						}
 						if(wasDown) {
 							if(event.keyboard.mappedKey == fplKey_F) {
@@ -308,6 +309,7 @@ extern int GameMain(const GameConfiguration &config) {
 		Vec2i lastMousePos = V2i(-1, -1);
 		GameWindowActiveType windowActiveType[2] = { GameWindowActiveType::None, GameWindowActiveType::None };
 		newInput->defaultControllerIndex = -1;
+		oldInput->defaultControllerIndex = -1;
 
 		uint32_t frameCount = 0;
 		uint32_t updateCount = 0;
@@ -326,13 +328,14 @@ extern int GameMain(const GameConfiguration &config) {
 				newInput->windowSize.y = winArea.height;
 			}
 
-			// Remember previous keyboard and mouse state
-			windowActiveType[1] = windowActiveType[0];
+			// Remember previous state
+			newInput->deltaTime = (float)TargetDeltaTime;
+			newInput->framesPerSeconds = (float)lastFramesPerSecond;
+			newInput->defaultControllerIndex = oldInput->defaultControllerIndex;
 			Controller *oldKeyboardController = &oldInput->keyboard;
 			Controller *newKeyboardController = &newInput->keyboard;
 			*newKeyboardController = {};
 			newKeyboardController->isConnected = oldKeyboardController->isConnected;
-			newKeyboardController->actionDown.name = "KB-ActionDown";
 
 			Mouse *newMouse = &newInput->mouse;
 			Mouse *oldMouse = &oldInput->mouse;
@@ -355,12 +358,11 @@ extern int GameMain(const GameConfiguration &config) {
 				newKeyboardController->buttons[buttonIndex].endedDown = oldKeyboardController->buttons[buttonIndex].endedDown;
 			}
 
-			newInput->deltaTime = (float)TargetDeltaTime;
-			newInput->framesPerSeconds = (float)lastFramesPerSecond;
 			newInput->frameIndex = frameIndex++;
 
 			// Events
-			ProcessEvents(newInput, oldInput, windowActiveType[0], lastMousePos);
+			windowActiveType[1] = windowActiveType[0];
+			ProcessEvents(newInput, oldInput, &windowActiveType[0], &lastMousePos);
 			if(config.disableInactiveDetection) {
 				newInput->isActive = (windowActiveType[0] & GameWindowActiveType::Minimized) != GameWindowActiveType::Minimized;
 			} else {
@@ -368,7 +370,7 @@ extern int GameMain(const GameConfiguration &config) {
 			}
 
 			if(windowActiveType[0] != windowActiveType[1]) {
-				// We dont want to have delta time jumps
+				// We dont want to have delta time jumps when game was inactive
 				lastTime = fplGetTimeInSecondsHP();
 				lastFramesPerSecond = 0.0f;
 				fpsTimerInSecs = fplGetTimeInSecondsHP();
@@ -382,7 +384,7 @@ extern int GameMain(const GameConfiguration &config) {
 			if(config.noUpdateRenderSeparation) {
 				float alpha;
 				if(lastFrameTime > 0) {
-					alpha = 1.0f - (float)(lastFrameTime / TargetDeltaTime);
+					alpha = (float)lastFrameTime / (float)TargetDeltaTime;
 				} else {
 					alpha = 1.0f;
 				}
