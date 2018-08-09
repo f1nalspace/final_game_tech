@@ -18,6 +18,7 @@ Author:
 Changelog:
     ## 2018-08-09
     - Use IsDown() for launching the ball (More responsive)
+    - Use actionDown and actionStart for menu instead "any"
 
 	## 2018-07-05
 	- Corrected for api change in final_game.h
