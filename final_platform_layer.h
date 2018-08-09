@@ -131,6 +131,8 @@ SOFTWARE.
 
     ## v0.9.1.0 beta
     - Fixed: [X11] Fixed icon loading was not working at all
+    - Fixed: [POSIX] fplWriteFileBlock64 was not properly implemented
+    - Fixed: [POSIX] fplReadFileBlock64 was not properly implemented
 
     ## v0.9.0.0 beta:
 	- Changed: fplKey_Enter renamed to fplKey_Return
@@ -12082,26 +12084,6 @@ fpl_platform_api bool fplCreateWideBinaryFile(const wchar_t *filePath, fplFileHa
 	return false;
 }
 
-fpl_internal size_t fpl__PosixReadFileBlock(const fplFileHandle *fileHandle, const size_t sizeToRead, void *targetBuffer, const size_t maxTargetBufferSize) {
-    FPL__CheckArgumentNull(fileHandle, 0);
-    FPL__CheckArgumentZero(sizeToRead, 0);
-    FPL__CheckArgumentNull(targetBuffer, 0);
-    if(!fileHandle->internalHandle.posixFileHandle) {
-        FPL_ERROR(FPL__MODULE_FILES, "File handle is not opened for reading");
-        return 0;
-    }
-    int posixFileHandle = fileHandle->internalHandle.posixFileHandle;
-    ssize_t res;
-    do {
-        res = read(posixFileHandle, targetBuffer, sizeToRead);
-    } while(res == -1 && errno == EINTR);
-    size_t result = 0;
-    if(res != -1) {
-        result = (size_t)res;
-    }
-    return(result);
-}
-
 fpl_platform_api size_t fpl__PosixWriteFileBlock(const fplFileHandle *fileHandle, void *sourceBuffer, const size_t sourceSize) {
     FPL__CheckArgumentNull(fileHandle, 0);
     FPL__CheckArgumentZero(sourceSize, 0);
@@ -12123,22 +12105,102 @@ fpl_platform_api size_t fpl__PosixWriteFileBlock(const fplFileHandle *fileHandle
 }
 
 fpl_platform_api uint32_t fplReadFileBlock32(const fplFileHandle *fileHandle, const uint32_t sizeToRead, void *targetBuffer, const uint32_t maxTargetBufferSize) {
-    uint32_t result = (uint32_t)fpl__PosixReadFileBlock(fileHandle, sizeToRead, targetBuffer, maxTargetBufferSize);
+    FPL__CheckArgumentNull(fileHandle, 0);
+    FPL__CheckArgumentZero(sizeToRead, 0);
+    FPL__CheckArgumentNull(targetBuffer, 0);
+    if(!fileHandle->internalHandle.posixFileHandle) {
+        FPL_ERROR(FPL__MODULE_FILES, "File handle is not opened for reading");
+        return 0;
+    }
+    int posixFileHandle = fileHandle->internalHandle.posixFileHandle;
+    ssize_t res;
+    do {
+        res = read(posixFileHandle, targetBuffer, sizeToRead);
+    } while(res == -1 && errno == EINTR);
+    uint32_t result = 0;
+    if(res != -1) {
+        result = (uint32_t)res;
+    }
     return(result);
 }
 
 fpl_platform_api uint64_t fplReadFileBlock64(const fplFileHandle *fileHandle, const uint64_t sizeToRead, void *targetBuffer, const uint64_t maxTargetBufferSize) {
-    uint64_t result = (uint64_t)fpl__PosixReadFileBlock(fileHandle, sizeToRead, targetBuffer, maxTargetBufferSize);
-	return(result);
+    FPL__CheckArgumentNull(fileHandle, 0);
+    FPL__CheckArgumentZero(sizeToRead, 0);
+    FPL__CheckArgumentNull(targetBuffer, 0);
+    if(!fileHandle->internalHandle.posixFileHandle) {
+        FPL_ERROR(FPL__MODULE_FILES, "File handle is not opened for reading");
+        return 0;
+    }
+    int posixFileHandle = fileHandle->internalHandle.posixFileHandle;
+    uint64_t result = 0;
+    uint64_t remainingSize = sizeToRead;
+    uint64_t bufferPos = 0;
+    const uint64_t MaxValue = (uint64_t)(size_t)-1;
+    while(remainingSize >= MaxValue) {
+        uint8_t *target = (uint8_t *)targetBuffer + bufferPos;
+        size_t size = FPL_MIN(remainingSize, MaxValue);
+        ssize_t res;
+        do {
+            res = read(posixFileHandle, target, size);
+        } while(res == -1 && errno == EINTR);
+        if(res != -1) {
+            result += res;
+        } else {
+            break;
+        }
+        remainingSize -= res;
+        bufferPos += res;
+    }
+    return(result);
 }
 
 fpl_platform_api uint32_t fplWriteFileBlock32(const fplFileHandle *fileHandle, void *sourceBuffer, const uint32_t sourceSize) {
-    uint32_t result = (uint32_t)fpl__PosixWriteFileBlock(fileHandle, sourceBuffer, sourceSize);
+    FPL__CheckArgumentNull(fileHandle, 0);
+    FPL__CheckArgumentZero(sourceSize, 0);
+    FPL__CheckArgumentNull(sourceBuffer, 0);
+    if(!fileHandle->internalHandle.posixFileHandle) {
+        FPL_ERROR(FPL__MODULE_FILES, "File handle is not opened for writing");
+        return 0;
+    }
+    int posixFileHandle = fileHandle->internalHandle.posixFileHandle;
+    ssize_t res;
+    do {
+        res = write(posixFileHandle, sourceBuffer, sourceSize);
+    } while(res == -1 && errno == EINTR);
+    uint32_t result = 0;
+    if(res != -1) {
+        result = (uint32_t)res;
+    }
     return(result);
 }
 
 fpl_platform_api uint64_t fplWriteFileBlock64(const fplFileHandle *fileHandle, void *sourceBuffer, const uint64_t sourceSize) {
-    uint64_t result = (uint64_t)fpl__PosixWriteFileBlock(fileHandle, sourceBuffer, sourceSize);
+    FPL__CheckArgumentNull(fileHandle, 0);
+    FPL__CheckArgumentZero(sourceSize, 0);
+    FPL__CheckArgumentNull(sourceBuffer, 0);
+    if(!fileHandle->internalHandle.posixFileHandle) {
+        FPL_ERROR(FPL__MODULE_FILES, "File handle is not opened for writing");
+        return 0;
+    }
+    int posixFileHandle = fileHandle->internalHandle.posixFileHandle;
+    uint64_t result = 0;
+    uint64_t remainingSize = sourceSize;
+    uint64_t bufferPos = 0;
+    const uint64_t MaxValue = (uint64_t)(size_t)-1;
+    while(remainingSize >= MaxValue) {
+        uint8_t *source = (uint8_t *) sourceBuffer + bufferPos;
+        size_t size = FPL_MIN(remainingSize, MaxValue);
+        ssize_t res;
+        do {
+            res = write(posixFileHandle, source, size);
+        } while(res == -1 && errno == EINTR);
+        if(res != -1) {
+            result += res;
+        }
+        remainingSize -= res;
+        bufferPos += res;
+    }
     return(result);
 }
 
