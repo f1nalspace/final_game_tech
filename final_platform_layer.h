@@ -133,6 +133,7 @@ SOFTWARE.
     - Fixed: [X11] Fixed icon loading was not working at all
     - Fixed: [POSIX] fplWriteFileBlock64 was not properly implemented
     - Fixed: [POSIX] fplReadFileBlock64 was not properly implemented
+    - Changed: All size_t file functions does now a sizeof(size_t) check to properly use either the 64 or the 32 bit version
 
     ## v0.9.0.0 beta:
 	- Changed: fplKey_Enter renamed to fplKey_Return
@@ -7616,51 +7617,51 @@ fpl_common_api fplThreadState fplGetThreadState(fplThreadHandle *thread) {
 #define FPL__COMMON_FILES_DEFINED
 
 fpl_common_api size_t fplReadFileBlock(const fplFileHandle *fileHandle, const size_t sizeToRead, void *targetBuffer, const size_t maxTargetBufferSize) {
-#if defined(FPL_CPU_64BIT)
-	return fplReadFileBlock64(fileHandle, sizeToRead, targetBuffer, maxTargetBufferSize);
-#else
-	return fplReadFileBlock32(fileHandle, (uint32_t)sizeToRead, targetBuffer, (uint32_t)maxTargetBufferSize);
-#endif
+	if (sizeof(size_t) == sizeof(uint64_t)) {
+		return fplReadFileBlock64(fileHandle, sizeToRead, targetBuffer, maxTargetBufferSize);
+	} else {
+		return fplReadFileBlock32(fileHandle, (uint32_t) sizeToRead, targetBuffer, (uint32_t) maxTargetBufferSize);
+	}
 }
 
 fpl_common_api size_t fplWriteFileBlock(const fplFileHandle *fileHandle, void *sourceBuffer, const size_t sourceSize) {
-#if defined(FPL_CPU_64BIT)
-	return fplWriteFileBlock64(fileHandle, sourceBuffer, sourceSize);
-#else
-	return fplWriteFileBlock32(fileHandle, sourceBuffer, (uint32_t)sourceSize);
-#endif
+	if (sizeof(size_t) == sizeof(uint64_t)) {
+		return fplWriteFileBlock64(fileHandle, sourceBuffer, sourceSize);
+	} else {
+		return fplWriteFileBlock32(fileHandle, sourceBuffer, (uint32_t) sourceSize);
+	}
 }
 
 fpl_common_api size_t fplSetFilePosition(const fplFileHandle *fileHandle, const intptr_t position, const fplFilePositionMode mode) {
-#if defined(FPL_CPU_64BIT)
-	return fplSetFilePosition64(fileHandle, position, mode);
-#else
-	return fplSetFilePosition32(fileHandle, (int32_t)position, mode);
-#endif
+	if (sizeof(size_t) == sizeof(uint64_t)) {
+		return fplSetFilePosition64(fileHandle, position, mode);
+	} else {
+		return fplSetFilePosition32(fileHandle, (int32_t) position, mode);
+	}
 }
 
 fpl_common_api size_t fplGetFilePosition(const fplFileHandle *fileHandle) {
-#if defined(FPL_CPU_64BIT)
-	return fplGetFilePosition64(fileHandle);
-#else
-	return fplGetFilePosition32(fileHandle);
-#endif
+	if (sizeof(size_t) == sizeof(uint64_t)) {
+		return fplGetFilePosition64(fileHandle);
+	} else {
+		return fplGetFilePosition32(fileHandle);
+	}
 }
 
 fpl_common_api size_t fplGetFileSizeFromPath(const char *filePath) {
-#if defined(FPL_CPU_64BIT)
-	return fplGetFileSizeFromPath64(filePath);
-#else
-	return fplGetFileSizeFromPath32(filePath);
-#endif
+	if (sizeof(size_t) == sizeof(uint64_t)) {
+		return fplGetFileSizeFromPath64(filePath);
+	} else {
+		return fplGetFileSizeFromPath32(filePath);
+	}
 }
 
 fpl_common_api size_t fplGetFileSizeFromHandle(const fplFileHandle *fileHandle) {
-#if defined(FPL_CPU_64BIT)
-	return fplGetFileSizeFromHandle64(fileHandle);
-#else
-	return fplGetFileSizeFromHandle32(fileHandle);
-#endif
+	if (sizeof(size_t) == sizeof(uint64_t)) {
+		return fplGetFileSizeFromHandle64(fileHandle);
+	} else {
+		return fplGetFileSizeFromHandle32(fileHandle);
+	}
 }
 
 #endif // FPL__COMMON_FILES_DEFINED
