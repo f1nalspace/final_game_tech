@@ -129,7 +129,10 @@ SOFTWARE.
 	\page page_changelog Changelog
 	\tableofcontents
 
-## v0.9.0.0 beta:
+    ## v0.9.1.0 beta
+    - Fixed: [X11] Fixed icon loading was not working at all
+
+    ## v0.9.0.0 beta:
 	- Changed: fplKey_Enter renamed to fplKey_Return
 	- Changed: fplKey_LeftWin renamed to fplKey_LeftSuper
 	- Changed: fplKey_RightWin renamed to fplKey_RightSuper
@@ -12882,8 +12885,8 @@ fpl_internal void fpl__X11LoadWindowIcon(const fpl__X11Api *x11Api, fpl__X11Wind
 		}
 
 		// @MEMORY(final): Do not allocate memory here, use a static memory block or introduce a temporary memory arena!
-		uint32_t *data = (uint32_t *)fplMemoryAllocate(sizeof(uint32_t) * targetSize);
-		uint32_t *target = data;
+		long *data = (long *)fplMemoryAllocate(sizeof(long) * targetSize);
+		long *target = data;
 
 		for(int i = 0; i < iconSourceCount; ++i) {
 			const fplImageSource *iconSource = iconSources + i;
@@ -12892,15 +12895,7 @@ fpl_internal void fpl__X11LoadWindowIcon(const fpl__X11Api *x11Api, fpl__X11Wind
 			*target++ = (int32_t)iconSource->height;
 			const uint32_t *source = (const uint32_t *)iconSource->data;
 			for(int j = 0; j < iconSource->width * iconSource->height; ++j) {
-				// @TODO(final): Do we need to swap the byte order of the icon in X11?
-#if 0
-				* target++ = (iconSource->data[j * 4 + 0] << 16) |
-					(iconSource->data[j * 4 + 1] << 8) |
-					(iconSource->data[j * 4 + 2] << 0) |
-					(iconSource->data[j * 4 + 3] << 24);
-#else
-				*target++ = *source;
-#endif
+				*target++ = (iconSource->data[j * 4 + 0] << 16) | (iconSource->data[j * 4 + 1] << 8) | (iconSource->data[j * 4 + 2] << 0) | (iconSource->data[j * 4 + 3] << 24);
 			}
 		}
 
