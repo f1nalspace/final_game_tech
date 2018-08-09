@@ -199,7 +199,7 @@ SOFTWARE.
 	- New: [Linux] Implemented fplGetSystemLocale
 	- New: [Linux] Implemented fplGetUserLocale
 	- New: [Linux] Implemented fplGetInputLocale
-	- New: [Linux] Reading game controllers using linux joystick api (Incomplete)
+	- New: [Linux] Reading first joystick as game controller in linux
 	- New: [POSIX] Implemented fplGetFileTimestampsFromPath
 	- New: [POSIX] Implemented fplGetFileTimestampsFromHandle
 	- New: [POSIX] Implemented fplReadFileBlock64
@@ -13597,6 +13597,16 @@ fpl_internal void fpl__LinuxFreeGameControllers(fpl__LinuxGameControllersState *
 	}
 }
 
+fpl_internal_inline float fpl__LinuxJoystickProcessStickValue(const int16_t value, const int16_t deadZoneThreshold) {
+	float result = 0;
+	if(value < -deadZoneThreshold) {
+		result = (float)((value + deadZoneThreshold) / (32768.0f - deadZoneThreshold));
+	} else if(value > deadZoneThreshold) {
+		result = (float)((value - deadZoneThreshold) / (32767.0f - deadZoneThreshold));
+	}
+	return(result);
+}
+
 fpl_internal void fpl__LinuxPushGameControllerStateUpdateEvent(const struct js_event *event, fplGamepadState *padState) {
 	fplGamepadButton *buttonMappingTable[12] = FPL_ZERO_INIT;
 	buttonMappingTable[0] = &padState->actionA;
@@ -13611,13 +13621,42 @@ fpl_internal void fpl__LinuxPushGameControllerStateUpdateEvent(const struct js_e
 	buttonMappingTable[9] = &padState->leftThumb;
 	buttonMappingTable[10] = &padState->rightThumb;
 
+	const int16_t deadZoneThresholdLeftStick = 5000;
+	const int16_t deadZoneThresholdRightStick = 5000;
+
 	switch(event->type & ~JS_EVENT_INIT) {
 		case JS_EVENT_AXIS:
 		{
 			switch(event->number) {
-				// @TODO(final): Map stick left X/Y = (0, 1)
-				// @TODO(final): Map stick right X/Y = (3, 4)
-				// @TODO(final): Trigger left/right = (2, 5)
+				// Left stick
+				case 0:
+				{
+					padState->leftStickX = fpl__LinuxJoystickProcessStickValue(event->value, deadZoneThresholdLeftStick);
+				} break;
+				case 1:
+				{
+					padState->leftStickY = fpl__LinuxJoystickProcessStickValue(-event->value, deadZoneThresholdLeftStick);
+				} break;
+
+				// Right stick
+				case 3:
+				{
+					padState->rightStickX = fpl__LinuxJoystickProcessStickValue(event->value, deadZoneThresholdRightStick);
+				} break;
+				case 4:
+				{
+					padState->rightStickY = fpl__LinuxJoystickProcessStickValue(-event->value, deadZoneThresholdRightStick);
+				} break;
+
+				// Left/right trigger
+				case 2:
+				{
+					padState->leftTrigger = (float)((event->value + 32768) >> 8) / 255.0f;
+				} break;
+				case 5:
+				{
+					padState->rightTrigger = (float)((event->value + 32768) >> 8) / 255.0f;
+				} break;
 
 				// DPad X-Axis
 				case 6:
