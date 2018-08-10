@@ -120,7 +120,7 @@ SOFTWARE.
 
 /*!
 	\file final_platform_layer.h
-	\version v0.9.1.0 beta
+	\version v0.9.0.1 beta
 	\author Torsten Spaete
 	\brief Final Platform Layer (FPL) - A C99 Single-Header-File Platform Abstraction Library
 */
@@ -129,11 +129,10 @@ SOFTWARE.
 	\page page_changelog Changelog
 	\tableofcontents
 
-    ## v0.9.1.0 beta
+    ## v0.9.0.1 beta
     - Fixed: [X11] Fixed icon loading was not working at all
     - Fixed: [POSIX] fplWriteFileBlock64 was not properly implemented
     - Fixed: [POSIX] fplReadFileBlock64 was not properly implemented
-    - Changed: All size_t file functions does now a sizeof(size_t) check to properly use either the 64 or the 32 bit version
 
     ## v0.9.0.0 beta:
 	- Changed: fplKey_Enter renamed to fplKey_Return
