@@ -18,6 +18,9 @@ Author:
 	Torsten Spaete
 
 Changelog:
+	## v0.5.2
+	- Correction for api change in fplPlatformInit
+
 	## v0.5.1
 	- Changed: Moved progressbar to the top and made it smaller
     - Fixed: 16x16 icon was always loading 32x32
@@ -1729,7 +1732,7 @@ int main(int argc, char **argv) {
 		settings.window.icons[1].type = fplImageType_RGBA;
 	}
 
-	if(fplPlatformInit(fplInitFlags_Video, &settings) == fplInitResultType_Success) {
+	if(fplPlatformInit(fplInitFlags_Video, &settings)) {
 		if(fglLoadOpenGL(true) && Init(&state)) {
 			fplKey activeKey = fplKey_None;
 			uint64_t activeKeyStart = 0;

@@ -1052,8 +1052,7 @@ static void SetButtonStateFromModifier(InputState *input, const fplKeyboardState
 int main(int argc, char *argv[]) {
 	fplSettings settings = fplMakeDefaultSettings();
 	fplCopyAnsiString("FPL Input Demo", settings.window.windowTitle, FPL_ARRAYCOUNT(settings.window.windowTitle));
-	fplInitResultType initRes = fplPlatformInit(fplInitFlags_All, &settings);
-	if (initRes == fplInitResultType_Success) {
+	if (fplPlatformInit(fplInitFlags_All, &settings)) {
 		if (fglLoadOpenGL(true)) {
 			AppState *appState = (AppState *)fplMemoryAllocate(sizeof(AppState));
 			InputState input = {};

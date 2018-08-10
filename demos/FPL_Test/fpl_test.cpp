@@ -14,9 +14,12 @@ Author:
 	Torsten Spaete
 
 Changelog:
-    ## 2018-08-09
-    - Correction for api change in fplMemoryInfo
-    - Added a new more strings tests
+	## 2018-08-10
+	- Correction for api change in fplPlatformInit
+
+	## 2018-08-09
+	- Correction for api change in fplMemoryInfo
+	- Added a new more strings tests
 
 	## 2018-06-29
 	- Added condition-variable tests
@@ -52,8 +55,8 @@ static void TestColdInit() {
 	{
 		size_t errorCount = fplGetErrorCount();
 		ft::AssertSizeEquals(0, errorCount);
-		fplInitResultType result = fplPlatformInit(fplInitFlags_None, nullptr);
-		FT_ASSERT(result == fplInitResultType_Success);
+		bool inited = fplPlatformInit(fplInitFlags_None, nullptr);
+		FT_ASSERT(inited && (fplGetPlatformResult() == fplPlatformResultType_Success));
 		const char *errorStr = fplGetLastError();
 		ft::AssertStringEquals("", errorStr);
 		fplPlatformRelease();
@@ -64,8 +67,8 @@ static void TestInit() {
 	ft::Msg("Test InitPlatform with All init flags\n");
 	{
 		fplClearErrors();
-		fplInitResultType result = fplPlatformInit(fplInitFlags_All, nullptr);
-		FT_ASSERT(result == fplInitResultType_Success);
+		bool inited = fplPlatformInit(fplInitFlags_All, nullptr);
+		FT_ASSERT(inited && (fplGetPlatformResult() == fplPlatformResultType_Success));
 		const char *errorStr = fplGetLastError();
 		ft::AssertStringEquals("", errorStr);
 		fplPlatformRelease();
@@ -73,8 +76,8 @@ static void TestInit() {
 	ft::Msg("Test InitPlatform with None init flags\n");
 	{
 		fplClearErrors();
-		fplInitResultType result = fplPlatformInit(fplInitFlags_None, fpl_null);
-		FT_ASSERT(result == fplInitResultType_Success);
+		bool inited = fplPlatformInit(fplInitFlags_None, fpl_null);
+		FT_ASSERT(inited && (fplGetPlatformResult() == fplPlatformResultType_Success));
 		const fplSettings *settings = fplGetCurrentSettings();
 		FT_IS_NOT_NULL(settings);
 		const char *errorStr = fplGetLastError();
@@ -104,11 +107,11 @@ static void TestOSInfos() {
 	{
 		fplOSInfos osInfos = {};
 		bool r = fplGetOperatingSystemInfos(&osInfos);
-		//FT_IS_TRUE(r);
-		fplConsoleFormatOut("System Name: %s\n", osInfos.systemName);
-		fplConsoleFormatOut("System Version: %d.%d.%d.%d\n", osInfos.systemVersion.major, osInfos.systemVersion.minor, osInfos.systemVersion.fix, osInfos.systemVersion.build);
-		fplConsoleFormatOut("Kernel Name: %s\n", osInfos.kernelName);
-		fplConsoleFormatOut("Kernel Version: %d.%d.%d.%d\n", osInfos.kernelVersion.major, osInfos.kernelVersion.minor, osInfos.kernelVersion.fix, osInfos.kernelVersion.build);
+		FT_IS_TRUE(r);
+		fplConsoleFormatOut("OS Name: %s\n", osInfos.osName);
+		fplConsoleFormatOut("OS Version: %d.%d.%d.%d\n", osInfos.osVersion.major, osInfos.osVersion.minor, osInfos.osVersion.fix, osInfos.osVersion.build);
+		fplConsoleFormatOut("Distribution Name: %s\n", osInfos.distributionName);
+		fplConsoleFormatOut("Distribution Version: %d.%d.%d.%d\n", osInfos.distributionVersion.major, osInfos.distributionVersion.minor, osInfos.distributionVersion.fix, osInfos.distributionVersion.build);
 	}
 	ft::Msg("Get User Infos\n");
 	{
