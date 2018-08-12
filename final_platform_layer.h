@@ -141,6 +141,8 @@ SOFTWARE.
 	- Changed: [POSIX] Moved fplGetOperatingSystemInfos from Linux into the POSIX section
 	- Changed: [POSIX] Moved fplGetHomePath from Linux into the POSIX section
 	- Changed: [POSIX] Made fplGetExecutableFilePath Unix/Linux complaint and moved it into the POSIX section
+	- Changed: Disable compile error when unix or bsd is detected
+	- Fixed [POSIX]: Removed alloca.h include when nor win32 or linux is detected
 	- New: Added function fplGetPlatformResult()
 
 	## v0.9.0.1 beta
@@ -1082,7 +1084,6 @@ SOFTWARE.
 #	define FPL_SUBPLATFORM_X11
 #	define FPL_SUBPLATFORM_STD_STRINGS
 #	define FPL_SUBPLATFORM_STD_CONSOLE
-#	error "Not implemented yet!"
 #elif defined(unix) || defined(__unix) || defined(__unix__)
 #	define FPL_PLATFORM_UNIX
 #	define FPL_PLATFORM_NAME "Unix"
@@ -1090,7 +1091,6 @@ SOFTWARE.
 #	define FPL_SUBPLATFORM_X11
 #	define FPL_SUBPLATFORM_STD_STRINGS
 #	define FPL_SUBPLATFORM_STD_CONSOLE
-#	error "Not implemented yet!"
 #else
 #	error "This platform is not supported!"
 #endif // FPL_PLATFORM
@@ -1627,8 +1627,10 @@ FPL_STATICASSERT(sizeof(size_t) == sizeof(uint32_t));
 #	include <malloc.h>
 #	define FPL_STACKALLOCATE(size) _alloca(size)
 #else
-	//! Manually allocate memory on the stack (Others)
-#	include <alloca.h>
+#	if defined(FPL_PLATFORM_LINUX)
+#		include <alloca.h>
+#	endif
+	//! Manually allocate memory on the stack (Non-Win32)
 #	define FPL_STACKALLOCATE(size) alloca(size)
 #endif
 
@@ -6076,6 +6078,7 @@ typedef struct fpl__Win32WindowState {
 //
 // ############################################################################
 #if defined(FPL_SUBPLATFORM_POSIX)
+#	define __USE_LARGEFILE64
 #	include <sys/types.h> // data types
 #	include <sys/mman.h> // mmap, munmap
 #	include <sys/stat.h> // mkdir
