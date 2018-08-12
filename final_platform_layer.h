@@ -6102,7 +6102,7 @@ typedef struct fpl__Win32WindowState {
 #if defined(FPL_PLATFORM_LINUX)
 #	define fpl__lseek64 lseek64
 #	define fpl__off64_t off64_t
-#else defined(_POSIX_V6_LPBIG_OFFBIG) || defined(_POSIX_V6_LP64_OFF64) || defined(_POSIX_V6_ILP32_OFFBIG)
+#elif defined(_POSIX_V6_LPBIG_OFFBIG) || defined(_POSIX_V6_LP64_OFF64) || defined(_POSIX_V6_ILP32_OFFBIG)
 #	define fpl__lseek64 lseek
 #	define fpl__off64_t off_t
 #else
