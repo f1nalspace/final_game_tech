@@ -1166,6 +1166,10 @@ SOFTWARE.
 #   endif
 #endif
 
+#if defined(FPL_PLATFORM_UNIX)
+#define _LARGEFILE64_SOURCE 1
+#endif
+
 //
 // Storage class identifiers
 //
@@ -6080,7 +6084,6 @@ typedef struct fpl__Win32WindowState {
 //
 // ############################################################################
 #if defined(FPL_SUBPLATFORM_POSIX)
-#	define _LARGEFILE64_SOURCE 1
 #	include <sys/types.h> // data types
 #	include <sys/mman.h> // mmap, munmap
 #	include <sys/stat.h> // mkdir
