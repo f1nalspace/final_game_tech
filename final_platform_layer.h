@@ -6099,6 +6099,16 @@ typedef struct fpl__Win32WindowState {
 #   include <ctype.h> // isspace
 #   include <pwd.h> // getpwuid
 
+#if defined(FPL_PLATFORM_LINUX)
+#	define fpl__lseek64 lseek64
+#	define fpl__off64_t off64_t
+#else defined(_POSIX_V6_LPBIG_OFFBIG) || defined(_POSIX_V6_LP64_OFF64) || defined(_POSIX_V6_ILP32_OFFBIG)
+#	define fpl__lseek64 lseek
+#	define fpl__off64_t off_t
+#else
+#	error "off_t is not allowed to be non 64-bit!"
+#endif
+
 // Little macro to not write 5 lines of code all the time
 #define FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(mod, libHandle, libName, target, type, name) \
 	target = (type *)dlsym(libHandle, name); \
@@ -12275,7 +12285,7 @@ fpl_platform_api uint64_t fplSetFilePosition64(const fplFileHandle *fileHandle, 
 		} else if(mode == fplFilePositionMode_End) {
 			whence = SEEK_END;
 		}
-		off64_t r = lseek64(posixFileHandle, position, whence);
+		fpl__off64_t r = fpl__lseek64(posixFileHandle, position, whence);
 		result = (uint64_t)r;
 	}
 	return(result);
@@ -12299,9 +12309,9 @@ fpl_platform_api uint64_t fplGetFilePosition64(const fplFileHandle *fileHandle) 
 	uint64_t result = 0;
 	if(fileHandle != fpl_null && fileHandle->internalHandle.posixFileHandle) {
 		int posixFileHandle = fileHandle->internalHandle.posixFileHandle;
-		off64_t res = lseek64(posixFileHandle, 0, SEEK_CUR);
-		if(res != -1) {
-			result = (uint64_t)res;
+		fpl__off64_t r = fpl__lseek64(posixFileHandle, 0, SEEK_CUR);
+		if(r != -1) {
+			result = (uint64_t)r;
 		}
 	}
 	return(result);
@@ -12341,9 +12351,9 @@ fpl_platform_api uint64_t fplGetFileSizeFromPath64(const char *filePath) {
 			posixFileHandle = open(filePath, O_RDONLY);
 		} while(posixFileHandle == -1 && errno == EINTR);
 		if(posixFileHandle != -1) {
-			off64_t res = lseek64(posixFileHandle, 0, SEEK_END);
-			if(res != -1) {
-				result = (uint64_t)res;
+			fpl__off64_t r = fpl__lseek64(posixFileHandle, 0, SEEK_END);
+			if(r != -1) {
+				result = (uint64_t)r;
 			}
 			close(posixFileHandle);
 		}
@@ -12368,10 +12378,10 @@ fpl_platform_api uint64_t fplGetFileSizeFromHandle64(const fplFileHandle *fileHa
 	uint64_t result = 0;
 	if(fileHandle != fpl_null && fileHandle->internalHandle.posixFileHandle) {
 		int posixFileHandle = fileHandle->internalHandle.posixFileHandle;
-		off64_t curPos = lseek64(posixFileHandle, 0, SEEK_CUR);
+		fpl__off64_t curPos = fpl__lseek64(posixFileHandle, 0, SEEK_CUR);
 		if(curPos != -1) {
-			result = (uint64_t)lseek(posixFileHandle, 0, SEEK_END);
-			lseek64(posixFileHandle, curPos, SEEK_SET);
+			result = (uint64_t)fpl__lseek64(posixFileHandle, 0, SEEK_END);
+			fpl__lseek64(posixFileHandle, curPos, SEEK_SET);
 		}
 	}
 	return(result);
