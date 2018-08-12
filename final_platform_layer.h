@@ -144,6 +144,7 @@ SOFTWARE.
 	- Changed: Disable compile error when unix or bsd is detected
 	- Fixed [POSIX]: Removed alloca.h include when nor win32 or linux is detected
 	- New: Added function fplGetPlatformResult()
+	- New: [POSIX] Added __USE_LARGEFILE64 before including sys/types.h
 
 	## v0.9.0.1 beta
 	- Changed: Renamed fields "kernel*" to "os*" in fplOSInfos
