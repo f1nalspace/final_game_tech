@@ -6102,11 +6102,9 @@ typedef struct fpl__Win32WindowState {
 #if defined(FPL_PLATFORM_LINUX)
 #	define fpl__lseek64 lseek64
 #	define fpl__off64_t off64_t
-#elif defined(_POSIX_V6_LPBIG_OFFBIG) || defined(_POSIX_V6_LP64_OFF64) || defined(_POSIX_V6_ILP32_OFFBIG)
+#else
 #	define fpl__lseek64 lseek
 #	define fpl__off64_t off_t
-#else
-#	error "off_t is not allowed to be non 64-bit!"
 #endif
 
 // Little macro to not write 5 lines of code all the time
