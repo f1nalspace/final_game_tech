@@ -1167,7 +1167,8 @@ SOFTWARE.
 #endif
 
 #if defined(FPL_PLATFORM_UNIX)
-#define _LARGEFILE64_SOURCE 1
+#	define _FILE_OFFSET_BITS 64 
+#	define _LARGEFILE64_SOURCE 1
 #endif
 
 //
