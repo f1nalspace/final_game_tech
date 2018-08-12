@@ -142,7 +142,8 @@ SOFTWARE.
 	- Changed: [POSIX] Moved fplGetHomePath from Linux into the POSIX section
 	- Changed: [POSIX] Made fplGetExecutableFilePath Unix/Linux complaint and moved it into the POSIX section
 	- Changed: Disable compile error when unix or bsd is detected
-	- Fixed [POSIX]: Removed alloca.h include when nor win32 or linux is detected
+	- Fixed: [POSIX]: Removed alloca.h include when nor win32 or linux is detected
+	- Fixed: [POSIX]: Fixed typo in fplGetRunningArchitecture
 	- New: Added function fplGetPlatformResult()
 	- New: [POSIX] Added __USE_LARGEFILE64 before including sys/types.h
 
@@ -12681,7 +12682,7 @@ fpl_platform_api fplArchType fplGetRunningArchitecture() {
 			result = fplArchType_x86_64;
 		} else if(fplIsStringEqual("x86", machineName) || fplIsStringEqual("i386", machineName) || fplIsStringEqual("i686", machineName)) {
 			result = fplArchType_x86;
-		} else if(fplIsStringEqual("ia64", machineName) || fplIStringEqual("i686-64", machineName)) {
+		} else if(fplIsStringEqual("ia64", machineName) || fplIsStringEqual("i686-64", machineName)) {
 			result = fplArchType_x64;
 		} else {
 			if(fplIsStringEqualLen("armv", 4, machineName, 4)) {
