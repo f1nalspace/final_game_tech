@@ -6080,7 +6080,7 @@ typedef struct fpl__Win32WindowState {
 //
 // ############################################################################
 #if defined(FPL_SUBPLATFORM_POSIX)
-#	define __USE_LARGEFILE64
+#	define _LARGEFILE64_SOURCE 1
 #	include <sys/types.h> // data types
 #	include <sys/mman.h> // mmap, munmap
 #	include <sys/stat.h> // mkdir
