@@ -135,16 +135,27 @@ SOFTWARE.
 	- Changed: Renamed fplPlatformResultType to fplPlatformResultType
 	- Changed: fplPlatformInit returns now bool instead fplPlatformResultType
 	- Changed: Changed all comment prefix from \ to @, so it matches java-doc style
+	- Changed: Disable compile error when unix or bsd is detected
+	- Changed: Renamed fplGetKeyboardState to fplPollKeyboardState
+	- Changed: Renamed fplGetGamepadStates to fplPollGamepadStates
+	- Removed: Removed obsolete field skipRepeatKeys in fplInputSettings
+	- New: Added function fplGetPlatformResult()
+	- New: Added struct fplMouseState
+	- New: Added function fplPollMouseState()
+	- New: Added field disabledEvents to fplInputSettings
+
 	- Changed: [POSIX] Proper detection of all architecturess (x86, x86_64, x64, arm32, arm64)
 	- Changed: [POSIX] Moved fplGetCurrentUsername from the linux-section into the posix-section
 	- Changed: [POSIX] Moved fplGetProcessorCoreCount from Linux into the POSIX section
 	- Changed: [POSIX] Moved fplGetOperatingSystemInfos from Linux into the POSIX section
 	- Changed: [POSIX] Moved fplGetHomePath from Linux into the POSIX section
 	- Changed: [POSIX] Made fplGetExecutableFilePath Unix/Linux complaint and moved it into the POSIX section
-	- Changed: Disable compile error when unix or bsd is detected
 	- Fixed: [POSIX]: Removed alloca.h include when nor win32 or linux is detected
 	- Fixed: [POSIX]: Fixed typo in fplGetRunningArchitecture
-	- New: Added function fplGetPlatformResult()
+	- Fixed: [Win32] PeekMessage was not using our windowHandle at all
+	- New: [Win32]: Use SetCapture/ReleaseCapture for mouse down/up events
+	- New: [Win32]: Implemented fplPollMouseState()
+	- New: [Win32] Disable keyboard/mouse/gamepad events when fplInputSettings.disabledEvents is enabled
 	- New: [POSIX] Added __USE_LARGEFILE64 before including sys/types.h
 
 	## v0.9.0.1 beta
@@ -977,25 +988,25 @@ SOFTWARE.
 	@section section_todo_inprogress In progress
 
 	- Input
-		- Mapping OEM 1-8 Keys (X11)
-		- Mouse state polling
+		- Mouse state polling (X11, XQueryPointer)
 
 	- Window
+		- Change/Get Minimize/Maximize/Restore (Win32)
+		- Change/Get Minimize/Maximize/Restore (X11)
 		- Toggle Resizable (X11)
 		- Toggle Decorated (X11)
 		- Toggle Floating (X11)
 		- Show/Hide Cursor (X11)
 		- Clipboard Get/Set (X11)
 
+	@section section_todo_planned Planned
+
 	- Application
 		- Support icon image in gnome (X11)
 		- Support icon title in gnome (X11)
 
-	@section section_todo_planned Planned
-
-	- Window
-		- Change/Get Minimize/Maximize/Restore (X11)
-		- Change/Get Minimize/Maximize/Restore (Win32)
+	- Input
+		- Mapping OEM 1-8 Keys (X11)
 
 	- Networking (UDP, TCP)
 		- [Win32] WinSock
@@ -2541,8 +2552,8 @@ fpl_common_api void fplSetDefaultWindowSettings(fplWindowSettings *window);
 typedef struct fplInputSettings {
 	//! Frequency in ms for detecting new or removed controllers (Default: 200)
 	uint32_t controllerDetectionFrequency;
-	//! Skip repeated key presses and just push when button state was different
-	fpl_b32 skipKeyRepeats;
+	//! Disable input events entirely (Default: false)
+	fpl_b32 disabledEvents;
 } fplInputSettings;
 
 /**
@@ -3374,12 +3385,14 @@ fpl_common_api void fplMemoryCopy(const void *sourceMem, const size_t sourceSize
   * @return Returns a pointer to the new allocated memory.
   * @warning Alignment is not ensured here, the OS decides how to handle this. If you want to force a specific alignment use @ref fplMemoryAlignedAllocate() instead.
   * @note The memory is guaranteed to be initialized to zero.
+  * @note This function can be called without the platform to be initialized.
   */
 fpl_platform_api void *fplMemoryAllocate(const size_t size);
 /**
   * @brief Releases the memory allocated from the operating system.
   * @param ptr The pointer to the allocated memory
   * @warning This should never be called with a aligned memory pointer! For freeing aligned memory, use @ref fplMemoryAlignedFree() instead.
+  * @note This function can be called without the platform to be initialized.
   */
 fpl_platform_api void fplMemoryFree(void *ptr);
 /**
@@ -3388,12 +3401,14 @@ fpl_platform_api void fplMemoryFree(void *ptr);
   * @param alignment The alignment in bytes (Must be a power-of-two!)
   * @return Returns the pointer to the new allocated aligned memory.
   * @note The memory is guaranteed to be initialized to zero.
+  * @note This function can be called without the platform to be initialized.
   */
 fpl_common_api void *fplMemoryAlignedAllocate(const size_t size, const size_t alignment);
 /**
   * @brief Releases the aligned memory allocated from the operating system.
   * @param ptr The pointer to the aligned allocated memory
   * @warning This should never be called with a not-aligned memory pointer! For freeing not-aligned memory, use @ref fplMemoryFree() instead.
+  * @note This function can be called without the platform to be initialized.
   */
 fpl_common_api void fplMemoryAlignedFree(void *ptr);
 
@@ -4419,6 +4434,8 @@ typedef enum fplMouseButtonType {
 	fplMouseButtonType_Right = 1,
 	//! Middle mouse button
 	fplMouseButtonType_Middle = 2,
+	//! Max mouse button count
+	fplMouseButtonType_MaxCount,
 } fplMouseButtonType;
 
 //! A structure containing mouse event data (Type, Button, Position, etc.)
@@ -4573,7 +4590,8 @@ fpl_common_api void fplClearEvents();
 fpl_platform_api bool fplPushEvent();
 /**
   * @brief Updates the game controller states and detects new and disconnected devices.
-  * @note Use this only if dont use @ref fplWindowUpdate() and want to handle the events more granular!
+  * @note Use this only in combination with @ref fplWindowUpdate() or @ref fplPushEvent() .
+  * @attention This will do nothing when event handling for input are disabled!
   */
 fpl_platform_api void fplUpdateGameControllers();
 
@@ -4585,33 +4603,53 @@ fpl_platform_api void fplUpdateGameControllers();
   * @{
   */
 
+//! Max number of keyboard states
+#define FPL_MAX_KEYBOARD_STATE_COUNT 256
+
 //! A struct containing the full keyboard state
 typedef struct fplKeyboardState {
 	//! Modifier flags
 	fplKeyboardModifierFlags modifiers;
 	//! Key states
-	fpl_b32 keyStatesRaw[256];
+	fpl_b32 keyStatesRaw[FPL_MAX_KEYBOARD_STATE_COUNT];
 	//! Mapped button states
-	fplButtonState buttonStatesMapped[256];
+	fplButtonState buttonStatesMapped[FPL_MAX_KEYBOARD_STATE_COUNT];
 } fplKeyboardState;
 
-//! A struct containing the game controller device states
+//! Max number of gamepad states
+#define FPL_MAX_GAMEPAD_STATE_COUNT 4
+
+//! A struct containing the full state for all gamepad devices
 typedef struct fplGamepadStates {
 	//! Device states
-	fplGamepadState deviceStates[4];
+	fplGamepadState deviceStates[FPL_MAX_GAMEPAD_STATE_COUNT];
 } fplGamepadStates;
 
-/**
-  * @brief Gets current keyboard state and writes it out into the given structure.
-  * @param outState The pointer to the @ref fplKeyboardState structure
-  */
-fpl_platform_api bool fplGetKeyboardState(fplKeyboardState *outState);
+//! A struct containing the full mouse state
+typedef struct fplMouseState {
+	//! X-Position in pixels
+	int32_t x;
+	//! Y-Position in pixels
+	int32_t y;
+	//! Mouse button states mapped to @ref fplMouseButtonType
+	fplButtonState buttonStates[fplMouseButtonType_MaxCount];
+} fplMouseState;
 
 /**
-  * @brief Gets current gamepad states and writes it out into the given structure.
+  * @brief Polls the current keyboard state and writes it out into the output structure.
+  * @param outState The pointer to the @ref fplKeyboardState structure
+  */
+fpl_platform_api bool fplPollKeyboardState(fplKeyboardState *outState);
+/**
+  * @brief Polls the current gamepad states and writes it out into the output structure.
   * @param outStates The pointer to the @ref fplGamepadStates structure
   */
-fpl_platform_api bool fplGetGamepadStates(fplGamepadStates *outStates);
+fpl_platform_api bool fplPollGamepadStates(fplGamepadStates *outStates);
+/**
+  * @brief Polls the current mouse state and writes it out into the output structure.
+  * @param outState The pointer to the @ref fplMouseState structure
+  */
+fpl_platform_api bool fplPollMouseState(fplMouseState *outState);
 
 /*\}*/
 
@@ -5295,6 +5333,8 @@ fpl_common_api void fplDebugFormatOut(const char *format, ...) {
 
 // One cacheline worth of padding
 #define FPL__ARBITARY_PADDING 64
+// Small padding to split sections in memory blocks
+#define FPL__MEMORY_PADDING sizeof(uintptr_t)
 
 fpl_globalvar struct fpl__PlatformAppState *fpl__global__AppState = fpl_null;
 
@@ -5684,6 +5724,12 @@ typedef FPL__FUNC_WIN32_PostQuitMessage(fpl__win32_func_PostQuitMessage);
 typedef FPL__FUNC_WIN32_CreateIconIndirect(fpl__win32_func_CreateIconIndirect);
 #define FPL__FUNC_WIN32_GetKeyboardLayout(name) HKL WINAPI name(DWORD idThread)
 typedef FPL__FUNC_WIN32_GetKeyboardLayout(fpl__win32_func_GetKeyboardLayout);
+#define FPL__FUNC_WIN32_SetCapture(name) HWND WINAPI name(HWND hWnd)
+typedef FPL__FUNC_WIN32_SetCapture(fpl__win32_func_SetCapture);
+#define FPL__FUNC_WIN32_ReleaseCapture(name) BOOL WINAPI name(VOID)
+typedef FPL__FUNC_WIN32_ReleaseCapture(fpl__win32_func_ReleaseCapture);
+#define FPL__FUNC_WIN32_ScreenToClient(name) BOOL WINAPI name(HWND hWnd, LPPOINT lpPoint)
+typedef FPL__FUNC_WIN32_ScreenToClient(fpl__win32_func_ScreenToClient);
 
 // OLE32
 #define FPL__FUNC_WIN32_CoInitializeEx(name) HRESULT WINAPI name(LPVOID pvReserved, DWORD  dwCoInit)
@@ -5797,6 +5843,9 @@ typedef struct fpl__Win32UserApi {
 	fpl__win32_func_CreateIconIndirect *CreateIconIndirect;
 	fpl__win32_func_GetKeyboardLayout *GetKeyboardLayout;
 	fpl__win32_func_GetKeyState *GetKeyState;
+	fpl__win32_func_SetCapture *SetCapture;
+	fpl__win32_func_ReleaseCapture *ReleaseCapture;
+	fpl__win32_func_ScreenToClient *ScreenToClient;
 } fpl__Win32UserApi;
 
 typedef struct fpl__Win32OleApi {
@@ -5942,6 +5991,9 @@ fpl_internal bool fpl__Win32LoadApi(fpl__Win32Api *wapi) {
 		FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(FPL__MODULE_WIN32, library, userLibraryName, wapi->user.CreateIconIndirect, fpl__win32_func_CreateIconIndirect, "CreateIconIndirect");
 		FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(FPL__MODULE_WIN32, library, userLibraryName, wapi->user.GetKeyboardLayout, fpl__win32_func_GetKeyboardLayout, "GetKeyboardLayout");
 		FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(FPL__MODULE_WIN32, library, userLibraryName, wapi->user.GetKeyState, fpl__win32_func_GetKeyState, "GetKeyState");
+		FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(FPL__MODULE_WIN32, library, userLibraryName, wapi->user.SetCapture, fpl__win32_func_SetCapture, "SetCapture");
+		FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(FPL__MODULE_WIN32, library, userLibraryName, wapi->user.ReleaseCapture, fpl__win32_func_ReleaseCapture, "ReleaseCapture");
+		FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(FPL__MODULE_WIN32, library, userLibraryName, wapi->user.ScreenToClient, fpl__win32_func_ScreenToClient, "ScreenToClient");
 	}
 
 	// GDI32
@@ -7433,8 +7485,8 @@ fpl_common_api void *fplMemoryAlignedAllocate(const size_t size, const size_t al
 		FPL_ERROR(FPL__MODULE_MEMORY, "Alignment parameter '%zu' must be a power of two", alignment);
 		return fpl_null;
 	}
-	// Allocate empty memory to hold a size of a pointer + the actual size + alignment padding 
-	size_t newSize = sizeof(void *) + size + (alignment << 1);
+	// Allocate empty memory to hold a size of a pointer + alignment padding + the actual data
+	size_t newSize = sizeof(void *) + (alignment << 1) + size;
 	void *basePtr = fplMemoryAllocate(newSize);
 	// The resulting address starts after the stored base pointer
 	void *alignedPtr = (void *)((uint8_t *)basePtr + sizeof(void *));
@@ -8278,7 +8330,7 @@ fpl_internal void fpl__Win32XInputGamepadToGamepadState(const XINPUT_GAMEPAD *pa
 		outState->rightShoulder.isDown = true;
 }
 
-fpl_internal void fpl__Win32PollControllers(const fplSettings *settings, const fpl__Win32InitState *initState, fpl__Win32XInputState *xinputState) {
+fpl_internal void fpl__Win32PollGameControllers(const fplSettings *settings, const fpl__Win32InitState *initState, fpl__Win32XInputState *xinputState) {
 	FPL_ASSERT(settings != fpl_null);
 	FPL_ASSERT(xinputState != fpl_null);
 	if(xinputState->xinputApi.xInputGetState != fpl_null) {
@@ -8654,6 +8706,11 @@ LRESULT CALLBACK fpl__Win32MessageProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 				buttonState = fplButtonState_Press;
 			} else {
 				buttonState = fplButtonState_Release;
+			}
+			if(buttonState == fplButtonState_Press) {
+				wapi->user.SetCapture(hwnd);
+			} else {
+				wapi->user.ReleaseCapture();
 			}
 			fplMouseButtonType mouseButton;
 			if(msg == WM_LBUTTONDOWN || msg == WM_LBUTTONUP) {
@@ -11090,12 +11147,23 @@ fpl_platform_api void fplSetWindowCursorEnabled(const bool value) {
 	windowState->isCursorActive = value;
 }
 
+fpl_internal void fpl__Win32FlushKeyboardAndMouseEvents(HWND windowHandle) {
+	MSG msg;
+	while(fpl__win32_PeekMessage(&msg, windowHandle, WM_KEYFIRST, WM_KEYLAST, PM_REMOVE) != 0) { ; }
+	while(fpl__win32_PeekMessage(&msg, windowHandle, WM_MOUSEFIRST, WM_MOUSELAST, PM_REMOVE) != 0) { ; }
+}
+
 fpl_platform_api bool fplPushEvent() {
 	FPL__CheckPlatform(false);
-	const fpl__Win32Api *wapi = &fpl__global__AppState->win32.winApi;
+	fpl__PlatformAppState *appState = fpl__global__AppState;
+	const fpl__Win32Api *wapi = &appState->win32.winApi;
+	HWND windowHandle = appState->window.win32.windowHandle;
 	bool result = false;
+	if(appState->currentSettings.input.disabledEvents) {
+		fpl__Win32FlushKeyboardAndMouseEvents(windowHandle);
+	}
 	MSG msg;
-	BOOL R = fpl__win32_PeekMessage(&msg, fpl_null, 0, 0, PM_REMOVE);
+	BOOL R = fpl__win32_PeekMessage(&msg, windowHandle, 0, 0, PM_REMOVE);
 	if(R == TRUE) {
 		wapi->user.TranslateMessage(&msg);
 		fpl__win32_DispatchMessage(&msg);
@@ -11107,9 +11175,11 @@ fpl_platform_api bool fplPushEvent() {
 fpl_platform_api void fplUpdateGameControllers() {
 	FPL__CheckPlatformNoRet();
 	fpl__PlatformAppState *appState = fpl__global__AppState;
-	fpl__Win32AppState *win32AppState = &appState->win32;
-	const fpl__Win32InitState *win32InitState = &fpl__global__InitState.win32;
-	fpl__Win32PollControllers(&appState->currentSettings, win32InitState, &win32AppState->xinput);
+	if(!appState->currentSettings.input.disabledEvents) {
+		fpl__Win32AppState *win32AppState = &appState->win32;
+		const fpl__Win32InitState *win32InitState = &fpl__global__InitState.win32;
+		fpl__Win32PollGameControllers(&appState->currentSettings, win32InitState, &win32AppState->xinput);
+	}
 }
 
 fpl_platform_api bool fplWindowUpdate() {
@@ -11121,10 +11191,15 @@ fpl_platform_api bool fplWindowUpdate() {
 	const fpl__Win32Api *wapi = &win32AppState->winApi;
 	bool result = false;
 	fplClearEvents();
-	fpl__Win32PollControllers(&appState->currentSettings, win32InitState, &win32AppState->xinput);
+	if(!appState->currentSettings.input.disabledEvents) {
+		fpl__Win32PollGameControllers(&appState->currentSettings, win32InitState, &win32AppState->xinput);
+	}
 	if(windowState->windowHandle != 0) {
 		MSG msg;
-		while(fpl__win32_PeekMessage(&msg, fpl_null, 0, 0, PM_REMOVE) != 0) {
+		if(appState->currentSettings.input.disabledEvents) {
+			fpl__Win32FlushKeyboardAndMouseEvents(windowState->windowHandle);
+		}
+		while(fpl__win32_PeekMessage(&msg, windowState->windowHandle, 0, 0, PM_REMOVE) != 0) {
 			wapi->user.TranslateMessage(&msg);
 			fpl__win32_DispatchMessage(&msg);
 		}
@@ -11238,7 +11313,7 @@ fpl_platform_api bool fplSetClipboardWideText(const wchar_t *wideSource) {
 	return(result);
 }
 
-fpl_platform_api bool fplGetKeyboardState(fplKeyboardState *outState) {
+fpl_platform_api bool fplPollKeyboardState(fplKeyboardState *outState) {
 	FPL__CheckArgumentNull(outState, false);
 	FPL__CheckPlatform(false);
 	const fpl__Win32AppState *appState = &fpl__global__AppState->win32;
@@ -11259,7 +11334,7 @@ fpl_platform_api bool fplGetKeyboardState(fplKeyboardState *outState) {
 	return(true);
 }
 
-fpl_platform_api bool fplGetGamepadStates(fplGamepadStates *outStates) {
+fpl_platform_api bool fplPollGamepadStates(fplGamepadStates *outStates) {
 	FPL__CheckArgumentNull(outStates, false);
 	FPL__CheckPlatform(false);
 	const fpl__Win32AppState *appState = &fpl__global__AppState->win32;
@@ -11267,8 +11342,8 @@ fpl_platform_api bool fplGetGamepadStates(fplGamepadStates *outStates) {
 	const fpl__Win32Api *wapi = &appState->winApi;
 	const fpl__Win32XInputState *xinputState = &appState->xinput;
 	FPL_ASSERT(xinputState != fpl_null);
-	FPL_CLEAR_STRUCT(outStates);
 	if(xinputState->xinputApi.xInputGetState != fpl_null) {
+		FPL_CLEAR_STRUCT(outStates);
 		for(DWORD controllerIndex = 0; controllerIndex < XUSER_MAX_COUNT; ++controllerIndex) {
 			XINPUT_STATE controllerState = FPL_ZERO_INIT;
 			if(xinputState->xinputApi.xInputGetState(controllerIndex, &controllerState) == ERROR_SUCCESS) {
@@ -11277,6 +11352,28 @@ fpl_platform_api bool fplGetGamepadStates(fplGamepadStates *outStates) {
 				fpl__Win32XInputGamepadToGamepadState(pad, gamepadState);
 			}
 		}
+		return(true);
+	}
+	return(false);
+}
+
+fpl_platform_api bool fplPollMouseState(fplMouseState *outState) {
+	FPL__CheckArgumentNull(outState, false);
+	FPL__CheckPlatform(false);
+	const fpl__Win32AppState *appState = &fpl__global__AppState->win32;
+	const fpl__Win32WindowState *windowState = &fpl__global__AppState->window.win32;
+	const fpl__Win32Api *wapi = &appState->winApi;
+	POINT p;
+	if((wapi->user.GetCursorPos(&p) == TRUE) && (wapi->user.ScreenToClient(windowState->windowHandle, &p))) {
+		FPL_CLEAR_STRUCT(outState);
+		outState->x = p.x;
+		outState->y = p.y;
+		bool leftDown = fpl__Win32IsKeyDown(wapi, VK_LBUTTON);
+		bool rightDown = fpl__Win32IsKeyDown(wapi, VK_RBUTTON);
+		bool middleDown = fpl__Win32IsKeyDown(wapi, VK_MBUTTON);
+		outState->buttonStates[fplMouseButtonType_Left] = leftDown ? fplButtonState_Press : fplButtonState_Release;
+		outState->buttonStates[fplMouseButtonType_Right] = rightDown ? fplButtonState_Press : fplButtonState_Release;
+		outState->buttonStates[fplMouseButtonType_Middle] = middleDown ? fplButtonState_Press : fplButtonState_Release;
 		return(true);
 	}
 	return(false);
@@ -12062,12 +12159,12 @@ fpl_platform_api void *fplMemoryAllocate(const size_t size) {
 	FPL__CheckArgumentZero(size, fpl_null);
 	// @NOTE(final): MAP_ANONYMOUS ensures that the memory is cleared to zero.
 	// Allocate empty memory to hold the size + some arbitary padding + the actual data
-	size_t newSize = sizeof(size_t) + FPL__ARBITARY_PADDING + size;
+	size_t newSize = sizeof(size_t) + FPL__MEMORY_PADDING + size;
 	void *basePtr = mmap(fpl_null, newSize, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
 	// Write the size at the beginning
 	*(size_t *)basePtr = newSize;
 	// The resulting address starts after the arbitary padding
-	void *result = (uint8_t *)basePtr + sizeof(size_t) + FPL__ARBITARY_PADDING;
+	void *result = (uint8_t *)basePtr + sizeof(size_t) + FPL__MEMORY_PADDING;
 	return(result);
 }
 
@@ -13540,8 +13637,10 @@ fpl_platform_api bool fplWindowUpdate() {
 
 	// Dont like this, maybe a callback would be better?
 #if defined(FPL_PLATFORM_LINUX)
-	fpl__LinuxAppState *linuxAppState = &appState->plinux;
-	fpl__LinuxPollGameControllers(&appState->currentSettings, &linuxAppState->controllersState);
+	if(!appState->currentSettings.input.disabledEvents) {
+		fpl__LinuxAppState *linuxAppState = &appState->plinux;
+		fpl__LinuxPollGameControllers(&appState->currentSettings, &linuxAppState->controllersState);
+	}
 #endif
 
 	while(x11Api->XPending(windowState->display)) {
@@ -13711,7 +13810,7 @@ fpl_platform_api bool fplSetClipboardWideText(const wchar_t *wideSource) {
 	return false;
 }
 
-fpl_platform_api bool fplGetKeyboardState(fplKeyboardState *outState) {
+fpl_platform_api bool fplPollKeyboardState(fplKeyboardState *outState) {
 	FPL__CheckPlatform(false);
 	FPL__CheckArgumentNull(outState, false);
 	fpl__PlatformAppState *appState = fpl__global__AppState;
@@ -13740,8 +13839,10 @@ fpl_platform_api void fplUpdateGameControllers() {
 	FPL__CheckPlatformNoRet();
 	fpl__PlatformAppState *appState = fpl__global__AppState;
 #if defined(FPL_PLATFORM_LINUX)
-	fpl__LinuxAppState *linuxAppState = &appState->plinux;
-	fpl__LinuxPollGameControllers(&appState->currentSettings, &linuxAppState->controllersState);
+	if(!appState->currentSettings.input.disabledEvents) {
+		fpl__LinuxAppState *linuxAppState = &appState->plinux;
+		fpl__LinuxPollGameControllers(&appState->currentSettings, &linuxAppState->controllersState);
+	}
 #endif
 }
 #endif // FPL_SUBPLATFORM_X11
@@ -13760,7 +13861,9 @@ fpl_platform_api void fplUpdateGameControllers() {
 
 fpl_internal void fpl__LinuxReleasePlatform(fpl__PlatformInitState *initState, fpl__PlatformAppState *appState) {
 #if defined(FPL_ENABLE_WINDOW)
-	fpl__LinuxFreeGameControllers(&appState->plinux.controllersState);
+	if(!appState->currentSettings.input.disabledEvents) {
+		fpl__LinuxFreeGameControllers(&appState->plinux.controllersState);
+	}
 #endif
 }
 
@@ -16475,8 +16578,8 @@ fpl_internal void fpl__StopAudioDeviceMainLoop(fpl__AudioState *audioState) {
 
 		default:
 			break;
+		}
 	}
-}
 
 fpl_internal bool fpl__ReleaseAudioDevice(fpl__AudioState *audioState) {
 	FPL_ASSERT(audioState->activeDriver > fplAudioDriverType_Auto);
@@ -16499,9 +16602,9 @@ fpl_internal bool fpl__ReleaseAudioDevice(fpl__AudioState *audioState) {
 
 		default:
 			break;
-	}
+		}
 	return (result);
-}
+	}
 
 fpl_internal bool fpl__StopAudioDevice(fpl__AudioState *audioState) {
 	FPL_ASSERT(audioState->activeDriver > fplAudioDriverType_Auto);
@@ -16524,9 +16627,9 @@ fpl_internal bool fpl__StopAudioDevice(fpl__AudioState *audioState) {
 
 		default:
 			break;
-	}
+		}
 	return (result);
-}
+	}
 
 fpl_internal fplAudioResult fpl__StartAudioDevice(fpl__AudioState *audioState) {
 	FPL_ASSERT(audioState->activeDriver > fplAudioDriverType_Auto);
@@ -16549,9 +16652,9 @@ fpl_internal fplAudioResult fpl__StartAudioDevice(fpl__AudioState *audioState) {
 
 		default:
 			break;
-	}
+		}
 	return (result);
-}
+	}
 
 fpl_internal void fpl__RunAudioDeviceMainLoop(fpl__AudioState *audioState) {
 	FPL_ASSERT(audioState->activeDriver > fplAudioDriverType_Auto);
@@ -16573,8 +16676,8 @@ fpl_internal void fpl__RunAudioDeviceMainLoop(fpl__AudioState *audioState) {
 
 		default:
 			break;
+		}
 	}
-}
 
 fpl_internal bool fpl__IsAudioDriverAsync(fplAudioDriverType audioDriver) {
 	switch(audioDriver) {
@@ -16802,19 +16905,19 @@ fpl_internal fplAudioResult fpl__InitAudio(const fplAudioSettings *audioSettings
 				initResult = fpl__AudioInitAlsa(audioSettings, &audioState->common, &audioState->alsa);
 				if(initResult != fplAudioResult_Success) {
 					fpl__AudioReleaseAlsa(&audioState->common, &audioState->alsa);
-				}
-			} break;
+			}
+		} break;
 #		endif
 
 			default:
 				break;
-		}
+	}
 		if(initResult == fplAudioResult_Success) {
 			audioState->activeDriver = propeDriver;
 			audioState->isAsyncDriver = fpl__IsAudioDriverAsync(propeDriver);
 			break;
 		}
-	}
+}
 
 	if(initResult != fplAudioResult_Success) {
 		fpl__ReleaseAudio(audioState);
@@ -16907,7 +17010,7 @@ fpl_internal void fpl__ShutdownVideo(fpl__PlatformAppState *appState, fpl__Video
 #			elif defined(FPL_SUBPLATFORM_X11)
 				fpl__X11ReleaseVideoOpenGL(&appState->x11, &appState->window.x11, &videoState->x11.opengl);
 #			endif
-			} break;
+		} break;
 #		endif // FPL_ENABLE_VIDEO_OPENGL
 
 #		if defined(FPL_ENABLE_VIDEO_SOFTWARE)
@@ -16918,13 +17021,13 @@ fpl_internal void fpl__ShutdownVideo(fpl__PlatformAppState *appState, fpl__Video
 #			elif defined(FPL_SUBPLATFORM_X11)
 				fpl__X11ReleaseVideoSoftware(&appState->x11, &appState->window.x11, &videoState->x11.software);
 #			endif
-			} break;
+	} break;
 #		endif // FPL_ENABLE_VIDEO_SOFTWARE
 
 			default:
 			{
 			} break;
-		}
+}
 
 #	if defined(FPL_ENABLE_VIDEO_SOFTWARE)
 		fplVideoBackBuffer *backbuffer = &videoState->softwareBackbuffer;
@@ -16933,7 +17036,7 @@ fpl_internal void fpl__ShutdownVideo(fpl__PlatformAppState *appState, fpl__Video
 		}
 		FPL_CLEAR_STRUCT(backbuffer);
 #	endif
-	}
+}
 }
 
 fpl_internal void fpl__ReleaseVideoState(fpl__PlatformAppState *appState, fpl__VideoState *videoState) {
@@ -16947,7 +17050,7 @@ fpl_internal void fpl__ReleaseVideoState(fpl__PlatformAppState *appState, fpl__V
 			videoState->x11.opengl.fbConfig = fpl_null;
 			fpl__X11UnloadVideoOpenGLApi(&videoState->x11.opengl.api);
 #		endif
-		}; break;
+	}; break;
 #	endif
 
 #	if defined(FPL_ENABLE_VIDEO_SOFTWARE)
@@ -16959,7 +17062,7 @@ fpl_internal void fpl__ReleaseVideoState(fpl__PlatformAppState *appState, fpl__V
 
 		default:
 			break;
-	}
+}
 	FPL_CLEAR_STRUCT(videoState);
 }
 
@@ -16975,12 +17078,12 @@ fpl_internal bool fpl__LoadVideoState(const fplVideoDriverType driver, fpl__Vide
 #		elif defined(FPL_SUBPLATFORM_X11)
 			result = fpl__X11LoadVideoOpenGLApi(&videoState->x11.opengl.api);
 #		endif
-		}; break;
+	}; break;
 #	endif
 
 		default:
 			break;
-	}
+}
 	return(result);
 }
 
@@ -17029,7 +17132,7 @@ fpl_internal bool fpl__InitVideo(const fplVideoDriverType driver, const fplVideo
 #		elif defined(FPL_SUBPLATFORM_X11)
 			videoInitResult = fpl__X11InitVideoOpenGL(&appState->x11, &appState->window.x11, videoSettings, &videoState->x11.opengl);
 #		endif
-		} break;
+	} break;
 #	endif // FPL_ENABLE_VIDEO_OPENGL
 
 #	if defined(FPL_ENABLE_VIDEO_SOFTWARE)
@@ -17040,7 +17143,7 @@ fpl_internal bool fpl__InitVideo(const fplVideoDriverType driver, const fplVideo
 #		elif defined(FPL_SUBPLATFORM_X11)
 			videoInitResult = fpl__X11InitVideoSoftware(&appState->x11, &appState->window.x11, videoSettings, &videoState->softwareBackbuffer, &videoState->x11.software);
 #		endif
-		} break;
+} break;
 #	endif // FPL_ENABLE_VIDEO_SOFTWARE
 
 		default:
@@ -17088,7 +17191,7 @@ fpl_internal FPL__FUNC_PRE_SETUP_WINDOW(fpl__PreSetupWindowDefault) {
 					result = fpl__X11SetPreWindowSetupForOpenGL(&appState->x11.api, &appState->window.x11, &videoState->x11.opengl, &outResult->x11);
 				}
 #			endif
-			} break;
+				} break;
 #		endif // FPL_ENABLE_VIDEO_OPENGL
 
 #		if defined(FPL_ENABLE_VIDEO_SOFTWARE)
@@ -17103,12 +17206,12 @@ fpl_internal FPL__FUNC_PRE_SETUP_WINDOW(fpl__PreSetupWindowDefault) {
 			default:
 			{
 			} break;
+			}
 		}
-	}
 #	endif // FPL_ENABLE_VIDEO
 
 	return(result);
-}
+	}
 
 fpl_internal FPL__FUNC_POST_SETUP_WINDOW(fpl__PostSetupWindowDefault) {
 	FPL_ASSERT(appState != fpl_null);
@@ -17145,7 +17248,7 @@ fpl_internal bool fpl__InitWindow(const fplSettings *initSettings, fplWindowSett
 #	elif defined(FPL_SUBPLATFORM_X11)
 		result = fpl__X11InitWindow(initSettings, currentWindowSettings, appState, &appState->x11, &appState->window.x11, setupCallbacks);
 #	endif
-	}
+}
 	return (result);
 }
 
@@ -17156,7 +17259,7 @@ fpl_internal void fpl__ReleaseWindow(const fpl__PlatformInitState *initState, fp
 #	elif defined(FPL_SUBPLATFORM_X11)
 		fpl__X11ReleaseWindow(&appState->x11, &appState->window.x11);
 #	endif
-	}
+}
 }
 #endif // FPL_ENABLE_WINDOW
 
@@ -17397,10 +17500,10 @@ fpl_common_api uint32_t fplGetAudioDevices(fplAudioDeviceInfo *devices, uint32_t
 
 			default:
 				break;
+			}
 		}
-	}
 	return(result);
-}
+	}
 #endif // FPL_ENABLE_AUDIO
 
 // %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -17616,13 +17719,13 @@ fpl_internal void fpl__ReleasePlatformStates(fpl__PlatformInitState *initState, 
 			FPL_LOG_DEBUG("Core", "Release POSIX Subplatform");
 			fpl__PosixReleaseSubplatform(&appState->posix);
 #		endif
-		}
+	}
 
-		// Release platform applicatiom state memory
+	// Release platform applicatiom state memory
 		FPL_LOG_DEBUG(FPL__MODULE_CORE, "Release allocated Platform App State Memory");
 		fplMemoryFree(appState);
 		fpl__global__AppState = fpl_null;
-	}
+}
 	initState->initResult = fplPlatformResultType_NotInitialized;
 	initState->isInitialized = false;
 }
@@ -17738,7 +17841,7 @@ fpl_common_api bool fplPlatformInit(const fplInitFlags initFlags, const fplSetti
 			FPL_CRITICAL("Core", "Failed initializing POSIX Subplatform!");
 			fpl__ReleasePlatformStates(initState, appState);
 			return(fpl__SetPlatformResult(fplPlatformResultType_FailedPlatform));
-		}
+	}
 		FPL_LOG_DEBUG("Core", "Successfully initialized POSIX Subplatform");
 	}
 #	endif // FPL_SUBPLATFORM_POSIX
@@ -17750,7 +17853,7 @@ fpl_common_api bool fplPlatformInit(const fplInitFlags initFlags, const fplSetti
 			FPL_CRITICAL("Core", "Failed initializing X11 Subplatform!");
 			fpl__ReleasePlatformStates(initState, appState);
 			return(fpl__SetPlatformResult(fplPlatformResultType_FailedPlatform));
-		}
+}
 		FPL_LOG_DEBUG("Core", "Successfully initialized X11 Subplatform");
 	}
 #	endif // FPL_SUBPLATFORM_X11
