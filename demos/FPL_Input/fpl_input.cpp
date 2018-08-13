@@ -1,4 +1,28 @@
-﻿#define FPL_IMPLEMENTATION
+﻿/*
+-------------------------------------------------------------------------------
+Name:
+	FPL-Demo | Input
+
+Description:
+	Application to visualize keyboard/mouse/gamepad input.
+	Used for testing event and poll based input in FPL.
+
+Requirements:
+	- C++ Compiler
+	- Final Dynamic OpenGL
+	- STB_image
+	- STB_truetype
+
+Author:
+	Torsten Spaete
+
+Changelog:
+	## 2018-08-13:
+	- Initial creation of this description block
+-------------------------------------------------------------------------------
+*/
+
+#define FPL_IMPLEMENTATION
 #include <final_platform_layer.h>
 
 #define FGL_IMPLEMENTATION
@@ -12,7 +36,7 @@
 
 // @BAD(final): CPP is such garbage!
 // It cannot handle array index initializer such as [index] = value :-(
-// So we need this nonsense just to initialize a static array -.-template <typename TIndexType, typename TValueType, size_t size>
+// So we need this nonsense just to initialize a static array -.-
 template <typename TIndexType, typename TValueType, size_t valueCount>
 class ArrayInitializer {
 protected:
@@ -32,23 +56,23 @@ public:
 	}
 };
 
-char ToLowerCase(char ch) {
-	if (ch >= 'A' && ch <= 'Z') {
+static char ToLowerCase(char ch) {
+	if(ch >= 'A' && ch <= 'Z') {
 		ch = 'a' + (ch - 'A');
 	}
 	return ch;
 }
 
 static int CompareStringIgnoreCase(const char *a, const char *b) {
-	while (true) {
-		if (!*a && !*b) {
+	while(true) {
+		if(!*a && !*b) {
 			break;
-		} else if (!*a || !*b) {
+		} else if(!*a || !*b) {
 			return -1;
 		}
 		char ca = ToLowerCase(*a);
 		char cb = ToLowerCase(*b);
-		if (ca < cb || ca > cb) {
+		if(ca < cb || ca > cb) {
 			return (int)ca - (int)cb;
 		}
 		++a;
@@ -115,11 +139,11 @@ struct Viewport {
 	int h;
 };
 
-Viewport ComputeViewportByAspect(const Vec2i &screenSize, const float targetAspect) {
+static Viewport ComputeViewportByAspect(const Vec2i &screenSize, const float targetAspect) {
 	int targetHeight = (int)(screenSize.w / targetAspect);
 	Vec2i viewSize = V2i(screenSize.w, screenSize.h);
 	Vec2i viewOffset = V2i(0, 0);
-	if (targetHeight > screenSize.h) {
+	if(targetHeight > screenSize.h) {
 		viewSize.h = screenSize.h;
 		viewSize.w = (int)(screenSize.h * targetAspect);
 		viewOffset.x = (screenSize.w - viewSize.w) / 2;
@@ -188,9 +212,9 @@ inline float GetFontLineAdvance(const FontData *font) {
 	return(result);
 }
 
-float GetFontCharacterAdvance(const FontData *font, const uint32_t thisCodePoint) {
+static float GetFontCharacterAdvance(const FontData *font, const uint32_t thisCodePoint) {
 	float result = 0;
-	if (thisCodePoint >= font->firstChar && thisCodePoint < (font->firstChar - font->charCount)) {
+	if(thisCodePoint >= font->firstChar && thisCodePoint < (font->firstChar - font->charCount)) {
 		uint32_t thisIndex = thisCodePoint - font->firstChar;
 		const FontGlyph *glyph = font->glyphs + thisIndex;
 		result = font->defaultAdvance[thisIndex];
@@ -198,28 +222,28 @@ float GetFontCharacterAdvance(const FontData *font, const uint32_t thisCodePoint
 	return(result);
 }
 
-int GetFontAtlasIndexFromCodePoint(const size_t fontCount, const FontData fonts[], const uint32_t codePoint) {
-	for (size_t i = 0; i < fontCount; ++i) {
+static int GetFontAtlasIndexFromCodePoint(const size_t fontCount, const FontData fonts[], const uint32_t codePoint) {
+	for(size_t i = 0; i < fontCount; ++i) {
 		uint32_t lastChar = fonts[i].firstChar + (fonts[i].charCount - 1);
-		if (codePoint >= fonts[i].firstChar && codePoint <= lastChar) {
+		if(codePoint >= fonts[i].firstChar && codePoint <= lastChar) {
 			return (int)i;
 		}
 	}
 	return -1;
 }
 
-Vec2f GetTextSize(const wchar_t *text, const size_t textLen, const size_t fontCount, const FontData fonts[], const float maxCharHeight) {
+static Vec2f GetTextSize(const wchar_t *text, const size_t textLen, const size_t fontCount, const FontData fonts[], const float maxCharHeight) {
 	float xwidth = 0.0f;
 	float ymax = 0.0f;
-	if (fontCount > 0) {
+	if(fontCount > 0) {
 		float xpos = 0.0f;
 		float ypos = 0.0f;
-		for (uint32_t textPos = 0; textPos < textLen; ++textPos) {
+		for(uint32_t textPos = 0; textPos < textLen; ++textPos) {
 			uint32_t at = text[textPos];
 
 			int atlasIndex = GetFontAtlasIndexFromCodePoint(fontCount, fonts, at);
 			const FontData *font;
-			if (atlasIndex > -1) {
+			if(atlasIndex > -1) {
 				font = &fonts[atlasIndex];
 			} else {
 				font = &fonts[0];
@@ -229,7 +253,7 @@ Vec2f GetTextSize(const wchar_t *text, const size_t textLen, const size_t fontCo
 			Vec2f offset = V2f(xpos, ypos);
 			Vec2f size = V2f();
 			uint32_t lastChar = font->firstChar + (font->charCount - 1);
-			if (at >= font->firstChar && at <= lastChar) {
+			if(at >= font->firstChar && at <= lastChar) {
 				uint32_t codePoint = at - font->firstChar;
 				const FontGlyph *glyph = font->glyphs + codePoint;
 				size = glyph->charSize;
@@ -250,11 +274,11 @@ Vec2f GetTextSize(const wchar_t *text, const size_t textLen, const size_t fontCo
 	return(result);
 }
 
-bool LoadFontFromMemory(const void *data, const size_t dataSize, const uint32_t fontIndex, const float fontSize, const uint32_t firstChar, const uint32_t lastChar, const uint32_t  atlasWidth, const uint32_t atlasHeight, const bool loadKerning, FontData *outFont) {
-	if (data == fpl_null || dataSize == 0) {
+static bool LoadFontFromMemory(const void *data, const size_t dataSize, const uint32_t fontIndex, const float fontSize, const uint32_t firstChar, const uint32_t lastChar, const uint32_t  atlasWidth, const uint32_t atlasHeight, const bool loadKerning, FontData *outFont) {
+	if(data == fpl_null || dataSize == 0) {
 		return false;
 	}
-	if (outFont == fpl_null) {
+	if(outFont == fpl_null) {
 		return false;
 	}
 
@@ -264,7 +288,7 @@ bool LoadFontFromMemory(const void *data, const size_t dataSize, const uint32_t 
 	int fontOffset = stbtt_GetFontOffsetForIndex((const unsigned char *)data, fontIndex);
 
 	bool result = false;
-	if (stbtt_InitFont(&fontInfo, (const unsigned char *)data, fontOffset)) {
+	if(stbtt_InitFont(&fontInfo, (const unsigned char *)data, fontOffset)) {
 		uint32_t charCount = (lastChar - firstChar) + 1;
 		uint8_t *atlasAlphaBitmap = (uint8_t *)fplMemoryAllocate(atlasWidth * atlasHeight);
 		stbtt_bakedchar *packedChars = (stbtt_bakedchar *)fplMemoryAllocate(charCount * sizeof(stbtt_bakedchar));
@@ -300,7 +324,7 @@ bool LoadFontFromMemory(const void *data, const size_t dataSize, const uint32_t 
 		size_t glyphsSize = sizeof(FontGlyph) * charCount;
 		FontGlyph *glyphs = (FontGlyph *)fplMemoryAllocate(glyphsSize);
 
-		for (uint32_t glyphIndex = 0; glyphIndex < charCount; ++glyphIndex) {
+		for(uint32_t glyphIndex = 0; glyphIndex < charCount; ++glyphIndex) {
 			stbtt_bakedchar *sourceInfo = packedChars + glyphIndex;
 
 			FontGlyph *destInfo = glyphs + glyphIndex;
@@ -326,7 +350,7 @@ bool LoadFontFromMemory(const void *data, const size_t dataSize, const uint32_t 
 		// Build kerning table & default advance table
 		size_t kerningTableSize;
 		float *kerningTable;
-		if (loadKerning) {
+		if(loadKerning) {
 			kerningTableSize = sizeof(float) * charCount * charCount;
 			kerningTable = (float *)fplMemoryAllocate(kerningTableSize);
 		} else {
@@ -336,17 +360,17 @@ bool LoadFontFromMemory(const void *data, const size_t dataSize, const uint32_t 
 
 		size_t defaultAdvanceSize = charCount * sizeof(float);
 		float *defaultAdvance = (float *)fplMemoryAllocate(defaultAdvanceSize);
-		for (uint32_t charIndex = firstChar; charIndex < lastChar; ++charIndex) {
+		for(uint32_t charIndex = firstChar; charIndex < lastChar; ++charIndex) {
 			uint32_t codePointIndex = (uint32_t)(charIndex - firstChar);
 			stbtt_bakedchar *leftInfo = packedChars + codePointIndex;
 			defaultAdvance[codePointIndex] = leftInfo->xadvance * pixelsToUnits;
 
-			if (loadKerning) {
-				for (uint32_t nextCharIndex = charIndex + 1; nextCharIndex < lastChar; ++nextCharIndex) {
+			if(loadKerning) {
+				for(uint32_t nextCharIndex = charIndex + 1; nextCharIndex < lastChar; ++nextCharIndex) {
 					float kerningPx = stbtt_GetCodepointKernAdvance(&fontInfo, charIndex, nextCharIndex) * pixelsToUnits;
-					if (kerningPx != 0) {
+					if(kerningPx != 0) {
 						int widthPx = leftInfo->x1 - leftInfo->x0;
-						if (widthPx > 0) {
+						if(widthPx > 0) {
 							float kerning = kerningPx / (float)widthPx;
 							uint32_t a = (uint32_t)(charIndex - firstChar);
 							uint32_t b = (uint32_t)(nextCharIndex - firstChar);
@@ -377,16 +401,16 @@ bool LoadFontFromMemory(const void *data, const size_t dataSize, const uint32_t 
 	return(result);
 }
 
-bool LoadFontFromFile(const char *dataPath, const char *filename, const uint32_t fontIndex, const float fontSize, const uint32_t firstChar, const uint32_t lastChar, const uint32_t atlasWidth, const uint32_t atlasHeight, const bool loadKerning, FontData *outFont) {
-	if (filename == fpl_null) {
+static bool LoadFontFromFile(const char *dataPath, const char *filename, const uint32_t fontIndex, const float fontSize, const uint32_t firstChar, const uint32_t lastChar, const uint32_t atlasWidth, const uint32_t atlasHeight, const bool loadKerning, FontData *outFont) {
+	if(filename == fpl_null) {
 		return false;
 	}
-	if (outFont == fpl_null) {
+	if(outFont == fpl_null) {
 		return false;
 	}
 
 	char filePath[1024];
-	if (dataPath != fpl_null) {
+	if(dataPath != fpl_null) {
 		fplCopyAnsiString(dataPath, filePath, FPL_ARRAYCOUNT(filePath));
 		fplPathCombine(filePath, FPL_ARRAYCOUNT(filePath), 2, dataPath, filename);
 	} else {
@@ -398,23 +422,23 @@ bool LoadFontFromFile(const char *dataPath, const char *filename, const uint32_t
 	fplFileHandle file;
 	uint8_t *ttfBuffer = fpl_null;
 	uint32_t ttfBufferSize = 0;
-	if (fplOpenAnsiBinaryFile(filePath, &file)) {
+	if(fplOpenAnsiBinaryFile(filePath, &file)) {
 		ttfBufferSize = fplGetFileSizeFromHandle32(&file);
 		ttfBuffer = (uint8_t *)fplMemoryAllocate(ttfBufferSize);
 		fplReadFileBlock32(&file, ttfBufferSize, ttfBuffer, ttfBufferSize);
 		fplCloseFile(&file);
 	}
 
-	if (ttfBuffer != nullptr) {
+	if(ttfBuffer != nullptr) {
 		result = LoadFontFromMemory(ttfBuffer, ttfBufferSize, fontIndex, fontSize, firstChar, lastChar, atlasWidth, atlasHeight, loadKerning, outFont);
 		fplMemoryFree(ttfBuffer);
 	}
 	return(result);
 }
 
-void ReleaseFont(FontData *font) {
-	if (font != fpl_null) {
-		if (font->hasKerningTable) {
+static void ReleaseFont(FontData *font) {
+	if(font != fpl_null) {
+		if(font->hasKerningTable) {
 			fplMemoryFree(font->kerningTable);
 		}
 		fplMemoryFree(font->glyphs);
@@ -423,7 +447,7 @@ void ReleaseFont(FontData *font) {
 	}
 }
 
-void DrawSprite(const GLuint texId, const float rx, const float ry, const float uMin, const float vMin, const float uMax, const float vMax, const float xoffset, const float yoffset) {
+static void DrawSprite(const GLuint texId, const float rx, const float ry, const float uMin, const float vMin, const float uMax, const float vMax, const float xoffset, const float yoffset) {
 	glEnable(GL_TEXTURE_2D);
 	glBindTexture(GL_TEXTURE_2D, texId);
 	glBegin(GL_QUADS);
@@ -436,12 +460,12 @@ void DrawSprite(const GLuint texId, const float rx, const float ry, const float 
 	glDisable(GL_TEXTURE_2D);
 }
 
-extern void DrawSprite(const GLuint texId, const float rx, const float ry, const UVRect &uv, const float xoffset, const float yoffset) {
+static void DrawSprite(const GLuint texId, const float rx, const float ry, const UVRect &uv, const float xoffset, const float yoffset) {
 	DrawSprite(texId, rx, ry, uv.uMin, uv.vMax, uv.uMax, uv.vMin, xoffset, yoffset);
 }
 
-void DrawRect(const float rx, const float ry, const float xoffset, const float yoffset) {
-	glBegin(GL_LINE_LOOP);
+static void DrawRect(const float rx, const float ry, const float xoffset, const float yoffset, bool isFilled) {
+	glBegin(isFilled ? GL_QUADS : GL_LINE_LOOP);
 	glVertex2f(xoffset + rx, yoffset + ry);
 	glVertex2f(xoffset - rx, yoffset + ry);
 	glVertex2f(xoffset - rx, yoffset - ry);
@@ -449,19 +473,19 @@ void DrawRect(const float rx, const float ry, const float xoffset, const float y
 	glEnd();
 }
 
-void DrawTextFont(const wchar_t *text, const size_t fontCount, const FontData fonts[], const GLuint textures[], const float x, const float y, const float maxCharHeight, const float sx, const float sy) {
-	if (fontCount > 0) {
+static void DrawTextFont(const wchar_t *text, const size_t fontCount, const FontData fonts[], const GLuint textures[], const float x, const float y, const float maxCharHeight, const float sx, const float sy) {
+	if(fontCount > 0) {
 		size_t textLen = fplGetWideStringLength(text);
 		Vec2f textSize = GetTextSize(text, textLen, fontCount, fonts, maxCharHeight);
 		float xpos = x - textSize.x * 0.5f + (textSize.x * 0.5f * sx);
 		float ypos = y - textSize.y * 0.5f + (textSize.y * 0.5f * sy);
-		for (uint32_t textPos = 0; textPos < textLen; ++textPos) {
+		for(uint32_t textPos = 0; textPos < textLen; ++textPos) {
 			uint32_t at = text[textPos];
 
 			int atlasIndex = GetFontAtlasIndexFromCodePoint(fontCount, fonts, at);
 			const FontData *font;
 			GLuint texture;
-			if (atlasIndex > -1) {
+			if(atlasIndex > -1) {
 				font = &fonts[atlasIndex];
 				texture = textures[atlasIndex];
 			} else {
@@ -471,7 +495,7 @@ void DrawTextFont(const wchar_t *text, const size_t fontCount, const FontData fo
 
 			uint32_t lastChar = font->firstChar + (font->charCount - 1);
 			float advance;
-			if ((uint32_t)at >= font->firstChar && (uint32_t)at <= lastChar) {
+			if((uint32_t)at >= font->firstChar && (uint32_t)at <= lastChar) {
 				uint32_t codePoint = at - font->firstChar;
 				const FontGlyph *glyph = &font->glyphs[codePoint];
 				Vec2f size = glyph->charSize * maxCharHeight;
@@ -488,7 +512,7 @@ void DrawTextFont(const wchar_t *text, const size_t fontCount, const FontData fo
 	}
 }
 
-GLuint AllocateTexture(const uint32_t width, const uint32_t height, const void *data, const bool repeatable, const GLint filter, const bool isAlphaOnly) {
+static GLuint AllocateTexture(const uint32_t width, const uint32_t height, const void *data, const bool repeatable, const GLint filter, const bool isAlphaOnly) {
 	GLuint handle;
 	glGenTextures(1, &handle);
 	glBindTexture(GL_TEXTURE_2D, handle);
@@ -506,6 +530,30 @@ GLuint AllocateTexture(const uint32_t width, const uint32_t height, const void *
 	return(handle);
 }
 
+static GLuint LoadTexture(const char *dataPath, const char *filename) {
+	GLuint result = 0;
+
+	char filePath[FPL_MAX_PATH_LENGTH];
+	fplPathCombine(filePath, FPL_ARRAYCOUNT(filePath), 2, dataPath, filename);
+
+	fplFileHandle file = {};
+	if(fplOpenAnsiBinaryFile(filePath, &file)) {
+		uint32_t dataSize = fplGetFileSizeFromHandle32(&file);
+		uint8_t *data = (uint8_t *)fplMemoryAllocate(dataSize);
+		fplReadFileBlock32(&file, dataSize, data, dataSize);
+		int w, h, components;
+		stbi_set_flip_vertically_on_load(0);
+		uint8_t *pixels = stbi_load_from_memory(data, (int)dataSize, &w, &h, &components, 4);
+		if(pixels != nullptr) {
+			result = AllocateTexture(w, h, pixels, false, GL_LINEAR, false);
+			stbi_image_free(pixels);
+		}
+		fplMemoryFree(data);
+		fplCloseFile(&file);
+	}
+	return(result);
+}
+
 constexpr float AppAspect = 16.0f / 9.0f;
 constexpr float AppWidth = 10.0f;
 constexpr float AppHeight = AppWidth / AppAspect;
@@ -518,8 +566,14 @@ static const Vec2i KeyboardImageS = V2i(KeyboardImageW, KeyboardImageH);
 static const Vec2i KeyboardSmallKeyS = V2i(68, 68);
 static const Vec2i KeyboardLedS = V2i(11, 11);
 constexpr float KeyboardAspect = KeyboardImageW / (float)KeyboardImageH;
-constexpr float KeyboardW = AppWidth;
+constexpr float KeyboardW = AppWidth * 0.8f;
 constexpr float KeyboardH = KeyboardW / KeyboardAspect;
+
+constexpr int GamepadImageW = 2048;
+constexpr int GamepadImageH = 1024;
+constexpr float GamepadAspect = GamepadImageW / (float)GamepadImageH;
+constexpr float GamepadW = AppWidth * 0.8f;
+constexpr float GamepadH = GamepadW / GamepadAspect;
 
 struct KeyCharDef {
 	const wchar_t *text;
@@ -543,7 +597,7 @@ protected:
 		def.uv = uv;
 		va_list argList;
 		va_start(argList, count);
-		for (int i = 0; i < count; ++i) {
+		for(int i = 0; i < count; ++i) {
 			KeyCharDef charDef = va_arg(argList, KeyCharDef);
 			FPL_ASSERT(def.count < FPL_ARRAYCOUNT(def.chars));
 			def.chars[def.count++] = charDef;
@@ -822,12 +876,19 @@ constexpr size_t CodePointCount = 10000;
 constexpr size_t CodePointsPerAtlas = 256;
 constexpr size_t FontCount = CodePointCount / CodePointsPerAtlas + 1;
 
+enum class RenderMode {
+	KeyboardAndMouse,
+	Gamepad,
+};
+
 struct AppState {
 	FontData fontData[FontCount];
 	GLuint fontTextures[FontCount];
 	GLuint keyboardTexture;
 	GLuint gamepadTexture;
 	Vec2f mousePos;
+	RenderMode renderMode;
+	fpl_b32 usePolling;
 };
 
 struct InputState {
@@ -835,30 +896,6 @@ struct InputState {
 	fplButtonState keyStates[256];
 	fplKeyboardModifierFlags ledStates;
 };
-
-static GLuint LoadTexture(const char *dataPath, const char *filename) {
-	GLuint result = 0;
-
-	char filePath[FPL_MAX_PATH_LENGTH];
-	fplPathCombine(filePath, FPL_ARRAYCOUNT(filePath), 2, dataPath, filename);
-
-	fplFileHandle file = {};
-	if (fplOpenAnsiBinaryFile(filePath, &file)) {
-		uint32_t dataSize = fplGetFileSizeFromHandle32(&file);
-		uint8_t *data = (uint8_t *)fplMemoryAllocate(dataSize);
-		fplReadFileBlock32(&file, dataSize, data, dataSize);
-		int w, h, components;
-		stbi_set_flip_vertically_on_load(0);
-		uint8_t *pixels = stbi_load_from_memory(data, (int)dataSize, &w, &h, &components, 4);
-		if (pixels != nullptr) {
-			result = AllocateTexture(w, h, pixels, false, GL_LINEAR, false);
-			stbi_image_free(pixels);
-		}
-		fplMemoryFree(data);
-		fplCloseFile(&file);
-	}
-	return(result);
-}
 
 static void InitApp(AppState *appState) {
 	glEnable(GL_DEPTH_TEST);
@@ -874,31 +911,32 @@ static void InitApp(AppState *appState) {
 	glEnable(GL_LINE_SMOOTH);
 	glLineWidth(1.0f);
 
-	glClearColor(0.1f, 0.2f, 0.6f, 1.0f);
+	glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
 
 	char dataPath[FPL_MAX_PATH_LENGTH];
 	fplGetExecutableFilePath(dataPath, FPL_ARRAYCOUNT(dataPath));
 	fplExtractFilePath(dataPath, dataPath, FPL_ARRAYCOUNT(dataPath));
 	fplPathCombine(dataPath, FPL_ARRAYCOUNT(dataPath), 2, dataPath, "data");
 
-	for (int i = 0; i < FontCount; ++i) {
+	for(int i = 0; i < FontCount; ++i) {
 		int cpStart = i * CodePointsPerAtlas;
 		int cpEnd = cpStart + (CodePointsPerAtlas - 1);
-		if (LoadFontFromFile(dataPath, "NotoSans-Regular.ttf", 0, 36.0f, cpStart, cpEnd, 512, 512, false, &appState->fontData[i])) {
+		if(LoadFontFromFile(dataPath, "NotoSans-Regular.ttf", 0, 26.0f, cpStart, cpEnd, 512, 512, false, &appState->fontData[i])) {
 			appState->fontTextures[i] = AllocateTexture(appState->fontData[i].atlasWidth, appState->fontData[i].atlasHeight, appState->fontData[i].atlasAlphaBitmap, false, GL_LINEAR, true);
 		}
 	}
 
 	appState->keyboardTexture = LoadTexture(dataPath, "keyboard.png");
 	appState->gamepadTexture = LoadTexture(dataPath, "gamepad.png");
-
+	appState->usePolling = 0;
+	appState->renderMode = RenderMode::KeyboardAndMouse;
 }
 
 static void ReleaseApp(AppState *appState) {
 	glDeleteTextures(1, &appState->gamepadTexture);
 	glDeleteTextures(1, &appState->keyboardTexture);
 	glDeleteTextures(FontCount, &appState->fontTextures[0]);
-	for (int i = 0; i < FontCount; ++i) {
+	for(int i = 0; i < FontCount; ++i) {
 		ReleaseFont(&appState->fontData[i]);
 	}
 }
@@ -929,161 +967,210 @@ static void RenderApp(AppState *appState, const InputState *input, const uint32_
 	glMatrixMode(GL_MODELVIEW);
 	glLoadIdentity();
 
+	glColor4f(0.1f, 0.2f, 0.6f, 1.0f);
+	DrawRect(w, h, 0.0f, 0.0f, true);
+
 	constexpr float osdFontHeight = w * 0.05f;
-	constexpr float keyFontHeight = w * 0.03f;
 
 	const KeyDefinitions *keyDefinitions = &keyDefinitionsArray[0];
 	char inputLocale[16];
-	if (fplGetInputLocale(fplLocaleFormat_ISO639, inputLocale, FPL_ARRAYCOUNT(inputLocale))) {
-		for (int keyDefIndex = 0; keyDefIndex < FPL_ARRAYCOUNT(keyDefinitionsArray); ++keyDefIndex) {
+	if(fplGetInputLocale(fplLocaleFormat_ISO639, inputLocale, FPL_ARRAYCOUNT(inputLocale))) {
+		for(int keyDefIndex = 0; keyDefIndex < FPL_ARRAYCOUNT(keyDefinitionsArray); ++keyDefIndex) {
 			const KeyDefinitions *testKeyDefinitions = &keyDefinitionsArray[keyDefIndex];
-			if (CompareStringIgnoreCase(testKeyDefinitions->name, inputLocale) == 0) {
+			if(CompareStringIgnoreCase(testKeyDefinitions->name, inputLocale) == 0) {
 				keyDefinitions = testKeyDefinitions;
 				break;
 			}
 		}
 	}
-	if (keyDefinitions == nullptr) {
+	if(keyDefinitions == nullptr) {
 		keyDefinitions = &keyDefinitionsArray[0];
 	}
 	FPL_ASSERT(keyDefinitions != nullptr);
 
 	char textBuffer[256];
-	glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
-	fplFormatAnsiString(textBuffer, FPL_ARRAYCOUNT(textBuffer), "Keyboard: %s", keyDefinitions->name);
 	wchar_t wideTextBuffer[256];
+	glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
+	if(appState->renderMode == RenderMode::KeyboardAndMouse) {
+		fplFormatAnsiString(textBuffer, FPL_ARRAYCOUNT(textBuffer), "Keyboard: %s (Polling: %s)", keyDefinitions->name, (appState->usePolling ? "yes" : "no"));
+	} else if(appState->renderMode == RenderMode::Gamepad) {
+		const char *controllerName = "";
+		fplFormatAnsiString(textBuffer, FPL_ARRAYCOUNT(textBuffer), "Gamepad: %s (Polling: %s)", controllerName, (appState->usePolling ? "yes" : "no"));
+	}
 	fplAnsiStringToWideString(textBuffer, fplGetAnsiStringLength(textBuffer), wideTextBuffer, FPL_ARRAYCOUNT(wideTextBuffer));
 	DrawTextFont(wideTextBuffer, FontCount, appState->fontData, appState->fontTextures, 0, h - osdFontHeight, osdFontHeight, 0.0f, 0.0f);
 
-	{
-		float x = 0.0f;
-		float y = 0.0f;
-		glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
-		DrawSprite(appState->keyboardTexture, KeyboardW * 0.5f, KeyboardH * 0.5f, 0.0f, 1.0f, 1.0f, 0.0f, x, y);
-	}
+	if(appState->renderMode == RenderMode::KeyboardAndMouse) {
+		constexpr float keyFontHeight = KeyboardW * 0.015f;
 
-	for (int i = 0; i < FPL_ARRAYCOUNT(KeyLedDefinitions); ++i) {
-		const KeyLedDef keyLedDef = KeyLedDefinitions[i];
-		float keyW = KeyboardW * (keyLedDef.uv.uMax - keyLedDef.uv.uMin);
-		float keyH = KeyboardH * (keyLedDef.uv.vMax - keyLedDef.uv.vMin);
-		float keyOffsetX = KeyboardW * (keyLedDef.uv.uMin);
-		float keyOffsetY = KeyboardH * (1.0f - keyLedDef.uv.vMax);
-		float keyCenterX = 0.0f - KeyboardW * 0.5f + keyOffsetX + keyW * 0.5f;
-		float keyCenterY = 0.0f - KeyboardH * 0.5f + keyOffsetY + keyH * 0.5f;
-		if (input->ledStates & keyLedDef.flag) {
-			glColor4f(1.0f, 0.0f, 0.0f, 1.0f);
-			DrawSprite(appState->keyboardTexture, keyW * 0.5f, keyH * 0.5f, keyLedDef.uv, keyCenterX, keyCenterY);
+		// Draw keyboard
+		float keyboardCenterX = -(AppWidth - KeyboardW) * 0.5f;
+		float keyboardCenterY = 0.0f;
+		{
+			glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
+			DrawSprite(appState->keyboardTexture, KeyboardW * 0.5f, KeyboardH * 0.5f, 0.0f, 1.0f, 1.0f, 0.0f, keyboardCenterX, keyboardCenterY);
 		}
-	}
 
-	for (int keyIndex = 0; keyIndex < 256; keyIndex++) {
-		const KeyDef &key = (*keyDefinitions)[(fplKey)keyIndex];
-		float keyW = KeyboardW * (key.uv.uMax - key.uv.uMin);
-		float keyH = KeyboardH * (key.uv.vMax - key.uv.vMin);
-		float keyOffsetX = KeyboardW * (key.uv.uMin);
-		float keyOffsetY = KeyboardH * (1.0f - key.uv.vMax);
-		float keyCenterX = 0.0f - KeyboardW * 0.5f + keyOffsetX + keyW * 0.5f;
-		float keyCenterY = 0.0f - KeyboardH * 0.5f + keyOffsetY + keyH * 0.5f;
-#if 0
-		bool down = true;// input->keyStates[keyIndex] >= fplButtonState_Press;
-#else
-		bool down = input->keyStates[keyIndex] >= fplButtonState_Press;
-#endif
-		if (down) {
-			glColor4f(1.0f, 0.0f, 0.0f, 1.0f);
-			DrawSprite(appState->keyboardTexture, keyW * 0.5f, keyH * 0.5f, key.uv, keyCenterX, keyCenterY);
-		}
-		for (int i = 0; i < key.count; ++i) {
-			KeyCharDef keyChar = key.chars[i];
-			if (down) {
-				glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
-			} else {
-				glColor4f(0.0f, 0.0f, 0.0f, 1.0f);
+		// Draw keyboard leds
+		for(int i = 0; i < FPL_ARRAYCOUNT(KeyLedDefinitions); ++i) {
+			const KeyLedDef keyLedDef = KeyLedDefinitions[i];
+			float keyW = KeyboardW * (keyLedDef.uv.uMax - keyLedDef.uv.uMin);
+			float keyH = KeyboardH * (keyLedDef.uv.vMax - keyLedDef.uv.vMin);
+			float keyOffsetX = KeyboardW * (keyLedDef.uv.uMin);
+			float keyOffsetY = KeyboardH * (1.0f - keyLedDef.uv.vMax);
+			float keyCenterX = keyboardCenterX - KeyboardW * 0.5f + keyOffsetX + keyW * 0.5f;
+			float keyCenterY = keyboardCenterY - KeyboardH * 0.5f + keyOffsetY + keyH * 0.5f;
+			if(input->ledStates & keyLedDef.flag) {
+				glColor4f(1.0f, 0.0f, 0.0f, 1.0f);
+				DrawSprite(appState->keyboardTexture, keyW * 0.5f, keyH * 0.5f, keyLedDef.uv, keyCenterX, keyCenterY);
 			}
-			float x = keyCenterX + ((keyW * 0.5f) * keyChar.align.x);
-			float y = keyCenterY + ((keyH * 0.5f) * keyChar.align.y);
-			DrawTextFont(keyChar.text, FontCount, appState->fontData, appState->fontTextures, x, y, keyFontHeight, 0.0f, 0.0f);
 		}
-	}
+
+		// Draw keyboard buttons
+		for(int keyIndex = 0; keyIndex < 256; keyIndex++) {
+			const KeyDef &key = (*keyDefinitions)[(fplKey)keyIndex];
+			float keyW = KeyboardW * (key.uv.uMax - key.uv.uMin);
+			float keyH = KeyboardH * (key.uv.vMax - key.uv.vMin);
+			float keyOffsetX = KeyboardW * (key.uv.uMin);
+			float keyOffsetY = KeyboardH * (1.0f - key.uv.vMax);
+			float keyCenterX = keyboardCenterX - KeyboardW * 0.5f + keyOffsetX + keyW * 0.5f;
+			float keyCenterY = keyboardCenterY - KeyboardH * 0.5f + keyOffsetY + keyH * 0.5f;
 #if 0
-	{
-		int pixelsW = 1914;
-		int pixelsH = 612;
-		float mouseW = KeyboardW * (pixelsW / (float)KeyboardImageW);
-		float mouseH = KeyboardH * (pixelsH / (float)KeyboardImageH);
-		float mouseX = appState->mousePos.x + mouseW * 0.5f;
-		float mouseY = appState->mousePos.y + mouseH * 0.5f - mouseH;
-
-		float worldX = (appState->mousePos.x / (KeyboardW * 0.5f)) * 0.5f + 0.5f;
-		float worldY = (-appState->mousePos.y / (KeyboardH * 0.5f)) * 0.5f + 0.5f;
-
-		int posX = (int)(worldX * KeyboardImageW);
-		int posY = (int)(worldY * KeyboardImageH);
-
-		UVRect uv = UVRectFromPos(KeyboardImageS, V2i(pixelsW, pixelsH), V2i(posX, posY));
-
-		glColor4f(1.0f, 0.0f, 1.0f, 0.5f);
-		DrawSprite(appState->keyboardTexture, mouseW * 0.5f, mouseH * 0.5f, uv, mouseX, mouseY);
-
-		glColor4f(0.0f, 1.0f, 1.0f, 1.0f);
-		glBegin(GL_LINE_LOOP);
-		glVertex2f(mouseX + mouseW * 0.5f, mouseY + mouseH * 0.5f);
-		glVertex2f(mouseX - mouseW * 0.5f, mouseY + mouseH * 0.5f);
-		glVertex2f(mouseX - mouseW * 0.5f, mouseY - mouseH * 0.5f);
-		glVertex2f(mouseX + mouseW * 0.5f, mouseY - mouseH * 0.5f);
-		glEnd();
-
-		char textBuffer[100];
-		fplFormatAnsiString(textBuffer, FPL_ARRAYCOUNT(textBuffer), "%d x %d (%f x %f)", posX, posY, worldX, worldY);
-		glColor4f(0.0f, 0.0f, 0.0f, 1.0f);
-		DrawTextFont(textBuffer, &appState->fontData, appState->fontTexture, appState->mousePos.x, appState->mousePos.y, osdFontHeight * 0.5f, 1.0f, -1.0f);
-		}
+			bool down = true;// input->keyStates[keyIndex] >= fplButtonState_Press;
+#else
+			bool down = input->keyStates[keyIndex] >= fplButtonState_Press;
 #endif
+			if(down) {
+				glColor4f(1.0f, 0.0f, 0.0f, 1.0f);
+				DrawSprite(appState->keyboardTexture, keyW * 0.5f, keyH * 0.5f, key.uv, keyCenterX, keyCenterY);
+			}
+			for(int i = 0; i < key.count; ++i) {
+				KeyCharDef keyChar = key.chars[i];
+				if(down) {
+					glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
+				} else {
+					glColor4f(0.0f, 0.0f, 0.0f, 1.0f);
+				}
+				float x = keyCenterX + ((keyW * 0.5f) * keyChar.align.x);
+				float y = keyCenterY + ((keyH * 0.5f) * keyChar.align.y);
+				DrawTextFont(keyChar.text, FontCount, appState->fontData, appState->fontTextures, x, y, keyFontHeight, 0.0f, 0.0f);
+			}
+		}
+
+		// Draw mouse cursor as key region
+		{
+			int pixelsW = KeyboardSmallKeyS.x;
+			int pixelsH = KeyboardSmallKeyS.y;
+			float mouseW = KeyboardW * (pixelsW / (float)KeyboardImageW);
+			float mouseH = KeyboardH * (pixelsH / (float)KeyboardImageH);
+			float mouseX = appState->mousePos.x + mouseW * 0.5f;
+			float mouseY = appState->mousePos.y + mouseH * 0.5f - mouseH;
+
+			float worldX = ((appState->mousePos.x - keyboardCenterX) / (KeyboardW * 0.5f)) * 0.5f + 0.5f;
+			float worldY = ((-appState->mousePos.y + keyboardCenterY) / (KeyboardH * 0.5f)) * 0.5f + 0.5f;
+
+			int posX = (int)(worldX * KeyboardImageW);
+			int posY = (int)(worldY * KeyboardImageH);
+
+			UVRect uv = UVRectFromPos(KeyboardImageS, V2i(pixelsW, pixelsH), V2i(posX, posY));
+
+			glColor4f(1.0f, 0.0f, 1.0f, 0.5f);
+			DrawSprite(appState->keyboardTexture, mouseW * 0.5f, mouseH * 0.5f, uv, mouseX, mouseY);
+
+			glColor4f(0.0f, 1.0f, 1.0f, 1.0f);
+			glBegin(GL_LINE_LOOP);
+			glVertex2f(mouseX + mouseW * 0.5f, mouseY + mouseH * 0.5f);
+			glVertex2f(mouseX - mouseW * 0.5f, mouseY + mouseH * 0.5f);
+			glVertex2f(mouseX - mouseW * 0.5f, mouseY - mouseH * 0.5f);
+			glVertex2f(mouseX + mouseW * 0.5f, mouseY - mouseH * 0.5f);
+			glEnd();
+		}
+	} else if(appState->renderMode == RenderMode::Gamepad) {
+		float gamepadCenterX = 0.0f;
+		float gamepadCenterY = 0.0f;
+		glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
+		DrawSprite(appState->gamepadTexture, GamepadW * 0.5f, GamepadH * 0.5f, 0.0f, 1.0f, 1.0f, 0.0f, gamepadCenterX, gamepadCenterY);
 	}
+}
 
 static void SetButtonStateFromModifier(InputState *input, const fplKeyboardState *kbstate, const fplKeyboardModifierFlags flag, const fplKey key) {
-	if (kbstate->modifiers & flag) {
+	if(kbstate->modifiers & flag) {
 		input->keyStates[(int)key] = fplButtonState_Press;
 	} else {
 		input->keyStates[(int)key] = fplButtonState_Release;
 	}
 }
 
+static bool KeyWasDown(const fplButtonState oldState, const fplButtonState newState) {
+	bool result = (oldState != newState) && (newState == fplButtonState_Release);
+	return(result);
+}
+
+static void HandleKeyPressed(AppState *appState, const fplKey key) {
+	switch(key) {
+		case fplKey_F1:
+			appState->renderMode = RenderMode::KeyboardAndMouse;
+			break;
+		case fplKey_F2:
+			appState->renderMode = RenderMode::Gamepad;
+			break;
+		default:
+			break;
+	}
+}
+
 int main(int argc, char *argv[]) {
+	AppState *appState = (AppState *)fplMemoryAllocate(sizeof(AppState));
 	fplSettings settings = fplMakeDefaultSettings();
+	settings.input.disabledEvents = appState->usePolling;
 	fplCopyAnsiString("FPL Input Demo", settings.window.windowTitle, FPL_ARRAYCOUNT(settings.window.windowTitle));
-	if (fplPlatformInit(fplInitFlags_All, &settings)) {
-		if (fglLoadOpenGL(true)) {
-			AppState *appState = (AppState *)fplMemoryAllocate(sizeof(AppState));
+	int retCode = 0;
+	if(fplPlatformInit(fplInitFlags_All, &settings)) {
+		if(fglLoadOpenGL(true)) {
 			InputState input = {};
+			fplButtonState lastKeyStates[256] = {};
 			InitApp(appState);
-			while (fplWindowUpdate()) {
+			while(fplWindowUpdate()) {
 				fplEvent ev;
-				while (fplPollEvent(&ev)) {
-					switch (ev.type) {
+				while(fplPollEvent(&ev)) {
+					switch(ev.type) {
 						case fplEventType_Mouse:
 						{
-							if (ev.mouse.type == fplMouseEventType_Move) {
+							if(ev.mouse.type == fplMouseEventType_Move) {
 								input.mousePos.x = ev.mouse.mouseX;
 								input.mousePos.y = ev.mouse.mouseY;
 							}
 						} break;
 
-#if 1
 						case fplEventType_Keyboard:
 						{
-							if (ev.keyboard.type == fplKeyboardEventType_Button) {
-								input.keyStates[(int)ev.keyboard.mappedKey] = ev.keyboard.buttonState;
+							if(!appState->usePolling) {
+								if(ev.keyboard.type == fplKeyboardEventType_Button) {
+									input.keyStates[(int)ev.keyboard.mappedKey] = ev.keyboard.buttonState;
+								}
+							}
+							if(ev.keyboard.type == fplKeyboardEventType_Button) {
+								if(ev.keyboard.buttonState == fplButtonState_Release) {
+									HandleKeyPressed(appState, ev.keyboard.mappedKey);
+								}
 							}
 						} break;
-#endif
+
+						default:
+							break;
 					}
 				}
 
 				fplKeyboardState keyboardState = {};
-				if (fplGetKeyboardState(&keyboardState)) {
-					for (int i = 0; i < 256; ++i) {
-						//input.keyStates[i] = keyboardState.buttonStatesMapped[i];
+				if(fplPollKeyboardState(&keyboardState)) {
+					if(appState->usePolling) {
+						for(int i = 0; i < 256; ++i) {
+							if (KeyWasDown(lastKeyStates[i], keyboardState.buttonStatesMapped[i])) {
+								HandleKeyPressed(appState, (fplKey)i);
+							}
+							input.keyStates[i] = keyboardState.buttonStatesMapped[i];
+							lastKeyStates[i] = input.keyStates[i];
+						}
 					}
 					SetButtonStateFromModifier(&input, &keyboardState, fplKeyboardModifierFlags_LShift, fplKey_LeftShift);
 					SetButtonStateFromModifier(&input, &keyboardState, fplKeyboardModifierFlags_RShift, fplKey_RightShift);
@@ -1094,14 +1181,22 @@ int main(int argc, char *argv[]) {
 					SetButtonStateFromModifier(&input, &keyboardState, fplKeyboardModifierFlags_LSuper, fplKey_LeftSuper);
 					SetButtonStateFromModifier(&input, &keyboardState, fplKeyboardModifierFlags_RSuper, fplKey_RightSuper);
 					input.ledStates = fplKeyboardModifierFlags_None;
-					if (keyboardState.modifiers & fplKeyboardModifierFlags_CapsLock) {
+					if(keyboardState.modifiers & fplKeyboardModifierFlags_CapsLock) {
 						input.ledStates |= fplKeyboardModifierFlags_CapsLock;
 					}
-					if (keyboardState.modifiers & fplKeyboardModifierFlags_ScrollLock) {
+					if(keyboardState.modifiers & fplKeyboardModifierFlags_ScrollLock) {
 						input.ledStates |= fplKeyboardModifierFlags_ScrollLock;
 					}
-					if (keyboardState.modifiers & fplKeyboardModifierFlags_NumLock) {
+					if(keyboardState.modifiers & fplKeyboardModifierFlags_NumLock) {
 						input.ledStates |= fplKeyboardModifierFlags_NumLock;
+					}
+				}
+
+				if(appState->usePolling) {
+					fplMouseState mouseState = {};
+					if(fplPollMouseState(&mouseState)) {
+						input.mousePos.x = mouseState.x;
+						input.mousePos.y = mouseState.y;
 					}
 				}
 
@@ -1112,10 +1207,13 @@ int main(int argc, char *argv[]) {
 			}
 			ReleaseApp(appState);
 			fglUnloadOpenGL();
-			fplPlatformRelease();
+		} else {
+			retCode = -1;
 		}
-		return 0;
+		fplPlatformRelease();
 	} else {
-		return -1;
+		retCode = -1;
 	}
+	fplMemoryFree(appState);
+	return(retCode);
 }
