@@ -161,6 +161,7 @@ SOFTWARE.
 	- New: [Win32] Disable keyboard/mouse/gamepad events when fplInputSettings.disabledEvents is enabled
 	- New: [POSIX] Added __USE_LARGEFILE64 before including sys/types.h
     - New: [X11] Implemented fplPollMouseState
+    - New: [X11] Implemented modifier keys in fplPollKeyboardState
 
 	## v0.9.0.1 beta
 	- Changed: Renamed fields "kernel*" to "os*" in fplOSInfos
@@ -992,7 +993,7 @@ SOFTWARE.
 	@section section_todo_inprogress In progress
 
 	- Input
-		- Keyboard state polling (X11, Modifier flags)
+		- Keyboard state polling (X11, Caps detection)
 
 	- Window
 		- Change/Get Minimize/Maximize/Restore (Win32)
@@ -13829,10 +13830,37 @@ fpl_platform_api bool fplPollKeyboardState(fplKeyboardState *outState) {
             bool isDown = (keysReturn[keyCode / 8] & (1 << (keyCode % 8))) != 0;
             outState->keyStatesRaw[keyCode] = isDown ? 1 : 0;
             fplKey mappedKey = fpl__GetMappedKey(&appState->window, keyCode);
-            outState->buttonStatesMapped[(int)mappedKey] = isDown ? fplButtonState_Press : fplButtonState_Release;
+            if (outState->buttonStatesMapped[(int)mappedKey] == fplButtonState_Release) {
+                outState->buttonStatesMapped[(int) mappedKey] = isDown ? fplButtonState_Press : fplButtonState_Release;
+            }
         }
-        // @TODO(final): X11 poll keyboard state -> Read modifier flags as well
-        result = true;
+        outState->modifiers = fplKeyboardModifierFlags_None;
+        if (outState->buttonStatesMapped[fplKey_LeftShift] == fplButtonState_Press) {
+			outState->modifiers |= fplKeyboardModifierFlags_LShift;
+        }
+		if (outState->buttonStatesMapped[fplKey_RightShift] == fplButtonState_Press) {
+			outState->modifiers |= fplKeyboardModifierFlags_RShift;
+		}
+		if (outState->buttonStatesMapped[fplKey_LeftControl] == fplButtonState_Press) {
+			outState->modifiers |= fplKeyboardModifierFlags_LCtrl;
+		}
+		if (outState->buttonStatesMapped[fplKey_RightControl] == fplButtonState_Press) {
+			outState->modifiers |= fplKeyboardModifierFlags_RCtrl;
+		}
+		if (outState->buttonStatesMapped[fplKey_LeftAlt] == fplButtonState_Press) {
+			outState->modifiers |= fplKeyboardModifierFlags_LAlt;
+		}
+		if (outState->buttonStatesMapped[fplKey_RightAlt] == fplButtonState_Press) {
+			outState->modifiers |= fplKeyboardModifierFlags_RAlt;
+		}
+		if (outState->buttonStatesMapped[fplKey_LeftSuper] == fplButtonState_Press) {
+			outState->modifiers |= fplKeyboardModifierFlags_LSuper;
+		}
+		if (outState->buttonStatesMapped[fplKey_RightSuper] == fplButtonState_Press) {
+			outState->modifiers |= fplKeyboardModifierFlags_RSuper;
+		}
+		// @TODO(final): Get caps states (Capslock, Numlock, Scrolllock)
+		result = true;
     }
 	return(result);
 }
