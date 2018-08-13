@@ -267,6 +267,7 @@
 
 	@subsection subsection_otutorial_general General
 	@subpage page_otutorial_initialization <br>
+	@subpage page_otutorial_errorhandling <br>
 
 	@subsection subsection_otutorial_window Window
 	@subpage page_otutorial_window_creation <br>
@@ -274,6 +275,10 @@
 
 	@subsection subsection_otutorial_input Input
 	@subpage page_otutorial_input_events <br>
+	@subpage page_otutorial_input_polling <br>
+
+	@subsection subsection_otutorial_memory Memory
+	@subpage page_otutorial_memory_handling <br>
 
 	@subsection subsection_otutorial_threading Multithreading
 	@subpage page_otutorial_threading_threads <br>
@@ -418,7 +423,7 @@
 		fplPlatformRelease();
 	} else {
 		fplPlatformResultType initResult = fplGetPlatformResult();
-		const char *initResultStr = fplGetInitResultTypeString(initResult);
+		const char *initResultStr = fplGetPlatformResultTypeString(initResult);
 		const char *errStr = fplGetLastError();
 		fplConsoleFormatError("FPL-ERROR[%s]: %s\n", initResultStr, errStr);
 	}
@@ -427,7 +432,8 @@
 	See the @subpage page_otutorial_errorhandling page for more details about error handling.
 
 	@section section_otutorial_initialization_tips Tips
-	After releasing FPL you can call @ref fplPlatformInit() again if needed - for example: Finding the proper audio device, Testing for OpenGL compability, etc. may require you to call @ref fplPlatformInit() and @ref fplPlatformRelease() multiple times.
+	After releasing FPL you can call @ref fplPlatformInit() again if needed - for example: Finding the proper audio device, Testing for OpenGL compability, etc. may require you to call @ref fplPlatformInit() and @ref fplPlatformRelease() multiple times.<br>
+	For more details see @ref page_usage
 */
 
 /*!
@@ -437,13 +443,34 @@
 	@section section_otutorial_errorhandling_getlatest Get latest error
 
 	In case something goes wrong you can always call @ref fplGetLastError() - at any time, regardless if it is initialized or not.<br>
-	This either returns a empty string indicating everything is fine or a constant string with a valid error message.<br>
+	This either returns a empty string indicating everything is fine or a formated string with a valid error message.<br>
 
 	Example:
 	@code{.c}
 	const char *errStr = fplGetLastError();
 	// Do something with the error string
 	@endcode
+
+	@section section_otutorial_errorhandling_getplatformresult Check platform result
+
+	Use @ref fplGetPlatformResult() to query the current platform result.<br>
+	This is useful to check if @ref fplPlatformInit() was already called or not.
+	Also this is useful to see which system fails to initialize when @ref fplPlatformInit() fails.
+
+	Example:
+	@code{.c}
+	fplPlatformResultType resultType = fplGetPlatformResult();
+	switch (resultType) {
+		case fplPlatformResultType_NotInitialized:
+			printf("Platform is not initialized yet!");
+			break;
+		case fplPlatformResultType_FailedAudio:
+			printf("The audio system failed to initialize: %s", fplGetLastError());
+			break;
+	}
+	@endcode
+
+	@note You may combine @ref fplGetPlatformResult with @ref fplGetLastError, to get a more understanding what exactly went wrong.
 
 	@section section_otutorial_errorhandling_count Was there a error?
 
@@ -513,7 +540,7 @@
 	@page page_otutorial_window_events Window events
 	@tableofcontents
 
-	@section section_otutorial_window_events_polling Polling the events
+	@section section_otutorial_window_events_polling Polling the window events
 
 	Call @ref fplPollEvent() in a while-loop inside your actual main-loop with a pointer to a @ref fplEvent argument, to poll the next event from the internal queue.<br>
 	Each event is copied into the @ref fplEvent argument which you can handle or not. If there are no events left, the function returns false.
@@ -676,10 +703,52 @@
 
 	@section section_page_otutorial_input_events_overview Overview
 
-	All input events are mapped to window events.<br>
-	To detect any key presses, button downs, you simply handle the specific event type in your event-loop!<br>
+	Input events are triggered by your window event loop.<br>
+	To detect any key/button presses you simply handle the specific event type in your event-loop.<br>
+	See the @subpage page_otutorial_window_events page for more details.<br>
 	<br>
-	For details see the @subpage page_otutorial_window_events page.
+	If you dont want to handle input this way, you can use polling instead - see @subpage page_otutorial_input_polling for more details.
+*/
+
+/*!
+	@page page_otutorial_input_polling Polling of input states
+	@tableofcontents
+
+	@section section_otutorial_input_polling_overview Overview
+
+	FPL supports manual polling of input states for Keyboard/Gamepad/Mouse as well.<br>
+
+	@subsection subsection_otutorial_input_polling_disableevents Disable Input-Events
+
+	If you are only use polling to get your input states, you should disable the input-events entirely.<br>
+	This is done by simply setting the @ref fplInputSettings.disabledEvents to "1" in your @ref fplSettings structure.
+
+	@subsection subsection_otutorial_input_polling_keyboard Keyboard
+
+	Use @ref fplPollKeyboardState to poll the current keyboard state.<br>
+	This state contains all the raw/mapped button states and the modifier states.<br>
+	<br>
+	See @ref fplKeyboardState for more details.
+
+	@subsection subsection_otutorial_input_polling_gamepad Gamepad
+
+	Use @ref fplPollGamepadStates to poll the current states for all conntected game controllers.<br>
+	This states contains all the buttons, digital-pad, the left/right stick position + trigger etc.<br>
+	<br>
+	See @ref fplGamepadStates for more details.
+
+	@note use @ref fplGamepadState.isConnected to check if the gamepad is actually connected or not.
+
+	@subsection subsection_otutorial_input_polling_mouse Mouse
+
+	Use @ref fplPollMouseState to poll the current mouse state.<br>
+	This states contains the state of all the buttons (Left, Right, Middle) and the position in pixels coordinates.<br>
+	<br>
+	See @ref fplMouseState for more details.
+
+	@subsection subsection_otutorial_input_polling_tips Tips
+
+	@note You can always use all those polling functions, regardless of the @ref fplInputSettings.disabledEvents field!
 */
 
 /*!
@@ -1141,6 +1210,146 @@
 */
 
 /*!
+	@page page_otutorial_memory_handling Memory Handling
+	@tableofcontents
+
+	FPL provides a couple of functions to allocate/set/clear memory for you.<br>
+	You are free to use it as you like, but you can use malloc(), free() as well if you want to.
+
+	@section section_otutorial_memory_handling_normal Default/Unaligned memory allocation
+
+	@subsection subsection_otutorial_memory_handling_normal_allocate Allocate (n)-bytes of memory
+
+	To allocate a block of contiguous memory you simply call @ref fplMemoryAllocate() with the number of bytes you want to allocate.<br>
+	This will return a pointer you can start to write into.
+
+	@code{.c}
+	// Allocate 4MB of memory
+	void *myMemory = fplMemoryAllocate(FPL_MEGABYTES(4));
+	// ...
+
+	// or you can allocate the type directly
+
+	// Allocate a bunch of int's
+	int *intArray = (int *)fplMemoryAllocate(sizeof(int) * 100000);
+	intArray[0] = 42;
+	// ...
+	@endcode
+
+	@note This function does nothing more than calling the proper operating system function such as **VirtualAlloc()** or **mmap()** .
+	@attention The memory is not guaranteed to be aligned, but depending on the OS it may be aligned to something.
+	@warning Do not write before this pointer, otherwise you may overwrite meta-informations required for releasing the memory later on.
+
+	@subsection section_otutorial_memory_normal_free Free memory
+
+	To free memory you simply call @ref fplMemoryFree() with the base pointer of your memory and thats it.
+
+	@code{.c}
+	// Free a memory block allocated by fplMemoryAllocate
+	fplMemoryFree(myMemory);
+	@endcode
+
+	@warning Do not call this function with a pointer allocated from @ref fplMemoryAlignedAllocate() , otherwise you will corrupt memory!
+
+	@subsection subsection_otutorial_memory_handling_normal_datalayout Data layout of default/unaligned memory
+
+	Here you can see the full data-layout for a default/unaligned memory block:
+	
+	| 0/8 bytes                                    | 0/8 bytes                      | n-bytes                 |
+	|----------------------------------------------|--------------------------------|-------------------------|
+	| **Optional size of the entire memory block** | **Optional padding**           | **Memory of the data**  |
+
+	@note On Linux/Unix the size and a small padding is stored before the actual data, because **munmap()** does require a size as parameter as well. 
+
+	@section section_otutorial_memory_handling_aligned Custom aligned memory allocation
+
+	@subsection subsection_otutorial_memory_handling_aligned_allocate Allocate custom aligned (n)-bytes of memory
+
+	To allocate a **custom aligned** block of contiguous memory you simply call @ref fplMemoryAlignedAllocate() with the number of bytes you want to allocate and the custom alignment.<br>
+	This will return a guaranteed aligned pointer you can start to write into.
+
+	@note The size of the memory block may be greater than the size you requested, due to alignment padding and meta-informations.
+	@attention The alignent parameter must be a power-of-two based value, otherwise the function will fail.
+	@warning Do not write before this pointer, otherwise you will overwrite meta-informations required for releasing the memory later on.
+
+	@subsection subsection_otutorial_memory_handling_aligned_free Free aligned memory
+
+	To free aligned memory you simply call @ref fplMemoryAlignedFree() with the base pointer of your aligned memory and thats it.
+
+	@warning Do not call this function with a pointer allocated from @ref fplMemoryAllocate() , otherwise you will corrupt memory!
+
+	@subsection subsection_otutorial_memory_handling_aligned_datalayout Data layout of aligned memory
+
+	Here you can see the full data-layout for a aligned memory block:
+	
+	| 8-bytes                         | Alignment * 2 bytes   | n-bytes                                                                       |
+	|---------------------------------|-----------------------|-------------------------------------------------------------------------------|
+	| **Address of the base-pointer** | **Alignment padding** | **\ref subsection_otutorial_memory_handling_normal_datalayout "Data layout"** |
+
+	@section section_otutorial_memory_handling_ops Memory operations
+
+	@subsection subsection_otutorial_memory_handling_ops_clear Clear (n)-bytes of memory
+
+	Call @ref fplMemoryClear() to clear a memory block starting from the base-pointer with a given size.
+
+	@code{.c}
+	// Clear 4-KB of memory to zero, starting by the given memory address
+	fplMemoryClear(myMemory, 4096);
+
+	// or
+
+	// Clear a struct
+	fplMemoryClear(myStructPtr, sizeof(*myStructPtr));
+	// or
+
+	// Clear a fixed sized array
+	fplMemoryClear(myArray, sizeof(myArray));
+	@endcode
+
+	@note This operation may be executed in 8-bytes, 4-bytes, 2-bytes sized chunks to improve performance.
+
+	@subsection subsection_otutorial_memory_handling_ops_set Overwrite (n)-bytes of memory with a given value
+
+	Call @ref fplMemorySet() to overwrite a memory block starting from the base-pointer with a given size and the given value.
+
+	@code{.c}
+	// Overwrites 1000 bytes of memory with a 8-bit value
+	fplMemorySet(myMemory, 0xAB, 1000);
+	@endcode
+
+	@note This operation may be executed in 8-bytes, 4-bytes, 2-bytes sized chunks to improve performance.
+
+	@subsection subsection_otutorial_memory_handling_ops_copy Copy (n)-bytes of memory to another memory location
+
+	To copy (n)-bytes of memory you simply call @ref fplMemoryCopy() with the source and destination pointer and the number of bytes you want to copy.
+
+	@code{.c}
+	// Copy parts of memory into another memory
+	// void *destMemory was already allocated before
+	size_t numberOfBytesToCopy = FPL_KILOBYTES(10);
+	fplMemoryCopy(sourceMemory, numberOfBytesToCopy, destMemory);
+	@endcode
+
+	@note This operation may be executed in 8-bytes, 4-bytes, 2-bytes sized chunks to improve performance.
+
+	@section section_otutorial_memory_handling_macrofuncs Useful macro functions
+
+	FPL provides a few macro functions useful for dealing with memory:<br>
+	
+	| Name             | What it does                                        |
+    |------------------|-----------------------------------------------------|
+	| FPL_KILOBYTES    | Converts the given kilobytes value into bytes       |
+	| FPL_MEGABYTES    | Converts the given megabytes value into bytes       |
+	| FPL_GIGABYTES    | Converts the given gigabytes value into bytes       |
+	| FPL_TERABYTES    | Converts the given terabytes value into bytes       |
+	| FPL_CLEAR_STRUCT | Clears the given struct pointer to zero             |
+	| FPL_ZERO_INIT    | Initialize a struct with zero                       |
+	| FPL_STRUCT_SET   | Overwrites a struct with the given value            |
+	| FPL_ARRAYCOUNT   | Returns the number of elements in fixed sized array |
+	| FPL_OFFSETOF     | Returns the byte-offset to a field in a struct      |
+*/
+
+/*!
 	@page page_otutorial_threading_threads Threads
 	@tableofcontents
 
@@ -1563,16 +1772,18 @@
 	Yes it does have some limitations, because it cannot do everything for you:
 	- There is no audio DSP going on, so you have to convert the samples into the proper format (Sample rate, Channels, Format type) FPL expects.
 	- There is no rendering functions included, except for presenting the current frame. So you have to load and call the correct api functions yourself.
-	- FPL has a lightweight feature set, so it may miss some features
+	- FPL has a lightweight feature set, so it may not have all the features you need
 
 	@subsection subsection_faq_thirdparty_libs Can FPL handle third party libraries?
 	Yes actually it works very well with other libraries - in fact there are several demo projects in the repository which shows that.<br>
 	<br>
 	Here is a short list of tested third-party libraries with FPL:
 
+	- C-Standard Library
+	- C++ Standard Template Library
 	- STB Libraries
-	- Standard C++ Library (STL)
 	- Glew/Glad
+	- PhysX
 	- Box2D
 	- GLM
 	- ImGUI
@@ -1588,7 +1799,7 @@
 
 	<b>I am happy that you want to support this project!</b><br>
 	<br>
-	I created and maintain this project alone, so i really appreciate any kind of contributions.<br>
+	I created this entire project alone, so i really appreciate any kind of contributions.<br>
 	<br>
 	There are several ways to help this project:<br>
 	- Test the library for any hardware/platform/compiler configuration you have access to and report the result -> This helps a lot!
