@@ -992,7 +992,7 @@ SOFTWARE.
 	@section section_todo_inprogress In progress
 
 	- Input
-		- Mouse state polling (X11, XQueryPointer)
+		- Keyboard state polling (X11, Modifier flags)
 
 	- Window
 		- Change/Get Minimize/Maximize/Restore (Win32)
@@ -13831,6 +13831,7 @@ fpl_platform_api bool fplPollKeyboardState(fplKeyboardState *outState) {
             fplKey mappedKey = fpl__GetMappedKey(&appState->window, keyCode);
             outState->buttonStatesMapped[(int)mappedKey] = isDown ? fplButtonState_Press : fplButtonState_Release;
         }
+        // @TODO(final): X11 poll keyboard state -> Read modifier flags as well
         result = true;
     }
 	return(result);
