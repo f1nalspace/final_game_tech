@@ -155,10 +155,12 @@ SOFTWARE.
 	- Fixed: [Win32] PeekMessage was not using our windowHandle at all
  	- Fixed: [Win32] fplReadFileBlock64/fplWriteFileBlock64 was not working at all
  	- Fixed: [POSIX] fplReadFileBlock64/fplWriteFileBlock64 was not working at all
+ 	- Fixed: [X11] Fixed broken fplPollKeyboardState
 	- New: [Win32]: Use SetCapture/ReleaseCapture for mouse down/up events
 	- New: [Win32]: Implemented fplPollMouseState()
 	- New: [Win32] Disable keyboard/mouse/gamepad events when fplInputSettings.disabledEvents is enabled
 	- New: [POSIX] Added __USE_LARGEFILE64 before including sys/types.h
+    - New: [X11] Implemented fplPollMouseState
 
 	## v0.9.0.1 beta
 	- Changed: Renamed fields "kernel*" to "os*" in fplOSInfos
@@ -6485,9 +6487,8 @@ typedef FPL__FUNC_X11_XSetWMIconName(fpl__func_x11_XSetWMIconName);
 typedef FPL__FUNC_X11_XSetWMName(fpl__func_x11_XSetWMName);
 #define FPL__FUNC_X11_XQueryKeymap(name) int name(Display* display, char [32])
 typedef FPL__FUNC_X11_XQueryKeymap(fpl__func_x11_XQueryKeymap);
-
-
-
+#define FPL__FUNC_X11_XQueryPointer(name) Bool name(Display* display, Window w, Window* root_return, Window* child_return, int* root_x_return, int* root_y_return, int* win_x_return, int* win_y_return, unsigned int* mask_return)
+typedef FPL__FUNC_X11_XQueryPointer(fpl__func_x11_XQueryPointer);
 
 typedef struct fpl__X11Api {
 	void *libHandle;
@@ -6534,6 +6535,7 @@ typedef struct fpl__X11Api {
 	fpl__func_x11_XSetWMIconName *XSetWMIconName;
 	fpl__func_x11_XSetWMName *XSetWMName;
 	fpl__func_x11_XQueryKeymap *XQueryKeymap;
+	fpl__func_x11_XQueryPointer *XQueryPointer;
 } fpl__X11Api;
 
 fpl_internal void fpl__UnloadX11Api(fpl__X11Api *x11Api) {
@@ -6600,7 +6602,7 @@ fpl_internal bool fpl__LoadX11Api(fpl__X11Api *x11Api) {
 				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_X11, libHandle, libName, x11Api->XSetWMIconName, fpl__func_x11_XSetWMIconName, "XSetWMIconName");
 				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_X11, libHandle, libName, x11Api->XSetWMName, fpl__func_x11_XSetWMName, "XSetWMName");
 				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_X11, libHandle, libName, x11Api->XQueryKeymap, fpl__func_x11_XQueryKeymap, "XQueryKeymap");
-
+				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_X11, libHandle, libName, x11Api->XQueryPointer, fpl__func_x11_XQueryPointer, "XQueryPointer");
 				result = true;
 			} while(0);
 			if(result) {
@@ -13819,22 +13821,41 @@ fpl_platform_api bool fplPollKeyboardState(fplKeyboardState *outState) {
 	const fpl__X11SubplatformState *subplatform = &appState->x11;
 	const fpl__X11Api *x11Api = &subplatform->api;
 	const fpl__X11WindowState *windowState = &appState->window.x11;
-	char keysReturn[32];
 	bool result = false;
-	if(x11Api->XQueryKeymap(windowState->display, keysReturn) == 0) {
-		FPL_CLEAR_STRUCT(outState);
-		for(int i = 0; i < 32; ++i) {
-			for(int bit = 0; bit < 8; ++bit) {
-				uint64_t keyCode = (uint64_t)(i * bit);
-				int value = (keysReturn[i] >> bit) & 0x01;
-				outState->keyStatesRaw[keyCode] = (value == 1);
-				fplKey mappedKey = fpl__GetMappedKey(&appState->window, keyCode);
-				outState->buttonStatesMapped[(int)mappedKey] = (value == 1) ? fplButtonState_Press : fplButtonState_Release;
-			}
-		}
-		result = true;
-	}
+    char keysReturn[32] = FPL_ZERO_INIT;
+	if (x11Api->XQueryKeymap(windowState->display, keysReturn)) {
+        FPL_CLEAR_STRUCT(outState);
+        for (uint64_t keyCode = 0; keyCode < 256; ++keyCode) {
+            bool isDown = (keysReturn[keyCode / 8] & (1 << (keyCode % 8))) != 0;
+            outState->keyStatesRaw[keyCode] = isDown ? 1 : 0;
+            fplKey mappedKey = fpl__GetMappedKey(&appState->window, keyCode);
+            outState->buttonStatesMapped[(int)mappedKey] = isDown ? fplButtonState_Press : fplButtonState_Release;
+        }
+        result = true;
+    }
 	return(result);
+}
+
+fpl_platform_api bool fplPollMouseState(fplMouseState *outState) {
+    FPL__CheckPlatform(false);
+    FPL__CheckArgumentNull(outState, false);
+    fpl__PlatformAppState *appState = fpl__global__AppState;
+    const fpl__X11SubplatformState *subplatform = &appState->x11;
+    const fpl__X11Api *x11Api = &subplatform->api;
+    const fpl__X11WindowState *windowState = &appState->window.x11;
+    bool result = false;
+    Window root, child;
+    int rootx, rooty, winx, winy;
+    unsigned int mask;
+    if (x11Api->XQueryPointer(windowState->display, windowState->window, &root, &child, &rootx, &rooty, &winx, &winy, &mask)) {
+        outState->x = winx;
+        outState->y = winy;
+        outState->buttonStates[fplMouseButtonType_Left] = (mask & Button1Mask) ? fplButtonState_Press : fplButtonState_Release;
+        outState->buttonStates[fplMouseButtonType_Right] = (mask & Button3Mask) ? fplButtonState_Press : fplButtonState_Release;
+        outState->buttonStates[fplMouseButtonType_Middle] = (mask & Button2Mask) ? fplButtonState_Press : fplButtonState_Release;
+        result = true;
+    }
+    return(result);
 }
 
 fpl_platform_api void fplUpdateGameControllers() {
