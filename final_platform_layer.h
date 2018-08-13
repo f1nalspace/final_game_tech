@@ -153,6 +153,8 @@ SOFTWARE.
 	- Fixed: [POSIX]: Removed alloca.h include when nor win32 or linux is detected
 	- Fixed: [POSIX]: Fixed typo in fplGetRunningArchitecture
 	- Fixed: [Win32] PeekMessage was not using our windowHandle at all
+ 	- Fixed: [Win32] fplReadFileBlock64/fplWriteFileBlock64 was not working at all
+ 	- Fixed: [POSIX] fplReadFileBlock64/fplWriteFileBlock64 was not working at all
 	- New: [Win32]: Use SetCapture/ReleaseCapture for mouse down/up events
 	- New: [Win32]: Implemented fplPollMouseState()
 	- New: [Win32] Disable keyboard/mouse/gamepad events when fplInputSettings.disabledEvents is enabled
@@ -10375,7 +10377,7 @@ fpl_platform_api uint64_t fplReadFileBlock64(const fplFileHandle *fileHandle, co
 	uint64_t remainingSize = sizeToRead;
 	uint64_t bufferPos = 0;
 	const uint64_t MaxDWORD = (uint64_t)(DWORD)-1;
-	while(remainingSize >= MaxDWORD) {
+	while(remainingSize > 0) {
 		DWORD bytesRead = 0;
 		uint8_t *target = (uint8_t *)targetBuffer + bufferPos;
 		uint64_t size = FPL_MIN(remainingSize, MaxDWORD);
@@ -10421,7 +10423,7 @@ fpl_platform_api uint64_t fplWriteFileBlock64(const fplFileHandle *fileHandle, v
 	uint64_t bufferPos = 0;
 	uint64_t remainingSize = sourceSize;
 	const uint64_t MaxDWORD = (uint64_t)(DWORD)-1;
-	while(remainingSize >= MaxDWORD) {
+	while(remainingSize > 0) {
 		uint8_t *source = (uint8_t *)sourceBuffer + bufferPos;
 		uint64_t size = FPL_MIN(remainingSize, MaxDWORD);
 		FPL_ASSERT(size <= MaxDWORD);
@@ -12285,7 +12287,7 @@ fpl_platform_api uint64_t fplReadFileBlock64(const fplFileHandle *fileHandle, co
 	uint64_t remainingSize = sizeToRead;
 	uint64_t bufferPos = 0;
 	const uint64_t MaxValue = (uint64_t)(size_t)-1;
-	while(remainingSize >= MaxValue) {
+	while(remainingSize > 0) {
 		uint8_t *target = (uint8_t *)targetBuffer + bufferPos;
 		size_t size = FPL_MIN(remainingSize, MaxValue);
 		ssize_t res;
@@ -12336,7 +12338,7 @@ fpl_platform_api uint64_t fplWriteFileBlock64(const fplFileHandle *fileHandle, v
 	uint64_t remainingSize = sourceSize;
 	uint64_t bufferPos = 0;
 	const uint64_t MaxValue = (uint64_t)(size_t)-1;
-	while(remainingSize >= MaxValue) {
+	while(remainingSize > 0) {
 		uint8_t *source = (uint8_t *)sourceBuffer + bufferPos;
 		size_t size = FPL_MIN(remainingSize, MaxValue);
 		ssize_t res;
@@ -14251,7 +14253,7 @@ fpl_platform_api char *fplGetProcessorName(char *destBuffer, const size_t maxDes
 	for(size_t i = 0; i < maxLineCount; ++i) {
 		linesPtr[i] = lines[i];
 	}
-	size_t foundCount = fpl__ParseTextFile("/proc/cpuinfo", wildcards, FPL_ARRAYCOUNT(wildcards), const size_t maxLineSize, maxLineCount, linesPtr);
+	size_t foundCount = fpl__ParseTextFile("/proc/cpuinfo", wildcards, FPL_ARRAYCOUNT(wildcards), maxLineSize, maxLineCount, linesPtr);
 	if(foundCount > 0) {
 		char *p = lines[0];
 		while(*p) {
@@ -14264,7 +14266,7 @@ fpl_platform_api char *fplGetProcessorName(char *destBuffer, const size_t maxDes
 			}
 			++p;
 		}
-		if(p != line) {
+		if(p != lines[0]) {
 			fplCopyAnsiString(p, destBuffer, maxDestBufferLen);
 			result = destBuffer;
 		}
