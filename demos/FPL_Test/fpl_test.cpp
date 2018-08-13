@@ -447,7 +447,7 @@ static void TestHardware() {
 	ft::Msg("Processor cores: %zu\n", coreCount);
 
 	fplMemoryInfos memInfos = {};
-	FT_ASSERT(fplGetRunningMemoryInfos(&memInfos));
+	fplGetRunningMemoryInfos(&memInfos);
 	ft::Msg("Installed physical memory (bytes): %z\n", memInfos.totalPhysicalSize);
 	ft::Msg("Total physical memory (bytes): %z\n", memInfos.totalPhysicalSize);
 	ft::Msg("Available physical memory (bytes): %z\n", memInfos.freePhysicalSize);
