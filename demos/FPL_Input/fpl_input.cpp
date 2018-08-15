@@ -17,6 +17,10 @@ Author:
 	Torsten Spaete
 
 Changelog:
+	## 2018-08-14:
+	- Draw mouse and buttons
+	- Read mouse button states
+
 	## 2018-08-13:
 	- Initial creation of this description block
 -------------------------------------------------------------------------------
@@ -575,6 +579,13 @@ constexpr float GamepadAspect = GamepadImageW / (float)GamepadImageH;
 constexpr float GamepadW = AppWidth * 0.8f;
 constexpr float GamepadH = GamepadW / GamepadAspect;
 
+constexpr int MouseImageW = 512;
+constexpr int MouseImageH = 1024;
+static const Vec2i MouseImageS = V2i(MouseImageW, MouseImageH);
+constexpr float MouseAspect = MouseImageW / (float)MouseImageH;
+constexpr float MouseW = AppWidth * 0.2f;
+constexpr float MouseH = MouseW / MouseAspect;
+
 struct KeyCharDef {
 	const wchar_t *text;
 	Vec2f align;
@@ -872,6 +883,18 @@ static KeyLedDef KeyLedDefinitions[] = {
 	{fplKeyboardModifierFlags_NumLock, UVRectFromPos(KeyboardImageS, KeyboardLedS, V2i(1820, 325))},
 };
 
+struct MouseButtonDef {
+	fplMouseButtonType buttonType;
+	UVRect uv;
+};
+
+static MouseButtonDef MouseButtonDefinitions[] = {
+	{fplMouseButtonType_Left, UVRectFromPos(MouseImageS, V2i(139, 181), V2i(96, 332))},
+	{fplMouseButtonType_Right, UVRectFromPos(MouseImageS, V2i(139, 181), V2i(277, 332))},
+	{fplMouseButtonType_Middle, UVRectFromPos(MouseImageS, V2i(42, 102), V2i(235, 376))},
+};
+
+
 constexpr size_t CodePointCount = 10000;
 constexpr size_t CodePointsPerAtlas = 256;
 constexpr size_t FontCount = CodePointCount / CodePointsPerAtlas + 1;
@@ -886,6 +909,7 @@ struct AppState {
 	GLuint fontTextures[FontCount];
 	GLuint keyboardTexture;
 	GLuint gamepadTexture;
+	GLuint mouseTexture;
 	Vec2f mousePos;
 	RenderMode renderMode;
 	fpl_b32 usePolling;
@@ -893,6 +917,7 @@ struct AppState {
 
 struct InputState {
 	Vec2i mousePos;
+	fplButtonState mouseStates[fplMouseButtonType_MaxCount];
 	fplButtonState keyStates[256];
 	fplKeyboardModifierFlags ledStates;
 };
@@ -928,6 +953,7 @@ static void InitApp(AppState *appState) {
 
 	appState->keyboardTexture = LoadTexture(dataPath, "keyboard.png");
 	appState->gamepadTexture = LoadTexture(dataPath, "gamepad.png");
+	appState->mouseTexture = LoadTexture(dataPath, "mouse.png");
 	appState->usePolling = 0;
 	appState->renderMode = RenderMode::KeyboardAndMouse;
 }
@@ -1035,11 +1061,7 @@ static void RenderApp(AppState *appState, const InputState *input, const uint32_
 			float keyOffsetY = KeyboardH * (1.0f - key.uv.vMax);
 			float keyCenterX = keyboardCenterX - KeyboardW * 0.5f + keyOffsetX + keyW * 0.5f;
 			float keyCenterY = keyboardCenterY - KeyboardH * 0.5f + keyOffsetY + keyH * 0.5f;
-#if 0
-			bool down = true;// input->keyStates[keyIndex] >= fplButtonState_Press;
-#else
 			bool down = input->keyStates[keyIndex] >= fplButtonState_Press;
-#endif
 			if(down) {
 				glColor4f(1.0f, 0.0f, 0.0f, 1.0f);
 				DrawSprite(appState->keyboardTexture, keyW * 0.5f, keyH * 0.5f, key.uv, keyCenterX, keyCenterY);
@@ -1054,6 +1076,28 @@ static void RenderApp(AppState *appState, const InputState *input, const uint32_
 				float x = keyCenterX + ((keyW * 0.5f) * keyChar.align.x);
 				float y = keyCenterY + ((keyH * 0.5f) * keyChar.align.y);
 				DrawTextFont(keyChar.text, FontCount, appState->fontData, appState->fontTextures, x, y, keyFontHeight, 0.0f, 0.0f);
+			}
+		}
+
+		// Draw mouse and buttons
+		constexpr float offsetMouseX = -MouseW * 0.1f;
+		float mouseCenterX = keyboardCenterX + KeyboardW * 0.5f + offsetMouseX + MouseW * 0.5f;
+		float mouseCenterY = keyboardCenterY;
+		{
+			glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
+			DrawSprite(appState->mouseTexture, MouseW * 0.5f, MouseH * 0.5f, 0.0f, 1.0f, 1.0f, 0.0f, mouseCenterX, mouseCenterY);
+		}
+		for(int i = 0; i < FPL_ARRAYCOUNT(input->mouseStates); ++i) {
+			const MouseButtonDef mouseButtonDef = MouseButtonDefinitions[i];
+			float mouseW = MouseW * (mouseButtonDef.uv.uMax - mouseButtonDef.uv.uMin);
+			float mouseH = MouseH * (mouseButtonDef.uv.vMax - mouseButtonDef.uv.vMin);
+			float mouseOX = MouseW * (mouseButtonDef.uv.uMin);
+			float mouseOY = MouseH * (1.0f - mouseButtonDef.uv.vMax);
+			float mouseCX = mouseCenterX - MouseW * 0.5f + mouseOX + mouseW * 0.5f;
+			float mouseCY = mouseCenterY - MouseH * 0.5f + mouseOY + mouseH * 0.5f;
+			if(input->mouseStates[i] >= fplButtonState_Press) {
+				glColor4f(1.0f, 0.0f, 0.0f, 1.0f);
+				DrawSprite(appState->mouseTexture, mouseW * 0.5f, mouseH * 0.5f, mouseButtonDef.uv, mouseCX, mouseCY);
 			}
 		}
 
@@ -1139,6 +1183,8 @@ int main(int argc, char *argv[]) {
 							if(ev.mouse.type == fplMouseEventType_Move) {
 								input.mousePos.x = ev.mouse.mouseX;
 								input.mousePos.y = ev.mouse.mouseY;
+							} else if(ev.mouse.type == fplMouseEventType_Button) {
+								input.mouseStates[(int)ev.mouse.mouseButton] = ev.mouse.buttonState;
 							}
 						} break;
 
@@ -1165,7 +1211,7 @@ int main(int argc, char *argv[]) {
 				if(fplPollKeyboardState(&keyboardState)) {
 					if(appState->usePolling) {
 						for(int i = 0; i < 256; ++i) {
-							if (KeyWasDown(lastKeyStates[i], keyboardState.buttonStatesMapped[i])) {
+							if(KeyWasDown(lastKeyStates[i], keyboardState.buttonStatesMapped[i])) {
 								HandleKeyPressed(appState, (fplKey)i);
 							}
 							input.keyStates[i] = keyboardState.buttonStatesMapped[i];
@@ -1197,6 +1243,10 @@ int main(int argc, char *argv[]) {
 					if(fplPollMouseState(&mouseState)) {
 						input.mousePos.x = mouseState.x;
 						input.mousePos.y = mouseState.y;
+						FPL_ASSERT(FPL_ARRAYCOUNT(mouseState.buttonStates) <= FPL_ARRAYCOUNT(input.mouseStates));
+						for(int i = 0; i < FPL_ARRAYCOUNT(mouseState.buttonStates); ++i) {
+							input.mouseStates[i] = mouseState.buttonStates[i];
+						}
 					}
 				}
 
