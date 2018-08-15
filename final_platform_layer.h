@@ -963,11 +963,12 @@ SOFTWARE.
 
 	- Windows
 	- Linux
-	- Unix (Partial, Needs testing)
+	- Unix (Partially)
 
 	@section section_platform_status_planned_platforms Planned Platforms
 
 	- Raspberry Pi
+	- Android
 */
 
 /*!
@@ -1026,14 +1027,13 @@ SOFTWARE.
 	- Documentation
 		- Window
 		- Debug & Logging
-		- Memory
 		- Atomics
 		- Threading (Syncronisation)
 		- File-IO
 		- Paths
 		- Strings
 		- Hardware
-		- Input
+		- Locales
 
 	- Threading
 		- Signals (POSIX, Non-Linux)
