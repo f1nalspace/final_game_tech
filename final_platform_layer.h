@@ -139,14 +139,18 @@ SOFTWARE.
 	- Changed: Renamed fplGetKeyboardState to fplPollKeyboardState
 	- Changed: Renamed fplGetGamepadStates to fplPollGamepadStates
 	- Changed: fplDebugOut prints out to the console on non-MSVC
-	- Removed: Removed obsolete field skipRepeatKeys in fplInputSettings
 	- Changed: Added enum value fplLogWriterFlags_StandardConsole
 	- Changed: Added enum value fplLogWriterFlags_ErrorConsole
 	- Changed: Removed field logToError from fplLogWriterConsole
+	- Removed: Removed obsolete field skipRepeatKeys in fplInputSettings
+	- Fixed: Clang compiler detection was not working because LLVM was detected first
+	- Fixed: UINT32_MAX was missing on android POSIX
+	- Fixed: fplFormatAnsiStringArgs was checking for argList as pointer which is wrong
 	- New: Added function fplGetPlatformResult()
 	- New: Added struct fplMouseState
 	- New: Added function fplPollMouseState()
 	- New: Added field disabledEvents to fplInputSettings
+	- New: Added android platform detection
 
 	- Changed: [POSIX] Proper detection of all architecturess (x86, x86_64, x64, arm32, arm64)
 	- Changed: [POSIX] Moved fplGetCurrentUsername from the linux-section into the posix-section
@@ -154,12 +158,16 @@ SOFTWARE.
 	- Changed: [POSIX] Moved fplGetOperatingSystemInfos from Linux into the POSIX section
 	- Changed: [POSIX] Moved fplGetHomePath from Linux into the POSIX section
 	- Changed: [POSIX] Made fplGetExecutableFilePath Unix/Linux complaint and moved it into the POSIX section
+	- Changed: [POSIX] Added Clang/LLVM to atomics detection
 	- Fixed: [POSIX]: Removed alloca.h include when nor win32 or linux is detected
 	- Fixed: [POSIX]: Fixed typo in fplGetRunningArchitecture
+	- Fixed: [POSIX]: fplSemaphoreInit() was testing INT32_MAX instead of UINT32_MAX
 	- Fixed: [Win32] PeekMessage was not using our windowHandle at all
 	- Fixed: [Win32] fplReadFileBlock64/fplWriteFileBlock64 was not working at all
 	- Fixed: [POSIX] fplReadFileBlock64/fplWriteFileBlock64 was not working at all
+	- Fixed: [POSIX] Removed initialization (PTHREAD_MUTEX_INITIALIZER) of pthread_mutex_t in fpl__PosixMutexCreate
 	- Fixed: [X11] Fixed broken fplPollKeyboardState
+	- Fixed: [MSVC] Removed duplicated warning override in header
 	- New: [Win32]: Use SetCapture/ReleaseCapture for mouse down/up events
 	- New: [Win32]: Implemented fplPollMouseState()
 	- New: [Win32] Disable keyboard/mouse/gamepad events when fplInputSettings.disabledEvents is enabled
@@ -1090,6 +1098,12 @@ SOFTWARE.
 #if defined(_WIN32) || defined(_WIN64)
 #	define FPL_PLATFORM_WIN32
 #	define FPL_PLATFORM_NAME "Windows"
+#elif defined(__ANDROID__)
+#	define FPL_PLATFORM_ANDROID
+#	define FPL_PLATFORM_NAME "Android"
+#	define FPL_SUBPLATFORM_POSIX
+#	define FPL_SUBPLATFORM_STD_STRINGS
+#	define FPL_SUBPLATFORM_STD_CONSOLE
 #elif defined(__linux__) || defined(__gnu_linux__)
 #	define FPL_PLATFORM_LINUX
 #	define FPL_PLATFORM_NAME "Linux"
@@ -1144,12 +1158,12 @@ SOFTWARE.
 // See: http://beefchunk.com/documentation/lang/c/pre-defined-c/precomp.html
 // See: http://nadeausoftware.com/articles/2012/10/c_c_tip_how_detect_compiler_name_and_version_using_compiler_predefined_macros
 //
-#if defined(__llvm__)
-	//! LLVM compiler detected
-#	define FPL_COMPILER_LLVM
-#elif defined(__clang__)
+#if defined(__clang__)
 	//! CLANG compiler detected
 #	define FPL_COMPILER_CLANG
+#elif defined(__llvm__)
+	//! LLVM compiler detected
+#	define FPL_COMPILER_LLVM
 #elif defined(__INTEL_COMPILER)
 	//! Intel compiler detected
 #	define FPL_COMPILER_INTEL
@@ -1295,24 +1309,6 @@ SOFTWARE.
 // Compiler settings
 //
 #if defined(FPL_COMPILER_MSVC)
-	//! Change warnings for the entire implementation block (Pop is at the end of the implementation)
-#	pragma warning( push )
-
-	//! Disable noexcept compiler warning for C++
-#	pragma warning( disable : 4577 )
-	//! Disable "switch statement contains 'default' but no 'case' labels" compiler warning for C++
-#	pragma warning( disable : 4065 )
-	//! Disable "conditional expression is constant" warning
-#	pragma warning( disable : 4127 )
-	//! Disable "unreferenced formal parameter" warning
-#	pragma warning( disable : 4100 )
-	//! Disable "nonstandard extension used: nameless struct/union" warning
-#	pragma warning( disable : 4201 )
-	//! Disable "local variable is initialized but not referenced" warning
-#	pragma warning( disable : 4189 )
-	//! Disable "nonstandard extension used: non-constant aggregate initializer" warning
-#	pragma warning( disable : 4204 )
-
 #	if defined(_DEBUG) || (!defined(NDEBUG))
 		//! Debug mode detected
 #		define FPL_ENABLE_DEBUG
@@ -1334,7 +1330,14 @@ SOFTWARE.
 	// Setup MSVC linker hints
 #	pragma comment(lib, "kernel32.lib")
 #else
-	// @NOTE(final): Expect all other compilers to pass in FPL_DEBUG manually
+	//! Function name macro (Other compilers)
+#   define FPL_FUNCTION_NAME __FUNCTION__
+#endif // FPL_COMPILER
+
+//
+// Fallback for debug/release
+//
+#if !defined(FPL_ENABLE_DEBUG) && !defined(FPL_ENABLE_RELEASE)
 #	if defined(FPL_DEBUG)
 		//! Debug mode detected
 #		define FPL_ENABLE_DEBUG
@@ -1342,11 +1345,8 @@ SOFTWARE.
 		//! Non-debug (Release) mode detected
 #		define FPL_ENABLE_RELEASE
 #	endif
-
-	//! Function name macro (Other compilers)
-#   define FPL_FUNCTION_NAME __FUNCTION__
-#endif // FPL_COMPILER
-
+#endif
+	
 // MingW compiler hacks
 #if defined(FPL_COMPILER_MINGW)
 #   if !defined(_WIN32_WINNT)
@@ -1565,6 +1565,11 @@ static fpl_force_inline void fplDebugBreak() { __asm__ __volatile__(".inst 0xe7f
 #include <stdbool.h> // bool
 #include <stdarg.h> // va_start, va_end, va_list, va_arg
 #include <limits.h> // UINT32_MAX, ...
+
+// On android or older posix versions there is no UINT32_MAX
+#if !defined(UINT32_MAX)
+#	define UINT32_MAX UINT_MAX
+#endif
 
 #if defined(NULL)
 	//! Null
@@ -5176,7 +5181,7 @@ fpl_main int main(int argc, char **args);
 // Compiler warnings
 //
 #if defined(FPL_COMPILER_MSVC)
-	//! Don't spill our preferences to the outside
+	//! Start to overwrite warning settings (MSVC)
 #	pragma warning( push )
 
 	//! Disable noexcept compiler warning for C++
@@ -5193,6 +5198,14 @@ fpl_main int main(int argc, char **args);
 #	pragma warning( disable : 4189 )
 	//! Disable "nonstandard extension used: non-constant aggregate initializer" warning
 #	pragma warning( disable : 4204 )
+#elif defined(FPL_COMPILER_CLANG)
+	//! Start to overwrite warning settings (Clang)
+	#pragma clang diagnostic push
+
+	// Disable warning -Wunused-variable
+	#pragma clang diagnostic ignored "-Wunused-variable"
+	// Disable warning -Wunused-function
+	#pragma clang diagnostic ignored "-Wunused-function"
 #endif // FPL_COMPILER
 
 // Only include C-Runtime functions when CRT is enabled
@@ -6161,6 +6174,13 @@ typedef struct fpl__Win32WindowState {
 #	include <unistd.h> // read, write, close, access, rmdir, getpid, sysconf, geteuid
 #   include <ctype.h> // isspace
 #   include <pwd.h> // getpwuid
+
+// @TODO(final): Detect the case of (Older POSIX versions where st_atim != st_atime)
+#if !defined(FPL_PLATFORM_ANDROID)
+# define st_atime st_atim.tv_sec
+# define st_mtime st_mtim.tv_sec
+# define st_ctime st_ctim.tv_sec
+#endif
 
 #if defined(FPL_PLATFORM_LINUX)
 #	define fpl__lseek64 lseek64
@@ -7358,7 +7378,6 @@ fpl_common_api char *fplFormatAnsiStringArgs(char *ansiDestBuffer, const size_t 
 	FPL__CheckArgumentNull(ansiDestBuffer, fpl_null);
 	FPL__CheckArgumentZero(maxAnsiDestBufferLen, fpl_null);
 	FPL__CheckArgumentNull(format, fpl_null);
-	FPL__CheckArgumentNull(argList, fpl_null);
 	// @NOTE(final): Need to clear the first character, otherwise vsnprintf() does weird things... O_o
 	ansiDestBuffer[0] = 0;
 	int charCount = 0;
@@ -7374,12 +7393,12 @@ fpl_common_api char *fplFormatAnsiStringArgs(char *ansiDestBuffer, const size_t 
 	if (charCount < 0) {
 		FPL_ERROR(FPL__MODULE_STRINGS, "Format parameter are '%s' are invalid", format);
 		return fpl_null;
-}
+	}
 	size_t requiredMaxAnsiDestBufferLen = charCount + 1;
 	FPL__CheckArgumentMin(maxAnsiDestBufferLen, requiredMaxAnsiDestBufferLen, fpl_null);
 	ansiDestBuffer[charCount] = 0;
 	return(&ansiDestBuffer[charCount]);
-	}
+}
 
 fpl_common_api char *fplFormatAnsiString(char *ansiDestBuffer, const size_t maxAnsiDestBufferLen, const char *format, ...) {
 	FPL__CheckArgumentNull(ansiDestBuffer, fpl_null);
@@ -8571,7 +8590,7 @@ LRESULT CALLBACK fpl__Win32MessageProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 			fpl__PushWindowEvent(fplWindowEventType_Resized, newWidth, newHeight);
 
 			return 0;
-				} break;
+		} break;
 
 		case WM_DROPFILES:
 		{
@@ -8601,7 +8620,7 @@ LRESULT CALLBACK fpl__Win32MessageProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 				if (dragResult != 0) {
 					fpl__PushWindowDropSingleFileEvent(fileBufferA);
 				}
-				}
+			}
 		} break;
 
 		case WM_SYSKEYDOWN:
@@ -8770,10 +8789,10 @@ LRESULT CALLBACK fpl__Win32MessageProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 
 		default:
 			break;
-			}
+	}
 	result = fpl__win32_DefWindowProc(hwnd, msg, wParam, lParam);
 	return (result);
-		}
+}
 
 fpl_internal HICON fpl__Win32LoadIconFromImageSource(const fpl__Win32Api *wapi, const HINSTANCE appInstance, const fplImageSource *imageSource) {
 	FPL_ASSERT(imageSource != fpl_null);
@@ -8971,7 +8990,7 @@ fpl_internal bool fpl__Win32InitWindow(const fplSettings *initSettings, fplWindo
 	platAppState->window.isRunning = true;
 
 	return true;
-	}
+}
 
 fpl_internal void fpl__Win32ReleaseWindow(const fpl__Win32InitState *initState, const fpl__Win32AppState *appState, fpl__Win32WindowState *windowState) {
 	const fpl__Win32Api *wapi = &appState->winApi;
@@ -11507,7 +11526,6 @@ fpl_internal bool fpl__PosixMutexUnlock(const fpl__PThreadApi *pthreadApi, pthre
 }
 
 fpl_internal int fpl__PosixMutexCreate(const fpl__PThreadApi *pthreadApi, pthread_mutex_t *handle) {
-	FPL_STRUCT_SET(handle, pthread_mutex_t, PTHREAD_MUTEX_INITIALIZER);
 	int mutexRes;
 	do {
 		mutexRes = pthreadApi->pthread_mutex_init(handle, fpl_null);
@@ -11565,7 +11583,7 @@ fpl_internal bool fpl__PosixThreadWaitForMultiple(fplThreadHandle *threads[], co
 //
 // POSIX Atomics
 //
-#if defined(FPL_COMPILER_GCC)
+#if defined(FPL_COMPILER_GCC) || defined(FPL_COMPILER_CLANG) || defined(FPL_COMPILER_LLVM)
 // @NOTE(final): See: https://gcc.gnu.org/onlinedocs/gcc/_005f_005fsync-Builtins.html#g_t_005f_005fsync-Builtins
 fpl_platform_api void fplAtomicReadFence() {
 	// @TODO(final): Wrong to ensure a full memory fence here!
@@ -12033,7 +12051,7 @@ fpl_platform_api bool fplConditionBroadcast(fplConditionVariable *condition) {
 
 fpl_platform_api bool fplSemaphoreInit(fplSemaphoreHandle *semaphore, const uint32_t initialValue) {
 	FPL__CheckArgumentNull(semaphore, false);
-	FPL__CheckArgumentMax(initialValue, INT32_MAX, false);
+	FPL__CheckArgumentMax(initialValue, UINT32_MAX, false);
 	if (semaphore->isValid) {
 		FPL_ERROR(FPL__MODULE_THREADING, "Semaphore '%p' is already initialized", semaphore);
 		return false;
@@ -12493,8 +12511,8 @@ fpl_platform_api uint64_t fplGetFileSizeFromHandle64(const fplFileHandle *fileHa
 	return(result);
 }
 
-fpl_internal uint64_t fpl__PosixConvertTimespecToUnixTimeStamp(const struct timespec *spec) {
-	uint64_t result = (uint64_t)spec->tv_sec;
+fpl_internal uint64_t fpl__PosixConvertTimeToUnixTimeStamp(const time_t secs) {
+	uint64_t result = (uint64_t)secs;
 	return(result);
 }
 
@@ -12504,9 +12522,9 @@ fpl_platform_api bool fplGetFileTimestampsFromPath(const char *filePath, fplFile
 	if (filePath != fpl_null) {
 		struct stat statBuf;
 		if (stat(filePath, &statBuf) != -1) {
-			outStamps->creationTime = fpl__PosixConvertTimespecToUnixTimeStamp(&statBuf.st_ctim);
-			outStamps->lastAccessTime = fpl__PosixConvertTimespecToUnixTimeStamp(&statBuf.st_atim);
-			outStamps->lastModifyTime = fpl__PosixConvertTimespecToUnixTimeStamp(&statBuf.st_mtim);
+			outStamps->creationTime = fpl__PosixConvertTimeToUnixTimeStamp(statBuf.st_ctime);
+			outStamps->lastAccessTime = fpl__PosixConvertTimeToUnixTimeStamp(statBuf.st_atime);
+			outStamps->lastModifyTime = fpl__PosixConvertTimeToUnixTimeStamp(statBuf.st_mtime);
 			result = true;
 		}
 	}
@@ -12521,9 +12539,9 @@ fpl_platform_api bool fplGetFileTimestampsFromHandle(const fplFileHandle *fileHa
 		int posixFileHandle = fileHandle->internalHandle.posixFileHandle;
 		struct stat statBuf;
 		if (fstat(posixFileHandle, &statBuf) != -1) {
-			outStamps->creationTime = fpl__PosixConvertTimespecToUnixTimeStamp(&statBuf.st_ctim);
-			outStamps->lastAccessTime = fpl__PosixConvertTimespecToUnixTimeStamp(&statBuf.st_atim);
-			outStamps->lastModifyTime = fpl__PosixConvertTimespecToUnixTimeStamp(&statBuf.st_mtim);
+			outStamps->creationTime = fpl__PosixConvertTimeToUnixTimeStamp(statBuf.st_ctime);
+			outStamps->lastAccessTime = fpl__PosixConvertTimeToUnixTimeStamp(statBuf.st_atime);
+			outStamps->lastModifyTime = fpl__PosixConvertTimeToUnixTimeStamp(statBuf.st_mtime);
 			result = true;
 		}
 	}
@@ -17120,9 +17138,9 @@ fpl_internal void fpl__ReleaseVideoState(fpl__PlatformAppState *appState, fpl__V
 
 		default:
 			break;
-		}
+	}
 	FPL_CLEAR_STRUCT(videoState);
-		}
+}
 
 fpl_internal bool fpl__LoadVideoState(const fplVideoDriverType driver, fpl__VideoState *videoState) {
 	bool result = true;
@@ -17264,12 +17282,12 @@ fpl_internal FPL__FUNC_PRE_SETUP_WINDOW(fpl__PreSetupWindowDefault) {
 			default:
 			{
 			} break;
-			}
 		}
+	}
 #	endif // FPL_ENABLE_VIDEO
 
 	return(result);
-	}
+}
 
 fpl_internal FPL__FUNC_POST_SETUP_WINDOW(fpl__PostSetupWindowDefault) {
 	FPL_ASSERT(appState != fpl_null);
@@ -17669,7 +17687,7 @@ fpl_common_api void fplVideoFlip() {
 
 			default:
 				break;
-			}
+		}
 #   elif defined(FPL_SUBPLATFORM_X11)
 		const fpl__X11WindowState *x11WinState = &appState->window.x11;
 		switch (appState->currentSettings.video.driver) {
@@ -17783,10 +17801,10 @@ fpl_internal void fpl__ReleasePlatformStates(fpl__PlatformInitState *initState, 
 		FPL_LOG_DEBUG(FPL__MODULE_CORE, "Release allocated Platform App State Memory");
 		fplMemoryFree(appState);
 		fpl__global__AppState = fpl_null;
-		}
+	}
 	initState->initResult = fplPlatformResultType_NotInitialized;
 	initState->isInitialized = false;
-		}
+}
 
 fpl_common_api const char *fplGetPlatformTypeString(const fplPlatformType type) {
 	switch (type) {
@@ -17931,7 +17949,7 @@ fpl_common_api bool fplPlatformInit(const fplInitFlags initFlags, const fplSetti
 		FPL_CRITICAL(FPL__MODULE_CORE, "Failed initializing %s Platform!", FPL_PLATFORM_NAME);
 		fpl__ReleasePlatformStates(initState, appState);
 		return(fpl__SetPlatformResult(fplPlatformResultType_FailedPlatform));
-		}
+	}
 	FPL_LOG_DEBUG(FPL__MODULE_CORE, "Successfully initialized %s Platform", FPL_PLATFORM_NAME);
 
 // Init video state
@@ -18017,7 +18035,7 @@ fpl_common_api bool fplPlatformInit(const fplInitFlags initFlags, const fplSetti
 
 	initState->isInitialized = true;
 	return(fpl__SetPlatformResult(fplPlatformResultType_Success));
-	}
+}
 
 fpl_common_api fplPlatformType fplGetPlatformType() {
 	fplPlatformType result;
@@ -18036,8 +18054,11 @@ fpl_common_api fplPlatformType fplGetPlatformType() {
 #endif // FPL_SYSTEM_INIT_DEFINED
 
 #if defined(FPL_COMPILER_MSVC)
-	//! Don't spill our preferences to the outside
+	//! Reset MSVC warning settings
 #	pragma warning( pop )
+#elif defined(FPL_COMPILER_CLANG)
+	//! Reset Clang warning settings
+#	pragma clang diagnostic pop
 #endif
 
 #endif // FPL_IMPLEMENTATION && !FPL_IMPLEMENTED
