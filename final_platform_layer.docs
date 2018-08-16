@@ -22,7 +22,7 @@
 	@section section_using_this_documentation How to use this documentation?
 	Use the following links to learn more about FPL:
 	- @subpage page_introduction
-	- @subpage page_usage
+	- @subpage page_gettingstarted
 	- @subpage page_categories
 	- @subpage page_examples
 	- @subpage page_faq
@@ -177,11 +177,11 @@
 	- Define <b>FPL_IMPLEMENTATION</b> in at least one translation unit before including this header file!
 	- Ready to go.
 
-	For more details see the pages: @subpage page_usage / @subpage page_categories / @subpage page_examples.
+	For more details see the pages: @subpage page_gettingstarted / @subpage page_categories / @subpage page_examples.
 */
 
 /*!
-	@page page_usage Getting started
+	@page page_gettingstarted Getting started
 	@tableofcontents
 
 	@section section_usage_setup Download & Setup
@@ -197,7 +197,7 @@
 	@section section_usage_requirements Requirements
 
 	FPL uses built-in operating system libraries and requires a C99 complaint compiler.<br>
-	Depending on the compiler and platform - linking to one system library may be additional required:
+	Depending on the compiler and platform - linking to one system library may be needed:
 
 	@subsection usage_requirements_win32 Win32
 	- Link against "kernel32.lib"
@@ -206,7 +206,7 @@
 	- Link against "libld.so"
 
 	@subsection usage_requirements_crt C-Runtime
-	By default FPL uses the C-Run-Time library but its usage is optional.<br>
+	By default FPL uses the C-Run-Time library functions such as vsnprintf(), getchar() but its usage is optional.<br>
 	For more details see the page @subpage page_nocrt
 
 	@section section_usage_howtouse How to use FPL?
@@ -284,6 +284,7 @@
 	@section section_category_general General
 	@subpage page_category_initialization <br>
 	@subpage page_category_errorhandling <br>
+	@subpage page_category_logging <br>
 
 	@section section_category_window Window
 	@subpage page_category_window_creation <br>
@@ -449,29 +450,18 @@
 
 	@section section_category_initialization_tips Tips
 	After releasing FPL you can call @ref fplPlatformInit() again if needed - for example: Finding the proper audio device, Testing for OpenGL compability, etc. may require you to call @ref fplPlatformInit() and @ref fplPlatformRelease() multiple times.<br>
-	For more details see @ref page_usage
+	For more details see @ref page_gettingstarted
 */
 
 /*!
 	@page page_category_errorhandling Error handling
 	@tableofcontents
 
-	@section section_category_errorhandling_getlatest Get latest error
-
-	In case something goes wrong you can always call @ref fplGetLastError() - at any time, regardless if it is initialized or not.<br>
-	This either returns a empty string indicating everything is fine or a formated string with a valid error message.<br>
-
-	Example:
-	@code{.c}
-	const char *errStr = fplGetLastError();
-	// Do something with the error string
-	@endcode
-
 	@section section_category_errorhandling_getplatformresult Check platform result
 
 	Use @ref fplGetPlatformResult() to query the current platform result.<br>
 	This is useful to check if @ref fplPlatformInit() was already called or not.
-	Also this is useful to see which system fails to initialize when @ref fplPlatformInit() fails.
+	Also this is useful to see which system failed in @ref fplPlatformInit() .
 
 	Example:
 	@code{.c}
@@ -487,6 +477,17 @@
 	@endcode
 
 	@note You may combine @ref fplGetPlatformResult with @ref fplGetLastError, to get a more understanding what exactly went wrong.
+
+	@section section_category_errorhandling_getlatest Get latest error
+
+	In case something goes wrong you can always call @ref fplGetLastError() - at any time, regardless if it is initialized or not.<br>
+	This either returns a empty string indicating everything is fine or a formated string with a valid error message.<br>
+
+	Example:
+	@code{.c}
+	const char *errStr = fplGetLastError();
+	// Do something with the error string
+	@endcode
 
 	@section section_category_errorhandling_count Was there a error?
 
@@ -507,16 +508,80 @@
 	@code{.c}
 	fplClearErrors();
 	@endcode
+*/
 
-	@section section_category_errorhandling_note Note
-	Keep in mind that any platform error is reported in the output of the error console automatically!<br>
-	If you dont want to do that, then simply define the preprocessor directive for ignoring this behavior - before including this library with implementation enabled:
+/*!
+	@page page_category_logging Debug & Logging
+	@tableofcontents
+
+	@section section_category_logging_logging Logging
+
+	FPL has a internal logging system built-in.<br>
+	By default this logging system is disabled, but you enable it you by defining the preprocessor definition **FPL_LOGGING** before including the FPL header file.<br>
+	<br>
+	You can change the maximum log-level using @ref fplSetMaxLogLevel() . By default this is set to @ref fplLogLevel_Critical which means that only system-wide critical errors will be reported.<br>
+	When the logging system is enabled you can get or change the configuration using @ref fplGetLogSettings() / @ref fplSetLogSettings() respectively.<br>
+
+	This configuration has two modes, a mode which you can define one writer for every log level and one mode which you have a writer for each log-level separately. By default it uses the first mode, which is one writer for all log-levels.<br>
+	To change this behavior you can set the preprocessor definition **FPL_LOG_MULTIPLE_WRITERS**. With this you can change the logging in very detail.<br>
+
+	A log writer can be configured to log to multiple logging-targets.<br>
+	<br>
+	FPL supports up-to 4 log-targets:
+	- Console standard output
+	- Console error output
+	- Debug console output
+	- Custom callback
+
+	See @ref fplLogWriterFlags and @ref fplLogSettings for more details.
+
+	@subsection subsection_category_logging_logging_example_console_only Example: Log everything to the standard console only
 
 	@code{.c}
-	#define FPL_NO_ERROR_IN_CONSOLE
-	#define FPL_IMPLEMENTATION
-	#include <final_platform_layer.h>
+	fplLogSettings logSettings = FPL_ZERO_INIT;
+	logSettings.maxLevel = fplLogLevel_All;
+	logSettings.writers[0].flags = fplLogWriterFlags_StandardConsole;
+	fplSetLogSettings(&logSettings);
 	@endcode
+
+	@subsection subsection_category_logging_logging_example_errors_only Example: Log all errors to the error console only
+
+	@code{.c}
+	fplLogSettings logSettings = FPL_ZERO_INIT;
+	logSettings.maxLevel = fplLogLevel_Error;
+	logSettings.writers[0].flags = fplLogWriterFlags_ErrorConsole;
+	fplSetLogSettings(&logSettings);
+	@endcode
+
+	@section section_category_logging_debug Debug
+
+	@subsection subsection_category_logging_debug_break Forced Breakpoint
+
+	You can force to stop on a specific line of code always by calling the function @ref fplDebugBreak() .<br>
+	It works exactly like a breakpoint, but it will always break until you remove the call to it.
+
+	Example:
+	@code{.c}
+	// ... code
+	fplDebugBreak(); // Debugger will always stop here
+	// ... code
+	@endcode
+
+	@subsection subsection_category_logging_debug_out Output to the Debug-Console
+
+	On IDE's such as visual studio you can use @ref fplDebugOut() or @ref fplDebugFormatOut() to print out stuff in the console directly in your IDE.<br>
+
+	Example:
+	@code{.c}
+	// Basic output
+	fplDebugOut("Debug-Values:\n");
+
+	// or
+
+	// Formatted output
+	fplDebugFormatOut("Value of X: %f\n", xValue);
+	@endcode
+
 */
 
 /*!
@@ -547,8 +612,7 @@
 	}
 	@endcode
 
-	@section section_category_window_creation_note Note
-	All window based calls are required to be executed from the main-thread only!
+	@attention All window based calls are required to be executed from the main-thread only!
 
 */
 
