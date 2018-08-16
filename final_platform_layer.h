@@ -142,6 +142,7 @@ SOFTWARE.
 	- Changed: Added enum value fplLogWriterFlags_StandardConsole
 	- Changed: Added enum value fplLogWriterFlags_ErrorConsole
 	- Changed: Removed field logToError from fplLogWriterConsole
+	- Changed: Internal audio system uses condition variables instead of signals now
 	- Removed: Removed obsolete field skipRepeatKeys in fplInputSettings
 	- Fixed: Clang compiler detection was not working because LLVM was detected first
 	- Fixed: UINT32_MAX was missing on android POSIX
@@ -16599,14 +16600,53 @@ fpl_internal uint32_t fpl__GetAudioDevicesAlsa(fpl__AlsaAudioState *alsaState, f
 //
 // %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 #if defined(FPL_ENABLE_AUDIO)
+typedef struct fpl__AudioEvent {
+	fplMutexHandle mutex;
+	fplConditionVariable cond;
+	volatile int32_t signaled;
+} fpl__AudioEvent;
+
+fpl_internal bool fpl__InitAudioEvent(fpl__AudioEvent *ev) {
+	FPL_CLEAR_STRUCT(ev);
+	if (!fplMutexInit(&ev->mutex)) {
+		return(false);
+	}
+	if (!fplConditionInit(&ev->cond)) {
+		return(false);
+	}
+	ev->signaled = 0;
+	return(true);
+}
+
+fpl_internal void fpl__ReleaseAudioEvent(fpl__AudioEvent *ev) {
+	fplConditionDestroy(&ev->cond);
+	fplMutexDestroy(&ev->mutex);
+}
+
+fpl_internal void fpl__WaitForAudioEvent(fpl__AudioEvent *ev) {
+	fplMutexLock(&ev->mutex);
+	while (!ev->signaled) {
+		fplConditionWait(&ev->cond, &ev->mutex, FPL_TIMEOUT_INFINITE);
+	}
+	ev->signaled = 0;
+	fplMutexUnlock(&ev->mutex);
+}
+
+fpl_internal void fpl__SetAudioEvent(fpl__AudioEvent *ev) {
+	fplMutexLock(&ev->mutex);
+	ev->signaled = 1;
+	fplConditionSignal(&ev->cond);
+	fplMutexUnlock(&ev->mutex);
+}
+
 typedef struct fpl__AudioState {
 	fpl__CommonAudioState common;
 
 	fplMutexHandle lock;
 	fplThreadHandle *workerThread;
-	fplSignalHandle startSignal;
-	fplSignalHandle stopSignal;
-	fplSignalHandle wakeupSignal;
+	fpl__AudioEvent startEvent;
+	fpl__AudioEvent stopEvent;
+	fpl__AudioEvent wakeupEvent;
 	volatile fplAudioResult workResult;
 
 	fplAudioDriverType activeDriver;
@@ -16811,10 +16851,10 @@ fpl_internal void fpl__AudioWorkerThread(const fplThreadHandle *thread, void *da
 
 		// Let the other threads know that the device has been stopped.
 		fpl__AudioSetDeviceState(commonAudioState, fpl__AudioDeviceState_Stopped);
-		fplSignalSet(&audioState->stopSignal);
+		fpl__SetAudioEvent(&audioState->stopEvent);
 
 		// We wait until the audio device gets wake up
-		fplSignalWaitForOne(&audioState->wakeupSignal, FPL_TIMEOUT_INFINITE);
+		fpl__WaitForAudioEvent(&audioState->wakeupEvent);
 
 		// Default result code.
 		audioState->workResult = fplAudioResult_Success;
@@ -16830,20 +16870,20 @@ fpl_internal void fpl__AudioWorkerThread(const fplThreadHandle *thread, void *da
 		// Start audio device
 		audioState->workResult = fpl__StartAudioDevice(audioState);
 		if (audioState->workResult != fplAudioResult_Success) {
-			fplSignalSet(&audioState->startSignal);
+			fpl__SetAudioEvent(&audioState->startEvent);
 			continue;
 		}
 
 		// The audio device is started, mark it as such
 		fpl__AudioSetDeviceState(commonAudioState, fpl__AudioDeviceState_Started);
-		fplSignalSet(&audioState->startSignal);
+		fpl__SetAudioEvent(&audioState->startEvent);
 
 		// Enter audio device main loop
 		fpl__RunAudioDeviceMainLoop(audioState);
 	}
 
 	// Signal to stop any audio threads, in case there are some waiting
-	fplSignalSet(&audioState->stopSignal);
+	fpl__SetAudioEvent(&audioState->stopEvent);
 
 #if defined(FPL_PLATFORM_WIN32)
 	wapi->ole.CoUninitialize();
@@ -16873,15 +16913,15 @@ fpl_internal void fpl__ReleaseAudio(fpl__AudioState *audioState) {
 		fpl__AudioSetDeviceState(commonAudioState, fpl__AudioDeviceState_Uninitialized);
 
 		// Wake up the worker thread and wait for it to properly terminate.
-		fplSignalSet(&audioState->wakeupSignal);
+		fpl__SetAudioEvent(&audioState->wakeupEvent);
 
 		fplThreadWaitForOne(audioState->workerThread, FPL_TIMEOUT_INFINITE);
 		fplThreadTerminate(audioState->workerThread);
 
 		// Release signals and thread
-		fplSignalDestroy(&audioState->stopSignal);
-		fplSignalDestroy(&audioState->startSignal);
-		fplSignalDestroy(&audioState->wakeupSignal);
+		fpl__ReleaseAudioEvent(&audioState->stopEvent);
+		fpl__ReleaseAudioEvent(&audioState->startEvent);
+		fpl__ReleaseAudioEvent(&audioState->wakeupEvent);
 		fplMutexDestroy(&audioState->lock);
 
 		// Release audio device
@@ -16934,15 +16974,15 @@ fpl_internal fplAudioResult fpl__InitAudio(const fplAudioSettings *audioSettings
 		fpl__ReleaseAudio(audioState);
 		return fplAudioResult_Failed;
 	}
-	if (!fplSignalInit(&audioState->wakeupSignal, fplSignalValue_Unset)) {
+	if (!fpl__InitAudioEvent(&audioState->wakeupEvent)) {
 		fpl__ReleaseAudio(audioState);
 		return fplAudioResult_Failed;
 	}
-	if (!fplSignalInit(&audioState->startSignal, fplSignalValue_Unset)) {
+	if (!fpl__InitAudioEvent(&audioState->startEvent)) {
 		fpl__ReleaseAudio(audioState);
 		return fplAudioResult_Failed;
 	}
-	if (!fplSignalInit(&audioState->stopSignal, fplSignalValue_Unset)) {
+	if (!fpl__InitAudioEvent(&audioState->stopEvent)) {
 		fpl__ReleaseAudio(audioState);
 		return fplAudioResult_Failed;
 	}
@@ -17008,7 +17048,7 @@ fpl_internal fplAudioResult fpl__InitAudio(const fplAudioSettings *audioSettings
 			return fplAudioResult_Failed;
 		}
 		// Wait for the worker thread to put the device into the stopped state.
-		fplSignalWaitForOne(&audioState->stopSignal, FPL_TIMEOUT_INFINITE);
+		fpl__WaitForAudioEvent(&audioState->stopEvent);
 	} else {
 		fpl__AudioSetDeviceState(&audioState->common, fpl__AudioDeviceState_Stopped);
 	}
@@ -17462,7 +17502,7 @@ fpl_common_api fplAudioResult fplStopAudio() {
 
 			// We need to wait for the worker thread to become available for work before returning.
 			// @NOTE(final): The audio worker thread will be the one who puts the device into the stopped state.
-			fplSignalWaitForOne(&audioState->stopSignal, FPL_TIMEOUT_INFINITE);
+			fpl__WaitForAudioEvent(&audioState->stopEvent);
 			result = fplAudioResult_Success;
 		}
 	}
@@ -17511,11 +17551,11 @@ fpl_common_api fplAudioResult fplPlayAudio() {
 			fpl__AudioSetDeviceState(commonAudioState, fpl__AudioDeviceState_Started);
 		} else {
 			// Synchronous drivers
-			fplSignalSet(&audioState->wakeupSignal);
+			fpl__SetAudioEvent(&audioState->wakeupEvent);
 
 			// Wait for the worker thread to finish starting the device.
 			// @NOTE(final): The audio worker thread will be the one who puts the device into the started state.
-			fplSignalWaitForOne(&audioState->startSignal, FPL_TIMEOUT_INFINITE);
+			fpl__WaitForAudioEvent(&audioState->startEvent);
 			result = audioState->workResult;
 		}
 	}
