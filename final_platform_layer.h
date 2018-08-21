@@ -147,11 +147,13 @@ SOFTWARE.
 	- Fixed: Clang compiler detection was not working because LLVM was detected first
 	- Fixed: UINT32_MAX was missing on android POSIX
 	- Fixed: fplFormatAnsiStringArgs was checking for argList as pointer which is wrong
+	- Fixed: leftTrigger/rightTrigger field in fplGamepadState had incorrect documentation
 	- New: Added function fplGetPlatformResult()
 	- New: Added struct fplMouseState
 	- New: Added function fplPollMouseState()
 	- New: Added field disabledEvents to fplInputSettings
 	- New: Added android platform detection
+	- New: Added enum fplGamepadButtonType
 
 	- Changed: [POSIX] Proper detection of all architecturess (x86, x86_64, x64, arm32, arm64)
 	- Changed: [POSIX] Moved fplGetCurrentUsername from the linux-section into the posix-section
@@ -165,6 +167,7 @@ SOFTWARE.
 	- Fixed: [POSIX]: fplSemaphoreInit() was testing INT32_MAX instead of UINT32_MAX
 	- Fixed: [Win32] PeekMessage was not using our windowHandle at all
 	- Fixed: [Win32] fplReadFileBlock64/fplWriteFileBlock64 was not working at all
+	- Fixed: [Win32/XInput] Left/Right gamepad thumb buttons was not mapped
 	- Fixed: [POSIX] fplReadFileBlock64/fplWriteFileBlock64 was not working at all
 	- Fixed: [POSIX] Removed initialization (PTHREAD_MUTEX_INITIALIZER) of pthread_mutex_t in fpl__PosixMutexCreate
 	- Fixed: [X11] Fixed broken fplPollKeyboardState
@@ -4489,6 +4492,42 @@ typedef struct fplGamepadButton {
 	fpl_b32 isDown;
 } fplGamepadButton;
 
+//! An enumeration of gamepad buttons
+typedef enum fplGamepadButtonType {
+	//! DPad up
+	fplGamepadButtonType_DPadUp = 0,
+	//! DPad right
+	fplGamepadButtonType_DPadRight,
+	//! DPad down
+	fplGamepadButtonType_DPadDown,
+	//! DPad left
+	fplGamepadButtonType_DPadLeft,
+
+	//! Action-A
+	fplGamepadButtonType_ActionA,
+	//! Action-B
+	fplGamepadButtonType_ActionB,
+	//! Action-X
+	fplGamepadButtonType_ActionX,
+	//! Action-Y
+	fplGamepadButtonType_ActionY,
+
+	//! Start
+	fplGamepadButtonType_Start,
+	//! Back
+	fplGamepadButtonType_Back,
+
+	//! Left-Thumb
+	fplGamepadButtonType_LeftThumb,
+	//! Right-Thumb
+	fplGamepadButtonType_RightThumb,
+
+	//! Left-Shoulder
+	fplGamepadButtonType_LeftShoulder,
+	//! Right-Shoulder
+	fplGamepadButtonType_RightShoulder,
+} fplGamepadButtonType;
+
 //! A structure containing the entire gamepad state
 typedef struct fplGamepadState {
 	union {
@@ -4539,9 +4578,9 @@ typedef struct fplGamepadState {
 	//! Analog right thumb Y in range (-1.0 to 1.0f)
 	float rightStickY;
 
-	//! Analog left trigger in range (-1.0 to 1.0f)
+	//! Analog left trigger in range (0.0 to 1.0f)
 	float leftTrigger;
-	//! Analog right trigger in range (-1.0 to 1.0f)
+	//! Analog right trigger in range (0.0 to 1.0f)
 	float rightTrigger;
 
 	//! Is device connected
@@ -8359,6 +8398,12 @@ fpl_internal void fpl__Win32XInputGamepadToGamepadState(const XINPUT_GAMEPAD *pa
 		outState->leftShoulder.isDown = true;
 	if (pad->wButtons & XINPUT_GAMEPAD_RIGHT_SHOULDER)
 		outState->rightShoulder.isDown = true;
+
+	// Thumb buttons
+	if (pad->wButtons & XINPUT_GAMEPAD_LEFT_THUMB)
+		outState->leftThumb.isDown = true;
+	if (pad->wButtons & XINPUT_GAMEPAD_RIGHT_THUMB)
+		outState->rightThumb.isDown = true;
 }
 
 fpl_internal void fpl__Win32PollGameControllers(const fplSettings *settings, const fpl__Win32InitState *initState, fpl__Win32XInputState *xinputState) {
