@@ -178,6 +178,7 @@ SOFTWARE.
 	- New: [POSIX] Added __USE_LARGEFILE64 before including sys/types.h
 	- New: [X11] Implemented fplPollMouseState
 	- New: [X11] Implemented modifier keys in fplPollKeyboardState
+    - New: [Linux] Implemented fplPollGamepadStates
 
 	## v0.9.0.1 beta
 	- Changed: Renamed fields "kernel*" to "os*" in fplOSInfos
@@ -6434,7 +6435,7 @@ typedef struct fpl__LinuxAppState {
 // Forward declarations
 #if defined(FPL_ENABLE_WINDOW)
 fpl_internal void fpl__LinuxFreeGameControllers(fpl__LinuxGameControllersState *controllersState);
-fpl_internal void fpl__LinuxPollGameControllers(const fplSettings *settings, fpl__LinuxGameControllersState *controllersState);
+fpl_internal void fpl__LinuxPollGameControllers(const fplSettings *settings, fpl__LinuxGameControllersState *controllersState, const bool useEvents);
 #endif
 
 #endif // FPL_PLATFORM_LINUX
@@ -13714,7 +13715,7 @@ fpl_platform_api bool fplWindowUpdate() {
 #if defined(FPL_PLATFORM_LINUX)
 	if (!appState->currentSettings.input.disabledEvents) {
 		fpl__LinuxAppState *linuxAppState = &appState->plinux;
-		fpl__LinuxPollGameControllers(&appState->currentSettings, &linuxAppState->controllersState);
+		fpl__LinuxPollGameControllers(&appState->currentSettings, &linuxAppState->controllersState, true);
 	}
 #endif
 
@@ -13963,7 +13964,7 @@ fpl_platform_api void fplUpdateGameControllers() {
 #if defined(FPL_PLATFORM_LINUX)
 	if (!appState->currentSettings.input.disabledEvents) {
 		fpl__LinuxAppState *linuxAppState = &appState->plinux;
-		fpl__LinuxPollGameControllers(&appState->currentSettings, &linuxAppState->controllersState);
+		fpl__LinuxPollGameControllers(&appState->currentSettings, &linuxAppState->controllersState, true);
 	}
 #endif
 }
@@ -13983,9 +13984,7 @@ fpl_platform_api void fplUpdateGameControllers() {
 
 fpl_internal void fpl__LinuxReleasePlatform(fpl__PlatformInitState *initState, fpl__PlatformAppState *appState) {
 #if defined(FPL_ENABLE_WINDOW)
-	if (!appState->currentSettings.input.disabledEvents) {
-		fpl__LinuxFreeGameControllers(&appState->plinux.controllersState);
-	}
+    fpl__LinuxFreeGameControllers(&appState->plinux.controllersState);
 #endif
 }
 
@@ -14025,6 +14024,7 @@ fpl_internal_inline float fpl__LinuxJoystickProcessStickValue(const int16_t valu
 
 fpl_internal void fpl__LinuxPushGameControllerStateUpdateEvent(const struct js_event *event, fplGamepadState *padState) {
 	fplGamepadButton *buttonMappingTable[12] = FPL_ZERO_INIT;
+    padState->isConnected = true;
 	buttonMappingTable[0] = &padState->actionA;
 	buttonMappingTable[1] = &padState->actionB;
 	buttonMappingTable[2] = &padState->actionX;
@@ -14124,13 +14124,13 @@ fpl_internal void fpl__LinuxPushGameControllerStateUpdateEvent(const struct js_e
 	}
 }
 
-fpl_internal void fpl__LinuxPollGameControllers(const fplSettings *settings, fpl__LinuxGameControllersState *controllersState) {
+fpl_internal void fpl__LinuxPollGameControllers(const fplSettings *settings, fpl__LinuxGameControllersState *controllersState, const bool useEvents) {
 	// https://github.com/underdoeg/ofxGamepad
 	// https://github.com/elanthis/gamepad
 	// https://gist.github.com/jasonwhite/c5b2048c15993d285130
 	// https://github.com/Tasssadar/libenjoy/blob/master/src/libenjoy_linux.c
 
-	if ((controllersState->lastCheckTime == 0) || ((fplGetTimeInMillisecondsLP() - controllersState->lastCheckTime) >= settings->input.controllerDetectionFrequency)) {
+	if (((controllersState->lastCheckTime == 0) || ((fplGetTimeInMillisecondsLP() - controllersState->lastCheckTime) >= settings->input.controllerDetectionFrequency)) || !useEvents) {
 		controllersState->lastCheckTime = fplGetTimeInMillisecondsLP();
 
 		//
@@ -14179,12 +14179,14 @@ fpl_internal void fpl__LinuxPollGameControllers(const fplSettings *settings, fpl
 				ioctl(fd, JSIOCGNAME(FPL_ARRAYCOUNT(controller->displayName)), controller->displayName);
 				fcntl(fd, F_SETFL, O_NONBLOCK);
 
-				// Connected
-				fplEvent ev = FPL_ZERO_INIT;
-				ev.type = fplEventType_Gamepad;
-				ev.gamepad.type = fplGamepadEventType_Connected;
-				ev.gamepad.deviceIndex = (uint32_t)freeIndex;
-				fpl__PushEvent(&ev);
+				if (useEvents) {
+					// Connected
+					fplEvent ev = FPL_ZERO_INIT;
+					ev.type = fplEventType_Gamepad;
+					ev.gamepad.type = fplGamepadEventType_Connected;
+					ev.gamepad.deviceIndex = (uint32_t) freeIndex;
+					fpl__PushEvent(&ev);
+				}
 			}
 		}
 	}
@@ -14201,13 +14203,14 @@ fpl_internal void fpl__LinuxPollGameControllers(const fplSettings *settings, fpl
 					if (errno == ENODEV) {
 						close(controller->fd);
 						controller->fd = 0;
-
-						// Disconnected
-						fplEvent ev = FPL_ZERO_INIT;
-						ev.type = fplEventType_Gamepad;
-						ev.gamepad.type = fplGamepadEventType_Disconnected;
-						ev.gamepad.deviceIndex = controllerIndex;
-						fpl__PushEvent(&ev);
+						if (useEvents) {
+							// Disconnected
+							fplEvent ev = FPL_ZERO_INIT;
+							ev.type = fplEventType_Gamepad;
+							ev.gamepad.type = fplGamepadEventType_Disconnected;
+							ev.gamepad.deviceIndex = controllerIndex;
+							fpl__PushEvent(&ev);
+						}
 					}
 					break;
 				}
@@ -14215,16 +14218,38 @@ fpl_internal void fpl__LinuxPollGameControllers(const fplSettings *settings, fpl
 			}
 
 			if (controller->fd > 0) {
-				fplEvent ev = FPL_ZERO_INIT;
-				ev.type = fplEventType_Gamepad;
-				ev.gamepad.type = fplGamepadEventType_StateChanged;
-				ev.gamepad.deviceIndex = 0;
-				ev.gamepad.state = controller->state;
-				fpl__PushEvent(&ev);
+				if (useEvents) {
+					// Update state
+					fplEvent ev = FPL_ZERO_INIT;
+					ev.type = fplEventType_Gamepad;
+					ev.gamepad.type = fplGamepadEventType_StateChanged;
+					ev.gamepad.deviceIndex = 0;
+					ev.gamepad.state = controller->state;
+					fpl__PushEvent(&ev);
+				}
 			}
 		}
 	}
 }
+
+fpl_platform_api bool fplPollGamepadStates(fplGamepadStates *outStates) {
+    FPL__CheckPlatform(false);
+    FPL__CheckArgumentNull(outStates, false);
+    fpl__PlatformAppState *appState = fpl__global__AppState;
+#if defined(FPL_PLATFORM_LINUX)
+    fpl__LinuxGameControllersState *controllersState = &appState->plinux.controllersState;
+    fpl__LinuxPollGameControllers(&appState->currentSettings, controllersState, false);
+    FPL_CLEAR_STRUCT(outStates);
+    FPL_ASSERT(FPL_ARRAYCOUNT(controllersState->controllers) == FPL_ARRAYCOUNT(outStates->deviceStates));
+    for (int i = 0; i < FPL_ARRAYCOUNT(controllersState->controllers); ++i) {
+        outStates->deviceStates[i] = controllersState->controllers[i].state;
+    }
+    return(true);
+#else
+    return(false);
+#endif
+}
+
 #endif // FPL_ENABLE_WINDOW
 
 //
