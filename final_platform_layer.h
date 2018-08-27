@@ -120,7 +120,7 @@ SOFTWARE.
 
 /*!
 	@file final_platform_layer.h
-	@version v0.9.1.0 beta
+	@version v0.9.2.0 beta
 	@author Torsten Spaete
 	@brief Final Platform Layer (FPL) - A C99 Single-Header-File Platform Abstraction Library
 */
@@ -128,6 +128,10 @@ SOFTWARE.
 /*!
 	@page page_changelog Changelog
 	@tableofcontents
+
+	## v0.9.2.0 beta
+	- Changed: [Win32] GetTickCount() replaced with GetTickCount64()
+	- Fixed: [Win32] Forced compile error when compiling on < vista (FPL uses several features which requires vista or higher)
 
 	## v0.9.1.0 beta
 	- Changed: Updated all the lists
@@ -1717,6 +1721,9 @@ FPL_STATICASSERT(sizeof(size_t) == sizeof(uint32_t));
 #		define WIN32_LEAN_AND_MEAN 1
 #	endif
 #	include <Windows.h> // Win32 api
+#	if _WIN32_WINNT < 0x0600
+#		error "Windows Vista or higher required!"
+#	endif
 #endif // FPL_PLATFORM_WIN32
 
 #if defined(FPL_SUBPLATFORM_POSIX)
@@ -8615,7 +8622,6 @@ LRESULT CALLBACK fpl__Win32MessageProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 
 		case WM_SIZE:
 		{
-			// @TODO(final): Win32 save maximize/minimize state here
 			DWORD newWidth = LOWORD(lParam);
 			DWORD newHeight = HIWORD(lParam);
 			if (wParam == SIZE_MAXIMIZED) {
@@ -10912,7 +10918,7 @@ fpl_platform_api double fplGetTimeInSecondsHP() {
 }
 
 fpl_platform_api uint64_t fplGetTimeInSecondsLP() {
-	uint64_t result = (uint64_t)GetTickCount() / 1000;
+	uint64_t result = (uint64_t)GetTickCount64() / 1000;
 	return(result);
 }
 
@@ -10930,7 +10936,7 @@ fpl_platform_api double fplGetTimeInMillisecondsHP() {
 }
 
 fpl_platform_api uint64_t fplGetTimeInMillisecondsLP() {
-	uint64_t result = GetTickCount();
+	uint64_t result = GetTickCount64();
 	return(result);
 }
 
