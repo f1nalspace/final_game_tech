@@ -406,7 +406,7 @@ extern void PopTexture(RenderState &state, TextureHandle *targetTexture) {
 }
 
 extern void PushCircle(RenderState &state, const Vec2f &position, const float radius, const size_t segmentCount, const Vec4f &color, const bool isFilled, const float lineWidth) {
-	FPL_ASSERT(segmentCount >= 3);
+	fplAssert(segmentCount >= 3);
 	float seg = Tau32 / (float)segmentCount;
 	size_t vertexCapacity = segmentCount;
 	DrawMode drawMode;

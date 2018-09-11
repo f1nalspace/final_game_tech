@@ -59,7 +59,7 @@ extern int GameMain(const GameConfiguration &config);
 #include "final_opengl_render.h"
 
 static void UpdateKeyboardButtonState(ButtonState &newState, const fpl_b32 isDown) {
-	FPL_ASSERT(newState.endedDown != isDown);
+	fplAssert(newState.endedDown != isDown);
 	newState.endedDown = isDown;
 	++newState.halfTransitionCount;
 }
@@ -116,7 +116,7 @@ static void ProcessEvents(Input *currentInput, Input *prevInput, GameWindowActiv
 			{
 				// @TODO(final): For now we just use the device index, but later it should be "added" to the controllers array and remembered somehow
 				uint32_t controllerIndex = 1 + event.gamepad.deviceIndex;
-				FPL_ASSERT(controllerIndex < FPL_ARRAYCOUNT(currentInput->controllers));
+				fplAssert(controllerIndex < FPL_ARRAYCOUNT(currentInput->controllers));
 				Controller *newController = &currentInput->controllers[controllerIndex];
 				Controller *oldController = &prevInput->controllers[controllerIndex];
 				switch(event.gamepad.type) {

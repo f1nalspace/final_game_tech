@@ -43,7 +43,7 @@
 
 	@section section_intro Introduction to FPL
 
-	@subsection subsection_whatisfpl What is FPL?
+	@subsection subsection_intro_whatisfpl What is FPL?
 
 	Final Platform Layer is a Single-Header-File cross-platform C development library designed to abstract the underlying platform to a very simple and easy to use api - providing low level access to:<br>
 	- Single Window creation and handling
@@ -52,6 +52,7 @@
 	- Accessing Input Devices (Keyboard, Mouse, Gamepad)
 	- IO handling (Files, Directories, Paths)
 	- Multithreading (Threads, Mutexes, Signals, Conditions)
+	- String conversions UTF8 <-> WideString
 	- Allocating Memory
 	- Retrieve Hardware & OS Informations
 	
@@ -59,7 +60,7 @@
 	<br>
 	Final Platform Layer is released under the @subpage page_license "MIT License". This license allows you to use FPL freely in any software.<br>
 
-	@subsection subsection_whatissingleheaderfilelibrary What is a single-header-file Library and why is FPL based on that?
+	@subsection subsection_intro_whatissingleheaderfilelibrary What is a single-header-file Library and why is FPL based on that?
 	A single header file library (as the name implies) is a development library designed to be one file only.<br>
 	Such a file contains the header (API) and the body (Implementation) in one file but separated and controlled by compiler conditions.<br>
 	Due to the nature of a single-header-file library all the sources comes with it - so it most likely licensed by some public domain license.<br>
@@ -76,7 +77,7 @@
 	- Are closed source or use a incompatible license
 	- Takes ages to compile because of its hundreds of translation units
 
-	@subsection subsection_supported_platforms Which platforms are supported by FPL?
+	@subsection subsection_intro_supported_platforms Which platforms are supported by FPL?
 	Right know FPL supports just a couple of x86/x64 platforms, but some are already in progress and more are planned:
 
 	- Windows (x86/x64)
@@ -85,10 +86,10 @@
 
 	For more details see the page: @subpage page_platform_status
 	
-	@subsection subsection_supported_compilers Which compilers are supported by FPL?
+	@subsection subsection_intro_supported_compilers Which compilers are supported by FPL?
 	FPL should compile on any C99 complaint compiler, such as MSVC 2015+, GCC, Clang, etc.
 
-	@subsection section_features What can FPL do?
+	@subsection section_intro_features What can FPL do?
 	Read ahead a detailed feature overview of FPL:
 
 	- Core
@@ -150,10 +151,10 @@
 		- Get number of seconds (Low and High precision) used for profiling and delta calculations
 		- Get number of milliseconds (Low and High precision) user for simple measurement
 	- String conversion functions
-		- Ansistring <-> Widestring
 		- UTF-8 <-> Widestring
 		- Copy
 		- Comparing
+		- Matching
 		- Formatting
 	- Locales
 		- Get keyboard/user/system locale
@@ -171,7 +172,7 @@
 		- Condition-Variables
 		- Semaphores
 
-	@subsection section_getstarted How do i get started with FPL?
+	@subsection section_intro_getstarted How do i get started with FPL?
 	- You download the latest <a href="https://github.com/f1nalspace/final_game_tech/blob/master/final_platform_layer.h">"final_platform_layer.h"</a> file.
 	- Drop it into your C/C++ project and use it in any place you want.
 	- Define <b>FPL_IMPLEMENTATION</b> in at least one translation unit before including this header file!
@@ -581,6 +582,55 @@
 	// Formatted output
 	fplDebugFormatOut("Value of X: %f\n", xValue);
 	@endcode
+
+	@section section_category_assertions Assertions
+
+	FPL contains a runtime and a compile time assertion macro, which you can use to ensure application state consistency.
+	
+	@subsection subsection_category_assertions_runtime Runtime assertion
+
+	You can use the macro function @ref fplAssert() to trigger a runtime assertion in a debug-build.<br>
+	When the condition in your assertion is false your application will crash immediatily.
+
+	Example:
+	@code{.c}
+	// When i is less than 5 this code will trigger a assertion which will crash your application immediatly.
+	fplAssert(i >= 5);
+
+	// Will trigger a assertion when the "str" pointer is null.
+	fplAssert(str != fpl_null);
+	@endcode
+
+	@warning When you are building in release-mode runtime-time assertions are compiled out entirely - unless you have specific **FPL_FORCE_ASSERTIONS**!
+	@warning Do not call any important functions inside a assertion statement, because it will get compiled out eventually.
+
+	@subsection subsection_category_assertions_static Compile time / static assertion
+
+	You can use the macro function @ref fplStaticAssert() to trigger a compile-time assertion in a debug-build.<br>
+
+	Example:
+	@code{.c}
+	typedef struct myStruct {
+	  int a;
+	  float b;
+	} myStruct;
+
+	// Will throw a compile error when "myStruct" is not of total size of 8-bytes
+	fplStaticAssert(sizeof(myStruct) == 8);
+	@endcode
+
+	@warning When you are building in release-mode compile-time assertions are compiled out entirely - unless you have specific **FPL_FORCE_ASSERTIONS**!
+	@warning Do not call any important functions inside a assertion statement, because it will get compiled out eventually.
+
+	@subsection subsection_category_assertions_enabledisable Enable/Disable assertions
+
+	In Debug-Mode assertions are enabled, unless you have specified **FPL_NO_ASSERTIONS**.<br>
+	In Release-Mode assertions are disabled, unless you have specified **FPL_FORCE_ASSERTIONS**.<br>
+	<br>
+	You can use **FPL_DEBUG** or **FPL_RELEASE* to force either a "Release" or "Debug" mode.<br>
+	See @subpage page_compiler_options for more details.<br>
+	@note I highly recommend to never define in your code, but rather outside in your build-configuration.
+
 
 */
 
@@ -1802,7 +1852,7 @@
 	@code{.c}
 	int32_t currentValue = fplSemaphoreValue(&semaphore);
 
-	// ... so something with the value here
+	// ... do something with the value here
     @endcode
 */
 
@@ -1814,7 +1864,7 @@
 
 	- TODO(final): Add examples of solving race conditions (Mutexes, Signals, Condition-Variables, Semaphores, Atomics)
 
-	- TODO(final): Add a comparison table to show the difference between the object types.
+	- TODO(final): Add a comparison table to show the difference between the different types.
 */
 
 /*!
@@ -1832,27 +1882,40 @@
 
 	@subsection subsection_faq_inwhatlanguage In what language is FPL written?
 	Final Platform Layer is written in C99 for simplicity and best portability, but is C++ compatible as well.<br>
-	It uses default integral and boolean types <stdint.h> and <stdbool.h>.<br>
-	For certain features such as printf(), getchar() the C Runtime are used, but you can disable it if needed.<br>
+	It uses standard types such as uint32_t or intptr_t from <stdint.h> <stddef.h> and <stdbool.h> to ensure correctness on all platforms.<br>
+	For certain features such as printf(), getchar() the C Runtime are used but you can disable it if needed.<br>
 
 	@subsection subsection_faq_whyshouldiuse What makes it different from other platform abstraction libraries, such as SDL/SFML etc. ?
 	- FPL is designed to require bare minimum linking to the OS (kernel32.lib / libld.so) only.
 	- It does not require any dependencies or build-systems to get it running.
-	- It has a lightweight feature set
+	- It has a lightweight feature set.
 	- No data hiding -> everything is accessible.
 	- It uses a fixed and small memory footprint and handles memory very gracefully.
 	- It can be controlled by a configuration structure in very detail at startup.
-	- You decide how to integrate it; not the library
+	- You decide how to integrate it; not the library.
 
 	@subsection subsection_faq_whyisfplsobig Why is FPL so big?
 	Final Platform Layer contains headers and implementations for all supported platforms with all the function prototypes for linking operating system functions dynamically.<br>
 	In addition there is a full detailed changelog included as well.<br>
 
+	@subsection subsection_faq_howdoesitwork How does it work?
+	FPL relies heavy on preprocessor defines used for detecting the current architecture / compiler / operating system.<br>
+	This makes it possible to enable/disable certain code-paths for certain platform/compiler combinations.<br>
+	Only built-in OS operating system functions are used in almost every situation and the usage of standard library functions is prevented by all means.<br>
+	<br>
+	Platforms are either full implemented platforms or a subset of sub-platforms.<br>
+	On top of that we have audio/video drivers for certain platforms/sub-platforms.<br>
+	Lastly there is a abstraction layer api which merges the platforms/subplatforms/drivers into structures/unions.
+
 	@subsection subsection_faq_limitations Does FPL have some limitations?
 	Yes it does have some limitations, because it cannot do everything for you:
 	- There is no audio DSP going on, so you have to convert the samples into the proper format (Sample rate, Channels, Format type) FPL expects.
 	- There is no rendering functions included, except for presenting the current frame. So you have to load and call the correct api functions yourself.
-	- FPL has a lightweight feature set, so it may not have all the features you need
+	- FPL has a lightweight feature set, so it may not have all the features you may need.
+
+	@subsection subsection_faq_strings How does FPL handle strings?
+	On every platform all strings/paths are expected to be UTF-8 always!<br>
+	If you need to convert Unicode/UTF-16 based strings there are conversion functions built-in.
 
 	@subsection subsection_faq_thirdparty_libs Can FPL handle third party libraries?
 	Yes actually it works very well with other libraries - in fact there are several demo projects in the repository which shows that.<br>

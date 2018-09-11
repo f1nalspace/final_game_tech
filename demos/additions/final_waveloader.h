@@ -143,11 +143,11 @@ extern bool LoadWaveFromBuffer(const uint8_t *buffer, const size_t bufferSize, L
 				switch(waveFormat.formatTag) {
 					case WaveFormatTags_PCM:
 					{
-						FPL_ASSERT((waveFormat.bitsPerSample > 0) && (waveFormat.bitsPerSample % 8 == 0));
+						fplAssert((waveFormat.bitsPerSample > 0) && (waveFormat.bitsPerSample % 8 == 0));
 						uint32_t channelCount = waveFormat.numberOfChannels;
 						uint32_t bytesPerSample = waveFormat.bitsPerSample / 8;
 						uint32_t sampleCount = dataSize / (channelCount * bytesPerSample);
-						FPL_ASSERT(waveFormat.numberOfChannels <= 2);
+						fplAssert(waveFormat.numberOfChannels <= 2);
 						outWave->channelCount = channelCount;
 						outWave->samplesPerSecond = waveFormat.samplesPerSecond;
 						outWave->sampleCount = sampleCount;
@@ -165,7 +165,7 @@ extern bool LoadWaveFromBuffer(const uint8_t *buffer, const size_t bufferSize, L
 						}
 
 						size_t sampleMemorySize = bytesPerSample * channelCount * sampleCount;
-						FPL_ASSERT(sampleMemorySize == dataSize);
+						fplAssert(sampleMemorySize == dataSize);
 						outWave->samplesSize = sampleMemorySize;
 						outWave->samples = (uint8_t *)fplMemoryAllocate(sampleMemorySize);
 						fplMemoryCopy(data, sampleMemorySize, outWave->samples);

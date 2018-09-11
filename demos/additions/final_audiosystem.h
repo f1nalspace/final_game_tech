@@ -158,7 +158,7 @@ extern AudioSource *AudioSystemLoadFileSource(AudioSystem *audioSys, const char 
 	if(source == fpl_null) {
 		return fpl_null;
 	}
-	FPL_ASSERT(source->samplesSize >= loadedWave.samplesSize);
+	fplAssert(source->samplesSize >= loadedWave.samplesSize);
 	fplMemoryCopy(loadedWave.samples, loadedWave.samplesSize, source->samples);
 	source->id.value = fplAtomicAddU32(&audioSys->sources.idCounter, 1) + 1;
 
@@ -328,12 +328,12 @@ static uint32_t MixPlayItems(AudioSystem *audioSys, const uint32_t maxSampleCoun
 
 	AudioPlayItem *item = audioSys->playItems.first;
 	while(item != fpl_null) {
-		FPL_ASSERT(!item->isFinished);
+		fplAssert(!item->isFinished);
 
 		float *outSamples = audioSys->mixingBuffer.samples;
 
 		const AudioSource *source = item->source;
-		FPL_ASSERT(item->samplesPlayed < source->sampleCount);
+		fplAssert(item->samplesPlayed < source->sampleCount);
 
 		uint32_t inSampleRate = source->samplesPerSeconds;
 		uint32_t inTotalSampleCount = source->sampleCount;
@@ -380,7 +380,7 @@ static uint32_t MixPlayItems(AudioSystem *audioSys, const uint32_t maxSampleCoun
 					}
 				} else {
 					// Simple Downsampling (1/2, 1/4, 1/6, 1/8, etc.)
-					FPL_ASSERT(inSampleRate > outSampleRate);
+					fplAssert(inSampleRate > outSampleRate);
 					int downsamplingCount = inSampleRate / outSampleRate;
 					int inSampleCount = FPL_MIN(maxSampleCount * downsamplingCount, inRemainingSampleCount);
 					for(int i = 0; i < inSampleCount; i += downsamplingCount) {
@@ -443,7 +443,7 @@ static uint32_t WriteSamples(const float *inSamples, const uint32_t inChannels, 
 				++writtenSampleCount;
 			}
 		} else {
-			FPL_ASSERT(inChannels == outChannels);
+			fplAssert(inChannels == outChannels);
 			for(uint32_t i = 0; i < inChannels; ++i) {
 				float sampleValue = inSamples[i];
 				ConvertFromF32(sampleValue, outSamples, i, outFormat);
@@ -477,10 +477,10 @@ static bool FillConversionBuffer(AudioSystem *audioSys, const uint32_t maxSample
 	if(item == fpl_null) {
 		return false;
 	}
-	FPL_ASSERT(!item->isFinished);
+	fplAssert(!item->isFinished);
 
 	const AudioSource *source = item->source;
-	FPL_ASSERT(item->samplesPlayed < source->sampleCount);
+	fplAssert(item->samplesPlayed < source->sampleCount);
 
 	uint32_t inSampleRate = source->samplesPerSeconds;
 	uint32_t inTotalSampleCount = source->sampleCount;
@@ -529,7 +529,7 @@ static bool FillConversionBuffer(AudioSystem *audioSys, const uint32_t maxSample
 				}
 			} else {
 				// @NOTE(final): Simple Downsampling (1/2, 1/4, 1/6, 1/8, etc.)
-				FPL_ASSERT(inSampleRate > outSampleRate);
+				fplAssert(inSampleRate > outSampleRate);
 				int downsamplingCount = inSampleRate / outSampleRate;
 				int inSampleCount = FPL_MIN(outSampleCount * downsamplingCount, inRemainingSampleCount);
 				for(int i = 0; i < inSampleCount; i += downsamplingCount) {
@@ -561,11 +561,11 @@ static bool FillConversionBuffer(AudioSystem *audioSys, const uint32_t maxSample
 	}
 
 extern uint32_t AudioSystemWriteSamples(AudioSystem *audioSys, const fplAudioDeviceFormat *outFormat, const uint32_t frameCount, uint8_t *outSamples) {
-	FPL_ASSERT(audioSys != NULL);
-	FPL_ASSERT(audioSys->nativeFormat.sampleRate == outFormat->sampleRate);
-	FPL_ASSERT(audioSys->nativeFormat.type == outFormat->type);
-	FPL_ASSERT(audioSys->nativeFormat.channels == outFormat->channels);
-	FPL_ASSERT(audioSys->nativeFormat.channels <= 2);
+	fplAssert(audioSys != NULL);
+	fplAssert(audioSys->nativeFormat.sampleRate == outFormat->sampleRate);
+	fplAssert(audioSys->nativeFormat.type == outFormat->type);
+	fplAssert(audioSys->nativeFormat.channels == outFormat->channels);
+	fplAssert(audioSys->nativeFormat.channels <= 2);
 
 	uint32_t result = 0;
 
@@ -584,10 +584,10 @@ extern uint32_t AudioSystemWriteSamples(AudioSystem *audioSys, const fplAudioDev
 			size_t bytesToCopy = framesToRead * outputSampleStride;
 
 			size_t sourcePosition = convBuffer->sampleIndex * outputSampleStride;
-			FPL_ASSERT(sourcePosition < maxConversionAudioBufferSize);
+			fplAssert(sourcePosition < maxConversionAudioBufferSize);
 
 			size_t destPosition = (frameCount - remainingFrames) * outputSampleStride;
-			FPL_ASSERT(destPosition < maxOutputSampleBufferSize);
+			fplAssert(destPosition < maxOutputSampleBufferSize);
 
 			fplMemoryCopy((uint8_t *)convBuffer->samples + sourcePosition, bytesToCopy, (uint8_t *)outSamples + destPosition);
 
@@ -619,7 +619,7 @@ extern uint32_t AudioSystemWriteSamples(AudioSystem *audioSys, const fplAudioDev
 }
 
 static void ClearPlayItems(AudioPlayItems *playItems) {
-	FPL_ASSERT(playItems != fpl_null);
+	fplAssert(playItems != fpl_null);
 	AudioPlayItem *item = playItems->first;
 	while(item != fpl_null) {
 		AudioPlayItem *next = item->next;
@@ -630,7 +630,7 @@ static void ClearPlayItems(AudioPlayItems *playItems) {
 }
 
 static void ReleaseSources(AudioSources *sources) {
-	FPL_ASSERT(sources != fpl_null);
+	fplAssert(sources != fpl_null);
 	AudioSource *source = sources->first;
 	while(source != fpl_null) {
 		AudioSource *next = source->next;

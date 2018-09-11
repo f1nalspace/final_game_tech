@@ -116,16 +116,16 @@ static PFNGLDELETEVERTEXARRAYSPROC glDeleteVertexArrays = NULL;
 #if defined(FPL_PLATFORM_WIN32)
 static void *GLProcAddress(const char *name) {
 	fpl__VideoState *videoState = (fpl__VideoState *)fpl__global__AppState->video.mem;
-	FPL_ASSERT(videoState != NULL);
-	FPL_ASSERT(videoState->win32.opengl.api.wglGetProcAddress != NULL);
+	fplAssert(videoState != NULL);
+	fplAssert(videoState->win32.opengl.api.wglGetProcAddress != NULL);
 	void *result = videoState->win32.opengl.api.wglGetProcAddress(name);
 	return(result);
 }
 #else
 static void *GLProcAddress(const char *name) {
 	fpl__VideoState *videoState = (fpl__VideoState *)fpl__global__AppState->video.mem;
-	FPL_ASSERT(videoState != NULL);
-	FPL_ASSERT(videoState->x11.opengl.api.glXGetProcAddress != NULL);
+	fplAssert(videoState != NULL);
+	fplAssert(videoState->x11.opengl.api.glXGetProcAddress != NULL);
 	void *result = videoState->x11.opengl.api.glXGetProcAddress((const GLubyte *)name);
 	return(result);
 }
@@ -165,7 +165,7 @@ static void RunLegacy() {
 	glClearColor(0.39f, 0.58f, 0.93f, 1.0f);
 	while (fplWindowUpdate()) {
 		fplWindowSize windowArea;
-		FPL_ASSERT(fplGetWindowArea(&windowArea));
+		fplAssert(fplGetWindowArea(&windowArea));
 		glViewport(0, 0, windowArea.width, windowArea.height);
 
 		glClear(GL_COLOR_BUFFER_BIT);
@@ -193,7 +193,7 @@ static GLuint CreateShaderType(GLenum type, const char *source) {
 	if (!compileResult) {
 		GLint infoLen;
 		glGetShaderiv(shaderId, GL_INFO_LOG_LENGTH, &infoLen);
-		FPL_ASSERT(infoLen <= FPL_ARRAYCOUNT(info));
+		fplAssert(infoLen <= FPL_ARRAYCOUNT(info));
 		glGetShaderInfoLog(shaderId, infoLen, &infoLen, info);
 		fplConsoleFormatError("Failed compiling %s shader!\n", (type == GL_VERTEX_SHADER ? "vertex" : "fragment"));
 		fplConsoleFormatError("%s\n", info);
@@ -220,7 +220,7 @@ static GLuint CreateShaderProgram(const char *name, const char *vertexSource, co
 	if (!linkResult) {
 		GLint infoLen;
 		glGetProgramiv(programId, GL_INFO_LOG_LENGTH, &infoLen);
-		FPL_ASSERT(infoLen <= FPL_ARRAYCOUNT(info));
+		fplAssert(infoLen <= FPL_ARRAYCOUNT(info));
 		glGetProgramInfoLog(programId, infoLen, &infoLen, info);
 		fplConsoleFormatError("Failed linking '%s' shader!\n", name);
 		fplConsoleFormatError("%s\n", info);

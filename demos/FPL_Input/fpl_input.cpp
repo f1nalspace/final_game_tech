@@ -644,7 +644,7 @@ protected:
 		va_start(argList, count);
 		for (int i = 0; i < count; ++i) {
 			KeyCharDef charDef = va_arg(argList, KeyCharDef);
-			FPL_ASSERT(def.count < FPL_ARRAYCOUNT(def.chars));
+			fplAssert(def.count < FPL_ARRAYCOUNT(def.chars));
 			def.chars[def.count++] = charDef;
 		}
 		va_end(argList);
@@ -1101,7 +1101,7 @@ static void RenderApp(AppState *appState, const InputState *input, const uint32_
 	if (keyDefinitions == nullptr) {
 		keyDefinitions = &keyDefinitionsArray[0];
 	}
-	FPL_ASSERT(keyDefinitions != nullptr);
+	fplAssert(keyDefinitions != nullptr);
 
 	char textBuffer[256];
 	wchar_t wideTextBuffer[256];
@@ -1423,7 +1423,7 @@ int main(int argc, char *argv[]) {
 					if (fplPollMouseState(&mouseState)) {
 						input.mousePos.x = mouseState.x;
 						input.mousePos.y = mouseState.y;
-						FPL_ASSERT(FPL_ARRAYCOUNT(mouseState.buttonStates) <= FPL_ARRAYCOUNT(input.mouseStates));
+						fplAssert(FPL_ARRAYCOUNT(mouseState.buttonStates) <= FPL_ARRAYCOUNT(input.mouseStates));
 						for (int i = 0; i < FPL_ARRAYCOUNT(mouseState.buttonStates); ++i) {
 							input.mouseStates[i] = mouseState.buttonStates[i];
 						}

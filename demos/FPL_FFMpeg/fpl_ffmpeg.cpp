@@ -2728,7 +2728,7 @@ int main(int argc, char **argv) {
 	state.isInfiniteBuffer = state.settings.isInfiniteBuffer;
 	state.loop = state.settings.isLoop ? 1 : 0;
 
-	FPL_ASSERT(fplGetWindowArea(&state.viewport));
+	fplAssert(fplGetWindowArea(&state.viewport));
 
 	// Load media
 	if (!LoadMedia(state, mediaFilePath, nativeAudioFormat)) {

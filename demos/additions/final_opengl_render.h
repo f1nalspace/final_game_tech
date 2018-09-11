@@ -157,7 +157,7 @@ extern void RenderWithOpenGL(RenderState &renderState) {
 		--renderState.textureOperationCount;
 		++index;
 	}
-	FPL_ASSERT(renderState.textureOperationCount == 0);
+	fplAssert(renderState.textureOperationCount == 0);
 
 	glMatrixMode(GL_PROJECTION);
 	glLoadIdentity();
@@ -178,14 +178,14 @@ extern void RenderWithOpenGL(RenderState &renderState) {
 			switch(header->type) {
 				case CommandType::Viewport:
 				{
-					FPL_ASSERT(dataSize == sizeof(ViewportCommand));
+					fplAssert(dataSize == sizeof(ViewportCommand));
 					ViewportCommand *cmd = (ViewportCommand *)dataStart;
 					glViewport(cmd->x, cmd->y, cmd->w, cmd->h);
 				} break;
 
 				case CommandType::Clear:
 				{
-					FPL_ASSERT(dataSize == sizeof(ClearCommand));
+					fplAssert(dataSize == sizeof(ClearCommand));
 					ClearCommand *cmd = (ClearCommand *)dataStart;
 					GLbitfield mask = 0;
 					if((cmd->flags & ClearFlags::Color) == ClearFlags::Color) {
@@ -200,18 +200,18 @@ extern void RenderWithOpenGL(RenderState &renderState) {
 
 				case CommandType::Matrix:
 				{
-					FPL_ASSERT(dataSize == sizeof(MatrixCommand));
+					fplAssert(dataSize == sizeof(MatrixCommand));
 					MatrixCommand *cmd = (MatrixCommand *)dataStart;
 					if(cmd->mode == MatrixMode::Set) {
 						renderState.matrixTop = 0;
 						mvpCur = cmd->mat;
 					} else if(cmd->mode == MatrixMode::Push) {
-						FPL_ASSERT(renderState.matrixTop < FPL_ARRAYCOUNT(renderState.matrixStack));
+						fplAssert(renderState.matrixTop < FPL_ARRAYCOUNT(renderState.matrixStack));
 						Mat4f *newMatrix = &renderState.matrixStack[renderState.matrixTop++];
 						*newMatrix = mvpCur;
 						mvpCur = *newMatrix * cmd->mat;
 					} else if(cmd->mode == MatrixMode::Pop) {
-						FPL_ASSERT(renderState.matrixTop > 0);
+						fplAssert(renderState.matrixTop > 0);
 						mvpCur = renderState.matrixStack[--renderState.matrixTop];
 					}
 					glMatrixMode(GL_MODELVIEW);
@@ -220,7 +220,7 @@ extern void RenderWithOpenGL(RenderState &renderState) {
 
 				case CommandType::Rectangle:
 				{
-					FPL_ASSERT(dataSize == sizeof(RectangleCommand));
+					fplAssert(dataSize == sizeof(RectangleCommand));
 					RectangleCommand *cmd = (RectangleCommand *)dataStart;
 					if(!cmd->isFilled) {
 						glLineWidth(cmd->lineWidth);
@@ -236,7 +236,7 @@ extern void RenderWithOpenGL(RenderState &renderState) {
 
 				case CommandType::Sprite:
 				{
-					FPL_ASSERT(dataSize == sizeof(SpriteCommand));
+					fplAssert(dataSize == sizeof(SpriteCommand));
 					SpriteCommand *cmd = (SpriteCommand *)dataStart;
 					GLuint texId = PointerToValue<GLuint>(cmd->texture);
 					glEnable(GL_TEXTURE_2D);
@@ -254,7 +254,7 @@ extern void RenderWithOpenGL(RenderState &renderState) {
 
 				case CommandType::Vertices:
 				{
-					FPL_ASSERT(dataSize >= sizeof(VerticesCommand));
+					fplAssert(dataSize >= sizeof(VerticesCommand));
 					VerticesCommand *cmd = (VerticesCommand *)dataStart;
 					glColor4fv(&cmd->color.m[0]);
 					GLenum drawMode;
@@ -293,9 +293,9 @@ extern void RenderWithOpenGL(RenderState &renderState) {
 
 				case CommandType::Text:
 				{
-					FPL_ASSERT(dataSize >= sizeof(TextCommand));
+					fplAssert(dataSize >= sizeof(TextCommand));
 					TextCommand *cmd = (TextCommand *)dataStart;
-					FPL_ASSERT(dataSize == (sizeof(TextCommand) + cmd->textLength + 1));
+					fplAssert(dataSize == (sizeof(TextCommand) + cmd->textLength + 1));
 					const char *text = (const char *)(dataStart + sizeof(TextCommand));
 					const size_t textLen = cmd->textLength;
 					const LoadedFont *fontDesc = cmd->font;
@@ -348,7 +348,7 @@ extern void RenderWithOpenGL(RenderState &renderState) {
 				} break;
 
 				default:
-					FPL_ASSERT(!"Invalid default case!");
+					fplAssert(!"Invalid default case!");
 			}
 			mem += dataSize;
 			size_t consumed = (size_t)(mem - startMem);

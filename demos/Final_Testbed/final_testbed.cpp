@@ -92,7 +92,7 @@ extern void GameRelease(GameMemory &gameMemory) {
 
 extern bool IsGameExiting(GameMemory &gameMemory) {
 	GameState *state = gameMemory.game;
-	FPL_ASSERT(state != nullptr);
+	fplAssert(state != nullptr);
 	return state->isExiting;
 }
 
@@ -101,7 +101,7 @@ extern void GameInput(GameMemory &gameMemory, const Input &input) {
 		return;
 	}
 	GameState *state = gameMemory.game;
-	FPL_ASSERT(state != nullptr);
+	fplAssert(state != nullptr);
 	state->viewport.x = 0;
 	state->viewport.y = 0;
 	state->viewport.w = input.windowSize.w;
@@ -113,16 +113,16 @@ extern void GameUpdate(GameMemory &gameMemory, const Input &input) {
 		return;
 	}
 	GameState *state = gameMemory.game;
-	FPL_ASSERT(state != nullptr);
+	fplAssert(state != nullptr);
 }
 
 extern void GameRender(GameMemory &gameMemory, const float alpha) {
 	GameState *state = gameMemory.game;
-	FPL_ASSERT(state != nullptr);
+	fplAssert(state != nullptr);
 	RenderState &renderState = *gameMemory.render;
 
 	if(state->debugFont.loadState == AssetLoadState::ToUpload) {
-		FPL_ASSERT(state->debugFont.type == AssetType::Font);
+		fplAssert(state->debugFont.type == AssetType::Font);
 		const LoadedFont &font = state->debugFont.font.data;
 		PushTexture(renderState, &state->debugFont.font.texture, font.atlasAlphaBitmap, font.atlasWidth, font.atlasHeight, 1, TextureFilterType::Linear, TextureWrapMode::ClampToEdge, false, false);
 	}

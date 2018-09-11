@@ -509,7 +509,7 @@ static void ClearPictureFiles(ViewerState *state) {
 }
 
 static void AddPictureFile(ViewerState *state, const char *filePath) {
-	FPL_ASSERT(state->pictureFileCount <= state->pictureFileCapacity);
+	fplAssert(state->pictureFileCount <= state->pictureFileCapacity);
 	if(state->pictureFileCapacity == 0) {
 		state->pictureFileCapacity = 1;
 		state->pictureFiles = (PictureFile *)malloc(sizeof(PictureFile) * state->pictureFileCapacity);
@@ -543,7 +543,7 @@ static void AddPicturesFromPath(ViewerState *state, const char *path, const bool
 }
 
 static void ReleaseTexture(GLuint *target) {
-	FPL_ASSERT(*target > 0);
+	fplAssert(*target > 0);
 	glDeleteTextures(1, target);
 	*target = 0;
 }
@@ -614,7 +614,7 @@ int ReadPictureStreamCallback(void *user, char *data, int size) {
 	if(ctx->canceled) {
 		return -1;
 	}
-	FPL_ASSERT(size >= 0);
+	fplAssert(size >= 0);
 	uint32_t readBytes = fplReadFileBlock32(&pic->fileStream.handle, (uint32_t)size, (void *)data, (uint32_t)size);
 	UpdateStreamProgress(pic);
 	return (int)readBytes;
@@ -662,8 +662,8 @@ static void LoadPictureThreadProc(const fplThreadHandle *thread, void *data) {
 		}
 
 		if(hasValue) {
-			FPL_ASSERT(valueToLoad.fileIndex >= 0 && valueToLoad.fileIndex < (int)state->pictureFileCount);
-			FPL_ASSERT(valueToLoad.pictureIndex >= 0 && valueToLoad.pictureIndex < (int)state->viewPicturesCapacity);
+			fplAssert(valueToLoad.fileIndex >= 0 && valueToLoad.fileIndex < (int)state->pictureFileCount);
+			fplAssert(valueToLoad.pictureIndex >= 0 && valueToLoad.pictureIndex < (int)state->viewPicturesCapacity);
 			ViewPicture *loadedPic = &state->viewPictures[valueToLoad.pictureIndex];
 			const PictureFile *picFile = &state->pictureFiles[valueToLoad.fileIndex];
 			LoadedPictureState loadState = fplAtomicLoadS32(&loadedPic->state);
@@ -678,10 +678,10 @@ static void LoadPictureThreadProc(const fplThreadHandle *thread, void *data) {
 					loadedPic->data = fpl_null;
 				}
 
-				FPL_ASSERT(!loadedPic->fileStream.handle.isValid);
-				FPL_ASSERT(loadedPic->data == fpl_null);
-				FPL_ASSERT(loadedPic->textureId == 0);
-				FPL_ASSERT(picFile->filePath != fpl_null);
+				fplAssert(!loadedPic->fileStream.handle.isValid);
+				fplAssert(loadedPic->data == fpl_null);
+				fplAssert(loadedPic->textureId == 0);
+				fplAssert(picFile->filePath != fpl_null);
 
 				loadedPic->progress = 0.0f;
 				loadedPic->fileStream.size = 0;
@@ -773,7 +773,7 @@ static void QueueUpPictures(ViewerState *state) {
 	int capacity = (int)state->viewPicturesCapacity;
 	int maxSidePreloadCount = capacity / 2;
 	state->viewPictureIndex = maxSidePreloadCount;
-	FPL_ASSERT(state->activeFileIndex >= 0 && state->activeFileIndex < (int)state->pictureFileCount);
+	fplAssert(state->activeFileIndex >= 0 && state->activeFileIndex < (int)state->pictureFileCount);
 	int preloadCountLeft;
 	int preloadCountRight;
 	if(state->activeFileIndex > 0) {
@@ -833,8 +833,8 @@ static void UpdateWindowTitle(ViewerState *state) {
 
 static void ChangeViewPicture(ViewerState *state, const int offset, const bool forceReload) {
 	if(state->pictureFileCount == 0) {
-		FPL_ASSERT(state->viewPictureIndex == -1);
-		FPL_ASSERT(state->activeFileIndex == -1);
+		fplAssert(state->viewPictureIndex == -1);
+		fplAssert(state->activeFileIndex == -1);
 		return;
 	}
 	int capacity = (int)state->viewPicturesCapacity;
@@ -949,7 +949,7 @@ static GLuint CreateShaderType(GLenum type, const char *name, const char *source
 	if(!compileResult) {
 		GLint infoLen;
 		glGetShaderiv(shaderId, GL_INFO_LOG_LENGTH, &infoLen);
-		FPL_ASSERT(infoLen <= FPL_ARRAYCOUNT(info));
+		fplAssert(infoLen <= FPL_ARRAYCOUNT(info));
 		glGetShaderInfoLog(shaderId, infoLen, &infoLen, info);
 		fplDebugFormatOut("Failed compiling '%s' %s shader!\n", name, (type == GL_VERTEX_SHADER ? "vertex" : "fragment"));
 		fplDebugFormatOut("%s\n", info);
@@ -957,7 +957,7 @@ static GLuint CreateShaderType(GLenum type, const char *name, const char *source
 		shaderId = 0;
 	}
 
-	FPL_ASSERT(shaderId > 0);
+	fplAssert(shaderId > 0);
 
 	return(shaderId);
 }
@@ -982,14 +982,14 @@ static GLuint CreateShaderProgram(const char *name, const char *vertexSource, co
 	if(!linkResult) {
 		GLint infoLen;
 		glGetProgramiv(programId, GL_INFO_LOG_LENGTH, &infoLen);
-		FPL_ASSERT(infoLen <= FPL_ARRAYCOUNT(info));
+		fplAssert(infoLen <= FPL_ARRAYCOUNT(info));
 		glGetProgramInfoLog(programId, infoLen, &infoLen, info);
 		fplDebugFormatOut("Failed linking '%s' shader!\n", name);
 		fplDebugFormatOut("%s\n", info);
 		glDeleteProgram(programId);
 		programId = 0;
 	}
-	FPL_ASSERT(programId > 0);
+	fplAssert(programId > 0);
 
 	return(programId);
 }
@@ -998,7 +998,7 @@ static void CheckGLError(const char* stmt, const char* fname, int line) {
 	GLenum err = glGetError();
 	if(err != GL_NO_ERROR) {
 		flogWrite("Error: OpenGL check %08x, at %s:%i - for %s\n", err, fname, line, stmt);
-		FPL_ASSERT(!"OpenGL Error!");
+		fplAssert(!"OpenGL Error!");
 	}
 }
 
@@ -1200,7 +1200,7 @@ static bool Init(ViewerState *state) {
 	state->viewPicturesCapacity = preloadCapacity + 1;
 	state->loadQueueCapacity = queueCapacity;
 
-	FPL_ASSERT(FPL_IS_POWEROFTWO(queueCapacity));
+	fplAssert(FPL_IS_POWEROFTWO(queueCapacity));
 	InitQueue(&state->loadQueue, queueCapacity);
 
 	// Load initial pictures from parameters
@@ -1389,7 +1389,7 @@ static void DrawTexturedRectangle(ViewerState *state, const GLuint textureId, co
 		glDisable(textureTarget);
 	}
 
-	FPL_ASSERT(glGetError() == GL_NO_ERROR);
+	fplAssert(glGetError() == GL_NO_ERROR);
 }
 
 static void UpdateAndRender(ViewerState *state, const float deltaTime) {
@@ -1427,10 +1427,10 @@ static void UpdateAndRender(ViewerState *state, const float deltaTime) {
 				fplDebugFormatOut("Release texture '%s'[%d]\n", loadedPic->filePath, loadedPic->fileIndex);
 				ReleaseTexture(&loadedPic->textureId);
 			}
-			FPL_ASSERT(loadedPic->textureId == 0);
-			FPL_ASSERT(loadedPic->data != fpl_null);
-			FPL_ASSERT(loadedPic->width > 0 && loadedPic->height > 0);
-			FPL_ASSERT(loadedPic->components > 0);
+			fplAssert(loadedPic->textureId == 0);
+			fplAssert(loadedPic->data != fpl_null);
+			fplAssert(loadedPic->width > 0 && loadedPic->height > 0);
+			fplAssert(loadedPic->components > 0);
 			fplDebugFormatOut("Allocate texture '%s'[%d]\n", loadedPic->filePath, loadedPic->fileIndex);
 			loadedPic->textureId = AllocateTexture(loadedPic->width, loadedPic->height, (uint8_t)loadedPic->components, loadedPic->data, false, state->textureTarget, state->features.srgbFrameBuffer);
 			stbi_image_free(loadedPic->data);
@@ -1443,7 +1443,7 @@ static void UpdateAndRender(ViewerState *state, const float deltaTime) {
 			loadedPic->progress = 1.0f;
 		}
 	}
-	FPL_ASSERT(glGetError() == GL_NO_ERROR);
+	fplAssert(glGetError() == GL_NO_ERROR);
 
 	// Start to queue up pictures to load
 	if(state->doPictureReload) {
@@ -1527,7 +1527,7 @@ static void UpdateAndRender(ViewerState *state, const float deltaTime) {
 				float viewY;
 				if((state->viewFlags & PictureViewFlags_KeepAspectRatio) == PictureViewFlags_KeepAspectRatio) {
 					float aspect = texH > 0 ? texW / texH : 1;
-					FPL_ASSERT(aspect != 0);
+					fplAssert(aspect != 0);
 					float targetHeight = targetRectWidth / aspect;
 					if((texW > targetRectWidth || texH > targetRectHeight) || ((state->viewFlags & PictureViewFlags_Upscale) == PictureViewFlags_Upscale)) {
 						// Upscaling
@@ -1632,7 +1632,7 @@ static void UpdateAndRender(ViewerState *state, const float deltaTime) {
 						color = V4f(1.0, 0.0f, 0.0f, 0.5f);
 						break;
 					default:
-						FPL_ASSERT(!"Invalid loaded picture state!");
+						fplAssert(!"Invalid loaded picture state!");
 						break;
 				}
 
@@ -1664,7 +1664,7 @@ static void UpdateAndRender(ViewerState *state, const float deltaTime) {
 		}
 	}
 
-	FPL_ASSERT(glGetError() == GL_NO_ERROR);
+	fplAssert(glGetError() == GL_NO_ERROR);
 }
 
 static void LogCallbackFunc(fplLogLevel level, const char *message) {
@@ -1780,7 +1780,7 @@ int main(int argc, char **argv) {
 										}
 									}
 								} else {
-									FPL_ASSERT(ev.keyboard.buttonState == fplButtonState_Release);
+									fplAssert(ev.keyboard.buttonState == fplButtonState_Release);
 									activeKey = fplKey_None;
 									activeKeyStart = 0;
 									if(ev.keyboard.mappedKey == fplKey_Left) {

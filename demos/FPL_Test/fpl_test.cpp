@@ -840,9 +840,9 @@ static void TestFiles() {
 	ft::Msg("Test File Size\n");
 	{
 		uint32_t emptySize = fplGetFileSizeFromPath32(testNotExistingFile);
-		FPL_ASSERT(emptySize == 0);
+		ft::AssertU32Equals(0, emptySize);
 		uint32_t existingSize = fplGetFileSizeFromPath32(testExistingFile);
-		FPL_ASSERT(existingSize > 0);
+		FT_ASSERT(existingSize > 0);
 	}
 	ft::Msg("Test Directory Iterations without filter\n");
 	{

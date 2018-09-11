@@ -75,7 +75,7 @@ extern void FreeTextureData(TextureData &texture) {
 }
 
 extern TextureData CreateSubTextureData(TextureData &source, int x, int y, int w, int h) {
-	FPL_ASSERT(source.components == 4);
+	fplAssert(source.components == 4);
 	TextureData result = {};
 	result.width = w;
 	result.height = h;

@@ -125,6 +125,8 @@ const Vec2f BrickRadius = V2f(SpaceForBricksX / (float)MaxBrickCols, SpaceForBri
 
 const Vec2f Gravity = V2f(0, -10);
 
+fplStaticAssert(MaxBrickCols % 2 != 0);
+
 // Brick UVs
 enum class BrickType : int32_t {
 	NoBrick = 0,
@@ -758,7 +760,7 @@ extern bool GameInit(GameMemory &gameMemory) {
 
 static void GlueBallOnPaddle(GameState &state, Ball *ball) {
 	Paddle &paddle = state.paddle.paddle;
-	FPL_ASSERT(paddle.gluedBall == nullptr);
+	fplAssert(paddle.gluedBall == nullptr);
 	ball->isMoving = false;
 	paddle.gluedBall = ball;
 	ball->body->SetType(b2BodyType::b2_staticBody);
@@ -781,8 +783,7 @@ static void LaunchBall(GameState &state) {
 
 static void SetRandomLevel(GameState &state, int seed) {
 #define ALL_BRICKS 0
-	FPL_STATICASSERT(MaxBrickCols % 2 != 0);
-	FPL_ASSERT((MaxBrickCols * MaxBrickRows) <= FPL_ARRAYCOUNT(state.bricksMap));
+	fplAssert((MaxBrickCols * MaxBrickRows) <= FPL_ARRAYCOUNT(state.bricksMap));
 	fplMemoryClear(state.bricksMap, sizeof(Brick) * FPL_ARRAYCOUNT(state.bricksMap));
 	srand(seed);
 	state.levelSeed = seed;
@@ -857,10 +858,10 @@ static CollisionPair GetCollisionPair(b2Contact* contact) {
 	CollisionPair result = {};
 	b2Fixture *fixtureA = contact->GetFixtureA();
 	b2Fixture *fixtureB = contact->GetFixtureB();
-	FPL_ASSERT(fixtureA != nullptr && fixtureB != nullptr);
+	fplAssert(fixtureA != nullptr && fixtureB != nullptr);
 	b2Body *bodyA = fixtureA->GetBody();
 	b2Body *bodyB = fixtureB->GetBody();
-	FPL_ASSERT(bodyA != nullptr && bodyB != nullptr);
+	fplAssert(bodyA != nullptr && bodyB != nullptr);
 	void *dataA = bodyA->GetUserData();
 	void *dataB = bodyB->GetUserData();
 	if(dataA != nullptr && dataB != nullptr) {
@@ -916,7 +917,7 @@ void GameContactListener::PostSolve(b2Contact* contact, const b2ContactImpulse* 
 
 extern bool IsGameExiting(GameMemory &gameMemory) {
 	GameState *state = gameMemory.game;
-	FPL_ASSERT(state != nullptr);
+	fplAssert(state != nullptr);
 	return state->isExiting;
 }
 
@@ -926,10 +927,10 @@ extern void GameInput(GameMemory &gameMemory, const Input &input) {
 	}
 
 	GameState *state = gameMemory.game;
-	FPL_ASSERT(state != nullptr);
+	fplAssert(state != nullptr);
 
 	if(input.defaultControllerIndex > -1) {
-		FPL_ASSERT(input.defaultControllerIndex < FPL_ARRAYCOUNT(input.controllers));
+		fplAssert(input.defaultControllerIndex < FPL_ARRAYCOUNT(input.controllers));
 		const Controller *controller = &input.controllers[input.defaultControllerIndex];
 		if(controller->isConnected) {
 			switch(state->mode) {
@@ -1086,7 +1087,7 @@ extern void GameUpdate(GameMemory &gameMemory, const Input &input) {
 	}
 
 	GameState *state = gameMemory.game;
-	FPL_ASSERT(state != nullptr);
+	fplAssert(state != nullptr);
 	state->viewport = ComputeViewportByAspect(input.windowSize, GameAspect);
 
 	if(state->mode == GameMode::Play) {
@@ -1352,7 +1353,7 @@ static void DrawTitleMenuMode(GameState &state) {
 		DrawTextFont(smallText, fplGetAnsiStringLength(smallText), &state.assets.fontMenu.desc, fontTexId, 0.0f, smallPosY, smallFontSize, 0.0f, 0.0f);
 	} else {
 		// Menu screen
-		assert(state.mode == GameMode::Menu);
+		fplAssert(state.mode == GameMode::Menu);
 		const float itemFontSize = 1.1f;
 
 		MenuRenderState menuRender = {};
@@ -1371,7 +1372,7 @@ static void DrawTitleMenuMode(GameState &state) {
 
 extern void GameRender(GameMemory &gameMemory, const float alpha) {
 	GameState *state = gameMemory.game;
-	FPL_ASSERT(state != nullptr);
+	fplAssert(state != nullptr);
 	RenderState *renderState = gameMemory.render;
 
 	const float w = WorldRadius.x;
