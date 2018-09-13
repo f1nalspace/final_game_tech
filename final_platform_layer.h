@@ -161,6 +161,7 @@ SOFTWARE.
 	- Removed: Removed obsolete fplSetClipboardWideText()
 	- Removed: Removed obsolete fplWideStringToAnsiString()
 	- Removed: Removed obsolete fplAnsiStringToWideString()
+    - Fixed: fplStaticAssert was not compiling on gcc/clang C99 mode
 	- New: Added fplFlushFile()
 
 	- Changed: [Win32] GetTickCount() replaced with GetTickCount64()
@@ -1236,8 +1237,8 @@ SOFTWARE.
 #	if !defined(_XOPEN_SOURCE)
 #		define _XOPEN_SOURCE 600
 #	endif
-#	if !defined(_BSD_SOURCE)
-#		define _BSD_SOURCE 1
+#	if !defined(_DEFAULT_SOURCE)
+#		define _DEFAULT_SOURCE 1
 #	endif
 #	if !defined(__STDC_FORMAT_MACROS)
 #		define __STDC_FORMAT_MACROS
@@ -1552,17 +1553,20 @@ SOFTWARE.
 #		include <assert.h>
 		//! Runtime assert (C Runtime)
 #		define fplAssert(exp) assert(exp)
-		//! Compile time assert (C Runtime)
-#		define fplStaticAssert(exp) static_assert(exp, "static_assert")
+#       if defined(__cplusplus)
+#		    define fplStaticAssert(exp) static_assert(exp, "fpl_static_assert")
+#       endif
 #	else
-		//! Runtime assert
-#		define fplAssert(exp) if(!(exp)) {*(int *)0 = 0;}
-#		define FPL__STATICASSERT_0(exp, line, counter) \
-			int fpl__ct_assert_##line_##counter(int ct_assert_failed[(exp)?1:-1])
-		//! Compile time assert
-#		define fplStaticAssert(exp) \
-			FPL__STATICASSERT_0(exp, __LINE__, __COUNTER__)
+	//! Runtime assert
+#	define fplAssert(exp) if(!(exp)) {*(int *)0 = 0;}
 #	endif // FPL_ENABLE_C_ASSERT
+#   if !defined(fplStaticAssert)
+#	    define FPL__STATICASSERT_0(exp, line, counter) \
+		    static int fpl__ct_assert_##line_##counter(int ct_assert_failed[(exp)?1:-1])
+        //! Compile time assert
+#	    define fplStaticAssert(exp) \
+		    FPL__STATICASSERT_0(exp, __LINE__, __COUNTER__)
+#   endif
 #else
 	//! Runtime assertions disabled
 #	define fplAssert(exp)
@@ -13771,7 +13775,7 @@ fpl_internal void fpl__LinuxFreeGameControllers(fpl__LinuxGameControllersState *
 	}
 }
 
-fpl_internal_inline float fpl__LinuxJoystickProcessStickValue(const int16_t value, const int16_t deadZoneThreshold) {
+fpl_internal float fpl__LinuxJoystickProcessStickValue(const int16_t value, const int16_t deadZoneThreshold) {
 	float result = 0;
 	if(value < -deadZoneThreshold) {
 		result = (float)((value + deadZoneThreshold) / (32768.0f - deadZoneThreshold));
