@@ -103,10 +103,10 @@ extern TextureData LoadTextureData(const char *dataPath, const char *filename) {
 	TextureData result = {};
 
 	char filePath[1024];
-	fplPathCombine(filePath, FPL_ARRAYCOUNT(filePath), 2, dataPath, filename);
+	fplPathCombine(filePath, fplArrayCount(filePath), 2, dataPath, filename);
 
 	fplFileHandle file;
-	if (fplOpenAnsiBinaryFile(filePath, &file)) {
+	if (fplOpenBinaryFile(filePath, &file)) {
 		uint32_t fileLen = fplGetFileSizeFromHandle32(&file);
 		uint8_t *fileBuffer = (uint8_t *)fplMemoryAllocate(fileLen);
 		if (fileBuffer != nullptr) {

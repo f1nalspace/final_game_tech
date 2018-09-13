@@ -133,7 +133,7 @@ static const char *GetGLErrorString(const GLenum err) {
 		case GL_OUT_OF_MEMORY:
 			return "GL_OUT_OF_MEMORY";
 		default:
-			if (_itoa_s(err, glErrorCodeBuffer, FPL_ARRAYCOUNT(glErrorCodeBuffer), 10) == 0)
+			if (_itoa_s(err, glErrorCodeBuffer, fplArrayCount(glErrorCodeBuffer), 10) == 0)
 				return (const char *)glErrorCodeBuffer;
 			else
 				return "";
@@ -157,7 +157,7 @@ static GLuint CompileShader(GLuint type, const char *source, const char *name) {
 	if (compileStatus == GL_FALSE) {
 		int length;
 		glGetShaderiv(result, GL_INFO_LOG_LENGTH, &length);
-		char *message = (char *)FPL_STACKALLOCATE(length * sizeof(char));
+		char *message = (char *)fplStackAllocate(length * sizeof(char));
 		glGetShaderInfoLog(result, length, &length, message);
 		fplConsoleFormatError("Failed to compile %s shader '%s':\n%s\n", (type == GL_VERTEX_SHADER ? "vertex" : "fragment"), name, message);
 		glDeleteShader(result);
@@ -185,7 +185,7 @@ static GLuint CreateShader(const char *vertexShaderSource, const char *fragmentS
 	if (GL_LINK_STATUS == GL_FALSE) {
 		int length;
 		glGetProgramiv(result, GL_INFO_LOG_LENGTH, &length);
-		char *message = (char *)FPL_STACKALLOCATE(length * sizeof(char));
+		char *message = (char *)fplStackAllocate(length * sizeof(char));
 		glGetProgramInfoLog(result, length, &length, message);
 		fplConsoleFormatError("Failed to link %s shader program:\n%s\n", name, message);
 		glDeleteProgram(result);
@@ -234,7 +234,7 @@ inline void PrintMemStats() {
 // Max number of frames in the queues
 constexpr uint32_t MAX_VIDEO_FRAME_QUEUE_COUNT = 4;
 constexpr uint32_t MAX_AUDIO_FRAME_QUEUE_COUNT = 8;
-constexpr uint32_t MAX_FRAME_QUEUE_COUNT = FPL_MAX(MAX_AUDIO_FRAME_QUEUE_COUNT, MAX_VIDEO_FRAME_QUEUE_COUNT);
+constexpr uint32_t MAX_FRAME_QUEUE_COUNT = fplMax(MAX_AUDIO_FRAME_QUEUE_COUNT, MAX_VIDEO_FRAME_QUEUE_COUNT);
 
 // Total size of data from all packet queues
 constexpr uint64_t MAX_PACKET_QUEUE_SIZE = FPL_MEGABYTES(16);
@@ -495,7 +495,7 @@ struct FrameQueue {
 
 static bool InitFrameQueue(FrameQueue &queue, int32_t capacity, volatile uint32_t *stopped, int32_t keepLast) {
 	queue = {};
-	queue.capacity = FPL_MIN(capacity, MAX_FRAME_QUEUE_COUNT);
+	queue.capacity = fplMin(capacity, MAX_FRAME_QUEUE_COUNT);
 	for (int32_t i = 0; i < queue.capacity; ++i) {
 		Frame *frame = queue.frames + i;
 		frame->frame = AllocateFrame();
@@ -1208,10 +1208,10 @@ inline double GetMasterClock(const PlayerState *state) {
 inline void UpdateExternalClockSpeed(PlayerState *state) {
 	if ((state->video.stream.isValid && state->video.decoder.packetsQueue.packetCount <= EXTERNAL_CLOCK_MIN_FRAMES) ||
 		(state->audio.stream.isValid && state->audio.decoder.packetsQueue.packetCount <= EXTERNAL_CLOCK_MIN_FRAMES)) {
-		SetClockSpeed(state->externalClock, FPL_MAX(EXTERNAL_CLOCK_SPEED_MIN, state->externalClock.speed - EXTERNAL_CLOCK_SPEED_STEP));
+		SetClockSpeed(state->externalClock, fplMax(EXTERNAL_CLOCK_SPEED_MIN, state->externalClock.speed - EXTERNAL_CLOCK_SPEED_STEP));
 	} else if ((!state->video.stream.isValid || (state->video.decoder.packetsQueue.packetCount > EXTERNAL_CLOCK_MAX_FRAMES)) &&
 		(!state->audio.stream.isValid || (state->audio.decoder.packetsQueue.packetCount > EXTERNAL_CLOCK_MAX_FRAMES))) {
-		SetClockSpeed(state->externalClock, FPL_MIN(EXTERNAL_CLOCK_SPEED_MAX, state->externalClock.speed + EXTERNAL_CLOCK_SPEED_STEP));
+		SetClockSpeed(state->externalClock, fplMin(EXTERNAL_CLOCK_SPEED_MAX, state->externalClock.speed + EXTERNAL_CLOCK_SPEED_STEP));
 	} else {
 		double speed = state->externalClock.speed;
 		if (speed != 1.0) {
@@ -1389,7 +1389,7 @@ static void VideoDecodingThreadProc(const fplThreadHandle *thread, void *userDat
 	bool hasDecodedFrame = false;
 	for (;;) {
 		// Wait for any signal (Available packet, Free frame, Stopped, Wake up)
-		fplSignalWaitForAny(waitSignals, FPL_ARRAYCOUNT(waitSignals), UINT32_MAX);
+		fplSignalWaitForAny(waitSignals, fplArrayCount(waitSignals), UINT32_MAX);
 
 		// Stop decoder
 		if (decoder->stopRequest) {
@@ -1541,7 +1541,7 @@ static void AudioDecodingThreadProc(const fplThreadHandle *thread, void *userDat
 	bool hasDecodedFrame = false;
 	for (;;) {
 		// Wait for any signal (Available packet, Free frame, Stopped, Wake up)
-		fplSignalWaitForAny(waitSignals, FPL_ARRAYCOUNT(waitSignals), UINT32_MAX);
+		fplSignalWaitForAny(waitSignals, fplArrayCount(waitSignals), UINT32_MAX);
 
 		// Stop decoder
 		if (decoder->stopRequest) {
@@ -1632,7 +1632,7 @@ static uint32_t AudioReadCallback(const fplAudioDeviceFormat *nativeFormat, cons
 			// Consume audio in conversion buffer before we do anything else
 			if ((audio->conversionAudioFramesRemaining) > 0) {
 				uint32_t maxFramesToRead = audio->conversionAudioFramesRemaining;
-				uint32_t framesToRead = FPL_MIN(remainingFrameCount, maxFramesToRead);
+				uint32_t framesToRead = fplMin(remainingFrameCount, maxFramesToRead);
 				size_t bytesToCopy = framesToRead * outputSampleStride;
 
 				assert(audio->conversionAudioFrameIndex < audio->maxConversionAudioFrameCount);
@@ -1810,7 +1810,7 @@ static void PacketReadThreadProc(const fplThreadHandle *thread, void *userData) 
 	for (;;) {
 		// Wait for any signal or skip wait
 		if (!skipWait) {
-			fplSignalWaitForAny(waitSignals, FPL_ARRAYCOUNT(waitSignals), UINT32_MAX);
+			fplSignalWaitForAny(waitSignals, fplArrayCount(waitSignals), UINT32_MAX);
 		} else {
 			skipWait = false;
 		}
@@ -2124,7 +2124,7 @@ static void DisplayVideoFrame(PlayerState *state) {
 	glBindVertexArray(state->video.vao);
 	glBindBuffer(GL_ARRAY_BUFFER, state->video.vertexBufferId);
 	// Update vertex array buffer with new rectangle
-	glBufferData(GL_ARRAY_BUFFER, FPL_ARRAYCOUNT(vertexData) * sizeof(float), vertexData, GL_STREAM_DRAW);
+	glBufferData(GL_ARRAY_BUFFER, fplArrayCount(vertexData) * sizeof(float), vertexData, GL_STREAM_DRAW);
 	CheckGLError();
 
 	// Setup vertex attributes for vertex shader
@@ -2219,7 +2219,7 @@ static double ComputeVideoDelay(const PlayerState *state, const double delay) {
 		videoClock = GetClock(state->video.clock);
 		masterClock = GetMasterClock(state);
 		diff = videoClock - masterClock;
-		syncThreshold = FPL_MAX(AV_SYNC_THRESHOLD_MIN, FPL_MIN(AV_SYNC_THRESHOLD_MAX, delay));
+		syncThreshold = fplMax(AV_SYNC_THRESHOLD_MIN, fplMin(AV_SYNC_THRESHOLD_MAX, delay));
 		if (!isnan(diff) && fabs(diff) < state->maxFrameDuration) {
 			if (diff <= -syncThreshold) {
 				result = FFMAX(0, delay + diff);
@@ -2272,7 +2272,7 @@ static void VideoRefresh(PlayerState *state, double &remainingTime, int &display
 			// Compute remaining time if have time left to display the frame
 			double time = ffmpeg.av_gettime_relative() / (double)AV_TIME_BASE;
 			if (time < state->frameTimer + delay) {
-				remainingTime = FPL_MIN(state->frameTimer + delay - time, remainingTime);
+				remainingTime = fplMin(state->frameTimer + delay - time, remainingTime);
 				goto display;
 			}
 
@@ -2457,7 +2457,7 @@ static bool InitializeVideo(PlayerState &state, const char *mediaFilePath) {
 		2, 3, 0,
 	};
 	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, state.video.indexBufferId);
-	glBufferData(GL_ELEMENT_ARRAY_BUFFER, FPL_ARRAYCOUNT(indices) * sizeof(uint32_t), indices, GL_STATIC_DRAW);
+	glBufferData(GL_ELEMENT_ARRAY_BUFFER, fplArrayCount(indices) * sizeof(uint32_t), indices, GL_STATIC_DRAW);
 	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
 	CheckGLError();
 
@@ -2681,7 +2681,7 @@ int main(int argc, char **argv) {
 
 	fplSettings settings = fplMakeDefaultSettings();
 
-	fplCopyAnsiString("FPL FFmpeg Demo", settings.window.windowTitle, FPL_ARRAYCOUNT(settings.window.windowTitle));
+	fplCopyString("FPL FFmpeg Demo", settings.window.windowTitle, fplArrayCount(settings.window.windowTitle));
 #if USE_HARDWARE_RENDERING
 	settings.video.driver = fplVideoDriverType_OpenGL;
 	settings.video.graphics.opengl.compabilityFlags = fplOpenGLCompabilityFlags_Core;

@@ -50,7 +50,7 @@ protected:
 	TValueType a[valueCount];
 public:
 	ArrayInitializer() {
-		fplMemoryClear(a, sizeof(TValueType) * FPL_ARRAYCOUNT(a));
+		fplMemoryClear(a, sizeof(TValueType) * fplArrayCount(a));
 	}
 	const TValueType &operator [] (TIndexType eindex) const {
 		return a[(int)eindex];
@@ -273,7 +273,7 @@ static Vec2f GetTextSize(const wchar_t *text, const size_t textLen, const size_t
 			Vec2f min = offset;
 			Vec2f max = min + V2f(xadvance, size.y);
 			xwidth += (max.x - min.x);
-			ymax = FPL_MAX(ymax, max.y - min.y);
+			ymax = fplMax(ymax, max.y - min.y);
 			xpos += xadvance;
 		}
 	}
@@ -289,7 +289,7 @@ static bool LoadFontFromMemory(const void *data, const size_t dataSize, const ui
 		return false;
 	}
 
-	FPL_CLEAR_STRUCT(outFont);
+	fplClearStruct(outFont);
 
 	stbtt_fontinfo fontInfo = FPL_ZERO_INIT;
 	int fontOffset = stbtt_GetFontOffsetForIndex((const unsigned char *)data, fontIndex);
@@ -418,10 +418,10 @@ static bool LoadFontFromFile(const char *dataPath, const char *filename, const u
 
 	char filePath[1024];
 	if (dataPath != fpl_null) {
-		fplCopyAnsiString(dataPath, filePath, FPL_ARRAYCOUNT(filePath));
-		fplPathCombine(filePath, FPL_ARRAYCOUNT(filePath), 2, dataPath, filename);
+		fplCopyString(dataPath, filePath, fplArrayCount(filePath));
+		fplPathCombine(filePath, fplArrayCount(filePath), 2, dataPath, filename);
 	} else {
-		fplCopyAnsiString(filename, filePath, FPL_ARRAYCOUNT(filePath));
+		fplCopyString(filename, filePath, fplArrayCount(filePath));
 	}
 
 	bool result = false;
@@ -429,7 +429,7 @@ static bool LoadFontFromFile(const char *dataPath, const char *filename, const u
 	fplFileHandle file;
 	uint8_t *ttfBuffer = fpl_null;
 	uint32_t ttfBufferSize = 0;
-	if (fplOpenAnsiBinaryFile(filePath, &file)) {
+	if (fplOpenBinaryFile(filePath, &file)) {
 		ttfBufferSize = fplGetFileSizeFromHandle32(&file);
 		ttfBuffer = (uint8_t *)fplMemoryAllocate(ttfBufferSize);
 		fplReadFileBlock32(&file, ttfBufferSize, ttfBuffer, ttfBufferSize);
@@ -450,7 +450,7 @@ static void ReleaseFont(FontData *font) {
 		}
 		fplMemoryFree(font->glyphs);
 		fplMemoryFree(font->atlasAlphaBitmap);
-		FPL_CLEAR_STRUCT(font);
+		fplClearStruct(font);
 	}
 }
 
@@ -507,7 +507,7 @@ static void DrawArrow(const float x0, const float y0, const float x1, const floa
 
 static void DrawTextFont(const wchar_t *text, const size_t fontCount, const FontData fonts[], const GLuint textures[], const float x, const float y, const float maxCharHeight, const float sx, const float sy) {
 	if (fontCount > 0) {
-		size_t textLen = fplGetWideStringLength(text);
+		size_t textLen = fplGetStringLengthWide(text);
 		Vec2f textSize = GetTextSize(text, textLen, fontCount, fonts, maxCharHeight);
 		float xpos = x - textSize.x * 0.5f + (textSize.x * 0.5f * sx);
 		float ypos = y - textSize.y * 0.5f + (textSize.y * 0.5f * sy);
@@ -567,10 +567,10 @@ static GLuint LoadTexture(const char *dataPath, const char *filename) {
 	GLuint result = 0;
 
 	char filePath[FPL_MAX_PATH_LENGTH];
-	fplPathCombine(filePath, FPL_ARRAYCOUNT(filePath), 2, dataPath, filename);
+	fplPathCombine(filePath, fplArrayCount(filePath), 2, dataPath, filename);
 
 	fplFileHandle file = {};
-	if (fplOpenAnsiBinaryFile(filePath, &file)) {
+	if (fplOpenBinaryFile(filePath, &file)) {
 		uint32_t dataSize = fplGetFileSizeFromHandle32(&file);
 		uint8_t *data = (uint8_t *)fplMemoryAllocate(dataSize);
 		fplReadFileBlock32(&file, dataSize, data, dataSize);
@@ -644,7 +644,7 @@ protected:
 		va_start(argList, count);
 		for (int i = 0; i < count; ++i) {
 			KeyCharDef charDef = va_arg(argList, KeyCharDef);
-			fplAssert(def.count < FPL_ARRAYCOUNT(def.chars));
+			fplAssert(def.count < fplArrayCount(def.chars));
 			def.chars[def.count++] = charDef;
 		}
 		va_end(argList);
@@ -1013,9 +1013,9 @@ static void InitApp(AppState *appState) {
 	glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
 
 	char dataPath[FPL_MAX_PATH_LENGTH];
-	fplGetExecutableFilePath(dataPath, FPL_ARRAYCOUNT(dataPath));
-	fplExtractFilePath(dataPath, dataPath, FPL_ARRAYCOUNT(dataPath));
-	fplPathCombine(dataPath, FPL_ARRAYCOUNT(dataPath), 2, dataPath, "data");
+	fplGetExecutableFilePath(dataPath, fplArrayCount(dataPath));
+	fplExtractFilePath(dataPath, dataPath, fplArrayCount(dataPath));
+	fplPathCombine(dataPath, fplArrayCount(dataPath), 2, dataPath, "data");
 
 	for (int i = 0; i < FontCount; ++i) {
 		int cpStart = i * CodePointsPerAtlas;
@@ -1089,8 +1089,8 @@ static void RenderApp(AppState *appState, const InputState *input, const uint32_
 
 	const KeyDefinitions *keyDefinitions = &keyDefinitionsArray[0];
 	char inputLocale[16];
-	if (fplGetInputLocale(fplLocaleFormat_ISO639, inputLocale, FPL_ARRAYCOUNT(inputLocale))) {
-		for (int keyDefIndex = 0; keyDefIndex < FPL_ARRAYCOUNT(keyDefinitionsArray); ++keyDefIndex) {
+	if (fplGetInputLocale(fplLocaleFormat_ISO639, inputLocale, fplArrayCount(inputLocale))) {
+		for (int keyDefIndex = 0; keyDefIndex < fplArrayCount(keyDefinitionsArray); ++keyDefIndex) {
 			const KeyDefinitions *testKeyDefinitions = &keyDefinitionsArray[keyDefIndex];
 			if (CompareStringIgnoreCase(testKeyDefinitions->name, inputLocale) == 0) {
 				keyDefinitions = testKeyDefinitions;
@@ -1107,12 +1107,12 @@ static void RenderApp(AppState *appState, const InputState *input, const uint32_
 	wchar_t wideTextBuffer[256];
 	glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
 	if (appState->renderMode == RenderMode::KeyboardAndMouse) {
-		fplFormatAnsiString(textBuffer, FPL_ARRAYCOUNT(textBuffer), "Keyboard: %s (Polling: %s)", keyDefinitions->name, (appState->usePolling ? "yes" : "no"));
+		fplFormatString(textBuffer, fplArrayCount(textBuffer), "Keyboard: %s (Polling: %s)", keyDefinitions->name, (appState->usePolling ? "yes" : "no"));
 	} else if (appState->renderMode == RenderMode::Gamepad) {
 		const char *controllerName = "";
-		fplFormatAnsiString(textBuffer, FPL_ARRAYCOUNT(textBuffer), "Gamepad: %s (Polling: %s)", controllerName, (appState->usePolling ? "yes" : "no"));
+		fplFormatString(textBuffer, fplArrayCount(textBuffer), "Gamepad: %s (Polling: %s)", controllerName, (appState->usePolling ? "yes" : "no"));
 	}
-	fplAnsiStringToWideString(textBuffer, fplGetAnsiStringLength(textBuffer), wideTextBuffer, FPL_ARRAYCOUNT(wideTextBuffer));
+	fplUTF8StringToWideString(textBuffer, fplGetStringLength(textBuffer), wideTextBuffer, fplArrayCount(wideTextBuffer));
 	DrawTextFont(wideTextBuffer, FontCount, appState->fontData, appState->fontTextures, 0, h - osdFontHeight, osdFontHeight, 0.0f, 0.0f);
 
 	DrawTextFont(L"F1 (Keyboard) - F2 (Gamepad)", FontCount, appState->fontData, appState->fontTextures, 0, -h + osdFontHeight, osdFontHeight, 0.0f, 0.0f);
@@ -1130,7 +1130,7 @@ static void RenderApp(AppState *appState, const InputState *input, const uint32_
 		}
 
 		// Draw keyboard leds
-		for (int i = 0; i < FPL_ARRAYCOUNT(KeyLedDefinitions); ++i) {
+		for (int i = 0; i < fplArrayCount(KeyLedDefinitions); ++i) {
 			const KeyLedDef keyLedDef = KeyLedDefinitions[i];
 			SpritePosition keyPos = ComputeSpritePosition(keyboardCenter, KeyboardSize, keyLedDef.uv);
 			if (input->ledStates & keyLedDef.flag) {
@@ -1170,7 +1170,7 @@ static void RenderApp(AppState *appState, const InputState *input, const uint32_
 			glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
 			DrawSprite(appState->mouseTexture, MouseW * 0.5f, MouseH * 0.5f, 0.0f, 1.0f, 1.0f, 0.0f, mouseCenterX, mouseCenterY);
 		}
-		for (int i = 0; i < FPL_ARRAYCOUNT(input->mouseStates); ++i) {
+		for (int i = 0; i < fplArrayCount(input->mouseStates); ++i) {
 			const MouseButtonDef mouseButtonDef = MouseButtonDefinitions[i];
 			SpritePosition buttonPos = ComputeSpritePosition(mouseCenter, MouseSize, mouseButtonDef.uv);
 			if (input->mouseStates[i] >= fplButtonState_Press) {
@@ -1215,7 +1215,7 @@ static void RenderApp(AppState *appState, const InputState *input, const uint32_
 		glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
 		DrawSprite(appState->gamepadForegroundTexture, GamepadW * 0.5f, GamepadH * 0.5f, 0.0f, 1.0f, 1.0f, 0.0f, gamepadCenterX, gamepadCenterY);
 
-		for (int i = 0; i < FPL_ARRAYCOUNT(GamepadButtonsDefinitions); ++i) {
+		for (int i = 0; i < fplArrayCount(GamepadButtonsDefinitions); ++i) {
 			const GamepadButtonDef def = GamepadButtonsDefinitions[i];
 			SpritePosition foregroundPos = ComputeSpritePosition(gamepadCenter, GamepadSize, def.foregroundUV);
 			bool down = input->gamepadState.buttons[def.button].isDown == 1;
@@ -1321,7 +1321,7 @@ int main(int argc, char *argv[]) {
 	AppState *appState = (AppState *)fplMemoryAllocate(sizeof(AppState));
 	fplSettings settings = fplMakeDefaultSettings();
 	settings.input.disabledEvents = appState->usePolling;
-	fplCopyAnsiString("FPL Input Demo", settings.window.windowTitle, FPL_ARRAYCOUNT(settings.window.windowTitle));
+	fplCopyString("FPL Input Demo", settings.window.windowTitle, fplArrayCount(settings.window.windowTitle));
 	int retCode = 0;
 	if (fplPlatformInit(fplInitFlags_All, &settings)) {
 		if (fglLoadOpenGL(true)) {
@@ -1405,7 +1405,7 @@ int main(int argc, char *argv[]) {
 					fplGamepadStates gamepadStates = {};
 					if (fplPollGamepadStates(&gamepadStates)) {
 						int found = -1;
-						for (int i = 0; i < FPL_ARRAYCOUNT(gamepadStates.deviceStates); ++i) {
+						for (int i = 0; i < fplArrayCount(gamepadStates.deviceStates); ++i) {
 							if (gamepadStates.deviceStates[i].isConnected) {
 								found = i;
 								break;
@@ -1423,8 +1423,8 @@ int main(int argc, char *argv[]) {
 					if (fplPollMouseState(&mouseState)) {
 						input.mousePos.x = mouseState.x;
 						input.mousePos.y = mouseState.y;
-						fplAssert(FPL_ARRAYCOUNT(mouseState.buttonStates) <= FPL_ARRAYCOUNT(input.mouseStates));
-						for (int i = 0; i < FPL_ARRAYCOUNT(mouseState.buttonStates); ++i) {
+						fplAssert(fplArrayCount(mouseState.buttonStates) <= fplArrayCount(input.mouseStates));
+						for (int i = 0; i < fplArrayCount(mouseState.buttonStates); ++i) {
 							input.mouseStates[i] = mouseState.buttonStates[i];
 						}
 					}

@@ -118,7 +118,7 @@ int main(int argc, char **args) {
 	}
 
 	fplAudioDeviceInfo audioDeviceInfos[64] = FPL_ZERO_INIT;
-	uint32_t deviceCount = fplGetAudioDevices(audioDeviceInfos, FPL_ARRAYCOUNT(audioDeviceInfos));
+	uint32_t deviceCount = fplGetAudioDevices(audioDeviceInfos, fplArrayCount(audioDeviceInfos));
 	if(deviceCount > 0) {
 		settings.audio.deviceInfo = audioDeviceInfos[0];
 		fplConsoleFormatOut("Using audio device: %s\n", settings.audio.deviceInfo.name);

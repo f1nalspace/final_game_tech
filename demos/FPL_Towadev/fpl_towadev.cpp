@@ -162,7 +162,7 @@ namespace gamelog {
 
 	static void Write(const LogLevel level, const char *format, va_list argList) {
 		char msg[1024];
-		fplFormatAnsiStringArgs(msg, FPL_ARRAYCOUNT(msg), format, argList);
+		fplFormatStringArgs(msg, fplArrayCount(msg), format, argList);
 		if(level == LogLevel::Fatal)
 			fplDebugOut("Fatal: ");
 		else if(level == LogLevel::Error)
@@ -378,7 +378,7 @@ namespace utils {
 	static FileContents LoadEntireFile(const char *filePath, fmemMemoryBlock *memory) {
 		FileContents result = {};
 		fplFileHandle file;
-		if(fplOpenAnsiBinaryFile(filePath, &file)) {
+		if(fplOpenBinaryFile(filePath, &file)) {
 			result.info.size = fplGetFileSizeFromHandle32(&file);
 			fplFileTimeStamps timestamps = {};
 			fplGetFileTimestampsFromHandle(&file, &timestamps);
@@ -393,7 +393,7 @@ namespace utils {
 	static FileInfo LoadFileInfo(const char *filePath) {
 		FileInfo result = {};
 		fplFileHandle file;
-		if(fplOpenAnsiBinaryFile(filePath, &file)) {
+		if(fplOpenBinaryFile(filePath, &file)) {
 			result.size = fplGetFileSizeFromHandle32(&file);
 			fplFileTimeStamps timestamps = {};
 			fplGetFileTimestampsFromHandle(&file, &timestamps);
@@ -492,9 +492,9 @@ namespace render {
 
 namespace creeps {
 	static void SpawnEnemy(Creeps &enemies, const LevelDimension &dim, const Waypoints &waypoints, const Vec2f &spawnPos, const Vec2f &exitPos, const CreepData *data) {
-		assert(enemies.count < FPL_ARRAYCOUNT(enemies.list));
+		assert(enemies.count < fplArrayCount(enemies.list));
 		Creep *enemy = &enemies.list[enemies.count++];
-		FPL_CLEAR_STRUCT(enemy);
+		fplClearStruct(enemy);
 		enemy->id = ++enemies.creepIdCounter;
 		enemy->data = data;
 		enemy->position = enemy->prevPosition = spawnPos;
@@ -532,7 +532,7 @@ namespace creeps {
 	}
 
 	static void AddSpawner(CreepSpawners &spawners, const LevelDimension &dim, const Vec2i &spawnTilePos, const Vec2i &goalTilePos, const float initialCooldown, const float cooldown, const size_t count, const SpawnerStartMode startMode, const CreepData *spawnTemplate) {
-		assert(spawners.count < FPL_ARRAYCOUNT(spawners.list));
+		assert(spawners.count < fplArrayCount(spawners.list));
 		CreepSpawner &spawner = spawners.list[spawners.count++];
 		spawner = {};
 		spawner.spawnPosition = TileToWorld(dim, spawnTilePos, TileExt);
@@ -647,7 +647,7 @@ namespace level {
 	}
 
 	static Waypoint *AddWaypoint(Waypoints &waypoints, const LevelDimension &dim, const Vec2i &tilePos, const Vec2f &dir) {
-		assert(waypoints.used < FPL_ARRAYCOUNT(waypoints.freeList));
+		assert(waypoints.used < fplArrayCount(waypoints.freeList));
 		Waypoint *waypoint = &waypoints.freeList[waypoints.used++];
 		waypoint->tilePos = tilePos;
 		waypoint->position = TileToWorld(dim, tilePos, TileExt);
@@ -663,7 +663,7 @@ namespace level {
 
 	static void ParseLevelLayer(fxmlTag *childTag, LevelLayer *targetLayer, fmemMemoryBlock *memory) {
 		const char *layerName = fxmlGetAttributeValue(childTag, "name");
-		fplCopyAnsiString(layerName, targetLayer->name, FPL_ARRAYCOUNT(targetLayer->name));
+		fplCopyString(layerName, targetLayer->name, fplArrayCount(targetLayer->name));
 		targetLayer->mapWidth = utils::StringToInt(fxmlGetAttributeValue(childTag, "width"));
 		targetLayer->mapHeight = utils::StringToInt(fxmlGetAttributeValue(childTag, "height"));
 		targetLayer->data = (uint32_t *)fmemPush(memory, sizeof(uint32_t) * targetLayer->mapWidth * targetLayer->mapHeight, fmemPushFlags_Clear);
@@ -737,7 +737,7 @@ namespace level {
 					const char *objName = fxmlGetAttributeValue(childTag, "name");
 					if(strcmp(typeName, "Spawn") == 0) {
 						tmpObj.type = ObjectType::Spawn;
-						fplCopyAnsiString(objName, tmpObj.spawn.spawnId, FPL_ARRAYCOUNT(tmpObj.spawn.spawnId));
+						fplCopyString(objName, tmpObj.spawn.spawnId, fplArrayCount(tmpObj.spawn.spawnId));
 						switch(entityType) {
 							case EntityType::SpawnDown:
 								tmpObj.spawn.direction = V2f(0.0f, -1.0f);
@@ -789,7 +789,7 @@ namespace level {
 					}
 
 					if(tmpObj.type != ObjectType::None) {
-						assert(level.objectCount < FPL_ARRAYCOUNT(level.objects));
+						assert(level.objectCount < fplArrayCount(level.objects));
 						ObjectData &obj = level.objects[level.objectCount++];
 						obj = tmpObj;
 					}
@@ -801,7 +801,7 @@ namespace level {
 
 	static bool ParseTileset(fxmlTag *tilesetTag, LevelTileset &outTileset, fmemMemoryBlock *memory) {
 		const char *name = fxmlGetAttributeValue(tilesetTag, "name");
-		fplCopyAnsiString(name, outTileset.name, FPL_ARRAYCOUNT(outTileset.name));
+		fplCopyString(name, outTileset.name, fplArrayCount(outTileset.name));
 		outTileset.firstGid = utils::StringToInt(fxmlGetAttributeValue(tilesetTag, "firstgid"));
 		outTileset.tileWidth = utils::StringToInt(fxmlGetAttributeValue(tilesetTag, "tilewidth"));
 		outTileset.tileHeight = utils::StringToInt(fxmlGetAttributeValue(tilesetTag, "tileheight"));
@@ -811,7 +811,7 @@ namespace level {
 		fxmlTag *imageTag = fxmlFindTagByName(tilesetTag, "image");
 		if(imageTag != nullptr) {
 			const char *source = fxmlGetAttributeValue(imageTag, "source");
-			fplCopyAnsiString(source, outTileset.image.source, FPL_ARRAYCOUNT(outTileset.image.source));
+			fplCopyString(source, outTileset.image.source, fplArrayCount(outTileset.image.source));
 			outTileset.image.width = utils::StringToInt(fxmlGetAttributeValue(imageTag, "width"));
 			outTileset.image.height = utils::StringToInt(fxmlGetAttributeValue(imageTag, "height"));
 		}
@@ -863,7 +863,7 @@ namespace level {
 		while(childTag) {
 			if(childTag->type == fxmlTagType_Element) {
 				if(strcmp(childTag->name, "tileset") == 0) {
-					assert(level.tilesetCount < FPL_ARRAYCOUNT(level.tilesets));
+					assert(level.tilesetCount < fplArrayCount(level.tilesets));
 					LevelTileset *targetTileset = &level.tilesets[level.tilesetCount++];
 					ParseTileset(childTag, *targetTileset, memory);
 				} else if(strcmp(childTag->name, "layer") == 0) {
@@ -894,7 +894,7 @@ namespace level {
 	static void LoadCreepDefinitions(Assets &assets, const char *filename, const bool isReload, fmemMemoryBlock *memory) {
 		assets.creepDefinitionCount = 0;
 		char filePath[FPL_MAX_PATH_LENGTH];
-		fplPathCombine(filePath, FPL_ARRAYCOUNT(filePath), 3, assets.dataPath, "levels", filename);
+		fplPathCombine(filePath, fplArrayCount(filePath), 3, assets.dataPath, "levels", filename);
 		FileContents fileData = utils::LoadEntireFile(filePath, memory);
 		assets.creepsFileInfo = fileData.info;
 		if(fileData.data != nullptr) {
@@ -907,10 +907,10 @@ namespace level {
 						for(fxmlTag *creepTag = creepDefinitionsTag->firstChild; creepTag; creepTag = creepTag->nextSibling) {
 							if(strcmp("CreepData", creepTag->name) == 0) {
 								const char *creepId = fxmlGetAttributeValue(creepTag, "id");
-								assert(assets.creepDefinitionCount < FPL_ARRAYCOUNT(assets.creepDefinitions));
+								assert(assets.creepDefinitionCount < fplArrayCount(assets.creepDefinitions));
 								CreepData *creepData = &assets.creepDefinitions[assets.creepDefinitionCount++];
 								*creepData = {};
-								fplCopyAnsiString(creepId, creepData->id, FPL_ARRAYCOUNT(creepData->id));
+								fplCopyString(creepId, creepData->id, fplArrayCount(creepData->id));
 								creepData->renderRadius = MaxTileSize * utils::StringToFloat(GetNodeValue(creepTag, "renderRadius"));
 								creepData->collisionRadius = MaxTileSize * utils::StringToFloat(GetNodeValue(creepTag, "collisionRadius"));
 								creepData->speed = utils::StringToFloat(GetNodeValue(creepTag, "speed"));
@@ -961,7 +961,7 @@ namespace level {
 						}
 						size_t len = p - start;
 						if(len > 0) {
-							fplCopyAnsiStringLen(start, len, buffer, FPL_ARRAYCOUNT(buffer));
+							fplCopyStringLen(start, len, buffer, fplArrayCount(buffer));
 							PartRotationFlags flag = PartRotationFlags::None;
 							if(strcmp("ApplyToOffset", buffer) == 0) {
 								flag = PartRotationFlags::ApplyToOffset;
@@ -995,7 +995,7 @@ namespace level {
 	static void LoadTowerDefinitions(Assets &assets, const char *filename, const bool isReload, fmemMemoryBlock *memory) {
 		assets.towerDefinitionCount = 0;
 		char filePath[FPL_MAX_PATH_LENGTH];
-		fplPathCombine(filePath, FPL_ARRAYCOUNT(filePath), 3, assets.dataPath, "levels", filename);
+		fplPathCombine(filePath, fplArrayCount(filePath), 3, assets.dataPath, "levels", filename);
 		FileContents fileData = utils::LoadEntireFile(filePath, memory);
 		assets.towersFileInfo = fileData.info;
 		if(fileData.data != nullptr) {
@@ -1009,17 +1009,17 @@ namespace level {
 						for(fxmlTag *towerTag = towerDefinitionsTag->firstChild; towerTag; towerTag = towerTag->nextSibling) {
 							if(strcmp("TowerData", towerTag->name) == 0) {
 								const char *towerId = fxmlGetAttributeValue(towerTag, "id");
-								assert(assets.towerDefinitionCount < FPL_ARRAYCOUNT(assets.towerDefinitions));
+								assert(assets.towerDefinitionCount < fplArrayCount(assets.towerDefinitions));
 								TowerData *towerData = &assets.towerDefinitions[assets.towerDefinitionCount++];
 								*towerData = {};
-								fplCopyAnsiString(towerId, towerData->id, FPL_ARRAYCOUNT(towerData->id));
+								fplCopyString(towerId, towerData->id, fplArrayCount(towerData->id));
 								towerData->detectionRadius = MaxTileSize * utils::StringToFloat(GetNodeValue(towerTag, "detectionRadius"));
 								towerData->unlockRadius = MaxTileSize * utils::StringToFloat(GetNodeValue(towerTag, "unlockRadius"));
 
 								{
 									fxmlTag *partsTag = fxmlFindTagByName(towerTag, "parts");
 									if(partsTag != nullptr) {
-										LoadPartDefinitions(partsTag, FPL_ARRAYCOUNT(towerData->parts), &towerData->partCount, towerData->parts);
+										LoadPartDefinitions(partsTag, fplArrayCount(towerData->parts), &towerData->partCount, towerData->parts);
 									}
 								}
 
@@ -1027,14 +1027,14 @@ namespace level {
 								if(tubesTag != nullptr) {
 									for(fxmlTag *tubeTag = tubesTag->firstChild; tubeTag; tubeTag = tubeTag->nextSibling) {
 										if(strcmp("tube", tubeTag->name) == 0) {
-											assert(towerData->tubeCount < FPL_ARRAYCOUNT(towerData->tubes));
+											assert(towerData->tubeCount < fplArrayCount(towerData->tubes));
 											WeaponTubeData *tubeData = towerData->tubes + towerData->tubeCount++;
 											*tubeData = {};
 											tubeData->length = utils::StringToFloat(GetNodeValue(tubeTag, "length"));
 											tubeData->offset = utils::StringToVec2(GetNodeValue(tubeTag, "offset"));
 											fxmlTag *partsTag = fxmlFindTagByName(tubeTag, "parts");
 											if(partsTag != nullptr) {
-												LoadPartDefinitions(partsTag, FPL_ARRAYCOUNT(tubeData->parts), &tubeData->partCount, tubeData->parts);
+												LoadPartDefinitions(partsTag, fplArrayCount(tubeData->parts), &tubeData->partCount, tubeData->parts);
 											}
 										}
 									}
@@ -1075,7 +1075,7 @@ namespace level {
 	static void LoadWaveDefinitions(Assets &assets, const char *filename, const bool isReload, fmemMemoryBlock *memory) {
 		assets.waveDefinitionCount = 0;
 		char filePath[FPL_MAX_PATH_LENGTH];
-		fplPathCombine(filePath, FPL_ARRAYCOUNT(filePath), 3, assets.dataPath, "levels", filename);
+		fplPathCombine(filePath, fplArrayCount(filePath), 3, assets.dataPath, "levels", filename);
 		FileContents fileData = utils::LoadEntireFile(filePath, memory);
 		assets.wavesFileInfo = fileData.info;
 		if(fileData.data != nullptr) {
@@ -1088,10 +1088,10 @@ namespace level {
 						for(fxmlTag *waveTag = waveDefinitionsTag->firstChild; waveTag; waveTag = waveTag->nextSibling) {
 							if(strcmp("WaveData", waveTag->name) == 0) {
 								const char *levelId = fxmlGetAttributeValue(waveTag, "level");
-								assert(assets.waveDefinitionCount < FPL_ARRAYCOUNT(assets.waveDefinitions));
+								assert(assets.waveDefinitionCount < fplArrayCount(assets.waveDefinitions));
 								WaveData *waveData = &assets.waveDefinitions[assets.waveDefinitionCount++];
 								*waveData = {};
-								fplCopyAnsiString(levelId, waveData->levelId, FPL_ARRAYCOUNT(waveData->levelId));
+								fplCopyString(levelId, waveData->levelId, fplArrayCount(waveData->levelId));
 								waveData->startupCooldown = utils::StringToFloat(GetNodeValue(waveTag, "startupCooldown"));
 								waveData->spawnerCount = 0;
 								waveData->completionBounty = utils::StringToInt(GetNodeValue(waveTag, "completionBounty"));
@@ -1099,12 +1099,12 @@ namespace level {
 								if(spawnersTag != nullptr) {
 									for(fxmlTag *spawnTag = spawnersTag->firstChild; spawnTag; spawnTag = spawnTag->nextSibling) {
 										if(strcmp("SpawnData", spawnTag->name) == 0) {
-											assert(waveData->spawnerCount < FPL_ARRAYCOUNT(waveData->spawners));
+											assert(waveData->spawnerCount < fplArrayCount(waveData->spawners));
 											SpawnData *spawnData = &waveData->spawners[waveData->spawnerCount++];
 											const char *spawnId = fxmlGetAttributeValue(spawnTag, "id");
 											const char *enemyId = fxmlGetAttributeValue(spawnTag, "enemy");
-											fplCopyAnsiString(spawnId, spawnData->spawnId, FPL_ARRAYCOUNT(spawnData->spawnId));
-											fplCopyAnsiString(enemyId, spawnData->enemyId, FPL_ARRAYCOUNT(spawnData->enemyId));
+											fplCopyString(spawnId, spawnData->spawnId, fplArrayCount(spawnData->spawnId));
+											fplCopyString(enemyId, spawnData->enemyId, fplArrayCount(spawnData->enemyId));
 											spawnData->initialCooldown = utils::StringToFloat(GetNodeValue(spawnTag, "initialCooldown"));
 											spawnData->cooldown = utils::StringToFloat(GetNodeValue(spawnTag, "cooldown"));
 											spawnData->enemyCount = utils::StringToInt(GetNodeValue(spawnTag, "enemyCount"));
@@ -1138,7 +1138,7 @@ namespace level {
 		bool result = false;
 
 		char filePath[1024];
-		fplPathCombine(filePath, FPL_ARRAYCOUNT(filePath), 3, dataPath, "levels", filename);
+		fplPathCombine(filePath, fplArrayCount(filePath), 3, dataPath, "levels", filename);
 		gamelog::Verbose("Loading level '%s'", filePath);
 
 		fmemMemoryBlock tempMem;
@@ -1281,10 +1281,10 @@ namespace level {
 			gamelog::Verbose("Active level '%s' is different from '%s'", state.level.activeId, wave.levelId);
 			ClearLevel(state);
 			char levelFilename[1024];
-			fplCopyAnsiString(wave.levelId, levelFilename, FPL_ARRAYCOUNT(levelFilename));
-			fplChangeFileExtension(levelFilename, ".tmx", levelFilename, FPL_ARRAYCOUNT(levelFilename));
+			fplCopyString(wave.levelId, levelFilename, fplArrayCount(levelFilename));
+			fplChangeFileExtension(levelFilename, ".tmx", levelFilename, fplArrayCount(levelFilename));
 			if(LoadLevel(state, state.assets.dataPath, levelFilename, state.level.data, &state.level.levelMem)) {
-				fplCopyAnsiString(wave.levelId, state.level.activeId, FPL_ARRAYCOUNT(state.level.activeId));
+				fplCopyString(wave.levelId, state.level.activeId, fplArrayCount(state.level.activeId));
 			} else {
 				gamelog::Error("Failed loading level '%s'!", levelFilename);
 				return;
@@ -1296,7 +1296,7 @@ namespace level {
 			ClearWave(state);
 		}
 
-		if(fplGetAnsiStringLength(state.level.activeId) == 0) {
+		if(fplGetStringLength(state.level.activeId) == 0) {
 			gamelog::Error("No level loaded!");
 			return;
 		}
@@ -1362,7 +1362,7 @@ namespace towers {
 		if((state.towers.selectedIndex < 0) || !(state.towers.selectedIndex < (int)state.assets.towerDefinitionCount)) {
 			return CanPlaceTowerResult::NoTowerSelected;
 		}
-		if(state.towers.activeCount == FPL_ARRAYCOUNT(state.towers.activeList)) {
+		if(state.towers.activeCount == fplArrayCount(state.towers.activeList)) {
 			return CanPlaceTowerResult::TooManyTowers;
 		}
 		Tile *tile = level::GetTile(state.level, tilePos);
@@ -1379,7 +1379,7 @@ namespace towers {
 	}
 
 	static Tower *PlaceTower(GameState &state, const Vec2i &tilePos, const TowerData *data) {
-		assert(state.towers.activeCount < FPL_ARRAYCOUNT(state.towers.activeList));
+		assert(state.towers.activeCount < fplArrayCount(state.towers.activeList));
 		Tower *tower = &state.towers.activeList[state.towers.activeCount++];
 		*tower = {};
 		tower->data = data;
@@ -1464,7 +1464,7 @@ namespace towers {
 	static void ShootBullet(Bullets &bullets, Tower &tower) {
 		for(size_t tubeIndex = 0; tubeIndex < tower.data->tubeCount; ++tubeIndex) {
 			const WeaponTubeData *tube = tower.data->tubes + tubeIndex;
-			assert(bullets.count < FPL_ARRAYCOUNT(bullets.list));
+			assert(bullets.count < fplArrayCount(bullets.list));
 			Bullet *bullet = &bullets.list[bullets.count++];
 			*bullet = {};
 			Vec2f targetDir = V2f(Cosine(tower.facingAngle), Sine(tower.facingAngle));
@@ -1563,7 +1563,7 @@ namespace towers {
 
 	static void DrawTower(RenderState &renderState, const Assets &assets, const Camera2D &camera, const TowerData &tower, const Vec2f &pos, const Vec2f &maxRadius, const float angle, const float alpha, const bool drawRadius) {
 		assert(MaxTileRadius > 0);
-		float scale = FPL_MAX(maxRadius.x, maxRadius.y) / MaxTileRadius;
+		float scale = fplMax(maxRadius.x, maxRadius.y) / MaxTileRadius;
 
 		render::DrawParts(renderState, assets, camera, pos, scale, alpha, angle, tower.partCount, tower.parts);
 
@@ -1596,7 +1596,7 @@ namespace game {
 
 	static void LoadTextureAsset(RenderState &renderState, const char *dataPath, const char *filename, const bool isTopDown, TextureAsset *outAsset) {
 		char filePath[FPL_MAX_PATH_LENGTH];
-		fplPathCombine(filePath, FPL_ARRAYCOUNT(filePath), 2, dataPath, filename);
+		fplPathCombine(filePath, fplArrayCount(filePath), 2, dataPath, filename);
 		int width, height, comp;
 		stbi_set_flip_vertically_on_load(isTopDown ? 0 : 1);
 		uint8_t *data = stbi_load(filePath, &width, &height, &comp, 4);
@@ -1623,7 +1623,7 @@ namespace game {
 			// Fonts
 			char fontDataPath[1024];
 			const char *fontFilename = "SulphurPoint-Bold.otf";
-			fplPathCombine(fontDataPath, FPL_ARRAYCOUNT(fontDataPath), 2, assets.dataPath, "fonts");
+			fplPathCombine(fontDataPath, fplArrayCount(fontDataPath), 2, assets.dataPath, "fonts");
 			FontAsset &hudFont = assets.hudFont;
 			if(LoadFontFromFile(fontDataPath, fontFilename, 0, 36.0f, 32, 128, 512, 512, false, &hudFont.desc)) {
 				PushTexture(renderState, &hudFont.texture, hudFont.desc.atlasAlphaBitmap, hudFont.desc.atlasWidth, hudFont.desc.atlasHeight, 1, TextureFilterType::Linear, TextureWrapMode::ClampToEdge, false, false);
@@ -1636,8 +1636,8 @@ namespace game {
 			// Textures
 			char texturesDataPath[1024];
 			char levelsDataPath[1024];
-			fplPathCombine(texturesDataPath, FPL_ARRAYCOUNT(texturesDataPath), 2, assets.dataPath, "textures");
-			fplPathCombine(levelsDataPath, FPL_ARRAYCOUNT(levelsDataPath), 2, assets.dataPath, "levels");
+			fplPathCombine(texturesDataPath, fplArrayCount(texturesDataPath), 2, assets.dataPath, "textures");
+			fplPathCombine(levelsDataPath, fplArrayCount(levelsDataPath), 2, assets.dataPath, "levels");
 			LoadTextureAsset(renderState, texturesDataPath, "radiant.png", false, &assets.radiantTexture);
 			LoadTextureAsset(renderState, levelsDataPath, "way_tileset.png", false, &assets.wayTilesetTexture);
 			LoadTextureAsset(renderState, levelsDataPath, "entities_tileset.png", false, &assets.entitiesTilesetTexture);
@@ -1672,9 +1672,9 @@ namespace game {
 	static bool InitGame(GameState &state, GameMemory &gameMemory) {
 		gamelog::Verbose("Initialize Game");
 
-		fplGetExecutableFilePath(state.assets.dataPath, FPL_ARRAYCOUNT(state.assets.dataPath));
-		fplExtractFilePath(state.assets.dataPath, state.assets.dataPath, FPL_ARRAYCOUNT(state.assets.dataPath));
-		fplPathCombine(state.assets.dataPath, FPL_ARRAYCOUNT(state.assets.dataPath), 2, state.assets.dataPath, "data");
+		fplGetExecutableFilePath(state.assets.dataPath, fplArrayCount(state.assets.dataPath));
+		fplExtractFilePath(state.assets.dataPath, state.assets.dataPath, fplArrayCount(state.assets.dataPath));
+		fplPathCombine(state.assets.dataPath, fplArrayCount(state.assets.dataPath), 2, state.assets.dataPath, "data");
 		gamelog::Info("Using assets path: %s", state.assets.dataPath);
 
 		size_t levelMemorySize = FMEM_MEGABYTES(32);
@@ -1707,34 +1707,34 @@ namespace game {
 		const FontAsset &font = state.assets.hudFont;
 		{
 			char text[256];
-			fplFormatAnsiString(text, FPL_ARRAYCOUNT(text), "%s", state.level.activeId);
+			fplFormatString(text, fplArrayCount(text), "%s", state.level.activeId);
 			Vec2f textPos = V2f(hudOriginX + WorldRadiusW, hudOriginY - hudPadding - hudFontHeight * 0.5f);
-			PushText(renderState, text, fplGetAnsiStringLength(text), &font.desc, &font.texture, V2f(textPos.x + outlineOffset, textPos.y - outlineOffset), hudFontHeight, 0.0f, 0.0f, TextBackColor);
-			PushText(renderState, text, fplGetAnsiStringLength(text), &font.desc, &font.texture, V2f(textPos.x, textPos.y), hudFontHeight, 0.0f, 0.0f, TextForeColor);
+			PushText(renderState, text, fplGetStringLength(text), &font.desc, &font.texture, V2f(textPos.x + outlineOffset, textPos.y - outlineOffset), hudFontHeight, 0.0f, 0.0f, TextBackColor);
+			PushText(renderState, text, fplGetStringLength(text), &font.desc, &font.texture, V2f(textPos.x, textPos.y), hudFontHeight, 0.0f, 0.0f, TextForeColor);
 
-			fplFormatAnsiString(text, FPL_ARRAYCOUNT(text), "Wave: %d / %zu", (state.wave.activeIndex + 1), state.assets.waveDefinitionCount);
+			fplFormatString(text, fplArrayCount(text), "Wave: %d / %zu", (state.wave.activeIndex + 1), state.assets.waveDefinitionCount);
 			textPos.y -= hudFontHeight;
-			PushText(renderState, text, fplGetAnsiStringLength(text), &font.desc, &font.texture, V2f(textPos.x + outlineOffset, textPos.y - outlineOffset), hudFontHeight, 0.0f, 0.0f, TextBackColor);
-			PushText(renderState, text, fplGetAnsiStringLength(text), &font.desc, &font.texture, V2f(textPos.x, textPos.y), hudFontHeight, 0.0f, 0.0f, TextForeColor);
+			PushText(renderState, text, fplGetStringLength(text), &font.desc, &font.texture, V2f(textPos.x + outlineOffset, textPos.y - outlineOffset), hudFontHeight, 0.0f, 0.0f, TextBackColor);
+			PushText(renderState, text, fplGetStringLength(text), &font.desc, &font.texture, V2f(textPos.x, textPos.y), hudFontHeight, 0.0f, 0.0f, TextForeColor);
 
-			fplFormatAnsiString(text, FPL_ARRAYCOUNT(text), "Enemies: %zu / %zu", state.enemies.count, state.wave.totalEnemyCount);
+			fplFormatString(text, fplArrayCount(text), "Enemies: %zu / %zu", state.enemies.count, state.wave.totalEnemyCount);
 			textPos.y -= hudFontHeight;
-			PushText(renderState, text, fplGetAnsiStringLength(text), &font.desc, &font.texture, V2f(textPos.x + outlineOffset, textPos.y - outlineOffset), hudFontHeight, 0.0f, 0.0f, TextBackColor);
-			PushText(renderState, text, fplGetAnsiStringLength(text), &font.desc, &font.texture, V2f(textPos.x, textPos.y), hudFontHeight, 0.0f, 0.0f, TextForeColor);
+			PushText(renderState, text, fplGetStringLength(text), &font.desc, &font.texture, V2f(textPos.x + outlineOffset, textPos.y - outlineOffset), hudFontHeight, 0.0f, 0.0f, TextBackColor);
+			PushText(renderState, text, fplGetStringLength(text), &font.desc, &font.texture, V2f(textPos.x, textPos.y), hudFontHeight, 0.0f, 0.0f, TextForeColor);
 		}
 		{
 			char text[256];
-			fplFormatAnsiString(text, FPL_ARRAYCOUNT(text), "$: %d", state.stats.money);
+			fplFormatString(text, fplArrayCount(text), "$: %d", state.stats.money);
 			Vec2f textPos = V2f(hudOriginX + hudPadding, hudOriginY - hudPadding - hudFontHeight * 0.5f);
-			PushText(renderState, text, fplGetAnsiStringLength(text), &font.desc, &font.texture, V2f(textPos.x + outlineOffset, textPos.y - outlineOffset), hudFontHeight, 1.0f, 0.0f, TextBackColor);
-			PushText(renderState, text, fplGetAnsiStringLength(text), &font.desc, &font.texture, V2f(textPos.x, textPos.y), hudFontHeight, 1.0f, 0.0f, TextForeColor);
+			PushText(renderState, text, fplGetStringLength(text), &font.desc, &font.texture, V2f(textPos.x + outlineOffset, textPos.y - outlineOffset), hudFontHeight, 1.0f, 0.0f, TextBackColor);
+			PushText(renderState, text, fplGetStringLength(text), &font.desc, &font.texture, V2f(textPos.x, textPos.y), hudFontHeight, 1.0f, 0.0f, TextForeColor);
 		}
 		{
 			char text[256];
-			fplFormatAnsiString(text, FPL_ARRAYCOUNT(text), "HP: %d", state.stats.lifes);
+			fplFormatString(text, fplArrayCount(text), "HP: %d", state.stats.lifes);
 			Vec2f textPos = V2f(hudOriginX + WorldWidth - hudPadding, hudOriginY - hudPadding - hudFontHeight * 0.5f);
-			PushText(renderState, text, fplGetAnsiStringLength(text), &font.desc, &font.texture, V2f(textPos.x + outlineOffset, textPos.y - outlineOffset), hudFontHeight, -1.0f, 0.0f, TextBackColor);
-			PushText(renderState, text, fplGetAnsiStringLength(text), &font.desc, &font.texture, V2f(textPos.x, textPos.y), hudFontHeight, -1.0f, 0.0f, TextForeColor);
+			PushText(renderState, text, fplGetStringLength(text), &font.desc, &font.texture, V2f(textPos.x + outlineOffset, textPos.y - outlineOffset), hudFontHeight, -1.0f, 0.0f, TextBackColor);
+			PushText(renderState, text, fplGetStringLength(text), &font.desc, &font.texture, V2f(textPos.x, textPos.y), hudFontHeight, -1.0f, 0.0f, TextForeColor);
 		}
 	}
 
@@ -1756,7 +1756,7 @@ namespace game {
 				V2f(pos.x - radius.w, pos.y - radius.h),
 				V2f(pos.x + radius.w, pos.y - radius.h),
 			};
-			float stippleWidth = (FPL_MIN(radius.x, radius.y) * 2.0f) / 10.0f;
+			float stippleWidth = (fplMin(radius.x, radius.y) * 2.0f) / 10.0f;
 			Vec4f stippleColor = V4f(1.0f, 1.0f, 1.0f, alpha);
 			float stippleLineWidth = 1.0f;
 			render::DrawLineLoopStipple(renderState, borderVecs, 4, stippleWidth, 3, stippleColor, stippleLineWidth);
@@ -1791,7 +1791,7 @@ namespace game {
 		Vec2f buttonOutputRadius = ui::GetUIButtonExt(buttonRadius);
 		for(int towerIndex = 0; towerIndex < state.assets.towerDefinitionCount; ++towerIndex) {
 			void *buttonId = (void *)&state.assets.towerDefinitions[towerIndex]; // Totally dont care about const removal here
-			float buttonX = ControlsOriginX + buttonMargin + (towerIndex * (buttonOutputRadius.w * 2.0f) + (FPL_MAX(0, towerIndex - 1) * buttonPadding));
+			float buttonX = ControlsOriginX + buttonMargin + (towerIndex * (buttonOutputRadius.w * 2.0f) + (fplMax(0, towerIndex - 1) * buttonPadding));
 			float buttonY = ControlsOriginY + buttonMargin;
 			if(ui::UIButton(state.ui, buttonId, V2f(buttonX + buttonRadius.w, buttonY + buttonRadius.h), buttonRadius, DrawTowerControl, (void *)(uintptr_t)towerIndex)) {
 				state.towers.selectedIndex = (int)towerIndex;
@@ -1804,8 +1804,8 @@ namespace game {
 			const TowerData &towerData = state.assets.towerDefinitions[state.towers.selectedIndex];
 			Vec2f textPos = V2f(ControlsOriginX + ControlsWidth - lineWidthWorld - buttonMargin, ControlsOriginY + ControlsHeight * 0.5f);
 			char textBuffer[256];
-			fplFormatAnsiString(textBuffer, FPL_ARRAYCOUNT(textBuffer), "[%s / $%d]", towerData.id, towerData.costs);
-			PushText(renderState, textBuffer, fplGetAnsiStringLength(textBuffer), &font.desc, &font.texture, V2f(textPos.x, textPos.y), fontHeight, -1.0f, 0.0f, TextForeColor);
+			fplFormatString(textBuffer, fplArrayCount(textBuffer), "[%s / $%d]", towerData.id, towerData.costs);
+			PushText(renderState, textBuffer, fplGetStringLength(textBuffer), &font.desc, &font.texture, V2f(textPos.x, textPos.y), fontHeight, -1.0f, 0.0f, TextForeColor);
 		}
 
 	}
@@ -1900,11 +1900,11 @@ extern void GameUpdate(GameMemory &gameMemory, const Input &input) {
 
 	if(WasPressed(input.keyboard.debugReload)) {
 		char filePathBuffer[FPL_MAX_PATH_LENGTH];
-		fplPathCombine(filePathBuffer, FPL_ARRAYCOUNT(filePathBuffer), 3, state->assets.dataPath, "levels", TowersDataFilename);
+		fplPathCombine(filePathBuffer, fplArrayCount(filePathBuffer), 3, state->assets.dataPath, "levels", TowersDataFilename);
 		FileInfo towersFileContents = utils::LoadFileInfo(filePathBuffer);
-		fplPathCombine(filePathBuffer, FPL_ARRAYCOUNT(filePathBuffer), 3, state->assets.dataPath, "levels", CreepsDataFilename);
+		fplPathCombine(filePathBuffer, fplArrayCount(filePathBuffer), 3, state->assets.dataPath, "levels", CreepsDataFilename);
 		FileInfo creepsFileContents = utils::LoadFileInfo(filePathBuffer);
-		fplPathCombine(filePathBuffer, FPL_ARRAYCOUNT(filePathBuffer), 3, state->assets.dataPath, "levels", WavesDataFilename);
+		fplPathCombine(filePathBuffer, fplArrayCount(filePathBuffer), 3, state->assets.dataPath, "levels", WavesDataFilename);
 		FileInfo wavesFileContents = utils::LoadFileInfo(filePathBuffer);
 
 		//utils::IsEqualFileInfo(towersFileContents, state->assets.towersFileInfo)
@@ -2130,7 +2130,7 @@ extern void GameRender(GameMemory &gameMemory, const float alpha) {
 		for(size_t y = 0; y < layer.mapHeight; ++y) {
 			for(size_t x = 0; x < layer.mapWidth; ++x) {
 				uint32_t tileData = layer.data[y * layer.mapWidth + x];
-				if(tileData > 0 && tileData < FPL_ARRAYCOUNT(gidToTileset)) {
+				if(tileData > 0 && tileData < fplArrayCount(gidToTileset)) {
 					const LevelTileset *tileset = gidToTileset[tileData];
 					assert(tileset != nullptr);
 					assert(tileData >= tileset->firstGid);
@@ -2260,7 +2260,7 @@ extern void GameRender(GameMemory &gameMemory, const float alpha) {
 					V2f(barX, barY),
 					V2f(barX + barWidth * barScale, barY),
 				};
-				PushVertices(renderState, progressVerts, FPL_ARRAYCOUNT(progressVerts), true, progressColor, DrawMode::Polygon, true, 0.0f);
+				PushVertices(renderState, progressVerts, fplArrayCount(progressVerts), true, progressColor, DrawMode::Polygon, true, 0.0f);
 
 				Vec4f borderColor = V4f(0.25f, 0.25f, 0.25f, 1.0f);
 				float borderLineWidth = 2.0f;
@@ -2270,7 +2270,7 @@ extern void GameRender(GameMemory &gameMemory, const float alpha) {
 					V2f(barX, barY),
 					V2f(barX + barWidth, barY),
 				};
-				PushVertices(renderState, borderVerts, FPL_ARRAYCOUNT(borderVerts), true, borderColor, DrawMode::Lines, true, borderLineWidth);
+				PushVertices(renderState, borderVerts, fplArrayCount(borderVerts), true, borderColor, DrawMode::Lines, true, borderLineWidth);
 			}
 
 			enemy.prevPosition = enemy.position;
@@ -2312,7 +2312,7 @@ extern void GameRender(GameMemory &gameMemory, const float alpha) {
 							V2f(tower.position.x, tower.position.y),
 							V2f(sightPos2.x, sightPos2.y),
 						};
-						PushVertices(renderState, sightVec2, FPL_ARRAYCOUNT(sightVec2), true, sightColor, DrawMode::Lines, false, sightLineWidth);
+						PushVertices(renderState, sightVec2, fplArrayCount(sightVec2), true, sightColor, DrawMode::Lines, false, sightLineWidth);
 					}
 				}
 			}
@@ -2342,38 +2342,38 @@ extern void GameRender(GameMemory &gameMemory, const float alpha) {
 	if(state->wave.state == WaveState::Starting) {
 		const FontAsset &font = state->assets.overlayFont;
 		char text[128];
-		fplFormatAnsiString(text, FPL_ARRAYCOUNT(text), "%d", (int)ceilf(state->wave.warmupTimer));
+		fplFormatString(text, fplArrayCount(text), "%d", (int)ceilf(state->wave.warmupTimer));
 		Vec2f textPos = V2f(0, 0);
 		float overlayFontHeight = WorldWidth * 0.25f;
 		float foffset = overlayFontHeight * 0.01f;
-		PushText(renderState, text, fplGetAnsiStringLength(text), &font.desc, &font.texture, V2f(textPos.x, textPos.y), overlayFontHeight, 0.0f, 0.0f, TextBackColor);
-		PushText(renderState, text, fplGetAnsiStringLength(text), &font.desc, &font.texture, V2f(textPos.x + foffset, textPos.y - foffset), overlayFontHeight, 0.0f, 0.0f, TextForeColor);
+		PushText(renderState, text, fplGetStringLength(text), &font.desc, &font.texture, V2f(textPos.x, textPos.y), overlayFontHeight, 0.0f, 0.0f, TextBackColor);
+		PushText(renderState, text, fplGetStringLength(text), &font.desc, &font.texture, V2f(textPos.x + foffset, textPos.y - foffset), overlayFontHeight, 0.0f, 0.0f, TextForeColor);
 	} else if(state->wave.state == WaveState::Won || state->wave.state == WaveState::Lost) {
 		const FontAsset &font = state->assets.overlayFont;
 		const char *text = state->wave.state == WaveState::Won ? "You Win!" : "Game Over!";
 		Vec2f textPos = V2f(0, 0);
 		float overlayFontHeight = WorldWidth * 0.15f;
 		float foffset = overlayFontHeight * 0.01f;
-		PushText(renderState, text, fplGetAnsiStringLength(text), &font.desc, &font.texture, V2f(textPos.x, textPos.y), overlayFontHeight, 0.0f, 0.0f, TextBackColor);
-		PushText(renderState, text, fplGetAnsiStringLength(text), &font.desc, &font.texture, V2f(textPos.x + foffset, textPos.y - foffset), overlayFontHeight, 0.0f, 0.0f, TextForeColor);
+		PushText(renderState, text, fplGetStringLength(text), &font.desc, &font.texture, V2f(textPos.x, textPos.y), overlayFontHeight, 0.0f, 0.0f, TextBackColor);
+		PushText(renderState, text, fplGetStringLength(text), &font.desc, &font.texture, V2f(textPos.x + foffset, textPos.y - foffset), overlayFontHeight, 0.0f, 0.0f, TextForeColor);
 	}
 
 	if(state->isDebugRendering) {
 		const FontAsset &font = state->assets.hudFont;
 		char text[256];
-		fplFormatAnsiString(text, FPL_ARRAYCOUNT(text), "Enemies: %03zu/%03zu, Bullets: %03zu, Towers: %03zu, Spawners: %03zu", state->enemies.count, state->wave.totalEnemyCount, state->bullets.count, state->towers.activeCount, state->spawners.count);
+		fplFormatString(text, fplArrayCount(text), "Enemies: %03zu/%03zu, Bullets: %03zu, Towers: %03zu, Spawners: %03zu", state->enemies.count, state->wave.totalEnemyCount, state->bullets.count, state->towers.activeCount, state->spawners.count);
 		Vec4f textColor = V4f(1, 1, 1, 1);
 		float padding = MaxTileSize * 0.1f;
 		Vec2f textPos = V2f(dim.gridOriginX + padding, dim.gridOriginY + padding);
 		float fontHeight = MaxTileSize * 0.5f;
-		PushText(renderState, text, fplGetAnsiStringLength(text), &font.desc, &font.texture, V2f(textPos.x, textPos.y), fontHeight, 1.0f, 1.0f, textColor);
+		PushText(renderState, text, fplGetStringLength(text), &font.desc, &font.texture, V2f(textPos.x, textPos.y), fontHeight, 1.0f, 1.0f, textColor);
 
-		fplFormatAnsiString(text, FPL_ARRAYCOUNT(text), "Game Memory: %zu / %zu", gameMemory.memory->used, gameMemory.memory->size);
-		PushText(renderState, text, fplGetAnsiStringLength(text), &font.desc, &font.texture, V2f(textPos.x + dim.gridWidth - padding * 2.0f, textPos.y + fontHeight * 2), fontHeight, -1.0f, 1.0f, textColor);
-		fplFormatAnsiString(text, FPL_ARRAYCOUNT(text), "Render Memory: %zu / %zu", gameMemory.render->lastMemoryUsage, gameMemory.render->memory.size);
-		PushText(renderState, text, fplGetAnsiStringLength(text), &font.desc, &font.texture, V2f(textPos.x + dim.gridWidth - padding * 2.0f, textPos.y + fontHeight * 1), fontHeight, -1.0f, 1.0f, textColor);
-		fplFormatAnsiString(text, FPL_ARRAYCOUNT(text), "Fps: %.5f, Delta: %.5f", state->framesPerSecond, state->deltaTime);
-		PushText(renderState, text, fplGetAnsiStringLength(text), &font.desc, &font.texture, V2f(textPos.x + dim.gridWidth - padding * 2.0f, textPos.y), fontHeight, -1.0f, 1.0f, textColor);
+		fplFormatString(text, fplArrayCount(text), "Game Memory: %zu / %zu", gameMemory.memory->used, gameMemory.memory->size);
+		PushText(renderState, text, fplGetStringLength(text), &font.desc, &font.texture, V2f(textPos.x + dim.gridWidth - padding * 2.0f, textPos.y + fontHeight * 2), fontHeight, -1.0f, 1.0f, textColor);
+		fplFormatString(text, fplArrayCount(text), "Render Memory: %zu / %zu", gameMemory.render->lastMemoryUsage, gameMemory.render->memory.size);
+		PushText(renderState, text, fplGetStringLength(text), &font.desc, &font.texture, V2f(textPos.x + dim.gridWidth - padding * 2.0f, textPos.y + fontHeight * 1), fontHeight, -1.0f, 1.0f, textColor);
+		fplFormatString(text, fplArrayCount(text), "Fps: %.5f, Delta: %.5f", state->framesPerSecond, state->deltaTime);
+		PushText(renderState, text, fplGetStringLength(text), &font.desc, &font.texture, V2f(textPos.x + dim.gridWidth - padding * 2.0f, textPos.y), fontHeight, -1.0f, 1.0f, textColor);
 	}
 
 	//

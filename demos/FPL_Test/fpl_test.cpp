@@ -116,7 +116,7 @@ static void TestOSInfos() {
 	ft::Msg("Get User Infos\n");
 	{
 		char nameBuffer[256] = {};
-		bool r = fplGetCurrentUsername(nameBuffer, FPL_ARRAYCOUNT(nameBuffer));
+		bool r = fplGetCurrentUsername(nameBuffer, fplArrayCount(nameBuffer));
 		FT_IS_TRUE(r);
 		fplConsoleFormatOut("Current Username: %s\n", nameBuffer);
 	}
@@ -145,54 +145,54 @@ static void TestSizes() {
 
 static void TestMacros() {
 	//
-	// FPL_ARRAYCOUNT
+	// fplArrayCount
 	//
-	ft::Msg("[FPL_ARRAYCOUNT] Test static char array\n");
+	ft::Msg("[fplArrayCount] Test static char array\n");
 	{
 		char staticArray[137] = {};
-		uint32_t actual = FPL_ARRAYCOUNT(staticArray);
+		uint32_t actual = fplArrayCount(staticArray);
 		FT_EXPECTS(137, actual);
 	}
-	ft::Msg("[FPL_ARRAYCOUNT] Test static int array\n");
+	ft::Msg("[fplArrayCount] Test static int array\n");
 	{
 		int staticArray[349] = {};
-		uint32_t actual = FPL_ARRAYCOUNT(staticArray);
+		uint32_t actual = fplArrayCount(staticArray);
 		FT_EXPECTS(349, actual);
 	}
-	ft::Msg("[FPL_ARRAYCOUNT] Test static bool array\n");
+	ft::Msg("[fplArrayCount] Test static bool array\n");
 	{
 		bool staticArray[961] = {};
-		uint32_t actual = FPL_ARRAYCOUNT(staticArray);
+		uint32_t actual = fplArrayCount(staticArray);
 		FT_EXPECTS(961, actual);
 	}
-	ft::Msg("[FPL_ARRAYCOUNT] Test static void pointer array\n");
+	ft::Msg("[fplArrayCount] Test static void pointer array\n");
 	{
 		void *staticArray[35] = {};
-		uint32_t actual = FPL_ARRAYCOUNT(staticArray);
+		uint32_t actual = fplArrayCount(staticArray);
 		FT_EXPECTS(35, actual);
 	}
 
 	// @NOTE(final): This is a simple/stupid macro, so when you pass a pointer, you basically get 2 always
-	ft::Msg("[FPL_ARRAYCOUNT] Test nullptr\n");
+	ft::Msg("[fplArrayCount] Test nullptr\n");
 	{
 		int *emptyArray = nullptr;
-		uint32_t actual = FPL_ARRAYCOUNT(emptyArray);
+		uint32_t actual = fplArrayCount(emptyArray);
 		uint32_t expected = sizeof(int *) / sizeof(int);
 		FT_EXPECTS(expected, actual);
 	}
-	ft::Msg("[FPL_ARRAYCOUNT] Test pointer from references static array\n");
+	ft::Msg("[fplArrayCount] Test pointer from references static array\n");
 	{
 		int staticArray[3] = {};
 		int *refArray = &staticArray[0];
-		uint32_t actual = FPL_ARRAYCOUNT(refArray);
+		uint32_t actual = fplArrayCount(refArray);
 		uint32_t expected = sizeof(int *) / sizeof(int);
 		FT_EXPECTS(expected, actual);
 	}
 
 	//
-	// FPL_OFFSETOF
+	// fplOffsetOf
 	//
-	ft::Msg("[FPL_OFFSETOF] Test alignment of 4 (High to low)\n");
+	ft::Msg("[fplOffsetOf] Test alignment of 4 (High to low)\n");
 	{
 #	pragma pack(push, 4)
 		struct TestStruct {
@@ -202,13 +202,13 @@ static void TestMacros() {
 			uint8_t d;
 		};
 #	pragma pack(pop)
-		FT_EXPECTS(0, FPL_OFFSETOF(TestStruct, a));
-		FT_EXPECTS(8, FPL_OFFSETOF(TestStruct, b));
-		FT_EXPECTS(12, FPL_OFFSETOF(TestStruct, c));
-		FT_EXPECTS(14, FPL_OFFSETOF(TestStruct, d));
+		FT_EXPECTS(0, fplOffsetOf(TestStruct, a));
+		FT_EXPECTS(8, fplOffsetOf(TestStruct, b));
+		FT_EXPECTS(12, fplOffsetOf(TestStruct, c));
+		FT_EXPECTS(14, fplOffsetOf(TestStruct, d));
 	}
 
-	ft::Msg("[FPL_OFFSETOF] Test alignment of 4 (Low to High)\n");
+	ft::Msg("[fplOffsetOf] Test alignment of 4 (Low to High)\n");
 	{
 #	pragma pack(push, 4)
 		struct TestStruct {
@@ -218,13 +218,13 @@ static void TestMacros() {
 			uint64_t d;
 		};
 #	pragma pack(pop)
-		FT_EXPECTS(0, FPL_OFFSETOF(TestStruct, a));
-		FT_EXPECTS(2, FPL_OFFSETOF(TestStruct, b));
-		FT_EXPECTS(4, FPL_OFFSETOF(TestStruct, c));
-		FT_EXPECTS(8, FPL_OFFSETOF(TestStruct, d));
+		FT_EXPECTS(0, fplOffsetOf(TestStruct, a));
+		FT_EXPECTS(2, fplOffsetOf(TestStruct, b));
+		FT_EXPECTS(4, fplOffsetOf(TestStruct, c));
+		FT_EXPECTS(8, fplOffsetOf(TestStruct, d));
 	}
 
-	ft::Msg("[FPL_OFFSETOF] Test alignment of 8 (Low to High)\n");
+	ft::Msg("[fplOffsetOf] Test alignment of 8 (Low to High)\n");
 	{
 #	pragma pack(push, 8)
 		struct TestStruct {
@@ -234,70 +234,70 @@ static void TestMacros() {
 			uint64_t d;
 		};
 #	pragma pack(pop)
-		FT_EXPECTS(0, FPL_OFFSETOF(TestStruct, a));
-		FT_EXPECTS(2, FPL_OFFSETOF(TestStruct, b));
-		FT_EXPECTS(4, FPL_OFFSETOF(TestStruct, c));
-		FT_EXPECTS(8, FPL_OFFSETOF(TestStruct, d));
+		FT_EXPECTS(0, fplOffsetOf(TestStruct, a));
+		FT_EXPECTS(2, fplOffsetOf(TestStruct, b));
+		FT_EXPECTS(4, fplOffsetOf(TestStruct, c));
+		FT_EXPECTS(8, fplOffsetOf(TestStruct, d));
 	}
 
 	//
-	// FPL_MIN/FPL_MAX
+	// fplMin/fplMax
 	//
-	ft::Msg("[FPL_MIN] Test integers\n");
+	ft::Msg("[fplMin] Test integers\n");
 	{
-		ft::AssertS32Equals(3, FPL_MIN(3, 7));
-		ft::AssertS32Equals(3, FPL_MIN(7, 3));
-		ft::AssertS32Equals(-7, FPL_MIN(-7, -3));
-		ft::AssertS32Equals(-7, FPL_MIN(-3, -7));
+		ft::AssertS32Equals(3, fplMin(3, 7));
+		ft::AssertS32Equals(3, fplMin(7, 3));
+		ft::AssertS32Equals(-7, fplMin(-7, -3));
+		ft::AssertS32Equals(-7, fplMin(-3, -7));
 		struct TestStruct {
 			int a;
 			int b;
 		};
 		TestStruct instance = { 3, 7 };
 		TestStruct *instancePtr = &instance;
-		ft::AssertS32Equals(3, FPL_MIN(instancePtr->a, instancePtr->b));
+		ft::AssertS32Equals(3, fplMin(instancePtr->a, instancePtr->b));
 	}
-	ft::Msg("[FPL_MIN] Test floats\n");
+	ft::Msg("[fplMin] Test floats\n");
 	{
-		ft::AssertFloatEquals(3.0f, FPL_MIN(3.0f, 7.0f));
-		ft::AssertFloatEquals(3.0f, FPL_MIN(7.0f, 3.0f));
-		ft::AssertFloatEquals(-7.0f, FPL_MIN(-7.0f, -3.0f));
-		ft::AssertFloatEquals(-7.0f, FPL_MIN(-3.0f, -7.0f));
+		ft::AssertFloatEquals(3.0f, fplMin(3.0f, 7.0f));
+		ft::AssertFloatEquals(3.0f, fplMin(7.0f, 3.0f));
+		ft::AssertFloatEquals(-7.0f, fplMin(-7.0f, -3.0f));
+		ft::AssertFloatEquals(-7.0f, fplMin(-3.0f, -7.0f));
 		struct TestStruct {
 			float a;
 			float b;
 		};
 		TestStruct instance = { 3.0f, 7.0f };
 		TestStruct *instancePtr = &instance;
-		ft::AssertFloatEquals(3.0f, FPL_MIN(instancePtr->a, instancePtr->b));
+		ft::AssertFloatEquals(3.0f, fplMin(instancePtr->a, instancePtr->b));
 	}
-	ft::Msg("[FPL_MAX] Test integers\n");
+	ft::Msg("[fplMax] Test integers\n");
 	{
-		ft::AssertS32Equals(7, FPL_MAX(3, 7));
-		ft::AssertS32Equals(7, FPL_MAX(7, 3));
-		ft::AssertS32Equals(-3, FPL_MAX(-3, -7));
-		ft::AssertS32Equals(-3, FPL_MAX(-7, -3));
+		ft::AssertS32Equals(7, fplMax(3, 7));
+		ft::AssertS32Equals(7, fplMax(7, 3));
+		ft::AssertS32Equals(-3, fplMax(-3, -7));
+		ft::AssertS32Equals(-3, fplMax(-7, -3));
 		struct TestStruct {
 			int a;
 			int b;
 		};
 		TestStruct instance = { 3, 7 };
 		TestStruct *instancePtr = &instance;
-		ft::AssertS32Equals(7, FPL_MAX(instancePtr->a, instancePtr->b));
+		ft::AssertS32Equals(7, fplMax(instancePtr->a, instancePtr->b));
 	}
-	ft::Msg("[FPL_MAX] Test floats\n");
+	ft::Msg("[fplMax] Test floats\n");
 	{
-		ft::AssertFloatEquals(7.0f, FPL_MAX(3.0f, 7.0f));
-		ft::AssertFloatEquals(7.0f, FPL_MAX(7.0f, 3.0f));
-		ft::AssertFloatEquals(-3.0f, FPL_MAX(-3.0f, -7.0f));
-		ft::AssertFloatEquals(-3.0f, FPL_MAX(-7.0f, -3.0f));
+		ft::AssertFloatEquals(7.0f, fplMax(3.0f, 7.0f));
+		ft::AssertFloatEquals(7.0f, fplMax(7.0f, 3.0f));
+		ft::AssertFloatEquals(-3.0f, fplMax(-3.0f, -7.0f));
+		ft::AssertFloatEquals(-3.0f, fplMax(-7.0f, -3.0f));
 		struct TestStruct {
 			float a;
 			float b;
 		};
 		TestStruct instance = { 3.0f, 7.0f };
 		TestStruct *instancePtr = &instance;
-		ft::AssertFloatEquals(7.0f, FPL_MAX(instancePtr->a, instancePtr->b));
+		ft::AssertFloatEquals(7.0f, fplMax(instancePtr->a, instancePtr->b));
 	}
 
 	//
@@ -397,15 +397,15 @@ static void TestPaths() {
 	if(fplPlatformInit(fplInitFlags_None, fpl_null)) {
 
 		char homePathBuffer[1024] = {};
-		fplGetHomePath(homePathBuffer, FPL_ARRAYCOUNT(homePathBuffer));
+		fplGetHomePath(homePathBuffer, fplArrayCount(homePathBuffer));
 		ft::Msg("Home Path:\n%s\n", homePathBuffer);
 
 		char exeFilePathBuffer[1024] = {};
-		fplGetExecutableFilePath(exeFilePathBuffer, FPL_ARRAYCOUNT(exeFilePathBuffer));
+		fplGetExecutableFilePath(exeFilePathBuffer, fplArrayCount(exeFilePathBuffer));
 		ft::Msg("Executable file Path:\n%s\n", exeFilePathBuffer);
 
 		char extractedPathBuffer[1024] = {};
-		fplExtractFilePath(exeFilePathBuffer, extractedPathBuffer, FPL_ARRAYCOUNT(extractedPathBuffer));
+		fplExtractFilePath(exeFilePathBuffer, extractedPathBuffer, fplArrayCount(extractedPathBuffer));
 		ft::Msg("Extracted path:\n%s\n", extractedPathBuffer);
 
 		const char *exeFileName = fplExtractFileName(exeFilePathBuffer);
@@ -415,21 +415,21 @@ static void TestPaths() {
 		ft::Msg("Extracted extension:\n%s\n", exeFileExt);
 
 		char combinedPathBuffer[1024 * 10] = {};
-		fplPathCombine(combinedPathBuffer, FPL_ARRAYCOUNT(combinedPathBuffer), 4, "Hallo", "Welt", "der", "Programmierer");
+		fplPathCombine(combinedPathBuffer, fplArrayCount(combinedPathBuffer), 4, "Hallo", "Welt", "der", "Programmierer");
 		ft::Msg("Combined path:\n%s\n", combinedPathBuffer);
 
 		char changedFileExtBuffer[1024] = {};
-		fplChangeFileExtension(exeFilePathBuffer, ".obj", changedFileExtBuffer, FPL_ARRAYCOUNT(changedFileExtBuffer));
+		fplChangeFileExtension(exeFilePathBuffer, ".obj", changedFileExtBuffer, fplArrayCount(changedFileExtBuffer));
 		ft::Msg("Changed file ext 1:\n%s\n", changedFileExtBuffer);
-		fplChangeFileExtension(exeFileName, ".obj", changedFileExtBuffer, FPL_ARRAYCOUNT(changedFileExtBuffer));
+		fplChangeFileExtension(exeFileName, ".obj", changedFileExtBuffer, fplArrayCount(changedFileExtBuffer));
 		ft::Msg("Changed file ext 2:\n%s\n", changedFileExtBuffer);
-		fplChangeFileExtension(".dll", ".obj", changedFileExtBuffer, FPL_ARRAYCOUNT(changedFileExtBuffer));
+		fplChangeFileExtension(".dll", ".obj", changedFileExtBuffer, fplArrayCount(changedFileExtBuffer));
 		ft::Msg("Changed file ext 3:\n%s\n", changedFileExtBuffer);
-		fplChangeFileExtension("", ".obj", changedFileExtBuffer, FPL_ARRAYCOUNT(changedFileExtBuffer));
+		fplChangeFileExtension("", ".obj", changedFileExtBuffer, fplArrayCount(changedFileExtBuffer));
 		ft::Msg("Changed file ext 4:\n%s\n", changedFileExtBuffer);
-		fplChangeFileExtension(".dll", "", changedFileExtBuffer, FPL_ARRAYCOUNT(changedFileExtBuffer));
+		fplChangeFileExtension(".dll", "", changedFileExtBuffer, fplArrayCount(changedFileExtBuffer));
 		ft::Msg("Changed file ext 5:\n%s\n", changedFileExtBuffer);
-		fplChangeFileExtension("", "", changedFileExtBuffer, FPL_ARRAYCOUNT(changedFileExtBuffer));
+		fplChangeFileExtension("", "", changedFileExtBuffer, fplArrayCount(changedFileExtBuffer));
 		ft::Msg("Changed file ext 5:\n%s\n", changedFileExtBuffer);
 
 		fplPlatformRelease();
@@ -439,7 +439,7 @@ static void TestPaths() {
 
 static void TestHardware() {
 	char cpuNameBuffer[1024] = {};
-	fplGetProcessorName(cpuNameBuffer, FPL_ARRAYCOUNT(cpuNameBuffer));
+	fplGetProcessorName(cpuNameBuffer, fplArrayCount(cpuNameBuffer));
 	ft::Msg("Processor name: %s\n", cpuNameBuffer);
 
 	size_t coreCount = fplGetProcessorCoreCount();
@@ -551,7 +551,7 @@ static void SyncThreadsTestAtomics() {
 		writeData.valueToWrite = 42;
 
 		fplThreadHandle *threads[2];
-		uint32_t threadCount = FPL_ARRAYCOUNT(threads);
+		uint32_t threadCount = fplArrayCount(threads);
 
 		ft::Msg("Start %zu threads\n", threadCount);
 		threads[0] = fplThreadCreate(ReadDataThreadProc, &readData);
@@ -1108,19 +1108,19 @@ static void TestAtomics() {
 static void TestStrings() {
 	ft::Msg("Test ansi string length\n");
 	{
-		size_t actual = fplGetAnsiStringLength(nullptr);
+		size_t actual = fplGetStringLength(nullptr);
 		ft::AssertSizeEquals(0, actual);
 	}
 	{
-		size_t actual = fplGetAnsiStringLength("");
+		size_t actual = fplGetStringLength("");
 		ft::AssertSizeEquals(0, actual);
 	}
 	{
-		size_t actual = fplGetAnsiStringLength("ABC");
+		size_t actual = fplGetStringLength("ABC");
 		ft::AssertSizeEquals(3, actual);
 	}
 	{
-		size_t actual = fplGetAnsiStringLength("ABC Hello World!");
+		size_t actual = fplGetStringLength("ABC Hello World!");
 		ft::AssertSizeEquals(16, actual);
 	}
 	{
@@ -1129,25 +1129,25 @@ static void TestStrings() {
 		buffer[1] = 'B';
 		buffer[2] = 'C';
 		buffer[3] = 0;
-		size_t actual = fplGetAnsiStringLength(buffer);
+		size_t actual = fplGetStringLength(buffer);
 		ft::AssertSizeEquals(3, actual);
 	}
 
 	ft::Msg("Test wide string length\n");
 	{
-		size_t actual = fplGetWideStringLength(nullptr);
+		size_t actual = fplGetStringLengthWide(nullptr);
 		ft::AssertSizeEquals(0, actual);
 	}
 	{
-		size_t actual = fplGetWideStringLength(L"");
+		size_t actual = fplGetStringLengthWide(L"");
 		ft::AssertSizeEquals(0, actual);
 	}
 	{
-		size_t actual = fplGetWideStringLength(L"ABC");
+		size_t actual = fplGetStringLengthWide(L"ABC");
 		ft::AssertSizeEquals(3, actual);
 	}
 	{
-		size_t actual = fplGetWideStringLength(L"ABC Hello World!");
+		size_t actual = fplGetStringLengthWide(L"ABC Hello World!");
 		ft::AssertSizeEquals(16, actual);
 	}
 	{
@@ -1156,7 +1156,7 @@ static void TestStrings() {
 		buffer[1] = 'B';
 		buffer[2] = 'C';
 		buffer[3] = 0;
-		size_t actual = fplGetWideStringLength(buffer);
+		size_t actual = fplGetStringLengthWide(buffer);
 		ft::AssertSizeEquals(3, actual);
 	}
 
@@ -1244,70 +1244,70 @@ static void TestStrings() {
 	}
 	{
 		char buffer[64] = {};
-		fplStringAppend(fpl_null, buffer, FPL_ARRAYCOUNT(buffer));
+		fplStringAppend(fpl_null, buffer, fplArrayCount(buffer));
 		ft::AssertStringEquals("", buffer);
 	}
 	{
 		char buffer[64] = {};
-		fplStringAppend("Hello", buffer, FPL_ARRAYCOUNT(buffer));
+		fplStringAppend("Hello", buffer, fplArrayCount(buffer));
 		ft::AssertStringEquals("Hello", buffer);
 	}
 	{
 		char buffer[64] = {};
-		fplCopyAnsiString("Hello", buffer, FPL_ARRAYCOUNT(buffer));
-		fplStringAppend(" World", buffer, FPL_ARRAYCOUNT(buffer));
+		fplCopyString("Hello", buffer, fplArrayCount(buffer));
+		fplStringAppend(" World", buffer, fplArrayCount(buffer));
 		ft::AssertStringEquals("Hello World", buffer);
 	}
 
 	ft::Msg("Test format ansi string\n");
 	{
-		char *res = fplFormatAnsiString(nullptr, 0, nullptr);
+		char *res = fplFormatString(nullptr, 0, nullptr);
 		FT_EXPECTS(nullptr, res);
 	}
 	{
 		char buffer[1];
-		char *res = fplFormatAnsiString(buffer, 0, "");
+		char *res = fplFormatString(buffer, 0, "");
 		FT_EXPECTS(nullptr, res);
 	}
 	{
 		char buffer[1];
-		char *res = fplFormatAnsiString(buffer, FPL_ARRAYCOUNT(buffer), "A");
+		char *res = fplFormatString(buffer, fplArrayCount(buffer), "A");
 		FT_EXPECTS(nullptr, res);
 	}
 	{
 		char buffer[2];
-		char *res = fplFormatAnsiString(buffer, FPL_ARRAYCOUNT(buffer), "A");
+		char *res = fplFormatString(buffer, fplArrayCount(buffer), "A");
 		FT_IS_NOT_NULL(res);
 		bool matches = fplIsStringEqualLen("A", 1, buffer, 1);
 		FT_EXPECTS(true, matches);
 	}
 	{
 		char buffer[5];
-		char *res = fplFormatAnsiString(buffer, FPL_ARRAYCOUNT(buffer), "Hello");
+		char *res = fplFormatString(buffer, fplArrayCount(buffer), "Hello");
 		FT_EXPECTS(nullptr, res);
 	}
 	{
 		char buffer[6];
-		char *res = fplFormatAnsiString(buffer, FPL_ARRAYCOUNT(buffer), "Hello");
+		char *res = fplFormatString(buffer, fplArrayCount(buffer), "Hello");
 		FT_IS_NOT_NULL(res);
 		bool r = fplIsStringEqualLen("Hello", 5, buffer, 5);
 		FT_EXPECTS(true, r);
 	}
 	{
 		char buffer[6];
-		char *res = fplFormatAnsiString(buffer, FPL_ARRAYCOUNT(buffer), "%s", "Hello");
+		char *res = fplFormatString(buffer, fplArrayCount(buffer), "%s", "Hello");
 		FT_IS_NOT_NULL(res);
 		bool r = fplIsStringEqualLen("Hello", 5, buffer, 5);
 		FT_EXPECTS(true, r);
 	}
 	{
 		char buffer[20];
-		char *res = fplFormatAnsiString(buffer, FPL_ARRAYCOUNT(buffer), "%4xd-%2d-%2d %2d:%2d:%2d", 2009, 11, 17, 13, 47, 25);
+		char *res = fplFormatString(buffer, fplArrayCount(buffer), "%4xd-%2d-%2d %2d:%2d:%2d", 2009, 11, 17, 13, 47, 25);
 		FT_EXPECTS(nullptr, res);
 	}
 	{
 		char buffer[20];
-		char *res = fplFormatAnsiString(buffer, FPL_ARRAYCOUNT(buffer), "%4d-%2d-%2d %2d:%2d:%2d", 2009, 11, 17, 13, 47, 25);
+		char *res = fplFormatString(buffer, fplArrayCount(buffer), "%4d-%2d-%2d %2d:%2d:%2d", 2009, 11, 17, 13, 47, 25);
 		FT_IS_NOT_NULL(res);
 		bool r = fplIsStringEqual("2009-11-17 13:47:25", buffer);
 		FT_EXPECTS(true, r);
@@ -1319,14 +1319,14 @@ static void TestStrings() {
 		char bigBuffer[16];
 		FT_IS_NULL(fplS32ToString(0, 0, nullptr));
 		FT_IS_NULL(fplS32ToString(0, 4, nullptr));
-		FT_IS_NULL(fplS32ToString(11, FPL_ARRAYCOUNT(smallBuffer), smallBuffer));
-		FT_IS_NOT_NULL(fplS32ToString(7, FPL_ARRAYCOUNT(smallBuffer), smallBuffer));
+		FT_IS_NULL(fplS32ToString(11, fplArrayCount(smallBuffer), smallBuffer));
+		FT_IS_NOT_NULL(fplS32ToString(7, fplArrayCount(smallBuffer), smallBuffer));
 		ft::AssertStringEquals("7", smallBuffer);
-		FT_IS_NOT_NULL(fplS32ToString(129, FPL_ARRAYCOUNT(bigBuffer), bigBuffer));
+		FT_IS_NOT_NULL(fplS32ToString(129, fplArrayCount(bigBuffer), bigBuffer));
 		ft::AssertStringEquals("129", bigBuffer);
-		FT_IS_NOT_NULL(fplS32ToString(1337, FPL_ARRAYCOUNT(bigBuffer), bigBuffer));
+		FT_IS_NOT_NULL(fplS32ToString(1337, fplArrayCount(bigBuffer), bigBuffer));
 		ft::AssertStringEquals("1337", bigBuffer);
-		FT_IS_NOT_NULL(fplS32ToString(-1234567, FPL_ARRAYCOUNT(bigBuffer), bigBuffer));
+		FT_IS_NOT_NULL(fplS32ToString(-1234567, fplArrayCount(bigBuffer), bigBuffer));
 		ft::AssertStringEquals("-1234567", bigBuffer);
 	}
 
@@ -1364,11 +1364,11 @@ static void TestStrings() {
 static void TestLocalization() {
 	fplPlatformInit(fplInitFlags_None, fpl_null);
 	char buffer[16];
-	FT_IS_TRUE(fplGetSystemLocale(fplLocaleFormat_ISO639, buffer, FPL_ARRAYCOUNT(buffer)));
+	FT_IS_TRUE(fplGetSystemLocale(fplLocaleFormat_ISO639, buffer, fplArrayCount(buffer)));
 	fplConsoleFormatOut("System Locale (ISO-639): %s\n", buffer);
-	FT_IS_TRUE(fplGetUserLocale(fplLocaleFormat_ISO639, buffer, FPL_ARRAYCOUNT(buffer)));
+	FT_IS_TRUE(fplGetUserLocale(fplLocaleFormat_ISO639, buffer, fplArrayCount(buffer)));
 	fplConsoleFormatOut("User Locale (ISO-639): %s\n", buffer);
-	FT_IS_TRUE(fplGetInputLocale(fplLocaleFormat_ISO639, buffer, FPL_ARRAYCOUNT(buffer)));
+	FT_IS_TRUE(fplGetInputLocale(fplLocaleFormat_ISO639, buffer, fplArrayCount(buffer)));
 	fplConsoleFormatOut("Input Locale (ISO-639): %s\n", buffer);
 	fplPlatformRelease();
 }

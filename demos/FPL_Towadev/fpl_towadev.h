@@ -26,7 +26,7 @@ constexpr int FieldTileCountY = 11;
 constexpr float TileWidth = WorldWidth / (float)FieldTileCountX;
 constexpr float TileHeight = WorldHeight / (float)(FieldTileCountY + 1);
 const Vec2f TileExt = V2f(TileWidth, TileHeight) * 0.5f;
-constexpr float MaxTileSize = FPL_MAX(TileWidth, TileHeight);
+constexpr float MaxTileSize = fplMax(TileWidth, TileHeight);
 constexpr float MaxTileRadius = MaxTileSize * 0.5f;
 
 constexpr float ControlsWidth = WorldWidth;
@@ -152,8 +152,8 @@ struct SpawnData {
 
 inline SpawnData MakeSpawnData(const char *spawnId, const char *enemyId, const SpawnerStartMode startMode, const float initialCooldown, const float cooldown, const size_t enemyCount) {
 	SpawnData result = {};
-	fplCopyAnsiString(spawnId, result.spawnId, FPL_ARRAYCOUNT(result.spawnId));
-	fplCopyAnsiString(enemyId, result.enemyId, FPL_ARRAYCOUNT(result.enemyId));
+	fplCopyString(spawnId, result.spawnId, fplArrayCount(result.spawnId));
+	fplCopyString(enemyId, result.enemyId, fplArrayCount(result.enemyId));
 	result.initialCooldown = initialCooldown;
 	result.cooldown = cooldown;
 	result.enemyCount = enemyCount;
@@ -282,7 +282,7 @@ struct CreepData {
 };
 inline CreepData MakeCreepData(const char *id, const float renderRadius, const float collisionRadius, const float speed, const int hp, const int bounty, const Vec4f &color) {
 	CreepData result = {};
-	fplCopyAnsiString(id, result.id, FPL_ARRAYCOUNT(result.id));
+	fplCopyString(id, result.id, fplArrayCount(result.id));
 	result.renderRadius = renderRadius;
 	result.collisionRadius = collisionRadius;
 	result.speed = speed;

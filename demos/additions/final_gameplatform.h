@@ -75,7 +75,7 @@ static void UpdateDefaultController(Input *currentInput, int newIndex) {
 		currentInput->defaultControllerIndex = newIndex;
 	} else {
 		currentInput->defaultControllerIndex = -1;
-		for(int i = FPL_ARRAYCOUNT(currentInput->controllers) - 1; i > 0; i--) {
+		for(int i = fplArrayCount(currentInput->controllers) - 1; i > 0; i--) {
 			if(currentInput->controllers[i].isConnected) {
 				currentInput->defaultControllerIndex = i;
 				break;
@@ -116,7 +116,7 @@ static void ProcessEvents(Input *currentInput, Input *prevInput, GameWindowActiv
 			{
 				// @TODO(final): For now we just use the device index, but later it should be "added" to the controllers array and remembered somehow
 				uint32_t controllerIndex = 1 + event.gamepad.deviceIndex;
-				fplAssert(controllerIndex < FPL_ARRAYCOUNT(currentInput->controllers));
+				fplAssert(controllerIndex < fplArrayCount(currentInput->controllers));
 				Controller *newController = &currentInput->controllers[controllerIndex];
 				Controller *oldController = &prevInput->controllers[controllerIndex];
 				switch(event.gamepad.type) {
@@ -271,7 +271,7 @@ extern int GameMain(const GameConfiguration &config) {
 	settings.video.driver = fplVideoDriverType_OpenGL;
 	settings.video.graphics.opengl.compabilityFlags = fplOpenGLCompabilityFlags_Legacy;
 	settings.video.isVSync = true;
-	fplCopyAnsiString(config.title, settings.window.windowTitle, FPL_ARRAYCOUNT(settings.window.windowTitle));
+	fplCopyString(config.title, settings.window.windowTitle, fplArrayCount(settings.window.windowTitle));
 
 	if(!fplPlatformInit(fplInitFlags_All, &settings)) {
 		return -1;
@@ -357,21 +357,21 @@ extern int GameMain(const GameConfiguration &config) {
 			Mouse *newMouse = &newInput->mouse;
 			Mouse *oldMouse = &oldInput->mouse;
 			*newMouse = {};
-			for(uint32_t buttonIndex = 0; buttonIndex < FPL_ARRAYCOUNT(newMouse->buttons); ++buttonIndex) {
+			for(uint32_t buttonIndex = 0; buttonIndex < fplArrayCount(newMouse->buttons); ++buttonIndex) {
 				newMouse->buttons[buttonIndex] = oldMouse->buttons[buttonIndex];
 				newMouse->buttons[buttonIndex].halfTransitionCount = 0;
 			}
 			newMouse->pos = lastMousePos;
 
 			// Remember previous gamepad connected states
-			for(uint32_t controllerIndex = 1; controllerIndex < FPL_ARRAYCOUNT(newInput->controllers); ++controllerIndex) {
+			for(uint32_t controllerIndex = 1; controllerIndex < fplArrayCount(newInput->controllers); ++controllerIndex) {
 				Controller *newGamepadController = &newInput->controllers[controllerIndex];
 				Controller *oldGamepadController = &oldInput->controllers[controllerIndex];
 				newGamepadController->isConnected = oldGamepadController->isConnected;
 				newGamepadController->isAnalog = oldGamepadController->isAnalog;
 			}
 
-			for(uint32_t buttonIndex = 0; buttonIndex < FPL_ARRAYCOUNT(newKeyboardController->buttons); ++buttonIndex) {
+			for(uint32_t buttonIndex = 0; buttonIndex < fplArrayCount(newKeyboardController->buttons); ++buttonIndex) {
 				newKeyboardController->buttons[buttonIndex].endedDown = oldKeyboardController->buttons[buttonIndex].endedDown;
 			}
 
@@ -435,14 +435,14 @@ extern int GameMain(const GameConfiguration &config) {
 			lastFramesPerSecond = 1.0f / frameDuration;
 			if(!config.noUpdateRenderSeparation) {
 				frameAccumulator += frameDuration;
-				frameAccumulator = FPL_MIN(0.1, frameAccumulator);
+				frameAccumulator = fplMin(0.1, frameAccumulator);
 			}
 			lastTime = endTime;
 			if(endTime >= (fpsTimerInSecs + 1.0)) {
 				fpsTimerInSecs = endTime;
 #if 0
 				char charBuffer[256];
-				fplFormatAnsiString(charBuffer, FPL_ARRAYCOUNT(charBuffer), "Fps: %d, Ups: %d\n", frameCount, updateCount);
+				fplFormatAnsiString(charBuffer, fplArrayCount(charBuffer), "Fps: %d, Ups: %d\n", frameCount, updateCount);
 				OutputDebugStringA(charBuffer);
 #endif
 				frameCount = 0;

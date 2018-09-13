@@ -380,7 +380,7 @@ extern void PushSprite(RenderState &state, const Vec2f &position, const Vec2f &e
 }
 
 extern void PushTexture(RenderState &state, TextureHandle *targetTexture, const void *data, const uint32_t width, const uint32_t height, const uint32_t bytesPerPixel, const TextureFilterType filter, const TextureWrapMode wrap, const bool isTopDown, const bool isPreMultiplied) {
-	if(state.textureOperationCount < FPL_ARRAYCOUNT(state.textureOperations)) {
+	if(state.textureOperationCount < fplArrayCount(state.textureOperations)) {
 		TextureOperation *op = &state.textureOperations[state.textureOperationCount++];
 		*op = {};
 		op->data = data;
@@ -397,7 +397,7 @@ extern void PushTexture(RenderState &state, TextureHandle *targetTexture, const 
 }
 
 extern void PopTexture(RenderState &state, TextureHandle *targetTexture) {
-	if(state.textureOperationCount < FPL_ARRAYCOUNT(state.textureOperations)) {
+	if(state.textureOperationCount < fplArrayCount(state.textureOperations)) {
 		TextureOperation *op = &state.textureOperations[state.textureOperationCount++];
 		*op = {};
 		op->handle = targetTexture;
@@ -442,7 +442,7 @@ extern void PushText(RenderState &state, const char *text, const size_t textLen,
 
 	}
 	char *pt = PushTypes<char>(state, header, textLen + 1, false);
-	fplCopyAnsiStringLen(text, textLen, pt, textLen + 1);
+	fplCopyStringLen(text, textLen, pt, textLen + 1);
 }
 
 extern void PushLine(RenderState &state, const Vec2f &a, const Vec2f &b, const Vec4f &color, const float lineWidth) {

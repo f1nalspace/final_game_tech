@@ -61,7 +61,7 @@ struct GameState {
 static bool Init(GameState &state) {
 	state.debugFont.type = AssetType::Font;
 	state.debugFont.loadState = AssetLoadState::Unloaded;
-	size_t fontDataSize = FPL_ARRAYCOUNT(fontDataArray);
+	size_t fontDataSize = fplArrayCount(fontDataArray);
 	if(LoadFontFromMemory(fontDataArray, fontDataSize, 0, 36.0f, 32, 128, 512, 512, false, &state.debugFont.font.data)) {
 		state.debugFont.loadState = AssetLoadState::ToUpload;
 	}
@@ -145,11 +145,11 @@ extern void GameRender(GameMemory &gameMemory, const float alpha) {
 		V2f(-w * 0.3f, -h * 0.3f),
 		V2f(w * 0.3f, -h * 0.3f),
 	};
-	PushVertices(renderState, verts, FPL_ARRAYCOUNT(verts), true, V4f(0, 1, 1, 1), DrawMode::Lines, true, 1.0f);
+	PushVertices(renderState, verts, fplArrayCount(verts), true, V4f(0, 1, 1, 1), DrawMode::Lines, true, 1.0f);
 
 	view = Mat4Translation(V2f(w * 0.25f, -h * 0.1f)) * Mat4Scale(V2f(0.5f, 0.5f));
 	SetMatrix(renderState, proj * view);
-	PushVertices(renderState, verts, FPL_ARRAYCOUNT(verts), true, V4f(1, 0, 1, 1), DrawMode::Polygon, true, 1.0f);
+	PushVertices(renderState, verts, fplArrayCount(verts), true, V4f(1, 0, 1, 1), DrawMode::Polygon, true, 1.0f);
 
 	view = Mat4Translation(V2f(0, 0));
 	SetMatrix(renderState, proj * view);

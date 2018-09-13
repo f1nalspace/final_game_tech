@@ -112,7 +112,7 @@ extern bool AudioSystemInit(AudioSystem *audioSys) {
 	if(audioSys == fpl_null) {
 		return false;
 	}
-	FPL_CLEAR_STRUCT(audioSys);
+	fplClearStruct(audioSys);
 	if(!fplGetAudioHardwareFormat(&audioSys->nativeFormat)) {
 		return false;
 	}
@@ -322,7 +322,7 @@ static uint32_t MixPlayItems(AudioSystem *audioSys, const uint32_t maxSampleCoun
 	const uint32_t outChannelCount = audioSys->nativeFormat.channels;
 
 	audioSys->mixingBuffer.samplesUsed = 0;
-	fplMemoryClear(audioSys->mixingBuffer.samples, FPL_ARRAYCOUNT(audioSys->mixingBuffer.samples));
+	fplMemoryClear(audioSys->mixingBuffer.samples, fplArrayCount(audioSys->mixingBuffer.samples));
 
 	uint32_t maxOutSampleCount = 0;
 
@@ -346,7 +346,7 @@ static uint32_t MixPlayItems(AudioSystem *audioSys, const uint32_t maxSampleCoun
 
 		if(inSampleRate == outSampleRate) {
 			// Sample rates are equal, just write out the samples
-			int inSampleCount = FPL_MIN(maxSampleCount, inRemainingSampleCount);
+			int inSampleCount = fplMin(maxSampleCount, inRemainingSampleCount);
 			for(int i = 0; i < inSampleCount; ++i) {
 				float inSampleValues[MAX_AUDIOBUFFER_CHANNEL_COUNT];
 				for(uint32_t inChannelIndex = 0; inChannelIndex < inChannelCount; ++inChannelIndex) {
@@ -364,7 +364,7 @@ static uint32_t MixPlayItems(AudioSystem *audioSys, const uint32_t maxSampleCoun
 				if(outSampleRate > inSampleRate) {
 					// Simple Upsampling (2x, 4x, 6x, 8x, etc.)
 					int upsamplingFactor = outSampleRate / inSampleRate;
-					int inSampleCount = FPL_MIN(maxSampleCount / upsamplingFactor, inRemainingSampleCount);
+					int inSampleCount = fplMin(maxSampleCount / upsamplingFactor, inRemainingSampleCount);
 					for(int i = 0; i < inSampleCount; ++i) {
 						float inSampleValues[MAX_AUDIOBUFFER_CHANNEL_COUNT];
 						for(uint32_t inChannelIndex = 0; inChannelIndex < inChannelCount; ++inChannelIndex) {
@@ -382,7 +382,7 @@ static uint32_t MixPlayItems(AudioSystem *audioSys, const uint32_t maxSampleCoun
 					// Simple Downsampling (1/2, 1/4, 1/6, 1/8, etc.)
 					fplAssert(inSampleRate > outSampleRate);
 					int downsamplingCount = inSampleRate / outSampleRate;
-					int inSampleCount = FPL_MIN(maxSampleCount * downsamplingCount, inRemainingSampleCount);
+					int inSampleCount = fplMin(maxSampleCount * downsamplingCount, inRemainingSampleCount);
 					for(int i = 0; i < inSampleCount; i += downsamplingCount) {
 						float inSampleValues[MAX_AUDIOBUFFER_CHANNEL_COUNT];
 						uint8_t *inSamplesForIndex = inSamples + (i * inBytesPerSample * inChannelCount);
@@ -402,7 +402,7 @@ static uint32_t MixPlayItems(AudioSystem *audioSys, const uint32_t maxSampleCoun
 		}
 
 		uint32_t outSampleCount = (uint32_t)(outSamples - audioSys->mixingBuffer.samples);
-		maxOutSampleCount = FPL_MAX(maxOutSampleCount, outSampleCount);
+		maxOutSampleCount = fplMax(maxOutSampleCount, outSampleCount);
 
 		item = item->next;
 	}
@@ -493,7 +493,7 @@ static bool FillConversionBuffer(AudioSystem *audioSys, const uint32_t maxSample
 
 	if(inSampleRate == outSampleRate) {
 		// Sample rates are equal, just write out the samples
-		int inSampleCount = FPL_MIN(outSampleCount, inRemainingSampleCount);
+		int inSampleCount = fplMin(outSampleCount, inRemainingSampleCount);
 		for(int i = 0; i < inSampleCount; ++i) {
 			float inSampleValues[2];
 			for(uint32_t inChannelIndex = 0; inChannelIndex < inChannelCount; ++inChannelIndex) {
@@ -512,7 +512,7 @@ static bool FillConversionBuffer(AudioSystem *audioSys, const uint32_t maxSample
 			if(outSampleRate > inSampleRate) {
 				// @NOTE(final): Simple Upsampling (2x, 4x, 6x, 8x, etc.)
 				int upsamplingFactor = outSampleRate / inSampleRate;
-				int inSampleCount = FPL_MIN(outSampleCount / upsamplingFactor, inRemainingSampleCount);
+				int inSampleCount = fplMin(outSampleCount / upsamplingFactor, inRemainingSampleCount);
 				for(int i = 0; i < inSampleCount; ++i) {
 					float inSampleValues[2];
 					for(uint32_t inChannelIndex = 0; inChannelIndex < inChannelCount; ++inChannelIndex) {
@@ -531,7 +531,7 @@ static bool FillConversionBuffer(AudioSystem *audioSys, const uint32_t maxSample
 				// @NOTE(final): Simple Downsampling (1/2, 1/4, 1/6, 1/8, etc.)
 				fplAssert(inSampleRate > outSampleRate);
 				int downsamplingCount = inSampleRate / outSampleRate;
-				int inSampleCount = FPL_MIN(outSampleCount * downsamplingCount, inRemainingSampleCount);
+				int inSampleCount = fplMin(outSampleCount * downsamplingCount, inRemainingSampleCount);
 				for(int i = 0; i < inSampleCount; i += downsamplingCount) {
 					float inSampleValues[2];
 					uint8_t *inSamplesForIndex = inSamples + (i * inBytesPerSample * inChannelCount);
@@ -580,7 +580,7 @@ extern uint32_t AudioSystemWriteSamples(AudioSystem *audioSys, const fplAudioDev
 		// Consume remaining samples in conversion buffer first
 		if(convBuffer->framesRemaining > 0) {
 			uint32_t maxFramesToRead = convBuffer->framesRemaining;
-			uint32_t framesToRead = FPL_MIN(remainingFrames, maxFramesToRead);
+			uint32_t framesToRead = fplMin(remainingFrames, maxFramesToRead);
 			size_t bytesToCopy = framesToRead * outputSampleStride;
 
 			size_t sourcePosition = convBuffer->sampleIndex * outputSampleStride;

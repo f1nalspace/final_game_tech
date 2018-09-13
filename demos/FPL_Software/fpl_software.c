@@ -45,7 +45,7 @@ static uint8_t RandomByte(RandomSeries *series) {
 
 int main(int argc, char **args) {
 	fplSettings settings = fplMakeDefaultSettings();
-	fplCopyAnsiString("Software Rendering Example", settings.window.windowTitle, FPL_ARRAYCOUNT(settings.window.windowTitle) - 1);
+	fplCopyString("Software Rendering Example", settings.window.windowTitle, fplArrayCount(settings.window.windowTitle) - 1);
 	settings.video.driver = fplVideoDriverType_Software;
 	settings.video.isAutoSize = true;
 	if (fplPlatformInit(fplInitFlags_Video, &settings)) {

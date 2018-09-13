@@ -687,9 +687,9 @@ static bool InitGame(GameState &state) {
 		return false;
 	}
 
-	fplGetExecutableFilePath(state.dataPath, FPL_ARRAYCOUNT(state.dataPath));
-	fplExtractFilePath(state.dataPath, state.dataPath, FPL_ARRAYCOUNT(state.dataPath));
-	fplPathCombine(state.dataPath, FPL_ARRAYCOUNT(state.dataPath), 2, state.dataPath, "data");
+	fplGetExecutableFilePath(state.dataPath, fplArrayCount(state.dataPath));
+	fplExtractFilePath(state.dataPath, state.dataPath, fplArrayCount(state.dataPath));
+	fplPathCombine(state.dataPath, fplArrayCount(state.dataPath), 2, state.dataPath, "data");
 
 	srand((int)fplGetTimeInMillisecondsLP());
 
@@ -783,8 +783,8 @@ static void LaunchBall(GameState &state) {
 
 static void SetRandomLevel(GameState &state, int seed) {
 #define ALL_BRICKS 0
-	fplAssert((MaxBrickCols * MaxBrickRows) <= FPL_ARRAYCOUNT(state.bricksMap));
-	fplMemoryClear(state.bricksMap, sizeof(Brick) * FPL_ARRAYCOUNT(state.bricksMap));
+	fplAssert((MaxBrickCols * MaxBrickRows) <= fplArrayCount(state.bricksMap));
+	fplMemoryClear(state.bricksMap, sizeof(Brick) * fplArrayCount(state.bricksMap));
 	srand(seed);
 	state.levelSeed = seed;
 	int halfColCount = (MaxBrickCols - 1) / 2;
@@ -930,7 +930,7 @@ extern void GameInput(GameMemory &gameMemory, const Input &input) {
 	fplAssert(state != nullptr);
 
 	if(input.defaultControllerIndex > -1) {
-		fplAssert(input.defaultControllerIndex < FPL_ARRAYCOUNT(input.controllers));
+		fplAssert(input.defaultControllerIndex < fplArrayCount(input.controllers));
 		const Controller *controller = &input.controllers[input.defaultControllerIndex];
 		if(controller->isConnected) {
 			switch(state->mode) {
@@ -1026,7 +1026,7 @@ static void UpdatePlayMode(GameState &state, const Input &input) {
 			dir.Normalize();
 			float a = ArcTan2(dir.y, dir.x);
 			float deg = Degrees(a);
-			for(int i = 0; i < FPL_ARRAYCOUNT(squaredAngles); ++i) {
+			for(int i = 0; i < fplArrayCount(squaredAngles); ++i) {
 				if(Abs(deg) > (squaredAngles[i] - angleTolerance) && Abs(deg) < (squaredAngles[i] + angleTolerance)) {
 					deg += (Abs(deg) - squaredAngles[i] > 0 ? 1 : -1) * angleCorrection;
 					a = Radians(deg);
@@ -1293,14 +1293,14 @@ static void DrawPlayMode(GameState &state) {
 	// HUD
 	glColor4f(0, 0, 0, 1);
 
-	fplFormatAnsiString(textBuffer, FPL_ARRAYCOUNT(textBuffer), "Lifes: %d", state.lifes);
-	DrawTextFont(textBuffer, fplGetAnsiStringLength(textBuffer), &state.assets.fontHud.desc, fontTexId, -WorldRadius.x + FrameRadius * 2.0f + textFrameMargin, textTopMiddle, textSize, 1.0f, 0.0f);
+	fplFormatString(textBuffer, fplArrayCount(textBuffer), "Lifes: %d", state.lifes);
+	DrawTextFont(textBuffer, fplGetStringLength(textBuffer), &state.assets.fontHud.desc, fontTexId, -WorldRadius.x + FrameRadius * 2.0f + textFrameMargin, textTopMiddle, textSize, 1.0f, 0.0f);
 
-	fplFormatAnsiString(textBuffer, FPL_ARRAYCOUNT(textBuffer), "Level: %d", (state.levelsCompleted + 1));
-	DrawTextFont(textBuffer, fplGetAnsiStringLength(textBuffer), &state.assets.fontHud.desc, fontTexId, 0, textTopMiddle, textSize, 0.0f, 0.0f);
+	fplFormatString(textBuffer, fplArrayCount(textBuffer), "Level: %d", (state.levelsCompleted + 1));
+	DrawTextFont(textBuffer, fplGetStringLength(textBuffer), &state.assets.fontHud.desc, fontTexId, 0, textTopMiddle, textSize, 0.0f, 0.0f);
 
-	fplFormatAnsiString(textBuffer, FPL_ARRAYCOUNT(textBuffer), "Score: %d", state.score);
-	size_t textCount = fplGetAnsiStringLength(textBuffer);
+	fplFormatString(textBuffer, fplArrayCount(textBuffer), "Score: %d", state.score);
+	size_t textCount = fplGetStringLength(textBuffer);
 	Vec2f textBounds = GetTextSize(textBuffer, textCount, &state.assets.fontHud.desc, textSize);
 	DrawTextFont(textBuffer, textCount, &state.assets.fontHud.desc, fontTexId, WorldRadius.x - FrameRadius * 2.0f - textFrameMargin - textBounds.w, textTopMiddle, textSize, 1.0f, 0.0f);
 	}
@@ -1327,7 +1327,7 @@ static bool PushMenuItem(GameState &state, MenuRenderState &menuRender, const ch
 		glColor4f(1, 1, 1, 1);
 	}
 	GLuint fontTexId = PointerToValue<GLuint>(state.assets.fontMenu.texture);
-	DrawTextFont(itemText, fplGetAnsiStringLength(itemText), &state.assets.fontMenu.desc, fontTexId, 0.0f, menuRender.ypos, menuRender.fontHeight, 0.0f, 0.0f);
+	DrawTextFont(itemText, fplGetStringLength(itemText), &state.assets.fontMenu.desc, fontTexId, 0.0f, menuRender.ypos, menuRender.fontHeight, 0.0f, 0.0f);
 	menuRender.ypos -= menuRender.fontHeight;
 	return(result);
 }
@@ -1342,7 +1342,7 @@ static void DrawTitleMenuMode(GameState &state) {
 	float titlePosY = WorldRadius.y - WorldHeight * 0.35f;
 	glColor4f(1, 1, 1, 1);
 	GLuint fontTexId = PointerToValue<GLuint>(state.assets.fontMenu.texture);
-	DrawTextFont(titleText, fplGetAnsiStringLength(titleText), &state.assets.fontMenu.desc, fontTexId, 0.0f, titlePosY, titleFontSize, 0.0f, 0.0f);
+	DrawTextFont(titleText, fplGetStringLength(titleText), &state.assets.fontMenu.desc, fontTexId, 0.0f, titlePosY, titleFontSize, 0.0f, 0.0f);
 
 	if(state.mode == GameMode::Title || state.mode == GameMode::GameOver) {
 		// Title screen
@@ -1350,7 +1350,7 @@ static void DrawTitleMenuMode(GameState &state) {
 		const float smallFontSize = 0.9f;
 		const float smallPosY = -WorldRadius.y + WorldHeight * 0.275f;
 		glColor4f(1, 1, 1, 1);
-		DrawTextFont(smallText, fplGetAnsiStringLength(smallText), &state.assets.fontMenu.desc, fontTexId, 0.0f, smallPosY, smallFontSize, 0.0f, 0.0f);
+		DrawTextFont(smallText, fplGetStringLength(smallText), &state.assets.fontMenu.desc, fontTexId, 0.0f, smallPosY, smallFontSize, 0.0f, 0.0f);
 	} else {
 		// Menu screen
 		fplAssert(state.mode == GameMode::Menu);

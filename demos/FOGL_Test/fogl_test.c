@@ -51,7 +51,7 @@ static GLuint CreateShaderType(GLenum type, const char *source) {
 	if(!compileResult) {
 		GLint infoLen;
 		glGetShaderiv(shaderId, GL_INFO_LOG_LENGTH, &infoLen);
-		char *info = (char *)FPL_STACKALLOCATE(infoLen);
+		char *info = (char *)fplStackAllocate(infoLen);
 		glGetShaderInfoLog(shaderId, infoLen, &infoLen, info);
 		fplConsoleFormatError("Failed compiling %s shader!\n", (type == GL_VERTEX_SHADER ? "vertex" : "fragment"));
 		fplConsoleFormatError("%s\n", info);
@@ -77,7 +77,7 @@ static GLuint CreateShaderProgram(const char *name, const char *vertexSource, co
 		GLint infoLen;
 		glGetProgramiv(programId, GL_INFO_LOG_LENGTH, &infoLen);
 
-		char *info = (char *)FPL_STACKALLOCATE(infoLen);
+		char *info = (char *)fplStackAllocate(infoLen);
 		glGetProgramInfoLog(programId, infoLen, &infoLen, info);
 		fplConsoleFormatError("Failed linking '%s' shader!\n", name);
 		fplConsoleFormatError("%s\n", info);
@@ -188,12 +188,12 @@ int main(int argc, char **args) {
 	initFlags = fplInitFlags_Video;
 	settings.video.driver = fplVideoDriverType_OpenGL;
 #	if !USE_LEGACY_OPENGL
-	fplCopyAnsiString("FPL Modern OpenGL", settings.window.windowTitle, FPL_ARRAYCOUNT(settings.window.windowTitle));
+	fplCopyString("FPL Modern OpenGL", settings.window.windowTitle, fplArrayCount(settings.window.windowTitle));
 	settings.video.graphics.opengl.compabilityFlags = fplOpenGLCompabilityFlags_Core;
 	settings.video.graphics.opengl.majorVersion = 3;
 	settings.video.graphics.opengl.minorVersion = 3;
 #	else
-	fplCopyAnsiString("FPL Legacy OpenGL", settings.window.windowTitle, FPL_ARRAYCOUNT(settings.window.windowTitle));
+	fplCopyString("FPL Legacy OpenGL", settings.window.windowTitle, fplArrayCount(settings.window.windowTitle));
 	settings.video.graphics.opengl.compabilityFlags = fplOpenGLCompabilityFlags_Legacy;
 #	endif
 #else
@@ -210,12 +210,12 @@ int main(int argc, char **args) {
 #else
 		fglOpenGLContextCreationParameters contextCreationParams = { 0 };
 #	if !USE_LEGACY_OPENGL
-		fplCopyAnsiString("DYNGL Modern OpenGL", settings.window.windowTitle, FPL_ARRAYCOUNT(settings.window.windowTitle));
+		fplCopyAnsiString("DYNGL Modern OpenGL", settings.window.windowTitle, fplArrayCount(settings.window.windowTitle));
 		contextCreationParams.profile = fglOpenGLProfileType_CoreProfile;
 		contextCreationParams.majorVersion = 3;
 		contextCreationParams.minorVersion = 3;
 #	else
-		fplCopyAnsiString("DYNGL Legacy OpenGL", settings.window.windowTitle, FPL_ARRAYCOUNT(settings.window.windowTitle));
+		fplCopyAnsiString("DYNGL Legacy OpenGL", settings.window.windowTitle, fplArrayCount(settings.window.windowTitle));
 		contextCreationParams.profile = fdyngl::OpenGLProfileType::LegacyProfile;
 #	endif
 #	if defined(FGL_PLATFORM_WIN32)

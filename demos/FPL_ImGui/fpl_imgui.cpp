@@ -126,13 +126,13 @@ static void ImGUIRenderDrawLists(ImDrawData* draw_data) {
 
 static char clipboardBuffer[1024];
 static const char *ClipboardGetFunc(void *user) {
-	if(fplGetClipboardAnsiText(clipboardBuffer, FPL_ARRAYCOUNT(clipboardBuffer))) {
+	if(fplGetClipboardText(clipboardBuffer, fplArrayCount(clipboardBuffer))) {
 		return clipboardBuffer;
 	}
 	return nullptr;
 }
 static void ClipboardSetFunc(void *user, const char *text) {
-	fplSetClipboardAnsiText(text);
+	fplSetClipboardText(text);
 }
 
 static void InitImGUI() {
@@ -267,7 +267,7 @@ static void UpdateAndRender(const float deltaTime) {
 int main(int argc, char **args) {
 	int result = 0;
 	fplSettings settings = fplMakeDefaultSettings();
-	fplCopyAnsiString("ImGUI Example", settings.window.windowTitle, FPL_ARRAYCOUNT(settings.window.windowTitle) - 1);
+	fplCopyString("ImGUI Example", settings.window.windowTitle, fplArrayCount(settings.window.windowTitle) - 1);
 	settings.window.windowWidth = 1280;
 	settings.window.windowHeight = 720;
 	settings.video.driver = fplVideoDriverType_OpenGL;

@@ -90,7 +90,7 @@ static void WaveError(LoadedWave *outWave, const char *format, ...) {
 	outWave->lastError[0] = 0;
 	va_list argList;
 	va_start(argList, format);
-	fplFormatAnsiStringArgs(outWave->lastError, FPL_ARRAYCOUNT(outWave->lastError), format, argList);
+	fplFormatStringArgs(outWave->lastError, fplArrayCount(outWave->lastError), format, argList);
 	va_end(argList);
 }
 
@@ -196,7 +196,7 @@ extern bool LoadWaveFromBuffer(const uint8_t *buffer, const size_t bufferSize, L
 extern bool LoadWaveFromFile(const char *filePath, LoadedWave *outWave) {
 	bool result = false;
 	fplFileHandle file;
-	if(fplOpenAnsiBinaryFile(filePath, &file)) {
+	if(fplOpenBinaryFile(filePath, &file)) {
 		size_t length = fplGetFileSizeFromHandle32(&file);
 		uint8_t *contents = (uint8_t *)fplMemoryAllocate(length);
 		if(contents != fpl_null) {

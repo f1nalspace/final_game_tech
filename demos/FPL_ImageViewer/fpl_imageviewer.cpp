@@ -429,7 +429,7 @@ typedef struct ViewerState {
 } ViewerState;
 
 static void InitQueue(LoadQueue *queue, const size_t queueCount) {
-	FPL_CLEAR_STRUCT(queue);
+	fplClearStruct(queue);
 	queue->size = queueCount;
 	queue->mask = queue->size - 1;
 	queue->headSeq = queue->tailSeq = 0;
@@ -518,7 +518,7 @@ static void AddPictureFile(ViewerState *state, const char *filePath) {
 		state->pictureFiles = (PictureFile *)realloc(state->pictureFiles, sizeof(PictureFile) * state->pictureFileCapacity);
 	}
 	PictureFile *pictureFile = &state->pictureFiles[state->pictureFileCount++];
-	fplCopyAnsiString(filePath, pictureFile->filePath, FPL_ARRAYCOUNT(pictureFile->filePath));
+	fplCopyString(filePath, pictureFile->filePath, fplArrayCount(pictureFile->filePath));
 }
 
 static void AddPicturesFromPath(ViewerState *state, const char *path, const bool recursive) {
@@ -686,7 +686,7 @@ static void LoadPictureThreadProc(const fplThreadHandle *thread, void *data) {
 				loadedPic->progress = 0.0f;
 				loadedPic->fileStream.size = 0;
 				loadedPic->fileIndex = (size_t)valueToLoad.fileIndex;
-				fplCopyAnsiString(picFile->filePath, loadedPic->filePath, FPL_ARRAYCOUNT(loadedPic->filePath));
+				fplCopyString(picFile->filePath, loadedPic->filePath, fplArrayCount(loadedPic->filePath));
 				loadedPic->width = loadedPic->height = 0;
 				loadedPic->components = 0;
 				loadThread->context.viewPic = loadedPic;
@@ -695,7 +695,7 @@ static void LoadPictureThreadProc(const fplThreadHandle *thread, void *data) {
 				uint8_t *imageData = fpl_null;
 
 				flogWrite("Load picture stream '%s' [%d]", loadedPic->filePath, loadedPic->fileIndex);
-				if(fplOpenAnsiBinaryFile(loadedPic->filePath, &loadedPic->fileStream.handle)) {
+				if(fplOpenBinaryFile(loadedPic->filePath, &loadedPic->fileStream.handle)) {
 					loadedPic->fileStream.size = fplGetFileSizeFromHandle32(&loadedPic->fileStream.handle);
 					stbi_io_callbacks callbacks;
 					callbacks.read = ReadPictureStreamCallback;
@@ -777,13 +777,13 @@ static void QueueUpPictures(ViewerState *state) {
 	int preloadCountLeft;
 	int preloadCountRight;
 	if(state->activeFileIndex > 0) {
-		preloadCountLeft = FPL_MIN(state->activeFileIndex, maxSidePreloadCount);
+		preloadCountLeft = fplMin(state->activeFileIndex, maxSidePreloadCount);
 	} else {
 		preloadCountLeft = 0;
 	}
 	if(state->activeFileIndex < ((int)state->pictureFileCount - 1)) {
 		int diff = (int)state->pictureFileCount - state->activeFileIndex;
-		preloadCountRight = FPL_MAX(FPL_MIN(diff, maxSidePreloadCount), 0);
+		preloadCountRight = fplMax(fplMin(diff, maxSidePreloadCount), 0);
 	} else {
 		preloadCountRight = 0;
 	}
@@ -824,11 +824,11 @@ static void UpdateWindowTitle(ViewerState *state) {
 	if(state->activeFileIndex > -1) {
 		const char *filterName = state->filters[state->activeFilter].name;
 		const char *picFilename = fplExtractFileName(state->pictureFiles[state->activeFileIndex].filePath);
-		fplFormatAnsiString(titleBuffer, FPL_ARRAYCOUNT(titleBuffer), "%s v%s - %s [%d / %zu] {%s}", VER_PRODUCTNAME_STR, VER_PRODUCTVERSION_STR, picFilename, (state->activeFileIndex + 1), state->pictureFileCount, filterName);
+		fplFormatString(titleBuffer, fplArrayCount(titleBuffer), "%s v%s - %s [%d / %zu] {%s}", VER_PRODUCTNAME_STR, VER_PRODUCTVERSION_STR, picFilename, (state->activeFileIndex + 1), state->pictureFileCount, filterName);
 	} else {
-		fplFormatAnsiString(titleBuffer, FPL_ARRAYCOUNT(titleBuffer), "%s v%s - No pictures found", VER_PRODUCTNAME_STR, VER_PRODUCTVERSION_STR);
+		fplFormatString(titleBuffer, fplArrayCount(titleBuffer), "%s v%s - No pictures found", VER_PRODUCTNAME_STR, VER_PRODUCTVERSION_STR);
 	}
-	fplSetWindowAnsiTitle(titleBuffer);
+	fplSetWindowTitle(titleBuffer);
 }
 
 static void ChangeViewPicture(ViewerState *state, const int offset, const bool forceReload) {
@@ -851,7 +851,7 @@ static void ChangeViewPicture(ViewerState *state, const int offset, const bool f
 		}
 	}
 	state->viewPictureIndex = viewIndex;
-	state->activeFileIndex = FPL_MAX(FPL_MIN(state->activeFileIndex + offset, (int)state->pictureFileCount - 1), 0);
+	state->activeFileIndex = fplMax(fplMin(state->activeFileIndex + offset, (int)state->pictureFileCount - 1), 0);
 
 	UpdateWindowTitle(state);
 
@@ -872,7 +872,7 @@ static uint32_t ParseNumber(const char **p) {
 }
 
 static void ParseParameters(ViewerParameters *params, const int argc, char **argv) {
-	FPL_CLEAR_STRUCT(params);
+	fplClearStruct(params);
 	params->path = fpl_null;
 	for(int i = 0; i < argc; ++i) {
 		const char *p = argv[i];
@@ -949,7 +949,7 @@ static GLuint CreateShaderType(GLenum type, const char *name, const char *source
 	if(!compileResult) {
 		GLint infoLen;
 		glGetShaderiv(shaderId, GL_INFO_LOG_LENGTH, &infoLen);
-		fplAssert(infoLen <= FPL_ARRAYCOUNT(info));
+		fplAssert(infoLen <= fplArrayCount(info));
 		glGetShaderInfoLog(shaderId, infoLen, &infoLen, info);
 		fplDebugFormatOut("Failed compiling '%s' %s shader!\n", name, (type == GL_VERTEX_SHADER ? "vertex" : "fragment"));
 		fplDebugFormatOut("%s\n", info);
@@ -982,7 +982,7 @@ static GLuint CreateShaderProgram(const char *name, const char *vertexSource, co
 	if(!linkResult) {
 		GLint infoLen;
 		glGetProgramiv(programId, GL_INFO_LOG_LENGTH, &infoLen);
-		fplAssert(infoLen <= FPL_ARRAYCOUNT(info));
+		fplAssert(infoLen <= fplArrayCount(info));
 		glGetProgramInfoLog(programId, infoLen, &infoLen, info);
 		fplDebugFormatOut("Failed linking '%s' shader!\n", name);
 		fplDebugFormatOut("%s\n", info);
@@ -1036,13 +1036,13 @@ static bool LoadPicturesPath(ViewerState *state, const char *path, const bool re
 	Clear(state);
 	flogWrite("Loading pictures from path '%s'", path);
 	if(fplDirectoryExists(path)) {
-		fplCopyAnsiString(path, state->rootPath, FPL_ARRAYCOUNT(state->rootPath));
+		fplCopyString(path, state->rootPath, fplArrayCount(state->rootPath));
 		AddPicturesFromPath(state, state->rootPath, recursive);
 		result = state->pictureFileCount > 0;
 		*startIndex = 0;
 	} else if(fplFileExists(path)) {
 		if(IsPictureFile(path)) {
-			fplExtractFilePath(path, state->rootPath, FPL_ARRAYCOUNT(state->rootPath));
+			fplExtractFilePath(path, state->rootPath, fplArrayCount(state->rootPath));
 			AddPicturesFromPath(state, state->rootPath, recursive);
 			if(!FindPictureIndexByPath(state, path, startIndex)) {
 				startIndex = 0;
@@ -1095,9 +1095,9 @@ static bool Init(ViewerState *state) {
 		const char *start = p;
 		while(true) {
 			if(*p == ' ' || *p == 0) {
-				if(CompareStringLengthIgnoreCase(start, "GL_ARB_framebuffer_sRGB", fplGetAnsiStringLength("GL_ARB_framebuffer_sRGB")) == 0) {
+				if(CompareStringLengthIgnoreCase(start, "GL_ARB_framebuffer_sRGB", fplGetStringLength("GL_ARB_framebuffer_sRGB")) == 0) {
 					state->features.srgbFrameBuffer = true;
-				} else if(CompareStringLengthIgnoreCase(start, "GL_ARB_texture_rectangle", fplGetAnsiStringLength("GL_ARB_texture_rectangle")) == 0) {
+				} else if(CompareStringLengthIgnoreCase(start, "GL_ARB_texture_rectangle", fplGetStringLength("GL_ARB_texture_rectangle")) == 0) {
 					state->features.rectangleTextures = true;
 				}
 				start = p + 1;
@@ -1181,9 +1181,9 @@ static bool Init(ViewerState *state) {
 	// Allocate and startup load threads
 	size_t threadCount;
 	if(state->params.threadCount > 0) {
-		threadCount = FPL_MAX(FPL_MIN(state->params.threadCount, MAX_LOAD_THREAD_COUNT), 1);
+		threadCount = fplMax(fplMin(state->params.threadCount, MAX_LOAD_THREAD_COUNT), 1);
 	} else {
-		threadCount = FPL_MAX(FPL_MIN(fplGetProcessorCoreCount(), MAX_LOAD_THREAD_COUNT), 1);
+		threadCount = fplMax(fplMin(fplGetProcessorCoreCount(), MAX_LOAD_THREAD_COUNT), 1);
 	}
 	InitLoadThreads(state, threadCount);
 
@@ -1204,7 +1204,7 @@ static bool Init(ViewerState *state) {
 	InitQueue(&state->loadQueue, queueCapacity);
 
 	// Load initial pictures from parameters
-	if(fplGetAnsiStringLength(state->params.path) > 0) {
+	if(fplGetStringLength(state->params.path) > 0) {
 		size_t startPicIndex = 0;
 		if(LoadPicturesPath(state, state->params.path, state->params.recursive, &startPicIndex)) {
 			state->activeFileIndex = (int)startPicIndex;
@@ -1502,7 +1502,7 @@ static void UpdateAndRender(ViewerState *state, const float deltaTime) {
 	float pictureFrameSpacing = 10;
 
 	if(state->pictureFileCount > 0 && state->viewPictureIndex > -1 && state->viewPictureIndex < (int)state->viewPicturesCapacity) {
-		int framePictureStart = FPL_MIN(-pictureFrameSideCount, 0);
+		int framePictureStart = fplMin(-pictureFrameSideCount, 0);
 		int framePictureEnd = (framePictureStart + 1 + pictureFrameSideCount);
 		for(int framePictureOffset = framePictureStart; framePictureOffset < (framePictureEnd + 1); ++framePictureOffset) {
 			if((state->viewPictureIndex + framePictureOffset) < 0 || (state->viewPictureIndex + framePictureOffset) > ((int)state->viewPicturesCapacity - 1)) {
@@ -1598,7 +1598,7 @@ static void UpdateAndRender(ViewerState *state, const float deltaTime) {
 
 	if(state->params.preview && state->viewPicturesCapacity > 1 && state->pictureFileCount) {
 		int blockCount = (int)state->viewPicturesCapacity;
-		float maxBlockW = ((FPL_MIN(screenW, screenH)) * 0.75f);
+		float maxBlockW = ((fplMin(screenW, screenH)) * 0.75f);
 		float blockPadding = 4;
 		float blockW = ((maxBlockW - ((float)(blockCount - 1) * blockPadding)) / (float)blockCount);
 		float blockH = blockW;
@@ -1675,10 +1675,10 @@ int main(int argc, char **argv) {
 	// Initialize logging
 	if(fplPlatformInit(fplInitFlags_None, fpl_null)) {
 		char logFilePath[FPL_MAX_PATH_LENGTH];
-		fplGetHomePath(logFilePath, FPL_ARRAYCOUNT(logFilePath));
-		fplPathCombine(logFilePath, FPL_ARRAYCOUNT(logFilePath), 2, logFilePath, VER_INTERNALNAME_STR);
+		fplGetHomePath(logFilePath, fplArrayCount(logFilePath));
+		fplPathCombine(logFilePath, fplArrayCount(logFilePath), 2, logFilePath, VER_INTERNALNAME_STR);
 		fplDirectoriesCreate(logFilePath);
-		fplPathCombine(logFilePath, FPL_ARRAYCOUNT(logFilePath), 2, logFilePath, "log.txt");
+		fplPathCombine(logFilePath, fplArrayCount(logFilePath), 2, logFilePath, "log.txt");
 		flogInit(logFilePath);
 		fplPlatformRelease();
 	}
@@ -1712,7 +1712,7 @@ int main(int argc, char **argv) {
 	settings.video.graphics.opengl.majorVersion = 3;
 	settings.video.graphics.opengl.minorVersion = 3;
 	settings.video.graphics.opengl.multiSamplingCount = 4;
-	fplCopyAnsiString("FPL Demo - Image Viewer", settings.window.windowTitle, FPL_ARRAYCOUNT(settings.window.windowTitle));
+	fplCopyString("FPL Demo - Image Viewer", settings.window.windowTitle, fplArrayCount(settings.window.windowTitle));
 
 	// Load icons (Memory are released on shutdown)
 	int iconW, iconH, iconC;

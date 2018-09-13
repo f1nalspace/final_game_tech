@@ -206,7 +206,7 @@ extern void RenderWithOpenGL(RenderState &renderState) {
 						renderState.matrixTop = 0;
 						mvpCur = cmd->mat;
 					} else if(cmd->mode == MatrixMode::Push) {
-						fplAssert(renderState.matrixTop < FPL_ARRAYCOUNT(renderState.matrixStack));
+						fplAssert(renderState.matrixTop < fplArrayCount(renderState.matrixStack));
 						Mat4f *newMatrix = &renderState.matrixStack[renderState.matrixTop++];
 						*newMatrix = mvpCur;
 						mvpCur = *newMatrix * cmd->mat;

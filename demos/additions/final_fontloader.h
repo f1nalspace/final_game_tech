@@ -119,7 +119,7 @@ extern Vec2f GetTextSize(const char *text, const size_t textLen, const LoadedFon
 			Vec2f min = offset;
 			Vec2f max = min + V2f(xadvance, size.y);
 			xwidth += (max.x - min.x);
-			ymax = FPL_MAX(ymax, max.y - min.h);
+			ymax = fplMax(ymax, max.y - min.h);
 			xpos += xadvance;
 		}
 	}
@@ -152,7 +152,7 @@ extern bool LoadFontFromMemory(const void *data, const size_t dataSize, const ui
 		return false;
 	}
 
-	FPL_CLEAR_STRUCT(outFont);
+	fplClearStruct(outFont);
 
 	stbtt_fontinfo fontInfo = FPL_ZERO_INIT;
 	int fontOffset = stbtt_GetFontOffsetForIndex((const unsigned char *)data, fontIndex);
@@ -308,10 +308,10 @@ extern bool LoadFontFromFile(const char *dataPath, const char *filename, const u
 
 	char filePath[1024];
 	if(dataPath != fpl_null) {
-		fplCopyAnsiString(dataPath, filePath, FPL_ARRAYCOUNT(filePath));
-		fplPathCombine(filePath, FPL_ARRAYCOUNT(filePath), 2, dataPath, filename);
+		fplCopyString(dataPath, filePath, fplArrayCount(filePath));
+		fplPathCombine(filePath, fplArrayCount(filePath), 2, dataPath, filename);
 	} else {
-		fplCopyAnsiString(filename, filePath, FPL_ARRAYCOUNT(filePath));
+		fplCopyString(filename, filePath, fplArrayCount(filePath));
 	}
 
 	bool result = false;
@@ -319,7 +319,7 @@ extern bool LoadFontFromFile(const char *dataPath, const char *filename, const u
 	fplFileHandle file;
 	uint8_t *ttfBuffer = fpl_null;
 	uint32_t ttfBufferSize = 0;
-	if(fplOpenAnsiBinaryFile(filePath, &file)) {
+	if(fplOpenBinaryFile(filePath, &file)) {
 		ttfBufferSize = fplGetFileSizeFromHandle32(&file);
 		ttfBuffer = (uint8_t *)fplMemoryAllocate(ttfBufferSize);
 		fplReadFileBlock32(&file, ttfBufferSize, ttfBuffer, ttfBufferSize);
@@ -340,7 +340,7 @@ extern void ReleaseFont(LoadedFont *font) {
 		}
 		fplMemoryFree(font->glyphs);
 		fplMemoryFree(font->atlasAlphaBitmap);
-		FPL_CLEAR_STRUCT(font);
+		fplClearStruct(font);
 	}
 }
 
