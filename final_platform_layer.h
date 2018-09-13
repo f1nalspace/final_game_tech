@@ -167,6 +167,7 @@ SOFTWARE.
 	- Changed: [Win32] Use unicode (*W) win32 api functions for everything now
 	- Fixed: [Win32] fplGetClipboardAnsiText() was broken
 	- Fixed: [Win32] Forced compile error when compiling on < vista (FPL uses several features which requires vista or higher)
+    - Fixed: [Alsa] fpl__AudioWaitForFramesAlsa was not compiling (commonAudio missing)
 	- New: [Win32] Implemented fplFlushFile()
 	- New: [POSIX] Implemented fplFlushFile()
 
@@ -12283,13 +12284,6 @@ fpl_platform_api bool fplFlushFile(fplFileHandle *fileHandle) {
 	}
 	return(result);
 }
-fpl_platform_api void fplCloseFile(fplFileHandle *fileHandle) {
-	if((fileHandle != fpl_null) && fileHandle->internalHandle.posixFileHandle) {
-		int posixFileHandle = fileHandle->internalHandle.posixFileHandle;
-		close(posixFileHandle);
-		fplClearStruct(fileHandle);
-	}
-}
 
 fpl_platform_api void fplCloseFile(fplFileHandle *fileHandle) {
 	if((fileHandle != fpl_null) && fileHandle->internalHandle.posixFileHandle) {
@@ -15912,7 +15906,7 @@ fpl_internal bool fpl__LoadAlsaApi(fpl__AlsaAudioApi *alsaApi) {
 }
 
 fpl_internal uint32_t fpl__AudioWaitForFramesAlsa(const fplAudioDeviceFormat *deviceFormat, fpl__AlsaAudioState *alsaState, bool *requiresRestart) {
-	fplAssert(commonAudio != fpl_null && deviceFormat != fpl_null);
+	fplAssert(deviceFormat != fpl_null);
 	if(requiresRestart != fpl_null) {
 		*requiresRestart = false;
 	}
