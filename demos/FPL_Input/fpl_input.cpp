@@ -507,7 +507,7 @@ static void DrawArrow(const float x0, const float y0, const float x1, const floa
 
 static void DrawTextFont(const wchar_t *text, const size_t fontCount, const FontData fonts[], const GLuint textures[], const float x, const float y, const float maxCharHeight, const float sx, const float sy) {
 	if (fontCount > 0) {
-		size_t textLen = fplGetStringLengthWide(text);
+		size_t textLen = wcslen(text);
 		Vec2f textSize = GetTextSize(text, textLen, fontCount, fonts, maxCharHeight);
 		float xpos = x - textSize.x * 0.5f + (textSize.x * 0.5f * sx);
 		float ypos = y - textSize.y * 0.5f + (textSize.y * 0.5f * sy);
@@ -1148,7 +1148,7 @@ static void RenderApp(AppState *appState, const InputState *input, const uint32_
 				glColor4f(1.0f, 0.0f, 0.0f, 1.0f);
 				DrawSprite(appState->keyboardTexture, keyPos.size.w * 0.5f, keyPos.size.h * 0.5f, key.uv, keyPos.pos.x, keyPos.pos.y);
 			}
-			for (int i = 0; i < key.count; ++i) {
+			for (size_t i = 0; i < key.count; ++i) {
 				KeyCharDef keyChar = key.chars[i];
 				if (down) {
 					glColor4f(1.0f, 1.0f, 1.0f, 1.0f);

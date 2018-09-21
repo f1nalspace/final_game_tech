@@ -11,7 +11,7 @@ The main focus is game/media/simulation development, so the default settings wil
 
 It is written in C99 for simplicity and best portability, but is C++ compatible as well.
 
-FPL supports the platforms Windows/Linux for the architectures x86/x64.
+FPL supports the platforms Windows/Linux/Unix for the architectures x86/x64.
 
 The only dependencies are built-in operating system libraries and a C99 complaint compiler.
 
@@ -146,14 +146,18 @@ SOFTWARE.
 	- Changed: Renamed fplCopyAnsiString() to fplCopyString()
 	- Changed: Renamed fplCopyAnsiStringLen() to fplCopyStringLen()
 	- Changed: Renamed fplGetAnsiStringLength() to fplGetStringLength()
-	- Changed: Renamed fplCopyWideString() to fplCopyStringWide()
-	- Changed: Renamed fplCopyWideStringLen() to fplCopyStringLenWide()
-	- Changed: Renamed fplGetWideStringLength() to fplGetStringLengthWide()
 	- Changed: Renamed fplOpenAnsiBinaryFile() to fplOpenBinaryFile()
 	- Changed: Renamed fplCreateAnsiBinaryFile() to fplCreateBinaryFile()
 	- Changed: Renamed fplSetWindowAnsiTitle() to fplSetWindowTitle()
 	- Changed: Renamed fplGetClipboardAnsiText() to fplGetClipboardText()
 	- Changed: Renamed fplSetClipboardAnsiText() to fplSetClipboardText()
+	- Changed: Renamed all fplAtomicCompareAndExchange*() to fplAtomicCompareAndSwap*()
+	- Changed: Renamed all fplAtomicAdd*() to fplAtomicFetchAndAdd*()
+	- Changed: Renamed all fplAtomicInc*() to fplAtomicAddAndFetch*()
+	- Changed: Renamed fplGetRunningArchitecture() to fplGetProcessorArchitecture()
+	- Removed: Removed obsolete to fplGetWideStringLength()
+	- Removed: Removed obsolete to fplCopyWideString()
+	- Removed: Removed obsolete to fplCopyWideStringLen()
 	- Removed: Removed obsolete fplOpenWideBinaryFile()
 	- Removed: Removed obsolete fplCreateWideBinaryFile()
 	- Removed: Removed obsolete fplSetWindowWideTitle()
@@ -161,14 +165,19 @@ SOFTWARE.
 	- Removed: Removed obsolete fplSetClipboardWideText()
 	- Removed: Removed obsolete fplWideStringToAnsiString()
 	- Removed: Removed obsolete fplAnsiStringToWideString()
-    - Fixed: fplStaticAssert was not compiling on gcc/clang C99 mode
+	- Fixed: fplStaticAssert was not compiling on gcc/clang C99 mode
 	- New: Added fplFlushFile()
+	- New: Added fplAtomicAddAndFetchPtr()
+	- New: Added fplAtomicFetchAndAddPtr()
 
 	- Changed: [Win32] GetTickCount() replaced with GetTickCount64()
 	- Changed: [Win32] Use unicode (*W) win32 api functions for everything now
+	- Changed: [Win32] fplGetOperatingSystemInfos uses additional RtlGetVersion
+	- Fixed: [Win32] fplGetProcessorArchitecture was not handling the WOW64-case
 	- Fixed: [Win32] fplGetClipboardAnsiText() was broken
 	- Fixed: [Win32] Forced compile error when compiling on < vista (FPL uses several features which requires vista or higher)
-    - Fixed: [Alsa] fpl__AudioWaitForFramesAlsa was not compiling (commonAudio missing)
+	- Fixed: [Win32] fplGetOperatingSystemInfos had no WINAPI call defined for GetVersion prototype
+	- Fixed: [Alsa] fpl__AudioWaitForFramesAlsa was not compiling (commonAudio missing)
 	- New: [Win32] Implemented fplFlushFile()
 	- New: [POSIX] Implemented fplFlushFile()
 
@@ -337,7 +346,7 @@ SOFTWARE.
 	- New: Added function fplAtomicStoreSize
 	- New: Added function fplAtomicExchangeSize
 	- New: Added function fplAtomicCompareAndExchangeSize
-	- New: Added function fplIsAtomicCompareAndExchangeSize
+	- New: Added function fplIsAtomicCompareAndSwapSize
 	- New: Added function fplAtomicAddSize
 	- New: Added function fplAtomicIncU32
 	- New: Added function fplAtomicIncU64
@@ -1089,12 +1098,12 @@ SOFTWARE.
 
 	- Documentation
 		- Window
-		- Atomics
 		- Threading (Syncronisation)
 		- File-IO
-		- Paths
+			- Operations (Copy, Delete, etc)
+			- Path
+			- Traversal
 		- Strings
-		- Hardware
 		- Locales
 
 	@section section_todo_optional Optional
@@ -1366,7 +1375,7 @@ SOFTWARE.
 //
 #if defined(FPL_DEBUG)
 	//! Debug mode detected
-	define FPL_ENABLE_DEBUG
+define FPL_ENABLE_DEBUG
 #elif defined(FPL_RELEASE)
 	//! Release mode detected
 #	define FPL_ENABLE_RELEASE
@@ -1561,9 +1570,12 @@ SOFTWARE.
 #	define fplAssert(exp) if(!(exp)) {*(int *)0 = 0;}
 #	endif // FPL_ENABLE_C_ASSERT
 #   if !defined(fplStaticAssert)
+		//! @cond FPL_INTERNAL
 #	    define FPL__STATICASSERT_0(exp, line, counter) \
-		    static int fpl__ct_assert_##line_##counter(int ct_assert_failed[(exp)?1:-1])
-        //! Compile time assert
+		    int fpl__ct_assert_##line_##counter(int ct_assert_failed[(exp)?1:-1])
+		//! @endcond
+
+		//! Compile time assert
 #	    define fplStaticAssert(exp) \
 		    FPL__STATICASSERT_0(exp, __LINE__, __COUNTER__)
 #   endif
@@ -1912,7 +1924,7 @@ fpl_common_api size_t fplAtomicExchangeSize(volatile size_t *target, const size_
   * @return Returns the initial value before the append.
   * @note Ensures that memory operations are completed in order.
   */
-fpl_platform_api uint32_t fplAtomicAddU32(volatile uint32_t *value, const uint32_t addend);
+fpl_platform_api uint32_t fplAtomicFetchAndAddU32(volatile uint32_t *value, const uint32_t addend);
 /**
   * @brief Adds a 64-bit unsigned integer to the value by the given addend atomically.
   * @param value The target value to append to
@@ -1920,7 +1932,7 @@ fpl_platform_api uint32_t fplAtomicAddU32(volatile uint32_t *value, const uint32
   * @return Returns the initial value before the append.
   * @note Ensures that memory operations are completed in order.
   */
-fpl_platform_api uint64_t fplAtomicAddU64(volatile uint64_t *value, const uint64_t addend);
+fpl_platform_api uint64_t fplAtomicFetchAndAddU64(volatile uint64_t *value, const uint64_t addend);
 /**
   * @brief Adds a 32-bit signed integer to the value by the given addend atomically.
   * @param value The target value to append to
@@ -1928,7 +1940,7 @@ fpl_platform_api uint64_t fplAtomicAddU64(volatile uint64_t *value, const uint64
   * @return Returns the initial value before the append.
   * @note Ensures that memory operations are completed in order.
   */
-fpl_platform_api int32_t fplAtomicAddS32(volatile int32_t *value, const int32_t addend);
+fpl_platform_api int32_t fplAtomicFetchAndAddS32(volatile int32_t *value, const int32_t addend);
 /**
   * @brief Adds a 64-bit signed integer to the value by the given addend atomically.
   * @param value The target value to append to
@@ -1936,15 +1948,23 @@ fpl_platform_api int32_t fplAtomicAddS32(volatile int32_t *value, const int32_t 
   * @return Returns the initial value before the append.
   * @note Ensures that memory operations are completed in order.
   */
-fpl_platform_api int64_t fplAtomicAddS64(volatile int64_t *value, const int64_t addend);
+fpl_platform_api int64_t fplAtomicFetchAndAddS64(volatile int64_t *value, const int64_t addend);
 /**
   * @brief Adds a size to the value by the given addend atomically.
-  * @param value The target value to append to
+  * @param dest The target value to append to
   * @param addend The value used for adding
   * @return Returns the initial value before the append.
   * @note Ensures that memory operations are completed in order.
   */
-fpl_platform_api size_t fplAtomicAddSize(volatile size_t *value, const size_t addend);
+fpl_common_api size_t fplAtomicFetchAndAddSize(volatile size_t *dest, const size_t addend);
+/**
+  * @brief Adds a value to the pointer by the given addend atomically.
+  * @param dest The target pointer to append to
+  * @param addend The value used for adding
+  * @return Returns the initial pointer before the append.
+  * @note Ensures that memory operations are completed in order.
+  */
+fpl_common_api void *fplAtomicFetchAndAddPtr(volatile void **dest, const intptr_t addend);
 
 /**
   * @brief Increments the given 32-bit unsigned integer by one atomically.
@@ -1952,152 +1972,158 @@ fpl_platform_api size_t fplAtomicAddSize(volatile size_t *value, const size_t ad
   * @return Returns the value after the increment.
   * @note Ensures that memory operations are completed in order.
   */
-fpl_platform_api uint32_t fplAtomicIncU32(volatile uint32_t *value);
+fpl_platform_api uint32_t fplAtomicAddAndFetchU32(volatile uint32_t *value);
 /**
   * @brief Increments the given 64-bit unsigned integer by one atomically.
   * @param value The target value to increment
   * @return Returns the value after the increment.
   * @note Ensures that memory operations are completed in order.
   */
-fpl_platform_api uint64_t fplAtomicIncU64(volatile uint64_t *value);
+fpl_platform_api uint64_t fplAtomicAddAndFetchU64(volatile uint64_t *value);
 /**
   * @brief Increments the given 32-bit signed integer by one atomically.
   * @param value The target value to increment
   * @return Returns the value after the increment.
   * @note Ensures that memory operations are completed in order.
   */
-fpl_platform_api int32_t fplAtomicIncS32(volatile int32_t *value);
+fpl_platform_api int32_t fplAtomicAddAndFetchS32(volatile int32_t *value);
 /**
   * @brief Increments the given 64-bit signed integer by one atomically.
   * @param value The target value to increment
   * @return Returns the value after the increment.
   * @note Ensures that memory operations are completed in order.
   */
-fpl_platform_api int64_t fplAtomicIncS64(volatile int64_t *value);
+fpl_platform_api int64_t fplAtomicAddAndFetchS64(volatile int64_t *value);
 /**
   * @brief Increments the given size atomically.
   * @param value The target value to increment
   * @return Returns the value after the increment.
   * @note Ensures that memory operations are completed in order.
   */
-fpl_platform_api size_t fplAtomicIncSize(volatile size_t *value);
-
-
+fpl_common_api size_t fplAtomicAddAndFetchSize(volatile size_t *value);
 /**
-  * @brief Compares a 32-bit unsigned integer with a comparand and exchange it when comparand matches destination.
-  * @param dest The target value to write into
-  * @param comparand The value to compare with
-  * @param exchange The value to exchange with
-  * @return Returns the value of the destination before the exchange, regardless of the result.
+  * @brief Increments the given pointer atomically.
+  * @param value The target pointer to increment
+  * @return Returns the pointer after the increment.
   * @note Ensures that memory operations are completed in order.
-  * @note Use @ref fplIsAtomicCompareAndExchangeU32() when you want to check if the exchange has happened or not.
   */
-fpl_platform_api uint32_t fplAtomicCompareAndExchangeU32(volatile uint32_t *dest, const uint32_t comparand, const uint32_t exchange);
-/**
-  * @brief Compares a 64-bit unsigned integer with a comparand and exchange it when comparand matches destination.
-  * @param dest The target value to write into
-  * @param comparand The value to compare with
-  * @param exchange The value to exchange with
-  * @return Returns the value of the destination before the exchange, regardless of the result.
-  * @note Ensures that memory operations are completed in order.
-  * @note Use @ref fplIsAtomicCompareAndExchangeU64() when you want to check if the exchange has happened or not.
-  */
-fpl_platform_api uint64_t fplAtomicCompareAndExchangeU64(volatile uint64_t *dest, const uint64_t comparand, const uint64_t exchange);
-/**
-  * @brief Compares a 32-bit signed integer with a comparand and exchange it when comparand matches destination.
-  * @param dest The target value to write into
-  * @param comparand The value to compare with
-  * @param exchange The value to exchange with
-  * @return Returns the value of the destination before the exchange, regardless of the result.
-  * @note Ensures that memory operations are completed in order.
-  * @note Use @ref fplIsAtomicCompareAndExchangeS32() when you want to check if the exchange has happened or not.
-  */
-fpl_platform_api int32_t fplAtomicCompareAndExchangeS32(volatile int32_t *dest, const int32_t comparand, const int32_t exchange);
-/**
-  * @brief Compares a 64-bit signed integer with a comparand and exchange it when comparand matches destination.
-  * @param dest The target value to write into
-  * @param comparand The value to compare with
-  * @param exchange The value to exchange with
-  * @return Returns the value of the destination before the exchange, regardless of the result.
-  * @note Ensures that memory operations are completed in order.
-  * @note Use @ref fplIsAtomicCompareAndExchangeS64() when you want to check if the exchange has happened or not.
-  */
-fpl_platform_api int64_t fplAtomicCompareAndExchangeS64(volatile int64_t *dest, const int64_t comparand, const int64_t exchange);
-/**
-  * @brief Compares a pointer with a comparand and exchange it when comparand matches destination.
-  * @param dest The target value to write into
-  * @param comparand The value to compare with
-  * @param exchange The value to exchange with
-  * @return Returns the value of the destination before the exchange, regardless of the result.
-  * @note Ensures that memory operations are completed in order.
-  * @note Use @ref fplIsAtomicCompareAndExchangePtr() when you want to check if the exchange has happened or not.
-  */
-fpl_common_api void *fplAtomicCompareAndExchangePtr(volatile void **dest, const void *comparand, const void *exchange);
-/**
-  * @brief Compares a size with a comparand and exchange it when comparand matches destination.
-  * @param dest The target value to write into
-  * @param comparand The value to compare with
-  * @param exchange The value to exchange with
-  * @return Returns the value of the destination before the exchange, regardless of the result.
-  * @note Ensures that memory operations are completed in order.
-  * @note Use @ref fplIsAtomicCompareAndExchangePtr() when you want to check if the exchange has happened or not.
-  */
-fpl_common_api size_t fplAtomicCompareAndExchangeSize(volatile size_t *dest, const size_t comparand, const size_t exchange);
+fpl_common_api void *fplAtomicAddAndFetchPtr(volatile void **value);
 
 /**
-  * @brief Compares a 32-bit unsigned integer with a comparand and exchange it when comparand matches destination and returns a bool indicating the result.
+  * @brief Compares a 32-bit unsigned integer with a comparand and swaps it when comparand matches destination.
   * @param dest The target value to write into
   * @param comparand The value to compare with
   * @param exchange The value to exchange with
-  * @return Returns true when the exchange happened, false otherwise.
+  * @return Returns the value of the destination before the swap, regardless of the result.
   * @note Ensures that memory operations are completed in order.
+  * @note Use @ref fplIsAtomicCompareAndSwapU32() when you want to check if the exchange has happened or not.
   */
-fpl_platform_api bool fplIsAtomicCompareAndExchangeU32(volatile uint32_t *dest, const uint32_t comparand, const uint32_t exchange);
+fpl_platform_api uint32_t fplAtomicCompareAndSwapU32(volatile uint32_t *dest, const uint32_t comparand, const uint32_t exchange);
 /**
-  * @brief Compares a 64-bit unsigned integer with a comparand and exchange it when comparand matches destination and returns a bool indicating the result.
+  * @brief Compares a 64-bit unsigned integer with a comparand and swaps it when comparand matches destination.
   * @param dest The target value to write into
   * @param comparand The value to compare with
   * @param exchange The value to exchange with
-  * @return Returns true when the exchange happened, false otherwise.
+  * @return Returns the value of the destination before the swap, regardless of the result.
   * @note Ensures that memory operations are completed in order.
+  * @note Use @ref fplIsAtomicCompareAndSwapU64() when you want to check if the exchange has happened or not.
   */
-fpl_platform_api bool fplIsAtomicCompareAndExchangeU64(volatile uint64_t *dest, const uint64_t comparand, const uint64_t exchange);
+fpl_platform_api uint64_t fplAtomicCompareAndSwapU64(volatile uint64_t *dest, const uint64_t comparand, const uint64_t exchange);
 /**
-  * @brief Compares a 32-bit signed integer with a comparand and exchange it when comparand matches destination and returns a bool indicating the result.
+  * @brief Compares a 32-bit signed integer with a comparand and swaps it when comparand matches destination.
   * @param dest The target value to write into
   * @param comparand The value to compare with
   * @param exchange The value to exchange with
-  * @return Returns true when the exchange happened, false otherwise.
+  * @return Returns the value of the destination before the swap, regardless of the result.
   * @note Ensures that memory operations are completed in order.
+  * @note Use @ref fplIsAtomicCompareAndSwapS32() when you want to check if the exchange has happened or not.
   */
-fpl_platform_api bool fplIsAtomicCompareAndExchangeS32(volatile int32_t *dest, const int32_t comparand, const int32_t exchange);
+fpl_platform_api int32_t fplAtomicCompareAndSwapS32(volatile int32_t *dest, const int32_t comparand, const int32_t exchange);
 /**
-  * @brief Compares a 64-bit signed integer with a comparand and exchange it when comparand matches destination and returns a bool indicating the result.
+  * @brief Compares a 64-bit signed integer with a comparand and swaps it when comparand matches destination.
   * @param dest The target value to write into
   * @param comparand The value to compare with
   * @param exchange The value to exchange with
-  * @return Returns true when the exchange happened, false otherwise.
+  * @return Returns the value of the destination before the swap, regardless of the result.
   * @note Ensures that memory operations are completed in order.
+  * @note Use @ref fplIsAtomicCompareAndSwapS64() when you want to check if the exchange has happened or not.
   */
-fpl_platform_api bool fplIsAtomicCompareAndExchangeS64(volatile int64_t *dest, const int64_t comparand, const int64_t exchange);
+fpl_platform_api int64_t fplAtomicCompareAndSwapS64(volatile int64_t *dest, const int64_t comparand, const int64_t exchange);
 /**
-  * @brief Compares a pointer with a comparand and exchange it when comparand matches destination and returns a bool indicating the result.
+  * @brief Compares a size with a comparand and swaps it when comparand matches destination.
   * @param dest The target value to write into
   * @param comparand The value to compare with
   * @param exchange The value to exchange with
-  * @return Returns true when the exchange happened, false otherwise.
+  * @return Returns the value of the destination before the swap, regardless of the result.
   * @note Ensures that memory operations are completed in order.
+  * @note Use @ref fplIsAtomicCompareAndSwapPtr() when you want to check if the exchange has happened or not.
   */
-fpl_common_api bool fplIsAtomicCompareAndExchangePtr(volatile void **dest, const void *comparand, const void *exchange);
+fpl_common_api size_t fplAtomicCompareAndSwapSize(volatile size_t *dest, const size_t comparand, const size_t exchange);
 /**
-  * @brief Compares a size with a comparand and exchange it when comparand matches destination and returns a bool indicating the result.
+  * @brief Compares a pointer with a comparand and swaps it when comparand matches destination.
+  * @param dest The target value to write into
+  * @param comparand The value to compare with
+  * @param exchange The value to exchange with
+  * @return Returns the value of the destination before the swap, regardless of the result.
+  * @note Ensures that memory operations are completed in order.
+  * @note Use @ref fplIsAtomicCompareAndSwapPtr() when you want to check if the exchange has happened or not.
+  */
+fpl_common_api void *fplAtomicCompareAndSwapPtr(volatile void **dest, const void *comparand, const void *exchange);
+
+/**
+  * @brief Compares a 32-bit unsigned integer with a comparand and swaps it when comparand matches destination and returns a bool indicating the result.
   * @param dest The target value to write into
   * @param comparand The value to compare with
   * @param exchange The value to exchange with
   * @return Returns true when the exchange happened, false otherwise.
   * @note Ensures that memory operations are completed in order.
   */
-fpl_common_api bool fplIsAtomicCompareAndExchangeSize(volatile size_t *dest, const size_t comparand, const size_t exchange);
+fpl_platform_api bool fplIsAtomicCompareAndSwapU32(volatile uint32_t *dest, const uint32_t comparand, const uint32_t exchange);
+/**
+  * @brief Compares a 64-bit unsigned integer with a comparand and swaps it when comparand matches destination and returns a bool indicating the result.
+  * @param dest The target value to write into
+  * @param comparand The value to compare with
+  * @param exchange The value to exchange with
+  * @return Returns true when the exchange happened, false otherwise.
+  * @note Ensures that memory operations are completed in order.
+  */
+fpl_platform_api bool fplIsAtomicCompareAndSwapU64(volatile uint64_t *dest, const uint64_t comparand, const uint64_t exchange);
+/**
+  * @brief Compares a 32-bit signed integer with a comparand and swaps it when comparand matches destination and returns a bool indicating the result.
+  * @param dest The target value to write into
+  * @param comparand The value to compare with
+  * @param exchange The value to exchange with
+  * @return Returns true when the exchange happened, false otherwise.
+  * @note Ensures that memory operations are completed in order.
+  */
+fpl_platform_api bool fplIsAtomicCompareAndSwapS32(volatile int32_t *dest, const int32_t comparand, const int32_t exchange);
+/**
+  * @brief Compares a 64-bit signed integer with a comparand and swaps it when comparand matches destination and returns a bool indicating the result.
+  * @param dest The target value to write into
+  * @param comparand The value to compare with
+  * @param exchange The value to exchange with
+  * @return Returns true when the exchange happened, false otherwise.
+  * @note Ensures that memory operations are completed in order.
+  */
+fpl_platform_api bool fplIsAtomicCompareAndSwapS64(volatile int64_t *dest, const int64_t comparand, const int64_t exchange);
+/**
+  * @brief Compares a size with a comparand and swaps it when comparand matches destination and returns a bool indicating the result.
+  * @param dest The target value to write into
+  * @param comparand The value to compare with
+  * @param exchange The value to exchange with
+  * @return Returns true when the exchange happened, false otherwise.
+  * @note Ensures that memory operations are completed in order.
+  */
+fpl_common_api bool fplIsAtomicCompareAndSwapSize(volatile size_t *dest, const size_t comparand, const size_t exchange);
+/**
+  * @brief Compares a pointer with a comparand and swaps it when comparand matches destination and returns a bool indicating the result.
+  * @param dest The target value to write into
+  * @param comparand The value to compare with
+  * @param exchange The value to exchange with
+  * @return Returns true when the exchange happened, false otherwise.
+  * @note Ensures that memory operations are completed in order.
+  */
+fpl_common_api bool fplIsAtomicCompareAndSwapPtr(volatile void **dest, const void *comparand, const void *exchange);
 
 /**
   * @brief Loads the 32-bit unsigned value atomically and returns the value.
@@ -2132,14 +2158,6 @@ fpl_platform_api int32_t fplAtomicLoadS32(volatile int32_t *source);
   */
 fpl_platform_api int64_t fplAtomicLoadS64(volatile int64_t *source);
 /**
-  * @brief Loads the pointer value atomically and returns the value.
-  * @note Ensures that memory operations are completed before the read.
-  * @note This may use a CAS instruction when there is no suitable compiler intrinsics found.
-  * @param source The source value to read from
-  * @return Returns the atomically loaded source value
-  */
-fpl_common_api void *fplAtomicLoadPtr(volatile void **source);
-/**
   * @brief Loads the size value atomically and returns the value.
   * @note Ensures that memory operations are completed before the read.
   * @note This may use a CAS instruction when there is no suitable compiler intrinsics found.
@@ -2147,6 +2165,14 @@ fpl_common_api void *fplAtomicLoadPtr(volatile void **source);
   * @return Returns the atomically loaded source value
   */
 fpl_common_api size_t fplAtomicLoadSize(volatile size_t *source);
+/**
+  * @brief Loads the pointer value atomically and returns the value.
+  * @note Ensures that memory operations are completed before the read.
+  * @note This may use a CAS instruction when there is no suitable compiler intrinsics found.
+  * @param source The source value to read from
+  * @return Returns the atomically loaded source value
+  */
+fpl_common_api void *fplAtomicLoadPtr(volatile void **source);
 
 /**
   * @brief Overwrites the 32-bit unsigned value atomically.
@@ -2177,19 +2203,19 @@ fpl_platform_api void fplAtomicStoreS32(volatile int32_t *dest, const int32_t va
   */
 fpl_platform_api void fplAtomicStoreS64(volatile int64_t *dest, const int64_t value);
 /**
-  * @brief Overwrites the pointer value atomically.
-  * @param dest The destination to write to
-  * @param value The value to exchange with
-  * @note Ensures that memory operations are completed before the write.
-  */
-fpl_common_api void fplAtomicStorePtr(volatile void **dest, const void *value);
-/**
   * @brief Overwrites the size value atomically.
   * @param dest The destination to write to
   * @param value The value to exchange with
   * @note Ensures that memory operations are completed before the write.
   */
 fpl_common_api void fplAtomicStoreSize(volatile size_t *dest, const size_t value);
+/**
+  * @brief Overwrites the pointer value atomically.
+  * @param dest The destination to write to
+  * @param value The value to exchange with
+  * @note Ensures that memory operations are completed before the write.
+  */
+fpl_common_api void fplAtomicStorePtr(volatile void **dest, const void *value);
 
 /** @}*/
 
@@ -2203,7 +2229,7 @@ fpl_common_api void fplAtomicStoreSize(volatile size_t *dest, const size_t value
 // ----------------------------------------------------------------------------
 
 //! A type definition mapping a part of a version number
-typedef char fplVersionNumberPart[4];
+typedef char fplVersionNumberPart[4 + 1];
 
 //! A structure that contains version information
 typedef struct fplVersionInfo {
@@ -2306,7 +2332,6 @@ typedef enum fplArchType {
   * @return Returns a string for the given architecture type
   */
 fpl_common_api const char *fplGetArchTypeString(const fplArchType type);
-
 /**
   * @brief Retrieves the total number of processor cores.
   * @return Returns the total number of processor cores.
@@ -2320,17 +2345,17 @@ fpl_platform_api size_t fplGetProcessorCoreCount();
   */
 fpl_platform_api char *fplGetProcessorName(char *destBuffer, const size_t maxDestBufferLen);
 /**
+  * @brief Gets the processor architecture type
+  * @return Returns the processor architecture type
+  */
+fpl_platform_api fplArchType fplGetProcessorArchitecture();
+/**
   * @brief Retrieves the current system memory usage.
   * @param outInfos The target @ref fplMemoryInfos structure
   * @return Returns true when the memory infos was retrieved, false otherwise.
   */
 fpl_platform_api bool fplGetRunningMemoryInfos(fplMemoryInfos *outInfos);
 
-/**
-  * @brief Gets the running architecture type
-  * @return Returns the running architecture type
-  */
-fpl_platform_api fplArchType fplGetRunningArchitecture();
 
 /** @}*/
 
@@ -3544,7 +3569,7 @@ fpl_common_api char *fplEnforcePathSeparatorLen(char *path, size_t maxPathLen);
   */
 fpl_common_api char *fplEnforcePathSeparator(char *path);
 /**
-  * @brief Appends the source string to the given buffer
+  * @brief Appends the source string to the given buffer constrained by length
   * @param appended The appending source string
   * @param appendedLen The length of the appending source string
   * @param buffer The target buffer
@@ -3567,12 +3592,6 @@ fpl_common_api char *fplStringAppend(const char *appended, char *buffer, size_t 
   */
 fpl_common_api size_t fplGetStringLength(const char *str);
 /**
-  * @brief Counts the number of wide characters without including the zero terminator.
-  * @param str The 16-bit wide string
-  * @return Returns the number of characters of the given 16-bit Wide string or zero when the input string is fpl_null.
-  */
-fpl_common_api size_t fplGetStringLengthWide(const wchar_t *str);
-/**
   * @brief Copies the given source string with a constrained length into a destination string.
   * @param source The source string
   * @param sourceLen The number of characters to copy
@@ -3591,25 +3610,6 @@ fpl_common_api char *fplCopyStringLen(const char *source, const size_t sourceLen
   * @note Null terminator is included always.
   */
 fpl_common_api char *fplCopyString(const char *source, char *dest, const size_t maxDestLen);
-/**
-  * @brief Copies the given 16-bit source wide string with a fixed length into a destination wide string.
-  * @param source The 16-bit source wide string
-  * @param sourceLen The number of characters to copy
-  * @param dest The 16-bit destination wide string buffer
-  * @param maxDestLen The total number of characters available in the destination buffer
-  * @return Returns the pointer to the last written character or @ref fpl_null.
-  * @note Null terminator is included always.
-  */
-fpl_common_api wchar_t *fplCopyStringLenWide(const wchar_t *source, const size_t sourceLen, wchar_t *dest, const size_t maxDestLen);
-/**
-  * @brief Copies the given 16-bit source wide string into a destination wide string.
-  * @param source The 16-bit source wide string
-  * @param dest The 16-bit destination wide string buffer
-  * @param maxDestLen The total number of characters available in the destination buffer
-  * @return Returns the pointer to the last written character or @ref fpl_null.
-  * @note Null terminator is included always.
-  */
-fpl_common_api wchar_t *fplCopyStringWide(const wchar_t *source, wchar_t *dest, const size_t maxDestLen);
 /**
   * @brief Converts the given 16-bit source wide string with length in a 8-bit UTF-8 ansi string.
   * @param wideSource The 16-bit source wide string
@@ -5110,7 +5110,7 @@ fpl_platform_api bool fplGetInputLocale(const fplLocaleFormat targetFormat, char
 /** @}*/
 
 // Ignore any doxygen documentation from here
-//! @cond FPL_IGNORE_DOXYGEN
+//! @cond FPL_INTERNAL
 
 // ****************************************************************************
 //
@@ -6746,7 +6746,7 @@ fpl_internal void fpl__PushEvent(const fplEvent *event) {
 	fplAssert(appState != fpl_null);
 	fpl__EventQueue *eventQueue = &appState->window.eventQueue;
 	if(eventQueue->pushCount < FPL__MAX_EVENT_COUNT) {
-		uint32_t eventIndex = fplAtomicAddU32(&eventQueue->pushCount, 1);
+		uint32_t eventIndex = fplAtomicFetchAndAddU32(&eventQueue->pushCount, 1);
 		fplAssert(eventIndex < FPL__MAX_EVENT_COUNT);
 		eventQueue->events[eventIndex] = *event;
 	}
@@ -7270,16 +7270,6 @@ fpl_common_api size_t fplGetStringLength(const char *str) {
 	return(result);
 }
 
-fpl_common_api size_t fplGetStringLengthWide(const wchar_t *str) {
-	uint32_t result = 0;
-	if(str != fpl_null) {
-		while(*str++) {
-			result++;
-		}
-	}
-	return(result);
-}
-
 fpl_common_api char *fplCopyStringLen(const char *source, const size_t sourceLen, char *dest, const size_t maxDestLen) {
 	if(source != fpl_null && dest != fpl_null) {
 		size_t requiredLen = sourceLen + 1;
@@ -7298,28 +7288,6 @@ fpl_common_api char *fplCopyString(const char *source, char *dest, const size_t 
 	if(source != fpl_null) {
 		size_t sourceLen = fplGetStringLength(source);
 		result = fplCopyStringLen(source, sourceLen, dest, maxDestLen);
-	}
-	return(result);
-}
-
-fpl_common_api wchar_t *fplCopyStringLenWide(const wchar_t *source, const size_t sourceLen, wchar_t *dest, const size_t maxDestLen) {
-	if(source != fpl_null && dest != fpl_null) {
-		size_t requiredLen = sourceLen + 1;
-		FPL__CheckArgumentMin(maxDestLen, requiredLen, fpl_null);
-		fplMemoryCopy(source, sourceLen * sizeof(wchar_t), dest);
-		wchar_t *result = dest + sourceLen;
-		*result = 0;
-		return(result);
-	} else {
-		return(fpl_null);
-	}
-}
-
-fpl_common_api wchar_t *fplCopyStringWide(const wchar_t *source, wchar_t *dest, const size_t maxDestLen) {
-	wchar_t *result = fpl_null;
-	if(source != fpl_null) {
-		size_t sourceLen = fplGetStringLengthWide(source);
-		result = fplCopyStringLenWide(source, sourceLen, dest, maxDestLen);
 	}
 	return(result);
 }
@@ -7548,24 +7516,48 @@ fpl_common_api void fplMemoryCopy(const void *sourceMem, const size_t sourceSize
 #if !defined(FPL__COMMON_ATOMICS_DEFINED)
 #define FPL__COMMON_ATOMICS_DEFINED
 
-fpl_common_api size_t fplAtomicAddSize(volatile size_t *dest, const size_t addend) {
+fpl_common_api size_t fplAtomicFetchAndAddSize(volatile size_t *dest, const size_t addend) {
 	fplAssert(dest != fpl_null);
 #if defined(FPL_CPU_64BIT)
-	size_t result = (size_t)fplAtomicAddU64((volatile uint64_t *)dest, (uint64_t)addend);
+	size_t result = (size_t)fplAtomicFetchAndAddU64((volatile uint64_t *)dest, (uint64_t)addend);
 #elif defined(FPL_CPU_32BIT)
-	size_t result = (size_t)fplAtomicAddU32((volatile uint32_t *)dest, (uint32_t)addend);
+	size_t result = (size_t)fplAtomicFetchAndAddU32((volatile uint32_t *)dest, (uint32_t)addend);
 #else
 #	error "Unsupported architecture/platform!"
 #endif // FPL_ARCH
 	return (result);
 }
 
-fpl_common_api size_t fplAtomicIncSize(volatile size_t *dest) {
+fpl_common_api void *fplAtomicFetchAndAddPtr(volatile void **dest, const intptr_t addend) {
 	fplAssert(dest != fpl_null);
 #if defined(FPL_CPU_64BIT)
-	size_t result = (size_t)fplAtomicIncU64((volatile uint64_t *)dest);
+	void *result = (void *)fplAtomicFetchAndAddS64((volatile int64_t *)dest, (int64_t)addend);
 #elif defined(FPL_CPU_32BIT)
-	size_t result = (size_t)fplAtomicIncU32((volatile uint32_t *)dest);
+	void *result = (void *)fplAtomicFetchAndAddS32((volatile int32_t *)dest, (int32_t)addend);
+#else
+#	error "Unsupported architecture/platform!"
+#endif // FPL_ARCH
+	return (result);
+}
+
+fpl_common_api size_t fplAtomicAddAndFetchSize(volatile size_t *value) {
+	fplAssert(value != fpl_null);
+#if defined(FPL_CPU_64BIT)
+	size_t result = (size_t)fplAtomicAddAndFetchU64((volatile uint64_t *)value);
+#elif defined(FPL_CPU_32BIT)
+	size_t result = (size_t)fplAtomicAddAndFetchU32((volatile uint32_t *)value);
+#else
+#	error "Unsupported architecture/platform!"
+#endif // FPL_ARCH
+	return (result);
+}
+
+fpl_common_api void *fplAtomicAddAndFetchPtr(volatile void **value) {
+	fplAssert(value != fpl_null);
+#if defined(FPL_CPU_64BIT)
+	void *result = (void *)fplAtomicAddAndFetchU64((volatile uint64_t *)value);
+#elif defined(FPL_CPU_32BIT)
+	void *result = (void *)fplAtomicAddAndFetchU32((volatile uint32_t *)value);
 #else
 #	error "Unsupported architecture/platform!"
 #endif // FPL_ARCH
@@ -7596,48 +7588,48 @@ fpl_common_api size_t fplAtomicExchangeSize(volatile size_t *target, const size_
 	return (result);
 }
 
-fpl_common_api void *fplAtomicCompareAndExchangePtr(volatile void **dest, const void *comparand, const void *exchange) {
+fpl_common_api void *fplAtomicCompareAndSwapPtr(volatile void **dest, const void *comparand, const void *exchange) {
 	fplAssert(dest != fpl_null);
 #if defined(FPL_CPU_64BIT)
-	void *result = (void *)fplAtomicCompareAndExchangeU64((volatile uint64_t *)dest, (uint64_t)comparand, (uint64_t)exchange);
+	void *result = (void *)fplAtomicCompareAndSwapU64((volatile uint64_t *)dest, (uint64_t)comparand, (uint64_t)exchange);
 #elif defined(FPL_CPU_32BIT)
-	void *result = (void *)fplAtomicCompareAndExchangeU32((volatile uint32_t *)dest, (uint32_t)comparand, (uint32_t)exchange);
+	void *result = (void *)fplAtomicCompareAndSwapU32((volatile uint32_t *)dest, (uint32_t)comparand, (uint32_t)exchange);
 #else
 #	error "Unsupported architecture/platform!"
 #endif // FPL_ARCH
 	return (result);
 }
 
-fpl_common_api size_t fplAtomicCompareAndExchangeSize(volatile size_t *dest, const size_t comparand, const size_t exchange) {
+fpl_common_api size_t fplAtomicCompareAndSwapSize(volatile size_t *dest, const size_t comparand, const size_t exchange) {
 	fplAssert(dest != fpl_null);
 #if defined(FPL_CPU_64BIT)
-	size_t result = (size_t)fplAtomicCompareAndExchangeU64((volatile uint64_t *)dest, (uint64_t)comparand, (uint64_t)exchange);
+	size_t result = (size_t)fplAtomicCompareAndSwapU64((volatile uint64_t *)dest, (uint64_t)comparand, (uint64_t)exchange);
 #elif defined(FPL_CPU_32BIT)
-	size_t result = (size_t)fplAtomicCompareAndExchangeU32((volatile uint32_t *)dest, (uint32_t)comparand, (uint32_t)exchange);
+	size_t result = (size_t)fplAtomicCompareAndSwapU32((volatile uint32_t *)dest, (uint32_t)comparand, (uint32_t)exchange);
 #else
 #	error "Unsupported architecture/platform!"
 #endif // FPL_ARCH
 	return (result);
 }
 
-fpl_common_api bool fplIsAtomicCompareAndExchangePtr(volatile void **dest, const void *comparand, const void *exchange) {
+fpl_common_api bool fplIsAtomicCompareAndSwapPtr(volatile void **dest, const void *comparand, const void *exchange) {
 	fplAssert(dest != fpl_null);
 #if defined(FPL_CPU_64BIT)
-	bool result = fplIsAtomicCompareAndExchangeU64((volatile uint64_t *)dest, (uint64_t)comparand, (uint64_t)exchange);
+	bool result = fplIsAtomicCompareAndSwapU64((volatile uint64_t *)dest, (uint64_t)comparand, (uint64_t)exchange);
 #elif defined(FPL_CPU_32BIT)
-	bool result = fplIsAtomicCompareAndExchangeU32((volatile uint32_t *)dest, (uint32_t)comparand, (uint32_t)exchange);
+	bool result = fplIsAtomicCompareAndSwapU32((volatile uint32_t *)dest, (uint32_t)comparand, (uint32_t)exchange);
 #else
 #	error "Unsupported architecture/platform!"
 #endif // FPL_ARCH
 	return (result);
 }
 
-fpl_common_api bool fplIsAtomicCompareAndExchangeSize(volatile size_t *dest, const size_t comparand, const size_t exchange) {
+fpl_common_api bool fplIsAtomicCompareAndSwapSize(volatile size_t *dest, const size_t comparand, const size_t exchange) {
 	fplAssert(dest != fpl_null);
 #if defined(FPL_CPU_64BIT)
-	bool result = fplIsAtomicCompareAndExchangeU64((volatile uint64_t *)dest, (uint64_t)comparand, (uint64_t)exchange);
+	bool result = fplIsAtomicCompareAndSwapU64((volatile uint64_t *)dest, (uint64_t)comparand, (uint64_t)exchange);
 #elif defined(FPL_CPU_32BIT)
-	bool result = fplIsAtomicCompareAndExchangeU32((volatile uint32_t *)dest, (uint32_t)comparand, (uint32_t)exchange);
+	bool result = fplIsAtomicCompareAndSwapU32((volatile uint32_t *)dest, (uint32_t)comparand, (uint32_t)exchange);
 #else
 #	error "Unsupported architecture/platform!"
 #endif // FPL_ARCH
@@ -7903,7 +7895,7 @@ fpl_common_api bool fplPollEvent(fplEvent *ev) {
 	fpl__EventQueue *eventQueue = &appState->window.eventQueue;
 	bool result = false;
 	if(eventQueue->pushCount > 0 && (eventQueue->pollIndex < eventQueue->pushCount)) {
-		uint32_t eventIndex = fplAtomicAddU32(&eventQueue->pollIndex, 1);
+		uint32_t eventIndex = fplAtomicFetchAndAddU32(&eventQueue->pollIndex, 1);
 		*ev = eventQueue->events[eventIndex];
 		result = true;
 	} else if(eventQueue->pushCount > 0) {
@@ -8827,7 +8819,7 @@ fpl_internal bool fpl__Win32InitWindow(const fplSettings *initSettings, fplWindo
 	windowClass.lpszClassName = FPL__WIN32_CLASSNAME;
 	windowClass.lpfnWndProc = fpl__Win32MessageProc;
 	windowClass.style |= CS_OWNDC;
-	fplCopyStringWide(windowClass.lpszClassName, windowState->windowClass, fplArrayCount(windowState->windowClass));
+	lstrcpynW(windowState->windowClass, windowClass.lpszClassName, fplArrayCount(windowState->windowClass));
 	if(wapi->user.RegisterClassExW(&windowClass) == 0) {
 		FPL_ERROR(FPL__MODULE_WINDOW, "Failed registering window class '%s'", windowState->windowClass);
 		return false;
@@ -8839,7 +8831,7 @@ fpl_internal bool fpl__Win32InitWindow(const fplSettings *initSettings, fplWindo
 		fplUTF8StringToWideString(initWindowSettings->windowTitle, fplGetStringLength(initWindowSettings->windowTitle), windowTitleBuffer, fplArrayCount(windowTitleBuffer));
 	} else {
 		const wchar_t *defaultTitle = FPL__WIN32_UNNAMED_WINDOW;
-		fplCopyStringWide(defaultTitle, windowTitleBuffer, fplArrayCount(windowTitleBuffer));
+		lstrcpynW(windowTitleBuffer, defaultTitle, fplArrayCount(windowTitleBuffer));
 	}
 	wchar_t *windowTitle = windowTitleBuffer;
 	fplWideStringToUTF8String(windowTitle, lstrlenW(windowTitle), currentWindowSettings->windowTitle, fplArrayCount(currentWindowSettings->windowTitle));
@@ -9493,88 +9485,88 @@ fpl_platform_api int64_t fplAtomicExchangeS64(volatile int64_t *target, const in
 	return (result);
 }
 
-fpl_platform_api uint32_t fplAtomicAddU32(volatile uint32_t *value, const uint32_t addend) {
+fpl_platform_api uint32_t fplAtomicFetchAndAddU32(volatile uint32_t *value, const uint32_t addend) {
 	fplAssert(value != fpl_null);
 	uint32_t result = _InterlockedExchangeAdd((volatile LONG *)value, addend);
 	return (result);
 }
-fpl_platform_api int32_t fplAtomicAddS32(volatile int32_t *value, const int32_t addend) {
+fpl_platform_api int32_t fplAtomicFetchAndAddS32(volatile int32_t *value, const int32_t addend) {
 	fplAssert(value != fpl_null);
 	int32_t result = _InterlockedExchangeAdd((volatile LONG *)value, addend);
 	return (result);
 }
-fpl_platform_api uint64_t fplAtomicAddU64(volatile uint64_t *value, const uint64_t addend) {
+fpl_platform_api uint64_t fplAtomicFetchAndAddU64(volatile uint64_t *value, const uint64_t addend) {
 	fplAssert(value != fpl_null);
 	uint64_t result = _InterlockedExchangeAdd64((volatile LONG64 *)value, addend);
 	return (result);
 }
-fpl_platform_api int64_t fplAtomicAddS64(volatile int64_t *value, const int64_t addend) {
+fpl_platform_api int64_t fplAtomicFetchAndAddS64(volatile int64_t *value, const int64_t addend) {
 	fplAssert(value != fpl_null);
 	int64_t result = _InterlockedExchangeAdd64((volatile LONG64 *)value, addend);
 	return(result);
 }
 
-fpl_platform_api uint32_t fplAtomicIncU32(volatile uint32_t *value) {
+fpl_platform_api uint32_t fplAtomicAddAndFetchU32(volatile uint32_t *value) {
 	fplAssert(value != fpl_null);
 	uint32_t result = _InterlockedIncrement((volatile LONG *)value);
 	return (result);
 }
-fpl_platform_api int32_t fplAtomicIncS32(volatile int32_t *value) {
+fpl_platform_api int32_t fplAtomicAddAndFetchS32(volatile int32_t *value) {
 	fplAssert(value != fpl_null);
 	int32_t result = _InterlockedIncrement((volatile LONG *)value);
 	return (result);
 }
-fpl_platform_api uint64_t fplAtomicIncU64(volatile uint64_t *value) {
+fpl_platform_api uint64_t fplAtomicAddAndFetchU64(volatile uint64_t *value) {
 	fplAssert(value != fpl_null);
 	uint64_t result = _InterlockedIncrement64((volatile LONG64 *)value);
 	return (result);
 }
-fpl_platform_api int64_t fplAtomicIncS64(volatile int64_t *value) {
+fpl_platform_api int64_t fplAtomicAddAndFetchS64(volatile int64_t *value) {
 	fplAssert(value != fpl_null);
 	int64_t result = _InterlockedIncrement64((volatile LONG64 *)value);
 	return(result);
 }
 
-fpl_platform_api uint32_t fplAtomicCompareAndExchangeU32(volatile uint32_t *dest, const uint32_t comparand, const uint32_t exchange) {
+fpl_platform_api uint32_t fplAtomicCompareAndSwapU32(volatile uint32_t *dest, const uint32_t comparand, const uint32_t exchange) {
 	fplAssert(dest != fpl_null);
 	uint32_t result = _InterlockedCompareExchange((volatile LONG *)dest, exchange, comparand);
 	return (result);
 }
-fpl_platform_api int32_t fplAtomicCompareAndExchangeS32(volatile int32_t *dest, const int32_t comparand, const int32_t exchange) {
+fpl_platform_api int32_t fplAtomicCompareAndSwapS32(volatile int32_t *dest, const int32_t comparand, const int32_t exchange) {
 	fplAssert(dest != fpl_null);
 	int32_t result = _InterlockedCompareExchange((volatile LONG *)dest, exchange, comparand);
 	return (result);
 }
-fpl_platform_api uint64_t fplAtomicCompareAndExchangeU64(volatile uint64_t *dest, const uint64_t comparand, const uint64_t exchange) {
+fpl_platform_api uint64_t fplAtomicCompareAndSwapU64(volatile uint64_t *dest, const uint64_t comparand, const uint64_t exchange) {
 	fplAssert(dest != fpl_null);
 	uint64_t result = _InterlockedCompareExchange64((volatile LONG64 *)dest, exchange, comparand);
 	return (result);
 }
-fpl_platform_api int64_t fplAtomicCompareAndExchangeS64(volatile int64_t *dest, const int64_t comparand, const int64_t exchange) {
+fpl_platform_api int64_t fplAtomicCompareAndSwapS64(volatile int64_t *dest, const int64_t comparand, const int64_t exchange) {
 	fplAssert(dest != fpl_null);
 	int64_t result = _InterlockedCompareExchange64((volatile LONG64 *)dest, exchange, comparand);
 	return (result);
 }
 
-fpl_platform_api bool fplIsAtomicCompareAndExchangeU32(volatile uint32_t *dest, const uint32_t comparand, const uint32_t exchange) {
+fpl_platform_api bool fplIsAtomicCompareAndSwapU32(volatile uint32_t *dest, const uint32_t comparand, const uint32_t exchange) {
 	fplAssert(dest != fpl_null);
 	uint32_t value = _InterlockedCompareExchange((volatile LONG *)dest, exchange, comparand);
 	bool result = (value == comparand);
 	return (result);
 }
-fpl_platform_api bool fplIsAtomicCompareAndExchangeS32(volatile int32_t *dest, const int32_t comparand, const int32_t exchange) {
+fpl_platform_api bool fplIsAtomicCompareAndSwapS32(volatile int32_t *dest, const int32_t comparand, const int32_t exchange) {
 	fplAssert(dest != fpl_null);
 	int32_t value = _InterlockedCompareExchange((volatile LONG *)dest, exchange, comparand);
 	bool result = (value == comparand);
 	return (result);
 }
-fpl_platform_api bool fplIsAtomicCompareAndExchangeU64(volatile uint64_t *dest, const uint64_t comparand, const uint64_t exchange) {
+fpl_platform_api bool fplIsAtomicCompareAndSwapU64(volatile uint64_t *dest, const uint64_t comparand, const uint64_t exchange) {
 	fplAssert(dest != fpl_null);
 	uint64_t value = _InterlockedCompareExchange64((volatile LONG64 *)dest, exchange, comparand);
 	bool result = (value == comparand);
 	return (result);
 }
-fpl_platform_api bool fplIsAtomicCompareAndExchangeS64(volatile int64_t *dest, const int64_t comparand, const int64_t exchange) {
+fpl_platform_api bool fplIsAtomicCompareAndSwapS64(volatile int64_t *dest, const int64_t comparand, const int64_t exchange) {
 	fplAssert(dest != fpl_null);
 	int64_t value = _InterlockedCompareExchange64((volatile LONG64 *)dest, exchange, comparand);
 	bool result = (value == comparand);
@@ -9638,12 +9630,34 @@ fpl_internal const char *fpl__Win32GetVersionName(DWORD major, DWORD minor) {
 	return(result);
 }
 
-#define FPL__FUNC_KERNEL32_GetVersion(name) DWORD name()
+#define FPL__FUNC_NTDLL_RtlGetVersion(name) DWORD WINAPI name(PRTL_OSVERSIONINFOW lpVersionInformation)
+typedef FPL__FUNC_NTDLL_RtlGetVersion(fpl__func_ntdll_RtlGetVersionProc);
+#define FPL__FUNC_KERNEL32_GetVersion(name) DWORD WINAPI name()
 typedef FPL__FUNC_KERNEL32_GetVersion(fpl__func_kernel32_GetVersion);
 #define FPL__FUNC_KERNEL32_GetVersionExW(name) BOOL WINAPI name(LPOSVERSIONINFOEXW lpVersionInfo)
 typedef FPL__FUNC_KERNEL32_GetVersionExW(fpl__func_kernel32_GetVersionExW);
 fpl_platform_api bool fplGetOperatingSystemInfos(fplOSInfos *outInfos) {
 	FPL__CheckArgumentNull(outInfos, false);
+
+	fplClearStruct(outInfos);
+
+	// @NOTE(final): Prefer RtlGetVersion always, because MS might decide to totally remove GetVersion() and GetVersionEx()
+	HMODULE ntdllModule = GetModuleHandleA("ntdll");
+	fpl__func_ntdll_RtlGetVersionProc *rtlGetVersionProc = (fpl__func_ntdll_RtlGetVersionProc *)GetProcAddress(ntdllModule, "RtlGetVersion");
+	if(rtlGetVersionProc != fpl_null) {
+		RTL_OSVERSIONINFOW info = FPL_ZERO_INIT;
+		info.dwOSVersionInfoSize = sizeof(info);
+		if(rtlGetVersionProc(&info) == 0) {
+			fplS32ToString((int32_t)info.dwMajorVersion, fplArrayCount(outInfos->osVersion.major), outInfos->osVersion.major);
+			fplS32ToString((int32_t)info.dwMinorVersion, fplArrayCount(outInfos->osVersion.minor), outInfos->osVersion.minor);
+			fplS32ToString(0, fplArrayCount(outInfos->osVersion.fix), outInfos->osVersion.fix);
+			fplS32ToString((int32_t)info.dwBuildNumber, fplArrayCount(outInfos->osVersion.build), outInfos->osVersion.build);
+			fplFormatString(outInfos->osVersion.fullName, fplArrayCount(outInfos->osVersion.fullName), "%u.%u.%u.%u", info.dwMajorVersion, info.dwMinorVersion, 0, info.dwBuildNumber);
+			const char *versionName = fpl__Win32GetVersionName(info.dwMajorVersion, info.dwMinorVersion);
+			fplCopyString(versionName, outInfos->osName, fplArrayCount(outInfos->osName));
+			return(true);
+		}
+	}
 
 	// @NOTE(final): GetVersion() and GetVersionExA() is deprecated as of windows 8.1, so we load it manually always
 	HMODULE kernelLib = LoadLibraryA("kernel32.dll");
@@ -9655,25 +9669,23 @@ fpl_platform_api bool fplGetOperatingSystemInfos(fplOSInfos *outInfos) {
 	fpl__func_kernel32_GetVersionExW *getVersionExProc = (fpl__func_kernel32_GetVersionExW *)GetProcAddress(kernelLib, "GetVersionExW");
 	FreeLibrary(kernelLib);
 
-	fplClearStruct(outInfos);
-
-	bool result = false;
-	DWORD dwVersion = 0;
 	if(getVersionExProc != fpl_null) {
-		OSVERSIONINFOEXW info = FPL_ZERO_INIT;
-		info.dwOSVersionInfoSize = sizeof(info);
-		if(getVersionExProc(&info) == TRUE) {
-			fplS32ToString((int32_t)info.dwMajorVersion, fplArrayCount(outInfos->osVersion.major), outInfos->osVersion.major);
-			fplS32ToString((int32_t)info.dwMinorVersion, fplArrayCount(outInfos->osVersion.minor), outInfos->osVersion.minor);
+		OSVERSIONINFOEXW infoEx = FPL_ZERO_INIT;
+		infoEx.dwOSVersionInfoSize = sizeof(infoEx);
+		if(getVersionExProc(&infoEx) == TRUE) {
+			fplS32ToString((int32_t)infoEx.dwMajorVersion, fplArrayCount(outInfos->osVersion.major), outInfos->osVersion.major);
+			fplS32ToString((int32_t)infoEx.dwMinorVersion, fplArrayCount(outInfos->osVersion.minor), outInfos->osVersion.minor);
 			fplS32ToString(0, fplArrayCount(outInfos->osVersion.fix), outInfos->osVersion.fix);
-			fplS32ToString((int32_t)info.dwBuildNumber, fplArrayCount(outInfos->osVersion.build), outInfos->osVersion.build);
-			fplFormatString(outInfos->osVersion.fullName, fplArrayCount(outInfos->osVersion.fullName), "%u.%u.%u.%u", info.dwMajorVersion, info.dwMinorVersion, 0, info.dwBuildNumber);
-			const char *versionName = fpl__Win32GetVersionName(info.dwMajorVersion, info.dwMinorVersion);
+			fplS32ToString((int32_t)infoEx.dwBuildNumber, fplArrayCount(outInfos->osVersion.build), outInfos->osVersion.build);
+			fplFormatString(outInfos->osVersion.fullName, fplArrayCount(outInfos->osVersion.fullName), "%u.%u.%u.%u", infoEx.dwMajorVersion, infoEx.dwMinorVersion, 0, infoEx.dwBuildNumber);
+			const char *versionName = fpl__Win32GetVersionName(infoEx.dwMajorVersion, infoEx.dwMinorVersion);
 			fplCopyString(versionName, outInfos->osName, fplArrayCount(outInfos->osName));
-			result = true;
+			return(true);
 		}
-	} else if(getVersionProc != fpl_null) {
-		dwVersion = getVersionProc();
+	}
+
+	if(getVersionProc != fpl_null) {
+		DWORD dwVersion = getVersionProc();
 		if(dwVersion > 0) {
 			DWORD major = (DWORD)(LOBYTE(LOWORD(dwVersion)));
 			DWORD minor = (DWORD)(HIBYTE(LOWORD(dwVersion)));
@@ -9688,11 +9700,11 @@ fpl_platform_api bool fplGetOperatingSystemInfos(fplOSInfos *outInfos) {
 			fplFormatString(outInfos->osVersion.fullName, fplArrayCount(outInfos->osVersion.fullName), "%u.%u.%u.%u", major, minor, 0, build);
 			const char *versionName = fpl__Win32GetVersionName(major, minor);
 			fplCopyString(versionName, outInfos->osName, fplArrayCount(outInfos->osName));
-			result = true;
+			return(true);
 		}
 	}
 
-	return(result);
+	return(false);
 }
 
 #define FPL__FUNC_ADV32_GetUserNameW(name) BOOL WINAPI name(LPWSTR lpBuffer, LPDWORD pcbBuffer)
@@ -9734,10 +9746,18 @@ fpl_platform_api size_t fplGetProcessorCoreCount() {
 }
 
 #define FPL__WIN32_PROCESSOR_ARCHITECTURE_ARM64 12
-fpl_platform_api fplArchType fplGetRunningArchitecture() {
+fpl_platform_api fplArchType fplGetProcessorArchitecture() {
 	fplArchType result;
 	SYSTEM_INFO sysInfo = FPL_ZERO_INIT;
-	GetSystemInfo(&sysInfo);
+	BOOL isWow64;
+	if(IsWow64Process(GetCurrentProcess(), &isWow64)) {
+		if(isWow64)
+			GetNativeSystemInfo(&sysInfo);
+		else
+			GetSystemInfo(&sysInfo);
+	} else {
+		GetSystemInfo(&sysInfo);
+	}
 	switch(sysInfo.wProcessorArchitecture) {
 		case PROCESSOR_ARCHITECTURE_AMD64:
 			result = fplArchType_x86_64;
@@ -10136,7 +10156,7 @@ fpl_platform_api bool fplSemaphoreWait(fplSemaphoreHandle *semaphore, const fplT
 	DWORD t = timeout == FPL_TIMEOUT_INFINITE ? INFINITE : timeout;
 	bool result = false;
 	if(WaitForSingleObject(semaphore->internalHandle.win32.handle, timeout) == WAIT_OBJECT_0) {
-		fplAtomicAddS32(&semaphore->internalHandle.win32.value, -1);
+		fplAtomicFetchAndAddS32(&semaphore->internalHandle.win32.value, -1);
 		result = true;
 	}
 	return(result);
@@ -10150,7 +10170,7 @@ fpl_platform_api bool fplSemaphoreTryWait(fplSemaphoreHandle *semaphore) {
 	}
 	bool result = false;
 	if(WaitForSingleObject(semaphore->internalHandle.win32.handle, 0) == WAIT_OBJECT_0) {
-		fplAtomicAddS32(&semaphore->internalHandle.win32.value, -1);
+		fplAtomicFetchAndAddS32(&semaphore->internalHandle.win32.value, -1);
 		result = true;
 	}
 	return(result);
@@ -10173,7 +10193,7 @@ fpl_platform_api bool fplSemaphoreRelease(fplSemaphoreHandle *semaphore) {
 		return false;
 	}
 	bool result = true;
-	int32_t prevValue = fplAtomicAddS32(&semaphore->internalHandle.win32.value, 1);
+	int32_t prevValue = fplAtomicFetchAndAddS32(&semaphore->internalHandle.win32.value, 1);
 	if(ReleaseSemaphore(semaphore->internalHandle.win32.handle, 1, fpl_null) == FALSE) {
 		// Restore value when it fails
 		FPL_ERROR(FPL__MODULE_THREADING, "Failed releasing the semaphore '%p'", semaphore);
@@ -11476,85 +11496,85 @@ fpl_platform_api int64_t fplAtomicExchangeS64(volatile int64_t *target, const in
 	return(result);
 }
 
-fpl_platform_api uint32_t fplAtomicAddU32(volatile uint32_t *value, const uint32_t addend) {
+fpl_platform_api uint32_t fplAtomicFetchAndAddU32(volatile uint32_t *value, const uint32_t addend) {
 	fplAssert(value != fpl_null);
 	uint32_t result = __sync_fetch_and_add(value, addend);
 	return (result);
 }
-fpl_platform_api int32_t fplAtomicAddS32(volatile int32_t *value, const int32_t addend) {
+fpl_platform_api int32_t fplAtomicFetchAndAddS32(volatile int32_t *value, const int32_t addend) {
 	fplAssert(value != fpl_null);
 	uint32_t result = __sync_fetch_and_add(value, addend);
 	return (result);
 }
-fpl_platform_api uint64_t fplAtomicAddU64(volatile uint64_t *value, const uint64_t addend) {
+fpl_platform_api uint64_t fplAtomicFetchAndAddU64(volatile uint64_t *value, const uint64_t addend) {
 	fplAssert(value != fpl_null);
 	uint32_t result = __sync_fetch_and_add(value, addend);
 	return (result);
 }
-fpl_platform_api int64_t fplAtomicAddS64(volatile int64_t *value, const int64_t addend) {
+fpl_platform_api int64_t fplAtomicFetchAndAddS64(volatile int64_t *value, const int64_t addend) {
 	fplAssert(value != fpl_null);
 	uint32_t result = __sync_fetch_and_add(value, addend);
 	return (result);
 }
 
-fpl_platform_api uint32_t fplAtomicIncU32(volatile uint32_t *value) {
+fpl_platform_api uint32_t fplAtomicAddAndFetchU32(volatile uint32_t *value) {
 	fplAssert(value != fpl_null);
 	uint32_t result = __sync_add_and_fetch(value, 1);
 	return (result);
 }
-fpl_platform_api int32_t fplAtomicIncS32(volatile int32_t *value) {
+fpl_platform_api int32_t fplAtomicAddAndFetchS32(volatile int32_t *value) {
 	fplAssert(value != fpl_null);
 	uint32_t result = __sync_add_and_fetch(value, 1);
 	return (result);
 }
-fpl_platform_api uint64_t fplAtomicIncU64(volatile uint64_t *value) {
+fpl_platform_api uint64_t fplAtomicAddAndFetchU64(volatile uint64_t *value) {
 	fplAssert(value != fpl_null);
 	uint32_t result = __sync_add_and_fetch(value, 1);
 	return (result);
 }
-fpl_platform_api int64_t fplAtomicIncS64(volatile int64_t *value) {
+fpl_platform_api int64_t fplAtomicAddAndFetchS64(volatile int64_t *value) {
 	fplAssert(value != fpl_null);
 	uint32_t result = __sync_add_and_fetch(value, 1);
 	return (result);
 }
 
-fpl_platform_api uint32_t fplAtomicCompareAndExchangeU32(volatile uint32_t *dest, const uint32_t comparand, const uint32_t exchange) {
+fpl_platform_api uint32_t fplAtomicCompareAndSwapU32(volatile uint32_t *dest, const uint32_t comparand, const uint32_t exchange) {
 	fplAssert(dest != fpl_null);
 	uint32_t result = __sync_val_compare_and_swap(dest, comparand, exchange);
 	return (result);
 }
-fpl_platform_api int32_t fplAtomicCompareAndExchangeS32(volatile int32_t *dest, const int32_t comparand, const int32_t exchange) {
+fpl_platform_api int32_t fplAtomicCompareAndSwapS32(volatile int32_t *dest, const int32_t comparand, const int32_t exchange) {
 	fplAssert(dest != fpl_null);
 	int32_t result = __sync_val_compare_and_swap(dest, comparand, exchange);
 	return (result);
 }
-fpl_platform_api uint64_t fplAtomicCompareAndExchangeU64(volatile uint64_t *dest, const uint64_t comparand, const uint64_t exchange) {
+fpl_platform_api uint64_t fplAtomicCompareAndSwapU64(volatile uint64_t *dest, const uint64_t comparand, const uint64_t exchange) {
 	fplAssert(dest != fpl_null);
 	uint64_t result = __sync_val_compare_and_swap(dest, comparand, exchange);
 	return (result);
 }
-fpl_platform_api int64_t fplAtomicCompareAndExchangeS64(volatile int64_t *dest, const int64_t comparand, const int64_t exchange) {
+fpl_platform_api int64_t fplAtomicCompareAndSwapS64(volatile int64_t *dest, const int64_t comparand, const int64_t exchange) {
 	fplAssert(dest != fpl_null);
 	int64_t result = __sync_val_compare_and_swap(dest, comparand, exchange);
 	return (result);
 }
 
-fpl_platform_api bool fplIsAtomicCompareAndExchangeU32(volatile uint32_t *dest, const uint32_t comparand, const uint32_t exchange) {
+fpl_platform_api bool fplIsAtomicCompareAndSwapU32(volatile uint32_t *dest, const uint32_t comparand, const uint32_t exchange) {
 	fplAssert(dest != fpl_null);
 	bool result = __sync_bool_compare_and_swap(dest, comparand, exchange);
 	return (result);
 }
-fpl_platform_api bool fplIsAtomicCompareAndExchangeS32(volatile int32_t *dest, const int32_t comparand, const int32_t exchange) {
+fpl_platform_api bool fplIsAtomicCompareAndSwapS32(volatile int32_t *dest, const int32_t comparand, const int32_t exchange) {
 	fplAssert(dest != fpl_null);
 	bool result = __sync_bool_compare_and_swap(dest, comparand, exchange);
 	return (result);
 }
-fpl_platform_api bool fplIsAtomicCompareAndExchangeU64(volatile uint64_t *dest, const uint64_t comparand, const uint64_t exchange) {
+fpl_platform_api bool fplIsAtomicCompareAndSwapU64(volatile uint64_t *dest, const uint64_t comparand, const uint64_t exchange) {
 	fplAssert(dest != fpl_null);
 	bool result = __sync_bool_compare_and_swap(dest, comparand, exchange);
 	return (result);
 }
-fpl_platform_api bool fplIsAtomicCompareAndExchangeS64(volatile int64_t *dest, const int64_t comparand, const int64_t exchange) {
+fpl_platform_api bool fplIsAtomicCompareAndSwapS64(volatile int64_t *dest, const int64_t comparand, const int64_t exchange) {
 	fplAssert(dest != fpl_null);
 	bool result = __sync_bool_compare_and_swap(dest, comparand, exchange);
 	return (result);
@@ -12659,7 +12679,7 @@ fpl_platform_api char *fplGetHomePath(char *destPath, const size_t maxDestLen) {
 }
 
 
-fpl_platform_api fplArchType fplGetRunningArchitecture() {
+fpl_platform_api fplArchType fplGetProcessorArchitecture() {
 	fplArchType result = fplArchType_Unknown;
 	struct utsname nameInfos;
 	if(uname(&nameInfos) == 0) {

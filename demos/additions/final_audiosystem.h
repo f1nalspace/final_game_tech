@@ -160,7 +160,7 @@ extern AudioSource *AudioSystemLoadFileSource(AudioSystem *audioSys, const char 
 	}
 	fplAssert(source->samplesSize >= loadedWave.samplesSize);
 	fplMemoryCopy(loadedWave.samples, loadedWave.samplesSize, source->samples);
-	source->id.value = fplAtomicAddU32(&audioSys->sources.idCounter, 1) + 1;
+	source->id.value = fplAtomicAddAndFetchU32(&audioSys->sources.idCounter);
 
 	FreeWave(&loadedWave);
 

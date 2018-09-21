@@ -299,13 +299,13 @@ inline PacketList *AllocatePacket(PacketQueue &queue) {
 	if (packet == nullptr) {
 		return nullptr;
 	}
-	fplAtomicAddS32(&globalMemStats.allocatedPackets, 1);
+	fplAtomicFetchAndAddS32(&globalMemStats.allocatedPackets, 1);
 	return(packet);
 }
 
 inline void DestroyPacket(PacketQueue &queue, PacketList *packet) {
 	ffmpeg.av_freep(packet);
-	fplAtomicAddS32(&globalMemStats.allocatedPackets, -1);
+	fplAtomicFetchAndAddS32(&globalMemStats.allocatedPackets, -1);
 }
 
 inline void ReleasePacketData(PacketList *packet) {
@@ -383,8 +383,8 @@ inline void PushPacket(PacketQueue &queue, PacketList *packet) {
 		queue.last = packet;
 		queue.size += packet->packet.size + sizeof(*packet);
 		queue.duration += packet->packet.duration;
-		fplAtomicAddS32(&queue.packetCount, 1);
-		fplAtomicAddS32(&globalMemStats.usedPackets, 1);
+		fplAtomicFetchAndAddS32(&queue.packetCount, 1);
+		fplAtomicFetchAndAddS32(&globalMemStats.usedPackets, 1);
 		fplSignalSet(&queue.addedSignal);
 	}
 	fplMutexUnlock(&queue.lock);
@@ -405,8 +405,8 @@ inline bool PopPacket(PacketQueue &queue, PacketList *&packet) {
 			if (queue.first == nullptr) {
 				queue.last = nullptr;
 			}
-			fplAtomicAddS32(&queue.packetCount, -1);
-			fplAtomicAddS32(&globalMemStats.usedPackets, -1);
+			fplAtomicFetchAndAddS32(&queue.packetCount, -1);
+			fplAtomicFetchAndAddS32(&globalMemStats.usedPackets, -1);
 			result = true;
 		}
 	}
@@ -464,7 +464,7 @@ struct Frame {
 // The read position can never pass the write position and vice versa.
 inline AVFrame *AllocateFrame() {
 	AVFrame *result = ffmpeg.av_frame_alloc();
-	fplAtomicAddS32(&globalMemStats.allocatedFrames, 1);
+	fplAtomicFetchAndAddS32(&globalMemStats.allocatedFrames, 1);
 	return(result);
 }
 
@@ -2671,7 +2671,7 @@ int main(int argc, char **argv) {
 		return -1;
 	}
 
-	fplArchType arch = fplGetRunningArchitecture();
+	fplArchType arch = fplGetProcessorArchitecture();
 	if (!(arch == fplArchType_x64 || arch == fplArchType_x86_64)) {
 		fplConsoleError("Only x64 architecture is supported for this demo!");
 		return -1;
