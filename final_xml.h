@@ -601,7 +601,7 @@ extern "C" {
 		fxml__ParseIdent(context, &identStr);
 
 		FXML_ASSERT(identStr.len < (FXML_ARRAYCOUNT(outResult->tagName) + 1));
-		for(int i = 0; i < identStr.len; ++i) {
+		for(size_t i = 0; i < identStr.len; ++i) {
 			outResult->tagName[i] = *(identStr.start + i);
 		}
 		outResult->tagName[identStr.len] = 0;

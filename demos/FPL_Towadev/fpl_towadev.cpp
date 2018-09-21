@@ -317,7 +317,7 @@ namespace utils {
 	static void StringToFloatArray(const char *str, const size_t maxLen, float *outArray) {
 		if(str != nullptr) {
 			const char *p = str;
-			int index = 0;
+			size_t index = 0;
 			while(*p) {
 				while(isspace(*p)) {
 					++p;
@@ -1789,7 +1789,7 @@ namespace game {
 		float buttonHeight = ControlsHeight - buttonMargin * 2.0f;
 		Vec2f buttonRadius = V2f(buttonHeight * 0.5f);
 		Vec2f buttonOutputRadius = ui::GetUIButtonExt(buttonRadius);
-		for(int towerIndex = 0; towerIndex < state.assets.towerDefinitionCount; ++towerIndex) {
+		for(size_t towerIndex = 0; towerIndex < state.assets.towerDefinitionCount; ++towerIndex) {
 			void *buttonId = (void *)&state.assets.towerDefinitions[towerIndex]; // Totally dont care about const removal here
 			float buttonX = ControlsOriginX + buttonMargin + (towerIndex * (buttonOutputRadius.w * 2.0f) + (fplMax(0, towerIndex - 1) * buttonPadding));
 			float buttonY = ControlsOriginY + buttonMargin;
