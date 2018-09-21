@@ -14,7 +14,7 @@
 	<br>
 	The main focus is game/media/simulation development, so the default settings will create a window, setup a OpenGL rendering context and initialize audio playback on any platform.<br>
 	<br>
-	FPL supports the platforms Windows/Linux for the architectures x86/x64.<br>
+	FPL supports the platforms Windows/Linux/Unix for the architectures x86/x64.<br>
 	The only dependencies are built-in operating system libraries and a C99 complaint compiler.<br>
 	<br>
 	It is released under the @subpage page_license "MIT License". This license allows you to use FPL freely in any software.<br>
@@ -298,12 +298,25 @@
 	@section section_category_memory Memory
 	@subpage page_category_memory_handling <br>
 
+	@section section_category_hardware Hardware
+	@subpage page_category_hardware <br>
+
+	@section section_category_software OS/Session
+	@subpage page_category_ossession <br>
+
+	@section section_category_dll Dynamic Library Loading
+	@subpage page_category_dll <br>
+
+	@section section_category_io Files IO
+	@subpage page_category_io_binaryfiles <br>
+
 	@section section_category_threading Multithreading
 	@subpage page_category_threading_threads <br>
 	@subpage page_category_threading_mutexes <br>
 	@subpage page_category_threading_signals <br>
 	@subpage page_category_threading_conditions <br>
 	@subpage page_category_threading_semaphores <br>
+	@subpage page_category_threading_atomics <br>
 	@subpage page_category_threading_sync <br>
 
 	@section section_category_video Video
@@ -627,7 +640,7 @@
 	In Debug-Mode assertions are enabled, unless you have specified **FPL_NO_ASSERTIONS**.<br>
 	In Release-Mode assertions are disabled, unless you have specified **FPL_FORCE_ASSERTIONS**.<br>
 	<br>
-	You can use **FPL_DEBUG** or **FPL_RELEASE* to force either a "Release" or "Debug" mode.<br>
+	You can use **FPL_DEBUG** or **FPL_RELEASE** to force either a "Release" or "Debug" mode.<br>
 	See @subpage page_compiler_options for more details.<br>
 	@note I highly recommend to never define in your code, but rather outside in your build-configuration.
 
@@ -1340,7 +1353,7 @@
 */
 
 /*!
-	@page page_category_memory_handling Memory Handling
+	@page page_category_memory_handling Memory handling
 	@tableofcontents
 
 	FPL provides a couple of functions to allocate/set/clear memory for you.<br>
@@ -1389,7 +1402,7 @@
 	|----------------------------------------------|--------------------------------|-------------------------|
 	| **Optional size of the entire memory block** | **Optional padding**           | **Memory of the data**  |
 
-	@note On Linux/Unix the size and a small padding is stored before the actual data, because **munmap()** does require a size as parameter as well. 
+	@note On Linux/Unix the size and a small padding is stored before the actual data, because **munmap()** requires a size as parameter as well. 
 
 	@section section_category_memory_handling_aligned Custom aligned memory allocation
 
@@ -1397,6 +1410,15 @@
 
 	To allocate a **custom aligned** block of contiguous memory you simply call @ref fplMemoryAlignedAllocate() with the number of bytes you want to allocate and the custom alignment.<br>
 	This will return a guaranteed aligned pointer you can start to write into.
+
+	@code{.c}
+	// Allocate a bunch of 4x4 matrices aligned by 16-bytes
+	typedef struct Mat4f {
+		float m[16];
+	} Vec4f;
+	Mat4f *matrices = (Mat4f *)fplMemoryAlignedAllocate(sizeof(Mat4f) * 128, 16);
+	// ...
+	@endcode
 
 	@note The size of the memory block may be greater than the size you requested, due to alignment padding and meta-informations.
 	@attention The alignent parameter must be a power-of-two based value, otherwise the function will fail.
@@ -1472,11 +1494,306 @@
 	| FPL_MEGABYTES    | Converts the given megabytes value into bytes       |
 	| FPL_GIGABYTES    | Converts the given gigabytes value into bytes       |
 	| FPL_TERABYTES    | Converts the given terabytes value into bytes       |
-	| FPL_CLEAR_STRUCT | Clears the given struct pointer to zero             |
-	| FPL_ZERO_INIT    | Initialize a struct with zero                       |
+	| FPL_ZERO_INIT    | Initializes a struct with zero                      |
 	| FPL_STRUCT_SET   | Overwrites a struct with the given value            |
-	| FPL_ARRAYCOUNT   | Returns the number of elements in fixed sized array |
-	| FPL_OFFSETOF     | Returns the byte-offset to a field in a struct      |
+	| fplClearStruct   | Clears the given struct pointer to zero             |
+	| fplArrayCount    | Returns the number of elements in fixed sized array |
+	| fplOffsetOf      | Returns the byte-offset to a field in a struct      |
+*/
+
+/*!
+	@page page_category_hardware Query Hardware informations
+	@tableofcontents
+
+	FPL provides a couple of functions for getting hardware functions, such as CPU core count, name, memory infos, etc.<br>
+
+	@section section_category_hardware_corecount Get number of CPU-Cores
+
+	You can retrieve the number of processor cores by calling @ref fplGetProcessorCoreCount() .<br>
+
+	@code{.c}
+	size_t coreCount = fplGetProcessorCoreCount();
+	// Do something with the core count
+	@endcode
+
+	@note Hyperthreads will be included as well, so on a typical 4-core HT CPU this function will return 8 cores.
+
+	@section section_category_hardware_cpuarch Get CPU architecture
+
+	You can query the CPU architecture type by calling fplGetProcessorArchitecture() . This will return a @ref fplArchType value which you can use test for certain types.<br>
+	<br>
+	Use @ref fplGetArchTypeString() to convert a @ref fplArchType into a string.<br>
+
+	@code{.c}
+	fplArchType cpuArch = fplGetProcessorArchitecture();
+	if (cpuArch == fplArchType_fplArchType_Arm64) {
+		// Do something on a ARM-64 CPU
+	}
+
+	// or just print it out
+	const char *cpuArchString = fplGetArchTypeString(cpuArch);
+	fplConsoleFormatOut("CPU Architecture: %s\n", cpuArchString);
+	@endcode
+	
+	@section section_category_hardware_cpuname Get the CPU Name
+
+	You can query the CPU name by calling fplGetProcessorName() .
+
+	@code{.c}
+	// Print out the CPU-Name
+	char nameBuffer[1024];
+	fplGetProcessorName(nameBuffer, fplArrayCount(nameBuffer));
+	fplConsoleFormatOut("CPU Name: %s\n", nameBuffer);
+	@endcode
+
+	@section section_category_hardware_memstate Query memory state
+
+	With @ref fplGetRunningMemoryInfos() you can query the current memory state.<br>
+	This includes the size of the physical memory, the current memory usage and more.<br>
+	See @ref fplMemoryInfos for more details.<br>
+
+	@code{.c}
+	fplMemoryInfos memInfos = FPL_ZERO_INIT;
+	if (fplGetRunningMemoryInfos(&memInfos)) {
+		fplConsoleFormatOut("%llu of %llu physical memory is available.\n", memInfos.freePhysicalSize, memInfos.totalPhysicalSize);
+	}
+	@endcode
+*/
+
+/*!
+	@page page_category_ossession Query OS/Session informations
+	@tableofcontents
+
+	FPL provides a couple of functions for querying informations about your operating system.
+
+	@section section_category_ossession_osinfos Query OS-Infos (Version, Name, Distribution)
+
+	You can retrieve the version/name of your operating system by calling @ref fplGetOperatingSystemInfos() .<br>
+	See @ref fplOSInfos for more details.<br>
+
+	@code{.c}
+	fplOSInfos infos = FPL_ZERO_INIT;
+	if (fplGetOperatingSystemInfos(&infos)) {
+		fplConsoleFormatOut("Operating system name: %s\n", infos.osName);
+		fplConsoleFormatOut("Operating system version: %s.%s.%s.%s\n", infos.osName.major, infos.osName.minor, infos.osName.fix, infos.osName.build);
+	}
+	@endcode
+
+	@section section_category_ossession_username Get current username
+
+	Use @ref fplGetCurrentUsername() to get the username for the current session.
+
+	@code{.c}
+	char usernameBuffer[256];
+	if (fplGetCurrentUsername(usernameBuffer, fplArrayCount(usernameBuffer))) {
+		fplConsoleFormatOut("Current username: %s\n", usernameBuffer);
+	}
+	@endcode
+*/
+
+/*!
+	@page page_category_dll Using Dynamic Libraries
+	@tableofcontents
+
+	FPL has built-in support for loading dynamic libraries (.dll/.so).<br>
+
+	@section section_category_dll_load Loading a dynamic library
+
+	To load a dynamic library, such as .dll or .so you simply call @ref fplDynamicLibraryLoad() with the name of the library or the full path.<br>
+
+	@code{.c}
+	fplDynamicLibraryHandle libHandle;
+	if (fplDynamicLibraryLoad("mylibrary.dll", &libHandle)) {
+		// ... using the library
+
+		// Unload it when you are done
+		fplDynamicLibraryUnload(&libHandle);
+	}
+	@endcode
+
+	@note Call @ref fplDynamicLibraryUnload() to unload a loaded library when you are done.
+
+	@section section_category_dll_getprocaddr Getting a procedure address
+
+	To get a procedure address from a function inside a library, simply call @ref fplGetDynamicLibraryProc() .<br>
+
+	@code{.c}
+	typedef int(fn_LengthSquared)(int a, int b);
+	fplDynamicLibraryHandle libHandle;
+	if (fplDynamicLibraryLoad("mymathy.dll", &libHandle)) {
+		// Get "LengthSquared" raw procedure address
+		void *lenSqFuncRaw = fplGetDynamicLibraryProc(&libHandle, "LengthSquared");
+
+		// Get "LengthSquared" casted procedure address
+		fn_LengthSquared *lenSqFunc = (fn_LengthSquared *)fplGetDynamicLibraryProc(&libHandle, "LengthSquared");
+
+		// Use the procedure like any function pointer
+		int len = lenSqFunc(3, 6);
+
+		// Unload it when you are done
+		fplDynamicLibraryUnload(&libHandle);
+	}
+	@endcode
+*/
+
+/*!
+	@page page_category_io_binaryfiles Using Binary Files
+	@tableofcontents
+
+	@section section_category_io_binaryfiles_read Reading Files
+
+	@subsection subsection_category_io_binaryfiles_read_open Opening a Binary File
+
+	To open a binary file simply declare a @ref fplFileHandle somewhere and call fplOpenBinaryFile() with a valid UTF-8 path to open it.<br>
+
+	@code{.c}
+	fplFileHandle fileHandle;
+	if (fplOpenBinaryFile("myimage.jpg", &fileHandle)) {
+
+		// ... read data
+
+		fplCloseFile(&fileHandle);
+	}
+	@endcode
+
+	@note Call @ref fplCloseFile() to close a file when you are done.
+
+	@subsection subsection_category_io_binaryfiles_read_readblock Reading from the file
+
+	To read a block of n-bytes from the file starting from the current file position, simply call @ref fplReadFileBlock() with your file handle and a buffer to read into.<br>
+
+	@code{.c}
+	struct jpeg_header; // defined somewhere
+	fplFileHandle fileHandle;
+	if (fplOpenBinaryFile("myimage.jpg", &fileHandle)) {
+		size_t read;
+
+		// Read the first 4 characters
+		char fourCC[4];
+		read = fplReadFileBlock(&fileHandle, 4, fourCC, sizeof(fourCC));
+		assert(read == 4);
+
+		// or
+
+		// Read a JPEG-Header
+		jpeg_header jpegHeader;
+		size_t read;
+		read = fplReadFileBlock(&fileHandle, sizeof(jpegHeader), &jpegHeader, sizeof(jpegHeader));
+		assert(read == sizeof(jpegHeader));
+		fplCloseFile(&fileHandle);
+	}
+	@endcode
+
+	@section section_category_io_binaryfiles_write Writing Files
+
+	@subsection subsection_category_io_binaryfiles_write_create Creating a Binary File
+
+	To create a binary file simply declare a @ref fplFileHandle somewhere and call fplCreateBinaryFile() with a valid UTF-8 path to open it.<br>
+	If the file already exists, it will be overriden automatically.<br>
+
+	@code{.c}
+	fplFileHandle fileHandle;
+	if (fplCreateBinaryFile("myimage.jpg", &fileHandle)) {
+
+		// ... write data
+
+		fplCloseFile(&fileHandle);
+	}
+	@endcode
+
+	@note Call @ref fplCloseFile() to close a file when you are done.
+
+	@subsection subsection_category_io_binaryfiles_write_writeblock Writing to the file
+
+	To write n-bytes of memory into a opened file beginning at the current file position, simply call @ref fplWriteFileBlock() with your file handle and the buffer you want to write.<br>
+
+	@code{.c}
+	fplFileHandle fileHandle;
+	char *saveGameFilePath = ...
+	if (fplCreateBinaryFile(saveGameFilePath, &fileHandle)) {
+		char savegameFourCC[4] = {'S', 'A', 'V', 'E'};
+		uint8_t *savegameDataPtr = ...;
+		size_t savegameDataSize = ...;
+
+		// Write a savegame
+		fplWriteFileBlock(&fileHandle, savegameFourCC, 4);
+		fplWriteFileBlock(&fileHandle, savegameDataPtr, savegameDataSize);
+
+		fplCloseFile(&fileHandle);
+	}
+	@endcode
+
+	@section section_category_io_binaryfiles_pos File Position
+
+	@subsection subsection_category_io_binaryfiles_pos_get Getting the current file position
+
+	Call @ref fplGetFilePosition() to get the current file position from a opened @ref fplFileHandle .
+
+	@code{.c}
+	fplFileHandle fileHandle = ...
+	size_t curPos = fplGetFilePosition(&fileHandle);
+	@endcode
+
+	@subsection subsection_category_io_binaryfiles_pos_set Setting the current file position (Seeking)
+
+	Call @ref fplSetFilePosition() to set the current file position on a opened @ref fplFileHandle .<br>
+
+	@code{.c}
+	fplFileHandle fileHandle = ...
+	// Seek 4-bytes forwards from the current position
+	fplSetFilePosition(&fileHandle, 4, fplFilePositionMode_Current);
+
+	// Seek 8-bytes backwards from the current position
+	fplSetFilePosition(&fileHandle, -4, fplFilePositionMode_Current);
+
+	// Seek to the 128-byte from the beginning (Absolute seeking)
+	fplSetFilePosition(&fileHandle, 128, fplFilePositionMode_Beginning);
+
+	// Seek to the start of the file
+	fplSetFilePosition(&fileHandle, 0, fplFilePositionMode_Beginning);
+
+	// Seek to the end of the file (Get file length)
+	size_t fileLength = fplSetFilePosition(&fileHandle, 0, fplFilePositionMode_End);
+	@endcode
+
+	@section section_category_io_binaryfiles_32vs64 Default vs 32-bit vs 64-bit
+
+	There are 3 versions for file reading/writing and seekings:<br>
+	- A version which uses uint32_t or int32_t (32-bit only, Limited to 2 GB of file = 2^31).<br>
+	- A version which uses uint64_t or int64_t (64-bit only, Limited to 2 TB of file = 2^63).<br>
+	- A default version which uses size_t or intptr_t always and use either the 32-bit or the 64-bit, depending on the compiled CPU-Architecture.<br>
+	<br>
+	See the next sections for more details.
+
+	@subsection section_category_io_binaryfiles_32vs64_default Default
+
+	Uses either 32-bit or the 64-bit, depending on the compiled CPU archtecture:<br>
+	- @ref fplSetFilePosition() maps to @ref fplSetFilePosition32() or fplSetFilePosition64()
+	- @ref fplGetFilePosition() maps to @ref fplSetFilePosition32() or fplSetFilePosition64()
+	- @ref fplReadFileBlock() maps to @ref fplReadFileBlock32() or fplReadFileBlock64()
+	- @ref fplWriteFileBlock() maps to @ref fplWriteFileBlock32() or fplWriteFileBlock64()
+	- @ref fplGetFileSizeFromPath() maps to @ref fplGetFileSizeFromPath32() or fplGetFileSizeFromPath64()
+	- @ref fplGetFileSizeFromHandle() maps to @ref fplGetFileSizeFromHandle32() or fplGetFileSizeFromHandle64()
+	
+	@subsection section_category_io_binaryfiles_32vs64_32 32-bit
+
+	Limited to 32-bit:<br>
+	- @ref fplSetFilePosition32()
+	- @ref fplSetFilePosition32()
+	- @ref fplReadFileBlock32()
+	- @ref fplWriteFileBlock32()
+	- @ref fplGetFileSizeFromPath32()
+	- @ref fplGetFileSizeFromHandle32()
+
+	@subsection section_category_io_binaryfiles_32vs64_64 64-bit
+
+	Up to 2-TB (64-bit):<br>
+	- @ref fplSetFilePosition64()
+	- @ref fplSetFilePosition64()
+	- @ref fplReadFileBlock64()
+	- @ref fplWriteFileBlock64()
+	- @ref fplGetFileSizeFromPath64()
+	- @ref fplGetFileSizeFromHandle64()
 */
 
 /*!
@@ -1497,7 +1814,7 @@
     }
     void RunMyThread() {
         int myData = 42;
-        fplThread *thread = fplThreadCreate(MyThreadProc, &myData);
+        fplThreadHandle *thread = fplThreadCreate(MyThreadProc, &myData);
         fplThreadWaitForOne(thread, FPL_TIMEOUT_INFINITE);
     }
     @endcode
@@ -1857,6 +2174,240 @@
 */
 
 /*!
+	@page page_category_threading_atomics Atomics
+	@tableofcontents
+
+	@section category_threading_atomics_overview Overview
+	This section explains what atomics are and how they are used.<br>
+	Since decades CPUs have hardware CPU instructions for doing thread-safe math and compare operations built-in.<br>
+	These instructions are available as built-in intrinsics in any modern C/C++ compiler.<br>
+	In FPL these are called Atomics and are wrapper functions around those intrinsics.<br>
+	<br>
+	Atomics functions generates memory barriers (or fences) to ensure that memory operations are completed in order.
+
+	@section category_threading_atomics_add Fetch-And-Add (Add)
+	With a Fetch-And-Add instruction you can do a atomic addition and get the previous value **before** the add back as an atomic operation.<br>
+
+	Pseudo code:
+	@code
+	oldValue = *storageValue;
+	*storageValue = oldValue + inc;
+	return oldValue;
+	@endcode
+
+	FPL have several versions for that for various datatypes:
+	- @ref fplAtomicFetchAndAddU32()
+	- @ref fplAtomicFetchAndAddU64()
+	- @ref fplAtomicFetchAndAddS32()
+	- @ref fplAtomicFetchAndAddS64()
+	- @ref fplAtomicFetchAndAddSize()
+	- @ref fplAtomicFetchAndAddPtr()
+
+	Usage:
+	@code{.c}
+	volatile uint32_t storageValue;
+	uint32_t oldValue = fplAtomicFetchAndAddU32(&storageValue, 7);
+	@endcode
+
+	@section category_threading_atomics_inc Add-And-Fetch (Increment)
+	With a Add-And-Fetch instruction you can do a atomic addition by **one** and get the new value back **after** the increment as an atomic operation.<br>
+	
+	Pseudo code:
+	@code
+	*StorageValue++;
+	NewValue = *StorageValue;
+	return newValue;
+	@endcode
+
+	FPL have several versions for that for various datatypes:
+	- @ref fplAtomicAddAndFetchU32()
+	- @ref fplAtomicAddAndFetchU64()
+	- @ref fplAtomicAddAndFetchS32()
+	- @ref fplAtomicAddAndFetchS64()
+	- @ref fplAtomicAddAndFetchSize()
+	- @ref fplAtomicAddAndFetchPtr()
+
+	Usage:
+	@code{.c}
+	volatile uint32_t storageValue;
+	uint32_t newValue = fplAtomicAddAndFetchU32(&storageValue);
+	@endcode
+
+	@section category_threading_atomics_exchange Exchange
+	With a Exchange instruction you can do a atomic exchange and get the previous value back **before** the change as an atomic operation.<br>
+	
+	Pseudo code:
+	@code
+	oldValue = *storageValue;
+	*storageValue = exchangeValue;
+	return oldValue;
+	@endcode
+
+	FPL have several versions for that for various datatypes:
+	- @ref fplAtomicExchangeU32()
+	- @ref fplAtomicExchangeU64()
+	- @ref fplAtomicExchangeS32()
+	- @ref fplAtomicExchangeS64()
+	- @ref fplAtomicExchangeSize()
+	- @ref fplAtomicExchangePtr()
+
+	Usage:
+	@code{.c}
+	volatile uint32_t storageValue;
+	uint32_t newValue = fplAtomicStoreU32(&storageValue, 1337);
+	@endcode
+
+	@note The exchange atomics are identical to @ref category_threading_atomics_store, except that the exchange atomics will return the previous value before the change.
+
+	@section category_threading_atomics_store Store
+	With a Store instruction you can do a memory write as an atomic operation.<br>
+	
+	Pseudo code:
+	@code
+	*storageValue = newValue;
+	@endcode
+
+	FPL have several versions for that for various datatypes:
+	- @ref fplAtomicStoreU32()
+	- @ref fplAtomicStoreU64()
+	- @ref fplAtomicStoreS32()
+	- @ref fplAtomicStoreS64()
+	- @ref fplAtomicStoreSize()
+	- @ref fplAtomicStorePtr()
+
+	Usage:
+	@code{.c}
+	volatile uint32_t storageValue;
+	fplAtomicStoreU32(&storageValue, 1337);
+	@endcode
+
+	@note The store atomics are identical to @ref category_threading_atomics_exchange, except that the store atomics wont return any value.
+
+	@section category_threading_atomics_load Load
+	With a Load instruction you can do a memory read as an atomic operation.<br>
+	
+	Pseudo code:
+	@code
+	return *storageValue;
+	@endcode
+
+	FPL have several versions for that for various datatypes:
+	- @ref fplAtomicLoadU32()
+	- @ref fplAtomicLoadU64()
+	- @ref fplAtomicLoadS32()
+	- @ref fplAtomicLoadS64()
+	- @ref fplAtomicLoadSize()
+	- @ref fplAtomicLoadPtr()
+
+	Usage:
+	@code{.c}
+	volatile uint32_t storageValue;
+	uint32_t value = fplAtomicLoadU32(&storageValue);
+	@endcode
+
+	@section category_threading_atomics_cas Compare-And-Swap
+	With a Compare-And-Swap instruction you can check a value against another and exchange them as a an atomic operation.<br>
+	The previous/current value will always be returned regardless of the result.<br>
+
+	Pseudo code:
+	@code
+	oldValue = *storageValue;
+	if (oldValue == comparend) {
+		*storageValue = exchangeValue;
+	}
+	return oldValue;
+	@endcode
+
+	FPL have several versions for that for various datatypes:
+	- @ref fplAtomicCompareAndSwapU32()
+	- @ref fplAtomicCompareAndSwapU64()
+	- @ref fplAtomicCompareAndSwapS32()
+	- @ref fplAtomicCompareAndSwapS64()
+	- @ref fplAtomicCompareAndSwapSize()
+	- @ref fplAtomicCompareAndSwapPtr()
+	- @ref fplIsAtomicCompareAndSwapU32()
+	- @ref fplIsAtomicCompareAndSwapU64()
+	- @ref fplIsAtomicCompareAndSwapS32()
+	- @ref fplIsAtomicCompareAndSwapS64()
+	- @ref fplIsAtomicCompareAndSwapSize()
+	- @ref fplIsAtomicCompareAndSwapPtr()
+
+	Usage:
+	@code{.c}
+	volatile uint32_t storageValue = 0;
+	uint32_t oldValue = fplAtomicCompareAndSwapU32(&storageValue, 0, 1337);
+	// The first thread executing this will see 0 as the oldValue, all others will see 1337
+
+	// or
+	volatile uint32_t storageValue = 0;
+	if (fplIsAtomicCompareAndSwapU32(&storageValue, 0, 1337)) {
+		// The first thread executing this to 1337 will get here
+	} else {
+		// All other threads gets here
+	}
+	@endcode
+
+	@section section_category_threading_atomics_barriers Memory Barriers
+	With memory barriers you can prevent the compiler from reordering memory reads/writes.<br>
+	In FPL additional CPU fences may be added to ensure that the previous memory operations are completed before the future ones.<br>
+	
+	@subsection subsection_category_threading_atomics_barriers_without Without fences
+
+	@code{.c}
+	int theValue;
+	int valueIsPublished = 0;
+	void updateValue(int newValue) {
+		// The compiler may move the write above the the value set
+		theValue = newValue;
+		valueIsPublished = 1;
+	}
+
+	int getValue() {
+		// The compiler may move the read of value before the publish check
+		if (valueIsPublished) {
+			return theValue;
+		}
+		return -1;
+	}
+	@endcode
+
+	@warning This example may break even on a single-threaded environment!
+
+	@subsection subsection_category_threading_atomics_barriers_full With a read/write barrier
+
+	@code{.c}
+	int theValue;
+	int valueIsPublished = 0;
+	void updateValue(int newValue) {
+		theValue = newValue;
+		// The value is written before the publish is set
+		fplAtomicReadWriteFence();
+		valueIsPublished = 1;
+	}
+
+	int getValue() {
+		// The publish is read before the value is being returned
+		if (valueIsPublished) {
+			fplAtomicReadWriteFence();
+			return theValue;
+		}
+		return -1;
+	}
+	@endcode
+
+	@subsection subsection_category_threading_atomics_barriers_read_or_write Read or Write
+	In some special cases you dont have to issue a full memory barrier like @ref fplAtomicReadWriteFence(), so you can just use a read or write barrier only:<br>
+	- You can use @ref fplAtomicReadFence() to just ensure memory writes are completed before future ones only (Plus preventing from compiler reording memory writes).<br>
+	- You can use @ref fplAtomicWriteFence() to just ensure memory reads are completed before future ones only (Plus preventing from compiler reording memory reads).<br>
+
+	@subsection subsection_category_threading_atomics_barriers_atomics Atomics vs Barriers?
+
+	Atomic functions may include memory barriers to ensure that CPU memory read/write instructions are executed in order and to prevent the compiler from reordering memory read/writes.<br>
+	This means you dont have to use any kind of memory barriers around atomic functions ;-)
+	
+*/
+
+/*!
 	@page page_category_threading_sync Syncronisation Methods
 	@tableofcontents
 
@@ -1942,16 +2493,16 @@
 
 	<b>I am happy that you want to support this project!</b><br>
 	<br>
-	I created this entire project alone, so i really appreciate any kind of contributions.<br>
+	Right know i am creating this project alone, so i really appreciate any kind of contributions.<br>
 	<br>
-	There are several ways to help this project:<br>
-	- Test the library for any hardware/platform/compiler configuration you have access to and report the result -> This helps a lot!
+	So there are several ways to help this project:<br>
+	- Test the library for any hardware/platform/compiler configuration you have access to and report the result -> This helps the most!
 	- Report any bugs you find
-	- Improve this documentation by sending in new tutorials/examples, fix typos etc.
+	- Help me to improve this documentation by checking for typos, errors, etc.
 	- Send in pull-requests
 	- Write new demos/samples/examples
 	- Recommend this project
-	- **Send in feedback**
+	- **Send in feedback** -> https://fpl.handmade.network/forums
 
 	And lastly if you want to contact me for another reason, just drop a message in some way (Github issue, Private message, Mail, Community etc.).<br>
 	<br>
