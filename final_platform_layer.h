@@ -207,6 +207,7 @@ SOFTWARE.
 	- Fixed: [Win32] Forced compile error when compiling on < vista (FPL uses several features which requires vista or higher)
 	- Fixed: [Win32] fplGetOperatingSystemInfos had no WINAPI call defined for GetVersion prototype
 	- Fixed: [Alsa] fpl__AudioWaitForFramesAlsa was not compiling (commonAudio missing)
+    - Fixed: [X11] fplButtonState_Repeat was not handled in keyboard events
 	- New: [Win32/POSIX] Implemented fplFlushFile()
 	- New: [Win32/X11] Handle fplInitFlags_GameController to enable/disable game controllers
 	- New: [Win32/X11] Support for handling the OS event directly -> fpl_window_event_callback
@@ -6920,7 +6921,6 @@ fpl_internal void fpl__HandleKeyboardButtonEvent(fpl__PlatformWindowState *windo
 	if(force) {
 		windowState->keyStates[keyCode] = buttonState;
 	} else {
-		fplAssert(buttonState != fplButtonState_Repeat);
 		if(keyCode < fplArrayCount(windowState->keyStates)) {
 			if((buttonState == fplButtonState_Release) && (windowState->keyStates[keyCode] == fplButtonState_Release)) {
 				return;
