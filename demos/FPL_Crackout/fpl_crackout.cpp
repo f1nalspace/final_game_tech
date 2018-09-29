@@ -7,7 +7,7 @@ Description:
 	A breakout-like game based on FPL
 
 Requirements:
-	- C++ Compiler
+	- C++/11 Compiler
 	- Box2D
 	- Final Memory
 	- Final Framework
@@ -16,7 +16,10 @@ Author:
 	Torsten Spaete
 
 Changelog:
-    ## 2018-08-09
+	## 2018-09-24
+	- Reflect api changes in FPL 0.9.2
+
+	## 2018-08-09
     - Use IsDown() for launching the ball (More responsive)
     - Use actionDown and actionStart for menu instead "any"
     - Support analog paddle movement

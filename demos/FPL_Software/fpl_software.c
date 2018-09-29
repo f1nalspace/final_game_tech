@@ -7,13 +7,17 @@ Description:
 	Simple demo drawing random pixels with software graphics rendering
 
 Requirements:
-	No requirements
+	- C99 Compiler
+	- Final Platform Layer
 
 Author:
 	Torsten Spaete
 
 Changelog:
- 	## 2018-05-11:
+	## 2018-09-24
+	- Reflect api changes in FPL 0.9.2
+
+	## 2018-05-11:
  	- Added CMakeLists.txt
  	- Fixed Makefile was not working anymore
 
@@ -51,6 +55,8 @@ int main(int argc, char **args) {
 	if (fplPlatformInit(fplInitFlags_Video, &settings)) {
 		RandomSeries series = { 1337 };
 		while (fplWindowUpdate()) {
+			fplEvent ev;
+			while (fplPollEvent(&ev)) {}
 			fplVideoBackBuffer *backBuffer = fplGetVideoBackBuffer();
 			for (uint32_t y = 0; y < backBuffer->height; ++y) {
 				uint32_t *p = (uint32_t *)((uint8_t *)backBuffer->pixels + y * backBuffer->lineWidth);

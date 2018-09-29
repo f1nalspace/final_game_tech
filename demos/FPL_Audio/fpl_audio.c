@@ -8,12 +8,17 @@ Description:
 	Also it can play uncompressed PCM wave data with simple resampling support.
 
 Requirements:
-	- C-Runtime (sinf)
+	- C99 Compiler
+	- Final Platform Layer
 
 Author:
 	Torsten Spaete
 
 Changelog:
+	## 2018-09-24
+	- Reflect api changes in FPL 0.9.2
+	- Disable auto-play/stop of audio samples by default
+
 	## 2018-06-06
 	- Refactored files
 
@@ -51,6 +56,8 @@ Changelog:
 
 #define FINAL_AUDIOSYSTEM_IMPLEMENTATION
 #include <final_audiosystem.h>
+
+#define AUTOSTART_PLAYBACK 1
 
 static const float PI32 = 3.14159265359f;
 
@@ -98,40 +105,56 @@ static bool InitAudioData(AudioSystem *audioSys, const char *filePath) {
 int main(int argc, char **args) {
 	const char *filePath = (argc == 2) ? args[1] : fpl_null;
 
-	AudioSystem audioSys = FPL_ZERO_INIT;
+	AudioSystem audioSys = fplZeroInit;
 
 	//
 	// Settings
 	//
 	fplSettings settings = fplMakeDefaultSettings();
+
+	// Set audio device format
 	settings.audio.deviceFormat.type = fplAudioFormatType_S16;
 	settings.audio.deviceFormat.channels = 2;
-
 	//settings.audio.deviceFormat.sampleRate = 11025;
 	//settings.audio.deviceFormat.sampleRate = 22050;
 	settings.audio.deviceFormat.sampleRate = 44100;
 	//settings.audio.deviceFormat.sampleRate = 48000;
 
 	// Find audio device
+	settings.audio.startAuto = false;
+	settings.audio.stopAuto = false;
 	if(!fplPlatformInit(fplInitFlags_Audio, &settings)) {
 		return -1;
 	}
-
-	fplAudioDeviceInfo audioDeviceInfos[64] = FPL_ZERO_INIT;
+	fplAudioDeviceInfo audioDeviceInfos[64] = fplZeroInit;
 	uint32_t deviceCount = fplGetAudioDevices(audioDeviceInfos, fplArrayCount(audioDeviceInfos));
 	if(deviceCount > 0) {
+		// Use first audio device in settings
 		settings.audio.deviceInfo = audioDeviceInfos[0];
 		fplConsoleFormatOut("Using audio device: %s\n", settings.audio.deviceInfo.name);
 	}
 	fplPlatformRelease();
 
 	// Initialize the platform with audio enabled and the settings
+#if AUTOSTART_PLAYBACK
+	settings.audio.startAuto = true;
+	settings.audio.stopAuto = true;
+	settings.audio.clientReadCallback = AudioPlayback;
+	settings.audio.userData = &audioSys;
+#else
+	settings.audio.startAuto = false;
+	settings.audio.stopAuto = false;
+	settings.audio.clientReadCallback = fpl_null;
+	settings.audio.userData = fpl_null;
+#endif
 	if(!fplPlatformInit(fplInitFlags_Audio, &settings)) {
 		return -1;
 	}
 
+#if !AUTOSTART_PLAYBACK
 	// You can overwrite the client read callback and user data if you want to
 	fplSetAudioClientReadCallback(AudioPlayback, &audioSys);
+#endif
 
 	// Init audio data
 	if(InitAudioData(&audioSys, filePath)) {

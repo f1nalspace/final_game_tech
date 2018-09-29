@@ -9,6 +9,7 @@ Description:
 
 Requirements:
 	- C++ Compiler
+	- Final Platform Layer
 	- Final Dynamic OpenGL
 	- STB_image
 	- STB_truetype
@@ -17,6 +18,9 @@ Author:
 	Torsten Spaete
 
 Changelog:
+	## 2018-09-24
+	- Reflect api changes in FPL 0.9.2
+
 	## 2018-08-19:
 	- Gamepad reading and drawing
 
@@ -291,7 +295,7 @@ static bool LoadFontFromMemory(const void *data, const size_t dataSize, const ui
 
 	fplClearStruct(outFont);
 
-	stbtt_fontinfo fontInfo = FPL_ZERO_INIT;
+	stbtt_fontinfo fontInfo = fplZeroInit;
 	int fontOffset = stbtt_GetFontOffsetForIndex((const unsigned char *)data, fontIndex);
 
 	bool result = false;
@@ -1030,7 +1034,7 @@ static void InitApp(AppState *appState) {
 	appState->gamepadMaskTexture = LoadTexture(dataPath, "gamepad_mask.png");
 	appState->mouseTexture = LoadTexture(dataPath, "mouse.png");
 	appState->usePolling = 1;
-	appState->renderMode = RenderMode::Gamepad;
+	appState->renderMode = RenderMode::KeyboardAndMouse;
 }
 
 static void ReleaseApp(AppState *appState) {

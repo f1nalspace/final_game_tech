@@ -7,15 +7,19 @@ Description:
 	This demo showcases the initialization and rendering of legacy and modern OpenGL.
 
 Requirements:
-	No requirements
+	- C99 Compiler
+	- Final Platform Layer
 
 Author:
 	Torsten Spaete
 
 Changelog:
- 	## 2018-05-5:
- 	- Fixed CMakeLists to compile properly
- 	- Fixed Makefile to compile properly
+	## 2018-09-24
+	- Reflect api changes in FPL 0.9.2
+
+	## 2018-05-5:
+	- Fixed CMakeLists to compile properly
+	- Fixed Makefile to compile properly
 
 	## 2018-04-23:
 	- Initial creation of this description block
@@ -163,7 +167,12 @@ static void RunLegacy() {
 	fplConsoleOut("Running legacy opengl\n");
 
 	glClearColor(0.39f, 0.58f, 0.93f, 1.0f);
-	while (fplWindowUpdate()) {
+	while(fplWindowUpdate()) {
+		fplEvent ev;
+		while(fplPollEvent(&ev)) {
+
+		}
+
 		fplWindowSize windowArea;
 		fplAssert(fplGetWindowArea(&windowArea));
 		glViewport(0, 0, windowArea.width, windowArea.height);
@@ -186,11 +195,11 @@ static GLuint CreateShaderType(GLenum type, const char *source) {
 	glShaderSource(shaderId, 1, &source, NULL);
 	glCompileShader(shaderId);
 
-	char info[1024 * 10] = FPL_ZERO_INIT;
+	char info[1024 * 10] = fplZeroInit;
 
 	GLint compileResult;
 	glGetShaderiv(shaderId, GL_COMPILE_STATUS, &compileResult);
-	if (!compileResult) {
+	if(!compileResult) {
 		GLint infoLen;
 		glGetShaderiv(shaderId, GL_INFO_LOG_LENGTH, &infoLen);
 		fplAssert(infoLen <= fplArrayCount(info));
@@ -213,11 +222,11 @@ static GLuint CreateShaderProgram(const char *name, const char *vertexSource, co
 	glLinkProgram(programId);
 	glValidateProgram(programId);
 
-	char info[1024 * 10] = FPL_ZERO_INIT;
+	char info[1024 * 10] = fplZeroInit;
 
 	GLint linkResult;
 	glGetProgramiv(programId, GL_LINK_STATUS, &linkResult);
-	if (!linkResult) {
+	if(!linkResult) {
 		GLint infoLen;
 		glGetProgramiv(programId, GL_INFO_LOG_LENGTH, &infoLen);
 		fplAssert(infoLen <= fplArrayCount(info));
@@ -292,7 +301,10 @@ static bool RunModern() {
 	glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(float) * 2, NULL);
 
 	glClearColor(0.39f, 0.58f, 0.93f, 1.0f);
-	while (fplWindowUpdate()) {
+	while(fplWindowUpdate()) {
+		fplEvent ev;
+		while(fplPollEvent(&ev)) {}
+
 		fplWindowSize windowArea;
 		fplGetWindowArea(&windowArea);
 		glViewport(0, 0, windowArea.width, windowArea.height);
@@ -327,7 +339,7 @@ int main(int argc, char **args) {
 	fplCopyString("FPL Legacy OpenGL", settings.window.windowTitle, fplArrayCount(settings.window.windowTitle));
 	settings.video.graphics.opengl.compabilityFlags = fplOpenGLCompabilityFlags_Legacy;
 #endif
-	if (fplPlatformInit(fplInitFlags_Video, &settings)) {
+	if(fplPlatformInit(fplInitFlags_Video, &settings)) {
 
 		const char *version = (const char *)glGetString(GL_VERSION);
 		const char *vendor = (const char *)glGetString(GL_VENDOR);
@@ -336,15 +348,15 @@ int main(int argc, char **args) {
 		fplConsoleFormatOut("OpenGL vendor: %s\n", vendor);
 		fplConsoleFormatOut("OpenGL renderer: %s\n", renderer);
 
-	#if MODERN_OPENGL
+#if MODERN_OPENGL
 		RunModern();
-	#else
+#else
 		RunLegacy();
-	#endif
+#endif
 
 		fplPlatformRelease();
 		result = 0;
-	} else {
+} else {
 		result = -1;
 	}
 	return(result);

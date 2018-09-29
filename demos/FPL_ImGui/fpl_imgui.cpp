@@ -8,12 +8,16 @@ Description:
 
 Requirements:
 	- C++ Compiler
+	- Final Platform Layer
 	- ImGui v1.51 (Included in demo)
 
 Author:
 	Torsten Spaete
 
 Changelog:
+	## 2018-09-24
+	- Reflect api changes in FPL 0.9.2
+
 	## 2018-06-29
 	- Changed to use new keyboard/mouse button state
 
@@ -280,9 +284,7 @@ int main(int argc, char **args) {
 		double lastTime = fplGetTimeInSecondsHP();
 		float lastDeltaTime = 1.0f / 60.0f;
 
-		while (fplIsWindowRunning()) {
-			fplWindowUpdate();
-
+		while (fplWindowUpdate()) {
 			fplEvent event;
 			while (fplPollEvent(&event)) {
 				switch (event.type) {

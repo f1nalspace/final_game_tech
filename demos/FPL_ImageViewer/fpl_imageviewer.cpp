@@ -11,6 +11,7 @@ Description:
 
 Requirements:
 	- C++ Compiler :-( Just because to support R"()"
+	- Final Platform Layer
 	- Final Dynamic OpenGL
 	- STB_image
 
@@ -18,6 +19,10 @@ Author:
 	Torsten Spaete
 
 Changelog:
+	## v0.5.3
+	- Reflect api changes in FPL 0.9.2
+	- Preview is enabled by default
+
 	## v0.5.2
 	- Correction for api change in fplPlatformInit
 
@@ -155,7 +160,7 @@ typedef union Vec2f {
 } Vec2f;
 
 inline Vec2f V2f(const float x, const float y) {
-	Vec2f result = FPL_STRUCT_INIT(Vec2f, x, y);
+	Vec2f result = fplStructInit(Vec2f, x, y);
 	return(result);
 }
 
@@ -177,7 +182,7 @@ typedef union Vec3f {
 } Vec3f;
 
 inline Vec3f V3f(const float x, const float y, const float z) {
-	Vec3f result = FPL_STRUCT_INIT(Vec3f, x, y, z);
+	Vec3f result = fplStructInit(Vec3f, x, y, z);
 	return(result);
 }
 
@@ -196,7 +201,7 @@ typedef union Vec4f {
 } Vec4f;
 
 inline Vec4f V4f(const float x, const float y, const float z, const float w) {
-	Vec4f result = FPL_STRUCT_INIT(Vec4f, x, y, z, w);
+	Vec4f result = fplStructInit(Vec4f, x, y, z, w);
 	return(result);
 }
 
@@ -647,7 +652,7 @@ int EofPictureStreamCallback(void *user) {
 static void LoadPictureThreadProc(const fplThreadHandle *thread, void *data) {
 	PictureLoadThread *loadThread = (PictureLoadThread *)data;
 	ViewerState *state = loadThread->state;
-	volatile LoadQueueValue valueToLoad = FPL_ZERO_INIT;
+	volatile LoadQueueValue valueToLoad = fplZeroInit;
 	volatile bool hasValue = false;
 	while(!loadThread->shutdown) {
 		fplConditionWait(&loadThread->condition, &loadThread->mutex, 50);
@@ -883,9 +888,6 @@ static void ParseParameters(ViewerParameters *params, const int argc, char **arg
 			}
 			const char param = p[0];
 			switch(param) {
-				case 'p':
-					params->preview = true;
-					break;
 				case 'r':
 					params->recursive = true;
 					break;
@@ -942,7 +944,7 @@ static GLuint CreateShaderType(GLenum type, const char *name, const char *source
 	glShaderSource(shaderId, 1, &source, NULL);
 	glCompileShader(shaderId);
 
-	char info[1024 * 10] = FPL_ZERO_INIT;
+	char info[1024 * 10] = fplZeroInit;
 
 	GLint compileResult;
 	glGetShaderiv(shaderId, GL_COMPILE_STATUS, &compileResult);
@@ -975,7 +977,7 @@ static GLuint CreateShaderProgram(const char *name, const char *vertexSource, co
 	glLinkProgram(programId);
 	glValidateProgram(programId);
 
-	char info[1024 * 10] = FPL_ZERO_INIT;
+	char info[1024 * 10] = fplZeroInit;
 
 	GLint linkResult;
 	glGetProgramiv(programId, GL_LINK_STATUS, &linkResult);
@@ -1057,7 +1059,7 @@ static bool Init(ViewerState *state) {
 	// Query GL version
 	state->features.openGLMajor = 1;
 	const char *versionStr = (const char *)glGetString(GL_VERSION);
-	int versions[2] = FPL_ZERO_INIT;
+	int versions[2] = fplZeroInit;
 	if(versionStr != fpl_null) {
 		const char *p = versionStr;
 		for(int i = 0; i < 2; ++i) {
@@ -1124,8 +1126,8 @@ static bool Init(ViewerState *state) {
 	if(state->features.openGLMajor < 2) {
 		glMatrixMode(GL_MODELVIEW);
 		state->filterCount = 0;
-		state->filters[state->filterCount++] = FPL_STRUCT_INIT(Filter, "Nearest", 0);
-		state->filters[state->filterCount++] = FPL_STRUCT_INIT(Filter, "Bilinear", 0);
+		state->filters[state->filterCount++] = fplStructInit(Filter, "Nearest", 0);
+		state->filters[state->filterCount++] = fplStructInit(Filter, "Bilinear", 0);
 		state->activeFilter = state->filterCount - 1;
 	} else {
 		if(state->features.srgbFrameBuffer) {
@@ -1138,21 +1140,21 @@ static bool Init(ViewerState *state) {
 		state->colorShaderProgram = CreateShaderProgram("Color", ColorVertexSource, ColorFragmentSource);
 
 		state->filterCount = 0;
-		state->filters[state->filterCount++] = FPL_STRUCT_INIT(Filter, "Nearest", CreateShaderProgram("Nearest", FilterVertexSource, NoFilterFragmentSource(samplerType).c_str()));
-		state->filters[state->filterCount++] = FPL_STRUCT_INIT(Filter, "Bilinear", CreateShaderProgram("Bilinear", FilterVertexSource, BilinearFilterFragmentSource(samplerType).c_str()));
-		state->filters[state->filterCount++] = FPL_STRUCT_INIT(Filter, "Bicubic (Triangular)", CreateShaderProgram("Bicubic (Triangular)", FilterVertexSource, BicubicTriangularFilterFragmentSource(samplerType).c_str()));
-		state->filters[state->filterCount++] = FPL_STRUCT_INIT(Filter, "Bicubic (Bell)", CreateShaderProgram("Bicubic (Bell)", FilterVertexSource, BicubicBellFilterFragmentSource(samplerType).c_str()));
-		state->filters[state->filterCount++] = FPL_STRUCT_INIT(Filter, "Bicubic (B-Spline)", CreateShaderProgram("Bicubic (B-Spline)", FilterVertexSource, BicubicBSplineFilterFragmentSource(samplerType).c_str()));
-		state->filters[state->filterCount++] = FPL_STRUCT_INIT(Filter, "Bicubic (CatMull-Rom)", CreateShaderProgram("Bicubic (CatMull-Rom)", FilterVertexSource, BicubicCatMullRowFilterFragmentSource(samplerType).c_str()));
-		state->filters[state->filterCount++] = FPL_STRUCT_INIT(Filter, "Lanczos3", CreateShaderProgram("Lanczos3", FilterVertexSource, Lanczos3FilterFragmentSource(samplerType).c_str()));
+		state->filters[state->filterCount++] = fplStructInit(Filter, "Nearest", CreateShaderProgram("Nearest", FilterVertexSource, NoFilterFragmentSource(samplerType).c_str()));
+		state->filters[state->filterCount++] = fplStructInit(Filter, "Bilinear", CreateShaderProgram("Bilinear", FilterVertexSource, BilinearFilterFragmentSource(samplerType).c_str()));
+		state->filters[state->filterCount++] = fplStructInit(Filter, "Bicubic (Triangular)", CreateShaderProgram("Bicubic (Triangular)", FilterVertexSource, BicubicTriangularFilterFragmentSource(samplerType).c_str()));
+		state->filters[state->filterCount++] = fplStructInit(Filter, "Bicubic (Bell)", CreateShaderProgram("Bicubic (Bell)", FilterVertexSource, BicubicBellFilterFragmentSource(samplerType).c_str()));
+		state->filters[state->filterCount++] = fplStructInit(Filter, "Bicubic (B-Spline)", CreateShaderProgram("Bicubic (B-Spline)", FilterVertexSource, BicubicBSplineFilterFragmentSource(samplerType).c_str()));
+		state->filters[state->filterCount++] = fplStructInit(Filter, "Bicubic (CatMull-Rom)", CreateShaderProgram("Bicubic (CatMull-Rom)", FilterVertexSource, BicubicCatMullRowFilterFragmentSource(samplerType).c_str()));
+		state->filters[state->filterCount++] = fplStructInit(Filter, "Lanczos3", CreateShaderProgram("Lanczos3", FilterVertexSource, Lanczos3FilterFragmentSource(samplerType).c_str()));
 		state->activeFilter = state->filterCount - 1;
 
 		CheckGL(true);
 
-		state->quadVertices[0] = FPL_STRUCT_INIT(Vertex, V4f(1.0f, 1.0f, 0.0f, 1.0f), V2f(1.0f, 1.0f));
-		state->quadVertices[1] = FPL_STRUCT_INIT(Vertex, V4f(-1.0f, 1.0f, 0.0f, 1.0f), V2f(0.0f, 1.0f));
-		state->quadVertices[2] = FPL_STRUCT_INIT(Vertex, V4f(-1.0f, -1.0f, 0.0f, 1.0f), V2f(0.0f, 0.0f));
-		state->quadVertices[3] = FPL_STRUCT_INIT(Vertex, V4f(1.0f, -1.0f, 0.0f, 1.0f), V2f(1.0f, 0.0f));
+		state->quadVertices[0] = fplStructInit(Vertex, V4f(1.0f, 1.0f, 0.0f, 1.0f), V2f(1.0f, 1.0f));
+		state->quadVertices[1] = fplStructInit(Vertex, V4f(-1.0f, 1.0f, 0.0f, 1.0f), V2f(0.0f, 1.0f));
+		state->quadVertices[2] = fplStructInit(Vertex, V4f(-1.0f, -1.0f, 0.0f, 1.0f), V2f(0.0f, 0.0f));
+		state->quadVertices[3] = fplStructInit(Vertex, V4f(1.0f, -1.0f, 0.0f, 1.0f), V2f(1.0f, 0.0f));
 
 		state->quadIndices[0] = 0;
 		state->quadIndices[1] = 1;
@@ -1683,7 +1685,7 @@ int main(int argc, char **argv) {
 		fplPlatformRelease();
 	}
 
-	fplLogSettings logSettings = FPL_ZERO_INIT;
+	fplLogSettings logSettings = fplZeroInit;
 	logSettings.maxLevel = fplLogLevel_All;
 	logSettings.writers[0].flags = fplLogWriterFlags_Custom;
 	logSettings.writers[0].custom.callback = LogCallbackFunc;
@@ -1691,7 +1693,8 @@ int main(int argc, char **argv) {
 
 	flogWrite("Startup %s", VER_PRODUCTNAME_STR);
 
-	ViewerState state = FPL_ZERO_INIT;
+	ViewerState state = fplZeroInit;
+	state.params.preview = true;
 	if(argc >= 2) {
 		ParseParameters(&state.params, argc - 1, argv + 1);
 	}

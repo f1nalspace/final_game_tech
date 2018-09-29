@@ -3,4 +3,7 @@
   <ItemGroup>
     <ClCompile Include="fmem_test.c" />
   </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="..\..\final_memory.h" />
+  </ItemGroup>
 </Project>

@@ -7,13 +7,17 @@ Description:
 	This demo is used to test all the things. It is basically a unit-test.
 
 Requirements:
-	- C++
+	- C++ Compiler
 	- Final Platform Layer
 
 Author:
 	Torsten Spaete
 
 Changelog:
+	## 2018-09-24
+	- Reflect api changes in FPL 0.9.2
+	- Transition of test framework from C++ to C99
+
 	## 2018-08-10
 	- Correction for api change in fplPlatformInit
 
@@ -301,28 +305,28 @@ static void TestMacros() {
 	}
 
 	//
-	// FPL_KILOBYTES, FPL_MEGABYTES, ...
+	// fplKiloBytes, fplMegaBytes, ...
 	//
 	{
 		ftMsg("[FPL_KILOBYTES] Test 0 KB \n");
-		ftAssertSizeEquals(0, FPL_KILOBYTES(0));
+		ftAssertSizeEquals(0, fplKiloBytes(0));
 		ftMsg("[FPL_KILOBYTES] Test 8 KB \n");
-		ftAssertSizeEquals(8192, FPL_KILOBYTES(8));
+		ftAssertSizeEquals(8192, fplKiloBytes(8));
 		ftMsg("[FPL_MEGABYTES] Test 0 MB \n");
-		ftAssertSizeEquals(0, FPL_MEGABYTES(0));
+		ftAssertSizeEquals(0, fplMegaBytes(0));
 		ftMsg("[FPL_MEGABYTES] Test 8 MB \n");
-		ftAssertSizeEquals(8388608, FPL_MEGABYTES(8));
+		ftAssertSizeEquals(8388608, fplMegaBytes(8));
 		ftMsg("[FPL_GIGABYTES] Test 0 GB \n");
-		ftAssertSizeEquals(0, FPL_GIGABYTES(0));
+		ftAssertSizeEquals(0, fplGigaBytes(0));
 		ftMsg("[FPL_GIGABYTES] Test 1 GB \n");
-		ftAssertSizeEquals(1073741824, FPL_GIGABYTES(1));
+		ftAssertSizeEquals(1073741824, fplGigaBytes(1));
 #if defined(FT_ARCH_X64)
 		ftMsg("[FPL_GIGABYTES] Test 4 GB \n");
-		ftAssertSizeEquals(4294967296, FPL_GIGABYTES(4));
+		ftAssertSizeEquals(4294967296, fplGigaBytes(4));
 		ftMsg("[FPL_TERABYTES] Test 0 TB \n");
-		ftAssertSizeEquals(0, FPL_TERABYTES(0));
+		ftAssertSizeEquals(0, fplTeraBytes(0));
 		ftMsg("[FPL_TERABYTES] Test 2 TB \n");
-		ftAssertSizeEquals(2199023255552, FPL_TERABYTES(2));
+		ftAssertSizeEquals(2199023255552, fplTeraBytes(2));
 #endif
 	}
 }
@@ -330,7 +334,7 @@ static void TestMacros() {
 static void TestMemory() {
 	ftMsg("Test normal allocation and deallocation\n");
 	{
-		size_t memSize = FPL_KILOBYTES(42);
+		size_t memSize = fplKiloBytes(42);
 		uint8_t *mem = (uint8_t *)fplMemoryAllocate(memSize);
 		for(size_t i = 0; i < memSize; ++i) {
 			uint8_t value = *mem++;
@@ -339,7 +343,7 @@ static void TestMemory() {
 		fplMemoryFree(mem);
 	}
 	{
-		size_t memSize = FPL_MEGABYTES(512);
+		size_t memSize = fplMegaBytes(512);
 		void *mem = fplMemoryAllocate(memSize);
 		ftIsNotNull(mem);
 		fplMemoryFree(mem);
@@ -347,7 +351,7 @@ static void TestMemory() {
 
 	ftMsg("Test aligned allocation and deallocation\n");
 	{
-		size_t memSize = FPL_KILOBYTES(42);
+		size_t memSize = fplKiloBytes(42);
 		uint8_t *mem = (uint8_t *)fplMemoryAlignedAllocate(memSize, 16);
 		for(size_t i = 0; i < memSize; ++i) {
 			uint8_t value = *(mem + i);
@@ -356,7 +360,7 @@ static void TestMemory() {
 		fplMemoryAlignedFree(mem);
 	}
 	{
-		size_t memSize = FPL_MEGABYTES(512);
+		size_t memSize = fplMegaBytes(512);
 		void *mem = fplMemoryAlignedAllocate(memSize, 16);
 		ftIsNotNull(mem);
 		fplMemoryAlignedFree(mem);

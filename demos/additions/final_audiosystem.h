@@ -148,7 +148,7 @@ extern AudioSource *AudioSystemAllocateSource(AudioSystem *audioSys, const uint3
 
 extern AudioSource *AudioSystemLoadFileSource(AudioSystem *audioSys, const char *filePath) {
 	// @NOTE(final): For now we only support wave files
-	LoadedWave loadedWave = FPL_ZERO_INIT;
+	LoadedWave loadedWave = fplZeroInit;
 	if(!LoadWaveFromFile(filePath, &loadedWave)) {
 		return fpl_null;
 	}

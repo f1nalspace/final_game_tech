@@ -18,6 +18,9 @@ Author:
 	Torsten Spaete
 
 Changelog:
+	## 2018-09-24
+	- Reflect api changes in FPL 0.9.2
+
 	## 2018-08-06
 	- Do not use fplMemoryAllocate anymore, use fmemMemoryBlocks from game memory
 	- Removed enemy prediction flags

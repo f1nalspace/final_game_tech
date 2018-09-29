@@ -114,7 +114,7 @@ extern bool LoadWaveFromBuffer(const uint8_t *buffer, const size_t bufferSize, L
 	bool result = false;
 	fplMemoryClear(outWave, sizeof(*outWave));
 
-	WaveFormatEx waveFormat = FPL_ZERO_INIT;
+	WaveFormatEx waveFormat = fplZeroInit;
 
 	size_t bufferPosition = sizeof(*header);
 	const WaveChunk *chunk = (const WaveChunk *)(buffer + bufferPosition);

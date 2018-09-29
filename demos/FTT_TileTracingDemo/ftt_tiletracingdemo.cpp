@@ -11,13 +11,16 @@ Description:
 	such as Box2D.
 
 Requirements:
-	- C++
-	- Final Platform Layer v0.7+
+	- C++ Compiler
+	- Final Platform Layer
 
 Author:
 	Torsten Spaete
 
 Changelog:
+	## 2018-09-24
+	- Reflect api changes in FPL 0.9.2
+
 	## 2018-06-29
 	- Changed to use new keyboard/mouse button state
 

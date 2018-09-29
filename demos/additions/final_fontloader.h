@@ -154,7 +154,7 @@ extern bool LoadFontFromMemory(const void *data, const size_t dataSize, const ui
 
 	fplClearStruct(outFont);
 
-	stbtt_fontinfo fontInfo = FPL_ZERO_INIT;
+	stbtt_fontinfo fontInfo = fplZeroInit;
 	int fontOffset = stbtt_GetFontOffsetForIndex((const unsigned char *)data, fontIndex);
 
 	bool result = false;
@@ -164,13 +164,13 @@ extern bool LoadFontFromMemory(const void *data, const size_t dataSize, const ui
 #if FINAL_FONTLOADER_BETTERQUALITY
 		stbtt_packedchar *packedChars = (stbtt_packedchar *)fplMemoryAllocate(charCount * sizeof(stbtt_packedchar));
 
-		stbtt_pack_range characterRange = FPL_ZERO_INIT;
+		stbtt_pack_range characterRange = fplZeroInit;
 		characterRange.font_size = fontSize;
 		characterRange.num_chars = charCount;
 		characterRange.first_unicode_codepoint_in_range = firstChar;
 		characterRange.chardata_for_range = packedChars;
 
-		stbtt_pack_context packContext = FPL_ZERO_INIT;
+		stbtt_pack_context packContext = fplZeroInit;
 		stbtt_pack_range *ranges[1] = {
 			&characterRange,
 		};

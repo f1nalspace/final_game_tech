@@ -7,8 +7,9 @@ Description:
 	Custom FFmpeg Media Player Demo based on FPL and ffplay.c
 
 Requirements:
-	- C++ Compiler
+	- C++/11 Compiler
 	- Platform x64 / Win32
+	- Final Platform Layer
 	- ffmpeg-4.0-win64-shared (http://ffmpeg.zeranoe.com/builds/)
 	- ffmpeg-4.0-win64-dev (http://ffmpeg.zeranoe.com/builds/)
 
@@ -16,6 +17,10 @@ Author:
 	Torsten Spaete
 
 Changelog:
+	## 2018-09-24
+	- Changed all inline functions to static
+	- Reflect api changes in FPL 0.9.2
+
 	## 2018-06-29
 	- Changed to use new keyboard/mouse button state
 
@@ -220,7 +225,7 @@ struct MemoryStats {
 
 static MemoryStats globalMemStats = {};
 
-inline void PrintMemStats() {
+static void PrintMemStats() {
 	int32_t allocatedPackets = fplAtomicLoadS32(&globalMemStats.allocatedPackets);
 	int32_t usedPackets = fplAtomicLoadS32(&globalMemStats.usedPackets);
 	int32_t allocatedFrames = fplAtomicLoadS32(&globalMemStats.allocatedFrames);
@@ -231,13 +236,14 @@ inline void PrintMemStats() {
 //
 // Constants
 //
+
 // Max number of frames in the queues
 constexpr uint32_t MAX_VIDEO_FRAME_QUEUE_COUNT = 4;
 constexpr uint32_t MAX_AUDIO_FRAME_QUEUE_COUNT = 8;
 constexpr uint32_t MAX_FRAME_QUEUE_COUNT = fplMax(MAX_AUDIO_FRAME_QUEUE_COUNT, MAX_VIDEO_FRAME_QUEUE_COUNT);
 
 // Total size of data from all packet queues
-constexpr uint64_t MAX_PACKET_QUEUE_SIZE = FPL_MEGABYTES(16);
+constexpr uint64_t MAX_PACKET_QUEUE_SIZE = fplMegaBytes(16);
 
 // Min number of packet frames in a single queue
 constexpr uint32_t MIN_PACKET_FRAMES = 25;
@@ -265,6 +271,7 @@ constexpr double DEFAULT_REFRESH_RATE = 0.01;
 constexpr int AV_AUDIO_DIFF_AVG_NB = 20;
 // Maximum audio speed change to get correct sync
 constexpr int AV_SAMPLE_CORRECTION_PERCENT_MAX = 10;
+
 //
 // Packet Queue
 //
@@ -288,13 +295,13 @@ struct PacketQueue {
 	int32_t serial;
 };
 
-inline bool IsFlushPacket(PacketList *packet) {
+static bool IsFlushPacket(PacketList *packet) {
 	assert(packet != nullptr);
 	bool result = (packet->packet.data == (uint8_t *)&globalFlushPacket);
 	return(result);
 }
 
-inline PacketList *AllocatePacket(PacketQueue &queue) {
+static PacketList *AllocatePacket(PacketQueue &queue) {
 	PacketList *packet = (PacketList *)ffmpeg.av_mallocz(sizeof(PacketList));
 	if (packet == nullptr) {
 		return nullptr;
@@ -303,24 +310,24 @@ inline PacketList *AllocatePacket(PacketQueue &queue) {
 	return(packet);
 }
 
-inline void DestroyPacket(PacketQueue &queue, PacketList *packet) {
+static void DestroyPacket(PacketQueue &queue, PacketList *packet) {
 	ffmpeg.av_freep(packet);
 	fplAtomicFetchAndAddS32(&globalMemStats.allocatedPackets, -1);
 }
 
-inline void ReleasePacketData(PacketList *packet) {
+static void ReleasePacketData(PacketList *packet) {
 	if (!IsFlushPacket(packet)) {
 		ffmpeg.av_packet_unref(&packet->packet);
 	}
 }
 
-inline void ReleasePacket(PacketQueue &queue, PacketList *packet) {
+static void ReleasePacket(PacketQueue &queue, PacketList *packet) {
 	ReleasePacketData(packet);
 	DestroyPacket(queue, packet);
 	fplSignalSet(&queue.freeSignal);
 }
 
-inline bool AquirePacket(PacketQueue &queue, PacketList *&packet) {
+static bool AquirePacket(PacketQueue &queue, PacketList *&packet) {
 	bool result = false;
 	packet = AllocatePacket(queue);
 	if (packet != nullptr) {
@@ -352,7 +359,7 @@ static void DestroyPacketQueue(PacketQueue &queue) {
 	fplMutexDestroy(&queue.lock);
 }
 
-inline bool InitPacketQueue(PacketQueue &queue) {
+static bool InitPacketQueue(PacketQueue &queue) {
 	if (!fplMutexInit(&queue.lock)) {
 		return false;
 	}
@@ -365,7 +372,7 @@ inline bool InitPacketQueue(PacketQueue &queue) {
 	return true;
 }
 
-inline void PushPacket(PacketQueue &queue, PacketList *packet) {
+static void PushPacket(PacketQueue &queue, PacketList *packet) {
 	fplMutexLock(&queue.lock);
 	{
 		packet->next = nullptr;
@@ -390,7 +397,7 @@ inline void PushPacket(PacketQueue &queue, PacketList *packet) {
 	fplMutexUnlock(&queue.lock);
 }
 
-inline bool PopPacket(PacketQueue &queue, PacketList *&packet) {
+static bool PopPacket(PacketQueue &queue, PacketList *&packet) {
 	bool result = false;
 	fplMutexLock(&queue.lock);
 	{
@@ -414,7 +421,7 @@ inline bool PopPacket(PacketQueue &queue, PacketList *&packet) {
 	return(result);
 }
 
-inline bool PushNullPacket(PacketQueue &queue, int streamIndex) {
+static bool PushNullPacket(PacketQueue &queue, int streamIndex) {
 	bool result = false;
 	PacketList *packet = nullptr;
 	if (AquirePacket(queue, packet)) {
@@ -428,7 +435,7 @@ inline bool PushNullPacket(PacketQueue &queue, int streamIndex) {
 	return(result);
 }
 
-inline bool PushFlushPacket(PacketQueue &queue) {
+static bool PushFlushPacket(PacketQueue &queue) {
 	bool result = false;
 	PacketList *packet = nullptr;
 	if (AquirePacket(queue, packet)) {
@@ -439,7 +446,7 @@ inline bool PushFlushPacket(PacketQueue &queue) {
 	return(result);
 }
 
-inline void StartPacketQueue(PacketQueue &queue) {
+static void StartPacketQueue(PacketQueue &queue) {
 	fplMutexLock(&queue.lock);
 	assert(PushFlushPacket(queue));
 	fplMutexUnlock(&queue.lock);
@@ -460,19 +467,17 @@ struct Frame {
 	bool isUploaded;
 };
 
-// @NOTE(final): This is a single producer single consumer fast ringbuffer queue.
-// The read position can never pass the write position and vice versa.
-inline AVFrame *AllocateFrame() {
+static AVFrame *AllocateFrame() {
 	AVFrame *result = ffmpeg.av_frame_alloc();
 	fplAtomicFetchAndAddS32(&globalMemStats.allocatedFrames, 1);
 	return(result);
 }
 
-inline void FreeFrameData(Frame *frame) {
+static void FreeFrameData(Frame *frame) {
 	ffmpeg.av_frame_unref(frame->frame);
 }
 
-inline void FreeFrame(Frame *frame) {
+static void FreeFrame(Frame *frame) {
 	FreeFrameData(frame);
 	ffmpeg.av_frame_free(&frame->frame);
 }
@@ -599,6 +604,9 @@ static int32_t GetFrameQueueRemainingCount(const FrameQueue &queue) {
 	return queue.count - queue.readIndexShown;
 }
 
+//
+// Media
+//
 struct MediaStream {
 	AVStream *stream;
 	AVCodecContext *codecContext;
@@ -645,17 +653,20 @@ static void DestroyReader(ReaderContext &reader) {
 static void StopReader(ReaderContext &reader) {
 	reader.stopRequest = 1;
 	fplSignalSet(&reader.stopSignal);
-	fplThreadWaitForOne(reader.thread, UINT32_MAX);
+	fplThreadWaitForOne(reader.thread, FPL_TIMEOUT_INFINITE);
 	fplThreadTerminate(reader.thread);
 	reader.thread = nullptr;
 }
 
-static void StartReader(ReaderContext &reader, fpl_run_thread_function *readerThreadFunc, void *state) {
+static void StartReader(ReaderContext &reader, fpl_run_thread_callback *readerThreadFunc, void *state) {
 	reader.stopRequest = 0;
 	assert(reader.thread == nullptr);
 	reader.thread = fplThreadCreate(readerThreadFunc, state);
 }
 
+//
+// Decoder
+//
 struct PlayerState;
 struct Decoder {
 	PacketQueue packetsQueue;
@@ -712,7 +723,7 @@ static void DestroyDecoder(Decoder &decoder) {
 	fplMutexDestroy(&decoder.lock);
 }
 
-static void StartDecoder(Decoder &decoder, fpl_run_thread_function *decoderThreadFunc) {
+static void StartDecoder(Decoder &decoder, fpl_run_thread_callback *decoderThreadFunc) {
 	StartPacketQueue(decoder.packetsQueue);
 	assert(decoder.thread == nullptr);
 	decoder.thread = fplThreadCreate(decoderThreadFunc, &decoder);
@@ -721,7 +732,7 @@ static void StartDecoder(Decoder &decoder, fpl_run_thread_function *decoderThrea
 static void StopDecoder(Decoder &decoder) {
 	decoder.stopRequest = 1;
 	fplSignalSet(&decoder.stopSignal);
-	fplThreadWaitForOne(decoder.thread, UINT32_MAX);
+	fplThreadWaitForOne(decoder.thread, FPL_TIMEOUT_INFINITE);
 	fplThreadTerminate(decoder.thread);
 	decoder.thread = nullptr;
 	FlushPacketQueue(decoder.packetsQueue);
@@ -749,6 +760,52 @@ enum class AVSyncType {
 	VideoMaster,
 	ExternalClock,
 };
+
+static double GetClock(const Clock &clock) {
+	if (*clock.queueSerial != clock.serial) {
+		return NAN;
+	}
+	double result;
+	if (clock.isPaused) {
+		result = clock.pts;
+	} else {
+		double time = ffmpeg.av_gettime_relative() / (double)AV_TIME_BASE;
+		result = clock.ptsDrift + time - (time - clock.lastUpdated) * (1.0 - clock.speed);
+	}
+	return(result);
+}
+
+static void SetClockAt(Clock &clock, const double pts, const int32_t serial, const double time) {
+	clock.pts = pts;
+	clock.lastUpdated = time;
+	clock.ptsDrift = clock.pts - time;
+	clock.serial = serial;
+}
+
+static void SetClock(Clock &clock, const double pts, const int32_t serial) {
+	double time = ffmpeg.av_gettime_relative() / (double)AV_TIME_BASE;
+	SetClockAt(clock, pts, serial, time);
+}
+
+static void SetClockSpeed(Clock &clock, const double speed) {
+	SetClock(clock, GetClock(clock), clock.serial);
+	clock.speed = speed;
+}
+
+static void InitClock(Clock &clock, int32_t *queueSerial) {
+	clock.speed = 1.0;
+	clock.isPaused = false;
+	clock.queueSerial = queueSerial;
+	SetClock(clock, NAN, -1);
+}
+
+static void SyncClockToSlave(Clock &c, const Clock &slave) {
+	double clock = GetClock(c);
+	double slaveClock = GetClock(slave);
+	if (!isnan(slaveClock) && (isnan(clock) || fabs(clock - slaveClock) > AV_NOSYNC_THRESHOLD)) {
+		SetClock(c, slaveClock, slave.serial);
+	}
+}
 
 //
 // Video
@@ -825,7 +882,7 @@ static bool InitTexture(Texture &texture, const uint32_t w, const uint32_t h, co
 	return true;
 }
 
-inline uint8_t *LockTexture(Texture &texture) {
+static uint8_t *LockTexture(Texture &texture) {
 	uint8_t *result;
 
 #if USE_HARDWARE_RENDERING
@@ -844,7 +901,7 @@ inline uint8_t *LockTexture(Texture &texture) {
 	return(result);
 }
 
-inline void UnlockTexture(Texture &texture) {
+static void UnlockTexture(Texture &texture) {
 #if USE_HARDWARE_RENDERING
 #	if USE_GL_PBO
 	glUnmapBuffer(GL_PIXEL_UNPACK_BUFFER);
@@ -861,7 +918,7 @@ inline void UnlockTexture(Texture &texture) {
 #endif
 }
 
-inline void DestroyTexture(Texture &texture) {
+static void DestroyTexture(Texture &texture) {
 #if USE_HARDWARE_RENDERING
 #	if !USE_GL_PBO
 	MemoryFree(texture.data);
@@ -893,7 +950,7 @@ struct VideoContext {
 	uint32_t targetTextureCount;
 };
 
-inline void FlipSourcePicture(uint8_t *srcData[8], int srcLineSize[8], int height) {
+static void FlipSourcePicture(uint8_t *srcData[8], int srcLineSize[8], int height) {
 	int h0 = srcLineSize[0];
 	for (int i = 0; i < 8; ++i) {
 		int hi = srcLineSize[i];
@@ -996,6 +1053,66 @@ struct AudioContext {
 	uint32_t conversionAudioFrameIndex;
 };
 
+static AVSampleFormat MapAudioFormatType(const fplAudioFormatType format) {
+	// @TODO(final): Support planar formats as well
+	switch (format) {
+		case fplAudioFormatType_U8:
+			return AVSampleFormat::AV_SAMPLE_FMT_U8;
+		case fplAudioFormatType_S16:
+			return AVSampleFormat::AV_SAMPLE_FMT_S16;
+		case fplAudioFormatType_S32:
+			return AVSampleFormat::AV_SAMPLE_FMT_S32;
+		case fplAudioFormatType_F32:
+			return AVSampleFormat::AV_SAMPLE_FMT_FLT;
+		case fplAudioFormatType_F64:
+			return AVSampleFormat::AV_SAMPLE_FMT_DBL;
+		default:
+			return AVSampleFormat::AV_SAMPLE_FMT_NONE;
+	}
+}
+
+static fplAudioFormatType MapAVSampleFormat(const AVSampleFormat format) {
+	switch (format) {
+		case AV_SAMPLE_FMT_U8:
+		case AV_SAMPLE_FMT_U8P:
+			return fplAudioFormatType_U8;
+		case AV_SAMPLE_FMT_S16:
+		case AV_SAMPLE_FMT_S16P:
+			return fplAudioFormatType_S16;
+		case AV_SAMPLE_FMT_S32:
+		case AV_SAMPLE_FMT_S32P:
+			return fplAudioFormatType_S32;
+		case AV_SAMPLE_FMT_S64:
+		case AV_SAMPLE_FMT_S64P:
+			return fplAudioFormatType_S64;
+		case AV_SAMPLE_FMT_FLT:
+		case AV_SAMPLE_FMT_FLTP:
+			return fplAudioFormatType_F32;
+		case AV_SAMPLE_FMT_DBL:
+		case AV_SAMPLE_FMT_DBLP:
+			return fplAudioFormatType_F64;
+		default:
+			return fplAudioFormatType_None;
+	}
+}
+
+static bool IsPlanarAVSampleFormat(const AVSampleFormat format) {
+	switch (format) {
+		case AV_SAMPLE_FMT_U8P:
+		case AV_SAMPLE_FMT_S16P:
+		case AV_SAMPLE_FMT_S32P:
+		case AV_SAMPLE_FMT_S64P:
+		case AV_SAMPLE_FMT_FLTP:
+		case AV_SAMPLE_FMT_DBLP:
+			return true;
+		default:
+			return false;
+	}
+}
+
+//
+// Player
+//
 struct PlayerPosition {
 	bool isValid;
 	int64_t value;
@@ -1012,7 +1129,7 @@ struct PlayerSettings {
 	bool isAudioDisabled;
 };
 
-inline void InitPlayerSettings(PlayerSettings &settings) {
+static void InitPlayerSettings(PlayerSettings &settings) {
 	settings.startTime = {};
 	settings.duration = {};
 	settings.frameDrop = 1;
@@ -1057,75 +1174,21 @@ struct PlayerState {
 	bool isFullscreen;
 };
 
-inline void PutPacketBackToReader(ReaderContext &reader, PacketList *packet) {
+//
+// Utils
+//
+static void PutPacketBackToReader(ReaderContext &reader, PacketList *packet) {
 	ReleasePacket(reader.packetQueue, packet);
 }
 
-inline bool StreamHasEnoughPackets(const AVStream *stream, const int streamIndex, const PacketQueue &queue) {
+static bool StreamHasEnoughPackets(const AVStream *stream, const int streamIndex, const PacketQueue &queue) {
 	bool result = (streamIndex < 0) ||
 		(stream->disposition & AV_DISPOSITION_ATTACHED_PIC) ||
 		((queue.packetCount > MIN_PACKET_FRAMES) && (!queue.duration || (av_q2d(stream->time_base) * queue.duration) > 1.0));
 	return (result);
 }
 
-inline AVSampleFormat MapAudioFormatType(const fplAudioFormatType format) {
-	// @TODO(final): Support planar formats as well
-	switch (format) {
-		case fplAudioFormatType_U8:
-			return AVSampleFormat::AV_SAMPLE_FMT_U8;
-		case fplAudioFormatType_S16:
-			return AVSampleFormat::AV_SAMPLE_FMT_S16;
-		case fplAudioFormatType_S32:
-			return AVSampleFormat::AV_SAMPLE_FMT_S32;
-		case fplAudioFormatType_F32:
-			return AVSampleFormat::AV_SAMPLE_FMT_FLT;
-		case fplAudioFormatType_F64:
-			return AVSampleFormat::AV_SAMPLE_FMT_DBL;
-		default:
-			return AVSampleFormat::AV_SAMPLE_FMT_NONE;
-	}
-}
-
-inline fplAudioFormatType MapAVSampleFormat(const AVSampleFormat format) {
-	switch (format) {
-		case AV_SAMPLE_FMT_U8:
-		case AV_SAMPLE_FMT_U8P:
-			return fplAudioFormatType_U8;
-		case AV_SAMPLE_FMT_S16:
-		case AV_SAMPLE_FMT_S16P:
-			return fplAudioFormatType_S16;
-		case AV_SAMPLE_FMT_S32:
-		case AV_SAMPLE_FMT_S32P:
-			return fplAudioFormatType_S32;
-		case AV_SAMPLE_FMT_S64:
-		case AV_SAMPLE_FMT_S64P:
-			return fplAudioFormatType_S64;
-		case AV_SAMPLE_FMT_FLT:
-		case AV_SAMPLE_FMT_FLTP:
-			return fplAudioFormatType_F32;
-		case AV_SAMPLE_FMT_DBL:
-		case AV_SAMPLE_FMT_DBLP:
-			return fplAudioFormatType_F64;
-		default:
-			return fplAudioFormatType_None;
-	}
-}
-
-inline bool IsPlanarAVSampleFormat(const AVSampleFormat format) {
-	switch (format) {
-		case AV_SAMPLE_FMT_U8P:
-		case AV_SAMPLE_FMT_S16P:
-		case AV_SAMPLE_FMT_S32P:
-		case AV_SAMPLE_FMT_S64P:
-		case AV_SAMPLE_FMT_FLTP:
-		case AV_SAMPLE_FMT_DBLP:
-			return true;
-		default:
-			return false;
-	}
-}
-
-inline AVSyncType GetMasterSyncType(const PlayerState *state) {
+static AVSyncType GetMasterSyncType(const PlayerState *state) {
 	if (state->syncType == AVSyncType::VideoMaster) {
 		if (state->video.stream.isValid) {
 			return AVSyncType::VideoMaster;
@@ -1143,53 +1206,7 @@ inline AVSyncType GetMasterSyncType(const PlayerState *state) {
 	}
 }
 
-inline double GetClock(const Clock &clock) {
-	if (*clock.queueSerial != clock.serial) {
-		return NAN;
-	}
-	double result;
-	if (clock.isPaused) {
-		result = clock.pts;
-	} else {
-		double time = ffmpeg.av_gettime_relative() / (double)AV_TIME_BASE;
-		result = clock.ptsDrift + time - (time - clock.lastUpdated) * (1.0 - clock.speed);
-	}
-	return(result);
-}
-
-inline void SetClockAt(Clock &clock, const double pts, const int32_t serial, const double time) {
-	clock.pts = pts;
-	clock.lastUpdated = time;
-	clock.ptsDrift = clock.pts - time;
-	clock.serial = serial;
-}
-
-inline void SetClock(Clock &clock, const double pts, const int32_t serial) {
-	double time = ffmpeg.av_gettime_relative() / (double)AV_TIME_BASE;
-	SetClockAt(clock, pts, serial, time);
-}
-
-inline void SetClockSpeed(Clock &clock, const double speed) {
-	SetClock(clock, GetClock(clock), clock.serial);
-	clock.speed = speed;
-}
-
-inline void InitClock(Clock &clock, int32_t *queueSerial) {
-	clock.speed = 1.0;
-	clock.isPaused = false;
-	clock.queueSerial = queueSerial;
-	SetClock(clock, NAN, -1);
-}
-
-inline void SyncClockToSlave(Clock &c, const Clock &slave) {
-	double clock = GetClock(c);
-	double slaveClock = GetClock(slave);
-	if (!isnan(slaveClock) && (isnan(clock) || fabs(clock - slaveClock) > AV_NOSYNC_THRESHOLD)) {
-		SetClock(c, slaveClock, slave.serial);
-	}
-}
-
-inline double GetMasterClock(const PlayerState *state) {
+static double GetMasterClock(const PlayerState *state) {
 	double result = 0;
 	switch (GetMasterSyncType(state)) {
 		case AVSyncType::VideoMaster:
@@ -1205,7 +1222,7 @@ inline double GetMasterClock(const PlayerState *state) {
 	return result;
 }
 
-inline void UpdateExternalClockSpeed(PlayerState *state) {
+static void UpdateExternalClockSpeed(PlayerState *state) {
 	if ((state->video.stream.isValid && state->video.decoder.packetsQueue.packetCount <= EXTERNAL_CLOCK_MIN_FRAMES) ||
 		(state->audio.stream.isValid && state->audio.decoder.packetsQueue.packetCount <= EXTERNAL_CLOCK_MIN_FRAMES)) {
 		SetClockSpeed(state->externalClock, fplMax(EXTERNAL_CLOCK_SPEED_MIN, state->externalClock.speed - EXTERNAL_CLOCK_SPEED_STEP));
@@ -1220,7 +1237,7 @@ inline void UpdateExternalClockSpeed(PlayerState *state) {
 	}
 }
 
-inline void AddFrameToDecoder(Decoder &decoder, Frame *frame, AVFrame *srcFrame) {
+static void AddFrameToDecoder(Decoder &decoder, Frame *frame, AVFrame *srcFrame) {
 	ffmpeg.av_frame_move_ref(frame->frame, srcFrame);
 	NextWritable(decoder.frameQueue);
 }
@@ -1389,7 +1406,7 @@ static void VideoDecodingThreadProc(const fplThreadHandle *thread, void *userDat
 	bool hasDecodedFrame = false;
 	for (;;) {
 		// Wait for any signal (Available packet, Free frame, Stopped, Wake up)
-		fplSignalWaitForAny(waitSignals, fplArrayCount(waitSignals), UINT32_MAX);
+		fplSignalWaitForAny(waitSignals, fplArrayCount(waitSignals), FPL_TIMEOUT_INFINITE);
 
 		// Stop decoder
 		if (decoder->stopRequest) {
@@ -1541,7 +1558,7 @@ static void AudioDecodingThreadProc(const fplThreadHandle *thread, void *userDat
 	bool hasDecodedFrame = false;
 	for (;;) {
 		// Wait for any signal (Available packet, Free frame, Stopped, Wake up)
-		fplSignalWaitForAny(waitSignals, fplArrayCount(waitSignals), UINT32_MAX);
+		fplSignalWaitForAny(waitSignals, fplArrayCount(waitSignals), FPL_TIMEOUT_INFINITE);
 
 		// Stop decoder
 		if (decoder->stopRequest) {
@@ -1810,7 +1827,7 @@ static void PacketReadThreadProc(const fplThreadHandle *thread, void *userData) 
 	for (;;) {
 		// Wait for any signal or skip wait
 		if (!skipWait) {
-			fplSignalWaitForAny(waitSignals, fplArrayCount(waitSignals), UINT32_MAX);
+			fplSignalWaitForAny(waitSignals, fplArrayCount(waitSignals), FPL_TIMEOUT_INFINITE);
 		} else {
 			skipWait = false;
 		}
@@ -2192,12 +2209,12 @@ static void DisplayVideoFrame(PlayerState *state) {
 #endif
 }
 
-inline void UpdateVideoClock(PlayerState *state, const double pts, const int32_t serial) {
+static void UpdateVideoClock(PlayerState *state, const double pts, const int32_t serial) {
 	SetClock(state->video.clock, pts, serial);
 	SyncClockToSlave(state->externalClock, state->video.clock);
 }
 
-inline double GetFrameDuration(const PlayerState *state, const Frame *cur, const Frame *next) {
+static double GetFrameDuration(const PlayerState *state, const Frame *cur, const Frame *next) {
 	if (cur->serial == next->serial) {
 		double duration = next->pts - cur->pts;
 		if (isnan(duration) || duration <= 0 || duration > state->maxFrameDuration)
@@ -2784,8 +2801,8 @@ int main(int argc, char **argv) {
 				case fplEventType_Window:
 				{
 					if (ev.window.type == fplWindowEventType_Resized) {
-						state.viewport.width = ev.window.width;
-						state.viewport.height = ev.window.height;
+						state.viewport.width = ev.window.size.width;
+						state.viewport.height = ev.window.size.height;
 						state.forceRefresh = 1;
 					}
 				} break;

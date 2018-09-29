@@ -8,16 +8,19 @@ Description:
 	full OpenGL-Header and Loader.
 
 Requirements:
-	- C++
-	- Final Platform Layer v0.7.7+
+	- C++ Compiler
+	- Final Platform Layer
 
 Author:
 	Torsten Spaete
 
 Changelog:
+	## 2018-09-24
+	- Reflect api changes in FPL 0.9.2
+
 	## 2018-05-05:
- 	- Fixed CMakeLists compile errors
- 	- Fixed Makefile compile errors
+	- Fixed CMakeLists compile errors
+	- Fixed Makefile compile errors
 
 	## 2018-04-24:
 	- Fixed compile errors (FPL api change)
@@ -155,6 +158,9 @@ static void RunModern(const fglOpenGLContext *context) {
 
 	glClearColor(0.39f, 0.58f, 0.93f, 1.0f);
 	while(fplWindowUpdate()) {
+		fplEvent ev;
+		while(fplPollEvent(&ev)) {}
+
 		fplWindowSize windowArea;
 		fplGetWindowArea(&windowArea);
 		glViewport(0, 0, windowArea.width, windowArea.height);
@@ -227,14 +233,14 @@ int main(int argc, char **args) {
 				fglLoadOpenGLFunctions();
 				RunModern(&glContext);
 				fglDestroyOpenGLContext(&glContext);
-			}
-			fglUnloadOpenGL();
 		}
+			fglUnloadOpenGL();
+	}
 #endif // USE_FPL_OPENGL_CONTEXT_CREATION
 
 		fplPlatformRelease();
 		result = 0;
-	} else {
+} else {
 		result = -1;
 	}
 	return(result);

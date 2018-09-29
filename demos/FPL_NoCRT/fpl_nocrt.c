@@ -7,12 +7,17 @@ Description:
 	Compiling a FPL Hello-World Console Application without the need of the CRT
 
 Requirements:
+	- C99 Compiler
 	- Win32 / MSVC
+	- Final Platform Layer
 
 Author:
 	Torsten Spaete
 
 Changelog:
+	## 2018-09-24
+	- Reflect api changes in FPL 0.9.2
+
 	## 2018-04-23:
 	- Initial creation of this description block
 	- Forced Visual-Studio-Project to compile in C always
