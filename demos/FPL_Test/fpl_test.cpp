@@ -102,22 +102,23 @@ static void TestInit() {
 }
 
 static void TestOSInfos() {
-	ftMsg("Get Platform Type\n");
+	ftMsg("Get Platform Type:\n");
 	{
 		fplPlatformType platType = fplGetPlatformType();
 		ftAssert(fplPlatformType_Unknown != platType);
+		fplConsoleFormatOut("Platform: %s\n", fplGetPlatformTypeString(platType));
 	}
-	ftMsg("Get OS Type\n");
+	ftMsg("Get OS Type:\n");
 	{
 		fplOSInfos osInfos = {};
 		bool r = fplGetOperatingSystemInfos(&osInfos);
 		ftIsTrue(r);
-		fplConsoleFormatOut("OS Name: %s\n", osInfos.osName);
-		fplConsoleFormatOut("OS Version: %d.%d.%d.%d\n", osInfos.osVersion.major, osInfos.osVersion.minor, osInfos.osVersion.fix, osInfos.osVersion.build);
+		fplConsoleFormatOut("Name: %s\n", osInfos.osName);
+		fplConsoleFormatOut("Version: %d.%d.%d.%d\n", osInfos.osVersion.major, osInfos.osVersion.minor, osInfos.osVersion.fix, osInfos.osVersion.build);
 		fplConsoleFormatOut("Distribution Name: %s\n", osInfos.distributionName);
 		fplConsoleFormatOut("Distribution Version: %d.%d.%d.%d\n", osInfos.distributionVersion.major, osInfos.distributionVersion.minor, osInfos.distributionVersion.fix, osInfos.distributionVersion.build);
 	}
-	ftMsg("Get User Infos\n");
+	ftMsg("Get User Infos:\n");
 	{
 		char nameBuffer[256] = {};
 		bool r = fplGetCurrentUsername(nameBuffer, fplArrayCount(nameBuffer));
@@ -452,14 +453,14 @@ static void TestHardware() {
 
 	fplMemoryInfos memInfos = {};
 	fplGetRunningMemoryInfos(&memInfos);
-	ftMsg("Installed physical memory (bytes): %z\n", memInfos.totalPhysicalSize);
-	ftMsg("Total physical memory (bytes): %z\n", memInfos.totalPhysicalSize);
-	ftMsg("Available physical memory (bytes): %z\n", memInfos.freePhysicalSize);
-	ftMsg("Total cache memory (bytes): %z\n", memInfos.totalCacheSize);
-	ftMsg("Available cache memory (bytes): %z\n", memInfos.freeCacheSize);
-	ftMsg("Page size (bytes): %z\n", memInfos.pageSize);
-	ftMsg("Total number of memory pages: %z\n", memInfos.totalPageCount);
-	ftMsg("Available number memory pages: %z\n", memInfos.freePageCount);
+	ftMsg("Installed physical memory (bytes): %llu\n", memInfos.totalPhysicalSize);
+	ftMsg("Total physical memory (bytes): %llu\n", memInfos.totalPhysicalSize);
+	ftMsg("Available physical memory (bytes): %llu\n", memInfos.freePhysicalSize);
+	ftMsg("Total cache memory (bytes): %llu\n", memInfos.totalCacheSize);
+	ftMsg("Available cache memory (bytes): %llu\n", memInfos.freeCacheSize);
+	ftMsg("Page size (bytes): %llu\n", memInfos.pageSize);
+	ftMsg("Total number of memory pages: %llu\n", memInfos.totalPageCount);
+	ftMsg("Available number memory pages: %llu\n", memInfos.freePageCount);
 
 	fplArchType archType = fplGetProcessorArchitecture();
 	const char *archStr = fplGetArchTypeString(archType);
