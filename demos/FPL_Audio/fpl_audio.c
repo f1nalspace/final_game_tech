@@ -57,8 +57,6 @@ Changelog:
 #define FINAL_AUDIOSYSTEM_IMPLEMENTATION
 #include <final_audiosystem.h>
 
-#define AUTOSTART_PLAYBACK 1
-
 static const float PI32 = 3.14159265359f;
 
 static uint32_t AudioPlayback(const fplAudioDeviceFormat *outFormat, const uint32_t frameCount, void *outputSamples, void *userData) {
@@ -119,10 +117,10 @@ int main(int argc, char **args) {
 	//settings.audio.deviceFormat.sampleRate = 22050;
 	settings.audio.deviceFormat.sampleRate = 44100;
 	//settings.audio.deviceFormat.sampleRate = 48000;
-
-	// Find audio device
 	settings.audio.startAuto = false;
 	settings.audio.stopAuto = false;
+
+	// Find audio device
 	if(!fplPlatformInit(fplInitFlags_Audio, &settings)) {
 		return -1;
 	}
@@ -136,25 +134,14 @@ int main(int argc, char **args) {
 	fplPlatformRelease();
 
 	// Initialize the platform with audio enabled and the settings
-#if AUTOSTART_PLAYBACK
-	settings.audio.startAuto = true;
-	settings.audio.stopAuto = true;
 	settings.audio.clientReadCallback = AudioPlayback;
 	settings.audio.userData = &audioSys;
-#else
-	settings.audio.startAuto = false;
-	settings.audio.stopAuto = false;
-	settings.audio.clientReadCallback = fpl_null;
-	settings.audio.userData = fpl_null;
-#endif
 	if(!fplPlatformInit(fplInitFlags_Audio, &settings)) {
 		return -1;
 	}
 
-#if !AUTOSTART_PLAYBACK
 	// You can overwrite the client read callback and user data if you want to
 	fplSetAudioClientReadCallback(AudioPlayback, &audioSys);
-#endif
 
 	// Init audio data
 	if(InitAudioData(&audioSys, filePath)) {
