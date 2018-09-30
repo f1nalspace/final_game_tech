@@ -294,7 +294,11 @@ extern int GameMain(const GameConfiguration &config) {
 	}
 
 	AudioSystem audioSys = {};
-	if(!AudioSystemInit(&audioSys)) {
+	fplAudioDeviceFormat targetAudioFormat = fplZeroInit;
+	if (!fplGetAudioHardwareFormat(&targetAudioFormat)) {
+		wasError = true;
+	}
+	if(!AudioSystemInit(&audioSys, &targetAudioFormat)) {
 		wasError = true;
 	}
 

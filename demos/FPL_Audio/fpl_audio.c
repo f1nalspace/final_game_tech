@@ -65,8 +65,8 @@ static uint32_t AudioPlayback(const fplAudioDeviceFormat *outFormat, const uint3
 	return(result);
 }
 
-static bool InitAudioData(AudioSystem *audioSys, const char *filePath) {
-	if(!AudioSystemInit(audioSys)) {
+static bool InitAudioData(const fplAudioDeviceFormat *targetFormat, const char *filePath, AudioSystem *audioSys) {
+	if(!AudioSystemInit(audioSys, targetFormat)) {
 		return false;
 	}
 
@@ -83,8 +83,8 @@ static bool InitAudioData(AudioSystem *audioSys, const char *filePath) {
 	const double duration = 5.0f;
 	const int toneHz = 256;
 	const int toneVolume = 1000;
-	uint32_t sampleCount = (uint32_t)(audioSys->nativeFormat.sampleRate * duration + 0.5);
-	source = AudioSystemAllocateSource(audioSys, audioSys->nativeFormat.channels, audioSys->nativeFormat.sampleRate, fplAudioFormatType_S16, sampleCount);
+	uint32_t sampleCount = (uint32_t)(audioSys->targetFormat.sampleRate * duration + 0.5);
+	source = AudioSystemAllocateSource(audioSys, audioSys->targetFormat.channels, audioSys->targetFormat.sampleRate, fplAudioFormatType_S16, sampleCount);
 	if(source != fpl_null) {
 		int16_t *samples = (int16_t *)source->samples;
 		int wavePeriod = source->samplesPerSeconds / toneHz;
@@ -140,17 +140,20 @@ int main(int argc, char **args) {
 		return -1;
 	}
 
+	fplAudioDeviceFormat targetAudioFormat = fplZeroInit;
+	fplGetAudioHardwareFormat(&targetAudioFormat);
+
 	// You can overwrite the client read callback and user data if you want to
 	fplSetAudioClientReadCallback(AudioPlayback, &audioSys);
 
 	// Init audio data
-	if(InitAudioData(&audioSys, filePath)) {
+	if(InitAudioData(&targetAudioFormat, filePath, &audioSys)) {
 		// Start audio playback (This will start calling clientReadCallback regulary)
 		if(fplPlayAudio() == fplAudioResult_Success) {
 			// Print output infos
-			const char *outFormat = fplGetAudioFormatString(audioSys.nativeFormat.type);
-			uint32_t outSampleRate = audioSys.nativeFormat.sampleRate;
-			uint32_t outChannels = audioSys.nativeFormat.channels;
+			const char *outFormat = fplGetAudioFormatString(audioSys.targetFormat.type);
+			uint32_t outSampleRate = audioSys.targetFormat.sampleRate;
+			uint32_t outChannels = audioSys.targetFormat.channels;
 			fplConsoleFormatOut("Playing %lu audio sources (%s, %lu Hz, %lu channels)\n", audioSys.playItems.count, outFormat, outSampleRate, outChannels);
 
 			// Wait for any key presses
