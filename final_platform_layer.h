@@ -196,6 +196,7 @@ SOFTWARE.
 	- New: Added typedef fpl_window_event_callback
 	- New: Added typedef fpl_window_exposed_callback
 	- New: Added structure fplWindowCallbacks as a field in fplWindowSettings
+	- New: Added macro fplCopyStruct
 
 	- Changed: [Win32] GetTickCount() replaced with GetTickCount64()
 	- Changed: [Win32] Use unicode (*W) win32 api functions for everything now
@@ -1760,6 +1761,8 @@ fplStaticAssert(sizeof(size_t) == sizeof(uint32_t));
 
 //! Clears the given struct pointer to zero
 #define fplClearStruct(ptr) fplMemoryClear((void *)(ptr), sizeof(*(ptr)))
+//! Copies the given source struct into the destination struct
+#define fplCopyStruct(src, dst) fplMemoryCopy(src, sizeof(*(src)), dst);
 //! Returns the element count from a static array,
 #define fplArrayCount(arr) (sizeof(arr) / sizeof((arr)[0]))
 //! Returns the offset in bytes to a field in a structure

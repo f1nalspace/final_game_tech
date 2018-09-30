@@ -1518,18 +1518,19 @@
 
 	FPL provides a few macro functions useful for dealing with memory:<br>
 	
-	| Name             | What it does                                        |
-    |------------------|-----------------------------------------------------|
-	| fplZeroInit      | Initializes a struct with zero                      |
-	| fplStructInit    | Initializes a struct with values                    |
-	| fplStructSet     | Overwrites a struct with the given value            |
-	| fplClearStruct   | Clears the given struct pointer to zero             |
-	| fplArrayCount    | Returns the number of elements in fixed sized array |
-	| fplOffsetOf      | Returns the byte-offset to a field in a struct      |
-	| fplKiloBytes     | Converts the given kilobytes value into bytes       |
-	| fplMegaBytes     | Converts the given megabytes value into bytes       |
-	| fplGigaBytes     | Converts the given gigabytes value into bytes       |
-	| fplTeraBytes     | Converts the given terabytes value into bytes       |
+	| Name             | What it does                                               |
+    |------------------|------------------------------------------------------------|
+	| fplZeroInit      | Initializes a struct with zero                             |
+	| fplStructInit    | Initializes a struct with values                           |
+	| fplStructSet     | Overwrites a struct with the given value                   |
+	| fplClearStruct   | Clears the given struct pointer to zero                    |
+	| fplCopyStruct    | Copies the source struct data into the destination pointer |
+	| fplArrayCount    | Returns the number of elements in fixed sized array        |
+	| fplOffsetOf      | Returns the byte-offset to a field in a struct             |
+	| fplKiloBytes     | Converts the given kilobytes value into bytes              |
+	| fplMegaBytes     | Converts the given megabytes value into bytes              |
+	| fplGigaBytes     | Converts the given gigabytes value into bytes              |
+	| fplTeraBytes     | Converts the given terabytes value into bytes              |
 */
 
 /*!
