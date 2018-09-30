@@ -30,6 +30,7 @@ Changelog:
 #include <final_audiosystem.h>
 
 #define MINI_AL_IMPLEMENTATION
+#define MAL_USE_RUNTIME_LINKING_FOR_PTHREAD
 #include <minial/mini_al.h>
 
 static const float PI32 = 3.14159265359f;
