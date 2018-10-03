@@ -146,15 +146,18 @@ int main(int argc, char **args) {
 	// You can overwrite the client read callback and user data if you want to
 	fplSetAudioClientReadCallback(AudioPlayback, &audioSys);
 
+	const fplSettings *currentSettings = fplGetCurrentSettings();
+
 	// Init audio data
 	if(InitAudioData(&targetAudioFormat, filePath, &audioSys)) {
 		// Start audio playback (This will start calling clientReadCallback regulary)
 		if(fplPlayAudio() == fplAudioResult_Success) {
 			// Print output infos
+			const char *outDriver = fplGetAudioDriverString(currentSettings->audio.driver);
 			const char *outFormat = fplGetAudioFormatString(audioSys.targetFormat.type);
 			uint32_t outSampleRate = audioSys.targetFormat.sampleRate;
 			uint32_t outChannels = audioSys.targetFormat.channels;
-			fplConsoleFormatOut("Playing %lu audio sources (%s, %lu Hz, %lu channels)\n", audioSys.playItems.count, outFormat, outSampleRate, outChannels);
+			fplConsoleFormatOut("Playing %lu audio sources (%s, %s, %lu Hz, %lu channels)\n", audioSys.playItems.count, outDriver, outFormat, outSampleRate, outChannels);
 
 			// Wait for any key presses
 			fplConsoleFormatOut("Press any key to stop playback\n", outFormat, outSampleRate, outChannels);

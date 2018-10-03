@@ -151,6 +151,10 @@ SOFTWARE.
 	- Changed: Renamed FPL_MEGABYTES to fplMegaBytes
 	- Changed: Renamed FPL_GIGABYTES to fplGigaBytes
 	- Changed: Renamed FPL_TERABYTES to fplTeraBytes
+	- Changed: Renamed FPL_ALIGNMENT_OFFSET to fplGetAlignmentOffset
+	- Changed: Renamed FPL_ALIGNED_SIZE to fplGetAlignedSize
+	- Changed: Renamed FPL_IS_ALIGNED to fplIsAligned
+	- Changed: Renamed FPL_IS_POWEROFTWO to fplIsPowerOfTwo
 	- Changed: Renamed fplFormatAnsiStringArgs() to fplFormatStringArgs()
 	- Changed: Renamed fplFormatAnsiString() to fplFormatString()
 	- Changed: Renamed fplCopyAnsiString() to fplCopyString()
@@ -197,18 +201,21 @@ SOFTWARE.
 	- New: Added typedef fpl_window_exposed_callback
 	- New: Added structure fplWindowCallbacks as a field in fplWindowSettings
 	- New: Added macro fplCopyStruct
+	- New: Added support for disabling runtime linking -> FPL_NO_RUNTIME_LINKING
 
 	- Changed: [Win32] GetTickCount() replaced with GetTickCount64()
 	- Changed: [Win32] Use unicode (*W) win32 api functions for everything now
 	- Changed: [Win32] fplGetOperatingSystemInfos uses additional RtlGetVersion
 	- Changed: [DirectSound] fplGetAudioDevices() uses DirectSoundEnumerateW instead of DirectSoundEnumerateA
 	- Changed: [Win32/X11] Changed event handling from indirect to direct
+	- Changed[*]: Optional runtime linking for OS library calls
 	- Fixed: [Win32] fplGetProcessorArchitecture was not handling the WOW64-case
 	- Fixed: [Win32] fplGetClipboardAnsiText() was broken
 	- Fixed: [Win32] Forced compile error when compiling on < vista (FPL uses several features which requires vista or higher)
 	- Fixed: [Win32] fplGetOperatingSystemInfos had no WINAPI call defined for GetVersion prototype
 	- Fixed: [Alsa] fpl__AudioWaitForFramesAlsa was not compiling (commonAudio missing)
-    - Fixed: [X11] fplButtonState_Repeat was not handled in keyboard events
+	- Fixed: [Alsa] Alsa output was not working anymore for certain playback devices
+	- Fixed: [X11] fplButtonState_Repeat was not handled in keyboard events
 	- New: [Win32/POSIX] Implemented fplFlushFile()
 	- New: [Win32/X11] Handle fplInitFlags_GameController to enable/disable game controllers
 	- New: [Win32/X11] Support for handling the OS event directly -> fpl_window_event_callback
@@ -1742,13 +1749,13 @@ fplStaticAssert(sizeof(size_t) == sizeof(uint32_t));
 #endif
 
 //! Returns the offset for the value to satisfy the given alignment boundary
-#define FPL_ALIGNMENT_OFFSET(value, alignment) ( (((alignment) > 1) && (((value) & ((alignment) - 1)) != 0)) ? ((alignment) - ((value) & (alignment - 1))) : 0)           
+#define fplGetAlignmentOffset(value, alignment) ( (((alignment) > 1) && (((value) & ((alignment) - 1)) != 0)) ? ((alignment) - ((value) & (alignment - 1))) : 0)           
 //! Returns the given size extended to satisfy the given alignment boundary
-#define FPL_ALIGNED_SIZE(size, alignment) (((size) > 0 && (alignment) > 0) ? ((size) + FPL_ALIGNMENT_OFFSET(size, alignment)) : (size))
+#define fplGetAlignedSize(size, alignment) (((size) > 0 && (alignment) > 0) ? ((size) + fplGetAlignmentOffset(size, alignment)) : (size))
 //! Returns true when the given pointer address is aligned to the given alignment
-#define FPL_IS_ALIGNED(ptr, alignment) (((uintptr_t)(const void *)(ptr)) % (alignment) == 0)
+#define fplIsAligned(ptr, alignment) (((uintptr_t)(const void *)(ptr)) % (alignment) == 0)
 //! Returns true when the given value is a power of two value
-#define FPL_IS_POWEROFTWO(value) (((value) != 0) && (((value) & (~(value) + 1)) == (value)))
+#define fplIsPowerOfTwo(value) (((value) != 0) && (((value) & (~(value) + 1)) == (value)))
 
 //! Returns the number of bytes for the given kilobytes
 #define fplKiloBytes(value) (((value) * 1024ull))
@@ -5506,7 +5513,7 @@ fpl_internal size_t fpl__ParseTextFile(const char *filePath, const char **wildca
 		return(0);
 	}
 	// @NOTE(final): Forced Zero-Terminator is not nessecary here, but we do it here to debug it better
-	// This function supports maxLineSize < FPL_ARRAYCOUNT(buffer)
+	// This function supports maxLineSize < fplArrayCount(buffer)
 	// We allocate the line buffer on the stack because we do not know how large the line will be on compile time
 	size_t result = 0;
 	fplFileHandle fileHandle = fplZeroInit;
@@ -5604,18 +5611,26 @@ fpl_internal size_t fpl__ParseTextFile(const char *filePath, const char **wildca
 #	endif
 
 // Little macro to not write 5 lines of code all the time
-#define FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(mod, libHandle, libName, target, type, name) \
-	target = (type *)GetProcAddress(libHandle, name); \
-	if (target == fpl_null) { \
-		FPL_ERROR(mod, "Failed getting procedure address '%s' from library '%s'", name, libName); \
-		return false; \
-	}
-#define FPL__WIN32_GET_FUNCTION_ADDRESS_BREAK(mod, libHandle, libName, target, type, name) \
-	target = (type *)GetProcAddress(libHandle, name); \
-	if (target == fpl_null) { \
-		FPL_ERROR(mod, "Failed getting procedure address '%s' from library '%s'", name, libName); \
+#define FPL__WIN32_LOAD_LIBRARY_BREAK(mod, target, libName) \
+	(target) = LoadLibraryA(libName); \
+	if((target) == fpl_null) { \
+		FPL_ERROR(mod, "Failed loading library '%s'", (libName)); \
 		break; \
 	}
+#define FPL__WIN32_GET_FUNCTION_ADDRESS_BREAK(mod, libHandle, libName, target, type, name) \
+	(target)->name = (type *)GetProcAddress(libHandle, #name); \
+	if ((target)->name == fpl_null) { \
+		FPL_ERROR(mod, "Failed getting procedure address '%s' from library '%s'", #name, libName); \
+		break; \
+	}
+#if !defined(FPL_NO_RUNTIME_LINKING)
+#	define FPL__WIN32_LOAD_LIBRARY FPL__WIN32_LOAD_LIBRARY_BREAK
+#	define FPL__WIN32_GET_FUNCTION_ADDRESS FPL__WIN32_GET_FUNCTION_ADDRESS_BREAK
+#else
+#	define FPL__WIN32_LOAD_LIBRARY(mod, target, libName)
+#	define FPL__WIN32_GET_FUNCTION_ADDRESS(mod, libHandle, libName, target, type, name) \
+		(target)->name = name
+#endif
 
 //
 // XInput
@@ -5632,8 +5647,8 @@ FPL__FUNC_XINPUT_XInputGetCapabilities(fpl__Win32XInputGetCapabilitiesStub) {
 }
 typedef struct fpl__Win32XInputApi {
 	HMODULE xinputLibrary;
-	fpl__win32_func_XInputGetState *xInputGetState;
-	fpl__win32_func_XInputGetCapabilities *xInputGetCapabilities;
+	fpl__win32_func_XInputGetState *XInputGetState;
+	fpl__win32_func_XInputGetCapabilities *XInputGetCapabilities;
 } fpl__Win32XInputApi;
 
 fpl_internal void fpl__Win32UnloadXInputApi(fpl__Win32XInputApi *xinputApi) {
@@ -5642,36 +5657,39 @@ fpl_internal void fpl__Win32UnloadXInputApi(fpl__Win32XInputApi *xinputApi) {
 		FPL_LOG_DEBUG("XInput", "Unload XInput Library");
 		FreeLibrary(xinputApi->xinputLibrary);
 		xinputApi->xinputLibrary = fpl_null;
-		xinputApi->xInputGetState = fpl__Win32XInputGetStateStub;
-		xinputApi->xInputGetCapabilities = fpl__Win32XInputGetCapabilitiesStub;
+		xinputApi->XInputGetState = fpl__Win32XInputGetStateStub;
+		xinputApi->XInputGetCapabilities = fpl__Win32XInputGetCapabilitiesStub;
 	}
 }
 
 fpl_internal void fpl__Win32LoadXInputApi(fpl__Win32XInputApi *xinputApi) {
 	fplAssert(xinputApi != fpl_null);
+	const char* xinputFileNames[] = {
+		"xinput1_4.dll",
+		"xinput1_3.dll",
+		"xinput9_1_0.dll",
+	};
+	bool result = false;
+	for(uint32_t index = 0; index < fplArrayCount(xinputFileNames); ++index) {
+		const char *libName = xinputFileNames[index];
+		fplClearStruct(xinputApi);
+		do {
+			HMODULE libHandle = fpl_null;
+			FPL__WIN32_LOAD_LIBRARY_BREAK(FPL__MODULE_XINPUT, libHandle, libName);
+			xinputApi->xinputLibrary = libHandle;
+			FPL__WIN32_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_XINPUT, libHandle, libName, xinputApi, fpl__win32_func_XInputGetState, XInputGetState);
+			FPL__WIN32_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_XINPUT, libHandle, libName, xinputApi, fpl__win32_func_XInputGetCapabilities, XInputGetCapabilities);
+			result = true;
+		} while(0);
+		if(result) {
+			break;
+		}
+		fpl__Win32UnloadXInputApi(xinputApi);
+	}
 
-	FPL_LOG_DEBUG("XInput", "Load XInput Library");
-
-	// Windows 8
-	HMODULE xinputLibrary = LoadLibraryA("xinput1_4.dll");
-	if(!xinputLibrary) {
-		// Windows 7
-		xinputLibrary = LoadLibraryA("xinput1_3.dll");
-	}
-	if(!xinputLibrary) {
-		// Windows Generic
-		xinputLibrary = LoadLibraryA("xinput9_1_0.dll");
-	}
-	if(xinputLibrary) {
-		xinputApi->xinputLibrary = xinputLibrary;
-		xinputApi->xInputGetState = (fpl__win32_func_XInputGetState *)GetProcAddress(xinputLibrary, "XInputGetState");
-		xinputApi->xInputGetCapabilities = (fpl__win32_func_XInputGetCapabilities *)GetProcAddress(xinputLibrary, "XInputGetCapabilities");
-	}
-	if(xinputApi->xInputGetState == fpl_null) {
-		xinputApi->xInputGetState = fpl__Win32XInputGetStateStub;
-	}
-	if(xinputApi->xInputGetCapabilities == fpl_null) {
-		xinputApi->xInputGetCapabilities = fpl__Win32XInputGetCapabilitiesStub;
+	if(!result) {
+		xinputApi->XInputGetState = fpl__Win32XInputGetStateStub;
+		xinputApi->XInputGetCapabilities = fpl__Win32XInputGetCapabilitiesStub;
 	}
 }
 
@@ -5863,7 +5881,7 @@ typedef struct fpl__Win32GdiApi {
 typedef struct fpl__Win32ShellApi {
 	HMODULE shellLibrary;
 	fpl__win32_func_CommandLineToArgvW *CommandLineToArgvW;
-	fpl__win32_func_SHGetFolderPathW *ShGetFolderPathW;
+	fpl__win32_func_SHGetFolderPathW *SHGetFolderPathW;
 	fpl__win32_func_DragQueryFileW *DragQueryFileW;
 	fpl__win32_func_DragAcceptFiles *DragAcceptFiles;
 } fpl__Win32ShellApi;
@@ -5955,155 +5973,141 @@ fpl_internal void fpl__Win32UnloadApi(fpl__Win32Api *wapi) {
 	fplAssert(wapi != fpl_null);
 	if(wapi->ole.oleLibrary != fpl_null) {
 		FreeLibrary(wapi->ole.oleLibrary);
-		fplClearStruct(&wapi->ole);
 	}
+	fplClearStruct(&wapi->ole);
 	if(wapi->gdi.gdiLibrary != fpl_null) {
 		FreeLibrary(wapi->gdi.gdiLibrary);
-		fplClearStruct(&wapi->gdi);
 	}
+	fplClearStruct(&wapi->gdi);
 	if(wapi->user.userLibrary != fpl_null) {
 		FreeLibrary(wapi->user.userLibrary);
-		fplClearStruct(&wapi->user);
 	}
+	fplClearStruct(&wapi->user);
 	if(wapi->shell.shellLibrary != fpl_null) {
 		FreeLibrary(wapi->shell.shellLibrary);
-		fplClearStruct(&wapi->shell);
 	}
+	fplClearStruct(&wapi->shell);
 	wapi->isValid = false;
 }
 
 fpl_internal bool fpl__Win32LoadApi(fpl__Win32Api *wapi) {
 	fplAssert(wapi != fpl_null);
+	bool result = false;
 	fplClearStruct(wapi);
-
-	// Shell32
-	{
+	do {
+		// Shell32
 		const char *shellLibraryName = "shell32.dll";
-		HMODULE library = wapi->shell.shellLibrary = LoadLibraryA(shellLibraryName);
-		if(library == fpl_null) {
-			FPL_ERROR(FPL__MODULE_WIN32, "Failed loading library '%s'", shellLibraryName);
-			return false;
-		}
-		FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(FPL__MODULE_WIN32, library, shellLibraryName, wapi->shell.CommandLineToArgvW, fpl__win32_func_CommandLineToArgvW, "CommandLineToArgvW");
-		FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(FPL__MODULE_WIN32, library, shellLibraryName, wapi->shell.ShGetFolderPathW, fpl__win32_func_SHGetFolderPathW, "SHGetFolderPathW");
-		FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(FPL__MODULE_WIN32, library, shellLibraryName, wapi->shell.DragQueryFileW, fpl__win32_func_DragQueryFileW, "DragQueryFileW");
-		FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(FPL__MODULE_WIN32, library, shellLibraryName, wapi->shell.DragAcceptFiles, fpl__win32_func_DragAcceptFiles, "DragAcceptFiles");
-	}
+		HMODULE shellLibrary = fpl_null;
+		FPL__WIN32_LOAD_LIBRARY(FPL__MODULE_WIN32, shellLibrary, shellLibraryName);
+		wapi->shell.shellLibrary = shellLibrary;
+		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, shellLibrary, shellLibraryName, &wapi->shell, fpl__win32_func_CommandLineToArgvW, CommandLineToArgvW);
+		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, shellLibrary, shellLibraryName, &wapi->shell, fpl__win32_func_SHGetFolderPathW, SHGetFolderPathW);
+		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, shellLibrary, shellLibraryName, &wapi->shell, fpl__win32_func_DragQueryFileW, DragQueryFileW);
+		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, shellLibrary, shellLibraryName, &wapi->shell, fpl__win32_func_DragAcceptFiles, DragAcceptFiles);
 
-	// User32
-	{
+		// User32
 		const char *userLibraryName = "user32.dll";
-		HMODULE library = wapi->user.userLibrary = LoadLibraryA(userLibraryName);
-		if(library == fpl_null) {
-			FPL_ERROR(FPL__MODULE_WIN32, "Failed loading library '%s'", userLibraryName);
-			return false;
-		}
+		HMODULE userLibrary = fpl_null;
+		FPL__WIN32_LOAD_LIBRARY(FPL__MODULE_WIN32, userLibrary, userLibraryName);
+		wapi->user.userLibrary = userLibrary;
+		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_RegisterClassExW, RegisterClassExW);
+		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_UnregisterClassW, UnregisterClassW);
+		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_ShowWindow, ShowWindow);
+		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_DestroyWindow, DestroyWindow);
+		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_UpdateWindow, UpdateWindow);
+		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_TranslateMessage, TranslateMessage);
+		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_DispatchMessageW, DispatchMessageW);
+		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_PeekMessageW, PeekMessageW);
+		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_DefWindowProcW, DefWindowProcW);
+		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_CreateWindowExW, CreateWindowExW);
+		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_SetWindowPos, SetWindowPos);
+		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_GetWindowPlacement, GetWindowPlacement);
+		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_SetWindowPlacement, SetWindowPlacement);
+		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_GetClientRect, GetClientRect);
+		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_GetWindowRect, GetWindowRect);
+		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_AdjustWindowRect, AdjustWindowRect);
+		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_GetAsyncKeyState, GetAsyncKeyState);
+		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_MapVirtualKeyW, MapVirtualKeyW);
+		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_SetCursor, SetCursor);
+		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_GetCursor, GetCursor);
+		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_LoadCursorA, LoadCursorA);
+		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_LoadCursorW, LoadCursorW);
+		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_GetCursorPos, GetCursorPos);
+		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_WindowFromPoint, WindowFromPoint);
+		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_LoadIconA, LoadCursorA);
+		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_LoadIconW, LoadIconW);
+		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_SetWindowTextW, SetWindowTextW);
+		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_SetWindowLongW, SetWindowLongW);
+		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_GetWindowLongW, GetWindowLongW);
 
-		FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(FPL__MODULE_WIN32, library, userLibraryName, wapi->user.RegisterClassExW, fpl__win32_func_RegisterClassExW, "RegisterClassExW");
-		FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(FPL__MODULE_WIN32, library, userLibraryName, wapi->user.UnregisterClassW, fpl__win32_func_UnregisterClassW, "UnregisterClassW");
-		FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(FPL__MODULE_WIN32, library, userLibraryName, wapi->user.ShowWindow, fpl__win32_func_ShowWindow, "ShowWindow");
-		FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(FPL__MODULE_WIN32, library, userLibraryName, wapi->user.DestroyWindow, fpl__win32_func_DestroyWindow, "DestroyWindow");
-		FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(FPL__MODULE_WIN32, library, userLibraryName, wapi->user.UpdateWindow, fpl__win32_func_UpdateWindow, "UpdateWindow");
-		FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(FPL__MODULE_WIN32, library, userLibraryName, wapi->user.TranslateMessage, fpl__win32_func_TranslateMessage, "TranslateMessage");
-		FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(FPL__MODULE_WIN32, library, userLibraryName, wapi->user.DispatchMessageW, fpl__win32_func_DispatchMessageW, "DispatchMessageW");
-		FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(FPL__MODULE_WIN32, library, userLibraryName, wapi->user.PeekMessageW, fpl__win32_func_PeekMessageW, "PeekMessageW");
-		FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(FPL__MODULE_WIN32, library, userLibraryName, wapi->user.DefWindowProcW, fpl__win32_func_DefWindowProcW, "DefWindowProcW");
-		FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(FPL__MODULE_WIN32, library, userLibraryName, wapi->user.CreateWindowExW, fpl__win32_func_CreateWindowExW, "CreateWindowExW");
-		FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(FPL__MODULE_WIN32, library, userLibraryName, wapi->user.SetWindowPos, fpl__win32_func_SetWindowPos, "SetWindowPos");
-		FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(FPL__MODULE_WIN32, library, userLibraryName, wapi->user.GetWindowPlacement, fpl__win32_func_GetWindowPlacement, "GetWindowPlacement");
-		FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(FPL__MODULE_WIN32, library, userLibraryName, wapi->user.SetWindowPlacement, fpl__win32_func_SetWindowPlacement, "SetWindowPlacement");
-		FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(FPL__MODULE_WIN32, library, userLibraryName, wapi->user.GetClientRect, fpl__win32_func_GetClientRect, "GetClientRect");
-		FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(FPL__MODULE_WIN32, library, userLibraryName, wapi->user.GetWindowRect, fpl__win32_func_GetWindowRect, "GetWindowRect");
-		FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(FPL__MODULE_WIN32, library, userLibraryName, wapi->user.AdjustWindowRect, fpl__win32_func_AdjustWindowRect, "AdjustWindowRect");
-		FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(FPL__MODULE_WIN32, library, userLibraryName, wapi->user.GetAsyncKeyState, fpl__win32_func_GetAsyncKeyState, "GetAsyncKeyState");
-		FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(FPL__MODULE_WIN32, library, userLibraryName, wapi->user.MapVirtualKeyW, fpl__win32_func_MapVirtualKeyW, "MapVirtualKeyW");
-		FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(FPL__MODULE_WIN32, library, userLibraryName, wapi->user.SetCursor, fpl__win32_func_SetCursor, "SetCursor");
-		FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(FPL__MODULE_WIN32, library, userLibraryName, wapi->user.GetCursor, fpl__win32_func_GetCursor, "GetCursor");
-		FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(FPL__MODULE_WIN32, library, userLibraryName, wapi->user.LoadCursorA, fpl__win32_func_LoadCursorA, "LoadCursorA");
-		FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(FPL__MODULE_WIN32, library, userLibraryName, wapi->user.LoadCursorW, fpl__win32_func_LoadCursorW, "LoadCursorW");
-		FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(FPL__MODULE_WIN32, library, userLibraryName, wapi->user.GetCursorPos, fpl__win32_func_GetCursorPos, "GetCursorPos");
-		FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(FPL__MODULE_WIN32, library, userLibraryName, wapi->user.WindowFromPoint, fpl__win32_func_WindowFromPoint, "WindowFromPoint");
-		FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(FPL__MODULE_WIN32, library, userLibraryName, wapi->user.LoadIconA, fpl__win32_func_LoadIconA, "LoadCursorA");
-		FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(FPL__MODULE_WIN32, library, userLibraryName, wapi->user.LoadIconW, fpl__win32_func_LoadIconW, "LoadIconW");
-		FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(FPL__MODULE_WIN32, library, userLibraryName, wapi->user.SetWindowTextW, fpl__win32_func_SetWindowTextW, "SetWindowTextW");
-		FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(FPL__MODULE_WIN32, library, userLibraryName, wapi->user.SetWindowLongW, fpl__win32_func_SetWindowLongW, "SetWindowLongW");
-		FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(FPL__MODULE_WIN32, library, userLibraryName, wapi->user.GetWindowLongW, fpl__win32_func_GetWindowLongW, "GetWindowLongW");
+#	if defined(FPL_ARCH_X64)
+		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_SetWindowLongPtrW, SetWindowLongPtrW);
+		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_GetWindowLongPtrW, GetWindowLongPtrW);
+#	endif
 
-#		if defined(FPL_ARCH_X64)
-		FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(FPL__MODULE_WIN32, library, userLibraryName, wapi->user.SetWindowLongPtrW, fpl__win32_func_SetWindowLongPtrW, "SetWindowLongPtrW");
-		FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(FPL__MODULE_WIN32, library, userLibraryName, wapi->user.GetWindowLongPtrW, fpl__win32_func_GetWindowLongPtrW, "GetWindowLongPtrW");
-#		endif
+		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_ReleaseDC, ReleaseDC);
+		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_GetDC, GetDC);
+		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_ChangeDisplaySettingsW, ChangeDisplaySettingsW);
+		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_EnumDisplaySettingsW, EnumDisplaySettingsW);
+		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_IsClipboardFormatAvailable, IsClipboardFormatAvailable);
+		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_OpenClipboard, OpenClipboard);
+		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_CloseClipboard, CloseClipboard);
+		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_EmptyClipboard, EmptyClipboard);
+		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_SetClipboardData, SetClipboardData);
+		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_GetClipboardData, GetClipboardData);
+		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_GetDesktopWindow, GetDesktopWindow);
+		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_GetForegroundWindow, GetForegroundWindow);
+		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_IsZoomed, IsZoomed);
+		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_IsIconic, IsIconic);
+		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_SendMessageW, SendMessageW);
+		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_GetMonitorInfoW, GetMonitorInfoW);
+		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_MonitorFromRect, MonitorFromRect);
+		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_MonitorFromWindow, MonitorFromWindow);
+		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_ClientToScreen, ClientToScreen);
+		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_PtInRect, PtInRect);
+		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_RegisterRawInputDevices, RegisterRawInputDevices);
+		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_ClipCursor, ClipCursor);
+		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_PostQuitMessage, PostQuitMessage);
+		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_CreateIconIndirect, CreateIconIndirect);
+		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_GetKeyboardLayout, GetKeyboardLayout);
+		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_GetKeyState, GetKeyState);
+		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_SetCapture, SetCapture);
+		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_ReleaseCapture, ReleaseCapture);
+		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_ScreenToClient, ScreenToClient);
 
-		FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(FPL__MODULE_WIN32, library, userLibraryName, wapi->user.ReleaseDC, fpl__win32_func_ReleaseDC, "ReleaseDC");
-		FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(FPL__MODULE_WIN32, library, userLibraryName, wapi->user.GetDC, fpl__win32_func_GetDC, "GetDC");
-		FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(FPL__MODULE_WIN32, library, userLibraryName, wapi->user.ChangeDisplaySettingsW, fpl__win32_func_ChangeDisplaySettingsW, "ChangeDisplaySettingsW");
-		FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(FPL__MODULE_WIN32, library, userLibraryName, wapi->user.EnumDisplaySettingsW, fpl__win32_func_EnumDisplaySettingsW, "EnumDisplaySettingsW");
-		FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(FPL__MODULE_WIN32, library, userLibraryName, wapi->user.IsClipboardFormatAvailable, fpl__win32_func_IsClipboardFormatAvailable, "IsClipboardFormatAvailable");
-		FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(FPL__MODULE_WIN32, library, userLibraryName, wapi->user.OpenClipboard, fpl__win32_func_OpenClipboard, "OpenClipboard");
-		FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(FPL__MODULE_WIN32, library, userLibraryName, wapi->user.CloseClipboard, fpl__win32_func_CloseClipboard, "CloseClipboard");
-		FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(FPL__MODULE_WIN32, library, userLibraryName, wapi->user.EmptyClipboard, fpl__win32_func_EmptyClipboard, "EmptyClipboard");
-		FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(FPL__MODULE_WIN32, library, userLibraryName, wapi->user.SetClipboardData, fpl__win32_func_SetClipboardData, "SetClipboardData");
-		FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(FPL__MODULE_WIN32, library, userLibraryName, wapi->user.GetClipboardData, fpl__win32_func_GetClipboardData, "GetClipboardData");
-		FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(FPL__MODULE_WIN32, library, userLibraryName, wapi->user.GetDesktopWindow, fpl__win32_func_GetDesktopWindow, "GetDesktopWindow");
-		FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(FPL__MODULE_WIN32, library, userLibraryName, wapi->user.GetForegroundWindow, fpl__win32_func_GetForegroundWindow, "GetForegroundWindow");
-		FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(FPL__MODULE_WIN32, library, userLibraryName, wapi->user.IsZoomed, fpl__win32_func_IsZoomed, "IsZoomed");
-		FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(FPL__MODULE_WIN32, library, userLibraryName, wapi->user.IsIconic, fpl__win32_func_IsIconic, "IsIconic");
-		FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(FPL__MODULE_WIN32, library, userLibraryName, wapi->user.SendMessageW, fpl__win32_func_SendMessageW, "SendMessageW");
-		FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(FPL__MODULE_WIN32, library, userLibraryName, wapi->user.GetMonitorInfoW, fpl__win32_func_GetMonitorInfoW, "GetMonitorInfoW");
-		FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(FPL__MODULE_WIN32, library, userLibraryName, wapi->user.MonitorFromRect, fpl__win32_func_MonitorFromRect, "MonitorFromRect");
-		FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(FPL__MODULE_WIN32, library, userLibraryName, wapi->user.MonitorFromWindow, fpl__win32_func_MonitorFromWindow, "MonitorFromWindow");
-		FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(FPL__MODULE_WIN32, library, userLibraryName, wapi->user.ClientToScreen, fpl__win32_func_ClientToScreen, "ClientToScreen");
-		FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(FPL__MODULE_WIN32, library, userLibraryName, wapi->user.PtInRect, fpl__win32_func_PtInRect, "PtInRect");
-		FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(FPL__MODULE_WIN32, library, userLibraryName, wapi->user.RegisterRawInputDevices, fpl__win32_func_RegisterRawInputDevices, "RegisterRawInputDevices");
-		FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(FPL__MODULE_WIN32, library, userLibraryName, wapi->user.ClipCursor, fpl__win32_func_ClipCursor, "ClipCursor");
-		FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(FPL__MODULE_WIN32, library, userLibraryName, wapi->user.PostQuitMessage, fpl__win32_func_PostQuitMessage, "PostQuitMessage");
-		FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(FPL__MODULE_WIN32, library, userLibraryName, wapi->user.CreateIconIndirect, fpl__win32_func_CreateIconIndirect, "CreateIconIndirect");
-		FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(FPL__MODULE_WIN32, library, userLibraryName, wapi->user.GetKeyboardLayout, fpl__win32_func_GetKeyboardLayout, "GetKeyboardLayout");
-		FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(FPL__MODULE_WIN32, library, userLibraryName, wapi->user.GetKeyState, fpl__win32_func_GetKeyState, "GetKeyState");
-		FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(FPL__MODULE_WIN32, library, userLibraryName, wapi->user.SetCapture, fpl__win32_func_SetCapture, "SetCapture");
-		FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(FPL__MODULE_WIN32, library, userLibraryName, wapi->user.ReleaseCapture, fpl__win32_func_ReleaseCapture, "ReleaseCapture");
-		FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(FPL__MODULE_WIN32, library, userLibraryName, wapi->user.ScreenToClient, fpl__win32_func_ScreenToClient, "ScreenToClient");
-	}
-
-	// GDI32
-	{
+		// GDI32
 		const char *gdiLibraryName = "gdi32.dll";
-		HMODULE library = wapi->gdi.gdiLibrary = LoadLibraryA(gdiLibraryName);
-		if(library == fpl_null) {
-			FPL_ERROR(FPL__MODULE_WIN32, "Failed loading library '%s'", gdiLibraryName);
-			return false;
-		}
+		HMODULE gdiLibrary = fpl_null;
+		FPL__WIN32_LOAD_LIBRARY(FPL__MODULE_WIN32, gdiLibrary, gdiLibraryName);
+		wapi->gdi.gdiLibrary = gdiLibrary;
+		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, gdiLibrary, gdiLibraryName, &wapi->gdi, fpl__win32_func_ChoosePixelFormat, ChoosePixelFormat);
+		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, gdiLibrary, gdiLibraryName, &wapi->gdi, fpl__win32_func_SetPixelFormat, SetPixelFormat);
+		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, gdiLibrary, gdiLibraryName, &wapi->gdi, fpl__win32_func_DescribePixelFormat, DescribePixelFormat);
+		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, gdiLibrary, gdiLibraryName, &wapi->gdi, fpl__win32_func_StretchDIBits, StretchDIBits);
+		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, gdiLibrary, gdiLibraryName, &wapi->gdi, fpl__win32_func_DeleteObject, DeleteObject);
+		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, gdiLibrary, gdiLibraryName, &wapi->gdi, fpl__win32_func_SwapBuffers, SwapBuffers);
+		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, gdiLibrary, gdiLibraryName, &wapi->gdi, fpl__win32_func_GetDeviceCaps, GetDeviceCaps);
+		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, gdiLibrary, gdiLibraryName, &wapi->gdi, fpl__win32_func_CreateDIBSection, CreateDIBSection);
+		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, gdiLibrary, gdiLibraryName, &wapi->gdi, fpl__win32_func_CreateBitmap, CreateBitmap);
 
-		FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(FPL__MODULE_WIN32, library, gdiLibraryName, wapi->gdi.ChoosePixelFormat, fpl__win32_func_ChoosePixelFormat, "ChoosePixelFormat");
-		FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(FPL__MODULE_WIN32, library, gdiLibraryName, wapi->gdi.SetPixelFormat, fpl__win32_func_SetPixelFormat, "SetPixelFormat");
-		FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(FPL__MODULE_WIN32, library, gdiLibraryName, wapi->gdi.DescribePixelFormat, fpl__win32_func_DescribePixelFormat, "DescribePixelFormat");
-		FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(FPL__MODULE_WIN32, library, gdiLibraryName, wapi->gdi.StretchDIBits, fpl__win32_func_StretchDIBits, "StretchDIBits");
-		FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(FPL__MODULE_WIN32, library, gdiLibraryName, wapi->gdi.DeleteObject, fpl__win32_func_DeleteObject, "DeleteObject");
-		FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(FPL__MODULE_WIN32, library, gdiLibraryName, wapi->gdi.SwapBuffers, fpl__win32_func_SwapBuffers, "SwapBuffers");
-		FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(FPL__MODULE_WIN32, library, gdiLibraryName, wapi->gdi.GetDeviceCaps, fpl__win32_func_GetDeviceCaps, "GetDeviceCaps");
-		FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(FPL__MODULE_WIN32, library, gdiLibraryName, wapi->gdi.CreateDIBSection, fpl__win32_func_CreateDIBSection, "CreateDIBSection");
-		FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(FPL__MODULE_WIN32, library, gdiLibraryName, wapi->gdi.CreateBitmap, fpl__win32_func_CreateBitmap, "CreateBitmap");
-	}
-
-	// OLE32
-	{
+		// OLE32
 		const char *oleLibraryName = "ole32.dll";
-		HMODULE library = wapi->ole.oleLibrary = LoadLibraryA(oleLibraryName);
-		if(library == fpl_null) {
-			FPL_ERROR(FPL__MODULE_WIN32, "Failed loading library '%s'", oleLibraryName);
-			return false;
-		}
+		HMODULE oleLibrary = fpl_null;
+		FPL__WIN32_LOAD_LIBRARY(FPL__MODULE_WIN32, oleLibrary, oleLibraryName);
+		wapi->ole.oleLibrary = oleLibrary;
+		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, oleLibrary, oleLibraryName, &wapi->ole, fpl__win32_func_CoInitializeEx, CoInitializeEx);
+		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, oleLibrary, oleLibraryName, &wapi->ole, fpl__win32_func_CoUninitialize, CoUninitialize);
+		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, oleLibrary, oleLibraryName, &wapi->ole, fpl__win32_func_CoCreateInstance, CoCreateInstance);
+		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, oleLibrary, oleLibraryName, &wapi->ole, fpl__win32_func_CoTaskMemFree, CoTaskMemFree);
+		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, oleLibrary, oleLibraryName, &wapi->ole, fpl__win32_func_PropVariantClear, PropVariantClear);
 
-		FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(FPL__MODULE_WIN32, library, oleLibraryName, wapi->ole.CoInitializeEx, fpl__win32_func_CoInitializeEx, "CoInitializeEx");
-		FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(FPL__MODULE_WIN32, library, oleLibraryName, wapi->ole.CoUninitialize, fpl__win32_func_CoUninitialize, "CoUninitialize");
-		FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(FPL__MODULE_WIN32, library, oleLibraryName, wapi->ole.CoCreateInstance, fpl__win32_func_CoCreateInstance, "CoCreateInstance");
-		FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(FPL__MODULE_WIN32, library, oleLibraryName, wapi->ole.CoTaskMemFree, fpl__win32_func_CoTaskMemFree, "CoTaskMemFree");
-		FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(FPL__MODULE_WIN32, library, oleLibraryName, wapi->ole.PropVariantClear, fpl__win32_func_PropVariantClear, "PropVariantClear");
+		result = true;
+	} while(0);
+	if(!result) {
+		fpl__Win32UnloadApi(wapi);
 	}
-
-	wapi->isValid = true;
-
-	return true;
+	wapi->isValid = result;
+	return(result);
 }
 
 // Win32 unicode dependend stuff
@@ -6204,13 +6208,33 @@ typedef struct fpl__Win32WindowState {
 #	define fpl__off64_t off_t
 #endif
 
-// Little macro to not write 5 lines of code all the time
-#define FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(mod, libHandle, libName, target, type, name) \
-	target = (type *)dlsym(libHandle, name); \
-	if (target == fpl_null) { \
-		FPL_ERROR(mod, "Failed getting '%s' from library '%s'", name, libName); \
+// Little macros for loading a library and getting proc address for POSIX
+#define FPL__POSIX_LOAD_LIBRARY_BREAK(mod, target, libName) \
+	(target) = dlopen(libName, FPL__POSIX_DL_LOADTYPE); \
+	if((target) == fpl_null) { \
+		FPL_ERROR(mod, "Failed loading library '%s'", (libName)); \
 		break; \
 	}
+
+#define FPL__POSIX_GET_FUNCTION_ADDRESS_OPTIONAL(mod, libHandle, libName, target, type, name) \
+	(target)->name = (type *)dlsym(libHandle, #name)
+
+#define FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(mod, libHandle, libName, target, type, name) \
+	(target)->name = (type *)dlsym(libHandle, #name); \
+	if ((target)->name == fpl_null) { \
+		FPL_ERROR(mod, "Failed getting procedure address '%s' from library '%s'", #name, libName); \
+		break; \
+	}
+#if !defined(FPL_NO_RUNTIME_LINKING)
+#	define FPL__POSIX_LOAD_LIBRARY FPL__POSIX_LOAD_LIBRARY_BREAK
+#	define FPL__POSIX_GET_FUNCTION_ADDRESS FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK
+#else
+#	define FPL__POSIX_LOAD_LIBRARY(mod, target, libName)
+#	define FPL__POSIX_GET_FUNCTION_ADDRESS_OPTIONAL(mod, libHandle, libName, target, type, name) \
+		(target)->name = name
+#	define FPL__POSIX_GET_FUNCTION_ADDRESS(mod, libHandle, libName, target, type, name) \
+		(target)->name = name
+#endif
 
 #define FPL__FUNC_PTHREAD_pthread_create(name) int name(pthread_t *, const pthread_attr_t *, void *(*__start_routine) (void *), void *)
 typedef FPL__FUNC_PTHREAD_pthread_create(fpl__pthread_func_pthread_create);
@@ -6313,47 +6337,48 @@ fpl_internal bool fpl__PThreadLoadApi(fpl__PThreadApi *pthreadApi) {
 	bool result = false;
 	for(uint32_t index = 0; index < fplArrayCount(libpthreadFileNames); ++index) {
 		const char * libName = libpthreadFileNames[index];
-		void *libHandle = pthreadApi->libHandle = dlopen(libName, FPL__POSIX_DL_LOADTYPE);
-		if(libHandle != fpl_null) {
-			fplClearStruct(pthreadApi);
-			do {
-				// pthread_t
-				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi->pthread_create, fpl__pthread_func_pthread_create, "pthread_create");
-				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi->pthread_kill, fpl__pthread_func_pthread_kill, "pthread_kill");
-				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi->pthread_join, fpl__pthread_func_pthread_join, "pthread_join");
-				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi->pthread_exit, fpl__pthread_func_pthread_exit, "pthread_exit");
-				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi->pthread_yield, fpl__pthread_func_pthread_yield, "pthread_yield");
-				pthreadApi->pthread_timedjoin_np = (fpl__pthread_func_pthread_timedjoin_np *)dlsym(libHandle, "pthread_timedjoin_np");
+		fplClearStruct(pthreadApi);
+		do {
+			void *libHandle = fpl_null;
+			FPL__POSIX_LOAD_LIBRARY(FPL__MODULE_PTHREAD, libHandle, libName);
 
-				// pthread_mutex_t
-				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi->pthread_mutex_init, fpl__pthread_func_pthread_mutex_init, "pthread_mutex_init");
-				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi->pthread_mutex_destroy, fpl__pthread_func_pthread_mutex_destroy, "pthread_mutex_destroy");
-				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi->pthread_mutex_lock, fpl__pthread_func_pthread_mutex_lock, "pthread_mutex_lock");
-				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi->pthread_mutex_trylock, fpl__pthread_func_pthread_mutex_trylock, "pthread_mutex_trylock");
-				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi->pthread_mutex_unlock, fpl__pthread_func_pthread_mutex_unlock, "pthread_mutex_unlock");
+			// pthread_t
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_create, pthread_create);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_kill, pthread_kill);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_join, pthread_join);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_exit, pthread_exit);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_yield, pthread_yield);
+			FPL__POSIX_GET_FUNCTION_ADDRESS_OPTIONAL(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_timedjoin_np, pthread_timedjoin_np);
 
-				// pthread_cond_t
-				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi->pthread_cond_init, fpl__pthread_func_pthread_cond_init, "pthread_cond_init");
-				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi->pthread_cond_destroy, fpl__pthread_func_pthread_cond_destroy, "pthread_cond_destroy");
-				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi->pthread_cond_timedwait, fpl__pthread_func_pthread_cond_timedwait, "pthread_cond_timedwait");
-				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi->pthread_cond_wait, fpl__pthread_func_pthread_cond_wait, "pthread_cond_wait");
-				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi->pthread_cond_broadcast, fpl__pthread_func_pthread_cond_broadcast, "pthread_cond_broadcast");
-				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi->pthread_cond_signal, fpl__pthread_func_pthread_cond_signal, "pthread_cond_signal");
+			// pthread_mutex_t
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_mutex_init, pthread_mutex_init);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_mutex_destroy, pthread_mutex_destroy);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_mutex_lock, pthread_mutex_lock);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_mutex_trylock, pthread_mutex_trylock);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_mutex_unlock, pthread_mutex_unlock);
 
-				// sem_t
-				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi->sem_init, fpl__pthread_func_sem_init, "sem_init");
-				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi->sem_destroy, fpl__pthread_func_sem_destroy, "sem_destroy");
-				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi->sem_wait, fpl__pthread_func_sem_wait, "sem_wait");
-				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi->sem_timedwait, fpl__pthread_func_sem_timedwait, "sem_timedwait");
-				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi->sem_trywait, fpl__pthread_func_sem_trywait, "sem_trywait");
-				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi->sem_post, fpl__pthread_func_sem_post, "sem_post");
-				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi->sem_getvalue, fpl__pthread_func_sem_getvalue, "sem_getvalue");
+			// pthread_cond_t
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_cond_init, pthread_cond_init);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_cond_destroy, pthread_cond_destroy);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_cond_timedwait, pthread_cond_timedwait);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_cond_wait, pthread_cond_wait);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_cond_broadcast, pthread_cond_broadcast);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_cond_signal, pthread_cond_signal);
 
-				result = true;
-			} while(0);
-			if(result) {
-				break;
-			}
+			// sem_t
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_sem_init, sem_init);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_sem_destroy, sem_destroy);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_sem_wait, sem_wait);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_sem_timedwait, sem_timedwait);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_sem_trywait, sem_trywait);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_sem_post, sem_post);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_sem_getvalue, sem_getvalue);
+
+			pthreadApi->libHandle = libHandle;
+			result = true;
+		} while(0);
+		if(result) {
+			break;
 		}
 		fpl__PThreadUnloadApi(pthreadApi);
 	}
@@ -6588,6 +6613,7 @@ fpl_internal void fpl__UnloadX11Api(fpl__X11Api *x11Api) {
 }
 
 fpl_internal bool fpl__LoadX11Api(fpl__X11Api *x11Api) {
+	fplAssert(x11Api != fpl_null);
 	const char* libFileNames[] = {
 		"libX11.so",
 		"libX11.so.7",
@@ -6597,58 +6623,59 @@ fpl_internal bool fpl__LoadX11Api(fpl__X11Api *x11Api) {
 	bool result = false;
 	for(uint32_t index = 0; index < fplArrayCount(libFileNames); ++index) {
 		const char *libName = libFileNames[index];
-		void *libHandle = x11Api->libHandle = dlopen(libName, FPL__POSIX_DL_LOADTYPE);
-		if(libHandle != fpl_null) {
-			do {
-				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_X11, libHandle, libName, x11Api->XFlush, fpl__func_x11_XFlush, "XFlush");
-				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_X11, libHandle, libName, x11Api->XFree, fpl__func_x11_XFree, "XFree");
-				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_X11, libHandle, libName, x11Api->XOpenDisplay, fpl__func_x11_XOpenDisplay, "XOpenDisplay");
-				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_X11, libHandle, libName, x11Api->XCloseDisplay, fpl__func_x11_XCloseDisplay, "XCloseDisplay");
-				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_X11, libHandle, libName, x11Api->XDefaultScreen, fpl__func_x11_XDefaultScreen, "XDefaultScreen");
-				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_X11, libHandle, libName, x11Api->XRootWindow, fpl__func_x11_XRootWindow, "XRootWindow");
-				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_X11, libHandle, libName, x11Api->XCreateWindow, fpl__func_x11_XCreateWindow, "XCreateWindow");
-				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_X11, libHandle, libName, x11Api->XDestroyWindow, fpl__func_x11_XDestroyWindow, "XDestroyWindow");
-				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_X11, libHandle, libName, x11Api->XCreateColormap, fpl__func_x11_XCreateColormap, "XCreateColormap");
-				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_X11, libHandle, libName, x11Api->XFreeColormap, fpl__func_x11_XFreeColormap, "XFreeColormap");
-				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_X11, libHandle, libName, x11Api->XDefaultColormap, fpl__func_x11_XDefaultColormap, "XDefaultColormap");
-				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_X11, libHandle, libName, x11Api->XMapWindow, fpl__func_x11_XMapWindow, "XMapWindow");
-				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_X11, libHandle, libName, x11Api->XUnmapWindow, fpl__func_x11_XUnmapWindow, "XUnmapWindow");
-				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_X11, libHandle, libName, x11Api->XStoreName, fpl__func_x11_XStoreName, "XStoreName");
-				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_X11, libHandle, libName, x11Api->XDefaultVisual, fpl__func_x11_XDefaultVisual, "XDefaultVisual");
-				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_X11, libHandle, libName, x11Api->XDefaultDepth, fpl__func_x11_XDefaultDepth, "XDefaultDepth");
-				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_X11, libHandle, libName, x11Api->XInternAtom, fpl__func_x11_XInternAtom, "XInternAtom");
-				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_X11, libHandle, libName, x11Api->XSetWMProtocols, fpl__func_x11_XSetWMProtocols, "XSetWMProtocols");
-				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_X11, libHandle, libName, x11Api->XPending, fpl__func_x11_XPending, "XPending");
-				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_X11, libHandle, libName, x11Api->XSync, fpl__func_x11_XSync, "XSync");
-				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_X11, libHandle, libName, x11Api->XNextEvent, fpl__func_x11_XNextEvent, "XNextEvent");
-				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_X11, libHandle, libName, x11Api->XPeekEvent, fpl__func_x11_XPeekEvent, "XPeekEvent");
-				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_X11, libHandle, libName, x11Api->XEventsQueued, fpl__func_x11_XEventsQueued, "XEventsQueued");
-				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_X11, libHandle, libName, x11Api->XGetWindowAttributes, fpl__func_x11_XGetWindowAttributes, "XGetWindowAttributes");
-				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_X11, libHandle, libName, x11Api->XResizeWindow, fpl__func_x11_XResizeWindow, "XResizeWindow");
-				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_X11, libHandle, libName, x11Api->XMoveWindow, fpl__func_x11_XMoveWindow, "XMoveWindow");
-				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_X11, libHandle, libName, x11Api->XGetKeyboardMapping, fpl__func_x11_XGetKeyboardMapping, "XGetKeyboardMapping");
-				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_X11, libHandle, libName, x11Api->XSendEvent, fpl__func_x11_XSendEvent, "XSendEvent");
-				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_X11, libHandle, libName, x11Api->XMatchVisualInfo, fpl__func_x11_XMatchVisualInfo, "XMatchVisualInfo");
-				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_X11, libHandle, libName, x11Api->XCreateGC, fpl__func_x11_XCreateGC, "XCreateGC");
-				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_X11, libHandle, libName, x11Api->XGetImage, fpl__func_x11_XGetImage, "XGetImage");
-				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_X11, libHandle, libName, x11Api->XPutImage, fpl__func_x11_XPutImage, "XPutImage");
-				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_X11, libHandle, libName, x11Api->XMapRaised, fpl__func_x11_XMapRaised, "XMapRaised");
-				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_X11, libHandle, libName, x11Api->XCreateImage, fpl__func_x11_XCreateImage, "XCreateImage");
-				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_X11, libHandle, libName, x11Api->XCreatePixmap, fpl__func_x11_XCreatePixmap, "XCreatePixmap");
-				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_X11, libHandle, libName, x11Api->XSelectInput, fpl__func_x11_XSelectInput, "XSelectInput");
-				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_X11, libHandle, libName, x11Api->XGetWindowProperty, fpl__func_x11_XGetWindowProperty, "XGetWindowProperty");
-				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_X11, libHandle, libName, x11Api->XChangeProperty, fpl__func_x11_XChangeProperty, "XChangeProperty");
-				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_X11, libHandle, libName, x11Api->XDeleteProperty, fpl__func_x11_XDeleteProperty, "XDeleteProperty");
-				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_X11, libHandle, libName, x11Api->XStringListToTextProperty, fpl__func_x11_XStringListToTextProperty, "XStringListToTextProperty");
-				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_X11, libHandle, libName, x11Api->XSetWMIconName, fpl__func_x11_XSetWMIconName, "XSetWMIconName");
-				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_X11, libHandle, libName, x11Api->XSetWMName, fpl__func_x11_XSetWMName, "XSetWMName");
-				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_X11, libHandle, libName, x11Api->XQueryKeymap, fpl__func_x11_XQueryKeymap, "XQueryKeymap");
-				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_X11, libHandle, libName, x11Api->XQueryPointer, fpl__func_x11_XQueryPointer, "XQueryPointer");
-				result = true;
-			} while(0);
-			if(result) {
-				break;
-			}
+		fplClearStruct(x11Api);
+		do {
+			void *libHandle = fpl_null;
+			FPL__POSIX_LOAD_LIBRARY(FPL__MODULE_X11, libHandle, libName);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XFlush, XFlush);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XFree, XFree);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XOpenDisplay, XOpenDisplay);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XCloseDisplay, XCloseDisplay);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XDefaultScreen, XDefaultScreen);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XRootWindow, XRootWindow);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XCreateWindow, XCreateWindow);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XDestroyWindow, XDestroyWindow);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XCreateColormap, XCreateColormap);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XFreeColormap, XFreeColormap);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XDefaultColormap, XDefaultColormap);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XMapWindow, XMapWindow);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XUnmapWindow, XUnmapWindow);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XStoreName, XStoreName);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XDefaultVisual, XDefaultVisual);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XDefaultDepth, XDefaultDepth);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XInternAtom, XInternAtom);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XSetWMProtocols, XSetWMProtocols);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XPending, XPending);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XSync, XSync);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XNextEvent, XNextEvent);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XPeekEvent, XPeekEvent);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XEventsQueued, XEventsQueued);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XGetWindowAttributes, XGetWindowAttributes);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XResizeWindow, XResizeWindow);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XMoveWindow, XMoveWindow);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XGetKeyboardMapping, XGetKeyboardMapping);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XSendEvent, XSendEvent);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XMatchVisualInfo, XMatchVisualInfo);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XCreateGC, XCreateGC);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XGetImage, XGetImage);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XPutImage, XPutImage);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XMapRaised, XMapRaised);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XCreateImage, XCreateImage);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XCreatePixmap, XCreatePixmap);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XSelectInput, XSelectInput);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XGetWindowProperty, XGetWindowProperty);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XChangeProperty, XChangeProperty);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XDeleteProperty, XDeleteProperty);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XStringListToTextProperty, XStringListToTextProperty);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XSetWMIconName, XSetWMIconName);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XSetWMName, XSetWMName);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XQueryKeymap, XQueryKeymap);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XQueryPointer, XQueryPointer);
+			x11Api->libHandle = libHandle;
+			result = true;
+		} while(0);
+		if(result) {
+			break;
 		}
 		fpl__UnloadX11Api(x11Api);
 	}
@@ -7542,7 +7569,7 @@ fpl_common_api void *fplMemoryAlignedAllocate(const size_t size, const size_t al
 	// Write the base pointer before the alignment pointer
 	*(void **)((void *)((uint8_t *)alignedPtr - sizeof(void *))) = basePtr;
 	// Ensure alignment
-	fplAssert(FPL_IS_ALIGNED(alignedPtr, alignment));
+	fplAssert(fplIsAligned(alignedPtr, alignment));
 	return(alignedPtr);
 }
 
@@ -8377,7 +8404,7 @@ fpl_internal void fpl__Win32XInputGamepadToGamepadState(const XINPUT_GAMEPAD *pa
 fpl_internal void fpl__Win32UpdateGameControllers(const fplSettings *settings, const fpl__Win32InitState *initState, fpl__Win32XInputState *xinputState) {
 	fplAssert(settings != fpl_null);
 	fplAssert(xinputState != fpl_null);
-	if(xinputState->xinputApi.xInputGetState != fpl_null) {
+	if(xinputState->xinputApi.XInputGetState != fpl_null) {
 		//
 		// Detect new controller (Only at a fixed frequency)
 		//
@@ -8391,7 +8418,7 @@ fpl_internal void fpl__Win32UpdateGameControllers(const fplSettings *settings, c
 			xinputState->lastDeviceSearchTime = currentDeviceSearchTime;
 			for(DWORD controllerIndex = 0; controllerIndex < XUSER_MAX_COUNT; ++controllerIndex) {
 				XINPUT_STATE controllerState = fplZeroInit;
-				if(xinputState->xinputApi.xInputGetState(controllerIndex, &controllerState) == ERROR_SUCCESS) {
+				if(xinputState->xinputApi.XInputGetState(controllerIndex, &controllerState) == ERROR_SUCCESS) {
 					if(!xinputState->isConnected[controllerIndex]) {
 						// Connected
 						xinputState->isConnected[controllerIndex] = true;
@@ -8421,7 +8448,7 @@ fpl_internal void fpl__Win32UpdateGameControllers(const fplSettings *settings, c
 		for(DWORD controllerIndex = 0; controllerIndex < XUSER_MAX_COUNT; ++controllerIndex) {
 			if(xinputState->isConnected[controllerIndex]) {
 				XINPUT_STATE controllerState = fplZeroInit;
-				if(xinputState->xinputApi.xInputGetState(controllerIndex, &controllerState) == ERROR_SUCCESS) {
+				if(xinputState->xinputApi.XInputGetState(controllerIndex, &controllerState) == ERROR_SUCCESS) {
 					// State changed
 					fplEvent ev = fplZeroInit;
 					ev.type = fplEventType_Gamepad;
@@ -10874,7 +10901,7 @@ fpl_platform_api char *fplGetHomePath(char *destPath, const size_t maxDestLen) {
 	FPL__CheckPlatform(fpl_null);
 	const fpl__Win32Api *wapi = &fpl__global__AppState->win32.winApi;
 	wchar_t homePath[MAX_PATH];
-	wapi->shell.ShGetFolderPathW(fpl_null, CSIDL_PROFILE, fpl_null, 0, homePath);
+	wapi->shell.SHGetFolderPathW(fpl_null, CSIDL_PROFILE, fpl_null, 0, homePath);
 	fplWideStringToUTF8String(homePath, lstrlenW(homePath), destPath, maxDestLen);
 	return(destPath);
 }
@@ -11360,11 +11387,11 @@ fpl_platform_api bool fplPollGamepadStates(fplGamepadStates *outStates) {
 		const fpl__Win32Api *wapi = &appState->winApi;
 		const fpl__Win32XInputState *xinputState = &appState->xinput;
 		fplAssert(xinputState != fpl_null);
-		if(xinputState->xinputApi.xInputGetState != fpl_null) {
+		if(xinputState->xinputApi.XInputGetState != fpl_null) {
 			fplClearStruct(outStates);
 			for(DWORD controllerIndex = 0; controllerIndex < XUSER_MAX_COUNT; ++controllerIndex) {
 				XINPUT_STATE controllerState = fplZeroInit;
-				if(xinputState->xinputApi.xInputGetState(controllerIndex, &controllerState) == ERROR_SUCCESS) {
+				if(xinputState->xinputApi.XInputGetState(controllerIndex, &controllerState) == ERROR_SUCCESS) {
 					XINPUT_GAMEPAD *pad = &controllerState.Gamepad;
 					fplGamepadState *gamepadState = &outStates->deviceStates[controllerIndex];
 					fpl__Win32XInputGamepadToGamepadState(pad, gamepadState);
@@ -14520,16 +14547,22 @@ fpl_internal void fpl__Win32UnloadVideoOpenGLApi(fpl__Win32OpenGLApi *api) {
 
 fpl_internal bool fpl__Win32LoadVideoOpenGLApi(fpl__Win32OpenGLApi *api) {
 	const char *openglLibraryName = "opengl32.dll";
-	api->openglLibrary = LoadLibraryA("opengl32.dll");
-	if(api->openglLibrary == fpl_null) {
-		FPL_ERROR(FPL__MODULE_VIDEO_OPENGL, "Failed loading opengl library '%s'", openglLibraryName);
-		return false;
+	bool result = false;
+	fplClearStruct(api);
+	do {
+		HMODULE openglLibrary = fpl_null;
+		FPL__WIN32_LOAD_LIBRARY(FPL__MODULE_VIDEO_OPENGL, openglLibrary, openglLibraryName);
+		api->openglLibrary = openglLibrary;
+		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_VIDEO_OPENGL, openglLibrary, openglLibraryName, api, fpl__win32_func_wglGetProcAddress, wglGetProcAddress);
+		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_VIDEO_OPENGL, openglLibrary, openglLibraryName, api, fpl__win32_func_wglCreateContext, wglCreateContext);
+		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_VIDEO_OPENGL, openglLibrary, openglLibraryName, api, fpl__win32_func_wglDeleteContext, wglDeleteContext);
+		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_VIDEO_OPENGL, openglLibrary, openglLibraryName, api, fpl__win32_func_wglMakeCurrent, wglMakeCurrent);
+		result = true;
+	} while(0);
+	if(!result) {
+		fpl__Win32UnloadVideoOpenGLApi(api);
 	}
-	FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(FPL__MODULE_VIDEO_OPENGL, api->openglLibrary, openglLibraryName, api->wglGetProcAddress, fpl__win32_func_wglGetProcAddress, "wglGetProcAddress");
-	FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(FPL__MODULE_VIDEO_OPENGL, api->openglLibrary, openglLibraryName, api->wglCreateContext, fpl__win32_func_wglCreateContext, "wglCreateContext");
-	FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(FPL__MODULE_VIDEO_OPENGL, api->openglLibrary, openglLibraryName, api->wglDeleteContext, fpl__win32_func_wglDeleteContext, "wglDeleteContext");
-	FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(FPL__MODULE_VIDEO_OPENGL, api->openglLibrary, openglLibraryName, api->wglMakeCurrent, fpl__win32_func_wglMakeCurrent, "wglMakeCurrent");
-	return true;
+	return(result);
 }
 
 typedef struct fpl__Win32VideoOpenGLState {
@@ -14908,36 +14941,34 @@ fpl_internal bool fpl__X11LoadVideoOpenGLApi(fpl__X11VideoOpenGLApi *api) {
 		"libGL.so.1",
 		"libGL.so",
 	};
-
 	bool result = false;
 	for(uint32_t index = 0; index < fplArrayCount(libFileNames); ++index) {
 		const char *libName = libFileNames[index];
 		FPL_LOG_DEBUG(FPL__MODULE_GLX, "Load GLX Api from Library: %s", libName);
-		void *libHandle = api->libHandle = dlopen(libName, FPL__POSIX_DL_LOADTYPE);
-		if(libHandle != fpl_null) {
-			FPL_LOG_DEBUG(FPL__MODULE_GLX, "Library Found: '%s', Resolving Procedures", libName);
-			do {
-				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_GLX, libHandle, libName, api->glXQueryVersion, fpl__func_glx_glXQueryVersion, "glXQueryVersion");
-				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_GLX, libHandle, libName, api->glXChooseVisual, fpl__func_glx_glXChooseVisual, "glXChooseVisual");
-				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_GLX, libHandle, libName, api->glXCreateContext, fpl__func_glx_glXCreateContext, "glXCreateContext");
-				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_GLX, libHandle, libName, api->glXDestroyContext, fpl__func_glx_glXDestroyContext, "glXDestroyContext");
-				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_GLX, libHandle, libName, api->glXCreateNewContext, fpl__func_glx_glXCreateNewContext, "glXCreateNewContext");
-				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_GLX, libHandle, libName, api->glXMakeCurrent, fpl__func_glx_glXMakeCurrent, "glXMakeCurrent");
-				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_GLX, libHandle, libName, api->glXSwapBuffers, fpl__func_glx_glXSwapBuffers, "glXSwapBuffers");
-				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_GLX, libHandle, libName, api->glXGetProcAddress, fpl__func_glx_glXGetProcAddress, "glXGetProcAddress");
-				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_GLX, libHandle, libName, api->glXChooseFBConfig, fpl__func_glx_glXChooseFBConfig, "glXChooseFBConfig");
-				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_GLX, libHandle, libName, api->glXGetFBConfigs, fpl__func_glx_glXGetFBConfigs, "glXGetFBConfigs");
-				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_GLX, libHandle, libName, api->glXGetVisualFromFBConfig, fpl__func_glx_glXGetVisualFromFBConfig, "glXGetVisualFromFBConfig");
-				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_GLX, libHandle, libName, api->glXGetFBConfigAttrib, fpl__func_glx_glXGetFBConfigAttrib, "glXGetFBConfigAttrib");
-				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_GLX, libHandle, libName, api->glXCreateWindow, fpl__func_glx_glXCreateWindow, "glXCreateWindow");
-				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_GLX, libHandle, libName, api->glXQueryExtension, fpl__func_glx_glXQueryExtension, "glXQueryExtension");
-				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_GLX, libHandle, libName, api->glXQueryExtensionsString, fpl__func_glx_glXQueryExtensionsString, "glXQueryExtensionsString");
-				result = true;
-			} while(0);
-			if(result) {
-				FPL_LOG_DEBUG(FPL__MODULE_GLX, , "Successfully loaded GLX Api from Library '%s'", libName);
-				break;
-			}
+		do {
+			void *libHandle = fpl_null;
+			FPL__POSIX_LOAD_LIBRARY(FPL__MODULE_GLX, libHandle, libName);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_GLX, libHandle, libName, api, fpl__func_glx_glXQueryVersion, glXQueryVersion);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_GLX, libHandle, libName, api, fpl__func_glx_glXChooseVisual, glXChooseVisual);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_GLX, libHandle, libName, api, fpl__func_glx_glXCreateContext, glXCreateContext);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_GLX, libHandle, libName, api, fpl__func_glx_glXDestroyContext, glXDestroyContext);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_GLX, libHandle, libName, api, fpl__func_glx_glXCreateNewContext, glXCreateNewContext);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_GLX, libHandle, libName, api, fpl__func_glx_glXMakeCurrent, glXMakeCurrent);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_GLX, libHandle, libName, api, fpl__func_glx_glXSwapBuffers, glXSwapBuffers);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_GLX, libHandle, libName, api, fpl__func_glx_glXGetProcAddress, glXGetProcAddress);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_GLX, libHandle, libName, api, fpl__func_glx_glXChooseFBConfig, glXChooseFBConfig);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_GLX, libHandle, libName, api, fpl__func_glx_glXGetFBConfigs, glXGetFBConfigs);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_GLX, libHandle, libName, api, fpl__func_glx_glXGetVisualFromFBConfig, glXGetVisualFromFBConfig);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_GLX, libHandle, libName, api, fpl__func_glx_glXGetFBConfigAttrib, glXGetFBConfigAttrib);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_GLX, libHandle, libName, api, fpl__func_glx_glXCreateWindow, glXCreateWindow);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_GLX, libHandle, libName, api, fpl__func_glx_glXQueryExtension, glXQueryExtension);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_GLX, libHandle, libName, api, fpl__func_glx_glXQueryExtensionsString, glXQueryExtensionsString);
+			api->libHandle = libHandle;
+			result = true;
+		} while(0);
+		if(result) {
+			FPL_LOG_DEBUG(FPL__MODULE_GLX, , "Successfully loaded GLX Api from Library '%s'", libName);
+			break;
 		}
 		fpl__X11UnloadVideoOpenGLApi(api);
 	}
@@ -15424,17 +15455,21 @@ fpl_internal void fpl__UnloadDirectSoundApi(fpl__DirectSoundApi *dsoundApi) {
 
 fpl_internal bool fpl__LoadDirectSoundApi(fpl__DirectSoundApi *dsoundApi) {
 	fplAssert(dsoundApi != fpl_null);
-
+	bool result = false;
 	const char *dsoundLibraryName = "dsound.dll";
-	HMODULE library = dsoundApi->dsoundLibrary = LoadLibraryA(dsoundLibraryName);
-	if(library == fpl_null) {
-		FPL_ERROR(FPL__MODULE_AUDIO_DIRECTSOUND, "Failed loading library '%s'", dsoundLibraryName);
-		return false;
+	fplClearStruct(dsoundApi);
+	do {
+		HMODULE dsoundLibrary = fpl_null;
+		FPL__WIN32_LOAD_LIBRARY(FPL__MODULE_AUDIO_DIRECTSOUND, dsoundLibrary, dsoundLibraryName);
+		dsoundApi->dsoundLibrary = dsoundLibrary;
+		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_DIRECTSOUND, dsoundLibrary, dsoundLibraryName, dsoundApi, func_DirectSoundCreate, DirectSoundCreate);
+		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_DIRECTSOUND, dsoundLibrary, dsoundLibraryName, dsoundApi, func_DirectSoundEnumerateW, DirectSoundEnumerateW);
+		result = true;
+	} while(0);
+	if(!result) {
+		fpl__UnloadDirectSoundApi(dsoundApi);
 	}
-	FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(FPL__MODULE_AUDIO_DIRECTSOUND, library, dsoundLibraryName, dsoundApi->DirectSoundCreate, func_DirectSoundCreate, "DirectSoundCreate");
-	FPL__WIN32_GET_FUNCTION_ADDRESS_RETURN(FPL__MODULE_AUDIO_DIRECTSOUND, library, dsoundLibraryName, dsoundApi->DirectSoundEnumerateW, func_DirectSoundEnumerateW, "DirectSoundEnumerateW");
-
-	return true;
+	return(result);
 }
 
 typedef struct fpl__DirectSoundAudioState {
@@ -16021,57 +16056,58 @@ fpl_internal bool fpl__LoadAlsaApi(fpl__AlsaAudioApi *alsaApi) {
 	bool result = false;
 	for(uint32_t index = 0; index < fplArrayCount(libraryNames); ++index) {
 		const char * libName = libraryNames[index];
-		void *libHandle = alsaApi->libHandle = dlopen(libName, FPL__POSIX_DL_LOADTYPE);
-		if(libHandle != fpl_null) {
-			do {
-				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_AUDIO_ALSA, libHandle, libName, alsaApi->snd_pcm_open, fpl__alsa_func_snd_pcm_open, "snd_pcm_open");
-				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_AUDIO_ALSA, libHandle, libName, alsaApi->snd_pcm_close, fpl__alsa_func_snd_pcm_close, "snd_pcm_close");
-				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_AUDIO_ALSA, libHandle, libName, alsaApi->snd_pcm_hw_params_sizeof, fpl__alsa_func_snd_pcm_hw_params_sizeof, "snd_pcm_hw_params_sizeof");
-				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_AUDIO_ALSA, libHandle, libName, alsaApi->snd_pcm_hw_params, fpl__alsa_func_snd_pcm_hw_params, "snd_pcm_hw_params");
-				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_AUDIO_ALSA, libHandle, libName, alsaApi->snd_pcm_hw_params_any, fpl__alsa_func_snd_pcm_hw_params_any, "snd_pcm_hw_params_any");
-				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_AUDIO_ALSA, libHandle, libName, alsaApi->snd_pcm_hw_params_set_format, fpl__alsa_func_snd_pcm_hw_params_set_format, "snd_pcm_hw_params_set_format");
-				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_AUDIO_ALSA, libHandle, libName, alsaApi->snd_pcm_hw_params_set_format_first, fpl__alsa_func_snd_pcm_hw_params_set_format_first, "snd_pcm_hw_params_set_format_first");
-				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_AUDIO_ALSA, libHandle, libName, alsaApi->snd_pcm_hw_params_get_format_mask, fpl__alsa_func_snd_pcm_hw_params_get_format_mask, "snd_pcm_hw_params_get_format_mask");
-				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_AUDIO_ALSA, libHandle, libName, alsaApi->snd_pcm_hw_params_set_channels_near, fpl__alsa_func_snd_pcm_hw_params_set_channels_near, "snd_pcm_hw_params_set_channels_near");
-				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_AUDIO_ALSA, libHandle, libName, alsaApi->snd_pcm_hw_params_set_rate_resample, fpl__alsa_func_snd_pcm_hw_params_set_rate_resample, "snd_pcm_hw_params_set_rate_resample");
-				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_AUDIO_ALSA, libHandle, libName, alsaApi->snd_pcm_hw_params_set_rate_near, fpl__alsa_func_snd_pcm_hw_params_set_rate_near, "snd_pcm_hw_params_set_rate_near");
-				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_AUDIO_ALSA, libHandle, libName, alsaApi->snd_pcm_hw_params_set_buffer_size_near, fpl__alsa_func_snd_pcm_hw_params_set_buffer_size_near, "snd_pcm_hw_params_set_buffer_size_near");
-				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_AUDIO_ALSA, libHandle, libName, alsaApi->snd_pcm_hw_params_set_periods_near, fpl__alsa_func_snd_pcm_hw_params_set_periods_near, "snd_pcm_hw_params_set_periods_near");
-				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_AUDIO_ALSA, libHandle, libName, alsaApi->snd_pcm_hw_params_set_access, fpl__alsa_func_snd_pcm_hw_params_set_access, "snd_pcm_hw_params_set_access");
-				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_AUDIO_ALSA, libHandle, libName, alsaApi->snd_pcm_hw_params_get_format, fpl__alsa_func_snd_pcm_hw_params_get_format, "snd_pcm_hw_params_get_format");
-				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_AUDIO_ALSA, libHandle, libName, alsaApi->snd_pcm_hw_params_get_channels, fpl__alsa_func_snd_pcm_hw_params_get_channels, "snd_pcm_hw_params_get_channels");
-				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_AUDIO_ALSA, libHandle, libName, alsaApi->snd_pcm_hw_params_get_rate, fpl__alsa_func_snd_pcm_hw_params_get_rate, "snd_pcm_hw_params_get_rate");
-				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_AUDIO_ALSA, libHandle, libName, alsaApi->snd_pcm_hw_params_get_buffer_size, fpl__alsa_func_snd_pcm_hw_params_get_buffer_size, "snd_pcm_hw_params_get_buffer_size");
-				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_AUDIO_ALSA, libHandle, libName, alsaApi->snd_pcm_hw_params_get_periods, fpl__alsa_func_snd_pcm_hw_params_get_periods, "snd_pcm_hw_params_get_periods");
-				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_AUDIO_ALSA, libHandle, libName, alsaApi->snd_pcm_hw_params_get_access, fpl__alsa_func_snd_pcm_hw_params_get_access, "snd_pcm_hw_params_get_access");
-				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_AUDIO_ALSA, libHandle, libName, alsaApi->snd_pcm_hw_params_get_sbits, fpl__alsa_func_snd_pcm_hw_params_get_sbits, "snd_pcm_hw_params_get_sbits");
-				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_AUDIO_ALSA, libHandle, libName, alsaApi->snd_pcm_sw_params_sizeof, fpl__alsa_func_snd_pcm_sw_params_sizeof, "snd_pcm_sw_params_sizeof");
-				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_AUDIO_ALSA, libHandle, libName, alsaApi->snd_pcm_sw_params_current, fpl__alsa_func_snd_pcm_sw_params_current, "snd_pcm_sw_params_current");
-				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_AUDIO_ALSA, libHandle, libName, alsaApi->snd_pcm_sw_params_set_avail_min, fpl__alsa_func_snd_pcm_sw_params_set_avail_min, "snd_pcm_sw_params_set_avail_min");
-				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_AUDIO_ALSA, libHandle, libName, alsaApi->snd_pcm_sw_params_set_start_threshold, fpl__alsa_func_snd_pcm_sw_params_set_start_threshold, "snd_pcm_sw_params_set_start_threshold");
-				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_AUDIO_ALSA, libHandle, libName, alsaApi->snd_pcm_sw_params, fpl__alsa_func_snd_pcm_sw_params, "snd_pcm_sw_params");
-				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_AUDIO_ALSA, libHandle, libName, alsaApi->snd_pcm_format_mask_sizeof, fpl__alsa_func_snd_pcm_format_mask_sizeof, "snd_pcm_format_mask_sizeof");
-				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_AUDIO_ALSA, libHandle, libName, alsaApi->snd_pcm_format_mask_test, fpl__alsa_func_snd_pcm_format_mask_test, "snd_pcm_format_mask_test");
-				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_AUDIO_ALSA, libHandle, libName, alsaApi->snd_pcm_get_chmap, fpl__alsa_func_snd_pcm_get_chmap, "snd_pcm_get_chmap");
-				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_AUDIO_ALSA, libHandle, libName, alsaApi->snd_pcm_prepare, fpl__alsa_func_snd_pcm_prepare, "snd_pcm_prepare");
-				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_AUDIO_ALSA, libHandle, libName, alsaApi->snd_pcm_start, fpl__alsa_func_snd_pcm_start, "snd_pcm_start");
-				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_AUDIO_ALSA, libHandle, libName, alsaApi->snd_pcm_drop, fpl__alsa_func_snd_pcm_drop, "snd_pcm_drop");
-				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_AUDIO_ALSA, libHandle, libName, alsaApi->snd_device_name_hint, fpl__alsa_func_snd_device_name_hint, "snd_device_name_hint");
-				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_AUDIO_ALSA, libHandle, libName, alsaApi->snd_device_name_get_hint, fpl__alsa_func_snd_device_name_get_hint, "snd_device_name_get_hint");
-				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_AUDIO_ALSA, libHandle, libName, alsaApi->snd_card_get_index, fpl__alsa_func_snd_card_get_index, "snd_card_get_index");
-				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_AUDIO_ALSA, libHandle, libName, alsaApi->snd_device_name_free_hint, fpl__alsa_func_snd_device_name_free_hint, "snd_device_name_free_hint");
-				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_AUDIO_ALSA, libHandle, libName, alsaApi->snd_pcm_mmap_begin, fpl__alsa_func_snd_pcm_mmap_begin, "snd_pcm_mmap_begin");
-				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_AUDIO_ALSA, libHandle, libName, alsaApi->snd_pcm_mmap_commit, fpl__alsa_func_snd_pcm_mmap_commit, "snd_pcm_mmap_commit");
-				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_AUDIO_ALSA, libHandle, libName, alsaApi->snd_pcm_recover, fpl__alsa_func_snd_pcm_recover, "snd_pcm_recover");
-				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_AUDIO_ALSA, libHandle, libName, alsaApi->snd_pcm_writei, fpl__alsa_func_snd_pcm_writei, "snd_pcm_writei");
-				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_AUDIO_ALSA, libHandle, libName, alsaApi->snd_pcm_avail, fpl__alsa_func_snd_pcm_avail, "snd_pcm_avail");
-				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_AUDIO_ALSA, libHandle, libName, alsaApi->snd_pcm_avail_update, fpl__alsa_func_snd_pcm_avail_update, "snd_pcm_avail_update");
-				FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(FPL__MODULE_AUDIO_ALSA, libHandle, libName, alsaApi->snd_pcm_wait, fpl__alsa_func_snd_pcm_wait, "snd_pcm_wait");
-				result = true;
-			} while(0);
-			if(result) {
-				break;
-			}
+		fplClearStruct(alsaApi);
+		do {
+			void *libHandle = fpl_null;
+			FPL__POSIX_LOAD_LIBRARY(FPL__MODULE_AUDIO_ALSA, libHandle, libName);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_ALSA, libHandle, libName, alsaApi->snd_pcm_open, fpl__alsa_func_snd_pcm_open, snd_pcm_open);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_ALSA, libHandle, libName, alsaApi->snd_pcm_close, fpl__alsa_func_snd_pcm_close, snd_pcm_close);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_ALSA, libHandle, libName, alsaApi->snd_pcm_hw_params_sizeof, fpl__alsa_func_snd_pcm_hw_params_sizeof, snd_pcm_hw_params_sizeof);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_ALSA, libHandle, libName, alsaApi->snd_pcm_hw_params, fpl__alsa_func_snd_pcm_hw_params, snd_pcm_hw_params);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_ALSA, libHandle, libName, alsaApi->snd_pcm_hw_params_any, fpl__alsa_func_snd_pcm_hw_params_any, snd_pcm_hw_params_any);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_ALSA, libHandle, libName, alsaApi->snd_pcm_hw_params_set_format, fpl__alsa_func_snd_pcm_hw_params_set_format, snd_pcm_hw_params_set_format);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_ALSA, libHandle, libName, alsaApi->snd_pcm_hw_params_set_format_first, fpl__alsa_func_snd_pcm_hw_params_set_format_first, snd_pcm_hw_params_set_format_first);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_ALSA, libHandle, libName, alsaApi->snd_pcm_hw_params_get_format_mask, fpl__alsa_func_snd_pcm_hw_params_get_format_mask, snd_pcm_hw_params_get_format_mask);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_ALSA, libHandle, libName, alsaApi->snd_pcm_hw_params_set_channels_near, fpl__alsa_func_snd_pcm_hw_params_set_channels_near, snd_pcm_hw_params_set_channels_near);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_ALSA, libHandle, libName, alsaApi->snd_pcm_hw_params_set_rate_resample, fpl__alsa_func_snd_pcm_hw_params_set_rate_resample, snd_pcm_hw_params_set_rate_resample);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_ALSA, libHandle, libName, alsaApi->snd_pcm_hw_params_set_rate_near, fpl__alsa_func_snd_pcm_hw_params_set_rate_near, snd_pcm_hw_params_set_rate_near);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_ALSA, libHandle, libName, alsaApi->snd_pcm_hw_params_set_buffer_size_near, fpl__alsa_func_snd_pcm_hw_params_set_buffer_size_near, snd_pcm_hw_params_set_buffer_size_near);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_ALSA, libHandle, libName, alsaApi->snd_pcm_hw_params_set_periods_near, fpl__alsa_func_snd_pcm_hw_params_set_periods_near, snd_pcm_hw_params_set_periods_near);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_ALSA, libHandle, libName, alsaApi->snd_pcm_hw_params_set_access, fpl__alsa_func_snd_pcm_hw_params_set_access, snd_pcm_hw_params_set_access);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_ALSA, libHandle, libName, alsaApi->snd_pcm_hw_params_get_format, fpl__alsa_func_snd_pcm_hw_params_get_format, snd_pcm_hw_params_get_format);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_ALSA, libHandle, libName, alsaApi->snd_pcm_hw_params_get_channels, fpl__alsa_func_snd_pcm_hw_params_get_channels, snd_pcm_hw_params_get_channels);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_ALSA, libHandle, libName, alsaApi->snd_pcm_hw_params_get_rate, fpl__alsa_func_snd_pcm_hw_params_get_rate, snd_pcm_hw_params_get_rate);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_ALSA, libHandle, libName, alsaApi->snd_pcm_hw_params_get_buffer_size, fpl__alsa_func_snd_pcm_hw_params_get_buffer_size, snd_pcm_hw_params_get_buffer_size);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_ALSA, libHandle, libName, alsaApi->snd_pcm_hw_params_get_periods, fpl__alsa_func_snd_pcm_hw_params_get_periods, snd_pcm_hw_params_get_periods);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_ALSA, libHandle, libName, alsaApi->snd_pcm_hw_params_get_access, fpl__alsa_func_snd_pcm_hw_params_get_access, snd_pcm_hw_params_get_access);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_ALSA, libHandle, libName, alsaApi->snd_pcm_hw_params_get_sbits, fpl__alsa_func_snd_pcm_hw_params_get_sbits, snd_pcm_hw_params_get_sbits);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_ALSA, libHandle, libName, alsaApi->snd_pcm_sw_params_sizeof, fpl__alsa_func_snd_pcm_sw_params_sizeof, snd_pcm_sw_params_sizeof);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_ALSA, libHandle, libName, alsaApi->snd_pcm_sw_params_current, fpl__alsa_func_snd_pcm_sw_params_current, snd_pcm_sw_params_current);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_ALSA, libHandle, libName, alsaApi->snd_pcm_sw_params_set_avail_min, fpl__alsa_func_snd_pcm_sw_params_set_avail_min, snd_pcm_sw_params_set_avail_min);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_ALSA, libHandle, libName, alsaApi->snd_pcm_sw_params_set_start_threshold, fpl__alsa_func_snd_pcm_sw_params_set_start_threshold, snd_pcm_sw_params_set_start_threshold);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_ALSA, libHandle, libName, alsaApi->snd_pcm_sw_params, fpl__alsa_func_snd_pcm_sw_params, snd_pcm_sw_params);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_ALSA, libHandle, libName, alsaApi->snd_pcm_format_mask_sizeof, fpl__alsa_func_snd_pcm_format_mask_sizeof, snd_pcm_format_mask_sizeof);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_ALSA, libHandle, libName, alsaApi->snd_pcm_format_mask_test, fpl__alsa_func_snd_pcm_format_mask_test, snd_pcm_format_mask_test);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_ALSA, libHandle, libName, alsaApi->snd_pcm_get_chmap, fpl__alsa_func_snd_pcm_get_chmap, snd_pcm_get_chmap);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_ALSA, libHandle, libName, alsaApi->snd_pcm_prepare, fpl__alsa_func_snd_pcm_prepare, snd_pcm_prepare);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_ALSA, libHandle, libName, alsaApi->snd_pcm_start, fpl__alsa_func_snd_pcm_start, snd_pcm_start);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_ALSA, libHandle, libName, alsaApi->snd_pcm_drop, fpl__alsa_func_snd_pcm_drop, snd_pcm_drop);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_ALSA, libHandle, libName, alsaApi->snd_device_name_hint, fpl__alsa_func_snd_device_name_hint, snd_device_name_hint);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_ALSA, libHandle, libName, alsaApi->snd_device_name_get_hint, fpl__alsa_func_snd_device_name_get_hint, snd_device_name_get_hint);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_ALSA, libHandle, libName, alsaApi->snd_card_get_index, fpl__alsa_func_snd_card_get_index, snd_card_get_index);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_ALSA, libHandle, libName, alsaApi->snd_device_name_free_hint, fpl__alsa_func_snd_device_name_free_hint, snd_device_name_free_hint);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_ALSA, libHandle, libName, alsaApi->snd_pcm_mmap_begin, fpl__alsa_func_snd_pcm_mmap_begin, snd_pcm_mmap_begin);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_ALSA, libHandle, libName, alsaApi->snd_pcm_mmap_commit, fpl__alsa_func_snd_pcm_mmap_commit, snd_pcm_mmap_commit);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_ALSA, libHandle, libName, alsaApi->snd_pcm_recover, fpl__alsa_func_snd_pcm_recover, snd_pcm_recover);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_ALSA, libHandle, libName, alsaApi->snd_pcm_writei, fpl__alsa_func_snd_pcm_writei, snd_pcm_writei);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_ALSA, libHandle, libName, alsaApi->snd_pcm_avail, fpl__alsa_func_snd_pcm_avail, snd_pcm_avail);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_ALSA, libHandle, libName, alsaApi->snd_pcm_avail_update, fpl__alsa_func_snd_pcm_avail_update, snd_pcm_avail_update);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_ALSA, libHandle, libName, alsaApi->snd_pcm_wait, fpl__alsa_func_snd_pcm_wait, snd_pcm_wait);
+			alsaApi->libHandle = libHandle;
+			result = true;
+		} while(0);
+		if(result) {
+			break;
 		}
 		fpl__UnloadAlsaApi(alsaApi);
 	}
@@ -16086,23 +16122,6 @@ fpl_internal uint32_t fpl__AudioWaitForFramesAlsa(const fplAudioDeviceFormat *de
 	const fpl__AlsaAudioApi *alsaApi = &alsaState->api;
 	uint32_t periodSizeInFrames = deviceFormat->bufferSizeInFrames / deviceFormat->periods;
 	while(!alsaState->breakMainLoop) {
-		const int timeoutInMilliseconds = 10;
-		int waitResult = alsaApi->snd_pcm_wait(alsaState->pcmDevice, timeoutInMilliseconds);
-		if(waitResult < 0) {
-			if(waitResult == -EPIPE) {
-				if(alsaApi->snd_pcm_recover(alsaState->pcmDevice, waitResult, 1) < 0) {
-					return 0;
-				}
-				if(requiresRestart != fpl_null) {
-					*requiresRestart = true;
-				}
-			}
-		}
-
-		if(alsaState->breakMainLoop) {
-			return 0;
-		}
-
 		snd_pcm_sframes_t framesAvailable = alsaApi->snd_pcm_avail_update(alsaState->pcmDevice);
 		if(framesAvailable < 0) {
 			if(framesAvailable == -EPIPE) {
@@ -16124,13 +16143,28 @@ fpl_internal uint32_t fpl__AudioWaitForFramesAlsa(const fplAudioDeviceFormat *de
 			return periodSizeInFrames;
 		}
 
-		// We'll get here if the loop was terminated. Just return whatever's available.
-		framesAvailable = alsaApi->snd_pcm_avail_update(alsaState->pcmDevice);
-		if(framesAvailable < 0) {
-			return 0;
+		if(framesAvailable < periodSizeInFrames) {
+			// Less than a whole period is available so keep waiting.
+			int waitResult = alsaApi->snd_pcm_wait(alsaState->pcmDevice, -1);
+			if(waitResult < 0) {
+				if(waitResult == -EPIPE) {
+					if(alsaApi->snd_pcm_recover(alsaState->pcmDevice, waitResult, 1) < 0) {
+						return 0;
+					}
+					if(requiresRestart != fpl_null) {
+						*requiresRestart = true;
+					}
+				}
+			}
 		}
-		return framesAvailable;
 	}
+
+	// We'll get here if the loop was terminated. Just return whatever's available.
+	snd_pcm_sframes_t framesAvailable = alsaApi->snd_pcm_avail_update(alsaState->pcmDevice);
+	if(framesAvailable < 0) {
+		return 0;
+	}
+	return framesAvailable;
 }
 
 fpl_internal bool fpl__GetAudioFramesFromClientAlsa(fpl__CommonAudioState *commonAudio, fpl__AlsaAudioState *alsaState) {
@@ -16172,12 +16206,17 @@ fpl_internal bool fpl__GetAudioFramesFromClientAlsa(fpl__CommonAudioState *commo
 				alsaApi->snd_pcm_recover(alsaState->pcmDevice, result, 1);
 				return false;
 			}
-			framesAvailable -= mappedFrames;
 			if(requiresRestart) {
 				if(alsaApi->snd_pcm_start(alsaState->pcmDevice) < 0) {
 					return false;
 				}
 			}
+			if(framesAvailable >= mappedFrames) {
+				framesAvailable -= mappedFrames;
+			} else {
+				framesAvailable = 0;
+			}
+			
 		}
 	} else {
 		// readi/writei path
@@ -16337,13 +16376,8 @@ fpl_internal fplAudioResult fpl__AudioInitAlsa(const fplAudioSettings *audioSett
 	//
 	char deviceName[256] = fplZeroInit;
 	snd_pcm_stream_t stream = SND_PCM_STREAM_PLAYBACK;
-	if(fplGetStringLength(audioSettings->deviceInfo.id.alsa) > 0) {
-		const char *forcedDeviceId = audioSettings->deviceInfo.id.alsa;
-		if(alsaApi->snd_pcm_open(&alsaState->pcmDevice, forcedDeviceId, stream, 0) < 0) {
-			FPL__ALSA_INIT_ERROR(fplAudioResult_NoDeviceFound, "PCM audio device by id '%s' not found!", forcedDeviceId);
-		}
-		fplCopyString(forcedDeviceId, deviceName, fplArrayCount(deviceName));
-	} else {
+	int openMode = SND_PCM_NO_AUTO_RESAMPLE | SND_PCM_NO_AUTO_CHANNELS | SND_PCM_NO_AUTO_FORMAT;
+	if(fplGetStringLength(audioSettings->deviceInfo.id.alsa) == 0) {
 		const char *defaultDeviceNames[16];
 		int defaultDeviceCount = 0;
 		defaultDeviceNames[defaultDeviceCount++] = "default";
@@ -16360,7 +16394,7 @@ fpl_internal fplAudioResult fpl__AudioInitAlsa(const fplAudioSettings *audioSett
 		for(size_t defaultDeviceIndex = 0; defaultDeviceIndex < defaultDeviceCount; ++defaultDeviceIndex) {
 			const char *defaultDeviceName = defaultDeviceNames[defaultDeviceIndex];
 			FPL_LOG_DEBUG("ALSA", "Opening PCM audio device '%s'", defaultDeviceName);
-			if(alsaApi->snd_pcm_open(&alsaState->pcmDevice, defaultDeviceName, stream, 0) == 0) {
+			if(alsaApi->snd_pcm_open(&alsaState->pcmDevice, defaultDeviceName, stream, openMode) == 0) {
 				FPL_LOG_DEBUG("ALSA", "Successfully opened PCM audio device '%s'", defaultDeviceName);
 				isDeviceOpen = true;
 				fplCopyString(defaultDeviceName, deviceName, fplArrayCount(deviceName));
@@ -16372,6 +16406,13 @@ fpl_internal fplAudioResult fpl__AudioInitAlsa(const fplAudioSettings *audioSett
 		if(!isDeviceOpen) {
 			FPL__ALSA_INIT_ERROR(fplAudioResult_NoDeviceFound, "No PCM audio device found!");
 		}
+	} else {
+		const char *forcedDeviceId = audioSettings->deviceInfo.id.alsa;
+		// @TODO(final): Do we want to allow device id´s to be :%d,%d so we can probe "dmix" and "hw" ?
+		if(alsaApi->snd_pcm_open(&alsaState->pcmDevice, forcedDeviceId, stream, openMode) < 0) {
+			FPL__ALSA_INIT_ERROR(fplAudioResult_NoDeviceFound, "PCM audio device by id '%s' not found!", forcedDeviceId);
+		}
+		fplCopyString(forcedDeviceId, deviceName, fplArrayCount(deviceName));
 	}
 
 	//
@@ -16421,10 +16462,10 @@ fpl_internal fplAudioResult fpl__AudioInitAlsa(const fplAudioSettings *audioSett
 	if(!alsaApi->snd_pcm_format_mask_test(formatMask, preferredFormat)) {
 		// The required format is not supported. Try a list of default formats.
 		snd_pcm_format_t defaultFormats[] = {
+			SND_PCM_FORMAT_S16_LE,
 			SND_PCM_FORMAT_FLOAT_LE,
 			SND_PCM_FORMAT_S32_LE,
 			SND_PCM_FORMAT_S24_3LE,
-			SND_PCM_FORMAT_S16_LE,
 			SND_PCM_FORMAT_U8,
 		};
 		foundFormat = SND_PCM_FORMAT_UNKNOWN;
@@ -17920,7 +17961,7 @@ fpl_common_api bool fplPlatformInit(const fplInitFlags initFlags, const fplSetti
 	fplClearStruct(initState);
 
 	// Allocate platform app state memory (By boundary of 16-bytes)
-	size_t platformAppStateSize = FPL_ALIGNED_SIZE(sizeof(fpl__PlatformAppState), 16);
+	size_t platformAppStateSize = fplGetAlignedSize(sizeof(fpl__PlatformAppState), 16);
 
 	// Include video/audio state memory in app state memory as well
 #if defined(FPL_ENABLE_VIDEO)
