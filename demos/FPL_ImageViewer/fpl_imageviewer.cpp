@@ -1202,7 +1202,7 @@ static bool Init(ViewerState *state) {
 	state->viewPicturesCapacity = preloadCapacity + 1;
 	state->loadQueueCapacity = queueCapacity;
 
-	fplAssert(FPL_IS_POWEROFTWO(queueCapacity));
+	fplAssert(fplIsPowerOfTwo(queueCapacity));
 	InitQueue(&state->loadQueue, queueCapacity);
 
 	// Load initial pictures from parameters
