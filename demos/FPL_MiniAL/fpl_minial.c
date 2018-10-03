@@ -76,7 +76,6 @@ static uint32_t AudioPlayback(mal_device* pDevice, mal_uint32 frameCount, void* 
 	outFormat.sampleRate = pDevice->sampleRate;
 	outFormat.type = MapMALFormatToFPLFormat(pDevice->format);
 	outFormat.bufferSizeInFrames = pDevice->bufferSizeInFrames;
-	outFormat.bufferSizeInBytes = fplGetAudioBufferSizeInBytes(outFormat.type, outFormat.channels, outFormat.bufferSizeInFrames);
 	fplAssert(outFormat.type != fplAudioFormatType_None);
 	uint32_t result = AudioSystemWriteSamples(audioSys, &outFormat, frameCount, (uint8_t *)pSamples);
 	return(result);
@@ -138,7 +137,7 @@ int main(int argc, char **args) {
 	mal_context malContext;
 	mal_result malResult;
 
-#if 0
+#if 1
 	mal_backend malBackends[] = {
 		mal_backend_wasapi,
 		mal_backend_dsound,
