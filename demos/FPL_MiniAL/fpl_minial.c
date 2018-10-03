@@ -134,7 +134,27 @@ int main(int argc, char **args) {
 	mal_format malFormat = MapFPLFormatToMALFormat(targetFormat.type);
 	mal_device_config malDeviceConfig = mal_device_config_init_playback(malFormat, targetFormat.channels, targetFormat.sampleRate, AudioPlayback);
 	mal_device malDevice;
-	mal_result malResult = mal_device_init(NULL, mal_device_type_playback, NULL, &malDeviceConfig, &audioSys, &malDevice);
+	mal_context malContext;
+	mal_result malResult;
+
+#if 0
+	mal_backend malBackends[] = {
+		mal_backend_wasapi,
+		mal_backend_dsound,
+		mal_backend_alsa,
+		mal_backend_pulseaudio,
+	};
+	mal_uint32 malBackendCount = fplArrayCount(malBackends);
+#else
+	mal_backend *malBackends = fpl_null;
+	mal_uint32 malBackendCount = 0;
+#endif
+
+	malResult = mal_context_init(malBackends, malBackendCount, NULL, &malContext);
+	if (malResult != MAL_SUCCESS) {
+		return -1;
+	}
+	malResult = mal_device_init(&malContext, mal_device_type_playback, NULL, &malDeviceConfig, &audioSys, &malDevice);
 	if (malResult != MAL_SUCCESS) {
 		return -1;
 	}
