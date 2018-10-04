@@ -8,3 +8,5 @@ rmdir /q /s bin
 rmdir /q /s setup
 rmdir /q /s debug
 rmdir /q /s release
+rmdir /q /s x64
+rmdir /q /s win32
