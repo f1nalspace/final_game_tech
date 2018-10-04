@@ -75,7 +75,7 @@ static bool InitAudioData(const fplAudioDeviceFormat *targetFormat, const char *
 	if(filePath != fpl_null) {
 		source = AudioSystemLoadFileSource(audioSys, filePath);
 		if(source != fpl_null) {
-			AudioSystemPlaySource(audioSys, source, true, 0.25f);
+			//AudioSystemPlaySource(audioSys, source, true, 0.25f);
 		}
 	}
 
@@ -111,12 +111,14 @@ int main(int argc, char **args) {
 	fplSettings settings = fplMakeDefaultSettings();
 
 	// Set audio device format
-	settings.audio.deviceFormat.type = fplAudioFormatType_S16;
-	settings.audio.deviceFormat.channels = 2;
+	settings.audio.targetFormat.type = fplAudioFormatType_S16;
+	settings.audio.targetFormat.channels = 2;
 	//settings.audio.deviceFormat.sampleRate = 11025;
 	//settings.audio.deviceFormat.sampleRate = 22050;
-	settings.audio.deviceFormat.sampleRate = 44100;
+	settings.audio.targetFormat.sampleRate = 44100;
 	//settings.audio.deviceFormat.sampleRate = 48000;
+
+	// Disable start/stop of audio playback
 	settings.audio.startAuto = false;
 	settings.audio.stopAuto = false;
 
@@ -128,8 +130,8 @@ int main(int argc, char **args) {
 	uint32_t deviceCount = fplGetAudioDevices(audioDeviceInfos, fplArrayCount(audioDeviceInfos));
 	if(deviceCount > 0) {
 		// Use first audio device in settings
-		settings.audio.deviceInfo = audioDeviceInfos[0];
-		fplConsoleFormatOut("Using audio device: %s\n", settings.audio.deviceInfo.name);
+		settings.audio.targetDevice = audioDeviceInfos[0];
+		fplConsoleFormatOut("Using audio device: %s\n", settings.audio.targetDevice.name);
 	}
 	fplPlatformRelease();
 

@@ -30,6 +30,7 @@ Changelog:
 #include <final_audiosystem.h>
 
 #define MINI_AL_IMPLEMENTATION
+#define MAL_USE_RUNTIME_LINKING_FOR_PTHREAD
 #include <minial/mini_al.h>
 
 static const float PI32 = 3.14159265359f;
@@ -75,7 +76,6 @@ static uint32_t AudioPlayback(mal_device* pDevice, mal_uint32 frameCount, void* 
 	outFormat.sampleRate = pDevice->sampleRate;
 	outFormat.type = MapMALFormatToFPLFormat(pDevice->format);
 	outFormat.bufferSizeInFrames = pDevice->bufferSizeInFrames;
-	outFormat.bufferSizeInBytes = fplGetAudioBufferSizeInBytes(outFormat.type, outFormat.channels, outFormat.bufferSizeInFrames);
 	fplAssert(outFormat.type != fplAudioFormatType_None);
 	uint32_t result = AudioSystemWriteSamples(audioSys, &outFormat, frameCount, (uint8_t *)pSamples);
 	return(result);
@@ -119,13 +119,12 @@ static bool InitAudioData(const fplAudioDeviceFormat *targetFormat, const char *
 int main(int argc, char **args) {
 	const char *filePath = (argc == 2) ? args[1] : fpl_null;
 
-	// Get default settings for FPL
-	fplAudioSettings defaultAudioSettings;
-	fplSetDefaultAudioSettings(&defaultAudioSettings);
-	defaultAudioSettings.deviceFormat.sampleRate = 44100;
-
 	// Use default audio format from FPL as target format
-	fplAudioDeviceFormat targetFormat = defaultAudioSettings.deviceFormat;
+	fplAudioTargetFormat targetFormat;
+	fplSetDefaultAudioTargetFormat(&targetFormat);
+	targetFormat.channels = 2;
+	targetFormat.type = fplAudioFormatType_S16;
+	targetFormat.sampleRate = 44100;
 
 	// Create empty audio system
 	AudioSystem audioSys = fplZeroInit;
@@ -137,7 +136,7 @@ int main(int argc, char **args) {
 	mal_context malContext;
 	mal_result malResult;
 
-#if 0
+#if 1
 	mal_backend malBackends[] = {
 		mal_backend_wasapi,
 		mal_backend_dsound,
@@ -167,18 +166,25 @@ int main(int argc, char **args) {
 	}
 
 	// Init audio data
-	if (InitAudioData(&targetFormat, filePath, &audioSys)) {
+	fplAudioDeviceFormat targetDeviceFormat;
+	fplConvertAudioTargetFormatToDeviceFormat(&targetFormat, &targetDeviceFormat);
+	if (InitAudioData(&targetDeviceFormat, filePath, &audioSys)) {
 		// Start audio playback
 		if (mal_device_start(&malDevice) == MAL_SUCCESS) {
 			// Print output infos
 			const char *outDriver = mal_get_backend_name(malDevice.pContext->backend);
 			const char *outFormat = fplGetAudioFormatString(targetFormat.type);
-			uint32_t outSampleRate = targetFormat.sampleRate;
-			uint32_t outChannels = targetFormat.channels;
-			fplConsoleFormatOut("Playing %lu audio sources (%s, %s, %lu Hz, %lu channels)\n", audioSys.playItems.count, outDriver, outFormat, outSampleRate, outChannels);
+			fplAudioDeviceFormat deviceFormat = fplZeroInit;
+			deviceFormat.channels = malDevice.channels;
+			deviceFormat.periods = malDevice.periods;
+			deviceFormat.sampleRate = malDevice.sampleRate;
+			deviceFormat.type = MapMALFormatToFPLFormat(malDevice.format);
+			deviceFormat.bufferSizeInFrames = malDevice.bufferSizeInFrames;
+			deviceFormat.bufferSizeInBytes = fplGetAudioBufferSizeInBytes(deviceFormat.type, deviceFormat.channels, deviceFormat.bufferSizeInFrames);
+			fplConsoleFormatOut("Playing %lu audio sources (%s, %s, %lu Hz, %lu channels)\n", audioSys.playItems.count, outDriver, outFormat, deviceFormat.sampleRate, deviceFormat.channels);
 
 			// Wait for any key presses
-			fplConsoleFormatOut("Press any key to stop playback\n", outFormat, outSampleRate, outChannels);
+			fplConsoleFormatOut("Press any key to stop playback\n");
 			fplConsoleWaitForCharInput();
 
 			// Stop audio playback
