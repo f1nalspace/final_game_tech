@@ -16406,6 +16406,7 @@ fpl_internal snd_pcm_format_t fpl__MapAudioFormatToAlsaFormat(fplAudioFormatType
 				return SND_PCM_FORMAT_FLOAT_BE;
 			default:
 				return SND_PCM_FORMAT_UNKNOWN;
+		}
 	} else {
 		switch(format) {
 			case fplAudioFormatType_U8:
@@ -16471,7 +16472,7 @@ fpl_internal fplAudioResult fpl__AudioInitAlsa(const fplAudioSettings *audioSett
 	char deviceName[256] = fplZeroInit;
 	snd_pcm_stream_t stream = SND_PCM_STREAM_PLAYBACK;
 	int openMode = SND_PCM_NO_AUTO_RESAMPLE | SND_PCM_NO_AUTO_CHANNELS | SND_PCM_NO_AUTO_FORMAT;
-	if(fplGetStringLength(audioSettings->deviceInfo.id.alsa) == 0) {
+	if(fplGetStringLength(audioSettings->targetDevice.id.alsa) == 0) {
 		const char *defaultDeviceNames[16];
 		int defaultDeviceCount = 0;
 		defaultDeviceNames[defaultDeviceCount++] = "default";
@@ -16501,7 +16502,7 @@ fpl_internal fplAudioResult fpl__AudioInitAlsa(const fplAudioSettings *audioSett
 			FPL__ALSA_INIT_ERROR(fplAudioResult_NoDeviceFound, "No PCM audio device found!");
 		}
 	} else {
-		const char *forcedDeviceId = audioSettings->deviceInfo.id.alsa;
+		const char *forcedDeviceId = audioSettings->targetDevice.id.alsa;
 		// @TODO(final): Do we want to allow device id�s to be :%d,%d so we can probe "dmix" and "hw" ?
 		if(alsaApi->snd_pcm_open(&alsaState->pcmDevice, forcedDeviceId, stream, openMode) < 0) {
 			FPL__ALSA_INIT_ERROR(fplAudioResult_NoDeviceFound, "PCM audio device by id '%s' not found!", forcedDeviceId);
@@ -16582,7 +16583,7 @@ fpl_internal fplAudioResult fpl__AudioInitAlsa(const fplAudioSettings *audioSett
 	}
 
 	if(alsaApi->snd_pcm_hw_params_set_format(alsaState->pcmDevice, hardwareParams, foundFormat) < 0) {
-		FPL__ALSA_INIT_ERROR(fplAudioResult_Failed, "Failed setting PCM format '%s' for device '%s'!", fplGetAudioFormatString(internalFormatType), deviceName);
+		FPL__ALSA_INIT_ERROR(fplAudioResult_Failed, "Failed setting PCM format '%s' for device '%s'!", fplGetAudioFormatString(foundFormat), deviceName);
 	}
 	internalFormat.type = fpl__MapAlsaFormatToAudioFormat(foundFormat);
 
@@ -16671,7 +16672,7 @@ fpl_internal fplAudioResult fpl__AudioInitAlsa(const fplAudioSettings *audioSett
 		fplAssert(internalFormat.bufferSizeInBytes > 0);
 		alsaState->intermediaryBuffer = fplMemoryAllocate(internalFormat.bufferSizeInBytes);
 		if(alsaState->intermediaryBuffer == fpl_null) {
-			FPL__ALSA_INIT_ERROR(fplAudioResult_Failed, "Failed allocating intermediary buffer of size '%lu' for device '%s'!", bufferSizeInBytes, deviceName);
+			FPL__ALSA_INIT_ERROR(fplAudioResult_Failed, "Failed allocating intermediary buffer of size '%lu' for device '%s'!", internalFormat.bufferSizeInBytes, deviceName);
 		}
 	}
 
