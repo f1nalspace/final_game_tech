@@ -75,7 +75,7 @@ static bool InitAudioData(const fplAudioDeviceFormat *targetFormat, const char *
 	if(filePath != fpl_null) {
 		source = AudioSystemLoadFileSource(audioSys, filePath);
 		if(source != fpl_null) {
-			//AudioSystemPlaySource(audioSys, source, true, 0.25f);
+			AudioSystemPlaySource(audioSys, source, true, 0.25f);
 		}
 	}
 
