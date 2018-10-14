@@ -45,6 +45,8 @@ Changelog:
 #define STB_TRUETYPE_IMPLEMENTATION
 #include <stb/stb_truetype.h>
 
+#include <wchar.h> // wcslen
+
 // @BAD(final): CPP is such garbage!
 // It cannot handle array index initializer such as [index] = value :-(
 // So we need this nonsense just to initialize a static array -.-
