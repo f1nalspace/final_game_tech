@@ -194,6 +194,7 @@ SOFTWARE.
 	- Fixed: fplStaticAssert was not compiling on gcc/clang C99 mode
 	- Fixed: Corrected a ton of misspellings in the documentation
 	- Fixed: Define for FPL_DEBUG was missing a raute symbol
+    - Fixed: Use va_copy for all va_list function arguments
 	- New: Added fplFlushFile()
 	- New: Added fplAtomicAddAndFetchPtr()
 	- New: Added fplAtomicFetchAndAddPtr()
@@ -5485,9 +5486,12 @@ fpl_internal void fpl__LogWrite(const fplLogLevel level, const char *message) {
 	}
 }
 fpl_internal_inline void fpl__LogWriteArgs(const fplLogLevel level, const char *format, va_list argList) {
+    va_list listCopy;
+    va_copy(listCopy, argList);
 	char buffer[FPL_MAX_BUFFER_LENGTH];
-	fplFormatStringArgs(buffer, fplArrayCount(buffer), format, argList);
+	fplFormatStringArgs(buffer, fplArrayCount(buffer), format, listCopy);
 	fpl__LogWrite(level, buffer);
+	va_end(listCopy);
 }
 fpl_internal_inline void fpl__LogWriteVarArgs(const fplLogLevel level, const char *format, ...) {
 	va_list argList;
@@ -7217,7 +7221,10 @@ fpl_internal void fpl__PushError_Formatted(const fplLogLevel level, const char *
 	state->count = (state->count + 1) % FPL__MAX_ERRORSTATE_COUNT;
 	fplCopyStringLen(buffer, messageLen, state->errors[errorIndex], FPL__MAX_LAST_ERROR_STRING_LENGTH);
 #if defined(FPL_ENABLE_LOGGING)
-	fpl__LogWriteArgs(level, format, argList);
+    va_list listCopy;
+    va_copy(listCopy, argList);
+    fpl__LogWriteArgs(level, format, listCopy);
+    va_end(listCopy);
 #endif
 }
 
@@ -7522,17 +7529,19 @@ fpl_common_api char *fplFormatStringArgs(char *destBuffer, const size_t maxDestB
 	FPL__CheckArgumentNull(destBuffer, fpl_null);
 	FPL__CheckArgumentZero(maxDestBufferLen, fpl_null);
 	FPL__CheckArgumentNull(format, fpl_null);
+	va_list listCopy;
+	va_copy(listCopy, argList);
 	// @NOTE(final): Need to clear the first character, otherwise vsnprintf() does weird things... O_o
 	destBuffer[0] = 0;
 	int charCount = 0;
 #	if defined(FPL_NO_CRT)
 #		if defined(FPL_USERFUNC_vsnprintf)
-	charCount = FPL_USERFUNC_vsnprintf(destBuffer, maxDestBufferLen, format, argList);
+	charCount = FPL_USERFUNC_vsnprintf(destBuffer, maxDestBufferLen, format, listCopy);
 #		else
 	charCount = 0;
 #		endif
 #	else
-	charCount = vsnprintf(destBuffer, maxDestBufferLen, format, argList);
+	charCount = vsnprintf(destBuffer, maxDestBufferLen, format, listCopy);
 #	endif
 	if(charCount < 0) {
 		FPL_ERROR(FPL__MODULE_STRINGS, "Format parameter are '%s' are invalid", format);
@@ -7541,6 +7550,7 @@ fpl_common_api char *fplFormatStringArgs(char *destBuffer, const size_t maxDestB
 	size_t requiredMaxDestBufferLen = charCount + 1;
 	FPL__CheckArgumentMin(maxDestBufferLen, requiredMaxDestBufferLen, fpl_null);
 	destBuffer[charCount] = 0;
+    va_end(listCopy);
 	return(&destBuffer[charCount]);
 }
 
@@ -7708,7 +7718,7 @@ fpl_common_api void fplMemorySet(void *mem, const uint8_t value, const size_t si
 
 fpl_common_api void fplMemoryClear(void *mem, const size_t size) {
 	FPL__CheckArgumentNullNoRet(mem);
-	FPL__CheckArgumentZeroNoRet(size);
+    FPL__CheckArgumentZeroNoRet(size);
 	if(size % 8 == 0) {
 		FPL__MEMORY_CLEAR(uint64_t, mem, size, FPL__MEM_SHIFT_64, FPL__MEM_MASK_64);
 	} else if(size % 4 == 0) {
@@ -15607,7 +15617,7 @@ fpl_internal uint32_t fpl__ReadAudioFramesFromClient(const fpl__CommonAudioState
 	uint32_t sampleSize = fplGetAudioSampleSizeInBytes(commonAudio->internalFormat.type);
 	uint32_t consumedBytes = samplesRead * sampleSize;
 	uint32_t remainingBytes = ((frameCount * channels) - samplesRead) * sampleSize;
-	fplMemoryClear((uint8_t *)pSamples + consumedBytes, remainingBytes);
+    fplMemoryClear((uint8_t *) pSamples + consumedBytes, remainingBytes);
 	return(samplesRead);
 }
 
@@ -16712,7 +16722,7 @@ fpl_internal fplAudioResult fpl__AudioInitAlsa(const fplAudioSettings *audioSett
 	}
 
 	if(alsaApi->snd_pcm_hw_params_set_format(alsaState->pcmDevice, hardwareParams, foundFormat) < 0) {
-		FPL__ALSA_INIT_ERROR(fplAudioResult_Failed, "Failed setting PCM format '%s' for device '%s'!", fplGetAudioFormatString(foundFormat), deviceName);
+		FPL__ALSA_INIT_ERROR(fplAudioResult_Failed, "Failed setting PCM format '%s' for device '%s'!", fplGetAudioFormatString(fpl__MapAlsaFormatToAudioFormat(foundFormat)), deviceName);
 	}
 	internalFormat.type = fpl__MapAlsaFormatToAudioFormat(foundFormat);
 
