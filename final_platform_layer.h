@@ -193,6 +193,7 @@ SOFTWARE.
 	- Removed: fplClearEvents()
 	- Fixed: fplStaticAssert was not compiling on gcc/clang C99 mode
 	- Fixed: Corrected a ton of misspellings in the documentation
+	- Fixed: Define for FPL_DEBUG was missing a raute symbol
 	- New: Added fplFlushFile()
 	- New: Added fplAtomicAddAndFetchPtr()
 	- New: Added fplAtomicFetchAndAddPtr()
@@ -208,6 +209,8 @@ SOFTWARE.
 	- New: Added macro fplCopyStruct()
 	- New: Added macro fplIsBigEndian()
 	- New: Added macro fplIsLittleEndian()
+	- New: Added fplGetWindowState()
+	- New: Added fplSetWindowState()
 
 	- Changed: [Win32] GetTickCount() replaced with GetTickCount64()
 	- Changed: [Win32] Use unicode (*W) win32 api functions for everything now
@@ -219,6 +222,9 @@ SOFTWARE.
 	- Fixed: [Win32] fplGetClipboardAnsiText() was broken
 	- Fixed: [Win32] Forced compile error when compiling on < vista (FPL uses several features which requires vista or higher)
 	- Fixed: [Win32] fplGetOperatingSystemInfos had no WINAPI call defined for GetVersion prototype
+	- Fixed: [Win32] fplSetWindowFloating was not working
+	- Fixed: [Win32] fplSetWindowDecorated was not working
+	- Fixed: [Win32] fplSetWindowResizeable was not working
 	- Fixed: [Alsa] fpl__AudioWaitForFramesAlsa was not compiling (commonAudio missing)
 	- Fixed: [Alsa] Alsa output was not working anymore for certain playback devices
 	- Fixed: [X11] fplButtonState_Repeat was not handled in keyboard events
@@ -226,6 +232,7 @@ SOFTWARE.
 	- New: [Win32/X11] Handle fplInitFlags_GameController to enable/disable game controllers
 	- New: [Win32/X11] Support for handling the OS event directly -> fpl_window_event_callback
 	- New: [Win32/X11] Support for handling the exposed (Repaint) event directly -> fpl_window_exposed_callback
+	- New: [Win32] Implemented fplSetWindowState / fplGetWindowState
 
 	## v0.9.1.0 beta
 	- Changed: Updated all the lists
@@ -1120,10 +1127,12 @@ SOFTWARE.
 		- Toggle Floating (X11)
 		- Show/Hide Cursor (X11)
 		- Clipboard Get/Set (X11)
-		- Change/Get Minimize/Maximize/Restore (Win32)
-		- Change/Get Minimize/Maximize/Restore (X11)
+		- Change/Get State Minimize/Maximize/Restore (X11)
 
 	@section section_todo_planned Planned
+
+	- Core
+		- Introduce a callback system for audio/video drivers
 
 	- Application
 		- Support icon image in gnome (X11)
@@ -1139,7 +1148,10 @@ SOFTWARE.
 	- Date/Time functions
 
 	- Audio:
-		- OpenAL audio driver
+		- XAudio2 driver
+		- PulseAudio driver
+		- OSS driver
+		- Support for more than two channels
 		- Support for channel mapping
 
 	- Threading
@@ -1147,7 +1159,8 @@ SOFTWARE.
 
 	- Documentation
 		- Window
-		- Threading (Syncronisation)
+		- Threading
+			- Syncronisation
 		- File-IO
 			- Operations (Copy, Delete, etc)
 			- Path
@@ -1424,7 +1437,7 @@ SOFTWARE.
 //
 #if defined(FPL_DEBUG)
 	//! Debug mode detected
-define FPL_ENABLE_DEBUG
+#	define FPL_ENABLE_DEBUG
 #elif defined(FPL_RELEASE)
 	//! Release mode detected
 #	define FPL_ENABLE_RELEASE
@@ -1608,7 +1621,8 @@ define FPL_ENABLE_DEBUG
   */
 #if defined(FPL_ENABLE_ASSERTIONS)
 #	if defined(FPL_ENABLE_C_ASSERT) && !defined(FPL_FORCE_ASSERTIONS)
-#		include <assert.h>
+		//! Include assert.h
+#		define FPL__INCLUDE_ASSERT
 		//! Runtime assert (C Runtime)
 #		define fplAssert(exp) assert(exp)
 #       if defined(__cplusplus)
@@ -1619,10 +1633,9 @@ define FPL_ENABLE_DEBUG
 #	define fplAssert(exp) if(!(exp)) {*(int *)0 = 0;}
 #	endif // FPL_ENABLE_C_ASSERT
 #   if !defined(fplStaticAssert)
-		//! @cond FPL_INTERNAL
+		//! Internal static assert wrapper
 #	    define FPL__STATICASSERT_0(exp, line, counter) \
 		    int fpl__ct_assert_##line_##counter(int ct_assert_failed[(exp)?1:-1])
-		//! @endcond
 
 		//! Compile time assert
 #	    define fplStaticAssert(exp) \
@@ -1671,7 +1684,8 @@ static fpl_force_inline void fplDebugBreak() { __asm__ __volatile__(".inst 0xe7f
 		//! Stop on a line in the debugger (GCC)
 #       define fplDebugBreak() __builtin_trap()
 #	else
-#		include	<signal.h>
+		//! Include signal.h
+#		define FPL__INCLUDE_SIGNAL
 #		if defined(SIGTRAP)
 			//! Stop on a line in the debugger (Sigtrap)
 #			define fplDebugBreak() raise(SIGTRAP)
@@ -1687,11 +1701,20 @@ static fpl_force_inline void fplDebugBreak() { __asm__ __volatile__(".inst 0xe7f
 //
 // Types & Limits
 //
+//! @cond FPL_INTERNAL
 #include <stdint.h> // uint32_t, ...
 #include <stddef.h> // size_t
 #include <stdbool.h> // bool
 #include <stdarg.h> // va_start, va_end, va_list, va_arg
 #include <limits.h> // UINT32_MAX, ...
+#if defined(FPL__INCLUDE_ASSERT)
+#	include <assert.h>
+#endif
+#if defined(FPL__INCLUDE_SIGNAL)
+#	include <signal.h>
+#endif
+//! @endcond
+
 
 // On android or older posix versions there is no UINT32_MAX
 #if !defined(UINT32_MAX)
@@ -2300,6 +2323,8 @@ typedef struct fplVersionInfo {
 	//! Full name
 	char fullName[FPL_MAX_NAME_LENGTH];
 	union {
+		//! Version number as array
+		fplVersionNumberPart values[4];
 		struct {
 			//! Major version
 			fplVersionNumberPart major;
@@ -2310,8 +2335,6 @@ typedef struct fplVersionInfo {
 			//! Build version
 			fplVersionNumberPart build;
 		};
-		//! Version number as array
-		fplVersionNumberPart values[4];
 	};
 } fplVersionInfo;
 
@@ -4856,6 +4879,20 @@ typedef struct fplWindowPosition {
 	int32_t top;
 } fplWindowPosition;
 
+//! A enumeration containg the states of a window
+typedef enum fplWindowState {
+	//! Unknown state
+	fplWindowState_Unknown = 0,
+	//! Normal window state
+	fplWindowState_Normal,
+	//! Iconify/Minimize window state
+	fplWindowState_Iconify,
+	//! Maximize window state
+	fplWindowState_Maximize,
+	//! Fullscreen state
+	fplWindowState_Fullscreen,
+} fplWindowState;
+
 /**
   * @brief Gets the window running state as a boolean
   * @return Returns true when the window is running, false otherwise
@@ -4948,6 +4985,17 @@ fpl_platform_api void fplSetWindowPosition(const int32_t left, const int32_t top
   * @param title The title string
   */
 fpl_platform_api void fplSetWindowTitle(const char *title);
+/**
+  * @brief Gets the current window state
+  * @return Returns the current window state
+  */
+fpl_platform_api fplWindowState fplGetWindowState();
+/**
+  * @brief Changes the current window state
+  * @param newState The new window state
+  * @return Returns true when the window state was changed, false otherwise.
+  */
+fpl_platform_api bool fplSetWindowState(const fplWindowState newState);
 
 /*\}*/
 
@@ -5389,7 +5437,7 @@ fpl_internal void fpl__LogWrite(const fplLogLevel level, const char *message) {
 		settings->writers[0].flags = fplLogWriterFlags_StandardConsole | fplLogWriterFlags_DebugOut;
 #endif
 		settings->isInitialized = true;
-	}
+}
 
 	if((settings->maxLevel == -1) || (level <= settings->maxLevel)) {
 #if defined(FPL_LOG_MULTIPLE_WRITERS)
@@ -5523,33 +5571,30 @@ fpl_internal void fpl__PushError(const fplLogLevel level, const char *format, ..
 // > UTILITY_FUNCTIONS
 //
 // ############################################################################
-fpl_internal uint32_t fpl__NextPowerOfTwo(const uint32_t input)
-{
-    uint32_t x = input;
-    x--;
-    x |= x >> 1;
-    x |= x >> 2;
-    x |= x >> 4;
-    x |= x >> 8;
-    x |= x >> 16;
-    x++;
-    return(x);
+fpl_internal uint32_t fpl__NextPowerOfTwo(const uint32_t input) {
+	uint32_t x = input;
+	x--;
+	x |= x >> 1;
+	x |= x >> 2;
+	x |= x >> 4;
+	x |= x >> 8;
+	x |= x >> 16;
+	x++;
+	return(x);
 }
-fpl_internal uint32_t fpl__PrevPowerOfTwo(const uint32_t input)
-{
-    uint32_t result = fpl__NextPowerOfTwo(input) >> 1;
-    return(result);
+fpl_internal uint32_t fpl__PrevPowerOfTwo(const uint32_t input) {
+	uint32_t result = fpl__NextPowerOfTwo(input) >> 1;
+	return(result);
 }
 
-fpl_internal uint32_t fpl__RoundToPowerOfTwo(const uint32_t input)
-{
-    uint32_t prev = fpl__PrevPowerOfTwo(input);
-    uint32_t next = fpl__NextPowerOfTwo(input);
-    if ((next - input) > (input - prev)) {
-        return prev;
-    } else {
-        return next;
-    }
+fpl_internal uint32_t fpl__RoundToPowerOfTwo(const uint32_t input) {
+	uint32_t prev = fpl__PrevPowerOfTwo(input);
+	uint32_t next = fpl__NextPowerOfTwo(input);
+	if((next - input) > (input - prev)) {
+		return prev;
+	} else {
+		return next;
+	}
 }
 
 fpl_internal bool fpl__AddLineWhenAnyMatches(const char *line, const char **wildcards, const size_t maxWildcardCount, const size_t maxLineSize, const size_t maxLineCount, char **outLines, size_t *outCount) {
@@ -8259,37 +8304,25 @@ fpl_common_api const char *fplGetArchTypeString(const fplArchType type) {
 
 #if defined(FPL_ENABLE_WINDOW)
 
-fpl_internal_inline DWORD fpl__Win32GetWindowStyle(const fplWindowSettings *settings) {
+fpl_internal_inline DWORD fpl__Win32MakeWindowStyle(const fplWindowSettings *settings) {
 	DWORD result = WS_CLIPSIBLINGS | WS_CLIPCHILDREN;
-	if(settings->isFullscreen) {
+	if(settings->isFullscreen || !settings->isDecorated) {
 		result |= WS_POPUP;
 	} else {
-		result |= WS_SYSMENU | WS_MINIMIZEBOX;
-		if(settings->isDecorated) {
-			result |= WS_CAPTION;
-			if(settings->isResizable) {
-				result |= WS_MAXIMIZEBOX | WS_THICKFRAME;
-			}
-		} else {
-			result |= WS_POPUP;
+		result |= WS_OVERLAPPEDWINDOW;
+		if(!settings->isResizable) {
+			result &= ~(WS_MAXIMIZEBOX | WS_THICKFRAME);
 		}
 	}
 	return(result);
 }
 
-fpl_internal_inline DWORD fpl__Win32GetWindowExStyle(const fplWindowSettings *settings) {
+fpl_internal_inline DWORD fpl__Win32MakeWindowExStyle(const fplWindowSettings *settings) {
 	DWORD result = WS_EX_APPWINDOW;
 	if(settings->isFullscreen || settings->isFloating) {
 		result |= WS_EX_TOPMOST;
 	}
 	return(result);
-}
-
-fpl_internal_inline void fpl__Win32UpdateWindowStyles(const fplWindowSettings *settings, const fpl__Win32WindowState *windowState) {
-	DWORD style = fpl__Win32GetWindowStyle(settings);
-	DWORD exStyle = fpl__Win32GetWindowExStyle(settings);
-	fpl__win32_SetWindowLong(windowState->windowHandle, GWL_STYLE, style);
-	fpl__win32_SetWindowLong(windowState->windowHandle, GWL_EXSTYLE, exStyle);
 }
 
 fpl_internal void fpl__Win32SaveWindowState(const fpl__Win32Api *wapi, fpl__Win32LastWindowInfo *target, HWND windowHandle) {
@@ -9007,8 +9040,8 @@ fpl_internal bool fpl__Win32InitWindow(const fplSettings *initSettings, fplWindo
 	fplWideStringToUTF8String(windowTitle, lstrlenW(windowTitle), currentWindowSettings->windowTitle, fplArrayCount(currentWindowSettings->windowTitle));
 
 	// Prepare window style, size and position
-	DWORD style = fpl__Win32GetWindowStyle(&initSettings->window);
-	DWORD exStyle = fpl__Win32GetWindowExStyle(&initSettings->window);
+	DWORD style = fpl__Win32MakeWindowStyle(&initSettings->window);
+	DWORD exStyle = fpl__Win32MakeWindowExStyle(&initSettings->window);
 	if(initSettings->window.isResizable) {
 		currentWindowSettings->isResizable = true;
 	} else {
@@ -11101,7 +11134,7 @@ fpl_platform_api void fplSetWindowArea(const uint32_t width, const uint32_t heig
 		int borderHeight = (windowRect.bottom - windowRect.top) - (clientRect.bottom - clientRect.top);
 		int newWidth = width + borderWidth;
 		int newHeight = height + borderHeight;
-		wapi->user.SetWindowPos(windowState->windowHandle, 0, 0, 0, newWidth, newHeight, SWP_NOZORDER | SWP_NOMOVE | SWP_NOACTIVATE);
+		wapi->user.SetWindowPos(windowState->windowHandle, fpl_null, 0, 0, newWidth, newHeight, SWP_NOZORDER | SWP_NOMOVE | SWP_NOACTIVATE);
 	}
 }
 
@@ -11116,9 +11149,16 @@ fpl_platform_api void fplSetWindowResizeable(const bool value) {
 	FPL__CheckPlatformNoRet();
 	fpl__PlatformAppState *appState = fpl__global__AppState;
 	const fpl__Win32WindowState *windowState = &appState->window.win32;
-	if(!appState->currentSettings.window.isFullscreen) {
+	if(!appState->currentSettings.window.isFullscreen && appState->currentSettings.window.isDecorated) {
+		DWORD style = fpl__win32_GetWindowLong(windowState->windowHandle, GWL_STYLE);
+		DWORD exStyle = fpl__win32_GetWindowLong(windowState->windowHandle, GWL_EXSTYLE);
+		if(value) {
+			style |= (WS_MAXIMIZEBOX | WS_THICKFRAME);
+		} else {
+			style &= ~(WS_MAXIMIZEBOX | WS_THICKFRAME);
+		}
+		fpl__win32_SetWindowLong(windowState->windowHandle, GWL_STYLE, style);
 		appState->currentSettings.window.isResizable = value;
-		fpl__Win32UpdateWindowStyles(&appState->currentSettings.window, windowState);
 	}
 }
 
@@ -11133,9 +11173,24 @@ fpl_platform_api void fplSetWindowDecorated(const bool value) {
 	FPL__CheckPlatformNoRet();
 	fpl__PlatformAppState *appState = fpl__global__AppState;
 	const fpl__Win32WindowState *windowState = &appState->window.win32;
+	const fpl__Win32Api *wapi = &appState->win32.winApi;
 	if(!appState->currentSettings.window.isFullscreen) {
+		HWND windowHandle = windowState->windowHandle;
+		DWORD style = fpl__win32_GetWindowLong(windowHandle, GWL_STYLE);
+		DWORD exStyle = fpl__win32_GetWindowLong(windowHandle, GWL_EXSTYLE);
+		if(value) {
+			style &= ~WS_POPUP;
+			style |= WS_OVERLAPPEDWINDOW;
+			if(!appState->currentSettings.window.isResizable) {
+				style &= ~(WS_MAXIMIZEBOX | WS_THICKFRAME);
+			}
+		} else {
+			style &= ~WS_OVERLAPPEDWINDOW;
+			style |= WS_POPUP;
+		}
+		fpl__win32_SetWindowLong(windowHandle, GWL_STYLE, style);
+		wapi->user.SetWindowPos(windowHandle, fpl_null, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
 		appState->currentSettings.window.isDecorated = value;
-		fpl__Win32UpdateWindowStyles(&appState->currentSettings.window, windowState);
 	}
 }
 
@@ -11150,9 +11205,14 @@ fpl_platform_api void fplSetWindowFloating(const bool value) {
 	FPL__CheckPlatformNoRet();
 	fpl__PlatformAppState *appState = fpl__global__AppState;
 	const fpl__Win32WindowState *windowState = &appState->window.win32;
+	const fpl__Win32Api *wapi = &appState->win32.winApi;
 	if(!appState->currentSettings.window.isFullscreen) {
+		if(value) {
+			wapi->user.SetWindowPos(windowState->windowHandle, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
+		} else {
+			wapi->user.SetWindowPos(windowState->windowHandle, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
+		}
 		appState->currentSettings.window.isFloating = value;
-		fpl__Win32UpdateWindowStyles(&appState->currentSettings.window, windowState);
 	}
 }
 
@@ -11260,6 +11320,65 @@ fpl_platform_api void fplSetWindowPosition(const int32_t left, const int32_t top
 			} break;
 		}
 	}
+}
+
+fpl_platform_api fplWindowState fplGetWindowState() {
+	FPL__CheckPlatform(fplWindowState_Unknown);
+	const fpl__PlatformAppState *appState = fpl__global__AppState;
+	const fpl__Win32AppState *win32AppState = &appState->win32;
+	const fpl__Win32WindowState *windowState = &fpl__global__AppState->window.win32;
+	const fpl__Win32Api *wapi = &win32AppState->winApi;
+	HWND windowHandle = windowState->windowHandle;
+	fplWindowState result;
+	if(appState->currentSettings.window.isFullscreen) {
+		result = fplWindowState_Fullscreen;
+	} else {
+		bool isMaximized = !!wapi->user.IsZoomed(windowHandle);
+		bool isMinimized = !!wapi->user.IsIconic(windowHandle);
+		if(isMinimized) {
+			result = fplWindowState_Iconify;
+		} else if(isMaximized) {
+			result = fplWindowState_Maximize;
+		} else {
+			result = fplWindowState_Normal;
+		}
+	}
+	return(result);
+}
+
+fpl_platform_api bool fplSetWindowState(const fplWindowState newState) {
+	FPL__CheckPlatform(false);
+	const fpl__PlatformAppState *appState = fpl__global__AppState;
+	const fpl__Win32AppState *win32AppState = &appState->win32;
+	const fpl__Win32WindowState *windowState = &fpl__global__AppState->window.win32;
+	const fpl__Win32Api *wapi = &win32AppState->winApi;
+	HWND windowHandle = windowState->windowHandle;
+	bool result = false;
+	switch(newState) {
+		case fplWindowState_Iconify:
+		{
+			wapi->user.SendMessageW(windowHandle, WM_SYSCOMMAND, SC_MINIMIZE, 0);
+			result = true;
+		} break;
+
+		case fplWindowState_Maximize:
+		{
+			if (!appState->currentSettings.window.isFullscreen && appState->currentSettings.window.isResizable) {
+				wapi->user.SendMessageW(windowHandle, WM_SYSCOMMAND, SC_MAXIMIZE, 0);
+				result = true;
+			}
+		} break;
+
+		case fplWindowState_Normal:
+		{
+			wapi->user.SendMessageW(windowHandle, WM_SYSCOMMAND, SC_RESTORE, 0);
+			result = true;
+		} break;
+
+		default:
+			break;
+	}
+	return(true);
 }
 
 fpl_platform_api void fplSetWindowCursorEnabled(const bool value) {
@@ -12954,7 +13073,7 @@ fpl_platform_api bool fplGetOperatingSystemInfos(fplOSInfos *outInfos) {
 		// /etc/os-release
 
 		result = true;
-	}
+}
 	return(result);
 }
 #endif // FPL_SUBPLATFORM_POSIX
@@ -13832,6 +13951,16 @@ fpl_platform_api void fplSetWindowFloating(const bool value) {
 	// @IMPLEMENT(final): X11 fplSetWindowFloating
 }
 
+fpl_platform_api fplWindowState fplGetWindowState() {
+	// @IMPLEMENT(final): X11 fplGetWindowState
+	return(fplWindowState_Unknown);
+}
+
+fpl_platform_api bool fplSetWindowState(const fplWindowState newState) {
+	// @IMPLEMENT(final): X11 fplSetWindowState
+	return(false);
+}
+
 fpl_platform_api bool fplSetWindowFullscreen(const bool value, const uint32_t fullscreenWidth, const uint32_t fullscreenHeight, const uint32_t refreshRate) {
 	FPL__CheckPlatform(false);
 	fpl__PlatformAppState *appState = fpl__global__AppState;
@@ -13988,7 +14117,7 @@ fpl_platform_api bool fplPollMouseState(fplMouseState *outState) {
 		outState->buttonStates[fplMouseButtonType_Right] = (mask & Button3Mask) ? fplButtonState_Press : fplButtonState_Release;
 		outState->buttonStates[fplMouseButtonType_Middle] = (mask & Button2Mask) ? fplButtonState_Press : fplButtonState_Release;
 		result = true;
-	}
+}
 	return(result);
 }
 #endif // FPL_SUBPLATFORM_X11
@@ -15348,7 +15477,7 @@ done_x11_glx:
 			glApi->glXDestroyContext(windowState->display, legacyRenderingContext);
 		}
 		fpl__X11ReleaseVideoOpenGL(subplatform, windowState, glState);
-	}
+}
 
 	return (result);
 }
@@ -15469,16 +15598,16 @@ typedef struct fpl__CommonAudioState {
 } fpl__CommonAudioState;
 
 fpl_internal uint32_t fpl__ReadAudioFramesFromClient(const fpl__CommonAudioState *commonAudio, uint32_t frameCount, void *pSamples) {
-    uint32_t framesRead = 0;
+	uint32_t framesRead = 0;
 	if(commonAudio->clientReadCallback != fpl_null) {
-        framesRead = commonAudio->clientReadCallback(&commonAudio->internalFormat, frameCount, pSamples, commonAudio->clientUserData);
+		framesRead = commonAudio->clientReadCallback(&commonAudio->internalFormat, frameCount, pSamples, commonAudio->clientUserData);
 	}
 	uint32_t channels = commonAudio->internalFormat.channels;
-    uint32_t samplesRead = framesRead * channels;
-    uint32_t sampleSize = fplGetAudioSampleSizeInBytes(commonAudio->internalFormat.type);
-    uint32_t consumedBytes = samplesRead * sampleSize;
-    uint32_t remainingBytes = ((frameCount * channels) - samplesRead) * sampleSize;
-    fplMemoryClear((uint8_t *)pSamples + consumedBytes, remainingBytes);
+	uint32_t samplesRead = framesRead * channels;
+	uint32_t sampleSize = fplGetAudioSampleSizeInBytes(commonAudio->internalFormat.type);
+	uint32_t consumedBytes = samplesRead * sampleSize;
+	uint32_t remainingBytes = ((frameCount * channels) - samplesRead) * sampleSize;
+	fplMemoryClear((uint8_t *)pSamples + consumedBytes, remainingBytes);
 	return(samplesRead);
 }
 
@@ -15965,10 +16094,10 @@ fpl_internal void fpl__AudioRunMainLoopDirectSound(const fpl__CommonAudioState *
 //
 // > AUDIO_DRIVER_ALSA
 //
-// Based on mini_al.h
-//
 // ############################################################################
 #if defined(FPL_ENABLE_AUDIO_ALSA)
+
+// @TODO(final): Remove ALSA include when runtime linking is enabled
 #	include <alsa/asoundlib.h>
 
 #define FPL__ALSA_FUNC_snd_pcm_open(name) int name(snd_pcm_t **pcm, const char *name, snd_pcm_stream_t stream, int mode)
@@ -16289,7 +16418,7 @@ fpl_internal bool fpl__GetAudioFramesFromClientAlsa(fpl__CommonAudioState *commo
 			} else {
 				framesAvailable = 0;
 			}
-			
+
 		}
 	} else {
 		// readi/writei path
@@ -16406,6 +16535,7 @@ fpl_internal snd_pcm_format_t fpl__MapAudioFormatToAlsaFormat(fplAudioFormatType
 				return SND_PCM_FORMAT_FLOAT_BE;
 			default:
 				return SND_PCM_FORMAT_UNKNOWN;
+		}
 	} else {
 		switch(format) {
 			case fplAudioFormatType_U8:
@@ -16471,7 +16601,7 @@ fpl_internal fplAudioResult fpl__AudioInitAlsa(const fplAudioSettings *audioSett
 	char deviceName[256] = fplZeroInit;
 	snd_pcm_stream_t stream = SND_PCM_STREAM_PLAYBACK;
 	int openMode = SND_PCM_NO_AUTO_RESAMPLE | SND_PCM_NO_AUTO_CHANNELS | SND_PCM_NO_AUTO_FORMAT;
-	if(fplGetStringLength(audioSettings->deviceInfo.id.alsa) == 0) {
+	if(fplGetStringLength(audioSettings->targetDevice.id.alsa) == 0) {
 		const char *defaultDeviceNames[16];
 		int defaultDeviceCount = 0;
 		defaultDeviceNames[defaultDeviceCount++] = "default";
@@ -16501,8 +16631,8 @@ fpl_internal fplAudioResult fpl__AudioInitAlsa(const fplAudioSettings *audioSett
 			FPL__ALSA_INIT_ERROR(fplAudioResult_NoDeviceFound, "No PCM audio device found!");
 		}
 	} else {
-		const char *forcedDeviceId = audioSettings->deviceInfo.id.alsa;
-		// @TODO(final): Do we want to allow device id�s to be :%d,%d so we can probe "dmix" and "hw" ?
+		const char *forcedDeviceId = audioSettings->targetDevice.id.alsa;
+		// @TODO(final): Do we want to allow device ids to be :%d,%d so we can probe "dmix" and "hw" ?
 		if(alsaApi->snd_pcm_open(&alsaState->pcmDevice, forcedDeviceId, stream, openMode) < 0) {
 			FPL__ALSA_INIT_ERROR(fplAudioResult_NoDeviceFound, "PCM audio device by id '%s' not found!", forcedDeviceId);
 		}
@@ -16582,7 +16712,7 @@ fpl_internal fplAudioResult fpl__AudioInitAlsa(const fplAudioSettings *audioSett
 	}
 
 	if(alsaApi->snd_pcm_hw_params_set_format(alsaState->pcmDevice, hardwareParams, foundFormat) < 0) {
-		FPL__ALSA_INIT_ERROR(fplAudioResult_Failed, "Failed setting PCM format '%s' for device '%s'!", fplGetAudioFormatString(internalFormatType), deviceName);
+		FPL__ALSA_INIT_ERROR(fplAudioResult_Failed, "Failed setting PCM format '%s' for device '%s'!", fplGetAudioFormatString(foundFormat), deviceName);
 	}
 	internalFormat.type = fpl__MapAlsaFormatToAudioFormat(foundFormat);
 
@@ -16608,16 +16738,16 @@ fpl_internal fplAudioResult fpl__AudioInitAlsa(const fplAudioSettings *audioSett
 	}
 	internalFormat.sampleRate = internalSampleRate;
 
-    //
-    // Buffer size
-    //
+	//
+	// Buffer size
+	//
 	if(internalFormat.bufferSizeInFrames == 0) {
 		internalFormat.bufferSizeInFrames = fplGetAudioBufferSizeInFrames(internalSampleRate, audioSettings->targetFormat.bufferSizeInMilliseconds);
 	}
 	snd_pcm_uframes_t actualBufferSize = internalFormat.bufferSizeInFrames;
-    if(alsaApi->snd_pcm_hw_params_set_buffer_size_near(alsaState->pcmDevice, hardwareParams, &actualBufferSize) < 0) {
-        FPL__ALSA_INIT_ERROR(fplAudioResult_Failed, "Failed setting PCM buffer size '%lu' for device '%s'!", actualBufferSize, deviceName);
-    }
+	if(alsaApi->snd_pcm_hw_params_set_buffer_size_near(alsaState->pcmDevice, hardwareParams, &actualBufferSize) < 0) {
+		FPL__ALSA_INIT_ERROR(fplAudioResult_Failed, "Failed setting PCM buffer size '%lu' for device '%s'!", actualBufferSize, deviceName);
+	}
 	internalFormat.bufferSizeInFrames = actualBufferSize;
 	internalFormat.bufferSizeInBytes = fplGetAudioBufferSizeInBytes(internalFormat.type, internalFormat.channels, internalFormat.bufferSizeInFrames);
 
@@ -16625,8 +16755,8 @@ fpl_internal fplAudioResult fpl__AudioInitAlsa(const fplAudioSettings *audioSett
 	// Periods
 	//
 	uint32_t internalPeriods = audioSettings->targetFormat.periods;
-	if (internalPeriods == 0) {
-        internalPeriods = 2;
+	if(internalPeriods == 0) {
+		internalPeriods = 2;
 	}
 	int periodsDir = 0;
 	if(alsaApi->snd_pcm_hw_params_set_periods_near(alsaState->pcmDevice, hardwareParams, &internalPeriods, &periodsDir) < 0) {
@@ -16658,7 +16788,7 @@ fpl_internal fplAudioResult fpl__AudioInitAlsa(const fplAudioSettings *audioSett
 		FPL__ALSA_INIT_ERROR(fplAudioResult_Failed, "Failed to set software available min frames of '%lu' for device '%s'!", minAvailableFrames, deviceName);
 	}
 	if(!alsaState->isUsingMMap) {
-        snd_pcm_uframes_t threshold = internalFormat.bufferSizeInFrames / internalFormat.periods;
+		snd_pcm_uframes_t threshold = internalFormat.bufferSizeInFrames / internalFormat.periods;
 		if(alsaApi->snd_pcm_sw_params_set_start_threshold(alsaState->pcmDevice, softwareParams, threshold) < 0) {
 			FPL__ALSA_INIT_ERROR(fplAudioResult_Failed, "Failed to set start threshold of '%lu' for device '%s'!", threshold, deviceName);
 		}
@@ -16671,7 +16801,7 @@ fpl_internal fplAudioResult fpl__AudioInitAlsa(const fplAudioSettings *audioSett
 		fplAssert(internalFormat.bufferSizeInBytes > 0);
 		alsaState->intermediaryBuffer = fplMemoryAllocate(internalFormat.bufferSizeInBytes);
 		if(alsaState->intermediaryBuffer == fpl_null) {
-			FPL__ALSA_INIT_ERROR(fplAudioResult_Failed, "Failed allocating intermediary buffer of size '%lu' for device '%s'!", bufferSizeInBytes, deviceName);
+			FPL__ALSA_INIT_ERROR(fplAudioResult_Failed, "Failed allocating intermediary buffer of size '%lu' for device '%s'!", internalFormat.bufferSizeInBytes, deviceName);
 		}
 	}
 
@@ -17287,7 +17417,7 @@ fpl_internal void fpl__ShutdownVideo(fpl__PlatformAppState *appState, fpl__Video
 			default:
 			{
 			} break;
-		}
+			}
 
 #	if defined(FPL_ENABLE_VIDEO_SOFTWARE)
 		fplVideoBackBuffer *backbuffer = &videoState->softwareBackbuffer;
@@ -17296,7 +17426,7 @@ fpl_internal void fpl__ShutdownVideo(fpl__PlatformAppState *appState, fpl__Video
 		}
 		fplClearStruct(backbuffer);
 #	endif
-	}
+		}
 }
 
 fpl_internal void fpl__ReleaseVideoState(fpl__PlatformAppState *appState, fpl__VideoState *videoState) {
@@ -17322,7 +17452,7 @@ fpl_internal void fpl__ReleaseVideoState(fpl__PlatformAppState *appState, fpl__V
 
 		default:
 			break;
-	}
+}
 	fplClearStruct(videoState);
 }
 
@@ -17410,7 +17540,7 @@ fpl_internal bool fpl__InitVideo(const fplVideoDriverType driver, const fplVideo
 		{
 			FPL_ERROR(FPL__MODULE_VIDEO, "Unsupported video driver '%s' for this platform", fplGetVideoDriverString(videoSettings->driver));
 		} break;
-	}
+		}
 	if(!videoInitResult) {
 		fplAssert(fplGetErrorCount() > 0);
 		fpl__ShutdownVideo(appState, videoState);
@@ -17418,7 +17548,7 @@ fpl_internal bool fpl__InitVideo(const fplVideoDriverType driver, const fplVideo
 	}
 
 	return true;
-}
+	}
 #endif // FPL_ENABLE_VIDEO
 
 // %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -17451,7 +17581,7 @@ fpl_internal FPL__FUNC_PRE_SETUP_WINDOW(fpl__PreSetupWindowDefault) {
 					result = fpl__X11SetPreWindowSetupForOpenGL(&appState->x11.api, &appState->window.x11, &videoState->x11.opengl, &outResult->x11);
 				}
 #			endif
-			} break;
+				} break;
 #		endif // FPL_ENABLE_VIDEO_OPENGL
 
 #		if defined(FPL_ENABLE_VIDEO_SOFTWARE)
@@ -17510,7 +17640,7 @@ fpl_internal bool fpl__InitWindow(const fplSettings *initSettings, fplWindowSett
 #	endif
 	}
 	return (result);
-}
+	}
 
 fpl_internal void fpl__ReleaseWindow(const fpl__PlatformInitState *initState, fpl__PlatformAppState *appState) {
 	if(appState != fpl_null) {
@@ -17781,8 +17911,8 @@ fpl_common_api uint32_t fplGetAudioDevices(fplAudioDeviceInfo *devices, uint32_t
 
 			default:
 				break;
-		}
-	}
+}
+}
 	return(result);
 }
 #endif // FPL_ENABLE_AUDIO
@@ -17912,14 +18042,14 @@ fpl_common_api void fplVideoFlip() {
 				const fplVideoBackBuffer *backbuffer = &videoState->softwareBackbuffer;
 				x11Api->XPutImage(x11WinState->display, x11WinState->window, softwareState->graphicsContext, softwareState->buffer, 0, 0, 0, 0, backbuffer->width, backbuffer->height);
 				x11Api->XSync(x11WinState->display, False);
-			} break;
+		} break;
 #		endif
 
 			default:
 				break;
-		}
-#	endif // FPL_PLATFORM || FPL_SUBPLATFORM
 	}
+#	endif // FPL_PLATFORM || FPL_SUBPLATFORM
+}
 }
 #endif // FPL_ENABLE_VIDEO
 
@@ -18118,7 +18248,7 @@ fpl_common_api bool fplPlatformInit(const fplInitFlags initFlags, const fplSetti
 #	if defined(FPL_ENABLE_VIDEO)
 	if(appState->initFlags & fplInitFlags_Video) {
 		appState->initFlags |= fplInitFlags_Window;
-	}
+}
 #	endif
 #	if !defined(FPL_ENABLE_WINDOW)
 	appState->initFlags = (fplInitFlags)(appState->initFlags & ~fplInitFlags_Window);
@@ -18333,7 +18463,7 @@ void __stdcall mainCRTStartup(void) {
 	int result = main(args.count, args.args);
 	fplMemoryFree(args.mem);
 	ExitProcess(result);
-}
+		}
 #			else
 #				error "Application type not set!"
 #			endif // FPL_APPTYPE
