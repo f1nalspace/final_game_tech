@@ -556,7 +556,7 @@ static bool FillConversionBuffer(AudioSystem *audioSys, const uint32_t maxSample
 #endif
 
 	return audioSys->conversionBuffer.framesRemaining > 0;
-	}
+}
 
 extern uint32_t AudioSystemWriteSamples(AudioSystem *audioSys, const fplAudioDeviceFormat *outFormat, const uint32_t frameCount, uint8_t *outSamples) {
 	fplAssert(audioSys != NULL);
