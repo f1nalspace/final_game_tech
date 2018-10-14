@@ -21,18 +21,18 @@ if not defined IS_VALID_BUILD_TYPE (
 set BUILD_TYPE=%1
 shift
 
-if [%1]==[] (
-	echo Missing additional libs argument!
-	GOTO :usage
+if [%1]==[-] (
+	set ADDITIONAL_LIBS=
+) else (
+	set ADDITIONAL_LIBS=%1
 )
-set ADDITIONAL_LIBS=%1
 shift
 
-if [%1]==[] (
-	echo Missing additional include paths argument!
-	GOTO :usage
+if [%1]==[-] (
+	set ADDITIONAL_INCLUDE_PATHS=
+) else (
+	set ADDITIONAL_INCLUDE_PATHS=%1
 )
-set ADDITIONAL_INCLUDE_PATHS=%1
 shift
 
 if [%1]==[] (
@@ -52,7 +52,7 @@ if %BUILD_TYPE%=="Debug" (
 	set BUILD_TYPE_DEFINE=FPL_RELEASE
 )
 
-set STD_STANDARD=c++11
+set STD_STANDARD=c99
 set IGNORED_WARNINGS=-Wno-c++98-compat-pedantic -Wno-old-style-cast -Wno-reserved-id-macro -Wno-unused-parameter -Wno-gnu-zero-variadic-macro-arguments -Wno-unused-variable -Wno-unused-function -Wno-covered-switch-default
 rmdir /s /q %BUILD_DIR%
 mkdir %BUILD_DIR%
