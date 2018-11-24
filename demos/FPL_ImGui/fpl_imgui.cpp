@@ -15,6 +15,12 @@ Author:
 	Torsten Spaete
 
 Changelog:
+	## 2018-10-22
+	- Reflect api changes in FPL 0.9.3
+
+	## 2018-10-16
+	- Show display informations
+
 	## 2018-09-24
 	- Reflect api changes in FPL 0.9.2
 
@@ -27,8 +33,8 @@ Changelog:
 	## 2018-06-06
 	- Refactored files
 
-    ## 2018-05-05:
-    - Added m to linker flags in CMakeLists and Makefile
+	## 2018-05-05:
+	- Added m to linker flags in CMakeLists and Makefile
 
 	## 2018-04-23:
 	- Initial creation of this description block
@@ -59,7 +65,7 @@ static void ImGUIRenderDrawLists(ImDrawData* draw_data) {
 	ImGuiIO& io = ImGui::GetIO();
 	int fb_width = (int)(io.DisplaySize.x * io.DisplayFramebufferScale.x);
 	int fb_height = (int)(io.DisplaySize.y * io.DisplayFramebufferScale.y);
-	if (fb_width == 0 || fb_height == 0)
+	if(fb_width == 0 || fb_height == 0)
 		return;
 	draw_data->ScaleClipRects(io.DisplayFramebufferScale);
 
@@ -92,7 +98,7 @@ static void ImGUIRenderDrawLists(ImDrawData* draw_data) {
 
 	// Render command lists
 #define OFFSETOF(TYPE, ELEMENT) ((size_t)&(((TYPE *)0)->ELEMENT))
-	for (int n = 0; n < draw_data->CmdListsCount; n++) {
+	for(int n = 0; n < draw_data->CmdListsCount; n++) {
 		const ImDrawList* cmd_list = draw_data->CmdLists[n];
 		const ImDrawVert* vtx_buffer = cmd_list->VtxBuffer.Data;
 		const ImDrawIdx* idx_buffer = cmd_list->IdxBuffer.Data;
@@ -100,9 +106,9 @@ static void ImGUIRenderDrawLists(ImDrawData* draw_data) {
 		glTexCoordPointer(2, GL_FLOAT, sizeof(ImDrawVert), (const GLvoid*)((const char*)vtx_buffer + OFFSETOF(ImDrawVert, uv)));
 		glColorPointer(4, GL_UNSIGNED_BYTE, sizeof(ImDrawVert), (const GLvoid*)((const char*)vtx_buffer + OFFSETOF(ImDrawVert, col)));
 
-		for (int cmd_i = 0; cmd_i < cmd_list->CmdBuffer.Size; cmd_i++) {
+		for(int cmd_i = 0; cmd_i < cmd_list->CmdBuffer.Size; cmd_i++) {
 			const ImDrawCmd* pcmd = &cmd_list->CmdBuffer[cmd_i];
-			if (pcmd->UserCallback) {
+			if(pcmd->UserCallback) {
 				pcmd->UserCallback(cmd_list, pcmd);
 			} else {
 				glBindTexture(GL_TEXTURE_2D, (GLuint)(intptr_t)pcmd->TextureId);
@@ -189,7 +195,7 @@ static void InitImGUI() {
 }
 
 static void ReleaseImGUI() {
-	if (fontTextureId) {
+	if(fontTextureId) {
 		glDeleteTextures(1, &fontTextureId);
 		ImGui::GetIO().Fonts->TexID = 0;
 		fontTextureId = 0;
@@ -198,7 +204,7 @@ static void ReleaseImGUI() {
 
 static void ImGUIKeyEvent(uint64_t keyCode, fplKey mappedKey, fplKeyboardModifierFlags modifiers, bool down) {
 	ImGuiIO& io = ImGui::GetIO();
-	if (mappedKey != fplKey_None) {
+	if(mappedKey != fplKey_None) {
 		io.KeysDown[(uint32_t)mappedKey] = down;
 	} else {
 		io.KeysDown[keyCode] = down;
@@ -212,21 +218,23 @@ static void ImGUIKeyEvent(uint64_t keyCode, fplKey mappedKey, fplKeyboardModifie
 static bool show_test_window = true;
 static bool show_another_window = false;
 static ImVec4 clear_color = ImColor(114, 144, 154);
+static size_t displayCount = 0;
+static fplDisplayInfo displays[16] = fplZeroInit;
 
 static void UpdateAndRender(const float deltaTime) {
 	ImGuiIO& io = ImGui::GetIO();
 	fplWindowSize windowArea = {};
-	fplGetWindowArea(&windowArea);
+	fplGetWindowSize(&windowArea);
 	io.DeltaTime = deltaTime;
 	io.DisplaySize.x = (float)windowArea.width;
 	io.DisplaySize.y = (float)windowArea.height;
 	io.DisplayFramebufferScale = ImVec2(1, 1);
 
 	io.MousePos = ImVec2((float)currentMousePosition[0], (float)currentMousePosition[1]);
-	for (int mouseButton = 0; mouseButton < 3; ++mouseButton) {
+	for(int mouseButton = 0; mouseButton < 3; ++mouseButton) {
 		io.MouseDown[mouseButton] = currentMouseStates[mouseButton];
 	}
-	if (fabsf(currentMouseWheelDelta) > 0.0f) {
+	if(fabsf(currentMouseWheelDelta) > 0.0f) {
 		io.MouseWheel = currentMouseWheelDelta > 0.0f ? 1.0f : -1.0f;
 	} else {
 		io.MouseWheel = 0.0f;
@@ -243,8 +251,8 @@ static void UpdateAndRender(const float deltaTime) {
 		ImGui::Text("Hello, world!");
 		ImGui::SliderFloat("float", &f, 0.0f, 1.0f);
 		ImGui::ColorEdit3("clear color", (float*)&clear_color);
-		if (ImGui::Button("Test Window")) show_test_window ^= 1;
-		if (ImGui::Button("Another Window")) show_another_window ^= 1;
+		if(ImGui::Button("Test Window")) show_test_window ^= 1;
+		if(ImGui::Button("Another Window")) show_another_window ^= 1;
 		if(ImGui::Button("Toggle app floating")) {
 			fplSetWindowFloating(!fplIsWindowFloating());
 		}
@@ -258,7 +266,7 @@ static void UpdateAndRender(const float deltaTime) {
 	}
 
 	// 2. Show another simple window, this time using an explicit Begin/End pair
-	if (show_another_window) {
+	if(show_another_window) {
 		ImGui::SetNextWindowSize(ImVec2(200, 100), ImGuiSetCond_FirstUseEver);
 		ImGui::Begin("Another Window", &show_another_window);
 		ImGui::Text("Hello");
@@ -266,10 +274,28 @@ static void UpdateAndRender(const float deltaTime) {
 	}
 
 	// 3. Show the ImGui test window. Most of the sample code is in ImGui::ShowTestWindow()
-	if (show_test_window) {
+	if(show_test_window) {
 		ImGui::SetNextWindowPos(ImVec2(650, 20), ImGuiSetCond_FirstUseEver);
 		ImGui::ShowTestWindow(&show_test_window);
 	}
+
+	fplDisplayInfo primaryDisplay = fplZeroInit;
+	fplGetPrimaryDisplay(&primaryDisplay);
+
+	fplDisplayInfo windowDisplay = fplZeroInit;
+	fplGetWindowDisplay(&windowDisplay);
+
+	ImGui::SetNextWindowPos(ImVec2(60, 480), ImGuiSetCond_FirstUseEver);
+	ImGui::SetNextWindowSize(ImVec2(600, 200), ImGuiSetCond_FirstUseEver);
+	ImGui::Begin("Displays", &show_another_window);
+	ImGui::Text("Count: %zu", displayCount);
+	for(int i = 0; i < displayCount; ++i) {
+		fplDisplayInfo *display = displays + i;
+		ImGui::BulletText("Display[%d]: %s, Pos: %d x %d, Size: %d x %d, Is primary: %s", i, display->id, display->virtualPosition.left, display->virtualPosition.top, display->virtualSize.width, display->virtualSize.height, (display->isPrimary ? "true" : "false"));
+	}
+	ImGui::Text("Primary Display: %s, Pos: %d x %d, Size: %d x %d", primaryDisplay.id, primaryDisplay.virtualPosition.left, primaryDisplay.virtualPosition.top, primaryDisplay.virtualSize.width, primaryDisplay.virtualSize.height);
+	ImGui::Text("Window Display: %s, Pos: %d x %d, Size: %d x %d, Is primary: %s", windowDisplay.id, windowDisplay.virtualPosition.left, windowDisplay.virtualPosition.top, windowDisplay.virtualSize.width, windowDisplay.virtualSize.height, (windowDisplay.isPrimary ? "true" : "false"));
+	ImGui::End();
 
 	glViewport(0, 0, windowArea.width, windowArea.height);
 	glClearColor(clear_color.x, clear_color.y, clear_color.z, clear_color.w);
@@ -280,11 +306,12 @@ static void UpdateAndRender(const float deltaTime) {
 int main(int argc, char **args) {
 	int result = 0;
 	fplSettings settings = fplMakeDefaultSettings();
-	fplCopyString("ImGUI Example", settings.window.windowTitle, fplArrayCount(settings.window.windowTitle) - 1);
-	settings.window.windowWidth = 1280;
-	settings.window.windowHeight = 720;
+	fplCopyString("ImGUI Example", settings.window.title, fplArrayCount(settings.window.title));
+	settings.window.windowSize.width = 1280;
+	settings.window.windowSize.height = 720;
 	settings.video.driver = fplVideoDriverType_OpenGL;
-	if (fplPlatformInit(fplInitFlags_Video, &settings)) {
+	if(fplPlatformInit(fplInitFlags_Video, &settings)) {
+		displayCount = fplGetDisplays(displays, fplArrayCount(displays));
 
 		InitImGUI();
 
@@ -293,13 +320,13 @@ int main(int argc, char **args) {
 		double lastTime = fplGetTimeInSecondsHP();
 		float lastDeltaTime = 1.0f / 60.0f;
 
-		while (fplWindowUpdate()) {
+		while(fplWindowUpdate()) {
 			fplEvent event;
-			while (fplPollEvent(&event)) {
-				switch (event.type) {
+			while(fplPollEvent(&event)) {
+				switch(event.type) {
 					case fplEventType_Keyboard:
 					{
-						switch (event.keyboard.type) {
+						switch(event.keyboard.type) {
 							case fplKeyboardEventType_Button:
 							{
 								bool isDown = event.keyboard.buttonState >= fplButtonState_Press;
@@ -307,17 +334,17 @@ int main(int argc, char **args) {
 							} break;
 							case fplKeyboardEventType_Input:
 							{
-								if (event.keyboard.keyCode > 0 && event.keyboard.keyCode < 0x10000) {
+								if(event.keyboard.keyCode > 0 && event.keyboard.keyCode < 0x10000) {
 									io.AddInputCharacter(ImWchar(event.keyboard.keyCode));
 								}
 							} break;
-                            default:
-                                break;
+							default:
+								break;
 						}
 					} break;
 					case fplEventType_Mouse:
 					{
-						switch (event.mouse.type) {
+						switch(event.mouse.type) {
 							case fplMouseEventType_Move:
 							{
 								currentMousePosition[0] = event.mouse.mouseX;
@@ -335,8 +362,8 @@ int main(int argc, char **args) {
 								currentMousePosition[0] = event.mouse.mouseX;
 								currentMousePosition[1] = event.mouse.mouseY;
 							} break;
-                            default:
-                                break;
+							default:
+								break;
 						}
 					} break;
 					default:

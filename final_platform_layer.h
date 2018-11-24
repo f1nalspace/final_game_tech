@@ -120,7 +120,7 @@ SOFTWARE.
 
 /*!
 	@file final_platform_layer.h
-	@version v0.9.2.0 beta
+	@version v0.9.3.0 beta
 	@author Torsten Spaete
 	@brief Final Platform Layer (FPL) - A C99 Single-Header-File Platform Abstraction Library
 */
@@ -131,6 +131,43 @@ SOFTWARE.
 /*!
 	@page page_changelog Changelog
 	@tableofcontents
+
+	## v0.9.3.0 beta
+	- Changed: Renamed fplSetWindowFullscreen to fplSetWindowFullscreenSize
+	- Changed: Replaced windowWidth and windowHeight from fplWindowSettings with windowSize structure
+	- Changed: Replaced fullscreenWidth and fullscreenHeight from fplWindowSettings with fullscreenSize structure
+	- Changed: Renamed macro FPL_PLATFORM_WIN32 to FPL_PLATFORM_WINDOWS
+	- Changed: Renamed fplGetWindowArea() to fplGetWindowSize()
+	- Changed: Renamed fplSetWindowArea() to fplSetWindowSize()
+	- Changed: Renamed fplWindowSettings.windowTitle to fplWindowSettings.title
+	- Changed: Reversed buffer/max-size argument of fplS32ToString()
+	- Changed: Renamed fullPath into name in the fplFileEntry structure and limit its size to FPL_MAX_FILENAME_LENGTH
+	- Fixed: fplPlatformInit() was using the width for the height for the default window size
+	- Fixed: fplExtractFileExtension() was not favour the last path part
+	- Fixed [Win32/MSVC]: Workaround for "combaseapi.h(229): error C2187: syntax error: 'identifier' was unexpected here"
+	- New: Added fplSetWindowFullscreenRect()
+	- New: Added fplGetDisplayCount()
+	- New: Added fplGetDisplays()
+	- New: Added fplGetWindowDisplay()
+	- New: Added fplGetPrimaryDisplay()
+	- New: Added fplGetDisplayFromPosition()
+	- New: Added fplGetDisplayModeCount()
+	- New: Added fplGetDisplayModes()
+	- New: Added fplGetWindowTitle()
+
+	- Changed: [Win32] fplSetWindowFullscreenSize does not use virtual screen coordinates anymore
+	- Changed: [Win32/POSIX] Store filename in fplFileEntry instead of the full path
+	- Fixed: [Win32] fplGetExecutableFilePath was not returning the last written character
+	- Fixed: [Win32] fplGetHomePath was not returning the last written character
+	- New: [Win32/X11] Use fplWindowSettings.fullscreenRefreshRate for startup when needed
+	- New: [Win32] Implemented fplSetWindowFullscreenRect()
+	- New: [Win32] Implemented fplGetDisplayCount()
+	- New: [Win32] Implemented fplGetDisplays()
+	- New: [Win32] Implemented fplGetWindowDisplay()
+	- New: [Win32] Implemented fplGetPrimaryDisplay()
+	- New: [Win32] Implemented fplGetDisplayFromPosition()
+	- New: [Win32] Implemented fplGetDisplayModeCount()
+	- New: [Win32] Implemented fplGetDisplayModes()
 
 	## v0.9.2.0 beta
 	- Changed: Removed "Ansi" part from all ansi functions
@@ -194,7 +231,7 @@ SOFTWARE.
 	- Fixed: fplStaticAssert was not compiling on gcc/clang C99 mode
 	- Fixed: Corrected a ton of misspellings in the documentation
 	- Fixed: Define for FPL_DEBUG was missing a raute symbol
-    - Fixed: Use va_copy for all va_list function arguments
+	- Fixed: Use va_copy for all va_list function arguments
 	- New: Added fplFlushFile()
 	- New: Added fplAtomicAddAndFetchPtr()
 	- New: Added fplAtomicFetchAndAddPtr()
@@ -1155,6 +1192,10 @@ SOFTWARE.
 		- Support for more than two channels
 		- Support for channel mapping
 
+	- Video:
+		- [Win32] Vulkan
+		- [POSIX] Vulkan
+
 	- Threading
 		- Signals (POSIX, Non-Linux)
 
@@ -1173,16 +1214,9 @@ SOFTWARE.
 
 	- DLL-Export support
 
-	- Multimonitor-Support
-
 	- Window:
 		- Realtime resize (Win32 using fiber)
 		- Custom cursor from image (File/Memory)
-
-	- Video:
-		- [Win32] Direct3D
-		- [Win32] Vulkan
-		- [POSIX] Vulkan
 */
 
 // ****************************************************************************
@@ -1213,7 +1247,7 @@ SOFTWARE.
 //
 // https://sourceforge.net/p/predef/wiki/OperatingSystems/
 #if defined(_WIN32) || defined(_WIN64)
-#	define FPL_PLATFORM_WIN32
+#	define FPL_PLATFORM_WINDOWS
 #	define FPL_PLATFORM_NAME "Windows"
 #elif defined(__ANDROID__)
 #	define FPL_PLATFORM_ANDROID
@@ -1542,7 +1576,7 @@ SOFTWARE.
 #	define FPL_SUPPORT_AUDIO
 #endif
 #if defined(FPL_SUPPORT_AUDIO)
-#	if !defined(FPL_NO_AUDIO_DIRECTSOUND) && defined(FPL_PLATFORM_WIN32)
+#	if !defined(FPL_NO_AUDIO_DIRECTSOUND) && defined(FPL_PLATFORM_WINDOWS)
 		//! DirectSound support is only available on Win32
 #		define FPL_SUPPORT_AUDIO_DIRECTSOUND
 #	endif
@@ -1740,13 +1774,12 @@ typedef int32_t fpl_b32;
 //
 // Test sizes
 //
-// @WARNING(final): At the moment this is sufficient, but as soon as there are special CPUs detected this may break!
 #if defined(FPL_CPU_64BIT)
-fplStaticAssert(sizeof(uintptr_t) == sizeof(uint64_t));
-fplStaticAssert(sizeof(size_t) == sizeof(uint64_t));
+fplStaticAssert(sizeof(uintptr_t) >= sizeof(uint64_t));
+fplStaticAssert(sizeof(size_t) >= sizeof(uint64_t));
 #elif defined(FPL_CPU_32BIT)
-fplStaticAssert(sizeof(uintptr_t) == sizeof(uint32_t));
-fplStaticAssert(sizeof(size_t) == sizeof(uint32_t));
+fplStaticAssert(sizeof(uintptr_t) >= sizeof(uint32_t));
+fplStaticAssert(sizeof(size_t) >= sizeof(uint32_t));
 #endif
 
 //
@@ -1813,7 +1846,7 @@ fplStaticAssert(sizeof(size_t) == sizeof(uint32_t));
 //! Returns the biggest value
 #define fplMax(a, b) ((a) > (b) ? (a) : (b))
 
-#if defined(FPL_PLATFORM_WIN32)
+#if defined(FPL_PLATFORM_WINDOWS)
 	//! Manually allocate memory on the stack (Win32)
 #	include <malloc.h>
 #	define fplStackAllocate(size) _alloca(size)
@@ -1861,7 +1894,7 @@ fplStaticAssert(sizeof(size_t) == sizeof(uint32_t));
 // Platform Includes
 //
 // ****************************************************************************
-#if defined(FPL_PLATFORM_WIN32)
+#if defined(FPL_PLATFORM_WINDOWS)
 // @NOTE(final): windef.h defines min/max macros defined in lowerspace, this will break for example std::min/max so we have to tell the header we dont want this!
 #	if !defined(NOMINMAX)
 #		define NOMINMAX
@@ -1870,11 +1903,13 @@ fplStaticAssert(sizeof(size_t) == sizeof(uint32_t));
 #	if !defined(WIN32_LEAN_AND_MEAN)
 #		define WIN32_LEAN_AND_MEAN 1
 #	endif
+// @STUPID(final): Workaround for "combaseapi.h(229): error C2187: syntax error: 'identifier' was unexpected here"
+struct IUnknown;
 #	include <Windows.h> // Win32 api
 #	if _WIN32_WINNT < 0x0600
 #		error "Windows Vista or higher required!"
 #	endif
-#endif // FPL_PLATFORM_WIN32
+#endif // FPL_PLATFORM_WINDOWS
 
 #if defined(FPL_SUBPLATFORM_POSIX)
 #	include <pthread.h> // pthread_t, pthread_mutex_, pthread_cond_, pthread_barrier_
@@ -1899,7 +1934,7 @@ fplStaticAssert(sizeof(size_t) == sizeof(uint32_t));
   * @{
   */
 
-#if defined(FPL_PLATFORM_WIN32)
+#if defined(FPL_PLATFORM_WINDOWS)
 	//! Maximum length of a filename (Win32)
 #	define FPL_MAX_FILENAME_LENGTH (MAX_PATH + 1)
 	//! Maximum length of a path (Win32)
@@ -2760,22 +2795,28 @@ typedef struct fplWindowCallbacks {
 	void *eventUserData;
 } fplWindowCallbacks;
 
+//! A structure containing the size a window
+typedef struct fplWindowSize {
+	//! Width in screen coordinates
+	uint32_t width;
+	//! Height in screen coordinates
+	uint32_t height;
+} fplWindowSize;
+
 //! A structure containing window settings, such as size, title etc.
 typedef struct fplWindowSettings {
 	//! Window title
-	char windowTitle[FPL_MAX_NAME_LENGTH];
+	char title[FPL_MAX_NAME_LENGTH];
 	//! Window icons (0 = Small, 1 = Large)
 	fplImageSource icons[2];
 	//! Window callbacks
 	fplWindowCallbacks callbacks;
-	//! Window width in screen coordinates
-	uint32_t windowWidth;
-	//! Window height in screen coordinates
-	uint32_t windowHeight;
-	//! Fullscreen width in screen coordinates
-	uint32_t fullscreenWidth;
-	//! Fullscreen height in screen coordinates
-	uint32_t fullscreenHeight;
+	//! Window size in screen coordinates
+	fplWindowSize windowSize;
+	//! Fullscreen size in screen coordinates
+	fplWindowSize fullscreenSize;
+	//! Fullscreen refresh rate in Hz
+	uint32_t fullscreenRefreshRate;
 	//! Is window resizable
 	fpl_b32 isResizable;
 	//! Is window decorated
@@ -3056,7 +3097,7 @@ fpl_common_api void fplClearErrors();
 
 //! A union containing the library handle for any platform
 typedef union fplInternalDynamicLibraryHandle {
-#if defined(FPL_PLATFORM_WIN32)
+#if defined(FPL_PLATFORM_WINDOWS)
 	//! Win32 library handle
 	HMODULE win32LibraryHandle;
 #elif defined(FPL_SUBPLATFORM_POSIX)
@@ -3177,7 +3218,7 @@ fpl_common_api void fplConsoleFormatError(const char *format, ...);
   */
 fpl_platform_api double fplGetTimeInSecondsHP();
 /**
-  * @brief Gets the current system clock in seconds in low precision (milliseconds).
+  * @brief Gets the current system clock in seconds in low precision (seconds).
   * @return Returns the number of seconds since some fixed starting point (OS start, System start, etc).
   * @note Can only be used to calculate a difference in time!
   */
@@ -3201,7 +3242,7 @@ fpl_platform_api double fplGetTimeInMillisecondsHP();
   */
 fpl_platform_api uint64_t fplGetTimeInMillisecondsLP();
 /**
-  * @brief Gets the current system clock in milliseconds
+  * @brief Gets the current system clock in milliseconds in default precision.
   * @return Returns the number of milliseconds since some fixed starting point (OS start, System start, etc).
   * @note Can only be used to calculate a difference in time!
   */
@@ -3249,7 +3290,7 @@ typedef void (fpl_run_thread_callback)(const fplThreadHandle *thread, void *data
 
 //! A union containing the thread handle for any platform
 typedef union fplInternalThreadHandle {
-#if defined(FPL_PLATFORM_WIN32)
+#if defined(FPL_PLATFORM_WINDOWS)
 	//! Win32 thread handle
 	HANDLE win32ThreadHandle;
 #elif defined(FPL_SUBPLATFORM_POSIX)
@@ -3276,7 +3317,7 @@ typedef struct fplThreadHandle {
 	volatile fpl_b32 isStopping;
 } fplThreadHandle;
 
-#if defined(FPL_PLATFORM_WIN32)
+#if defined(FPL_PLATFORM_WINDOWS)
 //! A structure containing the semaphore handle and the value for win32
 typedef struct fplInternalSemaphoreHandleWin32 {
 	//! Semaphore handle
@@ -3288,7 +3329,7 @@ typedef struct fplInternalSemaphoreHandleWin32 {
 
 //! A union containing the internal semaphore handle for any platform
 typedef union fplInternalSemaphoreHandle {
-#if defined(FPL_PLATFORM_WIN32)
+#if defined(FPL_PLATFORM_WINDOWS)
 	//! Win32 semaphore handle
 	fplInternalSemaphoreHandleWin32 win32;
 #elif defined(FPL_SUBPLATFORM_POSIX)
@@ -3307,7 +3348,7 @@ typedef struct fplSemaphoreHandle {
 
 //! A union containing the internal mutex handle for any platform
 typedef union fplInternalMutexHandle {
-#if defined(FPL_PLATFORM_WIN32)
+#if defined(FPL_PLATFORM_WINDOWS)
 	//! Win32 mutex handle
 	CRITICAL_SECTION win32CriticalSection;
 #elif defined(FPL_SUBPLATFORM_POSIX)
@@ -3326,7 +3367,7 @@ typedef struct fplMutexHandle {
 
 //! A union containing the internal signal handle for any platform
 typedef union fplInternalSignalHandle {
-#if defined(FPL_PLATFORM_WIN32)
+#if defined(FPL_PLATFORM_WINDOWS)
 	//! Win32 event handle
 	HANDLE win32EventHandle;
 #elif defined(FPL_PLATFORM_LINUX)
@@ -3353,7 +3394,7 @@ typedef enum fplSignalValue {
 
 //! A union containing the internal condition variable for any platform
 typedef union fplInternalConditionVariable {
-#if defined(FPL_PLATFORM_WIN32)
+#if defined(FPL_PLATFORM_WINDOWS)
 	//! Win32 condition variable
 	CONDITION_VARIABLE win32Condition;
 #elif defined(FPL_SUBPLATFORM_POSIX)
@@ -3800,7 +3841,7 @@ fpl_common_api int32_t fplStringToS32(const char *str);
   * @param buffer The target buffer
   * @return Returns the pointer to the last written character of the buffer or @ref fpl_null.
   */
-fpl_common_api char *fplS32ToString(const int32_t value, const size_t maxBufferLen, char *buffer);
+fpl_common_api char *fplS32ToString(const int32_t value, char *buffer, const size_t maxBufferLen);
 
 /** @}*/
 
@@ -3814,7 +3855,7 @@ fpl_common_api char *fplS32ToString(const int32_t value, const size_t maxBufferL
 
 //! A union containing the internal file handle for any platform
 typedef union fplInternalFileHandle {
-#if defined(FPL_PLATFORM_WIN32)
+#if defined(FPL_PLATFORM_WINDOWS)
 	//! Win32 file handle
 	HANDLE win32FileHandle;
 #elif defined(FPL_SUBPLATFORM_POSIX)
@@ -3913,7 +3954,7 @@ FPL_ENUM_AS_FLAGS_OPERATORS(fplFileAttributeFlags);
 
 //! A union containing the internal file handle for any platform
 typedef union fplInternalFileEntryHandle {
-#if defined(FPL_PLATFORM_WIN32)
+#if defined(FPL_PLATFORM_WINDOWS)
 	//! Win32 file handle
 	HANDLE win32FileHandle;
 #elif defined(FPL_SUBPLATFORM_POSIX)
@@ -3942,8 +3983,8 @@ typedef struct fplFileTimeStamps {
 
 //! A structure containing the informations for a file or directory (name, type, attributes, etc.)
 typedef struct fplFileEntry {
-	//! Full path
-	char fullPath[FPL_MAX_PATH_LENGTH];
+	//! Name
+	char name[FPL_MAX_FILENAME_LENGTH];
 	//! Internal file handle
 	fplInternalFileEntryHandle internalHandle;
 	//! Internal root info
@@ -4269,7 +4310,7 @@ fpl_common_api const char *fplExtractFileName(const char *sourcePath);
   */
 fpl_common_api char *fplChangeFileExtension(const char *filePath, const char *newFileExtension, char *destPath, const size_t maxDestLen);
 /**
-  * @brief Combines all given paths by the systems path separator.
+  * @brief Combines all given paths by the platforms path separator for fixed number of arguments
   * @param destPath The destination buffer
   * @param maxDestPathLen The total number of characters available in the destination buffer
   * @param pathCount The number of dynamic path arguments
@@ -4504,14 +4545,6 @@ typedef enum fplWindowEventType {
 	//! Window was exposed
 	fplWindowEventType_Exposed,
 } fplWindowEventType;
-
-//! A structure containing the size a window
-typedef struct fplWindowSize {
-	//! Width in screen coordinates
-	uint32_t width;
-	//! Height in screen coordinates
-	uint32_t height;
-} fplWindowSize;
 
 //! A structure containing number and dropped files informations
 typedef union fplWindowDropFiles {
@@ -4914,17 +4947,17 @@ fpl_platform_api bool fplWindowUpdate();
   */
 fpl_platform_api void fplSetWindowCursorEnabled(const bool value);
 /**
-  * @brief Retrieves the inner window area.
+  * @brief Retrieves the inner window size.
   * @param outSize The pointer to the @ref fplWindowSize structure
-  * @return Returns true when we got the window area from the current window, false otherwise.
+  * @return Returns true when we got the inner size from the current window, false otherwise.
   */
-fpl_platform_api bool fplGetWindowArea(fplWindowSize *outSize);
+fpl_platform_api bool fplGetWindowSize(fplWindowSize *outSize);
 /**
-  * @brief Resizes the window to fit the inner area to the given size.
+  * @brief Resizes the window to fit the inner size based on the given size.
   * @param width The width in screen units
   * @param height The height in screen units
   */
-fpl_platform_api void fplSetWindowArea(const uint32_t width, const uint32_t height);
+fpl_platform_api void fplSetWindowSize(const uint32_t width, const uint32_t height);
 /**
   * @brief Gets the window resizable state as boolean.
   * @return Returns true when the window is resizable, false otherwise.
@@ -4956,14 +4989,38 @@ fpl_platform_api bool fplIsWindowFloating();
   */
 fpl_platform_api void fplSetWindowFloating(const bool value);
 /**
-  * @brief Enables or disables fullscreen mode.
+  * @brief Enables or disables fullscreen mode based on the given size and the current display.
   * @param value The new fullscreen state
-  * @param fullscreenWidth The fullscreen width in screen units. When set to zero the desktop default is being used.
-  * @param fullscreenHeight The fullscreen height in screen units. When set to zero the desktop default is being used.
-  * @param refreshRate The refresh rate in Hz. When set to zero the desktop default is being used.
+  * @param fullscreenWidth The fullscreen width in screen units. When set to zero the current display position is used.
+  * @param fullscreenHeight The fullscreen height in screen units. When set to zero the current display position is used.
+  * @param refreshRate The refresh rate in Hz. When set to zero the current display setting is used.
   * @return Returns true when the window was changed to the desire fullscreen mode, false otherwise.
+  * @attention This may alter the display resolution or the refresh rate.
   */
-fpl_platform_api bool fplSetWindowFullscreen(const bool value, const uint32_t fullscreenWidth, const uint32_t fullscreenHeight, const uint32_t refreshRate);
+fpl_platform_api bool fplSetWindowFullscreenSize(const bool value, const uint32_t fullscreenWidth, const uint32_t fullscreenHeight, const uint32_t refreshRate);
+/**
+  * @brief Enables or disables fullscreen mode based on the given rectangle.
+  * @param value The new fullscreen state
+  * @param x The left position in virtual screen coordinates
+  * @param y The top position in virtual screen coordinates
+  * @param width The width in virtual screen coordinates
+  * @param height The height in virtual screen coordinates
+  * @return Returns true when the window was changed to the rectangle, false otherwise.
+  * @attention This will not alter the display resolution or the refresh rate.
+  */
+fpl_platform_api bool fplSetWindowFullscreenRect(const bool value, const int32_t x, const int32_t y, const int32_t width, const int32_t height);
+/**
+  * @brief Enables fullscreen mode on the nearest display
+  * @return Returns true when the window was changed to the fullscreen, false otherwise.
+  * @attention This will not alter the display resolution or the refresh rate.
+  */
+fpl_platform_api bool fplEnableWindowFullscreen();
+/**
+  * @brief Switches the window back to window mode
+  * @return Returns true when the window was changed to the window mode, false otherwise.
+  * @attention This will not alter the display resolution or the refresh rate.
+  */
+fpl_platform_api bool fplDisableWindowFullscreen();
 /**
   * @brief Gets the window fullscreen state as boolean.
   * @return Returns true when the window is in fullscreen mode, false otherwise.
@@ -4987,6 +5044,13 @@ fpl_platform_api void fplSetWindowPosition(const int32_t left, const int32_t top
   */
 fpl_platform_api void fplSetWindowTitle(const char *title);
 /**
+  * @brief Retrieves the window title and writes it into the output string
+  * @param outTitle The output title string
+  * @param maxOutTitleLength The maximum length of the output title
+  * @return Returns the char pointer of the last written character or fpl_null
+  */
+fpl_common_api char *fplGetWindowTitle(char *outTitle, const size_t maxOutTitleLength);
+/**
   * @brief Gets the current window state
   * @return Returns the current window state
   */
@@ -4997,6 +5061,87 @@ fpl_platform_api fplWindowState fplGetWindowState();
   * @return Returns true when the window state was changed, false otherwise.
   */
 fpl_platform_api bool fplSetWindowState(const fplWindowState newState);
+
+/*\}*/
+
+/**
+  * @defgroup WindowDisplay Display/Monitor functions
+  * @brief This category contains functions for handling multiple monitors
+  * @{
+  */
+
+//! A struct containing informations about a display
+typedef struct fplDisplayInfo {
+	//! ID of the display
+	char id[FPL_MAX_NAME_LENGTH];
+	//! Virtual size in screen coordinates
+	fplWindowSize virtualSize;
+	//! Virtual position in screen coordinates
+	fplWindowPosition virtualPosition;
+	//! Actual absolute size in screen coordinates
+	fplWindowSize physicalSize;
+	//! Is primary display
+	fpl_b32 isPrimary;
+} fplDisplayInfo;
+
+//! A structure containing one set of display mode settings, such as size, refresh rate, etc.
+typedef struct fplDisplayMode {
+	//! The width in screen coordinates
+	uint32_t width;
+	//! The height in screen coordinates
+	uint32_t height;
+	//! Color depth in bits per pixel
+	uint32_t colorBits;
+	//! The refresh rate in Hz
+	uint32_t refreshRate;
+} fplDisplayMode;
+
+/**
+  * @brief Gets the number of active displays
+  * @return Returns the number of active displays
+  */
+fpl_platform_api size_t fplGetDisplayCount();
+/**
+  * @brief Gets informations about all active displays
+  * @param outDisplays The array of @ref fplDisplayInfo
+  * @param maxDisplayCount The maximum number of display infos available in the output array
+  * @return Returns the total number of active displays
+  */
+fpl_platform_api size_t fplGetDisplays(fplDisplayInfo *outDisplays, const size_t maxDisplayCount);
+/**
+  * @brief Gets information about the display for the FPL window
+  * @param outInfo A pointer to a @ref fplDisplayInfo structure
+  * @return Returns true when the display for the window was found, false otherwise.
+  */
+fpl_platform_api bool fplGetWindowDisplay(fplDisplayInfo *outInfo);
+/**
+  * @brief Gets information about the primary display
+  * @param outInfo A pointer to a @ref fplDisplayInfo structure
+  * @return Returns true when the primary display was found, false otherwise.
+  */
+fpl_platform_api bool fplGetPrimaryDisplay(fplDisplayInfo *outInfo);
+/**
+  * @brief Finds the display from a cursor position and retrieves the information for it.
+  * @param x The x position in screen coordinates
+  * @param y The y position in screen coordinates
+  * @param outInfo A pointer to a @ref fplDisplayInfo structure
+  * @return Returns true when the display was found, false otherwise.
+  */
+fpl_platform_api bool fplGetDisplayFromPosition(const int32_t x, const int32_t y, fplDisplayInfo *outInfo);
+/**
+  * @brief Gets the number of available display modes for the given display id
+  * @param id The display id
+  * @return Returns the total number of available display modes
+  */
+fpl_platform_api size_t fplGetDisplayModeCount(const char *id);
+/**
+  * @brief Gets the information about the available display modes for the given display id
+  * @param id The display id
+  * @param outModes The array of @ref fplDisplayMode
+  * @param maxDisplayModeCount The maximum number of display modes available in the output array
+  * @return Returns the number of found display modes
+  */
+fpl_platform_api size_t fplGetDisplayModes(const char *id, fplDisplayMode *outModes, const size_t maxDisplayModeCount);
 
 /*\}*/
 
@@ -5268,7 +5413,7 @@ fpl_platform_api bool fplGetInputLocale(const fplLocaleFormat targetFormat, char
 // Entry-Point forward declaration
 //
 // ****************************************************************************
-#if defined(FPL_PLATFORM_WIN32)
+#if defined(FPL_PLATFORM_WINDOWS)
 //
 // Export internal functions (Static Library)
 //
@@ -5282,7 +5427,7 @@ fpl_api fpl__Win32CommandLineUTF8Arguments fpl__Win32ParseWideArguments(LPWSTR c
 // @NOTE(final): Required for access "main" from the actual win32 entry point
 fpl_main int main(int argc, char **args);
 #	endif
-#endif // FPL_PLATFORM_WIN32
+#endif // FPL_PLATFORM_WINDOWS
 
 #endif // FPL_INCLUDE_H
 
@@ -5438,7 +5583,7 @@ fpl_internal void fpl__LogWrite(const fplLogLevel level, const char *message) {
 		settings->writers[0].flags = fplLogWriterFlags_StandardConsole | fplLogWriterFlags_DebugOut;
 #endif
 		settings->isInitialized = true;
-}
+	}
 
 	if((settings->maxLevel == -1) || (level <= settings->maxLevel)) {
 #if defined(FPL_LOG_MULTIPLE_WRITERS)
@@ -5486,8 +5631,8 @@ fpl_internal void fpl__LogWrite(const fplLogLevel level, const char *message) {
 	}
 }
 fpl_internal_inline void fpl__LogWriteArgs(const fplLogLevel level, const char *format, va_list argList) {
-    va_list listCopy;
-    va_copy(listCopy, argList);
+	va_list listCopy;
+	va_copy(listCopy, argList);
 	char buffer[FPL_MAX_BUFFER_LENGTH];
 	fplFormatStringArgs(buffer, fplArrayCount(buffer), format, listCopy);
 	fpl__LogWrite(level, buffer);
@@ -5530,7 +5675,7 @@ fpl_internal_inline void fpl__LogWriteVarArgs(const fplLogLevel level, const cha
 //
 // Debug out
 //
-#if defined(FPL_PLATFORM_WIN32)
+#if defined(FPL_PLATFORM_WINDOWS)
 fpl_platform_api void fplDebugOut(const char *text) {
 	wchar_t buffer[FPL_MAX_BUFFER_LENGTH];
 	fplUTF8StringToWideString(text, fplGetStringLength(text), buffer, fplArrayCount(buffer));
@@ -5705,7 +5850,7 @@ fpl_internal size_t fpl__ParseTextFile(const char *filePath, const char **wildca
 // > TYPES_WIN32
 //
 // ############################################################################
-#if defined(FPL_PLATFORM_WIN32)
+#if defined(FPL_PLATFORM_WINDOWS)
 #	include <windowsx.h>	// Macros for window messages
 #	include <ShlObj.h>		// SHGetFolderPath
 #	include <intrin.h>		// Interlock*
@@ -5896,6 +6041,8 @@ typedef FPL__FUNC_WIN32_LoadIconA(fpl__win32_func_LoadIconA);
 typedef FPL__FUNC_WIN32_LoadIconW(fpl__win32_func_LoadIconW);
 #define FPL__FUNC_WIN32_SetWindowTextW(name) BOOL WINAPI name(HWND hWnd, LPCWSTR lpString)
 typedef FPL__FUNC_WIN32_SetWindowTextW(fpl__win32_func_SetWindowTextW);
+#define FPL__FUNC_WIN32_GetWindowTextW(name) int WINAPI name(HWND hWnd, LPWSTR lpString, int nMaxCount)
+typedef FPL__FUNC_WIN32_GetWindowTextW(fpl__win32_func_GetWindowTextW);
 #define FPL__FUNC_WIN32_SetWindowLongW(name) LONG WINAPI name(HWND hWnd, int nIndex, LONG dwNewLong)
 typedef FPL__FUNC_WIN32_SetWindowLongW(fpl__win32_func_SetWindowLongW);
 #define FPL__FUNC_WIN32_GetWindowLongW(name) LONG WINAPI name(HWND hWnd, int nIndex)
@@ -5940,8 +6087,12 @@ typedef FPL__FUNC_WIN32_IsIconic(fpl__win32_func_IsIconic);
 typedef FPL__FUNC_WIN32_SendMessageW(fpl__win32_func_SendMessageW);
 #define FPL__FUNC_WIN32_GetMonitorInfoW(name) BOOL WINAPI name(HMONITOR hMonitor, LPMONITORINFO lpmi)
 typedef FPL__FUNC_WIN32_GetMonitorInfoW(fpl__win32_func_GetMonitorInfoW);
+#define FPL__FUNC_WIN32_EnumDisplayMonitors(name) BOOL WINAPI name(HDC hdc, LPCRECT lprcClip, MONITORENUMPROC lpfnEnum,LPARAM dwData)
+typedef FPL__FUNC_WIN32_EnumDisplayMonitors(fpl__win32_func_EnumDisplayMonitors);
 #define FPL__FUNC_WIN32_MonitorFromRect(name) HMONITOR WINAPI name(LPCRECT lprc, DWORD dwFlags)
 typedef FPL__FUNC_WIN32_MonitorFromRect(fpl__win32_func_MonitorFromRect);
+#define FPL__FUNC_WIN32_MonitorFromPoint(name) HMONITOR WINAPI name(POINT pt, DWORD dwFlags)
+typedef FPL__FUNC_WIN32_MonitorFromPoint(fpl__win32_func_MonitorFromPoint);
 #define FPL__FUNC_WIN32_MonitorFromWindow(name) HMONITOR WINAPI name(HWND hwnd, DWORD dwFlags)
 typedef FPL__FUNC_WIN32_MonitorFromWindow(fpl__win32_func_MonitorFromWindow);
 #define FPL__FUNC_WIN32_RegisterRawInputDevices(name) BOOL WINAPI name(PCRAWINPUTDEVICE pRawInputDevices, UINT uiNumDevices, UINT cbSize)
@@ -6021,6 +6172,7 @@ typedef struct fpl__Win32UserApi {
 	fpl__win32_func_LoadIconA *LoadIconA;
 	fpl__win32_func_LoadIconW *LoadIconW;
 	fpl__win32_func_SetWindowTextW *SetWindowTextW;
+	fpl__win32_func_GetWindowTextW *GetWindowTextW;
 	fpl__win32_func_SetWindowLongW *SetWindowLongW;
 	fpl__win32_func_GetWindowLongW *GetWindowLongW;
 #if defined(FPL_ARCH_X64)
@@ -6043,7 +6195,9 @@ typedef struct fpl__Win32UserApi {
 	fpl__win32_func_IsIconic *IsIconic;
 	fpl__win32_func_SendMessageW *SendMessageW;
 	fpl__win32_func_GetMonitorInfoW *GetMonitorInfoW;
+	fpl__win32_func_EnumDisplayMonitors *EnumDisplayMonitors;
 	fpl__win32_func_MonitorFromRect *MonitorFromRect;
+	fpl__win32_func_MonitorFromPoint *MonitorFromPoint;
 	fpl__win32_func_MonitorFromWindow *MonitorFromWindow;
 	fpl__win32_func_GetCursorPos *GetCursorPos;
 	fpl__win32_func_WindowFromPoint *WindowFromPoint;
@@ -6169,7 +6323,9 @@ fpl_internal bool fpl__Win32LoadApi(fpl__Win32Api *wapi) {
 		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_IsIconic, IsIconic);
 		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_SendMessageW, SendMessageW);
 		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_GetMonitorInfoW, GetMonitorInfoW);
+		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_EnumDisplayMonitors, EnumDisplayMonitors);
 		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_MonitorFromRect, MonitorFromRect);
+		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_MonitorFromPoint, MonitorFromPoint);
 		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_MonitorFromWindow, MonitorFromWindow);
 		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_ClientToScreen, ClientToScreen);
 		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_PtInRect, PtInRect);
@@ -6279,7 +6435,7 @@ typedef struct fpl__Win32WindowState {
 } fpl__Win32WindowState;
 #endif // FPL_ENABLE_WINDOW
 
-#endif // FPL_PLATFORM_WIN32
+#endif // FPL_PLATFORM_WINDOWS
 
 // ############################################################################
 //
@@ -6840,7 +6996,7 @@ typedef struct fpl__PlatformInitState {
 	fpl_b32 isInitialized;
 
 	union {
-#	if defined(FPL_PLATFORM_WIN32)
+#	if defined(FPL_PLATFORM_WINDOWS)
 		fpl__Win32InitState win32;
 #	elif defined(FPL_PLATFORM_LINUX)
 		fpl__LinuxInitState plinux;
@@ -6866,7 +7022,7 @@ typedef struct fpl__PlatformWindowState {
 	fplButtonState mouseStates[5];
 	fpl_b32 isRunning;
 
-#if defined(FPL_PLATFORM_WIN32)
+#if defined(FPL_PLATFORM_WINDOWS)
 	fpl__Win32WindowState win32;
 #endif
 #if defined(FPL_SUBPLATFORM_X11)
@@ -6920,7 +7076,7 @@ struct fpl__PlatformAppState {
 
 	// Platforms
 	union {
-#	if defined(FPL_PLATFORM_WIN32)
+#	if defined(FPL_PLATFORM_WINDOWS)
 		fpl__Win32AppState win32;
 #	elif defined(FPL_PLATFORM_LINUX)
 		fpl__LinuxAppState plinux;
@@ -7221,10 +7377,10 @@ fpl_internal void fpl__PushError_Formatted(const fplLogLevel level, const char *
 	state->count = (state->count + 1) % FPL__MAX_ERRORSTATE_COUNT;
 	fplCopyStringLen(buffer, messageLen, state->errors[errorIndex], FPL__MAX_LAST_ERROR_STRING_LENGTH);
 #if defined(FPL_ENABLE_LOGGING)
-    va_list listCopy;
-    va_copy(listCopy, argList);
-    fpl__LogWriteArgs(level, format, listCopy);
-    va_end(listCopy);
+	va_list listCopy;
+	va_copy(listCopy, argList);
+	fpl__LogWriteArgs(level, format, listCopy);
+	va_end(listCopy);
 #endif
 }
 
@@ -7550,7 +7706,7 @@ fpl_common_api char *fplFormatStringArgs(char *destBuffer, const size_t maxDestB
 	size_t requiredMaxDestBufferLen = charCount + 1;
 	FPL__CheckArgumentMin(maxDestBufferLen, requiredMaxDestBufferLen, fpl_null);
 	destBuffer[charCount] = 0;
-    va_end(listCopy);
+	va_end(listCopy);
 	return(&destBuffer[charCount]);
 }
 
@@ -7565,7 +7721,7 @@ fpl_common_api char *fplFormatString(char *destBuffer, const size_t maxDestBuffe
 	return(result);
 }
 
-fpl_common_api char *fplS32ToString(const int32_t value, const size_t maxBufferLen, char *buffer) {
+fpl_common_api char *fplS32ToString(const int32_t value, char *buffer, const size_t maxBufferLen) {
 	FPL__CheckArgumentNull(buffer, fpl_null);
 	FPL__CheckArgumentZero(maxBufferLen, fpl_null);
 	int32_t v = value;
@@ -7718,7 +7874,7 @@ fpl_common_api void fplMemorySet(void *mem, const uint8_t value, const size_t si
 
 fpl_common_api void fplMemoryClear(void *mem, const size_t size) {
 	FPL__CheckArgumentNullNoRet(mem);
-    FPL__CheckArgumentZeroNoRet(size);
+	FPL__CheckArgumentZeroNoRet(size);
 	if(size % 8 == 0) {
 		FPL__MEMORY_CLEAR(uint64_t, mem, size, FPL__MEM_SHIFT_64, FPL__MEM_MASK_64);
 	} else if(size % 4 == 0) {
@@ -8017,15 +8173,29 @@ fpl_common_api const char *fplExtractFileExtension(const char *sourcePath) {
 	const char *result = fpl_null;
 	if(sourcePath != fpl_null) {
 		const char *chPtr = sourcePath;
-		const char *last = fpl_null;
+		// Find last separator first
+		const char *lastPathSep = fpl_null;
 		while(*chPtr) {
-			if(*chPtr == FPL_FILE_EXT_SEPARATOR) {
-				last = chPtr;
+			if(*chPtr == FPL_PATH_SEPARATOR) {
+				lastPathSep = chPtr;
 			}
 			++chPtr;
 		}
-		if(last != fpl_null) {
-			result = last;
+		// Start either by the last found separator or from the very start
+		if(lastPathSep != fpl_null) {
+			chPtr = lastPathSep;
+		} else {
+			chPtr = sourcePath;
+		}
+		const char *lastExt = fpl_null;
+		while(*chPtr) {
+			if(*chPtr == FPL_FILE_EXT_SEPARATOR) {
+				lastExt = chPtr;
+			}
+			++chPtr;
+		}
+		if(lastExt != fpl_null) {
+			result = lastExt;
 		}
 	}
 	return(result);
@@ -8120,6 +8290,22 @@ fpl_common_api char *fplPathCombine(char *destPath, const size_t maxDestPathLen,
 }
 #endif // FPL__COMMON_PATHS_DEFINED
 
+//
+// Common Window
+//
+#if !defined(FPL__COMMON_WINDOW_DEFINED)
+#define FPL__COMMON_WINDOW_DEFINED
+fpl_common_api char *fplGetWindowTitle(char *outTitle, const size_t maxOutTitleLength) {
+	FPL__CheckPlatform(fpl_null);
+	fpl__PlatformAppState *appState = fpl__global__AppState;
+	char *result = fplCopyString(appState->currentSettings.window.title, outTitle, maxOutTitleLength);
+	return(result);
+}
+#endif // FPL__COMMON_WINDOW_DEFINED
+
+//
+// Common Logging
+//
 #if defined(FPL_ENABLE_LOGGING)
 fpl_common_api void fplSetLogSettings(const fplLogSettings *params) {
 	FPL__CheckArgumentNullNoRet(params);
@@ -8208,7 +8394,7 @@ fpl_common_api void fplSetDefaultAudioSettings(fplAudioSettings *audio) {
 	fplSetDefaultAudioTargetFormat(&audio->targetFormat);
 
 	audio->driver = fplAudioDriverType_None;
-#	if defined(FPL_PLATFORM_WIN32) && defined(FPL_ENABLE_AUDIO_DIRECTSOUND)
+#	if defined(FPL_PLATFORM_WINDOWS) && defined(FPL_ENABLE_AUDIO_DIRECTSOUND)
 	audio->driver = fplAudioDriverType_DirectSound;
 #	endif
 #	if defined(FPL_PLATFORM_LINUX) && defined(FPL_ENABLE_AUDIO_ALSA)
@@ -8222,11 +8408,11 @@ fpl_common_api void fplSetDefaultAudioSettings(fplAudioSettings *audio) {
 fpl_common_api void fplSetDefaultWindowSettings(fplWindowSettings *window) {
 	FPL__CheckArgumentNullNoRet(window);
 	fplClearStruct(window);
-	window->windowTitle[0] = 0;
-	window->windowWidth = 800;
-	window->windowHeight = 600;
-	window->fullscreenWidth = 0;
-	window->fullscreenHeight = 0;
+	window->title[0] = 0;
+	window->windowSize.width = 0;
+	window->windowSize.height = 0;
+	window->fullscreenSize.width = 0;
+	window->fullscreenSize.height = 0;
 	window->isFullscreen = false;
 	window->isResizable = true;
 	window->isDecorated = true;
@@ -8301,7 +8487,7 @@ fpl_common_api const char *fplGetArchTypeString(const fplArchType type) {
 // > WIN32_PLATFORM (Win32, Win64)
 //
 // ############################################################################
-#if defined(FPL_PLATFORM_WIN32)
+#if defined(FPL_PLATFORM_WINDOWS)
 
 #	if defined(FPL_ARCH_X86)
 #		define FPL_MEMORY_BARRIER() \
@@ -8375,7 +8561,7 @@ fpl_internal bool fpl__Win32LeaveFullscreen() {
 	return(result);
 }
 
-fpl_internal bool fpl__Win32EnterFullscreen(const uint32_t fullscreenWidth, const uint32_t fullscreenHeight, const uint32_t refreshRate, const uint32_t colorBits) {
+fpl_internal bool fpl__Win32EnterFullscreen(const int32_t xpos, const int32_t ypos, const int32_t fullscreenWidth, const int32_t fullscreenHeight, const uint32_t refreshRate, const uint32_t colorBits, const bool allowResolutionChange) {
 	fpl__PlatformAppState *platState = fpl__global__AppState;
 	fplAssert(platState != fpl_null);
 	fpl__Win32AppState *win32State = &platState->win32;
@@ -8396,9 +8582,9 @@ fpl_internal bool fpl__Win32EnterFullscreen(const uint32_t fullscreenWidth, cons
 	wapi->user.GetMonitorInfoW(wapi->user.MonitorFromWindow(windowHandle, MONITOR_DEFAULTTONEAREST), &monitor);
 
 	bool result;
-	if(fullscreenWidth > 0 && fullscreenHeight > 0) {
-		DWORD useFullscreenWidth = fullscreenWidth;
-		DWORD useFullscreenHeight = fullscreenHeight;
+	if(allowResolutionChange && (fullscreenWidth > 0) && (fullscreenHeight > 0)) {
+		int32_t useFullscreenWidth = fullscreenWidth;
+		int32_t useFullscreenHeight = fullscreenHeight;
 
 		DWORD useRefreshRate = refreshRate;
 		if(!useRefreshRate) {
@@ -8411,10 +8597,11 @@ fpl_internal bool fpl__Win32EnterFullscreen(const uint32_t fullscreenWidth, cons
 		}
 
 		RECT windowRect;
+		// @TODO(final): This may not be correct to assume 0, 0 as origin for the current display
 		windowRect.left = 0;
 		windowRect.top = 0;
 		windowRect.right = windowRect.left + useFullscreenWidth;
-		windowRect.bottom = windowRect.left + useFullscreenHeight;
+		windowRect.bottom = windowRect.top + useFullscreenHeight;
 
 		WINDOWPLACEMENT placement = fplZeroInit;
 		placement.length = sizeof(placement);
@@ -8433,7 +8620,15 @@ fpl_internal bool fpl__Win32EnterFullscreen(const uint32_t fullscreenWidth, cons
 		result = (wapi->user.ChangeDisplaySettingsW(&fullscreenSettings, CDS_FULLSCREEN) == DISP_CHANGE_SUCCESSFUL);
 		fullscreenInfo->wasResolutionChanged = true;
 	} else {
-		RECT windowRect = monitor.rcMonitor;
+		RECT windowRect = fplZeroInit;
+		if((xpos != INT32_MAX) && (ypos != INT32_MAX) && (fullscreenWidth != 0) && (fullscreenHeight != 0)) {
+			windowRect.left = xpos;
+			windowRect.top = ypos;
+			windowRect.right = xpos + fullscreenWidth;
+			windowRect.top = ypos + fullscreenHeight;
+		} else {
+			windowRect = monitor.rcMonitor;
+		}
 		WINDOWPLACEMENT placement = fplZeroInit;
 		placement.length = sizeof(placement);
 		placement.rcNormalPosition = windowRect;
@@ -8447,7 +8642,40 @@ fpl_internal bool fpl__Win32EnterFullscreen(const uint32_t fullscreenWidth, cons
 	return(result);
 }
 
-fpl_internal_inline float fpl__Win32XInputProcessStickValue(const SHORT value, const SHORT deadZoneThreshold) {
+fpl_internal bool fpl__Win32SetWindowFullscreen(const bool value, const int32_t x, const int32_t y, const int32_t w, const int32_t h, const uint32_t refreshRate, const bool allowResolutionChange) {
+	FPL__CheckPlatform(false);
+	fpl__PlatformAppState *appState = fpl__global__AppState;
+	fpl__Win32AppState *win32AppState = &appState->win32;
+	fpl__Win32WindowState *windowState = &appState->window.win32;
+	fplWindowSettings *windowSettings = &appState->currentSettings.window;
+	fpl__Win32LastWindowInfo *fullscreenState = &windowState->lastFullscreenInfo;
+	const fpl__Win32Api *wapi = &win32AppState->winApi;
+
+	HWND windowHandle = windowState->windowHandle;
+
+	// Save current window info if not already fullscreen
+	if(!windowSettings->isFullscreen) {
+		fpl__Win32SaveWindowState(wapi, fullscreenState, windowHandle);
+		if(fullscreenState->isMaximized || fullscreenState->isMinimized) {
+			wapi->user.ShowWindow(windowHandle, SW_RESTORE);
+		}
+	}
+
+	if(value) {
+		// Enter fullscreen mode or fallback to window mode
+		windowSettings->isFullscreen = fpl__Win32EnterFullscreen(x, y, w, h, refreshRate, 0, allowResolutionChange);
+		if(!windowSettings->isFullscreen) {
+			fpl__Win32LeaveFullscreen();
+		}
+	} else {
+		fpl__Win32LeaveFullscreen();
+		windowSettings->isFullscreen = false;
+	}
+	bool result = windowSettings->isFullscreen != 0;
+	return(result);
+}
+
+fpl_internal float fpl__Win32XInputProcessStickValue(const SHORT value, const SHORT deadZoneThreshold) {
 	float result = 0;
 	if(value < -deadZoneThreshold) {
 		result = (float)((value + deadZoneThreshold) / (32768.0f - deadZoneThreshold));
@@ -8743,9 +8971,9 @@ LRESULT CALLBACK fpl__Win32MessageProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 		case WM_DROPFILES:
 		{
 			HDROP dropHandle = (HDROP)wParam;
-			char fileBufferA[FPL_MAX_PATH_LENGTH + 1];
+			char fileBufferA[FPL_MAX_PATH_LENGTH];
 			UINT fileCount;
-			wchar_t fileBufferW[FPL_MAX_PATH_LENGTH + 1];
+			wchar_t fileBufferW[FPL_MAX_PATH_LENGTH];
 			fileCount = wapi->shell.DragQueryFileW(dropHandle, 0xFFFFFFFF, fileBufferW, 0);
 
 			// @TODO(final): Win32 support for dropping in multiple files
@@ -9040,14 +9268,14 @@ fpl_internal bool fpl__Win32InitWindow(const fplSettings *initSettings, fplWindo
 
 	// Set window title
 	wchar_t windowTitleBuffer[FPL_MAX_NAME_LENGTH];
-	if(fplGetStringLength(initWindowSettings->windowTitle) > 0) {
-		fplUTF8StringToWideString(initWindowSettings->windowTitle, fplGetStringLength(initWindowSettings->windowTitle), windowTitleBuffer, fplArrayCount(windowTitleBuffer));
+	if(fplGetStringLength(initWindowSettings->title) > 0) {
+		fplUTF8StringToWideString(initWindowSettings->title, fplGetStringLength(initWindowSettings->title), windowTitleBuffer, fplArrayCount(windowTitleBuffer));
 	} else {
 		const wchar_t *defaultTitle = FPL__WIN32_UNNAMED_WINDOW;
 		lstrcpynW(windowTitleBuffer, defaultTitle, fplArrayCount(windowTitleBuffer));
 	}
 	wchar_t *windowTitle = windowTitleBuffer;
-	fplWideStringToUTF8String(windowTitle, lstrlenW(windowTitle), currentWindowSettings->windowTitle, fplArrayCount(currentWindowSettings->windowTitle));
+	fplWideStringToUTF8String(windowTitle, lstrlenW(windowTitle), currentWindowSettings->title, fplArrayCount(currentWindowSettings->title));
 
 	// Prepare window style, size and position
 	DWORD style = fpl__Win32MakeWindowStyle(&initSettings->window);
@@ -9061,13 +9289,13 @@ fpl_internal bool fpl__Win32InitWindow(const fplSettings *initSettings, fplWindo
 	int windowY = CW_USEDEFAULT;
 	int windowWidth;
 	int windowHeight;
-	if((initWindowSettings->windowWidth > 0) &&
-		(initWindowSettings->windowHeight > 0)) {
+	if((initWindowSettings->windowSize.width > 0) &&
+		(initWindowSettings->windowSize.height > 0)) {
 		RECT windowRect;
 		windowRect.left = 0;
 		windowRect.top = 0;
-		windowRect.right = initWindowSettings->windowWidth;
-		windowRect.bottom = initWindowSettings->windowHeight;
+		windowRect.right = initWindowSettings->windowSize.width;
+		windowRect.bottom = initWindowSettings->windowSize.height;
 		wapi->user.AdjustWindowRect(&windowRect, style, false);
 		windowWidth = windowRect.right - windowRect.left;
 		windowHeight = windowRect.bottom - windowRect.top;
@@ -9088,12 +9316,12 @@ fpl_internal bool fpl__Win32InitWindow(const fplSettings *initSettings, fplWindo
 	wapi->shell.DragAcceptFiles(windowState->windowHandle, TRUE);
 
 	// Get actual window size and store results
-	currentWindowSettings->windowWidth = windowWidth;
-	currentWindowSettings->windowHeight = windowHeight;
+	currentWindowSettings->windowSize.width = windowWidth;
+	currentWindowSettings->windowSize.height = windowHeight;
 	RECT clientRect;
 	if(wapi->user.GetClientRect(windowState->windowHandle, &clientRect)) {
-		currentWindowSettings->windowWidth = clientRect.right - clientRect.left;
-		currentWindowSettings->windowHeight = clientRect.bottom - clientRect.top;
+		currentWindowSettings->windowSize.width = clientRect.right - clientRect.left;
+		currentWindowSettings->windowSize.height = clientRect.bottom - clientRect.top;
 	}
 
 	// Get device context so we can swap the back and front buffer
@@ -9110,7 +9338,7 @@ fpl_internal bool fpl__Win32InitWindow(const fplSettings *initSettings, fplWindo
 
 	// Enter fullscreen if needed
 	if(initWindowSettings->isFullscreen) {
-		fplSetWindowFullscreen(true, initWindowSettings->fullscreenWidth, initWindowSettings->fullscreenHeight, 0);
+		fplSetWindowFullscreenSize(true, initWindowSettings->fullscreenSize.width, initWindowSettings->fullscreenSize.height, initWindowSettings->fullscreenRefreshRate);
 	}
 
 	// Show window
@@ -9865,10 +10093,10 @@ fpl_platform_api bool fplGetOperatingSystemInfos(fplOSInfos *outInfos) {
 		RTL_OSVERSIONINFOW info = fplZeroInit;
 		info.dwOSVersionInfoSize = sizeof(info);
 		if(rtlGetVersionProc(&info) == 0) {
-			fplS32ToString((int32_t)info.dwMajorVersion, fplArrayCount(outInfos->osVersion.major), outInfos->osVersion.major);
-			fplS32ToString((int32_t)info.dwMinorVersion, fplArrayCount(outInfos->osVersion.minor), outInfos->osVersion.minor);
-			fplS32ToString(0, fplArrayCount(outInfos->osVersion.fix), outInfos->osVersion.fix);
-			fplS32ToString((int32_t)info.dwBuildNumber, fplArrayCount(outInfos->osVersion.build), outInfos->osVersion.build);
+			fplS32ToString((int32_t)info.dwMajorVersion, outInfos->osVersion.major, fplArrayCount(outInfos->osVersion.major));
+			fplS32ToString((int32_t)info.dwMinorVersion, outInfos->osVersion.minor, fplArrayCount(outInfos->osVersion.minor));
+			fplS32ToString(0, outInfos->osVersion.fix, fplArrayCount(outInfos->osVersion.fix));
+			fplS32ToString((int32_t)info.dwBuildNumber, outInfos->osVersion.build, fplArrayCount(outInfos->osVersion.build));
 			fplFormatString(outInfos->osVersion.fullName, fplArrayCount(outInfos->osVersion.fullName), "%u.%u.%u.%u", info.dwMajorVersion, info.dwMinorVersion, 0, info.dwBuildNumber);
 			const char *versionName = fpl__Win32GetVersionName(info.dwMajorVersion, info.dwMinorVersion);
 			fplCopyString(versionName, outInfos->osName, fplArrayCount(outInfos->osName));
@@ -9890,10 +10118,10 @@ fpl_platform_api bool fplGetOperatingSystemInfos(fplOSInfos *outInfos) {
 		OSVERSIONINFOEXW infoEx = fplZeroInit;
 		infoEx.dwOSVersionInfoSize = sizeof(infoEx);
 		if(getVersionExProc(&infoEx) == TRUE) {
-			fplS32ToString((int32_t)infoEx.dwMajorVersion, fplArrayCount(outInfos->osVersion.major), outInfos->osVersion.major);
-			fplS32ToString((int32_t)infoEx.dwMinorVersion, fplArrayCount(outInfos->osVersion.minor), outInfos->osVersion.minor);
-			fplS32ToString(0, fplArrayCount(outInfos->osVersion.fix), outInfos->osVersion.fix);
-			fplS32ToString((int32_t)infoEx.dwBuildNumber, fplArrayCount(outInfos->osVersion.build), outInfos->osVersion.build);
+			fplS32ToString((int32_t)infoEx.dwMajorVersion, outInfos->osVersion.major, fplArrayCount(outInfos->osVersion.major));
+			fplS32ToString((int32_t)infoEx.dwMinorVersion, outInfos->osVersion.minor, fplArrayCount(outInfos->osVersion.minor));
+			fplS32ToString(0, outInfos->osVersion.fix, fplArrayCount(outInfos->osVersion.fix));
+			fplS32ToString((int32_t)infoEx.dwBuildNumber, outInfos->osVersion.build, fplArrayCount(outInfos->osVersion.build));
 			fplFormatString(outInfos->osVersion.fullName, fplArrayCount(outInfos->osVersion.fullName), "%u.%u.%u.%u", infoEx.dwMajorVersion, infoEx.dwMinorVersion, 0, infoEx.dwBuildNumber);
 			const char *versionName = fpl__Win32GetVersionName(infoEx.dwMajorVersion, infoEx.dwMinorVersion);
 			fplCopyString(versionName, outInfos->osName, fplArrayCount(outInfos->osName));
@@ -9910,10 +10138,10 @@ fpl_platform_api bool fplGetOperatingSystemInfos(fplOSInfos *outInfos) {
 			if(dwVersion < 0x80000000) {
 				build = (DWORD)((DWORD)(HIWORD(dwVersion)));
 			}
-			fplS32ToString((int32_t)major, fplArrayCount(outInfos->osVersion.major), outInfos->osVersion.major);
-			fplS32ToString((int32_t)minor, fplArrayCount(outInfos->osVersion.minor), outInfos->osVersion.minor);
-			fplS32ToString(0, fplArrayCount(outInfos->osVersion.fix), outInfos->osVersion.fix);
-			fplS32ToString((int32_t)build, fplArrayCount(outInfos->osVersion.build), outInfos->osVersion.build);
+			fplS32ToString((int32_t)major, outInfos->osVersion.major, fplArrayCount(outInfos->osVersion.major));
+			fplS32ToString((int32_t)minor, outInfos->osVersion.minor, fplArrayCount(outInfos->osVersion.minor));
+			fplS32ToString(0, outInfos->osVersion.fix, fplArrayCount(outInfos->osVersion.fix));
+			fplS32ToString((int32_t)build, outInfos->osVersion.build, fplArrayCount(outInfos->osVersion.build));
 			fplFormatString(outInfos->osVersion.fullName, fplArrayCount(outInfos->osVersion.fullName), "%u.%u.%u.%u", major, minor, 0, build);
 			const char *versionName = fpl__Win32GetVersionName(major, minor);
 			fplCopyString(versionName, outInfos->osName, fplArrayCount(outInfos->osName));
@@ -10494,7 +10722,7 @@ fpl_internal uint64_t fpl__Win32ConvertFileTimeToUnixTimestamp(const FILETIME *f
 fpl_platform_api bool fplOpenBinaryFile(const char *filePath, fplFileHandle *outHandle) {
 	FPL__CheckArgumentNull(outHandle, false);
 	if(filePath != fpl_null) {
-		wchar_t filePathWide[FPL_MAX_PATH_LENGTH + 1];
+		wchar_t filePathWide[FPL_MAX_PATH_LENGTH];
 		fplUTF8StringToWideString(filePath, fplGetStringLength(filePath), filePathWide, fplArrayCount(filePathWide));
 		HANDLE win32FileHandle = CreateFileW(filePathWide, GENERIC_READ, FILE_SHARE_READ, fpl_null, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, fpl_null);
 		if(win32FileHandle != INVALID_HANDLE_VALUE) {
@@ -10510,7 +10738,7 @@ fpl_platform_api bool fplOpenBinaryFile(const char *filePath, fplFileHandle *out
 fpl_platform_api bool fplCreateBinaryFile(const char *filePath, fplFileHandle *outHandle) {
 	FPL__CheckArgumentNull(outHandle, false);
 	if(filePath != fpl_null) {
-		wchar_t filePathWide[FPL_MAX_PATH_LENGTH + 1];
+		wchar_t filePathWide[FPL_MAX_PATH_LENGTH];
 		fplUTF8StringToWideString(filePath, fplGetStringLength(filePath), filePathWide, fplArrayCount(filePathWide));
 		HANDLE win32FileHandle = CreateFileW(filePathWide, GENERIC_WRITE, FILE_SHARE_WRITE, fpl_null, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, fpl_null);
 		if(win32FileHandle != INVALID_HANDLE_VALUE) {
@@ -10703,7 +10931,7 @@ fpl_platform_api void fplCloseFile(fplFileHandle *fileHandle) {
 fpl_platform_api uint32_t fplGetFileSizeFromPath32(const char *filePath) {
 	uint32_t result = 0;
 	if(filePath != fpl_null) {
-		wchar_t filePathWide[FPL_MAX_PATH_LENGTH + 1];
+		wchar_t filePathWide[FPL_MAX_PATH_LENGTH];
 		fplUTF8StringToWideString(filePath, fplGetStringLength(filePath), filePathWide, fplArrayCount(filePathWide));
 		HANDLE win32FileHandle = CreateFileW(filePathWide, GENERIC_READ, FILE_SHARE_READ, fpl_null, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, fpl_null);
 		if(win32FileHandle != INVALID_HANDLE_VALUE) {
@@ -10718,7 +10946,7 @@ fpl_platform_api uint32_t fplGetFileSizeFromPath32(const char *filePath) {
 fpl_platform_api uint64_t fplGetFileSizeFromPath64(const char *filePath) {
 	uint64_t result = 0;
 	if(filePath != fpl_null) {
-		wchar_t filePathWide[FPL_MAX_PATH_LENGTH + 1];
+		wchar_t filePathWide[FPL_MAX_PATH_LENGTH];
 		fplUTF8StringToWideString(filePath, fplGetStringLength(filePath), filePathWide, fplArrayCount(filePathWide));
 		HANDLE win32FileHandle = CreateFileW(filePathWide, GENERIC_READ, FILE_SHARE_READ, fpl_null, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, fpl_null);
 		if(win32FileHandle != INVALID_HANDLE_VALUE) {
@@ -10759,7 +10987,7 @@ fpl_platform_api uint64_t fplGetFileSizeFromHandle64(const fplFileHandle *fileHa
 fpl_platform_api bool fplGetFileTimestampsFromPath(const char *filePath, fplFileTimeStamps *outStamps) {
 	FPL__CheckArgumentNull(outStamps, false);
 	if(filePath != fpl_null) {
-		wchar_t filePathWide[FPL_MAX_PATH_LENGTH + 1];
+		wchar_t filePathWide[FPL_MAX_PATH_LENGTH];
 		fplUTF8StringToWideString(filePath, fplGetStringLength(filePath), filePathWide, fplArrayCount(filePathWide));
 		HANDLE win32FileHandle = CreateFileW(filePathWide, GENERIC_READ, FILE_SHARE_READ, fpl_null, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, fpl_null);
 		bool result = false;
@@ -10799,7 +11027,7 @@ fpl_platform_api bool fplGetFileTimestampsFromHandle(const fplFileHandle *fileHa
 fpl_platform_api bool fplFileExists(const char *filePath) {
 	bool result = false;
 	if(filePath != fpl_null) {
-		wchar_t filePathWide[FPL_MAX_PATH_LENGTH + 1];
+		wchar_t filePathWide[FPL_MAX_PATH_LENGTH];
 		fplUTF8StringToWideString(filePath, fplGetStringLength(filePath), filePathWide, fplArrayCount(filePathWide));
 		WIN32_FIND_DATAW findData;
 		HANDLE searchHandle = FindFirstFileW(filePathWide, &findData);
@@ -10814,8 +11042,8 @@ fpl_platform_api bool fplFileExists(const char *filePath) {
 fpl_platform_api bool fplFileCopy(const char *sourceFilePath, const char *targetFilePath, const bool overwrite) {
 	FPL__CheckArgumentNull(sourceFilePath, false);
 	FPL__CheckArgumentNull(targetFilePath, false);
-	wchar_t sourceFilePathWide[FPL_MAX_PATH_LENGTH + 1];
-	wchar_t targetFilePathWide[FPL_MAX_PATH_LENGTH + 1];
+	wchar_t sourceFilePathWide[FPL_MAX_PATH_LENGTH];
+	wchar_t targetFilePathWide[FPL_MAX_PATH_LENGTH];
 	fplUTF8StringToWideString(sourceFilePath, fplGetStringLength(sourceFilePath), sourceFilePathWide, fplArrayCount(sourceFilePathWide));
 	fplUTF8StringToWideString(sourceFilePath, fplGetStringLength(sourceFilePath), targetFilePathWide, fplArrayCount(targetFilePathWide));
 	bool result = (CopyFileW(sourceFilePathWide, targetFilePathWide, !overwrite) == TRUE);
@@ -10825,8 +11053,8 @@ fpl_platform_api bool fplFileCopy(const char *sourceFilePath, const char *target
 fpl_platform_api bool fplFileMove(const char *sourceFilePath, const char *targetFilePath) {
 	FPL__CheckArgumentNull(sourceFilePath, false);
 	FPL__CheckArgumentNull(targetFilePath, false);
-	wchar_t sourceFilePathWide[FPL_MAX_PATH_LENGTH + 1];
-	wchar_t targetFilePathWide[FPL_MAX_PATH_LENGTH + 1];
+	wchar_t sourceFilePathWide[FPL_MAX_PATH_LENGTH];
+	wchar_t targetFilePathWide[FPL_MAX_PATH_LENGTH];
 	fplUTF8StringToWideString(sourceFilePath, fplGetStringLength(sourceFilePath), sourceFilePathWide, fplArrayCount(sourceFilePathWide));
 	fplUTF8StringToWideString(sourceFilePath, fplGetStringLength(sourceFilePath), targetFilePathWide, fplArrayCount(targetFilePathWide));
 	bool result = (MoveFileW(sourceFilePathWide, targetFilePathWide) == TRUE);
@@ -10835,7 +11063,7 @@ fpl_platform_api bool fplFileMove(const char *sourceFilePath, const char *target
 
 fpl_platform_api bool fplFileDelete(const char *filePath) {
 	FPL__CheckArgumentNull(filePath, false);
-	wchar_t filePathWide[FPL_MAX_PATH_LENGTH + 1];
+	wchar_t filePathWide[FPL_MAX_PATH_LENGTH];
 	fplUTF8StringToWideString(filePath, fplGetStringLength(filePath), filePathWide, fplArrayCount(filePathWide));
 	bool result = (DeleteFileW(filePathWide) == TRUE);
 	return(result);
@@ -10844,7 +11072,7 @@ fpl_platform_api bool fplFileDelete(const char *filePath) {
 fpl_platform_api bool fplDirectoryExists(const char *path) {
 	bool result = false;
 	if(path != fpl_null) {
-		wchar_t pathWide[FPL_MAX_PATH_LENGTH + 1];
+		wchar_t pathWide[FPL_MAX_PATH_LENGTH];
 		fplUTF8StringToWideString(path, fplGetStringLength(path), pathWide, fplArrayCount(pathWide));
 		WIN32_FIND_DATAW findData;
 		HANDLE searchHandle = FindFirstFileW(pathWide, &findData);
@@ -10858,14 +11086,14 @@ fpl_platform_api bool fplDirectoryExists(const char *path) {
 
 fpl_platform_api bool fplDirectoriesCreate(const char *path) {
 	FPL__CheckArgumentNull(path, false);
-	wchar_t pathWide[FPL_MAX_PATH_LENGTH + 1];
+	wchar_t pathWide[FPL_MAX_PATH_LENGTH];
 	fplUTF8StringToWideString(path, fplGetStringLength(path), pathWide, fplArrayCount(pathWide));
 	bool result = CreateDirectoryW(pathWide, fpl_null) > 0;
 	return(result);
 }
 fpl_platform_api bool fplDirectoryRemove(const char *path) {
 	FPL__CheckArgumentNull(path, false);
-	wchar_t pathWide[FPL_MAX_PATH_LENGTH + 1];
+	wchar_t pathWide[FPL_MAX_PATH_LENGTH];
 	fplUTF8StringToWideString(path, fplGetStringLength(path), pathWide, fplArrayCount(pathWide));
 	bool result = RemoveDirectoryW(pathWide) > 0;
 	return(result);
@@ -10873,13 +11101,7 @@ fpl_platform_api bool fplDirectoryRemove(const char *path) {
 fpl_internal_inline void fpl__Win32FillFileEntry(const char *rootPath, const WIN32_FIND_DATAW *findData, fplFileEntry *entry) {
 	fplAssert(findData != fpl_null);
 	fplAssert(entry != fpl_null);
-	fplCopyString(rootPath, entry->fullPath, fplArrayCount(entry->fullPath));
-	fplEnforcePathSeparatorLen(entry->fullPath, fplArrayCount(entry->fullPath));
-
-	char filenameBuffer[FPL_MAX_FILENAME_LENGTH + 1];
-	fplWideStringToUTF8String(findData->cFileName, lstrlenW(findData->cFileName), filenameBuffer, fplArrayCount(filenameBuffer));
-	fplStringAppend(filenameBuffer, entry->fullPath, fplArrayCount(entry->fullPath));
-
+	fplWideStringToUTF8String(findData->cFileName, lstrlenW(findData->cFileName), entry->name, fplArrayCount(entry->name));
 	entry->type = fplFileEntryType_Unknown;
 	if(findData->dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
 		entry->type = fplFileEntryType_Directory;
@@ -10998,8 +11220,8 @@ fpl_platform_api char *fplGetExecutableFilePath(char *destPath, const size_t max
 	FPL__CheckArgumentMin(maxDestLen, requiredMaxDestLen, fpl_null);
 	wchar_t modulePath[MAX_PATH];
 	GetModuleFileNameW(fpl_null, modulePath, MAX_PATH);
-	fplWideStringToUTF8String(modulePath, lstrlenW(modulePath), destPath, maxDestLen);
-	return(destPath);
+	char *result = fplWideStringToUTF8String(modulePath, lstrlenW(modulePath), destPath, maxDestLen);
+	return(result);
 }
 
 fpl_platform_api char *fplGetHomePath(char *destPath, const size_t maxDestLen) {
@@ -11010,8 +11232,8 @@ fpl_platform_api char *fplGetHomePath(char *destPath, const size_t maxDestLen) {
 	const fpl__Win32Api *wapi = &fpl__global__AppState->win32.winApi;
 	wchar_t homePath[MAX_PATH];
 	wapi->shell.SHGetFolderPathW(fpl_null, CSIDL_PROFILE, fpl_null, 0, homePath);
-	fplWideStringToUTF8String(homePath, lstrlenW(homePath), destPath, maxDestLen);
-	return(destPath);
+	char *result = fplWideStringToUTF8String(homePath, lstrlenW(homePath), destPath, maxDestLen);
+	return(result);
 }
 
 //
@@ -11064,7 +11286,6 @@ fpl_platform_api char *fplWideStringToUTF8String(const wchar_t *wideSource, cons
 	FPL__CheckArgumentMin(maxUtf8DestLen, minRequiredLen, fpl_null);
 	WideCharToMultiByte(CP_UTF8, 0, wideSource, (int)maxWideSourceLen, utf8Dest, (int)maxUtf8DestLen, fpl_null, fpl_null);
 	utf8Dest[requiredLen] = 0;
-
 	return(&utf8Dest[requiredLen]);
 }
 fpl_platform_api wchar_t *fplUTF8StringToWideString(const char *utf8Source, const size_t utf8SourceLen, wchar_t *wideDest, const size_t maxWideDestLen) {
@@ -11085,7 +11306,7 @@ fpl_platform_api wchar_t *fplUTF8StringToWideString(const char *utf8Source, cons
 fpl_platform_api bool fplDynamicLibraryLoad(const char *libraryFilePath, fplDynamicLibraryHandle *outHandle) {
 	bool result = false;
 	if(libraryFilePath != fpl_null && outHandle != fpl_null) {
-		wchar_t libraryFilePathWide[FPL_MAX_PATH_LENGTH + 1];
+		wchar_t libraryFilePathWide[FPL_MAX_PATH_LENGTH];
 		fplUTF8StringToWideString(libraryFilePath, fplGetStringLength(libraryFilePath), libraryFilePathWide, fplArrayCount(libraryFilePathWide));
 		HMODULE libModule = LoadLibraryW(libraryFilePathWide);
 		if(libModule != fpl_null) {
@@ -11116,7 +11337,7 @@ fpl_platform_api void fplDynamicLibraryUnload(fplDynamicLibraryHandle *handle) {
 //
 // Win32 Window
 //
-fpl_platform_api bool fplGetWindowArea(fplWindowSize *outSize) {
+fpl_platform_api bool fplGetWindowSize(fplWindowSize *outSize) {
 	FPL__CheckArgumentNull(outSize, false);
 	FPL__CheckPlatform(false);
 	const fpl__Win32AppState *appState = &fpl__global__AppState->win32;
@@ -11132,7 +11353,7 @@ fpl_platform_api bool fplGetWindowArea(fplWindowSize *outSize) {
 	return(result);
 }
 
-fpl_platform_api void fplSetWindowArea(const uint32_t width, const uint32_t height) {
+fpl_platform_api void fplSetWindowSize(const uint32_t width, const uint32_t height) {
 	FPL__CheckPlatformNoRet();
 	const fpl__Win32AppState *appState = &fpl__global__AppState->win32;
 	const fpl__Win32WindowState *windowState = &fpl__global__AppState->window.win32;
@@ -11233,35 +11454,24 @@ fpl_platform_api bool fplIsWindowFullscreen() {
 	return(result);
 }
 
-fpl_platform_api bool fplSetWindowFullscreen(const bool value, const uint32_t fullscreenWidth, const uint32_t fullscreenHeight, const uint32_t refreshRate) {
-	FPL__CheckPlatform(false);
-	fpl__PlatformAppState *appState = fpl__global__AppState;
-	fpl__Win32AppState *win32AppState = &appState->win32;
-	fpl__Win32WindowState *windowState = &appState->window.win32;
-	fplWindowSettings *windowSettings = &appState->currentSettings.window;
-	fpl__Win32LastWindowInfo *fullscreenState = &windowState->lastFullscreenInfo;
-	const fpl__Win32Api *wapi = &win32AppState->winApi;
 
-	HWND windowHandle = windowState->windowHandle;
-	// Save current window info if not already fullscreen
-	if(!windowSettings->isFullscreen) {
-		fpl__Win32SaveWindowState(wapi, fullscreenState, windowHandle);
-		if(fullscreenState->isMaximized || fullscreenState->isMinimized) {
-			wapi->user.ShowWindow(windowHandle, SW_RESTORE);
-		}
-	}
+fpl_platform_api bool fplSetWindowFullscreenSize(const bool value, const uint32_t fullscreenWidth, const uint32_t fullscreenHeight, const uint32_t refreshRate) {
+	bool result = fpl__Win32SetWindowFullscreen(value, INT32_MAX, INT32_MAX, fullscreenWidth, fullscreenHeight, refreshRate, true);
+	return(result);
+}
 
-	if(value) {
-		// Enter fullscreen mode or fallback to window mode
-		windowSettings->isFullscreen = fpl__Win32EnterFullscreen(fullscreenWidth, fullscreenHeight, refreshRate, 0);
-		if(!windowSettings->isFullscreen) {
-			fpl__Win32LeaveFullscreen();
-		}
-	} else {
-		fpl__Win32LeaveFullscreen();
-		windowSettings->isFullscreen = false;
-	}
-	bool result = windowSettings->isFullscreen != 0;
+fpl_platform_api bool fplSetWindowFullscreenRect(const bool value, const int32_t x, const int32_t y, const int32_t width, const int32_t height) {
+	bool result = fpl__Win32SetWindowFullscreen(value, x, y, width, height, 0, false);
+	return(result);
+}
+
+fpl_platform_api bool fplEnableWindowFullscreen() {
+	bool result = fpl__Win32SetWindowFullscreen(true, INT32_MAX, INT32_MAX, 0, 0, 0, false);
+	return(result);
+}
+
+fpl_platform_api bool fplDisableWindowFullscreen() {
+	bool result = fpl__Win32SetWindowFullscreen(false, 0, 0, 0, 0, 0, false);
 	return(result);
 }
 
@@ -11299,10 +11509,12 @@ fpl_platform_api bool fplGetWindowPosition(fplWindowPosition *outPos) {
 
 fpl_platform_api void fplSetWindowTitle(const char *title) {
 	FPL__CheckPlatformNoRet();
-	const fpl__Win32AppState *appState = &fpl__global__AppState->win32;
+	fpl__PlatformAppState *appState = fpl__global__AppState;
+	const fpl__Win32AppState *win32AppState = &fpl__global__AppState->win32;
 	const fpl__Win32WindowState *windowState = &fpl__global__AppState->window.win32;
-	const fpl__Win32Api *wapi = &appState->winApi;
+	const fpl__Win32Api *wapi = &win32AppState->winApi;
 	HWND handle = windowState->windowHandle;
+	fplCopyString(title, appState->currentSettings.window.title, fplArrayCount(appState->currentSettings.window.title));
 	wchar_t titleWide[FPL_MAX_BUFFER_LENGTH];
 	fplUTF8StringToWideString(title, fplGetStringLength(title), titleWide, fplArrayCount(titleWide));
 	wapi->user.SetWindowTextW(handle, titleWide);
@@ -11373,7 +11585,7 @@ fpl_platform_api bool fplSetWindowState(const fplWindowState newState) {
 
 		case fplWindowState_Maximize:
 		{
-			if (!appState->currentSettings.window.isFullscreen && appState->currentSettings.window.isResizable) {
+			if(!appState->currentSettings.window.isFullscreen && appState->currentSettings.window.isResizable) {
 				wapi->user.SendMessageW(windowHandle, WM_SYSCOMMAND, SC_MAXIMIZE, 0);
 				result = true;
 			}
@@ -11619,6 +11831,196 @@ fpl_platform_api bool fplPollMouseState(fplMouseState *outState) {
 	return(false);
 }
 
+fpl_internal BOOL fpl__Win32MonitorCountEnumProc(HMONITOR monitorHandle, HDC hdc, LPRECT rect, LPARAM userData) {
+	size_t *count = (size_t *)(uintptr_t)userData;
+	*count = *count + 1;
+	return(TRUE);
+}
+
+fpl_platform_api size_t fplGetDisplayCount() {
+	FPL__CheckPlatform(0);
+	const fpl__Win32AppState *appState = &fpl__global__AppState->win32;
+	const fpl__Win32WindowState *windowState = &fpl__global__AppState->window.win32;
+	const fpl__Win32Api *wapi = &appState->winApi;
+	size_t result = 0;
+	LPARAM param = (LPARAM)&result;
+	wapi->user.EnumDisplayMonitors(fpl_null, fpl_null, fpl__Win32MonitorCountEnumProc, param);
+	return(result);
+}
+
+fpl_internal void fpl__Win32FillDisplayInfo(const MONITORINFOEXW *info, fplDisplayInfo *outInfo) {
+	fplAssert(info != fpl_null);
+	fplAssert(outInfo != fpl_null);
+	size_t idLen = lstrlenW(info->szDevice);
+	fplWideStringToUTF8String(info->szDevice, idLen, outInfo->id, fplArrayCount(outInfo->id));
+	outInfo->virtualPosition.left = info->rcMonitor.left;
+	outInfo->virtualPosition.top = info->rcMonitor.top;
+	outInfo->virtualSize.width = info->rcMonitor.right - info->rcMonitor.left;
+	outInfo->virtualSize.height = info->rcMonitor.bottom - info->rcMonitor.top;
+	outInfo->physicalSize.width = (info->rcMonitor.right > info->rcMonitor.left) ? (info->rcMonitor.right - info->rcMonitor.left) : (info->rcMonitor.left - info->rcMonitor.right);
+	outInfo->physicalSize.height = (info->rcMonitor.bottom > info->rcMonitor.top) ? (info->rcMonitor.bottom - info->rcMonitor.top) : (info->rcMonitor.top - info->rcMonitor.bottom);
+	outInfo->isPrimary = (info->dwFlags & MONITORINFOF_PRIMARY) ? 1 : 0;
+}
+
+typedef struct fpl__Win32DisplayEnumState {
+	fplDisplayInfo *baseInfo;
+	const fpl__Win32Api *wapi;
+	size_t count;
+	size_t maxCount;
+} fpl__Win32DisplayEnumState;
+
+fpl_internal BOOL fpl__Win32MonitorInfoEnumProc(HMONITOR monitorHandle, HDC hdc, LPRECT rect, LPARAM userData) {
+	fpl__Win32DisplayEnumState *enumState = (fpl__Win32DisplayEnumState *)(uintptr_t)userData;
+	const fpl__Win32Api *wapi = enumState->wapi;
+	if(enumState->count < enumState->maxCount) {
+		fplDisplayInfo *targetInfo = enumState->baseInfo + enumState->count;
+		fplClearStruct(targetInfo);
+		MONITORINFOEXW info = fplZeroInit;
+		info.cbSize = sizeof(info);
+		if(wapi->user.GetMonitorInfoW(monitorHandle, (LPMONITORINFO)&info) != 0) {
+			fpl__Win32FillDisplayInfo(&info, targetInfo);
+		}
+		++enumState->count;
+		BOOL result = enumState->count < enumState->maxCount;
+		return(result);
+	} else {
+		return(FALSE);
+	}
+}
+
+fpl_platform_api size_t fplGetDisplays(fplDisplayInfo *displays, const size_t maxDisplayCount) {
+	FPL__CheckArgumentNull(displays, 0);
+	FPL__CheckArgumentZero(maxDisplayCount, 0);
+	FPL__CheckPlatform(0);
+	const fpl__Win32AppState *appState = &fpl__global__AppState->win32;
+	const fpl__Win32WindowState *windowState = &fpl__global__AppState->window.win32;
+	const fpl__Win32Api *wapi = &appState->winApi;
+	fpl__Win32DisplayEnumState enumState = fplZeroInit;
+	enumState.baseInfo = displays;
+	enumState.maxCount = maxDisplayCount;
+	enumState.wapi = wapi;
+	LPARAM param = (LPARAM)&enumState;
+	wapi->user.EnumDisplayMonitors(fpl_null, fpl_null, fpl__Win32MonitorInfoEnumProc, param);
+	return(enumState.count);
+}
+
+fpl_internal BOOL fpl__Win32PrimaryMonitorEnumProc(HMONITOR monitorHandle, HDC hdc, LPRECT rect, LPARAM userData) {
+	fpl__Win32DisplayEnumState *enumState = (fpl__Win32DisplayEnumState *)(uintptr_t)userData;
+	const fpl__Win32Api *wapi = enumState->wapi;
+	MONITORINFOEXW info = fplZeroInit;
+	info.cbSize = sizeof(info);
+	if(wapi->user.GetMonitorInfoW(monitorHandle, (LPMONITORINFO)&info) != 0) {
+		if(info.dwFlags & MONITORINFOF_PRIMARY) {
+			fplClearStruct(enumState->baseInfo);
+			fpl__Win32FillDisplayInfo(&info, enumState->baseInfo);
+			enumState->count = 1;
+			return(FALSE);
+		}
+	}
+	return(TRUE);
+}
+
+fpl_platform_api bool fplGetPrimaryDisplay(fplDisplayInfo *display) {
+	FPL__CheckArgumentNull(display, false);
+	FPL__CheckPlatform(false);
+	const fpl__Win32AppState *appState = &fpl__global__AppState->win32;
+	const fpl__Win32WindowState *windowState = &fpl__global__AppState->window.win32;
+	const fpl__Win32Api *wapi = &appState->winApi;
+	fpl__Win32DisplayEnumState enumState = fplZeroInit;
+	enumState.baseInfo = display;
+	enumState.maxCount = 1;
+	enumState.wapi = wapi;
+	LPARAM param = (LPARAM)&enumState;
+	wapi->user.EnumDisplayMonitors(fpl_null, fpl_null, fpl__Win32PrimaryMonitorEnumProc, param);
+	bool result = (enumState.count == 1);
+	return(result);
+}
+
+fpl_platform_api bool fplGetWindowDisplay(fplDisplayInfo *outDisplay) {
+	FPL__CheckArgumentNull(outDisplay, false);
+	FPL__CheckPlatform(false);
+	const fpl__Win32AppState *appState = &fpl__global__AppState->win32;
+	const fpl__Win32WindowState *windowState = &fpl__global__AppState->window.win32;
+	const fpl__Win32Api *wapi = &appState->winApi;
+	HMONITOR foundMonitor = wapi->user.MonitorFromWindow(windowState->windowHandle, MONITOR_DEFAULTTONULL);
+	bool result = false;
+	if(foundMonitor != fpl_null) {
+		MONITORINFOEXW info = fplZeroInit;
+		info.cbSize = sizeof(info);
+		if(wapi->user.GetMonitorInfoW(foundMonitor, (LPMONITORINFO)&info) != 0) {
+			fplClearStruct(outDisplay);
+			fpl__Win32FillDisplayInfo(&info, outDisplay);
+			result = true;
+		}
+	}
+	return(result);
+}
+
+fpl_platform_api bool fplGetDisplayFromPosition(const int32_t x, const int32_t y, fplDisplayInfo *outDisplay) {
+	FPL__CheckArgumentNull(outDisplay, false);
+	FPL__CheckPlatform(false);
+	const fpl__Win32AppState *appState = &fpl__global__AppState->win32;
+	const fpl__Win32WindowState *windowState = &fpl__global__AppState->window.win32;
+	const fpl__Win32Api *wapi = &appState->winApi;
+	POINT pt;
+	pt.x = x;
+	pt.y = y;
+	bool result = false;
+	HMONITOR foundMonitor = wapi->user.MonitorFromPoint(pt, MONITOR_DEFAULTTONULL);
+	if(foundMonitor != fpl_null) {
+		MONITORINFOEXW info = fplZeroInit;
+		info.cbSize = sizeof(info);
+		if(wapi->user.GetMonitorInfoW(foundMonitor, (LPMONITORINFO)&info) != 0) {
+			fplClearStruct(outDisplay);
+			fpl__Win32FillDisplayInfo(&info, outDisplay);
+			result = true;
+		}
+	}
+	return(result);
+}
+
+fpl_platform_api size_t fplGetDisplayModeCount(const char *id) {
+	FPL__CheckArgumentNull(id, 0);
+	FPL__CheckPlatform(0);
+	const fpl__Win32AppState *appState = &fpl__global__AppState->win32;
+	const fpl__Win32WindowState *windowState = &fpl__global__AppState->window.win32;
+	const fpl__Win32Api *wapi = &appState->winApi;
+	wchar_t deviceName[CCHDEVICENAME + 1];
+	fplUTF8StringToWideString(id, fplGetStringLength(id), deviceName, fplArrayCount(deviceName));
+	int deviceIndex = 0;
+	DEVMODEW devMode;
+	while(wapi->user.EnumDisplaySettingsW(deviceName, deviceIndex, &devMode)) {
+		++deviceIndex;
+	}
+	size_t result = (size_t)deviceIndex;
+	return(result);
+}
+
+fpl_platform_api size_t fplGetDisplayModes(const char *id, fplDisplayMode *modes, const size_t maxDisplayModeCount) {
+	FPL__CheckArgumentNull(id, 0);
+	FPL__CheckPlatform(0);
+	const fpl__Win32AppState *appState = &fpl__global__AppState->win32;
+	const fpl__Win32WindowState *windowState = &fpl__global__AppState->window.win32;
+	const fpl__Win32Api *wapi = &appState->winApi;
+	wchar_t deviceName[CCHDEVICENAME + 1];
+	fplUTF8StringToWideString(id, fplGetStringLength(id), deviceName, fplArrayCount(deviceName));
+	size_t result = 0;
+	DEVMODEW devMode;
+	while(wapi->user.EnumDisplaySettingsW(deviceName, (DWORD)result, &devMode)) {
+		if(result == maxDisplayModeCount) {
+			break;
+		}
+		fplDisplayMode *outMode = modes + result;
+		fplClearStruct(outMode);
+		outMode->width = devMode.dmPelsWidth;
+		outMode->height = devMode.dmPelsHeight;
+		outMode->colorBits = devMode.dmBitsPerPel;
+		outMode->refreshRate = devMode.dmDisplayFrequency;
+		++result;
+	}
+	return(result);
+}
+
 #endif // FPL_ENABLE_WINDOW
 
 fpl_internal LCTYPE fpl__Win32GetLocaleLCIDFromFormat(const fplLocaleFormat format) {
@@ -11664,7 +12066,7 @@ fpl_platform_api bool fplGetInputLocale(const fplLocaleFormat targetFormat, char
 	bool result = r > 0;
 	return(result);
 }
-#endif // FPL_PLATFORM_WIN32
+#endif // FPL_PLATFORM_WINDOWS
 
 // ############################################################################
 //
@@ -12847,15 +13249,17 @@ fpl_platform_api bool fplRemoveDirectory(const char *path) {
 
 fpl_internal void fpl__PosixFillFileEntry(struct dirent *dp, fplFileEntry *entry) {
 	fplAssert((dp != fpl_null) && (entry != fpl_null));
-	fplCopyString(entry->internalRoot.rootPath, entry->fullPath, fplArrayCount(entry->fullPath));
-	fplEnforcePathSeparatorLen(entry->fullPath, fplArrayCount(entry->fullPath));
-	fplStringAppend(dp->d_name, entry->fullPath, fplArrayCount(entry->fullPath));
+	fplCopyString(dp->d_name, entry->name, fplArrayCount(entry->name));
 	entry->type = fplFileEntryType_Unknown;
 	entry->attributes = fplFileAttributeFlags_None;
 	entry->size = 0;
 	entry->permissions.umask = 0;
+	char fullPath[FPL_MAX_PATH_LENGTH];
+	fplCopyString(entry->internalRoot.rootPath, fullPath, fplArrayCount(fullPath));
+	fplEnforcePathSeparatorLen(fullPath, fplArrayCount(fullPath));
+	fplStringAppend(dp->d_name, fullPath, fplArrayCount(fullPath));
 	struct stat sb;
-	if(stat(entry->fullPath, &sb) == 0) {
+	if(stat(fullPath, &sb) == 0) {
 		if(S_ISDIR(sb.st_mode)) {
 			entry->type = fplFileEntryType_Directory;
 		} else if(S_ISREG(sb.st_mode)) {
@@ -13083,7 +13487,7 @@ fpl_platform_api bool fplGetOperatingSystemInfos(fplOSInfos *outInfos) {
 		// /etc/os-release
 
 		result = true;
-}
+	}
 	return(result);
 }
 #endif // FPL_SUBPLATFORM_POSIX
@@ -13424,7 +13828,7 @@ fpl_internal fplKey fpl__X11TranslateKeySymbol(const KeySym keySym) {
 }
 
 fpl_internal void fpl__X11LoadWindowIcon(const fpl__X11Api *x11Api, fpl__X11WindowState *x11WinState, fplWindowSettings *windowSettings) {
-	// @TODO(final): Setting the window icon on X11 does not fail, but it does not show up in any of the bars in gnome/ubuntu the icon is always shown as "unset"
+	// @BUG(final): Setting the window icon on X11 does not fail, but it does not show up in any of the bars in gnome/ubuntu the icon is always shown as "unset"
 
 	int iconSourceCount = 0;
 	fplImageSource iconSources[2] = fplZeroInit;
@@ -13534,10 +13938,10 @@ fpl_internal bool fpl__X11InitWindow(const fplSettings *initSettings, fplWindowS
 	int windowY = 0;
 	int windowWidth;
 	int windowHeight;
-	if((initSettings->window.windowWidth > 0) &&
-		(initSettings->window.windowHeight > 0)) {
-		windowWidth = initSettings->window.windowWidth;
-		windowHeight = initSettings->window.windowHeight;
+	if((initSettings->window.windowSize.width > 0) &&
+		(initSettings->window.windowSize.height > 0)) {
+		windowWidth = initSettings->window.windowSize.width;
+		windowHeight = initSettings->window.windowSize.height;
 	} else {
 		windowWidth = 400;
 		windowHeight = 400;
@@ -13610,8 +14014,8 @@ fpl_internal bool fpl__X11InitWindow(const fplSettings *initSettings, fplWindowS
 	}
 
 	char nameBuffer[FPL_MAX_NAME_LENGTH] = fplZeroInit;
-	if(fplGetStringLength(initSettings->window.windowTitle) > 0) {
-		fplCopyString(initSettings->window.windowTitle, nameBuffer, fplArrayCount(nameBuffer));
+	if(fplGetStringLength(initSettings->window.title) > 0) {
+		fplCopyString(initSettings->window.title, nameBuffer, fplArrayCount(nameBuffer));
 	} else {
 		fplCopyString("Unnamed FPL X11 Window", nameBuffer, fplArrayCount(nameBuffer));
 	}
@@ -13636,7 +14040,7 @@ fpl_internal bool fpl__X11InitWindow(const fplSettings *initSettings, fplWindowS
 	}
 
 	if(initSettings->window.isFullscreen) {
-		fplSetWindowFullscreen(true, initSettings->window.fullscreenWidth, initSettings->window.fullscreenHeight, 0);
+		fplSetWindowFullscreen(true, initSettings->window.fullscreenSize.width, initSettings->window.fullscreenSize.height, initSettings->window.fullscreenRefreshRate);
 	}
 
 	appState->window.isRunning = true;
@@ -13910,7 +14314,7 @@ fpl_platform_api void fplSetWindowCursorEnabled(const bool value) {
 	// @IMPLEMENT(final): X11 fplSetWindowCursorEnabled
 }
 
-fpl_platform_api bool fplGetWindowArea(fplWindowSize *outSize) {
+fpl_platform_api bool fplGetWindowSize(fplWindowSize *outSize) {
 	FPL__CheckArgumentNull(outSize, false);
 	FPL__CheckPlatform(false);
 	fpl__PlatformAppState *appState = fpl__global__AppState;
@@ -13924,7 +14328,7 @@ fpl_platform_api bool fplGetWindowArea(fplWindowSize *outSize) {
 	return(true);
 }
 
-fpl_platform_api void fplSetWindowArea(const uint32_t width, const uint32_t height) {
+fpl_platform_api void fplSetWindowSize(const uint32_t width, const uint32_t height) {
 	fpl__PlatformAppState *appState = fpl__global__AppState;
 	FPL__CheckPlatformNoRet();
 	const fpl__X11SubplatformState *subplatform = &appState->x11;
@@ -13971,7 +14375,7 @@ fpl_platform_api bool fplSetWindowState(const fplWindowState newState) {
 	return(false);
 }
 
-fpl_platform_api bool fplSetWindowFullscreen(const bool value, const uint32_t fullscreenWidth, const uint32_t fullscreenHeight, const uint32_t refreshRate) {
+fpl_platform_api bool fplSetWindowFullscreenSize(const bool value, const uint32_t fullscreenWidth, const uint32_t fullscreenHeight, const uint32_t refreshRate) {
 	FPL__CheckPlatform(false);
 	fpl__PlatformAppState *appState = fpl__global__AppState;
 	const fpl__X11SubplatformState *subplatform = &appState->x11;
@@ -13987,11 +14391,29 @@ fpl_platform_api bool fplSetWindowFullscreen(const bool value, const uint32_t fu
 	xev.xclient.data.l[0] = value ? 1 : 0;
 	xev.xclient.data.l[1] = windowState->netWMStateFullscreen;
 	xev.xclient.data.l[2] = 0;
+
+	// @TODO(final): Support for changing the display resolution + refresh rate in X11
+
 	bool result = x11Api->XSendEvent(windowState->display, windowState->root, False, SubstructureRedirectMask | SubstructureNotifyMask, &xev) != 0;
 	if(result) {
 		appState->currentSettings.window.isFullscreen = value;
 	}
 	return(result);
+}
+
+fpl_platform_api bool fplSetWindowFullscreenRect(const bool value, const int32_t x, const int32_t y, const int32_t width, const int32_t height) {
+	// @IMPLEMENT(final): X11 fplSetWindowFullscreenRect
+	return(false);
+}
+
+fpl_platform_api bool fplEnableWindowFullscreen() {
+	// @IMPLEMENT(final): X11 fplEnableWindowFullscreen
+	return(false);
+}
+
+fpl_platform_api bool fplDisableWindowFullscreen() {
+	// @IMPLEMENT(final): X11 fplDisableWindowFullscreen
+	return(false);
 }
 
 fpl_platform_api bool fplIsWindowFullscreen() {
@@ -14025,7 +14447,7 @@ fpl_platform_api void fplSetWindowPosition(const int32_t left, const int32_t top
 }
 
 fpl_platform_api void fplSetWindowTitle(const char *title) {
-	// @TODO(final): Setting the window title on X11 works, but it wont be set for the icon in the bars in gnome/ubuntu the icon title is always "Unbekannt" on my german environment.
+	// @BUG(final): Setting the window title on X11 works, but it wont be set for the icon in the bars in gnome/ubuntu the icon title is always "Unbekannt" on my german environment.
 
 	FPL__CheckArgumentNullNoRet(title);
 	FPL__CheckPlatformNoRet();
@@ -14033,8 +14455,8 @@ fpl_platform_api void fplSetWindowTitle(const char *title) {
 	const fpl__X11SubplatformState *subplatform = &appState->x11;
 	const fpl__X11Api *x11Api = &subplatform->api;
 	const fpl__X11WindowState *windowState = &appState->window.x11;
-	char nameBuffer[FPL_MAX_NAME_LENGTH];
-	fplCopyString(title, nameBuffer, fplArrayCount(nameBuffer));
+
+	fplCopyString(title, appState->currentSettings.window.title, fplArrayCount(appState->currentSettings.window.title));
 
 	x11Api->XChangeProperty(windowState->display, windowState->window,
 							windowState->netWMName, windowState->utf8String, 8,
@@ -14127,7 +14549,7 @@ fpl_platform_api bool fplPollMouseState(fplMouseState *outState) {
 		outState->buttonStates[fplMouseButtonType_Right] = (mask & Button3Mask) ? fplButtonState_Press : fplButtonState_Release;
 		outState->buttonStates[fplMouseButtonType_Middle] = (mask & Button2Mask) ? fplButtonState_Press : fplButtonState_Release;
 		result = true;
-}
+	}
 	return(result);
 }
 #endif // FPL_SUBPLATFORM_X11
@@ -14681,7 +15103,7 @@ fpl_platform_api bool fplGetRunningMemoryInfos(fplMemoryInfos *outInfos) {
 // > VIDEO_DRIVER_OPENGL_WIN32
 //
 // ############################################################################
-#if defined(FPL_ENABLE_VIDEO_OPENGL) && defined(FPL_PLATFORM_WIN32)
+#if defined(FPL_ENABLE_VIDEO_OPENGL) && defined(FPL_PLATFORM_WINDOWS)
 
 #define FPL_GL_CONTEXT_FLAG_FORWARD_COMPATIBLE_BIT 0x0001
 #define FPL_GL_CONTEXT_FLAG_DEBUG_BIT 0x00000002
@@ -15031,7 +15453,7 @@ fpl_internal void fpl__Win32ReleaseVideoOpenGL(fpl__Win32VideoOpenGLState *glSta
 		glState->renderingContext = fpl_null;
 	}
 }
-#endif // FPL_ENABLE_VIDEO_OPENGL && FPL_PLATFORM_WIN32
+#endif // FPL_ENABLE_VIDEO_OPENGL && FPL_PLATFORM_WINDOWS
 
 // ############################################################################
 //
@@ -15487,7 +15909,7 @@ done_x11_glx:
 			glApi->glXDestroyContext(windowState->display, legacyRenderingContext);
 		}
 		fpl__X11ReleaseVideoOpenGL(subplatform, windowState, glState);
-}
+	}
 
 	return (result);
 }
@@ -15560,7 +15982,7 @@ fpl_internal bool fpl__X11InitVideoSoftware(const fpl__X11SubplatformState *subp
 // > VIDEO_DRIVER_SOFTWARE_WIN32
 //
 // ############################################################################
-#if defined(FPL_ENABLE_VIDEO_SOFTWARE) && defined(FPL_PLATFORM_WIN32)
+#if defined(FPL_ENABLE_VIDEO_SOFTWARE) && defined(FPL_PLATFORM_WINDOWS)
 typedef struct fpl__Win32VideoSoftwareState {
 	BITMAPINFO bitmapInfo;
 } fpl__Win32VideoSoftwareState;
@@ -15580,7 +16002,7 @@ fpl_internal bool fpl__Win32InitVideoSoftware(const fplVideoBackBuffer *backbuff
 fpl_internal void fpl__Win32ReleaseVideoSoftware(fpl__Win32VideoSoftwareState *software) {
 	fplClearStruct(software);
 }
-#endif // FPL_ENABLE_VIDEO_SOFTWARE && FPL_PLATFORM_WIN32
+#endif // FPL_ENABLE_VIDEO_SOFTWARE && FPL_PLATFORM_WINDOWS
 
 #endif // FPL_VIDEO_DRIVERS_IMPLEMENTED
 
@@ -15617,12 +16039,12 @@ fpl_internal uint32_t fpl__ReadAudioFramesFromClient(const fpl__CommonAudioState
 	uint32_t sampleSize = fplGetAudioSampleSizeInBytes(commonAudio->internalFormat.type);
 	uint32_t consumedBytes = samplesRead * sampleSize;
 	uint32_t remainingBytes = ((frameCount * channels) - samplesRead) * sampleSize;
-    fplMemoryClear((uint8_t *) pSamples + consumedBytes, remainingBytes);
+	fplMemoryClear((uint8_t *)pSamples + consumedBytes, remainingBytes);
 	return(samplesRead);
 }
 
 // Global Audio GUIDs
-#if defined(FPL_PLATFORM_WIN32)
+#if defined(FPL_PLATFORM_WINDOWS)
 static GUID FPL__GUID_KSDATAFORMAT_SUBTYPE_PCM = { 0x00000001, 0x0000, 0x0010, {0x80, 0x00, 0x00, 0xaa, 0x00, 0x38, 0x9b, 0x71} };
 static GUID FPL__GUID_KSDATAFORMAT_SUBTYPE_IEEE_FLOAT = { 0x00000003, 0x0000, 0x0010, {0x80, 0x00, 0x00, 0xaa, 0x00, 0x38, 0x9b, 0x71} };
 #endif
@@ -17111,7 +17533,7 @@ fpl_internal bool fpl__IsAudioDeviceStarted(fpl__CommonAudioState *audioState) {
 }
 
 fpl_internal void fpl__AudioWorkerThread(const fplThreadHandle *thread, void *data) {
-#if defined(FPL_PLATFORM_WIN32)
+#if defined(FPL_PLATFORM_WINDOWS)
 	fplAssert(fpl__global__AppState != fpl_null);
 	const fpl__Win32Api *wapi = &fpl__global__AppState->win32.winApi;
 #endif
@@ -17121,7 +17543,7 @@ fpl_internal void fpl__AudioWorkerThread(const fplThreadHandle *thread, void *da
 	fplAssert(audioState != fpl_null);
 	fplAssert(audioState->activeDriver != fplAudioDriverType_None);
 
-#if defined(FPL_PLATFORM_WIN32)
+#if defined(FPL_PLATFORM_WINDOWS)
 	wapi->ole.CoInitializeEx(fpl_null, 0);
 #endif
 
@@ -17165,7 +17587,7 @@ fpl_internal void fpl__AudioWorkerThread(const fplThreadHandle *thread, void *da
 	// Signal to stop any audio threads, in case there are some waiting
 	fpl__SetAudioEvent(&audioState->stopEvent);
 
-#if defined(FPL_PLATFORM_WIN32)
+#if defined(FPL_PLATFORM_WINDOWS)
 	wapi->ole.CoUninitialize();
 #endif
 }
@@ -17173,7 +17595,7 @@ fpl_internal void fpl__AudioWorkerThread(const fplThreadHandle *thread, void *da
 fpl_internal void fpl__ReleaseAudio(fpl__AudioState *audioState) {
 	fplAssert(audioState != fpl_null);
 
-#if defined(FPL_PLATFORM_WIN32)
+#if defined(FPL_PLATFORM_WINDOWS)
 	fplAssert(fpl__global__AppState != fpl_null);
 	const fpl__Win32Api *wapi = &fpl__global__AppState->win32.winApi;
 #endif
@@ -17211,7 +17633,7 @@ fpl_internal void fpl__ReleaseAudio(fpl__AudioState *audioState) {
 		fplClearStruct(audioState);
 	}
 
-#if defined(FPL_PLATFORM_WIN32)
+#if defined(FPL_PLATFORM_WINDOWS)
 	wapi->ole.CoUninitialize();
 #endif
 }
@@ -17219,7 +17641,7 @@ fpl_internal void fpl__ReleaseAudio(fpl__AudioState *audioState) {
 fpl_internal fplAudioResult fpl__InitAudio(const fplAudioSettings *audioSettings, fpl__AudioState *audioState) {
 	fplAssert(audioState != fpl_null);
 
-#if defined(FPL_PLATFORM_WIN32)
+#if defined(FPL_PLATFORM_WINDOWS)
 	fplAssert(fpl__global__AppState != fpl_null);
 	const fpl__Win32Api *wapi = &fpl__global__AppState->win32.winApi;
 #endif
@@ -17249,7 +17671,7 @@ fpl_internal fplAudioResult fpl__InitAudio(const fplAudioSettings *audioSettings
 	audioState->common.clientReadCallback = audioSettings->clientReadCallback;
 	audioState->common.clientUserData = audioSettings->userData;
 
-#if defined(FPL_PLATFORM_WIN32)
+#if defined(FPL_PLATFORM_WINDOWS)
 	wapi->ole.CoInitializeEx(fpl_null, 0);
 #endif
 
@@ -17353,7 +17775,7 @@ fpl_internal fplAudioResult fpl__InitAudio(const fplAudioSettings *audioSettings
 // %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 #if defined(FPL_ENABLE_VIDEO)
 
-#if defined(FPL_PLATFORM_WIN32)
+#if defined(FPL_PLATFORM_WINDOWS)
 typedef union fpl__Win32VideoState {
 #	if defined(FPL_ENABLE_VIDEO_OPENGL)
 	fpl__Win32VideoOpenGLState opengl;
@@ -17362,7 +17784,7 @@ typedef union fpl__Win32VideoState {
 	fpl__Win32VideoSoftwareState software;
 #	endif
 } fpl__Win32VideoState;
-#endif // FPL_PLATFORM_WIN32
+#endif // FPL_PLATFORM_WINDOWS
 
 #if defined(FPL_SUBPLATFORM_X11)
 typedef union fpl__X11VideoState {
@@ -17381,7 +17803,7 @@ typedef struct fpl__VideoState {
 	fplVideoBackBuffer softwareBackbuffer;
 #	endif
 
-#	if defined(FPL_PLATFORM_WIN32)
+#	if defined(FPL_PLATFORM_WINDOWS)
 	fpl__Win32VideoState win32;
 #	endif
 #	if defined(FPL_SUBPLATFORM_X11)
@@ -17405,7 +17827,7 @@ fpl_internal void fpl__ShutdownVideo(fpl__PlatformAppState *appState, fpl__Video
 #		if defined(FPL_ENABLE_VIDEO_OPENGL)
 			case fplVideoDriverType_OpenGL:
 			{
-#			if defined(FPL_PLATFORM_WIN32)
+#			if defined(FPL_PLATFORM_WINDOWS)
 				fpl__Win32ReleaseVideoOpenGL(&videoState->win32.opengl);
 #			elif defined(FPL_SUBPLATFORM_X11)
 				fpl__X11ReleaseVideoOpenGL(&appState->x11, &appState->window.x11, &videoState->x11.opengl);
@@ -17416,7 +17838,7 @@ fpl_internal void fpl__ShutdownVideo(fpl__PlatformAppState *appState, fpl__Video
 #		if defined(FPL_ENABLE_VIDEO_SOFTWARE)
 			case fplVideoDriverType_Software:
 			{
-#			if defined(FPL_PLATFORM_WIN32)
+#			if defined(FPL_PLATFORM_WINDOWS)
 				fpl__Win32ReleaseVideoSoftware(&videoState->win32.software);
 #			elif defined(FPL_SUBPLATFORM_X11)
 				fpl__X11ReleaseVideoSoftware(&appState->x11, &appState->window.x11, &videoState->x11.software);
@@ -17427,7 +17849,7 @@ fpl_internal void fpl__ShutdownVideo(fpl__PlatformAppState *appState, fpl__Video
 			default:
 			{
 			} break;
-			}
+		}
 
 #	if defined(FPL_ENABLE_VIDEO_SOFTWARE)
 		fplVideoBackBuffer *backbuffer = &videoState->softwareBackbuffer;
@@ -17436,7 +17858,7 @@ fpl_internal void fpl__ShutdownVideo(fpl__PlatformAppState *appState, fpl__Video
 		}
 		fplClearStruct(backbuffer);
 #	endif
-		}
+	}
 }
 
 fpl_internal void fpl__ReleaseVideoState(fpl__PlatformAppState *appState, fpl__VideoState *videoState) {
@@ -17444,7 +17866,7 @@ fpl_internal void fpl__ReleaseVideoState(fpl__PlatformAppState *appState, fpl__V
 #	if defined(FPL_ENABLE_VIDEO_OPENGL)
 		case fplVideoDriverType_OpenGL:
 		{
-#		if defined(FPL_PLATFORM_WIN32)
+#		if defined(FPL_PLATFORM_WINDOWS)
 			fpl__Win32UnloadVideoOpenGLApi(&videoState->win32.opengl.api);
 #		elif defined(FPL_SUBPLATFORM_X11)
 			videoState->x11.opengl.fbConfig = fpl_null;
@@ -17462,7 +17884,7 @@ fpl_internal void fpl__ReleaseVideoState(fpl__PlatformAppState *appState, fpl__V
 
 		default:
 			break;
-}
+	}
 	fplClearStruct(videoState);
 }
 
@@ -17473,7 +17895,7 @@ fpl_internal bool fpl__LoadVideoState(const fplVideoDriverType driver, fpl__Vide
 #	if defined(FPL_ENABLE_VIDEO_OPENGL)
 		case fplVideoDriverType_OpenGL:
 		{
-#		if defined(FPL_PLATFORM_WIN32)
+#		if defined(FPL_PLATFORM_WINDOWS)
 			result = fpl__Win32LoadVideoOpenGLApi(&videoState->win32.opengl.api);
 #		elif defined(FPL_SUBPLATFORM_X11)
 			result = fpl__X11LoadVideoOpenGLApi(&videoState->x11.opengl.api);
@@ -17527,7 +17949,7 @@ fpl_internal bool fpl__InitVideo(const fplVideoDriverType driver, const fplVideo
 #	if defined(FPL_ENABLE_VIDEO_OPENGL)
 		case fplVideoDriverType_OpenGL:
 		{
-#		if defined(FPL_PLATFORM_WIN32)
+#		if defined(FPL_PLATFORM_WINDOWS)
 			videoInitResult = fpl__Win32InitVideoOpenGL(&appState->win32, &appState->window.win32, videoSettings, &videoState->win32.opengl);
 #		elif defined(FPL_SUBPLATFORM_X11)
 			videoInitResult = fpl__X11InitVideoOpenGL(&appState->x11, &appState->window.x11, videoSettings, &videoState->x11.opengl);
@@ -17538,7 +17960,7 @@ fpl_internal bool fpl__InitVideo(const fplVideoDriverType driver, const fplVideo
 #	if defined(FPL_ENABLE_VIDEO_SOFTWARE)
 		case fplVideoDriverType_Software:
 		{
-#		if defined(FPL_PLATFORM_WIN32)
+#		if defined(FPL_PLATFORM_WINDOWS)
 			videoInitResult = fpl__Win32InitVideoSoftware(&videoState->softwareBackbuffer, &videoState->win32.software);
 #		elif defined(FPL_SUBPLATFORM_X11)
 			videoInitResult = fpl__X11InitVideoSoftware(&appState->x11, &appState->window.x11, videoSettings, &videoState->softwareBackbuffer, &videoState->x11.software);
@@ -17550,7 +17972,7 @@ fpl_internal bool fpl__InitVideo(const fplVideoDriverType driver, const fplVideo
 		{
 			FPL_ERROR(FPL__MODULE_VIDEO, "Unsupported video driver '%s' for this platform", fplGetVideoDriverString(videoSettings->driver));
 		} break;
-		}
+	}
 	if(!videoInitResult) {
 		fplAssert(fplGetErrorCount() > 0);
 		fpl__ShutdownVideo(appState, videoState);
@@ -17558,7 +17980,7 @@ fpl_internal bool fpl__InitVideo(const fplVideoDriverType driver, const fplVideo
 	}
 
 	return true;
-	}
+}
 #endif // FPL_ENABLE_VIDEO
 
 // %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -17581,7 +18003,7 @@ fpl_internal FPL__FUNC_PRE_SETUP_WINDOW(fpl__PreSetupWindowDefault) {
 #		if defined(FPL_ENABLE_VIDEO_OPENGL)
 			case fplVideoDriverType_OpenGL:
 			{
-#			if defined(FPL_PLATFORM_WIN32)
+#			if defined(FPL_PLATFORM_WINDOWS)
 				if(!fpl__Win32PreSetupWindowForOpenGL(&appState->win32, &appState->window.win32, &initSettings->video)) {
 					return false;
 				}
@@ -17591,7 +18013,7 @@ fpl_internal FPL__FUNC_PRE_SETUP_WINDOW(fpl__PreSetupWindowDefault) {
 					result = fpl__X11SetPreWindowSetupForOpenGL(&appState->x11.api, &appState->window.x11, &videoState->x11.opengl, &outResult->x11);
 				}
 #			endif
-				} break;
+			} break;
 #		endif // FPL_ENABLE_VIDEO_OPENGL
 
 #		if defined(FPL_ENABLE_VIDEO_SOFTWARE)
@@ -17622,7 +18044,7 @@ fpl_internal FPL__FUNC_POST_SETUP_WINDOW(fpl__PostSetupWindowDefault) {
 #		if defined(FPL_ENABLE_VIDEO_OPENGL)
 			case fplVideoDriverType_OpenGL:
 			{
-#			if defined(FPL_PLATFORM_WIN32)
+#			if defined(FPL_PLATFORM_WINDOWS)
 				if(!fpl__Win32PostSetupWindowForOpenGL(&appState->win32, &appState->window.win32, &initSettings->video)) {
 					return false;
 				}
@@ -17643,18 +18065,18 @@ fpl_internal FPL__FUNC_POST_SETUP_WINDOW(fpl__PostSetupWindowDefault) {
 fpl_internal bool fpl__InitWindow(const fplSettings *initSettings, fplWindowSettings *currentWindowSettings, fpl__PlatformAppState *appState, const fpl__SetupWindowCallbacks *setupCallbacks) {
 	bool result = false;
 	if(appState != fpl_null) {
-#	if defined(FPL_PLATFORM_WIN32)
+#	if defined(FPL_PLATFORM_WINDOWS)
 		result = fpl__Win32InitWindow(initSettings, currentWindowSettings, appState, &appState->win32, &appState->window.win32, setupCallbacks);
 #	elif defined(FPL_SUBPLATFORM_X11)
 		result = fpl__X11InitWindow(initSettings, currentWindowSettings, appState, &appState->x11, &appState->window.x11, setupCallbacks);
 #	endif
 	}
 	return (result);
-	}
+}
 
 fpl_internal void fpl__ReleaseWindow(const fpl__PlatformInitState *initState, fpl__PlatformAppState *appState) {
 	if(appState != fpl_null) {
-#	if defined(FPL_PLATFORM_WIN32)
+#	if defined(FPL_PLATFORM_WINDOWS)
 		fpl__Win32ReleaseWindow(&initState->win32, &appState->win32, &appState->window.win32);
 #	elif defined(FPL_SUBPLATFORM_X11)
 		fpl__X11ReleaseWindow(&appState->x11, &appState->window.x11);
@@ -17921,8 +18343,8 @@ fpl_common_api uint32_t fplGetAudioDevices(fplAudioDeviceInfo *devices, uint32_t
 
 			default:
 				break;
-}
-}
+		}
+	}
 	return(result);
 }
 #endif // FPL_ENABLE_AUDIO
@@ -17993,7 +18415,7 @@ fpl_common_api void fplVideoFlip() {
 	fpl__PlatformAppState *appState = fpl__global__AppState;
 	const fpl__VideoState *videoState = fpl__GetVideoState(appState);
 	if(videoState != fpl_null) {
-#	if defined(FPL_PLATFORM_WIN32)
+#	if defined(FPL_PLATFORM_WINDOWS)
 		const fpl__Win32AppState *win32AppState = &appState->win32;
 		const fpl__Win32WindowState *win32WindowState = &appState->window.win32;
 		const fpl__Win32Api *wapi = &win32AppState->winApi;
@@ -18004,7 +18426,7 @@ fpl_common_api void fplVideoFlip() {
 				const fpl__Win32VideoSoftwareState *software = &videoState->win32.software;
 				const fplVideoBackBuffer *backbuffer = &videoState->softwareBackbuffer;
 				fplWindowSize area;
-				if(fplGetWindowArea(&area)) {
+				if(fplGetWindowSize(&area)) {
 					int32_t targetX = 0;
 					int32_t targetY = 0;
 					int32_t targetWidth = area.width;
@@ -18052,14 +18474,14 @@ fpl_common_api void fplVideoFlip() {
 				const fplVideoBackBuffer *backbuffer = &videoState->softwareBackbuffer;
 				x11Api->XPutImage(x11WinState->display, x11WinState->window, softwareState->graphicsContext, softwareState->buffer, 0, 0, 0, 0, backbuffer->width, backbuffer->height);
 				x11Api->XSync(x11WinState->display, False);
-		} break;
+			} break;
 #		endif
 
 			default:
 				break;
-	}
+		}
 #	endif // FPL_PLATFORM || FPL_SUBPLATFORM
-}
+	}
 }
 #endif // FPL_ENABLE_VIDEO
 
@@ -18131,7 +18553,7 @@ fpl_internal void fpl__ReleasePlatformStates(fpl__PlatformInitState *initState, 
 	if(appState != fpl_null) {
 		// Release actual platform (There can only be one platform!)
 		{
-#		if defined(FPL_PLATFORM_WIN32)
+#		if defined(FPL_PLATFORM_WINDOWS)
 			FPL_LOG_DEBUG(FPL__MODULE_CORE, "Release Win32 Platform");
 			fpl__Win32ReleasePlatform(initState, appState);
 #		elif defined(FPL_PLATFORM_LINUX)
@@ -18258,7 +18680,7 @@ fpl_common_api bool fplPlatformInit(const fplInitFlags initFlags, const fplSetti
 #	if defined(FPL_ENABLE_VIDEO)
 	if(appState->initFlags & fplInitFlags_Video) {
 		appState->initFlags |= fplInitFlags_Window;
-}
+	}
 #	endif
 #	if !defined(FPL_ENABLE_WINDOW)
 	appState->initFlags = (fplInitFlags)(appState->initFlags & ~fplInitFlags_Window);
@@ -18292,10 +18714,10 @@ fpl_common_api bool fplPlatformInit(const fplInitFlags initFlags, const fplSetti
 	}
 #	endif // FPL_SUBPLATFORM_X11
 
-		// Initialize the actual platform (There can only be one at a time!)
+	// Initialize the actual platform (There can only be one at a time!)
 	bool isInitialized = false;
 	FPL_LOG_DEBUG(FPL__MODULE_CORE, "Initialize %s Platform:", FPL_PLATFORM_NAME);
-#	if defined(FPL_PLATFORM_WIN32)
+#	if defined(FPL_PLATFORM_WINDOWS)
 	isInitialized = fpl__Win32InitPlatform(appState->initFlags, &appState->initSettings, initState, appState);
 #   elif defined(FPL_PLATFORM_LINUX)
 	isInitialized = fpl__LinuxInitPlatform(appState->initFlags, &appState->initSettings, initState, appState);
@@ -18356,11 +18778,11 @@ fpl_common_api bool fplPlatformInit(const fplInitFlags initFlags, const fplSetti
 		fplAssert(videoState != fpl_null);
 		uint32_t windowWidth, windowHeight;
 		if(appState->currentSettings.window.isFullscreen) {
-			windowWidth = appState->currentSettings.window.fullscreenWidth;
-			windowHeight = appState->currentSettings.window.fullscreenHeight;
+			windowWidth = appState->currentSettings.window.fullscreenSize.width;
+			windowHeight = appState->currentSettings.window.fullscreenSize.height;
 		} else {
-			windowWidth = appState->currentSettings.window.windowWidth;
-			windowHeight = appState->currentSettings.window.windowWidth;
+			windowWidth = appState->currentSettings.window.windowSize.width;
+			windowHeight = appState->currentSettings.window.windowSize.height;
 		}
 		const char *videoDriverName = fplGetVideoDriverString(appState->initSettings.video.driver);
 		FPL_LOG_DEBUG(FPL__MODULE_CORE, "Init Video with Driver '%s':", videoDriverName);
@@ -18408,7 +18830,7 @@ fpl_common_api bool fplPlatformInit(const fplInitFlags initFlags, const fplSetti
 
 fpl_common_api fplPlatformType fplGetPlatformType() {
 	fplPlatformType result;
-#if defined(FPL_PLATFORM_WIN32)
+#if defined(FPL_PLATFORM_WINDOWS)
 	result = fplPlatformType_Windows;
 #elif defined(FPL_PLATFORM_LINUX)
 	result = fplPlatformType_Linux;
@@ -18440,7 +18862,7 @@ fpl_common_api fplPlatformType fplGetPlatformType() {
 #if defined(FPL_ENTRYPOINT) && !defined(FPL_ENTRYPOINT_IMPLEMENTED)
 #	define FPL_ENTRYPOINT_IMPLEMENTED
 
-#	if defined(FPL_PLATFORM_WIN32)
+#	if defined(FPL_PLATFORM_WINDOWS)
 
 #		if defined(FPL_NO_CRT)
 			//
@@ -18473,7 +18895,7 @@ void __stdcall mainCRTStartup(void) {
 	int result = main(args.count, args.args);
 	fplMemoryFree(args.mem);
 	ExitProcess(result);
-		}
+}
 #			else
 #				error "Application type not set!"
 #			endif // FPL_APPTYPE
@@ -18500,7 +18922,7 @@ int WINAPI WinMain(HINSTANCE appInstance, HINSTANCE prevInstance, LPSTR cmdLine,
 
 #		endif // FPL_NO_CRT
 
-#	endif // FPL_PLATFORM_WIN32
+#	endif // FPL_PLATFORM_WINDOWS
 
 #endif // FPL_ENTRYPOINT && !FPL_ENTRYPOINT_IMPLEMENTED
 
@@ -18521,7 +18943,7 @@ int WINAPI WinMain(HINSTANCE appInstance, HINSTANCE prevInstance, LPSTR cmdLine,
 #		undef Unsorted
 #	endif // FPL_SUBPLATFORM_X11
 
-#	if defined(FPL_PLATFORM_WIN32)
+#	if defined(FPL_PLATFORM_WINDOWS)
 #		undef TRUE
 #		undef FALSE
 #		undef far

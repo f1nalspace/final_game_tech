@@ -10,6 +10,7 @@
 *.opendb
 *.pdb
 *.obj
+*.aps
 /demos/**/.vs
 /demos/**/.kdev4
 /demos/**/.idea

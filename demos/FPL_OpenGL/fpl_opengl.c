@@ -14,6 +14,11 @@ Author:
 	Torsten Spaete
 
 Changelog:
+	## 2018-10-22
+	- Reflect api changes in FPL 0.9.3
+	- Added a random color effect (Modern only)
+	- Added a smooth color effect
+
 	## 2018-09-24
 	- Reflect api changes in FPL 0.9.2
 
@@ -33,6 +38,8 @@ Changelog:
 #define FPL_NO_AUDIO
 #include <final_platform_layer.h>
 
+// You have to include GL.h yourself or use any other opengl loader you want.
+// FPL just creates a opengl rendering context for you, but nothing more.
 #include <GL/gl.h>
 
 #ifndef APIENTRY
@@ -106,6 +113,8 @@ typedef void (APIENTRYP PFNGLENABLEVERTEXATTRIBARRAYPROC) (GLuint index);
 typedef void (APIENTRYP PFNGLDISABLEVERTEXATTRIBARRAYPROC) (GLuint index);
 typedef void (APIENTRYP PFNGLVERTEXATTRIBPOINTERPROC) (GLuint index, GLint size, GLenum type, GLboolean normalized, GLsizei stride, const void *pointer);
 typedef void (APIENTRYP PFNGLDELETEVERTEXARRAYSPROC) (GLsizei n, const GLuint *arrays);
+typedef GLint(APIENTRYP PFNGLGETUNIFORMLOCATIONPROC)(GLuint program, const GLchar *name);
+typedef void (APIENTRYP PFNGLUNIFORM1IPROC)(GLint location, GLint v0);
 
 static PFNGLGENVERTEXARRAYSPROC glGenVertexArrays = NULL;
 static PFNGLBINDVERTEXARRAYPROC glBindVertexArray = NULL;
@@ -116,8 +125,10 @@ static PFNGLENABLEVERTEXATTRIBARRAYPROC glEnableVertexAttribArray = NULL;
 static PFNGLDISABLEVERTEXATTRIBARRAYPROC glDisableVertexAttribArray = NULL;
 static PFNGLVERTEXATTRIBPOINTERPROC glVertexAttribPointer = NULL;
 static PFNGLDELETEVERTEXARRAYSPROC glDeleteVertexArrays = NULL;
+static PFNGLGETUNIFORMLOCATIONPROC glGetUniformLocation = NULL;
+static PFNGLUNIFORM1IPROC glUniform1i = NULL;
 
-#if defined(FPL_PLATFORM_WIN32)
+#if defined(FPL_PLATFORM_WINDOWS)
 static void *GLProcAddress(const char *name) {
 	fpl__VideoState *videoState = (fpl__VideoState *)fpl__global__AppState->video.mem;
 	fplAssert(videoState != NULL);
@@ -149,6 +160,8 @@ static void LoadGLExtensions() {
 	glGetProgramInfoLog = (PFNGLGETPROGRAMINFOLOGPROC)GLProcAddress("glGetProgramInfoLog");
 	glDeleteShader = (PFNGLDELETESHADERPROC)GLProcAddress("glDeleteShader");
 	glUseProgram = (PFNGLUSEPROGRAMPROC)GLProcAddress("glUseProgram");
+	glGetUniformLocation = (PFNGLGETUNIFORMLOCATIONPROC)GLProcAddress("glGetUniformLocation");
+	glUniform1i = (PFNGLUNIFORM1IPROC)GLProcAddress("glUniform1i");
 
 	glGenVertexArrays = (PFNGLGENVERTEXARRAYSPROC)GLProcAddress("glGenVertexArrays");
 	glBindVertexArray = (PFNGLBINDVERTEXARRAYPROC)GLProcAddress("glBindVertexArray");
@@ -168,21 +181,18 @@ static void RunLegacy() {
 
 	glClearColor(0.39f, 0.58f, 0.93f, 1.0f);
 	while(fplWindowUpdate()) {
-		fplEvent ev;
-		while(fplPollEvent(&ev)) {
-
-		}
+		fplPollEvents();
 
 		fplWindowSize windowArea;
-		fplAssert(fplGetWindowArea(&windowArea));
+		fplGetWindowSize(&windowArea);
 		glViewport(0, 0, windowArea.width, windowArea.height);
 
 		glClear(GL_COLOR_BUFFER_BIT);
 
 		glBegin(GL_TRIANGLES);
-		glVertex2f(0.0f, 0.5f);
-		glVertex2f(-0.5f, -0.5f);
-		glVertex2f(0.5f, -0.5f);
+		glColor4f(1.0f, 0.0f, 0.0f, 1.0f); glVertex2f(0.0f, 0.5f);
+		glColor4f(0.0f, 1.0f, 0.0f, 1.0f); glVertex2f(-0.5f, -0.5f);
+		glColor4f(0.0f, 0.0f, 1.0f, 1.0f); glVertex2f(0.5f, -0.5f);
 		glEnd();
 
 		fplVideoFlip();
@@ -264,10 +274,14 @@ static bool RunModern() {
 	const char vertexSource[] = {
 		"#version 330 core\n"
 		"\n"
-		"layout(location = 0) in vec4 inPosition;\n"
+		"layout(location = 0) in vec2 inPosition;\n"
+		"layout(location = 1) in vec4 inColor;\n"
+		"\n"
+		"out vec4 varColor;\n"
 		"\n"
 		"void main() {\n"
-		"\tgl_Position = inPosition;\n"
+		"\tvarColor = inColor;\n"
+		"\tgl_Position = vec4(inPosition, 0.0, 1.0);\n"
 		"}\n"
 	};
 
@@ -276,47 +290,75 @@ static bool RunModern() {
 		"\n"
 		"layout(location = 0) out vec4 outColor;\n"
 		"\n"
+		"uniform int inFrame;\n"
+		"\n"
+		"in vec4 varColor;"
+		"\n"
+		"const uint k = 1103515245U;\n"
+		"\n"
+		"vec3 hash(uvec3 x) {\n"
+		"\tx = ((x>>8U)^x.yzx)*k;\n"
+		"\tx = ((x>>8U)^x.yzx)*k;\n"
+		"\tx = ((x>>8U)^x.yzx)*k;\n"
+		"\treturn vec3(x)*(1.0/float(0xffffffffU));\n"
+		"}\n"
+		"\n"
 		"void main() {\n"
-		"\toutColor = vec4(1.0, 0.0, 0.0, 1.0);\n"
+		"\tvec4 fragCoord = gl_FragCoord;\n"
+		"\tuvec3 p = uvec3(fragCoord.xy, inFrame);\n"
+		"\tvec4 randomColor = vec4(hash(p), 1.0);\n"
+		"\toutColor = randomColor * varColor;\n"
 		"}\n"
 	};
 
 	GLuint shaderProgram = CreateShaderProgram("Test", vertexSource, fragmentSource);
 
+	GLuint inFrameLocation = glGetUniformLocation(shaderProgram, "inFrame");
+
+	// vec2 + vec4
 	float vertices[] = {
-		0.0f, 0.5f,
-		-0.5f, -0.5f,
-		0.5f, -0.5f
+		0.0f, 0.5f, 1.0f, 0.0f, 0.0f, 1.0f,
+		-0.5f, -0.5f, 0.0f, 1.0f, 0.0f, 1.0f,
+		0.5f, -0.5f, 0.0f, 0.0f, 1.0f, 1.0f,
 	};
+	int componentCount = 2 + 4;
+
 	GLuint buffer;
 	glGenBuffers(1, &buffer);
 	glBindBuffer(GL_ARRAY_BUFFER, buffer);
 	glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
 	glBindBuffer(GL_ARRAY_BUFFER, 0);
 
-	glUseProgram(shaderProgram);
-
 	glBindBuffer(GL_ARRAY_BUFFER, buffer);
 	glEnableVertexAttribArray(0);
-	glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(float) * 2, NULL);
+	glEnableVertexAttribArray(1);
+	glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(float) * componentCount, NULL);
+	glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, sizeof(float) * componentCount, (GLvoid*)(2 * sizeof(float)));
 
+	int frameIndex = 0;
 	glClearColor(0.39f, 0.58f, 0.93f, 1.0f);
 	while(fplWindowUpdate()) {
-		fplEvent ev;
-		while(fplPollEvent(&ev)) {}
+		fplPollEvents();
 
 		fplWindowSize windowArea;
-		fplGetWindowArea(&windowArea);
+		fplGetWindowSize(&windowArea);
 		glViewport(0, 0, windowArea.width, windowArea.height);
 
 		glClear(GL_COLOR_BUFFER_BIT);
 
+		glUseProgram(shaderProgram);
+		glUniform1i(inFrameLocation, frameIndex);
+
 		glDrawArrays(GL_TRIANGLES, 0, 3);
 
+		glUseProgram(0);
+
 		fplVideoFlip();
+		++frameIndex;
 	}
 
 	glDisableVertexAttribArray(0);
+	glDisableVertexAttribArray(1);
 	glBindBuffer(GL_ARRAY_BUFFER, 0);
 
 	glBindVertexArray(0);
@@ -330,13 +372,13 @@ int main(int argc, char **args) {
 	fplSettings settings = fplMakeDefaultSettings();
 	settings.video.driver = fplVideoDriverType_OpenGL;
 #if MODERN_OPENGL
-	fplCopyString("FPL Modern OpenGL", settings.window.windowTitle, fplArrayCount(settings.window.windowTitle));
+	fplCopyString("FPL Modern OpenGL", settings.window.title, fplArrayCount(settings.window.title));
 	settings.video.graphics.opengl.compabilityFlags = fplOpenGLCompabilityFlags_Core;
 	settings.video.graphics.opengl.majorVersion = 3;
 	settings.video.graphics.opengl.minorVersion = 3;
 	settings.video.graphics.opengl.multiSamplingCount = 4;
 #else
-	fplCopyString("FPL Legacy OpenGL", settings.window.windowTitle, fplArrayCount(settings.window.windowTitle));
+	fplCopyString("FPL Legacy OpenGL", settings.window.title, fplArrayCount(settings.window.title));
 	settings.video.graphics.opengl.compabilityFlags = fplOpenGLCompabilityFlags_Legacy;
 #endif
 	if(fplPlatformInit(fplInitFlags_Video, &settings)) {
@@ -356,7 +398,7 @@ int main(int argc, char **args) {
 
 		fplPlatformRelease();
 		result = 0;
-} else {
+	} else {
 		result = -1;
 	}
 	return(result);

@@ -3,6 +3,9 @@
 Name:
 	FPL-Demo | ImageViewer
 
+Version:
+	v0.5.4 (version.h)
+
 Description:
 	Very simple opengl based image viewer.
 	Loads up pictures in multiple threads using a lock-free MPMC queue.
@@ -19,6 +22,9 @@ Author:
 	Torsten Spaete
 
 Changelog:
+	## v0.5.4
+	- Reflect api changes in FPL 0.9.3
+
 	## v0.5.3
 	- Reflect api changes in FPL 0.9.2
 	- Preview is enabled by default
@@ -533,13 +539,15 @@ static void AddPicturesFromPath(ViewerState *state, const char *path, const bool
 		if(!hasEntry) {
 			break;
 		}
+		char fullPath[FPL_MAX_PATH_LENGTH];
+		fplPathCombine(fullPath, fplArrayCount(fullPath), 2, path, entry.name);
 		if(entry.type == fplFileEntryType_File) {
-			if(IsPictureFile(entry.fullPath)) {
-				AddPictureFile(state, entry.fullPath);
+			if(IsPictureFile(fullPath)) {
+				AddPictureFile(state, fullPath);
 				++addedPics;
 			}
 		} else if(recursive && entry.type == fplFileEntryType_Directory) {
-			AddPicturesFromPath(state, entry.fullPath, true);
+			AddPicturesFromPath(state, fullPath, true);
 		}
 	}
 	if(addedPics > 0) {
@@ -1469,7 +1477,7 @@ static void UpdateAndRender(ViewerState *state, const float deltaTime) {
 
 	int w, h;
 	fplWindowSize winSize;
-	if(fplGetWindowArea(&winSize)) {
+	if(fplGetWindowSize(&winSize)) {
 		w = winSize.width;
 		h = winSize.height;
 	} else {
@@ -1715,7 +1723,7 @@ int main(int argc, char **argv) {
 	settings.video.graphics.opengl.majorVersion = 3;
 	settings.video.graphics.opengl.minorVersion = 3;
 	settings.video.graphics.opengl.multiSamplingCount = 4;
-	fplCopyString("FPL Demo - Image Viewer", settings.window.windowTitle, fplArrayCount(settings.window.windowTitle));
+	fplCopyString("FPL Demo - Image Viewer", settings.window.title, fplArrayCount(settings.window.title));
 
 	// Load icons (Memory are released on shutdown)
 	int iconW, iconH, iconC;
@@ -1809,7 +1817,7 @@ int main(int argc, char **argv) {
 										int delta = (int)state.pictureFileCount - state.activeFileIndex;
 										ChangeViewPicture(&state, delta, true);
 									} else if(ev.keyboard.mappedKey == fplKey_F) {
-										fplSetWindowFullscreen(!fplIsWindowFullscreen(), 0, 0, 0);
+										fplSetWindowFullscreenSize(!fplIsWindowFullscreen(), 0, 0, 0);
 									} else if(ev.keyboard.mappedKey == fplKey_P) {
 										state.params.preview = !state.params.preview;
 									} else if(ev.keyboard.mappedKey == fplKey_R) {

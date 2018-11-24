@@ -47,7 +47,7 @@ int main(int argc, char *argv[]) {
 		GLuint ftex = 0;
 
 		fplFileHandle fontFile;
-		if(fplOpenAnsiBinaryFile("c:/windows/fonts/times.ttf", &fontFile)) {
+		if(fplOpenBinaryFile("c:/windows/fonts/times.ttf", &fontFile)) {
 			uint32_t fileSize = fplGetFileSizeFromHandle32(&fontFile);
 			uint8_t *ttf_buffer = (uint8_t *)fplMemoryAllocate(fileSize);
 			fplReadFileBlock32(&fontFile, fileSize, ttf_buffer, fileSize);
@@ -124,7 +124,7 @@ int main(int argc, char *argv[]) {
 			glMatrixMode(GL_MODELVIEW);
 			glLoadIdentity();
 
-			float lw = FPL_MIN(w, h) * 0.25f;
+			float lw = fplMin(w, h) * 0.25f;
 			glColor4f(1, 1, 0, 0.25f);
 			glLineWidth(1);
 			glBegin(GL_LINES);

@@ -306,7 +306,7 @@ extern bool LoadFontFromFile(const char *dataPath, const char *filename, const u
 		return false;
 	}
 
-	char filePath[1024];
+	char filePath[FPL_MAX_PATH_LENGTH];
 	if(dataPath != fpl_null) {
 		fplCopyString(dataPath, filePath, fplArrayCount(filePath));
 		fplPathCombine(filePath, fplArrayCount(filePath), 2, dataPath, filename);

@@ -15,6 +15,9 @@ Author:
 	Torsten Spaete
 
 Changelog:
+	## 2018-10-22
+	- Reflect api changes in FPL 0.9.3
+
 	## 2018-09-24
 	- Reflect api changes in FPL 0.9.2
 
@@ -162,7 +165,7 @@ static void RunModern(const fglOpenGLContext *context) {
 		while(fplPollEvent(&ev)) {}
 
 		fplWindowSize windowArea;
-		fplGetWindowArea(&windowArea);
+		fplGetWindowSize(&windowArea);
 		glViewport(0, 0, windowArea.width, windowArea.height);
 
 		glClear(GL_COLOR_BUFFER_BIT);
@@ -194,12 +197,12 @@ int main(int argc, char **args) {
 	initFlags = fplInitFlags_Video;
 	settings.video.driver = fplVideoDriverType_OpenGL;
 #	if !USE_LEGACY_OPENGL
-	fplCopyString("FPL Modern OpenGL", settings.window.windowTitle, fplArrayCount(settings.window.windowTitle));
+	fplCopyString("FPL Modern OpenGL", settings.window.title, fplArrayCount(settings.window.title));
 	settings.video.graphics.opengl.compabilityFlags = fplOpenGLCompabilityFlags_Core;
 	settings.video.graphics.opengl.majorVersion = 3;
 	settings.video.graphics.opengl.minorVersion = 3;
 #	else
-	fplCopyString("FPL Legacy OpenGL", settings.window.windowTitle, fplArrayCount(settings.window.windowTitle));
+	fplCopyString("FPL Legacy OpenGL", settings.window.title, fplArrayCount(settings.window.title));
 	settings.video.graphics.opengl.compabilityFlags = fplOpenGLCompabilityFlags_Legacy;
 #	endif
 #else

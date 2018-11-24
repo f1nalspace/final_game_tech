@@ -14,6 +14,9 @@ Author:
 	Torsten Spaete
 
 Changelog:
+	## 2018-10-22
+	- Reflect api changes in FPL 0.9.3
+
 	## 2018-09-24
 	- Reflect api changes in FPL 0.9.2
 	- Transition of test framework from C++ to C99
@@ -853,7 +856,7 @@ static void TestFiles() {
 	{
 		fplFileEntry fileEntry = {};
 		for(bool r = fplListDirBegin(testRootPath, "*.*", &fileEntry); r; r = fplListDirNext(&fileEntry)) {
-			ftMsg("%s\n", fileEntry.fullPath);
+			ftMsg("%s\n", fileEntry.name);
 		}
 		fplListDirEnd(&fileEntry);
 	}
@@ -861,7 +864,7 @@ static void TestFiles() {
 	{
 		fplFileEntry fileEntry = {};
 		for(bool r = fplListDirBegin(testRootPath, "*", &fileEntry); r; r = fplListDirNext(&fileEntry)) {
-			ftMsg("%s\n", fileEntry.fullPath);
+			ftMsg("%s\n", fileEntry.name);
 		}
 		fplListDirEnd(&fileEntry);
 	}
@@ -869,7 +872,7 @@ static void TestFiles() {
 	{
 		fplFileEntry fileEntry = {};
 		bool r = fplListDirBegin(testRootPath, testRootFilter, &fileEntry);
-		ftMsg("%s\n", fileEntry.fullPath);
+		ftMsg("%s\n", fileEntry.name);
 		ftIsTrue(r);
 		fplListDirEnd(&fileEntry);
 	}
@@ -1295,16 +1298,16 @@ static void TestStrings() {
 	{
 		char smallBuffer[2];
 		char bigBuffer[16];
-		ftIsNull(fplS32ToString(0, 0, nullptr));
-		ftIsNull(fplS32ToString(0, 4, nullptr));
-		ftIsNull(fplS32ToString(11, fplArrayCount(smallBuffer), smallBuffer));
-		ftIsNotNull(fplS32ToString(7, fplArrayCount(smallBuffer), smallBuffer));
+		ftIsNull(fplS32ToString(0, nullptr, 0));
+		ftIsNull(fplS32ToString(0, nullptr, 4));
+		ftIsNull(fplS32ToString(11, smallBuffer, fplArrayCount(smallBuffer)));
+		ftIsNotNull(fplS32ToString(7, smallBuffer, fplArrayCount(smallBuffer)));
 		ftAssertStringEquals("7", smallBuffer);
-		ftIsNotNull(fplS32ToString(129, fplArrayCount(bigBuffer), bigBuffer));
+		ftIsNotNull(fplS32ToString(129, bigBuffer, fplArrayCount(bigBuffer)));
 		ftAssertStringEquals("129", bigBuffer);
-		ftIsNotNull(fplS32ToString(1337, fplArrayCount(bigBuffer), bigBuffer));
+		ftIsNotNull(fplS32ToString(1337, bigBuffer, fplArrayCount(bigBuffer)));
 		ftAssertStringEquals("1337", bigBuffer);
-		ftIsNotNull(fplS32ToString(-1234567, fplArrayCount(bigBuffer), bigBuffer));
+		ftIsNotNull(fplS32ToString(-1234567, bigBuffer, fplArrayCount(bigBuffer)));
 		ftAssertStringEquals("-1234567", bigBuffer);
 	}
 

@@ -18,6 +18,9 @@ Author:
 	Torsten Spaete
 
 Changelog:
+	## 2018-10-22
+	- Reflect api changes in FPL 0.9.3
+
 	## 2018-09-24
 	- Reflect api changes in FPL 0.9.2
 
@@ -130,10 +133,10 @@ static void DrawTile(const int32_t x, const int32_t y, bool filled) {
 int main(int argc, char **args) {
 	int result = 0;
 	fplSettings settings = fplMakeDefaultSettings();
-	fplCopyString("Tile-Tracing Example", settings.window.windowTitle, fplArrayCount(settings.window.windowTitle) - 1);
+	fplCopyString("Tile-Tracing Example", settings.window.title, fplArrayCount(settings.window.title));
 	settings.video.driver = fplVideoDriverType_OpenGL;
 	if (fplPlatformInit(fplInitFlags_Video, &settings)) {
-		fplSetWindowArea(640, 480);
+		fplSetWindowSize(640, 480);
 		fplSetWindowPosition(0, 0);
 
 		glEnable(GL_DEPTH_TEST);
@@ -177,7 +180,7 @@ int main(int argc, char **args) {
 #endif
 
 			fplWindowSize windowArea;
-			fplGetWindowArea(&windowArea);
+			fplGetWindowSize(&windowArea);
 
 			const float halfAreaWidth = AreaSizeW * 0.5f;
 			const float halfAreaHeight = AreaSizeH * 0.5f;

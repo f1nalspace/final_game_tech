@@ -18,6 +18,9 @@ Author:
 	Torsten Spaete
 
 Changelog:
+	## 2018-10-22
+	- Reflect api changes in FPL 0.9.3
+
 	## 2018-09-24
 	- Reflect api changes in FPL 0.9.2
 
@@ -1327,7 +1330,7 @@ int main(int argc, char *argv[]) {
 	AppState *appState = (AppState *)fplMemoryAllocate(sizeof(AppState));
 	fplSettings settings = fplMakeDefaultSettings();
 	settings.input.disabledEvents = appState->usePolling;
-	fplCopyString("FPL Input Demo", settings.window.windowTitle, fplArrayCount(settings.window.windowTitle));
+	fplCopyString("FPL Input Demo", settings.window.title, fplArrayCount(settings.window.title));
 	int retCode = 0;
 	if (fplPlatformInit(fplInitFlags_All, &settings)) {
 		if (fglLoadOpenGL(true)) {
@@ -1437,7 +1440,7 @@ int main(int argc, char *argv[]) {
 				}
 
 				fplWindowSize wsize = {};
-				fplGetWindowArea(&wsize);
+				fplGetWindowSize(&wsize);
 				RenderApp(appState, &input, wsize.width, wsize.height);
 				fplVideoFlip();
 			}

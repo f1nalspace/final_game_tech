@@ -14,8 +14,8 @@
 	<br>
 	The main focus is game/media/simulation development, so the default settings will create a window, setup a OpenGL rendering context and initialize audio playback on any platform.<br>
 	<br>
-	FPL supports the platforms Windows/Linux/Unix for the architectures x86/x64.<br>
-	The only dependencies are built-in operating system libraries and a C99 complaint compiler.<br>
+	FPL supports the platforms <b>Windows</b>/<b>Linux</b>/<b>Unix</b> for the architectures <b>x86</b>/<b>x64</b>.<br>
+	The only dependencies are built-in operating system libraries and a <b>C99</b> complaint compiler.<br>
 	<br>
 	It is released under the @subpage page_license "MIT License". This license allows you to use FPL freely in any software.<br>
 
@@ -106,15 +106,18 @@
 		- Keyboard
 		- Mouse
 		- Game Controllers
-	- Video
-		- Driver selection
-		- OpenGL 1.x (Legacy)
-		- OpenGL 3.x or higher (Modern)
-		- Software Backbuffer
+	- Video:
+		- Graphics initialization
+		- Backends:
+			- OpenGL 1.x (Legacy)
+			- OpenGL 3.x or higher (Modern)
+			- Software Backbuffer
 	- Audio
-		- Driver selection
 		- Raw audio asyncronous playback
 		- Device iteration and selection
+		- Backends:
+			- DirectSound
+			- ALSA
 	- Memory
 		- Allocation and Deallocation
 		- Custom Alignment functions
@@ -122,6 +125,7 @@
 	- Atomics
 		- Support for 8,16,32,64 bit signed and unsigned integer types
 		- Support for void pointer type
+		- Support for size type
 		- Compare and Exchange (CAS)
 		- Add / Exchange
 		- Load / Store
@@ -138,7 +142,7 @@
 			- Change File Extension
 		- Files/Directories
 			- Reading and Writing of Binary Files (32-bit and 64-bit)
-			- Iterating over Files/Directories
+			- Iterate over Files/Directories
 			- Rename/Copy/Delete/Move operations
 	- Hardware info retrievement
 		- Query Processor Infos (Core count, Name)
@@ -207,7 +211,7 @@
 	- Link against "libld.so"
 
 	@subsection usage_requirements_crt C-Runtime
-	By default FPL uses the C-Run-Time library functions such as vsnprintf(), getchar() but its usage is optional.<br>
+	By default FPL uses the C-Run-Time library for functions such as vsnprintf(), but its usage is optional.<br>
 	For more details see the page @subpage page_nocrt
 
 	@section section_usage_howtouse How to use FPL?
@@ -276,8 +280,6 @@
 	See @subpage page_compiler_options for all compile time options.
 */
 
-
-
 /*!
 	@page page_categories Categories
 	@tableofcontents
@@ -288,8 +290,9 @@
 	@subpage page_category_logging <br>
 
 	@section section_category_window Window
-	@subpage page_category_window_creation <br>
+	@subpage page_category_window_basics <br>
 	@subpage page_category_window_events <br>
+	@subpage page_category_window_style <br>
 
 	@section section_category_input Input
 	@subpage page_category_input_events <br>
@@ -307,8 +310,9 @@
 	@section section_category_dll Dynamic Library Loading
 	@subpage page_category_dll <br>
 
-	@section section_category_io Files IO
+	@section section_category_io File IO
 	@subpage page_category_io_binaryfiles <br>
+	@subpage page_category_io_paths <br>
 
 	@section section_category_threading Multithreading
 	@subpage page_category_threading_threads <br>
@@ -570,6 +574,20 @@
 	fplSetLogSettings(&logSettings);
 	@endcode
 
+	@subsection subsection_category_logging_logging_example_custom Example: Log all errors to a custom logging function
+
+	@code{.c}
+	static void MyLogFunction(const fplLogLevel level, const char *message) {
+		// ...
+	}
+
+	fplLogSettings logSettings = fplZeroInit;
+	logSettings.maxLevel = fplLogLevel_Error;
+	logSettings.writers[0].flags = fplLogWriterFlags_Custom;
+	logSettings.writers[0].custom.callback = MyLogFunction;
+	fplSetLogSettings(&logSettings);
+	@endcode
+
 	@section section_category_logging_debug Debug
 
 	@subsection subsection_category_logging_debug_break Forced Breakpoint
@@ -651,10 +669,10 @@
 */
 
 /*!
-	@page page_category_window_creation Window creation & main loop
+	@page page_category_window_basics Window basics
 	@tableofcontents
 
-	@section section_category_window_creation_init Initialization
+	@section section_window_basics_init Initialization
 
 	To create a window, you add the @ref fplInitFlags_Window flag to the @ref fplInitFlags argument in the @ref fplPlatformInit() call.<br>
 	It makes no sense to create a window alone, so we combine it at least with something else, like for example: a video context or audio playback.<br>
@@ -663,13 +681,13 @@
 	fplPlatformInit(fplInitFlags_Window | fplInitFlags_Video, fpl_null);
 	@endcode
 
-	@section section_category_window_creation_loop Main loop
+	@section section_window_basics_mainloop Main loop
 
 	After you initialize FPL with a window, you have to create some sort of a loop to keep the window open until you close them.<br>
-	This is required due to the fact that the operating systems use a event-based system to communicate with the window and your app.<br>
+	This is required due to the fact that the operating systems use a event-based system to communicate with the window and your application.<br>
 	If no communication happens with your window and your app, the window will no longer be responsive - so make sure to communicate properly.<br>
 	<br>
-	To solve that you have to use @ref fplWindowUpdate() and @ref fplPollEvent() respectively.
+	To solve this, you have to use @ref fplWindowUpdate() and @ref fplPollEvent() respectively.
 	<br>
 	First you need to call @ref fplWindowUpdate() for every 'tick' for your application. This will clear the internal event queue and update input devices properly.<br>
 	After that you have to poll all events from the operating systems event queue using @ref fplPollEvent() .<br>
@@ -686,6 +704,14 @@
 	See @subpage page_category_window_events for more details.<br>
 
 	@attention All window based calls are required to be executed from the main-thread only!
+
+	@section section_window_basics_shutdown Shutdown the window
+
+	Simply call @ref fplWindowShutdown to shutdown the window, while it is still running.<br>
+	<br>
+	You can also query the running state of the window by calling @ref fplIsWindowRunning() .<br>
+
+	@note The window is not immediately shut-down, one tick of window/input events may still be executed after that.<br>To forcefully terminate the window, use @ref fplPlatformRelease() instead.
 
 */
 
@@ -716,18 +742,30 @@
 			case fplEventType_Window:
 			{
 				// A window event, like resize, lost/got focus, etc.
+				switch (currentEvent.window.type) {
+					// ...
+				}
 			} break;
 			case fplEventType_Keyboard:
 			{
 				// A keyboard event, like key down/up, pressed, etc.
+				switch (currentEvent.keyboard.type) {
+					// ...
+				}
 			} break;
 			case fplEventType_Mouse:
 			{
 				// A mouse event, like mouse button down/up, mouse move, etc.
+				switch (currentEvent.mouse.type) {
+					// ...
+				}
 			} break;
 			case fplEventType_Gamepad:
 			{
 				// A gamepad event, like connected/disconnected, state-updated etc.
+				switch (currentEvent.gamepad.type) {
+					// ...
+				}
 			} break;
 		}
 	}
@@ -740,9 +778,20 @@
 	All relevant event data are stored in fields which match the lowercase @ref fplEventType name.<br>
 	Each event structure has another type field to check for the actual type (Key-Down, Mouse-Move, Window-Resize etc.).<br>
 
+	@subsection subsection_category_window_events_handle_event_buttonstate Button states
+
+	All mouse/keyboard or gamepad button states are descriped as a @ref fplButtonState.<br>
+	<br>
+	To detect a non-repeatable button press, you simply compare against @ref fplButtonState_Press.<br>
+	To detect a repeatable button press, you simply compare against @ref fplButtonState_Repeat.<br>
+	To detect a non button press, you simply compare against @ref fplButtonState_Release.<br>
+	<br>
+	If you just want to know if a key is pressed or hold-down, just do a greater equals comparisons of @ref fplButtonState_Press and you are golden.
+
 	@subsection subsection_category_window_events_handle_event_type_mouse Mouse events
 
-	Mouse event data are stored in the @ref fplMouseEvent structure.
+	Mouse event data are stored in the @ref fplMouseEvent structure.<br>
+	A mouse event contains either a single button click/release, or a mouse wheel change or a position change.<br>
 
 	@code{.c}
 	switch (currentEvent.mouse.type) {
@@ -750,7 +799,31 @@
 		{
 			fplMouseButtonType button = currentEvent.mouse.button;
 			fplButtonState state = currentEvent.mouse.buttonState;
-			// ... do something with the mouse button and the state
+			bool buttonDown = state >= fplButtonState_Press;
+			switch (button) {
+				case fplMouseButtonType_Left:
+				{
+					// Left mouse button down/released
+				} break;
+				case fplMouseButtonType_Middle:
+				{
+					// Middle mouse button down/released
+				} break;
+				case fplMouseButtonType_Right:
+				{
+					// Right mouse button down/released
+				} break;
+			}
+		} break;
+
+		case fplMouseEventType_Wheel:
+		{
+			float wheelDelta = currentEvent.mouse.wheelDelta;
+			if (wheelDelta < 0.0f) {
+				// Mouse-wheel down
+			} else if (wheelDelta > 0.0f) {
+				// Mouse-wheel up
+			}
 		} break;
 
 		case fplMouseEventType_Move:
@@ -761,6 +834,8 @@
 		} break;
 	}
 	@endcode
+
+	@note Any mouse button event contains the position of the click as well.
 
 	@subsection subsection_category_window_events_handle_event_type_keyboard Keyboard events
 
@@ -795,7 +870,9 @@
 
 		case fplKeyboardEventType_CharInput:
 		{
-			// Handle character input
+			if(currentEvent.keyboard.keyCode > 0 && event.keyboard.keyCode < 0x10000) {
+				// Handle character input
+			}
 		} break;
 	}
 	@endcode
@@ -841,6 +918,30 @@
 			uint32_t newHeight = currentEvent.window.height;
 			// ... Window was resized, handle it properly
 		} break;
+
+		case fplWindowEventType_GetFocus:
+		case fplWindowEventType_LostFocus:
+		{
+			// ... Do something when window lost/got focus
+		} break;
+
+		case fplWindowEventType_Exposed:
+		{
+			// ... Do something when window was exposed
+		} break;
+
+		case fplWindowEventType_DropSingleFile:
+		{
+			const char *filePath = ev.window.dropFiles.single.filePath;
+			// ... Do something when window got a single file dropped into it
+		} break;
+
+		case fplWindowEventType_Minimized:
+		case fplWindowEventType_Maximized:
+		case fplWindowEventType_Restored:
+		{
+			// ... Do something when window state was changed
+		} break;
 	}
 	@endcode
 
@@ -858,8 +959,236 @@
 
 	@section section_category_window_events_inotes Important Notes
 
-	FPL does not cache the events from the previous update. If you don't handle the event - the data is lost!<br>
-	You are responsible for caching the data if needed.<br>
+	@note FPL does not cache the events from the previous update. If you don't handle or cache the event - the data is lost!
+*/
+
+/*!
+	@page page_category_window_style Window style & layout
+	@tableofcontents
+
+	@section section_category_window_style_style Reading/Setting the style
+
+	@subsection subsection_category_window_style_style_decorated Decoration (Border, Titlebar)
+
+	By default a window is decorated, meaning that it has a border, a titlebar and can be moved by the user.<br>
+	If you enable window decorations, your window will have a border and a titlebar always.<br>
+	<br>
+	Use @ref fplIsWindowDecorated() to determine if the window has decoration enabled or not.<br>
+	Use @ref fplSetWindowDecorated() to enable/disable the window decoration.<br>
+
+	<b>Example:</b>
+	@code{.c}
+	// Enable window decoration
+	fplSetWindowDecorated(true);
+
+	// Disable window decoration
+	fplSetWindowDecorated(false);
+
+	// Toggle window decoration
+	fplSetWindowDecorated(!fplIsWindowDecorated());
+	@endcode
+
+	@note You can overwrite the default decoration behavior by changing value in @ref fplWindowSettings.isDecorated from the @ref fplSettings.window field at startup.
+
+	@subsection subsection_category_window_style_floating Floating (Always on top)
+
+	By default a window is not in floating mode. This means when another window gets focus, your window loses its focus.<br>
+	If you set your window to floating instead, your window will always be on top over others.<br>
+	<br>
+	Use @ref fplIsWindowFloating() to determine if the window is floating or not.<br>
+	Use @ref fplSetWindowFloating() to enable/disable the window floating.<br>
+
+	<b>Example:</b>
+	@code{.c}
+	// Enable window floating
+	fplSetWindowFloating(true);
+
+	// Disable window floating
+	fplSetWindowFloating(false);
+
+	// Toggle window floating
+	fplSetWindowFloating(!fplIsWindowFloating());
+	@endcode
+
+	@note You can overwrite the default floating behavior by changing value in @ref fplWindowSettings.isFloating from the @ref fplSettings.window field at startup.
+
+	@subsection subsection_category_window_style_resizable Resizeable
+
+	By default a window is resizeable. This means you can resize your window however you like.<br>
+	<br>
+	Use @ref fplIsWindowResizable() to determine if the window is resizable or not.<br>
+	Use @ref fplSetWindowResizeable() to enable/disable the window resizing.<br>
+
+	<b>Example:</b>
+	@code{.c}
+	// Enable resizing of the window
+	fplSetWindowResizeable(true);
+
+	// Disable resizing of the window
+	fplSetWindowResizeable(false);
+
+	// Toggle window resizing mode
+	fplSetWindowResizeable(!fplIsWindowResizable());
+	@endcode
+
+	@note You can overwrite the default resizable behavior by changing value in @ref fplWindowSettings.isResizable from the @ref fplSettings.window field at startup.
+
+	@section section_category_window_style_size Getting/Changing the size/position
+
+	@subsection subsection_category_window_style_size_pos Window position
+
+	By default a window uses either the default position from the platform or a fixed location of 0x0 screen units.<br>
+	<br>
+	Use @ref fplSetWindowPosition() to change the position of the window
+	Use @ref fplGetWindowPosition() to retrieve the current absolute window position from the top-left corner
+
+	<b>Example:</b>
+	@code{.c}
+	// Retrieve absolute window position
+	fplWindowPosition curPos;
+	if (fplGetWindowPosition(&curPos)) {
+		// Do something with the window position
+	}
+
+	// Change window absolute position to 0x0
+	fplSetWindowPosition(0, 0);
+	@endcode
+
+	@subsection subsection_category_window_style_size_window Window size
+
+	By default a window is created using either the default size of the platform or a fixed size of 400x400 screen units.<br>
+	<br>
+	Use @ref fplSetWindowSize() to change the size of the area of the window.<br>
+	Use @ref fplGetWindowSize() to get the size of the area of the window.<br>
+
+	<b>Example:</b>
+	@code{.c}
+	// Retrieve window inner/client size
+	fplWindowSize curSize;
+	if (fplGetWindowSize(&curSize)) {
+		// Do something with the client size
+	}
+
+	// Change window size to fit 800x600 screen units inside the client area
+	fplSetWindowSize(800, 600);
+	@endcode
+
+	@note You can overwrite the default window size by changing value in @ref fplWindowSettings.windowSize from the @ref fplSettings.window field at startup.
+	@note Changing the window size, changes the total size of the window - when decorations are enabled.
+
+	@subsection subsection_category_window_style_size_fullscreen Fullscreen size
+
+	By default the window is created in non-fullscreen mode, using @ref fplWindowSettings.windowSize from the @ref fplSettings.window or
+	the default window size. See @ref subsection_category_window_style_size_window for more details.<br>
+	<br>
+	Use @ref fplSetWindowFullscreenSize() to enable/disable fullscreen for the window with a given **size** and a **color depth** with support of switching the screen-resolution if needed.<br>
+	Use @ref fplSetWindowFullscreenRect() to enable/disable fullscreen for the window with a given **size** and a **position** without changing the screen-resolution.<br>
+	Use @ref fplIsWindowFullscreen() to determine if the window is in fullscreen mode or not.<br>
+
+	<b>Enable fullscreen example:</b>
+	@code{.c}
+	// Enable fullscreen on the nearest desktop
+	fplEnableWindowFullscreen();
+
+	// or
+
+	// Enable fullscreen on the nearest desktop
+	fplSetWindowFullscreenSize(true, 0, 0, 0);
+
+	// Enable 1080p fullscreen on the nearest desktop
+	fplSetWindowFullscreenSize(true, 1920, 1080, 0);
+
+	// Switch to 1080p screen resolution with a refresh rate of 60 Hz on the nearest desktop
+	fplSetWindowFullscreenSize(true, 1920, 1080, 60);
+
+	// Enable a 4k stretched resolution on two 1080p monitor left-right configuration
+	fplSetWindowFullscreenRect(true, 0, 0, 3840, 1080);
+	@endcode
+
+	<b>Disable fullscreen example:</b>
+	@code{.c}
+	// Disable fullscreen size
+	fplSetWindowFullscreenSize(false, 0, 0, 0);
+
+	// or
+
+	// Disable fullscreen rect
+	fplSetWindowFullscreenRect(false, 0, 0, 0, 0);
+
+	// or
+
+	// Disable fullscreen
+	fplDisableWindowFullscreen();
+	@endcode
+
+	<b>Query fullscreen state:</b>
+	@code{.c}
+	if (fplIsWindowFullScreen()) {
+		// Do something on fullscreen mode
+	}
+
+	// Toggle fullscreen
+	fplSetWindowFullscreenSize(!fplIsWindowFullScreen(), 0, 0, 0);
+	@endcode
+
+	@note Set @ref fplWindowSettings.isFullscreen to true to enable fullscreen at startup.
+	@note You can overwrite the fullscreen window size by changing value in @ref fplWindowSettings.fullscreenSize from the @ref fplSettings.window field at startup.
+	@note You can overwrite the fullscreen refresh rate by changing value in @ref fplWindowSettings.fullscreenRefreshRate from the @ref fplSettings.window field at startup.
+	@note If width or height in the fplWindowSettings.fullscreenSize field is zero, the current desktop rectangle is used from the nearest display.
+
+	@section section_category_window_style_cursor Changing the window cursor
+
+	By default the window has cursor enabled. Use @ref fplSetWindowCursorEnabled to show/hide the cursor.<br>
+
+	<b>Example:</b>
+	@code{.c}
+	// Enable the cursor
+	fplSetWindowCursorEnabled(true);
+
+	// Disable the cursor
+	fplSetWindowCursorEnabled(false);
+	@endcode
+
+	@section section_category_window_style_title Get/Set the window title
+
+	By default the window has a unnamed like title. Use @ref fplSetWindowTitle to set a window title on runtime.<br>
+
+	<b>Example:</b>
+	@code{.c}
+	// Set window title
+	fplSetWindowTitle("My awesome application");
+
+	// Get the window title
+	char titleBuffer[FPL_MAX_NAME_LENGTH];
+	fplGetWindowTitle(titleBuffer, fplArrayCount(titleBuffer));
+	@endcode
+	
+	@note You can overwrite the window title by changing value in @ref fplWindowSettings.title from the @ref fplSettings.window field at startup.
+
+	@section section_category_window_style_state Get/Set the window state
+
+	By default the window has a normal default state.
+
+	- Use @ref fplSetWindowState to change to state the window state to a different one.
+	- Use @ref fplGetWindowState to retrieve to current state of the window
+
+	<b>Example:</b>
+	@code{.c}
+	// Iconify the window
+	fplSetWindowState(fplWindowState_Iconify);
+
+	// Maximize the window
+	fplSetWindowState(fplWindowState_Maximize);
+
+	// Reset to the normal when not normal
+	fplWindowState curState = fplGetWindowState();
+	if (curState != fplWindowState_Normal) {
+		fplSetWindowState(fplWindowState_Normal);
+	}
+	@endcode
+
+	@note When the window is in fullscreen mode, @ref fplWindowState_Fullscreen is returned from @ref fplGetWindowState() always.
+	@warning The window state @ref fplWindowState_Fullscreen can never be set.
 */
 
 /*!
@@ -868,8 +1197,7 @@
 
 	@section section_page_category_input_events_overview Overview
 
-	Input events are triggered by your window event loop.<br>
-	To detect any key/button presses you simply handle the specific event type in your event-loop.<br>
+	Input events are triggered by your window event loop. To detect any key/button presses you simply handle the specific event type in your event-loop.<br>
 	See the @subpage page_category_window_events page for more details.<br>
 	<br>
 	If you don't want to handle input this way, you can use polling instead - see @subpage page_category_input_polling for more details.
@@ -892,14 +1220,33 @@
 
 	Use @ref fplPollKeyboardState to poll the current keyboard state.<br>
 	This state contains all the raw/mapped button states and the modifier states.<br>
-	<br>
+
+	@code{.c}
+	fplKeyboardState keyboardState;
+	if (fplPollKeyboardState(&keyboardState)) {
+		if (keyboardState.buttonStatesMapped[fplKey_Space] >= fplButtonState_Press) {
+			// Spacebar pressed
+		}
+	}
+	@endcode
+
 	See @ref fplKeyboardState for more details.
 
 	@subsection subsection_category_input_polling_gamepad Gamepad
 
 	Use @ref fplPollGamepadStates to poll the current states for all conntected game controllers.<br>
 	This state contains all the buttons, digital-pad, the left/right stick position + trigger, etc.<br>
-	<br>
+
+	@code{.c}
+	fplGamepadStates gamepadStates;
+	if (fplPollGamepadStates(&gamepadStates)) {
+		for (int index = 0; index < fplArrayCount(gamepadStates.deviceStates); ++index) {
+			fplGamepadState *gamepadState = gamepadStates.deviceStates + index;
+			// ... do something with the gamepad state
+		}
+	}
+	@endcode
+
 	See @ref fplGamepadStates for more details.
 
 	@note use @ref fplGamepadState.isConnected to check if the gamepad is actually connected or not.
@@ -908,7 +1255,18 @@
 
 	Use @ref fplPollMouseState to poll the current mouse state.<br>
 	This state contains the state of all the buttons (Left, Right, Middle) and the position in pixels coordinates.<br>
-	<br>
+
+	@code{.c}
+	fplMouseState mouseState;
+	if (fplPollMouseState(&mouseState)) {
+		int mousePosX = mouseState.x;
+		int mousePosY = mouseState.y;
+		if (mouseState.buttonStates[fplMouseButtonType_Left] >= fplButtonState_Pressed) {
+			// Left mouse button down
+		}
+	}
+	@endcode
+
 	See @ref fplMouseState for more details.
 
 	@subsection subsection_category_input_polling_tips Tips
@@ -1045,7 +1403,7 @@
 	- Set the @ref fplOpenGLVideoSettings.majorVersion to 3 or higher
 	- Set the @ref fplOpenGLVideoSettings.minorVersion to 0 or higher
 	- Set the @ref fplOpenGLVideoSettings.compabilityFlags to either a @ref fplOpenGLCompabilityFlags_Core or @ref fplOpenGLCompabilityFlags_Compability
-	- Optionally add the fplOpenGLCompabilityFlags_Forward flag for removing obsolete functions
+	- Optionally add the @ref fplOpenGLCompabilityFlags_Forward flag for removing obsolete functions
 
 	@code{.c}
 	fplSettings settings;
@@ -1427,7 +1785,7 @@
 
 	Here you can see the full data-layout for a default/unaligned memory block:
 	
-	| 0/8 bytes                                    | 0/8 bytes                      | n-bytes                 |
+	| 0 or 4/8 bytes for x86/x64                   | 0 or 4/8 bytes for x86/x64     | n-bytes                 |
 	|----------------------------------------------|--------------------------------|-------------------------|
 	| **Optional size of the entire memory block** | **Optional padding**           | **Memory of the data**  |
 
@@ -1463,7 +1821,7 @@
 
 	Here you can see the full data-layout for a aligned memory block:
 	
-	| 8-bytes                         | Alignment * 2 bytes   | n-bytes                                                                       |
+	| 4/8 bytes for x86/x64           | Alignment * 2 bytes   | n-bytes                                                                       |
 	|---------------------------------|-----------------------|-------------------------------------------------------------------------------|
 	| **Address of the base-pointer** | **Alignment padding** | \ref subsection_category_memory_handling_normal_datalayout "Data layout"      |
 
@@ -1518,19 +1876,19 @@
 
 	FPL provides a few macro functions useful for dealing with memory:<br>
 	
-	| Name             | What it does                                               |
-    |------------------|------------------------------------------------------------|
-	| fplZeroInit      | Initializes a struct with zero                             |
-	| fplStructInit    | Initializes a struct with values                           |
-	| fplStructSet     | Overwrites a struct with the given value                   |
-	| fplClearStruct   | Clears the given struct pointer to zero                    |
-	| fplCopyStruct    | Copies the source struct data into the destination pointer |
-	| fplArrayCount    | Returns the number of elements in fixed sized array        |
-	| fplOffsetOf      | Returns the byte-offset to a field in a struct             |
-	| fplKiloBytes     | Converts the given kilobytes value into bytes              |
-	| fplMegaBytes     | Converts the given megabytes value into bytes              |
-	| fplGigaBytes     | Converts the given gigabytes value into bytes              |
-	| fplTeraBytes     | Converts the given terabytes value into bytes              |
+	| Name                | What it does                                               |
+    |---------------------|------------------------------------------------------------|
+	| @ref fplZeroInit    | Initializes a struct with zero                             |
+	| @ref fplStructInit  | Initializes a struct with values                           |
+	| @ref fplStructSet   | Overwrites a struct with the given value                   |
+	| @ref fplClearStruct | Clears the given struct pointer to zero                    |
+	| @ref fplCopyStruct  | Copies the source struct data into the destination pointer |
+	| @ref fplArrayCount  | Returns the number of elements in fixed sized array        |
+	| @ref fplOffsetOf    | Returns the byte-offset to a field in a struct             |
+	| @ref fplKiloBytes   | Converts the given kilobytes value into bytes              |
+	| @ref fplMegaBytes   | Converts the given megabytes value into bytes              |
+	| @ref fplGigaBytes   | Converts the given gigabytes value into bytes              |
+	| @ref fplTeraBytes   | Converts the given terabytes value into bytes              |
 */
 
 /*!
@@ -1826,6 +2184,284 @@
 	- @ref fplWriteFileBlock64()
 	- @ref fplGetFileSizeFromPath64()
 	- @ref fplGetFileSizeFromHandle64()
+*/
+
+/*!
+	@page page_category_io_paths Working with Paths/Files
+	@tableofcontents
+
+	@section section_category_io_paths_constants Path constants
+
+	FPL provides a couple of path constants you can use, if needed:<br>
+	| Name | Description |
+	|-|-|
+	| @ref FPL_MAX_PATH_LENGTH | Defines the maximum length of any path|
+	| @ref FPL_MAX_FILENAME_LENGTH | Defines the maximum length of a single filename without path|
+	| @ref FPL_PATH_SEPARATOR | Defines the path separator character|
+	| @ref FPL_FILE_EXT_SEPARATOR | Defines the file extension separator character|
+
+	@note All length constants includes the null-terminator character as well, so you dont have to add one to the length when using!
+
+	@section section_category_io_paths_utils Utilities
+
+	@subsection subsection_category_io_paths_utils_pathcombine Combining paths
+
+	Use @ref fplPathCombine() to combine multiple parts of a path to build one single path from it.<br>
+	Unlike the .NET version, this function requires you pass the number of parts you want to combine :-( If you know how get the number of variadic arguments (va_list) in C99, please contact me or write a github issue! Thanks.<br>
+
+	<b>Example:</b>
+	@code{.c}
+	const char *assetsRootPath = ...
+	char textureAssetFilePath[FPL_MAX_PATH_LENGTH];
+	if (fplPathCombine(textureAssetFilePath, fplArrayCount(textureAssetFilePath), 3, assetsRootPath, "textures", "mytexture.png") != fpl_null) {
+		// ... Do something with the textureAssetFilePath
+	}
+
+	char tempPath[1024];
+	fplPathCombine(tempPath, fplArrayCount(tempPath), 3, "One", "Another", "Last");
+	// POSIX tempPath = One/Another/Last
+	// Win32 tempPath = One\Another\Last
+	@endcode
+
+	@note This is the recommend way to construct any kind of paths, because it will handle path separators correctly.
+	@note This function is designed to be compatible with .NET <b>Path.Combine()</b>.
+	@warning Do not pass the wrong number of maximum arguments as third-argument, otherwise your application may end crash horribly.
+
+	@subsection subsection_category_io_paths_utils_extractfilepath Extracting the file path
+
+	Use @ref fplExtractFilePath() to extract the directory from the given path.<br>
+	<br>
+	Using this on a path with a file will extract the path where the file is stored.<br>
+	Using this on a directory path will extract the path of the parent directory.<br>
+
+	<b>Example:</b>
+	@code{.c}
+	const char *inputPath = ...
+	char newPath[FPL_MAX_PATH_LENGTH];
+	if (fplExtractFilePath(inputPath, &newPath, fplArrayCount(newPath)) != fpl_null) {
+		// ... Do something with the newPath
+	}
+	@endcode
+
+	@note This function is designed to be compatible with .NET <b>Path.GetDirectoryName()</b> or <b>ExtractFilePath()</b> on Delphi/FreePascal.<br>
+	@note The original path is not altered in any way, therefore the source argument is defined as const.
+	@warning Do not use manually constructed source paths with fixed path separators such as <b>/</b> or <b>\\</b>, otherwise you will lose platform independence! Use @ref fplPathCombine() to build new paths from multiple paths if needed.
+	@warning The return value of @ref fplExtractFilePath returns the pointer to the last-written character and <b>NOT</b> the pointer to the first character!
+
+	@subsection subsection_category_io_paths_utils_extractfilename Extracting the file name
+
+	Use @ref fplExtractFileName() to extract the filename from any path.<br>
+	Using this on a full or relative file-path will extract the name of the file.<br>
+	Using this on a directory path will extract the name of the last directory in the path.<br>
+
+	<b>Example:</b>
+	@code{.c}
+	const char *inputFilePath = ...
+	const char *fileName = fplExtractFileName(inputFilePath);
+
+	// ... Do something with the fileName
+
+	// Results:
+	// /my/path/to/the/file.ico -> file.ico
+	// /my/path/to/the/starting.file.ico -> starting.file.ico
+	// c:\Program Files (x86)\Xenorate\Xenorate.exe -> Xenorate.exe
+	// myAwesomeFilename.executable -> myAwesomeFilename.executable
+	// passthrough -> passthrough
+	// /my/path/to/the/ -> 
+	@endcode
+
+	@note This function is designed to be compatible with .NET <b>Path.GetFileName()</b> or <b>ExtractFileName()</b> on Delphi/FreePascal.<br>
+	@note The original path is not altered in any way, therefore the source argument is defined as const.
+	@warning Do not use manually constructed source paths with fixed path separators such as <b>/</b> or <b>\\</b>, otherwise you will lose platform independence! Use @ref fplPathCombine() to build new paths from multiple paths if needed.
+
+	@subsection subsection_category_io_paths_utils_extractfileext Extracting the file extension
+
+	Use @ref fplExtractFileExtension() to extract the file extension from a path.<br>
+	This will return anything starting from the last found file extension separator @ref FPL_FILE_EXT_SEPARATOR to the very end of path - containing the starting dot.<br>
+	Using this on a path or filename will get you just the file extension, if there is any.<br>
+
+	<b>Example:</b>
+	@code{.c}
+	const char *inputFilePath = ...
+	const char *fileExt = fplExtractFileExtension(inputFilePath);
+
+	// ... Do something with the fileExt
+
+	// Results:
+	// /my/path/to/the/file.ico -> .ico
+	// /my/path/to/the/starting.file.ico -> .file.ico
+	// c:\Program Files (x86)\Xenorate\Xenorate.exe -> .exe
+	// myAwesomeFilename.executable -> .executable
+	// /my/path/what.ever/libMyAwesome.so -> .so
+	// i_dont_have_any_dots_in_the_name -> 
+	@endcode
+
+	@note This function is designed to be compatible with .NET <b>Path.GetExtension()</b> or <b>ExtractFileExt()</b> on Delphi/FreePascal.<br>
+	@note The original path is not altered in any way, therefore the source argument is defined as const.
+	@warning Do not use manually constructed source paths with fixed path separators such as <b>/</b> or <b>\\</b>, otherwise you will lose platform independence! Use @ref fplPathCombine() to build new paths from multiple paths if needed.
+
+	@subsection subsection_category_io_paths_utils_changefileext Changing the file extension
+
+	Use @ref fplChangeFileExtension() to change/add a file extensions on a file path.<br>
+
+	<b>Example:</b>
+	@code{.c}
+	const char *inputFilePath = ...
+	char changedFileExt[FPL_MAX_PATH_LENGTH];
+	if (fplChangeFileExtension(inputFilePath, ".log", changedFileExt, fplArrayCount(changedFileExt)) != fpl_null) {
+		// ... Do something with the changedFileExt
+	}
+	@endcode
+
+	@note This function is designed to be compatible with .NET <b>Path.ChangeFileExtension()</b>.<br>
+	@note The original path is not altered in any way, therefore the source arguments are defined as const.
+	@warning Do not use manually constructed source paths with fixed path separators such as <b>/</b> or <b>\\</b>, otherwise you will lose platform independence! Use @ref fplPathCombine() to build new paths from multiple paths if needed.
+
+	@section section_category_io_paths_get Retrievement of paths
+
+	@subsection subsection_category_io_paths_get_home Getting the home directory path
+
+	Use @ref fplGetHomePath() to retrieve the home directory path for the current user.<br>
+	<br>
+	On a POSIX based system this will most likely return something like <b>&quot;/usr/home/the_username_in_question&quot;</b><br>
+	On a Win32 based system this will most likely return something like <b>&quot;c:\\Users\\TheUsernameInQuestion&quot;</b><br>
+
+	<b>Example:</b>
+	@code{.c}
+	char homePath[FPL_MAX_PATH_LENGTH];
+	fplGetHomePath(&homePath, fplArrayCount(homePath));
+	// ... Do something with the homePath
+	@endcode
+
+	@note There is no guarantee that this path ends with a trailing path separator, such as <b>/</b> on POSIX or <b>\\</b> on Win32! If needed use @ref fplEnforcePathSeparator to force a path separator on always.
+	@warning The return value of @ref fplGetHomePath returns the pointer to the last-written character and <b>NOT</b> the pointer to the first character!
+
+	@subsection subsection_category_io_paths_get_exepath Get executable file path
+
+	Use @ref fplGetExecutableFilePath() to retrieve the full-path to your current executable.<br>
+	<br>
+	On a POSIX based system this will most likely return something like <b>&quot;/some/path/../my_application&quot;</b><br>
+	On a Win32 based system this will most likely return something like <b>&quot;c:\\Some\\Path\\..\\MyApplication.exe&quot;</b><br>
+
+	<b>Example:</b>
+	@code{.c}
+	// Get executable file path
+	char exeFilePath[FPL_MAX_PATH_LENGTH];
+	fplGetExecutableFilePath(&exeFilePath, fplArrayCount(exeFilePath));
+
+	// Get executable directory path
+	char appPath[FPL_MAX_PATH_LENGTH];
+	if (fplExtractFilePath(exeFilePath, &appPath, fplArrayCount(appPath)) != fpl_null) {
+		// ... Do something with appPath
+	}
+	@endcode
+
+	@note There is no guarantee that this path ends with a trailing path separator, such as <b>/</b> on POSIX or <b>\\</b> on Win32! If needed use @ref fplEnforcePathSeparator to force a path separator on always.
+	@note The name of the executable is always included in the path and will contain the file extension, if there is one.
+	@warning The return value of @ref fplExtractFilePath returns the pointer to the last-written character and <b>NOT</b> the pointer to the first character!
+
+	@section section_category_io_paths_traversing Directory Traversing
+
+	FPL provides a powerful and easy directory traversal api, to find either files, directories or both using a wildcard matching system.
+
+	@subsection subsection_category_io_paths_traversing_findfiles Finding files by wildcard
+
+	Use @ref fplListDirBegin() to start finding files in a path.<br>
+	If this function succeeds, the result for the first match is written into the @ref fplFileEntry structure.<br>
+	<br>
+	After this you repeatly call @ref fplListDirNext(), to get the next match into @ref fplFileEntry structure - until the function returns false.<br>
+
+	<b>Example:</b>
+	@code{.c}
+	const char *sourcePath = ...
+	fplFileEntry fileEntry;
+	size_t fileCount = 0;
+
+	// Find all .so files (For-loop style)
+	fileCount = 0;
+	for(bool hasEntry = fplListDirBegin(sourcePath, "*.so", &entry); hasEntry; hasEntry = fplListDirNext(&entry)) {
+		// ... do something with entry.name
+		++fileCount;
+	}
+
+	// Find all .so files (While style)
+	fileCount = 0;
+	if (fplListDirBegin(sourcePath, "*.so", &entry)) {
+		// The first file was found
+		// ... do something with entry.name
+		++fileCount;
+
+		// Loop until no file is found
+		while (fplListDirNext(&entry)) {
+			// ... do something with entry.name
+			++fileCount;
+		}
+	}
+
+	// Find all .so files (For-loop style, break out after reaching a limit of maximum allowed files)
+	size_t maxFileCount = ...
+	fileCount = 0;
+	for(bool hasEntry = fplListDirBegin(sourcePath, "*.so", &entry); hasEntry; hasEntry = fplListDirNext(&entry)) {
+		if (fileCount < maxFileCount) {
+			// ... do something with entry.name
+		} else {
+			// Release resources, when we exit out the iteration
+			fplListDirEnd(&entry);
+			break;
+		}
+		++fileCount;
+	}
+	@endcode
+
+	@note When @ref fplListDirBegin or @ref fplListDirNext does not find any match, the internal resources are released automatically.
+	@warning If you manually stop the iteration, please call @ref fplListDirEnd() to release its internal resources - otherwise you may leak memory!
+
+	@subsection subsection_category_io_paths_traversing_traversefiles Recursively get all files in a directory
+
+	There is no recursion support built-in in FPL, but you can easily make one using @ref fplListDirBegin() .<br>
+	Just iterate through the file entries, which are already explained in here: @ref subsection_category_io_paths_traversing_findfiles <br>
+	You can check @ref fplFileEntry.type ,to check for either a @ref fplFileEntryType_Directory or a @ref fplFileEntryType_File type to start a recursion or not.<br>
+
+	<b>Example:</b>
+	@code{.c}
+
+	// Some existing awesome file-list container api
+	typedef struct file_list_t {
+		size_t capacity;
+		size_t count;
+		char **items;
+	} file_list_t;
+	void init_file_list(file_list_t *outList);
+	void free_file_list(file_list_t *outList);
+	void push_file_list_item(file_list_t *outList, const char *item);
+
+	static void GetFilesFromDirectory(const char *rootPath, const bool recursive, file_list_t *outList) {
+		fplEntry entry;
+		for(bool hasEntry = fplListDirBegin(rootPath, "*", &entry); hasEntry; hasEntry = fplListDirNext(&entry)) {
+			char path[FPL_MAX_PATH_LENGTH];
+			fplPathCombine(path, fplArrayCount(path), 2, rootPath, entry.name);
+			if (entry.type == fplFileEntryType_Directory && recursive) {
+				GetFilesFromDirectory(path, true, outList);
+			} else if (entry.type == fplFileEntryType_File) {
+				push_file_list_item(outList, path);
+			}
+		}
+		return(result);
+	}
+
+	int main(int argc, char **argv) {
+		if (argc < 2) {
+			return 1; 
+		}
+		const char *rootPath = argv[1];
+		file_list_t outFileList;
+		init_file_list(&outFileList);
+		GetFilesFromDirectory(rootPath, true, &outFileList);
+		// ... do someting with out file list
+		free_file_list(&outFileList);
+		return 0;
+	}
+	@endcode
 */
 
 /*!
@@ -2520,25 +3156,33 @@
 */
 
 /*!
-	@page page_contribute Contribute
+	@page page_contribute How to contribute to FPL
 	@tableofcontents
 
-	<b>I am happy that you want to support this project!</b><br>
-	<br>
-	Right know I am creating this project alone, so I really appreciate any kind of contributions.<br>
-	<br>
-	So there are several ways to help this project:<br>
-	- Test the library for any hardware/platform/compiler configuration you have access to and report the result -> This helps the most!
-	- Report any bugs you find
-	- Help me to improve this documentation by checking for typos, errors, etc.
-	- Send in pull-requests
-	- Write new demos/samples/examples
-	- Recommend this project
-	- **Send in feedback** -> https://fpl.handmade.network/forums
+	@section section_contribute_time Give time
 
-	And lastly if you want to contact me for another reason, just drop a message in some way (Github issue, Private message, Mail, Community etc.).<br>
-	<br>
-	Thanks for using!<br>
+	If you have time, i welcome your help in various areas:<br>
+	- **Programmers**: Write demos, help me in fixing bugs, introduce new platforms, etc.
+	- **Writers**: Improve of the documentation
+	- **Testing**: Test FPL on different platforms/compilers
+	- **Report bugs**: Report bugs (https://github.com/f1nalspace/final_game_tech/issues)
+	- **Send in feedback**: Write feedback, post ideas (https://fpl.handmade.network/forums)
+
+	@section section_contribute_donate Donate money
+
+	FPL is a one-man project, so i really appreciate any kind of financial support.
+
+	@subsection subsection_contribute_donate_needs What are the financial needs of FPL?
+	- Maintaining the official webpage (https://libfpl.org)
+	- Extending the Jetbrains CLion license
+	- Buying hardware for developing and testing purposes (Computers, Soundcards, etc.)
+
+	@subsection subsection_contribute_donate_donate Donate to FPL
+
+	You can donate money to the projects own paypal account. There is no minimal amount for your donation.<br>
+	Below you can find buttons which takes you to the secure paypal web site.
+
+	https://www.paypal.com
 */
 
 /*!
@@ -2886,8 +3530,7 @@
 	#include "final_platform_layer.h"
 
 	// You have to include GL.h yourself or use any other opengl loader you want.
-	// This library just creates a opengl rendering context for you, but nothing more.
-	// GL.h will only be included when FPL_IMPLEMENTATION is set!
+	// FPL just creates a opengl rendering context for you, but nothing more.
 	#include <GL\GL.h>
 
 	int main(int argc, char **argv) {
@@ -2926,45 +3569,303 @@
 	@section section_maincpp3 main.cpp
 
 	@code{.c}
-	#define FPL_IMPLEMENTATION
-	#include "final_platform_layer.h"
+		#define FPL_IMPLEMENTATION
+		#define FPL_NO_VIDEO_SOFTWARE
+		#define FPL_NO_AUDIO
+		#include <final_platform_layer.h>
 
-	// You have to include GL.h yourself or use any other opengl loader you want.
-	// This library just creates a opengl rendering context for you, but nothing more.
-	// GL.h will only be included when FPL_IMPLEMENTATION is set!
-	#include <GL\GL.h>
+		// You have to include GL.h yourself or use any other opengl loader you want.
+		// FPL just creates a opengl rendering context for you, but nothing more.
+		#include <GL/gl.h>
 
-	int main(int argc, char **argv) {
-		int result = 0;
+		#ifndef APIENTRY
+		#define APIENTRY
+		#endif
+		#define APIENTRYP APIENTRY *
 
-		// Legacy opengl is default, so we force it to be forward or backward compability
-		fplSettings settings;
-		fplSetDefaultSettings(&settings);
-		settings.video.driver = fplVideoDriverType_OpenGL;
-		settings.video.opengl.compabilityFlags = fplOpenGLCompabilityFlags_Core;
-		settings.video.opengl.majorVersion = 3;
-		settings.video.opengl.minorVersion = 3;
-		if (fplPlatformInit(fplInitFlags_Video, &settings)) {
+		#include <stddef.h>
+		typedef ptrdiff_t GLsizeiptr;
+		typedef ptrdiff_t GLintptr;
+		typedef char GLchar;
+
+		#ifndef GL_CONTEXT_PROFILE_MASK
+
+		#define GL_CONTEXT_PROFILE_MASK           0x9126
+		#define GL_CONTEXT_FLAGS                  0x821E
+
+		#define GL_CONTEXT_FLAG_FORWARD_COMPATIBLE_BIT	0x0001
+		#define GL_CONTEXT_FLAG_DEBUG_BIT				0x00000002
+		#define GL_CONTEXT_FLAG_ROBUST_ACCESS_BIT		0x00000004
+		#define GL_CONTEXT_FLAG_NO_ERROR_BIT			0x00000008
+		#define GL_CONTEXT_CORE_PROFILE_BIT				0x00000001
+		#define GL_CONTEXT_COMPATIBILITY_PROFILE_BIT	0x00000002
+
+		#endif // GL_CONTEXT_PROFILE_MASK
+
+		#define GL_COMPILE_STATUS                 0x8B81
+		#define GL_INFO_LOG_LENGTH                0x8B84
+		#define GL_FRAGMENT_SHADER                0x8B30
+		#define GL_VERTEX_SHADER                  0x8B31
+		#define GL_SHADING_LANGUAGE_VERSION       0x8B8C
+		#define GL_LINK_STATUS                    0x8B82
+		#define GL_STATIC_DRAW                    0x88E4
+
+		typedef GLuint(APIENTRYP PFNGLCREATESHADERPROC) (GLenum type);
+		typedef void (APIENTRYP PFNGLSHADERSOURCEPROC) (GLuint shader, GLsizei count, const GLchar *const*string, const GLint *length);
+		typedef void (APIENTRYP PFNGLCOMPILESHADERPROC) (GLuint shader);
+		typedef void (APIENTRYP PFNGLGETSHADERIVPROC) (GLuint shader, GLenum pname, GLint *params);
+		typedef void (APIENTRYP PFNGLATTACHSHADERPROC) (GLuint program, GLuint shader);
+		typedef GLuint(APIENTRYP PFNGLCREATEPROGRAMPROC) (void);
+		typedef void (APIENTRYP PFNGLGETSHADERINFOLOGPROC) (GLuint shader, GLsizei bufSize, GLsizei *length, GLchar *infoLog);
+		typedef void (APIENTRYP PFNGLLINKPROGRAMPROC) (GLuint program);
+		typedef void (APIENTRYP PFNGLVALIDATEPROGRAMPROC) (GLuint program);
+		typedef void (APIENTRYP PFNGLGETPROGRAMIVPROC) (GLuint program, GLenum pname, GLint *params);
+		typedef void (APIENTRYP PFNGLGETPROGRAMINFOLOGPROC) (GLuint program, GLsizei bufSize, GLsizei *length, GLchar *infoLog);
+		typedef void (APIENTRYP PFNGLDELETESHADERPROC) (GLuint shader);
+		typedef void (APIENTRYP PFNGLUSEPROGRAMPROC) (GLuint program);
+
+		static PFNGLCREATESHADERPROC glCreateShader = NULL;
+		static PFNGLSHADERSOURCEPROC glShaderSource = NULL;
+		static PFNGLCOMPILESHADERPROC glCompileShader = NULL;
+		static PFNGLGETSHADERIVPROC glGetShaderiv = NULL;
+		static PFNGLATTACHSHADERPROC glAttachShader = NULL;
+		static PFNGLCREATEPROGRAMPROC glCreateProgram = NULL;
+		static PFNGLGETSHADERINFOLOGPROC glGetShaderInfoLog = NULL;
+		static PFNGLLINKPROGRAMPROC glLinkProgram = NULL;
+		static PFNGLVALIDATEPROGRAMPROC glValidateProgram = NULL;
+		static PFNGLGETPROGRAMIVPROC glGetProgramiv = NULL;
+		static PFNGLGETPROGRAMINFOLOGPROC glGetProgramInfoLog = NULL;
+		static PFNGLDELETESHADERPROC glDeleteShader = NULL;
+		static PFNGLUSEPROGRAMPROC glUseProgram = NULL;
+
+		#define GL_ARRAY_BUFFER                   0x8892
+
+		typedef void (APIENTRYP PFNGLGENVERTEXARRAYSPROC) (GLsizei n, GLuint *arrays);
+		typedef void (APIENTRYP PFNGLBINDVERTEXARRAYPROC) (GLuint array);
+		typedef void (APIENTRYP PFNGLGENBUFFERSPROC) (GLsizei n, GLuint *buffers);
+		typedef void (APIENTRYP PFNGLBINDBUFFERPROC) (GLenum target, GLuint buffer);
+		typedef void (APIENTRYP PFNGLBUFFERDATAPROC) (GLenum target, GLsizeiptr size, const void *data, GLenum usage);
+		typedef void (APIENTRYP PFNGLENABLEVERTEXATTRIBARRAYPROC) (GLuint index);
+		typedef void (APIENTRYP PFNGLDISABLEVERTEXATTRIBARRAYPROC) (GLuint index);
+		typedef void (APIENTRYP PFNGLVERTEXATTRIBPOINTERPROC) (GLuint index, GLint size, GLenum type, GLboolean normalized, GLsizei stride, const void *pointer);
+		typedef void (APIENTRYP PFNGLDELETEVERTEXARRAYSPROC) (GLsizei n, const GLuint *arrays);
+
+		static PFNGLGENVERTEXARRAYSPROC glGenVertexArrays = NULL;
+		static PFNGLBINDVERTEXARRAYPROC glBindVertexArray = NULL;
+		static PFNGLGENBUFFERSPROC glGenBuffers = NULL;
+		static PFNGLBINDBUFFERPROC glBindBuffer = NULL;
+		static PFNGLBUFFERDATAPROC glBufferData = NULL;
+		static PFNGLENABLEVERTEXATTRIBARRAYPROC glEnableVertexAttribArray = NULL;
+		static PFNGLDISABLEVERTEXATTRIBARRAYPROC glDisableVertexAttribArray = NULL;
+		static PFNGLVERTEXATTRIBPOINTERPROC glVertexAttribPointer = NULL;
+		static PFNGLDELETEVERTEXARRAYSPROC glDeleteVertexArrays = NULL;
+
+		#if defined(FPL_PLATFORM_WINDOWS)
+		static void *GLProcAddress(const char *name) {
+			fpl__VideoState *videoState = (fpl__VideoState *)fpl__global__AppState->video.mem;
+			fplAssert(videoState != NULL);
+			fplAssert(videoState->win32.opengl.api.wglGetProcAddress != NULL);
+			void *result = videoState->win32.opengl.api.wglGetProcAddress(name);
+			return(result);
+		}
+		#else
+		static void *GLProcAddress(const char *name) {
+			fpl__VideoState *videoState = (fpl__VideoState *)fpl__global__AppState->video.mem;
+			fplAssert(videoState != NULL);
+			fplAssert(videoState->x11.opengl.api.glXGetProcAddress != NULL);
+			void *result = videoState->x11.opengl.api.glXGetProcAddress((const GLubyte *)name);
+			return(result);
+		}
+		#endif
+
+		static void LoadGLExtensions() {
+			glCreateShader = (PFNGLCREATESHADERPROC)GLProcAddress("glCreateShader");
+			glShaderSource = (PFNGLSHADERSOURCEPROC)GLProcAddress("glShaderSource");
+			glCompileShader = (PFNGLCOMPILESHADERPROC)GLProcAddress("glCompileShader");
+			glGetShaderiv = (PFNGLGETSHADERIVPROC)GLProcAddress("glGetShaderiv");
+			glAttachShader = (PFNGLATTACHSHADERPROC)GLProcAddress("glAttachShader");
+			glCreateProgram = (PFNGLCREATEPROGRAMPROC)GLProcAddress("glCreateProgram");
+			glGetShaderInfoLog = (PFNGLGETSHADERINFOLOGPROC)GLProcAddress("glGetShaderInfoLog");
+			glLinkProgram = (PFNGLLINKPROGRAMPROC)GLProcAddress("glLinkProgram");
+			glValidateProgram = (PFNGLVALIDATEPROGRAMPROC)GLProcAddress("glValidateProgram");
+			glGetProgramiv = (PFNGLGETPROGRAMIVPROC)GLProcAddress("glGetProgramiv");
+			glGetProgramInfoLog = (PFNGLGETPROGRAMINFOLOGPROC)GLProcAddress("glGetProgramInfoLog");
+			glDeleteShader = (PFNGLDELETESHADERPROC)GLProcAddress("glDeleteShader");
+			glUseProgram = (PFNGLUSEPROGRAMPROC)GLProcAddress("glUseProgram");
+
+			glGenVertexArrays = (PFNGLGENVERTEXARRAYSPROC)GLProcAddress("glGenVertexArrays");
+			glBindVertexArray = (PFNGLBINDVERTEXARRAYPROC)GLProcAddress("glBindVertexArray");
+			glGenBuffers = (PFNGLGENBUFFERSPROC)GLProcAddress("glGenBuffers");
+			glBindBuffer = (PFNGLBINDBUFFERPROC)GLProcAddress("glBindBuffer");
+			glBufferData = (PFNGLBUFFERDATAPROC)GLProcAddress("glBufferData");
+			glEnableVertexAttribArray = (PFNGLENABLEVERTEXATTRIBARRAYPROC)GLProcAddress("glEnableVertexAttribArray");
+			glDisableVertexAttribArray = (PFNGLENABLEVERTEXATTRIBARRAYPROC)GLProcAddress("glDisableVertexAttribArray");
+			glVertexAttribPointer = (PFNGLVERTEXATTRIBPOINTERPROC)GLProcAddress("glVertexAttribPointer");
+			glDeleteVertexArrays = (PFNGLDELETEVERTEXARRAYSPROC)GLProcAddress("glDeleteVertexArrays");
+		}
+
+		#define MODERN_OPENGL 1
+
+		static GLuint CreateShaderType(GLenum type, const char *source) {
+			GLuint shaderId = glCreateShader(type);
+
+			glShaderSource(shaderId, 1, &source, NULL);
+			glCompileShader(shaderId);
+
+			char info[1024 * 10] = fplZeroInit;
+
+			GLint compileResult;
+			glGetShaderiv(shaderId, GL_COMPILE_STATUS, &compileResult);
+			if(!compileResult) {
+				GLint infoLen;
+				glGetShaderiv(shaderId, GL_INFO_LOG_LENGTH, &infoLen);
+				fplAssert(infoLen <= fplArrayCount(info));
+				glGetShaderInfoLog(shaderId, infoLen, &infoLen, info);
+				fplConsoleFormatError("Failed compiling %s shader!\n", (type == GL_VERTEX_SHADER ? "vertex" : "fragment"));
+				fplConsoleFormatError("%s\n", info);
+			}
+
+			return(shaderId);
+		}
+
+		static GLuint CreateShaderProgram(const char *name, const char *vertexSource, const char *fragmentSource) {
+			GLuint programId = glCreateProgram();
+
+			GLuint vertexShader = CreateShaderType(GL_VERTEX_SHADER, vertexSource);
+			GLuint fragmentShader = CreateShaderType(GL_FRAGMENT_SHADER, fragmentSource);
+
+			glAttachShader(programId, vertexShader);
+			glAttachShader(programId, fragmentShader);
+			glLinkProgram(programId);
+			glValidateProgram(programId);
+
+			char info[1024 * 10] = fplZeroInit;
+
+			GLint linkResult;
+			glGetProgramiv(programId, GL_LINK_STATUS, &linkResult);
+			if(!linkResult) {
+				GLint infoLen;
+				glGetProgramiv(programId, GL_INFO_LOG_LENGTH, &infoLen);
+				fplAssert(infoLen <= fplArrayCount(info));
+				glGetProgramInfoLog(programId, infoLen, &infoLen, info);
+				fplConsoleFormatError("Failed linking '%s' shader!\n", name);
+				fplConsoleFormatError("%s\n", info);
+			}
+
+			glDeleteShader(fragmentShader);
+			glDeleteShader(vertexShader);
+
+			return(programId);
+		}
+
+		static bool RunModern() {
+			LoadGLExtensions();
+
+			GLuint vertexArrayID;
+			glGenVertexArrays(1, &vertexArrayID);
+			glBindVertexArray(vertexArrayID);
+
+			const char *glslVersion = (const char *)glGetString(GL_SHADING_LANGUAGE_VERSION);
+			fplConsoleFormatOut("OpenGL GLSL Version %s:\n", glslVersion);
+
+			int profileMask;
+			int contextFlags;
+			glGetIntegerv(GL_CONTEXT_PROFILE_MASK, &profileMask);
+			glGetIntegerv(GL_CONTEXT_FLAGS, &contextFlags);
+			fplConsoleFormatOut("OpenGL supported profiles:\n");
+			fplConsoleFormatOut("\tCore: %s\n", ((profileMask & GL_CONTEXT_CORE_PROFILE_BIT) ? "yes" : "no"));
+			fplConsoleFormatOut("\tForward: %s\n", ((contextFlags & GL_CONTEXT_FLAG_FORWARD_COMPATIBLE_BIT) ? "yes" : "no"));
+
+			fplConsoleOut("Running modern opengl\n");
+
+			const char vertexSource[] = {
+				"#version 330 core\n"
+				"\n"
+				"layout(location = 0) in vec4 inPosition;\n"
+				"\n"
+				"void main() {\n"
+				"\tgl_Position = inPosition;\n"
+				"}\n"
+			};
+
+			const char fragmentSource[] = {
+				"#version 330 core\n"
+				"\n"
+				"layout(location = 0) out vec4 outColor;\n"
+				"\n"
+				"void main() {\n"
+				"\toutColor = vec4(1.0, 0.0, 0.0, 1.0);\n"
+				"}\n"
+			};
+
+			GLuint shaderProgram = CreateShaderProgram("Test", vertexSource, fragmentSource);
+
+			float vertices[] = {
+				0.0f, 0.5f,
+				-0.5f, -0.5f,
+				0.5f, -0.5f
+			};
+			GLuint buffer;
+			glGenBuffers(1, &buffer);
+			glBindBuffer(GL_ARRAY_BUFFER, buffer);
+			glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
+			glBindBuffer(GL_ARRAY_BUFFER, 0);
+
+			glUseProgram(shaderProgram);
+
+			glBindBuffer(GL_ARRAY_BUFFER, buffer);
+			glEnableVertexAttribArray(0);
+			glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(float) * 2, NULL);
+
 			glClearColor(0.39f, 0.58f, 0.93f, 1.0f);
-			while (fplWindowUpdate()) {
+			while(fplWindowUpdate()) {
 				fplEvent ev;
-				while (fplPollEvent(&ev)) {}
+				while(fplPollEvent(&ev)) {}
 
-				fplWindowSize windowArea = fplGetWindowArea();
+				fplWindowSize windowArea;
+				fplGetWindowSize(&windowArea);
 				glViewport(0, 0, windowArea.width, windowArea.height);
+
 				glClear(GL_COLOR_BUFFER_BIT);
 
-				// Your code using modern opengl (VBO, IBO, VAO, GLSL, etc.)
+				glDrawArrays(GL_TRIANGLES, 0, 3);
 
 				fplVideoFlip();
 			}
-			fplPlatformRelease();
-			result = 0;
-		} else {
-			result = -1;
+
+			glDisableVertexAttribArray(0);
+			glBindBuffer(GL_ARRAY_BUFFER, 0);
+
+			glBindVertexArray(0);
+			glDeleteVertexArrays(1, &vertexArrayID);
+
+			return true;
 		}
-		return(result);
-	}
+
+		int main(int argc, char **args) {
+			int result = 0;
+			fplSettings settings = fplMakeDefaultSettings();
+			settings.video.driver = fplVideoDriverType_OpenGL;
+			fplCopyString("FPL Modern OpenGL", settings.window.title, fplArrayCount(settings.window.title));
+			settings.video.graphics.opengl.compabilityFlags = fplOpenGLCompabilityFlags_Core;
+			settings.video.graphics.opengl.majorVersion = 3;
+			settings.video.graphics.opengl.minorVersion = 3;
+			settings.video.graphics.opengl.multiSamplingCount = 4;
+			if(fplPlatformInit(fplInitFlags_Video, &settings)) {
+				const char *version = (const char *)glGetString(GL_VERSION);
+				const char *vendor = (const char *)glGetString(GL_VENDOR);
+				const char *renderer = (const char *)glGetString(GL_RENDERER);
+				fplConsoleFormatOut("OpenGL version: %s\n", version);
+				fplConsoleFormatOut("OpenGL vendor: %s\n", vendor);
+				fplConsoleFormatOut("OpenGL renderer: %s\n", renderer);
+				RunModern();
+				fplPlatformRelease();
+				result = 0;
+			} else {
+				result = -1;
+			}
+			return(result);
+		}
 	@endcode
 
 */

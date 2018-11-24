@@ -9,7 +9,10 @@ Description:
 	This file is part of the final_framework.
 
 Changelog:
-	2018-08-09:
+	## 2018-10-22
+	- Reflect api changes in FPL 0.9.3
+
+	## 2018-08-09:
 	- Fixed WasPressed() was not working reliably (defaultControllerIndex issue)
     - Fixed controller swapping was not working properly
 
@@ -244,7 +247,7 @@ static void ProcessEvents(Input *currentInput, Input *prevInput, GameWindowActiv
 						if(wasDown) {
 							if(event.keyboard.mappedKey == fplKey_F) {
 								bool wasFullscreen = fplIsWindowFullscreen();
-								fplSetWindowFullscreen(!wasFullscreen, 0, 0, 0);
+								fplSetWindowFullscreenSize(!wasFullscreen, 0, 0, 0);
 							}
 						}
 					} break;
@@ -271,7 +274,7 @@ extern int GameMain(const GameConfiguration &config) {
 	settings.video.driver = fplVideoDriverType_OpenGL;
 	settings.video.graphics.opengl.compabilityFlags = fplOpenGLCompabilityFlags_Legacy;
 	settings.video.isVSync = true;
-	fplCopyString(config.title, settings.window.windowTitle, fplArrayCount(settings.window.windowTitle));
+	fplCopyString(config.title, settings.window.title, fplArrayCount(settings.window.title));
 
 	if(!fplPlatformInit(fplInitFlags_All, &settings)) {
 		return -1;
@@ -344,7 +347,7 @@ extern int GameMain(const GameConfiguration &config) {
 		while(!IsGameExiting(gameMem) && fplWindowUpdate()) {
 			// Window size
 			fplWindowSize winArea;
-			if(fplGetWindowArea(&winArea)) {
+			if(fplGetWindowSize(&winArea)) {
 				newInput->windowSize.x = winArea.width;
 				newInput->windowSize.y = winArea.height;
 			}

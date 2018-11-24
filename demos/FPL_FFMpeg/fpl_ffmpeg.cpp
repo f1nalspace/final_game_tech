@@ -17,6 +17,9 @@ Author:
 	Torsten Spaete
 
 Changelog:
+	## 2018-10-22
+	- Reflect api changes in FPL 0.9.3
+
 	## 2018-09-24
 	- Changed all inline functions to static
 	- Reflect api changes in FPL 0.9.2
@@ -1781,10 +1784,10 @@ static void SeekStream(SeekState *state, int64_t pos, int64_t rel, bool seekInBy
 
 static void ToggleFullscreen(PlayerState *state) {
 	if (state->isFullscreen) {
-		fplSetWindowFullscreen(false, 0, 0, 0);
+		fplSetWindowFullscreenSize(false, 0, 0, 0);
 		state->isFullscreen = false;
 	} else {
-		state->isFullscreen = fplSetWindowFullscreen(true, 0, 0, 0);
+		state->isFullscreen = fplSetWindowFullscreenSize(true, 0, 0, 0);
 	}
 }
 
@@ -2698,7 +2701,7 @@ int main(int argc, char **argv) {
 
 	fplSettings settings = fplMakeDefaultSettings();
 
-	fplCopyString("FPL FFmpeg Demo", settings.window.windowTitle, fplArrayCount(settings.window.windowTitle));
+	fplCopyString("FPL FFmpeg Demo", settings.window.title, fplArrayCount(settings.window.title));
 #if USE_HARDWARE_RENDERING
 	settings.video.driver = fplVideoDriverType_OpenGL;
 	settings.video.graphics.opengl.compabilityFlags = fplOpenGLCompabilityFlags_Core;
@@ -2745,7 +2748,7 @@ int main(int argc, char **argv) {
 	state.isInfiniteBuffer = state.settings.isInfiniteBuffer;
 	state.loop = state.settings.isLoop ? 1 : 0;
 
-	fplAssert(fplGetWindowArea(&state.viewport));
+	fplGetWindowSize(&state.viewport);
 
 	// Load media
 	if (!LoadMedia(state, mediaFilePath, nativeAudioFormat)) {

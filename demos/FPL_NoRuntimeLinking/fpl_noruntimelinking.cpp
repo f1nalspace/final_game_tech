@@ -14,6 +14,9 @@ Author:
 	Torsten Spaete
 
 Changelog:
+	## 2018-10-22
+	- Reflect api changes in FPL 0.9.3
+
 	## 2018-10-01
 	- Initial version
 -------------------------------------------------------------------------------
@@ -25,7 +28,7 @@ Changelog:
 
 int main(int argc, char **args) {
 	fplSettings settings = fplMakeDefaultSettings();
-	fplCopyString("No Runtime Linking", settings.window.windowTitle, fplArrayCount(settings.window.windowTitle) - 1);
+	fplCopyString("No Runtime Linking", settings.window.title, fplArrayCount(settings.window.title));
 	settings.video.driver = fplVideoDriverType_Software;
 	settings.video.isAutoSize = true;
 	if (fplPlatformInit(fplInitFlags_Video, &settings)) {
