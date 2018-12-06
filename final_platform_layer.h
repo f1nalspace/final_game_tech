@@ -154,6 +154,7 @@ SOFTWARE.
 	- New: Added fplGetDisplayModeCount()
 	- New: Added fplGetDisplayModes()
 	- New: Added fplGetWindowTitle()
+	- New: Added docs back-references from atomic functions
 
 	- Changed: [Win32] fplSetWindowFullscreenSize does not use virtual screen coordinates anymore
 	- Changed: [Win32/POSIX] Store filename in fplFileEntry instead of the full path
@@ -1971,6 +1972,7 @@ struct IUnknown;
 /**
   * @defgroup Atomics Atomic operations
   * @brief This category contains functions for handling atomic operations, such as Add, Compare And/Or Exchange, Fences, Loads/Stores, etc.
+  * @see @ref page_category_threading_atomics
   * @{
   */
 // ----------------------------------------------------------------------------
@@ -1978,16 +1980,19 @@ struct IUnknown;
 /**
   * @brief Inserts a memory read fence/barrier.
   * @note This will complete previous reads before future reads and prevents the compiler from reordering memory reads across this fence.
+  * @see @ref section_category_threading_atomics_barriers
   */
 fpl_platform_api void fplAtomicReadFence();
 /**
   * @brief Inserts a memory write fence/barrier.
   * @note This will complete previous writes before future writes and prevents the compiler from reordering memory writes across this fence.
+  * @see @ref section_category_threading_atomics_barriers
   */
 fpl_platform_api void fplAtomicWriteFence();
 /**
   * @brief Inserts a memory read/write fence/barrier.
   * @note This will complete previous reads/writes before future reads/writes and prevents the compiler from reordering memory access across this fence.
+  * @see @ref section_category_threading_atomics_barriers
   */
 fpl_platform_api void fplAtomicReadWriteFence();
 
@@ -1997,6 +2002,7 @@ fpl_platform_api void fplAtomicReadWriteFence();
   * @param value The source value used for exchange
   * @return Returns the initial value before the replacement.
   * @note Ensures that memory operations are completed in order.
+  * @see @ref category_threading_atomics_exchange
   */
 fpl_platform_api uint32_t fplAtomicExchangeU32(volatile uint32_t *target, const uint32_t value);
 /**
@@ -2005,6 +2011,7 @@ fpl_platform_api uint32_t fplAtomicExchangeU32(volatile uint32_t *target, const 
   * @param value The source value used for exchange
   * @return Returns the initial value before the replacement.
   * @note Ensures that memory operations are completed in order.
+  * @see @ref category_threading_atomics_exchange
   */
 fpl_platform_api uint64_t fplAtomicExchangeU64(volatile uint64_t *target, const uint64_t value);
 /**
@@ -2013,6 +2020,7 @@ fpl_platform_api uint64_t fplAtomicExchangeU64(volatile uint64_t *target, const 
   * @param value The source value used for exchange
   * @return Returns the initial value before the replacement.
   * @note Ensures that memory operations are completed in order.
+  * @see @ref category_threading_atomics_exchange
   */
 fpl_platform_api int32_t fplAtomicExchangeS32(volatile int32_t *target, const int32_t value);
 /**
@@ -2021,6 +2029,7 @@ fpl_platform_api int32_t fplAtomicExchangeS32(volatile int32_t *target, const in
   * @param value The source value used for exchange
   * @return Returns the initial value before the replacement.
   * @note Ensures that memory operations are completed in order.
+  * @see @ref category_threading_atomics_exchange
   */
 fpl_platform_api int64_t fplAtomicExchangeS64(volatile int64_t *target, const int64_t value);
 /**
@@ -2029,6 +2038,7 @@ fpl_platform_api int64_t fplAtomicExchangeS64(volatile int64_t *target, const in
   * @param value The source value used for exchange
   * @return Returns the initial value before the replacement.
   * @note Ensures that memory operations are completed in order.
+  * @see @ref category_threading_atomics_exchange
   */
 fpl_common_api void *fplAtomicExchangePtr(volatile void **target, const void *value);
 /**
@@ -2037,6 +2047,7 @@ fpl_common_api void *fplAtomicExchangePtr(volatile void **target, const void *va
   * @param value The source value used for exchange
   * @return Returns the initial value before the replacement.
   * @note Ensures that memory operations are completed in order.
+  * @see @ref category_threading_atomics_exchange
   */
 fpl_common_api size_t fplAtomicExchangeSize(volatile size_t *target, const size_t value);
 
@@ -2046,6 +2057,7 @@ fpl_common_api size_t fplAtomicExchangeSize(volatile size_t *target, const size_
   * @param addend The value used for adding
   * @return Returns the initial value before the append.
   * @note Ensures that memory operations are completed in order.
+  * @see @ref category_threading_atomics_add
   */
 fpl_platform_api uint32_t fplAtomicFetchAndAddU32(volatile uint32_t *value, const uint32_t addend);
 /**
@@ -2054,6 +2066,7 @@ fpl_platform_api uint32_t fplAtomicFetchAndAddU32(volatile uint32_t *value, cons
   * @param addend The value used for adding
   * @return Returns the initial value before the append.
   * @note Ensures that memory operations are completed in order.
+  * @see @ref category_threading_atomics_add
   */
 fpl_platform_api uint64_t fplAtomicFetchAndAddU64(volatile uint64_t *value, const uint64_t addend);
 /**
@@ -2062,6 +2075,7 @@ fpl_platform_api uint64_t fplAtomicFetchAndAddU64(volatile uint64_t *value, cons
   * @param addend The value used for adding
   * @return Returns the initial value before the append.
   * @note Ensures that memory operations are completed in order.
+  * @see @ref category_threading_atomics_add
   */
 fpl_platform_api int32_t fplAtomicFetchAndAddS32(volatile int32_t *value, const int32_t addend);
 /**
@@ -2070,6 +2084,7 @@ fpl_platform_api int32_t fplAtomicFetchAndAddS32(volatile int32_t *value, const 
   * @param addend The value used for adding
   * @return Returns the initial value before the append.
   * @note Ensures that memory operations are completed in order.
+  * @see @ref category_threading_atomics_add
   */
 fpl_platform_api int64_t fplAtomicFetchAndAddS64(volatile int64_t *value, const int64_t addend);
 /**
@@ -2078,6 +2093,7 @@ fpl_platform_api int64_t fplAtomicFetchAndAddS64(volatile int64_t *value, const 
   * @param addend The value used for adding
   * @return Returns the initial value before the append.
   * @note Ensures that memory operations are completed in order.
+  * @see @ref category_threading_atomics_add
   */
 fpl_common_api size_t fplAtomicFetchAndAddSize(volatile size_t *dest, const size_t addend);
 /**
@@ -2086,6 +2102,7 @@ fpl_common_api size_t fplAtomicFetchAndAddSize(volatile size_t *dest, const size
   * @param addend The value used for adding
   * @return Returns the initial pointer before the append.
   * @note Ensures that memory operations are completed in order.
+  * @see @ref category_threading_atomics_add
   */
 fpl_common_api void *fplAtomicFetchAndAddPtr(volatile void **dest, const intptr_t addend);
 
@@ -2094,6 +2111,7 @@ fpl_common_api void *fplAtomicFetchAndAddPtr(volatile void **dest, const intptr_
   * @param value The target value to increment
   * @return Returns the value after the increment.
   * @note Ensures that memory operations are completed in order.
+  * @see @ref category_threading_atomics_inc
   */
 fpl_platform_api uint32_t fplAtomicAddAndFetchU32(volatile uint32_t *value);
 /**
@@ -2101,6 +2119,7 @@ fpl_platform_api uint32_t fplAtomicAddAndFetchU32(volatile uint32_t *value);
   * @param value The target value to increment
   * @return Returns the value after the increment.
   * @note Ensures that memory operations are completed in order.
+  * @see @ref category_threading_atomics_inc
   */
 fpl_platform_api uint64_t fplAtomicAddAndFetchU64(volatile uint64_t *value);
 /**
@@ -2108,6 +2127,7 @@ fpl_platform_api uint64_t fplAtomicAddAndFetchU64(volatile uint64_t *value);
   * @param value The target value to increment
   * @return Returns the value after the increment.
   * @note Ensures that memory operations are completed in order.
+  * @see @ref category_threading_atomics_inc
   */
 fpl_platform_api int32_t fplAtomicAddAndFetchS32(volatile int32_t *value);
 /**
@@ -2115,6 +2135,7 @@ fpl_platform_api int32_t fplAtomicAddAndFetchS32(volatile int32_t *value);
   * @param value The target value to increment
   * @return Returns the value after the increment.
   * @note Ensures that memory operations are completed in order.
+  * @see @ref category_threading_atomics_inc
   */
 fpl_platform_api int64_t fplAtomicAddAndFetchS64(volatile int64_t *value);
 /**
@@ -2122,6 +2143,7 @@ fpl_platform_api int64_t fplAtomicAddAndFetchS64(volatile int64_t *value);
   * @param value The target value to increment
   * @return Returns the value after the increment.
   * @note Ensures that memory operations are completed in order.
+  * @see @ref category_threading_atomics_inc
   */
 fpl_common_api size_t fplAtomicAddAndFetchSize(volatile size_t *value);
 /**
@@ -2129,6 +2151,7 @@ fpl_common_api size_t fplAtomicAddAndFetchSize(volatile size_t *value);
   * @param value The target pointer to increment
   * @return Returns the pointer after the increment.
   * @note Ensures that memory operations are completed in order.
+  * @see @ref category_threading_atomics_inc
   */
 fpl_common_api void *fplAtomicAddAndFetchPtr(volatile void **value);
 
@@ -2140,6 +2163,7 @@ fpl_common_api void *fplAtomicAddAndFetchPtr(volatile void **value);
   * @return Returns the value of the destination before the swap, regardless of the result.
   * @note Ensures that memory operations are completed in order.
   * @note Use @ref fplIsAtomicCompareAndSwapU32() when you want to check if the exchange has happened or not.
+  * @see @ref category_threading_atomics_cas
   */
 fpl_platform_api uint32_t fplAtomicCompareAndSwapU32(volatile uint32_t *dest, const uint32_t comparand, const uint32_t exchange);
 /**
@@ -2150,6 +2174,7 @@ fpl_platform_api uint32_t fplAtomicCompareAndSwapU32(volatile uint32_t *dest, co
   * @return Returns the value of the destination before the swap, regardless of the result.
   * @note Ensures that memory operations are completed in order.
   * @note Use @ref fplIsAtomicCompareAndSwapU64() when you want to check if the exchange has happened or not.
+  * @see @ref category_threading_atomics_cas
   */
 fpl_platform_api uint64_t fplAtomicCompareAndSwapU64(volatile uint64_t *dest, const uint64_t comparand, const uint64_t exchange);
 /**
@@ -2160,6 +2185,7 @@ fpl_platform_api uint64_t fplAtomicCompareAndSwapU64(volatile uint64_t *dest, co
   * @return Returns the value of the destination before the swap, regardless of the result.
   * @note Ensures that memory operations are completed in order.
   * @note Use @ref fplIsAtomicCompareAndSwapS32() when you want to check if the exchange has happened or not.
+  * @see @ref category_threading_atomics_cas
   */
 fpl_platform_api int32_t fplAtomicCompareAndSwapS32(volatile int32_t *dest, const int32_t comparand, const int32_t exchange);
 /**
@@ -2170,6 +2196,7 @@ fpl_platform_api int32_t fplAtomicCompareAndSwapS32(volatile int32_t *dest, cons
   * @return Returns the value of the destination before the swap, regardless of the result.
   * @note Ensures that memory operations are completed in order.
   * @note Use @ref fplIsAtomicCompareAndSwapS64() when you want to check if the exchange has happened or not.
+  * @see @ref category_threading_atomics_cas
   */
 fpl_platform_api int64_t fplAtomicCompareAndSwapS64(volatile int64_t *dest, const int64_t comparand, const int64_t exchange);
 /**
@@ -2180,6 +2207,7 @@ fpl_platform_api int64_t fplAtomicCompareAndSwapS64(volatile int64_t *dest, cons
   * @return Returns the value of the destination before the swap, regardless of the result.
   * @note Ensures that memory operations are completed in order.
   * @note Use @ref fplIsAtomicCompareAndSwapPtr() when you want to check if the exchange has happened or not.
+  * @see @ref category_threading_atomics_cas
   */
 fpl_common_api size_t fplAtomicCompareAndSwapSize(volatile size_t *dest, const size_t comparand, const size_t exchange);
 /**
@@ -2190,6 +2218,7 @@ fpl_common_api size_t fplAtomicCompareAndSwapSize(volatile size_t *dest, const s
   * @return Returns the value of the destination before the swap, regardless of the result.
   * @note Ensures that memory operations are completed in order.
   * @note Use @ref fplIsAtomicCompareAndSwapPtr() when you want to check if the exchange has happened or not.
+  * @see @ref category_threading_atomics_cas
   */
 fpl_common_api void *fplAtomicCompareAndSwapPtr(volatile void **dest, const void *comparand, const void *exchange);
 
@@ -2200,6 +2229,7 @@ fpl_common_api void *fplAtomicCompareAndSwapPtr(volatile void **dest, const void
   * @param exchange The value to exchange with
   * @return Returns true when the exchange happened, false otherwise.
   * @note Ensures that memory operations are completed in order.
+  * @see @ref category_threading_atomics_cas
   */
 fpl_platform_api bool fplIsAtomicCompareAndSwapU32(volatile uint32_t *dest, const uint32_t comparand, const uint32_t exchange);
 /**
@@ -2209,6 +2239,7 @@ fpl_platform_api bool fplIsAtomicCompareAndSwapU32(volatile uint32_t *dest, cons
   * @param exchange The value to exchange with
   * @return Returns true when the exchange happened, false otherwise.
   * @note Ensures that memory operations are completed in order.
+  * @see @ref category_threading_atomics_cas
   */
 fpl_platform_api bool fplIsAtomicCompareAndSwapU64(volatile uint64_t *dest, const uint64_t comparand, const uint64_t exchange);
 /**
@@ -2218,6 +2249,7 @@ fpl_platform_api bool fplIsAtomicCompareAndSwapU64(volatile uint64_t *dest, cons
   * @param exchange The value to exchange with
   * @return Returns true when the exchange happened, false otherwise.
   * @note Ensures that memory operations are completed in order.
+  * @see @ref category_threading_atomics_cas
   */
 fpl_platform_api bool fplIsAtomicCompareAndSwapS32(volatile int32_t *dest, const int32_t comparand, const int32_t exchange);
 /**
@@ -2227,6 +2259,7 @@ fpl_platform_api bool fplIsAtomicCompareAndSwapS32(volatile int32_t *dest, const
   * @param exchange The value to exchange with
   * @return Returns true when the exchange happened, false otherwise.
   * @note Ensures that memory operations are completed in order.
+  * @see @ref category_threading_atomics_cas
   */
 fpl_platform_api bool fplIsAtomicCompareAndSwapS64(volatile int64_t *dest, const int64_t comparand, const int64_t exchange);
 /**
@@ -2236,6 +2269,7 @@ fpl_platform_api bool fplIsAtomicCompareAndSwapS64(volatile int64_t *dest, const
   * @param exchange The value to exchange with
   * @return Returns true when the exchange happened, false otherwise.
   * @note Ensures that memory operations are completed in order.
+  * @see @ref category_threading_atomics_cas
   */
 fpl_common_api bool fplIsAtomicCompareAndSwapSize(volatile size_t *dest, const size_t comparand, const size_t exchange);
 /**
@@ -2245,6 +2279,7 @@ fpl_common_api bool fplIsAtomicCompareAndSwapSize(volatile size_t *dest, const s
   * @param exchange The value to exchange with
   * @return Returns true when the exchange happened, false otherwise.
   * @note Ensures that memory operations are completed in order.
+  * @see @ref category_threading_atomics_cas
   */
 fpl_common_api bool fplIsAtomicCompareAndSwapPtr(volatile void **dest, const void *comparand, const void *exchange);
 
@@ -2254,6 +2289,7 @@ fpl_common_api bool fplIsAtomicCompareAndSwapPtr(volatile void **dest, const voi
   * @return Returns the atomically loaded source value
   * @note Ensures that memory operations are completed before the read.
   * @note This may use a CAS instruction when there is no suitable compiler intrinsics found.
+  * @see @ref category_threading_atomics_load
   */
 fpl_platform_api uint32_t fplAtomicLoadU32(volatile uint32_t *source);
 /**
@@ -2262,6 +2298,7 @@ fpl_platform_api uint32_t fplAtomicLoadU32(volatile uint32_t *source);
   * @return Returns the atomically loaded source value
   * @note Ensures that memory operations are completed before the read.
   * @note This may use a CAS instruction when there is no suitable compiler intrinsics found.
+  * @see @ref category_threading_atomics_load
   */
 fpl_platform_api uint64_t fplAtomicLoadU64(volatile uint64_t *source);
 /**
@@ -2270,6 +2307,7 @@ fpl_platform_api uint64_t fplAtomicLoadU64(volatile uint64_t *source);
   * @return Returns the atomically loaded source value
   * @note Ensures that memory operations are completed before the read.
   * @note This may use a CAS instruction when there is no suitable compiler intrinsics found.
+  * @see @ref category_threading_atomics_load
   */
 fpl_platform_api int32_t fplAtomicLoadS32(volatile int32_t *source);
 /**
@@ -2278,6 +2316,7 @@ fpl_platform_api int32_t fplAtomicLoadS32(volatile int32_t *source);
   * @return Returns the atomically loaded source value
   * @note Ensures that memory operations are completed before the read.
   * @note This may use a CAS instruction when there is no suitable compiler intrinsics found.
+  * @see @ref category_threading_atomics_load
   */
 fpl_platform_api int64_t fplAtomicLoadS64(volatile int64_t *source);
 /**
@@ -2286,6 +2325,7 @@ fpl_platform_api int64_t fplAtomicLoadS64(volatile int64_t *source);
   * @note This may use a CAS instruction when there is no suitable compiler intrinsics found.
   * @param source The source value to read from
   * @return Returns the atomically loaded source value
+  * @see @ref category_threading_atomics_load
   */
 fpl_common_api size_t fplAtomicLoadSize(volatile size_t *source);
 /**
@@ -2294,6 +2334,7 @@ fpl_common_api size_t fplAtomicLoadSize(volatile size_t *source);
   * @note This may use a CAS instruction when there is no suitable compiler intrinsics found.
   * @param source The source value to read from
   * @return Returns the atomically loaded source value
+  * @see @ref category_threading_atomics_load
   */
 fpl_common_api void *fplAtomicLoadPtr(volatile void **source);
 
@@ -2302,6 +2343,7 @@ fpl_common_api void *fplAtomicLoadPtr(volatile void **source);
   * @param dest The destination to write to
   * @param value The value to exchange with
   * @note Ensures that memory operations are completed before the write.
+  * @see @ref category_threading_atomics_store
   */
 fpl_platform_api void fplAtomicStoreU32(volatile uint32_t *dest, const uint32_t value);
 /**
@@ -2309,6 +2351,7 @@ fpl_platform_api void fplAtomicStoreU32(volatile uint32_t *dest, const uint32_t 
   * @param dest The destination to write to
   * @param value The value to exchange with
   * @note Ensures that memory operations are completed before the write.
+  * @see @ref category_threading_atomics_store
   */
 fpl_platform_api void fplAtomicStoreU64(volatile uint64_t *dest, const uint64_t value);
 /**
@@ -2316,6 +2359,7 @@ fpl_platform_api void fplAtomicStoreU64(volatile uint64_t *dest, const uint64_t 
   * @param dest The destination to write to
   * @param value The value to exchange with
   * @note Ensures that memory operations are completed before the write.
+  * @see @ref category_threading_atomics_store
   */
 fpl_platform_api void fplAtomicStoreS32(volatile int32_t *dest, const int32_t value);
 /**
@@ -2323,6 +2367,7 @@ fpl_platform_api void fplAtomicStoreS32(volatile int32_t *dest, const int32_t va
   * @param dest The destination to write to
   * @param value The value to exchange with
   * @note Ensures that memory operations are completed before the write.
+  * @see @ref category_threading_atomics_store
   */
 fpl_platform_api void fplAtomicStoreS64(volatile int64_t *dest, const int64_t value);
 /**
@@ -2330,6 +2375,7 @@ fpl_platform_api void fplAtomicStoreS64(volatile int64_t *dest, const int64_t va
   * @param dest The destination to write to
   * @param value The value to exchange with
   * @note Ensures that memory operations are completed before the write.
+  * @see @ref category_threading_atomics_store
   */
 fpl_common_api void fplAtomicStoreSize(volatile size_t *dest, const size_t value);
 /**
@@ -2337,6 +2383,7 @@ fpl_common_api void fplAtomicStoreSize(volatile size_t *dest, const size_t value
   * @param dest The destination to write to
   * @param value The value to exchange with
   * @note Ensures that memory operations are completed before the write.
+  * @see @ref category_threading_atomics_store
   */
 fpl_common_api void fplAtomicStorePtr(volatile void **dest, const void *value);
 

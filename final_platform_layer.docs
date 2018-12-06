@@ -1,4 +1,4 @@
-// ****************************************************************************
+﻿// ****************************************************************************
 //
 // Documentation
 //
@@ -2689,6 +2689,7 @@
     @endcode
 
 	@section section_category_threading_signals_set Setting a Signal
+
 	Call @ref fplSignalSet() with a pointer to @ref fplSignalHandle as argument, to set a Signal and wakeup all waiting Threads.<br>
 	@note Unlike @ref fplConditionVariable , setting a Signal is not Thread-Safe so you should ensure that only one Thread at a time will set it!
 
@@ -3079,11 +3080,11 @@
 	@page page_category_threading_sync Synchronisation Methods
 	@tableofcontents
 
-	- TODO(final): Explain why we need this
+	@todo(final): Explain why we need this
 
-	- TODO(final): Add examples of solving race conditions (Mutexes, Signals, Condition-Variables, Semaphores, Atomics)
+	@todo(final): Add examples of solving race conditions (Mutexes, Signals, Condition-Variables, Semaphores, Atomics)
 
-	- TODO(final): Add a comparison table to show the difference between the different types.
+	@todo(final): Add a comparison table to show the difference between the different types.
 */
 
 /*!
