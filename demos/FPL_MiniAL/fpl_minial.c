@@ -141,8 +141,8 @@ int main(int argc, char **args) {
 
 #if 1
 	mal_backend malBackends[] = {
-		mal_backend_wasapi,
 		mal_backend_dsound,
+		mal_backend_wasapi,
 		mal_backend_winmm,
 		mal_backend_alsa,
 		mal_backend_pulseaudio,
