@@ -142,6 +142,7 @@ extern bool LoadWaveFromBuffer(const uint8_t *buffer, const size_t bufferSize, L
 				const uint8_t *data = buffer + bufferPosition;
 				switch(waveFormat.formatTag) {
 					case WaveFormatTags_PCM:
+					case WaveFormatTags_IEEEFloat:
 					{
 						fplAssert((waveFormat.bitsPerSample > 0) && (waveFormat.bitsPerSample % 8 == 0));
 						uint32_t channelCount = waveFormat.numberOfChannels;
@@ -161,9 +162,11 @@ extern bool LoadWaveFromBuffer(const uint8_t *buffer, const size_t bufferSize, L
 						} else if (bytesPerSample == 3) {
 							outWave->formatType = fplAudioFormatType_S24;
 						} else if (bytesPerSample == 4) {
-							outWave->formatType = fplAudioFormatType_S32;
+							if (waveFormat.formatTag == WaveFormatTags_PCM)
+								outWave->formatType = fplAudioFormatType_S32;
+							else
+								outWave->formatType = fplAudioFormatType_F32;
 						}
-
 						size_t sampleMemorySize = bytesPerSample * channelCount * sampleCount;
 						fplAssert(sampleMemorySize == dataSize);
 						outWave->samplesSize = sampleMemorySize;
@@ -171,12 +174,6 @@ extern bool LoadWaveFromBuffer(const uint8_t *buffer, const size_t bufferSize, L
 						fplMemoryCopy(data, sampleMemorySize, outWave->samples);
 						outWave->isValid = true;
 						result = true;
-					} break;
-
-					case WaveFormatTags_IEEEFloat:
-					{
-						WaveError(outWave, "IEEE Float Wave Format is not supported yet!");
-						return false;
 					} break;
 				}
 			} break;
