@@ -107,6 +107,7 @@ static bool InitAudioData(const fplAudioDeviceFormat *targetFormat, AudioSystem 
 
 int main(int argc, char **args) {
 	const char *filePath = (argc == 2) ? args[1] : fpl_null;
+	const bool generateSineWave = fplGetStringLength(filePath) == 0;
 
 	AudioSystem audioSys = fplZeroInit;
 
@@ -156,7 +157,7 @@ int main(int argc, char **args) {
 	const fplSettings *currentSettings = fplGetCurrentSettings();
 
 	// Init audio data
-	if(InitAudioData(&targetAudioFormat, &audioSys, filePath, false)) {
+	if(InitAudioData(&targetAudioFormat, &audioSys, filePath, generateSineWave)) {
 		// Start audio playback (This will start calling clientReadCallback regulary)
 		if(fplPlayAudio() == fplAudioResult_Success) {
 			// Print output infos

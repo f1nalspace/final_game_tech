@@ -81,7 +81,7 @@ static uint32_t AudioPlayback(mal_device* pDevice, mal_uint32 frameCount, void* 
 	return(result);
 }
 
-static bool InitAudioData(const fplAudioDeviceFormat *targetFormat, const char *filePath, AudioSystem *audioSys) {
+static bool InitAudioData(const fplAudioDeviceFormat *targetFormat, AudioSystem *audioSys, const char *filePath, const bool generateSineWave) {
 	if (!AudioSystemInit(audioSys, targetFormat)) {
 		return false;
 	}
@@ -96,28 +96,31 @@ static bool InitAudioData(const fplAudioDeviceFormat *targetFormat, const char *
 	}
 
 	// Generate sine wave for some duration
-	const double duration = 5.0f;
-	const int toneHz = 256;
-	const int toneVolume = 1000;
-	uint32_t sampleCount = (uint32_t)(audioSys->targetFormat.sampleRate * duration + 0.5);
-	source = AudioSystemAllocateSource(audioSys, audioSys->targetFormat.channels, audioSys->targetFormat.sampleRate, fplAudioFormatType_S16, sampleCount);
-	if (source != fpl_null) {
-		int16_t *samples = (int16_t *)source->samples;
-		int wavePeriod = source->samplesPerSeconds / toneHz;
-		for (uint32_t sampleIndex = 0; sampleIndex < sampleCount; ++sampleIndex) {
-			double t = 2.0f * PI32 * (double)sampleIndex / (float)wavePeriod;
-			int16_t sampleValue = (int16_t)(sin(t) * toneVolume);
-			for (uint32_t channelIndex = 0; channelIndex < source->channels; ++channelIndex) {
-				*samples++ = sampleValue;
+	if (generateSineWave) {
+		const double duration = 5.0f;
+		const int toneHz = 256;
+		const int toneVolume = 1000;
+		uint32_t sampleCount = (uint32_t)(audioSys->targetFormat.sampleRate * duration + 0.5);
+		source = AudioSystemAllocateSource(audioSys, audioSys->targetFormat.channels, audioSys->targetFormat.sampleRate, fplAudioFormatType_S16, sampleCount);
+		if (source != fpl_null) {
+			int16_t *samples = (int16_t *)source->samples;
+			int wavePeriod = source->samplesPerSeconds / toneHz;
+			for (uint32_t sampleIndex = 0; sampleIndex < sampleCount; ++sampleIndex) {
+				double t = 2.0f * PI32 * (double)sampleIndex / (float)wavePeriod;
+				int16_t sampleValue = (int16_t)(sin(t) * toneVolume);
+				for (uint32_t channelIndex = 0; channelIndex < source->channels; ++channelIndex) {
+					*samples++ = sampleValue;
+				}
 			}
+			AudioSystemPlaySource(audioSys, source, true, 1.0f);
 		}
-		AudioSystemPlaySource(audioSys, source, true, 1.0f);
 	}
 	return(true);
 }
 
 int main(int argc, char **args) {
 	const char *filePath = (argc == 2) ? args[1] : fpl_null;
+	const bool generateSineWave = fplGetStringLength(filePath) == 0;
 
 	// Use default audio format from FPL as target format
 	fplAudioTargetFormat targetFormat;
@@ -140,6 +143,7 @@ int main(int argc, char **args) {
 	mal_backend malBackends[] = {
 		mal_backend_wasapi,
 		mal_backend_dsound,
+		mal_backend_winmm,
 		mal_backend_alsa,
 		mal_backend_pulseaudio,
 	};
@@ -168,7 +172,7 @@ int main(int argc, char **args) {
 	// Init audio data
 	fplAudioDeviceFormat targetDeviceFormat;
 	fplConvertAudioTargetFormatToDeviceFormat(&targetFormat, &targetDeviceFormat);
-	if (InitAudioData(&targetDeviceFormat, filePath, &audioSys)) {
+	if (InitAudioData(&targetDeviceFormat, &audioSys, filePath, generateSineWave)) {
 		// Start audio playback
 		if (mal_device_start(&malDevice) == MAL_SUCCESS) {
 			// Print output infos
