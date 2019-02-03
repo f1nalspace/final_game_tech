@@ -54,6 +54,13 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "FPL_MiniAL", "FPL_MiniAL\FP
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "FPL_NoRuntimeLinking", "FPL_NoRuntimeLinking\FPL_NoRuntimeLinking.vcxproj", "{01F59612-1023-4A62-865A-3BE1700C4C55}"
 EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "FPL_DynamicLib_Host", "FPL_DynamicLib_Host\FPL_DynamicLib_Host.vcxproj", "{95EE6855-8700-47F6-B3B5-5E7B2415876C}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "FPL_DynamicLib_Client", "FPL_DynamicLib_Client\FPL_DynamicLib_Client.vcxproj", "{93CCCC51-812E-497B-868F-E562501F47C7}"
+	ProjectSection(ProjectDependencies) = postProject
+		{95EE6855-8700-47F6-B3B5-5E7B2415876C} = {95EE6855-8700-47F6-B3B5-5E7B2415876C}
+	EndProjectSection
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x64 = Debug|x64
@@ -238,6 +245,22 @@ Global
 		{01F59612-1023-4A62-865A-3BE1700C4C55}.Release|x64.Build.0 = Release|x64
 		{01F59612-1023-4A62-865A-3BE1700C4C55}.Release|x86.ActiveCfg = Release|Win32
 		{01F59612-1023-4A62-865A-3BE1700C4C55}.Release|x86.Build.0 = Release|Win32
+		{95EE6855-8700-47F6-B3B5-5E7B2415876C}.Debug|x64.ActiveCfg = Debug|x64
+		{95EE6855-8700-47F6-B3B5-5E7B2415876C}.Debug|x64.Build.0 = Debug|x64
+		{95EE6855-8700-47F6-B3B5-5E7B2415876C}.Debug|x86.ActiveCfg = Debug|Win32
+		{95EE6855-8700-47F6-B3B5-5E7B2415876C}.Debug|x86.Build.0 = Debug|Win32
+		{95EE6855-8700-47F6-B3B5-5E7B2415876C}.Release|x64.ActiveCfg = Release|x64
+		{95EE6855-8700-47F6-B3B5-5E7B2415876C}.Release|x64.Build.0 = Release|x64
+		{95EE6855-8700-47F6-B3B5-5E7B2415876C}.Release|x86.ActiveCfg = Release|Win32
+		{95EE6855-8700-47F6-B3B5-5E7B2415876C}.Release|x86.Build.0 = Release|Win32
+		{93CCCC51-812E-497B-868F-E562501F47C7}.Debug|x64.ActiveCfg = Debug|x64
+		{93CCCC51-812E-497B-868F-E562501F47C7}.Debug|x64.Build.0 = Debug|x64
+		{93CCCC51-812E-497B-868F-E562501F47C7}.Debug|x86.ActiveCfg = Debug|Win32
+		{93CCCC51-812E-497B-868F-E562501F47C7}.Debug|x86.Build.0 = Debug|Win32
+		{93CCCC51-812E-497B-868F-E562501F47C7}.Release|x64.ActiveCfg = Release|x64
+		{93CCCC51-812E-497B-868F-E562501F47C7}.Release|x64.Build.0 = Release|x64
+		{93CCCC51-812E-497B-868F-E562501F47C7}.Release|x86.ActiveCfg = Release|Win32
+		{93CCCC51-812E-497B-868F-E562501F47C7}.Release|x86.Build.0 = Release|Win32
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
