@@ -1398,13 +1398,13 @@ SOFTWARE.
 #	define fpl_dlllocal
 #else
 #	if __GNUC__ >= 4
-#		fpl_dllimport __attribute__((visibility("default")))
-#		fpl_dllexport __attribute__((visibility("default")))
-#		fpl_dlllocal __attribute__((visibility("hidden")))
+#		define fpl_dllimport __attribute__((visibility("default")))
+#		define fpl_dllexport __attribute__((visibility("default")))
+#		define fpl_dlllocal __attribute__((visibility("hidden")))
 #	else
-#		fpl_dllimport
-#		fpl_dllexport
-#		fpl_dlllocal
+#		define fpl_dllimport
+#		define fpl_dllexport
+#		define fpl_dlllocal
 #	endif
 #endif
 
