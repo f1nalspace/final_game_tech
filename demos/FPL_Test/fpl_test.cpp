@@ -826,7 +826,7 @@ static void TestThreading() {
 }
 
 static void TestFiles() {
-#if defined(FPL_PLATFORM_WIN32)
+#if defined(FPL_PLATFORM_WINDOWS)
 	const char *testNotExistingFile = "C:\\Windows\\i_am_not_existing.lib";
 	const char *testExistingFile = "C:\\Windows\\notepad.exe";
 	const char *testRootPath = "C:\\";
