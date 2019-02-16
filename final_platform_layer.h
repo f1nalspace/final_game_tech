@@ -142,6 +142,9 @@ SOFTWARE.
 	- Changed: Renamed fplWindowSettings.windowTitle to fplWindowSettings.title
 	- Changed: Reversed buffer/max-size argument of fplS32ToString()
 	- Changed: Renamed fullPath into name in the fplFileEntry structure and limit its size to FPL_MAX_FILENAME_LENGTH
+	- Changed: Introduced fpl__m_ for internal defines mapped to the public define
+	- Changed: FPL_ENABLE renamed to FPL__ENABLE
+	- Changed: FPL_SUPPORT renamed to FPL__SUPPORT
 	- Changed: [CPP] Export every function without name mangling -> extern "C"
 	- Changed: [Win32] Moved a bit of entry point code around, so that every linking configuration works
 	- Fixed: fplPlatformInit() was using the width for the height for the default window size
@@ -1224,10 +1227,10 @@ SOFTWARE.
 // https://en.wikipedia.org/wiki/C99#Version_detection
 // Visual Studio 2015+
 #if !defined(__cplusplus) && ((defined(__STDC_VERSION__) && (__STDC_VERSION__ >= 199901L)) || (defined(_MSC_VER) && (_MSC_VER >= 1900)))
-	//! Detected C99 compiler
+	//! Is C99 compiler detected
 #	define FPL_IS_C99
 #elif defined(__cplusplus)
-	//! Detected C++ compiler
+	//! Is C++ compiler detected
 #	define FPL_IS_CPP
 #else
 #	error "This C/C++ compiler is not supported!"
@@ -1354,6 +1357,11 @@ SOFTWARE.
 #		define _FILE_OFFSET_BITS 64
 #	endif
 #endif
+#if defined(FPL_PLATFORM_LINUX)
+#	define FPL__INCLUDE_ALLOCA
+#else
+#	define FPL__INCLUDE_MALLOC
+#endif
 
 //
 // Storage class identifiers
@@ -1365,7 +1373,7 @@ SOFTWARE.
   * @{
   */
 
-  //! Global persistent variable
+//! Global persistent variable
 #define fpl_globalvar static
 //! Local persistent variable
 #define fpl_localvar static
@@ -1375,12 +1383,10 @@ SOFTWARE.
 #define fpl_inline inline
 //! Internal inlined function
 #define fpl_internal_inline inline
-
+//! External call
 #if defined(FPL_IS_CPP)
-	//! External call
 #   define fpl_extern
 #else
-	//! External call
 #   define fpl_extern extern
 #endif
 
@@ -1389,36 +1395,43 @@ SOFTWARE.
 //
 #if defined(_WIN32) || defined(__CYGWIN__)
 #	ifdef __GNUC__
-#		define fpl_dllexport __attribute__ ((dllexport))
-#		define fpl_dllimport __attribute__ ((dllimport))
+#		define fpl__m_dllexport __attribute__ ((dllexport))
+#		define fpl__m_dllimport __attribute__ ((dllimport))
 #	else
-#		define fpl_dllexport __declspec(dllexport)
-#		define fpl_dllimport __declspec(dllimport)
+#		define fpl__m_dllexport __declspec(dllexport)
+#		define fpl__m_dllimport __declspec(dllimport)
 #	endif
-#	define fpl_dlllocal
+#	define fpl__m_dlllocal
 #else
 #	if __GNUC__ >= 4
-#		define fpl_dllimport __attribute__((visibility("default")))
-#		define fpl_dllexport __attribute__((visibility("default")))
-#		define fpl_dlllocal __attribute__((visibility("hidden")))
+#		define fpl__m_dllimport __attribute__((visibility("default")))
+#		define fpl__m_dllexport __attribute__((visibility("default")))
+#		define fpl__m_dlllocal __attribute__((visibility("hidden")))
 #	else
-#		define fpl_dllimport
-#		define fpl_dllexport
-#		define fpl_dlllocal
+#		define fpl__m_dllimport
+#		define fpl__m_dllexport
+#		define fpl__m_dlllocal
 #	endif
 #endif
 
+//! Link-library Import
+#define fpl_dllimport fpl__m_dllimport
+//! Link-library Export
+#define fpl_dllexport fpl__m_dllexport
+//! Link-library Local
+#define fpl_dlllocal fpl__m_dlllocal
+
+//
+// API Call
+//
+//! Api call
 #if defined(FPL_API_AS_PRIVATE)
-//! Api call (Static)
 #	define fpl_api static
 #elif defined(FPL_DLLEXPORT)
-//! Api call (DLL Export)
 #	define fpl_api fpl_dllexport
 #elif defined(FPL_DLLIMPORT)
-//! Api call (DLL Import)
 #	define fpl_api fpl_dllimport
 #else
-//! Api call (Extern)
 #	define fpl_api fpl_extern
 #endif // FPL_API_AS_PRIVATE
 
@@ -1426,31 +1439,32 @@ SOFTWARE.
 #define fpl_main
 
 #if defined(FPL_IS_CPP)
-	//! Platform api definition
-#	define fpl_platform_api extern "C" fpl_api
-	//! Common api definition
-#	define fpl_common_api extern "C" fpl_api
+#	define fpl__m_platform_api extern "C" fpl_api
+#	define fpl__m_common_api extern "C" fpl_api
 #else
-	//! Platform api definition
-#	define fpl_platform_api fpl_api
-	//! Common api definition
-#	define fpl_common_api fpl_api
+#	define fpl__m_platform_api fpl_api
+#	define fpl__m_common_api fpl_api
 #endif
+
+//! Platform api definition
+#define fpl_platform_api fpl__m_platform_api
+//! Common api definition
+#define fpl_common_api fpl__m_common_api
 
 //
 // Force inline
 //
 #if defined(FPL_COMPILER_GCC) && (__GNUC__ >= 4)
-	//! Force inline
-#	define fpl_force_inline __attribute__((__always_inline__)) inline
+#	define fpl__m_force_inline __attribute__((__always_inline__)) inline
 #elif defined(FPL_COMPILER_MSVC) && (_MSC_VER >= 1200)
-	//! Force inline
-#	define fpl_force_inline __forceinline
+#	define fpl__m_force_inline __forceinline
 #else
-	//! Force inline
-#	define fpl_force_inline inline
+#	define fpl__m_force_inline inline
 #endif
 
+//! Force inline
+#define fpl_force_inline fpl__m_force_inline
+	
 /** @} */
 
 //
@@ -1501,32 +1515,28 @@ SOFTWARE.
 // Debug/Release detection
 //
 #if defined(FPL_DEBUG)
-	//! Debug mode detected
-#	define FPL_ENABLE_DEBUG
+#	define FPL__ENABLE_DEBUG
 #elif defined(FPL_RELEASE)
-	//! Release mode detected
-#	define FPL_ENABLE_RELEASE
+#	define FPL__ENABLE_RELEASE
 #endif
 
 //
 // Compiler settings
 //
 #if defined(FPL_COMPILER_MSVC)
-	//! Debug/Release detection
-#	if !defined(FPL_ENABLE_DEBUG) && !defined(FPL_ENABLE_RELEASE)
+	// Debug/Release detection
+#	if !defined(FPL__ENABLE_DEBUG) && !defined(FPL__ENABLE_RELEASE)
 #		if defined(_DEBUG) || (!defined(NDEBUG))
-			//! Debug mode detected
-#			define FPL_ENABLE_DEBUG
+#			define FPL__ENABLE_DEBUG
 #		else
-			//! Non-debug (Release) mode detected
-#			define FPL_ENABLE_RELEASE
+#			define FPL__ENABLE_RELEASE
 #		endif
 #	endif
 
-	//! Function name macro (Win32)
-#   define FPL_FUNCTION_NAME __FUNCTION__
+	// Function name macro (Win32)
+#   define FPL__M_FUNCTION_NAME __FUNCTION__
 
-	//! Setup MSVC subsystem hints
+	// Setup MSVC subsystem hints
 #	if defined(FPL_APPTYPE_WINDOW)
 #		pragma comment(linker, "/SUBSYSTEM:WINDOWS")
 #	elif defined(FPL_APPTYPE_CONSOLE)
@@ -1536,16 +1546,13 @@ SOFTWARE.
 	// Setup MSVC linker hints
 #	pragma comment(lib, "kernel32.lib")
 #else
-	//! Function name macro (Other compilers)
-#   define FPL_FUNCTION_NAME __FUNCTION__
+	// Function name macro (Other compilers)
+#   define FPL__M_FUNCTION_NAME __FUNCTION__
 #endif // FPL_COMPILER
 
-//
-// Debug/Release fallback
-//
-#if !defined(FPL_ENABLE_DEBUG) && !defined(FPL_ENABLE_RELEASE)
-	//! Debug mode fallback
-#	define FPL_ENABLE_DEBUG
+// Debug Release fallback
+#if !defined(FPL__ENABLE_DEBUG) && !defined(FPL__ENABLE_RELEASE)
+#	define FPL__ENABLE_DEBUG
 #endif
 
 // MingW compiler hack
@@ -1555,124 +1562,119 @@ SOFTWARE.
 #   endif //!_WIN32_WINNT
 #endif // FPL_COMPILER_MINGW
 
+//! Function name macro
+#define FPL_FUNCTION_NAME FPL__M_FUNCTION_NAME
+
 //
 // Options & Feature detection
 //
 
+//
 // Assertions
+//
 #if !defined(FPL_NO_ASSERTIONS)
 #	if !defined(FPL_FORCE_ASSERTIONS)
-#		if defined(FPL_ENABLE_DEBUG)
-			//! Enable Assertions in Debug Mode by default
-#			define FPL_ENABLE_ASSERTIONS
+#		if defined(FPL__ENABLE_DEBUG)
+#			define FPL__ENABLE_ASSERTIONS
 #		endif
 #	else
-		//! Enable Assertions always
-#		define FPL_ENABLE_ASSERTIONS
+#		define FPL__ENABLE_ASSERTIONS
 #	endif
 #endif // !FPL_NO_ASSERTIONS
-#if defined(FPL_ENABLE_ASSERTIONS)
+#if defined(FPL__ENABLE_ASSERTIONS)
 #	if !defined(FPL_NO_C_ASSERT) && !defined(FPL_NO_CRT)
-		//! Enable C-Runtime Assertions by default
-#		define FPL_ENABLE_C_ASSERT
+#		define FPL__ENABLE_C_ASSERT
 #	endif
-#endif // FPL_ENABLE_ASSERTIONS
+#endif // FPL__ENABLE_ASSERTIONS
 
+//
 // Window
+//
 #if !defined(FPL_NO_WINDOW) && !defined(FPL_APPTYPE_CONSOLE)
-	//! Window support enabled by default
-#	define FPL_SUPPORT_WINDOW
+#	define FPL__SUPPORT_WINDOW
 #endif
 
+//
 // Video
+//
 #if !defined(FPL_NO_VIDEO)
-	//! Video support
-#	define FPL_SUPPORT_VIDEO
+#	define FPL__SUPPORT_VIDEO
 #endif
-#if defined(FPL_SUPPORT_VIDEO)
+#if defined(FPL__SUPPORT_VIDEO)
 #	if !defined(FPL_NO_VIDEO_OPENGL)
-		//! OpenGL support enabled by default
-#		define FPL_SUPPORT_VIDEO_OPENGL
+#		define FPL__SUPPORT_VIDEO_OPENGL
 #	endif
 #	if !defined(FPL_NO_VIDEO_SOFTWARE)
-		//! Software rendering support enabled by default
-#		define FPL_SUPPORT_VIDEO_SOFTWARE
+#		define FPL__SUPPORT_VIDEO_SOFTWARE
 #	endif
-#endif // FPL_SUPPORT_VIDEO
+#endif // FPL__SUPPORT_VIDEO
 
+//
 // Audio
+//
 #if !defined(FPL_NO_AUDIO)
-	//! Audio support
-#	define FPL_SUPPORT_AUDIO
+	// Audio support
+#	define FPL__SUPPORT_AUDIO
 #endif
-#if defined(FPL_SUPPORT_AUDIO)
+#if defined(FPL__SUPPORT_AUDIO)
 #	if !defined(FPL_NO_AUDIO_DIRECTSOUND) && defined(FPL_PLATFORM_WINDOWS)
-		//! DirectSound support is only available on Win32
-#		define FPL_SUPPORT_AUDIO_DIRECTSOUND
+#		define FPL__SUPPORT_AUDIO_DIRECTSOUND
 #	endif
 #	if !defined(FPL_NO_AUDIO_ALSA) && defined(FPL_PLATFORM_LINUX)
-		//! ALSA support is only available on POSIX
-#		define FPL_SUPPORT_AUDIO_ALSA
+#		define FPL__SUPPORT_AUDIO_ALSA
 #	endif
-#endif // FPL_SUPPORT_AUDIO
+#endif // FPL__SUPPORT_AUDIO
 
+//
 // Remove video support when window is disabled
-#if !defined(FPL_SUPPORT_WINDOW)
+//
+#if !defined(FPL__SUPPORT_WINDOW)
 #	if defined(FPL_SUBPLATFORM_X11)
 #		undef FPL_SUBPLATFORM_X11
 #	endif
 
-#	if defined(FPL_SUPPORT_VIDEO)
-#		undef FPL_SUPPORT_VIDEO
+#	if defined(FPL__SUPPORT_VIDEO)
+#		undef FPL__SUPPORT_VIDEO
 #	endif
-#	if defined(FPL_SUPPORT_VIDEO_OPENGL)
-#		undef FPL_SUPPORT_VIDEO_OPENGL
+#	if defined(FPL__SUPPORT_VIDEO_OPENGL)
+#		undef FPL__SUPPORT_VIDEO_OPENGL
 #	endif
-#	if defined(FPL_SUPPORT_VIDEO_SOFTWARE)
-#		undef FPL_SUPPORT_VIDEO_SOFTWARE
+#	if defined(FPL__SUPPORT_VIDEO_SOFTWARE)
+#		undef FPL__SUPPORT_VIDEO_SOFTWARE
 #	endif
-#endif // !FPL_SUPPORT_WINDOW
+#endif // !FPL__SUPPORT_WINDOW
 
 //
 // Enable supports (FPL uses _ENABLE_ internally only)
 //
-#if defined(FPL_SUPPORT_WINDOW)
-	//! Enable Window
-#	define FPL_ENABLE_WINDOW
+#if defined(FPL__SUPPORT_WINDOW)
+#	define FPL__ENABLE_WINDOW
 #endif
 
-#if defined(FPL_SUPPORT_VIDEO)
-	//! Enable Video
-#	define FPL_ENABLE_VIDEO
-#	if defined(FPL_SUPPORT_VIDEO_OPENGL)
-		//! Enable OpenGL Video
-#		define FPL_ENABLE_VIDEO_OPENGL
+#if defined(FPL__SUPPORT_VIDEO)
+#	define FPL__ENABLE_VIDEO
+#	if defined(FPL__SUPPORT_VIDEO_OPENGL)
+#		define FPL__ENABLE_VIDEO_OPENGL
 #	endif
-#	if defined(FPL_SUPPORT_VIDEO_SOFTWARE)
-		//! Enable Software Rendering Video
-#		define FPL_ENABLE_VIDEO_SOFTWARE
+#	if defined(FPL__SUPPORT_VIDEO_SOFTWARE)
+#		define FPL__ENABLE_VIDEO_SOFTWARE
 #	endif
-#endif // FPL_SUPPORT_VIDEO
+#endif // FPL__SUPPORT_VIDEO
 
-#if defined(FPL_SUPPORT_AUDIO)
-	//! Enable Audio
-#	define FPL_ENABLE_AUDIO
-#	if defined(FPL_SUPPORT_AUDIO_DIRECTSOUND)
-		//! Enable DirectSound Audio
-#		define FPL_ENABLE_AUDIO_DIRECTSOUND
+#if defined(FPL__SUPPORT_AUDIO)
+#	define FPL__ENABLE_AUDIO
+#	if defined(FPL__SUPPORT_AUDIO_DIRECTSOUND)
+#		define FPL__ENABLE_AUDIO_DIRECTSOUND
 #	endif
-#	if defined(FPL_SUPPORT_AUDIO_ALSA)
-		//! Enable ALSA Audio
-#		define FPL_ENABLE_AUDIO_ALSA
+#	if defined(FPL__SUPPORT_AUDIO_ALSA)
+#		define FPL__ENABLE_AUDIO_ALSA
 #	endif
-#endif // FPL_SUPPORT_AUDIO
+#endif // FPL__SUPPORT_AUDIO
 
 #if defined(FPL_LOGGING)
-	//! Enable logging
-#   define FPL_ENABLE_LOGGING
+#   define FPL__ENABLE_LOGGING
 #	if defined(FPL_LOG_MULTIPLE_WRITERS)
-		//! Enable multiple writers
-#		define FPL_ENABLE_LOG_MULTIPLE_WRITERS
+#		define FPL__ENABLE_LOG_MULTIPLE_WRITERS
 #	endif
 #endif
 
@@ -1684,34 +1686,32 @@ SOFTWARE.
   * @brief This category contains assertion & debug macro functions
   * @{
   */
-#if defined(FPL_ENABLE_ASSERTIONS)
-#	if defined(FPL_ENABLE_C_ASSERT) && !defined(FPL_FORCE_ASSERTIONS)
-  //! Include assert.h
+
+#if defined(FPL__ENABLE_ASSERTIONS)
+#	if defined(FPL__ENABLE_C_ASSERT) && !defined(FPL_FORCE_ASSERTIONS)
 #		define FPL__INCLUDE_ASSERT
-		//! Runtime assert (C Runtime)
-#		define fplAssert(exp) assert(exp)
+#		define fpl__m_Assert(exp) assert(exp)
 #       if defined(__cplusplus)
-#		    define fplStaticAssert(exp) static_assert(exp, "fpl_static_assert")
+#		    define fpl__m_StaticAssert(exp) static_assert(exp, "fpl_static_assert")
 #       endif
 #	else
-  //! Runtime assert
-#	define fplAssert(exp) if(!(exp)) {*(int *)0 = 0;}
-#	endif // FPL_ENABLE_C_ASSERT
-#   if !defined(fplStaticAssert)
-		//! Internal static assert wrapper
-#	    define FPL__STATICASSERT_0(exp, line, counter) \
+#	define fpl__m_Assert(exp) if(!(exp)) {*(int *)0 = 0;}
+#	endif // FPL__ENABLE_C_ASSERT
+#   if !defined(fpl__m_StaticAssert)
+#	    define FPL__M_STATICASSERT_0(exp, line, counter) \
 		    int fpl__ct_assert_##line_##counter(int ct_assert_failed[(exp)?1:-1])
-
-		//! Compile time assert
-#	    define fplStaticAssert(exp) \
-		    FPL__STATICASSERT_0(exp, __LINE__, __COUNTER__)
+#	    define fpl__m_StaticAssert(exp) \
+		    FPL__M_STATICASSERT_0(exp, __LINE__, __COUNTER__)
 #   endif
 #else
-  //! Runtime assertions disabled
-#	define fplAssert(exp)
-	//! Compile time assertions disabled
-#	define fplStaticAssert(exp)
-#endif // FPL_ENABLE_ASSERTIONS
+#	define fpl__m_Assert(exp)
+#	define fpl__m_StaticAssert(exp)
+#endif // FPL__ENABLE_ASSERTIONS
+
+//! Runtime assertion
+#define fplAssert(exp) fpl__m_Assert(exp)
+//! Compile time assertion
+#define fplStaticAssert(exp) fpl__m_StaticAssert(exp)
 
 //
 // Debug-Break
@@ -1719,54 +1719,44 @@ SOFTWARE.
 //
 #if defined(__has_builtin)
 #	if __has_builtin(__builtin_debugtrap)
-		//! Stop on a line in the debugger (Trap)
-#		define fplDebugBreak() __builtin_debugtrap()
+#		define fpl__m_DebugBreak() __builtin_debugtrap()
 #	elif __has_builtin(__debugbreak)
-		//! Stop on a line in the debugger (Break)
-#		define fplDebugBreak() __debugbreak()
+#		define fpl__m_DebugBreak() __debugbreak()
 #	endif
 #endif
-#if !defined(fplDebugBreak)
+#if !defined(fpl__m_DebugBreak)
 #	if defined(FPL_COMPILER_MSVC) || defined(FPL_COMPILER_INTEL)
-		//! Stop on a line in the debugger (MSVC/Intel)
-#		define fplDebugBreak() __debugbreak()
+#		define fpl__m_DebugBreak() __debugbreak()
 #	elif defined(FPL_COMPILER_ARM)
-		//! Stop on a line in the debugger (Arm)
-#		define fplDebugBreak() __breakpoint(42)
+#		define fpl__m_DebugBreak() __breakpoint(42)
 #	elif defined(FPL_ARCH_X86) || defined(FPL_ARCH_X64)
-		//! Stop on a line in the debugger (X86/64)
-	static fpl_force_inline void fplDebugBreak() { __asm__ __volatile__("int $03"); }
+	static fpl_force_inline void fpl__m_DebugBreak() { __asm__ __volatile__("int $03"); }
 #	elif defined(__thumb__)
-		//! Stop on a line in the debugger (ARM Thumb mode)
-	static fpl_force_inline void fplDebugBreak() { __asm__ __volatile__(".inst 0xde01"); }
+	static fpl_force_inline void fpl__m_DebugBreak() { __asm__ __volatile__(".inst 0xde01"); }
 #	elif defined(FPL_ARCH_ARM64)
-		//! Stop on a line in the debugger (ARM64)
-	static fpl_force_inline void fplDebugBreak() { __asm__ __volatile__(".inst 0xd4200000"); }
+	static fpl_force_inline void fpl__m_DebugBreak() { __asm__ __volatile__(".inst 0xd4200000"); }
 #	elif defined(FPL_ARCH_ARM32)
-		//! Stop on a line in the debugger (ARM32)
-	static fpl_force_inline void fplDebugBreak() { __asm__ __volatile__(".inst 0xe7f001f0"); }
+	static fpl_force_inline void fpl__m_DebugBreak() { __asm__ __volatile__(".inst 0xe7f001f0"); }
 #	elif defined(FPL_COMPILER_GCC)
-		//! Stop on a line in the debugger (GCC)
-#       define fplDebugBreak() __builtin_trap()
+#       define fpl__m_DebugBreak() __builtin_trap()
 #	else
-		//! Include signal.h
 #		define FPL__INCLUDE_SIGNAL
 #		if defined(SIGTRAP)
-			//! Stop on a line in the debugger (Sigtrap)
-#			define fplDebugBreak() raise(SIGTRAP)
+#			define fpl__m_DebugBreak() raise(SIGTRAP)
 #		else
-			//! Stop on a line in the debugger (Sigabort)
-#			define fplDebugBreak() raise(SIGABRT)
+#			define fpl__m_DebugBreak() raise(SIGABRT)
 #		endif
 #	endif
 #endif
+
+//! Stop on a line in the debugger
+#define fplDebugBreak() fpl__m_DebugBreak()
 
 /** @} */
 
 //
 // Types & Limits
 //
-//! @cond FPL_INTERNAL
 #include <stdint.h> // uint32_t, ...
 #include <stddef.h> // size_t
 #include <stdbool.h> // bool
@@ -1778,26 +1768,30 @@ SOFTWARE.
 #if defined(FPL__INCLUDE_SIGNAL)
 #	include <signal.h>
 #endif
-//! @endcond
-
+#if defined(FPL__INCLUDE_MALLOC)
+#	include <malloc.h>
+#endif
+#if defined(FPL__INCLUDE_ALLOCA)
+#	include <alloca.h>
+#endif
 
 // On android or older posix versions there is no UINT32_MAX
+/// @cond FPL_INTERNALS
 #if !defined(UINT32_MAX)
-	//! Define max for uint32_t
 #	define UINT32_MAX ((uint32_t)-1)
 #endif
+/// @endcond
 
 #if defined(__cplusplus) && ((__cplusplus >= 201103L) || (_MSC_VER >= 1900))
-	//! Null
-#	define fpl_null nullptr
+#	define fpl__m_null nullptr
 #elif defined(NULL)
-	//! Null
-#	define fpl_null NULL
+#	define fpl__m_null NULL
 #else
-	//! Null
-#	define fpl_null 0
+#	define fpl__m_null 0
 #endif
 
+//! Null
+#define fpl_null fpl__m_null
 //! 32-bit boolean
 typedef int32_t fpl_b32;
 
@@ -1822,28 +1816,29 @@ fplStaticAssert(sizeof(size_t) >= sizeof(uint32_t));
   * @{
   */
 
-  //! This will full-on crash when something is not implemented always.
+//! This will full-on crash when something is not implemented always.
 #define FPL_NOT_IMPLEMENTED {*(int *)0 = 0xBAD;}
 
 #if defined(FPL_IS_C99)
-	//! Initialize a struct to zero (C99)
-#	define fplZeroInit {0}
-	//! Sets a struct pointer to the given value (C99)
-#	define fplStructSet(ptr, type, value) *(ptr) = (type)value
-	//! Inits a struct by the given type (C99)
-#	define fplStructInit(type, ...) (type){## __VA_ARGS__}
+#	define fpl__m_ZeroInit {0}
+#	define fpl__m_StructSet(ptr, type, value) *(ptr) = (type)value
+#	define fpl__m_StructInit(type, ...) (type){## __VA_ARGS__}
 #else
-	//! Initialize a struct to zero (C++)
-#	define fplZeroInit {}
-	//! Sets a struct pointer to the given value (C++)
-#	define fplStructSet(ptr, type, value) *(ptr) = value
-	//! Inits a struct by the given type (C++)
-#	define fplStructInit(type, ...) {__VA_ARGS__}
+#	define fpl__m_ZeroInit {}
+#	define fpl__m_StructSet(ptr, type, value) *(ptr) = value
+#	define fpl__m_StructInit(type, ...) {__VA_ARGS__}
 #endif
+
+//! Initialize a struct to zero
+#define fplZeroInit fpl__m_ZeroInit
+//! Sets a struct pointer to the given value
+#define fplStructSet fpl__m_StructSet
+//! Inits a struct by the given type
+#define fplStructInit fpl__m_StructInit
 
 //! Returns the offset for the value to satisfy the given alignment boundary
 #define fplGetAlignmentOffset(value, alignment) ( (((alignment) > 1) && (((value) & ((alignment) - 1)) != 0)) ? ((alignment) - ((value) & (alignment - 1))) : 0)           
-//! Returns the given size extended to satisfy the given alignment boundary
+//! Returns the given size, extended to satisfy the given alignment boundary
 #define fplGetAlignedSize(size, alignment) (((size) > 0 && (alignment) > 0) ? ((size) + fplGetAlignmentOffset(size, alignment)) : (size))
 //! Returns true when the given pointer address is aligned to the given alignment
 #define fplIsAligned(ptr, alignment) (((uintptr_t)(const void *)(ptr)) % (alignment) == 0)
@@ -1877,22 +1872,18 @@ fplStaticAssert(sizeof(size_t) >= sizeof(uint32_t));
 #define fplMax(a, b) ((a) > (b) ? (a) : (b))
 
 #if defined(FPL_PLATFORM_WINDOWS)
-	//! Manually allocate memory on the stack (Win32)
-#	include <malloc.h>
-#	define fplStackAllocate(size) _alloca(size)
+#	define fpl__m_StackAllocate(size) _alloca(size)
 #else
-#	if defined(FPL_PLATFORM_LINUX)
-#		include <alloca.h>
-#	endif
-	//! Manually allocate memory on the stack (Non-Win32)
-#	define fplStackAllocate(size) alloca(size)
+#	define fpl__m_StackAllocate(size) alloca(size)
 #endif
+
+//! Manually allocate memory on the stack
+#define fplStackAllocate(size) fpl__m_StackAllocate(size)
 
 /** @} */
 
 #if defined(FPL_IS_CPP)
-	//! Macro for overloading enum operators in C++
-#	define FPL_ENUM_AS_FLAGS_OPERATORS(etype) \
+#	define FPL__M_ENUM_AS_FLAGS_OPERATORS(etype) \
 	inline etype operator | (etype a, etype b) { \
 		return static_cast<etype>(static_cast<int>(a) | static_cast<int>(b)); \
 	} \
@@ -1915,9 +1906,11 @@ fplStaticAssert(sizeof(size_t) >= sizeof(uint32_t));
 		return a = a ^ b; \
 	}
 #else
-	//! No need to overload operators for enums in C99
-#	define FPL_ENUM_AS_FLAGS_OPERATORS(etype)
+#	define FPL__M_ENUM_AS_FLAGS_OPERATORS(etype)
 #endif
+
+//! Macro for overloading enum operators
+#define FPL_ENUM_AS_FLAGS_OPERATORS(type) FPL__M_ENUM_AS_FLAGS_OPERATORS(type)
 
 // ****************************************************************************
 //
@@ -1963,27 +1956,26 @@ struct IUnknown;
   * @brief This category contains constants
   * @{
   */
-
 #if defined(FPL_PLATFORM_WINDOWS)
-  //! Maximum length of a filename (Win32)
-#	define FPL_MAX_FILENAME_LENGTH (MAX_PATH + 1)
-	//! Maximum length of a path (Win32)
-#	define FPL_MAX_PATH_LENGTH (MAX_PATH * 2 + 1)
-	//! Path separator character (Win32)
-#	define FPL_PATH_SEPARATOR '\\'
-	//! File extension character (Win32)
-#	define FPL_FILE_EXT_SEPARATOR '.'
+#	define FPL__M_MAX_FILENAME_LENGTH (MAX_PATH + 1)
+#	define FPL__M_MAX_PATH_LENGTH (MAX_PATH * 2 + 1)
+#	define FPL__M_PATH_SEPARATOR '\\'
+#	define FPL__M_FILE_EXT_SEPARATOR '.'
 #else
-  //! Maximum length of a filename (Non win32)
-#	define FPL_MAX_FILENAME_LENGTH (511 + 1)
-	//! Maximum length of a path (Non win32)
-#	define FPL_MAX_PATH_LENGTH (2047 + 1)
-	//! Path separator character (Non win32)
-#	define FPL_PATH_SEPARATOR '/'
-	//! File extension character (Non win32)
-#	define FPL_FILE_EXT_SEPARATOR '.'
+#	define FPL__M_MAX_FILENAME_LENGTH (511 + 1)
+#	define FPL__M_MAX_PATH_LENGTH (2047 + 1)
+#	define FPL__M_PATH_SEPARATOR '/'
+#	define FPL__M_FILE_EXT_SEPARATOR '.'
 #endif
 
+//! Maximum length of a filename
+#define FPL_MAX_FILENAME_LENGTH FPL__M_MAX_FILENAME_LENGTH
+//! Maximum length of a path
+#define FPL_MAX_PATH_LENGTH FPL__M_MAX_PATH_LENGTH
+//! Path separator character
+#define FPL_PATH_SEPARATOR FPL__M_PATH_SEPARATOR
+//! File extension character
+#define FPL_FILE_EXT_SEPARATOR FPL__M_FILE_EXT_SEPARATOR
 //! Maximum length of a name (in characters)
 #define FPL_MAX_NAME_LENGTH (255 + 1)
 //! Maximum length of a internal buffer (in bytes)
@@ -2635,7 +2627,7 @@ typedef enum fplVideoDriverType {
 	fplVideoDriverType_Software
 } fplVideoDriverType;
 
-#if defined(FPL_ENABLE_VIDEO_OPENGL)
+#if defined(FPL__ENABLE_VIDEO_OPENGL)
 //! An enumeration of OpenGL compability flags
 typedef enum fplOpenGLCompabilityFlags {
 	//! Use legacy context
@@ -2659,11 +2651,11 @@ typedef struct fplOpenGLVideoSettings {
 	//! Multisampling count
 	uint8_t multiSamplingCount;
 } fplOpenGLVideoSettings;
-#endif // FPL_ENABLE_VIDEO_OPENGL
+#endif // FPL__ENABLE_VIDEO_OPENGL
 
 //! A union that contains graphics api settings
 typedef union fplGraphicsApiSettings {
-#if defined(FPL_ENABLE_VIDEO_OPENGL)
+#if defined(FPL__ENABLE_VIDEO_OPENGL)
 	//! OpenGL settings
 	fplOpenGLVideoSettings opengl;
 #endif
@@ -2758,11 +2750,11 @@ typedef struct fplAudioTargetFormat {
 
 //! A union containing a id of the underlying driver
 typedef union fplAudioDeviceID {
-#if defined(FPL_ENABLE_AUDIO_DIRECTSOUND)
+#if defined(FPL__ENABLE_AUDIO_DIRECTSOUND)
 	//! DirectShow Device GUID
 	GUID dshow;
 #endif
-#if defined(FPL_ENABLE_AUDIO_ALSA)
+#if defined(FPL__ENABLE_AUDIO_ALSA)
 	//! ALSA Device ID
 	char alsa[256];
 #endif
@@ -2778,7 +2770,7 @@ typedef struct fplAudioDeviceInfo {
 	fplAudioDeviceID id;
 } fplAudioDeviceInfo;
 
-#if defined(FPL_ENABLE_AUDIO_ALSA)
+#if defined(FPL__ENABLE_AUDIO_ALSA)
 //! A structure containing settings for the ALSA audio driver
 typedef struct fplAlsaAudioSettings {
 	//! Disable the usage of MMap in ALSA
@@ -2788,7 +2780,7 @@ typedef struct fplAlsaAudioSettings {
 
 //! A union containing driver specific audio settings
 typedef union fplSpecificAudioSettings {
-#if defined(FPL_ENABLE_AUDIO_ALSA)
+#if defined(FPL__ENABLE_AUDIO_ALSA)
 	//! Alsa specific settings
 	fplAlsaAudioSettings alsa;
 #endif
@@ -3022,7 +3014,7 @@ typedef enum fplLogLevel {
 	fplLogLevel_Debug = 5,
 } fplLogLevel;
 
-#if defined(FPL_ENABLE_LOGGING)
+#if defined(FPL__ENABLE_LOGGING)
 /**
   * @brief A callback for printing a log message
   * @param level The log level @ref fplLogLevel
@@ -3070,7 +3062,7 @@ typedef struct fplLogWriter {
 
 //! A structure containing log settings
 typedef struct fplLogSettings {
-#if defined(FPL_ENABLE_LOG_MULTIPLE_WRITERS)
+#if defined(FPL__ENABLE_LOG_MULTIPLE_WRITERS)
 	union {
 		//! All writers
 		fplLogWriter writers[6];
@@ -3123,7 +3115,7 @@ fpl_common_api void fplSetMaxLogLevel(const fplLogLevel maxLevel);
   * @note This function can be called regardless of the initialization state!
   */
 fpl_common_api fplLogLevel fplGetMaxLogLevel();
-#endif // FPL_ENABLE_LOGGING
+#endif // FPL__ENABLE_LOGGING
 
 /** @} */
 
@@ -4396,7 +4388,7 @@ fpl_common_api char *fplPathCombine(char *destPath, const size_t maxDestPathLen,
 
 /** @} */
 
-#if defined(FPL_ENABLE_WINDOW)
+#if defined(FPL__ENABLE_WINDOW)
 // ----------------------------------------------------------------------------
 /**
 * @defgroup WindowEvents Window events
@@ -5241,9 +5233,9 @@ fpl_platform_api bool fplGetClipboardText(char *dest, const uint32_t maxDestLen)
 fpl_platform_api bool fplSetClipboardText(const char *text);
 
 /** @} */
-#endif // FPL_ENABLE_WINDOW
+#endif // FPL__ENABLE_WINDOW
 
-#if defined(FPL_ENABLE_VIDEO)
+#if defined(FPL__ENABLE_VIDEO)
 // ----------------------------------------------------------------------------
 /**
   * @defgroup Video Video functions
@@ -5326,9 +5318,9 @@ fpl_common_api fplVideoDriverType fplGetVideoDriver();
 fpl_common_api void fplVideoFlip();
 
 /** @} */
-#endif // FPL_ENABLE_VIDEO
+#endif // FPL__ENABLE_VIDEO
 
-#if defined(FPL_ENABLE_AUDIO)
+#if defined(FPL__ENABLE_AUDIO)
 // ----------------------------------------------------------------------------
 /**
   * @defgroup Audio Audio functions
@@ -5430,7 +5422,7 @@ fpl_common_api uint32_t fplGetAudioBufferSizeInBytes(const fplAudioFormatType fo
 fpl_common_api void fplConvertAudioTargetFormatToDeviceFormat(const fplAudioTargetFormat *inFormat, fplAudioDeviceFormat *outFormat);
 
 /** @} */
-#endif // FPL_ENABLE_AUDIO
+#endif // FPL__ENABLE_AUDIO
 
 // ----------------------------------------------------------------------------
 /**
@@ -5478,7 +5470,7 @@ fpl_platform_api bool fplGetInputLocale(const fplLocaleFormat targetFormat, char
 /** @} */
 
 // Ignore any doxygen documentation from here
-//! @cond FPL_INTERNAL
+/// @cond FPL_INTERNALS
 
 // ****************************************************************************
 //
@@ -5631,7 +5623,7 @@ fpl_main int main(int argc, char **args);
 //
 #define FPL__MODULE_CONCAT(mod, format) "[" mod "] " format
 
-#if defined(FPL_ENABLE_LOGGING)
+#if defined(FPL__ENABLE_LOGGING)
 fpl_globalvar fplLogSettings fpl__global__LogSettings = fplZeroInit;
 
 fpl_internal void fpl__LogWrite(const fplLogLevel level, const char *message) {
@@ -6501,7 +6493,7 @@ typedef struct fpl__Win32AppState {
 	fpl__Win32ConsoleState console;
 } fpl__Win32AppState;
 
-#if defined(FPL_ENABLE_WINDOW)
+#if defined(FPL__ENABLE_WINDOW)
 typedef struct fpl__Win32LastWindowInfo {
 	WINDOWPLACEMENT placement;
 	DWORD style;
@@ -6521,7 +6513,7 @@ typedef struct fpl__Win32WindowState {
 	fpl_b32 isCursorActive;
 	fpl_b32 isFrameInteraction;
 } fpl__Win32WindowState;
-#endif // FPL_ENABLE_WINDOW
+#endif // FPL__ENABLE_WINDOW
 
 #endif // FPL_PLATFORM_WINDOWS
 
@@ -6758,7 +6750,7 @@ typedef struct fpl__LinuxInitState {
 	int dummy;
 } fpl__LinuxInitState;
 
-#if defined(FPL_ENABLE_WINDOW)
+#if defined(FPL__ENABLE_WINDOW)
 #define FPL__LINUX_MAX_GAME_CONTROLLER_COUNT 4
 typedef struct fpl__LinuxGameController {
 	char deviceName[512 + 1];
@@ -6776,14 +6768,14 @@ typedef struct fpl__LinuxGameControllersState {
 #endif
 
 typedef struct fpl__LinuxAppState {
-#if defined(FPL_ENABLE_WINDOW)
+#if defined(FPL__ENABLE_WINDOW)
 	fpl__LinuxGameControllersState controllersState;
 #endif
 	int dummy;
 } fpl__LinuxAppState;
 
 // Forward declarations
-#if defined(FPL_ENABLE_WINDOW)
+#if defined(FPL__ENABLE_WINDOW)
 fpl_internal void fpl__LinuxFreeGameControllers(fpl__LinuxGameControllersState *controllersState);
 fpl_internal void fpl__LinuxPollGameControllers(const fplSettings *settings, fpl__LinuxGameControllersState *controllersState, const bool useEvents);
 #endif
@@ -7095,7 +7087,7 @@ typedef struct fpl__PlatformInitState {
 } fpl__PlatformInitState;
 fpl_globalvar fpl__PlatformInitState fpl__global__InitState = fplZeroInit;
 
-#if defined(FPL_ENABLE_WINDOW)
+#if defined(FPL__ENABLE_WINDOW)
 #define FPL__MAX_EVENT_COUNT 32768
 typedef struct fpl__EventQueue {
 	fplEvent events[FPL__MAX_EVENT_COUNT];
@@ -7117,16 +7109,16 @@ typedef struct fpl__PlatformWindowState {
 	fpl__X11WindowState x11;
 #endif
 } fpl__PlatformWindowState;
-#endif // FPL_ENABLE_WINDOW
+#endif // FPL__ENABLE_WINDOW
 
-#if defined(FPL_ENABLE_VIDEO)
+#if defined(FPL__ENABLE_VIDEO)
 typedef struct fpl__PlatformVideoState {
 	void *mem; // Points to fpl__VideoState
 	size_t memSize;
 } fpl__PlatformVideoState;
-#endif // FPL_ENABLE_VIDEO
+#endif // FPL__ENABLE_VIDEO
 
-#if defined(FPL_ENABLE_AUDIO)
+#if defined(FPL__ENABLE_AUDIO)
 typedef struct fpl__PlatformAudioState {
 	void *mem; // Points to fpl__AudioState
 	size_t memSize;
@@ -7147,13 +7139,13 @@ struct fpl__PlatformAppState {
 #endif
 
 	// Window/video/audio
-#if defined(FPL_ENABLE_WINDOW)
+#if defined(FPL__ENABLE_WINDOW)
 	fpl__PlatformWindowState window;
 #endif
-#if defined(FPL_ENABLE_VIDEO)
+#if defined(FPL__ENABLE_VIDEO)
 	fpl__PlatformVideoState video;
 #endif
-#if defined(FPL_ENABLE_AUDIO)
+#if defined(FPL__ENABLE_AUDIO)
 	fpl__PlatformAudioState audio;
 #endif
 
@@ -7174,7 +7166,7 @@ struct fpl__PlatformAppState {
 	};
 };
 
-#if defined(FPL_ENABLE_WINDOW)
+#if defined(FPL__ENABLE_WINDOW)
 fpl_internal fplKey fpl__GetMappedKey(const fpl__PlatformWindowState *windowState, const uint64_t keyCode) {
 	fplKey result;
 	if (keyCode < fplArrayCount(windowState->keyMap))
@@ -7358,7 +7350,7 @@ typedef struct fpl__SetupWindowCallbacks {
 	callback_PreSetupWindow *preSetup;
 	callback_PostSetupWindow *postSetup;
 } fpl__SetupWindowCallbacks;
-#endif // FPL_ENABLE_WINDOW
+#endif // FPL__ENABLE_WINDOW
 
 #endif // FPL_PLATFORM_STATES_DEFINED
 
@@ -7466,7 +7458,7 @@ fpl_internal void fpl__PushError_Formatted(const fplLogLevel level, const char *
 	size_t errorIndex = state->count;
 	state->count = (state->count + 1) % FPL__MAX_ERRORSTATE_COUNT;
 	fplCopyStringLen(buffer, messageLen, state->errors[errorIndex], FPL__MAX_LAST_ERROR_STRING_LENGTH);
-#if defined(FPL_ENABLE_LOGGING)
+#if defined(FPL__ENABLE_LOGGING)
 	va_list listCopy;
 	va_copy(listCopy, argList);
 	fpl__LogWriteArgs(level, format, listCopy);
@@ -8414,7 +8406,7 @@ fpl_common_api char *fplGetWindowTitle(char *outTitle, const size_t maxOutTitleL
 //
 // Common Logging
 //
-#if defined(FPL_ENABLE_LOGGING)
+#if defined(FPL__ENABLE_LOGGING)
 fpl_common_api void fplSetLogSettings(const fplLogSettings *params) {
 	FPL__CheckArgumentNullNoRet(params);
 	fpl__global__LogSettings = *params;
@@ -8477,10 +8469,10 @@ fpl_common_api void fplSetDefaultVideoSettings(fplVideoSettings *video) {
 	video->isVSync = false;
 	video->isAutoSize = true;
 	// @NOTE(final): Auto detect video driver
-#if defined(FPL_ENABLE_VIDEO_OPENGL)
+#if defined(FPL__ENABLE_VIDEO_OPENGL)
 	video->driver = fplVideoDriverType_OpenGL;
 	video->graphics.opengl.compabilityFlags = fplOpenGLCompabilityFlags_Legacy;
-#elif defined(FPL_ENABLE_VIDEO_SOFTWARE)
+#elif defined(FPL__ENABLE_VIDEO_SOFTWARE)
 	video->driver = fplVideoDriverType_Software;
 #else
 	video->driver = fplVideoDriverType_None;
@@ -8503,10 +8495,10 @@ fpl_common_api void fplSetDefaultAudioSettings(fplAudioSettings *audio) {
 	fplSetDefaultAudioTargetFormat(&audio->targetFormat);
 
 	audio->driver = fplAudioDriverType_None;
-#	if defined(FPL_PLATFORM_WINDOWS) && defined(FPL_ENABLE_AUDIO_DIRECTSOUND)
+#	if defined(FPL_PLATFORM_WINDOWS) && defined(FPL__ENABLE_AUDIO_DIRECTSOUND)
 	audio->driver = fplAudioDriverType_DirectSound;
 #	endif
-#	if defined(FPL_PLATFORM_LINUX) && defined(FPL_ENABLE_AUDIO_ALSA)
+#	if defined(FPL_PLATFORM_LINUX) && defined(FPL__ENABLE_AUDIO_ALSA)
 	audio->driver = fplAudioDriverType_Alsa;
 #	endif
 
@@ -8607,7 +8599,7 @@ fpl_common_api const char *fplGetArchTypeString(const fplArchType type) {
 #		define FPL_MEMORY_BARRIER()
 #	endif
 
-#if defined(FPL_ENABLE_WINDOW)
+#if defined(FPL__ENABLE_WINDOW)
 
 fpl_internal_inline DWORD fpl__Win32MakeWindowStyle(const fplWindowSettings *settings) {
 	DWORD result = WS_CLIPSIBLINGS | WS_CLIPCHILDREN;
@@ -9077,7 +9069,7 @@ LRESULT CALLBACK fpl__Win32MessageProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 			fpl__PushWindowSizeEvent(fplWindowEventType_Restored, newWidth, newHeight);
 		}
 
-#			if defined(FPL_ENABLE_VIDEO_SOFTWARE)
+#			if defined(FPL__ENABLE_VIDEO_SOFTWARE)
 		if (appState->currentSettings.video.driver == fplVideoDriverType_Software) {
 			if (appState->initSettings.video.isAutoSize) {
 				fplResizeVideoBackBuffer(newWidth, newHeight);
@@ -9497,7 +9489,7 @@ fpl_internal void fpl__Win32ReleaseWindow(const fpl__Win32InitState *initState, 
 	}
 }
 
-#endif // FPL_ENABLE_WINDOW
+#endif // FPL__ENABLE_WINDOW
 
 fpl_internal bool fpl__Win32ThreadWaitForMultiple(fplThreadHandle *threads[], const size_t count, const bool waitForAll, const fplTimeoutValue timeout) {
 	FPL__CheckArgumentNull(threads, false);
@@ -9581,7 +9573,7 @@ fpl_internal void fpl__Win32ReleasePlatform(fpl__PlatformInitState *initState, f
 	fpl__Win32UnloadApi(&win32AppState->winApi);
 }
 
-#if defined(FPL_ENABLE_WINDOW)
+#if defined(FPL__ENABLE_WINDOW)
 fpl_internal fplKey fpl__Win32TranslateVirtualKey(const fpl__Win32Api *wapi, const uint64_t virtualKey) {
 	switch (virtualKey) {
 	case VK_BACK:
@@ -9908,7 +9900,7 @@ fpl_internal bool fpl__Win32InitPlatform(const fplInitFlags initFlags, const fpl
 	}
 
 	// Init keymap
-#	if defined(FPL_ENABLE_WINDOW)
+#	if defined(FPL__ENABLE_WINDOW)
 	fplClearStruct(appState->window.keyMap);
 	for (int i = 0; i < 256; ++i) {
 		int vk = win32AppState->winApi.user.MapVirtualKeyW(MAPVK_VSC_TO_VK, i);
@@ -11383,7 +11375,7 @@ fpl_platform_api void fplDynamicLibraryUnload(fplDynamicLibraryHandle *handle) {
 	}
 }
 
-#if defined(FPL_ENABLE_WINDOW)
+#if defined(FPL__ENABLE_WINDOW)
 //
 // Win32 Window
 //
@@ -12078,7 +12070,7 @@ fpl_platform_api size_t fplGetDisplayModes(const char *id, fplDisplayMode *modes
 	return(result);
 }
 
-#endif // FPL_ENABLE_WINDOW
+#endif // FPL__ENABLE_WINDOW
 
 fpl_internal LCTYPE fpl__Win32GetLocaleLCIDFromFormat(const fplLocaleFormat format) {
 	switch (format) {
@@ -14147,7 +14139,7 @@ fpl_internal void fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatfor
 	switch (ev->type) {
 	case ConfigureNotify:
 	{
-#			if defined(FPL_ENABLE_VIDEO_SOFTWARE)
+#			if defined(FPL__ENABLE_VIDEO_SOFTWARE)
 		if (appState->currentSettings.video.driver == fplVideoDriverType_Software) {
 			if (appState->initSettings.video.isAutoSize) {
 				uint32_t w = (uint32_t)ev->xconfigure.width;
@@ -14632,7 +14624,7 @@ fpl_platform_api bool fplPollMouseState(fplMouseState *outState) {
 #	include <linux/joystick.h> // js_event, axis_state, etc.
 
 fpl_internal void fpl__LinuxReleasePlatform(fpl__PlatformInitState *initState, fpl__PlatformAppState *appState) {
-#if defined(FPL_ENABLE_WINDOW)
+#if defined(FPL__ENABLE_WINDOW)
 	if (appState->initFlags & fplInitFlags_GameController) {
 		fpl__LinuxFreeGameControllers(&appState->plinux.controllersState);
 	}
@@ -14652,7 +14644,7 @@ fpl_internal bool fpl__LinuxInitPlatform(const fplInitFlags initFlags, const fpl
 //
 // Linux Input
 //
-#if defined(FPL_ENABLE_WINDOW)
+#if defined(FPL__ENABLE_WINDOW)
 fpl_internal void fpl__LinuxFreeGameControllers(fpl__LinuxGameControllersState *controllersState) {
 	for (int controllerIndex = 0; controllerIndex < fplArrayCount(controllersState->controllers); ++controllerIndex) {
 		fpl__LinuxGameController *controller = controllersState->controllers + controllerIndex;
@@ -14907,7 +14899,7 @@ fpl_platform_api bool fplPollGamepadStates(fplGamepadStates *outStates) {
 	return(false);
 }
 
-#endif // FPL_ENABLE_WINDOW
+#endif // FPL__ENABLE_WINDOW
 
 //
 // Linux Threading
@@ -15169,7 +15161,7 @@ fpl_platform_api bool fplGetRunningMemoryInfos(fplMemoryInfos *outInfos) {
 // > VIDEO_DRIVERS
 //
 // ****************************************************************************
-#if !defined(FPL_VIDEO_DRIVERS_IMPLEMENTED) && defined(FPL_ENABLE_VIDEO)
+#if !defined(FPL_VIDEO_DRIVERS_IMPLEMENTED) && defined(FPL__ENABLE_VIDEO)
 #	define FPL_VIDEO_DRIVERS_IMPLEMENTED
 
 // ############################################################################
@@ -15177,7 +15169,7 @@ fpl_platform_api bool fplGetRunningMemoryInfos(fplMemoryInfos *outInfos) {
 // > VIDEO_DRIVER_OPENGL_WIN32
 //
 // ############################################################################
-#if defined(FPL_ENABLE_VIDEO_OPENGL) && defined(FPL_PLATFORM_WINDOWS)
+#if defined(FPL__ENABLE_VIDEO_OPENGL) && defined(FPL_PLATFORM_WINDOWS)
 
 #define FPL_GL_CONTEXT_FLAG_FORWARD_COMPATIBLE_BIT 0x0001
 #define FPL_GL_CONTEXT_FLAG_DEBUG_BIT 0x00000002
@@ -15532,14 +15524,14 @@ fpl_internal void fpl__Win32ReleaseVideoOpenGL(fpl__Win32VideoOpenGLState *glSta
 		glState->renderingContext = fpl_null;
 	}
 }
-#endif // FPL_ENABLE_VIDEO_OPENGL && FPL_PLATFORM_WINDOWS
+#endif // FPL__ENABLE_VIDEO_OPENGL && FPL_PLATFORM_WINDOWS
 
 // ############################################################################
 //
 // > VIDEO_DRIVER_OPENGL_X11
 //
 // ############################################################################
-#if defined(FPL_ENABLE_VIDEO_OPENGL) && defined(FPL_SUBPLATFORM_X11)
+#if defined(FPL__ENABLE_VIDEO_OPENGL) && defined(FPL_SUBPLATFORM_X11)
 #ifndef __gl_h_
 typedef uint8_t GLubyte;
 #endif
@@ -16003,14 +15995,14 @@ done_x11_glx:
 
 	return (result);
 }
-#endif // FPL_ENABLE_VIDEO_OPENGL && FPL_SUBPLATFORM_X11
+#endif // FPL__ENABLE_VIDEO_OPENGL && FPL_SUBPLATFORM_X11
 
 // ############################################################################
 //
 // > VIDEO_DRIVER_SOFTWARE_X11
 //
 // ############################################################################
-#if defined(FPL_ENABLE_VIDEO_SOFTWARE) && defined(FPL_SUBPLATFORM_X11)
+#if defined(FPL__ENABLE_VIDEO_SOFTWARE) && defined(FPL_SUBPLATFORM_X11)
 typedef struct fpl__X11VideoSoftwareState {
 	GC graphicsContext;
 	XImage *buffer;
@@ -16065,14 +16057,14 @@ fpl_internal bool fpl__X11InitVideoSoftware(const fpl__X11SubplatformState *subp
 
 	return (true);
 }
-#endif // FPL_ENABLE_VIDEO_SOFTWARE && FPL_SUBPLATFORM_X11
+#endif // FPL__ENABLE_VIDEO_SOFTWARE && FPL_SUBPLATFORM_X11
 
 // ############################################################################
 //
 // > VIDEO_DRIVER_SOFTWARE_WIN32
 //
 // ############################################################################
-#if defined(FPL_ENABLE_VIDEO_SOFTWARE) && defined(FPL_PLATFORM_WINDOWS)
+#if defined(FPL__ENABLE_VIDEO_SOFTWARE) && defined(FPL_PLATFORM_WINDOWS)
 typedef struct fpl__Win32VideoSoftwareState {
 	BITMAPINFO bitmapInfo;
 } fpl__Win32VideoSoftwareState;
@@ -16092,7 +16084,7 @@ fpl_internal bool fpl__Win32InitVideoSoftware(const fplVideoBackBuffer *backbuff
 fpl_internal void fpl__Win32ReleaseVideoSoftware(fpl__Win32VideoSoftwareState *software) {
 	fplClearStruct(software);
 }
-#endif // FPL_ENABLE_VIDEO_SOFTWARE && FPL_PLATFORM_WINDOWS
+#endif // FPL__ENABLE_VIDEO_SOFTWARE && FPL_PLATFORM_WINDOWS
 
 #endif // FPL_VIDEO_DRIVERS_IMPLEMENTED
 
@@ -16101,7 +16093,7 @@ fpl_internal void fpl__Win32ReleaseVideoSoftware(fpl__Win32VideoSoftwareState *s
 // > AUDIO_DRIVERS
 //
 // ****************************************************************************
-#if !defined(FPL_AUDIO_DRIVERS_IMPLEMENTED) && defined(FPL_ENABLE_AUDIO)
+#if !defined(FPL_AUDIO_DRIVERS_IMPLEMENTED) && defined(FPL__ENABLE_AUDIO)
 #	define FPL_AUDIO_DRIVERS_IMPLEMENTED
 
 typedef enum fpl__AudioDeviceState {
@@ -16149,7 +16141,7 @@ fpl_internal bool fpl__IsAudioDeviceStarted(fpl__CommonAudioState *audioState);
 // > AUDIO_DRIVER_DIRECTSOUND
 //
 // ############################################################################
-#if defined(FPL_ENABLE_AUDIO_DIRECTSOUND)
+#if defined(FPL__ENABLE_AUDIO_DIRECTSOUND)
 #	include <mmreg.h>
 #   include <mmsystem.h>
 #	include <dsound.h>
@@ -16325,7 +16317,7 @@ fpl_internal fplAudioResult fpl__AudioInitDirectSound(const fplAudioSettings *au
 
 	// Get either local window handle or desktop handle
 	HWND windowHandle = fpl_null;
-#	if defined(FPL_ENABLE_WINDOW)
+#	if defined(FPL__ENABLE_WINDOW)
 	if (appState->initFlags & fplInitFlags_Window) {
 		windowHandle = appState->window.win32.windowHandle;
 	}
@@ -16614,14 +16606,14 @@ fpl_internal void fpl__AudioRunMainLoopDirectSound(const fpl__CommonAudioState *
 		}
 	}
 }
-#endif // FPL_ENABLE_AUDIO_DIRECTSOUND
+#endif // FPL__ENABLE_AUDIO_DIRECTSOUND
 
 // ############################################################################
 //
 // > AUDIO_DRIVER_ALSA
 //
 // ############################################################################
-#if defined(FPL_ENABLE_AUDIO_ALSA)
+#if defined(FPL__ENABLE_AUDIO_ALSA)
 
 // @TODO(final/ALSA): Remove ALSA include when runtime linking is enabled
 #	include <alsa/asoundlib.h>
@@ -17398,7 +17390,7 @@ fpl_internal uint32_t fpl__GetAudioDevicesAlsa(fpl__AlsaAudioState *alsaState, f
 	return(result);
 }
 
-#endif // FPL_ENABLE_AUDIO_ALSA
+#endif // FPL__ENABLE_AUDIO_ALSA
 
 #endif // FPL_AUDIO_DRIVERS_IMPLEMENTED
 
@@ -17410,7 +17402,7 @@ fpl_internal uint32_t fpl__GetAudioDevicesAlsa(fpl__AlsaAudioState *alsaState, f
 // See: https://github.com/dr-soft/mini_al
 //
 // %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-#if defined(FPL_ENABLE_AUDIO)
+#if defined(FPL__ENABLE_AUDIO)
 typedef struct fpl__AudioEvent {
 	fplMutexHandle mutex;
 	fplConditionVariable cond;
@@ -17464,10 +17456,10 @@ typedef struct fpl__AudioState {
 	bool isAsyncDriver;
 
 	union {
-#	if defined(FPL_ENABLE_AUDIO_DIRECTSOUND)
+#	if defined(FPL__ENABLE_AUDIO_DIRECTSOUND)
 		fpl__DirectSoundAudioState dsound;
 #	endif
-#	if defined(FPL_ENABLE_AUDIO_ALSA)
+#	if defined(FPL__ENABLE_AUDIO_ALSA)
 		fpl__AlsaAudioState alsa;
 #	endif
 	};
@@ -17486,14 +17478,14 @@ fpl_internal void fpl__StopAudioDeviceMainLoop(fpl__AudioState *audioState) {
 	fplAssert(audioState->activeDriver > fplAudioDriverType_Auto);
 	switch (audioState->activeDriver) {
 
-#	if defined(FPL_ENABLE_AUDIO_DIRECTSOUND)
+#	if defined(FPL__ENABLE_AUDIO_DIRECTSOUND)
 	case fplAudioDriverType_DirectSound:
 	{
 		fpl__AudioStopMainLoopDirectSound(&audioState->dsound);
 	} break;
 #	endif
 
-#	if defined(FPL_ENABLE_AUDIO_ALSA)
+#	if defined(FPL__ENABLE_AUDIO_ALSA)
 	case fplAudioDriverType_Alsa:
 	{
 		fpl__AudioStopMainLoopAlsa(&audioState->alsa);
@@ -17510,14 +17502,14 @@ fpl_internal bool fpl__ReleaseAudioDevice(fpl__AudioState *audioState) {
 	bool result = false;
 	switch (audioState->activeDriver) {
 
-#	if defined(FPL_ENABLE_AUDIO_DIRECTSOUND)
+#	if defined(FPL__ENABLE_AUDIO_DIRECTSOUND)
 	case fplAudioDriverType_DirectSound:
 	{
 		result = fpl__AudioReleaseDirectSound(&audioState->common, &audioState->dsound);
 	} break;
 #	endif
 
-#	if defined(FPL_ENABLE_AUDIO_ALSA)
+#	if defined(FPL__ENABLE_AUDIO_ALSA)
 	case fplAudioDriverType_Alsa:
 	{
 		result = fpl__AudioReleaseAlsa(&audioState->common, &audioState->alsa);
@@ -17535,14 +17527,14 @@ fpl_internal bool fpl__StopAudioDevice(fpl__AudioState *audioState) {
 	bool result = false;
 	switch (audioState->activeDriver) {
 
-#	if defined(FPL_ENABLE_AUDIO_DIRECTSOUND)
+#	if defined(FPL__ENABLE_AUDIO_DIRECTSOUND)
 	case fplAudioDriverType_DirectSound:
 	{
 		result = fpl__AudioStopDirectSound(&audioState->dsound);
 	} break;
 #	endif
 
-#	if defined(FPL_ENABLE_AUDIO_ALSA)
+#	if defined(FPL__ENABLE_AUDIO_ALSA)
 	case fplAudioDriverType_Alsa:
 	{
 		result = fpl__AudioStopAlsa(&audioState->alsa);
@@ -17560,14 +17552,14 @@ fpl_internal fplAudioResult fpl__StartAudioDevice(fpl__AudioState *audioState) {
 	fplAudioResult result = fplAudioResult_Failed;
 	switch (audioState->activeDriver) {
 
-#	if defined(FPL_ENABLE_AUDIO_DIRECTSOUND)
+#	if defined(FPL__ENABLE_AUDIO_DIRECTSOUND)
 	case fplAudioDriverType_DirectSound:
 	{
 		result = fpl__AudioStartDirectSound(&audioState->common, &audioState->dsound);
 	} break;
 #	endif
 
-#	if defined(FPL_ENABLE_AUDIO_ALSA)
+#	if defined(FPL__ENABLE_AUDIO_ALSA)
 	case fplAudioDriverType_Alsa:
 	{
 		result = fpl__AudioStartAlsa(&audioState->common, &audioState->alsa);
@@ -17584,14 +17576,14 @@ fpl_internal void fpl__RunAudioDeviceMainLoop(fpl__AudioState *audioState) {
 	fplAssert(audioState->activeDriver > fplAudioDriverType_Auto);
 	switch (audioState->activeDriver) {
 
-#	if defined(FPL_ENABLE_AUDIO_DIRECTSOUND)
+#	if defined(FPL__ENABLE_AUDIO_DIRECTSOUND)
 	case fplAudioDriverType_DirectSound:
 	{
 		fpl__AudioRunMainLoopDirectSound(&audioState->common, &audioState->dsound);
 	} break;
 #	endif
 
-#	if defined(FPL_ENABLE_AUDIO_ALSA)
+#	if defined(FPL__ENABLE_AUDIO_ALSA)
 	case fplAudioDriverType_Alsa:
 	{
 		fpl__AudioRunMainLoopAlsa(&audioState->common, &audioState->alsa);
@@ -17818,7 +17810,7 @@ fpl_internal fplAudioResult fpl__InitAudio(const fplAudioSettings *audioSettings
 		initResult = fplAudioResult_Failed;
 		switch (propeDriver) {
 
-#		if defined(FPL_ENABLE_AUDIO_DIRECTSOUND)
+#		if defined(FPL__ENABLE_AUDIO_DIRECTSOUND)
 		case fplAudioDriverType_DirectSound:
 		{
 			initResult = fpl__AudioInitDirectSound(audioSettings, &audioState->common, &audioState->dsound);
@@ -17828,7 +17820,7 @@ fpl_internal fplAudioResult fpl__InitAudio(const fplAudioSettings *audioSettings
 		} break;
 #		endif
 
-#		if defined(FPL_ENABLE_AUDIO_ALSA)
+#		if defined(FPL__ENABLE_AUDIO_ALSA)
 		case fplAudioDriverType_Alsa:
 		{
 			initResult = fpl__AudioInitAlsa(audioSettings, &audioState->common, &audioState->alsa);
@@ -17871,7 +17863,7 @@ fpl_internal fplAudioResult fpl__InitAudio(const fplAudioSettings *audioSettings
 
 	return(fplAudioResult_Success);
 }
-#endif // FPL_ENABLE_AUDIO
+#endif // FPL__ENABLE_AUDIO
 
 // %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 //
@@ -17881,14 +17873,14 @@ fpl_internal fplAudioResult fpl__InitAudio(const fplAudioSettings *audioSettings
 // See: https://github.com/dr-soft/mini_al
 //
 // %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-#if defined(FPL_ENABLE_VIDEO)
+#if defined(FPL__ENABLE_VIDEO)
 
 #if defined(FPL_PLATFORM_WINDOWS)
 typedef union fpl__Win32VideoState {
-#	if defined(FPL_ENABLE_VIDEO_OPENGL)
+#	if defined(FPL__ENABLE_VIDEO_OPENGL)
 	fpl__Win32VideoOpenGLState opengl;
 #	endif
-#	if defined(FPL_ENABLE_VIDEO_SOFTWARE)
+#	if defined(FPL__ENABLE_VIDEO_SOFTWARE)
 	fpl__Win32VideoSoftwareState software;
 #	endif
 } fpl__Win32VideoState;
@@ -17896,10 +17888,10 @@ typedef union fpl__Win32VideoState {
 
 #if defined(FPL_SUBPLATFORM_X11)
 typedef union fpl__X11VideoState {
-#	if defined(FPL_ENABLE_VIDEO_OPENGL)
+#	if defined(FPL__ENABLE_VIDEO_OPENGL)
 	fpl__X11VideoOpenGLState opengl;
 #	endif
-#	if defined(FPL_ENABLE_VIDEO_SOFTWARE)
+#	if defined(FPL__ENABLE_VIDEO_SOFTWARE)
 	fpl__X11VideoSoftwareState software;
 #	endif
 } fpl__X11VideoState;
@@ -17907,7 +17899,7 @@ typedef union fpl__X11VideoState {
 
 typedef struct fpl__VideoState {
 	fplVideoDriverType activeDriver;
-#	if defined(FPL_ENABLE_VIDEO_SOFTWARE)
+#	if defined(FPL__ENABLE_VIDEO_SOFTWARE)
 	fplVideoBackBuffer softwareBackbuffer;
 #	endif
 
@@ -17932,7 +17924,7 @@ fpl_internal void fpl__ShutdownVideo(fpl__PlatformAppState *appState, fpl__Video
 	fplAssert(appState != fpl_null);
 	if (videoState != fpl_null) {
 		switch (videoState->activeDriver) {
-#		if defined(FPL_ENABLE_VIDEO_OPENGL)
+#		if defined(FPL__ENABLE_VIDEO_OPENGL)
 		case fplVideoDriverType_OpenGL:
 		{
 #			if defined(FPL_PLATFORM_WINDOWS)
@@ -17941,9 +17933,9 @@ fpl_internal void fpl__ShutdownVideo(fpl__PlatformAppState *appState, fpl__Video
 			fpl__X11ReleaseVideoOpenGL(&appState->x11, &appState->window.x11, &videoState->x11.opengl);
 #			endif
 		} break;
-#		endif // FPL_ENABLE_VIDEO_OPENGL
+#		endif // FPL__ENABLE_VIDEO_OPENGL
 
-#		if defined(FPL_ENABLE_VIDEO_SOFTWARE)
+#		if defined(FPL__ENABLE_VIDEO_SOFTWARE)
 		case fplVideoDriverType_Software:
 		{
 #			if defined(FPL_PLATFORM_WINDOWS)
@@ -17952,14 +17944,14 @@ fpl_internal void fpl__ShutdownVideo(fpl__PlatformAppState *appState, fpl__Video
 			fpl__X11ReleaseVideoSoftware(&appState->x11, &appState->window.x11, &videoState->x11.software);
 #			endif
 		} break;
-#		endif // FPL_ENABLE_VIDEO_SOFTWARE
+#		endif // FPL__ENABLE_VIDEO_SOFTWARE
 
 		default:
 		{
 		} break;
 		}
 
-#	if defined(FPL_ENABLE_VIDEO_SOFTWARE)
+#	if defined(FPL__ENABLE_VIDEO_SOFTWARE)
 		fplVideoBackBuffer *backbuffer = &videoState->softwareBackbuffer;
 		if (backbuffer->pixels != fpl_null) {
 			fplMemoryAlignedFree(backbuffer->pixels);
@@ -17971,7 +17963,7 @@ fpl_internal void fpl__ShutdownVideo(fpl__PlatformAppState *appState, fpl__Video
 
 fpl_internal void fpl__ReleaseVideoState(fpl__PlatformAppState *appState, fpl__VideoState *videoState) {
 	switch (videoState->activeDriver) {
-#	if defined(FPL_ENABLE_VIDEO_OPENGL)
+#	if defined(FPL__ENABLE_VIDEO_OPENGL)
 	case fplVideoDriverType_OpenGL:
 	{
 #		if defined(FPL_PLATFORM_WINDOWS)
@@ -17983,7 +17975,7 @@ fpl_internal void fpl__ReleaseVideoState(fpl__PlatformAppState *appState, fpl__V
 	}; break;
 #	endif
 
-#	if defined(FPL_ENABLE_VIDEO_SOFTWARE)
+#	if defined(FPL__ENABLE_VIDEO_SOFTWARE)
 	case fplVideoDriverType_Software:
 	{
 		// Nothing todo
@@ -18000,7 +17992,7 @@ fpl_internal bool fpl__LoadVideoState(const fplVideoDriverType driver, fpl__Vide
 	bool result = true;
 
 	switch (driver) {
-#	if defined(FPL_ENABLE_VIDEO_OPENGL)
+#	if defined(FPL__ENABLE_VIDEO_OPENGL)
 	case fplVideoDriverType_OpenGL:
 	{
 #		if defined(FPL_PLATFORM_WINDOWS)
@@ -18025,7 +18017,7 @@ fpl_internal bool fpl__InitVideo(const fplVideoDriverType driver, const fplVideo
 	videoState->activeDriver = driver;
 
 	// Allocate backbuffer context if needed
-#	if defined(FPL_ENABLE_VIDEO_SOFTWARE)
+#	if defined(FPL__ENABLE_VIDEO_SOFTWARE)
 	if (driver == fplVideoDriverType_Software) {
 		fplVideoBackBuffer *backbuffer = &videoState->softwareBackbuffer;
 		backbuffer->width = windowWidth;
@@ -18050,11 +18042,11 @@ fpl_internal bool fpl__InitVideo(const fplVideoDriverType driver, const fplVideo
 			}
 		}
 	}
-#	endif // FPL_ENABLE_VIDEO_SOFTWARE
+#	endif // FPL__ENABLE_VIDEO_SOFTWARE
 
 	bool videoInitResult = false;
 	switch (driver) {
-#	if defined(FPL_ENABLE_VIDEO_OPENGL)
+#	if defined(FPL__ENABLE_VIDEO_OPENGL)
 	case fplVideoDriverType_OpenGL:
 	{
 #		if defined(FPL_PLATFORM_WINDOWS)
@@ -18063,9 +18055,9 @@ fpl_internal bool fpl__InitVideo(const fplVideoDriverType driver, const fplVideo
 		videoInitResult = fpl__X11InitVideoOpenGL(&appState->x11, &appState->window.x11, videoSettings, &videoState->x11.opengl);
 #		endif
 	} break;
-#	endif // FPL_ENABLE_VIDEO_OPENGL
+#	endif // FPL__ENABLE_VIDEO_OPENGL
 
-#	if defined(FPL_ENABLE_VIDEO_SOFTWARE)
+#	if defined(FPL__ENABLE_VIDEO_SOFTWARE)
 	case fplVideoDriverType_Software:
 	{
 #		if defined(FPL_PLATFORM_WINDOWS)
@@ -18074,7 +18066,7 @@ fpl_internal bool fpl__InitVideo(const fplVideoDriverType driver, const fplVideo
 		videoInitResult = fpl__X11InitVideoSoftware(&appState->x11, &appState->window.x11, videoSettings, &videoState->softwareBackbuffer, &videoState->x11.software);
 #		endif
 	} break;
-#	endif // FPL_ENABLE_VIDEO_SOFTWARE
+#	endif // FPL__ENABLE_VIDEO_SOFTWARE
 
 	default:
 	{
@@ -18089,7 +18081,7 @@ fpl_internal bool fpl__InitVideo(const fplVideoDriverType driver, const fplVideo
 
 	return true;
 }
-#endif // FPL_ENABLE_VIDEO
+#endif // FPL__ENABLE_VIDEO
 
 // %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 //
@@ -18099,16 +18091,16 @@ fpl_internal bool fpl__InitVideo(const fplVideoDriverType driver, const fplVideo
 // - Release window
 //
 // %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-#if defined(FPL_ENABLE_WINDOW)
+#if defined(FPL__ENABLE_WINDOW)
 fpl_internal FPL__FUNC_PRE_SETUP_WINDOW(fpl__PreSetupWindowDefault) {
 	fplAssert(appState != fpl_null);
 	bool result = false;
 
-#	if defined(FPL_ENABLE_VIDEO)
+#	if defined(FPL__ENABLE_VIDEO)
 	if (initFlags & fplInitFlags_Video) {
 		fpl__VideoState *videoState = fpl__GetVideoState(appState);
 		switch (initSettings->video.driver) {
-#		if defined(FPL_ENABLE_VIDEO_OPENGL)
+#		if defined(FPL__ENABLE_VIDEO_OPENGL)
 		case fplVideoDriverType_OpenGL:
 		{
 #			if defined(FPL_PLATFORM_WINDOWS)
@@ -18122,23 +18114,23 @@ fpl_internal FPL__FUNC_PRE_SETUP_WINDOW(fpl__PreSetupWindowDefault) {
 			}
 #			endif
 		} break;
-#		endif // FPL_ENABLE_VIDEO_OPENGL
+#		endif // FPL__ENABLE_VIDEO_OPENGL
 
-#		if defined(FPL_ENABLE_VIDEO_SOFTWARE)
+#		if defined(FPL__ENABLE_VIDEO_SOFTWARE)
 		case fplVideoDriverType_Software:
 		{
 #			if defined(FPL_SUBPLATFORM_X11)
 			result = fpl__X11SetPreWindowSetupForSoftware(&appState->x11.api, &appState->window.x11, &videoState->x11.software, &outResult->x11);
 #			endif
 		} break;
-#		endif // FPL_ENABLE_VIDEO_OPENGL
+#		endif // FPL__ENABLE_VIDEO_OPENGL
 
 		default:
 		{
 		} break;
 		}
 	}
-#	endif // FPL_ENABLE_VIDEO
+#	endif // FPL__ENABLE_VIDEO
 
 	return(result);
 }
@@ -18146,10 +18138,10 @@ fpl_internal FPL__FUNC_PRE_SETUP_WINDOW(fpl__PreSetupWindowDefault) {
 fpl_internal FPL__FUNC_POST_SETUP_WINDOW(fpl__PostSetupWindowDefault) {
 	fplAssert(appState != fpl_null);
 
-#if defined(FPL_ENABLE_VIDEO)
+#if defined(FPL__ENABLE_VIDEO)
 	if (initFlags & fplInitFlags_Video) {
 		switch (initSettings->video.driver) {
-#		if defined(FPL_ENABLE_VIDEO_OPENGL)
+#		if defined(FPL__ENABLE_VIDEO_OPENGL)
 		case fplVideoDriverType_OpenGL:
 		{
 #			if defined(FPL_PLATFORM_WINDOWS)
@@ -18158,14 +18150,14 @@ fpl_internal FPL__FUNC_POST_SETUP_WINDOW(fpl__PostSetupWindowDefault) {
 			}
 #			endif
 		} break;
-#		endif // FPL_ENABLE_VIDEO_OPENGL
+#		endif // FPL__ENABLE_VIDEO_OPENGL
 
 		default:
 		{
 		} break;
 		}
 	}
-#endif // FPL_ENABLE_VIDEO
+#endif // FPL__ENABLE_VIDEO
 
 	return false;
 }
@@ -18191,7 +18183,7 @@ fpl_internal void fpl__ReleaseWindow(const fpl__PlatformInitState *initState, fp
 #	endif
 	}
 }
-#endif // FPL_ENABLE_WINDOW
+#endif // FPL__ENABLE_WINDOW
 
 // %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 //
@@ -18201,7 +18193,7 @@ fpl_internal void fpl__ReleaseWindow(const fpl__PlatformInitState *initState, fp
 // - Play audio
 //
 // %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-#if defined(FPL_ENABLE_AUDIO)
+#if defined(FPL__ENABLE_AUDIO)
 fpl_common_api uint32_t fplGetAudioSampleSizeInBytes(const fplAudioFormatType format) {
 	switch (format) {
 	case fplAudioFormatType_U8:
@@ -18437,14 +18429,14 @@ fpl_common_api uint32_t fplGetAudioDevices(fplAudioDeviceInfo *devices, uint32_t
 	uint32_t result = 0;
 	if (audioState->activeDriver > fplAudioDriverType_Auto) {
 		switch (audioState->activeDriver) {
-#		if defined(FPL_ENABLE_AUDIO_DIRECTSOUND)
+#		if defined(FPL__ENABLE_AUDIO_DIRECTSOUND)
 		case fplAudioDriverType_DirectSound:
 		{
 			result = fpl__GetAudioDevicesDirectSound(&audioState->dsound, devices, maxDeviceCount);
 		} break;
 #		endif
 
-#		if defined(FPL_ENABLE_AUDIO_ALSA)
+#		if defined(FPL__ENABLE_AUDIO_ALSA)
 		case fplAudioDriverType_Alsa:
 		{
 			result = fpl__GetAudioDevicesAlsa(&audioState->alsa, devices, maxDeviceCount);
@@ -18457,7 +18449,7 @@ fpl_common_api uint32_t fplGetAudioDevices(fplAudioDeviceInfo *devices, uint32_t
 	}
 	return(result);
 }
-#endif // FPL_ENABLE_AUDIO
+#endif // FPL__ENABLE_AUDIO
 
 // %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 //
@@ -18468,7 +18460,7 @@ fpl_common_api uint32_t fplGetAudioDevices(fplAudioDeviceInfo *devices, uint32_t
 // - Utiltity functions
 //
 // %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-#if defined(FPL_ENABLE_VIDEO)
+#if defined(FPL__ENABLE_VIDEO)
 fpl_common_api const char *fplGetVideoDriverString(fplVideoDriverType driver) {
 	switch (driver) {
 	case fplVideoDriverType_OpenGL:
@@ -18488,7 +18480,7 @@ fpl_common_api fplVideoBackBuffer *fplGetVideoBackBuffer() {
 	fplVideoBackBuffer *result = fpl_null;
 	if (appState->video.mem != fpl_null) {
 		fpl__VideoState *videoState = fpl__GetVideoState(appState);
-#	if defined(FPL_ENABLE_VIDEO_SOFTWARE)
+#	if defined(FPL__ENABLE_VIDEO_SOFTWARE)
 		if (appState->currentSettings.video.driver == fplVideoDriverType_Software) {
 			result = &videoState->softwareBackbuffer;
 		}
@@ -18510,7 +18502,7 @@ fpl_common_api bool fplResizeVideoBackBuffer(const uint32_t width, const uint32_
 	fpl__VideoState *videoState = fpl__GetVideoState(appState);
 	bool result = false;
 	if (videoState != fpl_null) {
-#	if defined(FPL_ENABLE_VIDEO_SOFTWARE)
+#	if defined(FPL__ENABLE_VIDEO_SOFTWARE)
 		if (videoState->activeDriver == fplVideoDriverType_Software) {
 			fpl__ShutdownVideo(appState, videoState);
 			result = fpl__InitVideo(fplVideoDriverType_Software, &appState->currentSettings.video, width, height, appState, videoState);
@@ -18530,7 +18522,7 @@ fpl_common_api void fplVideoFlip() {
 		const fpl__Win32WindowState *win32WindowState = &appState->window.win32;
 		const fpl__Win32Api *wapi = &win32AppState->winApi;
 		switch (appState->currentSettings.video.driver) {
-#		if defined(FPL_ENABLE_VIDEO_SOFTWARE)
+#		if defined(FPL__ENABLE_VIDEO_SOFTWARE)
 		case fplVideoDriverType_Software:
 		{
 			const fpl__Win32VideoSoftwareState *software = &videoState->win32.software;
@@ -18555,7 +18547,7 @@ fpl_common_api void fplVideoFlip() {
 		} break;
 #		endif
 
-#		if defined(FPL_ENABLE_VIDEO_OPENGL)
+#		if defined(FPL__ENABLE_VIDEO_OPENGL)
 		case fplVideoDriverType_OpenGL:
 		{
 			wapi->gdi.SwapBuffers(win32WindowState->deviceContext);
@@ -18568,7 +18560,7 @@ fpl_common_api void fplVideoFlip() {
 #   elif defined(FPL_SUBPLATFORM_X11)
 		const fpl__X11WindowState *x11WinState = &appState->window.x11;
 		switch (appState->currentSettings.video.driver) {
-#		if defined(FPL_ENABLE_VIDEO_OPENGL)
+#		if defined(FPL__ENABLE_VIDEO_OPENGL)
 		case fplVideoDriverType_OpenGL:
 		{
 			const fpl__X11VideoOpenGLApi *glApi = &videoState->x11.opengl.api;
@@ -18576,7 +18568,7 @@ fpl_common_api void fplVideoFlip() {
 		} break;
 #		endif
 
-#		if defined(FPL_ENABLE_VIDEO_SOFTWARE)
+#		if defined(FPL__ENABLE_VIDEO_SOFTWARE)
 		case fplVideoDriverType_Software:
 		{
 			const fpl__X11Api *x11Api = &appState->x11.api;
@@ -18593,7 +18585,7 @@ fpl_common_api void fplVideoFlip() {
 #	endif // FPL_PLATFORM || FPL_SUBPLATFORM
 	}
 }
-#endif // FPL_ENABLE_VIDEO
+#endif // FPL__ENABLE_VIDEO
 
 // %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 //
@@ -18607,7 +18599,7 @@ fpl_internal void fpl__ReleasePlatformStates(fpl__PlatformInitState *initState, 
 	fplAssert(initState != fpl_null);
 
 	// Release audio
-#	if defined(FPL_ENABLE_AUDIO)
+#	if defined(FPL__ENABLE_AUDIO)
 	{
 		// Auto-Stop audio if enabled
 		if (appState->currentSettings.audio.stopAuto) {
@@ -18631,7 +18623,7 @@ fpl_internal void fpl__ReleasePlatformStates(fpl__PlatformInitState *initState, 
 #	endif
 
 	// Shutdown video (Release context only)
-#	if defined(FPL_ENABLE_VIDEO)
+#	if defined(FPL__ENABLE_VIDEO)
 	{
 		fpl__VideoState *videoState = fpl__GetVideoState(appState);
 		if (videoState != fpl_null) {
@@ -18642,7 +18634,7 @@ fpl_internal void fpl__ReleasePlatformStates(fpl__PlatformInitState *initState, 
 #	endif
 
 	// Release window
-#	if defined(FPL_ENABLE_WINDOW)
+#	if defined(FPL__ENABLE_WINDOW)
 	{
 		FPL_LOG_DEBUG(FPL__MODULE_CORE, "Release Window");
 		fpl__ReleaseWindow(initState, appState);
@@ -18650,7 +18642,7 @@ fpl_internal void fpl__ReleasePlatformStates(fpl__PlatformInitState *initState, 
 #	endif
 
 	// Release video state
-#	if defined(FPL_ENABLE_VIDEO)
+#	if defined(FPL__ENABLE_VIDEO)
 	{
 		fpl__VideoState *videoState = fpl__GetVideoState(appState);
 		if (videoState != fpl_null) {
@@ -18749,7 +18741,7 @@ fpl_common_api bool fplPlatformInit(const fplInitFlags initFlags, const fplSetti
 	size_t platformAppStateSize = fplGetAlignedSize(sizeof(fpl__PlatformAppState), 16);
 
 	// Include video/audio state memory in app state memory as well
-#if defined(FPL_ENABLE_VIDEO)
+#if defined(FPL__ENABLE_VIDEO)
 	size_t videoMemoryOffset = 0;
 	if (initFlags & fplInitFlags_Video) {
 		platformAppStateSize += FPL__ARBITARY_PADDING;
@@ -18758,7 +18750,7 @@ fpl_common_api bool fplPlatformInit(const fplInitFlags initFlags, const fplSetti
 	}
 #endif
 
-#if defined(FPL_ENABLE_AUDIO)
+#if defined(FPL__ENABLE_AUDIO)
 	size_t audioMemoryOffset = 0;
 	if (initFlags & fplInitFlags_Audio) {
 		platformAppStateSize += FPL__ARBITARY_PADDING;
@@ -18788,12 +18780,12 @@ fpl_common_api bool fplPlatformInit(const fplInitFlags initFlags, const fplSetti
 	FPL_LOG_DEBUG(FPL__MODULE_CORE, "Successfully allocated Platform App State Memory of size '%zu'", platformAppStateSize);
 
 	// Window is required for video always
-#	if defined(FPL_ENABLE_VIDEO)
+#	if defined(FPL__ENABLE_VIDEO)
 	if (appState->initFlags & fplInitFlags_Video) {
 		appState->initFlags |= fplInitFlags_Window;
 	}
 #	endif
-#	if !defined(FPL_ENABLE_WINDOW)
+#	if !defined(FPL__ENABLE_WINDOW)
 	appState->initFlags = (fplInitFlags)(appState->initFlags & ~fplInitFlags_Window);
 #	endif
 #	if defined(FPL_APPTYPE_CONSOLE)
@@ -18844,7 +18836,7 @@ fpl_common_api bool fplPlatformInit(const fplInitFlags initFlags, const fplSetti
 	FPL_LOG_DEBUG(FPL__MODULE_CORE, "Successfully initialized %s Platform", FPL_PLATFORM_NAME);
 
 	// Init video state
-#	if defined(FPL_ENABLE_VIDEO)
+#	if defined(FPL__ENABLE_VIDEO)
 	if (appState->initFlags & fplInitFlags_Video) {
 		FPL_LOG_DEBUG(FPL__MODULE_CORE, "Init video state:");
 		appState->video.mem = (uint8_t *)platformAppStateMemory + videoMemoryOffset;
@@ -18864,10 +18856,10 @@ fpl_common_api bool fplPlatformInit(const fplInitFlags initFlags, const fplSetti
 		}
 		FPL_LOG_DEBUG(FPL__MODULE_CORE, "Successfully loaded Video API for Driver '%s'", videoDriverString);
 	}
-#	endif // FPL_ENABLE_VIDEO
+#	endif // FPL__ENABLE_VIDEO
 
 	// Init Window & event queue
-#	if defined(FPL_ENABLE_WINDOW)
+#	if defined(FPL__ENABLE_WINDOW)
 	if (appState->initFlags & fplInitFlags_Window) {
 		FPL_LOG_DEBUG(FPL__MODULE_CORE, "Init Window:");
 		fpl__SetupWindowCallbacks winCallbacks = fplZeroInit;
@@ -18880,10 +18872,10 @@ fpl_common_api bool fplPlatformInit(const fplInitFlags initFlags, const fplSetti
 		}
 		FPL_LOG_DEBUG(FPL__MODULE_CORE, "Successfully initialized Window");
 	}
-#	endif // FPL_ENABLE_WINDOW
+#	endif // FPL__ENABLE_WINDOW
 
 	// Init Video
-#	if defined(FPL_ENABLE_VIDEO)
+#	if defined(FPL__ENABLE_VIDEO)
 	if (appState->initFlags & fplInitFlags_Video) {
 		fpl__VideoState *videoState = fpl__GetVideoState(appState);
 		fplAssert(videoState != fpl_null);
@@ -18905,10 +18897,10 @@ fpl_common_api bool fplPlatformInit(const fplInitFlags initFlags, const fplSetti
 		}
 		FPL_LOG_DEBUG(FPL__MODULE_CORE, "Successfully initialized Video Driver '%s'", videoDriverName);
 	}
-#	endif // FPL_ENABLE_VIDEO
+#	endif // FPL__ENABLE_VIDEO
 
 	// Init Audio
-#	if defined(FPL_ENABLE_AUDIO)
+#	if defined(FPL__ENABLE_AUDIO)
 	if (appState->initFlags & fplInitFlags_Audio) {
 		appState->audio.mem = (uint8_t *)platformAppStateMemory + audioMemoryOffset;
 		appState->audio.memSize = sizeof(fpl__AudioState);
@@ -18934,7 +18926,7 @@ fpl_common_api bool fplPlatformInit(const fplInitFlags initFlags, const fplSetti
 			}
 		}
 	}
-#	endif // FPL_ENABLE_AUDIO
+#	endif // FPL__ENABLE_AUDIO
 
 	initState->isInitialized = true;
 	return(fpl__SetPlatformResult(fplPlatformResultType_Success));
@@ -19179,6 +19171,6 @@ int WINAPI WinMain(HINSTANCE appInstance, HINSTANCE prevInstance, LPSTR cmdLine,
 
 #endif // !FPL_NO_UNDEF
 
-//! @endcond
+/// @endcond
 
 // end-of-file
