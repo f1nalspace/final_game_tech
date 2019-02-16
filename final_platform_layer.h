@@ -150,6 +150,8 @@ SOFTWARE.
 	- Fixed: fplPlatformInit() was using the width for the height for the default window size
 	- Fixed: fplExtractFileExtension() was not favour the last path part
 	- Fixed [Win32/MSVC]: Workaround for "combaseapi.h(229): error C2187: syntax error: 'identifier' was unexpected here"
+    - Fixed: [POSIX] Parse version string (isdigit was not found)
+    - Fixed: [X11] Added missing fpl*Display* stubs
 	- New: Added fplSetWindowFullscreenRect()
 	- New: Added fplGetDisplayCount()
 	- New: Added fplGetDisplays()
@@ -5904,7 +5906,7 @@ fpl_internal void fpl__ParseVersionString(const char *versionStr, fplVersionInfo
 		const char *p = versionStr;
 		for (int i = 0; i < 4; ++i) {
 			const char *digitStart = p;
-			while (isdigit(*p)) {
+			while (*p >= '0' && *p <= '9') {
 				++p;
 			}
 			size_t len = p - digitStart;
@@ -11895,7 +11897,6 @@ fpl_platform_api size_t fplGetDisplayCount() {
 	wapi->user.EnumDisplayMonitors(fpl_null, fpl_null, fpl__Win32MonitorCountEnumProc, param);
 	return(result);
 }
-
 fpl_internal void fpl__Win32FillDisplayInfo(const MONITORINFOEXW *info, fplDisplayInfo *outInfo) {
 	fplAssert(info != fpl_null);
 	fplAssert(outInfo != fpl_null);
@@ -14089,7 +14090,7 @@ fpl_internal bool fpl__X11InitWindow(const fplSettings *initSettings, fplWindowS
 	}
 
 	if (initSettings->window.isFullscreen) {
-		fplSetWindowFullscreen(true, initSettings->window.fullscreenSize.width, initSettings->window.fullscreenSize.height, initSettings->window.fullscreenRefreshRate);
+		fplSetWindowFullscreenSize(true, initSettings->window.fullscreenSize.width, initSettings->window.fullscreenSize.height, initSettings->window.fullscreenRefreshRate);
 	}
 
 	appState->window.isRunning = true;
@@ -14430,6 +14431,41 @@ fpl_platform_api fplWindowState fplGetWindowState() {
 fpl_platform_api bool fplSetWindowState(const fplWindowState newState) {
 	// @IMPLEMENT(final/X11): Implement fplSetWindowState
 	return(false);
+}
+
+fpl_platform_api size_t fplGetDisplayCount() {
+    // @IMPLEMENT(final/X11): Implement fplGetDisplayCount
+    return(0);
+}
+
+fpl_platform_api size_t fplGetDisplays(fplDisplayInfo *displays, const size_t maxDisplayCount) {
+    // @IMPLEMENT(final/X11): Implement fplGetDisplays
+    return(0);
+}
+
+fpl_platform_api bool fplGetPrimaryDisplay(fplDisplayInfo *display) {
+	// @IMPLEMENT(final/X11): Implement fplGetPrimaryDisplay
+	return(false);
+}
+
+fpl_platform_api bool fplGetWindowDisplay(fplDisplayInfo *outDisplay) {
+	// @IMPLEMENT(final/X11): Implement fplGetWindowDisplay
+	return(false);
+}
+
+fpl_platform_api bool fplGetDisplayFromPosition(const int32_t x, const int32_t y, fplDisplayInfo *outDisplay) {
+	// @IMPLEMENT(final/X11): Implement fplGetDisplayFromPosition
+	return(false);
+}
+
+fpl_platform_api size_t fplGetDisplayModeCount(const char *id) {
+	// @IMPLEMENT(final/X11): Implement fplGetDisplayModeCount
+	return(0);
+}
+
+fpl_platform_api size_t fplGetDisplayModes(const char *id, fplDisplayMode *modes, const size_t maxDisplayModeCount) {
+	// @IMPLEMENT(final/X11): Implement fplGetDisplayModes
+	return(0);
 }
 
 fpl_platform_api bool fplSetWindowFullscreenSize(const bool value, const uint32_t fullscreenWidth, const uint32_t fullscreenHeight, const uint32_t refreshRate) {
