@@ -148,7 +148,7 @@ SOFTWARE.
 
 /*!
 	\file final_memory.h
-	\version v0.2.0 alpha
+	\version v0.2.1 alpha
 	\author Torsten Spaete
 	\brief Final Memory (FMEM) - A open source C99 single file header memory library.
 */
@@ -156,6 +156,9 @@ SOFTWARE.
 /*!
 	\page page_changelog Changelog
 	\tableofcontents
+
+    ## v0.2.1 alpha:
+    - Fixed: Two inline functions was not found in GCC
 
     ## v0.2 alpha:
 	- Added: New function fmemGetHeader
@@ -326,12 +329,12 @@ fmem_api fmemBlockHeader *fmemGetHeader(fmemMemoryBlock *block);
 //! Returns the header from the given block
 #define FMEM__GETBLOCK(header) (fmemMemoryBlock *)((uint8_t *)(header) + FMEM__OFFSET_TO_BLOCK)
 
-inline size_t fmem__GetSpaceAvailableFor(const fmemMemoryBlock *block, const size_t size) {
+static size_t fmem__GetSpaceAvailableFor(const fmemMemoryBlock *block, const size_t size) {
 	size_t result = ((block->size > 0) && (block->used <= block->size)) ? ((block->size - block->used) - size) : 0;
 	return(result);
 }
 
-inline size_t fmem__ComputeBlockSize(size_t size) {
+static size_t fmem__ComputeBlockSize(size_t size) {
 	FMEM_ASSERT(size >= FMEM__BLOCK_META_SIZE);
 	size_t count = (size / FMEM__MIN_BLOCKSIZE) + 1;
 	size_t result = count * FMEM__MIN_BLOCKSIZE;
