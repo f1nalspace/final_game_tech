@@ -102,7 +102,7 @@ int main(int argc, char *argv[]) {
 			}
 
 			fplWindowSize winSize;
-			if(!fplGetWindowArea(&winSize)) {
+			if(!fplGetWindowSize(&winSize)) {
 				winSize = { 0,0 };
 			}
 
