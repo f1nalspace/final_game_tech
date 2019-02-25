@@ -53,28 +53,28 @@ int main(int argc, char **args){
 #include <final_platform_layer.h>
 
 int main(int argc, char **args){
-	fplSettings settings;
-	fplSetDefaultSettings(&settings);
-	fplVideoSettings videoSettings = settings.video;
+	// Create default settings
+	fplSettings settings = fplMakeDefaultSettings();
 
-	videoSettings.driver = fplVideoDriverType_OpenGL;
+	// Overwrite the video driver
+	settings.video.driver = fplVideoDriverType_OpenGL;
 
 	// Legacy OpenGL
-	videoSettings.opengl.compabilityFlags = fplOpenGLCompabilityFlags_Legacy;
+	settings.video.graphics.opengl.compabilityFlags = fplOpenGLCompabilityFlags_Legacy;
 
 	// or
 
 	// Modern OpenGL
-	videoSettings.opengl.compabilityFlags = fplOpenGLCompabilityFlags_Core;
-	videoSettings.opengl.majorVersion = 3;
-	videoSettings.opengl.minorVersion = 3;
+	settings.video.graphics.opengl.compabilityFlags = fplOpenGLCompabilityFlags_Core;
+	settings.video.graphics.opengl.majorVersion = 3;
+	settings.video.graphics.opengl.minorVersion = 3;
 
 	if (fplPlatformInit(fplInitFlags_Video, &settings)) {
 		// Event/Main loop
 		while (fplWindowUpdate()) {
 			// Poll events
 			fplEvent ev;
-			while (fplPollEvent(ev)) {
+			while (fplPollEvent(&ev)) {
 				/// ...
 			}
 
@@ -131,6 +131,9 @@ SOFTWARE.
 /*!
 	@page page_changelog Changelog
 	@tableofcontents
+
+	## v0.9.4.0 beta
+	- Fixed: Corrected opengl example code in the header file
 
 	## v0.9.3.0 beta
 	- Changed: Renamed fplSetWindowFullscreen to fplSetWindowFullscreenSize
