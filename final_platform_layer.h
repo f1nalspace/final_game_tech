@@ -1,4 +1,4 @@
-/*
+﻿/*
 final_platform_layer.h
 
 -------------------------------------------------------------------------------
@@ -289,7 +289,7 @@ SOFTWARE.
 	- Changed: Added known issues section
 	- Changed: Renamed fplPlatformResultType to fplPlatformResultType
 	- Changed: fplPlatformInit returns now bool instead fplPlatformResultType
-	- Changed: Changed all comment prefix from \ to @, so it matches java-doc style
+	- Changed: Changed all comment prefix from \\ to @@, so it matches java-doc style
 	- Changed: Disable compile error when unix or bsd is detected
 	- Changed: Renamed fplGetKeyboardState to fplPollKeyboardState
 	- Changed: Renamed fplGetGamepadStates to fplPollGamepadStates
