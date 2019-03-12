@@ -401,7 +401,7 @@
 	@section section_category_initialization_release Releasing the Platform
 
 	Call @ref fplPlatformRelease() when you are done. This will release all internal resources.<br>
-
+	
 	@code{.c}
 	fplPlatformRelease();
 	@endcode
@@ -497,7 +497,7 @@
 	}
 	@endcode
 
-	@note You may combine @ref fplGetPlatformResult with @ref fplGetLastError, to get a more understanding what exactly went wrong.
+	@note You may combine @ref fplGetPlatformResult() with @ref fplGetLastError, to get a more understanding what exactly went wrong.
 
 	@section section_category_errorhandling_getlatest Get latest error
 
@@ -1123,7 +1123,7 @@
 
 	<b>Query fullscreen state:</b>
 	@code{.c}
-	if (fplIsWindowFullScreen()) {
+	if (fplIsWindowFullscreen()) {
 		// Do something on fullscreen mode
 	}
 
@@ -1530,6 +1530,9 @@
 
 	<b>Example (Resize window event):</b>
 	@code{.c}
+	static fplVideoRect ComputeLetterbox(int windowWidth, int windowHeight, int backWidth, int backHeight) {
+		return {};
+	}
 	fplVideoBackBuffer *backBuffer = fplGetVideoBackBuffer();
 	backBuffer->useOutputRect = true;
 	while (fplWindowUpdate()) {
@@ -1557,7 +1560,7 @@
 		fplEvent ev;
 		while (fplPollEvent(ev)) {}
 
-		fplWindowSize windowArea = fplGetWindowArea();
+		fplWindowSize windowArea = fplGetWindowSize();
 		fplVideoRect newRect = ComputeLetterbox(windowArea, backBuffer->width, backBuffer->height); // ... Compute new rectangle here (Letterbox or something)
 		backBuffer->outputRect = newRect;
 
@@ -3542,7 +3545,7 @@
 				fplEvent ev;
 				while (fplPollEvent(&ev)) {}
 
-				fplWindowSize windowArea = fplGetWindowArea();
+				fplWindowSize windowArea = fplGetWindowSize();
 				glViewport(0, 0, windowArea.width, windowArea.height);
 				glClear(GL_COLOR_BUFFER_BIT);
 				glBegin(GL_TRIANGLES);
