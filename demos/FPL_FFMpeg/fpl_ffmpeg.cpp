@@ -256,9 +256,9 @@ constexpr uint32_t EXTERNAL_CLOCK_MIN_FRAMES = 2;
 constexpr uint32_t EXTERNAL_CLOCK_MAX_FRAMES = 10;
 
 // External clock speed adjustment constants for realtime sources based on buffer fullness
-#define EXTERNAL_CLOCK_SPEED_MIN  0.900
-#define EXTERNAL_CLOCK_SPEED_MAX  1.010
-#define EXTERNAL_CLOCK_SPEED_STEP 0.001
+constexpr double EXTERNAL_CLOCK_SPEED_MIN = 0.900;
+constexpr double EXTERNAL_CLOCK_SPEED_MAX = 1.010;
+constexpr double EXTERNAL_CLOCK_SPEED_STEP = 0.001;
 
 // No AV sync correction is done if below the minimum AV sync threshold
 constexpr double AV_SYNC_THRESHOLD_MIN = 0.04;
@@ -270,7 +270,7 @@ constexpr double AV_NOSYNC_THRESHOLD = 10.0;
 constexpr double AV_SYNC_FRAMEDUP_THRESHOLD = 0.1;
 // Default refresh rate of 1/sec
 constexpr double DEFAULT_REFRESH_RATE = 0.01;
-// Number of audio measurements required to make an average.
+// Number of audio samples required to make an average.
 constexpr int AV_AUDIO_DIFF_AVG_NB = 20;
 // Maximum audio speed change to get correct sync
 constexpr int AV_SAMPLE_CORRECTION_PERCENT_MAX = 10;
@@ -2693,7 +2693,7 @@ int main(int argc, char **argv) {
 
 	fplArchType arch = fplGetProcessorArchitecture();
 	if (!(arch == fplArchType_x64 || arch == fplArchType_x86_64)) {
-		fplConsoleError("Only x64 architecture is supported for this demo!");
+		fplConsoleError("x64 architecture is required to run this demo!");
 		return -1;
 	}
 

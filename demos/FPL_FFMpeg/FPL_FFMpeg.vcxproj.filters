@@ -12,6 +12,9 @@
     <ClInclude Include="..\..\final_platform_layer.h">
       <Filter>dependencies</Filter>
     </ClInclude>
+    <ClInclude Include="..\dependencies\stb\stb_truetype.h">
+      <Filter>dependencies</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="fpl_ffmpeg.cpp" />
