@@ -1868,7 +1868,7 @@ extern void GameInput(GameMemory &gameMemory, const Input &input) {
 	const float h = WorldRadiusH;
 
 	float invScale = 1.0f / state->camera.scale;
-	Mat4f proj = Mat4Ortho(-w * invScale, w * invScale, -h * invScale, h * invScale, 0.0f, 1.0f);
+	Mat4f proj = Mat4OrthoLH(-w * invScale, w * invScale, -h * invScale, h * invScale, 0.0f, 1.0f);
 	Mat4f view = Mat4Translation(state->camera.offset);
 	state->viewProjection = proj * view;
 
