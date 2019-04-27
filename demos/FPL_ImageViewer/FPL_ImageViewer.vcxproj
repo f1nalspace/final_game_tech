@@ -41,7 +41,7 @@
     <ProjectGuid>{6DE47F7B-70B5-4242-95B9-7FF6A3C25608}</ProjectGuid>
     <Keyword>Win32Proj</Keyword>
     <RootNamespace>FPLImageViewer</RootNamespace>
-    <WindowsTargetPlatformVersion>8.1</WindowsTargetPlatformVersion>
+    <WindowsTargetPlatformVersion>10.0.17763.0</WindowsTargetPlatformVersion>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
