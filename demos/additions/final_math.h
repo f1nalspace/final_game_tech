@@ -257,12 +257,12 @@ union Mat4f {
 	float m[16];
 };
 
-inline Mat4f M4f() {
+inline Mat4f M4f(const float value = 1.0f) {
 	Mat4f result = {
-		V4f(1.0f, 0.0f, 0.0f, 0.0f),
-		V4f(0.0f, 1.0f, 0.0f, 0.0f),
-		V4f(0.0f, 0.0f, 1.0f, 0.0f),
-		V4f(0.0f, 0.0f, 0.0f, 1.0f),
+		V4f(value, 0.0f, 0.0f, 0.0f),
+		V4f(0.0f, value, 0.0f, 0.0f),
+		V4f(0.0f, 0.0f, value, 0.0f),
+		V4f(0.0f, 0.0f, 0.0f, value),
 	};
 	return(result);
 }
@@ -272,7 +272,301 @@ inline Mat4f M4f(const Mat4f &other) {
 	return(result);
 }
 
-inline static Mat4f Mat4Ortho(const float left, const float right, const float bottom, const float top, const float zNear, const float zFar) {
+union Pixel {
+	struct {
+		uint8_t r, g, b, a;
+	};
+	uint8_t m[4];
+};
+
+//
+// Scalar
+//
+
+inline float ScalarLerp(float a, float t, float b) {
+	float result = (1.0f - t) * a + t * b;
+	return(result);
+}
+
+inline float GetBestAngleDistance(float a0, float a1) {
+	float max = Pi32 * 2;
+	float da = fmodf(a1 - a0, max);
+	float result = fmodf(2.0f * da, max) - da;
+	return(result);
+}
+
+inline float AngleLerp(float a, float t, float b) {
+	float angleDistance = GetBestAngleDistance(a, b);
+	float result = ScalarLerp(a, t, a + angleDistance);
+	return(result);
+}
+
+//
+// Vec2f
+//
+inline Vec2f operator*(const Vec2f &a, float b) {
+	Vec2f result = V2f(a.x * b, a.y * b);
+	return(result);
+}
+
+inline Vec2f operator*(float b, const Vec2f &a) {
+	Vec2f result = V2f(a.x * b, a.y * b);
+	return(result);
+}
+
+inline Vec2f& operator*=(Vec2f &a, float value) {
+	a = a * value;
+	return(a);
+}
+
+inline Vec2f operator-(const Vec2f &a) {
+	Vec2f result = V2f(-a.x, -a.y);
+	return(result);
+}
+
+inline Vec2f operator+(const Vec2f &a, const Vec2f &b) {
+	Vec2f result = V2f(a.x + b.x, a.y + b.y);
+	return(result);
+}
+
+inline Vec2f& operator+=(Vec2f &a, const Vec2f &b) {
+	a = a + b;
+	return(a);
+}
+
+inline Vec2f operator-(const Vec2f &a, const Vec2f &b) {
+	Vec2f result = V2f(a.x - b.x, a.y - b.y);
+	return(result);
+}
+
+inline Vec2f& operator-=(Vec2f &a, const Vec2f &b) {
+	a = a - b;
+	return(a);
+}
+
+inline float Vec2Dot(const Vec2f &a, const Vec2f &b) {
+	float result = a.x * b.x + a.y * b.y;
+	return(result);
+}
+
+inline float Vec2Length(const Vec2f &v) {
+	float result = sqrtf(v.x * v.x + v.y * v.y);
+	return(result);
+}
+
+inline Vec2f Vec2Normalize(const Vec2f &v) {
+	float l = Vec2Length(v);
+	if (l == 0) {
+		l = 1;
+	}
+	float invL = 1.0f / l;
+	Vec2f result = Vec2f(v) * invL;
+	return(result);
+}
+
+inline Vec2f Vec2Hadamard(const Vec2f &a, const Vec2f &b) {
+	Vec2f result = V2f(a.x * b.x, a.y * b.y);
+	return(result);
+}
+
+inline Vec2f Vec2MultMat2(const Mat2f &A, const Vec2f &v) {
+	Vec2f result = V2f(A.col1.x * v.x + A.col2.x * v.y, A.col1.y * v.x + A.col2.y * v.y);
+	return(result);
+}
+
+inline float Vec2DistanceSquared(const Vec2f &a, const Vec2f &b) {
+	float f = (b.x - a.x) * (b.y - a.y);
+	float result = f * f;
+	return(result);
+}
+
+/* Returns the right perpendicular vector */
+inline Vec2f Vec2Cross(const Vec2f &a, float s) {
+	return V2f(s * a.y, -s * a.x);
+}
+
+/* Returns the left perpendicular vector */
+inline Vec2f Vec2Cross(float s, const Vec2f &a) {
+	return V2f(-s * a.y, s * a.x);
+}
+
+/* Returns the Z-rotation from two vectors */
+inline float Vec2Cross(const Vec2f &a, const Vec2f &b) {
+	return a.x * b.y - a.y * b.x;
+}
+
+inline float Vec2AxisToAngle(const Vec2f &axis) {
+	float result = ArcTan2(axis.y, axis.x);
+	return(result);
+}
+
+inline Vec2f Vec2AngleToAxis(const float angle) {
+	Vec2f result = V2f(Cosine(angle), Sine(angle));
+	return(result);
+}
+
+inline Vec2f Vec2RandomDirection() {
+	float d = rand() / (float)RAND_MAX;
+	float angle = d * ((float)M_PI * 2.0f);
+	Vec2f result = V2f(Cosine(angle), Sine(angle));
+	return(result);
+}
+
+inline Vec2f Vec2Lerp(const Vec2f &a, float t, const Vec2f &b) {
+	Vec2f result;
+	result.x = ScalarLerp(a.x, t, b.x);
+	result.y = ScalarLerp(a.y, t, b.y);
+	return(result);
+}
+
+//
+// Vec2i
+//
+inline bool IsVec2Equals(const Vec2i &a, const Vec2i &b) {
+	bool result = a.x == b.x && a.y == b.y;
+	return(result);
+}
+
+//
+// Vec3f
+//
+inline Vec3f operator*(float s, const Vec3f &v) {
+	Vec3f result = V3f(s * v.x, s * v.y, s * v.z);
+	return(result);
+}
+
+inline Vec3f operator*(const Vec3f &v, float s) {
+	Vec3f result = s * v;
+	return(result);
+}
+
+inline Vec3f& operator*=(Vec3f &v, float s) {
+	v = s * v;
+	return(v);
+}
+
+inline Vec3f operator+(const Vec3f &a, const Vec3f &b) {
+	Vec3f result = V3f(a.x + b.x, a.y + b.y, a.z + b.z);
+	return(result);
+}
+
+inline Vec3f& operator+=(Vec3f &a, const Vec3f &b) {
+	a = a + b;
+	return(a);
+}
+
+inline Vec3f operator-(const Vec3f &a, const Vec3f &b) {
+	Vec3f result = V3f(a.x - b.x, a.y - b.y, a.z - b.z);
+	return(result);
+}
+
+inline Vec3f operator-(const Vec3f &v) {
+	Vec3f result = V3f(-v.x, -v.y, -v.z);
+	return(result);
+}
+
+inline Vec3f& operator-=(Vec3f &a, const Vec3f &b) {
+	a = a - b;
+	return(a);
+}
+
+inline float Vec3Dot(const Vec3f &a, const Vec3f &b) {
+	float result = a.x * b.x + a.y * b.y + a.z * b.z;
+	return(result);
+}
+
+inline float Vec3DistanceSquared(const Vec3f &a, const Vec3f &b) {
+	float f = (b.x - a.x) * (b.y - a.y) * (b.z - a.z);
+	float result = f * f;
+	return(result);
+}
+
+inline float Vec3Length(const Vec3f &v) {
+	float result = sqrtf(v.x * v.x + v.y * v.y + v.z * v.z);
+	return(result);
+}
+
+inline Vec3f Vec3Normalize(const Vec3f &v) {
+	float l = Vec3Length(v);
+	if (l == 0) {
+		l = 1;
+	}
+	float invL = 1.0f / l;
+	Vec3f result = V3f(v) * invL;
+	return(result);
+}
+
+inline Vec3f Vec3Cross(const Vec3f &a, const Vec3f &b) {
+	Vec3f result = V3f(
+		a.y * b.z - a.z * b.y,
+		a.z * b.x - a.x * b.z,
+		a.x * b.y - a.y * b.x);
+	return(result);
+}
+
+inline Vec3f Vec3Lerp(const Vec3f &a, float t, const Vec3f &b) {
+	Vec3f result;
+	result.x = ScalarLerp(a.x, t, b.x);
+	result.y = ScalarLerp(a.y, t, b.y);
+	result.z = ScalarLerp(a.z, t, b.z);
+	return(result);
+}
+
+//
+// Mat2f
+//
+inline Mat2f Mat2Identity() {
+	Mat2f result = M2f();
+	return (result);
+}
+
+inline Mat2f Mat2FromAngle(float angle) {
+	float s = Sine(angle);
+	float c = Cosine(angle);
+	Mat2f result;
+	result.col1 = V2f(c, s);
+	result.col2 = V2f(-s, c);
+	return(result);
+}
+
+inline Mat2f Mat2FromAxis(const Vec2f &axis) {
+	Mat2f result;
+	result.col1 = axis;
+	result.col2 = Vec2Cross(1.0f, axis);
+	return(result);
+}
+
+inline Mat2f Mat2Transpose(const Mat2f &m) {
+	Mat2f result;
+	result.col1 = V2f(m.col1.x, m.col2.x);
+	result.col2 = V2f(m.col1.y, m.col2.y);
+	return(result);
+}
+
+inline Mat2f Mat2Mult(const Mat2f &a, const Mat2f &b) {
+	Mat2f result;
+	result.col1 = Vec2MultMat2(a, b.col1);
+	result.col2 = Vec2MultMat2(a, b.col2);
+	return(result);
+}
+
+inline float Mat2ToAngle(const Mat2f &mat) {
+	float result = Vec2AxisToAngle(mat.col1);
+	return(result);
+}
+
+/* Generates a 2x2 matrix for doing B to A conversion */
+inline Mat2f Mat2MultTranspose(const Mat2f &a, const Mat2f &b) {
+	Mat2f result;
+	result.col1 = V2f(Vec2Dot(a.col1, b.col1), Vec2Dot(a.col2, b.col1));
+	result.col2 = V2f(Vec2Dot(a.col1, b.col2), Vec2Dot(a.col2, b.col2));
+	return(result);
+}
+
+//
+// Mat4f
+//
+inline static Mat4f Mat4OrthoLH(const float left, const float right, const float bottom, const float top, const float zNear, const float zFar) {
 	Mat4f result = M4f();
 	result.r[0][0] = 2.0f / (right - left);
 	result.r[1][1] = 2.0f / (top - bottom);
@@ -283,16 +577,53 @@ inline static Mat4f Mat4Ortho(const float left, const float right, const float b
 	return (result);
 }
 
+inline static Mat4f Mat4PerspectiveLH(const float fov, const float aspect, const float zNear, const float zFar) {
+	float tanHalfFov = Tan(fov / 2.0f);
+	Mat4f result = M4f(0.0);
+	result.r[0][0] = 1.0f / (aspect * tanHalfFov);
+	result.r[1][1] = 1.0f / (tanHalfFov);
+	result.r[2][2] = (zFar + zNear) / (zFar - zNear);
+	result.r[2][3] = 1.0f;
+	result.r[3][2] = -(2.0f * zFar * zNear) / (zFar - zNear);
+	return (result);
+}
+
+inline static Mat4f Mat4LookAtLH(const Vec3f &eye, const Vec3f &center, const Vec3f &up) {
+	Mat4f result = M4f();
+	const Vec3f f = Vec3Normalize(center - eye);
+	const Vec3f s = Vec3Normalize(Vec3Cross(up, f));
+	const Vec3f u = Vec3Cross(f, s);
+	result.r[0][0] = s.x;
+	result.r[1][0] = s.y;
+	result.r[2][0] = s.z;
+	result.r[0][1] = u.x;
+	result.r[1][1] = u.y;
+	result.r[2][1] = u.z;
+	result.r[0][2] = f.x;
+	result.r[1][2] = f.y;
+	result.r[2][2] = f.z;
+	result.r[3][0] = -Vec3Dot(s, eye);
+	result.r[3][1] = -Vec3Dot(u, eye);
+	result.r[3][2] = -Vec3Dot(f, eye);
+	return (result);
+}
+
 inline static Mat4f Mat4Translation(const Vec4f &p) {
 	Mat4f result = M4f();
 	result.col4 = p;
 	return (result);
 }
 
+inline static Mat4f Mat4Translation(const Vec3f &p) {
+	Mat4f result = M4f();
+	result.col4.xyz = p;
+	result.col4.w = 1.0f;
+	return (result);
+}
+
 inline static Mat4f Mat4Translation(const Vec2f &p) {
 	Mat4f result = M4f();
-	result.col4.x = p.x;
-	result.col4.y = p.y;
+	result.col4.xy = p;
 	result.col4.z = 0.0f;
 	result.col4.w = 1.0f;
 	return (result);
@@ -348,231 +679,10 @@ inline static Mat4f Mat4RotationZ(const Mat2f &m) {
 	return (result);
 }
 
-union Pixel {
-	struct {
-		uint8_t r, g, b, a;
-	};
-	uint8_t m[4];
-};
-
-inline float ScalarLerp(float a, float t, float b) {
-	float result = (1.0f - t) * a + t * b;
-	return(result);
-}
-
-inline float GetBestAngleDistance(float a0, float a1) {
-	float max = Pi32 * 2;
-	float da = fmodf(a1 - a0, max);
-	float result = fmodf(2.0f * da, max) - da;
-	return(result);
-}
-
-inline float AngleLerp(float a, float t, float b) {
-	float angleDistance = GetBestAngleDistance(a, b);
-	float result = ScalarLerp(a, t, a + angleDistance);
-	return(result);
-}
-
-inline Vec2f operator*(const Vec2f &a, float b) {
-	Vec2f result = V2f(a.x * b, a.y * b);
-	return(result);
-}
-inline Vec2f operator*(float b, const Vec2f &a) {
-	Vec2f result = V2f(a.x * b, a.y * b);
-	return(result);
-}
-inline Vec2f& operator*=(Vec2f &a, float value) {
-	a = a * value;
-	return(a);
-}
-
-inline Vec2f operator/(const Vec2f &a, float b) {
-	Vec2f result = V2f(a.x / b, a.y / b);
-	return(result);
-}
-inline Vec2f operator/(float b, const Vec2f &a) {
-	Vec2f result = V2f(a.x / b, a.y / b);
-	return(result);
-}
-inline Vec2f& operator/=(Vec2f &a, float value) {
-	a = a / value;
-	return(a);
-}
-
-
-inline Vec2f operator-(const Vec2f &a) {
-	Vec2f result = V2f(-a.x, -a.y);
-	return(result);
-}
-inline Vec2f operator+(const Vec2f &a, const Vec2f &b) {
-	Vec2f result = V2f(a.x + b.x, a.y + b.y);
-	return(result);
-}
-inline Vec2f& operator+=(Vec2f &a, const Vec2f &b) {
-	a = b + a;
-	return(a);
-}
-inline Vec2f operator-(const Vec2f &a, const Vec2f &b) {
-	Vec2f result = V2f(a.x - b.x, a.y - b.y);
-	return(result);
-}
-inline Vec2f& operator-=(Vec2f &a, const Vec2f &b) {
-	a = a - b;
-	return(a);
-}
-
-inline float Vec2Dot(const Vec2f &a, const Vec2f &b) {
-	float result = a.x * b.x + a.y * b.y;
-	return(result);
-}
-
-inline float Vec2Length(const Vec2f &v) {
-	float result = sqrtf(v.x * v.x + v.y * v.y);
-	return(result);
-}
-
-inline Vec2f Vec2Normalize(const Vec2f &v) {
-	float l = Vec2Length(v);
-	if(l == 0) {
-		l = 1;
-	}
-	float invL = 1.0f / l;
-	Vec2f result = Vec2f(v) * invL;
-	return(result);
-}
-
-inline Vec2f Vec2Hadamard(const Vec2f &a, const Vec2f &b) {
-	Vec2f result = V2f(a.x * b.x, a.y * b.y);
-	return(result);
-}
-
-inline Vec2f Vec2MultMat2(const Mat2f &A, const Vec2f &v) {
-	Vec2f result = V2f(A.col1.x * v.x + A.col2.x * v.y, A.col1.y * v.x + A.col2.y * v.y);
-	return(result);
-}
-
-inline float Vec2DistanceSquared(const Vec2f &a, const Vec2f &b) {
-	float f = (b.x - a.x) * (b.y - a.y);
-	float result = f * f;
-	return(result);
-}
-
-/* Returns the right perpendicular vector */
-inline Vec2f Vec2Cross(const Vec2f &a, float s) {
-	return V2f(s * a.y, -s * a.x);
-}
-
-/* Returns the left perpendicular vector */
-inline Vec2f Vec2Cross(float s, const Vec2f &a) {
-	return V2f(-s * a.y, s * a.x);
-}
-
-inline float Vec2Cross(const Vec2f &a, const Vec2f &b) {
-	return a.x * b.y - a.y * b.x;
-}
-
-inline float Vec2AxisToAngle(const Vec2f &axis) {
-	float result = ArcTan2(axis.y, axis.x);
-	return(result);
-}
-inline Vec2f Vec2AngleToAxis(const float angle) {
-	Vec2f result = V2f(Cosine(angle), Sine(angle));
-	return(result);
-}
-
-inline Vec2f Vec2RandomDirection() {
-	float d = rand() / (float)RAND_MAX;
-	float angle = d * ((float)M_PI * 2.0f);
-	Vec2f result = V2f(Cosine(angle), Sine(angle));
-	return(result);
-}
-
-inline Vec2f Vec2Lerp(const Vec2f &a, float t, const Vec2f &b) {
-	Vec2f result;
-	result.x = ScalarLerp(a.x, t, b.x);
-	result.y = ScalarLerp(a.y, t, b.y);
-	return(result);
-}
-
-inline bool IsVec2Equals(const Vec2i &a, const Vec2i &b) {
-	bool result = a.x == b.x && a.y == b.y;
-	return(result);
-}
-
-//
-// Vec3f
-//
-inline Vec3f operator*(float a, const Vec3f &b) {
-	Vec3f result;
-	result.x = a * b.x;
-	result.y = a * b.y;
-	result.z = a * b.z;
-	return(result);
-}
-inline Vec3f operator*(const Vec3f &a, float b) {
-	Vec3f result = b * a;
-	return(result);
-}
-inline Vec3f& operator*=(Vec3f &a, float value) {
-	a = value * a;
-	return(a);
-}
-
-//
-// Mat2f
-//
-inline Mat2f Mat2Identity() {
-	Mat2f result = M2f();
-	return (result);
-}
-
-inline Mat2f Mat2FromAngle(float angle) {
-	float s = Sine(angle);
-	float c = Cosine(angle);
-	Mat2f result;
-	result.col1 = V2f(c, s);
-	result.col2 = V2f(-s, c);
-	return(result);
-}
-
-inline Mat2f Mat2FromAxis(const Vec2f &axis) {
-	Mat2f result;
-	result.col1 = axis;
-	result.col2 = Vec2Cross(1.0f, axis);
-	return(result);
-}
-
-inline Mat2f Mat2Transpose(const Mat2f &m) {
-	Mat2f result;
-	result.col1 = V2f(m.col1.x, m.col2.x);
-	result.col2 = V2f(m.col1.y, m.col2.y);
-	return(result);
-}
-
-inline Mat2f Mat2Mult(const Mat2f &a, const Mat2f &b) {
-	Mat2f result;
-	result.col1 = Vec2MultMat2(a, b.col1);
-	result.col2 = Vec2MultMat2(a, b.col2);
-	return(result);
-}
-
-inline float Mat2ToAngle(const Mat2f &mat) {
-	float result = Vec2AxisToAngle(mat.col1);
-	return(result);
-}
-
-/* Generates a 2x2 matrix for doing B to A conversion */
-inline Mat2f Mat2MultTranspose(const Mat2f &a, const Mat2f &b) {
-	Mat2f result;
-	result.col1 = V2f(Vec2Dot(a.col1, b.col1), Vec2Dot(a.col2, b.col1));
-	result.col2 = V2f(Vec2Dot(a.col1, b.col2), Vec2Dot(a.col2, b.col2));
-	return(result);
-}
-
 inline Mat4f operator *(const Mat4f &a, const Mat4f &b) {
 	Mat4f result;
-	for(int i = 0; i < 16; i += 4) {
-		for(int j = 0; j < 4; ++j) {
+	for (int i = 0; i < 16; i += 4) {
+		for (int j = 0; j < 4; ++j) {
 			result.m[i + j] =
 				(b.m[i + 0] * a.m[j + 0])
 				+ (b.m[i + 1] * a.m[j + 4])
@@ -628,6 +738,45 @@ inline uint32_t LinearToRGBA32(const Vec4f &linear) {
 	return(result);
 }
 
+struct Ray3f {
+	Vec3f origin;
+	Vec3f direction;
+};
+inline Ray3f MakeRay(const Vec3f &origin, const Vec3f &direction) {
+	Ray3f result = { origin, direction };
+	return(result);
+}
+
+struct HitResult3f {
+	Vec3f contact;
+	Vec3f normal;
+	float t;
+	bool isHit;
+};
+
+struct Plane3f {
+	Vec3f origin;
+	Vec3f normal;
+};
+
+inline HitResult3f RayCast(const Ray3f &ray, const Plane3f &plane) {
+	HitResult3f result = {};
+	float denom = Vec3Dot(ray.direction, plane.normal);
+	if (denom > 1e-6) {
+		Vec3f d = plane.origin - ray.origin;
+		result.t = Vec3Dot(d, plane.normal) / denom;
+		result.normal = plane.normal;
+		result.contact = ray.origin + d * result.t;
+		result.isHit = result.t >= 0.0f;
+	}
+	return(result);
+}
+
+struct Sphere3f {
+	Vec3f origin;
+	float radius;
+};
+
 struct LineCastInput {
 	Vec2f p1;
 	Vec2f p2;
@@ -650,7 +799,7 @@ bool LineCastCircle(const LineCastInput &input, const Vec2f &center, const float
 	float sigma = c * c - rr * b;
 
 	// Check for negative discriminant and short segment.
-	if(sigma < 0.0f || rr < Epsilon) {
+	if (sigma < 0.0f || rr < Epsilon) {
 		return false;
 	}
 
@@ -658,7 +807,7 @@ bool LineCastCircle(const LineCastInput &input, const Vec2f &center, const float
 	float a = -(c + SquareRoot(sigma));
 
 	// Is the intersection point on the segment?
-	if(0.0f <= a && a <= input.maxFraction * rr) {
+	if (0.0f <= a && a <= input.maxFraction * rr) {
 		a /= rr;
 		output.fraction = a;
 		output.normal = Vec2Normalize(s + a * r);

@@ -18,6 +18,9 @@ Author:
 	Torsten Spaete
 
 Changelog:
+	## 2019-04-27
+	- Use Vec2Normalize instead of diviing by length
+
 	## 2018-09-24
 	- Reflect api changes in FPL 0.9.2
 
@@ -422,7 +425,7 @@ namespace render {
 		assert(stippleWidth > 0);
 		Vec2f ab = b - a;
 		float d = Vec2Length(ab);
-		Vec2f n = ab / d;
+		Vec2f n = Vec2Normalize(ab);
 		int secCount = (d > stippleWidth) ? (int)(d / stippleWidth) : 1;
 		assert(secCount > 0);
 		size_t capacity = secCount * 2;
