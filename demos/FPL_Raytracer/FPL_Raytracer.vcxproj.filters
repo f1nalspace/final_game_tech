@@ -1,0 +1,16 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <ClCompile Include="fpl_raytracer.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <Filter Include="additions">
+      <UniqueIdentifier>{984c5e4b-8a34-45f5-9c23-81e3586d1677}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="..\additions\final_math.h">
+      <Filter>additions</Filter>
+    </ClInclude>
+  </ItemGroup>
+</Project>
