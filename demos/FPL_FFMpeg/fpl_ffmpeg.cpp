@@ -17,6 +17,9 @@ Author:
 	Torsten Spaete
 
 Changelog:
+	## 2019-04-27
+	- Small changes (Comments, Constants)
+
 	## 2018-10-22
 	- Reflect api changes in FPL 0.9.3
 
