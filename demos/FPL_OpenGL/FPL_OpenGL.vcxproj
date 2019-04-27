@@ -73,29 +73,29 @@
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <LinkIncremental>true</LinkIncremental>
-    <IncludePath>..\..\;$(ProjectDir)dependencies\glew\include\;$(IncludePath)</IncludePath>
-    <LibraryPath>$(ProjectDir)dependencies\glew\lib\$(Platform)\;$(LibraryPath)</LibraryPath>
+    <IncludePath>..\..\;$(IncludePath)</IncludePath>
+    <LibraryPath>$(LibraryPath)</LibraryPath>
     <OutDir>$(SolutionDir)bin\$(ProjectName)\Windows-$(Platform)-$(Configuration)\</OutDir>
     <IntDir>$(SolutionDir)immediates\$(ProjectName)\Windows-$(Platform)-$(Configuration)\</IntDir>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <LinkIncremental>true</LinkIncremental>
-    <IncludePath>..\..\;$(ProjectDir)dependencies\glew\include\;$(IncludePath)</IncludePath>
-    <LibraryPath>$(ProjectDir)dependencies\glew\lib\$(Platform)\;$(LibraryPath)</LibraryPath>
+    <IncludePath>..\..\;$(IncludePath)</IncludePath>
+    <LibraryPath>$(LibraryPath)</LibraryPath>
     <OutDir>$(SolutionDir)bin\$(ProjectName)\Windows-$(Platform)-$(Configuration)\</OutDir>
     <IntDir>$(SolutionDir)immediates\$(ProjectName)\Windows-$(Platform)-$(Configuration)\</IntDir>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <LinkIncremental>false</LinkIncremental>
-    <IncludePath>..\..\;$(ProjectDir)dependencies\glew\include\;$(IncludePath)</IncludePath>
-    <LibraryPath>$(ProjectDir)dependencies\glew\lib\$(Platform)\;$(LibraryPath)</LibraryPath>
+    <IncludePath>..\..\;$(IncludePath)</IncludePath>
+    <LibraryPath>$(LibraryPath)</LibraryPath>
     <OutDir>$(SolutionDir)bin\$(ProjectName)\Windows-$(Platform)-$(Configuration)\</OutDir>
     <IntDir>$(SolutionDir)immediates\$(ProjectName)\Windows-$(Platform)-$(Configuration)\</IntDir>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <LinkIncremental>false</LinkIncremental>
-    <IncludePath>..\..\;$(ProjectDir)dependencies\glew\include\;$(IncludePath)</IncludePath>
-    <LibraryPath>$(ProjectDir)dependencies\glew\lib\$(Platform)\;$(LibraryPath)</LibraryPath>
+    <IncludePath>..\..\;$(IncludePath)</IncludePath>
+    <LibraryPath>$(LibraryPath)</LibraryPath>
     <OutDir>$(SolutionDir)bin\$(ProjectName)\Windows-$(Platform)-$(Configuration)\</OutDir>
     <IntDir>$(SolutionDir)immediates\$(ProjectName)\Windows-$(Platform)-$(Configuration)\</IntDir>
   </PropertyGroup>
