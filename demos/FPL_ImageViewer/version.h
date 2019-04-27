@@ -3,15 +3,15 @@
 
 #define VER_INTERNALNAME_STR		"FPL_ImageViewer"
 #define VER_PRODUCTNAME_STR			"FPL ImageViewer"
-#define VER_PRODUCTVERSION          0,5,4,0
-#define VER_PRODUCTVERSION_STR      "0.5.4\0"
+#define VER_PRODUCTVERSION          0,5,5,0
+#define VER_PRODUCTVERSION_STR      "0.5.5\0"
 
 #define VER_FILEVERSION             VER_PRODUCTVERSION
 #define VER_FILEVERSION_STR         VER_PRODUCTVERSION_STR
 
 #define VER_COMPANYNAME_STR			""
 #define VER_FILEDESCRIPTION_STR		"A simple OpenGL based image viewer"
-#define VER_LEGALCOPYRIGHT_STR		"Copyright (C) 2018 Torsten Spaete"
+#define VER_LEGALCOPYRIGHT_STR		"Copyright (C) 2018-2019 Torsten Spaete"
 #define VER_LEGALTRADEMARKS1_STR	""
 #define VER_LEGALTRADEMARKS2_STR	""
 #define VER_ORIGINALFILENAME_STR	VER_INTERNALNAME_STR ".exe"

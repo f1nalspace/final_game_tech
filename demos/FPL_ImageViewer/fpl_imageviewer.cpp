@@ -4,7 +4,7 @@ Name:
 	FPL-Demo | ImageViewer
 
 Version:
-	v0.5.4 (version.h)
+	v0.5.5 (version.h)
 
 Description:
 	Very simple opengl based image viewer.
@@ -22,6 +22,9 @@ Author:
 	Torsten Spaete
 
 Changelog:
+	## v0.5.5
+	- Reflect api changes in FPL 0.9.4
+
 	## v0.5.4
 	- Reflect api changes in FPL 0.9.3
 
@@ -1756,11 +1759,15 @@ int main(int argc, char **argv) {
 					switch(ev.type) {
 						case fplEventType_Window:
 						{
-							if(ev.window.type == fplWindowEventType_DropSingleFile) {
+							if(ev.window.type == fplWindowEventType_DroppedFiles) {
 								size_t startPicIndex = 0;
-								if(LoadPicturesPath(&state, ev.window.dropFiles.single.filePath, false, &startPicIndex)) {
-									state.activeFileIndex = (int)startPicIndex;
-									ChangeViewPicture(&state, 0, true);
+								for (size_t fileIndex = 0; fileIndex < ev.window.dropFiles.fileCount; ++fileIndex) {
+									const char *filePath = ev.window.dropFiles.files[fileIndex];
+									// @TODO(final): LoadPicturesPath clears the picture files always, so we basically can only load one folder at a time
+									if (LoadPicturesPath(&state, filePath, false, &startPicIndex)) {
+										state.activeFileIndex = (int)startPicIndex;
+										ChangeViewPicture(&state, 0, true);
+									}
 								}
 							}
 						} break;
