@@ -12,6 +12,15 @@ License:
 	Copyright 2018 Torsten Spaete
 
 Changelog
+	## 2019-05-10:
+	- Added Vec3f math operator overloaded functions
+	- Renamed Mat4OrthoLH to Mat4OrthoRH
+	- Added Mat4PerspectiveRH
+	- Added Mat4LookAtRH
+	- Added more overrides for Mat4Translation
+	- Added SRGBToLinear, LinearToSRGB
+	- Added default SRGB conversion to Linear <-> Pixel
+
 	## 2018-07-05:
 	- Added Mat4RotationX, Mat4RotationY, Mat4RotationZ
 */
@@ -36,46 +45,9 @@ constexpr float Deg2Rad = (float)M_PI / 180.0f;
 constexpr float Rad2Deg = 180.0f / (float)M_PI;
 constexpr float Epsilon = FLT_EPSILON;
 
-inline float Cosine(const float angle) {
-	float result = cosf(angle);
-	return(result);
-}
-inline float Sine(const float angle) {
-	float result = sinf(angle);
-	return(result);
-}
-inline float Tan(const float angle) {
-	float result = tanf(angle);
-	return(result);
-}
-inline float ArcTan2(const float y, const float x) {
-	float result = atan2f(y, x);
-	return(result);
-}
-inline float Abs(const float value) {
-	float result = fabsf(value);
-	return(result);
-}
-inline float Min(const float a, const float b) {
-	float result = a < b ? a : b;
-	return(result);
-}
-inline float Max(const float a, const float b) {
-	float result = a > b ? a : b;
-	return(result);
-}
-inline float SquareRoot(const float value) {
-	float result = sqrtf(value);
-	return(result);
-}
-inline float Degrees(const float radians) {
-	float result = radians * Rad2Deg;
-	return(result);
-}
-inline float Radians(const float degrees) {
-	float result = degrees * Deg2Rad;
-	return(result);
-}
+//
+// Vector types
+//
 
 union Vec2i {
 	struct {
@@ -91,10 +63,12 @@ inline Vec2i V2i() {
 	Vec2i result = {};
 	return(result);
 }
+
 inline Vec2i V2i(const Vec2i &v) {
 	Vec2i result = { v.x, v.y };
 	return(result);
 }
+
 inline Vec2i V2i(const int x, const int y) {
 	Vec2i result = { x, y };
 	return(result);
@@ -114,34 +88,19 @@ inline Vec2f V2f() {
 	Vec2f result = {};
 	return(result);
 }
+
 inline Vec2f V2f(const Vec2f &v) {
 	Vec2f result = { v.x, v.y };
 	return(result);
 }
+
 inline Vec2f V2f(const float value) {
 	Vec2f result = { value, value };
 	return(result);
 }
+
 inline Vec2f V2f(const float x, const float y) {
 	Vec2f result = { x, y };
-	return(result);
-}
-
-union Mat2f {
-	struct {
-		Vec2f col1;
-		Vec2f col2;
-	};
-	float m[4];
-};
-
-inline Mat2f M2f() {
-	Mat2f result = { V2f(1, 0), V2f(0, 1) };
-	return(result);
-}
-
-inline Mat2f M2f(const Mat2f &other) {
-	Mat2f result = { other.col1, other.col2 };
 	return(result);
 }
 
@@ -235,12 +194,32 @@ inline Vec4f V4f() {
 	Vec4f result = { 0, 0, 0, 1 };
 	return(result);
 }
+
 inline Vec4f V4f(const Vec4f &other) {
 	Vec4f result = { other.x, other.y, other.z, other.w };
 	return(result);
 }
+
 inline Vec4f V4f(const float x, const float y, const float z, const float w) {
 	Vec4f result = { x, y, z, w };
+	return(result);
+}
+
+union Mat2f {
+	struct {
+		Vec2f col1;
+		Vec2f col2;
+	};
+	float m[4];
+};
+
+inline Mat2f M2f() {
+	Mat2f result = { V2f(1, 0), V2f(0, 1) };
+	return(result);
+}
+
+inline Mat2f M2f(const Mat2f &other) {
+	Mat2f result = { other.col1, other.col2 };
 	return(result);
 }
 
@@ -282,6 +261,51 @@ union Pixel {
 //
 // Scalar
 //
+
+inline float Cosine(const float angle) {
+	float result = cosf(angle);
+	return(result);
+}
+inline float Sine(const float angle) {
+	float result = sinf(angle);
+	return(result);
+}
+inline float Tan(const float angle) {
+	float result = tanf(angle);
+	return(result);
+}
+inline float ArcTan2(const float y, const float x) {
+	float result = atan2f(y, x);
+	return(result);
+}
+inline float Abs(const float value) {
+	float result = fabsf(value);
+	return(result);
+}
+inline float Min(const float a, const float b) {
+	float result = a < b ? a : b;
+	return(result);
+}
+inline float Max(const float a, const float b) {
+	float result = a > b ? a : b;
+	return(result);
+}
+inline float SquareRoot(const float value) {
+	float result = sqrtf(value);
+	return(result);
+}
+inline float Degrees(const float radians) {
+	float result = radians * Rad2Deg;
+	return(result);
+}
+inline float Radians(const float degrees) {
+	float result = degrees * Deg2Rad;
+	return(result);
+}
+inline float Power(const float x, const float y) {
+	float result = powf(x, y);
+	return(result);
+}
 
 inline float ScalarLerp(float a, float t, float b) {
 	float result = (1.0f - t) * a + t * b;
@@ -512,14 +536,8 @@ inline Vec3f Vec3Lerp(const Vec3f &a, float t, const Vec3f &b) {
 	return(result);
 }
 
-//
 // Mat2f
 //
-inline Mat2f Mat2Identity() {
-	Mat2f result = M2f();
-	return (result);
-}
-
 inline Mat2f Mat2FromAngle(float angle) {
 	float s = Sine(angle);
 	float c = Cosine(angle);
@@ -566,45 +584,54 @@ inline Mat2f Mat2MultTranspose(const Mat2f &a, const Mat2f &b) {
 //
 // Mat4f
 //
-inline static Mat4f Mat4OrthoLH(const float left, const float right, const float bottom, const float top, const float zNear, const float zFar) {
+inline static Mat4f Mat4OrthoRH(const float left, const float right, const float bottom, const float top, const float zNear, const float zFar) {
 	Mat4f result = M4f();
 	result.r[0][0] = 2.0f / (right - left);
 	result.r[1][1] = 2.0f / (top - bottom);
-	result.r[2][2] = 2.0f / (zFar - zNear);
+	result.r[2][2] = -2.0f / (zFar - zNear);
 	result.r[3][0] = -(right + left) / (right - left);
 	result.r[3][1] = -(top + bottom) / (top - bottom);
 	result.r[3][2] = -(zFar + zNear) / (zFar - zNear);
 	return (result);
 }
 
-inline static Mat4f Mat4PerspectiveLH(const float fov, const float aspect, const float zNear, const float zFar) {
+inline static Mat4f Mat4PerspectiveRH(const float fov, const float aspect, const float zNear, const float zFar) {
 	float tanHalfFov = Tan(fov / 2.0f);
-	Mat4f result = M4f(0.0);
+	Mat4f result = M4f(0.0f);
 	result.r[0][0] = 1.0f / (aspect * tanHalfFov);
 	result.r[1][1] = 1.0f / (tanHalfFov);
-	result.r[2][2] = (zFar + zNear) / (zFar - zNear);
-	result.r[2][3] = 1.0f;
+	result.r[2][2] = -(zFar + zNear) / (zFar - zNear);
+	result.r[2][3] = -1.0f;
 	result.r[3][2] = -(2.0f * zFar * zNear) / (zFar - zNear);
 	return (result);
 }
 
-inline static Mat4f Mat4LookAtLH(const Vec3f &eye, const Vec3f &center, const Vec3f &up) {
-	Mat4f result = M4f();
+inline static Mat4f Mat4LookAtRH(const Vec3f &eye, const Vec3f &center, const Vec3f &up) {
+	// Forward/Side/Upward
 	const Vec3f f = Vec3Normalize(center - eye);
-	const Vec3f s = Vec3Normalize(Vec3Cross(up, f));
-	const Vec3f u = Vec3Cross(f, s);
+	const Vec3f s = Vec3Normalize(Vec3Cross(f, up));
+	const Vec3f u = Vec3Cross(s, f);
+
+	Mat4f result = M4f();
+
+	// X/Y/Z Rotation
 	result.r[0][0] = s.x;
 	result.r[1][0] = s.y;
 	result.r[2][0] = s.z;
+
 	result.r[0][1] = u.x;
 	result.r[1][1] = u.y;
 	result.r[2][1] = u.z;
-	result.r[0][2] = f.x;
-	result.r[1][2] = f.y;
-	result.r[2][2] = f.z;
+
+	result.r[0][2] = -f.x;
+	result.r[1][2] = -f.y;
+	result.r[2][2] = -f.z;
+
+	// Translation
 	result.r[3][0] = -Vec3Dot(s, eye);
 	result.r[3][1] = -Vec3Dot(u, eye);
-	result.r[3][2] = -Vec3Dot(f, eye);
+	result.r[3][2] = Vec3Dot(f, eye);
+
 	return (result);
 }
 
@@ -634,6 +661,23 @@ inline static Mat4f Mat4Scale(const Vec2f &s) {
 	result.col1.x = s.x;
 	result.col2.y = s.y;
 	result.col3.z = 0.0f;
+	return (result);
+}
+
+inline static Mat4f Mat4Scale(const Vec3f &s) {
+	Mat4f result = M4f();
+	result.col1.x = s.x;
+	result.col2.y = s.y;
+	result.col3.z = s.z;
+	return (result);
+}
+
+inline static Mat4f Mat4Scale(const Vec4f &s) {
+	Mat4f result = M4f();
+	result.col1.x = s.x;
+	result.col2.y = s.y;
+	result.col3.z = s.z;
+	result.col3.w = s.w;
 	return (result);
 }
 
@@ -693,6 +737,10 @@ inline Mat4f operator *(const Mat4f &a, const Mat4f &b) {
 	return(result);
 }
 
+//
+// Pixel
+//
+
 const static Vec4f ColorWhite = V4f(1.0f, 1.0f, 1.0f, 1.0f);
 const static Vec4f ColorRed = V4f(1.0f, 0.0f, 0.0f, 1.0f);
 const static Vec4f ColorGreen = V4f(0.0f, 1.0f, 0.0f, 1.0f);
@@ -712,8 +760,51 @@ inline uint32_t RGBA32(const uint8_t r, const uint8_t g, const uint8_t b, const 
 
 const static float INV255 = 1.0f / 255.0f;
 
-inline Vec4f PixelToLinear(const Pixel &pixel) {
-	Vec4f result = V4f(pixel.r * INV255, pixel.g * INV255, pixel.b * INV255, pixel.a * INV255);
+inline float SRGBToLinear(const float x) {
+	if (x <= 0.0f)
+		return 0.0f;
+	else if (x >= 1.0f)
+		return 1.0f;
+	else if (x < 0.04045f)
+		return x / 12.92f;
+	else
+		return Power((x + 0.055f) / 1.055f, 2.4f);
+}
+
+inline float LinearToSRGB(const float x) {
+	if (x <= 0.0f)
+		return 0.0f;
+	else if (x >= 1.0f)
+		return 1.0f;
+	else if (x < 0.0031308f)
+		return x * 12.92f;
+	else
+		return Power(x, 1.0f / 2.4f) * 1.055f - 0.055f;
+}
+
+inline Vec4f PixelToLinear(const Pixel &pixel, const bool fromSRGB = true) {
+	float r = pixel.r * INV255;
+	float g = pixel.g * INV255;
+	float b = pixel.b * INV255;
+	float a = pixel.a * INV255;
+	Vec4f result;
+	result.r = fromSRGB ? SRGBToLinear(r) : r;
+	result.g = fromSRGB ? SRGBToLinear(g) : g;
+	result.b = fromSRGB ? SRGBToLinear(b) : b;
+	result.a = a;
+	return(result);
+}
+
+inline Pixel LinearToPixel(const Vec4f &linear, const bool toSRGB = true) {
+	float r = toSRGB ? LinearToSRGB(linear.r) : linear.r;
+	float g = toSRGB ? LinearToSRGB(linear.g) : linear.g;
+	float b = toSRGB ? LinearToSRGB(linear.b) : linear.b;
+	float a = linear.a;
+	Pixel result;
+	result.r = (uint8_t)(r * 255.0f + 0.5f);
+	result.g = (uint8_t)(g * 255.0f + 0.5f);
+	result.b = (uint8_t)(b * 255.0f + 0.5f);
+	result.a = (uint8_t)(a * 255.0f + 0.5f);
 	return(result);
 }
 
@@ -723,98 +814,16 @@ inline Vec4f RGBA32ToLinear(const uint32_t rgba) {
 	return(result);
 }
 
+inline uint32_t LinearToRGBA32(const Vec4f &linear) {
+	Pixel pixel = LinearToPixel(linear);
+	uint32_t result = RGBA32(pixel.r, pixel.g, pixel.b, pixel.a);
+	return(result);
+}
+
 inline Vec4f AlphaToLinear(const uint8_t alpha) {
 	float a = alpha * INV255;
 	Vec4f result = V4f(1, 1, 1, a);
 	return(result);
-}
-
-inline uint32_t LinearToRGBA32(const Vec4f &linear) {
-	uint8_t r = (uint8_t)((linear.x * 255.0f) + 0.5f);
-	uint8_t g = (uint8_t)((linear.y * 255.0f) + 0.5f);
-	uint8_t b = (uint8_t)((linear.z * 255.0f) + 0.5f);
-	uint8_t a = (uint8_t)((linear.w * 255.0f) + 0.5f);
-	uint32_t result = RGBA32(r, g, b, a);
-	return(result);
-}
-
-struct Ray3f {
-	Vec3f origin;
-	Vec3f direction;
-};
-inline Ray3f MakeRay(const Vec3f &origin, const Vec3f &direction) {
-	Ray3f result = { origin, direction };
-	return(result);
-}
-
-struct HitResult3f {
-	Vec3f contact;
-	Vec3f normal;
-	float t;
-	bool isHit;
-};
-
-struct Plane3f {
-	Vec3f origin;
-	Vec3f normal;
-};
-
-inline HitResult3f RayCast(const Ray3f &ray, const Plane3f &plane) {
-	HitResult3f result = {};
-	float denom = Vec3Dot(ray.direction, plane.normal);
-	if (denom > 1e-6) {
-		Vec3f d = plane.origin - ray.origin;
-		result.t = Vec3Dot(d, plane.normal) / denom;
-		result.normal = plane.normal;
-		result.contact = ray.origin + d * result.t;
-		result.isHit = result.t >= 0.0f;
-	}
-	return(result);
-}
-
-struct Sphere3f {
-	Vec3f origin;
-	float radius;
-};
-
-struct LineCastInput {
-	Vec2f p1;
-	Vec2f p2;
-	float maxFraction;
-};
-
-struct LineCastOutput {
-	Vec2f normal;
-	float fraction;
-};
-
-bool LineCastCircle(const LineCastInput &input, const Vec2f &center, const float radius, LineCastOutput &output) {
-	Vec2f s = input.p1 - center;
-	float b = Vec2Dot(s, s) - radius * radius;
-
-	// Solve quadratic equation.
-	Vec2f r = input.p2 - input.p1;
-	float c = Vec2Dot(s, r);
-	float rr = Vec2Dot(r, r);
-	float sigma = c * c - rr * b;
-
-	// Check for negative discriminant and short segment.
-	if (sigma < 0.0f || rr < Epsilon) {
-		return false;
-	}
-
-	// Find the point of intersection of the line with the circle.
-	float a = -(c + SquareRoot(sigma));
-
-	// Is the intersection point on the segment?
-	if (0.0f <= a && a <= input.maxFraction * rr) {
-		a /= rr;
-		output.fraction = a;
-		output.normal = Vec2Normalize(s + a * r);
-		return true;
-	}
-
-	return false;
 }
 
 #endif // FINAL_MATH_H
