@@ -38,6 +38,7 @@ typedef struct LoadedWave {
 	bool isValid;
 } LoadedWave;
 
+extern bool IsWaveInBuffer(const uint8_t *buffer, const size_t bufferSize);
 extern bool LoadWaveFromBuffer(const uint8_t *buffer, const size_t bufferSize, LoadedWave *outWave);
 extern bool LoadWaveFromFile(const char *filePath, LoadedWave *outWave);
 extern void FreeWave(LoadedWave *wave);
@@ -92,6 +93,20 @@ static void WaveError(LoadedWave *outWave, const char *format, ...) {
 	va_start(argList, format);
 	fplFormatStringArgs(outWave->lastError, fplArrayCount(outWave->lastError), format, argList);
 	va_end(argList);
+}
+
+extern bool IsWaveInBuffer(const uint8_t *buffer, const size_t bufferSize) {
+	if ((buffer == fpl_null) || (bufferSize == 0)) {
+		return(false);
+	}
+	if (bufferSize < sizeof(WaveHeader)) {
+		return(false);
+	}
+	WaveHeader *header = (WaveHeader *)buffer;
+	if (header->chunkId != WaveChunkId_RIFF || header->formatId != WaveChunkId_WAVE) {
+		return(false);
+	}
+	return(true);
 }
 
 extern bool LoadWaveFromBuffer(const uint8_t *buffer, const size_t bufferSize, LoadedWave *outWave) {
