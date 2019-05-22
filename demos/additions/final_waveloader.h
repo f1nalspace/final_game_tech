@@ -17,31 +17,12 @@ License:
 
 #include <final_platform_layer.h>
 
-typedef struct LoadedWave {
-	//! Total frame count
-	uint32_t sampleCount;
-	//! Samples per second (Frequency in Hz)
-	uint32_t samplesPerSecond;
-	//! Bytes per sample
-	uint32_t bytesPerSample;
-	//! Format type
-	fplAudioFormatType formatType;
-	//! Number of channels
-	uint32_t channelCount;
-	//! Size of samples in bytes
-	size_t samplesSize;
-	//! Interleaved samples (Max of 2 channels)
-	uint8_t *samples;
-	//! Last error string
-	char lastError[1024];
-	//! Is valid boolean flag
-	bool isValid;
-} LoadedWave;
+#include "final_audio.h"
 
-extern bool IsWaveInBuffer(const uint8_t *buffer, const size_t bufferSize);
-extern bool LoadWaveFromBuffer(const uint8_t *buffer, const size_t bufferSize, LoadedWave *outWave);
-extern bool LoadWaveFromFile(const char *filePath, LoadedWave *outWave);
-extern void FreeWave(LoadedWave *wave);
+extern bool TestWaveHeader(const uint8_t *buffer, const size_t bufferSize);
+extern bool LoadWaveFromBuffer(const uint8_t *buffer, const size_t bufferSize, PCMWaveData *outWave);
+extern bool LoadWaveFromFile(const char *filePath, PCMWaveData *outWave);
+extern void FreeWave(PCMWaveData *wave);
 
 #endif // FINAL_WAVELOADER_H
 
@@ -86,16 +67,7 @@ typedef struct WaveFormatEx {
 } WaveFormatEx;
 #pragma pack(pop)
 
-static void WaveError(LoadedWave *outWave, const char *format, ...) {
-
-	outWave->lastError[0] = 0;
-	va_list argList;
-	va_start(argList, format);
-	fplFormatStringArgs(outWave->lastError, fplArrayCount(outWave->lastError), format, argList);
-	va_end(argList);
-}
-
-extern bool IsWaveInBuffer(const uint8_t *buffer, const size_t bufferSize) {
+extern bool TestWaveHeader(const uint8_t *buffer, const size_t bufferSize) {
 	if ((buffer == fpl_null) || (bufferSize == 0)) {
 		return(false);
 	}
@@ -109,7 +81,7 @@ extern bool IsWaveInBuffer(const uint8_t *buffer, const size_t bufferSize) {
 	return(true);
 }
 
-extern bool LoadWaveFromBuffer(const uint8_t *buffer, const size_t bufferSize, LoadedWave *outWave) {
+extern bool LoadWaveFromBuffer(const uint8_t *buffer, const size_t bufferSize, PCMWaveData *outWave) {
 	if((buffer == fpl_null) || (bufferSize == 0)) {
 		return false;
 	}
@@ -117,12 +89,12 @@ extern bool LoadWaveFromBuffer(const uint8_t *buffer, const size_t bufferSize, L
 		return false;
 	}
 	if(bufferSize < sizeof(WaveHeader)) {
-		WaveError(outWave, "File is not a wave-file!");
+		PushWaveError(outWave, "File is not a wave-file!");
 		return false;
 	}
 	WaveHeader *header = (WaveHeader *)buffer;
 	if(header->chunkId != WaveChunkId_RIFF || header->formatId != WaveChunkId_WAVE) {
-		WaveError(outWave, "File is not a wave-file, wrong chunk or format id!");
+		PushWaveError(outWave, "File is not a wave-file, wrong chunk or format id!");
 		return false;
 	}
 
@@ -146,7 +118,7 @@ extern bool LoadWaveFromBuffer(const uint8_t *buffer, const size_t bufferSize, L
 					waveFormat = *format;
 				} else {
 					// Unsupported format
-					WaveError(outWave, "Unsupported wave format tag '%d'", format->formatTag);
+					PushWaveError(outWave, "Unsupported wave format tag '%d'", format->formatTag);
 					return false;
 				}
 			} break;
@@ -205,7 +177,7 @@ extern bool LoadWaveFromBuffer(const uint8_t *buffer, const size_t bufferSize, L
 	return(result);
 }
 
-extern bool LoadWaveFromFile(const char *filePath, LoadedWave *outWave) {
+extern bool LoadWaveFromFile(const char *filePath, PCMWaveData *outWave) {
 	bool result = false;
 	fplFileHandle file;
 	if(fplOpenBinaryFile(filePath, &file)) {
@@ -222,7 +194,7 @@ extern bool LoadWaveFromFile(const char *filePath, LoadedWave *outWave) {
 	return(result);
 }
 
-extern void FreeWave(LoadedWave *wave) {
+extern void FreeWave(PCMWaveData *wave) {
 	if(wave != fpl_null) {
 		if(wave->samples != fpl_null) {
 			fplMemoryFree(wave->samples);

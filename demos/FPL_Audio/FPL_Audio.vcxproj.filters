@@ -10,6 +10,12 @@
     <ClInclude Include="..\..\final_platform_layer.h">
       <Filter>dependencies</Filter>
     </ClInclude>
+    <ClInclude Include="..\additions\final_audio.h">
+      <Filter>additions</Filter>
+    </ClInclude>
+    <ClInclude Include="..\additions\final_vorbisloader.h">
+      <Filter>additions</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="fpl_audio.c" />

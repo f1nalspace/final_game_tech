@@ -105,6 +105,9 @@ extern bool AudioSystemPlaySource(AudioSystem *audioSys, const AudioSource *sour
 #define FINAL_WAVELOADER_IMPLEMENTATION
 #include "final_waveloader.h"
 
+#define FINAL_VORBISLOADER_IMPLEMENTATION
+#include "final_vorbisloader.h"
+
 static void *AllocateAudioMemory(AudioSystem *audioSys, size_t size) {
 	// @TODO(final): Better memory management for audio system!
 	void *result = fplMemoryAllocate(size);
@@ -161,8 +164,10 @@ static AudioFileFormat PropeAudioFileFormat(const char *filePath) {
 			uint8_t *probeBuffer = (uint8_t *)fplMemoryAllocate(sizeToRead);
 			if (probeBuffer != fpl_null) {
 				if (fplReadFileBlock32(&file, (uint32_t)sizeToRead, probeBuffer, (uint32_t)sizeToRead) == sizeToRead) {
-					if (IsWaveInBuffer(probeBuffer, sizeToRead)) {
+					if (TestWaveHeader(probeBuffer, sizeToRead)) {
 						result = AudioFileFormat_Wave;
+					} else if (TestVorbisHeader(probeBuffer, sizeToRead)) {
+						result = AudioFileFormat_Vorbis;
 					}
 				}
 				fplMemoryFree(probeBuffer);
@@ -179,11 +184,18 @@ extern AudioSource *AudioSystemLoadFileSource(AudioSystem *audioSys, const char 
 		return fpl_null;
 	}
 
-	LoadedWave loadedWave = fplZeroInit;
+	PCMWaveData loadedData = fplZeroInit;
 	switch (fileFormat) {
 		case AudioFileFormat_Wave:
 		{
-			if (!LoadWaveFromFile(filePath, &loadedWave)) {
+			if (!LoadWaveFromFile(filePath, &loadedData)) {
+				return fpl_null;
+			}
+		} break;
+
+		case AudioFileFormat_Vorbis:
+		{
+			if (!LoadVorbisFromFile(filePath, &loadedData)) {
 				return fpl_null;
 			}
 		} break;
@@ -195,15 +207,15 @@ extern AudioSource *AudioSystemLoadFileSource(AudioSystem *audioSys, const char 
 	}
 
 	// Allocate one memory block for source struct, some padding and the sample data
-	AudioSource *source = AudioSystemAllocateSource(audioSys, loadedWave.channelCount, loadedWave.samplesPerSecond, loadedWave.formatType, loadedWave.sampleCount);
+	AudioSource *source = AudioSystemAllocateSource(audioSys, loadedData.channelCount, loadedData.samplesPerSecond, loadedData.formatType, loadedData.sampleCount);
 	if (source == fpl_null) {
 		return fpl_null;
 	}
-	fplAssert(source->samplesSize >= loadedWave.samplesSize);
-	fplMemoryCopy(loadedWave.samples, loadedWave.samplesSize, source->samples);
+	fplAssert(source->samplesSize >= loadedData.samplesSize);
+	fplMemoryCopy(loadedData.samples, loadedData.samplesSize, source->samples);
 	source->id.value = fplAtomicAddAndFetchU32(&audioSys->sources.idCounter);
 
-	FreeWave(&loadedWave);
+	FreeWave(&loadedData);
 
 	fplMutexLock(&audioSys->sources.lock);
 	source->next = fpl_null;
