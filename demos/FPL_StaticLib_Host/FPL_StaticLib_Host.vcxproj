@@ -29,7 +29,7 @@
     <ProjectGuid>{2E7B676A-BF53-44B1-AF2A-DF8A4AB7AEC2}</ProjectGuid>
     <Keyword>Win32Proj</Keyword>
     <RootNamespace>FPLStaticLib</RootNamespace>
-    <WindowsTargetPlatformVersion>10.0.17763.0</WindowsTargetPlatformVersion>
+    <WindowsTargetPlatformVersion>10.0.10586.0</WindowsTargetPlatformVersion>
     <ProjectName>FPL_StaticLib_Host</ProjectName>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
