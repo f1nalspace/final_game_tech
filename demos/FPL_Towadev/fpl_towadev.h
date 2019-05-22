@@ -2,6 +2,7 @@
 #define FPL_TOWADEV_H
 
 #include <final_math.h>
+#include <final_geometry.h>
 
 #include <final_fontloader.h>
 

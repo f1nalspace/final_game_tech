@@ -133,7 +133,7 @@ extern void GameRender(GameMemory &gameMemory, const float alpha) {
 	float w = 10.0f;
 	float h = 6.0f;
 
-	Mat4f proj = Mat4OrthoLH(-w * 0.5f, w * 0.5f, -h * 0.5f, h * 0.5f, 0.0f, 1.0f);
+	Mat4f proj = Mat4OrthoRH(-w * 0.5f, w * 0.5f, -h * 0.5f, h * 0.5f, 0.0f, 1.0f);
 	Mat4f view = Mat4Translation(V2f(0, 0)) * Mat4Scale(V2f(1, 1));
 	SetMatrix(renderState, proj * view);
 
