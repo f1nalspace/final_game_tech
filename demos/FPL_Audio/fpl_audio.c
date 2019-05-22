@@ -15,6 +15,9 @@ Author:
 	Torsten Spaete
 
 Changelog:
+	## 2019-05-22
+	- Added support for playing multiple audio files from command line
+
 	## 2018-12-06
 	- Added basic support for loading IEEEFloat wave files
 
@@ -25,8 +28,8 @@ Changelog:
 	## 2018-06-06
 	- Refactored files
 
- 	## 2018-05-13
- 	- Fixed Makefiles (Missing audiosystem.c)
+	## 2018-05-13
+	- Fixed Makefiles (Missing audiosystem.c)
 
 	## 2018-05-09
 	- Introduced audio system -> Prepare for mixing
@@ -68,17 +71,20 @@ static uint32_t AudioPlayback(const fplAudioDeviceFormat *outFormat, const uint3
 	return(result);
 }
 
-static bool InitAudioData(const fplAudioDeviceFormat *targetFormat, AudioSystem *audioSys, const char *filePath, const bool generateSineWave) {
-	if(!AudioSystemInit(audioSys, targetFormat)) {
+static bool InitAudioData(const fplAudioDeviceFormat *targetFormat, AudioSystem *audioSys, const char **files, const size_t fileCount, const bool generateSineWave) {
+	if (!AudioSystemInit(audioSys, targetFormat)) {
 		return false;
 	}
 
-	// Play audio file
-	AudioSource *source = fpl_null;
-	if(filePath != fpl_null) {
-		source = AudioSystemLoadFileSource(audioSys, filePath);
-		if(source != fpl_null) {
-			AudioSystemPlaySource(audioSys, source, true, 0.25f);
+	// Play audio files
+	for (size_t fileIndex = 0; fileIndex < fileCount; ++fileIndex) {
+		const char *filePath = files[fileIndex];
+		if (filePath != fpl_null) {
+			fplConsoleFormatOut("Loading audio file '%s\n", filePath);
+			AudioSource *source = AudioSystemLoadFileSource(audioSys, filePath);
+			if (source != fpl_null) {
+				AudioSystemPlaySource(audioSys, source, true, 0.25f);
+			}
 		}
 	}
 
@@ -88,7 +94,7 @@ static bool InitAudioData(const fplAudioDeviceFormat *targetFormat, AudioSystem 
 		const int toneHz = 256;
 		const int toneVolume = 1000;
 		uint32_t sampleCount = (uint32_t)(audioSys->targetFormat.sampleRate * duration + 0.5);
-		source = AudioSystemAllocateSource(audioSys, audioSys->targetFormat.channels, audioSys->targetFormat.sampleRate, fplAudioFormatType_S16, sampleCount);
+		AudioSource *source = AudioSystemAllocateSource(audioSys, audioSys->targetFormat.channels, audioSys->targetFormat.sampleRate, fplAudioFormatType_S16, sampleCount);
 		if (source != fpl_null) {
 			int16_t *samples = (int16_t *)source->samples;
 			int wavePeriod = source->samplesPerSeconds / toneHz;
@@ -106,8 +112,9 @@ static bool InitAudioData(const fplAudioDeviceFormat *targetFormat, AudioSystem 
 }
 
 int main(int argc, char **args) {
-	const char *filePath = (argc == 2) ? args[1] : fpl_null;
-	const bool generateSineWave = fplGetStringLength(filePath) == 0;
+	size_t fileCount = argc >= 2 ? argc - 1 : 0;
+	const char **files = fileCount > 0 ? args + 1 : fpl_null;
+	const bool generateSineWave = fileCount == 0;
 
 	AudioSystem audioSys = fplZeroInit;
 
@@ -129,22 +136,23 @@ int main(int argc, char **args) {
 	settings.audio.stopAuto = false;
 
 	// Find audio device
-	if(!fplPlatformInit(fplInitFlags_Audio, &settings)) {
+	if (!fplPlatformInit(fplInitFlags_Audio, &settings)) {
 		return -1;
 	}
 	fplAudioDeviceInfo audioDeviceInfos[64] = fplZeroInit;
 	uint32_t deviceCount = fplGetAudioDevices(audioDeviceInfos, fplArrayCount(audioDeviceInfos));
-	if(deviceCount > 0) {
+	if (deviceCount > 0) {
 		// Use first audio device in settings
 		settings.audio.targetDevice = audioDeviceInfos[0];
-		fplConsoleFormatOut("Using audio device: %s\n", settings.audio.targetDevice.name);
+		// @TODO(final): Fix weird space after line break
+		fplConsoleFormatOut("Using audio device: '%s'\n", settings.audio.targetDevice.name);
 	}
 	fplPlatformRelease();
 
 	// Initialize the platform with audio enabled and the settings
 	settings.audio.clientReadCallback = AudioPlayback;
 	settings.audio.userData = &audioSys;
-	if(!fplPlatformInit(fplInitFlags_Audio, &settings)) {
+	if (!fplPlatformInit(fplInitFlags_Audio, &settings)) {
 		return -1;
 	}
 
@@ -157,9 +165,9 @@ int main(int argc, char **args) {
 	const fplSettings *currentSettings = fplGetCurrentSettings();
 
 	// Init audio data
-	if(InitAudioData(&targetAudioFormat, &audioSys, filePath, generateSineWave)) {
+	if (InitAudioData(&targetAudioFormat, &audioSys, files, fileCount, generateSineWave)) {
 		// Start audio playback (This will start calling clientReadCallback regulary)
-		if(fplPlayAudio() == fplAudioResult_Success) {
+		if (fplPlayAudio() == fplAudioResult_Success) {
 			// Print output infos
 			const char *outDriver = fplGetAudioDriverString(currentSettings->audio.driver);
 			const char *outFormat = fplGetAudioFormatString(audioSys.targetFormat.type);
