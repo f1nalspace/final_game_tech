@@ -31,6 +31,9 @@
     <ClInclude Include="..\additions\final_assets.h">
       <Filter>additions</Filter>
     </ClInclude>
+    <ClInclude Include="..\additions\final_geometry.h">
+      <Filter>additions</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="dependencies">

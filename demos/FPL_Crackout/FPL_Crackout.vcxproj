@@ -28,6 +28,7 @@
     <ClInclude Include="..\additions\final_fontloader.h" />
     <ClInclude Include="..\additions\final_game.h" />
     <ClInclude Include="..\additions\final_gameplatform.h" />
+    <ClInclude Include="..\additions\final_geometry.h" />
     <ClInclude Include="..\additions\final_math.h" />
     <ClInclude Include="..\additions\final_opengl_render.h" />
     <ClInclude Include="..\additions\final_render.h" />
@@ -37,7 +38,7 @@
     <ProjectGuid>{70E43E83-848B-4DAA-BE62-8EDEC86B3044}</ProjectGuid>
     <Keyword>Win32Proj</Keyword>
     <RootNamespace>FPLCrackout</RootNamespace>
-    <WindowsTargetPlatformVersion>10.0.17763.0</WindowsTargetPlatformVersion>
+    <WindowsTargetPlatformVersion>10.0.10586.0</WindowsTargetPlatformVersion>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
