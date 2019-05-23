@@ -28,7 +28,7 @@ extern bool LoadVorbisFromFile(const char *filePath, PCMWaveData *outWave);
 #if defined(FINAL_VORBISLOADER_IMPLEMENTATION) && !defined(FINAL_VORBISLOADER_IMPLEMENTED)
 #define FINAL_VORBISLOADER_IMPLEMENTED
 
-#include <stb_vorbis.c>
+#include <stb/stb_vorbis.c>
 
 #define OGG_MAGIC FOURCC32('O', 'g', 'g', 'S')
 
