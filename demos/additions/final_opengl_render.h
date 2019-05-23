@@ -300,7 +300,7 @@ extern void RenderWithOpenGL(RenderState &renderState) {
 					const size_t textLen = cmd->textLength;
 					const LoadedFont *fontDesc = cmd->font;
 					const TextureHandle *texture = cmd->texture;
-					if(fontDesc != nullptr && texture != nullptr) {
+					if(fontDesc != nullptr && fontDesc->charCount > 0 && texture != nullptr) {
 						const float maxHeight = cmd->maxHeight;
 						const float ax = cmd->horizontalAlignment;
 						const float ay = cmd->verticalAlignment;

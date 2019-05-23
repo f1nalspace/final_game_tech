@@ -96,7 +96,7 @@ extern void ReleaseFont(LoadedFont *font);
 extern Vec2f GetTextSize(const char *text, const size_t textLen, const LoadedFont *fontDesc, const float maxCharHeight) {
 	float xwidth = 0.0f;
 	float ymax = 0.0f;
-	if(fontDesc != nullptr) {
+	if(fontDesc != nullptr && fontDesc->charCount > 0) {
 		float xpos = 0.0f;
 		float ypos = 0.0f;
 		uint32_t lastChar = fontDesc->firstChar + (fontDesc->charCount - 1);
