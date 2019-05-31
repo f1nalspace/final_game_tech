@@ -138,12 +138,17 @@ SOFTWARE.
 	- New: Added struct fplMemoryAllocationSettings
 	- New: Added struct fplMemorySettings for controlling dynamic and temporary memory allocations
 	- New: Introduced dynamic/temporary allocations wrapping
+    - New: Added FPL_WARNING macro for pushing on warnings only
 	- Fixed: Corrected opengl example code in the header file
 	- Fixed: Tons of documentation improvements
+    - Fixed: fpl__PushError_Formatted was always pushing errors on regardless of the log level
 	- Changed: Removed fake thread-safe implementation of the internal event queue
-	- Changed: Changed drop event structure in fplWindowEvent to support dynamic memory
+    - Changed: Changed drop event structure in fplWindowEvent to support multiple dropped files
 
-	- New: [Win32] Support for multiple files in WM_DROPFILES
+    - Changed: [POSIX/Win32] When a dynamic library failed to load, it will push on a warning instead of a error
+    - Changed: [POSIX/Win32] When a dynamic library procedure address failed to retrieve, it will push on a warning instead of a error
+
+    - New: [Win32] Support for multiple files in WM_DROPFILES
 	- Fixed: [Win32] Fixed missing WINAPI keyword for fpl__Win32MonitorCountEnumProc/fpl__Win32MonitorInfoEnumProc/fpl__Win32PrimaryMonitorEnumProc
 
 	## v0.9.3.0 beta
@@ -5798,6 +5803,7 @@ fpl_internal_inline void fpl__LogWriteVarArgs(const fplLogLevel level, const cha
 
 #define FPL_CRITICAL(mod, format, ...)  fpl__PushError(fplLogLevel_Critical, FPL__MODULE_CONCAT(mod, format), ## __VA_ARGS__)
 #define FPL_ERROR(mod, format, ...) fpl__PushError(fplLogLevel_Error, FPL__MODULE_CONCAT(mod, format), ## __VA_ARGS__)
+#define FPL_WARNING(mod, format, ...) fpl__PushError(fplLogLevel_Warning, FPL__MODULE_CONCAT(mod, format), ## __VA_ARGS__)
 
 //
 // Debug out
@@ -6015,13 +6021,13 @@ fpl_internal void fpl__ParseVersionString(const char *versionStr, fplVersionInfo
 #define FPL__WIN32_LOAD_LIBRARY_BREAK(mod, target, libName) \
 	(target) = LoadLibraryA(libName); \
 	if((target) == fpl_null) { \
-		FPL_ERROR(mod, "Failed loading library '%s'", (libName)); \
+        FPL_WARNING(mod, "Failed loading library '%s'", (libName)); \
 		break; \
 	}
 #define FPL__WIN32_GET_FUNCTION_ADDRESS_BREAK(mod, libHandle, libName, target, type, name) \
 	(target)->name = (type *)GetProcAddress(libHandle, #name); \
 	if ((target)->name == fpl_null) { \
-		FPL_ERROR(mod, "Failed getting procedure address '%s' from library '%s'", #name, libName); \
+        FPL_WARNING(mod, "Failed getting procedure address '%s' from library '%s'", #name, libName); \
 		break; \
 	}
 #if !defined(FPL_NO_RUNTIME_LINKING)
@@ -6620,7 +6626,7 @@ typedef struct fpl__Win32WindowState {
 #define FPL__POSIX_LOAD_LIBRARY_BREAK(mod, target, libName) \
 	(target) = dlopen(libName, FPL__POSIX_DL_LOADTYPE); \
 	if((target) == fpl_null) { \
-		FPL_ERROR(mod, "Failed loading library '%s'", (libName)); \
+        FPL_WARNING(mod, "Failed loading library '%s'", (libName)); \
 		break; \
 	}
 
@@ -6630,7 +6636,7 @@ typedef struct fpl__Win32WindowState {
 #define FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(mod, libHandle, libName, target, type, name) \
 	(target)->name = (type *)dlsym(libHandle, #name); \
 	if ((target)->name == fpl_null) { \
-		FPL_ERROR(mod, "Failed getting procedure address '%s' from library '%s'", #name, libName); \
+        FPL_WARNING(mod, "Failed getting procedure address '%s' from library '%s'", #name, libName); \
 		break; \
 	}
 #if !defined(FPL_NO_RUNTIME_LINKING)
@@ -7560,20 +7566,24 @@ typedef struct fpl__ErrorState {
 fpl_globalvar fpl__ErrorState fpl__global__LastErrorState = fplZeroInit;
 
 fpl_internal void fpl__PushError_Formatted(const fplLogLevel level, const char *format, va_list argList) {
-	fpl__ErrorState *state = &fpl__global__LastErrorState;
-	fplAssert(format != fpl_null);
-	char buffer[FPL__MAX_LAST_ERROR_STRING_LENGTH] = fplZeroInit;
-	fplFormatStringArgs(buffer, fplArrayCount(buffer), format, argList);
-	size_t messageLen = fplGetStringLength(buffer);
-	fplAssert(state->count < FPL__MAX_ERRORSTATE_COUNT);
-	size_t errorIndex = state->count;
-	state->count = (state->count + 1) % FPL__MAX_ERRORSTATE_COUNT;
-	fplCopyStringLen(buffer, messageLen, state->errors[errorIndex], FPL__MAX_LAST_ERROR_STRING_LENGTH);
+    fplAssert(format != fpl_null);
+
+    if (level <= fplLogLevel_Error) {
+        fpl__ErrorState *state = &fpl__global__LastErrorState;
+        char buffer[FPL__MAX_LAST_ERROR_STRING_LENGTH] = fplZeroInit;
+        fplFormatStringArgs(buffer, fplArrayCount(buffer), format, argList);
+        size_t messageLen = fplGetStringLength(buffer);
+        fplAssert(state->count < FPL__MAX_ERRORSTATE_COUNT);
+        size_t errorIndex = state->count;
+        state->count = (state->count + 1) % FPL__MAX_ERRORSTATE_COUNT;
+        fplCopyStringLen(buffer, messageLen, state->errors[errorIndex], FPL__MAX_LAST_ERROR_STRING_LENGTH);
+    }
+
 #if defined(FPL__ENABLE_LOGGING)
-	va_list listCopy;
-	va_copy(listCopy, argList);
-	fpl__LogWriteArgs(level, format, listCopy);
-	va_end(listCopy);
+    va_list listCopy;
+    va_copy(listCopy, argList);
+    fpl__LogWriteArgs(level, format, listCopy);
+    va_end(listCopy);
 #endif
 }
 
