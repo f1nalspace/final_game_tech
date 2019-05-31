@@ -11,6 +11,7 @@
 *.pdb
 *.obj
 *.aps
+*.user
 /demos/**/.vs
 /demos/**/.kdev4
 /demos/**/.idea
