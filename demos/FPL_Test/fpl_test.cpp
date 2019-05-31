@@ -14,6 +14,10 @@ Author:
 	Torsten Spaete
 
 Changelog:
+    ## 2019-05-30
+    - Fixed os version was not properly printed (%d instead of %s)
+    - Rearranged code a bit
+
 	## 2018-10-22
 	- Reflect api changes in FPL 0.9.3
 
@@ -47,11 +51,11 @@ Changelog:
 -------------------------------------------------------------------------------
 */
 
-
 #define FPL_IMPLEMENTATION
 #define FPL_NO_AUDIO
 #define FPL_NO_VIDEO
 #define FPL_NO_WINDOW
+#define FPL_LOGGING
 #include <final_platform_layer.h>
 
 #define FT_IMPLEMENTATION
@@ -63,8 +67,10 @@ static void TestColdInit() {
 		size_t errorCount = fplGetErrorCount();
 		ftAssertSizeEquals(0, errorCount);
 		bool inited = fplPlatformInit(fplInitFlags_None, nullptr);
-		ftAssert(inited && (fplGetPlatformResult() == fplPlatformResultType_Success));
-		const char *errorStr = fplGetLastError();
+        ftAssert(inited);
+        fplPlatformResultType resultType = fplGetPlatformResult();
+        ftAssert(resultType == fplPlatformResultType_Success);
+        const char *errorStr = fplGetLastError();
 		ftAssertStringEquals("", errorStr);
 		fplPlatformRelease();
 	}
@@ -75,7 +81,9 @@ static void TestInit() {
 	{
 		fplClearErrors();
 		bool inited = fplPlatformInit(fplInitFlags_All, nullptr);
-		ftAssert(inited && (fplGetPlatformResult() == fplPlatformResultType_Success));
+        ftAssert(inited);
+        fplPlatformResultType resultType = fplGetPlatformResult();
+        ftAssert(resultType == fplPlatformResultType_Success);
 		const char *errorStr = fplGetLastError();
 		ftAssertStringEquals("", errorStr);
 		fplPlatformRelease();
@@ -84,7 +92,9 @@ static void TestInit() {
 	{
 		fplClearErrors();
 		bool inited = fplPlatformInit(fplInitFlags_None, fpl_null);
-		ftAssert(inited && (fplGetPlatformResult() == fplPlatformResultType_Success));
+        ftAssert(inited);
+        fplPlatformResultType resultType = fplGetPlatformResult();
+        ftAssert(resultType == fplPlatformResultType_Success);
 		const fplSettings *settings = fplGetCurrentSettings();
 		ftIsNotNull(settings);
 		const char *errorStr = fplGetLastError();
@@ -109,24 +119,24 @@ static void TestOSInfos() {
 	{
 		fplPlatformType platType = fplGetPlatformType();
 		ftAssert(fplPlatformType_Unknown != platType);
-		fplConsoleFormatOut("Platform: %s\n", fplGetPlatformTypeString(platType));
+        fplConsoleFormatOut("\tPlatform: %s\n", fplGetPlatformTypeString(platType));
 	}
 	ftMsg("Get OS Type:\n");
 	{
 		fplOSInfos osInfos = {};
 		bool r = fplGetOperatingSystemInfos(&osInfos);
 		ftIsTrue(r);
-		fplConsoleFormatOut("Name: %s\n", osInfos.osName);
-		fplConsoleFormatOut("Version: %d.%d.%d.%d\n", osInfos.osVersion.major, osInfos.osVersion.minor, osInfos.osVersion.fix, osInfos.osVersion.build);
-		fplConsoleFormatOut("Distribution Name: %s\n", osInfos.distributionName);
-		fplConsoleFormatOut("Distribution Version: %d.%d.%d.%d\n", osInfos.distributionVersion.major, osInfos.distributionVersion.minor, osInfos.distributionVersion.fix, osInfos.distributionVersion.build);
+        fplConsoleFormatOut("\tName: %s\n", osInfos.osName);
+        fplConsoleFormatOut("\tVersion: %s.%s.%s.%s\n", osInfos.osVersion.major, osInfos.osVersion.minor, osInfos.osVersion.fix, osInfos.osVersion.build);
+        fplConsoleFormatOut("\tDistribution Name: %s\n", osInfos.distributionName);
+        fplConsoleFormatOut("\tDistribution Version: %s.%s.%s.%s\n", osInfos.distributionVersion.major, osInfos.distributionVersion.minor, osInfos.distributionVersion.fix, osInfos.distributionVersion.build);
 	}
 	ftMsg("Get User Infos:\n");
 	{
 		char nameBuffer[256] = {};
 		bool r = fplGetCurrentUsername(nameBuffer, fplArrayCount(nameBuffer));
 		ftIsTrue(r);
-		fplConsoleFormatOut("Current Username: %s\n", nameBuffer);
+        fplConsoleFormatOut("\tCurrent Username: %s\n", nameBuffer);
 	}
 }
 

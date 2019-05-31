@@ -25,8 +25,9 @@
 #endif
 
 #include <stdint.h>
+#include <assert.h>
 
-#define ftAssert(exp) if(!(exp)) {*(int *)0 = 0;}
+#define ftAssert(exp) assert(exp)
 
 #define ftExpects(expectedValue, actualValue) ftAssert((expectedValue) == (actualValue))
 #define ftNotExpects(notExpectedValue, actualValue) ftAssert((notExpectedValue) != (actualValue))

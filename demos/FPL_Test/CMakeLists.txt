@@ -7,6 +7,9 @@ cmake_minimum_required(VERSION 3.10)
 # -----------------------------------------------------------------------------
 project(FPL_Test)
 
+# NOTE(final): Need to pass IMPL define to make IDEs highlight implementation codes as well
+add_definitions(-DFPL_LOGGING -DFPL_IMPLEMENTATION -DFT_IMPLEMENTATION)
+
 set(MY_EXTERNAL_LIBS )
 
 set(MY_HEADER_FILES ../../final_platform_layer.h)
