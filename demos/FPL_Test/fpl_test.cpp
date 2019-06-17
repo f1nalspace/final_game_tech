@@ -14,6 +14,9 @@ Author:
 	Torsten Spaete
 
 Changelog:
+	## 2019-06-17
+	- Reflect api changes in FPL 0.9.4
+
     ## 2019-05-30
     - Fixed os version was not properly printed (%d instead of %s)
     - Rearranged code a bit
@@ -119,7 +122,7 @@ static void TestOSInfos() {
 	{
 		fplPlatformType platType = fplGetPlatformType();
 		ftAssert(fplPlatformType_Unknown != platType);
-        fplConsoleFormatOut("\tPlatform: %s\n", fplGetPlatformTypeString(platType));
+        fplConsoleFormatOut("\tPlatform: %s\n", fplGetPlatformName(platType));
 	}
 	ftMsg("Get OS Type:\n");
 	{
