@@ -23,7 +23,7 @@
     <ProjectGuid>{4D324317-CB24-4B90-AEDA-EA084FF25C2D}</ProjectGuid>
     <Keyword>Win32Proj</Keyword>
     <RootNamespace>FPL_OpenGL</RootNamespace>
-    <WindowsTargetPlatformVersion>10.0.10586.0</WindowsTargetPlatformVersion>
+    <WindowsTargetPlatformVersion>10.0.16299.0</WindowsTargetPlatformVersion>
     <ProjectName>FPL_OpenGL</ProjectName>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />

@@ -45,7 +45,7 @@
     <ProjectGuid>{4E7070B3-008C-4C21-8E26-6637DC547F89}</ProjectGuid>
     <Keyword>Win32Proj</Keyword>
     <RootNamespace>FPLTowadev</RootNamespace>
-    <WindowsTargetPlatformVersion>10.0.10586.0</WindowsTargetPlatformVersion>
+    <WindowsTargetPlatformVersion>10.0.16299.0</WindowsTargetPlatformVersion>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
