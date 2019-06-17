@@ -24,9 +24,12 @@ struct HitResult3f {
 	bool isHit;
 };
 
-struct Plane3f {
-	Vec3f normal;
-	float distance;
+union Plane3f {
+	struct {
+		Vec3f normal;
+		float distance;
+	};
+	Vec4f m;
 };
 
 struct Sphere3f {

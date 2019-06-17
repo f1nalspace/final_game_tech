@@ -200,8 +200,13 @@ inline Vec4f V4f(const Vec4f &other) {
 	return(result);
 }
 
-inline Vec4f V4f(const float x, const float y, const float z, const float w) {
+inline Vec4f V4f(const float x, const float y, const float z, const float w = 1.0f) {
 	Vec4f result = { x, y, z, w };
+	return(result);
+}
+
+inline Vec4f V4f(const Vec3f &v, const float w = 1.0f) {
+	Vec4f result = { v.x, v.y, v.z, w };
 	return(result);
 }
 
@@ -253,8 +258,9 @@ inline Mat4f M4f(const Mat4f &other) {
 
 union Pixel {
 	struct {
-		uint8_t r, g, b, a;
+		uint8_t b, g, r, a;
 	};
+	uint32_t bgra;
 	uint8_t m[4];
 };
 
@@ -322,6 +328,11 @@ inline float GetBestAngleDistance(float a0, float a1) {
 inline float AngleLerp(float a, float t, float b) {
 	float angleDistance = GetBestAngleDistance(a, b);
 	float result = ScalarLerp(a, t, a + angleDistance);
+	return(result);
+}
+
+inline uint8_t RoundF32ToU8(float value) {
+	uint8_t result = (uint8_t)(value * 255.0f + 0.5f);
 	return(result);
 }
 
@@ -533,6 +544,14 @@ inline Vec3f Vec3Lerp(const Vec3f &a, float t, const Vec3f &b) {
 	result.x = ScalarLerp(a.x, t, b.x);
 	result.y = ScalarLerp(a.y, t, b.y);
 	result.z = ScalarLerp(a.z, t, b.z);
+	return(result);
+}
+
+inline Vec3f Vec3Hadamard(const Vec3f &a, const Vec3f &b) {
+	Vec3f result;
+	result.x = a.x * b.x;
+	result.y = a.y * b.y;
+	result.z = a.z * b.z;
 	return(result);
 }
 
@@ -748,17 +767,91 @@ const static Vec4f ColorBlue = V4f(0.0f, 0.0f, 1.0f, 1.0f);
 const static Vec4f ColorLightGray = V4f(0.3f, 0.3f, 0.3f, 1.0f);
 const static Vec4f ColorDarkGray = V4f(0.2f, 0.2f, 0.2f, 1.0f);
 
-inline Pixel RGBA32ToPixel(const uint32_t rgba) {
-	Pixel result = { (uint8_t)((rgba >> 0) & 0xFF), (uint8_t)((rgba >> 8) & 0xFF), (uint8_t)((rgba >> 16) & 0xFF), (uint8_t)((rgba >> 24) & 0xFF) };
+inline Pixel MakePixel(const uint8_t r, const uint8_t g, const uint8_t b, const uint8_t a) {
+	Pixel result;
+	result.r = r;
+	result.g = g;
+	result.b = b;
+	result.a = a;
+	return(result);
+}
+inline Pixel MakePixel(const uint32_t rgba) {
+	Pixel result;
+	result.r = (uint8_t)((rgba >> 0) & 0xFF);
+	result.g = (uint8_t)((rgba >> 8) & 0xFF);
+	result.b = (uint8_t)((rgba >> 16) & 0xFF);
+	result.a = (uint8_t)((rgba >> 24) & 0xFF);
 	return(result);
 }
 
-inline uint32_t RGBA32(const uint8_t r, const uint8_t g, const uint8_t b, const uint8_t a) {
+inline uint32_t RGBA8(const uint8_t r, const uint8_t g, const uint8_t b, const uint8_t a) {
 	uint32_t result = (a << 24) | (b << 16) | (g << 8) | (r << 0);
 	return(result);
 }
+inline uint32_t RGBA8(const Pixel &pixel) {
+	uint32_t result = RGBA8(pixel.r, pixel.g, pixel.b, pixel.a);
+	return(result);
+}
 
-const static float INV255 = 1.0f / 255.0f;
+inline uint32_t BGRA8(const uint8_t r, const uint8_t g, const uint8_t b, const uint8_t a) {
+	uint32_t result = (a << 24) | (r << 16) | (g << 8) | (b << 0);
+	return(result);
+}
+inline uint32_t BGRA8(const Pixel &pixel) {
+	uint32_t result = pixel.bgra;
+	return(result);
+}
+
+inline uint32_t RGBAPack4x8(const Vec4f &unpacked) {
+	uint32_t result = (
+		(RoundF32ToU8(unpacked.a) << 24) |
+		(RoundF32ToU8(unpacked.b) << 16) |
+		(RoundF32ToU8(unpacked.g) << 8) |
+		(RoundF32ToU8(unpacked.r) << 0));
+	return(result);
+}
+inline Vec4f RGBAUnpack4x8(const uint32_t packed) {
+	Vec4f result;
+	result.r = (float)((packed >> 0) & 0xFF);
+	result.g = (float)((packed >> 8) & 0xFF);
+	result.b = (float)((packed >> 16) & 0xFF);
+	result.a = (float)((packed >> 24) & 0xFF);
+	return(result);
+}
+
+inline uint32_t BGRAPack4x8(const Vec4f &unpacked) {
+	uint32_t result = (
+		(RoundF32ToU8(unpacked.a) << 24) |
+		(RoundF32ToU8(unpacked.r) << 16) |
+		(RoundF32ToU8(unpacked.g) << 8) |
+		(RoundF32ToU8(unpacked.b) << 0));
+	return(result);
+}
+inline Vec4f BGRAUnpack4x8(const uint32_t packed) {
+	Vec4f result;
+	result.b = (float)((packed >> 0) & 0xFF);
+	result.g = (float)((packed >> 8) & 0xFF);
+	result.r = (float)((packed >> 16) & 0xFF);
+	result.a = (float)((packed >> 24) & 0xFF);
+	return(result);
+}
+
+inline Pixel PixelPack(const Vec4f &unpacked) {
+	Pixel result;
+	result.r = RoundF32ToU8(unpacked.r);
+	result.g = RoundF32ToU8(unpacked.g);
+	result.b = RoundF32ToU8(unpacked.b);
+	result.a = RoundF32ToU8(unpacked.a);
+	return(result);
+}
+inline Vec4f PixelUnpack(const Pixel packed) {
+	Vec4f result;
+	result.r = (float)(packed.r & 0xFF);
+	result.g = (float)(packed.g & 0xFF);
+	result.b = (float)(packed.b & 0xFF);
+	result.a = (float)(packed.a & 0xFF);
+	return(result);
+}
 
 inline float SRGBToLinear(const float x) {
 	if (x <= 0.0f)
@@ -783,15 +876,17 @@ inline float LinearToSRGB(const float x) {
 }
 
 inline Vec4f PixelToLinear(const Pixel &pixel, const bool fromSRGB = true) {
-	float r = pixel.r * INV255;
-	float g = pixel.g * INV255;
-	float b = pixel.b * INV255;
-	float a = pixel.a * INV255;
+	Vec4f unpacked = RGBAUnpack4x8(pixel.bgra);
 	Vec4f result;
-	result.r = fromSRGB ? SRGBToLinear(r) : r;
-	result.g = fromSRGB ? SRGBToLinear(g) : g;
-	result.b = fromSRGB ? SRGBToLinear(b) : b;
-	result.a = a;
+	if (fromSRGB) {
+		result = V4f(
+			SRGBToLinear(unpacked.r),
+			SRGBToLinear(unpacked.g),
+			SRGBToLinear(unpacked.b),
+			unpacked.a);
+	} else {
+		result = unpacked;
+	}
 	return(result);
 }
 
@@ -801,13 +896,11 @@ inline Pixel LinearToPixel(const Vec4f &linear, const bool toSRGB = true) {
 	float b = toSRGB ? LinearToSRGB(linear.b) : linear.b;
 	float a = linear.a;
 	Pixel result;
-	result.r = (uint8_t)(r * 255.0f + 0.5f);
-	result.g = (uint8_t)(g * 255.0f + 0.5f);
-	result.b = (uint8_t)(b * 255.0f + 0.5f);
-	result.a = (uint8_t)(a * 255.0f + 0.5f);
+	result.bgra = RGBAPack4x8(V4f(r, g, b, a));
 	return(result);
 }
 
+#if 0
 inline Vec4f RGBA32ToLinear(const uint32_t rgba) {
 	Pixel pixel = RGBA32ToPixel(rgba);
 	Vec4f result = PixelToLinear(pixel);
@@ -825,5 +918,6 @@ inline Vec4f AlphaToLinear(const uint8_t alpha) {
 	Vec4f result = V4f(1, 1, 1, a);
 	return(result);
 }
+#endif
 
 #endif // FINAL_MATH_H
