@@ -97,7 +97,7 @@ Final Platform Layer is released under the following license:
 
 MIT License
 
-Copyright (c) 2017-2018 Torsten Spaete
+Copyright (c) 2017-2019 Torsten Spaete
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -144,6 +144,7 @@ SOFTWARE.
     - Fixed: fpl__PushError_Formatted was always pushing errors on regardless of the log level
 	- Changed: Removed fake thread-safe implementation of the internal event queue
     - Changed: Changed drop event structure in fplWindowEvent to support multiple dropped files
+    - Changed: Renamed fplGetPlatformTypeString() to fplGetPlatformName()
 
     - Changed: [POSIX/Win32] When a dynamic library failed to load, it will push on a warning instead of a error
     - Changed: [POSIX/Win32] When a dynamic library procedure address failed to retrieve, it will push on a warning instead of a error
@@ -2455,6 +2456,7 @@ typedef struct fplMemoryBlock {
 * @brief Clears the given memory by the given size to zero.
 * @param mem The pointer to the memory
 * @param size The number of bytes to be cleared to zero
+* @see @ref subsection_category_memory_handling_ops_clear
 */
 fpl_common_api void fplMemoryClear(void *mem, const size_t size);
 /**
@@ -2462,6 +2464,7 @@ fpl_common_api void fplMemoryClear(void *mem, const size_t size);
 * @param mem The pointer to the memory
 * @param value The value to be set
 * @param size The number of bytes to be set
+* @see @ref subsection_category_memory_handling_ops_set
 */
 fpl_common_api void fplMemorySet(void *mem, const uint8_t value, const size_t size);
 /**
@@ -2469,6 +2472,7 @@ fpl_common_api void fplMemorySet(void *mem, const uint8_t value, const size_t si
 * @param sourceMem The pointer to the source memory to copy from
 * @param sourceSize The size in bytes to be copied
 * @param targetMem The pointer to the target memory to copy into
+* @see @ref subsection_category_memory_handling_ops_copy
 */
 fpl_common_api void fplMemoryCopy(const void *sourceMem, const size_t sourceSize, void *targetMem);
 /**
@@ -2478,6 +2482,7 @@ fpl_common_api void fplMemoryCopy(const void *sourceMem, const size_t sourceSize
 * @warning Alignment is not ensured here, the OS decides how to handle this. If you want to force a specific alignment use @ref fplMemoryAlignedAllocate() instead.
 * @note The memory is guaranteed to be initialized to zero.
 * @note This function can be called without the platform to be initialized.
+* @see @ref subsection_category_memory_handling_normal_allocate
 */
 fpl_platform_api void *fplMemoryAllocate(const size_t size);
 /**
@@ -2485,6 +2490,7 @@ fpl_platform_api void *fplMemoryAllocate(const size_t size);
 * @param ptr The pointer to the allocated memory
 * @warning This should never be called with a aligned memory pointer! For freeing aligned memory, use @ref fplMemoryAlignedFree() instead.
 * @note This function can be called without the platform to be initialized.
+* @see @ref section_category_memory_normal_free
 */
 fpl_platform_api void fplMemoryFree(void *ptr);
 /**
@@ -2494,6 +2500,7 @@ fpl_platform_api void fplMemoryFree(void *ptr);
 * @return Returns the pointer to the new allocated aligned memory.
 * @note The memory is guaranteed to be initialized to zero.
 * @note This function can be called without the platform to be initialized.
+* @see @ref subsection_category_memory_handling_aligned_allocate
 */
 fpl_common_api void *fplMemoryAlignedAllocate(const size_t size, const size_t alignment);
 /**
@@ -2501,6 +2508,7 @@ fpl_common_api void *fplMemoryAlignedAllocate(const size_t size, const size_t al
 * @param ptr The pointer to the aligned allocated memory
 * @warning This should never be called with a not-aligned memory pointer! For freeing not-aligned memory, use @ref fplMemoryFree() instead.
 * @note This function can be called without the platform to be initialized.
+* @see @ref subsection_category_memory_handling_aligned_free
 */
 fpl_common_api void fplMemoryAlignedFree(void *ptr);
 
@@ -2554,6 +2562,7 @@ typedef struct fplOSInfos {
   * @param outInfos The target @ref fplOSInfos structure
   * @return Returns true when the infos could be retrieved, false otherwise.
   * @note This may be called without initializing the platform
+  * @see @ref section_category_ossession_osinfos
   */
 fpl_platform_api bool fplGetOperatingSystemInfos(fplOSInfos *outInfos);
 
@@ -2562,6 +2571,7 @@ fpl_platform_api bool fplGetOperatingSystemInfos(fplOSInfos *outInfos);
   * @param nameBuffer The target buffer
   * @param maxNameBufferLen The max length of the target buffer
   * @return Returns true when a username could be retrieved, false otherwise.
+  * @see @ref section_category_ossession_username
   */
 fpl_platform_api bool fplGetCurrentUsername(char *nameBuffer, const size_t maxNameBufferLen);
 
@@ -2616,11 +2626,13 @@ typedef enum fplArchType {
   * @brief Gets the string representation of the given architecture type
   * @param type The @ref fplArchType enumeration value
   * @return Returns a string for the given architecture type
+  * @see @ref section_category_hardware_cpuarch
   */
 fpl_common_api const char *fplGetArchTypeString(const fplArchType type);
 /**
   * @brief Retrieves the total number of processor cores.
   * @return Returns the total number of processor cores.
+  * @see @ref section_category_hardware_corecount
   */
 fpl_platform_api size_t fplGetProcessorCoreCount();
 /**
@@ -2628,17 +2640,20 @@ fpl_platform_api size_t fplGetProcessorCoreCount();
   * @param destBuffer The destination buffer
   * @param maxDestBufferLen The max length of the destination buffer
   * @return Returns a pointer to the last written character or @ref fpl_null otherwise.
+  * @see @ref section_category_hardware_cpuname
   */
 fpl_platform_api char *fplGetProcessorName(char *destBuffer, const size_t maxDestBufferLen);
 /**
   * @brief Gets the processor architecture type
   * @return Returns the processor architecture type
+  * @see @ref section_category_hardware_cpuarch
   */
 fpl_platform_api fplArchType fplGetProcessorArchitecture();
 /**
   * @brief Retrieves the current system memory usage.
   * @param outInfos The target @ref fplMemoryInfos structure
   * @return Returns true when the memory infos was retrieved, false otherwise.
+  * @see @ref section_category_hardware_memstate
   */
 fpl_platform_api bool fplGetRunningMemoryInfos(fplMemoryInfos *outInfos);
 
@@ -2709,6 +2724,7 @@ typedef enum fplPlatformResultType {
   * @brief Gets the string representation of a platform result type.
   * @param type The platform result type as @ref fplPlatformResultType
   * @return Returns the string representation of a platform result type.
+  * @see @ref section_category_initialization_result
   */
 fpl_common_api const char *fplGetPlatformResultTypeString(const fplPlatformResultType type);
 
@@ -2773,7 +2789,8 @@ typedef struct fplVideoSettings {
 /**
   * @brief Resets the given video settings to default values
   * @param video The target @ref fplVideoSettings structure
-  * @note This will not change any video settings! To change the actual settings you have to pass the entire @ref fplSettings container to a argument in @ref fplPlatformInit().
+  * @note This will not change any video settings! To change the actual settings you have to pass the entire @ref fplSettings container as a argument in @ref fplPlatformInit().
+  * @see @ref category_video_general_notes
   */
 fpl_common_api void fplSetDefaultVideoSettings(fplVideoSettings *video);
 
@@ -2890,6 +2907,7 @@ typedef union fplSpecificAudioSettings {
   * @param outputSamples The pointer to the target samples
   * @param userData The pointer to the user data specified in @ref fplAudioSettings
   * @return Returns the number written frames
+  * @see @ref subsection_category_audio_general_default_init_clientcallback
   */
 typedef uint32_t(fpl_audio_client_read_callback)(const fplAudioDeviceFormat *deviceFormat, const uint32_t frameCount, void *outputSamples, void *userData);
 
@@ -2917,6 +2935,7 @@ typedef struct fplAudioSettings {
   * @brief Resets the given audio settings to default settings (S16 PCM, 48 KHz, 2 Channels)
   * @param audio The target @ref fplAudioSettings structure
   * @note This will not change any audio settings! To change the actual settings you have to pass the entire @ref fplSettings container to a argument in @ref fplPlatformInit().
+  * @see @ref section_category_audio_general_notes
   */
 fpl_common_api void fplSetDefaultAudioSettings(fplAudioSettings *audio);
 
@@ -2940,9 +2959,24 @@ typedef struct fplImageSource {
 	fplImageType type;
 } fplImageSource;
 
-//! OS window event is going to be processed callback type
+/**
+  * @brief A callback executed for each raw window event
+  * @param platform The current @ref fplPlatformType
+  * @param windowState The opaque window state, mapping to fpl internal window state
+  * @param eventData The raw event data structure for the current OS (XEvent for Posix, MSG for Win32, etc.)
+  * @param userData The pointer to the specific user data specified in @ref fplWindowCallbacks
+  * @return Needs to return true, if the event is handled
+  */
 typedef bool (fpl_window_event_callback)(const fplPlatformType platform, void *windowState, void *eventData, void *userData);
-//! Window has been exposed callback type
+
+/**
+  * @brief A callback executed when the window needs to be exposed/repainted
+  * @param platform The current @ref fplPlatformType
+  * @param windowState The opaque window state, mapping to fpl internal window state
+  * @param eventData The raw event data structure for the current OS (XEvent for Posix, MSG for Win32, etc.)
+  * @param userData The pointer to the specific user data specified in @ref fplWindowCallbacks
+  * @return Needs to return true, if the event is handled
+  */
 typedef fpl_window_event_callback fpl_window_exposed_callback;
 
 //! A structure containing the window callbacks
@@ -2993,6 +3027,7 @@ typedef struct fplWindowSettings {
   * @brief Resets the given window settings container to default settings
   * @param window The target @ref fplWindowSettings structure
   * @note This will not change any window settings! To change the actual settings you have to pass the entire @ref fplSettings container to a argument in @ref fplPlatformInit().
+  * @see @ref section_category_window_style_notes
   */
 fpl_common_api void fplSetDefaultWindowSettings(fplWindowSettings *window);
 
@@ -3008,6 +3043,7 @@ typedef struct fplInputSettings {
   * @brief Resets the given input settings contains to default values.
   * @param input The target @ref fplInputSettings structure
   * @note This will not change any input settings! To change the actual settings you have to pass the entire @ref fplSettings container to a argument in @ref fplPlatformInit().
+  * @see @ref page_category_input_config
   */
 fpl_common_api void fplSetDefaultInputSettings(fplInputSettings *input);
 
@@ -3062,16 +3098,19 @@ typedef struct fplSettings {
   * @brief Resets the given settings container to default values for window, video, audio, etc.
   * @param settings The target @ref fplSettings structure
   * @note This will not change the active settings! To change the actual settings you have to pass this settings container to a argument in @ref fplPlatformInit().
-  */
+  * @see @ref section_category_initialization_with_settings
+    */
 fpl_common_api void fplSetDefaultSettings(fplSettings *settings);
 /**
   * @brief Creates a full settings structure containing default values
   * @return Returns a defaulted @ref fplSettings structure
+  * @see @ref section_category_initialization_tips
   */
 fpl_common_api fplSettings fplMakeDefaultSettings();
 /**
   * @brief Gets the current settings
   * @return Returns a pointer to the @ref fplSettings structure
+  * @see @ref section_category_initialization_tips
   */
 fpl_common_api const fplSettings *fplGetCurrentSettings();
 
@@ -3083,14 +3122,14 @@ fpl_common_api const fplSettings *fplGetCurrentSettings();
   * @brief This category contains structures, enumerations and functions for initializing/releasing the platform.
   * @{
   */
-  // ----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
-  /**
-	* @brief Gets the string representation of the given platform type
-	* @param type The platform type @ref fplPlatformType
-	* @return Returns the string representation for the given platform type @ref fplPlatformType
-	*/
-fpl_common_api const char *fplGetPlatformTypeString(const fplPlatformType type);
+/**
+  * @brief Gets the string representation of the given platform type
+  * @param type The platform type @ref fplPlatformType
+  * @return Returns the string representation for the given platform type @ref fplPlatformType
+  */
+fpl_common_api const char *fplGetPlatformName(const fplPlatformType type);
 
 /**
   * @brief Initializes the platform layer.
@@ -3098,16 +3137,19 @@ fpl_common_api const char *fplGetPlatformTypeString(const fplPlatformType type);
   * @param initSettings The @ref fplSettings structure to control the platform layer behavior or systems, if null is passed here default values are used automatically.
   * @return Returns true when it was successful, false otherwise.
   * @note @ref fplPlatformRelease() must be called when you are done! After @ref fplPlatformRelease() has been called you can call this function again if needed.
+  * @see @ref section_category_initialization_simple
   */
 fpl_common_api bool fplPlatformInit(const fplInitFlags initFlags, const fplSettings *initSettings);
 /**
   * @brief Gets the result type of the platform initialization
   * @return Returns the result type as @ref fplPlatformResultType
+  * @see @ref section_category_errorhandling_getplatformresult
   */
 fpl_common_api fplPlatformResultType fplGetPlatformResult();
 /**
   * @brief Releases the resources allocated by the platform layer.
   * @note Can only be called when @ref fplPlatformInit() was successful.
+  * @see @ref section_category_initialization_release
   */
 fpl_common_api void fplPlatformRelease();
 /**
@@ -3149,6 +3191,7 @@ typedef enum fplLogLevel {
   * @brief A callback for printing a log message
   * @param level The log level @ref fplLogLevel
   * @param message The log message string
+  * @see @ref subsection_category_logging_logging_example_custom
   */
 typedef void (fpl_log_func_callback)(const fplLogLevel level, const char *message);
 
@@ -3225,24 +3268,28 @@ typedef struct fplLogSettings {
   * @brief Overwrites the current log settings
   * @param params The source @ref fplLogSettings structure
   * @note This function can be called regardless of the initialization state!
+  * @see @ref section_category_logging_logging
   */
 fpl_common_api void fplSetLogSettings(const fplLogSettings *params);
 /**
   * @brief Gets the current log settings
   * @return Returns a pointer the @ref fplLogSettings structure
   * @note This function can be called regardless of the initialization state!
+  * @see @ref section_category_logging_logging
   */
 fpl_common_api const fplLogSettings *fplGetLogSettings();
 /**
   * @brief Changes the current maximum log level to the given value
   * @param maxLevel The new maximum log level @ref fplLogLevel
   * @note This function can be called regardless of the initialization state!
+  * @see @ref section_category_logging_logging
   */
 fpl_common_api void fplSetMaxLogLevel(const fplLogLevel maxLevel);
 /**
   * @brief Gets the current maximum allowed log level
   * @return Returns the current maximum log level @ref fplLogLevel
   * @note This function can be called regardless of the initialization state!
+  * @see @ref section_category_logging_logging
   */
 fpl_common_api fplLogLevel fplGetMaxLogLevel();
 #endif // FPL__ENABLE_LOGGING
@@ -3261,6 +3308,7 @@ fpl_common_api fplLogLevel fplGetMaxLogLevel();
 	* @brief Gets the last internal error string
 	* @return Returns the last error string or empty string when there was no error.
 	* @note This function can be called regardless of the initialization state!
+	* @see @ref section_category_errorhandling_getlatest
 	*/
 fpl_common_api const char *fplGetLastError();
 /**
@@ -3268,17 +3316,20 @@ fpl_common_api const char *fplGetLastError();
   * @param index The index
   * @return Returns the last error string from the given index or empty when there was no error.
   * @note This function can be called regardless of the initialization state!
+  * @see @ref section_category_errorhandling_getbyindex
   */
 fpl_common_api const char *fplGetErrorByIndex(const size_t index);
 /**
   * @brief Gets the count of total last errors
   * @note This function can be called regardless of the initialization state!
   * @return Returns the number of last errors or zero when there was no error.
+  * @see @ref section_category_errorhandling_count
   */
 fpl_common_api size_t fplGetErrorCount();
 /**
   * @brief Clears all the current errors in the platform
   * @note This function can be called regardless of the initialization state!
+  * @see @ref section_category_errorhandling_clear
   */
 fpl_common_api void fplClearErrors();
 
@@ -3316,6 +3367,7 @@ typedef struct fplDynamicLibraryHandle {
   * @param libraryFilePath The path to the library with included file extension (.dll / .so)
   * @param outHandle The output handle @ref fplDynamicLibraryHandle
   * @return Returns true when the library was loaded successfully, false otherwise.
+  * @see @ref section_category_dll_load
   */
 fpl_platform_api bool fplDynamicLibraryLoad(const char *libraryFilePath, fplDynamicLibraryHandle *outHandle);
 /**
@@ -3323,11 +3375,13 @@ fpl_platform_api bool fplDynamicLibraryLoad(const char *libraryFilePath, fplDyna
   * @param handle The @ref fplDynamicLibraryHandle handle to the loaded library
   * @param name The name of the procedure
   * @return Returns the procedure address for the given procedure name or @ref fpl_null when procedure not found or library is not loaded.
+  * @see @ref section_category_dll_getprocaddr
   */
 fpl_platform_api void *fplGetDynamicLibraryProc(const fplDynamicLibraryHandle *handle, const char *name);
 /**
   * @brief Unloads the loaded library and resets the handle to zero.
   * @param handle The library handle @ref fplDynamicLibraryHandle
+  * @see @ref fplDynamicLibraryUnload
   */
 fpl_platform_api void fplDynamicLibraryUnload(fplDynamicLibraryHandle *handle);
 
@@ -18711,7 +18765,7 @@ fpl_internal void fpl__ReleasePlatformStates(fpl__PlatformInitState *initState, 
 	initState->isInitialized = false;
 }
 
-fpl_common_api const char *fplGetPlatformTypeString(const fplPlatformType type) {
+fpl_common_api const char *fplGetPlatformName(const fplPlatformType type) {
 	switch (type) {
 		case fplPlatformType_Windows:
 			return "Windows";

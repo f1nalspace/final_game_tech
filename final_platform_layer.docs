@@ -297,6 +297,7 @@
 	@section section_category_input Input
 	@subpage page_category_input_events <br>
 	@subpage page_category_input_polling <br>
+	@subpage page_category_input_config <br>
 
 	@section section_category_memory Memory
 	@subpage page_category_memory_handling <br>
@@ -468,10 +469,14 @@
 	@endcode
 
 	See the @subpage page_category_errorhandling page for more details about error handling.
-
+	
 	@section section_category_initialization_tips Tips
 	After releasing FPL you can call @ref fplPlatformInit() again if needed - for example: Finding the proper audio device, Testing for OpenGL compatibility, etc. may require you to call @ref fplPlatformInit() and @ref fplPlatformRelease() multiple times.<br>
-	For more details see @ref page_gettingstarted
+	For more details see @ref page_gettingstarted<br>
+	<br>
+	Optionally you can use @ref fplMakeDefaultSettings to create a default filled @ref fplSettings structure, which can be directly used for @ref fplPlatformInit()<br>
+	<br>
+	If needed you can get the currently used @ref fplSettings configuration by calling @ref fplGetCurrentSettings()
 */
 
 /*!
@@ -521,6 +526,19 @@
 	}
 	@endcode
 
+	@section section_category_errorhandling_getbyindex Get error by index
+
+	Use @ref fplGetErrorByIndex() to get a error string for the given index in range @ref fplGetErrorCount() .
+
+	Example:
+	@code{.c}
+	size_t errorCount = fplGetErrorCount();
+	if (errorCount > 0) {
+		const char *lastError = fplGetErrorByIndex(errorCount - 1);
+		// Do something with the last error
+	}
+	@endcode
+	
 	@section section_category_errorhandling_clear Clearing the errors
 
 	Errors will never be cleared by FPL! You have to do this yourself using @ref fplClearErrors() .<br>
@@ -567,6 +585,8 @@
 
 	@subsection subsection_category_logging_logging_example_errors_only Example: Log all errors to the error console only
 
+	Log all errors, warnings and criticals to the default error console.
+	
 	@code{.c}
 	fplLogSettings logSettings = fplZeroInit;
 	logSettings.maxLevel = fplLogLevel_Error;
@@ -575,6 +595,8 @@
 	@endcode
 
 	@subsection subsection_category_logging_logging_example_custom Example: Log all errors to a custom logging function
+	
+	Log all errors, warnings and criticals to a custom callback defined as @ref fpl_log_func_callback .
 
 	@code{.c}
 	static void MyLogFunction(const fplLogLevel level, const char *message) {
@@ -1189,6 +1211,31 @@
 
 	@note When the window is in fullscreen mode, @ref fplWindowState_Fullscreen is returned from @ref fplGetWindowState() always.
 	@warning The window state @ref fplWindowState_Fullscreen can never be set.
+
+	@section section_category_window_style_notes Notes
+	
+	@note Use @ref fplSetDefaultWindowSettings() to initialize a @ref fplWindowSettings to a default state.<br>
+*/
+
+/*!
+	@page page_category_input_config Input configuration
+	@tableofcontents
+	
+	@section section_catecory_input_config_param_controllerdetectionfrequency Controller detection frequency
+
+	Use @ref fplInputSettings.controllerDetectionFrequency to change the frequency (in milliseconds) for detecting new or removed game controllers.
+
+	If this is set to zero, new or removed game controllers are detected for every frame - which is not recommend due to performance issues.
+
+	@section section_catecory_input_config_param_disabledevents Disable controller handling as events
+
+	Set @ref fplInputSettings.disabledEvents to '1' to disable all game controller events, if needed.
+		
+	@section section_category_input_config_default Initialize to default settings
+	
+	If needed you can use @ref fplSetDefaultInputSettings to reset the @ref fplInputSettings structure to a default state.<br>
+	<br>
+	You dont have to use this call, if you have already initialized the @ref fplSettings structure by @ref fplMakeDefaultSettings() or @ref fplSetDefaultSettings()
 */
 
 /*!
@@ -1201,6 +1248,7 @@
 	See the @subpage page_category_window_events page for more details.<br>
 	<br>
 	If you don't want to handle input this way, you can use polling instead - see @subpage page_category_input_polling for more details.
+
 */
 
 /*!
@@ -1302,7 +1350,7 @@
 	It recommended setting at least the video driver manually, to ensure that you get either initialized with that driver properly or an error when your configuration is not supported.<br>
 	<br>
 	You do that by simply setting the @ref fplVideoDriverType field in your @ref fplVideoSettings structure which is included in the @ref fplSettings structure to the @ref fplPlatformInit() call.
-
+	
 	@code{.c}
 	fplSettings settings;
 	fplSetDefaultSettings(&settings);
@@ -1315,7 +1363,7 @@
 		// ... your code here
 	}
 	@endcode
-
+	
 	@section category_video_general_vsync Enable/Disable Vertical Synchronisation
 
 	If you want to enable/disable vertical synchronisation you simply set the fplVideoSettings.isVSync field respectively.
@@ -1353,7 +1401,8 @@
 
 	Driver types stored in the @ref fplVideoDriverType enumeration are not filtered away, even when you disable it by a preprocessor directive!<br>
 	Keep that in mind when you initialize the video device.<br>
-
+	<br>
+	If needed you can use @ref fplSetDefaultVideoSettings() to fill in just the default video settings inside the @ref fplVideoSettings structure.<br>
 */
 
 /*!
@@ -1685,7 +1734,9 @@
 	There is no guarantee that you get the desired audio format you specified back!<br>
 	You should always check the @ref fplAudioDeviceFormat "nativeAudioFormat" in your client callback and convert/write the correct samples the audio device expects!<br>
 	<br>
-	For more details see the page: @subpage page_category_audio_writesamples
+	For more details see the page: @subpage page_category_audio_writesamples<br>
+	<br>
+	If needed you can use @ref fplSetDefaultAudioSettings() to fill in just the default video settings inside the @ref fplAudioSettings structure.<br>
 */
 
 /*!
@@ -3987,7 +4038,7 @@
 
 	@section section_mit_license MIT License
 
-	Copyright (c) 2017-2018 Torsten Spaete<br>
+	Copyright (c) 2017-2019 Torsten Spaete<br>
 	<br>
 	Permission is hereby granted, free of charge, to any person obtaining a copy of<br>
 	this software and associated documentation files (the "Software"), to deal in<br>
