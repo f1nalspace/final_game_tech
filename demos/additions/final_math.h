@@ -300,11 +300,11 @@ inline float SquareRoot(const float value) {
 	float result = sqrtf(value);
 	return(result);
 }
-inline float Degrees(const float radians) {
+inline float RadiansToDegrees(const float radians) {
 	float result = radians * Rad2Deg;
 	return(result);
 }
-inline float Radians(const float degrees) {
+inline float DegreesToRadians(const float degrees) {
 	float result = degrees * Deg2Rad;
 	return(result);
 }
@@ -555,6 +555,7 @@ inline Vec3f Vec3Hadamard(const Vec3f &a, const Vec3f &b) {
 	return(result);
 }
 
+//
 // Mat2f
 //
 inline Mat2f Mat2FromAngle(float angle) {
@@ -615,7 +616,7 @@ inline static Mat4f Mat4OrthoRH(const float left, const float right, const float
 }
 
 inline static Mat4f Mat4PerspectiveRH(const float fov, const float aspect, const float zNear, const float zFar) {
-	float tanHalfFov = Tan(fov / 2.0f);
+	float tanHalfFov = Tan(fov * 0.5f);
 	Mat4f result = M4f(0.0f);
 	result.r[0][0] = 1.0f / (aspect * tanHalfFov);
 	result.r[1][1] = 1.0f / (tanHalfFov);
@@ -753,6 +754,15 @@ inline Mat4f operator *(const Mat4f &a, const Mat4f &b) {
 				+ (b.m[i + 3] * a.m[j + 12]);
 		}
 	}
+	return(result);
+}
+
+inline Vec4f Vec4MultMat4(const Mat4f &mat, const Vec4f &v) {
+	Vec4f result = {};
+	result.x = mat.r[0][0] * v.m[0] + mat.r[0][1] * v.m[1] + mat.r[0][2] * v.m[2] + mat.r[0][3] * v.m[3];
+	result.y = mat.r[1][0] * v.m[0] + mat.r[1][1] * v.m[1] + mat.r[1][2] * v.m[2] + mat.r[1][3] * v.m[3];
+	result.z = mat.r[2][0] * v.m[0] + mat.r[2][1] * v.m[1] + mat.r[2][2] * v.m[2] + mat.r[2][3] * v.m[3];
+	result.w = mat.r[3][0] * v.m[0] + mat.r[3][1] * v.m[1] + mat.r[3][2] * v.m[2] + mat.r[3][3] * v.m[3];
 	return(result);
 }
 
@@ -896,7 +906,7 @@ inline Pixel LinearToPixel(const Vec4f &linear, const bool toSRGB = true) {
 	float b = toSRGB ? LinearToSRGB(linear.b) : linear.b;
 	float a = linear.a;
 	Pixel result;
-	result.bgra = RGBAPack4x8(V4f(r, g, b, a));
+	result.bgra = BGRAPack4x8(V4f(r, g, b, a));
 	return(result);
 }
 
