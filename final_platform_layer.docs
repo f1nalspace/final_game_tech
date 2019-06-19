@@ -2565,29 +2565,79 @@
     @endcode
 
 	@subsection subsection_category_threading_threads_wait_any Wait for any Thread to Exit
-	Call @ref fplThreadWaitForAny() with an array of @ref fplThreadHandle, the number of threads and a @ref fplTimeoutValue argument to wait until at least one Thread had finished.
+	Call @ref fplThreadWaitForAny() to wait until at least for one Thread to finish.
 
+	Example, default thread handle array:<br>
 	@code{.c}
+	fplThreadHandle **threads; // Thread handle array already initialized
+
 	// Wait until one of the threads is finished
-	fplThreadWaitForAny(threads, numOfThreads, FPL_TIMEOUT_INFINITE);
+	fplThreadWaitForAny(threads, numOfThreads, sizeof(fplThreadHandle *), FPL_TIMEOUT_INFINITE);
 
 	// ... or
 
-	// Wait at max for 5 seconds to finish at least one of the threads
-	fplThreadWaitForAny(threads, numOfThreads, 5000);
+	// Wait at max for 5 seconds to finish at least one of the threads -> default stride
+	fplThreadWaitForAny(threads, numOfThreads, sizeof(fplThreadHandle *), 5000);
+    @endcode
+
+	Example, custom struct with stored thread handle:
+	@code{.c}
+	typedef struct MyCustomStruct {
+		int a;
+		void *ptr;
+		fplThreadHandle *thread;
+		short b;
+	} MyCustomStruct;
+
+	MyCustomStruct *customThreads; // Struct array already initialized
+
+	fplThreadHandle **firstPointerToThread = &customThreads[0].thread;
+
+	// Wait until one of the threads is finished
+	fplThreadWaitForAny(firstPointerToThread, numOfThreads, sizeof(MyCustomStruct), FPL_TIMEOUT_INFINITE);
+
+	// ... or
+
+	// Wait at max for 5 seconds to finish at least one of the threads -> default stride
+	fplThreadWaitForAny(firstPointerToThread, numOfThreads, sizeof(MyCustomStruct), 5000);
     @endcode
 
 	@subsection subsection_category_threading_threads_wait_all Wait for all Threads to Exit
-	Call @ref fplThreadWaitForAll() with an array of @ref fplThreadHandle , the number of threads and a @ref fplTimeoutValue argument, to wait for all Threads to be finished.
+	Call @ref fplThreadWaitForAll() to wait for all Threads to be finished.
 
+	Example, default thread handle array:<br>
 	@code{.c}
+	fplThreadHandle **threads; // Thread handle array already initialized
+
 	// Wait until all of the threads are finished
-	fplThreadWaitForAll(threads, numOfThreads, FPL_TIMEOUT_INFINITE);
+	fplThreadWaitForAll(threads, numOfThreads, sizeof(fplThreadHandle *), FPL_TIMEOUT_INFINITE);
 
 	// ... or
 
 	// Wait at max for 5 seconds to finish all threads
-	fplThreadWaitForAll(threads, numOfThreads, 5000);
+	fplThreadWaitForAll(threads, numOfThreads, sizeof(fplThreadHandle *), 5000);
+    @endcode
+
+	Example, custom struct with stored thread handle:
+	@code{.c}
+	typedef struct MyCustomStruct {
+		int a;
+		void *ptr;
+		fplThreadHandle *thread;
+		short b;
+	} MyCustomStruct;
+
+	MyCustomStruct *customThreads; // Struct array already initialized
+
+	fplThreadHandle **firstPointerToThread = &customThreads[0].thread;
+
+	// Wait until all of the threads are finished
+	fplThreadWaitForAll(threads, numOfThreads, sizeof(MyCustomStruct), FPL_TIMEOUT_INFINITE);
+
+	// ... or
+
+	// Wait at max for 5 seconds to finish all threads
+	fplThreadWaitForAll(threads, numOfThreads, sizeof(MyCustomStruct), 5000);
     @endcode
 
 	@section section_category_threading_threads_terminate Terminate a thread
@@ -2717,29 +2767,79 @@
     @endcode
 
 	@subsection subsection_category_threading_signals_wait_any Wait for any Signal to be set
-	Call @ref fplSignalWaitForAny() with an array of @ref fplSignalHandle, the number of Signals and a @ref fplTimeoutValue argument, to let the current Thread wait until at least one Signal is set.
+	Call @ref fplSignalWaitForAny() to let the current Thread wait until at least one Signal is set.
 
+	Example, default signal handle array:<br>
 	@code{.c}
+	fplSignalHandle **signals; // Signals array already initialized
+
 	// Wait until one of the Signal is set
-	fplSignalWaitForAny(signals, numOfSignals, FPL_TIMEOUT_INFINITE);
+	fplSignalWaitForAny(signals, numOfSignals, sizeof(fplSignalHandle *), FPL_TIMEOUT_INFINITE);
 
 	// ... or
 
 	// Wait at max for 5 seconds or until one of the Signal is set
-	fplSignalWaitForAny(signals, numOfSignals, 5000);
+	fplSignalWaitForAny(signals, numOfSignals, sizeof(fplSignalHandle *), 5000);
+    @endcode
+
+	Example, custom struct with stored signal handle:
+	@code{.c}
+	typedef struct MyCustomStruct {
+		int a;
+		void *ptr;
+		fplSignalHandle *signal;
+		short b;
+	} MyCustomStruct;
+
+	MyCustomStruct *customSignals; // Struct array already initialized
+
+	fplSignalHandle *firstPointerToSignal = &customSignals[0].signal;
+
+	// Wait until one of the Signal is set
+	fplSignalWaitForAny(firstPointerToSignal, numOfSignals, sizeof(MyCustomStruct), FPL_TIMEOUT_INFINITE);
+
+	// ... or
+
+	// Wait at max for 5 seconds or until one of the Signal is set
+	fplSignalWaitForAny(firstPointerToSignal, numOfSignals, sizeof(MyCustomStruct), 5000);
     @endcode
 
 	@subsection subsection_category_threading_signals_wait_all Wait for all Signals to be set
-	Call @ref fplSignalWaitForAll() with an array of @ref fplSignalHandle , the number of Signals and a @ref fplTimeoutValue argument, to let the current Thread wait until all Signals are set.
+	Call @ref fplSignalWaitForAll() to let the current Thread wait until all Signals are set.
 
+	Example, default signal handle array:<br>
 	@code{.c}
+	fplSignalHandle **signals; // Signals array already initialized
+
 	// Wait until all of the Signals are set
-	fplSignalWaitForAll(signals, numOfSignals, FPL_TIMEOUT_INFINITE);
+	fplSignalWaitForAll(signals, numOfSignals, sizeof(fplSignalHandle *), FPL_TIMEOUT_INFINITE);
 
 	// ... or
 
 	// Wait at max for 5 seconds or until all of the Signal are set
-	fplSignalWaitForAll(signals, numOfSignals, 5000);
+	fplSignalWaitForAll(signals, numOfSignals, sizeof(fplSignalHandle *), 5000);
+    @endcode
+	
+	Example, custom struct with stored signal handle:
+	@code{.c}
+	typedef struct MyCustomStruct {
+		int a;
+		void *ptr;
+		fplSignalHandle *signal;
+		short b;
+	} MyCustomStruct;
+
+	MyCustomStruct *customSignals; // Struct array already initialized
+
+	fplSignalHandle *firstPointerToSignal = &customSignals[0].signal;
+
+	// Wait until all of the Signals are set
+	fplSignalWaitForAll(firstPointerToSignal, numOfSignals, sizeof(MyCustomStruct), FPL_TIMEOUT_INFINITE);
+
+	// ... or
+
+	// Wait at max for 5 seconds or until all of the Signal are set
+	fplSignalWaitForAll(firstPointerToSignal, numOfSignals, sizeof(MyCustomStruct), 5000);
     @endcode
 
 	@section section_category_threading_signals_set Setting a Signal

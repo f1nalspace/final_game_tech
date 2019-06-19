@@ -145,9 +145,17 @@ SOFTWARE.
 	- Changed: Removed fake thread-safe implementation of the internal event queue
     - Changed: Changed drop event structure in fplWindowEvent to support multiple dropped files
     - Changed: Renamed fplGetPlatformTypeString() to fplGetPlatformName()
+	- Changed: Added stride to fplThreadWaitForAll() to support custom sized user structs
+	- Changed: Added stride to fplThreadWaitForAny() to support custom sized user structs
+	- Changed: Added stride to fplSignalWaitForAll() to support custom sized user structs
+	- Changed: Added stride to fplSignalWaitForAny() to support custom sized user structs
 
-    - Changed: [POSIX/Win32] When a dynamic library failed to load, it will push on a warning instead of a error
+	- Changed: [POSIX/Win32] When a dynamic library failed to load, it will push on a warning instead of a error
     - Changed: [POSIX/Win32] When a dynamic library procedure address failed to retrieve, it will push on a warning instead of a error
+	- Changed: [POSIX/Win32] Reflect api changes for fplThreadWaitForAll()
+	- Changed: [POSIX/Win32] Reflect api changes for fplThreadWaitForAny()
+	- Changed: [POSIX/Win32] Reflect api changes for fplSignalWaitForAll()
+	- Changed: [POSIX/Win32] Reflect api changes for fplSignalWaitForAny()
 
     - New: [Win32] Support for multiple files in WM_DROPFILES
 	- Fixed: [Win32] Fixed missing WINAPI keyword for fpl__Win32MonitorCountEnumProc/fpl__Win32MonitorInfoEnumProc/fpl__Win32PrimaryMonitorEnumProc
@@ -3706,20 +3714,22 @@ fpl_platform_api bool fplThreadTerminate(fplThreadHandle *thread);
 fpl_platform_api bool fplThreadWaitForOne(fplThreadHandle *thread, const fplTimeoutValue timeout);
 /**
   * @brief Wait until all given threads are done running or the given timeout has been reached.
-  * @param threads The array @ref fplThreadHandle pointers
-  * @param count The number of threads in the array
+  * @param threads The pointer to the first @ref fplThreadHandle pointer
+  * @param count The number of threads
+  * @param stride The size in bytes to the next thread handle
   * @param timeout The number of milliseconds to wait. When this is set to @ref FPL_TIMEOUT_INFINITE it will wait infinitly.
   * @return Returns true when all threads completes or when the timeout has been reached, false otherwise.
   */
-fpl_platform_api bool fplThreadWaitForAll(fplThreadHandle *threads[], const size_t count, const fplTimeoutValue timeout);
+fpl_platform_api bool fplThreadWaitForAll(fplThreadHandle **threads, const size_t count, const size_t stride, const fplTimeoutValue timeout);
 /**
   * @brief Wait until one of given threads is done running or the given timeout has been reached.
-  * @param threads The array @ref fplThreadHandle pointers
-  * @param count The number of threads in the array
+  * @param threads The pointer to the first @ref fplThreadHandle pointer
+  * @param count The number of threads
+  * @param stride The size in bytes to the next thread handle
   * @param timeout The number of milliseconds to wait. When this is set to @ref FPL_TIMEOUT_INFINITE it will wait infinitly.
   * @return Returns true when one thread completes or when the timeout has been reached, false otherwise.
   */
-fpl_platform_api bool fplThreadWaitForAny(fplThreadHandle *threads[], const size_t count, const fplTimeoutValue timeout);
+fpl_platform_api bool fplThreadWaitForAny(fplThreadHandle **threads, const size_t count, const size_t stride, const fplTimeoutValue timeout);
 
 /**
   * @brief Initializes the given mutex
@@ -3774,20 +3784,22 @@ fpl_platform_api void fplSignalDestroy(fplSignalHandle *signal);
 fpl_platform_api bool fplSignalWaitForOne(fplSignalHandle *signal, const fplTimeoutValue timeout);
 /**
   * @brief Waits until all the given signal are waked up.
-  * @param signals The array of @ref fplSignalHandle pointers
-  * @param count The number of signals in the array
+  * @param signals The pointer to the first @ref fplSignalHandle pointer
+  * @param count The number of signals
+  * @param stride The size in bytes to the next signal handle
   * @param timeout The number of milliseconds to wait. When this is set to @ref FPL_TIMEOUT_INFINITE it will wait infinitly.
   * @return Returns true when all signals woke up or the timeout has been reached, false otherwise.
   */
-fpl_platform_api bool fplSignalWaitForAll(fplSignalHandle *signals[], const size_t count, const fplTimeoutValue timeout);
+fpl_platform_api bool fplSignalWaitForAll(fplSignalHandle **signals, const size_t count, const size_t stride, const fplTimeoutValue timeout);
 /**
   * @brief Waits until any of the given signals wakes up or the timeout has been reached.
-  * @param signals The array of @ref fplSignalHandle pointers
-  * @param count The number of signals in the array
+  * @param signals The pointer to the first @ref fplSignalHandle pointer
+  * @param count The number of signals
+  * @param stride The size in bytes to the next signal handle
   * @param timeout The number of milliseconds to wait. When this is set to @ref FPL_TIMEOUT_INFINITE it will wait infinitly.
   * @return Returns true when any of the signals woke up or the timeout has been reached, false otherwise.
   */
-fpl_platform_api bool fplSignalWaitForAny(fplSignalHandle *signals[], const size_t count, const fplTimeoutValue timeout);
+fpl_platform_api bool fplSignalWaitForAny(fplSignalHandle **signals, const size_t count, const size_t stride, const fplTimeoutValue timeout);
 /**
   * @brief Sets the signal and wakes up the given signal.
   * @param signal The pointer to the @ref fplSignalHandle structure
@@ -5926,7 +5938,7 @@ fpl_internal uint32_t fpl__PrevPowerOfTwo(const uint32_t input) {
 fpl_internal uint32_t fpl__RoundToPowerOfTwo(const uint32_t input) {
 	uint32_t prev = fpl__PrevPowerOfTwo(input);
 	uint32_t next = fpl__NextPowerOfTwo(input);
-	if ((next - input) > (input - prev)) {
+	if ((next - input) < (input - prev)) {
 		return prev;
 	} else {
 		return next;
@@ -9635,12 +9647,12 @@ fpl_internal void fpl__Win32ReleaseWindow(const fpl__Win32InitState *initState, 
 
 #endif // FPL__ENABLE_WINDOW
 
-fpl_internal bool fpl__Win32ThreadWaitForMultiple(fplThreadHandle *threads[], const size_t count, const bool waitForAll, const fplTimeoutValue timeout) {
+fpl_internal bool fpl__Win32ThreadWaitForMultiple(fplThreadHandle **threads, const size_t count, const size_t stride, const fplTimeoutValue timeout, const bool waitForAll) {
 	FPL__CheckArgumentNull(threads, false);
 	FPL__CheckArgumentMax(count, FPL__MAX_THREAD_COUNT, false);
 	fplStaticAssert(FPL__MAX_THREAD_COUNT >= MAXIMUM_WAIT_OBJECTS);
 	for (size_t index = 0; index < count; ++index) {
-		fplThreadHandle *thread = threads[index];
+		fplThreadHandle *thread = *(fplThreadHandle **)((uint8_t *)threads + index * stride);
 		if (thread == fpl_null) {
 			FPL_ERROR(FPL__MODULE_THREADING, "Thread for index '%d' are not allowed to be null", index);
 			return false;
@@ -9661,7 +9673,7 @@ fpl_internal bool fpl__Win32ThreadWaitForMultiple(fplThreadHandle *threads[], co
 	while (stoppedThreads < minThreads) {
 		stoppedThreads = 0;
 		for (size_t index = 0; index < count; ++index) {
-			fplThreadHandle *thread = threads[index];
+			fplThreadHandle *thread = *(fplThreadHandle **)((uint8_t *)threads + index * stride);
 			if (fplGetThreadState(thread) == fplThreadState_Stopped) {
 				++stoppedThreads;
 			}
@@ -9680,12 +9692,12 @@ fpl_internal bool fpl__Win32ThreadWaitForMultiple(fplThreadHandle *threads[], co
 	return(result);
 }
 
-fpl_internal bool fpl__Win32SignalWaitForMultiple(fplSignalHandle *signals[], const size_t count, const bool waitForAll, const fplTimeoutValue timeout) {
+fpl_internal bool fpl__Win32SignalWaitForMultiple(fplSignalHandle **signals, const size_t count, const size_t stride, const fplTimeoutValue timeout, const bool waitForAll) {
 	FPL__CheckArgumentNull(signals, false);
 	FPL__CheckArgumentMax(count, FPL__MAX_SIGNAL_COUNT, false);
 	HANDLE signalHandles[FPL__MAX_SIGNAL_COUNT];
 	for (uint32_t index = 0; index < count; ++index) {
-		fplSignalHandle *availableSignal = signals[index];
+		fplSignalHandle *availableSignal = *(fplSignalHandle **)((uint8_t *)signals + index * stride);
 		if (availableSignal == fpl_null) {
 			FPL_ERROR(FPL__MODULE_THREADING, "Signal for index '%d' are not allowed to be null", index);
 			return false;
@@ -10549,13 +10561,13 @@ fpl_platform_api bool fplThreadWaitForOne(fplThreadHandle *thread, const fplTime
 	return(result);
 }
 
-fpl_platform_api bool fplThreadWaitForAll(fplThreadHandle *threads[], const size_t count, const fplTimeoutValue timeout) {
-	bool result = fpl__Win32ThreadWaitForMultiple(threads, count, true, timeout);
+fpl_platform_api bool fplThreadWaitForAll(fplThreadHandle **threads, const size_t count, const size_t stride, const fplTimeoutValue timeout) {
+	bool result = fpl__Win32ThreadWaitForMultiple(threads, count, stride, timeout, true);
 	return(result);
 }
 
-fpl_platform_api bool fplThreadWaitForAny(fplThreadHandle *threads[], const size_t count, const fplTimeoutValue timeout) {
-	bool result = fpl__Win32ThreadWaitForMultiple(threads, count, false, timeout);
+fpl_platform_api bool fplThreadWaitForAny(fplThreadHandle **threads, const size_t count, const size_t stride, const fplTimeoutValue timeout) {
+	bool result = fpl__Win32ThreadWaitForMultiple(threads, count, stride, timeout, false);
 	return(result);
 }
 
@@ -10647,13 +10659,13 @@ fpl_platform_api bool fplSignalWaitForOne(fplSignalHandle *signal, const fplTime
 	return(result);
 }
 
-fpl_platform_api bool fplSignalWaitForAll(fplSignalHandle *signals[], const size_t count, const fplTimeoutValue timeout) {
-	bool result = fpl__Win32SignalWaitForMultiple((fplSignalHandle **)signals, count, true, timeout);
+fpl_platform_api bool fplSignalWaitForAll(fplSignalHandle **signals, const size_t count, const size_t stride, const fplTimeoutValue timeout) {
+	bool result = fpl__Win32SignalWaitForMultiple(signals, count, stride, timeout, true);
 	return(result);
 }
 
-fpl_platform_api bool fplSignalWaitForAny(fplSignalHandle *signals[], const size_t count, const fplTimeoutValue timeout) {
-	bool result = fpl__Win32SignalWaitForMultiple((fplSignalHandle **)signals, count, false, timeout);
+fpl_platform_api bool fplSignalWaitForAny(fplSignalHandle **signals, const size_t count, const size_t stride, const fplTimeoutValue timeout) {
+	bool result = fpl__Win32SignalWaitForMultiple(signals, count, stride, timeout, false);
 	return(result);
 }
 
@@ -12314,11 +12326,11 @@ fpl_internal int fpl__PosixMutexCreate(const fpl__PThreadApi *pthreadApi, pthrea
 	return(mutexRes);
 }
 
-fpl_internal bool fpl__PosixThreadWaitForMultiple(fplThreadHandle *threads[], const uint32_t minCount, const uint32_t maxCount, const fplTimeoutValue timeout) {
+fpl_internal bool fpl__PosixThreadWaitForMultiple(fplThreadHandle **threads, const uint32_t minCount, const uint32_t maxCount, const size_t stride, const fplTimeoutValue timeout) {
 	FPL__CheckArgumentNull(threads, false);
 	FPL__CheckArgumentMax(maxCount, FPL__MAX_THREAD_COUNT, false);
 	for (uint32_t index = 0; index < maxCount; ++index) {
-		fplThreadHandle *thread = threads[index];
+		fplThreadHandle *thread = *(fplThreadHandle **)((uint8_t *)threads + index * stride);
 		if (thread == fpl_null) {
 			FPL_ERROR(FPL__MODULE_THREADING, "Thread for index '%d' are not allowed to be null", index);
 			return false;
@@ -12328,7 +12340,7 @@ fpl_internal bool fpl__PosixThreadWaitForMultiple(fplThreadHandle *threads[], co
 	uint32_t completeCount = 0;
 	bool isRunning[FPL__MAX_THREAD_COUNT];
 	for (uint32_t index = 0; index < maxCount; ++index) {
-		fplThreadHandle *thread = threads[index];
+		fplThreadHandle *thread = *(fplThreadHandle **)((uint8_t *)threads + index * stride);
 		isRunning[index] = fplGetThreadState(thread) != fplThreadState_Stopped;
 		if (!isRunning[index]) {
 			++completeCount;
@@ -12339,7 +12351,7 @@ fpl_internal bool fpl__PosixThreadWaitForMultiple(fplThreadHandle *threads[], co
 	bool result = false;
 	while (completeCount < minCount) {
 		for (uint32_t index = 0; index < maxCount; ++index) {
-			fplThreadHandle *thread = threads[index];
+			fplThreadHandle *thread = *(fplThreadHandle **)((uint8_t *)threads + index * stride);
 			if (isRunning[index]) {
 				fplThreadState state = fplGetThreadState(thread);
 				if (state == fplThreadState_Stopped) {
@@ -12641,13 +12653,13 @@ fpl_platform_api bool fplThreadWaitForOne(fplThreadHandle *thread, const fplTime
 	return (result);
 }
 
-fpl_platform_api bool fplThreadWaitForAll(fplThreadHandle *threads[], const size_t count, const fplTimeoutValue timeout) {
-	bool result = fpl__PosixThreadWaitForMultiple(threads, count, count, timeout);
+fpl_platform_api bool fplThreadWaitForAll(fplThreadHandle **threads, const size_t count, const size_t stride, const fplTimeoutValue timeout) {
+	bool result = fpl__PosixThreadWaitForMultiple(threads, count, count, stride, timeout);
 	return(result);
 }
 
-fpl_platform_api bool fplThreadWaitForAny(fplThreadHandle *threads[], const size_t count, const fplTimeoutValue timeout) {
-	bool result = fpl__PosixThreadWaitForMultiple(threads, 1, count, timeout);
+fpl_platform_api bool fplThreadWaitForAny(fplThreadHandle **threads, const size_t count, const size_t stride, const fplTimeoutValue timeout) {
+	bool result = fpl__PosixThreadWaitForMultiple(threads, 1, count, stride, timeout);
 	return(result);
 }
 
@@ -15073,11 +15085,11 @@ fpl_platform_api bool fplSignalWaitForOne(fplSignalHandle *signal, const fplTime
 	}
 }
 
-fpl_internal bool fpl__LinuxSignalWaitForMultiple(fplSignalHandle *signals[], const uint32_t minCount, const uint32_t maxCount, const fplTimeoutValue timeout) {
+fpl_internal bool fpl__LinuxSignalWaitForMultiple(fplSignalHandle *signals[], const uint32_t minCount, const uint32_t maxCount, const size_t stride, const fplTimeoutValue timeout) {
 	FPL__CheckArgumentNull(signals, false);
 	FPL__CheckArgumentMax(maxCount, FPL__MAX_SIGNAL_COUNT, false);
 	for (uint32_t index = 0; index < maxCount; ++index) {
-		fplSignalHandle *signal = signals[index];
+		fplSignalHandle *signal = *(fplSignalHandle **)((uint8_t *)signals + index * stride);
 		if (signal == fpl_null) {
 			FPL_ERROR(FPL__MODULE_THREADING, "Signal for index '%d' are not allowed to be null", index);
 			return false;
@@ -15093,10 +15105,11 @@ fpl_internal bool fpl__LinuxSignalWaitForMultiple(fplSignalHandle *signals[], co
 
 	// Register events and map each to the array index
 	struct epoll_event events[FPL__MAX_SIGNAL_COUNT];
-	for (int i = 0; i < maxCount; i++) {
-		events[i].events = EPOLLIN;
-		events[i].data.u32 = i;
-		int x = epoll_ctl(e, EPOLL_CTL_ADD, signals[i]->internalHandle.linuxEventHandle, events + i);
+	for (int index = 0; index < maxCount; index++) {
+		events[index].events = EPOLLIN;
+		events[index].data.u32 = index;
+		fplSignalHandle *signal = *(fplSignalHandle **)((uint8_t *)signals + index * stride);
+		int x = epoll_ctl(e, EPOLL_CTL_ADD, signal->internalHandle.linuxEventHandle, events + index);
 		fplAssert(x == 0);
 	}
 
@@ -15113,8 +15126,10 @@ fpl_internal bool fpl__LinuxSignalWaitForMultiple(fplSignalHandle *signals[], co
 			}
 			break;
 		}
-		for (int i = 0; i < ret; i++) {
-			epoll_ctl(e, EPOLL_CTL_DEL, signals[revent[i].data.u32]->internalHandle.linuxEventHandle, NULL);
+		for (int eventIndex = 0; eventIndex < ret; eventIndex++) {
+			uint32_t signalIndex = revent[eventIndex].data.u32;
+			fplSignalHandle *signal = *(fplSignalHandle **)((uint8_t *)signals + signalIndex * stride);
+			epoll_ctl(e, EPOLL_CTL_DEL, signal->internalHandle.linuxEventHandle, NULL);
 		}
 		eventsResult = revent[0].data.u32;
 		waiting -= ret;
@@ -15124,13 +15139,13 @@ fpl_internal bool fpl__LinuxSignalWaitForMultiple(fplSignalHandle *signals[], co
 	return(result);
 }
 
-fpl_platform_api bool fplSignalWaitForAll(fplSignalHandle *signals[], const size_t count, const fplTimeoutValue timeout) {
-	bool result = fpl__LinuxSignalWaitForMultiple(signals, count, count, timeout);
+fpl_platform_api bool fplSignalWaitForAll(fplSignalHandle **signals, const size_t count, const size_t stride, const fplTimeoutValue timeout) {
+	bool result = fpl__LinuxSignalWaitForMultiple(signals, count, count, stride, timeout);
 	return(result);
 }
 
-fpl_platform_api bool fplSignalWaitForAny(fplSignalHandle *signals[], const size_t count, const fplTimeoutValue timeout) {
-	bool result = fpl__LinuxSignalWaitForMultiple(signals, 1, count, timeout);
+fpl_platform_api bool fplSignalWaitForAny(fplSignalHandle **signals, const size_t count, const size_t stride, const fplTimeoutValue timeout) {
+	bool result = fpl__LinuxSignalWaitForMultiple(signals, 1, count, stride, timeout);
 	return(result);
 }
 

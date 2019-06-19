@@ -313,9 +313,10 @@ typedef struct LoadPictureContext {
 
 typedef struct PictureLoadThread {
 	LoadPictureContext context;
-	struct ViewerState *state;
 	fplMutexHandle mutex;
 	fplConditionVariable condition;
+	struct ViewerState *state;
+	fplThreadHandle *thread;
 	volatile bool shutdown;
 } PictureLoadThread;
 
@@ -418,8 +419,7 @@ typedef struct ViewerState {
 	int viewPictureIndex;
 	bool doPictureReload;
 
-	PictureLoadThread loadThreadData[MAX_LOAD_THREAD_COUNT];
-	fplThreadHandle *loadThreads[MAX_LOAD_THREAD_COUNT];
+	PictureLoadThread loadThreads[MAX_LOAD_THREAD_COUNT];
 	size_t loadThreadCount;
 
 	ViewerParameters params;
@@ -754,33 +754,38 @@ static void LoadPictureThreadProc(const fplThreadHandle *thread, void *data) {
 static void InitLoadThreads(ViewerState *state, const size_t threadCount) {
 	state->loadThreadCount = threadCount;
 	for(size_t i = 0; i < state->loadThreadCount; ++i) {
-		fplMutexInit(&state->loadThreadData[i].mutex);
-		fplConditionInit(&state->loadThreadData[i].condition);
-		state->loadThreadData[i].state = state;
-		state->loadThreadData[i].shutdown = false;
-		state->loadThreadData[i].context.canceled = false;
-		state->loadThreadData[i].context.viewPic = fpl_null;
-		state->loadThreads[i] = fplThreadCreate(LoadPictureThreadProc, &state->loadThreadData[i]);
+		fplMutexInit(&state->loadThreads[i].mutex);
+		fplConditionInit(&state->loadThreads[i].condition);
+		state->loadThreads[i].state = state;
+		state->loadThreads[i].shutdown = false;
+		state->loadThreads[i].context.canceled = false;
+		state->loadThreads[i].context.viewPic = fpl_null;
+		state->loadThreads[i].thread = fplThreadCreate(LoadPictureThreadProc, &state->loadThreads[i]);
 	}
 }
 
 static void StopLoadingInThreads(ViewerState *state) {
 	for(size_t i = 0; i < state->loadThreadCount; ++i) {
-		state->loadThreadData[i].context.canceled = true;
-		fplConditionSignal(&state->loadThreadData[i].condition);
+		state->loadThreads[i].context.canceled = true;
+		fplConditionSignal(&state->loadThreads[i].condition);
 	}
 }
 
 static void ShutdownLoadThreads(ViewerState *state) {
 	for(size_t i = 0; i < state->loadThreadCount; ++i) {
-		state->loadThreadData[i].shutdown = true;
-		state->loadThreadData[i].context.canceled = true;
-		fplConditionSignal(&state->loadThreadData[i].condition);
+		state->loadThreads[i].shutdown = true;
+		state->loadThreads[i].context.canceled = true;
+		fplConditionSignal(&state->loadThreads[i].condition);
 	}
-	fplThreadWaitForAll(state->loadThreads, state->loadThreadCount, FPL_TIMEOUT_INFINITE);
+
+	// @FIXME(final): Passing an invalid stride should return a false, instead of hardly crashing or do we?
+	//fplThreadWaitForAll(&state->loadThreads[0].thread, state->loadThreadCount, sizeof(fplThreadHandle *), FPL_TIMEOUT_INFINITE);
+	
+	fplThreadWaitForAll(&state->loadThreads[0].thread, state->loadThreadCount, sizeof(PictureLoadThread), FPL_TIMEOUT_INFINITE);
+
 	for(size_t i = 0; i < state->loadThreadCount; ++i) {
-		fplConditionDestroy(&state->loadThreadData[i].condition);
-		fplMutexDestroy(&state->loadThreadData[i].mutex);
+		fplConditionDestroy(&state->loadThreads[i].condition);
+		fplMutexDestroy(&state->loadThreads[i].mutex);
 	}
 }
 
@@ -830,8 +835,8 @@ static void QueueUpPictures(ViewerState *state) {
 
 	// Wakeup load threads
 	for(size_t i = 0; i < state->loadThreadCount; ++i) {
-		state->loadThreadData[i].context.canceled = false;
-		fplConditionSignal(&state->loadThreadData[i].condition);
+		state->loadThreads[i].context.canceled = false;
+		fplConditionSignal(&state->loadThreads[i].condition);
 	}
 }
 

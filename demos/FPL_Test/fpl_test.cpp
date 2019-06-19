@@ -487,6 +487,7 @@ static void EmptyThreadproc(const fplThreadHandle *context, void *data) {
 }
 
 struct ThreadData {
+	fplThreadHandle *thread;
 	int num;
 	int sleepFor;
 };
@@ -504,19 +505,18 @@ static void SimpleMultiThreadTest(const size_t threadCount) {
 		threadData[threadIndex].num = (int)(threadIndex + 1);
 		threadData[threadIndex].sleepFor = (int)(1 + threadIndex) * 500;
 	}
-	fplThreadHandle *threads[FPL__MAX_THREAD_COUNT];
 	ftMsg("Start %d threads\n", threadCount);
 	for(size_t threadIndex = 0; threadIndex < threadCount; ++threadIndex) {
-		threads[threadIndex] = fplThreadCreate(SingleThreadProc, &threadData[threadIndex]);
+		threadData[threadIndex].thread = fplThreadCreate(SingleThreadProc, &threadData[threadIndex]);
 	}
 	ftMsg("Wait all %d threads for exit\n", threadCount);
-	fplThreadWaitForAll(threads, threadCount, UINT32_MAX);
+	fplThreadWaitForAll(&threadData[0].thread, threadCount, sizeof(ThreadData), FPL_TIMEOUT_INFINITE);
 	ftMsg("All %d threads are done\n", threadCount);
 
 	ftMsg("Terminate %d threads\n", threadCount);
 	for(size_t threadIndex = 0; threadIndex < threadCount; ++threadIndex) {
-		ftExpects(fplThreadState_Stopped, threads[threadIndex]->currentState);
-		fplThreadTerminate(threads[threadIndex]);
+		ftExpects(fplThreadState_Stopped, threadData[threadIndex].thread->currentState);
+		fplThreadTerminate(threadData[threadIndex].thread);
 	}
 }
 
@@ -579,7 +579,7 @@ static void SyncThreadsTestAtomics() {
 		threads[1] = fplThreadCreate(WriteDataThreadProc, &writeData);
 
 		ftMsg("Wait for %zu threads to exit\n", threadCount);
-		fplThreadWaitForAll(threads, threadCount, UINT32_MAX);
+		fplThreadWaitForAll(threads, threadCount, sizeof(fplThreadHandle *), FPL_TIMEOUT_INFINITE);
 
 		ftMsg("Release resources for %zu threads\n", threadCount);
 		for(uint32_t index = 0; index < threadCount; ++index) {
@@ -617,24 +617,24 @@ static void SyncThreadsTestSemaphores(const size_t numWriters) {
 		mutableData.value = 0;
 
 		WriteThreadData writeDatas[FPL__MAX_THREAD_COUNT] = {};
-		fplThreadHandle *threads[FPL__MAX_THREAD_COUNT] = {};
 		ftMsg("Start %zu threads\n", numWriters);
 		for(uint32_t i = 0; i < numWriters; ++i) {
 			writeDatas[i].base.num = i + 1;
 			writeDatas[i].base.sleepFor = 3000;
 			writeDatas[i].data = &mutableData;
-			threads[i] = fplThreadCreate(WriteDataSemaphoreThreadProc, &writeDatas[i]);
+			writeDatas[i].base.thread = fplThreadCreate(WriteDataSemaphoreThreadProc, &writeDatas[i]);
 		}
 
 		ftMsg("Wait for %zu threads to exit\n", numWriters);
-		fplThreadWaitForAll(threads, numWriters, UINT32_MAX);
+		// @TODO(final): Use stride of WriteThreadData instead
+		fplThreadWaitForAll(&writeDatas[0].base.thread, numWriters, sizeof(WriteThreadData), FPL_TIMEOUT_INFINITE);
 		int32_t expectedValue = (numWriters % 2 == 0) ? 0 : 1;
 		ftAssertS32Equals(expectedValue, mutableData.value);
 
 		ftMsg("Release resources for %zu threads\n", numWriters);
 		for(uint32_t index = 0; index < numWriters; ++index) {
-			ftExpects(fplThreadState_Stopped, threads[index]->currentState);
-			fplThreadTerminate(threads[index]);
+			ftExpects(fplThreadState_Stopped, writeDatas[index].base.thread->currentState);
+			fplThreadTerminate(writeDatas[index].base.thread);
 		}
 		fplSemaphoreDestroy(&mutableData.semaphore);
 	}
@@ -738,7 +738,7 @@ static void ConditionThreadsTest(const size_t threadCount, const ConditionTestTy
 	}
 
 	ftMsg("Wait for %zu threads to exit\n", threadCount);
-	fplThreadWaitForAll(threads, threadCount, UINT32_MAX);
+	fplThreadWaitForAll(threads, threadCount, sizeof(fplThreadHandle *), FPL_TIMEOUT_INFINITE);
 
 	ftMsg("Release resources for %zu threads\n", threadCount);
 	for(size_t slaveIndex = 0; slaveIndex < slaveThreadCount; ++slaveIndex) {

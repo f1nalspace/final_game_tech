@@ -1412,7 +1412,7 @@ static void VideoDecodingThreadProc(const fplThreadHandle *thread, void *userDat
 	bool hasDecodedFrame = false;
 	for (;;) {
 		// Wait for any signal (Available packet, Free frame, Stopped, Wake up)
-		fplSignalWaitForAny(waitSignals, fplArrayCount(waitSignals), FPL_TIMEOUT_INFINITE);
+		fplSignalWaitForAny(waitSignals, fplArrayCount(waitSignals), sizeof(fplSignalHandle *), FPL_TIMEOUT_INFINITE);
 
 		// Stop decoder
 		if (decoder->stopRequest) {
@@ -1564,7 +1564,7 @@ static void AudioDecodingThreadProc(const fplThreadHandle *thread, void *userDat
 	bool hasDecodedFrame = false;
 	for (;;) {
 		// Wait for any signal (Available packet, Free frame, Stopped, Wake up)
-		fplSignalWaitForAny(waitSignals, fplArrayCount(waitSignals), FPL_TIMEOUT_INFINITE);
+		fplSignalWaitForAny(waitSignals, fplArrayCount(waitSignals), sizeof(fplSignalHandle *), FPL_TIMEOUT_INFINITE);
 
 		// Stop decoder
 		if (decoder->stopRequest) {
@@ -1833,7 +1833,7 @@ static void PacketReadThreadProc(const fplThreadHandle *thread, void *userData) 
 	for (;;) {
 		// Wait for any signal or skip wait
 		if (!skipWait) {
-			fplSignalWaitForAny(waitSignals, fplArrayCount(waitSignals), FPL_TIMEOUT_INFINITE);
+			fplSignalWaitForAny(waitSignals, fplArrayCount(waitSignals), sizeof(fplSignalHandle *), FPL_TIMEOUT_INFINITE);
 		} else {
 			skipWait = false;
 		}
