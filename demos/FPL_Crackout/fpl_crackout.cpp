@@ -778,7 +778,7 @@ static void LaunchBall(GameState &state) {
 	ball->isDead = false;
 	ball->body->SetType(b2BodyType::b2_dynamicBody);
 	float newAngle = startAngle + (Random01() > 0.5f ? -1 : 1) * Random01() * spreadAngle;
-	float a = Radians(newAngle);
+	float a = DegreesToRadians(newAngle);
 	b2Vec2 direction = b2Vec2(Cosine(a), Sine(a));
 	ball->body->ApplyLinearImpulse(ball->speed * direction, ball->body->GetPosition(), true);
 	paddle.gluedBall = nullptr;
@@ -1028,11 +1028,11 @@ static void UpdatePlayMode(GameState &state, const Input &input) {
 			b2Vec2 dir = vel;
 			dir.Normalize();
 			float a = ArcTan2(dir.y, dir.x);
-			float deg = Degrees(a);
+			float deg = RadiansToDegrees(a);
 			for(int i = 0; i < fplArrayCount(squaredAngles); ++i) {
 				if(Abs(deg) > (squaredAngles[i] - angleTolerance) && Abs(deg) < (squaredAngles[i] + angleTolerance)) {
 					deg += (Abs(deg) - squaredAngles[i] > 0 ? 1 : -1) * angleCorrection;
-					a = Radians(deg);
+					a = DegreesToRadians(deg);
 				}
 			}
 			dir = b2Vec2(Cosine(a), Sine(a));
@@ -1154,7 +1154,7 @@ static void DrawPlayMode(GameState &state) {
 		GLuint texId = PointerToValue<GLuint>(state.assets.ballTexture.texture);
 		glPushMatrix();
 		glTranslatef(ballPos.x, ballPos.y, 0);
-		glRotatef(Degrees(ballRot), 0, 0, 1);
+		glRotatef(RadiansToDegrees(ballRot), 0, 0, 1);
 		glColor4f(1, 1, 1, 1);
 		DrawSprite(texId, BallRadius + ROffset, BallRadius + ROffset, 0.0f, 1.0f, 1.0f, 0.0f);
 		glPopMatrix();
@@ -1168,7 +1168,7 @@ static void DrawPlayMode(GameState &state) {
 		GLuint texId = PointerToValue<GLuint>(state.assets.paddleTexture.texture);
 		glPushMatrix();
 		glTranslatef(paddlePos.x, paddlePos.y, 0);
-		glRotatef(Degrees(paddleRot), 0, 0, 1);
+		glRotatef(RadiansToDegrees(paddleRot), 0, 0, 1);
 		glColor4f(1, 1, 1, 1);
 		DrawSprite(texId, PaddleRadius.x + BallRadius + ROffset, PaddleRadius.y + ROffset, 0.0f, 1.0f, 1.0f, 0.0f);
 		glPopMatrix();
@@ -1183,7 +1183,7 @@ static void DrawPlayMode(GameState &state) {
 		UVRect brickUV = BricksUVs[brick.type];
 		glPushMatrix();
 		glTranslatef(brickPos.x, brickPos.y, 0);
-		glRotatef(Degrees(brickRot), 0, 0, 1);
+		glRotatef(RadiansToDegrees(brickRot), 0, 0, 1);
 		glColor4f(1, 1, 1, 1);
 		DrawSprite(texId, BrickRadius.x, BrickRadius.y, brickUV);
 		glPopMatrix();

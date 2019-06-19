@@ -992,7 +992,7 @@ namespace level {
 				part->ext = utils::StringToVec2(fxmlGetAttributeValue(partTag, "ext"));
 				part->radius = utils::StringToFloat(fxmlGetAttributeValue(partTag, "radius"));
 				part->lineWidth = utils::StringToFloat(fxmlGetAttributeValue(partTag, "lineWidth"));
-				part->orientation = Radians(utils::StringToFloat(fxmlGetAttributeValue(partTag, "orientation")));
+				part->orientation = DegreesToRadians(utils::StringToFloat(fxmlGetAttributeValue(partTag, "orientation")));
 				part->color = utils::StringToVec4(fxmlGetAttributeValue(partTag, "color"));
 			}
 		}
