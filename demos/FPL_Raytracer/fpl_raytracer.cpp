@@ -10,8 +10,8 @@ Description:
 	* Inspired by handmade ray (Casey Muratori)
 
 Todo:
-	- Fix camera perspective (identical to opengl)
-	- Fix wrong random bounce and do a proper random distribution
+	- Better random
+	- Fix bad random bounce
 	- Fix non physically corrected shading
 	- Blitting of raytracing image to the backbuffer with different sizes
 	- Lights
@@ -308,8 +308,9 @@ static void Render(const App &app) {
 	fplWindowSize size = {};
 	fplGetWindowSize(&size);
 
+#if USE_OPENGL_NO_RAYTRACE
 	const f32 aspect = size.height > 0 ? size.width / (f32)size.height : 1.0f;
-	const bool wireframe = true;
+	const bool wireframe = false;
 
 	const Scene &scene = app.scene;
 
@@ -321,20 +322,16 @@ static void Render(const App &app) {
 	f32 zNear = scene.camera.zNear;
 	f32 zFar = scene.camera.zFar;
 
-#if USE_OPENGL_NO_RAYTRACE
 	glViewport(0, 0, size.width, size.height);
 
-#if 1
 	Mat4f projMat = Mat4PerspectiveRH(fov, aspect, zNear, zFar);
 	Mat4f viewMat = Mat4LookAtRH(camEye, camTarget, camUp);
 	Mat4f viewProjMat = projMat * viewMat;
 	glLoadMatrixf(&viewProjMat.m[0]);
-#else
-	glm::mat4 projMat = glm::perspective(fov, aspect, zNear, zFar);
-	glm::mat4 viewMat = glm::lookAt(glm::vec3(camEye.x, camEye.y, camEye.z), glm::vec3(camTarget.x, camTarget.y, camTarget.z), glm::vec3(camUp.x, camUp.y, camUp.z));
-	glm::mat4 viewProjMat = projMat * viewMat;
-	glLoadMatrixf(&viewProjMat[0][0]);
-#endif
+
+	const Material &defaultMat = scene.materials[0];
+
+	glClearColor(defaultMat.emitColor.r, defaultMat.emitColor.g, defaultMat.emitColor.b, 1.0f);
 
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
@@ -348,20 +345,20 @@ static void Render(const App &app) {
 #if 1
 	const f32 infinityPlaneSize = 100.0f;
 	for (const Object &obj : scene.objects) {
+		const Material &mat = scene.materials[obj.materialIndex];
+		glColor3fv(&mat.reflectColor.m[0]);
 		switch (obj.kind) {
 		case ObjectKind::Plane:
-			glColor3f(0, 0, 1);
 			DrawPlane(obj.plane.normal, obj.plane.distance, infinityPlaneSize);
 			break;
 		case ObjectKind::Sphere:
-			glColor3f(1, 0, 0);
 			DrawSphere(obj.sphere.origin, obj.sphere.radius);
 			break;
 		}
 	}
 #endif
 
-#if 1
+#if 0
 	// Coordinate cross
 	Vec3f origin = V3f(0);
 	f32 crossLen = 3.0f;
@@ -570,13 +567,14 @@ static bool RaytracePart(WorkOrder &order) {
 	Raytracer &raytracer = *order.raytracer;
 	Image32 &image = raytracer.image;
 
-	f32 fov = DegreesToRadians(25.0f);
-	f32 aspect = (f32)image.width / (float)image.height;
-
+	const f32 fov = scene.camera.fov;
+	const f32 halfTan = Tan(fov * 0.5f);
+	const f32 aspectRatio = (f32)image.width / (float)image.height;
 	const Vec3f cameraPosition = scene.camera.eye;
 	const Vec3f cameraUp = scene.camera.up;
 	const Vec3f cameraTarget = scene.camera.target;
 
+	// Construct camera axis
 	const Vec3f cameraZ = Vec3Normalize(cameraPosition - cameraTarget);
 	const Vec3f cameraX = Vec3Normalize(Vec3Cross(cameraUp, cameraZ));
 	const Vec3f cameraY = Vec3Normalize(Vec3Cross(cameraZ, cameraX));
@@ -617,8 +615,8 @@ static bool RaytracePart(WorkOrder &order) {
 				f32 offsetX = RandomBilateral(&raytracer.rnd) * halfPixelSize.w;
 				f32 offsetY = RandomBilateral(&raytracer.rnd) * halfPixelSize.h;
 
-				f32 perspectiveX = (filmX + offsetX) * Tan(fov * 0.5f) * aspect;
-				f32 perspectiveY = (filmY + offsetY) * Tan(fov * 0.5f);
+				f32 perspectiveX = (filmX + offsetX) * halfTan * aspectRatio;
+				f32 perspectiveY = (filmY + offsetY) * halfTan;
 
 				Vec3f filmP = filmCenter + (perspectiveX * cameraX) + (perspectiveY * cameraY);
 
@@ -772,21 +770,21 @@ static void InitScene(Scene &scene) {
 	scene.camera.eye = V3f(0, -10, 1);
 	scene.camera.target = V3f(0, 0, 0);
 	scene.camera.up = UnitUp;
-	scene.camera.fov = 45.0f;
+	scene.camera.fov = DegreesToRadians(15.0f);
 	scene.camera.zNear = 0.5f;
 	scene.camera.zFar = 100.0f;
 
 	scene.AddMaterial(V3f(0.152f, 0.22745f, 0.3647f), {});
 
 	u32 floorMat = scene.AddMaterial(V3f(0, 0.0f, 0), V3f(0.1f, 0.5f, 0.1f), 0.75f);
-	u32 whiteMat = scene.AddMaterial(V3f(0.0f, 0.0f, 0.0f), V3f(1.0f, 1.0f, 1.0f), 1.0f);
+	u32 whiteMat = scene.AddMaterial(V3f(0.0f, 0.0f, 0.0f), V3f(1.0f, 1.0f, 1.0f), 0.95f);
 	u32 redMat = scene.AddMaterial(V3f(0.25f, 0.0f, 0.0f), V3f(1.0f, 0.0f, 0.0f), 1.0f);
 	u32 blueMat = scene.AddMaterial(V3f(0.0f, 0.0f, 0.25f), V3f(0.0f, 0.0f, 6.0f), 1.0f);
 
 	scene.AddPlane(V3f(0, 0, 1), 0.0f, floorMat);
-	scene.AddSphere(V3f(0, 0, 0), 1.0f, whiteMat);
+	scene.AddSphere(V3f(0, 0, 0.25f), 1.0f, whiteMat);
 	scene.AddSphere(V3f(1, -2, 0.3f), 0.5f, redMat);
-	scene.AddSphere(V3f(-1.0f, -0.5f, 0.9f), 0.3f, blueMat);
+	scene.AddSphere(V3f(-1.0f, -0.75f, 0.9f), 0.3f, blueMat);
 }
 
 static void InitRaytracer(Raytracer &raytracer, const u32 raytraceWidth, const u32 raytraceHeight) {
@@ -878,7 +876,7 @@ int main(int argc, char **argv) {
 		TilingInfo tilingInfo = {};
 		tilingInfo.imageW = raytraceWidth;
 		tilingInfo.imageH = raytraceHeight;
-		tilingInfo.tileSizeX = tilingInfo.tileSizeY = 128;
+		tilingInfo.tileSizeX = tilingInfo.tileSizeY = 64;
 		tilingInfo.tileCountX = (raytraceWidth / tilingInfo.tileSizeX) + 1;
 		tilingInfo.tileCountY = (raytraceHeight / tilingInfo.tileSizeY) + 1;
 
