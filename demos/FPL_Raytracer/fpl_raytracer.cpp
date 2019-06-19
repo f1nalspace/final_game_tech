@@ -4,11 +4,20 @@ Name:
 	FPL-Demo | Raytracer
 
 Description:
-	Very simple 3D Raytracer demo, using the simplest possible way to do raytracing.
-	Right know, its incomplete and does nothing more than producing pixel values for the very first hit.
-	There is no bouncing going on or any kind of fancy lighting equations.
+	Very simple multi-threaded 3D Raytracer demo.
+	Right know, we dont do any physical correct lighting whatsoever.
 
 	* Inspired by handmade ray (Casey Muratori)
+
+Todo:
+	- Fix camera perspective (identical to opengl)
+	- Fix wrong random bounce and do a proper random distribution
+	- Fix non physically corrected shading
+	- Blitting of raytracing image to the backbuffer with different sizes
+	- Lights
+	- Box Shape
+	- Triangle Shape
+	- SIMD?
 
 Requirements:
 	- C++/11 Compiler
@@ -35,6 +44,7 @@ Changelog:
 typedef uint8_t u8;
 typedef uint16_t u16;
 typedef uint32_t u32;
+typedef uint64_t u64;
 typedef int32_t s32;
 typedef float f32;
 
@@ -47,9 +57,10 @@ constexpr f32 F32_MAX = FLT_MAX;
 #	define FGL_IMPLEMENTATION
 #	include <final_dynamic_opengl.h>
 
-#	include <glm/glm.hpp>
-#	include <glm/gtc/matrix_transform.hpp>
 #endif
+
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
 
 #include <final_math.h>
 #include <final_geometry.h>
@@ -114,6 +125,7 @@ enum class ObjectKind : s32 {
 struct Material {
 	Vec3f emitColor;
 	Vec3f reflectColor;
+	f32 scatter;
 };
 
 struct Object {
@@ -135,19 +147,18 @@ struct Camera {
 };
 
 struct Scene {
-	RandomSeries rnd;
-
 	Camera camera;
 
 	std::vector<Object> objects;
 	std::vector<Material> materials;
 
-	u32 AddMaterial(const Vec3f &emitColor, const Vec3f &reflectColor) {
+	u32 AddMaterial(const Vec3f &emitColor, const Vec3f &reflectColor, const float scatter = 0.0f) {
 		fplAssert(materials.size() < (U32_MAX - 1));
 		u32 result = (u32)materials.size();
 		Material mat = {};
 		mat.emitColor = emitColor;
 		mat.reflectColor = reflectColor;
+		mat.scatter = scatter;
 		materials.push_back(mat);
 		return(result);
 	}
@@ -173,13 +184,21 @@ struct Scene {
 	}
 };
 
-struct Renderer {
+struct RaytracerSettings {
+	u32 maxBounceCount;
+	u32 raysPerPixelCount;
+};
+
+struct Raytracer {
+	Image32 image;
+	RaytracerSettings settings;
+	RandomSeries rnd;
+	Vec2f halfPixelSize;
 };
 
 struct App {
 	Scene scene;
-	Renderer renderer;
-	Image32 raytraceImage;
+	Raytracer raytracer;
 };
 
 #if USE_OPENGL_NO_RAYTRACE
@@ -321,7 +340,8 @@ static void Render(const App &app) {
 
 	if (wireframe) {
 		glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
-	} else {
+	}
+	else {
 		glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
 	}
 
@@ -329,14 +349,14 @@ static void Render(const App &app) {
 	const f32 infinityPlaneSize = 100.0f;
 	for (const Object &obj : scene.objects) {
 		switch (obj.kind) {
-			case ObjectKind::Plane:
-				glColor3f(0, 0, 1);
-				DrawPlane(obj.plane.normal, obj.plane.distance, infinityPlaneSize);
-				break;
-			case ObjectKind::Sphere:
-				glColor3f(1, 0, 0);
-				DrawSphere(obj.sphere.origin, obj.sphere.radius);
-				break;
+		case ObjectKind::Plane:
+			glColor3f(0, 0, 1);
+			DrawPlane(obj.plane.normal, obj.plane.distance, infinityPlaneSize);
+			break;
+		case ObjectKind::Sphere:
+			glColor3f(1, 0, 0);
+			DrawSphere(obj.sphere.origin, obj.sphere.radius);
+			break;
 		}
 	}
 #endif
@@ -375,10 +395,11 @@ static void Render(const App &app) {
 	if (wireframe) {
 		glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
 	}
-#else
+#else // !USE_OPENGL_NO_RAYTRACE
 	fplVideoBackBuffer *backBuffer = fplGetVideoBackBuffer();
-	Image32 raytraceImage = app.raytraceImage;
-	u32 sourceLineWidth = raytraceImage.width * 4;
+
+	const Image32 &raytraceImage = app.raytracer.image;
+	const u32 sourceLineWidth = raytraceImage.width * 4;
 
 	// @TODO(final): Support to blit any arbitary sized image to the backbuffer
 	// Right know we copy over each pixel from the raytraced image pixels, requiring that backbuffer size must equals the render image size
@@ -394,19 +415,105 @@ static void Render(const App &app) {
 			*targetRow++ = color;
 		}
 	}
-#endif
+#endif // USE_OPENGL_NO_RAYTRACE
 }
+
+struct TilingInfo {
+	u32 tileCountX;
+	u32 tileCountY;
+	u32 tileSizeX;
+	u32 tileSizeY;
+	u32 imageW;
+	u32 imageH;
+};
 
 enum class WorkerState : s32 {
 	Stopped = 0,
 	Running,
 };
 
-struct WorkerData {
+struct Worker;
+
+struct WorkOrder {
+	const Worker *worker;
+	const Scene *scene;
+	Raytracer *raytracer;
+	u32 xMin;
+	u32 yMin;
+	u32 xMaxPlusOne;
+	u32 yMaxPlusOne;
+};
+
+struct WorkQueue {
+	WorkOrder *orders;
+	u8 padding1[8];
+
+	u32 capacity;
+	volatile u32 nextWorkOrderIndex;
+	volatile u32 completionCount;
+	volatile u32 workOrderCount;
+
+	bool IsEmpty() {
+		bool result = workOrderCount == 0;
+		return(result);
+	}
+
+	bool IsFinished() {
+		bool result = (workOrderCount == completionCount);
+		return(result);
+	}
+
+	void Init(const u32 capacity) {
+		orders = (WorkOrder *)calloc(capacity, sizeof(*orders));
+		this->capacity = capacity;
+		fplAtomicExchangeU32(&workOrderCount, 0);
+		fplAtomicExchangeU32(&nextWorkOrderIndex, 0);
+		fplAtomicExchangeU32(&completionCount, 0);
+	}
+
+	void Release() {
+		free(orders);
+	}
+
+	void Reset() {
+		fplAtomicExchangeU32(&workOrderCount, 0);
+		fplAtomicExchangeU32(&nextWorkOrderIndex, 0);
+		fplAtomicExchangeU32(&completionCount, 0);
+	}
+
+	void Push(Raytracer *rayTracer, const Scene *scene, const u32 xMin, const u32 yMin, const u32 xMaxPlusOne, const u32 yMaxPlusOne) {
+		fplAssert(workOrderCount < capacity);
+		u32 index = fplAtomicFetchAndAddU32(&workOrderCount, 1);
+		WorkOrder *order = orders + index;
+		*order = {};
+		order->raytracer = rayTracer;
+		order->scene = scene;
+		order->worker = fpl_null;
+		order->xMin = xMin;
+		order->yMin = yMin;
+		order->xMaxPlusOne = xMaxPlusOne;
+		order->yMaxPlusOne = yMaxPlusOne;
+	}
+
+	bool Pop(WorkOrder &order) {
+		if (workOrderCount == 0) {
+			return(false);
+		}
+
+		u32 index = fplAtomicFetchAndAddU32(&nextWorkOrderIndex, 1);
+		if (!(index < workOrderCount)) {
+			return(false);
+		}
+		order = orders[index];
+		orders[index] = {};
+		return(true);
+	}
+};
+
+struct Worker {
+	WorkQueue *queue;
+	fplThreadHandle *thread;
 	volatile WorkerState state;
-	Scene *scene;
-	Image32 *image;
-	bool updateImage;
 
 	inline void Start() {
 		fplAtomicExchangeS32((volatile s32 *)&state, (s32)WorkerState::Running);
@@ -457,155 +564,186 @@ static bool RaySphereIntersection(const Ray3f &ray, const Sphere3f &sphere, f32 
 	return(false);
 }
 
-static Vec3f RayCast(const Scene &scene, const Ray3f &initialRay, const WorkerData &data) {
+static bool RaytracePart(WorkOrder &order) {
+	const Worker *worker = order.worker;
+	const Scene &scene = *order.scene;
+	Raytracer &raytracer = *order.raytracer;
+	Image32 &image = raytracer.image;
+
+	f32 fov = DegreesToRadians(25.0f);
+	f32 aspect = (f32)image.width / (float)image.height;
+
+	const Vec3f cameraPosition = scene.camera.eye;
+	const Vec3f cameraUp = scene.camera.up;
+	const Vec3f cameraTarget = scene.camera.target;
+
+	const Vec3f cameraZ = Vec3Normalize(cameraPosition - cameraTarget);
+	const Vec3f cameraX = Vec3Normalize(Vec3Cross(cameraUp, cameraZ));
+	const Vec3f cameraY = Vec3Normalize(Vec3Cross(cameraZ, cameraX));
+
+	const Vec2f halfPixelSize = raytracer.halfPixelSize;
+
+	f32 filmDistance = 1.0f;
+	Vec3f filmCenter = cameraPosition - filmDistance * cameraZ;
+
+	u32 raysPerPixel = raytracer.settings.raysPerPixelCount;
+	u32 maxBounceCount = raytracer.settings.maxBounceCount;
+
+	f32 contrib = 1.0f / (f32)raysPerPixel;
+
 	fplAssert(scene.materials.size() > 0);
-	const Material &defaultMat = scene.materials[0];
+	const Material &defaultMaterial = scene.materials[0];
 
-	const u32 rayCount = 8;
-	const f32 tolerance = 1e-6f;
-	f32 minHitDistance = 0.0f;
+	for (u32 y = order.yMin; y < order.yMaxPlusOne; ++y) {
+		Pixel *row = image.pixels + (y * image.width);
 
-	Ray3f ray = MakeRay(initialRay.origin, initialRay.direction);
+		f32 ratioY = (f32)y / (f32)image.height;
+		f32 filmY = -1.0f + 2.0f * ratioY;
 
-	Vec3f result = V3f(0, 0, 0);
-	Vec3f attenuation = V3f(1, 1, 1);
+		Pixel *col = row + order.xMin;
+		for (u32 x = order.xMin; x < order.xMaxPlusOne; ++x) {
+			if (worker->IsStopped())
+				return(false);
 
-	for (u32 rayIndex = 0; rayIndex < rayCount; ++rayIndex) {
-		Vec3f hitPoint = V3f();
-		Vec3f hitNormal = V3f();
-		const Object *hitObject = fpl_null;
-		u32 hitMaterialIndex = 0;
-		f32 nearestDistance = F32_MAX;
+			f32 ratioX = (f32)x / (f32)image.width;
+			f32 filmX = -1.0f + 2.0f * ratioX;
 
-		for (u32 objectIndex = 0, objectCount = (u32)scene.objects.size(); objectIndex < objectCount; ++objectIndex) {
-			if (data.IsStopped())
-				break;
+			Vec3f finalColor = {};
 
-			const Object *obj = &scene.objects[objectIndex];
+			for (u32 rayIndex = 0; rayIndex < raysPerPixel; ++rayIndex) {
+				if (worker->IsStopped())
+					return(false);
 
-			f32 t = -F32_MAX;
-			bool isHit = false;
-			if (obj->kind == ObjectKind::Plane) {
-				if (RayPlaneIntersection(ray, obj->plane, t, tolerance)) {
-					if ((t > minHitDistance) && (t < nearestDistance)) {
-						nearestDistance = t;
-						hitMaterialIndex = obj->materialIndex;
-						hitObject = obj;
+				f32 offsetX = RandomBilateral(&raytracer.rnd) * halfPixelSize.w;
+				f32 offsetY = RandomBilateral(&raytracer.rnd) * halfPixelSize.h;
 
-						hitPoint = t * ray.direction + ray.origin;
-						hitNormal = obj->plane.normal;
+				f32 perspectiveX = (filmX + offsetX) * Tan(fov * 0.5f) * aspect;
+				f32 perspectiveY = (filmY + offsetY) * Tan(fov * 0.5f);
+
+				Vec3f filmP = filmCenter + (perspectiveX * cameraX) + (perspectiveY * cameraY);
+
+				Vec3f rayOrigin = cameraPosition;
+				Vec3f rayDirection = Vec3Normalize(filmP - cameraPosition);
+
+				Ray3f ray = MakeRay(rayOrigin, rayDirection);
+
+				const f32 tolerance = 1e-6f;
+				f32 minHitDistance = 0.0f;
+
+				Vec3f sample = {};
+				Vec3f attenuation = V3f(1, 1, 1);
+
+				for (u32 bounceIndex = 0; bounceIndex < maxBounceCount; ++bounceIndex) {
+					if (worker->IsStopped())
+						return(false);
+
+					f32 hitDistance = F32_MAX;
+					u32 hitMaterialIndex = 0;
+					Vec3f hitNormal = V3f();
+
+					for (u32 objectIndex = 0, objectCount = (u32)scene.objects.size(); objectIndex < objectCount; ++objectIndex) {
+						if (worker->IsStopped())
+							return(false);
+
+						const Object *obj = &scene.objects[objectIndex];
+
+						f32 t = -F32_MAX;
+						bool isHit = false;
+						if (obj->kind == ObjectKind::Plane) {
+							if (RayPlaneIntersection(ray, obj->plane, t, tolerance)) {
+								if ((t > minHitDistance) && (t < hitDistance)) {
+									hitDistance = t;
+									hitMaterialIndex = obj->materialIndex;
+									hitNormal = obj->plane.normal;
+								}
+							}
+						}
+						else if (obj->kind == ObjectKind::Sphere) {
+							if (RaySphereIntersection(ray, obj->sphere, t, tolerance)) {
+								if ((t > minHitDistance) && (t < hitDistance)) {
+									hitDistance = t;
+									hitMaterialIndex = obj->materialIndex;
+									Vec3f relativeOrigin = ray.origin - obj->sphere.origin;
+									hitNormal = Vec3Normalize(t * ray.direction + relativeOrigin);
+								}
+							}
+						}
+					}
+
+					if (hitMaterialIndex) {
+						fplAssert(hitMaterialIndex < scene.materials.size());
+						const Material &hitMaterial = scene.materials[hitMaterialIndex];
+
+						sample += Vec3Hadamard(attenuation, hitMaterial.emitColor);
+
+						f32 cosineAttenuation = Vec3Dot(-ray.direction, hitNormal);
+						if (cosineAttenuation < 0) {
+							cosineAttenuation = 0;
+						}
+						attenuation = Vec3Hadamard(attenuation, cosineAttenuation * hitMaterial.reflectColor);
+
+						Vec3f pureBounce = ray.direction - 2.0f * Vec3Dot(ray.direction, hitNormal) * hitNormal;
+
+						// @TODO(final): This is NOT a proper way to produce a random bounce. Do proper distribution based bounce
+						Vec3f randomBounce = Vec3Normalize(hitNormal + V3f(RandomBilateral(&raytracer.rnd), RandomBilateral(&raytracer.rnd), RandomBilateral(&raytracer.rnd)));
+
+						// Ray for next bounce
+						ray.origin += hitDistance * ray.direction;
+						ray.direction = Vec3Normalize(Vec3Lerp(randomBounce, hitMaterial.scatter, pureBounce));
+					}
+					else {
+						sample += Vec3Hadamard(attenuation, defaultMaterial.emitColor);
+						break;
 					}
 				}
-			} else if (obj->kind == ObjectKind::Sphere) {
-				if (RaySphereIntersection(ray, obj->sphere, t, tolerance)) {
-					if ((t > minHitDistance) && (t < nearestDistance)) {
-						nearestDistance = t;
-						hitMaterialIndex = obj->materialIndex;
-						hitObject = obj;
 
-						hitPoint = t * ray.direction + ray.origin;
-						hitNormal = Vec3Normalize(hitPoint - obj->sphere.origin);
-					}
-				}
+				finalColor += contrib * sample;
 			}
+
+			Pixel outputPixel = LinearToPixel(V4f(finalColor, 1.0f));
+			*col = outputPixel;
+			++col;
 		}
 
-		if (hitMaterialIndex) {
-			fplAssert(hitMaterialIndex < scene.materials.size());
-			const Material &hitMaterial = scene.materials[hitMaterialIndex];
+		++row;
 
-			result += Vec3Hadamard(attenuation, hitMaterial.emitColor);
-			attenuation = Vec3Hadamard(attenuation, hitMaterial.reflectColor);
+		if (worker->IsStopped())
+			return(false);
+	}
 
-			ray.origin = hitPoint;
-			ray.direction = hitNormal;
-		} else {
-			result += Vec3Hadamard(attenuation, defaultMat.emitColor);
-			break;
-		}
+	return(true);
+}
+
+static bool RaytraceFromQueue(Worker *worker) {
+	fplAssert(worker->queue != fpl_null);
+
+	WorkOrder order = {};
+	if (!worker->queue->Pop(order)) {
+		return(false);
+	}
+
+	order.worker = worker;
+
+	bool result = RaytracePart(order);
+	if (result) {
+		fplAtomicFetchAndAddU32(&worker->queue->completionCount, 1);
 	}
 
 	return(result);
 }
 
-static void RaytraceImage(Scene &scene, Image32 &outputImage, const WorkerData &data) {
-#if 0
-	const Vec3f cameraPosition = V3f(0, -10, 1);
-	const Vec3f cameraUp = V3f(0, 0, 1);
-	const Vec3f cameraTarget = V3f(0, 0, 0);
-#else
-	const Vec3f cameraPosition = scene.camera.eye;
-	const Vec3f cameraUp = scene.camera.up;
-	const Vec3f cameraTarget = scene.camera.target;
-#endif
-
-	Vec3f cameraZ = Vec3Normalize(cameraPosition - cameraTarget);
-	Vec3f cameraX = Vec3Normalize(Vec3Cross(cameraUp, cameraZ));
-	Vec3f cameraY = Vec3Normalize(Vec3Cross(cameraZ, cameraX));
-
-	f32 filmWidth = 1.0f;
-	f32 filmHeight = 1.0f;
-
-	// Aspect ratio correction
-	if (outputImage.width > outputImage.height) {
-		filmHeight = filmWidth * ((f32)outputImage.height / (f32)outputImage.width);
-	} else if (outputImage.height > outputImage.width) {
-		filmWidth = filmHeight * ((f32)outputImage.width / (f32)outputImage.height);
-	}
-
-	f32 filmHalfWidth = 0.5f * filmWidth;
-	f32 filmHalfHeight = 0.5f * filmHeight;
-
-	f32 filmDistance = 1.0f;
-	Vec3f filmCenter = cameraPosition - filmDistance * cameraZ;
-
-	for (u32 y = 0; y < outputImage.height; ++y) {
-		Pixel *row = outputImage.pixels + (y * outputImage.width);
-
-		f32 ratioY = (f32)y / (f32)outputImage.height;
-		f32 filmY = -1.0f + 2.0f * ratioY;
-
-		for (u32 x = 0; x < outputImage.width; ++x) {
-			if (data.IsStopped())
-				break;
-
-			f32 ratioX = (f32)x / (f32)outputImage.width;
-			f32 filmX = -1.0f + 2.0f * ratioX;
-
-			Vec3f filmP = filmCenter + filmX * filmHalfWidth * cameraX + filmY * filmHalfHeight * cameraY;
-
-			Vec3f rayOrigin = cameraPosition;
-			Vec3f rayDirection = Vec3Normalize(filmP - cameraPosition);
-			Ray3f ray = MakeRay(rayOrigin, rayDirection);
-
-			Vec3f color = RayCast(scene, ray, data);
-
-			Vec4f finalColor = V4f(color, 1.0f);
-
-			Pixel outputPixel = PixelPack(finalColor);
-			*row = outputPixel;
-			++row;
-		}
-
-		if (data.IsStopped())
-			break;
-	}
-}
-
 static void WorkerThreadProc(const fplThreadHandle *thread, void *opaqueData) {
-	WorkerData *data = (WorkerData *)opaqueData;
-	data->Start();
+	Worker *worker = (Worker *)opaqueData;
+	worker->Start();
 	while (true) {
-		if (data->IsStopped()) {
+		if (worker->IsStopped()) {
 			break;
 		}
-		if (data->updateImage) {
-			data->updateImage = false;
-			RaytraceImage(*data->scene, *data->image, *data);
+		if (!RaytraceFromQueue(worker)) {
+			fplThreadYield();
 		}
 	}
-	data->Stop();
-
+	worker->Stop();
 }
 
 #if USE_OPENGL_NO_RAYTRACE
@@ -630,49 +768,76 @@ static void InitGL() {
 }
 #endif
 
-static void Init(App &app, const u32 renderWidth, const u32 rendereHeight) {
+static void InitScene(Scene &scene) {
+	scene.camera.eye = V3f(0, -10, 1);
+	scene.camera.target = V3f(0, 0, 0);
+	scene.camera.up = UnitUp;
+	scene.camera.fov = 45.0f;
+	scene.camera.zNear = 0.5f;
+	scene.camera.zFar = 100.0f;
+
+	scene.AddMaterial(V3f(0.152f, 0.22745f, 0.3647f), {});
+
+	u32 floorMat = scene.AddMaterial(V3f(0, 0.0f, 0), V3f(0.1f, 0.5f, 0.1f), 0.75f);
+	u32 whiteMat = scene.AddMaterial(V3f(0.0f, 0.0f, 0.0f), V3f(1.0f, 1.0f, 1.0f), 1.0f);
+	u32 redMat = scene.AddMaterial(V3f(0.25f, 0.0f, 0.0f), V3f(1.0f, 0.0f, 0.0f), 1.0f);
+	u32 blueMat = scene.AddMaterial(V3f(0.0f, 0.0f, 0.25f), V3f(0.0f, 0.0f, 6.0f), 1.0f);
+
+	scene.AddPlane(V3f(0, 0, 1), 0.0f, floorMat);
+	scene.AddSphere(V3f(0, 0, 0), 1.0f, whiteMat);
+	scene.AddSphere(V3f(1, -2, 0.3f), 0.5f, redMat);
+	scene.AddSphere(V3f(-1.0f, -0.5f, 0.9f), 0.3f, blueMat);
+}
+
+static void InitRaytracer(Raytracer &raytracer, const u32 raytraceWidth, const u32 raytraceHeight) {
+	Image32 &raytraceImage = raytracer.image;
+	raytraceImage.width = raytraceWidth;
+	raytraceImage.height = raytraceHeight;
+	raytraceImage.pixels = (Pixel *)calloc(1, sizeof(Pixel) * raytraceImage.width * raytraceImage.height);
+	raytraceImage.Fill(MakePixel(0, 0, 0, 255));
+
+	raytracer.halfPixelSize.w = 0.5f / (f32)raytraceImage.width;
+	raytracer.halfPixelSize.h = 0.5f / (f32)raytraceImage.height;
+
+	//raytracer.rnd.index = fplGetTimeInMillisecondsLP() % U32_MAX;
+	raytracer.rnd.index = 1337;
+	raytracer.settings.maxBounceCount = 8;
+	raytracer.settings.raysPerPixelCount = 128;
+}
+
+static void InitApp(App &app, const u32 raytraceWidth, const u32 raytraceHeight) {
 #if USE_OPENGL_NO_RAYTRACE
 	InitGL();
 #endif
 
-	// App
-	const fplSettings *settings = fplGetCurrentSettings();
-	app.raytraceImage.width = renderWidth;
-	app.raytraceImage.height = rendereHeight;
-	app.raytraceImage.pixels = (Pixel *)calloc(1, sizeof(Pixel) * app.raytraceImage.width * app.raytraceImage.height);
-	app.raytraceImage.Fill(MakePixel(0, 0, 0, 255));
-
-	// Scene
-
-	//app.scene.rnd.index = fplGetTimeInMillisecondsLP() % U32_MAX;
-	app.scene.rnd.index = 1337;
-
-	app.scene.camera.eye = V3f(0, -10, 1);
-	app.scene.camera.target = V3f(0, 0, 0);
-	app.scene.camera.up = UnitUp;
-	app.scene.camera.fov = 45.0f;
-	app.scene.camera.zNear = 0.5f;
-	app.scene.camera.zFar = 100.0f;
-
-	app.scene.AddMaterial(V3f(0.3f, 0.4f, 0.5f), {});
-
-	u32 redMat = app.scene.AddMaterial({}, V3f(0.5f, 0.5f, 0.5f));
-	u32 blueMat = app.scene.AddMaterial({}, V3f(0.7f, 0.5f, 0.3f));
-
-	app.scene.AddPlane(V3f(0, 0, 1), 0.0f, redMat);
-	app.scene.AddSphere(V3f(0, 0, 0), 1.0f, blueMat);
-
-#if 0
-	app.scene.AddPlane(V3f(0, 1, 0), 0.0f);
-	app.scene.AddSphere(V3f(-4, 0, 0), 1);
-	app.scene.AddSphere(V3f(7, 2, 0), 2);
-	app.scene.AddSphere(V3f(0, 1, -6), 1.5f);
-	app.scene.AddSphere(V3f(0.5f, 1, 6), 0.75f);
-#endif
+	InitScene(app.scene);
+	InitRaytracer(app.raytracer, raytraceWidth, raytraceHeight);
 }
 
-static void Release(App &app) {
-	free(app.raytraceImage.pixels);
+static void FillQueue(App &app, WorkQueue &queue, const TilingInfo &tilingInfo) {
+	queue.Reset();
+
+	fplAssert(queue.completionCount == 0);
+	fplAssert(queue.workOrderCount == 0);
+	fplAssert(queue.nextWorkOrderIndex == 0);
+
+	u32 totalTileCount = tilingInfo.tileCountX * tilingInfo.tileCountY;
+
+	for (u32 tileY = 0; tileY < tilingInfo.tileCountY; ++tileY) {
+		for (u32 tileX = 0; tileX < tilingInfo.tileCountX; ++tileX) {
+			u32 minX = tileX * tilingInfo.tileSizeX;
+			u32 minY = tileY * tilingInfo.tileSizeY;
+			u32 maxXPlusOne = fplMin(minX + tilingInfo.tileSizeX, tilingInfo.imageW);
+			u32 maxYPlusOne = fplMin(minY + tilingInfo.tileSizeY, tilingInfo.imageH);
+			queue.Push(&app.raytracer, &app.scene, minX, minY, maxXPlusOne, maxYPlusOne);
+		}
+	}
+
+	fplAssert(queue.workOrderCount == totalTileCount);
+}
+
+static void ReleaseApp(App &app) {
+	free(app.raytracer.image.pixels);
 }
 
 int main(int argc, char **argv) {
@@ -709,42 +874,81 @@ int main(int argc, char **argv) {
 		// Fixed backbuffer
 		fplResizeVideoBackBuffer(renderWidth, renderHeight);
 
-		App app = {};
+		// Init worker parameters
+		TilingInfo tilingInfo = {};
+		tilingInfo.imageW = raytraceWidth;
+		tilingInfo.imageH = raytraceHeight;
+		tilingInfo.tileSizeX = tilingInfo.tileSizeY = 128;
+		tilingInfo.tileCountX = (raytraceWidth / tilingInfo.tileSizeX) + 1;
+		tilingInfo.tileCountY = (raytraceHeight / tilingInfo.tileSizeY) + 1;
+
+		// Queue
+		u32 maxTileCount = tilingInfo.tileCountX * tilingInfo.tileCountY;
+		WorkQueue queue = {};
+		queue.Init(maxTileCount);
+
+		// Init worker
+		size_t cpuCoreCount = fplGetProcessorCoreCount();
+		size_t workerCount = cpuCoreCount - 1;
+		Worker *workers = new Worker[workerCount];
+		for (u32 workerIndex = 0; workerIndex < workerCount; ++workerIndex) {
+			Worker *worker = workers + workerIndex;
+			worker->queue = &queue;
+			worker->thread = fplThreadCreate(WorkerThreadProc, worker);
+		}
 
 		// @NOTE(final): We use the STL to make our life easier, so we need to placement-new-initialize our App structure
+		App app = {};
 		new(&app)App();
+		InitApp(app, raytraceWidth, raytraceHeight);
 
-		Init(app, raytraceWidth, raytraceHeight);
-
-		WorkerData data = {};
-		data.scene = &app.scene;
-		data.image = &app.raytraceImage;
-		data.updateImage = true;
-		fplThreadHandle *workerThread = fplThreadCreate(WorkerThreadProc, &data);
-
+		bool refresh = true;
 		while (fplWindowUpdate()) {
 			fplEvent ev;
 			while (fplPollEvent(&ev)) {
 				switch (ev.type) {
-					case fplEventType::fplEventType_Keyboard:
-					{
-						if (ev.keyboard.type == fplKeyboardEventType_Button) {
-							if (ev.keyboard.buttonState == fplButtonState_Release && ev.keyboard.mappedKey == fplKey_Space) {
-								data.updateImage = true;
-							}
+				case fplEventType::fplEventType_Keyboard:
+				{
+					if (ev.keyboard.type == fplKeyboardEventType_Button) {
+						if (ev.keyboard.buttonState == fplButtonState_Release && ev.keyboard.mappedKey == fplKey_Space) {
+							refresh = true;
 						}
-					} break;
+					}
+				} break;
 				}
 			}
+
+			if (refresh) {
+				refresh = false;
+				if (queue.IsEmpty() || queue.IsFinished()) {
+					FillQueue(app, queue, tilingInfo);
+				}
+			}
+
 			Render(app);
 			fplVideoFlip();
 		}
 
-		fplAtomicExchangeS32((volatile s32 *)&data.state, (s32)WorkerState::Stopped);
-		fplThreadWaitForOne(workerThread, FPL_TIMEOUT_INFINITE);
-		fplThreadTerminate(workerThread);
+		// Send stop signal to all workers
+		for (u32 workerIndex = 0; workerIndex < workerCount; ++workerIndex) {
+			Worker *worker = workers + workerIndex;
+			fplAtomicExchangeS32((volatile s32 *)&worker->state, (s32)WorkerState::Stopped);
+		}
 
-		Release(app);
+		// Wait for all threads to finish
+		fplThreadWaitForAll(&workers[0].thread, workerCount, sizeof(Worker), FPL_TIMEOUT_INFINITE);
+
+		// Terminate unfinished threads
+		for (u32 workerIndex = 0; workerIndex < workerCount; ++workerIndex) {
+			Worker *worker = workers + workerIndex;
+			fplThreadTerminate(worker->thread);
+		}
+
+		delete[] workers;
+
+		queue.Release();
+
+		ReleaseApp(app);
 
 #if USE_OPENGL_NO_RAYTRACE
 		fglUnloadOpenGL();
