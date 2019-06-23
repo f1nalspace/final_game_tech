@@ -16,13 +16,18 @@ Author:
 	Torsten Spaete
 
 Changelog:
+	## 2019-06-23
+	- Modify the bounce normal for ball vs paddle, based on projection
+	- Made the brick assets 50 % smaller to fit the pixel style
+	- Print out level percentage
+
 	## 2018-09-24
 	- Reflect api changes in FPL 0.9.2
 
 	## 2018-08-09
-    - Use IsDown() for launching the ball (More responsive)
-    - Use actionDown and actionStart for menu instead "any"
-    - Support analog paddle movement
+	- Use IsDown() for launching the ball (More responsive)
+	- Use actionDown and actionStart for menu instead "any"
+	- Support analog paddle movement
 
 	## 2018-07-05
 	- Corrected for api change in final_game.h
@@ -135,8 +140,8 @@ enum class BrickType : int32_t {
 	NoBrick = 0,
 	Solid
 };
-const Vec2i BrickTileSize = V2i(30, 24);
-const Vec2i BricksTilesetSize = V2i(34, 28);
+const Vec2i BrickTileSize = V2i(15, 12);
+const Vec2i BricksTilesetSize = V2i(19, 16);
 const int BrickTilesetBorder = 2;
 class BricksUVsClass : public ArrayInitializer<BrickType, UVRect, 256> {
 public:
@@ -224,20 +229,20 @@ enum class EntityType : int32_t {
 };
 
 struct Ball {
-	b2Body *body;
+	b2Body* body;
 	float speed;
 	bool isMoving;
 	bool isDead;
 };
 
 struct Paddle {
-	b2Body *body;
+	b2Body* body;
 	float speed;
-	Ball *gluedBall;
+	Ball* gluedBall;
 };
 
 struct Brick {
-	b2Body *body;
+	b2Body* body;
 	BrickType type;
 	bool requestHit;
 	bool isHit;
@@ -247,13 +252,13 @@ struct Brick {
 };
 
 struct Frame {
-	b2Body *top;
-	b2Body *left;
-	b2Body *right;
+	b2Body* top;
+	b2Body* left;
+	b2Body* right;
 };
 
 struct KillArea {
-	b2Body *body;
+	b2Body* body;
 };
 
 struct Entity {
@@ -272,9 +277,9 @@ struct GameState;
 // @BAD(final): Such a bad design decision from Box2D to force classes on us
 class GameContactListener : public b2ContactListener {
 private:
-	GameState * gameState;
+	GameState* gameState;
 public:
-	GameContactListener(GameState *gameState) {
+	GameContactListener(GameState* gameState) {
 		this->gameState = gameState;
 	}
 	void BeginContact(b2Contact* contact);
@@ -311,7 +316,7 @@ struct MenuRenderState {
 	float fontHeight;
 };
 
-typedef const char *MenuID;
+typedef const char* MenuID;
 
 struct MenuState {
 	int itemIndex;
@@ -328,7 +333,7 @@ struct GameState {
 
 	Viewport viewport;
 
-	b2World *world;
+	b2World* world;
 
 	Entity frame;
 	Entity ball;
@@ -336,9 +341,10 @@ struct GameState {
 	Entity killArea;
 	BrickType bricksMap[1024];
 	Entity activeBricks[1024];
-	size_t numActiveBricks;
+	size_t totalBricks;
+	size_t remainingBricks;
 
-	GameContactListener *contactListener;
+	GameContactListener* contactListener;
 
 	int levelSeed;
 	int levelsCompleted;
@@ -351,8 +357,8 @@ struct GameState {
 	bool isExiting;
 };
 
-static void SetRandomLevel(GameState &state, int seed);
-static void GlueBallOnPaddle(GameState &state, Ball *ball);
+static void SetRandomLevel(GameState& state, int seed);
+static void GlueBallOnPaddle(GameState& state, Ball* ball);
 
 inline float Random01() {
 	float result = rand() / (float)RAND_MAX;
@@ -366,19 +372,19 @@ inline int RandomInt(int size) {
 
 
 
-static void ClearWorld(b2World *world) {
-	b2Body *body = world->GetBodyList();
-	while(body != nullptr) {
-		b2Body *next = body->GetNext();
+static void ClearWorld(b2World* world) {
+	b2Body* body = world->GetBodyList();
+	while (body != nullptr) {
+		b2Body* next = body->GetNext();
 		world->DestroyBody(body);
 		body = next;
 	}
 }
 
-static void LoadLevel(GameState &state, int levelSeed) {
+static void LoadLevel(GameState& state, int levelSeed) {
 	SetRandomLevel(state, levelSeed);
 
-	b2World *world = state.world;
+	b2World* world = state.world;
 	const float hw = WorldRadius.x;
 	const float hh = WorldRadius.y;
 
@@ -401,17 +407,17 @@ static void LoadLevel(GameState &state, int levelSeed) {
 		fixtureDef.friction = 0.0f;
 		fixtureDef.density = 1.0f;
 
-		b2Body *body;
+		b2Body* body;
 
 		b2PolygonShape sideShape = b2PolygonShape();
 		sideShape.SetAsBox(FrameRadius, hh + KillAreaExtent);
 		b2PolygonShape topShape = b2PolygonShape();
 		topShape.SetAsBox(hw, FrameRadius);
 
-		Entity *frameEntity = &state.frame;
+		Entity* frameEntity = &state.frame;
 		*frameEntity = {};
 		frameEntity->type = EntityType::Frame;
-		Frame &frame = frameEntity->frame;
+		Frame& frame = frameEntity->frame;
 
 		// Right
 		bodyDef.position = b2Vec2(hw - FrameRadius, -KillAreaExtent);
@@ -439,12 +445,12 @@ static void LoadLevel(GameState &state, int levelSeed) {
 	// Kill area
 	//
 	{
-		Entity *killAreaEntity = &state.killArea;
+		Entity* killAreaEntity = &state.killArea;
 		*killAreaEntity = {};
 		killAreaEntity->type = EntityType::KillArea;
-		KillArea &killArea = killAreaEntity->killArea;
+		KillArea& killArea = killAreaEntity->killArea;
 
-		b2Body *body;
+		b2Body* body;
 		b2BodyDef bodyDef = b2BodyDef();
 		bodyDef.type = b2BodyType::b2_staticBody;
 		bodyDef.position = b2Vec2(0, KillAreaTop - KillAreaDepth * 0.5f);
@@ -471,21 +477,21 @@ static void LoadLevel(GameState &state, int levelSeed) {
 	// Bricks
 	//
 	{
-		b2Body *body;
+		b2Body* body;
 		float halfWidth = (MaxBrickCols * BrickRadius.x) - ((MaxBrickCols - 1) * BrickSpacing * 0.5f);
 		float brickY = WorldRadius.y - FrameRadius * 2.0f - AreaPadding - BrickRadius.y;
-		state.numActiveBricks = 0;
-		for(int row = 0; row < MaxBrickRows; ++row) {
+		state.totalBricks = 0;
+		for (int row = 0; row < MaxBrickRows; ++row) {
 			//float brickX = -WorldRadius.x + SideBorderRadius * 2.0f - AreaPadding + BrickRadius.x;
 			float brickX = -WorldRadius.x + FrameRadius * 2.0f + AreaPadding + BrickRadius.x;
-			for(int col = 0; col < MaxBrickCols; ++col) {
+			for (int col = 0; col < MaxBrickCols; ++col) {
 				BrickType brickType = state.bricksMap[row * MaxBrickCols + col];
-				if(brickType == BrickType::Solid) {
-					Entity *brickEntity = &state.activeBricks[state.numActiveBricks++];
+				if (brickType == BrickType::Solid) {
+					Entity* brickEntity = &state.activeBricks[state.totalBricks++];
 					*brickEntity = {};
 					brickEntity->type = EntityType::Brick;
 
-					Brick &brick = brickEntity->brick;
+					Brick& brick = brickEntity->brick;
 					brick.type = brickType;
 
 					b2Vec2 brickPos = b2Vec2(brickX, brickY);
@@ -514,13 +520,14 @@ static void LoadLevel(GameState &state, int levelSeed) {
 			}
 			brickY -= (BrickRadius.y * 2.0f + BrickSpacing);
 		}
+		state.remainingBricks = state.totalBricks;
 	}
 
 	//
 	// Paddle
 	// 
 	{
-		b2Body *body;
+		b2Body* body;
 		b2BodyDef bodyDef;
 		b2FixtureDef fixtureDef;
 
@@ -528,7 +535,7 @@ static void LoadLevel(GameState &state, int levelSeed) {
 		bodyDef = b2BodyDef();
 		bodyDef.type = b2BodyType::b2_staticBody;
 		bodyDef.position = b2Vec2(0, PaddleLineY);
-		b2Body *paddleLimiterBody = body = world->CreateBody(&bodyDef);
+		b2Body* paddleLimiterBody = body = world->CreateBody(&bodyDef);
 		b2PolygonShape limiterShape = b2PolygonShape();
 		limiterShape.SetAsBox(PaddleRadius.x, PaddleRadius.y);
 		fixtureDef = b2FixtureDef();
@@ -541,11 +548,11 @@ static void LoadLevel(GameState &state, int levelSeed) {
 		body->SetUserData(nullptr);
 
 		// Paddle
-		Entity *paddleEntity = &state.paddle;
+		Entity* paddleEntity = &state.paddle;
 		*paddleEntity = {};
 		paddleEntity->type = EntityType::Paddle;
 
-		Paddle &paddle = paddleEntity->paddle;
+		Paddle& paddle = paddleEntity->paddle;
 		paddle.speed = PaddleSpeed;
 
 		bodyDef = b2BodyDef();
@@ -567,17 +574,23 @@ static void LoadLevel(GameState &state, int levelSeed) {
 		fixtureDef.density = 20.0f;
 		fixtureDef.filter.maskBits = 0xFFFF;
 
-		b2PolygonShape capsuleShape = b2PolygonShape();
-		capsuleShape.SetAsBox(PaddleRadius.x, PaddleRadius.y);
-		fixtureDef.shape = &capsuleShape;
+		// Box
+		b2PolygonShape boxShape = b2PolygonShape();
+		boxShape.SetAsBox(PaddleRadius.x, PaddleRadius.y);
+		fixtureDef.shape = &boxShape;
+		fixtureDef.userData = paddleEntity;
 		body->CreateFixture(&fixtureDef);
 
+		fixtureDef.userData = nullptr;
+
+		// Left circle
 		b2CircleShape leftShape = b2CircleShape();
 		leftShape.m_radius = PaddleRadius.y;
 		leftShape.m_p = b2Vec2(-PaddleRadius.x, 0);
 		fixtureDef.shape = &leftShape;
 		body->CreateFixture(&fixtureDef);
 
+		// Right circle
 		b2CircleShape rightShape = b2CircleShape();
 		rightShape.m_radius = PaddleRadius.y;
 		rightShape.m_p = b2Vec2(PaddleRadius.x, 0);
@@ -596,14 +609,14 @@ static void LoadLevel(GameState &state, int levelSeed) {
 	// Ball
 	//
 	{
-		b2Body *body;
+		b2Body* body;
 		b2BodyDef ballDef = b2BodyDef();
 
-		Entity *ballEntity = &state.ball;
+		Entity* ballEntity = &state.ball;
 		*ballEntity = {};
 		ballEntity->type = EntityType::Ball;
 
-		Ball &ball = ballEntity->ball;
+		Ball& ball = ballEntity->ball;
 		ball.speed = BallSpeed;
 
 		ballDef.type = b2BodyType::b2_dynamicBody;
@@ -634,16 +647,16 @@ static void LoadLevel(GameState &state, int levelSeed) {
 }
 
 
-static bool LoadTexture(const TextureData &source, const bool repeatable, TextureAsset &outTexture) {
+static bool LoadTexture(const TextureData& source, const bool repeatable, TextureAsset& outTexture) {
 	GLuint texId = AllocateTexture(source.width, source.height, source.data, repeatable, GL_NEAREST);
 	outTexture.texture = ValueToPointer(texId);
 	bool result = texId > 0;
 	return(result);
 }
 
-static bool LoadTexture(const char *dataPath, const char *filename, const bool repeatable, TextureAsset &outTexture) {
+static bool LoadTexture(const char* dataPath, const char* filename, const bool repeatable, TextureAsset& outTexture) {
 	TextureData image = LoadTextureData(dataPath, filename);
-	if(image.data == nullptr) {
+	if (image.data == nullptr) {
 		return false;
 	}
 	bool result = LoadTexture(image, repeatable, outTexture);
@@ -651,25 +664,25 @@ static bool LoadTexture(const char *dataPath, const char *filename, const bool r
 	return(result);
 }
 
-static bool LoadAssets(GameState &state) {
+static bool LoadAssets(GameState& state) {
 	LoadTexture(state.dataPath, "ball.bmp", false, state.assets.ballTexture);
 	LoadTexture(state.dataPath, "bricks.bmp", false, state.assets.bricksTexture);
 	LoadTexture(state.dataPath, "paddle.bmp", false, state.assets.paddleTexture);
 	LoadTexture(state.dataPath, "frame.bmp", false, state.assets.frameTexture);
 
 	TextureData bgImage = LoadTextureData(state.dataPath, "bg.bmp");
-	if(bgImage.data != nullptr) {
+	if (bgImage.data != nullptr) {
 		TextureData bgTileImage0 = CreateSubTextureData(bgImage, 2, 2, 16, 16);
 		LoadTexture(bgTileImage0, true, state.assets.bgTextures[BackgroundType::Default]);
 		FreeTextureData(bgTileImage0);
 	}
 	FreeTextureData(bgImage);
 
-	if(LoadFontFromFile(state.dataPath, "hemi_head_bd_it.ttf", 0, 36.0f, 32, 127, 512, 512, true, &state.assets.fontMenu.desc)) {
+	if (LoadFontFromFile(state.dataPath, "hemi_head_bd_it.ttf", 0, 36.0f, 32, 127, 512, 512, true, &state.assets.fontMenu.desc)) {
 		GLuint texId = AllocateTexture(state.assets.fontMenu.desc.atlasWidth, state.assets.fontMenu.desc.atlasHeight, state.assets.fontMenu.desc.atlasAlphaBitmap, false, GL_NEAREST, true);
 		state.assets.fontMenu.texture = ValueToPointer(texId);
 	}
-	if(LoadFontFromFile(state.dataPath, "hemi_head_bd_it.ttf", 0, 18.0f, 32, 127, 512, 512, true, &state.assets.fontHud.desc)) {
+	if (LoadFontFromFile(state.dataPath, "hemi_head_bd_it.ttf", 0, 18.0f, 32, 127, 512, 512, true, &state.assets.fontHud.desc)) {
 		GLuint texId = AllocateTexture(state.assets.fontHud.desc.atlasWidth, state.assets.fontHud.desc.atlasHeight, state.assets.fontHud.desc.atlasAlphaBitmap, false, GL_NEAREST, true);
 		state.assets.fontHud.texture = ValueToPointer(texId);
 	}
@@ -677,7 +690,7 @@ static bool LoadAssets(GameState &state) {
 	return true;
 }
 
-static void StartGame(GameState &state) {
+static void StartGame(GameState& state) {
 	state.lifes = 5;
 	state.score = 0;
 	state.mode = GameMode::Play;
@@ -685,8 +698,8 @@ static void StartGame(GameState &state) {
 	LoadLevel(state, InitialLevelSeed);
 }
 
-static bool InitGame(GameState &state) {
-	if(!fglLoadOpenGL(true)) {
+static bool InitGame(GameState& state) {
+	if (!fglLoadOpenGL(true)) {
 		return false;
 	}
 
@@ -715,7 +728,7 @@ static bool InitGame(GameState &state) {
 
 	LoadAssets(state);
 
-	b2World *world;
+	b2World* world;
 
 	state.world = world = new b2World(b2Vec2(Gravity.x, Gravity.y));
 	world->SetContinuousPhysics(true);
@@ -733,27 +746,27 @@ static bool InitGame(GameState &state) {
 	return true;
 }
 
-static void ReleaseGame(GameState &state) {
+static void ReleaseGame(GameState& state) {
 	ClearWorld(state.world);
-	if(state.world != nullptr) {
+	if (state.world != nullptr) {
 		delete state.world;
 		state.world = nullptr;
 	}
 	fglUnloadOpenGL();
 }
 
-extern void GameRelease(GameMemory &gameMemory) {
-	GameState *state = gameMemory.game;
-	if(state != nullptr) {
+extern void GameRelease(GameMemory& gameMemory) {
+	GameState* state = gameMemory.game;
+	if (state != nullptr) {
 		ReleaseGame(*state);
 		state->~GameState();
 	}
 }
 
-extern bool GameInit(GameMemory &gameMemory) {
-	GameState *state = (GameState *)fmemPush(gameMemory.memory, sizeof(GameState), fmemPushFlags_Clear);
+extern bool GameInit(GameMemory& gameMemory) {
+	GameState* state = (GameState*)fmemPush(gameMemory.memory, sizeof(GameState), fmemPushFlags_Clear);
 	gameMemory.game = state;
-	if(!InitGame(*state)) {
+	if (!InitGame(*state)) {
 		GameRelease(gameMemory);
 		return(false);
 	}
@@ -761,19 +774,19 @@ extern bool GameInit(GameMemory &gameMemory) {
 
 }
 
-static void GlueBallOnPaddle(GameState &state, Ball *ball) {
-	Paddle &paddle = state.paddle.paddle;
+static void GlueBallOnPaddle(GameState& state, Ball* ball) {
+	Paddle& paddle = state.paddle.paddle;
 	fplAssert(paddle.gluedBall == nullptr);
 	ball->isMoving = false;
 	paddle.gluedBall = ball;
 	ball->body->SetType(b2BodyType::b2_staticBody);
 }
 
-static void LaunchBall(GameState &state) {
-	Paddle &paddle = state.paddle.paddle;
+static void LaunchBall(GameState& state) {
+	Paddle& paddle = state.paddle.paddle;
 	const float spreadAngle = 30.0f;
 	const float startAngle = 90;
-	Ball *ball = paddle.gluedBall;
+	Ball* ball = paddle.gluedBall;
 	ball->isMoving = true;
 	ball->isDead = false;
 	ball->body->SetType(b2BodyType::b2_dynamicBody);
@@ -784,7 +797,7 @@ static void LaunchBall(GameState &state) {
 	paddle.gluedBall = nullptr;
 }
 
-static void SetRandomLevel(GameState &state, int seed) {
+static void SetRandomLevel(GameState& state, int seed) {
 #define ALL_BRICKS 0
 	fplAssert((MaxBrickCols * MaxBrickRows) <= fplArrayCount(state.bricksMap));
 	fplMemoryClear(state.bricksMap, sizeof(Brick) * fplArrayCount(state.bricksMap));
@@ -792,13 +805,13 @@ static void SetRandomLevel(GameState &state, int seed) {
 	state.levelSeed = seed;
 	int halfColCount = (MaxBrickCols - 1) / 2;
 	bool reverse = RandomInt(100) > 25;
-	for(int row = 0; row < MaxBrickRows; ++row) {
+	for (int row = 0; row < MaxBrickRows; ++row) {
 #if ALL_BRICKS
 		int randomColCount = halfColCount;
 #else
 		int randomColCount = RandomInt(halfColCount);
 #endif
-		for(int col = 0; col < randomColCount; ++col) {
+		for (int col = 0; col < randomColCount; ++col) {
 			int c = reverse ? (halfColCount - 1 - col) : col;
 			int leftCol = c;
 			int rightCol = (MaxBrickCols - 1) - c;
@@ -808,7 +821,7 @@ static void SetRandomLevel(GameState &state, int seed) {
 #if ALL_BRICKS
 		state.bricksMap[row * MaxBrickCols + halfColCount] = BrickType::Solid;
 #else
-		if(Random01() > 0.5f) {
+		if (Random01() > 0.5f) {
 			state.bricksMap[row * MaxBrickCols + halfColCount] = BrickType::Solid;
 		}
 #endif
@@ -817,28 +830,28 @@ static void SetRandomLevel(GameState &state, int seed) {
 #undef ALL_BRICKS
 }
 
-static void EntersKillArea(GameState &state, Entity &other) {
-	if(other.type == EntityType::Ball) {
-		Ball *ball = &other.ball;
-		Paddle &paddle = state.paddle.paddle;
+static void EntersKillArea(GameState& state, Entity& other) {
+	if (other.type == EntityType::Ball) {
+		Ball* ball = &other.ball;
+		Paddle& paddle = state.paddle.paddle;
 		ball->isDead = true;
 		state.lifes--;
-		if(state.lifes <= 0) {
+		if (state.lifes <= 0) {
 			state.lifes = 0;
 		}
-	} else if(other.type == EntityType::Brick) {
-		Brick &brick = other.brick;
-		if(!brick.isDead) {
+	} else if (other.type == EntityType::Brick) {
+		Brick& brick = other.brick;
+		if (!brick.isDead) {
 			brick.isDead = true;
 			++state.score;
 		}
 	}
 }
 
-static void HandleBallCollision(GameState &state, Ball &ball, Entity &other, b2Contact &contact) {
-	if(other.type == EntityType::Brick) {
-		Brick &brick = other.brick;
-		if(!brick.requestHit && !brick.isDead) {
+static void HandleBallCollision(GameState& state, Ball& ball, Entity& other, b2Contact& contact) {
+	if (other.type == EntityType::Brick) {
+		Brick& brick = other.brick;
+		if (!brick.requestHit && !brick.isDead) {
 			brick.requestHit = true;
 			b2WorldManifold manifold;
 			contact.GetWorldManifold(&manifold);
@@ -849,32 +862,32 @@ static void HandleBallCollision(GameState &state, Ball &ball, Entity &other, b2C
 }
 
 struct CollisionPair {
-	b2Fixture *fixtureA;
-	b2Fixture *fixtureB;
-	b2Body *bodyA;
-	b2Body *bodyB;
-	Entity *entityA;
-	Entity *entityB;
+	b2Fixture* fixtureA;
+	b2Fixture* fixtureB;
+	b2Body* bodyA;
+	b2Body* bodyB;
+	Entity* entityA;
+	Entity* entityB;
 };
 
 static CollisionPair GetCollisionPair(b2Contact* contact) {
 	CollisionPair result = {};
-	b2Fixture *fixtureA = contact->GetFixtureA();
-	b2Fixture *fixtureB = contact->GetFixtureB();
+	b2Fixture* fixtureA = contact->GetFixtureA();
+	b2Fixture* fixtureB = contact->GetFixtureB();
 	fplAssert(fixtureA != nullptr && fixtureB != nullptr);
-	b2Body *bodyA = fixtureA->GetBody();
-	b2Body *bodyB = fixtureB->GetBody();
+	b2Body* bodyA = fixtureA->GetBody();
+	b2Body* bodyB = fixtureB->GetBody();
 	fplAssert(bodyA != nullptr && bodyB != nullptr);
-	void *dataA = bodyA->GetUserData();
-	void *dataB = bodyB->GetUserData();
-	if(dataA != nullptr && dataB != nullptr) {
-		Entity *entityA = (Entity *)dataA;
-		Entity *entityB = (Entity *)dataB;
+	void* dataA = bodyA->GetUserData();
+	void* dataB = bodyB->GetUserData();
+	if (dataA != nullptr && dataB != nullptr) {
+		Entity* entityA = (Entity*)dataA;
+		Entity* entityB = (Entity*)dataB;
 
 		// Sort entity by type
-		if(entityA->type > entityB->type) {
-			entityB = (Entity *)dataA;
-			entityA = (Entity *)dataB;
+		if (entityA->type > entityB->type) {
+			entityB = (Entity*)dataA;
+			entityA = (Entity*)dataB;
 			fixtureB = contact->GetFixtureA();
 			fixtureA = contact->GetFixtureB();
 			bodyB = fixtureB->GetBody();
@@ -890,19 +903,47 @@ static CollisionPair GetCollisionPair(b2Contact* contact) {
 	return(result);
 }
 
-static void HandleContactCollision(GameState &state, b2Contact *contact) {
+static void HandleContactCollision(GameState& state, b2Contact* contact) {
 	CollisionPair pair = GetCollisionPair(contact);
-	if(pair.entityA->type == EntityType::Ball) {
+	if (pair.entityA->type == EntityType::Ball) {
 		HandleBallCollision(state, pair.entityA->ball, *pair.entityB, *contact);
 	}
 }
 
-static void HandlePreCollision(GameState &state, b2Contact* contact) {
+static void HandlePreCollision(GameState& state, b2Contact* contact) {
 	CollisionPair pair = GetCollisionPair(contact);
-	if(pair.entityA->type == EntityType::KillArea) {
+	if (pair.entityA->type == EntityType::KillArea) {
 		EntersKillArea(state, *pair.entityB);
-	} else if(pair.entityB->type == EntityType::KillArea) {
+	} else if (pair.entityB->type == EntityType::KillArea) {
 		EntersKillArea(state, *pair.entityA);
+	} else if (pair.entityA->type == EntityType::Ball && pair.entityB->type == EntityType::Paddle) {
+		b2Manifold* manifold = contact->GetManifold();
+
+		b2Vec2 unitUpVec = b2Vec2(0, 1);
+		b2Vec2 unitRightVec = b2Vec2(1, 0);
+
+		if (pair.fixtureB->GetUserData() != nullptr) {
+			b2Vec2 ballPos = pair.bodyA->GetPosition();
+			b2Vec2 paddlePos = pair.bodyB->GetPosition();
+
+			b2Vec2 distanceToPaddle = ballPos - paddlePos;
+			float t = b2Clamp(b2Dot(distanceToPaddle, unitRightVec) / PaddleRadius.x, -1.0f, 1.0f);
+
+			Vec2f bounce = V2f(0, 1);
+			if (t < 0.0f) {
+				t = Abs(t);
+				bounce = Vec2Lerp(V2f(0, 1), t, V2f(-1, 0.25f));
+			} else {
+				bounce = Vec2Lerp(V2f(0, 1), t, V2f(1, 0.25f));
+			}
+			bounce = Vec2Normalize(bounce);
+
+			b2Vec2 n = b2Vec2(bounce.x, bounce.y);
+
+			fplDebugFormatOut("Out direction: %f %f, t: %f\n", n.x, n.y, t);
+
+			manifold->localNormal = n;
+		}
 	}
 }
 
@@ -918,124 +959,126 @@ void GameContactListener::PreSolve(b2Contact* contact, const b2Manifold* oldMani
 void GameContactListener::PostSolve(b2Contact* contact, const b2ContactImpulse* impulse) {
 }
 
-extern bool IsGameExiting(GameMemory &gameMemory) {
-	GameState *state = gameMemory.game;
+extern bool IsGameExiting(GameMemory& gameMemory) {
+	GameState* state = gameMemory.game;
 	fplAssert(state != nullptr);
 	return state->isExiting;
 }
 
-extern void GameInput(GameMemory &gameMemory, const Input &input) {
-	if(!input.isActive) {
+extern void GameInput(GameMemory& gameMemory, const Input& input) {
+	if (!input.isActive) {
 		return;
 	}
 
-	GameState *state = gameMemory.game;
+	GameState* state = gameMemory.game;
 	fplAssert(state != nullptr);
 
-	if(input.defaultControllerIndex > -1) {
+	if (input.defaultControllerIndex > -1) {
 		fplAssert(input.defaultControllerIndex < fplArrayCount(input.controllers));
-		const Controller *controller = &input.controllers[input.defaultControllerIndex];
-		if(controller->isConnected) {
-			switch(state->mode) {
-				case GameMode::Play:
-				{
-					// Single player input
-					Paddle &paddle = state->paddle.paddle;
+		const Controller* controller = &input.controllers[input.defaultControllerIndex];
+		if (controller->isConnected) {
+			switch (state->mode) {
+			case GameMode::Play:
+			{
+				// Single player input
+				Paddle& paddle = state->paddle.paddle;
 
-					if (controller->isAnalog) {
-						float x = controller->analogMovement.x;
-						if (Abs(x) > 0) {
-							paddle.body->ApplyLinearImpulse(paddle.speed * b2Vec2(x, 0), paddle.body->GetPosition(), true);
-						}
-					} else {
-						if (IsDown(controller->moveLeft)) {
-							paddle.body->ApplyLinearImpulse(paddle.speed * b2Vec2(-1, 0), paddle.body->GetPosition(), true);
-						} else if (IsDown(controller->moveRight)) {
-							paddle.body->ApplyLinearImpulse(paddle.speed * b2Vec2(1, 0), paddle.body->GetPosition(), true);
-						}
+				if (controller->isAnalog) {
+					float x = controller->analogMovement.x;
+					if (Abs(x) > 0) {
+						paddle.body->ApplyLinearImpulse(paddle.speed * b2Vec2(x, 0), paddle.body->GetPosition(), true);
 					}
+				} else {
+					if (IsDown(controller->moveLeft)) {
+						paddle.body->ApplyLinearImpulse(paddle.speed * b2Vec2(-1, 0), paddle.body->GetPosition(), true);
+					} else if (IsDown(controller->moveRight)) {
+						paddle.body->ApplyLinearImpulse(paddle.speed * b2Vec2(1, 0), paddle.body->GetPosition(), true);
+					}
+				}
 
-					if(IsDown(controller->actionDown) && paddle.gluedBall != nullptr) {
-						LaunchBall(*state);
-					}
-				} break;
+				if (IsDown(controller->actionDown) && paddle.gluedBall != nullptr) {
+					LaunchBall(*state);
+				}
+			} break;
 
-				case GameMode::Title:
-				{
-					if(WasPressed(controller->actionDown) || WasPressed(controller->actionStart)) {
-						state->mode = GameMode::Menu;
-						state->menu = {};
-						state->menu.section = MenuSection::Main;
-					}
-				} break;
+			case GameMode::Title:
+			{
+				if (WasPressed(controller->actionDown) || WasPressed(controller->actionStart)) {
+					state->mode = GameMode::Menu;
+					state->menu = {};
+					state->menu.section = MenuSection::Main;
+				}
+			} break;
 
-				case GameMode::GameOver:
-				{
-					if(WasPressed(controller->actionDown) || WasPressed(controller->actionStart)) {
-						state->mode = GameMode::Title;
-					}
-				};
+			case GameMode::GameOver:
+			{
+				if (WasPressed(controller->actionDown) || WasPressed(controller->actionStart)) {
+					state->mode = GameMode::Title;
+				}
+			};
 
-				case GameMode::Menu:
-				{
-					if(WasPressed(controller->moveDown)) {
-						if(state->menu.itemIndex < (state->menu.itemCount - 1)) {
-							++state->menu.itemIndex;
-						}
-					} else if(WasPressed(controller->moveUp)) {
-						if(state->menu.itemIndex > 0) {
-							--state->menu.itemIndex;
-						}
+			case GameMode::Menu:
+			{
+				if (WasPressed(controller->moveDown)) {
+					if (state->menu.itemIndex < (state->menu.itemCount - 1)) {
+						++state->menu.itemIndex;
 					}
-					if(WasPressed(controller->actionDown) || WasPressed(controller->actionStart)) {
-						if(state->menu.hotID != nullptr) {
-							state->menu.itemActivated = true;
-						}
+				} else if (WasPressed(controller->moveUp)) {
+					if (state->menu.itemIndex > 0) {
+						--state->menu.itemIndex;
 					}
-				} break;
+				}
+				if (WasPressed(controller->actionDown) || WasPressed(controller->actionStart)) {
+					if (state->menu.hotID != nullptr) {
+						state->menu.itemActivated = true;
+					}
+				}
+			} break;
 			}
 		}
 	}
 }
 
-static void UpdatePlayMode(GameState &state, const Input &input) {
+static void UpdatePlayMode(GameState& state, const Input& input) {
 	// Game over?
-	if(state.lifes == 0) {
+	if (state.lifes == 0) {
 		state.mode = GameMode::GameOver;
 		return;
 	}
 
 	// Move glued ball
-	Paddle &paddle = state.paddle.paddle;
-	if(paddle.gluedBall == nullptr && state.ball.ball.isDead) {
+	Paddle& paddle = state.paddle.paddle;
+	if (paddle.gluedBall == nullptr && state.ball.ball.isDead) {
 		GlueBallOnPaddle(state, &state.ball.ball);
 	}
-	if(paddle.gluedBall != nullptr) {
-		Ball *ball = paddle.gluedBall;
+	if (paddle.gluedBall != nullptr) {
+		Ball* ball = paddle.gluedBall;
 		b2Vec2 gluePos = paddle.body->GetPosition() + b2Vec2(0, PaddleGlueOffsetY);
 		ball->body->SetTransform(gluePos, 0);
 	} else {
 	}
 
-	// Correct ball angle when too squary
+	// Force ball speed and correct ball angle when needed
 	{
-		const float angleTolerance = 2.5f;
-		const float angleCorrection = 15.0f;
+		const float angleTolerance = 3.0f;
+		const float angleCorrection = 6.0f;
 		float squaredAngles[] = { 0, 90, 180, 270, 360 };
-		Ball &ball = state.ball.ball;
-		if(ball.isMoving) {
+		Ball& ball = state.ball.ball;
+		if (ball.isMoving) {
 			b2Vec2 vel = ball.body->GetLinearVelocity();
 			b2Vec2 dir = vel;
 			dir.Normalize();
+
 			float a = ArcTan2(dir.y, dir.x);
 			float deg = RadiansToDegrees(a);
-			for(int i = 0; i < fplArrayCount(squaredAngles); ++i) {
-				if(Abs(deg) > (squaredAngles[i] - angleTolerance) && Abs(deg) < (squaredAngles[i] + angleTolerance)) {
+			for (int i = 0; i < fplArrayCount(squaredAngles); ++i) {
+				if (Abs(deg) > (squaredAngles[i] - angleTolerance) && Abs(deg) < (squaredAngles[i] + angleTolerance)) {
 					deg += (Abs(deg) - squaredAngles[i] > 0 ? 1 : -1) * angleCorrection;
 					a = DegreesToRadians(deg);
 				}
 			}
 			dir = b2Vec2(Cosine(a), Sine(a));
+
 			dir *= ball.speed;
 			ball.body->SetLinearVelocity(dir);
 		}
@@ -1043,10 +1086,10 @@ static void UpdatePlayMode(GameState &state, const Input &input) {
 
 	// Make all bricks dynamic when hit
 	const float hitStrength = 1.5f;
-	for(size_t i = 0; i < state.numActiveBricks; ++i) {
-		Entity &brickEntity = state.activeBricks[i];
-		Brick &brick = brickEntity.brick;
-		if(brick.requestHit && !brick.isDead && !brick.isHit) {
+	for (size_t i = 0; i < state.remainingBricks; ++i) {
+		Entity& brickEntity = state.activeBricks[i];
+		Brick& brick = brickEntity.brick;
+		if (brick.requestHit && !brick.isDead && !brick.isHit) {
 			brick.body->SetType(b2BodyType::b2_dynamicBody);
 			b2Vec2 impulse = hitStrength * -b2Vec2(brick.hitNormal.x, brick.hitNormal.y);
 			b2Vec2 point = b2Vec2(brick.hitPoint.x, brick.hitPoint.y);
@@ -1056,23 +1099,23 @@ static void UpdatePlayMode(GameState &state, const Input &input) {
 	}
 
 	// Remove dead bricks
-	if(state.numActiveBricks > 0) {
-		for(size_t i = 0, c = state.numActiveBricks; i < c; ++i) {
-			if(state.activeBricks[i].brick.isDead) {
+	if (state.remainingBricks > 0) {
+		for (size_t i = 0, c = state.remainingBricks; i < c; ++i) {
+			if (state.activeBricks[i].brick.isDead) {
 				Entity temp = state.activeBricks[i];
-				if(temp.brick.body != nullptr) {
+				if (temp.brick.body != nullptr) {
 					state.world->DestroyBody(temp.brick.body);
 				}
 				temp = {};
-				if(i < state.numActiveBricks - 1) {
-					state.activeBricks[i] = state.activeBricks[state.numActiveBricks - 1];
-					state.activeBricks[state.numActiveBricks - 1] = temp;
+				if (i < state.remainingBricks - 1) {
+					state.activeBricks[i] = state.activeBricks[state.remainingBricks - 1];
+					state.activeBricks[state.remainingBricks - 1] = temp;
 					state.activeBricks[i].brick.body->SetUserData(&state.activeBricks[i]);
 				}
-				--state.numActiveBricks;
+				--state.remainingBricks;
 			}
 		}
-		if(state.numActiveBricks == 0) {
+		if (state.remainingBricks == 0) {
 			// Level done
 			++state.levelsCompleted;
 			LoadLevel(state, state.levelSeed + 1);
@@ -1084,23 +1127,23 @@ static void UpdatePlayMode(GameState &state, const Input &input) {
 	state.world->ClearForces();
 }
 
-extern void GameUpdate(GameMemory &gameMemory, const Input &input) {
-	if(!input.isActive) {
+extern void GameUpdate(GameMemory& gameMemory, const Input& input) {
+	if (!input.isActive) {
 		return;
 	}
 
-	GameState *state = gameMemory.game;
+	GameState* state = gameMemory.game;
 	fplAssert(state != nullptr);
 	state->viewport = ComputeViewportByAspect(input.windowSize, GameAspect);
 
-	if(state->mode == GameMode::Play) {
+	if (state->mode == GameMode::Play) {
 		UpdatePlayMode(*state, input);
 	}
 }
 
 
 
-static void DrawField(GameState &state) {
+static void DrawField(GameState& state) {
 	// Background
 	{
 		GLuint bgTex = PointerToValue<GLuint>(state.assets.bgTextures[BackgroundType::Default].texture);
@@ -1139,7 +1182,7 @@ static void DrawField(GameState &state) {
 	}
 }
 
-static void DrawPlayMode(GameState &state) {
+static void DrawPlayMode(GameState& state) {
 	// Increase radius a tiny bit to match collision shape
 	const float ROffset = WorldWidth / 1000.0f;
 
@@ -1148,7 +1191,7 @@ static void DrawPlayMode(GameState &state) {
 
 	// Ball
 	{
-		const Ball &ball = state.ball.ball;
+		const Ball& ball = state.ball.ball;
 		b2Vec2 ballPos = ball.body->GetPosition();
 		float ballRot = ball.body->GetAngle();
 		GLuint texId = PointerToValue<GLuint>(state.assets.ballTexture.texture);
@@ -1162,7 +1205,7 @@ static void DrawPlayMode(GameState &state) {
 
 	// Paddle
 	{
-		const Paddle &paddle = state.paddle.paddle;
+		const Paddle& paddle = state.paddle.paddle;
 		b2Vec2 paddlePos = paddle.body->GetPosition();
 		float paddleRot = paddle.body->GetAngle();
 		GLuint texId = PointerToValue<GLuint>(state.assets.paddleTexture.texture);
@@ -1175,8 +1218,8 @@ static void DrawPlayMode(GameState &state) {
 	}
 
 	// Bricks
-	for(size_t i = 0; i < state.numActiveBricks; ++i) {
-		const Brick &brick = state.activeBricks[i].brick;
+	for (size_t i = 0; i < state.remainingBricks; ++i) {
+		const Brick& brick = state.activeBricks[i].brick;
 		b2Vec2 brickPos = brick.body->GetPosition();
 		float brickRot = brick.body->GetAngle();
 		GLuint texId = PointerToValue<GLuint>(state.assets.bricksTexture.texture);
@@ -1192,99 +1235,99 @@ static void DrawPlayMode(GameState &state) {
 #if DRAW_DEBUG
 	// Bodies
 	const float normalLen = WorldWidth * 0.025f;
-	b2Body *body = state.world->GetBodyList();
-	while(body != nullptr) {
-		if(body->GetUserData() == nullptr) {
+	b2Body* body = state.world->GetBodyList();
+	while (body != nullptr) {
+		if (body->GetUserData() == nullptr) {
 			body = body->GetNext();
 			continue;
 		}
-		Entity *entity = (Entity *)body->GetUserData();
-		b2Fixture *fixture = body->GetFixtureList();
+		Entity* entity = (Entity*)body->GetUserData();
+		b2Fixture* fixture = body->GetFixtureList();
 		b2Vec2 bodyPos = body->GetPosition();
 		float bodyRot = body->GetAngle();
-		while(fixture != nullptr) {
-			switch(fixture->GetType()) {
-				case b2Shape::Type::e_circle:
-				{
-					b2CircleShape *circle = (b2CircleShape *)fixture->GetShape();
-					glPushMatrix();
-					glTranslatef(bodyPos.x + circle->m_p.x, bodyPos.y + circle->m_p.y, 0);
-					glRotatef(Degrees(bodyRot), 0, 0, 1);
-					DrawCircle(0, 0, circle->m_radius, false, V4f(1, 1, 1, 1));
-					glPopMatrix();
-				} break;
+		while (fixture != nullptr) {
+			switch (fixture->GetType()) {
+			case b2Shape::Type::e_circle:
+			{
+				b2CircleShape* circle = (b2CircleShape*)fixture->GetShape();
+				glPushMatrix();
+				glTranslatef(bodyPos.x + circle->m_p.x, bodyPos.y + circle->m_p.y, 0);
+				glRotatef(RadiansToDegrees(bodyRot), 0, 0, 1);
+				DrawCircle(0, 0, circle->m_radius, false, V4f(1, 1, 1, 1));
+				glPopMatrix();
+			} break;
 
-				case b2Shape::Type::e_polygon:
-				{
-					b2PolygonShape *poly = (b2PolygonShape *)fixture->GetShape();
-					glPushMatrix();
-					glTranslatef(bodyPos.x, bodyPos.y, 0);
-					glRotatef(Degrees(bodyRot), 0, 0, 1);
+			case b2Shape::Type::e_polygon:
+			{
+				b2PolygonShape* poly = (b2PolygonShape*)fixture->GetShape();
+				glPushMatrix();
+				glTranslatef(bodyPos.x, bodyPos.y, 0);
+				glRotatef(RadiansToDegrees(bodyRot), 0, 0, 1);
 
-					glColor4f(1, 1, 1, 1);
-					glBegin(GL_LINE_LOOP);
-					for(int i = 0; i < poly->m_count; ++i) {
-						b2Vec2 v = poly->m_vertices[i];
-						glVertex2fv(&v.x);
-					}
-					glEnd();
-					for(int i = 0; i < poly->m_count; ++i) {
-						b2Vec2 a = poly->m_vertices[i];
-						b2Vec2 b = poly->m_vertices[(i + 1) % poly->m_count];
-						b2Vec2 n = poly->m_normals[i];
+				glColor4f(1, 1, 1, 1);
+				glBegin(GL_LINE_LOOP);
+				for (int i = 0; i < poly->m_count; ++i) {
+					b2Vec2 v = poly->m_vertices[i];
+					glVertex2fv(&v.x);
+				}
+				glEnd();
+				for (int i = 0; i < poly->m_count; ++i) {
+					b2Vec2 a = poly->m_vertices[i];
+					b2Vec2 b = poly->m_vertices[(i + 1) % poly->m_count];
+					b2Vec2 n = poly->m_normals[i];
 #if DRAW_NORMALS
-						b2Vec2 na = a + 0.5f * (b - a);
-						b2Vec2 nb = na + normalLen * n;
-						glColor3f(0.0f, 1.0f, 0.0f);
-						glBegin(GL_LINES);
-						glVertex2f(na.x, na.y);
-						glVertex2f(nb.x, nb.y);
-						glEnd();
+					b2Vec2 na = a + 0.5f * (b - a);
+					b2Vec2 nb = na + normalLen * n;
+					glColor3f(0.0f, 1.0f, 0.0f);
+					glBegin(GL_LINES);
+					glVertex2f(na.x, na.y);
+					glVertex2f(nb.x, nb.y);
+					glEnd();
 #endif
-					}
-					glPopMatrix();
-				} break;
+				}
+				glPopMatrix();
+			} break;
 
 #if 1
-				case b2Shape::Type::e_chain:
-				{
-					glPushMatrix();
-					glTranslatef(bodyPos.x, bodyPos.y, 0);
-					glRotatef(Degrees(bodyRot), 0, 0, 1);
-					b2ChainShape *chain = (b2ChainShape *)fixture->GetShape();
-					for(int i = 0, c = chain->GetChildCount(); i < c; ++i) {
-						b2EdgeShape edge;
-						chain->GetChildEdge(&edge, i);
-						b2Vec2 a = edge.m_vertex1;
-						b2Vec2 b = edge.m_vertex2;
-						b2Vec2 n = b2Cross(1.0f, b - a);
-						n.Normalize();
+			case b2Shape::Type::e_chain:
+			{
+				glPushMatrix();
+				glTranslatef(bodyPos.x, bodyPos.y, 0);
+				glRotatef(RadiansToDegrees(bodyRot), 0, 0, 1);
+				b2ChainShape* chain = (b2ChainShape*)fixture->GetShape();
+				for (int i = 0, c = chain->GetChildCount(); i < c; ++i) {
+					b2EdgeShape edge;
+					chain->GetChildEdge(&edge, i);
+					b2Vec2 a = edge.m_vertex1;
+					b2Vec2 b = edge.m_vertex2;
+					b2Vec2 n = b2Cross(1.0f, b - a);
+					n.Normalize();
 
-						glColor3f(1.0f, 1.0f, 1.0f);
-						glBegin(GL_LINES);
-						glVertex2f(a.x, a.y);
-						glVertex2f(b.x, b.y);
-						glEnd();
+					glColor3f(1.0f, 1.0f, 1.0f);
+					glBegin(GL_LINES);
+					glVertex2f(a.x, a.y);
+					glVertex2f(b.x, b.y);
+					glEnd();
 
 #if DRAW_NORMALS
-						b2Vec2 na = a + 0.5f * (b - a);
-						b2Vec2 nb = na + normalLen * n;
-						glColor3f(0.0f, 1.0f, 0.0f);
-						glBegin(GL_LINES);
-						glVertex2f(na.x, na.y);
-						glVertex2f(nb.x, nb.y);
-						glEnd();
+					b2Vec2 na = a + 0.5f * (b - a);
+					b2Vec2 nb = na + normalLen * n;
+					glColor3f(0.0f, 1.0f, 0.0f);
+					glBegin(GL_LINES);
+					glVertex2f(na.x, na.y);
+					glVertex2f(nb.x, nb.y);
+					glEnd();
 #endif
-					}
-					glPopMatrix();
-				} break;
+				}
+				glPopMatrix();
+			} break;
 #endif
 
 			}
 			fixture = fixture->GetNext();
 		}
 		body = body->GetNext();
-}
+	}
 #endif
 
 	char textBuffer[256];
@@ -1299,28 +1342,33 @@ static void DrawPlayMode(GameState &state) {
 	fplFormatString(textBuffer, fplArrayCount(textBuffer), "Lifes: %d", state.lifes);
 	DrawTextFont(textBuffer, fplGetStringLength(textBuffer), &state.assets.fontHud.desc, fontTexId, -WorldRadius.x + FrameRadius * 2.0f + textFrameMargin, textTopMiddle, textSize, 1.0f, 0.0f);
 
-	fplFormatString(textBuffer, fplArrayCount(textBuffer), "Level: %d", (state.levelsCompleted + 1));
+	if (state.totalBricks > 0) {
+		int levelPercentage = 100 - (int)((state.remainingBricks / (double)state.totalBricks) * 100);
+		fplFormatString(textBuffer, fplArrayCount(textBuffer), "Level: %d (%d %s)", (state.levelsCompleted + 1), levelPercentage, "%");
+	} else {
+		fplFormatString(textBuffer, fplArrayCount(textBuffer), "Level: %d", (state.levelsCompleted + 1));
+	}
 	DrawTextFont(textBuffer, fplGetStringLength(textBuffer), &state.assets.fontHud.desc, fontTexId, 0, textTopMiddle, textSize, 0.0f, 0.0f);
 
 	fplFormatString(textBuffer, fplArrayCount(textBuffer), "Score: %d", state.score);
 	size_t textCount = fplGetStringLength(textBuffer);
 	Vec2f textBounds = GetTextSize(textBuffer, textCount, &state.assets.fontHud.desc, textSize);
 	DrawTextFont(textBuffer, textCount, &state.assets.fontHud.desc, fontTexId, WorldRadius.x - FrameRadius * 2.0f - textFrameMargin - textBounds.w, textTopMiddle, textSize, 1.0f, 0.0f);
-	}
+}
 
-static void BeginMenu(GameState &state) {
+static void BeginMenu(GameState& state) {
 	state.menu.itemCount = 0;
 	state.menu.hotID = nullptr;
 }
 
-static bool PushMenuItem(GameState &state, MenuRenderState &menuRender, const char *itemText) {
+static bool PushMenuItem(GameState& state, MenuRenderState& menuRender, const char* itemText) {
 	bool result = false;
 	int index = state.menu.itemCount++;
-	if(index == state.menu.itemIndex) {
-		if(state.menu.hotID != itemText) {
+	if (index == state.menu.itemIndex) {
+		if (state.menu.hotID != itemText) {
 			state.menu.hotID = itemText;
 		}
-		if(state.menu.itemActivated) {
+		if (state.menu.itemActivated) {
 			state.menu.activeID = state.menu.hotID;
 			state.menu.itemActivated = false;
 			result = true;
@@ -1335,21 +1383,21 @@ static bool PushMenuItem(GameState &state, MenuRenderState &menuRender, const ch
 	return(result);
 }
 
-static void DrawTitleMenuMode(GameState &state) {
+static void DrawTitleMenuMode(GameState& state) {
 	// Field
 	DrawField(state);
 
 	// Title
-	const char *titleText = (state.mode == GameMode::GameOver) ? "Game Over!" : "Crackout";
+	const char* titleText = (state.mode == GameMode::GameOver) ? "Game Over!" : "Crackout";
 	float titleFontSize = 2.75f;
 	float titlePosY = WorldRadius.y - WorldHeight * 0.35f;
 	glColor4f(1, 1, 1, 1);
 	GLuint fontTexId = PointerToValue<GLuint>(state.assets.fontMenu.texture);
 	DrawTextFont(titleText, fplGetStringLength(titleText), &state.assets.fontMenu.desc, fontTexId, 0.0f, titlePosY, titleFontSize, 0.0f, 0.0f);
 
-	if(state.mode == GameMode::Title || state.mode == GameMode::GameOver) {
+	if (state.mode == GameMode::Title || state.mode == GameMode::GameOver) {
 		// Title screen
-		const char *smallText = "Press spacebar or action-key!";
+		const char* smallText = "Press spacebar or action-key!";
 		const float smallFontSize = 0.9f;
 		const float smallPosY = -WorldRadius.y + WorldHeight * 0.275f;
 		glColor4f(1, 1, 1, 1);
@@ -1364,19 +1412,19 @@ static void DrawTitleMenuMode(GameState &state) {
 		menuRender.ypos = titlePosY - titleFontSize * 0.5f - itemFontSize * 1.25f;
 
 		BeginMenu(state);
-		if(PushMenuItem(state, menuRender, "Start Game")) {
+		if (PushMenuItem(state, menuRender, "Start Game")) {
 			StartGame(state);
 		}
-		if(PushMenuItem(state, menuRender, "Exit Game")) {
+		if (PushMenuItem(state, menuRender, "Exit Game")) {
 			state.isExiting = true;
 		}
 	}
 }
 
-extern void GameRender(GameMemory &gameMemory, const float alpha) {
-	GameState *state = gameMemory.game;
+extern void GameRender(GameMemory& gameMemory, const float alpha) {
+	GameState* state = gameMemory.game;
 	fplAssert(state != nullptr);
-	RenderState *renderState = gameMemory.render;
+	RenderState* renderState = gameMemory.render;
 
 	const float w = WorldRadius.x;
 	const float h = WorldRadius.y;
@@ -1387,25 +1435,25 @@ extern void GameRender(GameMemory &gameMemory, const float alpha) {
 	glMatrixMode(GL_PROJECTION);
 	glLoadIdentity();
 	float scale = 1.0f;
-	glOrtho(-w * scale, w*scale, -h * scale, h*scale, 0.0f, 1.0f);
+	glOrtho(-w * scale, w * scale, -h * scale, h * scale, 0.0f, 1.0f);
 
 	glMatrixMode(GL_MODELVIEW);
 	glLoadIdentity();
 
-	if(state->mode == GameMode::Play) {
+	if (state->mode == GameMode::Play) {
 		DrawPlayMode(*state);
-	} else if(state->mode == GameMode::Title || state->mode == GameMode::GameOver || state->mode == GameMode::Menu) {
+	} else if (state->mode == GameMode::Title || state->mode == GameMode::GameOver || state->mode == GameMode::Menu) {
 		DrawTitleMenuMode(*state);
 	}
 }
 
-extern void GameUpdateAndRender(GameMemory &gameMemory, const Input &input, const float alpha) {
+extern void GameUpdateAndRender(GameMemory& gameMemory, const Input& input, const float alpha) {
 }
 
 #define FINAL_GAMEPLATFORM_IMPLEMENTATION
 #include <final_gameplatform.h>
 
-int main(int argc, char *argv[]) {
+int main(int argc, char* argv[]) {
 	GameConfiguration config = {};
 	config.title = "FPL Demo | Crackout";
 	config.hideMouseCursor = true;
