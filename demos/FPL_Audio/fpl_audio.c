@@ -58,6 +58,13 @@ Changelog:
 	- Forced Visual-Studio-Project to compile in C always
 -------------------------------------------------------------------------------
 */
+#define OPT_AUTO_RENDER_SAMPLES 1
+
+#define OPT_PLAYBACK_NONE 0
+#define OPT_PLAYBACK_SINEWAVE_ONLY 1
+#define OPT_PLAYBACK_AUDIOSYSTEM_ONLY 2
+
+#define OPT_PLAYBACK_MODE OPT_PLAYBACK_AUDIOSYSTEM_ONLY
 
 #define FPL_IMPLEMENTATION
 #include <final_platform_layer.h>
@@ -80,15 +87,12 @@ typedef struct AudioDemo {
 	AudioSineWaveData sineWave;
 } AudioDemo;
 
-static uint32_t AudioRenderSamples(AudioDemo *audioDemo, AudioFrameCount maxFrameCount, void *outputSamples) {
+static void AudioRenderSamples(AudioDemo *audioDemo, const void *inSamples, const fplAudioDeviceFormat *inFormat, const AudioFrameCount frameCount) {
 	AudioSystem *audioSys = audioDemo->audioSys;
 
-	AudioFrameCount frameCount = AudioSystemWriteSamples(audioSys, outputSamples, &audioSys->targetFormat, maxFrameCount);
+	const AudioChannelCount outChannels = audioSys->targetFormat.channels;
+	const size_t inSampleSize = fplGetAudioSampleSizeInBytes(inFormat->type);
 
-	const AudioChannelCount channels = audioSys->targetFormat.channels;
-	const size_t sampleStride = fplGetAudioSampleSizeInBytes(audioDemo->sampleFormat) * channels;
-
-#if 1
 	AudioFrameCount inputFrameIndex = 0;
 	AudioFrameCount remainingFrameCount = frameCount;
 	fplAssert(frameCount <= audioDemo->maxFrameCount);
@@ -98,28 +102,31 @@ static uint32_t AudioRenderSamples(AudioDemo *audioDemo, AudioFrameCount maxFram
 		if (framesToCopy >= remainingFramesInDemo) {
 			framesToCopy = remainingFramesInDemo;
 		}
-		AudioSampleCount inputSampleIndex = inputFrameIndex * channels;
-		AudioSampleCount outputSampleIndex = audioDemo->writeFrameIndex * channels;
-		size_t samplesSize = framesToCopy * sampleStride;
-		fplMemoryCopy(&audioSys->mixingBuffer.samples[inputSampleIndex], samplesSize, audioDemo->samples + outputSampleIndex);
+		AudioSampleCount outputSampleIndex = audioDemo->writeFrameIndex * outChannels;
+		AudioSampleCount inputSampleIndex = inputFrameIndex * inFormat->channels;
+		for (AudioFrameCount frameIndex = 0; frameIndex < framesToCopy; ++frameIndex) {
+			for (AudioChannelCount channelIndex = 0; channelIndex < inFormat->channels; ++channelIndex) {
+				audioDemo->samples[outputSampleIndex++] = ConvertToF32((uint8_t *)inSamples + inputSampleIndex * inSampleSize, channelIndex, inFormat->type);
+			}
+			inputSampleIndex += inFormat->channels;
+		}
+
 		fplMemorySet(&audioDemo->periods[audioDemo->writeFrameIndex], (uint8_t)audioDemo->periodCounter, framesToCopy * sizeof(uint32_t));
+
 		inputFrameIndex += framesToCopy;
 		remainingFrameCount -= framesToCopy;
 		audioDemo->writeFrameIndex = (audioDemo->writeFrameIndex + framesToCopy) % audioDemo->maxFrameCount;
 		audioDemo->periodCounter++;
 	}
-#else
-	fplMemoryCopy(&audioSys->mixingBuffer.samples[0], sampleStride * frameCount, &audioDemo->samples[0]);
-#endif
-
-	return(frameCount);
 }
 
 
 static uint32_t AudioPlayback(const fplAudioDeviceFormat *outFormat, const uint32_t maxFrameCount, void *outputSamples, void *userData) {
 	AudioDemo *audioDemo = (AudioDemo *)userData;
 
-	uint32_t result = 0;
+	AudioFrameCount result = 0;
+
+#if OPT_PLAYBACK_MODE == OPT_PLAYBACK_SINEWAVE_ONLY
 
 #if 0
 	// 100% Clean sine wave
@@ -133,15 +140,22 @@ static uint32_t AudioPlayback(const fplAudioDeviceFormat *outFormat, const uint3
 		}
 		++result;
 	}
-#endif
-
-#if 0
+#else
 	result = maxFrameCount;
 	AudioGenerateSineWave(&audioDemo->sineWave, outputSamples, outFormat->type, outFormat->sampleRate, outFormat->channels, maxFrameCount);
 #endif
 
-#if 0
-	result = AudioRenderSamples(audioDemo, maxFrameCount, outputSamples);
+#endif // OPT_OUTPUT_SAMPLES_SINEWAVE_ONLY
+
+
+#if OPT_PLAYBACK_MODE == OPT_PLAYBACK_AUDIOSYSTEM_ONLY
+	// @FIXME(final): Fix hearable error, when the audio stream has finished playing and will repeat
+	AudioFrameCount frameCount = AudioSystemWriteSamples(audioDemo->audioSys, outputSamples, outFormat, maxFrameCount);
+	result = frameCount;
+#endif // OPT_OUTPUT_SAMPLES_SYSTEM_ONLY
+
+#if OPT_AUTO_RENDER_SAMPLES
+	AudioRenderSamples(audioDemo, outputSamples, outFormat, result);
 #endif
 
 	return(result);
@@ -166,7 +180,8 @@ static bool InitAudioData(const fplAudioDeviceFormat *targetFormat, AudioSystem 
 
 	// Generate sine wave for some duration
 	if (generateSineWave) {
-		const double waveDuration = 0.5f;
+		// @FIXME(final): If wave duration is smaller than actual audio buffer, we will hear a bad click
+		const double waveDuration = 0.1f;
 		AudioSineWaveData waveData = *sineWave;
 		AudioHertz sampleRate = audioSys->targetFormat.sampleRate;
 		AudioChannelCount channels = audioSys->targetFormat.channels;
@@ -240,7 +255,7 @@ int main(int argc, char **args) {
 	settings.audio.targetFormat.channels = 2;
 	//settings.audio.deviceFormat.sampleRate = 11025;
 	//settings.audio.deviceFormat.sampleRate = 22050;
-	settings.audio.targetFormat.sampleRate = 44100/10;
+	settings.audio.targetFormat.sampleRate = 44100 / 10;
 	//settings.audio.deviceFormat.sampleRate = 48000;
 
 	// Disable start/stop of audio playback
@@ -284,7 +299,7 @@ int main(int argc, char **args) {
 	// Init audio data
 	if (InitAudioData(&targetAudioFormat, &audioSys, files, fileCount, generateSineWave, &demo.sineWave)) {
 		// Allocate render samples
-		demo.maxFrameCount = targetAudioFormat.bufferSizeInFrames*2;
+		demo.maxFrameCount = targetAudioFormat.bufferSizeInFrames * 2;
 		uint32_t channelCount = audioSys.targetFormat.channels;
 		demo.sampleFormat = fplAudioFormatType_F32;
 		demo.maxSizeBytes = fplGetAudioBufferSizeInBytes(demo.sampleFormat, channelCount, demo.maxFrameCount);
@@ -320,12 +335,15 @@ int main(int argc, char **args) {
 
 				// Audio
 				if (nextSamples) {
+#if !OPT_AUTO_RENDER_SAMPLES
 					AudioFrameCount framesToRender = targetAudioFormat.bufferSizeInFrames / targetAudioFormat.periods;
-					AudioRenderSamples(&demo, framesToRender, tempAudioSamples);
+					// @FIXME(final): Fix hearable error, when the audio stream has finished playing and will repeat
+					AudioFrameCount writtenFrames = AudioSystemWriteSamples(&audioSys, tempAudioSamples, &targetAudioFormat, framesToRender);
+					AudioRenderSamples(&demo, tempAudioSamples, &targetAudioFormat, writtenFrames);
+#endif
 					nextSamples = false;
 				}
 
-#if 1
 				// Render
 				const float w = (float)backBuffer->width;
 				const float h = (float)backBuffer->height;
@@ -352,7 +370,6 @@ int main(int argc, char **args) {
 					int color = period % 2 == 0 ? 0xFFFF0000 : 0xFF00FF00;
 					FillBackRect(backBuffer, posX, posY, posX + barW, posY + barH, color);
 				}
-#endif
 
 				fplVideoFlip();
 			}

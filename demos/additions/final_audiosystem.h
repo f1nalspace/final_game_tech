@@ -108,6 +108,8 @@ extern AudioSource *AudioSystemLoadFileSource(AudioSystem *audioSys, const char 
 extern AudioSampleCount AudioSystemWriteSamples(AudioSystem *audioSys, void *outSamples, const fplAudioDeviceFormat *outFormat, const AudioFrameCount frameCount);
 extern bool AudioSystemPlaySource(AudioSystem *audioSys, const AudioSource *source, const bool repeat, const float volume);
 extern void AudioGenerateSineWave(AudioSineWaveData *waveData, void *outSamples, const fplAudioFormatType outFormat, const AudioHertz outSampleRate, const AudioChannelCount channels, const AudioFrameCount frameCount);
+extern float ConvertToF32(const void *inSamples, const AudioChannelCount inChannel, const fplAudioFormatType inFormat);
+extern void ConvertFromF32(void *outSamples, const float inSampleValue, const AudioChannelCount outChannel, const fplAudioFormatType outFormat);
 #endif // FINAL_AUDIOSYSTEM_H
 
 #if defined(FINAL_AUDIOSYSTEM_IMPLEMENTATION) && !defined(FINAL_AUDIOSYSTEM_IMPLEMENTED)
@@ -277,12 +279,12 @@ extern bool AudioSystemPlaySource(AudioSystem *audioSys, const AudioSource *sour
 	return true;
 }
 
-static float ConvertToF32(uint8_t *inSamples, const AudioChannelCount inChannel, const fplAudioFormatType inFormat) {
+extern float ConvertToF32(const void *inSamples, const AudioChannelCount inChannel, const fplAudioFormatType inFormat) {
 	// @TODO(final): Convert from other audio formats to F32
 	switch (inFormat) {
 		case fplAudioFormatType_S16:
 		{
-			int16_t sampleValue = *(int16_t *)inSamples + inChannel;
+			int16_t sampleValue = *((const int16_t *)inSamples + inChannel);
 			if (sampleValue < 0) {
 				return sampleValue / (float)(INT16_MAX - 1);
 			} else {
@@ -292,7 +294,7 @@ static float ConvertToF32(uint8_t *inSamples, const AudioChannelCount inChannel,
 
 		case fplAudioFormatType_S32:
 		{
-			int32_t sampleValue = *(int32_t *)inSamples + inChannel;
+			int32_t sampleValue = *((const int32_t *)inSamples + inChannel);
 			if (sampleValue < 0) {
 				return sampleValue / (float)(INT32_MAX - 1);
 			} else {
@@ -302,7 +304,7 @@ static float ConvertToF32(uint8_t *inSamples, const AudioChannelCount inChannel,
 
 		case fplAudioFormatType_F32:
 		{
-			float sampleValueF32 = *(float *)inSamples + inChannel;
+			float sampleValueF32 = *((const float *)inSamples + inChannel);
 			return(sampleValueF32);
 		} break;
 
@@ -311,7 +313,7 @@ static float ConvertToF32(uint8_t *inSamples, const AudioChannelCount inChannel,
 	}
 }
 
-static void ConvertFromF32(void *outSamples, const float inSampleValue, const AudioChannelCount outChannel, const fplAudioFormatType outFormat) {
+extern void ConvertFromF32(void *outSamples, const float inSampleValue, const AudioChannelCount outChannel, const fplAudioFormatType outFormat) {
 	// @TODO(final): Convert to other audio formats
 	switch (outFormat) {
 		case fplAudioFormatType_S16:
@@ -404,7 +406,9 @@ static AudioFrameCount MixPlayItems(AudioSystem *audioSys, const AudioFrameCount
 
 	AudioFrameCount result = 0;
 
-#if 0
+#define GENSINEWAVE 0
+
+#if GENSINEWAVE == 1
 	AudioGenerateSineWave(&audioSys->tempWaveData, audioSys->mixingBuffer.samples, fplAudioFormatType_F32, outSampleRate, outChannelCount, maxFrameCount);
 	result = maxFrameCount;
 #else
