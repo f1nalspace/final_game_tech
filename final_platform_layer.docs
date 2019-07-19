@@ -7,17 +7,17 @@
 /*!
 	@mainpage
 	@tableofcontents
-
+	
 	@section section_overview Overview
 
-	Final Platform Layer is a Single-Header-File cross-platform C development library designed to abstract the underlying platform to a simple and easy to use api - providing low level access to (Window, Video, Audio, Input, File/Path IO, Threads, Memory, Hardware, etc.).<br>
+	Final Platform Layer is a Single-Header-File cross-platform C development library, designed to abstract the underlying platform to a simple and easy to use api - providing low level access to the operating system and to hardware devices.<br>
 	<br>
-	The main focus is game/media/simulation development, so the default settings will create a window, setup a OpenGL rendering context and initialize audio playback on any platform.<br>
+	The main focus is rapid game/media/simulation development, so the default settings will create a window, setup a OpenGL rendering context and initialize audio playback on any platform.<br>
 	<br>
 	FPL supports the platforms <b>Windows</b>/<b>Linux</b>/<b>Unix</b> for the architectures <b>x86</b>/<b>x64</b>.<br>
 	The only dependencies are built-in operating system libraries and a <b>C99</b> complaint compiler.<br>
 	<br>
-	It is released under the @subpage page_license "MIT License". This license allows you to use FPL freely in any software.<br>
+	It is released under the @subpage page_license "MIT License". This license allows you to use FPL freely in any software, for private or commercial usages.<br>
 
 	@section section_using_this_documentation How to use this documentation?
 	Use the following links to learn more about FPL:
@@ -302,12 +302,10 @@
 	@section section_category_memory Memory
 	@subpage page_category_memory_handling <br>
 
-	@section section_category_hardware Hardware
+	@section section_category_platform Platform
+	@subpage page_category_platform <br>
 	@subpage page_category_hardware <br>
-
-	@section section_category_software OS/Session
-	@subpage page_category_ossession <br>
-
+	
 	@section section_category_dll Dynamic Library Loading
 	@subpage page_category_dll <br>
 
@@ -472,7 +470,7 @@
 	
 	@section section_category_initialization_tips Tips
 	After releasing FPL you can call @ref fplPlatformInit() again if needed - for example: Finding the proper audio device, Testing for OpenGL compatibility, etc. may require you to call @ref fplPlatformInit() and @ref fplPlatformRelease() multiple times.<br>
-	For more details see @ref page_gettingstarted<br>
+	For more details see @subpage page_gettingstarted <br>
 	<br>
 	Optionally you can use @ref fplMakeDefaultSettings to create a default filled @ref fplSettings structure, which can be directly used for @ref fplPlatformInit()<br>
 	<br>
@@ -1734,7 +1732,7 @@
 	There is no guarantee that you get the desired audio format you specified back!<br>
 	You should always check the @ref fplAudioDeviceFormat "nativeAudioFormat" in your client callback and convert/write the correct samples the audio device expects!<br>
 	<br>
-	For more details see the page: @subpage page_category_audio_writesamples<br>
+	For more details see the page: @subpage page_category_audio_writesamples <br>
 	<br>
 	If needed you can use @ref fplSetDefaultAudioSettings() to fill in just the default video settings inside the @ref fplAudioSettings structure.<br>
 */
@@ -2005,12 +2003,23 @@
 */
 
 /*!
-	@page page_category_ossession Query OS/Session informations
+	@page page_category_platform Query Platform/OS informations
 	@tableofcontents
 
-	FPL provides a couple of functions for querying informations about your operating system.
+	FPL provides a couple of functions for query operating system or platform informations.
 
-	@section section_category_ossession_osinfos Query OS-Infos (Version, Name, Distribution)
+	@section section_category_platform_type Get Current Platform Type/Name
+			Use @ref fplGetPlatformType() to get the current @ref fplPlatformType .<br>
+	This can be useful to do different operations on different platforms.<br>
+	<br>	Use @ref fplGetPlatformName() to get a string representation for the given @ref fplPlatformType .<br>
+	
+	@code{.c}
+	fplPlatformType currentPlatform = fplGetPlatformType();
+	const char *platformName = fplGetPlatformName(currentPlatform);
+	fplConsoleFormatOut("Platform: %s\n", platformName);
+	@endcode
+	
+	@section section_category_platform_os_version Query OS Version, Kernel, Distribution etc.
 
 	You can retrieve the version/name of your operating system by calling @ref fplGetOperatingSystemInfos() .<br>
 	See @ref fplOSInfos for more details.<br>
@@ -2023,7 +2032,7 @@
 	}
 	@endcode
 
-	@section section_category_ossession_username Get current username
+	@section section_category_platform_os_username Get current username
 
 	Use @ref fplGetCurrentUsername() to get the username for the current session.
 
@@ -2115,7 +2124,7 @@
 		// Read the first 4 characters
 		char fourCC[4];
 		read = fplReadFileBlock(&fileHandle, 4, fourCC, sizeof(fourCC));
-		assert(read == 4);
+		fplAssert(read == 4);
 
 		// or
 
@@ -2123,7 +2132,7 @@
 		jpeg_header jpegHeader;
 		size_t read;
 		read = fplReadFileBlock(&fileHandle, sizeof(jpegHeader), &jpegHeader, sizeof(jpegHeader));
-		assert(read == sizeof(jpegHeader));
+		fplAssert(read == sizeof(jpegHeader));
 		fplCloseFile(&fileHandle);
 	}
 	@endcode
@@ -3629,7 +3638,7 @@
 	All these defines have no values set, there are just "defined" - use always defined() for checking them.
 
 	@code{.c}
-	#if defined(FPL_PLATFORM_WIN32)
+	#if defined(FPL_PLATFORM_WINDOWS)
 		// ... Any win32 code you may need
 	#endif // FPL_PLATFORM_WIN32
 
