@@ -296,6 +296,7 @@ struct Assets {
 	ArrayInitializer<BackgroundType, TextureAsset, 256> bgTextures;
 	FontAsset fontMenu;
 	FontAsset fontHud;
+	AudioSource *ballHitSound;
 };
 
 enum class GameMode {
@@ -330,6 +331,8 @@ struct MenuState {
 struct GameState {
 	char dataPath[1024];
 	Assets assets;
+
+	AudioSystem *audioSys;
 
 	Viewport viewport;
 
@@ -664,6 +667,17 @@ static bool LoadTexture(const char* dataPath, const char* filename, const bool r
 	return(result);
 }
 
+static bool LoadSound(AudioSystem *audio, const char *dataPath, const char *filename, AudioSource *&outSource) {
+	char filePath[1024];
+	fplPathCombine(filePath, fplArrayCount(filePath), 2, dataPath, filename);
+	AudioSource *source = AudioSystemLoadFileSource(audio, filePath);
+	bool result = source != fpl_null;
+	if (result) {
+		outSource = source;
+	}
+	return(result);
+}
+
 static bool LoadAssets(GameState& state) {
 	LoadTexture(state.dataPath, "ball.bmp", false, state.assets.ballTexture);
 	LoadTexture(state.dataPath, "bricks.bmp", false, state.assets.bricksTexture);
@@ -686,6 +700,8 @@ static bool LoadAssets(GameState& state) {
 		GLuint texId = AllocateTexture(state.assets.fontHud.desc.atlasWidth, state.assets.fontHud.desc.atlasHeight, state.assets.fontHud.desc.atlasAlphaBitmap, false, GL_NEAREST, true);
 		state.assets.fontHud.texture = ValueToPointer(texId);
 	}
+
+	LoadSound(state.audioSys, state.dataPath, "entry_tone.wav", state.assets.ballHitSound);
 
 	return true;
 }
@@ -766,6 +782,7 @@ extern void GameRelease(GameMemory& gameMemory) {
 extern bool GameInit(GameMemory& gameMemory) {
 	GameState* state = (GameState*)fmemPush(gameMemory.memory, sizeof(GameState), fmemPushFlags_Clear);
 	gameMemory.game = state;
+	state->audioSys = gameMemory.audio;
 	if (!InitGame(*state)) {
 		GameRelease(gameMemory);
 		return(false);
@@ -859,6 +876,9 @@ static void HandleBallCollision(GameState& state, Ball& ball, Entity& other, b2C
 			brick.hitNormal = V2f(manifold.normal.x, manifold.normal.y);
 		}
 	}
+
+	// Play sound
+	AudioSystemPlaySource(state.audioSys, state.assets.ballHitSound, false, 0.5f);
 }
 
 struct CollisionPair {
@@ -1458,6 +1478,7 @@ int main(int argc, char* argv[]) {
 	config.title = "FPL Demo | Crackout";
 	config.hideMouseCursor = true;
 	config.noUpdateRenderSeparation = false;
+	config.audioSampleRate = 44100;
 	int result = GameMain(config);
 	return(result);
 }
