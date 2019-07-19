@@ -5,7 +5,7 @@
 
 typedef struct PCMWaveData {
 	//! Total frame count
-	uint32_t sampleCount;
+	uint32_t frameCount;
 	//! Samples per second (Frequency in Hz)
 	uint32_t samplesPerSecond;
 	//! Bytes per sample

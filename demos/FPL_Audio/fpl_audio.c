@@ -15,6 +15,10 @@ Author:
 	Torsten Spaete
 
 Changelog:
+	## 2019-07-19
+	- Wave form history visualization
+	- Moved sine wave generation out into final_audiosystem.h
+
 	## 2019-05-22
 	- Added support for playing multiple audio files from command line
 
@@ -55,23 +59,95 @@ Changelog:
 -------------------------------------------------------------------------------
 */
 
-#define FPL_NO_WINDOW
 #define FPL_IMPLEMENTATION
 #include <final_platform_layer.h>
-#include <math.h> // sinf
+#define _USE_MATH_DEFINES
+#include <math.h> // sinf, M_PI
 
 #define FINAL_AUDIOSYSTEM_IMPLEMENTATION
 #include <final_audiosystem.h>
 
-static const float PI32 = 3.14159265359f;
+typedef struct AudioDemo {
+	AudioSystem *audioSys;
+	fplAudioFormatType sampleFormat;
+	AudioFrameCount maxFrameCount;
+	size_t maxSizeBytes;
+	AudioFrameCount writeFrameIndex;
+	AudioFrameCount readFrameIndex;
+	float *samples;
+	uint32_t *periods;
+	uint32_t periodCounter;
+	AudioSineWaveData sineWave;
+} AudioDemo;
 
-static uint32_t AudioPlayback(const fplAudioDeviceFormat *outFormat, const uint32_t frameCount, void *outputSamples, void *userData) {
-	AudioSystem *audioSys = (AudioSystem *)userData;
-	uint32_t result = AudioSystemWriteSamples(audioSys, outFormat, frameCount, outputSamples);
+static uint32_t AudioRenderSamples(AudioDemo *audioDemo, AudioFrameCount maxFrameCount, void *outputSamples) {
+	AudioSystem *audioSys = audioDemo->audioSys;
+
+	AudioFrameCount frameCount = AudioSystemWriteSamples(audioSys, outputSamples, &audioSys->targetFormat, maxFrameCount);
+
+	const AudioChannelCount channels = audioSys->targetFormat.channels;
+	const size_t sampleStride = fplGetAudioSampleSizeInBytes(audioDemo->sampleFormat) * channels;
+
+#if 1
+	AudioFrameCount inputFrameIndex = 0;
+	AudioFrameCount remainingFrameCount = frameCount;
+	fplAssert(frameCount <= audioDemo->maxFrameCount);
+	while (remainingFrameCount > 0) {
+		AudioFrameCount remainingFramesInDemo = fplMax(0, (int)(audioDemo->maxFrameCount - audioDemo->writeFrameIndex));
+		AudioFrameCount framesToCopy = remainingFrameCount;
+		if (framesToCopy >= remainingFramesInDemo) {
+			framesToCopy = remainingFramesInDemo;
+		}
+		AudioSampleCount inputSampleIndex = inputFrameIndex * channels;
+		AudioSampleCount outputSampleIndex = audioDemo->writeFrameIndex * channels;
+		size_t samplesSize = framesToCopy * sampleStride;
+		fplMemoryCopy(&audioSys->mixingBuffer.samples[inputSampleIndex], samplesSize, audioDemo->samples + outputSampleIndex);
+		fplMemorySet(&audioDemo->periods[audioDemo->writeFrameIndex], (uint8_t)audioDemo->periodCounter, framesToCopy * sizeof(uint32_t));
+		inputFrameIndex += framesToCopy;
+		remainingFrameCount -= framesToCopy;
+		audioDemo->writeFrameIndex = (audioDemo->writeFrameIndex + framesToCopy) % audioDemo->maxFrameCount;
+		audioDemo->periodCounter++;
+	}
+#else
+	fplMemoryCopy(&audioSys->mixingBuffer.samples[0], sampleStride * frameCount, &audioDemo->samples[0]);
+#endif
+
+	return(frameCount);
+}
+
+
+static uint32_t AudioPlayback(const fplAudioDeviceFormat *outFormat, const uint32_t maxFrameCount, void *outputSamples, void *userData) {
+	AudioDemo *audioDemo = (AudioDemo *)userData;
+
+	uint32_t result = 0;
+
+#if 0
+	// 100% Clean sine wave
+	int16_t *outSamples = (int16_t *)outputSamples;
+	uint32_t wavePeriod = outFormat->sampleRate / audioDemo->sineWave.toneHz;
+	for (uint32_t frameIndex = 0; frameIndex < maxFrameCount; ++frameIndex) {
+		float t = 2.0f * (float)M_PI * (float)audioDemo->sineWave.frameIndex++ / (float)wavePeriod;
+		int16_t sampleValue = (int16_t)(sinf(t) * audioDemo->sineWave.toneVolume * (float)INT16_MAX);
+		for (uint32_t channelIndex = 0; channelIndex < outFormat->channels; ++channelIndex) {
+			*outSamples++ = sampleValue;
+		}
+		++result;
+	}
+#endif
+
+#if 0
+	result = maxFrameCount;
+	AudioGenerateSineWave(&audioDemo->sineWave, outputSamples, outFormat->type, outFormat->sampleRate, outFormat->channels, maxFrameCount);
+#endif
+
+#if 0
+	result = AudioRenderSamples(audioDemo, maxFrameCount, outputSamples);
+#endif
+
 	return(result);
 }
 
-static bool InitAudioData(const fplAudioDeviceFormat *targetFormat, AudioSystem *audioSys, const char **files, const size_t fileCount, const bool generateSineWave) {
+static bool InitAudioData(const fplAudioDeviceFormat *targetFormat, AudioSystem *audioSys, const char **files, const size_t fileCount, const bool generateSineWave, const AudioSineWaveData *sineWave) {
 	if (!AudioSystemInit(audioSys, targetFormat)) {
 		return false;
 	}
@@ -83,52 +159,88 @@ static bool InitAudioData(const fplAudioDeviceFormat *targetFormat, AudioSystem 
 			fplConsoleFormatOut("Loading audio file '%s\n", filePath);
 			AudioSource *source = AudioSystemLoadFileSource(audioSys, filePath);
 			if (source != fpl_null) {
-				AudioSystemPlaySource(audioSys, source, true, 0.25f);
+				//AudioSystemPlaySource(audioSys, source, true, 1.0f);
 			}
 		}
 	}
 
 	// Generate sine wave for some duration
 	if (generateSineWave) {
-		const double duration = 5.0f;
-		const int toneHz = 256;
-		const int toneVolume = 1000;
-		uint32_t sampleCount = (uint32_t)(audioSys->targetFormat.sampleRate * duration + 0.5);
-		AudioSource *source = AudioSystemAllocateSource(audioSys, audioSys->targetFormat.channels, audioSys->targetFormat.sampleRate, fplAudioFormatType_S16, sampleCount);
+		const double waveDuration = 0.5f;
+		AudioSineWaveData waveData = *sineWave;
+		AudioHertz sampleRate = audioSys->targetFormat.sampleRate;
+		AudioChannelCount channels = audioSys->targetFormat.channels;
+		AudioFrameCount frameCount = (AudioFrameCount)(sampleRate * waveDuration + 0.5);
+		AudioSource *source = AudioSystemAllocateSource(audioSys, audioSys->targetFormat.channels, audioSys->targetFormat.sampleRate, fplAudioFormatType_S16, frameCount);
 		if (source != fpl_null) {
-			int16_t *samples = (int16_t *)source->samples;
-			int wavePeriod = source->samplesPerSeconds / toneHz;
-			for (uint32_t sampleIndex = 0; sampleIndex < sampleCount; ++sampleIndex) {
-				double t = 2.0f * PI32 * (double)sampleIndex / (float)wavePeriod;
-				int16_t sampleValue = (int16_t)(sin(t) * toneVolume);
-				for (uint32_t channelIndex = 0; channelIndex < source->channels; ++channelIndex) {
-					*samples++ = sampleValue;
-				}
-			}
+			AudioGenerateSineWave(&waveData, source->samples, source->format, source->samplesPerSeconds, source->channels, source->frameCount);
 			AudioSystemPlaySource(audioSys, source, true, 1.0f);
 		}
 	}
 	return(true);
 }
 
+inline int ClampInt(int value, int min, int max) {
+	int result = value;
+	if (result < min) result = min;
+	if (result > max) result = max;
+	return(result);
+}
+
+static void FillBackRect(fplVideoBackBuffer *backBuffer, float x0, float y0, float x1, float y1, int color) {
+	int minX = (int)(x0 + 0.5f);
+	int minY = (int)(y0 + 0.5f);
+	int maxX = (int)(x1 + 0.5f);
+	int maxY = (int)(y1 + 0.5f);
+	if (minX > maxX) {
+		minX = (int)(x1 + 0.5f);
+		maxX = (int)(x0 + 0.5f);
+	}
+	if (minY > maxY) {
+		minY = (int)(y1 + 0.5f);
+		maxY = (int)(y0 + 0.5f);
+	}
+	int w = (int)backBuffer->width;
+	int h = (int)backBuffer->height;
+	minX = ClampInt(minX, 0, w - 1);
+	maxX = ClampInt(maxX, 0, w - 1);
+	minY = ClampInt(minY, 0, h - 1);
+	maxY = ClampInt(maxY, 0, h - 1);
+	for (int yp = minY; yp <= maxY; ++yp) {
+		uint32_t *pixel = backBuffer->pixels + yp * backBuffer->width + minX;
+		for (int xp = minX; xp <= maxX; ++xp) {
+			*pixel++ = color;
+		}
+	}
+}
+
 int main(int argc, char **args) {
 	size_t fileCount = argc >= 2 ? argc - 1 : 0;
 	const char **files = fileCount > 0 ? args + 1 : fpl_null;
-	const bool generateSineWave = fileCount == 0;
+	const bool generateSineWave = true;
 
 	AudioSystem audioSys = fplZeroInit;
+	AudioDemo demo = fplZeroInit;
+	demo.audioSys = &audioSys;
+	demo.sineWave.toneHz = 256;
+	demo.sineWave.toneVolume = 0.5f;
 
 	//
 	// Settings
 	//
 	fplSettings settings = fplMakeDefaultSettings();
+	fplCopyString("FPL Demo | Audio", settings.window.title, fplArrayCount(settings.window.title));
+
+	settings.video.driver = fplVideoDriverType_Software;
+	settings.video.isAutoSize = true;
+	settings.video.isVSync = true;
 
 	// Set audio device format
 	settings.audio.targetFormat.type = fplAudioFormatType_S16;
 	settings.audio.targetFormat.channels = 2;
 	//settings.audio.deviceFormat.sampleRate = 11025;
 	//settings.audio.deviceFormat.sampleRate = 22050;
-	settings.audio.targetFormat.sampleRate = 44100;
+	settings.audio.targetFormat.sampleRate = 44100/10;
 	//settings.audio.deviceFormat.sampleRate = 48000;
 
 	// Disable start/stop of audio playback
@@ -150,9 +262,7 @@ int main(int argc, char **args) {
 	fplPlatformRelease();
 
 	// Initialize the platform with audio enabled and the settings
-	settings.audio.clientReadCallback = AudioPlayback;
-	settings.audio.userData = &audioSys;
-	if (!fplPlatformInit(fplInitFlags_Audio, &settings)) {
+	if (!fplPlatformInit(fplInitFlags_All, &settings)) {
 		return -1;
 	}
 
@@ -160,12 +270,29 @@ int main(int argc, char **args) {
 	fplGetAudioHardwareFormat(&targetAudioFormat);
 
 	// You can overwrite the client read callback and user data if you want to
-	fplSetAudioClientReadCallback(AudioPlayback, &audioSys);
+	fplSetAudioClientReadCallback(AudioPlayback, &demo);
 
 	const fplSettings *currentSettings = fplGetCurrentSettings();
 
+	uint32_t framesPerSeconds = 1000 / 60;
+	uint32_t audioDelay = 10;
+	uint32_t audioDurationInMs = framesPerSeconds + audioDelay;
+	uint32_t audioFrameCount = fplGetAudioBufferSizeInFrames(targetAudioFormat.sampleRate, audioDurationInMs);
+
+	void *tempAudioSamples = fplMemoryAllocate(targetAudioFormat.bufferSizeInBytes);
+
 	// Init audio data
-	if (InitAudioData(&targetAudioFormat, &audioSys, files, fileCount, generateSineWave)) {
+	if (InitAudioData(&targetAudioFormat, &audioSys, files, fileCount, generateSineWave, &demo.sineWave)) {
+		// Allocate render samples
+		demo.maxFrameCount = targetAudioFormat.bufferSizeInFrames*2;
+		uint32_t channelCount = audioSys.targetFormat.channels;
+		demo.sampleFormat = fplAudioFormatType_F32;
+		demo.maxSizeBytes = fplGetAudioBufferSizeInBytes(demo.sampleFormat, channelCount, demo.maxFrameCount);
+		demo.samples = fplMemoryAllocate(demo.maxSizeBytes);
+		demo.periods = fplMemoryAllocate(demo.maxFrameCount * sizeof(int32_t));
+		demo.readFrameIndex = 0;
+		demo.writeFrameIndex = 0;
+
 		// Start audio playback (This will start calling clientReadCallback regulary)
 		if (fplPlayAudio() == fplAudioResult_Success) {
 			// Print output infos
@@ -175,9 +302,60 @@ int main(int argc, char **args) {
 			uint32_t outChannels = audioSys.targetFormat.channels;
 			fplConsoleFormatOut("Playing %lu audio sources (%s, %s, %lu Hz, %lu channels)\n", audioSys.playItems.count, outDriver, outFormat, outSampleRate, outChannels);
 
-			// Wait for any key presses
-			fplConsoleFormatOut("Press any key to stop playback\n", outFormat, outSampleRate, outChannels);
-			fplConsoleWaitForCharInput();
+			fplVideoBackBuffer *backBuffer = fplGetVideoBackBuffer();
+
+			// Loop
+			bool nextSamples = false;
+			while (fplWindowUpdate()) {
+				fplEvent ev;
+				while (fplPollEvent(&ev)) {
+					if (ev.type == fplEventType_Keyboard) {
+						if (ev.keyboard.type == fplKeyboardEventType_Button) {
+							if (ev.keyboard.buttonState == fplButtonState_Release && ev.keyboard.mappedKey == fplKey_Space) {
+								nextSamples = true;
+							}
+						}
+					}
+				}
+
+				// Audio
+				if (nextSamples) {
+					AudioFrameCount framesToRender = targetAudioFormat.bufferSizeInFrames / targetAudioFormat.periods;
+					AudioRenderSamples(&demo, framesToRender, tempAudioSamples);
+					nextSamples = false;
+				}
+
+#if 1
+				// Render
+				const float w = (float)backBuffer->width;
+				const float h = (float)backBuffer->height;
+				FillBackRect(backBuffer, 0, 0, w, h, 0xFF000000);
+
+				const AudioFrameCount frameCount = demo.maxFrameCount;
+				const uint32_t maxBarCount = frameCount;
+				const float paddingX = 0.0f;
+				const float spaceBetweenBars = 0.0f;
+
+				const float maxRangeW = w - paddingX * 2.0f;
+				const float barW = (maxRangeW - spaceBetweenBars * (maxBarCount - 1)) / maxBarCount;
+				const float maxBarH = h;
+
+				for (AudioFrameCount frameIndex = 0; frameIndex < frameCount; ++frameIndex) {
+					AudioSampleCount sampleIndex = frameIndex * channelCount;
+					int32_t period = demo.periods[frameIndex];
+					float sampleValue = demo.samples[sampleIndex + 0];
+					float t = frameIndex / (float)frameCount;
+					uint32_t barIndex = (uint32_t)(t * maxBarCount + 0.5f);
+					float barH = maxBarH * sampleValue;
+					float posX = paddingX + barIndex * barW + barIndex * spaceBetweenBars;
+					float posY = h * 0.5f - barH * 0.5f;
+					int color = period % 2 == 0 ? 0xFFFF0000 : 0xFF00FF00;
+					FillBackRect(backBuffer, posX, posY, posX + barW, posY + barH, color);
+				}
+#endif
+
+				fplVideoFlip();
+			}
 
 			// Stop audio playback
 			fplStopAudio();
@@ -185,6 +363,10 @@ int main(int argc, char **args) {
 		// Release audio data
 		AudioSystemShutdown(&audioSys);
 	}
+
+	fplMemoryFree(tempAudioSamples);
+	fplMemoryFree(demo.periods);
+	fplMemoryFree(demo.samples);
 
 	// Release the platform
 	fplPlatformRelease();

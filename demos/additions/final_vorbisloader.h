@@ -71,9 +71,9 @@ extern bool LoadVorbisFromBuffer(const uint8_t *buffer, const size_t bufferSize,
 	outWave->samplesPerSecond = sampleRate;
 	outWave->channelCount = channels;
 	outWave->formatType = fplAudioFormatType_S16;
-	outWave->sampleCount = samples;
+	outWave->frameCount = samples;
 
-	size_t sampleMemorySize = outWave->bytesPerSample * outWave->channelCount * outWave->sampleCount;
+	size_t sampleMemorySize = outWave->bytesPerSample * outWave->channelCount * outWave->frameCount;
 	outWave->samplesSize = sampleMemorySize;
 	outWave->samples = (uint8_t *)fplMemoryAllocate(sampleMemorySize);
 	fplMemoryCopy(output, sampleMemorySize, outWave->samples);

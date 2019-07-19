@@ -97,9 +97,9 @@ static bool InitAudioData(const fplAudioDeviceFormat *targetFormat, AudioSystem 
 
 	// Generate sine wave for some duration
 	if (generateSineWave) {
-		const double duration = 5.0f;
+		const double duration = 0.5f;
 		const int toneHz = 256;
-		const int toneVolume = 1000;
+		const int toneVolume = INT16_MAX / 2;
 		uint32_t sampleCount = (uint32_t)(audioSys->targetFormat.sampleRate * duration + 0.5);
 		source = AudioSystemAllocateSource(audioSys, audioSys->targetFormat.channels, audioSys->targetFormat.sampleRate, fplAudioFormatType_S16, sampleCount);
 		if (source != fpl_null) {
@@ -120,7 +120,7 @@ static bool InitAudioData(const fplAudioDeviceFormat *targetFormat, AudioSystem 
 
 int main(int argc, char **args) {
 	const char *filePath = (argc == 2) ? args[1] : fpl_null;
-	const bool generateSineWave = fplGetStringLength(filePath) == 0;
+	const bool generateSineWave = true;
 
 	// Use default audio format from FPL as target format
 	fplAudioTargetFormat targetFormat;

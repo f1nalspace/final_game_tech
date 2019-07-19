@@ -134,11 +134,11 @@ extern bool LoadWaveFromBuffer(const uint8_t *buffer, const size_t bufferSize, P
 						fplAssert((waveFormat.bitsPerSample > 0) && (waveFormat.bitsPerSample % 8 == 0));
 						uint32_t channelCount = waveFormat.numberOfChannels;
 						uint32_t bytesPerSample = waveFormat.bitsPerSample / 8;
-						uint32_t sampleCount = dataSize / (channelCount * bytesPerSample);
+						uint32_t frameCount = dataSize / (channelCount * bytesPerSample);
 						fplAssert(waveFormat.numberOfChannels <= 2);
 						outWave->channelCount = channelCount;
 						outWave->samplesPerSecond = waveFormat.samplesPerSecond;
-						outWave->sampleCount = sampleCount;
+						outWave->frameCount = frameCount;
 						outWave->bytesPerSample = bytesPerSample;
 
 						outWave->formatType = fplAudioFormatType_None;
@@ -154,7 +154,7 @@ extern bool LoadWaveFromBuffer(const uint8_t *buffer, const size_t bufferSize, P
 							else
 								outWave->formatType = fplAudioFormatType_F32;
 						}
-						size_t sampleMemorySize = bytesPerSample * channelCount * sampleCount;
+						size_t sampleMemorySize = bytesPerSample * channelCount * frameCount;
 						fplAssert(sampleMemorySize == dataSize);
 						outWave->samplesSize = sampleMemorySize;
 						outWave->samples = (uint8_t *)fplMemoryAllocate(sampleMemorySize);
