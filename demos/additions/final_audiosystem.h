@@ -322,9 +322,6 @@ static void ConvertFromF32(const float inSampleValue, uint8_t *outSamples, const
 	}
 }
 
-
-
-
 static void RemovePlayItem(AudioPlayItems *playItems, AudioPlayItem *playItem) {
 	if (playItem->prev != fpl_null) {
 		playItem->prev->next = playItem->next;
@@ -449,7 +446,7 @@ static uint32_t MixPlayItems(AudioSystem *audioSys, const uint32_t maxSampleCoun
 					}
 				}
 			} else {
-				// @TODO(final): Convert from odd freqencies such as 22050 Hz to 48000 Hz, etc.
+				// @TODO(final): Convert from odd freqencies such as 22050 Hz to 48000 / 41000 to 48000 Hz, etc.
 				// This requires real DSP!
 			}
 		}
