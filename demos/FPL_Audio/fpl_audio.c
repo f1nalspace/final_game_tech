@@ -173,7 +173,7 @@ static bool InitAudioData(const fplAudioDeviceFormat *targetFormat, AudioSystem 
 			fplConsoleFormatOut("Loading audio file '%s\n", filePath);
 			AudioSource *source = AudioSystemLoadFileSource(audioSys, filePath);
 			if (source != fpl_null) {
-				//AudioSystemPlaySource(audioSys, source, true, 1.0f);
+				AudioSystemPlaySource(audioSys, source, true, 1.0f);
 			}
 		}
 	}
@@ -232,7 +232,7 @@ static void FillBackRect(fplVideoBackBuffer *backBuffer, float x0, float y0, flo
 int main(int argc, char **args) {
 	size_t fileCount = argc >= 2 ? argc - 1 : 0;
 	const char **files = fileCount > 0 ? args + 1 : fpl_null;
-	const bool generateSineWave = true;
+	const bool generateSineWave = fileCount == 0;
 
 	AudioSystem audioSys = fplZeroInit;
 	AudioDemo demo = fplZeroInit;
