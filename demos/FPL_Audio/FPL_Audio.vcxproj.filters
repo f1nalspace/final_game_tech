@@ -4,19 +4,19 @@
     <ClInclude Include="..\additions\final_audiosystem.h">
       <Filter>additions</Filter>
     </ClInclude>
-    <ClInclude Include="..\additions\final_waveloader.h">
-      <Filter>additions</Filter>
-    </ClInclude>
     <ClInclude Include="..\..\final_platform_layer.h">
       <Filter>dependencies</Filter>
     </ClInclude>
     <ClInclude Include="..\additions\final_audio.h">
       <Filter>additions</Filter>
     </ClInclude>
+    <ClInclude Include="..\additions\final_mp3loader.h">
+      <Filter>additions</Filter>
+    </ClInclude>
     <ClInclude Include="..\additions\final_vorbisloader.h">
       <Filter>additions</Filter>
     </ClInclude>
-    <ClInclude Include="..\additions\final_mp3loader.h">
+    <ClInclude Include="..\additions\final_waveloader.h">
       <Filter>additions</Filter>
     </ClInclude>
   </ItemGroup>

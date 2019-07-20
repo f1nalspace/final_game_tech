@@ -38,10 +38,17 @@ extern bool TestMP3Header(const uint8_t *buffer, const size_t bufferSize) {
 	if (bufferSize >= 4) {
 		mp3dec_t dec = fplZeroInit;
 		mp3dec_init(&dec);
+
+		size_t id3v2size = mp3dec_skip_id3v2(buffer, bufferSize);
+		if (id3v2size > 0) {
+			buffer += id3v2size;
+		}
+		
 		dec.header[0] = buffer[0];
 		dec.header[1] = buffer[1];
 		dec.header[2] = buffer[2];
 		dec.header[3] = buffer[3];
+
 		if (bufferSize > 4 && dec.header[0] == 0xff && hdr_compare(dec.header, buffer)) {
 			return(true);
 		}
@@ -66,7 +73,7 @@ extern bool LoadMP3FromBuffer(const uint8_t *buffer, const size_t bufferSize, PC
 		outWave->samplesPerSecond = fileInfo.hz;
 		outWave->formatType = fplAudioFormatType_S16;
 		outWave->bytesPerSample = fplGetAudioSampleSizeInBytes(outWave->formatType);
-		outWave->frameCount = fileInfo.samples / fileInfo.channels;
+		outWave->frameCount = (uint32_t)(fileInfo.samples / fileInfo.channels);
 
 		size_t sampleMemorySize = outWave->bytesPerSample * outWave->channelCount * outWave->frameCount;
 		outWave->samplesSize = sampleMemorySize;

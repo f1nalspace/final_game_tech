@@ -707,9 +707,9 @@ static bool LoadAssets(GameState& state) {
 		state.assets.fontHud.texture = ValueToPointer(texId);
 	}
 
-	LoadSound(state.audioSys, state.dataPath, "bounce.wav", state.assets.ballHitSound);
+	LoadSound(state.audioSys, state.dataPath, "bounce_44100hz.wav", state.assets.ballHitSound);
 
-	LoadSound(state.audioSys, state.dataPath, "music.mp3", state.assets.music);
+	LoadSound(state.audioSys, state.dataPath, "music_44100hz.mp3", state.assets.music);
 
 	return true;
 }

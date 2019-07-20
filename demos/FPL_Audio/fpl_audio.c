@@ -232,7 +232,7 @@ static void FillBackRect(fplVideoBackBuffer *backBuffer, float x0, float y0, flo
 int main(int argc, char **args) {
 	size_t fileCount = argc >= 2 ? argc - 1 : 0;
 	const char **files = fileCount > 0 ? args + 1 : fpl_null;
-	const bool generateSineWave = fileCount == 0;
+	const bool generateSineWave = true;
 
 	AudioSystem audioSys = fplZeroInit;
 	AudioDemo demo = fplZeroInit;
@@ -255,7 +255,7 @@ int main(int argc, char **args) {
 	settings.audio.targetFormat.channels = 2;
 	//settings.audio.deviceFormat.sampleRate = 11025;
 	//settings.audio.deviceFormat.sampleRate = 22050;
-	settings.audio.targetFormat.sampleRate = 44100 / 10;
+	settings.audio.targetFormat.sampleRate = 44100;
 	//settings.audio.deviceFormat.sampleRate = 48000;
 
 	// Disable start/stop of audio playback
@@ -358,6 +358,7 @@ int main(int argc, char **args) {
 				const float barW = (maxRangeW - spaceBetweenBars * (maxBarCount - 1)) / maxBarCount;
 				const float maxBarH = h;
 
+#if 0
 				for (AudioFrameCount frameIndex = 0; frameIndex < frameCount; ++frameIndex) {
 					AudioSampleCount sampleIndex = frameIndex * channelCount;
 					int32_t period = demo.periods[frameIndex];
@@ -370,6 +371,7 @@ int main(int argc, char **args) {
 					int color = period % 2 == 0 ? 0xFFFF0000 : 0xFF00FF00;
 					FillBackRect(backBuffer, posX, posY, posX + barW, posY + barH, color);
 				}
+#endif
 
 				fplVideoFlip();
 			}

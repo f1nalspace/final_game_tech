@@ -40,6 +40,7 @@ int mp3dec_decode_frame(mp3dec_t *dec, const uint8_t *mp3, int mp3_bytes, mp3d_s
 #endif /* __cplusplus */
 
 #endif /* MINIMP3_H */
+
 #if defined(MINIMP3_IMPLEMENTATION) && !defined(_MINIMP3_IMPLEMENTATION_GUARD)
 #define _MINIMP3_IMPLEMENTATION_GUARD
 
@@ -231,7 +232,7 @@ static void bs_init(bs_t *bs, const uint8_t *data, int bytes)
     bs->limit = bytes*8;
 }
 
-static uint32_t get_bits(bs_t *bs, int n)
+static uint32_t get_mp3_bits(bs_t *bs, int n)
 {
     uint32_t next, cache = 0, s = bs->pos & 7;
     int shl = n + s;
@@ -361,7 +362,7 @@ static void L12_read_scalefactors(bs_t *bs, uint8_t *pba, uint8_t *scfcod, int b
         {
             if (mask & m)
             {
-                int b = get_bits(bs, 6);
+                int b = get_mp3_bits(bs, 6);
                 s = g_deq_L12[ba*3 - 6 + b % 3]*(1 << 21 >> b/3);
             }
             *scf++ = s;
@@ -395,18 +396,18 @@ static void L12_read_scale_info(const uint8_t *hdr, bs_t *bs, L12_scale_info *sc
             ba_code_tab = g_bitalloc_code_tab + subband_alloc->tab_offset;
             subband_alloc++;
         }
-        ba = ba_code_tab[get_bits(bs, ba_bits)];
+        ba = ba_code_tab[get_mp3_bits(bs, ba_bits)];
         sci->bitalloc[2*i] = ba;
         if (i < sci->stereo_bands)
         {
-            ba = ba_code_tab[get_bits(bs, ba_bits)];
+            ba = ba_code_tab[get_mp3_bits(bs, ba_bits)];
         }
         sci->bitalloc[2*i + 1] = sci->stereo_bands ? ba : 0;
     }
 
     for (i = 0; i < 2*sci->total_bands; i++)
     {
-        sci->scfcod[i] = sci->bitalloc[i] ? HDR_IS_LAYER_1(hdr) ? 2 : get_bits(bs, 2) : 6;
+        sci->scfcod[i] = sci->bitalloc[i] ? HDR_IS_LAYER_1(hdr) ? 2 : get_mp3_bits(bs, 2) : 6;
     }
 
     L12_read_scalefactors(bs, sci->bitalloc, sci->scfcod, sci->total_bands*2, sci->scf);
@@ -433,12 +434,12 @@ static int L12_dequantize_granule(float *grbuf, bs_t *bs, L12_scale_info *sci, i
                     int half = (1 << (ba - 1)) - 1;
                     for (k = 0; k < group_size; k++)
                     {
-                        dst[k] = (float)((int)get_bits(bs, ba) - half);
+                        dst[k] = (float)((int)get_mp3_bits(bs, ba) - half);
                     }
                 } else
                 {
                     unsigned mod = (2 << (ba - 17)) + 1;    /* 3, 5, 9 */
-                    unsigned code = get_bits(bs, mod + 2 - (mod >> 3));  /* 5, 7, 10 */
+                    unsigned code = get_mp3_bits(bs, mod + 2 - (mod >> 3));  /* 5, 7, 10 */
                     for (k = 0; k < group_size; k++, code /= mod)
                     {
                         dst[k] = (float)((int)(code % mod - mod/2));
@@ -508,11 +509,11 @@ static int L3_read_side_info(bs_t *bs, L3_gr_info_t *gr, const uint8_t *hdr)
     if (HDR_TEST_MPEG1(hdr))
     {
         gr_count *= 2;
-        main_data_begin = get_bits(bs, 9);
-        scfsi = get_bits(bs, 7 + gr_count);
+        main_data_begin = get_mp3_bits(bs, 9);
+        scfsi = get_mp3_bits(bs, 7 + gr_count);
     } else
     {
-        main_data_begin = get_bits(bs, 8 + gr_count) >> gr_count;
+        main_data_begin = get_mp3_bits(bs, 8 + gr_count) >> gr_count;
     }
 
     do
@@ -521,26 +522,26 @@ static int L3_read_side_info(bs_t *bs, L3_gr_info_t *gr, const uint8_t *hdr)
         {
             scfsi <<= 4;
         }
-        gr->part_23_length = (uint16_t)get_bits(bs, 12);
+        gr->part_23_length = (uint16_t)get_mp3_bits(bs, 12);
         part_23_sum += gr->part_23_length;
-        gr->big_values = (uint16_t)get_bits(bs,  9);
+        gr->big_values = (uint16_t)get_mp3_bits(bs,  9);
         if (gr->big_values > 288)
         {
             return -1;
         }
-        gr->global_gain = (uint8_t)get_bits(bs, 8);
-        gr->scalefac_compress = (uint16_t)get_bits(bs, HDR_TEST_MPEG1(hdr) ? 4 : 9);
+        gr->global_gain = (uint8_t)get_mp3_bits(bs, 8);
+        gr->scalefac_compress = (uint16_t)get_mp3_bits(bs, HDR_TEST_MPEG1(hdr) ? 4 : 9);
         gr->sfbtab = g_scf_long[sr_idx];
         gr->n_long_sfb  = 22;
         gr->n_short_sfb = 0;
-        if (get_bits(bs, 1))
+        if (get_mp3_bits(bs, 1))
         {
-            gr->block_type = (uint8_t)get_bits(bs, 2);
+            gr->block_type = (uint8_t)get_mp3_bits(bs, 2);
             if (!gr->block_type)
             {
                 return -1;
             }
-            gr->mixed_block_flag = (uint8_t)get_bits(bs, 1);
+            gr->mixed_block_flag = (uint8_t)get_mp3_bits(bs, 1);
             gr->region_count[0] = 7;
             gr->region_count[1] = 255;
             if (gr->block_type == SHORT_BLOCK_TYPE)
@@ -559,26 +560,26 @@ static int L3_read_side_info(bs_t *bs, L3_gr_info_t *gr, const uint8_t *hdr)
                     gr->n_short_sfb = 30;
                 }
             }
-            tables = get_bits(bs, 10);
+            tables = get_mp3_bits(bs, 10);
             tables <<= 5;
-            gr->subblock_gain[0] = (uint8_t)get_bits(bs, 3);
-            gr->subblock_gain[1] = (uint8_t)get_bits(bs, 3);
-            gr->subblock_gain[2] = (uint8_t)get_bits(bs, 3);
+            gr->subblock_gain[0] = (uint8_t)get_mp3_bits(bs, 3);
+            gr->subblock_gain[1] = (uint8_t)get_mp3_bits(bs, 3);
+            gr->subblock_gain[2] = (uint8_t)get_mp3_bits(bs, 3);
         } else
         {
             gr->block_type = 0;
             gr->mixed_block_flag = 0;
-            tables = get_bits(bs, 15);
-            gr->region_count[0] = (uint8_t)get_bits(bs, 4);
-            gr->region_count[1] = (uint8_t)get_bits(bs, 3);
+            tables = get_mp3_bits(bs, 15);
+            gr->region_count[0] = (uint8_t)get_mp3_bits(bs, 4);
+            gr->region_count[1] = (uint8_t)get_mp3_bits(bs, 3);
             gr->region_count[2] = 255;
         }
         gr->table_select[0] = (uint8_t)(tables >> 10);
         gr->table_select[1] = (uint8_t)((tables >> 5) & 31);
         gr->table_select[2] = (uint8_t)((tables) & 31);
-        gr->preflag = HDR_TEST_MPEG1(hdr) ? get_bits(bs, 1) : (gr->scalefac_compress >= 500);
-        gr->scalefac_scale = (uint8_t)get_bits(bs, 1);
-        gr->count1_table = (uint8_t)get_bits(bs, 1);
+        gr->preflag = HDR_TEST_MPEG1(hdr) ? get_mp3_bits(bs, 1) : (gr->scalefac_compress >= 500);
+        gr->scalefac_scale = (uint8_t)get_mp3_bits(bs, 1);
+        gr->count1_table = (uint8_t)get_mp3_bits(bs, 1);
         gr->scfsi = (uint8_t)((scfsi >> 12) & 15);
         scfsi <<= 4;
         gr++;
@@ -613,7 +614,7 @@ static void L3_read_scalefactors(uint8_t *scf, uint8_t *ist_pos, const uint8_t *
                 int max_scf = (scfsi < 0) ? (1 << bits) - 1 : -1;
                 for (k = 0; k < cnt; k++)
                 {
-                    int s = get_bits(bitbuf, bits);
+                    int s = get_mp3_bits(bitbuf, bits);
                     ist_pos[k] = (s == max_scf ? -1 : s);
                     scf[k] = s;
                 }
@@ -1722,7 +1723,7 @@ int mp3dec_decode_frame(mp3dec_t *dec, const uint8_t *mp3, int mp3_bytes, mp3d_s
     bs_init(bs_frame, hdr + HDR_SIZE, frame_size - HDR_SIZE);
     if (HDR_IS_CRC(hdr))
     {
-        get_bits(bs_frame, 16);
+        get_mp3_bits(bs_frame, 16);
     }
 
     if (info->layer == 3)
