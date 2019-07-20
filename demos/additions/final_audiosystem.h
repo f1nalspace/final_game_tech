@@ -64,6 +64,7 @@ typedef struct AudioPlayItem {
 	const AudioSource *source;
 	struct AudioPlayItem *next;
 	struct AudioPlayItem *prev;
+	uint64_t id;
 	float volume;
 	AudioFrameCount framesPlayed;
 	bool isRepeat;
@@ -82,6 +83,7 @@ typedef struct AudioPlayItems {
 	fplMutexHandle lock;
 	AudioPlayItem *first;
 	AudioPlayItem *last;
+	volatile uint64_t idCounter;
 	size_t count;
 } AudioPlayItems;
 
@@ -106,7 +108,8 @@ extern void AudioSystemShutdown(AudioSystem *audioSys);
 extern AudioSource *AudioSystemAllocateSource(AudioSystem *audioSys, const AudioChannelCount channels, const AudioHertz sampleRate, const fplAudioFormatType type, const AudioFrameCount frameCount);
 extern AudioSource *AudioSystemLoadFileSource(AudioSystem *audioSys, const char *filePath);
 extern AudioSampleCount AudioSystemWriteSamples(AudioSystem *audioSys, void *outSamples, const fplAudioDeviceFormat *outFormat, const AudioFrameCount frameCount);
-extern bool AudioSystemPlaySource(AudioSystem *audioSys, const AudioSource *source, const bool repeat, const float volume);
+extern uint64_t AudioSystemPlaySource(AudioSystem *audioSys, const AudioSource *source, const bool repeat, const float volume);
+extern void AudioSystemStopSource(AudioSystem *audioSys, const uint64_t playId);
 extern void AudioGenerateSineWave(AudioSineWaveData *waveData, void *outSamples, const fplAudioFormatType outFormat, const AudioHertz outSampleRate, const AudioChannelCount channels, const AudioFrameCount frameCount);
 extern float ConvertToF32(const void *inSamples, const AudioChannelCount inChannel, const fplAudioFormatType inFormat);
 extern void ConvertFromF32(void *outSamples, const float inSampleValue, const AudioChannelCount outChannel, const fplAudioFormatType outFormat);
@@ -248,16 +251,59 @@ extern AudioSource *AudioSystemLoadFileSource(AudioSystem *audioSys, const char 
 	return(source);
 }
 
-extern bool AudioSystemPlaySource(AudioSystem *audioSys, const AudioSource *source, const bool repeat, const float volume) {
+static void RemovePlayItem(AudioPlayItems *playItems, AudioPlayItem *playItem) {
+	if (playItem->prev != fpl_null) {
+		playItem->prev->next = playItem->next;
+		if (playItem->next != fpl_null) {
+			playItem->next->prev = playItem->prev;
+		}
+	}
+	if (playItem->next != fpl_null) {
+		playItem->next->prev = playItem->prev;
+		if (playItem->prev != fpl_null) {
+			playItem->prev->next = playItem->next;
+		}
+	}
+	if (playItem == playItems->last) {
+		playItems->first = fpl_null;
+	} else if (playItem == playItems->first) {
+		playItems->first = playItem->next;
+	}
+	if (playItems->first == fpl_null) {
+		playItems->last = fpl_null;
+	}
+	FreeAudioMemory(playItem);
+	--playItems->count;
+}
+
+extern void AudioSystemStopSource(AudioSystem *audioSys, const uint64_t playId) {
+	AudioPlayItem *playItem = audioSys->playItems.first;
+	AudioPlayItem *foundPlayItem = fpl_null;
+	while (playItem != fpl_null) {
+		if (playItem->id == playId) {
+			foundPlayItem = playItem;
+			break;
+		}
+		playItem = playItem->next;
+	}
+	if (foundPlayItem != fpl_null) {
+		fplMutexLock(&audioSys->playItems.lock);
+		RemovePlayItem(&audioSys->playItems, foundPlayItem);
+		fplMutexUnlock(&audioSys->playItems.lock);
+	}
+}
+
+extern uint64_t AudioSystemPlaySource(AudioSystem *audioSys, const AudioSource *source, const bool repeat, const float volume) {
 	if ((audioSys == fpl_null) || (source == fpl_null)) {
-		return false;
+		return(0);
 	}
 
 	AudioPlayItem *playItem = (AudioPlayItem *)AllocateAudioMemory(audioSys, sizeof(AudioPlayItem));
 	if (playItem == fpl_null) {
-		return false;
+		return(0);
 	}
 
+	playItem->id = fplAtomicFetchAndAddU64(&audioSys->playItems.idCounter, 1);
 	playItem->next = playItem->prev = fpl_null;
 	playItem->framesPlayed = 0;
 	playItem->source = source;
@@ -276,7 +322,7 @@ extern bool AudioSystemPlaySource(AudioSystem *audioSys, const AudioSource *sour
 	++audioSys->playItems.count;
 	fplMutexUnlock(&audioSys->playItems.lock);
 
-	return true;
+	return(playItem->id);
 }
 
 extern float ConvertToF32(const void *inSamples, const AudioChannelCount inChannel, const fplAudioFormatType inFormat) {
@@ -339,31 +385,6 @@ extern void ConvertFromF32(void *outSamples, const float inSampleValue, const Au
 	}
 }
 
-static void RemovePlayItem(AudioPlayItems *playItems, AudioPlayItem *playItem) {
-	if (playItem->prev != fpl_null) {
-		playItem->prev->next = playItem->next;
-		if (playItem->next != fpl_null) {
-			playItem->next->prev = playItem->prev;
-		}
-	}
-	if (playItem->next != fpl_null) {
-		playItem->next->prev = playItem->prev;
-		if (playItem->prev != fpl_null) {
-			playItem->prev->next = playItem->next;
-		}
-	}
-	if (playItem == playItems->last) {
-		playItems->first = fpl_null;
-	} else if (playItem == playItems->first) {
-		playItems->first = playItem->next;
-	}
-	if (playItems->first == fpl_null) {
-		playItems->last = fpl_null;
-	}
-	FreeAudioMemory(playItem);
-	--playItems->count;
-}
-
 static AudioSampleCount MixSamples(float *outSamples, const AudioChannelCount outChannels, const float *inSamples, const AudioChannelCount inChannels) {
 	AudioSampleCount mixedSampleCount = 0;
 	if (inChannels > 0 && outChannels > 0) {
@@ -385,7 +406,7 @@ static AudioSampleCount MixSamples(float *outSamples, const AudioChannelCount ou
 }
 
 extern void AudioGenerateSineWave(AudioSineWaveData *waveData, void *outSamples, const fplAudioFormatType outFormat, const AudioHertz outSampleRate, const AudioChannelCount channels, const AudioFrameCount frameCount) {
-	uint8_t *samples = outSamples;
+	uint8_t *samples = (uint8_t *)outSamples;
 	int wavePeriod = outSampleRate / waveData->toneHz;
 	size_t sampleStride = fplGetAudioSampleSizeInBytes(outFormat) * channels;
 	for (AudioFrameCount i = 0; i < frameCount; ++i) {

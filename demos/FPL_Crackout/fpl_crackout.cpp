@@ -297,6 +297,8 @@ struct Assets {
 	FontAsset fontMenu;
 	FontAsset fontHud;
 	AudioSource *ballHitSound;
+	AudioSource *music;
+	uint64_t musicPlayId;
 };
 
 enum class GameMode {
@@ -647,6 +649,10 @@ static void LoadLevel(GameState& state, int levelSeed) {
 	}
 
 	GlueBallOnPaddle(state, &state.ball.ball);
+
+	// Play music
+	AudioSystemStopSource(state.audioSys, state.assets.musicPlayId);
+	state.assets.musicPlayId = AudioSystemPlaySource(state.audioSys, state.assets.music, true, 0.5f);
 }
 
 
@@ -701,7 +707,9 @@ static bool LoadAssets(GameState& state) {
 		state.assets.fontHud.texture = ValueToPointer(texId);
 	}
 
-	LoadSound(state.audioSys, state.dataPath, "entry_tone.wav", state.assets.ballHitSound);
+	LoadSound(state.audioSys, state.dataPath, "bounce.wav", state.assets.ballHitSound);
+
+	LoadSound(state.audioSys, state.dataPath, "music.mp3", state.assets.music);
 
 	return true;
 }

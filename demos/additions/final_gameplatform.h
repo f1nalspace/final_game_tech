@@ -65,7 +65,6 @@ extern int GameMain(const GameConfiguration &config);
 #include "final_opengl_render.h"
 
 static void UpdateKeyboardButtonState(ButtonState &newState, const fpl_b32 isDown) {
-	fplAssert(newState.endedDown != isDown);
 	newState.endedDown = isDown;
 	++newState.halfTransitionCount;
 }
@@ -268,7 +267,7 @@ static void ProcessEvents(Input *currentInput, Input *prevInput, GameWindowActiv
 
 static uint32_t GameAudioPlayback(const fplAudioDeviceFormat *outFormat, const uint32_t frameCount, void *outputSamples, void *userData) {
 	AudioSystem *audioSys = (AudioSystem *)userData;
-	uint32_t result = AudioSystemWriteSamples(audioSys, outFormat, frameCount, (uint8_t *)outputSamples);
+	uint32_t result = AudioSystemWriteSamples(audioSys, outputSamples, outFormat, frameCount);
 	return(result);
 }
 
