@@ -25,13 +25,18 @@
     <ClInclude Include="..\..\final_dynamic_opengl.h" />
     <ClInclude Include="..\..\final_platform_layer.h" />
     <ClInclude Include="..\additions\final_assets.h" />
+    <ClInclude Include="..\additions\final_audio.h" />
+    <ClInclude Include="..\additions\final_audiosystem.h" />
     <ClInclude Include="..\additions\final_fontloader.h" />
     <ClInclude Include="..\additions\final_game.h" />
     <ClInclude Include="..\additions\final_gameplatform.h" />
     <ClInclude Include="..\additions\final_geometry.h" />
     <ClInclude Include="..\additions\final_math.h" />
+    <ClInclude Include="..\additions\final_mp3loader.h" />
     <ClInclude Include="..\additions\final_opengl_render.h" />
     <ClInclude Include="..\additions\final_render.h" />
+    <ClInclude Include="..\additions\final_vorbisloader.h" />
+    <ClInclude Include="..\additions\final_waveloader.h" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <VCProjectVersion>15.0</VCProjectVersion>

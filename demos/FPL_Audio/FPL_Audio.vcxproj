@@ -168,6 +168,7 @@
     <ClInclude Include="..\..\final_platform_layer.h" />
     <ClInclude Include="..\additions\final_audio.h" />
     <ClInclude Include="..\additions\final_audiosystem.h" />
+    <ClInclude Include="..\additions\final_mp3loader.h" />
     <ClInclude Include="..\additions\final_vorbisloader.h" />
     <ClInclude Include="..\additions\final_waveloader.h" />
   </ItemGroup>
