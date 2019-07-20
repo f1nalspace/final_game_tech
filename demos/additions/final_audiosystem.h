@@ -30,18 +30,31 @@ typedef enum AudioFileFormat {
 	AudioFileFormat_Vorbis,
 } AudioFileFormat;
 
-#define MAX_AUDIOBUFFER_FRAME_COUNT 4096
-#define MAX_AUDIOBUFFER_BYTES_PER_SAMPLE 4
-#define MAX_AUDIOBUFFER_CHANNEL_COUNT 2
+typedef struct AudioFormat {
+	AudioHertz sampleRate;
+	AudioChannelCount channels;
+	fplAudioFormatType format;
+} AudioFormat;
+
 typedef struct AudioBuffer {
-	uint8_t samples[MAX_AUDIOBUFFER_BYTES_PER_SAMPLE * MAX_AUDIOBUFFER_CHANNEL_COUNT * MAX_AUDIOBUFFER_FRAME_COUNT];
-	AudioFrameCount maxFrameCount;
-	AudioFrameCount framesRemaining;
-	AudioFrameCount frameIndex;
+	uint8_t *samples;
+	size_t bufferSize;
+	AudioFrameCount frameCount;
+	fpl_b32 isAllocated;
 } AudioBuffer;
 
+typedef struct AudioStream {
+	uint8_t *sampleBuffer;
+	size_t bufferSize;
+	AudioFrameCount maxFrameCount;
+	AudioFrameCount framesRemaining;
+	AudioFrameCount writeFrameIndex;
+} AudioStream;
+
+#define MAX_AUDIOMIXING_CHANNEL_COUNT 2
+#define MAX_AUDIOMIXING_FRAME_COUNT 4096
 typedef struct AudioMixingBuffer {
-	float samples[MAX_AUDIOBUFFER_CHANNEL_COUNT * MAX_AUDIOBUFFER_FRAME_COUNT];
+	float samples[MAX_AUDIOMIXING_CHANNEL_COUNT * MAX_AUDIOMIXING_FRAME_COUNT];
 	AudioFrameCount maxFrameCount;
 } AudioMixingBuffer;
 
@@ -50,13 +63,9 @@ typedef struct AudioSourceID {
 } AudioSourceID;
 
 typedef struct AudioSource {
-	uint8_t *samples;
-	size_t samplesSize;
+	AudioBuffer buffer;
+	AudioFormat format;
 	AudioSourceID id;
-	AudioFrameCount frameCount;
-	AudioHertz samplesPerSeconds;
-	AudioChannelCount channels;
-	fplAudioFormatType format;
 	struct AudioSource *next;
 } AudioSource;
 
@@ -94,9 +103,9 @@ typedef struct AudioSineWaveData {
 } AudioSineWaveData;
 
 typedef struct AudioSystem {
-	AudioBuffer conversionBuffer;
+	AudioFormat targetFormat;
+	AudioStream conversionBuffer;
 	AudioMixingBuffer mixingBuffer;
-	fplAudioDeviceFormat targetFormat;
 	AudioSineWaveData tempWaveData;
 	AudioSources sources;
 	AudioPlayItems playItems;
@@ -136,41 +145,87 @@ static void FreeAudioMemory(void *ptr) {
 	fplMemoryFree(ptr);
 }
 
+static void AllocateAudioStream(AudioSystem *audioSys, AudioStream *audioStream, const AudioFormat *audioFormat, const AudioFrameCount frameCount) {
+	fplClearStruct(audioStream);
+	audioStream->maxFrameCount = frameCount;
+	audioStream->bufferSize = fplGetAudioBufferSizeInBytes(audioFormat->format, audioFormat->channels, frameCount);
+	audioStream->sampleBuffer = (uint8_t *)AllocateAudioMemory(audioSys, audioStream->bufferSize);
+}
+
+static void InitAudioBuffer(AudioBuffer *audioBuffer, const AudioFormat *audioFormat, const AudioFrameCount frameCount) {
+	fplClearStruct(audioBuffer);
+	audioBuffer->frameCount = frameCount;
+	audioBuffer->bufferSize = fplGetAudioBufferSizeInBytes(audioFormat->format, audioFormat->channels, frameCount);
+	audioBuffer->isAllocated = false;
+}
+
+static bool AllocateAudioBuffer(AudioSystem *audioSys, AudioBuffer *audioBuffer, const AudioFormat *audioFormat, const AudioFrameCount frameCount) {
+	InitAudioBuffer(audioBuffer, audioFormat, frameCount);
+	audioBuffer->samples = (uint8_t *)AllocateAudioMemory(audioSys, audioBuffer->bufferSize);
+	audioBuffer->isAllocated = audioBuffer->samples != fpl_null;
+	return(audioBuffer->isAllocated);
+}
+
+static void FreeAudioBuffer(AudioSystem *audioSys, AudioBuffer *audioBuffer) {
+	if (audioBuffer->isAllocated) {
+		if (audioBuffer->samples != fpl_null) {
+			FreeAudioMemory(audioBuffer->samples);
+		}
+		fplClearStruct(audioBuffer);
+	}
+}
+
+static void FreeAudioStream(AudioSystem *audioSys, AudioStream *audioStream) {
+	if (audioStream->sampleBuffer != fpl_null) {
+		FreeAudioMemory(audioStream->sampleBuffer);
+	}
+	fplClearStruct(audioStream);
+}
+
 extern bool AudioSystemInit(AudioSystem *audioSys, const fplAudioDeviceFormat *targetFormat) {
 	if (audioSys == fpl_null) {
 		return false;
 	}
 	fplClearStruct(audioSys);
-	fplCopyStruct(targetFormat, &audioSys->targetFormat);
+	audioSys->targetFormat.channels = targetFormat->channels;
+	audioSys->targetFormat.format = targetFormat->type;
+	audioSys->targetFormat.sampleRate = targetFormat->sampleRate;
 	if (!fplMutexInit(&audioSys->sources.lock)) {
 		return false;
 	}
 	if (!fplMutexInit(&audioSys->playItems.lock)) {
 		return false;
 	}
-	audioSys->conversionBuffer.maxFrameCount = MAX_AUDIOBUFFER_FRAME_COUNT;
-	audioSys->mixingBuffer.maxFrameCount = MAX_AUDIOBUFFER_FRAME_COUNT;
+	AllocateAudioStream(audioSys, &audioSys->conversionBuffer, &audioSys->targetFormat, MAX_AUDIOMIXING_FRAME_COUNT);
+	audioSys->mixingBuffer.maxFrameCount = MAX_AUDIOMIXING_FRAME_COUNT;
 	audioSys->tempWaveData.toneHz = 256;
 	audioSys->tempWaveData.toneVolume = 0.5f;
 	return(true);
 }
 
 extern AudioSource *AudioSystemAllocateSource(AudioSystem *audioSys, const AudioChannelCount channels, const AudioHertz sampleRate, const fplAudioFormatType type, const AudioFrameCount frameCount) {
+	// Compute audio buffer
+	AudioFormat audioFormat = fplZeroInit;
+	audioFormat.channels = channels;
+	audioFormat.sampleRate = sampleRate;
+	audioFormat.format = type;
+
+	AudioBuffer audioBuffer = fplZeroInit;
+	InitAudioBuffer(&audioBuffer, &audioFormat, frameCount);
+
 	// Allocate one memory block for source struct, some padding and the sample data
-	size_t samplesSize = fplGetAudioBufferSizeInBytes(type, channels, frameCount);
-	size_t memSize = sizeof(AudioSource) + sizeof(size_t) + samplesSize;
+	size_t memSize = sizeof(AudioSource) + sizeof(size_t) + audioBuffer.bufferSize;
 	void *mem = AllocateAudioMemory(audioSys, memSize);
 	if (mem == fpl_null) {
 		return fpl_null;
 	}
 
 	AudioSource *result = (AudioSource *)mem;
-	result->samplesSize = samplesSize;
-	result->samples = (uint8_t *)mem + sizeof(AudioSource) + sizeof(size_t);
-	result->frameCount = frameCount;
-	result->channels = channels;
-	result->format = type;
-	result->samplesPerSeconds = sampleRate;
+	result->format = audioFormat;
+	result->buffer = audioBuffer;
+	result->buffer.samples = (uint8_t *)mem + sizeof(AudioSource) + sizeof(size_t);
+	result->buffer.isAllocated = false;
+
 	return(result);
 }
 
@@ -231,8 +286,8 @@ extern AudioSource *AudioSystemLoadFileSource(AudioSystem *audioSys, const char 
 	if (source == fpl_null) {
 		return fpl_null;
 	}
-	fplAssert(source->samplesSize >= loadedData.samplesSize);
-	fplMemoryCopy(loadedData.samples, loadedData.samplesSize, source->samples);
+	fplAssert(source->buffer.bufferSize >= loadedData.samplesSize);
+	fplMemoryCopy(loadedData.samples, loadedData.samplesSize, source->buffer.samples);
 	source->id.value = fplAtomicAddAndFetchSize(&audioSys->sources.idCounter);
 
 	FreeWave(&loadedData);
@@ -441,22 +496,24 @@ static AudioFrameCount MixPlayItems(AudioSystem *audioSys, const AudioFrameCount
 		float *outSamples = audioSys->mixingBuffer.samples;
 
 		const AudioSource *source = item->source;
-		fplAssert(item->framesPlayed < source->frameCount);
+		const AudioFormat *format = &item->source->format;
+		const AudioBuffer *buffer = &item->source->buffer;
+		fplAssert(item->framesPlayed < buffer->frameCount);
 
-		AudioHertz inSampleRate = source->samplesPerSeconds;
-		AudioFrameCount inTotalFrameCount = source->frameCount;
-		AudioChannelCount inChannelCount = source->channels;
-		fplAudioFormatType inFormat = source->format;
-		size_t inBytesPerSample = fplGetAudioSampleSizeInBytes(source->format);
+		AudioHertz inSampleRate = format->sampleRate;
+		AudioFrameCount inTotalFrameCount = buffer->frameCount;
+		AudioChannelCount inChannelCount = format->channels;
+		fplAudioFormatType inFormat = format->format;
+		size_t inBytesPerSample = fplGetAudioSampleSizeInBytes(inFormat);
 
-		uint8_t *inSamples = source->samples + item->framesPlayed * (inChannelCount * inBytesPerSample);
+		uint8_t *inSamples = source->buffer.samples + item->framesPlayed * (inChannelCount * inBytesPerSample);
 		AudioFrameCount inRemainingFrameCount = inTotalFrameCount - item->framesPlayed;
 
 		if (inSampleRate == outSampleRate) {
 			// Sample rates are equal, just write out the samples
 			const AudioFrameCount inFrameCount = fplMin(maxFrameCount, inRemainingFrameCount);
 			for (AudioFrameCount i = 0; i < inFrameCount; ++i) {
-				float inSampleValues[MAX_AUDIOBUFFER_CHANNEL_COUNT];
+				float inSampleValues[MAX_AUDIOMIXING_CHANNEL_COUNT];
 				for (AudioChannelCount inChannelIndex = 0; inChannelIndex < inChannelCount; ++inChannelIndex) {
 					inSampleValues[inChannelIndex] = ConvertToF32(inSamples, inChannelIndex, inFormat) * item->volume;
 				}
@@ -474,7 +531,7 @@ static AudioFrameCount MixPlayItems(AudioSystem *audioSys, const AudioFrameCount
 					const int upsamplingFactor = outSampleRate / inSampleRate;
 					const AudioFrameCount inFrameCount = fplMin(maxFrameCount / upsamplingFactor, inRemainingFrameCount);
 					for (AudioFrameCount i = 0; i < inFrameCount; ++i) {
-						float inSampleValues[MAX_AUDIOBUFFER_CHANNEL_COUNT];
+						float inSampleValues[MAX_AUDIOMIXING_CHANNEL_COUNT];
 						for (AudioChannelCount inChannelIndex = 0; inChannelIndex < inChannelCount; ++inChannelIndex) {
 							inSampleValues[inChannelIndex] = ConvertToF32(inSamples, inChannelIndex, inFormat) * item->volume;
 						}
@@ -492,7 +549,7 @@ static AudioFrameCount MixPlayItems(AudioSystem *audioSys, const AudioFrameCount
 					const int downsamplingCount = inSampleRate / outSampleRate;
 					const AudioFrameCount inFrameCount = fplMin(maxFrameCount * downsamplingCount, inRemainingFrameCount);
 					for (AudioFrameCount i = 0; i < inFrameCount; i += downsamplingCount) {
-						float inSampleValues[MAX_AUDIOBUFFER_CHANNEL_COUNT];
+						float inSampleValues[MAX_AUDIOMIXING_CHANNEL_COUNT];
 						uint8_t *inSamplesForIndex = inSamples + (i * inBytesPerSample * inChannelCount);
 						for (AudioChannelCount inChannelIndex = 0; inChannelIndex < inChannelCount; ++inChannelIndex) {
 							inSampleValues[inChannelIndex] = ConvertToF32(inSamplesForIndex, inChannelIndex, inFormat) * item->volume;
@@ -523,7 +580,7 @@ static AudioFrameCount MixPlayItems(AudioSystem *audioSys, const AudioFrameCount
 	while (playItem != fpl_null) {
 		AudioPlayItem *next = playItem->next;
 		if (!playItem->isFinished) {
-			if (playItem->framesPlayed >= playItem->source->frameCount) {
+			if (playItem->framesPlayed >= playItem->source->buffer.frameCount) {
 				playItem->isFinished = true;
 			}
 		}
@@ -565,12 +622,12 @@ static AudioSampleCount ConvertSamplesFromF32(const float *inSamples, const Audi
 
 static bool FillConversionBuffer(AudioSystem *audioSys, const AudioFrameCount maxFrameCount) {
 	audioSys->conversionBuffer.framesRemaining = 0;
-	audioSys->conversionBuffer.frameIndex = 0;
-	uint8_t *outSamples = audioSys->conversionBuffer.samples;
-	size_t outBytesPerSample = fplGetAudioSampleSizeInBytes(audioSys->targetFormat.type);
+	audioSys->conversionBuffer.writeFrameIndex = 0;
+	uint8_t *outSamples = audioSys->conversionBuffer.sampleBuffer;
+	size_t outBytesPerSample = fplGetAudioSampleSizeInBytes(audioSys->targetFormat.format);
 	AudioChannelCount outChannelCount = audioSys->targetFormat.channels;
 	AudioHertz outSampleRate = audioSys->targetFormat.sampleRate;
-	fplAudioFormatType outFormat = audioSys->targetFormat.type;
+	fplAudioFormatType outFormat = audioSys->targetFormat.format;
 
 	AudioFrameCount mixFrameCount = MixPlayItems(audioSys, maxFrameCount);
 
@@ -587,17 +644,17 @@ static bool FillConversionBuffer(AudioSystem *audioSys, const AudioFrameCount ma
 extern AudioSampleCount AudioSystemWriteSamples(AudioSystem *audioSys, void *outSamples, const fplAudioDeviceFormat *outFormat, const AudioFrameCount frameCount) {
 	fplAssert(audioSys != NULL);
 	fplAssert(audioSys->targetFormat.sampleRate == outFormat->sampleRate);
-	fplAssert(audioSys->targetFormat.type == outFormat->type);
+	fplAssert(audioSys->targetFormat.format == outFormat->type);
 	fplAssert(audioSys->targetFormat.channels == outFormat->channels);
 	fplAssert(audioSys->targetFormat.channels <= 2);
 
 	AudioSampleCount result = 0;
 
-	size_t outputSampleStride = fplGetAudioFrameSizeInBytes(audioSys->targetFormat.type, audioSys->targetFormat.channels);
+	size_t outputSampleStride = fplGetAudioFrameSizeInBytes(audioSys->targetFormat.format, audioSys->targetFormat.channels);
 	size_t maxOutputSampleBufferSize = outputSampleStride * frameCount;
 
-	AudioBuffer *convBuffer = &audioSys->conversionBuffer;
-	size_t maxConversionAudioBufferSize = fplGetAudioBufferSizeInBytes(audioSys->targetFormat.type, audioSys->targetFormat.channels, convBuffer->maxFrameCount);
+	AudioStream *convBuffer = &audioSys->conversionBuffer;
+	size_t maxConversionAudioBufferSize = fplGetAudioBufferSizeInBytes(audioSys->targetFormat.format, audioSys->targetFormat.channels, convBuffer->maxFrameCount);
 
 	AudioFrameCount remainingFrames = frameCount;
 	while (remainingFrames > 0) {
@@ -607,16 +664,16 @@ extern AudioSampleCount AudioSystemWriteSamples(AudioSystem *audioSys, void *out
 			AudioFrameCount framesToRead = fplMin(remainingFrames, maxFramesToRead);
 			size_t bytesToCopy = framesToRead * outputSampleStride;
 
-			size_t sourcePosition = convBuffer->frameIndex * outputSampleStride;
+			size_t sourcePosition = convBuffer->writeFrameIndex * outputSampleStride;
 			fplAssert(sourcePosition < maxConversionAudioBufferSize);
 
 			size_t destPosition = (frameCount - remainingFrames) * outputSampleStride;
 			fplAssert(destPosition < maxOutputSampleBufferSize);
 
-			fplMemoryCopy((uint8_t *)convBuffer->samples + sourcePosition, bytesToCopy, (uint8_t *)outSamples + destPosition);
+			fplMemoryCopy((uint8_t *)convBuffer->sampleBuffer + sourcePosition, bytesToCopy, (uint8_t *)outSamples + destPosition);
 
 			remainingFrames -= framesToRead;
-			audioSys->conversionBuffer.frameIndex += framesToRead;
+			audioSys->conversionBuffer.writeFrameIndex += framesToRead;
 			audioSys->conversionBuffer.framesRemaining -= framesToRead;
 			result += framesToRead;
 		}
@@ -672,6 +729,8 @@ extern void AudioSystemShutdown(AudioSystem *audioSys) {
 
 		ClearPlayItems(&audioSys->playItems);
 		ReleaseSources(&audioSys->sources);
+
+		FreeAudioStream(audioSys, &audioSys->conversionBuffer);
 
 		fplMutexDestroy(&audioSys->playItems.lock);
 		fplMutexDestroy(&audioSys->sources.lock);

@@ -188,7 +188,7 @@ static bool InitAudioData(const fplAudioDeviceFormat *targetFormat, AudioSystem 
 		AudioFrameCount frameCount = (AudioFrameCount)(sampleRate * waveDuration + 0.5);
 		AudioSource *source = AudioSystemAllocateSource(audioSys, audioSys->targetFormat.channels, audioSys->targetFormat.sampleRate, fplAudioFormatType_S16, frameCount);
 		if (source != fpl_null) {
-			AudioGenerateSineWave(&waveData, source->samples, source->format, source->samplesPerSeconds, source->channels, source->frameCount);
+			AudioGenerateSineWave(&waveData, source->buffer.samples, source->format.format, source->format.sampleRate, source->format.channels, source->buffer.frameCount);
 			AudioSystemPlaySource(audioSys, source, true, 1.0f);
 		}
 	}
@@ -312,7 +312,7 @@ int main(int argc, char **args) {
 		if (fplPlayAudio() == fplAudioResult_Success) {
 			// Print output infos
 			const char *outDriver = fplGetAudioDriverString(currentSettings->audio.driver);
-			const char *outFormat = fplGetAudioFormatString(audioSys.targetFormat.type);
+			const char *outFormat = fplGetAudioFormatString(audioSys.targetFormat.format);
 			uint32_t outSampleRate = audioSys.targetFormat.sampleRate;
 			uint32_t outChannels = audioSys.targetFormat.channels;
 			fplConsoleFormatOut("Playing %lu audio sources (%s, %s, %lu Hz, %lu channels)\n", audioSys.playItems.count, outDriver, outFormat, outSampleRate, outChannels);
