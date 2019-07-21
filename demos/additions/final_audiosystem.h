@@ -311,25 +311,35 @@ extern AudioSource *AudioSystemLoadFileSource(AudioSystem *audioSys, const char 
 }
 
 static void RemovePlayItem(AudioPlayItems *playItems, AudioPlayItem *playItem) {
-	if (playItem->prev != fpl_null) {
-		playItem->prev->next = playItem->next;
-		if (playItem->next != fpl_null) {
-			playItem->next->prev = playItem->prev;
+	if (playItems->first == playItems->last) {
+		// Remove single item
+		playItems->first = playItems->last = fpl_null;
+	} else 	if (playItem == playItems->last) {
+		// Remove at end
+		if (playItems->first == playItems->last) {
+			playItems->first = playItems->last = fpl_null;
+		} else {
+			playItems->last = playItem->prev;
+			playItems->last->next = fpl_null;
 		}
-	}
-	if (playItem->next != fpl_null) {
-		playItem->next->prev = playItem->prev;
-		if (playItem->prev != fpl_null) {
-			playItem->prev->next = playItem->next;
-		}
-	}
-	if (playItem == playItems->last) {
-		playItems->first = fpl_null;
 	} else if (playItem == playItems->first) {
-		playItems->first = playItem->next;
-	}
-	if (playItems->first == fpl_null) {
-		playItems->last = fpl_null;
+		// Remove at start
+		if (playItems->first == playItems->last) {
+			playItems->first = playItems->last = fpl_null;
+		} else {
+			playItems->first = playItem->next;
+			playItems->first->prev = fpl_null;
+		}
+	} else {
+		// Remove in the middle
+		AudioPlayItem *cur = playItems->first;
+		while (cur != playItem) {
+			cur = cur->next;
+		}
+		cur->prev->next = cur->next;
+		if (cur->next != fpl_null) {
+			cur->next->prev = cur->prev;
+		}
 	}
 	FreeAudioMemory(playItem);
 	--playItems->count;
@@ -539,7 +549,7 @@ static AudioFrameCount MixPlayItems(AudioSystem *audioSys, const AudioFrameCount
 			bool isEven = (outSampleRate > inSampleRate) ? ((outSampleRate % inSampleRate) == 0) : ((inSampleRate % outSampleRate) == 0);
 			if (isEven) {
 				if (outSampleRate > inSampleRate) {
-					// Simple Upsampling (2x, 3x, 4x, 5x, 6x etc.)
+					// Simple Upsampling (2x, 4x, 6x, 8x etc.)
 					const int upsamplingFactor = outSampleRate / inSampleRate;
 					const AudioFrameCount inFrameCount = fplMin(maxFrameCount / upsamplingFactor, inRemainingFrameCount);
 					for (AudioFrameCount i = 0; i < inFrameCount; ++i) {
@@ -570,12 +580,10 @@ static AudioFrameCount MixPlayItems(AudioSystem *audioSys, const AudioFrameCount
 				}
 			} else {
 				if (inSampleRate > outSampleRate) {
-					// @TODO(final): Downsampling (Example: 48000 to 41000)
+					// @TODO(final): Linear-Downsampling (Example: 48000 to 41000)
 				} else if (inSampleRate < outSampleRate) {
-					// @TODO(final): Upsampling (Example: 41000 to 48000)
+					// @TODO(final): Linear-Upsampling (Example: 41000 to 48000)
 				}
-				// @TODO(final): Convert from odd freqencies such as 22050 Hz to 48000 / 41000 to 48000 Hz, etc.
-				// This requires real DSP!
 			}
 		}
 
@@ -589,6 +597,7 @@ static AudioFrameCount MixPlayItems(AudioSystem *audioSys, const AudioFrameCount
 
 		item = item->next;
 	}
+
 	result = maxOutSampleCount / outChannelCount;
 #endif
 
