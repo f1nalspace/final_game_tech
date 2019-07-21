@@ -181,7 +181,7 @@ static bool InitAudioData(const fplAudioDeviceFormat *targetFormat, AudioSystem 
 	// Generate sine wave for some duration
 	if (generateSineWave) {
 		// @FIXME(final): If wave duration is smaller than actual audio buffer, we will hear a bad click
-		const double waveDuration = 0.1f;
+		const double waveDuration = 10.0f;
 		AudioSineWaveData waveData = *sineWave;
 		AudioHertz sampleRate = audioSys->targetFormat.sampleRate;
 		AudioChannelCount channels = audioSys->targetFormat.channels;
