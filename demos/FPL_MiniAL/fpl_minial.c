@@ -77,7 +77,7 @@ static uint32_t AudioPlayback(mal_device* pDevice, mal_uint32 frameCount, void* 
 	outFormat.type = MapMALFormatToFPLFormat(pDevice->format);
 	outFormat.bufferSizeInFrames = pDevice->bufferSizeInFrames;
 	fplAssert(outFormat.type != fplAudioFormatType_None);
-	uint32_t result = AudioSystemWriteSamples(audioSys, &outFormat, frameCount, (uint8_t *)pSamples);
+	AudioFrameCount result = AudioSystemWriteSamples(audioSys, pSamples, &outFormat, frameCount);
 	return(result);
 }
 
@@ -103,12 +103,12 @@ static bool InitAudioData(const fplAudioDeviceFormat *targetFormat, AudioSystem 
 		uint32_t sampleCount = (uint32_t)(audioSys->targetFormat.sampleRate * duration + 0.5);
 		source = AudioSystemAllocateSource(audioSys, audioSys->targetFormat.channels, audioSys->targetFormat.sampleRate, fplAudioFormatType_S16, sampleCount);
 		if (source != fpl_null) {
-			int16_t *samples = (int16_t *)source->samples;
-			int wavePeriod = source->samplesPerSeconds / toneHz;
+			int16_t *samples = (int16_t *)source->buffer.samples;
+			int wavePeriod = source->format.sampleRate / toneHz;
 			for (uint32_t sampleIndex = 0; sampleIndex < sampleCount; ++sampleIndex) {
 				double t = 2.0f * PI32 * (double)sampleIndex / (float)wavePeriod;
 				int16_t sampleValue = (int16_t)(sin(t) * toneVolume);
-				for (uint32_t channelIndex = 0; channelIndex < source->channels; ++channelIndex) {
+				for (uint32_t channelIndex = 0; channelIndex < source->format.channels; ++channelIndex) {
 					*samples++ = sampleValue;
 				}
 			}
