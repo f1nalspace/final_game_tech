@@ -19,7 +19,7 @@ Author:
 
 Changelog:
 	## 2019-04-27
-	- Use Vec2Normalize instead of diviing by length
+	- Use Vec2Normalize instead of dividing by length
 
 	## 2018-09-24
 	- Reflect api changes in FPL 0.9.2
