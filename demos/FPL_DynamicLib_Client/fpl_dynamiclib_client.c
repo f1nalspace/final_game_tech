@@ -1,3 +1,23 @@
+/*
+-------------------------------------------------------------------------------
+Name:
+	FPL-Demo | Dynamic Library Client
+
+Description:
+	Showing how to use FPL as a dynamic shared library.
+
+Requirements:
+	- C99 Compiler
+
+Author:
+	Torsten Spaete
+
+Changelog:
+	## 2019-07-22
+	- Initial version
+-------------------------------------------------------------------------------
+*/
+
 // Force the inclusion of the main entry point
 #define FPL_ENTRYPOINT
 // Use FPL as DLL client and import every public function
