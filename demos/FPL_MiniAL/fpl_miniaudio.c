@@ -1,20 +1,23 @@
 /*
 -------------------------------------------------------------------------------
 Name:
-	FPL-Demo | mini_al
+	FPL-Demo | miniaudio
 
 Description:
-	This demo shows how to use the mini-al library with FPL.
+	This demo shows how to use the miniaudio library with FPL.
 
 Requirements:
 	- C99 Compiler
 	- Final Platform Layer
-	- mini_al
+	- miniaudio 0.9.5+
 
 Author:
 	Torsten Spaete
 
 Changelog:
+	## 2019-07-22
+	- Changed: Migrated from mini_al to miniaudio (Rebrand, Api-Change)
+
 	## 2018-09-30
 	- Initial version
 -------------------------------------------------------------------------------
@@ -29,55 +32,55 @@ Changelog:
 #define FINAL_AUDIOSYSTEM_IMPLEMENTATION
 #include <final_audiosystem.h>
 
-#define MINI_AL_IMPLEMENTATION
-#define MAL_USE_RUNTIME_LINKING_FOR_PTHREAD
-#include <minial/mini_al.h>
+#define MINIAUDIO_IMPLEMENTATION
+#define MA_USE_RUNTIME_LINKING_FOR_PTHREAD
+#include <miniaudio/miniaudio.h>
 
 static const float PI32 = 3.14159265359f;
 
-static fplAudioFormatType MapMALFormatToFPLFormat(const mal_format mformat) {
+static fplAudioFormatType MapMALFormatToFPLFormat(const ma_format mformat) {
 	switch (mformat) {
-		case mal_format_f32:
+		case ma_format_f32:
 			return fplAudioFormatType_F32;
-		case mal_format_s32:
+		case ma_format_s32:
 			return fplAudioFormatType_S32;
-		case mal_format_s24:
+		case ma_format_s24:
 			return fplAudioFormatType_S24;
-		case mal_format_s16:
+		case ma_format_s16:
 			return fplAudioFormatType_S16;
-		case mal_format_u8:
+		case ma_format_u8:
 			return fplAudioFormatType_U8;
 		default:
 			return fplAudioFormatType_None;
 	}
 }
 
-static mal_format MapFPLFormatToMALFormat(const fplAudioFormatType format) {
+static ma_format MapFPLFormatToMALFormat(const fplAudioFormatType format) {
 	switch (format) {
 		case fplAudioFormatType_F32:
-			return mal_format_f32;
+			return ma_format_f32;
 		case fplAudioFormatType_S32:
-			return mal_format_s32;
+			return ma_format_s32;
 		case fplAudioFormatType_S24:
-			return mal_format_s24;
+			return ma_format_s24;
 		case fplAudioFormatType_S16:
-			return mal_format_s16;
+			return ma_format_s16;
 		case fplAudioFormatType_U8:
-			return mal_format_u8;
+			return ma_format_u8;
 		default:
-			return mal_format_unknown;
+			return ma_format_unknown;
 	}
 }
 
-static uint32_t AudioPlayback(mal_device* pDevice, mal_uint32 frameCount, void* pSamples) {
+static uint32_t AudioPlayback(ma_device* pDevice, void* pOutput, const void* pInput, ma_uint32 frameCount) {
 	AudioSystem *audioSys = (AudioSystem *)pDevice->pUserData;
 	fplAudioDeviceFormat outFormat = fplZeroInit;
-	outFormat.channels = pDevice->channels;
+	outFormat.channels = pDevice->playback.channels;
 	outFormat.sampleRate = pDevice->sampleRate;
-	outFormat.type = MapMALFormatToFPLFormat(pDevice->format);
-	outFormat.bufferSizeInFrames = pDevice->bufferSizeInFrames;
+	outFormat.type = MapMALFormatToFPLFormat(pDevice->playback.format);
+	outFormat.bufferSizeInFrames = pDevice->playback.internalBufferSizeInFrames;
 	fplAssert(outFormat.type != fplAudioFormatType_None);
-	AudioFrameCount result = AudioSystemWriteSamples(audioSys, pSamples, &outFormat, frameCount);
+	AudioSampleIndex result = AudioSystemWriteSamples(audioSys, pOutput, &outFormat, frameCount);
 	return(result);
 }
 
@@ -120,7 +123,7 @@ static bool InitAudioData(const fplAudioDeviceFormat *targetFormat, AudioSystem 
 
 int main(int argc, char **args) {
 	const char *filePath = (argc == 2) ? args[1] : fpl_null;
-	const bool generateSineWave = true;
+	const bool generateSineWave = (filePath == fpl_null);
 
 	// Use default audio format from FPL as target format
 	fplAudioTargetFormat targetFormat;
@@ -133,39 +136,45 @@ int main(int argc, char **args) {
 	AudioSystem audioSys = fplZeroInit;
 
 	// Init audio playback
-	mal_format malFormat = MapFPLFormatToMALFormat(targetFormat.type);
-	mal_device_config malDeviceConfig = mal_device_config_init_playback(malFormat, targetFormat.channels, targetFormat.sampleRate, AudioPlayback);
-	mal_device malDevice;
-	mal_context malContext;
-	mal_result malResult;
+	ma_format maFormat = MapFPLFormatToMALFormat(targetFormat.type);
+	ma_device_config maDeviceConfig = ma_device_config_init(ma_device_type_playback);
+	maDeviceConfig.playback.channels = targetFormat.channels;
+	maDeviceConfig.playback.format = maFormat;
+	maDeviceConfig.sampleRate = targetFormat.sampleRate;
+	maDeviceConfig.dataCallback = AudioPlayback;
+	maDeviceConfig.pUserData = &audioSys;
+
+	ma_device maDevice;
+	ma_context maContext;
+	ma_result maResult;
 
 #if 1
-	mal_backend malBackends[] = {
-		mal_backend_dsound,
-		mal_backend_wasapi,
-		mal_backend_winmm,
-		mal_backend_alsa,
-		mal_backend_pulseaudio,
+	ma_backend malBackends[] = {
+		ma_backend_dsound,
+		ma_backend_wasapi,
+		ma_backend_winmm,
+		ma_backend_alsa,
+		ma_backend_pulseaudio,
 	};
-	mal_uint32 malBackendCount = fplArrayCount(malBackends);
+	ma_uint32 malBackendCount = fplArrayCount(malBackends);
 #else
-	mal_backend *malBackends = fpl_null;
-	mal_uint32 malBackendCount = 0;
+	ma_backend *malBackends = fpl_null;
+	ma_uint32 malBackendCount = 0;
 #endif
 
-	malResult = mal_context_init(malBackends, malBackendCount, NULL, &malContext);
-	if (malResult != MAL_SUCCESS) {
+	maResult = ma_context_init(malBackends, malBackendCount, NULL, &maContext);
+	if (maResult != MA_SUCCESS) {
 		return -1;
 	}
-	malResult = mal_device_init(&malContext, mal_device_type_playback, NULL, &malDeviceConfig, &audioSys, &malDevice);
-	if (malResult != MAL_SUCCESS) {
+	maResult = ma_device_init(&maContext, &maDeviceConfig, &maDevice);
+	if (maResult != MA_SUCCESS) {
 		return -1;
 	}
 
 	// Init FPL
 	fplSettings settings = fplMakeDefaultSettings();
 	if (!fplPlatformInit(fplInitFlags_Console, &settings)) {
-		mal_device_uninit(&malDevice);
+		ma_device_uninit(&maDevice);
 		return -1;
 	}
 
@@ -174,16 +183,16 @@ int main(int argc, char **args) {
 	fplConvertAudioTargetFormatToDeviceFormat(&targetFormat, &targetDeviceFormat);
 	if (InitAudioData(&targetDeviceFormat, &audioSys, filePath, generateSineWave)) {
 		// Start audio playback
-		if (mal_device_start(&malDevice) == MAL_SUCCESS) {
+		if (ma_device_start(&maDevice) == MA_SUCCESS) {
 			// Print output infos
-			const char *outDriver = mal_get_backend_name(malDevice.pContext->backend);
+			const char *outDriver = ma_get_backend_name(maDevice.pContext->backend);
 			const char *outFormat = fplGetAudioFormatString(targetFormat.type);
 			fplAudioDeviceFormat deviceFormat = fplZeroInit;
-			deviceFormat.channels = malDevice.channels;
-			deviceFormat.periods = malDevice.periods;
-			deviceFormat.sampleRate = malDevice.sampleRate;
-			deviceFormat.type = MapMALFormatToFPLFormat(malDevice.format);
-			deviceFormat.bufferSizeInFrames = malDevice.bufferSizeInFrames;
+			deviceFormat.channels = maDevice.playback.channels;
+			deviceFormat.periods = maDevice.playback.internalPeriods;
+			deviceFormat.sampleRate = maDevice.sampleRate;
+			deviceFormat.type = MapMALFormatToFPLFormat(maDevice.playback.format);
+			deviceFormat.bufferSizeInFrames = maDevice.playback.internalBufferSizeInFrames;
 			deviceFormat.bufferSizeInBytes = fplGetAudioBufferSizeInBytes(deviceFormat.type, deviceFormat.channels, deviceFormat.bufferSizeInFrames);
 			fplConsoleFormatOut("Playing %lu audio sources (%s, %s, %lu Hz, %lu channels)\n", audioSys.playItems.count, outDriver, outFormat, deviceFormat.sampleRate, deviceFormat.channels);
 
@@ -192,14 +201,14 @@ int main(int argc, char **args) {
 			fplConsoleWaitForCharInput();
 
 			// Stop audio playback
-			mal_device_stop(&malDevice);
+			ma_device_stop(&maDevice);
 		}
 		// Release audio data
 		AudioSystemShutdown(&audioSys);
 	}
 
 	// Release audio device
-	mal_device_uninit(&malDevice);
+	ma_device_uninit(&maDevice);
 
 	// Release the platform
 	fplPlatformRelease();
