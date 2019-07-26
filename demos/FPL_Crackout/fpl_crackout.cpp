@@ -4,7 +4,7 @@ Name:
 	FPL-Demo | Crackout
 
 Description:
-	A breakout-like game based on FPL
+	A breakout-like game based on FPL written in C++.
 
 Requirements:
 	- C++/11 Compiler
