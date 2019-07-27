@@ -147,6 +147,7 @@ SOFTWARE.
 	- Fixed: Tons of documentation improvements
 	- Fixed: fpl__PushError_Formatted was always pushing errors on regardless of the log level
 	- Fixed: Invalid memory clear with zero bytes, when there was no audio samples to clear
+	- Fixed: All fpl_internal_inline functions uses now fpl_internal instead (GCC/Clang compatible)
 	- Changed: Removed fake thread-safe implementation of the internal event queue
 	- Changed: Changed drop event structure in fplWindowEvent to support multiple dropped files
 	- Changed: Renamed fplGetPlatformTypeString() to fplGetPlatformName()
@@ -5936,7 +5937,7 @@ fpl_internal void fpl__LogWrite(const char *funcName, const int lineNumber, cons
 		}
 	}
 }
-fpl_internal_inline void fpl__LogWriteArgs(const char *funcName, const int lineNumber, const fplLogLevel level, const char *format, va_list argList) {
+fpl_internal void fpl__LogWriteArgs(const char *funcName, const int lineNumber, const fplLogLevel level, const char *format, va_list argList) {
 	va_list listCopy;
 	va_copy(listCopy, argList);
 	char buffer[FPL_MAX_BUFFER_LENGTH];
@@ -5944,7 +5945,7 @@ fpl_internal_inline void fpl__LogWriteArgs(const char *funcName, const int lineN
 	fpl__LogWrite(funcName, lineNumber, level, buffer);
 	va_end(listCopy);
 }
-fpl_internal_inline void fpl__LogWriteVarArgs(const char* funcName, const int lineNumber, const fplLogLevel level, const char *format, ...) {
+fpl_internal void fpl__LogWriteVarArgs(const char* funcName, const int lineNumber, const fplLogLevel level, const char *format, ...) {
 	va_list argList;
 	va_start(argList, format);
 	fpl__LogWriteArgs(funcName, lineNumber, level, format, argList);
@@ -8876,7 +8877,7 @@ fpl_common_api const char *fplGetArchTypeString(const fplArchType type) {
 
 #if defined(FPL__ENABLE_WINDOW)
 
-fpl_internal_inline DWORD fpl__Win32MakeWindowStyle(const fplWindowSettings *settings) {
+fpl_internal DWORD fpl__Win32MakeWindowStyle(const fplWindowSettings *settings) {
 	DWORD result = WS_CLIPSIBLINGS | WS_CLIPCHILDREN;
 	if (settings->isFullscreen || !settings->isDecorated) {
 		result |= WS_POPUP;
@@ -8889,7 +8890,7 @@ fpl_internal_inline DWORD fpl__Win32MakeWindowStyle(const fplWindowSettings *set
 	return(result);
 }
 
-fpl_internal_inline DWORD fpl__Win32MakeWindowExStyle(const fplWindowSettings *settings) {
+fpl_internal DWORD fpl__Win32MakeWindowExStyle(const fplWindowSettings *settings) {
 	DWORD result = WS_EX_APPWINDOW;
 	if (settings->isFullscreen || settings->isFloating) {
 		result |= WS_EX_TOPMOST;
@@ -9175,17 +9176,17 @@ fpl_internal void fpl__Win32UpdateGameControllers(const fplSettings *settings, c
 	}
 }
 
-fpl_internal_inline bool fpl__Win32IsKeyDown(const fpl__Win32Api *wapi, const int virtualKey) {
+fpl_internal bool fpl__Win32IsKeyDown(const fpl__Win32Api *wapi, const int virtualKey) {
 	bool result = (wapi->user.GetAsyncKeyState(virtualKey) & 0x8000) != 0;
 	return(result);
 }
 
-fpl_internal_inline bool fpl__Win32IsKeyActive(const fpl__Win32Api *wapi, const int virtualKey) {
+fpl_internal bool fpl__Win32IsKeyActive(const fpl__Win32Api *wapi, const int virtualKey) {
 	bool result = (wapi->user.GetKeyState(virtualKey) & 0x0001) != 0;
 	return(result);
 }
 
-fpl_internal_inline bool fpl__Win32IsCursorInWindow(const fpl__Win32Api *wapi, const fpl__Win32WindowState *win32Window) {
+fpl_internal bool fpl__Win32IsCursorInWindow(const fpl__Win32Api *wapi, const fpl__Win32WindowState *win32Window) {
 	POINT pos;
 	if (!wapi->user.GetCursorPos(&pos)) {
 		return false;
@@ -9243,10 +9244,10 @@ fpl_internal void fpl__Win32SetCursorState(const fpl__Win32Api *wapi, fpl__Win32
 	}
 }
 
-fpl_internal_inline void fpl__Win32ShowCursor(const fpl__Win32Api *wapi, fpl__Win32WindowState *window) {
+fpl_internal void fpl__Win32ShowCursor(const fpl__Win32Api *wapi, fpl__Win32WindowState *window) {
 	fpl__Win32SetCursorState(wapi, window, false);
 }
-fpl_internal_inline void fpl__Win32HideCursor(const fpl__Win32Api *wapi, fpl__Win32WindowState *window) {
+fpl_internal void fpl__Win32HideCursor(const fpl__Win32Api *wapi, fpl__Win32WindowState *window) {
 	fpl__Win32SetCursorState(wapi, window, true);
 }
 
@@ -11446,7 +11447,7 @@ fpl_platform_api bool fplDirectoryRemove(const char *path) {
 	bool result = RemoveDirectoryW(pathWide) > 0;
 	return(result);
 }
-fpl_internal_inline void fpl__Win32FillFileEntry(const char *rootPath, const WIN32_FIND_DATAW *findData, fplFileEntry *entry) {
+fpl_internal void fpl__Win32FillFileEntry(const char *rootPath, const WIN32_FIND_DATAW *findData, fplFileEntry *entry) {
 	fplAssert(findData != fpl_null);
 	fplAssert(entry != fpl_null);
 	fplWideStringToUTF8String(findData->cFileName, lstrlenW(findData->cFileName), entry->name, fplArrayCount(entry->name));
@@ -16740,7 +16741,7 @@ fpl_internal fplAudioResult fpl__AudioInitDirectSound(const fplAudioSettings *au
 	return fplAudioResult_Success;
 	}
 
-fpl_internal_inline void fpl__AudioStopMainLoopDirectSound(fpl__DirectSoundAudioState *dsoundState) {
+fpl_internal void fpl__AudioStopMainLoopDirectSound(fpl__DirectSoundAudioState *dsoundState) {
 	dsoundState->breakMainLoop = true;
 	SetEvent(dsoundState->stopEvent);
 }
