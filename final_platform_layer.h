@@ -145,6 +145,7 @@ SOFTWARE.
 	- Fixed: Corrected opengl example code in the header file
 	- Fixed: Tons of documentation improvements
 	- Fixed: fpl__PushError_Formatted was always pushing errors on regardless of the log level
+	- Fixed: Invalid memory clear with zero bytes, when there was no audio samples to clear
 	- Changed: Removed fake thread-safe implementation of the internal event queue
 	- Changed: Changed drop event structure in fplWindowEvent to support multiple dropped files
 	- Changed: Renamed fplGetPlatformTypeString() to fplGetPlatformName()
@@ -16412,7 +16413,9 @@ fpl_internal uint32_t fpl__ReadAudioFramesFromClient(const fpl__CommonAudioState
 	uint32_t sampleSize = fplGetAudioSampleSizeInBytes(commonAudio->internalFormat.type);
 	uint32_t consumedBytes = samplesRead * sampleSize;
 	uint32_t remainingBytes = ((frameCount * channels) - samplesRead) * sampleSize;
-	fplMemoryClear((uint8_t *)pSamples + consumedBytes, remainingBytes);
+	if (remainingBytes > 0) {
+		fplMemoryClear((uint8_t*)pSamples + consumedBytes, remainingBytes);
+	}
 	return(samplesRead);
 }
 
