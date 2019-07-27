@@ -1482,6 +1482,8 @@ extern void GameUpdateAndRender(GameMemory& gameMemory, const Input& input, cons
 #include <final_gameplatform.h>
 
 int main(int argc, char* argv[]) {
+	fplSetMaxLogLevel(fplLogLevel_All);
+
 	GameConfiguration config = {};
 	config.title = "FPL Demo | Crackout";
 	config.hideMouseCursor = true;

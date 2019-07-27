@@ -142,6 +142,7 @@ SOFTWARE.
 	- new: Added function fplSetThreadPriority
 	- New: Introduced dynamic/temporary allocations wrapping
 	- New: Added FPL_WARNING macro for pushing on warnings only
+	- New: Print out function name and line number in all log outputs
 	- Fixed: Corrected opengl example code in the header file
 	- Fixed: Tons of documentation improvements
 	- Fixed: fpl__PushError_Formatted was always pushing errors on regardless of the log level
@@ -3212,11 +3213,13 @@ typedef enum fplLogLevel {
 #if defined(FPL__ENABLE_LOGGING)
 /**
   * @brief A callback for printing a log message
+  * @param funcName The function name
+  * @param lineNumber The line number
   * @param level The log level @ref fplLogLevel
   * @param message The log message string
   * @see @ref subsection_category_logging_logging_example_custom
   */
-typedef void (fpl_log_func_callback)(const fplLogLevel level, const char *message);
+typedef void (fpl_log_func_callback)(const char *funcName, const int lineNumber, const fplLogLevel level, const char *message);
 
 //! An enumeration of log writer flags
 typedef enum fplLogWriterFlags {
@@ -5871,7 +5874,7 @@ fpl_main int main(int argc, char **args);
 #if defined(FPL__ENABLE_LOGGING)
 fpl_globalvar fplLogSettings fpl__global__LogSettings = fplZeroInit;
 
-fpl_internal void fpl__LogWrite(const fplLogLevel level, const char *message) {
+fpl_internal void fpl__LogWrite(const char *funcName, const int lineNumber, const fplLogLevel level, const char *message) {
 	fplLogSettings *settings = &fpl__global__LogSettings;
 	if (!settings->isInitialized) {
 #if defined(FPL_LOG_MULTIPLE_WRITERS)
@@ -5920,42 +5923,41 @@ fpl_internal void fpl__LogWrite(const fplLogLevel level, const char *message) {
 				break;
 		}
 		if (writer->flags & fplLogWriterFlags_StandardConsole) {
-			fplConsoleFormatOut("[%s]%s\n", levelStr, message);
+			fplConsoleFormatOut("[%s:%d][%s]%s\n", funcName, lineNumber, levelStr, message);
 		}
 		if (writer->flags & fplLogWriterFlags_ErrorConsole) {
-			fplConsoleFormatError("[%s]%s\n", levelStr, message);
+			fplConsoleFormatError("[%s:%d][%s]%s\n", funcName, lineNumber, levelStr, message);
 		}
 		if (writer->flags & fplLogWriterFlags_DebugOut) {
-			fplDebugFormatOut("[%s]%s\n", levelStr, message);
+			fplDebugFormatOut("[%s:%d][%s]%s\n", funcName, lineNumber, levelStr, message);
 		}
 		if (writer->flags & fplLogWriterFlags_Custom && writer->custom.callback != fpl_null) {
-			writer->custom.callback(level, message);
+			writer->custom.callback(funcName, lineNumber, level, message);
 		}
 	}
 }
-fpl_internal_inline void fpl__LogWriteArgs(const fplLogLevel level, const char *format, va_list argList) {
+fpl_internal_inline void fpl__LogWriteArgs(const char *funcName, const int lineNumber, const fplLogLevel level, const char *format, va_list argList) {
 	va_list listCopy;
 	va_copy(listCopy, argList);
 	char buffer[FPL_MAX_BUFFER_LENGTH];
 	fplFormatStringArgs(buffer, fplArrayCount(buffer), format, listCopy);
-	fpl__LogWrite(level, buffer);
+	fpl__LogWrite(funcName, lineNumber, level, buffer);
 	va_end(listCopy);
 }
-fpl_internal_inline void fpl__LogWriteVarArgs(const fplLogLevel level, const char *format, ...) {
+fpl_internal_inline void fpl__LogWriteVarArgs(const char* funcName, const int lineNumber, const fplLogLevel level, const char *format, ...) {
 	va_list argList;
 	va_start(argList, format);
-	fpl__LogWriteArgs(level, format, argList);
+	fpl__LogWriteArgs(funcName, lineNumber, level, format, argList);
 	va_end(argList);
 }
-#   define FPL__LOG_FUNCTION_N(mod, name) FPL_LOG(fplLogLevel_Debug, mod, "-> %s()", name)
-
-#	define FPL_LOG(lvl, mod, format, ...) fpl__LogWriteVarArgs(lvl, FPL__MODULE_CONCAT(mod, format), ## __VA_ARGS__)
+#	define FPL_LOG(lvl, mod, format, ...) fpl__LogWriteVarArgs(FPL_FUNCTION_NAME, __LINE__, lvl, FPL__MODULE_CONCAT(mod, format), ## __VA_ARGS__)
 #	define FPL_LOG_CRITICAL(mod, format, ...) FPL_LOG(fplLogLevel_Critical, mod, format, ## __VA_ARGS__)
 #	define FPL_LOG_ERROR(mod, format, ...) FPL_LOG(fplLogLevel_Error, mod, format, ## __VA_ARGS__)
 #	define FPL_LOG_WARN(mod, format, ...) FPL_LOG(fplLogLevel_Warning, mod, format, ## __VA_ARGS__)
 #	define FPL_LOG_INFO(mod, format, ...) FPL_LOG(fplLogLevel_Info, mod, format, ## __VA_ARGS__)
 #	define FPL_LOG_VERBOSE(mod, format, ...) FPL_LOG(fplLogLevel_Verbose, mod, format, ## __VA_ARGS__)
 #	define FPL_LOG_DEBUG(mod, format, ...) FPL_LOG(fplLogLevel_Debug, mod, format, ## __VA_ARGS__)
+#   define FPL__LOG_FUNCTION_N(mod, name) FPL_LOG(fplLogLevel_Debug, mod, "-> %s()", name)
 #   define FPL_LOG_FUNCTION(mod) FPL__LOG_FUNCTION_N(mod, FPL_FUNCTION_NAME)
 #else
 #	define FPL_LOG(lvl, mod, format, ...)
@@ -5972,9 +5974,9 @@ fpl_internal_inline void fpl__LogWriteVarArgs(const fplLogLevel level, const cha
 // Error handling
 //
 
-#define FPL_CRITICAL(mod, format, ...)  fpl__PushError(fplLogLevel_Critical, FPL__MODULE_CONCAT(mod, format), ## __VA_ARGS__)
-#define FPL_ERROR(mod, format, ...) fpl__PushError(fplLogLevel_Error, FPL__MODULE_CONCAT(mod, format), ## __VA_ARGS__)
-#define FPL_WARNING(mod, format, ...) fpl__PushError(fplLogLevel_Warning, FPL__MODULE_CONCAT(mod, format), ## __VA_ARGS__)
+#define FPL_CRITICAL(mod, format, ...)  fpl__PushError(FPL_FUNCTION_NAME, __LINE__, fplLogLevel_Critical, FPL__MODULE_CONCAT(mod, format), ## __VA_ARGS__)
+#define FPL_ERROR(mod, format, ...) fpl__PushError(FPL_FUNCTION_NAME, __LINE__, fplLogLevel_Error, FPL__MODULE_CONCAT(mod, format), ## __VA_ARGS__)
+#define FPL_WARNING(mod, format, ...) fpl__PushError(FPL_FUNCTION_NAME, __LINE__, fplLogLevel_Warning, FPL__MODULE_CONCAT(mod, format), ## __VA_ARGS__)
 
 //
 // Debug out
@@ -6016,7 +6018,7 @@ fpl_common_api void fplDebugFormatOut(const char *format, ...) {
 
 fpl_globalvar struct fpl__PlatformAppState *fpl__global__AppState = fpl_null;
 
-fpl_internal void fpl__PushError(const fplLogLevel level, const char *format, ...);
+fpl_internal void fpl__PushError(const char* funcName, const int lineNumber, const fplLogLevel level, const char *format, ...);
 #endif // FPL_PLATFORM_CONSTANTS_DEFINED
 
 // ############################################################################
@@ -7736,7 +7738,7 @@ typedef struct fpl__ErrorState {
 
 fpl_globalvar fpl__ErrorState fpl__global__LastErrorState = fplZeroInit;
 
-fpl_internal void fpl__PushError_Formatted(const fplLogLevel level, const char *format, va_list argList) {
+fpl_internal void fpl__PushError_Formatted(const char* funcName, const int lineNumber, const fplLogLevel level, const char *format, va_list argList) {
 	fplAssert(format != fpl_null);
 
 	if (level <= fplLogLevel_Error) {
@@ -7753,15 +7755,15 @@ fpl_internal void fpl__PushError_Formatted(const fplLogLevel level, const char *
 #if defined(FPL__ENABLE_LOGGING)
 	va_list listCopy;
 	va_copy(listCopy, argList);
-	fpl__LogWriteArgs(level, format, listCopy);
+	fpl__LogWriteArgs(funcName, lineNumber, level, format, listCopy);
 	va_end(listCopy);
 #endif
 }
 
-fpl_internal void fpl__PushError(const fplLogLevel level, const char *format, ...) {
+fpl_internal void fpl__PushError(const char *funcName, const int lineNumber, const fplLogLevel level, const char *format, ...) {
 	va_list valist;
 	va_start(valist, format);
-	fpl__PushError_Formatted(level, format, valist);
+	fpl__PushError_Formatted(funcName, lineNumber, level, format, valist);
 	va_end(valist);
 }
 
@@ -9575,13 +9577,13 @@ fpl_internal HICON fpl__Win32LoadIconFromImageSource(const fpl__Win32Api *wapi, 
 		HDC dc = wapi->user.GetDC(fpl_null);
 		HBITMAP colorBitmap = wapi->gdi.CreateDIBSection(dc, (BITMAPINFO*)&bi, DIB_RGB_COLORS, (void**)&targetData, fpl_null, (DWORD)0);
 		if (colorBitmap == fpl_null) {
-			fpl__PushError(fplLogLevel_Error, "Failed to create DIBSection from image with size %lu x %lu", imageSource->width, imageSource->height);
+			fpl__PushError(FPL_FUNCTION_NAME, __LINE__, fplLogLevel_Error, "Failed to create DIBSection from image with size %lu x %lu", imageSource->width, imageSource->height);
 		}
 		wapi->user.ReleaseDC(fpl_null, dc);
 
 		HBITMAP maskBitmap = wapi->gdi.CreateBitmap(imageSource->width, imageSource->height, 1, 1, fpl_null);
 		if (maskBitmap == fpl_null) {
-			fpl__PushError(fplLogLevel_Error, "Failed to create Bitmap Mask from image with size %lu x %lu", imageSource->width, imageSource->height);
+			fpl__PushError(FPL_FUNCTION_NAME, __LINE__, fplLogLevel_Error, "Failed to create Bitmap Mask from image with size %lu x %lu", imageSource->width, imageSource->height);
 		}
 		if (colorBitmap != fpl_null && maskBitmap != fpl_null) {
 			fplAssert(targetData != fpl_null);
@@ -9604,7 +9606,7 @@ fpl_internal HICON fpl__Win32LoadIconFromImageSource(const fpl__Win32Api *wapi, 
 				ii.hbmColor = colorBitmap;
 				result = wapi->user.CreateIconIndirect(&ii);
 			} else {
-				fpl__PushError(fplLogLevel_Warning, "Image source type '%d' for icon is not supported", imageSource->type);
+				fpl__PushError(FPL_FUNCTION_NAME, __LINE__, fplLogLevel_Warning, "Image source type '%d' for icon is not supported", imageSource->type);
 			}
 		}
 		if (colorBitmap != fpl_null) {

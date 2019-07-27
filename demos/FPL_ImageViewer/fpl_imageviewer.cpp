@@ -1685,7 +1685,7 @@ static void UpdateAndRender(ViewerState *state, const float deltaTime) {
 	fplAssert(glGetError() == GL_NO_ERROR);
 }
 
-static void LogCallbackFunc(fplLogLevel level, const char *message) {
+static void LogCallbackFunc(const char *funcName, const int lineNumber, fplLogLevel level, const char *message) {
 	flogWrite(message);
 }
 
