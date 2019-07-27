@@ -141,17 +141,25 @@ typedef struct AudioSystem {
 	AudioSineWaveData tempWaveData;
 	AudioSources sources;
 	AudioPlayItems playItems;
+	float masterVolume;
 	bool isShutdown;
 } AudioSystem;
 
 extern bool AudioSystemInit(AudioSystem *audioSys, const fplAudioDeviceFormat *targetFormat);
 extern void AudioSystemShutdown(AudioSystem *audioSys);
+
+extern void AudioSystemSetMasterVolume(AudioSystem *audioSys, const float newMasterVolume);
+
 extern AudioSource *AudioSystemAllocateSource(AudioSystem *audioSys, const AudioChannelIndex channels, const AudioHertz sampleRate, const fplAudioFormatType type, const AudioFrameIndex frameCount);
 extern AudioSource *AudioSystemLoadFileSource(AudioSystem *audioSys, const char *filePath);
+
 extern AudioSampleIndex AudioSystemWriteSamples(AudioSystem *audioSys, void *outSamples, const fplAudioDeviceFormat *outFormat, const AudioFrameIndex frameCount);
+
 extern uint64_t AudioSystemPlaySource(AudioSystem *audioSys, const AudioSource *source, const bool repeat, const float volume);
 extern void AudioSystemStopSource(AudioSystem *audioSys, const uint64_t playId);
+
 extern void AudioGenerateSineWave(AudioSineWaveData *waveData, void *outSamples, const fplAudioFormatType outFormat, const AudioHertz outSampleRate, const AudioChannelIndex channels, const AudioFrameIndex frameCount);
+
 extern float ConvertToF32(const void *inSamples, const AudioChannelIndex inChannel, const fplAudioFormatType inFormat);
 extern void ConvertFromF32(void *outSamples, const float inSampleValue, const AudioChannelIndex outChannel, const fplAudioFormatType outFormat);
 #endif // FINAL_AUDIOSYSTEM_H
@@ -215,6 +223,7 @@ extern bool AudioSystemInit(AudioSystem *audioSys, const fplAudioDeviceFormat *t
 		return false;
 	}
 	fplClearStruct(audioSys);
+	audioSys->masterVolume = 1.0f;
 	audioSys->targetFormat.channels = targetFormat->channels;
 	audioSys->targetFormat.format = targetFormat->type;
 	audioSys->targetFormat.sampleRate = targetFormat->sampleRate;
@@ -232,6 +241,11 @@ extern bool AudioSystemInit(AudioSystem *audioSys, const fplAudioDeviceFormat *t
 	audioSys->tempWaveData.toneVolume = 0.5f;
 	return(true);
 }
+
+extern void AudioSystemSetMasterVolume(AudioSystem *audioSys, const float newMasterVolume) {
+	audioSys->masterVolume = newMasterVolume;
+}
+
 
 extern AudioSource *AudioSystemAllocateSource(AudioSystem *audioSys, const AudioChannelIndex channels, const AudioHertz sampleRate, const fplAudioFormatType type, const AudioFrameIndex frameCount) {
 	// Compute audio buffer
@@ -562,6 +576,10 @@ static AudioFrameIndex MixPlayItems(AudioSystem *audioSys, const AudioFrameIndex
 	while (item != fpl_null) {
 		fplAssert(!item->isFinished);
 
+		// @TODO(final): Right know, we apply volume to every sample evenly
+		// In the future we want to interpolate that, smoothly fade in/out.
+		const float volume = item->volume * audioSys->masterVolume;
+
 		float *dspOutSamples = audioSys->dspOutBuffer.samples;
 
 		float *outSamples = audioSys->mixingBuffer.samples;
@@ -585,7 +603,7 @@ static AudioFrameIndex MixPlayItems(AudioSystem *audioSys, const AudioFrameIndex
 			const AudioFrameIndex inFrameCount = fplMin(maxFrameCount, inRemainingFrameCount);
 			for (AudioFrameIndex i = 0; i < inFrameCount; ++i) {
 				for (AudioChannelIndex inChannelIndex = 0; inChannelIndex < inChannelCount; ++inChannelIndex) {
-					*dspOutSamples++ = ConvertToF32(inSamples, inChannelIndex, inFormat) * item->volume;
+					*dspOutSamples++ = ConvertToF32(inSamples, inChannelIndex, inFormat) * volume;
 				}
 				inSamples += inBytesPerSample * inChannelCount;
 				++item->framesPlayed;
@@ -600,7 +618,7 @@ static AudioFrameIndex MixPlayItems(AudioSystem *audioSys, const AudioFrameIndex
 					for (AudioFrameIndex i = 0; i < inFrameCount; ++i) {
 						float tempSamples[MAX_AUDIO_STATIC_BUFFER_CHANNEL_COUNT];
 						for (AudioChannelIndex inChannelIndex = 0; inChannelIndex < inChannelCount; ++inChannelIndex) {
-							tempSamples[inChannelIndex] = ConvertToF32(inSamples, inChannelIndex, inFormat) * item->volume;
+							tempSamples[inChannelIndex] = ConvertToF32(inSamples, inChannelIndex, inFormat) * volume;
 						}
 						for (int f = 0; f < upsamplingFactor; ++f) {
 							for (AudioChannelIndex inChannelIndex = 0; inChannelIndex < inChannelCount; ++inChannelIndex) {
@@ -618,7 +636,7 @@ static AudioFrameIndex MixPlayItems(AudioSystem *audioSys, const AudioFrameIndex
 					for (AudioFrameIndex i = 0; i < inFrameCount; i += downsamplingCount) {
 						uint8_t *inSamplesForIndex = inSamples + (i * inBytesPerSample * inChannelCount);
 						for (AudioChannelIndex inChannelIndex = 0; inChannelIndex < inChannelCount; ++inChannelIndex) {
-							*dspOutSamples++ = ConvertToF32(inSamplesForIndex, inChannelIndex, inFormat) * item->volume;
+							*dspOutSamples++ = ConvertToF32(inSamplesForIndex, inChannelIndex, inFormat) * volume;
 						}
 						item->framesPlayed += downsamplingCount;
 					}
