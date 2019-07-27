@@ -19,6 +19,9 @@
     <ClInclude Include="..\additions\final_waveloader.h">
       <Filter>additions</Filter>
     </ClInclude>
+    <ClInclude Include="..\additions\final_graphics.h">
+      <Filter>additions</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="fpl_audio.c" />

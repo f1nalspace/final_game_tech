@@ -75,6 +75,9 @@ Changelog:
 #define FINAL_AUDIOSYSTEM_IMPLEMENTATION
 #include <final_audiosystem.h>
 
+#define FINAL_GRAPHICS_IMPLEMENTATION
+#include <final_graphics.h>
+
 typedef enum WavePlotType {
 	WavePlotType_None = 0,
 	WavePlotType_Bars,
@@ -134,7 +137,7 @@ static uint32_t AudioPlayback(const fplAudioDeviceFormat *outFormat, const uint3
 #if OPT_PLAYBACKMODE == OPT_PLAYBACK_SINEWAVE_ONLY
 
 #if 0
-	// 100% Clean sine wave
+	// 100% Clean sine wave (Contigously)
 	int16_t *outSamples = (int16_t *)outputSamples;
 	uint32_t wavePeriod = outFormat->sampleRate / audioDemo->sineWave.toneHz;
 	for (uint32_t frameIndex = 0; frameIndex < maxFrameCount; ++frameIndex) {
@@ -166,12 +169,15 @@ static uint32_t AudioPlayback(const fplAudioDeviceFormat *outFormat, const uint3
 	return(result);
 }
 
-static bool InitAudioData(const fplAudioDeviceFormat *targetFormat, AudioSystem *audioSys, const char **files, const size_t fileCount, const bool generateSineWave, const AudioSineWaveData *sineWave) {
+static bool InitAudioData(const fplAudioDeviceFormat *targetFormat, AudioSystem *audioSys, const char **files, const size_t fileCount, const bool forceSineWave, const AudioSineWaveData *sineWave) {
 	if (!AudioSystemInit(audioSys, targetFormat)) {
 		return false;
 	}
 
+	AudioSystemSetMasterVolume(audioSys, 0.5f);
+
 	// Play audio files
+	bool hadFiles = false;
 	for (size_t fileIndex = 0; fileIndex < fileCount; ++fileIndex) {
 		const char *filePath = files[fileIndex];
 		if (filePath != fpl_null) {
@@ -179,12 +185,13 @@ static bool InitAudioData(const fplAudioDeviceFormat *targetFormat, AudioSystem 
 			AudioSource *source = AudioSystemLoadFileSource(audioSys, filePath);
 			if (source != fpl_null) {
 				AudioSystemPlaySource(audioSys, source, true, 1.0f);
+				hadFiles = true;
 			}
 		}
 	}
 
-	// Generate sine wave for some duration
-	if (generateSineWave) {
+	// Generate sine wave for some duration when no files was loaded
+	if (!hadFiles || forceSineWave) {
 		// @FIXME(final): If wave duration is smaller than actual audio buffer, we will hear a bad click
 		const double waveDuration = 10.0f;
 		AudioSineWaveData waveData = *sineWave;
@@ -198,85 +205,6 @@ static bool InitAudioData(const fplAudioDeviceFormat *targetFormat, AudioSystem 
 		}
 	}
 	return(true);
-}
-
-inline int ClampInt(int value, int min, int max) {
-	int result = value;
-	if (result < min) result = min;
-	if (result > max) result = max;
-	return(result);
-}
-
-static void SwapInt32(int32_t *a, int32_t *b) {
-	int32_t tmp = *a;
-	*a = *b;
-	*b = tmp;
-}
-
-static void DrawBackLine(fplVideoBackBuffer *backBuffer, float x0f, float y0f, float x1f, float y1f, uint32_t color) {
-	int x0 = (int)(x0f + 0.5f);
-	int y0 = (int)(y0f + 0.5f);
-	int x1 = (int)(x1f + 0.5f);
-	int y1 = (int)(y1f + 0.5f);
-
-	int imageLine = backBuffer->width;
-
-	int size = backBuffer->width * backBuffer->height;
-
-	int dx = x1 - x0;
-	int dy = y1 - y0;
-
-	int dLong = abs(dx);
-	int dShort = abs(dy);
-
-	int offsetLong = dx > 0 ? 1 : -1;
-	int offsetShort = dy > 0 ? imageLine : -imageLine;
-
-	if (dLong < dShort) {
-		SwapInt32(&dShort, &dLong);
-		SwapInt32(&offsetShort, &offsetLong);
-	}
-
-	int error = dLong / 2;
-	int index = y0 * imageLine + x0;
-
-	const int offset[] = { offsetLong, offsetLong + offsetShort };
-	const int abs_d[] = { dShort, dShort - dLong };
-	for (int i = 0; i <= dLong; ++i) {
-		if (index >= 0 && index < size) {
-			backBuffer->pixels[index] = color;
-		}
-		const int errorIsTooBig = error >= dLong;
-		index += offset[errorIsTooBig];
-		error += abs_d[errorIsTooBig];
-	}
-}
-
-static void FillBackRect(fplVideoBackBuffer *backBuffer, float x0, float y0, float x1, float y1, int color) {
-	int minX = (int)(x0 + 0.5f);
-	int minY = (int)(y0 + 0.5f);
-	int maxX = (int)(x1 + 0.5f);
-	int maxY = (int)(y1 + 0.5f);
-	if (minX > maxX) {
-		minX = (int)(x1 + 0.5f);
-		maxX = (int)(x0 + 0.5f);
-	}
-	if (minY > maxY) {
-		minY = (int)(y1 + 0.5f);
-		maxY = (int)(y0 + 0.5f);
-	}
-	int w = (int)backBuffer->width;
-	int h = (int)backBuffer->height;
-	minX = ClampInt(minX, 0, w - 1);
-	maxX = ClampInt(maxX, 0, w - 1);
-	minY = ClampInt(minY, 0, h - 1);
-	maxY = ClampInt(maxY, 0, h - 1);
-	for (int yp = minY; yp <= maxY; ++yp) {
-		uint32_t *pixel = backBuffer->pixels + yp * backBuffer->width + minX;
-		for (int xp = minX; xp <= maxX; ++xp) {
-			*pixel++ = color;
-		}
-	}
 }
 
 static const char *MapPlotTypeToString(WavePlotType plotType) {
@@ -298,9 +226,8 @@ static void UpdateTitle(AudioDemo *demo) {
 
 int main(int argc, char **args) {
 	size_t fileCount = argc >= 2 ? argc - 1 : 0;
-	//size_t fileCount = 0;
 	const char **files = fileCount > 0 ? args + 1 : fpl_null;
-	const bool generateSineWave = false;
+	const bool forceSineWave = false;
 
 	AudioSystem audioSys = fplZeroInit;
 	AudioDemo demo = fplZeroInit;
@@ -360,7 +287,7 @@ int main(int argc, char **args) {
 	const fplSettings *currentSettings = fplGetCurrentSettings();
 
 	// Init audio data
-	if (InitAudioData(&targetAudioFormat, &audioSys, files, fileCount, generateSineWave, &demo.sineWave)) {
+	if (InitAudioData(&targetAudioFormat, &audioSys, files, fileCount, forceSineWave, &demo.sineWave)) {
 		// Allocate render samples
 		demo.maxFrameCount = targetAudioFormat.bufferSizeInFrames * 2;
 		uint32_t channelCount = audioSys.targetFormat.channels;
@@ -427,7 +354,7 @@ int main(int argc, char **args) {
 				// Render
 				const float w = (float)backBuffer->width;
 				const float h = (float)backBuffer->height;
-				FillBackRect(backBuffer, 0, 0, w, h, 0xFF000000);
+				BackbufferDrawRect(backBuffer, 0, 0, w, h, 0xFF000000);
 
 				const AudioFrameIndex frameCount = demo.maxFrameCount;
 
@@ -449,7 +376,7 @@ int main(int argc, char **args) {
 						float posX = paddingX + barIndex * barW + barIndex * spaceBetweenBars;
 						float posY = halfH - barH * 0.5f;
 						int color = 0xFFAAAAAA;
-						FillBackRect(backBuffer, posX, posY, posX + barW, posY + barH, color);
+						BackbufferDrawRect(backBuffer, posX, posY, posX + barW, posY + barH, color);
 					}
 				} else if (demo.plotType == WavePlotType_Lines) {
 					const uint32_t pointCount = demo.plotCount;
@@ -465,7 +392,7 @@ int main(int argc, char **args) {
 						float sampleValue = demo.samples[sampleIndex + 0];
 						float targetX = startX + lineWidth;
 						float targetY = halfH + (sampleValue * halfH);
-						DrawBackLine(backBuffer, startX, startY, targetX, targetY, 0xFFAAAAAA);
+						BackbufferDrawLine(backBuffer, startX, startY, targetX, targetY, 0xFFAAAAAA);
 						startX = targetX;
 						startY = targetY;
 					}
