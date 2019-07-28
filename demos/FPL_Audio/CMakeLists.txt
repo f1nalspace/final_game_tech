@@ -11,11 +11,14 @@ set(CMAKE_C_FLAGS "-std=c99")
 
 set(MY_EXTERNAL_LIBS m)
 
-set(MY_INCLUDE_DIRS ../../ ../additions/)
+set(MY_INCLUDE_DIRS ../../ ../additions/ ../dependencies/)
 
 set(MY_HEADER_FILES ../../final_platform_layer.h ../additions/final_audiosystem.h ../additions/final_waveloader.h)
 
 set(MY_SOURCE_FILES fpl_audio.c)
+
+# Add all defines here, so we can fully debug inside the header files
+add_definitions(-DFPL_IMPLEMENTATION -DFPL_LOGGING)
 
 # -----------------------------------------------------------------------------
 #
