@@ -69,6 +69,7 @@ Changelog:
 
 #define FPL_IMPLEMENTATION
 #include <final_platform_layer.h>
+
 #define _USE_MATH_DEFINES
 #include <math.h> // sinf, M_PI
 

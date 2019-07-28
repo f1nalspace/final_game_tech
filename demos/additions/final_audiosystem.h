@@ -478,7 +478,7 @@ extern float ConvertToF32(const void *inSamples, const AudioChannelIndex inChann
 	}
 }
 
-inline float ClipF32(const float value) {
+fpl_force_inline float ClipF32(const float value) {
 	float result = fplMax(-1.0f, fplMin(value, 1.0f));
 	return(result);
 }
