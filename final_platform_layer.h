@@ -126,7 +126,7 @@ SOFTWARE.
 */
 
 // ----------------------------------------------------------------------------
-// > CHANGELOG
+// 1LOG
 // ----------------------------------------------------------------------------
 /*!
 	@page page_changelog Changelog
@@ -147,7 +147,8 @@ SOFTWARE.
 	- Fixed: Tons of documentation improvements
 	- Fixed: fpl__PushError_Formatted was always pushing errors on regardless of the log level
 	- Fixed: Invalid memory clear with zero bytes, when there was no audio samples to clear
-	- Fixed: All fpl_internal_inline functions uses now fpl_internal instead (GCC/Clang compatible)
+	- Fixed: All non inlineable functions changed from fpl_internal_inline to fpl_internal instead (GCC/Clang compatible)
+    - Fixed: Use actual window size for video initialization always instead of fixed size
 	- Changed: Removed fake thread-safe implementation of the internal event queue
 	- Changed: Changed drop event structure in fplWindowEvent to support multiple dropped files
 	- Changed: Renamed fplGetPlatformTypeString() to fplGetPlatformName()
@@ -13895,6 +13896,10 @@ fpl_platform_api char fplConsoleWaitForCharInput() {
 //
 // ############################################################################
 #if defined(FPL_SUBPLATFORM_X11)
+
+#define FPL__X11_DEFAULT_WINDOW_WIDTH 400
+#define FPL__X11_DEFAULT_WINDOW_HEIGHT 400
+
 fpl_internal void fpl__X11ReleaseSubplatform(fpl__X11SubplatformState *subplatform) {
 	fplAssert(subplatform != fpl_null);
 	fpl__UnloadX11Api(&subplatform->api);
@@ -14279,8 +14284,8 @@ fpl_internal bool fpl__X11InitWindow(const fplSettings *initSettings, fplWindowS
 		windowWidth = initSettings->window.windowSize.width;
 		windowHeight = initSettings->window.windowSize.height;
 	} else {
-		windowWidth = 400;
-		windowHeight = 400;
+		windowWidth = FPL__X11_DEFAULT_WINDOW_WIDTH;
+		windowHeight = FPL__X11_DEFAULT_WINDOW_HEIGHT;
 	}
 
 	FPL_LOG_DEBUG(FPL__MODULE_X11, "Create window with (Display='%p', Root='%d', Size=%dx%d, Colordepth='%d', visual='%p', colormap='%d'", windowState->display, (int)windowState->root, windowWidth, windowHeight, colorDepth, visual, (int)swa.colormap);
@@ -19163,18 +19168,12 @@ fpl_common_api bool fplPlatformInit(const fplInitFlags initFlags, const fplSetti
 	if (appState->initFlags & fplInitFlags_Video) {
 		fpl__VideoState *videoState = fpl__GetVideoState(appState);
 		fplAssert(videoState != fpl_null);
-		uint32_t windowWidth, windowHeight;
-		if (appState->currentSettings.window.isFullscreen) {
-			windowWidth = appState->currentSettings.window.fullscreenSize.width;
-			windowHeight = appState->currentSettings.window.fullscreenSize.height;
-		} else {
-			windowWidth = appState->currentSettings.window.windowSize.width;
-			windowHeight = appState->currentSettings.window.windowSize.height;
-		}
+        fplWindowSize windowSize = fplZeroInit;
+        fplGetWindowSize(&windowSize);
 		const char *videoDriverName = fplGetVideoDriverString(appState->initSettings.video.driver);
 		FPL_LOG_DEBUG(FPL__MODULE_CORE, "Init Video with Driver '%s':", videoDriverName);
-		if (!fpl__InitVideo(appState->initSettings.video.driver, &appState->initSettings.video, windowWidth, windowHeight, appState, videoState)) {
-			FPL_CRITICAL(FPL__MODULE_CORE, "Failed initialization video with settings (Driver=%s, Width=%d, Height=%d)", videoDriverName, windowWidth, windowHeight);
+		if (!fpl__InitVideo(appState->initSettings.video.driver, &appState->initSettings.video, windowSize.width, windowSize.height, appState, videoState)) {
+			FPL_CRITICAL(FPL__MODULE_CORE, "Failed initialization video with settings (Driver=%s, Width=%d, Height=%d)", videoDriverName, windowSize.width, windowSize.height);
 			fpl__ReleasePlatformStates(initState, appState);
 			return(fpl__SetPlatformResult(fplPlatformResultType_FailedVideo));
 		}
