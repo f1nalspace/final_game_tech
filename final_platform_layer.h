@@ -14255,7 +14255,7 @@ fpl_internal bool fpl__X11InitWindow(const fplSettings *initSettings, fplWindowS
 		colorDepth = x11Api->XDefaultDepth(windowState->display, windowState->root);
 		colormap = x11Api->XDefaultColormap(windowState->display, windowState->root);
 	}
-	int flags = CWColormap | CWEventMask | CWBorderPixel | CWBackPixel | CWBitGravity | CWWinGravity;
+	int flags = CWColormap | CWBackPixel | CWBorderPixel | CWEventMask |  CWBitGravity | CWWinGravity;
 
 	FPL_LOG_DEBUG(FPL__MODULE_X11, "Using visual: %p", visual);
 	FPL_LOG_DEBUG(FPL__MODULE_X11, "Using color depth: %d", colorDepth);
@@ -14271,7 +14271,8 @@ fpl_internal bool fpl__X11InitWindow(const fplSettings *initSettings, fplWindowS
 		EnterWindowMask | LeaveWindowMask | PropertyChangeMask |
 		KeyPressMask | KeyReleaseMask |
 		ButtonPressMask | ButtonReleaseMask | PointerMotionMask | ButtonMotionMask;
-	swa.background_pixel = WhitePixel(windowState->display, windowState->screen);
+	swa.background_pixel = BlackPixel(windowState->display, windowState->screen);
+	swa.border_pixel = WhitePixel(windowState->display, windowState->screen);
 	swa.bit_gravity = NorthWestGravity;
 	swa.win_gravity = NorthWestGravity;
 
@@ -18419,7 +18420,7 @@ fpl_internal FPL__FUNC_PRE_SETUP_WINDOW(fpl__PreSetupWindowDefault) {
 #	endif // FPL__ENABLE_VIDEO
 
 	return(result);
-	}
+}
 
 fpl_internal FPL__FUNC_POST_SETUP_WINDOW(fpl__PostSetupWindowDefault) {
 	fplAssert(appState != fpl_null);
