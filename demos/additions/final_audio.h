@@ -24,7 +24,7 @@ typedef struct PCMWaveData {
 	bool isValid;
 } PCMWaveData;
 
-inline void FreeWaveData(PCMWaveData *wave) {
+static void FreeWaveData(PCMWaveData *wave) {
 	if (wave != fpl_null) {
 		if (wave->samples != fpl_null) {
 			fplMemoryFree(wave->samples);
@@ -33,7 +33,7 @@ inline void FreeWaveData(PCMWaveData *wave) {
 	}
 }
 
-inline void PushWaveError(PCMWaveData *outWave, const char *format, ...) {
+static void PushWaveError(PCMWaveData *outWave, const char *format, ...) {
 
 	outWave->lastError[0] = 0;
 	va_list argList;
