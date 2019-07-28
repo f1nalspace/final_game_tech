@@ -169,6 +169,7 @@ SOFTWARE.
 	- New: [Win32] Implemented fplGetThreadPriority
 	- New: [Win32] Implemented fplSetThreadPriority
 	- Fixed: [Win32] Fixed missing WINAPI keyword for fpl__Win32MonitorCountEnumProc/fpl__Win32MonitorInfoEnumProc/fpl__Win32PrimaryMonitorEnumProc
+	- Fixed: [X11] Software video output was broken
 
 	## v0.9.3.0 beta
 	- Changed: Renamed fplSetWindowFullscreen to fplSetWindowFullscreenSize
@@ -14251,9 +14252,9 @@ fpl_internal bool fpl__X11InitWindow(const fplSettings *initSettings, fplWindowS
 		colormap = x11Api->XCreateColormap(windowState->display, windowState->root, visual, AllocNone);
 	} else {
 		FPL_LOG_DEBUG(FPL__MODULE_X11, "Using default colormap, visual, color depth");
-		visual = x11Api->XDefaultVisual(windowState->display, windowState->root);
-		colorDepth = x11Api->XDefaultDepth(windowState->display, windowState->root);
-		colormap = x11Api->XDefaultColormap(windowState->display, windowState->root);
+		visual = x11Api->XDefaultVisual(windowState->display, windowState->screen);
+		colorDepth = x11Api->XDefaultDepth(windowState->display, windowState->screen);
+		colormap = x11Api->XDefaultColormap(windowState->display, windowState->screen);
 	}
 	int flags = CWColormap | CWBackPixel | CWBorderPixel | CWEventMask |  CWBitGravity | CWWinGravity;
 
@@ -14309,8 +14310,17 @@ fpl_internal bool fpl__X11InitWindow(const fplSettings *initSettings, fplWindowS
 	}
 	FPL_LOG_DEBUG(FPL__MODULE_X11, "Successfully created window with (Display='%p', Root='%d', Size=%dx%d, Colordepth='%d', visual='%p', colormap='%d': %d", windowState->display, (int)windowState->root, windowWidth, windowHeight, colorDepth, visual, (int)swa.colormap, (int)windowState->window);
 
-	// Force keyboard and button events
-	x11Api->XSelectInput(windowState->display, windowState->window, KeyPressMask | KeyReleaseMask | ButtonPressMask | ButtonReleaseMask | PointerMotionMask | ButtonMotionMask);
+	// Force keyboard and button events + paint and resize events
+	int inputMasks = 
+	        KeyPressMask |
+	        KeyReleaseMask |
+	        ButtonPressMask |
+	        ButtonReleaseMask |
+	        PointerMotionMask |
+	        ButtonMotionMask |
+	        ExposureMask |
+	        StructureNotifyMask;
+	x11Api->XSelectInput(windowState->display, windowState->window, inputMasks);
 
 	windowState->visual = visual;
 
@@ -14431,8 +14441,8 @@ fpl_internal void fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatfor
 
 	switch (ev->type) {
 		case ConfigureNotify:
-		{
-#			if defined(FPL__ENABLE_VIDEO_SOFTWARE)
+		{	
+#		if defined(FPL__ENABLE_VIDEO_SOFTWARE)
 			if (appState->currentSettings.video.driver == fplVideoDriverType_Software) {
 				if (appState->initSettings.video.isAutoSize) {
 					uint32_t w = (uint32_t)ev->xconfigure.width;
@@ -14440,7 +14450,7 @@ fpl_internal void fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatfor
 					fplResizeVideoBackBuffer(w, h);
 				}
 			}
-#			endif
+#		endif
 
 			// Window resized
 			fpl__PushWindowSizeEvent(fplWindowEventType_Resized, (uint32_t)ev->xconfigure.width, (uint32_t)ev->xconfigure.height);
@@ -16309,6 +16319,7 @@ typedef struct fpl__X11VideoSoftwareState {
 	XImage *buffer;
 } fpl__X11VideoSoftwareState;
 
+#if 0
 fpl_internal bool fpl__X11SetPreWindowSetupForSoftware(const fpl__X11Api *x11Api, const fpl__X11WindowState *windowState, const fpl__X11VideoSoftwareState *softwareState, fpl__X11PreWindowSetupResult *outResult) {
 	XVisualInfo vinfo = fplZeroInit;
 	if (!x11Api->XMatchVisualInfo(windowState->display, windowState->screen, 32, DirectColor, &vinfo)) {
@@ -16323,6 +16334,7 @@ fpl_internal bool fpl__X11SetPreWindowSetupForSoftware(const fpl__X11Api *x11Api
 	outResult->colorDepth = vinfo.depth;
 	return true;
 }
+#endif
 
 fpl_internal void fpl__X11ReleaseVideoSoftware(const fpl__X11SubplatformState *subplatform, const fpl__X11WindowState *windowState, fpl__X11VideoSoftwareState *softwareState) {
 	const fpl__X11Api *x11Api = &subplatform->api;
@@ -18398,25 +18410,25 @@ fpl_internal FPL__FUNC_PRE_SETUP_WINDOW(fpl__PreSetupWindowDefault) {
 #			if defined(FPL_SUBPLATFORM_X11)
 				if (fpl__X11InitFrameBufferConfigVideoOpenGL(&appState->x11.api, &appState->window.x11, &initSettings->video, &videoState->x11.opengl)) {
 					result = fpl__X11SetPreWindowSetupForOpenGL(&appState->x11.api, &appState->window.x11, &videoState->x11.opengl, &outResult->x11);
-			}
+				}
 #			endif
-		} break;
+			} break;
 #		endif // FPL__ENABLE_VIDEO_OPENGL
 
 #		if defined(FPL__ENABLE_VIDEO_SOFTWARE)
 			case fplVideoDriverType_Software:
 			{
-#			if defined(FPL_SUBPLATFORM_X11)
-				result = fpl__X11SetPreWindowSetupForSoftware(&appState->x11.api, &appState->window.x11, &videoState->x11.software, &outResult->x11);
+#			if defined(FPL_SUBPLATFORM_X11) && 0
+			    result = fpl__X11SetPreWindowSetupForSoftware(&appState->x11.api, &appState->window.x11, &videoState->x11.software, &outResult->x11);
 #			endif
-	} break;
+			} break;
 #		endif // FPL__ENABLE_VIDEO_OPENGL
 
-			default:
-			{
-			} break;
+		default:
+		{
+		} break;
+	}
 }
-		}
 #	endif // FPL__ENABLE_VIDEO
 
 	return(result);
