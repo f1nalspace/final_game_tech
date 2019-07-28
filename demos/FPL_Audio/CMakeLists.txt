@@ -18,7 +18,13 @@ set(MY_HEADER_FILES ../../final_platform_layer.h ../additions/final_audiosystem.
 set(MY_SOURCE_FILES fpl_audio.c)
 
 # Add all defines here, so we can fully debug inside the header files
-add_definitions(-DFPL_IMPLEMENTATION -DFPL_LOGGING)
+add_definitions(
+    -DFPL_IMPLEMENTATION
+    -DFPL_LOGGING
+    -DFINAL_AUDIOSYSTEM_IMPLEMENTATION
+    -DFINAL_GRAPHICS_IMPLEMENTATION
+    -DFINAL_WAVELOADER_IMPLEMENTATION
+    )
 
 # -----------------------------------------------------------------------------
 #
