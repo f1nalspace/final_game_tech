@@ -46,6 +46,24 @@ constexpr float Rad2Deg = 180.0f / (float)M_PI;
 constexpr float Epsilon = FLT_EPSILON;
 
 //
+// Ratio type
+//
+struct Ratio {
+	double numerator;
+	double denominator;
+};
+
+inline Ratio MakeRatio(double numerator, double denominator) {
+	Ratio result = { numerator, denominator };
+	return(result);
+}
+
+inline double ComputeRatio(const Ratio &ratio) {
+	fplAssert(ratio.denominator != 0);
+	double result = ratio.numerator / ratio.denominator;
+	return(result);
+}
+//
 // Vector types
 //
 
@@ -101,6 +119,19 @@ inline Vec2f V2f(const float value) {
 
 inline Vec2f V2f(const float x, const float y) {
 	Vec2f result = { x, y };
+	return(result);
+}
+
+//
+// Rect2f type
+//
+struct Rect2f {
+	Vec2f pos;
+	Vec2f size;
+};
+
+inline Rect2f MakeRect(const Vec2f &pos, const Vec2f &size) {
+	Rect2f result = { pos, size };
 	return(result);
 }
 
@@ -207,6 +238,11 @@ inline Vec4f V4f(const float x, const float y, const float z, const float w = 1.
 
 inline Vec4f V4f(const Vec3f &v, const float w = 1.0f) {
 	Vec4f result = { v.x, v.y, v.z, w };
+	return(result);
+}
+
+inline Vec4f V4f(const Vec2f &v, const float z = 0.0f, const float w = 1.0f) {
+	Vec4f result = { v.x, v.y, z, w };
 	return(result);
 }
 
@@ -451,6 +487,16 @@ inline Vec2f Vec2Lerp(const Vec2f &a, float t, const Vec2f &b) {
 	Vec2f result;
 	result.x = ScalarLerp(a.x, t, b.x);
 	result.y = ScalarLerp(a.y, t, b.y);
+	return(result);
+}
+
+inline Vec2f Vec2Min(const Vec2f &a, const Vec2f &b) {
+	Vec2f result = V2f(Min(a.x, b.x), Min(a.y, b.y));
+	return(result);
+}
+
+inline Vec2f Vec2Max(const Vec2f &a, const Vec2f &b) {
+	Vec2f result = V2f(Max(a.x, b.x), Max(a.y, b.y));
 	return(result);
 }
 
