@@ -31,7 +31,7 @@ License:
 #include "final_game.h"
 
 struct GameConfiguration {
-	const char *title;
+	const wchar_t *title;
 	bool hideMouseCursor;
 	bool disableInactiveDetection;
 	bool noUpdateRenderSeparation;
@@ -284,7 +284,7 @@ extern int GameMain(const GameConfiguration &config) {
 		settings.audio.targetFormat.type = config.audioFormat;
 	if (config.audioChannels > 0)
 		settings.audio.targetFormat.channels = config.audioChannels;
-	fplCopyString(config.title, settings.window.title, fplArrayCount(settings.window.title));
+	fplWideStringToUTF8String(config.title, wcslen(config.title), settings.window.title, fplArrayCount(settings.window.title));
 
 	if(!fplPlatformInit(fplInitFlags_All, &settings)) {
 		return -1;

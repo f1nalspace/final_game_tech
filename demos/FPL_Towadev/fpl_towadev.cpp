@@ -2400,7 +2400,7 @@ extern void GameUpdateAndRender(GameMemory &gameMemory, const Input &input, cons
 
 int main(int argc, char *argv[]) {
 	GameConfiguration config = {};
-	config.title = "FPL Demo | Towadev";
+	config.title = L"FPL Demo | Towadev";
 	config.disableInactiveDetection = true;
 	config.noUpdateRenderSeparation = true;
 	gamelog::Verbose("Startup game application '%s'", config.title);
