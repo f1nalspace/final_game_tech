@@ -137,6 +137,9 @@ extern void GameRender(GameMemory &gameMemory, const float alpha) {
 	Mat4f view = Mat4Translation(V2f(0, 0)) * Mat4Scale(V2f(1, 1));
 	SetMatrix(renderState, proj * view);
 
+
+
+#if 0
 	PushRectangleCenter(renderState, V2f(0, 0), V2f(w * 0.2f, h * 0.2f), V4f(1, 1, 1, 1), false, 1.0f);
 	PushRectangle(renderState, V2f(0, 0), V2f(w * 0.25f, h * 0.25f), V4f(1, 1, 1, 1), true, 0.0f);
 
@@ -154,6 +157,7 @@ extern void GameRender(GameMemory &gameMemory, const float alpha) {
 	view = Mat4Translation(V2f(0, 0));
 	SetMatrix(renderState, proj * view);
 	PushText(renderState, "Hello", 5, &state->debugFont.font.data, &state->debugFont.font.texture, V2f(0, 0), h * 0.1f, 0.0f, 0.0f, V4f(1, 0, 0, 1));
+#endif
 }
 
 extern void GameUpdateAndRender(GameMemory &gameMemory, const Input &input, const float alpha) {

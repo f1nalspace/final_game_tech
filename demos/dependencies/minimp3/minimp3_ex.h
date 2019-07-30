@@ -101,7 +101,7 @@ void mp3dec_load_buf(mp3dec_t *dec, const uint8_t *buf, size_t buf_size, mp3dec_
     int samples;
     do
     {
-        samples = mp3dec_decode_frame(dec, buf, buf_size, pcm, &frame_info);
+        samples = mp3dec_decode_frame(dec, buf, (int)buf_size, pcm, &frame_info);
         buf      += frame_info.frame_bytes;
         buf_size -= frame_info.frame_bytes;
         if (samples)
@@ -131,7 +131,7 @@ void mp3dec_load_buf(mp3dec_t *dec, const uint8_t *buf, size_t buf_size, mp3dec_
             allocated *= 2;
             info->buffer = (mp3d_sample_t*)realloc(info->buffer, allocated);
         }
-        samples = mp3dec_decode_frame(dec, buf, buf_size, info->buffer + info->samples, &frame_info);
+        samples = mp3dec_decode_frame(dec, buf, (int)buf_size, info->buffer + info->samples, &frame_info);
         frame_bytes = frame_info.frame_bytes;
         buf      += frame_bytes;
         buf_size -= frame_bytes;
@@ -155,7 +155,7 @@ void mp3dec_load_buf(mp3dec_t *dec, const uint8_t *buf, size_t buf_size, mp3dec_
     /* reallocate to normal buffer size */
     if (allocated != info->samples*sizeof(mp3d_sample_t))
         info->buffer = (mp3d_sample_t*)realloc(info->buffer, info->samples*sizeof(mp3d_sample_t));
-    info->avg_bitrate_kbps = avg_bitrate_kbps/frames;
+    info->avg_bitrate_kbps = (int)(avg_bitrate_kbps/frames);
 }
 
 void mp3dec_iterate_buf(const uint8_t *buf, size_t buf_size, MP3D_ITERATE_CB callback, void *user_data)
@@ -174,7 +174,7 @@ void mp3dec_iterate_buf(const uint8_t *buf, size_t buf_size, MP3D_ITERATE_CB cal
     do
     {
         int free_format_bytes = 0, frame_size = 0;
-        int i = mp3d_find_frame(buf, buf_size, &free_format_bytes, &frame_size);
+        int i = mp3d_find_frame(buf, (int)buf_size, &free_format_bytes, &frame_size);
         buf      += i;
         buf_size -= i;
         if (i && !frame_size)
