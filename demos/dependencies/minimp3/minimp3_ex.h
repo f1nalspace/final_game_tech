@@ -285,12 +285,12 @@ static int mp3dec_open_file(const char *file_name, mp3dec_map_info_t *map_info)
     s.LowPart = GetFileSize(file, (DWORD*)&s.HighPart);
     if (s.LowPart == INVALID_FILE_SIZE && GetLastError() != NO_ERROR)
         goto error;
-    map_info->size = s.QuadPart;
+    map_info->size = (size_t)s.QuadPart;
 
     mapping = CreateFileMapping(file, NULL, PAGE_READONLY, 0, 0, NULL);
     if (!mapping)
         goto error;
-    map_info->buffer = (const uint8_t*) MapViewOfFile(mapping, FILE_MAP_READ, 0, 0, s.QuadPart);
+    map_info->buffer = (const uint8_t*) MapViewOfFile(mapping, FILE_MAP_READ, 0, 0, (SIZE_T)s.QuadPart);
     CloseHandle(mapping);
     if (!map_info->buffer)
         goto error;

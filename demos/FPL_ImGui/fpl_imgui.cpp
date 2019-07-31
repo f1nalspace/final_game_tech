@@ -289,7 +289,7 @@ static void UpdateAndRender(const float deltaTime) {
 	ImGui::SetNextWindowSize(ImVec2(600, 200), ImGuiSetCond_FirstUseEver);
 	ImGui::Begin("Displays", &show_another_window);
 	ImGui::Text("Count: %zu", displayCount);
-	for(int i = 0; i < displayCount; ++i) {
+	for(size_t i = 0; i < displayCount; ++i) {
 		fplDisplayInfo *display = displays + i;
 		ImGui::BulletText("Display[%d]: %s, Pos: %d x %d, Size: %d x %d, Is primary: %s", i, display->id, display->virtualPosition.left, display->virtualPosition.top, display->virtualSize.width, display->virtualSize.height, (display->isPrimary ? "true" : "false"));
 	}
