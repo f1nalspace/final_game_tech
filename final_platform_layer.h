@@ -126,7 +126,7 @@ SOFTWARE.
 */
 
 // ----------------------------------------------------------------------------
-// 1LOG
+// > CHANGELOG
 // ----------------------------------------------------------------------------
 /*!
 	@page page_changelog Changelog
@@ -143,12 +143,14 @@ SOFTWARE.
 	- New: Introduced dynamic/temporary allocations wrapping
 	- New: Added FPL_WARNING macro for pushing on warnings only
 	- New: Print out function name and line number in all log outputs
+	- New: Added functions fplAtomicIncrement* used for incrementing a value by one atomically
 	- Fixed: Corrected opengl example code in the header file
 	- Fixed: Tons of documentation improvements
 	- Fixed: fpl__PushError_Formatted was always pushing errors on regardless of the log level
 	- Fixed: Invalid memory clear with zero bytes, when there was no audio samples to clear
 	- Fixed: All non inlineable functions changed from fpl_internal_inline to fpl_internal instead (GCC/Clang compatible)
-    - Fixed: Use actual window size for video initialization always instead of fixed size
+	- Fixed: Use actual window size for video initialization always instead of fixed size
+	- Fixed: fplAtomicAddAndFetch* had no addend parameter
 	- Changed: Removed fake thread-safe implementation of the internal event queue
 	- Changed: Changed drop event structure in fplWindowEvent to support multiple dropped files
 	- Changed: Renamed fplGetPlatformTypeString() to fplGetPlatformName()
@@ -158,6 +160,8 @@ SOFTWARE.
 	- Changed: Added stride to fplSignalWaitForAny() to support custom sized user structs
 	- Changed: Set audio worker thread to realtime priority
 
+	- New: [POSIX/Win32] Implemented functions fplAtomicIncrement*
+	- Fixed: [POSIX/Win32] fplAtomicAddAndFetch* uses now addend parameter
 	- Changed: [POSIX/Win32] When a dynamic library failed to load, it will push on a warning instead of a error
 	- Changed: [POSIX/Win32] When a dynamic library procedure address failed to retrieve, it will push on a warning instead of a error
 	- Changed: [POSIX/Win32] Reflect api changes for fplThreadWaitForAll()
@@ -168,8 +172,10 @@ SOFTWARE.
 	- New: [Win32] Support for multiple files in WM_DROPFILES
 	- New: [Win32] Implemented fplGetThreadPriority
 	- New: [Win32] Implemented fplSetThreadPriority
+	- Changed: [POSIX] Use __sync_add_and_fetch instead of __sync_fetch_and_or in fplAtomicLoad*
 	- Fixed: [Win32] Fixed missing WINAPI keyword for fpl__Win32MonitorCountEnumProc/fpl__Win32MonitorInfoEnumProc/fpl__Win32PrimaryMonitorEnumProc
 	- Fixed: [X11] Software video output was broken
+	- Fixed: [POSIX] Moved __sync_synchronize before __sync_lock_test_and_set in fplAtomicStore*
 
 	## v0.9.3.0 beta
 	- Changed: Renamed fplSetWindowFullscreen to fplSetWindowFullscreenSize
@@ -2050,6 +2056,10 @@ struct IUnknown;
   */
   // ----------------------------------------------------------------------------
 
+  //
+  // Barrier/Fence
+  //
+
   /**
 	* @brief Inserts a memory read fence/barrier.
 	* @note This will complete previous reads before future reads and prevents the compiler from reordering memory reads across this fence.
@@ -2068,6 +2078,10 @@ fpl_platform_api void fplAtomicWriteFence();
   * @see @ref section_category_threading_atomics_barriers
   */
 fpl_platform_api void fplAtomicReadWriteFence();
+
+//
+// Exchange
+//
 
 /**
   * @brief Replaces a 32-bit unsigned integer with the given value atomically.
@@ -2124,109 +2138,185 @@ fpl_common_api void *fplAtomicExchangePtr(volatile void **target, const void *va
   */
 fpl_common_api size_t fplAtomicExchangeSize(volatile size_t *target, const size_t value);
 
+//
+// Fetch and Add
+//
+
 /**
   * @brief Adds a 32-bit unsigned integer to the value by the given addend atomically.
-  * @param value The target value to append to
-  * @param addend The value used for adding
-  * @return Returns the initial value before the append.
+  * @param value The target value to add to.
+  * @param addend The value used for adding.
+  * @return Returns the initial value before the add.
   * @note Ensures that memory operations are completed in order.
   * @see @ref category_threading_atomics_add
   */
 fpl_platform_api uint32_t fplAtomicFetchAndAddU32(volatile uint32_t *value, const uint32_t addend);
 /**
   * @brief Adds a 64-bit unsigned integer to the value by the given addend atomically.
-  * @param value The target value to append to
-  * @param addend The value used for adding
-  * @return Returns the initial value before the append.
+  * @param value The target value to add to.
+  * @param addend The value used for adding.
+  * @return Returns the initial value before the add.
   * @note Ensures that memory operations are completed in order.
   * @see @ref category_threading_atomics_add
   */
 fpl_platform_api uint64_t fplAtomicFetchAndAddU64(volatile uint64_t *value, const uint64_t addend);
 /**
   * @brief Adds a 32-bit signed integer to the value by the given addend atomically.
-  * @param value The target value to append to
-  * @param addend The value used for adding
-  * @return Returns the initial value before the append.
+  * @param value The target value to add to.
+  * @param addend The value used for adding.
+  * @return Returns the initial value before the add.
   * @note Ensures that memory operations are completed in order.
   * @see @ref category_threading_atomics_add
   */
 fpl_platform_api int32_t fplAtomicFetchAndAddS32(volatile int32_t *value, const int32_t addend);
 /**
   * @brief Adds a 64-bit signed integer to the value by the given addend atomically.
-  * @param value The target value to append to
-  * @param addend The value used for adding
-  * @return Returns the initial value before the append.
+  * @param value The target value to add to.
+  * @param addend The value used for adding.
+  * @return Returns the initial value before the add.
   * @note Ensures that memory operations are completed in order.
   * @see @ref category_threading_atomics_add
   */
 fpl_platform_api int64_t fplAtomicFetchAndAddS64(volatile int64_t *value, const int64_t addend);
 /**
   * @brief Adds a size to the value by the given addend atomically.
-  * @param dest The target value to append to
-  * @param addend The value used for adding
-  * @return Returns the initial value before the append.
+  * @param dest The target value to add to.
+  * @param addend The value used for adding.
+  * @return Returns the initial value before the add.
   * @note Ensures that memory operations are completed in order.
   * @see @ref category_threading_atomics_add
   */
 fpl_common_api size_t fplAtomicFetchAndAddSize(volatile size_t *dest, const size_t addend);
 /**
-  * @brief Adds a value to the pointer by the given addend atomically.
-  * @param dest The target pointer to append to
-  * @param addend The value used for adding
-  * @return Returns the initial pointer before the append.
+  * @brief Adds a addend to the pointer atomically and returns the initial value before the add.
+  * @param dest The target value to add to.
+  * @param addend The value used for adding.
+  * @return Returns the initial value before the add.
   * @note Ensures that memory operations are completed in order.
   * @see @ref category_threading_atomics_add
   */
 fpl_common_api void *fplAtomicFetchAndAddPtr(volatile void **dest, const intptr_t addend);
 
+//
+// Add and Fetch
+//
+
+/**
+  * @brief Adds the addend to destination 32-bit unsigned integer atomically and returns the result after the addition.
+  * @param dest The target value to add to.
+  * @param addend The value used for adding.
+  * @return Returns the value after the addition.
+  * @note Ensures that memory operations are completed in order.
+  * @see @ref category_threading_atomics_add
+  */
+fpl_platform_api uint32_t fplAtomicAddAndFetchU32(volatile uint32_t *dest, const uint32_t addend);
+/**
+  * @brief Adds the addend to destination 64-bit unsigned integer atomically and returns the result after the addition.
+  * @param dest The target value to add to.
+  * @param addend The value used for adding.
+  * @return Returns the value after the addition.
+  * @note Ensures that memory operations are completed in order.
+  * @see @ref category_threading_atomics_add
+  */
+fpl_platform_api uint64_t fplAtomicAddAndFetchU64(volatile uint64_t *dest, const uint64_t addend);
+/**
+  * @brief Adds the addend to destination 32-bit signed integer atomically and returns the result after the addition.
+  * @param dest The target value to add to.
+  * @param addend The value used for adding.
+  * @return Returns the value after the addition.
+  * @note Ensures that memory operations are completed in order.
+  * @see @ref category_threading_atomics_add
+  */
+fpl_platform_api int32_t fplAtomicAddAndFetchS32(volatile int32_t *dest, const int32_t addend);
+/**
+  * @brief Adds the addend to destination 64-bit signed integer atomically and returns the result after the addition.
+  * @param dest The target value to add to.
+  * @param addend The value used for adding.
+  * @return Returns the value after the addition.
+  * @note Ensures that memory operations are completed in order.
+  * @see @ref category_threading_atomics_add
+  */
+fpl_platform_api int64_t fplAtomicAddAndFetchS64(volatile int64_t *dest, const int64_t addend);
+/**
+  * @brief Adds the addend to destination size atomically and returns the result after the addition.
+  * @param dest The target value to add to.
+  * @param addend The value used for adding.
+  * @return Returns the value after the addition.
+  * @note Ensures that memory operations are completed in order.
+  * @see @ref category_threading_atomics_add
+  */
+fpl_common_api size_t fplAtomicAddAndFetchSize(volatile size_t *dest, const size_t addend);
+/**
+  * @brief Adds the addend to destination pointer atomically and returns the result after the addition.
+  * @param dest The target value to add to.
+  * @param addend The value used for adding.
+  * @return Returns the value after the addition.
+  * @note Ensures that memory operations are completed in order.
+  * @see @ref category_threading_atomics_add
+  */
+fpl_common_api void *fplAtomicAddAndFetchPtr(volatile void **dest, const intptr_t addend);
+
+//
+// Increment
+//
+
 /**
   * @brief Increments the given 32-bit unsigned integer by one atomically.
-  * @param value The target value to increment
+  * @param dest The target value to increment to.
+  * @param addend The value used for increment.
   * @return Returns the value after the increment.
   * @note Ensures that memory operations are completed in order.
   * @see @ref category_threading_atomics_inc
   */
-fpl_platform_api uint32_t fplAtomicAddAndFetchU32(volatile uint32_t *value);
+fpl_platform_api uint32_t fplAtomicIncrementU32(volatile uint32_t *dest);
 /**
   * @brief Increments the given 64-bit unsigned integer by one atomically.
-  * @param value The target value to increment
+  * @param dest The target value to increment to.
+  * @param addend The value used for increment.
   * @return Returns the value after the increment.
   * @note Ensures that memory operations are completed in order.
   * @see @ref category_threading_atomics_inc
   */
-fpl_platform_api uint64_t fplAtomicAddAndFetchU64(volatile uint64_t *value);
+fpl_platform_api uint64_t fplAtomicIncrementU64(volatile uint64_t *dest);
 /**
   * @brief Increments the given 32-bit signed integer by one atomically.
-  * @param value The target value to increment
+  * @param dest The target value to increment to.
+  * @param addend The value used for increment.
   * @return Returns the value after the increment.
   * @note Ensures that memory operations are completed in order.
   * @see @ref category_threading_atomics_inc
   */
-fpl_platform_api int32_t fplAtomicAddAndFetchS32(volatile int32_t *value);
+fpl_platform_api int32_t fplAtomicIncrementS32(volatile int32_t *dest);
 /**
   * @brief Increments the given 64-bit signed integer by one atomically.
-  * @param value The target value to increment
+  * @param dest The target value to increment to.
+  * @param addend The value used for increment.
   * @return Returns the value after the increment.
   * @note Ensures that memory operations are completed in order.
   * @see @ref category_threading_atomics_inc
   */
-fpl_platform_api int64_t fplAtomicAddAndFetchS64(volatile int64_t *value);
+fpl_platform_api int64_t fplAtomicIncrementS64(volatile int64_t *dest);
 /**
   * @brief Increments the given size atomically.
-  * @param value The target value to increment
+  * @param dest The target value to increment to.
   * @return Returns the value after the increment.
   * @note Ensures that memory operations are completed in order.
   * @see @ref category_threading_atomics_inc
   */
-fpl_common_api size_t fplAtomicAddAndFetchSize(volatile size_t *value);
+fpl_common_api size_t fplAtomicIncrementSize(volatile size_t *dest);
 /**
   * @brief Increments the given pointer atomically.
-  * @param value The target pointer to increment
+  * @param dest The target value to increment to.
+  * @param addend The value used for increment.
   * @return Returns the pointer after the increment.
   * @note Ensures that memory operations are completed in order.
   * @see @ref category_threading_atomics_inc
   */
-fpl_common_api void *fplAtomicAddAndFetchPtr(volatile void **value);
+fpl_common_api void *fplAtomicIncrementPtr(volatile void **dest);
+
+//
+// CAS
+//
 
 /**
   * @brief Compares a 32-bit unsigned integer with a comparand and swaps it when comparand matches destination.
@@ -2356,6 +2446,10 @@ fpl_common_api bool fplIsAtomicCompareAndSwapSize(volatile size_t *dest, const s
   */
 fpl_common_api bool fplIsAtomicCompareAndSwapPtr(volatile void **dest, const void *comparand, const void *exchange);
 
+//
+// Load
+//
+
 /**
   * @brief Loads the 32-bit unsigned value atomically and returns the value.
   * @param source The source value to read from
@@ -2410,6 +2504,10 @@ fpl_common_api size_t fplAtomicLoadSize(volatile size_t *source);
   * @see @ref category_threading_atomics_load
   */
 fpl_common_api void *fplAtomicLoadPtr(volatile void **source);
+
+//
+// Store
+//
 
 /**
   * @brief Overwrites the 32-bit unsigned value atomically.
@@ -8311,39 +8409,51 @@ fpl_common_api void *fplAtomicFetchAndAddPtr(volatile void **dest, const intptr_
 	return (result);
 }
 
-fpl_common_api size_t fplAtomicAddAndFetchSize(volatile size_t *value) {
+fpl_common_api size_t fplAtomicAddAndFetchSize(volatile size_t *value, const size_t addend) {
 	fplAssert(value != fpl_null);
 #if defined(FPL_CPU_64BIT)
-	size_t result = (size_t)fplAtomicAddAndFetchU64((volatile uint64_t *)value);
+	size_t result = (size_t)fplAtomicAddAndFetchU64((volatile uint64_t *)value, (uint64_t)addend);
 #elif defined(FPL_CPU_32BIT)
-	size_t result = (size_t)fplAtomicAddAndFetchU32((volatile uint32_t *)value);
+	size_t result = (size_t)fplAtomicAddAndFetchU32((volatile uint32_t *)value, (uint32_t)addend);
 #else
 #	error "Unsupported architecture/platform!"
 #endif // FPL_ARCH
 	return (result);
 }
 
-fpl_common_api void *fplAtomicAddAndFetchPtr(volatile void **value) {
+fpl_common_api void *fplAtomicAddAndFetchPtr(volatile void **value, const intptr_t addend) {
 	fplAssert(value != fpl_null);
 #if defined(FPL_CPU_64BIT)
-	void *result = (void *)fplAtomicAddAndFetchU64((volatile uint64_t *)value);
+	void *result = (void *)fplAtomicAddAndFetchU64((volatile uint64_t *)value, (uint64_t)addend);
 #elif defined(FPL_CPU_32BIT)
-	void *result = (void *)fplAtomicAddAndFetchU32((volatile uint32_t *)value);
+	void *result = (void *)fplAtomicAddAndFetchU32((volatile uint32_t *)value, (uint32_t)addend);
 #else
 #	error "Unsupported architecture/platform!"
 #endif // FPL_ARCH
 	return (result);
 }
 
-fpl_common_api void *fplAtomicExchangePtr(volatile void **target, const void *value) {
-	fplAssert(target != fpl_null);
+fpl_common_api size_t fplAtomicIncrementSize(volatile size_t *value) {
+	fplAssert(value != fpl_null);
 #if defined(FPL_CPU_64BIT)
-	void *result = (void *)fplAtomicExchangeU64((volatile uint64_t *)target, (uint64_t)value);
+	size_t result = (size_t)fplAtomicIncrementU64((volatile uint64_t *)value);
 #elif defined(FPL_CPU_32BIT)
-	void *result = (void *)fplAtomicExchangeU32((volatile uint32_t *)target, (uint32_t)value);
+	size_t result = (size_t)fplAtomicIncrementU32((volatile uint32_t *)value);
 #else
 #	error "Unsupported architecture/platform!"
-#endif  // FPL_ARCH
+#endif // FPL_ARCH
+	return (result);
+}
+
+fpl_common_api void *fplAtomicIncrementPtr(volatile void **value) {
+	fplAssert(value != fpl_null);
+#if defined(FPL_CPU_64BIT)
+	void *result = (void *)fplAtomicIncrementU64((volatile uint64_t *)value);
+#elif defined(FPL_CPU_32BIT)
+	void *result = (void *)fplAtomicIncrementU32((volatile uint32_t *)value);
+#else
+#	error "Unsupported architecture/platform!"
+#endif // FPL_ARCH
 	return (result);
 }
 
@@ -8358,16 +8468,15 @@ fpl_common_api size_t fplAtomicExchangeSize(volatile size_t *target, const size_
 #endif  // FPL_ARCH
 	return (result);
 }
-
-fpl_common_api void *fplAtomicCompareAndSwapPtr(volatile void **dest, const void *comparand, const void *exchange) {
-	fplAssert(dest != fpl_null);
+fpl_common_api void *fplAtomicExchangePtr(volatile void **target, const void *value) {
+	fplAssert(target != fpl_null);
 #if defined(FPL_CPU_64BIT)
-	void *result = (void *)fplAtomicCompareAndSwapU64((volatile uint64_t *)dest, (uint64_t)comparand, (uint64_t)exchange);
+	void *result = (void *)fplAtomicExchangeU64((volatile uint64_t *)target, (uint64_t)value);
 #elif defined(FPL_CPU_32BIT)
-	void *result = (void *)fplAtomicCompareAndSwapU32((volatile uint32_t *)dest, (uint32_t)comparand, (uint32_t)exchange);
+	void *result = (void *)fplAtomicExchangeU32((volatile uint32_t *)target, (uint32_t)value);
 #else
 #	error "Unsupported architecture/platform!"
-#endif // FPL_ARCH
+#endif  // FPL_ARCH
 	return (result);
 }
 
@@ -8382,13 +8491,12 @@ fpl_common_api size_t fplAtomicCompareAndSwapSize(volatile size_t *dest, const s
 #endif // FPL_ARCH
 	return (result);
 }
-
-fpl_common_api bool fplIsAtomicCompareAndSwapPtr(volatile void **dest, const void *comparand, const void *exchange) {
+fpl_common_api void *fplAtomicCompareAndSwapPtr(volatile void **dest, const void *comparand, const void *exchange) {
 	fplAssert(dest != fpl_null);
 #if defined(FPL_CPU_64BIT)
-	bool result = fplIsAtomicCompareAndSwapU64((volatile uint64_t *)dest, (uint64_t)comparand, (uint64_t)exchange);
+	void *result = (void *)fplAtomicCompareAndSwapU64((volatile uint64_t *)dest, (uint64_t)comparand, (uint64_t)exchange);
 #elif defined(FPL_CPU_32BIT)
-	bool result = fplIsAtomicCompareAndSwapU32((volatile uint32_t *)dest, (uint32_t)comparand, (uint32_t)exchange);
+	void *result = (void *)fplAtomicCompareAndSwapU32((volatile uint32_t *)dest, (uint32_t)comparand, (uint32_t)exchange);
 #else
 #	error "Unsupported architecture/platform!"
 #endif // FPL_ARCH
@@ -8406,26 +8514,16 @@ fpl_common_api bool fplIsAtomicCompareAndSwapSize(volatile size_t *dest, const s
 #endif // FPL_ARCH
 	return (result);
 }
-
-fpl_common_api void *fplAtomicLoadPtr(volatile void **source) {
+fpl_common_api bool fplIsAtomicCompareAndSwapPtr(volatile void **dest, const void *comparand, const void *exchange) {
+	fplAssert(dest != fpl_null);
 #if defined(FPL_CPU_64BIT)
-	void *result = (void *)fplAtomicLoadU64((volatile uint64_t *)source);
+	bool result = fplIsAtomicCompareAndSwapU64((volatile uint64_t *)dest, (uint64_t)comparand, (uint64_t)exchange);
 #elif defined(FPL_CPU_32BIT)
-	void *result = (void *)fplAtomicLoadU32((volatile uint32_t *)source);
+	bool result = fplIsAtomicCompareAndSwapU32((volatile uint32_t *)dest, (uint32_t)comparand, (uint32_t)exchange);
 #else
 #	error "Unsupported architecture/platform!"
-#endif  // FPL_ARCH
-	return(result);
-}
-
-fpl_common_api void fplAtomicStorePtr(volatile void **dest, const void *value) {
-#if defined(FPL_CPU_64BIT)
-	fplAtomicStoreU64((volatile uint64_t *)dest, (uint64_t)value);
-#elif defined(FPL_CPU_32BIT)
-	fplAtomicStoreU32((volatile uint32_t *)dest, (uint32_t)value);
-#else
-#	error "Unsupported architecture/platform!"
-#endif  // FPL_ARCH
+#endif // FPL_ARCH
+	return (result);
 }
 
 fpl_common_api size_t fplAtomicLoadSize(volatile size_t *source) {
@@ -8438,8 +8536,27 @@ fpl_common_api size_t fplAtomicLoadSize(volatile size_t *source) {
 #endif  // FPL_ARCH
 	return(result);
 }
-
 fpl_common_api void fplAtomicStoreSize(volatile size_t *dest, const size_t value) {
+#if defined(FPL_CPU_64BIT)
+	fplAtomicStoreU64((volatile uint64_t *)dest, (uint64_t)value);
+#elif defined(FPL_CPU_32BIT)
+	fplAtomicStoreU32((volatile uint32_t *)dest, (uint32_t)value);
+#else
+#	error "Unsupported architecture/platform!"
+#endif  // FPL_ARCH
+}
+
+fpl_common_api void *fplAtomicLoadPtr(volatile void **source) {
+#if defined(FPL_CPU_64BIT)
+	void *result = (void *)fplAtomicLoadU64((volatile uint64_t *)source);
+#elif defined(FPL_CPU_32BIT)
+	void *result = (void *)fplAtomicLoadU32((volatile uint32_t *)source);
+#else
+#	error "Unsupported architecture/platform!"
+#endif  // FPL_ARCH
+	return(result);
+}
+fpl_common_api void fplAtomicStorePtr(volatile void **dest, const void *value) {
 #if defined(FPL_CPU_64BIT)
 	fplAtomicStoreU64((volatile uint64_t *)dest, (uint64_t)value);
 #elif defined(FPL_CPU_32BIT)
@@ -10240,22 +10357,43 @@ fpl_platform_api int64_t fplAtomicFetchAndAddS64(volatile int64_t *value, const 
 	return(result);
 }
 
-fpl_platform_api uint32_t fplAtomicAddAndFetchU32(volatile uint32_t *value) {
+fpl_platform_api uint32_t fplAtomicAddAndFetchU32(volatile uint32_t *value, const uint32_t addend) {
+	fplAssert(value != fpl_null);
+	uint32_t result = _InterlockedAdd((volatile LONG *)value, addend);
+	return (result);
+}
+fpl_platform_api int32_t fplAtomicAddAndFetchS32(volatile int32_t *value, const int32_t addend) {
+	fplAssert(value != fpl_null);
+	int32_t result = _InterlockedAdd((volatile LONG *)value, addend);
+	return (result);
+}
+fpl_platform_api uint64_t fplAtomicAddAndFetchU64(volatile uint64_t *value, const uint64_t addend) {
+	fplAssert(value != fpl_null);
+	uint64_t result = _InterlockedAdd64((volatile LONG64 *)value, addend);
+	return (result);
+}
+fpl_platform_api int64_t fplAtomicAddAndFetchS64(volatile int64_t *value, const int64_t addend) {
+	fplAssert(value != fpl_null);
+	int64_t result = _InterlockedAdd64((volatile LONG64 *)value, addend);
+	return(result);
+}
+
+fpl_platform_api uint32_t fplAtomicIncrementU32(volatile uint32_t *value) {
 	fplAssert(value != fpl_null);
 	uint32_t result = _InterlockedIncrement((volatile LONG *)value);
 	return (result);
 }
-fpl_platform_api int32_t fplAtomicAddAndFetchS32(volatile int32_t *value) {
+fpl_platform_api int32_t fplAtomicIncrementS32(volatile int32_t *value) {
 	fplAssert(value != fpl_null);
 	int32_t result = _InterlockedIncrement((volatile LONG *)value);
 	return (result);
 }
-fpl_platform_api uint64_t fplAtomicAddAndFetchU64(volatile uint64_t *value) {
+fpl_platform_api uint64_t fplAtomicIncrementU64(volatile uint64_t *value) {
 	fplAssert(value != fpl_null);
 	uint64_t result = _InterlockedIncrement64((volatile LONG64 *)value);
 	return (result);
 }
-fpl_platform_api int64_t fplAtomicAddAndFetchS64(volatile int64_t *value) {
+fpl_platform_api int64_t fplAtomicIncrementS64(volatile int64_t *value) {
 	fplAssert(value != fpl_null);
 	int64_t result = _InterlockedIncrement64((volatile LONG64 *)value);
 	return(result);
@@ -10646,7 +10784,7 @@ fpl_internal fplThreadPriority fpl__Win32MapNativeThreadPriority(const int win32
 		default:
 			return fplThreadPriority_Unknown;
 	}
-	
+
 }
 
 fpl_platform_api fplThreadPriority fplGetThreadPriority(fplThreadHandle *thread) {
@@ -12553,12 +12691,11 @@ fpl_internal bool fpl__PosixThreadWaitForMultiple(fplThreadHandle **threads, con
 //
 #if defined(FPL_COMPILER_GCC) || defined(FPL_COMPILER_CLANG) || defined(FPL_COMPILER_LLVM)
 // @NOTE(final): See: https://gcc.gnu.org/onlinedocs/gcc/_005f_005fsync-Builtins.html#g_t_005f_005fsync-Builtins
+// @NOTE(final): There is only one barrier in POSIX (read and write)
 fpl_platform_api void fplAtomicReadFence() {
-	// @TODO(final/POSIX): Wrong to ensure a full memory fence here!
 	__sync_synchronize();
 }
 fpl_platform_api void fplAtomicWriteFence() {
-	// @TODO(final/POSIX): Wrong to ensure a full memory fence here!
 	__sync_synchronize();
 }
 fpl_platform_api void fplAtomicReadWriteFence() {
@@ -12607,22 +12744,43 @@ fpl_platform_api int64_t fplAtomicFetchAndAddS64(volatile int64_t *value, const 
 	return (result);
 }
 
-fpl_platform_api uint32_t fplAtomicAddAndFetchU32(volatile uint32_t *value) {
+fpl_platform_api uint32_t fplAtomicAddAndFetchU32(volatile uint32_t *value, const uint32_t addend) {
+	fplAssert(value != fpl_null);
+	uint32_t result = __sync_add_and_fetch(value, addend);
+	return (result);
+}
+fpl_platform_api int32_t fplAtomicAddAndFetchS32(volatile int32_t *value, const int32_t addend) {
+	fplAssert(value != fpl_null);
+	uint32_t result = __sync_add_and_fetch(value, addend);
+	return (result);
+}
+fpl_platform_api uint64_t fplAtomicAddAndFetchU64(volatile uint64_t *value, const uint64_t addend) {
+	fplAssert(value != fpl_null);
+	uint32_t result = __sync_add_and_fetch(value, addend);
+	return (result);
+}
+fpl_platform_api int64_t fplAtomicAddAndFetchS64(volatile int64_t *value, const int64_t addend) {
+	fplAssert(value != fpl_null);
+	uint32_t result = __sync_add_and_fetch(value, addend);
+	return (result);
+}
+
+fpl_platform_api uint32_t fplAtomicIncrementU32(volatile uint32_t *value, const uint32_t addend) {
 	fplAssert(value != fpl_null);
 	uint32_t result = __sync_add_and_fetch(value, 1);
 	return (result);
 }
-fpl_platform_api int32_t fplAtomicAddAndFetchS32(volatile int32_t *value) {
+fpl_platform_api int32_t fplAtomicIncrementS32(volatile int32_t *value, const int32_t addend) {
 	fplAssert(value != fpl_null);
 	uint32_t result = __sync_add_and_fetch(value, 1);
 	return (result);
 }
-fpl_platform_api uint64_t fplAtomicAddAndFetchU64(volatile uint64_t *value) {
+fpl_platform_api uint64_t fplAtomicIncrementU64(volatile uint64_t *value, const uint64_t addend) {
 	fplAssert(value != fpl_null);
 	uint32_t result = __sync_add_and_fetch(value, 1);
 	return (result);
 }
-fpl_platform_api int64_t fplAtomicAddAndFetchS64(volatile int64_t *value) {
+fpl_platform_api int64_t fplAtomicIncrementS64(volatile int64_t *value, const int64_t addend) {
 	fplAssert(value != fpl_null);
 	uint32_t result = __sync_add_and_fetch(value, 1);
 	return (result);
@@ -12671,37 +12829,37 @@ fpl_platform_api bool fplIsAtomicCompareAndSwapS64(volatile int64_t *dest, const
 }
 
 fpl_platform_api uint32_t fplAtomicLoadU32(volatile uint32_t *source) {
-	uint32_t result = __sync_fetch_and_or(source, 0);
+	uint32_t result = __sync_add_and_fetch(source, 0);
 	return(result);
 }
 fpl_platform_api uint64_t fplAtomicLoadU64(volatile uint64_t *source) {
-	uint64_t result = __sync_fetch_and_or(source, 0);
+	uint64_t result = __sync_add_and_fetch(source, 0);
 	return(result);
 }
 fpl_platform_api int32_t fplAtomicLoadS32(volatile int32_t *source) {
-	int32_t result = __sync_fetch_and_or(source, 0);
+	int32_t result = __sync_add_and_fetch(source, 0);
 	return(result);
 }
 fpl_platform_api int64_t fplAtomicLoadS64(volatile int64_t *source) {
-	int64_t result = __sync_fetch_and_or(source, 0);
+	int64_t result = __sync_add_and_fetch(source, 0);
 	return(result);
 }
 
 fpl_platform_api void fplAtomicStoreU32(volatile uint32_t *dest, const uint32_t value) {
-	__sync_lock_test_and_set(dest, value);
 	__sync_synchronize();
+	__sync_lock_test_and_set(dest, value);
 }
 fpl_platform_api void fplAtomicStoreU64(volatile uint64_t *dest, const uint64_t value) {
-	__sync_lock_test_and_set(dest, value);
 	__sync_synchronize();
+	__sync_lock_test_and_set(dest, value);
 }
 fpl_platform_api void fplAtomicStoreS32(volatile int32_t *dest, const int32_t value) {
-	__sync_lock_test_and_set(dest, value);
 	__sync_synchronize();
+	__sync_lock_test_and_set(dest, value);
 }
 fpl_platform_api void fplAtomicStoreS64(volatile int64_t *dest, const int64_t value) {
-	__sync_lock_test_and_set(dest, value);
 	__sync_synchronize();
+	__sync_lock_test_and_set(dest, value);
 }
 #else
 #	error "This POSIX compiler/platform is not supported!"
@@ -13829,7 +13987,7 @@ fpl_platform_api bool fplGetOperatingSystemInfos(fplOSInfos *outInfos) {
 		result = true;
 	}
 	return(result);
-	}
+}
 #endif // FPL_SUBPLATFORM_POSIX
 
 // ############################################################################
@@ -13862,7 +14020,7 @@ fpl_platform_api wchar_t *fplUTF8StringToWideString(const char *utf8Source, cons
 	mbstowcs(wideDest, utf8Source, utf8SourceLen);
 	wideDest[requiredLen] = 0;
 	return(wideDest);
-	}
+}
 #endif // FPL_SUBPLATFORM_STD_STRINGS
 
 // ############################################################################
@@ -13888,7 +14046,7 @@ fpl_platform_api char fplConsoleWaitForCharInput() {
 	int c = getchar();
 	const char result = (c >= 0 && c < 256) ? (char)c : 0;
 	return(result);
-	}
+}
 #endif // FPL_SUBPLATFORM_STD_CONSOLE
 
 // ############################################################################
@@ -14256,7 +14414,7 @@ fpl_internal bool fpl__X11InitWindow(const fplSettings *initSettings, fplWindowS
 		colorDepth = x11Api->XDefaultDepth(windowState->display, windowState->screen);
 		colormap = x11Api->XDefaultColormap(windowState->display, windowState->screen);
 	}
-	int flags = CWColormap | CWBackPixel | CWBorderPixel | CWEventMask |  CWBitGravity | CWWinGravity;
+	int flags = CWColormap | CWBackPixel | CWBorderPixel | CWEventMask | CWBitGravity | CWWinGravity;
 
 	FPL_LOG_DEBUG(FPL__MODULE_X11, "Using visual: %p", visual);
 	FPL_LOG_DEBUG(FPL__MODULE_X11, "Using color depth: %d", colorDepth);
@@ -14311,15 +14469,15 @@ fpl_internal bool fpl__X11InitWindow(const fplSettings *initSettings, fplWindowS
 	FPL_LOG_DEBUG(FPL__MODULE_X11, "Successfully created window with (Display='%p', Root='%d', Size=%dx%d, Colordepth='%d', visual='%p', colormap='%d': %d", windowState->display, (int)windowState->root, windowWidth, windowHeight, colorDepth, visual, (int)swa.colormap, (int)windowState->window);
 
 	// Force keyboard and button events + paint and resize events
-	int inputMasks = 
-	        KeyPressMask |
-	        KeyReleaseMask |
-	        ButtonPressMask |
-	        ButtonReleaseMask |
-	        PointerMotionMask |
-	        ButtonMotionMask |
-	        ExposureMask |
-	        StructureNotifyMask;
+	int inputMasks =
+		KeyPressMask |
+		KeyReleaseMask |
+		ButtonPressMask |
+		ButtonReleaseMask |
+		PointerMotionMask |
+		ButtonMotionMask |
+		ExposureMask |
+		StructureNotifyMask;
 	x11Api->XSelectInput(windowState->display, windowState->window, inputMasks);
 
 	windowState->visual = visual;
@@ -14441,7 +14599,7 @@ fpl_internal void fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatfor
 
 	switch (ev->type) {
 		case ConfigureNotify:
-		{	
+		{
 #		if defined(FPL__ENABLE_VIDEO_SOFTWARE)
 			if (appState->currentSettings.video.driver == fplVideoDriverType_Software) {
 				if (appState->initSettings.video.isAutoSize) {
@@ -14940,7 +15098,7 @@ fpl_platform_api bool fplPollMouseState(fplMouseState *outState) {
 		result = true;
 	}
 	return(result);
-	}
+}
 #endif // FPL_SUBPLATFORM_X11
 
 // ############################################################################
@@ -15480,7 +15638,7 @@ fpl_platform_api char *fplGetProcessorName(char *destBuffer, const size_t maxDes
 fpl_platform_api bool fplGetRunningMemoryInfos(fplMemoryInfos *outInfos) {
 	// @IMPLEMENT(final/Unix): Implement fplGetRunningMemoryInfos
 	return(false);
-	}
+}
 #endif // FPL_PLATFORM_UNIX
 
 // ****************************************************************************
@@ -16305,7 +16463,7 @@ done_x11_glx:
 	}
 
 	return (result);
-	}
+}
 #endif // FPL__ENABLE_VIDEO_OPENGL && FPL_SUBPLATFORM_X11
 
 // ############################################################################
@@ -16369,7 +16527,7 @@ fpl_internal bool fpl__X11InitVideoSoftware(const fpl__X11SubplatformState *subp
 	x11Api->XSync(windowState->display, False);
 
 	return (true);
-	}
+}
 #endif // FPL__ENABLE_VIDEO_SOFTWARE && FPL_SUBPLATFORM_X11
 
 // ############################################################################
@@ -16757,7 +16915,7 @@ fpl_internal fplAudioResult fpl__AudioInitDirectSound(const fplAudioSettings *au
 	}
 
 	return fplAudioResult_Success;
-	}
+}
 
 fpl_internal void fpl__AudioStopMainLoopDirectSound(fpl__DirectSoundAudioState *dsoundState) {
 	dsoundState->breakMainLoop = true;
@@ -17788,13 +17946,13 @@ fpl_internal void fpl__StopAudioDeviceMainLoop(fpl__AudioState *audioState) {
 		case fplAudioDriverType_Alsa:
 		{
 			fpl__AudioStopMainLoopAlsa(&audioState->alsa);
-	} break;
+		} break;
 #	endif
 
 		default:
 			break;
-}
 	}
+}
 
 fpl_internal bool fpl__ReleaseAudioDevice(fpl__AudioState *audioState) {
 	fplAssert(audioState->activeDriver > fplAudioDriverType_Auto);
@@ -17812,14 +17970,14 @@ fpl_internal bool fpl__ReleaseAudioDevice(fpl__AudioState *audioState) {
 		case fplAudioDriverType_Alsa:
 		{
 			result = fpl__AudioReleaseAlsa(&audioState->common, &audioState->alsa);
-	} break;
+		} break;
 #	endif
 
 		default:
 			break;
-}
-	return (result);
 	}
+	return (result);
+}
 
 fpl_internal bool fpl__StopAudioDevice(fpl__AudioState *audioState) {
 	fplAssert(audioState->activeDriver > fplAudioDriverType_Auto);
@@ -17837,14 +17995,14 @@ fpl_internal bool fpl__StopAudioDevice(fpl__AudioState *audioState) {
 		case fplAudioDriverType_Alsa:
 		{
 			result = fpl__AudioStopAlsa(&audioState->alsa);
-	} break;
+		} break;
 #	endif
 
 		default:
 			break;
-}
-	return (result);
 	}
+	return (result);
+}
 
 fpl_internal fplAudioResult fpl__StartAudioDevice(fpl__AudioState *audioState) {
 	fplAssert(audioState->activeDriver > fplAudioDriverType_Auto);
@@ -17862,14 +18020,14 @@ fpl_internal fplAudioResult fpl__StartAudioDevice(fpl__AudioState *audioState) {
 		case fplAudioDriverType_Alsa:
 		{
 			result = fpl__AudioStartAlsa(&audioState->common, &audioState->alsa);
-	} break;
+		} break;
 #	endif
 
 		default:
 			break;
-}
-	return (result);
 	}
+	return (result);
+}
 
 fpl_internal void fpl__RunAudioDeviceMainLoop(fpl__AudioState *audioState) {
 	fplAssert(audioState->activeDriver > fplAudioDriverType_Auto);
@@ -17886,13 +18044,13 @@ fpl_internal void fpl__RunAudioDeviceMainLoop(fpl__AudioState *audioState) {
 		case fplAudioDriverType_Alsa:
 		{
 			fpl__AudioRunMainLoopAlsa(&audioState->common, &audioState->alsa);
-	} break;
+		} break;
 #	endif
 
 		default:
 			break;
-}
 	}
+}
 
 fpl_internal bool fpl__IsAudioDriverAsync(fplAudioDriverType audioDriver) {
 	switch (audioDriver) {
@@ -18125,18 +18283,18 @@ fpl_internal fplAudioResult fpl__InitAudio(const fplAudioSettings *audioSettings
 				if (initResult != fplAudioResult_Success) {
 					fpl__AudioReleaseAlsa(&audioState->common, &audioState->alsa);
 				}
-		} break;
+			} break;
 #		endif
 
 			default:
 				break;
-	}
+		}
 		if (initResult == fplAudioResult_Success) {
 			audioState->activeDriver = propeDriver;
 			audioState->isAsyncDriver = fpl__IsAudioDriverAsync(propeDriver);
 			break;
 		}
-}
+	}
 
 	if (initResult != fplAudioResult_Success) {
 		fpl__ReleaseAudio(audioState);
@@ -18161,7 +18319,7 @@ fpl_internal fplAudioResult fpl__InitAudio(const fplAudioSettings *audioSettings
 	fplAssert(fpl__AudioGetDeviceState(&audioState->common) == fpl__AudioDeviceState_Stopped);
 
 	return(fplAudioResult_Success);
-	}
+}
 #endif // FPL__ENABLE_AUDIO
 
 // %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -18193,7 +18351,7 @@ typedef union fpl__X11VideoState {
 #	if defined(FPL__ENABLE_VIDEO_SOFTWARE)
 	fpl__X11VideoSoftwareState software;
 #	endif
-	} fpl__X11VideoState;
+} fpl__X11VideoState;
 #endif // FPL_SUBPLATFORM_X11
 
 typedef struct fpl__VideoState {
@@ -18419,16 +18577,16 @@ fpl_internal FPL__FUNC_PRE_SETUP_WINDOW(fpl__PreSetupWindowDefault) {
 			case fplVideoDriverType_Software:
 			{
 #			if defined(FPL_SUBPLATFORM_X11) && 0
-			    result = fpl__X11SetPreWindowSetupForSoftware(&appState->x11.api, &appState->window.x11, &videoState->x11.software, &outResult->x11);
+				result = fpl__X11SetPreWindowSetupForSoftware(&appState->x11.api, &appState->window.x11, &videoState->x11.software, &outResult->x11);
 #			endif
 			} break;
 #		endif // FPL__ENABLE_VIDEO_OPENGL
 
-		default:
-		{
-		} break;
+			default:
+			{
+			} break;
+		}
 	}
-}
 #	endif // FPL__ENABLE_VIDEO
 
 	return(result);
@@ -18737,15 +18895,15 @@ fpl_common_api uint32_t fplGetAudioDevices(fplAudioDeviceInfo *devices, uint32_t
 			case fplAudioDriverType_Alsa:
 			{
 				result = fpl__GetAudioDevicesAlsa(&audioState->alsa, devices, maxDeviceCount);
-		} break;
+			} break;
 #		endif
 
 			default:
 				break;
+		}
 	}
-}
 	return(result);
-	}
+}
 #endif // FPL__ENABLE_AUDIO
 
 // %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -18975,16 +19133,16 @@ fpl_internal void fpl__ReleasePlatformStates(fpl__PlatformInitState *initState, 
 			FPL_LOG_DEBUG("Core", "Release POSIX Subplatform");
 			fpl__PosixReleaseSubplatform(&appState->posix);
 #		endif
-	}
+		}
 
 		// Release platform applicatiom state memory
 		FPL_LOG_DEBUG(FPL__MODULE_CORE, "Release allocated Platform App State Memory");
 		fplMemoryAlignedFree(appState);
 		fpl__global__AppState = fpl_null;
-}
+	}
 	initState->initResult = fplPlatformResultType_NotInitialized;
 	initState->isInitialized = false;
-	}
+}
 
 fpl_common_api const char *fplGetPlatformName(const fplPlatformType type) {
 	switch (type) {
@@ -19104,7 +19262,7 @@ fpl_common_api bool fplPlatformInit(const fplInitFlags initFlags, const fplSetti
 			return(fpl__SetPlatformResult(fplPlatformResultType_FailedPlatform));
 		}
 		FPL_LOG_DEBUG("Core", "Successfully initialized POSIX Subplatform");
-}
+	}
 #	endif // FPL_SUBPLATFORM_POSIX
 
 #	if defined(FPL_SUBPLATFORM_X11)
@@ -19116,7 +19274,7 @@ fpl_common_api bool fplPlatformInit(const fplInitFlags initFlags, const fplSetti
 			return(fpl__SetPlatformResult(fplPlatformResultType_FailedPlatform));
 		}
 		FPL_LOG_DEBUG("Core", "Successfully initialized X11 Subplatform");
-		}
+	}
 #	endif // FPL_SUBPLATFORM_X11
 
 	// Initialize the actual platform (There can only be one at a time!)
@@ -19181,8 +19339,8 @@ fpl_common_api bool fplPlatformInit(const fplInitFlags initFlags, const fplSetti
 	if (appState->initFlags & fplInitFlags_Video) {
 		fpl__VideoState *videoState = fpl__GetVideoState(appState);
 		fplAssert(videoState != fpl_null);
-        fplWindowSize windowSize = fplZeroInit;
-        fplGetWindowSize(&windowSize);
+		fplWindowSize windowSize = fplZeroInit;
+		fplGetWindowSize(&windowSize);
 		const char *videoDriverName = fplGetVideoDriverString(appState->initSettings.video.driver);
 		FPL_LOG_DEBUG(FPL__MODULE_CORE, "Init Video with Driver '%s':", videoDriverName);
 		if (!fpl__InitVideo(appState->initSettings.video.driver, &appState->initSettings.video, windowSize.width, windowSize.height, appState, videoState)) {
@@ -19225,7 +19383,7 @@ fpl_common_api bool fplPlatformInit(const fplInitFlags initFlags, const fplSetti
 
 	initState->isInitialized = true;
 	return(fpl__SetPlatformResult(fplPlatformResultType_Success));
-	}
+}
 
 fpl_common_api fplPlatformType fplGetPlatformType() {
 	fplPlatformType result;

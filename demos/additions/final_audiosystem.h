@@ -341,7 +341,7 @@ extern AudioSource *AudioSystemLoadFileSource(AudioSystem *audioSys, const char 
 	}
 	fplAssert(source->buffer.bufferSize >= loadedData.samplesSize);
 	fplMemoryCopy(loadedData.samples, loadedData.samplesSize, source->buffer.samples);
-	source->id = fplAtomicAddAndFetchSize(&audioSys->sources.idCounter);
+	source->id = fplAtomicIncrementSize(&audioSys->sources.idCounter);
 
 	FreeWave(&loadedData);
 
@@ -421,7 +421,7 @@ extern uint64_t AudioSystemPlaySource(AudioSystem *audioSys, const AudioSource *
 		return(0);
 	}
 
-	playItem->id = fplAtomicAddAndFetchU64(&audioSys->playItems.idCounter);
+	playItem->id = fplAtomicIncrementU64(&audioSys->playItems.idCounter);
 	playItem->next = playItem->prev = fpl_null;
 	playItem->framesPlayed = 0;
 	playItem->source = source;
