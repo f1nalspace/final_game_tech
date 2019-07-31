@@ -148,4 +148,9 @@ ft_api void ftAssertPointerEquals(const void *expectedValue, const void *actualV
 	ftIsTrue(passed);
 }
 
+ft_api void ftAssertCharEquals(const char expectedValue, const char actualValue) {
+	bool passed = expectedValue == actualValue;
+	ftIsTrue(passed);
+}
+
 #endif // FT_IMPLEMENTATION

@@ -17,9 +17,9 @@ Changelog:
 	## 2019-06-17
 	- Reflect api changes in FPL 0.9.4
 
-    ## 2019-05-30
-    - Fixed os version was not properly printed (%d instead of %s)
-    - Rearranged code a bit
+	## 2019-05-30
+	- Fixed os version was not properly printed (%d instead of %s)
+	- Rearranged code a bit
 
 	## 2018-10-22
 	- Reflect api changes in FPL 0.9.3
@@ -64,16 +64,47 @@ Changelog:
 #define FT_IMPLEMENTATION
 #include "final_test.h"
 
+// C++ typeid
+#include <typeinfo>
+
+template<typename T>
+inline void AssertEquals(const T expected, const T actual) {}
+
+template<>
+inline void AssertEquals(const uint32_t expected, const uint32_t actual) {
+	ftAssertU32Equals(expected, actual);
+}
+template<>
+inline void AssertEquals(const uint64_t expected, const uint64_t actual) {
+	ftAssertU64Equals(expected, actual);
+}
+template<>
+inline void AssertEquals(const int32_t expected, const int32_t actual) {
+	ftAssertS32Equals(expected, actual);
+}
+template<>
+inline void AssertEquals(const int64_t expected, const int64_t actual) {
+	ftAssertS64Equals(expected, actual);
+}
+template<>
+inline void AssertEquals(const double expected, const double actual) {
+	ftAssertDoubleEquals(expected, actual);
+}
+template<>
+inline void AssertEquals(const float expected, const float actual) {
+	ftAssertFloatEquals(expected, actual);
+}
+
 static void TestColdInit() {
 	ftMsg("Test Cold-Initialize of InitPlatform\n");
 	{
 		size_t errorCount = fplGetErrorCount();
 		ftAssertSizeEquals(0, errorCount);
 		bool inited = fplPlatformInit(fplInitFlags_None, nullptr);
-        ftAssert(inited);
-        fplPlatformResultType resultType = fplGetPlatformResult();
-        ftAssert(resultType == fplPlatformResultType_Success);
-        const char *errorStr = fplGetLastError();
+		ftAssert(inited);
+		fplPlatformResultType resultType = fplGetPlatformResult();
+		ftAssert(resultType == fplPlatformResultType_Success);
+		const char* errorStr = fplGetLastError();
 		ftAssertStringEquals("", errorStr);
 		fplPlatformRelease();
 	}
@@ -84,10 +115,10 @@ static void TestInit() {
 	{
 		fplClearErrors();
 		bool inited = fplPlatformInit(fplInitFlags_All, nullptr);
-        ftAssert(inited);
-        fplPlatformResultType resultType = fplGetPlatformResult();
-        ftAssert(resultType == fplPlatformResultType_Success);
-		const char *errorStr = fplGetLastError();
+		ftAssert(inited);
+		fplPlatformResultType resultType = fplGetPlatformResult();
+		ftAssert(resultType == fplPlatformResultType_Success);
+		const char* errorStr = fplGetLastError();
 		ftAssertStringEquals("", errorStr);
 		fplPlatformRelease();
 	}
@@ -95,12 +126,12 @@ static void TestInit() {
 	{
 		fplClearErrors();
 		bool inited = fplPlatformInit(fplInitFlags_None, fpl_null);
-        ftAssert(inited);
-        fplPlatformResultType resultType = fplGetPlatformResult();
-        ftAssert(resultType == fplPlatformResultType_Success);
-		const fplSettings *settings = fplGetCurrentSettings();
+		ftAssert(inited);
+		fplPlatformResultType resultType = fplGetPlatformResult();
+		ftAssert(resultType == fplPlatformResultType_Success);
+		const fplSettings* settings = fplGetCurrentSettings();
 		ftIsNotNull(settings);
-		const char *errorStr = fplGetLastError();
+		const char* errorStr = fplGetLastError();
 		ftAssertStringEquals("", errorStr);
 		fplPlatformRelease();
 	}
@@ -108,11 +139,11 @@ static void TestInit() {
 	{
 		ftIsFalse(fpl__global__InitState.isInitialized);
 		fplClearErrors();
-		const fplSettings *settings = fplGetCurrentSettings();
+		const fplSettings* settings = fplGetCurrentSettings();
 		ftIsNull(settings);
 		size_t errorCount = fplGetErrorCount();
 		ftAssertSizeEquals(1, errorCount);
-		const char *errorStr = fplGetLastError();
+		const char* errorStr = fplGetLastError();
 		ftAssertStringNotEquals("", errorStr);
 	}
 }
@@ -122,24 +153,24 @@ static void TestOSInfos() {
 	{
 		fplPlatformType platType = fplGetPlatformType();
 		ftAssert(fplPlatformType_Unknown != platType);
-        fplConsoleFormatOut("\tPlatform: %s\n", fplGetPlatformName(platType));
+		fplConsoleFormatOut("\tPlatform: %s\n", fplGetPlatformName(platType));
 	}
 	ftMsg("Get OS Type:\n");
 	{
 		fplOSInfos osInfos = {};
 		bool r = fplGetOperatingSystemInfos(&osInfos);
 		ftIsTrue(r);
-        fplConsoleFormatOut("\tName: %s\n", osInfos.osName);
-        fplConsoleFormatOut("\tVersion: %s.%s.%s.%s\n", osInfos.osVersion.major, osInfos.osVersion.minor, osInfos.osVersion.fix, osInfos.osVersion.build);
-        fplConsoleFormatOut("\tDistribution Name: %s\n", osInfos.distributionName);
-        fplConsoleFormatOut("\tDistribution Version: %s.%s.%s.%s\n", osInfos.distributionVersion.major, osInfos.distributionVersion.minor, osInfos.distributionVersion.fix, osInfos.distributionVersion.build);
+		fplConsoleFormatOut("\tName: %s\n", osInfos.osName);
+		fplConsoleFormatOut("\tVersion: %s.%s.%s.%s\n", osInfos.osVersion.major, osInfos.osVersion.minor, osInfos.osVersion.fix, osInfos.osVersion.build);
+		fplConsoleFormatOut("\tDistribution Name: %s\n", osInfos.distributionName);
+		fplConsoleFormatOut("\tDistribution Version: %s.%s.%s.%s\n", osInfos.distributionVersion.major, osInfos.distributionVersion.minor, osInfos.distributionVersion.fix, osInfos.distributionVersion.build);
 	}
 	ftMsg("Get User Infos:\n");
 	{
 		char nameBuffer[256] = {};
 		bool r = fplGetCurrentUsername(nameBuffer, fplArrayCount(nameBuffer));
 		ftIsTrue(r);
-        fplConsoleFormatOut("\tCurrent Username: %s\n", nameBuffer);
+		fplConsoleFormatOut("\tCurrent Username: %s\n", nameBuffer);
 	}
 }
 
@@ -188,7 +219,7 @@ static void TestMacros() {
 	}
 	ftMsg("[fplArrayCount] Test static void pointer array\n");
 	{
-		void *staticArray[35] = {};
+		void* staticArray[35] = {};
 		uint32_t actual = fplArrayCount(staticArray);
 		ftExpects(35, actual);
 	}
@@ -196,17 +227,17 @@ static void TestMacros() {
 	// @NOTE(final): This is a simple/stupid macro, so when you pass a pointer, you basically get 2 always
 	ftMsg("[fplArrayCount] Test nullptr\n");
 	{
-		int *emptyArray = nullptr;
+		int* emptyArray = nullptr;
 		uint32_t actual = fplArrayCount(emptyArray);
-		uint32_t expected = sizeof(int *) / sizeof(int);
+		uint32_t expected = sizeof(int*) / sizeof(int);
 		ftExpects(expected, actual);
 	}
 	ftMsg("[fplArrayCount] Test pointer from references static array\n");
 	{
 		int staticArray[3] = {};
-		int *refArray = &staticArray[0];
+		int* refArray = &staticArray[0];
 		uint32_t actual = fplArrayCount(refArray);
-		uint32_t expected = sizeof(int *) / sizeof(int);
+		uint32_t expected = sizeof(int*) / sizeof(int);
 		ftExpects(expected, actual);
 	}
 
@@ -275,7 +306,7 @@ static void TestMacros() {
 			int b;
 		};
 		TestStruct instance = { 3, 7 };
-		TestStruct *instancePtr = &instance;
+		TestStruct* instancePtr = &instance;
 		ftAssertS32Equals(3, fplMin(instancePtr->a, instancePtr->b));
 	}
 	ftMsg("[fplMin] Test floats\n");
@@ -289,7 +320,7 @@ static void TestMacros() {
 			float b;
 		};
 		TestStruct instance = { 3.0f, 7.0f };
-		TestStruct *instancePtr = &instance;
+		TestStruct* instancePtr = &instance;
 		ftAssertFloatEquals(3.0f, fplMin(instancePtr->a, instancePtr->b));
 	}
 	ftMsg("[fplMax] Test integers\n");
@@ -303,7 +334,7 @@ static void TestMacros() {
 			int b;
 		};
 		TestStruct instance = { 3, 7 };
-		TestStruct *instancePtr = &instance;
+		TestStruct* instancePtr = &instance;
 		ftAssertS32Equals(7, fplMax(instancePtr->a, instancePtr->b));
 	}
 	ftMsg("[fplMax] Test floats\n");
@@ -317,7 +348,7 @@ static void TestMacros() {
 			float b;
 		};
 		TestStruct instance = { 3.0f, 7.0f };
-		TestStruct *instancePtr = &instance;
+		TestStruct* instancePtr = &instance;
 		ftAssertFloatEquals(7.0f, fplMax(instancePtr->a, instancePtr->b));
 	}
 
@@ -352,8 +383,8 @@ static void TestMemory() {
 	ftMsg("Test normal allocation and deallocation\n");
 	{
 		size_t memSize = fplKiloBytes(42);
-		uint8_t *mem = (uint8_t *)fplMemoryAllocate(memSize);
-		for(size_t i = 0; i < memSize; ++i) {
+		uint8_t* mem = (uint8_t*)fplMemoryAllocate(memSize);
+		for (size_t i = 0; i < memSize; ++i) {
 			uint8_t value = *mem++;
 			ftAssertU8Equals(0, value);
 		}
@@ -361,7 +392,7 @@ static void TestMemory() {
 	}
 	{
 		size_t memSize = fplMegaBytes(512);
-		void *mem = fplMemoryAllocate(memSize);
+		void* mem = fplMemoryAllocate(memSize);
 		ftIsNotNull(mem);
 		fplMemoryFree(mem);
 	}
@@ -369,8 +400,8 @@ static void TestMemory() {
 	ftMsg("Test aligned allocation and deallocation\n");
 	{
 		size_t memSize = fplKiloBytes(42);
-		uint8_t *mem = (uint8_t *)fplMemoryAlignedAllocate(memSize, 16);
-		for(size_t i = 0; i < memSize; ++i) {
+		uint8_t* mem = (uint8_t*)fplMemoryAlignedAllocate(memSize, 16);
+		for (size_t i = 0; i < memSize; ++i) {
 			uint8_t value = *(mem + i);
 			ftAssertU8Equals(0, value);
 		}
@@ -378,7 +409,7 @@ static void TestMemory() {
 	}
 	{
 		size_t memSize = fplMegaBytes(512);
-		void *mem = fplMemoryAlignedAllocate(memSize, 16);
+		void* mem = fplMemoryAlignedAllocate(memSize, 16);
 		ftIsNotNull(mem);
 		fplMemoryAlignedFree(mem);
 	}
@@ -386,12 +417,12 @@ static void TestMemory() {
 	ftMsg("Test memory clear\n");
 	{
 		size_t memSize = 100;
-		uint8_t *mem = (uint8_t *)fplMemoryAllocate(memSize);
-		for(size_t i = 0; i < memSize; ++i) {
+		uint8_t* mem = (uint8_t*)fplMemoryAllocate(memSize);
+		for (size_t i = 0; i < memSize; ++i) {
 			mem[i] = (uint8_t)i; // Dont care about wrap
 		}
 		fplMemorySet(mem, 0, memSize);
-		for(size_t i = 0; i < memSize; ++i) {
+		for (size_t i = 0; i < memSize; ++i) {
 			uint8_t value = *mem++;
 			ftAssertU8Equals(0, value);
 		}
@@ -401,12 +432,12 @@ static void TestMemory() {
 	ftMsg("Test memory set\n");
 	{
 		size_t memSize = 100;
-		uint8_t *mem = (uint8_t *)fplMemoryAllocate(memSize);
-		for(size_t i = 0; i < memSize; ++i) {
+		uint8_t* mem = (uint8_t*)fplMemoryAllocate(memSize);
+		for (size_t i = 0; i < memSize; ++i) {
 			mem[i] = (uint8_t)i; // Dont care about wrap
 		}
 		fplMemorySet(mem, 128, memSize);
-		for(size_t i = 0; i < memSize; ++i) {
+		for (size_t i = 0; i < memSize; ++i) {
 			uint8_t value = *mem++;
 			ftAssertU8Equals(128, value);
 		}
@@ -415,7 +446,7 @@ static void TestMemory() {
 }
 
 static void TestPaths() {
-	if(fplPlatformInit(fplInitFlags_None, fpl_null)) {
+	if (fplPlatformInit(fplInitFlags_None, fpl_null)) {
 
 		char homePathBuffer[1024] = {};
 		fplGetHomePath(homePathBuffer, fplArrayCount(homePathBuffer));
@@ -429,10 +460,10 @@ static void TestPaths() {
 		fplExtractFilePath(exeFilePathBuffer, extractedPathBuffer, fplArrayCount(extractedPathBuffer));
 		ftMsg("Extracted path:\n%s\n", extractedPathBuffer);
 
-		const char *exeFileName = fplExtractFileName(exeFilePathBuffer);
+		const char* exeFileName = fplExtractFileName(exeFilePathBuffer);
 		ftMsg("Extracted filename:\n%s\n", exeFileName);
 
-		const char *exeFileExt = fplExtractFileExtension(exeFilePathBuffer);
+		const char* exeFileExt = fplExtractFileExtension(exeFilePathBuffer);
 		ftMsg("Extracted extension:\n%s\n", exeFileExt);
 
 		char combinedPathBuffer[1024 * 10] = {};
@@ -479,21 +510,21 @@ static void TestHardware() {
 	ftMsg("Available number memory pages: %llu\n", memInfos.freePageCount);
 
 	fplArchType archType = fplGetProcessorArchitecture();
-	const char *archStr = fplGetArchTypeString(archType);
+	const char* archStr = fplGetArchTypeString(archType);
 	ftMsg("Processor archicture: %s\n", archStr);
 }
 
-static void EmptyThreadproc(const fplThreadHandle *context, void *data) {
+static void EmptyThreadproc(const fplThreadHandle* context, void* data) {
 }
 
 struct ThreadData {
-	fplThreadHandle *thread;
+	fplThreadHandle* thread;
 	int num;
 	int sleepFor;
 };
 
-static void SingleThreadProc(const fplThreadHandle *context, void *data) {
-	ThreadData *d = (ThreadData *)data;
+static void SingleThreadProc(const fplThreadHandle* context, void* data) {
+	ThreadData* d = (ThreadData*)data;
 	ftMsg("Sleep in thread %d for %d ms\n", d->num, d->sleepFor);
 	fplThreadSleep(d->sleepFor);
 }
@@ -501,12 +532,12 @@ static void SingleThreadProc(const fplThreadHandle *context, void *data) {
 static void SimpleMultiThreadTest(const size_t threadCount) {
 	ftLine();
 	ThreadData threadData[FPL__MAX_THREAD_COUNT] = {};
-	for(size_t threadIndex = 0; threadIndex < threadCount; ++threadIndex) {
+	for (size_t threadIndex = 0; threadIndex < threadCount; ++threadIndex) {
 		threadData[threadIndex].num = (int)(threadIndex + 1);
 		threadData[threadIndex].sleepFor = (int)(1 + threadIndex) * 500;
 	}
 	ftMsg("Start %d threads\n", threadCount);
-	for(size_t threadIndex = 0; threadIndex < threadCount; ++threadIndex) {
+	for (size_t threadIndex = 0; threadIndex < threadCount; ++threadIndex) {
 		threadData[threadIndex].thread = fplThreadCreate(SingleThreadProc, &threadData[threadIndex]);
 	}
 	ftMsg("Wait all %d threads for exit\n", threadCount);
@@ -514,7 +545,7 @@ static void SimpleMultiThreadTest(const size_t threadCount) {
 	ftMsg("All %d threads are done\n", threadCount);
 
 	ftMsg("Terminate %d threads\n", threadCount);
-	for(size_t threadIndex = 0; threadIndex < threadCount; ++threadIndex) {
+	for (size_t threadIndex = 0; threadIndex < threadCount; ++threadIndex) {
 		ftExpects(fplThreadState_Stopped, threadData[threadIndex].thread->currentState);
 		fplThreadTerminate(threadData[threadIndex].thread);
 	}
@@ -527,25 +558,25 @@ struct MutableThreadData {
 
 struct WriteThreadData {
 	ThreadData base;
-	MutableThreadData *data;
+	MutableThreadData* data;
 	int32_t valueToWrite;
 };
 
 struct ReadThreadData {
 	ThreadData base;
-	MutableThreadData *data;
+	MutableThreadData* data;
 	int32_t expectedValue;
 };
 
-static void WriteDataThreadProc(const fplThreadHandle *context, void *data) {
-	WriteThreadData *d = (WriteThreadData *)data;
+static void WriteDataThreadProc(const fplThreadHandle* context, void* data) {
+	WriteThreadData* d = (WriteThreadData*)data;
 	ftMsg("Sleep in thread %d for %d ms\n", d->base.num, d->base.sleepFor);
 	fplThreadSleep(d->base.sleepFor);
 	fplAtomicStoreS32(&d->data->value, d->valueToWrite);
 }
 
-static void ReadDataThreadProc(const fplThreadHandle *context, void *data) {
-	ReadThreadData *d = (ReadThreadData *)data;
+static void ReadDataThreadProc(const fplThreadHandle* context, void* data) {
+	ReadThreadData* d = (ReadThreadData*)data;
 	ftMsg("Sleep in thread %d for %d ms\n", d->base.num, d->base.sleepFor);
 	fplThreadSleep(d->base.sleepFor);
 	int32_t actualValue = fplAtomicLoadS32(&d->data->value);
@@ -571,7 +602,7 @@ static void SyncThreadsTestAtomics() {
 		writeData.data = &mutableData;
 		writeData.valueToWrite = 42;
 
-		fplThreadHandle *threads[2];
+		fplThreadHandle* threads[2];
 		uint32_t threadCount = fplArrayCount(threads);
 
 		ftMsg("Start %zu threads\n", threadCount);
@@ -579,24 +610,24 @@ static void SyncThreadsTestAtomics() {
 		threads[1] = fplThreadCreate(WriteDataThreadProc, &writeData);
 
 		ftMsg("Wait for %zu threads to exit\n", threadCount);
-		fplThreadWaitForAll(threads, threadCount, sizeof(fplThreadHandle *), FPL_TIMEOUT_INFINITE);
+		fplThreadWaitForAll(threads, threadCount, sizeof(fplThreadHandle*), FPL_TIMEOUT_INFINITE);
 
 		ftMsg("Release resources for %zu threads\n", threadCount);
-		for(uint32_t index = 0; index < threadCount; ++index) {
+		for (uint32_t index = 0; index < threadCount; ++index) {
 			ftExpects(fplThreadState_Stopped, threads[index]->currentState);
 			fplThreadTerminate(threads[index]);
 		}
 	}
 }
 
-static void WriteDataSemaphoreThreadProc(const fplThreadHandle *context, void *data) {
-	WriteThreadData *d = (WriteThreadData *)data;
+static void WriteDataSemaphoreThreadProc(const fplThreadHandle* context, void* data) {
+	WriteThreadData* d = (WriteThreadData*)data;
 	ftMsg("Sleep in thread %d for %d ms\n", d->base.num, d->base.sleepFor);
 	fplThreadSleep(d->base.sleepFor);
 	ftMsg("Wait for semaphore in thread %d\n", d->base.num);
 	fplSemaphoreWait(&d->data->semaphore, FPL_TIMEOUT_INFINITE);
 	int32_t v = d->data->value;
-	if(d->base.num % 2 == 0) {
+	if (d->base.num % 2 == 0) {
 		v--;
 	} else {
 		v++;
@@ -618,7 +649,7 @@ static void SyncThreadsTestSemaphores(const size_t numWriters) {
 
 		WriteThreadData writeDatas[FPL__MAX_THREAD_COUNT] = {};
 		ftMsg("Start %zu threads\n", numWriters);
-		for(uint32_t i = 0; i < numWriters; ++i) {
+		for (uint32_t i = 0; i < numWriters; ++i) {
 			writeDatas[i].base.num = i + 1;
 			writeDatas[i].base.sleepFor = 3000;
 			writeDatas[i].data = &mutableData;
@@ -632,7 +663,7 @@ static void SyncThreadsTestSemaphores(const size_t numWriters) {
 		ftAssertS32Equals(expectedValue, mutableData.value);
 
 		ftMsg("Release resources for %zu threads\n", numWriters);
-		for(uint32_t index = 0; index < numWriters; ++index) {
+		for (uint32_t index = 0; index < numWriters; ++index) {
 			ftExpects(fplThreadState_Stopped, writeDatas[index].base.thread->currentState);
 			fplThreadTerminate(writeDatas[index].base.thread);
 		}
@@ -656,20 +687,20 @@ struct SlaveThreadData {
 
 struct MasterThreadData {
 	ThreadData base;
-	SlaveThreadData *slaveThreads;
+	SlaveThreadData* slaveThreads;
 	uint32_t slaveCount;
 	ConditionTestType testType;
 };
 
-static void ThreadSlaveProc(const fplThreadHandle *context, void *data) {
-	SlaveThreadData *d = (SlaveThreadData *)data;
+static void ThreadSlaveProc(const fplThreadHandle* context, void* data) {
+	SlaveThreadData* d = (SlaveThreadData*)data;
 
-	if(d->testType == ConditionTestType::Signal) {
+	if (d->testType == ConditionTestType::Signal) {
 		ftMsg("Slave-Thread %d waits for signal\n", d->base.num);
 		fplSignalWaitForOne(&d->signal, FPL_TIMEOUT_INFINITE);
 		d->isSuccess = true;
 		ftMsg("Got signal on Slave-Thread %d\n", d->base.num);
-	} else if(d->testType == ConditionTestType::ConditionSignal) {
+	} else if (d->testType == ConditionTestType::ConditionSignal) {
 		ftMsg("Slave-Thread %d waits on condition\n", d->base.num);
 		fplConditionWait(&d->condition, &d->mutex, FPL_TIMEOUT_INFINITE);
 		d->isSuccess = true;
@@ -679,16 +710,16 @@ static void ThreadSlaveProc(const fplThreadHandle *context, void *data) {
 	ftMsg("Slave-Thread %d is done\n", d->base.num);
 }
 
-static void ThreadMasterProc(const fplThreadHandle *context, void *data) {
-	MasterThreadData *d = (MasterThreadData *)data;
+static void ThreadMasterProc(const fplThreadHandle* context, void* data) {
+	MasterThreadData* d = (MasterThreadData*)data;
 	ftMsg("Master-Thread %d waits for 5 seconds\n", d->base.num);
 	fplThreadSleep(5000);
 
-	for(uint32_t signalIndex = 0; signalIndex < d->slaveCount; ++signalIndex) {
-		if(d->testType == ConditionTestType::Signal) {
+	for (uint32_t signalIndex = 0; signalIndex < d->slaveCount; ++signalIndex) {
+		if (d->testType == ConditionTestType::Signal) {
 			ftMsg("Master-Thread %d sets signal %d\n", d->base.num, signalIndex);
 			fplSignalSet(&d->slaveThreads[signalIndex].signal);
-		} else if(d->testType == ConditionTestType::ConditionSignal) {
+		} else if (d->testType == ConditionTestType::ConditionSignal) {
 			ftMsg("Master-Thread %d sends signal to condition %d\n", d->base.num, signalIndex);
 			fplConditionSignal(&d->slaveThreads[signalIndex].condition);
 		}
@@ -702,9 +733,9 @@ static void ConditionThreadsTest(const size_t threadCount, const ConditionTestTy
 
 	ftLine();
 
-	if(testType == ConditionTestType::Signal) {
+	if (testType == ConditionTestType::Signal) {
 		ftMsg("Signals test for %zu threads\n", threadCount);
-	} else if(testType == ConditionTestType::ConditionSignal) {
+	} else if (testType == ConditionTestType::ConditionSignal) {
 		ftMsg("Condition-Variable (Single) test for %zu threads\n", threadCount);
 	}
 
@@ -714,12 +745,12 @@ static void ConditionThreadsTest(const size_t threadCount, const ConditionTestTy
 
 	SlaveThreadData slaveDatas[FPL__MAX_THREAD_COUNT] = {};
 	size_t slaveThreadCount = threadCount - 1;
-	for(size_t threadIndex = 0; threadIndex < slaveThreadCount; ++threadIndex) {
+	for (size_t threadIndex = 0; threadIndex < slaveThreadCount; ++threadIndex) {
 		slaveDatas[threadIndex].base.num = masterData.base.num + (int)threadIndex + 1;
 		slaveDatas[threadIndex].testType = testType;
-		if(testType == ConditionTestType::Signal) {
+		if (testType == ConditionTestType::Signal) {
 			ftIsTrue(fplSignalInit(&slaveDatas[threadIndex].signal, fplSignalValue_Unset));
-		} else if(testType == ConditionTestType::ConditionSignal) {
+		} else if (testType == ConditionTestType::ConditionSignal) {
 			ftIsTrue(fplMutexInit(&slaveDatas[threadIndex].mutex));
 			ftIsTrue(fplConditionInit(&slaveDatas[threadIndex].condition));
 		}
@@ -728,9 +759,9 @@ static void ConditionThreadsTest(const size_t threadCount, const ConditionTestTy
 	masterData.slaveThreads = slaveDatas;
 
 	ftMsg("Start %zu slave threads, 1 master thread\n", slaveThreadCount);
-	fplThreadHandle *threads[FPL__MAX_THREAD_COUNT];
-	for(size_t threadIndex = 0; threadIndex < threadCount; ++threadIndex) {
-		if(threadIndex == 0) {
+	fplThreadHandle* threads[FPL__MAX_THREAD_COUNT];
+	for (size_t threadIndex = 0; threadIndex < threadCount; ++threadIndex) {
+		if (threadIndex == 0) {
 			threads[threadIndex] = fplThreadCreate(ThreadMasterProc, &masterData);
 		} else {
 			threads[threadIndex] = fplThreadCreate(ThreadSlaveProc, &slaveDatas[threadIndex - 1]);
@@ -738,20 +769,20 @@ static void ConditionThreadsTest(const size_t threadCount, const ConditionTestTy
 	}
 
 	ftMsg("Wait for %zu threads to exit\n", threadCount);
-	fplThreadWaitForAll(threads, threadCount, sizeof(fplThreadHandle *), FPL_TIMEOUT_INFINITE);
+	fplThreadWaitForAll(threads, threadCount, sizeof(fplThreadHandle*), FPL_TIMEOUT_INFINITE);
 
 	ftMsg("Release resources for %zu threads\n", threadCount);
-	for(size_t slaveIndex = 0; slaveIndex < slaveThreadCount; ++slaveIndex) {
+	for (size_t slaveIndex = 0; slaveIndex < slaveThreadCount; ++slaveIndex) {
 		ftIsTrue(slaveDatas[slaveIndex].isSuccess);
 	}
-	for(size_t threadIndex = 0; threadIndex < threadCount; ++threadIndex) {
-		fplThreadHandle *thread = threads[threadIndex];
+	for (size_t threadIndex = 0; threadIndex < threadCount; ++threadIndex) {
+		fplThreadHandle* thread = threads[threadIndex];
 		ftExpects(fplThreadState_Stopped, thread->currentState);
 	}
-	for(size_t slaveIndex = 0; slaveIndex < slaveThreadCount; ++slaveIndex) {
-		if(testType == ConditionTestType::Signal) {
+	for (size_t slaveIndex = 0; slaveIndex < slaveThreadCount; ++slaveIndex) {
+		if (testType == ConditionTestType::Signal) {
 			fplSignalDestroy(&slaveDatas[slaveIndex].signal);
-		} else if(testType == ConditionTestType::ConditionSignal) {
+		} else if (testType == ConditionTestType::ConditionSignal) {
 			fplConditionDestroy(&slaveDatas[slaveIndex].condition);
 			fplMutexDestroy(&slaveDatas[slaveIndex].mutex);
 		}
@@ -759,14 +790,14 @@ static void ConditionThreadsTest(const size_t threadCount, const ConditionTestTy
 }
 
 static void TestThreading() {
-	if(fplPlatformInit(fplInitFlags_None, fpl_null)) {
+	if (fplPlatformInit(fplInitFlags_None, fpl_null)) {
 		//
 		// Single threading test
 		//
 		ftLine();
 		ftMsg("Test 1 empty thread\n");
 		{
-			fplThreadHandle *thread;
+			fplThreadHandle* thread;
 			ftMsg("Start thread\n");
 			thread = fplThreadCreate(EmptyThreadproc, nullptr);
 			ftMsg("Wait thread for exit\n");
@@ -783,7 +814,7 @@ static void TestThreading() {
 			threadData.num = 1;
 			threadData.sleepFor = 3000;
 			ftMsg("Start thread %d\n", threadData.num);
-			fplThreadHandle *thread = fplThreadCreate(SingleThreadProc, &threadData);
+			fplThreadHandle* thread = fplThreadCreate(SingleThreadProc, &threadData);
 			ftMsg("Wait thread %d for exit\n", threadData.num);
 			fplThreadWaitForOne(thread, UINT32_MAX);
 			ftMsg("Thread %d is done\n", threadData.num);
@@ -840,15 +871,15 @@ static void TestThreading() {
 
 static void TestFiles() {
 #if defined(FPL_PLATFORM_WINDOWS)
-	const char *testNotExistingFile = "C:\\Windows\\i_am_not_existing.lib";
-	const char *testExistingFile = "C:\\Windows\\notepad.exe";
-	const char *testRootPath = "C:\\";
-	const char *testRootFilter = "Program*";
+	const char* testNotExistingFile = "C:\\Windows\\i_am_not_existing.lib";
+	const char* testExistingFile = "C:\\Windows\\notepad.exe";
+	const char* testRootPath = "C:\\";
+	const char* testRootFilter = "Program*";
 #else
-	const char *testNotExistingFile = "/i_am_not_existing.whatever";
-	const char *testExistingFile = "/usr/sbin/nologin";
-	const char *testRootPath = "/";
-	const char *testRootFilter = "us*";
+	const char* testNotExistingFile = "/i_am_not_existing.whatever";
+	const char* testExistingFile = "/usr/sbin/nologin";
+	const char* testRootPath = "/";
+	const char* testRootFilter = "us*";
 #endif
 
 	ftMsg("Test File Exists\n");
@@ -868,7 +899,7 @@ static void TestFiles() {
 	ftMsg("Test Directory Iterations without filter\n");
 	{
 		fplFileEntry fileEntry = {};
-		for(bool r = fplListDirBegin(testRootPath, "*.*", &fileEntry); r; r = fplListDirNext(&fileEntry)) {
+		for (bool r = fplListDirBegin(testRootPath, "*.*", &fileEntry); r; r = fplListDirNext(&fileEntry)) {
 			ftMsg("%s\n", fileEntry.name);
 		}
 		fplListDirEnd(&fileEntry);
@@ -876,7 +907,7 @@ static void TestFiles() {
 	ftMsg("Test Directory Iterations with all filter\n");
 	{
 		fplFileEntry fileEntry = {};
-		for(bool r = fplListDirBegin(testRootPath, "*", &fileEntry); r; r = fplListDirNext(&fileEntry)) {
+		for (bool r = fplListDirBegin(testRootPath, "*", &fileEntry); r; r = fplListDirNext(&fileEntry)) {
 			ftMsg("%s\n", fileEntry.name);
 		}
 		fplListDirEnd(&fileEntry);
@@ -892,13 +923,15 @@ static void TestFiles() {
 }
 
 static void TestAtomics() {
+	// @TODO(final): Add integral wrap test for all atomics
+
 	ftMsg("Test AtomicExchangeU32 with different values\n");
 	{
 		const uint32_t expectedBefore = 42;
 		const uint32_t expectedAfter = 1337;
 		volatile uint32_t t = expectedBefore;
-		uint32_t r = fplAtomicExchangeU32(&t, expectedAfter);
-		ftAssertU32Equals(expectedBefore, r);
+		uint32_t actual = fplAtomicExchangeU32(&t, expectedAfter);
+		ftAssertU32Equals(expectedBefore, actual);
 		ftAssertU32Equals(expectedAfter, (uint32_t)t);
 	}
 	ftMsg("Test AtomicExchangeU32 with negative value\n");
@@ -907,8 +940,8 @@ static void TestAtomics() {
 		const uint32_t exchangeValue = -1;
 		const uint32_t expectedAfter = (uint32_t)UINT32_MAX;
 		volatile uint32_t t = expectedBefore;
-		uint32_t r = fplAtomicExchangeU32(&t, exchangeValue);
-		ftAssertU32Equals(expectedBefore, r);
+		uint32_t actual = fplAtomicExchangeU32(&t, exchangeValue);
+		ftAssertU32Equals(expectedBefore, actual);
 		ftAssertU32Equals(expectedAfter, (uint32_t)t);
 	}
 	ftMsg("Test AtomicExchangeU32 with same value\n");
@@ -917,8 +950,8 @@ static void TestAtomics() {
 		const uint32_t exchangeValue = expectedBefore;
 		const uint32_t expectedAfter = exchangeValue;
 		volatile uint32_t t = expectedBefore;
-		uint32_t r = fplAtomicExchangeU32(&t, exchangeValue);
-		ftAssertU32Equals(expectedBefore, r);
+		uint32_t actual = fplAtomicExchangeU32(&t, exchangeValue);
+		ftAssertU32Equals(expectedBefore, actual);
 		ftAssertU32Equals(expectedAfter, (uint32_t)t);
 	}
 	ftMsg("Test AtomicExchangeU32 with UINT32_MAX\n");
@@ -927,8 +960,8 @@ static void TestAtomics() {
 		const uint32_t exchangeValue = UINT32_MAX;
 		const uint32_t expectedAfter = exchangeValue;
 		volatile uint32_t t = expectedBefore;
-		uint32_t r = fplAtomicExchangeU32(&t, exchangeValue);
-		ftAssertU32Equals(expectedBefore, r);
+		uint32_t actual = fplAtomicExchangeU32(&t, exchangeValue);
+		ftAssertU32Equals(expectedBefore, actual);
 		ftAssertU32Equals(expectedAfter, (uint32_t)t);
 	}
 	ftMsg("Test AtomicExchangeU32 with INT32_MAX + 1\n");
@@ -937,8 +970,8 @@ static void TestAtomics() {
 		const uint32_t exchangeValue = (uint32_t)INT32_MAX + 1;
 		const uint32_t expectedAfter = exchangeValue;
 		volatile uint32_t t = expectedBefore;
-		uint32_t r = fplAtomicExchangeU32(&t, exchangeValue);
-		ftAssertU32Equals(expectedBefore, r);
+		uint32_t actual = fplAtomicExchangeU32(&t, exchangeValue);
+		ftAssertU32Equals(expectedBefore, actual);
 		ftAssertU32Equals(expectedAfter, (uint32_t)t);
 	}
 	ftMsg("Test AtomicExchangeS32 with different values\n");
@@ -947,8 +980,8 @@ static void TestAtomics() {
 		const int32_t exchangeValue = 1337;
 		const int32_t expectedAfter = exchangeValue;
 		volatile int32_t t = expectedBefore;
-		int32_t r = fplAtomicExchangeS32(&t, exchangeValue);
-		ftAssertS32Equals(expectedBefore, r);
+		int32_t actual = fplAtomicExchangeS32(&t, exchangeValue);
+		ftAssertS32Equals(expectedBefore, actual);
 		ftAssertS32Equals(expectedAfter, (int32_t)t);
 	}
 	ftMsg("Test AtomicExchangeS32 with negative value\n");
@@ -957,8 +990,8 @@ static void TestAtomics() {
 		const int32_t exchangeValue = -1;
 		const int32_t expectedAfter = exchangeValue;
 		volatile int32_t t = expectedBefore;
-		int32_t r = fplAtomicExchangeS32(&t, exchangeValue);
-		ftAssertS32Equals(expectedBefore, r);
+		int32_t actual = fplAtomicExchangeS32(&t, exchangeValue);
+		ftAssertS32Equals(expectedBefore, actual);
 		ftAssertS32Equals(expectedAfter, (int32_t)t);
 	}
 	ftMsg("Test AtomicExchangeS32 with same value\n");
@@ -967,8 +1000,8 @@ static void TestAtomics() {
 		const int32_t exchangeValue = expectedBefore;
 		const int32_t expectedAfter = exchangeValue;
 		volatile int32_t t = expectedBefore;
-		int32_t r = fplAtomicExchangeS32(&t, exchangeValue);
-		ftAssertS32Equals(expectedBefore, r);
+		int32_t actual = fplAtomicExchangeS32(&t, exchangeValue);
+		ftAssertS32Equals(expectedBefore, actual);
 		ftAssertS32Equals(expectedAfter, (int32_t)t);
 	}
 
@@ -977,8 +1010,8 @@ static void TestAtomics() {
 		const uint64_t expectedBefore = 42;
 		const uint64_t expectedAfter = 1337;
 		volatile uint64_t t = expectedBefore;
-		uint64_t r = fplAtomicExchangeU64(&t, expectedAfter);
-		ftAssertU64Equals(expectedBefore, r);
+		uint64_t actual = fplAtomicExchangeU64(&t, expectedAfter);
+		ftAssertU64Equals(expectedBefore, actual);
 		ftAssertU64Equals(expectedAfter, (uint64_t)t);
 	}
 	ftMsg("Test AtomicExchangeU64 with negative value\n");
@@ -987,8 +1020,8 @@ static void TestAtomics() {
 		const uint64_t exchangeValue = -1;
 		const uint64_t expectedAfter = (uint64_t)UINT64_MAX;
 		volatile uint64_t t = expectedBefore;
-		uint64_t r = fplAtomicExchangeU64(&t, exchangeValue);
-		ftAssertU64Equals(expectedBefore, r);
+		uint64_t actual = fplAtomicExchangeU64(&t, exchangeValue);
+		ftAssertU64Equals(expectedBefore, actual);
 		ftAssertU64Equals(expectedAfter, (uint64_t)t);
 	}
 	ftMsg("Test AtomicExchangeU64 with same value\n");
@@ -997,8 +1030,8 @@ static void TestAtomics() {
 		const uint64_t exchangeValue = expectedBefore;
 		const uint64_t expectedAfter = exchangeValue;
 		volatile uint64_t t = expectedBefore;
-		uint64_t r = fplAtomicExchangeU64(&t, exchangeValue);
-		ftAssertU64Equals(expectedBefore, r);
+		uint64_t actual = fplAtomicExchangeU64(&t, exchangeValue);
+		ftAssertU64Equals(expectedBefore, actual);
 		ftAssertU64Equals(expectedAfter, (uint64_t)t);
 	}
 	ftMsg("Test AtomicExchangeU64 with UINT64_MAX\n");
@@ -1007,8 +1040,8 @@ static void TestAtomics() {
 		const uint64_t exchangeValue = UINT64_MAX;
 		const uint64_t expectedAfter = exchangeValue;
 		volatile uint64_t t = expectedBefore;
-		uint64_t r = fplAtomicExchangeU64(&t, exchangeValue);
-		ftAssertU64Equals(expectedBefore, r);
+		uint64_t actual = fplAtomicExchangeU64(&t, exchangeValue);
+		ftAssertU64Equals(expectedBefore, actual);
 		ftAssertU64Equals(expectedAfter, (uint64_t)t);
 	}
 	ftMsg("Test AtomicExchangeU64 with INT64_MAX + 1\n");
@@ -1017,8 +1050,8 @@ static void TestAtomics() {
 		const uint64_t exchangeValue = (uint64_t)INT64_MAX + 1;
 		const uint64_t expectedAfter = exchangeValue;
 		volatile uint64_t t = expectedBefore;
-		uint64_t r = fplAtomicExchangeU64(&t, exchangeValue);
-		ftAssertU64Equals(expectedBefore, r);
+		uint64_t actual = fplAtomicExchangeU64(&t, exchangeValue);
+		ftAssertU64Equals(expectedBefore, actual);
 		ftAssertU64Equals(expectedAfter, (uint64_t)t);
 	}
 	ftMsg("Test AtomicExchangeS64 with different values\n");
@@ -1027,8 +1060,8 @@ static void TestAtomics() {
 		const int64_t exchangeValue = 1337;
 		const int64_t expectedAfter = exchangeValue;
 		volatile int64_t t = expectedBefore;
-		int64_t r = fplAtomicExchangeS64(&t, exchangeValue);
-		ftAssertS64Equals(expectedBefore, r);
+		int64_t actual = fplAtomicExchangeS64(&t, exchangeValue);
+		ftAssertS64Equals(expectedBefore, actual);
 		ftAssertS64Equals(expectedAfter, (int64_t)t);
 	}
 	ftMsg("Test AtomicExchangeS64 with negative value\n");
@@ -1037,8 +1070,8 @@ static void TestAtomics() {
 		const int64_t exchangeValue = -1;
 		const int64_t expectedAfter = exchangeValue;
 		volatile int64_t t = expectedBefore;
-		int64_t r = fplAtomicExchangeS64(&t, exchangeValue);
-		ftAssertS64Equals(expectedBefore, r);
+		int64_t actual = fplAtomicExchangeS64(&t, exchangeValue);
+		ftAssertS64Equals(expectedBefore, actual);
 		ftAssertS64Equals(expectedAfter, (int64_t)t);
 	}
 	ftMsg("Test AtomicExchangeS64 with same value\n");
@@ -1047,82 +1080,301 @@ static void TestAtomics() {
 		const int64_t exchangeValue = expectedBefore;
 		const int64_t expectedAfter = exchangeValue;
 		volatile int64_t t = expectedBefore;
-		int64_t r = fplAtomicExchangeS64(&t, exchangeValue);
-		ftAssertS64Equals(expectedBefore, r);
+		int64_t actual = fplAtomicExchangeS64(&t, exchangeValue);
+		ftAssertS64Equals(expectedBefore, actual);
 		ftAssertS64Equals(expectedAfter, (int64_t)t);
 	}
 
+	//
+	// AtomicCompareAndSwap
+	//
 	ftMsg("Test AtomicCompareAndSwapU32 with exchange\n");
 	{
-		volatile uint32_t value = 3;
-		uint32_t comparand = 3;
-		uint32_t exchange = 11;
-		uint32_t after = fplAtomicCompareAndSwapU32(&value, comparand, exchange);
-		ftAssertU32Equals((uint32_t)11, (uint32_t)value);
-		ftAssertU32Equals((uint32_t)3, after);
+		const uint32_t initialValue = UINT16_MAX + 3;
+		volatile uint32_t value = initialValue;
+		uint32_t comparand = initialValue;
+		uint32_t exchange = UINT16_MAX + 6;
+		uint32_t actual = fplAtomicCompareAndSwapU32(&value, comparand, exchange);
+		ftAssertU32Equals(initialValue, actual);
+		ftAssertU32Equals(exchange, (uint32_t)value);
 	}
 	ftMsg("Test AtomicCompareAndSwapU32 no exchange\n");
 	{
-		volatile uint32_t value = 5;
-		uint32_t comparand = 3;
-		uint32_t exchange = 11;
-		uint32_t after = fplAtomicCompareAndSwapU32(&value, comparand, exchange);
-		ftAssertU32Equals((uint32_t)5, (uint32_t)value);
-		ftAssertU32Equals((uint32_t)5, after);
-	}
-	ftMsg("Test AtomicCompareAndSwapS32 with exchange\n");
-	{
-		volatile int32_t value = -3;
-		int32_t comparand = -3;
-		int32_t exchange = 11;
-		int32_t after = fplAtomicCompareAndSwapS32(&value, comparand, exchange);
-		ftAssertS32Equals((int32_t)11, (int32_t)value);
-		ftAssertS32Equals((int32_t)-3, after);
-	}
-	ftMsg("Test AtomicCompareAndSwapS32 no exchange\n");
-	{
-		volatile int32_t value = -5;
-		int32_t comparand = -3;
-		int32_t exchange = 11;
-		int32_t after = fplAtomicCompareAndSwapS32(&value, comparand, exchange);
-		ftAssertS32Equals((int32_t)-5, (int32_t)value);
-		ftAssertS32Equals((int32_t)-5, after);
+		const uint32_t initialValue = UINT16_MAX + 3;
+		volatile uint32_t value = initialValue;
+		uint32_t comparand = initialValue + 6;
+		uint32_t exchange = UINT16_MAX + 6;
+		uint32_t actual = fplAtomicCompareAndSwapU32(&value, comparand, exchange);
+		ftAssertU32Equals(initialValue, actual);
+		ftAssertU32Equals(initialValue, (uint32_t)value);
 	}
 	ftMsg("Test AtomicCompareAndSwapU64 with exchange\n");
 	{
-		volatile uint64_t value = 3;
-		uint64_t comparand = 3;
-		uint64_t exchange = 11;
-		uint64_t after = fplAtomicCompareAndSwapU64(&value, comparand, exchange);
-		ftAssertU64Equals((uint64_t)11, (uint64_t)value);
-		ftAssertU64Equals((uint64_t)3, after);
+		const uint64_t initialValue = UINT32_MAX + 3ULL;
+		volatile uint64_t value = initialValue;
+		uint64_t comparand = initialValue;
+		uint64_t exchange = UINT32_MAX + 6ULL;
+		uint64_t actual = fplAtomicCompareAndSwapU64(&value, comparand, exchange);
+		ftAssertU64Equals(initialValue, actual);
+		ftAssertU64Equals(exchange, (uint64_t)value);
 	}
 	ftMsg("Test AtomicCompareAndSwapU64 no exchange\n");
 	{
-		volatile uint64_t value = 5;
-		uint64_t comparand = 3;
-		uint64_t exchange = 11;
-		uint64_t after = fplAtomicCompareAndSwapU64(&value, comparand, exchange);
-		ftAssertU64Equals((uint64_t)5, (uint64_t)value);
-		ftAssertU64Equals((uint64_t)5, after);
+		const uint64_t initialValue = UINT32_MAX + 3ULL;
+		volatile uint64_t value = initialValue;
+		uint64_t comparand = initialValue + 6;
+		uint64_t exchange = UINT32_MAX + 6ULL;
+		uint64_t actual = fplAtomicCompareAndSwapU64(&value, comparand, exchange);
+		ftAssertU64Equals(initialValue, actual);
+		ftAssertU64Equals(initialValue, (uint64_t)value);
 	}
-	ftMsg("Test AtomicCompareAndSwapS64 with exchange\n");
+
+	//
+	// AtomicFetchAndAdd
+	//
+	ftMsg("Test AtomicFetchAndAddU32 with 3\n");
 	{
-		volatile int64_t value = -3;
-		int64_t comparand = -3;
-		int64_t exchange = 11;
-		int64_t after = fplAtomicCompareAndSwapS64(&value, comparand, exchange);
-		ftAssertS64Equals((int64_t)11, (int64_t)value);
-		ftAssertS64Equals((int64_t)-3, after);
+		const uint32_t initial = UINT16_MAX + 42UL;
+		volatile uint32_t value = initial;
+		uint32_t addend = 3;
+		uint32_t actual = fplAtomicFetchAndAddU32(&value, addend);
+		ftAssertU32Equals(initial, actual);
+		ftAssertU32Equals(initial + addend, (uint32_t)value);
 	}
-	ftMsg("Test AtomicCompareAndSwapS64 no exchange\n");
+	ftMsg("Test AtomicFetchAndAddU64 with 3\n");
 	{
-		volatile int64_t value = -5;
-		int64_t comparand = -3;
-		int64_t exchange = 11;
-		int64_t after = fplAtomicCompareAndSwapS64(&value, comparand, exchange);
-		ftAssertS64Equals((int64_t)-5, (int64_t)value);
-		ftAssertS64Equals((int64_t)-5, after);
+		const uint64_t initial = UINT32_MAX + 42ULL;
+		volatile uint64_t value = initial;
+		uint64_t addend = 3;
+		uint64_t actual = fplAtomicFetchAndAddU64(&value, addend);
+		ftAssertU64Equals(initial, actual);
+		ftAssertU64Equals(initial + addend, (uint64_t)value);
+	}
+	ftMsg("Test AtomicFetchAndAddS32 with -3\n");
+	{
+		const int32_t initial = INT16_MAX + 42;
+		volatile int32_t value = initial;
+		int32_t addend = -3;
+		int32_t actual = fplAtomicFetchAndAddS32(&value, addend);
+		ftAssertS32Equals(initial, actual);
+		ftAssertS32Equals(initial + addend, (int32_t)value);
+	}
+	ftMsg("Test AtomicFetchAndAddS64 with -3\n");
+	{
+		const int64_t initial = INT32_MAX + 42LL;
+		volatile int64_t value = initial;
+		int64_t addend = -3;
+		int64_t actual = fplAtomicFetchAndAddS64(&value, addend);
+		ftAssertS64Equals(initial, actual);
+		ftAssertS64Equals(initial + addend, (int64_t)value);
+	}
+	ftMsg("Test AtomicFetchAndAddSize with 13\n");
+	{
+		const size_t initial = 42ULL;
+		volatile size_t value = initial;
+		size_t addend = 1024ULL;
+		size_t actual = fplAtomicFetchAndAddSize(&value, addend);
+		ftAssertSizeEquals(initial, actual);
+		ftAssertSizeEquals(initial + addend, (size_t)value);
+	}
+	ftMsg("Test AtomicFetchAndAddPtr with 16\n");
+	{
+		char buffer[64];
+		buffer[16] = 'A';
+		void* initial = (void*)buffer;
+		volatile void* value = initial;
+		intptr_t addend = 16;
+		void* actual = fplAtomicFetchAndAddPtr(&value, addend);
+		ftAssertPointerEquals(initial, actual);
+		ftAssertPointerEquals((void*)((intptr_t)initial + addend), (void*)value);
+		size_t offset = (uintptr_t)value - (uintptr_t)initial;
+		char c = buffer[offset];
+		ftAssertCharEquals('A', c);
+	}
+	ftMsg("Test AtomicFetchAndAddPtr with 0\n");
+	{
+		char buffer[64];
+		buffer[0] = 'A';
+		void* initial = (void*)buffer;
+		volatile void* value = initial;
+		intptr_t addend = 0;
+		void* actual = fplAtomicFetchAndAddPtr(&value, addend);
+		ftAssertPointerEquals(initial, actual);
+		ftAssertPointerEquals((void*)((intptr_t)initial + addend), (void*)value);
+		size_t offset = (uintptr_t)value - (uintptr_t)initial;
+		char c = buffer[offset];
+		ftAssertCharEquals('A', c);
+	}
+	ftMsg("Test AtomicFetchAndAddPtr with -16\n");
+	{
+		char buffer[64];
+		buffer[16] = 'A';
+		void* initial = (void*)((intptr_t)buffer + 16);
+		volatile void* value = initial;
+		intptr_t addend = -16;
+		void* actual = fplAtomicFetchAndAddPtr(&value, addend);
+		ftAssertPointerEquals(initial, actual);
+		ftAssertPointerEquals((void*)((intptr_t)initial + addend), (void*)value);
+		size_t offset = (uintptr_t)initial - (uintptr_t)value;
+		char c = buffer[offset];
+		ftAssertCharEquals('A', c);
+	}
+
+	//
+	// AtomicAddAndFetch
+	//
+	ftMsg("Test AtomicAddAndFetchU32 with 3\n");
+	{
+		const uint32_t initial = UINT16_MAX + 42UL;
+		const uint32_t addend = 3;
+		const uint32_t expected = initial + addend;
+		volatile uint32_t value = initial;
+		uint32_t actual = fplAtomicAddAndFetchU32(&value, addend);
+		ftAssertU32Equals(expected, actual);
+		ftAssertU32Equals(expected, (uint32_t)value);
+	}
+	ftMsg("Test AtomicAddAndFetchU64 with 3\n");
+	{
+		const uint64_t initial = UINT32_MAX + 42ULL;
+		const uint64_t addend = 3;
+		const uint64_t expected = initial + addend;
+		volatile uint64_t value = initial;
+		uint64_t actual = fplAtomicAddAndFetchU64(&value, addend);
+		ftAssertU64Equals(expected, actual);
+		ftAssertU64Equals(expected, (uint64_t)value);
+	}
+	ftMsg("Test AtomicAddAndFetchS32 with -3\n");
+	{
+		const int32_t initial = INT16_MAX + 42;
+		const int32_t addend = -3;
+		const int32_t expected = initial + addend;
+		volatile int32_t value = initial;
+		int32_t actual = fplAtomicAddAndFetchS32(&value, addend);
+		ftAssertS32Equals(expected, actual);
+		ftAssertS32Equals(expected, (int32_t)value);
+	}
+	ftMsg("Test AtomicAddAndFetchS64 with -3\n");
+	{
+		const int64_t initial = INT32_MAX + 42LL;
+		const int64_t addend = -3;
+		const int64_t expected = initial + addend;
+		volatile int64_t value = initial;
+		int64_t actual = fplAtomicAddAndFetchS64(&value, addend);
+		ftAssertS64Equals(expected, actual);
+		ftAssertS64Equals(expected, (int64_t)value);
+	}
+	ftMsg("Test AtomicAddAndFetchSize with 13\n");
+	{
+		const size_t initial = 42ULL;
+		const size_t addend = 1024ULL;
+		const int64_t expected = initial + addend;
+		volatile size_t value = initial;
+		size_t actual = fplAtomicAddAndFetchSize(&value, addend);
+		ftAssertSizeEquals(expected, actual);
+		ftAssertSizeEquals(expected, (size_t)value);
+	}
+	ftMsg("Test AtomicAddAndFetchPtr with 16\n");
+	{
+		char buffer[64];
+		buffer[16] = 'A';
+		void* initial = (void*)buffer;
+		intptr_t addend = 16;
+		const void* expected = (void*)((intptr_t)initial + addend);
+		volatile void* value = initial;
+		void* actual = fplAtomicAddAndFetchPtr(&value, addend);
+		ftAssertPointerEquals(expected, actual);
+		ftAssertPointerEquals(expected, (void*)value);
+		size_t offset = (uintptr_t)value - (uintptr_t)initial;
+		char c = buffer[offset];
+		ftAssertCharEquals('A', c);
+	}
+	ftMsg("Test AtomicAddAndFetchPtr with 0\n");
+	{
+		char buffer[64];
+		buffer[0] = 'A';
+		void* initial = (void*)buffer;
+		intptr_t addend = 0;
+		const void* expected = (void*)((intptr_t)initial + addend);
+		volatile void* value = initial;
+		void* actual = fplAtomicAddAndFetchPtr(&value, addend);
+		ftAssertPointerEquals(expected, actual);
+		ftAssertPointerEquals(expected, (void*)value);
+		size_t offset = (uintptr_t)value - (uintptr_t)initial;
+		char c = buffer[offset];
+		ftAssertCharEquals('A', c);
+	}
+	ftMsg("Test AtomicAddAndFetchPtr with -16\n");
+	{
+		char buffer[64];
+		buffer[16] = 'A';
+		void* initial = (void*)((intptr_t)buffer + 16);
+		intptr_t addend = -16;
+		const void* expected = (void*)((intptr_t)initial + addend);
+		volatile void* value = initial;
+		void* actual = fplAtomicAddAndFetchPtr(&value, addend);
+		ftAssertPointerEquals(expected, actual);
+		ftAssertPointerEquals(expected, (void*)value);
+		size_t offset = (uintptr_t)initial - (uintptr_t)value;
+		char c = buffer[offset];
+		ftAssertCharEquals('A', c);
+	}
+
+	//
+	// AtomicIncrement
+	//
+	ftMsg("Test AtomicIncrementU32 with 35\n");
+	{
+		const uint32_t initial = UINT16_MAX + 35UL;
+		const uint32_t expected = initial + 1UL;
+		volatile uint32_t value = initial;
+		uint32_t actual = fplAtomicIncrementU32(&value);
+		ftAssertU32Equals(expected, actual);
+		ftAssertU32Equals(expected, (uint32_t)value);
+	}
+	ftMsg("Test AtomicIncrementU64 with 35\n");
+	{
+		const uint64_t initial = UINT32_MAX + 35ULL;
+		const uint64_t expected = initial + 1ULL;
+		volatile uint64_t value = initial;
+		uint64_t actual = fplAtomicIncrementU64(&value);
+		ftAssertU64Equals(expected, actual);
+		ftAssertU64Equals(expected, (uint64_t)value);
+	}
+	ftMsg("Test AtomicIncrementS32 with 35\n");
+	{
+		const int32_t initial = INT16_MAX + 35L;
+		const int32_t expected = initial + 1L;
+		volatile int32_t value = initial;
+		int32_t actual = fplAtomicIncrementS32(&value);
+		ftAssertS32Equals(expected, actual);
+		ftAssertS32Equals(expected, (uint32_t)value);
+	}
+	ftMsg("Test AtomicIncrementS32 with -35\n");
+	{
+		const int32_t initial = INT16_MAX - 35L;
+		const int32_t expected = initial + 1L;
+		volatile int32_t value = initial;
+		int32_t actual = fplAtomicIncrementS32(&value);
+		ftAssertS32Equals(expected, actual);
+		ftAssertS32Equals(expected, (uint32_t)value);
+	}
+	ftMsg("Test AtomicIncrementS64 with 35\n");
+	{
+		const int64_t initial = INT32_MAX + 35LL;
+		const int64_t expected = initial + 1LL;
+		volatile int64_t value = initial;
+		int64_t actual = fplAtomicIncrementS64(&value);
+		ftAssertS64Equals(expected, actual);
+		ftAssertS64Equals(expected, (uint64_t)value);
+	}
+	ftMsg("Test AtomicIncrementSize with 35\n");
+	{
+		const size_t initial = 1024;
+		const size_t expected = initial + 1LL;
+		volatile size_t value = initial;
+		size_t actual = fplAtomicIncrementSize(&value);
+		ftAssertSizeEquals(expected, actual);
+		ftAssertSizeEquals(expected, (size_t)value);
 	}
 }
 
@@ -1255,53 +1507,53 @@ static void TestStrings() {
 
 	ftMsg("Test format ansi string\n");
 	{
-		char *res = fplFormatString(nullptr, 0, nullptr);
+		char* res = fplFormatString(nullptr, 0, nullptr);
 		ftExpects(nullptr, res);
 	}
 	{
 		char buffer[1];
-		char *res = fplFormatString(buffer, 0, "");
+		char* res = fplFormatString(buffer, 0, "");
 		ftExpects(nullptr, res);
 	}
 	{
 		char buffer[1];
-		char *res = fplFormatString(buffer, fplArrayCount(buffer), "A");
+		char* res = fplFormatString(buffer, fplArrayCount(buffer), "A");
 		ftExpects(nullptr, res);
 	}
 	{
 		char buffer[2];
-		char *res = fplFormatString(buffer, fplArrayCount(buffer), "A");
+		char* res = fplFormatString(buffer, fplArrayCount(buffer), "A");
 		ftIsNotNull(res);
 		bool matches = fplIsStringEqualLen("A", 1, buffer, 1);
 		ftExpects(true, matches);
 	}
 	{
 		char buffer[5];
-		char *res = fplFormatString(buffer, fplArrayCount(buffer), "Hello");
+		char* res = fplFormatString(buffer, fplArrayCount(buffer), "Hello");
 		ftExpects(nullptr, res);
 	}
 	{
 		char buffer[6];
-		char *res = fplFormatString(buffer, fplArrayCount(buffer), "Hello");
+		char* res = fplFormatString(buffer, fplArrayCount(buffer), "Hello");
 		ftIsNotNull(res);
 		bool r = fplIsStringEqualLen("Hello", 5, buffer, 5);
 		ftExpects(true, r);
 	}
 	{
 		char buffer[6];
-		char *res = fplFormatString(buffer, fplArrayCount(buffer), "%s", "Hello");
+		char* res = fplFormatString(buffer, fplArrayCount(buffer), "%s", "Hello");
 		ftIsNotNull(res);
 		bool r = fplIsStringEqualLen("Hello", 5, buffer, 5);
 		ftExpects(true, r);
 	}
 	{
 		char buffer[20];
-		char *res = fplFormatString(buffer, fplArrayCount(buffer), "%4xd-%2d-%2d %2d:%2d:%2d", 2009, 11, 17, 13, 47, 25);
+		char* res = fplFormatString(buffer, fplArrayCount(buffer), "%4xd-%2d-%2d %2d:%2d:%2d", 2009, 11, 17, 13, 47, 25);
 		ftExpects(nullptr, res);
 	}
 	{
 		char buffer[20];
-		char *res = fplFormatString(buffer, fplArrayCount(buffer), "%4d-%2d-%2d %2d:%2d:%2d", 2009, 11, 17, 13, 47, 25);
+		char* res = fplFormatString(buffer, fplArrayCount(buffer), "%4d-%2d-%2d %2d:%2d:%2d", 2009, 11, 17, 13, 47, 25);
 		ftIsNotNull(res);
 		bool r = fplIsStringEqual("2009-11-17 13:47:25", buffer);
 		ftExpects(true, r);
@@ -1367,7 +1619,7 @@ static void TestLocalization() {
 	fplPlatformRelease();
 }
 
-int main(int argc, char *args[]) {
+int main(int argc, char* args[]) {
 	TestColdInit();
 	TestInit();
 	TestLocalization();
