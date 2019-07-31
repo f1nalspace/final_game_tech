@@ -55,6 +55,7 @@ struct Asset {
 struct GameState {
 	Asset debugFont;
 	Viewport viewport;
+	float angle;
 	bool isExiting;
 };
 
@@ -65,7 +66,7 @@ static bool Init(GameState &state) {
 	if (LoadFontFromMemory(fontDataArray, fontDataSize, 0, 36.0f, 32, 128, 512, 512, false, &state.debugFont.font.data)) {
 		state.debugFont.loadState = AssetLoadState::ToUpload;
 	}
-
+	state.angle = 0.0f;
 	return(true);
 }
 
@@ -114,6 +115,7 @@ extern void GameUpdate(GameMemory &gameMemory, const Input &input) {
 	}
 	GameState *state = gameMemory.game;
 	fplAssert(state != nullptr);
+	state->angle += input.deltaTime * 0.1f;
 }
 
 static Rect2f ComputeAspectRect(Vec2f targetSize, Vec2f sourceSize, Ratio sourceRatio) {
@@ -168,11 +170,12 @@ extern void GameRender(GameMemory &gameMemory, const float alpha) {
 #define DEMO DEMO_IMAGEFIT
 
 #if DEMO == DEMO_IMAGEFIT
-	Vec2f maxSize = viewSize * 0.65f;
+	Vec2f maxSize = viewSize * 0.75f;
 	Vec2f maxPos = (viewSize - maxSize) * 0.5f;
 
 	Vec2f sourceImageSize = V2f(1000, 100);
 	Ratio sourceImageAspect = MakeRatio(1, 1);
+	float containerAspect = maxSize.w / maxSize.h;
 
 	Rect2f imageRect = ComputeAspectRect(maxSize, sourceImageSize, sourceImageAspect);
 
@@ -186,9 +189,10 @@ extern void GameRender(GameMemory &gameMemory, const float alpha) {
 
 	PushRectangle(renderState, maxPos + imageRect.pos, imageSize, V4f(1, 0, 0, 1), false, 1.0f);
 
-	float imageRot = 70.0f;
+	float imageRot = state->angle;
+
 	Mat4f initialTranslationMat = Mat4Translation(imageCenter);
-	Mat4f imageRotMat = Mat4RotationZ(DegreesToRadians(imageRot));
+	Mat4f imageRotMat = Mat4RotationZ(imageRot);
 	Mat4f imageMat = initialTranslationMat * imageRotMat;
 
 	Vec2f verts[] = {
@@ -198,28 +202,22 @@ extern void GameRender(GameMemory &gameMemory, const float alpha) {
 		V2f(-imageExt.w, imageExt.h),
 	};
 
-	Vec2f min = V2f(1000, 1000);
-	Vec2f max = V2f(-1000, -1000);
-	for (int i = 0; i < fplArrayCount(verts); ++i) {
+	Vec2f min = Vec4MultMat4(imageRotMat, V4f(verts[0])).xy;
+	Vec2f max = min;
+	for (int i = 1; i < fplArrayCount(verts); ++i) {
 		Vec2f v = Vec4MultMat4(imageRotMat, V4f(verts[i])).xy;
 		min = Vec2Min(min, v);
 		max = Vec2Max(max, v);
 	}
+
 	Vec2f rotatedSize = max - min;
 
 	float factor = 1.0f;
-	if (rotatedSize.w > maxSize.w) {
-		if (rotatedSize.h > maxSize.h) {
-			factor = maxSize.h / rotatedSize.h;
-		} else {
-			factor = maxSize.w / rotatedSize.w;
-		}
-	} else if (rotatedSize.h > maxSize.h) {
-		if (rotatedSize.w > maxSize.w) {
-			factor = maxSize.w / rotatedSize.w;
-		} else {
-			factor = maxSize.h / rotatedSize.h;
-		}
+	float rotatedAspect = rotatedSize.w / rotatedSize.h;
+	if (rotatedAspect > containerAspect) {
+		factor = maxSize.w / rotatedSize.w;
+	} else {
+		factor = maxSize.h / rotatedSize.h;
 	}
 
 	Vec2f scaledSize = imageSize * factor;
