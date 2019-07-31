@@ -12698,23 +12698,23 @@ fpl_platform_api void fplAtomicReadWriteFence() {
 }
 
 fpl_platform_api uint32_t fplAtomicExchangeU32(volatile uint32_t *target, const uint32_t value) {
+	__sync_synchronize();
 	uint32_t result = __sync_lock_test_and_set(target, value);
-	__sync_synchronize();
-	return(result);
-}
-fpl_platform_api int32_t fplAtomicExchangeS32(volatile int32_t *target, const int32_t value) {
-	int32_t result = __sync_lock_test_and_set(target, value);
-	__sync_synchronize();
 	return(result);
 }
 fpl_platform_api uint64_t fplAtomicExchangeU64(volatile uint64_t *target, const uint64_t value) {
-	uint64_t result = __sync_lock_test_and_set(target, value);
 	__sync_synchronize();
+	uint64_t result = __sync_lock_test_and_set(target, value);
+	return(result);
+}
+fpl_platform_api int32_t fplAtomicExchangeS32(volatile int32_t *target, const int32_t value) {
+	__sync_synchronize();
+	int32_t result = __sync_lock_test_and_set(target, value);
 	return(result);
 }
 fpl_platform_api int64_t fplAtomicExchangeS64(volatile int64_t *target, const int64_t value) {
-	int64_t result = __sync_lock_test_and_set(target, value);
 	__sync_synchronize();
+	int64_t result = __sync_lock_test_and_set(target, value);
 	return(result);
 }
 
@@ -12723,19 +12723,19 @@ fpl_platform_api uint32_t fplAtomicFetchAndAddU32(volatile uint32_t *value, cons
 	uint32_t result = __sync_fetch_and_add(value, addend);
 	return (result);
 }
-fpl_platform_api int32_t fplAtomicFetchAndAddS32(volatile int32_t *value, const int32_t addend) {
-	fplAssert(value != fpl_null);
-	uint32_t result = __sync_fetch_and_add(value, addend);
-	return (result);
-}
 fpl_platform_api uint64_t fplAtomicFetchAndAddU64(volatile uint64_t *value, const uint64_t addend) {
 	fplAssert(value != fpl_null);
-	uint32_t result = __sync_fetch_and_add(value, addend);
+	uint64_t result = __sync_fetch_and_add(value, addend);
+	return (result);
+}
+fpl_platform_api int32_t fplAtomicFetchAndAddS32(volatile int32_t *value, const int32_t addend) {
+	fplAssert(value != fpl_null);
+	int32_t result = __sync_fetch_and_add(value, addend);
 	return (result);
 }
 fpl_platform_api int64_t fplAtomicFetchAndAddS64(volatile int64_t *value, const int64_t addend) {
 	fplAssert(value != fpl_null);
-	uint32_t result = __sync_fetch_and_add(value, addend);
+	int64_t result = __sync_fetch_and_add(value, addend);
 	return (result);
 }
 
@@ -12746,38 +12746,38 @@ fpl_platform_api uint32_t fplAtomicAddAndFetchU32(volatile uint32_t *value, cons
 }
 fpl_platform_api int32_t fplAtomicAddAndFetchS32(volatile int32_t *value, const int32_t addend) {
 	fplAssert(value != fpl_null);
-	uint32_t result = __sync_add_and_fetch(value, addend);
+	int32_t result = __sync_add_and_fetch(value, addend);
 	return (result);
 }
 fpl_platform_api uint64_t fplAtomicAddAndFetchU64(volatile uint64_t *value, const uint64_t addend) {
 	fplAssert(value != fpl_null);
-	uint32_t result = __sync_add_and_fetch(value, addend);
+	uint64_t result = __sync_add_and_fetch(value, addend);
 	return (result);
 }
 fpl_platform_api int64_t fplAtomicAddAndFetchS64(volatile int64_t *value, const int64_t addend) {
 	fplAssert(value != fpl_null);
-	uint32_t result = __sync_add_and_fetch(value, addend);
+	int64_t result = __sync_add_and_fetch(value, addend);
 	return (result);
 }
 
-fpl_platform_api uint32_t fplAtomicIncrementU32(volatile uint32_t *value, const uint32_t addend) {
+fpl_platform_api uint32_t fplAtomicIncrementU32(volatile uint32_t *value) {
 	fplAssert(value != fpl_null);
 	uint32_t result = __sync_add_and_fetch(value, 1);
 	return (result);
 }
-fpl_platform_api int32_t fplAtomicIncrementS32(volatile int32_t *value, const int32_t addend) {
+fpl_platform_api uint64_t fplAtomicIncrementU64(volatile uint64_t *value) {
 	fplAssert(value != fpl_null);
-	uint32_t result = __sync_add_and_fetch(value, 1);
+	uint64_t result = __sync_add_and_fetch(value, 1);
 	return (result);
 }
-fpl_platform_api uint64_t fplAtomicIncrementU64(volatile uint64_t *value, const uint64_t addend) {
+fpl_platform_api int32_t fplAtomicIncrementS32(volatile int32_t *value) {
 	fplAssert(value != fpl_null);
-	uint32_t result = __sync_add_and_fetch(value, 1);
+	int32_t result = __sync_add_and_fetch(value, 1);
 	return (result);
 }
-fpl_platform_api int64_t fplAtomicIncrementS64(volatile int64_t *value, const int64_t addend) {
+fpl_platform_api int64_t fplAtomicIncrementS64(volatile int64_t *value) {
 	fplAssert(value != fpl_null);
-	uint32_t result = __sync_add_and_fetch(value, 1);
+	int64_t result = __sync_add_and_fetch(value, 1);
 	return (result);
 }
 
@@ -12786,14 +12786,14 @@ fpl_platform_api uint32_t fplAtomicCompareAndSwapU32(volatile uint32_t *dest, co
 	uint32_t result = __sync_val_compare_and_swap(dest, comparand, exchange);
 	return (result);
 }
-fpl_platform_api int32_t fplAtomicCompareAndSwapS32(volatile int32_t *dest, const int32_t comparand, const int32_t exchange) {
-	fplAssert(dest != fpl_null);
-	int32_t result = __sync_val_compare_and_swap(dest, comparand, exchange);
-	return (result);
-}
 fpl_platform_api uint64_t fplAtomicCompareAndSwapU64(volatile uint64_t *dest, const uint64_t comparand, const uint64_t exchange) {
 	fplAssert(dest != fpl_null);
 	uint64_t result = __sync_val_compare_and_swap(dest, comparand, exchange);
+	return (result);
+}
+fpl_platform_api int32_t fplAtomicCompareAndSwapS32(volatile int32_t *dest, const int32_t comparand, const int32_t exchange) {
+	fplAssert(dest != fpl_null);
+	int32_t result = __sync_val_compare_and_swap(dest, comparand, exchange);
 	return (result);
 }
 fpl_platform_api int64_t fplAtomicCompareAndSwapS64(volatile int64_t *dest, const int64_t comparand, const int64_t exchange) {
@@ -12807,12 +12807,12 @@ fpl_platform_api bool fplIsAtomicCompareAndSwapU32(volatile uint32_t *dest, cons
 	bool result = __sync_bool_compare_and_swap(dest, comparand, exchange);
 	return (result);
 }
-fpl_platform_api bool fplIsAtomicCompareAndSwapS32(volatile int32_t *dest, const int32_t comparand, const int32_t exchange) {
+fpl_platform_api bool fplIsAtomicCompareAndSwapU64(volatile uint64_t *dest, const uint64_t comparand, const uint64_t exchange) {
 	fplAssert(dest != fpl_null);
 	bool result = __sync_bool_compare_and_swap(dest, comparand, exchange);
 	return (result);
 }
-fpl_platform_api bool fplIsAtomicCompareAndSwapU64(volatile uint64_t *dest, const uint64_t comparand, const uint64_t exchange) {
+fpl_platform_api bool fplIsAtomicCompareAndSwapS32(volatile int32_t *dest, const int32_t comparand, const int32_t exchange) {
 	fplAssert(dest != fpl_null);
 	bool result = __sync_bool_compare_and_swap(dest, comparand, exchange);
 	return (result);
