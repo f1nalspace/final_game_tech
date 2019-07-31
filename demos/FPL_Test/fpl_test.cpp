@@ -1376,6 +1376,20 @@ static void TestAtomics() {
 		ftAssertSizeEquals(expected, actual);
 		ftAssertSizeEquals(expected, (size_t)value);
 	}
+	ftMsg("Test AtomicIncrementPtr with 16\n");
+	{
+		char buffer[64];
+		buffer[sizeof(void *)] = 'A';
+		void *initial = (void *)buffer;
+		const void *expected = (const void *)((uintptr_t)initial + sizeof(void *));
+		volatile void *value = initial;
+		void *actual = fplAtomicIncrementPtr(&value);
+		ftAssertPointerEquals(expected, actual);
+		ftAssertPointerEquals(expected, (void *)value);
+		size_t offset = (uintptr_t)value - (uintptr_t)initial;
+		char c = buffer[offset];
+		ftAssertCharEquals('A', c);
+	}
 }
 
 static void TestStrings() {
