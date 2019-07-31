@@ -2263,7 +2263,6 @@ fpl_common_api void *fplAtomicAddAndFetchPtr(volatile void **dest, const intptr_
 /**
   * @brief Increments the given 32-bit unsigned integer by one atomically.
   * @param dest The target value to increment to.
-  * @param addend The value used for increment.
   * @return Returns the value after the increment.
   * @note Ensures that memory operations are completed in order.
   * @see @ref category_threading_atomics_inc
@@ -2272,7 +2271,6 @@ fpl_platform_api uint32_t fplAtomicIncrementU32(volatile uint32_t *dest);
 /**
   * @brief Increments the given 64-bit unsigned integer by one atomically.
   * @param dest The target value to increment to.
-  * @param addend The value used for increment.
   * @return Returns the value after the increment.
   * @note Ensures that memory operations are completed in order.
   * @see @ref category_threading_atomics_inc
@@ -2281,7 +2279,6 @@ fpl_platform_api uint64_t fplAtomicIncrementU64(volatile uint64_t *dest);
 /**
   * @brief Increments the given 32-bit signed integer by one atomically.
   * @param dest The target value to increment to.
-  * @param addend The value used for increment.
   * @return Returns the value after the increment.
   * @note Ensures that memory operations are completed in order.
   * @see @ref category_threading_atomics_inc
@@ -2290,14 +2287,13 @@ fpl_platform_api int32_t fplAtomicIncrementS32(volatile int32_t *dest);
 /**
   * @brief Increments the given 64-bit signed integer by one atomically.
   * @param dest The target value to increment to.
-  * @param addend The value used for increment.
   * @return Returns the value after the increment.
   * @note Ensures that memory operations are completed in order.
   * @see @ref category_threading_atomics_inc
   */
 fpl_platform_api int64_t fplAtomicIncrementS64(volatile int64_t *dest);
 /**
-  * @brief Increments the given size atomically.
+  * @brief Increments the given size by one atomically.
   * @param dest The target value to increment to.
   * @return Returns the value after the increment.
   * @note Ensures that memory operations are completed in order.
@@ -2305,10 +2301,9 @@ fpl_platform_api int64_t fplAtomicIncrementS64(volatile int64_t *dest);
   */
 fpl_common_api size_t fplAtomicIncrementSize(volatile size_t *dest);
 /**
-  * @brief Increments the given pointer atomically.
+  * @brief Increments/Advances the given pointer by one atomically.
   * @param dest The target value to increment to.
-  * @param addend The value used for increment.
-  * @return Returns the pointer after the increment.
+  * @return Returns the next address, after the increment.
   * @note Ensures that memory operations are completed in order.
   * @see @ref category_threading_atomics_inc
   */
@@ -8448,9 +8443,9 @@ fpl_common_api size_t fplAtomicIncrementSize(volatile size_t *value) {
 fpl_common_api void *fplAtomicIncrementPtr(volatile void **value) {
 	fplAssert(value != fpl_null);
 #if defined(FPL_CPU_64BIT)
-	void *result = (void *)fplAtomicIncrementU64((volatile uint64_t *)value);
+	void *result = (void *)fplAtomicAddAndFetchU64((volatile uint64_t *)value, 8);
 #elif defined(FPL_CPU_32BIT)
-	void *result = (void *)fplAtomicIncrementU32((volatile uint32_t *)value);
+	void *result = (void *)fplAtomicAddAndFetchU32((volatile uint32_t *)value, 4);
 #else
 #	error "Unsupported architecture/platform!"
 #endif // FPL_ARCH
