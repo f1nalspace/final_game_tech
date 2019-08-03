@@ -15,6 +15,9 @@ Author:
 	Torsten Spaete
 
 Changelog:
+    ## 2019-08-03
+    - Print error when audio playback its too slow
+
 	## 2019-07-19
 	- Wave form visualization (Bars, Lines)
 	- Moved sine wave generation out into final_audiosystem.h
@@ -135,6 +138,8 @@ static void AudioRenderSamples(AudioDemo *audioDemo, const void *inSamples, cons
 
 
 static uint32_t AudioPlayback(const fplAudioDeviceFormat *outFormat, const uint32_t maxFrameCount, void *outputSamples, void *userData) {
+    double timeStart = fplGetTimeInMillisecondsHP();
+    
 	AudioDemo *audioDemo = (AudioDemo *)userData;
 
 	AudioFrameIndex result = 0;
@@ -170,6 +175,22 @@ static uint32_t AudioPlayback(const fplAudioDeviceFormat *outFormat, const uint3
 #if OPT_AUTO_RENDER_SAMPLES
 	AudioRenderSamples(audioDemo, outputSamples, outFormat, result);
 #endif
+    
+    double timeEnd = fplGetTimeInMillisecondsHP();
+    double delta = timeEnd - timeStart;
+    
+    // Print error when its too slow
+    uint64_t frameDelay = 50;
+    double delayInSeconds = 1.0 / frameDelay;
+    uint64_t minFrames = outFormat->bufferSizeInFrames / outFormat->periods;
+    uint64_t requiredFrames = minFrames - frameDelay;
+    double maxTime = 1.0 / (double)requiredFrames;
+    double missedTime = fplMax(0.0, delta - maxTime);
+
+    if (missedTime > 0) {
+        double missRate = (missedTime / maxTime);
+        fplConsoleFormatError("ERROR: Audio playback too slow, available time: %.6f, actual time: %.6f, missed time: %.6f, missed rate: %.2f %s\n", maxTime, delta, missedTime, missRate, "%");
+    }
 
 	return(result);
 }
