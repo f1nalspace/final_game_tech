@@ -60,6 +60,10 @@ Todo:
 	- Brick types (Harder, Metal)
 	- Items (Ball speed, Paddle grow, Autoglue, Multiball, Player Up)
 	- Re-create sprites in HD
+
+License:
+	Copyright (c) 2017-2019 Torsten Spaete
+	MIT License (See LICENSE file)
 -------------------------------------------------------------------------------
 */
 

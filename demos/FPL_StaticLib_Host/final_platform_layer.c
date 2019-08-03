@@ -19,6 +19,10 @@ Changelog:
 	
 	## 2018-04-24:
 	- Initial creation of this description block
+
+License:
+	Copyright (c) 2017-2019 Torsten Spaete
+	MIT License (See LICENSE file)
 -------------------------------------------------------------------------------
 */
 

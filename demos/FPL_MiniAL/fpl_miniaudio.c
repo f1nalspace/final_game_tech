@@ -20,6 +20,10 @@ Changelog:
 
 	## 2018-09-30
 	- Initial version
+
+License:
+	Copyright (c) 2017-2019 Torsten Spaete
+	MIT License (See LICENSE file)
 -------------------------------------------------------------------------------
 */
 

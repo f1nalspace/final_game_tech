@@ -21,6 +21,7 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Root", "Root", "{8BC6F705-2
 	ProjectSection(SolutionItems) = preProject
 		..\final_platform_layer.docs = ..\final_platform_layer.docs
 		..\final_platform_layer.doxygen = ..\final_platform_layer.doxygen
+		..\LICENSE = ..\LICENSE
 		..\README.md = ..\README.md
 	EndProjectSection
 EndProject
@@ -50,7 +51,7 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Final_Testbed", "Final_Test
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "FPL_Input", "FPL_Input\FPL_Input.vcxproj", "{72039B1E-BEAB-4462-AA83-FD6956F21E5F}"
 EndProject
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "FPL_MiniAL", "FPL_MiniAL\FPL_MiniAL.vcxproj", "{CD54F8FA-CBFC-4C14-964D-DD55814DF448}"
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "FPL_MiniAudio", "FPL_MiniAL\FPL_MiniAL.vcxproj", "{CD54F8FA-CBFC-4C14-964D-DD55814DF448}"
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "FPL_NoRuntimeLinking", "FPL_NoRuntimeLinking\FPL_NoRuntimeLinking.vcxproj", "{01F59612-1023-4A62-865A-3BE1700C4C55}"
 EndProject

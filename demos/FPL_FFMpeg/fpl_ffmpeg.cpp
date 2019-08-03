@@ -97,6 +97,10 @@ Resources:
 	- https://blogs.gentoo.org/lu_zero/2015/10/15/deprecating-avpicture/
 	- https://blogs.gentoo.org/lu_zero/2016/03/29/new-avcodec-api/
 	- https://www.codeproject.com/tips/489450/creating-custom-ffmpeg-io-context
+
+License:
+	Copyright (c) 2017-2019 Torsten Spaete
+	MIT License (See LICENSE file)
 -------------------------------------------------------------------------------
 */
 

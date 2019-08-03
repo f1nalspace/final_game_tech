@@ -43,7 +43,7 @@ It will try to create as less chain shapes as possible.
 
 MIT License
 
-Copyright (c) 2017 Torsten Spaete
+Copyright (c) 2017-2019 Torsten Spaete
 Permission is hereby granted, free of charge, to any person obtaining a copy of
 this software and associated documentation files (the "Software"), to deal in
 the Software without restriction, including without limitation the rights to

@@ -93,6 +93,10 @@ Todo:
 	- Text rendering display current file (Index/Count)
 	- Fade in/out
 	- Diashow
+
+License:
+	Copyright (c) 2017-2019 Torsten Spaete
+	MIT License (See LICENSE file)
 -------------------------------------------------------------------------------
 */
 

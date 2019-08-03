@@ -28,6 +28,10 @@ Changelog:
 	- Initial creation of this description block
 	- Changed from C++ to C99
 	- Forced Visual-Studio-Project to compile in C always
+
+License:
+	Copyright (c) 2017-2019 Torsten Spaete
+	MIT License (See LICENSE file)
 -------------------------------------------------------------------------------
 */
 

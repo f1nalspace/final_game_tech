@@ -31,6 +31,10 @@ Author:
 Changelog:
 	## 2019-06-01
 	- Initial version
+
+License:
+	Copyright (c) 2017-2019 Torsten Spaete
+	MIT License (See LICENSE file)
 -------------------------------------------------------------------------------
 */
 
@@ -800,7 +804,7 @@ static void InitRaytracer(Raytracer &raytracer, const u32 raytraceWidth, const u
 	//raytracer.rnd.index = fplGetTimeInMillisecondsLP() % U32_MAX;
 	raytracer.rnd.index = 1337;
 	raytracer.settings.maxBounceCount = 8;
-	raytracer.settings.raysPerPixelCount = 128;
+	raytracer.settings.raysPerPixelCount = 16;
 }
 
 static void InitApp(App &app, const u32 raytraceWidth, const u32 raytraceHeight) {

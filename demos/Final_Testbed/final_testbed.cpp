@@ -8,6 +8,10 @@ Description:
 
 Author:
 	Torsten Spaete
+
+License:
+	Copyright (c) 2017-2019 Torsten Spaete
+	MIT License (See LICENSE file)
 -------------------------------------------------------------------------------
 */
 #define FPL_IMPLEMENTATION

@@ -22,6 +22,10 @@ Changelog:
 	- Changed from C++ to C99
 	- Forced Visual-Studio-Project to compile in C always
 	- Added read char input
+
+License:
+	Copyright (c) 2017-2019 Torsten Spaete
+	MIT License (See LICENSE file)
 -------------------------------------------------------------------------------
 */
 
