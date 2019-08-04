@@ -145,6 +145,7 @@ SOFTWARE.
 	- New: Added FPL_WARNING macro for pushing on warnings only
 	- New: Print out function name and line number in all log outputs
 	- New: Added functions fplAtomicIncrement* used for incrementing a value by one atomically
+	- New: Added macro fplRDTSC
 	- Fixed: Corrected opengl example code in the header file
 	- Fixed: Tons of documentation improvements
 	- Fixed: fpl__PushError_Formatted was always pushing errors on regardless of the log level
@@ -1790,6 +1791,31 @@ SOFTWARE.
 #define fplAssert(exp) fpl__m_Assert(exp)
 //! Compile time assertion
 #define fplStaticAssert(exp) fpl__m_StaticAssert(exp)
+
+//
+// RDTSC
+//
+#if defined(FPL_COMPILER_MSVC)
+#	define fpl__rdtsc() ((uint64_t)__rdtsc())
+#elif defined(FPL_ARCH_X86)
+static fpl_force_inline uint64_t fpl__rdtsc(void) {
+	unsigned long long int result;
+	__asm__ volatile (".byte 0x0f, 0x31" : "=A" (result));
+	return((uint64_t)result);
+}
+#elif defined(FPL_ARCH_X64)
+static fpl_force_inline uint64_t fpl__rdtsc(void) {
+	unsigned hi, lo;
+	__asm__ __volatile__("rdtsc" : "=a"(lo), "=d"(hi));
+	uint64_t result = (uint64_t)(((unsigned long long)lo) | (((unsigned long long)hi) << 32));
+	return (result);
+}
+#else
+#	error "Unsupported Platform/Compiler"
+#endif
+
+//! Reads the current time stamp counter (RDTSC)
+#define fplRDTSC() fpl__rdtsc()
 
 //
 // Debug-Break
