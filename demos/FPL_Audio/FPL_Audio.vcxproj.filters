@@ -22,6 +22,9 @@
     <ClInclude Include="..\additions\final_graphics.h">
       <Filter>additions</Filter>
     </ClInclude>
+    <ClInclude Include="..\additions\final_debug.h">
+      <Filter>additions</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="fpl_audio.c" />

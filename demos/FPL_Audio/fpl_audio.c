@@ -86,6 +86,9 @@ License:
 #define FINAL_GRAPHICS_IMPLEMENTATION
 #include <final_graphics.h>
 
+#define FINAL_DEBUG_IMPLEMENTATION
+#include <final_debug.h>
+
 typedef enum WavePlotType {
 	WavePlotType_None = 0,
 	WavePlotType_Bars,
