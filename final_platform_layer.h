@@ -137,9 +137,10 @@ SOFTWARE.
 	- New: Added enum fplMemoryAllocationMode
 	- New: Added struct fplMemoryAllocationSettings
 	- New: Added struct fplMemorySettings for controlling dynamic and temporary memory allocations
-	- new: Added enum fplThreadPriority
-	- new: Added function fplGetThreadPriority
-	- new: Added function fplSetThreadPriority
+	- New: Added enum fplThreadPriority
+	- New: Added function fplGetThreadPriority
+	- New: Added function fplSetThreadPriority
+	- New: Added function fplGetCurrentThreadId
 	- New: Introduced dynamic/temporary allocations wrapping
 	- New: Added FPL_WARNING macro for pushing on warnings only
 	- New: Print out function name and line number in all log outputs
@@ -164,6 +165,7 @@ SOFTWARE.
 	- Changed: Values for fplPlatformResultType changed to be ascending
 
 	- New: [POSIX/Win32] Implemented functions fplAtomicIncrement*
+	- New: [Win32] Implemented function fplGetCurrentThreadId
 	- Fixed: [POSIX/Win32] fplAtomicAddAndFetch* uses now addend parameter
 	- Changed: [POSIX/Win32] When a dynamic library failed to load, it will push on a warning instead of a error
 	- Changed: [POSIX/Win32] When a dynamic library procedure address failed to retrieve, it will push on a warning instead of a error
@@ -3724,14 +3726,14 @@ typedef union fplInternalThreadHandle {
 typedef struct fplThreadHandle {
 	//! The internal thread handle
 	fplInternalThreadHandle internalHandle;
-	//! The identifier of the thread
-	uint64_t id;
 	//! The stored run callback
 	fpl_run_thread_callback *runFunc;
 	//! The user data passed to the run callback
 	void *data;
 	//! Thread state
 	volatile fplThreadState currentState;
+	//! The identifier of the thread
+	uint32_t id;
 	//! Is this thread valid
 	volatile fpl_b32 isValid;
 	//! Is this thread stopping
@@ -3839,6 +3841,11 @@ typedef struct fplConditionVariable {
   * @see @ref section_category_threading_threads_states
   */
 fpl_common_api fplThreadState fplGetThreadState(fplThreadHandle *thread);
+/**
+  * @brief Gets the thread id for the current thread.
+  * @return Returns the thread id for the current thread.
+  */
+fpl_platform_api uint32_t fplGetCurrentThreadId();
 /**
   * @brief Creates and starts a thread and returns the handle to it.
   * @param runFunc The pointer to the @ref fpl_run_thread_callback
@@ -10774,6 +10781,15 @@ fpl_internal DWORD WINAPI fpl__Win32ThreadProc(void *data) {
 	ExitThread(0);
 }
 
+fpl_platform_api uint32_t fplGetCurrentThreadId() {
+	// @TODO(final): On win32, this call may be simplified?
+	// uint8_t *threadLocalStorage = (uint8_t *)__readgsqword(0x30);
+	// uint32_t threadId = *(uint32_t *)(threadLocalStorage + 0x48);
+	DWORD threadId = GetCurrentThreadId();
+	uint32_t result = (uint32_t)threadId;
+	return(result);
+}
+
 fpl_platform_api fplThreadHandle *fplThreadCreate(fpl_run_thread_callback *runFunc, void *data) {
 	FPL__CheckArgumentNull(runFunc, fpl_null);
 	fplThreadHandle *result = fpl_null;
@@ -12958,6 +12974,11 @@ fpl_platform_api bool fplThreadTerminate(fplThreadHandle *thread) {
 	} else {
 		return false;
 	}
+}
+
+fpl_platform_api uint32_t fplGetCurrentThreadId() {
+	// @IMPLEMENT(POSIX): fplGetCurrentThreadId()
+	return(0);
 }
 
 fpl_platform_api fplThreadHandle *fplThreadCreate(fpl_run_thread_callback *runFunc, void *data) {
