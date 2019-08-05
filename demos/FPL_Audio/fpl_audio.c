@@ -74,6 +74,7 @@ License:
 
 #define OPT_PLAYBACKMODE OPT_PLAYBACK_AUDIOSYSTEM_ONLY
 
+#define FPL_LOGGING
 #define FPL_IMPLEMENTATION
 #include <final_platform_layer.h>
 
@@ -192,7 +193,7 @@ static uint32_t AudioPlayback(const fplAudioDeviceFormat *outFormat, const uint3
 
     if (missedTime > 0) {
         double missRate = (missedTime / maxTime);
-        fplConsoleFormatError("ERROR: Audio playback too slow, available time: %.6f, actual time: %.6f, missed time: %.6f, missed rate: %.2f %s\n", maxTime, delta, missedTime, missRate, "%");
+        fplDebugFormatOut("ERROR: Audio playback too slow, available time: %.6f, actual time: %.6f, missed time: %.6f, missed rate: %.2f %s\n", maxTime, delta, missedTime, missRate, "%");
     }
 
 	return(result);
@@ -438,6 +439,8 @@ int main(int argc, char **args) {
 	}
 
 	fplMemoryFree(demo.samples);
+
+	ReleaseDebug();
 
 	// Release the platform
 	fplPlatformRelease();
