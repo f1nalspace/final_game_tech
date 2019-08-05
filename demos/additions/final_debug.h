@@ -6,12 +6,12 @@
 
 #include <final_platform_layer.h>
 
-#if defined(FPL__ENABLE_DEBUG)
-#define DEBUG_ENABLED
+#if defined(FPL__ENABLE_DEBUG) || defined(FORCE_DEBUG)
+#	define DEBUG_ENABLED
 #endif
 
 #if defined(FPL_IS_CPP)
-#define SUPPORTS_TIMED_BLOCK
+#	define SUPPORTS_TIMED_BLOCK
 #endif
 
 typedef enum DebugType {
@@ -25,6 +25,9 @@ typedef enum DebugType {
 typedef struct DebugEvent {
 	uint64_t clock;
 	char *guid;
+#if defined(FPL_CPU_32BIT)
+	uint32_t guidPadding;
+#endif
 	float value;
 	uint16_t threadID;
 	uint16_t coreIndex;
