@@ -151,6 +151,7 @@ SOFTWARE.
 	- New: Added function fplXCR0 with fallback
 	- New: Added struct fplProcessorCapabilities
 	- New: Added function fplGetProcessorCapabilities
+	- New: Added macro fplIsBitSet
 	- Fixed: Corrected opengl example code in the header file
 	- Fixed: Tons of documentation improvements
 	- Fixed: fpl__PushError_Formatted was always pushing errors on regardless of the log level
