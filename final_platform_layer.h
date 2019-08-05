@@ -146,6 +146,11 @@ SOFTWARE.
 	- New: Print out function name and line number in all log outputs
 	- New: Added functions fplAtomicIncrement* used for incrementing a value by one atomically
 	- New: Added macro fplRDTSC
+	- New: Added struct fplCPUIDLeaf
+	- New: Added function fplCPUID with fallback
+	- New: Added function fplXCR0 with fallback
+	- New: Added struct fplProcessorCapabilities
+	- New: Added function fplGetProcessorCapabilities
 	- Fixed: Corrected opengl example code in the header file
 	- Fixed: Tons of documentation improvements
 	- Fixed: fpl__PushError_Formatted was always pushing errors on regardless of the log level
@@ -161,9 +166,17 @@ SOFTWARE.
 	- Changed: Added stride to fplSignalWaitForAll() to support custom sized user structs
 	- Changed: Added stride to fplSignalWaitForAny() to support custom sized user structs
 	- Changed: Set audio worker thread to realtime priority
-	- Changed: Use name table for fplLogLevel to string conversion
+	- Changed: Use name table for fplArchType to string conversion
+	- Changed: Use name table for fplPlatformType to string conversion
 	- Changed: Use name table for fplPlatformResultType to string conversion
+	- Changed: Use name table for fplVideoDriverType to string conversion
+	- Changed: Use name table for fplAudioDriverType to string conversion
+	- Changed: Use name table for fplAudioFormatType to string conversion
+	- Changed: Use name table for fplLogLevel to string conversion
 	- Changed: Values for fplPlatformResultType changed to be ascending
+	- Changed: Moved fplInitFlags_All constant to fplInitFlags enum
+	- Changed: CPU size detection is now independent from CPU architecture detection
+	- Changed: fplGetProcessorName moved to common section with fallback to not supported architectures
 
 	- New: [POSIX/Win32] Implemented functions fplAtomicIncrement*
 	- New: [Win32] Implemented function fplGetCurrentThreadId
@@ -174,6 +187,8 @@ SOFTWARE.
 	- Changed: [POSIX/Win32] Reflect api changes for fplThreadWaitForAny()
 	- Changed: [POSIX/Win32] Reflect api changes for fplSignalWaitForAll()
 	- Changed: [POSIX/Win32] Reflect api changes for fplSignalWaitForAny()
+	- Changed: [X86/X64] fplGetProcessorName are only enabled on X86 or X64 architecture
+	- Changed: [X86/X64] fplGetProcessorCapabilities are only enabled on X86 or X64 architecture
 
 	- New: [Win32] Support for multiple files in WM_DROPFILES
 	- New: [Win32] Implemented fplGetThreadPriority
@@ -1237,6 +1252,7 @@ SOFTWARE.
 
 	- Hardware/OS
 		- Get CPU Name (Unix)
+		- Get CPU Capabilities (Unix)
 		- Get Memory infos (Unix)
 
 	- Documentation
@@ -1357,23 +1373,42 @@ SOFTWARE.
 // Architecture detection (x86, x64)
 // See: https://sourceforge.net/p/predef/wiki/Architectures/
 //
-#if defined(_M_X64) || defined(__x86_64__) || defined(__amd64__)
+#if defined(__x86_64__) || defined(_M_X64) || defined(__amd64__)
 #	define FPL_ARCH_X64
-#	define FPL_CPU_64BIT
-#elif defined(_M_IX86) || defined(__i386__) || defined(__X86__) || defined(_X86_)
+#elif defined(__i386__) || defined(_M_IX86) || defined(__X86__) || defined(_X86_)
 #	define FPL_ARCH_X86
-#	define FPL_CPU_32BIT
 #elif defined(__arm__) || defined(_M_ARM)
 #	if defined(__aarch64__)
 #		define FPL_ARCH_ARM64
-#		define FPL_CPU_64BIT
 #	else	
 #		define FPL_ARCH_ARM32
-#		define FPL_CPU_32BIT
 #	endif
 #else
 #	error "This architecture is not supported!"
 #endif // FPL_ARCH
+
+//
+// 32-bit or 64-bit
+//
+#if defined(_WIN32)
+#	if defined(_WIN64)
+#		define FPL_CPU_64BIT
+#	else
+#		define FPL_CPU_32BIT
+#	endif
+#elif defined(__GNUC__)
+#	if defined(__LP64__)
+#		define FPL_CPU_64BIT
+#	else
+#		define FPL_CPU_32BIT
+#	endif
+#else
+#	if (defined(__SIZEOF_POINTER__) && __SIZEOF_POINTER__ == 8) || (sizeof(void *) == 8)
+#		define FPL_CPU_64BIT
+#	else
+#		define FPL_CPU_32BIT
+#	endif
+#endif
 
 //
 // Compiler detection
@@ -1392,7 +1427,7 @@ SOFTWARE.
 #elif defined(__MINGW32__)
 	//! MingW compiler detected
 #	define FPL_COMPILER_MINGW
-#elif defined(__GNUC__) && !defined(__clang__)
+#elif defined(__GNUC__)
 	//! GCC compiler detected
 #	define FPL_COMPILER_GCC
 #elif defined(__CC_ARM)
@@ -1408,10 +1443,9 @@ SOFTWARE.
 
 //
 // Defines required on certain compiler/platform configurations
-// Required for: mmap, posix 64-bit file io, etc.
+// Required for POSIX: mmap, 64-bit file io, etc.
 //
-// @TODO(final): Is C99 as condition really required here?
-#if defined(FPL_IS_C99) && defined(FPL_SUBPLATFORM_POSIX)
+#if defined(FPL_SUBPLATFORM_POSIX)
 #	if !defined(_XOPEN_SOURCE)
 #		define _XOPEN_SOURCE 600
 #	endif
@@ -1434,6 +1468,7 @@ SOFTWARE.
 #		define _FILE_OFFSET_BITS 64
 #	endif
 #endif
+
 #if defined(FPL_PLATFORM_LINUX)
 #	define FPL__INCLUDE_ALLOCA
 #else
@@ -1609,6 +1644,9 @@ SOFTWARE.
 // Compiler settings
 //
 #if defined(FPL_COMPILER_MSVC)
+	// Required intrinsics suite
+#	include <intrin.h>
+
 	// Debug/Release detection
 #	if !defined(FPL__ENABLE_DEBUG) && !defined(FPL__ENABLE_RELEASE)
 #		if defined(_DEBUG) || (!defined(NDEBUG))
@@ -1646,6 +1684,94 @@ SOFTWARE.
 //
 // Options & Feature detection
 //
+
+//
+// CPU Instruction Set Detection based on compiler settings
+//
+// https://stackoverflow.com/questions/18563978/detect-the-availability-of-sse-sse2-instruction-set-in-visual-studio
+// https://johanmabille.github.io/blog/2014/10/25/writing-c-plus-plus-wrappers-for-simd-intrinsics-5/
+#if defined(__AVX512F__) || (defined(_MSC_VER) && _MSC_VER >= 1910)
+#	define FPL__COMPILER_CPU_INSTR_SET 9
+#elif defined(__AVX2__) || (defined(_MSC_VER) && _MSC_VER >= 1700)
+#	define FPL__COMPILER_CPU_INSTR_SET 8
+#elif defined(__AVX__) || (defined(_MSC_VER) && _MSC_VER >= 1600)
+#	define FPL__COMPILER_CPU_INSTR_SET 7
+#elif defined(__SSE4_2__)
+#	define FPL__COMPILER_CPU_INSTR_SET 6
+#elif defined(__SSE4_1__)
+#	define FPL__COMPILER_CPU_INSTR_SET 5
+#elif defined(__SSSE3__)
+#	define FPL__COMPILER_CPU_INSTR_SET 4
+#elif defined(__SSE3__)
+#	define FPL__COMPILER_CPU_INSTR_SET 3
+#elif defined(__SSE2__) || defined(FPL_ARCH_X64)
+#	define FPL__COMPILER_CPU_INSTR_SET 2
+#elif defined(__SSE__) || defined(FPL_ARCH_X86)
+#	define FPL__COMPILER_CPU_INSTR_SET 1
+#elif defined(_M_IX86_FP)
+#	define FPL__COMPILER_CPU_INSTR_SET _M_IX86_FP
+#else
+#	define FPL__COMPILER_CPU_INSTR_SET 0
+#endif
+
+//
+// Internal CPU supports based on compiler instruction set
+//
+#if FPL__COMPILER_CPU_INSTR_SET >= 1
+#	define FPL__SUPPORT_CPU_SSE // SSE
+#endif
+#if FPL__COMPILER_CPU_INSTR_SET >= 2
+#	define FPL__SUPPORT_CPU_SSE2 // SSE-2
+#endif
+#if FPL__COMPILER_CPU_INSTR_SET >= 3
+#	define FPL__SUPPORT_CPU_SSE3 // SSE-3
+#endif
+#if FPL__COMPILER_CPU_INSTR_SET >= 4
+#	define FPL__SUPPORT_CPU_SSSE3 // SSSE-3
+#endif
+#if FPL__COMPILER_CPU_INSTR_SET >= 5
+#	define FPL__SUPPORT_CPU_SSE4_1 // SSE-4.1
+#endif
+#if FPL__COMPILER_CPU_INSTR_SET >= 6
+#	define FPL__SUPPORT_CPU_SSE4_2 // SSE-4.2
+#endif
+#if FPL__COMPILER_CPU_INSTR_SET >= 7
+#	define FPL__SUPPORT_CPU_AVX // AVX
+#endif
+#if FPL__COMPILER_CPU_INSTR_SET >= 8
+#	define FPL__SUPPORT_CPU_AVX2 // AVX-2
+#endif
+#if FPL__COMPILER_CPU_INSTR_SET >= 9
+#	define FPL__SUPPORT_CPU_AVX512 // AVX-512
+#endif
+
+#if (!defined(FPL_NO_SSE)) && defined(FPL__SUPPORT_CPU_SSE)
+#	define FPL__ENABLE_CPU_SSE
+#endif
+#if (!defined(FPL_NO_SSE2) && defined(FPL__ENABLE_CPU_SSE)) && defined(FPL__SUPPORT_CPU_SSE2)
+#	define FPL__ENABLE_CPU_SSE2
+#endif
+#if (!defined(FPL_NO_SSE3) && defined(FPL__ENABLE_CPU_SSE2)) && defined(FPL__SUPPORT_CPU_SSE3)
+#	define FPL__ENABLE_CPU_SSE3
+#endif
+#if (!defined(FPL_NO_SSSE3) && defined(FPL__ENABLE_CPU_SSE3)) && defined(FPL__SUPPORT_CPU_SSSE3)
+#	define FPL__ENABLE_CPU_SSSE3
+#endif
+#if (!defined(FPL_NO_SSE4_1) && defined(FPL__ENABLE_CPU_SSSE3)) && defined(FPL__SUPPORT_CPU_SSE4_1)
+#	define FPL__ENABLE_CPU_SSE4_1
+#endif
+#if (!defined(FPL_NO_SSE4_2) && defined(FPL__ENABLE_CPU_SSE4_1)) && defined(FPL__SUPPORT_CPU_SSE4_2)
+#	define FPL__ENABLE_CPU_SSE4_2
+#endif
+#if (!defined(FPL_NO_AVX) && defined(FPL__ENABLE_CPU_SSE4_2)) && defined(FPL__SUPPORT_CPU_AVX)
+#	define FPL__ENABLE_CPU_AVX
+#endif
+#if (!defined(FPL_NO_AVX2) && defined(FPL__ENABLE_CPU_AVX)) && defined(FPL__SUPPORT_CPU_AVX2)
+#	define FPL__ENABLE_CPU_AVX2
+#endif
+#if (!defined(FPL_NO_AVX512) && defined(FPL__ENABLE_CPU_AVX2)) && defined(FPL__SUPPORT_CPU_AVX512)
+#	define FPL__ENABLE_CPU_AVX512
+#endif
 
 //
 // Assertions
@@ -1952,6 +2078,8 @@ fplStaticAssert(sizeof(size_t) >= sizeof(uint32_t));
 #define fplIsBigEndian() (*(uint16_t *)"\0\xff" < 0x100)
 //! Returns true when the given platform is little-endian
 #define fplIsLittleEndian() (!fplIsBigEndian())
+//! Returns true when the given value has the given bit set
+#define fplIsBitSet(value, bit) (((value) >> (bit)) & 0x1)
 
 //! Returns the number of bytes for the given kilobytes
 #define fplKiloBytes(value) (((value) * 1024ull))
@@ -1983,6 +2111,69 @@ fplStaticAssert(sizeof(size_t) >= sizeof(uint32_t));
 
 //! Manually allocate memory on the stack
 #define fplStackAllocate(size) fpl__m_StackAllocate(size)
+
+//
+// CPU-ID
+//
+
+//! A structure containing one leaf of CPU-ID infos (eax to edx)
+typedef union fplCPUIDLeaf {
+	struct {
+		//! EAX value
+		uint32_t eax;
+		//! EBX value
+		uint32_t ebx;
+		//! ECX value
+		uint32_t ecx;
+		//! EDX value
+		uint32_t edx;
+	};
+	//! Raw values
+	uint32_t raw[4];
+} fplCPUIDLeaf;
+
+#if defined(FPL_COMPILER_MSVC)
+#	if _MSC_VER >= 1400
+#		define fpl__CPUID(outLeaf, functionId) __cpuid((int *)(outLeaf)->raw, (int)(functionId))
+#	endif
+#	if _MSC_VER >= 1600
+#		define fpl__GetXCR0() ((uint64_t)_xgetbv(0))
+#	endif
+#elif defined(FPL_COMPILER_GCC) ||defined(FPL_COMPILER_CLANG) ||defined(FPL_COMPILER_LLVM)
+// @TODO(final): CPUID and XGetBV for other compilers
+#endif
+
+// Fallbacks
+#if !defined(fpl__CPUID)
+static fpl_force_inline void fpl__NoCPUID(fplCPUIDLeaf *outLeaf) {
+	fplClearStruct(outLeaf);
+}
+#	define fpl__CPUID(outLeaf, functionId) fpl__NoCPUID(outLeaf)
+#endif // !fpl__CPUID
+#if !defined(fpl__GetXCR0)
+static fpl_force_inline uint64_t fpl__NoXCR0() {
+	return((uint64_t)0);
+}
+#	define fpl__GetXCR0() fpl__NoXCR0()
+#endif // !fpl__GetXCR0
+
+/**
+  * @brief Retrieves the CPU-ID leaf for the given function id
+  * @param outLeaf Pointer to a @ref fplCPUIDLeaf
+  * @param functionId The function id
+  */
+static fpl_force_inline void fplCPUID(fplCPUIDLeaf *outLeaf, const uint32_t functionId) {
+	if (outLeaf != fpl_null)
+		fpl__CPUID(outLeaf, functionId);
+}
+
+/**
+  * @brief Retrieves the Extended Control Register Value for Zero
+  * @return Returns zero or the value from the extended control register
+  */
+static fpl_force_inline uint64_t fplGetXCR0() {
+	return fpl__GetXCR0();
+}
 
 /** @} */
 
@@ -2788,6 +2979,36 @@ typedef enum fplArchType {
 	fplArchType_Arm64,
 } fplArchType;
 
+//! Defines the first @ref fplArchType value
+#define FPL_FIRST_ARCHTYPE fplArchType_Unknown
+//! Defines the first @ref fplArchType value
+#define FPL_LAST_ARCHTYPE fplArchType_Arm64
+
+//! A structure that containing the processor capabilities, like MMX,SSE,AVX etc.
+typedef struct fplProcessorCapabilities {
+	//! X86 capabilities
+	struct {
+		//! Is SSE supported
+		fpl_b32 HasSSE;
+		//! Is SSE-2 supported
+		fpl_b32 HasSSE2;
+		//! Is SSE-3 supported
+		fpl_b32 HasSSE3;
+		//! Is SSSE-3 supported
+		fpl_b32 HasSSSE3;
+		//! Is SSE-4.1 supported
+		fpl_b32 HasSSE4_1;
+		//! Is SSE-4.2 supported
+		fpl_b32 HasSSE4_2;
+		//! Is AVX supported
+		fpl_b32 HasAVX;
+		//! Is AVX-2 supported
+		fpl_b32 HasAVX2;
+		//! Is AVX-512 supported
+		fpl_b32 HasAVX512;
+	} x86;
+} fplProcessorCapabilities;
+
 /**
   * @brief Gets the string representation of the given architecture type
   * @param type The @ref fplArchType enumeration value
@@ -2808,7 +3029,13 @@ fpl_platform_api size_t fplGetProcessorCoreCount();
   * @return Returns a pointer to the last written character or @ref fpl_null otherwise.
   * @see @ref section_category_hardware_cpuname
   */
-fpl_platform_api char *fplGetProcessorName(char *destBuffer, const size_t maxDestBufferLen);
+fpl_common_api char *fplGetProcessorName(char *destBuffer, const size_t maxDestBufferLen);
+/**
+  * @brief Gets the capabilities of the processor.
+  * @param outCaps Pointer to the output @ref fplProcessorCapabilities
+  * @return Returns true when the capabilities could be retrieved, false otherwise.
+  */
+fpl_common_api bool fplGetProcessorCapabilities(fplProcessorCapabilities *outCaps);
 /**
   * @brief Gets the processor architecture type
   * @return Returns the processor architecture type
@@ -2847,12 +3074,11 @@ typedef enum fplInitFlags {
 	fplInitFlags_Audio = 1 << 3,
 	//! Support for game controllers
 	fplInitFlags_GameController = 1 << 4,
+	//! All init flags
+	fplInitFlags_All = fplInitFlags_Console | fplInitFlags_Window | fplInitFlags_Video | fplInitFlags_Audio | fplInitFlags_GameController,
 } fplInitFlags;
 //! InitFlags operator overloads for C++
 FPL_ENUM_AS_FLAGS_OPERATORS(fplInitFlags);
-
-//! Default init flags for initializing everything
-static const fplInitFlags fplInitFlags_All = fplInitFlags_Console | fplInitFlags_Window | fplInitFlags_Video | fplInitFlags_Audio | fplInitFlags_GameController;
 
 //! An enumeration of platform types
 typedef enum fplPlatformType {
@@ -2865,6 +3091,11 @@ typedef enum fplPlatformType {
 	//! Unix platform
 	fplPlatformType_Unix,
 } fplPlatformType;
+
+//! Defines the first @ref fplPlatformType value
+#define FPL_FIRST_PLATFORM_TYPE fplPlatformType_Unknown
+//! Defines the last @ref fplPlatformType value
+#define FPL_LAST_PLATFORM_TYPE fplPlatformType_Unix
 
 //! An emnumeration of platform result types
 typedef enum fplPlatformResultType {
@@ -2885,6 +3116,7 @@ typedef enum fplPlatformResultType {
 	//! Everything is fine
 	fplPlatformResultType_Success = 1,
 } fplPlatformResultType;
+
 //! Defines the first @ref fplPlatformResultType value
 #define FPL_FIRST_PLATFORM_RESULT_TYPE fplPlatformResultType_FailedWindow
 //! Defines the last @ref fplPlatformResultType value
@@ -2907,6 +3139,11 @@ typedef enum fplVideoDriverType {
 	//! Software
 	fplVideoDriverType_Software
 } fplVideoDriverType;
+
+//! Defines the first @ref fplVideoDriverType value
+#define FPL_FIRST_VIDEODRIVERTYPE fplVideoDriverType_None
+//! Defines the last @ref fplVideoDriverType value
+#define FPL_LAST_VIDEODRIVERTYPE fplVideoDriverType_Software
 
 #if defined(FPL__ENABLE_VIDEO_OPENGL)
 //! An enumeration of OpenGL compability flags
@@ -2976,25 +3213,35 @@ typedef enum fplAudioDriverType {
 	fplAudioDriverType_Alsa,
 } fplAudioDriverType;
 
+//! Defines the first @ref fplAudioDriverType value
+#define FPL_FIRST_AUDIODRIVERTYPE fplAudioDriverType_None
+//! Defines the last @ref fplAudioDriverType value
+#define FPL_LAST_AUDIODRIVERTYPE fplAudioDriverType_Alsa
+
 //! An enumeration of audio format types
 typedef enum fplAudioFormatType {
-	// No audio format
+	//! No audio format
 	fplAudioFormatType_None = 0,
-	// Unsigned 8-bit integer PCM
+	//! Unsigned 8-bit integer PCM
 	fplAudioFormatType_U8,
-	// Signed 16-bit integer PCM
+	//! Signed 16-bit integer PCM
 	fplAudioFormatType_S16,
-	// Signed 24-bit integer PCM
+	//! Signed 24-bit integer PCM
 	fplAudioFormatType_S24,
-	// Signed 32-bit integer PCM
+	//! Signed 32-bit integer PCM
 	fplAudioFormatType_S32,
-	// Signed 64-bit integer PCM
+	//! Signed 64-bit integer PCM
 	fplAudioFormatType_S64,
-	// 32-bit IEEE_FLOAT
+	//! 32-bit IEEE_FLOAT
 	fplAudioFormatType_F32,
-	// 64-bit IEEE_FLOAT
+	//! 64-bit IEEE_FLOAT
 	fplAudioFormatType_F64,
 } fplAudioFormatType;
+
+//! Defines the first @ref fplAudioFormatType value
+#define FPL_FIRST_AUDIOFORMATTYPE fplAudioFormatType_None
+//! Defines the last @ref fplAudioFormatType value
+#define FPL_LAST_AUDIOFORMATTYPE fplAudioFormatType_F64
 
 //! A structure containing audio device format runtime properties, such as type, samplerate, channels, etc.
 typedef struct fplAudioDeviceFormat {
@@ -6026,6 +6273,12 @@ fpl_main int main(int argc, char **args);
 #endif
 
 //
+// Enum macros
+//
+#define FPL__ENUM_COUNT(first, last) ((last) - (first) + 1)
+#define FPL__ENUM_VALUE_TO_ARRAY_INDEX(value, first, last) (((value) >= (first) && (value) <= (last)) ? ((value) - (first)) : 0)
+
+//
 // Internal logging system
 //
 #define FPL__MODULE_CONCAT(mod, format) "[" mod "] " format
@@ -6033,8 +6286,7 @@ fpl_main int main(int argc, char **args);
 #if defined(FPL__ENABLE_LOGGING)
 fpl_globalvar fplLogSettings fpl__global__LogSettings = fplZeroInit;
 
-#define FPL__LOGLEVEL_NAME_TABLE_OFFSET (-FPL_FIRST_LOGLEVEL)
-
+#define FPL__LOGLEVEL_COUNT FPL__ENUM_COUNT(FPL_FIRST_LOGLEVEL, FPL_LAST_LOGLEVEL)
 fpl_globalvar const char * fpl__LogLevelNameTable[] = {
 	"All", // fplLogLevel_All (-1)
 	"Critical", // fplLogLevel_Critical (0)
@@ -6045,11 +6297,11 @@ fpl_globalvar const char * fpl__LogLevelNameTable[] = {
 	"Debug", // fplLogLevel_Debug (5)
 	"Trace", // fplLogLevel_Trace (6)
 };
-#define FP__LOGLEVEL_NAME_TABLE_COUNT fplArrayCount(fpl__LogLevelNameTable)
+fplStaticAssert(fplArrayCount(fpl__LogLevelNameTable) == FPL__LOGLEVEL_COUNT);
 
 fpl_internal const char *fpl__LogLevelToString(const fplLogLevel level) {
-	uint32_t index = level + FPL__LOGLEVEL_NAME_TABLE_OFFSET;
-	const char *result = (index >= 0 && index < FP__LOGLEVEL_NAME_TABLE_COUNT) ? fpl__LogLevelNameTable[index] : "Unknown";
+	uint32_t index = FPL__ENUM_VALUE_TO_ARRAY_INDEX(level, FPL_FIRST_LOGLEVEL, FPL_LAST_LOGLEVEL);
+	const char *result = fpl__LogLevelNameTable[index];
 	return(result);
 }
 
@@ -8445,6 +8697,107 @@ fpl_common_api void fplMemoryCopy(const void *sourceMem, const size_t sourceSize
 #endif // FPL__COMMON_MEMORY_DEFINED
 
 //
+// Common Hardware
+//
+#if defined(FPL_ARCH_X64) || defined(FPL_ARCH_X86)
+fpl_common_api bool fplGetProcessorCapabilities(fplProcessorCapabilities *outCaps) {
+	fplClearStruct(outCaps);
+
+	fplCPUIDLeaf info0 = fplZeroInit;
+	fplCPUIDLeaf info1 = fplZeroInit;
+	fplCPUIDLeaf info7 = fplZeroInit;
+
+	fplCPUID(&info0, 0);
+	uint32_t maxFunctionId = info0.eax;
+
+	if (1 <= maxFunctionId) {
+		fplCPUID(&info1, 1);
+	}
+
+	if (7 <= maxFunctionId) {
+		fplCPUID(&info7, 7);
+	}
+
+	bool hasXSave = fplIsBitSet(info1.ecx, 26);
+	bool hasOSXSave = fplIsBitSet(info1.ecx, 27);
+	uint64_t xcr0 = (hasXSave && hasOSXSave) ? fplGetXCR0() : 0;
+
+#if defined(FPL__ENABLE_CPU_SSE)
+	outCaps->x86.HasSSE = fplIsBitSet(info1.edx, 25);
+#endif
+#if defined(FPL__ENABLE_CPU_SSE2)
+	outCaps->x86.HasSSE2 = fplIsBitSet(info1.edx, 26);
+#endif
+#if defined(FPL__ENABLE_CPU_SSE3)
+	outCaps->x86.HasSSE3 = fplIsBitSet(info1.ecx, 0);
+#endif
+#if defined(FPL__ENABLE_CPU_SSSE3)
+	outCaps->x86.HasSSSE3 = fplIsBitSet(info1.ecx, 9);
+#endif
+#if defined(FPL__ENABLE_CPU_SSE4_1)
+	outCaps->x86.HasSSE4_1 = fplIsBitSet(info1.ecx, 19);
+#endif
+#if defined(FPL__ENABLE_CPU_SSE4_2)
+	outCaps->x86.HasSSE4_2 = fplIsBitSet(info1.ecx, 20);
+#endif
+#if defined(FPL__ENABLE_CPU_AVX)
+	if (fplIsBitSet(info1.ecx, 27) && fplIsBitSet(info1.ecx, 28)) {
+		outCaps->x86.HasAVX = (xcr0 & 0x06) == 0x06;
+	}
+#endif
+#if defined(FPL__ENABLE_CPU_AVX2)
+	if (fplIsBitSet(info1.ecx, 27) && fplIsBitSet(info7.ebx, 5)) {
+		outCaps->x86.HasAVX2 = (xcr0 & 0x06) == 0x06;
+	}
+#endif
+#if defined(FPL__ENABLE_CPU_AVX512)
+	if (fplIsBitSet(info1.ecx, 27) && fplIsBitSet(info7.ebx, 16)) {
+		outCaps->x86.HasAVX512 = (xcr0 & 0xE6) == 0xE6;
+	}
+#endif
+
+	return(true);
+}
+
+fpl_common_api char *fplGetProcessorName(char *destBuffer, const size_t maxDestBufferLen) {
+#	define CPU_BRAND_BUFFER_SIZE 0x40
+	FPL__CheckArgumentNull(destBuffer, fpl_null);
+	size_t requiredDestBufferLen = CPU_BRAND_BUFFER_SIZE + 1;
+	FPL__CheckArgumentMin(maxDestBufferLen, requiredDestBufferLen, fpl_null);
+
+	fplCPUIDLeaf cpuInfo = fplZeroInit;
+	fplCPUID(&cpuInfo, 0x80000000);
+	uint32_t extendedIds = cpuInfo.eax;
+
+	// Get the information associated with each extended ID. Interpret CPU brand string.
+	char cpuBrandBuffer[CPU_BRAND_BUFFER_SIZE] = fplZeroInit;
+	uint32_t max = fplMin(extendedIds, 0x80000004);
+	for (uint32_t i = 0x80000002; i <= max; ++i) {
+		fplCPUID(&cpuInfo, i);
+		uint32_t offset = (i - 0x80000002) << 4;
+		fplMemoryCopy(cpuInfo.raw, sizeof(cpuInfo), cpuBrandBuffer + offset);
+	}
+	// Copy result back to the dest buffer
+	size_t sourceLen = fplGetStringLength(cpuBrandBuffer);
+	char *result = fplCopyStringLen(cpuBrandBuffer, sourceLen, destBuffer, maxDestBufferLen);
+
+#	undef CPU_BRAND_BUFFER_SIZE
+
+	return(result);
+}
+#else
+fpl_common_api bool fplGetProcessorCapabilities(fplProcessorCapabilities *outCaps) {
+	// @IMPLEMENT(final): fplGetProcessorCapabilities for other architectures
+	return(false);
+}
+
+fpl_common_api char *fplGetProcessorName(char *destBuffer, const size_t maxDestBufferLen) {
+	// @IMPLEMENT(final): fplGetProcessorName for other architectures
+	return(fpl_null);
+}
+#endif
+
+//
 // Common Atomics
 //
 #if !defined(FPL__COMMON_ATOMICS_DEFINED)
@@ -9001,7 +9354,7 @@ fpl_common_api fplSettings fplMakeDefaultSettings() {
 	return(result);
 }
 
-#define FPL__PLATFORMRESULTTYPE_NAMETABLE_OFFSET (-FPL_FIRST_PLATFORM_RESULT_TYPE)
+#define FPL__PLATFORMRESULTTYPE_COUNT FPL__ENUM_COUNT(FPL_FIRST_PLATFORM_RESULT_TYPE, FPL_LAST_PLATFORM_RESULT_TYPE)
 fpl_globalvar const char *fpl__global_platformResultTypeNameTable[] = {
 	"Failed Window", // fplPlatformResultType_FailedWindow (-6)
 	"Failed Audio", // fplPlatformResultType_FailedAudio (-5)
@@ -9012,34 +9365,29 @@ fpl_globalvar const char *fpl__global_platformResultTypeNameTable[] = {
 	"Not Initialized", // fplPlatformResultType_NotInitialized (0)
 	"Success", // fplPlatformResultType_Success (1)
 };
-#define FPL__PLATFORMRESULTTYPE_NAMETABLE_COUNT fplArrayCount(fpl__global_platformResultTypeNameTable)
+fplStaticAssert(fplArrayCount(fpl__global_platformResultTypeNameTable) == FPL__PLATFORMRESULTTYPE_COUNT);
 
 fpl_common_api const char *fplGetPlatformResultTypeString(const fplPlatformResultType type) {
-	uint32_t index = type + FPL__PLATFORMRESULTTYPE_NAMETABLE_OFFSET;
-	const char *result;
-	if (index >= 0 && index < FPL__PLATFORMRESULTTYPE_NAMETABLE_COUNT)
-		result = fpl__global_platformResultTypeNameTable[index];
-	else
-		result = "Unknown";
+	uint32_t index = FPL__ENUM_VALUE_TO_ARRAY_INDEX(type, FPL_FIRST_PLATFORM_RESULT_TYPE, FPL_LAST_PLATFORM_RESULT_TYPE);
+	const char *result = fpl__global_platformResultTypeNameTable[index];
 	return(result);
 }
 
+#define FPL__ARCHTYPE_COUNT FPL__ENUM_COUNT(FPL_FIRST_ARCHTYPE, FPL_LAST_ARCHTYPE)
+fpl_globalvar const char *fpl__global_ArchTypeNameTable[] = {
+	"Unknown", // Unknown architecture
+	"x86", // X86 architecture
+	"x86_64", // X86 with 64-bit architecture
+	"x64", // X64 only architecture
+	"arm32", // ARM32 architecture
+	"arm64", // ARM64 architecture
+};
+fplStaticAssert(fplArrayCount(fpl__global_ArchTypeNameTable) == FPL__ARCHTYPE_COUNT);
+
 fpl_common_api const char *fplGetArchTypeString(const fplArchType type) {
-	switch (type) {
-		case fplArchType_x86:
-			return "x86";
-		case fplArchType_x86_64:
-			return "x86_64";
-		case fplArchType_x64:
-			return "x64";
-		case fplArchType_Arm32:
-			return "Arm32";
-		case fplArchType_Arm64:
-			return "Arm64";
-		case fplArchType_Unknown:
-		default:
-			return "Unknown";
-	}
+	uint32_t index = FPL__ENUM_VALUE_TO_ARRAY_INDEX(type, FPL_FIRST_ARCHTYPE, FPL_LAST_ARCHTYPE);
+	const char *result = fpl__global_ArchTypeNameTable[index];
+	return(result);
 }
 #endif // FPL_COMMON_DEFINED
 
@@ -9983,7 +10331,7 @@ fpl_internal bool fpl__Win32ThreadWaitForMultiple(fplThreadHandle **threads, con
 	}
 	bool result = stoppedThreads >= minThreads;
 	return(result);
-}
+	}
 
 fpl_internal bool fpl__Win32SignalWaitForMultiple(fplSignalHandle **signals, const size_t count, const size_t stride, const fplTimeoutValue timeout, const bool waitForAll) {
 	FPL__CheckArgumentNull(signals, false);
@@ -10025,6 +10373,8 @@ fpl_internal void fpl__Win32ReleasePlatform(fpl__PlatformInitState *initState, f
 
 #if defined(FPL__ENABLE_WINDOW)
 fpl_internal fplKey fpl__Win32TranslateVirtualKey(const fpl__Win32Api *wapi, const uint64_t virtualKey) {
+	// @TODO(final): [Win32] Use key mapping table instead of switch
+
 	switch (virtualKey) {
 		case VK_BACK:
 			return fplKey_Backspace;
@@ -10757,33 +11107,6 @@ fpl_platform_api bool fplGetRunningMemoryInfos(fplMemoryInfos *outInfos) {
 		}
 		result = true;
 	}
-	return(result);
-}
-
-fpl_platform_api char *fplGetProcessorName(char *destBuffer, const size_t maxDestBufferLen) {
-#	define CPU_BRAND_BUFFER_SIZE 0x40
-	FPL__CheckArgumentNull(destBuffer, fpl_null);
-	size_t requiredDestBufferLen = CPU_BRAND_BUFFER_SIZE + 1;
-	FPL__CheckArgumentMin(maxDestBufferLen, requiredDestBufferLen, fpl_null);
-
-	// @TODO(final/Win32): __cpuid may not be available on other Win32 Compilers!
-	int cpuInfo[4] = { -1 };
-	char cpuBrandBuffer[CPU_BRAND_BUFFER_SIZE] = fplZeroInit;
-	__cpuid(cpuInfo, 0x80000000);
-	uint32_t extendedIds = cpuInfo[0];
-	// Get the information associated with each extended ID. Interpret CPU brand string.
-	uint32_t max = fplMin(extendedIds, 0x80000004);
-	for (uint32_t i = 0x80000002; i <= max; ++i) {
-		__cpuid(cpuInfo, i);
-		uint32_t offset = (i - 0x80000002) << 4;
-		fplMemoryCopy(cpuInfo, sizeof(cpuInfo), cpuBrandBuffer + offset);
-	}
-	// Copy result back to the dest buffer
-	size_t sourceLen = fplGetStringLength(cpuBrandBuffer);
-	char *result = fplCopyStringLen(cpuBrandBuffer, sourceLen, destBuffer, maxDestBufferLen);
-
-#	undef CPU_BRAND_BUFFER_SIZE
-
 	return(result);
 }
 
@@ -12591,8 +12914,8 @@ fpl_internal LCTYPE fpl__Win32GetLocaleLCIDFromFormat(const fplLocaleFormat form
 			return LOCALE_SNAME;
 		default:
 			return LOCALE_SABBREVLANGNAME;
-	}
 }
+	}
 
 fpl_platform_api bool fplGetSystemLocale(const fplLocaleFormat targetFormat, char *buffer, const size_t maxBufferLen) {
 	FPL__CheckArgumentInvalid(targetFormat, targetFormat == fplLocaleFormat_None, false);
@@ -13003,7 +13326,7 @@ fpl_platform_api bool fplThreadTerminate(fplThreadHandle *thread) {
 }
 
 fpl_platform_api uint32_t fplGetCurrentThreadId() {
-	// @IMPLEMENT(POSIX): fplGetCurrentThreadId()
+	// @IMPLEMENT(final/POSIX): fplGetCurrentThreadId()
 	return(0);
 }
 
@@ -13043,12 +13366,12 @@ fpl_platform_api fplThreadHandle *fplThreadCreate(fpl_run_thread_callback *runFu
 }
 
 fpl_platform_api fplThreadPriority fplGetThreadPriority(fplThreadHandle *thread) {
-	// @IMPLEMENT(final): POSIX fplGetThreadPriority
+	// @IMPLEMENT(final/POSIX): fplGetThreadPriority
 	return(fplThreadPriority_Unknown);
 }
 
 fpl_platform_api bool fplSetThreadPriority(fplThreadHandle *thread, const fplThreadPriority newPriority) {
-	// @IMPLEMENT(final): POSIX fplSetThreadPriority
+	// @IMPLEMENT(final/POSIX): fplSetThreadPriority
 	return(false);
 }
 
@@ -14176,6 +14499,8 @@ fpl_internal void fpl__X11ReleaseWindow(const fpl__X11SubplatformState *subplatf
 }
 
 fpl_internal fplKey fpl__X11TranslateKeySymbol(const KeySym keySym) {
+	// @TODO(final): [X11] Use key mapping table instead of switch
+
 	switch (keySym) {
 		case XK_BackSpace:
 			return fplKey_Backspace;
@@ -14901,7 +15226,7 @@ fpl_platform_api bool fplWindowUpdate() {
 }
 
 fpl_platform_api void fplSetWindowCursorEnabled(const bool value) {
-	// @IMPLEMENT(final/X11): Implement fplSetWindowCursorEnabled
+	// @IMPLEMENT(final/X11): fplSetWindowCursorEnabled
 }
 
 fpl_platform_api bool fplGetWindowSize(fplWindowSize *outSize) {
@@ -14929,74 +15254,74 @@ fpl_platform_api void fplSetWindowSize(const uint32_t width, const uint32_t heig
 }
 
 fpl_platform_api bool fplIsWindowResizable() {
-	// @IMPLEMENT(final/X11): Implement fplIsWindowResizable
+	// @IMPLEMENT(final/X11): fplIsWindowResizable
 	return false;
 }
 
 fpl_platform_api void fplSetWindowResizeable(const bool value) {
-	// @IMPLEMENT(final/X11): Implement fplSetWindowResizeable
+	// @IMPLEMENT(final/X11): fplSetWindowResizeable
 }
 
 fpl_platform_api bool fplIsWindowDecorated() {
-	// @IMPLEMENT(final/X11): Implement fplIsWindowDecorated
+	// @IMPLEMENT(final/X11): fplIsWindowDecorated
 	return false;
 }
 
 fpl_platform_api void fplSetWindowDecorated(const bool value) {
-	// @IMPLEMENT(final/X11): Implement fplSetWindowDecorated
+	// @IMPLEMENT(final/X11): fplSetWindowDecorated
 }
 
 fpl_platform_api bool fplIsWindowFloating() {
-	// @IMPLEMENT(final/X11): Implement fplIsWindowFloating
+	// @IMPLEMENT(final/X11): fplIsWindowFloating
 	return false;
 }
 
 fpl_platform_api void fplSetWindowFloating(const bool value) {
-	// @IMPLEMENT(final/X11): Implement fplSetWindowFloating
+	// @IMPLEMENT(final/X11): fplSetWindowFloating
 }
 
 fpl_platform_api fplWindowState fplGetWindowState() {
-	// @IMPLEMENT(final/X11): Implement fplGetWindowState
+	// @IMPLEMENT(final/X11): fplGetWindowState
 	return(fplWindowState_Unknown);
 }
 
 fpl_platform_api bool fplSetWindowState(const fplWindowState newState) {
-	// @IMPLEMENT(final/X11): Implement fplSetWindowState
+	// @IMPLEMENT(final/X11): fplSetWindowState
 	return(false);
 }
 
 fpl_platform_api size_t fplGetDisplayCount() {
-	// @IMPLEMENT(final/X11): Implement fplGetDisplayCount
+	// @IMPLEMENT(final/X11): fplGetDisplayCount
 	return(0);
 }
 
 fpl_platform_api size_t fplGetDisplays(fplDisplayInfo *displays, const size_t maxDisplayCount) {
-	// @IMPLEMENT(final/X11): Implement fplGetDisplays
+	// @IMPLEMENT(final/X11): fplGetDisplays
 	return(0);
 }
 
 fpl_platform_api bool fplGetPrimaryDisplay(fplDisplayInfo *display) {
-	// @IMPLEMENT(final/X11): Implement fplGetPrimaryDisplay
+	// @IMPLEMENT(final/X11): fplGetPrimaryDisplay
 	return(false);
 }
 
 fpl_platform_api bool fplGetWindowDisplay(fplDisplayInfo *outDisplay) {
-	// @IMPLEMENT(final/X11): Implement fplGetWindowDisplay
+	// @IMPLEMENT(final/X11): fplGetWindowDisplay
 	return(false);
 }
 
 fpl_platform_api bool fplGetDisplayFromPosition(const int32_t x, const int32_t y, fplDisplayInfo *outDisplay) {
-	// @IMPLEMENT(final/X11): Implement fplGetDisplayFromPosition
+	// @IMPLEMENT(final/X11): fplGetDisplayFromPosition
 	return(false);
 }
 
 fpl_platform_api size_t fplGetDisplayModeCount(const char *id) {
-	// @IMPLEMENT(final/X11): Implement fplGetDisplayModeCount
+	// @IMPLEMENT(final/X11): fplGetDisplayModeCount
 	return(0);
 }
 
 fpl_platform_api size_t fplGetDisplayModes(const char *id, fplDisplayMode *modes, const size_t maxDisplayModeCount) {
-	// @IMPLEMENT(final/X11): Implement fplGetDisplayModes
+	// @IMPLEMENT(final/X11): fplGetDisplayModes
 	return(0);
 }
 
@@ -15027,17 +15352,17 @@ fpl_platform_api bool fplSetWindowFullscreenSize(const bool value, const uint32_
 }
 
 fpl_platform_api bool fplSetWindowFullscreenRect(const bool value, const int32_t x, const int32_t y, const int32_t width, const int32_t height) {
-	// @IMPLEMENT(final/X11): Implement fplSetWindowFullscreenRect
+	// @IMPLEMENT(final/X11): fplSetWindowFullscreenRect
 	return(false);
 }
 
 fpl_platform_api bool fplEnableWindowFullscreen() {
-	// @IMPLEMENT(final/X11): Implement fplEnableWindowFullscreen
+	// @IMPLEMENT(final/X11): fplEnableWindowFullscreen
 	return(false);
 }
 
 fpl_platform_api bool fplDisableWindowFullscreen() {
-	// @IMPLEMENT(final/X11): Implement fplDisableWindowFullscreen
+	// @IMPLEMENT(final/X11): fplDisableWindowFullscreen
 	return(false);
 }
 
@@ -15097,12 +15422,12 @@ fpl_platform_api void fplSetWindowTitle(const char *title) {
 }
 
 fpl_platform_api bool fplGetClipboardText(char *dest, const uint32_t maxDestLen) {
-	// @IMPLEMENT(final/X11): Implement fplGetClipboardText
+	// @IMPLEMENT(final/X11): fplGetClipboardText
 	return false;
 }
 
 fpl_platform_api bool fplSetClipboardText(const char *text) {
-	// @IMPLEMENT(final/X11): Implement fplSetClipboardText
+	// @IMPLEMENT(final/X11): fplSetClipboardText
 	return false;
 }
 
@@ -15601,6 +15926,8 @@ fpl_platform_api bool fplSignalSet(fplSignalHandle *signal) {
 //
 // Linux Hardware
 //
+// @TODO(final/Linux): fplGetProcessorName is obsolete on linux?
+#if 0
 fpl_platform_api char *fplGetProcessorName(char *destBuffer, const size_t maxDestBufferLen) {
 	FPL__CheckArgumentNull(destBuffer, fpl_null);
 	FPL__CheckArgumentZero(maxDestBufferLen, fpl_null);
@@ -15635,6 +15962,7 @@ fpl_platform_api char *fplGetProcessorName(char *destBuffer, const size_t maxDes
 	}
 	return(result);
 }
+#endif
 
 fpl_platform_api bool fplGetRunningMemoryInfos(fplMemoryInfos *outInfos) {
 	FPL__CheckArgumentNull(outInfos, false);
@@ -15644,8 +15972,6 @@ fpl_platform_api bool fplGetRunningMemoryInfos(fplMemoryInfos *outInfos) {
 
 	return(result);
 }
-
-
 
 //
 // Linux Paths
@@ -15707,15 +16033,18 @@ fpl_internal bool fpl__UnixInitPlatform(const fplInitFlags initFlags, const fplS
 //
 // Unix Hardware
 //
+#if 0
+// @TODO(final/Linux): fplGetProcessorName is obsolete on unix?
 fpl_platform_api char *fplGetProcessorName(char *destBuffer, const size_t maxDestBufferLen) {
 	FPL__CheckArgumentNull(destBuffer, fpl_null);
 	FPL__CheckArgumentZero(maxDestBufferLen, fpl_null);
-	// @IMPLEMENT(final/Unix): Implement fplGetProcessorName
+	// @IMPLEMENT(final/Unix): fplGetProcessorName
 	return(fpl_null);
 }
+#endif
 
 fpl_platform_api bool fplGetRunningMemoryInfos(fplMemoryInfos *outInfos) {
-	// @IMPLEMENT(final/Unix): Implement fplGetRunningMemoryInfos
+	// @IMPLEMENT(final/Unix): fplGetRunningMemoryInfos
 	return(false);
 }
 #endif // FPL_PLATFORM_UNIX
@@ -17586,6 +17915,7 @@ fpl_internal bool fpl__AudioStopAlsa(fpl__AlsaAudioState *alsaState) {
 }
 
 fpl_internal snd_pcm_format_t fpl__MapAudioFormatToAlsaFormat(fplAudioFormatType format) {
+	// @TODO(final): [ALSA] Mapping table from fplAudioFormatType to snd_pcm_format_t here!
 	bool isBigEndian = fplIsBigEndian();
 	if (isBigEndian) {
 		switch (format) {
@@ -17628,6 +17958,7 @@ fpl_internal void fpl__AudioRunMainLoopAlsa(fpl__CommonAudioState *commonAudio, 
 }
 
 fpl_internal fplAudioFormatType fpl__MapAlsaFormatToAudioFormat(snd_pcm_format_t format) {
+	// @TODO(final): [ALSA] Mapping table from snd_pcm_format_t to fplAudioFormatType here!
 	switch (format) {
 		case SND_PCM_FORMAT_U8:
 			return fplAudioFormatType_U8;
@@ -18730,59 +19061,58 @@ fpl_internal void fpl__ReleaseWindow(const fpl__PlatformInitState *initState, fp
 //
 // %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 #if defined(FPL__ENABLE_AUDIO)
+
+#define FPL__AUDIOFORMATTYPE_COUNT FPL__ENUM_COUNT(FPL_FIRST_AUDIOFORMATTYPE, FPL_LAST_AUDIOFORMATTYPE)
+
+fpl_globalvar uint32_t fpl__globalAudioFormatSampleSizeTable[] = {
+	0, // No audio format
+	1, // Unsigned 8-bit integer PCM
+	2, // Signed 16-bit integer PCM
+	3, // Signed 24-bit integer PCM
+	4, // Signed 32-bit integer PCM
+	8, // Signed 64-bit integer PCM
+	4, // 32-bit IEEE_FLOAT
+	8, // 64-bit IEEE_FLOAT
+};
+fplStaticAssert(fplArrayCount(fpl__globalAudioFormatSampleSizeTable) == FPL__AUDIOFORMATTYPE_COUNT);
+
+fpl_globalvar const char *fpl__globalAudioFormatNameTable[] = {
+	"None",  // 0 = No audio format
+	"U8",    // = Unsigned 8-bit integer PCM
+	"S16",   // = Signed 16-bit integer PCM
+	"S24",   // = Signed 24-bit integer PCM
+	"S32",   // = Signed 32-bit integer PCM
+	"S64CM", // = Signed 64-bit integer PCM
+	"F32",   // = 32-bit IEEE_FLOAT
+	"F64",   // = 64-bit IEEE_FLOAT
+};
+fplStaticAssert(fplArrayCount(fpl__globalAudioFormatNameTable) == FPL__AUDIOFORMATTYPE_COUNT);
+
 fpl_common_api uint32_t fplGetAudioSampleSizeInBytes(const fplAudioFormatType format) {
-	switch (format) {
-		case fplAudioFormatType_U8:
-			return 1;
-		case fplAudioFormatType_S16:
-			return 2;
-		case fplAudioFormatType_S24:
-			return 3;
-		case fplAudioFormatType_S32:
-		case fplAudioFormatType_F32:
-			return 4;
-		case fplAudioFormatType_S64:
-		case fplAudioFormatType_F64:
-			return 8;
-		default:
-			return 0;
-	}
+	uint32_t index = FPL__ENUM_VALUE_TO_ARRAY_INDEX(format, FPL_FIRST_AUDIOFORMATTYPE, FPL_LAST_AUDIOFORMATTYPE);
+	uint32_t result = fpl__globalAudioFormatSampleSizeTable[index];
+	return(result);
 }
 
 fpl_common_api const char *fplGetAudioFormatString(const fplAudioFormatType format) {
-	switch (format) {
-		case fplAudioFormatType_U8:
-			return "U8";
-		case fplAudioFormatType_S16:
-			return "S16";
-		case fplAudioFormatType_S24:
-			return "S24";
-		case fplAudioFormatType_S32:
-			return "S32";
-		case fplAudioFormatType_S64:
-			return "S64";
-		case fplAudioFormatType_F32:
-			return "F32";
-		case fplAudioFormatType_F64:
-			return "F64";
-		default:
-			return "None";
-	}
+	uint32_t index = FPL__ENUM_VALUE_TO_ARRAY_INDEX(format, FPL_FIRST_AUDIOFORMATTYPE, FPL_LAST_AUDIOFORMATTYPE);
+	const char *result = fpl__globalAudioFormatNameTable[index];
+	return(result);
 }
 
+#define FPL__AUDIODRIVERTYPE_COUNT FPL__ENUM_COUNT(FPL_FIRST_AUDIODRIVERTYPE, FPL_LAST_AUDIODRIVERTYPE)
+fpl_globalvar const char *fpl__globalAudioDriverStringTable[] = {
+	"None", // No audio driver
+	"Auto", // Automatic driver detection
+	"DirectSound", // DirectSound
+	"ALSA", // Alsa
+};
+fplStaticAssert(fplArrayCount(fpl__globalAudioDriverStringTable) == FPL__AUDIODRIVERTYPE_COUNT);
+
 fpl_common_api const char *fplGetAudioDriverString(fplAudioDriverType driver) {
-	switch (driver) {
-		case fplAudioDriverType_Auto:
-			return "Auto";
-		case fplAudioDriverType_DirectSound:
-			return "DirectSound";
-		case fplAudioDriverType_Alsa:
-			return "ALSA";
-		case fplAudioDriverType_None:
-			return "None";
-		default:
-			return "";
-	}
+	uint32_t index = FPL__ENUM_VALUE_TO_ARRAY_INDEX(driver, FPL_FIRST_AUDIODRIVERTYPE, FPL_LAST_AUDIODRIVERTYPE);
+	const char *result = fpl__globalAudioDriverStringTable[index];
+	return(result);
 }
 
 fpl_common_api uint32_t fplGetAudioBufferSizeInFrames(uint32_t sampleRate, uint32_t bufferSizeInMilliSeconds) {
@@ -18995,17 +19325,18 @@ fpl_common_api uint32_t fplGetAudioDevices(fplAudioDeviceInfo *devices, uint32_t
 //
 // %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 #if defined(FPL__ENABLE_VIDEO)
+#define FPL__VIDEODRIVERTYPE_COUNT FPL__ENUM_COUNT(FPL_FIRST_VIDEODRIVERTYPE, FPL_LAST_VIDEODRIVERTYPE)
+fpl_globalvar const char *fpl__globalVideoDriverTypeNameTable[] = {
+	"None", // fplVideoDriverType_None
+	"OpenGL", // fplVideoDriverType_OpenGL
+	"Software", // fplVideoDriverType_Software
+};
+fplStaticAssert(fplArrayCount(fpl__globalVideoDriverTypeNameTable) == FPL__VIDEODRIVERTYPE_COUNT);
+
 fpl_common_api const char *fplGetVideoDriverString(fplVideoDriverType driver) {
-	switch (driver) {
-		case fplVideoDriverType_OpenGL:
-			return "OpenGL";
-		case fplVideoDriverType_Software:
-			return "Software";
-		case fplVideoDriverType_None:
-			return "None";
-		default:
-			return "";
-	}
+	uint32_t index = FPL__ENUM_VALUE_TO_ARRAY_INDEX(driver, FPL_FIRST_VIDEODRIVERTYPE, FPL_LAST_VIDEODRIVERTYPE);
+	const char *result = fpl__globalVideoDriverTypeNameTable[index];
+	return(result);
 }
 
 fpl_common_api fplVideoBackBuffer *fplGetVideoBackBuffer() {
@@ -19163,7 +19494,7 @@ fpl_internal void fpl__ReleasePlatformStates(fpl__PlatformInitState *initState, 
 		if (videoState != fpl_null) {
 			FPL_LOG_DEBUG(FPL__MODULE_CORE, "Shutdown Video for Driver '%s'", fplGetVideoDriverString(videoState->activeDriver));
 			fpl__ShutdownVideo(appState, videoState);
-		}
+			}
 	}
 #	endif
 
@@ -19173,7 +19504,7 @@ fpl_internal void fpl__ReleasePlatformStates(fpl__PlatformInitState *initState, 
 		FPL_LOG_DEBUG(FPL__MODULE_CORE, "Release Window");
 		fpl__ReleaseWindow(initState, appState);
 		fpl__ClearInternalEvents();
-	}
+		}
 #	endif
 
 	// Release video state
@@ -19183,7 +19514,7 @@ fpl_internal void fpl__ReleasePlatformStates(fpl__PlatformInitState *initState, 
 		if (videoState != fpl_null) {
 			FPL_LOG_DEBUG(FPL__MODULE_CORE, "Release Video for Driver '%s'", fplGetVideoDriverString(videoState->activeDriver));
 			fpl__ReleaseVideoState(appState, videoState);
-		}
+	}
 	}
 #	endif
 
@@ -19218,24 +19549,24 @@ fpl_internal void fpl__ReleasePlatformStates(fpl__PlatformInitState *initState, 
 		FPL_LOG_DEBUG(FPL__MODULE_CORE, "Release allocated Platform App State Memory");
 		fplMemoryAlignedFree(appState);
 		fpl__global__AppState = fpl_null;
-	}
+}
 	initState->initResult = fplPlatformResultType_NotInitialized;
 	initState->isInitialized = false;
 }
 
+#define FPL__PLATFORMTYPE_COUNT FPL__ENUM_COUNT(FPL_FIRST_PLATFORM_TYPE, FPL_LAST_PLATFORM_TYPE)
+fpl_globalvar const char *fpl__globalPlatformTypeNameTable[] = {
+	"Unknown", // fplPlatformType_Unknown
+	"Windows", // fplPlatformType_Windows
+	"Linux", // fplPlatformType_Linux
+	"Unix", // fplPlatformType_Unix
+};
+fplStaticAssert(fplArrayCount(fpl__globalPlatformTypeNameTable) == FPL__PLATFORMTYPE_COUNT);
+
 fpl_common_api const char *fplGetPlatformName(const fplPlatformType type) {
-	switch (type) {
-		case fplPlatformType_Windows:
-			return "Windows";
-		case fplPlatformType_Linux:
-			return "Linux";
-		case fplPlatformType_Unix:
-			return "Unix";
-		case fplPlatformType_Unknown:
-			return "Unknown";
-		default:
-			return "";
-	}
+	uint32_t index = FPL__ENUM_VALUE_TO_ARRAY_INDEX(type, FPL_FIRST_PLATFORM_TYPE, FPL_LAST_PLATFORM_TYPE);
+	const char *result = fpl__globalPlatformTypeNameTable[index];
+	return(result);
 }
 
 fpl_common_api fplPlatformResultType fplGetPlatformResult() {
@@ -19296,7 +19627,7 @@ fpl_common_api bool fplPlatformInit(const fplInitFlags initFlags, const fplSetti
 		platformAppStateSize += FPL__ARBITARY_PADDING;
 		audioMemoryOffset = platformAppStateSize;
 		platformAppStateSize += sizeof(fpl__AudioState);
-	}
+}
 #endif
 
 	FPL_LOG_DEBUG(FPL__MODULE_CORE, "Allocate Platform App State Memory of size '%zu':", platformAppStateSize);
