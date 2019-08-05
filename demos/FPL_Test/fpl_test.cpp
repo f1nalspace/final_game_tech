@@ -502,6 +502,19 @@ static void TestHardware() {
 	ftAssert(coreCount > 0);
 	ftMsg("Processor cores: %zu\n", coreCount);
 
+	fplProcessorCapabilities cpuCaps = {};
+	fplGetProcessorCapabilities(&cpuCaps);
+	ftMsg("Processor capabilities:\n");
+	ftMsg("\tSSE: %s\n", (cpuCaps.x86.HasSSE ? "yes" : "no"));
+	ftMsg("\tSSE2: %s\n", (cpuCaps.x86.HasSSE2 ? "yes" : "no"));
+	ftMsg("\tSSE3: %s\n", (cpuCaps.x86.HasSSE3 ? "yes" : "no"));
+	ftMsg("\tSSSE3: %s\n", (cpuCaps.x86.HasSSSE3 ? "yes" : "no"));
+	ftMsg("\tSSE4.1: %s\n", (cpuCaps.x86.HasSSE4_1 ? "yes" : "no"));
+	ftMsg("\tSSE4.2: %s\n", (cpuCaps.x86.HasSSE4_2 ? "yes" : "no"));
+	ftMsg("\tAVX: %s\n", (cpuCaps.x86.HasAVX ? "yes" : "no"));
+	ftMsg("\tAVX2: %s\n", (cpuCaps.x86.HasAVX2 ? "yes" : "no"));
+	ftMsg("\tAVX512: %s\n", (cpuCaps.x86.HasAVX512 ? "yes" : "no"));
+
 	fplMemoryInfos memInfos = {};
 	fplGetRunningMemoryInfos(&memInfos);
 	ftMsg("Installed physical memory (bytes): %llu\n", memInfos.totalPhysicalSize);
