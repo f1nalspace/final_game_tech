@@ -280,10 +280,11 @@ int main(int argc, char **args) {
 	// Set audio device format
 	settings.audio.targetFormat.type = fplAudioFormatType_S16;
 	settings.audio.targetFormat.channels = 2;
-	//settings.audio.deviceFormat.sampleRate = 11025;
-	//settings.audio.deviceFormat.sampleRate = 22050;
+	
+	//settings.audio.targetFormat.sampleRate = 11025;
+	//settings.audio.targetFormat.sampleRate = 22050;
 	settings.audio.targetFormat.sampleRate = 44100;
-	//settings.audio.deviceFormat.sampleRate = 48000;
+	//settings.audio.targetFormat.sampleRate = 48000;
 
 	// Disable start/stop of audio playback
 	settings.audio.startAuto = false;
