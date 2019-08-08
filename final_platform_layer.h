@@ -147,8 +147,8 @@ SOFTWARE.
 	- New: Added functions fplAtomicIncrement* used for incrementing a value by one atomically
 	- New: Added macro fplRDTSC
 	- New: Added struct fplCPUIDLeaf
-	- New: Added function fplCPUID with fallback
-	- New: Added function fplXCR0 with fallback
+	- New: Added macro fplCPUID with fallback
+	- New: Added macro fplXCR0 with fallback
 	- New: Added struct fplProcessorCapabilities
 	- New: Added function fplGetProcessorCapabilities
 	- New: Added macro fplIsBitSet
@@ -178,6 +178,7 @@ SOFTWARE.
 	- Changed: Moved fplInitFlags_All constant to fplInitFlags enum
 	- Changed: CPU size detection is now independent from CPU architecture detection
 	- Changed: fplGetProcessorName moved to common section with fallback to not supported architectures
+	- Changed: Removed wrong compiler detection for LLVM (Clang is LLVM)
 
 	- New: [POSIX/Win32] Implemented functions fplAtomicIncrement*
 	- New: [Win32] Implemented function fplGetCurrentThreadId
@@ -190,6 +191,8 @@ SOFTWARE.
 	- Changed: [POSIX/Win32] Reflect api changes for fplSignalWaitForAny()
 	- Changed: [X86/X64] fplGetProcessorName are only enabled on X86 or X64 architecture
 	- Changed: [X86/X64] fplGetProcessorCapabilities are only enabled on X86 or X64 architecture
+	- Changed: [MSVC] Implemented fplCPUID/fplGetXCR0 for MSVC
+	- Changed: [GCC/Clang] Implemented fplCPUID/fplGetXCR0 for GCC/Clang
 
 	- New: [Win32] Support for multiple files in WM_DROPFILES
 	- New: [Win32] Implemented fplGetThreadPriority
@@ -1332,8 +1335,8 @@ SOFTWARE.
 
 //
 // Platform detection
-//
 // https://sourceforge.net/p/predef/wiki/OperatingSystems/
+//
 #if defined(_WIN32) || defined(_WIN64)
 #	define FPL_PLATFORM_WINDOWS
 #	define FPL_PLATFORM_NAME "Windows"
@@ -1372,7 +1375,7 @@ SOFTWARE.
 
 //
 // Architecture detection (x86, x64)
-// See: https://sourceforge.net/p/predef/wiki/Architectures/
+// https://sourceforge.net/p/predef/wiki/Architectures/
 //
 #if defined(__x86_64__) || defined(_M_X64) || defined(__amd64__)
 #	define FPL_ARCH_X64
@@ -1413,27 +1416,24 @@ SOFTWARE.
 
 //
 // Compiler detection
-// See: http://beefchunk.com/documentation/lang/c/pre-defined-c/precomp.html
-// See: http://nadeausoftware.com/articles/2012/10/c_c_tip_how_detect_compiler_name_and_version_using_compiler_predefined_macros
+// http://beefchunk.com/documentation/lang/c/pre-defined-c/precomp.html
+// http://nadeausoftware.com/articles/2012/10/c_c_tip_how_detect_compiler_name_and_version_using_compiler_predefined_macros
 //
 #if defined(__clang__)
 	//! CLANG compiler detected
 #	define FPL_COMPILER_CLANG
-#elif defined(__llvm__)
-	//! LLVM compiler detected
-#	define FPL_COMPILER_LLVM
 #elif defined(__INTEL_COMPILER)
 	//! Intel compiler detected
 #	define FPL_COMPILER_INTEL
 #elif defined(__MINGW32__)
 	//! MingW compiler detected
 #	define FPL_COMPILER_MINGW
-#elif defined(__GNUC__)
-	//! GCC compiler detected
-#	define FPL_COMPILER_GCC
 #elif defined(__CC_ARM)
 	//! ARM compiler detected
 #	define FPL_COMPILER_ARM
+#elif defined(__GNUC__)
+	//! GCC compiler detected
+#	define FPL_COMPILER_GCC
 #elif defined(_MSC_VER)
 	//! Visual studio compiler detected
 #	define FPL_COMPILER_MSVC
@@ -1443,8 +1443,7 @@ SOFTWARE.
 #endif // FPL_COMPILER
 
 //
-// Defines required on certain compiler/platform configurations
-// Required for POSIX: mmap, 64-bit file io, etc.
+// Defines required for POSIX (mmap, 64-bit file io, etc.)
 //
 #if defined(FPL_SUBPLATFORM_POSIX)
 #	if !defined(_XOPEN_SOURCE)
@@ -1645,8 +1644,9 @@ SOFTWARE.
 // Compiler settings
 //
 #if defined(FPL_COMPILER_MSVC)
-	// Required intrinsics suite
-#	include <intrin.h>
+	// Includes for CPUID and XCR
+#	include <immintrin.h> // _xgetbv
+#	include <intrin.h> // __cpuid
 
 	// Debug/Release detection
 #	if !defined(FPL__ENABLE_DEBUG) && !defined(FPL__ENABLE_RELEASE)
@@ -1670,6 +1670,11 @@ SOFTWARE.
 	// Setup MSVC linker hints
 #	pragma comment(lib, "kernel32.lib")
 #else
+#	if defined(FPL_COMPILER_GCC) || defined(FPL_COMPILER_CLANG)
+		// Required include for CPUID
+#		include <cpuid.h> // __cpuid
+#	endif
+
 	// Function name macro (Other compilers)
 #   define FPL__M_FUNCTION_NAME __FUNCTION__
 #endif // FPL_COMPILER
@@ -1689,89 +1694,28 @@ SOFTWARE.
 //
 // CPU Instruction Set Detection based on compiler settings
 //
-// https://stackoverflow.com/questions/18563978/detect-the-availability-of-sse-sse2-instruction-set-in-visual-studio
-// https://johanmabille.github.io/blog/2014/10/25/writing-c-plus-plus-wrappers-for-simd-intrinsics-5/
-#if defined(__AVX512F__) || (defined(_MSC_VER) && _MSC_VER >= 1910)
-#	define FPL__COMPILER_CPU_INSTR_SET 9
-#elif defined(__AVX2__) || (defined(_MSC_VER) && _MSC_VER >= 1700)
-#	define FPL__COMPILER_CPU_INSTR_SET 8
-#elif defined(__AVX__) || (defined(_MSC_VER) && _MSC_VER >= 1600)
-#	define FPL__COMPILER_CPU_INSTR_SET 7
+#if defined(__AVX512F__)
+#	define FPL__COMPILED_X86_CPU_INSTR_SET 9
+#elif defined(__AVX2__)
+#	define FPL__COMPILED_X86_CPU_INSTR_SET 8
+#elif defined(__AVX__)
+#	define FPL__COMPILED_X86_CPU_INSTR_SET 7
 #elif defined(__SSE4_2__)
-#	define FPL__COMPILER_CPU_INSTR_SET 6
+#	define FPL__COMPILED_X86_CPU_INSTR_SET 6
 #elif defined(__SSE4_1__)
-#	define FPL__COMPILER_CPU_INSTR_SET 5
+#	define FPL__COMPILED_X86_CPU_INSTR_SET 5
 #elif defined(__SSSE3__)
-#	define FPL__COMPILER_CPU_INSTR_SET 4
+#	define FPL__COMPILED_X86_CPU_INSTR_SET 4
 #elif defined(__SSE3__)
-#	define FPL__COMPILER_CPU_INSTR_SET 3
-#elif defined(__SSE2__) || defined(FPL_ARCH_X64)
-#	define FPL__COMPILER_CPU_INSTR_SET 2
-#elif defined(__SSE__) || defined(FPL_ARCH_X86)
-#	define FPL__COMPILER_CPU_INSTR_SET 1
+#	define FPL__COMPILED_X86_CPU_INSTR_SET 3
+#elif defined(__SSE2__) || (_M_IX86_FP >= 2)
+#	define FPL__COMPILED_X86_CPU_INSTR_SET 2
+#elif defined(__SSE__) || (_M_IX86_FP >= 1)
+#	define FPL__COMPILED_X86_CPU_INSTR_SET 1
 #elif defined(_M_IX86_FP)
-#	define FPL__COMPILER_CPU_INSTR_SET _M_IX86_FP
+#	define FPL__COMPILED_X86_CPU_INSTR_SET _M_IX86_FP
 #else
-#	define FPL__COMPILER_CPU_INSTR_SET 0
-#endif
-
-//
-// Internal CPU supports based on compiler instruction set
-//
-#if FPL__COMPILER_CPU_INSTR_SET >= 1
-#	define FPL__SUPPORT_CPU_SSE // SSE
-#endif
-#if FPL__COMPILER_CPU_INSTR_SET >= 2
-#	define FPL__SUPPORT_CPU_SSE2 // SSE-2
-#endif
-#if FPL__COMPILER_CPU_INSTR_SET >= 3
-#	define FPL__SUPPORT_CPU_SSE3 // SSE-3
-#endif
-#if FPL__COMPILER_CPU_INSTR_SET >= 4
-#	define FPL__SUPPORT_CPU_SSSE3 // SSSE-3
-#endif
-#if FPL__COMPILER_CPU_INSTR_SET >= 5
-#	define FPL__SUPPORT_CPU_SSE4_1 // SSE-4.1
-#endif
-#if FPL__COMPILER_CPU_INSTR_SET >= 6
-#	define FPL__SUPPORT_CPU_SSE4_2 // SSE-4.2
-#endif
-#if FPL__COMPILER_CPU_INSTR_SET >= 7
-#	define FPL__SUPPORT_CPU_AVX // AVX
-#endif
-#if FPL__COMPILER_CPU_INSTR_SET >= 8
-#	define FPL__SUPPORT_CPU_AVX2 // AVX-2
-#endif
-#if FPL__COMPILER_CPU_INSTR_SET >= 9
-#	define FPL__SUPPORT_CPU_AVX512 // AVX-512
-#endif
-
-#if (!defined(FPL_NO_SSE)) && defined(FPL__SUPPORT_CPU_SSE)
-#	define FPL__ENABLE_CPU_SSE
-#endif
-#if (!defined(FPL_NO_SSE2) && defined(FPL__ENABLE_CPU_SSE)) && defined(FPL__SUPPORT_CPU_SSE2)
-#	define FPL__ENABLE_CPU_SSE2
-#endif
-#if (!defined(FPL_NO_SSE3) && defined(FPL__ENABLE_CPU_SSE2)) && defined(FPL__SUPPORT_CPU_SSE3)
-#	define FPL__ENABLE_CPU_SSE3
-#endif
-#if (!defined(FPL_NO_SSSE3) && defined(FPL__ENABLE_CPU_SSE3)) && defined(FPL__SUPPORT_CPU_SSSE3)
-#	define FPL__ENABLE_CPU_SSSE3
-#endif
-#if (!defined(FPL_NO_SSE4_1) && defined(FPL__ENABLE_CPU_SSSE3)) && defined(FPL__SUPPORT_CPU_SSE4_1)
-#	define FPL__ENABLE_CPU_SSE4_1
-#endif
-#if (!defined(FPL_NO_SSE4_2) && defined(FPL__ENABLE_CPU_SSE4_1)) && defined(FPL__SUPPORT_CPU_SSE4_2)
-#	define FPL__ENABLE_CPU_SSE4_2
-#endif
-#if (!defined(FPL_NO_AVX) && defined(FPL__ENABLE_CPU_SSE4_2)) && defined(FPL__SUPPORT_CPU_AVX)
-#	define FPL__ENABLE_CPU_AVX
-#endif
-#if (!defined(FPL_NO_AVX2) && defined(FPL__ENABLE_CPU_AVX)) && defined(FPL__SUPPORT_CPU_AVX2)
-#	define FPL__ENABLE_CPU_AVX2
-#endif
-#if (!defined(FPL_NO_AVX512) && defined(FPL__ENABLE_CPU_AVX2)) && defined(FPL__SUPPORT_CPU_AVX512)
-#	define FPL__ENABLE_CPU_AVX512
+#	define FPL__COMPILED_X86_CPU_INSTR_SET 0
 #endif
 
 //
@@ -1920,31 +1864,6 @@ SOFTWARE.
 #define fplStaticAssert(exp) fpl__m_StaticAssert(exp)
 
 //
-// RDTSC
-//
-#if defined(FPL_COMPILER_MSVC)
-#	define fpl__rdtsc() ((uint64_t)__rdtsc())
-#elif defined(FPL_ARCH_X86)
-static fpl_force_inline uint64_t fpl__rdtsc(void) {
-	unsigned long long int result;
-	__asm__ volatile (".byte 0x0f, 0x31" : "=A" (result));
-	return((uint64_t)result);
-}
-#elif defined(FPL_ARCH_X64)
-static fpl_force_inline uint64_t fpl__rdtsc(void) {
-	unsigned hi, lo;
-	__asm__ __volatile__("rdtsc" : "=a"(lo), "=d"(hi));
-	uint64_t result = (uint64_t)(((unsigned long long)lo) | (((unsigned long long)hi) << 32));
-	return (result);
-}
-#else
-#	error "Unsupported Platform/Compiler"
-#endif
-
-//! Reads the current time stamp counter (RDTSC)
-#define fplRDTSC() fpl__rdtsc()
-
-//
 // Debug-Break
 // Based on: https://stackoverflow.com/questions/173618/is-there-a-portable-equivalent-to-debugbreak-debugbreak
 //
@@ -1961,13 +1880,13 @@ static fpl_force_inline uint64_t fpl__rdtsc(void) {
 #	elif defined(FPL_COMPILER_ARM)
 #		define fpl__m_DebugBreak() __breakpoint(42)
 #	elif defined(FPL_ARCH_X86) || defined(FPL_ARCH_X64)
-static fpl_force_inline void fpl__m_DebugBreak() { __asm__ __volatile__("int $03"); }
+fpl_internal fpl_force_inline void fpl__m_DebugBreak() { __asm__ __volatile__("int $03"); }
 #	elif defined(__thumb__)
-static fpl_force_inline void fpl__m_DebugBreak() { __asm__ __volatile__(".inst 0xde01"); }
+fpl_internal fpl_force_inline void fpl__m_DebugBreak() { __asm__ __volatile__(".inst 0xde01"); }
 #	elif defined(FPL_ARCH_ARM64)
-static fpl_force_inline void fpl__m_DebugBreak() { __asm__ __volatile__(".inst 0xd4200000"); }
+fpl_internal fpl_force_inline void fpl__m_DebugBreak() { __asm__ __volatile__(".inst 0xd4200000"); }
 #	elif defined(FPL_ARCH_ARM32)
-static fpl_force_inline void fpl__m_DebugBreak() { __asm__ __volatile__(".inst 0xe7f001f0"); }
+fpl_internal fpl_force_inline void fpl__m_DebugBreak() { __asm__ __volatile__(".inst 0xe7f001f0"); }
 #	elif defined(FPL_COMPILER_GCC)
 #       define fpl__m_DebugBreak() __builtin_trap()
 #	else
@@ -2114,6 +2033,32 @@ fplStaticAssert(sizeof(size_t) >= sizeof(uint32_t));
 #define fplStackAllocate(size) fpl__m_StackAllocate(size)
 
 //
+// RDTSC
+//
+#if defined(FPL_COMPILER_MSVC)
+#	define fpl__rdtsc() ((uint64_t)__rdtsc())
+#elif defined(FPL_ARCH_X86)
+fpl_internal fpl_force_inline uint64_t fpl__rdtsc(void) {
+	unsigned long long int result;
+	__asm__ volatile (".byte 0x0f, 0x31" : "=A" (result));
+	return((uint64_t)result);
+}
+#elif defined(FPL_ARCH_X64)
+fpl_internal fpl_force_inline uint64_t fpl__rdtsc(void) {
+	unsigned hi, lo;
+	__asm__ __volatile__("rdtsc" : "=a"(lo), "=d"(hi));
+	uint64_t result = (uint64_t)(((unsigned long long)lo) | (((unsigned long long)hi) << 32));
+	return (result);
+}
+#else
+	// @TODO(final): Fallback for rdtsc!
+#	error "Unsupported Platform/Compiler"
+#endif
+
+//! Reads the current time stamp counter (RDTSC)
+#define fplRDTSC() fpl__rdtsc()
+
+//
 // CPU-ID
 //
 
@@ -2140,19 +2085,28 @@ typedef union fplCPUIDLeaf {
 #	if _MSC_VER >= 1600
 #		define fpl__GetXCR0() ((uint64_t)_xgetbv(0))
 #	endif
-#elif defined(FPL_COMPILER_GCC) ||defined(FPL_COMPILER_CLANG) ||defined(FPL_COMPILER_LLVM)
-// @TODO(final): CPUID and XGetBV for other compilers
+#elif defined(FPL_COMPILER_GCC) ||defined(FPL_COMPILER_CLANG)
+fpl_internal fpl_force_inline void fpl__CPUID(fplCPUIDLeaf *outLeaf, const uint32_t functionId) {
+	fplCPUIDLeaf localLeaf = fplZeroInit;
+	__cpuid(functionId, localLeaf.eax, localLeaf.ebx, localLeaf.ecx, localLeaf.edx);
+	*outLeaf = localLeaf;
+}
+fpl_internal fpl_force_inline uint64_t fpl__GetXCR0(void) {
+	uint32_t eax, edx;
+	__asm(".byte 0x0F, 0x01, 0xd0" : "=a"(eax), "=d"(edx) : "c"(0));
+	return eax;
+}
 #endif
 
 // Fallbacks
 #if !defined(fpl__CPUID)
-static fpl_force_inline void fpl__NoCPUID(fplCPUIDLeaf *outLeaf) {
+fpl_internal fpl_force_inline void fpl__NoCPUID(fplCPUIDLeaf *outLeaf) {
 	fplClearStruct(outLeaf);
 }
 #	define fpl__CPUID(outLeaf, functionId) fpl__NoCPUID(outLeaf)
 #endif // !fpl__CPUID
 #if !defined(fpl__GetXCR0)
-static fpl_force_inline uint64_t fpl__NoXCR0() {
+fpl_internal fpl_force_inline uint64_t fpl__NoXCR0() {
 	return((uint64_t)0);
 }
 #	define fpl__GetXCR0() fpl__NoXCR0()
@@ -2163,18 +2117,13 @@ static fpl_force_inline uint64_t fpl__NoXCR0() {
   * @param outLeaf Pointer to a @ref fplCPUIDLeaf
   * @param functionId The function id
   */
-static fpl_force_inline void fplCPUID(fplCPUIDLeaf *outLeaf, const uint32_t functionId) {
-	if (outLeaf != fpl_null)
-		fpl__CPUID(outLeaf, functionId);
-}
+#define fplCPUID(outLeaf, functionId) fpl__CPUID(outLeaf, functionId)
 
 /**
   * @brief Retrieves the Extended Control Register Value for Zero
   * @return Returns zero or the value from the extended control register
   */
-static fpl_force_inline uint64_t fplGetXCR0() {
-	return fpl__GetXCR0();
-}
+#define fplGetXCR0() fpl__GetXCR0()
 
 /** @} */
 
@@ -2989,24 +2938,28 @@ typedef enum fplArchType {
 typedef struct fplProcessorCapabilities {
 	//! X86 capabilities
 	struct {
+		//! Is MMX supported
+		fpl_b32 hasMMX;
 		//! Is SSE supported
-		fpl_b32 HasSSE;
+		fpl_b32 hasSSE;
 		//! Is SSE-2 supported
-		fpl_b32 HasSSE2;
+		fpl_b32 hasSSE2;
 		//! Is SSE-3 supported
-		fpl_b32 HasSSE3;
+		fpl_b32 hasSSE3;
 		//! Is SSSE-3 supported
-		fpl_b32 HasSSSE3;
+		fpl_b32 hasSSSE3;
 		//! Is SSE-4.1 supported
-		fpl_b32 HasSSE4_1;
+		fpl_b32 hasSSE4_1;
 		//! Is SSE-4.2 supported
-		fpl_b32 HasSSE4_2;
+		fpl_b32 hasSSE4_2;
 		//! Is AVX supported
-		fpl_b32 HasAVX;
+		fpl_b32 hasAVX;
 		//! Is AVX-2 supported
-		fpl_b32 HasAVX2;
+		fpl_b32 hasAVX2;
 		//! Is AVX-512 supported
-		fpl_b32 HasAVX512;
+		fpl_b32 hasAVX512;
+		//! Is FMA-3 supported
+		fpl_b32 hasFMA3;
 	} x86;
 } fplProcessorCapabilities;
 
@@ -3690,7 +3643,7 @@ typedef struct fplLogSettings {
 	fplLogLevel maxLevel;
 	//! Is initialized (When set to false all values will be set to default values)
 	fpl_b32 isInitialized;
-} fplLogSettings;
+	} fplLogSettings;
 
 /**
   * @brief Overwrites the current log settings
@@ -7752,7 +7705,7 @@ typedef struct fpl__PlatformInitState {
 		fpl__UnixInitState punix;
 #	endif               
 	};
-} fpl__PlatformInitState;
+	} fpl__PlatformInitState;
 fpl_globalvar fpl__PlatformInitState fpl__global__InitState = fplZeroInit;
 
 #if defined(FPL__ENABLE_WINDOW)
@@ -8700,6 +8653,7 @@ fpl_common_api void fplMemoryCopy(const void *sourceMem, const size_t sourceSize
 //
 // Common Hardware
 //
+// https://github.com/google/cpu_features
 #if defined(FPL_ARCH_X64) || defined(FPL_ARCH_X86)
 fpl_common_api bool fplGetProcessorCapabilities(fplProcessorCapabilities *outCaps) {
 	fplClearStruct(outCaps);
@@ -8719,43 +8673,43 @@ fpl_common_api bool fplGetProcessorCapabilities(fplProcessorCapabilities *outCap
 		fplCPUID(&info7, 7);
 	}
 
-	bool hasXSave = fplIsBitSet(info1.ecx, 26);
-	bool hasOSXSave = fplIsBitSet(info1.ecx, 27);
-	uint64_t xcr0 = (hasXSave && hasOSXSave) ? fplGetXCR0() : 0;
+	bool hasXSave = fplIsBitSet(info1.ecx, 26) && fplIsBitSet(info1.ecx, 27);
+	uint64_t xcr0 = hasXSave ? fplGetXCR0() : 0;
 
-#if defined(FPL__ENABLE_CPU_SSE)
-	outCaps->x86.HasSSE = fplIsBitSet(info1.edx, 25);
-#endif
-#if defined(FPL__ENABLE_CPU_SSE2)
-	outCaps->x86.HasSSE2 = fplIsBitSet(info1.edx, 26);
-#endif
-#if defined(FPL__ENABLE_CPU_SSE3)
-	outCaps->x86.HasSSE3 = fplIsBitSet(info1.ecx, 0);
-#endif
-#if defined(FPL__ENABLE_CPU_SSSE3)
-	outCaps->x86.HasSSSE3 = fplIsBitSet(info1.ecx, 9);
-#endif
-#if defined(FPL__ENABLE_CPU_SSE4_1)
-	outCaps->x86.HasSSE4_1 = fplIsBitSet(info1.ecx, 19);
-#endif
-#if defined(FPL__ENABLE_CPU_SSE4_2)
-	outCaps->x86.HasSSE4_2 = fplIsBitSet(info1.ecx, 20);
-#endif
-#if defined(FPL__ENABLE_CPU_AVX)
-	if (fplIsBitSet(info1.ecx, 27) && fplIsBitSet(info1.ecx, 28)) {
-		outCaps->x86.HasAVX = (xcr0 & 0x06) == 0x06;
+	const uint32_t MASK_XMM = 0x2;
+	const uint32_t MASK_YMM = 0x4;
+	const uint32_t MASK_MASKREG = 0x20;
+	const uint32_t MASK_ZMM0_15 = 0x40;
+	const uint32_t MASK_ZMM16_31 = 0x80;
+
+	const uint32_t MASK_SSE = MASK_XMM;
+	const uint32_t MASK_AVX = MASK_XMM | MASK_YMM;
+	const uint32_t MASK_AVX_512 = MASK_XMM | MASK_YMM | MASK_MASKREG | MASK_ZMM0_15 | MASK_ZMM16_31;
+
+	bool hasSSESupport = (xcr0 & MASK_SSE) == MASK_SSE;
+	bool hasAVXSupport = (xcr0 & MASK_AVX) == MASK_AVX;
+	bool hasAVX512Support = (xcr0 & MASK_AVX_512) == MASK_AVX_512;
+
+	outCaps->x86.hasMMX = fplIsBitSet(info1.edx, 23);
+
+	if (hasSSESupport) {
+		outCaps->x86.hasSSE = fplIsBitSet(info1.edx, 25);
+		outCaps->x86.hasSSE2 = fplIsBitSet(info1.edx, 26);
+		outCaps->x86.hasSSE3 = fplIsBitSet(info1.ecx, 0);
+		outCaps->x86.hasSSSE3 = fplIsBitSet(info1.ecx, 9);
+		outCaps->x86.hasSSE4_1 = fplIsBitSet(info1.ecx, 19);
+		outCaps->x86.hasSSE4_2 = fplIsBitSet(info1.ecx, 20);
 	}
-#endif
-#if defined(FPL__ENABLE_CPU_AVX2)
-	if (fplIsBitSet(info1.ecx, 27) && fplIsBitSet(info7.ebx, 5)) {
-		outCaps->x86.HasAVX2 = (xcr0 & 0x06) == 0x06;
+
+	if (hasAVXSupport) {
+		outCaps->x86.hasAVX = fplIsBitSet(info1.ecx, 28);
+		outCaps->x86.hasAVX2 = fplIsBitSet(info7.ebx, 5);
 	}
-#endif
-#if defined(FPL__ENABLE_CPU_AVX512)
-	if (fplIsBitSet(info1.ecx, 27) && fplIsBitSet(info7.ebx, 16)) {
-		outCaps->x86.HasAVX512 = (xcr0 & 0xE6) == 0xE6;
+
+	if (hasAVX512Support) {
+		outCaps->x86.hasAVX512 = fplIsBitSet(info7.ebx, 16);
+		outCaps->x86.hasFMA3 = fplIsBitSet(info7.ecx, 12);
 	}
-#endif
 
 	return(true);
 }
@@ -8788,12 +8742,12 @@ fpl_common_api char *fplGetProcessorName(char *destBuffer, const size_t maxDestB
 }
 #else
 fpl_common_api bool fplGetProcessorCapabilities(fplProcessorCapabilities *outCaps) {
-	// @IMPLEMENT(final): fplGetProcessorCapabilities for other architectures
+	// @IMPLEMENT(final): fplGetProcessorCapabilities for non-x86 architectures
 	return(false);
 }
 
 fpl_common_api char *fplGetProcessorName(char *destBuffer, const size_t maxDestBufferLen) {
-	// @IMPLEMENT(final): fplGetProcessorName for other architectures
+	// @IMPLEMENT(final): fplGetProcessorName for non-x86 architectures
 	return(fpl_null);
 }
 #endif
@@ -10332,7 +10286,7 @@ fpl_internal bool fpl__Win32ThreadWaitForMultiple(fplThreadHandle **threads, con
 	}
 	bool result = stoppedThreads >= minThreads;
 	return(result);
-	}
+}
 
 fpl_internal bool fpl__Win32SignalWaitForMultiple(fplSignalHandle **signals, const size_t count, const size_t stride, const fplTimeoutValue timeout, const bool waitForAll) {
 	FPL__CheckArgumentNull(signals, false);
@@ -12915,8 +12869,8 @@ fpl_internal LCTYPE fpl__Win32GetLocaleLCIDFromFormat(const fplLocaleFormat form
 			return LOCALE_SNAME;
 		default:
 			return LOCALE_SABBREVLANGNAME;
-}
 	}
+}
 
 fpl_platform_api bool fplGetSystemLocale(const fplLocaleFormat targetFormat, char *buffer, const size_t maxBufferLen) {
 	FPL__CheckArgumentInvalid(targetFormat, targetFormat == fplLocaleFormat_None, false);
@@ -19495,7 +19449,7 @@ fpl_internal void fpl__ReleasePlatformStates(fpl__PlatformInitState *initState, 
 		if (videoState != fpl_null) {
 			FPL_LOG_DEBUG(FPL__MODULE_CORE, "Shutdown Video for Driver '%s'", fplGetVideoDriverString(videoState->activeDriver));
 			fpl__ShutdownVideo(appState, videoState);
-			}
+		}
 	}
 #	endif
 
@@ -19505,7 +19459,7 @@ fpl_internal void fpl__ReleasePlatformStates(fpl__PlatformInitState *initState, 
 		FPL_LOG_DEBUG(FPL__MODULE_CORE, "Release Window");
 		fpl__ReleaseWindow(initState, appState);
 		fpl__ClearInternalEvents();
-		}
+	}
 #	endif
 
 	// Release video state
@@ -19515,7 +19469,7 @@ fpl_internal void fpl__ReleasePlatformStates(fpl__PlatformInitState *initState, 
 		if (videoState != fpl_null) {
 			FPL_LOG_DEBUG(FPL__MODULE_CORE, "Release Video for Driver '%s'", fplGetVideoDriverString(videoState->activeDriver));
 			fpl__ReleaseVideoState(appState, videoState);
-	}
+		}
 	}
 #	endif
 
@@ -19550,10 +19504,10 @@ fpl_internal void fpl__ReleasePlatformStates(fpl__PlatformInitState *initState, 
 		FPL_LOG_DEBUG(FPL__MODULE_CORE, "Release allocated Platform App State Memory");
 		fplMemoryAlignedFree(appState);
 		fpl__global__AppState = fpl_null;
-}
+		}
 	initState->initResult = fplPlatformResultType_NotInitialized;
 	initState->isInitialized = false;
-}
+		}
 
 #define FPL__PLATFORMTYPE_COUNT FPL__ENUM_COUNT(FPL_FIRST_PLATFORM_TYPE, FPL_LAST_PLATFORM_TYPE)
 fpl_globalvar const char *fpl__globalPlatformTypeNameTable[] = {
@@ -19628,7 +19582,7 @@ fpl_common_api bool fplPlatformInit(const fplInitFlags initFlags, const fplSetti
 		platformAppStateSize += FPL__ARBITARY_PADDING;
 		audioMemoryOffset = platformAppStateSize;
 		platformAppStateSize += sizeof(fpl__AudioState);
-}
+	}
 #endif
 
 	FPL_LOG_DEBUG(FPL__MODULE_CORE, "Allocate Platform App State Memory of size '%zu':", platformAppStateSize);
@@ -19703,7 +19657,7 @@ fpl_common_api bool fplPlatformInit(const fplInitFlags initFlags, const fplSetti
 		FPL__CRITICAL(FPL__MODULE_CORE, "Failed initializing %s Platform!", FPL_PLATFORM_NAME);
 		fpl__ReleasePlatformStates(initState, appState);
 		return(fpl__SetPlatformResult(fplPlatformResultType_FailedPlatform));
-	}
+}
 	FPL_LOG_DEBUG(FPL__MODULE_CORE, "Successfully initialized %s Platform", FPL_PLATFORM_NAME);
 
 	// Init video state
@@ -19794,7 +19748,7 @@ fpl_common_api bool fplPlatformInit(const fplInitFlags initFlags, const fplSetti
 
 	initState->isInitialized = true;
 	return(fpl__SetPlatformResult(fplPlatformResultType_Success));
-}
+	}
 
 fpl_common_api fplPlatformType fplGetPlatformType() {
 	fplPlatformType result;
