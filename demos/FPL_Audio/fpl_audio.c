@@ -181,7 +181,7 @@ static uint32_t AudioPlayback(const fplAudioDeviceFormat *outFormat, const uint3
 #endif
     
     double timeEnd = fplGetTimeInMillisecondsHP();
-    double delta = timeEnd - timeStart;
+    double actualTime = timeEnd - timeStart;
     
     // Print error when its too slow
     uint64_t frameDelay = 50;
@@ -189,11 +189,11 @@ static uint32_t AudioPlayback(const fplAudioDeviceFormat *outFormat, const uint3
     uint64_t minFrames = outFormat->bufferSizeInFrames / outFormat->periods;
     uint64_t requiredFrames = minFrames - frameDelay;
     double maxTime = 1.0 / (double)requiredFrames;
-    double missedTime = fplMax(0.0, delta - maxTime);
+    double missedTime = fplMax(0.0, actualTime - maxTime);
 
     if (missedTime > 0) {
-        double missRate = (missedTime / maxTime);
-        fplDebugFormatOut("ERROR: Audio playback too slow, available time: %.6f, actual time: %.6f, missed time: %.6f, missed rate: %.2f %s\n", maxTime, delta, missedTime, missRate, "%");
+        double missRate = missedTime / maxTime * 100.0;
+        fplDebugFormatOut("ERROR: Audio playback too slow, available time: %.6f, actual time: %.6f, missed time: %.6f, missed rate: %.2f %s\n", maxTime, actualTime, missedTime, missRate, "%");
     }
 
 	return(result);
@@ -256,7 +256,7 @@ static void UpdateTitle(AudioDemo *demo) {
 
 int main(int argc, char **args) {
 	size_t fileCount = argc >= 2 ? argc - 1 : 0;
-	const char **files = fileCount > 0 ? args + 1 : fpl_null;
+	const char **files = (fileCount > 0) ? (const char **)args + 1 : fpl_null;
 	const bool forceSineWave = false;
 
 	AudioSystem audioSys = fplZeroInit;

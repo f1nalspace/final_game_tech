@@ -48,8 +48,8 @@ typedef struct DebugMemory {
 	size_t storageSize;
 } DebugMemory;
 
-extern DebugTable *globalDebugTable = fpl_null;
-extern DebugMemory *globalDebugMemory = fpl_null;
+extern DebugTable *globalDebugTable;
+extern DebugMemory *globalDebugMemory;
 
 extern void InitDebug(const size_t storageSize);
 extern void ReleaseDebug();
@@ -119,6 +119,9 @@ struct TimedBlock {
 //
 #if defined(FINAL_DEBUG_IMPLEMENTATION) && !defined(FINAL_DEBUG_IMPLEMENTED)
 #define FINAL_DEBUG_IMPLEMENTED
+
+DebugTable *globalDebugTable = fpl_null;
+DebugMemory *globalDebugMemory = fpl_null;
 
 extern void InitDebug(const size_t storageSize) {
 	fplAssert(globalDebugMemory == fpl_null);

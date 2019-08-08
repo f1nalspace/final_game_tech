@@ -2043,13 +2043,13 @@ fpl_common_api void fplMemoryClear(void *mem, const size_t size);
 #if defined(FPL_COMPILER_MSVC)
 #	define fpl__rdtsc() ((uint64_t)__rdtsc())
 #elif defined(FPL_ARCH_X86)
-fpl_internal fpl_force_inline uint64_t fpl__rdtsc(void) {
+fpl_force_inline uint64_t fpl__rdtsc(void) {
 	unsigned long long int result;
 	__asm__ volatile (".byte 0x0f, 0x31" : "=A" (result));
 	return((uint64_t)result);
 }
 #elif defined(FPL_ARCH_X64)
-fpl_internal fpl_force_inline uint64_t fpl__rdtsc(void) {
+fpl_force_inline uint64_t fpl__rdtsc(void) {
 	unsigned hi, lo;
 	__asm__ __volatile__("rdtsc" : "=a"(lo), "=d"(hi));
 	uint64_t result = (uint64_t)(((unsigned long long)lo) | (((unsigned long long)hi) << 32));
