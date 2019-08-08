@@ -1672,7 +1672,7 @@ SOFTWARE.
 #else
 #	if defined(FPL_COMPILER_GCC) || defined(FPL_COMPILER_CLANG)
 		// Required include for CPUID
-#		include <cpuid.h> // __cpuid
+#		include <cpuid.h> // __cpuid_count
 #	endif
 
 	// Function name macro (Other compilers)
@@ -1957,6 +1957,11 @@ fplStaticAssert(sizeof(size_t) >= sizeof(uint32_t));
 #endif
 
 //
+// Required forward declarations
+//
+fpl_common_api void fplMemoryClear(void *mem, const size_t size);
+
+//
 // Macro functions
 //
 
@@ -2086,27 +2091,32 @@ typedef union fplCPUIDLeaf {
 #		define fpl__GetXCR0() ((uint64_t)_xgetbv(0))
 #	endif
 #elif defined(FPL_COMPILER_GCC) ||defined(FPL_COMPILER_CLANG)
-fpl_internal fpl_force_inline void fpl__CPUID(fplCPUIDLeaf *outLeaf, const uint32_t functionId) {
-	fplCPUIDLeaf localLeaf = fplZeroInit;
-	__cpuid(functionId, localLeaf.eax, localLeaf.ebx, localLeaf.ecx, localLeaf.edx);
-	*outLeaf = localLeaf;
+fpl_internal void fpl__CPUID_GCC(fplCPUIDLeaf *outLeaf, const uint32_t functionId) {
+	int eax = 0, ebx = 0, ecx = 0, edx = 0;
+	__cpuid_count(functionId, 0, eax, ebx, ecx, edx);
+	outLeaf->eax = eax;
+	outLeaf->ebx = ebx;
+	outLeaf->ecx = ecx;
+	outLeaf->edx = edx;
 }
-fpl_internal fpl_force_inline uint64_t fpl__GetXCR0(void) {
+#	define fpl__CPUID(outLeaf, functionId) fpl__CPUID_GCC(outLeaf, functionId)
+fpl_internal uint64_t fpl__GetXCR0_GCC(void) {
 	uint32_t eax, edx;
 	__asm(".byte 0x0F, 0x01, 0xd0" : "=a"(eax), "=d"(edx) : "c"(0));
 	return eax;
 }
+#	define fpl__GetXCR0() fpl__GetXCR0_GCC()
 #endif
 
 // Fallbacks
 #if !defined(fpl__CPUID)
-fpl_internal fpl_force_inline void fpl__NoCPUID(fplCPUIDLeaf *outLeaf) {
+fpl_internal void fpl__NoCPUID(fplCPUIDLeaf *outLeaf) {
 	fplClearStruct(outLeaf);
 }
 #	define fpl__CPUID(outLeaf, functionId) fpl__NoCPUID(outLeaf)
 #endif // !fpl__CPUID
 #if !defined(fpl__GetXCR0)
-fpl_internal fpl_force_inline uint64_t fpl__NoXCR0() {
+fpl_internal uint64_t fpl__NoXCR0() {
 	return((uint64_t)0);
 }
 #	define fpl__GetXCR0() fpl__NoXCR0()
