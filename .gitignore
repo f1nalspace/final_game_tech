@@ -19,6 +19,8 @@
 /demos/x86
 /demos/win32
 /demos/bin
+/demos/build
+/demos/cmake
 /demos/immediates
 /demos/setup
 /demos/dependencies/ffmpeg/bin/*.dll
