@@ -956,24 +956,4 @@ inline Pixel LinearToPixel(const Vec4f &linear, const bool toSRGB = true) {
 	return(result);
 }
 
-#if 0
-inline Vec4f RGBA32ToLinear(const uint32_t rgba) {
-	Pixel pixel = RGBA32ToPixel(rgba);
-	Vec4f result = PixelToLinear(pixel);
-	return(result);
-}
-
-inline uint32_t LinearToRGBA32(const Vec4f &linear) {
-	Pixel pixel = LinearToPixel(linear);
-	uint32_t result = RGBA32(pixel.r, pixel.g, pixel.b, pixel.a);
-	return(result);
-}
-
-inline Vec4f AlphaToLinear(const uint8_t alpha) {
-	float a = alpha * INV255;
-	Vec4f result = V4f(1, 1, 1, a);
-	return(result);
-}
-#endif
-
 #endif // FINAL_MATH_H

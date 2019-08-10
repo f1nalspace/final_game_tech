@@ -62,7 +62,7 @@ goto done
 
 :usage
 echo Usage:
-echo clang.bat [AppName] [Debug/Release]
+echo clang.bat [AppName] [Debug/Release] [- or libs] [- or include paths] [Translation Units]
 
 :done:
 rem Done!
