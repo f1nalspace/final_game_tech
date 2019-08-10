@@ -623,7 +623,9 @@ static bool RaytracePart(Worker &worker, WorkOrder &order) {
 	const Material &defaultMaterial = scene->materials[0];
 
 	for (u32 y = order.yMin; y < order.yMaxPlusOne; ++y) {
-		Pixel *row = image.pixels + (y * image.width);
+		u32 inverseY = (image.height - 1 - y);
+
+		Pixel *row = &image.pixels[inverseY * image.width];
 
 		f32 ratioY = (f32)y / (f32)image.height;
 		f32 filmY = -1.0f + 2.0f * ratioY;
@@ -913,7 +915,6 @@ int main(int argc, char **argv) {
 		tilingInfo.tileSizeX = tilingInfo.tileSizeY = 64;
 		tilingInfo.tileCountX = (raytraceWidth / tilingInfo.tileSizeX) + 1;
 		tilingInfo.tileCountY = (raytraceHeight / tilingInfo.tileSizeY) + 1;
-
 
 		// @NOTE(final): We use the STL to make our life easier, so we need to placement-new-initialize our App structure
 		App app = {};
