@@ -5,7 +5,7 @@ cmake_minimum_required(VERSION 3.10)
 # Project settings
 #
 # -----------------------------------------------------------------------------
-project(FPL_raytracer)
+project(FPL_Raytracer)
 
 set(CMAKE_C_FLAGS "-std=c++11")
 
