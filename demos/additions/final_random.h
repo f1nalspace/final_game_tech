@@ -32,6 +32,15 @@ struct RandomSeries {
 	uint64_t seed;
 };
 
+inline RandomSeries RandomSeed(const uint64_t seed) {
+	RandomSeries result = {};
+	result.seed = seed;
+#if RANDOMTYPE == RANDOMTYPE_CRT
+	srand(seed); 
+#endif
+	return(result);
+}
+
 #if RANDOMTYPE == RANDOMTYPE_SPLITMIX
 inline uint32_t RandomU32(RandomSeries* series) {
 	uint64_t z = (series->seed += UINT64_C(0x9E3779B97F4A7C15));
