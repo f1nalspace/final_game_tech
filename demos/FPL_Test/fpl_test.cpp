@@ -528,7 +528,16 @@ static void TestHardware() {
 	ftMsg("Total number of memory pages: %llu\n", memInfos.totalPageCount);
 	ftMsg("Available number memory pages: %llu\n", memInfos.freePageCount);
 
-	fplArchType archType = fplGetProcessorArchitecture();
+    ftMsg("RDTSC:\n");
+    double tmp = 1.0;
+    for (int i = 0; i < 10; ++i){
+        tmp *= 2 + 1;
+        tmp / (double)i*4;
+        uint64_t cycles = fplRDTSC();
+        ftMsg("\tRun[%d]: %llu\n", i, cycles);
+    }
+
+    fplArchType archType = fplGetProcessorArchitecture();
 	const char* archStr = fplGetArchTypeString(archType);
 	ftMsg("Processor archicture: %s\n", archStr);
 }
