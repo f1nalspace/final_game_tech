@@ -152,6 +152,7 @@ SOFTWARE.
 	- New: Added struct fplProcessorCapabilities
 	- New: Added function fplGetProcessorCapabilities
 	- New: Added macro fplIsBitSet
+	- New: Added function fplGetMainThread
 	- Fixed: Corrected opengl example code in the header file
 	- Fixed: Tons of documentation improvements
 	- Fixed: fpl__PushError_Formatted was always pushing errors on regardless of the log level
@@ -4078,6 +4079,11 @@ typedef struct fplConditionVariable {
   * @see @ref section_category_threading_threads_states
   */
 fpl_common_api fplThreadState fplGetThreadState(fplThreadHandle *thread);
+/**
+  * @brief Gets the thread handle for the main thread.
+  * @return Returns the immutable pointer to the @ref fplThreadHandle .
+  */
+fpl_common_api const fplThreadHandle *fplGetMainThread();
 /**
   * @brief Gets the thread id for the current thread.
   * @return Returns the thread id for the current thread.
@@ -8959,6 +8965,11 @@ fpl_common_api fplThreadState fplGetThreadState(fplThreadHandle *thread) {
 		return fplThreadState_Stopped;
 	}
 	fplThreadState result = (fplThreadState)fplAtomicLoadU32((volatile uint32_t *)&thread->currentState);
+	return(result);
+}
+
+fpl_common_api const fplThreadHandle *fplGetMainThread() {
+	const fplThreadHandle *result = &fpl__global__ThreadState.mainThread;
 	return(result);
 }
 
