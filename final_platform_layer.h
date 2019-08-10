@@ -180,9 +180,17 @@ SOFTWARE.
 	- Changed: fplGetProcessorName moved to common section with fallback to not supported architectures
 	- Changed: Removed wrong compiler detection for LLVM (Clang is LLVM)
 
-	- New: [POSIX/Win32] Implemented functions fplAtomicIncrement*
 	- New: [Win32] Implemented function fplGetCurrentThreadId
+	- New: [Win32] Support for multiple files in WM_DROPFILES
+	- New: [Win32] Implemented fplGetThreadPriority
+	- New: [Win32] Implemented fplSetThreadPriority
+	- New: [POSIX/Win32] Implemented functions fplAtomicIncrement*
+	- Fixed: [Win32] Fixed missing WINAPI keyword for fpl__Win32MonitorCountEnumProc/fpl__Win32MonitorInfoEnumProc/fpl__Win32PrimaryMonitorEnumProc
+	- Fixed: [Win32] Software video output was not outputing the image as top-down
+	- Fixed: [X11] Software video output was broken
+	- Fixed: [POSIX] Moved __sync_synchronize before __sync_lock_test_and_set in fplAtomicStore*
 	- Fixed: [POSIX/Win32] fplAtomicAddAndFetch* uses now addend parameter
+	- Changed: [POSIX] Use __sync_add_and_fetch instead of __sync_fetch_and_or in fplAtomicLoad*
 	- Changed: [POSIX/Win32] When a dynamic library failed to load, it will push on a warning instead of a error
 	- Changed: [POSIX/Win32] When a dynamic library procedure address failed to retrieve, it will push on a warning instead of a error
 	- Changed: [POSIX/Win32] Reflect api changes for fplThreadWaitForAll()
@@ -193,14 +201,6 @@ SOFTWARE.
 	- Changed: [X86/X64] fplGetProcessorCapabilities are only enabled on X86 or X64 architecture
 	- Changed: [MSVC] Implemented fplCPUID/fplGetXCR0 for MSVC
 	- Changed: [GCC/Clang] Implemented fplCPUID/fplGetXCR0 for GCC/Clang
-
-	- New: [Win32] Support for multiple files in WM_DROPFILES
-	- New: [Win32] Implemented fplGetThreadPriority
-	- New: [Win32] Implemented fplSetThreadPriority
-	- Changed: [POSIX] Use __sync_add_and_fetch instead of __sync_fetch_and_or in fplAtomicLoad*
-	- Fixed: [Win32] Fixed missing WINAPI keyword for fpl__Win32MonitorCountEnumProc/fpl__Win32MonitorInfoEnumProc/fpl__Win32PrimaryMonitorEnumProc
-	- Fixed: [X11] Software video output was broken
-	- Fixed: [POSIX] Moved __sync_synchronize before __sync_lock_test_and_set in fplAtomicStore*
 
 	## v0.9.3.0 beta
 	- Changed: Renamed fplSetWindowFullscreen to fplSetWindowFullscreenSize
@@ -16917,7 +16917,8 @@ fpl_internal bool fpl__Win32InitVideoSoftware(const fplVideoBackBuffer *backbuff
 	fplClearStruct(software);
 	software->bitmapInfo.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
 	software->bitmapInfo.bmiHeader.biWidth = (LONG)backbuffer->width;
-	software->bitmapInfo.bmiHeader.biHeight = (LONG)backbuffer->height;
+	// @NOTE(final): Top-down bitmap requires a negative height
+	software->bitmapInfo.bmiHeader.biHeight = -(LONG)backbuffer->height;
 	software->bitmapInfo.bmiHeader.biBitCount = 32;
 	software->bitmapInfo.bmiHeader.biCompression = BI_RGB;
 	software->bitmapInfo.bmiHeader.biPlanes = 1;
