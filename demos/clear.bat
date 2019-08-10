@@ -5,6 +5,8 @@ del /q *.sdf
 rmdir /q /s .vs
 rmdir /q /s immediates
 rmdir /q /s bin
+rmdir /q /s cmake
+rmdir /q /s build
 rmdir /q /s setup
 rmdir /q /s debug
 rmdir /q /s release
