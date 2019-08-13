@@ -186,6 +186,8 @@ SOFTWARE.
 	- New: [Win32] Implemented fplGetThreadPriority
 	- New: [Win32] Implemented fplSetThreadPriority
 	- New: [POSIX/Win32] Implemented functions fplAtomicIncrement*
+	- New: [X11] Implemented fplSetWindowDecorated
+	- New: [X11] Implemented fplIsWindowDecorated
 	- Fixed: [Win32] Fixed missing WINAPI keyword for fpl__Win32MonitorCountEnumProc/fpl__Win32MonitorInfoEnumProc/fpl__Win32PrimaryMonitorEnumProc
 	- Fixed: [Win32] Software video output was not outputing the image as top-down
 	- Fixed: [X11] Software video output was broken
@@ -7678,6 +7680,7 @@ typedef struct fpl__X11WindowState {
 	Atom netWMName;
 	Atom netWMIconName;
 	Atom utf8String;
+	Atom motifWMHints;
 } fpl__X11WindowState;
 
 typedef struct fpl__X11PreWindowSetupResult {
@@ -14848,45 +14851,22 @@ fpl_internal bool fpl__X11InitWindow(const fplSettings *initSettings, fplWindowS
 	}
 	FPL_LOG_DEBUG(FPL__MODULE_X11, "Successfully created window with (Display='%p', Root='%d', Size=%dx%d, Colordepth='%d', visual='%p', colormap='%d': %d", windowState->display, (int)windowState->root, windowWidth, windowHeight, colorDepth, visual, (int)swa.colormap, (int)windowState->window);
 
-	// Force keyboard and button events + paint and resize events
-	int inputMasks =
-		KeyPressMask |
-		KeyReleaseMask |
-		ButtonPressMask |
-		ButtonReleaseMask |
-		PointerMotionMask |
-		ButtonMotionMask |
-		ExposureMask |
-		StructureNotifyMask;
-	x11Api->XSelectInput(windowState->display, windowState->window, inputMasks);
-
 	windowState->visual = visual;
 
-	char idBuffer[256 + 1];
-
 	// Type atoms
-	fplCopyString("UTF8_STRING", idBuffer, fplArrayCount(idBuffer));
-	windowState->utf8String = x11Api->XInternAtom(windowState->display, idBuffer, False);
+	windowState->utf8String = x11Api->XInternAtom(windowState->display, "UTF8_STRING", False);
 
 	// Window manager atoms
-	fplCopyString("WM_DELETE_WINDOW", idBuffer, fplArrayCount(idBuffer));
-	windowState->wmDeleteWindow = x11Api->XInternAtom(windowState->display, idBuffer, False);
-	fplCopyString("WM_PROTOCOLS", idBuffer, fplArrayCount(idBuffer));
-	windowState->wmProtocols = x11Api->XInternAtom(windowState->display, idBuffer, False);
-	fplCopyString("_NET_WM_STATE", idBuffer, fplArrayCount(idBuffer));
-	windowState->netWMState = x11Api->XInternAtom(windowState->display, idBuffer, False);
-	fplCopyString("_NET_WM_PING", idBuffer, fplArrayCount(idBuffer));
-	windowState->netWMPing = x11Api->XInternAtom(windowState->display, idBuffer, False);
-	fplCopyString("_NET_WM_STATE_FULLSCREEN", idBuffer, fplArrayCount(idBuffer));
-	windowState->netWMStateFullscreen = x11Api->XInternAtom(windowState->display, idBuffer, False);
-	fplCopyString("_NET_WM_PID", idBuffer, fplArrayCount(idBuffer));
-	windowState->netWMPid = x11Api->XInternAtom(windowState->display, idBuffer, False);
-	fplCopyString("_NET_WM_ICON", idBuffer, fplArrayCount(idBuffer));
-	windowState->netWMIcon = x11Api->XInternAtom(windowState->display, idBuffer, False);
-	fplCopyString("_NET_WM_NAME", idBuffer, fplArrayCount(idBuffer));
-	windowState->netWMName = x11Api->XInternAtom(windowState->display, idBuffer, False);
-	fplCopyString("_NET_WM_ICON_NAME", idBuffer, fplArrayCount(idBuffer));
-	windowState->netWMIconName = x11Api->XInternAtom(windowState->display, idBuffer, False);
+	windowState->wmDeleteWindow = x11Api->XInternAtom(windowState->display, "WM_DELETE_WINDOW", False);
+	windowState->wmProtocols = x11Api->XInternAtom(windowState->display, "WM_PROTOCOLS", False);
+	windowState->netWMState = x11Api->XInternAtom(windowState->display, "_NET_WM_STATE", False);
+	windowState->netWMPing = x11Api->XInternAtom(windowState->display, "_NET_WM_PING", False);
+	windowState->netWMStateFullscreen = x11Api->XInternAtom(windowState->display, "_NET_WM_STATE_FULLSCREEN", False);
+	windowState->netWMPid = x11Api->XInternAtom(windowState->display, "_NET_WM_PID", False);
+	windowState->netWMIcon = x11Api->XInternAtom(windowState->display, "_NET_WM_ICON", False);
+	windowState->netWMName = x11Api->XInternAtom(windowState->display, "_NET_WM_NAME", False);
+	windowState->netWMIconName = x11Api->XInternAtom(windowState->display, "_NET_WM_ICON_NAME", False);
+	windowState->motifWMHints = x11Api->XInternAtom(windowState->display, "_MOTIF_WM_HINTS", False);
 
 	// Register window manager protocols
 	{
@@ -15239,12 +15219,46 @@ fpl_platform_api void fplSetWindowResizeable(const bool value) {
 }
 
 fpl_platform_api bool fplIsWindowDecorated() {
-	// @IMPLEMENT(final/X11): fplIsWindowDecorated
-	return false;
+	FPL__CheckPlatform(false);
+	fpl__PlatformAppState *appState = fpl__global__AppState;
+	bool result = appState->currentSettings.window.isDecorated;
+	return(result);
 }
 
+#define FPL__MWM_HINTS_DECORATIONS (1L << 1)
+#define FPL__MWM_HINTS_FUNCTIONS (1L << 0)
+#define FPL__MWM_FUNC_ALL (1L<<0)
+#define FPL__PROPERTY_MOTIF_WM_HINTS_ELEMENT_COUNT 5
+
+typedef struct
+{
+	unsigned long flags;
+	unsigned long functions;
+	unsigned long decorations;
+	long input_mode;
+	unsigned long status;
+} fpl__MotifWMHints;
+
 fpl_platform_api void fplSetWindowDecorated(const bool value) {
-	// @IMPLEMENT(final/X11): fplSetWindowDecorated
+	FPL__CheckPlatformNoRet();
+	fpl__PlatformAppState *appState = fpl__global__AppState;
+	const fpl__X11SubplatformState *subplatform = &appState->x11;
+	const fpl__X11Api *x11Api = &subplatform->api;
+	const fpl__X11WindowState *windowState = &appState->window.x11;
+		
+	fpl__MotifWMHints hints = fplZeroInit;
+	hints.flags = FPL__MWM_HINTS_DECORATIONS | FPL__MWM_HINTS_FUNCTIONS;
+	hints.decorations = value ? 1 : 0;
+	hints.functions = value ? FPL__MWM_FUNC_ALL : 0;
+	
+	x11Api->XChangeProperty(windowState->display, windowState->window,
+							windowState->motifWMHints,
+							windowState->motifWMHints, 32,
+							PropModeReplace,
+							(unsigned char*) &hints,
+							FPL__PROPERTY_MOTIF_WM_HINTS_ELEMENT_COUNT);
+	
+	appState->currentSettings.window.isDecorated = value;
 }
 
 fpl_platform_api bool fplIsWindowFloating() {
