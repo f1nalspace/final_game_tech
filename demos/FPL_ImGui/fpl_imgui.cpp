@@ -15,6 +15,9 @@ Author:
 	Torsten Spaete
 
 Changelog:
+    ## 2019-08-13
+    - Fixed compiler warnings for GCC
+
 	## 2018-10-22
 	- Reflect api changes in FPL 0.9.3
 
@@ -295,7 +298,7 @@ static void UpdateAndRender(const float deltaTime) {
 	ImGui::Text("Count: %zu", displayCount);
 	for(size_t i = 0; i < displayCount; ++i) {
 		fplDisplayInfo *display = displays + i;
-		ImGui::BulletText("Display[%d]: %s, Pos: %d x %d, Size: %d x %d, Is primary: %s", i, display->id, display->virtualPosition.left, display->virtualPosition.top, display->virtualSize.width, display->virtualSize.height, (display->isPrimary ? "true" : "false"));
+		ImGui::BulletText("Display[%zu]: %s, Pos: %d x %d, Size: %d x %d, Is primary: %s", i, display->id, display->virtualPosition.left, display->virtualPosition.top, display->virtualSize.width, display->virtualSize.height, (display->isPrimary ? "true" : "false"));
 	}
 	ImGui::Text("Primary Display: %s, Pos: %d x %d, Size: %d x %d", primaryDisplay.id, primaryDisplay.virtualPosition.left, primaryDisplay.virtualPosition.top, primaryDisplay.virtualSize.width, primaryDisplay.virtualSize.height);
 	ImGui::Text("Window Display: %s, Pos: %d x %d, Size: %d x %d, Is primary: %s", windowDisplay.id, windowDisplay.virtualPosition.left, windowDisplay.virtualPosition.top, windowDisplay.virtualSize.width, windowDisplay.virtualSize.height, (windowDisplay.isPrimary ? "true" : "false"));
