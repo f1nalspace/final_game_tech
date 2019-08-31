@@ -153,6 +153,7 @@ SOFTWARE.
 	- New: Added function fplGetProcessorCapabilities
 	- New: Added macro fplIsBitSet
 	- New: Added function fplGetMainThread
+	- New: Added field isActive to struct fplGamepadState
 	- Fixed: Corrected opengl example code in the header file
 	- Fixed: Tons of documentation improvements
 	- Fixed: fpl__PushError_Formatted was always pushing errors on regardless of the log level
@@ -185,6 +186,7 @@ SOFTWARE.
 	- New: [Win32] Support for multiple files in WM_DROPFILES
 	- New: [Win32] Implemented fplGetThreadPriority
 	- New: [Win32] Implemented fplSetThreadPriority
+	- New: [Win32/Linux] Implemented isActive field for fplGamepadState for state querying, indicating any buttons are pressed or triggers have been moved
 	- New: [POSIX/Win32] Implemented functions fplAtomicIncrement*
 	- New: [X11] Implemented fplSetWindowDecorated
 	- New: [X11] Implemented fplIsWindowDecorated
@@ -193,6 +195,7 @@ SOFTWARE.
 	- Fixed: [X11] Software video output was broken
 	- Fixed: [POSIX] Moved __sync_synchronize before __sync_lock_test_and_set in fplAtomicStore*
 	- Fixed: [POSIX/Win32] fplAtomicAddAndFetch* uses now addend parameter
+	- Fixed: [Linux] Previous gamepad state was not cleared before filling in the new state
 	- Changed: [POSIX] Use __sync_add_and_fetch instead of __sync_fetch_and_or in fplAtomicLoad*
 	- Changed: [POSIX/Win32] When a dynamic library failed to load, it will push on a warning instead of a error
 	- Changed: [POSIX/Win32] When a dynamic library procedure address failed to retrieve, it will push on a warning instead of a error
@@ -5464,8 +5467,10 @@ typedef struct fplGamepadState {
 	//! Analog right trigger in range (0.0 to 1.0f)
 	float rightTrigger;
 
-	//! Is device connected
+	//! Is device physical connected
 	fpl_b32 isConnected;
+	//! Is this device active, which means are any buttons pressed or positions stick changed.
+	fpl_b32 isActive;
 } fplGamepadState;
 
 //! A structure containing gamepad event data (Type, Device, State, etc.)
@@ -7106,8 +7111,8 @@ fpl_internal bool fpl__Win32LoadApi(fpl__Win32Api *wapi) {
 #endif
 
 typedef struct fpl__Win32XInputState {
-	fpl_b32 isConnected[XUSER_MAX_COUNT];
 	LARGE_INTEGER lastDeviceSearchTime;
+	fpl_b32 isConnected[XUSER_MAX_COUNT];
 	fpl__Win32XInputApi xinputApi;
 } fpl__Win32XInputState;
 
@@ -8266,6 +8271,46 @@ fpl_internal fplThreadHandle *fpl__GetFreeThread() {
 			break;
 		}
 	}
+	return(result);
+}
+
+fpl_internal bool fpl__IsEqualsMemory(const void *a, const void *b, const size_t size) {
+	const uint8_t *ptrA = (const uint8_t *)a;
+	const uint8_t *ptrB = (const uint8_t *)b;
+	size_t s = size;
+	// @SPEED(final): This may be very slow, so we should use a faster function for comparing memory.
+	bool result = true;
+#if 1
+	while (s-- > 0) {
+		if (*ptrA != *ptrB) {
+			result = false;
+			break;
+		}
+		ptrA++;
+		ptrB++;
+	}
+#else
+	result = memcmp(a, b, size) == 0;
+#endif
+	return(result);
+}
+
+fpl_internal bool fpl__IsZeroMemory(const void *memory, const size_t size) {
+	const uint8_t *ptr = (const uint8_t *)memory;
+	// @SPEED(final): This may be very slow, so we should use a faster function for comparing memory.
+	bool result = true;
+#if 1
+	size_t s = size;
+	while (s-- > 0) {
+		if (*ptr) {
+			result = false;
+			break;
+		}
+		ptr++;
+	}
+#else
+	result = memcmp(a, b, size) == 0;
+#endif
 	return(result);
 }
 
@@ -9573,56 +9618,60 @@ fpl_internal float fpl__Win32XInputProcessStickValue(const SHORT value, const SH
 	return(result);
 }
 
-fpl_internal void fpl__Win32XInputGamepadToGamepadState(const XINPUT_GAMEPAD *pad, fplGamepadState *outState) {
+fpl_internal void fpl__Win32XInputGamepadToGamepadState(const XINPUT_GAMEPAD *newState, fplGamepadState *outState) {
+	// If we got here, the controller is definitily by connected
 	outState->isConnected = true;
 
 	// Analog sticks
-	outState->leftStickX = fpl__Win32XInputProcessStickValue(pad->sThumbLX, XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE);
-	outState->leftStickY = fpl__Win32XInputProcessStickValue(pad->sThumbLY, XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE);
-	outState->rightStickX = fpl__Win32XInputProcessStickValue(pad->sThumbRX, XINPUT_GAMEPAD_RIGHT_THUMB_DEADZONE);
-	outState->rightStickY = fpl__Win32XInputProcessStickValue(pad->sThumbRY, XINPUT_GAMEPAD_RIGHT_THUMB_DEADZONE);
+	outState->leftStickX = fpl__Win32XInputProcessStickValue(newState->sThumbLX, XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE);
+	outState->leftStickY = fpl__Win32XInputProcessStickValue(newState->sThumbLY, XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE);
+	outState->rightStickX = fpl__Win32XInputProcessStickValue(newState->sThumbRX, XINPUT_GAMEPAD_RIGHT_THUMB_DEADZONE);
+	outState->rightStickY = fpl__Win32XInputProcessStickValue(newState->sThumbRY, XINPUT_GAMEPAD_RIGHT_THUMB_DEADZONE);
 
 	// Triggers
-	outState->leftTrigger = (float)pad->bLeftTrigger / 255.0f;
-	outState->rightTrigger = (float)pad->bRightTrigger / 255.0f;
+	outState->leftTrigger = (float)newState->bLeftTrigger / 255.0f;
+	outState->rightTrigger = (float)newState->bRightTrigger / 255.0f;
 
 	// Digital pad buttons
-	if (pad->wButtons & XINPUT_GAMEPAD_DPAD_UP)
+	if (newState->wButtons & XINPUT_GAMEPAD_DPAD_UP)
 		outState->dpadUp.isDown = true;
-	if (pad->wButtons & XINPUT_GAMEPAD_DPAD_DOWN)
+	if (newState->wButtons & XINPUT_GAMEPAD_DPAD_DOWN)
 		outState->dpadDown.isDown = true;
-	if (pad->wButtons & XINPUT_GAMEPAD_DPAD_LEFT)
+	if (newState->wButtons & XINPUT_GAMEPAD_DPAD_LEFT)
 		outState->dpadLeft.isDown = true;
-	if (pad->wButtons & XINPUT_GAMEPAD_DPAD_RIGHT)
+	if (newState->wButtons & XINPUT_GAMEPAD_DPAD_RIGHT)
 		outState->dpadRight.isDown = true;
 
 	// Action buttons
-	if (pad->wButtons & XINPUT_GAMEPAD_A)
+	if (newState->wButtons & XINPUT_GAMEPAD_A)
 		outState->actionA.isDown = true;
-	if (pad->wButtons & XINPUT_GAMEPAD_B)
+	if (newState->wButtons & XINPUT_GAMEPAD_B)
 		outState->actionB.isDown = true;
-	if (pad->wButtons & XINPUT_GAMEPAD_X)
+	if (newState->wButtons & XINPUT_GAMEPAD_X)
 		outState->actionX.isDown = true;
-	if (pad->wButtons & XINPUT_GAMEPAD_Y)
+	if (newState->wButtons & XINPUT_GAMEPAD_Y)
 		outState->actionY.isDown = true;
 
 	// Center buttons
-	if (pad->wButtons & XINPUT_GAMEPAD_START)
+	if (newState->wButtons & XINPUT_GAMEPAD_START)
 		outState->start.isDown = true;
-	if (pad->wButtons & XINPUT_GAMEPAD_BACK)
+	if (newState->wButtons & XINPUT_GAMEPAD_BACK)
 		outState->back.isDown = true;
 
 	// Shoulder buttons
-	if (pad->wButtons & XINPUT_GAMEPAD_LEFT_SHOULDER)
+	if (newState->wButtons & XINPUT_GAMEPAD_LEFT_SHOULDER)
 		outState->leftShoulder.isDown = true;
-	if (pad->wButtons & XINPUT_GAMEPAD_RIGHT_SHOULDER)
+	if (newState->wButtons & XINPUT_GAMEPAD_RIGHT_SHOULDER)
 		outState->rightShoulder.isDown = true;
 
 	// Thumb buttons
-	if (pad->wButtons & XINPUT_GAMEPAD_LEFT_THUMB)
+	if (newState->wButtons & XINPUT_GAMEPAD_LEFT_THUMB)
 		outState->leftThumb.isDown = true;
-	if (pad->wButtons & XINPUT_GAMEPAD_RIGHT_THUMB)
+	if (newState->wButtons & XINPUT_GAMEPAD_RIGHT_THUMB)
 		outState->rightThumb.isDown = true;
+
+	// The controller is only active, when any button or any movement happened
+	outState->isActive = !fpl__IsZeroMemory(newState, sizeof(*newState));
 }
 
 fpl_internal void fpl__Win32UpdateGameControllers(const fplSettings *settings, const fpl__Win32InitState *initState, fpl__Win32XInputState *xinputState) {
@@ -9646,6 +9695,7 @@ fpl_internal void fpl__Win32UpdateGameControllers(const fplSettings *settings, c
 					if (!xinputState->isConnected[controllerIndex]) {
 						// Connected
 						xinputState->isConnected[controllerIndex] = true;
+
 						fplEvent ev = fplZeroInit;
 						ev.type = fplEventType_Gamepad;
 						ev.gamepad.type = fplGamepadEventType_Connected;
@@ -9654,8 +9704,9 @@ fpl_internal void fpl__Win32UpdateGameControllers(const fplSettings *settings, c
 					}
 				} else {
 					if (xinputState->isConnected[controllerIndex]) {
-						// Disonnected
+						// Disconnected
 						xinputState->isConnected[controllerIndex] = false;
+						
 						fplEvent ev = fplZeroInit;
 						ev.type = fplEventType_Gamepad;
 						ev.gamepad.type = fplGamepadEventType_Disconnected;
@@ -9678,8 +9729,8 @@ fpl_internal void fpl__Win32UpdateGameControllers(const fplSettings *settings, c
 					ev.type = fplEventType_Gamepad;
 					ev.gamepad.type = fplGamepadEventType_StateChanged;
 					ev.gamepad.deviceIndex = controllerIndex;
-					XINPUT_GAMEPAD *pad = &controllerState.Gamepad;
-					fpl__Win32XInputGamepadToGamepadState(pad, &ev.gamepad.state);
+					const XINPUT_GAMEPAD *newPadState = &controllerState.Gamepad;
+					fpl__Win32XInputGamepadToGamepadState(newPadState, &ev.gamepad.state);
 					fpl__PushInternalEvent(&ev);
 				}
 			}
@@ -12651,21 +12702,31 @@ fpl_platform_api bool fplPollKeyboardState(fplKeyboardState *outState) {
 fpl_platform_api bool fplPollGamepadStates(fplGamepadStates *outStates) {
 	FPL__CheckArgumentNull(outStates, false);
 	FPL__CheckPlatform(false);
-	const fpl__PlatformAppState *platformAppState = fpl__global__AppState;
+	fpl__PlatformAppState *platformAppState = fpl__global__AppState;
 	if (platformAppState->initFlags & fplInitFlags_GameController) {
-		const fpl__Win32AppState *appState = &platformAppState->win32;
+		fpl__Win32AppState *appState = &platformAppState->win32;
 		const fpl__Win32WindowState *windowState = &fpl__global__AppState->window.win32;
 		const fpl__Win32Api *wapi = &appState->winApi;
-		const fpl__Win32XInputState *xinputState = &appState->xinput;
+		fpl__Win32XInputState *xinputState = &appState->xinput;
 		fplAssert(xinputState != fpl_null);
 		if (xinputState->xinputApi.XInputGetState != fpl_null) {
+			// @TODO(final): Use the device search time to query only new devices on time intervals
+			QueryPerformanceCounter(&xinputState->lastDeviceSearchTime);
+
 			fplClearStruct(outStates);
 			for (DWORD controllerIndex = 0; controllerIndex < XUSER_MAX_COUNT; ++controllerIndex) {
 				XINPUT_STATE controllerState = fplZeroInit;
 				if (xinputState->xinputApi.XInputGetState(controllerIndex, &controllerState) == ERROR_SUCCESS) {
-					XINPUT_GAMEPAD *pad = &controllerState.Gamepad;
-					fplGamepadState *gamepadState = &outStates->deviceStates[controllerIndex];
-					fpl__Win32XInputGamepadToGamepadState(pad, gamepadState);
+					if (!xinputState->isConnected[controllerIndex]) {
+						xinputState->isConnected[controllerIndex] = true;
+					}
+					const XINPUT_GAMEPAD *newPadState = &controllerState.Gamepad;
+					fplGamepadState *targetPadState = &outStates->deviceStates[controllerIndex];
+					fpl__Win32XInputGamepadToGamepadState(newPadState, targetPadState);
+				} else {
+					if (xinputState->isConnected[controllerIndex]) {
+						xinputState->isConnected[controllerIndex] = false;
+					}
 				}
 			}
 			return(true);
@@ -15551,7 +15612,6 @@ fpl_internal float fpl__LinuxJoystickProcessStickValue(const int16_t value, cons
 
 fpl_internal void fpl__LinuxPushGameControllerStateUpdateEvent(const struct js_event *event, fplGamepadState *padState) {
 	fplGamepadButton *buttonMappingTable[12] = fplZeroInit;
-	padState->isConnected = true;
 	buttonMappingTable[0] = &padState->actionA;
 	buttonMappingTable[1] = &padState->actionB;
 	buttonMappingTable[2] = &padState->actionX;
@@ -15649,6 +15709,9 @@ fpl_internal void fpl__LinuxPushGameControllerStateUpdateEvent(const struct js_e
 		default:
 			break;
 	}
+
+	padState->isActive = !fpl__IsZeroMemory(padState, sizeof(*padState));
+	padState->isConnected = true;
 }
 
 fpl_internal void fpl__LinuxPollGameControllers(const fplSettings *settings, fpl__LinuxGameControllersState *controllersState, const bool useEvents) {
@@ -15723,6 +15786,7 @@ fpl_internal void fpl__LinuxPollGameControllers(const fplSettings *settings, fpl
 		fpl__LinuxGameController *controller = controllersState->controllers + controllerIndex;
 		if (controller->fd > 0) {
 			// Update button/axis state
+			fplClearStruct(&controller->state);
 			struct js_event event;
 			for (;;) {
 				errno = 0;
