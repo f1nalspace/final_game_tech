@@ -18,6 +18,9 @@ Author:
 	Torsten Spaete
 
 Changelog:
+	## 2019-08-31
+	- Use new field isActive from fplGamepadState now, which was introduced in the last commit
+
 	## 2018-10-22
 	- Reflect api changes in FPL 0.9.3
 
@@ -1419,7 +1422,7 @@ int main(int argc, char *argv[]) {
 					if (fplPollGamepadStates(&gamepadStates)) {
 						int found = -1;
 						for (int i = 0; i < fplArrayCount(gamepadStates.deviceStates); ++i) {
-							if (gamepadStates.deviceStates[i].isConnected) {
+							if (gamepadStates.deviceStates[i].isConnected && gamepadStates.deviceStates[i].isActive) {
 								found = i;
 								break;
 							}
