@@ -5304,7 +5304,7 @@ FPL_ENUM_AS_FLAGS_OPERATORS(fplKeyboardModifierFlags);
 
 //! A structure containing keyboard event data (Type, Keycode, Mapped key, etc.)
 typedef struct fplKeyboardEvent {
-	//! Raw key code
+	//! Raw ascii key code or 32-bit unicode for text input.
 	uint64_t keyCode;
 	//! Keyboard event type
 	fplKeyboardEventType type;
@@ -7481,7 +7481,7 @@ typedef FPL__FUNC_X11_XStoreName(fpl__func_x11_XStoreName);
 typedef FPL__FUNC_X11_XDefaultVisual(fpl__func_x11_XDefaultVisual);
 #define FPL__FUNC_X11_XDefaultDepth(name) int name(Display *display, int screen_number)
 typedef FPL__FUNC_X11_XDefaultDepth(fpl__func_x11_XDefaultDepth);
-#define FPL__FUNC_X11_XInternAtom(name) Atom name(Display *display, char *atom_name, Bool only_if_exists)
+#define FPL__FUNC_X11_XInternAtom(name) Atom name(Display *display, const char *atom_name, Bool only_if_exists)
 typedef FPL__FUNC_X11_XInternAtom(fpl__func_x11_XInternAtom);
 #define FPL__FUNC_X11_XSetWMProtocols(name) Status name(Display *display, Window w, Atom *protocols, int count)
 typedef FPL__FUNC_X11_XSetWMProtocols(fpl__func_x11_XSetWMProtocols);
@@ -7503,6 +7503,8 @@ typedef FPL__FUNC_X11_XResizeWindow(fpl__func_x11_XResizeWindow);
 typedef FPL__FUNC_X11_XMoveWindow(fpl__func_x11_XMoveWindow);
 #define FPL__FUNC_X11_XGetKeyboardMapping(name) KeySym *name(Display *display, KeyCode first_keycode, int keycode_count, int *keysyms_per_keycode_return)
 typedef FPL__FUNC_X11_XGetKeyboardMapping(fpl__func_x11_XGetKeyboardMapping);
+#define FPL__FUNC_X11_XLookupString(name) int name(XKeyEvent* event_struct, char* buffer_return, int bytes_buffer, KeySym* keysym_return, XComposeStatus* status_in_out)
+typedef FPL__FUNC_X11_XLookupString(fpl__func_x11_XLookupString);
 #define FPL__FUNC_X11_XSendEvent(name) Status name(Display *display, Window w, Bool propagate, long event_mask, XEvent *event_send)
 typedef FPL__FUNC_X11_XSendEvent(fpl__func_x11_XSendEvent);
 #define FPL__FUNC_X11_XMatchVisualInfo(name) Status name(Display* display, int screen, int depth, int clazz, XVisualInfo* vinfo_return)
@@ -7567,6 +7569,7 @@ typedef struct fpl__X11Api {
 	fpl__func_x11_XResizeWindow *XResizeWindow;
 	fpl__func_x11_XMoveWindow *XMoveWindow;
 	fpl__func_x11_XGetKeyboardMapping *XGetKeyboardMapping;
+	fpl__func_x11_XLookupString *XLookupString;
 	fpl__func_x11_XSendEvent *XSendEvent;
 	fpl__func_x11_XMatchVisualInfo *XMatchVisualInfo;
 	fpl__func_x11_XCreateGC *XCreateGC;
@@ -7636,6 +7639,7 @@ fpl_internal bool fpl__LoadX11Api(fpl__X11Api *x11Api) {
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XResizeWindow, XResizeWindow);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XMoveWindow, XMoveWindow);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XGetKeyboardMapping, XGetKeyboardMapping);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XLookupString, XLookupString);			
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XSendEvent, XSendEvent);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XMatchVisualInfo, XMatchVisualInfo);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XCreateGC, XCreateGC);
@@ -7936,12 +7940,11 @@ fpl_internal void fpl__PushKeyboardButtonEvent(const uint64_t keyCode, const fpl
 	fpl__PushInternalEvent(&newEvent);
 }
 
-fpl_internal void fpl__PushKeyboardInputEvent(const uint64_t keyCode, const fplKey mappedKey) {
+fpl_internal void fpl__PushKeyboardInputEvent(const uint32_t textCode) {
 	fplEvent newEvent = fplZeroInit;
 	newEvent.type = fplEventType_Keyboard;
 	newEvent.keyboard.type = fplKeyboardEventType_Input;
-	newEvent.keyboard.keyCode = keyCode;
-	newEvent.keyboard.mappedKey = mappedKey;
+	newEvent.keyboard.keyCode = (uint64_t)textCode;
 	fpl__PushInternalEvent(&newEvent);
 }
 
@@ -7996,9 +7999,8 @@ fpl_internal void fpl__HandleKeyboardButtonEvent(fpl__PlatformWindowState *windo
 	fpl__PushKeyboardButtonEvent(keyCode, mappedKey, modifiers, repeat ? fplButtonState_Repeat : buttonState);
 }
 
-fpl_internal void fpl__HandleKeyboardInputEvent(fpl__PlatformWindowState *windowState, const uint64_t keyCode) {
-	fplKey mappedKey = fpl__GetMappedKey(windowState, keyCode);
-	fpl__PushKeyboardInputEvent(keyCode, mappedKey);
+fpl_internal void fpl__HandleKeyboardInputEvent(fpl__PlatformWindowState *windowState, const uint32_t textCode) {
+	fpl__PushKeyboardInputEvent(textCode);
 }
 
 fpl_internal void fpl__HandleMouseButtonEvent(fpl__PlatformWindowState *windowState, const int32_t x, const int32_t y, const fplMouseButtonType mouseButton, const fplButtonState buttonState) {
@@ -9966,8 +9968,7 @@ LRESULT CALLBACK fpl__Win32MessageProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 				// @NOTE(final): WM_UNICHAR was sent by a third-party input method. Do not add any chars here!
 				return TRUE;
 			}
-			uint64_t keyCode = wParam;
-			fpl__HandleKeyboardInputEvent(&appState->window, keyCode);
+			fpl__HandleKeyboardInputEvent(&appState->window, (uint32_t)wParam);
 			return 0;
 		} break;
 
@@ -15058,8 +15059,19 @@ fpl_internal void fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatfor
 			// Keyboard button down
 			if (!appState->currentSettings.input.disabledEvents) {
 				int keyState = ev->xkey.state;
-				int keyCode = ev->xkey.keycode;
-				fpl__HandleKeyboardButtonEvent(winState, (uint64_t)keyCode, fpl__X11TranslateModifierFlags(keyState), fplButtonState_Press, false);
+				uint64_t keyCode = (uint64_t)ev->xkey.keycode;
+				fpl__HandleKeyboardButtonEvent(winState, keyCode, fpl__X11TranslateModifierFlags(keyState), fplButtonState_Press, false);
+				
+				char buf[32];
+				KeySym keysym = 0;
+				if (x11Api->XLookupString((XKeyEvent*)ev, buf, 32, &keysym, NULL) != NoSymbol) {
+					wchar_t wideBuffer[4] = fplZeroInit;
+					fplUTF8StringToWideString(buf, fplGetStringLength(buf), wideBuffer, fplArrayCount(wideBuffer));
+					uint32_t textCode = (uint32_t)wideBuffer[0];
+					if (textCode > 0) {
+						fpl__HandleKeyboardInputEvent(&appState->window, textCode);
+					}
+				}
 			}
 		} break;
 
