@@ -9752,6 +9752,7 @@ fpl_internal void fpl__Win32UpdateGameControllers(const fplSettings *settings, c
 					ev.gamepad.deviceName = xinputState->deviceNames[controllerIndex];
 					const XINPUT_GAMEPAD *newPadState = &controllerState.Gamepad;
 					fpl__Win32XInputGamepadToGamepadState(newPadState, &ev.gamepad.state);
+					ev.gamepad.state.deviceName = ev.gamepad.deviceName;
 					fpl__PushInternalEvent(&ev);
 				}
 			}
