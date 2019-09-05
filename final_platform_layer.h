@@ -154,6 +154,8 @@ SOFTWARE.
 	- New: Added macro fplIsBitSet
 	- New: Added function fplGetMainThread
 	- New: Added field isActive to struct fplGamepadState
+	- New: Added field deviceName to struct fplGamepadState and fplGamepadEvent
+
 	- Fixed: Corrected opengl example code in the header file
 	- Fixed: Tons of documentation improvements
 	- Fixed: fpl__PushError_Formatted was always pushing errors on regardless of the log level
@@ -161,6 +163,7 @@ SOFTWARE.
 	- Fixed: All non inlineable functions changed from fpl_internal_inline to fpl_internal instead (GCC/Clang compatible)
 	- Fixed: Use actual window size for video initialization always instead of fixed size
 	- Fixed: fplAtomicAddAndFetch* had no addend parameter
+
 	- Changed: Removed fake thread-safe implementation of the internal event queue
 	- Changed: Changed drop event structure in fplWindowEvent to support multiple dropped files
 	- Changed: Renamed fplGetPlatformTypeString() to fplGetPlatformName()
@@ -190,12 +193,16 @@ SOFTWARE.
 	- New: [POSIX/Win32] Implemented functions fplAtomicIncrement*
 	- New: [X11] Implemented fplSetWindowDecorated
 	- New: [X11] Implemented fplIsWindowDecorated
+	- New: [Win32/XInput] Fill out the deviceName in fplGamepadState and fplGamepadEvent -> Generic name for now
+
 	- Fixed: [Win32] Fixed missing WINAPI keyword for fpl__Win32MonitorCountEnumProc/fpl__Win32MonitorInfoEnumProc/fpl__Win32PrimaryMonitorEnumProc
 	- Fixed: [Win32] Software video output was not outputing the image as top-down
-	- Fixed: [X11] Software video output was broken
+	- Fixed: [Win32/X11] Mouse wheel delta message is not ignored anymore
+	- Fixed: [X11] Fixed software video output (was broken)
 	- Fixed: [POSIX] Moved __sync_synchronize before __sync_lock_test_and_set in fplAtomicStore*
 	- Fixed: [POSIX/Win32] fplAtomicAddAndFetch* uses now addend parameter
 	- Fixed: [Linux] Previous gamepad state was not cleared before filling in the new state
+
 	- Changed: [POSIX] Use __sync_add_and_fetch instead of __sync_fetch_and_or in fplAtomicLoad*
 	- Changed: [POSIX/Win32] When a dynamic library failed to load, it will push on a warning instead of a error
 	- Changed: [POSIX/Win32] When a dynamic library procedure address failed to retrieve, it will push on a warning instead of a error
@@ -2135,13 +2142,13 @@ fpl_internal uint64_t fpl__NoXCR0() {
   */
 #define fplCPUID(outLeaf, functionId) fpl__CPUID(outLeaf, functionId)
 
-/**
-  * @brief Retrieves the Extended Control Register Value for Zero
-  * @return Returns zero or the value from the extended control register
-  */
+  /**
+	* @brief Retrieves the Extended Control Register Value for Zero
+	* @return Returns zero or the value from the extended control register
+	*/
 #define fplGetXCR0() fpl__GetXCR0()
 
-/** @} */
+	/** @} */
 
 #if defined(FPL_IS_CPP)
 #	define FPL__M_ENUM_AS_FLAGS_OPERATORS(etype) \
@@ -3659,7 +3666,7 @@ typedef struct fplLogSettings {
 	fplLogLevel maxLevel;
 	//! Is initialized (When set to false all values will be set to default values)
 	fpl_b32 isInitialized;
-	} fplLogSettings;
+} fplLogSettings;
 
 /**
   * @brief Overwrites the current log settings
@@ -5453,6 +5460,9 @@ typedef struct fplGamepadState {
 		fplGamepadButton buttons[14];
 	};
 
+	//! Device name
+	const char *deviceName;
+
 	//! Analog left thumb X in range (-1.0 to 1.0f)
 	float leftStickX;
 	//! Analog left thumb Y in range (-1.0 to 1.0f)
@@ -5477,6 +5487,8 @@ typedef struct fplGamepadState {
 typedef struct fplGamepadEvent {
 	//! Full gamepad state
 	fplGamepadState state;
+	//! Device name of the controller
+	const char *deviceName;
 	//! Gamepad event type
 	fplGamepadEventType type;
 	//! Gamepad device index
@@ -5562,12 +5574,12 @@ typedef struct fplGamepadStates {
 
 //! A struct containing the full mouse state
 typedef struct fplMouseState {
+	//! Mouse button states mapped to @ref fplMouseButtonType
+	fplButtonState buttonStates[fplMouseButtonType_MaxCount];
 	//! X-Position in pixels
 	int32_t x;
 	//! Y-Position in pixels
 	int32_t y;
-	//! Mouse button states mapped to @ref fplMouseButtonType
-	fplButtonState buttonStates[fplMouseButtonType_MaxCount];
 } fplMouseState;
 
 /**
@@ -7110,10 +7122,13 @@ fpl_internal bool fpl__Win32LoadApi(fpl__Win32Api *wapi) {
 #	define fpl__win32_LoadCursor fpl__global__AppState->win32.winApi.user.LoadCursorA
 #endif
 
+typedef char fpl__GameControllerName[FPL_MAX_NAME_LENGTH];
+
 typedef struct fpl__Win32XInputState {
-	LARGE_INTEGER lastDeviceSearchTime;
+	fpl__GameControllerName deviceNames[XUSER_MAX_COUNT];
 	fpl_b32 isConnected[XUSER_MAX_COUNT];
 	fpl__Win32XInputApi xinputApi;
+	LARGE_INTEGER lastDeviceSearchTime;
 } fpl__Win32XInputState;
 
 typedef struct fpl__Win32ConsoleState {
@@ -7639,7 +7654,7 @@ fpl_internal bool fpl__LoadX11Api(fpl__X11Api *x11Api) {
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XResizeWindow, XResizeWindow);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XMoveWindow, XMoveWindow);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XGetKeyboardMapping, XGetKeyboardMapping);
-			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XLookupString, XLookupString);			
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XLookupString, XLookupString);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XSendEvent, XSendEvent);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XMatchVisualInfo, XMatchVisualInfo);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XCreateGC, XCreateGC);
@@ -7733,7 +7748,7 @@ typedef struct fpl__PlatformInitState {
 		fpl__UnixInitState punix;
 #	endif               
 	};
-	} fpl__PlatformInitState;
+} fpl__PlatformInitState;
 fpl_globalvar fpl__PlatformInitState fpl__global__InitState = fplZeroInit;
 
 #if defined(FPL__ENABLE_WINDOW)
@@ -9697,22 +9712,25 @@ fpl_internal void fpl__Win32UpdateGameControllers(const fplSettings *settings, c
 					if (!xinputState->isConnected[controllerIndex]) {
 						// Connected
 						xinputState->isConnected[controllerIndex] = true;
+						fplFormatString(xinputState->deviceNames[controllerIndex], fplArrayCount(xinputState->deviceNames[controllerIndex]), "XInput-Device [%d]", controllerIndex);
 
 						fplEvent ev = fplZeroInit;
 						ev.type = fplEventType_Gamepad;
 						ev.gamepad.type = fplGamepadEventType_Connected;
 						ev.gamepad.deviceIndex = controllerIndex;
+						ev.gamepad.deviceName = xinputState->deviceNames[controllerIndex];
 						fpl__PushInternalEvent(&ev);
 					}
 				} else {
 					if (xinputState->isConnected[controllerIndex]) {
 						// Disconnected
 						xinputState->isConnected[controllerIndex] = false;
-						
+
 						fplEvent ev = fplZeroInit;
 						ev.type = fplEventType_Gamepad;
 						ev.gamepad.type = fplGamepadEventType_Disconnected;
 						ev.gamepad.deviceIndex = controllerIndex;
+						ev.gamepad.deviceName = xinputState->deviceNames[controllerIndex];
 						fpl__PushInternalEvent(&ev);
 					}
 				}
@@ -9731,6 +9749,7 @@ fpl_internal void fpl__Win32UpdateGameControllers(const fplSettings *settings, c
 					ev.type = fplEventType_Gamepad;
 					ev.gamepad.type = fplGamepadEventType_StateChanged;
 					ev.gamepad.deviceIndex = controllerIndex;
+					ev.gamepad.deviceName = xinputState->deviceNames[controllerIndex];
 					const XINPUT_GAMEPAD *newPadState = &controllerState.Gamepad;
 					fpl__Win32XInputGamepadToGamepadState(newPadState, &ev.gamepad.state);
 					fpl__PushInternalEvent(&ev);
@@ -12530,7 +12549,9 @@ fpl_internal void fpl__Win32FlushInputMessages(const fpl__Win32Api *wapi, fpl__W
 	if (appState->currentSettings.input.disabledEvents) {
 		MSG msg;
 		while (wapi->user.PeekMessageW(&msg, windowState->windowHandle, WM_KEYFIRST, WM_KEYLAST, PM_REMOVE) != 0) { ; }
-		while (wapi->user.PeekMessageW(&msg, windowState->windowHandle, WM_MOUSEFIRST, WM_MOUSELAST, PM_REMOVE) != 0) { ; }
+		// @NOTE(final): We want to keep the mouse wheel message
+		UINT lastMouseMsg = WM_MOUSEHWHEEL - 1;
+		while (wapi->user.PeekMessageW(&msg, windowState->windowHandle, WM_MOUSEFIRST, lastMouseMsg, PM_REMOVE) != 0) { ; }
 	}
 }
 
@@ -12720,10 +12741,12 @@ fpl_platform_api bool fplPollGamepadStates(fplGamepadStates *outStates) {
 				if (xinputState->xinputApi.XInputGetState(controllerIndex, &controllerState) == ERROR_SUCCESS) {
 					if (!xinputState->isConnected[controllerIndex]) {
 						xinputState->isConnected[controllerIndex] = true;
+						fplFormatString(xinputState->deviceNames[controllerIndex], fplArrayCount(xinputState->deviceNames[controllerIndex]), "XInput-Device [%d]", controllerIndex);
 					}
 					const XINPUT_GAMEPAD *newPadState = &controllerState.Gamepad;
 					fplGamepadState *targetPadState = &outStates->deviceStates[controllerIndex];
 					fpl__Win32XInputGamepadToGamepadState(newPadState, targetPadState);
+					targetPadState->deviceName = xinputState->deviceNames[controllerIndex];
 				} else {
 					if (xinputState->isConnected[controllerIndex]) {
 						xinputState->isConnected[controllerIndex] = false;
@@ -12747,12 +12770,14 @@ fpl_platform_api bool fplPollMouseState(fplMouseState *outState) {
 		fplClearStruct(outState);
 		outState->x = p.x;
 		outState->y = p.y;
+
 		bool leftDown = fpl__Win32IsKeyDown(wapi, VK_LBUTTON);
 		bool rightDown = fpl__Win32IsKeyDown(wapi, VK_RBUTTON);
 		bool middleDown = fpl__Win32IsKeyDown(wapi, VK_MBUTTON);
 		outState->buttonStates[fplMouseButtonType_Left] = leftDown ? fplButtonState_Press : fplButtonState_Release;
 		outState->buttonStates[fplMouseButtonType_Right] = rightDown ? fplButtonState_Press : fplButtonState_Release;
 		outState->buttonStates[fplMouseButtonType_Middle] = middleDown ? fplButtonState_Press : fplButtonState_Release;
+
 		return(true);
 	}
 	return(false);
@@ -15061,7 +15086,7 @@ fpl_internal void fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatfor
 				int keyState = ev->xkey.state;
 				uint64_t keyCode = (uint64_t)ev->xkey.keycode;
 				fpl__HandleKeyboardButtonEvent(winState, keyCode, fpl__X11TranslateModifierFlags(keyState), fplButtonState_Press, false);
-				
+
 				char buf[32];
 				KeySym keysym = 0;
 				if (x11Api->XLookupString((XKeyEvent*)ev, buf, 32, &keysym, NULL) != NoSymbol) {
@@ -15111,11 +15136,14 @@ fpl_internal void fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatfor
 					fpl__HandleMouseButtonEvent(winState, x, y, fplMouseButtonType_Middle, fplButtonState_Press);
 				} else if (ev->xbutton.button == Button3) {
 					fpl__HandleMouseButtonEvent(winState, x, y, fplMouseButtonType_Right, fplButtonState_Press);
-				} else if (ev->xbutton.button == Button4) {
-					fpl__HandleMouseWheelEvent(winState, x, y, 1.0f);
-				} else if (ev->xbutton.button == Button5) {
-					fpl__HandleMouseWheelEvent(winState, x, y, -1.0f);
 				}
+			}
+
+			// Mouse wheel
+			if (ev->xbutton.button == Button4) {
+				fpl__HandleMouseWheelEvent(winState, x, y, 1.0f);
+			} else if (ev->xbutton.button == Button5) {
+				fpl__HandleMouseWheelEvent(winState, x, y, -1.0f);
 			}
 		} break;
 
@@ -15318,19 +15346,19 @@ fpl_platform_api void fplSetWindowDecorated(const bool value) {
 	const fpl__X11SubplatformState *subplatform = &appState->x11;
 	const fpl__X11Api *x11Api = &subplatform->api;
 	const fpl__X11WindowState *windowState = &appState->window.x11;
-		
+
 	fpl__MotifWMHints hints = fplZeroInit;
 	hints.flags = FPL__MWM_HINTS_DECORATIONS | FPL__MWM_HINTS_FUNCTIONS;
 	hints.decorations = value ? 1 : 0;
 	hints.functions = value ? FPL__MWM_FUNC_ALL : 0;
-	
+
 	x11Api->XChangeProperty(windowState->display, windowState->window,
 							windowState->motifWMHints,
 							windowState->motifWMHints, 32,
 							PropModeReplace,
-							(unsigned char*) &hints,
+							(unsigned char*)&hints,
 							FPL__PROPERTY_MOTIF_WM_HINTS_ELEMENT_COUNT);
-	
+
 	appState->currentSettings.window.isDecorated = value;
 }
 
@@ -19616,10 +19644,10 @@ fpl_internal void fpl__ReleasePlatformStates(fpl__PlatformInitState *initState, 
 		FPL_LOG_DEBUG(FPL__MODULE_CORE, "Release allocated Platform App State Memory");
 		fplMemoryAlignedFree(appState);
 		fpl__global__AppState = fpl_null;
-		}
+	}
 	initState->initResult = fplPlatformResultType_NotInitialized;
 	initState->isInitialized = false;
-		}
+}
 
 #define FPL__PLATFORMTYPE_COUNT FPL__ENUM_COUNT(FPL_FIRST_PLATFORM_TYPE, FPL_LAST_PLATFORM_TYPE)
 fpl_globalvar const char *fpl__globalPlatformTypeNameTable[] = {
@@ -19769,7 +19797,7 @@ fpl_common_api bool fplPlatformInit(const fplInitFlags initFlags, const fplSetti
 		FPL__CRITICAL(FPL__MODULE_CORE, "Failed initializing %s Platform!", FPL_PLATFORM_NAME);
 		fpl__ReleasePlatformStates(initState, appState);
 		return(fpl__SetPlatformResult(fplPlatformResultType_FailedPlatform));
-}
+	}
 	FPL_LOG_DEBUG(FPL__MODULE_CORE, "Successfully initialized %s Platform", FPL_PLATFORM_NAME);
 
 	// Init video state
@@ -19860,7 +19888,7 @@ fpl_common_api bool fplPlatformInit(const fplInitFlags initFlags, const fplSetti
 
 	initState->isInitialized = true;
 	return(fpl__SetPlatformResult(fplPlatformResultType_Success));
-	}
+}
 
 fpl_common_api fplPlatformType fplGetPlatformType() {
 	fplPlatformType result;
