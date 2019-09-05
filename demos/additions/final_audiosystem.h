@@ -18,7 +18,6 @@ How the mixer works:
 
 Todo:
 	- Performance is really bad, so we need to do a lot of things
-		- Needs to be called from a realtime thread (fplThreadPriority_RealTime)
 		- Remove the need for mutexes (Lock-free!)
 		- Dont allocate any memory
 		- Dont do any file/network IO
@@ -27,14 +26,13 @@ Todo:
 		- Separate format conversion into its own functions and use a dispatch table
 		- Separate sample rate conversion from mixing (Doing the sample rate conversion inside the mixing is stupid)
 		- Unroll loops (x4), but keep reference implementation
-		- SIMD alignment
 		- SIMD everything
 
 	- Proper sample rate conversion
 		- Linear interpolation
 		- SinC
 
-	- Channel mapping -> Requires Channel mapping for FPL as well
+	- Channel mapping -> Requires Channel mapping in FPL as well
 
 	- Do we need to deal with deinterleaved samples?
 		Interleaved Samples         = LR|LR|LR|LR|LR|LR|LR
