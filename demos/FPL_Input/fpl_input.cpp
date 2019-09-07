@@ -22,6 +22,7 @@ Changelog:
 	- Use new field isActive from fplGamepadState now, which was introduced in the last commit
 	- Draw mouse wheel delta for 500 msecs
 	- Fixed euro key in german layout
+	- Added text input
 
 	## 2018-10-22
 	- Reflect api changes in FPL 0.9.3
@@ -104,6 +105,17 @@ static int CompareStringIgnoreCase(const char* a, const char* b) {
 		++b;
 	}
 	return(0);
+}
+
+static size_t GetWideStringLength(const wchar_t* text) {
+	size_t result = wcslen(text);
+	return(result);
+}
+
+inline void CopyWideString(const wchar_t* source, const size_t len, wchar_t* target, const size_t maxTargetLen) {
+	size_t reqLen = len + 1;
+	fplAssert(maxTargetLen >= reqLen);
+	fplMemoryCopy(source, reqLen * sizeof(wchar_t), target);
 }
 
 union Vec2f {
@@ -523,9 +535,8 @@ static void DrawArrow(const float x0, const float y0, const float x1, const floa
 	glLineWidth(1.0f);
 }
 
-static void DrawTextFont(const wchar_t* text, const size_t fontCount, const FontData fonts[], const GLuint textures[], const float x, const float y, const float maxCharHeight, const float sx, const float sy) {
+static void DrawTextFont(const wchar_t* text, const size_t textLen, const size_t fontCount, const FontData fonts[], const GLuint textures[], const float x, const float y, const float maxCharHeight, const float sx, const float sy) {
 	if (fontCount > 0) {
-		size_t textLen = wcslen(text);
 		Vec2f textSize = GetTextSize(text, textLen, fontCount, fonts, maxCharHeight);
 		float xpos = x - textSize.x * 0.5f + (textSize.x * 0.5f * sx);
 		float ypos = y - textSize.y * 0.5f + (textSize.y * 0.5f * sy);
@@ -559,6 +570,11 @@ static void DrawTextFont(const wchar_t* text, const size_t fontCount, const Font
 			xpos += advance;
 		}
 	}
+}
+
+static void DrawTextFont(const wchar_t* text, const size_t fontCount, const FontData fonts[], const GLuint textures[], const float x, const float y, const float maxCharHeight, const float sx, const float sy) {
+	size_t textLen = GetWideStringLength(text);
+	DrawTextFont(text, textLen, fontCount, fonts, textures, x, y, maxCharHeight, sx, sy);
 }
 
 static GLuint AllocateTexture(const uint32_t width, const uint32_t height, const void* data, const bool repeatable, const GLint filter, const bool isAlphaOnly) {
@@ -636,21 +652,6 @@ constexpr float MouseAspect = MouseImageW / (float)MouseImageH;
 constexpr float MouseW = AppWidth * 0.2f;
 constexpr float MouseH = MouseW / MouseAspect;
 static const Vec2f MouseSize = V2f(MouseW, MouseH);
-
-inline size_t GetWideStringLength(const wchar_t* text) {
-	size_t result = 0;
-	const wchar_t* p = text;
-	while (*p++) {
-		++result;
-	}
-	return(result);
-}
-
-inline void CopyWideString(const wchar_t* source, const size_t len, wchar_t* target, wchar_t maxTargetLen) {
-	size_t reqLen = len + 1;
-	fplAssert(maxTargetLen >= reqLen);
-	fplMemoryCopy(source, reqLen * sizeof(wchar_t), target);
-}
 
 struct KeyCharDef {
 	wchar_t text[16 + 1];
@@ -950,13 +951,14 @@ static KeyDefinitions keyDefinitionsArray[] = {
 
 struct KeyLedDef {
 	fplKeyboardModifierFlags flag;
+	KeyCharDef key;
 	UVRect uv;
 };
 
 static KeyLedDef KeyLedDefinitions[] = {
-	{fplKeyboardModifierFlags_CapsLock, UVRectFromPos(KeyboardImageS, KeyboardLedS, V2i(1686, 325))},
-	{fplKeyboardModifierFlags_ScrollLock, UVRectFromPos(KeyboardImageS, KeyboardLedS, V2i(1753, 325))},
-	{fplKeyboardModifierFlags_NumLock, UVRectFromPos(KeyboardImageS, KeyboardLedS, V2i(1820, 325))},
+	{fplKeyboardModifierFlags_CapsLock, MakeKeyChar(L"Caps", V2f(0.0f, 6.0f)), UVRectFromPos(KeyboardImageS, KeyboardLedS, V2i(1686, 325))},
+	{fplKeyboardModifierFlags_ScrollLock, MakeKeyChar(L"Scroll", V2f(0.0f, 6.0f)), UVRectFromPos(KeyboardImageS, KeyboardLedS, V2i(1753, 325))},
+	{fplKeyboardModifierFlags_NumLock, MakeKeyChar(L"Num", V2f(0.0f, 6.0f)), UVRectFromPos(KeyboardImageS, KeyboardLedS, V2i(1820, 325))},
 };
 
 struct MouseButtonDef {
@@ -1031,9 +1033,11 @@ enum class RenderMode {
 struct AppState {
 	FontData letterFontData[FontCount];
 	FontData osdFontData;
+	FontData consoleFontData;
 
 	GLuint letterFontTextures[FontCount];
 	GLuint osdFontTexture;
+	GLuint consoleFontTexture;
 
 	GLuint keyboardTexture;
 	GLuint gamepadForegroundTexture;
@@ -1048,11 +1052,17 @@ struct AppState {
 };
 
 struct InputState {
+	wchar_t *text;
 	fplGamepadState gamepadState;
 	fplButtonState keyStates[256];
 	fplButtonState mouseStates[fplMouseButtonType_MaxCount];
 	Vec2i mousePos;
+	size_t textLen;
+	size_t textCapacity;
 	uint64_t lastMouseWheelUpdateTime;
+	uint64_t lastTextInputTime;
+	uint64_t lastTextCursorBlinkTime;
+	fpl_b32 showTextCursor;
 	float mouseWheelDelta;
 	fplKeyboardModifierFlags ledStates;
 };
@@ -1080,6 +1090,10 @@ static void InitApp(AppState* appState) {
 
 	if (LoadFontFromFile(dataPath, "NotoSans-Regular.ttf", 0, 48.0f, 32, 255, 512, 512, false, &appState->osdFontData)) {
 		appState->osdFontTexture = AllocateTexture(appState->osdFontData.atlasWidth, appState->osdFontData.atlasHeight, appState->osdFontData.atlasAlphaBitmap, false, GL_LINEAR, true);
+	}
+
+	if (LoadFontFromFile(dataPath, "VeraMono.ttf", 0, 48.0f, 32, 255, 512, 512, false, &appState->consoleFontData)) {
+		appState->consoleFontTexture = AllocateTexture(appState->consoleFontData.atlasWidth, appState->consoleFontData.atlasHeight, appState->consoleFontData.atlasAlphaBitmap, false, GL_LINEAR, true);
 	}
 
 	float letterFontSize = 16.0f;
@@ -1128,21 +1142,58 @@ static SpritePosition ComputeSpritePosition(const Vec2f& fullCenter, const Vec2f
 	return(result);
 }
 
+struct RenderScale {
+	Viewport viewport;
+	Vec2f worldToScreen;
+	Vec2f screenToWorld;
+	Vec2f worldSize;
+	uint32_t winWidth;
+	uint32_t winHeight;
+};
+
+inline Vec2f ScreenToWorldSize(const RenderScale &scale, const Vec2i &screenSize) {
+	Vec2f result = V2f(screenSize.x * scale.screenToWorld.x, screenSize.y * scale.screenToWorld.y);
+	return(result);
+}
+
+inline Vec2f ScreenToWorldPos(const RenderScale &scale, const Vec2i &screenPos) {
+	Vec2f result = V2f(-scale.worldSize.w * 0.5f + (screenPos.x - scale.viewport.x) * scale.screenToWorld.x, -scale.worldSize.h * 0.5f + (screenPos.y - scale.viewport.y) * scale.screenToWorld.y);
+	return(result);
+}
+
+inline Vec2f PixelToWorldPos(const RenderScale &scale, const Vec2i &pixel) {
+	int x = pixel.x - scale.winWidth / 2;
+	int y = pixel.y - scale.winHeight / 2;
+	Vec2f result = V2f(x * scale.screenToWorld.x, y * scale.screenToWorld.y);
+	return(result);
+}
+
+inline Vec2i WorldToScreenSize(const RenderScale &scale, const Vec2f &worldSize) {
+	Vec2i result = V2i((int)(worldSize.x * scale.worldToScreen.x), (int)(worldSize.y * scale.worldToScreen.y));
+	return(result);
+}
+
+inline Vec2i WorldToScreenPos(const RenderScale &scale, const Vec2f &worldPos) {
+	Vec2i result = V2i(scale.viewport.x + (int)((worldPos.x + scale.worldSize.x * 0.5f) * scale.worldToScreen.x), scale.viewport.y + (int)((worldPos.y + scale.worldSize.y * 0.5f) * scale.worldToScreen.y));
+	return(result);
+}
+
 static void RenderApp(AppState* appState, const InputState* input, const uint32_t winWidth, const uint32_t winHeight) {
 	constexpr float w = AppWidth * 0.5f;
 	constexpr float h = AppHeight * 0.5f;
 
 	Viewport vp = ComputeViewportByAspect(V2i(winWidth, winHeight), AppAspect);
 
-	float worldToScreenX = vp.w / (float)AppWidth;
-	float worldToScreenY = vp.h / (float)AppHeight;
-	float screenToWorldX = 1.0f / worldToScreenX;
-	float screenToWorldY = 1.0f / worldToScreenY;
+	RenderScale scale = {};
+	scale.worldSize = V2f(AppWidth, AppHeight);
+	scale.worldToScreen = V2f(vp.w / (float)AppWidth, vp.h / (float)AppHeight);
+	scale.screenToWorld = V2f(1.0f / scale.worldToScreen.x, 1.0f / scale.worldToScreen.y);
+	scale.winWidth = winWidth;
+	scale.winHeight = winHeight;
+	scale.viewport = vp;
 
-	int mouseCenterX = (input->mousePos.x - winWidth / 2);
-	int mouseCenterY = (winHeight - 1 - input->mousePos.y) - winHeight / 2;
-	appState->mousePos.x = (mouseCenterX * screenToWorldX);
-	appState->mousePos.y = (mouseCenterY * screenToWorldY);
+	Vec2i mouseCoord = V2i(input->mousePos.x, winHeight - 1 - input->mousePos.y);
+	appState->mousePos = PixelToWorldPos(scale, mouseCoord);
 
 	glViewport(vp.x, vp.y, vp.w, vp.h);
 
@@ -1209,6 +1260,11 @@ static void RenderApp(AppState* appState, const InputState* input, const uint32_
 				glColor4f(1.0f, 0.0f, 0.0f, 1.0f);
 				DrawSprite(appState->keyboardTexture, keyPos.size.w * 0.5f, keyPos.size.h * 0.5f, keyLedDef.uv, keyPos.pos.x, keyPos.pos.y);
 			}
+			KeyCharDef keyChar = keyLedDef.key;
+			glColor4f(0.0f, 0.0f, 0.0f, 1.0f);
+			float x = keyPos.pos.x + ((keyPos.size.w * 0.5f) * keyChar.align.x);
+			float y = keyPos.pos.y + ((keyPos.size.h * 0.5f) * keyChar.align.y);
+			DrawTextFont(keyChar.text, FontCount, appState->letterFontData, appState->letterFontTextures, x, y, keyFontHeight, 0.0f, 0.0f);
 		}
 
 		// Draw keyboard buttons
@@ -1261,7 +1317,7 @@ static void RenderApp(AppState* appState, const InputState* input, const uint32_
 		}
 
 		// Draw mouse cursor as key region
-		if (0) {
+		if (1) {
 			int pixelsW = KeyboardSmallKeyS.x;
 			int pixelsH = KeyboardSmallKeyS.y;
 			float mouseW = KeyboardW * (pixelsW / (float)KeyboardImageW);
@@ -1287,6 +1343,74 @@ static void RenderApp(AppState* appState, const InputState* input, const uint32_
 			glVertex2f(mouseX - mouseW * 0.5f, mouseY - mouseH * 0.5f);
 			glVertex2f(mouseX + mouseW * 0.5f, mouseY - mouseH * 0.5f);
 			glEnd();
+		}
+
+		// Text input
+		{
+			float consoleFontHeight = osdFontHeight;
+			float padding = consoleFontHeight * 0.35f;
+
+			Vec2f inputSize = V2f(AppWidth * 0.96f, consoleFontHeight);
+			Vec2f inputPos = V2f(-w + w * 0.035f, keyboardCenter.y - KeyboardSize.y * 0.45f - consoleFontHeight);
+
+			// Text
+			size_t maxBoxTextLength = 73;
+			size_t textCharLen = 0;
+			size_t textCharPos = 0;
+			if (input->textLen > 0) {
+				textCharLen = input->textLen;
+				if (input->textLen > maxBoxTextLength) {
+					size_t delta = input->textLen - maxBoxTextLength;
+					textCharPos = delta;
+					textCharLen = maxBoxTextLength;
+				}
+			}
+
+			const wchar_t *textStart = input->text + textCharPos;
+
+			Vec2f textPos = V2f(inputPos.x + padding, inputPos.y + inputSize.y * 0.5f - consoleFontHeight * 0.25f);
+			Vec2f textSize = GetTextSize(textStart, textCharLen, 1, &appState->consoleFontData, consoleFontHeight);
+
+			Vec2f clipSize = V2f(inputSize.x - padding * 2.0f, inputSize.y);
+			Vec2f clipPos = V2f(inputPos.x + padding, inputPos.y);
+
+			Vec2i scissorPos = WorldToScreenPos(scale, clipPos);
+			Vec2i scissorSize = WorldToScreenSize(scale, clipSize);
+
+			clipSize = ScreenToWorldSize(scale, scissorSize);
+			clipPos = ScreenToWorldPos(scale, scissorPos);
+
+			glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
+			glScissor(scissorPos.x, scissorPos.y, scissorSize.x, scissorSize.y);
+			glEnable(GL_SCISSOR_TEST);
+
+			DrawTextFont(textStart, textCharLen, 1, &appState->consoleFontData, &appState->consoleFontTexture, textPos.x, textPos.y, consoleFontHeight, 1.0f, 1.0f);
+
+			glDisable(GL_SCISSOR_TEST);
+			glScissor(0, 0, 0, 0);
+
+			// Cursor
+			if (input->showTextCursor) {
+				DrawTextFont(L"|", 1, &appState->consoleFontData, &appState->consoleFontTexture, textPos.x + textSize.x - consoleFontHeight * 0.15f, textPos.y, consoleFontHeight, 1.0f, 1.0f);
+			}
+
+			{
+				char textBuffer[256];
+				wchar_t wideTextBuffer[256];
+				fplFormatString(textBuffer, fplArrayCount(textBuffer), "Input: (%zu chars)", input->textLen);
+				fplUTF8StringToWideString(textBuffer, fplGetStringLength(textBuffer), wideTextBuffer, fplArrayCount(wideTextBuffer));
+				DrawTextFont(wideTextBuffer, 1, &appState->osdFontData, &appState->osdFontTexture, inputPos.x, inputPos.y + consoleFontHeight * 1.5f, osdFontHeight, 1.0f, 1.0f);
+			}
+
+			// Border
+			glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
+			DrawRect(inputSize.x * 0.5f, inputSize.y * 0.5f, inputPos.x + inputSize.x * 0.5f, inputPos.y + inputSize.y * 0.5f, false);
+
+#if 0
+			// Clip rect
+			glColor4f(1.0f, 0.0f, 1.0f, 1.0f);
+			DrawRect(clipSize.x * 0.5f, clipSize.y * 0.5f, clipPos.x + clipSize.x * 0.5f, clipPos.y + clipSize.y * 0.5f, false);
+#endif
 		}
 	} else if (appState->renderMode == RenderMode::Gamepad) {
 		float gamepadCenterX = 0.0f;
@@ -1381,13 +1505,68 @@ static bool KeyWasDown(const fplButtonState oldState, const fplButtonState newSt
 	return(result);
 }
 
-static void HandleKeyPressed(AppState* appState, const fplKey key) {
+static void InsertInputChar(InputState *input, const wchar_t c) {
+	// Alloc/Grow input capacity if needed
+	if (input->textLen >= input->textCapacity) {
+		size_t oldCapacity = input->textCapacity;
+		wchar_t *oldText = input->text;
+		size_t newCapacity = fplMax(1024, oldCapacity * 2);
+		wchar_t *newText = (wchar_t *)fplMemoryAllocate(newCapacity * sizeof(wchar_t));
+		if (oldText != fpl_null) {
+			CopyWideString(oldText, oldCapacity, newText, newCapacity);
+			fplMemoryFree(oldText);
+		}
+		input->text = newText;
+		input->textCapacity = newCapacity;
+	}
+
+	// Append char
+	fplAssert(input->textLen + 1 <= input->textCapacity);
+	input->text[input->textLen++] = c;
+}
+
+static void InsertInputText(InputState *input, const wchar_t *text) {
+	size_t textLen = GetWideStringLength(text);
+	for (size_t i = 0; i < textLen; ++i) {
+		InsertInputChar(input, text[i]);
+	}
+}
+
+static void HandleKeyDown(AppState* appState, InputState *input, const fplKey key) {
+	switch (key) {
+		case fplKey_Backspace:
+			if (input->textLen > 0) {
+				input->text[input->textLen - 1] = 0;
+				--input->textLen;
+			}
+			break;
+		default:
+			break;
+	}
+}
+
+static void HandleKeyPressed(AppState* appState, InputState *input, const fplKey key) {
 	switch (key) {
 		case fplKey_F1:
 			appState->renderMode = RenderMode::KeyboardAndMouse;
 			break;
 		case fplKey_F2:
 			appState->renderMode = RenderMode::Gamepad;
+			break;
+		case fplKey_Backspace:
+			if (input->textLen > 0) {
+				input->text[input->textLen - 1] = 0;
+				--input->textLen;
+			}
+			break;
+		case fplKey_Tab:
+			InsertInputText(input, L"    ");
+			break;
+		case fplKey_Return:
+			if (input->textLen > 0) {
+				input->textLen = 0;
+				input->text[0] = 0;
+			}
 			break;
 		default:
 			break;
@@ -1431,7 +1610,15 @@ int main(int argc, char* argv[]) {
 							}
 							if (ev.keyboard.type == fplKeyboardEventType_Button) {
 								if (ev.keyboard.buttonState == fplButtonState_Release) {
-									HandleKeyPressed(appState, ev.keyboard.mappedKey);
+									HandleKeyPressed(appState, &input, ev.keyboard.mappedKey);
+								} else if (ev.keyboard.buttonState >= fplButtonState_Press) {
+									HandleKeyDown(appState, &input, ev.keyboard.mappedKey);
+								}
+							} else if (ev.keyboard.type == fplKeyboardEventType_Input) {
+								if ((ev.keyboard.keyCode > 0 && ev.keyboard.keyCode < INT16_MAX) &&
+									((ev.keyboard.mappedKey != fplKey_Backspace) && (ev.keyboard.mappedKey != fplKey_Tab) && (ev.keyboard.mappedKey != fplKey_Return))) {
+									wchar_t c = (wchar_t)ev.keyboard.keyCode;
+									InsertInputChar(&input, c);
 								}
 							}
 						} break;
@@ -1457,7 +1644,7 @@ int main(int argc, char* argv[]) {
 					if (appState->usePolling) {
 						for (int i = 0; i < 256; ++i) {
 							if (KeyWasDown(lastKeyStates[i], keyboardState.buttonStatesMapped[i])) {
-								HandleKeyPressed(appState, (fplKey)i);
+								HandleKeyPressed(appState, &input, (fplKey)i);
 							}
 							input.keyStates[i] = keyboardState.buttonStatesMapped[i];
 							lastKeyStates[i] = input.keyStates[i];
@@ -1518,6 +1705,18 @@ int main(int argc, char* argv[]) {
 					if (fplGetTimeInMillisecondsLP() - input.lastMouseWheelUpdateTime >= maxWheelShowTime) {
 						input.lastMouseWheelUpdateTime = 0;
 						input.mouseWheelDelta = 0.0f;
+					}
+				}
+
+				// Cursor blinking
+				uint64_t maxCursorShowTime = 500;
+				if (input.lastTextCursorBlinkTime == 0) {
+					input.lastTextCursorBlinkTime = fplGetTimeInMillisecondsLP();
+					input.showTextCursor = true;
+				} else {
+					if ((fplGetTimeInMillisecondsLP() - input.lastTextCursorBlinkTime) >= maxCursorShowTime) {
+						input.showTextCursor = !input.showTextCursor;
+						input.lastTextCursorBlinkTime = fplGetTimeInMillisecondsLP();
 					}
 				}
 
