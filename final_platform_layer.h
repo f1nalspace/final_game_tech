@@ -155,6 +155,7 @@ SOFTWARE.
 	- New: Added function fplGetMainThread
 	- New: Added field isActive to struct fplGamepadState
 	- New: Added field deviceName to struct fplGamepadState and fplGamepadEvent
+	- New: Added function fplSetWindowInputEvents
 
 	- Fixed: Corrected opengl example code in the header file
 	- Fixed: Tons of documentation improvements
@@ -5767,6 +5768,12 @@ fpl_platform_api fplWindowState fplGetWindowState();
   * @return Returns true when the window state was changed, false otherwise.
   */
 fpl_platform_api bool fplSetWindowState(const fplWindowState newState);
+/**
+  * @brief Enables or Disables the input events for the window entirely.
+  * @param enabled If set to true, the input handled are processed, if false no input events are handled.
+  * @note The text input event is always handled, regardless of this setting.
+  */
+fpl_common_api void fplSetWindowInputEvents(const bool enabled);
 
 /*\}*/
 
@@ -9257,6 +9264,12 @@ fpl_common_api char *fplGetWindowTitle(char *outTitle, const size_t maxOutTitleL
 	fpl__PlatformAppState *appState = fpl__global__AppState;
 	char *result = fplCopyString(appState->currentSettings.window.title, outTitle, maxOutTitleLength);
 	return(result);
+}
+
+fpl_common_api void fplSetWindowInputEvents(const bool enabled) {
+	FPL__CheckPlatformNoRet();
+	fpl__PlatformAppState* appState = fpl__global__AppState;
+	appState->currentSettings.input.disabledEvents = !enabled;
 }
 #endif // FPL__COMMON_WINDOW_DEFINED
 
