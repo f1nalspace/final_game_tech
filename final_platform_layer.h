@@ -7955,11 +7955,12 @@ fpl_internal void fpl__PushKeyboardButtonEvent(const uint64_t keyCode, const fpl
 	fpl__PushInternalEvent(&newEvent);
 }
 
-fpl_internal void fpl__PushKeyboardInputEvent(const uint32_t textCode) {
+fpl_internal void fpl__PushKeyboardInputEvent(const uint32_t textCode, const fplKey mappedKey) {
 	fplEvent newEvent = fplZeroInit;
 	newEvent.type = fplEventType_Keyboard;
 	newEvent.keyboard.type = fplKeyboardEventType_Input;
 	newEvent.keyboard.keyCode = (uint64_t)textCode;
+	newEvent.keyboard.mappedKey = mappedKey;
 	fpl__PushInternalEvent(&newEvent);
 }
 
@@ -8014,8 +8015,9 @@ fpl_internal void fpl__HandleKeyboardButtonEvent(fpl__PlatformWindowState *windo
 	fpl__PushKeyboardButtonEvent(keyCode, mappedKey, modifiers, repeat ? fplButtonState_Repeat : buttonState);
 }
 
-fpl_internal void fpl__HandleKeyboardInputEvent(fpl__PlatformWindowState *windowState, const uint32_t textCode) {
-	fpl__PushKeyboardInputEvent(textCode);
+fpl_internal void fpl__HandleKeyboardInputEvent(fpl__PlatformWindowState *windowState, const uint64_t keyCode, const uint32_t textCode) {
+	fplKey mappedKey = fpl__GetMappedKey(windowState, keyCode);
+	fpl__PushKeyboardInputEvent(textCode, mappedKey);
 }
 
 fpl_internal void fpl__HandleMouseButtonEvent(fpl__PlatformWindowState *windowState, const int32_t x, const int32_t y, const fplMouseButtonType mouseButton, const fplButtonState buttonState) {
@@ -9988,7 +9990,7 @@ LRESULT CALLBACK fpl__Win32MessageProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 				// @NOTE(final): WM_UNICHAR was sent by a third-party input method. Do not add any chars here!
 				return TRUE;
 			}
-			fpl__HandleKeyboardInputEvent(&appState->window, (uint32_t)wParam);
+			fpl__HandleKeyboardInputEvent(&appState->window, (uint64_t)wParam,(uint32_t)wParam);
 			return 0;
 		} break;
 
@@ -15095,7 +15097,7 @@ fpl_internal void fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatfor
 					fplUTF8StringToWideString(buf, fplGetStringLength(buf), wideBuffer, fplArrayCount(wideBuffer));
 					uint32_t textCode = (uint32_t)wideBuffer[0];
 					if (textCode > 0) {
-						fpl__HandleKeyboardInputEvent(&appState->window, textCode);
+						fpl__HandleKeyboardInputEvent(&appState->window, keyCode, textCode);
 					}
 				}
 			}
