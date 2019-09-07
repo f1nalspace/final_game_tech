@@ -286,26 +286,29 @@ static Vec2f GetTextSize(const wchar_t* text, const size_t textLen, const size_t
 			} else {
 				font = &fonts[0];
 			}
-
-			float xadvance;
-			Vec2f offset = V2f(xpos, ypos);
-			Vec2f size = V2f();
-			uint32_t lastChar = font->firstChar + (font->charCount - 1);
-			if (at >= font->firstChar && at <= lastChar) {
-				uint32_t codePoint = at - font->firstChar;
-				const FontGlyph* glyph = font->glyphs + codePoint;
-				size = glyph->charSize;
-				offset += glyph->offset;
-				offset += V2f(size.x, -size.y) * 0.5f;
-				xadvance = GetFontCharacterAdvance(font, (uint32_t)at);
-			} else {
-				xadvance = fonts[0].spaceAdvance;
-			}
-			Vec2f min = offset;
-			Vec2f max = min + V2f(xadvance, size.y);
-			xwidth += (max.x - min.x);
-			ymax = fplMax(ymax, max.y - min.y);
-			xpos += xadvance;
+            
+            if (font->charCount == 0)
+                continue;
+            
+            float xadvance;
+            Vec2f offset = V2f(xpos, ypos);
+            Vec2f size = V2f();
+            uint32_t lastChar = font->firstChar + (font->charCount - 1);
+            if (at >= font->firstChar && at <= lastChar) {
+                uint32_t codePoint = at - font->firstChar;
+                const FontGlyph* glyph = font->glyphs + codePoint;
+                size = glyph->charSize;
+                offset += glyph->offset;
+                offset += V2f(size.x, -size.y) * 0.5f;
+                xadvance = GetFontCharacterAdvance(font, (uint32_t)at);
+            } else {
+                xadvance = fonts[0].spaceAdvance;
+            }
+            Vec2f min = offset;
+            Vec2f max = min + V2f(xadvance, size.y);
+            xwidth += (max.x - min.x);
+            ymax = fplMax(ymax, max.y - min.y);
+            xpos += xadvance;
 		}
 	}
 	Vec2f result = V2f(xwidth, ymax) * maxCharHeight;
@@ -553,7 +556,8 @@ static void DrawTextFont(const wchar_t* text, const size_t textLen, const size_t
 				font = &fonts[0];
 				texture = textures[0];
 			}
-
+            if (font->charCount == 0) 
+                continue;
 			uint32_t lastChar = font->firstChar + (font->charCount - 1);
 			float advance;
 			if ((uint32_t)at >= font->firstChar && (uint32_t)at <= lastChar) {

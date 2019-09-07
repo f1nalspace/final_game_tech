@@ -15133,10 +15133,11 @@ fpl_internal void fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatfor
 
 		case ButtonPress:
 		{
-			// Mouse down
+			int x = ev->xbutton.x;
+			int y = ev->xbutton.y;
+
 			if (!appState->currentSettings.input.disabledEvents) {
-				int x = ev->xbutton.x;
-				int y = ev->xbutton.y;
+				// Mouse button
 				if (ev->xbutton.button == Button1) {
 					fpl__HandleMouseButtonEvent(winState, x, y, fplMouseButtonType_Left, fplButtonState_Press);
 				} else if (ev->xbutton.button == Button2) {
