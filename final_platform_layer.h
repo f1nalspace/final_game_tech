@@ -215,6 +215,7 @@ SOFTWARE.
 	- Changed: [X86/X64] fplGetProcessorCapabilities are only enabled on X86 or X64 architecture
 	- Changed: [MSVC] Implemented fplCPUID/fplGetXCR0 for MSVC
 	- Changed: [GCC/Clang] Implemented fplCPUID/fplGetXCR0 for GCC/Clang
+	- Changed: [Win32] Input events are not flushed anymore, when disabled
 
 	## v0.9.3.0 beta
 	- Changed: Renamed fplSetWindowFullscreen to fplSetWindowFullscreenSize
@@ -9979,17 +9980,19 @@ LRESULT CALLBACK fpl__Win32MessageProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 		case WM_KEYDOWN:
 		case WM_KEYUP:
 		{
-			uint64_t keyCode = wParam;
-			bool isDown = ((int)(lParam & (1 << 31)) == 0);
-			bool wasDown = ((int)(lParam & (1 << 30)) != 0);
-			bool altKeyIsDown = fpl__Win32IsKeyDown(wapi, VK_MENU);
-			fplButtonState keyState = isDown ? fplButtonState_Press : fplButtonState_Release;
-			fplKeyboardModifierFlags modifiers = fpl__Win32GetKeyboardModifiers(wapi);
-			fpl__HandleKeyboardButtonEvent(&appState->window, keyCode, modifiers, keyState, false);
-			if (wasDown != isDown) {
-				if (isDown) {
-					if (keyCode == VK_F4 && altKeyIsDown) {
-						appState->window.isRunning = false;
+			if (!appState->currentSettings.input.disabledEvents) {
+				uint64_t keyCode = wParam;
+				bool isDown = (lParam & (1 << 31)) == 0;
+				bool wasDown = (lParam & (1 << 30)) != 0;
+				bool altKeyIsDown = fpl__Win32IsKeyDown(wapi, VK_MENU);
+				fplButtonState keyState = isDown ? fplButtonState_Press : fplButtonState_Release;
+				fplKeyboardModifierFlags modifiers = fpl__Win32GetKeyboardModifiers(wapi);
+				fpl__HandleKeyboardButtonEvent(&appState->window, keyCode, modifiers, keyState, false);
+				if (wasDown != isDown) {
+					if (isDown) {
+						if (keyCode == VK_F4 && altKeyIsDown) {
+							appState->window.isRunning = false;
+						}
 					}
 				}
 			}
@@ -10081,38 +10084,42 @@ LRESULT CALLBACK fpl__Win32MessageProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 		case WM_MBUTTONDOWN:
 		case WM_MBUTTONUP:
 		{
-			fplButtonState buttonState;
-			if (msg == WM_LBUTTONDOWN || msg == WM_RBUTTONDOWN || msg == WM_MBUTTONDOWN) {
-				buttonState = fplButtonState_Press;
-			} else {
-				buttonState = fplButtonState_Release;
-			}
-			if (buttonState == fplButtonState_Press) {
-				wapi->user.SetCapture(hwnd);
-			} else {
-				wapi->user.ReleaseCapture();
-			}
-			fplMouseButtonType mouseButton;
-			if (msg == WM_LBUTTONDOWN || msg == WM_LBUTTONUP) {
-				mouseButton = fplMouseButtonType_Left;
-			} else if (msg == WM_RBUTTONDOWN || msg == WM_RBUTTONUP) {
-				mouseButton = fplMouseButtonType_Right;
-			} else if (msg == WM_MBUTTONDOWN || msg == WM_MBUTTONUP) {
-				mouseButton = fplMouseButtonType_Middle;
-			} else {
-				mouseButton = fplMouseButtonType_None;
-			}
-			if (mouseButton != fplMouseButtonType_None) {
-				int32_t mouseX = GET_X_LPARAM(lParam);
-				int32_t mouseY = GET_Y_LPARAM(lParam);
-				fpl__HandleMouseButtonEvent(&appState->window, mouseX, mouseY, mouseButton, buttonState);
+			if (!appState->currentSettings.input.disabledEvents) {
+				fplButtonState buttonState;
+				if (msg == WM_LBUTTONDOWN || msg == WM_RBUTTONDOWN || msg == WM_MBUTTONDOWN) {
+					buttonState = fplButtonState_Press;
+				} else {
+					buttonState = fplButtonState_Release;
+				}
+				if (buttonState == fplButtonState_Press) {
+					wapi->user.SetCapture(hwnd);
+				} else {
+					wapi->user.ReleaseCapture();
+				}
+				fplMouseButtonType mouseButton;
+				if (msg == WM_LBUTTONDOWN || msg == WM_LBUTTONUP) {
+					mouseButton = fplMouseButtonType_Left;
+				} else if (msg == WM_RBUTTONDOWN || msg == WM_RBUTTONUP) {
+					mouseButton = fplMouseButtonType_Right;
+				} else if (msg == WM_MBUTTONDOWN || msg == WM_MBUTTONUP) {
+					mouseButton = fplMouseButtonType_Middle;
+				} else {
+					mouseButton = fplMouseButtonType_None;
+				}
+				if (mouseButton != fplMouseButtonType_None) {
+					int32_t mouseX = GET_X_LPARAM(lParam);
+					int32_t mouseY = GET_Y_LPARAM(lParam);
+					fpl__HandleMouseButtonEvent(&appState->window, mouseX, mouseY, mouseButton, buttonState);
+				}
 			}
 		} break;
 		case WM_MOUSEMOVE:
 		{
-			int32_t mouseX = GET_X_LPARAM(lParam);
-			int32_t mouseY = GET_Y_LPARAM(lParam);
-			fpl__HandleMouseMoveEvent(&appState->window, mouseX, mouseY);
+			if (!appState->currentSettings.input.disabledEvents) {
+				int32_t mouseX = GET_X_LPARAM(lParam);
+				int32_t mouseY = GET_Y_LPARAM(lParam);
+				fpl__HandleMouseMoveEvent(&appState->window, mouseX, mouseY);
+			}
 		} break;
 		case WM_MOUSEWHEEL:
 		{
@@ -12561,16 +12568,6 @@ fpl_platform_api void fplSetWindowCursorEnabled(const bool value) {
 	windowState->isCursorActive = value;
 }
 
-fpl_internal void fpl__Win32FlushInputMessages(const fpl__Win32Api *wapi, fpl__Win32WindowState *windowState, fpl__PlatformAppState *appState) {
-	if (appState->currentSettings.input.disabledEvents) {
-		MSG msg;
-		while (wapi->user.PeekMessageW(&msg, windowState->windowHandle, WM_KEYFIRST, WM_KEYLAST, PM_REMOVE) != 0) { ; }
-		// @NOTE(final): We want to keep the mouse wheel message
-		UINT lastMouseMsg = WM_MOUSEHWHEEL - 1;
-		while (wapi->user.PeekMessageW(&msg, windowState->windowHandle, WM_MOUSEFIRST, lastMouseMsg, PM_REMOVE) != 0) { ; }
-	}
-}
-
 fpl_internal void fpl__Win32HandleMessage(const fpl__Win32Api *wapi, fpl__PlatformAppState *appState, fpl__Win32WindowState *windowState, MSG *msg) {
 	if (appState->currentSettings.window.callbacks.eventCallback != fpl_null) {
 		appState->currentSettings.window.callbacks.eventCallback(fplGetPlatformType(), windowState, &msg, appState->currentSettings.window.callbacks.eventUserData);
@@ -12582,9 +12579,6 @@ fpl_internal void fpl__Win32HandleMessage(const fpl__Win32Api *wapi, fpl__Platfo
 fpl_internal bool fpl__Win32ProcessNextEvent(const fpl__Win32Api *wapi, fpl__PlatformAppState *appState, fpl__Win32WindowState *windowState) {
 	bool result = false;
 	if (windowState->windowHandle != 0) {
-		if (appState->currentSettings.input.disabledEvents) {
-			fpl__Win32FlushInputMessages(wapi, windowState, appState);
-		}
 		MSG msg;
 		if (wapi->user.PeekMessageW(&msg, windowState->windowHandle, 0, 0, PM_REMOVE) == TRUE) {
 			fpl__Win32HandleMessage(wapi, appState, windowState, &msg);
@@ -12629,9 +12623,6 @@ fpl_platform_api void fplPollEvents() {
 	const fpl__Win32InitState *win32InitState = &fpl__global__InitState.win32;
 	const fpl__Win32Api *wapi = &win32AppState->winApi;
 	if (windowState->windowHandle != 0) {
-		if (appState->currentSettings.input.disabledEvents) {
-			fpl__Win32FlushInputMessages(wapi, windowState, appState);
-		}
 		MSG msg;
 		while (wapi->user.PeekMessageW(&msg, windowState->windowHandle, 0, 0, PM_REMOVE)) {
 			fpl__Win32HandleMessage(wapi, appState, windowState, &msg);
