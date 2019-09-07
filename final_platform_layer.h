@@ -203,6 +203,7 @@ SOFTWARE.
 	- Fixed: [POSIX] Moved __sync_synchronize before __sync_lock_test_and_set in fplAtomicStore*
 	- Fixed: [POSIX/Win32] fplAtomicAddAndFetch* uses now addend parameter
 	- Fixed: [Linux] Previous gamepad state was not cleared before filling in the new state
+	- Fixed: [X11] Gamepad controller handling was broken
 
 	- Changed: [POSIX] Use __sync_add_and_fetch instead of __sync_fetch_and_or in fplAtomicLoad*
 	- Changed: [POSIX/Win32] When a dynamic library failed to load, it will push on a warning instead of a error
@@ -15658,8 +15659,11 @@ fpl_internal float fpl__LinuxJoystickProcessStickValue(const int16_t value, cons
 	return(result);
 }
 
-fpl_internal void fpl__LinuxPushGameControllerStateUpdateEvent(const struct js_event *event, fplGamepadState *padState) {
-	fplGamepadButton *buttonMappingTable[12] = fplZeroInit;
+fpl_internal void fpl__LinuxPushGameControllerStateUpdateEvent(const struct js_event *event, fpl__LinuxGameController *controller) {
+    fplGamepadState *padState = &controller->state;
+
+    // @TODO(final): Use a static offset table instead of a pointer mapping table
+    fplGamepadButton *buttonMappingTable[12] = fplZeroInit;
 	buttonMappingTable[0] = &padState->actionA;
 	buttonMappingTable[1] = &padState->actionB;
 	buttonMappingTable[2] = &padState->actionX;
@@ -15748,18 +15752,15 @@ fpl_internal void fpl__LinuxPushGameControllerStateUpdateEvent(const struct js_e
 		{
 			if ((event->number >= 0) && (event->number < fplArrayCount(buttonMappingTable))) {
 				fplGamepadButton *mappedButton = buttonMappingTable[event->number];
-				if (mappedButton != fpl_null) {
-					mappedButton->isDown = event->value != 0;
-				}
+                if (mappedButton != fpl_null) {
+                    mappedButton->isDown = event->value != 0;
+                }
 			}
 		} break;
 
 		default:
 			break;
 	}
-
-	padState->isActive = !fpl__IsZeroMemory(padState, sizeof(*padState));
-	padState->isConnected = true;
 }
 
 fpl_internal void fpl__LinuxPollGameControllers(const fplSettings *settings, fpl__LinuxGameControllersState *controllersState, const bool useEvents) {
@@ -15818,51 +15819,60 @@ fpl_internal void fpl__LinuxPollGameControllers(const fplSettings *settings, fpl
 				fcntl(fd, F_SETFL, O_NONBLOCK);
 
 				if (useEvents) {
-					// Connected
+					// Push connected event
 					fplEvent ev = fplZeroInit;
 					ev.type = fplEventType_Gamepad;
 					ev.gamepad.type = fplGamepadEventType_Connected;
 					ev.gamepad.deviceIndex = (uint32_t)freeIndex;
+                    ev.gamepad.deviceName = controller->deviceName;
 					fpl__PushInternalEvent(&ev);
 				}
 			}
 		}
 	}
 
-
+    // Update controller states
 	for (uint32_t controllerIndex = 0; controllerIndex < fplArrayCount(controllersState->controllers); ++controllerIndex) {
 		fpl__LinuxGameController *controller = controllersState->controllers + controllerIndex;
 		if (controller->fd > 0) {
 			// Update button/axis state
-			fplClearStruct(&controller->state);
 			struct js_event event;
+            bool wasDisconnected = false;
 			for (;;) {
 				errno = 0;
 				if (read(controller->fd, &event, sizeof(event)) < 0) {
 					if (errno == ENODEV) {
 						close(controller->fd);
 						controller->fd = 0;
+						fplClearStruct(&controller->state);
+                        wasDisconnected = true;
 						if (useEvents) {
-							// Disconnected
+							// Push disconnected event
 							fplEvent ev = fplZeroInit;
 							ev.type = fplEventType_Gamepad;
 							ev.gamepad.type = fplGamepadEventType_Disconnected;
 							ev.gamepad.deviceIndex = controllerIndex;
+                            ev.gamepad.deviceName = controller->deviceName;
 							fpl__PushInternalEvent(&ev);
 						}
 					}
 					break;
 				}
-				fpl__LinuxPushGameControllerStateUpdateEvent(&event, &controller->state);
+				fpl__LinuxPushGameControllerStateUpdateEvent(&event, controller);
 			}
+            
+            controller->state.isActive = !fpl__IsZeroMemory(&controller->state, sizeof(fplGamepadState));
+            controller->state.isConnected = !wasDisconnected;
+            controller->state.deviceName = controller->deviceName;            
 
 			if (controller->fd > 0) {
 				if (useEvents) {
-					// Update state
+					// Push state event
 					fplEvent ev = fplZeroInit;
 					ev.type = fplEventType_Gamepad;
 					ev.gamepad.type = fplGamepadEventType_StateChanged;
-					ev.gamepad.deviceIndex = 0;
+					ev.gamepad.deviceIndex = controllerIndex;
+                    ev.gamepad.deviceName = controller->deviceName;
 					ev.gamepad.state = controller->state;
 					fpl__PushInternalEvent(&ev);
 				}
@@ -15879,7 +15889,7 @@ fpl_platform_api bool fplPollGamepadStates(fplGamepadStates *outStates) {
 #if defined(FPL_PLATFORM_LINUX)
 		fpl__LinuxGameControllersState *controllersState = &appState->plinux.controllersState;
 		fpl__LinuxPollGameControllers(&appState->currentSettings, controllersState, false);
-		fplClearStruct(outStates);
+        
 		fplAssert(fplArrayCount(controllersState->controllers) == fplArrayCount(outStates->deviceStates));
 		for (int i = 0; i < fplArrayCount(controllersState->controllers); ++i) {
 			outStates->deviceStates[i] = controllersState->controllers[i].state;
