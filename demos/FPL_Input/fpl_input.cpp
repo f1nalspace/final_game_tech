@@ -23,6 +23,7 @@ Changelog:
 	- Draw mouse wheel delta for 500 msecs
 	- Fixed euro key in german layout
 	- Added text input
+	- Toggle polling using F5
 
 	## 2018-10-22
 	- Reflect api changes in FPL 0.9.3
@@ -1230,10 +1231,10 @@ static void RenderApp(AppState* appState, const InputState* input, const uint32_
 	wchar_t wideTextBuffer[256];
 	glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
 	if (appState->renderMode == RenderMode::KeyboardAndMouse) {
-		fplFormatString(textBuffer, fplArrayCount(textBuffer), "Keyboard: %s (Polling: %s)", keyDefinitions->name, (appState->usePolling ? "yes" : "no"));
+		fplFormatString(textBuffer, fplArrayCount(textBuffer), "Keyboard: %s (%s)", keyDefinitions->name, (appState->usePolling ? "Use polling" : "Use events"));
 	} else if (appState->renderMode == RenderMode::Gamepad) {
 		const char* controllerName = input->gamepadState.deviceName;
-		fplFormatString(textBuffer, fplArrayCount(textBuffer), "Gamepad: %s (Polling: %s)", (controllerName == fpl_null ? "No controller detected" : controllerName), (appState->usePolling ? "yes" : "no"));
+		fplFormatString(textBuffer, fplArrayCount(textBuffer), "Gamepad: %s (%s)", (controllerName == fpl_null ? "No controller detected" : controllerName), (appState->usePolling ? "Use polling" : "Use events"));
 	}
 	fplUTF8StringToWideString(textBuffer, fplGetStringLength(textBuffer), wideTextBuffer, fplArrayCount(wideTextBuffer));
 	DrawTextFont(wideTextBuffer, 1, &appState->osdFontData, &appState->osdFontTexture, 0, h - osdFontHeight, osdFontHeight, 0.0f, 0.0f);
@@ -1500,8 +1501,13 @@ static void SetButtonStateFromModifier(InputState* input, const fplKeyboardState
 	}
 }
 
-static bool KeyWasDown(const fplButtonState oldState, const fplButtonState newState) {
+static bool KeyWasPressed(const fplButtonState oldState, const fplButtonState newState) {
 	bool result = (oldState != newState) && (newState == fplButtonState_Release);
+	return(result);
+}
+
+static bool KeyIsDown(const fplButtonState newState) {
+	bool result = newState >= fplButtonState_Press;
 	return(result);
 }
 
@@ -1553,11 +1559,9 @@ static void HandleKeyPressed(AppState* appState, InputState *input, const fplKey
 		case fplKey_F2:
 			appState->renderMode = RenderMode::Gamepad;
 			break;
-		case fplKey_Backspace:
-			if (input->textLen > 0) {
-				input->text[input->textLen - 1] = 0;
-				--input->textLen;
-			}
+		case fplKey_F5:
+			appState->usePolling = !appState->usePolling;
+			fplSetWindowInputEvents(!appState->usePolling);
 			break;
 		case fplKey_Tab:
 			InsertInputText(input, L"    ");
@@ -1576,7 +1580,6 @@ static void HandleKeyPressed(AppState* appState, InputState *input, const fplKey
 int main(int argc, char* argv[]) {
 	AppState* appState = (AppState*)fplMemoryAllocate(sizeof(AppState));
 	fplSettings settings = fplMakeDefaultSettings();
-	settings.input.disabledEvents = appState->usePolling;
 	fplCopyString("FPL Input Demo", settings.window.title, fplArrayCount(settings.window.title));
 	int retCode = 0;
 	if (fplPlatformInit(fplInitFlags_All, &settings)) {
@@ -1584,6 +1587,7 @@ int main(int argc, char* argv[]) {
 			InputState input = {};
 			fplButtonState lastKeyStates[256] = {};
 			InitApp(appState);
+			fplSetWindowInputEvents(!appState->usePolling);
 			while (fplWindowUpdate()) {
 				fplEvent ev;
 				while (fplPollEvent(&ev)) {
@@ -1643,8 +1647,10 @@ int main(int argc, char* argv[]) {
 				if (fplPollKeyboardState(&keyboardState)) {
 					if (appState->usePolling) {
 						for (int i = 0; i < 256; ++i) {
-							if (KeyWasDown(lastKeyStates[i], keyboardState.buttonStatesMapped[i])) {
+							if (KeyWasPressed(lastKeyStates[i], keyboardState.buttonStatesMapped[i])) {
 								HandleKeyPressed(appState, &input, (fplKey)i);
+							} else if (KeyIsDown(keyboardState.buttonStatesMapped[i])) {
+								HandleKeyDown(appState, &input, (fplKey)i);
 							}
 							input.keyStates[i] = keyboardState.buttonStatesMapped[i];
 							lastKeyStates[i] = input.keyStates[i];
