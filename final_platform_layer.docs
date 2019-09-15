@@ -1947,7 +1947,7 @@
 	@page page_category_hardware Query Hardware informations
 	@tableofcontents
 
-	FPL provides a couple of functions for getting hardware functions, such as CPU core count, name, memory info, etc.<br>
+	FPL provides a couple of functions for getting hardware functions, such as CPU & memory infos, etc.<br>
 
 	@section section_category_hardware_corecount Get number of CPU-Cores
 
@@ -1962,7 +1962,7 @@
 
 	@section section_category_hardware_cpuarch Get CPU architecture
 
-	You can query the CPU architecture type by calling fplGetProcessorArchitecture() . This will return a @ref fplArchType value which you can use test for certain types.<br>
+	You can query the CPU architecture type by calling @ref fplGetProcessorArchitecture() . This will return a @ref fplArchType value, which you can use test for different architecture types.<br>
 	<br>
 	Use @ref fplGetArchTypeString() to convert a @ref fplArchType into a string.<br>
 
@@ -1979,7 +1979,7 @@
 	
 	@section section_category_hardware_cpuname Get the CPU Name
 
-	You can query the CPU name by calling fplGetProcessorName() .
+	You can query the CPU name by calling @ref fplGetProcessorName() .
 
 	@code{.c}
 	// Print out the CPU-Name
@@ -1998,6 +1998,19 @@
 	fplMemoryInfos memInfos = fplZeroInit;
 	if (fplGetRunningMemoryInfos(&memInfos)) {
 		fplConsoleFormatOut("%llu of %llu physical memory is available.\n", memInfos.freePhysicalSize, memInfos.totalPhysicalSize);
+	}
+	@endcode
+
+	@section section_category_hardware_cpucaps Query CPU Capabilities
+	
+	Use the @ref fplGetProcessorCapabilities() to retrieve a full set of available processor capabilities, like MMX/SSE/AVX support, etc.
+
+	@code{.c}
+	fplProcessorCapabilities caps = fplZeroInit;
+	if (fplGetProcessorCapabilities(&caps)) {
+		if (caps.x86.hasSSE2) {
+			// Do something when the x86 CPU supports SSE2 - this should be true, on most modern x86 CPUs.
+		}
 	}
 	@endcode
 */
