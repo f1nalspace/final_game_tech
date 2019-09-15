@@ -146,9 +146,6 @@ SOFTWARE.
 	- New: Print out function name and line number in all log outputs
 	- New: Added functions fplAtomicIncrement* used for incrementing a value by one atomically
 	- New: Added macro fplRDTSC
-	- New: Added struct fplCPUIDLeaf
-	- New: Added macro fplCPUID with fallback
-	- New: Added macro fplXCR0 with fallback
 	- New: Added struct fplProcessorCapabilities
 	- New: Added function fplGetProcessorCapabilities
 	- New: Added macro fplIsBitSet
@@ -156,6 +153,9 @@ SOFTWARE.
 	- New: Added field isActive to struct fplGamepadState
 	- New: Added field deviceName to struct fplGamepadState and fplGamepadEvent
 	- New: Added function fplSetWindowInputEvents
+	- New: Added struct fplCPUIDLeaf
+	- New: Added function fplCPUID and implemented it for X86/X64
+	- New: Added function fplGetXCR0 and implemented it for X86/X64
 
 	- Fixed: Corrected opengl example code in the header file
 	- Fixed: Tons of documentation improvements
@@ -164,6 +164,7 @@ SOFTWARE.
 	- Fixed: All non inlineable functions changed from fpl_internal_inline to fpl_internal instead (GCC/Clang compatible)
 	- Fixed: Use actual window size for video initialization always instead of fixed size
 	- Fixed: fplAtomicAddAndFetch* had no addend parameter
+	- Fixed: All non-tab spacings replaced with tab spacings
 
 	- Changed: Removed fake thread-safe implementation of the internal event queue
 	- Changed: Changed drop event structure in fplWindowEvent to support multiple dropped files
@@ -1493,9 +1494,9 @@ SOFTWARE.
 
 // MingW compiler hack
 #if defined(FPL_SUBPLATFORM_WINDOWS) && defined(FPL_COMPILER_MINGW)
-#   if !defined(_WIN32_WINNT)
-#       define _WIN32_WINNT 0x0600
-#   endif //!_WIN32_WINNT
+#	if !defined(_WIN32_WINNT)
+#		define _WIN32_WINNT 0x0600
+#	endif //!_WIN32_WINNT
 #endif // FPL_COMPILER_MINGW
 
 //
@@ -1508,7 +1509,7 @@ SOFTWARE.
   * @{
   */
 
-  //! Global persistent variable
+//! Global persistent variable
 #define fpl_globalvar static
 //! Local persistent variable
 #define fpl_localvar static
@@ -1520,9 +1521,9 @@ SOFTWARE.
 #define fpl_internal_inline inline
 //! External call
 #if defined(FPL_IS_CPP)
-#   define fpl_extern
+#	define fpl_extern
 #else
-#   define fpl_extern extern
+#	define fpl_extern extern
 #endif
 
 //
@@ -1674,7 +1675,7 @@ SOFTWARE.
 #	endif
 
 	// Function name macro (Win32)
-#   define FPL__M_FUNCTION_NAME __FUNCTION__
+#	define FPL__M_FUNCTION_NAME __FUNCTION__
 
 	// Setup MSVC subsystem hints
 #	if defined(FPL_APPTYPE_WINDOW)
@@ -1692,7 +1693,7 @@ SOFTWARE.
 #	endif
 
 	// Function name macro (Other compilers)
-#   define FPL__M_FUNCTION_NAME __FUNCTION__
+#	define FPL__M_FUNCTION_NAME __FUNCTION__
 #endif // FPL_COMPILER
 
 // Debug Release fallback
@@ -1837,7 +1838,7 @@ SOFTWARE.
 #endif // FPL__SUPPORT_AUDIO
 
 #if defined(FPL_LOGGING)
-#   define FPL__ENABLE_LOGGING
+#	define FPL__ENABLE_LOGGING
 #	if defined(FPL_LOG_MULTIPLE_WRITERS)
 #		define FPL__ENABLE_LOG_MULTIPLE_WRITERS
 #	endif
@@ -1857,24 +1858,24 @@ SOFTWARE.
 #	if defined(FPL__ENABLE_C_ASSERT) && !defined(FPL_FORCE_ASSERTIONS)
 #		define FPL__INCLUDE_ASSERT
 #		define fpl__m_Assert(exp) assert(exp)
-#       if defined(__cplusplus)
-#		    define fpl__m_StaticAssert(exp) static_assert(exp, "fpl_static_assert")
-#       endif
+#		if defined(__cplusplus)
+#			define fpl__m_StaticAssert(exp) static_assert(exp, "fpl_static_assert")
+#		endif
 #	else
-#	define fpl__m_Assert(exp) if(!(exp)) {*(int *)0 = 0;}
+#		define fpl__m_Assert(exp) if(!(exp)) {*(int *)0 = 0;}
 #	endif // FPL__ENABLE_C_ASSERT
-#   if !defined(fpl__m_StaticAssert)
-#	    define FPL__M_STATICASSERT_0(exp, line, counter) \
-		    int fpl__ct_assert_##line_##counter(int ct_assert_failed[(exp)?1:-1])
-#	    define fpl__m_StaticAssert(exp) \
-		    FPL__M_STATICASSERT_0(exp, __LINE__, __COUNTER__)
-#   endif
+#	if !defined(fpl__m_StaticAssert)
+#		define FPL__M_STATICASSERT_0(exp, line, counter) \
+			int fpl__ct_assert_##line_##counter(int ct_assert_failed[(exp)?1:-1])
+#		define fpl__m_StaticAssert(exp) \
+			FPL__M_STATICASSERT_0(exp, __LINE__, __COUNTER__)
+#	endif
 #else
 #	define fpl__m_Assert(exp)
 #	define fpl__m_StaticAssert(exp)
 #endif // FPL__ENABLE_ASSERTIONS
 
-  //! Runtime assertion
+//! Runtime assertion
 #define fplAssert(exp) fpl__m_Assert(exp)
 //! Compile time assertion
 #define fplStaticAssert(exp) fpl__m_StaticAssert(exp)
@@ -1904,7 +1905,7 @@ fpl_internal fpl_force_inline void fpl__m_DebugBreak() { __asm__ __volatile__(".
 #	elif defined(FPL_ARCH_ARM32)
 fpl_internal fpl_force_inline void fpl__m_DebugBreak() { __asm__ __volatile__(".inst 0xe7f001f0"); }
 #	elif defined(FPL_COMPILER_GCC)
-#       define fpl__m_DebugBreak() __builtin_trap()
+#		define fpl__m_DebugBreak() __builtin_trap()
 #	else
 #		define FPL__INCLUDE_SIGNAL
 #		if defined(SIGTRAP)
@@ -1987,7 +1988,7 @@ fpl_common_api void fplMemoryClear(void *mem, const size_t size);
   * @{
   */
 
-  //! This will full-on crash when something is not implemented always.
+//! This will full-on crash when something is not implemented always.
 #define FPL_NOT_IMPLEMENTED {*(int *)0 = 0xBAD;}
 
 #if defined(FPL_IS_C99)
@@ -2008,7 +2009,7 @@ fpl_common_api void fplMemoryClear(void *mem, const size_t size);
 #define fplStructInit fpl__m_StructInit
 
 //! Returns the offset for the value to satisfy the given alignment boundary
-#define fplGetAlignmentOffset(value, alignment) ( (((alignment) > 1) && (((value) & ((alignment) - 1)) != 0)) ? ((alignment) - ((value) & (alignment - 1))) : 0)           
+#define fplGetAlignmentOffset(value, alignment) ( (((alignment) > 1) && (((value) & ((alignment) - 1)) != 0)) ? ((alignment) - ((value) & (alignment - 1))) : 0)			
 //! Returns the given size, extended to satisfy the given alignment boundary
 #define fplGetAlignedSize(size, alignment) (((size) > 0 && (alignment) > 0) ? ((size) + fplGetAlignmentOffset(size, alignment)) : (size))
 //! Returns true when the given pointer address is aligned to the given alignment
@@ -2054,104 +2055,40 @@ fpl_common_api void fplMemoryClear(void *mem, const size_t size);
 #define fplStackAllocate(size) fpl__m_StackAllocate(size)
 
 //
-// RDTSC
+// RDTSC (x86 only)
 //
-#if defined(FPL_COMPILER_MSVC)
-#	define fpl__rdtsc() ((uint64_t)__rdtsc())
-#elif defined(FPL_ARCH_X86)
-fpl_force_inline uint64_t fpl__rdtsc(void) {
+#if defined(FPL_ARCH_X86) || defined(FPL_ARCH_X64)
+#	if defined(FPL_COMPILER_MSVC)
+#		define fpl__m_RDTSC() ((uint64_t)__rdtsc())
+#	elif defined(FPL_ARCH_X86)
+fpl_force_inline uint64_t fpl__m_RDTSC(void) {
 	unsigned long long int result;
 	__asm__ volatile (".byte 0x0f, 0x31" : "=A" (result));
 	return((uint64_t)result);
 }
-#elif defined(FPL_ARCH_X64)
-fpl_force_inline uint64_t fpl__rdtsc(void) {
+#	elif defined(FPL_ARCH_X64)
+fpl_force_inline uint64_t fpl__m_RDTSC(void) {
 	unsigned hi, lo;
 	__asm__ __volatile__("rdtsc" : "=a"(lo), "=d"(hi));
 	uint64_t result = (uint64_t)(((unsigned long long)lo) | (((unsigned long long)hi) << 32));
 	return (result);
 }
+#	else
+#		error "Not implemented RDTSC for unknown x86 platform!"
+#	endif
 #else
-	// @TODO(final): Fallback for rdtsc!
-#	error "Unsupported Platform/Compiler"
+fpl_force_inline uint64_t fpl__m_RDTSC(void) {
+	return(0ULL);
+}
 #endif
-
-//! Reads the current time stamp counter (RDTSC)
-#define fplRDTSC() fpl__rdtsc()
-
-//
-// CPU-ID
-//
-
-//! A structure containing one leaf of CPU-ID infos (eax to edx)
-typedef union fplCPUIDLeaf {
-	struct {
-		//! EAX value
-		uint32_t eax;
-		//! EBX value
-		uint32_t ebx;
-		//! ECX value
-		uint32_t ecx;
-		//! EDX value
-		uint32_t edx;
-	};
-	//! Raw values
-	uint32_t raw[4];
-} fplCPUIDLeaf;
-
-#if defined(FPL_COMPILER_MSVC)
-#	if _MSC_VER >= 1400
-#		define fpl__CPUID(outLeaf, functionId) __cpuid((int *)(outLeaf)->raw, (int)(functionId))
-#	endif
-#	if _MSC_VER >= 1600
-#		define fpl__GetXCR0() ((uint64_t)_xgetbv(0))
-#	endif
-#elif defined(FPL_COMPILER_GCC) ||defined(FPL_COMPILER_CLANG)
-fpl_internal void fpl__CPUID_GCC(fplCPUIDLeaf *outLeaf, const uint32_t functionId) {
-	int eax = 0, ebx = 0, ecx = 0, edx = 0;
-	__cpuid_count(functionId, 0, eax, ebx, ecx, edx);
-	outLeaf->eax = eax;
-	outLeaf->ebx = ebx;
-	outLeaf->ecx = ecx;
-	outLeaf->edx = edx;
-}
-#	define fpl__CPUID(outLeaf, functionId) fpl__CPUID_GCC(outLeaf, functionId)
-fpl_internal uint64_t fpl__GetXCR0_GCC(void) {
-	uint32_t eax, edx;
-	__asm(".byte 0x0F, 0x01, 0xd0" : "=a"(eax), "=d"(edx) : "c"(0));
-	return eax;
-}
-#	define fpl__GetXCR0() fpl__GetXCR0_GCC()
-#endif
-
-// Fallbacks
-#if !defined(fpl__CPUID)
-fpl_internal void fpl__NoCPUID(fplCPUIDLeaf *outLeaf) {
-	fplClearStruct(outLeaf);
-}
-#	define fpl__CPUID(outLeaf, functionId) fpl__NoCPUID(outLeaf)
-#endif // !fpl__CPUID
-#if !defined(fpl__GetXCR0)
-fpl_internal uint64_t fpl__NoXCR0() {
-	return((uint64_t)0);
-}
-#	define fpl__GetXCR0() fpl__NoXCR0()
-#endif // !fpl__GetXCR0
 
 /**
-  * @brief Retrieves the CPU-ID leaf for the given function id
-  * @param outLeaf Pointer to a @ref fplCPUIDLeaf
-  * @param functionId The function id
+  * @brief Reads the current time stamp counter (RDTSC), which is only available on x86 processors.
+  * @return Returns the number of cycles since the system start or returns zero on a non-x86 processor.
   */
-#define fplCPUID(outLeaf, functionId) fpl__CPUID(outLeaf, functionId)
+#define fplRDTSC() fpl__m_RDTSC()
 
-  /**
-	* @brief Retrieves the Extended Control Register Value for Zero
-	* @return Returns zero or the value from the extended control register
-	*/
-#define fplGetXCR0() fpl__GetXCR0()
-
-	/** @} */
+/** @} */
 
 #if defined(FPL_IS_CPP)
 #	define FPL__M_ENUM_AS_FLAGS_OPERATORS(etype) \
@@ -2212,10 +2149,10 @@ struct IUnknown;
 #endif // FPL_SUBPLATFORM_POSIX
 
 #if defined(FPL_SUBPLATFORM_X11)
-#   include <X11/X.h> // Window
-#   include <X11/Xlib.h> // Display
-#   include <X11/Xutil.h> // XVisualInfo
-#   include <X11/Xatom.h> // XA_CARDINAL
+#	include <X11/X.h> // Window
+#	include <X11/Xlib.h> // Display
+#	include <X11/Xutil.h> // XVisualInfo
+#	include <X11/Xatom.h> // XA_CARDINAL
 #endif // FPL_SUBPLATFORM_X11
 
 //
@@ -2240,7 +2177,7 @@ struct IUnknown;
 #	define FPL__M_FILE_EXT_SEPARATOR '.'
 #endif
 
-  //! Maximum length of a filename
+//! Maximum length of a filename
 #define FPL_MAX_FILENAME_LENGTH FPL__M_MAX_FILENAME_LENGTH
 //! Maximum length of a path
 #define FPL_MAX_PATH_LENGTH FPL__M_MAX_PATH_LENGTH
@@ -2855,7 +2792,7 @@ fpl_common_api void fplMemoryAlignedFree(void *ptr);
   */
   // ----------------------------------------------------------------------------
 
-  //! A type definition for mapping a part of a version number
+//! A type definition for mapping a part of a version number
 typedef char fplVersionNumberPart[4 + 1];
 
 //! A structure that contains version informations
@@ -2919,7 +2856,7 @@ fpl_platform_api bool fplGetCurrentUsername(char *nameBuffer, const size_t maxNa
   */
   // ----------------------------------------------------------------------------
 
-  //! A structure that contains informations about current memory usage
+//! A structure that contains informations about current memory usage
 typedef struct fplMemoryInfos {
 	//! Size of physical installed memory in bytes
 	uint64_t installedPhysicalSize;
@@ -2962,33 +2899,57 @@ typedef enum fplArchType {
 
 //! A structure that containing the processor capabilities, like MMX,SSE,AVX etc.
 typedef struct fplProcessorCapabilities {
-	//! X86 capabilities
-	struct {
-		//! Is MMX supported
-		fpl_b32 hasMMX;
-		//! Is SSE supported
-		fpl_b32 hasSSE;
-		//! Is SSE-2 supported
-		fpl_b32 hasSSE2;
-		//! Is SSE-3 supported
-		fpl_b32 hasSSE3;
-		//! Is SSSE-3 supported
-		fpl_b32 hasSSSE3;
-		//! Is SSE-4.1 supported
-		fpl_b32 hasSSE4_1;
-		//! Is SSE-4.2 supported
-		fpl_b32 hasSSE4_2;
-		//! Is AVX supported
-		fpl_b32 hasAVX;
-		//! Is AVX-2 supported
-		fpl_b32 hasAVX2;
-		//! Is AVX-512 supported
-		fpl_b32 hasAVX512;
-		//! Is FMA-3 supported
-		fpl_b32 hasFMA3;
-	} x86;
+	//! Is MMX supported
+	fpl_b32 hasMMX;
+	//! Is SSE supported
+	fpl_b32 hasSSE;
+	//! Is SSE-2 supported
+	fpl_b32 hasSSE2;
+	//! Is SSE-3 supported
+	fpl_b32 hasSSE3;
+	//! Is SSSE-3 supported
+	fpl_b32 hasSSSE3;
+	//! Is SSE-4.1 supported
+	fpl_b32 hasSSE4_1;
+	//! Is SSE-4.2 supported
+	fpl_b32 hasSSE4_2;
+	//! Is AVX supported
+	fpl_b32 hasAVX;
+	//! Is AVX-2 supported
+	fpl_b32 hasAVX2;
+	//! Is AVX-512 supported
+	fpl_b32 hasAVX512;
+	//! Is FMA-3 supported
+	fpl_b32 hasFMA3;
 } fplProcessorCapabilities;
 
+//! A structure containing the 4-registers (EAX, EBX, ECX, EDX) for a CPU-Leaf.
+typedef union fplCPUIDLeaf {
+	struct {
+		//! The 32-bit EAX Register
+		uint32_t eax;
+		//! The 32-bit EBX Register
+		uint32_t ebx;
+		//! The 32-bit ECX Register
+		uint32_t ecx;
+		//! The 32-bit EDX Register
+		uint32_t edx;
+	};
+	//! The raw 32-bit register array
+	uint32_t raw[4];
+} fplCPUIDLeaf;
+
+/**
+  * @brief Returns the x86 CPUID registers (EAX, EBX, ECX, EDX) for the given function id
+  * @param outLeaf The targt pointer to a @ref fplCPUIDLeaf structure
+  * @param functionId The function id
+  */
+fpl_common_api void fplCPUID(fplCPUIDLeaf *outLeaf, const uint32_t functionId);
+/**
+  * @brief Gets the x86 extended control register for index zero.
+  * @return Returns the extended control register on x86, or zero non-x86 archtectures.
+  */
+fpl_common_api uint64_t fplGetXCR0();
 /**
   * @brief Gets the string representation of the given architecture type
   * @param type The @ref fplArchType enumeration value
@@ -3014,6 +2975,7 @@ fpl_common_api char *fplGetProcessorName(char *destBuffer, const size_t maxDestB
   * @brief Gets the capabilities of the processor.
   * @param outCaps Pointer to the output @ref fplProcessorCapabilities
   * @return Returns true when the capabilities could be retrieved, false otherwise.
+  * @see @ref section_category_hardware_cpucaps
   */
 fpl_common_api bool fplGetProcessorCapabilities(fplProcessorCapabilities *outCaps);
 /**
@@ -3040,7 +3002,7 @@ fpl_platform_api bool fplGetRunningMemoryInfos(fplMemoryInfos *outInfos);
   */
   // ----------------------------------------------------------------------------
 
-  //! An enumeration of initialization flags
+//! An enumeration of initialization flags
 typedef enum fplInitFlags {
 	//! No init flags
 	fplInitFlags_None = 0,
@@ -3566,7 +3528,7 @@ fpl_common_api void fplPlatformRelease();
   */
   // ----------------------------------------------------------------------------
 
-  //! An enumeration of log levels
+//! An enumeration of log levels
 typedef enum fplLogLevel {
 	//! All
 	fplLogLevel_All = -1,
@@ -3750,7 +3712,7 @@ fpl_common_api void fplClearErrors();
   */
   // ----------------------------------------------------------------------------
 
-  //! A union containing the library handle for any platform
+//! A union containing the library handle for any platform
 typedef union fplInternalDynamicLibraryHandle {
 #if defined(FPL_PLATFORM_WINDOWS)
 	//! Win32 library handle
@@ -3918,7 +3880,7 @@ fpl_platform_api uint64_t fplGetTimeInMilliseconds();
   */
   // ----------------------------------------------------------------------------
 
-  //! A type definition for a timeout value in milliseconds
+//! A type definition for a timeout value in milliseconds
 typedef uint32_t fplTimeoutValue;
 //! Infinite timeout constant
 #define FPL_TIMEOUT_INFINITE UINT32_MAX
@@ -3961,7 +3923,7 @@ typedef struct fplThreadHandle fplThreadHandle;
   * @param thread The thread handle @ref fplThreadHandle
   * @param data The user data pointer
   */
-  //! Run callback type definition for @ref fplThreadCreate()
+//! Run callback type definition for @ref fplThreadCreate()
 typedef void (fpl_run_thread_callback)(const fplThreadHandle *thread, void *data);
 
 //! A union containing the thread handle for any platform
@@ -4522,7 +4484,7 @@ fpl_common_api char *fplS32ToString(const int32_t value, char *buffer, const siz
   */
   // ----------------------------------------------------------------------------
 
-  //! A union containing the internal file handle for any platform
+//! A union containing the internal file handle for any platform
 typedef union fplInternalFileHandle {
 #if defined(FPL_PLATFORM_WINDOWS)
 	//! Win32 file handle
@@ -5024,7 +4986,7 @@ fpl_common_api char *fplPathCombine(char *destPath, const size_t maxDestPathLen,
   */
   // ----------------------------------------------------------------------------
 
-  //! An enumeration of mapped keys (Based on MS Virtual-Key-Codes, mostly directly mapped from ASCII)
+//! An enumeration of mapped keys (Based on MS Virtual-Key-Codes, mostly directly mapped from ASCII)
 typedef enum fplKey {
 	fplKey_None = 0,
 
@@ -5553,7 +5515,7 @@ fpl_platform_api void fplPollEvents();
   */
   // ----------------------------------------------------------------------------
 
-  //! Max number of keyboard states
+//! Max number of keyboard states
 #define FPL_MAX_KEYBOARD_STATE_COUNT 256
 
 //! A struct containing the full keyboard state
@@ -5614,7 +5576,7 @@ fpl_platform_api bool fplPollMouseState(fplMouseState *outState);
   */
   // ----------------------------------------------------------------------------
 
-  //! A structure containing the position of a window
+//! A structure containing the position of a window
 typedef struct fplWindowPosition {
 	//! Left position in screen coordinates
 	int32_t left;
@@ -5787,7 +5749,7 @@ fpl_common_api void fplSetWindowInputEvents(const bool enabled);
   */
   // ----------------------------------------------------------------------------
 
-  //! A struct containing informations about a display
+//! A struct containing informations about a display
 typedef struct fplDisplayInfo {
 	//! ID of the display
 	char id[FPL_MAX_NAME_LENGTH];
@@ -5896,7 +5858,7 @@ fpl_platform_api bool fplSetClipboardText(const char *text);
   */
   // ----------------------------------------------------------------------------
 
-  //! A structure defining a video rectangles position and size
+//! A structure defining a video rectangles position and size
 typedef struct fplVideoRect {
 	//! Left position in pixels
 	int32_t x;
@@ -5981,7 +5943,7 @@ fpl_common_api void fplVideoFlip();
   */
   // ----------------------------------------------------------------------------
 
-  //! An enumeration of audio results
+//! An enumeration of audio results
 typedef enum fplAudioResult {
 	fplAudioResult_None = 0,
 	fplAudioResult_Success,
@@ -6084,7 +6046,7 @@ fpl_common_api void fplConvertAudioTargetFormatToDeviceFormat(const fplAudioTarg
   */
   // ----------------------------------------------------------------------------
 
-  //! A enumeration of locale formats
+//! A enumeration of locale formats
 typedef enum fplLocaleFormat {
 	//! No locale format
 	fplLocaleFormat_None = 0,
@@ -6368,8 +6330,8 @@ fpl_internal void fpl__LogWriteVarArgs(const char* funcName, const int lineNumbe
 #	define FPL_LOG_DEBUG(mod, format, ...) FPL_LOG(fplLogLevel_Debug, mod, format, ## __VA_ARGS__)
 #	define FPL_LOG_TRACE(mod, format, ...) FPL_LOG(fplLogLevel_Trace, mod, format, ## __VA_ARGS__)
 
-#   define FPL__LOG_FUNCTION_N(mod, name) FPL_LOG(fplLogLevel_Debug, mod, "-> %s()", name)
-#   define FPL_LOG_FUNCTION(mod) FPL__LOG_FUNCTION_N(mod, FPL_FUNCTION_NAME)
+#	define FPL__LOG_FUNCTION_N(mod, name) FPL_LOG(fplLogLevel_Debug, mod, "-> %s()", name)
+#	define FPL_LOG_FUNCTION(mod) FPL__LOG_FUNCTION_N(mod, FPL_FUNCTION_NAME)
 
 #else
 
@@ -6377,10 +6339,10 @@ fpl_internal void fpl__LogWriteVarArgs(const char* funcName, const int lineNumbe
 #	define FPL_LOG_CRITICAL(mod, format, ...)
 #	define FPL_LOG_ERROR(mod, format, ...)
 #	define FPL_LOG_WARN(mod, format, ...)
-#   define FPL_LOG_INFO(mod, format, ...)
-#   define FPL_LOG_VERBOSE(mod, format, ...)
-#   define FPL_LOG_DEBUG(mod, format, ...)
-#   define FPL_LOG_FUNCTION(mod)
+#	define FPL_LOG_INFO(mod, format, ...)
+#	define FPL_LOG_VERBOSE(mod, format, ...)
+#	define FPL_LOG_DEBUG(mod, format, ...)
+#	define FPL_LOG_FUNCTION(mod)
 
 #endif
 
@@ -6610,13 +6572,13 @@ fpl_internal void fpl__ParseVersionString(const char *versionStr, fplVersionInfo
 #define FPL__WIN32_LOAD_LIBRARY_BREAK(mod, target, libName) \
 	(target) = LoadLibraryA(libName); \
 	if((target) == fpl_null) { \
-        FPL__WARNING(mod, "Failed loading library '%s'", (libName)); \
+		FPL__WARNING(mod, "Failed loading library '%s'", (libName)); \
 		break; \
 	}
 #define FPL__WIN32_GET_FUNCTION_ADDRESS_BREAK(mod, libHandle, libName, target, type, name) \
 	(target)->name = (type *)GetProcAddress(libHandle, #name); \
 	if ((target)->name == fpl_null) { \
-        FPL__WARNING(mod, "Failed getting procedure address '%s' from library '%s'", #name, libName); \
+		FPL__WARNING(mod, "Failed getting procedure address '%s' from library '%s'", #name, libName); \
 		break; \
 	}
 #if !defined(FPL_NO_RUNTIME_LINKING)
@@ -7196,8 +7158,8 @@ typedef struct fpl__Win32WindowState {
 #	include <dlfcn.h> // dlopen, dlclose
 #	include <fcntl.h> // open
 #	include <unistd.h> // read, write, close, access, rmdir, getpid, sysconf, geteuid
-#   include <ctype.h> // isspace
-#   include <pwd.h> // getpwuid
+#	include <ctype.h> // isspace
+#	include <pwd.h> // getpwuid
 
 // @TODO(final): Detect the case of (Older POSIX versions where st_atim != st_atime)
 #if !defined(FPL_PLATFORM_ANDROID)
@@ -7218,7 +7180,7 @@ typedef struct fpl__Win32WindowState {
 #define FPL__POSIX_LOAD_LIBRARY_BREAK(mod, target, libName) \
 	(target) = dlopen(libName, FPL__POSIX_DL_LOADTYPE); \
 	if((target) == fpl_null) { \
-        FPL__WARNING(mod, "Failed loading library '%s'", (libName)); \
+		FPL__WARNING(mod, "Failed loading library '%s'", (libName)); \
 		break; \
 	}
 
@@ -7228,7 +7190,7 @@ typedef struct fpl__Win32WindowState {
 #define FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(mod, libHandle, libName, target, type, name) \
 	(target)->name = (type *)dlsym(libHandle, #name); \
 	if ((target)->name == fpl_null) { \
-        FPL__WARNING(mod, "Failed getting procedure address '%s' from library '%s'", #name, libName); \
+		FPL__WARNING(mod, "Failed getting procedure address '%s' from library '%s'", #name, libName); \
 		break; \
 	}
 #if !defined(FPL_NO_RUNTIME_LINKING)
@@ -7755,7 +7717,7 @@ typedef struct fpl__PlatformInitState {
 		fpl__LinuxInitState plinux;
 #	elif defined(FPL_PLATFORM_UNIX)
 		fpl__UnixInitState punix;
-#	endif               
+#	endif				
 	};
 } fpl__PlatformInitState;
 fpl_globalvar fpl__PlatformInitState fpl__global__InitState = fplZeroInit;
@@ -8747,6 +8709,47 @@ fpl_common_api void fplMemoryCopy(const void *sourceMem, const size_t sourceSize
 //
 // https://github.com/google/cpu_features
 #if defined(FPL_ARCH_X64) || defined(FPL_ARCH_X86)
+
+#	define FPL__CPU_BRAND_BUFFER_SIZE 0x40
+
+#	if defined(FPL_COMPILER_MSVC)
+#		if _MSC_VER >= 1400
+#			define fpl__m_CPUID(outLeaf, functionId) __cpuid((int *)(outLeaf)->raw, (int)(functionId))
+#		endif
+#		if _MSC_VER >= 1600
+#			define fpl__m_GetXCR0() ((uint64_t)_xgetbv(0))
+#		endif
+#	elif defined(FPL_COMPILER_GCC) ||defined(FPL_COMPILER_CLANG)
+fpl_internal void fpl__m_CPUID(fplCPUIDLeaf *outLeaf, const uint32_t functionId) {
+	int eax = 0, ebx = 0, ecx = 0, edx = 0;
+	__cpuid_count(functionId, 0, eax, ebx, ecx, edx);
+	outLeaf->eax = eax;
+	outLeaf->ebx = ebx;
+	outLeaf->ecx = ecx;
+	outLeaf->edx = edx;
+}
+fpl_internal uint64_t fpl__m_GetXCR0(void) {
+	uint32_t eax, edx;
+	__asm(".byte 0x0F, 0x01, 0xd0" : "=a"(eax), "=d"(edx) : "c"(0));
+	return eax;
+}
+#	endif
+
+fpl_common_api void fplCPUID(fplCPUIDLeaf *outLeaf, const uint32_t functionId) {
+#if defined(fpl__m_CPUID)
+	fpl__m_CPUID(outLeaf, functionId);
+#endif
+}
+
+fpl_common_api uint64_t fplGetXCR0() {
+#if defined(fpl__m_GetXCR0)
+	uint64_t result = fpl__m_GetXCR0();
+	return(result);
+#else
+	return(0ULL);
+#endif
+}
+
 fpl_common_api bool fplGetProcessorCapabilities(fplProcessorCapabilities *outCaps) {
 	fplClearStruct(outCaps);
 
@@ -8782,34 +8785,33 @@ fpl_common_api bool fplGetProcessorCapabilities(fplProcessorCapabilities *outCap
 	bool hasAVXSupport = (xcr0 & MASK_AVX) == MASK_AVX;
 	bool hasAVX512Support = (xcr0 & MASK_AVX_512) == MASK_AVX_512;
 
-	outCaps->x86.hasMMX = fplIsBitSet(info1.edx, 23);
+	outCaps->hasMMX = fplIsBitSet(info1.edx, 23);
 
 	if (hasSSESupport) {
-		outCaps->x86.hasSSE = fplIsBitSet(info1.edx, 25);
-		outCaps->x86.hasSSE2 = fplIsBitSet(info1.edx, 26);
-		outCaps->x86.hasSSE3 = fplIsBitSet(info1.ecx, 0);
-		outCaps->x86.hasSSSE3 = fplIsBitSet(info1.ecx, 9);
-		outCaps->x86.hasSSE4_1 = fplIsBitSet(info1.ecx, 19);
-		outCaps->x86.hasSSE4_2 = fplIsBitSet(info1.ecx, 20);
+		outCaps->hasSSE = fplIsBitSet(info1.edx, 25);
+		outCaps->hasSSE2 = fplIsBitSet(info1.edx, 26);
+		outCaps->hasSSE3 = fplIsBitSet(info1.ecx, 0);
+		outCaps->hasSSSE3 = fplIsBitSet(info1.ecx, 9);
+		outCaps->hasSSE4_1 = fplIsBitSet(info1.ecx, 19);
+		outCaps->hasSSE4_2 = fplIsBitSet(info1.ecx, 20);
 	}
 
 	if (hasAVXSupport) {
-		outCaps->x86.hasAVX = fplIsBitSet(info1.ecx, 28);
-		outCaps->x86.hasAVX2 = fplIsBitSet(info7.ebx, 5);
+		outCaps->hasAVX = fplIsBitSet(info1.ecx, 28);
+		outCaps->hasAVX2 = fplIsBitSet(info7.ebx, 5);
 	}
 
 	if (hasAVX512Support) {
-		outCaps->x86.hasAVX512 = fplIsBitSet(info7.ebx, 16);
-		outCaps->x86.hasFMA3 = fplIsBitSet(info7.ecx, 12);
+		outCaps->hasAVX512 = fplIsBitSet(info7.ebx, 16);
+		outCaps->hasFMA3 = fplIsBitSet(info7.ecx, 12);
 	}
 
 	return(true);
 }
 
 fpl_common_api char *fplGetProcessorName(char *destBuffer, const size_t maxDestBufferLen) {
-#	define CPU_BRAND_BUFFER_SIZE 0x40
 	FPL__CheckArgumentNull(destBuffer, fpl_null);
-	size_t requiredDestBufferLen = CPU_BRAND_BUFFER_SIZE + 1;
+	size_t requiredDestBufferLen = FPL__CPU_BRAND_BUFFER_SIZE + 1;
 	FPL__CheckArgumentMin(maxDestBufferLen, requiredDestBufferLen, fpl_null);
 
 	fplCPUIDLeaf cpuInfo = fplZeroInit;
@@ -8817,7 +8819,7 @@ fpl_common_api char *fplGetProcessorName(char *destBuffer, const size_t maxDestB
 	uint32_t extendedIds = cpuInfo.eax;
 
 	// Get the information associated with each extended ID. Interpret CPU brand string.
-	char cpuBrandBuffer[CPU_BRAND_BUFFER_SIZE] = fplZeroInit;
+	char cpuBrandBuffer[FPL__CPU_BRAND_BUFFER_SIZE] = fplZeroInit;
 	uint32_t max = fplMin(extendedIds, 0x80000004);
 	for (uint32_t i = 0x80000002; i <= max; ++i) {
 		fplCPUID(&cpuInfo, i);
@@ -8828,10 +8830,13 @@ fpl_common_api char *fplGetProcessorName(char *destBuffer, const size_t maxDestB
 	size_t sourceLen = fplGetStringLength(cpuBrandBuffer);
 	char *result = fplCopyStringLen(cpuBrandBuffer, sourceLen, destBuffer, maxDestBufferLen);
 
-#	undef CPU_BRAND_BUFFER_SIZE
-
 	return(result);
 }
+
+// Do not publish this macros to the outside
+#	undef FPL__CPU_BRAND_BUFFER_SIZE
+#	undef fplCPUID
+#	undef fplGetXCR0
 #else
 fpl_common_api bool fplGetProcessorCapabilities(fplProcessorCapabilities *outCaps) {
 	// @IMPLEMENT(final): fplGetProcessorCapabilities for non-x86 architectures
@@ -15611,7 +15616,7 @@ fpl_platform_api bool fplPollMouseState(fplMouseState *outState) {
 //
 // ############################################################################
 #if defined(FPL_PLATFORM_LINUX)
-#   include <locale.h> // setlocale
+#	include <locale.h> // setlocale
 #	include <sys/eventfd.h> // eventfd
 #	include <sys/epoll.h> // epoll_create, epoll_ctl, epoll_wait
 #	include <sys/select.h> // select
@@ -15660,10 +15665,10 @@ fpl_internal float fpl__LinuxJoystickProcessStickValue(const int16_t value, cons
 }
 
 fpl_internal void fpl__LinuxPushGameControllerStateUpdateEvent(const struct js_event *event, fpl__LinuxGameController *controller) {
-    fplGamepadState *padState = &controller->state;
+	fplGamepadState *padState = &controller->state;
 
-    // @TODO(final): Use a static offset table instead of a pointer mapping table
-    fplGamepadButton *buttonMappingTable[12] = fplZeroInit;
+	// @TODO(final): Use a static offset table instead of a pointer mapping table
+	fplGamepadButton *buttonMappingTable[12] = fplZeroInit;
 	buttonMappingTable[0] = &padState->actionA;
 	buttonMappingTable[1] = &padState->actionB;
 	buttonMappingTable[2] = &padState->actionX;
@@ -15752,9 +15757,9 @@ fpl_internal void fpl__LinuxPushGameControllerStateUpdateEvent(const struct js_e
 		{
 			if ((event->number >= 0) && (event->number < fplArrayCount(buttonMappingTable))) {
 				fplGamepadButton *mappedButton = buttonMappingTable[event->number];
-                if (mappedButton != fpl_null) {
-                    mappedButton->isDown = event->value != 0;
-                }
+				if (mappedButton != fpl_null) {
+					mappedButton->isDown = event->value != 0;
+				}
 			}
 		} break;
 
@@ -15824,20 +15829,20 @@ fpl_internal void fpl__LinuxPollGameControllers(const fplSettings *settings, fpl
 					ev.type = fplEventType_Gamepad;
 					ev.gamepad.type = fplGamepadEventType_Connected;
 					ev.gamepad.deviceIndex = (uint32_t)freeIndex;
-                    ev.gamepad.deviceName = controller->deviceName;
+					ev.gamepad.deviceName = controller->deviceName;
 					fpl__PushInternalEvent(&ev);
 				}
 			}
 		}
 	}
 
-    // Update controller states
+	// Update controller states
 	for (uint32_t controllerIndex = 0; controllerIndex < fplArrayCount(controllersState->controllers); ++controllerIndex) {
 		fpl__LinuxGameController *controller = controllersState->controllers + controllerIndex;
 		if (controller->fd > 0) {
 			// Update button/axis state
 			struct js_event event;
-            bool wasDisconnected = false;
+			bool wasDisconnected = false;
 			for (;;) {
 				errno = 0;
 				if (read(controller->fd, &event, sizeof(event)) < 0) {
@@ -15845,14 +15850,14 @@ fpl_internal void fpl__LinuxPollGameControllers(const fplSettings *settings, fpl
 						close(controller->fd);
 						controller->fd = 0;
 						fplClearStruct(&controller->state);
-                        wasDisconnected = true;
+						wasDisconnected = true;
 						if (useEvents) {
 							// Push disconnected event
 							fplEvent ev = fplZeroInit;
 							ev.type = fplEventType_Gamepad;
 							ev.gamepad.type = fplGamepadEventType_Disconnected;
 							ev.gamepad.deviceIndex = controllerIndex;
-                            ev.gamepad.deviceName = controller->deviceName;
+							ev.gamepad.deviceName = controller->deviceName;
 							fpl__PushInternalEvent(&ev);
 						}
 					}
@@ -15860,10 +15865,10 @@ fpl_internal void fpl__LinuxPollGameControllers(const fplSettings *settings, fpl
 				}
 				fpl__LinuxPushGameControllerStateUpdateEvent(&event, controller);
 			}
-            
-            controller->state.isActive = !fpl__IsZeroMemory(&controller->state, sizeof(fplGamepadState));
-            controller->state.isConnected = !wasDisconnected;
-            controller->state.deviceName = controller->deviceName;            
+			
+			controller->state.isActive = !fpl__IsZeroMemory(&controller->state, sizeof(fplGamepadState));
+			controller->state.isConnected = !wasDisconnected;
+			controller->state.deviceName = controller->deviceName;			
 
 			if (controller->fd > 0) {
 				if (useEvents) {
@@ -15872,7 +15877,7 @@ fpl_internal void fpl__LinuxPollGameControllers(const fplSettings *settings, fpl
 					ev.type = fplEventType_Gamepad;
 					ev.gamepad.type = fplGamepadEventType_StateChanged;
 					ev.gamepad.deviceIndex = controllerIndex;
-                    ev.gamepad.deviceName = controller->deviceName;
+					ev.gamepad.deviceName = controller->deviceName;
 					ev.gamepad.state = controller->state;
 					fpl__PushInternalEvent(&ev);
 				}
@@ -15889,7 +15894,7 @@ fpl_platform_api bool fplPollGamepadStates(fplGamepadStates *outStates) {
 #if defined(FPL_PLATFORM_LINUX)
 		fpl__LinuxGameControllersState *controllersState = &appState->plinux.controllersState;
 		fpl__LinuxPollGameControllers(&appState->currentSettings, controllersState, false);
-        
+		
 		fplAssert(fplArrayCount(controllersState->controllers) == fplArrayCount(outStates->deviceStates));
 		for (int i = 0; i < fplArrayCount(controllersState->controllers); ++i) {
 			outStates->deviceStates[i] = controllersState->controllers[i].state;
@@ -17137,7 +17142,7 @@ fpl_internal bool fpl__IsAudioDeviceStarted(fpl__CommonAudioState *audioState);
 // ############################################################################
 #if defined(FPL__ENABLE_AUDIO_DIRECTSOUND)
 #	include <mmreg.h>
-#   include <mmsystem.h>
+#	include <mmsystem.h>
 #	include <dsound.h>
 
 #define FPL__FUNC_DSOUND_DirectSoundCreate(name) HRESULT WINAPI name(const GUID* pcGuidDevice, LPDIRECTSOUND *ppDS8, LPUNKNOWN pUnkOuter)
@@ -19191,13 +19196,13 @@ fplStaticAssert(fplArrayCount(fpl__globalAudioFormatSampleSizeTable) == FPL__AUD
 
 fpl_globalvar const char *fpl__globalAudioFormatNameTable[] = {
 	"None",  // 0 = No audio format
-	"U8",    // = Unsigned 8-bit integer PCM
-	"S16",   // = Signed 16-bit integer PCM
-	"S24",   // = Signed 24-bit integer PCM
-	"S32",   // = Signed 32-bit integer PCM
+	"U8",	// = Unsigned 8-bit integer PCM
+	"S16",	// = Signed 16-bit integer PCM
+	"S24",	// = Signed 24-bit integer PCM
+	"S32",	// = Signed 32-bit integer PCM
 	"S64CM", // = Signed 64-bit integer PCM
-	"F32",   // = 32-bit IEEE_FLOAT
-	"F64",   // = 64-bit IEEE_FLOAT
+	"F32",	// = 32-bit IEEE_FLOAT
+	"F64",	// = 64-bit IEEE_FLOAT
 };
 fplStaticAssert(fplArrayCount(fpl__globalAudioFormatNameTable) == FPL__AUDIOFORMATTYPE_COUNT);
 
@@ -19535,7 +19540,7 @@ fpl_common_api void fplVideoFlip() {
 			default:
 				break;
 		}
-#   elif defined(FPL_SUBPLATFORM_X11)
+#	elif defined(FPL_SUBPLATFORM_X11)
 		const fpl__X11WindowState *x11WinState = &appState->window.x11;
 		switch (appState->currentSettings.video.driver) {
 #		if defined(FPL__ENABLE_VIDEO_OPENGL)
@@ -19805,9 +19810,9 @@ fpl_common_api bool fplPlatformInit(const fplInitFlags initFlags, const fplSetti
 	FPL_LOG_DEBUG(FPL__MODULE_CORE, "Initialize %s Platform:", FPL_PLATFORM_NAME);
 #	if defined(FPL_PLATFORM_WINDOWS)
 	isInitialized = fpl__Win32InitPlatform(appState->initFlags, &appState->initSettings, initState, appState);
-#   elif defined(FPL_PLATFORM_LINUX)
+#	elif defined(FPL_PLATFORM_LINUX)
 	isInitialized = fpl__LinuxInitPlatform(appState->initFlags, &appState->initSettings, initState, appState);
-#   elif defined(FPL_PLATFORM_UNIX)
+#	elif defined(FPL_PLATFORM_UNIX)
 	isInitialized = fpl__UnixInitPlatform(appState->initFlags, &appState->initSettings, initState, appState);
 #	endif
 
