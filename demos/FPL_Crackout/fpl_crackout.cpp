@@ -52,6 +52,9 @@ Changelog:
 	- Initial creation
 
 Todo:
+	- Use OpenGL 3.x and use a proper pixel shader to render the 2D-Pixel-Art sprites:
+		https://www.shadertoy.com/view/ltBGWc
+		https://www.youtube.com/watch?v=Yu8k7a1hQuU
 	- Main menu
 	- Pause menu (Detect pause)
 	- Music
