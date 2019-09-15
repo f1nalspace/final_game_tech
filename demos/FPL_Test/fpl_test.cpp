@@ -505,17 +505,17 @@ static void TestHardware() {
 	fplProcessorCapabilities cpuCaps = {};
 	fplGetProcessorCapabilities(&cpuCaps);
 	ftMsg("Processor capabilities:\n");
-	ftMsg("\tMMX: %s\n", (cpuCaps.x86.hasMMX ? "yes" : "no"));
-	ftMsg("\tSSE: %s\n", (cpuCaps.x86.hasSSE ? "yes" : "no"));
-	ftMsg("\tSSE2: %s\n", (cpuCaps.x86.hasSSE2 ? "yes" : "no"));
-	ftMsg("\tSSE3: %s\n", (cpuCaps.x86.hasSSE3 ? "yes" : "no"));
-	ftMsg("\tSSSE3: %s\n", (cpuCaps.x86.hasSSSE3 ? "yes" : "no"));
-	ftMsg("\tSSE4.1: %s\n", (cpuCaps.x86.hasSSE4_1 ? "yes" : "no"));
-	ftMsg("\tSSE4.2: %s\n", (cpuCaps.x86.hasSSE4_2 ? "yes" : "no"));
-	ftMsg("\tAVX: %s\n", (cpuCaps.x86.hasAVX ? "yes" : "no"));
-	ftMsg("\tAVX2: %s\n", (cpuCaps.x86.hasAVX2 ? "yes" : "no"));
-	ftMsg("\tAVX512: %s\n", (cpuCaps.x86.hasAVX512 ? "yes" : "no"));
-	ftMsg("\tFMA3: %s\n", (cpuCaps.x86.hasFMA3 ? "yes" : "no"));
+	ftMsg("\tMMX: %s\n", (cpuCaps.hasMMX ? "yes" : "no"));
+	ftMsg("\tSSE: %s\n", (cpuCaps.hasSSE ? "yes" : "no"));
+	ftMsg("\tSSE2: %s\n", (cpuCaps.hasSSE2 ? "yes" : "no"));
+	ftMsg("\tSSE3: %s\n", (cpuCaps.hasSSE3 ? "yes" : "no"));
+	ftMsg("\tSSSE3: %s\n", (cpuCaps.hasSSSE3 ? "yes" : "no"));
+	ftMsg("\tSSE4.1: %s\n", (cpuCaps.hasSSE4_1 ? "yes" : "no"));
+	ftMsg("\tSSE4.2: %s\n", (cpuCaps.hasSSE4_2 ? "yes" : "no"));
+	ftMsg("\tAVX: %s\n", (cpuCaps.hasAVX ? "yes" : "no"));
+	ftMsg("\tAVX2: %s\n", (cpuCaps.hasAVX2 ? "yes" : "no"));
+	ftMsg("\tAVX512: %s\n", (cpuCaps.hasAVX512 ? "yes" : "no"));
+	ftMsg("\tFMA3: %s\n", (cpuCaps.hasFMA3 ? "yes" : "no"));
 
 	fplMemoryInfos memInfos = {};
 	fplGetRunningMemoryInfos(&memInfos);
@@ -534,7 +534,7 @@ static void TestHardware() {
         tmp *= 2 + 1;
         tmp / (double)i*4;
         uint64_t cycles = fplRDTSC();
-        ftMsg("\tRun[%d]: %llu\n", i, cycles);
+        ftMsg("\tRun[%d]: %f, %llu\n", i, tmp, cycles);
     }
 
     fplArchType archType = fplGetProcessorArchitecture();
