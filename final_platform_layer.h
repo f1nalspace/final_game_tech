@@ -3350,13 +3350,21 @@ typedef struct fplWindowCallbacks {
 	void *eventUserData;
 } fplWindowCallbacks;
 
-//! A structure containing the size a window
+//! A structure containing the size of a window
 typedef struct fplWindowSize {
 	//! Width in screen coordinates
 	uint32_t width;
 	//! Height in screen coordinates
 	uint32_t height;
 } fplWindowSize;
+
+//! A structure containing the position of a window
+typedef struct fplWindowPosition {
+	//! Left position in screen coordinates
+	int32_t left;
+	//! Top position in screen coordinates
+	int32_t top;
+} fplWindowPosition;
 
 //! A structure containing window settings, such as size, title etc.
 typedef struct fplWindowSettings {
@@ -5200,6 +5208,14 @@ typedef enum fplWindowEventType {
 	fplWindowEventType_DroppedFiles,
 	//! Window was exposed
 	fplWindowEventType_Exposed,
+	//! Window was moved
+	fplWindowEventType_PositionChanged,
+	//! Window was closed
+	fplWindowEventType_Closed,
+	//! Window was shown
+	fplWindowEventType_Shown,
+	//! Window was hidden
+	fplWindowEventType_Hidden,
 } fplWindowEventType;
 
 //! A structure containing number and dropped files informations
@@ -5219,6 +5235,8 @@ typedef struct fplWindowEvent {
 	union {
 		//! Window size
 		fplWindowSize size;
+		//! Window position
+		fplWindowPosition position;
 		//! Drop files
 		fplWindowDropFiles dropFiles;
 	};
@@ -5576,15 +5594,7 @@ fpl_platform_api bool fplPollMouseState(fplMouseState *outState);
   */
   // ----------------------------------------------------------------------------
 
-//! A structure containing the position of a window
-typedef struct fplWindowPosition {
-	//! Left position in screen coordinates
-	int32_t left;
-	//! Top position in screen coordinates
-	int32_t top;
-} fplWindowPosition;
-
-//! A enumeration containg the states of a window
+//! An enumeration containg the states of a window
 typedef enum fplWindowState {
 	//! Unknown state
 	fplWindowState_Unknown = 0,
@@ -5597,6 +5607,16 @@ typedef enum fplWindowState {
 	//! Fullscreen state
 	fplWindowState_Fullscreen,
 } fplWindowState;
+
+//! An enumeration containg the visibility state of a window
+typedef enum fplWindowVisibilityState {
+	//! Unknown state
+	fplWindowVisibilityState_Unknown = 0,
+	//! Window is visible
+	fplWindowVisibilityState_Show,
+	//! Window is hidden
+	fplWindowVisibilityState_Hide,
+} fplWindowVisibilityState;
 
 /**
   * @brief Gets the window running state as a boolean
@@ -7658,8 +7678,16 @@ typedef struct fpl__X11SubplatformState {
 	fpl__X11Api api;
 } fpl__X11SubplatformState;
 
+typedef struct fpl__X11WindowStateInfo {
+	fplWindowState state;
+	fplWindowVisibilityState visibility;
+	fplWindowPosition position;
+	fplWindowSize size;
+} fpl__X11WindowStateInfo;
+
 typedef struct fpl__X11WindowState {
 	Display* display;
+	fpl__X11WindowStateInfo lastWindowStateInfo;
 	int screen;
 	Window root;
 	Colormap colorMap;
@@ -7667,9 +7695,14 @@ typedef struct fpl__X11WindowState {
 	Visual *visual;
 	Atom wmProtocols;
 	Atom wmDeleteWindow;
-	Atom netWMStateFullscreen;
+	Atom wmState;
 	Atom netWMPing;
 	Atom netWMState;
+	Atom netWMStateFocused;
+	Atom netWMStateFullscreen;
+	Atom netWMStateHidden;
+	Atom netWMStateMaximizedVert;
+	Atom netWMStateMaximizedHorz;
 	Atom netWMPid;
 	Atom netWMIcon;
 	Atom netWMName;
@@ -7896,12 +7929,21 @@ fpl_internal void fpl__PushWindowStateEvent(const fplWindowEventType windowType)
 	fpl__PushInternalEvent(&newEvent);
 }
 
-fpl_internal void fpl__PushWindowSizeEvent(const fplWindowEventType windowType, const uint32_t w, uint32_t h) {
+fpl_internal void fpl__PushWindowSizeEvent(const fplWindowEventType windowType, uint32_t w, uint32_t h) {
 	fplEvent newEvent = fplZeroInit;
 	newEvent.type = fplEventType_Window;
 	newEvent.window.type = windowType;
 	newEvent.window.size.width = w;
 	newEvent.window.size.height = h;
+	fpl__PushInternalEvent(&newEvent);
+}
+
+fpl_internal void fpl__PushWindowPositionEvent(const fplWindowEventType windowType, int32_t x, int32_t y) {
+	fplEvent newEvent = fplZeroInit;
+	newEvent.type = fplEventType_Window;
+	newEvent.window.type = windowType;
+	newEvent.window.position.left = x;
+	newEvent.window.position.top = y;
 	fpl__PushInternalEvent(&newEvent);
 }
 
@@ -14931,6 +14973,11 @@ fpl_internal bool fpl__X11InitWindow(const fplSettings *initSettings, fplWindowS
 		windowHeight = FPL__X11_DEFAULT_WINDOW_HEIGHT;
 	}
 
+	windowState->lastWindowStateInfo.state = fplWindowState_Normal;
+	windowState->lastWindowStateInfo.visibility = fplWindowVisibilityState_Show;
+	windowState->lastWindowStateInfo.position = (fplWindowPosition){ windowWidth, windowHeight };
+	windowState->lastWindowStateInfo.size = (fplWindowSize){ windowX, windowY };
+
 	FPL_LOG_DEBUG(FPL__MODULE_X11, "Create window with (Display='%p', Root='%d', Size=%dx%d, Colordepth='%d', visual='%p', colormap='%d'", windowState->display, (int)windowState->root, windowWidth, windowHeight, colorDepth, visual, (int)swa.colormap);
 	windowState->window = x11Api->XCreateWindow(windowState->display,
 												windowState->root,
@@ -14959,9 +15006,14 @@ fpl_internal bool fpl__X11InitWindow(const fplSettings *initSettings, fplWindowS
 	// Window manager atoms
 	windowState->wmDeleteWindow = x11Api->XInternAtom(windowState->display, "WM_DELETE_WINDOW", False);
 	windowState->wmProtocols = x11Api->XInternAtom(windowState->display, "WM_PROTOCOLS", False);
-	windowState->netWMState = x11Api->XInternAtom(windowState->display, "_NET_WM_STATE", False);
+	windowState->wmState = x11Api->XInternAtom(windowState->display, "WM_STATE", False);
 	windowState->netWMPing = x11Api->XInternAtom(windowState->display, "_NET_WM_PING", False);
+	windowState->netWMState = x11Api->XInternAtom(windowState->display, "_NET_WM_STATE", False);
+	windowState->netWMStateFocused = x11Api->XInternAtom(windowState->display, "_NET_WM_STATE_FOCUSED", False);
 	windowState->netWMStateFullscreen = x11Api->XInternAtom(windowState->display, "_NET_WM_STATE_FULLSCREEN", False);
+	windowState->netWMStateHidden = x11Api->XInternAtom(windowState->display, "_NET_WM_STATE_HIDDEN", False);
+	windowState->netWMStateMaximizedVert = x11Api->XInternAtom(windowState->display, "_NET_WM_STATE_MAXIMIZED_VERT", False);
+	windowState->netWMStateMaximizedHorz = x11Api->XInternAtom(windowState->display, "_NET_WM_STATE_MAXIMIZED_HORZ", False);
 	windowState->netWMPid = x11Api->XInternAtom(windowState->display, "_NET_WM_PID", False);
 	windowState->netWMIcon = x11Api->XInternAtom(windowState->display, "_NET_WM_ICON", False);
 	windowState->netWMName = x11Api->XInternAtom(windowState->display, "_NET_WM_NAME", False);
@@ -15047,10 +15099,94 @@ fpl_internal unsigned long fpl__X11GetWindowProperty(const fpl__X11Api *x11Api, 
 	return(itemCount);
 }
 
+fpl_internal const int fpl__X11GetWMState(const fpl__X11Api *x11Api, fpl__X11WindowState *windowState) {
+	struct { int state; Window icon; } *value = NULL;
+	unsigned long numItems = fpl__X11GetWindowProperty(x11Api, windowState->display, windowState->window, windowState->wmState, windowState->wmState, (unsigned char**)&value);
+	int state = WithdrawnState;
+	if (value) {
+		state = value->state;
+		x11Api->XFree(value);
+	}
+	return state;
+}
+
+#define fpl__X11NetWMStateHiddenFlag (1 << 0)
+#define fpl__X11NetWMStateMaximizedFlag (1 << 1)
+#define fpl__X11NetWMStateFullscreenFlag (1 << 2)
+
+fpl_internal unsigned int fpl__X11GetNetWMState(const fpl__X11Api *x11Api, fpl__X11WindowState *windowState) {
+	Atom *atoms = NULL;
+	unsigned long numItems = fpl__X11GetWindowProperty(x11Api, windowState->display, windowState->window, windowState->netWMState, XA_ATOM, (unsigned char**)&atoms);
+	unsigned int flags = 0;
+	if (atoms) {
+		int i, maximized = 0;
+		for (i = 0; i < numItems; ++i) {
+			if (atoms[i] == windowState->netWMStateHidden) {
+				flags |= fpl__X11NetWMStateHiddenFlag;
+			} else if (atoms[i] == windowState->netWMStateMaximizedVert) {
+				maximized |= 1;
+			} else if (atoms[i] == windowState->netWMStateMaximizedHorz) {
+				maximized |= 2;
+			} else if (atoms[i] == windowState->netWMStateFullscreen) {
+				flags |= fpl__X11NetWMStateFullscreenFlag;
+			}
+		}
+		if (maximized == 3) {
+			flags |= fpl__X11NetWMStateMaximizedFlag;
+		}
+		// additional visibility check for unmapped window
+		{
+			XWindowAttributes attr;
+			fplMemorySet(&attr,0,sizeof(attr));
+			x11Api->XGetWindowAttributes(windowState->display, windowState->window, &attr);
+			if (attr.map_state == IsUnmapped) {
+				flags |= fpl__X11NetWMStateHiddenFlag;
+			}
+		}
+		x11Api->XFree(atoms);
+	}
+	return flags;
+}
+
+fpl_internal fpl__X11WindowStateInfo fpl__X11GetWindowStateInfo(const fpl__X11Api *x11Api, fpl__X11WindowState *windowState) {
+	fpl__X11WindowStateInfo nextWindowStateInfo = {0};
+	const int state = fpl__X11GetWMState(x11Api, windowState);
+	unsigned int flags = fpl__X11GetNetWMState(x11Api, windowState);
+	if (state == NormalState) {
+		nextWindowStateInfo.state = fplWindowState_Normal;
+	} else if (state == IconicState) {
+		nextWindowStateInfo.state = fplWindowState_Iconify;
+	}
+	// reset visibility to default
+	nextWindowStateInfo.visibility = fplWindowVisibilityState_Show;
+	if (flags & fpl__X11NetWMStateHiddenFlag) {
+		nextWindowStateInfo.visibility = fplWindowVisibilityState_Hide;
+	}
+	if (flags & fpl__X11NetWMStateFullscreenFlag) {
+		nextWindowStateInfo.state = fplWindowState_Fullscreen;
+	} else if (state != IconicState && flags & fpl__X11NetWMStateMaximizedFlag) {
+		nextWindowStateInfo.state = fplWindowState_Maximize;
+	}
+	// + set win size/pos?
+	return nextWindowStateInfo;
+}
+
+fpl_internal fpl__X11WindowStateInfo fpl__X11ReconcilWindowStateInfo(fpl__X11WindowStateInfo *last, fpl__X11WindowStateInfo *next) {
+	fpl__X11WindowStateInfo change = {0};
+	if (last->state != next->state) {
+		change.state = next->state;
+	}
+	if (last->visibility != next->visibility) {
+		change.visibility = next->visibility;
+	}
+	return change;
+}
+
 fpl_internal void fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatform, fpl__PlatformAppState *appState, XEvent *ev) {
 	fplAssert((subplatform != fpl_null) && (appState != fpl_null) && (ev != fpl_null));
 	fpl__PlatformWindowState *winState = &appState->window;
 	fpl__X11WindowState *x11WinState = &winState->x11;
+	fpl__X11WindowStateInfo *lastX11WinInfo = &x11WinState->lastWindowStateInfo;
 	const fpl__X11Api *x11Api = &appState->x11.api;
 
 	if (appState->currentSettings.window.callbacks.eventCallback != fpl_null) {
@@ -15069,9 +15205,18 @@ fpl_internal void fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatfor
 				}
 			}
 #		endif
-
 			// Window resized
-			fpl__PushWindowSizeEvent(fplWindowEventType_Resized, (uint32_t)ev->xconfigure.width, (uint32_t)ev->xconfigure.height);
+			if (ev->xconfigure.width != lastX11WinInfo->size.width || ev->xconfigure.height != lastX11WinInfo->size.height) {
+				fpl__PushWindowSizeEvent(fplWindowEventType_Resized, (uint32_t)ev->xconfigure.width, (uint32_t)ev->xconfigure.height);
+				lastX11WinInfo->size.width = (uint32_t)ev->xconfigure.width; 
+				lastX11WinInfo->size.height = (uint32_t)ev->xconfigure.height;
+			}
+			// Window moved
+			if (ev->xconfigure.x != lastX11WinInfo->position.left || ev->xconfigure.y != lastX11WinInfo->position.top) {
+				fpl__PushWindowPositionEvent(fplWindowEventType_PositionChanged, (int32_t)ev->xconfigure.x, (int32_t)ev->xconfigure.y);
+				lastX11WinInfo->position.left = (uint32_t)ev->xconfigure.x; 
+				lastX11WinInfo->position.top = (uint32_t)ev->xconfigure.y;
+			}
 		} break;
 
 		case ClientMessage:
@@ -15082,6 +15227,7 @@ fpl_internal void fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatfor
 					if (protocol == x11WinState->wmDeleteWindow) {
 						// Window asked for closing
 						winState->isRunning = false;
+						fpl__PushWindowStateEvent(fplWindowEventType_Closed);
 					} else if (protocol == x11WinState->netWMPing) {
 						// Window manager asks us if we are still alive
 						XEvent reply = *ev;
@@ -15190,6 +15336,59 @@ fpl_internal void fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatfor
 			// Repaint
 			if (appState->currentSettings.window.callbacks.exposedCallback != fpl_null) {
 				appState->currentSettings.window.callbacks.exposedCallback(fplGetPlatformType(), x11WinState, ev, appState->currentSettings.window.callbacks.exposedUserData);
+			}
+		} break;
+
+		case FocusIn: 
+		{
+			// Ignore focus events from popup indicator windows, window menu
+			// key chords and window dragging
+			if (ev->xfocus.mode == NotifyGrab || ev->xfocus.mode == NotifyUngrab) {
+				return;
+			}
+			fpl__PushWindowStateEvent(fplWindowEventType_GotFocus);
+		} break;
+
+		case FocusOut:
+		{
+			// Ignore focus events from popup indicator windows, window menu
+			// key chords and window dragging
+			if (ev->xfocus.mode == NotifyGrab || ev->xfocus.mode == NotifyUngrab) {
+				return;
+			}
+			fpl__PushWindowStateEvent(fplWindowEventType_LostFocus);
+		} break;
+
+		case PropertyNotify:
+		{
+			if (ev->xproperty.atom == x11WinState->netWMState || ev->xproperty.atom == x11WinState->wmState) {
+				fpl__X11WindowStateInfo nextWindowStateInfo = fpl__X11GetWindowStateInfo(x11Api, x11WinState);
+				fpl__X11WindowStateInfo changedWindowStateInfo = fpl__X11ReconcilWindowStateInfo(&x11WinState->lastWindowStateInfo, &nextWindowStateInfo);
+				switch (changedWindowStateInfo.visibility) {
+					case fplWindowVisibilityState_Hide:
+						fpl__PushWindowStateEvent(fplWindowEventType_Hidden);
+						break;
+					case fplWindowVisibilityState_Show:
+						fpl__PushWindowStateEvent(fplWindowEventType_Shown);
+						break;
+					default:
+						break;
+				}
+				switch (changedWindowStateInfo.state) {
+					case fplWindowState_Iconify:
+						fpl__PushWindowStateEvent(fplWindowEventType_Minimized);
+						break;
+					case fplWindowState_Maximize:
+						fpl__PushWindowStateEvent(fplWindowEventType_Maximized);
+						break;
+					case fplWindowState_Normal:
+						fpl__PushWindowStateEvent(fplWindowEventType_Restored);
+						break;
+					default:
+						break;
+				}
+				x11WinState->lastWindowStateInfo.state = nextWindowStateInfo.state;
+				x11WinState->lastWindowStateInfo.visibility = nextWindowStateInfo.visibility;
 			}
 		} break;
 
