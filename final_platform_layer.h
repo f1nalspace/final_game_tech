@@ -15104,7 +15104,7 @@ fpl_internal bool fpl__X11InitWindow(const fplSettings *initSettings, fplWindowS
 	// Announce support for Xdnd (drag and drop)
 	{
 		const Atom version = FPL_XDND_VERSION;
-		XChangeProperty(windowState->display, windowState->window, windowState->xdndAware, XA_ATOM, 32, PropModeReplace, (unsigned char*) &version, 1);
+		x11Api->XChangeProperty(windowState->display, windowState->window, windowState->xdndAware, XA_ATOM, 32, PropModeReplace, (unsigned char*) &version, 1);
 	}
 
 	appState->window.isRunning = true;
@@ -15338,7 +15338,7 @@ fpl_internal void fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatfor
 					}
 				}
 				if (list && formats) {
-					XFree(formats);
+					x11Api->XFree(formats);
 				}
 			} else if (ev->xclient.message_type == x11WinState->xdndDrop) {
 				// The drag operation has finished by dropping on the window
