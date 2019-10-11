@@ -7545,6 +7545,8 @@ typedef FPL__FUNC_X11_XSetWMName(fpl__func_x11_XSetWMName);
 typedef FPL__FUNC_X11_XQueryKeymap(fpl__func_x11_XQueryKeymap);
 #define FPL__FUNC_X11_XQueryPointer(name) Bool name(Display* display, Window w, Window* root_return, Window* child_return, int* root_x_return, int* root_y_return, int* win_x_return, int* win_y_return, unsigned int* mask_return)
 typedef FPL__FUNC_X11_XQueryPointer(fpl__func_x11_XQueryPointer);
+#define FPL__FUNC_X11_XConvertSelection(name) int name(Display *display, Atom selection, Atom target, Atom property, Window requestor, Time time)
+typedef FPL__FUNC_X11_XConvertSelection(fpl__func_x11_XConvertSelection);
 
 typedef struct fpl__X11Api {
 	void *libHandle;
@@ -7593,6 +7595,7 @@ typedef struct fpl__X11Api {
 	fpl__func_x11_XSetWMName *XSetWMName;
 	fpl__func_x11_XQueryKeymap *XQueryKeymap;
 	fpl__func_x11_XQueryPointer *XQueryPointer;
+	fpl__func_x11_XConvertSelection *XConvertSelection;
 } fpl__X11Api;
 
 fpl_internal void fpl__UnloadX11Api(fpl__X11Api *x11Api) {
@@ -7663,6 +7666,7 @@ fpl_internal bool fpl__LoadX11Api(fpl__X11Api *x11Api) {
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XSetWMName, XSetWMName);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XQueryKeymap, XQueryKeymap);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XQueryPointer, XQueryPointer);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XConvertSelection, XConvertSelection);
 			x11Api->libHandle = libHandle;
 			result = true;
 		} while (0);
@@ -7685,6 +7689,12 @@ typedef struct fpl__X11WindowStateInfo {
 	fplWindowSize size;
 } fpl__X11WindowStateInfo;
 
+typedef struct fpl__X11Xdnd {
+	int version;
+	Window source;
+	Atom format;
+} fpl__X11Xdnd;
+
 typedef struct fpl__X11WindowState {
 	Display* display;
 	fpl__X11WindowStateInfo lastWindowStateInfo;
@@ -7693,6 +7703,7 @@ typedef struct fpl__X11WindowState {
 	Colormap colorMap;
 	Window window;
 	Visual *visual;
+	fpl__X11Xdnd xdnd;
 	Atom wmProtocols;
 	Atom wmDeleteWindow;
 	Atom wmState;
@@ -7709,12 +7720,26 @@ typedef struct fpl__X11WindowState {
 	Atom netWMIconName;
 	Atom utf8String;
 	Atom motifWMHints;
+	// drag and drop
+	Atom xdndAware;
+	Atom xdndEnter;
+	Atom xdndPosition;
+	Atom xdndStatus;
+	Atom xdndActionCopy;
+	Atom xdndDrop;
+	Atom xdndFinished;
+	Atom xdndSelection;
+	Atom xdndTypeList;
+	Atom textUriList;
 } fpl__X11WindowState;
 
 typedef struct fpl__X11PreWindowSetupResult {
 	Visual *visual;
 	int colorDepth;
 } fpl__X11PreWindowSetupResult;
+
+#define FPL_XDND_VERSION 5
+
 #endif // FPL_SUBPLATFORM_X11
 
 // ****************************************************************************
@@ -15019,6 +15044,17 @@ fpl_internal bool fpl__X11InitWindow(const fplSettings *initSettings, fplWindowS
 	windowState->netWMName = x11Api->XInternAtom(windowState->display, "_NET_WM_NAME", False);
 	windowState->netWMIconName = x11Api->XInternAtom(windowState->display, "_NET_WM_ICON_NAME", False);
 	windowState->motifWMHints = x11Api->XInternAtom(windowState->display, "_MOTIF_WM_HINTS", False);
+	// xdnd atoms
+	windowState->xdndAware = x11Api->XInternAtom(windowState->display, "XdndAware", False);
+	windowState->xdndEnter = x11Api->XInternAtom(windowState->display, "XdndEnter", False);
+	windowState->xdndPosition = x11Api->XInternAtom(windowState->display, "XdndPosition", False);
+	windowState->xdndStatus = x11Api->XInternAtom(windowState->display, "XdndStatus", False);
+	windowState->xdndActionCopy = x11Api->XInternAtom(windowState->display, "XdndActionCopy", False);
+	windowState->xdndDrop = x11Api->XInternAtom(windowState->display, "XdndDrop", False);
+	windowState->xdndFinished = x11Api->XInternAtom(windowState->display, "XdndFinished", False);
+	windowState->xdndSelection = x11Api->XInternAtom(windowState->display, "XdndSelection", False);
+	windowState->xdndTypeList = x11Api->XInternAtom(windowState->display, "XdndTypeList", False);
+	windowState->textUriList = x11Api->XInternAtom(windowState->display, "text/uri-list", False);
 
 	// Register window manager protocols
 	{
@@ -15063,6 +15099,12 @@ fpl_internal bool fpl__X11InitWindow(const fplSettings *initSettings, fplWindowS
 
 	if (initSettings->window.isFullscreen) {
 		fplSetWindowFullscreenSize(true, initSettings->window.fullscreenSize.width, initSettings->window.fullscreenSize.height, initSettings->window.fullscreenRefreshRate);
+	}
+
+	// Announce support for Xdnd (drag and drop)
+	{
+		const Atom version = FPL_XDND_VERSION;
+		XChangeProperty(windowState->display, windowState->window, windowState->xdndAware, XA_ATOM, 32, PropModeReplace, (unsigned char*) &version, 1);
 	}
 
 	appState->window.isRunning = true;
@@ -15167,7 +15209,6 @@ fpl_internal fpl__X11WindowStateInfo fpl__X11GetWindowStateInfo(const fpl__X11Ap
 	} else if (state != IconicState && flags & fpl__X11NetWMStateMaximizedFlag) {
 		nextWindowStateInfo.state = fplWindowState_Maximize;
 	}
-	// + set win size/pos?
 	return nextWindowStateInfo;
 }
 
@@ -15180,6 +15221,44 @@ fpl_internal fpl__X11WindowStateInfo fpl__X11ReconcilWindowStateInfo(fpl__X11Win
 		change.visibility = next->visibility;
 	}
 	return change;
+}
+
+fpl_internal void* fpl__X11ParseUriPaths(const char* text, size_t *size, int *count, int textLength) {
+	const char *textCursor = text;
+	const char *textEnd = text + textLength; 
+	int fileCount = 0;
+	// count file entries
+	while (*textCursor != '\0' || textCursor != textEnd) {
+		if (*textCursor == '\r' && *(textCursor + 1) == '\n')
+			++fileCount;
+		++textCursor;
+	}
+	textCursor = text;
+	size_t filesTableSize = fileCount * sizeof(char **);
+	size_t maxFileStride = FPL_MAX_PATH_LENGTH + 1;
+	size_t filesMemorySize = filesTableSize + FPL__ARBITARY_PADDING + maxFileStride * fileCount;
+	void *filesTableMemory = fpl__AllocateDynamicMemory(filesMemorySize, 8);
+	char **filesTable = (char **)filesTableMemory;
+	for (int fileIndex = 0; fileIndex < fileCount; ++fileIndex) {
+		filesTable[fileIndex] = (char *)((uint8_t *)filesTableMemory + filesTableSize + FPL__ARBITARY_PADDING + fileIndex * maxFileStride);
+	}
+	for (int fileIndex = 0; fileIndex < fileCount; ++fileIndex) {
+		char *file = filesTable[fileIndex];
+		const char *line = textCursor; 
+		// split on '\r\n' divider 
+		while (*textCursor != '\r' && (*textCursor != '\0' || textCursor != textEnd)) {
+			++textCursor;
+		} 
+		// strip protocol
+		if (fplIsStringEqualLen(line, 7, "file://", 7)) {
+			line += 7;
+		}
+		fplCopyStringLen(line, (textCursor - line), file, maxFileStride);
+		textCursor += 2;
+	}
+	*size = filesMemorySize;
+	*count = fileCount;
+	return filesTableMemory;
 }
 
 fpl_internal void fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatform, fpl__PlatformAppState *appState, XEvent *ev) {
@@ -15234,6 +15313,127 @@ fpl_internal void fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatfor
 						reply.xclient.window = x11WinState->root;
 						x11Api->XSendEvent(x11WinState->display, x11WinState->root, False, SubstructureNotifyMask | SubstructureRedirectMask, &reply);
 					}
+				}
+			} else if (ev->xclient.message_type == x11WinState->xdndEnter) {
+				// A drag operation has entered the window
+				unsigned long i, count;
+				Atom* formats = NULL;
+				bool list = ev->xclient.data.l[1] & 1;
+				x11WinState->xdnd.source = ev->xclient.data.l[0];
+				x11WinState->xdnd.version = ev->xclient.data.l[1] >> 24;
+				x11WinState->xdnd.format = None;
+				if (x11WinState->xdnd.version > FPL_XDND_VERSION) {
+					return;
+				}
+				if (list) {
+					count = fpl__X11GetWindowProperty(x11Api, x11WinState->display, x11WinState->xdnd.source, x11WinState->xdndTypeList, XA_ATOM, (unsigned char**)&formats);
+				} else {
+					count = 3;
+					formats = (Atom*)ev->xclient.data.l + 2;
+				}
+				for (i = 0; i < count; ++i) {
+					if (formats[i] == x11WinState->textUriList) {
+						x11WinState->xdnd.format = x11WinState->textUriList;
+						break;
+					}
+				}
+				if (list && formats) {
+					XFree(formats);
+				}
+			} else if (ev->xclient.message_type == x11WinState->xdndDrop) {
+				// The drag operation has finished by dropping on the window
+				Time time = CurrentTime;
+				if (x11WinState->xdnd.version > FPL_XDND_VERSION) {
+					return;
+				}
+				if (x11WinState->xdnd.format) {
+					if (x11WinState->xdnd.version >= 1) {
+						time = ev->xclient.data.l[2];
+					}
+					// Request the chosen format from the source window
+					x11Api->XConvertSelection(x11WinState->display, x11WinState->xdndSelection, x11WinState->xdnd.format, x11WinState->xdndSelection, x11WinState->window, time);
+				}
+				else if (x11WinState->xdnd.version >= 2)
+				{
+					XEvent reply;
+					fplMemorySet(&reply, 0, sizeof(reply));
+
+					reply.type = ClientMessage;
+					reply.xclient.window = x11WinState->xdnd.source;
+					reply.xclient.message_type = x11WinState->xdndFinished;
+					reply.xclient.format = 32;
+					reply.xclient.data.l[0] = x11WinState->window;
+					reply.xclient.data.l[1] = 0; // The drag was rejected
+					reply.xclient.data.l[2] = None;
+
+					x11Api->XSendEvent(x11WinState->display, x11WinState->xdnd.source, False, NoEventMask, &reply);
+					x11Api->XFlush(x11WinState->display);
+				}
+			} else if (ev->xclient.message_type == x11WinState->xdndPosition) {
+				// The drag operation has moved over the window
+				Window dummy;
+				int xpos, ypos;
+				const int xabs = (ev->xclient.data.l[2] >> 16) & 0xffff;
+				const int yabs = (ev->xclient.data.l[2]) & 0xffff;
+				if (x11WinState->xdnd.version > FPL_XDND_VERSION) {
+					return;
+				}
+				XEvent reply;
+				fplMemorySet(&reply, 0, sizeof(reply));
+
+				reply.type = ClientMessage;
+				reply.xclient.window = x11WinState->xdnd.source;
+				reply.xclient.message_type = x11WinState->xdndStatus;
+				reply.xclient.format = 32;
+				reply.xclient.data.l[0] = x11WinState->window;
+				reply.xclient.data.l[2] = 0; // Specify an empty rectangle
+				reply.xclient.data.l[3] = 0;
+
+				if (x11WinState->xdnd.format)
+				{
+					// Reply that we are ready to copy the dragged data
+					reply.xclient.data.l[1] = 1; // Accept with no rectangle
+					if (x11WinState->xdnd.version >= 2)
+						reply.xclient.data.l[4] = x11WinState->xdndActionCopy;
+				}
+				x11Api->XSendEvent(x11WinState->display, x11WinState->xdnd.source, False, NoEventMask, &reply);
+				x11Api->XFlush(x11WinState->display);
+			}
+		} break;
+
+		case SelectionNotify:
+		{
+			if (ev->xselection.property == x11WinState->xdndSelection) {
+				// The converted data from the drag operation has arrived
+				char* data;
+				const unsigned long result = fpl__X11GetWindowProperty(x11Api, x11WinState->display, ev->xselection.requestor,  ev->xselection.property, ev->xselection.target, (unsigned char**)&data);
+				if (result)
+				{
+					size_t filesTableSize;
+					int fileCount;
+					void *filesTable = fpl__X11ParseUriPaths(data, &filesTableSize, &fileCount, result);
+					fplMemoryBlock memory = fplZeroInit;
+					memory.size = filesTableSize;
+					memory.base = filesTable;
+					fpl__PushWindowDropFilesEvent(NULL, fileCount, (const char **)filesTable, &memory);
+				}
+				if (data) {
+					x11Api->XFree(data);
+				}
+				if (x11WinState->xdnd.version >= 2) {
+					XEvent reply;
+					fplMemorySet(&reply, 0, sizeof(reply));
+
+					reply.type = ClientMessage;
+					reply.xclient.window = x11WinState->xdnd.source;
+					reply.xclient.message_type = x11WinState->xdndFinished;
+					reply.xclient.format = 32;
+					reply.xclient.data.l[0] = x11WinState->window;
+					reply.xclient.data.l[1] = result;
+					reply.xclient.data.l[2] = x11WinState->xdndActionCopy;
+
+					x11Api->XSendEvent(x11WinState->display, x11WinState->xdnd.source, False, NoEventMask, &reply);
+					x11Api->XFlush(x11WinState->display);
 				}
 			}
 		} break;
