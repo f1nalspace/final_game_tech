@@ -15000,8 +15000,8 @@ fpl_internal bool fpl__X11InitWindow(const fplSettings *initSettings, fplWindowS
 
 	windowState->lastWindowStateInfo.state = fplWindowState_Normal;
 	windowState->lastWindowStateInfo.visibility = fplWindowVisibilityState_Show;
-	windowState->lastWindowStateInfo.position = (fplWindowPosition){ windowWidth, windowHeight };
-	windowState->lastWindowStateInfo.size = (fplWindowSize){ windowX, windowY };
+	windowState->lastWindowStateInfo.position = fplStructInit(fplWindowPosition, windowWidth, windowHeight);
+	windowState->lastWindowStateInfo.size = fplStructInit(fplWindowSize, windowX, windowY);
 
 	FPL_LOG_DEBUG(FPL__MODULE_X11, "Create window with (Display='%p', Root='%d', Size=%dx%d, Colordepth='%d', visual='%p', colormap='%d'", windowState->display, (int)windowState->root, windowWidth, windowHeight, colorDepth, visual, (int)swa.colormap);
 	windowState->window = x11Api->XCreateWindow(windowState->display,
@@ -15191,29 +15191,29 @@ fpl_internal unsigned int fpl__X11GetNetWMState(const fpl__X11Api *x11Api, fpl__
 }
 
 fpl_internal fpl__X11WindowStateInfo fpl__X11GetWindowStateInfo(const fpl__X11Api *x11Api, fpl__X11WindowState *windowState) {
-	fpl__X11WindowStateInfo nextWindowStateInfo = {0};
+	fpl__X11WindowStateInfo result = fplZeroInit;
 	const int state = fpl__X11GetWMState(x11Api, windowState);
 	unsigned int flags = fpl__X11GetNetWMState(x11Api, windowState);
 	if (state == NormalState) {
-		nextWindowStateInfo.state = fplWindowState_Normal;
+		result.state = fplWindowState_Normal;
 	} else if (state == IconicState) {
-		nextWindowStateInfo.state = fplWindowState_Iconify;
+		result.state = fplWindowState_Iconify;
 	}
 	// reset visibility to default
-	nextWindowStateInfo.visibility = fplWindowVisibilityState_Show;
+	result.visibility = fplWindowVisibilityState_Show;
 	if (flags & fpl__X11NetWMStateHiddenFlag) {
-		nextWindowStateInfo.visibility = fplWindowVisibilityState_Hide;
+		result.visibility = fplWindowVisibilityState_Hide;
 	}
 	if (flags & fpl__X11NetWMStateFullscreenFlag) {
-		nextWindowStateInfo.state = fplWindowState_Fullscreen;
+		result.state = fplWindowState_Fullscreen;
 	} else if (state != IconicState && flags & fpl__X11NetWMStateMaximizedFlag) {
-		nextWindowStateInfo.state = fplWindowState_Maximize;
+		result.state = fplWindowState_Maximize;
 	}
-	return nextWindowStateInfo;
+	return result;
 }
 
 fpl_internal fpl__X11WindowStateInfo fpl__X11ReconcilWindowStateInfo(fpl__X11WindowStateInfo *last, fpl__X11WindowStateInfo *next) {
-	fpl__X11WindowStateInfo change = {0};
+	fpl__X11WindowStateInfo change = fplZeroInit;
 	if (last->state != next->state) {
 		change.state = next->state;
 	}
@@ -15287,14 +15287,15 @@ fpl_internal void fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatfor
 			// Window resized
 			if (ev->xconfigure.width != lastX11WinInfo->size.width || ev->xconfigure.height != lastX11WinInfo->size.height) {
 				fpl__PushWindowSizeEvent(fplWindowEventType_Resized, (uint32_t)ev->xconfigure.width, (uint32_t)ev->xconfigure.height);
-				lastX11WinInfo->size.width = (uint32_t)ev->xconfigure.width; 
-				lastX11WinInfo->size.height = (uint32_t)ev->xconfigure.height;
+				lastX11WinInfo->size.width = (int32_t)ev->xconfigure.width; 
+				lastX11WinInfo->size.height = (int32_t)ev->xconfigure.height;
 			}
+			
 			// Window moved
 			if (ev->xconfigure.x != lastX11WinInfo->position.left || ev->xconfigure.y != lastX11WinInfo->position.top) {
 				fpl__PushWindowPositionEvent(fplWindowEventType_PositionChanged, (int32_t)ev->xconfigure.x, (int32_t)ev->xconfigure.y);
-				lastX11WinInfo->position.left = (uint32_t)ev->xconfigure.x; 
-				lastX11WinInfo->position.top = (uint32_t)ev->xconfigure.y;
+				lastX11WinInfo->position.left = (int32_t)ev->xconfigure.x; 
+				lastX11WinInfo->position.top = (int32_t)ev->xconfigure.y;
 			}
 		} break;
 
