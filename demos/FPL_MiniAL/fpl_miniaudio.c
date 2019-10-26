@@ -15,6 +15,10 @@ Author:
 	Torsten Spaete
 
 Changelog:
+	## 2019-10-26
+	- New: Support for switching between miniaudio.h and FPL internal audio system
+	- Fixed: Sine wave generation was generating invalid samples (Noises, Clicking)
+
 	## 2019-07-22
 	- Changed: Migrated from mini_al to miniaudio (Rebrand, Api-Change)
 
@@ -101,6 +105,11 @@ static uint32_t AudioPlayback_FPL(const fplAudioDeviceFormat *outFormat, const u
 }
 #endif
 
+static double DecibelToLinear(double dB) {
+	double result = pow(10.0, dB / 10.0);
+	return(result);
+}
+
 static bool InitAudioData(const fplAudioDeviceFormat *targetFormat, AudioSystem *audioSys, const char *filePath, const bool generateSineWave) {
 	if (!AudioSystemInit(audioSys, targetFormat)) {
 		return false;
@@ -118,20 +127,23 @@ static bool InitAudioData(const fplAudioDeviceFormat *targetFormat, AudioSystem 
 	// Generate sine wave for some duration
 	if (generateSineWave) {
 		const double duration = 0.5;
-		const int toneHz = 256;
 		const int toneVolume = INT16_MAX / 2;
-		uint32_t sampleCount = (uint32_t)(audioSys->targetFormat.sampleRate * duration + 0.5);
-		source = AudioSystemAllocateSource(audioSys, audioSys->targetFormat.channels, audioSys->targetFormat.sampleRate, fplAudioFormatType_S16, sampleCount);
+		const double frequency = 440.0;
+		uint32_t sampleRate = audioSys->targetFormat.sampleRate;
+		uint32_t channels = audioSys->targetFormat.channels;
+		uint32_t sampleCount = (uint32_t)(duration * sampleRate + 0.5);
+		source = AudioSystemAllocateSource(audioSys, channels, sampleRate, fplAudioFormatType_S16, sampleCount);
 		if (source != fpl_null) {
 			int16_t *samples = (int16_t *)source->buffer.samples;
-			int wavePeriod = source->format.sampleRate / toneHz;
 			for (uint32_t sampleIndex = 0; sampleIndex < sampleCount; ++sampleIndex) {
-				double t = 2.0 * M_PI * (double)sampleIndex / (double)wavePeriod;
-				int16_t sampleValue = (int16_t)(sin(t) * toneVolume);
+				double t = sin((2.0 * M_PI * frequency) / sampleRate * sampleIndex);
+				int16_t sampleValue = (double)toneVolume * t;
 				for (uint32_t channelIndex = 0; channelIndex < source->format.channels; ++channelIndex) {
 					*samples++ = sampleValue;
 				}
 			}
+            int16_t firstSample = *((int16 *)source->buffer.samples + 0);
+            int16_t lastSample = *((int16 *)source->buffer.samples + (sampleCount-1));
 			AudioSystemPlaySource(audioSys, source, true, 1.0f);
 		}
 	}
