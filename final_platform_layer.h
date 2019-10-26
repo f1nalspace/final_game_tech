@@ -187,6 +187,7 @@ SOFTWARE.
 	- Changed: CPU size detection is now independent from CPU architecture detection
 	- Changed: fplGetProcessorName moved to common section with fallback to not supported architectures
 	- Changed: Removed wrong compiler detection for LLVM (Clang is LLVM)
+	- Changed: Changed from default audio sample rate of 48000 to 44100
 
 	- New: [Linux/ALSA] Print compiler warning when alsa includes was not found (has_include)
 	- New: [Win32] Implemented function fplGetCurrentThreadId
