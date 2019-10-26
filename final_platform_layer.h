@@ -156,6 +156,7 @@ SOFTWARE.
 	- New: Added struct fplCPUIDLeaf
 	- New: Added function fplCPUID and implemented it for X86/X64
 	- New: Added function fplGetXCR0 and implemented it for X86/X64
+	- New: Added macro FPL__HAS_INCLUDE
 
 	- Fixed: Corrected opengl example code in the header file
 	- Fixed: Tons of documentation improvements
@@ -187,6 +188,7 @@ SOFTWARE.
 	- Changed: fplGetProcessorName moved to common section with fallback to not supported architectures
 	- Changed: Removed wrong compiler detection for LLVM (Clang is LLVM)
 
+	- New: [Linux/ALSA] Print compiler warning when alsa includes was not found (has_include)
 	- New: [Win32] Implemented function fplGetCurrentThreadId
 	- New: [Win32] Support for multiple files in WM_DROPFILES
 	- New: [Win32] Implemented fplGetThreadPriority
@@ -1251,12 +1253,20 @@ SOFTWARE.
 	@tableofcontents
 
 	@section section_todo_inprogress In progress
+	
+	- Audio
+		- Buffer sizes & Regions:
+			Certain devices/drivers requires different buffer sizes or/and regions.
+			Include a scaling factor for certain devices, such as broadcom audio (Raspberry Pi).
+			When buffer size is zero, use standard size. (Standard size varies on driver/device).
+			When regions is zero, use standard size. (Standard periods varies on driver/device).
+			At least hardcode the values for directshow and alsa - which are afaik the only audio drivers we support right now. (Low latency mode)
 
 	- Threading
 		- Thread priority (POSIX)
 
 	- Input
-		- Text input (X11)
+		- Repeating for text input (X11)
 
 	- Window
 		- Use XFilterEvent (X11)
@@ -9437,11 +9447,14 @@ fpl_common_api void fplSetDefaultVideoSettings(fplVideoSettings *video) {
 fpl_common_api void fplSetDefaultAudioTargetFormat(fplAudioTargetFormat *targetFormat) {
 	FPL__CheckArgumentNullNoRet(targetFormat);
 	fplClearStruct(targetFormat);
+	// @TODO(final): Leave buffer size in milliseconds at zero, so we use the default size when it is zero
 	targetFormat->bufferSizeInMilliseconds = 25;
 	targetFormat->preferExclusiveMode = false;
 	targetFormat->channels = 2;
-	targetFormat->sampleRate = 48000;
+	targetFormat->sampleRate = 44100;
 	targetFormat->type = fplAudioFormatType_S16;
+	// @TODO(final): Leave number of periods at zero, so we use the default periods when it is zero
+	targetFormat->periods = 2;
 }
 
 fpl_common_api void fplSetDefaultAudioSettings(fplAudioSettings *audio) {
