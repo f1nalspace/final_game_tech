@@ -68,6 +68,8 @@ License:
 */
 #define OPT_AUTO_RENDER_SAMPLES 1
 
+#define OPT_DISABLE_RENDER 0
+
 #define OPT_PLAYBACK_NONE 0
 #define OPT_PLAYBACK_SINEWAVE_ONLY 1
 #define OPT_PLAYBACK_AUDIOSYSTEM_ONLY 2
@@ -373,7 +375,7 @@ int main(int argc, char **args) {
 
 				// Audio
 				if (nextSamples) {
-#if !OPT_AUTO_RENDER_SAMPLES
+#if 0
 					AudioFrameIndex framesToRender = targetAudioFormat.bufferSizeInFrames / targetAudioFormat.periods;
 					// @FIXME(final): Fix hearable error, when the audio stream has finished playing and will repeat
 					AudioFrameIndex writtenFrames = AudioSystemWriteSamples(&audioSys, tempAudioSamples, &targetAudioFormat, framesToRender);
@@ -382,6 +384,7 @@ int main(int argc, char **args) {
 					nextSamples = false;
 				}
 
+#if !OPT_DISABLE_RENDER
 				// Render
 				const float w = (float)backBuffer->width;
 				const float h = (float)backBuffer->height;
@@ -430,6 +433,7 @@ int main(int argc, char **args) {
 				}
 
 				fplVideoFlip();
+#endif
 			}
 
 			// Stop audio playback
