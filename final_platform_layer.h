@@ -1696,7 +1696,18 @@ SOFTWARE.
 
 	// Function name macro (Other compilers)
 #	define FPL__M_FUNCTION_NAME __FUNCTION__
+
+	// Has include (Other compilers)
+#	if defined(__has_include)
+		#define FPL__HAS_INCLUDE(exp) __has_include(exp)
+#	endif // __has_include
+
 #endif // FPL_COMPILER
+
+// Has include fallback (Always yes)
+#if !defined(FPL__HAS_INCLUDE)
+#	define FPL__HAS_INCLUDE(exp) (1)
+#endif
 
 // Debug Release fallback
 #if !defined(FPL__ENABLE_DEBUG) && !defined(FPL__ENABLE_RELEASE)
@@ -1789,7 +1800,11 @@ SOFTWARE.
 #		define FPL__SUPPORT_AUDIO_DIRECTSOUND
 #	endif
 #	if !defined(FPL_NO_AUDIO_ALSA) && defined(FPL_PLATFORM_LINUX)
-#		define FPL__SUPPORT_AUDIO_ALSA
+#		if FPL__HAS_INCLUDE(<alsa/asoundlib.h>)
+#			define FPL__SUPPORT_AUDIO_ALSA
+#		else
+#			warning "FPL-Warning: ALSA audio development library is missing. Please install 'libasound2-dev' and try again!"
+#		endif
 #	endif
 #endif // FPL__SUPPORT_AUDIO
 
