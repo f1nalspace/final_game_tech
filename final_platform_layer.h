@@ -1687,10 +1687,12 @@ SOFTWARE.
 	// Setup MSVC linker hints
 #	pragma comment(lib, "kernel32.lib")
 #else
-#	if defined(FPL_COMPILER_GCC) || defined(FPL_COMPILER_CLANG)
-		// Required include for CPUID
-#		include <cpuid.h> // __cpuid_count
-#	endif
+#	if defined(FPL_ARCH_X86) || defined(FPL_ARCH_X64)
+#		if defined(FPL_COMPILER_GCC) || defined(FPL_COMPILER_CLANG)
+			// Required include for CPUID
+#			include <cpuid.h> // __cpuid_count
+#		endif
+#	endif // X86 or X64
 
 	// Function name macro (Other compilers)
 #	define FPL__M_FUNCTION_NAME __FUNCTION__
@@ -1974,11 +1976,6 @@ fplStaticAssert(sizeof(size_t) >= sizeof(uint32_t));
 #endif
 
 //
-// Required forward declarations
-//
-fpl_common_api void fplMemoryClear(void *mem, const size_t size);
-
-//
 // Macro functions
 //
 
@@ -1994,7 +1991,7 @@ fpl_common_api void fplMemoryClear(void *mem, const size_t size);
 #if defined(FPL_IS_C99)
 #	define fpl__m_ZeroInit {0}
 #	define fpl__m_StructSet(ptr, type, value) *(ptr) = (type)value
-#	define fpl__m_StructInit(type, ...) (type){## __VA_ARGS__}
+#	define fpl__m_StructInit(type, ...) (type){__VA_ARGS__}
 #else
 #	define fpl__m_ZeroInit {}
 #	define fpl__m_StructSet(ptr, type, value) *(ptr) = value
@@ -16349,7 +16346,7 @@ fpl_platform_api bool fplSignalWaitForOne(fplSignalHandle *signal, const fplTime
 		fd_set f;
 		FD_ZERO(&f);
 		FD_SET(ev, &f);
-		struct timeval t = { 0, timeout * 1000 };
+                struct timeval t = { 0, (__suseconds_t)timeout * 1000 };
 		int selectResult = select(1, &f, NULL, NULL, &t);
 		if (selectResult == 0) {
 			// Timeout
