@@ -24,6 +24,7 @@
   <ItemGroup>
     <ClInclude Include="..\..\final_platform_layer.h" />
     <ClInclude Include="..\dependencies\stb\stb_image.h" />
+    <ClInclude Include="..\dependencies\stb\stb_image_resize.h" />
     <ClInclude Include="..\dependencies\stb\stb_truetype.h" />
     <ClInclude Include="imageresources.h" />
     <ClInclude Include="logging.h" />
