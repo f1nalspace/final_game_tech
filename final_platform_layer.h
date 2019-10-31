@@ -133,6 +133,7 @@ SOFTWARE.
 	@tableofcontents
 
 	## v0.9.4.0 beta
+
 	- New: Added callbacks fpl_memory_allocate_callback & fpl_memory_release_callback
 	- New: Added enum fplMemoryAllocationMode
 	- New: Added struct fplMemoryAllocationSettings
@@ -156,7 +157,10 @@ SOFTWARE.
 	- New: Added struct fplCPUIDLeaf
 	- New: Added function fplCPUID and implemented it for X86/X64
 	- New: Added function fplGetXCR0 and implemented it for X86/X64
-	- New: Added macro FPL__HAS_INCLUDE
+	- New: Added macro fplHasInclude
+	- New: Added power-pc 32/64 architecture detection
+	- New: Added storage class identifier fpl_no_inline
+	- New: Added macro fplAlwaysAssert()
 
 	- Fixed: Corrected opengl example code in the header file
 	- Fixed: Tons of documentation improvements
@@ -166,6 +170,8 @@ SOFTWARE.
 	- Fixed: Use actual window size for video initialization always instead of fixed size
 	- Fixed: fplAtomicAddAndFetch* had no addend parameter
 	- Fixed: All non-tab spacings replaced with tab spacings
+	- Fixed: ARM64 was not detected properly
+	- Fixed: Atomics was not detected for ICC (Intel C/C++ Compiler)
 
 	- Changed: Removed fake thread-safe implementation of the internal event queue
 	- Changed: Changed drop event structure in fplWindowEvent to support multiple dropped files
@@ -187,18 +193,21 @@ SOFTWARE.
 	- Changed: CPU size detection is now independent from CPU architecture detection
 	- Changed: fplGetProcessorName moved to common section with fallback to not supported architectures
 	- Changed: Removed wrong compiler detection for LLVM (Clang is LLVM)
+	- Changed: Removed pre-spaces from all code documentation comments
 	- Changed: Changed from default audio sample rate of 48000 to 44100
+	- Changed: Moved compiler includes into its own section
+	- Changed: Moved rdtsc/cpuid, etc. into the implementation block
 
-	- New: [Linux/ALSA] Print compiler warning when alsa includes was not found (has_include)
 	- New: [Win32] Implemented function fplGetCurrentThreadId
 	- New: [Win32] Support for multiple files in WM_DROPFILES
 	- New: [Win32] Implemented fplGetThreadPriority
 	- New: [Win32] Implemented fplSetThreadPriority
 	- New: [Win32/Linux] Implemented isActive field for fplGamepadState for state querying, indicating any buttons are pressed or triggers have been moved
+	- New: [Win32/XInput] Fill out the deviceName in fplGamepadState and fplGamepadEvent -> Generic name for now
 	- New: [POSIX/Win32] Implemented functions fplAtomicIncrement*
+	- New: [Linux/ALSA] Print compiler warning when alsa include was not found
 	- New: [X11] Implemented fplSetWindowDecorated
 	- New: [X11] Implemented fplIsWindowDecorated
-	- New: [Win32/XInput] Fill out the deviceName in fplGamepadState and fplGamepadEvent -> Generic name for now
 
 	- Fixed: [Win32] Fixed missing WINAPI keyword for fpl__Win32MonitorCountEnumProc/fpl__Win32MonitorInfoEnumProc/fpl__Win32PrimaryMonitorEnumProc
 	- Fixed: [Win32] Software video output was not outputing the image as top-down
@@ -1254,7 +1263,10 @@ SOFTWARE.
 	@tableofcontents
 
 	@section section_todo_inprogress In progress
-	
+
+	- Threading
+		- Thread priority (POSIX)
+
 	- Audio
 		- Buffer sizes & Regions:
 			Certain devices/drivers requires different buffer sizes or/and regions.
@@ -1262,9 +1274,6 @@ SOFTWARE.
 			When buffer size is zero, use standard size. (Standard size varies on driver/device).
 			When regions is zero, use standard size. (Standard periods varies on driver/device).
 			At least hardcode the values for directshow and alsa - which are afaik the only audio drivers we support right now. (Low latency mode)
-
-	- Threading
-		- Thread priority (POSIX)
 
 	- Input
 		- Repeating for text input (X11)
@@ -1340,66 +1349,25 @@ SOFTWARE.
 
 // ****************************************************************************
 //
-// HEADER
+// > HEADER
 //
 // ****************************************************************************
-#ifndef FPL_INCLUDE_H
-#define FPL_INCLUDE_H
+#ifndef FPL_HEADER_H
+#define FPL_HEADER_H
 
 //
 // C99 detection
 //
 // https://en.wikipedia.org/wiki/C99#Version_detection
-// Visual Studio 2015+
 #if !defined(__cplusplus) && ((defined(__STDC_VERSION__) && (__STDC_VERSION__ >= 199901L)) || (defined(_MSC_VER) && (_MSC_VER >= 1900)))
-	//! Is C99 compiler detected
+	//! C99 compiler detected
 #	define FPL_IS_C99
 #elif defined(__cplusplus)
-	//! Is C++ compiler detected
+	//! C++ compiler detected
 #	define FPL_IS_CPP
 #else
 #	error "This C/C++ compiler is not supported!"
 #endif
-
-//
-// Platform detection
-// https://sourceforge.net/p/predef/wiki/OperatingSystems/
-//
-#if defined(_WIN32) || defined(_WIN64)
-#	define FPL_PLATFORM_WINDOWS
-#	define FPL_PLATFORM_NAME "Windows"
-#elif defined(__ANDROID__)
-#	define FPL_PLATFORM_ANDROID
-#	define FPL_PLATFORM_NAME "Android"
-#	define FPL_SUBPLATFORM_POSIX
-#	define FPL_SUBPLATFORM_STD_STRINGS
-#	define FPL_SUBPLATFORM_STD_CONSOLE
-#elif defined(__linux__) || defined(__gnu_linux__)
-#	define FPL_PLATFORM_LINUX
-#	define FPL_PLATFORM_NAME "Linux"
-#	define FPL_SUBPLATFORM_POSIX
-#	define FPL_SUBPLATFORM_X11
-#	define FPL_SUBPLATFORM_STD_STRINGS
-#	define FPL_SUBPLATFORM_STD_CONSOLE
-#elif defined(__FreeBSD__) || defined(__NetBSD__) || defined(__OpenBSD__) || defined(__DragonFly__) || defined(__bsdi__)
-	// @NOTE(final): BSD is treated as a subplatform for now
-#	define FPL_PLATFORM_UNIX
-#	define FPL_PLATFORM_NAME "BSD"
-#	define FPL_SUBPLATFORM_BSD
-#	define FPL_SUBPLATFORM_POSIX
-#	define FPL_SUBPLATFORM_X11
-#	define FPL_SUBPLATFORM_STD_STRINGS
-#	define FPL_SUBPLATFORM_STD_CONSOLE
-#elif defined(unix) || defined(__unix) || defined(__unix__)
-#	define FPL_PLATFORM_UNIX
-#	define FPL_PLATFORM_NAME "Unix"
-#	define FPL_SUBPLATFORM_POSIX
-#	define FPL_SUBPLATFORM_X11
-#	define FPL_SUBPLATFORM_STD_STRINGS
-#	define FPL_SUBPLATFORM_STD_CONSOLE
-#else
-#	error "This platform is not supported!"
-#endif // FPL_PLATFORM
 
 //
 // Architecture detection (x86, x64)
@@ -1409,12 +1377,14 @@ SOFTWARE.
 #	define FPL_ARCH_X64
 #elif defined(__i386__) || defined(_M_IX86) || defined(__X86__) || defined(_X86_)
 #	define FPL_ARCH_X86
+#elif defined(__aarch64__) || defined(_M_ARM64)
+#	define FPL_ARCH_ARM64
 #elif defined(__arm__) || defined(_M_ARM)
-#	if defined(__aarch64__)
-#		define FPL_ARCH_ARM64
-#	else	
-#		define FPL_ARCH_ARM32
-#	endif
+#	define FPL_ARCH_ARM32
+#elif defined(__powerpc64__) || defined(__ppc64__) || defined(__PPC64__) || defined(_ARCH_PPC64)
+#	define FPL_ARCH_POWERPC64
+#elif defined(__powerpc__) || defined(__POWERPC__) || defined(__ppc__) || defined(__PPC__) || defined(_ARCH_PPC)
+#	define FPL_ARCH_POWERPC32
 #else
 #	error "This architecture is not supported!"
 #endif // FPL_ARCH
@@ -1467,8 +1437,48 @@ SOFTWARE.
 #	define FPL_COMPILER_MSVC
 #else
 	//! No compiler detected
-#	define FPL_COMPILER_UNKNOWN
+#error "This compiler is not supported!"
 #endif // FPL_COMPILER
+
+//
+// Platform detection
+// https://sourceforge.net/p/predef/wiki/OperatingSystems/
+//
+#if defined(_WIN32) || defined(_WIN64)
+#	define FPL_PLATFORM_WINDOWS
+#	define FPL_PLATFORM_NAME "Windows"
+#elif defined(__ANDROID__)
+#	define FPL_PLATFORM_ANDROID
+#	define FPL_PLATFORM_NAME "Android"
+#	define FPL_SUBPLATFORM_POSIX
+#	define FPL_SUBPLATFORM_STD_STRINGS
+#	define FPL_SUBPLATFORM_STD_CONSOLE
+#elif defined(__linux__) || defined(__gnu_linux__)
+#	define FPL_PLATFORM_LINUX
+#	define FPL_PLATFORM_NAME "Linux"
+#	define FPL_SUBPLATFORM_POSIX
+#	define FPL_SUBPLATFORM_X11
+#	define FPL_SUBPLATFORM_STD_STRINGS
+#	define FPL_SUBPLATFORM_STD_CONSOLE
+#elif defined(__FreeBSD__) || defined(__NetBSD__) || defined(__OpenBSD__) || defined(__DragonFly__) || defined(__bsdi__)
+	// @NOTE(final): BSD is treated as a subplatform for now
+#	define FPL_PLATFORM_UNIX
+#	define FPL_PLATFORM_NAME "BSD"
+#	define FPL_SUBPLATFORM_BSD
+#	define FPL_SUBPLATFORM_POSIX
+#	define FPL_SUBPLATFORM_X11
+#	define FPL_SUBPLATFORM_STD_STRINGS
+#	define FPL_SUBPLATFORM_STD_CONSOLE
+#elif defined(unix) || defined(__unix) || defined(__unix__)
+#	define FPL_PLATFORM_UNIX
+#	define FPL_PLATFORM_NAME "Unix"
+#	define FPL_SUBPLATFORM_POSIX
+#	define FPL_SUBPLATFORM_X11
+#	define FPL_SUBPLATFORM_STD_STRINGS
+#	define FPL_SUBPLATFORM_STD_CONSOLE
+#else
+#	error "This platform is not supported!"
+#endif // FPL_PLATFORM
 
 //
 // Defines required for POSIX (mmap, 64-bit file io, etc.)
@@ -1515,12 +1525,12 @@ SOFTWARE.
 //
 
 /**
-  * @defgroup StorageClassIdents Storage class identifiers
-  * @brief This category contains storage class identifiers, such as static, extern, inline, etc.
-  * @{
-  */
+* @defgroup StorageClassIdents Storage class identifiers
+* @brief This category contains storage class identifiers, such as static, extern, inline, etc.
+* @{
+*/
 
-//! Global persistent variable
+  //! Global persistent variable
 #define fpl_globalvar static
 //! Local persistent variable
 #define fpl_localvar static
@@ -1571,17 +1581,18 @@ SOFTWARE.
 //
 // API Call
 //
+#if defined(FPL_API_AS_PRIVATE)
+#	define fpl_m_api static
+#elif defined(FPL_DLLEXPORT)
+#	define fpl_m_api fpl_dllexport
+#elif defined(FPL_DLLIMPORT)
+#	define fpl_m_api fpl_dllimport
+#else
+#	define fpl_m_api fpl_extern
+#endif // FPL_API_AS_PRIVATE
 
 //! Api call
-#if defined(FPL_API_AS_PRIVATE)
-#	define fpl_api static
-#elif defined(FPL_DLLEXPORT)
-#	define fpl_api fpl_dllexport
-#elif defined(FPL_DLLIMPORT)
-#	define fpl_api fpl_dllimport
-#else
-#	define fpl_api fpl_extern
-#endif // FPL_API_AS_PRIVATE
+#define fpl_api fpl_m_api
 
 //! Main entry point api definition
 #define fpl_main
@@ -1594,24 +1605,29 @@ SOFTWARE.
 #	define fpl__m_common_api fpl_api
 #endif
 
-//! Platform api definition
+//! Platform api
 #define fpl_platform_api fpl__m_platform_api
-//! Common api definition
+//! Common api
 #define fpl_common_api fpl__m_common_api
 
 //
-// Force inline
+// Inlining
 //
-#if defined(FPL_COMPILER_GCC) && (__GNUC__ >= 4)
-#	define fpl__m_force_inline __attribute__((__always_inline__)) inline
-#elif defined(FPL_COMPILER_MSVC) && (_MSC_VER >= 1200)
+#if defined(FPL_COMPILER_MSVC)
 #	define fpl__m_force_inline __forceinline
+#	define fpl__m_no_inline __declspec(noinline)
+#elif defined(FPL_COMPILER_GCC) || defined(FPL_COMPILER_CLANG)
+#	define fpl__m_force_inline __attribute__((__always_inline__)) inline
+#	define fpl__m_no_inline __attribute__((noinline))
 #else
 #	define fpl__m_force_inline inline
+#	define fpl__m_no_inline
 #endif
 
-//! Force inline
+//! Always inlines this function
 #define fpl_force_inline fpl__m_force_inline
+//! Prevents inlining of this function
+#define fpl_no_inline fpl__m_no_inline
 
 /** @} */
 
@@ -1672,10 +1688,6 @@ SOFTWARE.
 // Compiler settings
 //
 #if defined(FPL_COMPILER_MSVC)
-	// Includes for CPUID and XCR
-#	include <immintrin.h> // _xgetbv
-#	include <intrin.h> // __cpuid
-
 	// Debug/Release detection
 #	if !defined(FPL__ENABLE_DEBUG) && !defined(FPL__ENABLE_RELEASE)
 #		if defined(_DEBUG) || (!defined(NDEBUG))
@@ -1698,27 +1710,10 @@ SOFTWARE.
 	// Setup MSVC linker hints
 #	pragma comment(lib, "kernel32.lib")
 #else
-#	if defined(FPL_ARCH_X86) || defined(FPL_ARCH_X64)
-#		if defined(FPL_COMPILER_GCC) || defined(FPL_COMPILER_CLANG)
-			// Required include for CPUID
-#			include <cpuid.h> // __cpuid_count
-#		endif
-#	endif // X86 or X64
 
 	// Function name macro (Other compilers)
 #	define FPL__M_FUNCTION_NAME __FUNCTION__
-
-	// Has include (Other compilers)
-#	if defined(__has_include)
-		#define FPL__HAS_INCLUDE(exp) __has_include(exp)
-#	endif // __has_include
-
 #endif // FPL_COMPILER
-
-// Has include fallback (Always yes)
-#if !defined(FPL__HAS_INCLUDE)
-#	define FPL__HAS_INCLUDE(exp) (1)
-#endif
 
 // Debug Release fallback
 #if !defined(FPL__ENABLE_DEBUG) && !defined(FPL__ENABLE_RELEASE)
@@ -1778,6 +1773,17 @@ SOFTWARE.
 #endif // FPL__ENABLE_ASSERTIONS
 
 //
+// HasInclude
+//
+#if defined(__has_include)
+#	define fpl__m_HasInclude(inc) __has_include(inc)
+#else
+#	define fpl__m_HasInclude(inc) (1)
+#endif
+//! Test for include existance.
+#define fplHasInclude(inc) fpl__m_HasInclude(inc)
+
+//
 // Window
 //
 #if !defined(FPL_NO_WINDOW) && !defined(FPL_APPTYPE_CONSOLE)
@@ -1808,10 +1814,10 @@ SOFTWARE.
 #endif
 #if defined(FPL__SUPPORT_AUDIO)
 #	if !defined(FPL_NO_AUDIO_DIRECTSOUND) && defined(FPL_PLATFORM_WINDOWS)
-#		define FPL__SUPPORT_AUDIO_DIRECTSOUND
+#		define FPL__SUPPORT_AUDIO_DIRECTSOUND // <dsound.h> is always present on windows
 #	endif
 #	if !defined(FPL_NO_AUDIO_ALSA) && defined(FPL_PLATFORM_LINUX)
-#		if FPL__HAS_INCLUDE(<alsa/asoundlib.h>)
+#		if fplHasInclude(<alsa/asoundlib.h>)
 #			define FPL__SUPPORT_AUDIO_ALSA
 #		else
 #			warning "FPL-Warning: ALSA audio development library is missing. Please install 'libasound2-dev' and try again!"
@@ -1877,10 +1883,10 @@ SOFTWARE.
 //
 
 /**
-  * @defgroup Debug Assertion & Debug
-  * @brief This category contains assertion & debug macro functions
-  * @{
-  */
+* @defgroup Debug Assertion & Debug
+* @brief This category contains assertion & debug macro functions
+* @{
+*/
 
 #if defined(FPL__ENABLE_ASSERTIONS)
 #	if defined(FPL__ENABLE_C_ASSERT) && !defined(FPL_FORCE_ASSERTIONS)
@@ -1907,6 +1913,8 @@ SOFTWARE.
 #define fplAssert(exp) fpl__m_Assert(exp)
 //! Compile time assertion
 #define fplStaticAssert(exp) fpl__m_StaticAssert(exp)
+//! Always runtime assertion
+#define fplAlwaysAssert(exp) if(!(exp)) {*(int *)0 = 0;}
 
 //
 // Debug-Break
@@ -1984,9 +1992,9 @@ fpl_internal fpl_force_inline void fpl__m_DebugBreak() { __asm__ __volatile__(".
 #else
 #	define fpl__m_null 0
 #endif
-
 //! Null
 #define fpl_null fpl__m_null
+
 //! 32-bit boolean
 typedef int32_t fpl_b32;
 
@@ -2006,10 +2014,10 @@ fplStaticAssert(sizeof(size_t) >= sizeof(uint32_t));
 //
 
 /**
-  * @defgroup Macros Function macros
-  * @brief This category contains several useful macro functions
-  * @{
-  */
+* @defgroup Macros Function macros
+* @brief This category contains several useful macro functions
+* @{
+*/
 
 //! This will full-on crash when something is not implemented always.
 #define FPL_NOT_IMPLEMENTED {*(int *)0 = 0xBAD;}
@@ -2077,40 +2085,6 @@ fplStaticAssert(sizeof(size_t) >= sizeof(uint32_t));
 //! Manually allocate memory on the stack
 #define fplStackAllocate(size) fpl__m_StackAllocate(size)
 
-//
-// RDTSC (x86 only)
-//
-#if defined(FPL_ARCH_X86) || defined(FPL_ARCH_X64)
-#	if defined(FPL_COMPILER_MSVC)
-#		define fpl__m_RDTSC() ((uint64_t)__rdtsc())
-#	elif defined(FPL_ARCH_X86)
-fpl_force_inline uint64_t fpl__m_RDTSC(void) {
-	unsigned long long int result;
-	__asm__ volatile (".byte 0x0f, 0x31" : "=A" (result));
-	return((uint64_t)result);
-}
-#	elif defined(FPL_ARCH_X64)
-fpl_force_inline uint64_t fpl__m_RDTSC(void) {
-	unsigned hi, lo;
-	__asm__ __volatile__("rdtsc" : "=a"(lo), "=d"(hi));
-	uint64_t result = (uint64_t)(((unsigned long long)lo) | (((unsigned long long)hi) << 32));
-	return (result);
-}
-#	else
-#		error "Not implemented RDTSC for unknown x86 platform!"
-#	endif
-#else
-fpl_force_inline uint64_t fpl__m_RDTSC(void) {
-	return(0ULL);
-}
-#endif
-
-/**
-  * @brief Reads the current time stamp counter (RDTSC), which is only available on x86 processors.
-  * @return Returns the number of cycles since the system start or returns zero on a non-x86 processor.
-  */
-#define fplRDTSC() fpl__m_RDTSC()
-
 /** @} */
 
 #if defined(FPL_IS_CPP)
@@ -2145,6 +2119,20 @@ fpl_force_inline uint64_t fpl__m_RDTSC(void) {
 
 // ****************************************************************************
 //
+// Compiler Includes
+//
+// ****************************************************************************
+#if defined(FPL_COMPILER_MSVC)
+//#	include <immintrin.h> // _xgetbv
+#	include <intrin.h> // __cpuid, _Interlocked*
+#elif defined(FPL_COMPILER_GCC) || defined(FPL_COMPILER_CLANG)
+#	if defined(FPL_ARCH_X86) || defined(FPL_ARCH_X64)
+#		include <cpuid.h> // __cpuid_count
+#	endif // X86 or X64
+#endif
+
+// ****************************************************************************
+//
 // Platform Includes
 //
 // ****************************************************************************
@@ -2159,7 +2147,7 @@ fpl_force_inline uint64_t fpl__m_RDTSC(void) {
 #	endif
 	// @STUPID(final): Workaround for "combaseapi.h(229): error C2187: syntax error: 'identifier' was unexpected here"
 struct IUnknown;
-#	include <Windows.h> // Win32 api
+#	include <windows.h> // Win32 api
 #	if _WIN32_WINNT < 0x0600
 #		error "Windows Vista or higher required!"
 #	endif
@@ -2183,10 +2171,10 @@ struct IUnknown;
 //
 
 /**
-  * @defgroup Constants Constants
-  * @brief This category contains constants
-  * @{
-  */
+* @defgroup Constants Constants
+* @brief This category contains constants
+* @{
+*/
 
 #if defined(FPL_PLATFORM_WINDOWS)
 #	define FPL__M_MAX_FILENAME_LENGTH (MAX_PATH + 1)
@@ -2223,34 +2211,34 @@ struct IUnknown;
 
 // ----------------------------------------------------------------------------
 /**
-  * @defgroup Atomics Atomic operations
-  * @brief This category contains functions for handling atomic operations, such as Add, Compare And/Or Exchange, Fences, Loads/Stores, etc.
-  * @see @ref page_category_threading_atomics
-  * @{
-  */
-  // ----------------------------------------------------------------------------
+* @defgroup Atomics Atomic operations
+* @brief This category contains functions for handling atomic operations, such as Add, Compare And/Or Exchange, Fences, Loads/Stores, etc.
+* @see @ref page_category_threading_atomics
+* @{
+*/
+// ----------------------------------------------------------------------------
 
-  //
-  // Barrier/Fence
-  //
+//
+// Barrier/Fence
+//
 
-  /**
-	* @brief Inserts a memory read fence/barrier.
-	* @note This will complete previous reads before future reads and prevents the compiler from reordering memory reads across this fence.
-	* @see @ref section_category_threading_atomics_barriers
-	*/
+/**
+* @brief Inserts a memory read fence/barrier.
+* @note This will complete previous reads before future reads and prevents the compiler from reordering memory reads across this fence.
+* @see @ref section_category_threading_atomics_barriers
+*/
 fpl_platform_api void fplAtomicReadFence();
 /**
-  * @brief Inserts a memory write fence/barrier.
-  * @note This will complete previous writes before future writes and prevents the compiler from reordering memory writes across this fence.
-  * @see @ref section_category_threading_atomics_barriers
-  */
+* @brief Inserts a memory write fence/barrier.
+* @note This will complete previous writes before future writes and prevents the compiler from reordering memory writes across this fence.
+* @see @ref section_category_threading_atomics_barriers
+*/
 fpl_platform_api void fplAtomicWriteFence();
 /**
-  * @brief Inserts a memory read and write fence/barrier.
-  * @note This will complete previous reads and writes before future reads and writes and prevents the compiler from reordering memory access across this fence.
-  * @see @ref section_category_threading_atomics_barriers
-  */
+* @brief Inserts a memory read and write fence/barrier.
+* @note This will complete previous reads and writes before future reads and writes and prevents the compiler from reordering memory access across this fence.
+* @see @ref section_category_threading_atomics_barriers
+*/
 fpl_platform_api void fplAtomicReadWriteFence();
 
 //
@@ -2258,474 +2246,474 @@ fpl_platform_api void fplAtomicReadWriteFence();
 //
 
 /**
-  * @brief Replaces a 32-bit unsigned integer with the given value atomically.
-  * @param target The target value to write into
-  * @param value The source value used for exchange
-  * @return Returns the initial value before the replacement.
-  * @note Ensures that memory operations are completed in order.
-  * @see @ref category_threading_atomics_exchange
-  */
-fpl_platform_api uint32_t fplAtomicExchangeU32(volatile uint32_t *target, const uint32_t value);
+* @brief Replaces a 32-bit unsigned integer with the given value atomically.
+* @param target The target value to write into
+* @param value The source value used for exchange
+* @return Returns the initial value before the replacement.
+* @note Ensures that memory operations are completed in order.
+* @see @ref category_threading_atomics_exchange
+*/
+fpl_platform_api uint32_t fplAtomicExchangeU32(volatile uint32_t* target, const uint32_t value);
 /**
-  * @brief Replaces a 64-bit unsigned integer with the given value atomically.
-  * @param target The target value to write into
-  * @param value The source value used for exchange
-  * @return Returns the initial value before the replacement.
-  * @note Ensures that memory operations are completed in order.
-  * @see @ref category_threading_atomics_exchange
-  */
-fpl_platform_api uint64_t fplAtomicExchangeU64(volatile uint64_t *target, const uint64_t value);
+* @brief Replaces a 64-bit unsigned integer with the given value atomically.
+* @param target The target value to write into
+* @param value The source value used for exchange
+* @return Returns the initial value before the replacement.
+* @note Ensures that memory operations are completed in order.
+* @see @ref category_threading_atomics_exchange
+*/
+fpl_platform_api uint64_t fplAtomicExchangeU64(volatile uint64_t* target, const uint64_t value);
 /**
-  * @brief Replaces a 32-bit signed integer with the given value atomically.
-  * @param target The target value to write into
-  * @param value The source value used for exchange
-  * @return Returns the initial value before the replacement.
-  * @note Ensures that memory operations are completed in order.
-  * @see @ref category_threading_atomics_exchange
-  */
-fpl_platform_api int32_t fplAtomicExchangeS32(volatile int32_t *target, const int32_t value);
+* @brief Replaces a 32-bit signed integer with the given value atomically.
+* @param target The target value to write into
+* @param value The source value used for exchange
+* @return Returns the initial value before the replacement.
+* @note Ensures that memory operations are completed in order.
+* @see @ref category_threading_atomics_exchange
+*/
+fpl_platform_api int32_t fplAtomicExchangeS32(volatile int32_t* target, const int32_t value);
 /**
-  * @brief Replaces a 64-bit signed integer with the given value atomically.
-  * @param target The target value to write into
-  * @param value The source value used for exchange
-  * @return Returns the initial value before the replacement.
-  * @note Ensures that memory operations are completed in order.
-  * @see @ref category_threading_atomics_exchange
-  */
-fpl_platform_api int64_t fplAtomicExchangeS64(volatile int64_t *target, const int64_t value);
+* @brief Replaces a 64-bit signed integer with the given value atomically.
+* @param target The target value to write into
+* @param value The source value used for exchange
+* @return Returns the initial value before the replacement.
+* @note Ensures that memory operations are completed in order.
+* @see @ref category_threading_atomics_exchange
+*/
+fpl_platform_api int64_t fplAtomicExchangeS64(volatile int64_t* target, const int64_t value);
 /**
-  * @brief Replaces a pointer with the given value atomically.
-  * @param target The target value to write into
-  * @param value The source value used for exchange
-  * @return Returns the initial value before the replacement.
-  * @note Ensures that memory operations are completed in order.
-  * @see @ref category_threading_atomics_exchange
-  */
-fpl_common_api void *fplAtomicExchangePtr(volatile void **target, const void *value);
+* @brief Replaces a pointer with the given value atomically.
+* @param target The target value to write into
+* @param value The source value used for exchange
+* @return Returns the initial value before the replacement.
+* @note Ensures that memory operations are completed in order.
+* @see @ref category_threading_atomics_exchange
+*/
+fpl_common_api void* fplAtomicExchangePtr(volatile void** target, const void* value);
 /**
-  * @brief Replaces a size with the given value atomically.
-  * @param target The target value to write into
-  * @param value The source value used for exchange
-  * @return Returns the initial value before the replacement.
-  * @note Ensures that memory operations are completed in order.
-  * @see @ref category_threading_atomics_exchange
-  */
-fpl_common_api size_t fplAtomicExchangeSize(volatile size_t *target, const size_t value);
+* @brief Replaces a size with the given value atomically.
+* @param target The target value to write into
+* @param value The source value used for exchange
+* @return Returns the initial value before the replacement.
+* @note Ensures that memory operations are completed in order.
+* @see @ref category_threading_atomics_exchange
+*/
+fpl_common_api size_t fplAtomicExchangeSize(volatile size_t* target, const size_t value);
 
 //
 // Fetch and Add
 //
 
 /**
-  * @brief Adds a 32-bit unsigned integer to the value by the given addend atomically.
-  * @param value The target value to add to.
-  * @param addend The value used for adding.
-  * @return Returns the initial value before the add.
-  * @note Ensures that memory operations are completed in order.
-  * @see @ref category_threading_atomics_add
-  */
-fpl_platform_api uint32_t fplAtomicFetchAndAddU32(volatile uint32_t *value, const uint32_t addend);
+* @brief Adds a 32-bit unsigned integer to the value by the given addend atomically.
+* @param value The target value to add to.
+* @param addend The value used for adding.
+* @return Returns the initial value before the add.
+* @note Ensures that memory operations are completed in order.
+* @see @ref category_threading_atomics_add
+*/
+fpl_platform_api uint32_t fplAtomicFetchAndAddU32(volatile uint32_t* value, const uint32_t addend);
 /**
-  * @brief Adds a 64-bit unsigned integer to the value by the given addend atomically.
-  * @param value The target value to add to.
-  * @param addend The value used for adding.
-  * @return Returns the initial value before the add.
-  * @note Ensures that memory operations are completed in order.
-  * @see @ref category_threading_atomics_add
-  */
-fpl_platform_api uint64_t fplAtomicFetchAndAddU64(volatile uint64_t *value, const uint64_t addend);
+* @brief Adds a 64-bit unsigned integer to the value by the given addend atomically.
+* @param value The target value to add to.
+* @param addend The value used for adding.
+* @return Returns the initial value before the add.
+* @note Ensures that memory operations are completed in order.
+* @see @ref category_threading_atomics_add
+*/
+fpl_platform_api uint64_t fplAtomicFetchAndAddU64(volatile uint64_t* value, const uint64_t addend);
 /**
-  * @brief Adds a 32-bit signed integer to the value by the given addend atomically.
-  * @param value The target value to add to.
-  * @param addend The value used for adding.
-  * @return Returns the initial value before the add.
-  * @note Ensures that memory operations are completed in order.
-  * @see @ref category_threading_atomics_add
-  */
-fpl_platform_api int32_t fplAtomicFetchAndAddS32(volatile int32_t *value, const int32_t addend);
+* @brief Adds a 32-bit signed integer to the value by the given addend atomically.
+* @param value The target value to add to.
+* @param addend The value used for adding.
+* @return Returns the initial value before the add.
+* @note Ensures that memory operations are completed in order.
+* @see @ref category_threading_atomics_add
+*/
+fpl_platform_api int32_t fplAtomicFetchAndAddS32(volatile int32_t* value, const int32_t addend);
 /**
-  * @brief Adds a 64-bit signed integer to the value by the given addend atomically.
-  * @param value The target value to add to.
-  * @param addend The value used for adding.
-  * @return Returns the initial value before the add.
-  * @note Ensures that memory operations are completed in order.
-  * @see @ref category_threading_atomics_add
-  */
-fpl_platform_api int64_t fplAtomicFetchAndAddS64(volatile int64_t *value, const int64_t addend);
+* @brief Adds a 64-bit signed integer to the value by the given addend atomically.
+* @param value The target value to add to.
+* @param addend The value used for adding.
+* @return Returns the initial value before the add.
+* @note Ensures that memory operations are completed in order.
+* @see @ref category_threading_atomics_add
+*/
+fpl_platform_api int64_t fplAtomicFetchAndAddS64(volatile int64_t* value, const int64_t addend);
 /**
-  * @brief Adds a size to the value by the given addend atomically.
-  * @param dest The target value to add to.
-  * @param addend The value used for adding.
-  * @return Returns the initial value before the add.
-  * @note Ensures that memory operations are completed in order.
-  * @see @ref category_threading_atomics_add
-  */
-fpl_common_api size_t fplAtomicFetchAndAddSize(volatile size_t *dest, const size_t addend);
+* @brief Adds a size to the value by the given addend atomically.
+* @param dest The target value to add to.
+* @param addend The value used for adding.
+* @return Returns the initial value before the add.
+* @note Ensures that memory operations are completed in order.
+* @see @ref category_threading_atomics_add
+*/
+fpl_common_api size_t fplAtomicFetchAndAddSize(volatile size_t* dest, const size_t addend);
 /**
-  * @brief Adds a addend to the pointer atomically and returns the initial value before the add.
-  * @param dest The target value to add to.
-  * @param addend The value used for adding.
-  * @return Returns the initial value before the add.
-  * @note Ensures that memory operations are completed in order.
-  * @see @ref category_threading_atomics_add
-  */
-fpl_common_api void *fplAtomicFetchAndAddPtr(volatile void **dest, const intptr_t addend);
+* @brief Adds a addend to the pointer atomically and returns the initial value before the add.
+* @param dest The target value to add to.
+* @param addend The value used for adding.
+* @return Returns the initial value before the add.
+* @note Ensures that memory operations are completed in order.
+* @see @ref category_threading_atomics_add
+*/
+fpl_common_api void* fplAtomicFetchAndAddPtr(volatile void** dest, const intptr_t addend);
 
 //
 // Add and Fetch
 //
 
 /**
-  * @brief Adds the addend to destination 32-bit unsigned integer atomically and returns the result after the addition.
-  * @param dest The target value to add to.
-  * @param addend The value used for adding.
-  * @return Returns the value after the addition.
-  * @note Ensures that memory operations are completed in order.
-  * @see @ref category_threading_atomics_add
-  */
-fpl_platform_api uint32_t fplAtomicAddAndFetchU32(volatile uint32_t *dest, const uint32_t addend);
+* @brief Adds the addend to destination 32-bit unsigned integer atomically and returns the result after the addition.
+* @param dest The target value to add to.
+* @param addend The value used for adding.
+* @return Returns the value after the addition.
+* @note Ensures that memory operations are completed in order.
+* @see @ref category_threading_atomics_add
+*/
+fpl_platform_api uint32_t fplAtomicAddAndFetchU32(volatile uint32_t* dest, const uint32_t addend);
 /**
-  * @brief Adds the addend to destination 64-bit unsigned integer atomically and returns the result after the addition.
-  * @param dest The target value to add to.
-  * @param addend The value used for adding.
-  * @return Returns the value after the addition.
-  * @note Ensures that memory operations are completed in order.
-  * @see @ref category_threading_atomics_add
-  */
-fpl_platform_api uint64_t fplAtomicAddAndFetchU64(volatile uint64_t *dest, const uint64_t addend);
+* @brief Adds the addend to destination 64-bit unsigned integer atomically and returns the result after the addition.
+* @param dest The target value to add to.
+* @param addend The value used for adding.
+* @return Returns the value after the addition.
+* @note Ensures that memory operations are completed in order.
+* @see @ref category_threading_atomics_add
+*/
+fpl_platform_api uint64_t fplAtomicAddAndFetchU64(volatile uint64_t* dest, const uint64_t addend);
 /**
-  * @brief Adds the addend to destination 32-bit signed integer atomically and returns the result after the addition.
-  * @param dest The target value to add to.
-  * @param addend The value used for adding.
-  * @return Returns the value after the addition.
-  * @note Ensures that memory operations are completed in order.
-  * @see @ref category_threading_atomics_add
-  */
-fpl_platform_api int32_t fplAtomicAddAndFetchS32(volatile int32_t *dest, const int32_t addend);
+* @brief Adds the addend to destination 32-bit signed integer atomically and returns the result after the addition.
+* @param dest The target value to add to.
+* @param addend The value used for adding.
+* @return Returns the value after the addition.
+* @note Ensures that memory operations are completed in order.
+* @see @ref category_threading_atomics_add
+*/
+fpl_platform_api int32_t fplAtomicAddAndFetchS32(volatile int32_t* dest, const int32_t addend);
 /**
-  * @brief Adds the addend to destination 64-bit signed integer atomically and returns the result after the addition.
-  * @param dest The target value to add to.
-  * @param addend The value used for adding.
-  * @return Returns the value after the addition.
-  * @note Ensures that memory operations are completed in order.
-  * @see @ref category_threading_atomics_add
-  */
-fpl_platform_api int64_t fplAtomicAddAndFetchS64(volatile int64_t *dest, const int64_t addend);
+* @brief Adds the addend to destination 64-bit signed integer atomically and returns the result after the addition.
+* @param dest The target value to add to.
+* @param addend The value used for adding.
+* @return Returns the value after the addition.
+* @note Ensures that memory operations are completed in order.
+* @see @ref category_threading_atomics_add
+*/
+fpl_platform_api int64_t fplAtomicAddAndFetchS64(volatile int64_t* dest, const int64_t addend);
 /**
-  * @brief Adds the addend to destination size atomically and returns the result after the addition.
-  * @param dest The target value to add to.
-  * @param addend The value used for adding.
-  * @return Returns the value after the addition.
-  * @note Ensures that memory operations are completed in order.
-  * @see @ref category_threading_atomics_add
-  */
-fpl_common_api size_t fplAtomicAddAndFetchSize(volatile size_t *dest, const size_t addend);
+* @brief Adds the addend to destination size atomically and returns the result after the addition.
+* @param dest The target value to add to.
+* @param addend The value used for adding.
+* @return Returns the value after the addition.
+* @note Ensures that memory operations are completed in order.
+* @see @ref category_threading_atomics_add
+*/
+fpl_common_api size_t fplAtomicAddAndFetchSize(volatile size_t* dest, const size_t addend);
 /**
-  * @brief Adds the addend to destination pointer atomically and returns the result after the addition.
-  * @param dest The target value to add to.
-  * @param addend The value used for adding.
-  * @return Returns the value after the addition.
-  * @note Ensures that memory operations are completed in order.
-  * @see @ref category_threading_atomics_add
-  */
-fpl_common_api void *fplAtomicAddAndFetchPtr(volatile void **dest, const intptr_t addend);
+* @brief Adds the addend to destination pointer atomically and returns the result after the addition.
+* @param dest The target value to add to.
+* @param addend The value used for adding.
+* @return Returns the value after the addition.
+* @note Ensures that memory operations are completed in order.
+* @see @ref category_threading_atomics_add
+*/
+fpl_common_api void* fplAtomicAddAndFetchPtr(volatile void** dest, const intptr_t addend);
 
 //
 // Increment
 //
 
 /**
-  * @brief Increments the given 32-bit unsigned integer by one atomically.
-  * @param dest The target value to increment to.
-  * @return Returns the value after the increment.
-  * @note Ensures that memory operations are completed in order.
-  * @see @ref category_threading_atomics_inc
-  */
-fpl_platform_api uint32_t fplAtomicIncrementU32(volatile uint32_t *dest);
+* @brief Increments the given 32-bit unsigned integer by one atomically.
+* @param dest The target value to increment to.
+* @return Returns the value after the increment.
+* @note Ensures that memory operations are completed in order.
+* @see @ref category_threading_atomics_inc
+*/
+fpl_platform_api uint32_t fplAtomicIncrementU32(volatile uint32_t* dest);
 /**
-  * @brief Increments the given 64-bit unsigned integer by one atomically.
-  * @param dest The target value to increment to.
-  * @return Returns the value after the increment.
-  * @note Ensures that memory operations are completed in order.
-  * @see @ref category_threading_atomics_inc
-  */
-fpl_platform_api uint64_t fplAtomicIncrementU64(volatile uint64_t *dest);
+* @brief Increments the given 64-bit unsigned integer by one atomically.
+* @param dest The target value to increment to.
+* @return Returns the value after the increment.
+* @note Ensures that memory operations are completed in order.
+* @see @ref category_threading_atomics_inc
+*/
+fpl_platform_api uint64_t fplAtomicIncrementU64(volatile uint64_t* dest);
 /**
-  * @brief Increments the given 32-bit signed integer by one atomically.
-  * @param dest The target value to increment to.
-  * @return Returns the value after the increment.
-  * @note Ensures that memory operations are completed in order.
-  * @see @ref category_threading_atomics_inc
-  */
-fpl_platform_api int32_t fplAtomicIncrementS32(volatile int32_t *dest);
+* @brief Increments the given 32-bit signed integer by one atomically.
+* @param dest The target value to increment to.
+* @return Returns the value after the increment.
+* @note Ensures that memory operations are completed in order.
+* @see @ref category_threading_atomics_inc
+*/
+fpl_platform_api int32_t fplAtomicIncrementS32(volatile int32_t* dest);
 /**
-  * @brief Increments the given 64-bit signed integer by one atomically.
-  * @param dest The target value to increment to.
-  * @return Returns the value after the increment.
-  * @note Ensures that memory operations are completed in order.
-  * @see @ref category_threading_atomics_inc
-  */
-fpl_platform_api int64_t fplAtomicIncrementS64(volatile int64_t *dest);
+* @brief Increments the given 64-bit signed integer by one atomically.
+* @param dest The target value to increment to.
+* @return Returns the value after the increment.
+* @note Ensures that memory operations are completed in order.
+* @see @ref category_threading_atomics_inc
+*/
+fpl_platform_api int64_t fplAtomicIncrementS64(volatile int64_t* dest);
 /**
-  * @brief Increments the given size by one atomically.
-  * @param dest The target value to increment to.
-  * @return Returns the value after the increment.
-  * @note Ensures that memory operations are completed in order.
-  * @see @ref category_threading_atomics_inc
-  */
-fpl_common_api size_t fplAtomicIncrementSize(volatile size_t *dest);
+* @brief Increments the given size by one atomically.
+* @param dest The target value to increment to.
+* @return Returns the value after the increment.
+* @note Ensures that memory operations are completed in order.
+* @see @ref category_threading_atomics_inc
+*/
+fpl_common_api size_t fplAtomicIncrementSize(volatile size_t* dest);
 /**
-  * @brief Increments/Advances the given pointer by one atomically.
-  * @param dest The target value to increment to.
-  * @return Returns the next address, after the increment.
-  * @note Ensures that memory operations are completed in order.
-  * @see @ref category_threading_atomics_inc
-  */
-fpl_common_api void *fplAtomicIncrementPtr(volatile void **dest);
+* @brief Increments/Advances the given pointer by one atomically.
+* @param dest The target value to increment to.
+* @return Returns the next address, after the increment.
+* @note Ensures that memory operations are completed in order.
+* @see @ref category_threading_atomics_inc
+*/
+fpl_common_api void* fplAtomicIncrementPtr(volatile void** dest);
 
 //
 // CAS
 //
 
 /**
-  * @brief Compares a 32-bit unsigned integer with a comparand and swaps it when comparand matches destination.
-  * @param dest The target value to write into
-  * @param comparand The value to compare with
-  * @param exchange The value to exchange with
-  * @return Returns the value of the destination before the swap, regardless of the result.
-  * @note Ensures that memory operations are completed in order.
-  * @note Use @ref fplIsAtomicCompareAndSwapU32() when you want to check if the exchange has happened or not.
-  * @see @ref category_threading_atomics_cas
-  */
-fpl_platform_api uint32_t fplAtomicCompareAndSwapU32(volatile uint32_t *dest, const uint32_t comparand, const uint32_t exchange);
+* @brief Compares a 32-bit unsigned integer with a comparand and swaps it when comparand matches destination.
+* @param dest The target value to write into
+* @param comparand The value to compare with
+* @param exchange The value to exchange with
+* @return Returns the value of the destination before the swap, regardless of the result.
+* @note Ensures that memory operations are completed in order.
+* @note Use @ref fplIsAtomicCompareAndSwapU32() when you want to check if the exchange has happened or not.
+* @see @ref category_threading_atomics_cas
+*/
+fpl_platform_api uint32_t fplAtomicCompareAndSwapU32(volatile uint32_t* dest, const uint32_t comparand, const uint32_t exchange);
 /**
-  * @brief Compares a 64-bit unsigned integer with a comparand and swaps it when comparand matches destination.
-  * @param dest The target value to write into
-  * @param comparand The value to compare with
-  * @param exchange The value to exchange with
-  * @return Returns the value of the destination before the swap, regardless of the result.
-  * @note Ensures that memory operations are completed in order.
-  * @note Use @ref fplIsAtomicCompareAndSwapU64() when you want to check if the exchange has happened or not.
-  * @see @ref category_threading_atomics_cas
-  */
-fpl_platform_api uint64_t fplAtomicCompareAndSwapU64(volatile uint64_t *dest, const uint64_t comparand, const uint64_t exchange);
+* @brief Compares a 64-bit unsigned integer with a comparand and swaps it when comparand matches destination.
+* @param dest The target value to write into
+* @param comparand The value to compare with
+* @param exchange The value to exchange with
+* @return Returns the value of the destination before the swap, regardless of the result.
+* @note Ensures that memory operations are completed in order.
+* @note Use @ref fplIsAtomicCompareAndSwapU64() when you want to check if the exchange has happened or not.
+* @see @ref category_threading_atomics_cas
+*/
+fpl_platform_api uint64_t fplAtomicCompareAndSwapU64(volatile uint64_t* dest, const uint64_t comparand, const uint64_t exchange);
 /**
-  * @brief Compares a 32-bit signed integer with a comparand and swaps it when comparand matches destination.
-  * @param dest The target value to write into
-  * @param comparand The value to compare with
-  * @param exchange The value to exchange with
-  * @return Returns the value of the destination before the swap, regardless of the result.
-  * @note Ensures that memory operations are completed in order.
-  * @note Use @ref fplIsAtomicCompareAndSwapS32() when you want to check if the exchange has happened or not.
-  * @see @ref category_threading_atomics_cas
-  */
-fpl_platform_api int32_t fplAtomicCompareAndSwapS32(volatile int32_t *dest, const int32_t comparand, const int32_t exchange);
+* @brief Compares a 32-bit signed integer with a comparand and swaps it when comparand matches destination.
+* @param dest The target value to write into
+* @param comparand The value to compare with
+* @param exchange The value to exchange with
+* @return Returns the value of the destination before the swap, regardless of the result.
+* @note Ensures that memory operations are completed in order.
+* @note Use @ref fplIsAtomicCompareAndSwapS32() when you want to check if the exchange has happened or not.
+* @see @ref category_threading_atomics_cas
+*/
+fpl_platform_api int32_t fplAtomicCompareAndSwapS32(volatile int32_t* dest, const int32_t comparand, const int32_t exchange);
 /**
-  * @brief Compares a 64-bit signed integer with a comparand and swaps it when comparand matches destination.
-  * @param dest The target value to write into
-  * @param comparand The value to compare with
-  * @param exchange The value to exchange with
-  * @return Returns the value of the destination before the swap, regardless of the result.
-  * @note Ensures that memory operations are completed in order.
-  * @note Use @ref fplIsAtomicCompareAndSwapS64() when you want to check if the exchange has happened or not.
-  * @see @ref category_threading_atomics_cas
-  */
-fpl_platform_api int64_t fplAtomicCompareAndSwapS64(volatile int64_t *dest, const int64_t comparand, const int64_t exchange);
+* @brief Compares a 64-bit signed integer with a comparand and swaps it when comparand matches destination.
+* @param dest The target value to write into
+* @param comparand The value to compare with
+* @param exchange The value to exchange with
+* @return Returns the value of the destination before the swap, regardless of the result.
+* @note Ensures that memory operations are completed in order.
+* @note Use @ref fplIsAtomicCompareAndSwapS64() when you want to check if the exchange has happened or not.
+* @see @ref category_threading_atomics_cas
+*/
+fpl_platform_api int64_t fplAtomicCompareAndSwapS64(volatile int64_t* dest, const int64_t comparand, const int64_t exchange);
 /**
-  * @brief Compares a size with a comparand and swaps it when comparand matches destination.
-  * @param dest The target value to write into
-  * @param comparand The value to compare with
-  * @param exchange The value to exchange with
-  * @return Returns the value of the destination before the swap, regardless of the result.
-  * @note Ensures that memory operations are completed in order.
-  * @note Use @ref fplIsAtomicCompareAndSwapPtr() when you want to check if the exchange has happened or not.
-  * @see @ref category_threading_atomics_cas
-  */
-fpl_common_api size_t fplAtomicCompareAndSwapSize(volatile size_t *dest, const size_t comparand, const size_t exchange);
+* @brief Compares a size with a comparand and swaps it when comparand matches destination.
+* @param dest The target value to write into
+* @param comparand The value to compare with
+* @param exchange The value to exchange with
+* @return Returns the value of the destination before the swap, regardless of the result.
+* @note Ensures that memory operations are completed in order.
+* @note Use @ref fplIsAtomicCompareAndSwapPtr() when you want to check if the exchange has happened or not.
+* @see @ref category_threading_atomics_cas
+*/
+fpl_common_api size_t fplAtomicCompareAndSwapSize(volatile size_t* dest, const size_t comparand, const size_t exchange);
 /**
-  * @brief Compares a pointer with a comparand and swaps it when comparand matches destination.
-  * @param dest The target value to write into
-  * @param comparand The value to compare with
-  * @param exchange The value to exchange with
-  * @return Returns the value of the destination before the swap, regardless of the result.
-  * @note Ensures that memory operations are completed in order.
-  * @note Use @ref fplIsAtomicCompareAndSwapPtr() when you want to check if the exchange has happened or not.
-  * @see @ref category_threading_atomics_cas
-  */
-fpl_common_api void *fplAtomicCompareAndSwapPtr(volatile void **dest, const void *comparand, const void *exchange);
+* @brief Compares a pointer with a comparand and swaps it when comparand matches destination.
+* @param dest The target value to write into
+* @param comparand The value to compare with
+* @param exchange The value to exchange with
+* @return Returns the value of the destination before the swap, regardless of the result.
+* @note Ensures that memory operations are completed in order.
+* @note Use @ref fplIsAtomicCompareAndSwapPtr() when you want to check if the exchange has happened or not.
+* @see @ref category_threading_atomics_cas
+*/
+fpl_common_api void* fplAtomicCompareAndSwapPtr(volatile void** dest, const void* comparand, const void* exchange);
 
 /**
-  * @brief Compares a 32-bit unsigned integer with a comparand and swaps it when comparand matches destination and returns a bool indicating the result.
-  * @param dest The target value to write into
-  * @param comparand The value to compare with
-  * @param exchange The value to exchange with
-  * @return Returns true when the exchange happened, false otherwise.
-  * @note Ensures that memory operations are completed in order.
-  * @see @ref category_threading_atomics_cas
-  */
-fpl_platform_api bool fplIsAtomicCompareAndSwapU32(volatile uint32_t *dest, const uint32_t comparand, const uint32_t exchange);
+* @brief Compares a 32-bit unsigned integer with a comparand and swaps it when comparand matches destination and returns a bool indicating the result.
+* @param dest The target value to write into
+* @param comparand The value to compare with
+* @param exchange The value to exchange with
+* @return Returns true when the exchange happened, false otherwise.
+* @note Ensures that memory operations are completed in order.
+* @see @ref category_threading_atomics_cas
+*/
+fpl_platform_api bool fplIsAtomicCompareAndSwapU32(volatile uint32_t* dest, const uint32_t comparand, const uint32_t exchange);
 /**
-  * @brief Compares a 64-bit unsigned integer with a comparand and swaps it when comparand matches destination and returns a bool indicating the result.
-  * @param dest The target value to write into
-  * @param comparand The value to compare with
-  * @param exchange The value to exchange with
-  * @return Returns true when the exchange happened, false otherwise.
-  * @note Ensures that memory operations are completed in order.
-  * @see @ref category_threading_atomics_cas
-  */
-fpl_platform_api bool fplIsAtomicCompareAndSwapU64(volatile uint64_t *dest, const uint64_t comparand, const uint64_t exchange);
+* @brief Compares a 64-bit unsigned integer with a comparand and swaps it when comparand matches destination and returns a bool indicating the result.
+* @param dest The target value to write into
+* @param comparand The value to compare with
+* @param exchange The value to exchange with
+* @return Returns true when the exchange happened, false otherwise.
+* @note Ensures that memory operations are completed in order.
+* @see @ref category_threading_atomics_cas
+*/
+fpl_platform_api bool fplIsAtomicCompareAndSwapU64(volatile uint64_t* dest, const uint64_t comparand, const uint64_t exchange);
 /**
-  * @brief Compares a 32-bit signed integer with a comparand and swaps it when comparand matches destination and returns a bool indicating the result.
-  * @param dest The target value to write into
-  * @param comparand The value to compare with
-  * @param exchange The value to exchange with
-  * @return Returns true when the exchange happened, false otherwise.
-  * @note Ensures that memory operations are completed in order.
-  * @see @ref category_threading_atomics_cas
-  */
-fpl_platform_api bool fplIsAtomicCompareAndSwapS32(volatile int32_t *dest, const int32_t comparand, const int32_t exchange);
+* @brief Compares a 32-bit signed integer with a comparand and swaps it when comparand matches destination and returns a bool indicating the result.
+* @param dest The target value to write into
+* @param comparand The value to compare with
+* @param exchange The value to exchange with
+* @return Returns true when the exchange happened, false otherwise.
+* @note Ensures that memory operations are completed in order.
+* @see @ref category_threading_atomics_cas
+*/
+fpl_platform_api bool fplIsAtomicCompareAndSwapS32(volatile int32_t* dest, const int32_t comparand, const int32_t exchange);
 /**
-  * @brief Compares a 64-bit signed integer with a comparand and swaps it when comparand matches destination and returns a bool indicating the result.
-  * @param dest The target value to write into
-  * @param comparand The value to compare with
-  * @param exchange The value to exchange with
-  * @return Returns true when the exchange happened, false otherwise.
-  * @note Ensures that memory operations are completed in order.
-  * @see @ref category_threading_atomics_cas
-  */
-fpl_platform_api bool fplIsAtomicCompareAndSwapS64(volatile int64_t *dest, const int64_t comparand, const int64_t exchange);
+* @brief Compares a 64-bit signed integer with a comparand and swaps it when comparand matches destination and returns a bool indicating the result.
+* @param dest The target value to write into
+* @param comparand The value to compare with
+* @param exchange The value to exchange with
+* @return Returns true when the exchange happened, false otherwise.
+* @note Ensures that memory operations are completed in order.
+* @see @ref category_threading_atomics_cas
+*/
+fpl_platform_api bool fplIsAtomicCompareAndSwapS64(volatile int64_t* dest, const int64_t comparand, const int64_t exchange);
 /**
-  * @brief Compares a size with a comparand and swaps it when comparand matches destination and returns a bool indicating the result.
-  * @param dest The target value to write into
-  * @param comparand The value to compare with
-  * @param exchange The value to exchange with
-  * @return Returns true when the exchange happened, false otherwise.
-  * @note Ensures that memory operations are completed in order.
-  * @see @ref category_threading_atomics_cas
-  */
-fpl_common_api bool fplIsAtomicCompareAndSwapSize(volatile size_t *dest, const size_t comparand, const size_t exchange);
+* @brief Compares a size with a comparand and swaps it when comparand matches destination and returns a bool indicating the result.
+* @param dest The target value to write into
+* @param comparand The value to compare with
+* @param exchange The value to exchange with
+* @return Returns true when the exchange happened, false otherwise.
+* @note Ensures that memory operations are completed in order.
+* @see @ref category_threading_atomics_cas
+*/
+fpl_common_api bool fplIsAtomicCompareAndSwapSize(volatile size_t* dest, const size_t comparand, const size_t exchange);
 /**
-  * @brief Compares a pointer with a comparand and swaps it when comparand matches destination and returns a bool indicating the result.
-  * @param dest The target value to write into
-  * @param comparand The value to compare with
-  * @param exchange The value to exchange with
-  * @return Returns true when the exchange happened, false otherwise.
-  * @note Ensures that memory operations are completed in order.
-  * @see @ref category_threading_atomics_cas
-  */
-fpl_common_api bool fplIsAtomicCompareAndSwapPtr(volatile void **dest, const void *comparand, const void *exchange);
+* @brief Compares a pointer with a comparand and swaps it when comparand matches destination and returns a bool indicating the result.
+* @param dest The target value to write into
+* @param comparand The value to compare with
+* @param exchange The value to exchange with
+* @return Returns true when the exchange happened, false otherwise.
+* @note Ensures that memory operations are completed in order.
+* @see @ref category_threading_atomics_cas
+*/
+fpl_common_api bool fplIsAtomicCompareAndSwapPtr(volatile void** dest, const void* comparand, const void* exchange);
 
 //
 // Load
 //
 
 /**
-  * @brief Loads the 32-bit unsigned value atomically and returns the value.
-  * @param source The source value to read from
-  * @return Returns the atomically loaded source value
-  * @note Ensures that memory operations are completed before the read.
-  * @note This may use a CAS instruction when there is no suitable compiler intrinsics found.
-  * @see @ref category_threading_atomics_load
-  */
-fpl_platform_api uint32_t fplAtomicLoadU32(volatile uint32_t *source);
+* @brief Loads the 32-bit unsigned value atomically and returns the value.
+* @param source The source value to read from
+* @return Returns the atomically loaded source value
+* @note Ensures that memory operations are completed before the read.
+* @note This may use a CAS instruction when there is no suitable compiler intrinsics found.
+* @see @ref category_threading_atomics_load
+*/
+fpl_platform_api uint32_t fplAtomicLoadU32(volatile uint32_t* source);
 /**
-  * @brief Loads the 64-bit unsigned value atomically and returns the value.
-  * @param source The source value to read from
-  * @return Returns the atomically loaded source value
-  * @note Ensures that memory operations are completed before the read.
-  * @note This may use a CAS instruction when there is no suitable compiler intrinsics found.
-  * @see @ref category_threading_atomics_load
-  */
-fpl_platform_api uint64_t fplAtomicLoadU64(volatile uint64_t *source);
+* @brief Loads the 64-bit unsigned value atomically and returns the value.
+* @param source The source value to read from
+* @return Returns the atomically loaded source value
+* @note Ensures that memory operations are completed before the read.
+* @note This may use a CAS instruction when there is no suitable compiler intrinsics found.
+* @see @ref category_threading_atomics_load
+*/
+fpl_platform_api uint64_t fplAtomicLoadU64(volatile uint64_t* source);
 /**
-  * @brief Loads the 32-bit signed value atomically and returns the value.
-  * @param source The source value to read from
-  * @return Returns the atomically loaded source value
-  * @note Ensures that memory operations are completed before the read.
-  * @note This may use a CAS instruction when there is no suitable compiler intrinsics found.
-  * @see @ref category_threading_atomics_load
-  */
-fpl_platform_api int32_t fplAtomicLoadS32(volatile int32_t *source);
+* @brief Loads the 32-bit signed value atomically and returns the value.
+* @param source The source value to read from
+* @return Returns the atomically loaded source value
+* @note Ensures that memory operations are completed before the read.
+* @note This may use a CAS instruction when there is no suitable compiler intrinsics found.
+* @see @ref category_threading_atomics_load
+*/
+fpl_platform_api int32_t fplAtomicLoadS32(volatile int32_t* source);
 /**
-  * @brief Loads the 64-bit signed value atomically and returns the value.
-  * @param source The source value to read from
-  * @return Returns the atomically loaded source value
-  * @note Ensures that memory operations are completed before the read.
-  * @note This may use a CAS instruction when there is no suitable compiler intrinsics found.
-  * @see @ref category_threading_atomics_load
-  */
-fpl_platform_api int64_t fplAtomicLoadS64(volatile int64_t *source);
+* @brief Loads the 64-bit signed value atomically and returns the value.
+* @param source The source value to read from
+* @return Returns the atomically loaded source value
+* @note Ensures that memory operations are completed before the read.
+* @note This may use a CAS instruction when there is no suitable compiler intrinsics found.
+* @see @ref category_threading_atomics_load
+*/
+fpl_platform_api int64_t fplAtomicLoadS64(volatile int64_t* source);
 /**
-  * @brief Loads the size value atomically and returns the value.
-  * @note Ensures that memory operations are completed before the read.
-  * @note This may use a CAS instruction when there is no suitable compiler intrinsics found.
-  * @param source The source value to read from
-  * @return Returns the atomically loaded source value
-  * @see @ref category_threading_atomics_load
-  */
-fpl_common_api size_t fplAtomicLoadSize(volatile size_t *source);
+* @brief Loads the size value atomically and returns the value.
+* @note Ensures that memory operations are completed before the read.
+* @note This may use a CAS instruction when there is no suitable compiler intrinsics found.
+* @param source The source value to read from
+* @return Returns the atomically loaded source value
+* @see @ref category_threading_atomics_load
+*/
+fpl_common_api size_t fplAtomicLoadSize(volatile size_t* source);
 /**
-  * @brief Loads the pointer value atomically and returns the value.
-  * @note Ensures that memory operations are completed before the read.
-  * @note This may use a CAS instruction when there is no suitable compiler intrinsics found.
-  * @param source The source value to read from
-  * @return Returns the atomically loaded source value
-  * @see @ref category_threading_atomics_load
-  */
-fpl_common_api void *fplAtomicLoadPtr(volatile void **source);
+* @brief Loads the pointer value atomically and returns the value.
+* @note Ensures that memory operations are completed before the read.
+* @note This may use a CAS instruction when there is no suitable compiler intrinsics found.
+* @param source The source value to read from
+* @return Returns the atomically loaded source value
+* @see @ref category_threading_atomics_load
+*/
+fpl_common_api void* fplAtomicLoadPtr(volatile void** source);
 
 //
 // Store
 //
 
 /**
-  * @brief Overwrites the 32-bit unsigned value atomically.
-  * @param dest The destination to write to
-  * @param value The value to exchange with
-  * @note Ensures that memory operations are completed before the write.
-  * @see @ref category_threading_atomics_store
-  */
-fpl_platform_api void fplAtomicStoreU32(volatile uint32_t *dest, const uint32_t value);
+* @brief Overwrites the 32-bit unsigned value atomically.
+* @param dest The destination to write to
+* @param value The value to exchange with
+* @note Ensures that memory operations are completed before the write.
+* @see @ref category_threading_atomics_store
+*/
+fpl_platform_api void fplAtomicStoreU32(volatile uint32_t* dest, const uint32_t value);
 /**
-  * @brief Overwrites the 64-bit unsigned value atomically.
-  * @param dest The destination to write to
-  * @param value The value to exchange with
-  * @note Ensures that memory operations are completed before the write.
-  * @see @ref category_threading_atomics_store
-  */
-fpl_platform_api void fplAtomicStoreU64(volatile uint64_t *dest, const uint64_t value);
+* @brief Overwrites the 64-bit unsigned value atomically.
+* @param dest The destination to write to
+* @param value The value to exchange with
+* @note Ensures that memory operations are completed before the write.
+* @see @ref category_threading_atomics_store
+*/
+fpl_platform_api void fplAtomicStoreU64(volatile uint64_t* dest, const uint64_t value);
 /**
-  * @brief Overwrites the 32-bit signed value atomically.
-  * @param dest The destination to write to
-  * @param value The value to exchange with
-  * @note Ensures that memory operations are completed before the write.
-  * @see @ref category_threading_atomics_store
-  */
-fpl_platform_api void fplAtomicStoreS32(volatile int32_t *dest, const int32_t value);
+* @brief Overwrites the 32-bit signed value atomically.
+* @param dest The destination to write to
+* @param value The value to exchange with
+* @note Ensures that memory operations are completed before the write.
+* @see @ref category_threading_atomics_store
+*/
+fpl_platform_api void fplAtomicStoreS32(volatile int32_t* dest, const int32_t value);
 /**
-  * @brief Overwrites the 64-bit signed value atomically.
-  * @param dest The destination to write to
-  * @param value The value to exchange with
-  * @note Ensures that memory operations are completed before the write.
-  * @see @ref category_threading_atomics_store
-  */
-fpl_platform_api void fplAtomicStoreS64(volatile int64_t *dest, const int64_t value);
+* @brief Overwrites the 64-bit signed value atomically.
+* @param dest The destination to write to
+* @param value The value to exchange with
+* @note Ensures that memory operations are completed before the write.
+* @see @ref category_threading_atomics_store
+*/
+fpl_platform_api void fplAtomicStoreS64(volatile int64_t* dest, const int64_t value);
 /**
-  * @brief Overwrites the size value atomically.
-  * @param dest The destination to write to
-  * @param value The value to exchange with
-  * @note Ensures that memory operations are completed before the write.
-  * @see @ref category_threading_atomics_store
-  */
-fpl_common_api void fplAtomicStoreSize(volatile size_t *dest, const size_t value);
+* @brief Overwrites the size value atomically.
+* @param dest The destination to write to
+* @param value The value to exchange with
+* @note Ensures that memory operations are completed before the write.
+* @see @ref category_threading_atomics_store
+*/
+fpl_common_api void fplAtomicStoreSize(volatile size_t* dest, const size_t value);
 /**
-  * @brief Overwrites the pointer value atomically.
-  * @param dest The destination to write to
-  * @param value The value to exchange with
-  * @note Ensures that memory operations are completed before the write.
-  * @see @ref category_threading_atomics_store
-  */
-fpl_common_api void fplAtomicStorePtr(volatile void **dest, const void *value);
+* @brief Overwrites the pointer value atomically.
+* @param dest The destination to write to
+* @param value The value to exchange with
+* @note Ensures that memory operations are completed before the write.
+* @see @ref category_threading_atomics_store
+*/
+fpl_common_api void fplAtomicStorePtr(volatile void** dest, const void* value);
 
 /** @} */
 
@@ -2740,7 +2728,7 @@ fpl_common_api void fplAtomicStorePtr(volatile void **dest, const void *value);
 //! Defines a memory block
 typedef struct fplMemoryBlock {
 	//! The base pointer
-	void *base;
+	void* base;
 	//! The size of the allocated memory
 	size_t size;
 } fplMemoryBlock;
@@ -2751,7 +2739,7 @@ typedef struct fplMemoryBlock {
 * @param size The number of bytes to be cleared to zero
 * @see @ref subsection_category_memory_handling_ops_clear
 */
-fpl_common_api void fplMemoryClear(void *mem, const size_t size);
+fpl_common_api void fplMemoryClear(void* mem, const size_t size);
 /**
 * @brief Sets the given memory by the given size to the given value.
 * @param mem The pointer to the memory
@@ -2759,7 +2747,7 @@ fpl_common_api void fplMemoryClear(void *mem, const size_t size);
 * @param size The number of bytes to be set
 * @see @ref subsection_category_memory_handling_ops_set
 */
-fpl_common_api void fplMemorySet(void *mem, const uint8_t value, const size_t size);
+fpl_common_api void fplMemorySet(void* mem, const uint8_t value, const size_t size);
 /**
 * @brief Copies the given source memory with its length to the target memory.
 * @param sourceMem The pointer to the source memory to copy from
@@ -2767,7 +2755,7 @@ fpl_common_api void fplMemorySet(void *mem, const uint8_t value, const size_t si
 * @param targetMem The pointer to the target memory to copy into
 * @see @ref subsection_category_memory_handling_ops_copy
 */
-fpl_common_api void fplMemoryCopy(const void *sourceMem, const size_t sourceSize, void *targetMem);
+fpl_common_api void fplMemoryCopy(const void* sourceMem, const size_t sourceSize, void* targetMem);
 /**
 * @brief Allocates memory from the operating system by the given size.
 * @param size The size to by allocated in bytes.
@@ -2777,7 +2765,7 @@ fpl_common_api void fplMemoryCopy(const void *sourceMem, const size_t sourceSize
 * @note This function can be called without the platform to be initialized.
 * @see @ref subsection_category_memory_handling_normal_allocate
 */
-fpl_platform_api void *fplMemoryAllocate(const size_t size);
+fpl_platform_api void* fplMemoryAllocate(const size_t size);
 /**
 * @brief Releases the memory allocated from the operating system.
 * @param ptr The pointer to the allocated memory
@@ -2785,7 +2773,7 @@ fpl_platform_api void *fplMemoryAllocate(const size_t size);
 * @note This function can be called without the platform to be initialized.
 * @see @ref section_category_memory_normal_free
 */
-fpl_platform_api void fplMemoryFree(void *ptr);
+fpl_platform_api void fplMemoryFree(void* ptr);
 /**
 * @brief Allocates aligned memory from the operating system by the given alignment.
 * @param size The size amount in bytes
@@ -2795,7 +2783,7 @@ fpl_platform_api void fplMemoryFree(void *ptr);
 * @note This function can be called without the platform to be initialized.
 * @see @ref subsection_category_memory_handling_aligned_allocate
 */
-fpl_common_api void *fplMemoryAlignedAllocate(const size_t size, const size_t alignment);
+fpl_common_api void* fplMemoryAlignedAllocate(const size_t size, const size_t alignment);
 /**
 * @brief Releases the aligned memory allocated from the operating system.
 * @param ptr The pointer to the aligned allocated memory
@@ -2803,17 +2791,17 @@ fpl_common_api void *fplMemoryAlignedAllocate(const size_t size, const size_t al
 * @note This function can be called without the platform to be initialized.
 * @see @ref subsection_category_memory_handling_aligned_free
 */
-fpl_common_api void fplMemoryAlignedFree(void *ptr);
+fpl_common_api void fplMemoryAlignedFree(void* ptr);
 
 /** @} */
 
 // ----------------------------------------------------------------------------
 /**
-  * @defgroup OS Operating system infos
-  * @brief This category contains functions for retrievement several operating system informations such as version, name etc.
-  * @{
-  */
-  // ----------------------------------------------------------------------------
+* @defgroup OS Operating system infos
+* @brief This category contains functions for retrievement several operating system informations such as version, name etc.
+* @{
+*/
+// ----------------------------------------------------------------------------
 
 //! A type definition for mapping a part of a version number
 typedef char fplVersionNumberPart[4 + 1];
@@ -2851,33 +2839,33 @@ typedef struct fplOSInfos {
 } fplOSInfos;
 
 /**
-  * @brief Gets system informations from the operating system
-  * @param outInfos The target @ref fplOSInfos structure
-  * @return Returns true when the infos could be retrieved, false otherwise.
-  * @note This may be called without initializing the platform
-  * @see @ref section_category_platform_os_version
-  */
-fpl_platform_api bool fplGetOperatingSystemInfos(fplOSInfos *outInfos);
+* @brief Gets system informations from the operating system
+* @param outInfos The target @ref fplOSInfos structure
+* @return Returns true when the infos could be retrieved, false otherwise.
+* @note This may be called without initializing the platform
+* @see @ref section_category_platform_os_version
+*/
+fpl_platform_api bool fplGetOperatingSystemInfos(fplOSInfos* outInfos);
 
 /**
-  * @brief Gets the username of the current logged-in user
-  * @param nameBuffer The target buffer
-  * @param maxNameBufferLen The max length of the target buffer
-  * @return Returns true when a username could be retrieved, false otherwise.
-  * @see @ref section_category_platform_os_username
-  */
-fpl_platform_api bool fplGetCurrentUsername(char *nameBuffer, const size_t maxNameBufferLen);
+* @brief Gets the username of the current logged-in user
+* @param nameBuffer The target buffer
+* @param maxNameBufferLen The max length of the target buffer
+* @return Returns true when a username could be retrieved, false otherwise.
+* @see @ref section_category_platform_os_username
+*/
+fpl_platform_api bool fplGetCurrentUsername(char* nameBuffer, const size_t maxNameBufferLen);
 
 /** @} */
 
 // ----------------------------------------------------------------------------
 /**
-  * @defgroup Hardware Hardware infos
-  * @brief This category contains functions for retrievement hardware informations such as memory usage, cpu infos, etc.
-  * @{
-  *
-  */
-  // ----------------------------------------------------------------------------
+* @defgroup Hardware Hardware infos
+* @brief This category contains functions for retrievement hardware informations such as memory usage, cpu infos, etc.
+* @{
+*
+*/
+// ----------------------------------------------------------------------------
 
 //! A structure that contains informations about current memory usage
 typedef struct fplMemoryInfos {
@@ -2963,67 +2951,72 @@ typedef union fplCPUIDLeaf {
 } fplCPUIDLeaf;
 
 /**
-  * @brief Returns the x86 CPUID registers (EAX, EBX, ECX, EDX) for the given function id
-  * @param outLeaf The targt pointer to a @ref fplCPUIDLeaf structure
-  * @param functionId The function id
-  */
-fpl_common_api void fplCPUID(fplCPUIDLeaf *outLeaf, const uint32_t functionId);
+* @brief Returns the x86 CPUID registers (EAX, EBX, ECX, EDX) for the given function id
+* @param outLeaf The targt pointer to a @ref fplCPUIDLeaf structure
+* @param functionId The function id
+*/
+fpl_common_api void fplCPUID(fplCPUIDLeaf* outLeaf, const uint32_t functionId);
 /**
-  * @brief Gets the x86 extended control register for index zero.
-  * @return Returns the extended control register on x86, or zero non-x86 archtectures.
-  */
+* @brief Gets the x86 extended control register for index zero.
+* @return Returns the extended control register on x86, or zero non-x86 archtectures.
+*/
 fpl_common_api uint64_t fplGetXCR0();
 /**
-  * @brief Gets the string representation of the given architecture type
-  * @param type The @ref fplArchType enumeration value
-  * @return Returns a string for the given architecture type
-  * @see @ref section_category_hardware_cpuarch
-  */
-fpl_common_api const char *fplGetArchTypeString(const fplArchType type);
+* @brief Reads the current time stamp counter (RDTSC), which is only available on x86 processors.
+* @return Returns the number of cycles since the system start or returns zero on a non-x86 processor.
+*/
+fpl_common_api uint64_t fplRDTSC();
 /**
-  * @brief Retrieves the total number of processor cores.
-  * @return Returns the total number of processor cores.
-  * @see @ref section_category_hardware_corecount
-  */
+* @brief Gets the string representation of the given architecture type
+* @param type The @ref fplArchType enumeration value
+* @return Returns a string for the given architecture type
+* @see @ref section_category_hardware_cpuarch
+*/
+fpl_common_api const char* fplGetArchTypeString(const fplArchType type);
+/**
+* @brief Retrieves the total number of processor cores.
+* @return Returns the total number of processor cores.
+* @see @ref section_category_hardware_corecount
+*/
 fpl_platform_api size_t fplGetProcessorCoreCount();
 /**
-  * @brief Retrieves the name of the processor.
-  * @param destBuffer The destination buffer
-  * @param maxDestBufferLen The max length of the destination buffer
-  * @return Returns a pointer to the last written character or @ref fpl_null otherwise.
-  * @see @ref section_category_hardware_cpuname
-  */
-fpl_common_api char *fplGetProcessorName(char *destBuffer, const size_t maxDestBufferLen);
+* @brief Retrieves the name of the processor.
+* @param destBuffer The destination buffer
+* @param maxDestBufferLen The max length of the destination buffer
+* @return Returns a pointer to the last written character or @ref fpl_null otherwise.
+* @see @ref section_category_hardware_cpuname
+*/
+fpl_common_api char* fplGetProcessorName(char* destBuffer, const size_t maxDestBufferLen);
 /**
-  * @brief Gets the capabilities of the processor.
-  * @param outCaps Pointer to the output @ref fplProcessorCapabilities
-  * @return Returns true when the capabilities could be retrieved, false otherwise.
-  * @see @ref section_category_hardware_cpucaps
-  */
-fpl_common_api bool fplGetProcessorCapabilities(fplProcessorCapabilities *outCaps);
+* @brief Gets the capabilities of the processor.
+* @param outCaps Pointer to the output @ref fplProcessorCapabilities
+* @return Returns true when the capabilities could be retrieved, false otherwise.
+* @see @ref section_category_hardware_cpucaps
+*/
+fpl_common_api bool fplGetProcessorCapabilities(fplProcessorCapabilities* outCaps);
 /**
-  * @brief Gets the processor architecture type
-  * @return Returns the processor architecture type
-  * @see @ref section_category_hardware_cpuarch
-  */
+* @brief Gets the processor architecture type
+* @return Returns the processor architecture type
+* @see @ref section_category_hardware_cpuarch
+*/
 fpl_platform_api fplArchType fplGetProcessorArchitecture();
 /**
-  * @brief Retrieves the current system memory usage.
-  * @param outInfos The target @ref fplMemoryInfos structure
-  * @return Returns true when the memory infos was retrieved, false otherwise.
-  * @see @ref section_category_hardware_memstate
-  */
-fpl_platform_api bool fplGetRunningMemoryInfos(fplMemoryInfos *outInfos);
+* @brief Retrieves the current system memory usage.
+* @param outInfos The target @ref fplMemoryInfos structure
+* @return Returns true when the memory infos was retrieved, false otherwise.
+* @see @ref section_category_hardware_memstate
+*/
+fpl_platform_api bool fplGetRunningMemoryInfos(fplMemoryInfos* outInfos);
 
 /** @} */
 
 // ----------------------------------------------------------------------------
 /**
-  * @defgroup Settings Settings & Configurations
-  * @brief This category contains global settings structures/enumerations and functions to initialize/set them
-  * @{
-  */
-  // ----------------------------------------------------------------------------
+* @defgroup Settings Settings & Configurations
+* @brief This category contains global settings structures/enumerations and functions to initialize/set them
+* @{
+*/
+// ----------------------------------------------------------------------------
 
 //! An enumeration of initialization flags
 typedef enum fplInitFlags {
@@ -3088,12 +3081,12 @@ typedef enum fplPlatformResultType {
 #define FPL_LAST_PLATFORM_RESULT_TYPE fplPlatformResultType_Success
 
 /**
-  * @brief Gets the string representation of a platform result type.
-  * @param type The platform result type as @ref fplPlatformResultType
-  * @return Returns the string representation of a platform result type.
-  * @see @ref section_category_initialization_result
-  */
-fpl_common_api const char *fplGetPlatformResultTypeString(const fplPlatformResultType type);
+* @brief Gets the string representation of a platform result type.
+* @param type The platform result type as @ref fplPlatformResultType
+* @return Returns the string representation of a platform result type.
+* @see @ref section_category_initialization_result
+*/
+fpl_common_api const char* fplGetPlatformResultTypeString(const fplPlatformResultType type);
 
 //! An enumeration of video driver types
 typedef enum fplVideoDriverType {
@@ -3159,12 +3152,12 @@ typedef struct fplVideoSettings {
 } fplVideoSettings;
 
 /**
-  * @brief Resets the given video settings to default values
-  * @param video The target @ref fplVideoSettings structure
-  * @note This will not change any video settings! To change the actual settings you have to pass the entire @ref fplSettings container as a argument in @ref fplPlatformInit().
-  * @see @ref category_video_general_notes
-  */
-fpl_common_api void fplSetDefaultVideoSettings(fplVideoSettings *video);
+* @brief Resets the given video settings to default values
+* @param video The target @ref fplVideoSettings structure
+* @note This will not change any video settings! To change the actual settings you have to pass the entire @ref fplSettings container as a argument in @ref fplPlatformInit().
+* @see @ref category_video_general_notes
+*/
+fpl_common_api void fplSetDefaultVideoSettings(fplVideoSettings* video);
 
 //! An enumeration of audio driver types
 typedef enum fplAudioDriverType {
@@ -3283,15 +3276,15 @@ typedef union fplSpecificAudioSettings {
 } fplSpecificAudioSettings;
 
 /**
-  * @brief A callback for reading audio samples from the client
-  * @param deviceFormat The pointer to the @ref fplAudioDeviceFormat structure, the audio cards expects
-  * @param frameCount The numbers if frames the client should write at max
-  * @param outputSamples The pointer to the target samples
-  * @param userData The pointer to the user data specified in @ref fplAudioSettings
-  * @return Returns the number written frames
-  * @see @ref subsection_category_audio_general_default_init_clientcallback
-  */
-typedef uint32_t(fpl_audio_client_read_callback)(const fplAudioDeviceFormat *deviceFormat, const uint32_t frameCount, void *outputSamples, void *userData);
+* @brief A callback for reading audio samples from the client
+* @param deviceFormat The pointer to the @ref fplAudioDeviceFormat structure, the audio cards expects
+* @param frameCount The numbers if frames the client should write at max
+* @param outputSamples The pointer to the target samples
+* @param userData The pointer to the user data specified in @ref fplAudioSettings
+* @return Returns the number written frames
+* @see @ref subsection_category_audio_general_default_init_clientcallback
+*/
+typedef uint32_t(fpl_audio_client_read_callback)(const fplAudioDeviceFormat* deviceFormat, const uint32_t frameCount, void* outputSamples, void* userData);
 
 //! A structure containing audio settings, such as format, device info, callbacks, driver, etc.
 typedef struct fplAudioSettings {
@@ -3302,9 +3295,9 @@ typedef struct fplAudioSettings {
 	//! Specific settings
 	fplSpecificAudioSettings specific;
 	//! The callback for retrieving audio data from the client
-	fpl_audio_client_read_callback *clientReadCallback;
+	fpl_audio_client_read_callback* clientReadCallback;
 	//! User data pointer for client read callback
-	void *userData;
+	void* userData;
 	//! The targeted driver
 	fplAudioDriverType driver;
 	//! Start playing of audio samples after platform initialization automatically
@@ -3314,12 +3307,12 @@ typedef struct fplAudioSettings {
 } fplAudioSettings;
 
 /**
-  * @brief Resets the given audio settings to default settings (S16 PCM, 48 KHz, 2 Channels)
-  * @param audio The target @ref fplAudioSettings structure
-  * @note This will not change any audio settings! To change the actual settings you have to pass the entire @ref fplSettings container to a argument in @ref fplPlatformInit().
-  * @see @ref section_category_audio_general_notes
-  */
-fpl_common_api void fplSetDefaultAudioSettings(fplAudioSettings *audio);
+* @brief Resets the given audio settings to default settings (S16 PCM, 48 KHz, 2 Channels)
+* @param audio The target @ref fplAudioSettings structure
+* @note This will not change any audio settings! To change the actual settings you have to pass the entire @ref fplSettings container to a argument in @ref fplPlatformInit().
+* @see @ref section_category_audio_general_notes
+*/
+fpl_common_api void fplSetDefaultAudioSettings(fplAudioSettings* audio);
 
 //! An enumeration of image types
 typedef enum fplImageType {
@@ -3332,7 +3325,7 @@ typedef enum fplImageType {
 //! A structure containing data for working with a image source
 typedef struct fplImageSource {
 	//! Pointer to the source data
-	const uint8_t *data;
+	const uint8_t* data;
 	//! Width in pixels
 	uint32_t width;
 	//! Height in pixels
@@ -3342,35 +3335,35 @@ typedef struct fplImageSource {
 } fplImageSource;
 
 /**
-  * @brief A callback executed for each raw window event
-  * @param platformType The current @ref fplPlatformType
-  * @param windowState The opaque window state, mapping to fpl internal window state
-  * @param rawEventData The raw event data structure for the current OS (XEvent for POSIX, MSG for Win32, etc.)
-  * @param userData The pointer to the specific user data specified in @ref fplWindowCallbacks
-  * @return Needs to return true, if the event is handled
-  */
-typedef bool (fpl_window_event_callback)(const fplPlatformType platformType, void *windowState, void *rawEventData, void *userData);
+* @brief A callback executed for each raw window event
+* @param platformType The current @ref fplPlatformType
+* @param windowState The opaque window state, mapping to fpl internal window state
+* @param rawEventData The raw event data structure for the current OS (XEvent for POSIX, MSG for Win32, etc.)
+* @param userData The pointer to the specific user data specified in @ref fplWindowCallbacks
+* @return Needs to return true, if the event is handled
+*/
+typedef bool (fpl_window_event_callback)(const fplPlatformType platformType, void* windowState, void* rawEventData, void* userData);
 
 /**
-  * @brief A callback executed when the window needs to be exposed/repainted
-  * @param platformType The current @ref fplPlatformType
-  * @param windowState The opaque window state, mapping to fpl internal window state
-  * @param rawEventData The raw event data structure for the current OS (XEvent for Posix, MSG for Win32, etc.)
-  * @param userData The pointer to the specific user data specified in @ref fplWindowCallbacks
-  * @return Needs to return true, if the event is handled
-  */
+* @brief A callback executed when the window needs to be exposed/repainted
+* @param platformType The current @ref fplPlatformType
+* @param windowState The opaque window state, mapping to fpl internal window state
+* @param rawEventData The raw event data structure for the current OS (XEvent for Posix, MSG for Win32, etc.)
+* @param userData The pointer to the specific user data specified in @ref fplWindowCallbacks
+* @return Needs to return true, if the event is handled
+*/
 typedef fpl_window_event_callback fpl_window_exposed_callback;
 
 //! A structure containing the window callbacks
 typedef struct fplWindowCallbacks {
 	//! Expose callback
-	fpl_window_exposed_callback *exposedCallback;
+	fpl_window_exposed_callback* exposedCallback;
 	//! User data pointer for the expose callback
-	void *exposedUserData;
+	void* exposedUserData;
 	//! Expose callback
-	fpl_window_event_callback *eventCallback;
+	fpl_window_event_callback* eventCallback;
 	//! User data pointer for the event callback
-	void *eventUserData;
+	void* eventUserData;
 } fplWindowCallbacks;
 
 //! A structure containing the size of a window
@@ -3414,12 +3407,12 @@ typedef struct fplWindowSettings {
 } fplWindowSettings;
 
 /**
-  * @brief Resets the given window settings container to default settings
-  * @param window The target @ref fplWindowSettings structure
-  * @note This will not change any window settings! To change the actual settings you have to pass the entire @ref fplSettings container to a argument in @ref fplPlatformInit().
-  * @see @ref section_category_window_style_notes
-  */
-fpl_common_api void fplSetDefaultWindowSettings(fplWindowSettings *window);
+* @brief Resets the given window settings container to default settings
+* @param window The target @ref fplWindowSettings structure
+* @note This will not change any window settings! To change the actual settings you have to pass the entire @ref fplSettings container to a argument in @ref fplPlatformInit().
+* @see @ref section_category_window_style_notes
+*/
+fpl_common_api void fplSetDefaultWindowSettings(fplWindowSettings* window);
 
 //! A structure containing input settings
 typedef struct fplInputSettings {
@@ -3430,17 +3423,17 @@ typedef struct fplInputSettings {
 } fplInputSettings;
 
 /**
-  * @brief Resets the given input settings contains to default values.
-  * @param input The target @ref fplInputSettings structure
-  * @note This will not change any input settings! To change the actual settings you have to pass the entire @ref fplSettings container to a argument in @ref fplPlatformInit().
-  * @see @ref page_category_input_config
-  */
-fpl_common_api void fplSetDefaultInputSettings(fplInputSettings *input);
+* @brief Resets the given input settings contains to default values.
+* @param input The target @ref fplInputSettings structure
+* @note This will not change any input settings! To change the actual settings you have to pass the entire @ref fplSettings container to a argument in @ref fplPlatformInit().
+* @see @ref page_category_input_config
+*/
+fpl_common_api void fplSetDefaultInputSettings(fplInputSettings* input);
 
 //! Custom memory allocation callback
-typedef void *(fpl_memory_allocate_callback)(void *userData, const size_t size, const size_t alignment);
+typedef void* (fpl_memory_allocate_callback)(void* userData, const size_t size, const size_t alignment);
 //! Custom memory release callback
-typedef void (fpl_memory_release_callback)(void *userData, void *ptr);
+typedef void (fpl_memory_release_callback)(void* userData, void* ptr);
 
 //! A enumeration of dynamic memory allocation modes
 typedef enum fplMemoryAllocationMode {
@@ -3455,11 +3448,11 @@ typedef struct fplMemoryAllocationSettings {
 	//! Memory allocation mode
 	fplMemoryAllocationMode mode;
 	//! Callback for allocating memory
-	fpl_memory_allocate_callback *allocateCallback;
+	fpl_memory_allocate_callback* allocateCallback;
 	//! Callback for releasing memory
-	fpl_memory_release_callback *releaseCallback;
+	fpl_memory_release_callback* releaseCallback;
 	//! User data passed through callbacks
-	void *userData;
+	void* userData;
 } fplMemoryAllocationSettings;
 
 //! A structure for setting up memory settings for dynamic and temporary allocations
@@ -3485,79 +3478,79 @@ typedef struct fplSettings {
 } fplSettings;
 
 /**
-  * @brief Resets the given settings container to default values for window, video, audio, etc.
-  * @param settings The target @ref fplSettings structure
-  * @note This will not change the active settings! To change the actual settings you have to pass this settings container to a argument in @ref fplPlatformInit().
-  * @see @ref section_category_initialization_with_settings
-	*/
-fpl_common_api void fplSetDefaultSettings(fplSettings *settings);
+* @brief Resets the given settings container to default values for window, video, audio, etc.
+* @param settings The target @ref fplSettings structure
+* @note This will not change the active settings! To change the actual settings you have to pass this settings container to a argument in @ref fplPlatformInit().
+* @see @ref section_category_initialization_with_settings
+*/
+fpl_common_api void fplSetDefaultSettings(fplSettings* settings);
 /**
-  * @brief Creates a full settings structure containing default values
-  * @return Returns a defaulted @ref fplSettings structure
-  * @see @ref section_category_initialization_tips
-  */
+* @brief Creates a full settings structure containing default values
+* @return Returns a defaulted @ref fplSettings structure
+* @see @ref section_category_initialization_tips
+*/
 fpl_common_api fplSettings fplMakeDefaultSettings();
 /**
-  * @brief Gets the current settings
-  * @return Returns a pointer to the @ref fplSettings structure
-  * @see @ref section_category_initialization_tips
-  */
-fpl_common_api const fplSettings *fplGetCurrentSettings();
+* @brief Gets the current settings
+* @return Returns a pointer to the @ref fplSettings structure
+* @see @ref section_category_initialization_tips
+*/
+fpl_common_api const fplSettings* fplGetCurrentSettings();
 
 /** @} */
 
 // ----------------------------------------------------------------------------
 /**
-  * @defgroup Platform Platform functions
-  * @brief This category contains structures, enumerations and functions for initializing/releasing the platform.
-  * @{
-  */
-  // ----------------------------------------------------------------------------
+* @defgroup Platform Platform functions
+* @brief This category contains structures, enumerations and functions for initializing/releasing the platform.
+* @{
+*/
+// ----------------------------------------------------------------------------
 
-  /**
-	* @brief Gets the type of the platform
-	* @return Returns the @ref fplPlatformType
-	* @see @ref section_category_platform_type
-	*/
+/**
+* @brief Gets the type of the platform
+* @return Returns the @ref fplPlatformType
+* @see @ref section_category_platform_type
+*/
 fpl_common_api fplPlatformType fplGetPlatformType();
 /**
-  * @brief Gets the string representation of the given platform type
-  * @param type The platform type @ref fplPlatformType
-  * @return Returns the string representation for the given platform type @ref fplPlatformType
-  * @see @ref section_category_platform_type
-  */
-fpl_common_api const char *fplGetPlatformName(const fplPlatformType type);
+* @brief Gets the string representation of the given platform type
+* @param type The platform type @ref fplPlatformType
+* @return Returns the string representation for the given platform type @ref fplPlatformType
+* @see @ref section_category_platform_type
+*/
+fpl_common_api const char* fplGetPlatformName(const fplPlatformType type);
 /**
-  * @brief Initializes the platform layer.
-  * @param initFlags The init flags @ref fplInitFlags used for enable certain features, like video/audio etc.
-  * @param initSettings The @ref fplSettings structure to control the platform layer behavior or systems, if null is passed here default values are used automatically.
-  * @return Returns true when it was successful, false otherwise.
-  * @note @ref fplPlatformRelease() must be called when you are done! After @ref fplPlatformRelease() has been called you can call this function again if needed.
-  * @see @ref section_category_initialization_simple
-  */
-fpl_common_api bool fplPlatformInit(const fplInitFlags initFlags, const fplSettings *initSettings);
+* @brief Initializes the platform layer.
+* @param initFlags The init flags @ref fplInitFlags used for enable certain features, like video/audio etc.
+* @param initSettings The @ref fplSettings structure to control the platform layer behavior or systems, if null is passed here default values are used automatically.
+* @return Returns true when it was successful, false otherwise.
+* @note @ref fplPlatformRelease() must be called when you are done! After @ref fplPlatformRelease() has been called you can call this function again if needed.
+* @see @ref section_category_initialization_simple
+*/
+fpl_common_api bool fplPlatformInit(const fplInitFlags initFlags, const fplSettings* initSettings);
 /**
-  * @brief Gets the result type of the platform initialization
-  * @return Returns the result type as @ref fplPlatformResultType
-  * @see @ref section_category_errorhandling_getplatformresult
-  */
+* @brief Gets the result type of the platform initialization
+* @return Returns the result type as @ref fplPlatformResultType
+* @see @ref section_category_errorhandling_getplatformresult
+*/
 fpl_common_api fplPlatformResultType fplGetPlatformResult();
 /**
-  * @brief Releases the resources allocated by the platform layer.
-  * @note Can only be called when @ref fplPlatformInit() was successful.
-  * @see @ref section_category_initialization_release
-  */
+* @brief Releases the resources allocated by the platform layer.
+* @note Can only be called when @ref fplPlatformInit() was successful.
+* @see @ref section_category_initialization_release
+*/
 fpl_common_api void fplPlatformRelease();
 
 /** @} */
 
 // ----------------------------------------------------------------------------
 /**
-  * @defgroup Logging Logging
-  * @brief This category contains functions and types for controlling logging output
-  * @{
-  */
-  // ----------------------------------------------------------------------------
+* @defgroup Logging Logging
+* @brief This category contains functions and types for controlling logging output
+* @{
+*/
+// ----------------------------------------------------------------------------
 
 //! An enumeration of log levels
 typedef enum fplLogLevel {
@@ -3586,14 +3579,14 @@ typedef enum fplLogLevel {
 
 #if defined(FPL__ENABLE_LOGGING)
 /**
-  * @brief A callback for printing a log message
-  * @param funcName The function name
-  * @param lineNumber The line number
-  * @param level The log level @ref fplLogLevel
-  * @param message The log message string
-  * @see @ref subsection_category_logging_logging_example_custom
-  */
-typedef void (fpl_log_func_callback)(const char *funcName, const int lineNumber, const fplLogLevel level, const char *message);
+* @brief A callback for printing a log message
+* @param funcName The function name
+* @param lineNumber The line number
+* @param level The log level @ref fplLogLevel
+* @param message The log message string
+* @see @ref subsection_category_logging_logging_example_custom
+*/
+typedef void (fpl_log_func_callback)(const char* funcName, const int lineNumber, const fplLogLevel level, const char* message);
 
 //! An enumeration of log writer flags
 typedef enum fplLogWriterFlags {
@@ -3620,7 +3613,7 @@ typedef struct fplLogWriterConsole {
 //! A structure containing properties custom logging properties
 typedef struct fplLogWriterCustom {
 	//! User callback
-	fpl_log_func_callback *callback;
+	fpl_log_func_callback* callback;
 } fplLogWriterCustom;
 
 //! A structure containing log writer settings
@@ -3665,32 +3658,32 @@ typedef struct fplLogSettings {
 } fplLogSettings;
 
 /**
-  * @brief Overwrites the current log settings
-  * @param params The source @ref fplLogSettings structure
-  * @note This function can be called regardless of the initialization state!
-  * @see @ref section_category_logging_logging
-  */
-fpl_common_api void fplSetLogSettings(const fplLogSettings *params);
+* @brief Overwrites the current log settings
+* @param params The source @ref fplLogSettings structure
+* @note This function can be called regardless of the initialization state!
+* @see @ref section_category_logging_logging
+*/
+fpl_common_api void fplSetLogSettings(const fplLogSettings* params);
 /**
-  * @brief Gets the current log settings
-  * @return Returns a pointer the @ref fplLogSettings structure
-  * @note This function can be called regardless of the initialization state!
-  * @see @ref section_category_logging_logging
-  */
-fpl_common_api const fplLogSettings *fplGetLogSettings();
+* @brief Gets the current log settings
+* @return Returns a pointer the @ref fplLogSettings structure
+* @note This function can be called regardless of the initialization state!
+* @see @ref section_category_logging_logging
+*/
+fpl_common_api const fplLogSettings* fplGetLogSettings();
 /**
-  * @brief Changes the current maximum log level to the given value
-  * @param maxLevel The new maximum log level @ref fplLogLevel
-  * @note This function can be called regardless of the initialization state!
-  * @see @ref section_category_logging_logging
-  */
+* @brief Changes the current maximum log level to the given value
+* @param maxLevel The new maximum log level @ref fplLogLevel
+* @note This function can be called regardless of the initialization state!
+* @see @ref section_category_logging_logging
+*/
 fpl_common_api void fplSetMaxLogLevel(const fplLogLevel maxLevel);
 /**
-  * @brief Gets the current maximum allowed log level
-  * @return Returns the current maximum log level @ref fplLogLevel
-  * @note This function can be called regardless of the initialization state!
-  * @see @ref section_category_logging_logging
-  */
+* @brief Gets the current maximum allowed log level
+* @return Returns the current maximum log level @ref fplLogLevel
+* @note This function can be called regardless of the initialization state!
+* @see @ref section_category_logging_logging
+*/
 fpl_common_api fplLogLevel fplGetMaxLogLevel();
 #endif // FPL__ENABLE_LOGGING
 
@@ -3698,50 +3691,50 @@ fpl_common_api fplLogLevel fplGetMaxLogLevel();
 
 // ----------------------------------------------------------------------------
 /**
-  * @defgroup ErrorHandling Error Handling
-  * @brief This category contains functions for handling errors
-  * @{
-  */
-  // ----------------------------------------------------------------------------
+* @defgroup ErrorHandling Error Handling
+* @brief This category contains functions for handling errors
+* @{
+*/
+// ----------------------------------------------------------------------------
 
-  /**
-	* @brief Gets the last internal error string
-	* @return Returns the last error string or empty string when there was no error.
-	* @note This function can be called regardless of the initialization state!
-	* @see @ref section_category_errorhandling_getlatest
-	*/
-fpl_common_api const char *fplGetLastError();
 /**
-  * @brief Gets the last error string from the given index
-  * @param index The index
-  * @return Returns the last error string from the given index or empty when there was no error.
-  * @note This function can be called regardless of the initialization state!
-  * @see @ref section_category_errorhandling_getbyindex
-  */
-fpl_common_api const char *fplGetErrorByIndex(const size_t index);
+* @brief Gets the last internal error string
+* @return Returns the last error string or empty string when there was no error.
+* @note This function can be called regardless of the initialization state!
+* @see @ref section_category_errorhandling_getlatest
+*/
+fpl_common_api const char* fplGetLastError();
 /**
-  * @brief Gets the count of total last errors
-  * @note This function can be called regardless of the initialization state!
-  * @return Returns the number of last errors or zero when there was no error.
-  * @see @ref section_category_errorhandling_count
-  */
+* @brief Gets the last error string from the given index
+* @param index The index
+* @return Returns the last error string from the given index or empty when there was no error.
+* @note This function can be called regardless of the initialization state!
+* @see @ref section_category_errorhandling_getbyindex
+*/
+fpl_common_api const char* fplGetErrorByIndex(const size_t index);
+/**
+* @brief Gets the count of total last errors
+* @note This function can be called regardless of the initialization state!
+* @return Returns the number of last errors or zero when there was no error.
+* @see @ref section_category_errorhandling_count
+*/
 fpl_common_api size_t fplGetErrorCount();
 /**
-  * @brief Clears all the current errors in the platform
-  * @note This function can be called regardless of the initialization state!
-  * @see @ref section_category_errorhandling_clear
-  */
+* @brief Clears all the current errors in the platform
+* @note This function can be called regardless of the initialization state!
+* @see @ref section_category_errorhandling_clear
+*/
 fpl_common_api void fplClearErrors();
 
 /** @} */
 
 // ----------------------------------------------------------------------------
 /**
-  * @defgroup DynamicLibrary Dynamic library loading
-  * @brief This category contains functions for loading dynamic libraries.
-  * @{
-  */
-  // ----------------------------------------------------------------------------
+* @defgroup DynamicLibrary Dynamic library loading
+* @brief This category contains functions for loading dynamic libraries.
+* @{
+*/
+// ----------------------------------------------------------------------------
 
 //! A union containing the library handle for any platform
 typedef union fplInternalDynamicLibraryHandle {
@@ -3750,7 +3743,7 @@ typedef union fplInternalDynamicLibraryHandle {
 	HMODULE win32LibraryHandle;
 #elif defined(FPL_SUBPLATFORM_POSIX)
 	//! Posix library handle
-	void *posixLibraryHandle;
+	void* posixLibraryHandle;
 #endif
 } fplInternalDynamicLibraryHandle;
 
@@ -3763,153 +3756,153 @@ typedef struct fplDynamicLibraryHandle {
 } fplDynamicLibraryHandle;
 
 /**
-  * @brief Loads a dynamic library and returns if the load was successful or not.
-  * @param libraryFilePath The path to the library with included file extension (.dll / .so)
-  * @param outHandle The output handle @ref fplDynamicLibraryHandle
-  * @return Returns true when the library was loaded successfully, false otherwise.
-  * @see @ref section_category_dll_load
-  */
-fpl_platform_api bool fplDynamicLibraryLoad(const char *libraryFilePath, fplDynamicLibraryHandle *outHandle);
+* @brief Loads a dynamic library and returns if the load was successful or not.
+* @param libraryFilePath The path to the library with included file extension (.dll / .so)
+* @param outHandle The output handle @ref fplDynamicLibraryHandle
+* @return Returns true when the library was loaded successfully, false otherwise.
+* @see @ref section_category_dll_load
+*/
+fpl_platform_api bool fplDynamicLibraryLoad(const char* libraryFilePath, fplDynamicLibraryHandle* outHandle);
 /**
-  * @brief Returns the dynamic library procedure address for the given procedure name.
-  * @param handle The @ref fplDynamicLibraryHandle handle to the loaded library
-  * @param name The name of the procedure
-  * @return Returns the procedure address for the given procedure name or @ref fpl_null when procedure not found or library is not loaded.
-  * @see @ref section_category_dll_getprocaddr
-  */
-fpl_platform_api void *fplGetDynamicLibraryProc(const fplDynamicLibraryHandle *handle, const char *name);
+* @brief Returns the dynamic library procedure address for the given procedure name.
+* @param handle The @ref fplDynamicLibraryHandle handle to the loaded library
+* @param name The name of the procedure
+* @return Returns the procedure address for the given procedure name or @ref fpl_null when procedure not found or library is not loaded.
+* @see @ref section_category_dll_getprocaddr
+*/
+fpl_platform_api void* fplGetDynamicLibraryProc(const fplDynamicLibraryHandle* handle, const char* name);
 /**
-  * @brief Unloads the loaded library and resets the handle to zero.
-  * @param handle The library handle @ref fplDynamicLibraryHandle
-  * @see @ref fplDynamicLibraryUnload
-  */
-fpl_platform_api void fplDynamicLibraryUnload(fplDynamicLibraryHandle *handle);
+* @brief Unloads the loaded library and resets the handle to zero.
+* @param handle The library handle @ref fplDynamicLibraryHandle
+* @see @ref fplDynamicLibraryUnload
+*/
+fpl_platform_api void fplDynamicLibraryUnload(fplDynamicLibraryHandle* handle);
 
 /** @} */
 
 // ----------------------------------------------------------------------------
 /**
-  * @defgroup Debug Debug
-  * @{
-  */
-  // ----------------------------------------------------------------------------
+* @defgroup Debug Debug
+* @{
+*/
+// ----------------------------------------------------------------------------
 
-  /**
-	* @brief Writes the given text into the debugger output stream
-	* @param text The text to write into the debugger output stream
-	* @note This function will only work in IDEs such as MSVC
-	* @see @ref subsection_category_logging_debug_out
-	*/
-fpl_platform_api void fplDebugOut(const char *text);
 /**
-  * @brief Writes the given formatted text into the debugger output stream
-  * @param format The format used for writing into the debugger output stream
-  * @param ... The dynamic arguments used for formatting the text.
-  * @note This function will only work in IDEs such as MSVC
-  * @see @ref subsection_category_logging_debug_out
-  */
-fpl_common_api void fplDebugFormatOut(const char *format, ...);
+* @brief Writes the given text into the debugger output stream
+* @param text The text to write into the debugger output stream
+* @note This function will only work in IDEs such as MSVC
+* @see @ref subsection_category_logging_debug_out
+*/
+fpl_platform_api void fplDebugOut(const char* text);
+/**
+* @brief Writes the given formatted text into the debugger output stream
+* @param format The format used for writing into the debugger output stream
+* @param ... The dynamic arguments used for formatting the text.
+* @note This function will only work in IDEs such as MSVC
+* @see @ref subsection_category_logging_debug_out
+*/
+fpl_common_api void fplDebugFormatOut(const char* format, ...);
 
 /** @} */
 
 // ----------------------------------------------------------------------------
 /**
-  * @defgroup Console Console functions
-  * @brief This category contains function for handling console in/out
-  * @{
-  */
-  // ----------------------------------------------------------------------------
+* @defgroup Console Console functions
+* @brief This category contains function for handling console in/out
+* @{
+*/
+// ----------------------------------------------------------------------------
 
-  /**
-	* @brief Writes the given text to the standard output console buffer.
-	* @param text The text to write into standard output console.
-	* @note This is most likely just a wrapper call to fprintf(stdout)
-	*/
-fpl_platform_api void fplConsoleOut(const char *text);
 /**
-  * @brief Writes the given text to the standard error console buffer.
-  * @param text The text to write into standard error console.
-  * @note This is most likely just a wrapper call to fprintf(stderr)
-  */
-fpl_platform_api void fplConsoleError(const char *text);
+* @brief Writes the given text to the standard output console buffer.
+* @param text The text to write into standard output console.
+* @note This is most likely just a wrapper call to fprintf(stdout)
+*/
+fpl_platform_api void fplConsoleOut(const char* text);
 /**
-  * @brief Wait for a character to be typed in the console input and return it.
-  * @note This is most likely just a wrapper call to getchar()
-  * @return Returns the character typed in in the console input
-  */
+* @brief Writes the given text to the standard error console buffer.
+* @param text The text to write into standard error console.
+* @note This is most likely just a wrapper call to fprintf(stderr)
+*/
+fpl_platform_api void fplConsoleError(const char* text);
+/**
+* @brief Wait for a character to be typed in the console input and return it.
+* @note This is most likely just a wrapper call to getchar()
+* @return Returns the character typed in in the console input
+*/
 fpl_platform_api char fplConsoleWaitForCharInput();
 
 /**
-  * @brief Writes the given formatted text to the standard output console buffer.
-  * @param format The format used for writing into the standard output console
-  * @param ... The dynamic arguments used for formatting the text
-  * @note This is most likely just a wrapper call to vfprintf(stdout)
-  */
-fpl_common_api void fplConsoleFormatOut(const char *format, ...);
+* @brief Writes the given formatted text to the standard output console buffer.
+* @param format The format used for writing into the standard output console
+* @param ... The dynamic arguments used for formatting the text
+* @note This is most likely just a wrapper call to vfprintf(stdout)
+*/
+fpl_common_api void fplConsoleFormatOut(const char* format, ...);
 /**
-  * @brief Writes the given formatted text to the standard error console buffer.
-  * @param format The format used for writing into the standard error console
-  * @param ... The dynamic arguments used for formatting the text
-  * @note This is most likely just a wrapper call to vfprintf(stderr)
-  */
-fpl_common_api void fplConsoleFormatError(const char *format, ...);
+* @brief Writes the given formatted text to the standard error console buffer.
+* @param format The format used for writing into the standard error console
+* @param ... The dynamic arguments used for formatting the text
+* @note This is most likely just a wrapper call to vfprintf(stderr)
+*/
+fpl_common_api void fplConsoleFormatError(const char* format, ...);
 
 /** @} */
 
 // ----------------------------------------------------------------------------
 /**
-  * @defgroup Timings Timing functions
-  * @brief This category contains functions for time comparisons
-  * @{
-  */
-  // ----------------------------------------------------------------------------
+* @defgroup Timings Timing functions
+* @brief This category contains functions for time comparisons
+* @{
+*/
+// ----------------------------------------------------------------------------
 
-  /**
-	* @brief Gets the current system clock in seconds in high precision (micro/nano seconds).
-	* @return Returns the number of seconds since some fixed starting point (OS start, System start, etc).
-	* @note Can only be used to calculate a difference in time!
-	*/
+/**
+* @brief Gets the current system clock in seconds in high precision (micro/nano seconds).
+* @return Returns the number of seconds since some fixed starting point (OS start, System start, etc).
+* @note Can only be used to calculate a difference in time!
+*/
 fpl_platform_api double fplGetTimeInSecondsHP();
 /**
-  * @brief Gets the current system clock in seconds in low precision (seconds).
-  * @return Returns the number of seconds since some fixed starting point (OS start, System start, etc).
-  * @note Can only be used to calculate a difference in time!
-  */
+* @brief Gets the current system clock in seconds in low precision (seconds).
+* @return Returns the number of seconds since some fixed starting point (OS start, System start, etc).
+* @note Can only be used to calculate a difference in time!
+*/
 fpl_platform_api uint64_t fplGetTimeInSecondsLP();
 /**
-  * @brief Gets the current system clock in seconds in default precision.
-  * @return Returns the number of seconds since some fixed starting point (OS start, System start, etc).
-  * @note Can only be used to calculate a difference in time. There is no guarantee to get high precision here, use for high precision @ref fplGetTimeInSecondsHP() instead!
-  */
+* @brief Gets the current system clock in seconds in default precision.
+* @return Returns the number of seconds since some fixed starting point (OS start, System start, etc).
+* @note Can only be used to calculate a difference in time. There is no guarantee to get high precision here, use for high precision @ref fplGetTimeInSecondsHP() instead!
+*/
 fpl_platform_api double fplGetTimeInSeconds();
 /**
-  * @brief Gets the current system clock in milliseconds in high precision (micro/nano seconds)
-  * @return Returns the number of milliseconds since some fixed starting point (OS start, System start, etc).
-  * @note Can only be used to calculate a difference in time!
-  */
+* @brief Gets the current system clock in milliseconds in high precision (micro/nano seconds)
+* @return Returns the number of milliseconds since some fixed starting point (OS start, System start, etc).
+* @note Can only be used to calculate a difference in time!
+*/
 fpl_platform_api double fplGetTimeInMillisecondsHP();
 /**
-  * @brief Gets the current system clock in milliseconds in low precision (milliseconds)
-  * @return Returns the number of milliseconds since some fixed starting point (OS start, System start, etc).
-  * @note Can only be used to calculate a difference in time!
-  */
+* @brief Gets the current system clock in milliseconds in low precision (milliseconds)
+* @return Returns the number of milliseconds since some fixed starting point (OS start, System start, etc).
+* @note Can only be used to calculate a difference in time!
+*/
 fpl_platform_api uint64_t fplGetTimeInMillisecondsLP();
 /**
-  * @brief Gets the current system clock in milliseconds in default precision.
-  * @return Returns the number of milliseconds since some fixed starting point (OS start, System start, etc).
-  * @note Can only be used to calculate a difference in time!
-  */
+* @brief Gets the current system clock in milliseconds in default precision.
+* @return Returns the number of milliseconds since some fixed starting point (OS start, System start, etc).
+* @note Can only be used to calculate a difference in time!
+*/
 fpl_platform_api uint64_t fplGetTimeInMilliseconds();
 
 /** @} */
 
 // ----------------------------------------------------------------------------
 /**
-  * @defgroup Threading Threading and syncronisation routines
-  * @brief This category contains functions/types for dealing with concurrent programming, such as threads, mutexes, conditions, etc.
-  * @{
-  */
-  // ----------------------------------------------------------------------------
+* @defgroup Threading Threading and syncronisation routines
+* @brief This category contains functions/types for dealing with concurrent programming, such as threads, mutexes, conditions, etc.
+* @{
+*/
+// ----------------------------------------------------------------------------
 
 //! A type definition for a timeout value in milliseconds
 typedef uint32_t fplTimeoutValue;
@@ -3950,12 +3943,11 @@ typedef enum fplThreadPriority {
 //! Forward declare thread handle
 typedef struct fplThreadHandle fplThreadHandle;
 /**
-  * @brief A callback to execute user code from a @ref fplThreadHandle
-  * @param thread The thread handle @ref fplThreadHandle
-  * @param data The user data pointer
-  */
-//! Run callback type definition for @ref fplThreadCreate()
-typedef void (fpl_run_thread_callback)(const fplThreadHandle *thread, void *data);
+* @brief A callback to execute user code inside another thread
+* @param thread The thread handle
+* @param data The user data pointer
+*/
+typedef void (fpl_run_thread_callback)(const fplThreadHandle* thread, void* data);
 
 //! A union containing the thread handle for any platform
 typedef union fplInternalThreadHandle {
@@ -3973,9 +3965,9 @@ typedef struct fplThreadHandle {
 	//! The internal thread handle
 	fplInternalThreadHandle internalHandle;
 	//! The stored run callback
-	fpl_run_thread_callback *runFunc;
+	fpl_run_thread_callback* runFunc;
 	//! The user data passed to the run callback
-	void *data;
+	void* data;
 	//! Thread state
 	volatile fplThreadState currentState;
 	//! The identifier of the thread
@@ -4081,439 +4073,439 @@ typedef struct fplConditionVariable {
 } fplConditionVariable;
 
 /**
-  * @brief Gets the current thread state for the given thread
-  * @param thread The thread handle @ref fplThreadHandle
-  * @return Returns the current thread state @ref fplThreadState for the given thread
-  * @see @ref section_category_threading_threads_states
-  */
-fpl_common_api fplThreadState fplGetThreadState(fplThreadHandle *thread);
+* @brief Gets the current thread state for the given thread
+* @param thread The thread handle @ref fplThreadHandle
+* @return Returns the current thread state @ref fplThreadState for the given thread
+* @see @ref section_category_threading_threads_states
+*/
+fpl_common_api fplThreadState fplGetThreadState(fplThreadHandle* thread);
 /**
-  * @brief Gets the thread handle for the main thread.
-  * @return Returns the immutable pointer to the @ref fplThreadHandle .
-  */
-fpl_common_api const fplThreadHandle *fplGetMainThread();
+* @brief Gets the thread handle for the main thread.
+* @return Returns the immutable pointer to the @ref fplThreadHandle .
+*/
+fpl_common_api const fplThreadHandle* fplGetMainThread();
 /**
-  * @brief Gets the thread id for the current thread.
-  * @return Returns the thread id for the current thread.
-  */
+* @brief Gets the thread id for the current thread.
+* @return Returns the thread id for the current thread.
+*/
 fpl_platform_api uint32_t fplGetCurrentThreadId();
 /**
-  * @brief Creates and starts a thread and returns the handle to it.
-  * @param runFunc The pointer to the @ref fpl_run_thread_callback
-  * @param data The user data pointer passed to the execution function callback
-  * @return Returns a pointer to the @ref fplThreadHandle structure or @ref fpl_null when the limit of active threads has been reached.
-  * @warning Do not free this thread context directly!
-  * @note The resources are automatically cleaned up when the thread terminates.
-  * @see @ref section_category_threading_threads_create
-  */
-fpl_platform_api fplThreadHandle *fplThreadCreate(fpl_run_thread_callback *runFunc, void *data);
+* @brief Creates and starts a thread and returns the handle to it.
+* @param runFunc The pointer to the @ref fpl_run_thread_callback
+* @param data The user data pointer passed to the execution function callback
+* @return Returns a pointer to the @ref fplThreadHandle structure or @ref fpl_null when the limit of active threads has been reached.
+* @warning Do not free this thread context directly!
+* @note The resources are automatically cleaned up when the thread terminates.
+* @see @ref section_category_threading_threads_create
+*/
+fpl_platform_api fplThreadHandle* fplThreadCreate(fpl_run_thread_callback* runFunc, void* data);
 /**
-  * @brief Retrieves the current thread priority from the OS from the given @ref fplThreadHandle .
-  * @param thread The pointer to the @ref fplThreadHandle structure
-  * @return Returns the current @ref fplThreadPriority .
-  */
-fpl_platform_api fplThreadPriority fplGetThreadPriority(fplThreadHandle *thread);
+* @brief Retrieves the current thread priority from the OS from the given @ref fplThreadHandle .
+* @param thread The pointer to the @ref fplThreadHandle structure
+* @return Returns the current @ref fplThreadPriority .
+*/
+fpl_platform_api fplThreadPriority fplGetThreadPriority(fplThreadHandle* thread);
 /**
-  * @brief Changes the thread priority to the given one, for the given @ref fplThreadHandle .
-  * @param thread The pointer to the @ref fplThreadHandle structure
-  * @param newPriority The new @ref fplThreadPriority for the given thread
-  * @return Returns true when the priority was changed, false otherwise.
-  */
-fpl_platform_api bool fplSetThreadPriority(fplThreadHandle *thread, const fplThreadPriority newPriority);
+* @brief Changes the thread priority to the given one, for the given @ref fplThreadHandle .
+* @param thread The pointer to the @ref fplThreadHandle structure
+* @param newPriority The new @ref fplThreadPriority for the given thread
+* @return Returns true when the priority was changed, false otherwise.
+*/
+fpl_platform_api bool fplSetThreadPriority(fplThreadHandle* thread, const fplThreadPriority newPriority);
 /**
-  * @brief Let the current thread sleep for the given amount of milliseconds.
-  * @param milliseconds Number of milliseconds to sleep
-  * @note There is no guarantee that the OS sleeps for the exact amount of milliseconds! This can vary based on the OS scheduler granularity.
-  */
+* @brief Let the current thread sleep for the given amount of milliseconds.
+* @param milliseconds Number of milliseconds to sleep
+* @note There is no guarantee that the OS sleeps for the exact amount of milliseconds! This can vary based on the OS scheduler granularity.
+*/
 fpl_platform_api void fplThreadSleep(const uint32_t milliseconds);
 /**
-  * @brief Let the current thread yield execution to another thread that is ready to run on this core.
-  * @return Returns true when the functions succeeds, false otherwise.
-  */
+* @brief Let the current thread yield execution to another thread that is ready to run on this core.
+* @return Returns true when the functions succeeds, false otherwise.
+*/
 fpl_platform_api bool fplThreadYield();
 /**
-  * @brief Forces the given thread to stop and release all underlying resources.
-  * @param thread The pointer to the @ref fplThreadHandle structure
-  * @return True when the thread was terminated, false otherwise.
-  * @warning Do not free the given thread context manually!
-  * @note This thread context may get re-used for another thread in the future.
-  * @note Returns true when the threads was terminated, false otherwise.
-  * @see @ref section_category_threading_threads_terminate
-  */
-fpl_platform_api bool fplThreadTerminate(fplThreadHandle *thread);
+* @brief Forces the given thread to stop and release all underlying resources.
+* @param thread The pointer to the @ref fplThreadHandle structure
+* @return True when the thread was terminated, false otherwise.
+* @warning Do not free the given thread context manually!
+* @note This thread context may get re-used for another thread in the future.
+* @note Returns true when the threads was terminated, false otherwise.
+* @see @ref section_category_threading_threads_terminate
+*/
+fpl_platform_api bool fplThreadTerminate(fplThreadHandle* thread);
 /**
-  * @brief Wait until the given thread is done running or the given timeout has been reached.
-  * @param thread The pointer to the @ref fplThreadHandle structure
-  * @param timeout The number of milliseconds to wait. When this is set to @ref FPL_TIMEOUT_INFINITE it will wait infinitly.
-  * @return Returns true when the thread completes or when the timeout has been reached, false otherwise.
-  * @see @ref subsection_category_threading_threads_wait_single
-  */
-fpl_platform_api bool fplThreadWaitForOne(fplThreadHandle *thread, const fplTimeoutValue timeout);
+* @brief Wait until the given thread is done running or the given timeout has been reached.
+* @param thread The pointer to the @ref fplThreadHandle structure
+* @param timeout The number of milliseconds to wait. When this is set to @ref FPL_TIMEOUT_INFINITE it will wait infinitly.
+* @return Returns true when the thread completes or when the timeout has been reached, false otherwise.
+* @see @ref subsection_category_threading_threads_wait_single
+*/
+fpl_platform_api bool fplThreadWaitForOne(fplThreadHandle* thread, const fplTimeoutValue timeout);
 /**
-  * @brief Wait until all given threads are done running or the given timeout has been reached.
-  * @param threads The pointer to the first @ref fplThreadHandle pointer
-  * @param count The number of threads
-  * @param stride The size in bytes to the next thread handle. When this is set to zero, the array default is used.
-  * @param timeout The number of milliseconds to wait. When this is set to @ref FPL_TIMEOUT_INFINITE it will wait infinitly.
-  * @return Returns true when all threads completes or when the timeout has been reached, false otherwise.
-  * @see @ref subsection_category_threading_threads_wait_all
-  */
-fpl_platform_api bool fplThreadWaitForAll(fplThreadHandle **threads, const size_t count, const size_t stride, const fplTimeoutValue timeout);
+* @brief Wait until all given threads are done running or the given timeout has been reached.
+* @param threads The pointer to the first @ref fplThreadHandle pointer
+* @param count The number of threads
+* @param stride The size in bytes to the next thread handle. When this is set to zero, the array default is used.
+* @param timeout The number of milliseconds to wait. When this is set to @ref FPL_TIMEOUT_INFINITE it will wait infinitly.
+* @return Returns true when all threads completes or when the timeout has been reached, false otherwise.
+* @see @ref subsection_category_threading_threads_wait_all
+*/
+fpl_platform_api bool fplThreadWaitForAll(fplThreadHandle** threads, const size_t count, const size_t stride, const fplTimeoutValue timeout);
 /**
-  * @brief Wait until one of given threads is done running or the given timeout has been reached.
-  * @param threads The pointer to the first @ref fplThreadHandle pointer
-  * @param count The number of threads
-  * @param stride The size in bytes to the next thread handle. When this is set to zero, the array default is used.
-  * @param timeout The number of milliseconds to wait. When this is set to @ref FPL_TIMEOUT_INFINITE it will wait infinitly.
-  * @return Returns true when one thread completes or when the timeout has been reached, false otherwise.
-  * @see @ref subsection_category_threading_threads_wait_any
-  */
-fpl_platform_api bool fplThreadWaitForAny(fplThreadHandle **threads, const size_t count, const size_t stride, const fplTimeoutValue timeout);
+* @brief Wait until one of given threads is done running or the given timeout has been reached.
+* @param threads The pointer to the first @ref fplThreadHandle pointer
+* @param count The number of threads
+* @param stride The size in bytes to the next thread handle. When this is set to zero, the array default is used.
+* @param timeout The number of milliseconds to wait. When this is set to @ref FPL_TIMEOUT_INFINITE it will wait infinitly.
+* @return Returns true when one thread completes or when the timeout has been reached, false otherwise.
+* @see @ref subsection_category_threading_threads_wait_any
+*/
+fpl_platform_api bool fplThreadWaitForAny(fplThreadHandle** threads, const size_t count, const size_t stride, const fplTimeoutValue timeout);
 
 /**
-  * @brief Initializes the given mutex
-  * @param mutex The pointer to the @ref fplMutexHandle structure
-  * @return Returns true when the mutex was initialized, false otherwise.
-  * @note Use @ref fplMutexDestroy() when you are done with this mutex.
-  * @see @ref section_category_threading_mutexes_init
-  */
-fpl_platform_api bool fplMutexInit(fplMutexHandle *mutex);
+* @brief Initializes the given mutex
+* @param mutex The pointer to the @ref fplMutexHandle structure
+* @return Returns true when the mutex was initialized, false otherwise.
+* @note Use @ref fplMutexDestroy() when you are done with this mutex.
+* @see @ref section_category_threading_mutexes_init
+*/
+fpl_platform_api bool fplMutexInit(fplMutexHandle* mutex);
 /**
-  * @brief Releases the given mutex and clears the structure to zero.
-  * @param mutex The pointer to the @ref fplMutexHandle structure
-  * @see @ref section_category_threading_mutexes_init
-  */
-fpl_platform_api void fplMutexDestroy(fplMutexHandle *mutex);
+* @brief Releases the given mutex and clears the structure to zero.
+* @param mutex The pointer to the @ref fplMutexHandle structure
+* @see @ref section_category_threading_mutexes_init
+*/
+fpl_platform_api void fplMutexDestroy(fplMutexHandle* mutex);
 /**
-  * @brief Locks the given mutex and blocks any other threads.
-  * @param mutex The pointer to the @ref fplMutexHandle structure
-  * @return Returns true when the mutex was locked, false otherwise.
-  * @see @ref subsection_category_threading_mutexes_locking_lock
-  */
-fpl_platform_api bool fplMutexLock(fplMutexHandle *mutex);
+* @brief Locks the given mutex and blocks any other threads.
+* @param mutex The pointer to the @ref fplMutexHandle structure
+* @return Returns true when the mutex was locked, false otherwise.
+* @see @ref subsection_category_threading_mutexes_locking_lock
+*/
+fpl_platform_api bool fplMutexLock(fplMutexHandle* mutex);
 /**
-  * @brief Tries to lock the given mutex without blocking other threads.
-  * @param mutex The pointer to the @ref fplMutexHandle structure
-  * @return Returns true when the mutex was locked, false otherwise.
-  * @see @ref subsection_category_threading_mutexes_locking_probe
-  */
-fpl_platform_api bool fplMutexTryLock(fplMutexHandle *mutex);
+* @brief Tries to lock the given mutex without blocking other threads.
+* @param mutex The pointer to the @ref fplMutexHandle structure
+* @return Returns true when the mutex was locked, false otherwise.
+* @see @ref subsection_category_threading_mutexes_locking_probe
+*/
+fpl_platform_api bool fplMutexTryLock(fplMutexHandle* mutex);
 /**
  * @brief Unlocks the given mutex
  * @param mutex The pointer to the @ref fplMutexHandle structure
  * @return Returns true when the mutex was unlocked, false otherwise.
  * @see @ref subsection_category_threading_mutexes_locking_unlock
  */
-fpl_platform_api bool fplMutexUnlock(fplMutexHandle *mutex);
+fpl_platform_api bool fplMutexUnlock(fplMutexHandle* mutex);
 
 /**
-  * @brief Initializes the given signal
-  * @param signal The pointer to the @ref fplSignalHandle structure
-  * @param initialValue The initial value the signal is set to
-  * @return Returns true when initialization was successful, false otherwise.
-  * @note Use @ref fplSignalDestroy() when you are done with this Signal to release it.
-  * @see @ref section_category_threading_signals_init
-  */
-fpl_platform_api bool fplSignalInit(fplSignalHandle *signal, const fplSignalValue initialValue);
+* @brief Initializes the given signal
+* @param signal The pointer to the @ref fplSignalHandle structure
+* @param initialValue The initial value the signal is set to
+* @return Returns true when initialization was successful, false otherwise.
+* @note Use @ref fplSignalDestroy() when you are done with this Signal to release it.
+* @see @ref section_category_threading_signals_init
+*/
+fpl_platform_api bool fplSignalInit(fplSignalHandle* signal, const fplSignalValue initialValue);
 /**
-  * @brief Releases the given signal and clears the structure to zero.
-  * @param signal The pointer to the @ref fplSignalHandle structure
-  * @see @ref section_category_threading_signals_init
-  */
-fpl_platform_api void fplSignalDestroy(fplSignalHandle *signal);
+* @brief Releases the given signal and clears the structure to zero.
+* @param signal The pointer to the @ref fplSignalHandle structure
+* @see @ref section_category_threading_signals_init
+*/
+fpl_platform_api void fplSignalDestroy(fplSignalHandle* signal);
 /**
-  * @brief Waits until the given signal are waked up.
-  * @param signal The pointer to the @ref fplSignalHandle structure
-  * @param timeout The number of milliseconds to wait. When this is set to @ref FPL_TIMEOUT_INFINITE it will wait infinitly.
-  * @return Retrns true when the signal woke up or the timeout has been reached, false otherwise.
-  * @see @ref subsection_category_threading_signals_wait_single
-  */
-fpl_platform_api bool fplSignalWaitForOne(fplSignalHandle *signal, const fplTimeoutValue timeout);
+* @brief Waits until the given signal are waked up.
+* @param signal The pointer to the @ref fplSignalHandle structure
+* @param timeout The number of milliseconds to wait. When this is set to @ref FPL_TIMEOUT_INFINITE it will wait infinitly.
+* @return Retrns true when the signal woke up or the timeout has been reached, false otherwise.
+* @see @ref subsection_category_threading_signals_wait_single
+*/
+fpl_platform_api bool fplSignalWaitForOne(fplSignalHandle* signal, const fplTimeoutValue timeout);
 /**
-  * @brief Waits until all the given signal are waked up.
-  * @param signals The pointer to the first @ref fplSignalHandle pointer
-  * @param count The number of signals
-  * @param stride The size in bytes to the next signal handle. When this is set to zero, the array default is used.
-  * @param timeout The number of milliseconds to wait. When this is set to @ref FPL_TIMEOUT_INFINITE it will wait infinitly.
-  * @return Returns true when all signals woke up or the timeout has been reached, false otherwise.
-  * @see @ref subsection_category_threading_signals_wait_all
-  */
-fpl_platform_api bool fplSignalWaitForAll(fplSignalHandle **signals, const size_t count, const size_t stride, const fplTimeoutValue timeout);
+* @brief Waits until all the given signal are waked up.
+* @param signals The pointer to the first @ref fplSignalHandle pointer
+* @param count The number of signals
+* @param stride The size in bytes to the next signal handle. When this is set to zero, the array default is used.
+* @param timeout The number of milliseconds to wait. When this is set to @ref FPL_TIMEOUT_INFINITE it will wait infinitly.
+* @return Returns true when all signals woke up or the timeout has been reached, false otherwise.
+* @see @ref subsection_category_threading_signals_wait_all
+*/
+fpl_platform_api bool fplSignalWaitForAll(fplSignalHandle** signals, const size_t count, const size_t stride, const fplTimeoutValue timeout);
 /**
-  * @brief Waits until any of the given signals wakes up or the timeout has been reached.
-  * @param signals The pointer to the first @ref fplSignalHandle pointer
-  * @param count The number of signals
-  * @param stride The size in bytes to the next signal handle. When this is set to zero, the array default is used.
-  * @param timeout The number of milliseconds to wait. When this is set to @ref FPL_TIMEOUT_INFINITE it will wait infinitly.
-  * @return Returns true when any of the signals woke up or the timeout has been reached, false otherwise.
-  * @see @ref subsection_category_threading_signals_wait_any
-  */
-fpl_platform_api bool fplSignalWaitForAny(fplSignalHandle **signals, const size_t count, const size_t stride, const fplTimeoutValue timeout);
+* @brief Waits until any of the given signals wakes up or the timeout has been reached.
+* @param signals The pointer to the first @ref fplSignalHandle pointer
+* @param count The number of signals
+* @param stride The size in bytes to the next signal handle. When this is set to zero, the array default is used.
+* @param timeout The number of milliseconds to wait. When this is set to @ref FPL_TIMEOUT_INFINITE it will wait infinitly.
+* @return Returns true when any of the signals woke up or the timeout has been reached, false otherwise.
+* @see @ref subsection_category_threading_signals_wait_any
+*/
+fpl_platform_api bool fplSignalWaitForAny(fplSignalHandle** signals, const size_t count, const size_t stride, const fplTimeoutValue timeout);
 /**
-  * @brief Sets the signal and wakes up the given signal.
-  * @param signal The pointer to the @ref fplSignalHandle structure
-  * @return Returns true when the signal was set and broadcasted or false otherwise.
-  * @see @ref section_category_threading_signals_set
-  */
-fpl_platform_api bool fplSignalSet(fplSignalHandle *signal);
+* @brief Sets the signal and wakes up the given signal.
+* @param signal The pointer to the @ref fplSignalHandle structure
+* @return Returns true when the signal was set and broadcasted or false otherwise.
+* @see @ref section_category_threading_signals_set
+*/
+fpl_platform_api bool fplSignalSet(fplSignalHandle* signal);
 /**
-  * @brief Resets the signal.
-  * @param signal The pointer to the @ref fplSignalHandle structure
-  * @return Returns true when the signal was reset, false otherwise.
-  * @see @ref section_category_threading_signals_reset
-  */
-fpl_platform_api bool fplSignalReset(fplSignalHandle *signal);
+* @brief Resets the signal.
+* @param signal The pointer to the @ref fplSignalHandle structure
+* @return Returns true when the signal was reset, false otherwise.
+* @see @ref section_category_threading_signals_reset
+*/
+fpl_platform_api bool fplSignalReset(fplSignalHandle* signal);
 
 /**
-  * @brief Initialize
+* @brief Initialize
   s the given condition
-  * @param condition The pointer to the @ref fplConditionVariable structure
-  * @return Returns true when initialization was successful, false otherwise.
-  * @note Use @ref fplSignalDestroy() when you are done with this Condition Variable to release its resources.
-  * @see @ref category_threading_conditions_init
-  */
-fpl_platform_api bool fplConditionInit(fplConditionVariable *condition);
+* @param condition The pointer to the @ref fplConditionVariable structure
+* @return Returns true when initialization was successful, false otherwise.
+* @note Use @ref fplSignalDestroy() when you are done with this Condition Variable to release its resources.
+* @see @ref category_threading_conditions_init
+*/
+fpl_platform_api bool fplConditionInit(fplConditionVariable* condition);
 /**
-  * @brief Releases the given condition and clears the structure to zero.
-  * @param condition The pointer to the @ref fplConditionVariable structure
-  * @see @ref category_threading_conditions_init
-  */
-fpl_platform_api void fplConditionDestroy(fplConditionVariable *condition);
+* @brief Releases the given condition and clears the structure to zero.
+* @param condition The pointer to the @ref fplConditionVariable structure
+* @see @ref category_threading_conditions_init
+*/
+fpl_platform_api void fplConditionDestroy(fplConditionVariable* condition);
 /**
-  * @brief Sleeps on the given condition and releases the mutex when done.
-  * @param condition The pointer to the @ref fplConditionVariable structure
-  * @param mutex The pointer to the mutex handle @ref fplMutexHandle structure
-  * @param timeout The number of milliseconds to wait. When this is set to @ref FPL_TIMEOUT_INFINITE it will wait infinitly.
-  * @return Returns true when the function succeeds, false otherwise.
-  * @see @ref category_threading_conditions_wait_single
-  */
-fpl_platform_api bool fplConditionWait(fplConditionVariable *condition, fplMutexHandle *mutex, const fplTimeoutValue timeout);
+* @brief Sleeps on the given condition and releases the mutex when done.
+* @param condition The pointer to the @ref fplConditionVariable structure
+* @param mutex The pointer to the mutex handle @ref fplMutexHandle structure
+* @param timeout The number of milliseconds to wait. When this is set to @ref FPL_TIMEOUT_INFINITE it will wait infinitly.
+* @return Returns true when the function succeeds, false otherwise.
+* @see @ref category_threading_conditions_wait_single
+*/
+fpl_platform_api bool fplConditionWait(fplConditionVariable* condition, fplMutexHandle* mutex, const fplTimeoutValue timeout);
 /**
-  * @brief Wakes up one thread which waits on the given condition.
-  * @param condition The pointer to the @ref fplConditionVariable structure
-  * @return Returns true when the function succeeds, false otherwise.
-  * @see @ref category_threading_conditions_signal
-  */
-fpl_platform_api bool fplConditionSignal(fplConditionVariable *condition);
+* @brief Wakes up one thread which waits on the given condition.
+* @param condition The pointer to the @ref fplConditionVariable structure
+* @return Returns true when the function succeeds, false otherwise.
+* @see @ref category_threading_conditions_signal
+*/
+fpl_platform_api bool fplConditionSignal(fplConditionVariable* condition);
 /**
-  * @brief Wakes up all threads which waits on the given condition.
-  * @param condition The pointer to the @ref fplConditionVariable structure
-  * @return Returns true when the function succeeds, false otherwise.
-  * @see @ref category_threading_conditions_broadcast
-  */
-fpl_platform_api bool fplConditionBroadcast(fplConditionVariable *condition);
+* @brief Wakes up all threads which waits on the given condition.
+* @param condition The pointer to the @ref fplConditionVariable structure
+* @return Returns true when the function succeeds, false otherwise.
+* @see @ref category_threading_conditions_broadcast
+*/
+fpl_platform_api bool fplConditionBroadcast(fplConditionVariable* condition);
 
 /**
-  * @brief Initializes the semaphore with the given initial value
-  * @param semaphore The pointer to the @ref fplSemaphoreHandle structure
-  * @param initialValue The initial value
-  * @return Returns true when the semaphores got initialized, false otherwise.
-  * @see @ref category_threading_semaphores_init
-  */
-fpl_platform_api bool fplSemaphoreInit(fplSemaphoreHandle *semaphore, const uint32_t initialValue);
+* @brief Initializes the semaphore with the given initial value
+* @param semaphore The pointer to the @ref fplSemaphoreHandle structure
+* @param initialValue The initial value
+* @return Returns true when the semaphores got initialized, false otherwise.
+* @see @ref category_threading_semaphores_init
+*/
+fpl_platform_api bool fplSemaphoreInit(fplSemaphoreHandle* semaphore, const uint32_t initialValue);
 /**
-  * @brief Releases the internal semaphore resources
-  * @param semaphore The pointer to the @ref fplSemaphoreHandle structure
-  * @warning Do not call this when a thread is still waiting on this semaphore
-  * @see @ref category_threading_semaphores_init
-  */
-fpl_platform_api void fplSemaphoreDestroy(fplSemaphoreHandle *semaphore);
+* @brief Releases the internal semaphore resources
+* @param semaphore The pointer to the @ref fplSemaphoreHandle structure
+* @warning Do not call this when a thread is still waiting on this semaphore
+* @see @ref category_threading_semaphores_init
+*/
+fpl_platform_api void fplSemaphoreDestroy(fplSemaphoreHandle* semaphore);
 /**
-  * @brief Waits for the semaphore until it get signaled or the timeout has been reached.
-  * @param semaphore The pointer to the @ref fplSemaphoreHandle structure
-  * @param timeout The number of milliseconds to wait. When this is set to @ref FPL_TIMEOUT_INFINITE it will wait infinitly.
-  * @return Returns true when the semaphore got signaled, false otherwise.
-  * @note When a semaphore got signaled, the semaphore value is decreased by one.
-  * @see @ref category_threading_semaphores_wait
-  */
-fpl_platform_api bool fplSemaphoreWait(fplSemaphoreHandle *semaphore, const fplTimeoutValue timeout);
+* @brief Waits for the semaphore until it get signaled or the timeout has been reached.
+* @param semaphore The pointer to the @ref fplSemaphoreHandle structure
+* @param timeout The number of milliseconds to wait. When this is set to @ref FPL_TIMEOUT_INFINITE it will wait infinitly.
+* @return Returns true when the semaphore got signaled, false otherwise.
+* @note When a semaphore got signaled, the semaphore value is decreased by one.
+* @see @ref category_threading_semaphores_wait
+*/
+fpl_platform_api bool fplSemaphoreWait(fplSemaphoreHandle* semaphore, const fplTimeoutValue timeout);
 /**
-  * @brief Tries to wait for the semaphore until it get signaled or return immediatly.
-  * @param semaphore The pointer to the @ref fplSemaphoreHandle structure
-  * @return Returns true when the semaphore got signaled, false otherwise.
-  * @note When a semaphore got signaled, the semaphore value is decreased by one.
-  * @see @ref subsection_category_threading_semaphores_trywait
-  */
-fpl_platform_api bool fplSemaphoreTryWait(fplSemaphoreHandle *semaphore);
+* @brief Tries to wait for the semaphore until it get signaled or return immediatly.
+* @param semaphore The pointer to the @ref fplSemaphoreHandle structure
+* @return Returns true when the semaphore got signaled, false otherwise.
+* @note When a semaphore got signaled, the semaphore value is decreased by one.
+* @see @ref subsection_category_threading_semaphores_trywait
+*/
+fpl_platform_api bool fplSemaphoreTryWait(fplSemaphoreHandle* semaphore);
 /**
-  * @brief Gets the current semaphore value
-  * @param semaphore The pointer to the @ref fplSemaphoreHandle structure
-  * @return Returns the current semaphore value
-  * @see @ref category_threading_semaphores_getvalue
-  */
-fpl_platform_api int32_t fplSemaphoreValue(fplSemaphoreHandle *semaphore);
+* @brief Gets the current semaphore value
+* @param semaphore The pointer to the @ref fplSemaphoreHandle structure
+* @return Returns the current semaphore value
+* @see @ref category_threading_semaphores_getvalue
+*/
+fpl_platform_api int32_t fplSemaphoreValue(fplSemaphoreHandle* semaphore);
 /**
-  * @brief Increments the semaphore value by one
-  * @param semaphore The pointer to the @ref fplSemaphoreHandle structure
-  * @return Returns true when semaphore was incremented, false otherwise.
-  * @see @ref category_threading_semaphores_post
-  */
-fpl_platform_api bool fplSemaphoreRelease(fplSemaphoreHandle *semaphore);
-
-/** @} */
-
-// ----------------------------------------------------------------------------
-/**
-  * @defgroup Strings String functions
-  * @brief This category contains tons of functions for converting/manipulating strings
-  * @{
-  */
-  // ----------------------------------------------------------------------------
-
-  /**
-	* @brief Matches the given string by the given wildcard and returns a boolean indicating the match.
-	* @param source The source string
-	* @param wildcard The wildcard string
-	* @return Returns true when source string matches the wildcard, false otherwise.
-	*/
-fpl_common_api bool fplIsStringMatchWildcard(const char *source, const char *wildcard);
-/**
-  * @brief Compares two strings with constrained lengths and returns a boolean indicating the equality.
-  * @param a The first string
-  * @param aLen The number of characters for the first string
-  * @param b The second string
-  * @param bLen The number of characters for the second string
-  * @return Returns true when both strings are equal, false otherwise.
-  * @note Len parameters does not include the null-terminator!
-  */
-fpl_common_api bool fplIsStringEqualLen(const char *a, const size_t aLen, const char *b, const size_t bLen);
-/**
-  * @brief Compares two strings and returns a boolean indicating the equality.
-  * @param a The first string
-  * @param b The second string
-  * @return Returns true when both strings are equal, false otherwise.
-  */
-fpl_common_api bool fplIsStringEqual(const char *a, const char *b);
-/**
-  * @brief Ensures that the given string always ends with a path separator with length constrained
-  * @param path The target path string
-  * @param maxPathLen The max length of the target path
-  * @return Returns a pointer to the last written character or @ref fpl_null.
-  */
-fpl_common_api char *fplEnforcePathSeparatorLen(char *path, size_t maxPathLen);
-/**
-  * @brief Ensures that the given string always ends with a path separator
-  * @param path The path string
-  * @return Returns a pointer to the last written character or @ref fpl_null.
-  * @note This function is unsafe as it does not know the maximum length of the string!
-  */
-fpl_common_api char *fplEnforcePathSeparator(char *path);
-/**
-  * @brief Appends the source string to the given buffer constrained by length
-  * @param appended The appending source string
-  * @param appendedLen The length of the appending source string
-  * @param buffer The target buffer
-  * @param maxBufferLen The max length of the target buffer
-  * @return Returns a pointer to the last written character or @ref fpl_null.
-  */
-fpl_common_api char *fplStringAppendLen(const char *appended, const size_t appendedLen, char *buffer, size_t maxBufferLen);
-/**
-  * @brief Appends the source string to the given buffer
-  * @param appended The appending source string
-  * @param buffer The target buffer
-  * @param maxBufferLen The max length of the target buffer
-  * @return Returns a pointer to the last written character or @ref fpl_null.
-  */
-fpl_common_api char *fplStringAppend(const char *appended, char *buffer, size_t maxBufferLen);
-/**
-  * @brief Counts the number of characters without including the zero terminator.
-  * @param str The string source
-  * @return Returns the number of characters of the given string or zero when the input string is fpl_null.
-  */
-fpl_common_api size_t fplGetStringLength(const char *str);
-/**
-  * @brief Copies the given source string with a constrained length into a destination string.
-  * @param source The source string
-  * @param sourceLen The number of characters to copy
-  * @param dest The destination string buffer
-  * @param maxDestLen The total number of characters available in the destination buffer
-  * @return Returns the pointer to the last written character or @ref fpl_null.
-  * @note Null terminator is included always.
-  */
-fpl_common_api char *fplCopyStringLen(const char *source, const size_t sourceLen, char *dest, const size_t maxDestLen);
-/**
-  * @brief Copies the given source string into a destination string.
-  * @param source The source string
-  * @param dest The destination string buffer
-  * @param maxDestLen The total number of characters available in the destination buffer
-  * @return Returns the pointer to the last written character or @ref fpl_null.
-  * @note Null terminator is included always.
-  */
-fpl_common_api char *fplCopyString(const char *source, char *dest, const size_t maxDestLen);
-/**
-  * @brief Converts the given 16-bit source wide string with length in a 8-bit UTF-8 ansi string.
-  * @param wideSource The 16-bit source wide string
-  * @param maxWideSourceLen The number of characters of the source wide string
-  * @param utf8Dest The 8-bit destination ansi string buffer
-  * @param maxUtf8DestLen The total number of characters available in the destination buffer
-  * @return Returns the pointer to the last written character or @ref fpl_null.
-  * @note Null terminator is included always.
-  */
-fpl_platform_api char *fplWideStringToUTF8String(const wchar_t *wideSource, const size_t maxWideSourceLen, char *utf8Dest, const size_t maxUtf8DestLen);
-/**
-  * @brief Converts the given 8-bit UTF-8 source ansi string with length in a 16-bit wide string.
-  * @param utf8Source The 8-bit source ansi string
-  * @param utf8SourceLen The number of characters of the source wide string
-  * @param wideDest The 16-bit destination wide string buffer
-  * @param maxWideDestLen The total number of characters available in the destination buffer
-  * @return Returns the pointer to the last written character or @ref fpl_null.
-  * @note Null terminator is included always.
-  */
-fpl_platform_api wchar_t *fplUTF8StringToWideString(const char *utf8Source, const size_t utf8SourceLen, wchar_t *wideDest, const size_t maxWideDestLen);
-/**
-  * @brief Fills out the given destination string buffer with a formatted string, using the format specifier and variable arguments.
-  * @param destBuffer The destination string buffer
-  * @param maxDestBufferLen The total number of characters available in the destination buffer
-  * @param format The string format
-  * @param ... The variable arguments
-  * @return Returns the pointer to the last written character or @ref fpl_null.
-  * @note This is most likely just a wrapper call to vsnprintf()
-  */
-fpl_common_api char *fplFormatString(char *destBuffer, const size_t maxDestBufferLen, const char *format, ...);
-/**
-  * @brief Fills out the given destination string buffer with a formatted string, using the format specifier and the arguments list.
-  * @param destBuffer The destination string buffer
-  * @param maxDestBufferLen The total number of characters available in the destination buffer
-  * @param format The string format
-  * @param argList The arguments list
-  * @return Returns the pointer to the first character in the destination buffer or @ref fpl_null.
-  * @note This is most likely just a wrapper call to vsnprintf()
-  */
-fpl_common_api char *fplFormatStringArgs(char *destBuffer, const size_t maxDestBufferLen, const char *format, va_list argList);
-
-/**
-  * @brief Converts the given string into a 32-bit integer constrained by string length
-  * @param str The source string
-  * @param len The length of the source string
-  * @return Returns a 32-bit integer converted from the given string
-  */
-fpl_common_api int32_t fplStringToS32Len(const char *str, const size_t len);
-
-/**
-  * @brief Converts the given string into a 32-bit integer.
-  * @param str The source string
-  * @return Returns a 32-bit integer converted from the given string
-  */
-fpl_common_api int32_t fplStringToS32(const char *str);
-
-/**
-  * @brief Converts the given 32-bit integer value into a string.
-  * @param value The source value
-  * @param maxBufferLen The maximum length of the buffer
-  * @param buffer The target buffer
-  * @return Returns the pointer to the last written character of the buffer or @ref fpl_null.
-  */
-fpl_common_api char *fplS32ToString(const int32_t value, char *buffer, const size_t maxBufferLen);
+* @brief Increments the semaphore value by one
+* @param semaphore The pointer to the @ref fplSemaphoreHandle structure
+* @return Returns true when semaphore was incremented, false otherwise.
+* @see @ref category_threading_semaphores_post
+*/
+fpl_platform_api bool fplSemaphoreRelease(fplSemaphoreHandle* semaphore);
 
 /** @} */
 
 // ----------------------------------------------------------------------------
 /**
-  * @defgroup Files Files/IO functions
-  * @brief This category contains and types and functions for handling files & directories
-  * @{
-  */
-  // ----------------------------------------------------------------------------
+* @defgroup Strings String functions
+* @brief This category contains tons of functions for converting/manipulating strings
+* @{
+*/
+// ----------------------------------------------------------------------------
+
+/**
+* @brief Matches the given string by the given wildcard and returns a boolean indicating the match.
+* @param source The source string
+* @param wildcard The wildcard string
+* @return Returns true when source string matches the wildcard, false otherwise.
+*/
+fpl_common_api bool fplIsStringMatchWildcard(const char* source, const char* wildcard);
+/**
+* @brief Compares two strings with constrained lengths and returns a boolean indicating the equality.
+* @param a The first string
+* @param aLen The number of characters for the first string
+* @param b The second string
+* @param bLen The number of characters for the second string
+* @return Returns true when both strings are equal, false otherwise.
+* @note Len parameters does not include the null-terminator!
+*/
+fpl_common_api bool fplIsStringEqualLen(const char* a, const size_t aLen, const char* b, const size_t bLen);
+/**
+* @brief Compares two strings and returns a boolean indicating the equality.
+* @param a The first string
+* @param b The second string
+* @return Returns true when both strings are equal, false otherwise.
+*/
+fpl_common_api bool fplIsStringEqual(const char* a, const char* b);
+/**
+* @brief Ensures that the given string always ends with a path separator with length constrained
+* @param path The target path string
+* @param maxPathLen The max length of the target path
+* @return Returns a pointer to the last written character or @ref fpl_null.
+*/
+fpl_common_api char* fplEnforcePathSeparatorLen(char* path, size_t maxPathLen);
+/**
+* @brief Ensures that the given string always ends with a path separator
+* @param path The path string
+* @return Returns a pointer to the last written character or @ref fpl_null.
+* @note This function is unsafe as it does not know the maximum length of the string!
+*/
+fpl_common_api char* fplEnforcePathSeparator(char* path);
+/**
+* @brief Appends the source string to the given buffer constrained by length
+* @param appended The appending source string
+* @param appendedLen The length of the appending source string
+* @param buffer The target buffer
+* @param maxBufferLen The max length of the target buffer
+* @return Returns a pointer to the last written character or @ref fpl_null.
+*/
+fpl_common_api char* fplStringAppendLen(const char* appended, const size_t appendedLen, char* buffer, size_t maxBufferLen);
+/**
+* @brief Appends the source string to the given buffer
+* @param appended The appending source string
+* @param buffer The target buffer
+* @param maxBufferLen The max length of the target buffer
+* @return Returns a pointer to the last written character or @ref fpl_null.
+*/
+fpl_common_api char* fplStringAppend(const char* appended, char* buffer, size_t maxBufferLen);
+/**
+* @brief Counts the number of characters without including the zero terminator.
+* @param str The string source
+* @return Returns the number of characters of the given string or zero when the input string is fpl_null.
+*/
+fpl_common_api size_t fplGetStringLength(const char* str);
+/**
+* @brief Copies the given source string with a constrained length into a destination string.
+* @param source The source string
+* @param sourceLen The number of characters to copy
+* @param dest The destination string buffer
+* @param maxDestLen The total number of characters available in the destination buffer
+* @return Returns the pointer to the last written character or @ref fpl_null.
+* @note Null terminator is included always.
+*/
+fpl_common_api char* fplCopyStringLen(const char* source, const size_t sourceLen, char* dest, const size_t maxDestLen);
+/**
+* @brief Copies the given source string into a destination string.
+* @param source The source string
+* @param dest The destination string buffer
+* @param maxDestLen The total number of characters available in the destination buffer
+* @return Returns the pointer to the last written character or @ref fpl_null.
+* @note Null terminator is included always.
+*/
+fpl_common_api char* fplCopyString(const char* source, char* dest, const size_t maxDestLen);
+/**
+* @brief Converts the given 16-bit source wide string with length in a 8-bit UTF-8 ansi string.
+* @param wideSource The 16-bit source wide string
+* @param maxWideSourceLen The number of characters of the source wide string
+* @param utf8Dest The 8-bit destination ansi string buffer
+* @param maxUtf8DestLen The total number of characters available in the destination buffer
+* @return Returns the pointer to the last written character or @ref fpl_null.
+* @note Null terminator is included always.
+*/
+fpl_platform_api char* fplWideStringToUTF8String(const wchar_t* wideSource, const size_t maxWideSourceLen, char* utf8Dest, const size_t maxUtf8DestLen);
+/**
+* @brief Converts the given 8-bit UTF-8 source ansi string with length in a 16-bit wide string.
+* @param utf8Source The 8-bit source ansi string
+* @param utf8SourceLen The number of characters of the source wide string
+* @param wideDest The 16-bit destination wide string buffer
+* @param maxWideDestLen The total number of characters available in the destination buffer
+* @return Returns the pointer to the last written character or @ref fpl_null.
+* @note Null terminator is included always.
+*/
+fpl_platform_api wchar_t* fplUTF8StringToWideString(const char* utf8Source, const size_t utf8SourceLen, wchar_t* wideDest, const size_t maxWideDestLen);
+/**
+* @brief Fills out the given destination string buffer with a formatted string, using the format specifier and variable arguments.
+* @param destBuffer The destination string buffer
+* @param maxDestBufferLen The total number of characters available in the destination buffer
+* @param format The string format
+* @param ... The variable arguments
+* @return Returns the pointer to the last written character or @ref fpl_null.
+* @note This is most likely just a wrapper call to vsnprintf()
+*/
+fpl_common_api char* fplFormatString(char* destBuffer, const size_t maxDestBufferLen, const char* format, ...);
+/**
+* @brief Fills out the given destination string buffer with a formatted string, using the format specifier and the arguments list.
+* @param destBuffer The destination string buffer
+* @param maxDestBufferLen The total number of characters available in the destination buffer
+* @param format The string format
+* @param argList The arguments list
+* @return Returns the pointer to the first character in the destination buffer or @ref fpl_null.
+* @note This is most likely just a wrapper call to vsnprintf()
+*/
+fpl_common_api char* fplFormatStringArgs(char* destBuffer, const size_t maxDestBufferLen, const char* format, va_list argList);
+
+/**
+* @brief Converts the given string into a 32-bit integer constrained by string length
+* @param str The source string
+* @param len The length of the source string
+* @return Returns a 32-bit integer converted from the given string
+*/
+fpl_common_api int32_t fplStringToS32Len(const char* str, const size_t len);
+
+/**
+* @brief Converts the given string into a 32-bit integer.
+* @param str The source string
+* @return Returns a 32-bit integer converted from the given string
+*/
+fpl_common_api int32_t fplStringToS32(const char* str);
+
+/**
+* @brief Converts the given 32-bit integer value into a string.
+* @param value The source value
+* @param maxBufferLen The maximum length of the buffer
+* @param buffer The target buffer
+* @return Returns the pointer to the last written character of the buffer or @ref fpl_null.
+*/
+fpl_common_api char* fplS32ToString(const int32_t value, char* buffer, const size_t maxBufferLen);
+
+/** @} */
+
+// ----------------------------------------------------------------------------
+/**
+* @defgroup Files Files/IO functions
+* @brief This category contains and types and functions for handling files & directories
+* @{
+*/
+// ----------------------------------------------------------------------------
 
 //! A union containing the internal file handle for any platform
 typedef union fplInternalFileHandle {
@@ -4621,16 +4613,16 @@ typedef union fplInternalFileEntryHandle {
 	HANDLE win32FileHandle;
 #elif defined(FPL_SUBPLATFORM_POSIX)
 	//! Posix directory handle
-	DIR *posixDirHandle;
+	DIR* posixDirHandle;
 #endif
 } fplInternalFileEntryHandle;
 
 //! A structure containing the internal root file informations
 typedef struct fplInternalFileRootInfo {
 	//! Saved root path
-	const char *rootPath;
+	const char* rootPath;
 	//! Saved filter wildcard
-	const char *filter;
+	const char* filter;
 } fplInternalFileRootInfo;
 
 //! A structure containing filestamps for creation/access/modify date
@@ -4664,358 +4656,358 @@ typedef struct fplFileEntry {
 } fplFileEntry;
 
 /**
-  * @brief Opens a binary file for reading from a string path and returns the handle of it.
-  * @param filePath The file path
-  * @param outHandle The pointer to the @ref fplFileHandle structure
-  * @return Returns true when binary file was opened, false otherwise.
-  * @see @ref subsection_category_io_binaryfiles_read_open
-  */
-fpl_platform_api bool fplOpenBinaryFile(const char *filePath, fplFileHandle *outHandle);
+* @brief Opens a binary file for reading from a string path and returns the handle of it.
+* @param filePath The file path
+* @param outHandle The pointer to the @ref fplFileHandle structure
+* @return Returns true when binary file was opened, false otherwise.
+* @see @ref subsection_category_io_binaryfiles_read_open
+*/
+fpl_platform_api bool fplOpenBinaryFile(const char* filePath, fplFileHandle* outHandle);
 /**
-  * @brief Create a binary file for writing to the given string path and returns the handle of it.
-  * @param filePath The file path
-  * @param outHandle The pointer to the @ref fplFileHandle structure
-  * @return Returns true when binary file was created, false otherwise.
-  * @see @ref subsection_category_io_binaryfiles_write_create
-  */
-fpl_platform_api bool fplCreateBinaryFile(const char *filePath, fplFileHandle *outHandle);
+* @brief Create a binary file for writing to the given string path and returns the handle of it.
+* @param filePath The file path
+* @param outHandle The pointer to the @ref fplFileHandle structure
+* @return Returns true when binary file was created, false otherwise.
+* @see @ref subsection_category_io_binaryfiles_write_create
+*/
+fpl_platform_api bool fplCreateBinaryFile(const char* filePath, fplFileHandle* outHandle);
 /**
-  * @brief Reads a block from the given file and returns the number of read bytes.
-  * @param fileHandle The pointer to the @ref fplFileHandle structure
-  * @param sizeToRead The number of bytes to read
-  * @param targetBuffer The target memory to write into
-  * @param maxTargetBufferSize Total number of bytes available in the target buffer
-  * @return Returns the number of bytes read or zero.
-  * @note Supports max size of 2^31
-  * @see @ref subsection_category_io_binaryfiles_read_readblock
-  */
-fpl_platform_api uint32_t fplReadFileBlock32(const fplFileHandle *fileHandle, const uint32_t sizeToRead, void *targetBuffer, const uint32_t maxTargetBufferSize);
+* @brief Reads a block from the given file and returns the number of read bytes.
+* @param fileHandle The pointer to the @ref fplFileHandle structure
+* @param sizeToRead The number of bytes to read
+* @param targetBuffer The target memory to write into
+* @param maxTargetBufferSize Total number of bytes available in the target buffer
+* @return Returns the number of bytes read or zero.
+* @note Supports max size of 2^31
+* @see @ref subsection_category_io_binaryfiles_read_readblock
+*/
+fpl_platform_api uint32_t fplReadFileBlock32(const fplFileHandle* fileHandle, const uint32_t sizeToRead, void* targetBuffer, const uint32_t maxTargetBufferSize);
 /**
-  * @brief Reads a block from the given file and returns the number of read bytes.
-  * @param fileHandle The pointer to the @ref fplFileHandle structure
-  * @param sizeToRead The number of bytes to read
-  * @param targetBuffer The target memory to write into
-  * @param maxTargetBufferSize Total number of bytes available in the target buffer
-  * @return Returns the number of bytes read or zero.
-  * @note Supports max size of 2^63
-  * @see @ref subsection_category_io_binaryfiles_read_readblock
-  */
-fpl_platform_api uint64_t fplReadFileBlock64(const fplFileHandle *fileHandle, const uint64_t sizeToRead, void *targetBuffer, const uint64_t maxTargetBufferSize);
+* @brief Reads a block from the given file and returns the number of read bytes.
+* @param fileHandle The pointer to the @ref fplFileHandle structure
+* @param sizeToRead The number of bytes to read
+* @param targetBuffer The target memory to write into
+* @param maxTargetBufferSize Total number of bytes available in the target buffer
+* @return Returns the number of bytes read or zero.
+* @note Supports max size of 2^63
+* @see @ref subsection_category_io_binaryfiles_read_readblock
+*/
+fpl_platform_api uint64_t fplReadFileBlock64(const fplFileHandle* fileHandle, const uint64_t sizeToRead, void* targetBuffer, const uint64_t maxTargetBufferSize);
 /**
-  * @brief Reads a block from the given file and returns the number of read bytes.
-  * @param fileHandle The pointer to the @ref fplFileHandle structure
-  * @param sizeToRead The number of bytes to read
-  * @param targetBuffer The target memory to write into
-  * @param maxTargetBufferSize Total number of bytes available in the target buffer
-  * @return Returns the number of bytes read or zero.
-  * @note Depending on the platform/architecture, this supports a max size of 2^31 or 2^63 bytes
-  * @see @ref subsection_category_io_binaryfiles_read_readblock
-  */
-fpl_platform_api size_t fplReadFileBlock(const fplFileHandle *fileHandle, const size_t sizeToRead, void *targetBuffer, const size_t maxTargetBufferSize);
+* @brief Reads a block from the given file and returns the number of read bytes.
+* @param fileHandle The pointer to the @ref fplFileHandle structure
+* @param sizeToRead The number of bytes to read
+* @param targetBuffer The target memory to write into
+* @param maxTargetBufferSize Total number of bytes available in the target buffer
+* @return Returns the number of bytes read or zero.
+* @note Depending on the platform/architecture, this supports a max size of 2^31 or 2^63 bytes
+* @see @ref subsection_category_io_binaryfiles_read_readblock
+*/
+fpl_platform_api size_t fplReadFileBlock(const fplFileHandle* fileHandle, const size_t sizeToRead, void* targetBuffer, const size_t maxTargetBufferSize);
 /**
-  * @brief Writes a block to the given file and returns the number of written bytes.
-  * @param fileHandle The pointer to the file handle @ref fplFileHandle
-  * @param sourceBuffer Source memory to read from
-  * @param sourceSize Number of bytes to write
-  * @return Returns the number of bytes written or zero.
-  * @note Supports max size of 2^31
-  * @see @ref subsection_category_io_binaryfiles_write_writeblock
-  */
-fpl_platform_api uint32_t fplWriteFileBlock32(const fplFileHandle *fileHandle, void *sourceBuffer, const uint32_t sourceSize);
+* @brief Writes a block to the given file and returns the number of written bytes.
+* @param fileHandle The pointer to the file handle @ref fplFileHandle
+* @param sourceBuffer Source memory to read from
+* @param sourceSize Number of bytes to write
+* @return Returns the number of bytes written or zero.
+* @note Supports max size of 2^31
+* @see @ref subsection_category_io_binaryfiles_write_writeblock
+*/
+fpl_platform_api uint32_t fplWriteFileBlock32(const fplFileHandle* fileHandle, void* sourceBuffer, const uint32_t sourceSize);
 /**
-  * @brief Writes a block to the given file and returns the number of written bytes.
-  * @param fileHandle The pointer to the file handle @ref fplFileHandle
-  * @param sourceBuffer Source memory to read from
-  * @param sourceSize Number of bytes to write
-  * @return Returns the number of bytes written or zero.
-  * @note Supports max size of 2^63
-  * @see @ref subsection_category_io_binaryfiles_write_writeblock
-  */
-fpl_platform_api uint64_t fplWriteFileBlock64(const fplFileHandle *fileHandle, void *sourceBuffer, const uint64_t sourceSize);
+* @brief Writes a block to the given file and returns the number of written bytes.
+* @param fileHandle The pointer to the file handle @ref fplFileHandle
+* @param sourceBuffer Source memory to read from
+* @param sourceSize Number of bytes to write
+* @return Returns the number of bytes written or zero.
+* @note Supports max size of 2^63
+* @see @ref subsection_category_io_binaryfiles_write_writeblock
+*/
+fpl_platform_api uint64_t fplWriteFileBlock64(const fplFileHandle* fileHandle, void* sourceBuffer, const uint64_t sourceSize);
 /**
-  * @brief Writes a block to the given file and returns the number of written bytes.
-  * @param fileHandle The pointer to the file handle @ref fplFileHandle
-  * @param sourceBuffer Source memory to read from
-  * @param sourceSize Number of bytes to write
-  * @return Returns the number of bytes written or zero.
-  * @note Depending on the platform/architecture, this supports a max size of 2^31 or 2^63 bytes
-  * @see @ref subsection_category_io_binaryfiles_write_writeblock
-  */
-fpl_common_api size_t fplWriteFileBlock(const fplFileHandle *fileHandle, void *sourceBuffer, const size_t sourceSize);
+* @brief Writes a block to the given file and returns the number of written bytes.
+* @param fileHandle The pointer to the file handle @ref fplFileHandle
+* @param sourceBuffer Source memory to read from
+* @param sourceSize Number of bytes to write
+* @return Returns the number of bytes written or zero.
+* @note Depending on the platform/architecture, this supports a max size of 2^31 or 2^63 bytes
+* @see @ref subsection_category_io_binaryfiles_write_writeblock
+*/
+fpl_common_api size_t fplWriteFileBlock(const fplFileHandle* fileHandle, void* sourceBuffer, const size_t sourceSize);
 /**
-  * @brief Sets the current file position by the given position, depending on the mode its absolute or relative.
-  * @param fileHandle The pointer to the @ref fplFileHandle structure
-  * @param position Position in bytes
-  * @param mode Position mode
-  * @note Supports max size of 2^31
-  * @see @ref subsection_category_io_binaryfiles_pos_set
-  */
-fpl_platform_api uint32_t fplSetFilePosition32(const fplFileHandle *fileHandle, const int32_t position, const fplFilePositionMode mode);
+* @brief Sets the current file position by the given position, depending on the mode its absolute or relative.
+* @param fileHandle The pointer to the @ref fplFileHandle structure
+* @param position Position in bytes
+* @param mode Position mode
+* @note Supports max size of 2^31
+* @see @ref subsection_category_io_binaryfiles_pos_set
+*/
+fpl_platform_api uint32_t fplSetFilePosition32(const fplFileHandle* fileHandle, const int32_t position, const fplFilePositionMode mode);
 /**
-  * @brief Sets the current file position by the given position, depending on the mode its absolute or relative.
-  * @param fileHandle The pointer to the @ref fplFileHandle structure
-  * @param position Position in bytes
-  * @param mode Position mode
-  * @note Supports max size of 2^63
-  * @see @ref subsection_category_io_binaryfiles_pos_set
-  */
-fpl_platform_api uint64_t fplSetFilePosition64(const fplFileHandle *fileHandle, const int64_t position, const fplFilePositionMode mode);
+* @brief Sets the current file position by the given position, depending on the mode its absolute or relative.
+* @param fileHandle The pointer to the @ref fplFileHandle structure
+* @param position Position in bytes
+* @param mode Position mode
+* @note Supports max size of 2^63
+* @see @ref subsection_category_io_binaryfiles_pos_set
+*/
+fpl_platform_api uint64_t fplSetFilePosition64(const fplFileHandle* fileHandle, const int64_t position, const fplFilePositionMode mode);
 /**
-  * @brief Sets the current file position by the given position, depending on the mode its absolute or relative.
-  * @param fileHandle The pointer to the @ref fplFileHandle structure
-  * @param position Position in bytes
-  * @param mode Position mode
-  * @note Depending on the platform/architecture, this supports a max size of 2^31 or 2^63 bytes
-  * @see @ref subsection_category_io_binaryfiles_pos_set
-  */
-fpl_common_api size_t fplSetFilePosition(const fplFileHandle *fileHandle, const intptr_t position, const fplFilePositionMode mode);
+* @brief Sets the current file position by the given position, depending on the mode its absolute or relative.
+* @param fileHandle The pointer to the @ref fplFileHandle structure
+* @param position Position in bytes
+* @param mode Position mode
+* @note Depending on the platform/architecture, this supports a max size of 2^31 or 2^63 bytes
+* @see @ref subsection_category_io_binaryfiles_pos_set
+*/
+fpl_common_api size_t fplSetFilePosition(const fplFileHandle* fileHandle, const intptr_t position, const fplFilePositionMode mode);
 /**
-  * @brief Gets the current file position in bytes.
-  * @param fileHandle The pointer to the @ref fplFileHandle structure
-  * @return Returns the current file position in bytes.
-  * @note Supports max size of 2^31
-  * @see @ref subsection_category_io_binaryfiles_pos_get
-  */
-fpl_platform_api uint32_t fplGetFilePosition32(const fplFileHandle *fileHandle);
+* @brief Gets the current file position in bytes.
+* @param fileHandle The pointer to the @ref fplFileHandle structure
+* @return Returns the current file position in bytes.
+* @note Supports max size of 2^31
+* @see @ref subsection_category_io_binaryfiles_pos_get
+*/
+fpl_platform_api uint32_t fplGetFilePosition32(const fplFileHandle* fileHandle);
 /**
-  * @brief Gets the current file position in bytes.
-  * @param fileHandle The pointer to the @ref fplFileHandle structure
-  * @return Returns the current file position in bytes.
-  * @note Supports max size of 2^63
-  * @see @ref subsection_category_io_binaryfiles_pos_get
-  */
-fpl_platform_api uint64_t fplGetFilePosition64(const fplFileHandle *fileHandle);
+* @brief Gets the current file position in bytes.
+* @param fileHandle The pointer to the @ref fplFileHandle structure
+* @return Returns the current file position in bytes.
+* @note Supports max size of 2^63
+* @see @ref subsection_category_io_binaryfiles_pos_get
+*/
+fpl_platform_api uint64_t fplGetFilePosition64(const fplFileHandle* fileHandle);
 /**
-  * @brief Gets the current file position in bytes.
-  * @param fileHandle The pointer to the @ref fplFileHandle structure
-  * @return Returns the current file position in bytes.
-  * @note Depending on the platform/architecture, this supports a max size of 2^31 or 2^63 bytes
-  * @see @ref subsection_category_io_binaryfiles_pos_get
-  */
-fpl_common_api size_t fplGetFilePosition(const fplFileHandle *fileHandle);
+* @brief Gets the current file position in bytes.
+* @param fileHandle The pointer to the @ref fplFileHandle structure
+* @return Returns the current file position in bytes.
+* @note Depending on the platform/architecture, this supports a max size of 2^31 or 2^63 bytes
+* @see @ref subsection_category_io_binaryfiles_pos_get
+*/
+fpl_common_api size_t fplGetFilePosition(const fplFileHandle* fileHandle);
 /**
-  * @brief Flushes the buffers of the given file and causes all buffered data to be written to a file.
-  * @param fileHandle The pointer to the @ref fplFileHandle structure
-  * @return Returns true when file buffer was flushed, false otherwise.
-  */
-fpl_platform_api bool fplFlushFile(fplFileHandle *fileHandle);
+* @brief Flushes the buffers of the given file and causes all buffered data to be written to a file.
+* @param fileHandle The pointer to the @ref fplFileHandle structure
+* @return Returns true when file buffer was flushed, false otherwise.
+*/
+fpl_platform_api bool fplFlushFile(fplFileHandle* fileHandle);
 /**
-  * @brief Closes the given file and releases the underlying resources and clears the handle to zero.
-  * @param fileHandle The pointer to the @ref fplFileHandle structure
-  * @see @ref subsection_category_io_binaryfiles_read_open
-  */
-fpl_platform_api void fplCloseFile(fplFileHandle *fileHandle);
+* @brief Closes the given file and releases the underlying resources and clears the handle to zero.
+* @param fileHandle The pointer to the @ref fplFileHandle structure
+* @see @ref subsection_category_io_binaryfiles_read_open
+*/
+fpl_platform_api void fplCloseFile(fplFileHandle* fileHandle);
 
 /**
-  * @brief Gets the file size in bytes for the given file.
-  * @param filePath The path to the file
-  * @return Returns the file size in bytes or zero.
-  * @note Supports max size of 2^31
-  */
-fpl_platform_api uint32_t fplGetFileSizeFromPath32(const char *filePath);
+* @brief Gets the file size in bytes for the given file.
+* @param filePath The path to the file
+* @return Returns the file size in bytes or zero.
+* @note Supports max size of 2^31
+*/
+fpl_platform_api uint32_t fplGetFileSizeFromPath32(const char* filePath);
 /**
-  * @brief Gets the file size in bytes for the given file.
-  * @param filePath The path to the file
-  * @return Returns the file size in bytes or zero.
-  * @note Supports max size of 2^63
-  */
-fpl_platform_api uint64_t fplGetFileSizeFromPath64(const char *filePath);
+* @brief Gets the file size in bytes for the given file.
+* @param filePath The path to the file
+* @return Returns the file size in bytes or zero.
+* @note Supports max size of 2^63
+*/
+fpl_platform_api uint64_t fplGetFileSizeFromPath64(const char* filePath);
 /**
-  * @brief Gets the file size in bytes for the given file.
-  * @param filePath The path to the file
-  * @return Returns the file size in bytes or zero.
-  * @note Depending on the platform/architecture, this supports a max size of 2^31 or 2^63 bytes
-  */
-fpl_platform_api size_t fplGetFileSizeFromPath(const char *filePath);
+* @brief Gets the file size in bytes for the given file.
+* @param filePath The path to the file
+* @return Returns the file size in bytes or zero.
+* @note Depending on the platform/architecture, this supports a max size of 2^31 or 2^63 bytes
+*/
+fpl_platform_api size_t fplGetFileSizeFromPath(const char* filePath);
 /**
-  * @brief Gets the file size in bytes for a opened file.
-  * @param fileHandle The pointer to the @ref fplFileHandle structure
-  * @return Returns the file size in bytes or zero.
-  * @note Supports max size of 2^31
-  */
-fpl_platform_api uint32_t fplGetFileSizeFromHandle32(const fplFileHandle *fileHandle);
+* @brief Gets the file size in bytes for a opened file.
+* @param fileHandle The pointer to the @ref fplFileHandle structure
+* @return Returns the file size in bytes or zero.
+* @note Supports max size of 2^31
+*/
+fpl_platform_api uint32_t fplGetFileSizeFromHandle32(const fplFileHandle* fileHandle);
 /**
-  * @brief Gets the file size in bytes for a opened file.
-  * @param fileHandle The pointer to the @ref fplFileHandle structure
-  * @return Returns the file size in bytes or zero.
-  * @note Supports max size of 2^63
-  */
-fpl_platform_api uint64_t fplGetFileSizeFromHandle64(const fplFileHandle *fileHandle);
+* @brief Gets the file size in bytes for a opened file.
+* @param fileHandle The pointer to the @ref fplFileHandle structure
+* @return Returns the file size in bytes or zero.
+* @note Supports max size of 2^63
+*/
+fpl_platform_api uint64_t fplGetFileSizeFromHandle64(const fplFileHandle* fileHandle);
 /**
-  * @brief Gets the file size in bytes for a opened file.
-  * @param fileHandle The pointer to the @ref fplFileHandle structure
-  * @return Returns the file size in bytes or zero.
-  * @note Depending on the platform/architecture, this supports a max size of 2^31 or 2^63 bytes
-  */
-fpl_common_api size_t fplGetFileSizeFromHandle(const fplFileHandle *fileHandle);
+* @brief Gets the file size in bytes for a opened file.
+* @param fileHandle The pointer to the @ref fplFileHandle structure
+* @return Returns the file size in bytes or zero.
+* @note Depending on the platform/architecture, this supports a max size of 2^31 or 2^63 bytes
+*/
+fpl_common_api size_t fplGetFileSizeFromHandle(const fplFileHandle* fileHandle);
 /**
-  * @brief Gets the timestamps for the given file
-  * @param filePath The path to the file
-  * @param outStamps The pointer to the @ref fplFileTimeStamps structure
-  * @return Returns true when the function succeeded, false otherwise.
-  */
-fpl_platform_api bool fplGetFileTimestampsFromPath(const char *filePath, fplFileTimeStamps *outStamps);
+* @brief Gets the timestamps for the given file
+* @param filePath The path to the file
+* @param outStamps The pointer to the @ref fplFileTimeStamps structure
+* @return Returns true when the function succeeded, false otherwise.
+*/
+fpl_platform_api bool fplGetFileTimestampsFromPath(const char* filePath, fplFileTimeStamps* outStamps);
 /**
-  * @brief Gets the timestamps for a opened file
-  * @param fileHandle The pointer to the @ref fplFileHandle structure
-  * @param outStamps The pointer to the @ref fplFileTimeStamps structure
-  * @return Returns true when the function succeeded, false otherwise.
-  */
-fpl_platform_api bool fplGetFileTimestampsFromHandle(const fplFileHandle *fileHandle, fplFileTimeStamps *outStamps);
+* @brief Gets the timestamps for a opened file
+* @param fileHandle The pointer to the @ref fplFileHandle structure
+* @param outStamps The pointer to the @ref fplFileTimeStamps structure
+* @return Returns true when the function succeeded, false otherwise.
+*/
+fpl_platform_api bool fplGetFileTimestampsFromHandle(const fplFileHandle* fileHandle, fplFileTimeStamps* outStamps);
 /**
-  * @brief Checks if the file exists and returns a boolean indicating the existance.
-  * @param filePath The path to the file
-  * @return Returns true when the file exists, false otherwise.
-  */
-fpl_platform_api bool fplFileExists(const char *filePath);
+* @brief Checks if the file exists and returns a boolean indicating the existance.
+* @param filePath The path to the file
+* @return Returns true when the file exists, false otherwise.
+*/
+fpl_platform_api bool fplFileExists(const char* filePath);
 /**
-  * @brief Copies the given source file to the target path and returns true when copy was successful.
-  * @param sourceFilePath The source file path
-  * @param targetFilePath The target file path
-  * @param overwrite The overwrite boolean indicating if the file can be overwritten or not
-  * @return Returns true when the file was copied, false otherwise.
-  */
-fpl_platform_api bool fplFileCopy(const char *sourceFilePath, const char *targetFilePath, const bool overwrite);
+* @brief Copies the given source file to the target path and returns true when copy was successful.
+* @param sourceFilePath The source file path
+* @param targetFilePath The target file path
+* @param overwrite The overwrite boolean indicating if the file can be overwritten or not
+* @return Returns true when the file was copied, false otherwise.
+*/
+fpl_platform_api bool fplFileCopy(const char* sourceFilePath, const char* targetFilePath, const bool overwrite);
 /**
-  * @brief Movies the given source file to the target file and returns true when the move was successful.
-  * @param sourceFilePath The source file path
-  * @param targetFilePath The target file path
-  * @return Returns true when the file was moved, false otherwise.
-  */
-fpl_platform_api bool fplFileMove(const char *sourceFilePath, const char *targetFilePath);
+* @brief Movies the given source file to the target file and returns true when the move was successful.
+* @param sourceFilePath The source file path
+* @param targetFilePath The target file path
+* @return Returns true when the file was moved, false otherwise.
+*/
+fpl_platform_api bool fplFileMove(const char* sourceFilePath, const char* targetFilePath);
 /**
-  * @brief Deletes the given file without confirmation and returns true when the deletion was successful.
-  * @param filePath The path to the file
-  * @return Returns true when the file was deleted, false otherwise.
-  */
-fpl_platform_api bool fplFileDelete(const char *filePath);
+* @brief Deletes the given file without confirmation and returns true when the deletion was successful.
+* @param filePath The path to the file
+* @return Returns true when the file was deleted, false otherwise.
+*/
+fpl_platform_api bool fplFileDelete(const char* filePath);
 
 /**
-  * @brief Creates all the directories in the given path.
-  * @param path The path to the directory
-  * @return Returns true when at least one directory was created, false otherwise.
-  */
-fpl_platform_api bool fplDirectoriesCreate(const char *path);
+* @brief Creates all the directories in the given path.
+* @param path The path to the directory
+* @return Returns true when at least one directory was created, false otherwise.
+*/
+fpl_platform_api bool fplDirectoriesCreate(const char* path);
 /**
-  * @brief Checks if the given directory exists and returns a boolean indicating its existance.
-  * @param path The path to the directory
-  * @return Returns true when the directory exists, false otherwise.
-  */
-fpl_platform_api bool fplDirectoryExists(const char *path);
+* @brief Checks if the given directory exists and returns a boolean indicating its existance.
+* @param path The path to the directory
+* @return Returns true when the directory exists, false otherwise.
+*/
+fpl_platform_api bool fplDirectoryExists(const char* path);
 /**
-  * @brief Deletes the given empty directory without confirmation and returns true when the deletion was successful.
-  * @param path The path to the directory.
-  * @return Returns true when the empty directory was deleted, false otherwise.
-  */
-fpl_platform_api bool fplDirectoryRemove(const char *path);
+* @brief Deletes the given empty directory without confirmation and returns true when the deletion was successful.
+* @param path The path to the directory.
+* @return Returns true when the empty directory was deleted, false otherwise.
+*/
+fpl_platform_api bool fplDirectoryRemove(const char* path);
 /**
-  * @brief Iterates through files / directories in the given directory.
-  * @param path The full path
-  * @param filter The filter wildcard (If empty or null it will not filter anything at all)
-  * @param entry The pointer to the @ref fplFileEntry structure
-  * @return Returns true when there was a first entry found, false otherwise.
-  * @note This function is not recursive, so it will traverse the first level only!
-  * @note When no first entry are found, the resources are automatically cleaned up.
-  * @see @ref section_category_io_paths_traversing
-  */
-fpl_platform_api bool fplListDirBegin(const char *path, const char *filter, fplFileEntry *entry);
+* @brief Iterates through files / directories in the given directory.
+* @param path The full path
+* @param filter The filter wildcard (If empty or null it will not filter anything at all)
+* @param entry The pointer to the @ref fplFileEntry structure
+* @return Returns true when there was a first entry found, false otherwise.
+* @note This function is not recursive, so it will traverse the first level only!
+* @note When no first entry are found, the resources are automatically cleaned up.
+* @see @ref section_category_io_paths_traversing
+*/
+fpl_platform_api bool fplListDirBegin(const char* path, const char* filter, fplFileEntry* entry);
 /**
-  * @brief Gets the next file entry from iterating through files / directories.
-  * @param entry The pointer to the @ref fplFileEntry structure
-  * @return Returns true when there was a next file otherwise false if not.
-  * @note This function is not recursive, so it will traverse the first level only!
-  * @note When no next entry are found, the resources are automatically cleaned up.
-  * @see @ref section_category_io_paths_traversing
-  */
-fpl_platform_api bool fplListDirNext(fplFileEntry *entry);
+* @brief Gets the next file entry from iterating through files / directories.
+* @param entry The pointer to the @ref fplFileEntry structure
+* @return Returns true when there was a next file otherwise false if not.
+* @note This function is not recursive, so it will traverse the first level only!
+* @note When no next entry are found, the resources are automatically cleaned up.
+* @see @ref section_category_io_paths_traversing
+*/
+fpl_platform_api bool fplListDirNext(fplFileEntry* entry);
 /**
-  * @brief Releases opened resources from iterating through files / directories.
-  * @param entry The pointer to the @ref fplFileEntry structure
-  * @note Its safe to call this when the file entry is already closed.
-  * @see @ref section_category_io_paths_traversing
-  */
-fpl_platform_api void fplListDirEnd(fplFileEntry *entry);
+* @brief Releases opened resources from iterating through files / directories.
+* @param entry The pointer to the @ref fplFileEntry structure
+* @note Its safe to call this when the file entry is already closed.
+* @see @ref section_category_io_paths_traversing
+*/
+fpl_platform_api void fplListDirEnd(fplFileEntry* entry);
 
 /** @} */
 
 // ----------------------------------------------------------------------------
 /**
-  * @defgroup Paths Path functions
-  * @brief This category contains functions for retrieving and building paths
-  * @{
-  */
-  // ----------------------------------------------------------------------------
+* @defgroup Paths Path functions
+* @brief This category contains functions for retrieving and building paths
+* @{
+*/
+// ----------------------------------------------------------------------------
 
-  /**
-	* @brief Gets the full path to this executable, including the executable file name.
-	* @param destPath The destination buffer
-	* @param maxDestLen The total number of characters available in the destination buffer
-	* @return Returns the pointer to the last written character in the destination buffer or @ref fpl_null.
-	* @see @ref subsection_category_io_paths_get_exepath
-	*/
-fpl_platform_api char *fplGetExecutableFilePath(char *destPath, const size_t maxDestLen);
 /**
-  * @brief Gets the full path to your home directory.
-  * @param destPath The destination buffer
-  * @param maxDestLen The total number of characters available in the destination buffer
-  * @return Returns the pointer to the last written character in the destination buffer or @ref fpl_null.
-  * @see @ref subsection_category_io_paths_get_home
-  */
-fpl_platform_api char *fplGetHomePath(char *destPath, const size_t maxDestLen);
+* @brief Gets the full path to this executable, including the executable file name.
+* @param destPath The destination buffer
+* @param maxDestLen The total number of characters available in the destination buffer
+* @return Returns the pointer to the last written character in the destination buffer or @ref fpl_null.
+* @see @ref subsection_category_io_paths_get_exepath
+*/
+fpl_platform_api char* fplGetExecutableFilePath(char* destPath, const size_t maxDestLen);
 /**
-  * @brief Extracts the directory path from the given file path.
-  * @param sourcePath The source path to extract from
-  * @param destPath The destination buffer
-  * @param maxDestLen The total number of characters available in the destination buffer
-  * @return Returns the pointer to the last written character in the destination buffer or @ref fpl_null.
-  * @see @ref subsection_category_io_paths_utils_extractfilepath
-  */
-fpl_common_api char *fplExtractFilePath(const char *sourcePath, char *destPath, const size_t maxDestLen);
+* @brief Gets the full path to your home directory.
+* @param destPath The destination buffer
+* @param maxDestLen The total number of characters available in the destination buffer
+* @return Returns the pointer to the last written character in the destination buffer or @ref fpl_null.
+* @see @ref subsection_category_io_paths_get_home
+*/
+fpl_platform_api char* fplGetHomePath(char* destPath, const size_t maxDestLen);
 /**
-  * @brief Extracts the file extension from the given source path.
-  * @param sourcePath The source path to extract from
-  * @return Returns the pointer to the first character of the extension.
-  * @see @ref subsection_category_io_paths_utils_extractfileext
-  */
-fpl_common_api const char *fplExtractFileExtension(const char *sourcePath);
+* @brief Extracts the directory path from the given file path.
+* @param sourcePath The source path to extract from
+* @param destPath The destination buffer
+* @param maxDestLen The total number of characters available in the destination buffer
+* @return Returns the pointer to the last written character in the destination buffer or @ref fpl_null.
+* @see @ref subsection_category_io_paths_utils_extractfilepath
+*/
+fpl_common_api char* fplExtractFilePath(const char* sourcePath, char* destPath, const size_t maxDestLen);
 /**
-  * @brief Extracts the file name including the file extension from the given source path.
-  * @param sourcePath The source path to extract from
-  * @return Returns the pointer to the first character of the filename.
-  * @see @ref subsection_category_io_paths_utils_extractfilename
-  */
-fpl_common_api const char *fplExtractFileName(const char *sourcePath);
+* @brief Extracts the file extension from the given source path.
+* @param sourcePath The source path to extract from
+* @return Returns the pointer to the first character of the extension.
+* @see @ref subsection_category_io_paths_utils_extractfileext
+*/
+fpl_common_api const char* fplExtractFileExtension(const char* sourcePath);
 /**
-  * @brief Changes the file extension on the given source path and writes the result into a destination buffer.
-  * @param filePath The File path to search for the extension
-  * @param newFileExtension The new file extension
-  * @param destPath The destination buffer
-  * @param maxDestLen The total number of characters available in the destination buffer
-  * @return Returns the pointer to the last written character in the destination buffer or @ref fpl_null.
-  * @see @ref subsection_category_io_paths_utils_changefileext
-  */
-fpl_common_api char *fplChangeFileExtension(const char *filePath, const char *newFileExtension, char *destPath, const size_t maxDestLen);
+* @brief Extracts the file name including the file extension from the given source path.
+* @param sourcePath The source path to extract from
+* @return Returns the pointer to the first character of the filename.
+* @see @ref subsection_category_io_paths_utils_extractfilename
+*/
+fpl_common_api const char* fplExtractFileName(const char* sourcePath);
 /**
-  * @brief Combines all given paths by the platforms path separator for fixed number of arguments
-  * @param destPath The destination buffer
-  * @param maxDestPathLen The total number of characters available in the destination buffer
-  * @param pathCount The number of dynamic path arguments
-  * @param ... The dynamic path arguments
-  * @return Returns the pointer to the last written character in the destination buffer or @ref fpl_null.
-  * @see @ref subsection_category_io_paths_utils_pathcombine
-  */
-fpl_common_api char *fplPathCombine(char *destPath, const size_t maxDestPathLen, const size_t pathCount, ...);
+* @brief Changes the file extension on the given source path and writes the result into a destination buffer.
+* @param filePath The File path to search for the extension
+* @param newFileExtension The new file extension
+* @param destPath The destination buffer
+* @param maxDestLen The total number of characters available in the destination buffer
+* @return Returns the pointer to the last written character in the destination buffer or @ref fpl_null.
+* @see @ref subsection_category_io_paths_utils_changefileext
+*/
+fpl_common_api char* fplChangeFileExtension(const char* filePath, const char* newFileExtension, char* destPath, const size_t maxDestLen);
+/**
+* @brief Combines all given paths by the platforms path separator for fixed number of arguments
+* @param destPath The destination buffer
+* @param maxDestPathLen The total number of characters available in the destination buffer
+* @param pathCount The number of dynamic path arguments
+* @param ... The dynamic path arguments
+* @return Returns the pointer to the last written character in the destination buffer or @ref fpl_null.
+* @see @ref subsection_category_io_paths_utils_pathcombine
+*/
+fpl_common_api char* fplPathCombine(char* destPath, const size_t maxDestPathLen, const size_t pathCount, ...);
 
 /** @} */
 
 #if defined(FPL__ENABLE_WINDOW)
 // ----------------------------------------------------------------------------
 /**
-  * @defgroup WindowEvents Window events
-  * @brief This category contains types/functions for handling window events
-  * @{
-  */
-  // ----------------------------------------------------------------------------
+* @defgroup WindowEvents Window events
+* @brief This category contains types/functions for handling window events
+* @{
+*/
+// ----------------------------------------------------------------------------
 
 //! An enumeration of mapped keys (Based on MS Virtual-Key-Codes, mostly directly mapped from ASCII)
 typedef enum fplKey {
@@ -5246,7 +5238,7 @@ typedef struct fplWindowDropFiles {
 	//! The internal memory block
 	fplMemoryBlock internalMemory;
 	//! File paths (Do not release this memory, its automatically released after the event is processed)
-	const char **files;
+	const char** files;
 	//! Number of dropped in files
 	size_t fileCount;
 } fplWindowDropFiles;
@@ -5467,7 +5459,7 @@ typedef struct fplGamepadState {
 	};
 
 	//! Device name
-	const char *deviceName;
+	const char* deviceName;
 
 	//! Analog left thumb X in range (-1.0 to 1.0f)
 	float leftStickX;
@@ -5494,7 +5486,7 @@ typedef struct fplGamepadEvent {
 	//! Full gamepad state
 	fplGamepadState state;
 	//! Device name of the controller
-	const char *deviceName;
+	const char* deviceName;
 	//! Gamepad event type
 	fplGamepadEventType type;
 	//! Gamepad device index
@@ -5532,29 +5524,29 @@ typedef struct fplEvent {
 } fplEvent;
 
 /**
-  * @brief Polls the next event from the internal event queue or from the OS, handles them and removes it from the queue.
-  * @param ev The pointer to the @ref fplEvent structure
-  * @return Returns false when there are no events left, true otherwise.
-  * @see @ref section_category_window_events_polling
-  */
-fpl_platform_api bool fplPollEvent(fplEvent *ev);
+* @brief Polls the next event from the internal event queue or from the OS, handles them and removes it from the queue.
+* @param ev The pointer to the @ref fplEvent structure
+* @return Returns false when there are no events left, true otherwise.
+* @see @ref section_category_window_events_polling
+*/
+fpl_platform_api bool fplPollEvent(fplEvent* ev);
 
 /**
-  * @brief Polls all the events from the OS and clears the internal event queue.
-  * @warning Dont use this function if you want to handle the events. Use @ref fplPollEvent() instead!
-  * @see @ref section_category_window_events_process
-  */
+* @brief Polls all the events from the OS and clears the internal event queue.
+* @warning Dont use this function if you want to handle the events. Use @ref fplPollEvent() instead!
+* @see @ref section_category_window_events_process
+*/
 fpl_platform_api void fplPollEvents();
 
 /*\}*/
 
 // ----------------------------------------------------------------------------
 /**
-  * @defgroup InputData Input functions
-  * @brief This category contains functions for retrieving input data
-  * @{
-  */
-  // ----------------------------------------------------------------------------
+* @defgroup InputData Input functions
+* @brief This category contains functions for retrieving input data
+* @{
+*/
+// ----------------------------------------------------------------------------
 
 //! Max number of keyboard states
 #define FPL_MAX_KEYBOARD_STATE_COUNT 256
@@ -5589,33 +5581,33 @@ typedef struct fplMouseState {
 } fplMouseState;
 
 /**
-  * @brief Polls the current keyboard state and writes it out into the output structure.
-  * @param outState The pointer to the @ref fplKeyboardState structure
-  * @see @ref subsection_category_input_polling_keyboard
-  */
-fpl_platform_api bool fplPollKeyboardState(fplKeyboardState *outState);
+* @brief Polls the current keyboard state and writes it out into the output structure.
+* @param outState The pointer to the @ref fplKeyboardState structure
+* @see @ref subsection_category_input_polling_keyboard
+*/
+fpl_platform_api bool fplPollKeyboardState(fplKeyboardState* outState);
 /**
-  * @brief Polls the current gamepad states and writes it out into the output structure.
-  * @param outStates The pointer to the @ref fplGamepadStates structure
-  * @see @ref subsection_category_input_polling_gamepad
-  */
-fpl_platform_api bool fplPollGamepadStates(fplGamepadStates *outStates);
+* @brief Polls the current gamepad states and writes it out into the output structure.
+* @param outStates The pointer to the @ref fplGamepadStates structure
+* @see @ref subsection_category_input_polling_gamepad
+*/
+fpl_platform_api bool fplPollGamepadStates(fplGamepadStates* outStates);
 /**
-  * @brief Polls the current mouse state and writes it out into the output structure.
-  * @param outState The pointer to the @ref fplMouseState structure
-  * @see @ref subsection_category_input_polling_mouse
-  */
-fpl_platform_api bool fplPollMouseState(fplMouseState *outState);
+* @brief Polls the current mouse state and writes it out into the output structure.
+* @param outState The pointer to the @ref fplMouseState structure
+* @see @ref subsection_category_input_polling_mouse
+*/
+fpl_platform_api bool fplPollMouseState(fplMouseState* outState);
 
 /*\}*/
 
 // ----------------------------------------------------------------------------
 /**
-  * @defgroup WindowBase Window functions
-  * @brief This category contains functions for handling the window
-  * @{
-  */
-  // ----------------------------------------------------------------------------
+* @defgroup WindowBase Window functions
+* @brief This category contains functions for handling the window
+* @{
+*/
+// ----------------------------------------------------------------------------
 
 //! An enumeration containg the states of a window
 typedef enum fplWindowState {
@@ -5642,155 +5634,155 @@ typedef enum fplWindowVisibilityState {
 } fplWindowVisibilityState;
 
 /**
-  * @brief Gets the window running state as a boolean
-  * @return Returns true when the window is running, false otherwise
-  */
+* @brief Gets the window running state as a boolean
+* @return Returns true when the window is running, false otherwise
+*/
 fpl_platform_api bool fplIsWindowRunning();
 /**
-  * @brief Closes the window and stops the event loop
-  */
+* @brief Closes the window and stops the event loop
+*/
 fpl_platform_api void fplWindowShutdown();
 /**
-  * @brief Clears the internal event queue and updates input devices if needed
-  * @return Returns true when the window is still active, false otherwise
-  */
+* @brief Clears the internal event queue and updates input devices if needed
+* @return Returns true when the window is still active, false otherwise
+*/
 fpl_platform_api bool fplWindowUpdate();
 /**
-  * @brief Enables or disables the window cursor
-  * @param value The new cursor visibility state
-  */
+* @brief Enables or disables the window cursor
+* @param value The new cursor visibility state
+*/
 fpl_platform_api void fplSetWindowCursorEnabled(const bool value);
 /**
-  * @brief Retrieves the inner window size.
-  * @param outSize The pointer to the @ref fplWindowSize structure
-  * @return Returns true when we got the inner size from the current window, false otherwise.
-  */
-fpl_platform_api bool fplGetWindowSize(fplWindowSize *outSize);
+* @brief Retrieves the inner window size.
+* @param outSize The pointer to the @ref fplWindowSize structure
+* @return Returns true when we got the inner size from the current window, false otherwise.
+*/
+fpl_platform_api bool fplGetWindowSize(fplWindowSize* outSize);
 /**
-  * @brief Resizes the window to fit the inner size based on the given size.
-  * @param width The width in screen units
-  * @param height The height in screen units
-  */
+* @brief Resizes the window to fit the inner size based on the given size.
+* @param width The width in screen units
+* @param height The height in screen units
+*/
 fpl_platform_api void fplSetWindowSize(const uint32_t width, const uint32_t height);
 /**
-  * @brief Gets the window resizable state as boolean.
-  * @return Returns true when the window is resizable, false otherwise.
-  */
+* @brief Gets the window resizable state as boolean.
+* @return Returns true when the window is resizable, false otherwise.
+*/
 fpl_platform_api bool fplIsWindowResizable();
 /**
-  * @brief Enables or disables the ability to resize the window.
-  * @param value The new resizable state
-  */
+* @brief Enables or disables the ability to resize the window.
+* @param value The new resizable state
+*/
 fpl_platform_api void fplSetWindowResizeable(const bool value);
 /**
-  * @brief Gets the window decorated state as boolean.
-  * @return Returns true when the window is decorated, false otherwise.
-  */
+* @brief Gets the window decorated state as boolean.
+* @return Returns true when the window is decorated, false otherwise.
+*/
 fpl_platform_api bool fplIsWindowDecorated();
 /**
-  * @brief Enables or disables the window decoration (Titlebar, Border, etc.).
-  * @param value The new decorated state
-  */
+* @brief Enables or disables the window decoration (Titlebar, Border, etc.).
+* @param value The new decorated state
+*/
 fpl_platform_api void fplSetWindowDecorated(const bool value);
 /**
-  * @brief Gets the window floating state as boolean.
-  * @return Returns true when the window is floating, false otherwise.
-  */
+* @brief Gets the window floating state as boolean.
+* @return Returns true when the window is floating, false otherwise.
+*/
 fpl_platform_api bool fplIsWindowFloating();
 /**
-  * @brief Enables or disables the window floating (Top-most)
-  * @param value The new floating state
-  */
+* @brief Enables or disables the window floating (Top-most)
+* @param value The new floating state
+*/
 fpl_platform_api void fplSetWindowFloating(const bool value);
 /**
-  * @brief Enables or disables fullscreen mode based on the given size and the current display.
-  * @param value The new fullscreen state
-  * @param fullscreenWidth The fullscreen width in screen units. When set to zero the current display position is used.
-  * @param fullscreenHeight The fullscreen height in screen units. When set to zero the current display position is used.
-  * @param refreshRate The refresh rate in Hz. When set to zero the current display setting is used.
-  * @return Returns true when the window was changed to the desire fullscreen mode, false otherwise.
-  * @attention This may alter the display resolution or the refresh rate.
-  */
+* @brief Enables or disables fullscreen mode based on the given size and the current display.
+* @param value The new fullscreen state
+* @param fullscreenWidth The fullscreen width in screen units. When set to zero the current display position is used.
+* @param fullscreenHeight The fullscreen height in screen units. When set to zero the current display position is used.
+* @param refreshRate The refresh rate in Hz. When set to zero the current display setting is used.
+* @return Returns true when the window was changed to the desire fullscreen mode, false otherwise.
+* @attention This may alter the display resolution or the refresh rate.
+*/
 fpl_platform_api bool fplSetWindowFullscreenSize(const bool value, const uint32_t fullscreenWidth, const uint32_t fullscreenHeight, const uint32_t refreshRate);
 /**
-  * @brief Enables or disables fullscreen mode based on the given rectangle.
-  * @param value The new fullscreen state
-  * @param x The left position in virtual screen coordinates
-  * @param y The top position in virtual screen coordinates
-  * @param width The width in virtual screen coordinates
-  * @param height The height in virtual screen coordinates
-  * @return Returns true when the window was changed to the rectangle, false otherwise.
-  * @attention This will not alter the display resolution or the refresh rate.
-  */
+* @brief Enables or disables fullscreen mode based on the given rectangle.
+* @param value The new fullscreen state
+* @param x The left position in virtual screen coordinates
+* @param y The top position in virtual screen coordinates
+* @param width The width in virtual screen coordinates
+* @param height The height in virtual screen coordinates
+* @return Returns true when the window was changed to the rectangle, false otherwise.
+* @attention This will not alter the display resolution or the refresh rate.
+*/
 fpl_platform_api bool fplSetWindowFullscreenRect(const bool value, const int32_t x, const int32_t y, const int32_t width, const int32_t height);
 /**
-  * @brief Enables fullscreen mode on the nearest display
-  * @return Returns true when the window was changed to the fullscreen, false otherwise.
-  * @attention This will not alter the display resolution or the refresh rate.
-  */
+* @brief Enables fullscreen mode on the nearest display
+* @return Returns true when the window was changed to the fullscreen, false otherwise.
+* @attention This will not alter the display resolution or the refresh rate.
+*/
 fpl_platform_api bool fplEnableWindowFullscreen();
 /**
-  * @brief Switches the window back to window mode
-  * @return Returns true when the window was changed to the window mode, false otherwise.
-  * @attention This will not alter the display resolution or the refresh rate.
-  */
+* @brief Switches the window back to window mode
+* @return Returns true when the window was changed to the window mode, false otherwise.
+* @attention This will not alter the display resolution or the refresh rate.
+*/
 fpl_platform_api bool fplDisableWindowFullscreen();
 /**
-  * @brief Gets the window fullscreen state as boolean.
-  * @return Returns true when the window is in fullscreen mode, false otherwise.
-  */
+* @brief Gets the window fullscreen state as boolean.
+* @return Returns true when the window is in fullscreen mode, false otherwise.
+*/
 fpl_platform_api bool fplIsWindowFullscreen();
 /**
-  * @brief Retrieves the absolute window position.
-  * @param outPos The pointer to the @ref fplWindowPosition structure
-  * @return Returns true when we got the position, false otherwise.
-  */
-fpl_platform_api bool fplGetWindowPosition(fplWindowPosition *outPos);
+* @brief Retrieves the absolute window position.
+* @param outPos The pointer to the @ref fplWindowPosition structure
+* @return Returns true when we got the position, false otherwise.
+*/
+fpl_platform_api bool fplGetWindowPosition(fplWindowPosition* outPos);
 /**
-  * @brief Changes the window absolut position to the given coordinates.
-  * @param left The left position in screen units
-  * @param top The top position in screen units
-  */
+* @brief Changes the window absolut position to the given coordinates.
+* @param left The left position in screen units
+* @param top The top position in screen units
+*/
 fpl_platform_api void fplSetWindowPosition(const int32_t left, const int32_t top);
 /**
-  * @brief Changes the window title to the given string.
-  * @param title The title string
-  */
-fpl_platform_api void fplSetWindowTitle(const char *title);
+* @brief Changes the window title to the given string.
+* @param title The title string
+*/
+fpl_platform_api void fplSetWindowTitle(const char* title);
 /**
-  * @brief Retrieves the window title and writes it into the output string
-  * @param outTitle The output title string
-  * @param maxOutTitleLength The maximum length of the output title
-  * @return Returns the char pointer of the last written character or fpl_null
-  */
-fpl_common_api char *fplGetWindowTitle(char *outTitle, const size_t maxOutTitleLength);
+* @brief Retrieves the window title and writes it into the output string
+* @param outTitle The output title string
+* @param maxOutTitleLength The maximum length of the output title
+* @return Returns the char pointer of the last written character or fpl_null
+*/
+fpl_common_api char* fplGetWindowTitle(char* outTitle, const size_t maxOutTitleLength);
 /**
-  * @brief Gets the current window state
-  * @return Returns the current window state
-  */
+* @brief Gets the current window state
+* @return Returns the current window state
+*/
 fpl_platform_api fplWindowState fplGetWindowState();
 /**
-  * @brief Changes the current window state
-  * @param newState The new window state
-  * @return Returns true when the window state was changed, false otherwise.
-  */
+* @brief Changes the current window state
+* @param newState The new window state
+* @return Returns true when the window state was changed, false otherwise.
+*/
 fpl_platform_api bool fplSetWindowState(const fplWindowState newState);
 /**
-  * @brief Enables or Disables the input events for the window entirely.
-  * @param enabled If set to true, the input handled are processed, if false no input events are handled.
-  * @note The text input event is always handled, regardless of this setting.
-  */
+* @brief Enables or Disables the input events for the window entirely.
+* @param enabled If set to true, the input handled are processed, if false no input events are handled.
+* @note The text input event is always handled, regardless of this setting.
+*/
 fpl_common_api void fplSetWindowInputEvents(const bool enabled);
 
 /*\}*/
 
 // ----------------------------------------------------------------------------
 /**
-  * @defgroup WindowDisplay Display/Monitor functions
-  * @brief This category contains functions for handling multiple monitors
-  * @{
-  */
-  // ----------------------------------------------------------------------------
+* @defgroup WindowDisplay Display/Monitor functions
+* @brief This category contains functions for handling multiple monitors
+* @{
+*/
+// ----------------------------------------------------------------------------
 
 //! A struct containing informations about a display
 typedef struct fplDisplayInfo {
@@ -5819,75 +5811,75 @@ typedef struct fplDisplayMode {
 } fplDisplayMode;
 
 /**
-  * @brief Gets the number of active displays
-  * @return Returns the number of active displays
-  */
+* @brief Gets the number of active displays
+* @return Returns the number of active displays
+*/
 fpl_platform_api size_t fplGetDisplayCount();
 /**
-  * @brief Gets informations about all active displays
-  * @param outDisplays The array of @ref fplDisplayInfo
-  * @param maxDisplayCount The maximum number of display infos available in the output array
-  * @return Returns the total number of active displays
-  */
-fpl_platform_api size_t fplGetDisplays(fplDisplayInfo *outDisplays, const size_t maxDisplayCount);
+* @brief Gets informations about all active displays
+* @param outDisplays The array of @ref fplDisplayInfo
+* @param maxDisplayCount The maximum number of display infos available in the output array
+* @return Returns the total number of active displays
+*/
+fpl_platform_api size_t fplGetDisplays(fplDisplayInfo* outDisplays, const size_t maxDisplayCount);
 /**
-  * @brief Gets information about the display for the FPL window
-  * @param outInfo A pointer to a @ref fplDisplayInfo structure
-  * @return Returns true when the display for the window was found, false otherwise.
-  */
-fpl_platform_api bool fplGetWindowDisplay(fplDisplayInfo *outInfo);
+* @brief Gets information about the display for the FPL window
+* @param outInfo A pointer to a @ref fplDisplayInfo structure
+* @return Returns true when the display for the window was found, false otherwise.
+*/
+fpl_platform_api bool fplGetWindowDisplay(fplDisplayInfo* outInfo);
 /**
-  * @brief Gets information about the primary display
-  * @param outInfo A pointer to a @ref fplDisplayInfo structure
-  * @return Returns true when the primary display was found, false otherwise.
-  */
-fpl_platform_api bool fplGetPrimaryDisplay(fplDisplayInfo *outInfo);
+* @brief Gets information about the primary display
+* @param outInfo A pointer to a @ref fplDisplayInfo structure
+* @return Returns true when the primary display was found, false otherwise.
+*/
+fpl_platform_api bool fplGetPrimaryDisplay(fplDisplayInfo* outInfo);
 /**
-  * @brief Finds the display from a cursor position and retrieves the information for it.
-  * @param x The x position in screen coordinates
-  * @param y The y position in screen coordinates
-  * @param outInfo A pointer to a @ref fplDisplayInfo structure
-  * @return Returns true when the display was found, false otherwise.
-  */
-fpl_platform_api bool fplGetDisplayFromPosition(const int32_t x, const int32_t y, fplDisplayInfo *outInfo);
+* @brief Finds the display from a cursor position and retrieves the information for it.
+* @param x The x position in screen coordinates
+* @param y The y position in screen coordinates
+* @param outInfo A pointer to a @ref fplDisplayInfo structure
+* @return Returns true when the display was found, false otherwise.
+*/
+fpl_platform_api bool fplGetDisplayFromPosition(const int32_t x, const int32_t y, fplDisplayInfo* outInfo);
 /**
-  * @brief Gets the number of available display modes for the given display id
-  * @param id The display id
-  * @return Returns the total number of available display modes
-  */
-fpl_platform_api size_t fplGetDisplayModeCount(const char *id);
+* @brief Gets the number of available display modes for the given display id
+* @param id The display id
+* @return Returns the total number of available display modes
+*/
+fpl_platform_api size_t fplGetDisplayModeCount(const char* id);
 /**
-  * @brief Gets the information about the available display modes for the given display id
-  * @param id The display id
-  * @param outModes The array of @ref fplDisplayMode
-  * @param maxDisplayModeCount The maximum number of display modes available in the output array
-  * @return Returns the number of found display modes
-  */
-fpl_platform_api size_t fplGetDisplayModes(const char *id, fplDisplayMode *outModes, const size_t maxDisplayModeCount);
+* @brief Gets the information about the available display modes for the given display id
+* @param id The display id
+* @param outModes The array of @ref fplDisplayMode
+* @param maxDisplayModeCount The maximum number of display modes available in the output array
+* @return Returns the number of found display modes
+*/
+fpl_platform_api size_t fplGetDisplayModes(const char* id, fplDisplayMode* outModes, const size_t maxDisplayModeCount);
 
 /*\}*/
 
 // ----------------------------------------------------------------------------
 /**
-  * @defgroup WindowClipboard Clipboard functions
-  * @brief This category contains functions for reading/writing clipboard data
-  * @{
-  */
-  // ----------------------------------------------------------------------------
+* @defgroup WindowClipboard Clipboard functions
+* @brief This category contains functions for reading/writing clipboard data
+* @{
+*/
+// ----------------------------------------------------------------------------
 
-  /**
-	* @brief Retrieves the current clipboard text.
-	* @param dest The destination string buffer to write the clipboard text into.
-	* @param maxDestLen The total number of characters available in the destination buffer.
-	* @return Returns true when the clipboard contained text which is copied into the dest buffer, @ref fpl_null otherwise.
-	*/
-fpl_platform_api bool fplGetClipboardText(char *dest, const uint32_t maxDestLen);
 /**
-  * @brief Overwrites the current clipboard text with the given one.
-  * @param text The new clipboard string.
-  * @return Returns true when the text in the clipboard was changed, false otherwise.
-  */
-fpl_platform_api bool fplSetClipboardText(const char *text);
+* @brief Retrieves the current clipboard text.
+* @param dest The destination string buffer to write the clipboard text into.
+* @param maxDestLen The total number of characters available in the destination buffer.
+* @return Returns true when the clipboard contained text which is copied into the dest buffer, @ref fpl_null otherwise.
+*/
+fpl_platform_api bool fplGetClipboardText(char* dest, const uint32_t maxDestLen);
+/**
+* @brief Overwrites the current clipboard text with the given one.
+* @param text The new clipboard string.
+* @return Returns true when the text in the clipboard was changed, false otherwise.
+*/
+fpl_platform_api bool fplSetClipboardText(const char* text);
 
 /** @} */
 #endif // FPL__ENABLE_WINDOW
@@ -5895,11 +5887,11 @@ fpl_platform_api bool fplSetClipboardText(const char *text);
 #if defined(FPL__ENABLE_VIDEO)
 // ----------------------------------------------------------------------------
 /**
-  * @defgroup Video Video functions
-  * @brief This category contains functions for retrieving or resizing the video buffer
-  * @{
-  */
-  // ----------------------------------------------------------------------------
+* @defgroup Video Video functions
+* @brief This category contains functions for retrieving or resizing the video buffer
+* @{
+*/
+// ----------------------------------------------------------------------------
 
 //! A structure defining a video rectangles position and size
 typedef struct fplVideoRect {
@@ -5914,13 +5906,13 @@ typedef struct fplVideoRect {
 } fplVideoRect;
 
 /**
-  * @brief Makes a video rectangle from a LTRB rectangle
-  * @param left The left position in screen units
-  * @param top The top position in screen units
-  * @param right The right position in screen units
-  * @param bottom The bottom position in screen units
-  * @return Returns the computed video rectangle @ref fplVideoRect
-  */
+* @brief Makes a video rectangle from a LTRB rectangle
+* @param left The left position in screen units
+* @param top The top position in screen units
+* @param right The right position in screen units
+* @param bottom The bottom position in screen units
+* @return Returns the computed video rectangle @ref fplVideoRect
+*/
 fpl_inline fplVideoRect fplCreateVideoRectFromLTRB(int32_t left, int32_t top, int32_t right, int32_t bottom) {
 	fplVideoRect result = { left, top, (right - left) + 1, (bottom - top) + 1 };
 	return(result);
@@ -5929,7 +5921,7 @@ fpl_inline fplVideoRect fplCreateVideoRectFromLTRB(int32_t left, int32_t top, in
 //! A structure containing video backbuffer properties
 typedef struct fplVideoBackBuffer {
 	//! The 32-bit pixel top-down array, format: 0xAABBGGRR. Do not modify before WindowUpdate
-	uint32_t *pixels;
+	uint32_t* pixels;
 	//! The width of the backbuffer in pixels. Do not modify, it will be set automatically.
 	uint32_t width;
 	//! The height of the backbuffer in pixels. Do not modify, it will be set automatically.
@@ -5945,33 +5937,33 @@ typedef struct fplVideoBackBuffer {
 } fplVideoBackBuffer;
 
 /**
-  * @brief Gets a string which represents the given video driver
-  * @param driver The video driver type @ref fplVideoDriverType
-  * @return Returns a string for the given video driver type
-  */
-fpl_common_api const char *fplGetVideoDriverString(fplVideoDriverType driver);
+* @brief Gets a string which represents the given video driver
+* @param driver The video driver type @ref fplVideoDriverType
+* @return Returns a string for the given video driver type
+*/
+fpl_common_api const char* fplGetVideoDriverString(fplVideoDriverType driver);
 /**
-  * @brief Retrieves the pointer to the current video backbuffer.
-  * @return Returns the pointer to the current @ref fplVideoBackBuffer.
-  * @warning Do not release this memory by any means, otherwise you will corrupt heap memory!
-  */
-fpl_common_api fplVideoBackBuffer *fplGetVideoBackBuffer();
+* @brief Retrieves the pointer to the current video backbuffer.
+* @return Returns the pointer to the current @ref fplVideoBackBuffer.
+* @warning Do not release this memory by any means, otherwise you will corrupt heap memory!
+*/
+fpl_common_api fplVideoBackBuffer* fplGetVideoBackBuffer();
 /**
-  * @brief Resizes the current video backbuffer.
-  * @param width The width in pixels
-  * @param height The height in pixels
-  * @return Returns true when video back buffer could be resized, false otherwise.
-  */
+* @brief Resizes the current video backbuffer.
+* @param width The width in pixels
+* @param height The height in pixels
+* @return Returns true when video back buffer could be resized, false otherwise.
+*/
 fpl_common_api bool fplResizeVideoBackBuffer(const uint32_t width, const uint32_t height);
 /**
-  * @brief Gets the current video driver
-  * @return Returns the current video driver type @ref fplVideoDriverType
-  */
+* @brief Gets the current video driver
+* @return Returns the current video driver type @ref fplVideoDriverType
+*/
 fpl_common_api fplVideoDriverType fplGetVideoDriver();
 
 /**
-  * @brief Forces the window to be redrawn or to swap the back/front buffer.
-  */
+* @brief Forces the window to be redrawn or to swap the back/front buffer.
+*/
 fpl_common_api void fplVideoFlip();
 
 /** @} */
@@ -5980,11 +5972,11 @@ fpl_common_api void fplVideoFlip();
 #if defined(FPL__ENABLE_AUDIO)
 // ----------------------------------------------------------------------------
 /**
-  * @defgroup Audio Audio functions
-  * @brief This category contains functions for start/stop playing audio and retrieving/changing some audio related settings.
-  * @{
-  */
-  // ----------------------------------------------------------------------------
+* @defgroup Audio Audio functions
+* @brief This category contains functions for start/stop playing audio and retrieving/changing some audio related settings.
+* @{
+*/
+// ----------------------------------------------------------------------------
 
 //! An enumeration of audio results
 typedef enum fplAudioResult {
@@ -6001,93 +5993,93 @@ typedef enum fplAudioResult {
 } fplAudioResult;
 
 /**
-  * @brief Start playing asyncronous audio.
-  * @return Returns the audio result @ref fplAudioResult
-  */
+* @brief Start playing asyncronous audio.
+* @return Returns the audio result @ref fplAudioResult
+*/
 fpl_common_api fplAudioResult fplPlayAudio();
 /**
-  * @brief Stop playing asyncronous audio.
-  * @return Returns the audio result @ref fplAudioResult
-  */
+* @brief Stop playing asyncronous audio.
+* @return Returns the audio result @ref fplAudioResult
+*/
 fpl_common_api fplAudioResult fplStopAudio();
 /**
-  * @brief Retrieves the native format for the current audio device.
-  * @param outFormat The pointer to the @ref fplAudioDeviceFormat structure
-  * @return Returns true when a hardware format was active, false otherwise.
-  */
-fpl_common_api bool fplGetAudioHardwareFormat(fplAudioDeviceFormat *outFormat);
+* @brief Retrieves the native format for the current audio device.
+* @param outFormat The pointer to the @ref fplAudioDeviceFormat structure
+* @return Returns true when a hardware format was active, false otherwise.
+*/
+fpl_common_api bool fplGetAudioHardwareFormat(fplAudioDeviceFormat* outFormat);
 /**
-  * @brief Overwrites the audio client read callback.
-  * @param newCallback The pointer to the @ref fpl_audio_client_read_callback callback
-  * @param userData The pointer to the client/user data
-  * @return Returns true when a audio device is ready and the callback was set, false otherwise.
-  * @note This has no effect when audio is already playing, you have to call it when audio is in a stopped state!
-  */
-fpl_common_api bool fplSetAudioClientReadCallback(fpl_audio_client_read_callback *newCallback, void *userData);
+* @brief Overwrites the audio client read callback.
+* @param newCallback The pointer to the @ref fpl_audio_client_read_callback callback
+* @param userData The pointer to the client/user data
+* @return Returns true when a audio device is ready and the callback was set, false otherwise.
+* @note This has no effect when audio is already playing, you have to call it when audio is in a stopped state!
+*/
+fpl_common_api bool fplSetAudioClientReadCallback(fpl_audio_client_read_callback* newCallback, void* userData);
 /**
-  * @brief Retrieves all playback audio devices.
-  * @param devices A array of audio device info @ref fplAudioDeviceInfo
-  * @param maxDeviceCount The total number of devices available in the devices array.
-  * @return Returns the number of devices found.
-  */
-fpl_common_api uint32_t fplGetAudioDevices(fplAudioDeviceInfo *devices, uint32_t maxDeviceCount);
+* @brief Retrieves all playback audio devices.
+* @param devices A array of audio device info @ref fplAudioDeviceInfo
+* @param maxDeviceCount The total number of devices available in the devices array.
+* @return Returns the number of devices found.
+*/
+fpl_common_api uint32_t fplGetAudioDevices(fplAudioDeviceInfo* devices, uint32_t maxDeviceCount);
 /**
-  * @brief Computes the number of bytes required to write one sample with one channel.
-  * @param format The audio format type @ref fplAudioFormatType
-  * @return Returns the number of bytes for one sample with one channel
-  */
+* @brief Computes the number of bytes required to write one sample with one channel.
+* @param format The audio format type @ref fplAudioFormatType
+* @return Returns the number of bytes for one sample with one channel
+*/
 fpl_common_api uint32_t fplGetAudioSampleSizeInBytes(const fplAudioFormatType format);
 /**
-  * @brief Gets the string which represents the given audio format type.
-  * @param format The audio format type @ref fplAudioFormatType
-  * @return Returns a string for the given audio format type
-  */
-fpl_common_api const char *fplGetAudioFormatString(const fplAudioFormatType format);
+* @brief Gets the string which represents the given audio format type.
+* @param format The audio format type @ref fplAudioFormatType
+* @return Returns a string for the given audio format type
+*/
+fpl_common_api const char* fplGetAudioFormatString(const fplAudioFormatType format);
 /**
-  * @brief Gets the string which represents the given audio driver type.
-  * @param driver The audio driver type @ref fplAudioDriverType
-  * @return Returns a string for the given audio driver type
-  */
-fpl_common_api const char *fplGetAudioDriverString(fplAudioDriverType driver);
+* @brief Gets the string which represents the given audio driver type.
+* @param driver The audio driver type @ref fplAudioDriverType
+* @return Returns a string for the given audio driver type
+*/
+fpl_common_api const char* fplGetAudioDriverString(fplAudioDriverType driver);
 /**
-  * @brief Computes the total number of frames for given sample rate and buffer size.
-  * @param sampleRate The sample rate in Hz
-  * @param bufferSizeInMilliSeconds The buffer size in milliseconds
-  * @return Returns the total number of frames for given sample rate and buffer size
-  */
+* @brief Computes the total number of frames for given sample rate and buffer size.
+* @param sampleRate The sample rate in Hz
+* @param bufferSizeInMilliSeconds The buffer size in milliseconds
+* @return Returns the total number of frames for given sample rate and buffer size
+*/
 fpl_common_api uint32_t fplGetAudioBufferSizeInFrames(uint32_t sampleRate, uint32_t bufferSizeInMilliSeconds);
 /**
-  * @brief Computes the number of bytes required for one interleaved audio frame - containing all the channels.
-  * @param format The audio format
-  * @param channelCount The number of channels
-  * @return Returns the number of bytes for one frame in bytes
-  */
+* @brief Computes the number of bytes required for one interleaved audio frame - containing all the channels.
+* @param format The audio format
+* @param channelCount The number of channels
+* @return Returns the number of bytes for one frame in bytes
+*/
 fpl_common_api uint32_t fplGetAudioFrameSizeInBytes(const fplAudioFormatType format, const uint32_t channelCount);
 /**
-  * @brief Computes the total number of bytes for the buffer and the given parameters
-  * @param format The audio format
-  * @param channelCount The number of channels
-  * @param frameCount The number of frames
-  * @return Returns the total number of bytes for the buffer
-  */
+* @brief Computes the total number of bytes for the buffer and the given parameters
+* @param format The audio format
+* @param channelCount The number of channels
+* @param frameCount The number of frames
+* @return Returns the total number of bytes for the buffer
+*/
 fpl_common_api uint32_t fplGetAudioBufferSizeInBytes(const fplAudioFormatType format, const uint32_t channelCount, const uint32_t frameCount);
 /**
-  * @brief Converts a @ref fplAudioTargetFormat into a @ref fplAudioDeviceFormat structure
-  * @param inFormat The input format
-  * @param outFormat The output format
-  */
-fpl_common_api void fplConvertAudioTargetFormatToDeviceFormat(const fplAudioTargetFormat *inFormat, fplAudioDeviceFormat *outFormat);
+* @brief Converts a @ref fplAudioTargetFormat into a @ref fplAudioDeviceFormat structure
+* @param inFormat The input format
+* @param outFormat The output format
+*/
+fpl_common_api void fplConvertAudioTargetFormatToDeviceFormat(const fplAudioTargetFormat* inFormat, fplAudioDeviceFormat* outFormat);
 
 /** @} */
 #endif // FPL__ENABLE_AUDIO
 
 // ----------------------------------------------------------------------------
 /**
-  * @defgroup Internationalisation Internationalisation functions
-  * @brief This category contains functions for getting informations about current locale
-  * @{
-  */
-  // ----------------------------------------------------------------------------
+* @defgroup Internationalisation Internationalisation functions
+* @brief This category contains functions for getting informations about current locale
+* @{
+*/
+// ----------------------------------------------------------------------------
 
 //! A enumeration of locale formats
 typedef enum fplLocaleFormat {
@@ -6098,31 +6090,31 @@ typedef enum fplLocaleFormat {
 } fplLocaleFormat;
 
 /**
-  * @brief Gets the user locale in the given target format
-  * @param targetFormat Target @ref fplLocaleFormat
-  * @param buffer Target string buffer for writing the locale into
-  * @param maxBufferLen The maximum length of the buffer
-  * @return Returns true when the function succeeds, false otherwise
-  */
-fpl_platform_api bool fplGetUserLocale(const fplLocaleFormat targetFormat, char *buffer, const size_t maxBufferLen);
+* @brief Gets the user locale in the given target format
+* @param targetFormat Target @ref fplLocaleFormat
+* @param buffer Target string buffer for writing the locale into
+* @param maxBufferLen The maximum length of the buffer
+* @return Returns true when the function succeeds, false otherwise
+*/
+fpl_platform_api bool fplGetUserLocale(const fplLocaleFormat targetFormat, char* buffer, const size_t maxBufferLen);
 
 /**
-  * @brief Gets the system locale in the given target format
-  * @param targetFormat Target @ref fplLocaleFormat
-  * @param buffer Target string buffer for writing the locale into
-  * @param maxBufferLen The maximum length of the buffer
-  * @return Returns true when the function succeeds, false otherwise
-  */
-fpl_platform_api bool fplGetSystemLocale(const fplLocaleFormat targetFormat, char *buffer, const size_t maxBufferLen);
+* @brief Gets the system locale in the given target format
+* @param targetFormat Target @ref fplLocaleFormat
+* @param buffer Target string buffer for writing the locale into
+* @param maxBufferLen The maximum length of the buffer
+* @return Returns true when the function succeeds, false otherwise
+*/
+fpl_platform_api bool fplGetSystemLocale(const fplLocaleFormat targetFormat, char* buffer, const size_t maxBufferLen);
 
 /**
-  * @brief Gets the input locale in the given target format
-  * @param targetFormat Target @ref fplLocaleFormat
-  * @param buffer Target string buffer for writing the locale into
-  * @param maxBufferLen The maximum length of the buffer
-  * @return Returns true when the function succeeds, false otherwise
-  */
-fpl_platform_api bool fplGetInputLocale(const fplLocaleFormat targetFormat, char *buffer, const size_t maxBufferLen);
+* @brief Gets the input locale in the given target format
+* @param targetFormat Target @ref fplLocaleFormat
+* @param buffer Target string buffer for writing the locale into
+* @param maxBufferLen The maximum length of the buffer
+* @return Returns true when the function succeeds, false otherwise
+*/
+fpl_platform_api bool fplGetInputLocale(const fplLocaleFormat targetFormat, char* buffer, const size_t maxBufferLen);
 
 /** @} */
 
@@ -6140,11 +6132,11 @@ fpl_platform_api bool fplGetInputLocale(const fplLocaleFormat targetFormat, char
 #if defined(FPL_PLATFORM_WINDOWS)
 #	if defined(FPL_ENTRYPOINT)
 // @NOTE(final): Required for access "main" from the actual win32 entry point
-fpl_main int main(int argc, char **args);
+fpl_main int main(int argc, char** args);
 #	endif
 #endif // FPL_PLATFORM_WINDOWS
 
-#endif // FPL_INCLUDE_H
+#endif // FPL_HEADER_H
 
 // ****************************************************************************
 //
@@ -6290,7 +6282,7 @@ fpl_main int main(int argc, char **args);
 fpl_globalvar fplLogSettings fpl__global__LogSettings = fplZeroInit;
 
 #define FPL__LOGLEVEL_COUNT FPL__ENUM_COUNT(FPL_FIRST_LOGLEVEL, FPL_LAST_LOGLEVEL)
-fpl_globalvar const char * fpl__LogLevelNameTable[] = {
+fpl_globalvar const char* fpl__LogLevelNameTable[] = {
 	"All", // fplLogLevel_All (-1)
 	"Critical", // fplLogLevel_Critical (0)
 	"Error", // fplLogLevel_Error (1)
@@ -6302,14 +6294,14 @@ fpl_globalvar const char * fpl__LogLevelNameTable[] = {
 };
 fplStaticAssert(fplArrayCount(fpl__LogLevelNameTable) == FPL__LOGLEVEL_COUNT);
 
-fpl_internal const char *fpl__LogLevelToString(const fplLogLevel level) {
+fpl_internal const char* fpl__LogLevelToString(const fplLogLevel level) {
 	uint32_t index = FPL__ENUM_VALUE_TO_ARRAY_INDEX(level, FPL_FIRST_LOGLEVEL, FPL_LAST_LOGLEVEL);
-	const char *result = fpl__LogLevelNameTable[index];
+	const char* result = fpl__LogLevelNameTable[index];
 	return(result);
 }
 
-fpl_internal void fpl__LogWrite(const char *funcName, const int lineNumber, const fplLogLevel level, const char *message) {
-	fplLogSettings *settings = &fpl__global__LogSettings;
+fpl_internal void fpl__LogWrite(const char* funcName, const int lineNumber, const fplLogLevel level, const char* message) {
+	fplLogSettings* settings = &fpl__global__LogSettings;
 	if (!settings->isInitialized) {
 #if defined(FPL_LOG_MULTIPLE_WRITERS)
 		settings->criticalWriter.console.logToError = true;
@@ -6328,11 +6320,11 @@ fpl_internal void fpl__LogWrite(const char *funcName, const int lineNumber, cons
 	if ((settings->maxLevel == -1) || (level <= settings->maxLevel)) {
 #if defined(FPL_LOG_MULTIPLE_WRITERS)
 		fplAssert(level < fplArrayCount(settings->writers));
-		const fplLogWriter *writer = &settings->writers[(int)level];
+		const fplLogWriter* writer = &settings->writers[(int)level];
 #else
-		const fplLogWriter *writer = &settings->writers[0];
+		const fplLogWriter* writer = &settings->writers[0];
 #endif
-		const char *levelStr = fpl__LogLevelToString(level);
+		const char* levelStr = fpl__LogLevelToString(level);
 
 		if (writer->flags & fplLogWriterFlags_StandardConsole) {
 			fplConsoleFormatOut("[%s:%d][%s]%s\n", funcName, lineNumber, levelStr, message);
@@ -6348,7 +6340,7 @@ fpl_internal void fpl__LogWrite(const char *funcName, const int lineNumber, cons
 		}
 	}
 }
-fpl_internal void fpl__LogWriteArgs(const char *funcName, const int lineNumber, const fplLogLevel level, const char *format, va_list argList) {
+fpl_internal void fpl__LogWriteArgs(const char* funcName, const int lineNumber, const fplLogLevel level, const char* format, va_list argList) {
 	va_list listCopy;
 	va_copy(listCopy, argList);
 	char buffer[FPL_MAX_BUFFER_LENGTH];
@@ -6357,7 +6349,7 @@ fpl_internal void fpl__LogWriteArgs(const char *funcName, const int lineNumber, 
 	va_end(listCopy);
 }
 
-fpl_internal void fpl__LogWriteVarArgs(const char* funcName, const int lineNumber, const fplLogLevel level, const char *format, ...) {
+fpl_internal void fpl__LogWriteVarArgs(const char* funcName, const int lineNumber, const fplLogLevel level, const char* format, ...) {
 	va_list argList;
 	va_start(argList, format);
 	fpl__LogWriteArgs(funcName, lineNumber, level, format, argList);
@@ -6402,18 +6394,18 @@ fpl_internal void fpl__LogWriteVarArgs(const char* funcName, const int lineNumbe
 //
 
 #if defined(FPL_PLATFORM_WINDOWS)
-fpl_platform_api void fplDebugOut(const char *text) {
+fpl_platform_api void fplDebugOut(const char* text) {
 	wchar_t buffer[FPL_MAX_BUFFER_LENGTH];
 	fplUTF8StringToWideString(text, fplGetStringLength(text), buffer, fplArrayCount(buffer));
 	OutputDebugStringW(buffer);
 }
 #else
-fpl_platform_api void fplDebugOut(const char *text) {
+fpl_platform_api void fplDebugOut(const char* text) {
 	fplConsoleOut(text);
 }
 #endif
 
-fpl_common_api void fplDebugFormatOut(const char *format, ...) {
+fpl_common_api void fplDebugFormatOut(const char* format, ...) {
 	if (format != fpl_null) {
 		char buffer[FPL_MAX_BUFFER_LENGTH];
 		va_list argList;
@@ -6437,9 +6429,9 @@ fpl_common_api void fplDebugFormatOut(const char *format, ...) {
 // Small padding to split sections in memory blocks
 #define FPL__MEMORY_PADDING sizeof(uintptr_t)
 
-fpl_globalvar struct fpl__PlatformAppState *fpl__global__AppState = fpl_null;
+fpl_globalvar struct fpl__PlatformAppState* fpl__global__AppState = fpl_null;
 
-fpl_internal void fpl__PushError(const char* funcName, const int lineNumber, const fplLogLevel level, const char *format, ...);
+fpl_internal void fpl__PushError(const char* funcName, const int lineNumber, const fplLogLevel level, const char* format, ...);
 #endif // FPL_PLATFORM_CONSTANTS_DEFINED
 
 // ############################################################################
@@ -6473,12 +6465,12 @@ fpl_internal uint32_t fpl__RoundToPowerOfTwo(const uint32_t input) {
 	}
 }
 
-fpl_internal bool fpl__AddLineWhenAnyMatches(const char *line, const char **wildcards, const size_t maxWildcardCount, const size_t maxLineSize, const size_t maxLineCount, char **outLines, size_t *outCount) {
+fpl_internal bool fpl__AddLineWhenAnyMatches(const char* line, const char** wildcards, const size_t maxWildcardCount, const size_t maxLineSize, const size_t maxLineCount, char** outLines, size_t* outCount) {
 	for (size_t i = 0; i < maxWildcardCount; ++i) {
-		const char *wildcard = wildcards[i];
+		const char* wildcard = wildcards[i];
 		if (fplIsStringMatchWildcard(line, wildcard)) {
 			size_t index = *outCount;
-			char *target = outLines[index];
+			char* target = outLines[index];
 			fplCopyString(line, target, maxLineSize);
 			*outCount = index + 1;
 			break;
@@ -6488,7 +6480,7 @@ fpl_internal bool fpl__AddLineWhenAnyMatches(const char *line, const char **wild
 	return(result);
 }
 
-fpl_internal size_t fpl__ParseTextFile(const char *filePath, const char **wildcards, const size_t maxWildcardCount, const size_t maxLineSize, const size_t maxLineCount, char **outLines) {
+fpl_internal size_t fpl__ParseTextFile(const char* filePath, const char** wildcards, const size_t maxWildcardCount, const size_t maxLineSize, const size_t maxLineCount, char** outLines) {
 	if (filePath == fpl_null || wildcards == fpl_null || maxWildcardCount == 0 || maxLineSize == 0 || maxLineCount == 0 || outLines == fpl_null) {
 		return(0);
 	}
@@ -6498,7 +6490,7 @@ fpl_internal size_t fpl__ParseTextFile(const char *filePath, const char **wildca
 	size_t result = 0;
 	fplFileHandle fileHandle = fplZeroInit;
 	if (fplOpenBinaryFile(filePath, &fileHandle)) {
-		char *line = (char *)fplStackAllocate(maxLineSize);
+		char* line = (char*)fplStackAllocate(maxLineSize);
 		char buffer[FPL_MAX_BUFFER_LENGTH];
 		const size_t maxBufferSize = fplArrayCount(buffer) - 1;
 		size_t bytesRead = 0;
@@ -6506,14 +6498,14 @@ fpl_internal size_t fpl__ParseTextFile(const char *filePath, const char **wildca
 		bool done = false;
 		while (!done && ((bytesRead = fplReadFileBlock(&fileHandle, maxBufferSize, &buffer[0], maxBufferSize)) > 0)) {
 			buffer[bytesRead] = 0;
-			char *start = &buffer[0];
-			char *p = start;
+			char* start = &buffer[0];
+			char* p = start;
 			size_t readPos = 0;
 			size_t lineSizeToRead = 0;
 			while (readPos < bytesRead) {
 				if (*p == '\n') {
 					size_t remainingLineBytes = maxLineSize - posLineBytes;
-					char *lineTargetP = line + posLineBytes;
+					char* lineTargetP = line + posLineBytes;
 					if (lineSizeToRead < remainingLineBytes) {
 						fplCopyStringLen(start, lineSizeToRead, lineTargetP, remainingLineBytes);
 					} else {
@@ -6538,7 +6530,7 @@ fpl_internal size_t fpl__ParseTextFile(const char *filePath, const char **wildca
 			}
 			if (lineSizeToRead > 0) {
 				size_t remainingLineBytes = maxLineSize - posLineBytes;
-				char *lineTargetP = line + posLineBytes;
+				char* lineTargetP = line + posLineBytes;
 				if (lineSizeToRead < remainingLineBytes) {
 					fplCopyStringLen(start, lineSizeToRead, lineTargetP, remainingLineBytes);
 					posLineBytes += lineSizeToRead;
@@ -6563,12 +6555,12 @@ fpl_internal size_t fpl__ParseTextFile(const char *filePath, const char **wildca
 	return(result);
 }
 
-fpl_internal void fpl__ParseVersionString(const char *versionStr, fplVersionInfo *versionInfo) {
+fpl_internal void fpl__ParseVersionString(const char* versionStr, fplVersionInfo* versionInfo) {
 	fplCopyString(versionStr, versionInfo->fullName, fplArrayCount(versionInfo->fullName));
 	if (versionStr != fpl_null) {
-		const char *p = versionStr;
+		const char* p = versionStr;
 		for (int i = 0; i < 4; ++i) {
-			const char *digitStart = p;
+			const char* digitStart = p;
 			while (*p >= '0' && *p <= '9') {
 				++p;
 			}
@@ -6600,9 +6592,8 @@ fpl_internal void fpl__ParseVersionString(const char *versionStr, fplVersionInfo
 // ############################################################################
 #if defined(FPL_PLATFORM_WINDOWS)
 #	include <windowsx.h>	// Macros for window messages
-#	include <ShlObj.h>		// SHGetFolderPath
-#	include <intrin.h>		// Interlock*
-#	include <Xinput.h>		// XInputGetState
+#	include <shlobj.h>		// SHGetFolderPath
+#	include <xinput.h>		// XInputGetState
 #	include <shellapi.h>	// HDROP
 
 #	if defined(FPL_IS_CPP)
@@ -6648,11 +6639,11 @@ FPL__FUNC_XINPUT_XInputGetCapabilities(fpl__Win32XInputGetCapabilitiesStub) {
 }
 typedef struct fpl__Win32XInputApi {
 	HMODULE xinputLibrary;
-	fpl__win32_func_XInputGetState *XInputGetState;
-	fpl__win32_func_XInputGetCapabilities *XInputGetCapabilities;
+	fpl__win32_func_XInputGetState* XInputGetState;
+	fpl__win32_func_XInputGetCapabilities* XInputGetCapabilities;
 } fpl__Win32XInputApi;
 
-fpl_internal void fpl__Win32UnloadXInputApi(fpl__Win32XInputApi *xinputApi) {
+fpl_internal void fpl__Win32UnloadXInputApi(fpl__Win32XInputApi* xinputApi) {
 	fplAssert(xinputApi != fpl_null);
 	if (xinputApi->xinputLibrary) {
 		FPL_LOG_DEBUG("XInput", "Unload XInput Library");
@@ -6663,7 +6654,7 @@ fpl_internal void fpl__Win32UnloadXInputApi(fpl__Win32XInputApi *xinputApi) {
 	}
 }
 
-fpl_internal void fpl__Win32LoadXInputApi(fpl__Win32XInputApi *xinputApi) {
+fpl_internal void fpl__Win32LoadXInputApi(fpl__Win32XInputApi* xinputApi) {
 	fplAssert(xinputApi != fpl_null);
 	const char* xinputFileNames[] = {
 		"xinput1_4.dll",
@@ -6672,7 +6663,7 @@ fpl_internal void fpl__Win32LoadXInputApi(fpl__Win32XInputApi *xinputApi) {
 	};
 	bool result = false;
 	for (uint32_t index = 0; index < fplArrayCount(xinputFileNames); ++index) {
-		const char *libName = xinputFileNames[index];
+		const char* libName = xinputFileNames[index];
 		fplClearStruct(xinputApi);
 		do {
 			HMODULE libHandle = fpl_null;
@@ -6872,100 +6863,100 @@ typedef FPL__FUNC_WIN32_PropVariantClear(fpl__win32_func_PropVariantClear);
 
 typedef struct fpl__Win32GdiApi {
 	HMODULE gdiLibrary;
-	fpl__win32_func_ChoosePixelFormat *ChoosePixelFormat;
-	fpl__win32_func_SetPixelFormat *SetPixelFormat;
-	fpl__win32_func_DescribePixelFormat *DescribePixelFormat;
-	fpl__win32_func_GetDeviceCaps *GetDeviceCaps;
-	fpl__win32_func_StretchDIBits *StretchDIBits;
-	fpl__win32_func_DeleteObject *DeleteObject;
-	fpl__win32_func_SwapBuffers *SwapBuffers;
-	fpl__win32_func_CreateDIBSection *CreateDIBSection;
-	fpl__win32_func_CreateBitmap *CreateBitmap;
+	fpl__win32_func_ChoosePixelFormat* ChoosePixelFormat;
+	fpl__win32_func_SetPixelFormat* SetPixelFormat;
+	fpl__win32_func_DescribePixelFormat* DescribePixelFormat;
+	fpl__win32_func_GetDeviceCaps* GetDeviceCaps;
+	fpl__win32_func_StretchDIBits* StretchDIBits;
+	fpl__win32_func_DeleteObject* DeleteObject;
+	fpl__win32_func_SwapBuffers* SwapBuffers;
+	fpl__win32_func_CreateDIBSection* CreateDIBSection;
+	fpl__win32_func_CreateBitmap* CreateBitmap;
 } fpl__Win32GdiApi;
 
 typedef struct fpl__Win32ShellApi {
 	HMODULE shellLibrary;
-	fpl__win32_func_SHGetFolderPathW *SHGetFolderPathW;
-	fpl__win32_func_DragQueryFileW *DragQueryFileW;
-	fpl__win32_func_DragAcceptFiles *DragAcceptFiles;
+	fpl__win32_func_SHGetFolderPathW* SHGetFolderPathW;
+	fpl__win32_func_DragQueryFileW* DragQueryFileW;
+	fpl__win32_func_DragAcceptFiles* DragAcceptFiles;
 } fpl__Win32ShellApi;
 
 typedef struct fpl__Win32UserApi {
 	HMODULE userLibrary;
-	fpl__win32_func_RegisterClassExW *RegisterClassExW;
-	fpl__win32_func_UnregisterClassW *UnregisterClassW;
-	fpl__win32_func_ShowWindow *ShowWindow;
-	fpl__win32_func_DestroyWindow *DestroyWindow;
-	fpl__win32_func_UpdateWindow *UpdateWindow;
-	fpl__win32_func_TranslateMessage *TranslateMessage;
-	fpl__win32_func_DispatchMessageW *DispatchMessageW;
-	fpl__win32_func_PeekMessageW *PeekMessageW;
-	fpl__win32_func_DefWindowProcW *DefWindowProcW;
-	fpl__win32_func_CreateWindowExW *CreateWindowExW;
-	fpl__win32_func_SetWindowPos *SetWindowPos;
-	fpl__win32_func_GetWindowPlacement *GetWindowPlacement;
-	fpl__win32_func_SetWindowPlacement *SetWindowPlacement;
-	fpl__win32_func_GetClientRect *GetClientRect;
-	fpl__win32_func_GetWindowRect *GetWindowRect;
-	fpl__win32_func_AdjustWindowRect *AdjustWindowRect;
-	fpl__win32_func_GetAsyncKeyState *GetAsyncKeyState;
-	fpl__win32_func_MapVirtualKeyW *MapVirtualKeyW;
-	fpl__win32_func_SetCursor *SetCursor;
-	fpl__win32_func_GetCursor *GetCursor;
-	fpl__win32_func_LoadCursorA *LoadCursorA;
-	fpl__win32_func_LoadCursorW *LoadCursorW;
-	fpl__win32_func_LoadIconA *LoadIconA;
-	fpl__win32_func_LoadIconW *LoadIconW;
-	fpl__win32_func_SetWindowTextW *SetWindowTextW;
-	fpl__win32_func_GetWindowTextW *GetWindowTextW;
-	fpl__win32_func_SetWindowLongW *SetWindowLongW;
-	fpl__win32_func_GetWindowLongW *GetWindowLongW;
+	fpl__win32_func_RegisterClassExW* RegisterClassExW;
+	fpl__win32_func_UnregisterClassW* UnregisterClassW;
+	fpl__win32_func_ShowWindow* ShowWindow;
+	fpl__win32_func_DestroyWindow* DestroyWindow;
+	fpl__win32_func_UpdateWindow* UpdateWindow;
+	fpl__win32_func_TranslateMessage* TranslateMessage;
+	fpl__win32_func_DispatchMessageW* DispatchMessageW;
+	fpl__win32_func_PeekMessageW* PeekMessageW;
+	fpl__win32_func_DefWindowProcW* DefWindowProcW;
+	fpl__win32_func_CreateWindowExW* CreateWindowExW;
+	fpl__win32_func_SetWindowPos* SetWindowPos;
+	fpl__win32_func_GetWindowPlacement* GetWindowPlacement;
+	fpl__win32_func_SetWindowPlacement* SetWindowPlacement;
+	fpl__win32_func_GetClientRect* GetClientRect;
+	fpl__win32_func_GetWindowRect* GetWindowRect;
+	fpl__win32_func_AdjustWindowRect* AdjustWindowRect;
+	fpl__win32_func_GetAsyncKeyState* GetAsyncKeyState;
+	fpl__win32_func_MapVirtualKeyW* MapVirtualKeyW;
+	fpl__win32_func_SetCursor* SetCursor;
+	fpl__win32_func_GetCursor* GetCursor;
+	fpl__win32_func_LoadCursorA* LoadCursorA;
+	fpl__win32_func_LoadCursorW* LoadCursorW;
+	fpl__win32_func_LoadIconA* LoadIconA;
+	fpl__win32_func_LoadIconW* LoadIconW;
+	fpl__win32_func_SetWindowTextW* SetWindowTextW;
+	fpl__win32_func_GetWindowTextW* GetWindowTextW;
+	fpl__win32_func_SetWindowLongW* SetWindowLongW;
+	fpl__win32_func_GetWindowLongW* GetWindowLongW;
 #if defined(FPL_ARCH_X64)
-	fpl__win32_func_SetWindowLongPtrW *SetWindowLongPtrW;
-	fpl__win32_func_GetWindowLongPtrW *GetWindowLongPtrW;
+	fpl__win32_func_SetWindowLongPtrW* SetWindowLongPtrW;
+	fpl__win32_func_GetWindowLongPtrW* GetWindowLongPtrW;
 #endif
-	fpl__win32_func_ReleaseDC *ReleaseDC;
-	fpl__win32_func_GetDC *GetDC;
-	fpl__win32_func_ChangeDisplaySettingsW *ChangeDisplaySettingsW;
-	fpl__win32_func_EnumDisplaySettingsW *EnumDisplaySettingsW;
-	fpl__win32_func_OpenClipboard *OpenClipboard;
-	fpl__win32_func_CloseClipboard *CloseClipboard;
-	fpl__win32_func_EmptyClipboard *EmptyClipboard;
-	fpl__win32_func_IsClipboardFormatAvailable *IsClipboardFormatAvailable;
-	fpl__win32_func_SetClipboardData *SetClipboardData;
-	fpl__win32_func_GetClipboardData *GetClipboardData;
-	fpl__win32_func_GetDesktopWindow *GetDesktopWindow;
-	fpl__win32_func_GetForegroundWindow *GetForegroundWindow;
-	fpl__win32_func_IsZoomed *IsZoomed;
-	fpl__win32_func_IsIconic *IsIconic;
-	fpl__win32_func_SendMessageW *SendMessageW;
-	fpl__win32_func_GetMonitorInfoW *GetMonitorInfoW;
-	fpl__win32_func_EnumDisplayMonitors *EnumDisplayMonitors;
-	fpl__win32_func_MonitorFromRect *MonitorFromRect;
-	fpl__win32_func_MonitorFromPoint *MonitorFromPoint;
-	fpl__win32_func_MonitorFromWindow *MonitorFromWindow;
-	fpl__win32_func_GetCursorPos *GetCursorPos;
-	fpl__win32_func_WindowFromPoint *WindowFromPoint;
-	fpl__win32_func_ClientToScreen *ClientToScreen;
-	fpl__win32_func_PtInRect *PtInRect;
-	fpl__win32_func_RegisterRawInputDevices *RegisterRawInputDevices;
-	fpl__win32_func_ClipCursor *ClipCursor;
-	fpl__win32_func_PostQuitMessage *PostQuitMessage;
-	fpl__win32_func_CreateIconIndirect *CreateIconIndirect;
-	fpl__win32_func_GetKeyboardLayout *GetKeyboardLayout;
-	fpl__win32_func_GetKeyState *GetKeyState;
-	fpl__win32_func_SetCapture *SetCapture;
-	fpl__win32_func_ReleaseCapture *ReleaseCapture;
-	fpl__win32_func_ScreenToClient *ScreenToClient;
+	fpl__win32_func_ReleaseDC* ReleaseDC;
+	fpl__win32_func_GetDC* GetDC;
+	fpl__win32_func_ChangeDisplaySettingsW* ChangeDisplaySettingsW;
+	fpl__win32_func_EnumDisplaySettingsW* EnumDisplaySettingsW;
+	fpl__win32_func_OpenClipboard* OpenClipboard;
+	fpl__win32_func_CloseClipboard* CloseClipboard;
+	fpl__win32_func_EmptyClipboard* EmptyClipboard;
+	fpl__win32_func_IsClipboardFormatAvailable* IsClipboardFormatAvailable;
+	fpl__win32_func_SetClipboardData* SetClipboardData;
+	fpl__win32_func_GetClipboardData* GetClipboardData;
+	fpl__win32_func_GetDesktopWindow* GetDesktopWindow;
+	fpl__win32_func_GetForegroundWindow* GetForegroundWindow;
+	fpl__win32_func_IsZoomed* IsZoomed;
+	fpl__win32_func_IsIconic* IsIconic;
+	fpl__win32_func_SendMessageW* SendMessageW;
+	fpl__win32_func_GetMonitorInfoW* GetMonitorInfoW;
+	fpl__win32_func_EnumDisplayMonitors* EnumDisplayMonitors;
+	fpl__win32_func_MonitorFromRect* MonitorFromRect;
+	fpl__win32_func_MonitorFromPoint* MonitorFromPoint;
+	fpl__win32_func_MonitorFromWindow* MonitorFromWindow;
+	fpl__win32_func_GetCursorPos* GetCursorPos;
+	fpl__win32_func_WindowFromPoint* WindowFromPoint;
+	fpl__win32_func_ClientToScreen* ClientToScreen;
+	fpl__win32_func_PtInRect* PtInRect;
+	fpl__win32_func_RegisterRawInputDevices* RegisterRawInputDevices;
+	fpl__win32_func_ClipCursor* ClipCursor;
+	fpl__win32_func_PostQuitMessage* PostQuitMessage;
+	fpl__win32_func_CreateIconIndirect* CreateIconIndirect;
+	fpl__win32_func_GetKeyboardLayout* GetKeyboardLayout;
+	fpl__win32_func_GetKeyState* GetKeyState;
+	fpl__win32_func_SetCapture* SetCapture;
+	fpl__win32_func_ReleaseCapture* ReleaseCapture;
+	fpl__win32_func_ScreenToClient* ScreenToClient;
 } fpl__Win32UserApi;
 
 typedef struct fpl__Win32OleApi {
 	HMODULE oleLibrary;
-	fpl__win32_func_CoInitializeEx *CoInitializeEx;
-	fpl__win32_func_CoUninitialize *CoUninitialize;
-	fpl__win32_func_CoCreateInstance *CoCreateInstance;
-	fpl__win32_func_CoTaskMemFree *CoTaskMemFree;
-	fpl__win32_func_PropVariantClear *PropVariantClear;
+	fpl__win32_func_CoInitializeEx* CoInitializeEx;
+	fpl__win32_func_CoUninitialize* CoUninitialize;
+	fpl__win32_func_CoCreateInstance* CoCreateInstance;
+	fpl__win32_func_CoTaskMemFree* CoTaskMemFree;
+	fpl__win32_func_PropVariantClear* PropVariantClear;
 } fpl__Win32OleApi;
 
 typedef struct fpl__Win32Api {
@@ -6976,7 +6967,7 @@ typedef struct fpl__Win32Api {
 	fpl_b32 isValid;
 } fpl__Win32Api;
 
-fpl_internal void fpl__Win32UnloadApi(fpl__Win32Api *wapi) {
+fpl_internal void fpl__Win32UnloadApi(fpl__Win32Api* wapi) {
 	fplAssert(wapi != fpl_null);
 	if (wapi->ole.oleLibrary != fpl_null) {
 		FreeLibrary(wapi->ole.oleLibrary);
@@ -6997,13 +6988,13 @@ fpl_internal void fpl__Win32UnloadApi(fpl__Win32Api *wapi) {
 	wapi->isValid = false;
 }
 
-fpl_internal bool fpl__Win32LoadApi(fpl__Win32Api *wapi) {
+fpl_internal bool fpl__Win32LoadApi(fpl__Win32Api* wapi) {
 	fplAssert(wapi != fpl_null);
 	bool result = false;
 	fplClearStruct(wapi);
 	do {
 		// Shell32
-		const char *shellLibraryName = "shell32.dll";
+		const char* shellLibraryName = "shell32.dll";
 		HMODULE shellLibrary = fpl_null;
 		FPL__WIN32_LOAD_LIBRARY(FPL__MODULE_WIN32, shellLibrary, shellLibraryName);
 		wapi->shell.shellLibrary = shellLibrary;
@@ -7012,7 +7003,7 @@ fpl_internal bool fpl__Win32LoadApi(fpl__Win32Api *wapi) {
 		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, shellLibrary, shellLibraryName, &wapi->shell, fpl__win32_func_DragAcceptFiles, DragAcceptFiles);
 
 		// User32
-		const char *userLibraryName = "user32.dll";
+		const char* userLibraryName = "user32.dll";
 		HMODULE userLibrary = fpl_null;
 		FPL__WIN32_LOAD_LIBRARY(FPL__MODULE_WIN32, userLibrary, userLibraryName);
 		wapi->user.userLibrary = userLibrary;
@@ -7084,7 +7075,7 @@ fpl_internal bool fpl__Win32LoadApi(fpl__Win32Api *wapi) {
 		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_ScreenToClient, ScreenToClient);
 
 		// GDI32
-		const char *gdiLibraryName = "gdi32.dll";
+		const char* gdiLibraryName = "gdi32.dll";
 		HMODULE gdiLibrary = fpl_null;
 		FPL__WIN32_LOAD_LIBRARY(FPL__MODULE_WIN32, gdiLibrary, gdiLibraryName);
 		wapi->gdi.gdiLibrary = gdiLibrary;
@@ -7099,7 +7090,7 @@ fpl_internal bool fpl__Win32LoadApi(fpl__Win32Api *wapi) {
 		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, gdiLibrary, gdiLibraryName, &wapi->gdi, fpl__win32_func_CreateBitmap, CreateBitmap);
 
 		// OLE32
-		const char *oleLibraryName = "ole32.dll";
+		const char* oleLibraryName = "ole32.dll";
 		HMODULE oleLibrary = fpl_null;
 		FPL__WIN32_LOAD_LIBRARY(FPL__MODULE_WIN32, oleLibrary, oleLibraryName);
 		wapi->ole.oleLibrary = oleLibrary;
@@ -7300,39 +7291,39 @@ typedef FPL__FUNC_PTHREAD_sem_post(fpl__pthread_func_sem_post);
 typedef FPL__FUNC_PTHREAD_sem_getvalue(fpl__pthread_func_sem_getvalue);
 
 typedef struct fpl__PThreadApi {
-	void *libHandle;
-	fpl__pthread_func_pthread_create *pthread_create;
-	fpl__pthread_func_pthread_kill *pthread_kill;
-	fpl__pthread_func_pthread_join *pthread_join;
-	fpl__pthread_func_pthread_exit *pthread_exit;
-	fpl__pthread_func_pthread_yield *pthread_yield;
-	fpl__pthread_func_pthread_timedjoin_np *pthread_timedjoin_np;
+	void* libHandle;
+	fpl__pthread_func_pthread_create* pthread_create;
+	fpl__pthread_func_pthread_kill* pthread_kill;
+	fpl__pthread_func_pthread_join* pthread_join;
+	fpl__pthread_func_pthread_exit* pthread_exit;
+	fpl__pthread_func_pthread_yield* pthread_yield;
+	fpl__pthread_func_pthread_timedjoin_np* pthread_timedjoin_np;
 
-	fpl__pthread_func_pthread_mutex_init *pthread_mutex_init;
-	fpl__pthread_func_pthread_mutex_destroy *pthread_mutex_destroy;
-	fpl__pthread_func_pthread_mutex_lock *pthread_mutex_lock;
-	fpl__pthread_func_pthread_mutex_trylock *pthread_mutex_trylock;
-	fpl__pthread_func_pthread_mutex_unlock *pthread_mutex_unlock;
+	fpl__pthread_func_pthread_mutex_init* pthread_mutex_init;
+	fpl__pthread_func_pthread_mutex_destroy* pthread_mutex_destroy;
+	fpl__pthread_func_pthread_mutex_lock* pthread_mutex_lock;
+	fpl__pthread_func_pthread_mutex_trylock* pthread_mutex_trylock;
+	fpl__pthread_func_pthread_mutex_unlock* pthread_mutex_unlock;
 
-	fpl__pthread_func_pthread_cond_init *pthread_cond_init;
-	fpl__pthread_func_pthread_cond_destroy *pthread_cond_destroy;
-	fpl__pthread_func_pthread_cond_timedwait *pthread_cond_timedwait;
-	fpl__pthread_func_pthread_cond_wait *pthread_cond_wait;
-	fpl__pthread_func_pthread_cond_broadcast *pthread_cond_broadcast;
-	fpl__pthread_func_pthread_cond_signal *pthread_cond_signal;
+	fpl__pthread_func_pthread_cond_init* pthread_cond_init;
+	fpl__pthread_func_pthread_cond_destroy* pthread_cond_destroy;
+	fpl__pthread_func_pthread_cond_timedwait* pthread_cond_timedwait;
+	fpl__pthread_func_pthread_cond_wait* pthread_cond_wait;
+	fpl__pthread_func_pthread_cond_broadcast* pthread_cond_broadcast;
+	fpl__pthread_func_pthread_cond_signal* pthread_cond_signal;
 
-	fpl__pthread_func_sem_init *sem_init;
-	fpl__pthread_func_sem_destroy *sem_destroy;
-	fpl__pthread_func_sem_wait *sem_wait;
-	fpl__pthread_func_sem_timedwait *sem_timedwait;
-	fpl__pthread_func_sem_trywait *sem_trywait;
-	fpl__pthread_func_sem_post *sem_post;
-	fpl__pthread_func_sem_getvalue *sem_getvalue;
+	fpl__pthread_func_sem_init* sem_init;
+	fpl__pthread_func_sem_destroy* sem_destroy;
+	fpl__pthread_func_sem_wait* sem_wait;
+	fpl__pthread_func_sem_timedwait* sem_timedwait;
+	fpl__pthread_func_sem_trywait* sem_trywait;
+	fpl__pthread_func_sem_post* sem_post;
+	fpl__pthread_func_sem_getvalue* sem_getvalue;
 } fpl__PThreadApi;
 
 #define FPL__POSIX_DL_LOADTYPE RTLD_NOW
 
-fpl_internal void fpl__PThreadUnloadApi(fpl__PThreadApi *pthreadApi) {
+fpl_internal void fpl__PThreadUnloadApi(fpl__PThreadApi* pthreadApi) {
 	fplAssert(pthreadApi != fpl_null);
 	if (pthreadApi->libHandle != fpl_null) {
 		dlclose(pthreadApi->libHandle);
@@ -7340,17 +7331,17 @@ fpl_internal void fpl__PThreadUnloadApi(fpl__PThreadApi *pthreadApi) {
 	fplClearStruct(pthreadApi);
 }
 
-fpl_internal bool fpl__PThreadLoadApi(fpl__PThreadApi *pthreadApi) {
+fpl_internal bool fpl__PThreadLoadApi(fpl__PThreadApi* pthreadApi) {
 	const char* libpthreadFileNames[] = {
 		"libpthread.so",
 		"libpthread.so.0",
 	};
 	bool result = false;
 	for (uint32_t index = 0; index < fplArrayCount(libpthreadFileNames); ++index) {
-		const char * libName = libpthreadFileNames[index];
+		const char* libName = libpthreadFileNames[index];
 		fplClearStruct(pthreadApi);
 		do {
-			void *libHandle = fpl_null;
+			void* libHandle = fpl_null;
 			FPL__POSIX_LOAD_LIBRARY(FPL__MODULE_PTHREAD, libHandle, libName);
 
 			// pthread_t
@@ -7443,8 +7434,8 @@ typedef struct fpl__LinuxAppState {
 
 // Forward declarations
 #if defined(FPL__ENABLE_WINDOW)
-fpl_internal void fpl__LinuxFreeGameControllers(fpl__LinuxGameControllersState *controllersState);
-fpl_internal void fpl__LinuxPollGameControllers(const fplSettings *settings, fpl__LinuxGameControllersState *controllersState, const bool useEvents);
+fpl_internal void fpl__LinuxFreeGameControllers(fpl__LinuxGameControllersState* controllersState);
+fpl_internal void fpl__LinuxPollGameControllers(const fplSettings* settings, fpl__LinuxGameControllersState* controllersState, const bool useEvents);
 #endif
 
 #endif // FPL_PLATFORM_LINUX
@@ -7572,56 +7563,56 @@ typedef FPL__FUNC_X11_XQueryPointer(fpl__func_x11_XQueryPointer);
 typedef FPL__FUNC_X11_XConvertSelection(fpl__func_x11_XConvertSelection);
 
 typedef struct fpl__X11Api {
-	void *libHandle;
-	fpl__func_x11_XFlush *XFlush;
-	fpl__func_x11_XFree *XFree;
-	fpl__func_x11_XOpenDisplay *XOpenDisplay;
-	fpl__func_x11_XCloseDisplay *XCloseDisplay;
-	fpl__func_x11_XDefaultScreen *XDefaultScreen;
-	fpl__func_x11_XRootWindow *XRootWindow;
-	fpl__func_x11_XCreateWindow *XCreateWindow;
-	fpl__func_x11_XDestroyWindow *XDestroyWindow;
-	fpl__func_x11_XCreateColormap *XCreateColormap;
-	fpl__func_x11_XFreeColormap *XFreeColormap;
-	fpl__func_x11_XDefaultColormap *XDefaultColormap;
-	fpl__func_x11_XMapWindow *XMapWindow;
-	fpl__func_x11_XUnmapWindow *XUnmapWindow;
-	fpl__func_x11_XStoreName *XStoreName;
-	fpl__func_x11_XDefaultVisual *XDefaultVisual;
-	fpl__func_x11_XDefaultDepth *XDefaultDepth;
-	fpl__func_x11_XInternAtom *XInternAtom;
-	fpl__func_x11_XSetWMProtocols *XSetWMProtocols;
-	fpl__func_x11_XPending *XPending;
-	fpl__func_x11_XSync *XSync;
-	fpl__func_x11_XNextEvent *XNextEvent;
-	fpl__func_x11_XPeekEvent *XPeekEvent;
-	fpl__func_x11_XEventsQueued *XEventsQueued;
-	fpl__func_x11_XGetWindowAttributes *XGetWindowAttributes;
-	fpl__func_x11_XResizeWindow *XResizeWindow;
-	fpl__func_x11_XMoveWindow *XMoveWindow;
-	fpl__func_x11_XGetKeyboardMapping *XGetKeyboardMapping;
-	fpl__func_x11_XLookupString *XLookupString;
-	fpl__func_x11_XSendEvent *XSendEvent;
-	fpl__func_x11_XMatchVisualInfo *XMatchVisualInfo;
-	fpl__func_x11_XCreateGC *XCreateGC;
-	fpl__func_x11_XGetImage *XGetImage;
-	fpl__func_x11_XPutImage *XPutImage;
-	fpl__func_x11_XMapRaised *XMapRaised;
-	fpl__func_x11_XCreateImage *XCreateImage;
-	fpl__func_x11_XCreatePixmap *XCreatePixmap;
-	fpl__func_x11_XSelectInput *XSelectInput;
-	fpl__func_x11_XGetWindowProperty *XGetWindowProperty;
-	fpl__func_x11_XChangeProperty *XChangeProperty;
-	fpl__func_x11_XDeleteProperty *XDeleteProperty;
-	fpl__func_x11_XStringListToTextProperty *XStringListToTextProperty;
-	fpl__func_x11_XSetWMIconName *XSetWMIconName;
-	fpl__func_x11_XSetWMName *XSetWMName;
-	fpl__func_x11_XQueryKeymap *XQueryKeymap;
-	fpl__func_x11_XQueryPointer *XQueryPointer;
-	fpl__func_x11_XConvertSelection *XConvertSelection;
+	void* libHandle;
+	fpl__func_x11_XFlush* XFlush;
+	fpl__func_x11_XFree* XFree;
+	fpl__func_x11_XOpenDisplay* XOpenDisplay;
+	fpl__func_x11_XCloseDisplay* XCloseDisplay;
+	fpl__func_x11_XDefaultScreen* XDefaultScreen;
+	fpl__func_x11_XRootWindow* XRootWindow;
+	fpl__func_x11_XCreateWindow* XCreateWindow;
+	fpl__func_x11_XDestroyWindow* XDestroyWindow;
+	fpl__func_x11_XCreateColormap* XCreateColormap;
+	fpl__func_x11_XFreeColormap* XFreeColormap;
+	fpl__func_x11_XDefaultColormap* XDefaultColormap;
+	fpl__func_x11_XMapWindow* XMapWindow;
+	fpl__func_x11_XUnmapWindow* XUnmapWindow;
+	fpl__func_x11_XStoreName* XStoreName;
+	fpl__func_x11_XDefaultVisual* XDefaultVisual;
+	fpl__func_x11_XDefaultDepth* XDefaultDepth;
+	fpl__func_x11_XInternAtom* XInternAtom;
+	fpl__func_x11_XSetWMProtocols* XSetWMProtocols;
+	fpl__func_x11_XPending* XPending;
+	fpl__func_x11_XSync* XSync;
+	fpl__func_x11_XNextEvent* XNextEvent;
+	fpl__func_x11_XPeekEvent* XPeekEvent;
+	fpl__func_x11_XEventsQueued* XEventsQueued;
+	fpl__func_x11_XGetWindowAttributes* XGetWindowAttributes;
+	fpl__func_x11_XResizeWindow* XResizeWindow;
+	fpl__func_x11_XMoveWindow* XMoveWindow;
+	fpl__func_x11_XGetKeyboardMapping* XGetKeyboardMapping;
+	fpl__func_x11_XLookupString* XLookupString;
+	fpl__func_x11_XSendEvent* XSendEvent;
+	fpl__func_x11_XMatchVisualInfo* XMatchVisualInfo;
+	fpl__func_x11_XCreateGC* XCreateGC;
+	fpl__func_x11_XGetImage* XGetImage;
+	fpl__func_x11_XPutImage* XPutImage;
+	fpl__func_x11_XMapRaised* XMapRaised;
+	fpl__func_x11_XCreateImage* XCreateImage;
+	fpl__func_x11_XCreatePixmap* XCreatePixmap;
+	fpl__func_x11_XSelectInput* XSelectInput;
+	fpl__func_x11_XGetWindowProperty* XGetWindowProperty;
+	fpl__func_x11_XChangeProperty* XChangeProperty;
+	fpl__func_x11_XDeleteProperty* XDeleteProperty;
+	fpl__func_x11_XStringListToTextProperty* XStringListToTextProperty;
+	fpl__func_x11_XSetWMIconName* XSetWMIconName;
+	fpl__func_x11_XSetWMName* XSetWMName;
+	fpl__func_x11_XQueryKeymap* XQueryKeymap;
+	fpl__func_x11_XQueryPointer* XQueryPointer;
+	fpl__func_x11_XConvertSelection* XConvertSelection;
 } fpl__X11Api;
 
-fpl_internal void fpl__UnloadX11Api(fpl__X11Api *x11Api) {
+fpl_internal void fpl__UnloadX11Api(fpl__X11Api* x11Api) {
 	fplAssert(x11Api != fpl_null);
 	if (x11Api->libHandle != fpl_null) {
 		dlclose(x11Api->libHandle);
@@ -7629,7 +7620,7 @@ fpl_internal void fpl__UnloadX11Api(fpl__X11Api *x11Api) {
 	fplClearStruct(x11Api);
 }
 
-fpl_internal bool fpl__LoadX11Api(fpl__X11Api *x11Api) {
+fpl_internal bool fpl__LoadX11Api(fpl__X11Api* x11Api) {
 	fplAssert(x11Api != fpl_null);
 	const char* libFileNames[] = {
 		"libX11.so",
@@ -7639,10 +7630,10 @@ fpl_internal bool fpl__LoadX11Api(fpl__X11Api *x11Api) {
 	};
 	bool result = false;
 	for (uint32_t index = 0; index < fplArrayCount(libFileNames); ++index) {
-		const char *libName = libFileNames[index];
+		const char* libName = libFileNames[index];
 		fplClearStruct(x11Api);
 		do {
-			void *libHandle = fpl_null;
+			void* libHandle = fpl_null;
 			FPL__POSIX_LOAD_LIBRARY(FPL__MODULE_X11, libHandle, libName);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XFlush, XFlush);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XFree, XFree);
@@ -7725,7 +7716,7 @@ typedef struct fpl__X11WindowState {
 	Window root;
 	Colormap colorMap;
 	Window window;
-	Visual *visual;
+	Visual* visual;
 	fpl__X11Xdnd xdnd;
 	Atom wmProtocols;
 	Atom wmDeleteWindow;
@@ -7757,7 +7748,7 @@ typedef struct fpl__X11WindowState {
 } fpl__X11WindowState;
 
 typedef struct fpl__X11PreWindowSetupResult {
-	Visual *visual;
+	Visual* visual;
 	int colorDepth;
 } fpl__X11PreWindowSetupResult;
 
@@ -7830,14 +7821,14 @@ typedef struct fpl__PlatformWindowState {
 
 #if defined(FPL__ENABLE_VIDEO)
 typedef struct fpl__PlatformVideoState {
-	void *mem; // Points to fpl__VideoState
+	void* mem; // Points to fpl__VideoState
 	size_t memSize;
 } fpl__PlatformVideoState;
 #endif // FPL__ENABLE_VIDEO
 
 #if defined(FPL__ENABLE_AUDIO)
 typedef struct fpl__PlatformAudioState {
-	void *mem; // Points to fpl__AudioState
+	void* mem; // Points to fpl__AudioState
 	size_t memSize;
 } fpl__PlatformAudioState;
 #endif
@@ -7886,7 +7877,7 @@ struct fpl__PlatformAppState {
 //
 // Internal memory allocation
 //
-fpl_internal void *fpl__AllocateMemory(const fplMemoryAllocationSettings *allocSettings, const size_t size, const size_t alignment) {
+fpl_internal void* fpl__AllocateMemory(const fplMemoryAllocationSettings* allocSettings, const size_t size, const size_t alignment) {
 	if (allocSettings->mode == fplMemoryAllocationMode_Custom) {
 		if (allocSettings->allocateCallback != fpl_null && allocSettings->releaseCallback != fpl_null) {
 			return allocSettings->allocateCallback(allocSettings->userData, size, alignment);
@@ -7895,7 +7886,7 @@ fpl_internal void *fpl__AllocateMemory(const fplMemoryAllocationSettings *allocS
 	return fplMemoryAlignedAllocate(size, alignment);
 }
 
-fpl_internal void fpl__ReleaseMemory(const fplMemoryAllocationSettings *allocSettings, void *ptr) {
+fpl_internal void fpl__ReleaseMemory(const fplMemoryAllocationSettings* allocSettings, void* ptr) {
 	if (allocSettings->mode == fplMemoryAllocationMode_Custom) {
 		if (allocSettings->allocateCallback != fpl_null && allocSettings->releaseCallback != fpl_null) {
 			allocSettings->releaseCallback(allocSettings->userData, ptr);
@@ -7915,7 +7906,7 @@ fpl_internal void fpl__ReleaseMemory(const fplMemoryAllocationSettings *allocSet
 // Internal window
 //
 #if defined(FPL__ENABLE_WINDOW)
-fpl_internal fplKey fpl__GetMappedKey(const fpl__PlatformWindowState *windowState, const uint64_t keyCode) {
+fpl_internal fplKey fpl__GetMappedKey(const fpl__PlatformWindowState* windowState, const uint64_t keyCode) {
 	fplKey result;
 	if (keyCode < fplArrayCount(windowState->keyMap))
 		result = windowState->keyMap[keyCode];
@@ -7925,14 +7916,14 @@ fpl_internal fplKey fpl__GetMappedKey(const fpl__PlatformWindowState *windowStat
 }
 
 fpl_internal void fpl__ClearInternalEvents() {
-	fpl__PlatformAppState *appState = fpl__global__AppState;
+	fpl__PlatformAppState* appState = fpl__global__AppState;
 	fplAssert(appState != fpl_null);
-	fpl__EventQueue *eventQueue = &appState->window.eventQueue;
+	fpl__EventQueue* eventQueue = &appState->window.eventQueue;
 	// @FIXME(final): Internal events are not thread-safe, introduce a proper thread-safe queue here!
 	uint32_t eventCount = eventQueue->pollIndex;
 	eventQueue->pollIndex = 0;
 	for (size_t eventIndex = 0; eventIndex < eventCount; ++eventIndex) {
-		fplEvent *ev = &eventQueue->events[eventIndex];
+		fplEvent* ev = &eventQueue->events[eventIndex];
 		if (ev->window.dropFiles.internalMemory.base != fpl_null) {
 			fpl__ReleaseDynamicMemory(ev->window.dropFiles.internalMemory.base);
 			fplClearStruct(&ev->window.dropFiles.internalMemory);
@@ -7941,11 +7932,11 @@ fpl_internal void fpl__ClearInternalEvents() {
 	eventQueue->pushCount = 0;
 }
 
-fpl_internal bool fpl__PollInternalEvent(fplEvent *ev) {
-	fpl__PlatformAppState *appState = fpl__global__AppState;
+fpl_internal bool fpl__PollInternalEvent(fplEvent* ev) {
+	fpl__PlatformAppState* appState = fpl__global__AppState;
 	bool result = false;
 	if (appState != fpl_null) {
-		fpl__EventQueue *eventQueue = &appState->window.eventQueue;
+		fpl__EventQueue* eventQueue = &appState->window.eventQueue;
 		// @FIXME(final): Internal events are not thread-safe, introduce a proper thread-safe queue here!
 		if (eventQueue->pollIndex < eventQueue->pushCount) {
 			uint32_t eventIndex = eventQueue->pollIndex++;
@@ -7959,10 +7950,10 @@ fpl_internal bool fpl__PollInternalEvent(fplEvent *ev) {
 	return(result);
 }
 
-fpl_internal void fpl__PushInternalEvent(const fplEvent *event) {
-	fpl__PlatformAppState *appState = fpl__global__AppState;
+fpl_internal void fpl__PushInternalEvent(const fplEvent* event) {
+	fpl__PlatformAppState* appState = fpl__global__AppState;
 	fplAssert(appState != fpl_null);
-	fpl__EventQueue *eventQueue = &appState->window.eventQueue;
+	fpl__EventQueue* eventQueue = &appState->window.eventQueue;
 	// @FIXME(final): Internal events are not thread-safe, introduce a proper thread-safe queue here!
 	if (eventQueue->pushCount < FPL__MAX_EVENT_COUNT) {
 		uint32_t eventIndex = eventQueue->pushCount++;
@@ -7995,7 +7986,7 @@ fpl_internal void fpl__PushWindowPositionEvent(const fplWindowEventType windowTy
 	fpl__PushInternalEvent(&newEvent);
 }
 
-fpl_internal void fpl__PushWindowDropFilesEvent(const char *filePath, const size_t fileCount, const char **files, const fplMemoryBlock *memory) {
+fpl_internal void fpl__PushWindowDropFilesEvent(const char* filePath, const size_t fileCount, const char** files, const fplMemoryBlock* memory) {
 	fplEvent newEvent = fplZeroInit;
 	newEvent.type = fplEventType_Window;
 	newEvent.window.type = fplWindowEventType_DroppedFiles;
@@ -8057,7 +8048,7 @@ fpl_internal void fpl__PushMouseMoveEvent(const int32_t x, const int32_t y) {
 	fpl__PushInternalEvent(&newEvent);
 }
 
-fpl_internal void fpl__HandleKeyboardButtonEvent(fpl__PlatformWindowState *windowState, const uint64_t keyCode, const fplKeyboardModifierFlags modifiers, const fplButtonState buttonState, const bool force) {
+fpl_internal void fpl__HandleKeyboardButtonEvent(fpl__PlatformWindowState* windowState, const uint64_t keyCode, const fplKeyboardModifierFlags modifiers, const fplButtonState buttonState, const bool force) {
 	fplKey mappedKey = fpl__GetMappedKey(windowState, keyCode);
 	bool repeat = false;
 	if (force) {
@@ -8076,23 +8067,23 @@ fpl_internal void fpl__HandleKeyboardButtonEvent(fpl__PlatformWindowState *windo
 	fpl__PushKeyboardButtonEvent(keyCode, mappedKey, modifiers, repeat ? fplButtonState_Repeat : buttonState);
 }
 
-fpl_internal void fpl__HandleKeyboardInputEvent(fpl__PlatformWindowState *windowState, const uint64_t keyCode, const uint32_t textCode) {
+fpl_internal void fpl__HandleKeyboardInputEvent(fpl__PlatformWindowState* windowState, const uint64_t keyCode, const uint32_t textCode) {
 	fplKey mappedKey = fpl__GetMappedKey(windowState, keyCode);
 	fpl__PushKeyboardInputEvent(textCode, mappedKey);
 }
 
-fpl_internal void fpl__HandleMouseButtonEvent(fpl__PlatformWindowState *windowState, const int32_t x, const int32_t y, const fplMouseButtonType mouseButton, const fplButtonState buttonState) {
+fpl_internal void fpl__HandleMouseButtonEvent(fpl__PlatformWindowState* windowState, const int32_t x, const int32_t y, const fplMouseButtonType mouseButton, const fplButtonState buttonState) {
 	if (mouseButton < fplArrayCount(windowState->mouseStates)) {
 		windowState->mouseStates[(int)mouseButton] = buttonState;
 	}
 	fpl__PushMouseButtonEvent(x, y, mouseButton, buttonState);
 }
 
-fpl_internal void fpl__HandleMouseMoveEvent(fpl__PlatformWindowState *windowState, const int32_t x, const int32_t y) {
+fpl_internal void fpl__HandleMouseMoveEvent(fpl__PlatformWindowState* windowState, const int32_t x, const int32_t y) {
 	fpl__PushMouseMoveEvent(x, y);
 }
 
-fpl_internal void fpl__HandleMouseWheelEvent(fpl__PlatformWindowState *windowState, const int32_t x, const int32_t y, const float wheelDelta) {
+fpl_internal void fpl__HandleMouseWheelEvent(fpl__PlatformWindowState* windowState, const int32_t x, const int32_t y, const float wheelDelta) {
 	fpl__PushMouseWheelEvent(x, y, wheelDelta);
 }
 
@@ -8113,8 +8104,8 @@ typedef FPL__FUNC_PRE_SETUP_WINDOW(callback_PreSetupWindow);
 typedef FPL__FUNC_POST_SETUP_WINDOW(callback_PostSetupWindow);
 
 typedef struct fpl__SetupWindowCallbacks {
-	callback_PreSetupWindow *preSetup;
-	callback_PostSetupWindow *postSetup;
+	callback_PreSetupWindow* preSetup;
+	callback_PostSetupWindow* postSetup;
 } fpl__SetupWindowCallbacks;
 #endif // FPL__ENABLE_WINDOW
 
@@ -8214,11 +8205,11 @@ typedef struct fpl__ErrorState {
 
 fpl_globalvar fpl__ErrorState fpl__global__LastErrorState = fplZeroInit;
 
-fpl_internal void fpl__PushError_Formatted(const char* funcName, const int lineNumber, const fplLogLevel level, const char *format, va_list argList) {
+fpl_internal void fpl__PushError_Formatted(const char* funcName, const int lineNumber, const fplLogLevel level, const char* format, va_list argList) {
 	fplAssert(format != fpl_null);
 
 	if (level <= fplLogLevel_Error) {
-		fpl__ErrorState *state = &fpl__global__LastErrorState;
+		fpl__ErrorState* state = &fpl__global__LastErrorState;
 		char buffer[FPL__MAX_LAST_ERROR_STRING_LENGTH] = fplZeroInit;
 		fplFormatStringArgs(buffer, fplArrayCount(buffer), format, argList);
 		size_t messageLen = fplGetStringLength(buffer);
@@ -8236,7 +8227,7 @@ fpl_internal void fpl__PushError_Formatted(const char* funcName, const int lineN
 #endif
 }
 
-fpl_internal void fpl__PushError(const char *funcName, const int lineNumber, const fplLogLevel level, const char *format, ...) {
+fpl_internal void fpl__PushError(const char* funcName, const int lineNumber, const fplLogLevel level, const char* format, ...) {
 	va_list valist;
 	va_start(valist, format);
 	fpl__PushError_Formatted(funcName, lineNumber, level, format, valist);
@@ -8247,22 +8238,22 @@ fpl_internal void fpl__PushError(const char *funcName, const int lineNumber, con
 // Argument Errors
 //
 
-fpl_internal void fpl__ArgumentInvalidError(const char *paramName) {
+fpl_internal void fpl__ArgumentInvalidError(const char* paramName) {
 	FPL__ERROR(FPL__MODULE_ARGS, "%s parameter are not valid", paramName);
 }
-fpl_internal void fpl__ArgumentNullError(const char *paramName) {
+fpl_internal void fpl__ArgumentNullError(const char* paramName) {
 	FPL__ERROR(FPL__MODULE_ARGS, "%s parameter are not allowed to be null", paramName);
 }
-fpl_internal void fpl__ArgumentZeroError(const char *paramName) {
+fpl_internal void fpl__ArgumentZeroError(const char* paramName) {
 	FPL__ERROR(FPL__MODULE_ARGS, "%s parameter must be greater than zero", paramName);
 }
-fpl_internal void fpl__ArgumentMinError(const char *paramName, const size_t value, const size_t minValue) {
+fpl_internal void fpl__ArgumentMinError(const char* paramName, const size_t value, const size_t minValue) {
 	FPL__ERROR(FPL__MODULE_ARGS, "%s parameter '%zu' must be greater or equal than '%zu'", paramName, value, minValue);
 }
-fpl_internal void fpl__ArgumentMaxError(const char *paramName, const size_t value, const size_t maxValue) {
+fpl_internal void fpl__ArgumentMaxError(const char* paramName, const size_t value, const size_t maxValue) {
 	FPL__ERROR(FPL__MODULE_ARGS, "%s parameter '%zu' must be less or equal than '%zu'", paramName, value, maxValue);
 }
-fpl_internal void fpl__ArgumentRangeError(const char *paramName, const size_t value, const size_t minValue, const size_t maxValue) {
+fpl_internal void fpl__ArgumentRangeError(const char* paramName, const size_t value, const size_t minValue, const size_t maxValue) {
 	FPL__ERROR(FPL__MODULE_ARGS, "%s parameter '%zu' must be in range of '%zu' to '%zu'", paramName, value, minValue, maxValue);
 }
 
@@ -8341,10 +8332,10 @@ typedef struct fpl__ThreadState {
 
 fpl_globalvar fpl__ThreadState fpl__global__ThreadState = fplZeroInit;
 
-fpl_internal fplThreadHandle *fpl__GetFreeThread() {
-	fplThreadHandle *result = fpl_null;
+fpl_internal fplThreadHandle* fpl__GetFreeThread() {
+	fplThreadHandle* result = fpl_null;
 	for (uint32_t index = 0; index < FPL__MAX_THREAD_COUNT; ++index) {
-		fplThreadHandle *thread = fpl__global__ThreadState.threads + index;
+		fplThreadHandle* thread = fpl__global__ThreadState.threads + index;
 		fplThreadState state = fplGetThreadState(thread);
 		if (state == fplThreadState_Stopped) {
 			result = thread;
@@ -8354,9 +8345,9 @@ fpl_internal fplThreadHandle *fpl__GetFreeThread() {
 	return(result);
 }
 
-fpl_internal bool fpl__IsEqualsMemory(const void *a, const void *b, const size_t size) {
-	const uint8_t *ptrA = (const uint8_t *)a;
-	const uint8_t *ptrB = (const uint8_t *)b;
+fpl_internal bool fpl__IsEqualsMemory(const void* a, const void* b, const size_t size) {
+	const uint8_t* ptrA = (const uint8_t*)a;
+	const uint8_t* ptrB = (const uint8_t*)b;
 	size_t s = size;
 	// @SPEED(final): This may be very slow, so we should use a faster function for comparing memory.
 	bool result = true;
@@ -8375,8 +8366,8 @@ fpl_internal bool fpl__IsEqualsMemory(const void *a, const void *b, const size_t
 	return(result);
 }
 
-fpl_internal bool fpl__IsZeroMemory(const void *memory, const size_t size) {
-	const uint8_t *ptr = (const uint8_t *)memory;
+fpl_internal bool fpl__IsZeroMemory(const void* memory, const size_t size) {
+	const uint8_t* ptr = (const uint8_t*)memory;
 	// @SPEED(final): This may be very slow, so we should use a faster function for comparing memory.
 	bool result = true;
 #if 1
@@ -8400,15 +8391,15 @@ fpl_internal bool fpl__IsZeroMemory(const void *memory, const size_t size) {
 #if !defined(FPL__COMMON_STRINGS_DEFINED)
 #define FPL__COMMON_STRINGS_DEFINED
 
-fpl_common_api bool fplIsStringMatchWildcard(const char *source, const char *wildcard) {
+fpl_common_api bool fplIsStringMatchWildcard(const char* source, const char* wildcard) {
 	// Supported patterns: 
 	// * = Match zero or more characters
 	// ? = Match one character
 	if (source == fpl_null || wildcard == fpl_null) {
 		return false;
 	}
-	const char *s = source;
-	const char *w = wildcard;
+	const char* s = source;
+	const char* w = wildcard;
 	while (*w) {
 		if (*w == '?') {
 			if (!*s) {
@@ -8436,7 +8427,7 @@ fpl_common_api bool fplIsStringMatchWildcard(const char *source, const char *wil
 	return true;
 }
 
-fpl_common_api bool fplIsStringEqualLen(const char *a, const size_t aLen, const char *b, const size_t bLen) {
+fpl_common_api bool fplIsStringEqualLen(const char* a, const size_t aLen, const char* b, const size_t bLen) {
 	if ((a == fpl_null) || (b == fpl_null)) {
 		return false;
 	}
@@ -8455,7 +8446,7 @@ fpl_common_api bool fplIsStringEqualLen(const char *a, const size_t aLen, const 
 	return(result);
 }
 
-fpl_common_api bool fplIsStringEqual(const char *a, const char *b) {
+fpl_common_api bool fplIsStringEqual(const char* a, const char* b) {
 	if ((a == fpl_null) || (b == fpl_null)) {
 		return (a == b);
 	}
@@ -8475,15 +8466,15 @@ fpl_common_api bool fplIsStringEqual(const char *a, const char *b) {
 	return(result);
 }
 
-fpl_common_api char *fplEnforcePathSeparatorLen(char *path, size_t maxPathLen) {
+fpl_common_api char* fplEnforcePathSeparatorLen(char* path, size_t maxPathLen) {
 	FPL__CheckArgumentNull(path, fpl_null);
 	FPL__CheckArgumentZero(maxPathLen, fpl_null);
-	char *end = path;
+	char* end = path;
 	while (*end) {
 		end++;
 	}
 	size_t len = end - path;
-	char *result = fpl_null;
+	char* result = fpl_null;
 	if (len > 0) {
 		if (path[len - 1] != FPL_PATH_SEPARATOR) {
 			if (len + 1 <= maxPathLen) {
@@ -8500,14 +8491,14 @@ fpl_common_api char *fplEnforcePathSeparatorLen(char *path, size_t maxPathLen) {
 	return(result);
 }
 
-fpl_common_api char *fplEnforcePathSeparator(char *path) {
+fpl_common_api char* fplEnforcePathSeparator(char* path) {
 	FPL__CheckArgumentNull(path, fpl_null);
-	char *end = path;
+	char* end = path;
 	while (*end) {
 		end++;
 	}
 	size_t len = end - path;
-	char *result = fpl_null;
+	char* result = fpl_null;
 	if (len > 0) {
 		if (path[len - 1] != FPL_PATH_SEPARATOR) {
 			path[len] = FPL_PATH_SEPARATOR;
@@ -8520,7 +8511,7 @@ fpl_common_api char *fplEnforcePathSeparator(char *path) {
 	return(result);
 }
 
-fpl_common_api char *fplStringAppendLen(const char *appended, const size_t appendedLen, char *buffer, size_t maxBufferLen) {
+fpl_common_api char* fplStringAppendLen(const char* appended, const size_t appendedLen, char* buffer, size_t maxBufferLen) {
 	FPL__CheckArgumentNull(appended, fpl_null);
 	FPL__CheckArgumentZero(maxBufferLen, fpl_null);
 	if (appendedLen == 0) {
@@ -8529,19 +8520,19 @@ fpl_common_api char *fplStringAppendLen(const char *appended, const size_t appen
 	size_t curBufferLen = fplGetStringLength(buffer);
 	size_t requiredSize = curBufferLen + appendedLen + 1;
 	FPL__CheckArgumentMin(maxBufferLen, requiredSize, fpl_null);
-	char *str = buffer + curBufferLen;
+	char* str = buffer + curBufferLen;
 	size_t remainingBufferSize = maxBufferLen - (curBufferLen > 0 ? curBufferLen + 1 : 0);
 	fplCopyStringLen(appended, appendedLen, str, remainingBufferSize);
 	return(str);
 }
 
-fpl_common_api char *fplStringAppend(const char *appended, char *buffer, size_t maxBufferLen) {
+fpl_common_api char* fplStringAppend(const char* appended, char* buffer, size_t maxBufferLen) {
 	size_t appendedLen = fplGetStringLength(appended);
-	char *result = fplStringAppendLen(appended, appendedLen, buffer, maxBufferLen);
+	char* result = fplStringAppendLen(appended, appendedLen, buffer, maxBufferLen);
 	return(result);
 }
 
-fpl_common_api size_t fplGetStringLength(const char *str) {
+fpl_common_api size_t fplGetStringLength(const char* str) {
 	uint32_t result = 0;
 	if (str != fpl_null) {
 		while (*str++) {
@@ -8551,12 +8542,12 @@ fpl_common_api size_t fplGetStringLength(const char *str) {
 	return(result);
 }
 
-fpl_common_api char *fplCopyStringLen(const char *source, const size_t sourceLen, char *dest, const size_t maxDestLen) {
+fpl_common_api char* fplCopyStringLen(const char* source, const size_t sourceLen, char* dest, const size_t maxDestLen) {
 	if (source != fpl_null && dest != fpl_null) {
 		size_t requiredLen = sourceLen + 1;
 		FPL__CheckArgumentMin(maxDestLen, requiredLen, fpl_null);
 		fplMemoryCopy(source, sourceLen * sizeof(char), dest);
-		char *result = dest + sourceLen;
+		char* result = dest + sourceLen;
 		*result = 0;
 		return(result);
 	} else {
@@ -8564,8 +8555,8 @@ fpl_common_api char *fplCopyStringLen(const char *source, const size_t sourceLen
 	}
 }
 
-fpl_common_api char *fplCopyString(const char *source, char *dest, const size_t maxDestLen) {
-	char *result = fpl_null;
+fpl_common_api char* fplCopyString(const char* source, char* dest, const size_t maxDestLen) {
+	char* result = fpl_null;
 	if (source != fpl_null) {
 		size_t sourceLen = fplGetStringLength(source);
 		result = fplCopyStringLen(source, sourceLen, dest, maxDestLen);
@@ -8573,7 +8564,7 @@ fpl_common_api char *fplCopyString(const char *source, char *dest, const size_t 
 	return(result);
 }
 
-fpl_common_api char *fplFormatStringArgs(char *destBuffer, const size_t maxDestBufferLen, const char *format, va_list argList) {
+fpl_common_api char* fplFormatStringArgs(char* destBuffer, const size_t maxDestBufferLen, const char* format, va_list argList) {
 	FPL__CheckArgumentNull(destBuffer, fpl_null);
 	FPL__CheckArgumentZero(maxDestBufferLen, fpl_null);
 	FPL__CheckArgumentNull(format, fpl_null);
@@ -8602,22 +8593,22 @@ fpl_common_api char *fplFormatStringArgs(char *destBuffer, const size_t maxDestB
 	return(&destBuffer[charCount]);
 }
 
-fpl_common_api char *fplFormatString(char *destBuffer, const size_t maxDestBufferLen, const char *format, ...) {
+fpl_common_api char* fplFormatString(char* destBuffer, const size_t maxDestBufferLen, const char* format, ...) {
 	FPL__CheckArgumentNull(destBuffer, fpl_null);
 	FPL__CheckArgumentZero(maxDestBufferLen, fpl_null);
 	FPL__CheckArgumentNull(format, fpl_null);
 	va_list argList;
 	va_start(argList, format);
-	char *result = fplFormatStringArgs(destBuffer, maxDestBufferLen, format, argList);
+	char* result = fplFormatStringArgs(destBuffer, maxDestBufferLen, format, argList);
 	va_end(argList);
 	return(result);
 }
 
-fpl_common_api char *fplS32ToString(const int32_t value, char *buffer, const size_t maxBufferLen) {
+fpl_common_api char* fplS32ToString(const int32_t value, char* buffer, const size_t maxBufferLen) {
 	FPL__CheckArgumentNull(buffer, fpl_null);
 	FPL__CheckArgumentZero(maxBufferLen, fpl_null);
 	int32_t v = value;
-	char *p = buffer;
+	char* p = buffer;
 	if (v < 0) {
 		*p++ = '-';
 		v = -v;
@@ -8630,7 +8621,7 @@ fpl_common_api char *fplS32ToString(const int32_t value, char *buffer, const siz
 	size_t digitCount = (p - buffer);
 	FPL__CheckArgumentMin(maxBufferLen, digitCount + 1, fpl_null);
 	*p = 0;
-	const char *digits = "0123456789";
+	const char* digits = "0123456789";
 	v = value;
 	do {
 		*--p = digits[v % 10];
@@ -8639,10 +8630,10 @@ fpl_common_api char *fplS32ToString(const int32_t value, char *buffer, const siz
 	return (p);
 }
 
-fpl_common_api int32_t fplStringToS32Len(const char *str, const size_t len) {
+fpl_common_api int32_t fplStringToS32Len(const char* str, const size_t len) {
 	FPL__CheckArgumentNull(str, 0);
 	FPL__CheckArgumentZero(len, 0);
-	const char *p = str;
+	const char* p = str;
 	bool isNegative = false;
 	if (*p == '-') {
 		if (len == 1) {
@@ -8666,7 +8657,7 @@ fpl_common_api int32_t fplStringToS32Len(const char *str, const size_t len) {
 	return(result);
 }
 
-fpl_common_api int32_t fplStringToS32(const char *str) {
+fpl_common_api int32_t fplStringToS32(const char* str) {
 	size_t len = fplGetStringLength(str);
 	int32_t result = fplStringToS32Len(str, len);
 	return(result);
@@ -8679,24 +8670,24 @@ fpl_common_api int32_t fplStringToS32(const char *str) {
 #if !defined(FPL__COMMON_CONSOLE_DEFINED)
 #define FPL__COMMON_CONSOLE_DEFINED
 
-fpl_common_api void fplConsoleFormatOut(const char *format, ...) {
+fpl_common_api void fplConsoleFormatOut(const char* format, ...) {
 	FPL__CheckArgumentNullNoRet(format);
 	char buffer[FPL_MAX_BUFFER_LENGTH];
 	va_list argList;
 	va_start(argList, format);
-	char *str = fplFormatStringArgs(buffer, fplArrayCount(buffer), format, argList);
+	char* str = fplFormatStringArgs(buffer, fplArrayCount(buffer), format, argList);
 	va_end(argList);
 	if (str != fpl_null) {
 		fplConsoleOut(buffer);
 	}
 }
 
-fpl_common_api void fplConsoleFormatError(const char *format, ...) {
+fpl_common_api void fplConsoleFormatError(const char* format, ...) {
 	FPL__CheckArgumentNullNoRet(format);
 	char buffer[FPL_MAX_BUFFER_LENGTH];
 	va_list argList;
 	va_start(argList, format);
-	char *str = fplFormatStringArgs(buffer, fplArrayCount(buffer), format, argList);
+	char* str = fplFormatStringArgs(buffer, fplArrayCount(buffer), format, argList);
 	va_end(argList);
 	if (str != fpl_null) {
 		fplConsoleError(buffer);
@@ -8710,7 +8701,7 @@ fpl_common_api void fplConsoleFormatError(const char *format, ...) {
 #if !defined(FPL__COMMON_MEMORY_DEFINED)
 #define FPL__COMMON_MEMORY_DEFINED
 
-fpl_common_api void *fplMemoryAlignedAllocate(const size_t size, const size_t alignment) {
+fpl_common_api void* fplMemoryAlignedAllocate(const size_t size, const size_t alignment) {
 	FPL__CheckArgumentZero(size, fpl_null);
 	FPL__CheckArgumentZero(alignment, fpl_null);
 	if (alignment & (alignment - 1)) {
@@ -8718,27 +8709,27 @@ fpl_common_api void *fplMemoryAlignedAllocate(const size_t size, const size_t al
 		return fpl_null;
 	}
 	// Allocate empty memory to hold a size of a pointer + alignment padding + the actual data
-	size_t newSize = sizeof(void *) + (alignment << 1) + size;
-	void *basePtr = fplMemoryAllocate(newSize);
+	size_t newSize = sizeof(void*) + (alignment << 1) + size;
+	void* basePtr = fplMemoryAllocate(newSize);
 	// The resulting address starts after the stored base pointer
-	void *alignedPtr = (void *)((uint8_t *)basePtr + sizeof(void *));
+	void* alignedPtr = (void*)((uint8_t*)basePtr + sizeof(void*));
 	// Move the resulting address to a aligned one when not aligned
 	uintptr_t mask = alignment - 1;
 	if ((alignment > 1) && (((uintptr_t)alignedPtr & mask) != 0)) {
 		uintptr_t offset = ((uintptr_t)alignment - ((uintptr_t)alignedPtr & mask));
-		alignedPtr = (uint8_t *)alignedPtr + offset;
+		alignedPtr = (uint8_t*)alignedPtr + offset;
 	}
 	// Write the base pointer before the alignment pointer
-	*(void **)((void *)((uint8_t *)alignedPtr - sizeof(void *))) = basePtr;
+	*(void**)((void*)((uint8_t*)alignedPtr - sizeof(void*))) = basePtr;
 	// Ensure alignment
 	fplAssert(fplIsAligned(alignedPtr, alignment));
 	return(alignedPtr);
 }
 
-fpl_common_api void fplMemoryAlignedFree(void *ptr) {
+fpl_common_api void fplMemoryAlignedFree(void* ptr) {
 	FPL__CheckArgumentNullNoRet(ptr);
 	// Free the base pointer which is stored to the left from the given pointer
-	void *basePtr = *(void **)((void *)((uint8_t *)ptr - sizeof(void *)));
+	void* basePtr = *(void**)((void*)((uint8_t*)ptr - sizeof(void*)));
 	fplAssert(basePtr != fpl_null);
 	fplMemoryFree(basePtr);
 }
@@ -8750,7 +8741,7 @@ fpl_common_api void fplMemoryAlignedFree(void *ptr) {
 #define FPL__MEM_SHIFT_16 1
 #define FPL__MEM_MASK_16 0x0000000
 
-fpl_common_api void fplMemorySet(void *mem, const uint8_t value, const size_t size) {
+fpl_common_api void fplMemorySet(void* mem, const uint8_t value, const size_t size) {
 	FPL__CheckArgumentNullNoRet(mem);
 	FPL__CheckArgumentZeroNoRet(size);
 	if (size % 8 == 0) {
@@ -8764,7 +8755,7 @@ fpl_common_api void fplMemorySet(void *mem, const uint8_t value, const size_t si
 	}
 }
 
-fpl_common_api void fplMemoryClear(void *mem, const size_t size) {
+fpl_common_api void fplMemoryClear(void* mem, const size_t size) {
 	FPL__CheckArgumentNullNoRet(mem);
 	FPL__CheckArgumentZeroNoRet(size);
 	if (size % 8 == 0) {
@@ -8778,7 +8769,7 @@ fpl_common_api void fplMemoryClear(void *mem, const size_t size) {
 	}
 }
 
-fpl_common_api void fplMemoryCopy(const void *sourceMem, const size_t sourceSize, void *targetMem) {
+fpl_common_api void fplMemoryCopy(const void* sourceMem, const size_t sourceSize, void* targetMem) {
 	FPL__CheckArgumentNullNoRet(sourceMem);
 	FPL__CheckArgumentZeroNoRet(sourceSize);
 	FPL__CheckArgumentNullNoRet(targetMem);
@@ -8798,19 +8789,31 @@ fpl_common_api void fplMemoryCopy(const void *sourceMem, const size_t sourceSize
 // Common Hardware
 //
 // https://github.com/google/cpu_features
+
+//
+// X86/X64 only (CPUID, XCR0, RDTSC)
+//
 #if defined(FPL_ARCH_X64) || defined(FPL_ARCH_X86)
 
 #	define FPL__CPU_BRAND_BUFFER_SIZE 0x40
 
 #	if defined(FPL_COMPILER_MSVC)
+
+		// CPUID/XCR0 for MSVC
 #		if _MSC_VER >= 1400
 #			define fpl__m_CPUID(outLeaf, functionId) __cpuid((int *)(outLeaf)->raw, (int)(functionId))
 #		endif
 #		if _MSC_VER >= 1600
 #			define fpl__m_GetXCR0() ((uint64_t)_xgetbv(0))
 #		endif
+
+		// RDTSC for MSVC
+#		define fpl__m_RDTSC() ((uint64_t)__rdtsc())
+
 #	elif defined(FPL_COMPILER_GCC) ||defined(FPL_COMPILER_CLANG)
-fpl_internal void fpl__m_CPUID(fplCPUIDLeaf *outLeaf, const uint32_t functionId) {
+
+		// CPUID for GCC/CLANG
+fpl_internal void fpl__m_CPUID(fplCPUIDLeaf* outLeaf, const uint32_t functionId) {
 	int eax = 0, ebx = 0, ecx = 0, edx = 0;
 	__cpuid_count(functionId, 0, eax, ebx, ecx, edx);
 	outLeaf->eax = eax;
@@ -8818,14 +8821,32 @@ fpl_internal void fpl__m_CPUID(fplCPUIDLeaf *outLeaf, const uint32_t functionId)
 	outLeaf->ecx = ecx;
 	outLeaf->edx = edx;
 }
+
+		// XCR0 for GCC/CLANG
 fpl_internal uint64_t fpl__m_GetXCR0(void) {
 	uint32_t eax, edx;
 	__asm(".byte 0x0F, 0x01, 0xd0" : "=a"(eax), "=d"(edx) : "c"(0));
 	return eax;
 }
+
+		// RDTSC for non-MSVC
+#		if defined(FPL_ARCH_X86)
+fpl_force_inline uint64_t fpl__m_RDTSC(void) {
+	unsigned long long int result;
+	__asm__ volatile (".byte 0x0f, 0x31" : "=A" (result));
+	return((uint64_t)result);
+}
+#		elif defined(FPL_ARCH_X64)
+fpl_force_inline uint64_t fpl__m_RDTSC(void) {
+	unsigned hi, lo;
+	__asm__ __volatile__("rdtsc" : "=a"(lo), "=d"(hi));
+	uint64_t result = (uint64_t)(((unsigned long long)lo) | (((unsigned long long)hi) << 32));
+	return (result);
+}
+#		endif
 #	endif
 
-fpl_common_api void fplCPUID(fplCPUIDLeaf *outLeaf, const uint32_t functionId) {
+fpl_common_api void fplCPUID(fplCPUIDLeaf* outLeaf, const uint32_t functionId) {
 #if defined(fpl__m_CPUID)
 	fpl__m_CPUID(outLeaf, functionId);
 #endif
@@ -8840,7 +8861,16 @@ fpl_common_api uint64_t fplGetXCR0() {
 #endif
 }
 
-fpl_common_api bool fplGetProcessorCapabilities(fplProcessorCapabilities *outCaps) {
+fpl_common_api uint64_t fplRDTSC() {
+#if defined(fpl__m_RDTSC)
+	uint64_t result = fpl__m_RDTSC();
+	return(result);
+#else
+	return(0ULL);
+#endif
+}
+
+fpl_common_api bool fplGetProcessorCapabilities(fplProcessorCapabilities* outCaps) {
 	fplClearStruct(outCaps);
 
 	fplCPUIDLeaf info0 = fplZeroInit;
@@ -8899,7 +8929,7 @@ fpl_common_api bool fplGetProcessorCapabilities(fplProcessorCapabilities *outCap
 	return(true);
 }
 
-fpl_common_api char *fplGetProcessorName(char *destBuffer, const size_t maxDestBufferLen) {
+fpl_common_api char* fplGetProcessorName(char* destBuffer, const size_t maxDestBufferLen) {
 	FPL__CheckArgumentNull(destBuffer, fpl_null);
 	size_t requiredDestBufferLen = FPL__CPU_BRAND_BUFFER_SIZE + 1;
 	FPL__CheckArgumentMin(maxDestBufferLen, requiredDestBufferLen, fpl_null);
@@ -8918,22 +8948,17 @@ fpl_common_api char *fplGetProcessorName(char *destBuffer, const size_t maxDestB
 	}
 	// Copy result back to the dest buffer
 	size_t sourceLen = fplGetStringLength(cpuBrandBuffer);
-	char *result = fplCopyStringLen(cpuBrandBuffer, sourceLen, destBuffer, maxDestBufferLen);
+	char* result = fplCopyStringLen(cpuBrandBuffer, sourceLen, destBuffer, maxDestBufferLen);
 
 	return(result);
 }
-
-// Do not publish this macros to the outside
-#	undef FPL__CPU_BRAND_BUFFER_SIZE
-#	undef fplCPUID
-#	undef fplGetXCR0
 #else
-fpl_common_api bool fplGetProcessorCapabilities(fplProcessorCapabilities *outCaps) {
+fpl_common_api bool fplGetProcessorCapabilities(fplProcessorCapabilities* outCaps) {
 	// @IMPLEMENT(final): fplGetProcessorCapabilities for non-x86 architectures
 	return(false);
 }
 
-fpl_common_api char *fplGetProcessorName(char *destBuffer, const size_t maxDestBufferLen) {
+fpl_common_api char* fplGetProcessorName(char* destBuffer, const size_t maxDestBufferLen) {
 	// @IMPLEMENT(final): fplGetProcessorName for non-x86 architectures
 	return(fpl_null);
 }
@@ -8945,182 +8970,182 @@ fpl_common_api char *fplGetProcessorName(char *destBuffer, const size_t maxDestB
 #if !defined(FPL__COMMON_ATOMICS_DEFINED)
 #define FPL__COMMON_ATOMICS_DEFINED
 
-fpl_common_api size_t fplAtomicFetchAndAddSize(volatile size_t *dest, const size_t addend) {
+fpl_common_api size_t fplAtomicFetchAndAddSize(volatile size_t* dest, const size_t addend) {
 	fplAssert(dest != fpl_null);
 #if defined(FPL_CPU_64BIT)
-	size_t result = (size_t)fplAtomicFetchAndAddU64((volatile uint64_t *)dest, (uint64_t)addend);
+	size_t result = (size_t)fplAtomicFetchAndAddU64((volatile uint64_t*)dest, (uint64_t)addend);
 #elif defined(FPL_CPU_32BIT)
-	size_t result = (size_t)fplAtomicFetchAndAddU32((volatile uint32_t *)dest, (uint32_t)addend);
+	size_t result = (size_t)fplAtomicFetchAndAddU32((volatile uint32_t*)dest, (uint32_t)addend);
 #else
 #	error "Unsupported architecture/platform!"
 #endif // FPL_ARCH
 	return (result);
 }
 
-fpl_common_api void *fplAtomicFetchAndAddPtr(volatile void **dest, const intptr_t addend) {
+fpl_common_api void* fplAtomicFetchAndAddPtr(volatile void** dest, const intptr_t addend) {
 	fplAssert(dest != fpl_null);
 #if defined(FPL_CPU_64BIT)
-	void *result = (void *)fplAtomicFetchAndAddS64((volatile int64_t *)dest, (int64_t)addend);
+	void* result = (void*)fplAtomicFetchAndAddS64((volatile int64_t*)dest, (int64_t)addend);
 #elif defined(FPL_CPU_32BIT)
-	void *result = (void *)fplAtomicFetchAndAddS32((volatile int32_t *)dest, (int32_t)addend);
+	void* result = (void*)fplAtomicFetchAndAddS32((volatile int32_t*)dest, (int32_t)addend);
 #else
 #	error "Unsupported architecture/platform!"
 #endif // FPL_ARCH
 	return (result);
 }
 
-fpl_common_api size_t fplAtomicAddAndFetchSize(volatile size_t *value, const size_t addend) {
+fpl_common_api size_t fplAtomicAddAndFetchSize(volatile size_t* value, const size_t addend) {
 	fplAssert(value != fpl_null);
 #if defined(FPL_CPU_64BIT)
-	size_t result = (size_t)fplAtomicAddAndFetchU64((volatile uint64_t *)value, (uint64_t)addend);
+	size_t result = (size_t)fplAtomicAddAndFetchU64((volatile uint64_t*)value, (uint64_t)addend);
 #elif defined(FPL_CPU_32BIT)
-	size_t result = (size_t)fplAtomicAddAndFetchU32((volatile uint32_t *)value, (uint32_t)addend);
+	size_t result = (size_t)fplAtomicAddAndFetchU32((volatile uint32_t*)value, (uint32_t)addend);
 #else
 #	error "Unsupported architecture/platform!"
 #endif // FPL_ARCH
 	return (result);
 }
 
-fpl_common_api void *fplAtomicAddAndFetchPtr(volatile void **value, const intptr_t addend) {
+fpl_common_api void* fplAtomicAddAndFetchPtr(volatile void** value, const intptr_t addend) {
 	fplAssert(value != fpl_null);
 #if defined(FPL_CPU_64BIT)
-	void *result = (void *)fplAtomicAddAndFetchU64((volatile uint64_t *)value, (uint64_t)addend);
+	void* result = (void*)fplAtomicAddAndFetchU64((volatile uint64_t*)value, (uint64_t)addend);
 #elif defined(FPL_CPU_32BIT)
-	void *result = (void *)fplAtomicAddAndFetchU32((volatile uint32_t *)value, (uint32_t)addend);
+	void* result = (void*)fplAtomicAddAndFetchU32((volatile uint32_t*)value, (uint32_t)addend);
 #else
 #	error "Unsupported architecture/platform!"
 #endif // FPL_ARCH
 	return (result);
 }
 
-fpl_common_api size_t fplAtomicIncrementSize(volatile size_t *value) {
+fpl_common_api size_t fplAtomicIncrementSize(volatile size_t* value) {
 	fplAssert(value != fpl_null);
 #if defined(FPL_CPU_64BIT)
-	size_t result = (size_t)fplAtomicIncrementU64((volatile uint64_t *)value);
+	size_t result = (size_t)fplAtomicIncrementU64((volatile uint64_t*)value);
 #elif defined(FPL_CPU_32BIT)
-	size_t result = (size_t)fplAtomicIncrementU32((volatile uint32_t *)value);
+	size_t result = (size_t)fplAtomicIncrementU32((volatile uint32_t*)value);
 #else
 #	error "Unsupported architecture/platform!"
 #endif // FPL_ARCH
 	return (result);
 }
 
-fpl_common_api void *fplAtomicIncrementPtr(volatile void **value) {
+fpl_common_api void* fplAtomicIncrementPtr(volatile void** value) {
 	fplAssert(value != fpl_null);
 #if defined(FPL_CPU_64BIT)
-	void *result = (void *)fplAtomicAddAndFetchU64((volatile uint64_t *)value, 8);
+	void* result = (void*)fplAtomicAddAndFetchU64((volatile uint64_t*)value, 8);
 #elif defined(FPL_CPU_32BIT)
-	void *result = (void *)fplAtomicAddAndFetchU32((volatile uint32_t *)value, 4);
+	void* result = (void*)fplAtomicAddAndFetchU32((volatile uint32_t*)value, 4);
 #else
 #	error "Unsupported architecture/platform!"
 #endif // FPL_ARCH
 	return (result);
 }
 
-fpl_common_api size_t fplAtomicExchangeSize(volatile size_t *target, const size_t value) {
+fpl_common_api size_t fplAtomicExchangeSize(volatile size_t* target, const size_t value) {
 	fplAssert(target != fpl_null);
 #if defined(FPL_CPU_64BIT)
-	size_t result = (size_t)fplAtomicExchangeU64((volatile uint64_t *)target, (uint64_t)value);
+	size_t result = (size_t)fplAtomicExchangeU64((volatile uint64_t*)target, (uint64_t)value);
 #elif defined(FPL_CPU_32BIT)
-	size_t result = (size_t)fplAtomicExchangeU32((volatile uint32_t *)target, (uint32_t)value);
+	size_t result = (size_t)fplAtomicExchangeU32((volatile uint32_t*)target, (uint32_t)value);
 #else
 #	error "Unsupported architecture/platform!"
 #endif  // FPL_ARCH
 	return (result);
 }
-fpl_common_api void *fplAtomicExchangePtr(volatile void **target, const void *value) {
+fpl_common_api void* fplAtomicExchangePtr(volatile void** target, const void* value) {
 	fplAssert(target != fpl_null);
 #if defined(FPL_CPU_64BIT)
-	void *result = (void *)fplAtomicExchangeU64((volatile uint64_t *)target, (uint64_t)value);
+	void* result = (void*)fplAtomicExchangeU64((volatile uint64_t*)target, (uint64_t)value);
 #elif defined(FPL_CPU_32BIT)
-	void *result = (void *)fplAtomicExchangeU32((volatile uint32_t *)target, (uint32_t)value);
+	void* result = (void*)fplAtomicExchangeU32((volatile uint32_t*)target, (uint32_t)value);
 #else
 #	error "Unsupported architecture/platform!"
 #endif  // FPL_ARCH
 	return (result);
 }
 
-fpl_common_api size_t fplAtomicCompareAndSwapSize(volatile size_t *dest, const size_t comparand, const size_t exchange) {
+fpl_common_api size_t fplAtomicCompareAndSwapSize(volatile size_t* dest, const size_t comparand, const size_t exchange) {
 	fplAssert(dest != fpl_null);
 #if defined(FPL_CPU_64BIT)
-	size_t result = (size_t)fplAtomicCompareAndSwapU64((volatile uint64_t *)dest, (uint64_t)comparand, (uint64_t)exchange);
+	size_t result = (size_t)fplAtomicCompareAndSwapU64((volatile uint64_t*)dest, (uint64_t)comparand, (uint64_t)exchange);
 #elif defined(FPL_CPU_32BIT)
-	size_t result = (size_t)fplAtomicCompareAndSwapU32((volatile uint32_t *)dest, (uint32_t)comparand, (uint32_t)exchange);
+	size_t result = (size_t)fplAtomicCompareAndSwapU32((volatile uint32_t*)dest, (uint32_t)comparand, (uint32_t)exchange);
 #else
 #	error "Unsupported architecture/platform!"
 #endif // FPL_ARCH
 	return (result);
 }
-fpl_common_api void *fplAtomicCompareAndSwapPtr(volatile void **dest, const void *comparand, const void *exchange) {
+fpl_common_api void* fplAtomicCompareAndSwapPtr(volatile void** dest, const void* comparand, const void* exchange) {
 	fplAssert(dest != fpl_null);
 #if defined(FPL_CPU_64BIT)
-	void *result = (void *)fplAtomicCompareAndSwapU64((volatile uint64_t *)dest, (uint64_t)comparand, (uint64_t)exchange);
+	void* result = (void*)fplAtomicCompareAndSwapU64((volatile uint64_t*)dest, (uint64_t)comparand, (uint64_t)exchange);
 #elif defined(FPL_CPU_32BIT)
-	void *result = (void *)fplAtomicCompareAndSwapU32((volatile uint32_t *)dest, (uint32_t)comparand, (uint32_t)exchange);
-#else
-#	error "Unsupported architecture/platform!"
-#endif // FPL_ARCH
-	return (result);
-}
-
-fpl_common_api bool fplIsAtomicCompareAndSwapSize(volatile size_t *dest, const size_t comparand, const size_t exchange) {
-	fplAssert(dest != fpl_null);
-#if defined(FPL_CPU_64BIT)
-	bool result = fplIsAtomicCompareAndSwapU64((volatile uint64_t *)dest, (uint64_t)comparand, (uint64_t)exchange);
-#elif defined(FPL_CPU_32BIT)
-	bool result = fplIsAtomicCompareAndSwapU32((volatile uint32_t *)dest, (uint32_t)comparand, (uint32_t)exchange);
-#else
-#	error "Unsupported architecture/platform!"
-#endif // FPL_ARCH
-	return (result);
-}
-fpl_common_api bool fplIsAtomicCompareAndSwapPtr(volatile void **dest, const void *comparand, const void *exchange) {
-	fplAssert(dest != fpl_null);
-#if defined(FPL_CPU_64BIT)
-	bool result = fplIsAtomicCompareAndSwapU64((volatile uint64_t *)dest, (uint64_t)comparand, (uint64_t)exchange);
-#elif defined(FPL_CPU_32BIT)
-	bool result = fplIsAtomicCompareAndSwapU32((volatile uint32_t *)dest, (uint32_t)comparand, (uint32_t)exchange);
+	void* result = (void*)fplAtomicCompareAndSwapU32((volatile uint32_t*)dest, (uint32_t)comparand, (uint32_t)exchange);
 #else
 #	error "Unsupported architecture/platform!"
 #endif // FPL_ARCH
 	return (result);
 }
 
-fpl_common_api size_t fplAtomicLoadSize(volatile size_t *source) {
+fpl_common_api bool fplIsAtomicCompareAndSwapSize(volatile size_t* dest, const size_t comparand, const size_t exchange) {
+	fplAssert(dest != fpl_null);
 #if defined(FPL_CPU_64BIT)
-	size_t result = (size_t)fplAtomicLoadU64((volatile uint64_t *)source);
+	bool result = fplIsAtomicCompareAndSwapU64((volatile uint64_t*)dest, (uint64_t)comparand, (uint64_t)exchange);
 #elif defined(FPL_CPU_32BIT)
-	size_t result = (size_t)fplAtomicLoadU32((volatile uint32_t *)source);
+	bool result = fplIsAtomicCompareAndSwapU32((volatile uint32_t*)dest, (uint32_t)comparand, (uint32_t)exchange);
+#else
+#	error "Unsupported architecture/platform!"
+#endif // FPL_ARCH
+	return (result);
+}
+fpl_common_api bool fplIsAtomicCompareAndSwapPtr(volatile void** dest, const void* comparand, const void* exchange) {
+	fplAssert(dest != fpl_null);
+#if defined(FPL_CPU_64BIT)
+	bool result = fplIsAtomicCompareAndSwapU64((volatile uint64_t*)dest, (uint64_t)comparand, (uint64_t)exchange);
+#elif defined(FPL_CPU_32BIT)
+	bool result = fplIsAtomicCompareAndSwapU32((volatile uint32_t*)dest, (uint32_t)comparand, (uint32_t)exchange);
+#else
+#	error "Unsupported architecture/platform!"
+#endif // FPL_ARCH
+	return (result);
+}
+
+fpl_common_api size_t fplAtomicLoadSize(volatile size_t* source) {
+#if defined(FPL_CPU_64BIT)
+	size_t result = (size_t)fplAtomicLoadU64((volatile uint64_t*)source);
+#elif defined(FPL_CPU_32BIT)
+	size_t result = (size_t)fplAtomicLoadU32((volatile uint32_t*)source);
 #else
 #	error "Unsupported architecture/platform!"
 #endif  // FPL_ARCH
 	return(result);
 }
-fpl_common_api void fplAtomicStoreSize(volatile size_t *dest, const size_t value) {
+fpl_common_api void fplAtomicStoreSize(volatile size_t* dest, const size_t value) {
 #if defined(FPL_CPU_64BIT)
-	fplAtomicStoreU64((volatile uint64_t *)dest, (uint64_t)value);
+	fplAtomicStoreU64((volatile uint64_t*)dest, (uint64_t)value);
 #elif defined(FPL_CPU_32BIT)
-	fplAtomicStoreU32((volatile uint32_t *)dest, (uint32_t)value);
+	fplAtomicStoreU32((volatile uint32_t*)dest, (uint32_t)value);
 #else
 #	error "Unsupported architecture/platform!"
 #endif  // FPL_ARCH
 }
 
-fpl_common_api void *fplAtomicLoadPtr(volatile void **source) {
+fpl_common_api void* fplAtomicLoadPtr(volatile void** source) {
 #if defined(FPL_CPU_64BIT)
-	void *result = (void *)fplAtomicLoadU64((volatile uint64_t *)source);
+	void* result = (void*)fplAtomicLoadU64((volatile uint64_t*)source);
 #elif defined(FPL_CPU_32BIT)
-	void *result = (void *)fplAtomicLoadU32((volatile uint32_t *)source);
+	void* result = (void*)fplAtomicLoadU32((volatile uint32_t*)source);
 #else
 #	error "Unsupported architecture/platform!"
 #endif  // FPL_ARCH
 	return(result);
 }
-fpl_common_api void fplAtomicStorePtr(volatile void **dest, const void *value) {
+fpl_common_api void fplAtomicStorePtr(volatile void** dest, const void* value) {
 #if defined(FPL_CPU_64BIT)
-	fplAtomicStoreU64((volatile uint64_t *)dest, (uint64_t)value);
+	fplAtomicStoreU64((volatile uint64_t*)dest, (uint64_t)value);
 #elif defined(FPL_CPU_32BIT)
-	fplAtomicStoreU32((volatile uint32_t *)dest, (uint32_t)value);
+	fplAtomicStoreU32((volatile uint32_t*)dest, (uint32_t)value);
 #else
 #	error "Unsupported architecture/platform!"
 #endif  // FPL_ARCH
@@ -9131,16 +9156,16 @@ fpl_common_api void fplAtomicStorePtr(volatile void **dest, const void *value) {
 //
 // Common Threading
 //
-fpl_common_api fplThreadState fplGetThreadState(fplThreadHandle *thread) {
+fpl_common_api fplThreadState fplGetThreadState(fplThreadHandle* thread) {
 	if (thread == fpl_null) {
 		return fplThreadState_Stopped;
 	}
-	fplThreadState result = (fplThreadState)fplAtomicLoadU32((volatile uint32_t *)&thread->currentState);
+	fplThreadState result = (fplThreadState)fplAtomicLoadU32((volatile uint32_t*)&thread->currentState);
 	return(result);
 }
 
-fpl_common_api const fplThreadHandle *fplGetMainThread() {
-	const fplThreadHandle *result = &fpl__global__ThreadState.mainThread;
+fpl_common_api const fplThreadHandle* fplGetMainThread() {
+	const fplThreadHandle* result = &fpl__global__ThreadState.mainThread;
 	return(result);
 }
 
@@ -9150,7 +9175,7 @@ fpl_common_api const fplThreadHandle *fplGetMainThread() {
 #if !defined(FPL__COMMON_FILES_DEFINED)
 #define FPL__COMMON_FILES_DEFINED
 
-fpl_common_api size_t fplReadFileBlock(const fplFileHandle *fileHandle, const size_t sizeToRead, void *targetBuffer, const size_t maxTargetBufferSize) {
+fpl_common_api size_t fplReadFileBlock(const fplFileHandle* fileHandle, const size_t sizeToRead, void* targetBuffer, const size_t maxTargetBufferSize) {
 #if defined(FPL_CPU_64BIT)
 	return fplReadFileBlock64(fileHandle, sizeToRead, targetBuffer, maxTargetBufferSize);
 #else
@@ -9158,7 +9183,7 @@ fpl_common_api size_t fplReadFileBlock(const fplFileHandle *fileHandle, const si
 #endif
 }
 
-fpl_common_api size_t fplWriteFileBlock(const fplFileHandle *fileHandle, void *sourceBuffer, const size_t sourceSize) {
+fpl_common_api size_t fplWriteFileBlock(const fplFileHandle* fileHandle, void* sourceBuffer, const size_t sourceSize) {
 #if defined(FPL_CPU_64BIT)
 	return fplWriteFileBlock64(fileHandle, sourceBuffer, sourceSize);
 #else
@@ -9166,7 +9191,7 @@ fpl_common_api size_t fplWriteFileBlock(const fplFileHandle *fileHandle, void *s
 #endif
 }
 
-fpl_common_api size_t fplSetFilePosition(const fplFileHandle *fileHandle, const intptr_t position, const fplFilePositionMode mode) {
+fpl_common_api size_t fplSetFilePosition(const fplFileHandle* fileHandle, const intptr_t position, const fplFilePositionMode mode) {
 #if defined(FPL_CPU_64BIT)
 	return fplSetFilePosition64(fileHandle, position, mode);
 #else
@@ -9174,7 +9199,7 @@ fpl_common_api size_t fplSetFilePosition(const fplFileHandle *fileHandle, const 
 #endif
 }
 
-fpl_common_api size_t fplGetFilePosition(const fplFileHandle *fileHandle) {
+fpl_common_api size_t fplGetFilePosition(const fplFileHandle* fileHandle) {
 #if defined(FPL_CPU_64BIT)
 	return fplGetFilePosition64(fileHandle);
 #else
@@ -9182,7 +9207,7 @@ fpl_common_api size_t fplGetFilePosition(const fplFileHandle *fileHandle) {
 #endif
 }
 
-fpl_common_api size_t fplGetFileSizeFromPath(const char *filePath) {
+fpl_common_api size_t fplGetFileSizeFromPath(const char* filePath) {
 #if defined(FPL_CPU_64BIT)
 	return fplGetFileSizeFromPath64(filePath);
 #else
@@ -9190,7 +9215,7 @@ fpl_common_api size_t fplGetFileSizeFromPath(const char *filePath) {
 #endif
 }
 
-fpl_common_api size_t fplGetFileSizeFromHandle(const fplFileHandle *fileHandle) {
+fpl_common_api size_t fplGetFileSizeFromHandle(const fplFileHandle* fileHandle) {
 #if defined(FPL_CPU_64BIT)
 	return fplGetFileSizeFromHandle64(fileHandle);
 #else
@@ -9206,17 +9231,17 @@ fpl_common_api size_t fplGetFileSizeFromHandle(const fplFileHandle *fileHandle) 
 #if !defined(FPL__COMMON_PATHS_DEFINED)
 #define FPL__COMMON_PATHS_DEFINED
 
-fpl_common_api char *fplExtractFilePath(const char *sourcePath, char *destPath, const size_t maxDestLen) {
+fpl_common_api char* fplExtractFilePath(const char* sourcePath, char* destPath, const size_t maxDestLen) {
 	FPL__CheckArgumentNull(sourcePath, fpl_null);
 	size_t sourceLen = fplGetStringLength(sourcePath);
 	FPL__CheckArgumentZero(sourceLen, fpl_null);
 	FPL__CheckArgumentNull(destPath, fpl_null);
 	size_t requiredDestLen = sourceLen + 1;
 	FPL__CheckArgumentMin(maxDestLen, requiredDestLen, fpl_null);
-	char *result = fpl_null;
+	char* result = fpl_null;
 	if (sourcePath) {
 		int copyLen = 0;
-		char *chPtr = (char *)sourcePath;
+		char* chPtr = (char*)sourcePath;
 		while (*chPtr) {
 			if (*chPtr == FPL_PATH_SEPARATOR) {
 				copyLen = (int)(chPtr - sourcePath);
@@ -9230,12 +9255,12 @@ fpl_common_api char *fplExtractFilePath(const char *sourcePath, char *destPath, 
 	return(result);
 }
 
-fpl_common_api const char *fplExtractFileExtension(const char *sourcePath) {
-	const char *result = fpl_null;
+fpl_common_api const char* fplExtractFileExtension(const char* sourcePath) {
+	const char* result = fpl_null;
 	if (sourcePath != fpl_null) {
-		const char *chPtr = sourcePath;
+		const char* chPtr = sourcePath;
 		// Find last separator first
-		const char *lastPathSep = fpl_null;
+		const char* lastPathSep = fpl_null;
 		while (*chPtr) {
 			if (*chPtr == FPL_PATH_SEPARATOR) {
 				lastPathSep = chPtr;
@@ -9248,7 +9273,7 @@ fpl_common_api const char *fplExtractFileExtension(const char *sourcePath) {
 		} else {
 			chPtr = sourcePath;
 		}
-		const char *lastExt = fpl_null;
+		const char* lastExt = fpl_null;
 		while (*chPtr) {
 			if (*chPtr == FPL_FILE_EXT_SEPARATOR) {
 				lastExt = chPtr;
@@ -9262,11 +9287,11 @@ fpl_common_api const char *fplExtractFileExtension(const char *sourcePath) {
 	return(result);
 }
 
-fpl_common_api const char *fplExtractFileName(const char *sourcePath) {
-	const char *result = fpl_null;
+fpl_common_api const char* fplExtractFileName(const char* sourcePath) {
+	const char* result = fpl_null;
 	if (sourcePath) {
 		result = sourcePath;
-		const char *chPtr = sourcePath;
+		const char* chPtr = sourcePath;
 		while (*chPtr) {
 			if (*chPtr == FPL_PATH_SEPARATOR) {
 				result = chPtr + 1;
@@ -9277,7 +9302,7 @@ fpl_common_api const char *fplExtractFileName(const char *sourcePath) {
 	return(result);
 }
 
-fpl_common_api char *fplChangeFileExtension(const char *filePath, const char *newFileExtension, char *destPath, const size_t maxDestLen) {
+fpl_common_api char* fplChangeFileExtension(const char* filePath, const char* newFileExtension, char* destPath, const size_t maxDestLen) {
 	FPL__CheckArgumentNull(filePath, fpl_null);
 	FPL__CheckArgumentNull(newFileExtension, fpl_null);
 	size_t pathLen = fplGetStringLength(filePath);
@@ -9286,11 +9311,11 @@ fpl_common_api char *fplChangeFileExtension(const char *filePath, const char *ne
 	FPL__CheckArgumentNull(destPath, fpl_null);
 	size_t requiredDestLen = pathLen + extLen + 1;
 	FPL__CheckArgumentMin(maxDestLen, requiredDestLen, fpl_null);
-	char *result = fpl_null;
+	char* result = fpl_null;
 	if (filePath != fpl_null) {
 		// Find last path
-		char *chPtr = (char *)filePath;
-		char *lastPathSeparatorPtr = fpl_null;
+		char* chPtr = (char*)filePath;
+		char* lastPathSeparatorPtr = fpl_null;
 		while (*chPtr) {
 			if (*chPtr == FPL_PATH_SEPARATOR) {
 				lastPathSeparatorPtr = chPtr;
@@ -9301,9 +9326,9 @@ fpl_common_api char *fplChangeFileExtension(const char *filePath, const char *ne
 		if (lastPathSeparatorPtr != fpl_null) {
 			chPtr = lastPathSeparatorPtr + 1;
 		} else {
-			chPtr = (char *)filePath;
+			chPtr = (char*)filePath;
 		}
-		char *lastExtSeparatorPtr = fpl_null;
+		char* lastExtSeparatorPtr = fpl_null;
 		while (*chPtr) {
 			if (*chPtr == FPL_FILE_EXT_SEPARATOR) {
 				lastExtSeparatorPtr = chPtr;
@@ -9318,22 +9343,22 @@ fpl_common_api char *fplChangeFileExtension(const char *filePath, const char *ne
 		}
 		// Copy parts
 		fplCopyStringLen(filePath, copyLen, destPath, maxDestLen);
-		char *destExtPtr = destPath + copyLen;
+		char* destExtPtr = destPath + copyLen;
 		result = fplCopyStringLen(newFileExtension, extLen, destExtPtr, maxDestLen - copyLen);
 	}
 	return(result);
 }
 
-fpl_common_api char *fplPathCombine(char *destPath, const size_t maxDestPathLen, const size_t pathCount, ...) {
+fpl_common_api char* fplPathCombine(char* destPath, const size_t maxDestPathLen, const size_t pathCount, ...) {
 	FPL__CheckArgumentNull(destPath, fpl_null);
 	FPL__CheckArgumentZero(maxDestPathLen, fpl_null);
 	FPL__CheckArgumentZero(pathCount, fpl_null);
 	size_t curDestPosition = 0;
-	char *currentDestPtr = destPath;
+	char* currentDestPtr = destPath;
 	va_list vargs;
 	va_start(vargs, pathCount);
 	for (size_t pathIndex = 0; pathIndex < pathCount; ++pathIndex) {
-		char *path = va_arg(vargs, char *);
+		char* path = va_arg(vargs, char*);
 		size_t pathLen = fplGetStringLength(path);
 		bool requireSeparator = pathIndex < (pathCount - 1);
 		size_t requiredPathLen = requireSeparator ? pathLen + 1 : pathLen;
@@ -9356,10 +9381,10 @@ fpl_common_api char *fplPathCombine(char *destPath, const size_t maxDestPathLen,
 //
 #if !defined(FPL__COMMON_WINDOW_DEFINED)
 #define FPL__COMMON_WINDOW_DEFINED
-fpl_common_api char *fplGetWindowTitle(char *outTitle, const size_t maxOutTitleLength) {
+fpl_common_api char* fplGetWindowTitle(char* outTitle, const size_t maxOutTitleLength) {
 	FPL__CheckPlatform(fpl_null);
-	fpl__PlatformAppState *appState = fpl__global__AppState;
-	char *result = fplCopyString(appState->currentSettings.window.title, outTitle, maxOutTitleLength);
+	fpl__PlatformAppState* appState = fpl__global__AppState;
+	char* result = fplCopyString(appState->currentSettings.window.title, outTitle, maxOutTitleLength);
 	return(result);
 }
 
@@ -9374,12 +9399,12 @@ fpl_common_api void fplSetWindowInputEvents(const bool enabled) {
 // Common Logging
 //
 #if defined(FPL__ENABLE_LOGGING)
-fpl_common_api void fplSetLogSettings(const fplLogSettings *params) {
+fpl_common_api void fplSetLogSettings(const fplLogSettings* params) {
 	FPL__CheckArgumentNullNoRet(params);
 	fpl__global__LogSettings = *params;
 	fpl__global__LogSettings.isInitialized = true;
 }
-fpl_common_api const fplLogSettings *fplGetLogSettings() {
+fpl_common_api const fplLogSettings* fplGetLogSettings() {
 	return &fpl__global__LogSettings;
 }
 fpl_common_api void fplSetMaxLogLevel(const fplLogLevel maxLevel) {
@@ -9390,9 +9415,9 @@ fpl_common_api fplLogLevel fplGetMaxLogLevel() {
 }
 #endif
 
-fpl_common_api const char *fplGetLastError() {
-	const char *result = "";
-	const fpl__ErrorState *errorState = &fpl__global__LastErrorState;
+fpl_common_api const char* fplGetLastError() {
+	const char* result = "";
+	const fpl__ErrorState* errorState = &fpl__global__LastErrorState;
 	if (errorState->count > 0) {
 		size_t index = errorState->count - 1;
 		result = fplGetErrorByIndex(index);
@@ -9400,9 +9425,9 @@ fpl_common_api const char *fplGetLastError() {
 	return (result);
 }
 
-fpl_common_api const char *fplGetErrorByIndex(const size_t index) {
-	const char *result = "";
-	const fpl__ErrorState *errorState = &fpl__global__LastErrorState;
+fpl_common_api const char* fplGetErrorByIndex(const size_t index) {
+	const char* result = "";
+	const fpl__ErrorState* errorState = &fpl__global__LastErrorState;
 	if (index < errorState->count) {
 		result = errorState->errors[index];
 	} else {
@@ -9413,23 +9438,23 @@ fpl_common_api const char *fplGetErrorByIndex(const size_t index) {
 
 fpl_common_api size_t fplGetErrorCount() {
 	size_t result = 0;
-	const fpl__ErrorState *errorState = &fpl__global__LastErrorState;
+	const fpl__ErrorState* errorState = &fpl__global__LastErrorState;
 	result = errorState->count;
 	return (result);
 }
 
 fpl_common_api void fplClearErrors() {
-	fpl__ErrorState *errorState = &fpl__global__LastErrorState;
+	fpl__ErrorState* errorState = &fpl__global__LastErrorState;
 	fplClearStruct(errorState);
 }
 
-fpl_common_api const fplSettings *fplGetCurrentSettings() {
+fpl_common_api const fplSettings* fplGetCurrentSettings() {
 	FPL__CheckPlatform(fpl_null);
-	const fpl__PlatformAppState *appState = fpl__global__AppState;
+	const fpl__PlatformAppState* appState = fpl__global__AppState;
 	return &appState->currentSettings;
 }
 
-fpl_common_api void fplSetDefaultVideoSettings(fplVideoSettings *video) {
+fpl_common_api void fplSetDefaultVideoSettings(fplVideoSettings* video) {
 	FPL__CheckArgumentNullNoRet(video);
 	fplClearStruct(video);
 	video->isVSync = false;
@@ -9445,20 +9470,16 @@ fpl_common_api void fplSetDefaultVideoSettings(fplVideoSettings *video) {
 #endif
 }
 
-fpl_common_api void fplSetDefaultAudioTargetFormat(fplAudioTargetFormat *targetFormat) {
+fpl_common_api void fplSetDefaultAudioTargetFormat(fplAudioTargetFormat* targetFormat) {
 	FPL__CheckArgumentNullNoRet(targetFormat);
 	fplClearStruct(targetFormat);
-	// @TODO(final): Leave buffer size in milliseconds at zero, so we use the default size when it is zero
-	targetFormat->bufferSizeInMilliseconds = 25;
 	targetFormat->preferExclusiveMode = false;
 	targetFormat->channels = 2;
 	targetFormat->sampleRate = 44100;
 	targetFormat->type = fplAudioFormatType_S16;
-	// @TODO(final): Leave number of periods at zero, so we use the default periods when it is zero
-	targetFormat->periods = 2;
 }
 
-fpl_common_api void fplSetDefaultAudioSettings(fplAudioSettings *audio) {
+fpl_common_api void fplSetDefaultAudioSettings(fplAudioSettings* audio) {
 	FPL__CheckArgumentNullNoRet(audio);
 	fplClearStruct(audio);
 	fplSetDefaultAudioTargetFormat(&audio->targetFormat);
@@ -9475,7 +9496,7 @@ fpl_common_api void fplSetDefaultAudioSettings(fplAudioSettings *audio) {
 	audio->stopAuto = true;
 }
 
-fpl_common_api void fplSetDefaultWindowSettings(fplWindowSettings *window) {
+fpl_common_api void fplSetDefaultWindowSettings(fplWindowSettings* window) {
 	FPL__CheckArgumentNullNoRet(window);
 	fplClearStruct(window);
 	window->title[0] = 0;
@@ -9489,13 +9510,13 @@ fpl_common_api void fplSetDefaultWindowSettings(fplWindowSettings *window) {
 	window->isFloating = false;
 }
 
-fpl_common_api void fplSetDefaultInputSettings(fplInputSettings *input) {
+fpl_common_api void fplSetDefaultInputSettings(fplInputSettings* input) {
 	FPL__CheckArgumentNullNoRet(input);
 	fplClearStruct(input);
 	input->controllerDetectionFrequency = 100;
 }
 
-fpl_common_api void fplSetDefaultSettings(fplSettings *settings) {
+fpl_common_api void fplSetDefaultSettings(fplSettings* settings) {
 	FPL__CheckArgumentNullNoRet(settings);
 	fplClearStruct(settings);
 	fplSetDefaultWindowSettings(&settings->window);
@@ -9511,7 +9532,7 @@ fpl_common_api fplSettings fplMakeDefaultSettings() {
 }
 
 #define FPL__PLATFORMRESULTTYPE_COUNT FPL__ENUM_COUNT(FPL_FIRST_PLATFORM_RESULT_TYPE, FPL_LAST_PLATFORM_RESULT_TYPE)
-fpl_globalvar const char *fpl__global_platformResultTypeNameTable[] = {
+fpl_globalvar const char* fpl__global_platformResultTypeNameTable[] = {
 	"Failed Window", // fplPlatformResultType_FailedWindow (-6)
 	"Failed Audio", // fplPlatformResultType_FailedAudio (-5)
 	"Failed Video", // fplPlatformResultType_FailedVideo (-4)
@@ -9523,14 +9544,14 @@ fpl_globalvar const char *fpl__global_platformResultTypeNameTable[] = {
 };
 fplStaticAssert(fplArrayCount(fpl__global_platformResultTypeNameTable) == FPL__PLATFORMRESULTTYPE_COUNT);
 
-fpl_common_api const char *fplGetPlatformResultTypeString(const fplPlatformResultType type) {
+fpl_common_api const char* fplGetPlatformResultTypeString(const fplPlatformResultType type) {
 	uint32_t index = FPL__ENUM_VALUE_TO_ARRAY_INDEX(type, FPL_FIRST_PLATFORM_RESULT_TYPE, FPL_LAST_PLATFORM_RESULT_TYPE);
-	const char *result = fpl__global_platformResultTypeNameTable[index];
+	const char* result = fpl__global_platformResultTypeNameTable[index];
 	return(result);
 }
 
 #define FPL__ARCHTYPE_COUNT FPL__ENUM_COUNT(FPL_FIRST_ARCHTYPE, FPL_LAST_ARCHTYPE)
-fpl_globalvar const char *fpl__global_ArchTypeNameTable[] = {
+fpl_globalvar const char* fpl__global_ArchTypeNameTable[] = {
 	"Unknown", // Unknown architecture
 	"x86", // X86 architecture
 	"x86_64", // X86 with 64-bit architecture
@@ -9540,9 +9561,9 @@ fpl_globalvar const char *fpl__global_ArchTypeNameTable[] = {
 };
 fplStaticAssert(fplArrayCount(fpl__global_ArchTypeNameTable) == FPL__ARCHTYPE_COUNT);
 
-fpl_common_api const char *fplGetArchTypeString(const fplArchType type) {
+fpl_common_api const char* fplGetArchTypeString(const fplArchType type) {
 	uint32_t index = FPL__ENUM_VALUE_TO_ARRAY_INDEX(type, FPL_FIRST_ARCHTYPE, FPL_LAST_ARCHTYPE);
-	const char *result = fpl__global_ArchTypeNameTable[index];
+	const char* result = fpl__global_ArchTypeNameTable[index];
 	return(result);
 }
 #endif // FPL_COMMON_DEFINED
@@ -9565,7 +9586,7 @@ fpl_common_api const char *fplGetArchTypeString(const fplArchType type) {
 
 #if defined(FPL__ENABLE_WINDOW)
 
-fpl_internal DWORD fpl__Win32MakeWindowStyle(const fplWindowSettings *settings) {
+fpl_internal DWORD fpl__Win32MakeWindowStyle(const fplWindowSettings* settings) {
 	DWORD result = WS_CLIPSIBLINGS | WS_CLIPCHILDREN;
 	if (settings->isFullscreen || !settings->isDecorated) {
 		result |= WS_POPUP;
@@ -9578,7 +9599,7 @@ fpl_internal DWORD fpl__Win32MakeWindowStyle(const fplWindowSettings *settings) 
 	return(result);
 }
 
-fpl_internal DWORD fpl__Win32MakeWindowExStyle(const fplWindowSettings *settings) {
+fpl_internal DWORD fpl__Win32MakeWindowExStyle(const fplWindowSettings* settings) {
 	DWORD result = WS_EX_APPWINDOW;
 	if (settings->isFullscreen || settings->isFloating) {
 		result |= WS_EX_TOPMOST;
@@ -9586,7 +9607,7 @@ fpl_internal DWORD fpl__Win32MakeWindowExStyle(const fplWindowSettings *settings
 	return(result);
 }
 
-fpl_internal void fpl__Win32SaveWindowState(const fpl__Win32Api *wapi, fpl__Win32LastWindowInfo *target, HWND windowHandle) {
+fpl_internal void fpl__Win32SaveWindowState(const fpl__Win32Api* wapi, fpl__Win32LastWindowInfo* target, HWND windowHandle) {
 	target->isMaximized = !!wapi->user.IsZoomed(windowHandle);
 	target->isMinimized = !!wapi->user.IsIconic(windowHandle);
 	target->style = fpl__win32_GetWindowLong(windowHandle, GWL_STYLE);
@@ -9594,7 +9615,7 @@ fpl_internal void fpl__Win32SaveWindowState(const fpl__Win32Api *wapi, fpl__Win3
 	wapi->user.GetWindowPlacement(windowHandle, &target->placement);
 }
 
-fpl_internal void fpl__Win32RestoreWindowState(const fpl__Win32Api *wapi, const fpl__Win32LastWindowInfo *target, HWND windowHandle) {
+fpl_internal void fpl__Win32RestoreWindowState(const fpl__Win32Api* wapi, const fpl__Win32LastWindowInfo* target, HWND windowHandle) {
 	fplAssert(target->style > 0 && target->exStyle > 0);
 	fpl__win32_SetWindowLong(windowHandle, GWL_STYLE, target->style);
 	fpl__win32_SetWindowLong(windowHandle, GWL_EXSTYLE, target->exStyle);
@@ -9608,13 +9629,13 @@ fpl_internal void fpl__Win32RestoreWindowState(const fpl__Win32Api *wapi, const 
 }
 
 fpl_internal bool fpl__Win32LeaveFullscreen() {
-	const fpl__PlatformAppState *platState = fpl__global__AppState;
+	const fpl__PlatformAppState* platState = fpl__global__AppState;
 	fplAssert(platState != fpl_null);
-	const fpl__Win32AppState *win32State = &platState->win32;
-	const fpl__Win32Api *wapi = &win32State->winApi;
-	const fplWindowSettings *settings = &platState->currentSettings.window;
-	const fpl__Win32WindowState *win32Window = &platState->window.win32;
-	const fpl__Win32LastWindowInfo *fullscreenInfo = &win32Window->lastFullscreenInfo;
+	const fpl__Win32AppState* win32State = &platState->win32;
+	const fpl__Win32Api* wapi = &win32State->winApi;
+	const fplWindowSettings* settings = &platState->currentSettings.window;
+	const fpl__Win32WindowState* win32Window = &platState->window.win32;
+	const fpl__Win32LastWindowInfo* fullscreenInfo = &win32Window->lastFullscreenInfo;
 	HWND windowHandle = win32Window->windowHandle;
 	fpl__Win32RestoreWindowState(wapi, fullscreenInfo, windowHandle);
 	bool result;
@@ -9627,13 +9648,13 @@ fpl_internal bool fpl__Win32LeaveFullscreen() {
 }
 
 fpl_internal bool fpl__Win32EnterFullscreen(const int32_t xpos, const int32_t ypos, const int32_t fullscreenWidth, const int32_t fullscreenHeight, const uint32_t refreshRate, const uint32_t colorBits, const bool allowResolutionChange) {
-	fpl__PlatformAppState *platState = fpl__global__AppState;
+	fpl__PlatformAppState* platState = fpl__global__AppState;
 	fplAssert(platState != fpl_null);
-	fpl__Win32AppState *win32State = &platState->win32;
-	const fpl__Win32Api *wapi = &win32State->winApi;
-	const fplWindowSettings *settings = &platState->currentSettings.window;
-	fpl__Win32WindowState *win32Window = &platState->window.win32;
-	fpl__Win32LastWindowInfo *fullscreenInfo = &win32Window->lastFullscreenInfo;
+	fpl__Win32AppState* win32State = &platState->win32;
+	const fpl__Win32Api* wapi = &win32State->winApi;
+	const fplWindowSettings* settings = &platState->currentSettings.window;
+	fpl__Win32WindowState* win32Window = &platState->window.win32;
+	fpl__Win32LastWindowInfo* fullscreenInfo = &win32Window->lastFullscreenInfo;
 
 	HWND windowHandle = win32Window->windowHandle;
 	HDC deviceContext = win32Window->deviceContext;
@@ -9709,12 +9730,12 @@ fpl_internal bool fpl__Win32EnterFullscreen(const int32_t xpos, const int32_t yp
 
 fpl_internal bool fpl__Win32SetWindowFullscreen(const bool value, const int32_t x, const int32_t y, const int32_t w, const int32_t h, const uint32_t refreshRate, const bool allowResolutionChange) {
 	FPL__CheckPlatform(false);
-	fpl__PlatformAppState *appState = fpl__global__AppState;
-	fpl__Win32AppState *win32AppState = &appState->win32;
-	fpl__Win32WindowState *windowState = &appState->window.win32;
-	fplWindowSettings *windowSettings = &appState->currentSettings.window;
-	fpl__Win32LastWindowInfo *fullscreenState = &windowState->lastFullscreenInfo;
-	const fpl__Win32Api *wapi = &win32AppState->winApi;
+	fpl__PlatformAppState* appState = fpl__global__AppState;
+	fpl__Win32AppState* win32AppState = &appState->win32;
+	fpl__Win32WindowState* windowState = &appState->window.win32;
+	fplWindowSettings* windowSettings = &appState->currentSettings.window;
+	fpl__Win32LastWindowInfo* fullscreenState = &windowState->lastFullscreenInfo;
+	const fpl__Win32Api* wapi = &win32AppState->winApi;
 
 	HWND windowHandle = windowState->windowHandle;
 
@@ -9750,7 +9771,7 @@ fpl_internal float fpl__Win32XInputProcessStickValue(const SHORT value, const SH
 	return(result);
 }
 
-fpl_internal void fpl__Win32XInputGamepadToGamepadState(const XINPUT_GAMEPAD *newState, fplGamepadState *outState) {
+fpl_internal void fpl__Win32XInputGamepadToGamepadState(const XINPUT_GAMEPAD* newState, fplGamepadState* outState) {
 	// If we got here, the controller is definitily by connected
 	outState->isConnected = true;
 
@@ -9806,7 +9827,7 @@ fpl_internal void fpl__Win32XInputGamepadToGamepadState(const XINPUT_GAMEPAD *ne
 	outState->isActive = !fpl__IsZeroMemory(newState, sizeof(*newState));
 }
 
-fpl_internal void fpl__Win32UpdateGameControllers(const fplSettings *settings, const fpl__Win32InitState *initState, fpl__Win32XInputState *xinputState) {
+fpl_internal void fpl__Win32UpdateGameControllers(const fplSettings* settings, const fpl__Win32InitState* initState, fpl__Win32XInputState* xinputState) {
 	fplAssert(settings != fpl_null);
 	fplAssert(xinputState != fpl_null);
 	if (xinputState->xinputApi.XInputGetState != fpl_null) {
@@ -9865,7 +9886,7 @@ fpl_internal void fpl__Win32UpdateGameControllers(const fplSettings *settings, c
 					ev.gamepad.type = fplGamepadEventType_StateChanged;
 					ev.gamepad.deviceIndex = controllerIndex;
 					ev.gamepad.deviceName = xinputState->deviceNames[controllerIndex];
-					const XINPUT_GAMEPAD *newPadState = &controllerState.Gamepad;
+					const XINPUT_GAMEPAD* newPadState = &controllerState.Gamepad;
 					fpl__Win32XInputGamepadToGamepadState(newPadState, &ev.gamepad.state);
 					ev.gamepad.state.deviceName = ev.gamepad.deviceName;
 					fpl__PushInternalEvent(&ev);
@@ -9875,17 +9896,17 @@ fpl_internal void fpl__Win32UpdateGameControllers(const fplSettings *settings, c
 	}
 }
 
-fpl_internal bool fpl__Win32IsKeyDown(const fpl__Win32Api *wapi, const int virtualKey) {
+fpl_internal bool fpl__Win32IsKeyDown(const fpl__Win32Api* wapi, const int virtualKey) {
 	bool result = (wapi->user.GetAsyncKeyState(virtualKey) & 0x8000) != 0;
 	return(result);
 }
 
-fpl_internal bool fpl__Win32IsKeyActive(const fpl__Win32Api *wapi, const int virtualKey) {
+fpl_internal bool fpl__Win32IsKeyActive(const fpl__Win32Api* wapi, const int virtualKey) {
 	bool result = (wapi->user.GetKeyState(virtualKey) & 0x0001) != 0;
 	return(result);
 }
 
-fpl_internal bool fpl__Win32IsCursorInWindow(const fpl__Win32Api *wapi, const fpl__Win32WindowState *win32Window) {
+fpl_internal bool fpl__Win32IsCursorInWindow(const fpl__Win32Api* wapi, const fpl__Win32WindowState* win32Window) {
 	POINT pos;
 	if (!wapi->user.GetCursorPos(&pos)) {
 		return false;
@@ -9905,7 +9926,7 @@ fpl_internal bool fpl__Win32IsCursorInWindow(const fpl__Win32Api *wapi, const fp
 	return(result);
 }
 
-fpl_internal void fpl__Win32LoadCursor(const fpl__Win32Api *wapi, const fpl__Win32WindowState *window) {
+fpl_internal void fpl__Win32LoadCursor(const fpl__Win32Api* wapi, const fpl__Win32WindowState* window) {
 	if (window->isCursorActive) {
 		wapi->user.SetCursor(fpl__win32_LoadCursor(fpl_null, IDC_ARROW));
 	} else {
@@ -9913,27 +9934,27 @@ fpl_internal void fpl__Win32LoadCursor(const fpl__Win32Api *wapi, const fpl__Win
 	}
 }
 
-fpl_internal void fpl__Win32UpdateClipRect(const fpl__Win32Api *wapi, const fpl__Win32WindowState *window) {
+fpl_internal void fpl__Win32UpdateClipRect(const fpl__Win32Api* wapi, const fpl__Win32WindowState* window) {
 	if (window != fpl_null) {
 		RECT clipRect;
 		wapi->user.GetClientRect(window->windowHandle, &clipRect);
-		wapi->user.ClientToScreen(window->windowHandle, (POINT *)&clipRect.left);
-		wapi->user.ClientToScreen(window->windowHandle, (POINT *)&clipRect.right);
+		wapi->user.ClientToScreen(window->windowHandle, (POINT*)&clipRect.left);
+		wapi->user.ClientToScreen(window->windowHandle, (POINT*)&clipRect.right);
 		wapi->user.ClipCursor(&clipRect);
 	} else {
 		wapi->user.ClipCursor(fpl_null);
 	}
 }
 
-fpl_internal void fpl__Win32SetCursorState(const fpl__Win32Api *wapi, fpl__Win32WindowState *window, const bool state) {
+fpl_internal void fpl__Win32SetCursorState(const fpl__Win32Api* wapi, fpl__Win32WindowState* window, const bool state) {
 	// @NOTE(final): We use RAWINPUT to remove the mouse device entirely when it needs to be hidden
 	if (!state) {
-		const RAWINPUTDEVICE rid = { 0x01, 0x02, 0, window->windowHandle };
+		const RAWINPUTDEVICE rid = fplStructInit(RAWINPUTDEVICE, 0x01, 0x02, 0, window->windowHandle);
 		if (!wapi->user.RegisterRawInputDevices(&rid, 1, sizeof(rid))) {
 			FPL__ERROR(FPL__MODULE_WINDOW, "Failed register raw input mouse device for window handle '%p'", window->windowHandle);
 		}
 	} else {
-		const RAWINPUTDEVICE rid = { 0x01, 0x02, RIDEV_REMOVE, fpl_null };
+		const RAWINPUTDEVICE rid = fplStructInit(RAWINPUTDEVICE, 0x01, 0x02, RIDEV_REMOVE, fpl_null);
 		if (!wapi->user.RegisterRawInputDevices(&rid, 1, sizeof(rid))) {
 			FPL__ERROR(FPL__MODULE_WINDOW, "Failed to unregister raw input mouse device");
 		}
@@ -9943,14 +9964,14 @@ fpl_internal void fpl__Win32SetCursorState(const fpl__Win32Api *wapi, fpl__Win32
 	}
 }
 
-fpl_internal void fpl__Win32ShowCursor(const fpl__Win32Api *wapi, fpl__Win32WindowState *window) {
+fpl_internal void fpl__Win32ShowCursor(const fpl__Win32Api* wapi, fpl__Win32WindowState* window) {
 	fpl__Win32SetCursorState(wapi, window, false);
 }
-fpl_internal void fpl__Win32HideCursor(const fpl__Win32Api *wapi, fpl__Win32WindowState *window) {
+fpl_internal void fpl__Win32HideCursor(const fpl__Win32Api* wapi, fpl__Win32WindowState* window) {
 	fpl__Win32SetCursorState(wapi, window, true);
 }
 
-fpl_internal fplKeyboardModifierFlags fpl__Win32GetKeyboardModifiers(const fpl__Win32Api *wapi) {
+fpl_internal fplKeyboardModifierFlags fpl__Win32GetKeyboardModifiers(const fpl__Win32Api* wapi) {
 	fplKeyboardModifierFlags modifiers = fplKeyboardModifierFlags_None;
 	bool lAltKeyIsDown = fpl__Win32IsKeyDown(wapi, VK_LMENU);
 	bool rAltKeyIsDown = fpl__Win32IsKeyDown(wapi, VK_RMENU);
@@ -10000,12 +10021,12 @@ fpl_internal fplKeyboardModifierFlags fpl__Win32GetKeyboardModifiers(const fpl__
 }
 
 LRESULT CALLBACK fpl__Win32MessageProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
-	fpl__PlatformAppState *appState = fpl__global__AppState;
+	fpl__PlatformAppState* appState = fpl__global__AppState;
 	fplAssert(appState != fpl_null);
 
-	fpl__Win32AppState *win32State = &appState->win32;
-	fpl__Win32WindowState *win32Window = &appState->window.win32;
-	const fpl__Win32Api *wapi = &win32State->winApi;
+	fpl__Win32AppState* win32State = &appState->win32;
+	fpl__Win32WindowState* win32Window = &appState->window.win32;
+	const fpl__Win32Api* wapi = &win32State->winApi;
 
 	if (!win32Window->windowHandle) {
 		return wapi->user.DefWindowProcW(hwnd, msg, wParam, lParam);
@@ -10052,16 +10073,16 @@ LRESULT CALLBACK fpl__Win32MessageProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 			wchar_t fileBufferW[FPL_MAX_PATH_LENGTH];
 			fileCount = wapi->shell.DragQueryFileW(dropHandle, 0xFFFFFFFF, fileBufferW, 0);
 			if (fileCount > 0) {
-				size_t filesTableSize = fileCount * sizeof(char **);
+				size_t filesTableSize = fileCount * sizeof(char**);
 				size_t maxFileStride = FPL_MAX_PATH_LENGTH * 2 + 1;
 				size_t filesMemorySize = filesTableSize + FPL__ARBITARY_PADDING + maxFileStride * fileCount;
-				void *filesTableMemory = fpl__AllocateDynamicMemory(filesMemorySize, 16);
-				char **filesTable = (char **)filesTableMemory;
+				void* filesTableMemory = fpl__AllocateDynamicMemory(filesMemorySize, 16);
+				char** filesTable = (char**)filesTableMemory;
 				for (UINT fileIndex = 0; fileIndex < fileCount; ++fileIndex) {
-					filesTable[fileIndex] = (char *)((uint8_t *)filesTableMemory + filesTableSize + FPL__ARBITARY_PADDING + fileIndex * maxFileStride);
+					filesTable[fileIndex] = (char*)((uint8_t*)filesTableMemory + filesTableSize + FPL__ARBITARY_PADDING + fileIndex * maxFileStride);
 				}
 				for (UINT fileIndex = 0; fileIndex < fileCount; ++fileIndex) {
-					char *file = filesTable[fileIndex];
+					char* file = filesTable[fileIndex];
 					fileBufferW[0] = 0;
 					UINT dragResult = wapi->shell.DragQueryFileW(dropHandle, 0, fileBufferW, fplArrayCount(fileBufferW));
 					size_t sourceLen = lstrlenW(fileBufferW);
@@ -10070,7 +10091,7 @@ LRESULT CALLBACK fpl__Win32MessageProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 				fplMemoryBlock memory = fplZeroInit;
 				memory.size = filesMemorySize;
 				memory.base = filesTableMemory;
-				fpl__PushWindowDropFilesEvent(fileBufferA, fileCount, (const char **)filesTable, &memory);
+				fpl__PushWindowDropFilesEvent(fileBufferA, fileCount, (const char**)filesTable, &memory);
 			}
 		} break;
 
@@ -10105,7 +10126,7 @@ LRESULT CALLBACK fpl__Win32MessageProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 				// @NOTE(final): WM_UNICHAR was sent by a third-party input method. Do not add any chars here!
 				return TRUE;
 			}
-			fpl__HandleKeyboardInputEvent(&appState->window, (uint64_t)wParam,(uint32_t)wParam);
+			fpl__HandleKeyboardInputEvent(&appState->window, (uint64_t)wParam, (uint32_t)wParam);
 			return 0;
 		} break;
 
@@ -10262,7 +10283,7 @@ LRESULT CALLBACK fpl__Win32MessageProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 	return (result);
 }
 
-fpl_internal HICON fpl__Win32LoadIconFromImageSource(const fpl__Win32Api *wapi, const HINSTANCE appInstance, const fplImageSource *imageSource) {
+fpl_internal HICON fpl__Win32LoadIconFromImageSource(const fpl__Win32Api* wapi, const HINSTANCE appInstance, const fplImageSource* imageSource) {
 	fplAssert(imageSource != fpl_null);
 	HICON result = 0;
 	if (imageSource->width > 0 && imageSource->height > 0 && imageSource->data > 0) {
@@ -10292,8 +10313,8 @@ fpl_internal HICON fpl__Win32LoadIconFromImageSource(const fpl__Win32Api *wapi, 
 		}
 		if (colorBitmap != fpl_null && maskBitmap != fpl_null) {
 			fplAssert(targetData != fpl_null);
-			uint8_t *dst = targetData;
-			const uint8_t *src = imageSource->data;
+			uint8_t* dst = targetData;
+			const uint8_t* src = imageSource->data;
 			if (imageSource->type == fplImageType_RGBA) {
 				for (uint32_t i = 0; i < imageSource->width * imageSource->height; ++i) {
 					dst[0] = src[2]; // R > B
@@ -10327,10 +10348,10 @@ fpl_internal HICON fpl__Win32LoadIconFromImageSource(const fpl__Win32Api *wapi, 
 	return(result);
 }
 
-fpl_internal bool fpl__Win32InitWindow(const fplSettings *initSettings, fplWindowSettings *currentWindowSettings, fpl__PlatformAppState *platAppState, fpl__Win32AppState *appState, fpl__Win32WindowState *windowState, const fpl__SetupWindowCallbacks *setupCallbacks) {
+fpl_internal bool fpl__Win32InitWindow(const fplSettings* initSettings, fplWindowSettings* currentWindowSettings, fpl__PlatformAppState* platAppState, fpl__Win32AppState* appState, fpl__Win32WindowState* windowState, const fpl__SetupWindowCallbacks* setupCallbacks) {
 	fplAssert(appState != fpl_null);
-	const fpl__Win32Api *wapi = &appState->winApi;
-	const fplWindowSettings *initWindowSettings = &initSettings->window;
+	const fpl__Win32Api* wapi = &appState->winApi;
+	const fplWindowSettings* initWindowSettings = &initSettings->window;
 
 	// Presetup window
 	fpl__PreSetupWindowResult preSetupResult = fplZeroInit;
@@ -10362,10 +10383,10 @@ fpl_internal bool fpl__Win32InitWindow(const fplSettings *initSettings, fplWindo
 	if (fplGetStringLength(initWindowSettings->title) > 0) {
 		fplUTF8StringToWideString(initWindowSettings->title, fplGetStringLength(initWindowSettings->title), windowTitleBuffer, fplArrayCount(windowTitleBuffer));
 	} else {
-		const wchar_t *defaultTitle = FPL__WIN32_UNNAMED_WINDOW;
+		const wchar_t* defaultTitle = FPL__WIN32_UNNAMED_WINDOW;
 		lstrcpynW(windowTitleBuffer, defaultTitle, fplArrayCount(windowTitleBuffer));
 	}
-	wchar_t *windowTitle = windowTitleBuffer;
+	wchar_t* windowTitle = windowTitleBuffer;
 	fplWideStringToUTF8String(windowTitle, lstrlenW(windowTitle), currentWindowSettings->title, fplArrayCount(currentWindowSettings->title));
 
 	// Prepare window style, size and position
@@ -10444,8 +10465,8 @@ fpl_internal bool fpl__Win32InitWindow(const fplSettings *initSettings, fplWindo
 	return true;
 }
 
-fpl_internal void fpl__Win32ReleaseWindow(const fpl__Win32InitState *initState, const fpl__Win32AppState *appState, fpl__Win32WindowState *windowState) {
-	const fpl__Win32Api *wapi = &appState->winApi;
+fpl_internal void fpl__Win32ReleaseWindow(const fpl__Win32InitState* initState, const fpl__Win32AppState* appState, fpl__Win32WindowState* windowState) {
+	const fpl__Win32Api* wapi = &appState->winApi;
 	if (windowState->deviceContext != fpl_null) {
 		wapi->user.ReleaseDC(windowState->windowHandle, windowState->deviceContext);
 		windowState->deviceContext = fpl_null;
@@ -10459,13 +10480,13 @@ fpl_internal void fpl__Win32ReleaseWindow(const fpl__Win32InitState *initState, 
 
 #endif // FPL__ENABLE_WINDOW
 
-fpl_internal bool fpl__Win32ThreadWaitForMultiple(fplThreadHandle **threads, const size_t count, const size_t stride, const fplTimeoutValue timeout, const bool waitForAll) {
+fpl_internal bool fpl__Win32ThreadWaitForMultiple(fplThreadHandle** threads, const size_t count, const size_t stride, const fplTimeoutValue timeout, const bool waitForAll) {
 	FPL__CheckArgumentNull(threads, false);
 	FPL__CheckArgumentMax(count, FPL__MAX_THREAD_COUNT, false);
 	fplStaticAssert(FPL__MAX_THREAD_COUNT >= MAXIMUM_WAIT_OBJECTS);
-	const size_t actualStride = stride > 0 ? stride : sizeof(fplThreadHandle *);
+	const size_t actualStride = stride > 0 ? stride : sizeof(fplThreadHandle*);
 	for (size_t index = 0; index < count; ++index) {
-		fplThreadHandle *thread = *(fplThreadHandle **)((uint8_t *)threads + index * actualStride);
+		fplThreadHandle* thread = *(fplThreadHandle**)((uint8_t*)threads + index * actualStride);
 		if (thread == fpl_null) {
 			FPL__ERROR(FPL__MODULE_THREADING, "Thread for index '%d' are not allowed to be null", index);
 			return false;
@@ -10486,7 +10507,7 @@ fpl_internal bool fpl__Win32ThreadWaitForMultiple(fplThreadHandle **threads, con
 	while (stoppedThreads < minThreads) {
 		stoppedThreads = 0;
 		for (size_t index = 0; index < count; ++index) {
-			fplThreadHandle *thread = *(fplThreadHandle **)((uint8_t *)threads + index * actualStride);
+			fplThreadHandle* thread = *(fplThreadHandle**)((uint8_t*)threads + index * actualStride);
 			if (fplGetThreadState(thread) == fplThreadState_Stopped) {
 				++stoppedThreads;
 			}
@@ -10505,13 +10526,13 @@ fpl_internal bool fpl__Win32ThreadWaitForMultiple(fplThreadHandle **threads, con
 	return(result);
 }
 
-fpl_internal bool fpl__Win32SignalWaitForMultiple(fplSignalHandle **signals, const size_t count, const size_t stride, const fplTimeoutValue timeout, const bool waitForAll) {
+fpl_internal bool fpl__Win32SignalWaitForMultiple(fplSignalHandle** signals, const size_t count, const size_t stride, const fplTimeoutValue timeout, const bool waitForAll) {
 	FPL__CheckArgumentNull(signals, false);
 	FPL__CheckArgumentMax(count, FPL__MAX_SIGNAL_COUNT, false);
 	HANDLE signalHandles[FPL__MAX_SIGNAL_COUNT];
 	const size_t actualStride = stride > 0 ? stride : sizeof(fplSignalHandle*);
 	for (uint32_t index = 0; index < count; ++index) {
-		fplSignalHandle *availableSignal = *(fplSignalHandle **)((uint8_t *)signals + index * actualStride);
+		fplSignalHandle* availableSignal = *(fplSignalHandle**)((uint8_t*)signals + index * actualStride);
 		if (availableSignal == fpl_null) {
 			FPL__ERROR(FPL__MODULE_THREADING, "Signal for index '%d' are not allowed to be null", index);
 			return false;
@@ -10529,10 +10550,10 @@ fpl_internal bool fpl__Win32SignalWaitForMultiple(fplSignalHandle **signals, con
 	return(result);
 }
 
-fpl_internal void fpl__Win32ReleasePlatform(fpl__PlatformInitState *initState, fpl__PlatformAppState *appState) {
+fpl_internal void fpl__Win32ReleasePlatform(fpl__PlatformInitState* initState, fpl__PlatformAppState* appState) {
 	fplAssert(appState != fpl_null);
-	fpl__Win32AppState *win32AppState = &appState->win32;
-	fpl__Win32InitState *win32InitState = &initState->win32;
+	fpl__Win32AppState* win32AppState = &appState->win32;
+	fpl__Win32InitState* win32InitState = &initState->win32;
 	if (win32AppState->console.isAllocated) {
 		FreeConsole();
 		win32AppState->console.isAllocated = false;
@@ -10544,7 +10565,7 @@ fpl_internal void fpl__Win32ReleasePlatform(fpl__PlatformInitState *initState, f
 }
 
 #if defined(FPL__ENABLE_WINDOW)
-fpl_internal fplKey fpl__Win32TranslateVirtualKey(const fpl__Win32Api *wapi, const uint64_t virtualKey) {
+fpl_internal fplKey fpl__Win32TranslateVirtualKey(const fpl__Win32Api* wapi, const uint64_t virtualKey) {
 	// @TODO(final): [Win32] Use key mapping table instead of switch
 
 	switch (virtualKey) {
@@ -10828,13 +10849,13 @@ fpl_internal fplKey fpl__Win32TranslateVirtualKey(const fpl__Win32Api *wapi, con
 }
 #endif
 
-fpl_internal bool fpl__Win32InitPlatform(const fplInitFlags initFlags, const fplSettings *initSettings, fpl__PlatformInitState *initState, fpl__PlatformAppState *appState) {
+fpl_internal bool fpl__Win32InitPlatform(const fplInitFlags initFlags, const fplSettings* initSettings, fpl__PlatformInitState* initState, fpl__PlatformAppState* appState) {
 	fplAssert(initState != fpl_null);
 	fplAssert(appState != fpl_null);
 
-	fpl__Win32InitState *win32InitState = &initState->win32;
+	fpl__Win32InitState* win32InitState = &initState->win32;
 	win32InitState->appInstance = GetModuleHandleA(fpl_null);
-	fpl__Win32AppState *win32AppState = &appState->win32;
+	fpl__Win32AppState* win32AppState = &appState->win32;
 
 	// @NOTE(final): Expect kernel32.lib to be linked always, so VirtualAlloc and LoadLibrary will always work.
 
@@ -10844,7 +10865,7 @@ fpl_internal bool fpl__Win32InitPlatform(const fplInitFlags initFlags, const fpl
 	// Get main thread infos
 	HANDLE mainThreadHandle = GetCurrentThread();
 	DWORD mainThreadHandleId = GetCurrentThreadId();
-	fplThreadHandle *mainThread = &fpl__global__ThreadState.mainThread;
+	fplThreadHandle* mainThread = &fpl__global__ThreadState.mainThread;
 	fplClearStruct(mainThread);
 	mainThread->id = mainThreadHandleId;
 	mainThread->internalHandle.win32ThreadHandle = mainThreadHandle;
@@ -10902,171 +10923,171 @@ fpl_platform_api void fplAtomicReadWriteFence() {
 	_ReadWriteBarrier();
 }
 
-fpl_platform_api uint32_t fplAtomicExchangeU32(volatile uint32_t *target, const uint32_t value) {
+fpl_platform_api uint32_t fplAtomicExchangeU32(volatile uint32_t* target, const uint32_t value) {
 	fplAssert(target != fpl_null);
-	uint32_t result = _InterlockedExchange((volatile LONG *)target, value);
+	uint32_t result = _InterlockedExchange((volatile LONG*)target, value);
 	return (result);
 }
-fpl_platform_api int32_t fplAtomicExchangeS32(volatile int32_t *target, const int32_t value) {
+fpl_platform_api int32_t fplAtomicExchangeS32(volatile int32_t* target, const int32_t value) {
 	fplAssert(target != fpl_null);
-	int32_t result = _InterlockedExchange((volatile LONG *)target, value);
+	int32_t result = _InterlockedExchange((volatile LONG*)target, value);
 	return (result);
 }
-fpl_platform_api uint64_t fplAtomicExchangeU64(volatile uint64_t *target, const uint64_t value) {
+fpl_platform_api uint64_t fplAtomicExchangeU64(volatile uint64_t* target, const uint64_t value) {
 	fplAssert(target != fpl_null);
-	uint64_t result = _InterlockedExchange64((volatile LONG64 *)target, value);
+	uint64_t result = _InterlockedExchange64((volatile LONG64*)target, value);
 	return (result);
 }
-fpl_platform_api int64_t fplAtomicExchangeS64(volatile int64_t *target, const int64_t value) {
+fpl_platform_api int64_t fplAtomicExchangeS64(volatile int64_t* target, const int64_t value) {
 	fplAssert(target != fpl_null);
-	int64_t result = _InterlockedExchange64((volatile LONG64 *)target, value);
+	int64_t result = _InterlockedExchange64((volatile LONG64*)target, value);
 	return (result);
 }
 
-fpl_platform_api uint32_t fplAtomicFetchAndAddU32(volatile uint32_t *value, const uint32_t addend) {
+fpl_platform_api uint32_t fplAtomicFetchAndAddU32(volatile uint32_t* value, const uint32_t addend) {
 	fplAssert(value != fpl_null);
-	uint32_t result = _InterlockedExchangeAdd((volatile LONG *)value, addend);
+	uint32_t result = _InterlockedExchangeAdd((volatile LONG*)value, addend);
 	return (result);
 }
-fpl_platform_api int32_t fplAtomicFetchAndAddS32(volatile int32_t *value, const int32_t addend) {
+fpl_platform_api int32_t fplAtomicFetchAndAddS32(volatile int32_t* value, const int32_t addend) {
 	fplAssert(value != fpl_null);
-	int32_t result = _InterlockedExchangeAdd((volatile LONG *)value, addend);
+	int32_t result = _InterlockedExchangeAdd((volatile LONG*)value, addend);
 	return (result);
 }
-fpl_platform_api uint64_t fplAtomicFetchAndAddU64(volatile uint64_t *value, const uint64_t addend) {
+fpl_platform_api uint64_t fplAtomicFetchAndAddU64(volatile uint64_t* value, const uint64_t addend) {
 	fplAssert(value != fpl_null);
-	uint64_t result = _InterlockedExchangeAdd64((volatile LONG64 *)value, addend);
+	uint64_t result = _InterlockedExchangeAdd64((volatile LONG64*)value, addend);
 	return (result);
 }
-fpl_platform_api int64_t fplAtomicFetchAndAddS64(volatile int64_t *value, const int64_t addend) {
+fpl_platform_api int64_t fplAtomicFetchAndAddS64(volatile int64_t* value, const int64_t addend) {
 	fplAssert(value != fpl_null);
-	int64_t result = _InterlockedExchangeAdd64((volatile LONG64 *)value, addend);
+	int64_t result = _InterlockedExchangeAdd64((volatile LONG64*)value, addend);
 	return(result);
 }
 
-fpl_platform_api uint32_t fplAtomicAddAndFetchU32(volatile uint32_t *value, const uint32_t addend) {
+fpl_platform_api uint32_t fplAtomicAddAndFetchU32(volatile uint32_t* value, const uint32_t addend) {
 	fplAssert(value != fpl_null);
-	uint32_t result = _InterlockedAdd((volatile LONG *)value, addend);
+	uint32_t result = _InterlockedAdd((volatile LONG*)value, addend);
 	return (result);
 }
-fpl_platform_api int32_t fplAtomicAddAndFetchS32(volatile int32_t *value, const int32_t addend) {
+fpl_platform_api int32_t fplAtomicAddAndFetchS32(volatile int32_t* value, const int32_t addend) {
 	fplAssert(value != fpl_null);
-	int32_t result = _InterlockedAdd((volatile LONG *)value, addend);
+	int32_t result = _InterlockedAdd((volatile LONG*)value, addend);
 	return (result);
 }
-fpl_platform_api uint64_t fplAtomicAddAndFetchU64(volatile uint64_t *value, const uint64_t addend) {
+fpl_platform_api uint64_t fplAtomicAddAndFetchU64(volatile uint64_t* value, const uint64_t addend) {
 	fplAssert(value != fpl_null);
-	uint64_t result = _InterlockedAdd64((volatile LONG64 *)value, addend);
+	uint64_t result = _InterlockedAdd64((volatile LONG64*)value, addend);
 	return (result);
 }
-fpl_platform_api int64_t fplAtomicAddAndFetchS64(volatile int64_t *value, const int64_t addend) {
+fpl_platform_api int64_t fplAtomicAddAndFetchS64(volatile int64_t* value, const int64_t addend) {
 	fplAssert(value != fpl_null);
-	int64_t result = _InterlockedAdd64((volatile LONG64 *)value, addend);
+	int64_t result = _InterlockedAdd64((volatile LONG64*)value, addend);
 	return(result);
 }
 
-fpl_platform_api uint32_t fplAtomicIncrementU32(volatile uint32_t *value) {
+fpl_platform_api uint32_t fplAtomicIncrementU32(volatile uint32_t* value) {
 	fplAssert(value != fpl_null);
-	uint32_t result = _InterlockedIncrement((volatile LONG *)value);
+	uint32_t result = _InterlockedIncrement((volatile LONG*)value);
 	return (result);
 }
-fpl_platform_api int32_t fplAtomicIncrementS32(volatile int32_t *value) {
+fpl_platform_api int32_t fplAtomicIncrementS32(volatile int32_t* value) {
 	fplAssert(value != fpl_null);
-	int32_t result = _InterlockedIncrement((volatile LONG *)value);
+	int32_t result = _InterlockedIncrement((volatile LONG*)value);
 	return (result);
 }
-fpl_platform_api uint64_t fplAtomicIncrementU64(volatile uint64_t *value) {
+fpl_platform_api uint64_t fplAtomicIncrementU64(volatile uint64_t* value) {
 	fplAssert(value != fpl_null);
-	uint64_t result = _InterlockedIncrement64((volatile LONG64 *)value);
+	uint64_t result = _InterlockedIncrement64((volatile LONG64*)value);
 	return (result);
 }
-fpl_platform_api int64_t fplAtomicIncrementS64(volatile int64_t *value) {
+fpl_platform_api int64_t fplAtomicIncrementS64(volatile int64_t* value) {
 	fplAssert(value != fpl_null);
-	int64_t result = _InterlockedIncrement64((volatile LONG64 *)value);
+	int64_t result = _InterlockedIncrement64((volatile LONG64*)value);
 	return(result);
 }
 
-fpl_platform_api uint32_t fplAtomicCompareAndSwapU32(volatile uint32_t *dest, const uint32_t comparand, const uint32_t exchange) {
+fpl_platform_api uint32_t fplAtomicCompareAndSwapU32(volatile uint32_t* dest, const uint32_t comparand, const uint32_t exchange) {
 	fplAssert(dest != fpl_null);
-	uint32_t result = _InterlockedCompareExchange((volatile LONG *)dest, exchange, comparand);
+	uint32_t result = _InterlockedCompareExchange((volatile LONG*)dest, exchange, comparand);
 	return (result);
 }
-fpl_platform_api int32_t fplAtomicCompareAndSwapS32(volatile int32_t *dest, const int32_t comparand, const int32_t exchange) {
+fpl_platform_api int32_t fplAtomicCompareAndSwapS32(volatile int32_t* dest, const int32_t comparand, const int32_t exchange) {
 	fplAssert(dest != fpl_null);
-	int32_t result = _InterlockedCompareExchange((volatile LONG *)dest, exchange, comparand);
+	int32_t result = _InterlockedCompareExchange((volatile LONG*)dest, exchange, comparand);
 	return (result);
 }
-fpl_platform_api uint64_t fplAtomicCompareAndSwapU64(volatile uint64_t *dest, const uint64_t comparand, const uint64_t exchange) {
+fpl_platform_api uint64_t fplAtomicCompareAndSwapU64(volatile uint64_t* dest, const uint64_t comparand, const uint64_t exchange) {
 	fplAssert(dest != fpl_null);
-	uint64_t result = _InterlockedCompareExchange64((volatile LONG64 *)dest, exchange, comparand);
+	uint64_t result = _InterlockedCompareExchange64((volatile LONG64*)dest, exchange, comparand);
 	return (result);
 }
-fpl_platform_api int64_t fplAtomicCompareAndSwapS64(volatile int64_t *dest, const int64_t comparand, const int64_t exchange) {
+fpl_platform_api int64_t fplAtomicCompareAndSwapS64(volatile int64_t* dest, const int64_t comparand, const int64_t exchange) {
 	fplAssert(dest != fpl_null);
-	int64_t result = _InterlockedCompareExchange64((volatile LONG64 *)dest, exchange, comparand);
+	int64_t result = _InterlockedCompareExchange64((volatile LONG64*)dest, exchange, comparand);
 	return (result);
 }
 
-fpl_platform_api bool fplIsAtomicCompareAndSwapU32(volatile uint32_t *dest, const uint32_t comparand, const uint32_t exchange) {
+fpl_platform_api bool fplIsAtomicCompareAndSwapU32(volatile uint32_t* dest, const uint32_t comparand, const uint32_t exchange) {
 	fplAssert(dest != fpl_null);
-	uint32_t value = _InterlockedCompareExchange((volatile LONG *)dest, exchange, comparand);
+	uint32_t value = _InterlockedCompareExchange((volatile LONG*)dest, exchange, comparand);
 	bool result = (value == comparand);
 	return (result);
 }
-fpl_platform_api bool fplIsAtomicCompareAndSwapS32(volatile int32_t *dest, const int32_t comparand, const int32_t exchange) {
+fpl_platform_api bool fplIsAtomicCompareAndSwapS32(volatile int32_t* dest, const int32_t comparand, const int32_t exchange) {
 	fplAssert(dest != fpl_null);
-	int32_t value = _InterlockedCompareExchange((volatile LONG *)dest, exchange, comparand);
+	int32_t value = _InterlockedCompareExchange((volatile LONG*)dest, exchange, comparand);
 	bool result = (value == comparand);
 	return (result);
 }
-fpl_platform_api bool fplIsAtomicCompareAndSwapU64(volatile uint64_t *dest, const uint64_t comparand, const uint64_t exchange) {
+fpl_platform_api bool fplIsAtomicCompareAndSwapU64(volatile uint64_t* dest, const uint64_t comparand, const uint64_t exchange) {
 	fplAssert(dest != fpl_null);
-	uint64_t value = _InterlockedCompareExchange64((volatile LONG64 *)dest, exchange, comparand);
+	uint64_t value = _InterlockedCompareExchange64((volatile LONG64*)dest, exchange, comparand);
 	bool result = (value == comparand);
 	return (result);
 }
-fpl_platform_api bool fplIsAtomicCompareAndSwapS64(volatile int64_t *dest, const int64_t comparand, const int64_t exchange) {
+fpl_platform_api bool fplIsAtomicCompareAndSwapS64(volatile int64_t* dest, const int64_t comparand, const int64_t exchange) {
 	fplAssert(dest != fpl_null);
-	int64_t value = _InterlockedCompareExchange64((volatile LONG64 *)dest, exchange, comparand);
+	int64_t value = _InterlockedCompareExchange64((volatile LONG64*)dest, exchange, comparand);
 	bool result = (value == comparand);
 	return (result);
 }
 
-fpl_platform_api uint32_t fplAtomicLoadU32(volatile uint32_t *source) {
-	uint32_t result = _InterlockedCompareExchange((volatile LONG *)source, 0, 0);
+fpl_platform_api uint32_t fplAtomicLoadU32(volatile uint32_t* source) {
+	uint32_t result = _InterlockedCompareExchange((volatile LONG*)source, 0, 0);
 	return(result);
 }
-fpl_platform_api uint64_t fplAtomicLoadU64(volatile uint64_t *source) {
-	uint64_t result = _InterlockedCompareExchange64((volatile LONG64 *)source, 0, 0);
+fpl_platform_api uint64_t fplAtomicLoadU64(volatile uint64_t* source) {
+	uint64_t result = _InterlockedCompareExchange64((volatile LONG64*)source, 0, 0);
 	return(result);
 }
-fpl_platform_api int32_t fplAtomicLoadS32(volatile int32_t *source) {
-	int32_t result = _InterlockedCompareExchange((volatile LONG *)source, 0, 0);
+fpl_platform_api int32_t fplAtomicLoadS32(volatile int32_t* source) {
+	int32_t result = _InterlockedCompareExchange((volatile LONG*)source, 0, 0);
 	return(result);
 }
-fpl_platform_api int64_t fplAtomicLoadS64(volatile int64_t *source) {
-	int64_t result = _InterlockedCompareExchange64((volatile LONG64 *)source, 0, 0);
+fpl_platform_api int64_t fplAtomicLoadS64(volatile int64_t* source) {
+	int64_t result = _InterlockedCompareExchange64((volatile LONG64*)source, 0, 0);
 	return(result);
 }
 
-fpl_platform_api void fplAtomicStoreU32(volatile uint32_t *dest, const uint32_t value) {
-	_InterlockedExchange((volatile LONG *)dest, value);
+fpl_platform_api void fplAtomicStoreU32(volatile uint32_t* dest, const uint32_t value) {
+	_InterlockedExchange((volatile LONG*)dest, value);
 }
-fpl_platform_api void fplAtomicStoreU64(volatile uint64_t *dest, const uint64_t value) {
-	_InterlockedExchange64((volatile LONG64 *)dest, value);
+fpl_platform_api void fplAtomicStoreU64(volatile uint64_t* dest, const uint64_t value) {
+	_InterlockedExchange64((volatile LONG64*)dest, value);
 }
-fpl_platform_api void fplAtomicStoreS32(volatile int32_t *dest, const int32_t value) {
-	_InterlockedExchange((volatile LONG *)dest, value);
+fpl_platform_api void fplAtomicStoreS32(volatile int32_t* dest, const int32_t value) {
+	_InterlockedExchange((volatile LONG*)dest, value);
 }
-fpl_platform_api void fplAtomicStoreS64(volatile int64_t *dest, const int64_t value) {
-	_InterlockedExchange64((volatile LONG64 *)dest, value);
+fpl_platform_api void fplAtomicStoreS64(volatile int64_t* dest, const int64_t value) {
+	_InterlockedExchange64((volatile LONG64*)dest, value);
 }
 
 //
 // Win32 OS
 //
-fpl_internal const char *fpl__Win32GetVersionName(DWORD major, DWORD minor) {
-	const char *result;
+fpl_internal const char* fpl__Win32GetVersionName(DWORD major, DWORD minor) {
+	const char* result;
 	if (major == 5 && minor == 0) {
 		result = "Windows 2000";
 	} else if (major == 5 && minor == 1) {
@@ -11095,14 +11116,14 @@ typedef FPL__FUNC_NTDLL_RtlGetVersion(fpl__func_ntdll_RtlGetVersionProc);
 typedef FPL__FUNC_KERNEL32_GetVersion(fpl__func_kernel32_GetVersion);
 #define FPL__FUNC_KERNEL32_GetVersionExW(name) BOOL WINAPI name(LPOSVERSIONINFOEXW lpVersionInfo)
 typedef FPL__FUNC_KERNEL32_GetVersionExW(fpl__func_kernel32_GetVersionExW);
-fpl_platform_api bool fplGetOperatingSystemInfos(fplOSInfos *outInfos) {
+fpl_platform_api bool fplGetOperatingSystemInfos(fplOSInfos* outInfos) {
 	FPL__CheckArgumentNull(outInfos, false);
 
 	fplClearStruct(outInfos);
 
 	// @NOTE(final): Prefer RtlGetVersion always, because MS might decide to totally remove GetVersion() and GetVersionEx()
 	HMODULE ntdllModule = GetModuleHandleA("ntdll");
-	fpl__func_ntdll_RtlGetVersionProc *rtlGetVersionProc = (fpl__func_ntdll_RtlGetVersionProc *)GetProcAddress(ntdllModule, "RtlGetVersion");
+	fpl__func_ntdll_RtlGetVersionProc* rtlGetVersionProc = (fpl__func_ntdll_RtlGetVersionProc*)GetProcAddress(ntdllModule, "RtlGetVersion");
 	if (rtlGetVersionProc != fpl_null) {
 		RTL_OSVERSIONINFOW info = fplZeroInit;
 		info.dwOSVersionInfoSize = sizeof(info);
@@ -11112,7 +11133,7 @@ fpl_platform_api bool fplGetOperatingSystemInfos(fplOSInfos *outInfos) {
 			fplS32ToString(0, outInfos->osVersion.fix, fplArrayCount(outInfos->osVersion.fix));
 			fplS32ToString((int32_t)info.dwBuildNumber, outInfos->osVersion.build, fplArrayCount(outInfos->osVersion.build));
 			fplFormatString(outInfos->osVersion.fullName, fplArrayCount(outInfos->osVersion.fullName), "%u.%u.%u.%u", info.dwMajorVersion, info.dwMinorVersion, 0, info.dwBuildNumber);
-			const char *versionName = fpl__Win32GetVersionName(info.dwMajorVersion, info.dwMinorVersion);
+			const char* versionName = fpl__Win32GetVersionName(info.dwMajorVersion, info.dwMinorVersion);
 			fplCopyString(versionName, outInfos->osName, fplArrayCount(outInfos->osName));
 			return(true);
 		}
@@ -11124,8 +11145,8 @@ fpl_platform_api bool fplGetOperatingSystemInfos(fplOSInfos *outInfos) {
 		FPL__ERROR(FPL__MODULE_WIN32, "Kernel32 library could not be loaded");
 		return false;
 	}
-	fpl__func_kernel32_GetVersion *getVersionProc = (fpl__func_kernel32_GetVersion *)GetProcAddress(kernelLib, "GetVersion");
-	fpl__func_kernel32_GetVersionExW *getVersionExProc = (fpl__func_kernel32_GetVersionExW *)GetProcAddress(kernelLib, "GetVersionExW");
+	fpl__func_kernel32_GetVersion* getVersionProc = (fpl__func_kernel32_GetVersion*)GetProcAddress(kernelLib, "GetVersion");
+	fpl__func_kernel32_GetVersionExW* getVersionExProc = (fpl__func_kernel32_GetVersionExW*)GetProcAddress(kernelLib, "GetVersionExW");
 	FreeLibrary(kernelLib);
 
 	if (getVersionExProc != fpl_null) {
@@ -11137,7 +11158,7 @@ fpl_platform_api bool fplGetOperatingSystemInfos(fplOSInfos *outInfos) {
 			fplS32ToString(0, outInfos->osVersion.fix, fplArrayCount(outInfos->osVersion.fix));
 			fplS32ToString((int32_t)infoEx.dwBuildNumber, outInfos->osVersion.build, fplArrayCount(outInfos->osVersion.build));
 			fplFormatString(outInfos->osVersion.fullName, fplArrayCount(outInfos->osVersion.fullName), "%u.%u.%u.%u", infoEx.dwMajorVersion, infoEx.dwMinorVersion, 0, infoEx.dwBuildNumber);
-			const char *versionName = fpl__Win32GetVersionName(infoEx.dwMajorVersion, infoEx.dwMinorVersion);
+			const char* versionName = fpl__Win32GetVersionName(infoEx.dwMajorVersion, infoEx.dwMinorVersion);
 			fplCopyString(versionName, outInfos->osName, fplArrayCount(outInfos->osName));
 			return(true);
 		}
@@ -11157,7 +11178,7 @@ fpl_platform_api bool fplGetOperatingSystemInfos(fplOSInfos *outInfos) {
 			fplS32ToString(0, outInfos->osVersion.fix, fplArrayCount(outInfos->osVersion.fix));
 			fplS32ToString((int32_t)build, outInfos->osVersion.build, fplArrayCount(outInfos->osVersion.build));
 			fplFormatString(outInfos->osVersion.fullName, fplArrayCount(outInfos->osVersion.fullName), "%u.%u.%u.%u", major, minor, 0, build);
-			const char *versionName = fpl__Win32GetVersionName(major, minor);
+			const char* versionName = fpl__Win32GetVersionName(major, minor);
 			fplCopyString(versionName, outInfos->osName, fplArrayCount(outInfos->osName));
 			return(true);
 		}
@@ -11168,16 +11189,16 @@ fpl_platform_api bool fplGetOperatingSystemInfos(fplOSInfos *outInfos) {
 
 #define FPL__FUNC_ADV32_GetUserNameW(name) BOOL WINAPI name(LPWSTR lpBuffer, LPDWORD pcbBuffer)
 typedef FPL__FUNC_ADV32_GetUserNameW(fpl__func_adv32_GetUserNameW);
-fpl_platform_api bool fplGetCurrentUsername(char *nameBuffer, const size_t maxNameBufferLen) {
+fpl_platform_api bool fplGetCurrentUsername(char* nameBuffer, const size_t maxNameBufferLen) {
 	FPL__CheckArgumentNull(nameBuffer, false);
 	FPL__CheckArgumentZero(maxNameBufferLen, false);
-	const char *libName = "advapi32.dll";
+	const char* libName = "advapi32.dll";
 	HMODULE adv32Lib = LoadLibraryA(libName);
 	if (adv32Lib == fpl_null) {
 		FPL__ERROR(FPL__MODULE_WIN32, "Failed loading library '%s'", libName);
 		return false;
 	}
-	fpl__func_adv32_GetUserNameW *getUserNameProc = (fpl__func_adv32_GetUserNameW *)GetProcAddress(adv32Lib, "GetUserNameW");
+	fpl__func_adv32_GetUserNameW* getUserNameProc = (fpl__func_adv32_GetUserNameW*)GetProcAddress(adv32Lib, "GetUserNameW");
 	bool result = false;
 	if (getUserNameProc != fpl_null) {
 		wchar_t wideBuffer[FPL_MAX_BUFFER_LENGTH];
@@ -11243,7 +11264,7 @@ fpl_platform_api fplArchType fplGetProcessorArchitecture() {
 
 #define FPL__FUNC_WIN32_KERNEL32_GetPhysicallyInstalledSystemMemory(name) BOOL WINAPI name(PULONGLONG TotalMemoryInKilobytes)
 typedef FPL__FUNC_WIN32_KERNEL32_GetPhysicallyInstalledSystemMemory(fpl__win32_kernel_func_GetPhysicallyInstalledSystemMemory);
-fpl_platform_api bool fplGetRunningMemoryInfos(fplMemoryInfos *outInfos) {
+fpl_platform_api bool fplGetRunningMemoryInfos(fplMemoryInfos* outInfos) {
 	FPL__CheckArgumentNull(outInfos, false);
 	bool result = false;
 
@@ -11251,7 +11272,7 @@ fpl_platform_api bool fplGetRunningMemoryInfos(fplMemoryInfos *outInfos) {
 	if (kernel32lib == fpl_null) {
 		return false;
 	}
-	fpl__win32_kernel_func_GetPhysicallyInstalledSystemMemory *getPhysicallyInstalledSystemMemory = (fpl__win32_kernel_func_GetPhysicallyInstalledSystemMemory *)GetProcAddress(kernel32lib, "GetPhysicallyInstalledSystemMemory");
+	fpl__win32_kernel_func_GetPhysicallyInstalledSystemMemory* getPhysicallyInstalledSystemMemory = (fpl__win32_kernel_func_GetPhysicallyInstalledSystemMemory*)GetProcAddress(kernel32lib, "GetPhysicallyInstalledSystemMemory");
 	FreeLibrary(kernel32lib);
 
 	ULONGLONG installedMemorySize = 0;
@@ -11285,20 +11306,20 @@ fpl_platform_api bool fplGetRunningMemoryInfos(fplMemoryInfos *outInfos) {
 //
 // Win32 Threading
 //
-fpl_internal DWORD WINAPI fpl__Win32ThreadProc(void *data) {
-	fplThreadHandle *thread = (fplThreadHandle *)data;
+fpl_internal DWORD WINAPI fpl__Win32ThreadProc(void* data) {
+	fplThreadHandle* thread = (fplThreadHandle*)data;
 	fplAssert(thread != fpl_null);
-	fplAtomicStoreU32((volatile uint32_t *)&thread->currentState, (uint32_t)fplThreadState_Running);
+	fplAtomicStoreU32((volatile uint32_t*)&thread->currentState, (uint32_t)fplThreadState_Running);
 	if (thread->runFunc != fpl_null) {
 		thread->runFunc(thread, thread->data);
 	}
-	fplAtomicStoreU32((volatile uint32_t *)&thread->currentState, (uint32_t)fplThreadState_Stopping);
+	fplAtomicStoreU32((volatile uint32_t*)&thread->currentState, (uint32_t)fplThreadState_Stopping);
 	HANDLE handle = thread->internalHandle.win32ThreadHandle;
 	if (handle != fpl_null) {
 		CloseHandle(handle);
 	}
 	thread->isValid = false;
-	fplAtomicStoreU32((volatile uint32_t *)&thread->currentState, (uint32_t)fplThreadState_Stopped);
+	fplAtomicStoreU32((volatile uint32_t*)&thread->currentState, (uint32_t)fplThreadState_Stopped);
 	ExitThread(0);
 }
 
@@ -11311,10 +11332,10 @@ fpl_platform_api uint32_t fplGetCurrentThreadId() {
 	return(result);
 }
 
-fpl_platform_api fplThreadHandle *fplThreadCreate(fpl_run_thread_callback *runFunc, void *data) {
+fpl_platform_api fplThreadHandle* fplThreadCreate(fpl_run_thread_callback* runFunc, void* data) {
 	FPL__CheckArgumentNull(runFunc, fpl_null);
-	fplThreadHandle *result = fpl_null;
-	fplThreadHandle *thread = fpl__GetFreeThread();
+	fplThreadHandle* result = fpl_null;
+	fplThreadHandle* thread = fpl__GetFreeThread();
 	if (thread != fpl_null) {
 		DWORD creationFlags = 0;
 		DWORD threadId = 0;
@@ -11356,7 +11377,7 @@ fpl_internal fplThreadPriority fpl__Win32MapNativeThreadPriority(const int win32
 
 }
 
-fpl_platform_api fplThreadPriority fplGetThreadPriority(fplThreadHandle *thread) {
+fpl_platform_api fplThreadPriority fplGetThreadPriority(fplThreadHandle* thread) {
 	FPL__CheckArgumentNull(thread, fplThreadPriority_Unknown);
 	fplThreadPriority result = fplThreadPriority_Unknown;
 	if (thread->isValid && thread->internalHandle.win32ThreadHandle != fpl_null) {
@@ -11367,7 +11388,7 @@ fpl_platform_api fplThreadPriority fplGetThreadPriority(fplThreadHandle *thread)
 	return(result);
 }
 
-fpl_platform_api bool fplSetThreadPriority(fplThreadHandle *thread, const fplThreadPriority newPriority) {
+fpl_platform_api bool fplSetThreadPriority(fplThreadHandle* thread, const fplThreadPriority newPriority) {
 	FPL__CheckArgumentNull(thread, false);
 	bool result = false;
 	if (thread->isValid && thread->internalHandle.win32ThreadHandle != fpl_null) {
@@ -11407,25 +11428,25 @@ fpl_platform_api bool fplThreadYield() {
 	return(result);
 }
 
-fpl_platform_api bool fplThreadTerminate(fplThreadHandle *thread) {
+fpl_platform_api bool fplThreadTerminate(fplThreadHandle* thread) {
 	FPL__CheckArgumentNull(thread, false);
 	fplThreadState state = fplGetThreadState(thread);
 	if (thread->isValid && (state != fplThreadState_Stopped && state != fplThreadState_Stopping)) {
-		fplAtomicStoreU32((volatile uint32_t *)&thread->currentState, (uint32_t)fplThreadState_Stopping);
+		fplAtomicStoreU32((volatile uint32_t*)&thread->currentState, (uint32_t)fplThreadState_Stopping);
 		HANDLE handle = thread->internalHandle.win32ThreadHandle;
 		if (handle != fpl_null) {
 			TerminateThread(handle, 0);
 			CloseHandle(handle);
 		}
 		thread->isValid = false;
-		fplAtomicStoreU32((volatile uint32_t *)&thread->currentState, (uint32_t)fplThreadState_Stopped);
+		fplAtomicStoreU32((volatile uint32_t*)&thread->currentState, (uint32_t)fplThreadState_Stopped);
 		return true;
 	} else {
 		return false;
 	}
 }
 
-fpl_platform_api bool fplThreadWaitForOne(fplThreadHandle *thread, const fplTimeoutValue timeout) {
+fpl_platform_api bool fplThreadWaitForOne(fplThreadHandle* thread, const fplTimeoutValue timeout) {
 	FPL__CheckArgumentNull(thread, false);
 	bool result;
 	if (fplGetThreadState(thread) != fplThreadState_Stopped) {
@@ -11442,17 +11463,17 @@ fpl_platform_api bool fplThreadWaitForOne(fplThreadHandle *thread, const fplTime
 	return(result);
 }
 
-fpl_platform_api bool fplThreadWaitForAll(fplThreadHandle **threads, const size_t count, const size_t stride, const fplTimeoutValue timeout) {
+fpl_platform_api bool fplThreadWaitForAll(fplThreadHandle** threads, const size_t count, const size_t stride, const fplTimeoutValue timeout) {
 	bool result = fpl__Win32ThreadWaitForMultiple(threads, count, stride, timeout, true);
 	return(result);
 }
 
-fpl_platform_api bool fplThreadWaitForAny(fplThreadHandle **threads, const size_t count, const size_t stride, const fplTimeoutValue timeout) {
+fpl_platform_api bool fplThreadWaitForAny(fplThreadHandle** threads, const size_t count, const size_t stride, const fplTimeoutValue timeout) {
 	bool result = fpl__Win32ThreadWaitForMultiple(threads, count, stride, timeout, false);
 	return(result);
 }
 
-fpl_platform_api bool fplMutexInit(fplMutexHandle *mutex) {
+fpl_platform_api bool fplMutexInit(fplMutexHandle* mutex) {
 	FPL__CheckArgumentNull(mutex, false);
 	if (mutex->isValid) {
 		FPL__ERROR(FPL__MODULE_THREADING, "Mutex '%p' is already initialized", mutex);
@@ -11464,7 +11485,7 @@ fpl_platform_api bool fplMutexInit(fplMutexHandle *mutex) {
 	return true;
 }
 
-fpl_platform_api void fplMutexDestroy(fplMutexHandle *mutex) {
+fpl_platform_api void fplMutexDestroy(fplMutexHandle* mutex) {
 	FPL__CheckArgumentNullNoRet(mutex);
 	if (mutex->isValid) {
 		DeleteCriticalSection(&mutex->internalHandle.win32CriticalSection);
@@ -11472,7 +11493,7 @@ fpl_platform_api void fplMutexDestroy(fplMutexHandle *mutex) {
 	}
 }
 
-fpl_platform_api bool fplMutexLock(fplMutexHandle *mutex) {
+fpl_platform_api bool fplMutexLock(fplMutexHandle* mutex) {
 	FPL__CheckArgumentNull(mutex, false);
 	if (!mutex->isValid) {
 		FPL__ERROR(FPL__MODULE_THREADING, "Mutex parameter must be valid");
@@ -11482,7 +11503,7 @@ fpl_platform_api bool fplMutexLock(fplMutexHandle *mutex) {
 	return true;
 }
 
-fpl_platform_api bool fplMutexTryLock(fplMutexHandle *mutex) {
+fpl_platform_api bool fplMutexTryLock(fplMutexHandle* mutex) {
 	FPL__CheckArgumentNull(mutex, false);
 	if (!mutex->isValid) {
 		FPL__ERROR(FPL__MODULE_THREADING, "Mutex parameter must be valid");
@@ -11492,7 +11513,7 @@ fpl_platform_api bool fplMutexTryLock(fplMutexHandle *mutex) {
 	return(result);
 }
 
-fpl_platform_api bool fplMutexUnlock(fplMutexHandle *mutex) {
+fpl_platform_api bool fplMutexUnlock(fplMutexHandle* mutex) {
 	FPL__CheckArgumentNull(mutex, false);
 	if (!mutex->isValid) {
 		FPL__ERROR(FPL__MODULE_THREADING, "Mutex parameter must be valid");
@@ -11502,7 +11523,7 @@ fpl_platform_api bool fplMutexUnlock(fplMutexHandle *mutex) {
 	return true;
 }
 
-fpl_platform_api bool fplSignalInit(fplSignalHandle *signal, const fplSignalValue initialValue) {
+fpl_platform_api bool fplSignalInit(fplSignalHandle* signal, const fplSignalValue initialValue) {
 	FPL__CheckArgumentNull(signal, false);
 	if (signal->isValid) {
 		FPL__ERROR(FPL__MODULE_THREADING, "Signal '%p' is already initialized", signal);
@@ -11519,7 +11540,7 @@ fpl_platform_api bool fplSignalInit(fplSignalHandle *signal, const fplSignalValu
 	return(true);
 }
 
-fpl_platform_api void fplSignalDestroy(fplSignalHandle *signal) {
+fpl_platform_api void fplSignalDestroy(fplSignalHandle* signal) {
 	FPL__CheckArgumentNullNoRet(signal);
 	if (signal->internalHandle.win32EventHandle != fpl_null) {
 		HANDLE handle = signal->internalHandle.win32EventHandle;
@@ -11528,7 +11549,7 @@ fpl_platform_api void fplSignalDestroy(fplSignalHandle *signal) {
 	}
 }
 
-fpl_platform_api bool fplSignalWaitForOne(fplSignalHandle *signal, const fplTimeoutValue timeout) {
+fpl_platform_api bool fplSignalWaitForOne(fplSignalHandle* signal, const fplTimeoutValue timeout) {
 	FPL__CheckArgumentNull(signal, false);
 	if (signal->internalHandle.win32EventHandle == fpl_null) {
 		FPL__ERROR(FPL__MODULE_THREADING, "Signal handle are not allowed to be null");
@@ -11540,17 +11561,17 @@ fpl_platform_api bool fplSignalWaitForOne(fplSignalHandle *signal, const fplTime
 	return(result);
 }
 
-fpl_platform_api bool fplSignalWaitForAll(fplSignalHandle **signals, const size_t count, const size_t stride, const fplTimeoutValue timeout) {
+fpl_platform_api bool fplSignalWaitForAll(fplSignalHandle** signals, const size_t count, const size_t stride, const fplTimeoutValue timeout) {
 	bool result = fpl__Win32SignalWaitForMultiple(signals, count, stride, timeout, true);
 	return(result);
 }
 
-fpl_platform_api bool fplSignalWaitForAny(fplSignalHandle **signals, const size_t count, const size_t stride, const fplTimeoutValue timeout) {
+fpl_platform_api bool fplSignalWaitForAny(fplSignalHandle** signals, const size_t count, const size_t stride, const fplTimeoutValue timeout) {
 	bool result = fpl__Win32SignalWaitForMultiple(signals, count, stride, timeout, false);
 	return(result);
 }
 
-fpl_platform_api bool fplSignalSet(fplSignalHandle *signal) {
+fpl_platform_api bool fplSignalSet(fplSignalHandle* signal) {
 	FPL__CheckArgumentNull(signal, false);
 	if (signal->internalHandle.win32EventHandle == fpl_null) {
 		FPL__ERROR(FPL__MODULE_THREADING, "Signal handle are not allowed to be null");
@@ -11561,7 +11582,7 @@ fpl_platform_api bool fplSignalSet(fplSignalHandle *signal) {
 	return(result);
 }
 
-fpl_platform_api bool fplSignalReset(fplSignalHandle *signal) {
+fpl_platform_api bool fplSignalReset(fplSignalHandle* signal) {
 	FPL__CheckArgumentNull(signal, false);
 	if (signal->internalHandle.win32EventHandle == fpl_null) {
 		FPL__ERROR(FPL__MODULE_THREADING, "Signal handle are not allowed to be null");
@@ -11572,7 +11593,7 @@ fpl_platform_api bool fplSignalReset(fplSignalHandle *signal) {
 	return(result);
 }
 
-fpl_platform_api bool fplConditionInit(fplConditionVariable *condition) {
+fpl_platform_api bool fplConditionInit(fplConditionVariable* condition) {
 	FPL__CheckArgumentNull(condition, false);
 	fplClearStruct(condition);
 	InitializeConditionVariable(&condition->internalHandle.win32Condition);
@@ -11580,14 +11601,14 @@ fpl_platform_api bool fplConditionInit(fplConditionVariable *condition) {
 	return true;
 }
 
-fpl_platform_api void fplConditionDestroy(fplConditionVariable *condition) {
+fpl_platform_api void fplConditionDestroy(fplConditionVariable* condition) {
 	FPL__CheckArgumentNullNoRet(condition);
 	if (condition->isValid) {
 		fplClearStruct(condition);
 	}
 }
 
-fpl_platform_api bool fplConditionWait(fplConditionVariable *condition, fplMutexHandle *mutex, const fplTimeoutValue timeout) {
+fpl_platform_api bool fplConditionWait(fplConditionVariable* condition, fplMutexHandle* mutex, const fplTimeoutValue timeout) {
 	FPL__CheckArgumentNull(condition, false);
 	FPL__CheckArgumentNull(mutex, false);
 	if (!condition->isValid) {
@@ -11603,7 +11624,7 @@ fpl_platform_api bool fplConditionWait(fplConditionVariable *condition, fplMutex
 	return(result);
 }
 
-fpl_platform_api bool fplConditionSignal(fplConditionVariable *condition) {
+fpl_platform_api bool fplConditionSignal(fplConditionVariable* condition) {
 	FPL__CheckArgumentNull(condition, false);
 	if (!condition->isValid) {
 		FPL__ERROR(FPL__MODULE_THREADING, "Condition '%p' is not valid", condition);
@@ -11613,7 +11634,7 @@ fpl_platform_api bool fplConditionSignal(fplConditionVariable *condition) {
 	return true;
 }
 
-fpl_platform_api bool fplConditionBroadcast(fplConditionVariable *condition) {
+fpl_platform_api bool fplConditionBroadcast(fplConditionVariable* condition) {
 	FPL__CheckArgumentNull(condition, false);
 	if (!condition->isValid) {
 		FPL__ERROR(FPL__MODULE_THREADING, "Condition '%p' is not valid", condition);
@@ -11623,7 +11644,7 @@ fpl_platform_api bool fplConditionBroadcast(fplConditionVariable *condition) {
 	return true;
 }
 
-fpl_platform_api bool fplSemaphoreInit(fplSemaphoreHandle *semaphore, const uint32_t initialValue) {
+fpl_platform_api bool fplSemaphoreInit(fplSemaphoreHandle* semaphore, const uint32_t initialValue) {
 	FPL__CheckArgumentNull(semaphore, false);
 	FPL__CheckArgumentMax(initialValue, INT32_MAX, false);
 	if (semaphore->isValid) {
@@ -11642,7 +11663,7 @@ fpl_platform_api bool fplSemaphoreInit(fplSemaphoreHandle *semaphore, const uint
 	return true;
 }
 
-fpl_platform_api void fplSemaphoreDestroy(fplSemaphoreHandle *semaphore) {
+fpl_platform_api void fplSemaphoreDestroy(fplSemaphoreHandle* semaphore) {
 	FPL__CheckArgumentNullNoRet(semaphore);
 	if (semaphore->isValid) {
 		CloseHandle(semaphore->internalHandle.win32.handle);
@@ -11650,7 +11671,7 @@ fpl_platform_api void fplSemaphoreDestroy(fplSemaphoreHandle *semaphore) {
 	}
 }
 
-fpl_platform_api bool fplSemaphoreWait(fplSemaphoreHandle *semaphore, const fplTimeoutValue timeout) {
+fpl_platform_api bool fplSemaphoreWait(fplSemaphoreHandle* semaphore, const fplTimeoutValue timeout) {
 	FPL__CheckArgumentNull(semaphore, false);
 	if (!semaphore->isValid) {
 		FPL__ERROR(FPL__MODULE_THREADING, "Semaphore '%p' is not valid", semaphore);
@@ -11665,7 +11686,7 @@ fpl_platform_api bool fplSemaphoreWait(fplSemaphoreHandle *semaphore, const fplT
 	return(result);
 }
 
-fpl_platform_api bool fplSemaphoreTryWait(fplSemaphoreHandle *semaphore) {
+fpl_platform_api bool fplSemaphoreTryWait(fplSemaphoreHandle* semaphore) {
 	FPL__CheckArgumentNull(semaphore, false);
 	if (!semaphore->isValid) {
 		FPL__ERROR(FPL__MODULE_THREADING, "Semaphore '%p' is not valid", semaphore);
@@ -11679,7 +11700,7 @@ fpl_platform_api bool fplSemaphoreTryWait(fplSemaphoreHandle *semaphore) {
 	return(result);
 }
 
-fpl_platform_api int32_t fplSemaphoreValue(fplSemaphoreHandle *semaphore) {
+fpl_platform_api int32_t fplSemaphoreValue(fplSemaphoreHandle* semaphore) {
 	FPL__CheckArgumentNull(semaphore, false);
 	if (!semaphore->isValid) {
 		FPL__ERROR(FPL__MODULE_THREADING, "Semaphore '%p' is not valid", semaphore);
@@ -11689,7 +11710,7 @@ fpl_platform_api int32_t fplSemaphoreValue(fplSemaphoreHandle *semaphore) {
 	return(result);
 }
 
-fpl_platform_api bool fplSemaphoreRelease(fplSemaphoreHandle *semaphore) {
+fpl_platform_api bool fplSemaphoreRelease(fplSemaphoreHandle* semaphore) {
 	FPL__CheckArgumentNull(semaphore, false);
 	if (!semaphore->isValid) {
 		FPL__ERROR(FPL__MODULE_THREADING, "Semaphore '%p' is not valid", semaphore);
@@ -11709,7 +11730,7 @@ fpl_platform_api bool fplSemaphoreRelease(fplSemaphoreHandle *semaphore) {
 //
 // Win32 Console
 //
-fpl_platform_api void fplConsoleOut(const char *text) {
+fpl_platform_api void fplConsoleOut(const char* text) {
 	DWORD charsToWrite = (DWORD)fplGetStringLength(text);
 	DWORD writtenChars = 0;
 	HANDLE handle = GetStdHandle(STD_OUTPUT_HANDLE);
@@ -11718,7 +11739,7 @@ fpl_platform_api void fplConsoleOut(const char *text) {
 	WriteConsoleW(handle, wideBuffer, charsToWrite, &writtenChars, fpl_null);
 }
 
-fpl_platform_api void fplConsoleError(const char *text) {
+fpl_platform_api void fplConsoleError(const char* text) {
 	DWORD charsToWrite = (DWORD)fplGetStringLength(text);
 	DWORD writtenChars = 0;
 	HANDLE handle = GetStdHandle(STD_ERROR_HANDLE);
@@ -11747,16 +11768,16 @@ fpl_platform_api char fplConsoleWaitForCharInput() {
 //
 // Win32 Memory
 //
-fpl_platform_api void *fplMemoryAllocate(const size_t size) {
+fpl_platform_api void* fplMemoryAllocate(const size_t size) {
 	FPL__CheckArgumentZero(size, fpl_null);
-	void *result = VirtualAlloc(fpl_null, size, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+	void* result = VirtualAlloc(fpl_null, size, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
 	if (result == fpl_null) {
 		FPL__ERROR(FPL__MODULE_MEMORY, "Failed allocating memory of %xu bytes", size);
 	}
 	return(result);
 }
 
-fpl_platform_api void fplMemoryFree(void *ptr) {
+fpl_platform_api void fplMemoryFree(void* ptr) {
 	FPL__CheckArgumentNullNoRet(ptr);
 	VirtualFree(ptr, 0, MEM_RELEASE);
 }
@@ -11764,7 +11785,7 @@ fpl_platform_api void fplMemoryFree(void *ptr) {
 //
 // Win32 Files
 //
-fpl_internal uint64_t fpl__Win32ConvertFileTimeToUnixTimestamp(const FILETIME *fileTime) {
+fpl_internal uint64_t fpl__Win32ConvertFileTimeToUnixTimestamp(const FILETIME* fileTime) {
 	// Ticks are defined in 100 ns = 10000000 secs
 	// Windows ticks starts at 1601-01-01T00:00:00Z
 	// Unix secs starts at 1970-01-01T00:00:00Z
@@ -11777,7 +11798,7 @@ fpl_internal uint64_t fpl__Win32ConvertFileTimeToUnixTimestamp(const FILETIME *f
 	return(result);
 }
 
-fpl_platform_api bool fplOpenBinaryFile(const char *filePath, fplFileHandle *outHandle) {
+fpl_platform_api bool fplOpenBinaryFile(const char* filePath, fplFileHandle* outHandle) {
 	FPL__CheckArgumentNull(outHandle, false);
 	if (filePath != fpl_null) {
 		wchar_t filePathWide[FPL_MAX_PATH_LENGTH];
@@ -11786,14 +11807,14 @@ fpl_platform_api bool fplOpenBinaryFile(const char *filePath, fplFileHandle *out
 		if (win32FileHandle != INVALID_HANDLE_VALUE) {
 			fplClearStruct(outHandle);
 			outHandle->isValid = true;
-			outHandle->internalHandle.win32FileHandle = (void *)win32FileHandle;
+			outHandle->internalHandle.win32FileHandle = (void*)win32FileHandle;
 			return true;
 		}
 	}
 	return false;
 }
 
-fpl_platform_api bool fplCreateBinaryFile(const char *filePath, fplFileHandle *outHandle) {
+fpl_platform_api bool fplCreateBinaryFile(const char* filePath, fplFileHandle* outHandle) {
 	FPL__CheckArgumentNull(outHandle, false);
 	if (filePath != fpl_null) {
 		wchar_t filePathWide[FPL_MAX_PATH_LENGTH];
@@ -11802,14 +11823,14 @@ fpl_platform_api bool fplCreateBinaryFile(const char *filePath, fplFileHandle *o
 		if (win32FileHandle != INVALID_HANDLE_VALUE) {
 			fplClearStruct(outHandle);
 			outHandle->isValid = true;
-			outHandle->internalHandle.win32FileHandle = (void *)win32FileHandle;
+			outHandle->internalHandle.win32FileHandle = (void*)win32FileHandle;
 			return true;
 		}
 	}
 	return false;
 }
 
-fpl_platform_api uint32_t fplReadFileBlock32(const fplFileHandle *fileHandle, const uint32_t sizeToRead, void *targetBuffer, const uint32_t maxTargetBufferSize) {
+fpl_platform_api uint32_t fplReadFileBlock32(const fplFileHandle* fileHandle, const uint32_t sizeToRead, void* targetBuffer, const uint32_t maxTargetBufferSize) {
 	FPL__CheckArgumentNull(fileHandle, 0);
 	FPL__CheckArgumentZero(sizeToRead, 0);
 	FPL__CheckArgumentNull(targetBuffer, 0);
@@ -11826,7 +11847,7 @@ fpl_platform_api uint32_t fplReadFileBlock32(const fplFileHandle *fileHandle, co
 	return(result);
 }
 
-fpl_platform_api uint64_t fplReadFileBlock64(const fplFileHandle *fileHandle, const uint64_t sizeToRead, void *targetBuffer, const uint64_t maxTargetBufferSize) {
+fpl_platform_api uint64_t fplReadFileBlock64(const fplFileHandle* fileHandle, const uint64_t sizeToRead, void* targetBuffer, const uint64_t maxTargetBufferSize) {
 	FPL__CheckArgumentNull(fileHandle, 0);
 	FPL__CheckArgumentZero(sizeToRead, 0);
 	FPL__CheckArgumentNull(targetBuffer, 0);
@@ -11842,7 +11863,7 @@ fpl_platform_api uint64_t fplReadFileBlock64(const fplFileHandle *fileHandle, co
 	const uint64_t MaxDWORD = (uint64_t)(DWORD)-1;
 	while (remainingSize > 0) {
 		DWORD bytesRead = 0;
-		uint8_t *target = (uint8_t *)targetBuffer + bufferPos;
+		uint8_t* target = (uint8_t*)targetBuffer + bufferPos;
 		uint64_t size = fplMin(remainingSize, MaxDWORD);
 		fplAssert(size <= MaxDWORD);
 		if (ReadFile(win32FileHandle, target, (DWORD)size, &bytesRead, fpl_null) == TRUE) {
@@ -11856,7 +11877,7 @@ fpl_platform_api uint64_t fplReadFileBlock64(const fplFileHandle *fileHandle, co
 	return(result);
 }
 
-fpl_platform_api uint32_t fplWriteFileBlock32(const fplFileHandle *fileHandle, void *sourceBuffer, const uint32_t sourceSize) {
+fpl_platform_api uint32_t fplWriteFileBlock32(const fplFileHandle* fileHandle, void* sourceBuffer, const uint32_t sourceSize) {
 	FPL__CheckArgumentNull(fileHandle, 0);
 	FPL__CheckArgumentZero(sourceSize, 0);
 	FPL__CheckArgumentNull(sourceBuffer, 0);
@@ -11873,7 +11894,7 @@ fpl_platform_api uint32_t fplWriteFileBlock32(const fplFileHandle *fileHandle, v
 	return(result);
 }
 
-fpl_platform_api uint64_t fplWriteFileBlock64(const fplFileHandle *fileHandle, void *sourceBuffer, const uint64_t sourceSize) {
+fpl_platform_api uint64_t fplWriteFileBlock64(const fplFileHandle* fileHandle, void* sourceBuffer, const uint64_t sourceSize) {
 	FPL__CheckArgumentNull(fileHandle, 0);
 	FPL__CheckArgumentZero(sourceSize, 0);
 	FPL__CheckArgumentNull(sourceBuffer, 0);
@@ -11887,7 +11908,7 @@ fpl_platform_api uint64_t fplWriteFileBlock64(const fplFileHandle *fileHandle, v
 	uint64_t remainingSize = sourceSize;
 	const uint64_t MaxDWORD = (uint64_t)(DWORD)-1;
 	while (remainingSize > 0) {
-		uint8_t *source = (uint8_t *)sourceBuffer + bufferPos;
+		uint8_t* source = (uint8_t*)sourceBuffer + bufferPos;
 		uint64_t size = fplMin(remainingSize, MaxDWORD);
 		fplAssert(size <= MaxDWORD);
 		DWORD bytesWritten = 0;
@@ -11902,11 +11923,11 @@ fpl_platform_api uint64_t fplWriteFileBlock64(const fplFileHandle *fileHandle, v
 	return(result);
 }
 
-fpl_platform_api uint32_t fplSetFilePosition32(const fplFileHandle *fileHandle, const int32_t position, const fplFilePositionMode mode) {
+fpl_platform_api uint32_t fplSetFilePosition32(const fplFileHandle* fileHandle, const int32_t position, const fplFilePositionMode mode) {
 	FPL__CheckArgumentNull(fileHandle, 0);
 	uint32_t result = 0;
 	if (fileHandle->internalHandle.win32FileHandle != INVALID_HANDLE_VALUE) {
-		HANDLE win32FileHandle = (void *)fileHandle->internalHandle.win32FileHandle;
+		HANDLE win32FileHandle = (void*)fileHandle->internalHandle.win32FileHandle;
 		DWORD moveMethod = FILE_BEGIN;
 		if (mode == fplFilePositionMode_Current) {
 			moveMethod = FILE_CURRENT;
@@ -11920,11 +11941,11 @@ fpl_platform_api uint32_t fplSetFilePosition32(const fplFileHandle *fileHandle, 
 	return(result);
 }
 
-fpl_platform_api uint64_t fplSetFilePosition64(const fplFileHandle *fileHandle, const int64_t position, const fplFilePositionMode mode) {
+fpl_platform_api uint64_t fplSetFilePosition64(const fplFileHandle* fileHandle, const int64_t position, const fplFilePositionMode mode) {
 	FPL__CheckArgumentNull(fileHandle, 0);
 	uint64_t result = 0;
 	if (fileHandle->internalHandle.win32FileHandle != INVALID_HANDLE_VALUE) {
-		HANDLE win32FileHandle = (void *)fileHandle->internalHandle.win32FileHandle;
+		HANDLE win32FileHandle = (void*)fileHandle->internalHandle.win32FileHandle;
 		DWORD moveMethod = FILE_BEGIN;
 		if (mode == fplFilePositionMode_Current) {
 			moveMethod = FILE_CURRENT;
@@ -11941,10 +11962,10 @@ fpl_platform_api uint64_t fplSetFilePosition64(const fplFileHandle *fileHandle, 
 	return(result);
 }
 
-fpl_platform_api uint32_t fplGetFilePosition32(const fplFileHandle *fileHandle) {
+fpl_platform_api uint32_t fplGetFilePosition32(const fplFileHandle* fileHandle) {
 	FPL__CheckArgumentNull(fileHandle, 0);
 	if (fileHandle->internalHandle.win32FileHandle != INVALID_HANDLE_VALUE) {
-		HANDLE win32FileHandle = (void *)fileHandle->internalHandle.win32FileHandle;
+		HANDLE win32FileHandle = (void*)fileHandle->internalHandle.win32FileHandle;
 		DWORD filePosition = SetFilePointer(win32FileHandle, 0L, fpl_null, FILE_CURRENT);
 		if (filePosition != INVALID_SET_FILE_POINTER) {
 			return filePosition;
@@ -11953,11 +11974,11 @@ fpl_platform_api uint32_t fplGetFilePosition32(const fplFileHandle *fileHandle) 
 	return 0;
 }
 
-fpl_platform_api uint64_t fplGetFilePosition64(const fplFileHandle *fileHandle) {
+fpl_platform_api uint64_t fplGetFilePosition64(const fplFileHandle* fileHandle) {
 	FPL__CheckArgumentNull(fileHandle, 0);
 	uint64_t result = 0;
 	if (fileHandle->internalHandle.win32FileHandle != INVALID_HANDLE_VALUE) {
-		HANDLE win32FileHandle = (void *)fileHandle->internalHandle.win32FileHandle;
+		HANDLE win32FileHandle = (void*)fileHandle->internalHandle.win32FileHandle;
 		LARGE_INTEGER r = fplZeroInit;
 		LARGE_INTEGER li;
 		li.QuadPart = 0;
@@ -11968,25 +11989,25 @@ fpl_platform_api uint64_t fplGetFilePosition64(const fplFileHandle *fileHandle) 
 	return 0;
 }
 
-fpl_platform_api bool fplFlushFile(fplFileHandle *fileHandle) {
+fpl_platform_api bool fplFlushFile(fplFileHandle* fileHandle) {
 	FPL__CheckArgumentNull(fileHandle, false);
 	if (fileHandle->internalHandle.win32FileHandle != INVALID_HANDLE_VALUE) {
-		HANDLE win32FileHandle = (void *)fileHandle->internalHandle.win32FileHandle;
+		HANDLE win32FileHandle = (void*)fileHandle->internalHandle.win32FileHandle;
 		bool result = FlushFileBuffers(win32FileHandle) == TRUE;
 		return(result);
 	}
 	return(false);
 }
 
-fpl_platform_api void fplCloseFile(fplFileHandle *fileHandle) {
+fpl_platform_api void fplCloseFile(fplFileHandle* fileHandle) {
 	if ((fileHandle != fpl_null) && (fileHandle->internalHandle.win32FileHandle != INVALID_HANDLE_VALUE)) {
-		HANDLE win32FileHandle = (void *)fileHandle->internalHandle.win32FileHandle;
+		HANDLE win32FileHandle = (void*)fileHandle->internalHandle.win32FileHandle;
 		CloseHandle(win32FileHandle);
 		fplClearStruct(fileHandle);
 	}
 }
 
-fpl_platform_api uint32_t fplGetFileSizeFromPath32(const char *filePath) {
+fpl_platform_api uint32_t fplGetFileSizeFromPath32(const char* filePath) {
 	uint32_t result = 0;
 	if (filePath != fpl_null) {
 		wchar_t filePathWide[FPL_MAX_PATH_LENGTH];
@@ -12001,7 +12022,7 @@ fpl_platform_api uint32_t fplGetFileSizeFromPath32(const char *filePath) {
 	return(result);
 }
 
-fpl_platform_api uint64_t fplGetFileSizeFromPath64(const char *filePath) {
+fpl_platform_api uint64_t fplGetFileSizeFromPath64(const char* filePath) {
 	uint64_t result = 0;
 	if (filePath != fpl_null) {
 		wchar_t filePathWide[FPL_MAX_PATH_LENGTH];
@@ -12018,22 +12039,22 @@ fpl_platform_api uint64_t fplGetFileSizeFromPath64(const char *filePath) {
 	return(result);
 }
 
-fpl_platform_api uint32_t fplGetFileSizeFromHandle32(const fplFileHandle *fileHandle) {
+fpl_platform_api uint32_t fplGetFileSizeFromHandle32(const fplFileHandle* fileHandle) {
 	FPL__CheckArgumentNull(fileHandle, 0);
 	uint32_t result = 0;
 	if (fileHandle->internalHandle.win32FileHandle != INVALID_HANDLE_VALUE) {
-		HANDLE win32FileHandle = (void *)fileHandle->internalHandle.win32FileHandle;
+		HANDLE win32FileHandle = (void*)fileHandle->internalHandle.win32FileHandle;
 		DWORD fileSize = GetFileSize(win32FileHandle, fpl_null);
 		result = (uint32_t)fileSize;
 	}
 	return(result);
 }
 
-fpl_platform_api uint64_t fplGetFileSizeFromHandle64(const fplFileHandle *fileHandle) {
+fpl_platform_api uint64_t fplGetFileSizeFromHandle64(const fplFileHandle* fileHandle) {
 	FPL__CheckArgumentNull(fileHandle, 0);
 	uint64_t result = 0;
 	if (fileHandle->internalHandle.win32FileHandle != INVALID_HANDLE_VALUE) {
-		HANDLE win32FileHandle = (void *)fileHandle->internalHandle.win32FileHandle;
+		HANDLE win32FileHandle = (void*)fileHandle->internalHandle.win32FileHandle;
 		LARGE_INTEGER li = fplZeroInit;
 		if (GetFileSizeEx(win32FileHandle, &li) == TRUE) {
 			result = (uint64_t)li.QuadPart;
@@ -12042,7 +12063,7 @@ fpl_platform_api uint64_t fplGetFileSizeFromHandle64(const fplFileHandle *fileHa
 	return(result);
 }
 
-fpl_platform_api bool fplGetFileTimestampsFromPath(const char *filePath, fplFileTimeStamps *outStamps) {
+fpl_platform_api bool fplGetFileTimestampsFromPath(const char* filePath, fplFileTimeStamps* outStamps) {
 	FPL__CheckArgumentNull(outStamps, false);
 	if (filePath != fpl_null) {
 		wchar_t filePathWide[FPL_MAX_PATH_LENGTH];
@@ -12065,11 +12086,11 @@ fpl_platform_api bool fplGetFileTimestampsFromPath(const char *filePath, fplFile
 	return(false);
 }
 
-fpl_platform_api bool fplGetFileTimestampsFromHandle(const fplFileHandle *fileHandle, fplFileTimeStamps *outStamps) {
+fpl_platform_api bool fplGetFileTimestampsFromHandle(const fplFileHandle* fileHandle, fplFileTimeStamps* outStamps) {
 	FPL__CheckArgumentNull(fileHandle, 0);
 	FPL__CheckArgumentNull(outStamps, 0);
 	if (fileHandle->internalHandle.win32FileHandle != INVALID_HANDLE_VALUE) {
-		HANDLE win32FileHandle = (void *)fileHandle->internalHandle.win32FileHandle;
+		HANDLE win32FileHandle = (void*)fileHandle->internalHandle.win32FileHandle;
 		FILETIME times[3];
 		if (GetFileTime(win32FileHandle, &times[0], &times[1], &times[2]) == TRUE) {
 			fplClearStruct(outStamps);
@@ -12082,7 +12103,7 @@ fpl_platform_api bool fplGetFileTimestampsFromHandle(const fplFileHandle *fileHa
 	return(false);
 }
 
-fpl_platform_api bool fplFileExists(const char *filePath) {
+fpl_platform_api bool fplFileExists(const char* filePath) {
 	bool result = false;
 	if (filePath != fpl_null) {
 		wchar_t filePathWide[FPL_MAX_PATH_LENGTH];
@@ -12097,7 +12118,7 @@ fpl_platform_api bool fplFileExists(const char *filePath) {
 	return(result);
 }
 
-fpl_platform_api bool fplFileCopy(const char *sourceFilePath, const char *targetFilePath, const bool overwrite) {
+fpl_platform_api bool fplFileCopy(const char* sourceFilePath, const char* targetFilePath, const bool overwrite) {
 	FPL__CheckArgumentNull(sourceFilePath, false);
 	FPL__CheckArgumentNull(targetFilePath, false);
 	wchar_t sourceFilePathWide[FPL_MAX_PATH_LENGTH];
@@ -12108,7 +12129,7 @@ fpl_platform_api bool fplFileCopy(const char *sourceFilePath, const char *target
 	return(result);
 }
 
-fpl_platform_api bool fplFileMove(const char *sourceFilePath, const char *targetFilePath) {
+fpl_platform_api bool fplFileMove(const char* sourceFilePath, const char* targetFilePath) {
 	FPL__CheckArgumentNull(sourceFilePath, false);
 	FPL__CheckArgumentNull(targetFilePath, false);
 	wchar_t sourceFilePathWide[FPL_MAX_PATH_LENGTH];
@@ -12119,7 +12140,7 @@ fpl_platform_api bool fplFileMove(const char *sourceFilePath, const char *target
 	return(result);
 }
 
-fpl_platform_api bool fplFileDelete(const char *filePath) {
+fpl_platform_api bool fplFileDelete(const char* filePath) {
 	FPL__CheckArgumentNull(filePath, false);
 	wchar_t filePathWide[FPL_MAX_PATH_LENGTH];
 	fplUTF8StringToWideString(filePath, fplGetStringLength(filePath), filePathWide, fplArrayCount(filePathWide));
@@ -12127,7 +12148,7 @@ fpl_platform_api bool fplFileDelete(const char *filePath) {
 	return(result);
 }
 
-fpl_platform_api bool fplDirectoryExists(const char *path) {
+fpl_platform_api bool fplDirectoryExists(const char* path) {
 	bool result = false;
 	if (path != fpl_null) {
 		wchar_t pathWide[FPL_MAX_PATH_LENGTH];
@@ -12142,21 +12163,21 @@ fpl_platform_api bool fplDirectoryExists(const char *path) {
 	return(result);
 }
 
-fpl_platform_api bool fplDirectoriesCreate(const char *path) {
+fpl_platform_api bool fplDirectoriesCreate(const char* path) {
 	FPL__CheckArgumentNull(path, false);
 	wchar_t pathWide[FPL_MAX_PATH_LENGTH];
 	fplUTF8StringToWideString(path, fplGetStringLength(path), pathWide, fplArrayCount(pathWide));
 	bool result = CreateDirectoryW(pathWide, fpl_null) > 0;
 	return(result);
 }
-fpl_platform_api bool fplDirectoryRemove(const char *path) {
+fpl_platform_api bool fplDirectoryRemove(const char* path) {
 	FPL__CheckArgumentNull(path, false);
 	wchar_t pathWide[FPL_MAX_PATH_LENGTH];
 	fplUTF8StringToWideString(path, fplGetStringLength(path), pathWide, fplArrayCount(pathWide));
 	bool result = RemoveDirectoryW(pathWide) > 0;
 	return(result);
 }
-fpl_internal void fpl__Win32FillFileEntry(const char *rootPath, const WIN32_FIND_DATAW *findData, fplFileEntry *entry) {
+fpl_internal void fpl__Win32FillFileEntry(const char* rootPath, const WIN32_FIND_DATAW* findData, fplFileEntry* entry) {
 	fplAssert(findData != fpl_null);
 	fplAssert(entry != fpl_null);
 	fplWideStringToUTF8String(findData->cFileName, lstrlenW(findData->cFileName), entry->name, fplArrayCount(entry->name));
@@ -12206,7 +12227,7 @@ fpl_internal void fpl__Win32FillFileEntry(const char *rootPath, const WIN32_FIND
 	entry->timeStamps.lastAccessTime = fpl__Win32ConvertFileTimeToUnixTimestamp(&findData->ftLastAccessTime);
 	entry->timeStamps.lastModifyTime = fpl__Win32ConvertFileTimeToUnixTimestamp(&findData->ftLastWriteTime);
 }
-fpl_platform_api bool fplListDirBegin(const char *path, const char *filter, fplFileEntry *entry) {
+fpl_platform_api bool fplListDirBegin(const char* path, const char* filter, fplFileEntry* entry) {
 	FPL__CheckArgumentNull(path, false);
 	FPL__CheckArgumentNull(entry, false);
 	if (fplGetStringLength(filter) == 0) {
@@ -12239,7 +12260,7 @@ fpl_platform_api bool fplListDirBegin(const char *path, const char *filter, fplF
 	}
 	return(result);
 }
-fpl_platform_api bool fplListDirNext(fplFileEntry *entry) {
+fpl_platform_api bool fplListDirNext(fplFileEntry* entry) {
 	FPL__CheckArgumentNull(entry, false);
 	bool result = false;
 	if (entry->internalHandle.win32FileHandle != INVALID_HANDLE_VALUE) {
@@ -12260,7 +12281,7 @@ fpl_platform_api bool fplListDirNext(fplFileEntry *entry) {
 	}
 	return(result);
 }
-fpl_platform_api void fplListDirEnd(fplFileEntry *entry) {
+fpl_platform_api void fplListDirEnd(fplFileEntry* entry) {
 	FPL__CheckArgumentNullNoRet(entry);
 	if (entry->internalHandle.win32FileHandle != INVALID_HANDLE_VALUE) {
 		HANDLE searchHandle = entry->internalHandle.win32FileHandle;
@@ -12272,25 +12293,25 @@ fpl_platform_api void fplListDirEnd(fplFileEntry *entry) {
 //
 // Win32 Path/Directories
 //
-fpl_platform_api char *fplGetExecutableFilePath(char *destPath, const size_t maxDestLen) {
+fpl_platform_api char* fplGetExecutableFilePath(char* destPath, const size_t maxDestLen) {
 	FPL__CheckArgumentNull(destPath, fpl_null);
 	size_t requiredMaxDestLen = MAX_PATH + 1;
 	FPL__CheckArgumentMin(maxDestLen, requiredMaxDestLen, fpl_null);
 	wchar_t modulePath[MAX_PATH];
 	GetModuleFileNameW(fpl_null, modulePath, MAX_PATH);
-	char *result = fplWideStringToUTF8String(modulePath, lstrlenW(modulePath), destPath, maxDestLen);
+	char* result = fplWideStringToUTF8String(modulePath, lstrlenW(modulePath), destPath, maxDestLen);
 	return(result);
 }
 
-fpl_platform_api char *fplGetHomePath(char *destPath, const size_t maxDestLen) {
+fpl_platform_api char* fplGetHomePath(char* destPath, const size_t maxDestLen) {
 	FPL__CheckArgumentNull(destPath, fpl_null);
 	size_t requiredMaxDestLen = MAX_PATH + 1;
 	FPL__CheckArgumentMin(maxDestLen, requiredMaxDestLen, fpl_null);
 	FPL__CheckPlatform(fpl_null);
-	const fpl__Win32Api *wapi = &fpl__global__AppState->win32.winApi;
+	const fpl__Win32Api* wapi = &fpl__global__AppState->win32.winApi;
 	wchar_t homePath[MAX_PATH];
 	wapi->shell.SHGetFolderPathW(fpl_null, CSIDL_PROFILE, fpl_null, 0, homePath);
-	char *result = fplWideStringToUTF8String(homePath, lstrlenW(homePath), destPath, maxDestLen);
+	char* result = fplWideStringToUTF8String(homePath, lstrlenW(homePath), destPath, maxDestLen);
 	return(result);
 }
 
@@ -12298,7 +12319,7 @@ fpl_platform_api char *fplGetHomePath(char *destPath, const size_t maxDestLen) {
 // Win32 Timings
 //
 fpl_platform_api double fplGetTimeInSecondsHP() {
-	const fpl__Win32InitState *initState = &fpl__global__InitState.win32;
+	const fpl__Win32InitState* initState = &fpl__global__InitState.win32;
 	LARGE_INTEGER time;
 	QueryPerformanceCounter(&time);
 	double result = time.QuadPart / (double)initState->performanceFrequency.QuadPart;
@@ -12316,7 +12337,7 @@ fpl_platform_api double fplGetTimeInSeconds() {
 }
 
 fpl_platform_api double fplGetTimeInMillisecondsHP() {
-	const fpl__Win32InitState *initState = &fpl__global__InitState.win32;
+	const fpl__Win32InitState* initState = &fpl__global__InitState.win32;
 	LARGE_INTEGER time;
 	QueryPerformanceCounter(&time);
 	double result = (time.QuadPart / (double)initState->performanceFrequency.QuadPart) * 1000.0;
@@ -12336,7 +12357,7 @@ fpl_platform_api uint64_t fplGetTimeInMilliseconds() {
 //
 // Win32 Strings
 //
-fpl_platform_api char *fplWideStringToUTF8String(const wchar_t *wideSource, const size_t maxWideSourceLen, char *utf8Dest, const size_t maxUtf8DestLen) {
+fpl_platform_api char* fplWideStringToUTF8String(const wchar_t* wideSource, const size_t maxWideSourceLen, char* utf8Dest, const size_t maxUtf8DestLen) {
 	FPL__CheckArgumentNull(wideSource, fpl_null);
 	FPL__CheckArgumentNull(utf8Dest, fpl_null);
 	int requiredLen = WideCharToMultiByte(CP_UTF8, 0, wideSource, (int)maxWideSourceLen, fpl_null, 0, fpl_null, fpl_null);
@@ -12346,7 +12367,7 @@ fpl_platform_api char *fplWideStringToUTF8String(const wchar_t *wideSource, cons
 	utf8Dest[requiredLen] = 0;
 	return(&utf8Dest[requiredLen]);
 }
-fpl_platform_api wchar_t *fplUTF8StringToWideString(const char *utf8Source, const size_t utf8SourceLen, wchar_t *wideDest, const size_t maxWideDestLen) {
+fpl_platform_api wchar_t* fplUTF8StringToWideString(const char* utf8Source, const size_t utf8SourceLen, wchar_t* wideDest, const size_t maxWideDestLen) {
 	FPL__CheckArgumentNull(utf8Source, fpl_null);
 	FPL__CheckArgumentNull(wideDest, fpl_null);
 	int requiredLen = MultiByteToWideChar(CP_UTF8, 0, utf8Source, (int)utf8SourceLen, fpl_null, 0);
@@ -12361,7 +12382,7 @@ fpl_platform_api wchar_t *fplUTF8StringToWideString(const char *utf8Source, cons
 //
 // Win32 Library
 //
-fpl_platform_api bool fplDynamicLibraryLoad(const char *libraryFilePath, fplDynamicLibraryHandle *outHandle) {
+fpl_platform_api bool fplDynamicLibraryLoad(const char* libraryFilePath, fplDynamicLibraryHandle* outHandle) {
 	bool result = false;
 	if (libraryFilePath != fpl_null && outHandle != fpl_null) {
 		wchar_t libraryFilePathWide[FPL_MAX_PATH_LENGTH];
@@ -12376,14 +12397,14 @@ fpl_platform_api bool fplDynamicLibraryLoad(const char *libraryFilePath, fplDyna
 	}
 	return(result);
 }
-fpl_platform_api void *fplGetDynamicLibraryProc(const fplDynamicLibraryHandle *handle, const char *name) {
+fpl_platform_api void* fplGetDynamicLibraryProc(const fplDynamicLibraryHandle* handle, const char* name) {
 	if ((handle != fpl_null) && (handle->internalHandle.win32LibraryHandle != fpl_null) && (name != fpl_null)) {
 		HMODULE libModule = handle->internalHandle.win32LibraryHandle;
-		return (void *)GetProcAddress(libModule, name);
+		return (void*)GetProcAddress(libModule, name);
 	}
 	return fpl_null;
 }
-fpl_platform_api void fplDynamicLibraryUnload(fplDynamicLibraryHandle *handle) {
+fpl_platform_api void fplDynamicLibraryUnload(fplDynamicLibraryHandle* handle) {
 	if ((handle != fpl_null) && (handle->internalHandle.win32LibraryHandle != fpl_null)) {
 		HMODULE libModule = (HMODULE)handle->internalHandle.win32LibraryHandle;
 		FreeLibrary(libModule);
@@ -12395,12 +12416,12 @@ fpl_platform_api void fplDynamicLibraryUnload(fplDynamicLibraryHandle *handle) {
 //
 // Win32 Window
 //
-fpl_platform_api bool fplGetWindowSize(fplWindowSize *outSize) {
+fpl_platform_api bool fplGetWindowSize(fplWindowSize* outSize) {
 	FPL__CheckArgumentNull(outSize, false);
 	FPL__CheckPlatform(false);
-	const fpl__Win32AppState *appState = &fpl__global__AppState->win32;
-	const fpl__Win32WindowState *windowState = &fpl__global__AppState->window.win32;
-	const fpl__Win32Api *wapi = &appState->winApi;
+	const fpl__Win32AppState* appState = &fpl__global__AppState->win32;
+	const fpl__Win32WindowState* windowState = &fpl__global__AppState->window.win32;
+	const fpl__Win32Api* wapi = &appState->winApi;
 	bool result = false;
 	RECT windowRect;
 	if (wapi->user.GetClientRect(windowState->windowHandle, &windowRect)) {
@@ -12413,9 +12434,9 @@ fpl_platform_api bool fplGetWindowSize(fplWindowSize *outSize) {
 
 fpl_platform_api void fplSetWindowSize(const uint32_t width, const uint32_t height) {
 	FPL__CheckPlatformNoRet();
-	const fpl__Win32AppState *appState = &fpl__global__AppState->win32;
-	const fpl__Win32WindowState *windowState = &fpl__global__AppState->window.win32;
-	const fpl__Win32Api *wapi = &appState->winApi;
+	const fpl__Win32AppState* appState = &fpl__global__AppState->win32;
+	const fpl__Win32WindowState* windowState = &fpl__global__AppState->window.win32;
+	const fpl__Win32Api* wapi = &appState->winApi;
 	RECT clientRect, windowRect;
 	if (wapi->user.GetClientRect(windowState->windowHandle, &clientRect) &&
 		wapi->user.GetWindowRect(windowState->windowHandle, &windowRect)) {
@@ -12429,15 +12450,15 @@ fpl_platform_api void fplSetWindowSize(const uint32_t width, const uint32_t heig
 
 fpl_platform_api bool fplIsWindowResizable() {
 	FPL__CheckPlatform(false);
-	const fpl__PlatformAppState *appState = fpl__global__AppState;
+	const fpl__PlatformAppState* appState = fpl__global__AppState;
 	bool result = appState->currentSettings.window.isResizable != 0;
 	return(result);
 }
 
 fpl_platform_api void fplSetWindowResizeable(const bool value) {
 	FPL__CheckPlatformNoRet();
-	fpl__PlatformAppState *appState = fpl__global__AppState;
-	const fpl__Win32WindowState *windowState = &appState->window.win32;
+	fpl__PlatformAppState* appState = fpl__global__AppState;
+	const fpl__Win32WindowState* windowState = &appState->window.win32;
 	if (!appState->currentSettings.window.isFullscreen && appState->currentSettings.window.isDecorated) {
 		DWORD style = fpl__win32_GetWindowLong(windowState->windowHandle, GWL_STYLE);
 		DWORD exStyle = fpl__win32_GetWindowLong(windowState->windowHandle, GWL_EXSTYLE);
@@ -12453,16 +12474,16 @@ fpl_platform_api void fplSetWindowResizeable(const bool value) {
 
 fpl_platform_api bool fplIsWindowDecorated() {
 	FPL__CheckPlatform(false);
-	const fpl__PlatformAppState *appState = fpl__global__AppState;
+	const fpl__PlatformAppState* appState = fpl__global__AppState;
 	bool result = appState->currentSettings.window.isDecorated != 0;
 	return(result);
 }
 
 fpl_platform_api void fplSetWindowDecorated(const bool value) {
 	FPL__CheckPlatformNoRet();
-	fpl__PlatformAppState *appState = fpl__global__AppState;
-	const fpl__Win32WindowState *windowState = &appState->window.win32;
-	const fpl__Win32Api *wapi = &appState->win32.winApi;
+	fpl__PlatformAppState* appState = fpl__global__AppState;
+	const fpl__Win32WindowState* windowState = &appState->window.win32;
+	const fpl__Win32Api* wapi = &appState->win32.winApi;
 	if (!appState->currentSettings.window.isFullscreen) {
 		HWND windowHandle = windowState->windowHandle;
 		DWORD style = fpl__win32_GetWindowLong(windowHandle, GWL_STYLE);
@@ -12485,16 +12506,16 @@ fpl_platform_api void fplSetWindowDecorated(const bool value) {
 
 fpl_platform_api bool fplIsWindowFloating() {
 	FPL__CheckPlatform(false);
-	const fpl__PlatformAppState *appState = fpl__global__AppState;
+	const fpl__PlatformAppState* appState = fpl__global__AppState;
 	bool result = appState->currentSettings.window.isFloating != 0;
 	return(result);
 }
 
 fpl_platform_api void fplSetWindowFloating(const bool value) {
 	FPL__CheckPlatformNoRet();
-	fpl__PlatformAppState *appState = fpl__global__AppState;
-	const fpl__Win32WindowState *windowState = &appState->window.win32;
-	const fpl__Win32Api *wapi = &appState->win32.winApi;
+	fpl__PlatformAppState* appState = fpl__global__AppState;
+	const fpl__Win32WindowState* windowState = &appState->window.win32;
+	const fpl__Win32Api* wapi = &appState->win32.winApi;
 	if (!appState->currentSettings.window.isFullscreen) {
 		if (value) {
 			wapi->user.SetWindowPos(windowState->windowHandle, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
@@ -12507,7 +12528,7 @@ fpl_platform_api void fplSetWindowFloating(const bool value) {
 
 fpl_platform_api bool fplIsWindowFullscreen() {
 	FPL__CheckPlatform(false);
-	fpl__PlatformAppState *appState = fpl__global__AppState;
+	fpl__PlatformAppState* appState = fpl__global__AppState;
 	bool result = appState->currentSettings.window.isFullscreen != 0;
 	return(result);
 }
@@ -12533,12 +12554,12 @@ fpl_platform_api bool fplDisableWindowFullscreen() {
 	return(result);
 }
 
-fpl_platform_api bool fplGetWindowPosition(fplWindowPosition *outPos) {
+fpl_platform_api bool fplGetWindowPosition(fplWindowPosition* outPos) {
 	FPL__CheckArgumentNull(outPos, false);
 	FPL__CheckPlatform(false);
-	const fpl__Win32AppState *appState = &fpl__global__AppState->win32;
-	const fpl__Win32WindowState *windowState = &fpl__global__AppState->window.win32;
-	const fpl__Win32Api *wapi = &appState->winApi;
+	const fpl__Win32AppState* appState = &fpl__global__AppState->win32;
+	const fpl__Win32WindowState* windowState = &fpl__global__AppState->window.win32;
+	const fpl__Win32Api* wapi = &appState->winApi;
 	bool result = false;
 	WINDOWPLACEMENT placement = fplZeroInit;
 	placement.length = sizeof(WINDOWPLACEMENT);
@@ -12565,12 +12586,12 @@ fpl_platform_api bool fplGetWindowPosition(fplWindowPosition *outPos) {
 	return(result);
 }
 
-fpl_platform_api void fplSetWindowTitle(const char *title) {
+fpl_platform_api void fplSetWindowTitle(const char* title) {
 	FPL__CheckPlatformNoRet();
-	fpl__PlatformAppState *appState = fpl__global__AppState;
-	const fpl__Win32AppState *win32AppState = &fpl__global__AppState->win32;
-	const fpl__Win32WindowState *windowState = &fpl__global__AppState->window.win32;
-	const fpl__Win32Api *wapi = &win32AppState->winApi;
+	fpl__PlatformAppState* appState = fpl__global__AppState;
+	const fpl__Win32AppState* win32AppState = &fpl__global__AppState->win32;
+	const fpl__Win32WindowState* windowState = &fpl__global__AppState->window.win32;
+	const fpl__Win32Api* wapi = &win32AppState->winApi;
 	HWND handle = windowState->windowHandle;
 	fplCopyString(title, appState->currentSettings.window.title, fplArrayCount(appState->currentSettings.window.title));
 	wchar_t titleWide[FPL_MAX_BUFFER_LENGTH];
@@ -12580,9 +12601,9 @@ fpl_platform_api void fplSetWindowTitle(const char *title) {
 
 fpl_platform_api void fplSetWindowPosition(const int32_t left, const int32_t top) {
 	FPL__CheckPlatformNoRet();
-	const fpl__Win32AppState *appState = &fpl__global__AppState->win32;
-	const fpl__Win32WindowState *windowState = &fpl__global__AppState->window.win32;
-	const fpl__Win32Api *wapi = &appState->winApi;
+	const fpl__Win32AppState* appState = &fpl__global__AppState->win32;
+	const fpl__Win32WindowState* windowState = &fpl__global__AppState->window.win32;
+	const fpl__Win32Api* wapi = &appState->winApi;
 	WINDOWPLACEMENT placement = fplZeroInit;
 	placement.length = sizeof(WINDOWPLACEMENT);
 	RECT windowRect;
@@ -12604,10 +12625,10 @@ fpl_platform_api void fplSetWindowPosition(const int32_t left, const int32_t top
 
 fpl_platform_api fplWindowState fplGetWindowState() {
 	FPL__CheckPlatform(fplWindowState_Unknown);
-	const fpl__PlatformAppState *appState = fpl__global__AppState;
-	const fpl__Win32AppState *win32AppState = &appState->win32;
-	const fpl__Win32WindowState *windowState = &fpl__global__AppState->window.win32;
-	const fpl__Win32Api *wapi = &win32AppState->winApi;
+	const fpl__PlatformAppState* appState = fpl__global__AppState;
+	const fpl__Win32AppState* win32AppState = &appState->win32;
+	const fpl__Win32WindowState* windowState = &fpl__global__AppState->window.win32;
+	const fpl__Win32Api* wapi = &win32AppState->winApi;
 	HWND windowHandle = windowState->windowHandle;
 	fplWindowState result;
 	if (appState->currentSettings.window.isFullscreen) {
@@ -12628,10 +12649,10 @@ fpl_platform_api fplWindowState fplGetWindowState() {
 
 fpl_platform_api bool fplSetWindowState(const fplWindowState newState) {
 	FPL__CheckPlatform(false);
-	const fpl__PlatformAppState *appState = fpl__global__AppState;
-	const fpl__Win32AppState *win32AppState = &appState->win32;
-	const fpl__Win32WindowState *windowState = &fpl__global__AppState->window.win32;
-	const fpl__Win32Api *wapi = &win32AppState->winApi;
+	const fpl__PlatformAppState* appState = fpl__global__AppState;
+	const fpl__Win32AppState* win32AppState = &appState->win32;
+	const fpl__Win32WindowState* windowState = &fpl__global__AppState->window.win32;
+	const fpl__Win32Api* wapi = &win32AppState->winApi;
 	HWND windowHandle = windowState->windowHandle;
 	bool result = false;
 	switch (newState) {
@@ -12663,11 +12684,11 @@ fpl_platform_api bool fplSetWindowState(const fplWindowState newState) {
 
 fpl_platform_api void fplSetWindowCursorEnabled(const bool value) {
 	FPL__CheckPlatformNoRet();
-	fpl__Win32WindowState *windowState = &fpl__global__AppState->window.win32;
+	fpl__Win32WindowState* windowState = &fpl__global__AppState->window.win32;
 	windowState->isCursorActive = value;
 }
 
-fpl_internal void fpl__Win32HandleMessage(const fpl__Win32Api *wapi, fpl__PlatformAppState *appState, fpl__Win32WindowState *windowState, MSG *msg) {
+fpl_internal void fpl__Win32HandleMessage(const fpl__Win32Api* wapi, fpl__PlatformAppState* appState, fpl__Win32WindowState* windowState, MSG* msg) {
 	if (appState->currentSettings.window.callbacks.eventCallback != fpl_null) {
 		appState->currentSettings.window.callbacks.eventCallback(fplGetPlatformType(), windowState, &msg, appState->currentSettings.window.callbacks.eventUserData);
 	}
@@ -12675,7 +12696,7 @@ fpl_internal void fpl__Win32HandleMessage(const fpl__Win32Api *wapi, fpl__Platfo
 	wapi->user.DispatchMessageW(msg);
 }
 
-fpl_internal bool fpl__Win32ProcessNextEvent(const fpl__Win32Api *wapi, fpl__PlatformAppState *appState, fpl__Win32WindowState *windowState) {
+fpl_internal bool fpl__Win32ProcessNextEvent(const fpl__Win32Api* wapi, fpl__PlatformAppState* appState, fpl__Win32WindowState* windowState) {
 	bool result = false;
 	if (windowState->windowHandle != 0) {
 		MSG msg;
@@ -12687,13 +12708,13 @@ fpl_internal bool fpl__Win32ProcessNextEvent(const fpl__Win32Api *wapi, fpl__Pla
 	return(result);
 }
 
-fpl_platform_api bool fplPollEvent(fplEvent *ev) {
+fpl_platform_api bool fplPollEvent(fplEvent* ev) {
 	FPL__CheckPlatform(false);
-	fpl__PlatformAppState *appState = fpl__global__AppState;
-	fpl__Win32AppState *win32AppState = &appState->win32;
-	fpl__Win32WindowState *windowState = &fpl__global__AppState->window.win32;
-	const fpl__Win32InitState *win32InitState = &fpl__global__InitState.win32;
-	const fpl__Win32Api *wapi = &win32AppState->winApi;
+	fpl__PlatformAppState* appState = fpl__global__AppState;
+	fpl__Win32AppState* win32AppState = &appState->win32;
+	fpl__Win32WindowState* windowState = &fpl__global__AppState->window.win32;
+	const fpl__Win32InitState* win32InitState = &fpl__global__InitState.win32;
+	const fpl__Win32Api* wapi = &win32AppState->winApi;
 
 	// Poll next event from the internal queue first
 	if (fpl__PollInternalEvent(ev)) {
@@ -12716,11 +12737,11 @@ fpl_platform_api bool fplPollEvent(fplEvent *ev) {
 
 fpl_platform_api void fplPollEvents() {
 	FPL__CheckPlatformNoRet();
-	fpl__PlatformAppState *appState = fpl__global__AppState;
-	fpl__Win32AppState *win32AppState = &appState->win32;
-	fpl__Win32WindowState *windowState = &fpl__global__AppState->window.win32;
-	const fpl__Win32InitState *win32InitState = &fpl__global__InitState.win32;
-	const fpl__Win32Api *wapi = &win32AppState->winApi;
+	fpl__PlatformAppState* appState = fpl__global__AppState;
+	fpl__Win32AppState* win32AppState = &appState->win32;
+	fpl__Win32WindowState* windowState = &fpl__global__AppState->window.win32;
+	const fpl__Win32InitState* win32InitState = &fpl__global__InitState.win32;
+	const fpl__Win32Api* wapi = &win32AppState->winApi;
 	if (windowState->windowHandle != 0) {
 		MSG msg;
 		while (wapi->user.PeekMessageW(&msg, windowState->windowHandle, 0, 0, PM_REMOVE)) {
@@ -12732,11 +12753,11 @@ fpl_platform_api void fplPollEvents() {
 
 fpl_platform_api bool fplWindowUpdate() {
 	FPL__CheckPlatform(false);
-	fpl__PlatformAppState *appState = fpl__global__AppState;
-	fpl__Win32AppState *win32AppState = &appState->win32;
-	const fpl__Win32WindowState *windowState = &fpl__global__AppState->window.win32;
-	const fpl__Win32InitState *win32InitState = &fpl__global__InitState.win32;
-	const fpl__Win32Api *wapi = &win32AppState->winApi;
+	fpl__PlatformAppState* appState = fpl__global__AppState;
+	fpl__Win32AppState* win32AppState = &appState->win32;
+	const fpl__Win32WindowState* windowState = &fpl__global__AppState->window.win32;
+	const fpl__Win32InitState* win32InitState = &fpl__global__InitState.win32;
+	const fpl__Win32Api* wapi = &win32AppState->winApi;
 	fpl__ClearInternalEvents();
 	if ((!appState->currentSettings.input.disabledEvents) && (appState->initFlags & fplInitFlags_GameController)) {
 		fpl__Win32UpdateGameControllers(&appState->currentSettings, win32InitState, &win32AppState->xinput);
@@ -12753,26 +12774,26 @@ fpl_platform_api bool fplIsWindowRunning() {
 
 fpl_platform_api void fplWindowShutdown() {
 	FPL__CheckPlatformNoRet();
-	fpl__PlatformAppState *appState = fpl__global__AppState;
-	const fpl__Win32AppState *win32AppState = &appState->win32;
+	fpl__PlatformAppState* appState = fpl__global__AppState;
+	const fpl__Win32AppState* win32AppState = &appState->win32;
 	if (appState->window.isRunning) {
 		appState->window.isRunning = false;
-		const fpl__Win32Api *wapi = &win32AppState->winApi;
+		const fpl__Win32Api* wapi = &win32AppState->winApi;
 		wapi->user.PostQuitMessage(0);
 	}
 }
 
-fpl_platform_api bool fplGetClipboardText(char *dest, const uint32_t maxDestLen) {
+fpl_platform_api bool fplGetClipboardText(char* dest, const uint32_t maxDestLen) {
 	FPL__CheckPlatform(false);
-	const fpl__Win32AppState *appState = &fpl__global__AppState->win32;
-	const fpl__Win32WindowState *windowState = &fpl__global__AppState->window.win32;
-	const fpl__Win32Api *wapi = &appState->winApi;
+	const fpl__Win32AppState* appState = &fpl__global__AppState->win32;
+	const fpl__Win32WindowState* windowState = &fpl__global__AppState->window.win32;
+	const fpl__Win32Api* wapi = &appState->winApi;
 	bool result = false;
 	if (wapi->user.OpenClipboard(windowState->windowHandle)) {
 		if (wapi->user.IsClipboardFormatAvailable(CF_UNICODETEXT)) {
 			HGLOBAL dataHandle = wapi->user.GetClipboardData(CF_UNICODETEXT);
 			if (dataHandle != fpl_null) {
-				const wchar_t *stringValue = (const wchar_t *)GlobalLock(dataHandle);
+				const wchar_t* stringValue = (const wchar_t*)GlobalLock(dataHandle);
 				fplWideStringToUTF8String(stringValue, lstrlenW(stringValue), dest, maxDestLen);
 				GlobalUnlock(dataHandle);
 				result = true;
@@ -12783,18 +12804,18 @@ fpl_platform_api bool fplGetClipboardText(char *dest, const uint32_t maxDestLen)
 	return(result);
 }
 
-fpl_platform_api bool fplSetClipboardText(const char *text) {
+fpl_platform_api bool fplSetClipboardText(const char* text) {
 	FPL__CheckPlatform(false);
-	const fpl__Win32AppState *appState = &fpl__global__AppState->win32;
-	const fpl__Win32WindowState *windowState = &fpl__global__AppState->window.win32;
-	const fpl__Win32Api *wapi = &appState->winApi;
+	const fpl__Win32AppState* appState = &fpl__global__AppState->win32;
+	const fpl__Win32WindowState* windowState = &fpl__global__AppState->window.win32;
+	const fpl__Win32Api* wapi = &appState->winApi;
 	bool result = false;
 	if (wapi->user.OpenClipboard(windowState->windowHandle)) {
 		const size_t textLen = fplGetStringLength(text);
 		const size_t bufferLen = textLen + 1;
 		HGLOBAL handle = GlobalAlloc(GMEM_MOVEABLE, (SIZE_T)bufferLen * sizeof(wchar_t));
 		if (handle != fpl_null) {
-			wchar_t *target = (wchar_t*)GlobalLock(handle);
+			wchar_t* target = (wchar_t*)GlobalLock(handle);
 			fplUTF8StringToWideString(text, textLen, target, bufferLen);
 			GlobalUnlock(handle);
 			wapi->user.EmptyClipboard();
@@ -12806,12 +12827,12 @@ fpl_platform_api bool fplSetClipboardText(const char *text) {
 	return(result);
 }
 
-fpl_platform_api bool fplPollKeyboardState(fplKeyboardState *outState) {
+fpl_platform_api bool fplPollKeyboardState(fplKeyboardState* outState) {
 	FPL__CheckArgumentNull(outState, false);
 	FPL__CheckPlatform(false);
-	const fpl__Win32AppState *appState = &fpl__global__AppState->win32;
-	const fpl__Win32WindowState *windowState = &fpl__global__AppState->window.win32;
-	const fpl__Win32Api *wapi = &appState->winApi;
+	const fpl__Win32AppState* appState = &fpl__global__AppState->win32;
+	const fpl__Win32WindowState* windowState = &fpl__global__AppState->window.win32;
+	const fpl__Win32Api* wapi = &appState->winApi;
 	fplClearStruct(outState);
 	outState->modifiers = fpl__Win32GetKeyboardModifiers(wapi);
 	for (uint32_t keyCode = 0; keyCode < 256; ++keyCode) {
@@ -12827,15 +12848,15 @@ fpl_platform_api bool fplPollKeyboardState(fplKeyboardState *outState) {
 	return(true);
 }
 
-fpl_platform_api bool fplPollGamepadStates(fplGamepadStates *outStates) {
+fpl_platform_api bool fplPollGamepadStates(fplGamepadStates* outStates) {
 	FPL__CheckArgumentNull(outStates, false);
 	FPL__CheckPlatform(false);
-	fpl__PlatformAppState *platformAppState = fpl__global__AppState;
+	fpl__PlatformAppState* platformAppState = fpl__global__AppState;
 	if (platformAppState->initFlags & fplInitFlags_GameController) {
-		fpl__Win32AppState *appState = &platformAppState->win32;
-		const fpl__Win32WindowState *windowState = &fpl__global__AppState->window.win32;
-		const fpl__Win32Api *wapi = &appState->winApi;
-		fpl__Win32XInputState *xinputState = &appState->xinput;
+		fpl__Win32AppState* appState = &platformAppState->win32;
+		const fpl__Win32WindowState* windowState = &fpl__global__AppState->window.win32;
+		const fpl__Win32Api* wapi = &appState->winApi;
+		fpl__Win32XInputState* xinputState = &appState->xinput;
 		fplAssert(xinputState != fpl_null);
 		if (xinputState->xinputApi.XInputGetState != fpl_null) {
 			// @TODO(final): Use the device search time to query only new devices on time intervals
@@ -12849,8 +12870,8 @@ fpl_platform_api bool fplPollGamepadStates(fplGamepadStates *outStates) {
 						xinputState->isConnected[controllerIndex] = true;
 						fplFormatString(xinputState->deviceNames[controllerIndex], fplArrayCount(xinputState->deviceNames[controllerIndex]), "XInput-Device [%d]", controllerIndex);
 					}
-					const XINPUT_GAMEPAD *newPadState = &controllerState.Gamepad;
-					fplGamepadState *targetPadState = &outStates->deviceStates[controllerIndex];
+					const XINPUT_GAMEPAD* newPadState = &controllerState.Gamepad;
+					fplGamepadState* targetPadState = &outStates->deviceStates[controllerIndex];
 					fpl__Win32XInputGamepadToGamepadState(newPadState, targetPadState);
 					targetPadState->deviceName = xinputState->deviceNames[controllerIndex];
 				} else {
@@ -12865,12 +12886,12 @@ fpl_platform_api bool fplPollGamepadStates(fplGamepadStates *outStates) {
 	return(false);
 }
 
-fpl_platform_api bool fplPollMouseState(fplMouseState *outState) {
+fpl_platform_api bool fplPollMouseState(fplMouseState* outState) {
 	FPL__CheckArgumentNull(outState, false);
 	FPL__CheckPlatform(false);
-	const fpl__Win32AppState *appState = &fpl__global__AppState->win32;
-	const fpl__Win32WindowState *windowState = &fpl__global__AppState->window.win32;
-	const fpl__Win32Api *wapi = &appState->winApi;
+	const fpl__Win32AppState* appState = &fpl__global__AppState->win32;
+	const fpl__Win32WindowState* windowState = &fpl__global__AppState->window.win32;
+	const fpl__Win32Api* wapi = &appState->winApi;
 	POINT p;
 	if ((wapi->user.GetCursorPos(&p) == TRUE) && (wapi->user.ScreenToClient(windowState->windowHandle, &p))) {
 		fplClearStruct(outState);
@@ -12890,22 +12911,22 @@ fpl_platform_api bool fplPollMouseState(fplMouseState *outState) {
 }
 
 fpl_internal BOOL WINAPI fpl__Win32MonitorCountEnumProc(HMONITOR monitorHandle, HDC hdc, LPRECT rect, LPARAM userData) {
-	size_t *count = (size_t *)(uintptr_t)userData;
+	size_t* count = (size_t*)(uintptr_t)userData;
 	*count = *count + 1;
 	return(TRUE);
 }
 
 fpl_platform_api size_t fplGetDisplayCount() {
 	FPL__CheckPlatform(0);
-	const fpl__Win32AppState *appState = &fpl__global__AppState->win32;
-	const fpl__Win32WindowState *windowState = &fpl__global__AppState->window.win32;
-	const fpl__Win32Api *wapi = &appState->winApi;
+	const fpl__Win32AppState* appState = &fpl__global__AppState->win32;
+	const fpl__Win32WindowState* windowState = &fpl__global__AppState->window.win32;
+	const fpl__Win32Api* wapi = &appState->winApi;
 	size_t result = 0;
 	LPARAM param = (LPARAM)&result;
 	wapi->user.EnumDisplayMonitors(fpl_null, fpl_null, fpl__Win32MonitorCountEnumProc, param);
 	return(result);
 }
-fpl_internal void fpl__Win32FillDisplayInfo(const MONITORINFOEXW *info, fplDisplayInfo *outInfo) {
+fpl_internal void fpl__Win32FillDisplayInfo(const MONITORINFOEXW* info, fplDisplayInfo* outInfo) {
 	fplAssert(info != fpl_null);
 	fplAssert(outInfo != fpl_null);
 	size_t idLen = lstrlenW(info->szDevice);
@@ -12920,17 +12941,17 @@ fpl_internal void fpl__Win32FillDisplayInfo(const MONITORINFOEXW *info, fplDispl
 }
 
 typedef struct fpl__Win32DisplayEnumState {
-	fplDisplayInfo *baseInfo;
-	const fpl__Win32Api *wapi;
+	fplDisplayInfo* baseInfo;
+	const fpl__Win32Api* wapi;
 	size_t count;
 	size_t maxCount;
 } fpl__Win32DisplayEnumState;
 
 fpl_internal BOOL WINAPI fpl__Win32MonitorInfoEnumProc(HMONITOR monitorHandle, HDC hdc, LPRECT rect, LPARAM userData) {
-	fpl__Win32DisplayEnumState *enumState = (fpl__Win32DisplayEnumState *)(uintptr_t)userData;
-	const fpl__Win32Api *wapi = enumState->wapi;
+	fpl__Win32DisplayEnumState* enumState = (fpl__Win32DisplayEnumState*)(uintptr_t)userData;
+	const fpl__Win32Api* wapi = enumState->wapi;
 	if (enumState->count < enumState->maxCount) {
-		fplDisplayInfo *targetInfo = enumState->baseInfo + enumState->count;
+		fplDisplayInfo* targetInfo = enumState->baseInfo + enumState->count;
 		fplClearStruct(targetInfo);
 		MONITORINFOEXW info = fplZeroInit;
 		info.cbSize = sizeof(info);
@@ -12945,13 +12966,13 @@ fpl_internal BOOL WINAPI fpl__Win32MonitorInfoEnumProc(HMONITOR monitorHandle, H
 	}
 }
 
-fpl_platform_api size_t fplGetDisplays(fplDisplayInfo *displays, const size_t maxDisplayCount) {
+fpl_platform_api size_t fplGetDisplays(fplDisplayInfo* displays, const size_t maxDisplayCount) {
 	FPL__CheckArgumentNull(displays, 0);
 	FPL__CheckArgumentZero(maxDisplayCount, 0);
 	FPL__CheckPlatform(0);
-	const fpl__Win32AppState *appState = &fpl__global__AppState->win32;
-	const fpl__Win32WindowState *windowState = &fpl__global__AppState->window.win32;
-	const fpl__Win32Api *wapi = &appState->winApi;
+	const fpl__Win32AppState* appState = &fpl__global__AppState->win32;
+	const fpl__Win32WindowState* windowState = &fpl__global__AppState->window.win32;
+	const fpl__Win32Api* wapi = &appState->winApi;
 	fpl__Win32DisplayEnumState enumState = fplZeroInit;
 	enumState.baseInfo = displays;
 	enumState.maxCount = maxDisplayCount;
@@ -12962,8 +12983,8 @@ fpl_platform_api size_t fplGetDisplays(fplDisplayInfo *displays, const size_t ma
 }
 
 fpl_internal BOOL WINAPI fpl__Win32PrimaryMonitorEnumProc(HMONITOR monitorHandle, HDC hdc, LPRECT rect, LPARAM userData) {
-	fpl__Win32DisplayEnumState *enumState = (fpl__Win32DisplayEnumState *)(uintptr_t)userData;
-	const fpl__Win32Api *wapi = enumState->wapi;
+	fpl__Win32DisplayEnumState* enumState = (fpl__Win32DisplayEnumState*)(uintptr_t)userData;
+	const fpl__Win32Api* wapi = enumState->wapi;
 	MONITORINFOEXW info = fplZeroInit;
 	info.cbSize = sizeof(info);
 	if (wapi->user.GetMonitorInfoW(monitorHandle, (LPMONITORINFO)&info) != 0) {
@@ -12977,12 +12998,12 @@ fpl_internal BOOL WINAPI fpl__Win32PrimaryMonitorEnumProc(HMONITOR monitorHandle
 	return(TRUE);
 }
 
-fpl_platform_api bool fplGetPrimaryDisplay(fplDisplayInfo *display) {
+fpl_platform_api bool fplGetPrimaryDisplay(fplDisplayInfo* display) {
 	FPL__CheckArgumentNull(display, false);
 	FPL__CheckPlatform(false);
-	const fpl__Win32AppState *appState = &fpl__global__AppState->win32;
-	const fpl__Win32WindowState *windowState = &fpl__global__AppState->window.win32;
-	const fpl__Win32Api *wapi = &appState->winApi;
+	const fpl__Win32AppState* appState = &fpl__global__AppState->win32;
+	const fpl__Win32WindowState* windowState = &fpl__global__AppState->window.win32;
+	const fpl__Win32Api* wapi = &appState->winApi;
 	fpl__Win32DisplayEnumState enumState = fplZeroInit;
 	enumState.baseInfo = display;
 	enumState.maxCount = 1;
@@ -12993,12 +13014,12 @@ fpl_platform_api bool fplGetPrimaryDisplay(fplDisplayInfo *display) {
 	return(result);
 }
 
-fpl_platform_api bool fplGetWindowDisplay(fplDisplayInfo *outDisplay) {
+fpl_platform_api bool fplGetWindowDisplay(fplDisplayInfo* outDisplay) {
 	FPL__CheckArgumentNull(outDisplay, false);
 	FPL__CheckPlatform(false);
-	const fpl__Win32AppState *appState = &fpl__global__AppState->win32;
-	const fpl__Win32WindowState *windowState = &fpl__global__AppState->window.win32;
-	const fpl__Win32Api *wapi = &appState->winApi;
+	const fpl__Win32AppState* appState = &fpl__global__AppState->win32;
+	const fpl__Win32WindowState* windowState = &fpl__global__AppState->window.win32;
+	const fpl__Win32Api* wapi = &appState->winApi;
 	HMONITOR foundMonitor = wapi->user.MonitorFromWindow(windowState->windowHandle, MONITOR_DEFAULTTONULL);
 	bool result = false;
 	if (foundMonitor != fpl_null) {
@@ -13013,12 +13034,12 @@ fpl_platform_api bool fplGetWindowDisplay(fplDisplayInfo *outDisplay) {
 	return(result);
 }
 
-fpl_platform_api bool fplGetDisplayFromPosition(const int32_t x, const int32_t y, fplDisplayInfo *outDisplay) {
+fpl_platform_api bool fplGetDisplayFromPosition(const int32_t x, const int32_t y, fplDisplayInfo* outDisplay) {
 	FPL__CheckArgumentNull(outDisplay, false);
 	FPL__CheckPlatform(false);
-	const fpl__Win32AppState *appState = &fpl__global__AppState->win32;
-	const fpl__Win32WindowState *windowState = &fpl__global__AppState->window.win32;
-	const fpl__Win32Api *wapi = &appState->winApi;
+	const fpl__Win32AppState* appState = &fpl__global__AppState->win32;
+	const fpl__Win32WindowState* windowState = &fpl__global__AppState->window.win32;
+	const fpl__Win32Api* wapi = &appState->winApi;
 	POINT pt;
 	pt.x = x;
 	pt.y = y;
@@ -13036,12 +13057,12 @@ fpl_platform_api bool fplGetDisplayFromPosition(const int32_t x, const int32_t y
 	return(result);
 }
 
-fpl_platform_api size_t fplGetDisplayModeCount(const char *id) {
+fpl_platform_api size_t fplGetDisplayModeCount(const char* id) {
 	FPL__CheckArgumentNull(id, 0);
 	FPL__CheckPlatform(0);
-	const fpl__Win32AppState *appState = &fpl__global__AppState->win32;
-	const fpl__Win32WindowState *windowState = &fpl__global__AppState->window.win32;
-	const fpl__Win32Api *wapi = &appState->winApi;
+	const fpl__Win32AppState* appState = &fpl__global__AppState->win32;
+	const fpl__Win32WindowState* windowState = &fpl__global__AppState->window.win32;
+	const fpl__Win32Api* wapi = &appState->winApi;
 	wchar_t deviceName[CCHDEVICENAME + 1];
 	fplUTF8StringToWideString(id, fplGetStringLength(id), deviceName, fplArrayCount(deviceName));
 	int deviceIndex = 0;
@@ -13053,12 +13074,12 @@ fpl_platform_api size_t fplGetDisplayModeCount(const char *id) {
 	return(result);
 }
 
-fpl_platform_api size_t fplGetDisplayModes(const char *id, fplDisplayMode *modes, const size_t maxDisplayModeCount) {
+fpl_platform_api size_t fplGetDisplayModes(const char* id, fplDisplayMode* modes, const size_t maxDisplayModeCount) {
 	FPL__CheckArgumentNull(id, 0);
 	FPL__CheckPlatform(0);
-	const fpl__Win32AppState *appState = &fpl__global__AppState->win32;
-	const fpl__Win32WindowState *windowState = &fpl__global__AppState->window.win32;
-	const fpl__Win32Api *wapi = &appState->winApi;
+	const fpl__Win32AppState* appState = &fpl__global__AppState->win32;
+	const fpl__Win32WindowState* windowState = &fpl__global__AppState->window.win32;
+	const fpl__Win32Api* wapi = &appState->winApi;
 	wchar_t deviceName[CCHDEVICENAME + 1];
 	fplUTF8StringToWideString(id, fplGetStringLength(id), deviceName, fplArrayCount(deviceName));
 	size_t result = 0;
@@ -13067,7 +13088,7 @@ fpl_platform_api size_t fplGetDisplayModes(const char *id, fplDisplayMode *modes
 		if (result == maxDisplayModeCount) {
 			break;
 		}
-		fplDisplayMode *outMode = modes + result;
+		fplDisplayMode* outMode = modes + result;
 		fplClearStruct(outMode);
 		outMode->width = devMode.dmPelsWidth;
 		outMode->height = devMode.dmPelsHeight;
@@ -13089,7 +13110,7 @@ fpl_internal LCTYPE fpl__Win32GetLocaleLCIDFromFormat(const fplLocaleFormat form
 	}
 }
 
-fpl_platform_api bool fplGetSystemLocale(const fplLocaleFormat targetFormat, char *buffer, const size_t maxBufferLen) {
+fpl_platform_api bool fplGetSystemLocale(const fplLocaleFormat targetFormat, char* buffer, const size_t maxBufferLen) {
 	FPL__CheckArgumentInvalid(targetFormat, targetFormat == fplLocaleFormat_None, false);
 	LCTYPE lcType = fpl__Win32GetLocaleLCIDFromFormat(targetFormat);
 	wchar_t bufferWide[FPL_MAX_BUFFER_LENGTH];
@@ -13099,7 +13120,7 @@ fpl_platform_api bool fplGetSystemLocale(const fplLocaleFormat targetFormat, cha
 	return(result);
 }
 
-fpl_platform_api bool fplGetUserLocale(const fplLocaleFormat targetFormat, char *buffer, const size_t maxBufferLen) {
+fpl_platform_api bool fplGetUserLocale(const fplLocaleFormat targetFormat, char* buffer, const size_t maxBufferLen) {
 	FPL__CheckArgumentInvalid(targetFormat, targetFormat == fplLocaleFormat_None, false);
 	LCTYPE lcType = fpl__Win32GetLocaleLCIDFromFormat(targetFormat);
 	wchar_t bufferWide[FPL_MAX_BUFFER_LENGTH];
@@ -13109,11 +13130,11 @@ fpl_platform_api bool fplGetUserLocale(const fplLocaleFormat targetFormat, char 
 	return(result);
 }
 
-fpl_platform_api bool fplGetInputLocale(const fplLocaleFormat targetFormat, char *buffer, const size_t maxBufferLen) {
+fpl_platform_api bool fplGetInputLocale(const fplLocaleFormat targetFormat, char* buffer, const size_t maxBufferLen) {
 	FPL__CheckArgumentInvalid(targetFormat, targetFormat == fplLocaleFormat_None, false);
 	FPL__CheckPlatform(false);
-	const fpl__Win32AppState *appState = &fpl__global__AppState->win32;
-	const fpl__Win32Api *wapi = &appState->winApi;
+	const fpl__Win32AppState* appState = &fpl__global__AppState->win32;
+	const fpl__Win32Api* wapi = &appState->winApi;
 	HKL kbLayout = wapi->user.GetKeyboardLayout(GetCurrentThreadId());
 	LCID langId = (DWORD)(intptr_t)kbLayout & 0xFFFF;
 	LCTYPE lcType = fpl__Win32GetLocaleLCIDFromFormat(targetFormat);
@@ -13131,11 +13152,11 @@ fpl_platform_api bool fplGetInputLocale(const fplLocaleFormat targetFormat, char
 //
 // ############################################################################
 #if defined(FPL_SUBPLATFORM_POSIX)
-fpl_internal void fpl__PosixReleaseSubplatform(fpl__PosixAppState *appState) {
+fpl_internal void fpl__PosixReleaseSubplatform(fpl__PosixAppState* appState) {
 	fpl__PThreadUnloadApi(&appState->pthreadApi);
 }
 
-fpl_internal bool fpl__PosixInitSubplatform(const fplInitFlags initFlags, const fplSettings *initSettings, fpl__PosixInitState *initState, fpl__PosixAppState *appState) {
+fpl_internal bool fpl__PosixInitSubplatform(const fplInitFlags initFlags, const fplSettings* initSettings, fpl__PosixInitState* initState, fpl__PosixAppState* appState) {
 	if (!fpl__PThreadLoadApi(&appState->pthreadApi)) {
 		FPL__ERROR(FPL__MODULE_POSIX, "Failed initializing PThread API");
 		return false;
@@ -13143,7 +13164,7 @@ fpl_internal bool fpl__PosixInitSubplatform(const fplInitFlags initFlags, const 
 	return true;
 }
 
-fpl_internal void fpl__InitWaitTimeSpec(const uint32_t milliseconds, struct timespec *outSpec) {
+fpl_internal void fpl__InitWaitTimeSpec(const uint32_t milliseconds, struct timespec* outSpec) {
 	time_t secs = milliseconds / 1000;
 	uint64_t nanoSecs = (milliseconds - (secs * 1000)) * 1000000;
 	if (nanoSecs >= 1000000000) {
@@ -13156,23 +13177,23 @@ fpl_internal void fpl__InitWaitTimeSpec(const uint32_t milliseconds, struct time
 	outSpec->tv_nsec += nanoSecs;
 }
 
-void *fpl__PosixThreadProc(void *data) {
+void* fpl__PosixThreadProc(void* data) {
 	fplAssert(fpl__global__AppState != fpl_null);
-	const fpl__PThreadApi *pthreadApi = &fpl__global__AppState->posix.pthreadApi;
-	fplThreadHandle *thread = (fplThreadHandle *)data;
+	const fpl__PThreadApi* pthreadApi = &fpl__global__AppState->posix.pthreadApi;
+	fplThreadHandle* thread = (fplThreadHandle*)data;
 	fplAssert(thread != fpl_null);
-	fplAtomicStoreU32((volatile uint32_t *)&thread->currentState, (uint32_t)fplThreadState_Running);
+	fplAtomicStoreU32((volatile uint32_t*)&thread->currentState, (uint32_t)fplThreadState_Running);
 	if (thread->runFunc != fpl_null) {
 		thread->runFunc(thread, thread->data);
 	}
-	fplAtomicStoreU32((volatile uint32_t *)&thread->currentState, (uint32_t)fplThreadState_Stopping);
+	fplAtomicStoreU32((volatile uint32_t*)&thread->currentState, (uint32_t)fplThreadState_Stopping);
 	thread->isValid = false;
-	fplAtomicStoreU32((volatile uint32_t *)&thread->currentState, (uint32_t)fplThreadState_Stopped);
+	fplAtomicStoreU32((volatile uint32_t*)&thread->currentState, (uint32_t)fplThreadState_Stopped);
 	pthreadApi->pthread_exit(data);
 	return 0;
 }
 
-fpl_internal bool fpl__PosixMutexLock(const fpl__PThreadApi *pthreadApi, pthread_mutex_t *handle) {
+fpl_internal bool fpl__PosixMutexLock(const fpl__PThreadApi* pthreadApi, pthread_mutex_t* handle) {
 	int lockRes;
 	do {
 		lockRes = pthreadApi->pthread_mutex_lock(handle);
@@ -13181,7 +13202,7 @@ fpl_internal bool fpl__PosixMutexLock(const fpl__PThreadApi *pthreadApi, pthread
 	return(result);
 }
 
-fpl_internal bool fpl__PosixMutexTryLock(const fpl__PThreadApi *pthreadApi, pthread_mutex_t *handle) {
+fpl_internal bool fpl__PosixMutexTryLock(const fpl__PThreadApi* pthreadApi, pthread_mutex_t* handle) {
 	int lockRes;
 	do {
 		lockRes = pthreadApi->pthread_mutex_trylock(handle);
@@ -13190,7 +13211,7 @@ fpl_internal bool fpl__PosixMutexTryLock(const fpl__PThreadApi *pthreadApi, pthr
 	return(result);
 }
 
-fpl_internal bool fpl__PosixMutexUnlock(const fpl__PThreadApi *pthreadApi, pthread_mutex_t *handle) {
+fpl_internal bool fpl__PosixMutexUnlock(const fpl__PThreadApi* pthreadApi, pthread_mutex_t* handle) {
 	int unlockRes;
 	do {
 		unlockRes = pthreadApi->pthread_mutex_unlock(handle);
@@ -13199,7 +13220,7 @@ fpl_internal bool fpl__PosixMutexUnlock(const fpl__PThreadApi *pthreadApi, pthre
 	return(result);
 }
 
-fpl_internal int fpl__PosixMutexCreate(const fpl__PThreadApi *pthreadApi, pthread_mutex_t *handle) {
+fpl_internal int fpl__PosixMutexCreate(const fpl__PThreadApi* pthreadApi, pthread_mutex_t* handle) {
 	int mutexRes;
 	do {
 		mutexRes = pthreadApi->pthread_mutex_init(handle, fpl_null);
@@ -13207,12 +13228,12 @@ fpl_internal int fpl__PosixMutexCreate(const fpl__PThreadApi *pthreadApi, pthrea
 	return(mutexRes);
 }
 
-fpl_internal bool fpl__PosixThreadWaitForMultiple(fplThreadHandle **threads, const uint32_t minCount, const uint32_t maxCount, const size_t stride, const fplTimeoutValue timeout) {
+fpl_internal bool fpl__PosixThreadWaitForMultiple(fplThreadHandle** threads, const uint32_t minCount, const uint32_t maxCount, const size_t stride, const fplTimeoutValue timeout) {
 	FPL__CheckArgumentNull(threads, false);
 	FPL__CheckArgumentMax(maxCount, FPL__MAX_THREAD_COUNT, false);
-	const size_t actualStride = stride > 0 ? stride : sizeof(fplThreadHandle *);
+	const size_t actualStride = stride > 0 ? stride : sizeof(fplThreadHandle*);
 	for (uint32_t index = 0; index < maxCount; ++index) {
-		fplThreadHandle *thread = *(fplThreadHandle **)((uint8_t *)threads + index * actualStride);
+		fplThreadHandle* thread = *(fplThreadHandle**)((uint8_t*)threads + index * actualStride);
 		if (thread == fpl_null) {
 			FPL__ERROR(FPL__MODULE_THREADING, "Thread for index '%d' are not allowed to be null", index);
 			return false;
@@ -13222,7 +13243,7 @@ fpl_internal bool fpl__PosixThreadWaitForMultiple(fplThreadHandle **threads, con
 	uint32_t completeCount = 0;
 	bool isRunning[FPL__MAX_THREAD_COUNT];
 	for (uint32_t index = 0; index < maxCount; ++index) {
-		fplThreadHandle *thread = *(fplThreadHandle **)((uint8_t *)threads + index * actualStride);
+		fplThreadHandle* thread = *(fplThreadHandle**)((uint8_t*)threads + index * actualStride);
 		isRunning[index] = fplGetThreadState(thread) != fplThreadState_Stopped;
 		if (!isRunning[index]) {
 			++completeCount;
@@ -13233,7 +13254,7 @@ fpl_internal bool fpl__PosixThreadWaitForMultiple(fplThreadHandle **threads, con
 	bool result = false;
 	while (completeCount < minCount) {
 		for (uint32_t index = 0; index < maxCount; ++index) {
-			fplThreadHandle *thread = *(fplThreadHandle **)((uint8_t *)threads + index * actualStride);
+			fplThreadHandle* thread = *(fplThreadHandle**)((uint8_t*)threads + index * actualStride);
 			if (isRunning[index]) {
 				fplThreadState state = fplGetThreadState(thread);
 				if (state == fplThreadState_Stopped) {
@@ -13258,7 +13279,7 @@ fpl_internal bool fpl__PosixThreadWaitForMultiple(fplThreadHandle **threads, con
 //
 // POSIX Atomics
 //
-#if defined(FPL_COMPILER_GCC) || defined(FPL_COMPILER_CLANG) || defined(FPL_COMPILER_LLVM)
+#if defined(FPL_COMPILER_GCC) || defined(FPL_COMPILER_CLANG) || defined(__GNUC__)
 // @NOTE(final): See: https://gcc.gnu.org/onlinedocs/gcc/_005f_005fsync-Builtins.html#g_t_005f_005fsync-Builtins
 // @NOTE(final): There is only one barrier in POSIX (read and write)
 fpl_platform_api void fplAtomicReadFence() {
@@ -13271,162 +13292,162 @@ fpl_platform_api void fplAtomicReadWriteFence() {
 	__sync_synchronize();
 }
 
-fpl_platform_api uint32_t fplAtomicExchangeU32(volatile uint32_t *target, const uint32_t value) {
+fpl_platform_api uint32_t fplAtomicExchangeU32(volatile uint32_t* target, const uint32_t value) {
 	__sync_synchronize();
 	uint32_t result = __sync_lock_test_and_set(target, value);
 	return(result);
 }
-fpl_platform_api uint64_t fplAtomicExchangeU64(volatile uint64_t *target, const uint64_t value) {
+fpl_platform_api uint64_t fplAtomicExchangeU64(volatile uint64_t* target, const uint64_t value) {
 	__sync_synchronize();
 	uint64_t result = __sync_lock_test_and_set(target, value);
 	return(result);
 }
-fpl_platform_api int32_t fplAtomicExchangeS32(volatile int32_t *target, const int32_t value) {
+fpl_platform_api int32_t fplAtomicExchangeS32(volatile int32_t* target, const int32_t value) {
 	__sync_synchronize();
 	int32_t result = __sync_lock_test_and_set(target, value);
 	return(result);
 }
-fpl_platform_api int64_t fplAtomicExchangeS64(volatile int64_t *target, const int64_t value) {
+fpl_platform_api int64_t fplAtomicExchangeS64(volatile int64_t* target, const int64_t value) {
 	__sync_synchronize();
 	int64_t result = __sync_lock_test_and_set(target, value);
 	return(result);
 }
 
-fpl_platform_api uint32_t fplAtomicFetchAndAddU32(volatile uint32_t *value, const uint32_t addend) {
+fpl_platform_api uint32_t fplAtomicFetchAndAddU32(volatile uint32_t* value, const uint32_t addend) {
 	fplAssert(value != fpl_null);
 	uint32_t result = __sync_fetch_and_add(value, addend);
 	return (result);
 }
-fpl_platform_api uint64_t fplAtomicFetchAndAddU64(volatile uint64_t *value, const uint64_t addend) {
+fpl_platform_api uint64_t fplAtomicFetchAndAddU64(volatile uint64_t* value, const uint64_t addend) {
 	fplAssert(value != fpl_null);
 	uint64_t result = __sync_fetch_and_add(value, addend);
 	return (result);
 }
-fpl_platform_api int32_t fplAtomicFetchAndAddS32(volatile int32_t *value, const int32_t addend) {
+fpl_platform_api int32_t fplAtomicFetchAndAddS32(volatile int32_t* value, const int32_t addend) {
 	fplAssert(value != fpl_null);
 	int32_t result = __sync_fetch_and_add(value, addend);
 	return (result);
 }
-fpl_platform_api int64_t fplAtomicFetchAndAddS64(volatile int64_t *value, const int64_t addend) {
+fpl_platform_api int64_t fplAtomicFetchAndAddS64(volatile int64_t* value, const int64_t addend) {
 	fplAssert(value != fpl_null);
 	int64_t result = __sync_fetch_and_add(value, addend);
 	return (result);
 }
 
-fpl_platform_api uint32_t fplAtomicAddAndFetchU32(volatile uint32_t *value, const uint32_t addend) {
+fpl_platform_api uint32_t fplAtomicAddAndFetchU32(volatile uint32_t* value, const uint32_t addend) {
 	fplAssert(value != fpl_null);
 	uint32_t result = __sync_add_and_fetch(value, addend);
 	return (result);
 }
-fpl_platform_api int32_t fplAtomicAddAndFetchS32(volatile int32_t *value, const int32_t addend) {
+fpl_platform_api int32_t fplAtomicAddAndFetchS32(volatile int32_t* value, const int32_t addend) {
 	fplAssert(value != fpl_null);
 	int32_t result = __sync_add_and_fetch(value, addend);
 	return (result);
 }
-fpl_platform_api uint64_t fplAtomicAddAndFetchU64(volatile uint64_t *value, const uint64_t addend) {
+fpl_platform_api uint64_t fplAtomicAddAndFetchU64(volatile uint64_t* value, const uint64_t addend) {
 	fplAssert(value != fpl_null);
 	uint64_t result = __sync_add_and_fetch(value, addend);
 	return (result);
 }
-fpl_platform_api int64_t fplAtomicAddAndFetchS64(volatile int64_t *value, const int64_t addend) {
+fpl_platform_api int64_t fplAtomicAddAndFetchS64(volatile int64_t* value, const int64_t addend) {
 	fplAssert(value != fpl_null);
 	int64_t result = __sync_add_and_fetch(value, addend);
 	return (result);
 }
 
-fpl_platform_api uint32_t fplAtomicIncrementU32(volatile uint32_t *value) {
+fpl_platform_api uint32_t fplAtomicIncrementU32(volatile uint32_t* value) {
 	fplAssert(value != fpl_null);
 	uint32_t result = __sync_add_and_fetch(value, 1);
 	return (result);
 }
-fpl_platform_api uint64_t fplAtomicIncrementU64(volatile uint64_t *value) {
+fpl_platform_api uint64_t fplAtomicIncrementU64(volatile uint64_t* value) {
 	fplAssert(value != fpl_null);
 	uint64_t result = __sync_add_and_fetch(value, 1);
 	return (result);
 }
-fpl_platform_api int32_t fplAtomicIncrementS32(volatile int32_t *value) {
+fpl_platform_api int32_t fplAtomicIncrementS32(volatile int32_t* value) {
 	fplAssert(value != fpl_null);
 	int32_t result = __sync_add_and_fetch(value, 1);
 	return (result);
 }
-fpl_platform_api int64_t fplAtomicIncrementS64(volatile int64_t *value) {
+fpl_platform_api int64_t fplAtomicIncrementS64(volatile int64_t* value) {
 	fplAssert(value != fpl_null);
 	int64_t result = __sync_add_and_fetch(value, 1);
 	return (result);
 }
 
-fpl_platform_api uint32_t fplAtomicCompareAndSwapU32(volatile uint32_t *dest, const uint32_t comparand, const uint32_t exchange) {
+fpl_platform_api uint32_t fplAtomicCompareAndSwapU32(volatile uint32_t* dest, const uint32_t comparand, const uint32_t exchange) {
 	fplAssert(dest != fpl_null);
 	uint32_t result = __sync_val_compare_and_swap(dest, comparand, exchange);
 	return (result);
 }
-fpl_platform_api uint64_t fplAtomicCompareAndSwapU64(volatile uint64_t *dest, const uint64_t comparand, const uint64_t exchange) {
+fpl_platform_api uint64_t fplAtomicCompareAndSwapU64(volatile uint64_t* dest, const uint64_t comparand, const uint64_t exchange) {
 	fplAssert(dest != fpl_null);
 	uint64_t result = __sync_val_compare_and_swap(dest, comparand, exchange);
 	return (result);
 }
-fpl_platform_api int32_t fplAtomicCompareAndSwapS32(volatile int32_t *dest, const int32_t comparand, const int32_t exchange) {
+fpl_platform_api int32_t fplAtomicCompareAndSwapS32(volatile int32_t* dest, const int32_t comparand, const int32_t exchange) {
 	fplAssert(dest != fpl_null);
 	int32_t result = __sync_val_compare_and_swap(dest, comparand, exchange);
 	return (result);
 }
-fpl_platform_api int64_t fplAtomicCompareAndSwapS64(volatile int64_t *dest, const int64_t comparand, const int64_t exchange) {
+fpl_platform_api int64_t fplAtomicCompareAndSwapS64(volatile int64_t* dest, const int64_t comparand, const int64_t exchange) {
 	fplAssert(dest != fpl_null);
 	int64_t result = __sync_val_compare_and_swap(dest, comparand, exchange);
 	return (result);
 }
 
-fpl_platform_api bool fplIsAtomicCompareAndSwapU32(volatile uint32_t *dest, const uint32_t comparand, const uint32_t exchange) {
+fpl_platform_api bool fplIsAtomicCompareAndSwapU32(volatile uint32_t* dest, const uint32_t comparand, const uint32_t exchange) {
 	fplAssert(dest != fpl_null);
 	bool result = __sync_bool_compare_and_swap(dest, comparand, exchange);
 	return (result);
 }
-fpl_platform_api bool fplIsAtomicCompareAndSwapU64(volatile uint64_t *dest, const uint64_t comparand, const uint64_t exchange) {
+fpl_platform_api bool fplIsAtomicCompareAndSwapU64(volatile uint64_t* dest, const uint64_t comparand, const uint64_t exchange) {
 	fplAssert(dest != fpl_null);
 	bool result = __sync_bool_compare_and_swap(dest, comparand, exchange);
 	return (result);
 }
-fpl_platform_api bool fplIsAtomicCompareAndSwapS32(volatile int32_t *dest, const int32_t comparand, const int32_t exchange) {
+fpl_platform_api bool fplIsAtomicCompareAndSwapS32(volatile int32_t* dest, const int32_t comparand, const int32_t exchange) {
 	fplAssert(dest != fpl_null);
 	bool result = __sync_bool_compare_and_swap(dest, comparand, exchange);
 	return (result);
 }
-fpl_platform_api bool fplIsAtomicCompareAndSwapS64(volatile int64_t *dest, const int64_t comparand, const int64_t exchange) {
+fpl_platform_api bool fplIsAtomicCompareAndSwapS64(volatile int64_t* dest, const int64_t comparand, const int64_t exchange) {
 	fplAssert(dest != fpl_null);
 	bool result = __sync_bool_compare_and_swap(dest, comparand, exchange);
 	return (result);
 }
 
-fpl_platform_api uint32_t fplAtomicLoadU32(volatile uint32_t *source) {
+fpl_platform_api uint32_t fplAtomicLoadU32(volatile uint32_t* source) {
 	uint32_t result = __sync_add_and_fetch(source, 0);
 	return(result);
 }
-fpl_platform_api uint64_t fplAtomicLoadU64(volatile uint64_t *source) {
+fpl_platform_api uint64_t fplAtomicLoadU64(volatile uint64_t* source) {
 	uint64_t result = __sync_add_and_fetch(source, 0);
 	return(result);
 }
-fpl_platform_api int32_t fplAtomicLoadS32(volatile int32_t *source) {
+fpl_platform_api int32_t fplAtomicLoadS32(volatile int32_t* source) {
 	int32_t result = __sync_add_and_fetch(source, 0);
 	return(result);
 }
-fpl_platform_api int64_t fplAtomicLoadS64(volatile int64_t *source) {
+fpl_platform_api int64_t fplAtomicLoadS64(volatile int64_t* source) {
 	int64_t result = __sync_add_and_fetch(source, 0);
 	return(result);
 }
 
-fpl_platform_api void fplAtomicStoreU32(volatile uint32_t *dest, const uint32_t value) {
+fpl_platform_api void fplAtomicStoreU32(volatile uint32_t* dest, const uint32_t value) {
 	__sync_synchronize();
 	__sync_lock_test_and_set(dest, value);
 }
-fpl_platform_api void fplAtomicStoreU64(volatile uint64_t *dest, const uint64_t value) {
+fpl_platform_api void fplAtomicStoreU64(volatile uint64_t* dest, const uint64_t value) {
 	__sync_synchronize();
 	__sync_lock_test_and_set(dest, value);
 }
-fpl_platform_api void fplAtomicStoreS32(volatile int32_t *dest, const int32_t value) {
+fpl_platform_api void fplAtomicStoreS32(volatile int32_t* dest, const int32_t value) {
 	__sync_synchronize();
 	__sync_lock_test_and_set(dest, value);
 }
-fpl_platform_api void fplAtomicStoreS64(volatile int64_t *dest, const int64_t value) {
+fpl_platform_api void fplAtomicStoreS64(volatile int64_t* dest, const int64_t value) {
 	__sync_synchronize();
 	__sync_lock_test_and_set(dest, value);
 }
@@ -13479,18 +13500,18 @@ fpl_platform_api uint64_t fplGetTimeInMilliseconds() {
 //
 // POSIX Threading
 //
-fpl_platform_api bool fplThreadTerminate(fplThreadHandle *thread) {
+fpl_platform_api bool fplThreadTerminate(fplThreadHandle* thread) {
 	FPL__CheckArgumentNull(thread, false);
 	FPL__CheckPlatform(false);
-	const fpl__PlatformAppState *appState = fpl__global__AppState;
-	const fpl__PThreadApi *pthreadApi = &appState->posix.pthreadApi;
+	const fpl__PlatformAppState* appState = fpl__global__AppState;
+	const fpl__PThreadApi* pthreadApi = &appState->posix.pthreadApi;
 	if (thread->isValid && (fplGetThreadState(thread) != fplThreadState_Stopped)) {
 		pthread_t threadHandle = thread->internalHandle.posixThread;
 		if (pthreadApi->pthread_kill(threadHandle, 0) == 0) {
 			pthreadApi->pthread_join(threadHandle, fpl_null);
 		}
 		thread->isValid = false;
-		fplAtomicStoreU32((volatile uint32_t *)&thread->currentState, (uint32_t)fplThreadState_Stopped);
+		fplAtomicStoreU32((volatile uint32_t*)&thread->currentState, (uint32_t)fplThreadState_Stopped);
 		return true;
 	} else {
 		return false;
@@ -13502,12 +13523,12 @@ fpl_platform_api uint32_t fplGetCurrentThreadId() {
 	return(0);
 }
 
-fpl_platform_api fplThreadHandle *fplThreadCreate(fpl_run_thread_callback *runFunc, void *data) {
+fpl_platform_api fplThreadHandle* fplThreadCreate(fpl_run_thread_callback* runFunc, void* data) {
 	FPL__CheckPlatform(fpl_null);
-	const fpl__PlatformAppState *appState = fpl__global__AppState;
-	const fpl__PThreadApi *pthreadApi = &appState->posix.pthreadApi;
-	fplThreadHandle *result = fpl_null;
-	fplThreadHandle *thread = fpl__GetFreeThread();
+	const fpl__PlatformAppState* appState = fpl__global__AppState;
+	const fpl__PThreadApi* pthreadApi = &appState->posix.pthreadApi;
+	fplThreadHandle* result = fpl_null;
+	fplThreadHandle* thread = fpl__GetFreeThread();
 	if (thread != fpl_null) {
 		thread->currentState = fplThreadState_Stopped;
 		thread->data = data;
@@ -13520,7 +13541,7 @@ fpl_platform_api fplThreadHandle *fplThreadCreate(fpl_run_thread_callback *runFu
 		fplMemoryCopy(&thread->internalHandle.posixThread, fplMin(sizeof(thread->id), sizeof(thread->internalHandle.posixThread)), &thread->id);
 		int threadRes;
 		do {
-			threadRes = pthreadApi->pthread_create(&thread->internalHandle.posixThread, fpl_null, fpl__PosixThreadProc, (void *)thread);
+			threadRes = pthreadApi->pthread_create(&thread->internalHandle.posixThread, fpl_null, fpl__PosixThreadProc, (void*)thread);
 		} while (threadRes == EAGAIN);
 		if (threadRes != 0) {
 			FPL__ERROR(FPL__MODULE_THREADING, "Failed creating thread, error code: %d", threadRes);
@@ -13537,20 +13558,20 @@ fpl_platform_api fplThreadHandle *fplThreadCreate(fpl_run_thread_callback *runFu
 	return(result);
 }
 
-fpl_platform_api fplThreadPriority fplGetThreadPriority(fplThreadHandle *thread) {
+fpl_platform_api fplThreadPriority fplGetThreadPriority(fplThreadHandle* thread) {
 	// @IMPLEMENT(final/POSIX): fplGetThreadPriority
 	return(fplThreadPriority_Unknown);
 }
 
-fpl_platform_api bool fplSetThreadPriority(fplThreadHandle *thread, const fplThreadPriority newPriority) {
+fpl_platform_api bool fplSetThreadPriority(fplThreadHandle* thread, const fplThreadPriority newPriority) {
 	// @IMPLEMENT(final/POSIX): fplSetThreadPriority
 	return(false);
 }
 
-fpl_platform_api bool fplThreadWaitForOne(fplThreadHandle *thread, const fplTimeoutValue timeout) {
+fpl_platform_api bool fplThreadWaitForOne(fplThreadHandle* thread, const fplTimeoutValue timeout) {
 	FPL__CheckPlatform(false);
-	const fpl__PlatformAppState *appState = fpl__global__AppState;
-	const fpl__PThreadApi *pthreadApi = &appState->posix.pthreadApi;
+	const fpl__PlatformAppState* appState = fpl__global__AppState;
+	const fpl__PThreadApi* pthreadApi = &appState->posix.pthreadApi;
 	bool result = false;
 	if ((thread != fpl_null) && (fplGetThreadState(thread) != fplThreadState_Stopped)) {
 		pthread_t threadHandle = thread->internalHandle.posixThread;
@@ -13570,20 +13591,20 @@ fpl_platform_api bool fplThreadWaitForOne(fplThreadHandle *thread, const fplTime
 	return (result);
 }
 
-fpl_platform_api bool fplThreadWaitForAll(fplThreadHandle **threads, const size_t count, const size_t stride, const fplTimeoutValue timeout) {
+fpl_platform_api bool fplThreadWaitForAll(fplThreadHandle** threads, const size_t count, const size_t stride, const fplTimeoutValue timeout) {
 	bool result = fpl__PosixThreadWaitForMultiple(threads, count, count, stride, timeout);
 	return(result);
 }
 
-fpl_platform_api bool fplThreadWaitForAny(fplThreadHandle **threads, const size_t count, const size_t stride, const fplTimeoutValue timeout) {
+fpl_platform_api bool fplThreadWaitForAny(fplThreadHandle** threads, const size_t count, const size_t stride, const fplTimeoutValue timeout) {
 	bool result = fpl__PosixThreadWaitForMultiple(threads, 1, count, stride, timeout);
 	return(result);
 }
 
 fpl_platform_api bool fplThreadYield() {
 	FPL__CheckPlatform(false);
-	const fpl__PlatformAppState *appState = fpl__global__AppState;
-	const fpl__PThreadApi *pthreadApi = &appState->posix.pthreadApi;
+	const fpl__PlatformAppState* appState = fpl__global__AppState;
+	const fpl__PThreadApi* pthreadApi = &appState->posix.pthreadApi;
 	bool result = (pthreadApi->pthread_yield() == 0);
 	return(result);
 }
@@ -13604,15 +13625,15 @@ fpl_platform_api void fplThreadSleep(const uint32_t milliseconds) {
 	nanosleep(&input, &output);
 }
 
-fpl_platform_api bool fplMutexInit(fplMutexHandle *mutex) {
+fpl_platform_api bool fplMutexInit(fplMutexHandle* mutex) {
 	FPL__CheckArgumentNull(mutex, false);
 	if (mutex->isValid) {
 		FPL__ERROR(FPL__MODULE_THREADING, "Mutex '%p' is already initialized", mutex);
 		return false;
 	}
 	FPL__CheckPlatform(false);
-	const fpl__PlatformAppState *appState = fpl__global__AppState;
-	const fpl__PThreadApi *pthreadApi = &appState->posix.pthreadApi;
+	const fpl__PlatformAppState* appState = fpl__global__AppState;
+	const fpl__PThreadApi* pthreadApi = &appState->posix.pthreadApi;
 	pthread_mutex_t mutexHandle;
 	int mutexRes = fpl__PosixMutexCreate(pthreadApi, &mutexHandle);
 	if (mutexRes != 0) {
@@ -13625,61 +13646,61 @@ fpl_platform_api bool fplMutexInit(fplMutexHandle *mutex) {
 	return(true);
 }
 
-fpl_platform_api void fplMutexDestroy(fplMutexHandle *mutex) {
+fpl_platform_api void fplMutexDestroy(fplMutexHandle* mutex) {
 	FPL__CheckPlatformNoRet();
-	const fpl__PlatformAppState *appState = fpl__global__AppState;
-	const fpl__PThreadApi *pthreadApi = &appState->posix.pthreadApi;
+	const fpl__PlatformAppState* appState = fpl__global__AppState;
+	const fpl__PThreadApi* pthreadApi = &appState->posix.pthreadApi;
 	if ((mutex != fpl_null) && mutex->isValid) {
-		pthread_mutex_t *handle = &mutex->internalHandle.posixMutex;
+		pthread_mutex_t* handle = &mutex->internalHandle.posixMutex;
 		pthreadApi->pthread_mutex_destroy(handle);
 		fplClearStruct(mutex);
 	}
 }
 
-fpl_platform_api bool fplMutexLock(fplMutexHandle *mutex) {
+fpl_platform_api bool fplMutexLock(fplMutexHandle* mutex) {
 	FPL__CheckArgumentNull(mutex, false);
 	FPL__CheckPlatform(false);
-	const fpl__PlatformAppState *appState = fpl__global__AppState;
-	const fpl__PThreadApi *pthreadApi = &appState->posix.pthreadApi;
+	const fpl__PlatformAppState* appState = fpl__global__AppState;
+	const fpl__PThreadApi* pthreadApi = &appState->posix.pthreadApi;
 	bool result = false;
 	if (mutex->isValid) {
-		pthread_mutex_t *handle = &mutex->internalHandle.posixMutex;
+		pthread_mutex_t* handle = &mutex->internalHandle.posixMutex;
 		result = fpl__PosixMutexLock(pthreadApi, handle);
 	}
 	return (result);
 }
 
-fpl_platform_api bool fplMutexTryLock(fplMutexHandle *mutex) {
+fpl_platform_api bool fplMutexTryLock(fplMutexHandle* mutex) {
 	FPL__CheckArgumentNull(mutex, false);
 	FPL__CheckPlatform(false);
-	const fpl__PlatformAppState *appState = fpl__global__AppState;
-	const fpl__PThreadApi *pthreadApi = &appState->posix.pthreadApi;
+	const fpl__PlatformAppState* appState = fpl__global__AppState;
+	const fpl__PThreadApi* pthreadApi = &appState->posix.pthreadApi;
 	bool result = false;
 	if (mutex->isValid) {
-		pthread_mutex_t *handle = &mutex->internalHandle.posixMutex;
+		pthread_mutex_t* handle = &mutex->internalHandle.posixMutex;
 		result = fpl__PosixMutexTryLock(pthreadApi, handle);
 	}
 	return (result);
 }
 
-fpl_platform_api bool fplMutexUnlock(fplMutexHandle *mutex) {
+fpl_platform_api bool fplMutexUnlock(fplMutexHandle* mutex) {
 	FPL__CheckArgumentNull(mutex, false);
 	FPL__CheckPlatform(false);
-	const fpl__PlatformAppState *appState = fpl__global__AppState;
-	const fpl__PThreadApi *pthreadApi = &appState->posix.pthreadApi;
+	const fpl__PlatformAppState* appState = fpl__global__AppState;
+	const fpl__PThreadApi* pthreadApi = &appState->posix.pthreadApi;
 	bool result = false;
 	if (mutex->isValid) {
-		pthread_mutex_t *handle = &mutex->internalHandle.posixMutex;
+		pthread_mutex_t* handle = &mutex->internalHandle.posixMutex;
 		result = fpl__PosixMutexUnlock(pthreadApi, handle);
 	}
 	return (result);
 }
 
-fpl_platform_api bool fplConditionInit(fplConditionVariable *condition) {
+fpl_platform_api bool fplConditionInit(fplConditionVariable* condition) {
 	FPL__CheckArgumentNull(condition, false);
 	FPL__CheckPlatform(false);
-	const fpl__PlatformAppState *appState = fpl__global__AppState;
-	const fpl__PThreadApi *pthreadApi = &appState->posix.pthreadApi;
+	const fpl__PlatformAppState* appState = fpl__global__AppState;
+	const fpl__PThreadApi* pthreadApi = &appState->posix.pthreadApi;
 	pthread_cond_t handle = PTHREAD_COND_INITIALIZER;
 	int condRes;
 	do {
@@ -13693,18 +13714,18 @@ fpl_platform_api bool fplConditionInit(fplConditionVariable *condition) {
 	return(condition->isValid);
 }
 
-fpl_platform_api void fplConditionDestroy(fplConditionVariable *condition) {
+fpl_platform_api void fplConditionDestroy(fplConditionVariable* condition) {
 	FPL__CheckPlatformNoRet();
-	const fpl__PlatformAppState *appState = fpl__global__AppState;
-	const fpl__PThreadApi *pthreadApi = &appState->posix.pthreadApi;
+	const fpl__PlatformAppState* appState = fpl__global__AppState;
+	const fpl__PThreadApi* pthreadApi = &appState->posix.pthreadApi;
 	if ((condition != fpl_null) && condition->isValid) {
-		pthread_cond_t *handle = &condition->internalHandle.posixCondition;
+		pthread_cond_t* handle = &condition->internalHandle.posixCondition;
 		pthreadApi->pthread_cond_destroy(handle);
 		fplClearStruct(condition);
 	}
 }
 
-fpl_platform_api bool fplConditionWait(fplConditionVariable *condition, fplMutexHandle *mutex, const fplTimeoutValue timeout) {
+fpl_platform_api bool fplConditionWait(fplConditionVariable* condition, fplMutexHandle* mutex, const fplTimeoutValue timeout) {
 	FPL__CheckArgumentNull(condition, false);
 	FPL__CheckArgumentNull(mutex, false);
 	if (!condition->isValid) {
@@ -13716,10 +13737,10 @@ fpl_platform_api bool fplConditionWait(fplConditionVariable *condition, fplMutex
 		return false;
 	}
 	FPL__CheckPlatform(false);
-	const fpl__PlatformAppState *appState = fpl__global__AppState;
-	const fpl__PThreadApi *pthreadApi = &appState->posix.pthreadApi;
-	pthread_cond_t *cond = &condition->internalHandle.posixCondition;
-	pthread_mutex_t *mut = &mutex->internalHandle.posixMutex;
+	const fpl__PlatformAppState* appState = fpl__global__AppState;
+	const fpl__PThreadApi* pthreadApi = &appState->posix.pthreadApi;
+	pthread_cond_t* cond = &condition->internalHandle.posixCondition;
+	pthread_mutex_t* mut = &mutex->internalHandle.posixMutex;
 	bool result;
 	if (timeout == FPL_TIMEOUT_INFINITE) {
 		result = pthreadApi->pthread_cond_wait(cond, mut) == 0;
@@ -13731,35 +13752,35 @@ fpl_platform_api bool fplConditionWait(fplConditionVariable *condition, fplMutex
 	return(result);
 }
 
-fpl_platform_api bool fplConditionSignal(fplConditionVariable *condition) {
+fpl_platform_api bool fplConditionSignal(fplConditionVariable* condition) {
 	FPL__CheckArgumentNull(condition, false);
 	if (!condition->isValid) {
 		FPL__ERROR(FPL__MODULE_THREADING, "Condition is not valid");
 		return false;
 	}
 	FPL__CheckPlatform(false);
-	const fpl__PlatformAppState *appState = fpl__global__AppState;
-	const fpl__PThreadApi *pthreadApi = &appState->posix.pthreadApi;
-	pthread_cond_t *handle = &condition->internalHandle.posixCondition;
+	const fpl__PlatformAppState* appState = fpl__global__AppState;
+	const fpl__PThreadApi* pthreadApi = &appState->posix.pthreadApi;
+	pthread_cond_t* handle = &condition->internalHandle.posixCondition;
 	bool result = pthreadApi->pthread_cond_signal(handle) == 0;
 	return(result);
 }
 
-fpl_platform_api bool fplConditionBroadcast(fplConditionVariable *condition) {
+fpl_platform_api bool fplConditionBroadcast(fplConditionVariable* condition) {
 	FPL__CheckArgumentNull(condition, false);
 	if (!condition->isValid) {
 		FPL__ERROR(FPL__MODULE_THREADING, "Condition is not valid");
 		return false;
 	}
 	FPL__CheckPlatform(false);
-	const fpl__PlatformAppState *appState = fpl__global__AppState;
-	const fpl__PThreadApi *pthreadApi = &appState->posix.pthreadApi;
-	pthread_cond_t *handle = &condition->internalHandle.posixCondition;
+	const fpl__PlatformAppState* appState = fpl__global__AppState;
+	const fpl__PThreadApi* pthreadApi = &appState->posix.pthreadApi;
+	pthread_cond_t* handle = &condition->internalHandle.posixCondition;
 	bool result = pthreadApi->pthread_cond_broadcast(handle) == 0;
 	return(result);
 }
 
-fpl_platform_api bool fplSemaphoreInit(fplSemaphoreHandle *semaphore, const uint32_t initialValue) {
+fpl_platform_api bool fplSemaphoreInit(fplSemaphoreHandle* semaphore, const uint32_t initialValue) {
 	FPL__CheckArgumentNull(semaphore, false);
 	FPL__CheckArgumentMax(initialValue, UINT32_MAX, false);
 	if (semaphore->isValid) {
@@ -13767,8 +13788,8 @@ fpl_platform_api bool fplSemaphoreInit(fplSemaphoreHandle *semaphore, const uint
 		return false;
 	}
 	FPL__CheckPlatform(false);
-	const fpl__PlatformAppState *appState = fpl__global__AppState;
-	const fpl__PThreadApi *pthreadApi = &appState->posix.pthreadApi;
+	const fpl__PlatformAppState* appState = fpl__global__AppState;
+	const fpl__PThreadApi* pthreadApi = &appState->posix.pthreadApi;
 	fplClearStruct(semaphore);
 	int res = pthreadApi->sem_init(&semaphore->internalHandle.posixHandle, 0, (int)initialValue);
 	if (res < 0) {
@@ -13779,10 +13800,10 @@ fpl_platform_api bool fplSemaphoreInit(fplSemaphoreHandle *semaphore, const uint
 	return true;
 }
 
-fpl_platform_api void fplSemaphoreDestroy(fplSemaphoreHandle *semaphore) {
+fpl_platform_api void fplSemaphoreDestroy(fplSemaphoreHandle* semaphore) {
 	FPL__CheckPlatformNoRet();
-	const fpl__PlatformAppState *appState = fpl__global__AppState;
-	const fpl__PThreadApi *pthreadApi = &appState->posix.pthreadApi;
+	const fpl__PlatformAppState* appState = fpl__global__AppState;
+	const fpl__PThreadApi* pthreadApi = &appState->posix.pthreadApi;
 	if (semaphore != fpl_null) {
 		if (semaphore->isValid) {
 			pthreadApi->sem_destroy(&semaphore->internalHandle.posixHandle);
@@ -13791,15 +13812,15 @@ fpl_platform_api void fplSemaphoreDestroy(fplSemaphoreHandle *semaphore) {
 	}
 }
 
-fpl_platform_api bool fplSemaphoreWait(fplSemaphoreHandle *semaphore, const fplTimeoutValue timeout) {
+fpl_platform_api bool fplSemaphoreWait(fplSemaphoreHandle* semaphore, const fplTimeoutValue timeout) {
 	FPL__CheckArgumentNull(semaphore, false);
 	if (!semaphore->isValid) {
 		FPL__ERROR(FPL__MODULE_THREADING, "Semaphore '%p' is not valid", semaphore);
 		return false;
 	}
 	FPL__CheckPlatform(false);
-	const fpl__PlatformAppState *appState = fpl__global__AppState;
-	const fpl__PThreadApi *pthreadApi = &appState->posix.pthreadApi;
+	const fpl__PlatformAppState* appState = fpl__global__AppState;
+	const fpl__PThreadApi* pthreadApi = &appState->posix.pthreadApi;
 	int res;
 	if (timeout == FPL_TIMEOUT_INFINITE) {
 		res = pthreadApi->sem_wait(&semaphore->internalHandle.posixHandle);
@@ -13812,29 +13833,29 @@ fpl_platform_api bool fplSemaphoreWait(fplSemaphoreHandle *semaphore, const fplT
 	return(result);
 }
 
-fpl_platform_api bool fplSemaphoreTryWait(fplSemaphoreHandle *semaphore) {
+fpl_platform_api bool fplSemaphoreTryWait(fplSemaphoreHandle* semaphore) {
 	FPL__CheckArgumentNull(semaphore, false);
 	if (!semaphore->isValid) {
 		FPL__ERROR(FPL__MODULE_THREADING, "Semaphore '%p' is not valid", semaphore);
 		return false;
 	}
 	FPL__CheckPlatform(false);
-	const fpl__PlatformAppState *appState = fpl__global__AppState;
-	const fpl__PThreadApi *pthreadApi = &appState->posix.pthreadApi;
+	const fpl__PlatformAppState* appState = fpl__global__AppState;
+	const fpl__PThreadApi* pthreadApi = &appState->posix.pthreadApi;
 	int res = pthreadApi->sem_trywait(&semaphore->internalHandle.posixHandle);
 	bool result = (res == 0);
 	return(result);
 }
 
-fpl_platform_api int32_t fplSemaphoreValue(fplSemaphoreHandle *semaphore) {
+fpl_platform_api int32_t fplSemaphoreValue(fplSemaphoreHandle* semaphore) {
 	FPL__CheckArgumentNull(semaphore, false);
 	if (!semaphore->isValid) {
 		FPL__ERROR(FPL__MODULE_THREADING, "Semaphore '%p' is not valid", semaphore);
 		return false;
 	}
 	FPL__CheckPlatform(0);
-	const fpl__PlatformAppState *appState = fpl__global__AppState;
-	const fpl__PThreadApi *pthreadApi = &appState->posix.pthreadApi;
+	const fpl__PlatformAppState* appState = fpl__global__AppState;
+	const fpl__PThreadApi* pthreadApi = &appState->posix.pthreadApi;
 	int value = 0;
 	int res = pthreadApi->sem_getvalue(&semaphore->internalHandle.posixHandle, &value);
 	if (res < 0) {
@@ -13843,15 +13864,15 @@ fpl_platform_api int32_t fplSemaphoreValue(fplSemaphoreHandle *semaphore) {
 	return((int32_t)value);
 }
 
-fpl_platform_api bool fplSemaphoreRelease(fplSemaphoreHandle *semaphore) {
+fpl_platform_api bool fplSemaphoreRelease(fplSemaphoreHandle* semaphore) {
 	FPL__CheckArgumentNull(semaphore, false);
 	if (!semaphore->isValid) {
 		FPL__ERROR(FPL__MODULE_THREADING, "Semaphore '%p' is not valid", semaphore);
 		return false;
 	}
 	FPL__CheckPlatform(0);
-	const fpl__PlatformAppState *appState = fpl__global__AppState;
-	const fpl__PThreadApi *pthreadApi = &appState->posix.pthreadApi;
+	const fpl__PlatformAppState* appState = fpl__global__AppState;
+	const fpl__PThreadApi* pthreadApi = &appState->posix.pthreadApi;
 	int res = pthreadApi->sem_post(&semaphore->internalHandle.posixHandle);
 	bool result = (res == 0);
 	return(result);
@@ -13860,10 +13881,10 @@ fpl_platform_api bool fplSemaphoreRelease(fplSemaphoreHandle *semaphore) {
 //
 // POSIX Library
 //
-fpl_platform_api bool fplDynamicLibraryLoad(const char *libraryFilePath, fplDynamicLibraryHandle *outHandle) {
+fpl_platform_api bool fplDynamicLibraryLoad(const char* libraryFilePath, fplDynamicLibraryHandle* outHandle) {
 	bool result = false;
 	if (libraryFilePath != fpl_null && outHandle != fpl_null) {
-		void *p = dlopen(libraryFilePath, FPL__POSIX_DL_LOADTYPE);
+		void* p = dlopen(libraryFilePath, FPL__POSIX_DL_LOADTYPE);
 		if (p != fpl_null) {
 			fplClearStruct(outHandle);
 			outHandle->internalHandle.posixLibraryHandle = p;
@@ -13874,18 +13895,18 @@ fpl_platform_api bool fplDynamicLibraryLoad(const char *libraryFilePath, fplDyna
 	return(result);
 }
 
-fpl_platform_api void *fplGetDynamicLibraryProc(const fplDynamicLibraryHandle *handle, const char *name) {
-	void *result = fpl_null;
+fpl_platform_api void* fplGetDynamicLibraryProc(const fplDynamicLibraryHandle* handle, const char* name) {
+	void* result = fpl_null;
 	if ((handle != fpl_null) && (handle->internalHandle.posixLibraryHandle != fpl_null) && (name != fpl_null)) {
-		void *p = handle->internalHandle.posixLibraryHandle;
+		void* p = handle->internalHandle.posixLibraryHandle;
 		result = dlsym(p, name);
 	}
 	return(result);
 }
 
-fpl_platform_api void fplDynamicLibraryUnload(fplDynamicLibraryHandle *handle) {
+fpl_platform_api void fplDynamicLibraryUnload(fplDynamicLibraryHandle* handle) {
 	if ((handle != fpl_null) && (handle->internalHandle.posixLibraryHandle != fpl_null)) {
-		void *p = handle->internalHandle.posixLibraryHandle;
+		void* p = handle->internalHandle.posixLibraryHandle;
 		dlclose(p);
 		fplClearStruct(handle);
 	}
@@ -13894,31 +13915,31 @@ fpl_platform_api void fplDynamicLibraryUnload(fplDynamicLibraryHandle *handle) {
 //
 // POSIX Memory
 //
-fpl_platform_api void *fplMemoryAllocate(const size_t size) {
+fpl_platform_api void* fplMemoryAllocate(const size_t size) {
 	FPL__CheckArgumentZero(size, fpl_null);
 	// @NOTE(final): MAP_ANONYMOUS ensures that the memory is cleared to zero.
 	// Allocate empty memory to hold the size + some arbitary padding + the actual data
 	size_t newSize = sizeof(size_t) + FPL__MEMORY_PADDING + size;
-	void *basePtr = mmap(fpl_null, newSize, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+	void* basePtr = mmap(fpl_null, newSize, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
 	// Write the size at the beginning
-	*(size_t *)basePtr = newSize;
+	*(size_t*)basePtr = newSize;
 	// The resulting address starts after the arbitary padding
-	void *result = (uint8_t *)basePtr + sizeof(size_t) + FPL__MEMORY_PADDING;
+	void* result = (uint8_t*)basePtr + sizeof(size_t) + FPL__MEMORY_PADDING;
 	return(result);
 }
 
-fpl_platform_api void fplMemoryFree(void *ptr) {
+fpl_platform_api void fplMemoryFree(void* ptr) {
 	FPL__CheckArgumentNullNoRet(ptr);
 	// Free the base pointer which is stored to the left at the start of the size_t
-	void *basePtr = (void *)((uint8_t *)ptr - (FPL__MEMORY_PADDING + sizeof(size_t)));
-	size_t storedSize = *(size_t *)basePtr;
+	void* basePtr = (void*)((uint8_t*)ptr - (FPL__MEMORY_PADDING + sizeof(size_t)));
+	size_t storedSize = *(size_t*)basePtr;
 	munmap(basePtr, storedSize);
 }
 
 //
 // POSIX Files
 //
-fpl_platform_api bool fplOpenBinaryFile(const char *filePath, fplFileHandle *outHandle) {
+fpl_platform_api bool fplOpenBinaryFile(const char* filePath, fplFileHandle* outHandle) {
 	FPL__CheckArgumentNull(outHandle, false);
 	if (filePath != fpl_null) {
 		int posixFileHandle;
@@ -13935,7 +13956,7 @@ fpl_platform_api bool fplOpenBinaryFile(const char *filePath, fplFileHandle *out
 	return false;
 }
 
-fpl_platform_api bool fplCreateBinaryFile(const char *filePath, fplFileHandle *outHandle) {
+fpl_platform_api bool fplCreateBinaryFile(const char* filePath, fplFileHandle* outHandle) {
 	FPL__CheckArgumentNull(outHandle, false);
 	if (filePath != fpl_null) {
 		int posixFileHandle;
@@ -13951,7 +13972,7 @@ fpl_platform_api bool fplCreateBinaryFile(const char *filePath, fplFileHandle *o
 	return false;
 }
 
-fpl_platform_api size_t fpl__PosixWriteFileBlock(const fplFileHandle *fileHandle, void *sourceBuffer, const size_t sourceSize) {
+fpl_platform_api size_t fpl__PosixWriteFileBlock(const fplFileHandle* fileHandle, void* sourceBuffer, const size_t sourceSize) {
 	FPL__CheckArgumentNull(fileHandle, 0);
 	FPL__CheckArgumentZero(sourceSize, 0);
 	FPL__CheckArgumentNull(sourceBuffer, 0);
@@ -13971,7 +13992,7 @@ fpl_platform_api size_t fpl__PosixWriteFileBlock(const fplFileHandle *fileHandle
 	return(result);
 }
 
-fpl_platform_api uint32_t fplReadFileBlock32(const fplFileHandle *fileHandle, const uint32_t sizeToRead, void *targetBuffer, const uint32_t maxTargetBufferSize) {
+fpl_platform_api uint32_t fplReadFileBlock32(const fplFileHandle* fileHandle, const uint32_t sizeToRead, void* targetBuffer, const uint32_t maxTargetBufferSize) {
 	FPL__CheckArgumentNull(fileHandle, 0);
 	FPL__CheckArgumentZero(sizeToRead, 0);
 	FPL__CheckArgumentNull(targetBuffer, 0);
@@ -13991,7 +14012,7 @@ fpl_platform_api uint32_t fplReadFileBlock32(const fplFileHandle *fileHandle, co
 	return(result);
 }
 
-fpl_platform_api uint64_t fplReadFileBlock64(const fplFileHandle *fileHandle, const uint64_t sizeToRead, void *targetBuffer, const uint64_t maxTargetBufferSize) {
+fpl_platform_api uint64_t fplReadFileBlock64(const fplFileHandle* fileHandle, const uint64_t sizeToRead, void* targetBuffer, const uint64_t maxTargetBufferSize) {
 	FPL__CheckArgumentNull(fileHandle, 0);
 	FPL__CheckArgumentZero(sizeToRead, 0);
 	FPL__CheckArgumentNull(targetBuffer, 0);
@@ -14005,7 +14026,7 @@ fpl_platform_api uint64_t fplReadFileBlock64(const fplFileHandle *fileHandle, co
 	uint64_t bufferPos = 0;
 	const uint64_t MaxValue = (uint64_t)(size_t)-1;
 	while (remainingSize > 0) {
-		uint8_t *target = (uint8_t *)targetBuffer + bufferPos;
+		uint8_t* target = (uint8_t*)targetBuffer + bufferPos;
 		size_t size = fplMin(remainingSize, MaxValue);
 		ssize_t res;
 		do {
@@ -14022,7 +14043,7 @@ fpl_platform_api uint64_t fplReadFileBlock64(const fplFileHandle *fileHandle, co
 	return(result);
 }
 
-fpl_platform_api uint32_t fplWriteFileBlock32(const fplFileHandle *fileHandle, void *sourceBuffer, const uint32_t sourceSize) {
+fpl_platform_api uint32_t fplWriteFileBlock32(const fplFileHandle* fileHandle, void* sourceBuffer, const uint32_t sourceSize) {
 	FPL__CheckArgumentNull(fileHandle, 0);
 	FPL__CheckArgumentZero(sourceSize, 0);
 	FPL__CheckArgumentNull(sourceBuffer, 0);
@@ -14042,7 +14063,7 @@ fpl_platform_api uint32_t fplWriteFileBlock32(const fplFileHandle *fileHandle, v
 	return(result);
 }
 
-fpl_platform_api uint64_t fplWriteFileBlock64(const fplFileHandle *fileHandle, void *sourceBuffer, const uint64_t sourceSize) {
+fpl_platform_api uint64_t fplWriteFileBlock64(const fplFileHandle* fileHandle, void* sourceBuffer, const uint64_t sourceSize) {
 	FPL__CheckArgumentNull(fileHandle, 0);
 	FPL__CheckArgumentZero(sourceSize, 0);
 	FPL__CheckArgumentNull(sourceBuffer, 0);
@@ -14056,7 +14077,7 @@ fpl_platform_api uint64_t fplWriteFileBlock64(const fplFileHandle *fileHandle, v
 	uint64_t bufferPos = 0;
 	const uint64_t MaxValue = (uint64_t)(size_t)-1;
 	while (remainingSize > 0) {
-		uint8_t *source = (uint8_t *)sourceBuffer + bufferPos;
+		uint8_t* source = (uint8_t*)sourceBuffer + bufferPos;
 		size_t size = fplMin(remainingSize, MaxValue);
 		ssize_t res;
 		do {
@@ -14071,7 +14092,7 @@ fpl_platform_api uint64_t fplWriteFileBlock64(const fplFileHandle *fileHandle, v
 	return(result);
 }
 
-fpl_platform_api uint32_t fplSetFilePosition32(const fplFileHandle *fileHandle, const int32_t position, const fplFilePositionMode mode) {
+fpl_platform_api uint32_t fplSetFilePosition32(const fplFileHandle* fileHandle, const int32_t position, const fplFilePositionMode mode) {
 	FPL__CheckArgumentNull(fileHandle, 0);
 	uint32_t result = 0;
 	if (fileHandle->internalHandle.posixFileHandle) {
@@ -14088,7 +14109,7 @@ fpl_platform_api uint32_t fplSetFilePosition32(const fplFileHandle *fileHandle, 
 	return(result);
 }
 
-fpl_platform_api uint64_t fplSetFilePosition64(const fplFileHandle *fileHandle, const int64_t position, const fplFilePositionMode mode) {
+fpl_platform_api uint64_t fplSetFilePosition64(const fplFileHandle* fileHandle, const int64_t position, const fplFilePositionMode mode) {
 	FPL__CheckArgumentNull(fileHandle, 0);
 	uint64_t result = 0;
 	if (fileHandle->internalHandle.posixFileHandle) {
@@ -14105,7 +14126,7 @@ fpl_platform_api uint64_t fplSetFilePosition64(const fplFileHandle *fileHandle, 
 	return(result);
 }
 
-fpl_platform_api uint32_t fplGetFilePosition32(const fplFileHandle *fileHandle) {
+fpl_platform_api uint32_t fplGetFilePosition32(const fplFileHandle* fileHandle) {
 	FPL__CheckArgumentNull(fileHandle, 0);
 	uint32_t result = 0;
 	if (fileHandle->internalHandle.posixFileHandle) {
@@ -14118,7 +14139,7 @@ fpl_platform_api uint32_t fplGetFilePosition32(const fplFileHandle *fileHandle) 
 	return(result);
 }
 
-fpl_platform_api uint64_t fplGetFilePosition64(const fplFileHandle *fileHandle) {
+fpl_platform_api uint64_t fplGetFilePosition64(const fplFileHandle* fileHandle) {
 	FPL__CheckArgumentNull(fileHandle, 0);
 	uint64_t result = 0;
 	if (fileHandle->internalHandle.posixFileHandle) {
@@ -14131,7 +14152,7 @@ fpl_platform_api uint64_t fplGetFilePosition64(const fplFileHandle *fileHandle) 
 	return(result);
 }
 
-fpl_platform_api bool fplFlushFile(fplFileHandle *fileHandle) {
+fpl_platform_api bool fplFlushFile(fplFileHandle* fileHandle) {
 	FPL__CheckArgumentNull(fileHandle, false);
 	bool result = false;
 	if (fileHandle->internalHandle.posixFileHandle) {
@@ -14141,7 +14162,7 @@ fpl_platform_api bool fplFlushFile(fplFileHandle *fileHandle) {
 	return(result);
 }
 
-fpl_platform_api void fplCloseFile(fplFileHandle *fileHandle) {
+fpl_platform_api void fplCloseFile(fplFileHandle* fileHandle) {
 	if ((fileHandle != fpl_null) && fileHandle->internalHandle.posixFileHandle) {
 		int posixFileHandle = fileHandle->internalHandle.posixFileHandle;
 		close(posixFileHandle);
@@ -14149,7 +14170,7 @@ fpl_platform_api void fplCloseFile(fplFileHandle *fileHandle) {
 	}
 }
 
-fpl_platform_api uint32_t fplGetFileSizeFromPath32(const char *filePath) {
+fpl_platform_api uint32_t fplGetFileSizeFromPath32(const char* filePath) {
 	uint32_t result = 0;
 	if (filePath != fpl_null) {
 		int posixFileHandle;
@@ -14167,7 +14188,7 @@ fpl_platform_api uint32_t fplGetFileSizeFromPath32(const char *filePath) {
 	return(result);
 }
 
-fpl_platform_api uint64_t fplGetFileSizeFromPath64(const char *filePath) {
+fpl_platform_api uint64_t fplGetFileSizeFromPath64(const char* filePath) {
 	uint64_t result = 0;
 	if (filePath != fpl_null) {
 		int posixFileHandle;
@@ -14185,7 +14206,7 @@ fpl_platform_api uint64_t fplGetFileSizeFromPath64(const char *filePath) {
 	return(result);
 }
 
-fpl_platform_api uint32_t fplGetFileSizeFromHandle32(const fplFileHandle *fileHandle) {
+fpl_platform_api uint32_t fplGetFileSizeFromHandle32(const fplFileHandle* fileHandle) {
 	uint32_t result = 0;
 	if (fileHandle != fpl_null && fileHandle->internalHandle.posixFileHandle) {
 		int posixFileHandle = fileHandle->internalHandle.posixFileHandle;
@@ -14198,7 +14219,7 @@ fpl_platform_api uint32_t fplGetFileSizeFromHandle32(const fplFileHandle *fileHa
 	return(result);
 }
 
-fpl_platform_api uint64_t fplGetFileSizeFromHandle64(const fplFileHandle *fileHandle) {
+fpl_platform_api uint64_t fplGetFileSizeFromHandle64(const fplFileHandle* fileHandle) {
 	uint64_t result = 0;
 	if (fileHandle != fpl_null && fileHandle->internalHandle.posixFileHandle) {
 		int posixFileHandle = fileHandle->internalHandle.posixFileHandle;
@@ -14216,7 +14237,7 @@ fpl_internal uint64_t fpl__PosixConvertTimeToUnixTimeStamp(const time_t secs) {
 	return(result);
 }
 
-fpl_platform_api bool fplGetFileTimestampsFromPath(const char *filePath, fplFileTimeStamps *outStamps) {
+fpl_platform_api bool fplGetFileTimestampsFromPath(const char* filePath, fplFileTimeStamps* outStamps) {
 	FPL__CheckArgumentNull(outStamps, false);
 	bool result = false;
 	if (filePath != fpl_null) {
@@ -14231,7 +14252,7 @@ fpl_platform_api bool fplGetFileTimestampsFromPath(const char *filePath, fplFile
 	return(result);
 }
 
-fpl_platform_api bool fplGetFileTimestampsFromHandle(const fplFileHandle *fileHandle, fplFileTimeStamps *outStamps) {
+fpl_platform_api bool fplGetFileTimestampsFromHandle(const fplFileHandle* fileHandle, fplFileTimeStamps* outStamps) {
 	FPL__CheckArgumentNull(fileHandle, false);
 	FPL__CheckArgumentNull(outStamps, false);
 	bool result = false;
@@ -14248,7 +14269,7 @@ fpl_platform_api bool fplGetFileTimestampsFromHandle(const fplFileHandle *fileHa
 	return(result);
 }
 
-fpl_platform_api bool fplFileExists(const char *filePath) {
+fpl_platform_api bool fplFileExists(const char* filePath) {
 	bool result = false;
 	if (filePath != fpl_null) {
 		result = access(filePath, F_OK) != -1;
@@ -14256,7 +14277,7 @@ fpl_platform_api bool fplFileExists(const char *filePath) {
 	return(result);
 }
 
-fpl_platform_api bool fplFileCopy(const char *sourceFilePath, const char *targetFilePath, const bool overwrite) {
+fpl_platform_api bool fplFileCopy(const char* sourceFilePath, const char* targetFilePath, const bool overwrite) {
 	FPL__CheckArgumentNull(sourceFilePath, false);
 	FPL__CheckArgumentNull(targetFilePath, false);
 	if (access(sourceFilePath, F_OK) == -1) {
@@ -14307,20 +14328,20 @@ fpl_platform_api bool fplFileCopy(const char *sourceFilePath, const char *target
 	return(true);
 }
 
-fpl_platform_api bool fplFileMove(const char *sourceFilePath, const char *targetFilePath) {
+fpl_platform_api bool fplFileMove(const char* sourceFilePath, const char* targetFilePath) {
 	FPL__CheckArgumentNull(sourceFilePath, false);
 	FPL__CheckArgumentNull(targetFilePath, false);
 	bool result = rename(sourceFilePath, targetFilePath) == 0;
 	return(result);
 }
 
-fpl_platform_api bool fplFileDelete(const char *filePath) {
+fpl_platform_api bool fplFileDelete(const char* filePath) {
 	FPL__CheckArgumentNull(filePath, false);
 	bool result = unlink(filePath) == 0;
 	return(result);
 }
 
-fpl_platform_api bool fplDirectoryExists(const char *path) {
+fpl_platform_api bool fplDirectoryExists(const char* path) {
 	bool result = false;
 	if (path != fpl_null) {
 		struct stat sb;
@@ -14329,18 +14350,18 @@ fpl_platform_api bool fplDirectoryExists(const char *path) {
 	return(result);
 }
 
-fpl_platform_api bool fplDirectoriesCreate(const char *path) {
+fpl_platform_api bool fplDirectoriesCreate(const char* path) {
 	FPL__CheckArgumentNull(path, false);
 	bool result = mkdir(path, S_IRWXU | S_IRWXG | S_IRWXO) == 0;
 	return(result);
 }
-fpl_platform_api bool fplRemoveDirectory(const char *path) {
+fpl_platform_api bool fplRemoveDirectory(const char* path) {
 	FPL__CheckArgumentNull(path, false);
 	bool result = rmdir(path) == 0;
 	return(result);
 }
 
-fpl_internal void fpl__PosixFillFileEntry(struct dirent *dp, fplFileEntry *entry) {
+fpl_internal void fpl__PosixFillFileEntry(struct dirent* dp, fplFileEntry* entry) {
 	fplAssert((dp != fpl_null) && (entry != fpl_null));
 	fplCopyString(dp->d_name, entry->name, fplArrayCount(entry->name));
 	entry->type = fplFileEntryType_Unknown;
@@ -14393,10 +14414,10 @@ fpl_internal void fpl__PosixFillFileEntry(struct dirent *dp, fplFileEntry *entry
 	}
 }
 
-fpl_platform_api bool fplListDirBegin(const char *path, const char *filter, fplFileEntry *entry) {
+fpl_platform_api bool fplListDirBegin(const char* path, const char* filter, fplFileEntry* entry) {
 	FPL__CheckArgumentNull(path, false);
 	FPL__CheckArgumentNull(entry, false);
-	DIR *dir = opendir(path);
+	DIR* dir = opendir(path);
 	if (dir == fpl_null) {
 		return false;
 	}
@@ -14411,11 +14432,11 @@ fpl_platform_api bool fplListDirBegin(const char *path, const char *filter, fplF
 	return(result);
 }
 
-fpl_platform_api bool fplListDirNext(fplFileEntry *entry) {
+fpl_platform_api bool fplListDirNext(fplFileEntry* entry) {
 	FPL__CheckArgumentNull(entry, false);
 	bool result = false;
 	if (entry->internalHandle.posixDirHandle != fpl_null) {
-		struct dirent *dp = readdir(entry->internalHandle.posixDirHandle);
+		struct dirent* dp = readdir(entry->internalHandle.posixDirHandle);
 		do {
 			if (dp == fpl_null) {
 				break;
@@ -14437,7 +14458,7 @@ fpl_platform_api bool fplListDirNext(fplFileEntry *entry) {
 	return(result);
 }
 
-fpl_platform_api void fplListDirEnd(fplFileEntry *entry) {
+fpl_platform_api void fplListDirEnd(fplFileEntry* entry) {
 	FPL__CheckArgumentNullNoRet(entry);
 	if (entry->internalHandle.posixDirHandle != fpl_null) {
 		closedir(entry->internalHandle.posixDirHandle);
@@ -14448,11 +14469,11 @@ fpl_platform_api void fplListDirEnd(fplFileEntry *entry) {
 //
 // POSIX Operating System
 //
-fpl_platform_api bool fplGetCurrentUsername(char *nameBuffer, const size_t maxNameBufferLen) {
+fpl_platform_api bool fplGetCurrentUsername(char* nameBuffer, const size_t maxNameBufferLen) {
 	FPL__CheckArgumentNull(nameBuffer, false);
 	FPL__CheckArgumentZero(maxNameBufferLen, false);
 	uid_t uid = geteuid();
-	struct passwd *pw = getpwuid(uid);
+	struct passwd* pw = getpwuid(uid);
 	bool result = false;
 	if (pw != fpl_null) {
 		fplCopyString(pw->pw_name, nameBuffer, maxNameBufferLen);
@@ -14466,22 +14487,22 @@ fpl_platform_api size_t fplGetProcessorCoreCount() {
 	return(result);
 }
 
-fpl_platform_api char *fplGetExecutableFilePath(char *destPath, const size_t maxDestLen) {
+fpl_platform_api char* fplGetExecutableFilePath(char* destPath, const size_t maxDestLen) {
 	FPL__CheckArgumentNull(destPath, fpl_null);
 	FPL__CheckArgumentZero(maxDestLen, fpl_null);
-	const char *procNames[] = {
+	const char* procNames[] = {
 		"/proc/self/exe",
 		"/proc/curproc/exe",
 		"/proc/curproc/file",
 	};
 	char buf[FPL_MAX_PATH_LENGTH];
 	for (int i = 0; i < fplArrayCount(procNames); ++i) {
-		const char *procName = procNames[i];
+		const char* procName = procNames[i];
 		if (readlink(procName, buf, fplArrayCount(buf) - 1)) {
 			int len = fplGetStringLength(buf);
 			if (len > 0) {
-				char *lastP = buf + (len - 1);
-				char *p = lastP;
+				char* lastP = buf + (len - 1);
+				char* p = lastP;
 				while (p != buf) {
 					if (*p == '/') {
 						len = (lastP - buf) + 1;
@@ -14491,7 +14512,7 @@ fpl_platform_api char *fplGetExecutableFilePath(char *destPath, const size_t max
 				}
 				size_t requiredLen = len + 1;
 				FPL__CheckArgumentMin(maxDestLen, requiredLen, fpl_null);
-				char *result = fplCopyStringLen(buf, len, destPath, maxDestLen);
+				char* result = fplCopyStringLen(buf, len, destPath, maxDestLen);
 				return(result);
 			}
 		}
@@ -14499,16 +14520,16 @@ fpl_platform_api char *fplGetExecutableFilePath(char *destPath, const size_t max
 	return fpl_null;
 }
 
-fpl_platform_api char *fplGetHomePath(char *destPath, const size_t maxDestLen) {
+fpl_platform_api char* fplGetHomePath(char* destPath, const size_t maxDestLen) {
 	FPL__CheckArgumentNull(destPath, fpl_null);
 	FPL__CheckArgumentZero(maxDestLen, fpl_null);
-	const char *homeDir = getenv("HOME");
+	const char* homeDir = getenv("HOME");
 	if (homeDir == fpl_null) {
 		int userId = getuid();
-		struct passwd *userPwd = getpwuid(userId);
+		struct passwd* userPwd = getpwuid(userId);
 		homeDir = userPwd->pw_dir;
 	}
-	char *result = fplCopyString(homeDir, destPath, maxDestLen);
+	char* result = fplCopyString(homeDir, destPath, maxDestLen);
 	return(result);
 }
 
@@ -14517,7 +14538,7 @@ fpl_platform_api fplArchType fplGetProcessorArchitecture() {
 	fplArchType result = fplArchType_Unknown;
 	struct utsname nameInfos;
 	if (uname(&nameInfos) == 0) {
-		const char *machineName = nameInfos.machine;
+		const char* machineName = nameInfos.machine;
 		if (fplIsStringEqual("x86_64", machineName) || fplIsStringEqual("amd64", machineName)) {
 			result = fplArchType_x86_64;
 		} else if (fplIsStringEqual("x86", machineName) || fplIsStringEqual("i386", machineName) || fplIsStringEqual("i686", machineName)) {
@@ -14526,8 +14547,8 @@ fpl_platform_api fplArchType fplGetProcessorArchitecture() {
 			result = fplArchType_x64;
 		} else {
 			if (fplIsStringEqualLen("armv", 4, machineName, 4)) {
-				const char *m = machineName + 4;
-				const char *p = m;
+				const char* m = machineName + 4;
+				const char* p = m;
 				while (*p >= '0' && *p <= '9') {
 					++p;
 				}
@@ -14544,13 +14565,13 @@ fpl_platform_api fplArchType fplGetProcessorArchitecture() {
 	return(result);
 }
 
-fpl_platform_api bool fplGetOperatingSystemInfos(fplOSInfos *outInfos) {
+fpl_platform_api bool fplGetOperatingSystemInfos(fplOSInfos* outInfos) {
 	bool result = false;
 	struct utsname nameInfos;
 	if (uname(&nameInfos) == 0) {
-		const char *kernelName = nameInfos.sysname;
-		const char *kernelVersion = nameInfos.release;
-		const char *systemName = nameInfos.version;
+		const char* kernelName = nameInfos.sysname;
+		const char* kernelVersion = nameInfos.release;
+		const char* systemName = nameInfos.version;
 		fplCopyString(kernelName, outInfos->osName, fplArrayCount(outInfos->osName));
 		fplCopyString(systemName, outInfos->distributionName, fplArrayCount(outInfos->distributionName));
 		fpl__ParseVersionString(kernelVersion, &outInfos->osVersion);
@@ -14573,7 +14594,7 @@ fpl_platform_api bool fplGetOperatingSystemInfos(fplOSInfos *outInfos) {
 // ############################################################################
 #if defined(FPL_SUBPLATFORM_STD_STRINGS)
 // @NOTE(final): stdio.h is already included
-fpl_platform_api char *fplWideStringToUTF8String(const wchar_t *wideSource, const size_t maxWideSourceLen, char *utf8Dest, const size_t maxUtf8DestLen) {
+fpl_platform_api char* fplWideStringToUTF8String(const wchar_t* wideSource, const size_t maxWideSourceLen, char* utf8Dest, const size_t maxUtf8DestLen) {
 	// @NOTE(final): Expect locale to be UTF-8
 	FPL__CheckArgumentNull(wideSource, fpl_null);
 	FPL__CheckArgumentNull(utf8Dest, fpl_null);
@@ -14584,7 +14605,7 @@ fpl_platform_api char *fplWideStringToUTF8String(const wchar_t *wideSource, cons
 	utf8Dest[requiredLen] = 0;
 	return(utf8Dest);
 }
-fpl_platform_api wchar_t *fplUTF8StringToWideString(const char *utf8Source, const size_t utf8SourceLen, wchar_t *wideDest, const size_t maxWideDestLen) {
+fpl_platform_api wchar_t* fplUTF8StringToWideString(const char* utf8Source, const size_t utf8SourceLen, wchar_t* wideDest, const size_t maxWideDestLen) {
 	// @NOTE(final): Expect locale to be UTF-8
 	FPL__CheckArgumentNull(utf8Source, fpl_null);
 	FPL__CheckArgumentNull(wideDest, fpl_null);
@@ -14606,12 +14627,12 @@ fpl_platform_api wchar_t *fplUTF8StringToWideString(const char *utf8Source, cons
 // ############################################################################
 #if defined(FPL_SUBPLATFORM_STD_CONSOLE)
 // @NOTE(final): stdio.h is already included
-fpl_platform_api void fplConsoleOut(const char *text) {
+fpl_platform_api void fplConsoleOut(const char* text) {
 	if (text != fpl_null) {
 		fprintf(stdout, "%s", text);
 	}
 }
-fpl_platform_api void fplConsoleError(const char *text) {
+fpl_platform_api void fplConsoleError(const char* text) {
 	if (text != fpl_null) {
 		fprintf(stderr, "%s", text);
 	}
@@ -14633,12 +14654,12 @@ fpl_platform_api char fplConsoleWaitForCharInput() {
 #define FPL__X11_DEFAULT_WINDOW_WIDTH 400
 #define FPL__X11_DEFAULT_WINDOW_HEIGHT 400
 
-fpl_internal void fpl__X11ReleaseSubplatform(fpl__X11SubplatformState *subplatform) {
+fpl_internal void fpl__X11ReleaseSubplatform(fpl__X11SubplatformState* subplatform) {
 	fplAssert(subplatform != fpl_null);
 	fpl__UnloadX11Api(&subplatform->api);
 }
 
-fpl_internal bool fpl__X11InitSubplatform(fpl__X11SubplatformState *subplatform) {
+fpl_internal bool fpl__X11InitSubplatform(fpl__X11SubplatformState* subplatform) {
 	fplAssert(subplatform != fpl_null);
 	if (!fpl__LoadX11Api(&subplatform->api)) {
 		FPL__ERROR(FPL__MODULE_X11, "Failed loading x11 api");
@@ -14647,9 +14668,9 @@ fpl_internal bool fpl__X11InitSubplatform(fpl__X11SubplatformState *subplatform)
 	return true;
 }
 
-fpl_internal void fpl__X11ReleaseWindow(const fpl__X11SubplatformState *subplatform, fpl__X11WindowState *windowState) {
+fpl_internal void fpl__X11ReleaseWindow(const fpl__X11SubplatformState* subplatform, fpl__X11WindowState* windowState) {
 	fplAssert((subplatform != fpl_null) && (windowState != fpl_null));
-	const fpl__X11Api *x11Api = &subplatform->api;
+	const fpl__X11Api* x11Api = &subplatform->api;
 	if (windowState->window) {
 		FPL_LOG_DEBUG("X11", "Hide window '%d' from display '%p'", (int)windowState->window, windowState->display);
 		x11Api->XUnmapWindow(windowState->display, windowState->window);
@@ -14905,7 +14926,7 @@ fpl_internal fplKey fpl__X11TranslateKeySymbol(const KeySym keySym) {
 	}
 }
 
-fpl_internal void fpl__X11LoadWindowIcon(const fpl__X11Api *x11Api, fpl__X11WindowState *x11WinState, fplWindowSettings *windowSettings) {
+fpl_internal void fpl__X11LoadWindowIcon(const fpl__X11Api* x11Api, fpl__X11WindowState* x11WinState, fplWindowSettings* windowSettings) {
 	// @BUG(final/X11): Setting the window icon on X11 does not fail, but it does not show up in any of the bars in gnome/ubuntu the icon is always shown as "unset"
 
 	int iconSourceCount = 0;
@@ -14924,21 +14945,21 @@ fpl_internal void fpl__X11LoadWindowIcon(const fpl__X11Api *x11Api, fpl__X11Wind
 			targetSize += 2 + iconSources[i].width * iconSources[i].height;
 		}
 
-		long *data = (long *)fpl__AllocateTemporaryMemory(sizeof(long) * targetSize, 16);
-		long *target = data;
+		long* data = (long*)fpl__AllocateTemporaryMemory(sizeof(long) * targetSize, 16);
+		long* target = data;
 
 		for (int i = 0; i < iconSourceCount; ++i) {
-			const fplImageSource *iconSource = iconSources + i;
+			const fplImageSource* iconSource = iconSources + i;
 			fplAssert(iconSource->type == fplImageType_RGBA);
 			*target++ = (int32_t)iconSource->width;
 			*target++ = (int32_t)iconSource->height;
-			const uint32_t *source = (const uint32_t *)iconSource->data;
+			const uint32_t* source = (const uint32_t*)iconSource->data;
 			for (int j = 0; j < iconSource->width * iconSource->height; ++j) {
 				*target++ = (iconSource->data[j * 4 + 0] << 16) | (iconSource->data[j * 4 + 1] << 8) | (iconSource->data[j * 4 + 2] << 0) | (iconSource->data[j * 4 + 3] << 24);
 			}
 		}
 
-		x11Api->XChangeProperty(x11WinState->display, x11WinState->window, x11WinState->netWMIcon, XA_CARDINAL, 32, PropModeReplace, (unsigned char *)data, targetSize);
+		x11Api->XChangeProperty(x11WinState->display, x11WinState->window, x11WinState->netWMIcon, XA_CARDINAL, 32, PropModeReplace, (unsigned char*)data, targetSize);
 
 		fpl__ReleaseTemporaryMemory(data);
 	} else {
@@ -14948,9 +14969,9 @@ fpl_internal void fpl__X11LoadWindowIcon(const fpl__X11Api *x11Api, fpl__X11Wind
 	x11Api->XFlush(x11WinState->display);
 }
 
-fpl_internal bool fpl__X11InitWindow(const fplSettings *initSettings, fplWindowSettings *currentWindowSettings, fpl__PlatformAppState *appState, fpl__X11SubplatformState *subplatform, fpl__X11WindowState *windowState, const fpl__SetupWindowCallbacks *setupCallbacks) {
+fpl_internal bool fpl__X11InitWindow(const fplSettings* initSettings, fplWindowSettings* currentWindowSettings, fpl__PlatformAppState* appState, fpl__X11SubplatformState* subplatform, fpl__X11WindowState* windowState, const fpl__SetupWindowCallbacks* setupCallbacks) {
 	fplAssert((initSettings != fpl_null) && (currentWindowSettings != fpl_null) && (appState != fpl_null) && (subplatform != fpl_null) && (windowState != fpl_null) && (setupCallbacks != fpl_null));
-	const fpl__X11Api *x11Api = &subplatform->api;
+	const fpl__X11Api* x11Api = &subplatform->api;
 
 	FPL_LOG_DEBUG(FPL__MODULE_X11, "Open default Display");
 	windowState->display = x11Api->XOpenDisplay(fpl_null);
@@ -14975,7 +14996,7 @@ fpl_internal bool fpl__X11InitWindow(const fplSettings *initSettings, fplWindowS
 		usePreSetupWindow = setupCallbacks->preSetup(appState, appState->initFlags, initSettings, &setupResult);
 	}
 
-	Visual *visual = fpl_null;
+	Visual* visual = fpl_null;
 	int colorDepth = 0;
 	Colormap colormap;
 	if (usePreSetupWindow) {
@@ -15116,7 +15137,7 @@ fpl_internal bool fpl__X11InitWindow(const fplSettings *initSettings, fplWindowS
 	fplClearStruct(appState->window.keyMap);
 	for (int keyCode = 8; keyCode <= 255; ++keyCode) {
 		int dummy = 0;
-		KeySym *keySyms = x11Api->XGetKeyboardMapping(windowState->display, keyCode, 1, &dummy);
+		KeySym* keySyms = x11Api->XGetKeyboardMapping(windowState->display, keyCode, 1, &dummy);
 		KeySym keySym = keySyms[0];
 		fplKey mappedKey = fpl__X11TranslateKeySymbol(keySym);
 		appState->window.keyMap[keyCode] = mappedKey;
@@ -15130,7 +15151,7 @@ fpl_internal bool fpl__X11InitWindow(const fplSettings *initSettings, fplWindowS
 	// Announce support for Xdnd (drag and drop)
 	{
 		const Atom version = FPL_XDND_VERSION;
-		x11Api->XChangeProperty(windowState->display, windowState->window, windowState->xdndAware, XA_ATOM, 32, PropModeReplace, (unsigned char*) &version, 1);
+		x11Api->XChangeProperty(windowState->display, windowState->window, windowState->xdndAware, XA_ATOM, 32, PropModeReplace, (unsigned char*)&version, 1);
 	}
 
 	appState->window.isRunning = true;
@@ -15159,7 +15180,7 @@ fpl_internal fplKeyboardModifierFlags fpl__X11TranslateModifierFlags(const int s
 	return(result);
 }
 
-fpl_internal unsigned long fpl__X11GetWindowProperty(const fpl__X11Api *x11Api, Display *display, Window window, Atom prop, Atom type, unsigned char** value) {
+fpl_internal unsigned long fpl__X11GetWindowProperty(const fpl__X11Api* x11Api, Display* display, Window window, Atom prop, Atom type, unsigned char** value) {
 	Atom actualType;
 	int actualFormat;
 	unsigned long itemCount, bytesAfter;
@@ -15167,7 +15188,7 @@ fpl_internal unsigned long fpl__X11GetWindowProperty(const fpl__X11Api *x11Api, 
 	return(itemCount);
 }
 
-fpl_internal const int fpl__X11GetWMState(const fpl__X11Api *x11Api, fpl__X11WindowState *windowState) {
+fpl_internal const int fpl__X11GetWMState(const fpl__X11Api* x11Api, fpl__X11WindowState* windowState) {
 	struct { int state; Window icon; } *value = NULL;
 	unsigned long numItems = fpl__X11GetWindowProperty(x11Api, windowState->display, windowState->window, windowState->wmState, windowState->wmState, (unsigned char**)&value);
 	int state = WithdrawnState;
@@ -15182,8 +15203,8 @@ fpl_internal const int fpl__X11GetWMState(const fpl__X11Api *x11Api, fpl__X11Win
 #define fpl__X11NetWMStateMaximizedFlag (1 << 1)
 #define fpl__X11NetWMStateFullscreenFlag (1 << 2)
 
-fpl_internal unsigned int fpl__X11GetNetWMState(const fpl__X11Api *x11Api, fpl__X11WindowState *windowState) {
-	Atom *atoms = NULL;
+fpl_internal unsigned int fpl__X11GetNetWMState(const fpl__X11Api* x11Api, fpl__X11WindowState* windowState) {
+	Atom* atoms = NULL;
 	unsigned long numItems = fpl__X11GetWindowProperty(x11Api, windowState->display, windowState->window, windowState->netWMState, XA_ATOM, (unsigned char**)&atoms);
 	unsigned int flags = 0;
 	if (atoms) {
@@ -15205,7 +15226,7 @@ fpl_internal unsigned int fpl__X11GetNetWMState(const fpl__X11Api *x11Api, fpl__
 		// additional visibility check for unmapped window
 		{
 			XWindowAttributes attr;
-			fplMemorySet(&attr,0,sizeof(attr));
+			fplMemorySet(&attr, 0, sizeof(attr));
 			x11Api->XGetWindowAttributes(windowState->display, windowState->window, &attr);
 			if (attr.map_state == IsUnmapped) {
 				flags |= fpl__X11NetWMStateHiddenFlag;
@@ -15216,7 +15237,7 @@ fpl_internal unsigned int fpl__X11GetNetWMState(const fpl__X11Api *x11Api, fpl__
 	return flags;
 }
 
-fpl_internal fpl__X11WindowStateInfo fpl__X11GetWindowStateInfo(const fpl__X11Api *x11Api, fpl__X11WindowState *windowState) {
+fpl_internal fpl__X11WindowStateInfo fpl__X11GetWindowStateInfo(const fpl__X11Api* x11Api, fpl__X11WindowState* windowState) {
 	fpl__X11WindowStateInfo result = fplZeroInit;
 	const int state = fpl__X11GetWMState(x11Api, windowState);
 	unsigned int flags = fpl__X11GetNetWMState(x11Api, windowState);
@@ -15238,7 +15259,7 @@ fpl_internal fpl__X11WindowStateInfo fpl__X11GetWindowStateInfo(const fpl__X11Ap
 	return result;
 }
 
-fpl_internal fpl__X11WindowStateInfo fpl__X11ReconcilWindowStateInfo(fpl__X11WindowStateInfo *last, fpl__X11WindowStateInfo *next) {
+fpl_internal fpl__X11WindowStateInfo fpl__X11ReconcilWindowStateInfo(fpl__X11WindowStateInfo* last, fpl__X11WindowStateInfo* next) {
 	fpl__X11WindowStateInfo change = fplZeroInit;
 	if (last->state != next->state) {
 		change.state = next->state;
@@ -15249,9 +15270,9 @@ fpl_internal fpl__X11WindowStateInfo fpl__X11ReconcilWindowStateInfo(fpl__X11Win
 	return change;
 }
 
-fpl_internal void* fpl__X11ParseUriPaths(const char* text, size_t *size, int *count, int textLength) {
-	const char *textCursor = text;
-	const char *textEnd = text + textLength; 
+fpl_internal void* fpl__X11ParseUriPaths(const char* text, size_t* size, int* count, int textLength) {
+	const char* textCursor = text;
+	const char* textEnd = text + textLength;
 	int fileCount = 0;
 	// count file entries
 	while (*textCursor != '\0' || textCursor != textEnd) {
@@ -15260,21 +15281,21 @@ fpl_internal void* fpl__X11ParseUriPaths(const char* text, size_t *size, int *co
 		++textCursor;
 	}
 	textCursor = text;
-	size_t filesTableSize = fileCount * sizeof(char **);
+	size_t filesTableSize = fileCount * sizeof(char**);
 	size_t maxFileStride = FPL_MAX_PATH_LENGTH + 1;
 	size_t filesMemorySize = filesTableSize + FPL__ARBITARY_PADDING + maxFileStride * fileCount;
-	void *filesTableMemory = fpl__AllocateDynamicMemory(filesMemorySize, 8);
-	char **filesTable = (char **)filesTableMemory;
+	void* filesTableMemory = fpl__AllocateDynamicMemory(filesMemorySize, 8);
+	char** filesTable = (char**)filesTableMemory;
 	for (int fileIndex = 0; fileIndex < fileCount; ++fileIndex) {
-		filesTable[fileIndex] = (char *)((uint8_t *)filesTableMemory + filesTableSize + FPL__ARBITARY_PADDING + fileIndex * maxFileStride);
+		filesTable[fileIndex] = (char*)((uint8_t*)filesTableMemory + filesTableSize + FPL__ARBITARY_PADDING + fileIndex * maxFileStride);
 	}
 	for (int fileIndex = 0; fileIndex < fileCount; ++fileIndex) {
-		char *file = filesTable[fileIndex];
-		const char *line = textCursor; 
+		char* file = filesTable[fileIndex];
+		const char* line = textCursor;
 		// split on '\r\n' divider 
 		while (*textCursor != '\r' && (*textCursor != '\0' || textCursor != textEnd)) {
 			++textCursor;
-		} 
+		}
 		// strip protocol
 		if (fplIsStringEqualLen(line, 7, "file://", 7)) {
 			line += 7;
@@ -15287,12 +15308,12 @@ fpl_internal void* fpl__X11ParseUriPaths(const char* text, size_t *size, int *co
 	return filesTableMemory;
 }
 
-fpl_internal void fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatform, fpl__PlatformAppState *appState, XEvent *ev) {
+fpl_internal void fpl__X11HandleEvent(const fpl__X11SubplatformState* subplatform, fpl__PlatformAppState* appState, XEvent* ev) {
 	fplAssert((subplatform != fpl_null) && (appState != fpl_null) && (ev != fpl_null));
-	fpl__PlatformWindowState *winState = &appState->window;
-	fpl__X11WindowState *x11WinState = &winState->x11;
-	fpl__X11WindowStateInfo *lastX11WinInfo = &x11WinState->lastWindowStateInfo;
-	const fpl__X11Api *x11Api = &appState->x11.api;
+	fpl__PlatformWindowState* winState = &appState->window;
+	fpl__X11WindowState* x11WinState = &winState->x11;
+	fpl__X11WindowStateInfo* lastX11WinInfo = &x11WinState->lastWindowStateInfo;
+	const fpl__X11Api* x11Api = &appState->x11.api;
 
 	if (appState->currentSettings.window.callbacks.eventCallback != fpl_null) {
 		appState->currentSettings.window.callbacks.eventCallback(fplGetPlatformType(), x11WinState, ev, appState->currentSettings.window.callbacks.eventUserData);
@@ -15313,14 +15334,14 @@ fpl_internal void fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatfor
 			// Window resized
 			if (ev->xconfigure.width != lastX11WinInfo->size.width || ev->xconfigure.height != lastX11WinInfo->size.height) {
 				fpl__PushWindowSizeEvent(fplWindowEventType_Resized, (uint32_t)ev->xconfigure.width, (uint32_t)ev->xconfigure.height);
-				lastX11WinInfo->size.width = (int32_t)ev->xconfigure.width; 
+				lastX11WinInfo->size.width = (int32_t)ev->xconfigure.width;
 				lastX11WinInfo->size.height = (int32_t)ev->xconfigure.height;
 			}
-			
+
 			// Window moved
 			if (ev->xconfigure.x != lastX11WinInfo->position.left || ev->xconfigure.y != lastX11WinInfo->position.top) {
 				fpl__PushWindowPositionEvent(fplWindowEventType_PositionChanged, (int32_t)ev->xconfigure.x, (int32_t)ev->xconfigure.y);
-				lastX11WinInfo->position.left = (int32_t)ev->xconfigure.x; 
+				lastX11WinInfo->position.left = (int32_t)ev->xconfigure.x;
 				lastX11WinInfo->position.top = (int32_t)ev->xconfigure.y;
 			}
 		} break;
@@ -15379,9 +15400,7 @@ fpl_internal void fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatfor
 					}
 					// Request the chosen format from the source window
 					x11Api->XConvertSelection(x11WinState->display, x11WinState->xdndSelection, x11WinState->xdnd.format, x11WinState->xdndSelection, x11WinState->window, time);
-				}
-				else if (x11WinState->xdnd.version >= 2)
-				{
+				} else if (x11WinState->xdnd.version >= 2) {
 					XEvent reply;
 					fplMemorySet(&reply, 0, sizeof(reply));
 
@@ -15416,8 +15435,7 @@ fpl_internal void fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatfor
 				reply.xclient.data.l[2] = 0; // Specify an empty rectangle
 				reply.xclient.data.l[3] = 0;
 
-				if (x11WinState->xdnd.format)
-				{
+				if (x11WinState->xdnd.format) {
 					// Reply that we are ready to copy the dragged data
 					reply.xclient.data.l[1] = 1; // Accept with no rectangle
 					if (x11WinState->xdnd.version >= 2)
@@ -15433,16 +15451,15 @@ fpl_internal void fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatfor
 			if (ev->xselection.property == x11WinState->xdndSelection) {
 				// The converted data from the drag operation has arrived
 				char* data;
-				const unsigned long result = fpl__X11GetWindowProperty(x11Api, x11WinState->display, ev->xselection.requestor,  ev->xselection.property, ev->xselection.target, (unsigned char**)&data);
-				if (result)
-				{
+				const unsigned long result = fpl__X11GetWindowProperty(x11Api, x11WinState->display, ev->xselection.requestor, ev->xselection.property, ev->xselection.target, (unsigned char**)&data);
+				if (result) {
 					size_t filesTableSize;
 					int fileCount;
-					void *filesTable = fpl__X11ParseUriPaths(data, &filesTableSize, &fileCount, result);
+					void* filesTable = fpl__X11ParseUriPaths(data, &filesTableSize, &fileCount, result);
 					fplMemoryBlock memory = fplZeroInit;
 					memory.size = filesTableSize;
 					memory.base = filesTable;
-					fpl__PushWindowDropFilesEvent(NULL, fileCount, (const char **)filesTable, &memory);
+					fpl__PushWindowDropFilesEvent(NULL, fileCount, (const char**)filesTable, &memory);
 				}
 				if (data) {
 					x11Api->XFree(data);
@@ -15566,7 +15583,7 @@ fpl_internal void fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatfor
 			}
 		} break;
 
-		case FocusIn: 
+		case FocusIn:
 		{
 			// Ignore focus events from popup indicator windows, window menu
 			// key chords and window dragging
@@ -15632,12 +15649,12 @@ fpl_platform_api bool fplIsWindowRunning() {
 
 fpl_platform_api void fplWindowShutdown() {
 	FPL__CheckPlatformNoRet();
-	fpl__PlatformAppState *appState = fpl__global__AppState;
+	fpl__PlatformAppState* appState = fpl__global__AppState;
 	if (appState->window.isRunning) {
 		appState->window.isRunning = false;
-		const fpl__X11SubplatformState *subplatform = &appState->x11;
-		const fpl__X11Api *x11Api = &subplatform->api;
-		const fpl__X11WindowState *windowState = &appState->window.x11;
+		const fpl__X11SubplatformState* subplatform = &appState->x11;
+		const fpl__X11Api* x11Api = &subplatform->api;
+		const fpl__X11WindowState* windowState = &appState->window.x11;
 		XEvent ev = fplZeroInit;
 		ev.type = ClientMessage;
 		ev.xclient.window = windowState->window;
@@ -15649,10 +15666,10 @@ fpl_platform_api void fplWindowShutdown() {
 	}
 }
 
-fpl_internal bool fpl__X11ProcessNextEvent(const fpl__X11SubplatformState *subplatform, fpl__PlatformAppState *appState) {
+fpl_internal bool fpl__X11ProcessNextEvent(const fpl__X11SubplatformState* subplatform, fpl__PlatformAppState* appState) {
 	bool result = false;
-	const fpl__X11Api *x11Api = &subplatform->api;
-	fpl__X11WindowState *windowState = &appState->window.x11;
+	const fpl__X11Api* x11Api = &subplatform->api;
+	fpl__X11WindowState* windowState = &appState->window.x11;
 	if (x11Api->XPending(windowState->display)) {
 		XEvent ev;
 		x11Api->XNextEvent(windowState->display, &ev);
@@ -15662,12 +15679,12 @@ fpl_internal bool fpl__X11ProcessNextEvent(const fpl__X11SubplatformState *subpl
 	return(result);
 }
 
-fpl_platform_api bool fplPollEvent(fplEvent *ev) {
+fpl_platform_api bool fplPollEvent(fplEvent* ev) {
 	FPL__CheckPlatform(false);
-	fpl__PlatformAppState *appState = fpl__global__AppState;
-	const fpl__X11SubplatformState *subplatform = &appState->x11;
-	const fpl__X11Api *x11Api = &subplatform->api;
-	const fpl__X11WindowState *windowState = &appState->window.x11;
+	fpl__PlatformAppState* appState = fpl__global__AppState;
+	const fpl__X11SubplatformState* subplatform = &appState->x11;
+	const fpl__X11Api* x11Api = &subplatform->api;
+	const fpl__X11WindowState* windowState = &appState->window.x11;
 
 	// Poll next event from the internal queue first
 	if (fpl__PollInternalEvent(ev)) {
@@ -15690,10 +15707,10 @@ fpl_platform_api bool fplPollEvent(fplEvent *ev) {
 
 fpl_platform_api void fplPollEvents() {
 	FPL__CheckPlatformNoRet();
-	fpl__PlatformAppState *appState = fpl__global__AppState;
-	const fpl__X11SubplatformState *subplatform = &appState->x11;
-	const fpl__X11Api *x11Api = &subplatform->api;
-	const fpl__X11WindowState *windowState = &appState->window.x11;
+	fpl__PlatformAppState* appState = fpl__global__AppState;
+	const fpl__X11SubplatformState* subplatform = &appState->x11;
+	const fpl__X11Api* x11Api = &subplatform->api;
+	const fpl__X11WindowState* windowState = &appState->window.x11;
 	while (x11Api->XPending(windowState->display)) {
 		XEvent ev;
 		x11Api->XNextEvent(windowState->display, &ev);
@@ -15704,16 +15721,16 @@ fpl_platform_api void fplPollEvents() {
 
 fpl_platform_api bool fplWindowUpdate() {
 	FPL__CheckPlatform(false);
-	fpl__PlatformAppState *appState = fpl__global__AppState;
-	const fpl__X11SubplatformState *subplatform = &appState->x11;
-	const fpl__X11Api *x11Api = &subplatform->api;
-	const fpl__X11WindowState *windowState = &appState->window.x11;
+	fpl__PlatformAppState* appState = fpl__global__AppState;
+	const fpl__X11SubplatformState* subplatform = &appState->x11;
+	const fpl__X11Api* x11Api = &subplatform->api;
+	const fpl__X11WindowState* windowState = &appState->window.x11;
 	fpl__ClearInternalEvents();
 
 	// Dont like this, maybe a callback would be better?
 #if defined(FPL_PLATFORM_LINUX)
 	if ((!appState->currentSettings.input.disabledEvents) && (appState->initFlags & fplInitFlags_GameController)) {
-		fpl__LinuxAppState *linuxAppState = &appState->plinux;
+		fpl__LinuxAppState* linuxAppState = &appState->plinux;
 		fpl__LinuxPollGameControllers(&appState->currentSettings, &linuxAppState->controllersState, true);
 	}
 #endif
@@ -15726,13 +15743,13 @@ fpl_platform_api void fplSetWindowCursorEnabled(const bool value) {
 	// @IMPLEMENT(final/X11): fplSetWindowCursorEnabled
 }
 
-fpl_platform_api bool fplGetWindowSize(fplWindowSize *outSize) {
+fpl_platform_api bool fplGetWindowSize(fplWindowSize* outSize) {
 	FPL__CheckArgumentNull(outSize, false);
 	FPL__CheckPlatform(false);
-	fpl__PlatformAppState *appState = fpl__global__AppState;
-	const fpl__X11SubplatformState *subplatform = &appState->x11;
-	const fpl__X11Api *x11Api = &subplatform->api;
-	const fpl__X11WindowState *windowState = &appState->window.x11;
+	fpl__PlatformAppState* appState = fpl__global__AppState;
+	const fpl__X11SubplatformState* subplatform = &appState->x11;
+	const fpl__X11Api* x11Api = &subplatform->api;
+	const fpl__X11WindowState* windowState = &appState->window.x11;
 	XWindowAttributes attribs;
 	x11Api->XGetWindowAttributes(windowState->display, windowState->window, &attribs);
 	outSize->width = attribs.width;
@@ -15741,11 +15758,11 @@ fpl_platform_api bool fplGetWindowSize(fplWindowSize *outSize) {
 }
 
 fpl_platform_api void fplSetWindowSize(const uint32_t width, const uint32_t height) {
-	fpl__PlatformAppState *appState = fpl__global__AppState;
+	fpl__PlatformAppState* appState = fpl__global__AppState;
 	FPL__CheckPlatformNoRet();
-	const fpl__X11SubplatformState *subplatform = &appState->x11;
-	const fpl__X11Api *x11Api = &subplatform->api;
-	const fpl__X11WindowState *windowState = &appState->window.x11;
+	const fpl__X11SubplatformState* subplatform = &appState->x11;
+	const fpl__X11Api* x11Api = &subplatform->api;
+	const fpl__X11WindowState* windowState = &appState->window.x11;
 	x11Api->XResizeWindow(windowState->display, windowState->window, width, height);
 	x11Api->XFlush(windowState->display);
 }
@@ -15761,7 +15778,7 @@ fpl_platform_api void fplSetWindowResizeable(const bool value) {
 
 fpl_platform_api bool fplIsWindowDecorated() {
 	FPL__CheckPlatform(false);
-	fpl__PlatformAppState *appState = fpl__global__AppState;
+	fpl__PlatformAppState* appState = fpl__global__AppState;
 	bool result = appState->currentSettings.window.isDecorated;
 	return(result);
 }
@@ -15782,10 +15799,10 @@ typedef struct
 
 fpl_platform_api void fplSetWindowDecorated(const bool value) {
 	FPL__CheckPlatformNoRet();
-	fpl__PlatformAppState *appState = fpl__global__AppState;
-	const fpl__X11SubplatformState *subplatform = &appState->x11;
-	const fpl__X11Api *x11Api = &subplatform->api;
-	const fpl__X11WindowState *windowState = &appState->window.x11;
+	fpl__PlatformAppState* appState = fpl__global__AppState;
+	const fpl__X11SubplatformState* subplatform = &appState->x11;
+	const fpl__X11Api* x11Api = &subplatform->api;
+	const fpl__X11WindowState* windowState = &appState->window.x11;
 
 	fpl__MotifWMHints hints = fplZeroInit;
 	hints.flags = FPL__MWM_HINTS_DECORATIONS | FPL__MWM_HINTS_FUNCTIONS;
@@ -15826,42 +15843,42 @@ fpl_platform_api size_t fplGetDisplayCount() {
 	return(0);
 }
 
-fpl_platform_api size_t fplGetDisplays(fplDisplayInfo *displays, const size_t maxDisplayCount) {
+fpl_platform_api size_t fplGetDisplays(fplDisplayInfo* displays, const size_t maxDisplayCount) {
 	// @IMPLEMENT(final/X11): fplGetDisplays
 	return(0);
 }
 
-fpl_platform_api bool fplGetPrimaryDisplay(fplDisplayInfo *display) {
+fpl_platform_api bool fplGetPrimaryDisplay(fplDisplayInfo* display) {
 	// @IMPLEMENT(final/X11): fplGetPrimaryDisplay
 	return(false);
 }
 
-fpl_platform_api bool fplGetWindowDisplay(fplDisplayInfo *outDisplay) {
+fpl_platform_api bool fplGetWindowDisplay(fplDisplayInfo* outDisplay) {
 	// @IMPLEMENT(final/X11): fplGetWindowDisplay
 	return(false);
 }
 
-fpl_platform_api bool fplGetDisplayFromPosition(const int32_t x, const int32_t y, fplDisplayInfo *outDisplay) {
+fpl_platform_api bool fplGetDisplayFromPosition(const int32_t x, const int32_t y, fplDisplayInfo* outDisplay) {
 	// @IMPLEMENT(final/X11): fplGetDisplayFromPosition
 	return(false);
 }
 
-fpl_platform_api size_t fplGetDisplayModeCount(const char *id) {
+fpl_platform_api size_t fplGetDisplayModeCount(const char* id) {
 	// @IMPLEMENT(final/X11): fplGetDisplayModeCount
 	return(0);
 }
 
-fpl_platform_api size_t fplGetDisplayModes(const char *id, fplDisplayMode *modes, const size_t maxDisplayModeCount) {
+fpl_platform_api size_t fplGetDisplayModes(const char* id, fplDisplayMode* modes, const size_t maxDisplayModeCount) {
 	// @IMPLEMENT(final/X11): fplGetDisplayModes
 	return(0);
 }
 
 fpl_platform_api bool fplSetWindowFullscreenSize(const bool value, const uint32_t fullscreenWidth, const uint32_t fullscreenHeight, const uint32_t refreshRate) {
 	FPL__CheckPlatform(false);
-	fpl__PlatformAppState *appState = fpl__global__AppState;
-	const fpl__X11SubplatformState *subplatform = &appState->x11;
-	const fpl__X11Api *x11Api = &subplatform->api;
-	const fpl__X11WindowState *windowState = &appState->window.x11;
+	fpl__PlatformAppState* appState = fpl__global__AppState;
+	const fpl__X11SubplatformState* subplatform = &appState->x11;
+	const fpl__X11Api* x11Api = &subplatform->api;
+	const fpl__X11WindowState* windowState = &appState->window.x11;
 
 	// https://stackoverflow.com/questions/10897503/opening-a-fullscreen-opengl-window
 	XEvent xev = fplZeroInit;
@@ -15899,18 +15916,18 @@ fpl_platform_api bool fplDisableWindowFullscreen() {
 
 fpl_platform_api bool fplIsWindowFullscreen() {
 	FPL__CheckPlatform(false);
-	fpl__PlatformAppState *appState = fpl__global__AppState;
+	fpl__PlatformAppState* appState = fpl__global__AppState;
 	bool result = appState->currentSettings.window.isFullscreen;
 	return(result);
 }
 
-fpl_platform_api bool fplGetWindowPosition(fplWindowPosition *outPos) {
+fpl_platform_api bool fplGetWindowPosition(fplWindowPosition* outPos) {
 	FPL__CheckArgumentNull(outPos, false);
 	FPL__CheckPlatform(false);
-	fpl__PlatformAppState *appState = fpl__global__AppState;
-	const fpl__X11SubplatformState *subplatform = &appState->x11;
-	const fpl__X11Api *x11Api = &subplatform->api;
-	const fpl__X11WindowState *windowState = &appState->window.x11;
+	fpl__PlatformAppState* appState = fpl__global__AppState;
+	const fpl__X11SubplatformState* subplatform = &appState->x11;
+	const fpl__X11Api* x11Api = &subplatform->api;
+	const fpl__X11WindowState* windowState = &appState->window.x11;
 	XWindowAttributes attribs;
 	x11Api->XGetWindowAttributes(windowState->display, windowState->window, &attribs);
 	outPos->left = attribs.x;
@@ -15920,22 +15937,22 @@ fpl_platform_api bool fplGetWindowPosition(fplWindowPosition *outPos) {
 
 fpl_platform_api void fplSetWindowPosition(const int32_t left, const int32_t top) {
 	FPL__CheckPlatformNoRet();
-	fpl__PlatformAppState *appState = fpl__global__AppState;
-	const fpl__X11SubplatformState *subplatform = &appState->x11;
-	const fpl__X11Api *x11Api = &subplatform->api;
-	const fpl__X11WindowState *windowState = &appState->window.x11;
+	fpl__PlatformAppState* appState = fpl__global__AppState;
+	const fpl__X11SubplatformState* subplatform = &appState->x11;
+	const fpl__X11Api* x11Api = &subplatform->api;
+	const fpl__X11WindowState* windowState = &appState->window.x11;
 	x11Api->XMoveWindow(windowState->display, windowState->window, left, top);
 }
 
-fpl_platform_api void fplSetWindowTitle(const char *title) {
+fpl_platform_api void fplSetWindowTitle(const char* title) {
 	// @BUG(final/X11): Setting the window title on X11 works, but it wont be set for the icon in the bars in gnome/ubuntu the icon title is always "Unbekannt" on my german environment.
 
 	FPL__CheckArgumentNullNoRet(title);
 	FPL__CheckPlatformNoRet();
-	fpl__PlatformAppState *appState = fpl__global__AppState;
-	const fpl__X11SubplatformState *subplatform = &appState->x11;
-	const fpl__X11Api *x11Api = &subplatform->api;
-	const fpl__X11WindowState *windowState = &appState->window.x11;
+	fpl__PlatformAppState* appState = fpl__global__AppState;
+	const fpl__X11SubplatformState* subplatform = &appState->x11;
+	const fpl__X11Api* x11Api = &subplatform->api;
+	const fpl__X11WindowState* windowState = &appState->window.x11;
 
 	fplCopyString(title, appState->currentSettings.window.title, fplArrayCount(appState->currentSettings.window.title));
 
@@ -15952,23 +15969,23 @@ fpl_platform_api void fplSetWindowTitle(const char *title) {
 	x11Api->XFlush(windowState->display);
 }
 
-fpl_platform_api bool fplGetClipboardText(char *dest, const uint32_t maxDestLen) {
+fpl_platform_api bool fplGetClipboardText(char* dest, const uint32_t maxDestLen) {
 	// @IMPLEMENT(final/X11): fplGetClipboardText
 	return false;
 }
 
-fpl_platform_api bool fplSetClipboardText(const char *text) {
+fpl_platform_api bool fplSetClipboardText(const char* text) {
 	// @IMPLEMENT(final/X11): fplSetClipboardText
 	return false;
 }
 
-fpl_platform_api bool fplPollKeyboardState(fplKeyboardState *outState) {
+fpl_platform_api bool fplPollKeyboardState(fplKeyboardState* outState) {
 	FPL__CheckPlatform(false);
 	FPL__CheckArgumentNull(outState, false);
-	fpl__PlatformAppState *appState = fpl__global__AppState;
-	const fpl__X11SubplatformState *subplatform = &appState->x11;
-	const fpl__X11Api *x11Api = &subplatform->api;
-	const fpl__X11WindowState *windowState = &appState->window.x11;
+	fpl__PlatformAppState* appState = fpl__global__AppState;
+	const fpl__X11SubplatformState* subplatform = &appState->x11;
+	const fpl__X11Api* x11Api = &subplatform->api;
+	const fpl__X11WindowState* windowState = &appState->window.x11;
 	bool result = false;
 	char keysReturn[32] = fplZeroInit;
 	if (x11Api->XQueryKeymap(windowState->display, keysReturn)) {
@@ -16013,13 +16030,13 @@ fpl_platform_api bool fplPollKeyboardState(fplKeyboardState *outState) {
 	return(result);
 }
 
-fpl_platform_api bool fplPollMouseState(fplMouseState *outState) {
+fpl_platform_api bool fplPollMouseState(fplMouseState* outState) {
 	FPL__CheckPlatform(false);
 	FPL__CheckArgumentNull(outState, false);
-	fpl__PlatformAppState *appState = fpl__global__AppState;
-	const fpl__X11SubplatformState *subplatform = &appState->x11;
-	const fpl__X11Api *x11Api = &subplatform->api;
-	const fpl__X11WindowState *windowState = &appState->window.x11;
+	fpl__PlatformAppState* appState = fpl__global__AppState;
+	const fpl__X11SubplatformState* subplatform = &appState->x11;
+	const fpl__X11Api* x11Api = &subplatform->api;
+	const fpl__X11WindowState* windowState = &appState->window.x11;
 	bool result = false;
 	Window root, child;
 	int rootx, rooty, winx, winy;
@@ -16048,7 +16065,7 @@ fpl_platform_api bool fplPollMouseState(fplMouseState *outState) {
 #	include <sys/select.h> // select
 #	include <linux/joystick.h> // js_event, axis_state, etc.
 
-fpl_internal void fpl__LinuxReleasePlatform(fpl__PlatformInitState *initState, fpl__PlatformAppState *appState) {
+fpl_internal void fpl__LinuxReleasePlatform(fpl__PlatformInitState* initState, fpl__PlatformAppState* appState) {
 #if defined(FPL__ENABLE_WINDOW)
 	if (appState->initFlags & fplInitFlags_GameController) {
 		fpl__LinuxFreeGameControllers(&appState->plinux.controllersState);
@@ -16056,7 +16073,7 @@ fpl_internal void fpl__LinuxReleasePlatform(fpl__PlatformInitState *initState, f
 #endif
 }
 
-fpl_internal bool fpl__LinuxInitPlatform(const fplInitFlags initFlags, const fplSettings *initSettings, fpl__PlatformInitState *initState, fpl__PlatformAppState *appState) {
+fpl_internal bool fpl__LinuxInitPlatform(const fplInitFlags initFlags, const fplSettings* initSettings, fpl__PlatformInitState* initState, fpl__PlatformAppState* appState) {
 	setlocale(LC_ALL, "");
 	return true;
 }
@@ -16070,9 +16087,9 @@ fpl_internal bool fpl__LinuxInitPlatform(const fplInitFlags initFlags, const fpl
 // Linux Input
 //
 #if defined(FPL__ENABLE_WINDOW)
-fpl_internal void fpl__LinuxFreeGameControllers(fpl__LinuxGameControllersState *controllersState) {
+fpl_internal void fpl__LinuxFreeGameControllers(fpl__LinuxGameControllersState* controllersState) {
 	for (int controllerIndex = 0; controllerIndex < fplArrayCount(controllersState->controllers); ++controllerIndex) {
-		fpl__LinuxGameController *controller = controllersState->controllers + controllerIndex;
+		fpl__LinuxGameController* controller = controllersState->controllers + controllerIndex;
 		if (controller->fd > 0) {
 			close(controller->fd);
 			controller->fd = 0;
@@ -16090,11 +16107,11 @@ fpl_internal float fpl__LinuxJoystickProcessStickValue(const int16_t value, cons
 	return(result);
 }
 
-fpl_internal void fpl__LinuxPushGameControllerStateUpdateEvent(const struct js_event *event, fpl__LinuxGameController *controller) {
-	fplGamepadState *padState = &controller->state;
+fpl_internal void fpl__LinuxPushGameControllerStateUpdateEvent(const struct js_event* event, fpl__LinuxGameController* controller) {
+	fplGamepadState* padState = &controller->state;
 
 	// @TODO(final): Use a static offset table instead of a pointer mapping table
-	fplGamepadButton *buttonMappingTable[12] = fplZeroInit;
+	fplGamepadButton* buttonMappingTable[12] = fplZeroInit;
 	buttonMappingTable[0] = &padState->actionA;
 	buttonMappingTable[1] = &padState->actionB;
 	buttonMappingTable[2] = &padState->actionX;
@@ -16182,7 +16199,7 @@ fpl_internal void fpl__LinuxPushGameControllerStateUpdateEvent(const struct js_e
 		case JS_EVENT_BUTTON:
 		{
 			if ((event->number >= 0) && (event->number < fplArrayCount(buttonMappingTable))) {
-				fplGamepadButton *mappedButton = buttonMappingTable[event->number];
+				fplGamepadButton* mappedButton = buttonMappingTable[event->number];
 				if (mappedButton != fpl_null) {
 					mappedButton->isDown = event->value != 0;
 				}
@@ -16194,7 +16211,7 @@ fpl_internal void fpl__LinuxPushGameControllerStateUpdateEvent(const struct js_e
 	}
 }
 
-fpl_internal void fpl__LinuxPollGameControllers(const fplSettings *settings, fpl__LinuxGameControllersState *controllersState, const bool useEvents) {
+fpl_internal void fpl__LinuxPollGameControllers(const fplSettings* settings, fpl__LinuxGameControllersState* controllersState, const bool useEvents) {
 	// https://github.com/underdoeg/ofxGamepad
 	// https://github.com/elanthis/gamepad
 	// https://gist.github.com/jasonwhite/c5b2048c15993d285130
@@ -16206,15 +16223,15 @@ fpl_internal void fpl__LinuxPollGameControllers(const fplSettings *settings, fpl
 		//
 		// Detect new controllers
 		//
-		const char *deviceNames[] = {
+		const char* deviceNames[] = {
 			"/dev/input/js0",
 		};
 		for (int deviceNameIndex = 0; deviceNameIndex < fplArrayCount(deviceNames); ++deviceNameIndex) {
-			const char *deviceName = deviceNames[deviceNameIndex];
+			const char* deviceName = deviceNames[deviceNameIndex];
 			bool alreadyFound = false;
 			int freeIndex = -1;
 			for (uint32_t controllerIndex = 0; controllerIndex < fplArrayCount(controllersState->controllers); ++controllerIndex) {
-				fpl__LinuxGameController *controller = controllersState->controllers + controllerIndex;
+				fpl__LinuxGameController* controller = controllersState->controllers + controllerIndex;
 				if ((controller->fd > 0) && fplIsStringEqual(deviceName, controller->deviceName)) {
 					alreadyFound = true;
 					break;
@@ -16240,7 +16257,7 @@ fpl_internal void fpl__LinuxPollGameControllers(const fplSettings *settings, fpl
 					close(fd);
 					continue;
 				}
-				fpl__LinuxGameController *controller = controllersState->controllers + freeIndex;
+				fpl__LinuxGameController* controller = controllersState->controllers + freeIndex;
 				fplClearStruct(controller);
 				controller->fd = fd;
 				controller->axisCount = numAxis;
@@ -16264,7 +16281,7 @@ fpl_internal void fpl__LinuxPollGameControllers(const fplSettings *settings, fpl
 
 	// Update controller states
 	for (uint32_t controllerIndex = 0; controllerIndex < fplArrayCount(controllersState->controllers); ++controllerIndex) {
-		fpl__LinuxGameController *controller = controllersState->controllers + controllerIndex;
+		fpl__LinuxGameController* controller = controllersState->controllers + controllerIndex;
 		if (controller->fd > 0) {
 			// Update button/axis state
 			struct js_event event;
@@ -16291,10 +16308,10 @@ fpl_internal void fpl__LinuxPollGameControllers(const fplSettings *settings, fpl
 				}
 				fpl__LinuxPushGameControllerStateUpdateEvent(&event, controller);
 			}
-			
+
 			controller->state.isActive = !fpl__IsZeroMemory(&controller->state, sizeof(fplGamepadState));
 			controller->state.isConnected = !wasDisconnected;
-			controller->state.deviceName = controller->deviceName;			
+			controller->state.deviceName = controller->deviceName;
 
 			if (controller->fd > 0) {
 				if (useEvents) {
@@ -16312,15 +16329,15 @@ fpl_internal void fpl__LinuxPollGameControllers(const fplSettings *settings, fpl
 	}
 }
 
-fpl_platform_api bool fplPollGamepadStates(fplGamepadStates *outStates) {
+fpl_platform_api bool fplPollGamepadStates(fplGamepadStates* outStates) {
 	FPL__CheckPlatform(false);
 	FPL__CheckArgumentNull(outStates, false);
-	fpl__PlatformAppState *appState = fpl__global__AppState;
+	fpl__PlatformAppState* appState = fpl__global__AppState;
 	if (appState->initFlags & fplInitFlags_GameController) {
 #if defined(FPL_PLATFORM_LINUX)
-		fpl__LinuxGameControllersState *controllersState = &appState->plinux.controllersState;
+		fpl__LinuxGameControllersState* controllersState = &appState->plinux.controllersState;
 		fpl__LinuxPollGameControllers(&appState->currentSettings, controllersState, false);
-		
+
 		fplAssert(fplArrayCount(controllersState->controllers) == fplArrayCount(outStates->deviceStates));
 		for (int i = 0; i < fplArrayCount(controllersState->controllers); ++i) {
 			outStates->deviceStates[i] = controllersState->controllers[i].state;
@@ -16336,7 +16353,7 @@ fpl_platform_api bool fplPollGamepadStates(fplGamepadStates *outStates) {
 //
 // Linux Threading
 //
-fpl_platform_api bool fplSignalInit(fplSignalHandle *signal, const fplSignalValue initialValue) {
+fpl_platform_api bool fplSignalInit(fplSignalHandle* signal, const fplSignalValue initialValue) {
 	FPL__CheckArgumentNull(signal, false);
 	if (signal->isValid) {
 		FPL__ERROR(FPL__MODULE_THREADING, "Signal '%p' is already valid", signal);
@@ -16353,14 +16370,14 @@ fpl_platform_api bool fplSignalInit(fplSignalHandle *signal, const fplSignalValu
 	return(true);
 }
 
-fpl_platform_api void fplSignalDestroy(fplSignalHandle *signal) {
+fpl_platform_api void fplSignalDestroy(fplSignalHandle* signal) {
 	if (signal != fpl_null && signal->isValid) {
 		close(signal->internalHandle.linuxEventHandle);
 		fplClearStruct(signal);
 	}
 }
 
-fpl_platform_api bool fplSignalWaitForOne(fplSignalHandle *signal, const fplTimeoutValue timeout) {
+fpl_platform_api bool fplSignalWaitForOne(fplSignalHandle* signal, const fplTimeoutValue timeout) {
 	FPL__CheckArgumentNull(signal, false);
 	if (!signal->isValid) {
 		FPL__ERROR(FPL__MODULE_THREADING, "Signal '%p' is not valid", signal);
@@ -16375,7 +16392,7 @@ fpl_platform_api bool fplSignalWaitForOne(fplSignalHandle *signal, const fplTime
 		fd_set f;
 		FD_ZERO(&f);
 		FD_SET(ev, &f);
-                struct timeval t = { 0, (__suseconds_t)timeout * 1000 };
+		struct timeval t = { 0, timeout * 1000 };
 		int selectResult = select(1, &f, NULL, NULL, &t);
 		if (selectResult == 0) {
 			// Timeout
@@ -16389,12 +16406,12 @@ fpl_platform_api bool fplSignalWaitForOne(fplSignalHandle *signal, const fplTime
 	}
 }
 
-fpl_internal bool fpl__LinuxSignalWaitForMultiple(fplSignalHandle *signals[], const uint32_t minCount, const uint32_t maxCount, const size_t stride, const fplTimeoutValue timeout) {
+fpl_internal bool fpl__LinuxSignalWaitForMultiple(fplSignalHandle* signals[], const uint32_t minCount, const uint32_t maxCount, const size_t stride, const fplTimeoutValue timeout) {
 	FPL__CheckArgumentNull(signals, false);
 	FPL__CheckArgumentMax(maxCount, FPL__MAX_SIGNAL_COUNT, false);
-	const size_t actualStride = stride > 0 ? stride : sizeof(fplSignalHandle *);
+	const size_t actualStride = stride > 0 ? stride : sizeof(fplSignalHandle*);
 	for (uint32_t index = 0; index < maxCount; ++index) {
-		fplSignalHandle *signal = *(fplSignalHandle **)((uint8_t *)signals + index * actualStride);
+		fplSignalHandle* signal = *(fplSignalHandle**)((uint8_t*)signals + index * actualStride);
 		if (signal == fpl_null) {
 			FPL__ERROR(FPL__MODULE_THREADING, "Signal for index '%d' are not allowed to be null", index);
 			return false;
@@ -16413,7 +16430,7 @@ fpl_internal bool fpl__LinuxSignalWaitForMultiple(fplSignalHandle *signals[], co
 	for (int index = 0; index < maxCount; index++) {
 		events[index].events = EPOLLIN;
 		events[index].data.u32 = index;
-		fplSignalHandle *signal = *(fplSignalHandle **)((uint8_t *)signals + index * actualStride);
+		fplSignalHandle* signal = *(fplSignalHandle**)((uint8_t*)signals + index * actualStride);
 		int x = epoll_ctl(e, EPOLL_CTL_ADD, signal->internalHandle.linuxEventHandle, events + index);
 		fplAssert(x == 0);
 	}
@@ -16433,7 +16450,7 @@ fpl_internal bool fpl__LinuxSignalWaitForMultiple(fplSignalHandle *signals[], co
 		}
 		for (int eventIndex = 0; eventIndex < ret; eventIndex++) {
 			uint32_t signalIndex = revent[eventIndex].data.u32;
-			fplSignalHandle *signal = *(fplSignalHandle **)((uint8_t *)signals + signalIndex * actualStride);
+			fplSignalHandle* signal = *(fplSignalHandle**)((uint8_t*)signals + signalIndex * actualStride);
 			epoll_ctl(e, EPOLL_CTL_DEL, signal->internalHandle.linuxEventHandle, NULL);
 		}
 		eventsResult = revent[0].data.u32;
@@ -16444,17 +16461,17 @@ fpl_internal bool fpl__LinuxSignalWaitForMultiple(fplSignalHandle *signals[], co
 	return(result);
 }
 
-fpl_platform_api bool fplSignalWaitForAll(fplSignalHandle **signals, const size_t count, const size_t stride, const fplTimeoutValue timeout) {
+fpl_platform_api bool fplSignalWaitForAll(fplSignalHandle** signals, const size_t count, const size_t stride, const fplTimeoutValue timeout) {
 	bool result = fpl__LinuxSignalWaitForMultiple(signals, count, count, stride, timeout);
 	return(result);
 }
 
-fpl_platform_api bool fplSignalWaitForAny(fplSignalHandle **signals, const size_t count, const size_t stride, const fplTimeoutValue timeout) {
+fpl_platform_api bool fplSignalWaitForAny(fplSignalHandle** signals, const size_t count, const size_t stride, const fplTimeoutValue timeout) {
 	bool result = fpl__LinuxSignalWaitForMultiple(signals, 1, count, stride, timeout);
 	return(result);
 }
 
-fpl_platform_api bool fplSignalSet(fplSignalHandle *signal) {
+fpl_platform_api bool fplSignalSet(fplSignalHandle* signal) {
 	FPL__CheckArgumentNull(signal, false);
 	if (!signal->isValid) {
 		FPL__ERROR(FPL__MODULE_THREADING, "Signal '%p' is not valid", signal);
@@ -16471,23 +16488,23 @@ fpl_platform_api bool fplSignalSet(fplSignalHandle *signal) {
 //
 // @TODO(final/Linux): fplGetProcessorName is obsolete on linux?
 #if 0
-fpl_platform_api char *fplGetProcessorName(char *destBuffer, const size_t maxDestBufferLen) {
+fpl_platform_api char* fplGetProcessorName(char* destBuffer, const size_t maxDestBufferLen) {
 	FPL__CheckArgumentNull(destBuffer, fpl_null);
 	FPL__CheckArgumentZero(maxDestBufferLen, fpl_null);
-	char *result = fpl_null;
-	const char *wildcards[] = {
+	char* result = fpl_null;
+	const char* wildcards[] = {
 		"model name*:",
 	};
 	const size_t maxLineCount = 1;
 	const size_t maxLineSize = 256;
 	char lines[maxLineCount][maxLineSize];
-	char **linesPtr = (char **)fplStackAllocate(sizeof(char *) * maxLineCount);
+	char** linesPtr = (char**)fplStackAllocate(sizeof(char*) * maxLineCount);
 	for (size_t i = 0; i < maxLineCount; ++i) {
 		linesPtr[i] = lines[i];
 	}
 	size_t foundCount = fpl__ParseTextFile("/proc/cpuinfo", wildcards, fplArrayCount(wildcards), maxLineSize, maxLineCount, linesPtr);
 	if (foundCount > 0) {
-		char *p = lines[0];
+		char* p = lines[0];
 		while (*p) {
 			if (*p == ':') {
 				++p;
@@ -16507,7 +16524,7 @@ fpl_platform_api char *fplGetProcessorName(char *destBuffer, const size_t maxDes
 }
 #endif
 
-fpl_platform_api bool fplGetRunningMemoryInfos(fplMemoryInfos *outInfos) {
+fpl_platform_api bool fplGetRunningMemoryInfos(fplMemoryInfos* outInfos) {
 	FPL__CheckArgumentNull(outInfos, false);
 	bool result = false;
 
@@ -16519,9 +16536,9 @@ fpl_platform_api bool fplGetRunningMemoryInfos(fplMemoryInfos *outInfos) {
 //
 // Linux Paths
 //
-fpl_internal void fpl__LinuxLocaleToISO639(const char *source, char *target, const size_t maxTargetLen) {
+fpl_internal void fpl__LinuxLocaleToISO639(const char* source, char* target, const size_t maxTargetLen) {
 	fplCopyString(source, target, maxTargetLen);
-	char *p = target;
+	char* p = target;
 	while (*p) {
 		if (*p == '_') {
 			*p = '-';
@@ -16534,26 +16551,26 @@ fpl_internal void fpl__LinuxLocaleToISO639(const char *source, char *target, con
 }
 
 // Linux internationalisation
-fpl_platform_api bool fplGetSystemLocale(const fplLocaleFormat targetFormat, char *buffer, const size_t maxBufferLen) {
+fpl_platform_api bool fplGetSystemLocale(const fplLocaleFormat targetFormat, char* buffer, const size_t maxBufferLen) {
 	FPL__CheckArgumentInvalid(targetFormat, targetFormat == fplLocaleFormat_None, false);
 	bool result = true;
-	char *locale = setlocale(LC_CTYPE, NULL);
+	char* locale = setlocale(LC_CTYPE, NULL);
 	fpl__LinuxLocaleToISO639(locale, buffer, maxBufferLen);
 	return(result);
 }
 
-fpl_platform_api bool fplGetUserLocale(const fplLocaleFormat targetFormat, char *buffer, const size_t maxBufferLen) {
+fpl_platform_api bool fplGetUserLocale(const fplLocaleFormat targetFormat, char* buffer, const size_t maxBufferLen) {
 	FPL__CheckArgumentInvalid(targetFormat, targetFormat == fplLocaleFormat_None, false);
 	bool result = true;
-	char *locale = setlocale(LC_ALL, NULL);
+	char* locale = setlocale(LC_ALL, NULL);
 	fpl__LinuxLocaleToISO639(locale, buffer, maxBufferLen);
 	return(result);
 }
 
-fpl_platform_api bool fplGetInputLocale(const fplLocaleFormat targetFormat, char *buffer, const size_t maxBufferLen) {
+fpl_platform_api bool fplGetInputLocale(const fplLocaleFormat targetFormat, char* buffer, const size_t maxBufferLen) {
 	FPL__CheckArgumentInvalid(targetFormat, targetFormat == fplLocaleFormat_None, false);
 	bool result = true;
-	char *locale = setlocale(LC_ALL, NULL);
+	char* locale = setlocale(LC_ALL, NULL);
 	fpl__LinuxLocaleToISO639(locale, buffer, maxBufferLen);
 	return(result);
 }
@@ -16566,10 +16583,10 @@ fpl_platform_api bool fplGetInputLocale(const fplLocaleFormat targetFormat, char
 //
 // ############################################################################
 #if defined(FPL_PLATFORM_UNIX)
-fpl_internal void fpl__UnixReleasePlatform(fpl__PlatformInitState *initState, fpl__PlatformAppState *appState) {
+fpl_internal void fpl__UnixReleasePlatform(fpl__PlatformInitState* initState, fpl__PlatformAppState* appState) {
 }
 
-fpl_internal bool fpl__UnixInitPlatform(const fplInitFlags initFlags, const fplSettings *initSettings, fpl__PlatformInitState *initState, fpl__PlatformAppState *appState) {
+fpl_internal bool fpl__UnixInitPlatform(const fplInitFlags initFlags, const fplSettings* initSettings, fpl__PlatformInitState* initState, fpl__PlatformAppState* appState) {
 	return true;
 }
 
@@ -16578,7 +16595,7 @@ fpl_internal bool fpl__UnixInitPlatform(const fplInitFlags initFlags, const fplS
 //
 #if 0
 // @TODO(final/Linux): fplGetProcessorName is obsolete on unix?
-fpl_platform_api char *fplGetProcessorName(char *destBuffer, const size_t maxDestBufferLen) {
+fpl_platform_api char* fplGetProcessorName(char* destBuffer, const size_t maxDestBufferLen) {
 	FPL__CheckArgumentNull(destBuffer, fpl_null);
 	FPL__CheckArgumentZero(maxDestBufferLen, fpl_null);
 	// @IMPLEMENT(final/Unix): fplGetProcessorName
@@ -16586,7 +16603,7 @@ fpl_platform_api char *fplGetProcessorName(char *destBuffer, const size_t maxDes
 }
 #endif
 
-fpl_platform_api bool fplGetRunningMemoryInfos(fplMemoryInfos *outInfos) {
+fpl_platform_api bool fplGetRunningMemoryInfos(fplMemoryInfos* outInfos) {
 	// @IMPLEMENT(final/Unix): fplGetRunningMemoryInfos
 	return(false);
 }
@@ -16657,24 +16674,24 @@ typedef FPL__FUNC_WGL_wglSwapIntervalEXT(fpl__win32_func_wglSwapIntervalEXT);
 
 typedef struct fpl__Win32OpenGLApi {
 	HMODULE openglLibrary;
-	fpl__win32_func_wglMakeCurrent *wglMakeCurrent;
-	fpl__win32_func_wglGetProcAddress *wglGetProcAddress;
-	fpl__win32_func_wglDeleteContext *wglDeleteContext;
-	fpl__win32_func_wglCreateContext *wglCreateContext;
-	fpl__win32_func_wglChoosePixelFormatARB *wglChoosePixelFormatARB;
-	fpl__win32_func_wglCreateContextAttribsARB *wglCreateContextAttribsARB;
-	fpl__win32_func_wglSwapIntervalEXT *wglSwapIntervalEXT;
+	fpl__win32_func_wglMakeCurrent* wglMakeCurrent;
+	fpl__win32_func_wglGetProcAddress* wglGetProcAddress;
+	fpl__win32_func_wglDeleteContext* wglDeleteContext;
+	fpl__win32_func_wglCreateContext* wglCreateContext;
+	fpl__win32_func_wglChoosePixelFormatARB* wglChoosePixelFormatARB;
+	fpl__win32_func_wglCreateContextAttribsARB* wglCreateContextAttribsARB;
+	fpl__win32_func_wglSwapIntervalEXT* wglSwapIntervalEXT;
 } fpl__Win32OpenGLApi;
 
-fpl_internal void fpl__Win32UnloadVideoOpenGLApi(fpl__Win32OpenGLApi *api) {
+fpl_internal void fpl__Win32UnloadVideoOpenGLApi(fpl__Win32OpenGLApi* api) {
 	if (api->openglLibrary != fpl_null) {
 		FreeLibrary(api->openglLibrary);
 	}
 	fplClearStruct(api);
 }
 
-fpl_internal bool fpl__Win32LoadVideoOpenGLApi(fpl__Win32OpenGLApi *api) {
-	const char *openglLibraryName = "opengl32.dll";
+fpl_internal bool fpl__Win32LoadVideoOpenGLApi(fpl__Win32OpenGLApi* api) {
+	const char* openglLibraryName = "opengl32.dll";
 	bool result = false;
 	fplClearStruct(api);
 	do {
@@ -16699,8 +16716,8 @@ typedef struct fpl__Win32VideoOpenGLState {
 } fpl__Win32VideoOpenGLState;
 
 fpl_internal LRESULT CALLBACK fpl__Win32TemporaryWindowProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) {
-	fpl__Win32AppState *appState = &fpl__global__AppState->win32;
-	const fpl__Win32Api *wapi = &appState->winApi;
+	fpl__Win32AppState* appState = &fpl__global__AppState->win32;
+	const fpl__Win32Api* wapi = &appState->winApi;
 	switch (message) {
 		case WM_CLOSE:
 			wapi->user.PostQuitMessage(0);
@@ -16711,8 +16728,8 @@ fpl_internal LRESULT CALLBACK fpl__Win32TemporaryWindowProc(HWND hWnd, UINT mess
 	return 0;
 }
 
-fpl_internal bool fpl__Win32PreSetupWindowForOpenGL(fpl__Win32AppState *appState, fpl__Win32WindowState *windowState, const fplVideoSettings *videoSettings) {
-	const fpl__Win32Api *wapi = &appState->winApi;
+fpl_internal bool fpl__Win32PreSetupWindowForOpenGL(fpl__Win32AppState* appState, fpl__Win32WindowState* windowState, const fplVideoSettings* videoSettings) {
+	const fpl__Win32Api* wapi = &appState->winApi;
 
 	windowState->pixelFormat = 0;
 
@@ -16750,7 +16767,7 @@ fpl_internal bool fpl__Win32PreSetupWindowForOpenGL(fpl__Win32AppState *appState
 								HGLRC tempCtx = glApi.wglCreateContext(tempDC);
 								if (tempCtx != fpl_null) {
 									if (glApi.wglMakeCurrent(tempDC, tempCtx)) {
-										glApi.wglChoosePixelFormatARB = (fpl__win32_func_wglChoosePixelFormatARB *)glApi.wglGetProcAddress("wglChoosePixelFormatARB");
+										glApi.wglChoosePixelFormatARB = (fpl__win32_func_wglChoosePixelFormatARB*)glApi.wglGetProcAddress("wglChoosePixelFormatARB");
 										if (glApi.wglChoosePixelFormatARB != fpl_null) {
 											int multisampleCount = (int)videoSettings->graphics.opengl.multiSamplingCount;
 											const int pixelAttribs[] = {
@@ -16790,8 +16807,8 @@ fpl_internal bool fpl__Win32PreSetupWindowForOpenGL(fpl__Win32AppState *appState
 	return(true);
 }
 
-fpl_internal bool fpl__Win32PostSetupWindowForOpenGL(fpl__Win32AppState *appState, fpl__Win32WindowState *windowState, const fplVideoSettings *videoSettings) {
-	const fpl__Win32Api *wapi = &appState->winApi;
+fpl_internal bool fpl__Win32PostSetupWindowForOpenGL(fpl__Win32AppState* appState, fpl__Win32WindowState* windowState, const fplVideoSettings* videoSettings) {
+	const fpl__Win32Api* wapi = &appState->winApi;
 
 	//
 	// Prepare window for OpenGL
@@ -16834,9 +16851,9 @@ fpl_internal bool fpl__Win32PostSetupWindowForOpenGL(fpl__Win32AppState *appStat
 	return true;
 }
 
-fpl_internal bool fpl__Win32InitVideoOpenGL(const fpl__Win32AppState *appState, const fpl__Win32WindowState *windowState, const fplVideoSettings *videoSettings, fpl__Win32VideoOpenGLState *glState) {
-	const fpl__Win32Api *wapi = &appState->winApi;
-	fpl__Win32OpenGLApi *glapi = &glState->api;
+fpl_internal bool fpl__Win32InitVideoOpenGL(const fpl__Win32AppState* appState, const fpl__Win32WindowState* windowState, const fplVideoSettings* videoSettings, fpl__Win32VideoOpenGLState* glState) {
+	const fpl__Win32Api* wapi = &appState->winApi;
+	fpl__Win32OpenGLApi* glapi = &glState->api;
 
 	//
 	// Create opengl rendering context
@@ -16854,9 +16871,9 @@ fpl_internal bool fpl__Win32InitVideoOpenGL(const fpl__Win32AppState *appState, 
 	}
 
 	// Load WGL Extensions
-	glapi->wglSwapIntervalEXT = (fpl__win32_func_wglSwapIntervalEXT *)glapi->wglGetProcAddress("wglSwapIntervalEXT");
-	glapi->wglChoosePixelFormatARB = (fpl__win32_func_wglChoosePixelFormatARB *)glapi->wglGetProcAddress("wglChoosePixelFormatARB");
-	glapi->wglCreateContextAttribsARB = (fpl__win32_func_wglCreateContextAttribsARB *)glapi->wglGetProcAddress("wglCreateContextAttribsARB");
+	glapi->wglSwapIntervalEXT = (fpl__win32_func_wglSwapIntervalEXT*)glapi->wglGetProcAddress("wglSwapIntervalEXT");
+	glapi->wglChoosePixelFormatARB = (fpl__win32_func_wglChoosePixelFormatARB*)glapi->wglGetProcAddress("wglChoosePixelFormatARB");
+	glapi->wglCreateContextAttribsARB = (fpl__win32_func_wglCreateContextAttribsARB*)glapi->wglGetProcAddress("wglCreateContextAttribsARB");
 
 	// Disable legacy context
 	glapi->wglMakeCurrent(fpl_null, fpl_null);
@@ -16947,8 +16964,8 @@ fpl_internal bool fpl__Win32InitVideoOpenGL(const fpl__Win32AppState *appState, 
 	return true;
 }
 
-fpl_internal void fpl__Win32ReleaseVideoOpenGL(fpl__Win32VideoOpenGLState *glState) {
-	const fpl__Win32OpenGLApi *glapi = &glState->api;
+fpl_internal void fpl__Win32ReleaseVideoOpenGL(fpl__Win32VideoOpenGLState* glState) {
+	const fpl__Win32OpenGLApi* glapi = &glState->api;
 	if (glState->renderingContext) {
 		glapi->wglMakeCurrent(fpl_null, fpl_null);
 		glapi->wglDeleteContext(glState->renderingContext);
@@ -17036,27 +17053,27 @@ typedef FPL__FUNC_GLX_glXCreateContextAttribsARB(fpl__func_glx_glXCreateContextA
 #define FPL__GLX_CONTEXT_COMPATIBILITY_PROFILE_BIT_ARB 0x00000002
 
 typedef struct fpl__X11VideoOpenGLApi {
-	void *libHandle;
-	fpl__func_glx_glXQueryVersion *glXQueryVersion;
-	fpl__func_glx_glXChooseVisual *glXChooseVisual;
-	fpl__func_glx_glXCreateContext *glXCreateContext;
-	fpl__func_glx_glXDestroyContext *glXDestroyContext;
-	fpl__func_glx_glXCreateNewContext *glXCreateNewContext;
-	fpl__func_glx_glXMakeCurrent *glXMakeCurrent;
-	fpl__func_glx_glXSwapBuffers *glXSwapBuffers;
-	fpl__func_glx_glXGetProcAddress *glXGetProcAddress;
-	fpl__func_glx_glXChooseFBConfig *glXChooseFBConfig;
-	fpl__func_glx_glXGetFBConfigs *glXGetFBConfigs;
-	fpl__func_glx_glXGetVisualFromFBConfig *glXGetVisualFromFBConfig;
-	fpl__func_glx_glXGetFBConfigAttrib *glXGetFBConfigAttrib;
-	fpl__func_glx_glXCreateWindow *glXCreateWindow;
-	fpl__func_glx_glXQueryExtension *glXQueryExtension;
-	fpl__func_glx_glXQueryExtensionsString *glXQueryExtensionsString;
+	void* libHandle;
+	fpl__func_glx_glXQueryVersion* glXQueryVersion;
+	fpl__func_glx_glXChooseVisual* glXChooseVisual;
+	fpl__func_glx_glXCreateContext* glXCreateContext;
+	fpl__func_glx_glXDestroyContext* glXDestroyContext;
+	fpl__func_glx_glXCreateNewContext* glXCreateNewContext;
+	fpl__func_glx_glXMakeCurrent* glXMakeCurrent;
+	fpl__func_glx_glXSwapBuffers* glXSwapBuffers;
+	fpl__func_glx_glXGetProcAddress* glXGetProcAddress;
+	fpl__func_glx_glXChooseFBConfig* glXChooseFBConfig;
+	fpl__func_glx_glXGetFBConfigs* glXGetFBConfigs;
+	fpl__func_glx_glXGetVisualFromFBConfig* glXGetVisualFromFBConfig;
+	fpl__func_glx_glXGetFBConfigAttrib* glXGetFBConfigAttrib;
+	fpl__func_glx_glXCreateWindow* glXCreateWindow;
+	fpl__func_glx_glXQueryExtension* glXQueryExtension;
+	fpl__func_glx_glXQueryExtensionsString* glXQueryExtensionsString;
 
-	fpl__func_glx_glXCreateContextAttribsARB *glXCreateContextAttribsARB;
+	fpl__func_glx_glXCreateContextAttribsARB* glXCreateContextAttribsARB;
 } fpl__X11VideoOpenGLApi;
 
-fpl_internal void fpl__X11UnloadVideoOpenGLApi(fpl__X11VideoOpenGLApi *api) {
+fpl_internal void fpl__X11UnloadVideoOpenGLApi(fpl__X11VideoOpenGLApi* api) {
 	if (api->libHandle != fpl_null) {
 		FPL_LOG_DEBUG(FPL__MODULE_GLX, "Unload Api (Library '%p')", api->libHandle);
 		dlclose(api->libHandle);
@@ -17064,17 +17081,17 @@ fpl_internal void fpl__X11UnloadVideoOpenGLApi(fpl__X11VideoOpenGLApi *api) {
 	fplClearStruct(api);
 }
 
-fpl_internal bool fpl__X11LoadVideoOpenGLApi(fpl__X11VideoOpenGLApi *api) {
+fpl_internal bool fpl__X11LoadVideoOpenGLApi(fpl__X11VideoOpenGLApi* api) {
 	const char* libFileNames[] = {
 		"libGL.so.1",
 		"libGL.so",
 	};
 	bool result = false;
 	for (uint32_t index = 0; index < fplArrayCount(libFileNames); ++index) {
-		const char *libName = libFileNames[index];
+		const char* libName = libFileNames[index];
 		FPL_LOG_DEBUG(FPL__MODULE_GLX, "Load GLX Api from Library: %s", libName);
 		do {
-			void *libHandle = fpl_null;
+			void* libHandle = fpl_null;
 			FPL__POSIX_LOAD_LIBRARY(FPL__MODULE_GLX, libHandle, libName);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_GLX, libHandle, libName, api, fpl__func_glx_glXQueryVersion, glXQueryVersion);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_GLX, libHandle, libName, api, fpl__func_glx_glXChooseVisual, glXChooseVisual);
@@ -17106,13 +17123,13 @@ fpl_internal bool fpl__X11LoadVideoOpenGLApi(fpl__X11VideoOpenGLApi *api) {
 typedef struct fpl__X11VideoOpenGLState {
 	fpl__X11VideoOpenGLApi api;
 	GLXFBConfig fbConfig;
-	XVisualInfo *visualInfo;
+	XVisualInfo* visualInfo;
 	GLXContext context;
 	bool isActiveContext;
 } fpl__X11VideoOpenGLState;
 
-fpl_internal bool fpl__X11InitFrameBufferConfigVideoOpenGL(const fpl__X11Api *x11Api, const fpl__X11WindowState *windowState, const fplVideoSettings *videoSettings, fpl__X11VideoOpenGLState *glState) {
-	const fpl__X11VideoOpenGLApi *glApi = &glState->api;
+fpl_internal bool fpl__X11InitFrameBufferConfigVideoOpenGL(const fpl__X11Api* x11Api, const fpl__X11WindowState* windowState, const fplVideoSettings* videoSettings, fpl__X11VideoOpenGLState* glState) {
+	const fpl__X11VideoOpenGLApi* glApi = &glState->api;
 
 	FPL_LOG_DEBUG(FPL__MODULE_GLX, "Query GLX version for display '%p'", windowState->display);
 	int major = 0, minor = 0;
@@ -17130,7 +17147,7 @@ fpl_internal bool fpl__X11InitFrameBufferConfigVideoOpenGL(const fpl__X11Api *x1
 		return false;
 	}
 
-	const char *extensionString = glApi->glXQueryExtensionsString(windowState->display, windowState->screen);
+	const char* extensionString = glApi->glXQueryExtensionsString(windowState->display, windowState->screen);
 	if (extensionString != fpl_null) {
 		FPL_LOG_DEBUG(FPL__MODULE_GLX, "OpenGL GLX extensions: %s", extensionString);
 	}
@@ -17183,7 +17200,7 @@ fpl_internal bool fpl__X11InitFrameBufferConfigVideoOpenGL(const fpl__X11Api *x1
 		// Use frame buffer config approach (GLX >= 1.3)
 		FPL_LOG_DEBUG(FPL__MODULE_GLX, "Get framebuffer configuration from display '%p' and screen '%d'", windowState->display, windowState->screen);
 		int configCount = 0;
-		GLXFBConfig *configs = glApi->glXChooseFBConfig(windowState->display, windowState->screen, attr, &configCount);
+		GLXFBConfig* configs = glApi->glXChooseFBConfig(windowState->display, windowState->screen, attr, &configCount);
 		if (configs == fpl_null || !configCount) {
 			FPL__ERROR(FPL__MODULE_GLX, "No framebuffer configuration from display '%p' and screen '%d' found!", windowState->display, windowState->screen);
 			glState->fbConfig = fpl_null;
@@ -17198,7 +17215,7 @@ fpl_internal bool fpl__X11InitFrameBufferConfigVideoOpenGL(const fpl__X11Api *x1
 	} else {
 		// Use choose visual (Old way)
 		FPL_LOG_DEBUG(FPL__MODULE_GLX, "Choose visual from display '%p' and screen '%d'", windowState->display, windowState->screen);
-		XVisualInfo *visualInfo = glApi->glXChooseVisual(windowState->display, windowState->screen, attr);
+		XVisualInfo* visualInfo = glApi->glXChooseVisual(windowState->display, windowState->screen, attr);
 		if (visualInfo == fpl_null) {
 			FPL__ERROR(FPL__MODULE_GLX, "No visual info for display '%p' and screen '%d' found!", windowState->display, windowState->screen);
 			return false;
@@ -17211,12 +17228,12 @@ fpl_internal bool fpl__X11InitFrameBufferConfigVideoOpenGL(const fpl__X11Api *x1
 	return true;
 }
 
-fpl_internal bool fpl__X11SetPreWindowSetupForOpenGL(const fpl__X11Api *x11Api, const fpl__X11WindowState *windowState, const fpl__X11VideoOpenGLState *glState, fpl__X11PreWindowSetupResult *outResult) {
-	const fpl__X11VideoOpenGLApi *glApi = &glState->api;
+fpl_internal bool fpl__X11SetPreWindowSetupForOpenGL(const fpl__X11Api* x11Api, const fpl__X11WindowState* windowState, const fpl__X11VideoOpenGLState* glState, fpl__X11PreWindowSetupResult* outResult) {
+	const fpl__X11VideoOpenGLApi* glApi = &glState->api;
 
 	if (glState->fbConfig != fpl_null) {
 		FPL_LOG_DEBUG(FPL__MODULE_GLX, "Get visual info from display '%p' and frame buffer config '%p'", windowState->display, glState->fbConfig);
-		XVisualInfo *visualInfo = glApi->glXGetVisualFromFBConfig(windowState->display, glState->fbConfig);
+		XVisualInfo* visualInfo = glApi->glXGetVisualFromFBConfig(windowState->display, glState->fbConfig);
 		if (visualInfo == fpl_null) {
 			FPL__ERROR(FPL__MODULE_GLX, "Failed getting visual info from display '%p' and frame buffer config '%p'", windowState->display, glState->fbConfig);
 			return false;
@@ -17245,9 +17262,9 @@ fpl_internal bool fpl__X11SetPreWindowSetupForOpenGL(const fpl__X11Api *x11Api, 
 	return true;
 }
 
-fpl_internal void fpl__X11ReleaseVideoOpenGL(const fpl__X11SubplatformState *subplatform, const fpl__X11WindowState *windowState, fpl__X11VideoOpenGLState *glState) {
-	const fpl__X11Api *x11Api = &subplatform->api;
-	const fpl__X11VideoOpenGLApi *glApi = &glState->api;
+fpl_internal void fpl__X11ReleaseVideoOpenGL(const fpl__X11SubplatformState* subplatform, const fpl__X11WindowState* windowState, fpl__X11VideoOpenGLState* glState) {
+	const fpl__X11Api* x11Api = &subplatform->api;
+	const fpl__X11VideoOpenGLApi* glApi = &glState->api;
 
 	if (glState->isActiveContext) {
 		FPL_LOG_DEBUG(FPL__MODULE_GLX, "Deactivate GLX rendering context for display '%p'", windowState->display);
@@ -17268,9 +17285,9 @@ fpl_internal void fpl__X11ReleaseVideoOpenGL(const fpl__X11SubplatformState *sub
 	}
 }
 
-fpl_internal bool fpl__X11InitVideoOpenGL(const fpl__X11SubplatformState *subplatform, const fpl__X11WindowState *windowState, const fplVideoSettings *videoSettings, fpl__X11VideoOpenGLState *glState) {
-	const fpl__X11Api *x11Api = &subplatform->api;
-	fpl__X11VideoOpenGLApi *glApi = &glState->api;
+fpl_internal bool fpl__X11InitVideoOpenGL(const fpl__X11SubplatformState* subplatform, const fpl__X11WindowState* windowState, const fplVideoSettings* videoSettings, fpl__X11VideoOpenGLState* glState) {
+	const fpl__X11Api* x11Api = &subplatform->api;
+	fpl__X11VideoOpenGLApi* glApi = &glState->api;
 
 	//
 	// Create legacy context
@@ -17310,7 +17327,7 @@ fpl_internal bool fpl__X11InitVideoOpenGL(const fpl__X11SubplatformState *subpla
 	//
 	// Load extensions
 	//
-	glApi->glXCreateContextAttribsARB = (fpl__func_glx_glXCreateContextAttribsARB *)glApi->glXGetProcAddress((const GLubyte *)"glXCreateContextAttribsARB");
+	glApi->glXCreateContextAttribsARB = (fpl__func_glx_glXCreateContextAttribsARB*)glApi->glXGetProcAddress((const GLubyte*)"glXCreateContextAttribsARB");
 
 	// Disable legacy rendering context
 	glApi->glXMakeCurrent(windowState->display, 0, fpl_null);
@@ -17425,11 +17442,11 @@ done_x11_glx:
 #if defined(FPL__ENABLE_VIDEO_SOFTWARE) && defined(FPL_SUBPLATFORM_X11)
 typedef struct fpl__X11VideoSoftwareState {
 	GC graphicsContext;
-	XImage *buffer;
+	XImage* buffer;
 } fpl__X11VideoSoftwareState;
 
 #if 0
-fpl_internal bool fpl__X11SetPreWindowSetupForSoftware(const fpl__X11Api *x11Api, const fpl__X11WindowState *windowState, const fpl__X11VideoSoftwareState *softwareState, fpl__X11PreWindowSetupResult *outResult) {
+fpl_internal bool fpl__X11SetPreWindowSetupForSoftware(const fpl__X11Api* x11Api, const fpl__X11WindowState* windowState, const fpl__X11VideoSoftwareState* softwareState, fpl__X11PreWindowSetupResult* outResult) {
 	XVisualInfo vinfo = fplZeroInit;
 	if (!x11Api->XMatchVisualInfo(windowState->display, windowState->screen, 32, DirectColor, &vinfo)) {
 		if (!x11Api->XMatchVisualInfo(windowState->display, windowState->screen, 24, DirectColor, &vinfo)) {
@@ -17445,8 +17462,8 @@ fpl_internal bool fpl__X11SetPreWindowSetupForSoftware(const fpl__X11Api *x11Api
 }
 #endif
 
-fpl_internal void fpl__X11ReleaseVideoSoftware(const fpl__X11SubplatformState *subplatform, const fpl__X11WindowState *windowState, fpl__X11VideoSoftwareState *softwareState) {
-	const fpl__X11Api *x11Api = &subplatform->api;
+fpl_internal void fpl__X11ReleaseVideoSoftware(const fpl__X11SubplatformState* subplatform, const fpl__X11WindowState* windowState, fpl__X11VideoSoftwareState* softwareState) {
+	const fpl__X11Api* x11Api = &subplatform->api;
 
 	if (softwareState->buffer != fpl_null) {
 		// @NOTE(final): Dont use XDestroyImage here, as it points to the backbuffer memory directly - which is released later
@@ -17458,8 +17475,8 @@ fpl_internal void fpl__X11ReleaseVideoSoftware(const fpl__X11SubplatformState *s
 	}
 }
 
-fpl_internal bool fpl__X11InitVideoSoftware(const fpl__X11SubplatformState *subplatform, const fpl__X11WindowState *windowState, const fplVideoSettings *videoSettings, const fplVideoBackBuffer *backbuffer, fpl__X11VideoSoftwareState *softwareState) {
-	const fpl__X11Api *x11Api = &subplatform->api;
+fpl_internal bool fpl__X11InitVideoSoftware(const fpl__X11SubplatformState* subplatform, const fpl__X11WindowState* windowState, const fplVideoSettings* videoSettings, const fplVideoBackBuffer* backbuffer, fpl__X11VideoSoftwareState* softwareState) {
+	const fpl__X11Api* x11Api = &subplatform->api;
 
 	// Based on: https://bbs.archlinux.org/viewtopic.php?id=225741
 	softwareState->graphicsContext = x11Api->XCreateGC(windowState->display, windowState->window, 0, 0);
@@ -17467,7 +17484,7 @@ fpl_internal bool fpl__X11InitVideoSoftware(const fpl__X11SubplatformState *subp
 		return false;
 	}
 
-	softwareState->buffer = x11Api->XCreateImage(windowState->display, windowState->visual, 24, ZPixmap, 0, (char *)backbuffer->pixels, backbuffer->width, backbuffer->height, 32, (int)backbuffer->lineWidth);
+	softwareState->buffer = x11Api->XCreateImage(windowState->display, windowState->visual, 24, ZPixmap, 0, (char*)backbuffer->pixels, backbuffer->width, backbuffer->height, 32, (int)backbuffer->lineWidth);
 	if (softwareState->buffer == fpl_null) {
 		fpl__X11ReleaseVideoSoftware(subplatform, windowState, softwareState);
 		return false;
@@ -17491,7 +17508,7 @@ typedef struct fpl__Win32VideoSoftwareState {
 	BITMAPINFO bitmapInfo;
 } fpl__Win32VideoSoftwareState;
 
-fpl_internal bool fpl__Win32InitVideoSoftware(const fplVideoBackBuffer *backbuffer, fpl__Win32VideoSoftwareState *software) {
+fpl_internal bool fpl__Win32InitVideoSoftware(const fplVideoBackBuffer* backbuffer, fpl__Win32VideoSoftwareState* software) {
 	fplClearStruct(software);
 	software->bitmapInfo.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
 	software->bitmapInfo.bmiHeader.biWidth = (LONG)backbuffer->width;
@@ -17504,7 +17521,7 @@ fpl_internal bool fpl__Win32InitVideoSoftware(const fplVideoBackBuffer *backbuff
 	return true;
 }
 
-fpl_internal void fpl__Win32ReleaseVideoSoftware(fpl__Win32VideoSoftwareState *software) {
+fpl_internal void fpl__Win32ReleaseVideoSoftware(fpl__Win32VideoSoftwareState* software) {
 	fplClearStruct(software);
 }
 #endif // FPL__ENABLE_VIDEO_SOFTWARE && FPL_PLATFORM_WINDOWS
@@ -17529,12 +17546,12 @@ typedef enum fpl__AudioDeviceState {
 
 typedef struct fpl__CommonAudioState {
 	fplAudioDeviceFormat internalFormat;
-	fpl_audio_client_read_callback *clientReadCallback;
-	void *clientUserData;
+	fpl_audio_client_read_callback* clientReadCallback;
+	void* clientUserData;
 	volatile fpl__AudioDeviceState state;
 } fpl__CommonAudioState;
 
-fpl_internal uint32_t fpl__ReadAudioFramesFromClient(const fpl__CommonAudioState *commonAudio, uint32_t frameCount, void *pSamples) {
+fpl_internal uint32_t fpl__ReadAudioFramesFromClient(const fpl__CommonAudioState* commonAudio, uint32_t frameCount, void* pSamples) {
 	uint32_t framesRead = 0;
 	if (commonAudio->clientReadCallback != fpl_null) {
 		framesRead = commonAudio->clientReadCallback(&commonAudio->internalFormat, frameCount, pSamples, commonAudio->clientUserData);
@@ -17557,9 +17574,9 @@ static GUID FPL__GUID_KSDATAFORMAT_SUBTYPE_IEEE_FLOAT = { 0x00000003, 0x0000, 0x
 #endif
 
 // Forward declarations
-fpl_internal fpl__AudioDeviceState fpl__AudioGetDeviceState(fpl__CommonAudioState *audioState);
-fpl_internal bool fpl__IsAudioDeviceInitialized(fpl__CommonAudioState *audioState);
-fpl_internal bool fpl__IsAudioDeviceStarted(fpl__CommonAudioState *audioState);
+fpl_internal fpl__AudioDeviceState fpl__AudioGetDeviceState(fpl__CommonAudioState* audioState);
+fpl_internal bool fpl__IsAudioDeviceInitialized(fpl__CommonAudioState* audioState);
+fpl_internal bool fpl__IsAudioDeviceStarted(fpl__CommonAudioState* audioState);
 
 // ############################################################################
 //
@@ -17580,11 +17597,11 @@ static GUID FPL__IID_IDirectSoundNotify = { 0xb0210783, 0x89cd, 0x11d0, {0xaf, 0
 
 typedef struct fpl__DirectSoundApi {
 	HMODULE dsoundLibrary;
-	func_DirectSoundCreate *DirectSoundCreate;
-	func_DirectSoundEnumerateW *DirectSoundEnumerateW;
+	func_DirectSoundCreate* DirectSoundCreate;
+	func_DirectSoundEnumerateW* DirectSoundEnumerateW;
 } fpl__DirectSoundApi;
 
-fpl_internal void fpl__UnloadDirectSoundApi(fpl__DirectSoundApi *dsoundApi) {
+fpl_internal void fpl__UnloadDirectSoundApi(fpl__DirectSoundApi* dsoundApi) {
 	fplAssert(dsoundApi != fpl_null);
 	if (dsoundApi->dsoundLibrary != fpl_null) {
 		FreeLibrary(dsoundApi->dsoundLibrary);
@@ -17592,10 +17609,10 @@ fpl_internal void fpl__UnloadDirectSoundApi(fpl__DirectSoundApi *dsoundApi) {
 	fplClearStruct(dsoundApi);
 }
 
-fpl_internal bool fpl__LoadDirectSoundApi(fpl__DirectSoundApi *dsoundApi) {
+fpl_internal bool fpl__LoadDirectSoundApi(fpl__DirectSoundApi* dsoundApi) {
 	fplAssert(dsoundApi != fpl_null);
 	bool result = false;
-	const char *dsoundLibraryName = "dsound.dll";
+	const char* dsoundLibraryName = "dsound.dll";
 	fplClearStruct(dsoundApi);
 	do {
 		HMODULE dsoundLibrary = fpl_null;
@@ -17625,17 +17642,17 @@ typedef struct fpl__DirectSoundAudioState {
 
 typedef struct fpl__DirectSoundDeviceInfos {
 	uint32_t foundDeviceCount;
-	fplAudioDeviceInfo *deviceInfos;
+	fplAudioDeviceInfo* deviceInfos;
 	uint32_t maxDeviceCount;
 } fpl__DirectSoundDeviceInfos;
 
 fpl_internal BOOL CALLBACK fpl__GetDeviceCallbackDirectSound(LPGUID lpGuid, LPCWSTR lpwstrDescription, LPCWSTR lpwstrModule, LPVOID lpContext) {
-	fpl__DirectSoundDeviceInfos *infos = (fpl__DirectSoundDeviceInfos *)lpContext;
+	fpl__DirectSoundDeviceInfos* infos = (fpl__DirectSoundDeviceInfos*)lpContext;
 	fplAssert(infos != fpl_null);
 	if (infos->deviceInfos != fpl_null) {
 		uint32_t index = infos->foundDeviceCount++;
 		if (index < infos->maxDeviceCount) {
-			fplAudioDeviceInfo *deviceInfo = infos->deviceInfos + index;
+			fplAudioDeviceInfo* deviceInfo = infos->deviceInfos + index;
 			fplClearStruct(deviceInfo);
 			fplWideStringToUTF8String(lpwstrDescription, lstrlenW(lpwstrDescription), deviceInfo->name, fplArrayCount(deviceInfo->name));
 			if (lpGuid != fpl_null) {
@@ -17647,9 +17664,9 @@ fpl_internal BOOL CALLBACK fpl__GetDeviceCallbackDirectSound(LPGUID lpGuid, LPCW
 	return FALSE;
 }
 
-fpl_internal uint32_t fpl__GetAudioDevicesDirectSound(fpl__DirectSoundAudioState *dsoundState, fplAudioDeviceInfo *deviceInfos, uint32_t maxDeviceCount) {
+fpl_internal uint32_t fpl__GetAudioDevicesDirectSound(fpl__DirectSoundAudioState* dsoundState, fplAudioDeviceInfo* deviceInfos, uint32_t maxDeviceCount) {
 	uint32_t result = 0;
-	const fpl__DirectSoundApi *dsoundApi = &dsoundState->api;
+	const fpl__DirectSoundApi* dsoundApi = &dsoundState->api;
 	fpl__DirectSoundDeviceInfos infos = fplZeroInit;
 	infos.maxDeviceCount = maxDeviceCount;
 	infos.deviceInfos = deviceInfos;
@@ -17658,7 +17675,7 @@ fpl_internal uint32_t fpl__GetAudioDevicesDirectSound(fpl__DirectSoundAudioState
 	return(result);
 }
 
-fpl_internal bool fpl__AudioReleaseDirectSound(const fpl__CommonAudioState *commonAudio, fpl__DirectSoundAudioState *dsoundState) {
+fpl_internal bool fpl__AudioReleaseDirectSound(const fpl__CommonAudioState* commonAudio, fpl__DirectSoundAudioState* dsoundState) {
 	if (dsoundState->stopEvent != fpl_null) {
 		CloseHandle(dsoundState->stopEvent);
 	}
@@ -17692,7 +17709,7 @@ fpl_internal bool fpl__AudioReleaseDirectSound(const fpl__CommonAudioState *comm
 	return true;
 }
 
-fpl_internal fplAudioResult fpl__AudioInitDirectSound(const fplAudioSettings *audioSettings, fpl__CommonAudioState *commonAudio, fpl__DirectSoundAudioState *dsoundState) {
+fpl_internal fplAudioResult fpl__AudioInitDirectSound(const fplAudioSettings* audioSettings, fpl__CommonAudioState* commonAudio, fpl__DirectSoundAudioState* dsoundState) {
 #ifdef __cplusplus
 	GUID guid_IID_IDirectSoundNotify = FPL__IID_IDirectSoundNotify;
 #else
@@ -17700,20 +17717,20 @@ fpl_internal fplAudioResult fpl__AudioInitDirectSound(const fplAudioSettings *au
 #endif
 
 	fplAssert(fpl__global__AppState != fpl_null);
-	fpl__PlatformAppState *appState = fpl__global__AppState;
-	fpl__Win32AppState *win32AppState = &appState->win32;
-	const fpl__Win32Api *apiFuncs = &win32AppState->winApi;
+	fpl__PlatformAppState* appState = fpl__global__AppState;
+	fpl__Win32AppState* win32AppState = &appState->win32;
+	const fpl__Win32Api* apiFuncs = &win32AppState->winApi;
 
 	// Load direct sound library
-	fpl__DirectSoundApi *dsoundApi = &dsoundState->api;
+	fpl__DirectSoundApi* dsoundApi = &dsoundState->api;
 	if (!fpl__LoadDirectSoundApi(dsoundApi)) {
 		fpl__AudioReleaseDirectSound(commonAudio, dsoundState);
 		return fplAudioResult_ApiFailed;
 	}
 
 	// Load direct sound object
-	const fplAudioDeviceInfo *targetDevice = &audioSettings->targetDevice;
-	const GUID *deviceId = fpl_null;
+	const fplAudioDeviceInfo* targetDevice = &audioSettings->targetDevice;
+	const GUID* deviceId = fpl_null;
 	if (fplGetStringLength(targetDevice->name) > 0) {
 		deviceId = &targetDevice->id.dshow;
 	}
@@ -17723,7 +17740,7 @@ fpl_internal fplAudioResult fpl__AudioInitDirectSound(const fplAudioSettings *au
 	}
 
 	// Setup wave format ex
-	const fplAudioTargetFormat *targetFormat = &audioSettings->targetFormat;
+	const fplAudioTargetFormat* targetFormat = &audioSettings->targetFormat;
 	WAVEFORMATEXTENSIBLE wf = fplZeroInit;
 	wf.Format.cbSize = sizeof(wf);
 	wf.Format.wFormatTag = WAVE_FORMAT_EXTENSIBLE;
@@ -17869,12 +17886,12 @@ fpl_internal fplAudioResult fpl__AudioInitDirectSound(const fplAudioSettings *au
 	return fplAudioResult_Success;
 }
 
-fpl_internal void fpl__AudioStopMainLoopDirectSound(fpl__DirectSoundAudioState *dsoundState) {
+fpl_internal void fpl__AudioStopMainLoopDirectSound(fpl__DirectSoundAudioState* dsoundState) {
 	dsoundState->breakMainLoop = true;
 	SetEvent(dsoundState->stopEvent);
 }
 
-fpl_internal bool fpl__GetCurrentFrameDirectSound(const fpl__CommonAudioState *commonAudio, fpl__DirectSoundAudioState *dsoundState, uint32_t* pCurrentPos) {
+fpl_internal bool fpl__GetCurrentFrameDirectSound(const fpl__CommonAudioState* commonAudio, fpl__DirectSoundAudioState* dsoundState, uint32_t* pCurrentPos) {
 	fplAssert(pCurrentPos != fpl_null);
 	*pCurrentPos = 0;
 
@@ -17889,7 +17906,7 @@ fpl_internal bool fpl__GetCurrentFrameDirectSound(const fpl__CommonAudioState *c
 	return true;
 }
 
-fpl_internal uint32_t fpl__GetAvailableFramesDirectSound(const fpl__CommonAudioState *commonAudio, fpl__DirectSoundAudioState *dsoundState) {
+fpl_internal uint32_t fpl__GetAvailableFramesDirectSound(const fpl__CommonAudioState* commonAudio, fpl__DirectSoundAudioState* dsoundState) {
 	// Get current frame from current play position
 	uint32_t currentFrame;
 	if (!fpl__GetCurrentFrameDirectSound(commonAudio, dsoundState, &currentFrame)) {
@@ -17913,7 +17930,7 @@ fpl_internal uint32_t fpl__GetAvailableFramesDirectSound(const fpl__CommonAudioS
 	return totalFrameCount - committedSize;
 }
 
-fpl_internal uint32_t fpl__WaitForFramesDirectSound(const fpl__CommonAudioState *commonAudio, fpl__DirectSoundAudioState *dsoundState) {
+fpl_internal uint32_t fpl__WaitForFramesDirectSound(const fpl__CommonAudioState* commonAudio, fpl__DirectSoundAudioState* dsoundState) {
 	fplAssert(commonAudio->internalFormat.sampleRate > 0);
 	fplAssert(commonAudio->internalFormat.periods > 0);
 
@@ -17944,7 +17961,7 @@ fpl_internal uint32_t fpl__WaitForFramesDirectSound(const fpl__CommonAudioState 
 	return fpl__GetAvailableFramesDirectSound(commonAudio, dsoundState);
 }
 
-fpl_internal bool fpl__AudioStopDirectSound(fpl__DirectSoundAudioState *dsoundState) {
+fpl_internal bool fpl__AudioStopDirectSound(fpl__DirectSoundAudioState* dsoundState) {
 	fplAssert(dsoundState->secondaryBuffer != fpl_null);
 	if (FAILED(IDirectSoundBuffer_Stop(dsoundState->secondaryBuffer))) {
 		return false;
@@ -17953,7 +17970,7 @@ fpl_internal bool fpl__AudioStopDirectSound(fpl__DirectSoundAudioState *dsoundSt
 	return true;
 }
 
-fpl_internal fplAudioResult fpl__AudioStartDirectSound(const fpl__CommonAudioState *commonAudio, fpl__DirectSoundAudioState *dsoundState) {
+fpl_internal fplAudioResult fpl__AudioStartDirectSound(const fpl__CommonAudioState* commonAudio, fpl__DirectSoundAudioState* dsoundState) {
 	fplAssert(commonAudio->internalFormat.channels > 0);
 	fplAssert(commonAudio->internalFormat.periods > 0);
 	uint32_t audioSampleSizeBytes = fplGetAudioSampleSizeInBytes(commonAudio->internalFormat.type);
@@ -17982,7 +17999,7 @@ fpl_internal fplAudioResult fpl__AudioStartDirectSound(const fpl__CommonAudioSta
 	return fplAudioResult_Success;
 }
 
-fpl_internal void fpl__AudioRunMainLoopDirectSound(const fpl__CommonAudioState *commonAudio, fpl__DirectSoundAudioState *dsoundState) {
+fpl_internal void fpl__AudioRunMainLoopDirectSound(const fpl__CommonAudioState* commonAudio, fpl__DirectSoundAudioState* dsoundState) {
 	fplAssert(commonAudio->internalFormat.channels > 0);
 	uint32_t audioSampleSizeBytes = fplGetAudioSampleSizeInBytes(commonAudio->internalFormat.type);
 	fplAssert(audioSampleSizeBytes > 0);
@@ -18127,61 +18144,61 @@ typedef FPL__ALSA_FUNC_snd_pcm_avail_update(fpl__alsa_func_snd_pcm_avail_update)
 typedef FPL__ALSA_FUNC_snd_pcm_wait(fpl__alsa_func_snd_pcm_wait);
 
 typedef struct fpl__AlsaAudioApi {
-	void *libHandle;
-	fpl__alsa_func_snd_pcm_open *snd_pcm_open;
-	fpl__alsa_func_snd_pcm_close *snd_pcm_close;
-	fpl__alsa_func_snd_pcm_hw_params_sizeof *snd_pcm_hw_params_sizeof;
-	fpl__alsa_func_snd_pcm_hw_params *snd_pcm_hw_params;
-	fpl__alsa_func_snd_pcm_hw_params_any *snd_pcm_hw_params_any;
-	fpl__alsa_func_snd_pcm_hw_params_set_format *snd_pcm_hw_params_set_format;
-	fpl__alsa_func_snd_pcm_hw_params_set_format_first *snd_pcm_hw_params_set_format_first;
-	fpl__alsa_func_snd_pcm_hw_params_get_format_mask *snd_pcm_hw_params_get_format_mask;
-	fpl__alsa_func_snd_pcm_hw_params_set_channels_near *snd_pcm_hw_params_set_channels_near;
-	fpl__alsa_func_snd_pcm_hw_params_set_rate_resample *snd_pcm_hw_params_set_rate_resample;
-	fpl__alsa_func_snd_pcm_hw_params_set_rate_near *snd_pcm_hw_params_set_rate_near;
-	fpl__alsa_func_snd_pcm_hw_params_set_buffer_size_near *snd_pcm_hw_params_set_buffer_size_near;
-	fpl__alsa_func_snd_pcm_hw_params_set_periods_near *snd_pcm_hw_params_set_periods_near;
-	fpl__alsa_func_snd_pcm_hw_params_set_access *snd_pcm_hw_params_set_access;
-	fpl__alsa_func_snd_pcm_hw_params_get_format *snd_pcm_hw_params_get_format;
-	fpl__alsa_func_snd_pcm_hw_params_get_channels *snd_pcm_hw_params_get_channels;
-	fpl__alsa_func_snd_pcm_hw_params_get_rate *snd_pcm_hw_params_get_rate;
-	fpl__alsa_func_snd_pcm_hw_params_get_buffer_size *snd_pcm_hw_params_get_buffer_size;
-	fpl__alsa_func_snd_pcm_hw_params_get_periods *snd_pcm_hw_params_get_periods;
-	fpl__alsa_func_snd_pcm_hw_params_get_access *snd_pcm_hw_params_get_access;
-	fpl__alsa_func_snd_pcm_hw_params_get_sbits *snd_pcm_hw_params_get_sbits;
-	fpl__alsa_func_snd_pcm_sw_params_sizeof *snd_pcm_sw_params_sizeof;
-	fpl__alsa_func_snd_pcm_sw_params_current *snd_pcm_sw_params_current;
-	fpl__alsa_func_snd_pcm_sw_params_set_avail_min *snd_pcm_sw_params_set_avail_min;
-	fpl__alsa_func_snd_pcm_sw_params_set_start_threshold *snd_pcm_sw_params_set_start_threshold;
-	fpl__alsa_func_snd_pcm_sw_params *snd_pcm_sw_params;
-	fpl__alsa_func_snd_pcm_format_mask_sizeof *snd_pcm_format_mask_sizeof;
-	fpl__alsa_func_snd_pcm_format_mask_test *snd_pcm_format_mask_test;
-	fpl__alsa_func_snd_pcm_get_chmap *snd_pcm_get_chmap;
-	fpl__alsa_func_snd_pcm_prepare *snd_pcm_prepare;
-	fpl__alsa_func_snd_pcm_start *snd_pcm_start;
-	fpl__alsa_func_snd_pcm_drop *snd_pcm_drop;
-	fpl__alsa_func_snd_device_name_hint *snd_device_name_hint;
-	fpl__alsa_func_snd_device_name_get_hint *snd_device_name_get_hint;
-	fpl__alsa_func_snd_card_get_index *snd_card_get_index;
-	fpl__alsa_func_snd_device_name_free_hint *snd_device_name_free_hint;
-	fpl__alsa_func_snd_pcm_mmap_begin *snd_pcm_mmap_begin;
-	fpl__alsa_func_snd_pcm_mmap_commit *snd_pcm_mmap_commit;
-	fpl__alsa_func_snd_pcm_recover *snd_pcm_recover;
-	fpl__alsa_func_snd_pcm_writei *snd_pcm_writei;
-	fpl__alsa_func_snd_pcm_avail *snd_pcm_avail;
-	fpl__alsa_func_snd_pcm_avail_update *snd_pcm_avail_update;
-	fpl__alsa_func_snd_pcm_wait *snd_pcm_wait;
+	void* libHandle;
+	fpl__alsa_func_snd_pcm_open* snd_pcm_open;
+	fpl__alsa_func_snd_pcm_close* snd_pcm_close;
+	fpl__alsa_func_snd_pcm_hw_params_sizeof* snd_pcm_hw_params_sizeof;
+	fpl__alsa_func_snd_pcm_hw_params* snd_pcm_hw_params;
+	fpl__alsa_func_snd_pcm_hw_params_any* snd_pcm_hw_params_any;
+	fpl__alsa_func_snd_pcm_hw_params_set_format* snd_pcm_hw_params_set_format;
+	fpl__alsa_func_snd_pcm_hw_params_set_format_first* snd_pcm_hw_params_set_format_first;
+	fpl__alsa_func_snd_pcm_hw_params_get_format_mask* snd_pcm_hw_params_get_format_mask;
+	fpl__alsa_func_snd_pcm_hw_params_set_channels_near* snd_pcm_hw_params_set_channels_near;
+	fpl__alsa_func_snd_pcm_hw_params_set_rate_resample* snd_pcm_hw_params_set_rate_resample;
+	fpl__alsa_func_snd_pcm_hw_params_set_rate_near* snd_pcm_hw_params_set_rate_near;
+	fpl__alsa_func_snd_pcm_hw_params_set_buffer_size_near* snd_pcm_hw_params_set_buffer_size_near;
+	fpl__alsa_func_snd_pcm_hw_params_set_periods_near* snd_pcm_hw_params_set_periods_near;
+	fpl__alsa_func_snd_pcm_hw_params_set_access* snd_pcm_hw_params_set_access;
+	fpl__alsa_func_snd_pcm_hw_params_get_format* snd_pcm_hw_params_get_format;
+	fpl__alsa_func_snd_pcm_hw_params_get_channels* snd_pcm_hw_params_get_channels;
+	fpl__alsa_func_snd_pcm_hw_params_get_rate* snd_pcm_hw_params_get_rate;
+	fpl__alsa_func_snd_pcm_hw_params_get_buffer_size* snd_pcm_hw_params_get_buffer_size;
+	fpl__alsa_func_snd_pcm_hw_params_get_periods* snd_pcm_hw_params_get_periods;
+	fpl__alsa_func_snd_pcm_hw_params_get_access* snd_pcm_hw_params_get_access;
+	fpl__alsa_func_snd_pcm_hw_params_get_sbits* snd_pcm_hw_params_get_sbits;
+	fpl__alsa_func_snd_pcm_sw_params_sizeof* snd_pcm_sw_params_sizeof;
+	fpl__alsa_func_snd_pcm_sw_params_current* snd_pcm_sw_params_current;
+	fpl__alsa_func_snd_pcm_sw_params_set_avail_min* snd_pcm_sw_params_set_avail_min;
+	fpl__alsa_func_snd_pcm_sw_params_set_start_threshold* snd_pcm_sw_params_set_start_threshold;
+	fpl__alsa_func_snd_pcm_sw_params* snd_pcm_sw_params;
+	fpl__alsa_func_snd_pcm_format_mask_sizeof* snd_pcm_format_mask_sizeof;
+	fpl__alsa_func_snd_pcm_format_mask_test* snd_pcm_format_mask_test;
+	fpl__alsa_func_snd_pcm_get_chmap* snd_pcm_get_chmap;
+	fpl__alsa_func_snd_pcm_prepare* snd_pcm_prepare;
+	fpl__alsa_func_snd_pcm_start* snd_pcm_start;
+	fpl__alsa_func_snd_pcm_drop* snd_pcm_drop;
+	fpl__alsa_func_snd_device_name_hint* snd_device_name_hint;
+	fpl__alsa_func_snd_device_name_get_hint* snd_device_name_get_hint;
+	fpl__alsa_func_snd_card_get_index* snd_card_get_index;
+	fpl__alsa_func_snd_device_name_free_hint* snd_device_name_free_hint;
+	fpl__alsa_func_snd_pcm_mmap_begin* snd_pcm_mmap_begin;
+	fpl__alsa_func_snd_pcm_mmap_commit* snd_pcm_mmap_commit;
+	fpl__alsa_func_snd_pcm_recover* snd_pcm_recover;
+	fpl__alsa_func_snd_pcm_writei* snd_pcm_writei;
+	fpl__alsa_func_snd_pcm_avail* snd_pcm_avail;
+	fpl__alsa_func_snd_pcm_avail_update* snd_pcm_avail_update;
+	fpl__alsa_func_snd_pcm_wait* snd_pcm_wait;
 } fpl__AlsaAudioApi;
 
 typedef struct fpl__AlsaAudioState {
 	fpl__AlsaAudioApi api;
 	snd_pcm_t* pcmDevice;
-	void *intermediaryBuffer;
+	void* intermediaryBuffer;
 	bool isUsingMMap;
 	bool breakMainLoop;
 } fpl__AlsaAudioState;
 
-fpl_internal void fpl__UnloadAlsaApi(fpl__AlsaAudioApi *alsaApi) {
+fpl_internal void fpl__UnloadAlsaApi(fpl__AlsaAudioApi* alsaApi) {
 	fplAssert(alsaApi != fpl_null);
 	if (alsaApi->libHandle != fpl_null) {
 		dlclose(alsaApi->libHandle);
@@ -18189,17 +18206,17 @@ fpl_internal void fpl__UnloadAlsaApi(fpl__AlsaAudioApi *alsaApi) {
 	fplClearStruct(alsaApi);
 }
 
-fpl_internal bool fpl__LoadAlsaApi(fpl__AlsaAudioApi *alsaApi) {
+fpl_internal bool fpl__LoadAlsaApi(fpl__AlsaAudioApi* alsaApi) {
 	fplAssert(alsaApi != fpl_null);
 	const char* libraryNames[] = {
 		"libasound.so",
 	};
 	bool result = false;
 	for (uint32_t index = 0; index < fplArrayCount(libraryNames); ++index) {
-		const char * libName = libraryNames[index];
+		const char* libName = libraryNames[index];
 		fplClearStruct(alsaApi);
 		do {
-			void *libHandle = fpl_null;
+			void* libHandle = fpl_null;
 			FPL__POSIX_LOAD_LIBRARY(FPL__MODULE_AUDIO_ALSA, libHandle, libName);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_ALSA, libHandle, libName, alsaApi, fpl__alsa_func_snd_pcm_open, snd_pcm_open);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_ALSA, libHandle, libName, alsaApi, fpl__alsa_func_snd_pcm_close, snd_pcm_close);
@@ -18255,12 +18272,12 @@ fpl_internal bool fpl__LoadAlsaApi(fpl__AlsaAudioApi *alsaApi) {
 	return(result);
 }
 
-fpl_internal uint32_t fpl__AudioWaitForFramesAlsa(const fplAudioDeviceFormat *deviceFormat, fpl__AlsaAudioState *alsaState, bool *requiresRestart) {
+fpl_internal uint32_t fpl__AudioWaitForFramesAlsa(const fplAudioDeviceFormat* deviceFormat, fpl__AlsaAudioState* alsaState, bool* requiresRestart) {
 	fplAssert(deviceFormat != fpl_null);
 	if (requiresRestart != fpl_null) {
 		*requiresRestart = false;
 	}
-	const fpl__AlsaAudioApi *alsaApi = &alsaState->api;
+	const fpl__AlsaAudioApi* alsaApi = &alsaState->api;
 	uint32_t periodSizeInFrames = deviceFormat->bufferSizeInFrames / deviceFormat->periods;
 	while (!alsaState->breakMainLoop) {
 		snd_pcm_sframes_t framesAvailable = alsaApi->snd_pcm_avail_update(alsaState->pcmDevice);
@@ -18308,9 +18325,9 @@ fpl_internal uint32_t fpl__AudioWaitForFramesAlsa(const fplAudioDeviceFormat *de
 	return framesAvailable;
 }
 
-fpl_internal bool fpl__GetAudioFramesFromClientAlsa(fpl__CommonAudioState *commonAudio, fpl__AlsaAudioState *alsaState) {
+fpl_internal bool fpl__GetAudioFramesFromClientAlsa(fpl__CommonAudioState* commonAudio, fpl__AlsaAudioState* alsaState) {
 	fplAssert(commonAudio != fpl_null && alsaState != fpl_null);
-	const fpl__AlsaAudioApi *alsaApi = &alsaState->api;
+	const fpl__AlsaAudioApi* alsaApi = &alsaState->api;
 
 	if (!fpl__IsAudioDeviceStarted(commonAudio) && fpl__AudioGetDeviceState(commonAudio) != fpl__AudioDeviceState_Starting) {
 		return false;
@@ -18339,7 +18356,7 @@ fpl_internal bool fpl__GetAudioFramesFromClientAlsa(fpl__CommonAudioState *commo
 				return false;
 			}
 			if (mappedFrames > 0) {
-				void *bufferPtr = (uint8_t *)channelAreas[0].addr + ((channelAreas[0].first + (mappedOffset * channelAreas[0].step)) / 8);
+				void* bufferPtr = (uint8_t*)channelAreas[0].addr + ((channelAreas[0].first + (mappedOffset * channelAreas[0].step)) / 8);
 				fpl__ReadAudioFramesFromClient(commonAudio, mappedFrames, bufferPtr);
 			}
 			result = alsaApi->snd_pcm_mmap_commit(alsaState->pcmDevice, mappedOffset, mappedFrames);
@@ -18401,14 +18418,14 @@ fpl_internal bool fpl__GetAudioFramesFromClientAlsa(fpl__CommonAudioState *commo
 	return true;
 }
 
-fpl_internal void fpl__AudioStopMainLoopAlsa(fpl__AlsaAudioState *alsaState) {
+fpl_internal void fpl__AudioStopMainLoopAlsa(fpl__AlsaAudioState* alsaState) {
 	fplAssert(alsaState != fpl_null);
 	alsaState->breakMainLoop = true;
 }
 
-fpl_internal bool fpl__AudioReleaseAlsa(const fpl__CommonAudioState *commonAudio, fpl__AlsaAudioState *alsaState) {
+fpl_internal bool fpl__AudioReleaseAlsa(const fpl__CommonAudioState* commonAudio, fpl__AlsaAudioState* alsaState) {
 	fplAssert(commonAudio != fpl_null && alsaState != fpl_null);
-	fpl__AlsaAudioApi *alsaApi = &alsaState->api;
+	fpl__AlsaAudioApi* alsaApi = &alsaState->api;
 	if (alsaState->pcmDevice != fpl_null) {
 		alsaApi->snd_pcm_close(alsaState->pcmDevice);
 		alsaState->pcmDevice = fpl_null;
@@ -18422,9 +18439,9 @@ fpl_internal bool fpl__AudioReleaseAlsa(const fpl__CommonAudioState *commonAudio
 	return true;
 }
 
-fpl_internal fplAudioResult fpl__AudioStartAlsa(fpl__CommonAudioState *commonAudio, fpl__AlsaAudioState *alsaState) {
+fpl_internal fplAudioResult fpl__AudioStartAlsa(fpl__CommonAudioState* commonAudio, fpl__AlsaAudioState* alsaState) {
 	fplAssert(commonAudio != fpl_null && alsaState != fpl_null);
-	const fpl__AlsaAudioApi *alsaApi = &alsaState->api;
+	const fpl__AlsaAudioApi* alsaApi = &alsaState->api;
 
 	// Prepare the device
 	if (alsaApi->snd_pcm_prepare(alsaState->pcmDevice) < 0) {
@@ -18448,9 +18465,9 @@ fpl_internal fplAudioResult fpl__AudioStartAlsa(fpl__CommonAudioState *commonAud
 	return fplAudioResult_Success;
 }
 
-fpl_internal bool fpl__AudioStopAlsa(fpl__AlsaAudioState *alsaState) {
+fpl_internal bool fpl__AudioStopAlsa(fpl__AlsaAudioState* alsaState) {
 	fplAssert(alsaState != fpl_null);
-	const fpl__AlsaAudioApi *alsaApi = &alsaState->api;
+	const fpl__AlsaAudioApi* alsaApi = &alsaState->api;
 	if (alsaApi->snd_pcm_drop(alsaState->pcmDevice)) {
 		FPL__ERROR(FPL__MODULE_AUDIO_ALSA, "Failed to drop the PCM device '%p'!", alsaState->pcmDevice);
 		return false;
@@ -18494,7 +18511,7 @@ fpl_internal snd_pcm_format_t fpl__MapAudioFormatToAlsaFormat(fplAudioFormatType
 	}
 }
 
-fpl_internal void fpl__AudioRunMainLoopAlsa(fpl__CommonAudioState *commonAudio, fpl__AlsaAudioState *alsaState) {
+fpl_internal void fpl__AudioRunMainLoopAlsa(fpl__CommonAudioState* commonAudio, fpl__AlsaAudioState* alsaState) {
 	fplAssert(alsaState != fpl_null);
 	alsaState->breakMainLoop = false;
 	while (!alsaState->breakMainLoop && fpl__GetAudioFramesFromClientAlsa(commonAudio, alsaState)) {
@@ -18523,7 +18540,7 @@ fpl_internal fplAudioFormatType fpl__MapAlsaFormatToAudioFormat(snd_pcm_format_t
 	}
 }
 
-fpl_internal fplAudioResult fpl__AudioInitAlsa(const fplAudioSettings *audioSettings, fpl__CommonAudioState *commonAudio, fpl__AlsaAudioState *alsaState) {
+fpl_internal fplAudioResult fpl__AudioInitAlsa(const fplAudioSettings* audioSettings, fpl__CommonAudioState* commonAudio, fpl__AlsaAudioState* alsaState) {
 #	define FPL__ALSA_INIT_ERROR(ret, format, ...) do { \
 		FPL__ERROR(FPL__MODULE_AUDIO_ALSA, format, ## __VA_ARGS__); \
 		fpl__AudioReleaseAlsa(commonAudio, alsaState); \
@@ -18531,7 +18548,7 @@ fpl_internal fplAudioResult fpl__AudioInitAlsa(const fplAudioSettings *audioSett
 	} while (0)
 
 	// Load ALSA library
-	fpl__AlsaAudioApi *alsaApi = &alsaState->api;
+	fpl__AlsaAudioApi* alsaApi = &alsaState->api;
 	if (!fpl__LoadAlsaApi(alsaApi)) {
 		FPL__ALSA_INIT_ERROR(fplAudioResult_ApiFailed, "Failed loading ALSA api!");
 	}
@@ -18543,7 +18560,7 @@ fpl_internal fplAudioResult fpl__AudioInitAlsa(const fplAudioSettings *audioSett
 	snd_pcm_stream_t stream = SND_PCM_STREAM_PLAYBACK;
 	int openMode = SND_PCM_NO_AUTO_RESAMPLE | SND_PCM_NO_AUTO_CHANNELS | SND_PCM_NO_AUTO_FORMAT;
 	if (fplGetStringLength(audioSettings->targetDevice.id.alsa) == 0) {
-		const char *defaultDeviceNames[16];
+		const char* defaultDeviceNames[16];
 		int defaultDeviceCount = 0;
 		defaultDeviceNames[defaultDeviceCount++] = "default";
 		if (!audioSettings->targetFormat.preferExclusiveMode) {
@@ -18557,7 +18574,7 @@ fpl_internal fplAudioResult fpl__AudioInitAlsa(const fplAudioSettings *audioSett
 
 		bool isDeviceOpen = false;
 		for (size_t defaultDeviceIndex = 0; defaultDeviceIndex < defaultDeviceCount; ++defaultDeviceIndex) {
-			const char *defaultDeviceName = defaultDeviceNames[defaultDeviceIndex];
+			const char* defaultDeviceName = defaultDeviceNames[defaultDeviceIndex];
 			FPL_LOG_DEBUG("ALSA", "Opening PCM audio device '%s'", defaultDeviceName);
 			if (alsaApi->snd_pcm_open(&alsaState->pcmDevice, defaultDeviceName, stream, openMode) == 0) {
 				FPL_LOG_DEBUG("ALSA", "Successfully opened PCM audio device '%s'", defaultDeviceName);
@@ -18572,7 +18589,7 @@ fpl_internal fplAudioResult fpl__AudioInitAlsa(const fplAudioSettings *audioSett
 			FPL__ALSA_INIT_ERROR(fplAudioResult_NoDeviceFound, "No PCM audio device found!");
 		}
 	} else {
-		const char *forcedDeviceId = audioSettings->targetDevice.id.alsa;
+		const char* forcedDeviceId = audioSettings->targetDevice.id.alsa;
 		// @TODO(final/ALSA): Do we want to allow device ids to be :%d,%d so we can probe "dmix" and "hw" ?
 		if (alsaApi->snd_pcm_open(&alsaState->pcmDevice, forcedDeviceId, stream, openMode) < 0) {
 			FPL__ALSA_INIT_ERROR(fplAudioResult_NoDeviceFound, "PCM audio device by id '%s' not found!", forcedDeviceId);
@@ -18588,7 +18605,7 @@ fpl_internal fplAudioResult fpl__AudioInitAlsa(const fplAudioSettings *audioSett
 
 	FPL_LOG_DEBUG("ALSA", "Get hardware parameters from device '%s'", deviceName);
 	size_t hardwareParamsSize = alsaApi->snd_pcm_hw_params_sizeof();
-	snd_pcm_hw_params_t *hardwareParams = (snd_pcm_hw_params_t *)fplStackAllocate(hardwareParamsSize);
+	snd_pcm_hw_params_t* hardwareParams = (snd_pcm_hw_params_t*)fplStackAllocate(hardwareParamsSize);
 	fplMemoryClear(hardwareParams, hardwareParamsSize);
 	if (alsaApi->snd_pcm_hw_params_any(alsaState->pcmDevice, hardwareParams) < 0) {
 		FPL__ALSA_INIT_ERROR(fplAudioResult_Failed, "Failed getting hardware parameters from device '%s'!", deviceName);
@@ -18621,7 +18638,7 @@ fpl_internal fplAudioResult fpl__AudioInitAlsa(const fplAudioSettings *audioSett
 
 	// Get all supported formats
 	size_t formatMaskSize = alsaApi->snd_pcm_format_mask_sizeof();
-	snd_pcm_format_mask_t *formatMask = (snd_pcm_format_mask_t *)fplStackAllocate(formatMaskSize);
+	snd_pcm_format_mask_t* formatMask = (snd_pcm_format_mask_t*)fplStackAllocate(formatMaskSize);
 	fplMemoryClear(formatMask, formatMaskSize);
 	alsaApi->snd_pcm_hw_params_get_format_mask(hardwareParams, formatMask);
 
@@ -18719,7 +18736,7 @@ fpl_internal fplAudioResult fpl__AudioInitAlsa(const fplAudioSettings *audioSett
 	// Software parameters
 	//
 	size_t softwareParamsSize = alsaApi->snd_pcm_sw_params_sizeof();
-	snd_pcm_sw_params_t *softwareParams = (snd_pcm_sw_params_t *)fplStackAllocate(softwareParamsSize);
+	snd_pcm_sw_params_t* softwareParams = (snd_pcm_sw_params_t*)fplStackAllocate(softwareParamsSize);
 	fplMemoryClear(softwareParams, softwareParamsSize);
 	if (alsaApi->snd_pcm_sw_params_current(alsaState->pcmDevice, softwareParams) < 0) {
 		FPL__ALSA_INIT_ERROR(fplAudioResult_Failed, "Failed to get software parameters for device '%s'!", deviceName);
@@ -18754,12 +18771,12 @@ fpl_internal fplAudioResult fpl__AudioInitAlsa(const fplAudioSettings *audioSett
 	return fplAudioResult_Success;
 }
 
-fpl_internal uint32_t fpl__GetAudioDevicesAlsa(fpl__AlsaAudioState *alsaState, fplAudioDeviceInfo *deviceInfos, uint32_t maxDeviceCount) {
+fpl_internal uint32_t fpl__GetAudioDevicesAlsa(fpl__AlsaAudioState* alsaState, fplAudioDeviceInfo* deviceInfos, uint32_t maxDeviceCount) {
 	fplAssert((alsaState != fpl_null) && (deviceInfos != fpl_null));
 	fplAssert(maxDeviceCount > 0);
-	const fpl__AlsaAudioApi *alsaApi = &alsaState->api;
+	const fpl__AlsaAudioApi* alsaApi = &alsaState->api;
 	char** ppDeviceHints;
-	if (alsaApi->snd_device_name_hint(-1, "pcm", (void ***)&ppDeviceHints) < 0) {
+	if (alsaApi->snd_device_name_hint(-1, "pcm", (void***)&ppDeviceHints) < 0) {
 		return 0;
 	}
 	uint32_t capacityOverflow = 0;
@@ -18774,7 +18791,7 @@ fpl_internal uint32_t fpl__GetAudioDevicesAlsa(fpl__AlsaAudioState *alsaState, f
 			if (result >= maxDeviceCount) {
 				++capacityOverflow;
 			} else {
-				fplAudioDeviceInfo *outDeviceInfo = deviceInfos + result++;
+				fplAudioDeviceInfo* outDeviceInfo = deviceInfos + result++;
 				fplClearStruct(outDeviceInfo);
 				fplCopyString(name, outDeviceInfo->id.alsa, fplArrayCount(outDeviceInfo->id.alsa));
 				char* desc = alsaApi->snd_device_name_get_hint(*ppNextDeviceHint, "DESC");
@@ -18820,7 +18837,7 @@ typedef struct fpl__AudioEvent {
 	volatile int32_t signaled;
 } fpl__AudioEvent;
 
-fpl_internal bool fpl__InitAudioEvent(fpl__AudioEvent *ev) {
+fpl_internal bool fpl__InitAudioEvent(fpl__AudioEvent* ev) {
 	fplClearStruct(ev);
 	if (!fplMutexInit(&ev->mutex)) {
 		return(false);
@@ -18832,12 +18849,12 @@ fpl_internal bool fpl__InitAudioEvent(fpl__AudioEvent *ev) {
 	return(true);
 }
 
-fpl_internal void fpl__ReleaseAudioEvent(fpl__AudioEvent *ev) {
+fpl_internal void fpl__ReleaseAudioEvent(fpl__AudioEvent* ev) {
 	fplConditionDestroy(&ev->cond);
 	fplMutexDestroy(&ev->mutex);
 }
 
-fpl_internal void fpl__WaitForAudioEvent(fpl__AudioEvent *ev) {
+fpl_internal void fpl__WaitForAudioEvent(fpl__AudioEvent* ev) {
 	fplMutexLock(&ev->mutex);
 	while (!ev->signaled) {
 		fplConditionWait(&ev->cond, &ev->mutex, FPL_TIMEOUT_INFINITE);
@@ -18846,7 +18863,7 @@ fpl_internal void fpl__WaitForAudioEvent(fpl__AudioEvent *ev) {
 	fplMutexUnlock(&ev->mutex);
 }
 
-fpl_internal void fpl__SetAudioEvent(fpl__AudioEvent *ev) {
+fpl_internal void fpl__SetAudioEvent(fpl__AudioEvent* ev) {
 	fplMutexLock(&ev->mutex);
 	ev->signaled = 1;
 	fplConditionSignal(&ev->cond);
@@ -18857,7 +18874,7 @@ typedef struct fpl__AudioState {
 	fpl__CommonAudioState common;
 
 	fplMutexHandle lock;
-	fplThreadHandle *workerThread;
+	fplThreadHandle* workerThread;
 	fpl__AudioEvent startEvent;
 	fpl__AudioEvent stopEvent;
 	fpl__AudioEvent wakeupEvent;
@@ -18876,16 +18893,16 @@ typedef struct fpl__AudioState {
 	};
 } fpl__AudioState;
 
-fpl_internal fpl__AudioState *fpl__GetAudioState(fpl__PlatformAppState *appState) {
+fpl_internal fpl__AudioState* fpl__GetAudioState(fpl__PlatformAppState* appState) {
 	fplAssert(appState != fpl_null);
-	fpl__AudioState *result = fpl_null;
+	fpl__AudioState* result = fpl_null;
 	if (appState->audio.mem != fpl_null) {
-		result = (fpl__AudioState *)appState->audio.mem;
+		result = (fpl__AudioState*)appState->audio.mem;
 	}
 	return(result);
 }
 
-fpl_internal void fpl__StopAudioDeviceMainLoop(fpl__AudioState *audioState) {
+fpl_internal void fpl__StopAudioDeviceMainLoop(fpl__AudioState* audioState) {
 	fplAssert(audioState->activeDriver > fplAudioDriverType_Auto);
 	switch (audioState->activeDriver) {
 
@@ -18908,7 +18925,7 @@ fpl_internal void fpl__StopAudioDeviceMainLoop(fpl__AudioState *audioState) {
 	}
 }
 
-fpl_internal bool fpl__ReleaseAudioDevice(fpl__AudioState *audioState) {
+fpl_internal bool fpl__ReleaseAudioDevice(fpl__AudioState* audioState) {
 	fplAssert(audioState->activeDriver > fplAudioDriverType_Auto);
 	bool result = false;
 	switch (audioState->activeDriver) {
@@ -18933,7 +18950,7 @@ fpl_internal bool fpl__ReleaseAudioDevice(fpl__AudioState *audioState) {
 	return (result);
 }
 
-fpl_internal bool fpl__StopAudioDevice(fpl__AudioState *audioState) {
+fpl_internal bool fpl__StopAudioDevice(fpl__AudioState* audioState) {
 	fplAssert(audioState->activeDriver > fplAudioDriverType_Auto);
 	bool result = false;
 	switch (audioState->activeDriver) {
@@ -18958,7 +18975,7 @@ fpl_internal bool fpl__StopAudioDevice(fpl__AudioState *audioState) {
 	return (result);
 }
 
-fpl_internal fplAudioResult fpl__StartAudioDevice(fpl__AudioState *audioState) {
+fpl_internal fplAudioResult fpl__StartAudioDevice(fpl__AudioState* audioState) {
 	fplAssert(audioState->activeDriver > fplAudioDriverType_Auto);
 	fplAudioResult result = fplAudioResult_Failed;
 	switch (audioState->activeDriver) {
@@ -18983,7 +19000,7 @@ fpl_internal fplAudioResult fpl__StartAudioDevice(fpl__AudioState *audioState) {
 	return (result);
 }
 
-fpl_internal void fpl__RunAudioDeviceMainLoop(fpl__AudioState *audioState) {
+fpl_internal void fpl__RunAudioDeviceMainLoop(fpl__AudioState* audioState) {
 	fplAssert(audioState->activeDriver > fplAudioDriverType_Auto);
 	switch (audioState->activeDriver) {
 
@@ -19016,16 +19033,16 @@ fpl_internal bool fpl__IsAudioDriverAsync(fplAudioDriverType audioDriver) {
 	}
 }
 
-fpl_internal void fpl__AudioSetDeviceState(fpl__CommonAudioState *audioState, fpl__AudioDeviceState newState) {
-	fplAtomicStoreU32((volatile uint32_t *)&audioState->state, (uint32_t)newState);
+fpl_internal void fpl__AudioSetDeviceState(fpl__CommonAudioState* audioState, fpl__AudioDeviceState newState) {
+	fplAtomicStoreU32((volatile uint32_t*)&audioState->state, (uint32_t)newState);
 }
 
-fpl_internal fpl__AudioDeviceState fpl__AudioGetDeviceState(fpl__CommonAudioState *audioState) {
-	fpl__AudioDeviceState result = (fpl__AudioDeviceState)fplAtomicLoadU32((volatile uint32_t *)&audioState->state);
+fpl_internal fpl__AudioDeviceState fpl__AudioGetDeviceState(fpl__CommonAudioState* audioState) {
+	fpl__AudioDeviceState result = (fpl__AudioDeviceState)fplAtomicLoadU32((volatile uint32_t*)&audioState->state);
 	return(result);
 }
 
-fpl_internal bool fpl__IsAudioDeviceInitialized(fpl__CommonAudioState *audioState) {
+fpl_internal bool fpl__IsAudioDeviceInitialized(fpl__CommonAudioState* audioState) {
 	if (audioState == fpl_null) {
 		return false;
 	}
@@ -19033,7 +19050,7 @@ fpl_internal bool fpl__IsAudioDeviceInitialized(fpl__CommonAudioState *audioStat
 	return(state != fpl__AudioDeviceState_Uninitialized);
 }
 
-fpl_internal bool fpl__IsAudioDeviceStarted(fpl__CommonAudioState *audioState) {
+fpl_internal bool fpl__IsAudioDeviceStarted(fpl__CommonAudioState* audioState) {
 	if (audioState == fpl_null) {
 		return false;
 	}
@@ -19041,14 +19058,14 @@ fpl_internal bool fpl__IsAudioDeviceStarted(fpl__CommonAudioState *audioState) {
 	return(state == fpl__AudioDeviceState_Started);
 }
 
-fpl_internal void fpl__AudioWorkerThread(const fplThreadHandle *thread, void *data) {
+fpl_internal void fpl__AudioWorkerThread(const fplThreadHandle* thread, void* data) {
 #if defined(FPL_PLATFORM_WINDOWS)
 	fplAssert(fpl__global__AppState != fpl_null);
-	const fpl__Win32Api *wapi = &fpl__global__AppState->win32.winApi;
+	const fpl__Win32Api* wapi = &fpl__global__AppState->win32.winApi;
 #endif
 
-	fpl__AudioState *audioState = (fpl__AudioState *)data;
-	fpl__CommonAudioState *commonAudioState = &audioState->common;
+	fpl__AudioState* audioState = (fpl__AudioState*)data;
+	fpl__CommonAudioState* commonAudioState = &audioState->common;
 	fplAssert(audioState != fpl_null);
 	fplAssert(audioState->activeDriver != fplAudioDriverType_None);
 
@@ -19101,15 +19118,15 @@ fpl_internal void fpl__AudioWorkerThread(const fplThreadHandle *thread, void *da
 #endif
 }
 
-fpl_internal void fpl__ReleaseAudio(fpl__AudioState *audioState) {
+fpl_internal void fpl__ReleaseAudio(fpl__AudioState* audioState) {
 	fplAssert(audioState != fpl_null);
 
 #if defined(FPL_PLATFORM_WINDOWS)
 	fplAssert(fpl__global__AppState != fpl_null);
-	const fpl__Win32Api *wapi = &fpl__global__AppState->win32.winApi;
+	const fpl__Win32Api* wapi = &fpl__global__AppState->win32.winApi;
 #endif
 
-	fpl__CommonAudioState *commonAudioState = &audioState->common;
+	fpl__CommonAudioState* commonAudioState = &audioState->common;
 
 	if (fpl__IsAudioDeviceInitialized(commonAudioState)) {
 
@@ -19147,12 +19164,12 @@ fpl_internal void fpl__ReleaseAudio(fpl__AudioState *audioState) {
 #endif
 }
 
-fpl_internal fplAudioResult fpl__InitAudio(const fplAudioSettings *audioSettings, fpl__AudioState *audioState) {
+fpl_internal fplAudioResult fpl__InitAudio(const fplAudioSettings* audioSettings, fpl__AudioState* audioState) {
 	fplAssert(audioState != fpl_null);
 
 #if defined(FPL_PLATFORM_WINDOWS)
 	fplAssert(fpl__global__AppState != fpl_null);
-	const fpl__Win32Api *wapi = &fpl__global__AppState->win32.winApi;
+	const fpl__Win32Api* wapi = &fpl__global__AppState->win32.winApi;
 #endif
 
 	if (audioState->activeDriver != fplAudioDriverType_None) {
@@ -19322,16 +19339,16 @@ typedef struct fpl__VideoState {
 #	endif
 } fpl__VideoState;
 
-fpl_internal fpl__VideoState *fpl__GetVideoState(fpl__PlatformAppState *appState) {
+fpl_internal fpl__VideoState* fpl__GetVideoState(fpl__PlatformAppState* appState) {
 	fplAssert(appState != fpl_null);
-	fpl__VideoState *result = fpl_null;
+	fpl__VideoState* result = fpl_null;
 	if (appState->video.mem != fpl_null) {
-		result = (fpl__VideoState *)appState->video.mem;
+		result = (fpl__VideoState*)appState->video.mem;
 	}
 	return(result);
 }
 
-fpl_internal void fpl__ShutdownVideo(fpl__PlatformAppState *appState, fpl__VideoState *videoState) {
+fpl_internal void fpl__ShutdownVideo(fpl__PlatformAppState* appState, fpl__VideoState* videoState) {
 	fplAssert(appState != fpl_null);
 	if (videoState != fpl_null) {
 		switch (videoState->activeDriver) {
@@ -19363,7 +19380,7 @@ fpl_internal void fpl__ShutdownVideo(fpl__PlatformAppState *appState, fpl__Video
 		}
 
 #	if defined(FPL__ENABLE_VIDEO_SOFTWARE)
-		fplVideoBackBuffer *backbuffer = &videoState->softwareBackbuffer;
+		fplVideoBackBuffer* backbuffer = &videoState->softwareBackbuffer;
 		if (backbuffer->pixels != fpl_null) {
 			fpl__ReleaseDynamicMemory(backbuffer->pixels);
 		}
@@ -19372,7 +19389,7 @@ fpl_internal void fpl__ShutdownVideo(fpl__PlatformAppState *appState, fpl__Video
 	}
 }
 
-fpl_internal void fpl__ReleaseVideoState(fpl__PlatformAppState *appState, fpl__VideoState *videoState) {
+fpl_internal void fpl__ReleaseVideoState(fpl__PlatformAppState* appState, fpl__VideoState* videoState) {
 	switch (videoState->activeDriver) {
 #	if defined(FPL__ENABLE_VIDEO_OPENGL)
 		case fplVideoDriverType_OpenGL:
@@ -19399,7 +19416,7 @@ fpl_internal void fpl__ReleaseVideoState(fpl__PlatformAppState *appState, fpl__V
 	fplClearStruct(videoState);
 }
 
-fpl_internal bool fpl__LoadVideoState(const fplVideoDriverType driver, fpl__VideoState *videoState) {
+fpl_internal bool fpl__LoadVideoState(const fplVideoDriverType driver, fpl__VideoState* videoState) {
 	bool result = true;
 
 	switch (driver) {
@@ -19420,7 +19437,7 @@ fpl_internal bool fpl__LoadVideoState(const fplVideoDriverType driver, fpl__Vide
 	return(result);
 }
 
-fpl_internal bool fpl__InitVideo(const fplVideoDriverType driver, const fplVideoSettings *videoSettings, const uint32_t windowWidth, const uint32_t windowHeight, fpl__PlatformAppState *appState, fpl__VideoState *videoState) {
+fpl_internal bool fpl__InitVideo(const fplVideoDriverType driver, const fplVideoSettings* videoSettings, const uint32_t windowWidth, const uint32_t windowHeight, fpl__PlatformAppState* appState, fpl__VideoState* videoState) {
 	// @NOTE(final): Video drivers are platform independent, so we cannot have to same system as audio.
 	fplAssert(appState != fpl_null);
 	fplAssert(videoState != fpl_null);
@@ -19430,13 +19447,13 @@ fpl_internal bool fpl__InitVideo(const fplVideoDriverType driver, const fplVideo
 	// Allocate backbuffer context if needed
 #	if defined(FPL__ENABLE_VIDEO_SOFTWARE)
 	if (driver == fplVideoDriverType_Software) {
-		fplVideoBackBuffer *backbuffer = &videoState->softwareBackbuffer;
+		fplVideoBackBuffer* backbuffer = &videoState->softwareBackbuffer;
 		backbuffer->width = windowWidth;
 		backbuffer->height = windowHeight;
 		backbuffer->pixelStride = sizeof(uint32_t);
 		backbuffer->lineWidth = backbuffer->width * backbuffer->pixelStride;
 		size_t size = backbuffer->lineWidth * backbuffer->height;
-		backbuffer->pixels = (uint32_t *)fpl__AllocateDynamicMemory(size, 4);
+		backbuffer->pixels = (uint32_t*)fpl__AllocateDynamicMemory(size, 4);
 		if (backbuffer->pixels == fpl_null) {
 			FPL__ERROR(FPL__MODULE_VIDEO_SOFTWARE, "Failed allocating video software backbuffer of size %xu bytes", size);
 			fpl__ShutdownVideo(appState, videoState);
@@ -19445,7 +19462,7 @@ fpl_internal bool fpl__InitVideo(const fplVideoDriverType driver, const fplVideo
 
 		// Clear to black by default
 		// @NOTE(final): Bitmap is top-down, 0xAABBGGRR
-		uint32_t *p = backbuffer->pixels;
+		uint32_t* p = backbuffer->pixels;
 		for (uint32_t y = 0; y < backbuffer->height; ++y) {
 			uint32_t color = 0xFF000000;
 			for (uint32_t x = 0; x < backbuffer->width; ++x) {
@@ -19509,7 +19526,7 @@ fpl_internal FPL__FUNC_PRE_SETUP_WINDOW(fpl__PreSetupWindowDefault) {
 
 #	if defined(FPL__ENABLE_VIDEO)
 	if (initFlags & fplInitFlags_Video) {
-		fpl__VideoState *videoState = fpl__GetVideoState(appState);
+		fpl__VideoState* videoState = fpl__GetVideoState(appState);
 		switch (initSettings->video.driver) {
 #		if defined(FPL__ENABLE_VIDEO_OPENGL)
 			case fplVideoDriverType_OpenGL:
@@ -19573,7 +19590,7 @@ fpl_internal FPL__FUNC_POST_SETUP_WINDOW(fpl__PostSetupWindowDefault) {
 	return false;
 }
 
-fpl_internal bool fpl__InitWindow(const fplSettings *initSettings, fplWindowSettings *currentWindowSettings, fpl__PlatformAppState *appState, const fpl__SetupWindowCallbacks *setupCallbacks) {
+fpl_internal bool fpl__InitWindow(const fplSettings* initSettings, fplWindowSettings* currentWindowSettings, fpl__PlatformAppState* appState, const fpl__SetupWindowCallbacks* setupCallbacks) {
 	bool result = false;
 	if (appState != fpl_null) {
 #	if defined(FPL_PLATFORM_WINDOWS)
@@ -19585,7 +19602,7 @@ fpl_internal bool fpl__InitWindow(const fplSettings *initSettings, fplWindowSett
 	return (result);
 }
 
-fpl_internal void fpl__ReleaseWindow(const fpl__PlatformInitState *initState, fpl__PlatformAppState *appState) {
+fpl_internal void fpl__ReleaseWindow(const fpl__PlatformInitState* initState, fpl__PlatformAppState* appState) {
 	if (appState != fpl_null) {
 #	if defined(FPL_PLATFORM_WINDOWS)
 		fpl__Win32ReleaseWindow(&initState->win32, &appState->win32, &appState->window.win32);
@@ -19620,7 +19637,7 @@ fpl_globalvar uint32_t fpl__globalAudioFormatSampleSizeTable[] = {
 };
 fplStaticAssert(fplArrayCount(fpl__globalAudioFormatSampleSizeTable) == FPL__AUDIOFORMATTYPE_COUNT);
 
-fpl_globalvar const char *fpl__globalAudioFormatNameTable[] = {
+fpl_globalvar const char* fpl__globalAudioFormatNameTable[] = {
 	"None",  // 0 = No audio format
 	"U8",	// = Unsigned 8-bit integer PCM
 	"S16",	// = Signed 16-bit integer PCM
@@ -19638,14 +19655,14 @@ fpl_common_api uint32_t fplGetAudioSampleSizeInBytes(const fplAudioFormatType fo
 	return(result);
 }
 
-fpl_common_api const char *fplGetAudioFormatString(const fplAudioFormatType format) {
+fpl_common_api const char* fplGetAudioFormatString(const fplAudioFormatType format) {
 	uint32_t index = FPL__ENUM_VALUE_TO_ARRAY_INDEX(format, FPL_FIRST_AUDIOFORMATTYPE, FPL_LAST_AUDIOFORMATTYPE);
-	const char *result = fpl__globalAudioFormatNameTable[index];
+	const char* result = fpl__globalAudioFormatNameTable[index];
 	return(result);
 }
 
 #define FPL__AUDIODRIVERTYPE_COUNT FPL__ENUM_COUNT(FPL_FIRST_AUDIODRIVERTYPE, FPL_LAST_AUDIODRIVERTYPE)
-fpl_globalvar const char *fpl__globalAudioDriverStringTable[] = {
+fpl_globalvar const char* fpl__globalAudioDriverStringTable[] = {
 	"None", // No audio driver
 	"Auto", // Automatic driver detection
 	"DirectSound", // DirectSound
@@ -19653,9 +19670,9 @@ fpl_globalvar const char *fpl__globalAudioDriverStringTable[] = {
 };
 fplStaticAssert(fplArrayCount(fpl__globalAudioDriverStringTable) == FPL__AUDIODRIVERTYPE_COUNT);
 
-fpl_common_api const char *fplGetAudioDriverString(fplAudioDriverType driver) {
+fpl_common_api const char* fplGetAudioDriverString(fplAudioDriverType driver) {
 	uint32_t index = FPL__ENUM_VALUE_TO_ARRAY_INDEX(driver, FPL_FIRST_AUDIODRIVERTYPE, FPL_LAST_AUDIODRIVERTYPE);
-	const char *result = fpl__globalAudioDriverStringTable[index];
+	const char* result = fpl__globalAudioDriverStringTable[index];
 	return(result);
 }
 
@@ -19673,7 +19690,7 @@ fpl_common_api uint32_t fplGetAudioBufferSizeInBytes(const fplAudioFormatType fo
 	return(result);
 }
 
-fpl_common_api void fplConvertAudioTargetFormatToDeviceFormat(const fplAudioTargetFormat *inFormat, fplAudioDeviceFormat *outFormat) {
+fpl_common_api void fplConvertAudioTargetFormatToDeviceFormat(const fplAudioTargetFormat* inFormat, fplAudioDeviceFormat* outFormat) {
 	FPL__CheckArgumentNullNoRet(inFormat);
 	FPL__CheckArgumentNullNoRet(outFormat);
 	fplClearStruct(outFormat);
@@ -19687,12 +19704,12 @@ fpl_common_api void fplConvertAudioTargetFormatToDeviceFormat(const fplAudioTarg
 
 fpl_common_api fplAudioResult fplStopAudio() {
 	FPL__CheckPlatform(fplAudioResult_PlatformNotInitialized);
-	fpl__AudioState *audioState = fpl__GetAudioState(fpl__global__AppState);
+	fpl__AudioState* audioState = fpl__GetAudioState(fpl__global__AppState);
 	if (audioState == fpl_null) {
 		return fplAudioResult_Failed;
 	}
 
-	fpl__CommonAudioState *commonAudioState = &audioState->common;
+	fpl__CommonAudioState* commonAudioState = &audioState->common;
 
 	if (!fpl__IsAudioDeviceInitialized(commonAudioState)) {
 		return fplAudioResult_DeviceNotInitialized;
@@ -19746,12 +19763,12 @@ fpl_common_api fplAudioResult fplStopAudio() {
 
 fpl_common_api fplAudioResult fplPlayAudio() {
 	FPL__CheckPlatform(fplAudioResult_PlatformNotInitialized);
-	fpl__AudioState *audioState = fpl__GetAudioState(fpl__global__AppState);
+	fpl__AudioState* audioState = fpl__GetAudioState(fpl__global__AppState);
 	if (audioState == fpl_null) {
 		return fplAudioResult_Failed;
 	}
 
-	fpl__CommonAudioState *commonAudioState = &audioState->common;
+	fpl__CommonAudioState* commonAudioState = &audioState->common;
 
 	if (!fpl__IsAudioDeviceInitialized(commonAudioState)) {
 		return fplAudioResult_DeviceNotInitialized;
@@ -19801,10 +19818,10 @@ fpl_common_api fplAudioResult fplPlayAudio() {
 	return result;
 }
 
-fpl_common_api bool fplGetAudioHardwareFormat(fplAudioDeviceFormat *outFormat) {
+fpl_common_api bool fplGetAudioHardwareFormat(fplAudioDeviceFormat* outFormat) {
 	FPL__CheckArgumentNull(outFormat, false);
 	FPL__CheckPlatform(false);
-	fpl__AudioState *audioState = fpl__GetAudioState(fpl__global__AppState);
+	fpl__AudioState* audioState = fpl__GetAudioState(fpl__global__AppState);
 	if (audioState != fpl_null) {
 		fplClearStruct(outFormat);
 		*outFormat = audioState->common.internalFormat;
@@ -19813,9 +19830,9 @@ fpl_common_api bool fplGetAudioHardwareFormat(fplAudioDeviceFormat *outFormat) {
 	return false;
 }
 
-fpl_common_api bool fplSetAudioClientReadCallback(fpl_audio_client_read_callback *newCallback, void *userData) {
+fpl_common_api bool fplSetAudioClientReadCallback(fpl_audio_client_read_callback* newCallback, void* userData) {
 	FPL__CheckPlatform(false);
-	fpl__AudioState *audioState = fpl__GetAudioState(fpl__global__AppState);
+	fpl__AudioState* audioState = fpl__GetAudioState(fpl__global__AppState);
 	if ((audioState != fpl_null) && (audioState->activeDriver > fplAudioDriverType_Auto)) {
 		if (fpl__AudioGetDeviceState(&audioState->common) == fpl__AudioDeviceState_Stopped) {
 			audioState->common.clientReadCallback = newCallback;
@@ -19826,11 +19843,11 @@ fpl_common_api bool fplSetAudioClientReadCallback(fpl_audio_client_read_callback
 	return false;
 }
 
-fpl_common_api uint32_t fplGetAudioDevices(fplAudioDeviceInfo *devices, uint32_t maxDeviceCount) {
+fpl_common_api uint32_t fplGetAudioDevices(fplAudioDeviceInfo* devices, uint32_t maxDeviceCount) {
 	FPL__CheckArgumentNull(devices, 0);
 	FPL__CheckArgumentZero(maxDeviceCount, 0);
 	FPL__CheckPlatform(0);
-	fpl__AudioState *audioState = fpl__GetAudioState(fpl__global__AppState);
+	fpl__AudioState* audioState = fpl__GetAudioState(fpl__global__AppState);
 	if (audioState == fpl_null) {
 		return 0;
 	}
@@ -19870,25 +19887,25 @@ fpl_common_api uint32_t fplGetAudioDevices(fplAudioDeviceInfo *devices, uint32_t
 // %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 #if defined(FPL__ENABLE_VIDEO)
 #define FPL__VIDEODRIVERTYPE_COUNT FPL__ENUM_COUNT(FPL_FIRST_VIDEODRIVERTYPE, FPL_LAST_VIDEODRIVERTYPE)
-fpl_globalvar const char *fpl__globalVideoDriverTypeNameTable[] = {
+fpl_globalvar const char* fpl__globalVideoDriverTypeNameTable[] = {
 	"None", // fplVideoDriverType_None
 	"OpenGL", // fplVideoDriverType_OpenGL
 	"Software", // fplVideoDriverType_Software
 };
 fplStaticAssert(fplArrayCount(fpl__globalVideoDriverTypeNameTable) == FPL__VIDEODRIVERTYPE_COUNT);
 
-fpl_common_api const char *fplGetVideoDriverString(fplVideoDriverType driver) {
+fpl_common_api const char* fplGetVideoDriverString(fplVideoDriverType driver) {
 	uint32_t index = FPL__ENUM_VALUE_TO_ARRAY_INDEX(driver, FPL_FIRST_VIDEODRIVERTYPE, FPL_LAST_VIDEODRIVERTYPE);
-	const char *result = fpl__globalVideoDriverTypeNameTable[index];
+	const char* result = fpl__globalVideoDriverTypeNameTable[index];
 	return(result);
 }
 
-fpl_common_api fplVideoBackBuffer *fplGetVideoBackBuffer() {
+fpl_common_api fplVideoBackBuffer* fplGetVideoBackBuffer() {
 	FPL__CheckPlatform(fpl_null);
-	fpl__PlatformAppState *appState = fpl__global__AppState;
-	fplVideoBackBuffer *result = fpl_null;
+	fpl__PlatformAppState* appState = fpl__global__AppState;
+	fplVideoBackBuffer* result = fpl_null;
 	if (appState->video.mem != fpl_null) {
-		fpl__VideoState *videoState = fpl__GetVideoState(appState);
+		fpl__VideoState* videoState = fpl__GetVideoState(appState);
 #	if defined(FPL__ENABLE_VIDEO_SOFTWARE)
 		if (appState->currentSettings.video.driver == fplVideoDriverType_Software) {
 			result = &videoState->softwareBackbuffer;
@@ -19900,15 +19917,15 @@ fpl_common_api fplVideoBackBuffer *fplGetVideoBackBuffer() {
 
 fpl_common_api fplVideoDriverType fplGetVideoDriver() {
 	FPL__CheckPlatform(fplVideoDriverType_None);
-	const fpl__PlatformAppState *appState = fpl__global__AppState;
+	const fpl__PlatformAppState* appState = fpl__global__AppState;
 	fplVideoDriverType result = appState->currentSettings.video.driver;
 	return(result);
 }
 
 fpl_common_api bool fplResizeVideoBackBuffer(const uint32_t width, const uint32_t height) {
 	FPL__CheckPlatform(false);
-	fpl__PlatformAppState *appState = fpl__global__AppState;
-	fpl__VideoState *videoState = fpl__GetVideoState(appState);
+	fpl__PlatformAppState* appState = fpl__global__AppState;
+	fpl__VideoState* videoState = fpl__GetVideoState(appState);
 	bool result = false;
 	if (videoState != fpl_null) {
 #	if defined(FPL__ENABLE_VIDEO_SOFTWARE)
@@ -19923,19 +19940,19 @@ fpl_common_api bool fplResizeVideoBackBuffer(const uint32_t width, const uint32_
 
 fpl_common_api void fplVideoFlip() {
 	FPL__CheckPlatformNoRet();
-	fpl__PlatformAppState *appState = fpl__global__AppState;
-	const fpl__VideoState *videoState = fpl__GetVideoState(appState);
+	fpl__PlatformAppState* appState = fpl__global__AppState;
+	const fpl__VideoState* videoState = fpl__GetVideoState(appState);
 	if (videoState != fpl_null) {
 #	if defined(FPL_PLATFORM_WINDOWS)
-		const fpl__Win32AppState *win32AppState = &appState->win32;
-		const fpl__Win32WindowState *win32WindowState = &appState->window.win32;
-		const fpl__Win32Api *wapi = &win32AppState->winApi;
+		const fpl__Win32AppState* win32AppState = &appState->win32;
+		const fpl__Win32WindowState* win32WindowState = &appState->window.win32;
+		const fpl__Win32Api* wapi = &win32AppState->winApi;
 		switch (appState->currentSettings.video.driver) {
 #		if defined(FPL__ENABLE_VIDEO_SOFTWARE)
 			case fplVideoDriverType_Software:
 			{
-				const fpl__Win32VideoSoftwareState *software = &videoState->win32.software;
-				const fplVideoBackBuffer *backbuffer = &videoState->softwareBackbuffer;
+				const fpl__Win32VideoSoftwareState* software = &videoState->win32.software;
+				const fplVideoBackBuffer* backbuffer = &videoState->softwareBackbuffer;
 				fplWindowSize area;
 				if (fplGetWindowSize(&area)) {
 					int32_t targetX = 0;
@@ -19967,12 +19984,12 @@ fpl_common_api void fplVideoFlip() {
 				break;
 		}
 #	elif defined(FPL_SUBPLATFORM_X11)
-		const fpl__X11WindowState *x11WinState = &appState->window.x11;
+		const fpl__X11WindowState* x11WinState = &appState->window.x11;
 		switch (appState->currentSettings.video.driver) {
 #		if defined(FPL__ENABLE_VIDEO_OPENGL)
 			case fplVideoDriverType_OpenGL:
 			{
-				const fpl__X11VideoOpenGLApi *glApi = &videoState->x11.opengl.api;
+				const fpl__X11VideoOpenGLApi* glApi = &videoState->x11.opengl.api;
 				glApi->glXSwapBuffers(x11WinState->display, x11WinState->window);
 			} break;
 #		endif
@@ -19980,9 +19997,9 @@ fpl_common_api void fplVideoFlip() {
 #		if defined(FPL__ENABLE_VIDEO_SOFTWARE)
 			case fplVideoDriverType_Software:
 			{
-				const fpl__X11Api *x11Api = &appState->x11.api;
-				const fpl__X11VideoSoftwareState *softwareState = &videoState->x11.software;
-				const fplVideoBackBuffer *backbuffer = &videoState->softwareBackbuffer;
+				const fpl__X11Api* x11Api = &appState->x11.api;
+				const fpl__X11VideoSoftwareState* softwareState = &videoState->x11.software;
+				const fplVideoBackBuffer* backbuffer = &videoState->softwareBackbuffer;
 				x11Api->XPutImage(x11WinState->display, x11WinState->window, softwareState->graphicsContext, softwareState->buffer, 0, 0, 0, 0, backbuffer->width, backbuffer->height);
 				x11Api->XSync(x11WinState->display, False);
 			} break;
@@ -20004,7 +20021,7 @@ fpl_common_api void fplVideoFlip() {
 #if !defined(FPL_SYSTEM_INIT_DEFINED)
 #define FPL_SYSTEM_INIT_DEFINED
 
-fpl_internal void fpl__ReleasePlatformStates(fpl__PlatformInitState *initState, fpl__PlatformAppState *appState) {
+fpl_internal void fpl__ReleasePlatformStates(fpl__PlatformInitState* initState, fpl__PlatformAppState* appState) {
 	fplAssert(initState != fpl_null);
 
 	// Release audio
@@ -20012,9 +20029,9 @@ fpl_internal void fpl__ReleasePlatformStates(fpl__PlatformInitState *initState, 
 	{
 		// Auto-Stop audio if enabled
 		if (appState->currentSettings.audio.stopAuto) {
-			fpl__AudioState *audioState = fpl__GetAudioState(fpl__global__AppState);
+			fpl__AudioState* audioState = fpl__GetAudioState(fpl__global__AppState);
 			if (audioState != fpl_null) {
-				fpl__CommonAudioState *commonAudioState = &audioState->common;
+				fpl__CommonAudioState* commonAudioState = &audioState->common;
 				fpl__AudioDeviceState deviceState = fpl__AudioGetDeviceState(commonAudioState);
 				if (deviceState != fpl__AudioDeviceState_Stopped) {
 					FPL_LOG_DEBUG("Core", "Stop Audio (Auto)");
@@ -20024,7 +20041,7 @@ fpl_internal void fpl__ReleasePlatformStates(fpl__PlatformInitState *initState, 
 		}
 
 		FPL_LOG_DEBUG("Core", "Release Audio");
-		fpl__AudioState *audioState = fpl__GetAudioState(appState);
+		fpl__AudioState* audioState = fpl__GetAudioState(appState);
 		if (audioState != fpl_null) {
 			fpl__ReleaseAudio(audioState);
 		}
@@ -20034,7 +20051,7 @@ fpl_internal void fpl__ReleasePlatformStates(fpl__PlatformInitState *initState, 
 	// Shutdown video (Release context only)
 #	if defined(FPL__ENABLE_VIDEO)
 	{
-		fpl__VideoState *videoState = fpl__GetVideoState(appState);
+		fpl__VideoState* videoState = fpl__GetVideoState(appState);
 		if (videoState != fpl_null) {
 			FPL_LOG_DEBUG(FPL__MODULE_CORE, "Shutdown Video for Driver '%s'", fplGetVideoDriverString(videoState->activeDriver));
 			fpl__ShutdownVideo(appState, videoState);
@@ -20054,7 +20071,7 @@ fpl_internal void fpl__ReleasePlatformStates(fpl__PlatformInitState *initState, 
 	// Release video state
 #	if defined(FPL__ENABLE_VIDEO)
 	{
-		fpl__VideoState *videoState = fpl__GetVideoState(appState);
+		fpl__VideoState* videoState = fpl__GetVideoState(appState);
 		if (videoState != fpl_null) {
 			FPL_LOG_DEBUG(FPL__MODULE_CORE, "Release Video for Driver '%s'", fplGetVideoDriverString(videoState->activeDriver));
 			fpl__ReleaseVideoState(appState, videoState);
@@ -20099,7 +20116,7 @@ fpl_internal void fpl__ReleasePlatformStates(fpl__PlatformInitState *initState, 
 }
 
 #define FPL__PLATFORMTYPE_COUNT FPL__ENUM_COUNT(FPL_FIRST_PLATFORM_TYPE, FPL_LAST_PLATFORM_TYPE)
-fpl_globalvar const char *fpl__globalPlatformTypeNameTable[] = {
+fpl_globalvar const char* fpl__globalPlatformTypeNameTable[] = {
 	"Unknown", // fplPlatformType_Unknown
 	"Windows", // fplPlatformType_Windows
 	"Linux", // fplPlatformType_Linux
@@ -20107,44 +20124,44 @@ fpl_globalvar const char *fpl__globalPlatformTypeNameTable[] = {
 };
 fplStaticAssert(fplArrayCount(fpl__globalPlatformTypeNameTable) == FPL__PLATFORMTYPE_COUNT);
 
-fpl_common_api const char *fplGetPlatformName(const fplPlatformType type) {
+fpl_common_api const char* fplGetPlatformName(const fplPlatformType type) {
 	uint32_t index = FPL__ENUM_VALUE_TO_ARRAY_INDEX(type, FPL_FIRST_PLATFORM_TYPE, FPL_LAST_PLATFORM_TYPE);
-	const char *result = fpl__globalPlatformTypeNameTable[index];
+	const char* result = fpl__globalPlatformTypeNameTable[index];
 	return(result);
 }
 
 fpl_common_api fplPlatformResultType fplGetPlatformResult() {
-	fpl__PlatformInitState *initState = &fpl__global__InitState;
+	fpl__PlatformInitState* initState = &fpl__global__InitState;
 	return(initState->initResult);
 }
 
 fpl_internal bool fpl__SetPlatformResult(const fplPlatformResultType resultType) {
-	fpl__PlatformInitState *initState = &fpl__global__InitState;
+	fpl__PlatformInitState* initState = &fpl__global__InitState;
 	initState->initResult = resultType;
 	return(initState->initResult == fplPlatformResultType_Success);
 }
 
 fpl_common_api void fplPlatformRelease() {
 	// Exit out if platform is not initialized
-	fpl__PlatformInitState *initState = &fpl__global__InitState;
+	fpl__PlatformInitState* initState = &fpl__global__InitState;
 	if (!initState->isInitialized) {
 		FPL__CRITICAL(FPL__MODULE_CORE, "Platform is not initialized");
 		return;
 	}
-	fpl__PlatformAppState *appState = fpl__global__AppState;
+	fpl__PlatformAppState* appState = fpl__global__AppState;
 	FPL_LOG_DEBUG(FPL__MODULE_CORE, "Release Platform");
 	fpl__ReleasePlatformStates(initState, appState);
 	FPL_LOG_DEBUG(FPL__MODULE_CORE, "Platform released");
 }
 
-fpl_common_api bool fplPlatformInit(const fplInitFlags initFlags, const fplSettings *initSettings) {
+fpl_common_api bool fplPlatformInit(const fplInitFlags initFlags, const fplSettings* initSettings) {
 	// Exit out if platform is already initialized
 	if (fpl__global__InitState.isInitialized) {
 		FPL__CRITICAL(FPL__MODULE_CORE, "Platform is already initialized");
 		return(fpl__SetPlatformResult(fplPlatformResultType_AlreadyInitialized));
 	}
 
-	fpl__PlatformInitState *initState = &fpl__global__InitState;
+	fpl__PlatformInitState* initState = &fpl__global__InitState;
 	fplClearStruct(initState);
 
 	// Copy over init settings, such as memory allocation settings, etc.
@@ -20176,13 +20193,13 @@ fpl_common_api bool fplPlatformInit(const fplInitFlags initFlags, const fplSetti
 
 	FPL_LOG_DEBUG(FPL__MODULE_CORE, "Allocate Platform App State Memory of size '%zu':", platformAppStateSize);
 	fplAssert(fpl__global__AppState == fpl_null);
-	void *platformAppStateMemory = fplMemoryAlignedAllocate(platformAppStateSize, 16);
+	void* platformAppStateMemory = fplMemoryAlignedAllocate(platformAppStateSize, 16);
 	if (platformAppStateMemory == fpl_null) {
 		FPL__CRITICAL(FPL__MODULE_CORE, "Failed Allocating Platform App State Memory of size '%zu'", platformAppStateSize);
 		return(fpl__SetPlatformResult(fplPlatformResultType_FailedAllocatingMemory));
 	}
 
-	fpl__PlatformAppState *appState = fpl__global__AppState = (fpl__PlatformAppState *)platformAppStateMemory;
+	fpl__PlatformAppState* appState = fpl__global__AppState = (fpl__PlatformAppState*)platformAppStateMemory;
 	appState->initFlags = initFlags;
 	if (initSettings != fpl_null) {
 		appState->initSettings = *initSettings;
@@ -20253,13 +20270,13 @@ fpl_common_api bool fplPlatformInit(const fplInitFlags initFlags, const fplSetti
 #	if defined(FPL__ENABLE_VIDEO)
 	if (appState->initFlags & fplInitFlags_Video) {
 		FPL_LOG_DEBUG(FPL__MODULE_CORE, "Init video state:");
-		appState->video.mem = (uint8_t *)platformAppStateMemory + videoMemoryOffset;
+		appState->video.mem = (uint8_t*)platformAppStateMemory + videoMemoryOffset;
 		appState->video.memSize = sizeof(fpl__VideoState);
-		fpl__VideoState *videoState = fpl__GetVideoState(appState);
+		fpl__VideoState* videoState = fpl__GetVideoState(appState);
 		fplAssert(videoState != fpl_null);
 
 		fplVideoDriverType videoDriver = appState->initSettings.video.driver;
-		const char *videoDriverString = fplGetVideoDriverString(videoDriver);
+		const char* videoDriverString = fplGetVideoDriverString(videoDriver);
 		FPL_LOG_DEBUG(FPL__MODULE_CORE, "Load Video API for Driver '%s':", videoDriverString);
 		{
 			if (!fpl__LoadVideoState(videoDriver, videoState)) {
@@ -20291,11 +20308,11 @@ fpl_common_api bool fplPlatformInit(const fplInitFlags initFlags, const fplSetti
 	// Init Video
 #	if defined(FPL__ENABLE_VIDEO)
 	if (appState->initFlags & fplInitFlags_Video) {
-		fpl__VideoState *videoState = fpl__GetVideoState(appState);
+		fpl__VideoState* videoState = fpl__GetVideoState(appState);
 		fplAssert(videoState != fpl_null);
 		fplWindowSize windowSize = fplZeroInit;
 		fplGetWindowSize(&windowSize);
-		const char *videoDriverName = fplGetVideoDriverString(appState->initSettings.video.driver);
+		const char* videoDriverName = fplGetVideoDriverString(appState->initSettings.video.driver);
 		FPL_LOG_DEBUG(FPL__MODULE_CORE, "Init Video with Driver '%s':", videoDriverName);
 		if (!fpl__InitVideo(appState->initSettings.video.driver, &appState->initSettings.video, windowSize.width, windowSize.height, appState, videoState)) {
 			FPL__CRITICAL(FPL__MODULE_CORE, "Failed initialization video with settings (Driver=%s, Width=%d, Height=%d)", videoDriverName, windowSize.width, windowSize.height);
@@ -20309,11 +20326,11 @@ fpl_common_api bool fplPlatformInit(const fplInitFlags initFlags, const fplSetti
 	// Init Audio
 #	if defined(FPL__ENABLE_AUDIO)
 	if (appState->initFlags & fplInitFlags_Audio) {
-		appState->audio.mem = (uint8_t *)platformAppStateMemory + audioMemoryOffset;
+		appState->audio.mem = (uint8_t*)platformAppStateMemory + audioMemoryOffset;
 		appState->audio.memSize = sizeof(fpl__AudioState);
-		const char *audioDriverName = fplGetAudioDriverString(appState->initSettings.audio.driver);
+		const char* audioDriverName = fplGetAudioDriverString(appState->initSettings.audio.driver);
 		FPL_LOG_DEBUG("Core", "Init Audio with Driver '%s':", audioDriverName);
-		fpl__AudioState *audioState = fpl__GetAudioState(appState);
+		fpl__AudioState* audioState = fpl__GetAudioState(appState);
 		fplAssert(audioState != fpl_null);
 		if (fpl__InitAudio(&appState->initSettings.audio, audioState) != fplAudioResult_Success) {
 			FPL__CRITICAL("Core", "Failed initialization audio with settings (Driver=%s, Format=%s, SampleRate=%d, Channels=%d, BufferSize=%d)", audioDriverName, fplGetAudioFormatString(initSettings->audio.targetFormat.type), initSettings->audio.targetFormat.sampleRate, initSettings->audio.targetFormat.channels);
@@ -20379,8 +20396,8 @@ fpl_common_api fplPlatformType fplGetPlatformType() {
 typedef FPL__FUNC_WIN32_CommandLineToArgvW(fpl__win32_func_CommandLineToArgvW);
 
 typedef struct fpl__Win32CommandLineUTF8Arguments {
-	void *mem;
-	char **args;
+	void* mem;
+	char** args;
 	uint32_t count;
 } fpl__Win32CommandLineUTF8Arguments;
 
@@ -20390,11 +20407,11 @@ fpl_internal fpl__Win32CommandLineUTF8Arguments fpl__Win32ParseWideArguments(LPW
 	// @NOTE(final): Temporary load and unload shell32 for parsing the arguments
 	HMODULE shellapiLibrary = LoadLibraryA("shell32.dll");
 	if (shellapiLibrary != fpl_null) {
-		fpl__win32_func_CommandLineToArgvW *commandLineToArgvW = (fpl__win32_func_CommandLineToArgvW *)GetProcAddress(shellapiLibrary, "CommandLineToArgvW");
+		fpl__win32_func_CommandLineToArgvW* commandLineToArgvW = (fpl__win32_func_CommandLineToArgvW*)GetProcAddress(shellapiLibrary, "CommandLineToArgvW");
 		if (commandLineToArgvW != fpl_null) {
 			// Parse arguments and compute total UTF8 string length
 			int executableFilePathArgumentCount = 0;
-			wchar_t **executableFilePathArgs = commandLineToArgvW(L"", &executableFilePathArgumentCount);
+			wchar_t** executableFilePathArgs = commandLineToArgvW(L"", &executableFilePathArgumentCount);
 			size_t executableFilePathLen = 0;
 			for (int i = 0; i < executableFilePathArgumentCount; ++i) {
 				if (i > 0) {
@@ -20407,7 +20424,7 @@ fpl_internal fpl__Win32CommandLineUTF8Arguments fpl__Win32ParseWideArguments(LPW
 			}
 
 			int actualArgumentCount = 0;
-			wchar_t **actualArgs = fpl_null;
+			wchar_t** actualArgs = fpl_null;
 			size_t actualArgumentsLen = 0;
 			if (cmdLine != fpl_null && lstrlenW(cmdLine) > 0) {
 				actualArgs = commandLineToArgvW(cmdLine, &actualArgumentCount);
@@ -20423,23 +20440,23 @@ fpl_internal fpl__Win32CommandLineUTF8Arguments fpl__Win32ParseWideArguments(LPW
 			size_t totalStringLen = executableFilePathLen + actualArgumentsLen + args.count;
 			size_t singleArgStringSize = sizeof(char) * (totalStringLen);
 			size_t arbitaryPadding = 64;
-			size_t argArraySize = sizeof(char **) * args.count;
+			size_t argArraySize = sizeof(char**) * args.count;
 			size_t totalArgSize = singleArgStringSize + arbitaryPadding + argArraySize;
 
 			// @NOTE(final): We cannot use fpl__AllocateDynamicMemory here, because the main function is not called yet - therefore we dont have any fplMemorySettings set at this point.
-			args.mem = (uint8_t *)fplMemoryAllocate(totalArgSize);
-			char *argsString = (char *)args.mem;
-			args.args = (char **)((uint8_t *)args.mem + singleArgStringSize + arbitaryPadding);
+			args.mem = (uint8_t*)fplMemoryAllocate(totalArgSize);
+			char* argsString = (char*)args.mem;
+			args.args = (char**)((uint8_t*)args.mem + singleArgStringSize + arbitaryPadding);
 
 			// Convert executable path to UTF8
-			char *destArg = argsString;
+			char* destArg = argsString;
 			{
 				args.args[0] = argsString;
 				for (int i = 0; i < executableFilePathArgumentCount; ++i) {
 					if (i > 0) {
 						*destArg++ = ' ';
 					}
-					wchar_t *sourceArg = executableFilePathArgs[i];
+					wchar_t* sourceArg = executableFilePathArgs[i];
 					size_t sourceArgLen = lstrlenW(sourceArg);
 					int destArgLen = WideCharToMultiByte(CP_UTF8, 0, sourceArg, (int)sourceArgLen, fpl_null, 0, fpl_null, fpl_null);
 					WideCharToMultiByte(CP_UTF8, 0, sourceArg, (int)sourceArgLen, destArg, destArgLen, fpl_null, fpl_null);
@@ -20454,7 +20471,7 @@ fpl_internal fpl__Win32CommandLineUTF8Arguments fpl__Win32ParseWideArguments(LPW
 				fplAssert(actualArgs != fpl_null);
 				for (int i = 0; i < actualArgumentCount; ++i) {
 					args.args[1 + i] = destArg;
-					wchar_t *sourceArg = actualArgs[i];
+					wchar_t* sourceArg = actualArgs[i];
 					size_t sourceArgLen = lstrlenW(sourceArg);
 					int destArgLen = WideCharToMultiByte(CP_UTF8, 0, sourceArg, (int)sourceArgLen, fpl_null, 0, fpl_null, fpl_null);
 					WideCharToMultiByte(CP_UTF8, 0, sourceArg, (int)sourceArgLen, destArg, destArgLen, fpl_null, fpl_null);
@@ -20476,7 +20493,7 @@ fpl_internal fpl__Win32CommandLineUTF8Arguments fpl__Win32ParseAnsiArguments(LPS
 		size_t ansiSourceLen = fplGetStringLength(cmdLine);
 		int wideDestLen = MultiByteToWideChar(CP_ACP, 0, cmdLine, (int)ansiSourceLen, fpl_null, 0);
 		// @NOTE(final): We cannot use fpl__AllocateDynamicMemory here, because the main function is not called yet - therefore we dont have any fplMemorySettings set at this point.
-		wchar_t *wideCmdLine = (wchar_t *)fplMemoryAllocate(sizeof(wchar_t) * (wideDestLen + 1));
+		wchar_t* wideCmdLine = (wchar_t*)fplMemoryAllocate(sizeof(wchar_t) * (wideDestLen + 1));
 		MultiByteToWideChar(CP_ACP, 0, cmdLine, (int)ansiSourceLen, wideCmdLine, wideDestLen);
 		wideCmdLine[wideDestLen] = 0;
 		result = fpl__Win32ParseWideArguments(wideCmdLine);
