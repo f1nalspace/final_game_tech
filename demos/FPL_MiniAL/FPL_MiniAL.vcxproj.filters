@@ -3,6 +3,7 @@
   <ItemGroup>
     <ClInclude Include="..\..\final_platform_layer.h" />
     <ClInclude Include="..\dependencies\miniaudio\miniaudio.h" />
+    <ClInclude Include="..\additions\final_audiosystem.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="fpl_miniaudio.c" />

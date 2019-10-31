@@ -127,9 +127,10 @@ typedef struct AudioPlayItems {
 } AudioPlayItems;
 
 typedef struct AudioSineWaveData {
+	double duration;
+	double toneVolume;
+	AudioHertz frequency;
 	AudioFrameIndex frameIndex;
-	AudioHertz toneHz;
-	float toneVolume;
 } AudioSineWaveData;
 
 typedef struct AudioSystem {
@@ -237,8 +238,9 @@ extern bool AudioSystemInit(AudioSystem *audioSys, const fplAudioDeviceFormat *t
 	audioSys->mixingBuffer.maxFrameCount = MAX_AUDIO_STATIC_BUFFER_FRAME_COUNT;
 	audioSys->dspInBuffer.maxFrameCount = MAX_AUDIO_STATIC_BUFFER_FRAME_COUNT;
 	audioSys->dspOutBuffer.maxFrameCount = MAX_AUDIO_STATIC_BUFFER_FRAME_COUNT;
-	audioSys->tempWaveData.toneHz = 256;
-	audioSys->tempWaveData.toneVolume = 0.5f;
+	audioSys->tempWaveData.frequency = 440;
+	audioSys->tempWaveData.toneVolume = 0.25;
+	audioSys->tempWaveData.duration = 0.5;
 	return(true);
 }
 
@@ -278,21 +280,45 @@ static AudioFileFormat PropeAudioFileFormat(const char *filePath) {
 	if (filePath != fpl_null) {
 		fplFileHandle file;
 		if (fplOpenBinaryFile(filePath, &file)) {
-			size_t length = fplGetFileSizeFromHandle32(&file);
-			size_t sizeToRead = fplMin(MAX_AUDIO_PROBE_BYTES_COUNT, length);
-			uint8_t *probeBuffer = (uint8_t *)fplMemoryAllocate(sizeToRead);
-			if (probeBuffer != fpl_null) {
-				if (fplReadFileBlock32(&file, (uint32_t)sizeToRead, probeBuffer, (uint32_t)sizeToRead) == sizeToRead) {
-					if (TestWaveHeader(probeBuffer, sizeToRead)) {
+			size_t fileSize = fplGetFileSizeFromHandle32(&file);
+
+			size_t initialBufferSize = fplMin(MAX_AUDIO_PROBE_BYTES_COUNT, fileSize);
+			uint8_t *probeBuffer = (uint8_t *)fplMemoryAllocate(initialBufferSize);
+
+			size_t currentBufferSize = initialBufferSize;
+			bool requiresMoreData;
+			do {
+				requiresMoreData = false;
+				fplSetFilePosition32(&file, 0, fplFilePositionMode_Beginning);
+				if (fplReadFileBlock32(&file, (uint32_t)currentBufferSize, probeBuffer, (uint32_t)currentBufferSize) == currentBufferSize) {
+					if (TestWaveHeader(probeBuffer, currentBufferSize)) {
 						result = AudioFileFormat_Wave;
-					} else if (TestVorbisHeader(probeBuffer, sizeToRead)) {
+						break;
+					}
+					if (TestVorbisHeader(probeBuffer, currentBufferSize)) {
 						result = AudioFileFormat_Vorbis;
-					} else if (TestMP3Header(probeBuffer, sizeToRead)) {
+						break;
+					}
+
+					size_t mp3NewSize = 0;
+					MP3HeaderTestStatus mp3Status = TestMP3Header(probeBuffer, currentBufferSize, &mp3NewSize);
+					if (mp3Status == MP3HeaderTestStatus_Success) {
 						result = AudioFileFormat_MP3;
+						break;
+					} else if (mp3Status == MP3HeaderTestStatus_RequireMoreData) {
+						if (mp3NewSize > 0 && mp3NewSize <= fileSize) {
+							fplMemoryFree(probeBuffer);
+							currentBufferSize = mp3NewSize;
+							probeBuffer = (uint8_t*)fplMemoryAllocate(currentBufferSize);
+							requiresMoreData = true;
+						}
 					}
 				}
-				fplMemoryFree(probeBuffer);
-			}
+			} while (requiresMoreData);
+
+
+			
+			fplMemoryFree(probeBuffer);
 			fplCloseFile(&file);
 		}
 	}
@@ -575,16 +601,17 @@ static AudioSampleIndex MixSamples(float *outSamples, const AudioChannelIndex ou
 
 extern void AudioGenerateSineWave(AudioSineWaveData *waveData, void *outSamples, const fplAudioFormatType outFormat, const AudioHertz outSampleRate, const AudioChannelIndex channels, const AudioFrameIndex frameCount) {
 	uint8_t *samples = (uint8_t *)outSamples;
-	int wavePeriod = outSampleRate / waveData->toneHz;
-	size_t sampleStride = fplGetAudioSampleSizeInBytes(outFormat) * channels;
+	size_t sampleStride = (size_t)fplGetAudioSampleSizeInBytes(outFormat) * channels;
 	for (AudioFrameIndex i = 0; i < frameCount; ++i) {
-		float t = 2.0f * AudioPI32 * (float)waveData->frameIndex++ / (float)wavePeriod;
-		float sampleValue = (float)sin(t) * waveData->toneVolume;
+		AudioFrameIndex f = i + waveData->frameIndex;
+		double t = sin((2.0 * M_PI * waveData->frequency) / outSampleRate * f);
+		float sampleValue = (float)(t * waveData->toneVolume);
 		for (AudioChannelIndex channelIndex = 0; channelIndex < channels; ++channelIndex) {
 			ConvertFromF32(samples, sampleValue, channelIndex, outFormat);
 		}
 		samples += sampleStride;
 	}
+	waveData->frameIndex += frameCount;
 }
 
 typedef struct AudioUpsampleResult {

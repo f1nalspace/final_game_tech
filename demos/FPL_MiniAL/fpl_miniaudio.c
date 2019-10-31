@@ -15,6 +15,9 @@ Author:
 	Torsten Spaete
 
 Changelog:
+	## 2019-10-31
+	- Use final_audiodemo.h to prevent code duplication from FPL_Audio demo
+
 	## 2019-10-26
 	- New: Support for switching between miniaudio.h and FPL internal audio system
 	- Fixed: Sine wave generation was generating invalid samples (Noises, Clicking)
@@ -44,6 +47,8 @@ License:
 
 #define FINAL_AUDIOSYSTEM_IMPLEMENTATION
 #include <final_audiosystem.h>
+
+#include <final_audiodemo.h>
 
 #if OPT_USE_MINIAUDIO
 #	define MINIAUDIO_IMPLEMENTATION
@@ -106,51 +111,6 @@ static uint32_t AudioPlayback_FPL(const fplAudioDeviceFormat *outFormat, const u
 }
 #endif
 
-static double DecibelToLinear(double dB) {
-	double result = pow(10.0, dB / 10.0);
-	return(result);
-}
-
-static bool InitAudioData(const fplAudioDeviceFormat *targetFormat, AudioSystem *audioSys, const char *filePath, const bool generateSineWave) {
-	if (!AudioSystemInit(audioSys, targetFormat)) {
-		return false;
-	}
-
-	// Play audio file
-	AudioSource *source = fpl_null;
-	if (filePath != fpl_null) {
-		source = AudioSystemLoadFileSource(audioSys, filePath);
-		if (source != fpl_null) {
-			AudioSystemPlaySource(audioSys, source, true, 0.25f);
-		}
-	}
-
-	// Generate sine wave for some duration
-	if (generateSineWave) {
-		const double duration = 0.5;
-		const int toneVolume = INT16_MAX / 2;
-		const double frequency = 440.0;
-		uint32_t sampleRate = audioSys->targetFormat.sampleRate;
-		uint32_t channels = audioSys->targetFormat.channels;
-		uint32_t sampleCount = (uint32_t)(duration * sampleRate + 0.5);
-		source = AudioSystemAllocateSource(audioSys, channels, sampleRate, fplAudioFormatType_S16, sampleCount);
-		if (source != fpl_null) {
-			int16_t *samples = (int16_t *)source->buffer.samples;
-			for (uint32_t sampleIndex = 0; sampleIndex < sampleCount; ++sampleIndex) {
-				double t = sin((2.0 * M_PI * frequency) / sampleRate * sampleIndex);
-				int16_t sampleValue = (int16_t)(toneVolume * t);
-				for (uint32_t channelIndex = 0; channelIndex < source->format.channels; ++channelIndex) {
-					*samples++ = sampleValue;
-				}
-			}
-            int16_t firstSample = *((int16 *)source->buffer.samples + 0);
-            int16_t lastSample = *((int16 *)source->buffer.samples + (sampleCount-1));
-			AudioSystemPlaySource(audioSys, source, true, 1.0f);
-		}
-	}
-	return(true);
-}
-
 typedef struct AudioContext {
 #if OPT_USE_MINIAUDIO
 	ma_format maTargtFormat;
@@ -160,6 +120,7 @@ typedef struct AudioContext {
 #else
 #endif
 	AudioSystem system;
+	AudioSineWaveData sineWave;
 } AudioContext;
 
 typedef struct PlaybackAudioFormat {
@@ -176,6 +137,9 @@ static void ReleaseAudioContext(AudioContext *context) {
 
 static bool InitAudioContext(AudioContext *context, const fplAudioTargetFormat targetFormat) {
 	fplAssert(context != fpl_null);
+	context->sineWave.frequency = 440;
+	context->sineWave.toneVolume = 0.25f;
+	context->sineWave.duration = 0.5;
 	
 #if OPT_USE_MINIAUDIO
 	// Init audio playback (MiniAudio)
@@ -261,8 +225,9 @@ static void StopPlayback(AudioContext *context) {
 }
 
 int main(int argc, char **args) {
-	const char *filePath = (argc == 2) ? args[1] : fpl_null;
-	const bool generateSineWave = true;
+	size_t fileCount = argc >= 2 ? argc - 1 : 0;
+	const char** files = (fileCount > 0) ? (const char**)args + 1 : fpl_null;
+	bool forceSineWave = false;
 
 	// Use default audio format from FPL as target format
 	fplAudioTargetFormat targetFormat;
@@ -302,7 +267,7 @@ int main(int argc, char **args) {
 	fplAudioDeviceFormat targetDeviceFormat;
 	fplConvertAudioTargetFormatToDeviceFormat(&targetFormat, &targetDeviceFormat);
 	
-	if (!InitAudioData(&targetDeviceFormat, &audioContext->system, filePath, generateSineWave)){
+	if (!InitAudioData(&targetDeviceFormat, &audioContext->system, files, fileCount, forceSineWave, &audioContext->sineWave)){
 		fplConsoleFormatError("Failed initializing audio system!\n");
 		goto releaseResources;
 	}

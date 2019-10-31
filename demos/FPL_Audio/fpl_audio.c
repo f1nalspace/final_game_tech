@@ -4,8 +4,9 @@ Name:
 	FPL-Demo | Audio
 
 Description:
-	This demo shows how to play a contiguous sine or square wave.
-	Also it can play uncompressed PCM wave data with simple resampling support.
+	This demo shows how to play music, sounds using a custom mixer.
+	It supports uncompressed PCM wave data, OGG Vorbis and MP3 Files.
+	Resampling support is limited.
 
 Requirements:
 	- C99 Compiler
@@ -15,6 +16,10 @@ Author:
 	Torsten Spaete
 
 Changelog:
+	## 2019-10-31
+	- Moved audio load code to the outside
+	- Fixed release resources when exit
+
     ## 2019-08-03
     - Print error when audio playback its too slow
 
@@ -66,7 +71,7 @@ License:
 	MIT License (See LICENSE file)
 -------------------------------------------------------------------------------
 */
-#define OPT_AUTO_RENDER_SAMPLES 1
+#define OPT_AUTO_WRITE_SAMPLES 1
 
 #define OPT_DISABLE_RENDER 0
 
@@ -92,6 +97,8 @@ License:
 #define FINAL_DEBUG_IMPLEMENTATION
 #include <final_debug.h>
 
+#include <final_audiodemo.h>
+
 typedef enum WavePlotType {
 	WavePlotType_None = 0,
 	WavePlotType_Bars,
@@ -100,7 +107,7 @@ typedef enum WavePlotType {
 } WavePlotType;
 
 typedef struct AudioDemo {
-	AudioSystem *audioSys;
+	AudioSystem audioSys;
 	fplAudioFormatType sampleFormat;
 	AudioFrameIndex maxFrameCount;
 	size_t maxSizeBytes;
@@ -112,8 +119,8 @@ typedef struct AudioDemo {
 	int32_t plotCount;
 } AudioDemo;
 
-static void AudioRenderSamples(AudioDemo *audioDemo, const void *inSamples, const fplAudioDeviceFormat *inFormat, const AudioFrameIndex frameCount) {
-	AudioSystem *audioSys = audioDemo->audioSys;
+static void AudioWriteSamples(AudioDemo *audioDemo, const void *inSamples, const fplAudioDeviceFormat *inFormat, const AudioFrameIndex frameCount) {
+	AudioSystem *audioSys = &audioDemo->audioSys;
 
 	const AudioChannelIndex outChannels = audioSys->targetFormat.channels;
 	const size_t inSampleSize = fplGetAudioSampleSizeInBytes(inFormat->type);
@@ -151,35 +158,19 @@ static uint32_t AudioPlayback(const fplAudioDeviceFormat *outFormat, const uint3
 	AudioFrameIndex result = 0;
 
 #if OPT_PLAYBACKMODE == OPT_PLAYBACK_SINEWAVE_ONLY
-
-#if 0
-	// 100% Clean sine wave (Contigously)
-	int16_t *outSamples = (int16_t *)outputSamples;
-	uint32_t wavePeriod = outFormat->sampleRate / audioDemo->sineWave.toneHz;
-	for (uint32_t frameIndex = 0; frameIndex < maxFrameCount; ++frameIndex) {
-		float t = 2.0f * (float)M_PI * (float)audioDemo->sineWave.frameIndex++ / (float)wavePeriod;
-		int16_t sampleValue = (int16_t)(sinf(t) * audioDemo->sineWave.toneVolume * (float)INT16_MAX);
-		for (uint32_t channelIndex = 0; channelIndex < outFormat->channels; ++channelIndex) {
-			*outSamples++ = sampleValue;
-		}
-		++result;
-	}
-#else
 	result = maxFrameCount;
 	AudioGenerateSineWave(&audioDemo->sineWave, outputSamples, outFormat->type, outFormat->sampleRate, outFormat->channels, maxFrameCount);
-#endif
-
 #endif // OPT_OUTPUT_SAMPLES_SINEWAVE_ONLY
 
 
 #if OPT_PLAYBACKMODE == OPT_PLAYBACK_AUDIOSYSTEM_ONLY
 	// @FIXME(final): Fix hearable error, when the audio stream has finished playing and will repeat
-	AudioFrameIndex frameCount = AudioSystemWriteSamples(audioDemo->audioSys, outputSamples, outFormat, maxFrameCount);
+	AudioFrameIndex frameCount = AudioSystemWriteSamples(&audioDemo->audioSys, outputSamples, outFormat, maxFrameCount);
 	result = frameCount;
 #endif // OPT_OUTPUT_SAMPLES_SYSTEM_ONLY
 
-#if OPT_AUTO_RENDER_SAMPLES
-	AudioRenderSamples(audioDemo, outputSamples, outFormat, result);
+#if OPT_AUTO_WRITE_SAMPLES
+	AudioWriteSamples(audioDemo, outputSamples, outFormat, result);
 #endif
     
     double timeEnd = fplGetTimeInMillisecondsHP();
@@ -187,7 +178,6 @@ static uint32_t AudioPlayback(const fplAudioDeviceFormat *outFormat, const uint3
     
     // Print error when its too slow
     uint64_t frameDelay = 50;
-    double delayInSeconds = 1.0 / frameDelay;
     uint64_t minFrames = outFormat->bufferSizeInFrames / outFormat->periods;
     uint64_t requiredFrames = minFrames - frameDelay;
     double maxTime = 1.0 / (double)requiredFrames;
@@ -199,44 +189,6 @@ static uint32_t AudioPlayback(const fplAudioDeviceFormat *outFormat, const uint3
     }
 
 	return(result);
-}
-
-static bool InitAudioData(const fplAudioDeviceFormat *targetFormat, AudioSystem *audioSys, const char **files, const size_t fileCount, const bool forceSineWave, const AudioSineWaveData *sineWave) {
-	if (!AudioSystemInit(audioSys, targetFormat)) {
-		return false;
-	}
-
-	AudioSystemSetMasterVolume(audioSys, 0.5f);
-
-	// Play audio files
-	bool hadFiles = false;
-	for (size_t fileIndex = 0; fileIndex < fileCount; ++fileIndex) {
-		const char *filePath = files[fileIndex];
-		if (filePath != fpl_null) {
-			fplConsoleFormatOut("Loading audio file '%s\n", filePath);
-			AudioSource *source = AudioSystemLoadFileSource(audioSys, filePath);
-			if (source != fpl_null) {
-				AudioSystemPlaySource(audioSys, source, true, 1.0f);
-				hadFiles = true;
-			}
-		}
-	}
-
-	// Generate sine wave for some duration when no files was loaded
-	if (!hadFiles || forceSineWave) {
-		// @FIXME(final): If wave duration is smaller than actual audio buffer, we will hear a bad click
-		const double waveDuration = 10.0f;
-		AudioSineWaveData waveData = *sineWave;
-		AudioHertz sampleRate = audioSys->targetFormat.sampleRate;
-		AudioChannelIndex channels = audioSys->targetFormat.channels;
-		AudioFrameIndex frameCount = (AudioFrameIndex)(sampleRate * waveDuration + 0.5);
-		AudioSource *source = AudioSystemAllocateSource(audioSys, audioSys->targetFormat.channels, audioSys->targetFormat.sampleRate, fplAudioFormatType_S16, frameCount);
-		if (source != fpl_null) {
-			AudioGenerateSineWave(&waveData, source->buffer.samples, source->format.format, source->format.sampleRate, source->format.channels, source->buffer.frameCount);
-			AudioSystemPlaySource(audioSys, source, true, 1.0f);
-		}
-	}
-	return(true);
 }
 
 static const char *MapPlotTypeToString(WavePlotType plotType) {
@@ -259,15 +211,16 @@ static void UpdateTitle(AudioDemo *demo) {
 int main(int argc, char **args) {
 	size_t fileCount = argc >= 2 ? argc - 1 : 0;
 	const char **files = (fileCount > 0) ? (const char **)args + 1 : fpl_null;
-	const bool forceSineWave = false;
+	bool forceSineWave = false;
 
-	AudioSystem audioSys = fplZeroInit;
-	AudioDemo demo = fplZeroInit;
-	demo.audioSys = &audioSys;
-	demo.sineWave.toneHz = 256;
-	demo.sineWave.toneVolume = 0.5f;
-	demo.plotType = WavePlotType_Bars;
-	demo.plotCount = 512;
+	AudioDemo* demo = (AudioDemo * )fplMemoryAllocate(sizeof(AudioDemo));
+	demo->sineWave.frequency = 440;
+	demo->sineWave.toneVolume = 0.25f;
+	demo->sineWave.duration = 0.5;
+	demo->plotType = WavePlotType_Bars;
+	demo->plotCount = 512;
+
+	int result = -1;
 
 	//
 	// Settings
@@ -294,54 +247,62 @@ int main(int argc, char **args) {
 
 	// Find audio device
 	if (!fplPlatformInit(fplInitFlags_Audio, &settings)) {
-		return -1;
+		goto done;
 	}
-	fplAudioDeviceInfo audioDeviceInfos[64] = fplZeroInit;
-	uint32_t deviceCount = fplGetAudioDevices(audioDeviceInfos, fplArrayCount(audioDeviceInfos));
+
+	const uint32_t maxAudioDeviceCount = 64;
+	fplAudioDeviceInfo *audioDeviceInfos = fplMemoryAllocate(sizeof(fplAudioDeviceInfo) * maxAudioDeviceCount);
+	uint32_t deviceCount = fplGetAudioDevices(audioDeviceInfos, maxAudioDeviceCount);
 	if (deviceCount > 0) {
 		// Use first audio device in settings
 		settings.audio.targetDevice = audioDeviceInfos[0];
 		// @TODO(final): Fix weird space after line break
 		fplConsoleFormatOut("Using audio device: '%s'\n", settings.audio.targetDevice.name);
 	}
+	fplMemoryFree(audioDeviceInfos);
 	fplPlatformRelease();
 
 	// Initialize the platform with audio enabled and the settings
 	if (!fplPlatformInit(fplInitFlags_All, &settings)) {
-		return -1;
+		goto done;
 	}
 
 	fplAudioDeviceFormat targetAudioFormat = fplZeroInit;
 	fplGetAudioHardwareFormat(&targetAudioFormat);
 
 	// You can overwrite the client read callback and user data if you want to
-	fplSetAudioClientReadCallback(AudioPlayback, &demo);
+	fplSetAudioClientReadCallback(AudioPlayback, demo);
 
 	const fplSettings *currentSettings = fplGetCurrentSettings();
 
 	// Init audio data
-	if (InitAudioData(&targetAudioFormat, &audioSys, files, fileCount, forceSineWave, &demo.sineWave)) {
+	if (InitAudioData(&targetAudioFormat, &demo->audioSys, files, fileCount, forceSineWave, &demo->sineWave)) {
 		// Allocate render samples
-		demo.maxFrameCount = targetAudioFormat.bufferSizeInFrames * 2;
-		uint32_t channelCount = audioSys.targetFormat.channels;
-		demo.sampleFormat = fplAudioFormatType_F32;
-		demo.maxSizeBytes = fplGetAudioBufferSizeInBytes(demo.sampleFormat, channelCount, demo.maxFrameCount);
-		demo.samples = fplMemoryAllocate(demo.maxSizeBytes);
-		demo.readFrameIndex = 0;
-		demo.writeFrameIndex = 0;
+		demo->maxFrameCount = targetAudioFormat.bufferSizeInFrames * 2;
+		uint32_t channelCount = demo->audioSys.targetFormat.channels;
+		demo->sampleFormat = fplAudioFormatType_F32;
+		demo->maxSizeBytes = fplGetAudioBufferSizeInBytes(demo->sampleFormat, channelCount, demo->maxFrameCount);
+		demo->samples = (float *)fplMemoryAllocate(demo->maxSizeBytes);
+		demo->readFrameIndex = 0;
+		demo->writeFrameIndex = 0;
 
 		// Start audio playback (This will start calling clientReadCallback regulary)
 		if (fplPlayAudio() == fplAudioResultType_Success) {
 			// Print output infos
 			const char *outDriver = fplGetAudioDriverString(currentSettings->audio.driver);
-			const char *outFormat = fplGetAudioFormatTypeString(audioSys.targetFormat.format);
-			uint32_t outSampleRate = audioSys.targetFormat.sampleRate;
-			uint32_t outChannels = audioSys.targetFormat.channels;
-			fplConsoleFormatOut("Playing %lu audio sources (%s, %s, %lu Hz, %lu channels)\n", audioSys.playItems.count, outDriver, outFormat, outSampleRate, outChannels);
+			const char *outFormat = fplGetAudioFormatTypeString(demo->audioSys.targetFormat.format);
+			uint32_t outSampleRate = demo->audioSys.targetFormat.sampleRate;
+			uint32_t outChannels = demo->audioSys.targetFormat.channels;
+			fplConsoleFormatOut("Playing %lu audio sources (%s, %s, %lu Hz, %lu channels)\n",
+								demo->audioSys.playItems.count,
+								outDriver,
+								outFormat,
+								outSampleRate,
+								outChannels);
 
 			fplVideoBackBuffer *backBuffer = fplGetVideoBackBuffer();
 
-			UpdateTitle(&demo);
+			UpdateTitle(demo);
 
 			// Loop
 			bool nextSamples = false;
@@ -355,19 +316,19 @@ int main(int argc, char **args) {
 								if (key == fplKey_Space) {
 									nextSamples = true;
 								} else if (key == fplKey_P) {
-									demo.plotType = (demo.plotType + 1) % WavePlotType_Count;
+									demo->plotType = (demo->plotType + 1) % WavePlotType_Count;
 								} else if (key == fplKey_Add) {
-									demo.plotCount *= 2;
-									if (demo.plotCount > 2048) {
-										demo.plotCount = 2048;
+									demo->plotCount *= 2;
+									if (demo->plotCount > 2048) {
+										demo->plotCount = 2048;
 									}
 								} else if (key == fplKey_Substract) {
-									demo.plotCount /= 2;
-									if (demo.plotCount < 8) {
-										demo.plotCount = 8;
+									demo->plotCount /= 2;
+									if (demo->plotCount < 8) {
+										demo->plotCount = 8;
 									}
 								}
-								UpdateTitle(&demo);
+								UpdateTitle(demo);
 							}
 						}
 					}
@@ -390,40 +351,40 @@ int main(int argc, char **args) {
 				const float h = (float)backBuffer->height;
 				BackbufferDrawRect(backBuffer, 0, 0, w, h, 0xFF000000);
 
-				const AudioFrameIndex frameCount = demo.maxFrameCount;
+				const AudioFrameIndex frameCount = demo->maxFrameCount;
 
 				const float paddingX = 20.0f;
 				const float spaceBetweenBars = 0.0f;
 				const float maxRangeW = w - paddingX * 2.0f;
 				const float halfH = h * 0.5f;
 
-				if (demo.plotType == WavePlotType_Bars) {
-					const uint32_t barCount = demo.plotCount;
+				if (demo->plotType == WavePlotType_Bars) {
+					const uint32_t barCount = demo->plotCount;
 					const float barW = (maxRangeW - spaceBetweenBars * (float)(barCount - 1)) / (float)barCount;
 					const float maxBarH = h;
 					for (uint32_t barIndex = 0; barIndex < barCount; ++barIndex) {
 						float t = barIndex / (float)barCount;
 						AudioFrameIndex frameIndex = (AudioFrameIndex)(t * frameCount + 0.5f);
 						AudioSampleIndex sampleIndex = frameIndex * channelCount;
-						float sampleValue = demo.samples[sampleIndex + 0];
+						float sampleValue = demo->samples[sampleIndex + 0];
 						float barH = maxBarH * sampleValue;
 						float posX = paddingX + barIndex * barW + barIndex * spaceBetweenBars;
 						float posY = halfH - barH * 0.5f;
 						int color = 0xFFAAAAAA;
 						BackbufferDrawRect(backBuffer, posX, posY, posX + barW, posY + barH, color);
 					}
-				} else if (demo.plotType == WavePlotType_Lines) {
-					const uint32_t pointCount = demo.plotCount;
+				} else if (demo->plotType == WavePlotType_Lines) {
+					const uint32_t pointCount = demo->plotCount;
 					const float lineWidth = maxRangeW / (float)(pointCount - 1);
 
-					float firstSampleValue = demo.samples[0 * channelCount + 0];
+					float firstSampleValue = demo->samples[0 * channelCount + 0];
 					float startX = paddingX;
 					float startY = halfH + (firstSampleValue * halfH);
 					for (uint32_t pointIndex = 1; pointIndex < pointCount; ++pointIndex) {
 						float t = pointIndex / (float)pointCount;
 						AudioFrameIndex frameIndex = (AudioFrameIndex)(t * (float)frameCount + 0.5f);
 						AudioSampleIndex sampleIndex = frameIndex * channelCount;
-						float sampleValue = demo.samples[sampleIndex + 0];
+						float sampleValue = demo->samples[sampleIndex + 0];
 						float targetX = startX + lineWidth;
 						float targetY = halfH + (sampleValue * halfH);
 						BackbufferDrawLine(backBuffer, startX, startY, targetX, targetY, 0xFFAAAAAA);
@@ -440,15 +401,21 @@ int main(int argc, char **args) {
 			fplStopAudio();
 		}
 		// Release audio data
-		AudioSystemShutdown(&audioSys);
+		AudioSystemShutdown(&demo->audioSys);
 	}
-
-	fplMemoryFree(demo.samples);
 
 	ReleaseDebug();
 
-	// Release the platform
+	result = 0;
+
+done:
+	if (demo->samples)
+		fplMemoryFree(demo->samples);
+
 	fplPlatformRelease();
 
-	return 0;
+	if (demo)
+		fplMemoryFree(demo);
+
+	return(result);
 }

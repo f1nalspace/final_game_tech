@@ -19,7 +19,14 @@ License:
 
 #include "final_audio.h"
 
-extern bool TestMP3Header(const uint8_t *buffer, const size_t bufferSize);
+typedef enum MP3HeaderTestStatus {
+	MP3HeaderTestStatus_Success = 0,
+	MP3HeaderTestStatus_InvalidBuffer,
+	MP3HeaderTestStatus_RequireMoreData,
+	MP3HeaderTestStatus_NoMP3,
+} MP3HeaderTestStatus;
+
+extern MP3HeaderTestStatus TestMP3Header(const uint8_t *buffer, const size_t bufferSize, size_t* requiredBufferSize);
 extern bool LoadMP3FromBuffer(const uint8_t *buffer, const size_t bufferSize, PCMWaveData *outWave);
 extern bool LoadMP3FromFile(const char *filePath, PCMWaveData *outWave);
 
@@ -31,15 +38,20 @@ extern bool LoadMP3FromFile(const char *filePath, PCMWaveData *outWave);
 #define MINIMP3_IMPLEMENTATION
 #include <minimp3/minimp3_ex.h>
 
-extern bool TestMP3Header(const uint8_t *buffer, const size_t bufferSize) {
+extern MP3HeaderTestStatus TestMP3Header(const uint8_t *buffer, const size_t bufferSize, size_t *requiredBufferSize) {
 	if ((buffer == fpl_null) || (bufferSize == 0)) {
-		return(false);
+		return(MP3HeaderTestStatus_InvalidBuffer);
 	}
-	if (bufferSize >= 4) {
-		mp3dec_t dec = fplZeroInit;
-		mp3dec_init(&dec);
+	mp3dec_t dec = fplZeroInit;
+	mp3dec_init(&dec);
 
+	if (bufferSize >= 4) {
 		size_t id3v2size = mp3dec_skip_id3v2(buffer, bufferSize);
+		if (bufferSize < id3v2size) {
+			*requiredBufferSize = id3v2size + 4;
+			return(MP3HeaderTestStatus_RequireMoreData);
+		}
+
 		if (id3v2size > 0) {
 			buffer += id3v2size;
 		}
@@ -49,11 +61,12 @@ extern bool TestMP3Header(const uint8_t *buffer, const size_t bufferSize) {
 		dec.header[2] = buffer[2];
 		dec.header[3] = buffer[3];
 
-		if (bufferSize > 4 && dec.header[0] == 0xff && hdr_compare(dec.header, buffer)) {
-			return(true);
+		if (dec.header[0] == 0xff && hdr_compare(dec.header, buffer)) {
+			return(MP3HeaderTestStatus_Success);
 		}
 	}
-	return(false);
+
+	return(MP3HeaderTestStatus_NoMP3);
 }
 
 extern bool LoadMP3FromBuffer(const uint8_t *buffer, const size_t bufferSize, PCMWaveData *outWave) {

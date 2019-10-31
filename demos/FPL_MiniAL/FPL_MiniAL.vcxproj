@@ -23,6 +23,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\..\final_platform_layer.h" />
+    <ClInclude Include="..\additions\final_audiosystem.h" />
     <ClInclude Include="..\dependencies\miniaudio\miniaudio.h" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
