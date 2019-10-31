@@ -68,9 +68,6 @@ License:
 #define FT_IMPLEMENTATION
 #include "final_test.h"
 
-// C++ typeid
-#include <typeinfo>
-
 template<typename T>
 inline void AssertEquals(const T expected, const T actual) {}
 
@@ -1661,6 +1658,22 @@ static void TestLocalization() {
 	fplPlatformRelease();
 }
 
+inline void DefaultInlineTest() {
+	fplConsoleFormatOut("This should be inlined");
+}
+fpl_force_inline void ForceInlineTest() {
+	fplConsoleFormatOut("This should be always inlined");
+}
+fpl_no_inline void NoInlineTest() {
+	fplConsoleFormatOut("This should not be inlined");
+}
+
+static void TestInlining() {
+	DefaultInlineTest();
+	ForceInlineTest();
+	NoInlineTest();
+}
+
 int main(int argc, char* args[]) {
 	TestColdInit();
 	TestInit();
@@ -1675,5 +1688,6 @@ int main(int argc, char* args[]) {
 	TestFiles();
 	TestStrings();
 	TestThreading();
+	TestInlining();
 	return 0;
 }
