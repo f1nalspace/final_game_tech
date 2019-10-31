@@ -10,12 +10,12 @@
 	
 	@section section_overview Overview
 
-	Final Platform Layer is a Single-Header-File cross-platform C development library, designed to abstract the underlying platform to a simple and easy to use api - providing low level access to the operating system and to hardware devices.<br>
+	Final Platform Layer is a Single-Header-File cross-platform C99/C++ development library, designed to abstract the underlying platform to a simple and easy to use api - providing low level access to the operating system and to hardware devices.<br>
 	<br>
 	The main focus is rapid game/media/simulation development, so the default settings will create a window, setup a OpenGL rendering context and initialize audio playback on any platform.<br>
 	<br>
 	FPL supports the platforms <b>Windows</b>/<b>Linux</b>/<b>Unix</b> for the architectures <b>x86</b>/<b>x64</b>.<br>
-	The only dependencies are built-in operating system libraries and a <b>C99</b> complaint compiler.<br>
+	The only dependencies are built-in operating system libraries and a <b>C99</b> or <b>C++/11</b> complaint compiler.<br>
 	<br>
 	It is released under the @subpage page_license "MIT License". This license allows you to use FPL freely in any software, for private or commercial usages.<br>
 
@@ -45,7 +45,7 @@
 
 	@subsection subsection_intro_whatisfpl What is FPL?
 
-	Final Platform Layer is a Single-Header-File cross-platform C development library designed to abstract the underlying platform to a very simple and easy to use api - providing low level access to:<br>
+	Final Platform Layer is a Single-Header-File cross-platform C99/C++ development library designed to abstract the underlying platform to a very simple and easy to use api - providing low level access to:<br>
 	- Single Window creation and handling
 	- Graphics Software or Hardware Rendering initialization.
 	- Playback of raw Audio Samples
@@ -87,8 +87,8 @@
 	For more details see the page: @subpage page_platform_status
 	
 	@subsection subsection_intro_supported_compilers Which compilers are supported by FPL?
-	FPL should compile on any C99 complaint compiler, such as MSVC 2015+, GCC, Clang, etc.
-
+	FPL should compile on any C99 or C++/11 complaint compiler, such as MSVC 2015+, GCC, Clang, etc.
+	
 	@subsection section_intro_features What can FPL do?
 	Read below a detailed feature overview of FPL:
 
@@ -201,7 +201,7 @@
 
 	@section section_usage_requirements Requirements
 
-	FPL uses built-in operating system libraries and requires a C99 complaint compiler.<br>
+	FPL uses built-in operating system libraries and requires a C99 or C++/11 complaint compiler.<br>
 	Depending on the compiler and platform - linking to one system library may be needed:
 
 	@subsection usage_requirements_win32 Win32
@@ -211,8 +211,8 @@
 	- Link against "libld.so"
 
 	@subsection usage_requirements_crt C-Runtime
-	By default FPL uses the C-Run-Time library for functions such as vsnprintf(), but its usage is optional.<br>
-	For more details see the page @subpage page_nocrt
+	By default FPL uses the CRT (C-Runtime-Library) for functions such as vsnprintf(), but its usage is optional.<br>
+	To learn how to use FPL without the CRT more details, see the page @subpage page_nocrt
 
 	@section section_usage_howtouse How to use FPL?
 	In one of your C/C++ translation units include this:
@@ -2283,7 +2283,8 @@
 	@subsection subsection_category_io_paths_utils_pathcombine Combining paths
 
 	Use @ref fplPathCombine() to combine multiple parts of a path to build one single path from it.<br>
-	Unlike the .NET version, this function requires you pass the number of parts you want to combine :-( If you know how get the number of variadic arguments (va_list) in C99, please contact me or write a github issue! Thanks.<br>
+	Unfortunatly this function requires you pass the number of parts you want to combine :-(<br>
+	If you know how get the count of the variadic arguments (va_list) in C99, please contact me or write a github issue! Thanks.<br>
 
 	<b>Example:</b>
 	@code{.c}
@@ -2301,7 +2302,7 @@
 
 	@note This is the recommend way to construct any kind of paths, because it will handle path separators correctly.
 	@note This function is designed to be compatible with .NET <b>Path.Combine()</b>.
-	@warning Do not pass the wrong number of maximum arguments as third-argument, otherwise your application may end crash horribly.
+	@warning Do not pass the wrong number of maximum arguments as third-argument, otherwise your application may end crashing horribly.
 
 	@subsection subsection_category_io_paths_utils_extractfilepath Extracting the file path
 
@@ -3277,9 +3278,9 @@
 	Yes, you are! FPL is full open source and costs nothing.
 
 	@subsection subsection_faq_inwhatlanguage In what language is FPL written?
-	Final Platform Layer is written in C99 for simplicity and best portability, but is C++ compatible as well.<br>
+	Final Platform Layer is written in C99 for simplicity and best portability, but is C++/11 compatible as well.<br>
 	It uses standard types such as uint32_t or intptr_t from <stdint.h> <stddef.h> and <stdbool.h> to ensure correctness on all platforms.<br>
-	For certain features such as printf(), getchar() the C Runtime are used but you can disable it if needed.<br>
+	For certain features such as printf(), getchar() the CRT (C-Runtime-Library) are used, but you can disable it if needed.<br>
 
 	@subsection subsection_faq_whyshouldiuse What makes it different from other platform abstraction libraries, such as SDL/SFML etc. ?
 	- FPL is designed to require bare minimum linking to the OS (kernel32.lib / libld.so) only.
@@ -3287,21 +3288,23 @@
 	- It has a lightweight feature set.
 	- No data hiding -> everything is accessible.
 	- It uses a fixed and small memory footprint and handles memory very gracefully.
-	- It can be controlled by a configuration structure in very detail at startup.
-	- You decide how to integrate it; not the library.
+	- FPL can be controlled by configuration in very detail at startup.
+	- You decide how to integrate it; not the library. You can statically link it, you can dynamically link it, or you can just include the full source.
 
 	@subsection subsection_faq_whyisfplsobig Why is FPL so big?
 	Final Platform Layer contains headers and implementations for all supported platforms with all the function prototypes for linking operating system functions dynamically.<br>
-	In addition there is a full detailed changelog included as well.<br>
+	In addition the entire api definition is documented inline and it comes with a full detailed changelog.<br>
 
 	@subsection subsection_faq_howdoesitwork How does it work?
-	FPL relies heavy on preprocessor defines used for detecting the current architecture / compiler / operating system.<br>
+	FPL relies heavy on preprocessor defines, used for detecting the current architecture / compiler / operating system.<br>
 	This makes it possible to enable/disable certain code-paths for certain platform/compiler combinations.<br>
-	Only built-in OS operating system functions are used in almost every situation and the usage of standard library functions is prevented by all means.<br>
+	Only built-in OS operating system functions are used in every situation and the usage of standard library functions is prevented by all means.<br>
 	<br>
-	Platforms are either full implemented platforms or a subset of sub-platforms.<br>
-	On top of that we have audio/video drivers for certain platforms/sub-platforms.<br>
-	Lastly there is a abstraction layer api which merges the platforms/subplatforms/drivers into structures/unions.
+	To prevent code duplication, FPL implements either a either platform set or just a sub-set which can be included into platforms.
+	For example, Linux is a POSIX based platform so it uses POSIX libraries, such as pthread / X11, etc.
+	The pthread and X11 implementation are separated, so other Unix based platforms can use that implementations without any problem.
+	<br>
+	On top of that FPL implements multiple audio and video drivers, so that all platforms can playback audio and render using a supported graphics api.<br>
 
 	@subsection subsection_faq_limitations Does FPL have some limitations?
 	Yes it does have some limitations, because it cannot do everything for you:
@@ -3329,37 +3332,45 @@
 	- FFMPEG
 
 	But it wont work with other platform abstraction libraries such as SDL, SFML, GLUT, GLFW etc.<br>
-	All these other platform abstraction libraries have their own way of providing the main entry point and are not compability with each other.
+	All these other platform abstraction libraries have their own way of providing the main entry point and may not compability with each other.
 */
 
 /*!
 	@page page_contribute How to contribute to FPL
 	@tableofcontents
 
-	@section section_contribute_time Give time
+	@section section_contribute_time Donate time
+	
+	You can contribute your time by helping with:
 
-	If you have time, i welcome your help in various areas:<br>
-	- **Programmers**: Write demos, help me in fixing bugs, introduce new platforms, etc.
-	- **Writers**: Improve of the documentation
-	- **Testing**: Test FPL on different platforms/compilers
-	- **Report bugs**: Report bugs (https://github.com/f1nalspace/final_game_tech/issues)
-	- **Send in feedback**: Write feedback, post ideas (https://fpl.handmade.network/forums)
+	- **programming**: Writing demos, helping me fixing bugs, adding of new platforms, etc.
+	- **testing and filling bug reports**: Testing FPL on different platforms/compilers (https://github.com/f1nalspace/final_game_tech/issues)
+	- **improving the documentation**: Improving the documentation, by fixing spelling errors or fill-out missing pages/sections.
+	- **Send in feedback**: Write feedback, answer questions or post ideas (https://fpl.handmade.network/forums)
+	
+	I have always welcomed users whose only contribution is simply using FPL, giving me feedback on how to improve it and telling others about it. Thank you for supporting FPL.
 
 	@section section_contribute_donate Donate money
 
-	FPL is a one-man project, so i really appreciate any kind of financial support.
+	If you don't have time to help but do find FPL useful, then please consider making a financial donation.<br>
+	This will help to pay the bills and motivate me to continue working on FPL. Thanks.
 
 	@subsection subsection_contribute_donate_needs What are the financial needs of FPL?
 	- Maintaining the official webpage (https://libfpl.org)
 	- Extending the Jetbrains CLion license
 	- Buying hardware for developing and testing purposes (Computers, Soundcards, etc.)
 
-	@subsection subsection_contribute_donate_donate Donate to FPL
+	@subsection subsection_contribute_donate_links Donation Links
 
-	You can donate money to the projects own paypal account. There is no minimal amount for your donation.<br>
-	Below you can find buttons which takes you to the secure paypal web site.
-
-	https://www.paypal.com
+	@htmlonly
+	<form action="https://www.paypal.com/cgi-bin/webscr" method="post" target="_top">
+		<input type="hidden" name="cmd" value="_donations" />
+		<input type="hidden" name="business" value="finalspace@web.de" />
+		<input type="hidden" name="currency_code" value="EUR" />
+		<input type="image" src="https://www.paypalobjects.com/en_US/DK/i/btn/btn_donateCC_LG.gif" border="0" name="submit" title="PayPal - The safer, easier way to pay online!" alt="Donate with PayPal button" />
+		<img alt="" border="0" src="https://www.paypal.com/en_DE/i/scr/pixel.gif" width="1" height="1" />
+	</form>
+	@endhtmlonly
 */
 
 /*!
