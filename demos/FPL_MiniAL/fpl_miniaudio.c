@@ -33,7 +33,7 @@ License:
 
 // Set this to one to use miniaudio.h
 // Set this to zero to use FPL internal audio
-#define OPT_USE_MINIAUDIO 0
+#define OPT_USE_MINIAUDIO 1
 
 #define FPL_NO_WINDOW
 #define FPL_IMPLEMENTATION
