@@ -18592,7 +18592,7 @@ fpl_internal fplAudioResultType fpl__AudioInitAlsa(const fplAudioSettings* audio
 	char deviceName[256] = fplZeroInit;
 	snd_pcm_stream_t stream = SND_PCM_STREAM_PLAYBACK;
 	int openMode = SND_PCM_NO_AUTO_RESAMPLE | SND_PCM_NO_AUTO_CHANNELS | SND_PCM_NO_AUTO_FORMAT;
-	if (fplGetStringLength(adeviceInfo.id.alsa) == 0) {
+	if (fplGetStringLength(deviceInfo.id.alsa) == 0) {
 		const char* defaultDeviceNames[16];
 		int defaultDeviceCount = 0;
 		defaultDeviceNames[defaultDeviceCount++] = "default";
