@@ -316,7 +316,7 @@ extern int GameMain(const GameConfiguration &config) {
 	}
 
 	fplSetAudioClientReadCallback(GameAudioPlayback, &audioSys);
-	if(fplPlayAudio() != fplAudioResult_Success) {
+	if(fplPlayAudio() != fplAudioResultType_Success) {
 		wasError = true;
 	}
 

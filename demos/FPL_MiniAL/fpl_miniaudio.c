@@ -37,6 +37,7 @@ License:
 
 #define FPL_NO_WINDOW
 #define FPL_IMPLEMENTATION
+#define FPL_LOGGING
 #define FPL_NO_UNDEF
 #include <final_platform_layer.h>
 #include <math.h> // sinf
@@ -137,7 +138,7 @@ static bool InitAudioData(const fplAudioDeviceFormat *targetFormat, AudioSystem 
 			int16_t *samples = (int16_t *)source->buffer.samples;
 			for (uint32_t sampleIndex = 0; sampleIndex < sampleCount; ++sampleIndex) {
 				double t = sin((2.0 * M_PI * frequency) / sampleRate * sampleIndex);
-				int16_t sampleValue = (double)toneVolume * t;
+				int16_t sampleValue = (int16_t)(toneVolume * t);
 				for (uint32_t channelIndex = 0; channelIndex < source->format.channels; ++channelIndex) {
 					*samples++ = sampleValue;
 				}
@@ -158,7 +159,7 @@ typedef struct AudioContext {
 	ma_context maContext;
 #else
 #endif
-	AudioSystem *system;
+	AudioSystem system;
 } AudioContext;
 
 typedef struct PlaybackAudioFormat {
@@ -175,7 +176,6 @@ static void ReleaseAudioContext(AudioContext *context) {
 
 static bool InitAudioContext(AudioContext *context, const fplAudioTargetFormat targetFormat) {
 	fplAssert(context != fpl_null);
-	fplAssert(context->system != fpl_null);
 	
 #if OPT_USE_MINIAUDIO
 	// Init audio playback (MiniAudio)
@@ -185,7 +185,7 @@ static bool InitAudioContext(AudioContext *context, const fplAudioTargetFormat t
 	context->maDeviceConfig.playback.format = context->maTargtFormat;
 	context->maDeviceConfig.sampleRate = targetFormat.sampleRate;
 	context->maDeviceConfig.dataCallback = AudioPlayback_MiniAudio;
-	context->maDeviceConfig.pUserData = context->system;
+	context->maDeviceConfig.pUserData = &context->system;
 	
 	ma_backend malBackends[] = {
 		ma_backend_dsound,
@@ -237,8 +237,8 @@ static bool StartPlayback(AudioContext *context, PlaybackAudioFormat *playbackFo
 	actualDeviceFormat->bufferSizeInFrames = context->maDevice.playback.internalBufferSizeInFrames;
 	actualDeviceFormat->bufferSizeInBytes = fplGetAudioBufferSizeInBytes(actualDeviceFormat->type, actualDeviceFormat->channels, actualDeviceFormat->bufferSizeInFrames);
 #else
-	fplAudioResult audioRes = fplPlayAudio();
-	if (audioRes != fplAudioResult_Success) {
+	fplAudioResultType audioRes = fplPlayAudio();
+	if (audioRes != fplAudioResultType_Success) {
 		return(false);
 	}
 
@@ -262,7 +262,7 @@ static void StopPlayback(AudioContext *context) {
 
 int main(int argc, char **args) {
 	const char *filePath = (argc == 2) ? args[1] : fpl_null;
-	const bool generateSineWave = (filePath == fpl_null);
+	const bool generateSineWave = true;
 
 	// Use default audio format from FPL as target format
 	fplAudioTargetFormat targetFormat;
@@ -271,13 +271,13 @@ int main(int argc, char **args) {
 	targetFormat.type = fplAudioFormatType_S16;
 	targetFormat.sampleRate = 44100;
 
+	int result = -1;
+
 	// Init audio context
-	AudioSystem audioSys = fplZeroInit;
-	AudioContext audioContext = fplZeroInit;
-	audioContext.system = &audioSys;
-	if (!InitAudioContext(&audioContext, targetFormat)) {
+	AudioContext *audioContext = (AudioContext*)fplMemoryAllocate(sizeof(AudioContext));
+	if (!InitAudioContext(audioContext, targetFormat)) {
 		fplConsoleFormatError("Failed initializing audio context!\n");
-		return(-1);
+		goto releaseResources;
 	}
 	
 	// Init FPL
@@ -288,56 +288,58 @@ int main(int argc, char **args) {
 	settings.audio.targetFormat = targetFormat;
 	settings.audio.startAuto = false;
 	settings.audio.stopAuto = false;
-	settings.audio.userData = &audioSys;
+	settings.audio.userData = &audioContext->system;
 	settings.audio.clientReadCallback = AudioPlayback_FPL;
 	initFlags |= fplInitFlags_Audio;
 #endif
 	
 	if (!fplPlatformInit(initFlags, &settings)) {
 		fplConsoleFormatError("Failed initializing FPL with flags %d!\n", initFlags);
-		ReleaseAudioContext(&audioContext);
-		return(-1);
+		goto releaseResources;
 	}
 
 	// Init audio data
 	fplAudioDeviceFormat targetDeviceFormat;
 	fplConvertAudioTargetFormatToDeviceFormat(&targetFormat, &targetDeviceFormat);
 	
-	if (!InitAudioData(&targetDeviceFormat, &audioSys, filePath, generateSineWave)){
+	if (!InitAudioData(&targetDeviceFormat, &audioContext->system, filePath, generateSineWave)){
 		fplConsoleFormatError("Failed initializing audio system!\n");
-		ReleaseAudioContext(&audioContext);
-		fplPlatformRelease();
-		return(-1);
+		goto releaseResources;
 	}
 	
 	// Start audio playback
 	PlaybackAudioFormat playbackFormat = fplZeroInit;
-	if (!StartPlayback(&audioContext, &playbackFormat)) {
+	if (!StartPlayback(audioContext, &playbackFormat)) {
 		fplConsoleFormatError("Failed starting audio playback!\n");
-		ReleaseAudioContext(&audioContext);
-		fplPlatformRelease();
-		return(-1);
+		goto releaseResources;
 	}
 	
 	// Print output infos
-	const char *formatName = fplGetAudioFormatString(playbackFormat.deviceFormat.type);
-	fplConsoleFormatOut("Playing %lu audio sources (%s, %s, %lu Hz, %lu channels)\n", audioSys.playItems.count, playbackFormat.driverName, formatName, playbackFormat.deviceFormat.sampleRate, playbackFormat.deviceFormat.channels);
+	const char *formatName = fplGetAudioFormatTypeString(playbackFormat.deviceFormat.type);
+	fplConsoleFormatOut("Playing %lu audio sources (%s, %s, %lu Hz, %lu channels)\n", audioContext->system.playItems.count, playbackFormat.driverName, formatName, playbackFormat.deviceFormat.sampleRate, playbackFormat.deviceFormat.channels);
 
 	// Wait for any key presses
 	fplConsoleFormatOut("Press any key to stop playback\n");
 	fplConsoleWaitForCharInput();
 
 	// Stop audio playback
-	StopPlayback(&audioContext);
+	StopPlayback(audioContext);
 		
 	// Release audio data
-	AudioSystemShutdown(&audioSys);
+	AudioSystemShutdown(&audioContext->system);
 
+	result = 0;
+
+releaseResources:
 	// Release audio device
-	ReleaseAudioContext(&audioContext);
+	ReleaseAudioContext(audioContext);
 
 	// Release the platform
-	fplPlatformRelease();
+	if (fplIsPlatformInitialized())
+		fplPlatformRelease();
 
-	return 0;
+	// Release memory
+	fplMemoryFree(audioContext);
+
+	return(result);
 }

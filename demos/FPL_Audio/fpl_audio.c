@@ -331,10 +331,10 @@ int main(int argc, char **args) {
 		demo.writeFrameIndex = 0;
 
 		// Start audio playback (This will start calling clientReadCallback regulary)
-		if (fplPlayAudio() == fplAudioResult_Success) {
+		if (fplPlayAudio() == fplAudioResultType_Success) {
 			// Print output infos
 			const char *outDriver = fplGetAudioDriverString(currentSettings->audio.driver);
-			const char *outFormat = fplGetAudioFormatString(audioSys.targetFormat.format);
+			const char *outFormat = fplGetAudioFormatTypeString(audioSys.targetFormat.format);
 			uint32_t outSampleRate = audioSys.targetFormat.sampleRate;
 			uint32_t outChannels = audioSys.targetFormat.channels;
 			fplConsoleFormatOut("Playing %lu audio sources (%s, %s, %lu Hz, %lu channels)\n", audioSys.playItems.count, outDriver, outFormat, outSampleRate, outChannels);
