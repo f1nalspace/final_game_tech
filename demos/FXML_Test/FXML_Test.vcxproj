@@ -21,6 +21,11 @@
   <ItemGroup>
     <ClCompile Include="fxml_test.c" />
   </ItemGroup>
+  <ItemGroup>
+    <Xml Include="level1.tmx">
+      <DeploymentContent>true</DeploymentContent>
+    </Xml>
+  </ItemGroup>
   <PropertyGroup Label="Globals">
     <VCProjectVersion>15.0</VCProjectVersion>
     <ProjectGuid>{84699F3E-D317-4470-A018-F0E4CDD8027B}</ProjectGuid>

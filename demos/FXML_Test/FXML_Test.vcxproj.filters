@@ -3,4 +3,7 @@
   <ItemGroup>
     <ClCompile Include="fxml_test.c" />
   </ItemGroup>
+  <ItemGroup>
+    <Xml Include="level1.tmx" />
+  </ItemGroup>
 </Project>
