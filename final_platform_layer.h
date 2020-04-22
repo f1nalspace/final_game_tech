@@ -201,6 +201,7 @@ SOFTWARE.
 	- Changed: Moved compiler includes into its own section
 	- Changed: Moved rdtsc/cpuid, etc. into the implementation block
 	- Changed: Renamed enum fplAudioResult to fplAudioResultType
+	- Changed: Use fplLogLevel_Warning as max by default for all log functions
 	- Renamed function fplGetAudioFormatString to fplGetAudioFormatTypeString
 
 	- New: [Win32] Implemented function fplGetCurrentThreadId
@@ -6349,6 +6350,7 @@ fpl_internal void fpl__LogWrite(const char *funcName, const int lineNumber, cons
 #else
 		settings->writers[0].flags = fplLogWriterFlags_StandardConsole | fplLogWriterFlags_DebugOut;
 #endif
+		settings->maxLevel = fplLogLevel_Warning;
 		settings->isInitialized = true;
 	}
 
@@ -6362,13 +6364,13 @@ fpl_internal void fpl__LogWrite(const char *funcName, const int lineNumber, cons
 		const char *levelStr = fpl__LogLevelToString(level);
 
 		if (writer->flags & fplLogWriterFlags_StandardConsole) {
-			fplConsoleFormatOut("[%s:%d][%s]%s\n", funcName, lineNumber, levelStr, message);
+			fplConsoleFormatOut("[%s:%d][%s] %s\n", funcName, lineNumber, levelStr, message);
 		}
 		if (writer->flags & fplLogWriterFlags_ErrorConsole) {
-			fplConsoleFormatError("[%s:%d][%s]%s\n", funcName, lineNumber, levelStr, message);
+			fplConsoleFormatError("[%s:%d][%s] %s\n", funcName, lineNumber, levelStr, message);
 		}
 		if (writer->flags & fplLogWriterFlags_DebugOut) {
-			fplDebugFormatOut("[%s:%d][%s]%s\n", funcName, lineNumber, levelStr, message);
+			fplDebugFormatOut("[%s:%d][%s] %s\n", funcName, lineNumber, levelStr, message);
 		}
 		if (writer->flags & fplLogWriterFlags_Custom && writer->custom.callback != fpl_null) {
 			writer->custom.callback(funcName, lineNumber, level, message);
