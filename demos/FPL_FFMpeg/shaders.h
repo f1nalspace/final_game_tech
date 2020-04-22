@@ -86,3 +86,44 @@ namespace YUV420PShaderSource {
 		;
 
 };
+
+namespace FontShaderSource {
+	static const char *Name = "Font";
+
+	static const char *Vertex =
+		"#version 330 core\n"
+		"\n"
+		"layout(location = 0) in vec4 inPosition;\n"
+		"layout(location = 1) in vec4 inColor;\n"
+		"layout(location = 2) in vec2 inTexcoord;\n"
+		"\n"
+		"uniform mat4 uniViewProjMat;\n"
+		"out vec2 attrTexcoord;\n"
+		"out vec4 attrColor;\n"
+		"\n"
+		"void main() {\n"
+		"  attrTexcoord = inTexcoord;"
+		"  attrColor = inColor;"
+		"  gl_Position = uniViewProjMat * inPosition;\n"
+		"}\n"
+		;
+
+	static const char *Fragment =
+		"#version 330 core\n"
+		"\n"
+		"layout(location = 0) out vec4 outColor;\n"
+		"\n"
+		"uniform sampler2D uniTexture;\n"
+		"in vec4 attrColor;\n"
+		"in vec2 attrTexcoord;\n"
+		"\n"
+		SHARED_CODE()
+		"\n"
+		"void main() {\n"
+		"  float r = texture(uniTexture, attrTexcoord).r;\n"
+		"  outColor = vec4(r, r, r, r) * attrColor;\n"
+		"}\n"
+		;
+};
+
+#undef SHARED_CODE

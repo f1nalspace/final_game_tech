@@ -26,7 +26,7 @@ constexpr int FieldTileCountX = 21;
 constexpr int FieldTileCountY = 11;
 constexpr float TileWidth = WorldWidth / (float)FieldTileCountX;
 constexpr float TileHeight = WorldHeight / (float)(FieldTileCountY + 1);
-const Vec2f TileExt = V2f(TileWidth, TileHeight) * 0.5f;
+const Vec2f TileExt = V2fInit(TileWidth, TileHeight) * 0.5f;
 constexpr float MaxTileSize = fplMax(TileWidth, TileHeight);
 constexpr float MaxTileRadius = MaxTileSize * 0.5f;
 
@@ -36,8 +36,8 @@ constexpr float ControlsOriginX = -WorldRadiusW;
 constexpr float ControlsOriginY = -WorldRadiusH;
 
 
-const Vec4f TextBackColor = V4f(0.2f, 0.2f, 0.8f, 1);
-const Vec4f TextForeColor = V4f(1, 1, 1, 1);
+const Vec4f TextBackColor = V4fInit(0.2f, 0.2f, 0.8f, 1);
+const Vec4f TextForeColor = V4fInit(1, 1, 1, 1);
 
 const char *TowersDataFilename = "towers.xml";
 const char *WavesDataFilename = "waves.xml";
@@ -559,7 +559,7 @@ struct GameState {
 	bool isDebugRendering;
 };
 
-inline Vec2f TileToWorld(const LevelDimension &dim, const Vec2i &tilePos, const Vec2f &offset = V2f(0, 0)) {
+inline Vec2f TileToWorld(const LevelDimension &dim, const Vec2i &tilePos, const Vec2f &offset = V2fInit(0, 0)) {
 	Vec2f result = {
 		dim.gridOriginX + tilePos.x * TileWidth,
 		dim.gridOriginY + (dim.tileCountY - 1 - tilePos.y) * TileHeight

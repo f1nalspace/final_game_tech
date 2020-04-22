@@ -97,9 +97,9 @@ struct Image32 {
 	}
 };
 
-static Vec3f UnitRight = V3f(1, 0, 0);
-static Vec3f UnitUp = V3f(0, 0, 1);
-static Vec3f UnitForward = V3f(0, 1, 0);
+static Vec3f UnitRight = V3fInit(1, 0, 0);
+static Vec3f UnitUp = V3fInit(0, 0, 1);
+static Vec3f UnitForward = V3fInit(0, 1, 0);
 
 enum class ObjectKind : s32 {
 	None = 0,
@@ -208,8 +208,8 @@ static void DrawSphere(const Vec3f &origin, f32 radius, int steps = 20) {
 }
 
 static void DrawPlane(const Vec3f &normal, const f32 distance, f32 infiniteSize) {
-	Vec3f u = Vec3Normalize(Vec3Cross(normal, UnitRight));
-	Vec3f v = Vec3Normalize(Vec3Cross(normal, u));
+	Vec3f u = V3fNormalize(V3fCross(normal, UnitRight));
+	Vec3f v = V3fNormalize(V3fCross(normal, u));
 	Vec3f p0 = normal * -distance;
 	Vec3f fu = u * infiniteSize;
 	Vec3f fv = v * infiniteSize;
@@ -371,7 +371,7 @@ static void Render(const App &app) {
 	DrawCube(V3f(0, 0, 1), 0.5f);
 #endif
 
-	Vec3f normal = Vec3Normalize(camTarget - camEye);
+	Vec3f normal = V3fNormalize(camTarget - camEye);
 
 	if (wireframe) {
 		glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
@@ -392,7 +392,7 @@ static void Render(const App &app) {
 		Pixel *sourceRow = raytraceImage.pixels + (y * raytraceImage.width);
 		for (u32 x = 0; x < backBuffer->width; ++x) {
 			Pixel sourcePixel = *sourceRow++;
-			u32 color = BGRA8(sourcePixel);
+			u32 color = BGRA8FromPixel(sourcePixel);
 			*targetRow++ = color;
 		}
 	}
@@ -548,9 +548,9 @@ struct Worker {
 };
 
 static bool RayPlaneIntersection(const Ray3f &ray, const Plane3f &plane, f32 &out, const float tolerance) {
-	f32 denom = Vec3Dot(plane.normal, ray.direction);
+	f32 denom = V3fDot(plane.normal, ray.direction);
 	if ((denom < -tolerance) || (denom > tolerance)) {
-		f32 t = (-plane.distance - Vec3Dot(plane.normal, ray.origin)) / denom;
+		f32 t = (-plane.distance - V3fDot(plane.normal, ray.origin)) / denom;
 		out = t;
 		return(true);
 	}
@@ -559,12 +559,12 @@ static bool RayPlaneIntersection(const Ray3f &ray, const Plane3f &plane, f32 &ou
 
 static bool RaySphereIntersection(const Ray3f &ray, const Sphere3f &sphere, f32 &out, const float tolerance) {
 	Vec3f rayRelativeOrigin = ray.origin - sphere.origin;
-	f32 a = Vec3Dot(ray.direction, ray.direction);
-	f32 b = 2.0f * Vec3Dot(ray.direction, rayRelativeOrigin);
-	f32 c = Vec3Dot(rayRelativeOrigin, rayRelativeOrigin) - sphere.radius * sphere.radius;
+	f32 a = V3fDot(ray.direction, ray.direction);
+	f32 b = 2.0f * V3fDot(ray.direction, rayRelativeOrigin);
+	f32 c = V3fDot(rayRelativeOrigin, rayRelativeOrigin) - sphere.radius * sphere.radius;
 
 	f32 radiusSquared = sphere.radius * sphere.radius;
-	f32 relativeDistanceSquared = Vec3Dot(rayRelativeOrigin, rayRelativeOrigin);
+	f32 relativeDistanceSquared = V3fDot(rayRelativeOrigin, rayRelativeOrigin);
 
 	f32 denom = 2.0f * a;
 	f32 rootTerm = SquareRoot(b * b - 4.0f * a * c);
@@ -605,9 +605,9 @@ static bool RaytracePart(Worker &worker, WorkOrder &order) {
 	const Vec3f cameraTarget = scene->camera.target;
 
 	// Construct camera axis
-	const Vec3f cameraZ = Vec3Normalize(cameraPosition - cameraTarget);
-	const Vec3f cameraX = Vec3Normalize(Vec3Cross(cameraUp, cameraZ));
-	const Vec3f cameraY = Vec3Normalize(Vec3Cross(cameraZ, cameraX));
+	const Vec3f cameraZ = V3fNormalize(cameraPosition - cameraTarget);
+	const Vec3f cameraX = V3fNormalize(V3fCross(cameraUp, cameraZ));
+	const Vec3f cameraY = V3fNormalize(V3fCross(cameraZ, cameraX));
 
 	const Vec2f halfPixelSize = raytracer->halfPixelSize;
 
@@ -653,7 +653,7 @@ static bool RaytracePart(Worker &worker, WorkOrder &order) {
 				Vec3f filmP = filmCenter + (perspectiveX * cameraX) + (perspectiveY * cameraY);
 
 				Vec3f rayOrigin = cameraPosition;
-				Vec3f rayDirection = Vec3Normalize(filmP - cameraPosition);
+				Vec3f rayDirection = V3fNormalize(filmP - cameraPosition);
 
 				Ray3f ray = MakeRay(rayOrigin, rayDirection);
 
@@ -661,7 +661,7 @@ static bool RaytracePart(Worker &worker, WorkOrder &order) {
 				f32 minHitDistance = 0.0f;
 
 				Vec3f sample = {};
-				Vec3f attenuation = V3f(1, 1, 1);
+				Vec3f attenuation = V3fInit(1, 1, 1);
 
 				for (u32 bounceIndex = 0; bounceIndex < maxBounceCount; ++bounceIndex) {
 					if (worker.IsStopped())
@@ -669,7 +669,7 @@ static bool RaytracePart(Worker &worker, WorkOrder &order) {
 
 					f32 hitDistance = F32_MAX;
 					u32 hitMaterialIndex = 0;
-					Vec3f hitNormal = V3f();
+					Vec3f hitNormal = V3fZero();
 
 					for (u32 objectIndex = 0, objectCount = (u32)scene->objects.size(); objectIndex < objectCount; ++objectIndex) {
 						if (worker.IsStopped())
@@ -693,7 +693,7 @@ static bool RaytracePart(Worker &worker, WorkOrder &order) {
 									hitDistance = t;
 									hitMaterialIndex = obj->materialIndex;
 									Vec3f relativeOrigin = ray.origin - obj->sphere.origin;
-									hitNormal = Vec3Normalize(t * ray.direction + relativeOrigin);
+									hitNormal = V3fNormalize(t * ray.direction + relativeOrigin);
 								}
 							}
 						}
@@ -703,29 +703,29 @@ static bool RaytracePart(Worker &worker, WorkOrder &order) {
 						fplAssert(hitMaterialIndex < scene->materials.size());
 						const Material &hitMaterial = scene->materials[hitMaterialIndex];
 
-						sample += Vec3Hadamard(attenuation, hitMaterial.emitColor);
+						sample += V3fHadamard(attenuation, hitMaterial.emitColor);
 
-						f32 cosineAttenuation = Vec3Dot(-ray.direction, hitNormal);
+						f32 cosineAttenuation = V3fDot(-ray.direction, hitNormal);
 						if (cosineAttenuation < 0) {
 							cosineAttenuation = 0;
 						}
-						attenuation = Vec3Hadamard(attenuation, cosineAttenuation * hitMaterial.reflectColor);
+						attenuation = V3fHadamard(attenuation, cosineAttenuation * hitMaterial.reflectColor);
 
-						Vec3f pureBounce = ray.direction - 2.0f * Vec3Dot(ray.direction, hitNormal) * hitNormal;
+						Vec3f pureBounce = ray.direction - 2.0f * V3fDot(ray.direction, hitNormal) * hitNormal;
 
 #if 1
 						// @NOTE(final): This is NOT a proper way to produce a random bounce. Do proper distribution based bounce
-						Vec3f randomAddon = V3f(RandomBilateral(&raytracer->rnd), RandomBilateral(&raytracer->rnd), RandomBilateral(&raytracer->rnd));
-						Vec3f randomBounce = Vec3Normalize(hitNormal + randomAddon);
+						Vec3f randomAddon = V3fInit(RandomBilateral(&raytracer->rnd), RandomBilateral(&raytracer->rnd), RandomBilateral(&raytracer->rnd));
+						Vec3f randomBounce = V3fNormalize(hitNormal + randomAddon);
 #else
 						Vec3f randomBounce = RandomUnitHemisphere(&raytracer.rnd);
 #endif
 
 						// Ray for next bounce
 						ray.origin += hitDistance * ray.direction;
-						ray.direction = Vec3Normalize(Vec3Lerp(randomBounce, hitMaterial.scatter, pureBounce));
+						ray.direction = V3fNormalize(V3fLerp(randomBounce, hitMaterial.scatter, pureBounce));
 					} else {
-						sample += Vec3Hadamard(attenuation, defaultMaterial.emitColor);
+						sample += V3fHadamard(attenuation, defaultMaterial.emitColor);
 						break;
 					}
 				}
@@ -733,7 +733,7 @@ static bool RaytracePart(Worker &worker, WorkOrder &order) {
 				finalColor += contrib * sample;
 			}
 
-			Pixel outputPixel = LinearToPixel(V4f(finalColor, 1.0f));
+			Pixel outputPixel = LinearToPixelSRGB(V4fInitXYZ(finalColor, 1.0f));
 			*col = outputPixel;
 			++col;
 		}
@@ -772,24 +772,24 @@ static void InitGL() {
 #endif
 
 static void InitScene(Scene &scene) {
-	scene.camera.eye = V3f(0, -10, 1);
-	scene.camera.target = V3f(0, 0, 0);
+	scene.camera.eye = V3fInit(0, -10, 1);
+	scene.camera.target = V3fInit(0, 0, 0);
 	scene.camera.up = UnitUp;
 	scene.camera.fov = DegreesToRadians(15.0f);
 	scene.camera.zNear = 0.5f;
 	scene.camera.zFar = 100.0f;
 
-	scene.AddMaterial(V3f(0.152f, 0.22745f, 0.3647f), {});
+	scene.AddMaterial(V3fInit(0.152f, 0.22745f, 0.3647f), {});
 
-	u32 floorMat = scene.AddMaterial(V3f(0, 0.0f, 0), V3f(0.1f, 0.5f, 0.1f), 0.75f);
-	u32 whiteMat = scene.AddMaterial(V3f(0.0f, 0.0f, 0.0f), V3f(1.0f, 1.0f, 1.0f), 1.0f);
-	u32 redMat = scene.AddMaterial(V3f(0.25f, 0.0f, 0.0f), V3f(1.0f, 0.0f, 0.0f), 1.0);
-	u32 blueMat = scene.AddMaterial(V3f(0.0f, 0.0f, 0.25f), V3f(0.0f, 0.0f, 1.0f), 1.0f);
+	u32 floorMat = scene.AddMaterial(V3fInit(0, 0.0f, 0), V3fInit(0.1f, 0.5f, 0.1f), 0.75f);
+	u32 whiteMat = scene.AddMaterial(V3fInit(0.0f, 0.0f, 0.0f), V3fInit(1.0f, 1.0f, 1.0f), 1.0f);
+	u32 redMat = scene.AddMaterial(V3fInit(0.25f, 0.0f, 0.0f), V3fInit(1.0f, 0.0f, 0.0f), 1.0);
+	u32 blueMat = scene.AddMaterial(V3fInit(0.0f, 0.0f, 0.25f), V3fInit(0.0f, 0.0f, 1.0f), 1.0f);
 
-	scene.AddPlane(V3f(0, 0, 1), 0.0f, floorMat);
-	scene.AddSphere(V3f(0, 0, 0.25f), 1.0f, whiteMat);
-	scene.AddSphere(V3f(1, -2, 0.3f), 0.5f, redMat);
-	scene.AddSphere(V3f(-1.0f, -0.75f, 0.9f), 0.3f, blueMat);
+	scene.AddPlane(V3fInit(0, 0, 1), 0.0f, floorMat);
+	scene.AddSphere(V3fInit(0, 0, 0.25f), 1.0f, whiteMat);
+	scene.AddSphere(V3fInit(1, -2, 0.3f), 0.5f, redMat);
+	scene.AddSphere(V3fInit(-1.0f, -0.75f, 0.9f), 0.3f, blueMat);
 }
 
 static void InitRaytracer(Raytracer &raytracer, const u32 raytraceWidth, const u32 raytraceHeight) {
@@ -797,7 +797,7 @@ static void InitRaytracer(Raytracer &raytracer, const u32 raytraceWidth, const u
 	raytraceImage.width = raytraceWidth;
 	raytraceImage.height = raytraceHeight;
 	raytraceImage.pixels = (Pixel *)fplMemoryAllocate(sizeof(Pixel) * raytraceImage.width * raytraceImage.height);
-	raytraceImage.Fill(MakePixel(0, 0, 0, 255));
+	raytraceImage.Fill(MakePixelFromRGBA(0, 0, 0, 255));
 
 	raytracer.halfPixelSize.w = 0.5f / (f32)raytraceImage.width;
 	raytracer.halfPixelSize.h = 0.5f / (f32)raytraceImage.height;

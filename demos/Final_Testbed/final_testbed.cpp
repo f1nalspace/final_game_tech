@@ -144,7 +144,7 @@ static Rect2f ComputeAspectRect(Vec2f targetSize, Vec2f sourceSize, Ratio source
 	float x = (targetSize.w - width) * 0.5f;
 	float y = (targetSize.h - height) * 0.5f;
 
-	Rect2f result = MakeRect(V2f(x, y), V2f(width, height));
+	Rect2f result = R2fInit(V2fInit(x, y), V2fInit(width, height));
 	return(result);
 }
 
@@ -160,13 +160,10 @@ extern void GameRender(GameMemory &gameMemory, const float alpha) {
 	}
 
 	PushViewport(renderState, state->viewport.x, state->viewport.y, state->viewport.w, state->viewport.h);
-	PushClear(renderState, V4f(0.1f, 0.2f, 0.3f, 1), ClearFlags::Color);
+	PushClear(renderState, V4fInit(0.1f, 0.2f, 0.3f, 1), ClearFlags::Color);
 
-	Vec2f viewSize = V2f(10, 6);
-
-	Mat4f proj = Mat4OrthoRH(0.0f, viewSize.w, viewSize.h, 0.0f, 0.0f, 1.0f);
-	Mat4f view = Mat4Translation(V2f(0, 0)) * Mat4Scale(V2f(1, 1));
-	SetMatrix(renderState, proj * view);
+	float w = 10.0f, h = 6.0f;
+	Vec2f viewSize = V2fInit(w, h);
 
 #define DEMO_IMAGEFIT 1
 #define DEMO_TEST 2
@@ -174,10 +171,14 @@ extern void GameRender(GameMemory &gameMemory, const float alpha) {
 #define DEMO DEMO_IMAGEFIT
 
 #if DEMO == DEMO_IMAGEFIT
+	Mat4f proj = Mat4OrthoRH(0.0f, viewSize.w, viewSize.h, 0.0f, 0.0f, 1.0f);
+	Mat4f view = Mat4TranslationV2(V2fInit(0, 0)) * Mat4ScaleV2(V2fInit(1, 1));
+	SetMatrix(renderState, proj * view);
+
 	Vec2f maxSize = viewSize * 0.75f;
 	Vec2f maxPos = (viewSize - maxSize) * 0.5f;
 
-	Vec2f sourceImageSize = V2f(1000, 100);
+	Vec2f sourceImageSize = V2fInit(1000, 100);
 	Ratio sourceImageAspect = MakeRatio(1, 1);
 	float containerAspect = maxSize.w / maxSize.h;
 
@@ -189,29 +190,29 @@ extern void GameRender(GameMemory &gameMemory, const float alpha) {
 
 	Vec2f imageCenter = maxPos + imageRect.pos + imageExt;
 
-	PushRectangle(renderState, maxPos, maxSize, V4f(1, 1, 1, 1), false, 1.0f);
+	PushRectangle(renderState, maxPos, maxSize, V4fInit(1, 1, 1, 1), false, 1.0f);
 
-	PushRectangle(renderState, maxPos + imageRect.pos, imageSize, V4f(1, 0, 0, 1), false, 1.0f);
+	PushRectangle(renderState, maxPos + imageRect.pos, imageSize, V4fInit(1, 0, 0, 1), false, 1.0f);
 
 	float imageRot = state->angle;
 
-	Mat4f initialTranslationMat = Mat4Translation(imageCenter);
-	Mat4f imageRotMat = Mat4RotationZ(imageRot);
+	Mat4f initialTranslationMat = Mat4TranslationV2(imageCenter);
+	Mat4f imageRotMat = Mat4RotationZFromAngle(imageRot);
 	Mat4f imageMat = initialTranslationMat * imageRotMat;
 
 	Vec2f verts[] = {
-		V2f(-imageExt.w, -imageExt.h),
-		V2f(imageExt.w, -imageExt.h),
-		V2f(imageExt.w, imageExt.h),
-		V2f(-imageExt.w, imageExt.h),
+		V2fInit(-imageExt.w, -imageExt.h),
+		V2fInit(imageExt.w, -imageExt.h),
+		V2fInit(imageExt.w, imageExt.h),
+		V2fInit(-imageExt.w, imageExt.h),
 	};
 
-	Vec2f min = Vec4MultMat4(imageRotMat, V4f(verts[0])).xy;
+	Vec2f min = Vec4MultMat4(imageRotMat, V4fInitXY(verts[0], 0.0f, 1.0f)).xy;
 	Vec2f max = min;
 	for (int i = 1; i < fplArrayCount(verts); ++i) {
-		Vec2f v = Vec4MultMat4(imageRotMat, V4f(verts[i])).xy;
-		min = Vec2Min(min, v);
-		max = Vec2Max(max, v);
+		Vec2f v = Vec4MultMat4(imageRotMat, V4fInitXY(verts[i], 0.0f, 1.0f)).xy;
+		min = V2fMin(min, v);
+		max = V2fMax(max, v);
 	}
 
 	Vec2f rotatedSize = max - min;
@@ -227,34 +228,40 @@ extern void GameRender(GameMemory &gameMemory, const float alpha) {
 	Vec2f scaledSize = imageSize * factor;
 
 	PushMatrix(renderState, imageMat);
-	PushRectangle(renderState, -imageExt, imageSize, V4f(0, 1, 0, 1), false, 1.0f);
+	PushRectangle(renderState, -imageExt, imageSize, V4fInit(0, 1, 0, 1), false, 1.0f);
 	PopMatrix(renderState);
 
-	PushRectangle(renderState, imageCenter - rotatedSize * 0.5f, rotatedSize, V4f(0, 0, 1, 1), false, 1.0f);
+	PushRectangle(renderState, imageCenter - rotatedSize * 0.5f, rotatedSize, V4fInit(0, 0, 1, 1), false, 1.0f);
 
 	PushMatrix(renderState, imageMat);
-	PushRectangle(renderState, -scaledSize * 0.5f, scaledSize, V4f(0, 1, 1, 1), false, 2.0f);
+	PushRectangle(renderState, -scaledSize * 0.5f, scaledSize, V4fInit(0, 1, 1, 1), false, 2.0f);
 	PopMatrix(renderState);
 #endif // DEMO_IMAGEFIT
 
 #if DEMO == DEMO_TEST
-	PushRectangleCenter(renderState, V2f(0, 0), V2f(w * 0.2f, h * 0.2f), V4f(1, 1, 1, 1), false, 1.0f);
-	PushRectangle(renderState, V2f(0, 0), V2f(w * 0.25f, h * 0.25f), V4f(1, 1, 1, 1), true, 0.0f);
+	Mat4f proj = Mat4OrthoRH(-viewSize.w * 0.5f, viewSize.w * 0.5f, -viewSize.h * 0.5f, viewSize.h * 0.5f, 0.0f, 1.0f);
+	Mat4f view = Mat4TranslationV2(V2fInit(0, 0)) * Mat4ScaleV2(V2fInit(1, 1));
+	SetMatrix(renderState, proj * view);
+
+	PushRectangleCenter(renderState, V2fInit(0, 0), V2fInit(w * 0.2f, h * 0.2f), V4fInit(1, 1, 1, 1), false, 1.0f);
+
+	PushRectangleCenter(renderState, V2fInit(0, 0), V2fInit(w * 0.1f, h * 0.1f), V4fInit(1, 1, 1, 1), true, 0.0f);
 
 	Vec2f verts[] = {
-		V2f(0.0f, h * 0.3f),
-		V2f(-w * 0.3f, -h * 0.3f),
-		V2f(w * 0.3f, -h * 0.3f),
+		V2fInit(0.0f, h * 0.3f),
+		V2fInit(-w * 0.3f, -h * 0.3f),
+		V2fInit(w * 0.3f, -h * 0.3f),
 	};
-	PushVertices(renderState, verts, fplArrayCount(verts), true, V4f(0, 1, 1, 1), DrawMode::Lines, true, 1.0f);
+	PushVertices(renderState, verts, fplArrayCount(verts), true, V4fInit(0, 1, 1, 1), DrawMode::Lines, true, 1.0f);
 
-	view = Mat4Translation(V2f(w * 0.25f, -h * 0.1f)) * Mat4Scale(V2f(0.5f, 0.5f));
+	view = Mat4TranslationV2(V2fInit(w * 0.25f, -h * 0.1f)) * Mat4ScaleV2(V2fInit(0.5f, 0.5f));
 	SetMatrix(renderState, proj * view);
-	PushVertices(renderState, verts, fplArrayCount(verts), true, V4f(1, 0, 1, 1), DrawMode::Polygon, true, 1.0f);
+	PushVertices(renderState, verts, fplArrayCount(verts), true, V4fInit(1, 0, 1, 1), DrawMode::Polygon, true, 1.0f);
 
-	view = Mat4Translation(V2f(0, 0));
+	view = Mat4TranslationV2(V2fInit(0, 0));
 	SetMatrix(renderState, proj * view);
-	PushText(renderState, "Hello", 5, &state->debugFont.font.data, &state->debugFont.font.texture, V2f(0, 0), h * 0.1f, 0.0f, 0.0f, V4f(1, 0, 0, 1));
+	PushText(renderState, "Hello", 5, &state->debugFont.font.data, &state->debugFont.font.texture, V2fInit(0, 0), h * 0.1f, 0.0f, 0.0f, V4fInit(1, 0, 0, 1));
+
 #endif // DEMO_TEST
 }
 

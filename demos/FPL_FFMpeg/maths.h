@@ -38,6 +38,49 @@ union Vec2f {
 };
 
 //
+// Vec2f
+//
+inline Vec2f operator*(const Vec2f &a, float b) {
+	Vec2f result = Vec2f(a.x * b, a.y * b);
+	return(result);
+}
+
+inline Vec2f operator*(float b, const Vec2f &a) {
+	Vec2f result = Vec2f(a.x * b, a.y * b);
+	return(result);
+}
+
+inline Vec2f& operator*=(Vec2f &a, float value) {
+	a = a * value;
+	return(a);
+}
+
+inline Vec2f operator-(const Vec2f &a) {
+	Vec2f result = Vec2f(-a.x, -a.y);
+	return(result);
+}
+
+inline Vec2f operator+(const Vec2f &a, const Vec2f &b) {
+	Vec2f result = Vec2f(a.x + b.x, a.y + b.y);
+	return(result);
+}
+
+inline Vec2f& operator+=(Vec2f &a, const Vec2f &b) {
+	a = a + b;
+	return(a);
+}
+
+inline Vec2f operator-(const Vec2f &a, const Vec2f &b) {
+	Vec2f result = Vec2f(a.x - b.x, a.y - b.y);
+	return(result);
+}
+
+inline Vec2f& operator-=(Vec2f &a, const Vec2f &b) {
+	a = a - b;
+	return(a);
+}
+
+//
 // Vec3f (3D 32-bit float)
 //
 union Vec3f {
@@ -107,6 +150,49 @@ union Vec3f {
 	static const Vec3f &Left;
 	static const Vec3f &Right;
 };
+
+//
+// Vec3f
+//
+inline Vec3f operator*(float s, const Vec3f &v) {
+	Vec3f result = Vec3f(s * v.x, s * v.y, s * v.z);
+	return(result);
+}
+
+inline Vec3f operator*(const Vec3f &v, float s) {
+	Vec3f result = s * v;
+	return(result);
+}
+
+inline Vec3f& operator*=(Vec3f &v, float s) {
+	v = s * v;
+	return(v);
+}
+
+inline Vec3f operator+(const Vec3f &a, const Vec3f &b) {
+	Vec3f result = Vec3f(a.x + b.x, a.y + b.y, a.z + b.z);
+	return(result);
+}
+
+inline Vec3f& operator+=(Vec3f &a, const Vec3f &b) {
+	a = a + b;
+	return(a);
+}
+
+inline Vec3f operator-(const Vec3f &a, const Vec3f &b) {
+	Vec3f result = Vec3f(a.x - b.x, a.y - b.y, a.z - b.z);
+	return(result);
+}
+
+inline Vec3f operator-(const Vec3f &v) {
+	Vec3f result = Vec3f(-v.x, -v.y, -v.z);
+	return(result);
+}
+
+inline Vec3f& operator-=(Vec3f &a, const Vec3f &b) {
+	a = a - b;
+	return(a);
+}
 
 //
 // Vec4f (4D 32-bit float)

@@ -51,10 +51,7 @@ License:
 #include <final_platform_layer.h>
 #include <float.h>
 
-typedef uint32_t AudioFrameIndex;
-typedef uint32_t AudioHertz;
-typedef uint32_t AudioChannelIndex;
-typedef uint32_t AudioSampleIndex;
+#include "final_audio.h"
 
 #define MAX_AUDIO_PROBE_BYTES_COUNT 128
 typedef enum AudioFileFormat {

@@ -1,7 +1,7 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 16
-VisualStudioVersion = 16.0.29209.62
+VisualStudioVersion = 16.0.29806.167
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "FPL_OpenGL", "FPL_OpenGL\FPL_OpenGL.vcxproj", "{4D324317-CB24-4B90-AEDA-EA084FF25C2D}"
 EndProject
@@ -73,6 +73,8 @@ EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Tests", "Tests", "{7A39DF50-9D48-4DB0-AAC4-190A4354E5AB}"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Basic", "Basic", "{C005FD6D-BED7-4B18-85B7-068F31C8E8AB}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "FPL_GameTemplate", "FPL_GameTemplate\fpl_gametemplate.vcxproj", "{E59D20EC-C9C2-4238-8299-9611EDA86E54}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -250,6 +252,14 @@ Global
 		{2D2B95D3-1940-483A-866F-0F20F3F10A04}.Release|x64.Build.0 = Release|x64
 		{2D2B95D3-1940-483A-866F-0F20F3F10A04}.Release|x86.ActiveCfg = Release|Win32
 		{2D2B95D3-1940-483A-866F-0F20F3F10A04}.Release|x86.Build.0 = Release|Win32
+		{E59D20EC-C9C2-4238-8299-9611EDA86E54}.Debug|x64.ActiveCfg = Debug|x64
+		{E59D20EC-C9C2-4238-8299-9611EDA86E54}.Debug|x64.Build.0 = Debug|x64
+		{E59D20EC-C9C2-4238-8299-9611EDA86E54}.Debug|x86.ActiveCfg = Debug|Win32
+		{E59D20EC-C9C2-4238-8299-9611EDA86E54}.Debug|x86.Build.0 = Debug|Win32
+		{E59D20EC-C9C2-4238-8299-9611EDA86E54}.Release|x64.ActiveCfg = Release|x64
+		{E59D20EC-C9C2-4238-8299-9611EDA86E54}.Release|x64.Build.0 = Release|x64
+		{E59D20EC-C9C2-4238-8299-9611EDA86E54}.Release|x86.ActiveCfg = Release|Win32
+		{E59D20EC-C9C2-4238-8299-9611EDA86E54}.Release|x86.Build.0 = Release|Win32
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -276,6 +286,7 @@ Global
 		{95EE6855-8700-47F6-B3B5-5E7B2415876C} = {379BA9F9-3371-4C93-9BAF-37687D2D9E39}
 		{93CCCC51-812E-497B-868F-E562501F47C7} = {379BA9F9-3371-4C93-9BAF-37687D2D9E39}
 		{2D2B95D3-1940-483A-866F-0F20F3F10A04} = {EC7F8001-817D-4F5B-B196-0BB9EEC9561E}
+		{E59D20EC-C9C2-4238-8299-9611EDA86E54} = {2269BD5B-699F-4C9E-A738-7AAAFBB47048}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {D82F19D2-526F-4636-9975-883A59A9CE5A}

@@ -14,6 +14,9 @@ Author:
 	Torsten Spaete
 
 Changelog:
+	## 2020-04-20
+	- Rotating example for legacy and modern
+
 	## 2018-10-22
 	- Reflect api changes in FPL 0.9.3
 	- Added a random color effect (Modern only)
@@ -37,10 +40,14 @@ License:
 -------------------------------------------------------------------------------
 */
 
+#define MODERN_OPENGL 1 // Enable this to use OpenGL 3.3+
+
 #define FPL_IMPLEMENTATION
 #define FPL_NO_VIDEO_SOFTWARE
 #define FPL_NO_AUDIO
 #include <final_platform_layer.h>
+
+#include <final_math.h> // Vec3f, Mat4f, etc.
 
 // You have to include GL.h yourself or use any other opengl loader you want.
 // FPL just creates a opengl rendering context for you, but nothing more.
@@ -79,7 +86,7 @@ typedef char GLchar;
 #define GL_STATIC_DRAW                    0x88E4
 
 typedef GLuint(APIENTRYP PFNGLCREATESHADERPROC) (GLenum type);
-typedef void (APIENTRYP PFNGLSHADERSOURCEPROC) (GLuint shader, GLsizei count, const GLchar *const*string, const GLint *length);
+typedef void (APIENTRYP PFNGLSHADERSOURCEPROC) (GLuint shader, GLsizei count, const GLchar *const *string, const GLint *length);
 typedef void (APIENTRYP PFNGLCOMPILESHADERPROC) (GLuint shader);
 typedef void (APIENTRYP PFNGLGETSHADERIVPROC) (GLuint shader, GLenum pname, GLint *params);
 typedef void (APIENTRYP PFNGLATTACHSHADERPROC) (GLuint program, GLuint shader);
@@ -119,6 +126,7 @@ typedef void (APIENTRYP PFNGLVERTEXATTRIBPOINTERPROC) (GLuint index, GLint size,
 typedef void (APIENTRYP PFNGLDELETEVERTEXARRAYSPROC) (GLsizei n, const GLuint *arrays);
 typedef GLint(APIENTRYP PFNGLGETUNIFORMLOCATIONPROC)(GLuint program, const GLchar *name);
 typedef void (APIENTRYP PFNGLUNIFORM1IPROC)(GLint location, GLint v0);
+typedef void (APIENTRYP PFNGLUNIFORMMATRIX4FV)(GLint location, GLsizei count, GLboolean transpose, const GLfloat *value);
 
 static PFNGLGENVERTEXARRAYSPROC glGenVertexArrays = NULL;
 static PFNGLBINDVERTEXARRAYPROC glBindVertexArray = NULL;
@@ -131,6 +139,7 @@ static PFNGLVERTEXATTRIBPOINTERPROC glVertexAttribPointer = NULL;
 static PFNGLDELETEVERTEXARRAYSPROC glDeleteVertexArrays = NULL;
 static PFNGLGETUNIFORMLOCATIONPROC glGetUniformLocation = NULL;
 static PFNGLUNIFORM1IPROC glUniform1i = NULL;
+static PFNGLUNIFORMMATRIX4FV glUniformMatrix4fv = NULL;
 
 #if defined(FPL_PLATFORM_WINDOWS)
 static void *GLProcAddress(const char *name) {
@@ -166,6 +175,7 @@ static void LoadGLExtensions() {
 	glUseProgram = (PFNGLUSEPROGRAMPROC)GLProcAddress("glUseProgram");
 	glGetUniformLocation = (PFNGLGETUNIFORMLOCATIONPROC)GLProcAddress("glGetUniformLocation");
 	glUniform1i = (PFNGLUNIFORM1IPROC)GLProcAddress("glUniform1i");
+	glUniformMatrix4fv = (PFNGLUNIFORMMATRIX4FV)GLProcAddress("glUniformMatrix4fv");
 
 	glGenVertexArrays = (PFNGLGENVERTEXARRAYSPROC)GLProcAddress("glGenVertexArrays");
 	glBindVertexArray = (PFNGLBINDVERTEXARRAYPROC)GLProcAddress("glBindVertexArray");
@@ -178,28 +188,113 @@ static void LoadGLExtensions() {
 	glDeleteVertexArrays = (PFNGLDELETEVERTEXARRAYSPROC)GLProcAddress("glDeleteVertexArrays");
 }
 
-#define MODERN_OPENGL 1
+#define DT (1.0f / 60.0f)
+#define FloorRW 1.0f
+#define FloorRD 1.0f
+#define FloorYPlane 0.0f
+#define CrossRadius 1.5f
+#define GrayColor {0.25f, 0.25f, 0.25f, 1.0f}
+#define TriangleExtW 0.5
+#define TriangleHeight 1.0
+
+typedef struct Vertex {
+	Vec4f color;
+	Vec4f pos;
+} Vertex;
+
+static Vertex CrossVerts[] = {
+	{ {1, 0, 0, 1}, {0,0,0,1} },
+	{ {1, 0, 0, 1}, {CrossRadius,0,0,1} },
+	{ {0, 1, 0, 1}, {0,0,0,1} },
+	{ {0, 1, 0, 1}, {0,CrossRadius,0,1} },
+	{ {0, 0, 1, 1}, {0,0,0,1} },
+	{ {0, 0, 1, 1}, {0,0,CrossRadius,1} },
+};
+
+static Vertex FloorVerts[] = {
+	{ GrayColor, {-FloorRW, FloorYPlane, -FloorRD, 1} },
+	{ GrayColor, {-FloorRW, FloorYPlane, FloorRD, 1} },
+	{ GrayColor, {-FloorRW, FloorYPlane, FloorRD, 1} },
+	{ GrayColor, {FloorRW, FloorYPlane, FloorRD, 1} },
+	{ GrayColor, {FloorRW, FloorYPlane, FloorRD, 1} },
+	{ GrayColor, {FloorRW, FloorYPlane, -FloorRD, 1} },
+	{ GrayColor, {FloorRW, FloorYPlane, -FloorRD, 1} },
+	{ GrayColor, {-FloorRW, FloorYPlane, -FloorRD, 1} },
+};
+
+static Vertex TriangleVerts[] = {
+	{ {1.0f, 0.0f, 0.0f, 1.0f}, {0.0f, TriangleHeight, 0.0f, 1} },
+	{ {0.0f, 1.0f, 0.0f, 1.0f}, {-TriangleExtW, 0.0f, 0.0f, 1} },
+	{ {0.0f, 0.0f, 1.0f, 1.0f}, {TriangleExtW, 0.0f, 0.0f, 1} },
+};
+
 
 static void RunLegacy() {
 	fplConsoleOut("Running legacy opengl\n");
 
+	glEnable(GL_DEPTH_TEST);
+	glDisable(GL_CULL_FACE);
+
+	glMatrixMode(GL_PROJECTION);
+	glLoadIdentity();
+
+	glMatrixMode(GL_MODELVIEW);
+	glLoadIdentity();
+
 	glClearColor(0.39f, 0.58f, 0.93f, 1.0f);
-	while(fplWindowUpdate()) {
+
+	float rot = 0.0f;
+	while (fplWindowUpdate()) {
 		fplPollEvents();
 
 		fplWindowSize windowArea;
 		fplGetWindowSize(&windowArea);
+
+		float aspect = windowArea.width / (float)windowArea.height;
+		Mat4f proj = Mat4PerspectiveRH(DegreesToRadians(35), aspect, 0.1f, 100.0f);
+		Mat4f camera = Mat4LookAtRH(V3fInit(2, 2, 3), V3fInit(0, 0, 0), V3fInit(0, 1, 0));
+		Mat4f model = Mat4RotationY(rot);
+		Mat4f vp = Mat4Mult(proj, camera);
+		Mat4f mvp = Mat4Mult(vp, model);
+
 		glViewport(0, 0, windowArea.width, windowArea.height);
 
-		glClear(GL_COLOR_BUFFER_BIT);
+		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
+#if 0 // Lines needs special shaders for rendering in GLSL, so dont render it in legacy mode
+		// Coordinate-System
+		glLoadMatrixf(&vp.m[0]);
+		glLineWidth(2.0f);
+		glBegin(GL_LINES);
+		for (int i = 0, c = fplArrayCount(CrossVerts); i < c; ++i) {
+			glColor4fv(&CrossVerts[i].color.m[0]);
+			glVertex4fv(&CrossVerts[i].pos.m[0]);
+		}
+		glEnd();
+		glLineWidth(1.0f);
+#endif
+
+		// Plane
+		glLoadMatrixf(&mvp.m[0]);
+		glBegin(GL_TRIANGLE_FAN);
+		for (int i = 0, c = fplArrayCount(FloorVerts); i < c; ++i) {
+			glColor4fv(&FloorVerts[i].color.m[0]);
+			glVertex4fv(&FloorVerts[i].pos.m[0]);
+		}
+		glEnd();
+
+		// Triangle
+		glLoadMatrixf(&mvp.m[0]);
 		glBegin(GL_TRIANGLES);
-		glColor4f(1.0f, 0.0f, 0.0f, 1.0f); glVertex2f(0.0f, 0.5f);
-		glColor4f(0.0f, 1.0f, 0.0f, 1.0f); glVertex2f(-0.5f, -0.5f);
-		glColor4f(0.0f, 0.0f, 1.0f, 1.0f); glVertex2f(0.5f, -0.5f);
+		for (int i = 0, c = fplArrayCount(TriangleVerts); i < c; ++i) {
+			glColor4fv(&TriangleVerts[i].color.m[0]);
+			glVertex4fv(&TriangleVerts[i].pos.m[0]);
+		}
 		glEnd();
 
 		fplVideoFlip();
+
+		rot += 0.01f * DT;
 	}
 }
 
@@ -213,7 +308,7 @@ static GLuint CreateShaderType(GLenum type, const char *source) {
 
 	GLint compileResult;
 	glGetShaderiv(shaderId, GL_COMPILE_STATUS, &compileResult);
-	if(!compileResult) {
+	if (!compileResult) {
 		GLint infoLen;
 		glGetShaderiv(shaderId, GL_INFO_LOG_LENGTH, &infoLen);
 		fplAssert(infoLen <= fplArrayCount(info));
@@ -240,7 +335,7 @@ static GLuint CreateShaderProgram(const char *name, const char *vertexSource, co
 
 	GLint linkResult;
 	glGetProgramiv(programId, GL_LINK_STATUS, &linkResult);
-	if(!linkResult) {
+	if (!linkResult) {
 		GLint infoLen;
 		glGetProgramiv(programId, GL_INFO_LOG_LENGTH, &infoLen);
 		fplAssert(infoLen <= fplArrayCount(info));
@@ -258,10 +353,6 @@ static GLuint CreateShaderProgram(const char *name, const char *vertexSource, co
 static bool RunModern() {
 	LoadGLExtensions();
 
-	GLuint vertexArrayID;
-	glGenVertexArrays(1, &vertexArrayID);
-	glBindVertexArray(vertexArrayID);
-
 	const char *glslVersion = (const char *)glGetString(GL_SHADING_LANGUAGE_VERSION);
 	fplConsoleFormatOut("OpenGL GLSL Version %s:\n", glslVersion);
 
@@ -278,18 +369,20 @@ static bool RunModern() {
 	const char vertexSource[] = {
 		"#version 330 core\n"
 		"\n"
-		"layout(location = 0) in vec2 inPosition;\n"
-		"layout(location = 1) in vec4 inColor;\n"
+		"layout(location = 0) in vec4 inColor;\n"
+		"layout(location = 1) in vec4 inPosition;\n"
+		"\n"
+		"uniform mat4 inMVP;\n"
 		"\n"
 		"out vec4 varColor;\n"
 		"\n"
 		"void main() {\n"
 		"\tvarColor = inColor;\n"
-		"\tgl_Position = vec4(inPosition, 0.0, 1.0);\n"
+		"\tgl_Position = inMVP * inPosition;\n"
 		"}\n"
 	};
 
-	const char fragmentSource[] = {
+	const char fragmentSourceRandom[] = {
 		"#version 330 core\n"
 		"\n"
 		"layout(location = 0) out vec4 outColor;\n"
@@ -315,58 +408,102 @@ static bool RunModern() {
 		"}\n"
 	};
 
-	GLuint shaderProgram = CreateShaderProgram("Test", vertexSource, fragmentSource);
-
-	GLuint inFrameLocation = glGetUniformLocation(shaderProgram, "inFrame");
-
-	// vec2 + vec4
-	float vertices[] = {
-		0.0f, 0.5f, 1.0f, 0.0f, 0.0f, 1.0f,
-		-0.5f, -0.5f, 0.0f, 1.0f, 0.0f, 1.0f,
-		0.5f, -0.5f, 0.0f, 0.0f, 1.0f, 1.0f,
+	const char fragmentSourceColor[] = {
+		"#version 330 core\n"
+		"\n"
+		"layout(location = 0) out vec4 outColor;\n"
+		"\n"
+		"in vec4 varColor;"
+		"\n"
+		"void main() {\n"
+		"\toutColor = varColor;\n"
+		"}\n"
 	};
-	int componentCount = 2 + 4;
 
-	GLuint buffer;
-	glGenBuffers(1, &buffer);
-	glBindBuffer(GL_ARRAY_BUFFER, buffer);
-	glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
-	glBindBuffer(GL_ARRAY_BUFFER, 0);
+	GLuint shaderProgramRandom = CreateShaderProgram("Random", vertexSource, fragmentSourceRandom);
+	GLuint shaderProgramColor = CreateShaderProgram("Color", vertexSource, fragmentSourceColor);
 
-	glBindBuffer(GL_ARRAY_BUFFER, buffer);
+	GLuint inFrameLocationRandom = glGetUniformLocation(shaderProgramRandom, "inFrame");
+	GLuint inMVPLocationRandom = glGetUniformLocation(shaderProgramRandom, "inMVP");
+	GLuint inMVPLocationColor = glGetUniformLocation(shaderProgramColor, "inMVP");
+
+	//
+	// Triangle VAO
+	//
+	GLuint triangleVAO;
+	glGenVertexArrays(1, &triangleVAO);
+	glBindVertexArray(triangleVAO);
+	GLuint triangleBuffer;
+	glGenBuffers(1, &triangleBuffer);
+	glBindBuffer(GL_ARRAY_BUFFER, triangleBuffer);
+	glBufferData(GL_ARRAY_BUFFER, sizeof(TriangleVerts), TriangleVerts, GL_STATIC_DRAW);
 	glEnableVertexAttribArray(0);
 	glEnableVertexAttribArray(1);
-	glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(float) * componentCount, NULL);
-	glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, sizeof(float) * componentCount, (GLvoid*)(2 * sizeof(float)));
+	glVertexAttribPointer(0, 4, GL_FLOAT, GL_FALSE, sizeof(Vertex), NULL);
+	glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, sizeof(Vertex), (GLvoid *)(4 * sizeof(float)));
+
+	//
+	// Floor VAO
+	//
+	GLuint floorVAO;
+	glGenVertexArrays(1, &floorVAO);
+	glBindVertexArray(floorVAO);
+	GLuint floorBuffer;
+	glGenBuffers(1, &floorBuffer);
+	glBindBuffer(GL_ARRAY_BUFFER, floorBuffer);
+	glBufferData(GL_ARRAY_BUFFER, sizeof(FloorVerts), FloorVerts, GL_STATIC_DRAW);
+	glEnableVertexAttribArray(0);
+	glEnableVertexAttribArray(1);
+	glVertexAttribPointer(0, 4, GL_FLOAT, GL_FALSE, sizeof(Vertex), NULL);
+	glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, sizeof(Vertex), (GLvoid *)(4 * sizeof(float)));
+
+	// Disable VAO
+	glBindBuffer(GL_ARRAY_BUFFER, 0);
+	glBindVertexArray(0);
 
 	int frameIndex = 0;
+
+	glEnable(GL_DEPTH_TEST);
+	glDisable(GL_CULL_FACE);
+
 	glClearColor(0.39f, 0.58f, 0.93f, 1.0f);
-	while(fplWindowUpdate()) {
+
+	float rot = 0.0f;
+	while (fplWindowUpdate()) {
 		fplPollEvents();
 
 		fplWindowSize windowArea;
 		fplGetWindowSize(&windowArea);
+
+		float aspect = windowArea.width / (float)windowArea.height;
+		Mat4f proj = Mat4PerspectiveRH(DegreesToRadians(35), aspect, 0.1f, 100.0f);
+		Mat4f camera = Mat4LookAtRH(V3fInit(2, 2, 3), V3fInit(0, 0, 0), V3fInit(0, 1, 0));
+		Mat4f model = Mat4RotationY(rot);
+		Mat4f vp = Mat4Mult(proj, camera);
+		Mat4f mvp = Mat4Mult(vp, model);
+
 		glViewport(0, 0, windowArea.width, windowArea.height);
 
-		glClear(GL_COLOR_BUFFER_BIT);
+		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-		glUseProgram(shaderProgram);
-		glUniform1i(inFrameLocation, frameIndex);
+		glBindVertexArray(triangleVAO);
+		glUseProgram(shaderProgramRandom);
+		glUniform1i(inFrameLocationRandom, frameIndex);
+		glUniformMatrix4fv(inMVPLocationRandom, 1, GL_FALSE, &mvp.m[0]);
+		glDrawArrays(GL_TRIANGLES, 0, fplArrayCount(TriangleVerts));
 
-		glDrawArrays(GL_TRIANGLES, 0, 3);
-
-		glUseProgram(0);
+		glBindVertexArray(floorVAO);
+		glUseProgram(shaderProgramColor);
+		glUniformMatrix4fv(inMVPLocationColor, 1, GL_FALSE, &mvp.m[0]);
+		glDrawArrays(GL_TRIANGLE_FAN, 0, fplArrayCount(FloorVerts));
 
 		fplVideoFlip();
 		++frameIndex;
+		rot += 0.01f * DT;
 	}
 
-	glDisableVertexAttribArray(0);
-	glDisableVertexAttribArray(1);
-	glBindBuffer(GL_ARRAY_BUFFER, 0);
-
-	glBindVertexArray(0);
-	glDeleteVertexArrays(1, &vertexArrayID);
+	glDeleteVertexArrays(1, &floorVAO);
+	glDeleteVertexArrays(1, &triangleVAO);
 
 	return true;
 }
@@ -385,7 +522,7 @@ int main(int argc, char **args) {
 	fplCopyString("FPL Legacy OpenGL", settings.window.title, fplArrayCount(settings.window.title));
 	settings.video.graphics.opengl.compabilityFlags = fplOpenGLCompabilityFlags_Legacy;
 #endif
-	if(fplPlatformInit(fplInitFlags_Video, &settings)) {
+	if (fplPlatformInit(fplInitFlags_Video, &settings)) {
 
 		const char *version = (const char *)glGetString(GL_VERSION);
 		const char *vendor = (const char *)glGetString(GL_VENDOR);

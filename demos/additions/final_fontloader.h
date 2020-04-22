@@ -104,26 +104,26 @@ extern Vec2f GetTextSize(const char *text, const size_t textLen, const LoadedFon
 			uint32_t at = text[textPos];
 			uint32_t atNext = textPos < (textLen - 1) ? (text[textPos + 1]) : 0;
 			float xadvance;
-			Vec2f offset = V2f(xpos, ypos);
-			Vec2f size = V2f();
+			Vec2f offset = V2fInit(xpos, ypos);
+			Vec2f size = V2fZero();
 			if(at >= fontDesc->firstChar && at <= lastChar) {
 				uint32_t codePoint = at - fontDesc->firstChar;
 				const FontGlyph *glyph = fontDesc->glyphs + codePoint;
 				size = glyph->charSize;
 				offset += glyph->offset;
-				offset += V2f(size.x, -size.y) * 0.5f;
+				offset += V2fInit(size.x, -size.y) * 0.5f;
 				xadvance = GetFontCharacterAdvance(fontDesc, (uint32_t)at, (uint32_t)atNext);
 			} else {
 				xadvance = fontDesc->info.spaceAdvance;
 			}
 			Vec2f min = offset;
-			Vec2f max = min + V2f(xadvance, size.y);
+			Vec2f max = min + V2fInit(xadvance, size.y);
 			xwidth += (max.x - min.x);
 			ymax = fplMax(ymax, max.y - min.h);
 			xpos += xadvance;
 		}
 	}
-	Vec2f result = V2f(xwidth, ymax) * maxCharHeight;
+	Vec2f result = V2fInit(xwidth, ymax) * maxCharHeight;
 	return(result);
 }
 
@@ -228,16 +228,16 @@ extern bool LoadFontFromMemory(const void *data, const size_t dataSize, const ui
 			float uMax = sourceInfo->x1 * texelU;
 			float vMin = sourceInfo->y1 * texelV;
 			float vMax = sourceInfo->y0 * texelV;
-			destInfo->uvMin = V2f(uMin, vMin);
-			destInfo->uvMax = V2f(uMax, vMax);
+			destInfo->uvMin = V2fInit(uMin, vMin);
+			destInfo->uvMax = V2fInit(uMax, vMax);
 
 			// Compute character size
 			int charWidthInPixels = sourceInfo->x1 - sourceInfo->x0;
 			int charHeightInPixels = sourceInfo->y1 - sourceInfo->y0;
-			destInfo->charSize = V2f((float)charWidthInPixels, (float)charHeightInPixels) * pixelsToUnits;
+			destInfo->charSize = V2fInit((float)charWidthInPixels, (float)charHeightInPixels) * pixelsToUnits;
 
 			// Compute offset to start/baseline in units
-			destInfo->offset = V2f(sourceInfo->xoff, -sourceInfo->yoff) * pixelsToUnits;
+			destInfo->offset = V2fInit(sourceInfo->xoff, -sourceInfo->yoff) * pixelsToUnits;
 		}
 
 		// Build kerning table & default advance table

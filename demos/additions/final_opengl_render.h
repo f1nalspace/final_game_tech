@@ -74,9 +74,9 @@ extern void DrawTextFont(const char *text, const size_t textLen, const LoadedFon
 				uint32_t codePoint = at - fontDesc->firstChar;
 				const FontGlyph *glyph = &fontDesc->glyphs[codePoint];
 				Vec2f size = glyph->charSize * maxCharHeight;
-				Vec2f offset = V2f(xpos, ypos);
+				Vec2f offset = V2fInit(xpos, ypos);
 				offset += glyph->offset * maxCharHeight;
-				offset += V2f(size.x, -size.y) * 0.5f;
+				offset += V2fInit(size.x, -size.y) * 0.5f;
 				DrawSprite(fontTexture, size.x * 0.5f, size.y * 0.5f, glyph->uvMin.x, glyph->uvMin.y, glyph->uvMax.x, glyph->uvMax.y, offset.x, offset.y);
 				advance = GetFontCharacterAdvance(fontDesc, at, atNext) * maxCharHeight;
 			} else {
@@ -93,7 +93,7 @@ extern void DrawCircle(const float centerX, const float centerY, const float rad
 	glBegin(isFilled ? GL_POLYGON : GL_LINE_LOOP);
 	for(int segmentIndex = 0; segmentIndex < segments; ++segmentIndex) {
 		float x = centerX + Cosine(segmentIndex * seg) * radius;
-		float y = centerY + sinf(segmentIndex * seg) * radius;
+		float y = centerY + Sine(segmentIndex * seg) * radius;
 		glVertex2f(x, y);
 	}
 	glEnd();
@@ -167,7 +167,7 @@ extern void RenderWithOpenGL(RenderState &renderState) {
 	if(renderState.memory.size > sizeof(CommandHeader)) {
 		uint8_t *mem = (uint8_t *)renderState.memory.base;
 		size_t remaining = renderState.memory.used;
-		Mat4f mvpCur = M4f();
+		Mat4f mvpCur = M4fInit(1.0f);
 		renderState.matrixTop = 0;
 		while(remaining > 0) {
 			uint8_t *startMem = mem;
@@ -322,9 +322,9 @@ extern void RenderWithOpenGL(RenderState &renderState) {
 								uint32_t codePoint = at - fontDesc->firstChar;
 								const FontGlyph *glyph = &fontDesc->glyphs[codePoint];
 								Vec2f size = glyph->charSize * maxHeight;
-								Vec2f offset = V2f(xpos, ypos);
+								Vec2f offset = V2fInit(xpos, ypos);
 								offset += glyph->offset * maxHeight;
-								offset += V2f(size.x, -size.y) * 0.5f;
+								offset += V2fInit(size.x, -size.y) * 0.5f;
 
 								float extW = size.w * 0.5f;
 								float extH = size.h * 0.5f;

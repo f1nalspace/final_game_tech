@@ -527,9 +527,10 @@ static void TestHardware() {
 
     ftMsg("RDTSC:\n");
     double tmp = 1.0;
-    for (int i = 0; i < 10; ++i){
+    for (int i = 0; i < 1000; ++i){
         tmp *= 2 + 1;
-        tmp / (double)i*4;
+        tmp /= (double)i*4;
+		tmp = sqrt(tmp);
         uint64_t cycles = fplRDTSC();
         ftMsg("\tRun[%d]: %f, %llu\n", i, tmp, cycles);
     }

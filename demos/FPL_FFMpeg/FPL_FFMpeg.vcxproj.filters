@@ -15,6 +15,7 @@
     <ClInclude Include="..\dependencies\stb\stb_truetype.h">
       <Filter>dependencies</Filter>
     </ClInclude>
+    <ClInclude Include="fontdata.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="fpl_ffmpeg.cpp" />

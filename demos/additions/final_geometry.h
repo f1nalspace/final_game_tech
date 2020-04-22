@@ -50,12 +50,12 @@ struct LineCastOutput {
 
 bool LineCastCircle(const LineCastInput &input, const Vec2f &center, const float radius, LineCastOutput &output) {
 	Vec2f s = input.p1 - center;
-	float b = Vec2Dot(s, s) - radius * radius;
+	float b = V2fDot(s, s) - radius * radius;
 
 	// Solve quadratic equation.
 	Vec2f r = input.p2 - input.p1;
-	float c = Vec2Dot(s, r);
-	float rr = Vec2Dot(r, r);
+	float c = V2fDot(s, r);
+	float rr = V2fDot(r, r);
 	float sigma = c * c - rr * b;
 
 	// Check for negative discriminant and short segment.
@@ -70,7 +70,7 @@ bool LineCastCircle(const LineCastInput &input, const Vec2f &center, const float
 	if (0.0f <= a && a <= input.maxFraction * rr) {
 		a /= rr;
 		output.fraction = a;
-		output.normal = Vec2Normalize(s + a * r);
+		output.normal = V2fNormalize(s + a * r);
 		return true;
 	}
 

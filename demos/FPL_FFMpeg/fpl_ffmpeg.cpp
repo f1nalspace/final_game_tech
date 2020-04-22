@@ -10,13 +10,20 @@ Requirements:
 	- C++/11 Compiler
 	- Platform x64 / Win32
 	- Final Platform Layer
-	- ffmpeg-4.0-win64-shared (http://ffmpeg.zeranoe.com/builds/)
-	- ffmpeg-4.0-win64-dev (http://ffmpeg.zeranoe.com/builds/)
+	- FFmpeg-4.2.2-win64-shared (http://ffmpeg.zeranoe.com/builds/)
+	- FFmpeg-4.2.2-win64-dev (http://ffmpeg.zeranoe.com/builds/)
 
 Author:
 	Torsten Spaete
 
 Changelog:
+	## 2020-04-22
+	- Relative Seeking Support
+	- OSD for displaying media/stream informations
+
+	## 2020-03-02
+	- Upgraded to FFmpeg 4.2.2
+
 	## 2019-04-27
 	- Small changes (Comments, Constants)
 
@@ -46,7 +53,9 @@ Changelog:
 	- Forced Visual-Studio-Project to compile in C++ always
 
 Issues:
-	- Black flickering in software rendering mode
+	- Black flickering in software rendering mode (FPL has not double buffering support for software rendering)
+	- Frame drops for a couple of seconds when doing seeking (Need to flush all the queues or something)
+	- Defines in mix everywhere, making it hard to implement other systems or switch from software <-> hardware (Need a rewrite)
 
 Features/Planned:
 	[x] Reads packets from stream and queues them up
@@ -70,27 +79,22 @@ Features/Planned:
 	[x] Aspect ratio calculation
 	[x] Fullscreen toggling
 	[x] Modern OpenGL 3.3
-	[ ] OSD
-	[ ] Seeking (+/- 5 secs)
+	[x] OSD
+	[x] Seeking (+/- 5 secs)
 	[ ] Frame by frame stepping
 	[ ] Support for audio format change while playing
 	[ ] Support for video format change while playing
 	[x] Image format conversion (YUY2, YUV > RGB24 etc.)
 		[x] GLSL (YUV420P for now)
 		[x] Slow CPU implementation (YUV420P for now)
+		[ ] SIMD YUV420P implementation
 	[ ] Audio format conversion (Downsampling, Upsampling, S16 > F32 etc.)
 		[ ] Slow CPU implementation
+		[ ] SIMD implementation
 		[ ] Planar (Non-interleaved) samples to (Interleaved) Non-planar samples conversion
 	[ ] Composite video rendering
 		[ ] Bitmap rect blitting
 		[ ] Subtitle Decoding and Compositing
-	[ ] UI
-		[ ] Current Time
-		[ ] Buttons
-		[ ] File dialog
-		[ ] Seekbar
-		[ ] Playlist
-		[ ] Audio visualizer (FFT)
 
 Resources:
 	- http://dranger.com/ffmpeg/tutorial01.html
@@ -99,7 +103,7 @@ Resources:
 	- https://www.codeproject.com/tips/489450/creating-custom-ffmpeg-io-context
 
 License:
-	Copyright (c) 2017-2019 Torsten Spaete
+	Copyright (c) 2017-2020 Torsten Spaete
 	MIT License (See LICENSE file)
 -------------------------------------------------------------------------------
 */
@@ -115,6 +119,10 @@ License:
 #include "utils.h"
 #include "maths.h"
 #include "ffmpeg.h"
+
+#include "fontdata.h" // sulphur-point-regular font
+
+typedef int32_t bool32;
 
 #define STB_TRUETYPE_IMPLEMENTATION
 #include <stb_truetype.h>
@@ -212,7 +220,7 @@ static GLuint CreateShader(const char *vertexShaderSource, const char *fragmentS
 }
 
 static bool LoadVideoShader(VideoShader &shader, const char *vertexSource, const char *fragSource, const char *name) {
-	shader.programId = CreateShader(vertexSource, fragSource, "Basic");
+	shader.programId = CreateShader(vertexSource, fragSource, name);
 	shader.uniform_uniProjMat = glGetUniformLocation(shader.programId, "uniProjMat");
 	shader.uniform_uniTextures = glGetUniformLocation(shader.programId, "uniTextures");
 	shader.uniform_uniTextureScaleY = glGetUniformLocation(shader.programId, "uniTextureScaleY");
@@ -240,7 +248,7 @@ static void PrintMemStats() {
 	int32_t usedPackets = fplAtomicLoadS32(&globalMemStats.usedPackets);
 	int32_t allocatedFrames = fplAtomicLoadS32(&globalMemStats.allocatedFrames);
 	int32_t usedFrames = fplAtomicLoadS32(&globalMemStats.usedFrames);
-	fplConsoleFormatOut("Packets: %d / %d, Frames: %d / %d\n", allocatedPackets, usedPackets, allocatedFrames, usedFrames);
+	fplDebugFormatOut("Packets: %d / %d, Frames: %d / %d\n", allocatedPackets, usedPackets, allocatedFrames, usedFrames);
 }
 
 //
@@ -474,7 +482,7 @@ struct Frame {
 	int32_t serial;
 	int32_t width;
 	int32_t height;
-	bool isUploaded;
+	bool32 isUploaded;
 };
 
 static AVFrame *AllocateFrame() {
@@ -504,8 +512,8 @@ struct FrameQueue {
 	int32_t capacity;
 	int32_t keepLast;
 	int32_t readIndexShown;
-	bool isValid;
-	bool hasPendingPacket;
+	bool32 isValid;
+	bool32 hasPendingPacket;
 };
 
 static bool InitFrameQueue(FrameQueue &queue, int32_t capacity, volatile uint32_t *stopped, int32_t keepLast) {
@@ -622,7 +630,7 @@ struct MediaStream {
 	AVCodecContext *codecContext;
 	AVCodec *codec;
 	int32_t streamIndex;
-	bool isValid;
+	bool32 isValid;
 };
 
 struct ReaderContext {
@@ -633,7 +641,7 @@ struct ReaderContext {
 	fplThreadHandle *thread;
 	volatile uint32_t readPacketCount;
 	volatile uint32_t stopRequest;
-	bool isEOF;
+	bool32 isEOF;
 };
 
 static bool InitReader(ReaderContext &outReader) {
@@ -763,7 +771,7 @@ struct Clock {
 	double speed;
 	int32_t *queueSerial;
 	int32_t serial;
-	bool isPaused;
+	bool32 isPaused;
 };
 enum class AVSyncType {
 	AudioMaster,
@@ -820,7 +828,7 @@ static void SyncClockToSlave(Clock &c, const Clock &slave) {
 //
 // Video
 //
-struct Texture {
+struct VideoTexture {
 #if USE_HARDWARE_RENDERING
 	GLuint id;
 	GLuint pboId;
@@ -840,7 +848,7 @@ struct Texture {
 	uint32_t colorBits;
 };
 
-static bool InitTexture(Texture &texture, const uint32_t w, const uint32_t h, const uint32_t colorBits) {
+static bool InitVideoTexture(VideoTexture &texture, const uint32_t w, const uint32_t h, const uint32_t colorBits) {
 	texture.width = w;
 	texture.height = h;
 	texture.colorBits = colorBits;
@@ -859,7 +867,7 @@ static bool InitTexture(Texture &texture, const uint32_t w, const uint32_t h, co
 	glBufferData(GL_PIXEL_UNPACK_BUFFER, dataSize, 0, GL_STREAM_DRAW);
 	glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
 #	else
-	texture.data = (uint8_t *)MemoryAllocate(dataSize);
+	texture.data = (uint8_t *)fplMemoryAllocate(dataSize);
 #	endif
 
 #if USE_GL_RECTANGLE_TEXTURES
@@ -892,7 +900,7 @@ static bool InitTexture(Texture &texture, const uint32_t w, const uint32_t h, co
 	return true;
 }
 
-static uint8_t *LockTexture(Texture &texture) {
+static uint8_t *LockVideoTexture(VideoTexture &texture) {
 	uint8_t *result;
 
 #if USE_HARDWARE_RENDERING
@@ -911,7 +919,7 @@ static uint8_t *LockTexture(Texture &texture) {
 	return(result);
 }
 
-static void UnlockTexture(Texture &texture) {
+static void UnlockVideoTexture(VideoTexture &texture) {
 #if USE_HARDWARE_RENDERING
 #	if USE_GL_PBO
 	glUnmapBuffer(GL_PIXEL_UNPACK_BUFFER);
@@ -922,16 +930,16 @@ static void UnlockTexture(Texture &texture) {
 	CheckGLError();
 #	else
 	glBindTexture(texture.target, texture.id);
-	glTexSubImage2D(texture.target, 0, 0, 0, texture.width, texture.height, GL_RGBA, GL_UNSIGNED_BYTE, texture.data);
+	glTexSubImage2D(texture.target, 0, 0, 0, texture.width, texture.height, texture.format, GL_UNSIGNED_BYTE, texture.data);
 	glBindTexture(texture.target, 0);
 #	endif
 #endif
 }
 
-static void DestroyTexture(Texture &texture) {
+static void DestroyVideoTexture(VideoTexture &texture) {
 #if USE_HARDWARE_RENDERING
 #	if !USE_GL_PBO
-	MemoryFree(texture.data);
+	fplMemoryFree(texture.data);
 #	endif
 	glDeleteTextures(1, &texture.id);
 #	if USE_GL_PBO
@@ -942,12 +950,18 @@ static void DestroyTexture(Texture &texture) {
 	texture = {};
 }
 
+static uint16_t videoQuadIndices[6] = {
+	0, 1, 2,
+	2, 3, 0,
+};
+
 constexpr uint32_t MAX_TARGET_TEXTURE_COUNT = 4;
 struct VideoContext {
 	MediaStream stream;
 	Decoder decoder;
 	Clock clock;
-	Texture targetTextures[MAX_TARGET_TEXTURE_COUNT];
+	VideoTexture targetTextures[MAX_TARGET_TEXTURE_COUNT];
+
 #if USE_HARDWARE_RENDERING
 	VideoShader basicShader;
 	VideoShader yuv420pShader;
@@ -956,6 +970,7 @@ struct VideoContext {
 	GLuint indexBufferId;
 	VideoShader *activeShader;
 #endif
+
 	SwsContext *softwareScaleCtx;
 	uint32_t targetTextureCount;
 };
@@ -982,17 +997,17 @@ static void FlipSourcePicture(uint8_t *srcData[8], int srcLineSize[8], int heigh
 
 static void UploadTexture(VideoContext &video, const AVFrame *sourceNativeFrame) {
 	AVCodecContext *videoCodecCtx = video.stream.codecContext;
-#if USE_HARDWARE_RENDERING && USE_HARDWARE_IMAGE_FORMAT_DECODING
+#if USE_HARDWARE_RENDERING && USE_GLSL_IMAGE_FORMAT_DECODING
 	switch (sourceNativeFrame->format) {
 		case AVPixelFormat::AV_PIX_FMT_YUV420P:
 			assert(video.targetTextureCount == 3);
 			for (uint32_t textureIndex = 0; textureIndex < video.targetTextureCount; ++textureIndex) {
-				Texture &targetTexture = video.targetTextures[textureIndex];
-				uint8_t *data = LockTexture(targetTexture);
+				VideoTexture &targetTexture = video.targetTextures[textureIndex];
+				uint8_t *data = LockVideoTexture(targetTexture);
 				assert(data != nullptr);
 				uint32_t h = (textureIndex == 0) ? sourceNativeFrame->height : sourceNativeFrame->height / 2;
 				fplMemoryCopy(sourceNativeFrame->data[textureIndex], sourceNativeFrame->linesize[textureIndex] * h, data);
-				UnlockTexture(targetTexture);
+				UnlockVideoTexture(targetTexture);
 			}
 			break;
 		default:
@@ -1000,11 +1015,11 @@ static void UploadTexture(VideoContext &video, const AVFrame *sourceNativeFrame)
 	}
 #else
 	assert(video.targetTextureCount == 1);
-	Texture &targetTexture = video.targetTextures[0];
+	VideoTexture &targetTexture = video.targetTextures[0];
 	assert(targetTexture.width == sourceNativeFrame->width);
 	assert(targetTexture.height == sourceNativeFrame->height);
 
-	uint8_t *data = LockTexture(targetTexture);
+	uint8_t *data = LockVideoTexture(targetTexture);
 	assert(data != nullptr);
 
 	int32_t dstLineSize[8] = { targetTexture.rowSize, 0 };
@@ -1017,7 +1032,7 @@ static void UploadTexture(VideoContext &video, const AVFrame *sourceNativeFrame)
 	}
 
 #if USE_FFMPEG_SOFTWARE_CONVERSION
-	ffmpeg.sws_scale(video.softwareScaleCtx, (uint8_t const * const *)srcData, srcLineSize, 0, videoCodecCtx->height, dstData, dstLineSize);
+	ffmpeg.sws_scale(video.softwareScaleCtx, (uint8_t const *const *)srcData, srcLineSize, 0, videoCodecCtx->height, dstData, dstLineSize);
 #else
 	ConversionFlags flags = ConversionFlags::None;
 #	if USE_HARDWARE_RENDERING
@@ -1028,11 +1043,11 @@ static void UploadTexture(VideoContext &video, const AVFrame *sourceNativeFrame)
 			ConvertYUV420PToRGB32(dstData, dstLineSize, targetTexture.width, targetTexture.height, srcData, srcLineSize, flags);
 			break;
 		default:
-			ffmpeg.sws_scale(video.softwareScaleCtx, (uint8_t const * const *)srcData, srcLineSize, 0, videoCodecCtx->height, dstData, dstLineSize);
+			ffmpeg.sws_scale(video.softwareScaleCtx, (uint8_t const *const *)srcData, srcLineSize, 0, videoCodecCtx->height, dstData, dstLineSize);
 			break;
 	}
 #endif
-	UnlockTexture(targetTexture);
+	UnlockVideoTexture(targetTexture);
 #endif
 }
 
@@ -1124,8 +1139,8 @@ static bool IsPlanarAVSampleFormat(const AVSampleFormat format) {
 // Player
 //
 struct PlayerPosition {
-	bool isValid;
 	int64_t value;
+	bool32 isValid;
 };
 
 struct PlayerSettings {
@@ -1133,10 +1148,10 @@ struct PlayerSettings {
 	PlayerPosition duration;
 	int32_t frameDrop;
 	int32_t reorderDecoderPTS;
-	bool isInfiniteBuffer;
-	bool isLoop;
-	bool isVideoDisabled;
-	bool isAudioDisabled;
+	bool32 isInfiniteBuffer;
+	bool32 isLoop;
+	bool32 isVideoDisabled;
+	bool32 isAudioDisabled;
 };
 
 static void InitPlayerSettings(PlayerSettings &settings) {
@@ -1151,38 +1166,593 @@ static void InitPlayerSettings(PlayerSettings &settings) {
 struct SeekState {
 	int64_t pos;
 	int64_t rel;
-	int seekFlags;
-	bool isRequired;
+	int32_t seekFlags;
+	bool32 isRequired;
 };
 
+//
+// Font
+//
+struct FontChar {
+	// Cartesian coordinates: TR, TL, BL, BR
+
+	// Just for debug purposes
+	uint32_t charCode;
+	Vec2f uv[4]; // In range of 0.0 to 1.0
+	Vec2f offset[4]; // In range of -1.0 to 1.0
+	float advance; // In range of -1.0 to 1.0
+};
+
+struct FontInfo {
+	FontChar *chars;
+	uint8_t *atlasBitmap;
+	float ascent;
+	float descent;
+	float lineGap;
+	uint32_t atlasWidth;
+	uint32_t atlasHeight;
+	uint32_t firstChar;
+	uint32_t charCount;
+	bool32 isValid;
+};
+
+static FontChar GetFontChar(const FontInfo &info, const uint32_t codePoint) {
+	uint32_t lastCharPastOne = info.firstChar + info.charCount;
+	fplAssert(codePoint >= info.firstChar && codePoint < lastCharPastOne);
+	uint32_t charIndex = codePoint - info.firstChar;
+	FontChar result = info.chars[charIndex];
+	return(result);
+}
+
+static void ReleaseFontInfo(FontInfo &font) {
+	if (font.chars)
+		fplMemoryFree(font.chars);
+	if (font.atlasBitmap)
+		fplMemoryFree(font.atlasBitmap);
+}
+
+static bool LoadFontInfo(const uint8_t *data, const size_t dataSize, const uint32_t atlasWidth, const uint32_t atlasHeight, const uint32_t firstChar, const uint32_t charCount, const float fontSize, FontInfo *outFont) {
+	FontInfo font = {};
+	font.atlasWidth = atlasWidth;
+	font.atlasHeight = atlasHeight;
+	font.firstChar = firstChar;
+	font.charCount = charCount;
+
+	int fontIndex = 0;
+	int fontOffset = stbtt_GetFontOffsetForIndex(data, fontIndex);
+	stbtt_fontinfo nativeInfo;
+	if (!stbtt_InitFont(&nativeInfo, data, fontOffset)) {
+		return(false);
+	}
+
+	// TODO: One memory block for both
+	font.atlasBitmap = (uint8_t *)fplMemoryAllocate(font.atlasWidth * font.atlasHeight);
+	font.chars = (FontChar *)fplMemoryAllocate(font.charCount * sizeof(*font.chars));
+
+	int ascent = 0;
+	int descent = 0;
+	int lineGap = 0;
+
+	float fontScale = 1.0f / fontSize;
+	float pixelScale = stbtt_ScaleForPixelHeight(&nativeInfo, fontSize);
+	stbtt_GetFontVMetrics(&nativeInfo, &ascent, &descent, &lineGap);
+
+	font.ascent = (float)ascent * pixelScale * fontScale;
+	font.descent = (float)descent * pixelScale * fontScale;
+	font.lineGap = (float)lineGap * pixelScale * fontScale;
+
+	stbtt_pack_context context;
+	if (!stbtt_PackBegin(&context, font.atlasBitmap, font.atlasWidth, font.atlasHeight, 0, 1, nullptr)) {
+		ReleaseFontInfo(font);
+		return(false);
+	}
+
+	int oversampleX = 2, oversampleY = 2;
+	stbtt_PackSetOversampling(&context, oversampleX, oversampleY);
+
+	stbtt_packedchar *packedChars = (stbtt_packedchar *)STBTT_malloc(sizeof(stbtt_packedchar) * font.charCount, nullptr);
+	if (!stbtt_PackFontRange(&context, data, 0, fontSize, font.firstChar, font.charCount, packedChars)) {
+		STBTT_free(packedChars, nullptr);
+		ReleaseFontInfo(font);
+		return(false);
+	}
+
+	float invAtlasW = 1.0f / (float)font.atlasWidth;
+	float invAtlasH = 1.0f / (float)font.atlasHeight;
+
+	float baseline = font.ascent;
+
+	for (uint32_t charIndex = 0; charIndex < font.charCount; ++charIndex) {
+		const stbtt_packedchar *b = packedChars + charIndex;
+
+		FontChar *outChar = font.chars + charIndex;
+
+		float s0 = b->x0 * invAtlasW;
+		float s1 = b->x1 * invAtlasW;
+		float t0 = b->y0 * invAtlasH;
+		float t1 = b->y1 * invAtlasH;
+
+		float x0 = b->xoff * pixelScale;
+		float x1 = b->xoff2 * pixelScale;
+
+		// Y must be inverted, to flip letter (Cartesian conversion)
+		float y0 = b->yoff * -pixelScale;
+		float y1 = b->yoff2 * -pixelScale;
+
+		// Y must be inverted, to flip letter (Cartesian conversion)
+		outChar->offset[0] = Vec2f(x1, y0); // Top-right
+		outChar->offset[1] = Vec2f(x0, y0); // Top-left
+		outChar->offset[2] = Vec2f(x0, y1); // Bottom-left
+		outChar->offset[3] = Vec2f(x1, y1); // Bottom-right
+
+		outChar->uv[0] = Vec2f(s1, t0);
+		outChar->uv[1] = Vec2f(s0, t0);
+		outChar->uv[2] = Vec2f(s0, t1);
+		outChar->uv[3] = Vec2f(s1, t1);
+
+		outChar->advance = b->xadvance * pixelScale;
+	}
+
+	STBTT_free(packedChars, nullptr);
+
+	stbtt_PackEnd(&context);
+
+	*outFont = font;
+
+	return(true);
+}
+
+enum class TextRenderMode {
+	Baseline = 0,
+	Bottom,
+};
+
+#if USE_HARDWARE_RENDERING
+struct IndexBuffer {
+	uint32_t *indices;
+	uint32_t lastIndex;
+	uint32_t capacity;
+	uint32_t count;
+
+	static const GLuint target = GL_ELEMENT_ARRAY_BUFFER;
+	GLuint ibo;
+
+	static IndexBuffer Alloc(const uint32_t capacity) {
+		IndexBuffer result = {};
+		result.capacity = capacity;
+		result.indices = (uint32_t *)fplMemoryAllocate(sizeof(*result.indices) * capacity);
+
+		size_t indicesSize = capacity * sizeof(*result.indices);
+
+		glGenBuffers(1, &result.ibo);
+		glBindBuffer(target, result.ibo);
+		glBufferData(target, indicesSize, nullptr, GL_DYNAMIC_DRAW);
+		glBindBuffer(target, 0);
+
+		return(result);
+	}
+
+	void Clear() {
+		lastIndex = count = 0;
+	}
+
+	void Release() {
+		if (ibo) {
+			glDeleteBuffers(1, &ibo);
+			ibo = 0;
+		}
+
+		if (indices) {
+			fplMemoryFree(indices);
+			indices = nullptr;
+		}
+		lastIndex = capacity = count = 0;
+	}
+
+	void Bind() {
+		glBindBuffer(target, ibo);
+	}
+
+	void Unbind() {
+		glBindBuffer(target, 0);
+	}
+};
+
+struct BufferVertex {
+	Vec4f pos;
+	Vec4f color;
+	Vec2f uv;
+};
+
+struct VertexBuffer {
+	BufferVertex *verts;
+	uint32_t capacity;
+	uint32_t count;
+	uint32_t stride;
+
+	static const GLuint target = GL_ARRAY_BUFFER;
+	GLuint vbo;
+
+	void Clear() {
+		count = 0;
+	}
+
+	static VertexBuffer Alloc(const uint32_t capacity) {
+		VertexBuffer result = {};
+		result.capacity = capacity;
+		result.verts = (BufferVertex *)fplMemoryAllocate(sizeof(*result.verts) * capacity);
+		result.stride = sizeof(*result.verts);
+
+		size_t vertsSize = capacity * sizeof(*result.verts);
+
+		glGenBuffers(1, &result.vbo);
+		glBindBuffer(target, result.vbo);
+		glBufferData(target, vertsSize, nullptr, GL_DYNAMIC_DRAW);
+		glBindBuffer(target, 0);
+
+		return(result);
+	}
+
+	void Release() {
+		if (vbo) {
+			glDeleteBuffers(1, &vbo);
+			vbo = 0;
+		}
+
+		if (verts) {
+			fplMemoryFree(verts);
+			verts = nullptr;
+		}
+		capacity = count = 0;
+	}
+
+	void Bind() {
+		glBindBuffer(target, vbo);
+	}
+
+	void Unbind() {
+		glBindBuffer(target, 0);
+	}
+};
+
+constexpr uint32_t MAX_FONT_BUFFER_VERTEX_COUNT = 32 * 1024;
+constexpr uint32_t MAX_FONT_BUFFER_INDEX_COUNT = MAX_FONT_BUFFER_VERTEX_COUNT * 6;
+constexpr uint32_t MAX_FONT_BUFFER_ELEMENT_COUNT = MAX_FONT_BUFFER_INDEX_COUNT / 3;
+
+struct FontBuffer {
+	VertexBuffer vb;
+	IndexBuffer ib;
+
+	GLuint vao;
+	GLuint texture;
+	GLuint programId;
+	GLuint uniform_uniViewProjMat;
+	GLuint uniform_uniTexture;
+};
+
+static void ReleaseFontBuffer(FontBuffer &buffer) {
+	if (buffer.programId) {
+		glDeleteProgram(buffer.programId);
+		buffer.programId = 0;
+	}
+
+	if (buffer.vao) {
+		glDeleteVertexArrays(1, &buffer.vao);
+		buffer.vao = 0;
+	}
+
+	if (buffer.texture) {
+		glDeleteTextures(1, &buffer.texture);
+		buffer.texture = 0;
+	}
+
+	buffer.ib.Release();
+	buffer.vb.Release();
+}
+
+static FontBuffer AllocFontBuffer(const uint32_t atlasWidth, const uint32_t atlasHeight, const uint8_t *atlasBitmap) {
+	FontBuffer result = {};
+
+	result.vb = VertexBuffer::Alloc(MAX_FONT_BUFFER_VERTEX_COUNT);
+	result.ib = IndexBuffer::Alloc(MAX_FONT_BUFFER_INDEX_COUNT);
+
+	size_t vertexStride = result.vb.stride;
+
+	glGenVertexArrays(1, &result.vao);
+	glBindVertexArray(result.vao);
+
+	result.vb.Bind();
+	result.ib.Bind();
+
+	glVertexAttribPointer(0, 4, GL_FLOAT, GL_FALSE, (GLsizei)vertexStride, (void *)offsetof(BufferVertex, pos));
+	glEnableVertexAttribArray(0);
+
+	glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, (GLsizei)vertexStride, (void *)offsetof(BufferVertex, color));
+	glEnableVertexAttribArray(1);
+
+	glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, (GLsizei)vertexStride, (void *)offsetof(BufferVertex, uv));
+	glEnableVertexAttribArray(2);
+
+	glBindVertexArray(0);
+	result.ib.Unbind();
+	result.vb.Unbind();
+	CheckGLError();
+
+	// Texture
+	glGenTextures(1, &result.texture);
+	glBindTexture(GL_TEXTURE_2D, result.texture);
+	glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_R8, atlasWidth, atlasHeight, 0, GL_RED, GL_UNSIGNED_BYTE, atlasBitmap);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+	glBindTexture(GL_TEXTURE_2D, 0);
+	CheckGLError();
+
+	// Shader
+	result.programId = CreateShader(FontShaderSource::Vertex, FontShaderSource::Fragment, FontShaderSource::Name);
+	result.uniform_uniViewProjMat = glGetUniformLocation(result.programId, "uniViewProjMat");
+	result.uniform_uniTexture = glGetUniformLocation(result.programId, "uniTexture");
+
+	return(result);
+}
+
+static void ClearFontBuffer(FontBuffer &buffer) {
+	buffer.vb.Clear();
+	buffer.ib.Clear();
+}
+
+static void PushQuadToBuffer(FontBuffer &buffer, const Vec2f &position, const Vec2f &size, const Vec4f &color) {
+	uint32_t indexCount = 6;
+	uint32_t vertexCount = 4;
+	fplAssert((buffer.vb.count + vertexCount) <= buffer.vb.capacity);
+	fplAssert((buffer.ib.count + indexCount) <= buffer.ib.capacity);
+
+	uint32_t vertexOffset = buffer.vb.count * sizeof(*buffer.vb.verts);
+	uint32_t elementOffset = buffer.ib.count * sizeof(*buffer.ib.indices);
+	uint32_t verticesSize = vertexCount * sizeof(*buffer.vb.verts);
+	uint32_t indicesSize = indexCount * sizeof(*buffer.ib.indices);
+
+	BufferVertex *verts = buffer.vb.verts;
+	uint32_t *indices = buffer.ib.indices;
+
+	uint32_t vertexStart = buffer.vb.count;
+	uint32_t indexStart = buffer.ib.count;
+
+	Vec3f p0 = Vec3f(position.x + size.w, position.y + size.h, 0.0f);
+	Vec3f p1 = Vec3f(position.x, position.y + size.h, 0.0f);
+	Vec3f p2 = Vec3f(position.x, position.y, 0.0f);
+	Vec3f p3 = Vec3f(position.x + size.w, position.y, 0.0f);
+
+	Vec2f uv0 = Vec2f(1.0f, 1.0f); // Top-right
+	Vec2f uv1 = Vec2f(0.0f, 1.0f); // Top-left
+	Vec2f uv2 = Vec2f(0.0f, 0.0f); // Bottom-left
+	Vec2f uv3 = Vec2f(1.0f, 0.0f); // Bottom-right
+
+	uint32_t vertexIndex = vertexStart;
+	verts[vertexIndex++] = { Vec4f(p0, 1.0f), color, uv0 }; // Top-right
+	verts[vertexIndex++] = { Vec4f(p1, 1.0f), color, uv1 }; // Top-left
+	verts[vertexIndex++] = { Vec4f(p2, 1.0f), color, uv2 }; // Bottom-left
+	verts[vertexIndex++] = { Vec4f(p3, 1.0f), color, uv3 }; // Bottom-right
+
+	uint32_t elementIndex = indexStart;
+	indices[elementIndex++] = buffer.ib.lastIndex + 0;
+	indices[elementIndex++] = buffer.ib.lastIndex + 1;
+	indices[elementIndex++] = buffer.ib.lastIndex + 2;
+	indices[elementIndex++] = buffer.ib.lastIndex + 2;
+	indices[elementIndex++] = buffer.ib.lastIndex + 3;
+	indices[elementIndex++] = buffer.ib.lastIndex + 0;
+
+	buffer.ib.lastIndex += 4;
+
+	buffer.vb.Bind();
+	glBufferSubData(GL_ARRAY_BUFFER, vertexOffset, verticesSize, verts + vertexStart);
+	buffer.vb.Unbind();
+	buffer.vb.count += vertexCount;
+	CheckGLError();
+
+	buffer.ib.Bind();
+	glBufferSubData(GL_ELEMENT_ARRAY_BUFFER, elementOffset, indicesSize, indices + indexStart);
+	buffer.ib.Unbind();
+	buffer.ib.count += indexCount;
+	CheckGLError();
+}
+
+static Vec2f ComputeTextSize(const FontInfo &info, const char *text, const float scale) {
+	const char *s = text;
+	Vec2f result = Vec2f(0, 0);
+	while (*s) {
+		FontChar glyph = GetFontChar(info, *s);
+
+		Vec2f p0 = glyph.offset[0] * scale;
+		Vec2f p1 = glyph.offset[1] * scale;
+		Vec2f p2 = glyph.offset[2] * scale;
+		Vec2f p3 = glyph.offset[3] * scale;
+
+		// TODO(final): Compute actual text rectangle
+		//Vec2f charSize = 
+
+		result += Vec2f(glyph.advance * scale, 0.0f);
+		++s;
+	}
+}
+
+
+
+static void PushTextToBuffer(FontBuffer &buffer, const FontInfo &info, const char *text, const float scale, const Vec2f &position, const Vec4f &color, const TextRenderMode mode) {
+	uint32_t textLen = (uint32_t)fplGetStringLength(text);
+	if (textLen > 0) {
+		uint32_t indexCount = textLen * 6;
+		uint32_t vertexCount = textLen * 4;
+		fplAssert((buffer.vb.count + vertexCount) <= buffer.vb.capacity);
+		fplAssert((buffer.ib.count + indexCount) <= buffer.ib.capacity);
+
+		size_t vertexOffset = buffer.vb.count * sizeof(*buffer.vb.verts);
+		size_t elementOffset = buffer.ib.count * sizeof(*buffer.ib.indices);
+		size_t verticesSize = vertexCount * sizeof(*buffer.vb.verts);
+		size_t indicesSize = indexCount * sizeof(*buffer.ib.indices);
+
+		BufferVertex *verts = buffer.vb.verts;
+		uint32_t *indices = buffer.ib.indices;
+
+		uint32_t vertexStart = buffer.vb.count;
+		uint32_t indexStart = buffer.ib.count;
+
+		const char *s = text;
+		Vec2f offset = position;
+		uint32_t vertexIndex = vertexStart;
+		uint32_t elementIndex = indexStart;
+		while (*s) {
+			FontChar glyph = GetFontChar(info, *s);
+
+			Vec3f p0 = Vec3f(offset + glyph.offset[0] * scale, 0.0f);
+			Vec3f p1 = Vec3f(offset + glyph.offset[1] * scale, 0.0f);
+			Vec3f p2 = Vec3f(offset + glyph.offset[2] * scale, 0.0f);
+			Vec3f p3 = Vec3f(offset + glyph.offset[3] * scale, 0.0f);
+
+			verts[vertexIndex++] = { Vec4f(p0, 1.0f), color, glyph.uv[0] }; // Top-right
+			verts[vertexIndex++] = { Vec4f(p1, 1.0f), color, glyph.uv[1] }; // Top-left
+			verts[vertexIndex++] = { Vec4f(p2, 1.0f), color, glyph.uv[2] }; // Bottom-left
+			verts[vertexIndex++] = { Vec4f(p3, 1.0f), color, glyph.uv[3] }; // Bottom-right
+
+			indices[elementIndex++] = buffer.ib.lastIndex + 0;
+			indices[elementIndex++] = buffer.ib.lastIndex + 1;
+			indices[elementIndex++] = buffer.ib.lastIndex + 2;
+			indices[elementIndex++] = buffer.ib.lastIndex + 2;
+			indices[elementIndex++] = buffer.ib.lastIndex + 3;
+			indices[elementIndex++] = buffer.ib.lastIndex + 0;
+
+			buffer.ib.lastIndex += 4;
+
+			offset += Vec2f(glyph.advance * scale, 0.0f);
+
+			++s;
+		}
+
+		buffer.vb.Bind();
+		glBufferSubData(GL_ARRAY_BUFFER, vertexOffset, verticesSize, verts + vertexStart);
+		buffer.vb.Unbind();
+		buffer.vb.count += vertexCount;
+		CheckGLError();
+
+		buffer.ib.Bind();
+		glBufferSubData(GL_ELEMENT_ARRAY_BUFFER, elementOffset, indicesSize, indices + indexStart);
+		buffer.ib.Unbind();
+		buffer.ib.count += indexCount;
+		CheckGLError();
+	}
+}
+#else
+// For now font rendering is disabled in non-hardware rendering mode
+struct FontBuffer {
+	int empty;
+};
+static FontBuffer AllocFontBuffer(const uint32_t atlasWidth, const uint32_t atlasHeight, const uint8_t *atlasBitmap) {
+	FontBuffer result = fplZeroInit;
+	return(result);
+}
+static void ReleaseFontBuffer(FontBuffer &buffer) {
+}
+static void ClearFontBuffer(FontBuffer &buffer) {
+}
+static void PushTextToBuffer(FontBuffer &buffer, const FontInfo &info, const char *text, const float scale, const Vec2f &position, const Vec4f &color, const TextRenderMode mode) {
+}
+#endif // USE_HARDWARE_RENDERING
+
+//
+// Player
+//
 constexpr uint32_t MAX_STREAM_COUNT = 8;
 struct PlayerState {
 	ReaderContext reader;
-	MediaStream stream[MAX_STREAM_COUNT];
+	MediaStream streams[MAX_STREAM_COUNT];
 	VideoContext video;
 	AudioContext audio;
 	PlayerSettings settings;
+
+	FontInfo fontInfo;
+
+	FontBuffer fontBuffer;
+
 	Clock externalClock;
 	SeekState seek;
-	AVFormatContext *formatCtx;
 	fplWindowSize viewport;
+
+	AVFormatContext *formatCtx;
+
+	const char *filePathOrUrl;
+
+	double streamLength; // Length of the stream in seconds
 	double frameLastPTS;
 	double frameLastDelay;
 	double frameTimer;
 	double maxFrameDuration;
+	double pauseClock;
+
 	AVSyncType syncType;
 	volatile uint32_t forceRefresh;
+
 	int loop;
 	int readPauseReturn;
 	int step;
 	int frame_drops_early;
 	int frame_drops_late;
-	bool isInfiniteBuffer;
-	bool isRealTime;
-	bool isPaused;
-	bool lastPaused;
-	bool isFullscreen;
+	int64_t pauseNumFrames;
+
+	bool32 isInfiniteBuffer;
+	bool32 isRealTime;
+	bool32 isPaused;
+	bool32 lastPaused;
+	bool32 isFullscreen;
+	bool32 seekByBytes;
 };
+
+static void ReleasePlayer(PlayerState &state) {
+	ReleaseFontBuffer(state.fontBuffer);
+	ReleaseFontInfo(state.fontInfo);
+}
+
+static bool InitPlayer(PlayerState &state) {
+	//
+	// OpenGL
+	//
+#if USE_HARDWARE_RENDERING
+#if USE_GL_BLENDING
+	glEnable(GL_BLEND);
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+#else
+	glDisable(GL_BLEND);
+#endif
+
+	glCullFace(GL_BACK);
+	glFrontFace(GL_CCW);
+	glEnable(GL_CULL_FACE);
+#endif
+
+//
+// Font Info
+//
+	uint32_t firstChar = ' ';
+	uint32_t charCount = '~' - firstChar;
+	if (!LoadFontInfo(sulphurPointRegularData, sulphurPointRegularDataSize, 1024, 1024, firstChar, charCount, 40.0f, &state.fontInfo)) {
+		ReleasePlayer(state);
+		return(false);
+	}
+
+	// Font Buffer
+	state.fontBuffer = AllocFontBuffer(state.fontInfo.atlasWidth, state.fontInfo.atlasHeight, state.fontInfo.atlasBitmap);
+
+
+	//
+	// Settings
+	//
+	InitPlayerSettings(state.settings);
+	state.isInfiniteBuffer = state.settings.isInfiniteBuffer;
+	state.loop = state.settings.isLoop ? 1 : 0;
+
+	return(true);
+}
 
 //
 // Utils
@@ -1214,6 +1784,24 @@ static AVSyncType GetMasterSyncType(const PlayerState *state) {
 	} else {
 		return AVSyncType::ExternalClock;
 	}
+}
+
+static double GetMasterFrameRate(const PlayerState *state) {
+	if (state->video.stream.isValid && state->video.stream.stream->avg_frame_rate.den != 0)
+		return av_q2d(state->video.stream.stream->avg_frame_rate);
+	if (state->audio.stream.isValid && state->audio.stream.stream->avg_frame_rate.den != 0)
+		return av_q2d(state->audio.stream.stream->avg_frame_rate);
+	else
+		return 0.0;
+}
+
+static const AVStream *GetMasterStream(const PlayerState *state) {
+	if (state->video.stream.isValid && state->video.stream.stream->avg_frame_rate.den != 0)
+		return state->video.stream.stream;
+	if (state->audio.stream.isValid && state->audio.stream.stream->avg_frame_rate.den != 0)
+		return state->audio.stream.stream;
+	else
+		return nullptr;
 }
 
 static double GetMasterClock(const PlayerState *state) {
@@ -1776,16 +2364,33 @@ static void StreamTogglePause(PlayerState *state) {
 	}
 	SetClock(state->externalClock, GetClock(state->externalClock), state->externalClock.serial);
 	state->isPaused = state->audio.clock.isPaused = state->video.clock.isPaused = state->externalClock.isPaused = !state->isPaused;
+
+	if (state->isPaused) {
+		// Store number of frames and current clock as pause state
+		double frameRate = GetMasterFrameRate(state);
+		if (isnan(frameRate) || frameRate < 0) frameRate = 0;
+
+		double clockCurrent = fplMax(0.0, GetMasterClock(state));
+		if (isnan(clockCurrent) || clockCurrent < 0) clockCurrent = 0;
+
+		state->pauseNumFrames = frameRate != 0 ? (int)(clockCurrent / (1.0f / frameRate)) : 0;
+		state->pauseClock = clockCurrent;
+
+		fplAssert(state->pauseNumFrames >= 0);
+		fplAssert(!isnan(state->pauseClock));
+	}
 }
 
-static void SeekStream(SeekState *state, int64_t pos, int64_t rel, bool seekInBytes) {
-	if (!state->isRequired) {
-		state->pos = pos;
-		state->rel = rel;
-		state->seekFlags &= ~AVSEEK_FLAG_BYTE;
-		if (seekInBytes)
-			state->seekFlags |= AVSEEK_FLAG_BYTE;
-		state->isRequired = 1;
+static void SeekStream(PlayerState *state, int64_t pos, int64_t rel) {
+	SeekState *seek = &state->seek;
+	if (!seek->isRequired) {
+		seek->pos = pos;
+		seek->rel = rel;
+		seek->seekFlags = AVSEEK_FLAG_ANY; // Seek to and frame, not just key frames
+		if (state->seekByBytes)
+			seek->seekFlags |= AVSEEK_FLAG_BYTE; // Some file formats does not allow to seek by seconds
+		seek->isRequired = 1;
+		fplSignalSet(&state->reader.resumeSignal);
 	}
 }
 
@@ -1862,15 +2467,18 @@ static void PacketReadThreadProc(const fplThreadHandle *thread, void *userData) 
 			int64_t seekTarget = state->seek.pos;
 			int64_t seekMin = state->seek.rel > 0 ? seekTarget - state->seek.rel + 2 : INT64_MIN;
 			int64_t seekMax = state->seek.rel < 0 ? seekTarget - state->seek.rel - 2 : INT64_MAX;
-			int seekResult = ffmpeg.avformat_seek_file(formatCtx, -1, seekMin, seekTarget, seekMax, state->seek.seekFlags);
+			double seekTargetSeconds = seekTarget / (double)AV_TIME_BASE;
+			double seekMinSeconds = seekMin / (double)AV_TIME_BASE;
+			double seekMaxSeconds = seekMax / (double)AV_TIME_BASE;
+			int seekFlags = state->seek.seekFlags;
+			if (state->seek.rel < 0) {
+				seekFlags |= AVSEEK_FLAG_BACKWARD;
+			}
+			fplDebugFormatOut("Seek to: %llu %llu %llu (%f %f %f)\n", seekMin, seekTarget, seekMax, seekMinSeconds, seekTargetSeconds, seekMaxSeconds);
+			int seekResult = ffmpeg.avformat_seek_file(formatCtx, -1, seekMin, seekTarget, seekMax, seekFlags);
 			if (seekResult < 0) {
 				// @TODO(final): Log seek error
 			} else {
-				if (state->seek.seekFlags & AVSEEK_FLAG_BYTE) {
-					SetClock(state->externalClock, NAN, 0);
-				} else {
-					SetClock(state->externalClock, seekTarget / (double)AV_TIME_BASE, 0);
-				}
 				if (state->audio.stream.isValid) {
 					FlushPacketQueue(state->audio.decoder.packetsQueue);
 					PushFlushPacket(state->audio.decoder.packetsQueue);
@@ -1878,12 +2486,19 @@ static void PacketReadThreadProc(const fplThreadHandle *thread, void *userData) 
 					state->audio.decoder.isEOF = false;
 					fplSignalSet(&state->audio.decoder.resumeSignal);
 				}
+
 				if (state->video.stream.isValid) {
 					FlushPacketQueue(state->video.decoder.packetsQueue);
 					PushFlushPacket(state->video.decoder.packetsQueue);
 
 					state->video.decoder.isEOF = false;
 					fplSignalSet(&state->video.decoder.resumeSignal);
+				}
+
+				if (state->seek.seekFlags & AVSEEK_FLAG_BYTE) {
+					SetClock(state->externalClock, NAN, 0);
+				} else {
+					SetClock(state->externalClock, seekTarget / (double)AV_TIME_BASE, 0);
 				}
 			}
 			state->seek.isRequired = false;
@@ -1899,7 +2514,7 @@ static void PacketReadThreadProc(const fplThreadHandle *thread, void *userData) 
 		if ((!state->isInfiniteBuffer &&
 			(audio.decoder.packetsQueue.size + video.decoder.packetsQueue.size) > MAX_PACKET_QUEUE_SIZE) ||
 			(StreamHasEnoughPackets(audio.stream.stream, audio.stream.streamIndex, audio.decoder.packetsQueue) &&
-			StreamHasEnoughPackets(video.stream.stream, video.stream.streamIndex, video.decoder.packetsQueue))) {
+				StreamHasEnoughPackets(video.stream.stream, video.stream.streamIndex, video.decoder.packetsQueue))) {
 			skipWait = true;
 			fplThreadSleep(10);
 			continue;
@@ -1919,7 +2534,7 @@ static void PacketReadThreadProc(const fplThreadHandle *thread, void *userData) 
 				if (state->loop > 0) {
 					--state->loop;
 				}
-				SeekStream(&state->seek, startTime != AV_NOPTS_VALUE ? startTime : 0, 0, 0);
+				SeekStream(state, startTime != AV_NOPTS_VALUE ? startTime : 0, 0);
 			} else {
 				if (autoExit) {
 					break;
@@ -2098,7 +2713,98 @@ static DisplayRect CalculateDisplayRect(const int screenLeft, const int screenTo
 	return(result);
 }
 
-static void DisplayVideoFrame(PlayerState *state) {
+static void RenderOSD(PlayerState *state, const Mat4f &proj, const float w, const float h) {
+	ClearFontBuffer(state->fontBuffer);
+
+	char osdTextBuffer[256];
+
+	float osdFontSize = (float)h / 30.0f;
+	float fontHeight = osdFontSize * (state->fontInfo.ascent + state->fontInfo.descent);
+	float fontBaseline = osdFontSize * state->fontInfo.ascent;
+	float fontLineHeight = fontHeight * 1.25f;
+	Vec2f osdPos = Vec2f(0.0f, h - fontBaseline);
+
+	const char *stateMsg = "Playing";
+	double frameRate = fplMax(0.0, GetMasterFrameRate(state));
+	double clockLength = fplMax(0.0, state->streamLength);
+	int64_t numFrames;
+	double clockCurrent;
+	if (state->isPaused) {
+		stateMsg = "Paused";
+		numFrames = state->pauseNumFrames;
+		clockCurrent = state->pauseClock;
+	} else {
+		clockCurrent = GetMasterClock(state);
+		if (isnan(clockCurrent) || clockCurrent < 0) clockCurrent = 0;
+		numFrames = frameRate != 0 ? (int64_t)(clockCurrent / (1.0f / frameRate)) : 0;
+		fplAssert(numFrames >= 0);
+		fplAssert(!isnan(clockCurrent));
+	}
+
+	const char *filename = fplExtractFileName(state->filePathOrUrl);
+
+	// [State: Filename]
+	fplFormatString(osdTextBuffer, fplArrayCount(osdTextBuffer), "%s: %s", stateMsg, filename);
+	PushTextToBuffer(state->fontBuffer, state->fontInfo, osdTextBuffer, osdFontSize, osdPos, Vec4f(1, 1, 1, 1), TextRenderMode::Baseline);
+	osdPos += Vec2f(0, -osdFontSize);
+
+	// Round to milliseconds, we dont care about nanoseconds
+	double clockCurrentSecondsRoundAsMillis = round(clockCurrent * 1000.0) / 1000.0;
+
+	{
+		int currentMillis = (int)(clockCurrentSecondsRoundAsMillis * 1000.0) % 1000;
+		int currentSeconds = (int)clockCurrentSecondsRoundAsMillis % 60;
+		int currentMinutes = (int)(clockCurrentSecondsRoundAsMillis / 60.0) % 60;
+		int currentHours = (int)(clockCurrentSecondsRoundAsMillis / 60.0 / 60.0);
+
+		int totalMillis = (int)(clockLength * 1000.0) % 1000;
+		int totalSeconds = (int)clockLength % 60;
+		int totalMinutes = (int)(clockLength / 60.0) % 60;
+		int totalHours = (int)(clockLength / 60.0 / 60.0);
+
+		fplFormatString(osdTextBuffer, fplArrayCount(osdTextBuffer), "Time: %02d:%02d:%02d:%03d", currentHours, currentMinutes, currentSeconds, currentMillis);
+		PushTextToBuffer(state->fontBuffer, state->fontInfo, osdTextBuffer, osdFontSize, osdPos, Vec4f(1, 1, 1, 1), TextRenderMode::Baseline);
+		osdPos += Vec2f(0, -osdFontSize);
+
+		fplFormatString(osdTextBuffer, fplArrayCount(osdTextBuffer), "Frames: %d", numFrames);
+		PushTextToBuffer(state->fontBuffer, state->fontInfo, osdTextBuffer, osdFontSize, osdPos, Vec4f(1, 1, 1, 1), TextRenderMode::Baseline);
+		osdPos += Vec2f(0, -osdFontSize);
+
+		fplFormatString(osdTextBuffer, fplArrayCount(osdTextBuffer), "Length: %02d:%02d:%02d:%03d", totalHours, totalMinutes, totalSeconds, totalMillis);
+		PushTextToBuffer(state->fontBuffer, state->fontInfo, osdTextBuffer, osdFontSize, osdPos, Vec4f(1, 1, 1, 1), TextRenderMode::Baseline);
+	}
+
+#if USE_HARDWARE_RENDERING
+	glBindVertexArray(state->fontBuffer.vao);
+	CheckGLError();
+
+	glActiveTexture(GL_TEXTURE0 + 0);
+	glBindTexture(GL_TEXTURE_2D, state->fontBuffer.texture);
+	CheckGLError();
+
+	// Enable shader
+	glUseProgram(state->fontBuffer.programId);
+	CheckGLError();
+
+	glUniformMatrix4fv(state->fontBuffer.uniform_uniViewProjMat, 1, GL_FALSE, proj.m);
+	glUniform1i(state->fontBuffer.uniform_uniTexture, 0);
+	CheckGLError();
+
+	// Draw text elements
+	glDrawElements(GL_TRIANGLES, state->fontBuffer.ib.count, GL_UNSIGNED_INT, nullptr);
+	CheckGLError();
+
+	// Disable shader
+	glUseProgram(0);
+
+	glActiveTexture(GL_TEXTURE0 + 0);
+	glBindTexture(GL_TEXTURE_2D, 0);
+
+	glBindVertexArray(0);
+#endif // USE_HARDWARE_RENDERING
+}
+
+static void RenderVideoFrame(PlayerState *state) {
 	assert(state != nullptr);
 	int readIndex = state->video.decoder.frameQueue.readIndex;
 	Frame *vp = PeekFrameQueueLast(state->video.decoder.frameQueue);
@@ -2139,36 +2845,38 @@ static void DisplayVideoFrame(PlayerState *state) {
 	float vertexData[4 * 4] = {
 		// Top right
 		right, top, uMax, vMax,
-		// Bottom right
-		right, bottom, uMax, vMin,
-		// Bottom left
-		left, bottom, uMin, vMin,
 		// Top left
 		left, top, uMin, vMax,
+		// Bottom left
+		left, bottom, uMin, vMin,
+		// Bottom right
+		right, bottom, uMax, vMin,
 	};
+
+#if USE_GL_BLENDING
+	// Disable blending
+	glDisable(GL_BLEND);
+#endif
+
+	// Update vertex array buffer with new rectangle
+	glBindBuffer(GL_ARRAY_BUFFER, state->video.vertexBufferId);
+	glBufferData(GL_ARRAY_BUFFER, fplArrayCount(vertexData) * sizeof(float), vertexData, GL_STREAM_DRAW);
+	glBindBuffer(GL_ARRAY_BUFFER, 0);
+	CheckGLError();
 
 	// Enable vertex array buffer
 	glBindVertexArray(state->video.vao);
-	glBindBuffer(GL_ARRAY_BUFFER, state->video.vertexBufferId);
-	// Update vertex array buffer with new rectangle
-	glBufferData(GL_ARRAY_BUFFER, fplArrayCount(vertexData) * sizeof(float), vertexData, GL_STREAM_DRAW);
-	CheckGLError();
-
-	// Setup vertex attributes for vertex shader
-	glEnableVertexAttribArray(0);
-	glEnableVertexAttribArray(1);
-	glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(float) * 4, (GLvoid *)0);
-	glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, sizeof(float) * 4, (GLvoid *)(sizeof(float) * 2));
 	CheckGLError();
 
 	// Enable textures
 	int textureIndices[MAX_TARGET_TEXTURE_COUNT] = {};
 	for (uint32_t textureIndex = 0; textureIndex < video.targetTextureCount; ++textureIndex) {
-		const Texture &targetTexture = video.targetTextures[textureIndex];
+		const VideoTexture &targetTexture = video.targetTextures[textureIndex];
 		glActiveTexture(GL_TEXTURE0 + textureIndex);
 		glBindTexture(targetTexture.target, targetTexture.id);
 		textureIndices[textureIndex] = textureIndex;
 	}
+	CheckGLError();
 
 	// Enable shader
 	const VideoShader *shader = state->video.activeShader;
@@ -2180,9 +2888,7 @@ static void DisplayVideoFrame(PlayerState *state) {
 	CheckGLError();
 
 	// Draw quad
-	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, state->video.indexBufferId);
-	glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr);
-	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+	glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_SHORT, nullptr);
 	CheckGLError();
 
 	// Disable shader
@@ -2190,20 +2896,25 @@ static void DisplayVideoFrame(PlayerState *state) {
 
 	// Disable textures
 	for (int textureIndex = (int)video.targetTextureCount - 1; textureIndex >= 0; textureIndex--) {
-		const Texture &targetTexture = video.targetTextures[textureIndex];
+		const VideoTexture &targetTexture = video.targetTextures[textureIndex];
 		glActiveTexture(GL_TEXTURE0 + textureIndex);
 		glBindTexture(targetTexture.target, 0);
 	}
 
-	// Disable vertex array buffer
-	glDisableVertexAttribArray(1);
-	glDisableVertexAttribArray(0);
-	glBindBuffer(GL_ARRAY_BUFFER, 0);
 	glBindVertexArray(0);
-	CheckGLError();
+
+#if USE_GL_BLENDING
+	// Re-Enable blending
+	glEnable(GL_BLEND);
+#endif
+
+	// TODO(final): OSD Support for software rendering requires bitmap blitting!
+	RenderOSD(state, proj, (float)w, (float)h);
 
 #else
 	fplVideoBackBuffer *backBuffer = fplGetVideoBackBuffer();
+
+	// TODO(final): Detect if we need to flip the frame
 #if USE_FLIP_V_PICTURE_IN_SOFTWARE
 	backBuffer->outputRect = fplCreateVideoRectFromLTRB(rect.left, rect.bottom, rect.right, rect.top);
 #else
@@ -2343,7 +3054,7 @@ static void VideoRefresh(PlayerState *state, double &remainingTime, int &display
 
 	display:
 		if (!state->settings.isVideoDisabled && state->forceRefresh && state->video.decoder.frameQueue.readIndexShown) {
-			DisplayVideoFrame(state);
+			RenderVideoFrame(state);
 			displayCount++;
 		} else {
 			if (state->video.decoder.frameQueue.count < state->video.decoder.frameQueue.capacity) {
@@ -2381,7 +3092,7 @@ static void ReleaseVideoContext(VideoContext &video) {
 
 	for (uint32_t textureIndex = 0; textureIndex < video.targetTextureCount; ++textureIndex) {
 		if (video.targetTextures[textureIndex].id) {
-			DestroyTexture(video.targetTextures[textureIndex]);
+			DestroyVideoTexture(video.targetTextures[textureIndex]);
 		}
 	}
 	video.targetTextureCount = 0;
@@ -2429,19 +3140,19 @@ static bool InitializeVideo(PlayerState &state, const char *mediaFilePath) {
 		return false;
 	}
 
-#if USE_HARDWARE_RENDERING && USE_HARDWARE_IMAGE_FORMAT_DECODING
+#if USE_HARDWARE_RENDERING && USE_GLSL_IMAGE_FORMAT_DECODING
 	switch (videoCodexCtx->pix_fmt) {
 		case AVPixelFormat::AV_PIX_FMT_YUV420P:
 		{
 			state.video.activeShader = &state.video.yuv420pShader;
 			state.video.targetTextureCount = 3;
-			if (!InitTexture(state.video.targetTextures[0], videoCodexCtx->width, videoCodexCtx->height, 8)) {
+			if (!InitVideoTexture(state.video.targetTextures[0], videoCodexCtx->width, videoCodexCtx->height, 8)) {
 				return false;
 			}
-			if (!InitTexture(state.video.targetTextures[1], videoCodexCtx->width / 2, videoCodexCtx->height / 2, 8)) {
+			if (!InitVideoTexture(state.video.targetTextures[1], videoCodexCtx->width / 2, videoCodexCtx->height / 2, 8)) {
 				return false;
 			}
-			if (!InitTexture(state.video.targetTextures[2], videoCodexCtx->width / 2, videoCodexCtx->height / 2, 8)) {
+			if (!InitVideoTexture(state.video.targetTextures[2], videoCodexCtx->width / 2, videoCodexCtx->height / 2, 8)) {
 				return false;
 			}
 		} break;
@@ -2449,7 +3160,7 @@ static bool InitializeVideo(PlayerState &state, const char *mediaFilePath) {
 		{
 			state.video.activeShader = &state.video.basicShader;
 			state.video.targetTextureCount = 1;
-			if (!InitTexture(state.video.targetTextures[0], videoCodexCtx->width, videoCodexCtx->height, 32)) {
+			if (!InitVideoTexture(state.video.targetTextures[0], videoCodexCtx->width, videoCodexCtx->height, 32)) {
 				return false;
 			}
 		} break;
@@ -2459,36 +3170,40 @@ static bool InitializeVideo(PlayerState &state, const char *mediaFilePath) {
 	state.video.activeShader = &state.video.basicShader;
 #	endif
 	state.video.targetTextureCount = 1;
-	if (!InitTexture(state.video.targetTextures[0], videoCodexCtx->width, videoCodexCtx->height, 32)) {
+	if (!InitVideoTexture(state.video.targetTextures[0], videoCodexCtx->width, videoCodexCtx->height, 32)) {
 		return false;
 	}
 #endif
 
 #if USE_HARDWARE_RENDERING
+	// Allocate VAO
 	glGenVertexArrays(1, &state.video.vao);
 	glBindVertexArray(state.video.vao);
 	CheckGLError();
 
+	// Allocate 4 vertices
+	uint32_t verticesSize = 4 * 4 * sizeof(float);
 	glGenBuffers(1, &state.video.vertexBufferId);
-	glGenBuffers(1, &state.video.indexBufferId);
-	CheckGLError();
-
 	glBindBuffer(GL_ARRAY_BUFFER, state.video.vertexBufferId);
-	glBufferData(GL_ARRAY_BUFFER, 4 * sizeof(float) * 4, nullptr, GL_STREAM_DRAW);
-	glBindBuffer(GL_ARRAY_BUFFER, 0);
+	glBufferData(GL_ARRAY_BUFFER, verticesSize, nullptr, GL_STREAM_DRAW);
 	CheckGLError();
 
-	// Topright, Bottomright, Bottomleft, Topleft
-	uint32_t indices[6] = {
-		0, 1, 2,
-		2, 3, 0,
-	};
+	uint32_t indicesSize = fplArrayCount(videoQuadIndices) * sizeof(*videoQuadIndices);
+	glGenBuffers(1, &state.video.indexBufferId);
 	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, state.video.indexBufferId);
-	glBufferData(GL_ELEMENT_ARRAY_BUFFER, fplArrayCount(indices) * sizeof(uint32_t), indices, GL_STATIC_DRAW);
-	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+	glBufferData(GL_ELEMENT_ARRAY_BUFFER, indicesSize, videoQuadIndices, GL_STATIC_DRAW);
+	CheckGLError();
+
+	glEnableVertexAttribArray(0);
+	glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(float) * 4, (GLvoid *)0);
+	glEnableVertexAttribArray(1);
+	glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, sizeof(float) * 4, (GLvoid *)(sizeof(float) * 2));
 	CheckGLError();
 
 	glBindVertexArray(0);
+
+	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+	glBindBuffer(GL_ARRAY_BUFFER, 0);
 
 	if (!LoadVideoShader(state.video.basicShader, BasicShaderSource::Vertex, BasicShaderSource::Fragment, BasicShaderSource::Name)) {
 		return false;
@@ -2570,14 +3285,14 @@ static bool InitializeAudio(PlayerState &state, const char *mediaFilePath, const
 
 	// Create software resample context and initialize
 	audio.softwareResampleCtx = ffmpeg.swr_alloc_set_opts(nullptr,
-														  targetChannelLayout,
-														  targetSampleFormat,
-														  targetSampleRate,
-														  inputChannelLayout,
-														  inputSampleFormat,
-														  inputSampleRate,
-														  0,
-														  nullptr);
+		targetChannelLayout,
+		targetSampleFormat,
+		targetSampleRate,
+		inputChannelLayout,
+		inputSampleFormat,
+		inputSampleRate,
+		0,
+		nullptr);
 	ffmpeg.swr_init(audio.softwareResampleCtx);
 
 	// Allocate conversion buffer in native format, this must be big enough to hold one AVFrame worth of data.
@@ -2610,6 +3325,8 @@ static bool LoadMedia(PlayerState &state, const char *mediaFilePath, const fplAu
 		fplConsoleFormatError("Failed opening media file '%s'!\n", mediaFilePath);
 		goto release;
 	}
+
+	state.streamLength = state.formatCtx->duration / (double)AV_TIME_BASE;
 
 	state.formatCtx->interrupt_callback.callback = DecodeInterruptCallback;
 	state.formatCtx->interrupt_callback.opaque = &state;
@@ -2683,11 +3400,34 @@ static bool LoadMedia(PlayerState &state, const char *mediaFilePath, const fplAu
 	InitClock(state.externalClock, &state.externalClock.serial);
 	state.audio.audioClockSerial = -1;
 
+	// Seek init
+	state.seekByBytes = !!(state.formatCtx->iformat->flags & AVFMT_TS_DISCONT) && strcmp("ogg", state.formatCtx->iformat->name);
+
+	// Save file path
+	state.filePathOrUrl = mediaFilePath;
+
 	return true;
 
 release:
 	ReleaseMedia(state);
 	return false;
+}
+
+static void SeekRelative(PlayerState *state, double incr) {
+	// TODO(tspaete): Make this operation thread-safe
+	const AVStream *stream = GetMasterStream(state);
+	if (stream != nullptr) {
+		double pos = GetMasterClock(state);
+		if (isnan(pos)) {
+			pos = (double)state->seek.pos / AV_TIME_BASE;
+		}
+		pos += incr;
+		double start = state->formatCtx->start_time / (double)AV_TIME_BASE;
+		if ((state->formatCtx->start_time != AV_NOPTS_VALUE) && (pos < start)) {
+			pos = start;
+		}
+		SeekStream(state, (int64_t)(pos * AV_TIME_BASE), (int64_t)(incr * AV_TIME_BASE));
+	}
 }
 
 int main(int argc, char **argv) {
@@ -2733,6 +3473,11 @@ int main(int argc, char **argv) {
 
 	PlayerState state = {};
 
+	// Init
+	if (!InitPlayer(state)) {
+		goto release;
+	}
+
 	// Get native audio format
 	fplAudioDeviceFormat nativeAudioFormat;
 	if (!fplGetAudioHardwareFormat(&nativeAudioFormat)) {
@@ -2747,15 +3492,6 @@ int main(int argc, char **argv) {
 	// Init flush packet
 	ffmpeg.av_init_packet(&globalFlushPacket);
 	globalFlushPacket.data = (uint8_t *)&globalFlushPacket;
-
-	//
-	// Settings
-	//
-	InitPlayerSettings(state.settings);
-	state.isInfiniteBuffer = state.settings.isInfiniteBuffer;
-	state.loop = state.settings.isLoop ? 1 : 0;
-
-	fplGetWindowSize(&state.viewport);
 
 	// Load media
 	if (!LoadMedia(state, mediaFilePath, nativeAudioFormat)) {
@@ -2780,6 +3516,7 @@ int main(int argc, char **argv) {
 	//
 	// App loop
 	//
+	fplGetWindowSize(&state.viewport);
 	double lastTime = fplGetTimeInSecondsHP();
 	double remainingTime = 0.0;
 	double lastRefreshTime = fplGetTimeInSecondsHP();
@@ -2788,21 +3525,34 @@ int main(int argc, char **argv) {
 		//
 		// Handle events
 		//
+
+		// TODO: Make constant!
+		const double SeekStep = 5.0f;
+
 		fplEvent ev = {};
 		while (fplPollEvent(&ev)) {
 			switch (ev.type) {
 				case fplEventType_Keyboard:
 				{
 					if (ev.keyboard.type == fplKeyboardEventType_Button) {
-						if(ev.keyboard.buttonState == fplButtonState_Release) {
-							switch(ev.keyboard.mappedKey) {
+						if (ev.keyboard.buttonState == fplButtonState_Release) {
+							switch (ev.keyboard.mappedKey) {
 								case fplKey_Space:
 								{
 									TogglePause(&state);
 								} break;
+
 								case fplKey_F:
 								{
 									ToggleFullscreen(&state);
+								} break;
+
+								case fplKey_Left:
+								case fplKey_Right:
+								{
+									// TODO(final): Make seeking thread-safe!
+									double seekRelative = (ev.keyboard.mappedKey == fplKey_Left) ? -SeekStep : SeekStep;
+									SeekRelative(&state, seekRelative);
 								} break;
 							}
 						}
@@ -2830,8 +3580,10 @@ int main(int argc, char **argv) {
 		if (!state.isPaused || state.forceRefresh) {
 			VideoRefresh(&state, remainingTime, refreshCount);
 #if PRINT_VIDEO_REFRESH
-			ConsoleFormatOut("Video refresh: %d\n", ++refreshCount);
+			fplDebugFormatOut("Video refresh: %d\n", ++refreshCount);
 #endif
+		} else {
+			RenderVideoFrame(&state);
 		}
 
 		// Update time
@@ -2840,7 +3592,7 @@ int main(int argc, char **argv) {
 		if (refreshDelta >= 1.0) {
 			lastRefreshTime = now;
 #if PRINT_FPS
-			ConsoleFormatOut("FPS: %d\n", refreshCount);
+			fplDebugFormatOut("FPS: %d\n", refreshCount);
 #endif
 			refreshCount = 0;
 		}
@@ -2867,13 +3619,9 @@ release:
 		StopDecoder(state.audio.decoder);
 	}
 
-	// Release media
 	ReleaseMedia(state);
-
-	//
-	// Release FFMPEG
-	//
 	ReleaseFFMPEG(ffmpeg);
+	ReleasePlayer(state);
 
 	// Release platform
 #if USE_HARDWARE_RENDERING

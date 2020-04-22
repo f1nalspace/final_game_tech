@@ -106,7 +106,7 @@ constexpr int InitialLevelSeed = 1;
 constexpr float GameAspect = 16.0f / 9.0f;
 constexpr float WorldWidth = 20.0f;
 constexpr float WorldHeight = WorldWidth / GameAspect;
-const Vec2f WorldRadius = V2f(WorldWidth, WorldHeight) * 0.5f;
+const Vec2f WorldRadius = V2fInit(WorldWidth, WorldHeight) * 0.5f;
 
 constexpr float FrameRadius = WorldWidth * 0.025f;
 
@@ -125,7 +125,7 @@ const float AreaHalfWidth = WorldRadius.x - FrameRadius * 2.0f;
 const float AreaHalfHeight = WorldRadius.y - FrameRadius * 0.5f - BottomAreaDepth;
 
 constexpr float PaddleSpeed = 100.0f;
-const Vec2f PaddleRadius = V2f(BallRadius * 3, BallRadius);
+const Vec2f PaddleRadius = V2fInit(BallRadius * 3, BallRadius);
 const float PaddleLineY = -WorldRadius.y + PaddleRadius.y;
 const float PaddleGlueOffsetY = PaddleRadius.y * 2 + BallRadius * 0.25f;
 
@@ -136,9 +136,9 @@ constexpr int MaxBrickCols = 17;
 constexpr int MaxBrickRows = 11;
 const float SpaceForBricksX = ((AreaHalfWidth - AreaPadding) * 2.0f) - (MaxBrickCols - 1) * BrickSpacing;
 const float SpaceForBricksY = ((AreaHalfHeight - AreaPadding) * 2.0f) - (MaxBrickRows - 1) * BrickSpacing;
-const Vec2f BrickRadius = V2f(SpaceForBricksX / (float)MaxBrickCols, SpaceForBricksY / (float)MaxBrickRows) * 0.5f;
+const Vec2f BrickRadius = V2fInit(SpaceForBricksX / (float)MaxBrickCols, SpaceForBricksY / (float)MaxBrickRows) * 0.5f;
 
-const Vec2f Gravity = V2f(0, -10);
+const Vec2f Gravity = V2fInit(0, -10);
 
 fplStaticAssert(MaxBrickCols % 2 != 0);
 
@@ -147,20 +147,20 @@ enum class BrickType : int32_t {
 	NoBrick = 0,
 	Solid
 };
-const Vec2i BrickTileSize = V2i(15, 12);
-const Vec2i BricksTilesetSize = V2i(19, 16);
+const Vec2i BrickTileSize = V2iInit(15, 12);
+const Vec2i BricksTilesetSize = V2iInit(19, 16);
 const int BrickTilesetBorder = 2;
 class BricksUVsClass : public ArrayInitializer<BrickType, UVRect, 256> {
 public:
 	BricksUVsClass() {
-		Set(BrickType::Solid, UVRectFromTile(BricksTilesetSize, BrickTileSize, BrickTilesetBorder, V2i(0, 0)));
+		Set(BrickType::Solid, UVRectFromTile(BricksTilesetSize, BrickTileSize, BrickTilesetBorder, V2iInit(0, 0)));
 	}
 };
 static BricksUVsClass BricksUVs = {};
 
 // Background UVs
-const Vec2i BackgroundTileSize = V2i(16, 16);
-const Vec2i BackgroundTextureSize = V2i(38, 20);
+const Vec2i BackgroundTileSize = V2iInit(16, 16);
+const Vec2i BackgroundTextureSize = V2iInit(38, 20);
 enum class BackgroundType : int32_t {
 	NoBackground = 0,
 	Default,
@@ -168,7 +168,7 @@ enum class BackgroundType : int32_t {
 class BackgroundUVsClass : public ArrayInitializer<BackgroundType, UVRect, 256> {
 public:
 	BackgroundUVsClass() {
-		Set(BackgroundType::Default, UVRectFromPos(BackgroundTextureSize, BackgroundTileSize, V2i(2, 2)));
+		Set(BackgroundType::Default, UVRectFromPos(BackgroundTextureSize, BackgroundTileSize, V2iInit(2, 2)));
 	}
 };
 static BackgroundUVsClass BackgroundUVs = {};
@@ -196,32 +196,32 @@ enum class FrameType : int32_t {
 	RightEnd, // Bottom (16x8)
 	RightBottomEdge, // Right bottom edge (16x16)
 };
-const Vec2i FrameTopFillSize = V2i(8, 16);
-const Vec2i FrameTopTileSize = V2i(16, 16);
-const Vec2i FrameSideFillSize = V2i(16, 8);
-const Vec2i FrameSideTileSize = V2i(16, 16);
-const Vec2i FrameTextureSize = V2i(86, 86);
+const Vec2i FrameTopFillSize = V2iInit(8, 16);
+const Vec2i FrameTopTileSize = V2iInit(16, 16);
+const Vec2i FrameSideFillSize = V2iInit(16, 8);
+const Vec2i FrameSideTileSize = V2iInit(16, 16);
+const Vec2i FrameTextureSize = V2iInit(86, 86);
 class FrameUVsClass : public ArrayInitializer<FrameType, UVRect, 256> {
 public:
 	FrameUVsClass() {
-		Set(FrameType::TopLeftEdge, UVRectFromPos(FrameTextureSize, FrameTopTileSize, V2i(2, 2)));
-		Set(FrameType::TopFill, UVRectFromPos(FrameTextureSize, FrameTopFillSize, V2i(20, 2)));
-		Set(FrameType::TopMarks, UVRectFromPos(FrameTextureSize, FrameTopFillSize, V2i(40, 2)));
-		Set(FrameType::TopBegin, UVRectFromPos(FrameTextureSize, FrameTopFillSize, V2i(30, 2)));
-		Set(FrameType::TopEnd, UVRectFromPos(FrameTextureSize, FrameTopFillSize, V2i(58, 2)));
-		Set(FrameType::TopRightEdge, UVRectFromPos(FrameTextureSize, FrameTopTileSize, V2i(68, 2)));
+		Set(FrameType::TopLeftEdge, UVRectFromPos(FrameTextureSize, FrameTopTileSize, V2iInit(2, 2)));
+		Set(FrameType::TopFill, UVRectFromPos(FrameTextureSize, FrameTopFillSize, V2iInit(20, 2)));
+		Set(FrameType::TopMarks, UVRectFromPos(FrameTextureSize, FrameTopFillSize, V2iInit(40, 2)));
+		Set(FrameType::TopBegin, UVRectFromPos(FrameTextureSize, FrameTopFillSize, V2iInit(30, 2)));
+		Set(FrameType::TopEnd, UVRectFromPos(FrameTextureSize, FrameTopFillSize, V2iInit(58, 2)));
+		Set(FrameType::TopRightEdge, UVRectFromPos(FrameTextureSize, FrameTopTileSize, V2iInit(68, 2)));
 
-		Set(FrameType::LeftFill, UVRectFromPos(FrameTextureSize, FrameSideFillSize, V2i(2, 20)));
-		Set(FrameType::LeftStart, UVRectFromPos(FrameTextureSize, FrameSideFillSize, V2i(2, 30)));
-		Set(FrameType::LeftMarks, UVRectFromPos(FrameTextureSize, FrameSideTileSize, V2i(2, 40)));
-		Set(FrameType::LeftEnd, UVRectFromPos(FrameTextureSize, FrameSideFillSize, V2i(2, 58)));
-		Set(FrameType::LeftBottomEdge, UVRectFromPos(FrameTextureSize, FrameSideTileSize, V2i(2, 68)));
+		Set(FrameType::LeftFill, UVRectFromPos(FrameTextureSize, FrameSideFillSize, V2iInit(2, 20)));
+		Set(FrameType::LeftStart, UVRectFromPos(FrameTextureSize, FrameSideFillSize, V2iInit(2, 30)));
+		Set(FrameType::LeftMarks, UVRectFromPos(FrameTextureSize, FrameSideTileSize, V2iInit(2, 40)));
+		Set(FrameType::LeftEnd, UVRectFromPos(FrameTextureSize, FrameSideFillSize, V2iInit(2, 58)));
+		Set(FrameType::LeftBottomEdge, UVRectFromPos(FrameTextureSize, FrameSideTileSize, V2iInit(2, 68)));
 
-		Set(FrameType::RightFill, UVRectFromPos(FrameTextureSize, FrameSideFillSize, V2i(68, 20)));
-		Set(FrameType::RightStart, UVRectFromPos(FrameTextureSize, FrameSideFillSize, V2i(68, 30)));
-		Set(FrameType::RightMarks, UVRectFromPos(FrameTextureSize, FrameSideTileSize, V2i(68, 40)));
-		Set(FrameType::RightEnd, UVRectFromPos(FrameTextureSize, FrameSideFillSize, V2i(68, 58)));
-		Set(FrameType::RightBottomEdge, UVRectFromPos(FrameTextureSize, FrameSideTileSize, V2i(68, 68)));
+		Set(FrameType::RightFill, UVRectFromPos(FrameTextureSize, FrameSideFillSize, V2iInit(68, 20)));
+		Set(FrameType::RightStart, UVRectFromPos(FrameTextureSize, FrameSideFillSize, V2iInit(68, 30)));
+		Set(FrameType::RightMarks, UVRectFromPos(FrameTextureSize, FrameSideTileSize, V2iInit(68, 40)));
+		Set(FrameType::RightEnd, UVRectFromPos(FrameTextureSize, FrameSideFillSize, V2iInit(68, 58)));
+		Set(FrameType::RightBottomEdge, UVRectFromPos(FrameTextureSize, FrameSideTileSize, V2iInit(68, 68)));
 	}
 };
 static FrameUVsClass FrameUVs = {};
@@ -887,8 +887,8 @@ static void HandleBallCollision(GameState& state, Ball& ball, Entity& other, b2C
 			brick.requestHit = true;
 			b2WorldManifold manifold;
 			contact.GetWorldManifold(&manifold);
-			brick.hitPoint = V2f(manifold.points[0].x, manifold.points[0].y);
-			brick.hitNormal = V2f(manifold.normal.x, manifold.normal.y);
+			brick.hitPoint = V2fInit(manifold.points[0].x, manifold.points[0].y);
+			brick.hitNormal = V2fInit(manifold.normal.x, manifold.normal.y);
 		}
 	}
 
@@ -964,14 +964,14 @@ static void HandlePreCollision(GameState& state, b2Contact* contact) {
 			b2Vec2 distanceToPaddle = ballPos - paddlePos;
 			float t = b2Clamp(b2Dot(distanceToPaddle, unitRightVec) / PaddleRadius.x, -1.0f, 1.0f);
 
-			Vec2f bounce = V2f(0, 1);
+			Vec2f bounce = V2fInit(0, 1);
 			if (t < 0.0f) {
 				t = Abs(t);
-				bounce = Vec2Lerp(V2f(0, 1), t, V2f(-1, 0.25f));
+				bounce = V2fLerp(V2fInit(0, 1), t, V2fInit(-1, 0.25f));
 			} else {
-				bounce = Vec2Lerp(V2f(0, 1), t, V2f(1, 0.25f));
+				bounce = V2fLerp(V2fInit(0, 1), t, V2fInit(1, 0.25f));
 			}
-			bounce = Vec2Normalize(bounce);
+			bounce = V2fNormalize(bounce);
 
 			b2Vec2 n = b2Vec2(bounce.x, bounce.y);
 

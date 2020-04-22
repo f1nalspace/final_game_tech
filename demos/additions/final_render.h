@@ -33,7 +33,7 @@ struct UVRect {
 };
 
 inline UVRect UVRectFromTile(const Vec2i &imageSize, const Vec2i &tileSize, const int border, const Vec2i &pos) {
-	Vec2f texel = V2f(1.0f / (float)imageSize.x, 1.0f / (float)imageSize.y);
+	Vec2f texel = V2fInit(1.0f / (float)imageSize.x, 1.0f / (float)imageSize.y);
 	int imgX = border + pos.x * tileSize.x + border * pos.x;
 	int imgY = border + pos.y * tileSize.y + border * pos.y;
 	UVRect result;
@@ -45,7 +45,7 @@ inline UVRect UVRectFromTile(const Vec2i &imageSize, const Vec2i &tileSize, cons
 }
 
 inline UVRect UVRectFromPos(const Vec2i &imageSize, const Vec2i &partSize, const Vec2i &pos) {
-	Vec2f texel = V2f(1.0f / (float)imageSize.x, 1.0f / (float)imageSize.y);
+	Vec2f texel = V2fInit(1.0f / (float)imageSize.x, 1.0f / (float)imageSize.y);
 	UVRect result;
 	result.uMin = pos.x * texel.x;
 	result.vMin = pos.y * texel.y;
@@ -376,7 +376,7 @@ extern void PushSprite(RenderState &state, const Vec2f &position, const Vec2f &e
 }
 
 extern void PushSprite(RenderState &state, const Vec2f &position, const Vec2f &ext, const TextureHandle texture, const Vec4f &color, const UVRect &uvRect) {
-	PushSprite(state, position, ext, texture, color, V2f(uvRect.uMin, uvRect.vMin), V2f(uvRect.uMax, uvRect.vMax));
+	PushSprite(state, position, ext, texture, color, V2fInit(uvRect.uMin, uvRect.vMin), V2fInit(uvRect.uMax, uvRect.vMax));
 }
 
 extern void PushTexture(RenderState &state, TextureHandle *targetTexture, const void *data, const uint32_t width, const uint32_t height, const uint32_t bytesPerPixel, const TextureFilterType filter, const TextureWrapMode wrap, const bool isTopDown, const bool isPreMultiplied) {
@@ -421,7 +421,7 @@ extern void PushCircle(RenderState &state, const Vec2f &position, const float ra
 	for(size_t segmentIndex = 0; segmentIndex < segmentCount; ++segmentIndex) {
 		float x = position.x + Cosine(segmentIndex * seg) * radius;
 		float y = position.y + Sine(segmentIndex * seg) * radius;
-		*p++ = V2f(x, y);
+		*p++ = V2fInit(x, y);
 		++vertexCount;
 	}
 	*vertAlloc.count = vertexCount;
@@ -452,8 +452,8 @@ extern void PushLine(RenderState &state, const Vec2f &a, const Vec2f &b, const V
 
 extern Viewport ComputeViewportByAspect(const Vec2i &screenSize, const float targetAspect) {
 	int targetHeight = (int)(screenSize.w / targetAspect);
-	Vec2i viewSize = V2i(screenSize.w, screenSize.h);
-	Vec2i viewOffset = V2i(0, 0);
+	Vec2i viewSize = V2iInit(screenSize.w, screenSize.h);
+	Vec2i viewOffset = V2iInit(0, 0);
 	if(targetHeight > screenSize.h) {
 		viewSize.h = screenSize.h;
 		viewSize.w = (int)(screenSize.h * targetAspect);

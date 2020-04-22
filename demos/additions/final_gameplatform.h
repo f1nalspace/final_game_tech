@@ -9,6 +9,9 @@ Description:
 	This file is part of the final_framework.
 
 Changelog:
+	## 2019-01-31
+	- Center window on center from nearest display
+
 	## 2018-10-22
 	- Reflect api changes in FPL 0.9.3
 
@@ -173,7 +176,7 @@ static void ProcessEvents(Input *currentInput, Input *prevInput, GameWindowActiv
 				switch(event.mouse.type) {
 					case fplMouseEventType_Move:
 					{
-						currentInput->mouse.pos = *lastMousePos = V2i(event.mouse.mouseX, event.mouse.mouseY);
+						currentInput->mouse.pos = *lastMousePos = V2iInit(event.mouse.mouseX, event.mouse.mouseY);
 					} break;
 
 					case fplMouseEventType_Button:
@@ -290,6 +293,20 @@ extern int GameMain(const GameConfiguration &config) {
 		return -1;
 	}
 
+	//
+	// Center window on nearest display from cursor
+	//
+	int32_t cursorX, cursorY;
+	if (fplQueryCursorPosition(&cursorX, &cursorY)) {
+		fplDisplayInfo display = fplZeroInit;
+		fplWindowSize winSize = fplZeroInit;
+		if (fplGetWindowSize(&winSize) && fplGetDisplayFromPosition(cursorX, cursorY, &display)) {
+			int32_t newX = display.virtualPosition.left + (display.virtualSize.width - winSize.width) / 2;
+			int32_t newY = display.virtualPosition.top + (display.virtualSize.height - winSize.height) / 2;
+			fplSetWindowPosition(newX, newY);
+		}
+	}
+
 	if(!fglLoadOpenGL(true)) {
 		fplPlatformRelease();
 		return -1;
@@ -342,7 +359,7 @@ extern int GameMain(const GameConfiguration &config) {
 		Input inputs[2] = {};
 		Input *newInput = &inputs[0];
 		Input *oldInput = &inputs[1];
-		Vec2i lastMousePos = V2i(-1, -1);
+		Vec2i lastMousePos = V2iInit(-1, -1);
 		GameWindowActiveType windowActiveType[2] = { GameWindowActiveType::None, GameWindowActiveType::None };
 		newInput->defaultControllerIndex = oldInput->defaultControllerIndex = -1;
 

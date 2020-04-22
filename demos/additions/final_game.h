@@ -94,6 +94,8 @@ struct Input {
 	bool isActive;
 };
 
+struct GameState;
+
 struct GameMemory {
 	struct fmemMemoryBlock *memory;
 	struct GameState *game;
