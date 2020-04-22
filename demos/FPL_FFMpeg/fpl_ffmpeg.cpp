@@ -20,6 +20,7 @@ Changelog:
 	## 2020-04-22
 	- Relative Seeking Support
 	- OSD for displaying media/stream informations
+	- Check for versions for FFMPEG libraries
 
 	## 2020-03-02
 	- Upgraded to FFmpeg 4.2.2
@@ -182,7 +183,7 @@ static GLuint CompileShader(GLuint type, const char *source, const char *name) {
 		glGetShaderiv(result, GL_INFO_LOG_LENGTH, &length);
 		char *message = (char *)fplStackAllocate(length * sizeof(char));
 		glGetShaderInfoLog(result, length, &length, message);
-		fplConsoleFormatError("Failed to compile %s shader '%s':\n%s\n", (type == GL_VERTEX_SHADER ? "vertex" : "fragment"), name, message);
+		FPL_LOG_ERROR("App", "Failed to compile %s shader '%s':\n%s\n", (type == GL_VERTEX_SHADER ? "vertex" : "fragment"), name, message);
 		glDeleteShader(result);
 		return 0;
 	}
@@ -210,7 +211,7 @@ static GLuint CreateShader(const char *vertexShaderSource, const char *fragmentS
 		glGetProgramiv(result, GL_INFO_LOG_LENGTH, &length);
 		char *message = (char *)fplStackAllocate(length * sizeof(char));
 		glGetProgramInfoLog(result, length, &length, message);
-		fplConsoleFormatError("Failed to link %s shader program:\n%s\n", name, message);
+		FPL_LOG_ERROR("App", "Failed to link %s shader program:\n%s\n", name, message);
 		glDeleteProgram(result);
 		return 0;
 	}
@@ -2057,7 +2058,7 @@ static void VideoDecodingThreadProc(const fplThreadHandle *thread, void *userDat
 							ffmpeg.av_frame_unref(sourceFrame);
 							hasDecodedFrame = false;
 #if PRINT_FRAME_DROPS
-							fplConsoleFormatError("Frame drops: %d/%d\n", state->frame_drops_early, state->frame_drops_late);
+							FPL_LOG_INFO("App", "Frame drops: %d/%d\n", state->frame_drops_early, state->frame_drops_late);
 #endif
 						}
 					}
@@ -2610,7 +2611,7 @@ static void PacketReadThreadProc(const fplThreadHandle *thread, void *userData) 
 		}
 	}
 
-	fplConsoleOut("Reader thread stopped.\n");
+	FPL_LOG_INFO("App", "Reader thread stopped.\n");
 }
 
 static bool OpenStreamComponent(const char *mediaFilePath, const int32_t streamIndex, AVStream *stream, MediaStream &outStream) {
@@ -2635,7 +2636,7 @@ static bool OpenStreamComponent(const char *mediaFilePath, const int32_t streamI
 	// Create codec context
 	outStream.codecContext = ffmpeg.avcodec_alloc_context3(nullptr);
 	if (ffmpeg.avcodec_parameters_to_context(outStream.codecContext, stream->codecpar) < 0) {
-		fplConsoleFormatError("Failed getting %s codec context from codec '%s' in media file '%s'!\n", typeName, codecName, mediaFilePath);
+		FPL_LOG_ERROR("App" ,"Failed getting %s codec context from codec '%s' in media file '%s'!\n", typeName, codecName, mediaFilePath);
 		return false;
 	}
 
@@ -2646,13 +2647,13 @@ static bool OpenStreamComponent(const char *mediaFilePath, const int32_t streamI
 	// @TODO(final): We could force the codec here if we want (avcodec_find_decoder_by_name).
 	outStream.codec = ffmpeg.avcodec_find_decoder(stream->codecpar->codec_id);
 	if (outStream.codec == nullptr) {
-		fplConsoleFormatError("Unsupported %s codec '%s' in media file '%s' found!\n", typeName, codecName, mediaFilePath);
+		FPL_LOG_ERROR("App", "Unsupported %s codec '%s' in media file '%s' found!\n", typeName, codecName, mediaFilePath);
 		return false;
 	}
 
 	// Open codec
 	if (ffmpeg.avcodec_open2(outStream.codecContext, outStream.codec, nullptr) < 0) {
-		fplConsoleFormatError("Failed opening %s codec '%s' from media file '%s'!\n", typeName, codecName, mediaFilePath);
+		FPL_LOG_ERROR("App", "Failed opening %s codec '%s' from media file '%s'!\n", typeName, codecName, mediaFilePath);
 		return false;
 	}
 
@@ -3036,8 +3037,9 @@ static void VideoRefresh(PlayerState *state, double &remainingTime, int &display
 				if (!state->step && (state->settings.frameDrop > 0 || (state->settings.frameDrop && GetMasterSyncType(state) != AVSyncType::VideoMaster)) && time > state->frameTimer + duration) {
 					state->frame_drops_late++;
 					NextReadable(state->video.decoder.frameQueue);
+
 #if PRINT_FRAME_DROPS
-					fplConsoleFormatError("Frame drops: %d/%d\n", state->frame_drops_early, state->frame_drops_late);
+					FPL_LOG_INFO("App", "Frame drops: %d/%d\n", state->frame_drops_early, state->frame_drops_late);
 #endif
 					goto retry;
 				}
@@ -3111,7 +3113,7 @@ static bool InitializeVideo(PlayerState &state, const char *mediaFilePath) {
 
 	// Init video decoder
 	if (!InitDecoder(video.decoder, &state, &state.reader, &video.stream, MAX_VIDEO_FRAME_QUEUE_COUNT, 1)) {
-		fplConsoleFormatError("Failed initialize video decoder for media file '%s'!\n", mediaFilePath);
+		FPL_LOG_ERROR("App", "Failed initialize video decoder for media file '%s'!\n", mediaFilePath);
 		return false;
 	}
 
@@ -3136,7 +3138,7 @@ static bool InitializeVideo(PlayerState &state, const char *mediaFilePath) {
 		nullptr
 	);
 	if (video.softwareScaleCtx == nullptr) {
-		fplConsoleFormatError("Failed getting software scale context with size (%d x %d) for file '%s'!\n", videoCodexCtx->width, videoCodexCtx->height, mediaFilePath);
+		FPL_LOG_ERROR("App", "Failed getting software scale context with size (%d x %d) for file '%s'!\n", videoCodexCtx->width, videoCodexCtx->height, mediaFilePath);
 		return false;
 	}
 
@@ -3241,7 +3243,7 @@ static bool InitializeAudio(PlayerState &state, const char *mediaFilePath, const
 
 	// Init audio decoder
 	if (!InitDecoder(audio.decoder, &state, &state.reader, &audio.stream, MAX_AUDIO_FRAME_QUEUE_COUNT, 1)) {
-		fplConsoleFormatError("Failed initialize audio decoder for media file '%s'!\n", mediaFilePath);
+		FPL_LOG_ERROR("App", "Failed initialize audio decoder for media file '%s'!\n", mediaFilePath);
 		return false;
 	}
 
@@ -3322,7 +3324,7 @@ static bool LoadMedia(PlayerState &state, const char *mediaFilePath, const fplAu
 
 	// Open media file
 	if (ffmpeg.avformat_open_input(&state.formatCtx, mediaFilePath, nullptr, nullptr) != 0) {
-		fplConsoleFormatError("Failed opening media file '%s'!\n", mediaFilePath);
+		FPL_LOG_ERROR("App", "Failed opening media file '%s'!\n", mediaFilePath);
 		goto release;
 	}
 
@@ -3333,7 +3335,7 @@ static bool LoadMedia(PlayerState &state, const char *mediaFilePath, const fplAu
 
 	// Retrieve stream information
 	if (ffmpeg.avformat_find_stream_info(state.formatCtx, nullptr) < 0) {
-		fplConsoleFormatError("Failed getting stream informations for media file '%s'!\n", mediaFilePath);
+		FPL_LOG_ERROR("App", "Failed getting stream informations for media file '%s'!\n", mediaFilePath);
 		goto release;
 	}
 
@@ -3369,13 +3371,13 @@ static bool LoadMedia(PlayerState &state, const char *mediaFilePath, const fplAu
 
 	// No streams found
 	if ((!state.video.stream.isValid) && (!state.audio.stream.isValid)) {
-		fplConsoleFormatError("No video or audio stream in media file '%s' found!\n", mediaFilePath);
+		FPL_LOG_ERROR("App", "No video or audio stream in media file '%s' found!\n", mediaFilePath);
 		goto release;
 	}
 
 	// We need to initialize the reader first before we allocate stream specific stuff
 	if (!InitReader(state.reader)) {
-		fplConsoleFormatError("Failed initializing reader file '%s'!\n", mediaFilePath);
+		FPL_LOG_ERROR("App", "Failed initializing reader file '%s'!\n", mediaFilePath);
 		goto release;
 	}
 
@@ -3434,13 +3436,13 @@ int main(int argc, char **argv) {
 	int result = 0;
 
 	if (argc < 2) {
-		fplConsoleError("Media file argument missing!");
+		FPL_LOG_CRITICAL("App", "Media file argument missing!");
 		return -1;
 	}
 
 	fplArchType arch = fplGetProcessorArchitecture();
 	if (!(arch == fplArchType_x64 || arch == fplArchType_x86_64)) {
-		fplConsoleError("x64 architecture is required to run this demo!");
+		FPL_LOG_CRITICAL("App", "x64 architecture is required to run this demo!");
 		return -1;
 	}
 

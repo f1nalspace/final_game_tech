@@ -12,7 +12,16 @@ extern "C" {
 #	include <libswscale/swscale.h>
 #	include <libswresample/swresample.h>
 #	include <libavutil/time.h>
+#	include <libavutil/version.h>
 }
+
+//
+// Generic Version Func:
+// FFmpeg are based on modules, each module have its own _version() function.
+// The signature are identical, so we define one function signature here and use it everywhere
+//
+#define FFMPEG_GET_LIB_VERSION_FUNC(name) unsigned name(void)
+typedef FFMPEG_GET_LIB_VERSION_FUNC(ffmpeg_get_lib_version_func);
 
 //
 // AVFormat
@@ -280,7 +289,7 @@ typedef FFMPEG_SWR_SET_COMPENSATION(ffmpeg_swr_set_compensation_func);
 #define FFMPEG_GET_FUNCTION_ADDRESS(libHandle, libName, target, type, name) \
 	target = (type *)fplGetDynamicLibraryProc(&libHandle, name); \
 	if (target == nullptr) { \
-		fplConsoleFormatError("[FFMPEG] Failed getting '%s' from library '%s'!", name, libName); \
+		FPL_LOG_ERROR("FFMPEG", "Failed getting procedure '%s' from library '%s'!", name, libName); \
 		return false; \
 	}
 
@@ -292,95 +301,100 @@ struct FFMPEGContext {
 	fplDynamicLibraryHandle swResampleLib;
 
 	// Format
-	ffmpeg_avformat_network_init_func *avformat_network_init;
-	ffmpeg_avformat_network_deinit_func *avformat_network_deinit;
-	ffmpeg_avformat_close_input_func *avformat_close_input;
-	ffmpeg_avformat_open_input_func *avformat_open_input;
-	ffmpeg_avformat_find_stream_info_func *avformat_find_stream_info;
-	ffmpeg_av_dump_format_func *av_dump_format;
-	ffmpeg_av_read_frame_func *av_read_frame;
-	ffmpeg_avformat_alloc_context_func *avformat_alloc_context;
-	ffmpeg_avformat_seek_file_func *avformat_seek_file;
-	ffmpeg_avformat_match_stream_specifier_func *avformat_match_stream_specifier;
-	ffmpeg_av_find_best_stream_func *av_find_best_stream;
-	ffmpeg_av_guess_sample_aspect_ratio_func *av_guess_sample_aspect_ratio;
-	ffmpeg_av_guess_frame_rate_func *av_guess_frame_rate;
-	ffmpeg_av_read_pause_func *av_read_pause;
-	ffmpeg_av_read_play_func *av_read_play;
-	ffmpeg_avio_feof_func *avio_feof;
-	ffmpeg_av_find_program_from_stream_func *av_find_program_from_stream;
-	ffmpeg_av_format_inject_global_side_data_func *av_format_inject_global_side_data;
-	ffmpeg_avio_size_func *avio_size;
-	ffmpeg_avio_seek_func *avio_seek;
+	ffmpeg_get_lib_version_func* avformat_version;
+	ffmpeg_avformat_network_init_func* avformat_network_init;
+	ffmpeg_avformat_network_deinit_func* avformat_network_deinit;
+	ffmpeg_avformat_close_input_func* avformat_close_input;
+	ffmpeg_avformat_open_input_func* avformat_open_input;
+	ffmpeg_avformat_find_stream_info_func* avformat_find_stream_info;
+	ffmpeg_av_dump_format_func* av_dump_format;
+	ffmpeg_av_read_frame_func* av_read_frame;
+	ffmpeg_avformat_alloc_context_func* avformat_alloc_context;
+	ffmpeg_avformat_seek_file_func* avformat_seek_file;
+	ffmpeg_avformat_match_stream_specifier_func* avformat_match_stream_specifier;
+	ffmpeg_av_find_best_stream_func* av_find_best_stream;
+	ffmpeg_av_guess_sample_aspect_ratio_func* av_guess_sample_aspect_ratio;
+	ffmpeg_av_guess_frame_rate_func* av_guess_frame_rate;
+	ffmpeg_av_read_pause_func* av_read_pause;
+	ffmpeg_av_read_play_func* av_read_play;
+	ffmpeg_avio_feof_func* avio_feof;
+	ffmpeg_av_find_program_from_stream_func* av_find_program_from_stream;
+	ffmpeg_av_format_inject_global_side_data_func* av_format_inject_global_side_data;
+	ffmpeg_avio_size_func* avio_size;
+	ffmpeg_avio_seek_func* avio_seek;
 
 	// Codec
-	ffmpeg_avcodec_free_context_func *avcodec_free_context;
-	ffmpeg_avcodec_alloc_context3_func *avcodec_alloc_context3;
-	ffmpeg_avcodec_parameters_to_context_func *avcodec_parameters_to_context;
-	ffmpeg_avcodec_find_decoder_func *avcodec_find_decoder;
-	ffmpeg_avcodec_open2_func *avcodec_open2;
-	ffmpeg_av_packet_unref_func *av_packet_unref;
-	ffmpeg_avcodec_receive_frame_func *avcodec_receive_frame;
-	ffmpeg_avcodec_send_packet_func *avcodec_send_packet;
-	ffmpeg_av_packet_alloc_func *av_packet_alloc;
-	ffmpeg_av_packet_free_func *av_packet_free;
-	ffmpeg_av_init_packet_func *av_init_packet;
-	ffmpeg_avsubtitle_free_func *avsubtitle_free;
-	ffmpeg_avcodec_find_decoder_by_name_func *avcodec_find_decoder_by_name;
-	ffmpeg_av_packet_move_ref_func *av_packet_move_ref;
-	ffmpeg_avcodec_flush_buffers_func *avcodec_flush_buffers;
-	ffmpeg_avcodec_decode_subtitle2_func *avcodec_decode_subtitle2;
-	ffmpeg_av_packet_ref_func *av_packet_ref;
-	ffmpeg_av_rdft_init_func *av_rdft_init;
-	ffmpeg_av_rdft_calc_func *av_rdft_calc;
-	ffmpeg_av_rdft_end_func *av_rdft_end;
+	ffmpeg_get_lib_version_func* avcodec_version;
+	ffmpeg_avcodec_free_context_func* avcodec_free_context;
+	ffmpeg_avcodec_alloc_context3_func* avcodec_alloc_context3;
+	ffmpeg_avcodec_parameters_to_context_func* avcodec_parameters_to_context;
+	ffmpeg_avcodec_find_decoder_func* avcodec_find_decoder;
+	ffmpeg_avcodec_open2_func* avcodec_open2;
+	ffmpeg_av_packet_unref_func* av_packet_unref;
+	ffmpeg_avcodec_receive_frame_func* avcodec_receive_frame;
+	ffmpeg_avcodec_send_packet_func* avcodec_send_packet;
+	ffmpeg_av_packet_alloc_func* av_packet_alloc;
+	ffmpeg_av_packet_free_func* av_packet_free;
+	ffmpeg_av_init_packet_func* av_init_packet;
+	ffmpeg_avsubtitle_free_func* avsubtitle_free;
+	ffmpeg_avcodec_find_decoder_by_name_func* avcodec_find_decoder_by_name;
+	ffmpeg_av_packet_move_ref_func* av_packet_move_ref;
+	ffmpeg_avcodec_flush_buffers_func* avcodec_flush_buffers;
+	ffmpeg_avcodec_decode_subtitle2_func* avcodec_decode_subtitle2;
+	ffmpeg_av_packet_ref_func* av_packet_ref;
+	ffmpeg_av_rdft_init_func* av_rdft_init;
+	ffmpeg_av_rdft_calc_func* av_rdft_calc;
+	ffmpeg_av_rdft_end_func* av_rdft_end;
 
 	// Util
-	ffmpeg_av_frame_alloc_func *av_frame_alloc;
-	ffmpeg_av_frame_free_func *av_frame_free;
-	ffmpeg_av_frame_unref_func *av_frame_unref;
-	ffmpeg_av_frame_move_ref_func *av_frame_move_ref;
-	ffmpeg_av_image_get_buffer_size_func *av_image_get_buffer_size;
-	ffmpeg_av_image_get_linesize_func *av_image_get_linesize;
-	ffmpeg_av_image_fill_arrays_func *av_image_fill_arrays;
-	ffmpeg_av_get_channel_layout_nb_channels_func *av_get_channel_layout_nb_channels;
-	ffmpeg_av_gettime_relative_func *av_gettime_relative;
-	ffmpeg_av_gettime_func *av_gettime;
-	ffmpeg_av_get_media_type_string_func *av_get_media_type_string;
-	ffmpeg_av_rescale_q_func *av_rescale_q;
-	ffmpeg_av_samples_get_buffer_size_func *av_samples_get_buffer_size;
-	ffmpeg_av_malloc_func *av_malloc;
-	ffmpeg_av_mallocz_func *av_mallocz;
-	ffmpeg_av_malloc_array_func *av_malloc_array;
+	ffmpeg_get_lib_version_func* avutil_version;
+	ffmpeg_av_frame_alloc_func* av_frame_alloc;
+	ffmpeg_av_frame_free_func* av_frame_free;
+	ffmpeg_av_frame_unref_func* av_frame_unref;
+	ffmpeg_av_frame_move_ref_func* av_frame_move_ref;
+	ffmpeg_av_image_get_buffer_size_func* av_image_get_buffer_size;
+	ffmpeg_av_image_get_linesize_func* av_image_get_linesize;
+	ffmpeg_av_image_fill_arrays_func* av_image_fill_arrays;
+	ffmpeg_av_get_channel_layout_nb_channels_func* av_get_channel_layout_nb_channels;
+	ffmpeg_av_gettime_relative_func* av_gettime_relative;
+	ffmpeg_av_gettime_func* av_gettime;
+	ffmpeg_av_get_media_type_string_func* av_get_media_type_string;
+	ffmpeg_av_rescale_q_func* av_rescale_q;
+	ffmpeg_av_samples_get_buffer_size_func* av_samples_get_buffer_size;
+	ffmpeg_av_malloc_func* av_malloc;
+	ffmpeg_av_mallocz_func* av_mallocz;
+	ffmpeg_av_malloc_array_func* av_malloc_array;
 	ffmpeg_av_fast_malloc_func* av_fast_malloc;
-	ffmpeg_av_free_func *av_free;
-	ffmpeg_av_freep_func *av_freep;
-	ffmpeg_av_get_packed_sample_fmt_func *av_get_packed_sample_fmt;
-	ffmpeg_av_get_default_channel_layout_func *av_get_default_channel_layout;
-	ffmpeg_av_usleep_func *av_usleep;
-	ffmpeg_av_strdup_func *av_strdup;
-	ffmpeg_av_log2_func *av_log2;
-	ffmpeg_av_compare_ts_func *av_compare_ts;
-	ffmpeg_av_get_bytes_per_sample_func *av_get_bytes_per_sample;
-	ffmpeg_av_get_sample_fmt_name_func * av_get_sample_fmt_name;
-	ffmpeg_av_log_set_flags_func *av_log_set_flags;
-	ffmpeg_av_log_func *av_log;
+	ffmpeg_av_free_func* av_free;
+	ffmpeg_av_freep_func* av_freep;
+	ffmpeg_av_get_packed_sample_fmt_func* av_get_packed_sample_fmt;
+	ffmpeg_av_get_default_channel_layout_func* av_get_default_channel_layout;
+	ffmpeg_av_usleep_func* av_usleep;
+	ffmpeg_av_strdup_func* av_strdup;
+	ffmpeg_av_log2_func* av_log2;
+	ffmpeg_av_compare_ts_func* av_compare_ts;
+	ffmpeg_av_get_bytes_per_sample_func* av_get_bytes_per_sample;
+	ffmpeg_av_get_sample_fmt_name_func* av_get_sample_fmt_name;
+	ffmpeg_av_log_set_flags_func* av_log_set_flags;
+	ffmpeg_av_log_func* av_log;
 
 	// SWS
-	ffmpeg_sws_getContext_func *sws_getContext;
-	ffmpeg_sws_getCachedContext_func *sws_getCachedContext;
-	ffmpeg_sws_scale_func *sws_scale;
-	ffmpeg_sws_freeContext_func *sws_freeContext;
+	ffmpeg_get_lib_version_func* swscale_version;
+	ffmpeg_sws_getContext_func* sws_getContext;
+	ffmpeg_sws_getCachedContext_func* sws_getCachedContext;
+	ffmpeg_sws_scale_func* sws_scale;
+	ffmpeg_sws_freeContext_func* sws_freeContext;
 
 	// SWR
-	ffmpeg_swr_alloc_set_opts_func *swr_alloc_set_opts;
-	ffmpeg_swr_free_func *swr_free;
-	ffmpeg_swr_convert_func *swr_convert;
-	ffmpeg_swr_init_func *swr_init;
-	ffmpeg_swr_set_compensation_func *swr_set_compensation;
+	ffmpeg_get_lib_version_func* swresample_version;
+	ffmpeg_swr_alloc_set_opts_func* swr_alloc_set_opts;
+	ffmpeg_swr_free_func* swr_free;
+	ffmpeg_swr_convert_func* swr_convert;
+	ffmpeg_swr_init_func* swr_init;
+	ffmpeg_swr_set_compensation_func* swr_set_compensation;
 };
 
-static void ReleaseFFMPEG(FFMPEGContext &ffmpeg) {
+static void ReleaseFFMPEG(FFMPEGContext& ffmpeg) {
 #if !USE_FFMPEG_STATIC_LINKING
 	fplDynamicLibraryUnload(&ffmpeg.swResampleLib);
 	fplDynamicLibraryUnload(&ffmpeg.swScaleLib);
@@ -390,31 +404,59 @@ static void ReleaseFFMPEG(FFMPEGContext &ffmpeg) {
 #endif
 }
 
-inline fplDynamicLibraryHandle LoadFFMPEGLibrary(const char *filePath) {
+inline fplDynamicLibraryHandle LoadFFMPEGLibrary(const char* filePath) {
 	fplDynamicLibraryHandle result = {};
 	fplDynamicLibraryLoad(filePath, &result);
 	return(result);
 }
 
-static bool LoadFFMPEG(FFMPEGContext &ffmpeg) {
+static bool IsFFMPEGVersionEqual(int a, int b) {
+	int amajor = AV_VERSION_MAJOR(a);
+	int aminor = AV_VERSION_MINOR(a);
+
+	int bmajor = AV_VERSION_MAJOR(b);
+	int bminor = AV_VERSION_MINOR(b);
+
+	bool result = (amajor == bmajor) && (aminor == bminor);
+	return(result);
+}
+
+#define FFMPEG_CHECK_VERSION(libName, libFileName, versionFunc, headerVersion) \
+	do { \
+		int dllVersion = versionFunc(); \
+		if (!IsFFMPEGVersionEqual(dllVersion, headerVersion)) { \
+			FPL_LOG_ERROR("FFMPEG", "%s library '%s' version (%d.%d) does not match header version (%d.%d)!", libName, libFileName, AV_VERSION_MAJOR(dllVersion), AV_VERSION_MINOR(dllVersion), AV_VERSION_MAJOR(headerVersion), AV_VERSION_MINOR(headerVersion)); \
+			return false; \
+		} \
+	} while (0);
+
+static bool LoadFFMPEG(FFMPEGContext& ffmpeg) {
 #if !USE_FFMPEG_STATIC_LINKING
-	const char *avFormatLibFile = "avformat-58.dll";
-	const char *avCodecLibFile = "avcodec-58.dll";
-	const char *avUtilLibFile = "avutil-56.dll";
-	const char *swScaleLibFile = "swscale-5.dll";
-	const char *swResampleLibFile = "swresample-3.dll";
+	const char* avFormatLibFile = "avformat-58.dll";
+	const char* avCodecLibFile = "avcodec-58.dll";
+	const char* avUtilLibFile = "avutil-56.dll";
+	const char* swScaleLibFile = "swscale-5.dll";
+	const char* swResampleLibFile = "swresample-3.dll";
 
 	fplDynamicLibraryHandle avFormatLib = ffmpeg.avFormatLib = LoadFFMPEGLibrary(avFormatLibFile);
 	fplDynamicLibraryHandle avCodecLib = ffmpeg.avCodecLib = LoadFFMPEGLibrary(avCodecLibFile);
 	fplDynamicLibraryHandle avUtilLib = ffmpeg.avUtilLib = LoadFFMPEGLibrary(avUtilLibFile);
 	fplDynamicLibraryHandle swScaleLib = ffmpeg.swScaleLib = LoadFFMPEGLibrary(swScaleLibFile);
 	fplDynamicLibraryHandle swResampleLib = ffmpeg.swResampleLib = LoadFFMPEGLibrary(swResampleLibFile);
+#else
+	const char* avFormatLibFile = "avformat.lib";
+	const char* avCodecLibFile = "avcodec.lib";
+	const char* avUtilLibFile = "avutil.lib";
+	const char* swScaleLibFile = "swscale.lib";
+	const char* swResampleLibFile = "swresample.lib";
 #endif
 
 	//
 	// AVFormat
 	//
 #if !USE_FFMPEG_STATIC_LINKING
+
+	FFMPEG_GET_FUNCTION_ADDRESS(avFormatLib, avFormatLibFile, ffmpeg.avformat_version, ffmpeg_get_lib_version_func, "avformat_version");
 	FFMPEG_GET_FUNCTION_ADDRESS(avFormatLib, avFormatLibFile, ffmpeg.avformat_network_init, ffmpeg_avformat_network_init_func, "avformat_network_init");
 	FFMPEG_GET_FUNCTION_ADDRESS(avFormatLib, avFormatLibFile, ffmpeg.avformat_network_deinit, ffmpeg_avformat_network_deinit_func, "avformat_network_deinit");
 	FFMPEG_GET_FUNCTION_ADDRESS(avFormatLib, avFormatLibFile, ffmpeg.avformat_close_input, ffmpeg_avformat_close_input_func, "avformat_close_input");
@@ -436,6 +478,7 @@ static bool LoadFFMPEG(FFMPEGContext &ffmpeg) {
 	FFMPEG_GET_FUNCTION_ADDRESS(avFormatLib, avFormatLibFile, ffmpeg.avio_size, ffmpeg_avio_size_func, "avio_size");
 	FFMPEG_GET_FUNCTION_ADDRESS(avFormatLib, avFormatLibFile, ffmpeg.avio_seek, ffmpeg_avio_seek_func, "avio_seek");
 #else
+	ffmpeg.avformat_version = avformat_version;
 	ffmpeg.avformat_network_init = avformat_network_init;
 	ffmpeg.avformat_network_deinit = avformat_network_deinit;
 	ffmpeg.avformat_close_input = avformat_close_input;
@@ -462,6 +505,7 @@ static bool LoadFFMPEG(FFMPEGContext &ffmpeg) {
 	// AVCodec
 	//
 #if !USE_FFMPEG_STATIC_LINKING
+	FFMPEG_GET_FUNCTION_ADDRESS(avCodecLib, avCodecLibFile, ffmpeg.avcodec_version, ffmpeg_get_lib_version_func, "avcodec_version");
 	FFMPEG_GET_FUNCTION_ADDRESS(avCodecLib, avCodecLibFile, ffmpeg.avcodec_free_context, ffmpeg_avcodec_free_context_func, "avcodec_free_context");
 	FFMPEG_GET_FUNCTION_ADDRESS(avCodecLib, avCodecLibFile, ffmpeg.avcodec_alloc_context3, ffmpeg_avcodec_alloc_context3_func, "avcodec_alloc_context3");
 	FFMPEG_GET_FUNCTION_ADDRESS(avCodecLib, avCodecLibFile, ffmpeg.avcodec_parameters_to_context, ffmpeg_avcodec_parameters_to_context_func, "avcodec_parameters_to_context");
@@ -484,6 +528,7 @@ static bool LoadFFMPEG(FFMPEGContext &ffmpeg) {
 	FFMPEG_GET_FUNCTION_ADDRESS(avCodecLib, avCodecLibFile, ffmpeg.av_rdft_calc, ffmpeg_av_rdft_calc_func, "av_rdft_calc");
 	FFMPEG_GET_FUNCTION_ADDRESS(avCodecLib, avCodecLibFile, ffmpeg.av_rdft_end, ffmpeg_av_rdft_end_func, "av_rdft_end");
 #else
+	ffmpeg.avcodec_version = avcodec_version;
 	ffmpeg.avcodec_free_context = avcodec_free_context;
 	ffmpeg.avcodec_alloc_context3 = avcodec_alloc_context3;
 	ffmpeg.avcodec_parameters_to_context = avcodec_parameters_to_context;
@@ -510,6 +555,7 @@ static bool LoadFFMPEG(FFMPEGContext &ffmpeg) {
 	// AVUtil
 	//
 #if !USE_FFMPEG_STATIC_LINKING
+	FFMPEG_GET_FUNCTION_ADDRESS(avUtilLib, avUtilLibFile, ffmpeg.avutil_version, ffmpeg_get_lib_version_func, "avutil_version");
 	FFMPEG_GET_FUNCTION_ADDRESS(avUtilLib, avUtilLibFile, ffmpeg.av_frame_alloc, ffmpeg_av_frame_alloc_func, "av_frame_alloc");
 	FFMPEG_GET_FUNCTION_ADDRESS(avUtilLib, avUtilLibFile, ffmpeg.av_frame_free, ffmpeg_av_frame_free_func, "av_frame_free");
 	FFMPEG_GET_FUNCTION_ADDRESS(avUtilLib, avUtilLibFile, ffmpeg.av_frame_unref, ffmpeg_av_frame_unref_func, "av_frame_unref");
@@ -539,7 +585,8 @@ static bool LoadFFMPEG(FFMPEGContext &ffmpeg) {
 	FFMPEG_GET_FUNCTION_ADDRESS(avUtilLib, avUtilLibFile, ffmpeg.av_get_sample_fmt_name, ffmpeg_av_get_sample_fmt_name_func, "av_get_sample_fmt_name");
 	FFMPEG_GET_FUNCTION_ADDRESS(avUtilLib, avUtilLibFile, ffmpeg.av_log_set_flags, ffmpeg_av_log_set_flags_func, "av_log_set_flags");
 	FFMPEG_GET_FUNCTION_ADDRESS(avUtilLib, avUtilLibFile, ffmpeg.av_log, ffmpeg_av_log_func, "av_log");
-#else
+#else	
+	ffmpeg.avutil_version = avutil_version;
 	ffmpeg.av_frame_alloc = av_frame_alloc;
 	ffmpeg.av_frame_free = av_frame_free;
 	ffmpeg.av_frame_unref = av_frame_unref;
@@ -575,11 +622,13 @@ static bool LoadFFMPEG(FFMPEGContext &ffmpeg) {
 	// SWS
 	//
 #if !USE_FFMPEG_STATIC_LINKING
+	FFMPEG_GET_FUNCTION_ADDRESS(swScaleLib, swScaleLibFile, ffmpeg.swscale_version, ffmpeg_get_lib_version_func, "swscale_version");
 	FFMPEG_GET_FUNCTION_ADDRESS(swScaleLib, swScaleLibFile, ffmpeg.sws_getContext, ffmpeg_sws_getContext_func, "sws_getContext");
 	FFMPEG_GET_FUNCTION_ADDRESS(swScaleLib, swScaleLibFile, ffmpeg.sws_scale, ffmpeg_sws_scale_func, "sws_scale");
 	FFMPEG_GET_FUNCTION_ADDRESS(swScaleLib, swScaleLibFile, ffmpeg.sws_freeContext, ffmpeg_sws_freeContext_func, "sws_freeContext");
 	FFMPEG_GET_FUNCTION_ADDRESS(swScaleLib, swScaleLibFile, ffmpeg.sws_getCachedContext, ffmpeg_sws_getCachedContext_func, "sws_getCachedContext");
 #else
+	ffmpeg.swscale_version = swscale_version;
 	ffmpeg.sws_getContext = sws_getContext;
 	ffmpeg.sws_scale = sws_scale;
 	ffmpeg.sws_freeContext = sws_freeContext;
@@ -587,20 +636,30 @@ static bool LoadFFMPEG(FFMPEGContext &ffmpeg) {
 #endif
 
 	//
-	// SWR
+	// SWResamle
 	//
 #if !USE_FFMPEG_STATIC_LINKING
+	FFMPEG_GET_FUNCTION_ADDRESS(swResampleLib, swResampleLibFile, ffmpeg.swresample_version, ffmpeg_get_lib_version_func, "swresample_version");
 	FFMPEG_GET_FUNCTION_ADDRESS(swResampleLib, swResampleLibFile, ffmpeg.swr_alloc_set_opts, ffmpeg_swr_alloc_set_opts_func, "swr_alloc_set_opts");
 	FFMPEG_GET_FUNCTION_ADDRESS(swResampleLib, swResampleLibFile, ffmpeg.swr_free, ffmpeg_swr_free_func, "swr_free");
 	FFMPEG_GET_FUNCTION_ADDRESS(swResampleLib, swResampleLibFile, ffmpeg.swr_convert, ffmpeg_swr_convert_func, "swr_convert");
 	FFMPEG_GET_FUNCTION_ADDRESS(swResampleLib, swResampleLibFile, ffmpeg.swr_init, ffmpeg_swr_init_func, "swr_init");
 	FFMPEG_GET_FUNCTION_ADDRESS(swResampleLib, swResampleLibFile, ffmpeg.swr_set_compensation, ffmpeg_swr_set_compensation_func, "swr_set_compensation");
 #else
+	ffmpeg.swresample_version = swresample_version;
 	ffmpeg.swr_alloc_set_opts = swr_alloc_set_opts;
 	ffmpeg.swr_free = swr_free;
 	ffmpeg.swr_convert = swr_convert;
 	ffmpeg.swr_init = swr_init;
 	ffmpeg.swr_set_compensation = swr_set_compensation;
 #endif
+
+	// Check versions
+	FFMPEG_CHECK_VERSION("AVformat", avFormatLibFile, ffmpeg.avformat_version, LIBAVFORMAT_VERSION_INT);
+	FFMPEG_CHECK_VERSION("AVcodec", avCodecLibFile, ffmpeg.avcodec_version, LIBAVCODEC_VERSION_INT);
+	FFMPEG_CHECK_VERSION("AVutil", avUtilLibFile, ffmpeg.avutil_version, LIBAVUTIL_VERSION_INT);
+	FFMPEG_CHECK_VERSION("SWscale", swScaleLibFile, ffmpeg.swscale_version, LIBSWSCALE_VERSION_INT);
+	FFMPEG_CHECK_VERSION("SWresample", swResampleLibFile, ffmpeg.swresample_version, LIBSWRESAMPLE_VERSION_INT);
+
 	return true;
 }
