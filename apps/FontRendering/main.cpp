@@ -17,7 +17,7 @@ struct BakedCodePoint {
 	float xoffset;
 	float yoffset;
 	float xadvance;
-	char c;
+	unsigned char c;
 };
 
 int main(int argc, char *argv[]) {
@@ -37,8 +37,8 @@ int main(int argc, char *argv[]) {
 		constexpr int AtlasWidth = 512;
 		constexpr int AtlasHeight = 512;
 		constexpr int CharFirst = 32;
-		constexpr int CharLast = 128;
-		constexpr float FontHeight = 36.0f;
+		constexpr int CharLast = 255;
+		constexpr float FontHeight = 24.0f;
 		constexpr float PixelToUnits = 1.0f / FontHeight;
 		constexpr int CharCount = (CharLast - CharFirst) + 1;
 		stbtt_bakedchar *bakedChars = (stbtt_bakedchar *)fplMemoryAllocate(CharCount * sizeof(stbtt_bakedchar));
@@ -137,13 +137,13 @@ int main(int argc, char *argv[]) {
 
 			float fontScale = 64.0f;
 
-			const char *text = "Hello World!";
+			const char *text = "öÖ^Final-Platform-Layer";
 
 			float x = w * 0.5f;
 			float y = h * 0.5f;
 			while(*text) {
-				if(*text >= CharFirst && *text <= CharLast) {
-					char c = *text;
+				uint8_t c = (uint8_t)*text;
+				if(c >= CharFirst && *text <= CharLast) {
 					int charIndex = c - CharFirst;
 					stbtt_aligned_quad q0, q1;
 
