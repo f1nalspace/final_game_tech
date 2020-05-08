@@ -43,6 +43,7 @@ const float Tau32 = (float)M_PI * 2.0f;
 const float Deg2Rad = (float)M_PI / 180.0f;
 const float Rad2Deg = 180.0f / (float)M_PI;
 const float Epsilon = FLT_EPSILON;
+const float InvByte = 1.0f / 255.0f;
 
 //
 // Ratio type
@@ -92,6 +93,23 @@ inline Vec2i V2iInit(const int x, const int y) {
 	return(result);
 }
 
+inline Vec2i V2iInitScalar(const int value) {
+	Vec2i result = fplStructInit(Vec2i, value, value);
+	return(result);
+}
+
+#if defined(__cplusplus)
+inline Vec2i V2i() {
+	return V2iZero();
+}
+inline Vec2i V2i(const int value) {
+	return V2iInitScalar(value);
+}
+inline Vec2i V2i(const int x, const int y) {
+	return V2iInit(x, y);
+}
+#endif
+
 typedef union Vec2f {
 	struct {
 		float x, y;
@@ -121,6 +139,18 @@ inline Vec2f V2fInitScalar(const float value) {
 	Vec2f result = fplStructInit(Vec2f, value, value);
 	return(result);
 }
+
+#if defined(__cplusplus)
+inline Vec2f V2f() {
+	return V2fZero();
+}
+inline Vec2f V2f(const float value) {
+	return V2fInitScalar(value);
+}
+inline Vec2f V2f(const float x, const float y) {
+	return V2fInit(x, y);
+}
+#endif
 
 //
 // Rect2f type
@@ -174,6 +204,11 @@ inline Vec3f V3fInitScalar(const float scalar) {
 	return(result);
 }
 
+inline Vec3f V3fInitXY(const Vec2f other, const float z) {
+	Vec3f result = fplStructInit(Vec3f, other.x, other.y, z);
+	return(result);
+}
+
 inline Vec3f V3fCopy(const Vec3f other) {
 	Vec3f result = fplStructInit(Vec3f, other.x, other.y, other.z);
 	return(result);
@@ -183,6 +218,27 @@ inline Vec3f V3fInit(const float x, const float y, const float z) {
 	Vec3f result = fplStructInit(Vec3f, x, y, z);
 	return(result);
 }
+
+#if defined(__cplusplus)
+inline Vec3f V3f() {
+	return V3fZero();
+}
+inline Vec3f V3f(const Vec3f &other) {
+	return V3fCopy(other);
+}
+inline Vec3f V3f(const float value) {
+	return V3fInitScalar(value);
+}
+inline Vec3f V3f(const float x, const float y) {
+	return V3fInit(x, y, 0.0f);
+}
+inline Vec3f V3f(const Vec2f &v, const float z) {
+	return V3fInitXY(v, z);
+}
+inline Vec3f V3f(const float x, const float y, const float z) {
+	return V3fInit(x, y, z);
+}
+#endif
 
 typedef union Vec4f {
 	struct {
@@ -246,6 +302,27 @@ inline Vec4f V4fInitXY(const Vec2f v, const float z, const float w) {
 	return(result);
 }
 
+#if defined(__cplusplus)
+inline Vec4f V4f() {
+	return V4fZero();
+}
+inline Vec4f V4f(const Vec4f &other) {
+	return V4fCopy(other);
+}
+inline Vec4f V4f(const Vec2f &v, const float z, const float w) {
+	return V4fInitXY(v, z, w);
+}
+inline Vec4f V4f(const Vec3f &v, const float w) {
+	return V4fInitXYZ(v, w);
+}
+inline Vec4f V4f(const float x, const float y, const float z) {
+	return V4fInit(x, y, z, 1.0f);
+}
+inline Vec4f V4f(const float x, const float y, const float z, const float w) {
+	return V4fInit(x, y, z, w);
+}
+#endif
+
 typedef union Mat2f {
 	struct {
 		Vec2f col1;
@@ -263,6 +340,15 @@ inline Mat2f M2fCopy(const Mat2f other) {
 	Mat2f result = fplStructInit(Mat2f, other.col1, other.col2);
 	return(result);
 }
+
+#if defined(__cplusplus)
+inline Mat2f M2f() {
+	return M2fDefault();
+}
+inline Mat2f M2f(const Mat2f &other) {
+	return M2fCopy(other);
+}
+#endif
 
 typedef union Mat4f {
 	struct {
@@ -297,6 +383,15 @@ inline Mat4f M4fCopy(const Mat4f other) {
 	return(result);
 }
 
+#if defined(__cplusplus)
+inline Mat4f M4f(const float value = 1.0f) {
+	return M4fInit(value);
+}
+inline Mat4f M4f(const Mat4f &other) {
+	return M4fCopy(other);
+}
+#endif
+
 typedef union Pixel {
 	struct {
 		uint8_t b, g, r, a;
@@ -329,6 +424,10 @@ inline float Abs(const float value) {
 	float result = fabsf(value);
 	return(result);
 }
+inline float Power(const float x, const float y) {
+	float result = powf(x, y);
+	return(result);
+}
 inline float Min(const float a, const float b) {
 	float result = a < b ? a : b;
 	return(result);
@@ -347,10 +446,6 @@ inline float RadiansToDegrees(const float radians) {
 }
 inline float DegreesToRadians(const float degrees) {
 	float result = degrees * Deg2Rad;
-	return(result);
-}
-inline float Power(const float x, const float y) {
-	float result = powf(x, y);
 	return(result);
 }
 
@@ -379,6 +474,11 @@ inline float AngleLerp(float a, float t, float b) {
 
 inline uint8_t RoundF32ToU8(float value) {
 	uint8_t result = (uint8_t)(value * 255.0f + 0.5f);
+	return(result);
+}
+
+inline float RoundU8ToF32(uint8_t value) {
+	float result = value * InvByte;
 	return(result);
 }
 
@@ -900,23 +1000,6 @@ inline uint32_t BGRA8FromPixel(const Pixel pixel) {
 	return(result);
 }
 
-inline uint32_t RGBAPack4x8(const Vec4f unpacked) {
-	uint32_t result = (
-		(RoundF32ToU8(unpacked.a) << 24) |
-		(RoundF32ToU8(unpacked.b) << 16) |
-		(RoundF32ToU8(unpacked.g) << 8) |
-		(RoundF32ToU8(unpacked.r) << 0));
-	return(result);
-}
-inline Vec4f RGBAUnpack4x8(const uint32_t packed) {
-	Vec4f result;
-	result.r = (float)((packed >> 0) & 0xFF);
-	result.g = (float)((packed >> 8) & 0xFF);
-	result.b = (float)((packed >> 16) & 0xFF);
-	result.a = (float)((packed >> 24) & 0xFF);
-	return(result);
-}
-
 inline uint32_t BGRAPack4x8(const Vec4f unpacked) {
 	uint32_t result = (
 		(RoundF32ToU8(unpacked.a) << 24) |
@@ -925,12 +1008,13 @@ inline uint32_t BGRAPack4x8(const Vec4f unpacked) {
 		(RoundF32ToU8(unpacked.b) << 0));
 	return(result);
 }
+
 inline Vec4f BGRAUnpack4x8(const uint32_t packed) {
 	Vec4f result;
-	result.b = (float)((packed >> 0) & 0xFF);
-	result.g = (float)((packed >> 8) & 0xFF);
-	result.r = (float)((packed >> 16) & 0xFF);
-	result.a = (float)((packed >> 24) & 0xFF);
+	result.b = RoundU8ToF32((packed >> 0) & 0xFF);
+	result.g = RoundU8ToF32((packed >> 8) & 0xFF);
+	result.r = RoundU8ToF32((packed >> 16) & 0xFF);
+	result.a = RoundU8ToF32((packed >> 24) & 0xFF);
 	return(result);
 }
 
@@ -942,12 +1026,13 @@ inline Pixel PixelPack(const Vec4f unpacked) {
 	result.a = RoundF32ToU8(unpacked.a);
 	return(result);
 }
+
 inline Vec4f PixelUnpack(const Pixel packed) {
 	Vec4f result;
-	result.r = (float)(packed.r & 0xFF);
-	result.g = (float)(packed.g & 0xFF);
-	result.b = (float)(packed.b & 0xFF);
-	result.a = (float)(packed.a & 0xFF);
+	result.r = RoundU8ToF32(packed.r & 0xFF);
+	result.g = RoundU8ToF32(packed.g & 0xFF);
+	result.b = RoundU8ToF32(packed.b & 0xFF);
+	result.a = RoundU8ToF32(packed.a & 0xFF);
 	return(result);
 }
 
@@ -974,18 +1059,30 @@ inline float LinearToSRGB(const float x) {
 }
 
 inline Vec4f PixelToLinearRaw(const Pixel pixel) {
-	Vec4f result = RGBAUnpack4x8(pixel.bgra);
+	Vec4f result = BGRAUnpack4x8(pixel.bgra);
 	return(result);
 }
 
 inline Vec4f PixelToLinearSRGB(const Pixel pixel) {
-	Vec4f unpacked = RGBAUnpack4x8(pixel.bgra);
+	Vec4f unpacked = BGRAUnpack4x8(pixel.bgra);
 	Vec4f result =
 		V4fInit(
 			SRGBToLinear(unpacked.r),
 			SRGBToLinear(unpacked.g),
 			SRGBToLinear(unpacked.b),
 			unpacked.a);
+	return(result);
+}
+
+inline Vec4f RGBAToLinearRaw(const uint8_t r, const uint8_t g, const uint8_t b, const uint8_t a) {
+	Pixel pixel = MakePixelFromRGBA(r, g, b, a);
+	Vec4f result = PixelToLinearRaw(pixel);
+	return(result);
+}
+
+inline Vec4f RGBAToLinearSRGB(const uint8_t r, const uint8_t g, const uint8_t b, const uint8_t a) {
+	Pixel pixel = MakePixelFromRGBA(r, g, b, a);
+	Vec4f result = PixelToLinearSRGB(pixel);
 	return(result);
 }
 
