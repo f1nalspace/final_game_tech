@@ -141,6 +141,7 @@ static PFNGLGETUNIFORMLOCATIONPROC glGetUniformLocation = NULL;
 static PFNGLUNIFORM1IPROC glUniform1i = NULL;
 static PFNGLUNIFORMMATRIX4FV glUniformMatrix4fv = NULL;
 
+// @TODO(final): Add a FPL function for retrieving a proc from the current video driver
 #if defined(FPL_PLATFORM_WINDOWS)
 static void *GLProcAddress(const char *name) {
 	fpl__VideoState *videoState = (fpl__VideoState *)fpl__global__AppState->video.mem;
@@ -523,7 +524,6 @@ int main(int argc, char **args) {
 	settings.video.graphics.opengl.compabilityFlags = fplOpenGLCompabilityFlags_Legacy;
 #endif
 	if (fplPlatformInit(fplInitFlags_Video, &settings)) {
-
 		const char *version = (const char *)glGetString(GL_VERSION);
 		const char *vendor = (const char *)glGetString(GL_VENDOR);
 		const char *renderer = (const char *)glGetString(GL_RENDERER);
