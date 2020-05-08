@@ -1228,22 +1228,15 @@ SOFTWARE.
 	- x86
 	- x86_64
 	- x64
-
-	@section section_platform_status_planned_archs Planned Architectures
-
-	- Arm32
-	- Arm64
+	- Arm32 (Partially)
+	- Arm64 (Untested)
 
 	@section section_platform_status_supported_platforms Supported Platforms
 
 	- Windows
 	- Linux
+	- Raspberry Pi (Partially)
 	- Unix (Partially)
-
-	@section section_platform_status_planned_platforms Planned Platforms
-
-	- Raspberry Pi
-	- Android
 */
 
 /*!
@@ -1271,6 +1264,11 @@ SOFTWARE.
 
 	@section section_todo_inprogress In progress
 
+	- Changes
+		- Returning the number of written characters instead of the start pointer for any string building/manipulation functions
+		- Better naming for time query functions (fplTimePrecision enum)
+		- Correct naming style everywhere -> fpl[Get/Set/Add/Init, etc.][ModuleName][Function]
+
 	- Threading
 		- Thread priority (POSIX)
 
@@ -1281,6 +1279,9 @@ SOFTWARE.
 			When buffer size is zero, use standard size. (Standard size varies on driver/device).
 			When regions is zero, use standard size. (Standard periods varies on driver/device).
 			At least hardcode the values for directshow and alsa - which are afaik the only audio drivers we support right now. (Low latency mode)
+
+	- Video
+		- [Win32/X11] User function to query a video function mapped to glxGetProcAddress() or wglGetProcAddress()
 
 	- Input
 		- Repeating for text input (X11)
@@ -1293,16 +1294,9 @@ SOFTWARE.
 		- Show/Hide Cursor (X11)
 		- Clipboard Get/Set (X11)
 		- Change/Get State Minimize/Maximize/Restore (X11)
-		- Fullscreen for Rectangles (X11)
-		- Fiber-based event handling (Win32)
 
 	- Display
 		- Get Display Infos (X11)
-
-	- Hardware/OS
-		- Get CPU Name (Unix)
-		- Get CPU Capabilities (Unix)
-		- Get Memory infos (Unix)
 
 	- Documentation
 		- Window
@@ -1337,6 +1331,7 @@ SOFTWARE.
 		- Support for channel mapping
 		- PulseAudio driver
 		- OSS driver
+		- WASAPI driver
 
 	- Video:
 		- [Win32] Vulkan
@@ -1346,12 +1341,17 @@ SOFTWARE.
 		- Signals (POSIX, Non-Linux)
 
 	- Input
-		- Keyboard state polling (X11, Caps detection)
+		- [X11] Keyboard state polling (Caps detection)
 
-	@section section_todo_optional Optional
+	- Hardware/OS
+		- Get CPU Name (Unix)
+		- Get CPU Capabilities (Unix)
+		- Get Memory infos (Unix)
+		- Get/Set of environment variables
 
 	- Window:
-		- Realtime resize (Win32 using fiber)
+		- Much simpler fullscreen support (Desktop or locked monitor, nothing more)
+		- Fiber-based event handling (Win32)
 		- Custom cursor from image (File/Memory)
 */
 
