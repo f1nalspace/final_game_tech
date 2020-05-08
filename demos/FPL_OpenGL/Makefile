@@ -1,8 +1,8 @@
 # Project
 APP_NAME = FPL_OpenGL
 SOURCE_FILES = fpl_opengl.c
-LIBS = -ldl -lGL
-INCLUDES = -I../../
+LIBS = -ldl -lGL -lm
+INCLUDES = -I../../ -I../additions/
 
 # Auto detect release type/platform/architecture
 DEBUG ?= 1

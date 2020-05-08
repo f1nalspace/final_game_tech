@@ -53,12 +53,12 @@ typedef struct Ratio {
 	double denominator;
 } Ratio;
 
-inline Ratio MakeRatio(double numerator, double denominator) {
+fpl_force_inline Ratio MakeRatio(double numerator, double denominator) {
 	Ratio result = fplStructInit(Ratio, numerator, denominator);
 	return(result);
 }
 
-inline double ComputeRatio(const Ratio ratio) {
+fpl_force_inline double ComputeRatio(const Ratio ratio) {
 	fplAssert(ratio.denominator != 0);
 	double result = ratio.numerator / ratio.denominator;
 	return(result);
@@ -78,34 +78,34 @@ typedef union Vec2i {
 	int m[2];
 } Vec2i;
 
-inline Vec2i V2iZero() {
+fpl_force_inline Vec2i V2iZero() {
 	Vec2i result = fplZeroInit;
 	return(result);
 }
 
-inline Vec2i V2iCopy(const Vec2i v) {
+fpl_force_inline Vec2i V2iCopy(const Vec2i v) {
 	Vec2i result = fplStructInit(Vec2i, v.x, v.y);
 	return(result);
 }
 
-inline Vec2i V2iInit(const int x, const int y) {
+fpl_force_inline Vec2i V2iInit(const int x, const int y) {
 	Vec2i result = fplStructInit(Vec2i, x, y);
 	return(result);
 }
 
-inline Vec2i V2iInitScalar(const int value) {
+fpl_force_inline Vec2i V2iInitScalar(const int value) {
 	Vec2i result = fplStructInit(Vec2i, value, value);
 	return(result);
 }
 
 #if defined(__cplusplus)
-inline Vec2i V2i() {
+fpl_force_inline Vec2i V2i() {
 	return V2iZero();
 }
-inline Vec2i V2i(const int value) {
+fpl_force_inline Vec2i V2i(const int value) {
 	return V2iInitScalar(value);
 }
-inline Vec2i V2i(const int x, const int y) {
+fpl_force_inline Vec2i V2i(const int x, const int y) {
 	return V2iInit(x, y);
 }
 #endif
@@ -120,34 +120,34 @@ typedef union Vec2f {
 	float m[2];
 } Vec2f;
 
-inline Vec2f V2fZero() {
+fpl_force_inline Vec2f V2fZero() {
 	Vec2f result = fplZeroInit;
 	return(result);
 }
 
-inline Vec2f V2fCopy(const Vec2f v) {
+fpl_force_inline Vec2f V2fCopy(const Vec2f v) {
 	Vec2f result = fplStructInit(Vec2f, v.x, v.y);
 	return(result);
 }
 
-inline Vec2f V2fInit(const float x, const float y) {
+fpl_force_inline Vec2f V2fInit(const float x, const float y) {
 	Vec2f result = fplStructInit(Vec2f, x, y);
 	return(result);
 }
 
-inline Vec2f V2fInitScalar(const float value) {
+fpl_force_inline Vec2f V2fInitScalar(const float value) {
 	Vec2f result = fplStructInit(Vec2f, value, value);
 	return(result);
 }
 
 #if defined(__cplusplus)
-inline Vec2f V2f() {
+fpl_force_inline Vec2f V2f() {
 	return V2fZero();
 }
-inline Vec2f V2f(const float value) {
+fpl_force_inline Vec2f V2f(const float value) {
 	return V2fInitScalar(value);
 }
-inline Vec2f V2f(const float x, const float y) {
+fpl_force_inline Vec2f V2f(const float x, const float y) {
 	return V2fInit(x, y);
 }
 #endif
@@ -160,7 +160,7 @@ typedef struct Rect2f {
 	Vec2f size;
 } Rect2f;
 
-inline Rect2f R2fInit(const Vec2f pos, const Vec2f size) {
+fpl_force_inline Rect2f R2fInit(const Vec2f pos, const Vec2f size) {
 	Rect2f result = fplStructInit(Rect2f, pos, size);
 	return(result);
 }
@@ -194,48 +194,48 @@ typedef union Vec3f {
 	float m[3];
 } Vec3f;
 
-inline Vec3f V3fZero() {
+fpl_force_inline Vec3f V3fZero() {
 	Vec3f result = fplZeroInit;
 	return(result);
 }
 
-inline Vec3f V3fInitScalar(const float scalar) {
+fpl_force_inline Vec3f V3fInitScalar(const float scalar) {
 	Vec3f result = fplStructInit(Vec3f, scalar, scalar, scalar);
 	return(result);
 }
 
-inline Vec3f V3fInitXY(const Vec2f other, const float z) {
+fpl_force_inline Vec3f V3fInitXY(const Vec2f other, const float z) {
 	Vec3f result = fplStructInit(Vec3f, other.x, other.y, z);
 	return(result);
 }
 
-inline Vec3f V3fCopy(const Vec3f other) {
+fpl_force_inline Vec3f V3fCopy(const Vec3f other) {
 	Vec3f result = fplStructInit(Vec3f, other.x, other.y, other.z);
 	return(result);
 }
 
-inline Vec3f V3fInit(const float x, const float y, const float z) {
+fpl_force_inline Vec3f V3fInit(const float x, const float y, const float z) {
 	Vec3f result = fplStructInit(Vec3f, x, y, z);
 	return(result);
 }
 
 #if defined(__cplusplus)
-inline Vec3f V3f() {
+fpl_force_inline Vec3f V3f() {
 	return V3fZero();
 }
-inline Vec3f V3f(const Vec3f &other) {
+fpl_force_inline Vec3f V3f(const Vec3f &other) {
 	return V3fCopy(other);
 }
-inline Vec3f V3f(const float value) {
+fpl_force_inline Vec3f V3f(const float value) {
 	return V3fInitScalar(value);
 }
-inline Vec3f V3f(const float x, const float y) {
+fpl_force_inline Vec3f V3f(const float x, const float y) {
 	return V3fInit(x, y, 0.0f);
 }
-inline Vec3f V3f(const Vec2f &v, const float z) {
+fpl_force_inline Vec3f V3f(const Vec2f &v, const float z) {
 	return V3fInitXY(v, z);
 }
-inline Vec3f V3f(const float x, const float y, const float z) {
+fpl_force_inline Vec3f V3f(const float x, const float y, const float z) {
 	return V3fInit(x, y, z);
 }
 #endif
@@ -277,48 +277,48 @@ typedef union Vec4f {
 	float m[4];
 } Vec4f;
 
-inline Vec4f V4fZero() {
+fpl_force_inline Vec4f V4fZero() {
 	Vec4f result = fplStructInit(Vec4f, 0, 0, 0, 1);
 	return(result);
 }
 
-inline Vec4f V4fCopy(const Vec4f other) {
+fpl_force_inline Vec4f V4fCopy(const Vec4f other) {
 	Vec4f result = fplStructInit(Vec4f, other.x, other.y, other.z, other.w);
 	return(result);
 }
 
-inline Vec4f V4fInit(const float x, const float y, const float z, const float w) {
+fpl_force_inline Vec4f V4fInit(const float x, const float y, const float z, const float w) {
 	Vec4f result = fplStructInit(Vec4f, x, y, z, w);
 	return(result);
 }
 
-inline Vec4f V4fInitXYZ(const Vec3f v, const float w) {
+fpl_force_inline Vec4f V4fInitXYZ(const Vec3f v, const float w) {
 	Vec4f result = fplStructInit(Vec4f, v.x, v.y, v.z, w);
 	return(result);
 }
 
-inline Vec4f V4fInitXY(const Vec2f v, const float z, const float w) {
+fpl_force_inline Vec4f V4fInitXY(const Vec2f v, const float z, const float w) {
 	Vec4f result = fplStructInit(Vec4f, v.x, v.y, z, w);
 	return(result);
 }
 
 #if defined(__cplusplus)
-inline Vec4f V4f() {
+fpl_force_inline Vec4f V4f() {
 	return V4fZero();
 }
-inline Vec4f V4f(const Vec4f &other) {
+fpl_force_inline Vec4f V4f(const Vec4f &other) {
 	return V4fCopy(other);
 }
-inline Vec4f V4f(const Vec2f &v, const float z, const float w) {
+fpl_force_inline Vec4f V4f(const Vec2f &v, const float z, const float w) {
 	return V4fInitXY(v, z, w);
 }
-inline Vec4f V4f(const Vec3f &v, const float w) {
+fpl_force_inline Vec4f V4f(const Vec3f &v, const float w) {
 	return V4fInitXYZ(v, w);
 }
-inline Vec4f V4f(const float x, const float y, const float z) {
+fpl_force_inline Vec4f V4f(const float x, const float y, const float z) {
 	return V4fInit(x, y, z, 1.0f);
 }
-inline Vec4f V4f(const float x, const float y, const float z, const float w) {
+fpl_force_inline Vec4f V4f(const float x, const float y, const float z, const float w) {
 	return V4fInit(x, y, z, w);
 }
 #endif
@@ -331,21 +331,21 @@ typedef union Mat2f {
 	float m[4];
 } Mat2f;
 
-inline Mat2f M2fDefault() {
+fpl_force_inline Mat2f M2fDefault() {
 	Mat2f result = fplStructInit(Mat2f, V2fInit(1, 0), V2fInit(0, 1));
 	return(result);
 }
 
-inline Mat2f M2fCopy(const Mat2f other) {
+fpl_force_inline Mat2f M2fCopy(const Mat2f other) {
 	Mat2f result = fplStructInit(Mat2f, other.col1, other.col2);
 	return(result);
 }
 
 #if defined(__cplusplus)
-inline Mat2f M2f() {
+fpl_force_inline Mat2f M2f() {
 	return M2fDefault();
 }
-inline Mat2f M2f(const Mat2f &other) {
+fpl_force_inline Mat2f M2f(const Mat2f &other) {
 	return M2fCopy(other);
 }
 #endif
@@ -363,7 +363,7 @@ typedef union Mat4f {
 	float m[16];
 } Mat4f;
 
-inline Mat4f M4fInit(const float value) {
+fpl_force_inline Mat4f M4fInit(const float value) {
 	Mat4f result = {
 		V4fInit(value, 0.0f, 0.0f, 0.0f),
 		V4fInit(0.0f, value, 0.0f, 0.0f),
@@ -373,21 +373,21 @@ inline Mat4f M4fInit(const float value) {
 	return(result);
 }
 
-inline Mat4f M4fDefault() {
+fpl_force_inline Mat4f M4fDefault() {
 	Mat4f result = M4fInit(1.0f);
 	return(result);
 }
 
-inline Mat4f M4fCopy(const Mat4f other) {
+fpl_force_inline Mat4f M4fCopy(const Mat4f other) {
 	Mat4f result = fplStructInit(Mat4f, other.col1, other.col2, other.col3, other.col4);
 	return(result);
 }
 
 #if defined(__cplusplus)
-inline Mat4f M4f(const float value = 1.0f) {
+fpl_force_inline Mat4f M4f(const float value = 1.0f) {
 	return M4fInit(value);
 }
-inline Mat4f M4f(const Mat4f &other) {
+fpl_force_inline Mat4f M4f(const Mat4f &other) {
 	return M4fCopy(other);
 }
 #endif
@@ -404,80 +404,80 @@ typedef union Pixel {
 // Scalar
 //
 
-inline float Cosine(const float angle) {
+fpl_force_inline float Cosine(const float angle) {
 	float result = cosf(angle);
 	return(result);
 }
-inline float Sine(const float angle) {
+fpl_force_inline float Sine(const float angle) {
 	float result = sinf(angle);
 	return(result);
 }
-inline float Tan(const float angle) {
+fpl_force_inline float Tan(const float angle) {
 	float result = tanf(angle);
 	return(result);
 }
-inline float ArcTan2(const float y, const float x) {
+fpl_force_inline float ArcTan2(const float y, const float x) {
 	float result = atan2f(y, x);
 	return(result);
 }
-inline float Abs(const float value) {
+fpl_force_inline float Abs(const float value) {
 	float result = fabsf(value);
 	return(result);
 }
-inline float Power(const float x, const float y) {
+fpl_force_inline float Power(const float x, const float y) {
 	float result = powf(x, y);
 	return(result);
 }
-inline float Min(const float a, const float b) {
+fpl_force_inline float Min(const float a, const float b) {
 	float result = a < b ? a : b;
 	return(result);
 }
-inline float Max(const float a, const float b) {
+fpl_force_inline float Max(const float a, const float b) {
 	float result = a > b ? a : b;
 	return(result);
 }
-inline float SquareRoot(const float value) {
+fpl_force_inline float SquareRoot(const float value) {
 	float result = sqrtf(value);
 	return(result);
 }
-inline float RadiansToDegrees(const float radians) {
+fpl_force_inline float RadiansToDegrees(const float radians) {
 	float result = radians * Rad2Deg;
 	return(result);
 }
-inline float DegreesToRadians(const float degrees) {
+fpl_force_inline float DegreesToRadians(const float degrees) {
 	float result = degrees * Deg2Rad;
 	return(result);
 }
 
-inline float ScalarLerp(float a, float t, float b) {
+fpl_force_inline float ScalarLerp(float a, float t, float b) {
 	float result = (1.0f - t) * a + t * b;
 	return(result);
 }
 
-inline float ScalarAvg(float oldValue, float t, float newValue) {
+fpl_force_inline float ScalarAvg(float oldValue, float t, float newValue) {
 	float result = t * newValue + (1.0f - t) * oldValue;
 	return(result);
 }
 
-inline float GetBestAngleDistance(float a0, float a1) {
+fpl_force_inline float GetBestAngleDistance(float a0, float a1) {
 	float max = Pi32 * 2;
 	float da = fmodf(a1 - a0, max);
 	float result = fmodf(2.0f * da, max) - da;
 	return(result);
 }
 
-inline float AngleLerp(float a, float t, float b) {
+fpl_force_inline float AngleLerp(float a, float t, float b) {
 	float angleDistance = GetBestAngleDistance(a, b);
 	float result = ScalarLerp(a, t, a + angleDistance);
 	return(result);
 }
 
-inline uint8_t RoundF32ToU8(float value) {
+fpl_force_inline uint8_t RoundF32ToU8(float value) {
 	uint8_t result = (uint8_t)(value * 255.0f + 0.5f);
 	return(result);
 }
 
-inline float RoundU8ToF32(uint8_t value) {
+fpl_force_inline float RoundU8ToF32(uint8_t value) {
 	float result = value * InvByte;
 	return(result);
 }
@@ -485,69 +485,69 @@ inline float RoundU8ToF32(uint8_t value) {
 //
 // Vec2f
 //
-inline Vec2f V2fMultScalar(const Vec2f v, const float s) {
+fpl_force_inline Vec2f V2fMultScalar(const Vec2f v, const float s) {
 	Vec2f result = V2fInit(v.x * s, v.y * s);
 	return(result);
 }
 
-inline Vec2f V2fAddMultScalar(const Vec2f a, const Vec2f b, const float s) {
+fpl_force_inline Vec2f V2fAddMultScalar(const Vec2f a, const Vec2f b, const float s) {
 	Vec2f result = V2fInit(a.x + b.x * s, a.y + b.y * s);
 	return(result);
 }
 
 #if defined(__cplusplus)
-inline Vec2f operator*(const Vec2f &v, float s) {
+fpl_force_inline Vec2f operator*(const Vec2f &v, float s) {
 	Vec2f result = V2fMultScalar(v, s);
 	return(result);
 }
 
-inline Vec2f operator*(float s, const Vec2f &v) {
+fpl_force_inline Vec2f operator*(float s, const Vec2f &v) {
 	Vec2f result = V2fMultScalar(v, s);
 	return(result);
 }
 
-inline Vec2f &operator*=(Vec2f &v, float s) {
+fpl_force_inline Vec2f &operator*=(Vec2f &v, float s) {
 	v = v * s;
 	return(v);
 }
 
-inline Vec2f operator-(const Vec2f &v) {
+fpl_force_inline Vec2f operator-(const Vec2f &v) {
 	Vec2f result = V2fInit(-v.x, -v.y);
 	return(result);
 }
 
-inline Vec2f operator+(const Vec2f &a, const Vec2f &b) {
+fpl_force_inline Vec2f operator+(const Vec2f &a, const Vec2f &b) {
 	Vec2f result = V2fInit(a.x + b.x, a.y + b.y);
 	return(result);
 }
 
-inline Vec2f &operator+=(Vec2f &a, const Vec2f &b) {
+fpl_force_inline Vec2f &operator+=(Vec2f &a, const Vec2f &b) {
 	a = a + b;
 	return(a);
 }
 
-inline Vec2f operator-(const Vec2f &a, const Vec2f &b) {
+fpl_force_inline Vec2f operator-(const Vec2f &a, const Vec2f &b) {
 	Vec2f result = V2fInit(a.x - b.x, a.y - b.y);
 	return(result);
 }
 
-inline Vec2f &operator-=(Vec2f &a, const Vec2f &b) {
+fpl_force_inline Vec2f &operator-=(Vec2f &a, const Vec2f &b) {
 	a = a - b;
 	return(a);
 }
 #endif // __cplusplus
 
-inline float V2fDot(const Vec2f a, const Vec2f b) {
+fpl_force_inline float V2fDot(const Vec2f a, const Vec2f b) {
 	float result = a.x * b.x + a.y * b.y;
 	return(result);
 }
 
-inline float V2fLength(const Vec2f v) {
+fpl_force_inline float V2fLength(const Vec2f v) {
 	float result = sqrtf(v.x * v.x + v.y * v.y);
 	return(result);
 }
 
-inline Vec2f V2fNormalize(const Vec2f v) {
+fpl_force_inline Vec2f V2fNormalize(const Vec2f v) {
 	float l = V2fLength(v);
 	if (l == 0) {
 		l = 1;
@@ -557,67 +557,67 @@ inline Vec2f V2fNormalize(const Vec2f v) {
 	return(result);
 }
 
-inline Vec2f V2fHadamard(const Vec2f a, const Vec2f b) {
+fpl_force_inline Vec2f V2fHadamard(const Vec2f a, const Vec2f b) {
 	Vec2f result = V2fInit(a.x * b.x, a.y * b.y);
 	return(result);
 }
 
-inline Vec2f V2fMultMat2(const Mat2f A, const Vec2f v) {
+fpl_force_inline Vec2f V2fMultMat2(const Mat2f A, const Vec2f v) {
 	Vec2f result = V2fInit(A.col1.x * v.x + A.col2.x * v.y, A.col1.y * v.x + A.col2.y * v.y);
 	return(result);
 }
 
-inline float V2fDistanceSquared(const Vec2f a, const Vec2f b) {
+fpl_force_inline float V2fDistanceSquared(const Vec2f a, const Vec2f b) {
 	float f = (b.x - a.x) * (b.y - a.y);
 	float result = f * f;
 	return(result);
 }
 
 /* Returns the right perpendicular vector */
-inline Vec2f V2fCrossR(const Vec2f a, float s) {
+fpl_force_inline Vec2f V2fCrossR(const Vec2f a, float s) {
 	return V2fInit(s * a.y, -s * a.x);
 }
 
 /* Returns the left perpendicular vector */
-inline Vec2f V2fCrossL(float s, const Vec2f a) {
+fpl_force_inline Vec2f V2fCrossL(float s, const Vec2f a) {
 	return V2fInit(-s * a.y, s * a.x);
 }
 
 /* Returns the Z-rotation from two vectors */
-inline float V2fCrossZ(const Vec2f a, const Vec2f b) {
+fpl_force_inline float V2fCrossZ(const Vec2f a, const Vec2f b) {
 	return a.x * b.y - a.y * b.x;
 }
 
-inline float V2fAngleFromAxis(const Vec2f axis) {
+fpl_force_inline float V2fAngleFromAxis(const Vec2f axis) {
 	float result = ArcTan2(axis.y, axis.x);
 	return(result);
 }
 
-inline Vec2f V2fAxisFromAngle(const float angle) {
+fpl_force_inline Vec2f V2fAxisFromAngle(const float angle) {
 	Vec2f result = V2fInit(Cosine(angle), Sine(angle));
 	return(result);
 }
 
-inline Vec2f V2fRandomDirection() {
+fpl_force_inline Vec2f V2fRandomDirection() {
 	float d = rand() / (float)RAND_MAX;
 	float angle = d * ((float)M_PI * 2.0f);
 	Vec2f result = V2fInit(Cosine(angle), Sine(angle));
 	return(result);
 }
 
-inline Vec2f V2fLerp(const Vec2f a, const float t, const Vec2f b) {
+fpl_force_inline Vec2f V2fLerp(const Vec2f a, const float t, const Vec2f b) {
 	Vec2f result;
 	result.x = ScalarLerp(a.x, t, b.x);
 	result.y = ScalarLerp(a.y, t, b.y);
 	return(result);
 }
 
-inline Vec2f V2fMin(const Vec2f a, const Vec2f b) {
+fpl_force_inline Vec2f V2fMin(const Vec2f a, const Vec2f b) {
 	Vec2f result = V2fInit(Min(a.x, b.x), Min(a.y, b.y));
 	return(result);
 }
 
-inline Vec2f V2fMax(const Vec2f a, const Vec2f b) {
+fpl_force_inline Vec2f V2fMax(const Vec2f a, const Vec2f b) {
 	Vec2f result = V2fInit(Max(a.x, b.x), Max(a.y, b.y));
 	return(result);
 }
@@ -625,7 +625,7 @@ inline Vec2f V2fMax(const Vec2f a, const Vec2f b) {
 //
 // Vec2i
 //
-inline bool V2iEquals(const Vec2i a, const Vec2i b) {
+fpl_force_inline bool V2iEquals(const Vec2i a, const Vec2i b) {
 	bool result = a.x == b.x && a.y == b.y;
 	return(result);
 }
@@ -633,75 +633,75 @@ inline bool V2iEquals(const Vec2i a, const Vec2i b) {
 //
 // Vec3f
 //
-inline Vec3f V3fMultScalar(const Vec3f v, const float s) {
+fpl_force_inline Vec3f V3fMultScalar(const Vec3f v, const float s) {
 	Vec3f result = V3fInit(v.x * s, v.y * s, v.z * s);
 	return(result);
 }
 
-inline Vec3f V3fSub(const Vec3f a, const Vec3f b) {
+fpl_force_inline Vec3f V3fSub(const Vec3f a, const Vec3f b) {
 	Vec3f result = V3fInit(a.x - b.x, a.y - b.y, a.z - b.z);
 	return(result);
 }
 
 #if defined(__cplusplus)
-inline Vec3f operator*(float s, const Vec3f &v) {
+fpl_force_inline Vec3f operator*(float s, const Vec3f &v) {
 	Vec3f result = V3fMultScalar(v, s);
 	return(result);
 }
 
-inline Vec3f operator*(const Vec3f &v, float s) {
+fpl_force_inline Vec3f operator*(const Vec3f &v, float s) {
 	Vec3f result = V3fMultScalar(v, s);
 	return(result);
 }
 
-inline Vec3f &operator*=(Vec3f &v, float s) {
+fpl_force_inline Vec3f &operator*=(Vec3f &v, float s) {
 	v = s * v;
 	return(v);
 }
 
-inline Vec3f operator+(const Vec3f &a, const Vec3f &b) {
+fpl_force_inline Vec3f operator+(const Vec3f &a, const Vec3f &b) {
 	Vec3f result = V3fInit(a.x + b.x, a.y + b.y, a.z + b.z);
 	return(result);
 }
 
-inline Vec3f &operator+=(Vec3f &a, const Vec3f &b) {
+fpl_force_inline Vec3f &operator+=(Vec3f &a, const Vec3f &b) {
 	a = a + b;
 	return(a);
 }
 
-inline Vec3f operator-(const Vec3f &a, const Vec3f &b) {
+fpl_force_inline Vec3f operator-(const Vec3f &a, const Vec3f &b) {
 	Vec3f result = V3fInit(a.x - b.x, a.y - b.y, a.z - b.z);
 	return(result);
 }
 
-inline Vec3f operator-(const Vec3f &v) {
+fpl_force_inline Vec3f operator-(const Vec3f &v) {
 	Vec3f result = V3fInit(-v.x, -v.y, -v.z);
 	return(result);
 }
 
-inline Vec3f &operator-=(Vec3f &a, const Vec3f &b) {
+fpl_force_inline Vec3f &operator-=(Vec3f &a, const Vec3f &b) {
 	a = a - b;
 	return(a);
 }
 #endif // __cplusplus
 
-inline float V3fDot(const Vec3f a, const Vec3f b) {
+fpl_force_inline float V3fDot(const Vec3f a, const Vec3f b) {
 	float result = a.x * b.x + a.y * b.y + a.z * b.z;
 	return(result);
 }
 
-inline float V3fDistanceSquared(const Vec3f a, const Vec3f b) {
+fpl_force_inline float V3fDistanceSquared(const Vec3f a, const Vec3f b) {
 	float f = (b.x - a.x) * (b.y - a.y) * (b.z - a.z);
 	float result = f * f;
 	return(result);
 }
 
-inline float V3fLength(const Vec3f v) {
+fpl_force_inline float V3fLength(const Vec3f v) {
 	float result = sqrtf(v.x * v.x + v.y * v.y + v.z * v.z);
 	return(result);
 }
 
-inline Vec3f V3fNormalize(const Vec3f v) {
+fpl_force_inline Vec3f V3fNormalize(const Vec3f v) {
 	float l = V3fLength(v);
 	if (l == 0) {
 		l = 1;
@@ -711,7 +711,7 @@ inline Vec3f V3fNormalize(const Vec3f v) {
 	return(result);
 }
 
-inline Vec3f V3fCross(const Vec3f a, const Vec3f b) {
+fpl_force_inline Vec3f V3fCross(const Vec3f a, const Vec3f b) {
 	Vec3f result = V3fInit(
 		a.y * b.z - a.z * b.y,
 		a.z * b.x - a.x * b.z,
@@ -719,7 +719,7 @@ inline Vec3f V3fCross(const Vec3f a, const Vec3f b) {
 	return(result);
 }
 
-inline Vec3f V3fLerp(const Vec3f a, float t, const Vec3f b) {
+fpl_force_inline Vec3f V3fLerp(const Vec3f a, float t, const Vec3f b) {
 	Vec3f result;
 	result.x = ScalarLerp(a.x, t, b.x);
 	result.y = ScalarLerp(a.y, t, b.y);
@@ -727,7 +727,7 @@ inline Vec3f V3fLerp(const Vec3f a, float t, const Vec3f b) {
 	return(result);
 }
 
-inline Vec3f V3fHadamard(const Vec3f a, const Vec3f b) {
+fpl_force_inline Vec3f V3fHadamard(const Vec3f a, const Vec3f b) {
 	Vec3f result;
 	result.x = a.x * b.x;
 	result.y = a.y * b.y;
@@ -738,7 +738,7 @@ inline Vec3f V3fHadamard(const Vec3f a, const Vec3f b) {
 //
 // Mat2f
 //
-inline Mat2f Mat2FromAngle(float angle) {
+fpl_force_inline Mat2f Mat2FromAngle(float angle) {
 	float s = Sine(angle);
 	float c = Cosine(angle);
 	Mat2f result;
@@ -747,34 +747,34 @@ inline Mat2f Mat2FromAngle(float angle) {
 	return(result);
 }
 
-inline Mat2f Mat2FromAxis(const Vec2f axis) {
+fpl_force_inline Mat2f Mat2FromAxis(const Vec2f axis) {
 	Mat2f result;
 	result.col1 = axis;
 	result.col2 = V2fCrossL(1.0f, axis);
 	return(result);
 }
 
-inline Mat2f Mat2Transpose(const Mat2f m) {
+fpl_force_inline Mat2f Mat2Transpose(const Mat2f m) {
 	Mat2f result;
 	result.col1 = V2fInit(m.col1.x, m.col2.x);
 	result.col2 = V2fInit(m.col1.y, m.col2.y);
 	return(result);
 }
 
-inline Mat2f Mat2Mult(const Mat2f a, const Mat2f b) {
+fpl_force_inline Mat2f Mat2Mult(const Mat2f a, const Mat2f b) {
 	Mat2f result;
 	result.col1 = V2fMultMat2(a, b.col1);
 	result.col2 = V2fMultMat2(a, b.col2);
 	return(result);
 }
 
-inline float Mat2ToAngle(const Mat2f mat) {
+fpl_force_inline float Mat2ToAngle(const Mat2f mat) {
 	float result = V2fAngleFromAxis(mat.col1);
 	return(result);
 }
 
 /* Generates a 2x2 matrix for doing B to A conversion */
-inline Mat2f Mat2MultTranspose(const Mat2f a, const Mat2f b) {
+fpl_force_inline Mat2f Mat2MultTranspose(const Mat2f a, const Mat2f b) {
 	Mat2f result;
 	result.col1 = V2fInit(V2fDot(a.col1, b.col1), V2fDot(a.col2, b.col1));
 	result.col2 = V2fInit(V2fDot(a.col1, b.col2), V2fDot(a.col2, b.col2));
@@ -784,7 +784,7 @@ inline Mat2f Mat2MultTranspose(const Mat2f a, const Mat2f b) {
 //
 // Mat4f
 //
-inline static Mat4f Mat4OrthoRH(const float left, const float right, const float bottom, const float top, const float zNear, const float zFar) {
+fpl_force_inline static Mat4f Mat4OrthoRH(const float left, const float right, const float bottom, const float top, const float zNear, const float zFar) {
 	Mat4f result = M4fInit(1.0f);
 	result.r[0][0] = 2.0f / (right - left);
 	result.r[1][1] = 2.0f / (top - bottom);
@@ -795,7 +795,7 @@ inline static Mat4f Mat4OrthoRH(const float left, const float right, const float
 	return (result);
 }
 
-inline static Mat4f Mat4PerspectiveRH(const float fov, const float aspect, const float zNear, const float zFar) {
+fpl_force_inline static Mat4f Mat4PerspectiveRH(const float fov, const float aspect, const float zNear, const float zFar) {
 	float tanHalfFov = Tan(fov * 0.5f);
 	Mat4f result = M4fInit(0.0f);
 	result.r[0][0] = 1.0f / (aspect * tanHalfFov);
@@ -806,7 +806,7 @@ inline static Mat4f Mat4PerspectiveRH(const float fov, const float aspect, const
 	return (result);
 }
 
-inline static Mat4f Mat4LookAtRH(const Vec3f eye, const Vec3f center, const Vec3f up) {
+fpl_force_inline static Mat4f Mat4LookAtRH(const Vec3f eye, const Vec3f center, const Vec3f up) {
 	// Forward/Side/Upward
 	const Vec3f f = V3fNormalize(V3fSub(center, eye));
 	const Vec3f s = V3fNormalize(V3fCross(f, up));
@@ -835,7 +835,7 @@ inline static Mat4f Mat4LookAtRH(const Vec3f eye, const Vec3f center, const Vec3
 	return (result);
 }
 
-inline static Mat4f Mat4TranslationV2(const Vec2f p) {
+fpl_force_inline static Mat4f Mat4TranslationV2(const Vec2f p) {
 	Mat4f result = M4fInit(1.0f);
 	result.col4.xy = p;
 	result.col4.z = 0.0f;
@@ -843,20 +843,20 @@ inline static Mat4f Mat4TranslationV2(const Vec2f p) {
 	return (result);
 }
 
-inline static Mat4f Mat4TranslationV3(const Vec3f p) {
+fpl_force_inline static Mat4f Mat4TranslationV3(const Vec3f p) {
 	Mat4f result = M4fInit(1.0f);
 	result.col4.xyz = p;
 	result.col4.w = 1.0f;
 	return (result);
 }
 
-inline static Mat4f Mat4TranslationV4(const Vec4f p) {
+fpl_force_inline static Mat4f Mat4TranslationV4(const Vec4f p) {
 	Mat4f result = M4fInit(1.0f);
 	result.col4 = p;
 	return (result);
 }
 
-inline static Mat4f Mat4ScaleV2(const Vec2f s) {
+fpl_force_inline static Mat4f Mat4ScaleV2(const Vec2f s) {
 	Mat4f result = M4fInit(1.0f);
 	result.col1.x = s.x;
 	result.col2.y = s.y;
@@ -864,7 +864,7 @@ inline static Mat4f Mat4ScaleV2(const Vec2f s) {
 	return (result);
 }
 
-inline static Mat4f Mat4ScaleV3(const Vec3f s) {
+fpl_force_inline static Mat4f Mat4ScaleV3(const Vec3f s) {
 	Mat4f result = M4fInit(1.0f);
 	result.col1.x = s.x;
 	result.col2.y = s.y;
@@ -872,7 +872,7 @@ inline static Mat4f Mat4ScaleV3(const Vec3f s) {
 	return (result);
 }
 
-inline static Mat4f Mat4ScaleV4(const Vec4f s) {
+fpl_force_inline static Mat4f Mat4ScaleV4(const Vec4f s) {
 	Mat4f result = M4fInit(1.0f);
 	result.col1.x = s.x;
 	result.col2.y = s.y;
@@ -881,7 +881,7 @@ inline static Mat4f Mat4ScaleV4(const Vec4f s) {
 	return (result);
 }
 
-inline static Mat4f Mat4RotationX(const float angle) {
+fpl_force_inline static Mat4f Mat4RotationX(const float angle) {
 	float c = Cosine(angle);
 	float s = Sine(angle);
 	Mat4f result;
@@ -892,7 +892,7 @@ inline static Mat4f Mat4RotationX(const float angle) {
 	return (result);
 }
 
-inline static Mat4f Mat4RotationY(const float angle) {
+fpl_force_inline static Mat4f Mat4RotationY(const float angle) {
 	float c = Cosine(angle);
 	float s = Sine(angle);
 	Mat4f result;
@@ -903,7 +903,7 @@ inline static Mat4f Mat4RotationY(const float angle) {
 	return (result);
 }
 
-inline static Mat4f Mat4RotationZFromAngle(const float angle) {
+fpl_force_inline static Mat4f Mat4RotationZFromAngle(const float angle) {
 	float c = Cosine(angle);
 	float s = Sine(angle);
 	Mat4f result;
@@ -914,7 +914,7 @@ inline static Mat4f Mat4RotationZFromAngle(const float angle) {
 	return (result);
 }
 
-inline static Mat4f Mat4RotationZFromM2f(const Mat2f m) {
+fpl_force_inline static Mat4f Mat4RotationZFromM2f(const Mat2f m) {
 	Mat4f result;
 	result.col1 = V4fInit(m.col1.x, m.col1.y, 0.0f, 0.0f);
 	result.col2 = V4fInit(-m.col1.y, m.col1.x, 0.0f, 0.0f);
@@ -923,7 +923,7 @@ inline static Mat4f Mat4RotationZFromM2f(const Mat2f m) {
 	return (result);
 }
 
-inline Mat4f Mat4Mult(const Mat4f a, const Mat4f b) {
+fpl_force_inline Mat4f Mat4Mult(const Mat4f a, const Mat4f b) {
 	Mat4f result;
 	for (int i = 0; i < 16; i += 4) {
 		for (int j = 0; j < 4; ++j) {
@@ -938,13 +938,13 @@ inline Mat4f Mat4Mult(const Mat4f a, const Mat4f b) {
 }
 
 #if defined(__cplusplus)
-inline Mat4f operator *(const Mat4f &a, const Mat4f &b) {
+fpl_force_inline Mat4f operator *(const Mat4f &a, const Mat4f &b) {
 	Mat4f result = Mat4Mult(a, b);
 	return(result);
 }
 #endif // __cplusplus
 
-inline Vec4f Vec4MultMat4(const Mat4f mat, const Vec4f v) {
+fpl_force_inline Vec4f Vec4MultMat4(const Mat4f mat, const Vec4f v) {
 	Vec4f result;
 	result.x = mat.r[0][0] * v.m[0] + mat.r[0][1] * v.m[1] + mat.r[0][2] * v.m[2] + mat.r[0][3] * v.m[3];
 	result.y = mat.r[1][0] * v.m[0] + mat.r[1][1] * v.m[1] + mat.r[1][2] * v.m[2] + mat.r[1][3] * v.m[3];
@@ -965,7 +965,7 @@ static const Vec4f ColorLightGray = V4fInit(0.3f, 0.3f, 0.3f, 1.0f);
 static const Vec4f ColorDarkGray = V4fInit(0.2f, 0.2f, 0.2f, 1.0f);
 #endif
 
-inline Pixel MakePixelFromRGBA(const uint8_t r, const uint8_t g, const uint8_t b, const uint8_t a) {
+fpl_force_inline Pixel MakePixelFromRGBA(const uint8_t r, const uint8_t g, const uint8_t b, const uint8_t a) {
 	Pixel result;
 	result.r = r;
 	result.g = g;
@@ -973,7 +973,7 @@ inline Pixel MakePixelFromRGBA(const uint8_t r, const uint8_t g, const uint8_t b
 	result.a = a;
 	return(result);
 }
-inline Pixel MakePixelFromU32(const uint32_t rgba) {
+fpl_force_inline Pixel MakePixelFromU32(const uint32_t rgba) {
 	Pixel result;
 	result.r = (uint8_t)((rgba >> 0) & 0xFF);
 	result.g = (uint8_t)((rgba >> 8) & 0xFF);
@@ -982,25 +982,25 @@ inline Pixel MakePixelFromU32(const uint32_t rgba) {
 	return(result);
 }
 
-inline uint32_t RGBA8FromRGBA(const uint8_t r, const uint8_t g, const uint8_t b, const uint8_t a) {
+fpl_force_inline uint32_t RGBA8FromRGBA(const uint8_t r, const uint8_t g, const uint8_t b, const uint8_t a) {
 	uint32_t result = (a << 24) | (b << 16) | (g << 8) | (r << 0);
 	return(result);
 }
-inline uint32_t RGBA8FromPixel(const Pixel pixel) {
+fpl_force_inline uint32_t RGBA8FromPixel(const Pixel pixel) {
 	uint32_t result = RGBA8FromRGBA(pixel.r, pixel.g, pixel.b, pixel.a);
 	return(result);
 }
 
-inline uint32_t BGRA8FromRGBA(const uint8_t r, const uint8_t g, const uint8_t b, const uint8_t a) {
+fpl_force_inline uint32_t BGRA8FromRGBA(const uint8_t r, const uint8_t g, const uint8_t b, const uint8_t a) {
 	uint32_t result = (a << 24) | (r << 16) | (g << 8) | (b << 0);
 	return(result);
 }
-inline uint32_t BGRA8FromPixel(const Pixel pixel) {
+fpl_force_inline uint32_t BGRA8FromPixel(const Pixel pixel) {
 	uint32_t result = pixel.bgra;
 	return(result);
 }
 
-inline uint32_t BGRAPack4x8(const Vec4f unpacked) {
+fpl_force_inline uint32_t BGRAPack4x8(const Vec4f unpacked) {
 	uint32_t result = (
 		(RoundF32ToU8(unpacked.a) << 24) |
 		(RoundF32ToU8(unpacked.r) << 16) |
@@ -1009,7 +1009,7 @@ inline uint32_t BGRAPack4x8(const Vec4f unpacked) {
 	return(result);
 }
 
-inline Vec4f BGRAUnpack4x8(const uint32_t packed) {
+fpl_force_inline Vec4f BGRAUnpack4x8(const uint32_t packed) {
 	Vec4f result;
 	result.b = RoundU8ToF32((packed >> 0) & 0xFF);
 	result.g = RoundU8ToF32((packed >> 8) & 0xFF);
@@ -1018,7 +1018,7 @@ inline Vec4f BGRAUnpack4x8(const uint32_t packed) {
 	return(result);
 }
 
-inline Pixel PixelPack(const Vec4f unpacked) {
+fpl_force_inline Pixel PixelPack(const Vec4f unpacked) {
 	Pixel result;
 	result.r = RoundF32ToU8(unpacked.r);
 	result.g = RoundF32ToU8(unpacked.g);
@@ -1027,7 +1027,7 @@ inline Pixel PixelPack(const Vec4f unpacked) {
 	return(result);
 }
 
-inline Vec4f PixelUnpack(const Pixel packed) {
+fpl_force_inline Vec4f PixelUnpack(const Pixel packed) {
 	Vec4f result;
 	result.r = RoundU8ToF32(packed.r & 0xFF);
 	result.g = RoundU8ToF32(packed.g & 0xFF);
@@ -1036,7 +1036,7 @@ inline Vec4f PixelUnpack(const Pixel packed) {
 	return(result);
 }
 
-inline float SRGBToLinear(const float x) {
+fpl_force_inline float SRGBToLinear(const float x) {
 	if (x <= 0.0f)
 		return 0.0f;
 	else if (x >= 1.0f)
@@ -1047,7 +1047,7 @@ inline float SRGBToLinear(const float x) {
 		return Power((x + 0.055f) / 1.055f, 2.4f);
 }
 
-inline float LinearToSRGB(const float x) {
+fpl_force_inline float LinearToSRGB(const float x) {
 	if (x <= 0.0f)
 		return 0.0f;
 	else if (x >= 1.0f)
@@ -1058,12 +1058,12 @@ inline float LinearToSRGB(const float x) {
 		return Power(x, 1.0f / 2.4f) * 1.055f - 0.055f;
 }
 
-inline Vec4f PixelToLinearRaw(const Pixel pixel) {
+fpl_force_inline Vec4f PixelToLinearRaw(const Pixel pixel) {
 	Vec4f result = BGRAUnpack4x8(pixel.bgra);
 	return(result);
 }
 
-inline Vec4f PixelToLinearSRGB(const Pixel pixel) {
+fpl_force_inline Vec4f PixelToLinearSRGB(const Pixel pixel) {
 	Vec4f unpacked = BGRAUnpack4x8(pixel.bgra);
 	Vec4f result =
 		V4fInit(
@@ -1074,19 +1074,19 @@ inline Vec4f PixelToLinearSRGB(const Pixel pixel) {
 	return(result);
 }
 
-inline Vec4f RGBAToLinearRaw(const uint8_t r, const uint8_t g, const uint8_t b, const uint8_t a) {
+fpl_force_inline Vec4f RGBAToLinearRaw(const uint8_t r, const uint8_t g, const uint8_t b, const uint8_t a) {
 	Pixel pixel = MakePixelFromRGBA(r, g, b, a);
 	Vec4f result = PixelToLinearRaw(pixel);
 	return(result);
 }
 
-inline Vec4f RGBAToLinearSRGB(const uint8_t r, const uint8_t g, const uint8_t b, const uint8_t a) {
+fpl_force_inline Vec4f RGBAToLinearSRGB(const uint8_t r, const uint8_t g, const uint8_t b, const uint8_t a) {
 	Pixel pixel = MakePixelFromRGBA(r, g, b, a);
 	Vec4f result = PixelToLinearSRGB(pixel);
 	return(result);
 }
 
-inline Pixel LinearToPixelRaw(const Vec4f linear) {
+fpl_force_inline Pixel LinearToPixelRaw(const Vec4f linear) {
 	float r = linear.r;
 	float g = linear.g;
 	float b = linear.b;
@@ -1096,7 +1096,7 @@ inline Pixel LinearToPixelRaw(const Vec4f linear) {
 	return(result);
 }
 
-inline Pixel LinearToPixelSRGB(const Vec4f linear) {
+fpl_force_inline Pixel LinearToPixelSRGB(const Vec4f linear) {
 	float r = LinearToSRGB(linear.r);
 	float g = LinearToSRGB(linear.g);
 	float b = LinearToSRGB(linear.b);
