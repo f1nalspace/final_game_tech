@@ -148,7 +148,7 @@ SOFTWARE.
 
 /*!
 	\file final_memory.h
-	\version v0.2.1 alpha
+	\version v0.3.0 alpha
 	\author Torsten Spaete
 	\brief Final Memory (FMEM) - A open source C99 single file header memory library.
 */
@@ -157,10 +157,14 @@ SOFTWARE.
 	\page page_changelog Changelog
 	\tableofcontents
 
-    ## v0.2.1 alpha:
-    - Fixed: Two inline functions was not found in GCC
+	## v0.3.0 alpha:
+	- New: Added macro fmemPushStruct()
+	- New: Added function fmemCreate()
 
-    ## v0.2 alpha:
+	## v0.2.1 alpha:
+	- Fixed: Two inline functions was not found in GCC
+
+	## v0.2 alpha:
 	- Added: New function fmemGetHeader
 	- Added: Safety check for fmemBeginTemporary when passing a temporary block as source
 	- Fixed: Memory is no longer wasted
@@ -177,6 +181,10 @@ SOFTWARE.
 	\tableofcontents
 
 	- Removal of single memory blocks
+	- Array allocation and pushing
+	- Memory partitions
+		- Separated but linked, not able to free linked block
+		- Just partitions of fixed size blocks
 
 */
 
@@ -215,16 +223,17 @@ SOFTWARE.
 // Functions override
 #ifndef FMEM_MEMSET
 #	include <string.h>
-#	define FMEM_MEMSET memset
+#	define FMEM_MEMSET(dst, val, size) memset(dst, val, size)
 #endif
 #ifndef FMEM_MALLOC
 #	include <malloc.h>
-#	define FMEM_MALLOC malloc
-#	define FMEM_FREE free
+#	define FMEM_MALLOC(size) malloc(size)
+#	define FMEM_FREE(ptr) free(ptr)
 #endif
-#ifndef FMEM_ASSERT
+#if !defined(FMEM_ASSERT) || !defined(FMEM_STATIC_ASSERT)
 #	include <assert.h>
-#	define FMEM_ASSERT assert
+#	define FMEM_ASSERT(exp) assert(exp)
+#	define FMEM_STATIC_ASSERT(exp) static_assert(exp)
 #endif
 
 //! Null pointer
@@ -247,11 +256,11 @@ typedef enum fmemPushFlags {
 } fmemPushFlags;
 
 typedef enum fmemType {
-	//! Growable block
+	//! Unlimited size, grows additional blocks if needed
 	fmemType_Growable = 0,
-	//! Fixed size block
+	//! Limited tto a fixed size
 	fmemType_Fixed,
-	//! Temporary block
+	//! Temporary memory
 	fmemType_Temporary,
 } fmemType;
 
@@ -286,6 +295,8 @@ typedef struct fmemMemoryBlock {
 	fmemType type;
 } fmemMemoryBlock;
 
+//! Creates a memory block and allocates memory when size is greater than zero
+fmem_api fmemMemoryBlock fmemCreate(const fmemType type, const size_t size);
 //! Initializes the given block or allocates memory when size is greater than zero
 fmem_api bool fmemInit(fmemMemoryBlock *block, const fmemType type, const size_t size);
 //! Initializes the given block to a fixed size block from existing source memory
@@ -310,6 +321,9 @@ fmem_api bool fmemBeginTemporary(fmemMemoryBlock *source, fmemMemoryBlock *tempo
 fmem_api void fmemEndTemporary(fmemMemoryBlock *temporary);
 //! Returns the block header pointer for the given block
 fmem_api fmemBlockHeader *fmemGetHeader(fmemMemoryBlock *block);
+
+//! Gets memory for a struct from the block and return a pointer to the struct
+#define fmemPushStruct(block, type, flags) (type *)fmemPush(block, sizeof(type), flags)
 
 #endif // FMEM_H
 
@@ -344,7 +358,7 @@ static size_t fmem__ComputeBlockSize(size_t size) {
 static fmemBlockHeader *fmem__AllocateBlock(const size_t blockSize) {
 	FMEM_ASSERT(blockSize >= FMEM__BLOCK_META_SIZE);
 	void *base = FMEM_MALLOC(blockSize);
-	if(base == fmem_null) {
+	if (base == fmem_null) {
 		return fmem_null;
 	}
 	fmemBlockHeader *header = (fmemBlockHeader *)base;
@@ -360,10 +374,10 @@ static void fmem__FreeBlock(fmemBlockHeader *header) {
 }
 
 fmem_api fmemBlockHeader *fmemGetHeader(fmemMemoryBlock *block) {
-	if(block == fmem_null) {
+	if (block == fmem_null) {
 		return fmem_null;
 	}
-	if(block->base == fmem_null) {
+	if (block->base == fmem_null) {
 		return fmem_null;
 	}
 	fmemBlockHeader *header = (fmemBlockHeader *)block->base;
@@ -371,17 +385,17 @@ fmem_api fmemBlockHeader *fmemGetHeader(fmemMemoryBlock *block) {
 }
 
 fmem_api size_t fmemGetRemainingSize(fmemMemoryBlock *block) {
-	if(block == fmem_null) {
+	if (block == fmem_null) {
 		return 0;
 	}
 	size_t result = 0;
 	fmemMemoryBlock *testBlock = block;
-	while(testBlock != fmem_null) {
-		if(testBlock->base == fmem_null || testBlock->size == 0) {
+	while (testBlock != fmem_null) {
+		if (testBlock->base == fmem_null || testBlock->size == 0) {
 			break;
 		}
 		result += fmem__GetSpaceAvailableFor(testBlock, 0);
-		if(testBlock->type != fmemType_Growable) {
+		if (testBlock->type != fmemType_Growable) {
 			break;
 		}
 		fmemBlockHeader *header = FMEM__GETHEADER(testBlock);
@@ -391,18 +405,18 @@ fmem_api size_t fmemGetRemainingSize(fmemMemoryBlock *block) {
 }
 
 fmem_api size_t fmemGetTotalSize(fmemMemoryBlock *block) {
-	if(block == fmem_null) {
+	if (block == fmem_null) {
 		return 0;
 	}
 	size_t result = 0;
 	fmemMemoryBlock *testBlock = block;
-	while(testBlock != fmem_null) {
-		if(testBlock->base == fmem_null || testBlock->size == 0) {
+	while (testBlock != fmem_null) {
+		if (testBlock->base == fmem_null || testBlock->size == 0) {
 			break;
-		} 
+		}
 		size_t sizeForBlock = testBlock->size;
 		result += sizeForBlock;
-		if(testBlock->type != fmemType_Growable) {
+		if (testBlock->type != fmemType_Growable) {
 			break;
 		}
 		fmemBlockHeader *header = FMEM__GETHEADER(testBlock);
@@ -411,28 +425,35 @@ fmem_api size_t fmemGetTotalSize(fmemMemoryBlock *block) {
 	return(result);
 }
 
+fmem_api fmemMemoryBlock fmemCreate(const fmemType type, const size_t size) {
+	fmemMemoryBlock result;
+	FMEM_MEMSET(&result, 0, sizeof(result));
+	fmemInit(&result, type, size);
+	return(result);
+}
+
 fmem_api bool fmemInit(fmemMemoryBlock *block, const fmemType type, const size_t size) {
-	if(block == fmem_null) {
+	if (block == fmem_null) {
 		return(false);
 	}
-	if(type == fmemType_Fixed && size == 0) {
+	if (type == fmemType_Fixed && size == 0) {
 		return(false);
 	}
-	if(type == fmemType_Temporary) {
+	if (type == fmemType_Temporary) {
 		return(false);
 	}
 	FMEM_MEMSET(block, 0, sizeof(*block));
 	block->type = type;
-	if(size > 0) {
+	if (size > 0) {
 		size_t blockSize;
 		size_t metaSize = FMEM__BLOCK_META_SIZE;
-		if(type == fmemType_Fixed) {
+		if (type == fmemType_Fixed) {
 			blockSize = size + metaSize;
 		} else {
 			blockSize = fmem__ComputeBlockSize(size + metaSize);
 		}
 		fmemBlockHeader *header = fmem__AllocateBlock(blockSize);
-		if(header == fmem_null) {
+		if (header == fmem_null) {
 			return(false);
 		}
 		block->base = (uint8_t *)header + metaSize;
@@ -442,10 +463,10 @@ fmem_api bool fmemInit(fmemMemoryBlock *block, const fmemType type, const size_t
 }
 
 fmem_api bool fmemInitFromSource(fmemMemoryBlock *block, void *sourceMemory, const size_t sourceSize) {
-	if((block == fmem_null) || (sourceSize == 0)) {
+	if ((block == fmem_null) || (sourceSize == 0)) {
 		return(false);
 	}
-	if(sourceMemory == fmem_null || sourceSize == 0) {
+	if (sourceMemory == fmem_null || sourceSize == 0) {
 		return(false);
 	}
 	FMEM_MEMSET(block, 0, sizeof(*block));
@@ -457,10 +478,12 @@ fmem_api bool fmemInitFromSource(fmemMemoryBlock *block, void *sourceMemory, con
 }
 
 fmem_api void fmemFree(fmemMemoryBlock *block) {
-	if(block != fmem_null && block->temporary == fmem_null) {
+	if ((block != fmem_null) &&
+		(block->temporary == fmem_null) &&
+		(block->source != fmem_null)) {
 		fmemMemoryBlock *freeBlock = block;
-		while(freeBlock != fmem_null) {
-			if(freeBlock->base == fmem_null || freeBlock->size == 0 || freeBlock->source != fmem_null) {
+		while (freeBlock != fmem_null) {
+			if (freeBlock->base == fmem_null || freeBlock->size == 0 || freeBlock->source != fmem_null) {
 				break;
 			}
 			fmemBlockHeader *header = FMEM__GETHEADER(freeBlock);
@@ -473,27 +496,27 @@ fmem_api void fmemFree(fmemMemoryBlock *block) {
 }
 
 fmem_api uint8_t *fmemPush(fmemMemoryBlock *block, const size_t size, const fmemPushFlags flags) {
-	if(block == fmem_null || size == 0) {
+	if (block == fmem_null || size == 0) {
 		return fmem_null;
 	}
-	if(block->temporary != fmem_null) {
+	if (block->temporary != fmem_null) {
 		return fmem_null;
 	}
 
 	// Find best fitting block (Most space available after append)
 	fmemMemoryBlock *bestBlock = fmem_null;
 	fmemMemoryBlock *searchBlock = block;
-	while(searchBlock != fmem_null) {
-		if(searchBlock->base == fmem_null || searchBlock->size == 0) {
+	while (searchBlock != fmem_null) {
+		if (searchBlock->base == fmem_null || searchBlock->size == 0) {
 			break;
 		}
-		if((searchBlock->used + size) <= searchBlock->size) {
-			if(bestBlock == fmem_null || (fmem__GetSpaceAvailableFor(searchBlock, size) > fmem__GetSpaceAvailableFor(bestBlock, size))) {
+		if ((searchBlock->used + size) <= searchBlock->size) {
+			if (bestBlock == fmem_null || (fmem__GetSpaceAvailableFor(searchBlock, size) > fmem__GetSpaceAvailableFor(bestBlock, size))) {
 				bestBlock = searchBlock;
 			}
 		}
 		fmemBlockHeader *header = FMEM__GETHEADER(searchBlock);
-		if(searchBlock->type != fmemType_Growable) {
+		if (searchBlock->type != fmemType_Growable) {
 			break;
 		}
 		searchBlock = header->next;
@@ -509,12 +532,12 @@ fmem_api uint8_t *fmemPush(fmemMemoryBlock *block, const size_t size, const fmem
 	// @NOTE(final): Do not initialize, because i want all code paths below to set a result
 	uint8_t *result;
 
-	if(bestBlock != fmem_null) {
+	if (bestBlock != fmem_null) {
 		result = (uint8_t *)bestBlock->base + bestBlock->used;
 		bestBlock->used += size;
 		goto done;
 	} else {
-		if(block->type != fmemType_Growable) {
+		if (block->type != fmemType_Growable) {
 			result = fmem_null;
 			goto done;
 		}
@@ -522,11 +545,11 @@ fmem_api uint8_t *fmemPush(fmemMemoryBlock *block, const size_t size, const fmem
 
 	// Find tail block to append on
 	tailBlock = fmem_null;
-	if(block->base != fmem_null) {
+	if (block->base != fmem_null) {
 		tailBlock = block;
-		while(tailBlock != fmem_null) {
+		while (tailBlock != fmem_null) {
 			fmemBlockHeader *thisHeader = FMEM__GETHEADER(tailBlock);
-			if(thisHeader->next == fmem_null) {
+			if (thisHeader->next == fmem_null) {
 				break;
 			}
 			tailBlock = thisHeader->next;
@@ -536,12 +559,12 @@ fmem_api uint8_t *fmemPush(fmemMemoryBlock *block, const size_t size, const fmem
 	// Allocate new block
 	blockSize = fmem__ComputeBlockSize(size + FMEM__BLOCK_META_SIZE);
 	newHeader = fmem__AllocateBlock(blockSize);
-	if(newHeader == fmem_null) {
+	if (newHeader == fmem_null) {
 		result = fmem_null;
 		goto done;
 	}
 
-	if(tailBlock == fmem_null) {
+	if (tailBlock == fmem_null) {
 		// No tail found -> Setup block argument
 		block->size = blockSize - FMEM__BLOCK_META_SIZE;
 		block->base = (uint8_t *)newHeader + FMEM__BLOCK_META_SIZE;
@@ -566,8 +589,8 @@ fmem_api uint8_t *fmemPush(fmemMemoryBlock *block, const size_t size, const fmem
 
 	result = (uint8_t *)newBlock->base;
 done:
-	if(result != fmem_null) {
-		if(flags & fmemPushFlags_Clear) {
+	if (result != fmem_null) {
+		if (flags & fmemPushFlags_Clear) {
 			FMEM_MEMSET(result, 0, size);
 		}
 	}
@@ -580,11 +603,11 @@ fmem_api uint8_t *fmemPushAligned(fmemMemoryBlock *block, const size_t size, con
 }
 
 fmem_api bool fmemPushBlock(fmemMemoryBlock *src, fmemMemoryBlock *dst, const size_t size, const fmemPushFlags flags) {
-	if(src == fmem_null || dst == fmem_null || size == 0) {
+	if (src == fmem_null || dst == fmem_null || size == 0) {
 		return(false);
 	}
 	uint8_t *base = fmemPush(src, size, flags);
-	if(base == fmem_null) {
+	if (base == fmem_null) {
 		return(false);
 	}
 	dst->base = base;
@@ -596,48 +619,52 @@ fmem_api bool fmemPushBlock(fmemMemoryBlock *src, fmemMemoryBlock *dst, const si
 }
 
 fmem_api void fmemReset(fmemMemoryBlock *block) {
-	if(block != fmem_null && block->temporary == fmem_null) {
+	if (block != fmem_null && block->temporary == fmem_null) {
 		block->used = 0;
 	}
 }
 
 fmem_api bool fmemBeginTemporary(fmemMemoryBlock *source, fmemMemoryBlock *temporary) {
-	if(source == fmem_null || temporary == fmem_null) {
+	if (source == fmem_null || temporary == fmem_null) {
 		return(false);
 	}
-	if(source->base == fmem_null || source->size == 0) {
+	if (source->base == fmem_null || source->size == 0) {
 		return(false);
 	}
 	size_t remainingSize = fmemGetRemainingSize(source);
-	if(remainingSize == 0) {
+	if (remainingSize == 0) {
 		return(false);
 	}
 	FMEM_MEMSET(temporary, 0, sizeof(*temporary));
 	temporary->base = (uint8_t *)source->base + source->used;
 	temporary->size = remainingSize;
-	temporary->used = 0;
 	temporary->source = source;
 	temporary->type = fmemType_Temporary;
-	temporary->temporary = fmem_null;
+
+	// TODO(final): Not thread-safe!
 	source->used += remainingSize;
 	source->temporary = temporary;
+
 	FMEM_ASSERT(source->used == source->size);
 	return(true);
 }
 
 fmem_api void fmemEndTemporary(fmemMemoryBlock *temporary) {
-	if(temporary == fmem_null) {
+	if (temporary == fmem_null) {
 		return;
 	}
-	if(temporary->type != fmemType_Temporary || temporary->source == fmem_null || temporary->size == 0) {
+	if (temporary->type != fmemType_Temporary || temporary->source == fmem_null || temporary->size == 0) {
 		return;
 	}
 	fmemMemoryBlock *sourceBlock = (fmemMemoryBlock *)temporary->source;
 	FMEM_ASSERT(sourceBlock->temporary == temporary);
 	FMEM_ASSERT(sourceBlock->used == sourceBlock->size);
 	FMEM_ASSERT(temporary->size <= sourceBlock->size);
+
+	// TODO(final): Not thread-safe!
 	sourceBlock->temporary = fmem_null;
 	sourceBlock->used -= temporary->size;
+
 	FMEM_MEMSET(temporary, 0, sizeof(*temporary));
 }
 
