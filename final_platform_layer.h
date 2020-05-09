@@ -120,7 +120,7 @@ SOFTWARE.
 
 /*!
 	@file final_platform_layer.h
-	@version v0.9.4.0 beta
+	@version v0.9.4 beta
 	@author Torsten Spaete
 	@brief Final Platform Layer (FPL) - A C99 Single-Header-File Platform Abstraction Library
 */
@@ -132,7 +132,7 @@ SOFTWARE.
 	@page page_changelog Changelog
 	@tableofcontents
 
-	## v0.9.4.0 beta
+	## v0.9.4 beta
 
 	- New: Added callbacks fpl_memory_allocate_callback & fpl_memory_release_callback
 	- New: Added enum fplMemoryAllocationMode
