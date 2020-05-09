@@ -132,6 +132,11 @@ SOFTWARE.
 	@page page_changelog Changelog
 	@tableofcontents
 
+	## v0.9.5 beta
+	- Fixed: fplS32ToString() was not returning the last written character
+	- Fixed: fplStringAppendLen() was not returning the last written character
+	- Fixed: Fixed several warnings for doxygen
+
 	## v0.9.4 beta
 
 	- New: Added callbacks fpl_memory_allocate_callback & fpl_memory_release_callback
@@ -1402,22 +1407,30 @@ SOFTWARE.
 //
 #if defined(_WIN32)
 #	if defined(_WIN64)
-#		define FPL_CPU_64BIT
+#		define FPL__M_CPU_64BIT
 #	else
-#		define FPL_CPU_32BIT
+#		define FPL__M_CPU_32BIT
 #	endif
 #elif defined(__GNUC__)
 #	if defined(__LP64__)
-#		define FPL_CPU_64BIT
+#		define FPL__M_CPU_64BIT
 #	else
-#		define FPL_CPU_32BIT
+#		define FPL__M_CPU_32BIT
 #	endif
 #else
 #	if (defined(__SIZEOF_POINTER__) && __SIZEOF_POINTER__ == 8) || (sizeof(void *) == 8)
-#		define FPL_CPU_64BIT
+#		define FPL__M_CPU_64BIT
 #	else
-#		define FPL_CPU_32BIT
+#		define FPL__M_CPU_32BIT
 #	endif
+#endif
+
+#if defined(FPL__M_CPU_64BIT)
+	//! 64-bit CPU detected
+#	define FPL_CPU_64BIT
+#elif defined(FPL__M_CPU_32BIT)
+	//! 32-bit CPU detected
+#	define FPL_CPU_32BIT
 #endif
 
 //
@@ -1590,17 +1603,17 @@ SOFTWARE.
 // API Call
 //
 #if defined(FPL_API_AS_PRIVATE)
-#	define fpl_m_api static
+#	define fpl__m_api static
 #elif defined(FPL_DLLEXPORT)
-#	define fpl_m_api fpl_dllexport
+#	define fpl__m_api fpl_dllexport
 #elif defined(FPL_DLLIMPORT)
-#	define fpl_m_api fpl_dllimport
+#	define fpl__m_api fpl_dllimport
 #else
-#	define fpl_m_api fpl_extern
+#	define fpl__m_api fpl_extern
 #endif // FPL_API_AS_PRIVATE
 
 //! Api call
-#define fpl_api fpl_m_api
+#define fpl_api fpl__m_api
 
 //! Main entry point api definition
 #define fpl_main
@@ -2015,6 +2028,7 @@ typedef int32_t fpl_b32;
 //
 // Test sizes
 //
+//! @cond FPL_INTERNAL
 #if defined(FPL_CPU_64BIT)
 fplStaticAssert(sizeof(uintptr_t) >= sizeof(uint64_t));
 fplStaticAssert(sizeof(size_t) >= sizeof(uint64_t));
@@ -2022,6 +2036,7 @@ fplStaticAssert(sizeof(size_t) >= sizeof(uint64_t));
 fplStaticAssert(sizeof(uintptr_t) >= sizeof(uint32_t));
 fplStaticAssert(sizeof(size_t) >= sizeof(uint32_t));
 #endif
+//! @endcond
 
 //
 // Macro functions
@@ -5556,7 +5571,7 @@ fpl_platform_api bool fplPollEvent(fplEvent *ev);
 */
 fpl_platform_api void fplPollEvents();
 
-/*\}*/
+/** @} */
 
 // ----------------------------------------------------------------------------
 /**
@@ -5621,11 +5636,10 @@ fpl_platform_api bool fplPollMouseState(fplMouseState *outState);
 * @brief Queries the cursor position in screen coordinates, relative to the root screen.
 * @param outX The pointer to the out going X position
 * @param outY The pointer to the out going Y position
-* @see @ref subsection_category_input_get_cursor
 */
 fpl_platform_api bool fplQueryCursorPosition(int32_t *outX, int32_t *outY);
 
-/*\}*/
+/** @} */
 
 // ----------------------------------------------------------------------------
 /**
@@ -5800,7 +5814,7 @@ fpl_platform_api bool fplSetWindowState(const fplWindowState newState);
 */
 fpl_common_api void fplSetWindowInputEvents(const bool enabled);
 
-/*\}*/
+/** @} */
 
 // ----------------------------------------------------------------------------
 /**
@@ -5883,7 +5897,7 @@ fpl_platform_api size_t fplGetDisplayModeCount(const char *id);
 */
 fpl_platform_api size_t fplGetDisplayModes(const char *id, fplDisplayMode *outModes, const size_t maxDisplayModeCount);
 
-/*\}*/
+/** @} */
 
 // ----------------------------------------------------------------------------
 /**
@@ -8565,10 +8579,10 @@ fpl_common_api char *fplStringAppendLen(const char *appended, const size_t appen
 	size_t curBufferLen = fplGetStringLength(buffer);
 	size_t requiredSize = curBufferLen + appendedLen + 1;
 	FPL__CheckArgumentMin(maxBufferLen, requiredSize, fpl_null);
-	char *str = buffer + curBufferLen;
+	char *start = buffer + curBufferLen;
 	size_t remainingBufferSize = maxBufferLen - (curBufferLen > 0 ? curBufferLen + 1 : 0);
-	fplCopyStringLen(appended, appendedLen, str, remainingBufferSize);
-	return(str);
+	char *result = fplCopyStringLen(appended, appendedLen, start, remainingBufferSize);
+	return(result);
 }
 
 fpl_common_api char *fplStringAppend(const char *appended, char *buffer, size_t maxBufferLen) {
@@ -8666,13 +8680,14 @@ fpl_common_api char *fplS32ToString(const int32_t value, char *buffer, const siz
 	size_t digitCount = (p - buffer);
 	FPL__CheckArgumentMin(maxBufferLen, digitCount + 1, fpl_null);
 	*p = 0;
+	char* result = p;
 	const char *digits = "0123456789";
 	v = value;
 	do {
 		*--p = digits[v % 10];
 		v /= 10;
 	} while (v != 0);
-	return (p);
+	return (result);
 }
 
 fpl_common_api int32_t fplStringToS32Len(const char *str, const size_t len) {
@@ -12409,8 +12424,9 @@ fpl_platform_api char *fplWideStringToUTF8String(const wchar_t *wideSource, cons
 	size_t minRequiredLen = requiredLen + 1;
 	FPL__CheckArgumentMin(maxUtf8DestLen, minRequiredLen, fpl_null);
 	WideCharToMultiByte(CP_UTF8, 0, wideSource, (int)maxWideSourceLen, utf8Dest, (int)maxUtf8DestLen, fpl_null, fpl_null);
-	utf8Dest[requiredLen] = 0;
-	return(&utf8Dest[requiredLen]);
+	char* result = &utf8Dest[requiredLen];
+	*result = 0;
+	return(result);
 }
 fpl_platform_api wchar_t *fplUTF8StringToWideString(const char *utf8Source, const size_t utf8SourceLen, wchar_t *wideDest, const size_t maxWideDestLen) {
 	FPL__CheckArgumentNull(utf8Source, fpl_null);
@@ -12419,9 +12435,9 @@ fpl_platform_api wchar_t *fplUTF8StringToWideString(const char *utf8Source, cons
 	size_t minRequiredLen = requiredLen + 1;
 	FPL__CheckArgumentMin(maxWideDestLen, minRequiredLen, fpl_null);
 	MultiByteToWideChar(CP_UTF8, 0, utf8Source, (int)utf8SourceLen, wideDest, (int)maxWideDestLen);
-	wideDest[requiredLen] = 0;
-
-	return(&wideDest[requiredLen]);
+	wchar_t *result = &wideDest[requiredLen];
+	*result = 0;
+	return(result);
 }
 
 //

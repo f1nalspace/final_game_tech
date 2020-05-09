@@ -1760,7 +1760,7 @@
 	- @ref fplGetAudioHardwareFormat()
 	- @ref fplGetAudioBufferSizeInFrames()
 	- @ref fplGetAudioDriverString()
-	- @ref fplGetAudioFormatString()
+	- @ref fplGetAudioFormatTypeString()
 	- @ref fplGetAudioSampleSizeInBytes()
 	- @ref fplGetAudioFrameSizeInBytes()
 	- @ref fplGetAudioBufferSizeInBytes()
