@@ -9,7 +9,7 @@ Description:
 
 License:
 	MIT License
-	Copyright 2018 Torsten Spaete
+	Copyright 2017-2020 Torsten Spaete
 
 Changelog
 	## 2019-05-10:
