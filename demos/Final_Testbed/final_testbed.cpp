@@ -10,7 +10,7 @@ Author:
 	Torsten Spaete
 
 License:
-	Copyright (c) 2017-2019 Torsten Spaete
+	Copyright (c) 2017-2020 Torsten Spaete
 	MIT License (See LICENSE file)
 -------------------------------------------------------------------------------
 */
