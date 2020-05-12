@@ -137,6 +137,8 @@ SOFTWARE.
 	- Fixed: fplStringAppendLen() was not returning the last written character
 	- Fixed: Fixed several warnings for doxygen
 
+	- New: Added C++/11 detection (FPL_IS_CPP11)
+
 	## v0.9.4 beta
 
 	- New: Added callbacks fpl_memory_allocate_callback & fpl_memory_release_callback
@@ -1372,12 +1374,17 @@ SOFTWARE.
 // C99 detection
 //
 // https://en.wikipedia.org/wiki/C99#Version_detection
+// C99 is partially supported since MSVC 2015
 #if !defined(__cplusplus) && ((defined(__STDC_VERSION__) && (__STDC_VERSION__ >= 199901L)) || (defined(_MSC_VER) && (_MSC_VER >= 1900)))
 	//! C99 compiler detected
 #	define FPL_IS_C99
 #elif defined(__cplusplus)
 	//! C++ compiler detected
 #	define FPL_IS_CPP
+#	if (defined(__STDC_VERSION__) && __STDC_VERSION__ >= 201112L) || (__cplusplus >= 201103L) || (_MSC_VER >= 1900)
+		//! C++/11 compiler detected
+#		define FPL_IS_CPP11
+#	endif
 #else
 #	error "This C/C++ compiler is not supported!"
 #endif
@@ -1551,7 +1558,7 @@ SOFTWARE.
 * @{
 */
 
-  //! Global persistent variable
+//! Global persistent variable
 #define fpl_globalvar static
 //! Local persistent variable
 #define fpl_localvar static
@@ -2012,7 +2019,7 @@ fpl_internal fpl_force_inline void fpl__m_DebugBreak() { __asm__ __volatile__(".
 #endif
 /// @endcond
 
-#if defined(__cplusplus) && ((__cplusplus >= 201103L) || (_MSC_VER >= 1900))
+#if defined(FPL_IS_CPP11)
 #	define fpl__m_null nullptr
 #elif defined(NULL)
 #	define fpl__m_null NULL
