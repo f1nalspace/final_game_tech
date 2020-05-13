@@ -139,6 +139,8 @@ SOFTWARE.
 
 	- New: Added C++/11 detection (FPL_IS_CPP11)
 
+	- Changed: FPL_MAX_THREAD_COUNT and FPL_MAX_SIGNAL_COUNT can now be overriden by the user
+
 	## v0.9.4 beta
 
 	- New: Added callbacks fpl_memory_allocate_callback & fpl_memory_release_callback
@@ -8385,22 +8387,26 @@ fpl_internal void fpl__ArgumentRangeError(const char *paramName, const size_t va
 		return; \
 	}
 
-// Maximum number of active threads you can have in your process
-#define FPL__MAX_THREAD_COUNT 64
+#if !defined(FPL_MAX_THREAD_COUNT)
+	// Maximum number of active threads you can have in your process
+#	define FPL_MAX_THREAD_COUNT 64
+#endif
 
-// Maximum number of active signals you can wait for
-#define FPL__MAX_SIGNAL_COUNT 256
+#if !defined(FPL_MAX_SIGNAL_COUNT)
+	// Maximum number of active signals you can wait for
+#	define FPL_MAX_SIGNAL_COUNT 256
+#endif
 
 typedef struct fpl__ThreadState {
 	fplThreadHandle mainThread;
-	fplThreadHandle threads[FPL__MAX_THREAD_COUNT];
+	fplThreadHandle threads[FPL_MAX_THREAD_COUNT];
 } fpl__ThreadState;
 
 fpl_globalvar fpl__ThreadState fpl__global__ThreadState = fplZeroInit;
 
 fpl_internal fplThreadHandle *fpl__GetFreeThread() {
 	fplThreadHandle *result = fpl_null;
-	for (uint32_t index = 0; index < FPL__MAX_THREAD_COUNT; ++index) {
+	for (uint32_t index = 0; index < FPL_MAX_THREAD_COUNT; ++index) {
 		fplThreadHandle *thread = fpl__global__ThreadState.threads + index;
 		fplThreadState state = fplGetThreadState(thread);
 		if (state == fplThreadState_Stopped) {
@@ -10549,8 +10555,8 @@ fpl_internal void fpl__Win32ReleaseWindow(const fpl__Win32InitState *initState, 
 
 fpl_internal bool fpl__Win32ThreadWaitForMultiple(fplThreadHandle **threads, const size_t count, const size_t stride, const fplTimeoutValue timeout, const bool waitForAll) {
 	FPL__CheckArgumentNull(threads, false);
-	FPL__CheckArgumentMax(count, FPL__MAX_THREAD_COUNT, false);
-	fplStaticAssert(FPL__MAX_THREAD_COUNT >= MAXIMUM_WAIT_OBJECTS);
+	FPL__CheckArgumentMax(count, FPL_MAX_THREAD_COUNT, false);
+	fplStaticAssert(FPL_MAX_THREAD_COUNT >= MAXIMUM_WAIT_OBJECTS);
 	const size_t actualStride = stride > 0 ? stride : sizeof(fplThreadHandle *);
 	for (size_t index = 0; index < count; ++index) {
 		fplThreadHandle *thread = *(fplThreadHandle **)((uint8_t *)threads + index * actualStride);
@@ -10595,8 +10601,9 @@ fpl_internal bool fpl__Win32ThreadWaitForMultiple(fplThreadHandle **threads, con
 
 fpl_internal bool fpl__Win32SignalWaitForMultiple(fplSignalHandle **signals, const size_t count, const size_t stride, const fplTimeoutValue timeout, const bool waitForAll) {
 	FPL__CheckArgumentNull(signals, false);
-	FPL__CheckArgumentMax(count, FPL__MAX_SIGNAL_COUNT, false);
-	HANDLE signalHandles[FPL__MAX_SIGNAL_COUNT];
+	FPL__CheckArgumentMax(count, FPL_MAX_SIGNAL_COUNT, false);
+	// @MEMORY(final): This wastes a lof memory, use temporary memory allocation here
+	HANDLE signalHandles[FPL_MAX_SIGNAL_COUNT];
 	const size_t actualStride = stride > 0 ? stride : sizeof(fplSignalHandle *);
 	for (uint32_t index = 0; index < count; ++index) {
 		fplSignalHandle *availableSignal = *(fplSignalHandle **)((uint8_t *)signals + index * actualStride);
@@ -11419,7 +11426,7 @@ fpl_platform_api fplThreadHandle *fplThreadCreate(fpl_run_thread_callback *runFu
 			FPL__ERROR(FPL__MODULE_THREADING, "Failed creating thread, error code: %d", GetLastError());
 		}
 	} else {
-		FPL__ERROR(FPL__MODULE_THREADING, "All %d threads are in use, you cannot create until you free one", FPL__MAX_THREAD_COUNT);
+		FPL__ERROR(FPL__MODULE_THREADING, "All %d threads are in use, you cannot create until you free one", FPL_MAX_THREAD_COUNT);
 	}
 	return(result);
 }
@@ -13327,7 +13334,7 @@ fpl_internal int fpl__PosixMutexCreate(const fpl__PThreadApi *pthreadApi, pthrea
 
 fpl_internal bool fpl__PosixThreadWaitForMultiple(fplThreadHandle **threads, const uint32_t minCount, const uint32_t maxCount, const size_t stride, const fplTimeoutValue timeout) {
 	FPL__CheckArgumentNull(threads, false);
-	FPL__CheckArgumentMax(maxCount, FPL__MAX_THREAD_COUNT, false);
+	FPL__CheckArgumentMax(maxCount, FPL_MAX_THREAD_COUNT, false);
 	const size_t actualStride = stride > 0 ? stride : sizeof(fplThreadHandle *);
 	for (uint32_t index = 0; index < maxCount; ++index) {
 		fplThreadHandle *thread = *(fplThreadHandle **)((uint8_t *)threads + index * actualStride);
@@ -13338,7 +13345,7 @@ fpl_internal bool fpl__PosixThreadWaitForMultiple(fplThreadHandle **threads, con
 	}
 
 	uint32_t completeCount = 0;
-	bool isRunning[FPL__MAX_THREAD_COUNT];
+	bool isRunning[FPL_MAX_THREAD_COUNT];
 	for (uint32_t index = 0; index < maxCount; ++index) {
 		fplThreadHandle *thread = *(fplThreadHandle **)((uint8_t *)threads + index * actualStride);
 		isRunning[index] = fplGetThreadState(thread) != fplThreadState_Stopped;
@@ -13650,7 +13657,7 @@ fpl_platform_api fplThreadHandle *fplThreadCreate(fpl_run_thread_callback *runFu
 			fplClearStruct(thread);
 		}
 	} else {
-		FPL__ERROR(FPL__MODULE_THREADING, "All %d threads are in use, you cannot create until you free one", FPL__MAX_THREAD_COUNT);
+		FPL__ERROR(FPL__MODULE_THREADING, "All %d threads are in use, you cannot create until you free one", FPL_MAX_THREAD_COUNT);
 	}
 	return(result);
 }
@@ -16509,7 +16516,7 @@ fpl_platform_api bool fplSignalWaitForOne(fplSignalHandle *signal, const fplTime
 
 fpl_internal bool fpl__LinuxSignalWaitForMultiple(fplSignalHandle *signals[], const uint32_t minCount, const uint32_t maxCount, const size_t stride, const fplTimeoutValue timeout) {
 	FPL__CheckArgumentNull(signals, false);
-	FPL__CheckArgumentMax(maxCount, FPL__MAX_SIGNAL_COUNT, false);
+	FPL__CheckArgumentMax(maxCount, FPL_MAX_SIGNAL_COUNT, false);
 	const size_t actualStride = stride > 0 ? stride : sizeof(fplSignalHandle *);
 	for (uint32_t index = 0; index < maxCount; ++index) {
 		fplSignalHandle *signal = *(fplSignalHandle **)((uint8_t *)signals + index * actualStride);
@@ -16526,8 +16533,10 @@ fpl_internal bool fpl__LinuxSignalWaitForMultiple(fplSignalHandle *signals[], co
 	int e = epoll_create(maxCount);
 	fplAssert(e != 0);
 
+	// @MEMORY(final): This wastes a lof memory, use temporary memory allocation here
+
 	// Register events and map each to the array index
-	struct epoll_event events[FPL__MAX_SIGNAL_COUNT];
+	struct epoll_event events[FPL_MAX_SIGNAL_COUNT];
 	for (int index = 0; index < maxCount; index++) {
 		events[index].events = EPOLLIN;
 		events[index].data.u32 = index;
@@ -16540,7 +16549,7 @@ fpl_internal bool fpl__LinuxSignalWaitForMultiple(fplSignalHandle *signals[], co
 	int t = timeout == FPL_TIMEOUT_INFINITE ? -1 : timeout;
 	int eventsResult = -1;
 	int waiting = minCount;
-	struct epoll_event revent[FPL__MAX_SIGNAL_COUNT];
+	struct epoll_event revent[FPL_MAX_SIGNAL_COUNT];
 	while (waiting > 0) {
 		int ret = epoll_wait(e, revent, waiting, t);
 		if (ret == 0) {
