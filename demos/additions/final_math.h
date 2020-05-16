@@ -12,6 +12,14 @@ License:
 	Copyright 2017-2020 Torsten Spaete
 
 Changelog
+	## 2020-05-15:
+	- Added optional c++ methods with overloads, to make life a bit easier
+	- Added experimental quaternion struct
+
+	## 2020-05-09:
+	- Changed to be 100% C99 complaint
+	- Added optional c++ overator over, to make life a bit easier
+
 	## 2019-05-10:
 	- Added Vec3f math operator overloaded functions
 	- Renamed Mat4OrthoLH to Mat4OrthoRH
@@ -392,6 +400,55 @@ fpl_force_inline Mat4f M4f(const Mat4f &other) {
 }
 #endif
 
+//
+// Quaternion
+//
+typedef union Quaternion {
+	struct {
+		float s;
+		Vec3f n;
+	};
+	struct {
+		float w;
+		float x;
+		float y;
+		float z;
+	};
+} Quaternion;
+
+fpl_force_inline Quaternion QuatInit(const float w, const float x, const float y, const float z) {
+	Quaternion result;
+	result.w = w;
+	result.x = x;
+	result.y = y;
+	result.z = z;
+	return(result);
+}
+
+fpl_force_inline Quaternion QuatIdentity() {
+	Quaternion result = QuatInit(1.0f, 0.0f, 0.0f, 0.0f);
+	return(result);
+}
+
+fpl_force_inline Quaternion QuatInitSXYZ(const float s, const Vec3f axis) {
+	Quaternion result;
+	result.s = s;
+	result.n = axis;
+	return(result);
+}
+
+#if defined(__cplusplus)
+fpl_force_inline Quaternion Quat() {
+	return QuatIdentity();
+}
+fpl_force_inline Quaternion Quat(const float w, const float x, const float y, const float z) {
+	return QuatInit(w, x, y, z);
+}
+fpl_force_inline Quaternion Quat(const float s, const Vec3f &axis) {
+	return QuatInitSXYZ(s, axis);
+}
+#endif
+
 typedef union Pixel {
 	struct {
 		uint8_t b, g, r, a;
@@ -403,7 +460,6 @@ typedef union Pixel {
 //
 // Scalar
 //
-
 fpl_force_inline float Cosine(const float angle) {
 	float result = cosf(angle);
 	return(result);
@@ -414,6 +470,18 @@ fpl_force_inline float Sine(const float angle) {
 }
 fpl_force_inline float Tan(const float angle) {
 	float result = tanf(angle);
+	return(result);
+}
+fpl_force_inline float ArcCos(const float x) {
+	float result = acosf(x);
+	return(result);
+}
+fpl_force_inline float ArcSin(const float x) {
+	float result = asinf(x);
+	return(result);
+}
+fpl_force_inline float ArcTan(const float x) {
+	float result = atanf(x);
 	return(result);
 }
 fpl_force_inline float ArcTan2(const float y, const float x) {
@@ -456,6 +524,11 @@ fpl_force_inline float ScalarLerp(float a, float t, float b) {
 
 fpl_force_inline float ScalarAvg(float oldValue, float t, float newValue) {
 	float result = t * newValue + (1.0f - t) * oldValue;
+	return(result);
+}
+
+fpl_force_inline float ScalarClamp(float value, float min, float max) {
+	float result = fplMin(fplMax(value, min), max);
 	return(result);
 }
 
@@ -696,6 +769,11 @@ fpl_force_inline float V3fDistanceSquared(const Vec3f a, const Vec3f b) {
 	return(result);
 }
 
+fpl_force_inline float V3fLength2(const Vec3f v) {
+	float result = V3fDot(v, v);
+	return(result);
+}
+
 fpl_force_inline float V3fLength(const Vec3f v) {
 	float result = sqrtf(v.x * v.x + v.y * v.y + v.z * v.z);
 	return(result);
@@ -856,11 +934,31 @@ fpl_force_inline static Mat4f Mat4TranslationV4(const Vec4f p) {
 	return (result);
 }
 
+#if defined(__cplusplus)
+fpl_force_inline static Mat4f Mat4Translation(const Vec2f p) {
+	return Mat4TranslationV2(p);
+}
+fpl_force_inline static Mat4f Mat4Translation(const Vec3f p) {
+	return Mat4TranslationV3(p);
+}
+fpl_force_inline static Mat4f Mat4Translation(const Vec4f p) {
+	return Mat4TranslationV4(p);
+}
+#endif // __cplusplus
+
+fpl_force_inline static Mat4f Mat4ScaleFloat(const float s) {
+	Mat4f result = M4fInit(1.0f);
+	result.col1.x = s;
+	result.col2.y = s;
+	result.col3.z = s;
+	return (result);
+}
+
 fpl_force_inline static Mat4f Mat4ScaleV2(const Vec2f s) {
 	Mat4f result = M4fInit(1.0f);
 	result.col1.x = s.x;
 	result.col2.y = s.y;
-	result.col3.z = 0.0f;
+	result.col3.z = 1.0f;
 	return (result);
 }
 
@@ -872,14 +970,17 @@ fpl_force_inline static Mat4f Mat4ScaleV3(const Vec3f s) {
 	return (result);
 }
 
-fpl_force_inline static Mat4f Mat4ScaleV4(const Vec4f s) {
-	Mat4f result = M4fInit(1.0f);
-	result.col1.x = s.x;
-	result.col2.y = s.y;
-	result.col3.z = s.z;
-	result.col3.w = s.w;
-	return (result);
+#if defined(__cplusplus)
+fpl_force_inline static Mat4f Mat4Scale(const float s) {
+	return Mat4ScaleFloat(s);
 }
+fpl_force_inline static Mat4f Mat4Scale(const Vec2f p) {
+	return Mat4ScaleV2(p);
+}
+fpl_force_inline static Mat4f Mat4Scale(const Vec3f p) {
+	return Mat4ScaleV3(p);
+}
+#endif // __cplusplus
 
 fpl_force_inline static Mat4f Mat4RotationX(const float angle) {
 	float c = Cosine(angle);
@@ -952,6 +1053,191 @@ fpl_force_inline Vec4f Vec4MultMat4(const Mat4f mat, const Vec4f v) {
 	result.w = mat.r[3][0] * v.m[0] + mat.r[3][1] * v.m[1] + mat.r[3][2] * v.m[2] + mat.r[3][3] * v.m[3];
 	return(result);
 }
+
+//
+// Quaternion
+//
+fpl_force_inline float QuatDot(const Quaternion a, const Quaternion b) {
+	Vec4f tmp = V4fInit(a.x * b.x, a.y * b.y, a.z * b.z, a.w * b.w);
+	float result = (tmp.x + tmp.y) + (tmp.z + tmp.w);
+	return(result);
+}
+
+fpl_force_inline float QuatLength(const Quaternion q) {
+	float result = SquareRoot(QuatDot(q, q));
+	return(result);
+}
+
+fpl_force_inline Quaternion QuatNormalize(const Quaternion q) {
+	float len = QuatLength(q);
+	if (len <= 0.0f) {
+		return QuatInit(1.0f, 0.0f, 0.0f, 0.0f);
+	}
+	float oneOverLen = 1.0f / len;
+	Quaternion result = QuatInit(q.w * oneOverLen, q.x * oneOverLen, q.y * oneOverLen, q.z * oneOverLen);
+	return(result);
+}
+
+fpl_force_inline Quaternion QuatAdd(const Quaternion a, const Quaternion b) {
+	Quaternion result = QuatInit(a.w + b.w, a.x + b.x, a.y + b.y, a.z + b.z);
+	return(result);
+}
+
+fpl_force_inline Quaternion QuatSub(const Quaternion a, const Quaternion b) {
+	Quaternion result = QuatInit(a.w - b.w, a.x - b.x, a.y - b.y, a.z - b.z);
+	return(result);
+}
+
+fpl_force_inline Quaternion QuatMultScalar(const Quaternion q, const float s) {
+	Quaternion result = QuatInit(q.w * s, q.x * s, q.y * s, q.z * s);
+	return(result);
+}
+
+fpl_force_inline Vec3f QuatMultV3f(const Quaternion q, const Vec3f v) {
+	Vec3f quatVector = V3fInit(q.x, q.y, q.z);
+	Vec3f uv = V3fCross(quatVector, v);
+	Vec3f uuv = V3fCross(quatVector, uv);
+	Vec3f result;
+	result.x = v.x + ((uv.x * q.w) + uuv.x) * 2.0f;
+	result.y = v.y + ((uv.y * q.w) + uuv.y) * 2.0f;
+	result.z = v.z + ((uv.z * q.w) + uuv.z) * 2.0f;
+	return(result);
+}
+
+fpl_force_inline Vec4f QuatMultV4f(const Quaternion q, const Vec4f v) {
+	Vec3f quatVector = V3fInit(q.x, q.y, q.z);
+	Vec3f uv = V3fCross(quatVector, v.xyz);
+	Vec3f uuv = V3fCross(quatVector, uv);
+	Vec4f result;
+	result.x = v.x + ((uv.x * q.w) + uuv.x) * 2.0f;
+	result.y = v.y + ((uv.y * q.w) + uuv.y) * 2.0f;
+	result.z = v.z + ((uv.z * q.w) + uuv.z) * 2.0f;
+	result.w = v.w; // TODO(tspaete): Not sure about this?
+	return(result);
+}
+
+fpl_force_inline Quaternion QuatConjugate(const Quaternion quat) {
+	float s = quat.s;
+	Vec3f n = V3fMultScalar(quat.n, -1);
+	Quaternion result = QuatInitSXYZ(s, n);
+	return(result);
+}
+
+fpl_force_inline Quaternion QuatInverse(const Quaternion q) {
+	Quaternion con = QuatConjugate(q);
+	float d = QuatDot(q, q);
+	float f = 1.0f / d;
+	Quaternion result = QuatMultScalar(con, f);
+	return(result);
+}
+
+fpl_force_inline Vec3f QuatAxis(const Quaternion q) {
+	float tmp1 = 1.0f - q.w * q.w;
+	if (tmp1 <= 0.0f) {
+		return V3fInit(0, 0, 1);
+	}
+	float tmp2 = 1.0f / SquareRoot(tmp1);
+	Vec3f result = V3fInit(q.x * tmp2, q.y * tmp2, q.z * tmp2);
+	return(result);
+}
+
+fpl_force_inline Quaternion QuatCross(const Quaternion a, const Quaternion b) {
+	float w = a.w * b.w - a.x * b.x - a.y * b.y - a.z * b.z;
+	float x = a.w * b.x + a.x * b.w + a.y * b.z - a.z * b.y;
+	float y = a.w * b.y + a.y * b.w + a.z * b.x - a.x * b.z;
+	float z = a.w * b.z + a.z * b.w + a.x * b.y - a.y * b.x;
+	Quaternion result = QuatInit(w, x, y, z);
+	return(result);
+}
+
+fpl_force_inline Quaternion QuatLerp(const Quaternion a, const float t, const Quaternion b) {
+	Quaternion tmp1 = QuatMultScalar(a, 1.0f - t);
+	Quaternion tmp2 = QuatMultScalar(b, t);
+	Quaternion result = QuatAdd(tmp1, tmp2);
+	return(result);
+}
+
+fpl_force_inline float QuatAngle(const Quaternion q) {
+	float result = ArcCos(q.w) * 2.0f;
+	return(result);
+}
+
+fpl_force_inline Quaternion QuatFromAngleAxis(const float angle, const Vec3f axis) {
+	Quaternion result;
+	float const a = angle;
+	float const s = Sine(a * 0.5f);
+	result.w = Cosine(a * 0.5f);
+	result.x = axis.x * s;
+	result.y = axis.y * s;
+	result.z = axis.z * s;
+	return(result);
+}
+
+fpl_force_inline float QuatRoll(const Quaternion q) {
+	float result = ArcTan2(2.0f * (q.x * q.y + q.w * q.z), q.w * q.w + q.x * q.x - q.y * q.y - q.z * q.z);
+	return(result);
+}
+
+fpl_force_inline float QuatPitch(const Quaternion q) {
+	const float y = 2.0f * (q.y * q.z + q.w * q.x);
+	const float x = q.w * q.w - q.x * q.x - q.y * q.y + q.z * q.z;
+	float result;
+	if (x == 0.0f && y == 0.0f) {
+		result = 2.0f * ArcTan2(q.x, q.w);
+	} else {
+		result = ArcTan2(y, x);
+	}
+	return(result);
+}
+
+fpl_force_inline float QuatYaw(const Quaternion q) {
+	float result = ArcSin(ScalarClamp(-2.0f * (q.x * q.z - q.w * q.y), 1.0f, 1.0f));
+	return(result);
+}
+
+fpl_force_inline Quaternion QuatRotation(const Vec3f orig, const Vec3f dest) {
+	float cosTheta = V3fDot(orig, dest);
+	Vec3f rotationAxis;
+
+	if (cosTheta >= 1.0f - Epsilon) {
+		// orig and dest point in the same direction
+		return QuatIdentity();
+	}
+
+	if (cosTheta < -1.0f + Epsilon) {
+		// special case when vectors in opposite directions :
+		// there is no "ideal" rotation axis
+		// So guess one; any will do as long as it's perpendicular to start
+		// This implementation favors a rotation around the Up axis (Y),
+		// since it's often what you want to do.
+		rotationAxis = V3fCross(V3fInit(0, 0, 1), orig);
+		if (V3fLength2(rotationAxis) < Epsilon) {
+			// bad luck, they were parallel, try again!
+			rotationAxis = V3fCross(V3fInit(1, 0, 0), orig);
+		}
+
+		rotationAxis = V3fNormalize(rotationAxis);
+		return QuatFromAngleAxis(Pi32, rotationAxis);
+	}
+
+	// Implementation from Stan Melax's Game Programming Gems 1 article
+	rotationAxis = V3fCross(orig, dest);
+
+	float s = SquareRoot((1.0f + cosTheta) * 2.0f);
+	float invs = 1.0f / s;
+
+	Quaternion result = QuatInit(
+		s * 0.5f,
+		rotationAxis.x * invs,
+		rotationAxis.y * invs,
+		rotationAxis.z * invs
+	);
+
+	return(result);
+}
+
+#if defined(__cplusplus)
+#endif // __cplusplus
 
 //
 // Pixel
