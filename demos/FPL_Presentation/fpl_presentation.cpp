@@ -1,3 +1,35 @@
+/*
+-------------------------------------------------------------------------------
+Name:
+	FPL-Demo | Presentation
+
+Description:
+	A power point presentation like application, which i use to present FPL to users.
+	It makes heavy use of OpenGL and defines all slides in a very simple format.
+
+Requirements:
+	- C++/11 Compiler
+	- Final Platform Layer
+	- Final Dynamic OpenGL
+	- STB_image
+	- STB_truetype
+
+Author:
+	Torsten Spaete
+
+Changelog:
+	## 2020-15-05
+	- Made it much more nicer looking
+
+	## 2020-05-09
+	- Initial version
+
+License:
+	Copyright (c) 2017-2020 Torsten Spaete
+	MIT License (See LICENSE file)
+-------------------------------------------------------------------------------
+*/
+
 #define FPL_IMPLEMENTATION
 #define FPL_PRIVATE
 #include <final_platform_layer.h>
@@ -17,6 +49,8 @@
 #define FXML_PRIVATE
 #include <final_xml.h>
 
+#include <final_random.h>
+
 #include <final_math.h> // Vec2f, Vec4f, Mat4f, etc.
 
 // Contains fonts files as byte-array (Arimo, Sulphur-Point, Bitstream Vera Sans)
@@ -32,8 +66,10 @@
 
 #define DRAW_TEXT_BOUNDS 0
 #define DRAW_IMAGE_BOUNDS 0
-#define DRAW_SLIDE_CENTER 1
+#define DRAW_SLIDE_CENTER 0
 #define DRAW_VIEW_CENTER 0
+#define DRAW_ROTATING_CUBE 1
+#define USE_LETTERBOX_VIEWPORT 0
 
 template <typename T>
 struct GrowablePool {
@@ -227,6 +263,8 @@ static const char *GetGLErrorString(const GLenum err) {
 			return "GL_STACK_UNDERFLOW";
 		case GL_OUT_OF_MEMORY:
 			return "GL_OUT_OF_MEMORY";
+		case GL_INVALID_FRAMEBUFFER_OPERATION:
+			return "GL_INVALID_FRAMEBUFFER_OPERATION";
 		default:
 			if (_itoa_s(err, glErrorCodeBuffer, fplArrayCount(glErrorCodeBuffer), 10) == 0)
 				return (const char *)glErrorCodeBuffer;
@@ -618,6 +656,73 @@ struct LoadedImage {
 constexpr int MaxFontCount = 16;
 constexpr int MaxImagesCount = 64;
 
+struct Framebuffer {
+	GLuint fbo;
+	GLuint textures[2];
+	int width;
+	int height;
+
+	void Init(const int width, const int height) {
+		glGenFramebuffers(1, &fbo);
+		glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+
+		// RGBA-Texture
+		glGenTextures(2, &textures[0]);
+
+		glBindTexture(GL_TEXTURE_2D, textures[0]);
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, textures[0], 0);
+		glBindTexture(GL_TEXTURE_2D, 0);
+
+		// Depth-Texture
+		glBindTexture(GL_TEXTURE_2D, textures[1]);
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH24_STENCIL8, width, height, 0, GL_DEPTH_STENCIL, GL_UNSIGNED_INT_24_8, NULL);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_TEXTURE_2D, textures[1], 0);
+		glBindTexture(GL_TEXTURE_2D, 0);
+
+		glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+		CheckGLError();
+
+		this->width = width;
+		this->height = height;
+	}
+
+	void Bind() {
+		glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+		GLenum DrawBuffers[1] = { GL_COLOR_ATTACHMENT0 };
+		glDrawBuffers(1, DrawBuffers);
+		CheckGLError();
+	}
+
+	void Unbind() {
+		glBindFramebuffer(GL_FRAMEBUFFER, 0);
+	}
+
+	void UpdateIfNeeded(const int newWidth, const int newHeight) {
+		if (fbo == 0 || newWidth != width || newHeight != height) {
+			Release();
+			Init(newWidth, newHeight);
+		}
+	}
+
+	void Release() {
+		if (fbo) {
+			glDeleteFramebuffers(1, &fbo);
+			fbo = 0;
+		}
+		if (textures[0]) {
+			glDeleteTextures(2, &textures[0]);
+			textures[0] = textures[1] = 0;
+		}
+		width = height = 0;
+	}
+};
+
 struct Renderer {
 	LoadedFont fonts[MaxFontCount]; // First font is always the debug font
 	LoadedImage images[MaxImagesCount];
@@ -625,6 +730,8 @@ struct Renderer {
 	StringTable *strings;
 	size_t numFonts;
 	size_t numImages;
+
+	Framebuffer cubeFramebuffer;
 
 	static int CompareFont(const void *oa, const void *ob) {
 		const LoadedFont *a = (const LoadedFont *)oa;
@@ -735,6 +842,20 @@ struct Renderer {
 		}
 
 		return(result);
+	}
+
+	void Release() {
+		for (size_t imageIndex = 0; imageIndex < numImages; ++imageIndex) {
+			LoadedImage *image = images + imageIndex;
+			image->Release();
+		}
+		for (size_t fontIndex = 0; fontIndex < numFonts; ++fontIndex) {
+			LoadedFont *font = fonts + fontIndex;
+			font->Release();
+		}
+		cubeFramebuffer.Release();
+		numImages = 0;
+		numFonts = 0;
 	}
 };
 
@@ -881,6 +1002,8 @@ enum class BackgroundKind {
 	Solid,
 	GradientHorizontal,
 	GradientVertical,
+	HalfGradientHorizontal,
+	HalfGradientVertical,
 };
 
 struct Background {
@@ -952,7 +1075,7 @@ struct SlideVariables {
 struct Slide {
 	LinkedList<Element> elements;
 	SlideVariables vars;
-	Vec4f backgroundColor;
+	Background background;
 	Vec2f size;
 	StringTable *strings;
 	const char *name;
@@ -1049,11 +1172,27 @@ struct PresentationState {
 	int32_t activeSlideIndex;
 };
 
+constexpr float CubeRotationDuration = 1.0f; // Duration in seconds
+constexpr float CubeRotationDelay = 3.0f; // Delay in seconds
+
+constexpr float CubeRadius = 0.25f;
+constexpr float PointRadius = 10.0f;
+constexpr float PointDistance = CubeRadius * 1.5f;
+constexpr float PointRotationSpeed = 25.0f; // Radians in seconds
+
 struct App {
 	Presentation presentation;
-	PresentationState state;
 	Renderer renderer;
+	PresentationState state;
 	StringTable strings;
+
+	RandomSeries entropy;
+
+	Vec3f currentCubePos;
+	Vec3f currentCubeVelocity;
+
+	Vec3f pointPos;
+	float pointRotation;
 };
 
 static Vec2f ComputeTextSize(const LoadedFont &font, const char *text, const size_t textLen, const float charHeight) {
@@ -1169,6 +1308,26 @@ static void RenderFilledQuad(const Vec2f &pos, const Vec2f &size, const Vec4f &c
 		glColor4fv(&color0.m[0]); glVertex2f(pos.x, pos.y);
 		glColor4fv(&color1.m[0]); glVertex2f(pos.x, pos.y + size.h);
 		glColor4fv(&color1.m[0]); glVertex2f(pos.x + size.w, pos.y + size.h);
+	} else if (kind == BackgroundKind::HalfGradientHorizontal) {
+		glColor4fv(&color1.m[0]); glVertex2f(pos.x + size.w * 0.5f, pos.y);
+		glColor4fv(&color0.m[0]); glVertex2f(pos.x, pos.y);
+		glColor4fv(&color0.m[0]); glVertex2f(pos.x, pos.y + size.h);
+		glColor4fv(&color1.m[0]); glVertex2f(pos.x + size.w * 0.5f, pos.y + size.h);
+
+		glColor4fv(&color0.m[0]); glVertex2f(pos.x + size.w, pos.y);
+		glColor4fv(&color1.m[0]); glVertex2f(pos.x + size.w * 0.5f, pos.y);
+		glColor4fv(&color1.m[0]); glVertex2f(pos.x + size.w * 0.5f, pos.y + size.h);
+		glColor4fv(&color0.m[0]); glVertex2f(pos.x + size.w, pos.y + size.h);
+	} else if (kind == BackgroundKind::HalfGradientVertical) {
+		glColor4fv(&color0.m[0]); glVertex2f(pos.x + size.w, pos.y);
+		glColor4fv(&color0.m[0]); glVertex2f(pos.x, pos.y);
+		glColor4fv(&color1.m[0]); glVertex2f(pos.x, pos.y + size.h * 0.5f);
+		glColor4fv(&color1.m[0]); glVertex2f(pos.x + size.w, pos.y + size.h * 0.5f);
+
+		glColor4fv(&color1.m[0]); glVertex2f(pos.x + size.w, pos.y + size.h * 0.5f);
+		glColor4fv(&color1.m[0]); glVertex2f(pos.x, pos.y + size.h * 0.5f);
+		glColor4fv(&color0.m[0]); glVertex2f(pos.x, pos.y + size.h);
+		glColor4fv(&color0.m[0]); glVertex2f(pos.x + size.w, pos.y + size.h);
 	} else {
 		glColor4fv(&color0.m[0]); glVertex2f(pos.x + size.w, pos.y);
 		glColor4fv(&color0.m[0]); glVertex2f(pos.x, pos.y);
@@ -1246,6 +1405,29 @@ static const char *ResolveText(const SlideVariables &vars, const char *source, c
 	return(result);
 }
 
+static Vec2f ComputeTextBlockSize(Renderer &renderer, Slide &slide, const char *text, const char *fontName, const float fontSize, const float lineHeight) {
+	const LoadedFont *font = renderer.FindFont(fontName, fontSize);
+	Vec2f result = V2f(0, 0);
+	const char *p = text;
+	const char *start = p;
+	while (*p) {
+		while (*p && *p != '\n') {
+			++p;
+		}
+		const size_t len = p - start;
+
+		Vec2f textSize = ComputeTextSize(*font, start, len, fontSize);
+		result += V2f(0, lineHeight);
+		result.w = fplMax(result.w, textSize.w);
+
+		if (*p == 0)
+			break;
+		++p;
+		start = p;
+	}
+	return(result);
+}
+
 static void RenderBackground(const Vec2f &pos, const Vec2f &size, const Background &background) {
 	if (background.kind != BackgroundKind::None) {
 		RenderFilledQuad(pos, size, background.primaryColor, background.secondaryColor, background.kind);
@@ -1288,9 +1470,9 @@ static void RenderLabel(const LoadedFont &font, const Label &label, const SlideV
 #endif
 }
 
-static void RenderImageQuad(const LoadedImage &renderImage, const Vec2f &pos, const Vec2f &size, const Vec4f &color) {
+static void RenderTextureQuad(const GLuint texture, const Vec2f &pos, const Vec2f &size, const Vec4f &color) {
 	glEnable(GL_TEXTURE_2D);
-	glBindTexture(GL_TEXTURE_2D, renderImage.textureId);
+	glBindTexture(GL_TEXTURE_2D, texture);
 	glColor4fv(&color.m[0]);
 	glBegin(GL_QUADS);
 	glTexCoord2f(1.0f, 0.0f); glVertex2f(pos.x + size.w, pos.y);
@@ -1300,6 +1482,80 @@ static void RenderImageQuad(const LoadedImage &renderImage, const Vec2f &pos, co
 	glEnd();
 	glBindTexture(GL_TEXTURE_2D, 0);
 	glDisable(GL_TEXTURE_2D);
+}
+
+static void RenderImageQuad(const LoadedImage &renderImage, const Vec2f &pos, const Vec2f &size, const Vec4f &color) {
+	RenderTextureQuad(renderImage.textureId, pos, size, color);
+}
+
+static void RenderPoint(const Vec3f &pos, const float radius, const Vec4f color) {
+	glPointSize(radius * 2.0f);
+	glColor4fv(&color.m[0]);
+	glBegin(GL_POINTS);
+	glVertex3fv(&pos.m[0]);
+	glEnd();
+	glPointSize(1.0f);
+}
+
+static void RenderCube(const float rw, const float rh, const float rd, const Vec4f colors[3]) {
+	float left = -rw;
+	float right = rw;
+
+	float top = rh;
+	float bottom = -rh;
+
+	float far = -rd;
+	float near = rd;
+
+	glBegin(GL_QUADS);
+	// Top face (y = 1.0f)
+	// Green
+	glColor4fv(&colors[0].m[0]);
+	glVertex3f(right, top, far);
+	glVertex3f(left, top, far);
+	glVertex3f(left, top, near);
+	glVertex3f(right, top, near);
+
+	// Bottom face (y = -1.0f)
+	// Orange
+	glColor4fv(&colors[0].m[0]);
+	glVertex3f(right, bottom, near);
+	glVertex3f(left, bottom, near);
+	glVertex3f(left, bottom, far);
+	glVertex3f(right, bottom, far);
+
+	// Front face  (z = 1.0f)
+	// Red
+	glColor4fv(&colors[1].m[0]);
+	glVertex3f(right, top, near);
+	glVertex3f(left, top, near);
+	glVertex3f(left, bottom, near);
+	glVertex3f(right, bottom, near);
+
+	// Back face (z = -1.0f)
+	// Yellow
+	glColor4fv(&colors[1].m[0]);
+	glVertex3f(right, bottom, far);
+	glVertex3f(left, bottom, far);
+	glVertex3f(left, top, far);
+	glVertex3f(right, top, far);
+
+	// Left face (x = -1.0f)
+	// Blue
+	glColor4fv(&colors[2].m[0]);
+	glVertex3f(left, top, near);
+	glVertex3f(left, top, far);
+	glVertex3f(left, bottom, far);
+	glVertex3f(left, bottom, near);
+
+	// Right face (x = 1.0f)
+	// Magenta
+	glColor4fv(&colors[2].m[0]);
+	glVertex3f(right, top, far);
+	glVertex3f(right, top, near);
+	glVertex3f(right, bottom, near);
+	glVertex3f(right, bottom, far);
+	glEnd();
 }
 
 static void RenderImage(const LoadedImage &renderImage, const Image &image) {
@@ -1346,14 +1602,25 @@ extern Viewport ComputeViewportByAspect(const Vec2i &screenSize, const float tar
 
 static void UpdateFrame(App &app, const float dt) {
 	PresentationState &state = app.state;
-	Animation &anim = state.slideAnimation;
-	anim.Update(dt);
 
+	//
+	// Slide animation
+	//
+	Animation &slideAnim = state.slideAnimation;
+	slideAnim.Update(dt);
 	if (state.slideAnimation.IsActive()) {
 		state.currentOffset = V2fLerp(state.startOffset, state.slideAnimation.currentAlpha, state.targetOffset);
 	} else {
 		state.currentOffset = state.targetOffset;
 	}
+
+	app.pointPos = V3f(Cosine(app.pointRotation * 0.01f) * PointDistance, Sine(app.pointRotation * 0.02f) * PointDistance, -Sine(app.pointRotation * 0.03f) * PointDistance);
+
+	Vec3f direction = app.pointPos;
+	const float acceleration = 10.0f;
+	app.currentCubeVelocity += direction * acceleration * dt;
+	app.currentCubePos += app.currentCubeVelocity * dt;
+	app.currentCubeVelocity *= 0.95f;
 }
 
 static void RenderSlide(const Slide &slide, const Renderer &renderer) {
@@ -1361,10 +1628,6 @@ static void RenderSlide(const Slide &slide, const Renderer &renderer) {
 	float h = slide.size.h;
 	Vec2f radius = V2f(w, h) * 0.5f;
 	Vec2f center = radius;
-
-	// CornerFlowerBlue = RGBAToLinearRaw(0x64, 0x95, 0xED, 0xFF)
-
-	RenderFilledQuad(V2f(0, 0), V2f(w, h), slide.backgroundColor);
 
 #if DRAW_SLIDE_CENTER
 	RenderLine(center - V2f(radius.w, 0), center + V2f(radius.w, 0), V4fInit(0.5f, 0.5f, 0.5f, 1.0f), 1.0f);
@@ -1403,16 +1666,15 @@ static void RenderSlide(const Slide &slide, const Renderer &renderer) {
 	}
 }
 
-static void RenderFrame(const App &app, const Vec2i &winSize) {
+static void RenderFrame(App &app, const Vec2i &winSize) {
 	const PresentationState &state = app.state;
 	const Presentation &presentation = app.presentation;
-	const Renderer &renderer = app.renderer;
+	Renderer &renderer = app.renderer;
 
 	const LoadedFont *debugFont = app.renderer.debugFont;
 	fplAssert(debugFont != nullptr);
 	const float debugFontSize = 30.0f;
 
-#if 1
 	const Slide *activeSlide = state.activeSlide;
 	if (activeSlide == nullptr) {
 		float w = 1280.0;
@@ -1433,28 +1695,101 @@ static void RenderFrame(const App &app, const Vec2i &winSize) {
 	} else {
 		float w = activeSlide->size.w;
 		float h = activeSlide->size.h;
-		Vec2f center = V2f(w, h) * 0.5f;
-		Mat4f proj = Mat4OrthoRH(0.0f, w, h, 0.0f, -1.0f, 1.0f);
-
 		float aspect = w / h;
+		Vec2f center = V2f(w, h) * 0.5f;
+		Mat4f orthoProj = Mat4OrthoRH(0.0f, w, h, 0.0f, -1.0f, 1.0f);
+		Mat4f perspectiveProj = Mat4PerspectiveRH(DegreesToRadians(45.0f), aspect, 0.01f, 1000.0f);
+
 		Viewport viewport = ComputeViewportByAspect(winSize, aspect);
+
+#if USE_LETTERBOX_VIEWPORT
+		glViewport(viewport.x, viewport.y, viewport.w, viewport.h);
+		glScissor(viewport.x, viewport.y, viewport.w, viewport.h);
+		renderer.cubeFramebuffer.UpdateIfNeeded(viewport.w, viewport.h);
+#else
 		glViewport(0, 0, winSize.w, winSize.h);
 		glScissor(0, 0, winSize.w, winSize.h);
-		//glViewport(viewport.x, viewport.y, viewport.w, viewport.h);
-
-		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+		renderer.cubeFramebuffer.UpdateIfNeeded(winSize.w, winSize.h);
+#endif
 
 		float zoom = 1.0f;
-		Mat4f view = Mat4TranslationV2(V2f(w * 0.5f, h * 0.5f)) * Mat4ScaleV2(V2f(zoom, zoom));
+		Mat4f scale = Mat4Scale(V3f(zoom, zoom, zoom));
+		Mat4f view = Mat4Translation(V2f(w * 0.5f, h * 0.5f)) * scale;
 		Vec2f zoomOffset = V2f(-w * 0.5f, -h * 0.5f);
 
+		//
+		// Cube
+		//
+#if DRAW_ROTATING_CUBE
+		{
+			fplAssert(winSize.w > 0 && winSize.h > 0);
+			renderer.cubeFramebuffer.Bind();
+
+			glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
+			glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+			glEnable(GL_DEPTH_TEST);
+
+			Mat4f cubeTranslation = Mat4Translation(V3f(0, 0, -2.0f));
+			Mat4f cubeView = cubeTranslation * Mat4LookAtRH(V3f(0, 0, 0), app.currentCubePos, V3f(0, 1, 0));
+			Mat4f cubeMVP = perspectiveProj * cubeView;
+			glLoadMatrixf(&cubeMVP.m[0]);
+
+			Vec4f colors[3] = { V4f(1.0f, 0.0f, 0.0f, 1.0f), V4f(0.0f, 1.0f, 0.0f, 1.0f), V4f(0.0f, 0.0f, 1.0f, 1.0f) };
+			RenderCube(CubeRadius, CubeRadius, CubeRadius, colors);
+
+			glDisable(GL_CULL_FACE);
+			glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+			glLineWidth(3.0f);
+			RenderCube(CubeRadius * 1.25f, CubeRadius * 1.25f, CubeRadius * 1.25f, colors);
+			glLineWidth(1.0f);
+			glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+			glEnable(GL_CULL_FACE);
+
+#if 0
+			Mat4f tempMat = perspectiveProj * cubeTranslation;
+			glLoadMatrixf(&tempMat.m[0]);
+			RenderPoint(app.pointPos, PointRadius, V4f(1, 1, 1, 1));
+			RenderPoint(app.currentCubePos, PointRadius, V4f(1, 0, 0, 1));
+
+			glLineWidth(2.0f);
+			glColor4f(1, 1, 1, 1);
+			glBegin(GL_LINES);
+			glVertex3f(0, 0, 0);
+			glVertex3fv(&app.pointPos.m[0]);
+			glEnd();
+			glLineWidth(1.0f);
+#endif
+
+			glDisable(GL_DEPTH_TEST);
+			CheckGLError();
+
+			renderer.cubeFramebuffer.Unbind();
+		}
+#endif // DRAW_ROTATING_CUBE
+
+		glClearColor(0.1f, 0.2f, 0.3f, 1);
+		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+		//
+		// Slides
+		//
 		Vec2f slidePos = V2f(0, 0);
 		auto it = presentation.slides.GetConstIterator();
 		for (const Slide *slide = it.Value(); it.HasNext(); slide = it.MoveNext()) {
-			Mat4f slideModel = Mat4TranslationV2(slidePos - state.currentOffset + zoomOffset);
-			Mat4f slideMVP = proj * view * slideModel;
+			Vec2f slideSize = slide->size;
+			Mat4f slideModel = Mat4Translation(slidePos - state.currentOffset + zoomOffset);
+			Mat4f slideMVP = orthoProj * view * slideModel;
+			glLoadMatrixf(&slideMVP.m[0]);
+
+			RenderBackground(V2f(0, 0), slideSize, slide->background);
+
+#if DRAW_ROTATING_CUBE
+			RenderTextureQuad(renderer.cubeFramebuffer.textures[0], V2f(0, 0), slideSize, V4f(1, 1, 1, 0.2f));
+#endif
+
 			glLoadMatrixf(&slideMVP.m[0]);
 			RenderSlide(*slide, renderer);
+
 			slidePos += V2f(slide->size.w, 0);
 		}
 
@@ -1464,8 +1799,19 @@ static void RenderFrame(const App &app, const Vec2i &winSize) {
 		RenderLine(center + V2f(0, -h * 0.25f), center + V2f(0, h * 0.25f), V4f(1, 1, 1, 1));
 #endif
 
-	}
+#if 0
+		{
+			Mat4f x = orthoProj * view;
+			glLoadMatrixf(&x.m[0]);
+			static char buffer[100];
+			fplFormatString(buffer, fplArrayCount(buffer), "Vel: %.4f, %.4f, %.4f", app.currentCubeVelocity.x, app.currentCubeVelocity.y, app.currentCubeVelocity.z);
+			size_t textLen = fplGetStringLength(buffer);
+			const char *text = buffer;
+			RenderTextQuads(0.0f, 0.0f, text, textLen, 20.0f, *debugFont, V4f(1, 1, 1, 1));
+		}
 #endif
+
+	}
 
 	CheckGLError();
 	glFlush();
@@ -1473,14 +1819,7 @@ static void RenderFrame(const App &app, const Vec2i &winSize) {
 
 static void ReleaseApp(App &app) {
 	app.presentation.Release();
-	for (size_t imageIndex = 0; imageIndex < app.renderer.numImages; ++imageIndex) {
-		LoadedImage *image = app.renderer.images + imageIndex;
-		image->Release();
-	}
-	for (size_t fontIndex = 0; fontIndex < app.renderer.numFonts; ++fontIndex) {
-		LoadedFont *font = app.renderer.fonts + fontIndex;
-		font->Release();
-	}
+	app.renderer.Release();
 	app.strings.ReleaseAll();
 }
 
@@ -1603,28 +1942,7 @@ static void JumpToPrevSlide(App &app) {
 	}
 }
 
-static Vec2f ComputeTextBlockSize(Renderer &renderer, Slide &slide, const char *text, const char *fontName, const float fontSize, const float lineHeight) {
-	const LoadedFont *font = renderer.FindFont(fontName, fontSize);
-	Vec2f result = V2f(0, 0);
-	const char *p = text;
-	const char *start = p;
-	while (*p) {
-		while (*p && *p != '\n') {
-			++p;
-		}
-		const size_t len = p - start;
 
-		Vec2f textSize = ComputeTextSize(*font, start, len, fontSize);
-		result += V2f(0, lineHeight);
-		result.w = fplMax(result.w, textSize.w);
-
-		if (*p == 0)
-			break;
-		++p;
-		start = p;
-	}
-	return(result);
-}
 
 static void AddTextBlock(Renderer &renderer, Slide &slide, const Vec2f &offset, const char *text, const char *fontName, const float fontSize, const float lineHeight, const LabelStyle &style, const HorizontalAlignment hAlign, const VerticalAlignment vAlign) {
 	const LoadedFont *font = renderer.FindFont(fontName, fontSize);
@@ -1652,7 +1970,7 @@ struct DefaultSlideSettings {
 	LabelStyle normalStyle;
 	LabelStyle titleStyle;
 
-	Vec4f backgroundColor;
+	Background background;
 
 	const char *headerFontName;
 	const char *normalFontName;
@@ -1670,7 +1988,7 @@ struct DefaultSlideSettings {
 
 static void AddSlideFromDefinition(Renderer &renderer, Presentation &presentation, const SlideDefinition &def, const DefaultSlideSettings &settings) {
 	Slide *slide = presentation.AddSlide(presentation.size, def.name);
-	slide->backgroundColor = settings.backgroundColor;
+	slide->background = settings.background;
 
 	Rect2f area = AddHeaderAndFooter(slide, settings.headerFontName, settings.headerFontSize);
 
@@ -1715,8 +2033,8 @@ static void AddSlideFromDefinition(Renderer &renderer, Presentation &presentatio
 			textPos += V2fHadamard(V2f(1, 0), blockSize);
 		}
 		AddTextBlock(renderer, *slide, textPos, text, settings.normalFontName, settings.normalFontSize, settings.normalLineHeight, settings.normalStyle, textAlign, vAlign);
+		}
 	}
-}
 
 static void BuildFPLPresentation(Renderer &renderer, Presentation &presentation) {
 	float slideWidth = 1280.0f;
@@ -1738,19 +2056,24 @@ static void BuildFPLPresentation(Renderer &renderer, Presentation &presentation)
 	const float normalLineHeight = normalLineScale * normalFontSize;
 	const float titleLineHeight = titleLineScale * titleFontSize;
 
-	const Vec4f backColor = V4f(0, 0, 0, 1);
-	const Vec4f foreColor = V4f(1, 1, 1, 1);
+	const Vec4f backColor = RGBAToLinearRaw(0, 0, 0, 255);
+	const Vec4f foreColor = RGBAToLinearRaw(255, 255, 255, 255);
 
 	const float contentPadding = 20.0f;
 
 	LabelStyle labelStyle = {};
 	labelStyle.drawShadow = true;
-	labelStyle.shadowColor = V4f(1.0f, 1.0f, 1.0f, 0.2f);
+	labelStyle.shadowColor = RGBAToLinearRaw(1, 84, 164, 200);
 	labelStyle.shadowOffset = V2f(2, 1);
 	labelStyle.foregroundColor = foreColor;
 
+	Background background = {};
+	background.primaryColor = backColor;
+	background.secondaryColor = RGBAToLinearRaw(15, 13, 80, 255);
+	background.kind = BackgroundKind::HalfGradientVertical;
+
 	DefaultSlideSettings slideSettings = {};
-	slideSettings.backgroundColor = backColor;
+	slideSettings.background = background;
 
 	slideSettings.normalFontSize = normalFontSize;
 	slideSettings.normalFontName = normalFont;
@@ -1917,8 +2240,11 @@ static void BuildFPLPresentation(Renderer &renderer, Presentation &presentation)
 		slide->AddLabel("- No control over the allocated memory, at max you can overwrite malloc/free", pos, normalFont, normalFontSize, HorizontalAlignment::Left, VerticalAlignment::Top, labelStyle);
 		pos += V2f(0, normalLineHeight);
 		slide->AddLabel("- They are heavily bloated", pos, normalFont, normalFontSize, HorizontalAlignment::Left, VerticalAlignment::Top, labelStyle);
-	}
+}
 #endif
+}
+
+static void QuaternionTests() {
 }
 
 int main(int argc, char **argv) {
@@ -1931,7 +2257,9 @@ int main(int argc, char **argv) {
 		if (fglLoadOpenGL(true)) {
 			glDisable(GL_DEPTH_TEST);
 
-			glDisable(GL_CULL_FACE);
+			glEnable(GL_CULL_FACE);
+			glCullFace(GL_BACK);
+			glFrontFace(GL_CCW);
 
 			glEnable(GL_BLEND);
 			glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
@@ -1974,8 +2302,13 @@ int main(int argc, char **argv) {
 
 			ShowSlideshow(app, 0, false);
 
-			const float dt = 1.0f / 60.0f;
+			app.currentCubePos = V3f(1, 0, 0) * PointDistance;
+			app.currentCubeVelocity = V3f(0, 0, 0);
 
+			app.entropy = RandomSeed(1337);
+
+			float dt = 1.0f / 60.0f;
+			double lastTime = fplGetTimeInSecondsHP();
 			while (fplWindowUpdate()) {
 				fplEvent ev;
 				while (fplPollEvent(&ev)) {
@@ -2005,14 +2338,23 @@ int main(int argc, char **argv) {
 					}
 				}
 
+				if (!fplIsWindowRunning())
+					break;
+
 				fplWindowSize winSize = fplZeroInit;
 				fplGetWindowSize(&winSize);
+				fplAssert(winSize.width > 0 && winSize.height > 0);
 
 				UpdateFrame(app, dt);
 
 				RenderFrame(app, V2iInit(winSize.width, winSize.height));
 
 				fplVideoFlip();
+
+				double currentTime = fplGetTimeInSecondsHP();
+				dt = (float)(currentTime - lastTime);
+				app.pointRotation += dt * PointRotationSpeed;
+				lastTime = currentTime;
 			}
 
 			if (fplIsWindowFullscreen()) {
