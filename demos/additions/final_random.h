@@ -15,10 +15,6 @@ License:
 #ifndef FINAL_RANDOM_H
 #define FINAL_RANDOM_H
 
-#if !(defined(__cplusplus) && ((__cplusplus >= 201103L) || (defined(_MSC_VER) && _MSC_VER >= 1900)))
-#error "C++/11 compiler not detected!"
-#endif
-
 #include "final_math.h"
 
 // https://arvid.io/2018/07/02/better-cxx-prng/
@@ -36,13 +32,13 @@ inline RandomSeries RandomSeed(const uint64_t seed) {
 	RandomSeries result = {};
 	result.seed = seed;
 #if RANDOMTYPE == RANDOMTYPE_CRT
-	srand(seed); 
+	srand(seed);
 #endif
 	return(result);
 }
 
 #if RANDOMTYPE == RANDOMTYPE_SPLITMIX
-inline uint32_t RandomU32(RandomSeries* series) {
+inline uint32_t RandomU32(RandomSeries *series) {
 	uint64_t z = (series->seed += UINT64_C(0x9E3779B97F4A7C15));
 	z = (z ^ (z >> 30)) * UINT64_C(0xBF58476D1CE4E5B9);
 	z = (z ^ (z >> 27)) * UINT64_C(0x94D049BB133111EB);
@@ -51,7 +47,7 @@ inline uint32_t RandomU32(RandomSeries* series) {
 #endif
 
 #if RANDOMTYPE == RANDOMTYPE_XORSHIFT
-inline uint32_t RandomU32(RandomSeries* series) {
+inline uint32_t RandomU32(RandomSeries *series) {
 	uint64_t result = (series->seed * UINT64_C(0xd989bcacc137dcd5));
 	series->seed ^= series->seed >> 11;
 	series->seed ^= series->seed << 31;
@@ -61,33 +57,33 @@ inline uint32_t RandomU32(RandomSeries* series) {
 #endif
 
 #if RANDOMTYPE == RANDOMTYPE_CRT
-inline uint32_t RandomU32(RandomSeries* series) {
+inline uint32_t RandomU32(RandomSeries *series) {
 	srand(series->seed++);
 	uint32_t result = (uint32_t)(rand() / (double)RAND_MAX * (double)UINT32_MAX);
 	return(result);
 }
 #endif
 
-inline uint8_t RandomU8(RandomSeries* series) {
+inline uint8_t RandomU8(RandomSeries *series) {
 	uint8_t result = RandomU32(series) % UINT8_MAX;
 	return(result);
 }
 
 // -1.0 to +1.0
-inline float RandomBilateral(RandomSeries* series) {
+inline float RandomBilateral(RandomSeries *series) {
 	uint32_t s = RandomU32(series);
 	float result = -1.0f + (s / (float)UINT32_MAX) * 2.0f;
 	return(result);
 }
 
 // 0.0 to 1.0
-inline float RandomUnilateral(RandomSeries* series) {
+inline float RandomUnilateral(RandomSeries *series) {
 	uint32_t u = RandomU32(series);
 	float result = u / (float)UINT32_MAX;
 	return(result);
 }
 
-inline Vec3f RandomV3f(RandomSeries* series) {
+inline Vec3f RandomV3f(RandomSeries *series) {
 	float x = RandomBilateral(series);
 	float y = RandomBilateral(series);
 	float z = RandomBilateral(series);
@@ -95,7 +91,7 @@ inline Vec3f RandomV3f(RandomSeries* series) {
 	return(result);
 }
 
-inline Vec3f RandomDirection(RandomSeries* series) {
+inline Vec3f RandomDirection(RandomSeries *series) {
 	Vec3f result = V3fNormalize(RandomV3f(series));
 	return(result);
 }
@@ -121,7 +117,7 @@ inline Vec3f CosineSampleHemisphere(const float u1, const float u2) {
 }
 
 // Returns a random direction inside the universal unit hemisphere
-inline Vec3f RandomUnitHemisphere(RandomSeries* series) {
+inline Vec3f RandomUnitHemisphere(RandomSeries *series) {
 	float u1 = RandomUnilateral(series);
 	float u2 = RandomUnilateral(series);
 	Vec3f result = CosineSampleHemisphere(u1, u2);
