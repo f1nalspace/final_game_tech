@@ -246,8 +246,6 @@ public:
 	}
 };
 
-typedef int32_t b32;
-
 static char glErrorCodeBuffer[16];
 static const char *GetGLErrorString(const GLenum err) {
 	switch (err) {
@@ -369,26 +367,7 @@ public:
 	}
 };
 
-// We just support a couple of fonts, built-in.
-enum class FontResourceType {
-	Debug = 0,
-	Arimo,
-	SulphurPoint,
-	BitStreamVerySans,
-};
 
-struct FontResource {
-	const uint8_t *data;
-	const char *name;
-	FontResourceType type;
-};
-
-namespace FontResources {
-	static FontResource Debug = { bitstreamVerySansFontData, "Debug", FontResourceType::Debug };
-	static FontResource Arimo = { arimoRegularFontData, "Arimo", FontResourceType::Arimo };
-	static FontResource SulphurPoint = { sulphurPointRegularData, "Sulphur Point", FontResourceType::SulphurPoint };
-	static FontResource BitStreamVerySans = { bitstreamVerySansFontData, "Bitstream Vera Sans", FontResourceType::BitStreamVerySans };
-};
 
 struct FontID {
 	const char *name;
@@ -997,31 +976,10 @@ struct Animation {
 	}
 };
 
-enum class BackgroundKind {
-	None = 0,
-	Solid,
-	GradientHorizontal,
-	GradientVertical,
-	HalfGradientHorizontal,
-	HalfGradientVertical,
-};
 
-struct Background {
-	Vec4f primaryColor;
-	Vec4f secondaryColor;
-	BackgroundKind kind;
-};
-
-struct LabelStyle {
-	Background background;
-	Vec4f foregroundColor;
-	Vec4f shadowColor;
-	Vec2f shadowOffset;
-	b32 drawShadow;
-};
 
 struct Label {
-	LabelStyle style;
+	TextStyle style;
 	Vec2f pos;
 	const char *fontName;
 	const char *text;
@@ -1068,6 +1026,7 @@ struct Element {
 };
 
 struct SlideVariables {
+	const char *slideName;
 	uint32_t slideNum;
 	uint32_t slideCount;
 };
@@ -1087,7 +1046,7 @@ struct Slide {
 		return(result);
 	}
 
-	Label *AddLabel(const String &text, const Vec2f &pos, const char *fontName, const float fontSize, const HorizontalAlignment hAlign = HorizontalAlignment::Left, const VerticalAlignment vAlign = VerticalAlignment::Top, const LabelStyle &style = {}) {
+	Label *AddLabel(const String &text, const Vec2f &pos, const char *fontName, const float fontSize, const HorizontalAlignment hAlign = HorizontalAlignment::Left, const VerticalAlignment vAlign = VerticalAlignment::Top, const TextStyle &style = {}) {
 		Element *element = AddElement(ElementType::Label);
 		Label *result = &element->label;
 		result->pos = pos;
@@ -1178,7 +1137,7 @@ constexpr float CubeRotationDelay = 3.0f; // Delay in seconds
 constexpr float CubeRadius = 0.25f;
 constexpr float PointRadius = 10.0f;
 constexpr float PointDistance = CubeRadius * 1.5f;
-constexpr float PointRotationSpeed = 25.0f; // Radians in seconds
+constexpr float PointRotationSpeed = 15.0f; // Radians in seconds
 
 struct App {
 	Presentation presentation;
@@ -1378,16 +1337,23 @@ static const char *ResolveText(const SlideVariables &vars, const char *source, c
 						size_t remainingBufLen = maxBufferLen - bufIndex;
 						char *remainingStart = &buffer[bufIndex];
 						if (strncmp("SLIDE_NUM", varName, varLen) == 0) {
-							char *t = fplS32ToString(vars.slideNum, remainingStart, remainingBufLen);
+							const char *t = fplS32ToString(vars.slideNum, remainingStart, remainingBufLen);
 							if (t != nullptr) {
-								size_t addonChars = fplGetStringLength(remainingStart);
-								bufIndex += addonChars;
+								size_t addedCount = fplGetStringLength(remainingStart);
+								bufIndex += addedCount;
 							}
 						} else if (strncmp("SLIDE_COUNT", varName, varLen) == 0) {
-							char *t = fplS32ToString(vars.slideCount, remainingStart, remainingBufLen);
+							const char *t = fplS32ToString(vars.slideCount, remainingStart, remainingBufLen);
 							if (t != nullptr) {
-								size_t addonChars = fplGetStringLength(remainingStart);
-								bufIndex += addonChars;
+								size_t addedCount = fplGetStringLength(remainingStart);
+								bufIndex += addedCount;
+							}
+						} else if (strncmp("SLIDE_NAME", varName, varLen) == 0) {
+							const char *t = vars.slideName;
+							if (t != nullptr) {
+								fplStringAppend(t, remainingStart, remainingBufLen);
+								size_t addedCount = fplGetStringLength(t);
+								bufIndex += addedCount;
 							}
 						}
 					}
@@ -1437,7 +1403,7 @@ static void RenderBackground(const Vec2f &pos, const Vec2f &size, const Backgrou
 static void RenderLabel(const LoadedFont &font, const Label &label, const SlideVariables &vars) {
 	static char tmpBuffer[4096]; // @REPLACE(tspaete): Not great using a static buffer here, find a better approach
 
-	const LabelStyle &style = label.style;
+	const TextStyle &style = label.style;
 	const char *text = ResolveText(vars, label.text, tmpBuffer, fplArrayCount(tmpBuffer));
 	float charHeight = label.fontSize;
 	size_t textLen = fplGetStringLength(label.text);
@@ -1614,7 +1580,10 @@ static void UpdateFrame(App &app, const float dt) {
 		state.currentOffset = state.targetOffset;
 	}
 
-	app.pointPos = V3f(Cosine(app.pointRotation * 0.01f) * PointDistance, Sine(app.pointRotation * 0.02f) * PointDistance, -Sine(app.pointRotation * 0.03f) * PointDistance);
+	float pointRotScaleX = 0.01f;
+	float pointRotScaleY = 0.025f;
+	float pointRotScaleZ = -0.01f;
+	app.pointPos = V3f(Cosine(app.pointRotation * pointRotScaleX) * PointDistance, -Sine(app.pointRotation * pointRotScaleY) * PointDistance, Sine(app.pointRotation * pointRotScaleZ) * PointDistance);
 
 	Vec3f direction = app.pointPos;
 	const float acceleration = 10.0f;
@@ -1823,38 +1792,43 @@ static void ReleaseApp(App &app) {
 	app.strings.ReleaseAll();
 }
 
-static Rect2f AddHeaderAndFooter(Slide *slide, const char *normalFont, const float fontSize) {
+static Rect2f AddHeaderAndFooter(Slide *slide, const HeaderDefinition &headerDef, const FooterDefinition &footerDef) {
+	const char *headerFontName = headerDef.font.name;
+	const float headerFontSize = headerDef.font.size;
+	const TextStyle &headerFontStyle = headerDef.font.style;
+	float headerHeight = headerDef.height;
+	Vec2f headerPadding = headerDef.padding;
+
+	const char *footerFontName = footerDef.font.name;
+	const float footerFontSize = footerDef.font.size;
+	const TextStyle &footerFontStyle = footerDef.font.style;
+	float footerHeight = footerDef.height;
+	Vec2f footerPadding = footerDef.padding;
+
 	float w = slide->size.w;
 	float h = slide->size.h;
 
 	Vec2f logoSize = V2f(32, 32);
-
-	float headerHeight = 24;
-	Vec2f headerPadding = V2f(2, 2);
-
-	LabelStyle lblStyle = {};
-	lblStyle.shadowColor = V4fInit(0, 0, 0, 1);
-	lblStyle.shadowOffset = V2f(1, 1);
-	lblStyle.drawShadow = true;
-	lblStyle.foregroundColor = V4fInit(1, 1, 1, 1);
 
 	Rect *rectTop = slide->AddRect(V2f(0, 0), V2f(w, headerHeight));
 	rectTop->style.background.primaryColor = RGBAToLinearRaw(119, 113, 197, 255);
 	rectTop->style.background.secondaryColor = RGBAToLinearRaw(0, 0, 0, 255);
 	rectTop->style.background.kind = BackgroundKind::GradientVertical;
 
-	Label *fplLabelTop = slide->AddLabel("Final-Platform-Layer", rectTop->pos + headerPadding, normalFont, fontSize, HorizontalAlignment::Left, VerticalAlignment::Top, lblStyle);
+	Label *fplLabelTopLeft = slide->AddLabel(headerDef.leftText, rectTop->pos + headerPadding, headerFontName, headerFontSize, HorizontalAlignment::Left, VerticalAlignment::Top, headerFontStyle);
 
 	Image *fplLogo = slide->AddImage(rectTop->pos + V2f(w - logoSize.w, 0), logoSize, ImageResources::FPLLogo128x128.name);
 
-	Rect *rectBottom = slide->AddRect(V2f(0, h - headerHeight), V2f(w, headerHeight));
+	Rect *rectBottom = slide->AddRect(V2f(0, h - footerHeight), V2f(w, footerHeight));
 	rectBottom->style.background.primaryColor = RGBAToLinearRaw(0, 0, 0, 255);
 	rectBottom->style.background.secondaryColor = RGBAToLinearRaw(119, 113, 197, 255);
 	rectBottom->style.background.kind = BackgroundKind::GradientVertical;
 
-	Label *fplLabelBottomLeft = slide->AddLabel(slide->name, rectBottom->pos + V2f(headerPadding.x, rectBottom->size.h - headerPadding.y), normalFont, fontSize, HorizontalAlignment::Left, VerticalAlignment::Bottom, lblStyle);
+	Label *fplLabelBottomLeft = slide->AddLabel(footerDef.leftText, rectBottom->pos + V2f(footerPadding.x, rectBottom->size.h - footerPadding.y), footerFontName, footerFontSize, HorizontalAlignment::Left, VerticalAlignment::Bottom, footerFontStyle);
 
-	Label *fplLabelBottomRight = slide->AddLabel("Page %SLIDE_NUM% of %SLIDE_COUNT%", rectBottom->pos + V2f(w - headerPadding.x, rectBottom->size.h - headerPadding.y), normalFont, fontSize, HorizontalAlignment::Right, VerticalAlignment::Bottom, lblStyle);
+	Label *fplLabelBottomCenter = slide->AddLabel(footerDef.centerText, rectBottom->pos + V2f(rectBottom->size.w * 0.5f, rectBottom->size.h - footerPadding.y), footerFontName, footerFontSize, HorizontalAlignment::Center, VerticalAlignment::Bottom, footerFontStyle);
+
+	Label *fplLabelBottomRight = slide->AddLabel(footerDef.rightText, rectBottom->pos + V2f(w - footerPadding.x, rectBottom->size.h - footerPadding.y), footerFontName, footerFontSize, HorizontalAlignment::Right, VerticalAlignment::Bottom, footerFontStyle);
 
 	Rect2f result = R2fInit(V2f(0, headerHeight), V2f(w, h - headerHeight * 2));
 	return(result);
@@ -1864,6 +1838,7 @@ static void UpdateSlideVariables(const Presentation &presentation, Slide &slide,
 	slide.vars = {};
 	slide.vars.slideCount = (uint32_t)presentation.slides.Count();
 	slide.vars.slideNum = slideNum;
+	slide.vars.slideName = slide.name;
 }
 
 static void UpdatePresentationVariables(Presentation &presentation) {
@@ -1944,7 +1919,7 @@ static void JumpToPrevSlide(App &app) {
 
 
 
-static void AddTextBlock(Renderer &renderer, Slide &slide, const Vec2f &offset, const char *text, const char *fontName, const float fontSize, const float lineHeight, const LabelStyle &style, const HorizontalAlignment hAlign, const VerticalAlignment vAlign) {
+static void AddTextBlock(Renderer &renderer, Slide &slide, const Vec2f &offset, const char *text, const char *fontName, const float fontSize, const float lineHeight, const TextStyle &style, const HorizontalAlignment hAlign, const VerticalAlignment vAlign) {
 	const LoadedFont *font = renderer.FindFont(fontName, fontSize);
 	Vec2f pos = offset;
 	const char *p = text;
@@ -1966,41 +1941,38 @@ static void AddTextBlock(Renderer &renderer, Slide &slide, const Vec2f &offset, 
 	}
 }
 
-struct DefaultSlideSettings {
-	LabelStyle normalStyle;
-	LabelStyle titleStyle;
+static void AddSlideFromDefinition(Renderer &renderer, Presentation &presentation, const SlideDefinition &inSlide, const PresentationDefinition &inPresentation) {
+	const char *titleFontName = inPresentation.titleFont.name;
+	const float titleFontSize = inPresentation.titleFont.size;
+	const float titleLineHeight = inPresentation.titleFont.lineScale * inPresentation.titleFont.size;
+	const TextStyle &titleStyle = inPresentation.titleFont.style;
 
-	Background background;
+	const char *normalFontName = inPresentation.normalFont.name;
+	const float normalFontSize = inPresentation.normalFont.size;
+	const float normalLineHeight = inPresentation.normalFont.lineScale * inPresentation.normalFont.size;
+	const TextStyle &normalStyle = inPresentation.normalFont.style;
 
-	const char *headerFontName;
-	const char *normalFontName;
-	const char *titleFontName;
+	const char *consoleFontName = inPresentation.consoleFont.name;
+	const float consoleFontSize = inPresentation.consoleFont.size;
+	const float consoleLineHeight = inPresentation.consoleFont.lineScale * inPresentation.consoleFont.size;
+	const TextStyle &consoleStyle = inPresentation.consoleFont.style;
 
-	float headerFontSize;
-	float normalFontSize;
-	float titleFontSize;
+	const float padding = inPresentation.padding;
 
-	float normalLineHeight;
-	float titleLineHeight;
+	Slide *slide = presentation.AddSlide(presentation.size, inSlide.name);
+	slide->background = inPresentation.background;
 
-	float padding;
-};
-
-static void AddSlideFromDefinition(Renderer &renderer, Presentation &presentation, const SlideDefinition &def, const DefaultSlideSettings &settings) {
-	Slide *slide = presentation.AddSlide(presentation.size, def.name);
-	slide->background = settings.background;
-
-	Rect2f area = AddHeaderAndFooter(slide, settings.headerFontName, settings.headerFontSize);
+	Rect2f area = AddHeaderAndFooter(slide, inPresentation.header, inPresentation.footer);
 
 	// Title
-	slide->AddLabel(slide->name, area.pos + V2f(area.size.w * 0.5f, 0), settings.titleFontName, settings.titleFontSize, HorizontalAlignment::Center, VerticalAlignment::Top, settings.titleStyle);
+	slide->AddLabel(slide->name, area.pos + V2f(area.size.w * 0.5f, 0), titleFontName, titleFontSize, HorizontalAlignment::Center, VerticalAlignment::Top, titleStyle);
 
 	// Content
 	{
-		TextBlockDefinition block = def.content;
+		TextBlockDefinition block = inSlide.content;
 
 		const char *text = block.text;
-		Vec2f blockSize = ComputeTextBlockSize(renderer, *slide, text, settings.normalFontName, settings.normalFontSize, settings.normalLineHeight);
+		Vec2f blockSize = ComputeTextBlockSize(renderer, *slide, text, normalFontName, normalFontSize, normalLineHeight);
 
 		HorizontalAlignment textAlign = HorizontalAlignment::Left;
 		VerticalAlignment vAlign = VerticalAlignment::Top;
@@ -2010,14 +1982,14 @@ static void AddSlideFromDefinition(Renderer &renderer, Presentation &presentatio
 			textAlign = HorizontalAlignment::Center;
 			blockPos += V2f((area.size.w - blockSize.w) * 0.5f, 0);
 		} else if (block.hAlign == HorizontalAlignment::Left) {
-			blockPos += V2f(settings.padding, 0);
+			blockPos += V2f(padding, 0);
 		} else if (block.hAlign == HorizontalAlignment::Right) {
-			blockPos -= V2f(settings.padding, 0);
+			blockPos -= V2f(padding, 0);
 		}
 		if (block.vAlign == VerticalAlignment::Middle) {
 			blockPos += V2f(0, (area.size.h - blockSize.h) * 0.5f);
 		} else if (block.vAlign == VerticalAlignment::Top) {
-			blockPos += V2f(0, settings.titleLineHeight);
+			blockPos += V2f(0, titleLineHeight);
 		}
 
 #if 0
@@ -2032,216 +2004,18 @@ static void AddSlideFromDefinition(Renderer &renderer, Presentation &presentatio
 		} else if (textAlign == HorizontalAlignment::Right) {
 			textPos += V2fHadamard(V2f(1, 0), blockSize);
 		}
-		AddTextBlock(renderer, *slide, textPos, text, settings.normalFontName, settings.normalFontSize, settings.normalLineHeight, settings.normalStyle, textAlign, vAlign);
-		}
+		AddTextBlock(renderer, *slide, textPos, text, normalFontName, normalFontSize, normalLineHeight, normalStyle, textAlign, vAlign);
 	}
-
-static void BuildFPLPresentation(Renderer &renderer, Presentation &presentation) {
-	float slideWidth = 1280.0f;
-	float slideHeight = 720.0f;
-	Vec2f slideSize = V2f(slideWidth, slideHeight);
-	presentation.size = slideSize;
-
-	const char *headerFont = FontResources::Arimo.name;
-	const char *normalFont = FontResources::Arimo.name;
-	const char *consoleFont = FontResources::BitStreamVerySans.name;
-
-	const float normalFontSize = 28.0f;
-	const float titleFontSize = 50.0f;
-	const float headerFontSize = 16.0f;
-
-	const float normalLineScale = 1.25f;
-	const float titleLineScale = 1.25f;
-
-	const float normalLineHeight = normalLineScale * normalFontSize;
-	const float titleLineHeight = titleLineScale * titleFontSize;
-
-	const Vec4f backColor = RGBAToLinearRaw(0, 0, 0, 255);
-	const Vec4f foreColor = RGBAToLinearRaw(255, 255, 255, 255);
-
-	const float contentPadding = 20.0f;
-
-	LabelStyle labelStyle = {};
-	labelStyle.drawShadow = true;
-	labelStyle.shadowColor = RGBAToLinearRaw(1, 84, 164, 200);
-	labelStyle.shadowOffset = V2f(2, 1);
-	labelStyle.foregroundColor = foreColor;
-
-	Background background = {};
-	background.primaryColor = backColor;
-	background.secondaryColor = RGBAToLinearRaw(15, 13, 80, 255);
-	background.kind = BackgroundKind::HalfGradientVertical;
-
-	DefaultSlideSettings slideSettings = {};
-	slideSettings.background = background;
-
-	slideSettings.normalFontSize = normalFontSize;
-	slideSettings.normalFontName = normalFont;
-	slideSettings.normalLineHeight = normalLineHeight;
-	slideSettings.normalStyle = labelStyle;
-	slideSettings.titleFontSize = titleFontSize;
-	slideSettings.titleFontName = normalFont;
-	slideSettings.titleLineHeight = titleLineHeight;
-	slideSettings.titleStyle = labelStyle;
-	slideSettings.headerFontSize = headerFontSize;
-	slideSettings.headerFontName = normalFont;
-	slideSettings.padding = contentPadding;
-
-#if 1
-	size_t slideCount = fplArrayCount(FPLSlides);
-	for (size_t slideIndex = 0; slideIndex < slideCount; ++slideIndex) {
-		SlideDefinition def = FPLSlides[slideIndex];
-		AddSlideFromDefinition(renderer, presentation, def, slideSettings);
-	}
-#endif
-
-#if 0
-	// Intro
-	{
-		Slide *slide = presentation.AddSlide(presentation.size, "Introduction");
-		slide->backgroundColor = backColor;
-
-		Rect2f area = AddHeaderAndFooter(slide, headerFont, headerFontSize);
-
-		Vec2f center = area.pos + area.size * 0.5f;
-
-		Vec2f pos;
-
-		pos = center - V2f(0, normalLineHeight * 3 * 0.5f);
-		slide->AddLabel("Introducing Final-Platform-Layer (FPL).", pos, normalFont, normalFontSize, HorizontalAlignment::Center, VerticalAlignment::Middle, labelStyle);
-		pos += V2f(0, normalLineHeight);
-		slide->AddLabel("A lightweight Platform-Abstraction-Library written in C99.", pos, normalFont, normalFontSize, HorizontalAlignment::Center, VerticalAlignment::Middle, labelStyle);
-		pos += V2f(0, normalLineHeight * 2);
-		slide->AddLabel("Created by Torsten Spaete, a professional software engineer with 20+ years of experience.", pos, normalFont, normalFontSize, HorizontalAlignment::Center, VerticalAlignment::Middle, labelStyle);
-	}
-
-	// What is a Platform-Abstraction-Library
-	{
-		Slide *slide = presentation.AddSlide(presentation.size, "What is a Platform-Abstraction-Library");
-		slide->backgroundColor = backColor;
-
-		Rect2f area = AddHeaderAndFooter(slide, normalFont, headerFontSize);
-
-		Vec2f topLeft = area.pos;
-		Vec2f center = topLeft + area.size * 0.5f;
-
-		Vec2f pos;
-
-		// Title
-		pos = topLeft + V2f(area.size.w * 0.5f, 0.0f);
-		slide->AddLabel(slide->name, pos, normalFont, titleFontSize, HorizontalAlignment::Center, VerticalAlignment::Top, labelStyle);
-
-		// Content
-		pos = center - V2f(0, normalLineHeight * 4 * 0.5f);
-		slide->AddLabel("A Platform-Abstraction-Library (or short PAL) is a library written in a low-level language - like C,", pos, normalFont, normalFontSize, HorizontalAlignment::Center, VerticalAlignment::Middle, labelStyle);
-		pos += V2f(0, normalLineHeight);
-		slide->AddLabel("that abstracts low-level systems in a platform-independent way.", pos, normalFont, normalFontSize, HorizontalAlignment::Center, VerticalAlignment::Middle, labelStyle);
-		pos += V2f(0, normalLineHeight * 2);
-		slide->AddLabel("This has the advantage of not having to deal with tons of platform/compiler specific implementation details,", pos, normalFont, normalFontSize, HorizontalAlignment::Center, VerticalAlignment::Middle, labelStyle);
-		pos += V2f(0, normalLineHeight);
-		slide->AddLabel("you have to deal with if you don´t use a PAL.", pos, normalFont, normalFontSize, HorizontalAlignment::Center, VerticalAlignment::Middle, labelStyle);
-	}
-
-	// What is FPL
-	{
-		Slide *slide = presentation.AddSlide(presentation.size, "What is FPL");
-		slide->backgroundColor = backColor;
-
-		Rect2f area = AddHeaderAndFooter(slide, normalFont, headerFontSize);
-
-		Vec2f topLeft = area.pos;
-		Vec2f center = topLeft + area.size * 0.5f;
-
-		Vec2f pos;
-
-		// Title
-		pos = topLeft + V2f(area.size.w * 0.5f, 0.0f);
-		slide->AddLabel(slide->name, pos, normalFont, titleFontSize, HorizontalAlignment::Center, VerticalAlignment::Top, labelStyle);
-
-		// Content
-		pos = topLeft + V2f(contentPadding, titleFontSize + normalFontSize);
-
-		slide->AddLabel("FPL is an all-purpose / multimedia platform abstraction library,", pos, normalFont, normalFontSize, HorizontalAlignment::Left, VerticalAlignment::Top, labelStyle);
-		pos += V2f(0, normalLineHeight);
-		slide->AddLabel("providing a powerful and easy to use API, accessing low-level systems in a platform-independent way:", pos, normalFont, normalFontSize, HorizontalAlignment::Left, VerticalAlignment::Top, labelStyle);
-		pos += V2f(0, normalLineHeight * 2);
-
-		slide->AddLabel("- Platform detection (x86/x64/Arm, Win32/Linux/Unix, etc.)", pos, normalFont, normalFontSize, HorizontalAlignment::Left, VerticalAlignment::Top, labelStyle);
-		pos += V2f(0, normalLineHeight);
-		slide->AddLabel("- Compiler detection (MSVC/GCC/Clang/Intel)", pos, normalFont, normalFontSize, HorizontalAlignment::Left, VerticalAlignment::Top, labelStyle);
-		pos += V2f(0, normalLineHeight);
-		slide->AddLabel("- Macros (Debugbreak, Assertions, CPU-Features, Memory init etc.)", pos, normalFont, normalFontSize, HorizontalAlignment::Left, VerticalAlignment::Top, labelStyle);
-		pos += V2f(0, normalLineHeight);
-		slide->AddLabel("- Dynamic library loading (.dll/.so)", pos, normalFont, normalFontSize, HorizontalAlignment::Left, VerticalAlignment::Top, labelStyle);
-		pos += V2f(0, normalLineHeight);
-		slide->AddLabel("- Single window creation and handling (Win32/X11)", pos, normalFont, normalFontSize, HorizontalAlignment::Left, VerticalAlignment::Top, labelStyle);
-		pos += V2f(0, normalLineHeight);
-		slide->AddLabel("- Event and input polling (Keyboard/Mouse/Gamepad)", pos, normalFont, normalFontSize, HorizontalAlignment::Left, VerticalAlignment::Top, labelStyle);
-		pos += V2f(0, normalLineHeight);
-		slide->AddLabel("- Video initialization and output (Software, OpenGL, etc.)", pos, normalFont, normalFontSize, HorizontalAlignment::Left, VerticalAlignment::Top, labelStyle);
-		pos += V2f(0, normalLineHeight);
-		slide->AddLabel("- Asyncronous audio playback (DirectSound, ALSA, etc.)", pos, normalFont, normalFontSize, HorizontalAlignment::Left, VerticalAlignment::Top, labelStyle);
-		pos += V2f(0, normalLineHeight);
-		slide->AddLabel("- IO (Console, Paths, Files, Directories, etc.)", pos, normalFont, normalFontSize, HorizontalAlignment::Left, VerticalAlignment::Top, labelStyle);
-		pos += V2f(0, normalLineHeight);
-		slide->AddLabel("- Memory handling with or without alignment", pos, normalFont, normalFontSize, HorizontalAlignment::Left, VerticalAlignment::Top, labelStyle);
-		pos += V2f(0, normalLineHeight);
-		slide->AddLabel("- Multithreading (Atomics, Threads, Mutexes, Conditionals, etc.)", pos, normalFont, normalFontSize, HorizontalAlignment::Left, VerticalAlignment::Top, labelStyle);
-		pos += V2f(0, normalLineHeight);
-		slide->AddLabel("- Retrieving hardware informations", pos, normalFont, normalFontSize, HorizontalAlignment::Left, VerticalAlignment::Top, labelStyle);
-		pos += V2f(0, normalLineHeight);
-		slide->AddLabel("- and many more", pos, normalFont, normalFontSize, HorizontalAlignment::Left, VerticalAlignment::Top, labelStyle);
-	}
-
-	// Motivation
-	{
-		Slide *slide = presentation.AddSlide(presentation.size, "Motivation");
-		slide->backgroundColor = backColor;
-
-		Rect2f area = AddHeaderAndFooter(slide, normalFont, headerFontSize);
-
-		Vec2f topLeft = area.pos;
-		Vec2f center = topLeft + area.size * 0.5f;
-
-		Vec2f pos;
-
-		// Title
-		pos = topLeft + V2f(area.size.w * 0.5f, 0.0f);
-		slide->AddLabel(slide->name, pos, normalFont, titleFontSize, HorizontalAlignment::Center, VerticalAlignment::Top, labelStyle);
-
-		// Content
-		pos = topLeft + V2f(contentPadding, titleFontSize + normalFontSize);
-
-		slide->AddLabel("C/C++ has very limited access to the underlying platform,", pos, normalFont, normalFontSize, HorizontalAlignment::Left, VerticalAlignment::Top, labelStyle);
-		pos += V2f(0, normalLineHeight);
-		slide->AddLabel("so you have to use third-party libraries to get access to low level systems.", pos, normalFont, normalFontSize, HorizontalAlignment::Left, VerticalAlignment::Top, labelStyle);
-		pos += V2f(0, normalLineHeight * 2);
-
-		slide->AddLabel("The pre-existing platform abstraction libraries have a lot of issues:", pos, normalFont, normalFontSize, HorizontalAlignment::Left, VerticalAlignment::Top, labelStyle);
-		pos += V2f(0, normalLineHeight);
-		slide->AddLabel("- Massive in file count and/or size", pos, normalFont, normalFontSize, HorizontalAlignment::Left, VerticalAlignment::Top, labelStyle);
-		pos += V2f(0, normalLineHeight);
-		slide->AddLabel("- Massive in number of translation units", pos, normalFont, normalFontSize, HorizontalAlignment::Left, VerticalAlignment::Top, labelStyle);
-		pos += V2f(0, normalLineHeight);
-		slide->AddLabel("- Massive in memory usage and number of allocations", pos, normalFont, normalFontSize, HorizontalAlignment::Left, VerticalAlignment::Top, labelStyle);
-		pos += V2f(0, normalLineHeight);
-		slide->AddLabel("- Some are built on top of third-party dependencies", pos, normalFont, normalFontSize, HorizontalAlignment::Left, VerticalAlignment::Top, labelStyle);
-		pos += V2f(0, normalLineHeight);
-		slide->AddLabel("- Without configuration and/or buildsystems you cant compile it", pos, normalFont, normalFontSize, HorizontalAlignment::Left, VerticalAlignment::Top, labelStyle);
-		pos += V2f(0, normalLineHeight);
-		slide->AddLabel("- Statically linking is madness or not supported at all", pos, normalFont, normalFontSize, HorizontalAlignment::Left, VerticalAlignment::Top, labelStyle);
-		pos += V2f(0, normalLineHeight);
-		slide->AddLabel("- Forces you to either static or runtime linking", pos, normalFont, normalFontSize, HorizontalAlignment::Left, VerticalAlignment::Top, labelStyle);
-		pos += V2f(0, normalLineHeight);
-		slide->AddLabel("- It takes forever to compile", pos, normalFont, normalFontSize, HorizontalAlignment::Left, VerticalAlignment::Top, labelStyle);
-		pos += V2f(0, normalLineHeight);
-		slide->AddLabel("- Including the full source is either impossible or extremely cumbersome", pos, normalFont, normalFontSize, HorizontalAlignment::Left, VerticalAlignment::Top, labelStyle);
-		pos += V2f(0, normalLineHeight);
-		slide->AddLabel("- No control over the allocated memory, at max you can overwrite malloc/free", pos, normalFont, normalFontSize, HorizontalAlignment::Left, VerticalAlignment::Top, labelStyle);
-		pos += V2f(0, normalLineHeight);
-		slide->AddLabel("- They are heavily bloated", pos, normalFont, normalFontSize, HorizontalAlignment::Left, VerticalAlignment::Top, labelStyle);
 }
-#endif
+
+static void BuildPresentation(const PresentationDefinition &inPresentation, Renderer &renderer, Presentation &outPresentation) {
+	Vec2f slideSize = inPresentation.slideSize;
+	outPresentation.size = slideSize;
+	size_t slideCount = inPresentation.slideCount;
+	for (size_t slideIndex = 0; slideIndex < slideCount; ++slideIndex) {
+		const SlideDefinition &slideDef = inPresentation.slides[slideIndex];
+		AddSlideFromDefinition(renderer, outPresentation, slideDef, inPresentation);
+	}
 }
 
 static void QuaternionTests() {
@@ -2265,6 +2039,9 @@ int main(int argc, char **argv) {
 			glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
 			glEnable(GL_SCISSOR_TEST);
+
+			glEnable(GL_LINE_SMOOTH);
+			glEnable(GL_POINT_SMOOTH);
 
 			glDisable(GL_TEXTURE_2D);
 
@@ -2296,7 +2073,7 @@ int main(int argc, char **argv) {
 			app.renderer.AddFontFromFile("c:/windows/fonts/arial.ttf", "Arial", 24);
 #endif
 
-			BuildFPLPresentation(app.renderer, app.presentation);
+			BuildPresentation(FPLPresentation, app.renderer, app.presentation);
 
 			UpdatePresentationVariables(app.presentation);
 
