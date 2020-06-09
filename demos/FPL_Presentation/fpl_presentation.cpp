@@ -2064,8 +2064,13 @@ int main(int argc, char **argv) {
 			app.renderer.AddFontFromResource(FontResources::BitStreamVerySans, 32.0f);
 			app.renderer.AddFontFromResource(FontResources::BitStreamVerySans, 48.0f);
 			app.renderer.AddFontFromResource(FontResources::Arimo, 16.0f);
+			app.renderer.AddFontFromResource(FontResources::Arimo, 24.0f);
 			app.renderer.AddFontFromResource(FontResources::Arimo, 32.0f);
+			app.renderer.AddFontFromResource(FontResources::Arimo, 40.0f);
 			app.renderer.AddFontFromResource(FontResources::Arimo, 48.0f);
+			app.renderer.AddFontFromResource(FontResources::Arimo, 56.0f);
+			app.renderer.AddFontFromResource(FontResources::Arimo, 64.0f);
+			app.renderer.AddFontFromResource(FontResources::Arimo, 72.0f);
 
 			app.renderer.AddImageFromResource(ImageResources::FPLLogo128x128);
 
