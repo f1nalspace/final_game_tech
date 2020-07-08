@@ -227,6 +227,7 @@ EXPORTS
     avpriv_mpa_bitrate_tab
     avpriv_mpa_freq_tab
     avpriv_mpeg4audio_get_config
+    avpriv_mpeg4audio_get_config2
     avpriv_mpeg4audio_sample_rates
     avpriv_mpegaudio_decode_header
     avpriv_pix_fmt_bps_avi
