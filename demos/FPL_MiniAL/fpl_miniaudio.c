@@ -15,6 +15,11 @@ Author:
 	Torsten Spaete
 
 Changelog:
+	## 2020-07-10
+	- Upgraded to latest miniaudio.h (No more access to internal fields required)
+	- Better playback format detection
+	- Small changes to console output
+
 	## 2019-10-31
 	- Use final_audiodemo.h to prevent code duplication from FPL_Audio demo
 
@@ -36,7 +41,7 @@ License:
 
 // Set this to one to use miniaudio.h
 // Set this to zero to use FPL internal audio
-#define OPT_USE_MINIAUDIO 1
+#define OPT_USE_MINIAUDIO 0
 
 #define FPL_NO_WINDOW
 #define FPL_IMPLEMENTATION
@@ -55,6 +60,23 @@ License:
 #	define MA_USE_RUNTIME_LINKING_FOR_PTHREAD
 #	include <miniaudio/miniaudio.h>
 #endif
+
+typedef struct PlaybackAudioFormat {
+	char driverName[FPL_MAX_NAME_LENGTH];
+	fplAudioDeviceFormat deviceFormat;
+} PlaybackAudioFormat;
+
+typedef struct AudioContext {
+#if OPT_USE_MINIAUDIO
+	ma_format maTargtFormat;
+	ma_device_config maDeviceConfig;
+	ma_device maDevice;
+	ma_context maContext;
+#endif
+	AudioSystem system;
+	AudioSineWaveData sineWave;
+	PlaybackAudioFormat playbackFormat;
+} AudioContext;
 
 static const float PI32 = 3.14159265359f;
 
@@ -94,39 +116,20 @@ static ma_format MapFPLFormatToMALFormat(const fplAudioFormatType format) {
 }
 
 static void AudioPlayback_MiniAudio(ma_device* pDevice, void* pOutput, const void* pInput, ma_uint32 frameCount) {
-	AudioSystem *audioSys = (AudioSystem *)pDevice->pUserData;
-	fplAudioDeviceFormat outFormat = fplZeroInit;
-	outFormat.channels = pDevice->playback.channels;
-	outFormat.sampleRate = pDevice->sampleRate;
-	outFormat.type = MapMALFormatToFPLFormat(pDevice->playback.format);
-	outFormat.bufferSizeInFrames = pDevice->playback.internalBufferSizeInFrames;
-	fplAssert(outFormat.type != fplAudioFormatType_None);
-	AudioSystemWriteFrames(audioSys, pOutput, &outFormat, frameCount);
+	AudioContext *audioCtx = (AudioContext *)pDevice->pUserData;
+	AudioSystem *audioSys = &audioCtx->system;
+	AudioSystemWriteFrames(audioSys, pOutput, &audioCtx->playbackFormat.deviceFormat, frameCount);
 }
 #else
 static uint32_t AudioPlayback_FPL(const fplAudioDeviceFormat *outFormat, const uint32_t maxFrameCount, void *outputSamples, void *userData) {
-	AudioSystem *audioSys = (AudioSystem *)userData;
-	AudioSampleIndex result = AudioSystemWriteFrames(audioSys, outputSamples, outFormat, maxFrameCount);
+	AudioContext *audioCtx = (AudioContext *)userData;
+	AudioSystem *audioSys = &audioCtx->system;
+	AudioFrameIndex result = AudioSystemWriteFrames(audioSys, outputSamples, outFormat, maxFrameCount);
 	return(result);
 }
 #endif
 
-typedef struct AudioContext {
-#if OPT_USE_MINIAUDIO
-	ma_format maTargtFormat;
-	ma_device_config maDeviceConfig;
-	ma_device maDevice;
-	ma_context maContext;
-#else
-#endif
-	AudioSystem system;
-	AudioSineWaveData sineWave;
-} AudioContext;
 
-typedef struct PlaybackAudioFormat {
-	char driverName[FPL_MAX_NAME_LENGTH];
-	fplAudioDeviceFormat deviceFormat;
-} PlaybackAudioFormat;
 
 static void ReleaseAudioContext(AudioContext *context) {
 	fplAssert(context != fpl_null);
@@ -149,7 +152,7 @@ static bool InitAudioContext(AudioContext *context, const fplAudioTargetFormat t
 	context->maDeviceConfig.playback.format = context->maTargtFormat;
 	context->maDeviceConfig.sampleRate = targetFormat.sampleRate;
 	context->maDeviceConfig.dataCallback = AudioPlayback_MiniAudio;
-	context->maDeviceConfig.pUserData = &context->system;
+	context->maDeviceConfig.pUserData = context;
 	
 	ma_backend malBackends[] = {
 		ma_backend_dsound,
@@ -162,7 +165,10 @@ static bool InitAudioContext(AudioContext *context, const fplAudioTargetFormat t
 	
 	ma_result maResult;
 
-	maResult = ma_context_init(malBackends, malBackendCount, NULL, &context->maContext);
+	//maResult = ma_context_init(malBackends, malBackendCount, NULL, &context->maContext);
+
+	maResult = ma_context_init(NULL, 0, NULL, &context->maContext);
+
 	if (maResult != MA_SUCCESS) {
 		return false;
 	}
@@ -179,8 +185,10 @@ static bool InitAudioContext(AudioContext *context, const fplAudioTargetFormat t
 	return(true);
 }
 
-static bool StartPlayback(AudioContext *context, PlaybackAudioFormat *playbackFormat) {
+static bool StartPlayback(AudioContext *context) {
 	fplAssert(context != fpl_null);
+
+	PlaybackAudioFormat *playbackFormat = &context->playbackFormat;
 	fplAssert(playbackFormat != fpl_null);
 	
 	fplClearStruct(playbackFormat);
@@ -198,8 +206,7 @@ static bool StartPlayback(AudioContext *context, PlaybackAudioFormat *playbackFo
 	actualDeviceFormat->periods = context->maDevice.playback.internalPeriods;
 	actualDeviceFormat->sampleRate = context->maDevice.sampleRate;
 	actualDeviceFormat->type = MapMALFormatToFPLFormat(context->maDevice.playback.format);
-	actualDeviceFormat->bufferSizeInFrames = context->maDevice.playback.internalBufferSizeInFrames;
-	actualDeviceFormat->bufferSizeInBytes = fplGetAudioBufferSizeInBytes(actualDeviceFormat->type, actualDeviceFormat->channels, actualDeviceFormat->bufferSizeInFrames);
+	actualDeviceFormat->bufferSizeInFrames = context->maDevice.playback.internalPeriodSizeInFrames * context->maDevice.playback.internalPeriods;
 #else
 	fplAudioResultType audioRes = fplPlayAudio();
 	if (audioRes != fplAudioResultType_Success) {
@@ -232,9 +239,6 @@ int main(int argc, char **args) {
 	// Use default audio format from FPL as target format
 	fplAudioTargetFormat targetFormat;
 	fplSetDefaultAudioTargetFormat(&targetFormat);
-	targetFormat.channels = 2;
-	targetFormat.type = fplAudioFormatType_S16;
-	targetFormat.sampleRate = 44100;
 
 	int result = -1;
 
@@ -253,7 +257,7 @@ int main(int argc, char **args) {
 	settings.audio.targetFormat = targetFormat;
 	settings.audio.startAuto = false;
 	settings.audio.stopAuto = false;
-	settings.audio.userData = &audioContext->system;
+	settings.audio.userData = audioContext;
 	settings.audio.clientReadCallback = AudioPlayback_FPL;
 	initFlags |= fplInitFlags_Audio;
 #endif
@@ -273,15 +277,21 @@ int main(int argc, char **args) {
 	}
 	
 	// Start audio playback
-	PlaybackAudioFormat playbackFormat = fplZeroInit;
-	if (!StartPlayback(audioContext, &playbackFormat)) {
+	if (!StartPlayback(audioContext)) {
 		fplConsoleFormatError("Failed starting audio playback!\n");
 		goto releaseResources;
 	}
 	
 	// Print output infos
-	const char *formatName = fplGetAudioFormatTypeString(playbackFormat.deviceFormat.type);
-	fplConsoleFormatOut("Playing %lu audio sources (%s, %s, %lu Hz, %lu channels)\n", audioContext->system.playItems.count, playbackFormat.driverName, formatName, playbackFormat.deviceFormat.sampleRate, playbackFormat.deviceFormat.channels);
+	PlaybackAudioFormat *playbackFormat = &audioContext->playbackFormat;
+	const char *formatName = fplGetAudioFormatTypeString(playbackFormat->deviceFormat.type);
+	const char *systemName;
+#if OPT_USE_MINIAUDIO
+	systemName = "MiniAudio";
+#else
+	systemName = "FPL";
+#endif
+	fplConsoleFormatOut("Playing %lu audio sources (%s, %s, %s, %lu Hz, %lu channels, %lu frames, %lu periods)\n", audioContext->system.playItems.count, systemName, playbackFormat->driverName, formatName, playbackFormat->deviceFormat.sampleRate, playbackFormat->deviceFormat.channels, playbackFormat->deviceFormat.bufferSizeInFrames, playbackFormat->deviceFormat.periods);
 
 	// Wait for any key presses
 	fplConsoleFormatOut("Press any key to stop playback\n");

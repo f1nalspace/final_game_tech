@@ -84,8 +84,9 @@ typedef struct AudioStream {
 
 #define MAX_AUDIO_STATIC_BUFFER_CHANNEL_COUNT 2
 #define MAX_AUDIO_STATIC_BUFFER_FRAME_COUNT 4096
+#define MAX_AUDIO_STATIC_BUFFER_MAX_TYPE_SIZE 4
 typedef struct AudioStaticBuffer {
-	float samples[MAX_AUDIO_STATIC_BUFFER_CHANNEL_COUNT * MAX_AUDIO_STATIC_BUFFER_FRAME_COUNT];
+	uint8_t samples[MAX_AUDIO_STATIC_BUFFER_CHANNEL_COUNT * MAX_AUDIO_STATIC_BUFFER_FRAME_COUNT * MAX_AUDIO_STATIC_BUFFER_MAX_TYPE_SIZE];
 	AudioFrameIndex maxFrameCount;
 } AudioStaticBuffer;
 
@@ -363,7 +364,7 @@ extern AudioSource *AudioSystemLoadFileSource(AudioSystem *audioSys, const char 
 		return fpl_null;
 	}
 	fplAssert(source->buffer.bufferSize >= loadedData.samplesSize);
-	fplMemoryCopy(loadedData.samples, loadedData.samplesSize, source->buffer.samples);
+	fplMemoryCopy(loadedData.isamples, loadedData.samplesSize, source->buffer.samples);
 	source->id = fplAtomicIncrementSize(&audioSys->sources.idCounter);
 
 	FreeWave(&loadedData);
@@ -617,7 +618,7 @@ typedef struct AudioUpsampleResult {
 } AudioUpsampleResult;
 
 static AudioUpsampleResult AudioSimpleUpSampling(const AudioFrameIndex minFrameCount, const AudioFrameIndex maxFrameCount, const fplAudioFormatType inFormat, const AudioChannelIndex inChannelCount, const AudioHertz inSampleRate, const void *inSamples, const AudioHertz outSampleRate, float *outSamples, const float volume) {
-	// Simple Upsampling (2x, 4x, 6x, 8x etc.)
+	// Simple Upsampling (2x, 4x, 6x, 8x etc.) -> Duplicate frames
 	fplAssert(outSampleRate > inSampleRate);
 	fplAssert((outSampleRate % inSampleRate) == 0);
 	const uint32_t upsamplingFactor = outSampleRate / inSampleRate;
@@ -640,7 +641,7 @@ static AudioUpsampleResult AudioSimpleUpSampling(const AudioFrameIndex minFrameC
 }
 
 static AudioUpsampleResult AudioSimpleDownSampling(const AudioFrameIndex minFrameCount, const AudioFrameIndex maxFrameCount, const fplAudioFormatType inFormat, const AudioChannelIndex inChannelCount, const AudioHertz inSampleRate, const void *inSamples, const AudioHertz outSampleRate, float *outSamples, const float volume) {
-	// Simple Downsampling (1/2, 1/4, 1/6, 1/8, etc.)
+	// Simple Downsampling (1/2, 1/4, 1/6, 1/8, etc.) -> Skipping frames
 	fplAssert(inSampleRate > outSampleRate);
 	fplAssert((inSampleRate % outSampleRate) == 0);
 	const uint32_t downsamplingFactor = inSampleRate / outSampleRate;
@@ -685,9 +686,9 @@ static AudioFrameIndex MixPlayItems(AudioSystem *audioSys, const AudioFrameIndex
 		// In the future we want to interpolate that, smoothly fade in/out.
 		const float volume = item->volume * audioSys->masterVolume;
 
-		float *dspOutSamples = audioSys->dspOutBuffer.samples;
+		float *dspOutSamples = (float *)audioSys->dspOutBuffer.samples;
 
-		float *outSamples = audioSys->mixingBuffer.samples;
+		float *outSamples = (float *)audioSys->mixingBuffer.samples;
 
 		const AudioSource *source = item->source;
 		const AudioFormat *format = &item->source->format;
@@ -738,12 +739,12 @@ static AudioFrameIndex MixPlayItems(AudioSystem *audioSys, const AudioFrameIndex
 			}
 		}
 
-		AudioSampleIndex dspOutFrameCount = (AudioSampleIndex)(dspOutSamples - audioSys->dspOutBuffer.samples) / inChannelCount;
+		AudioSampleIndex dspOutFrameCount = (AudioSampleIndex)(dspOutSamples - (float *)audioSys->dspOutBuffer.samples) / inChannelCount;
 
-		AudioSampleIndex writtenSampleCount = MixSamples(outSamples, outChannelCount, audioSys->dspOutBuffer.samples, inChannelCount, dspOutFrameCount);
+		AudioSampleIndex writtenSampleCount = MixSamples(outSamples, outChannelCount, (float *)audioSys->dspOutBuffer.samples, inChannelCount, dspOutFrameCount);
 		outSamples += writtenSampleCount;
 
-		AudioSampleIndex outSampleCount = (AudioSampleIndex)(outSamples - audioSys->mixingBuffer.samples);
+		AudioSampleIndex outSampleCount = (AudioSampleIndex)(outSamples - (float *)audioSys->mixingBuffer.samples);
 		maxOutSampleCount = fplMax(maxOutSampleCount, outSampleCount);
 
 		// Remove item when it is finished, or restart it for the next run.
@@ -804,7 +805,7 @@ static bool FillConversionBuffer(AudioSystem *audioSys, const AudioFrameIndex ma
 	AudioFrameIndex mixFrameCount = MixPlayItems(audioSys, maxFrameCount);
 
 	for (AudioFrameIndex i = 0; i < mixFrameCount; ++i) {
-		float *inMixingSamples = audioSys->mixingBuffer.samples + i * outChannelCount;
+		float *inMixingSamples = (float *)audioSys->mixingBuffer.samples + i * outChannelCount;
 		AudioSampleIndex writtenSamples = ConvertSamplesFromF32(inMixingSamples, outChannelCount, outSamples, outChannelCount, outFormat);
 		outSamples += writtenSamples * outBytesPerSample;
 		audioSys->conversionBuffer.framesRemaining += writtenSamples / outChannelCount;

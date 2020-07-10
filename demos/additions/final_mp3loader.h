@@ -90,8 +90,8 @@ extern bool LoadMP3FromBuffer(const uint8_t *buffer, const size_t bufferSize, PC
 
 		size_t sampleMemorySize = outWave->bytesPerSample * outWave->channelCount * outWave->frameCount;
 		outWave->samplesSize = sampleMemorySize;
-		outWave->samples = (uint8_t *)fplMemoryAllocate(sampleMemorySize);
-		fplMemoryCopy(fileInfo.buffer, sampleMemorySize, outWave->samples);
+		outWave->isamples = (uint8_t *)fplMemoryAllocate(sampleMemorySize);
+		fplMemoryCopy(fileInfo.buffer, sampleMemorySize, outWave->isamples);
 		outWave->isValid = true;
 		result = true;
 	}

@@ -2239,6 +2239,11 @@ static uint32_t AudioReadCallback(const fplAudioDeviceFormat *nativeFormat, cons
 		uint32_t outputSampleStride = fplGetAudioFrameSizeInBytes(nativeFormat->type, nativeFormat->channels);
 		uint32_t maxOutputSampleBufferSize = outputSampleStride * frameCount;
 
+		uint32_t nativeBufferSizeInBytes = fplGetAudioBufferSizeInBytes(nativeFormat->type, nativeFormat->channels, nativeFormat->bufferSizeInFrames);
+
+		fplAudioDeviceFormat *targetFormat = &state->audio.audioTarget;
+		uint32_t targetBufferSizeInBytes = fplGetAudioBufferSizeInBytes(targetFormat->type, targetFormat->channels, targetFormat->bufferSizeInFrames);
+
 		uint32_t remainingFrameCount = frameCount;
 		while (remainingFrameCount > 0) {
 			if (state->isPaused) {
@@ -2345,7 +2350,7 @@ static uint32_t AudioReadCallback(const fplAudioDeviceFormat *nativeFormat, cons
 		// Update audio clock
 		if (!isnan(audio->audioClock)) {
 			uint32_t writtenSize = result * outputSampleStride;
-			double pts = audio->audioClock - (double)(nativeFormat->periods * nativeFormat->bufferSizeInBytes + writtenSize) / state->audio.audioTarget.bufferSizeInBytes;
+			double pts = audio->audioClock - (double)(nativeFormat->periods * nativeBufferSizeInBytes + writtenSize) / (double)targetBufferSizeInBytes;
 			SetClockAt(audio->clock, pts, audio->audioClockSerial, audioCallbackTime / (double)AV_TIME_BASE);
 			SyncClockToSlave(state->externalClock, audio->clock);
 		}
@@ -3252,6 +3257,8 @@ static bool InitializeAudio(PlayerState &state, const char *mediaFilePath, const
 		audio.decoder.start_pts_tb = audio.stream.stream->time_base;
 	}
 
+	uint32_t nativeBufferSizeInBytes = fplGetAudioBufferSizeInBytes(nativeAudioFormat.type, nativeAudioFormat.channels, nativeAudioFormat.bufferSizeInFrames);
+
 	AVSampleFormat targetSampleFormat = MapAudioFormatType(nativeAudioFormat.type);
 	// @TODO(final): Map target audio channels to channel layout
 	int targetChannelCount = nativeAudioFormat.channels;
@@ -3264,7 +3271,7 @@ static bool InitializeAudio(PlayerState &state, const char *mediaFilePath, const
 	audio.audioTarget.sampleRate = targetSampleRate;
 	audio.audioTarget.type = nativeAudioFormat.type;
 	audio.audioTarget.bufferSizeInFrames = ffmpeg.av_samples_get_buffer_size(nullptr, audio.audioTarget.channels, 1, targetSampleFormat, 1);
-	audio.audioTarget.bufferSizeInBytes = ffmpeg.av_samples_get_buffer_size(nullptr, audio.audioTarget.channels, audio.audioTarget.sampleRate, targetSampleFormat, 1);
+	uint32_t targetBufferSizeInBytes = fplGetAudioBufferSizeInBytes(audio.audioTarget.type, audio.audioTarget.channels, audio.audioTarget.bufferSizeInFrames);
 
 	AVSampleFormat inputSampleFormat = audioCodexCtx->sample_fmt;
 	int inputChannelCount = audioCodexCtx->channels;
@@ -3277,13 +3284,13 @@ static bool InitializeAudio(PlayerState &state, const char *mediaFilePath, const
 	audio.audioSource.sampleRate = inputSampleRate;
 	audio.audioSource.type = MapAVSampleFormat(inputSampleFormat);
 	audio.audioSource.periods = nativeAudioFormat.periods;
-	audio.audioSource.bufferSizeInBytes = ffmpeg.av_samples_get_buffer_size(nullptr, inputChannelCount, inputSampleRate, inputSampleFormat, 1);
 	audio.audioSource.bufferSizeInFrames = ffmpeg.av_samples_get_buffer_size(nullptr, inputChannelCount, 1, inputSampleFormat, 1);
+	uint32_t sourceBufferSizeInBytes = fplGetAudioBufferSizeInBytes(audio.audioSource.type, audio.audioSource.channels, audio.audioSource.bufferSizeInFrames);
 
 	// Compute AVSync audio threshold
 	audio.audioDiffAbgCoef = exp(log(0.01) / AV_AUDIO_DIFF_AVG_NB);
 	audio.audioDiffAvgCount = 0;
-	audio.audioDiffThreshold = nativeAudioFormat.bufferSizeInBytes / (double)audio.audioTarget.bufferSizeInBytes;
+	audio.audioDiffThreshold = nativeBufferSizeInBytes / (double)targetBufferSizeInBytes;
 
 	// Create software resample context and initialize
 	audio.softwareResampleCtx = ffmpeg.swr_alloc_set_opts(nullptr,

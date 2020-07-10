@@ -75,8 +75,8 @@ extern bool LoadVorbisFromBuffer(const uint8_t *buffer, const size_t bufferSize,
 
 	size_t sampleMemorySize = outWave->bytesPerSample * outWave->channelCount * outWave->frameCount;
 	outWave->samplesSize = sampleMemorySize;
-	outWave->samples = (uint8_t *)fplMemoryAllocate(sampleMemorySize);
-	fplMemoryCopy(output, sampleMemorySize, outWave->samples);
+	outWave->isamples = (uint8_t *)fplMemoryAllocate(sampleMemorySize);
+	fplMemoryCopy(output, sampleMemorySize, outWave->isamples);
 	outWave->isValid = true;
 
 	free(output);

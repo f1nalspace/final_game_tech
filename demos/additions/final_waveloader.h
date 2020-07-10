@@ -157,8 +157,8 @@ extern bool LoadWaveFromBuffer(const uint8_t *buffer, const size_t bufferSize, P
 						size_t sampleMemorySize = bytesPerSample * channelCount * frameCount;
 						fplAssert(sampleMemorySize == dataSize);
 						outWave->samplesSize = sampleMemorySize;
-						outWave->samples = (uint8_t *)fplMemoryAllocate(sampleMemorySize);
-						fplMemoryCopy(data, sampleMemorySize, outWave->samples);
+						outWave->isamples = (uint8_t *)fplMemoryAllocate(sampleMemorySize);
+						fplMemoryCopy(data, sampleMemorySize, outWave->isamples);
 						outWave->isValid = true;
 						result = true;
 					} break;
@@ -196,8 +196,8 @@ extern bool LoadWaveFromFile(const char *filePath, PCMWaveData *outWave) {
 
 extern void FreeWave(PCMWaveData *wave) {
 	if(wave != fpl_null) {
-		if(wave->samples != fpl_null) {
-			fplMemoryFree(wave->samples);
+		if(wave->isamples != fpl_null) {
+			fplMemoryFree(wave->isamples);
 		}
 		fplMemoryClear(wave, sizeof(*wave));
 	}

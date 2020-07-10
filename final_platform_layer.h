@@ -133,13 +133,19 @@ SOFTWARE.
 	@tableofcontents
 
 	## v0.9.5 beta
+	- New: Added enum fplAudioDefaultFields
+	- New: Added field defaultFields to fplAudioDeviceFormat struct
+	- New: Added C++/11 detection (FPL_IS_CPP11)
+	- New: Added enum fplAudioLatencyMode to fplAudioTargetFormat
+
 	- Fixed: fplS32ToString() was not returning the last written character
 	- Fixed: fplStringAppendLen() was not returning the last written character
 	- Fixed: Fixed several warnings for doxygen
 
-	- New: Added C++/11 detection (FPL_IS_CPP11)
-
 	- Changed: FPL_MAX_THREAD_COUNT and FPL_MAX_SIGNAL_COUNT can now be overriden by the user
+	- Changed: Removed redundant field bufferSizeInBytes from fplAudioDeviceFormat struct
+	- Changed: Simplified audio system default values initialization
+	- Changed: Use default audio buffer size based on set fplAudioLatencyMode in fplAudioTargetFormat
 
 	## v0.9.4 beta
 
@@ -3239,37 +3245,67 @@ typedef enum fplAudioFormatType {
 //! Defines the last @ref fplAudioFormatType value
 #define FPL_LAST_AUDIOFORMATTYPE fplAudioFormatType_F64
 
+//! An enumeration of audio default fields
+typedef enum fplAudioDefaultFields {
+	//! No default fields
+	fplAudioDefaultFields_None = 0,
+	//! Buffer size is default
+	fplAudioDefaultFields_BufferSize = 1 << 0,
+	//! Samples per seconds is default
+	fplAudioDefaultFields_SampleRate = 1 << 1,
+	//! Number of channels is default
+	fplAudioDefaultFields_Channels = 1 << 2,
+	//! Number of periods is default
+	fplAudioDefaultFields_Periods = 1 << 3,
+	//! Audio format is default
+	fplAudioDefaultFields_Type = 1 << 4,
+} fplAudioDefaultFields;
+//! fplAudioDefaultFields operator overloads for C++
+FPL_ENUM_AS_FLAGS_OPERATORS(fplAudioDefaultFields);
+
+//! An enumeration of audio latency modes
+typedef enum fplAudioLatencyMode {
+	//! Conservative latency
+	fplAudioLatencyMode_Conservative = 0,
+	//! Low latency
+	fplAudioLatencyMode_Low,
+} fplAudioLatencyMode;
+
 //! A structure containing audio device format runtime properties, such as type, samplerate, channels, etc.
 typedef struct fplAudioDeviceFormat {
 	//! Buffer size in frames
 	uint32_t bufferSizeInFrames;
-	//! Buffer size in bytes
-	uint32_t bufferSizeInBytes;
 	//! Samples per seconds
 	uint32_t sampleRate;
 	//! Number of channels
 	uint32_t channels;
 	//! Number of periods
 	uint32_t periods;
-	//! Audio format
+	//! Format
 	fplAudioFormatType type;
+	//! Is exclusive mode prefered
+	fpl_b32 preferExclusiveMode;
+	//! Default fields
+	fplAudioDefaultFields defaultFields;
 } fplAudioDeviceFormat;
 
 //! A structure containing audio target format configurations, such as type, samplerate, channels, etc.
 typedef struct fplAudioTargetFormat {
-	//! Samples per seconds
+	//! Samples per seconds (uses default of 44100 when zero)
 	uint32_t sampleRate;
-	//! Number of channels
+	//! Number of channels (uses default of 2 when zero)
 	uint32_t channels;
 	//! Buffer size in frames (First choice)
 	uint32_t bufferSizeInFrames;
 	//! Buffer size in milliseconds (Second choice)
 	uint32_t bufferSizeInMilliseconds;
-	//! Number of periods
+	//! Number of periods (uses default of 3 when zero)
 	uint32_t periods;
-	//! Audio format
+	//! Audio format (uses default of S16 when zero)
 	fplAudioFormatType type;
-	//! Is exclude mode prefered
+	//! Latency mode
+	fplAudioLatencyMode latencyMode;
+	//! Is exclusive mode prefered
 	fpl_b32 preferExclusiveMode;
 } fplAudioTargetFormat;
 
@@ -8195,6 +8231,16 @@ typedef struct fpl__SetupWindowCallbacks {
 #define FPL_COMMON_DEFINED
 
 //
+// Audio constants
+//
+static const uint32_t FPL__DEFAULT_AUDIO_SAMPLERATE = 44100;
+static const fplAudioFormatType FPL__DEFAULT_AUDIO_FORMAT = fplAudioFormatType_S16;
+static const uint32_t FPL__DEFAULT_AUDIO_CHANNELS = 2;
+static const uint32_t FPL__DEFAULT_AUDIO_PERIODS = 3;
+static const uint32_t FPL__DEFAULT_AUDIO_BUFFERSIZE_LOWLATENCY_IN_MSECS = 10;
+static const uint32_t FPL__DEFAULT_AUDIO_BUFFERSIZE_CONSERVATIVE_IN_MSECS = 25;
+
+//
 // Macros
 //
 
@@ -9546,10 +9592,19 @@ fpl_common_api void fplSetDefaultVideoSettings(fplVideoSettings *video) {
 fpl_common_api void fplSetDefaultAudioTargetFormat(fplAudioTargetFormat *targetFormat) {
 	FPL__CheckArgumentNullNoRet(targetFormat);
 	fplClearStruct(targetFormat);
-	targetFormat->preferExclusiveMode = false;
-	targetFormat->channels = 2;
-	targetFormat->sampleRate = 44100;
-	targetFormat->type = fplAudioFormatType_S16;
+	
+#if defined(FPL__ENABLE_AUDIO)
+	fplAudioTargetFormat emptyFormat = fplZeroInit;
+	fplAudioDeviceFormat deviceFormat = fplZeroInit;
+	fplConvertAudioTargetFormatToDeviceFormat(&emptyFormat, &deviceFormat);
+
+	targetFormat->preferExclusiveMode = deviceFormat.preferExclusiveMode;
+	targetFormat->channels = deviceFormat.channels;
+	targetFormat->sampleRate = deviceFormat.sampleRate;
+	targetFormat->periods = deviceFormat.periods;
+	targetFormat->type = deviceFormat.type;
+	targetFormat->bufferSizeInFrames = deviceFormat.bufferSizeInFrames;
+#endif // FPL__ENABLE_AUDIO
 }
 
 fpl_common_api void fplSetDefaultAudioSettings(fplAudioSettings *audio) {
@@ -17819,7 +17874,7 @@ fpl_internal bool fpl__AudioReleaseDirectSound(const fpl__CommonAudioState *comm
 	return true;
 }
 
-fpl_internal fplAudioResultType fpl__AudioInitDirectSound(const fplAudioSettings *audioSettings, const fplAudioTargetFormat *targetFormat, fpl__CommonAudioState *commonAudio, fpl__DirectSoundAudioState *dsoundState) {
+fpl_internal fplAudioResultType fpl__AudioInitDirectSound(const fplAudioSettings *audioSettings, const fplAudioDeviceFormat *targetFormat, fpl__CommonAudioState *commonAudio, fpl__DirectSoundAudioState *dsoundState) {
 #ifdef __cplusplus
 	GUID guid_IID_IDirectSoundNotify = FPL__IID_IDirectSoundNotify;
 #else
@@ -17947,8 +18002,8 @@ fpl_internal fplAudioResultType fpl__AudioInitDirectSound(const fplAudioSettings
 
 	// @NOTE(final): We divide up our playback buffer into this number of periods and let directsound notify us when one of it needs to play.
 	internalFormat.periods = fplMax(2, fplMin(targetFormat->periods, 4));
-	internalFormat.bufferSizeInFrames = fplGetAudioBufferSizeInFrames(internalFormat.sampleRate, targetFormat->bufferSizeInMilliseconds);
-	internalFormat.bufferSizeInBytes = fplGetAudioBufferSizeInBytes(internalFormat.type, internalFormat.channels, internalFormat.bufferSizeInFrames);
+	internalFormat.bufferSizeInFrames = targetFormat->bufferSizeInFrames;
+	uint32_t bufferSizeInBytes = fplGetAudioBufferSizeInBytes(internalFormat.type, internalFormat.channels, internalFormat.bufferSizeInFrames);
 
 	commonAudio->internalFormat = internalFormat;
 
@@ -17960,16 +18015,16 @@ fpl_internal fplAudioResultType fpl__AudioInitDirectSound(const fplAudioSettings
 		internalFormatTypeName,
 		internalFormat.periods,
 		internalFormat.bufferSizeInFrames,
-		internalFormat.bufferSizeInBytes);
+		bufferSizeInBytes);
 
 // Create secondary buffer
 	DSBUFFERDESC descDS = fplZeroInit;
 	descDS.dwSize = sizeof(DSBUFFERDESC);
 	descDS.dwFlags = DSBCAPS_CTRLPOSITIONNOTIFY | DSBCAPS_GLOBALFOCUS | DSBCAPS_GETCURRENTPOSITION2;
-	descDS.dwBufferBytes = (DWORD)internalFormat.bufferSizeInBytes;
+	descDS.dwBufferBytes = (DWORD)bufferSizeInBytes;
 	descDS.lpwfxFormat = (WAVEFORMATEX *)&waveFormat;
 	if (FAILED(IDirectSound_CreateSoundBuffer(dsoundState->directSound, &descDS, &dsoundState->secondaryBuffer, fpl_null))) {
-		FPL__DSOUND_INIT_ERROR(fplAudioResultType_Failed, "Failed creating secondary sound buffer with buffer size of '%u' bytes", internalFormat.bufferSizeInBytes);
+		FPL__DSOUND_INIT_ERROR(fplAudioResultType_Failed, "Failed creating secondary sound buffer with buffer size of '%u' bytes", bufferSizeInBytes);
 	}
 
 	// Notifications are set up via a DIRECTSOUNDNOTIFY object which is retrieved from the buffer.
@@ -17978,7 +18033,7 @@ fpl_internal fplAudioResultType fpl__AudioInitDirectSound(const fplAudioSettings
 	}
 
 	// Setup notifications
-	DWORD periodSizeInBytes = internalFormat.bufferSizeInBytes / internalFormat.periods;
+	DWORD periodSizeInBytes = bufferSizeInBytes / internalFormat.periods;
 	DSBPOSITIONNOTIFY notifyPoints[FPL__DIRECTSOUND_MAX_PERIODS];
 	for (uint32_t i = 0; i < internalFormat.periods; ++i) {
 		dsoundState->notifyEvents[i] = CreateEventA(fpl_null, false, false, fpl_null);
@@ -18170,6 +18225,30 @@ fpl_internal void fpl__AudioRunMainLoopDirectSound(const fpl__CommonAudioState *
 //
 // ############################################################################
 #if defined(FPL__ENABLE_AUDIO_ALSA)
+
+// NOTE(final): ALSA on Raspberry, due to high latency requires large audio buffers, so below we have a table mapped from device names to a scaling factor.
+typedef struct fpl__AlsaBufferScale {
+	const char *deviceName;
+	float scale;
+} fpl__AlsaBufferScale;
+
+fpl_globalvar fpl__AlsaBufferScale fpl__globalAlsaBufferScales[] = {
+	fplStructInit(fpl__AlsaBufferScale, "*bcm2835 IEC958/HDMI*", 2.0f),
+	fplStructInit(fpl__AlsaBufferScale, "*bcm2835 ALSA*", 2.0f),
+};
+
+fpl_internal float fpl__AlsaGetBufferScale(const char *deviceName) {
+	if (fplGetStringLength(deviceName) > 0) {
+		for (int i = 0; i < fplArrayCount(fpl__globalAlsaBufferScales); ++i) {
+			const char *testDeviceName = fpl__globalAlsaBufferScales[i].deviceName;
+			if (fplIsStringMatchWildcard(deviceName, testDeviceName)) {
+				float scale = fpl__globalAlsaBufferScales[i].scale;
+				return(scale);
+			}
+		}
+	}
+	return(1.0f);
+}
 
 // @TODO(final/ALSA): Remove ALSA include when runtime linking is enabled
 #	include <alsa/asoundlib.h>
@@ -18658,7 +18737,7 @@ fpl_internal fplAudioFormatType fpl__MapAlsaFormatToAudioFormat(snd_pcm_format_t
 	}
 }
 
-fpl_internal fplAudioResultType fpl__AudioInitAlsa(const fplAudioSettings *audioSettings, const fplAudioTargetFormat *targetFormat, fpl__CommonAudioState *commonAudio, fpl__AlsaAudioState *alsaState) {
+fpl_internal fplAudioResultType fpl__AudioInitAlsa(const fplAudioSettings *audioSettings, const fplAudioDeviceFormat *targetFormat, fpl__CommonAudioState *commonAudio, fpl__AlsaAudioState *alsaState) {
 #	define FPL__ALSA_INIT_ERROR(ret, format, ...) do { \
 		FPL__ERROR(FPL__MODULE_AUDIO_ALSA, format, ## __VA_ARGS__); \
 		fpl__AudioReleaseAlsa(commonAudio, alsaState); \
@@ -18950,12 +19029,6 @@ fpl_internal uint32_t fpl__GetAudioDevicesAlsa(fpl__AlsaAudioState *alsaState, f
 //
 // %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 #if defined(FPL__ENABLE_AUDIO)
-
-static const uint32_t FPL__DEFAULT_AUDIO_SAMPLERATE = 44100;
-static const fplAudioFormatType FPL__DEFAULT_AUDIO_FORMAT = fplAudioFormatType_S16;
-static const uint32_t FPL__DEFAULT_AUDIO_CHANNELS = 2;
-static const uint32_t FPL__DEFAULT_AUDIO_PERIODS = 3;
-static const uint32_t FPL__DEFAULT_AUDIO_BUFFERSIZE_IN_MSECS = 25;
 
 #define FPL__AUDIO_RESULT_TYPE_COUNT FPL__ENUM_COUNT(FPL_FIRST_AUDIO_RESULT_TYPE, FPL_LAST_AUDIO_RESULT_TYPE)
 fpl_globalvar const char *fpl__global_audioResultTypeNameTable[] = {
@@ -19329,24 +19402,8 @@ fpl_internal fplAudioResultType fpl__InitAudio(const fplAudioSettings *audioSett
 		return fplAudioResultType_DriverAlreadyInitialized;
 	}
 
-	// Store audio target format, but initialize not set values
-	fplAudioTargetFormat targetFormat = audioSettings->targetFormat;
-	if (targetFormat.type == fplAudioFormatType_None) {
-		targetFormat.type = FPL__DEFAULT_AUDIO_FORMAT;
-	}
-	if (targetFormat.channels == 0) {
-		targetFormat.channels = FPL__DEFAULT_AUDIO_CHANNELS;
-	}
-	if (targetFormat.sampleRate == 0) {
-		targetFormat.sampleRate = FPL__DEFAULT_AUDIO_SAMPLERATE;
-	}
-	if ((targetFormat.bufferSizeInMilliseconds == 0) &&
-		(targetFormat.bufferSizeInFrames == 0)) {
-		targetFormat.bufferSizeInMilliseconds = FPL__DEFAULT_AUDIO_BUFFERSIZE_IN_MSECS;
-	}
-	if (targetFormat.periods == 0) {
-		targetFormat.periods = FPL__DEFAULT_AUDIO_PERIODS;
-	}
+	fplAudioDeviceFormat actualTargetFormat = fplZeroInit;
+	fplConvertAudioTargetFormatToDeviceFormat(&audioSettings->targetFormat, &actualTargetFormat);
 
 	audioState->common.clientReadCallback = audioSettings->clientReadCallback;
 	audioState->common.clientUserData = audioSettings->userData;
@@ -19394,7 +19451,7 @@ fpl_internal fplAudioResultType fpl__InitAudio(const fplAudioSettings *audioSett
 #		if defined(FPL__ENABLE_AUDIO_DIRECTSOUND)
 			case fplAudioDriverType_DirectSound:
 			{
-				initResult = fpl__AudioInitDirectSound(audioSettings, &targetFormat, &audioState->common, &audioState->dsound);
+				initResult = fpl__AudioInitDirectSound(audioSettings, &actualTargetFormat, &audioState->common, &audioState->dsound);
 				if (initResult != fplAudioResultType_Success) {
 					fpl__AudioReleaseDirectSound(&audioState->common, &audioState->dsound);
 				}
@@ -19404,7 +19461,7 @@ fpl_internal fplAudioResultType fpl__InitAudio(const fplAudioSettings *audioSett
 #		if defined(FPL__ENABLE_AUDIO_ALSA)
 			case fplAudioDriverType_Alsa:
 			{
-				initResult = fpl__AudioInitAlsa(audioSettings, &targetFormat, &audioState->common, &audioState->alsa);
+				initResult = fpl__AudioInitAlsa(audioSettings, &actualTargetFormat, &audioState->common, &audioState->alsa);
 				if (initResult != fplAudioResultType_Success) {
 					fpl__AudioReleaseAlsa(&audioState->common, &audioState->alsa);
 				}
@@ -19847,13 +19904,54 @@ fpl_common_api uint32_t fplGetAudioBufferSizeInBytes(const fplAudioFormatType fo
 fpl_common_api void fplConvertAudioTargetFormatToDeviceFormat(const fplAudioTargetFormat *inFormat, fplAudioDeviceFormat *outFormat) {
 	FPL__CheckArgumentNullNoRet(inFormat);
 	FPL__CheckArgumentNullNoRet(outFormat);
+
 	fplClearStruct(outFormat);
-	outFormat->channels = inFormat->channels;
-	outFormat->sampleRate = inFormat->sampleRate;
-	outFormat->type = inFormat->type;
-	outFormat->periods = inFormat->periods;
-	outFormat->bufferSizeInFrames = fplGetAudioBufferSizeInFrames(inFormat->sampleRate, inFormat->bufferSizeInMilliseconds);
-	outFormat->bufferSizeInBytes = fplGetAudioBufferSizeInBytes(inFormat->type, inFormat->channels, outFormat->bufferSizeInFrames);
+
+	// Channels
+	if (inFormat->channels > 0) {
+		outFormat->channels = inFormat->channels;
+	} else {
+		outFormat->channels = FPL__DEFAULT_AUDIO_CHANNELS;
+		outFormat->defaultFields |= fplAudioDefaultFields_Channels;
+	}
+
+	// Sample rate
+	if (inFormat->sampleRate > 0) {
+		outFormat->sampleRate = inFormat->sampleRate;
+	} else {
+		outFormat->sampleRate = FPL__DEFAULT_AUDIO_SAMPLERATE;
+		outFormat->defaultFields |= fplAudioDefaultFields_SampleRate;
+	}
+
+	// Format
+	if (outFormat->type != fplAudioFormatType_None) {
+		outFormat->type = inFormat->type;
+	} else {
+		outFormat->type = FPL__DEFAULT_AUDIO_FORMAT;
+		outFormat->defaultFields |= fplAudioDefaultFields_Type;
+	}
+
+	// Periods
+	if (outFormat->periods > 0) {
+		outFormat->periods = inFormat->periods;
+	} else {
+		outFormat->periods = FPL__DEFAULT_AUDIO_PERIODS;
+		outFormat->defaultFields |= fplAudioDefaultFields_Periods;
+	}
+
+	// Buffer size
+	if (inFormat->bufferSizeInFrames > 0) {
+		outFormat->bufferSizeInFrames = inFormat->bufferSizeInFrames;
+	} else if (inFormat->bufferSizeInMilliseconds > 0) {
+		outFormat->bufferSizeInFrames = fplGetAudioBufferSizeInFrames(inFormat->sampleRate, inFormat->bufferSizeInMilliseconds);
+	} else {
+		uint32_t bufferSizeInMilliseconds = (inFormat->latencyMode == fplAudioLatencyMode_Conservative) ? FPL__DEFAULT_AUDIO_BUFFERSIZE_CONSERVATIVE_IN_MSECS : FPL__DEFAULT_AUDIO_BUFFERSIZE_LOWLATENCY_IN_MSECS;
+		outFormat->bufferSizeInFrames = fplGetAudioBufferSizeInFrames(inFormat->sampleRate, bufferSizeInMilliseconds);
+		outFormat->defaultFields |= fplAudioDefaultFields_BufferSize;
+	}
+
+	// Exclusive mode
+	outFormat->preferExclusiveMode = inFormat->preferExclusiveMode;
 }
 
 fpl_common_api fplAudioResultType fplStopAudio() {

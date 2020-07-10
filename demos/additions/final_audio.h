@@ -7,11 +7,15 @@
 #define _USE_MATH_DEFINES 1
 #endif
 #include <math.h> // sin, cos, M_PI
+#include <float.h> // EPSILON
+
+#define FFT_CORE_ONLY
+#include <fft/fft.hpp>
 
 typedef uint32_t AudioFrameIndex; // The number or index of frames
 typedef uint32_t AudioSampleIndex; // The number or index of samples
 typedef uint32_t AudioChannelIndex; // The number or index of channels
-typedef uint32_t AudioHertz; // The number of index of Hz
+typedef uint32_t AudioHertz; // The number or index of Hz
 typedef size_t AudioSize; // The size in bytes
 
 typedef struct PCMWaveData {
@@ -27,8 +31,8 @@ typedef struct PCMWaveData {
 	AudioChannelIndex channelCount;
 	//! Size of samples in bytes
 	AudioSize samplesSize;
-	//! Interleaved samples (Max of 2 channels)
-	void *samples;
+	//! Samples (Interleaved)
+	void *isamples;
 	//! Last error string
 	char lastError[1024];
 	//! Is valid boolean flag
@@ -37,15 +41,14 @@ typedef struct PCMWaveData {
 
 static void FreeWaveData(PCMWaveData *wave) {
 	if (wave != fpl_null) {
-		if (wave->samples != fpl_null) {
-			fplMemoryFree(wave->samples);
+		if (wave->isamples != fpl_null) {
+			fplMemoryFree(wave->isamples);
 		}
 		fplMemoryClear(wave, sizeof(*wave));
 	}
 }
 
 static void PushWaveError(PCMWaveData *outWave, const char *format, ...) {
-
 	outWave->lastError[0] = 0;
 	va_list argList;
 	va_start(argList, format);
@@ -57,7 +60,14 @@ static void PushWaveError(PCMWaveData *outWave, const char *format, ...) {
 
 //
 // Forward and Backward FFT
+// Ported from: https://github.com/wareya/fft/blob/master/fft.hpp
+// Original source cannot handle structs as in/out, so we had to port it (Why wasn`t there a stride).
 //
+typedef enum FFTDirection {
+	FFTDirection_Forward = 0,
+	FFTDirection_Backward = 1,
+} FFTDirection;
+
 typedef struct FFTDouble {
 	double real;
 	double imag;
@@ -70,30 +80,28 @@ typedef struct FFT {
 	AudioSampleIndex size;
 } FFT;
 
-static void FFTCore(const FFTDouble *in, const size_t size, const size_t gap, FFTDouble *out, const bool isForward) {
+static void FFTCore(const FFTDouble *in, const size_t size, const size_t gap, FFTDouble *out, const FFTDirection direction) {
 	if (size == 1) {
 		out[0] = in[0];
 	} else {
-		// This algorithm works by extending the concept of how two-bin DFTs (discrete fourier transform) work, in order to correlate decimated DFTs, recursively.
-		// No, I'm not your guy if you want a proof of why it works, but it does.
-		FFTCore(in, size / 2, gap * 2, out, isForward);
-		FFTCore(&in[gap], size / 2, gap * 2, &out[size / 2], isForward);
-		// non-combed decimated output to non-combed correlated output
+		FFTCore(in, size / 2, gap * 2, out, direction);
+		FFTCore(&in[gap], size / 2, gap * 2, &out[size / 2], direction);
+		double imagScale = (direction == FFTDirection_Forward) ? -1 : 1;
 		for (size_t i = 0; i < size / 2; ++i) {
+			// Terms
 			double a_real = out[i].real;
 			double a_imag = out[i].imag;
 			double b_real = out[i + size / 2].real;
 			double b_imag = out[i + size / 2].imag;
-
 			double twiddle_real = cos(2 * M_PI * i / size);
-			double twiddle_imag = sin(2 * M_PI * i / size) * (isForward ? -1 : 1);
-			// complex multiplication (vector angle summing and length multiplication)
+			double twiddle_imag = sin(2 * M_PI * i / size) * imagScale;
+			// Complex multiplication (vector angle summing and length multiplication)
 			double bias_real = b_real * twiddle_real - b_imag * twiddle_imag;
 			double bias_imag = b_imag * twiddle_real + b_real * twiddle_imag;
-			// real output (sum of real parts)
+			// Real output (sum of real parts)
 			out[i].real = a_real + bias_real;
 			out[i + size / 2].real = a_real - bias_real;
-			// imag output (sum of imaginary parts)
+			// Imaginary output (sum of imaginary parts)
 			out[i].imag = a_imag + bias_imag;
 			out[i + size / 2].imag = a_imag - bias_imag;
 		}
@@ -121,15 +129,25 @@ static void HalfNormalizeFFT(FFTDouble *values, const size_t size) {
 }
 
 static void ForwardFFT(const FFTDouble *in, const size_t size, const bool normalized, FFTDouble *out) {
-	FFTCore(in, size, 1, out, true);
+	FFTCore(in, size, 1, out, FFTDirection_Forward);
 	if (normalized)
 		HalfNormalizeFFT(out, size);
 }
 
 static void BackwardFFT(const FFTDouble *in, const size_t size, const bool normalized, FFTDouble *out) {
-	FFTCore(in, size, 1, out, false);
+	FFTCore(in, size, 1, out, FFTDirection_Backward);
 	if (normalized)
 		HalfNormalizeFFT(out, size);
+}
+
+inline bool FFTScalarEquals(const double a, const double b) {
+	static const double FFT_EPSILON = 0.00001;
+	return fabs(a - b) < FFT_EPSILON;
+}
+
+inline bool FFTDoubleEquals(const double expectedReal, const double expectedImag, const double actualReal, const double actualImag) {
+	bool result = FFTScalarEquals(expectedReal, actualReal) && FFTScalarEquals(expectedImag, actualImag);
+	return(result);
 }
 
 static void FFTTest() {
@@ -150,7 +168,24 @@ static void FFTTest() {
 	for (int i = 0; i < 8; ++i)
 		dataIn[i] = fplStructInit(FFTDouble, data[i], 0.0);
 	FFTDouble dataOut[8] = { 0 };
-	FFTCore(dataIn, 8, 1, dataOut, true); // Forward
+	FFTCore(dataIn, 8, 1, dataOut, FFTDirection_Forward);
+
+	fplAssert(FFTDoubleEquals(4.0, 0.0, dataOut[0].real, dataOut[0].imag));
+	fplAssert(FFTDoubleEquals(1.0, -2.41421, dataOut[1].real, dataOut[1].imag));
+	fplAssert(FFTDoubleEquals(0.0, 0.0, dataOut[2].real, dataOut[2].imag));
+	fplAssert(FFTDoubleEquals(1.0, -0.414214, dataOut[3].real, dataOut[3].imag));
+	fplAssert(FFTDoubleEquals(0.0, 0.0, dataOut[4].real, dataOut[4].imag));
+	fplAssert(FFTDoubleEquals(1.0, 0.414214, dataOut[5].real, dataOut[5].imag));
+	fplAssert(FFTDoubleEquals(0.0, 0.0, dataOut[6].real, dataOut[6].imag));
+	fplAssert(FFTDoubleEquals(1.0, 2.41421, dataOut[7].real, dataOut[7].imag));
+}
+
+fpl_inline float AmplitudeToDecibel(const float amplitude) {
+	return 20.0f * log10f(amplitude);
+}
+
+fpl_inline float DecibelToAmplitude(const float dB) {
+	return powf(10.0f, dB / 20.0f);
 }
 
 #endif // FINAL_AUDIO_H
