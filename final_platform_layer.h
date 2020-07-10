@@ -146,6 +146,8 @@ SOFTWARE.
 	- Changed: Removed redundant field bufferSizeInBytes from fplAudioDeviceFormat struct
 	- Changed: Simplified audio system default values initialization
 	- Changed: Use default audio buffer size based on set fplAudioLatencyMode in fplAudioTargetFormat
+	
+	- Changed: [ALSA] Introduced audio buffer scaling for bad latency devices
 
 	## v0.9.4 beta
 
@@ -18250,6 +18252,11 @@ fpl_internal float fpl__AlsaGetBufferScale(const char *deviceName) {
 	return(1.0f);
 }
 
+fpl_internal uint32_t fpl__AlsaScaleBufferSize(const uint32_t bufferSize, const float scale) {
+	uint32_t result = fplMax(1, (uint32_t)(bufferSize * scale));
+	return(result);
+}
+
 #if defined(FPL__ANONYMOUS_ALSA_HEADERS)
 typedef void snd_pcm_t;
 typedef void snd_pcm_format_mask_t;
@@ -18416,10 +18423,10 @@ typedef FPL__ALSA_FUNC_snd_pcm_drop(fpl__alsa_func_snd_pcm_drop);
 typedef FPL__ALSA_FUNC_snd_device_name_hint(fpl__alsa_func_snd_device_name_hint);
 #define FPL__ALSA_FUNC_snd_device_name_get_hint(name) char *name(const void *hint, const char *id)
 typedef FPL__ALSA_FUNC_snd_device_name_get_hint(fpl__alsa_func_snd_device_name_get_hint);
-#define FPL__ALSA_FUNC_snd_card_get_index(name) int name(const char *name)
-typedef FPL__ALSA_FUNC_snd_card_get_index(fpl__alsa_func_snd_card_get_index);
 #define FPL__ALSA_FUNC_snd_device_name_free_hint(name) int name(void **hints)
 typedef FPL__ALSA_FUNC_snd_device_name_free_hint(fpl__alsa_func_snd_device_name_free_hint);
+#define FPL__ALSA_FUNC_snd_card_get_index(name) int name(const char *name)
+typedef FPL__ALSA_FUNC_snd_card_get_index(fpl__alsa_func_snd_card_get_index);
 #define FPL__ALSA_FUNC_snd_pcm_mmap_begin(name) int name(snd_pcm_t *pcm, const snd_pcm_channel_area_t **areas, snd_pcm_uframes_t *offset, snd_pcm_uframes_t *frames)
 typedef FPL__ALSA_FUNC_snd_pcm_mmap_begin(fpl__alsa_func_snd_pcm_mmap_begin);
 #define FPL__ALSA_FUNC_snd_pcm_mmap_commit(name) snd_pcm_sframes_t name(snd_pcm_t *pcm, snd_pcm_uframes_t offset, snd_pcm_uframes_t frames)
@@ -18434,6 +18441,12 @@ typedef FPL__ALSA_FUNC_snd_pcm_avail(fpl__alsa_func_snd_pcm_avail);
 typedef FPL__ALSA_FUNC_snd_pcm_avail_update(fpl__alsa_func_snd_pcm_avail_update);
 #define FPL__ALSA_FUNC_snd_pcm_wait(name) int name(snd_pcm_t *pcm, int timeout)
 typedef FPL__ALSA_FUNC_snd_pcm_wait(fpl__alsa_func_snd_pcm_wait);
+#define FPL__ALSA_FUNC_snd_pcm_info_sizeof(name) size_t name(void)
+typedef FPL__ALSA_FUNC_snd_pcm_info_sizeof(fpl__alsa_func_snd_pcm_info_sizeof);
+#define FPL__ALSA_FUNC_snd_pcm_info(name) int name(snd_pcm_t *handle, snd_pcm_info_t *info)
+typedef FPL__ALSA_FUNC_snd_pcm_info(fpl__alsa_func_snd_pcm_info);
+#define FPL__ALSA_FUNC_snd_pcm_info_get_name(name) const char* name(const snd_pcm_info_t *obj)
+typedef FPL__ALSA_FUNC_snd_pcm_info_get_name(fpl__alsa_func_snd_pcm_info_get_name);
 
 typedef struct fpl__AlsaAudioApi {
 	void *libHandle;
@@ -18471,8 +18484,8 @@ typedef struct fpl__AlsaAudioApi {
 	fpl__alsa_func_snd_pcm_drop *snd_pcm_drop;
 	fpl__alsa_func_snd_device_name_hint *snd_device_name_hint;
 	fpl__alsa_func_snd_device_name_get_hint *snd_device_name_get_hint;
-	fpl__alsa_func_snd_card_get_index *snd_card_get_index;
 	fpl__alsa_func_snd_device_name_free_hint *snd_device_name_free_hint;
+	fpl__alsa_func_snd_card_get_index *snd_card_get_index;
 	fpl__alsa_func_snd_pcm_mmap_begin *snd_pcm_mmap_begin;
 	fpl__alsa_func_snd_pcm_mmap_commit *snd_pcm_mmap_commit;
 	fpl__alsa_func_snd_pcm_recover *snd_pcm_recover;
@@ -18480,6 +18493,9 @@ typedef struct fpl__AlsaAudioApi {
 	fpl__alsa_func_snd_pcm_avail *snd_pcm_avail;
 	fpl__alsa_func_snd_pcm_avail_update *snd_pcm_avail_update;
 	fpl__alsa_func_snd_pcm_wait *snd_pcm_wait;
+	fpl__alsa_func_snd_pcm_info_sizeof *snd_pcm_info_sizeof;
+	fpl__alsa_func_snd_pcm_info *snd_pcm_info;
+	fpl__alsa_func_snd_pcm_info_get_name *snd_pcm_info_get_name;
 } fpl__AlsaAudioApi;
 
 typedef struct fpl__AlsaAudioState {
@@ -18544,8 +18560,8 @@ fpl_internal bool fpl__LoadAlsaApi(fpl__AlsaAudioApi *alsaApi) {
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_ALSA, libHandle, libName, alsaApi, fpl__alsa_func_snd_pcm_drop, snd_pcm_drop);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_ALSA, libHandle, libName, alsaApi, fpl__alsa_func_snd_device_name_hint, snd_device_name_hint);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_ALSA, libHandle, libName, alsaApi, fpl__alsa_func_snd_device_name_get_hint, snd_device_name_get_hint);
-			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_ALSA, libHandle, libName, alsaApi, fpl__alsa_func_snd_card_get_index, snd_card_get_index);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_ALSA, libHandle, libName, alsaApi, fpl__alsa_func_snd_device_name_free_hint, snd_device_name_free_hint);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_ALSA, libHandle, libName, alsaApi, fpl__alsa_func_snd_card_get_index, snd_card_get_index);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_ALSA, libHandle, libName, alsaApi, fpl__alsa_func_snd_pcm_mmap_begin, snd_pcm_mmap_begin);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_ALSA, libHandle, libName, alsaApi, fpl__alsa_func_snd_pcm_mmap_commit, snd_pcm_mmap_commit);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_ALSA, libHandle, libName, alsaApi, fpl__alsa_func_snd_pcm_recover, snd_pcm_recover);
@@ -18553,6 +18569,9 @@ fpl_internal bool fpl__LoadAlsaApi(fpl__AlsaAudioApi *alsaApi) {
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_ALSA, libHandle, libName, alsaApi, fpl__alsa_func_snd_pcm_avail, snd_pcm_avail);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_ALSA, libHandle, libName, alsaApi, fpl__alsa_func_snd_pcm_avail_update, snd_pcm_avail_update);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_ALSA, libHandle, libName, alsaApi, fpl__alsa_func_snd_pcm_wait, snd_pcm_wait);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_ALSA, libHandle, libName, alsaApi, fpl__alsa_func_snd_pcm_info_sizeof, snd_pcm_info_sizeof);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_ALSA, libHandle, libName, alsaApi, fpl__alsa_func_snd_pcm_info, snd_pcm_info);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_ALSA, libHandle, libName, alsaApi, fpl__alsa_func_snd_pcm_info_get_name, snd_pcm_info_get_name);
 			alsaApi->libHandle = libHandle;
 			result = true;
 		} while (0);
@@ -18853,7 +18872,7 @@ fpl_internal fplAudioResultType fpl__AudioInitAlsa(const fplAudioSettings *audio
 	snd_pcm_stream_t stream = SND_PCM_STREAM_PLAYBACK;
 	int openMode = SND_PCM_NO_AUTO_RESAMPLE | SND_PCM_NO_AUTO_CHANNELS | SND_PCM_NO_AUTO_FORMAT;
 	if (fplGetStringLength(deviceInfo.id.alsa) == 0) {
-		const char *defaultDeviceNames[16];
+		const char *defaultDeviceNames[16] = fplZeroInit;
 		int defaultDeviceCount = 0;
 		defaultDeviceNames[defaultDeviceCount++] = "default";
 		if (!targetFormat->preferExclusiveMode) {
@@ -18888,6 +18907,69 @@ fpl_internal fplAudioResultType fpl__AudioInitAlsa(const fplAudioSettings *audio
 			FPL__ALSA_INIT_ERROR(fplAudioResultType_NoDeviceFound, "PCM audio device by id '%s' not found!", forcedDeviceId);
 		}
 		fplCopyString(forcedDeviceId, deviceName, fplArrayCount(deviceName));
+	}
+	
+	//
+	// Buffer sizes
+	//
+	// Some audio devices have high latency, so using the default buffer size will not work.
+	// We have to scale the buffer sizes for special devices, such as broadcom audio (Raspberry Pi)
+	// See fpl__AlsaGetBufferScale for details
+	// Idea comes from miniaudio, which does the same thing - so the code is almost identically here
+	//
+	float bufferSizeScaleFactor = 1.0f;
+	if ((targetFormat->defaultFields & fplAudioDefaultFields_BufferSize) == fplAudioDefaultFields_BufferSize) {
+		// TODO(final): Do not allocate snd_pcm_info_t on the stack, use temporary memory instead
+		size_t pcmInfoSize = alsaApi->snd_pcm_info_sizeof();
+		snd_pcm_info_t *pcmInfo = fplStackAllocate(pcmInfoSize);
+		if (pcmInfo == fpl_null) {
+			FPL__ALSA_INIT_ERROR(fplAudioResultType_OutOfMemory, "Out of stack memory for snd_pcm_info_t!");
+		}
+		
+		// Query device name
+		if (alsaApi->snd_pcm_info(alsaState->pcmDevice, pcmInfo) == 0) {
+			const char* deviceName = alsaApi->snd_pcm_info_get_name(pcmInfo);
+			if (deviceName != fpl_null) {
+				if (fplIsStringEqual("default", deviceName)) {
+					// The device name "default" is useless for buffer-scaling, so we search for the real device name in the hint-table
+					char** ppDeviceHints;
+					if (alsaApi->snd_device_name_hint(-1, "pcm", (void***)&ppDeviceHints) == 0) {
+						char** ppNextDeviceHint = ppDeviceHints;
+						
+						while (*ppNextDeviceHint != fpl_null) {
+							char* hintName = alsaApi->snd_device_name_get_hint(*ppNextDeviceHint, "NAME");
+							char* hintDesc = alsaApi->snd_device_name_get_hint(*ppNextDeviceHint, "DESC");
+							char* hintIOID = alsaApi->snd_device_name_get_hint(*ppNextDeviceHint, "IOID");
+	
+							bool foundDevice = false;
+							if (hintIOID == fpl_null || fplIsStringEqual(hintIOID, "Output")) {
+								if (fplIsStringEqual(hintName, deviceName)) {
+									// We found the default device and can now get the scale for the description
+									bufferSizeScaleFactor = fpl__AlsaGetBufferScale(hintDesc);
+									foundDevice = true;
+								}
+							}
+	
+							// Unfortunatly the hint strings are malloced, so we have to free it :(
+							free(hintName);
+							free(hintDesc);
+							free(hintIOID);
+							
+							++ppNextDeviceHint;
+	
+							if (foundDevice) {
+								break;
+							}
+						}
+						
+						alsaApi->snd_device_name_free_hint((void**)ppDeviceHints);
+					}
+				} else {
+					bufferSizeScaleFactor = fpl__AlsaGetBufferScale(deviceName);
+				}
+			}
+		}
+		
 	}
 
 	//
@@ -18981,20 +19063,28 @@ fpl_internal fplAudioResultType fpl__AudioInitAlsa(const fplAudioSettings *audio
 
 	// @NOTE(final): The caller is responsible to convert to the sample rate FPL expects, so we disable any resampling
 	alsaApi->snd_pcm_hw_params_set_rate_resample(alsaState->pcmDevice, hardwareParams, 0);
-	unsigned int internalSampleRate = targetFormat->sampleRate;
-	if (alsaApi->snd_pcm_hw_params_set_rate_near(alsaState->pcmDevice, hardwareParams, &internalSampleRate, 0) < 0) {
-		FPL__ALSA_INIT_ERROR(fplAudioResultType_Failed, "Failed setting PCM sample rate '%lu' for device '%s'!", internalSampleRate, deviceName);
+	unsigned int actualSampleRate = targetFormat->sampleRate;
+	fplAssert(actualSampleRate > 0);
+	if (alsaApi->snd_pcm_hw_params_set_rate_near(alsaState->pcmDevice, hardwareParams, &actualSampleRate, 0) < 0) {
+		FPL__ALSA_INIT_ERROR(fplAudioResultType_Failed, "Failed setting PCM sample rate '%lu' for device '%s'!", actualSampleRate, deviceName);
 	}
-	internalFormat.sampleRate = internalSampleRate;
+	internalFormat.sampleRate = actualSampleRate;
 
 	//
-	// Buffer size
+	// Buffer size + Scaling
 	//
-	snd_pcm_uframes_t actualBufferSize = targetFormat->bufferSizeInFrames;
+	snd_pcm_uframes_t actualBufferSize;
+	if ((targetFormat->defaultFields & fplAudioDefaultFields_BufferSize) == fplAudioDefaultFields_BufferSize) {
+		actualBufferSize = fpl__AlsaScaleBufferSize(targetFormat->bufferSizeInFrames, bufferSizeScaleFactor);
+	} else {
+		actualBufferSize = targetFormat->bufferSizeInFrames;
+	}
+	fplAssert(actualBufferSize > 0);
 	if (alsaApi->snd_pcm_hw_params_set_buffer_size_near(alsaState->pcmDevice, hardwareParams, &actualBufferSize) < 0) {
 		FPL__ALSA_INIT_ERROR(fplAudioResultType_Failed, "Failed setting PCM buffer size '%lu' for device '%s'!", actualBufferSize, deviceName);
 	}
 	internalFormat.bufferSizeInFrames = actualBufferSize;
+
 	uint32_t bufferSizeInBytes = fplGetAudioBufferSizeInBytes(internalFormat.type, internalFormat.channels, internalFormat.bufferSizeInFrames);
 
 	//
