@@ -151,7 +151,7 @@ extern void AudioSystemSetMasterVolume(AudioSystem *audioSys, const float newMas
 extern AudioSource *AudioSystemAllocateSource(AudioSystem *audioSys, const AudioChannelIndex channels, const AudioHertz sampleRate, const fplAudioFormatType type, const AudioFrameIndex frameCount);
 extern AudioSource *AudioSystemLoadFileSource(AudioSystem *audioSys, const char *filePath);
 
-extern AudioSampleIndex AudioSystemWriteSamples(AudioSystem *audioSys, void *outSamples, const fplAudioDeviceFormat *outFormat, const AudioFrameIndex frameCount);
+extern AudioFrameIndex AudioSystemWriteFrames(AudioSystem *audioSys, void *outSamples, const fplAudioDeviceFormat *outFormat, const AudioFrameIndex frameCount);
 
 extern uint64_t AudioSystemPlaySource(AudioSystem *audioSys, const AudioSource *source, const bool repeat, const float volume);
 extern void AudioSystemStopSource(AudioSystem *audioSys, const uint64_t playId);
@@ -627,13 +627,9 @@ static AudioUpsampleResult AudioSimpleUpSampling(const AudioFrameIndex minFrameC
 	const size_t inSampleStride = inBytesPerSample * inChannelCount;
 	AudioUpsampleResult result = fplZeroInit;
 	for (AudioFrameIndex i = 0; i < inFrameCount; ++i) {
-		float tempSamples[MAX_AUDIO_STATIC_BUFFER_CHANNEL_COUNT];
-		for (AudioChannelIndex inChannelIndex = 0; inChannelIndex < inChannelCount; ++inChannelIndex) {
-			tempSamples[inChannelIndex] = ConvertToF32(inSamplesU8, inChannelIndex, inFormat) * volume;
-		}
 		for (uint32_t f = 0; f < upsamplingFactor; ++f) {
 			for (AudioChannelIndex inChannelIndex = 0; inChannelIndex < inChannelCount; ++inChannelIndex) {
-				*outSamples++ = tempSamples[inChannelIndex];
+				*outSamples++ = ConvertToF32(inSamplesU8, inChannelIndex, inFormat) * volume;
 			}
 			++result.upsampleCount;
 		}
@@ -817,14 +813,14 @@ static bool FillConversionBuffer(AudioSystem *audioSys, const AudioFrameIndex ma
 	return audioSys->conversionBuffer.framesRemaining > 0;
 }
 
-extern AudioSampleIndex AudioSystemWriteSamples(AudioSystem *audioSys, void *outSamples, const fplAudioDeviceFormat *outFormat, const AudioFrameIndex frameCount) {
+extern AudioFrameIndex AudioSystemWriteFrames(AudioSystem *audioSys, void *outSamples, const fplAudioDeviceFormat *outFormat, const AudioFrameIndex frameCount) {
 	fplAssert(audioSys != NULL);
 	fplAssert(audioSys->targetFormat.sampleRate == outFormat->sampleRate);
 	fplAssert(audioSys->targetFormat.format == outFormat->type);
 	fplAssert(audioSys->targetFormat.channels == outFormat->channels);
 	fplAssert(audioSys->targetFormat.channels <= 2);
 
-	AudioSampleIndex result = 0;
+	AudioFrameIndex result = 0;
 
 	size_t outputSampleStride = fplGetAudioFrameSizeInBytes(audioSys->targetFormat.format, audioSys->targetFormat.channels);
 	size_t maxOutputSampleBufferSize = outputSampleStride * frameCount;
