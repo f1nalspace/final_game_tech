@@ -18250,8 +18250,103 @@ fpl_internal float fpl__AlsaGetBufferScale(const char *deviceName) {
 	return(1.0f);
 }
 
+#if defined(FPL__ANONYMOUS_ALSA_HEADERS)
+typedef void snd_pcm_t;
+typedef void snd_pcm_format_mask_t;
+typedef void snd_pcm_hw_params_t;
+typedef void snd_pcm_sw_params_t;
+
+typedef uint64_t snd_pcm_uframes_t;
+typedef int64_t snd_pcm_sframes_t;
+
+typedef struct snd_pcm_chmap_t {
+    unsigned int channels;
+    unsigned int pos[0];
+} snd_pcm_chmap_t;
+
+typedef enum snd_pcm_stream_t {
+    SND_PCM_STREAM_PLAYBACK = 0,
+	SND_PCM_STREAM_CAPTURE,
+} snd_pcm_stream_t;
+
+typedef struct snd_pcm_channel_area_t {
+    void *addr;
+    unsigned int first;
+    unsigned int step;
+} snd_pcm_channel_area_t;
+
+typedef enum snd_pcm_format_t {
+    SND_PCM_FORMAT_UNKNOWN = -1,
+	SND_PCM_FORMAT_S8 = 0,
+	SND_PCM_FORMAT_U8,
+	SND_PCM_FORMAT_S16_LE,
+	SND_PCM_FORMAT_S16_BE,
+	SND_PCM_FORMAT_U16_LE,
+	SND_PCM_FORMAT_U16_BE,
+	SND_PCM_FORMAT_S24_LE,
+	SND_PCM_FORMAT_S24_BE,
+	SND_PCM_FORMAT_U24_LE,
+	SND_PCM_FORMAT_U24_BE,
+	SND_PCM_FORMAT_S32_LE,
+	SND_PCM_FORMAT_S32_BE,
+	SND_PCM_FORMAT_U32_LE,
+	SND_PCM_FORMAT_U32_BE,
+	SND_PCM_FORMAT_FLOAT_LE,
+	SND_PCM_FORMAT_FLOAT_BE,
+	SND_PCM_FORMAT_FLOAT64_LE,
+	SND_PCM_FORMAT_FLOAT64_BE,
+	SND_PCM_FORMAT_IEC958_SUBFRAME_LE,
+	SND_PCM_FORMAT_IEC958_SUBFRAME_BE,
+	SND_PCM_FORMAT_MU_LAW,
+	SND_PCM_FORMAT_A_LAW,
+	SND_PCM_FORMAT_IMA_ADPCM,
+	SND_PCM_FORMAT_MPEG,
+	SND_PCM_FORMAT_GSM,
+	SND_PCM_FORMAT_S20_LE,
+	SND_PCM_FORMAT_S20_BE,
+	SND_PCM_FORMAT_U20_LE,
+	SND_PCM_FORMAT_U20_BE,
+	SND_PCM_FORMAT_SPECIAL,
+	SND_PCM_FORMAT_S24_3LE,
+	SND_PCM_FORMAT_S24_3BE,
+	SND_PCM_FORMAT_U24_3LE,
+	SND_PCM_FORMAT_U24_3BE,
+	SND_PCM_FORMAT_S20_3LE,
+	SND_PCM_FORMAT_S20_3BE,
+	SND_PCM_FORMAT_U20_3LE,
+	SND_PCM_FORMAT_U20_3BE,
+	SND_PCM_FORMAT_S18_3LE,
+	SND_PCM_FORMAT_S18_3BE,
+	SND_PCM_FORMAT_U18_3LE,
+	SND_PCM_FORMAT_U18_3BE,
+	SND_PCM_FORMAT_S16,
+	SND_PCM_FORMAT_U16,
+	SND_PCM_FORMAT_S24,
+	SND_PCM_FORMAT_U24,
+	SND_PCM_FORMAT_S32,
+	SND_PCM_FORMAT_U32,
+	SND_PCM_FORMAT_FLOAT,
+	SND_PCM_FORMAT_FLOAT64,
+	SND_PCM_FORMAT_IEC958_SUBFRAME,
+	SND_PCM_FORMAT_S20,
+	SND_PCM_FORMAT_U20
+} snd_pcm_format_t;
+
+typedef enum snd_pcm_access_t {
+    SND_PCM_ACCESS_MMAP_INTERLEAVED = 0,
+    SND_PCM_ACCESS_MMAP_NONINTERLEAVED,
+    SND_PCM_ACCESS_MMAP_COMPLEX,
+    SND_PCM_ACCESS_RW_INTERLEAVED,
+    SND_PCM_ACCESS_RW_NONINTERLEAVED
+} snd_pcm_access_t;
+
+#define SND_PCM_NO_AUTO_RESAMPLE 0x00010000
+#define SND_PCM_NO_AUTO_CHANNELS 0x00020000
+#define	SND_PCM_NO_AUTO_FORMAT 0x00040000
+#else
 // @TODO(final/ALSA): Remove ALSA include when runtime linking is enabled
 #	include <alsa/asoundlib.h>
+#endif // FPL__ANONYMOUS_ALSA_HEADERS
 
 #define FPL__ALSA_FUNC_snd_pcm_open(name) int name(snd_pcm_t **pcm, const char *name, snd_pcm_stream_t stream, int mode)
 typedef FPL__ALSA_FUNC_snd_pcm_open(fpl__alsa_func_snd_pcm_open);
@@ -18827,8 +18922,7 @@ fpl_internal fplAudioResultType fpl__AudioInitAlsa(const fplAudioSettings *audio
 		}
 	}
 
-	fplAudioDeviceFormat internalFormat;
-	fplConvertAudioTargetFormatToDeviceFormat(targetFormat, &internalFormat);
+	fplAudioDeviceFormat internalFormat = fplZeroInit;
 
 	//
 	// Format
@@ -18887,7 +18981,6 @@ fpl_internal fplAudioResultType fpl__AudioInitAlsa(const fplAudioSettings *audio
 
 	// @NOTE(final): The caller is responsible to convert to the sample rate FPL expects, so we disable any resampling
 	alsaApi->snd_pcm_hw_params_set_rate_resample(alsaState->pcmDevice, hardwareParams, 0);
-
 	unsigned int internalSampleRate = targetFormat->sampleRate;
 	if (alsaApi->snd_pcm_hw_params_set_rate_near(alsaState->pcmDevice, hardwareParams, &internalSampleRate, 0) < 0) {
 		FPL__ALSA_INIT_ERROR(fplAudioResultType_Failed, "Failed setting PCM sample rate '%lu' for device '%s'!", internalSampleRate, deviceName);
@@ -18897,23 +18990,17 @@ fpl_internal fplAudioResultType fpl__AudioInitAlsa(const fplAudioSettings *audio
 	//
 	// Buffer size
 	//
-	if (internalFormat.bufferSizeInFrames == 0) {
-		internalFormat.bufferSizeInFrames = fplGetAudioBufferSizeInFrames(internalSampleRate, targetFormat->bufferSizeInMilliseconds);
-	}
-	snd_pcm_uframes_t actualBufferSize = internalFormat.bufferSizeInFrames;
+	snd_pcm_uframes_t actualBufferSize = targetFormat->bufferSizeInFrames;
 	if (alsaApi->snd_pcm_hw_params_set_buffer_size_near(alsaState->pcmDevice, hardwareParams, &actualBufferSize) < 0) {
 		FPL__ALSA_INIT_ERROR(fplAudioResultType_Failed, "Failed setting PCM buffer size '%lu' for device '%s'!", actualBufferSize, deviceName);
 	}
 	internalFormat.bufferSizeInFrames = actualBufferSize;
-	internalFormat.bufferSizeInBytes = fplGetAudioBufferSizeInBytes(internalFormat.type, internalFormat.channels, internalFormat.bufferSizeInFrames);
+	uint32_t bufferSizeInBytes = fplGetAudioBufferSizeInBytes(internalFormat.type, internalFormat.channels, internalFormat.bufferSizeInFrames);
 
 	//
 	// Periods
 	//
 	uint32_t internalPeriods = targetFormat->periods;
-	if (internalPeriods == 0) {
-		internalPeriods = 2;
-	}
 	int periodsDir = 0;
 	if (alsaApi->snd_pcm_hw_params_set_periods_near(alsaState->pcmDevice, hardwareParams, &internalPeriods, &periodsDir) < 0) {
 		FPL__ALSA_INIT_ERROR(fplAudioResultType_Failed, "Failed setting PCM periods '%lu' for device '%s'!", internalPeriods, deviceName);
@@ -18954,10 +19041,10 @@ fpl_internal fplAudioResultType fpl__AudioInitAlsa(const fplAudioSettings *audio
 	}
 
 	if (!alsaState->isUsingMMap) {
-		fplAssert(internalFormat.bufferSizeInBytes > 0);
-		alsaState->intermediaryBuffer = fpl__AllocateDynamicMemory(internalFormat.bufferSizeInBytes, 16);
+		fplAssert(bufferSizeInBytes > 0);
+		alsaState->intermediaryBuffer = fpl__AllocateDynamicMemory(bufferSizeInBytes, 16);
 		if (alsaState->intermediaryBuffer == fpl_null) {
-			FPL__ALSA_INIT_ERROR(fplAudioResultType_Failed, "Failed allocating intermediary buffer of size '%lu' for device '%s'!", internalFormat.bufferSizeInBytes, deviceName);
+			FPL__ALSA_INIT_ERROR(fplAudioResultType_Failed, "Failed allocating intermediary buffer of size '%lu' for device '%s'!", bufferSizeInBytes, deviceName);
 		}
 	}
 
