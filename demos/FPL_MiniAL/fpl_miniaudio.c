@@ -101,12 +101,12 @@ static void AudioPlayback_MiniAudio(ma_device* pDevice, void* pOutput, const voi
 	outFormat.type = MapMALFormatToFPLFormat(pDevice->playback.format);
 	outFormat.bufferSizeInFrames = pDevice->playback.internalBufferSizeInFrames;
 	fplAssert(outFormat.type != fplAudioFormatType_None);
-	AudioSystemWriteSamples(audioSys, pOutput, &outFormat, frameCount);
+	AudioSystemWriteFrames(audioSys, pOutput, &outFormat, frameCount);
 }
 #else
 static uint32_t AudioPlayback_FPL(const fplAudioDeviceFormat *outFormat, const uint32_t maxFrameCount, void *outputSamples, void *userData) {
 	AudioSystem *audioSys = (AudioSystem *)userData;
-	AudioSampleIndex result = AudioSystemWriteSamples(audioSys, outputSamples, outFormat, maxFrameCount);
+	AudioSampleIndex result = AudioSystemWriteFrames(audioSys, outputSamples, outFormat, maxFrameCount);
 	return(result);
 }
 #endif
