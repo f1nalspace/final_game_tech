@@ -2027,6 +2027,7 @@ int main(int argc, char **argv) {
 	settings.video.driver = fplVideoDriverType_OpenGL;
 	settings.video.isVSync = true;
 	settings.video.graphics.opengl.compabilityFlags = fplOpenGLCompabilityFlags_Legacy;
+	settings.video.graphics.opengl.multiSamplingCount = 4;
 	if (fplPlatformInit(fplInitFlags_All, &settings)) {
 		if (fglLoadOpenGL(true)) {
 			glDisable(GL_DEPTH_TEST);

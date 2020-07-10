@@ -150,7 +150,7 @@ namespace FPLPresentationData {
 	static const SlideDefinition HowItWorks = {
 		"How it works",
 		TextBlockDefinition((
-			"- It is written in pure C99 for simplicity and best portability - but is 100% C++ compatible\n"
+			"- It is written in pure C99 for simplicity and best portability - but is 100%% C++ compatible\n"
 			"- It makes heavy use of the pre-compiler to detect certain compiler/platform/hardware/driver configurations\n"
 			"- It uses runtime linking for everything - but supports static linking as well\n"
 			"- It prevents code-duplication by introducing sub-platforms (Unix vs Linux)\n"
