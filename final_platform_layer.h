@@ -141,6 +141,9 @@ SOFTWARE.
 	- Fixed: fplS32ToString() was not returning the last written character
 	- Fixed: fplStringAppendLen() was not returning the last written character
 	- Fixed: Fixed several warnings for doxygen
+	
+	- Fixed: [Core] Added empty functions for fplCPUID(), fplGetXCR0() for non-x86 platforms
+	- Fixed: [Core] Implemented fplRDTSC() for non-x86 platforms
 
 	- Changed: FPL_MAX_THREAD_COUNT and FPL_MAX_SIGNAL_COUNT can now be overriden by the user
 	- Changed: Removed redundant field bufferSizeInBytes from fplAudioDeviceFormat struct
@@ -9074,6 +9077,45 @@ fpl_common_api char *fplGetProcessorName(char *destBuffer, const size_t maxDestB
 	return(result);
 }
 #else
+
+fpl_common_api uint64_t fplRDTSC() {
+	// Based on: https://github.com/google/benchmark/blob/v1.1.0/src/cycleclock.h
+#if defined(FPL_ARCH_ARM64)
+	int64_t virtual_timer_value;
+	asm volatile("mrs %0, cntvct_el0" : "=r"(virtual_timer_value));
+	return (uint64_t)virtual_timer_value;
+#elif defined(FPL_ARCH_ARM32) && (__ARM_ARCH >= 6)
+	uint32_t pmccntr;
+	uint32_t pmuseren;
+	uint32_t pmcntenset;
+	// Read the user mode perf monitor counter access permissions.
+	asm volatile("mrc p15, 0, %0, c9, c14, 0" : "=r"(pmuseren));
+	if (pmuseren & 1) {
+		// Allows reading perfmon counters for user mode code.
+		asm volatile("mrc p15, 0, %0, c9, c12, 1" : "=r"(pmcntenset));
+		if (pmcntenset & 0x80000000ul) {
+			// Is it counting?
+			asm volatile("mrc p15, 0, %0, c9, c13, 0" : "=r"(pmccntr));
+			// The counter is set up to count every 64th cycle
+			return (uint64_t)pmccntr * 64ULL;  // Should optimize to << 6
+		}
+	}
+#endif
+	struct timeval tv;
+	gettimeofday(&tv, fpl_null);
+	return (uint64_t)tv.tv_sec * 1000000ULL + (uint64_t)tv.tv_usec;
+}
+
+fpl_common_api uint64_t fplGetXCR0() {
+	// Not supported on non-x86 platforms
+	return(0);
+}
+
+fpl_common_api void fplCPUID(fplCPUIDLeaf *outLeaf, const uint32_t functionId) {
+	// Not supported on non-x86 platforms
+	fplStructInit(outLeaf);
+}
+
 fpl_common_api bool fplGetProcessorCapabilities(fplProcessorCapabilities *outCaps) {
 	// @IMPLEMENT(final): fplGetProcessorCapabilities for non-x86 architectures
 	return(false);
