@@ -9,6 +9,6 @@ MIT-Licensed game related libraries and utilities written in C/C++.
 | final_xml.h              | Single file xml parser library              | Independent  | C99      | 0.2.0 alpha    | Finished    |
 | final_memory.h           | Single file heap memory handling library    | Independent  | C99      | 0.3.0 alpha    | Finished    |
 
-* All libraries written in C99 are full C++ compatible.
-* Some libraries are still in beta/alpha, even though there are practically finished.
-* Only fully implemented, documented and well tested libraries, will leave the alpha/beta phase.
+* All libraries written in C99 are fully C++ compatible.
+* Few libraries are still in beta/alpha, even though they are practically finished.
+* Only fully implemented, documented and well tested libraries will leave the alpha/beta phase.
