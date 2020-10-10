@@ -7,28 +7,50 @@
 #include "types.h"
 #include "fonts.h"
 
+static const float FeaturesFontSize = 32.0f;
+
 struct TextBlockDefinition {
-	const char *text;
+	const char* text;
 	HorizontalAlignment hAlign;
 	VerticalAlignment vAlign;
+	float fontSize;
 
-	TextBlockDefinition(const char *text, HorizontalAlignment hAlign, VerticalAlignment vAlign) {
+	TextBlockDefinition(const char* text, HorizontalAlignment hAlign, VerticalAlignment vAlign, float fontSize = 0.0f) {
 		this->text = text;
 		this->hAlign = hAlign;
 		this->vAlign = vAlign;
+		this->fontSize = fontSize;
 	}
 
-	TextBlockDefinition(): TextBlockDefinition(nullptr, HorizontalAlignment::Left, VerticalAlignment::Top) {
+	TextBlockDefinition() : TextBlockDefinition(nullptr, HorizontalAlignment::Left, VerticalAlignment::Top) {
 	}
 };
 
 struct SlideDefinition {
-	const char *name;
-	TextBlockDefinition content;
+	const char* name;
+	TextBlockDefinition items[4];
+	size_t count;
 };
 
+static SlideDefinition MakeSlideDef(const char* name, const TextBlockDefinition& a) {
+	SlideDefinition result = {};
+	result.name = name;
+	result.items[0] = a;
+	result.count = 1;
+	return(result);
+}
+
+static SlideDefinition MakeSlideDef(const char* name, const TextBlockDefinition& a, const TextBlockDefinition& b) {
+	SlideDefinition result = {};
+	result.name = name;
+	result.items[0] = a;
+	result.items[1] = b;
+	result.count = 2;
+	return(result);
+}
+
 struct FontDefinition {
-	const char *name;
+	const char* name;
 	float size;
 	float lineScale;
 	TextStyle style;
@@ -37,23 +59,23 @@ struct FontDefinition {
 struct HeaderDefinition {
 	FontDefinition font;
 	float height;
-	const char *leftText;
-	const char *centerText;
-	const char *rightText;
+	const char* leftText;
+	const char* centerText;
+	const char* rightText;
 	Vec2f padding;
 };
 
 struct FooterDefinition {
 	FontDefinition font;
 	float height;
-	const char *leftText;
-	const char *centerText;
-	const char *rightText;
+	const char* leftText;
+	const char* centerText;
+	const char* rightText;
 	Vec2f padding;
 };
 
 struct PresentationDefinition {
-	const SlideDefinition *slides;
+	const SlideDefinition* slides;
 	size_t slideCount;
 	Vec2f slideSize;
 	HeaderDefinition header;
@@ -66,76 +88,83 @@ struct PresentationDefinition {
 };
 
 namespace FPLPresentationData {
-	static const SlideDefinition IntroSlide = {
+	static const SlideDefinition IntroSlide = MakeSlideDef(
 		"Introduction",
 		TextBlockDefinition((
-			"Introducing Final-Platform-Layer (FPL).\n"
-			"A lightweight Platform-Abstraction-Library written in C99.\n"
-			"Created by Torsten Spaete, a professional software engineer with 20+ years of experience.\n"
-		), HorizontalAlignment::Center, VerticalAlignment::Middle),
-	};
+			"Introducing Final-Platform-Layer (FPL)\n"
+			"A lightweight Platform-Abstraction-Library written in C99\n"
+		), HorizontalAlignment::Center, VerticalAlignment::Middle)
+	);
 
-	static const SlideDefinition WhatIsAPALSlide = {
-		"What is a Platform-Abstraction-Library",
+	static const SlideDefinition WhatIsAPALSlide = MakeSlideDef(
+		"What is a PAL",
 		TextBlockDefinition((
-			"A Platform-Abstraction-Library (or short PAL) is a library written in a low-level language - like C,\n"
-			"that abstracts low-level systems in a platform-independent way.\n"
-			"\n"
-			"This has the advantage of not having to deal with tons of platform/compiler specific implementation details,\n"
-			"you have to deal with if you don´t use a PAL.\n"
-		), HorizontalAlignment::Center, VerticalAlignment::Middle),
-	};
+			"A Platform-Abstraction-Library (or short PAL)\n"
+			"is a library written in a low-level language, such as C\n"
+			"used to access hardware and low-level systems\n"
+			"in a platform-independent way.\n"
+		), HorizontalAlignment::Center, VerticalAlignment::Middle)
+	);
 
-	static const SlideDefinition WhatIsFPLSlide = {
+	static const SlideDefinition WhatIsFPLSlide = MakeSlideDef(
 		"What is FPL",
 		TextBlockDefinition((
-			"FPL is an all-purpose / multimedia platform abstraction library,\n"
-			"providing a powerful and easy to use API, accessing low-level systems in a platform-independent way:\n"
-			"\n"
-			"- Platform detection (x86/x64/Arm, Win32/Linux/Unix, etc.)\n"
-			"- Compiler detection (MSVC/GCC/Clang/Intel)\n"
-			"- Macros (Debugbreak, Assertions, CPU-Features, Memory init etc.)\n"
-			"- Dynamic library loading (.dll/.so)\n"
-			"- Single window creation and handling (Win32/X11)\n"
-			"- Event and input polling (Keyboard/Mouse/Gamepad)\n"
-			"- Video initialization and output (Software, OpenGL, etc.)\n"
-			"- Asyncronous audio playback (DirectSound, ALSA, etc.)\n"
-			"- IO (Console, Paths, Files, Directories, etc.)\n"
-			"- Memory handling with or without alignment\n"
-			"- Multithreading (Atomics, Threads, Mutexes, Semaphores, Conditionals, etc.)\n"
-			"- Retrieving hardware information\n"
-			"- and many more\n"
-		), HorizontalAlignment::Left, VerticalAlignment::Top),
-	};
+			"FPL is an all-purpose/multimedia PAL\n"
+			"providing a powerful and easy to use API,\n"
+			"for working with low-level and hardware systems\n"
+			"written in C99.\n"
+			), HorizontalAlignment::Center, VerticalAlignment::Middle)
+	);
 
-	static const SlideDefinition MotivationSlide = {
+	static const SlideDefinition FeaturesOfFPLSlide = MakeSlideDef(
+		"Features of FPL",
+		TextBlockDefinition((
+		"- Platform detection (x86/x64/Arm, Win32/Linux/Unix, etc.)\n"
+		"- Compiler detection (MSVC/GCC/Clang/Intel)\n"
+		"- Macros (Debug break, Assertions, CPU-Features, Memory etc.)\n"
+		"- Window creation and handling (Win32/X11)\n"
+		"- Event and input polling (Keyboard/Mouse/Gamepad)\n"
+		"- Video initialization and output (Software, OpenGL, etc.)\n"
+		"- Asynchronous audio playback (DirectSound, ALSA, etc.)\n"
+		"- IO (Console, Paths, Files, Directories, etc.)\n"
+		"- Memory handling\n"
+		"- Dynamic library loading (.dll/.so)\n"
+		"- Multi threading (Atomics, Threads, Mutex, Semaphores, Conditionals, etc.)\n"
+		"- Retrieving hardware information\n"
+		"- and many more\n"
+		), HorizontalAlignment::Left, VerticalAlignment::Top, FeaturesFontSize)
+	);
+
+	static const SlideDefinition MotivationSlide = MakeSlideDef(
 		"Motivation",
 		TextBlockDefinition((
 			"C/C++ has very limited access to the underlying platform,\n"
-			"so you have to use third-party libraries to get access to low level systems or write for a specific platform only.\n"
-			"\n"
-			"The pre-existing platform abstraction libraries have a lot of issues:\n"
+			"so you have to use third-party libraries to access low level systems\n"
+			"or write platform specific codes directly.\n"
+		), HorizontalAlignment::Left, VerticalAlignment::Top),
+		TextBlockDefinition((
+			"The pre-existing PALs have a lot of issues:\n"
 			"- Huge in file count and/or size\n"
 			"- Huge in number of translation units\n"
 			"- Huge in memory usage and number of allocations\n"
-			"- Without configuration and/or buildsystems you can´t compile it\n"
+			"- Without configuration and/or build systems you cant compile it\n"
 			"- Statically linking is madness or not supported at all\n"
-			"- Forces you to use either static or runtime linking\n"
-			"- It takes forever to compile\n"
 			"- Including the full source is either impossible or extremely cumbersome\n"
+			"- It takes forever to compile\n"
 			"- No control over the allocated memory, at max you can overwrite malloc/free\n"
 			"- Some are built on top of third-party dependencies\n"
 			"- Some are heavily bloated\n"
-		), HorizontalAlignment::Left, VerticalAlignment::Top),
-	};
+		), HorizontalAlignment::Left, VerticalAlignment::Bottom, FeaturesFontSize)
+	);
 
-	static const SlideDefinition WhySlide = {
+	static const SlideDefinition WhySlide = MakeSlideDef(
 		"Why FPL",
 		TextBlockDefinition((
 			"I just want to include one header file and thats it.\n"
 			"I want it to compile very fast - with the full implementation for any platform/compiler i need.\n"
-			"I don´t want it to require any third-party libraries - not even the C-Runtime.\n"
-			"\n"
+			"I dont want it to require any third-party libraries - not even the C-Runtime.\n"
+		), HorizontalAlignment::Left, VerticalAlignment::Top),
+		TextBlockDefinition((
 			"- FPL is designed to require bare minimum linking to the OS (kernel32.lib / libld.so) only\n"
 			"- It does not require any dependencies or build-systems to get it running/compiling\n"
 			"- It prevents using features from the C-Runtime library, to support lightweight environments\n"
@@ -144,31 +173,33 @@ namespace FPLPresentationData {
 			"- It does not use malloc/free, the memory is allocated/freed using OS system calls directly\n"
 			"- No data hiding -> everything is accessible\n"
 			"- You decide how to integrate it; not the library\n"
-		), HorizontalAlignment::Left, VerticalAlignment::Top),
-	};
+			), HorizontalAlignment::Left, VerticalAlignment::Bottom, FeaturesFontSize)
+	);
 
-	static const SlideDefinition HowItWorks = {
+	static const SlideDefinition HowItWorks = MakeSlideDef(
 		"How it works",
 		TextBlockDefinition((
 			"- It is written in pure C99 for simplicity and best portability - but is 100%% C++ compatible\n"
-			"- It makes heavy use of the pre-compiler to detect certain compiler/platform/hardware/driver configurations\n"
-			"- It uses runtime linking for everything - but supports static linking as well\n"
-			"- It prevents code-duplication by introducing sub-platforms (Unix vs Linux)\n"
-			"- It is stateless, meaning the user does not have to provide any major states\n"
-		), HorizontalAlignment::Left, VerticalAlignment::Top),
-	};
+			"- It makes heavy use of the pre-compiler to detect compiler/platform/hardware/driver configurations\n"
+			"- It uses runtime linking by default, so it does not need any libs to be included\n"
+			"- It prevents code-duplication by using sub-platform blocks (Unix vs Linux)\n"
+			"- It is stateless, meaning the user does not have to provide any application states\n"
+			"- Everything is included in one C file\n"
+		), HorizontalAlignment::Left, VerticalAlignment::Top, FeaturesFontSize)
+	);
 
-	static const SlideDefinition DemosExclamationMark = {
+	static const SlideDefinition DemosExclamationMark = MakeSlideDef(
 		"Demos!",
 		TextBlockDefinition((
 			"Demo-Time!"
-		), HorizontalAlignment::Center, VerticalAlignment::Middle),
-	};
+		), HorizontalAlignment::Center, VerticalAlignment::Middle)
+	);
 
 	static const SlideDefinition Slides[] = {
 		IntroSlide,
 		WhatIsAPALSlide,
 		WhatIsFPLSlide,
+		FeaturesOfFPLSlide,
 		MotivationSlide,
 		WhySlide,
 		HowItWorks,
@@ -198,16 +229,16 @@ namespace FPLPresentationData {
 	};
 
 	static const HeaderDefinition  Header = {
-		/* font */ {FontResources::Arimo.name, 14.0f, 1.15f, FPLPresentationData::HeaderStyle},
-		/* height */ 24.0f,
+		/* font */ {FontResources::Arimo.name, 24.0f, 1.15f, FPLPresentationData::HeaderStyle},
+		/* height */ 32.0f,
 		/* leftText */ "Final-Platform-Layer",
 		/* centerText */ "",
 		/* rightText */ "",
 		/* padding */ V2f(2,2),
 	};
 	static const FooterDefinition  Footer = {
-		/* font */ {FontResources::Arimo.name, 14.0f, 1.15f, FPLPresentationData::HeaderStyle},
-		/* height */ 24.0f,
+		/* font */ {FontResources::Arimo.name, 24.0f, 1.15f, FPLPresentationData::HeaderStyle},
+		/* height */ 32.0f,
 		/* leftText */ "%SLIDE_NAME%",
 		/* centerText */ "Copyright (C) 2020 Torsten Spaete",
 		/* rightText */ "Page %SLIDE_NUM% of %SLIDE_COUNT%",
@@ -221,9 +252,9 @@ static const PresentationDefinition FPLPresentation = {
 	/* slideSize */ 	V2f(1280.0f,720.0f),
 	/* header */ 		FPLPresentationData::Header,
 	/* footer */ 		FPLPresentationData::Footer,
-	/* titleFont */ 	{FontResources::Arimo.name, 50.0f, 1.15f, FPLPresentationData::BasicStyle},
-	/* normalFont */ 	{FontResources::Arimo.name, 28.0f, 1.15f, FPLPresentationData::BasicStyle},
-	/* consoleFont */ 	{FontResources::BitStreamVerySans.name, 16.0f, 1.25f, FPLPresentationData::BasicStyle},
+	/* titleFont */ 	{FontResources::Arimo.name, 64.0f, 1.15f, FPLPresentationData::BasicStyle},
+	/* normalFont */ 	{FontResources::Arimo.name, 42.0f, 1.15f, FPLPresentationData::BasicStyle},
+	/* consoleFont */ 	{FontResources::BitStreamVerySans.name, 36.0f, 1.15f, FPLPresentationData::BasicStyle},
 	/* background */ 	FPLPresentationData::Back,
 	/* padding */ 	 	20.0f,
 };

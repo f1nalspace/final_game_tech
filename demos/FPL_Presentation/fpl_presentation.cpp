@@ -1968,11 +1968,17 @@ static void AddSlideFromDefinition(Renderer &renderer, Presentation &presentatio
 	slide->AddLabel(slide->name, area.pos + V2f(area.size.w * 0.5f, 0), titleFontName, titleFontSize, HorizontalAlignment::Center, VerticalAlignment::Top, titleStyle);
 
 	// Content
+	for (size_t blockIndex = 0; blockIndex < inSlide.count; ++blockIndex)
 	{
-		TextBlockDefinition block = inSlide.content;
+		const TextBlockDefinition &block = inSlide.items[blockIndex];
+
+		float textFontSize = normalFontSize;
+		if (block.fontSize > 0) textFontSize = block.fontSize;
+
+		const float textLineHeight = inPresentation.normalFont.lineScale * textFontSize;
 
 		const char *text = block.text;
-		Vec2f blockSize = ComputeTextBlockSize(renderer, *slide, text, normalFontName, normalFontSize, normalLineHeight);
+		Vec2f blockSize = ComputeTextBlockSize(renderer, *slide, text, normalFontName, textFontSize, textLineHeight);
 
 		HorizontalAlignment textAlign = HorizontalAlignment::Left;
 		VerticalAlignment vAlign = VerticalAlignment::Top;
@@ -1990,6 +1996,8 @@ static void AddSlideFromDefinition(Renderer &renderer, Presentation &presentatio
 			blockPos += V2f(0, (area.size.h - blockSize.h) * 0.5f);
 		} else if (block.vAlign == VerticalAlignment::Top) {
 			blockPos += V2f(0, titleLineHeight);
+		} else if (block.vAlign == VerticalAlignment::Bottom) {
+			blockPos += V2f(0, area.size.h - blockSize.h);
 		}
 
 #if 0
@@ -2004,7 +2012,7 @@ static void AddSlideFromDefinition(Renderer &renderer, Presentation &presentatio
 		} else if (textAlign == HorizontalAlignment::Right) {
 			textPos += V2fHadamard(V2f(1, 0), blockSize);
 		}
-		AddTextBlock(renderer, *slide, textPos, text, normalFontName, normalFontSize, normalLineHeight, normalStyle, textAlign, vAlign);
+		AddTextBlock(renderer, *slide, textPos, text, normalFontName, textFontSize, textLineHeight, normalStyle, textAlign, vAlign);
 	}
 }
 
@@ -2072,6 +2080,9 @@ int main(int argc, char **argv) {
 			app.renderer.AddFontFromResource(FontResources::Arimo, 56.0f);
 			app.renderer.AddFontFromResource(FontResources::Arimo, 64.0f);
 			app.renderer.AddFontFromResource(FontResources::Arimo, 72.0f);
+			app.renderer.AddFontFromResource(FontResources::Arimo, 84.0f);
+			app.renderer.AddFontFromResource(FontResources::Arimo, 96.0f);
+			app.renderer.AddFontFromResource(FontResources::Arimo, 108.0f);
 
 			app.renderer.AddImageFromResource(ImageResources::FPLLogo128x128);
 
