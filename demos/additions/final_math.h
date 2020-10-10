@@ -53,6 +53,9 @@ const float Rad2Deg = 180.0f / (float)M_PI;
 const float Epsilon = FLT_EPSILON;
 const float InvByte = 1.0f / 255.0f;
 
+const float F32Max = FLT_MAX;
+const float F32Min = FLT_MIN;
+
 //
 // Ratio type
 //
