@@ -15,6 +15,9 @@ Author:
 	Torsten Spaete
 
 Changelog:
+	## 2020-10-11
+	- Use mini audio by default
+
 	## 2020-07-10
 	- Upgraded to latest miniaudio.h (No more access to internal fields required)
 	- Better playback format detection
@@ -41,7 +44,7 @@ License:
 
 // Set this to one to use miniaudio.h
 // Set this to zero to use FPL internal audio
-#define OPT_USE_MINIAUDIO 0
+#define OPT_USE_MINIAUDIO 1
 
 #define FPL_NO_WINDOW
 #define FPL_IMPLEMENTATION
