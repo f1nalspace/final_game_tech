@@ -10,13 +10,16 @@ Requirements:
 	- C++/11 Compiler
 	- Platform x64 / Win32
 	- Final Platform Layer
-	- FFmpeg-4.2.2-win64-shared (http://ffmpeg.zeranoe.com/builds/)
-	- FFmpeg-4.2.2-win64-dev (http://ffmpeg.zeranoe.com/builds/)
+	- FFmpeg-4.3.1 (Release, Full, Shared, Win64: https://www.gyan.dev/ffmpeg/builds/)
 
 Author:
 	Torsten Spaete
 
 Changelog:
+	## 2020-10-11
+	- Fixed broken audio computation
+	- Upgraded to FFMPEG 4.3.1
+
 	## 2020-04-22
 	- Relative Seeking Support
 	- OSD for displaying media/stream informations
@@ -1055,11 +1058,24 @@ static void UploadTexture(VideoContext &video, const AVFrame *sourceNativeFrame)
 //
 // Audio
 //
+struct AudioFormat {
+	//! Buffer size in bytes
+	uint32_t bufferSizeInBytes;
+	//! Samples per seconds
+	uint32_t sampleRate;
+	//! Number of channels
+	uint32_t channels;
+	//! Number of periods
+	uint32_t periods;
+	//! Format
+	fplAudioFormatType type;
+};
+
 struct AudioContext {
 	MediaStream stream;
 	Decoder decoder;
-	fplAudioDeviceFormat audioSource;
-	fplAudioDeviceFormat audioTarget;
+	AudioFormat audioSource;
+	AudioFormat audioTarget;
 	Clock clock;
 	double audioClock;
 	int32_t audioClockSerial;
@@ -2241,8 +2257,7 @@ static uint32_t AudioReadCallback(const fplAudioDeviceFormat *nativeFormat, cons
 
 		uint32_t nativeBufferSizeInBytes = fplGetAudioBufferSizeInBytes(nativeFormat->type, nativeFormat->channels, nativeFormat->bufferSizeInFrames);
 
-		fplAudioDeviceFormat *targetFormat = &state->audio.audioTarget;
-		uint32_t targetBufferSizeInBytes = fplGetAudioBufferSizeInBytes(targetFormat->type, targetFormat->channels, targetFormat->bufferSizeInFrames);
+		AudioFormat *targetFormat = &state->audio.audioTarget;
 
 		uint32_t remainingFrameCount = frameCount;
 		while (remainingFrameCount > 0) {
@@ -2350,7 +2365,7 @@ static uint32_t AudioReadCallback(const fplAudioDeviceFormat *nativeFormat, cons
 		// Update audio clock
 		if (!isnan(audio->audioClock)) {
 			uint32_t writtenSize = result * outputSampleStride;
-			double pts = audio->audioClock - (double)(nativeFormat->periods * nativeBufferSizeInBytes + writtenSize) / (double)targetBufferSizeInBytes;
+			double pts = audio->audioClock - (double)(nativeFormat->periods * nativeBufferSizeInBytes + writtenSize) / (double)targetFormat->bufferSizeInBytes;
 			SetClockAt(audio->clock, pts, audio->audioClockSerial, audioCallbackTime / (double)AV_TIME_BASE);
 			SyncClockToSlave(state->externalClock, audio->clock);
 		}
@@ -3270,8 +3285,7 @@ static bool InitializeAudio(PlayerState &state, const char *mediaFilePath, const
 	audio.audioTarget.channels = targetChannelCount;
 	audio.audioTarget.sampleRate = targetSampleRate;
 	audio.audioTarget.type = nativeAudioFormat.type;
-	audio.audioTarget.bufferSizeInFrames = ffmpeg.av_samples_get_buffer_size(nullptr, audio.audioTarget.channels, 1, targetSampleFormat, 1);
-	uint32_t targetBufferSizeInBytes = fplGetAudioBufferSizeInBytes(audio.audioTarget.type, audio.audioTarget.channels, audio.audioTarget.bufferSizeInFrames);
+	audio.audioTarget.bufferSizeInBytes = ffmpeg.av_samples_get_buffer_size(nullptr, audio.audioTarget.channels, audio.audioTarget.sampleRate, targetSampleFormat, 1);
 
 	AVSampleFormat inputSampleFormat = audioCodexCtx->sample_fmt;
 	int inputChannelCount = audioCodexCtx->channels;
@@ -3284,13 +3298,12 @@ static bool InitializeAudio(PlayerState &state, const char *mediaFilePath, const
 	audio.audioSource.sampleRate = inputSampleRate;
 	audio.audioSource.type = MapAVSampleFormat(inputSampleFormat);
 	audio.audioSource.periods = nativeAudioFormat.periods;
-	audio.audioSource.bufferSizeInFrames = ffmpeg.av_samples_get_buffer_size(nullptr, inputChannelCount, 1, inputSampleFormat, 1);
-	uint32_t sourceBufferSizeInBytes = fplGetAudioBufferSizeInBytes(audio.audioSource.type, audio.audioSource.channels, audio.audioSource.bufferSizeInFrames);
+	audio.audioSource.bufferSizeInBytes = ffmpeg.av_samples_get_buffer_size(nullptr, inputChannelCount, inputSampleRate, inputSampleFormat, 1);
 
 	// Compute AVSync audio threshold
 	audio.audioDiffAbgCoef = exp(log(0.01) / AV_AUDIO_DIFF_AVG_NB);
 	audio.audioDiffAvgCount = 0;
-	audio.audioDiffThreshold = nativeBufferSizeInBytes / (double)targetBufferSizeInBytes;
+	audio.audioDiffThreshold = nativeBufferSizeInBytes / (double)audio.audioTarget.bufferSizeInBytes;
 
 	// Create software resample context and initialize
 	audio.softwareResampleCtx = ffmpeg.swr_alloc_set_opts(nullptr,
