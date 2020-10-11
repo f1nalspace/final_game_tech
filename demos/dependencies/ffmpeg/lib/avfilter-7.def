@@ -39,8 +39,8 @@ EXPORTS
     avfilter_graph_free
     avfilter_graph_get_filter
     avfilter_graph_parse
-    avfilter_graph_parse2
     avfilter_graph_parse_ptr
+    avfilter_graph_parse2
     avfilter_graph_queue_command
     avfilter_graph_request_oldest
     avfilter_graph_send_command

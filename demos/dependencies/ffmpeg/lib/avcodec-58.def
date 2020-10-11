@@ -151,9 +151,9 @@ EXPORTS
     avcodec_encode_video2
     avcodec_enum_to_chroma_pos
     avcodec_fill_audio_frame
-    avcodec_find_best_pix_fmt2
     avcodec_find_best_pix_fmt_of_2
     avcodec_find_best_pix_fmt_of_list
+    avcodec_find_best_pix_fmt2
     avcodec_find_decoder
     avcodec_find_decoder_by_name
     avcodec_find_encoder
@@ -197,10 +197,10 @@ EXPORTS
     avpriv_ac3_parse_header
     avpriv_align_put_bits
     avpriv_bprint_to_extradata
+    avpriv_codec_get_cap_skip_frame_fill_param
     avpriv_codec2_mode_bit_rate
     avpriv_codec2_mode_block_align
     avpriv_codec2_mode_frame_size
-    avpriv_codec_get_cap_skip_frame_fill_param
     avpriv_copy_bits
     avpriv_dca_convert_bitstream
     avpriv_dca_parse_core_frame_header
