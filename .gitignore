@@ -26,3 +26,4 @@
 /demos/dependencies/ffmpeg/bin/*.dll
 /docs_fpl/html
 
+/.gitconfig

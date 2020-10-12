@@ -137,6 +137,8 @@ SOFTWARE.
 	- New: Added field defaultFields to fplAudioDeviceFormat struct
 	- New: Added C++/11 detection (FPL_IS_CPP11)
 	- New: Added enum fplAudioLatencyMode to fplAudioTargetFormat
+	- New: Added function fplSetFileTimestamps()
+	- New: [Win32] Added implementation for fplSetFileTimestamps()
 
 	- Fixed: fplS32ToString() was not returning the last written character
 	- Fixed: fplStringAppendLen() was not returning the last written character
@@ -4708,14 +4710,17 @@ typedef struct fplInternalFileRootInfo {
 	const char *filter;
 } fplInternalFileRootInfo;
 
+//! The elapsed seconds since the unix epoch (1970-01-01 00:00:00)
+typedef uint64_t fplFileTimeStamp;
+
 //! A structure containing filestamps for creation/access/modify date
 typedef struct fplFileTimeStamps {
 	//! Creation timestamp
-	uint64_t creationTime;
+	fplFileTimeStamp creationTime;
 	//! Last access timestamp
-	uint64_t lastAccessTime;
+	fplFileTimeStamp lastAccessTime;
 	//! Last modify timestamp
-	uint64_t lastModifyTime;
+	fplFileTimeStamp lastModifyTime;
 } fplFileTimeStamps;
 
 //! A structure containing the informations for a file or directory (name, type, attributes, etc.)
@@ -4937,6 +4942,13 @@ fpl_platform_api bool fplGetFileTimestampsFromPath(const char *filePath, fplFile
 * @return Returns true when the function succeeded, false otherwise.
 */
 fpl_platform_api bool fplGetFileTimestampsFromHandle(const fplFileHandle *fileHandle, fplFileTimeStamps *outStamps);
+/**
+* @brief Sets the timestamps for the given file
+* @param filePath The path to the file
+* @param timeStamps The pointer to the @ref fplFileTimeStamps structure
+* @return Returns true when the function succeeded, false otherwise.
+*/
+fpl_platform_api bool fplSetFileTimestamps(const char *filePath, const fplFileTimeStamps *timeStamps);
 /**
 * @brief Checks if the file exists and returns a boolean indicating the existance.
 * @param filePath The path to the file
@@ -11958,17 +11970,49 @@ fpl_platform_api void fplMemoryFree(void *ptr) {
 //
 // Win32 Files
 //
-fpl_internal uint64_t fpl__Win32ConvertFileTimeToUnixTimestamp(const FILETIME *fileTime) {
+fpl_internal const uint64_t FPL__WIN32_TICKS_PER_SEC = 10000000ULL;
+fpl_internal const uint64_t FPL__WIN32_UNIX_EPOCH_DIFFERENCE = 11644473600ULL;
+
+fpl_internal fplFileTimeStamp fpl__Win32ConvertFileTimeToUnixTimestamp(const FILETIME *fileTime) {
 	// Ticks are defined in 100 ns = 10000000 secs
 	// Windows ticks starts at 1601-01-01T00:00:00Z
 	// Unix secs starts at 1970-01-01T00:00:00Z
-	const uint64_t UNIX_TIME_START = 0x019DB1DED53E8000;
-	const uint64_t TICKS_PER_SECOND = 10000000;
-	ULARGE_INTEGER largeInteger;
-	largeInteger.LowPart = fileTime->dwLowDateTime;
-	largeInteger.HighPart = fileTime->dwHighDateTime;
-	uint64_t result = (largeInteger.QuadPart - UNIX_TIME_START) / TICKS_PER_SECOND;
+	fplFileTimeStamp result = 0;
+	if (fileTime != fpl_null && (fileTime->dwLowDateTime > 0 || fileTime->dwHighDateTime > 0)) {
+		// Convert to SYSTEMTIME and remove milliseconds
+		SYSTEMTIME sysTime;
+		FileTimeToSystemTime(fileTime, &sysTime);
+		sysTime.wMilliseconds = 0; // Really important, because unix-timestamps does not support milliseconds
+
+		// Reconvert to FILETIME to account for removed milliseconds
+		FILETIME withoutMSecs;
+		SystemTimeToFileTime(&sysTime, &withoutMSecs);
+
+		// Convert to large integer so we can access U64 directly
+		ULARGE_INTEGER ticks;
+		ticks.LowPart = withoutMSecs.dwLowDateTime;
+		ticks.HighPart = withoutMSecs.dwHighDateTime;
+
+		// Final conversion from ticks to unix-timestamp
+		result = (ticks.QuadPart / FPL__WIN32_TICKS_PER_SEC) - FPL__WIN32_UNIX_EPOCH_DIFFERENCE;
+	}
 	return(result);
+}
+
+fpl_internal FILETIME fpl__Win32ConvertUnixTimestampToFileTime(const fplFileTimeStamp unixTimeStamp) {
+	// Ticks are defined in 100 ns = 10000000 secs
+	// 100 ns = milliseconds * 10000
+	// Windows ticks starts at 1601-01-01T00:00:00Z
+	// Unix secs starts at 1970-01-01T00:00:00Z
+	if (unixTimeStamp > 0) {
+		uint64_t ticks = (unixTimeStamp + FPL__WIN32_UNIX_EPOCH_DIFFERENCE) * FPL__WIN32_TICKS_PER_SEC;
+		FILETIME result;
+		result.dwLowDateTime = (DWORD)ticks;
+		result.dwHighDateTime = ticks >> 32;
+		return(result);
+	}
+	FILETIME empty = fplZeroInit;
+	return(empty);
 }
 
 fpl_platform_api bool fplOpenBinaryFile(const char *filePath, fplFileHandle *outHandle) {
@@ -12272,6 +12316,28 @@ fpl_platform_api bool fplGetFileTimestampsFromHandle(const fplFileHandle *fileHa
 			outStamps->lastModifyTime = fpl__Win32ConvertFileTimeToUnixTimestamp(&times[2]);
 			return(true);
 		}
+	}
+	return(false);
+}
+
+fpl_platform_api bool fplSetFileTimestamps(const char *filePath, const fplFileTimeStamps *timeStamps) {
+	FPL__CheckArgumentNull(timeStamps, false);
+	if (filePath != fpl_null) {
+		wchar_t filePathWide[FPL_MAX_PATH_LENGTH];
+		fplUTF8StringToWideString(filePath, fplGetStringLength(filePath), filePathWide, fplArrayCount(filePathWide));
+		HANDLE win32FileHandle = CreateFileW(filePathWide, FILE_WRITE_ATTRIBUTES,  FILE_SHARE_WRITE | FILE_SHARE_READ, fpl_null, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, fpl_null);
+		bool result = false;
+		if (win32FileHandle != INVALID_HANDLE_VALUE) {
+			FILETIME times[3];
+			times[0] = fpl__Win32ConvertUnixTimestampToFileTime(timeStamps->creationTime);
+			times[1] = fpl__Win32ConvertUnixTimestampToFileTime(timeStamps->lastAccessTime);
+			times[2] = fpl__Win32ConvertUnixTimestampToFileTime(timeStamps->lastModifyTime);
+			if (SetFileTime(win32FileHandle, &times[0], NULL, NULL) == TRUE) {
+				return(true);
+			}
+			CloseHandle(win32FileHandle);
+		}
+		return(result);
 	}
 	return(false);
 }
