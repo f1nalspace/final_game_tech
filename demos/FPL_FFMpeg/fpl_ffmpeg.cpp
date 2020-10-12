@@ -16,6 +16,9 @@ Author:
 	Torsten Spaete
 
 Changelog:
+	## 2020-10-12
+	- Renamed old FPL functions calls to new ones
+
 	## 2020-10-11
 	- Fixed broken audio computation
 	- Upgraded to FFMPEG 4.3.1
@@ -1689,7 +1692,6 @@ struct PlayerState {
 	PlayerSettings settings;
 
 	FontInfo fontInfo;
-
 	FontBuffer fontBuffer;
 
 	Clock externalClock;
@@ -1985,7 +1987,7 @@ static void QueuePicture(Decoder &decoder, AVFrame *sourceFrame, Frame *targetFr
 	targetFrame->height = sourceFrame->height;
 
 #if PRINT_PTS
-	ConsoleFormatOut("PTS V: %7.2f, Next: %7.2f\n", targetFrame->pts, decoder.next_pts);
+	fplDebugFormatOut("PTS V: %7.2f, Next: %7.2f\n", targetFrame->pts, decoder.next_pts);
 #endif
 
 	AddFrameToDecoder(decoder, targetFrame, sourceFrame);
@@ -2054,8 +2056,8 @@ static void VideoDecodingThreadProc(const fplThreadHandle *thread, void *userDat
 				}
 			} else {
 #if PRINT_QUEUE_INFOS
-				uint32_t decodedVideoFrameIndex = AtomicAddU32(&decoder->decodedFrameCount, 1);
-				ConsoleFormatOut("Decoded video frame %lu\n", decodedVideoFrameIndex);
+				uint32_t decodedVideoFrameIndex = fplAtomicAddAndFetchU32(&decoder->decodedFrameCount, 1);
+				fplDebugFormatOut("Decoded video frame %lu\n", decodedVideoFrameIndex);
 #endif
 				hasDecodedFrame = true;
 
@@ -2110,7 +2112,7 @@ static void QueueSamples(Decoder &decoder, AVFrame *sourceFrame, Frame *targetFr
 	targetFrame->serial = serial;
 
 #if PRINT_PTS
-	ConsoleFormatOut("PTS A: %7.2f, Next: %7.2f\n", targetFrame->pts, decoder.next_pts);
+	fplDebugFormatOut("PTS A: %7.2f, Next: %7.2f\n", targetFrame->pts, decoder.next_pts);
 #endif
 
 	AddFrameToDecoder(decoder, targetFrame, sourceFrame);
@@ -2205,8 +2207,8 @@ static void AudioDecodingThreadProc(const fplThreadHandle *thread, void *userDat
 				}
 			} else {
 #if PRINT_QUEUE_INFOS
-				uint32_t decodedAudioFrameIndex = AtomicAddU32(&decoder->decodedFrameCount, 1);
-				ConsoleFormatOut("Decoded audio frame %lu\n", decodedAudioFrameIndex);
+				uint32_t decodedAudioFrameIndex = fplAtomicAddAndFetchU32(&decoder->decodedFrameCount, 1);
+				fplDebugFormatOut("Decoded audio frame %lu\n", decodedAudioFrameIndex);
 #endif
 				hasDecodedFrame = true;
 			}
@@ -2598,8 +2600,8 @@ static void PacketReadThreadProc(const fplThreadHandle *thread, void *userData) 
 				assert(targetPacket != nullptr);
 
 #if PRINT_QUEUE_INFOS
-				uint32_t packetIndex = AtomicAddU32(&reader.readPacketCount, 1);
-				ConsoleFormatOut("Read packet %lu\n", packetIndex);
+				uint32_t packetIndex = fplAtomicAddAndFetchU32(&reader.readPacketCount, 1);
+				fplDebugFormatOut("Read packet %lu\n", packetIndex);
 #endif
 
 				// Check if packet is in play range, then queue, otherwise discard
@@ -2612,16 +2614,16 @@ static void PacketReadThreadProc(const fplThreadHandle *thread, void *userData) 
 				if ((videoStream != nullptr) && (srcPacket.stream_index == videoStream->streamIndex) && pktInPlayRange) {
 					AddPacketToDecoder(video.decoder, targetPacket, &srcPacket);
 #if PRINT_QUEUE_INFOS
-					ConsoleFormatOut("Queued video packet %lu\n", packetIndex);
+					fplDebugFormatOut("Queued video packet %lu\n", packetIndex);
 #endif
 				} else if ((audioStream != nullptr) && (srcPacket.stream_index == audioStream->streamIndex) && pktInPlayRange) {
 					AddPacketToDecoder(audio.decoder, targetPacket, &srcPacket);
 #if PRINT_QUEUE_INFOS
-					ConsoleFormatOut("Queued audio packet %lu\n", packetIndex);
+					fplDebugFormatOut("Queued audio packet %lu\n", packetIndex);
 #endif
 				} else {
 #if PRINT_QUEUE_INFOS
-					ConsoleFormatOut("Dropped packet %lu\n", packetIndex);
+					fplDebugFormatOut("Dropped packet %lu\n", packetIndex);
 #endif
 					ffmpeg.av_packet_unref(&srcPacket);
 				}
@@ -2947,7 +2949,7 @@ static void RenderVideoFrame(PlayerState *state) {
 	fplVideoFlip();
 
 #if PRINT_FRAME_UPLOAD_INFOS
-	ConsoleFormatOut("Displayed frame: %d(%s)\n", readIndex, (wasUploaded ? " (New)" : ""));
+	fplDebugFormatOut("Displayed frame: %d(%s)\n", readIndex, (wasUploaded ? " (New)" : ""));
 #endif
 }
 
@@ -2991,7 +2993,7 @@ static double ComputeVideoDelay(const PlayerState *state, const double delay) {
 	}
 
 #if PRINT_VIDEO_DELAY
-	ConsoleFormatOut("video: delay=%0.3f A-V=%f\n", delay, -diff);
+	fplDebugFormatOut("video: delay=%0.3f A-V=%f\n", delay, -diff);
 #endif
 
 	return(result);
@@ -3092,7 +3094,7 @@ static void VideoRefresh(PlayerState *state, double &remainingTime, int &display
 	double audioClock = GetClock(state->audio.clock);
 	double videoClock = GetClock(state->video.clock);
 	double extClock = GetClock(state->externalClock);
-	ConsoleFormatOut("M: %7.2f, A: %7.2f, V: %7.2f, E: %7.2f\n", masterClock, audioClock, videoClock, extClock);
+	fplDebugFormatOut("M: %7.2f, A: %7.2f, V: %7.2f, E: %7.2f\n", masterClock, audioClock, videoClock, extClock);
 #endif
 }
 
