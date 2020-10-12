@@ -247,6 +247,14 @@ typedef FFMPEG_AV_LOG_SET_FLAGS_FUNC(ffmpeg_av_log_set_flags_func);
 // av_log
 #define FFMPEG_AV_LOG_FUNC(name) void name(void *avcl, int level, const char *fmt, ...)
 typedef FFMPEG_AV_LOG_FUNC(ffmpeg_av_log_func);
+// av_get_pix_fmt_string
+#define FFMPEG_AV_GET_PIX_FMT_STRING_FUNC(name) char* name(char* buf, int buf_size, enum AVPixelFormat pix_fmt)
+typedef FFMPEG_AV_GET_PIX_FMT_STRING_FUNC(ffmpeg_av_get_pix_fmt_string_func);
+// av_get_pix_fmt_name
+#define FFMPEG_AV_GET_PIX_FMT_NAME_FUNC(name) const char* name(enum AVPixelFormat pix_fmt)
+typedef FFMPEG_AV_GET_PIX_FMT_NAME_FUNC(ffmpeg_av_get_pix_fmt_name_func);
+
+
 
 //
 // SWS
@@ -377,6 +385,8 @@ struct FFMPEGContext {
 	ffmpeg_av_get_sample_fmt_name_func* av_get_sample_fmt_name;
 	ffmpeg_av_log_set_flags_func* av_log_set_flags;
 	ffmpeg_av_log_func* av_log;
+	ffmpeg_av_get_pix_fmt_string_func* av_get_pix_fmt_string;
+	ffmpeg_av_get_pix_fmt_name_func* av_get_pix_fmt_name;
 
 	// SWS
 	ffmpeg_get_lib_version_func* swscale_version;
@@ -585,6 +595,8 @@ static bool LoadFFMPEG(FFMPEGContext& ffmpeg) {
 	FFMPEG_GET_FUNCTION_ADDRESS(avUtilLib, avUtilLibFile, ffmpeg.av_get_sample_fmt_name, ffmpeg_av_get_sample_fmt_name_func, "av_get_sample_fmt_name");
 	FFMPEG_GET_FUNCTION_ADDRESS(avUtilLib, avUtilLibFile, ffmpeg.av_log_set_flags, ffmpeg_av_log_set_flags_func, "av_log_set_flags");
 	FFMPEG_GET_FUNCTION_ADDRESS(avUtilLib, avUtilLibFile, ffmpeg.av_log, ffmpeg_av_log_func, "av_log");
+	FFMPEG_GET_FUNCTION_ADDRESS(avUtilLib, avUtilLibFile, ffmpeg.av_get_pix_fmt_string, ffmpeg_av_get_pix_fmt_string_func, "av_get_pix_fmt_string");	
+	FFMPEG_GET_FUNCTION_ADDRESS(avUtilLib, avUtilLibFile, ffmpeg.av_get_pix_fmt_name, ffmpeg_av_get_pix_fmt_name_func, "av_get_pix_fmt_name");
 #else	
 	ffmpeg.avutil_version = avutil_version;
 	ffmpeg.av_frame_alloc = av_frame_alloc;
@@ -616,6 +628,7 @@ static bool LoadFFMPEG(FFMPEGContext& ffmpeg) {
 	ffmpeg.av_get_sample_fmt_name = av_get_sample_fmt_name;
 	ffmpeg.av_log_set_flags = av_log_set_flags;
 	ffmpeg.av_log = av_log;
+	ffmpeg.av_get_pix_fmt_string = av_get_pix_fmt_string;
 #endif
 
 	//

@@ -18,6 +18,7 @@ Author:
 Changelog:
 	## 2020-10-12
 	- Renamed old FPL functions calls to new ones
+	- Print useful informations to the osd
 
 	## 2020-10-11
 	- Fixed broken audio computation
@@ -1072,6 +1073,8 @@ struct AudioFormat {
 	uint32_t periods;
 	//! Format
 	fplAudioFormatType type;
+	//! Driver
+	fplAudioDriverType driver;
 };
 
 struct AudioContext {
@@ -1086,6 +1089,8 @@ struct AudioContext {
 	double audioDiffCum;
 	double audioDiffAbgCoef;
 	double audioDiffThreshold;
+
+	fplAudioDriverType driver;
 
 	SwrContext *softwareResampleCtx;
 	Frame *pendingAudioFrame;
@@ -2795,6 +2800,36 @@ static void RenderOSD(PlayerState *state, const Mat4f &proj, const float w, cons
 
 		fplFormatString(osdTextBuffer, fplArrayCount(osdTextBuffer), "Length: %02d:%02d:%02d:%03d", totalHours, totalMinutes, totalSeconds, totalMillis);
 		PushTextToBuffer(state->fontBuffer, state->fontInfo, osdTextBuffer, osdFontSize, osdPos, Vec4f(1, 1, 1, 1), TextRenderMode::Baseline);
+		osdPos += Vec2f(0, -osdFontSize);
+	}
+
+	// States
+	{
+		const char* videoInfos;
+#if USE_HARDWARE_RENDERING
+		videoInfos = "OpenGL";
+#else
+		videoInfos = "Software";
+#endif
+		double frameRate = av_q2d(state->video.stream.stream->avg_frame_rate);
+		uint32_t width = state->video.stream.codecContext->width;
+		uint32_t height = state->video.stream.codecContext->height;
+		AVPixelFormat pixFormat  = state->video.stream.codecContext->pix_fmt;
+		const char *pixelFormatName = ffmpeg.av_get_pix_fmt_name(pixFormat);
+
+		fplFormatString(osdTextBuffer, fplArrayCount(osdTextBuffer), "Video: %s, %ux%u, %s, %.2f frames/s", videoInfos, width, height, pixelFormatName, frameRate);
+		PushTextToBuffer(state->fontBuffer, state->fontInfo, osdTextBuffer, osdFontSize, osdPos, Vec4f(1, 1, 1, 1), TextRenderMode::Baseline);
+		osdPos += Vec2f(0, -osdFontSize);
+
+		const char* audioDriverName = fplGetAudioDriverString(state->audio.audioTarget.driver);
+		const char* audioFormatName = fplGetAudioFormatTypeString(state->audio.audioTarget.type);
+
+		uint32_t bufferSize = state->audio.audioTarget.bufferSizeInBytes;
+		uint32_t frameSize = fplGetAudioFrameSizeInBytes(state->audio.audioTarget.type, state->audio.audioTarget.channels);
+
+		fplFormatString(osdTextBuffer, fplArrayCount(osdTextBuffer), "Audio: %s, %s, %u channels, %u Hz", audioDriverName, audioFormatName, state->audio.audioTarget.channels, state->audio.audioTarget.sampleRate);
+		PushTextToBuffer(state->fontBuffer, state->fontInfo, osdTextBuffer, osdFontSize, osdPos, Vec4f(1, 1, 1, 1), TextRenderMode::Baseline);
+		osdPos += Vec2f(0, -osdFontSize);
 	}
 
 #if USE_HARDWARE_RENDERING
@@ -3287,6 +3322,7 @@ static bool InitializeAudio(PlayerState &state, const char *mediaFilePath, const
 	audio.audioTarget.channels = targetChannelCount;
 	audio.audioTarget.sampleRate = targetSampleRate;
 	audio.audioTarget.type = nativeAudioFormat.type;
+	audio.audioTarget.driver = nativeAudioFormat.driver;
 	audio.audioTarget.bufferSizeInBytes = ffmpeg.av_samples_get_buffer_size(nullptr, audio.audioTarget.channels, audio.audioTarget.sampleRate, targetSampleFormat, 1);
 
 	AVSampleFormat inputSampleFormat = audioCodexCtx->sample_fmt;

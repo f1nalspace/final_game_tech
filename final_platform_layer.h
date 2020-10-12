@@ -120,7 +120,7 @@ SOFTWARE.
 
 /*!
 	@file final_platform_layer.h
-	@version v0.9.4 beta
+	@version v0.9.5 beta
 	@author Torsten Spaete
 	@brief Final Platform Layer (FPL) - A C99 Single-Header-File Platform Abstraction Library
 */
@@ -138,7 +138,8 @@ SOFTWARE.
 	- New: Added C++/11 detection (FPL_IS_CPP11)
 	- New: Added enum fplAudioLatencyMode to fplAudioTargetFormat
 	- New: Added function fplSetFileTimestamps()
-	- New: [Win32] Added implementation for fplSetFileTimestamps()
+	- New: Added fplAudioDriverType to fplAudioDeviceFormat
+	- New: [Win32] Added implementation for fplSetFileTimestamps()#
 
 	- Fixed: fplS32ToString() was not returning the last written character
 	- Fixed: fplStringAppendLen() was not returning the last written character
@@ -147,7 +148,7 @@ SOFTWARE.
 	- Fixed: [Core] Added empty functions for fplCPUID(), fplGetXCR0() for non-x86 platforms
 	- Fixed: [Core] Implemented fplRDTSC() for non-x86 platforms
 
-	- Changed: FPL_MAX_THREAD_COUNT and FPL_MAX_SIGNAL_COUNT can now be overriden by the user
+	- Changed: FPL_MAX_THREAD_COUNT and FPL_MAX_SIGNAL_COUNT can now be overridden by the user
 	- Changed: Removed redundant field bufferSizeInBytes from fplAudioDeviceFormat struct
 	- Changed: Simplified audio system default values initialization
 	- Changed: Use default audio buffer size based on set fplAudioLatencyMode in fplAudioTargetFormat
@@ -3290,13 +3291,15 @@ typedef struct fplAudioDeviceFormat {
 	uint32_t periods;
 	//! Format
 	fplAudioFormatType type;
-	//! Is exclusive mode prefered
+	//! Is exclusive mode preferred
 	fpl_b32 preferExclusiveMode;
 	//! Default fields
 	fplAudioDefaultFields defaultFields;
+	//! Audio driver
+	fplAudioDriverType driver;
 } fplAudioDeviceFormat;
 
-//! A structure containing audio target format configurations, such as type, samplerate, channels, etc.
+//! A structure containing audio target format configurations, such as type, sample rate, channels, etc.
 typedef struct fplAudioTargetFormat {
 	//! Samples per seconds (uses default of 44100 when zero)
 	uint32_t sampleRate;
@@ -18082,6 +18085,7 @@ fpl_internal fplAudioResultType fpl__AudioInitDirectSound(const fplAudioSettings
 
 	// Set internal format
 	fplAudioDeviceFormat internalFormat = fplZeroInit;
+	internalFormat.driver = fplAudioDriverType_DirectSound;
 	if (fpl__Win32IsEqualGuid(actualFormat->SubFormat, FPL__GUID_KSDATAFORMAT_SUBTYPE_IEEE_FLOAT)) {
 		if (actualFormat->Format.wBitsPerSample == 64) {
 			internalFormat.type = fplAudioFormatType_F64;
@@ -19113,6 +19117,7 @@ fpl_internal fplAudioResultType fpl__AudioInitAlsa(const fplAudioSettings *audio
 	}
 
 	fplAudioDeviceFormat internalFormat = fplZeroInit;
+	internalFormat.type = fplAudioDriverType_Alsa;
 
 	//
 	// Format
