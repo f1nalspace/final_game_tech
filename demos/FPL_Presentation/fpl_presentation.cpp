@@ -70,6 +70,7 @@ License:
 #define DRAW_VIEW_CENTER 0
 #define DRAW_ROTATING_CUBE 1
 #define USE_LETTERBOX_VIEWPORT 0
+#define DRAW_BOX_DEFINITIONS 0
 
 template <typename T>
 struct GrowablePool {
@@ -1188,7 +1189,7 @@ static Vec2f ComputeTextSize(const LoadedFont &font, const char *text, const siz
 	return(result);
 }
 
-static Vec2f ComputeBoxOffset(const Vec2f &size, const HorizontalAlignment horizonzalAlign = HorizontalAlignment::Left, const VerticalAlignment verticalAlign = VerticalAlignment::Top) {
+static Vec2f ComputeInlineOffset(const Vec2f &size, const HorizontalAlignment horizonzalAlign = HorizontalAlignment::Left, const VerticalAlignment verticalAlign = VerticalAlignment::Top) {
 	Vec2f result = V2f(0, 0);
 	if (verticalAlign == VerticalAlignment::Bottom) {
 		result += V2f(0, -size.h);
@@ -1200,12 +1201,6 @@ static Vec2f ComputeBoxOffset(const Vec2f &size, const HorizontalAlignment horiz
 	} else 	if (horizonzalAlign == HorizontalAlignment::Center) {
 		result += V2f(-size.w * 0.5f, 0);
 	}
-	return(result);
-}
-
-static Vec2f ComputeTextOffset(const LoadedFont &font, const char *text, const size_t textLen, const float charHeight, const HorizontalAlignment horizonzalAlign = HorizontalAlignment::Left, const VerticalAlignment verticalAlign = VerticalAlignment::Top) {
-	Vec2f size = ComputeTextSize(font, text, textLen, charHeight);
-	Vec2f result = ComputeBoxOffset(size, horizonzalAlign, verticalAlign);
 	return(result);
 }
 
@@ -1409,7 +1404,7 @@ static void RenderLabel(const LoadedFont &font, const Label &label, const SlideV
 	size_t textLen = fplGetStringLength(label.text);
 	Vec2f pos = label.pos;
 	Vec2f size = ComputeTextSize(font, text, textLen, charHeight);
-	Vec2f align = ComputeBoxOffset(size, label.hAlign, label.vAlign);
+	Vec2f align = ComputeInlineOffset(size, label.hAlign, label.vAlign);
 	Vec2f boxPos = pos + align;
 	Vec2f textPos = boxPos + V2f(0, font.ascent * charHeight);
 
@@ -1527,7 +1522,7 @@ static void RenderCube(const float rw, const float rh, const float rd, const Vec
 static void RenderImage(const LoadedImage &renderImage, const Image &image) {
 	Vec2f pos = image.pos;
 	Vec2f size = image.size;
-	Vec2f align = ComputeBoxOffset(size, HorizontalAlignment::Left, VerticalAlignment::Top);
+	Vec2f align = ComputeInlineOffset(size, HorizontalAlignment::Left, VerticalAlignment::Top);
 	Vec2f boxPos = pos + align;
 	Vec2f imagePos = boxPos;
 	const ImageStyle &style = image.style;
@@ -1659,7 +1654,7 @@ static void RenderFrame(App &app, const Vec2i &winSize) {
 		const char *text = "No slide found!";
 		size_t textLen = fplGetStringLength(text);
 		Vec2f size = ComputeTextSize(*debugFont, text, textLen, debugFontSize);
-		Vec2f offset = ComputeBoxOffset(size, HorizontalAlignment::Center, VerticalAlignment::Middle);
+		Vec2f offset = ComputeInlineOffset(size, HorizontalAlignment::Center, VerticalAlignment::Middle);
 		RenderTextQuads(w * 0.5f + offset.x, h * 0.5f + offset.y, text, textLen, debugFontSize, *debugFont, V4f(1, 0, 0, 1));
 	} else {
 		float w = activeSlide->size.w;
@@ -1967,52 +1962,71 @@ static void AddSlideFromDefinition(Renderer &renderer, Presentation &presentatio
 	// Title
 	slide->AddLabel(slide->name, area.pos + V2f(area.size.w * 0.5f, 0), titleFontName, titleFontSize, HorizontalAlignment::Center, VerticalAlignment::Top, titleStyle);
 
+	area.size -= V2f(padding * 2, 0);
+	area.size -= V2f(0, titleLineHeight);
+
+	area.pos += V2f(padding, titleLineHeight);
+
 	// Content
-	for (size_t blockIndex = 0; blockIndex < inSlide.count; ++blockIndex)
-	{
-		const TextBlockDefinition &block = inSlide.items[blockIndex];
+	for (size_t blockIndex = 0; blockIndex < inSlide.count; ++blockIndex) {
+		const BlockDefinition &block = inSlide.blocks[blockIndex];
 
-		float textFontSize = normalFontSize;
-		if (block.fontSize > 0) textFontSize = block.fontSize;
+		Vec2f offset = V2fHadamard(area.size, block.pos);
+		Vec2f blockPos = area.pos + offset;
+		Vec2f blockSize = V2fHadamard(area.size, block.size);
 
-		const float textLineHeight = inPresentation.normalFont.lineScale * textFontSize;
-
-		const char *text = block.text;
-		Vec2f blockSize = ComputeTextBlockSize(renderer, *slide, text, normalFontName, textFontSize, textLineHeight);
-
-		HorizontalAlignment textAlign = HorizontalAlignment::Left;
-		VerticalAlignment vAlign = VerticalAlignment::Top;
-
-		Vec2f blockPos = area.pos;
-		if (block.hAlign == HorizontalAlignment::Center) {
-			textAlign = HorizontalAlignment::Center;
-			blockPos += V2f((area.size.w - blockSize.w) * 0.5f, 0);
-		} else if (block.hAlign == HorizontalAlignment::Left) {
-			blockPos += V2f(padding, 0);
-		} else if (block.hAlign == HorizontalAlignment::Right) {
-			blockPos -= V2f(padding, 0);
-		}
-		if (block.vAlign == VerticalAlignment::Middle) {
-			blockPos += V2f(0, (area.size.h - blockSize.h) * 0.5f);
-		} else if (block.vAlign == VerticalAlignment::Top) {
-			blockPos += V2f(0, titleLineHeight);
-		} else if (block.vAlign == VerticalAlignment::Bottom) {
-			blockPos += V2f(0, area.size.h - blockSize.h);
-		}
-
-#if 0
+#if DRAW_BOX_DEFINITIONS
 		Rect *rect = slide->AddRect(blockPos, blockSize);
 		rect->style.background.kind = BackgroundKind::Solid;
 		rect->style.background.primaryColor = V4f(1, 0, 1, 1);
 #endif
 
-		Vec2f textPos = blockPos;
-		if (textAlign == HorizontalAlignment::Center) {
-			textPos += V2fHadamard(V2f(1, 0), blockSize * 0.5f);
-		} else if (textAlign == HorizontalAlignment::Right) {
-			textPos += V2fHadamard(V2f(1, 0), blockSize);
+		switch (block.type) {
+			case BlockType::Text:
+			{
+				const TextBlockDefinition textBlock = block.text;
+
+				float textFontSize = normalFontSize;
+				if (textBlock.fontSize > 0) textFontSize = textBlock.fontSize;
+
+				const float textLineHeight = inPresentation.normalFont.lineScale * textFontSize;
+
+				const char *text = textBlock.text;
+				Vec2f textSize = ComputeTextBlockSize(renderer, *slide, text, normalFontName, textFontSize, textLineHeight);
+				HorizontalAlignment textAlign = textBlock.textAlign;
+
+				Vec2f textPos = blockPos;
+
+				if (block.contentAlignment.h == HorizontalAlignment::Center) {
+					textPos += V2fHadamard(V2f(0.5f, 0), blockSize) - V2fHadamard(V2f(0.5f, 0), textSize);
+				} else if (block.contentAlignment.h == HorizontalAlignment::Right) {
+					textPos += V2fHadamard(V2f(1.0f, 0), blockSize) - V2fHadamard(V2f(1.0f, 0), textSize);
+				}
+				if (block.contentAlignment.v == VerticalAlignment::Middle) {
+					textPos += V2fHadamard(V2f(0, 0.5f), blockSize) - V2fHadamard(V2f(0, 0.5f), textSize);
+				} else if (block.contentAlignment.v == VerticalAlignment::Bottom) {
+					textPos += V2fHadamard(V2f(0, 1.0f), blockSize) - V2fHadamard(V2f(0, 1.0f), textSize);
+				}
+
+#if DRAW_BOX_DEFINITIONS
+				Rect *rect2 = slide->AddRect(textPos, textSize);
+				rect2->style.background.kind = BackgroundKind::Solid;
+				rect2->style.background.primaryColor = V4f(1, 1, 0, 1);
+#endif
+
+				// Adjust for content alignment
+				if (textAlign == HorizontalAlignment::Center) {
+					textPos += V2fHadamard(V2f(1, 0), textSize * 0.5f);
+				} else if (textAlign == HorizontalAlignment::Right) {
+					textPos += V2fHadamard(V2f(1, 0), textSize);
+				}
+				AddTextBlock(renderer, *slide, textPos, text, normalFontName, textFontSize, textLineHeight, normalStyle, textAlign, VerticalAlignment::Top);
+			} break;
+
+			default:
+				break;
 		}
-		AddTextBlock(renderer, *slide, textPos, text, normalFontName, textFontSize, textLineHeight, normalStyle, textAlign, vAlign);
+
 	}
 }
 
