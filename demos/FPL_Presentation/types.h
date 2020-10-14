@@ -33,6 +33,14 @@ struct Background {
 	Vec4f secondaryColor;
 };
 
+static Background MakeBackground(const Vec4f &primaryColor, const Vec4f& secondaryColor, const BackgroundKind kind = BackgroundKind::HalfGradientHorizontal) {
+	Background result;
+	result.kind = kind;
+	result.primaryColor = primaryColor;
+	result.secondaryColor = secondaryColor;
+	return(result);
+}
+
 struct TextStyle {
 	Background background;
 	Vec4f foregroundColor;

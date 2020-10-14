@@ -1955,7 +1955,7 @@ static void AddSlideFromDefinition(Renderer &renderer, Presentation &presentatio
 	const float padding = inPresentation.padding;
 
 	Slide *slide = presentation.AddSlide(presentation.size, inSlide.name);
-	slide->background = inPresentation.background;
+	slide->background = inSlide.background;
 
 	Rect2f area = AddHeaderAndFooter(slide, inPresentation.header, inPresentation.footer);
 

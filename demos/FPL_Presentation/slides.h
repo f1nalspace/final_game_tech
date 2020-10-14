@@ -58,14 +58,16 @@ constexpr size_t MaxBlockCount = 16;
 struct SlideDefinition {
 	const char *name;
 	BlockDefinition blocks[MaxBlockCount];
+	Background background;
 	size_t count;
 };
 
 template<size_t N>
-static SlideDefinition MakeSlideDef(const char *name, BlockDefinition(&blocks)[N]) {
+static SlideDefinition MakeSlideDef(const char *name, BlockDefinition(&blocks)[N], const Background &background) {
 	fplAssert(N < MaxBlockCount);
 	SlideDefinition result = {};
 	result.name = name;
+	result.background = background;
 	for (size_t i = 0; i < N; ++i) {
 		result.blocks[i] = blocks[i];
 	}
@@ -107,11 +109,55 @@ struct PresentationDefinition {
 	FontDefinition titleFont;
 	FontDefinition normalFont;
 	FontDefinition consoleFont;
-	Background background;
 	float padding;
 };
 
 namespace FPLPresentationData {
+	static Background DarkBlueBack = MakeBackground(RGBAToLinearRaw(0, 0, 0, 255), RGBAToLinearRaw(15, 13, 80, 255));
+	
+	// DarkBlue to LightBlue
+	static Background Background1 = MakeBackground(RGBAToLinearHex24(0x000000), RGBAToLinearHex24(0x333789));
+	static Background Background2 = MakeBackground(RGBAToLinearHex24(0x000000), RGBAToLinearHex24(0x1E5AA3));
+	static Background Background3 = MakeBackground(RGBAToLinearHex24(0x000000), RGBAToLinearHex24(0x0483AF));
+
+	// Green to Yellow
+	static Background Background4 = MakeBackground(RGBAToLinearHex24(0x000000), RGBAToLinearHex24(0x057F47));
+	static Background Background5 = MakeBackground(RGBAToLinearHex24(0x000000), RGBAToLinearHex24(0x7AB30B));
+	static Background Background6 = MakeBackground(RGBAToLinearHex24(0x000000), RGBAToLinearHex24(0xF2E500));
+
+	// LightOrange to DarkOrange
+	static Background Background7 = MakeBackground(RGBAToLinearHex24(0x000000), RGBAToLinearHex24(0xFDBD00));
+	static Background Background8 = MakeBackground(RGBAToLinearHex24(0x000000), RGBAToLinearHex24(0xEE7B00));
+	static Background Background9 = MakeBackground(RGBAToLinearHex24(0x000000), RGBAToLinearHex24(0xE54B0A));
+
+	// Red to Purple
+	static Background Background10 = MakeBackground(RGBAToLinearHex24(0x000000), RGBAToLinearHex24(0xDC0012));
+	static Background Background11 = MakeBackground(RGBAToLinearHex24(0x000000), RGBAToLinearHex24(0xB7006A));
+	static Background Background12 = MakeBackground(RGBAToLinearHex24(0x000000), RGBAToLinearHex24(0x59227A));
+
+	static Background Backgrounds[] = {
+		Background1,
+		Background2,
+		Background3,
+		Background4,
+		Background5,
+		Background6,
+		Background7,
+		Background8,
+		Background9,
+		Background10,
+		Background11,
+		Background12,
+	};
+
+	static int BackgroundIndex = 0;
+
+	static Background GetBackground() {
+		Background result = Backgrounds[BackgroundIndex];
+		BackgroundIndex = (BackgroundIndex + 1) % fplArrayCount(Backgrounds);
+		return(result);
+	}
+
 	static BlockDefinition IntroBlocks[] = {
 		MakeTextDef(
 			V2f(),V2f(1,1),MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Middle),
@@ -119,7 +165,7 @@ namespace FPLPresentationData {
 			"A lightweight Platform-Abstraction-Library written in C99\n"
 		, HorizontalAlignment::Center),
 	};
-	static const SlideDefinition IntroSlide = MakeSlideDef("Introduction", IntroBlocks);
+	static const SlideDefinition IntroSlide = MakeSlideDef("Introduction", IntroBlocks, GetBackground());
 
 	static BlockDefinition WhatIsAPALBlocks[] = {
 		MakeTextDef(
@@ -130,7 +176,7 @@ namespace FPLPresentationData {
 			"in a platform-independent way.\n"
 		, HorizontalAlignment::Center),
 	};
-	static const SlideDefinition WhatIsAPALSlide = MakeSlideDef("What is a PAL", WhatIsAPALBlocks);
+	static const SlideDefinition WhatIsAPALSlide = MakeSlideDef("What is a PAL", WhatIsAPALBlocks, GetBackground());
 
 	static BlockDefinition WhatIsFPLBlocks[] = {
 		MakeTextDef(
@@ -141,7 +187,7 @@ namespace FPLPresentationData {
 			"written in C99.\n"
 		, HorizontalAlignment::Center),
 	};
-	static const SlideDefinition WhatIsFPLSlide = MakeSlideDef("What is FPL", WhatIsFPLBlocks);
+	static const SlideDefinition WhatIsFPLSlide = MakeSlideDef("What is FPL", WhatIsFPLBlocks, GetBackground());
 
 	static BlockDefinition FeaturesOfFPLBlocks[] = {
 		MakeTextDef(
@@ -161,7 +207,7 @@ namespace FPLPresentationData {
 			"- and many more\n"
 		, HorizontalAlignment::Left, FeaturesFontSize),
 	};
-	static const SlideDefinition FeaturesOfFPLSlide = MakeSlideDef("Features of FPL", FeaturesOfFPLBlocks);
+	static const SlideDefinition FeaturesOfFPLSlide = MakeSlideDef("Features of FPL", FeaturesOfFPLBlocks, GetBackground());
 
 	static BlockDefinition MotivationBlocks[] = {
 		MakeTextDef(
@@ -185,7 +231,7 @@ namespace FPLPresentationData {
 			"- Some are heavily bloated\n"
 		, HorizontalAlignment::Left, FeaturesFontSize),
 	};
-	static const SlideDefinition MotivationSlide = MakeSlideDef("Motivation", MotivationBlocks);
+	static const SlideDefinition MotivationSlide = MakeSlideDef("Motivation", MotivationBlocks, GetBackground());
 
 	static BlockDefinition WhyBlocks[] = {
 		MakeTextDef(
@@ -206,7 +252,7 @@ namespace FPLPresentationData {
 			"- You decide how to integrate it; not the library\n"
 		, HorizontalAlignment::Left, FeaturesFontSize),
 	};
-	static const SlideDefinition WhySlide = MakeSlideDef("Why FPL", WhyBlocks);
+	static const SlideDefinition WhySlide = MakeSlideDef("Why FPL", WhyBlocks, GetBackground());
 
 	static BlockDefinition HowItWorksBlocks[] = {
 		MakeTextDef(
@@ -220,7 +266,7 @@ namespace FPLPresentationData {
 		, HorizontalAlignment::Left, FeaturesFontSize),
 
 	};
-	static const SlideDefinition HowItWorksSlide = MakeSlideDef("How it works", HowItWorksBlocks);
+	static const SlideDefinition HowItWorksSlide = MakeSlideDef("How it works", HowItWorksBlocks, GetBackground());
 
 	static BlockDefinition DemosBlocks[] = {
 		MakeTextDef(
@@ -229,7 +275,7 @@ namespace FPLPresentationData {
 		, HorizontalAlignment::Center),
 
 	};
-	static const SlideDefinition DemosSlide = MakeSlideDef("Demos!", DemosBlocks);
+	static const SlideDefinition DemosSlide = MakeSlideDef("Demos!", DemosBlocks, GetBackground());
 
 	static const SlideDefinition Slides[] = {
 		IntroSlide,
@@ -253,8 +299,6 @@ namespace FPLPresentationData {
 		/* shadowOffset */		TextShadowOffset,
 		/* drawShadow */		true,
 	};
-
-	static const Background Back = { BackgroundKind::HalfGradientHorizontal, RGBAToLinearRaw(0, 0, 0, 255), RGBAToLinearRaw(15, 13, 80, 255) };
 
 	static const TextStyle HeaderStyle = {
 		/* background */		{},
@@ -291,6 +335,5 @@ static const PresentationDefinition FPLPresentation = {
 	/* titleFont */ 	{FontResources::Arimo.name, 64.0f, 1.15f, FPLPresentationData::BasicStyle},
 	/* normalFont */ 	{FontResources::Arimo.name, 42.0f, 1.15f, FPLPresentationData::BasicStyle},
 	/* consoleFont */ 	{FontResources::BitStreamVerySans.name, 36.0f, 1.15f, FPLPresentationData::BasicStyle},
-	/* background */ 	FPLPresentationData::Back,
 	/* padding */ 	 	20.0f,
 };
