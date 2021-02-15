@@ -9,9 +9,6 @@
 #include <math.h> // sin, cos, M_PI
 #include <float.h> // EPSILON
 
-#define FFT_CORE_ONLY
-#include <fft/fft.hpp>
-
 typedef uint32_t AudioFrameIndex; // The number or index of frames
 typedef uint32_t AudioSampleIndex; // The number or index of samples
 typedef uint32_t AudioChannelIndex; // The number or index of channels
