@@ -27,22 +27,33 @@ enum class BackgroundKind {
 	HalfGradientVertical,
 };
 
-struct Background {
+struct BackgroundStyle {
 	BackgroundKind kind;
 	Vec4f primaryColor;
 	Vec4f secondaryColor;
 };
 
-static Background MakeBackground(const Vec4f &primaryColor, const Vec4f& secondaryColor, const BackgroundKind kind = BackgroundKind::HalfGradientHorizontal) {
-	Background result;
+static BackgroundStyle MakeBackground(const Vec4f &primaryColor, const Vec4f& secondaryColor, const BackgroundKind kind = BackgroundKind::HalfGradientHorizontal) {
+	BackgroundStyle result;
 	result.kind = kind;
 	result.primaryColor = primaryColor;
 	result.secondaryColor = secondaryColor;
 	return(result);
 }
 
+enum class StrokeKind {
+	None = 0,
+	Solid
+};
+
+struct StrokeStyle {
+	StrokeKind kind;
+	Vec4f color;
+	float width;
+};
+
 struct TextStyle {
-	Background background;
+	BackgroundStyle background;
 	Vec4f foregroundColor;
 	Vec4f shadowColor;
 	Vec2f shadowOffset;

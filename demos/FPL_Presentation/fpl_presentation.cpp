@@ -70,35 +70,35 @@ License:
 #define DRAW_VIEW_CENTER 0
 #define DRAW_ROTATING_CUBE 1
 #define USE_LETTERBOX_VIEWPORT 0
-#define DRAW_BOX_DEFINITIONS 0
+#define DRAW_BOX_DEFINITIONS 1
 
 template <typename T>
 struct GrowablePool {
 private:
 	struct Entry {
 		T value;
-		Entry *next;
+		Entry* next;
 	};
 
 	struct Bucket {
-		Entry *firstFree;
-		Bucket *next;
+		Entry* firstFree;
+		Bucket* next;
 	};
 
-	Entry *firstUsed;
-	Entry *lastUsed;
-	Bucket *firstBucket;
-	Bucket *lastBucket;
+	Entry* firstUsed;
+	Entry* lastUsed;
+	Bucket* firstBucket;
+	Bucket* lastBucket;
 	size_t entriesPerBucket;
 
-	Bucket *AllocBucket() {
+	Bucket* AllocBucket() {
 		fplAssert(entriesPerBucket > 0);
 		size_t size = sizeof(Bucket) + sizeof(uintptr_t) + sizeof(Entry) * entriesPerBucket;
-		Bucket *result = (Bucket *)fplMemoryAllocate(size);
-		result->firstFree = (Entry *)((uint8_t *)result + sizeof(Bucket) + sizeof(uintptr_t));
-		for (size_t i = 0; i < entriesPerBucket - 1; ++i) {
-			Entry *thisEntry = result->firstFree + i;
-			Entry *nextEntry = result->firstFree + (i + 1);
+		Bucket* result = (Bucket*)fplMemoryAllocate(size);
+		result->firstFree = (Entry*)((uint8_t*)result + sizeof(Bucket) + sizeof(uintptr_t));
+		for(size_t i = 0; i < entriesPerBucket - 1; ++i) {
+			Entry* thisEntry = result->firstFree + i;
+			Entry* nextEntry = result->firstFree + (i + 1);
 			thisEntry->next = nextEntry;
 		}
 		return(result);
@@ -109,19 +109,19 @@ public:
 		result.entriesPerBucket = entriesPerBucket;
 	}
 
-	T *Aquire() {
+	T* Aquire() {
 		// Init
-		if (entriesPerBucket == 0) {
+		if(entriesPerBucket == 0) {
 			entriesPerBucket = 64;
 		}
 
-		Bucket *bucket;
-		if (!lastBucket) {
+		Bucket* bucket;
+		if(!lastBucket) {
 			// Initial bucket
 			bucket = AllocBucket();
 			lastBucket = firstBucket = bucket;
 		}
-		if (lastBucket->firstFree == nullptr) {
+		if(lastBucket->firstFree == nullptr) {
 			// Bucket full, add another
 			bucket = AllocBucket();
 			lastBucket->next = bucket;
@@ -132,18 +132,18 @@ public:
 		// Add entry
 		fplAssert(bucket != nullptr);
 		fplAssert(bucket->firstFree != nullptr);
-		Entry *entry = bucket->firstFree;
-		Entry *next = entry->next;
+		Entry* entry = bucket->firstFree;
+		Entry* next = entry->next;
 		bucket->firstFree = next;
-		T *result = &entry->value;
+		T* result = &entry->value;
 		entry->next = nullptr;
 		return(result);
 	}
 
 	void Release() {
-		Bucket *bucket = firstBucket;
-		while (bucket != nullptr) {
-			Bucket *next = bucket->next;
+		Bucket* bucket = firstBucket;
+		while(bucket != nullptr) {
+			Bucket* next = bucket->next;
 			fplMemoryFree(bucket);
 			bucket = next;
 		}
@@ -156,16 +156,16 @@ struct LinkedList {
 private:
 	struct LinkedItem {
 		T value;
-		LinkedItem *next;
+		LinkedItem* next;
 	};
 
 	GrowablePool<LinkedItem> pool;
-	LinkedItem *first;
-	LinkedItem *last;
+	LinkedItem* first;
+	LinkedItem* last;
 	size_t count;
 public:
 	struct Iterator {
-		LinkedItem *cur;
+		LinkedItem* cur;
 		size_t index;
 
 		bool HasNext() const {
@@ -173,8 +173,8 @@ public:
 			return(result);
 		}
 
-		T *MoveNext() {
-			if (cur != nullptr) {
+		T* MoveNext() {
+			if(cur != nullptr) {
 				cur = cur->next;
 				++index;
 				return(&cur->value);
@@ -182,8 +182,8 @@ public:
 			return(nullptr);
 		}
 
-		T *Value() {
-			if (cur != nullptr) {
+		T* Value() {
+			if(cur != nullptr) {
 				return(&cur->value);
 			}
 			return(nullptr);
@@ -191,7 +191,7 @@ public:
 	};
 
 	struct ConstIterator {
-		const LinkedItem *cur;
+		const LinkedItem* cur;
 		size_t index;
 
 		bool HasNext() const {
@@ -199,8 +199,8 @@ public:
 			return(result);
 		}
 
-		const T *MoveNext() {
-			if (cur != nullptr) {
+		const T* MoveNext() {
+			if(cur != nullptr) {
 				cur = cur->next;
 				++index;
 				return(&cur->value);
@@ -208,8 +208,8 @@ public:
 			return(nullptr);
 		}
 
-		const T *Value() const {
-			if (cur != nullptr) {
+		const T* Value() const {
+			if(cur != nullptr) {
 				return(&cur->value);
 			}
 			return(nullptr);
@@ -220,9 +220,9 @@ public:
 		return count;
 	}
 
-	T *Add() {
-		LinkedItem *item = pool.Aquire();
-		if (last == nullptr) {
+	T* Add() {
+		LinkedItem* item = pool.Aquire();
+		if(last == nullptr) {
 			last = first = item;
 		} else {
 			last->next = item;
@@ -248,8 +248,8 @@ public:
 };
 
 static char glErrorCodeBuffer[16];
-static const char *GetGLErrorString(const GLenum err) {
-	switch (err) {
+static const char* GetGLErrorString(const GLenum err) {
+	switch(err) {
 		case GL_INVALID_ENUM:
 			return "GL_INVALID_ENUM";
 		case GL_INVALID_VALUE:
@@ -265,8 +265,8 @@ static const char *GetGLErrorString(const GLenum err) {
 		case GL_INVALID_FRAMEBUFFER_OPERATION:
 			return "GL_INVALID_FRAMEBUFFER_OPERATION";
 		default:
-			if (_itoa_s(err, glErrorCodeBuffer, fplArrayCount(glErrorCodeBuffer), 10) == 0)
-				return (const char *)glErrorCodeBuffer;
+			if(_itoa_s(err, glErrorCodeBuffer, fplArrayCount(glErrorCodeBuffer), 10) == 0)
+				return (const char*)glErrorCodeBuffer;
 			else
 				return "";
 	}
@@ -274,19 +274,19 @@ static const char *GetGLErrorString(const GLenum err) {
 
 static void CheckGLError() {
 	GLenum err = glGetError();
-	if (err != GL_NO_ERROR) {
-		const char *msg = GetGLErrorString(err);
+	if(err != GL_NO_ERROR) {
+		const char* msg = GetGLErrorString(err);
 		assert(!msg);
 	}
 }
 
 struct String {
-	const char *base;
+	const char* base;
 	size_t len;
 
 	String() {}
-	String(const char *base) { this->base = base; this->len = 0; }
-	String(const char *base, size_t len) { this->base = base; this->len = len; }
+	String(const char* base) { this->base = base; this->len = 0; }
+	String(const char* base, size_t len) { this->base = base; this->len = len; }
 };
 
 struct StringTable {
@@ -296,23 +296,23 @@ private:
 	struct Entry {
 		String str;
 		size_t size;
-		Entry *next;
+		Entry* next;
 	};
 
-	Entry *first;
-	Entry *last;
+	Entry* first;
+	Entry* last;
 	size_t count;
 
-	Entry *AllocEntry(const size_t size) {
+	Entry* AllocEntry(const size_t size) {
 		// @MEMORY(final): Use a memory pool instead
-		Entry *entry = (Entry *)malloc(sizeof(Entry) + EntryPadding + size);
+		Entry* entry = (Entry*)malloc(sizeof(Entry) + EntryPadding + size);
 		*entry = {};
 		entry->size = size;
 
-		if (first == nullptr) {
+		if(first == nullptr) {
 			first = entry;
 		}
-		if (last != nullptr) {
+		if(last != nullptr) {
 			last->next = entry;
 		}
 		last = entry;
@@ -322,46 +322,46 @@ private:
 		return(entry);
 	}
 
-	void ReleaseEntry(Entry *entry) {
+	void ReleaseEntry(Entry* entry) {
 		free(entry);
 	}
 
 public:
 	String MakeString(size_t len) {
-		Entry *entry = AllocEntry(len + 1);
-		String *result = &entry->str;
-		result->base = (char *)(uint8_t *)entry + sizeof(Entry) + EntryPadding;
+		Entry* entry = AllocEntry(len + 1);
+		String* result = &entry->str;
+		result->base = (char*)(uint8_t*)entry + sizeof(Entry) + EntryPadding;
 		result->len = len + 1;
 		return(*result);
 	}
 
-	const char *CopyString(const char *str, const size_t len) {
+	const char* CopyString(const char* str, const size_t len) {
 		String s = MakeString(len);
-		fplCopyStringLen(str, len, (char *)s.base, len + 1);
-		const char *result = s.base;
+		fplCopyStringLen(str, len, (char*)s.base, len + 1);
+		const char* result = s.base;
 		return(result);
 	}
 
-	const char *CopyString(const char *str) {
+	const char* CopyString(const char* str) {
 		size_t len = fplGetStringLength(str);
-		const char *result = CopyString(str, len);
+		const char* result = CopyString(str, len);
 		return(result);
 	}
 
-	const char *CopyString(const String &str) {
+	const char* CopyString(const String& str) {
 		size_t len;
-		if (str.len == 0)
+		if(str.len == 0)
 			len = fplGetStringLength(str.base);
 		else
 			len = str.len - 1;
-		const char *result = CopyString(str.base, len);
+		const char* result = CopyString(str.base, len);
 		return(result);
 	}
 
 	void ReleaseAll() {
-		Entry *p = first;
-		while (p != nullptr) {
-			Entry *n = p->next;
+		Entry* p = first;
+		while(p != nullptr) {
+			Entry* n = p->next;
 			ReleaseEntry(p);
 			p = n;
 		}
@@ -371,10 +371,10 @@ public:
 
 
 struct FontID {
-	const char *name;
+	const char* name;
 
-	static FontID Make(StringTable &table, const char *name) {
-		const char *nameCopy = table.CopyString(name); // @TODO(final): Intern the name, so we can just do a ptr match
+	static FontID Make(StringTable& table, const char* name) {
+		const char* nameCopy = table.CopyString(name); // @TODO(final): Intern the name, so we can just do a ptr match
 		FontID result = { nameCopy };
 		return(result);
 	}
@@ -390,7 +390,7 @@ struct LoadedFont {
 	};
 
 	FontID id;
-	Glyph *glyphs;
+	Glyph* glyphs;
 	uint32_t minChar;
 	uint32_t maxChar;
 	uint32_t bitmapWidth;
@@ -399,17 +399,18 @@ struct LoadedFont {
 	float fontSize;
 	float ascent;
 	float descent;
+	float spaceAdvance;
 
-	static b32 LoadFromMemory(LoadedFont *outFont, const uint8_t *fontData, const int fontIndex, const float fontSize, const uint32_t minChar, const uint32_t maxChar, const uint32_t minBitmapSize = 256, const uint32_t maxBitmapSize = 8192) {
+	static b32 LoadFromMemory(LoadedFont* outFont, const uint8_t* fontData, const int fontIndex, const float fontSize, const uint32_t minChar, const uint32_t maxChar, const uint32_t minBitmapSize = 256, const uint32_t maxBitmapSize = 8192) {
 		uint32_t charCount = (maxChar - minChar) + 1;
 
 		int fontOffset = stbtt_GetFontOffsetForIndex(fontData, fontIndex);
-		if (fontOffset < 0) {
+		if(fontOffset < 0) {
 			return(false);
 		}
 
 		stbtt_fontinfo fontInfo;
-		if (!stbtt_InitFont(&fontInfo, fontData, fontOffset)) {
+		if(!stbtt_InitFont(&fontInfo, fontData, fontOffset)) {
 			return(false);
 		}
 
@@ -418,17 +419,17 @@ struct LoadedFont {
 		int ascent, descent, lineGap;
 		stbtt_GetFontVMetrics(&fontInfo, &ascent, &descent, &lineGap);
 
-		stbtt_packedchar *packedChars = (stbtt_packedchar *)malloc(sizeof(stbtt_packedchar) * charCount);
+		stbtt_packedchar* packedChars = (stbtt_packedchar*)malloc(sizeof(stbtt_packedchar) * charCount);
 
 		uint32_t bitmapSize = minBitmapSize;
-		uint8_t *fontBitmap = nullptr;
+		uint8_t* fontBitmap = nullptr;
 
 		// @TODO(final): Support for multiple textures / codepoint-ranges, instead of finding the biggest bitmap
 
 		// Find bitmap size where every character fits in
 		b32 isPacked = false;
 		do {
-			fontBitmap = (uint8_t *)malloc(bitmapSize * bitmapSize);
+			fontBitmap = (uint8_t*)malloc(bitmapSize * bitmapSize);
 
 			stbtt_pack_context context;
 			stbtt_PackBegin(&context, fontBitmap, bitmapSize, bitmapSize, 0, 1, nullptr);
@@ -436,7 +437,7 @@ struct LoadedFont {
 			int oversampleX = 2, oversampleY = 2;
 			stbtt_PackSetOversampling(&context, oversampleX, oversampleY);
 
-			if (stbtt_PackFontRange(&context, fontData, 0, fontSize, minChar, charCount, packedChars)) {
+			if(stbtt_PackFontRange(&context, fontData, 0, fontSize, minChar, charCount, packedChars)) {
 				isPacked = true;
 			} else {
 				free(fontBitmap);
@@ -444,9 +445,9 @@ struct LoadedFont {
 			}
 
 			stbtt_PackEnd(&context);
-		} while (!isPacked && (bitmapSize < maxBitmapSize));
+		} while(!isPacked && (bitmapSize < maxBitmapSize));
 
-		if (fontBitmap == nullptr) {
+		if(fontBitmap == nullptr) {
 			free(packedChars);
 			return(false);
 		}
@@ -456,12 +457,14 @@ struct LoadedFont {
 
 		float fontScale = 1.0f / fontSize;
 
-		Glyph *glyphs = (Glyph *)fplMemoryAllocate(sizeof(Glyph) * charCount);
+		Glyph* glyphs = (Glyph*)fplMemoryAllocate(sizeof(Glyph) * charCount);
 
-		for (uint32_t charIndex = 0; charIndex < charCount; ++charIndex) {
-			const stbtt_packedchar *b = packedChars + charIndex;
+		float spaceAdvance = 0.0f;
 
-			Glyph *outGlyph = glyphs + charIndex;
+		for(uint32_t charIndex = 0; charIndex < charCount; ++charIndex) {
+			const stbtt_packedchar* b = packedChars + charIndex;
+
+			Glyph* outGlyph = glyphs + charIndex;
 
 			outGlyph->codePoint = minChar + charIndex;
 
@@ -486,6 +489,10 @@ struct LoadedFont {
 			outGlyph->uv[3] = V2f(s1, t1);
 
 			outGlyph->advance = b->xadvance * fontScale;
+
+			if(outGlyph->codePoint == ' ') {
+				spaceAdvance = outGlyph->advance;
+			}
 		}
 
 		free(packedChars);
@@ -515,17 +522,18 @@ struct LoadedFont {
 		font.textureId = fontTexture;
 		font.descent = descent * pixelScale * fontScale;
 		font.ascent = ascent * pixelScale * fontScale;
+		font.spaceAdvance = spaceAdvance;
 
 		*outFont = font;
 
 		return(true);
 	}
 
-	static b32 LoadFromFile(LoadedFont *outFont, const char *filePath, const int fontIndex, const float fontSize, const uint32_t minChar, const uint32_t maxChar, const uint32_t minBitmapSize = 256, const uint32_t maxBitmapSize = 8192) {
+	static b32 LoadFromFile(LoadedFont* outFont, const char* filePath, const int fontIndex, const float fontSize, const uint32_t minChar, const uint32_t maxChar, const uint32_t minBitmapSize = 256, const uint32_t maxBitmapSize = 8192) {
 		fplFileHandle fontFile;
-		if (fplOpenBinaryFile(filePath, &fontFile)) {
+		if(fplOpenBinaryFile(filePath, &fontFile)) {
 			uint32_t fileSize = fplGetFileSizeFromHandle32(&fontFile);
-			uint8_t *fontData = (uint8_t *)fplMemoryAllocate(fileSize);
+			uint8_t* fontData = (uint8_t*)fplMemoryAllocate(fileSize);
 			fplReadFileBlock32(&fontFile, fileSize, fontData, fileSize);
 			fplCloseFile(&fontFile);
 			b32 result = LoadFromMemory(outFont, fontData, fontIndex, fontSize, minChar, maxChar, minBitmapSize, maxBitmapSize);
@@ -537,11 +545,11 @@ struct LoadedFont {
 	}
 
 	void Release() {
-		if (textureId > 0) {
+		if(textureId > 0) {
 			glDeleteTextures(1, &textureId);
 			textureId = 0;
 		}
-		if (glyphs != nullptr) {
+		if(glyphs != nullptr) {
 			fplMemoryFree(glyphs);
 		}
 	}
@@ -549,25 +557,27 @@ struct LoadedFont {
 
 enum class ImageResourceType {
 	FPLLogo128x128 = 0,
+	FPLFeaturesImage,
 };
 
 struct ImageResource {
-	const uint8_t *bytes;
-	const char *name;
+	const uint8_t* bytes;
+	const char* name;
 	const size_t length;
 	ImageResourceType type;
 };
 
 namespace ImageResources {
 	static ImageResource FPLLogo128x128 = { fplLogo128x128ImageData, "FPL Logo 128x128", fplLogo128x128ImageDataSize, ImageResourceType::FPLLogo128x128 };
+	static ImageResource FPLFeaturesImage = { fplFeaturesImageData, "FPL Features", fplFeaturesImageDataSize, ImageResourceType::FPLFeaturesImage };
 }
 
 struct ImageID {
-	const char *name;
+	const char* name;
 	size_t index;
 
-	static ImageID Make(StringTable &table, const char *name, const size_t index) {
-		const char *nameCopy = table.CopyString(name);
+	static ImageID Make(StringTable& table, const char* name, const size_t index) {
+		const char* nameCopy = table.CopyString(name);
 		ImageID result = { nameCopy, index };
 		return(result);
 	}
@@ -579,10 +589,10 @@ struct LoadedImage {
 	uint32_t height;
 	GLuint textureId;
 
-	static b32 LoadFromMemory(LoadedImage *outImage, const uint8_t *bytes, const size_t length) {
+	static b32 LoadFromMemory(LoadedImage* outImage, const uint8_t* bytes, const size_t length) {
 		int w, h, comp;
-		stbi_uc *pixels = stbi_load_from_memory((const stbi_uc *)bytes, (int)length, &w, &h, &comp, 4);
-		if (pixels == nullptr) {
+		stbi_uc* pixels = stbi_load_from_memory((const stbi_uc*)bytes, (int)length, &w, &h, &comp, 4);
+		if(pixels == nullptr) {
 			return(false);
 		}
 
@@ -610,11 +620,11 @@ struct LoadedImage {
 		return(true);
 	}
 
-	static b32 LoadFromFile(LoadedImage *outImage, const char *filePath) {
+	static b32 LoadFromFile(LoadedImage* outImage, const char* filePath) {
 		fplFileHandle fontFile;
-		if (fplOpenBinaryFile(filePath, &fontFile)) {
+		if(fplOpenBinaryFile(filePath, &fontFile)) {
 			uint32_t fileSize = fplGetFileSizeFromHandle32(&fontFile);
-			uint8_t *bytes = (uint8_t *)fplMemoryAllocate(fileSize);
+			uint8_t* bytes = (uint8_t*)fplMemoryAllocate(fileSize);
 			fplReadFileBlock32(&fontFile, fileSize, bytes, fileSize);
 			fplCloseFile(&fontFile);
 			b32 result = LoadFromMemory(outImage, bytes, fileSize);
@@ -626,7 +636,7 @@ struct LoadedImage {
 	}
 
 	void Release() {
-		if (textureId > 0) {
+		if(textureId > 0) {
 			glDeleteTextures(1, &textureId);
 			textureId = 0;
 		}
@@ -684,18 +694,18 @@ struct Framebuffer {
 	}
 
 	void UpdateIfNeeded(const int newWidth, const int newHeight) {
-		if (fbo == 0 || newWidth != width || newHeight != height) {
+		if(fbo == 0 || newWidth != width || newHeight != height) {
 			Release();
 			Init(newWidth, newHeight);
 		}
 	}
 
 	void Release() {
-		if (fbo) {
+		if(fbo) {
 			glDeleteFramebuffers(1, &fbo);
 			fbo = 0;
 		}
-		if (textures[0]) {
+		if(textures[0]) {
 			glDeleteTextures(2, &textures[0]);
 			textures[0] = textures[1] = 0;
 		}
@@ -706,41 +716,41 @@ struct Framebuffer {
 struct Renderer {
 	LoadedFont fonts[MaxFontCount]; // First font is always the debug font
 	LoadedImage images[MaxImagesCount];
-	const LoadedFont *debugFont;
-	StringTable *strings;
+	const LoadedFont* debugFont;
+	StringTable* strings;
 	size_t numFonts;
 	size_t numImages;
 
 	Framebuffer cubeFramebuffer;
 
-	static int CompareFont(const void *oa, const void *ob) {
-		const LoadedFont *a = (const LoadedFont *)oa;
-		const LoadedFont *b = (const LoadedFont *)ob;
+	static int CompareFont(const void* oa, const void* ob) {
+		const LoadedFont* a = (const LoadedFont*)oa;
+		const LoadedFont* b = (const LoadedFont*)ob;
 
 		int delta;
 
 		// Font name
 		delta = strcmp(a->id.name, b->id.name);
-		if (delta != 0) {
+		if(delta != 0) {
 			return(delta);
 		}
 
 		// Font-size
 		float fontSizeDelta = a->fontSize - b->fontSize;
-		if (fontSizeDelta < 0) delta = -1;
-		else if (fontSizeDelta > 0) delta = 1;
+		if(fontSizeDelta < 0) delta = -1;
+		else if(fontSizeDelta > 0) delta = 1;
 		else delta = 0;
-		if (delta != 0) {
+		if(delta != 0) {
 			return(delta);
 		}
 
 		return(0);
 	}
 
-	const LoadedFont *AddFontFromResource(const FontResource &resource, const float fontSize, const uint32_t minChar = 32, const uint32_t maxChar = 255) {
+	const LoadedFont* AddFontFromResource(const FontResource& resource, const float fontSize, const uint32_t minChar = 32, const uint32_t maxChar = 255) {
 		fplAssert(numFonts < fplArrayCount(fonts));
-		LoadedFont *font = fonts + numFonts;
-		if (!LoadedFont::LoadFromMemory(font, resource.data, 0, fontSize, minChar, maxChar)) {
+		LoadedFont* font = fonts + numFonts;
+		if(!LoadedFont::LoadFromMemory(font, resource.data, 0, fontSize, minChar, maxChar)) {
 			return {};
 		}
 		numFonts++;
@@ -750,10 +760,10 @@ struct Renderer {
 		return(font);
 	}
 
-	const LoadedFont *AddFontFromFile(const char *filePath, const char *name, const float fontSize, const uint32_t minChar = 32, const uint32_t maxChar = 255) {
+	const LoadedFont* AddFontFromFile(const char* filePath, const char* name, const float fontSize, const uint32_t minChar = 32, const uint32_t maxChar = 255) {
 		fplAssert(numFonts < fplArrayCount(fonts));
-		LoadedFont *font = fonts + numFonts;
-		if (!LoadedFont::LoadFromFile(font, filePath, 0, fontSize, minChar, maxChar)) {
+		LoadedFont* font = fonts + numFonts;
+		if(!LoadedFont::LoadFromFile(font, filePath, 0, fontSize, minChar, maxChar)) {
 			return {};
 		}
 		numFonts++;
@@ -763,23 +773,23 @@ struct Renderer {
 		return(font);
 	}
 
-	inline const LoadedFont *FindFont(const char *name, const float fontSize = 0.0f) const {
-		const LoadedFont *result = nullptr;
+	inline const LoadedFont* FindFont(const char* name, const float fontSize = 0.0f) const {
+		const LoadedFont* result = nullptr;
 
 		// First: Try to find a font which is equal or greater
-		for (size_t fontIndex = 0; fontIndex < numFonts; ++fontIndex) {
-			const LoadedFont *font = fonts + fontIndex;
-			if ((strcmp(font->id.name, name) == 0) && (fontSize == 0.0f || font->fontSize > fontSize)) {
+		for(size_t fontIndex = 0; fontIndex < numFonts; ++fontIndex) {
+			const LoadedFont* font = fonts + fontIndex;
+			if((strcmp(font->id.name, name) == 0) && (fontSize == 0.0f || font->fontSize > fontSize)) {
 				result = font;
 				break;
 			}
 		}
 
 		// Second: Find font which is smaller
-		if (result == nullptr && numFonts > 0) {
-			for (size_t fontIndex = numFonts - 1; fontIndex > 0; fontIndex--) {
-				const LoadedFont *font = fonts + fontIndex;
-				if ((strcmp(font->id.name, name) == 0) && font->fontSize <= fontSize) {
+		if(result == nullptr && numFonts > 0) {
+			for(size_t fontIndex = numFonts - 1; fontIndex > 0; fontIndex--) {
+				const LoadedFont* font = fonts + fontIndex;
+				if((strcmp(font->id.name, name) == 0) && font->fontSize <= fontSize) {
 					result = font;
 				}
 			}
@@ -788,10 +798,10 @@ struct Renderer {
 		return(result);
 	}
 
-	const LoadedImage *AddImageFromResource(const ImageResource &resource) {
+	const LoadedImage* AddImageFromResource(const ImageResource& resource) {
 		fplAssert(numImages < fplArrayCount(images));
-		LoadedImage *image = images + numImages;
-		if (!LoadedImage::LoadFromMemory(image, resource.bytes, resource.length)) {
+		LoadedImage* image = images + numImages;
+		if(!LoadedImage::LoadFromMemory(image, resource.bytes, resource.length)) {
 			return {};
 		}
 		ImageID id = ImageID::Make(*strings, resource.name, numImages++);
@@ -799,10 +809,10 @@ struct Renderer {
 		return(image);
 	}
 
-	const LoadedImage *AddImageFromFile(const char *filePath) {
+	const LoadedImage* AddImageFromFile(const char* filePath) {
 		fplAssert(numImages < fplArrayCount(images));
-		LoadedImage *image = images + numImages;
-		if (!LoadedImage::LoadFromFile(image, filePath)) {
+		LoadedImage* image = images + numImages;
+		if(!LoadedImage::LoadFromFile(image, filePath)) {
 			return {};
 		}
 		ImageID id = ImageID::Make(*strings, filePath, numImages++);
@@ -810,12 +820,12 @@ struct Renderer {
 		return(image);
 	}
 
-	const LoadedImage *FindImage(const char *name) const {
-		const LoadedImage *result = nullptr;
+	const LoadedImage* FindImage(const char* name) const {
+		const LoadedImage* result = nullptr;
 
-		for (size_t imageIndex = 0; imageIndex < numImages; ++imageIndex) {
-			const LoadedImage *image = images + imageIndex;
-			if (strcmp(image->id.name, name) == 0) {
+		for(size_t imageIndex = 0; imageIndex < numImages; ++imageIndex) {
+			const LoadedImage* image = images + imageIndex;
+			if(strcmp(image->id.name, name) == 0) {
 				result = image;
 				break;
 			}
@@ -825,12 +835,12 @@ struct Renderer {
 	}
 
 	void Release() {
-		for (size_t imageIndex = 0; imageIndex < numImages; ++imageIndex) {
-			LoadedImage *image = images + imageIndex;
+		for(size_t imageIndex = 0; imageIndex < numImages; ++imageIndex) {
+			LoadedImage* image = images + imageIndex;
 			image->Release();
 		}
-		for (size_t fontIndex = 0; fontIndex < numFonts; ++fontIndex) {
-			LoadedFont *font = fonts + fontIndex;
+		for(size_t fontIndex = 0; fontIndex < numFonts; ++fontIndex) {
+			LoadedFont* font = fonts + fontIndex;
 			font->Release();
 		}
 		cubeFramebuffer.Release();
@@ -842,7 +852,7 @@ struct Renderer {
 typedef float(EasingFunction)(const float x);
 
 struct Easing {
-	EasingFunction *func;
+	EasingFunction* func;
 };
 
 // Based on https://easings.net
@@ -910,9 +920,9 @@ struct Animation {
 		return(result);
 	}
 
-	void RunToggle(const float maxDuration, const Easing &easing) {
+	void RunToggle(const float maxDuration, const Easing& easing) {
 		float ta;
-		if (!reverse) {
+		if(!reverse) {
 			ta = 0.0f;
 		} else {
 			ta = 1.0f;
@@ -920,12 +930,12 @@ struct Animation {
 		RunTo(ta, maxDuration, easing);
 	}
 
-	void RunTo(const float targetAlpha, const float maxDuration, const Easing &easing) {
+	void RunTo(const float targetAlpha, const float maxDuration, const Easing& easing) {
 		this->targetAlpha = targetAlpha;
 		this->startAlpha = currentAlpha;
 
 		float span;
-		if (targetAlpha < currentAlpha) {
+		if(targetAlpha < currentAlpha) {
 			reverse = true;
 			span = currentAlpha - targetAlpha;
 		} else {
@@ -943,7 +953,7 @@ struct Animation {
 		this->state = AnimationState::Stopped;
 	}
 
-	void ResetAndStart(const float duration, const b32 reverse, const Easing &easing) {
+	void ResetAndStart(const float duration, const b32 reverse, const Easing& easing) {
 		this->easing = easing;
 
 		this->duration = duration;
@@ -958,7 +968,7 @@ struct Animation {
 	}
 
 	void Update(const float dt) {
-		switch (state) {
+		switch(state) {
 			case AnimationState::Stopped:
 				break;
 
@@ -967,7 +977,7 @@ struct Animation {
 				currentTime += dt;
 				float t = fplMin(currentTime, duration) / duration;
 				currentAlpha = easing.func(ScalarLerp(startAlpha, t, targetAlpha));
-				if (currentTime >= duration) {
+				if(currentTime >= duration) {
 					currentTime = duration;
 					currentAlpha = easing.func(targetAlpha);
 					state = AnimationState::Done;
@@ -982,15 +992,16 @@ struct Animation {
 struct Label {
 	TextStyle style;
 	Vec2f pos;
-	const char *fontName;
-	const char *text;
+	const char* fontName;
+	const char* text;
 	float fontSize;
 	HorizontalAlignment hAlign;
 	VerticalAlignment vAlign;
 };
 
 struct RectStyle {
-	Background background;
+	BackgroundStyle background;
+	StrokeStyle stroke;
 };
 
 struct Rect {
@@ -1000,14 +1011,14 @@ struct Rect {
 };
 
 struct ImageStyle {
-	Background background;
+	BackgroundStyle background;
 };
 
 struct Image {
 	ImageStyle style;
 	Vec2f pos;
 	Vec2f size;
-	const char *imageName;
+	const char* name;
 };
 
 enum class ElementType {
@@ -1027,7 +1038,7 @@ struct Element {
 };
 
 struct SlideVariables {
-	const char *slideName;
+	const char* slideName;
 	uint32_t slideNum;
 	uint32_t slideCount;
 };
@@ -1035,21 +1046,21 @@ struct SlideVariables {
 struct Slide {
 	LinkedList<Element> elements;
 	SlideVariables vars;
-	Background background;
+	BackgroundStyle background;
 	Vec2f size;
-	StringTable *strings;
-	const char *name;
+	StringTable* strings;
+	const char* name;
 	size_t numElements;
 
-	Element *AddElement(const ElementType type) {
-		Element *result = elements.Add();
+	Element* AddElement(const ElementType type) {
+		Element* result = elements.Add();
 		result->type = type;
 		return(result);
 	}
 
-	Label *AddLabel(const String &text, const Vec2f &pos, const char *fontName, const float fontSize, const HorizontalAlignment hAlign = HorizontalAlignment::Left, const VerticalAlignment vAlign = VerticalAlignment::Top, const TextStyle &style = {}) {
-		Element *element = AddElement(ElementType::Label);
-		Label *result = &element->label;
+	Label* AddLabel(const String& text, const Vec2f& pos, const char* fontName, const float fontSize, const HorizontalAlignment hAlign = HorizontalAlignment::Left, const VerticalAlignment vAlign = VerticalAlignment::Top, const TextStyle& style = {}) {
+		Element* element = AddElement(ElementType::Label);
+		Label* result = &element->label;
 		result->pos = pos;
 		result->fontName = strings->CopyString(fontName);
 		result->fontSize = fontSize;
@@ -1060,20 +1071,37 @@ struct Slide {
 		return(result);
 	}
 
-	Rect *AddRect(const Vec2f &pos, const Vec2f &size) {
-		Element *element = AddElement(ElementType::Rect);
-		Rect *result = &element->rect;
+	Rect* AddRect(const Vec2f& pos, const Vec2f& size) {
+		Element* element = AddElement(ElementType::Rect);
+		Rect* result = &element->rect;
 		result->pos = pos;
 		result->size = size;
 		return(result);
 	}
 
-	Image *AddImage(const Vec2f &pos, const Vec2f &size, const char *imageName) {
-		Element *element = AddElement(ElementType::Image);
-		Image *result = &element->image;
+	Rect* AddFilledRect(const Vec2f& pos, const Vec2f& size, const Vec4f& color) {
+		Rect* result = AddRect(pos, size);
+		result->style.background.kind = BackgroundKind::Solid;
+		result->style.background.primaryColor = color;
+		result->style.stroke.kind = StrokeKind::None;
+		return(result);
+	}
+
+	Rect* AddStrokedRect(const Vec2f& pos, const Vec2f& size, const Vec4f& color, const float lineWidth = 1.0) {
+		Rect* result = AddRect(pos, size);
+		result->style.background.kind = BackgroundKind::None;
+		result->style.stroke.kind = StrokeKind::Solid;
+		result->style.stroke.width = lineWidth;
+		result->style.stroke.color = color;
+		return(result);
+	}
+
+	Image* AddImage(const Vec2f& pos, const Vec2f& size, const char* name) {
+		Element* element = AddElement(ElementType::Image);
+		Image* result = &element->image;
 		result->pos = pos;
 		result->size = size;
-		result->imageName = strings->CopyString(imageName);
+		result->name = strings->CopyString(name);
 		return(result);
 	}
 
@@ -1085,10 +1113,10 @@ struct Slide {
 struct Presentation {
 	LinkedList<Slide> slides;
 	Vec2f size;
-	StringTable *strings;
+	StringTable* strings;
 
-	Slide *AddSlide(const Vec2f &size, const char *name) {
-		Slide *result = slides.Add();
+	Slide* AddSlide(const Vec2f& size, const char* name) {
+		Slide* result = slides.Add();
 		result->strings = strings;
 		result->size = size;
 		result->name = strings->CopyString(name);
@@ -1097,7 +1125,7 @@ struct Presentation {
 
 	void Release() {
 		auto it = slides.GetIterator();
-		for (Slide *slide = it.Value(); it.HasNext(); slide = it.MoveNext())
+		for(Slide* slide = it.Value(); it.HasNext(); slide = it.MoveNext())
 			slide->Release();
 		slides.Release();
 	}
@@ -1105,15 +1133,15 @@ struct Presentation {
 
 struct SlideTemplate {
 	Vec2f size;
-	const char *name;
+	const char* name;
 };
 
 struct PresentationTemplate {
 	LinkedList<SlideTemplate> slides;
 	Vec2f size;
 
-	SlideTemplate *AddSlide(const SlideTemplate &slideTemplate) {
-		SlideTemplate *result = slides.Add();
+	SlideTemplate* AddSlide(const SlideTemplate& slideTemplate) {
+		SlideTemplate* result = slides.Add();
 		*result = slideTemplate;
 		return(result);
 	}
@@ -1128,17 +1156,19 @@ struct PresentationState {
 	Vec2f startOffset;
 	Vec2f currentOffset;
 	Vec2f targetOffset;
-	Slide *activeSlide;
+	Slide* activeSlide;
 	int32_t activeSlideIndex;
 };
 
 constexpr float CubeRotationDuration = 1.0f; // Duration in seconds
 constexpr float CubeRotationDelay = 3.0f; // Delay in seconds
 
-constexpr float CubeRadius = 0.25f;
+constexpr float CubeRadius = 0.5f;
 constexpr float PointRadius = 10.0f;
 constexpr float PointDistance = CubeRadius * 1.5f;
-constexpr float PointRotationSpeed = 15.0f; // Radians in seconds
+constexpr float PointRotationSpeed = 3.0f; // Radians in seconds
+
+constexpr int SpacesForTabstop = 2;
 
 struct App {
 	Presentation presentation;
@@ -1155,18 +1185,26 @@ struct App {
 	float pointRotation;
 };
 
-static Vec2f ComputeTextSize(const LoadedFont &font, const char *text, const size_t textLen, const float charHeight) {
+static Vec2f ComputeTextSize(const LoadedFont& font, const char* text, const size_t textLen, const float charHeight) {
 	Vec2f result = fplZeroInit;
-	if (text != nullptr) {
+	if(text != nullptr) {
 		float totalWidth = 0.0f;
-		const char *p = text;
-		while (*p) {
+		const char* p = text;
+		while(*p) {
 			size_t n = (p - text) + 1;
-			if (n > textLen) break;
+			if(n > textLen) break;
+
+			// Tab stop
+			if(*p == '\t') {
+				totalWidth += font.spaceAdvance * charHeight * SpacesForTabstop;
+				++p;
+				continue;
+			}
+
 			uint32_t codePoint = (unsigned char)*p;
-			if (codePoint >= font.minChar && codePoint <= font.maxChar) {
+			if(codePoint >= font.minChar && codePoint <= font.maxChar) {
 				uint32_t charIndex = codePoint - font.minChar;
-				const LoadedFont::Glyph *glyph = font.glyphs + charIndex;
+				const LoadedFont::Glyph* glyph = font.glyphs + charIndex;
 				Vec2f verts[] = {
 					glyph->offset[0] * charHeight,
 					glyph->offset[1] * charHeight,
@@ -1175,12 +1213,13 @@ static Vec2f ComputeTextSize(const LoadedFont &font, const char *text, const siz
 				};
 				Vec2f min = glyph->offset[0];
 				Vec2f max = glyph->offset[0];
-				for (int i = 1; i < 4; ++i) {
+				for(int i = 1; i < 4; ++i) {
 					min = V2fMin(min, verts[i]);
 					max = V2fMax(max, verts[i]);
 				}
 				totalWidth += glyph->advance * charHeight;
 			}
+
 			++p;
 		}
 		result.x = totalWidth;
@@ -1189,36 +1228,44 @@ static Vec2f ComputeTextSize(const LoadedFont &font, const char *text, const siz
 	return(result);
 }
 
-static Vec2f ComputeInlineOffset(const Vec2f &size, const HorizontalAlignment horizonzalAlign = HorizontalAlignment::Left, const VerticalAlignment verticalAlign = VerticalAlignment::Top) {
+static Vec2f ComputeInlineOffset(const Vec2f& size, const HorizontalAlignment horizonzalAlign = HorizontalAlignment::Left, const VerticalAlignment verticalAlign = VerticalAlignment::Top) {
 	Vec2f result = V2f(0, 0);
-	if (verticalAlign == VerticalAlignment::Bottom) {
+	if(verticalAlign == VerticalAlignment::Bottom) {
 		result += V2f(0, -size.h);
-	} else 	if (verticalAlign == VerticalAlignment::Middle) {
+	} else 	if(verticalAlign == VerticalAlignment::Middle) {
 		result += V2f(0, -size.h * 0.5f);
 	}
-	if (horizonzalAlign == HorizontalAlignment::Right) {
+	if(horizonzalAlign == HorizontalAlignment::Right) {
 		result += V2f(-size.w, 0);
-	} else 	if (horizonzalAlign == HorizontalAlignment::Center) {
+	} else 	if(horizonzalAlign == HorizontalAlignment::Center) {
 		result += V2f(-size.w * 0.5f, 0);
 	}
 	return(result);
 }
 
-static void RenderTextQuads(const float x, const float y, const char *text, const size_t textLen, const float charHeight, const LoadedFont &font, const Vec4f &color) {
-	if (text != nullptr) {
+static void RenderTextQuads(const float x, const float y, const char* text, const size_t textLen, const float charHeight, const LoadedFont& font, const Vec4f& color) {
+	if(text != nullptr) {
 		glEnable(GL_TEXTURE_2D);
 		glBindTexture(GL_TEXTURE_2D, font.textureId);
 		glColor4fv(&color.m[0]);
 		glBegin(GL_QUADS);
-		const char *p = text;
+		const char* p = text;
 		Vec2f d = V2f(0, 0);
 		Vec2f pos = V2f(x, y) + d;
 		float scale = charHeight;
-		while (*p) {
+		while(*p) {
+
+			// Tab stop
+			if(*p == '\t') {
+				pos += V2f(font.spaceAdvance * scale * SpacesForTabstop, 0);
+				++p;
+				continue;
+			}
+
 			uint32_t codePoint = (unsigned char)*p;
-			if (codePoint >= font.minChar && codePoint <= font.maxChar) {
+			if(codePoint >= font.minChar && codePoint <= font.maxChar) {
 				uint32_t charIndex = codePoint - font.minChar;
-				const LoadedFont::Glyph *glyph = font.glyphs + charIndex;
+				const LoadedFont::Glyph* glyph = font.glyphs + charIndex;
 
 				Vec2f v0 = pos + glyph->offset[0] * scale;
 				Vec2f v1 = pos + glyph->offset[1] * scale;
@@ -1240,7 +1287,7 @@ static void RenderTextQuads(const float x, const float y, const char *text, cons
 	}
 }
 
-static void RenderLine(const Vec2f &a, const Vec2f &b, const Vec4f &color, const float lineWidth = 1.0f) {
+static void RenderLine(const Vec2f& a, const Vec2f& b, const Vec4f& color, const float lineWidth = 1.0f) {
 	glLineWidth(lineWidth);
 	glColor4fv(&color.m[0]);
 	glBegin(GL_LINES);
@@ -1250,19 +1297,19 @@ static void RenderLine(const Vec2f &a, const Vec2f &b, const Vec4f &color, const
 	glLineWidth(1.0f);
 }
 
-static void RenderFilledQuad(const Vec2f &pos, const Vec2f &size, const Vec4f &color0, const Vec4f &color1, const BackgroundKind kind) {
+static void RenderFilledQuad(const Vec2f& pos, const Vec2f& size, const Vec4f& color0, const Vec4f& color1, const BackgroundKind kind) {
 	glBegin(GL_QUADS);
-	if (kind == BackgroundKind::GradientHorizontal) {
+	if(kind == BackgroundKind::GradientHorizontal) {
 		glColor4fv(&color1.m[0]); glVertex2f(pos.x + size.w, pos.y);
 		glColor4fv(&color0.m[0]); glVertex2f(pos.x, pos.y);
 		glColor4fv(&color0.m[0]); glVertex2f(pos.x, pos.y + size.h);
 		glColor4fv(&color1.m[0]); glVertex2f(pos.x + size.w, pos.y + size.h);
-	} else if (kind == BackgroundKind::GradientVertical) {
+	} else if(kind == BackgroundKind::GradientVertical) {
 		glColor4fv(&color0.m[0]); glVertex2f(pos.x + size.w, pos.y);
 		glColor4fv(&color0.m[0]); glVertex2f(pos.x, pos.y);
 		glColor4fv(&color1.m[0]); glVertex2f(pos.x, pos.y + size.h);
 		glColor4fv(&color1.m[0]); glVertex2f(pos.x + size.w, pos.y + size.h);
-	} else if (kind == BackgroundKind::HalfGradientHorizontal) {
+	} else if(kind == BackgroundKind::HalfGradientHorizontal) {
 		glColor4fv(&color1.m[0]); glVertex2f(pos.x + size.w * 0.5f, pos.y);
 		glColor4fv(&color0.m[0]); glVertex2f(pos.x, pos.y);
 		glColor4fv(&color0.m[0]); glVertex2f(pos.x, pos.y + size.h);
@@ -1272,7 +1319,7 @@ static void RenderFilledQuad(const Vec2f &pos, const Vec2f &size, const Vec4f &c
 		glColor4fv(&color1.m[0]); glVertex2f(pos.x + size.w * 0.5f, pos.y);
 		glColor4fv(&color1.m[0]); glVertex2f(pos.x + size.w * 0.5f, pos.y + size.h);
 		glColor4fv(&color0.m[0]); glVertex2f(pos.x + size.w, pos.y + size.h);
-	} else if (kind == BackgroundKind::HalfGradientVertical) {
+	} else if(kind == BackgroundKind::HalfGradientVertical) {
 		glColor4fv(&color0.m[0]); glVertex2f(pos.x + size.w, pos.y);
 		glColor4fv(&color0.m[0]); glVertex2f(pos.x, pos.y);
 		glColor4fv(&color1.m[0]); glVertex2f(pos.x, pos.y + size.h * 0.5f);
@@ -1291,11 +1338,11 @@ static void RenderFilledQuad(const Vec2f &pos, const Vec2f &size, const Vec4f &c
 	glEnd();
 }
 
-static void RenderFilledQuad(const Vec2f &pos, const Vec2f &size, const Vec4f &color) {
+static void RenderFilledQuad(const Vec2f& pos, const Vec2f& size, const Vec4f& color) {
 	RenderFilledQuad(pos, size, color, V4fInit(0, 0, 0, 0), BackgroundKind::Solid);
 }
 
-static void RenderStrokedQuad(const Vec2f &pos, const Vec2f &size, const Vec4f &color, const float lineWidth = 1.0f) {
+static void RenderStrokedQuad(const Vec2f& pos, const Vec2f& size, const Vec4f& color, const float lineWidth = 1.0f) {
 	glLineWidth(lineWidth);
 	glColor4fv(&color.m[0]);
 	glBegin(GL_LINE_LOOP);
@@ -1307,45 +1354,45 @@ static void RenderStrokedQuad(const Vec2f &pos, const Vec2f &size, const Vec4f &
 	glLineWidth(1.0f);
 }
 
-static const char *ResolveText(const SlideVariables &vars, const char *source, char *buffer, size_t maxBufferLen) {
+static const char* ResolveText(const SlideVariables& vars, const char* source, char* buffer, size_t maxBufferLen) {
 	buffer[0] = 0;
-	const char *result = buffer;
-	const char *s = source;
-	if (s != nullptr) {
+	const char* result = buffer;
+	const char* s = source;
+	if(s != nullptr) {
 		size_t bufIndex = 0;
-		while (*s) {
+		while(*s) {
 			char c = *s;
-			if (c == '%') {
+			if(c == '%') {
 				++s;
 				size_t varLen = 0;
-				const char *varName = s;
-				while (*s && *s != '%') {
+				const char* varName = s;
+				while(*s && *s != '%') {
 					++varLen;
 					++s;
 				}
-				if (*s == '%') {
+				if(*s == '%') {
 					++s;
 					// % Escape
-					if (varLen == 0) {
+					if(varLen == 0) {
 						buffer[bufIndex++] = '%';
 					} else {
 						size_t remainingBufLen = maxBufferLen - bufIndex;
-						char *remainingStart = &buffer[bufIndex];
-						if (strncmp("SLIDE_NUM", varName, varLen) == 0) {
-							const char *t = fplS32ToString(vars.slideNum, remainingStart, remainingBufLen);
-							if (t != nullptr) {
+						char* remainingStart = &buffer[bufIndex];
+						if(strncmp("SLIDE_NUM", varName, varLen) == 0) {
+							const char* t = fplS32ToString(vars.slideNum, remainingStart, remainingBufLen);
+							if(t != nullptr) {
 								size_t addedCount = fplGetStringLength(remainingStart);
 								bufIndex += addedCount;
 							}
-						} else if (strncmp("SLIDE_COUNT", varName, varLen) == 0) {
-							const char *t = fplS32ToString(vars.slideCount, remainingStart, remainingBufLen);
-							if (t != nullptr) {
+						} else if(strncmp("SLIDE_COUNT", varName, varLen) == 0) {
+							const char* t = fplS32ToString(vars.slideCount, remainingStart, remainingBufLen);
+							if(t != nullptr) {
 								size_t addedCount = fplGetStringLength(remainingStart);
 								bufIndex += addedCount;
 							}
-						} else if (strncmp("SLIDE_NAME", varName, varLen) == 0) {
-							const char *t = vars.slideName;
-							if (t != nullptr) {
+						} else if(strncmp("SLIDE_NAME", varName, varLen) == 0) {
+							const char* t = vars.slideName;
+							if(t != nullptr) {
 								fplStringAppend(t, remainingStart, remainingBufLen);
 								size_t addedCount = fplGetStringLength(t);
 								bufIndex += addedCount;
@@ -1366,13 +1413,13 @@ static const char *ResolveText(const SlideVariables &vars, const char *source, c
 	return(result);
 }
 
-static Vec2f ComputeTextBlockSize(Renderer &renderer, Slide &slide, const char *text, const char *fontName, const float fontSize, const float lineHeight) {
-	const LoadedFont *font = renderer.FindFont(fontName, fontSize);
+static Vec2f ComputeTextBlockSize(Renderer& renderer, Slide& slide, const char* text, const char* fontName, const float fontSize, const float lineHeight) {
+	const LoadedFont* font = renderer.FindFont(fontName, fontSize);
 	Vec2f result = V2f(0, 0);
-	const char *p = text;
-	const char *start = p;
-	while (*p) {
-		while (*p && *p != '\n') {
+	const char* p = text;
+	const char* start = p;
+	while(*p) {
+		while(*p && *p != '\n') {
 			++p;
 		}
 		const size_t len = p - start;
@@ -1381,7 +1428,7 @@ static Vec2f ComputeTextBlockSize(Renderer &renderer, Slide &slide, const char *
 		result += V2f(0, lineHeight);
 		result.w = fplMax(result.w, textSize.w);
 
-		if (*p == 0)
+		if(*p == 0)
 			break;
 		++p;
 		start = p;
@@ -1389,17 +1436,20 @@ static Vec2f ComputeTextBlockSize(Renderer &renderer, Slide &slide, const char *
 	return(result);
 }
 
-static void RenderBackground(const Vec2f &pos, const Vec2f &size, const Background &background) {
-	if (background.kind != BackgroundKind::None) {
+static void RenderRectangle(const Vec2f& pos, const Vec2f& size, const BackgroundStyle& background, const StrokeStyle& stroke) {
+	if(background.kind != BackgroundKind::None) {
 		RenderFilledQuad(pos, size, background.primaryColor, background.secondaryColor, background.kind);
+	}
+	if(stroke.kind != StrokeKind::None) {
+		RenderStrokedQuad(pos, size, stroke.color, stroke.width);
 	}
 }
 
-static void RenderLabel(const LoadedFont &font, const Label &label, const SlideVariables &vars) {
+static void RenderLabel(const LoadedFont& font, const Label& label, const SlideVariables& vars) {
 	static char tmpBuffer[4096]; // @REPLACE(tspaete): Not great using a static buffer here, find a better approach
 
-	const TextStyle &style = label.style;
-	const char *text = ResolveText(vars, label.text, tmpBuffer, fplArrayCount(tmpBuffer));
+	const TextStyle& style = label.style;
+	const char* text = ResolveText(vars, label.text, tmpBuffer, fplArrayCount(tmpBuffer));
 	float charHeight = label.fontSize;
 	size_t textLen = fplGetStringLength(label.text);
 	Vec2f pos = label.pos;
@@ -1409,10 +1459,10 @@ static void RenderLabel(const LoadedFont &font, const Label &label, const SlideV
 	Vec2f textPos = boxPos + V2f(0, font.ascent * charHeight);
 
 	// Background
-	RenderBackground(boxPos, size, style.background);
+	RenderRectangle(boxPos, size, style.background, {});
 
 	// Shadow
-	if (style.drawShadow) {
+	if(style.drawShadow) {
 		RenderTextQuads(textPos.x + style.shadowOffset.x, textPos.y + style.shadowOffset.y, text, textLen, charHeight, font, style.shadowColor);
 	}
 
@@ -1431,7 +1481,7 @@ static void RenderLabel(const LoadedFont &font, const Label &label, const SlideV
 #endif
 }
 
-static void RenderTextureQuad(const GLuint texture, const Vec2f &pos, const Vec2f &size, const Vec4f &color) {
+static void RenderTextureQuad(const GLuint texture, const Vec2f& pos, const Vec2f& size, const Vec4f& color) {
 	glEnable(GL_TEXTURE_2D);
 	glBindTexture(GL_TEXTURE_2D, texture);
 	glColor4fv(&color.m[0]);
@@ -1445,11 +1495,11 @@ static void RenderTextureQuad(const GLuint texture, const Vec2f &pos, const Vec2
 	glDisable(GL_TEXTURE_2D);
 }
 
-static void RenderImageQuad(const LoadedImage &renderImage, const Vec2f &pos, const Vec2f &size, const Vec4f &color) {
+static void RenderImageQuad(const LoadedImage& renderImage, const Vec2f& pos, const Vec2f& size, const Vec4f& color) {
 	RenderTextureQuad(renderImage.textureId, pos, size, color);
 }
 
-static void RenderPoint(const Vec3f &pos, const float radius, const Vec4f color) {
+static void RenderPoint(const Vec3f& pos, const float radius, const Vec4f color) {
 	glPointSize(radius * 2.0f);
 	glColor4fv(&color.m[0]);
 	glBegin(GL_POINTS);
@@ -1519,16 +1569,16 @@ static void RenderCube(const float rw, const float rh, const float rd, const Vec
 	glEnd();
 }
 
-static void RenderImage(const LoadedImage &renderImage, const Image &image) {
+static void RenderImage(const LoadedImage& renderImage, const Image& image) {
 	Vec2f pos = image.pos;
 	Vec2f size = image.size;
 	Vec2f align = ComputeInlineOffset(size, HorizontalAlignment::Left, VerticalAlignment::Top);
 	Vec2f boxPos = pos + align;
 	Vec2f imagePos = boxPos;
-	const ImageStyle &style = image.style;
+	const ImageStyle& style = image.style;
 
 	// Background
-	RenderBackground(boxPos, size, style.background);
+	RenderRectangle(boxPos, size, style.background, {});
 
 	// Foreground
 	RenderImageQuad(renderImage, imagePos, size, V4f(1, 1, 1, 1));
@@ -1544,11 +1594,11 @@ struct Viewport {
 	int w, h;
 };
 
-extern Viewport ComputeViewportByAspect(const Vec2i &screenSize, const float targetAspect) {
+extern Viewport ComputeViewportByAspect(const Vec2i& screenSize, const float targetAspect) {
 	int targetHeight = (int)(screenSize.w / targetAspect);
 	Vec2i viewSize = V2iInit(screenSize.w, screenSize.h);
 	Vec2i viewOffset = V2iInit(0, 0);
-	if (targetHeight > screenSize.h) {
+	if(targetHeight > screenSize.h) {
 		viewSize.h = screenSize.h;
 		viewSize.w = (int)(screenSize.h * targetAspect);
 		viewOffset.x = (screenSize.w - viewSize.w) / 2;
@@ -1561,24 +1611,28 @@ extern Viewport ComputeViewportByAspect(const Vec2i &screenSize, const float tar
 	return(result);
 }
 
-static void UpdateFrame(App &app, const float dt) {
-	PresentationState &state = app.state;
+static void UpdateFrame(App& app, const float dt) {
+	PresentationState& state = app.state;
 
 	//
 	// Slide animation
 	//
-	Animation &slideAnim = state.slideAnimation;
+	Animation& slideAnim = state.slideAnimation;
 	slideAnim.Update(dt);
-	if (state.slideAnimation.IsActive()) {
+	if(state.slideAnimation.IsActive()) {
 		state.currentOffset = V2fLerp(state.startOffset, state.slideAnimation.currentAlpha, state.targetOffset);
 	} else {
 		state.currentOffset = state.targetOffset;
 	}
 
+#if DRAW_ROTATING_CUBE
 	float pointRotScaleX = 0.01f;
 	float pointRotScaleY = 0.025f;
 	float pointRotScaleZ = -0.01f;
 	app.pointPos = V3f(Cosine(app.pointRotation * pointRotScaleX) * PointDistance, -Sine(app.pointRotation * pointRotScaleY) * PointDistance, Sine(app.pointRotation * pointRotScaleZ) * PointDistance);
+#else
+	app.pointPos = V3f();
+#endif
 
 	Vec3f direction = app.pointPos;
 	const float acceleration = 10.0f;
@@ -1587,7 +1641,7 @@ static void UpdateFrame(App &app, const float dt) {
 	app.currentCubeVelocity *= 0.95f;
 }
 
-static void RenderSlide(const Slide &slide, const Renderer &renderer) {
+static void RenderSlide(const Slide& slide, const Renderer& renderer) {
 	float w = slide.size.w;
 	float h = slide.size.h;
 	Vec2f radius = V2f(w, h) * 0.5f;
@@ -1599,30 +1653,30 @@ static void RenderSlide(const Slide &slide, const Renderer &renderer) {
 #endif
 
 	auto it = slide.elements.GetConstIterator();
-	for (const Element *element = it.Value(); it.HasNext(); element = it.MoveNext()) {
-		switch (element->type) {
+	for(const Element* element = it.Value(); it.HasNext(); element = it.MoveNext()) {
+		switch(element->type) {
 			case ElementType::Rect:
 			{
-				const Rect &rect = element->rect;
-				RenderBackground(rect.pos, rect.size, rect.style.background);
+				const Rect& rect = element->rect;
+				RenderRectangle(rect.pos, rect.size, rect.style.background, rect.style.stroke);
 			} break;
 
 			case ElementType::Label:
 			{
-				const Label &label = element->label;
-				const char *fontName = label.fontName;
-				const LoadedFont *font = renderer.FindFont(fontName, label.fontSize);
-				if (font != nullptr) {
+				const Label& label = element->label;
+				const char* fontName = label.fontName;
+				const LoadedFont* font = renderer.FindFont(fontName, label.fontSize);
+				if(font != nullptr) {
 					RenderLabel(*font, label, slide.vars);
 				}
 			} break;
 
 			case ElementType::Image:
 			{
-				const Image &image = element->image;
-				const char *imageName = image.imageName;
-				const LoadedImage *renderImage = renderer.FindImage(imageName);
-				if (renderImage != nullptr) {
+				const Image& image = element->image;
+				const char* imageName = image.name;
+				const LoadedImage* renderImage = renderer.FindImage(imageName);
+				if(renderImage != nullptr) {
 					RenderImage(*renderImage, image);
 				}
 			} break;
@@ -1630,17 +1684,17 @@ static void RenderSlide(const Slide &slide, const Renderer &renderer) {
 	}
 }
 
-static void RenderFrame(App &app, const Vec2i &winSize) {
-	const PresentationState &state = app.state;
-	const Presentation &presentation = app.presentation;
-	Renderer &renderer = app.renderer;
+static void RenderFrame(App& app, const Vec2i& winSize) {
+	const PresentationState& state = app.state;
+	const Presentation& presentation = app.presentation;
+	Renderer& renderer = app.renderer;
 
-	const LoadedFont *debugFont = app.renderer.debugFont;
+	const LoadedFont* debugFont = app.renderer.debugFont;
 	fplAssert(debugFont != nullptr);
 	const float debugFontSize = 30.0f;
 
-	const Slide *activeSlide = state.activeSlide;
-	if (activeSlide == nullptr) {
+	const Slide* activeSlide = state.activeSlide;
+	if(activeSlide == nullptr) {
 		float w = 1280.0;
 		float h = 720.0f;
 
@@ -1651,7 +1705,7 @@ static void RenderFrame(App &app, const Vec2i &winSize) {
 
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-		const char *text = "No slide found!";
+		const char* text = "No slide found!";
 		size_t textLen = fplGetStringLength(text);
 		Vec2f size = ComputeTextSize(*debugFont, text, textLen, debugFontSize);
 		Vec2f offset = ComputeInlineOffset(size, HorizontalAlignment::Center, VerticalAlignment::Middle);
@@ -1739,13 +1793,13 @@ static void RenderFrame(App &app, const Vec2i &winSize) {
 		//
 		Vec2f slidePos = V2f(0, 0);
 		auto it = presentation.slides.GetConstIterator();
-		for (const Slide *slide = it.Value(); it.HasNext(); slide = it.MoveNext()) {
+		for(const Slide* slide = it.Value(); it.HasNext(); slide = it.MoveNext()) {
 			Vec2f slideSize = slide->size;
 			Mat4f slideModel = Mat4Translation(slidePos - state.currentOffset + zoomOffset);
 			Mat4f slideMVP = orthoProj * view * slideModel;
 			glLoadMatrixf(&slideMVP.m[0]);
 
-			RenderBackground(V2f(0, 0), slideSize, slide->background);
+			RenderRectangle(V2f(0, 0), slideSize, slide->background, {});
 
 #if DRAW_ROTATING_CUBE
 			RenderTextureQuad(renderer.cubeFramebuffer.textures[0], V2f(0, 0), slideSize, V4f(1, 1, 1, 0.2f));
@@ -1770,7 +1824,7 @@ static void RenderFrame(App &app, const Vec2i &winSize) {
 			static char buffer[100];
 			fplFormatString(buffer, fplArrayCount(buffer), "Vel: %.4f, %.4f, %.4f", app.currentCubeVelocity.x, app.currentCubeVelocity.y, app.currentCubeVelocity.z);
 			size_t textLen = fplGetStringLength(buffer);
-			const char *text = buffer;
+			const char* text = buffer;
 			RenderTextQuads(0.0f, 0.0f, text, textLen, 20.0f, *debugFont, V4f(1, 1, 1, 1));
 		}
 #endif
@@ -1781,22 +1835,22 @@ static void RenderFrame(App &app, const Vec2i &winSize) {
 	glFlush();
 }
 
-static void ReleaseApp(App &app) {
+static void ReleaseApp(App& app) {
 	app.presentation.Release();
 	app.renderer.Release();
 	app.strings.ReleaseAll();
 }
 
-static Rect2f AddHeaderAndFooter(Slide *slide, const HeaderDefinition &headerDef, const FooterDefinition &footerDef) {
-	const char *headerFontName = headerDef.font.name;
+static Rect2f AddHeaderAndFooter(Slide* slide, const HeaderDefinition& headerDef, const FooterDefinition& footerDef) {
+	const char* headerFontName = headerDef.font.name;
 	const float headerFontSize = headerDef.font.size;
-	const TextStyle &headerFontStyle = headerDef.font.style;
+	const TextStyle& headerFontStyle = headerDef.font.style;
 	float headerHeight = headerDef.height;
 	Vec2f headerPadding = headerDef.padding;
 
-	const char *footerFontName = footerDef.font.name;
+	const char* footerFontName = footerDef.font.name;
 	const float footerFontSize = footerDef.font.size;
-	const TextStyle &footerFontStyle = footerDef.font.style;
+	const TextStyle& footerFontStyle = footerDef.font.style;
 	float footerHeight = footerDef.height;
 	Vec2f footerPadding = footerDef.padding;
 
@@ -1805,49 +1859,49 @@ static Rect2f AddHeaderAndFooter(Slide *slide, const HeaderDefinition &headerDef
 
 	Vec2f logoSize = V2f(32, 32);
 
-	Rect *rectTop = slide->AddRect(V2f(0, 0), V2f(w, headerHeight));
+	Rect* rectTop = slide->AddRect(V2f(0, 0), V2f(w, headerHeight));
 	rectTop->style.background.primaryColor = RGBAToLinearRaw(119, 113, 197, 255);
 	rectTop->style.background.secondaryColor = RGBAToLinearRaw(0, 0, 0, 255);
 	rectTop->style.background.kind = BackgroundKind::GradientVertical;
 
-	Label *fplLabelTopLeft = slide->AddLabel(headerDef.leftText, rectTop->pos + headerPadding, headerFontName, headerFontSize, HorizontalAlignment::Left, VerticalAlignment::Top, headerFontStyle);
+	Label* fplLabelTopLeft = slide->AddLabel(headerDef.leftText, rectTop->pos + headerPadding, headerFontName, headerFontSize, HorizontalAlignment::Left, VerticalAlignment::Top, headerFontStyle);
 
-	Image *fplLogo = slide->AddImage(rectTop->pos + V2f(w - logoSize.w, 0), logoSize, ImageResources::FPLLogo128x128.name);
+	Image* fplLogo = slide->AddImage(rectTop->pos + V2f(w - logoSize.w, 0), logoSize, ImageResources::FPLLogo128x128.name);
 
-	Rect *rectBottom = slide->AddRect(V2f(0, h - footerHeight), V2f(w, footerHeight));
+	Rect* rectBottom = slide->AddRect(V2f(0, h - footerHeight), V2f(w, footerHeight));
 	rectBottom->style.background.primaryColor = RGBAToLinearRaw(0, 0, 0, 255);
 	rectBottom->style.background.secondaryColor = RGBAToLinearRaw(119, 113, 197, 255);
 	rectBottom->style.background.kind = BackgroundKind::GradientVertical;
 
-	Label *fplLabelBottomLeft = slide->AddLabel(footerDef.leftText, rectBottom->pos + V2f(footerPadding.x, rectBottom->size.h - footerPadding.y), footerFontName, footerFontSize, HorizontalAlignment::Left, VerticalAlignment::Bottom, footerFontStyle);
+	Label* fplLabelBottomLeft = slide->AddLabel(footerDef.leftText, rectBottom->pos + V2f(footerPadding.x, rectBottom->size.h - footerPadding.y), footerFontName, footerFontSize, HorizontalAlignment::Left, VerticalAlignment::Bottom, footerFontStyle);
 
-	Label *fplLabelBottomCenter = slide->AddLabel(footerDef.centerText, rectBottom->pos + V2f(rectBottom->size.w * 0.5f, rectBottom->size.h - footerPadding.y), footerFontName, footerFontSize, HorizontalAlignment::Center, VerticalAlignment::Bottom, footerFontStyle);
+	Label* fplLabelBottomCenter = slide->AddLabel(footerDef.centerText, rectBottom->pos + V2f(rectBottom->size.w * 0.5f, rectBottom->size.h - footerPadding.y), footerFontName, footerFontSize, HorizontalAlignment::Center, VerticalAlignment::Bottom, footerFontStyle);
 
-	Label *fplLabelBottomRight = slide->AddLabel(footerDef.rightText, rectBottom->pos + V2f(w - footerPadding.x, rectBottom->size.h - footerPadding.y), footerFontName, footerFontSize, HorizontalAlignment::Right, VerticalAlignment::Bottom, footerFontStyle);
+	Label* fplLabelBottomRight = slide->AddLabel(footerDef.rightText, rectBottom->pos + V2f(w - footerPadding.x, rectBottom->size.h - footerPadding.y), footerFontName, footerFontSize, HorizontalAlignment::Right, VerticalAlignment::Bottom, footerFontStyle);
 
 	Rect2f result = R2fInit(V2f(0, headerHeight), V2f(w, h - headerHeight * 2));
 	return(result);
 }
 
-static void UpdateSlideVariables(const Presentation &presentation, Slide &slide, const uint32_t slideNum) {
+static void UpdateSlideVariables(const Presentation& presentation, Slide& slide, const uint32_t slideNum) {
 	slide.vars = {};
 	slide.vars.slideCount = (uint32_t)presentation.slides.Count();
 	slide.vars.slideNum = slideNum;
 	slide.vars.slideName = slide.name;
 }
 
-static void UpdatePresentationVariables(Presentation &presentation) {
+static void UpdatePresentationVariables(Presentation& presentation) {
 	auto it = presentation.slides.GetIterator();
-	for (Slide *slide = it.Value(); it.HasNext(); slide = it.MoveNext()) {
+	for(Slide* slide = it.Value(); it.HasNext(); slide = it.MoveNext()) {
 		UpdateSlideVariables(presentation, *slide, (uint32_t)(it.index + 1));
 	}
 }
 
-static Vec2f GetSlidePositionForSlide(const Presentation &presentation, const uint32_t slideIndex, const Vec2f direction) {
+static Vec2f GetSlidePositionForSlide(const Presentation& presentation, const uint32_t slideIndex, const Vec2f direction) {
 	Vec2f result = V2f(0, 0);
 	auto it = presentation.slides.GetConstIterator();
-	for (const Slide *slide = it.Value(); it.HasNext(); slide = it.MoveNext()) {
-		if (it.index == slideIndex) {
+	for(const Slide* slide = it.Value(); it.HasNext(); slide = it.MoveNext()) {
+		if(it.index == slideIndex) {
 			break;
 		}
 		result += direction * V2fDot(slide->size, direction);
@@ -1855,21 +1909,21 @@ static Vec2f GetSlidePositionForSlide(const Presentation &presentation, const ui
 	return(result);
 }
 
-static Slide *GetSlideFromIndex(Presentation &presentation, const uint32_t slideIndex) {
-	Slide *result = nullptr;
+static Slide* GetSlideFromIndex(Presentation& presentation, const uint32_t slideIndex) {
+	Slide* result = nullptr;
 	auto it = presentation.slides.GetIterator();
-	for (Slide *slide = it.Value(); it.HasNext(); slide = it.MoveNext()) {
-		if (it.index == slideIndex) {
+	for(Slide* slide = it.Value(); it.HasNext(); slide = it.MoveNext()) {
+		if(it.index == slideIndex) {
 			return(slide);
 		}
 	}
 	return(nullptr);
 }
 
-static void ShowSlideshow(App &app, const uint32_t slideIndex, const bool withTransition) {
+static void ShowSlideshow(App& app, const uint32_t slideIndex, const bool withTransition) {
 	size_t slideCount = app.presentation.slides.Count();
-	if (slideCount > 0 && slideIndex < slideCount) {
-		Slide *slide = GetSlideFromIndex(app.presentation, slideIndex);
+	if(slideCount > 0 && slideIndex < slideCount) {
+		Slide* slide = GetSlideFromIndex(app.presentation, slideIndex);
 		app.state.activeSlideIndex = slideIndex;
 		app.state.activeSlide = slide;
 
@@ -1877,12 +1931,12 @@ static void ShowSlideshow(App &app, const uint32_t slideIndex, const bool withTr
 		Vec2f moveDir = V2f(1, 0);
 		Vec2f targetSlidePos = GetSlidePositionForSlide(app.presentation, slideIndex, moveDir);
 
-		if (withTransition) {
+		if(withTransition) {
 			app.state.targetOffset = targetSlidePos;
 			app.state.startOffset = app.state.currentOffset;
 			float duration;
 			const float maxDuration = 1.0f;
-			if (app.state.slideAnimation.IsActive()) {
+			if(app.state.slideAnimation.IsActive()) {
 				float remaining = fplMax(0, app.state.slideAnimation.duration - app.state.slideAnimation.currentTime);
 				duration = fplMax(0, fplMin(maxDuration - remaining, maxDuration));
 			} else {
@@ -1896,31 +1950,31 @@ static void ShowSlideshow(App &app, const uint32_t slideIndex, const bool withTr
 	}
 }
 
-static void JumpToNextSlide(App &app) {
-	PresentationState &state = app.state;
+static void JumpToNextSlide(App& app) {
+	PresentationState& state = app.state;
 	size_t slideCount = app.presentation.slides.Count();
-	if (slideCount > 0 && state.activeSlideIndex < (int32_t)(slideCount - 1)) {
+	if(slideCount > 0 && state.activeSlideIndex < (int32_t)(slideCount - 1)) {
 		ShowSlideshow(app, state.activeSlideIndex + 1, true);
 	}
 }
 
-static void JumpToPrevSlide(App &app) {
-	PresentationState &state = app.state;
+static void JumpToPrevSlide(App& app) {
+	PresentationState& state = app.state;
 	size_t slideCount = app.presentation.slides.Count();
-	if (slideCount > 0 && state.activeSlideIndex > 0) {
+	if(slideCount > 0 && state.activeSlideIndex > 0) {
 		ShowSlideshow(app, state.activeSlideIndex - 1, true);
 	}
 }
 
 
 
-static void AddTextBlock(Renderer &renderer, Slide &slide, const Vec2f &offset, const char *text, const char *fontName, const float fontSize, const float lineHeight, const TextStyle &style, const HorizontalAlignment hAlign, const VerticalAlignment vAlign) {
-	const LoadedFont *font = renderer.FindFont(fontName, fontSize);
+static void AddTextBlock(Renderer& renderer, Slide& slide, const Vec2f& offset, const char* text, const char* fontName, const float fontSize, const float lineHeight, const TextStyle& style, const HorizontalAlignment hAlign, const VerticalAlignment vAlign) {
+	const LoadedFont* font = renderer.FindFont(fontName, fontSize);
 	Vec2f pos = offset;
-	const char *p = text;
-	const char *start = p;
-	while (*p) {
-		while (*p && *p != '\n') {
+	const char* p = text;
+	const char* start = p;
+	while(*p) {
+		while(*p && *p != '\n') {
 			++p;
 		}
 		const size_t len = p - start;
@@ -1929,32 +1983,58 @@ static void AddTextBlock(Renderer &renderer, Slide &slide, const Vec2f &offset, 
 		slide.AddLabel(String(start, len + 1), pos, fontName, fontSize, hAlign, vAlign, style);
 		pos += V2f(0, lineHeight);
 
-		if (*p == 0)
+		if(*p == 0)
 			break;
 		++p;
 		start = p;
 	}
 }
 
-static void AddSlideFromDefinition(Renderer &renderer, Presentation &presentation, const SlideDefinition &inSlide, const PresentationDefinition &inPresentation) {
-	const char *titleFontName = inPresentation.titleFont.name;
+static void AddImageBlock(Renderer& renderer, Slide& slide, const Vec2f& offset, const Vec2f &size, const char *name) {
+	slide.AddImage(offset, size, name);
+}
+
+struct Letterbox {
+	Vec2f offset;
+	Vec2f size;
+};
+
+static Letterbox ComputeLetterbox(const Vec2f &screenSize, const float targetAspect) {
+	float targetHeight = screenSize.w / targetAspect;
+	Vec2f viewSize = V2f(screenSize.w, screenSize.h);
+	Vec2f viewOffset = V2f(0, 0);
+	if(targetHeight > screenSize.h) {
+		viewSize.h = screenSize.h;
+		viewSize.w = screenSize.h * targetAspect;
+		viewOffset.x = (screenSize.w - viewSize.w) * 0.5f;
+	} else {
+		viewSize.w = screenSize.w;
+		viewSize.h = screenSize.w / targetAspect;
+		viewOffset.y = (screenSize.h - viewSize.h) * 0.5f;
+	}
+	Letterbox result = { viewOffset, viewSize };
+	return(result);
+}
+
+static void AddSlideFromDefinition(Renderer& renderer, Presentation& presentation, const SlideDefinition& inSlide, const PresentationDefinition& inPresentation) {
+	const char* titleFontName = inPresentation.titleFont.name;
 	const float titleFontSize = inPresentation.titleFont.size;
 	const float titleLineHeight = inPresentation.titleFont.lineScale * inPresentation.titleFont.size;
-	const TextStyle &titleStyle = inPresentation.titleFont.style;
+	const TextStyle& titleStyle = inPresentation.titleFont.style;
 
-	const char *normalFontName = inPresentation.normalFont.name;
+	const char* normalFontName = inPresentation.normalFont.name;
 	const float normalFontSize = inPresentation.normalFont.size;
 	const float normalLineHeight = inPresentation.normalFont.lineScale * inPresentation.normalFont.size;
-	const TextStyle &normalStyle = inPresentation.normalFont.style;
+	const TextStyle& normalStyle = inPresentation.normalFont.style;
 
-	const char *consoleFontName = inPresentation.consoleFont.name;
+	const char* consoleFontName = inPresentation.consoleFont.name;
 	const float consoleFontSize = inPresentation.consoleFont.size;
 	const float consoleLineHeight = inPresentation.consoleFont.lineScale * inPresentation.consoleFont.size;
-	const TextStyle &consoleStyle = inPresentation.consoleFont.style;
+	const TextStyle& consoleStyle = inPresentation.consoleFont.style;
 
 	const float padding = inPresentation.padding;
 
-	Slide *slide = presentation.AddSlide(presentation.size, inSlide.name);
+	Slide* slide = presentation.AddSlide(presentation.size, inSlide.name);
 	slide->background = inSlide.background;
 
 	Rect2f area = AddHeaderAndFooter(slide, inPresentation.header, inPresentation.footer);
@@ -1968,59 +2048,95 @@ static void AddSlideFromDefinition(Renderer &renderer, Presentation &presentatio
 	area.pos += V2f(padding, titleLineHeight);
 
 	// Content
-	for (size_t blockIndex = 0; blockIndex < inSlide.count; ++blockIndex) {
-		const BlockDefinition &block = inSlide.blocks[blockIndex];
+	for(size_t blockIndex = 0; blockIndex < inSlide.count; ++blockIndex) {
+		const BlockDefinition& block = inSlide.blocks[blockIndex];
 
 		Vec2f offset = V2fHadamard(area.size, block.pos);
 		Vec2f blockPos = area.pos + offset;
 		Vec2f blockSize = V2fHadamard(area.size, block.size);
 
 #if DRAW_BOX_DEFINITIONS
-		Rect *rect = slide->AddRect(blockPos, blockSize);
-		rect->style.background.kind = BackgroundKind::Solid;
-		rect->style.background.primaryColor = V4f(1, 0, 1, 1);
+		slide->AddStrokedRect(blockPos, blockSize, V4f(1, 0, 1, 1), 2.0f);
 #endif
 
-		switch (block.type) {
+		switch(block.type) {
 			case BlockType::Text:
 			{
 				const TextBlockDefinition textBlock = block.text;
 
 				float textFontSize = normalFontSize;
-				if (textBlock.fontSize > 0) textFontSize = textBlock.fontSize;
+				if(textBlock.fontSize > 0) textFontSize = textBlock.fontSize;
 
 				const float textLineHeight = inPresentation.normalFont.lineScale * textFontSize;
 
-				const char *text = textBlock.text;
+				const char* text = textBlock.text;
 				Vec2f textSize = ComputeTextBlockSize(renderer, *slide, text, normalFontName, textFontSize, textLineHeight);
 				HorizontalAlignment textAlign = textBlock.textAlign;
 
 				Vec2f textPos = blockPos;
 
-				if (block.contentAlignment.h == HorizontalAlignment::Center) {
+				if(block.contentAlignment.h == HorizontalAlignment::Center) {
 					textPos += V2fHadamard(V2f(0.5f, 0), blockSize) - V2fHadamard(V2f(0.5f, 0), textSize);
-				} else if (block.contentAlignment.h == HorizontalAlignment::Right) {
+				} else if(block.contentAlignment.h == HorizontalAlignment::Right) {
 					textPos += V2fHadamard(V2f(1.0f, 0), blockSize) - V2fHadamard(V2f(1.0f, 0), textSize);
 				}
-				if (block.contentAlignment.v == VerticalAlignment::Middle) {
+				if(block.contentAlignment.v == VerticalAlignment::Middle) {
 					textPos += V2fHadamard(V2f(0, 0.5f), blockSize) - V2fHadamard(V2f(0, 0.5f), textSize);
-				} else if (block.contentAlignment.v == VerticalAlignment::Bottom) {
+				} else if(block.contentAlignment.v == VerticalAlignment::Bottom) {
 					textPos += V2fHadamard(V2f(0, 1.0f), blockSize) - V2fHadamard(V2f(0, 1.0f), textSize);
 				}
 
 #if DRAW_BOX_DEFINITIONS
-				Rect *rect2 = slide->AddRect(textPos, textSize);
-				rect2->style.background.kind = BackgroundKind::Solid;
-				rect2->style.background.primaryColor = V4f(1, 1, 0, 1);
+				slide->AddStrokedRect(textPos, textSize, V4f(1, 1, 0, 1), 1.0f);
 #endif
 
 				// Adjust for content alignment
-				if (textAlign == HorizontalAlignment::Center) {
+				if(textAlign == HorizontalAlignment::Center) {
 					textPos += V2fHadamard(V2f(1, 0), textSize * 0.5f);
-				} else if (textAlign == HorizontalAlignment::Right) {
+				} else if(textAlign == HorizontalAlignment::Right) {
 					textPos += V2fHadamard(V2f(1, 0), textSize);
 				}
 				AddTextBlock(renderer, *slide, textPos, text, normalFontName, textFontSize, textLineHeight, normalStyle, textAlign, VerticalAlignment::Top);
+			} break;
+
+			case BlockType::Image:
+			{
+				const ImageBlockDefinition imageBlock = block.image;
+
+				const LoadedImage* renderImage = renderer.FindImage(imageBlock.name);
+				if(renderImage != nullptr) {
+					Vec2f imagePos = blockPos;
+
+					Vec2f physicalImageSize = V2f((float)renderImage->width, (float)renderImage->height);
+
+					Vec2f maxImageSize = V2fHadamard(imageBlock.size, blockSize);
+
+					Vec2f imageSize;
+					if(imageBlock.keepAspect) {
+						float aspect = physicalImageSize.w / physicalImageSize.h;
+						Letterbox lbox = ComputeLetterbox(maxImageSize, aspect);
+						imageSize = lbox.size;
+					} else {
+						imageSize = maxImageSize;
+					}
+
+					if(block.contentAlignment.h == HorizontalAlignment::Center) {
+						imagePos += V2fHadamard(V2f(0.5f, 0), blockSize) - V2fHadamard(V2f(0.5f, 0), imageSize);
+					} else if(block.contentAlignment.h == HorizontalAlignment::Right) {
+						imagePos += V2fHadamard(V2f(1.0f, 0), blockSize) - V2fHadamard(V2f(1.0f, 0), imageSize);
+					}
+					if(block.contentAlignment.v == VerticalAlignment::Middle) {
+						imagePos += V2fHadamard(V2f(0, 0.5f), blockSize) - V2fHadamard(V2f(0, 0.5f), imageSize);
+					} else if(block.contentAlignment.v == VerticalAlignment::Bottom) {
+						imagePos += V2fHadamard(V2f(0, 1.0f), blockSize) - V2fHadamard(V2f(0, 1.0f), imageSize);
+					}
+
+#if DRAW_BOX_DEFINITIONS
+					slide->AddStrokedRect(imagePos, imageSize, V4f(1, 1, 0, 1), 1.0f);
+#endif
+
+					AddImageBlock(renderer, *slide, imagePos, imageSize, imageBlock.name);
+				}
 			} break;
 
 			default:
@@ -2030,12 +2146,12 @@ static void AddSlideFromDefinition(Renderer &renderer, Presentation &presentatio
 	}
 }
 
-static void BuildPresentation(const PresentationDefinition &inPresentation, Renderer &renderer, Presentation &outPresentation) {
+static void BuildPresentation(const PresentationDefinition& inPresentation, Renderer& renderer, Presentation& outPresentation) {
 	Vec2f slideSize = inPresentation.slideSize;
 	outPresentation.size = slideSize;
 	size_t slideCount = inPresentation.slideCount;
-	for (size_t slideIndex = 0; slideIndex < slideCount; ++slideIndex) {
-		const SlideDefinition &slideDef = inPresentation.slides[slideIndex];
+	for(size_t slideIndex = 0; slideIndex < slideCount; ++slideIndex) {
+		const SlideDefinition& slideDef = inPresentation.slides[slideIndex];
 		AddSlideFromDefinition(renderer, outPresentation, slideDef, inPresentation);
 	}
 }
@@ -2043,15 +2159,15 @@ static void BuildPresentation(const PresentationDefinition &inPresentation, Rend
 static void QuaternionTests() {
 }
 
-int main(int argc, char **argv) {
+int main(int argc, char** argv) {
 	fplSettings settings = fplMakeDefaultSettings();
 	fplCopyString("FPL Demo | Presentation", settings.window.title, fplArrayCount(settings.window.title));
 	settings.video.driver = fplVideoDriverType_OpenGL;
 	settings.video.isVSync = true;
 	settings.video.graphics.opengl.compabilityFlags = fplOpenGLCompabilityFlags_Legacy;
 	settings.video.graphics.opengl.multiSamplingCount = 4;
-	if (fplPlatformInit(fplInitFlags_All, &settings)) {
-		if (fglLoadOpenGL(true)) {
+	if(fplPlatformInit(fplInitFlags_All, &settings)) {
+		if(fglLoadOpenGL(true)) {
 			glDisable(GL_DEPTH_TEST);
 
 			glEnable(GL_CULL_FACE);
@@ -2075,8 +2191,8 @@ int main(int argc, char **argv) {
 
 			glClearColor(0.1f, 0.2f, 0.3f, 1);
 
-			App *appMemory = (App *)fplMemoryAllocate(sizeof(App));
-			App &app = *appMemory;
+			App* appMemory = (App*)fplMemoryAllocate(sizeof(App));
+			App& app = *appMemory;
 
 			app.renderer.strings = &app.strings;
 			app.presentation.strings = &app.strings;
@@ -2100,6 +2216,8 @@ int main(int argc, char **argv) {
 
 			app.renderer.AddImageFromResource(ImageResources::FPLLogo128x128);
 
+			app.renderer.AddImageFromResource(ImageResources::FPLFeaturesImage);
+
 #if 0
 			app.renderer.AddFontFromFile("c:/windows/fonts/arial.ttf", "Arial", 24);
 #endif
@@ -2117,16 +2235,16 @@ int main(int argc, char **argv) {
 
 			float dt = 1.0f / 60.0f;
 			double lastTime = fplGetTimeInSecondsHP();
-			while (fplWindowUpdate()) {
+			while(fplWindowUpdate()) {
 				fplEvent ev;
-				while (fplPollEvent(&ev)) {
-					if (ev.type == fplEventType_Keyboard) {
-						if (ev.keyboard.type == fplKeyboardEventType_Button) {
-							if (ev.keyboard.buttonState == fplButtonState_Release) {
-								switch (ev.keyboard.mappedKey) {
+				while(fplPollEvent(&ev)) {
+					if(ev.type == fplEventType_Keyboard) {
+						if(ev.keyboard.type == fplKeyboardEventType_Button) {
+							if(ev.keyboard.buttonState == fplButtonState_Release) {
+								switch(ev.keyboard.mappedKey) {
 									case fplKey_F:
 									{
-										if (!fplIsWindowFullscreen()) {
+										if(!fplIsWindowFullscreen()) {
 											fplEnableWindowFullscreen();
 										} else {
 											fplDisableWindowFullscreen();
@@ -2146,7 +2264,7 @@ int main(int argc, char **argv) {
 					}
 				}
 
-				if (!fplIsWindowRunning())
+				if(!fplIsWindowRunning())
 					break;
 
 				fplWindowSize winSize = fplZeroInit;
@@ -2165,7 +2283,7 @@ int main(int argc, char **argv) {
 				lastTime = currentTime;
 			}
 
-			if (fplIsWindowFullscreen()) {
+			if(fplIsWindowFullscreen()) {
 				fplDisableWindowFullscreen();
 			}
 
