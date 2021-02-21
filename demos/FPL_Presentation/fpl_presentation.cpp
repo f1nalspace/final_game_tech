@@ -70,7 +70,7 @@ License:
 #define DRAW_VIEW_CENTER 0
 #define DRAW_ROTATING_CUBE 1
 #define USE_LETTERBOX_VIEWPORT 0
-#define DRAW_BOX_DEFINITIONS 1
+#define DRAW_BOX_DEFINITIONS 0
 
 template <typename T>
 struct GrowablePool {
