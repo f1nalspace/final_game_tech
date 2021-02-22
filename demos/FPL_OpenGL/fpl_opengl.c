@@ -299,7 +299,8 @@ static void RunLegacy() {
 		fplWallClock endFrameTime = fplGetWallClock();
 		double frameDuration = fplGetWallDelta(lastFrameTime, endFrameTime);
 		lastFrameTime = endFrameTime;
-		double dt = fplMin(frameDuration, DT);
+
+		float dt = fplMin((float)frameDuration, DT);
 		
 		rot += 0.5f * dt;
 	}
@@ -509,7 +510,8 @@ static bool RunModern() {
 		fplWallClock endFrameTime = fplGetWallClock();
 		double frameDuration = fplGetWallDelta(lastFrameTime, endFrameTime);
 		lastFrameTime = endFrameTime;
-		double dt = fplMin(frameDuration, DT);
+
+		float dt = fplMin((float)frameDuration, DT);
 		
 		++frameIndex;
 		rot += 0.5f * dt;
