@@ -158,6 +158,8 @@ SOFTWARE.
 	- Fixed: [Core] Implemented fplRDTSC() for non-x86 platforms
 
 	- Fixed: [POSIX] Fixed several compile errors
+	
+	- Fixed: [Linux] Fixed non-joystick devices as gamepad detected
 
 	- Changed: FPL_MAX_THREAD_COUNT and FPL_MAX_SIGNAL_COUNT can now be overridden by the user
 	- Changed: Removed redundant field bufferSizeInBytes from fplAudioDeviceFormat struct
@@ -16605,6 +16607,15 @@ fpl_internal void fpl__LinuxPollGameControllers(const fplSettings *settings, fpl
 					close(fd);
 					continue;
 				}
+
+				// NOTE(final): We do not want to detect devices which are not proper joysticks, such as gaming keyboards
+				struct js_event msg;
+				if ((read(fd, &msg, sizeof(struct js_event)) != sizeof(struct js_event)) || !((msg.type == JS_EVENT_INIT) || (msg.type == JS_EVENT_AXIS) || (msg.type == JS_EVENT_BUTTON))) {
+					// No joystick message
+					close(fd);
+					continue;
+				}
+				
 				fpl__LinuxGameController *controller = controllersState->controllers + freeIndex;
 				fplClearStruct(controller);
 				controller->fd = fd;
