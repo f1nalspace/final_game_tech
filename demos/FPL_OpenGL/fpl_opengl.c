@@ -244,6 +244,7 @@ static void RunLegacy() {
 
 	glClearColor(0.39f, 0.58f, 0.93f, 1.0f);
 
+	fplWallClock lastFrameTime = fplGetWallClock();
 	float rot = 0.0f;
 	while (fplWindowUpdate()) {
 		fplPollEvents();
@@ -295,7 +296,12 @@ static void RunLegacy() {
 
 		fplVideoFlip();
 
-		rot += 0.01f * DT;
+		fplWallClock endFrameTime = fplGetWallClock();
+		double frameDuration = fplGetWallDelta(lastFrameTime, endFrameTime);
+		lastFrameTime = endFrameTime;
+		double dt = fplMin(frameDuration, DT);
+		
+		rot += 0.5f * dt;
 	}
 }
 
@@ -462,13 +468,13 @@ static bool RunModern() {
 	glBindBuffer(GL_ARRAY_BUFFER, 0);
 	glBindVertexArray(0);
 
-	int frameIndex = 0;
-
 	glEnable(GL_DEPTH_TEST);
 	glDisable(GL_CULL_FACE);
 
 	glClearColor(0.39f, 0.58f, 0.93f, 1.0f);
 
+	fplWallClock lastFrameTime = fplGetWallClock();
+	int frameIndex = 0;
 	float rot = 0.0f;
 	while (fplWindowUpdate()) {
 		fplPollEvents();
@@ -499,8 +505,14 @@ static bool RunModern() {
 		glDrawArrays(GL_TRIANGLE_FAN, 0, fplArrayCount(FloorVerts));
 
 		fplVideoFlip();
+				
+		fplWallClock endFrameTime = fplGetWallClock();
+		double frameDuration = fplGetWallDelta(lastFrameTime, endFrameTime);
+		lastFrameTime = endFrameTime;
+		double dt = fplMin(frameDuration, DT);
+		
 		++frameIndex;
-		rot += 0.01f * DT;
+		rot += 0.5f * dt;
 	}
 
 	glDeleteVertexArrays(1, &floorVAO);
@@ -519,6 +531,7 @@ int main(int argc, char **args) {
 	settings.video.graphics.opengl.majorVersion = 3;
 	settings.video.graphics.opengl.minorVersion = 3;
 	settings.video.graphics.opengl.multiSamplingCount = 4;
+	settings.video.isVSync = true;
 #else
 	fplCopyString("FPL Legacy OpenGL", settings.window.title, fplArrayCount(settings.window.title));
 	settings.video.graphics.opengl.compabilityFlags = fplOpenGLCompabilityFlags_Legacy;
