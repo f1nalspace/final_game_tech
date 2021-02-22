@@ -153,9 +153,11 @@ SOFTWARE.
 	- Fixed: fplS32ToString() was not returning the last written character
 	- Fixed: fplStringAppendLen() was not returning the last written character
 	- Fixed: Fixed several warnings for doxygen
-	
+
 	- Fixed: [Core] Added empty functions for fplCPUID(), fplGetXCR0() for non-x86 platforms
 	- Fixed: [Core] Implemented fplRDTSC() for non-x86 platforms
+
+	- Fixed: [POSIX] Fixed several compile errors
 
 	- Changed: FPL_MAX_THREAD_COUNT and FPL_MAX_SIGNAL_COUNT can now be overridden by the user
 	- Changed: Removed redundant field bufferSizeInBytes from fplAudioDeviceFormat struct
@@ -19103,7 +19105,7 @@ fpl_internal fplAudioResultType fpl__AudioInitAlsa(const fplAudioSettings *audio
 	if ((targetFormat->defaultFields & fplAudioDefaultFields_BufferSize) == fplAudioDefaultFields_BufferSize) {
 		// TODO(final): Do not allocate snd_pcm_info_t on the stack, use temporary memory instead
 		size_t pcmInfoSize = alsaApi->snd_pcm_info_sizeof();
-		snd_pcm_info_t *pcmInfo = fplStackAllocate(pcmInfoSize);
+		snd_pcm_info_t *pcmInfo = (snd_pcm_info_t *)fplStackAllocate(pcmInfoSize);
 		if (pcmInfo == fpl_null) {
 			FPL__ALSA_INIT_ERROR(fplAudioResultType_OutOfMemory, "Out of stack memory for snd_pcm_info_t!");
 		}
@@ -19187,7 +19189,7 @@ fpl_internal fplAudioResultType fpl__AudioInitAlsa(const fplAudioSettings *audio
 	}
 
 	fplAudioDeviceFormat internalFormat = fplZeroInit;
-	internalFormat.type = fplAudioDriverType_Alsa;
+	internalFormat.driver = fplAudioDriverType_Alsa;
 
 	//
 	// Format
