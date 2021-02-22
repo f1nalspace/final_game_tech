@@ -139,7 +139,16 @@ SOFTWARE.
 	- New: Added enum fplAudioLatencyMode to fplAudioTargetFormat
 	- New: Added function fplSetFileTimestamps()
 	- New: Added fplAudioDriverType to fplAudioDeviceFormat
-	- New: [Win32] Added implementation for fplSetFileTimestamps()#
+	- New: Added fplWallClock struct
+	- New: Added function fplGetWallClock();
+	- New: Added function fplGetWallDelta();
+
+	- New: [Win32] Added implementation for fplSetFileTimestamps()
+	- New: [Win32] Added implementation for fplGetWallClock()
+	- New: [Win32] Added implementation for fplGetWallDelta()
+
+	- New: [POSIX] Added implementation for fplGetWallClock()
+	- New: [POSIX] Added implementation for fplGetWallDelta()
 
 	- Fixed: fplS32ToString() was not returning the last written character
 	- Fixed: fplStringAppendLen() was not returning the last written character
@@ -3944,7 +3953,32 @@ fpl_common_api void fplConsoleFormatError(const char *format, ...);
 * @{
 */
 // ----------------------------------------------------------------------------
+typedef union fplWallClock {
+#if defined(FPL_PLATFORM_WINDOWS)
+	struct {
+		uint64_t qpc;
+	} win32;
+#elif defined(FPL_SUBPLATFORM_POSIX)
+	struct {
+		uint64_t seconds;
+		uint64_t nanoSeconds;
+	} posix;
+#else
+	uint64_t unused;
+#endif
+} fplWallClock;
 
+/**
+* @brief Gets the current wall clock in high precision (micro/nano seconds) used for measurements only.
+* @return Returns a @ref fplWallClock containing  some fixed starting point (OS start, System start, etc).
+* @note Can only be used to calculate a difference in time!
+*/
+fpl_platform_api fplWallClock fplGetWallClock();
+/**
+* @brief Gets the delta value from two @ref fplWallClock values as seconds. 
+* @return Returns the resulting number of seconds.
+*/
+fpl_platform_api double fplGetWallDelta(const fplWallClock start, const fplWallClock finish);
 /**
 * @brief Gets the current system clock in seconds in high precision (micro/nano seconds).
 * @return Returns the number of seconds since some fixed starting point (OS start, System start, etc).
@@ -12560,6 +12594,21 @@ fpl_platform_api char *fplGetHomePath(char *destPath, const size_t maxDestLen) {
 //
 // Win32 Timings
 //
+fpl_platform_api fplWallClock fplGetWallClock() {
+	fplWallClock result = fplZeroInit;
+	LARGE_INTEGER time;
+	QueryPerformanceCounter(&time);
+	result.win32.qpc = (uint64_t)time.QuadPart;
+	return(result);
+}
+
+fpl_platform_api double fplGetWallDelta(const fplWallClock start, const fplWallClock finish) {
+	const fpl__Win32InitState* initState = &fpl__global__InitState.win32;
+	uint64_t delta = finish.win32.qpc - start.win32.qpc;
+	double result = delta / (double)initState->performanceFrequency.QuadPart;
+	return(result);
+}
+
 fpl_platform_api double fplGetTimeInSecondsHP() {
 	const fpl__Win32InitState *initState = &fpl__global__InitState.win32;
 	LARGE_INTEGER time;
@@ -13730,6 +13779,22 @@ fpl_platform_api void fplAtomicStoreS64(volatile int64_t *dest, const int64_t va
 //
 // POSIX Timings
 //
+fpl_platform_api fplWallClock fplGetWallClock() {
+	fplWallClock result = fplZeroInit;
+	struct timespec t;
+	clock_gettime(CLOCK_MONOTONIC, &t);
+	result.posix.seconds = (uint64_t)t.tv_sec;
+	result.posix.nanoSeconds = (uint64_t)t.tv_nsec;
+	return(result);
+}
+
+fpl_platform_api double fplGetWallDelta(const fplWallClock start, const fplWallClock finish) {
+	uint64_t deltaSeconds = finish.posix.seconds - start.posix.seconds;
+	uint64_t deltaNanos = finish.posix.nanoSeconds - start.posix.nanoSeconds;
+	double result = (double)deltaSeconds + ((double)deltaNanos * 1e-9);
+	return(result);
+}
+
 fpl_platform_api double fplGetTimeInSecondsHP() {
 	// @TODO(final/POSIX): Do we need to take the performance frequency into account?
 	struct timespec t;
@@ -14539,6 +14604,11 @@ fpl_platform_api bool fplGetFileTimestampsFromHandle(const fplFileHandle *fileHa
 		}
 	}
 	return(result);
+}
+
+fpl_platform_api bool fplSetFileTimestamps(const char* filePath, const fplFileTimeStamps* timeStamps) {
+	// @IMPLEMENT(final/POSIX): fplSetFileTimestamps
+	return(false);
 }
 
 fpl_platform_api bool fplFileExists(const char *filePath) {
