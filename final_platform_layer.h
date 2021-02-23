@@ -120,7 +120,7 @@ SOFTWARE.
 
 /*!
 	@file final_platform_layer.h
-	@version v0.9.5 beta
+	@version v0.9.5-beta
 	@author Torsten Spaete
 	@brief Final Platform Layer (FPL) - A C99 Single-Header-File Platform Abstraction Library
 */
@@ -132,7 +132,7 @@ SOFTWARE.
 	@page page_changelog Changelog
 	@tableofcontents
 
-	## v0.9.5 beta
+	## v0.9.5-beta
 	- New: Added enum fplAudioDefaultFields
 	- New: Added field defaultFields to fplAudioDeviceFormat struct
 	- New: Added C++/11 detection (FPL_IS_CPP11)
