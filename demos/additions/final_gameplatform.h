@@ -21,7 +21,7 @@ Changelog:
 
 License:
 	MIT License
-	Copyright 2017-2020 Torsten Spaete
+	Copyright 2017-2021 Torsten Spaete
 */
 
 #ifndef FINAL_GAMEPLATFORM_H
