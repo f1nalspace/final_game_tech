@@ -3957,23 +3957,31 @@ fpl_common_api void fplConsoleFormatError(const char *format, ...);
 * @{
 */
 // ----------------------------------------------------------------------------
+
+//! A structure storing the wallclock, used for time-measurements only.
 typedef union fplWallClock {
 #if defined(FPL_PLATFORM_WINDOWS)
+	//! Win32 specifics
 	struct {
+		//! Query performance count
 		uint64_t qpc;
 	} win32;
 #elif defined(FPL_SUBPLATFORM_POSIX)
+	//! POSIX specifics
 	struct {
+		//! Number of seconds
 		uint64_t seconds;
+		//! Number of nano seconds
 		uint64_t nanoSeconds;
 	} posix;
 #else
+	//! Unused
 	uint64_t unused;
 #endif
 } fplWallClock;
 
 /**
-* @brief Gets the current wall clock in high precision (micro/nano seconds) used for measurements only.
+* @brief Gets the current wall clock in high precision (micro/nano seconds) used for time-measurements only.
 * @return Returns a @ref fplWallClock containing  some fixed starting point (OS start, System start, etc).
 * @note Can only be used to calculate a difference in time!
 */
