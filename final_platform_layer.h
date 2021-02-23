@@ -140,8 +140,10 @@ SOFTWARE.
 	- New: Added function fplSetFileTimestamps()
 	- New: Added fplAudioDriverType to fplAudioDeviceFormat
 	- New: Added fplWallClock struct
-	- New: Added function fplGetWallClock();
-	- New: Added function fplGetWallDelta();
+	- New: Added function fplGetWallClock()
+	- New: Added function fplGetWallDelta()
+	- New: Support for logging out keyboard button events (FPL_LOG_KEY_EVENTS)
+	- New: Added support for hard crashing on errors or warnings (define FPL_CRASH_ON_ERROR or FPL_CRASH_ON_WARNING) to enable it
 
 	- New: [Win32] Added implementation for fplSetFileTimestamps()
 	- New: [Win32] Added implementation for fplGetWallClock()
@@ -150,7 +152,6 @@ SOFTWARE.
 	- New: [POSIX] Added implementation for fplGetWallClock()
 	- New: [POSIX] Added implementation for fplGetWallDelta()
 
-	- New: Support for logging out keyboard button events (FPL_LOG_KEY_EVENTS)
 
 	- Fixed: fplS32ToString() was not returning the last written character
 	- Fixed: fplStringAppendLen() was not returning the last written character
@@ -6551,9 +6552,9 @@ fpl_internal void fpl__LogWriteVarArgs(const char *funcName, const int lineNumbe
 // Error handling
 //
 
-#define FPL__CRITICAL(mod, format, ...)  fpl__PushError(FPL_FUNCTION_NAME, __LINE__, fplLogLevel_Critical, FPL__MODULE_CONCAT(mod, format), ## __VA_ARGS__)
-#define FPL__ERROR(mod, format, ...) fpl__PushError(FPL_FUNCTION_NAME, __LINE__, fplLogLevel_Error, FPL__MODULE_CONCAT(mod, format), ## __VA_ARGS__)
-#define FPL__WARNING(mod, format, ...) fpl__PushError(FPL_FUNCTION_NAME, __LINE__, fplLogLevel_Warning, FPL__MODULE_CONCAT(mod, format), ## __VA_ARGS__)
+#define FPL__CRITICAL(mod, format, ...)  fpl__HandleError(FPL_FUNCTION_NAME, __LINE__, fplLogLevel_Critical, FPL__MODULE_CONCAT(mod, format), ## __VA_ARGS__)
+#define FPL__ERROR(mod, format, ...) fpl__HandleError(FPL_FUNCTION_NAME, __LINE__, fplLogLevel_Error, FPL__MODULE_CONCAT(mod, format), ## __VA_ARGS__)
+#define FPL__WARNING(mod, format, ...) fpl__HandleError(FPL_FUNCTION_NAME, __LINE__, fplLogLevel_Warning, FPL__MODULE_CONCAT(mod, format), ## __VA_ARGS__)
 
 //
 // Debug out
@@ -6597,7 +6598,7 @@ fpl_common_api void fplDebugFormatOut(const char *format, ...) {
 
 fpl_globalvar struct fpl__PlatformAppState *fpl__global__AppState = fpl_null;
 
-fpl_internal void fpl__PushError(const char *funcName, const int lineNumber, const fplLogLevel level, const char *format, ...);
+fpl_internal void fpl__HandleError(const char *funcName, const int lineNumber, const fplLogLevel level, const char *format, ...);
 #endif // FPL_PLATFORM_CONSTANTS_DEFINED
 
 // ############################################################################
@@ -8424,11 +8425,22 @@ fpl_internal void fpl__PushError_Formatted(const char *funcName, const int lineN
 #endif
 }
 
-fpl_internal void fpl__PushError(const char *funcName, const int lineNumber, const fplLogLevel level, const char *format, ...) {
+fpl_internal void fpl__HandleError(const char* funcName, const int lineNumber, const fplLogLevel level, const char* format, ...) {
 	va_list valist;
 	va_start(valist, format);
 	fpl__PushError_Formatted(funcName, lineNumber, level, format, valist);
 	va_end(valist);
+
+#if defined(FPL_CRASH_ON_ERROR) || defined(FPL_CRASH_ON_WARNING)
+	fplLogLevel minErrorLevel = fplLogLevel_Error;
+#	if defined(FPL_CRASH_ON_WARNING)
+	minErrorLevel = fplLogLevel_Warning;
+#	endif
+	if(level >= minErrorLevel) {
+		// @NOTE(final): Force a null pointer assignment crash here
+		*(int*) = 0;
+	}
+#endif
 }
 
 //
@@ -8445,8 +8457,6 @@ fpl_internal void fpl__ArgumentZeroError(const char *paramName) {
 	FPL__ERROR(FPL__MODULE_ARGS, "%s parameter must be greater than zero", paramName);
 }
 fpl_internal void fpl__ArgumentMinError(const char *paramName, const size_t value, const size_t minValue) {
-	*(int*)0 = 0;
-	
 	FPL__ERROR(FPL__MODULE_ARGS, "%s parameter '%zu' must be greater or equal than '%zu'", paramName, value, minValue);
 }
 fpl_internal void fpl__ArgumentMaxError(const char *paramName, const size_t value, const size_t maxValue) {
@@ -10555,13 +10565,13 @@ fpl_internal HICON fpl__Win32LoadIconFromImageSource(const fpl__Win32Api *wapi, 
 		HDC dc = wapi->user.GetDC(fpl_null);
 		HBITMAP colorBitmap = wapi->gdi.CreateDIBSection(dc, (BITMAPINFO *)&bi, DIB_RGB_COLORS, (void **)&targetData, fpl_null, (DWORD)0);
 		if (colorBitmap == fpl_null) {
-			fpl__PushError(FPL_FUNCTION_NAME, __LINE__, fplLogLevel_Error, "Failed to create DIBSection from image with size %lu x %lu", imageSource->width, imageSource->height);
+			FPL__ERROR(FPL__MODULE_WIN32, "Failed to create DIBSection from image with size %lu x %lu", imageSource->width, imageSource->height);
 		}
 		wapi->user.ReleaseDC(fpl_null, dc);
 
 		HBITMAP maskBitmap = wapi->gdi.CreateBitmap(imageSource->width, imageSource->height, 1, 1, fpl_null);
 		if (maskBitmap == fpl_null) {
-			fpl__PushError(FPL_FUNCTION_NAME, __LINE__, fplLogLevel_Error, "Failed to create Bitmap Mask from image with size %lu x %lu", imageSource->width, imageSource->height);
+			FPL__ERROR(FPL__MODULE_WIN32, "Failed to create Bitmap Mask from image with size %lu x %lu", imageSource->width, imageSource->height);
 		}
 		if (colorBitmap != fpl_null && maskBitmap != fpl_null) {
 			fplAssert(targetData != fpl_null);
@@ -10584,7 +10594,7 @@ fpl_internal HICON fpl__Win32LoadIconFromImageSource(const fpl__Win32Api *wapi, 
 				ii.hbmColor = colorBitmap;
 				result = wapi->user.CreateIconIndirect(&ii);
 			} else {
-				fpl__PushError(FPL_FUNCTION_NAME, __LINE__, fplLogLevel_Warning, "Image source type '%d' for icon is not supported", imageSource->type);
+				FPL__ERROR(FPL__MODULE_WIN32, "Image source type '%d' for icon is not supported", imageSource->type);
 			}
 		}
 		if (colorBitmap != fpl_null) {
