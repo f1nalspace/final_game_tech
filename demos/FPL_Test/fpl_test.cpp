@@ -557,7 +557,7 @@ static void SingleThreadProc(const fplThreadHandle* context, void* data) {
 
 static void SimpleMultiThreadTest(const size_t threadCount) {
 	ftLine();
-	ThreadData threadData[FPL__MAX_THREAD_COUNT] = {};
+	ThreadData threadData[FPL_MAX_THREAD_COUNT] = {};
 	for (size_t threadIndex = 0; threadIndex < threadCount; ++threadIndex) {
 		threadData[threadIndex].num = (int)(threadIndex + 1);
 		threadData[threadIndex].sleepFor = (int)(1 + threadIndex) * 500;
@@ -673,7 +673,7 @@ static void SyncThreadsTestSemaphores(const size_t numWriters) {
 		ftIsTrue(fplSemaphoreInit(&mutableData.semaphore, initialValue));
 		mutableData.value = 0;
 
-		WriteThreadData writeDatas[FPL__MAX_THREAD_COUNT] = {};
+		WriteThreadData writeDatas[FPL_MAX_THREAD_COUNT] = {};
 		ftMsg("Start %zu threads\n", numWriters);
 		for (uint32_t i = 0; i < numWriters; ++i) {
 			writeDatas[i].base.num = i + 1;
@@ -769,7 +769,7 @@ static void ConditionThreadsTest(const size_t threadCount, const ConditionTestTy
 	masterData.base.num = 1;
 	masterData.testType = testType;
 
-	SlaveThreadData slaveDatas[FPL__MAX_THREAD_COUNT] = {};
+	SlaveThreadData slaveDatas[FPL_MAX_THREAD_COUNT] = {};
 	size_t slaveThreadCount = threadCount - 1;
 	for (size_t threadIndex = 0; threadIndex < slaveThreadCount; ++threadIndex) {
 		slaveDatas[threadIndex].base.num = masterData.base.num + (int)threadIndex + 1;
@@ -785,7 +785,7 @@ static void ConditionThreadsTest(const size_t threadCount, const ConditionTestTy
 	masterData.slaveThreads = slaveDatas;
 
 	ftMsg("Start %zu slave threads, 1 master thread\n", slaveThreadCount);
-	fplThreadHandle* threads[FPL__MAX_THREAD_COUNT];
+	fplThreadHandle* threads[FPL_MAX_THREAD_COUNT];
 	for (size_t threadIndex = 0; threadIndex < threadCount; ++threadIndex) {
 		if (threadIndex == 0) {
 			threads[threadIndex] = fplThreadCreate(ThreadMasterProc, &masterData);

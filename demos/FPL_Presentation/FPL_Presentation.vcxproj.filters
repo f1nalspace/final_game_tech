@@ -7,9 +7,6 @@
     <Filter Include="dependencies">
       <UniqueIdentifier>{f406abac-3254-4f49-a099-b49b75dcbdba}</UniqueIdentifier>
     </Filter>
-    <Filter Include="data">
-      <UniqueIdentifier>{85c6af17-3703-4909-8fa9-0eeed20d7be6}</UniqueIdentifier>
-    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\..\final_dynamic_opengl.h">
@@ -26,5 +23,7 @@
     </ClInclude>
     <ClInclude Include="images.h" />
     <ClInclude Include="fonts.h" />
+    <ClInclude Include="slides.h" />
+    <ClInclude Include="types.h" />
   </ItemGroup>
 </Project>

@@ -175,6 +175,8 @@
     <ClInclude Include="..\..\final_xml.h" />
     <ClInclude Include="fonts.h" />
     <ClInclude Include="images.h" />
+    <ClInclude Include="slides.h" />
+    <ClInclude Include="types.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

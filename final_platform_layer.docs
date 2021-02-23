@@ -28,7 +28,6 @@
 	- @subpage page_faq
 	- @subpage page_contribute
 	- @subpage page_changelog
-	- @subpage page_todo
 	- @subpage page_knownissues
 	- @subpage page_license
 
@@ -1760,7 +1759,7 @@
 	- @ref fplGetAudioHardwareFormat()
 	- @ref fplGetAudioBufferSizeInFrames()
 	- @ref fplGetAudioDriverString()
-	- @ref fplGetAudioFormatString()
+	- @ref fplGetAudioFormatTypeString()
 	- @ref fplGetAudioSampleSizeInBytes()
 	- @ref fplGetAudioFrameSizeInBytes()
 	- @ref fplGetAudioBufferSizeInBytes()
@@ -3615,6 +3614,18 @@
 			<td>Define this to support multiple log writers, so you can have a writer for each log level.</td>
 			<td>Not set by default</td>
 		</tr>
+		<tr>
+			<td>Logging</td>
+			<td>FPL_CRASH_ON_ERROR</td>
+			<td>Define this to crash the application on any error logged by FPL.</td>
+			<td>Not set by default</td>
+		</tr>
+		<tr>
+			<td>Logging</td>
+			<td>FPL_CRASH_ON_WARNING</td>
+			<td>Define this to crash the application on any warning logged by FPL.</td>
+			<td>Not set by default</td>
+		</tr>
 
 		<tr>
 			<td>C-Runtime</td>
@@ -4171,7 +4182,7 @@
 
 	@section section_mit_license MIT License
 
-	Copyright (c) 2017-2020 Torsten Spaete<br>
+	Copyright (c) 2017-2021 Torsten Spaete<br>
 	<br>
 	Permission is hereby granted, free of charge, to any person obtaining a copy of<br>
 	this software and associated documentation files (the "Software"), to deal in<br>

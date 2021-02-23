@@ -48,6 +48,7 @@ License:
 */
 
 #define FPL_IMPLEMENTATION
+#define FPL_LOGGING
 #include <final_platform_layer.h>
 
 #define FGL_IMPLEMENTATION
@@ -1216,7 +1217,7 @@ static void RenderApp(AppState* appState, const InputState* input, const uint32_
 	constexpr float osdFontHeight = w * 0.05f;
 
 	const KeyDefinitions* keyDefinitions = &keyDefinitionsArray[0];
-	char inputLocale[16];
+	char inputLocale[1024];
 	if (fplGetInputLocale(fplLocaleFormat_ISO639, inputLocale, fplArrayCount(inputLocale))) {
 		for (int keyDefIndex = 0; keyDefIndex < fplArrayCount(keyDefinitionsArray); ++keyDefIndex) {
 			const KeyDefinitions* testKeyDefinitions = &keyDefinitionsArray[keyDefIndex];
@@ -1586,6 +1587,7 @@ int main(int argc, char* argv[]) {
 	fplSettings settings = fplMakeDefaultSettings();
 	fplCopyString("FPL Input Demo", settings.window.title, fplArrayCount(settings.window.title));
 	int retCode = 0;
+
 	if (fplPlatformInit(fplInitFlags_All, &settings)) {
 		if (fglLoadOpenGL(true)) {
 			InputState input = {};

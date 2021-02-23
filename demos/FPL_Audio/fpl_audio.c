@@ -94,10 +94,9 @@ License:
 #define FGL_IMPLEMENTATION
 #include <final_dynamic_opengl.h>
 
-#define FINAL_DEBUG_IMPLEMENTATION
-#include <final_debug.h>
-
 #include <final_audiodemo.h>
+
+#include <final_math.h>
 
 typedef enum WavePlotType {
 	WavePlotType_None = 0,
@@ -129,15 +128,17 @@ fpl_internal uint32_t RoundToPowerOfTwo(const uint32_t input) {
 	return(result);
 }
 
-
-
 typedef struct AudioDemo {
 	AudioSystem audioSys;
 	fplAudioFormatType sampleFormat;
 	AudioSineWaveData sineWave;
+
+	AudioFrameIndex totalBufferFrameCount;
+	volatile AudioFrameIndex currentAudioFrameIndex;
+	AudioFrameIndex currentVideoFrameIndex;
+
 	WavePlotType plotType;
 	int32_t plotCount;
-	bool enableFFT;
 } AudioDemo;
 
 // This code inside this disabled block are broken and are just there for ideas
@@ -490,22 +491,21 @@ static uint32_t AudioPlayback(const fplAudioDeviceFormat *outFormat, const uint3
 #if OPT_PLAYBACKMODE == OPT_PLAYBACK_SINEWAVE_ONLY
 	result = maxFrameCount;
 	AudioGenerateSineWave(&audioDemo->sineWave, outputSamples, outFormat->type, outFormat->sampleRate, outFormat->channels, maxFrameCount);
+#elif OPT_PLAYBACKMODE == OPT_PLAYBACK_AUDIOSYSTEM_ONLY
+	// @FIXME(final): Fix hearable error, when the audio stream has finished playing and will repeat
+	result = AudioSystemWriteFrames(&audioDemo->audioSys, outputSamples, outFormat, maxFrameCount);
 #endif // OPT_OUTPUT_SAMPLES_SINEWAVE_ONLY
 
-
-#if OPT_PLAYBACKMODE == OPT_PLAYBACK_AUDIOSYSTEM_ONLY
-	// @FIXME(final): Fix hearable error, when the audio stream has finished playing and will repeat
-	AudioFrameIndex frameCount = AudioSystemWriteSamples(&audioDemo->audioSys, outputSamples, outFormat, maxFrameCount);
-	result = frameCount;
-#endif // OPT_OUTPUT_SAMPLES_SYSTEM_ONLY
+	AudioFrameIndex audioFrameIndex = fplAtomicLoadU32(&audioDemo->currentAudioFrameIndex);
+	fplAtomicExchangeU32(&audioDemo->currentAudioFrameIndex, (audioFrameIndex + result) % audioDemo->totalBufferFrameCount);
 
 	double timeEnd = fplGetTimeInMillisecondsHP();
 	double actualTime = timeEnd - timeStart;
 
 	// Print error when its too slow
-	uint64_t frameDelay = 50;
-	uint64_t minFrames = outFormat->bufferSizeInFrames / outFormat->periods;
-	uint64_t requiredFrames = minFrames - frameDelay;
+	AudioFrameIndex frameDelay = 50;
+	AudioFrameIndex minFrames = outFormat->bufferSizeInFrames / outFormat->periods;
+	AudioFrameIndex requiredFrames = minFrames - frameDelay;
 	double maxTime = 1.0 / (double)requiredFrames;
 	double missedTime = fplMax(0.0, actualTime - maxTime);
 
@@ -541,6 +541,7 @@ typedef union Color4f {
 		float b;
 		float a;
 	};
+	Vec4f v;
 	float m[4];
 } Color4f;
 
@@ -584,11 +585,29 @@ static void Render(AudioDemo *demo, const int screenW, const int screenH) {
 	glLoadIdentity();
 
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+	Vec2f areaDim = V2fInit(w * 0.9f, h * 0.25f);
+	Vec2f areaPos = V2fInit((w - areaDim.w) * 0.5f, (h - areaDim.h) * 0.5f);
+
+	RenderLine(0.0f, h * 0.5f, w, h * 0.5f, (Color4f) { 1, 1, 1, 0.25f }, 1.0f);
+	RenderLine(w * 0.5f, 0, w * 0.5f, h, (Color4f) { 1, 1, 1, 0.25f }, 1.0f);
+
+	RenderRectangle(areaPos.x, areaPos.y, areaPos.x + areaDim.w, areaPos.y + areaDim.h, (Color4f) { 1, 0, 0, 1 }, 1.0f);
+
+	AudioFrameIndex totalFrameCount = demo->totalBufferFrameCount;
+
+	float space = areaDim.w / (float)totalFrameCount;
+
+	float audioFrameOffset = demo->currentAudioFrameIndex * space;
+	float audioFrameX = areaPos.x + audioFrameOffset;
+	RenderLine(audioFrameX, areaPos.y, audioFrameX, areaPos.y + areaDim.h, (Color4f) { 0, 1, 1, 1.0f }, 1.0f);
+
+	float videoFrameOffset = demo->currentVideoFrameIndex * space;
+	float videoFrameX = areaPos.x + videoFrameOffset;
+	RenderLine(videoFrameX, areaPos.y, videoFrameX, areaPos.y + areaDim.h, (Color4f) { 1, 1, 0, 1.0f }, 1.0f);
 }
 
 int main(int argc, char **args) {
-
-
 	size_t fileCount = argc >= 2 ? argc - 1 : 0;
 	const char **files = (fileCount > 0) ? (const char **)args + 1 : fpl_null;
 	bool forceSineWave = false;
@@ -603,7 +622,6 @@ int main(int argc, char **args) {
 	demo->sineWave.duration = 0.5;
 	demo->plotType = WavePlotType_WaveForm;
 	demo->plotCount = 512;
-	demo->enableFFT = true;
 
 	int result = -1;
 
@@ -662,6 +680,9 @@ int main(int argc, char **args) {
 	glDisable(GL_CULL_FACE);
 	glEnable(GL_LINE_SMOOTH_HINT);
 
+	glEnable(GL_BLEND);
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
 	fplAudioDeviceFormat targetAudioFormat = fplZeroInit;
 	fplGetAudioHardwareFormat(&targetAudioFormat);
 
@@ -672,10 +693,11 @@ int main(int argc, char **args) {
 
 	// Init audio data
 	if (InitAudioData(&targetAudioFormat, &demo->audioSys, files, fileCount, forceSineWave, &demo->sineWave)) {
+		double totalBufferDurationInMs = targetAudioFormat.bufferSizeInFrames / (targetAudioFormat.sampleRate / 1000.0);
+		double singleBufferDurationMs = totalBufferDurationInMs / (double)targetAudioFormat.periods;
+		double bufferScaleForSecond = 1000.0 / (double)singleBufferDurationMs;
 
-#if 0
-
-#endif
+		demo->totalBufferFrameCount = (AudioFrameIndex)(targetAudioFormat.bufferSizeInFrames * bufferScaleForSecond + 0.5);
 
 		// Start audio playback (This will start calling clientReadCallback regulary)
 		if (fplPlayAudio() == fplAudioResultType_Success) {
@@ -694,7 +716,7 @@ int main(int argc, char **args) {
 			UpdateTitle(demo);
 
 			// Loop
-			bool nextSamples = false;
+			double lastTime = fplGetTimeInSecondsHP();
 			while (fplWindowUpdate()) {
 				fplEvent ev;
 				while (fplPollEvent(&ev)) {
@@ -702,12 +724,8 @@ int main(int argc, char **args) {
 						if (ev.keyboard.type == fplKeyboardEventType_Button) {
 							if (ev.keyboard.buttonState == fplButtonState_Release) {
 								fplKey key = ev.keyboard.mappedKey;
-								if (key == fplKey_Space) {
-									nextSamples = true;
-								} else if (key == fplKey_P) {
+								if (key == fplKey_P) {
 									demo->plotType = (demo->plotType + 1) % WavePlotType_Count;
-								} else if (key == fplKey_F) {
-									demo->enableFFT = !demo->enableFFT;
 								} else if (key == fplKey_Add) {
 									demo->plotCount *= 2;
 									if (demo->plotCount > 2048) {
@@ -725,21 +743,18 @@ int main(int argc, char **args) {
 					}
 				}
 
-				// Audio
-				if (nextSamples) {
-#if 0
-					AudioFrameIndex framesToRender = targetAudioFormat.bufferSizeInFrames / targetAudioFormat.periods;
-					// @FIXME(final): Fix hearable error, when the audio stream has finished playing and will repeat
-					AudioFrameIndex writtenFrames = AudioSystemWriteSamples(&audioSys, tempAudioSamples, &targetAudioFormat, framesToRender);
-					AudioRenderSamples(&demo, tempAudioSamples, &targetAudioFormat, writtenFrames);
-#endif
-					nextSamples = false;
-				}
-
 				fplWindowSize winSize = fplZeroInit;
 				fplGetWindowSize(&winSize);
 				Render(demo, winSize.width, winSize.height);
 				fplVideoFlip();
+
+				fplDebugFormatOut("Video/Audio frame: %u/%u\n", demo->currentVideoFrameIndex, demo->currentAudioFrameIndex);
+
+				double newTime = fplGetTimeInSecondsHP();
+				double frameTime = newTime - lastTime;
+				AudioFrameIndex videoFrameCount = (AudioFrameIndex)(targetAudioFormat.sampleRate * frameTime);
+				demo->currentVideoFrameIndex = (demo->currentVideoFrameIndex + videoFrameCount) % demo->totalBufferFrameCount;
+				lastTime = newTime;
 			}
 
 			// Stop audio playback
@@ -749,8 +764,6 @@ int main(int argc, char **args) {
 		// Release audio data
 		AudioSystemShutdown(&demo->audioSys);
 	}
-
-	ReleaseDebug();
 
 	result = 0;
 

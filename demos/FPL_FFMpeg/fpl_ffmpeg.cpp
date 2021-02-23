@@ -10,13 +10,20 @@ Requirements:
 	- C++/11 Compiler
 	- Platform x64 / Win32
 	- Final Platform Layer
-	- FFmpeg-4.2.2-win64-shared (http://ffmpeg.zeranoe.com/builds/)
-	- FFmpeg-4.2.2-win64-dev (http://ffmpeg.zeranoe.com/builds/)
+	- FFmpeg-4.3.1 (Release, Full, Shared, Win64: https://www.gyan.dev/ffmpeg/builds/)
 
 Author:
 	Torsten Spaete
 
 Changelog:
+	## 2020-10-12
+	- Renamed old FPL functions calls to new ones
+	- Print useful informations to the osd
+
+	## 2020-10-11
+	- Fixed broken audio computation
+	- Upgraded to FFMPEG 4.3.1
+
 	## 2020-04-22
 	- Relative Seeking Support
 	- OSD for displaying media/stream informations
@@ -1055,11 +1062,26 @@ static void UploadTexture(VideoContext &video, const AVFrame *sourceNativeFrame)
 //
 // Audio
 //
+struct AudioFormat {
+	//! Buffer size in bytes
+	uint32_t bufferSizeInBytes;
+	//! Samples per seconds
+	uint32_t sampleRate;
+	//! Number of channels
+	uint32_t channels;
+	//! Number of periods
+	uint32_t periods;
+	//! Format
+	fplAudioFormatType type;
+	//! Driver
+	fplAudioDriverType driver;
+};
+
 struct AudioContext {
 	MediaStream stream;
 	Decoder decoder;
-	fplAudioDeviceFormat audioSource;
-	fplAudioDeviceFormat audioTarget;
+	AudioFormat audioSource;
+	AudioFormat audioTarget;
 	Clock clock;
 	double audioClock;
 	int32_t audioClockSerial;
@@ -1067,6 +1089,8 @@ struct AudioContext {
 	double audioDiffCum;
 	double audioDiffAbgCoef;
 	double audioDiffThreshold;
+
+	fplAudioDriverType driver;
 
 	SwrContext *softwareResampleCtx;
 	Frame *pendingAudioFrame;
@@ -1673,7 +1697,6 @@ struct PlayerState {
 	PlayerSettings settings;
 
 	FontInfo fontInfo;
-
 	FontBuffer fontBuffer;
 
 	Clock externalClock;
@@ -1969,7 +1992,7 @@ static void QueuePicture(Decoder &decoder, AVFrame *sourceFrame, Frame *targetFr
 	targetFrame->height = sourceFrame->height;
 
 #if PRINT_PTS
-	ConsoleFormatOut("PTS V: %7.2f, Next: %7.2f\n", targetFrame->pts, decoder.next_pts);
+	fplDebugFormatOut("PTS V: %7.2f, Next: %7.2f\n", targetFrame->pts, decoder.next_pts);
 #endif
 
 	AddFrameToDecoder(decoder, targetFrame, sourceFrame);
@@ -2038,8 +2061,8 @@ static void VideoDecodingThreadProc(const fplThreadHandle *thread, void *userDat
 				}
 			} else {
 #if PRINT_QUEUE_INFOS
-				uint32_t decodedVideoFrameIndex = AtomicAddU32(&decoder->decodedFrameCount, 1);
-				ConsoleFormatOut("Decoded video frame %lu\n", decodedVideoFrameIndex);
+				uint32_t decodedVideoFrameIndex = fplAtomicAddAndFetchU32(&decoder->decodedFrameCount, 1);
+				fplDebugFormatOut("Decoded video frame %lu\n", decodedVideoFrameIndex);
 #endif
 				hasDecodedFrame = true;
 
@@ -2094,7 +2117,7 @@ static void QueueSamples(Decoder &decoder, AVFrame *sourceFrame, Frame *targetFr
 	targetFrame->serial = serial;
 
 #if PRINT_PTS
-	ConsoleFormatOut("PTS A: %7.2f, Next: %7.2f\n", targetFrame->pts, decoder.next_pts);
+	fplDebugFormatOut("PTS A: %7.2f, Next: %7.2f\n", targetFrame->pts, decoder.next_pts);
 #endif
 
 	AddFrameToDecoder(decoder, targetFrame, sourceFrame);
@@ -2189,8 +2212,8 @@ static void AudioDecodingThreadProc(const fplThreadHandle *thread, void *userDat
 				}
 			} else {
 #if PRINT_QUEUE_INFOS
-				uint32_t decodedAudioFrameIndex = AtomicAddU32(&decoder->decodedFrameCount, 1);
-				ConsoleFormatOut("Decoded audio frame %lu\n", decodedAudioFrameIndex);
+				uint32_t decodedAudioFrameIndex = fplAtomicAddAndFetchU32(&decoder->decodedFrameCount, 1);
+				fplDebugFormatOut("Decoded audio frame %lu\n", decodedAudioFrameIndex);
 #endif
 				hasDecodedFrame = true;
 			}
@@ -2238,6 +2261,10 @@ static uint32_t AudioReadCallback(const fplAudioDeviceFormat *nativeFormat, cons
 
 		uint32_t outputSampleStride = fplGetAudioFrameSizeInBytes(nativeFormat->type, nativeFormat->channels);
 		uint32_t maxOutputSampleBufferSize = outputSampleStride * frameCount;
+
+		uint32_t nativeBufferSizeInBytes = fplGetAudioBufferSizeInBytes(nativeFormat->type, nativeFormat->channels, nativeFormat->bufferSizeInFrames);
+
+		AudioFormat *targetFormat = &state->audio.audioTarget;
 
 		uint32_t remainingFrameCount = frameCount;
 		while (remainingFrameCount > 0) {
@@ -2345,7 +2372,7 @@ static uint32_t AudioReadCallback(const fplAudioDeviceFormat *nativeFormat, cons
 		// Update audio clock
 		if (!isnan(audio->audioClock)) {
 			uint32_t writtenSize = result * outputSampleStride;
-			double pts = audio->audioClock - (double)(nativeFormat->periods * nativeFormat->bufferSizeInBytes + writtenSize) / state->audio.audioTarget.bufferSizeInBytes;
+			double pts = audio->audioClock - (double)(nativeFormat->periods * nativeBufferSizeInBytes + writtenSize) / (double)targetFormat->bufferSizeInBytes;
 			SetClockAt(audio->clock, pts, audio->audioClockSerial, audioCallbackTime / (double)AV_TIME_BASE);
 			SyncClockToSlave(state->externalClock, audio->clock);
 		}
@@ -2578,8 +2605,8 @@ static void PacketReadThreadProc(const fplThreadHandle *thread, void *userData) 
 				assert(targetPacket != nullptr);
 
 #if PRINT_QUEUE_INFOS
-				uint32_t packetIndex = AtomicAddU32(&reader.readPacketCount, 1);
-				ConsoleFormatOut("Read packet %lu\n", packetIndex);
+				uint32_t packetIndex = fplAtomicAddAndFetchU32(&reader.readPacketCount, 1);
+				fplDebugFormatOut("Read packet %lu\n", packetIndex);
 #endif
 
 				// Check if packet is in play range, then queue, otherwise discard
@@ -2592,16 +2619,16 @@ static void PacketReadThreadProc(const fplThreadHandle *thread, void *userData) 
 				if ((videoStream != nullptr) && (srcPacket.stream_index == videoStream->streamIndex) && pktInPlayRange) {
 					AddPacketToDecoder(video.decoder, targetPacket, &srcPacket);
 #if PRINT_QUEUE_INFOS
-					ConsoleFormatOut("Queued video packet %lu\n", packetIndex);
+					fplDebugFormatOut("Queued video packet %lu\n", packetIndex);
 #endif
 				} else if ((audioStream != nullptr) && (srcPacket.stream_index == audioStream->streamIndex) && pktInPlayRange) {
 					AddPacketToDecoder(audio.decoder, targetPacket, &srcPacket);
 #if PRINT_QUEUE_INFOS
-					ConsoleFormatOut("Queued audio packet %lu\n", packetIndex);
+					fplDebugFormatOut("Queued audio packet %lu\n", packetIndex);
 #endif
 				} else {
 #if PRINT_QUEUE_INFOS
-					ConsoleFormatOut("Dropped packet %lu\n", packetIndex);
+					fplDebugFormatOut("Dropped packet %lu\n", packetIndex);
 #endif
 					ffmpeg.av_packet_unref(&srcPacket);
 				}
@@ -2773,6 +2800,36 @@ static void RenderOSD(PlayerState *state, const Mat4f &proj, const float w, cons
 
 		fplFormatString(osdTextBuffer, fplArrayCount(osdTextBuffer), "Length: %02d:%02d:%02d:%03d", totalHours, totalMinutes, totalSeconds, totalMillis);
 		PushTextToBuffer(state->fontBuffer, state->fontInfo, osdTextBuffer, osdFontSize, osdPos, Vec4f(1, 1, 1, 1), TextRenderMode::Baseline);
+		osdPos += Vec2f(0, -osdFontSize);
+	}
+
+	// States
+	{
+		const char* videoInfos;
+#if USE_HARDWARE_RENDERING
+		videoInfos = "OpenGL";
+#else
+		videoInfos = "Software";
+#endif
+		double frameRate = av_q2d(state->video.stream.stream->avg_frame_rate);
+		uint32_t width = state->video.stream.codecContext->width;
+		uint32_t height = state->video.stream.codecContext->height;
+		AVPixelFormat pixFormat  = state->video.stream.codecContext->pix_fmt;
+		const char *pixelFormatName = ffmpeg.av_get_pix_fmt_name(pixFormat);
+
+		fplFormatString(osdTextBuffer, fplArrayCount(osdTextBuffer), "Video: %s, %ux%u, %s, %.2f frames/s", videoInfos, width, height, pixelFormatName, frameRate);
+		PushTextToBuffer(state->fontBuffer, state->fontInfo, osdTextBuffer, osdFontSize, osdPos, Vec4f(1, 1, 1, 1), TextRenderMode::Baseline);
+		osdPos += Vec2f(0, -osdFontSize);
+
+		const char* audioDriverName = fplGetAudioDriverString(state->audio.audioTarget.driver);
+		const char* audioFormatName = fplGetAudioFormatTypeString(state->audio.audioTarget.type);
+
+		uint32_t bufferSize = state->audio.audioTarget.bufferSizeInBytes;
+		uint32_t frameSize = fplGetAudioFrameSizeInBytes(state->audio.audioTarget.type, state->audio.audioTarget.channels);
+
+		fplFormatString(osdTextBuffer, fplArrayCount(osdTextBuffer), "Audio: %s, %s, %u channels, %u Hz", audioDriverName, audioFormatName, state->audio.audioTarget.channels, state->audio.audioTarget.sampleRate);
+		PushTextToBuffer(state->fontBuffer, state->fontInfo, osdTextBuffer, osdFontSize, osdPos, Vec4f(1, 1, 1, 1), TextRenderMode::Baseline);
+		osdPos += Vec2f(0, -osdFontSize);
 	}
 
 #if USE_HARDWARE_RENDERING
@@ -2927,7 +2984,7 @@ static void RenderVideoFrame(PlayerState *state) {
 	fplVideoFlip();
 
 #if PRINT_FRAME_UPLOAD_INFOS
-	ConsoleFormatOut("Displayed frame: %d(%s)\n", readIndex, (wasUploaded ? " (New)" : ""));
+	fplDebugFormatOut("Displayed frame: %d(%s)\n", readIndex, (wasUploaded ? " (New)" : ""));
 #endif
 }
 
@@ -2971,7 +3028,7 @@ static double ComputeVideoDelay(const PlayerState *state, const double delay) {
 	}
 
 #if PRINT_VIDEO_DELAY
-	ConsoleFormatOut("video: delay=%0.3f A-V=%f\n", delay, -diff);
+	fplDebugFormatOut("video: delay=%0.3f A-V=%f\n", delay, -diff);
 #endif
 
 	return(result);
@@ -3072,7 +3129,7 @@ static void VideoRefresh(PlayerState *state, double &remainingTime, int &display
 	double audioClock = GetClock(state->audio.clock);
 	double videoClock = GetClock(state->video.clock);
 	double extClock = GetClock(state->externalClock);
-	ConsoleFormatOut("M: %7.2f, A: %7.2f, V: %7.2f, E: %7.2f\n", masterClock, audioClock, videoClock, extClock);
+	fplDebugFormatOut("M: %7.2f, A: %7.2f, V: %7.2f, E: %7.2f\n", masterClock, audioClock, videoClock, extClock);
 #endif
 }
 
@@ -3252,6 +3309,8 @@ static bool InitializeAudio(PlayerState &state, const char *mediaFilePath, const
 		audio.decoder.start_pts_tb = audio.stream.stream->time_base;
 	}
 
+	uint32_t nativeBufferSizeInBytes = fplGetAudioBufferSizeInBytes(nativeAudioFormat.type, nativeAudioFormat.channels, nativeAudioFormat.bufferSizeInFrames);
+
 	AVSampleFormat targetSampleFormat = MapAudioFormatType(nativeAudioFormat.type);
 	// @TODO(final): Map target audio channels to channel layout
 	int targetChannelCount = nativeAudioFormat.channels;
@@ -3263,7 +3322,7 @@ static bool InitializeAudio(PlayerState &state, const char *mediaFilePath, const
 	audio.audioTarget.channels = targetChannelCount;
 	audio.audioTarget.sampleRate = targetSampleRate;
 	audio.audioTarget.type = nativeAudioFormat.type;
-	audio.audioTarget.bufferSizeInFrames = ffmpeg.av_samples_get_buffer_size(nullptr, audio.audioTarget.channels, 1, targetSampleFormat, 1);
+	audio.audioTarget.driver = nativeAudioFormat.driver;
 	audio.audioTarget.bufferSizeInBytes = ffmpeg.av_samples_get_buffer_size(nullptr, audio.audioTarget.channels, audio.audioTarget.sampleRate, targetSampleFormat, 1);
 
 	AVSampleFormat inputSampleFormat = audioCodexCtx->sample_fmt;
@@ -3278,12 +3337,11 @@ static bool InitializeAudio(PlayerState &state, const char *mediaFilePath, const
 	audio.audioSource.type = MapAVSampleFormat(inputSampleFormat);
 	audio.audioSource.periods = nativeAudioFormat.periods;
 	audio.audioSource.bufferSizeInBytes = ffmpeg.av_samples_get_buffer_size(nullptr, inputChannelCount, inputSampleRate, inputSampleFormat, 1);
-	audio.audioSource.bufferSizeInFrames = ffmpeg.av_samples_get_buffer_size(nullptr, inputChannelCount, 1, inputSampleFormat, 1);
 
 	// Compute AVSync audio threshold
 	audio.audioDiffAbgCoef = exp(log(0.01) / AV_AUDIO_DIFF_AVG_NB);
 	audio.audioDiffAvgCount = 0;
-	audio.audioDiffThreshold = nativeAudioFormat.bufferSizeInBytes / (double)audio.audioTarget.bufferSizeInBytes;
+	audio.audioDiffThreshold = nativeBufferSizeInBytes / (double)audio.audioTarget.bufferSizeInBytes;
 
 	// Create software resample context and initialize
 	audio.softwareResampleCtx = ffmpeg.swr_alloc_set_opts(nullptr,

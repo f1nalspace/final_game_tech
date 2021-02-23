@@ -975,8 +975,6 @@ static void HandlePreCollision(GameState& state, b2Contact* contact) {
 
 			b2Vec2 n = b2Vec2(bounce.x, bounce.y);
 
-			fplDebugFormatOut("Out direction: %f %f, t: %f\n", n.x, n.y, t);
-
 			manifold->localNormal = n;
 		}
 	}

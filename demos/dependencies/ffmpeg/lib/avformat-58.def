@@ -51,8 +51,8 @@ EXPORTS
     av_muxer_iterate
     av_new_program
     av_oformat_next
-    av_pkt_dump2
     av_pkt_dump_log2
+    av_pkt_dump2
     av_probe_input_buffer
     av_probe_input_buffer2
     av_probe_input_format
@@ -126,11 +126,13 @@ EXPORTS
     avio_get_str16le
     avio_handshake
     avio_open
-    avio_open2
     avio_open_dir
     avio_open_dyn_buf
+    avio_open2
     avio_pause
+    avio_print_string_array
     avio_printf
+    avio_protocol_get_class
     avio_put_str
     avio_put_str16be
     avio_put_str16le
