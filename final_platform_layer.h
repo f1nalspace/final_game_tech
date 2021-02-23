@@ -2202,7 +2202,7 @@ fplStaticAssert(sizeof(size_t) >= sizeof(uint32_t));
 //
 // ****************************************************************************
 #if defined(FPL_PLATFORM_WINDOWS)
-	// @NOTE(final): windef.h defines min/max macros defined in lowerspace, this will break for example std::min/max so we have to tell the header we dont want this!
+	// @NOTE(final): windef.h defines min/max macros in lowerspace, this will break for example std::min/max so we have to tell the header we dont want this!
 #	if !defined(NOMINMAX)
 #		define NOMINMAX
 #	endif
@@ -10800,8 +10800,6 @@ fpl_internal void fpl__Win32ReleasePlatform(fpl__PlatformInitState *initState, f
 
 #if defined(FPL__ENABLE_WINDOW)
 fpl_internal fplKey fpl__Win32TranslateVirtualKey(const fpl__Win32Api *wapi, const uint64_t virtualKey) {
-	// @TODO(final): [Win32] Use key mapping table instead of switch
-
 	switch (virtualKey) {
 		case VK_BACK:
 			return fplKey_Backspace;
@@ -11558,9 +11556,6 @@ fpl_internal DWORD WINAPI fpl__Win32ThreadProc(void *data) {
 }
 
 fpl_platform_api uint32_t fplGetCurrentThreadId() {
-	// @TODO(final): On win32, this call may be simplified?
-	// uint8_t *threadLocalStorage = (uint8_t *)__readgsqword(0x30);
-	// uint32_t threadId = *(uint32_t *)(threadLocalStorage + 0x48);
 	DWORD threadId = GetCurrentThreadId();
 	uint32_t result = (uint32_t)threadId;
 	return(result);
@@ -13163,7 +13158,7 @@ fpl_platform_api bool fplPollGamepadStates(fplGamepadStates *outStates) {
 		fpl__Win32XInputState *xinputState = &appState->xinput;
 		fplAssert(xinputState != fpl_null);
 		if (xinputState->xinputApi.XInputGetState != fpl_null) {
-			// @TODO(final): Use the device search time to query only new devices on time intervals
+			// @TODO(final): fpl__Win32UpdateGameControllers() uses duplicate code
 			QueryPerformanceCounter(&xinputState->lastDeviceSearchTime);
 
 			fplClearStruct(outStates);
@@ -15046,8 +15041,6 @@ fpl_internal void fpl__X11ReleaseWindow(const fpl__X11SubplatformState *subplatf
 }
 
 fpl_internal fplKey fpl__X11TranslateKeySymbol(const KeySym keySym) {
-	// @TODO(final): [X11] Use key mapping table instead of switch
-
 	switch (keySym) {
 		case XK_BackSpace:
 			return fplKey_Backspace;
@@ -19122,7 +19115,7 @@ fpl_internal fplAudioResultType fpl__AudioInitAlsa(const fplAudioSettings *audio
 	//
 	float bufferSizeScaleFactor = 1.0f;
 	if ((targetFormat->defaultFields & fplAudioDefaultFields_BufferSize) == fplAudioDefaultFields_BufferSize) {
-		// TODO(final): Do not allocate snd_pcm_info_t on the stack, use temporary memory instead
+		// @TODO(final): Do not allocate snd_pcm_info_t on the stack, use temporary memory instead
 		size_t pcmInfoSize = alsaApi->snd_pcm_info_sizeof();
 		snd_pcm_info_t *pcmInfo = (snd_pcm_info_t *)fplStackAllocate(pcmInfoSize);
 		if (pcmInfo == fpl_null) {
