@@ -150,6 +150,8 @@ SOFTWARE.
 	- New: [POSIX] Added implementation for fplGetWallClock()
 	- New: [POSIX] Added implementation for fplGetWallDelta()
 
+	- New: Support for logging out keyboard button events (FPL_LOG_KEY_EVENTS)
+
 	- Fixed: fplS32ToString() was not returning the last written character
 	- Fixed: fplStringAppendLen() was not returning the last written character
 	- Fixed: Fixed several warnings for doxygen
@@ -8218,7 +8220,18 @@ fpl_internal void fpl__PushMouseMoveEvent(const int32_t x, const int32_t y) {
 	fpl__PushInternalEvent(&newEvent);
 }
 
-fpl_internal void fpl__HandleKeyboardButtonEvent(fpl__PlatformWindowState *windowState, const uint64_t keyCode, const fplKeyboardModifierFlags modifiers, const fplButtonState buttonState, const bool force) {
+fpl_internal void fpl__HandleKeyboardButtonEvent(fpl__PlatformWindowState *windowState, const uint64_t time, const uint64_t keyCode, const fplKeyboardModifierFlags modifiers, const fplButtonState buttonState, const bool force) {
+#if defined(FPL_LOG_KEY_EVENTS)
+	const char* buttonStateName = "";
+	if(buttonState == fplButtonState_Press)
+		buttonStateName = "Press";
+	else if(buttonState == fplButtonState_Repeat)
+		buttonStateName = "Repeat";
+	else
+		buttonStateName = "Released";
+	FPL_LOG_INFO(FPL__MODULE_OS, "[%llu] Keyboard button event with keycode: '%llu', state: '%s'", time, keyCode, buttonStateName);
+#endif
+
 	fplKey mappedKey = fpl__GetMappedKey(windowState, keyCode);
 	bool repeat = false;
 	if (force) {
@@ -10340,7 +10353,7 @@ LRESULT CALLBACK fpl__Win32MessageProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 				bool altKeyIsDown = fpl__Win32IsKeyDown(wapi, VK_MENU);
 				fplButtonState keyState = isDown ? fplButtonState_Press : fplButtonState_Release;
 				fplKeyboardModifierFlags modifiers = fpl__Win32GetKeyboardModifiers(wapi);
-				fpl__HandleKeyboardButtonEvent(&appState->window, keyCode, modifiers, keyState, false);
+				fpl__HandleKeyboardButtonEvent(&appState->window, GetTickCount(), keyCode, modifiers, keyState, false);
 				if (wasDown != isDown) {
 					if (isDown) {
 						if (keyCode == VK_F4 && altKeyIsDown) {
@@ -15835,7 +15848,7 @@ fpl_internal void fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatfor
 			if (!appState->currentSettings.input.disabledEvents) {
 				int keyState = ev->xkey.state;
 				uint64_t keyCode = (uint64_t)ev->xkey.keycode;
-				fpl__HandleKeyboardButtonEvent(winState, keyCode, fpl__X11TranslateModifierFlags(keyState), fplButtonState_Press, false);
+				fpl__HandleKeyboardButtonEvent(winState, (uint64_t)ev->xkey.time, keyCode, fpl__X11TranslateModifierFlags(keyState), fplButtonState_Press, false);
 
 				char buf[32];
 				KeySym keysym = 0;
@@ -15867,9 +15880,9 @@ fpl_internal void fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatfor
 				int keyState = ev->xkey.state;
 				int keyCode = ev->xkey.keycode;
 				if (physical) {
-					fpl__HandleKeyboardButtonEvent(winState, (uint64_t)keyCode, fpl__X11TranslateModifierFlags(keyState), fplButtonState_Release, true);
+					fpl__HandleKeyboardButtonEvent(winState, (uint64_t)ev->xkey.time, (uint64_t)keyCode, fpl__X11TranslateModifierFlags(keyState), fplButtonState_Release, true);
 				} else {
-					fpl__HandleKeyboardButtonEvent(winState, (uint64_t)keyCode, fpl__X11TranslateModifierFlags(keyState), fplButtonState_Repeat, false);
+					fpl__HandleKeyboardButtonEvent(winState, (uint64_t)ev->xkey.time, (uint64_t)keyCode, fpl__X11TranslateModifierFlags(keyState), fplButtonState_Repeat, false);
 				}
 			}
 		} break;
