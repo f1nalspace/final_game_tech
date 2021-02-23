@@ -48,6 +48,8 @@ License:
 */
 
 #define FPL_IMPLEMENTATION
+#define FPL_LOGGING
+#define FPL_LOG_KEY_EVENTS
 #include <final_platform_layer.h>
 
 #define FGL_IMPLEMENTATION
@@ -1586,6 +1588,12 @@ int main(int argc, char* argv[]) {
 	fplSettings settings = fplMakeDefaultSettings();
 	fplCopyString("FPL Input Demo", settings.window.title, fplArrayCount(settings.window.title));
 	int retCode = 0;
+
+	fplLogSettings logSettings = fplZeroInit;
+	logSettings.maxLevel = fplLogLevel_All;
+	logSettings.writers[0].flags = fplLogWriterFlags_StandardConsole | fplLogWriterFlags_DebugOut;
+	fplSetLogSettings(&logSettings);
+
 	if (fplPlatformInit(fplInitFlags_All, &settings)) {
 		if (fglLoadOpenGL(true)) {
 			InputState input = {};
