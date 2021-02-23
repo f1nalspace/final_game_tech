@@ -28,7 +28,6 @@
 	- @subpage page_faq
 	- @subpage page_contribute
 	- @subpage page_changelog
-	- @subpage page_todo
 	- @subpage page_knownissues
 	- @subpage page_license
 
@@ -3613,6 +3612,18 @@
 			<td>Logging</td>
 			<td>FPL_LOG_MULTIPLE_WRITERS</td>
 			<td>Define this to support multiple log writers, so you can have a writer for each log level.</td>
+			<td>Not set by default</td>
+		</tr>
+		<tr>
+			<td>Logging</td>
+			<td>FPL_CRASH_ON_ERROR</td>
+			<td>Define this to crash the application on any error logged by FPL.</td>
+			<td>Not set by default</td>
+		</tr>
+		<tr>
+			<td>Logging</td>
+			<td>FPL_CRASH_ON_WARNING</td>
+			<td>Define this to crash the application on any warning logged by FPL.</td>
 			<td>Not set by default</td>
 		</tr>
 
