@@ -162,6 +162,8 @@ SOFTWARE.
 	- Fixed: [POSIX] Fixed several compile errors
 	
 	- Fixed: [Linux] Fixed non-joystick devices as gamepad detected
+	- Fixed: [X11] Fixed keyrepeat issue for text input (finally!)
+	- Fixed: [X11] Fixed duplicated key events in some cases
 
 	- Changed: FPL_MAX_THREAD_COUNT and FPL_MAX_SIGNAL_COUNT can now be overridden by the user
 	- Changed: Removed redundant field bufferSizeInBytes from fplAudioDeviceFormat struct
@@ -7979,6 +7981,7 @@ typedef struct fpl__PlatformWindowState {
 	fpl__EventQueue eventQueue;
 	fplKey keyMap[256];
 	fplButtonState keyStates[256];
+	uint64_t keyPressTimes[256];
 	fplButtonState mouseStates[5];
 	fpl_b32 isRunning;
 
@@ -8235,6 +8238,7 @@ fpl_internal void fpl__HandleKeyboardButtonEvent(fpl__PlatformWindowState *windo
 	fplKey mappedKey = fpl__GetMappedKey(windowState, keyCode);
 	bool repeat = false;
 	if (force) {
+		repeat = (buttonState == fplButtonState_Repeat);
 		windowState->keyStates[keyCode] = buttonState;
 	} else {
 		if (keyCode < fplArrayCount(windowState->keyStates)) {
@@ -8441,6 +8445,8 @@ fpl_internal void fpl__ArgumentZeroError(const char *paramName) {
 	FPL__ERROR(FPL__MODULE_ARGS, "%s parameter must be greater than zero", paramName);
 }
 fpl_internal void fpl__ArgumentMinError(const char *paramName, const size_t value, const size_t minValue) {
+	*(int*)0 = 0;
+	
 	FPL__ERROR(FPL__MODULE_ARGS, "%s parameter '%zu' must be greater or equal than '%zu'", paramName, value, minValue);
 }
 fpl_internal void fpl__ArgumentMaxError(const char *paramName, const size_t value, const size_t maxValue) {
@@ -15668,6 +15674,19 @@ fpl_internal void *fpl__X11ParseUriPaths(const char *text, size_t *size, int *co
 	return filesTableMemory;
 }
 
+fpl_internal void fpl__X11HandleTextInputEvent(const fpl__X11Api *x11Api, fpl__PlatformWindowState *winState, const uint64_t keyCode, XEvent *ev) {
+	char buf[32];
+	KeySym keysym = 0;
+	if (x11Api->XLookupString(&ev->xkey, buf, 32, &keysym, NULL) != NoSymbol) {
+		wchar_t wideBuffer[4] = fplZeroInit;
+		fplUTF8StringToWideString(buf, fplGetStringLength(buf), wideBuffer, fplArrayCount(wideBuffer));
+		uint32_t textCode = (uint32_t)wideBuffer[0];
+		if (textCode > 0) {
+			fpl__HandleKeyboardInputEvent(winState, keyCode, textCode);
+		}
+	}
+}
+
 fpl_internal void fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatform, fpl__PlatformAppState *appState, XEvent *ev) {
 	fplAssert((subplatform != fpl_null) && (appState != fpl_null) && (ev != fpl_null));
 	fpl__PlatformWindowState *winState = &appState->window;
@@ -15848,17 +15867,16 @@ fpl_internal void fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatfor
 			if (!appState->currentSettings.input.disabledEvents) {
 				int keyState = ev->xkey.state;
 				uint64_t keyCode = (uint64_t)ev->xkey.keycode;
-				fpl__HandleKeyboardButtonEvent(winState, (uint64_t)ev->xkey.time, keyCode, fpl__X11TranslateModifierFlags(keyState), fplButtonState_Press, false);
-
-				char buf[32];
-				KeySym keysym = 0;
-				if (x11Api->XLookupString((XKeyEvent *)ev, buf, 32, &keysym, NULL) != NoSymbol) {
-					wchar_t wideBuffer[4] = fplZeroInit;
-					fplUTF8StringToWideString(buf, fplGetStringLength(buf), wideBuffer, fplArrayCount(wideBuffer));
-					uint32_t textCode = (uint32_t)wideBuffer[0];
-					if (textCode > 0) {
-						fpl__HandleKeyboardInputEvent(&appState->window, keyCode, textCode);
+				Time keyTime = ev->xkey.time;
+				Time lastPressTime = winState->keyPressTimes[keyCode];
+				Time diffTime = keyTime - lastPressTime;
+				FPL_LOG_INFO("X11", "Diff for key '%llu', time: %lu, diff: %lu, last: %lu", keyCode, keyTime, diffTime, lastPressTime);
+				if (diffTime == keyTime || (diffTime > 0 && diffTime < (1 << 31))){
+					if (keyCode) {
+						fpl__HandleKeyboardButtonEvent(winState, (uint64_t)keyTime, keyCode, fpl__X11TranslateModifierFlags(keyState), fplButtonState_Press, false);
+						fpl__X11HandleTextInputEvent(x11Api, winState, keyCode, ev);
 					}
+					winState->keyPressTimes[keyCode] = keyTime;
 				}
 			}
 		} break;
@@ -15867,22 +15885,25 @@ fpl_internal void fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatfor
 		{
 			// Keyboard button up
 			if (!appState->currentSettings.input.disabledEvents) {
-				bool physical = true;
-				if (x11Api->XPending(x11WinState->display)) {
+				bool isRepeat = false;
+				if (x11Api->XEventsQueued(x11WinState->display, QueuedAfterReading)) {
 					XEvent nextEvent;
 					x11Api->XPeekEvent(x11WinState->display, &nextEvent);
-					if (nextEvent.type == KeyPress && nextEvent.xkey.time == ev->xkey.time && nextEvent.xkey.keycode == ev->xkey.keycode) {
-						// Delete future key press event, as it is a key-repeat
+					if ((nextEvent.type == KeyPress) && (nextEvent.xkey.time == ev->xkey.time) && (nextEvent.xkey.keycode == ev->xkey.keycode)) {
+						// Delete the peeked event, which is a key-repeat
 						x11Api->XNextEvent(x11WinState->display, ev);
-						physical = false;
+						isRepeat = true;
 					}
 				}
+							
 				int keyState = ev->xkey.state;
-				int keyCode = ev->xkey.keycode;
-				if (physical) {
-					fpl__HandleKeyboardButtonEvent(winState, (uint64_t)ev->xkey.time, (uint64_t)keyCode, fpl__X11TranslateModifierFlags(keyState), fplButtonState_Release, true);
-				} else {
+				uint64_t keyCode = (uint64_t)ev->xkey.keycode;
+			
+				if (isRepeat) {
+					fpl__X11HandleTextInputEvent(x11Api, winState, keyCode, ev);
 					fpl__HandleKeyboardButtonEvent(winState, (uint64_t)ev->xkey.time, (uint64_t)keyCode, fpl__X11TranslateModifierFlags(keyState), fplButtonState_Repeat, false);
+				} else {
+					fpl__HandleKeyboardButtonEvent(winState, (uint64_t)ev->xkey.time, (uint64_t)keyCode, fpl__X11TranslateModifierFlags(keyState), fplButtonState_Release, true);
 				}
 			}
 		} break;
@@ -16085,6 +16106,7 @@ fpl_platform_api bool fplWindowUpdate() {
 	const fpl__X11SubplatformState *subplatform = &appState->x11;
 	const fpl__X11Api *x11Api = &subplatform->api;
 	const fpl__X11WindowState *windowState = &appState->window.x11;
+	
 	fpl__ClearInternalEvents();
 
 	// Dont like this, maybe a callback would be better?
