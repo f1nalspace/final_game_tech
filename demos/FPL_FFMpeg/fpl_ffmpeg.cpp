@@ -2703,7 +2703,14 @@ static bool IsRealTime(AVFormatContext *s) {
 		!strcmp(s->iformat->name, "sdp")) {
 		return true;
 	}
-	if (s->pb && (!strncmp(s->filename, "rtp:", 4) || !strncmp(s->filename, "udp:", 4))) {
+
+#if !FF_API_FORMAT_FILENAME
+	const char* filename = s->filename;
+#else
+	const char* filename = s->url;
+#endif
+
+	if (s->pb && (!strncmp(filename, "rtp:", 4) || !strncmp(filename, "udp:", 4))) {
 		return true;
 	}
 	return false;
