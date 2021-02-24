@@ -132,6 +132,9 @@ SOFTWARE.
 	@page page_changelog Changelog
 	@tableofcontents
 
+	## v0.9.6-beta
+	- Fixed: [Win32] Removed the manual handling of ALT + F4 shut down of event handling
+
 	## v0.9.5-beta
 	- New: Added enum fplAudioDefaultFields
 	- New: Added field defaultFields to fplAudioDeviceFormat struct
@@ -10270,13 +10273,6 @@ LRESULT CALLBACK fpl__Win32MessageProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 				fplButtonState keyState = isDown ? fplButtonState_Press : fplButtonState_Release;
 				fplKeyboardModifierFlags modifiers = fpl__Win32GetKeyboardModifiers(wapi);
 				fpl__HandleKeyboardButtonEvent(&appState->window, GetTickCount(), keyCode, modifiers, keyState, false);
-				if (wasDown != isDown) {
-					if (isDown) {
-						if (keyCode == VK_F4 && altKeyIsDown) {
-							appState->window.isRunning = false;
-						}
-					}
-				}
 			}
 		} break;
 
