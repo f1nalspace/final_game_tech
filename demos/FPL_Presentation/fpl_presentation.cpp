@@ -2213,6 +2213,7 @@ int main(int argc, char** argv) {
 			app.renderer.AddFontFromResource(FontResources::Arimo, 84.0f);
 			app.renderer.AddFontFromResource(FontResources::Arimo, 96.0f);
 			app.renderer.AddFontFromResource(FontResources::Arimo, 108.0f);
+			app.renderer.AddFontFromResource(FontResources::Arimo, 132.0f);
 
 			app.renderer.AddImageFromResource(ImageResources::FPLLogo128x128);
 

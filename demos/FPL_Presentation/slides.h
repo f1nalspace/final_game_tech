@@ -247,22 +247,21 @@ namespace FPLPresentationData {
 
 	static BlockDefinition MotivationBlocks[] = {
 		MakeTextDef(
-			V2f(0.0, 0.0),V2f(1.0, 0.25),MakeAlign(HorizontalAlignment::Center),
+			V2f(0.0, 0.0),V2f(1.0, 0.25),MakeAlign(HorizontalAlignment::Left),
 			"C/C++ has very limited access to the underlying platform,\n"
 			"so you have to use third-party libraries to access low level systems\n"
 			"or write platform specific codes directly.\n"
 		, HorizontalAlignment::Left),
 		MakeTextDef(
-			V2f(0.0, 0.25),V2f(1.0, 0.75),MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Middle),
+			V2f(0.0, 0.25),V2f(1.0, 0.75),MakeAlign(HorizontalAlignment::Left, VerticalAlignment::Middle),
 			"The pre-existing PALs have a lot of issues:\n"
 			"- Huge in file count and/or size\n"
-			"- Too many translation units\n"
 			"- Large memory usage and number of dynamic allocations\n"
 			"- No control over the allocated memory, at max you can overwrite malloc/free\n"
-			"- Forces you to build systems\n"
+			"- Requires a build system to compile it\n"
 			"- Statically linking is madness or not supported at all\n"
 			"- Including the full source is not supported\n"
-			"- It takes forever to compile\n"
+			"- Very large compile times\n"
 			"- Some are built on top of third-party dependencies\n"
 			"- Some are heavily bloated\n"
 		, HorizontalAlignment::Left, FeaturesFontSize),
@@ -271,13 +270,13 @@ namespace FPLPresentationData {
 
 	static BlockDefinition WhyBlocks[] = {
 		MakeTextDef(
-			V2f(0.0, 0.0),V2f(1.0, 0.25),MakeAlign(HorizontalAlignment::Center),
+			V2f(0.0, 0.0),V2f(1.0, 0.25),MakeAlign(HorizontalAlignment::Left),
 			"I just want to include one header file and that's it.\n"
 			"I want it to compile very fast.\n"
 			"I dont want it to require any third-party libraries.\n"
 		, HorizontalAlignment::Left),
 		MakeTextDef(
-			V2f(0.0, 0.25),V2f(1.0, 0.75),MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Middle),
+			V2f(0.0, 0.25),V2f(1.0, 0.75),MakeAlign(HorizontalAlignment::Left, VerticalAlignment::Middle),
 			"- FPL is designed to require bare minimum linking to the OS (kernel32.lib / libld.so) only\n"
 			"- It does not require any dependencies or build-systems to get it running/compiling\n"
 			"- It prevents using features from the C-Runtime library, to support lightweight environments\n"
@@ -290,9 +289,22 @@ namespace FPLPresentationData {
 	};
 	static const SlideDefinition WhySlide = MakeSlideDef("Why FPL", WhyBlocks, GetBackground());
 
+	static BlockDefinition MagicBlocks[] = {
+		MakeTextDef(
+			V2f(0.0f,0.0f),V2f(1.0f,1.0f),MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Middle),
+			"Magic!"
+		, HorizontalAlignment::Left, FeaturesFontSize * 4),
+	};
+	static const SlideDefinition MagicSlide = MakeSlideDef("How it works", MagicBlocks, GetBackground());
+
 	static BlockDefinition HowItWorksBlocks[] = {
 		MakeTextDef(
-			V2f(0.0f,0.0f),V2f(1.0f,0.4f),MakeAlign(HorizontalAlignment::Center),
+			V2f(0.0f,0.0f),V2f(1.0f,0.25f),MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Top),
+			"Joke, of course its not magic :P"
+		, HorizontalAlignment::Left, FeaturesFontSize),
+
+		MakeTextDef(
+			V2f(0.0f,0.0f),V2f(1.0f,1.0f),MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Middle),
 			"- It is written in pure C99 for simplicity and best portability - but is 100%% C++ compatible\n"
 			"- It makes heavy use of the pre-compiler to detect compiler/platform/hardware/driver setups\n"
 			"- It uses runtime linking by default, so it does not need any libs to be included\n"
@@ -300,9 +312,12 @@ namespace FPLPresentationData {
 			"- It is stateless, meaning the user does not have to provide any application states\n"
 			"- Everything is included in one C file\n"
 		, HorizontalAlignment::Left, FeaturesFontSize),
+	};
+	static const SlideDefinition HowItWorksSlide = MakeSlideDef("How it really works", HowItWorksBlocks, GetBackground());
 
+	static BlockDefinition RandomCodeBlocks[] = {
 		MakeTextDef(
-			V2f(0.0f,0.4f),V2f(0.5f,0.6f),MakeAlign(HorizontalAlignment::Center),
+			V2f(0.0f,0.0f),V2f(0.5f,1.0f),MakeAlign(HorizontalAlignment::Center),
 			"#define FPL_IMPLEMENTATION\n"
 			"#include <final_platform_layer.h>\n"
 			"\n"
@@ -323,7 +338,7 @@ namespace FPLPresentationData {
 		, HorizontalAlignment::Left, CodeFontSize),
 
 		MakeTextDef(
-			V2f(0.5f,0.4f),V2f(0.5f,0.6f),MakeAlign(HorizontalAlignment::Center),
+			V2f(0.5f,0.0f),V2f(0.5f,1.0f),MakeAlign(HorizontalAlignment::Center),
 			"#define FPL_IMPLEMENTATION\n"
 			"#include <final_platform_layer.h>\n"
 			"\n"
@@ -344,7 +359,7 @@ namespace FPLPresentationData {
 		, HorizontalAlignment::Left, CodeFontSize),
 
 	};
-	static const SlideDefinition HowItWorksSlide = MakeSlideDef("How it works", HowItWorksBlocks, GetBackground());
+	static const SlideDefinition RandomCodeSlide = MakeSlideDef("Example Code", RandomCodeBlocks, GetBackground());
 
 	static BlockDefinition DemosBlocks[] = {
 		MakeTextDef(
@@ -363,7 +378,9 @@ namespace FPLPresentationData {
 		FeaturesOfFPL2Slide,
 		MotivationSlide,
 		WhySlide,
+		MagicSlide,
 		HowItWorksSlide,
+		RandomCodeSlide,
 		DemosSlide,
 	};
 
