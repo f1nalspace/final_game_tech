@@ -24,4 +24,4 @@
 
 // Global
 #define USE_FFMPEG_STATIC_LINKING 0 // Use static or runtime linking of FFMPEG (Useful to test if function signatures has been changed)
-#define USE_FFMPEG_SOFTWARE_CONVERSION 1 // Convert video frames using sws_scale or using our own implementation, which is limited to type AV_PIX_FMT_YUV420P
+#define USE_FFMPEG_SOFTWARE_CONVERSION 0 // Convert video frames using sws_scale or using our own implementation, which is limited to type AV_PIX_FMT_YUV420P
