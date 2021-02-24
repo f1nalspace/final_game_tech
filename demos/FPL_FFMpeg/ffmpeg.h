@@ -205,9 +205,6 @@ typedef FFMPEG_AV_MALLOC_FUNC(ffmpeg_av_malloc_func);
 // av_mallocz
 #define FFMPEG_AV_MALLOCZ_FUNC(name) void *name(size_t size) av_malloc_attrib av_alloc_size(1)
 typedef FFMPEG_AV_MALLOCZ_FUNC(ffmpeg_av_mallocz_func);
-// av_malloc_array
-#define FFMPEG_AV_MALLOC_ARRAY_FUNC(name) av_alloc_size(1, 2) void *name(size_t nmemb, size_t size)
-typedef FFMPEG_AV_MALLOC_ARRAY_FUNC(ffmpeg_av_malloc_array_func);
 // av_fast_malloc
 #define FFMPEG_AV_FAST_MALLOC_FUNC(name) void name(void *ptr, unsigned int *size, size_t min_size)
 typedef FFMPEG_AV_FAST_MALLOC_FUNC(ffmpeg_av_fast_malloc_func);
@@ -371,7 +368,6 @@ struct FFMPEGContext {
 	ffmpeg_av_samples_get_buffer_size_func* av_samples_get_buffer_size;
 	ffmpeg_av_malloc_func* av_malloc;
 	ffmpeg_av_mallocz_func* av_mallocz;
-	ffmpeg_av_malloc_array_func* av_malloc_array;
 	ffmpeg_av_fast_malloc_func* av_fast_malloc;
 	ffmpeg_av_free_func* av_free;
 	ffmpeg_av_freep_func* av_freep;
@@ -440,20 +436,34 @@ static bool IsFFMPEGVersionEqual(int a, int b) {
 		} \
 	} while (0);
 
+#define STR_HELPER(x) #x
+#define STR(x) STR_HELPER(x)
+#define FFMPEG_CONCAT_VERSION(name, version) name STR(version)
+
 static bool LoadFFMPEG(FFMPEGContext& ffmpeg) {
 #if !USE_FFMPEG_STATIC_LINKING
+	
+#if defined(FPL_PLATFORM_WINDOWS)
 	const char* avFormatLibFile = "avformat-58.dll";
 	const char* avCodecLibFile = "avcodec-58.dll";
 	const char* avUtilLibFile = "avutil-56.dll";
 	const char* swScaleLibFile = "swscale-5.dll";
 	const char* swResampleLibFile = "swresample-3.dll";
+#else
+	const char *avCodecLibFile = FFMPEG_CONCAT_VERSION("libavcodec.so.", LIBAVCODEC_VERSION_MAJOR);
+	const char *avFormatLibFile = FFMPEG_CONCAT_VERSION("libavformat.so.", LIBAVFORMAT_VERSION_MAJOR);
+	const char *avUtilLibFile = FFMPEG_CONCAT_VERSION("libavutil.so.", LIBAVUTIL_VERSION_MAJOR);
+	const char *swScaleLibFile = FFMPEG_CONCAT_VERSION("libswscale.so.", LIBSWSCALE_VERSION_MAJOR);
+	const char *swResampleLibFile = FFMPEG_CONCAT_VERSION("libswresample.so.", LIBSWRESAMPLE_VERSION_MAJOR);
+#endif
 
 	fplDynamicLibraryHandle avFormatLib = ffmpeg.avFormatLib = LoadFFMPEGLibrary(avFormatLibFile);
 	fplDynamicLibraryHandle avCodecLib = ffmpeg.avCodecLib = LoadFFMPEGLibrary(avCodecLibFile);
 	fplDynamicLibraryHandle avUtilLib = ffmpeg.avUtilLib = LoadFFMPEGLibrary(avUtilLibFile);
 	fplDynamicLibraryHandle swScaleLib = ffmpeg.swScaleLib = LoadFFMPEGLibrary(swScaleLibFile);
 	fplDynamicLibraryHandle swResampleLib = ffmpeg.swResampleLib = LoadFFMPEGLibrary(swResampleLibFile);
-#else
+	
+#else // USE_FFMPEG_STATIC_LINKING
 	const char* avFormatLibFile = "avformat.lib";
 	const char* avCodecLibFile = "avcodec.lib";
 	const char* avUtilLibFile = "avutil.lib";
@@ -461,11 +471,10 @@ static bool LoadFFMPEG(FFMPEGContext& ffmpeg) {
 	const char* swResampleLibFile = "swresample.lib";
 #endif
 
-	//
-	// AVFormat
-	//
+//
+// AVFormat
+//
 #if !USE_FFMPEG_STATIC_LINKING
-
 	FFMPEG_GET_FUNCTION_ADDRESS(avFormatLib, avFormatLibFile, ffmpeg.avformat_version, ffmpeg_get_lib_version_func, "avformat_version");
 	FFMPEG_GET_FUNCTION_ADDRESS(avFormatLib, avFormatLibFile, ffmpeg.avformat_network_init, ffmpeg_avformat_network_init_func, "avformat_network_init");
 	FFMPEG_GET_FUNCTION_ADDRESS(avFormatLib, avFormatLibFile, ffmpeg.avformat_network_deinit, ffmpeg_avformat_network_deinit_func, "avformat_network_deinit");
@@ -560,7 +569,7 @@ static bool LoadFFMPEG(FFMPEGContext& ffmpeg) {
 	ffmpeg.av_rdft_calc = av_rdft_calc;
 	ffmpeg.av_rdft_end = av_rdft_end;
 #endif
-
+	
 	//
 	// AVUtil
 	//
@@ -581,7 +590,6 @@ static bool LoadFFMPEG(FFMPEGContext& ffmpeg) {
 	FFMPEG_GET_FUNCTION_ADDRESS(avUtilLib, avUtilLibFile, ffmpeg.av_samples_get_buffer_size, ffmpeg_av_samples_get_buffer_size_func, "av_samples_get_buffer_size");
 	FFMPEG_GET_FUNCTION_ADDRESS(avUtilLib, avUtilLibFile, ffmpeg.av_malloc, ffmpeg_av_malloc_func, "av_malloc");
 	FFMPEG_GET_FUNCTION_ADDRESS(avUtilLib, avUtilLibFile, ffmpeg.av_mallocz, ffmpeg_av_mallocz_func, "av_mallocz");
-	FFMPEG_GET_FUNCTION_ADDRESS(avUtilLib, avUtilLibFile, ffmpeg.av_malloc_array, ffmpeg_av_malloc_array_func, "av_malloc_array");
 	FFMPEG_GET_FUNCTION_ADDRESS(avUtilLib, avUtilLibFile, ffmpeg.av_fast_malloc, ffmpeg_av_fast_malloc_func, "av_fast_malloc");
 	FFMPEG_GET_FUNCTION_ADDRESS(avUtilLib, avUtilLibFile, ffmpeg.av_free, ffmpeg_av_freep_func, "av_free");
 	FFMPEG_GET_FUNCTION_ADDRESS(avUtilLib, avUtilLibFile, ffmpeg.av_freep, ffmpeg_av_freep_func, "av_freep");
@@ -614,7 +622,6 @@ static bool LoadFFMPEG(FFMPEGContext& ffmpeg) {
 	ffmpeg.av_samples_get_buffer_size = av_samples_get_buffer_size;
 	ffmpeg.av_malloc = av_malloc;
 	ffmpeg.av_mallocz = av_mallocz;
-	ffmpeg.av_malloc_array = av_malloc_array;
 	ffmpeg.av_fast_malloc = av_fast_malloc;
 	ffmpeg.av_free = av_free;
 	ffmpeg.av_freep = av_freep;
@@ -629,6 +636,7 @@ static bool LoadFFMPEG(FFMPEGContext& ffmpeg) {
 	ffmpeg.av_log_set_flags = av_log_set_flags;
 	ffmpeg.av_log = av_log;
 	ffmpeg.av_get_pix_fmt_string = av_get_pix_fmt_string;
+	ffmpeg.av_get_pix_fmt_name = av_get_pix_fmt_name;
 #endif
 
 	//
@@ -673,6 +681,6 @@ static bool LoadFFMPEG(FFMPEGContext& ffmpeg) {
 	FFMPEG_CHECK_VERSION("AVutil", avUtilLibFile, ffmpeg.avutil_version, LIBAVUTIL_VERSION_INT);
 	FFMPEG_CHECK_VERSION("SWscale", swScaleLibFile, ffmpeg.swscale_version, LIBSWSCALE_VERSION_INT);
 	FFMPEG_CHECK_VERSION("SWresample", swResampleLibFile, ffmpeg.swresample_version, LIBSWRESAMPLE_VERSION_INT);
-
+	
 	return true;
 }
