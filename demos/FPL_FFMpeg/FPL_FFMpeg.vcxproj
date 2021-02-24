@@ -69,25 +69,25 @@
   </ImportGroup>
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
-    <IncludePath>..\..\;..\dependencies\ffmpeg\include\;..\dependencies\stb\;$(IncludePath)</IncludePath>
+    <IncludePath>..\..\;..\dependencies\ffmpeg\include\;..\additions\;..\dependencies\;$(IncludePath)</IncludePath>
     <OutDir>$(SolutionDir)bin\$(ProjectName)\Windows-$(Platform)-$(Configuration)\</OutDir>
     <IntDir>$(SolutionDir)immediates\$(ProjectName)\Windows-$(Platform)-$(Configuration)\</IntDir>
     <LibraryPath>..\..\;..\dependencies\ffmpeg\lib;$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
-    <IncludePath>..\..\;..\dependencies\ffmpeg\include\;..\dependencies\stb\;$(IncludePath)</IncludePath>
+    <IncludePath>..\..\;..\dependencies\ffmpeg\include\;..\additions\;..\dependencies\;$(IncludePath)</IncludePath>
     <OutDir>$(SolutionDir)bin\$(ProjectName)\Windows-$(Platform)-$(Configuration)\</OutDir>
     <IntDir>$(SolutionDir)immediates\$(ProjectName)\Windows-$(Platform)-$(Configuration)\</IntDir>
     <LibraryPath>..\..\;..\dependencies\ffmpeg\lib;$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
-    <IncludePath>..\..\;..\dependencies\ffmpeg\include\;..\dependencies\stb\;$(IncludePath)</IncludePath>
+    <IncludePath>..\..\;..\dependencies\ffmpeg\include\;..\additions\;..\dependencies\;$(IncludePath)</IncludePath>
     <OutDir>$(SolutionDir)bin\$(ProjectName)\Windows-$(Platform)-$(Configuration)\</OutDir>
     <IntDir>$(SolutionDir)immediates\$(ProjectName)\Windows-$(Platform)-$(Configuration)\</IntDir>
     <LibraryPath>..\..\;..\dependencies\ffmpeg\lib;$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
-    <IncludePath>..\..\;..\dependencies\ffmpeg\include\;..\dependencies\stb\;$(IncludePath)</IncludePath>
+    <IncludePath>..\..\;..\dependencies\ffmpeg\include\;..\additions\;..\dependencies\;$(IncludePath)</IncludePath>
     <OutDir>$(SolutionDir)bin\$(ProjectName)\Windows-$(Platform)-$(Configuration)\</OutDir>
     <IntDir>$(SolutionDir)immediates\$(ProjectName)\Windows-$(Platform)-$(Configuration)\</IntDir>
     <LibraryPath>..\..\;..\dependencies\ffmpeg\lib;$(LibraryPath)</LibraryPath>
