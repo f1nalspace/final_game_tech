@@ -196,7 +196,7 @@ static void WindowFunctionCore(double* output, const size_t length, const double
 		output[0] = 1.0;
 		return;
 	}
-	for (int index = 0; index <= N - 1; index++)
+	for (size_t index = 0; index <= N - 1; index++)
 	{
 		double k = 2.0 * M_PI * index / (double)N;
 		output[index] = a0 - a1 * cos(k) + a2 * cos(2.0 * k) - a3 * cos(3.0 * k) + a4 * cos(4.0 * k);
