@@ -15,6 +15,9 @@ Author:
 	Torsten Spaete
 
 Changelog:
+	## 2021-02-24
+	- Fixed missing _ultod3 for double math
+
 	## 2018-09-24
 	- Reflect api changes in FPL 0.9.2
 
