@@ -1,5 +1,8 @@
 #pragma once
 
+#define STR_HELPER(x) #x
+#define STR(x) STR_HELPER(x)
+
 #include <final_platform_layer.h>
 
 struct BitmapInfoheader {

@@ -1,5 +1,7 @@
 #pragma once
 
+#include "utils.h"
+
 //
 // FFMPEG headers and function prototypes
 //
@@ -27,6 +29,9 @@ typedef FFMPEG_GET_LIB_VERSION_FUNC(ffmpeg_get_lib_version_func);
 // AVFormat
 //
 
+// av_register_all
+#define FFMPEG_AV_REGISTER_ALL_FUNC(name) void name(void)
+typedef FFMPEG_AV_REGISTER_ALL_FUNC(ffmpeg_av_register_all_func);
 // avformat_network_init
 #define FFMPEG_AVFORMAT_NETWORK_INIT_FUNC(name) int name(void)
 typedef FFMPEG_AVFORMAT_NETWORK_INIT_FUNC(ffmpeg_avformat_network_init_func);
@@ -306,6 +311,7 @@ struct FFMPEGContext {
 	fplDynamicLibraryHandle swResampleLib;
 
 	// Format
+	ffmpeg_av_register_all_func *av_register_all;
 	ffmpeg_get_lib_version_func* avformat_version;
 	ffmpeg_avformat_network_init_func* avformat_network_init;
 	ffmpeg_avformat_network_deinit_func* avformat_network_deinit;
@@ -436,26 +442,25 @@ static bool IsFFMPEGVersionEqual(int a, int b) {
 		} \
 	} while (0);
 
-#define STR_HELPER(x) #x
-#define STR(x) STR_HELPER(x)
-#define FFMPEG_CONCAT_VERSION(name, version) name STR(version)
-
 static bool LoadFFMPEG(FFMPEGContext& ffmpeg) {
+#define FFMPEG_CONCAT_SO(name, version) name STR(version)
+#define FFMPEG_CONCAT_DLL(name, version, ext) name STR(version) ext
+
 #if !USE_FFMPEG_STATIC_LINKING
 	
-#if defined(FPL_PLATFORM_WINDOWS)
-	const char* avFormatLibFile = "avformat-58.dll";
-	const char* avCodecLibFile = "avcodec-58.dll";
-	const char* avUtilLibFile = "avutil-56.dll";
-	const char* swScaleLibFile = "swscale-5.dll";
-	const char* swResampleLibFile = "swresample-3.dll";
-#else
-	const char *avCodecLibFile = FFMPEG_CONCAT_VERSION("libavcodec.so.", LIBAVCODEC_VERSION_MAJOR);
-	const char *avFormatLibFile = FFMPEG_CONCAT_VERSION("libavformat.so.", LIBAVFORMAT_VERSION_MAJOR);
-	const char *avUtilLibFile = FFMPEG_CONCAT_VERSION("libavutil.so.", LIBAVUTIL_VERSION_MAJOR);
-	const char *swScaleLibFile = FFMPEG_CONCAT_VERSION("libswscale.so.", LIBSWSCALE_VERSION_MAJOR);
-	const char *swResampleLibFile = FFMPEG_CONCAT_VERSION("libswresample.so.", LIBSWRESAMPLE_VERSION_MAJOR);
-#endif
+#	if defined(FPL_PLATFORM_WINDOWS)
+	const char* avFormatLibFile = FFMPEG_CONCAT_DLL("avformat-", LIBAVFORMAT_VERSION_MAJOR, ".dll");
+	const char* avCodecLibFile = FFMPEG_CONCAT_DLL("avcodec-", LIBAVCODEC_VERSION_MAJOR, ".dll");
+	const char* avUtilLibFile = FFMPEG_CONCAT_DLL("avutil-", LIBAVUTIL_VERSION_MAJOR, ".dll");
+	const char* swScaleLibFile = FFMPEG_CONCAT_DLL("swscale-", LIBSWSCALE_VERSION_MAJOR, ".dll");
+	const char* swResampleLibFile = FFMPEG_CONCAT_DLL("swresample-", LIBSWRESAMPLE_VERSION_MAJOR, ".dll");
+#	else
+	const char *avFormatLibFile = FFMPEG_CONCAT_SO("libavformat.so.", LIBAVFORMAT_VERSION_MAJOR);
+	const char *avCodecLibFile = FFMPEG_CONCAT_SO("libavcodec.so.", LIBAVCODEC_VERSION_MAJOR);
+	const char *avUtilLibFile = FFMPEG_CONCAT_SO("libavutil.so.", LIBAVUTIL_VERSION_MAJOR);
+	const char *swScaleLibFile = FFMPEG_CONCAT_SO("libswscale.so.", LIBSWSCALE_VERSION_MAJOR);
+	const char *swResampleLibFile = FFMPEG_CONCAT_SO("libswresample.so.", LIBSWRESAMPLE_VERSION_MAJOR);
+#	endif // FPL_PLATFORM_WINDOWS
 
 	fplDynamicLibraryHandle avFormatLib = ffmpeg.avFormatLib = LoadFFMPEGLibrary(avFormatLibFile);
 	fplDynamicLibraryHandle avCodecLib = ffmpeg.avCodecLib = LoadFFMPEGLibrary(avCodecLibFile);
@@ -463,18 +468,32 @@ static bool LoadFFMPEG(FFMPEGContext& ffmpeg) {
 	fplDynamicLibraryHandle swScaleLib = ffmpeg.swScaleLib = LoadFFMPEGLibrary(swScaleLibFile);
 	fplDynamicLibraryHandle swResampleLib = ffmpeg.swResampleLib = LoadFFMPEGLibrary(swResampleLibFile);
 	
-#else // USE_FFMPEG_STATIC_LINKING
+#else
+	
+#	if defined(FPL_PLATFORM_WINDOWS)
 	const char* avFormatLibFile = "avformat.lib";
 	const char* avCodecLibFile = "avcodec.lib";
 	const char* avUtilLibFile = "avutil.lib";
 	const char* swScaleLibFile = "swscale.lib";
 	const char* swResampleLibFile = "swresample.lib";
-#endif
+#	else
+	const char* avFormatLibFile = "avformat";
+	const char* avCodecLibFile = "avcodec";
+	const char* avUtilLibFile = "avutil";
+	const char* swScaleLibFile = "swscale";
+	const char* swResampleLibFile = "swresample";
+#	endif // FPL_PLATFORM_WINDOWS
+	
+#endif // !USE_FFMPEG_STATIC_LINKING
+	
+#undef FFMPEG_CONCAT_DLL
+#undef FFMPEG_CONCAT_SO
 
 //
 // AVFormat
 //
 #if !USE_FFMPEG_STATIC_LINKING
+	FFMPEG_GET_FUNCTION_ADDRESS(avFormatLib, avFormatLibFile, ffmpeg.av_register_all, ffmpeg_av_register_all_func, "av_register_all");
 	FFMPEG_GET_FUNCTION_ADDRESS(avFormatLib, avFormatLibFile, ffmpeg.avformat_version, ffmpeg_get_lib_version_func, "avformat_version");
 	FFMPEG_GET_FUNCTION_ADDRESS(avFormatLib, avFormatLibFile, ffmpeg.avformat_network_init, ffmpeg_avformat_network_init_func, "avformat_network_init");
 	FFMPEG_GET_FUNCTION_ADDRESS(avFormatLib, avFormatLibFile, ffmpeg.avformat_network_deinit, ffmpeg_avformat_network_deinit_func, "avformat_network_deinit");
@@ -497,6 +516,7 @@ static bool LoadFFMPEG(FFMPEGContext& ffmpeg) {
 	FFMPEG_GET_FUNCTION_ADDRESS(avFormatLib, avFormatLibFile, ffmpeg.avio_size, ffmpeg_avio_size_func, "avio_size");
 	FFMPEG_GET_FUNCTION_ADDRESS(avFormatLib, avFormatLibFile, ffmpeg.avio_seek, ffmpeg_avio_seek_func, "avio_seek");
 #else
+	ffmpeg.av_register_all = av_register_all;
 	ffmpeg.avformat_version = avformat_version;
 	ffmpeg.avformat_network_init = avformat_network_init;
 	ffmpeg.avformat_network_deinit = avformat_network_deinit;
