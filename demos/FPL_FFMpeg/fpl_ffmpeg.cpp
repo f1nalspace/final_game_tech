@@ -8,9 +8,9 @@ Description:
 
 Requirements:
 	- C++/11 Compiler
-	- Platform x64 / Win32
+	- Platform x64 or x86_64
 	- Final Platform Layer
-	- FFmpeg-4.3.1 (Release, Full, Shared, Win64: https://www.gyan.dev/ffmpeg/builds/)
+	- FFmpeg-4.3.1 or higher (Release, Full, Shared, Win64: https://www.gyan.dev/ffmpeg/builds/)
 
 Author:
 	Torsten Spaete
@@ -19,6 +19,7 @@ Changelog:
 	## 2021-02-24
 	- Support for non win32 platforms by loading to .so libraries instead
 	- No more fixed ffmpeg library names anymore, use the AV_MAJOR
+	- Disabled arch test to support x86 as well
 
 	## 2020-10-12
 	- Renamed old FPL functions calls to new ones
@@ -3510,12 +3511,6 @@ int main(int argc, char **argv) {
 
 	if (argc < 2) {
 		FPL_LOG_CRITICAL("App", "Media file argument missing!");
-		return -1;
-	}
-
-	fplArchType arch = fplGetProcessorArchitecture();
-	if (!(arch == fplArchType_x64 || arch == fplArchType_x86_64)) {
-		FPL_LOG_CRITICAL("App", "x64 architecture is required to run this demo!");
 		return -1;
 	}
 
