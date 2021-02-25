@@ -192,7 +192,7 @@ namespace FPLPresentationData {
 		MakeTextDef(
 			V2f(),V2f(1,1),MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Middle),
 			"A Platform-Abstraction-Library (or short PAL)\n"
-			"is a library written in a low-level language, such as C\n"
+			"is a library written in a low-level language such as C,\n"
 			"used to access hardware and low-level systems\n"
 			"in a platform-independent way.\n"
 		, HorizontalAlignment::Center),
@@ -247,22 +247,18 @@ namespace FPLPresentationData {
 
 	static BlockDefinition MotivationBlocks[] = {
 		MakeTextDef(
-			V2f(0.0, 0.0),V2f(1.0, 0.25),MakeAlign(HorizontalAlignment::Left),
+			V2f(0.0, 0.0),V2f(1.0, 0.25),MakeAlign(HorizontalAlignment::Center),
 			"C/C++ has very limited access to the underlying platform,\n"
 			"so you have to use third-party libraries to access low level systems\n"
 			"or write platform specific codes directly.\n"
 		, HorizontalAlignment::Left),
 		MakeTextDef(
-			V2f(0.0, 0.25),V2f(1.0, 0.75),MakeAlign(HorizontalAlignment::Left, VerticalAlignment::Middle),
+			V2f(0.0, 0.25),V2f(1.0, 0.75),MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Middle),
 			"The pre-existing PALs have a lot of issues:\n"
-			"- Huge in file count and/or size\n"
-			"- Large memory usage and number of dynamic allocations\n"
-			"- No control over the allocated memory, at max you can overwrite malloc/free\n"
-			"- Requires a build system to compile it\n"
+			"- Huge in file count and/or size or large compile times\n"
+			"- Limited control over the allocated memory\n"
 			"- Statically linking is madness or not supported at all\n"
 			"- Including the full source is not supported\n"
-			"- Very large compile times\n"
-			"- Some are built on top of third-party dependencies\n"
 			"- Some are heavily bloated\n"
 		, HorizontalAlignment::Left, FeaturesFontSize),
 	};
@@ -270,24 +266,21 @@ namespace FPLPresentationData {
 
 	static BlockDefinition WhyBlocks[] = {
 		MakeTextDef(
-			V2f(0.0, 0.0),V2f(1.0, 0.25),MakeAlign(HorizontalAlignment::Left),
-			"I just want to include one header file and that's it.\n"
-			"I want it to compile very fast.\n"
-			"I dont want it to require any third-party libraries.\n"
-		, HorizontalAlignment::Left),
-		MakeTextDef(
-			V2f(0.0, 0.25),V2f(1.0, 0.75),MakeAlign(HorizontalAlignment::Left, VerticalAlignment::Middle),
-			"- FPL is designed to require bare minimum linking to the OS (kernel32.lib / libld.so) only\n"
-			"- It does not require any dependencies or build-systems to get it running/compiling\n"
-			"- It prevents using features from the C-Runtime library, to support lightweight environments\n"
-			"- It compiles blazingly fast, even on VC++\n"
-			"- It uses a fixed and small memory footprint and handles memory very gracefully\n"
-			"- It does not use malloc/free, the memory is allocated/freed using OS system calls directly\n"
-			"- No data hiding -> everything is accessible\n"
-			"- You decide how to integrate it; not the library\n"
+			V2f(0.0, 0.0),V2f(1.0, 1.0),MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Middle),
+			"- One header file containing all the source code for all platforms\n"
+			"\n"
+			"- Bare minimum compile and linking requirements\n"
+			"\n"
+			"- Does not require the C-Runtime library\n"
+			"\n"
+			"- Uses a fixed and small memory footprint and handles memory very gracefully\n"
+			"\n"
+			"- Hides no data and let the user decide how to integrate it\n"
+			"\n"
+			"- Compiles very fast on all modern C99/C++ compilers\n"
 		, HorizontalAlignment::Left, FeaturesFontSize),
 	};
-	static const SlideDefinition WhySlide = MakeSlideDef("Why FPL", WhyBlocks, GetBackground());
+	static const SlideDefinition WhySlide = MakeSlideDef("Goals of FPL", WhyBlocks, GetBackground());
 
 	static BlockDefinition MagicBlocks[] = {
 		MakeTextDef(
