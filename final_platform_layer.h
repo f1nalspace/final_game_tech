@@ -10016,9 +10016,10 @@ fpl_internal void fpl__Win32UpdateGameControllers(const fplSettings *settings, c
 		if (xinputState->lastDeviceSearchTime.QuadPart == 0) {
 			QueryPerformanceCounter(&xinputState->lastDeviceSearchTime);
 		}
-		LARGE_INTEGER currentDeviceSearchTime;
+		LARGE_INTEGER currentDeviceSearchTime, currentDeviceSearchFreq;
 		QueryPerformanceCounter(&currentDeviceSearchTime);
-		uint64_t deviceSearchDifferenceTimeInMs = ((currentDeviceSearchTime.QuadPart - xinputState->lastDeviceSearchTime.QuadPart) / (initState->performanceFrequency.QuadPart / 1000));
+		QueryPerformanceFrequency(&currentDeviceSearchFreq);
+		uint64_t deviceSearchDifferenceTimeInMs = ((currentDeviceSearchTime.QuadPart - xinputState->lastDeviceSearchTime.QuadPart) / (currentDeviceSearchFreq.QuadPart / 1000));
 		if ((settings->input.controllerDetectionFrequency == 0) || (deviceSearchDifferenceTimeInMs > settings->input.controllerDetectionFrequency)) {
 			xinputState->lastDeviceSearchTime = currentDeviceSearchTime;
 			for (DWORD controllerIndex = 0; controllerIndex < XUSER_MAX_COUNT; ++controllerIndex) {
