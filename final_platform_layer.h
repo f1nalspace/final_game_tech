@@ -135,6 +135,7 @@ SOFTWARE.
 	## v0.9.6-beta
 	- New: Added fplAsm macro to handle different inline assembler keywords (clang, gcc, msvc)
 
+	- Changed: [Win32] Query QueryPerformanceFrequency for every High-Precision timer calls instead of once per app start
 	- Fixed: [Win32] Removed the manual handling of ALT + F4 shut down of event handling
 
 	## v0.9.5-beta
@@ -7234,7 +7235,6 @@ typedef struct fpl__Win32ConsoleState {
 
 typedef struct fpl__Win32InitState {
 	HINSTANCE appInstance;
-	LARGE_INTEGER performanceFrequency;
 } fpl__Win32InitState;
 
 typedef struct fpl__Win32AppState {
@@ -11030,9 +11030,6 @@ fpl_internal bool fpl__Win32InitPlatform(const fplInitFlags initFlags, const fpl
 
 	// @NOTE(final): Expect kernel32.lib to be linked always, so VirtualAlloc and LoadLibrary will always work.
 
-	// Timing
-	QueryPerformanceFrequency(&win32InitState->performanceFrequency);
-
 	// Get main thread infos
 	HANDLE mainThreadHandle = GetCurrentThread();
 	DWORD mainThreadHandleId = GetCurrentThreadId();
@@ -12550,16 +12547,19 @@ fpl_platform_api fplWallClock fplGetWallClock() {
 
 fpl_platform_api double fplGetWallDelta(const fplWallClock start, const fplWallClock finish) {
 	const fpl__Win32InitState* initState = &fpl__global__InitState.win32;
+	LARGE_INTEGER freq;
+	QueryPerformanceFrequency(&freq);
 	uint64_t delta = finish.win32.qpc - start.win32.qpc;
-	double result = delta / (double)initState->performanceFrequency.QuadPart;
+	double result = delta / (double)freq.QuadPart;
 	return(result);
 }
 
 fpl_platform_api double fplGetTimeInSecondsHP() {
 	const fpl__Win32InitState *initState = &fpl__global__InitState.win32;
-	LARGE_INTEGER time;
+	LARGE_INTEGER time, freq;
 	QueryPerformanceCounter(&time);
-	double result = time.QuadPart / (double)initState->performanceFrequency.QuadPart;
+	QueryPerformanceFrequency(&freq);
+	double result = time.QuadPart / (double)freq.QuadPart;
 	return(result);
 }
 
@@ -12575,9 +12575,10 @@ fpl_platform_api double fplGetTimeInSeconds() {
 
 fpl_platform_api double fplGetTimeInMillisecondsHP() {
 	const fpl__Win32InitState *initState = &fpl__global__InitState.win32;
-	LARGE_INTEGER time;
+	LARGE_INTEGER time, freq;
 	QueryPerformanceCounter(&time);
-	double result = (time.QuadPart / (double)initState->performanceFrequency.QuadPart) * 1000.0;
+	QueryPerformanceFrequency(&freq);
+	double result = (time.QuadPart / (double)freq.QuadPart) * 1000.0;
 	return(result);
 }
 
