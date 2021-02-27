@@ -171,6 +171,7 @@
     <ClInclude Include="..\additions\final_audiosystem.h" />
     <ClInclude Include="..\additions\final_debug.h" />
     <ClInclude Include="..\additions\final_graphics.h" />
+    <ClInclude Include="..\additions\final_math.h" />
     <ClInclude Include="..\additions\final_mp3loader.h" />
     <ClInclude Include="..\additions\final_vorbisloader.h" />
     <ClInclude Include="..\additions\final_waveloader.h" />

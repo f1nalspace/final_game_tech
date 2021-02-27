@@ -28,6 +28,9 @@
     <ClInclude Include="..\dependencies\circularbuffer\TPCircularBuffer.h">
       <Filter>dependencies</Filter>
     </ClInclude>
+    <ClInclude Include="..\additions\final_math.h">
+      <Filter>additions</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="fpl_audio.c" />
