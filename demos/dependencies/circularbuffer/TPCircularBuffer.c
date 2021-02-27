@@ -60,21 +60,6 @@ static uint32_t _roundToPowerOfTwo(const uint32_t input) {
 
 #if defined(WIN32) || defined(_WIN32) || defined(__WIN32__) || defined(__NT__)
 
-#if !defined(NOMINMAX)
-#define NOMINMAX
-#endif
-#if !defined(WIN32_LEAN_AND_MEAN)
-#define WIN32_LEAN_AND_MEAN 1
-#endif
-struct IUnknown;
-#include <windows.h>
-
-static uint32_t _TPWin32RoundToPageSize(const uint32_t value) {
-	SYSTEM_INFO sysInfo;
-	GetSystemInfo(&sysInfo);
-	uint32_t result = (value + sysInfo.dwPageSize - 1) / sysInfo.dwPageSize * sysInfo.dwPageSize;
-	return(result);
-}
 
 extern bool _TPCircularBufferInit(TPCircularBuffer* buffer, uint32_t length, size_t structSize) {
 	assert(length > 0);
@@ -84,52 +69,52 @@ extern bool _TPCircularBufferInit(TPCircularBuffer* buffer, uint32_t length, siz
 		abort();
 	}
 
-	uint32_t ringSize;
-	uint8_t* basePtr;
-	uint8_t* desiredAddress;
+	// Get length in multiple of page-sizes
+	SYSTEM_INFO sysInfo;
+	GetSystemInfo(&sysInfo);
+	uint32_t roundedSize = (length + sysInfo.dwPageSize - 1) / sysInfo.dwPageSize * sysInfo.dwPageSize;
+
+	uint8_t* blockAddress;
 	HANDLE fileHandle;
-	uint8_t* virtualAddress;
 
 	// Keep trying until we get our buffer, needed to handle race conditions
 	int retries = 3;
 	while(retries-- > 0) {
-		// Buffer length in multiple of page size
-		ringSize = _TPWin32RoundToPageSize(length);
-
 		// Create mapped file with the length of the buffer
-		size_t allocSize = ringSize * 2;
-		fileHandle = CreateFileMappingA(INVALID_HANDLE_VALUE, 0, PAGE_READWRITE, (unsigned long long)allocSize >> 32, allocSize & 0xffffffffu, 0);
+		fileHandle = CreateFileMappingA(INVALID_HANDLE_VALUE, 0, PAGE_READWRITE, 0, roundedSize * 2, NULL);
 		if(fileHandle == INVALID_HANDLE_VALUE) {
+			// Failed, we cannot continue
 			break;
 		}
 
-		// Temporarily allocate twice the length, so we have the contiguous address space to support a second instance of the buffer directly after
-		desiredAddress = (uint8_t*)VirtualAlloc(NULL, allocSize, MEM_RESERVE, PAGE_NOACCESS);
-		if(desiredAddress == NULL) {
+		// Reserve two memory of twice the length of the buffer
+		blockAddress = (uint8_t*)VirtualAlloc(NULL, roundedSize * 2, MEM_RESERVE, PAGE_NOACCESS);
+		if(blockAddress == NULL) {
+			// Failed, try again
 			CloseHandle(fileHandle);
 			continue;
 		}
 
-		// Now replace the second half of the allocation with a virtual copy of the first half. Deallocate the second half...
-		VirtualFree(desiredAddress, 0, MEM_RELEASE);
+		// Release the full range immediately, but retain the address for the re-mapping
+		VirtualFree(blockAddress, 0, MEM_FREE);
 
-		// Re-map both buffers to both pages
-		if((basePtr = MapViewOfFileEx(fileHandle, FILE_MAP_ALL_ACCESS, 0, 0, ringSize, desiredAddress)) ||
-		   (MapViewOfFileEx(fileHandle, FILE_MAP_ALL_ACCESS, 0, 0, ringSize, desiredAddress + ringSize))) {
+		// Re-map both buffers to both buffers (these may fail, when the OS already used our memory elsewhere)
+		if((MapViewOfFileEx(fileHandle, FILE_MAP_ALL_ACCESS, 0, 0, roundedSize, blockAddress) == blockAddress) ||
+		   (MapViewOfFileEx(fileHandle, FILE_MAP_ALL_ACCESS, 0, 0, roundedSize, (blockAddress + roundedSize))) == (blockAddress + roundedSize)) {
+			// Success, we can use the blockAddress as our base-ptr
 			break;
 		}
 
-		// Failed to map the virtual pages; cleanup and try again
+		// Failed cleanup and try again
 		CloseHandle(fileHandle);
 		fileHandle = NULL;
-		desiredAddress = NULL;
-		basePtr = NULL;
+		blockAddress = NULL;
 	}
 
-	if(basePtr != NULL) {
+	if(blockAddress != NULL) {
 		ZeroMemory(buffer, sizeof(TPCircularBuffer));
-		buffer->length = ringSize;
-		buffer->buffer = (void*)basePtr;
+		buffer->length = roundedSize;
+		buffer->buffer = (void*)blockAddress;
 		buffer->fillCount = 0;
 		buffer->head = buffer->tail = 0;
 		buffer->fileHandle = fileHandle;
@@ -266,12 +251,3 @@ extern void TPCircularBufferCleanup(TPCircularBuffer* buffer) {
 #else
 #   error "Unknown compiler"
 #endif
-
-extern void TPCircularBufferClear(TPCircularBuffer* buffer) {
-	uint32_t fillCount;
-	if(TPCircularBufferTail(buffer, &fillCount)) {
-		TPCircularBufferConsume(buffer, fillCount);
-	}
-}
-
-

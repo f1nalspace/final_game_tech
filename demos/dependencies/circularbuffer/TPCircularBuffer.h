@@ -45,6 +45,19 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#if defined(_WIN32)
+
+#if !defined(NOMINMAX)
+#define NOMINMAX
+#endif
+#if !defined(WIN32_LEAN_AND_MEAN)
+#define WIN32_LEAN_AND_MEAN 1
+#endif
+struct IUnknown;
+#include <windows.h>
+
+#endif
+
 #if defined(_MSC_VER)
 #	define tp_force_inline __forceinline
 #   define atomicFetchAdd(value, addend) InterlockedExchangeAdd((volatile LONG *)(value), (addend))
@@ -203,6 +216,13 @@ static bool TPCircularBufferProduceBytes(TPCircularBuffer *buffer, const void* s
     memcpy(ptr, src, len);
     TPCircularBufferProduce(buffer, len);
     return true;
+}
+
+static void TPCircularBufferClear(TPCircularBuffer* buffer) {
+	uint32_t fillCount;
+	if(TPCircularBufferTail(buffer, &fillCount)) {
+		TPCircularBufferConsume(buffer, fillCount);
+	}
 }
 
 #ifdef __cplusplus
