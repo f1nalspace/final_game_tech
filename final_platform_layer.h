@@ -133,6 +133,8 @@ SOFTWARE.
 	@tableofcontents
 
 	## v0.9.6-beta
+	- New: Added fplAsm macro to handle different inline assembler keywords (clang, gcc, msvc)
+
 	- Fixed: [Win32] Removed the manual handling of ALT + F4 shut down of event handling
 
 	## v0.9.5-beta
@@ -1444,6 +1446,18 @@ SOFTWARE.
 #else
 #	error "This platform is not supported!"
 #endif // FPL_PLATFORM
+
+// Assembler keyword is compiler specific
+#if defined(FPL_COMPILER_CLANG)
+#define fpl__m_Asm __asm__
+#elif defined(FPL_COMPILER_MSVC)
+#define fpl__m_Asm __asm
+#else
+#define fpl__m_Asm asm
+#endif
+
+//! A assembler compiler instruction (asm)
+#define fplAsm fpl__m_Asm
 
 //
 // Defines required for POSIX (mmap, 64-bit file io, etc.)
