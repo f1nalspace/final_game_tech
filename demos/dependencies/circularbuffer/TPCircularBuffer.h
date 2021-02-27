@@ -44,6 +44,7 @@
 
 #include <stdbool.h>
 #include <stdint.h>
+#include <assert.h>
 
 #if defined(_WIN32)
 
@@ -147,7 +148,7 @@ extern void TPCircularBufferClear(TPCircularBuffer *buffer);
  * @param availableBytes On output, the number of bytes ready for reading
  * @return Pointer to the first bytes ready for reading, or NULL if buffer is empty
  */
-static void* TPCircularBufferTail(TPCircularBuffer *buffer, uint32_t* availableBytes) {
+inline void* TPCircularBufferTail(TPCircularBuffer *buffer, uint32_t* availableBytes) {
     *availableBytes = atomicRead(&buffer->fillCount);
     if ( *availableBytes == 0 ) return NULL;
     return (void*)((char*)buffer->buffer + buffer->tail);
@@ -161,7 +162,7 @@ static void* TPCircularBufferTail(TPCircularBuffer *buffer, uint32_t* availableB
  * @param buffer Circular buffer
  * @param amount Number of bytes to consume
  */
-static void TPCircularBufferConsume(TPCircularBuffer *buffer, uint32_t amount) {
+inline void TPCircularBufferConsume(TPCircularBuffer *buffer, uint32_t amount) {
     buffer->tail = (buffer->tail + amount) % buffer->length;
     atomicFetchAdd(&buffer->fillCount, -(int)amount);
     assert(buffer->fillCount >= 0);
@@ -177,7 +178,7 @@ static void TPCircularBufferConsume(TPCircularBuffer *buffer, uint32_t amount) {
  * @param availableBytes On output, the number of bytes ready for writing
  * @return Pointer to the first bytes ready for writing, or NULL if buffer is full
  */
-static void* TPCircularBufferHead(TPCircularBuffer *buffer, uint32_t* availableBytes) {
+inline void* TPCircularBufferHead(TPCircularBuffer *buffer, uint32_t* availableBytes) {
     *availableBytes = (buffer->length - atomicRead(&buffer->fillCount));
     if ( *availableBytes == 0 ) return NULL;
     return (void*)((char*)buffer->buffer + buffer->head);
@@ -193,10 +194,10 @@ static void* TPCircularBufferHead(TPCircularBuffer *buffer, uint32_t* availableB
  * @param buffer Circular buffer
  * @param amount Number of bytes to produce
  */
-static void TPCircularBufferProduce(TPCircularBuffer *buffer, uint32_t amount) {
+inline void TPCircularBufferProduce(TPCircularBuffer *buffer, uint32_t amount) {
     buffer->head = (buffer->head + amount) % buffer->length;
     atomicFetchAdd(&buffer->fillCount, (int)amount);
-    assert(buffer->fillCount <= buffer->length);
+    assert(buffer->fillCount <= (int32_t)buffer->length);
 }
 
 /*!
@@ -209,7 +210,7 @@ static void TPCircularBufferProduce(TPCircularBuffer *buffer, uint32_t amount) {
  * @param len Number of bytes in source buffer
  * @return true if bytes copied, false if there was insufficient space
  */
-static bool TPCircularBufferProduceBytes(TPCircularBuffer *buffer, const void* src, uint32_t len) {
+inline bool TPCircularBufferProduceBytes(TPCircularBuffer *buffer, const void* src, uint32_t len) {
     uint32_t space;
     void *ptr = TPCircularBufferHead(buffer, &space);
     if ( space < len ) return false;
@@ -218,7 +219,7 @@ static bool TPCircularBufferProduceBytes(TPCircularBuffer *buffer, const void* s
     return true;
 }
 
-static void TPCircularBufferClear(TPCircularBuffer* buffer) {
+inline void TPCircularBufferClear(TPCircularBuffer* buffer) {
 	uint32_t fillCount;
 	if(TPCircularBufferTail(buffer, &fillCount)) {
 		TPCircularBufferConsume(buffer, fillCount);
