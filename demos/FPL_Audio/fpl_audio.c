@@ -98,35 +98,13 @@ License:
 
 #include <final_math.h>
 
+#include <final_utils.h>
 typedef enum WavePlotType {
 	WavePlotType_None = 0,
 	WavePlotType_WaveForm,
 	WavePlotType_Lines,
 	WavePlotType_Count,
 } WavePlotType;
-
-fpl_internal uint32_t NextPowerOfTwo(const uint32_t input) {
-	uint32_t x = input;
-	x--;
-	x |= x >> 1;
-	x |= x >> 2;
-	x |= x >> 4;
-	x |= x >> 8;
-	x |= x >> 16;
-	x++;
-	return(x);
-}
-fpl_internal uint32_t PrevPowerOfTwo(const uint32_t input) {
-	uint32_t result = NextPowerOfTwo(input) >> 1;
-	return(result);
-}
-
-fpl_internal uint32_t RoundToPowerOfTwo(const uint32_t input) {
-	if (fplIsPowerOfTwo(input))
-		return(input);
-	uint32_t result = NextPowerOfTwo(input);
-	return(result);
-}
 
 typedef struct AudioDemo {
 	AudioSystem audioSys;
