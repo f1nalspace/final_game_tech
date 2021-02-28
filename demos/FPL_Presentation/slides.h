@@ -254,8 +254,8 @@ namespace FPLPresentationData {
 	namespace Motivation {
 		static const char* Talk = {
 			"C/C++ has very limited access to the underlying platform."
-			"You need to either use third-party libraries to access platforms or"
-			"write platform-specific codes directly."
+			"You need to either use third-party libraries to access low-level systems or"
+			"write platform-specific codes for Win32, Linux, Mac, etc. directly."
 			""
 			"Of course, there are existing PALs on the internet, but most of them have a lot of issues."
 			"- The source-codes contain dozens of translation units which slow down compile time enormously."
@@ -291,20 +291,26 @@ namespace FPLPresentationData {
 
 	namespace Goals {
 		static const char* Talk = {
-			""
+			"That builds up the following goals:"
+			"- It should compile very fast, even in slow environments"
+			"- It should not require any third-party dependencies and have bare minimum linking requirements"
+			"- It should use a fixed memory footprint and give the user control over any memory allocations"
+			"- It should support runtime and static linking and can be integrated with full source"
+			"- It starts with good default settings but can be changed by the user"
 		};
 
 		static BlockDefinition Blocks[] = {
 			MakeTextDef(
 				V2f(0.0, 0.0),V2f(1.0, 1.0),MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Middle),
-				"- Fast compile times, even on slow environments\n"
+				"- Fast compile times, even in slow environments\n"
+				"- Written in C99 with 100%% C++ compatibility\n"
 				"- Bare minimum compile and linking requirements\n"
-				"- If needed, compiles without the C-Runtime library\n"
 				"- Uses a fixed and small memory footprint\n"
 				"- Hides no data and let the user decide how to integrate it\n"
 				"- Supports runtime or static linking or full-source inclusion\n"
+				"- C-Runtime library should not be required\n"
 				"- Configurable with good defaults\n"
-				"- Open source\n",
+				"- Public open source\n",
 				HorizontalAlignment::Left, FeaturesFontSize * 1.1f
 			),
 		};
@@ -320,13 +326,13 @@ namespace FPLPresentationData {
 			MakeTextDef(
 				V2f(0.0, 0.0),V2f(1.0, 1.0),MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Middle),
 				"- One file containing all the source code\n"
-				"- Written in pure C99 for simplicity and best portability with 100%% C++ compatibility\n"
+				"- Written in pure C99 for simplicity and best portability\n"
 				"- Compiles very fast on all modern C99/C++ compilers\n"
 				"- Has bare minimum compile and linking requirements\n"
 				"- Uses runtime linking by default, so no libs needs to be included\n"
 				"- Allows to control the memory allocations and handles memory very gracefully\n"
 				"- It is stateless, meaning the user does not have to provide any application states\n"
-				"- Its open source and licensed under the MIT-License\n",
+				"- MIT-Licensed\n",
 				HorizontalAlignment::Left, FeaturesFontSize * 1.1f
 			),
 		};
