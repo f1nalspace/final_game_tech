@@ -17,6 +17,7 @@ enum class BlockType {
 };
 
 struct TextBlockDefinition {
+	Vec4f color;
 	const char* text;
 	float fontSize;
 	HorizontalAlignment textAlign;
@@ -51,7 +52,7 @@ struct BlockDefinition {
 	};
 };
 
-static BlockDefinition MakeTextDef(const Vec2f& pos, const Vec2f& size, BlockAlignment contentAlignment, const char* text, const HorizontalAlignment textAlign = HorizontalAlignment::Left, const float fontSize = 0) {
+static BlockDefinition MakeTextDef(const Vec2f& pos, const Vec2f& size, BlockAlignment contentAlignment, const char* text, const HorizontalAlignment textAlign = HorizontalAlignment::Left, const float fontSize = 0, const Vec4f &color = V4f(1,1,1,1)) {
 	BlockDefinition result = {};
 	result.pos = pos;
 	result.size = size;
@@ -60,6 +61,7 @@ static BlockDefinition MakeTextDef(const Vec2f& pos, const Vec2f& size, BlockAli
 	result.text.text = text;
 	result.text.textAlign = textAlign;
 	result.text.fontSize = fontSize;
+	result.text.color = color;
 	return(result);
 }
 
@@ -216,7 +218,7 @@ namespace FPLPresentationData {
 				V2f(),V2f(1,1),MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Middle),
 				"A platform abstraction layer (or short 'PAL')\n"
 				"is a development library,\n"
-				"written in a low-level language such as 'C',\n"
+				"written in a low-level language such as C,\n"
 				"used to access hardware and low-level systems\n"
 				"in a platform-independent way.\n",
 				HorizontalAlignment::Left
@@ -228,7 +230,7 @@ namespace FPLPresentationData {
 
 	namespace WhatIsFPL {
 		static const char* Talk = {
-			"'Final-Platform-Layer' (or short 'FPL') is a lightweight platform-abstraction-layer written in C99, which provides a powerful and easy-to-use API,"
+			"Final-Platform-Layer (or short 'FPL') is a lightweight platform-abstraction-layer written in C99, which provides a powerful and easy-to-use API,"
 			"for working with low-level and hardware systems such as audio, video, memory, window, timing, input-systems and many more."
 			"Its main usage is multimedia and game development but can be used for writing any kind of application."
 			"'FPL' is designed to be fast in compile and run time and can be integrated however you like."
@@ -238,7 +240,7 @@ namespace FPLPresentationData {
 		static BlockDefinition Blocks[] = {
 			MakeTextDef(
 				V2f(),V2f(1,1),MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Middle),
-				"'Final-Platform-Layer' (or short 'FPL')\n"
+				"Final-Platform-Layer (or short 'FPL')\n"
 				"is an lightweight PAL written in C99,\n"
 				"providing a powerful and easy to use API,\n"
 				"for working with low-level and hardware systems\n"
@@ -408,15 +410,24 @@ namespace FPLPresentationData {
 
 		static BlockDefinition Blocks[] = {
 			MakeTextDef(
-				V2f(),V2f(1,1),MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Middle),
-				"Official website (details, documentation):\n"
-				"\n"
-				"https://libfpl.org/\n"
-				"\n"
-				"Github:\n"
-				"\n"
-				"https://github.com/f1nalspace/final_game_tech\n",
-				HorizontalAlignment::Left
+				V2f(0.25f, 0.0f), V2f(0.5f, 0.1f), MakeAlign(HorizontalAlignment::Left, VerticalAlignment::Middle),
+				"Official website (details, documentation):",
+				HorizontalAlignment::Left, FeaturesFontSize
+			),
+			MakeTextDef(
+				V2f(0.25f, 0.1f), V2f(0.5f, 0.1f), MakeAlign(HorizontalAlignment::Left, VerticalAlignment::Middle),
+				"https://libfpl.org",
+				HorizontalAlignment::Left, FeaturesFontSize, V4f(0.0f, 0.8f, 0.2f, 1.0f)
+			),
+			MakeTextDef(
+				V2f(0.25f, 0.3f), V2f(0.5f, 0.1f), MakeAlign(HorizontalAlignment::Left, VerticalAlignment::Middle),
+				"Github:",
+				HorizontalAlignment::Left, FeaturesFontSize
+			),
+			MakeTextDef(
+				V2f(0.25f, 0.4f), V2f(0.5f, 0.1f), MakeAlign(HorizontalAlignment::Left, VerticalAlignment::Middle),
+				"https://github.com/f1nalspace/final_game_tech",
+				HorizontalAlignment::Left, FeaturesFontSize, V4f(0.0f, 0.8f, 0.2f, 1.0f)
 			),
 		};
 		static const SlideDefinition Slide = MakeSlideDef("Links", Blocks, GetBackground());
@@ -429,11 +440,14 @@ namespace FPLPresentationData {
 
 		static BlockDefinition Blocks[] = {
 			MakeTextDef(
-				V2f(),V2f(1,1),MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Middle),
-				"FPL comes with a variety of demos:\n"
-				"\n"
+				V2f(0.0f, 0.3f),V2f(1.0f, 0.1f),MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Middle),
+				"FPL comes with a variety of demos:",
+				HorizontalAlignment::Center, FeaturesFontSize
+			),
+			MakeTextDef(
+				V2f(0.0f, 0.4f),V2f(1.0f, 0.1f),MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Middle),
 				"https://github.com/f1nalspace/final_game_tech/tree/master/demos",
-				HorizontalAlignment::Center
+				HorizontalAlignment::Center, FeaturesFontSize, V4f(0.0f, 0.8f, 0.2f, 1.0f)
 			),
 		};
 		static const SlideDefinition Slide = MakeSlideDef("Demos!", Blocks, GetBackground());

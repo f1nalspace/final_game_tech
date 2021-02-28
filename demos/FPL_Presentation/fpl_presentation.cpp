@@ -77,7 +77,7 @@ License:
 #define DRAW_VIEW_CENTER 0
 #define DRAW_ROTATING_CUBE 1
 #define USE_LETTERBOX_VIEWPORT 0
-#define DRAW_BOX_DEFINITIONS 0
+#define DRAW_BOX_DEFINITIONS 1
 
 template <typename T>
 struct GrowablePool {
@@ -2103,7 +2103,10 @@ static void AddSlideFromDefinition(Renderer& renderer, Presentation& presentatio
 				} else if(textAlign == HorizontalAlignment::Right) {
 					textPos += V2fHadamard(V2f(1, 0), textSize);
 				}
-				AddTextBlock(renderer, *slide, textPos, text, normalFontName, textFontSize, textLineHeight, normalStyle, textAlign, VerticalAlignment::Top);
+
+				TextStyle textStyle = normalStyle;
+				textStyle.foregroundColor = V4f((normalStyle.foregroundColor.r + textBlock.color.r) * 0.5f, (normalStyle.foregroundColor.g + textBlock.color.g) * 0.5f, (normalStyle.foregroundColor.b + textBlock.color.b) * 0.5f, 1.0f);
+				AddTextBlock(renderer, *slide, textPos, text, normalFontName, textFontSize, textLineHeight, textStyle, textAlign, VerticalAlignment::Top);
 			} break;
 
 			case BlockType::Image:
