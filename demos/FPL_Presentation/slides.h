@@ -228,18 +228,22 @@ namespace FPLPresentationData {
 
 	namespace WhatIsFPL {
 		static const char* Talk = {
-			"'Final-Platform-Layer' (or short 'FPL') is an all-purpose platform-abstraction-layer written in C99 which provides a powerful and easy-to-use API,"
-			"for working with low-level and hardware systems such as windowing, audio, video, memory, timing, input-systems and many more."
+			"'Final-Platform-Layer' (or short 'FPL') is a lightweight platform-abstraction-layer written in C99, which provides a powerful and easy-to-use API,"
+			"for working with low-level and hardware systems such as audio, video, memory, window, timing, input-systems and many more."
+			"Its main usage is multimedia and game development but can be used for writing any kind of application."
+			"'FPL' is designed to be fast in compile and run time and can be integrated however you like."
+			"You statically link it, you can dynamically link it as a library (.dll/.so) or you can include the full source."
 		};
 
 		static BlockDefinition Blocks[] = {
 			MakeTextDef(
 				V2f(),V2f(1,1),MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Middle),
 				"'Final-Platform-Layer' (or short 'FPL')\n"
-				"is an all-purpose/multimedia PAL written in C99,\n"
+				"is an lightweight PAL written in C99,\n"
 				"providing a powerful and easy to use API,\n"
 				"for working with low-level and hardware systems\n"
-				"such as window, audio, video, memory and input-systems, etc.\n",
+				"such as audio, video, memory, window, timing, input-systems\n"
+				"and many more.\n",
 				HorizontalAlignment::Left
 			),
 		};
@@ -248,23 +252,37 @@ namespace FPLPresentationData {
 	};
 
 	namespace Motivation {
+		static const char* Talk = {
+			"C/C++ has very limited access to the underlying platform."
+			"You need to either use third-party libraries to access platforms or"
+			"write platform-specific codes directly."
+			""
+			"Of course, there are existing PALs on the internet, but most of them have a lot of issues."
+			"- The source-codes contain dozens of translation units which slow down compile time enormously."
+			"- Almost all, are designed not to include the full source within your application and force you either to static or runtime linked pre-compiled releases. (the reason for that is simple: compile times!)."
+			"- In some development environments, it won't compile with a statically linked release"
+			"- You have limited or no control over memory allocations"
+			"- Most of it has too many dependencies (build-systems, third-party libraries)"
+		};
+
 		static BlockDefinition Blocks[] = {
 			MakeTextDef(
-				V2f(0.0, 0.0),V2f(1.0, 0.25),MakeAlign(HorizontalAlignment::Center),
+				V2f(0.05f, 0.0f),V2f(0.9f, 0.25),MakeAlign(HorizontalAlignment::Left),
 				"C/C++ has very limited access to the underlying platform,\n"
-				"so you have either use third-party libraries to access the platform\n"
-				"or write platform specific codes directly.\n",
+				"so you have either use third-party libraries to access the platform or\n"
+				"write platform specific codes directly.\n",
 				HorizontalAlignment::Left
 			),
 
 			MakeTextDef(
-				V2f(0.0, 0.25),V2f(1.0, 0.75),MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Middle),
+				V2f(0.05f, 0.3f),V2f(0.9f, 0.7f),MakeAlign(HorizontalAlignment::Left, VerticalAlignment::Top),
 				"The pre-existing PALs have a lot of issues:\n"
-				"- Huge in file count and/or size or large compile times\n"
+				"- Huge in file count and/or size\n"
+				"- Very long compile times\n"
 				"- Limited control over the allocated memory\n"
 				"- Statically linking is madness or not supported at all\n"
 				"- Including the full source is not supported\n"
-				"- Some are heavily bloated\n",
+				"- Too many dependencies\n",
 				HorizontalAlignment::Left, FeaturesFontSize
 			),
 		};
@@ -272,50 +290,64 @@ namespace FPLPresentationData {
 	};
 
 	namespace Goals {
+		static const char* Talk = {
+			""
+		};
+
 		static BlockDefinition Blocks[] = {
 			MakeTextDef(
 				V2f(0.0, 0.0),V2f(1.0, 1.0),MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Middle),
-				"- One header file containing all the source code for all platforms\n"
-				"\n"
+				"- Fast compile times, even on slow environments\n"
 				"- Bare minimum compile and linking requirements\n"
-				"\n"
-				"- Does not require the C-Runtime library\n"
-				"\n"
-				"- Uses a fixed and small memory footprint and handles memory very gracefully\n"
-				"\n"
+				"- If needed, compiles without the C-Runtime library\n"
+				"- Uses a fixed and small memory footprint\n"
 				"- Hides no data and let the user decide how to integrate it\n"
-				"\n"
-				"- Compiles very fast on all modern C99/C++ compilers\n",
-				HorizontalAlignment::Left, FeaturesFontSize
+				"- Supports runtime or static linking or full-source inclusion\n"
+				"- Configurable with good defaults\n"
+				"- Open source\n",
+				HorizontalAlignment::Left, FeaturesFontSize * 1.1f
 			),
 		};
 		static const SlideDefinition Slide = MakeSlideDef("Goals of FPL", Blocks, GetBackground());
 	};
 
-	namespace FeaturesOfFPL1 {
+	namespace WhyFPL {
+		static const char* Talk = {
+			""
+		};
+
 		static BlockDefinition Blocks[] = {
 			MakeTextDef(
-				V2f(0,0),V2f(1.0f,0.5f),MakeAlign(HorizontalAlignment::Center),
+				V2f(0.0, 0.0),V2f(1.0, 1.0),MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Middle),
+				"- One file containing all the source code\n"
+				"- Written in pure C99 for simplicity and best portability with 100%% C++ compatibility\n"
+				"- Compiles very fast on all modern C99/C++ compilers\n"
+				"- Has bare minimum compile and linking requirements\n"
+				"- Uses runtime linking by default, so no libs needs to be included\n"
+				"- Allows to control the memory allocations and handles memory very gracefully\n"
+				"- It is stateless, meaning the user does not have to provide any application states\n"
+				"- Its open source and licensed under the MIT-License\n",
+				HorizontalAlignment::Left, FeaturesFontSize * 1.1f
+			),
+		};
+		static const SlideDefinition Slide = MakeSlideDef("Why FPL", Blocks, GetBackground());
+	};
+
+	namespace FeaturesOfFPL {
+		static const char* Talk = {
+			""
+		};
+
+		static BlockDefinition Blocks[] = {
+			MakeTextDef(
+				V2f(0,0),V2f(1.0f,1.0f),MakeAlign(HorizontalAlignment::Center),
+				"\n"
 				"- Platform detection (x86/x64/Arm, Win32/Linux/Unix, etc.)\n"
 				"- Compiler detection (MSVC/GCC/Clang/Intel)\n"
 				"- Macros (debug break, assertions, CPU features, memory etc.)\n"
 				"- Window creation and handling (Win32/X11)\n"
 				"- Event and input polling (keyboard/mouse/gamepad)\n"
-				"- Video initialization and output (software, OpenGL, etc.)\n",
-				HorizontalAlignment::Left, FeaturesFontSize
-			),
-			MakeImageDef(
-				V2f(0.0f,0.5f),V2f(1.0f,0.5f),MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Middle),
-				"FPL Features", V2f(1.0f,1.0f), true
-			),
-		};
-		static const SlideDefinition Slide = MakeSlideDef("Features of FPL 1/2", Blocks, GetBackground());
-	};
-
-	namespace FeaturesOfFPL2 {
-		static BlockDefinition Blocks[] = {
-			MakeTextDef(
-				V2f(0.0f),V2f(1.0f,0.5f),MakeAlign(HorizontalAlignment::Center),
+				"- Video initialization and output (software, OpenGL, etc.)\n"
 				"- Asynchronous audio playback (DirectSound, ALSA, etc.)\n"
 				"- IO (console, paths, files, directories, etc.)\n"
 				"- Memory allocation\n"
@@ -325,106 +357,95 @@ namespace FPLPresentationData {
 				"- and many more\n",
 				HorizontalAlignment::Left, FeaturesFontSize
 			),
-
-			MakeImageDef(
-				V2f(0.0f,0.5f), V2f(1.0f,0.5f), MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Middle),
-				"FPL Features", V2f(1.0f,1.0f), true
-			),
 		};
-
-		static const SlideDefinition Slide = MakeSlideDef("Features of FPL 2/2", Blocks, GetBackground());
+		static const SlideDefinition Slide = MakeSlideDef("Features of FPL", Blocks, GetBackground());
 	};
 
-	namespace HowMagic {
+	namespace Magic {
+		static const char* Talk = {
+			""
+		};
+
 		static BlockDefinition Blocks[] = {
 			MakeTextDef(
 				V2f(0.0f,0.0f),V2f(1.0f,1.0f),MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Middle),
 				"Magic!",
 				HorizontalAlignment::Left, FeaturesFontSize * 4
-			),
+			),			
 		};
 		static const SlideDefinition Slide = MakeSlideDef("How it works", Blocks, GetBackground());
 	};
 
 	namespace HowItWorks {
-		static BlockDefinition Blocks[] = {
-			MakeTextDef(
-				V2f(0.0f,0.0f),V2f(1.0f,0.25f),MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Top),
-				"Joke, of course its not magic :P",
-				HorizontalAlignment::Left, FeaturesFontSize
-			),
+		static const char* Talk = {
+			""
+		};
 
+		static BlockDefinition Blocks[] = {
 			MakeTextDef(
 				V2f(0.0f,0.0f),V2f(1.0f,1.0f),MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Middle),
-				"- It is written in pure C99 for simplicity and best portability - but is 100%% C++ compatible\n"
-				"- It makes heavy use of the pre-compiler to detect compiler/platform/hardware/driver setups\n"
-				"- It uses runtime linking by default, so it does not need any libs to be included\n"
-				"- It prevents code-duplication by using sub-platform blocks (Unix vs Linux)\n"
-				"- It is stateless, meaning the user does not have to provide any application states\n"
-				"- Everything is included in one C file\n",
+				"- Single-header-file library, containing the full API and source for every platform\n"
+				"\n"
+				"- Uses the pre-compiler to detect compiler/platform/hardware/driver setups\n"
+				"\n"
+				"- Prevents code-duplication by using sub-platforms (Unix vs Linux)\n",
 				HorizontalAlignment::Left, FeaturesFontSize
 			),
 		};
-		static const SlideDefinition Slide = MakeSlideDef("How it really works", Blocks, GetBackground());
+		static const SlideDefinition Slide = MakeSlideDef("How it actually works", Blocks, GetBackground());
 	};
 
-	namespace RandomCode {
-		static BlockDefinition Blocks[] = {
-			MakeTextDef(
-				V2f(0.0f,0.0f),V2f(0.5f,1.0f),MakeAlign(HorizontalAlignment::Center),
-				"#define FPL_IMPLEMENTATION\n"
-				"#include <final_platform_layer.h>\n"
-				"\n"
-				"int main(int argc, char **argv) {\n"
-				"\tif (fplPlatformInit(fplInitFlags_Console, &settings)) {\n"
-				"\t\tfplMemoryAllocate(fplMegaBytes(128));\n"
-				"\t\tfplDynamicLibraryLoad(\"my_library.so\", &libHandle);\n"
-				"\t\tfplThreadCreate(threadProc, userDataForThread);\n"
-				"\t\tfplMutexLock(&lockHandle);\n"
-				"\t\tfplWriteFileBlock(&fileHandle, &blockData, lengthToWrite);\n"
-				"\t\tfplFileCopy(\"my_data_file.dat\", \"my_data_file.dat.backup\");\n"
-				"\t\tfplConsoleFormatOut(\"Little endian: %%s\\n\", (fplIsLittleEndian() ? \"yes\" : \"no\");\n"
-				"\t\tfplGetAudioDevices(&audioDevices[0], fplArrayCount(audioDevices));\n"
-				"\t\tfplGetOperatingSystemInfos(&osInfos);\n"
-				"\t\tfplPlatformRelease();\n"
-				"\t}\n"
-				"}\n"
-			, HorizontalAlignment::Left, CodeFontSize),
-
-			MakeTextDef(
-				V2f(0.5f,0.0f),V2f(0.5f,1.0f),MakeAlign(HorizontalAlignment::Center),
-				"#define FPL_IMPLEMENTATION\n"
-				"#include <final_platform_layer.h>\n"
-				"\n"
-				"int main(int argc, char **argv) {\n"
-				"\tif (fplPlatformInit(fplInitFlags_All, &settings)) {\n"
-				"\t\twhile (fplWindowUpdate()) {\n"
-				"\t\t\tfplEvent ev;\n"
-				"\t\t\twhile (fplPollEvent(&ev)) {\n"
-				"\t\t\t\tProcessEvent(&ev);\n"
-				"\t\t\t}\n"
-				"\t\t\tRenderAndUpdateFrame(&frameState);\n"
-				"\t\t\tfplVideoFlip();\n"
-				"\t\t\tlastFrameTime = fplGetTimeInSecondsHP();\n"
-				"\t\t}\n"
-				"\t\tfplPlatformRelease();\n"
-				"\t}\n"
-				"}\n",
-				HorizontalAlignment::Left, CodeFontSize
-			),
+	namespace Links {
+		static const char* Talk = {
+			""
 		};
-		static const SlideDefinition Slide = MakeSlideDef("Example Code", Blocks, GetBackground());
-	};
 
-	namespace Demos {
 		static BlockDefinition Blocks[] = {
 			MakeTextDef(
 				V2f(),V2f(1,1),MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Middle),
-				"Demo-Time!",
+				"Official website (details, documentation):\n"
+				"\n"
+				"https://libfpl.org/\n"
+				"\n"
+				"Github:\n"
+				"\n"
+				"https://github.com/f1nalspace/final_game_tech\n",
+				HorizontalAlignment::Left
+			),
+		};
+		static const SlideDefinition Slide = MakeSlideDef("Links", Blocks, GetBackground());
+	};
+
+	namespace Demos {
+		static const char* Talk = {
+			""
+		};
+
+		static BlockDefinition Blocks[] = {
+			MakeTextDef(
+				V2f(),V2f(1,1),MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Middle),
+				"FPL comes with a variety of demos:\n"
+				"\n"
+				"https://github.com/f1nalspace/final_game_tech/tree/master/demos",
 				HorizontalAlignment::Center
 			),
 		};
 		static const SlideDefinition Slide = MakeSlideDef("Demos!", Blocks, GetBackground());
+	};
+
+	namespace Thanks {
+		static const char* Talk = {
+			""
+		};
+
+		static BlockDefinition Blocks[] = {
+			MakeTextDef(
+				V2f(),V2f(1,1),MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Middle),
+				"Thank you for trying out FPL!",
+				HorizontalAlignment::Center
+			),
+		};
+		static const SlideDefinition Slide = MakeSlideDef("Thanks!", Blocks, GetBackground());
 	};
 
 	static const SlideDefinition Slides[] = {
@@ -433,12 +454,13 @@ namespace FPLPresentationData {
 		WhatIsFPL::Slide,
 		Motivation::Slide,
 		Goals::Slide,
-		FeaturesOfFPL1::Slide,
-		FeaturesOfFPL2::Slide,
-		HowMagic::Slide,
+		WhyFPL::Slide,
+		FeaturesOfFPL::Slide,
+		Magic::Slide,
 		HowItWorks::Slide,
-		RandomCode::Slide,
+		Links::Slide,
 		Demos::Slide,
+		Thanks::Slide
 	};
 
 	static const Vec4f ForegroundColor = RGBAToLinearRaw(255, 255, 255, 255);

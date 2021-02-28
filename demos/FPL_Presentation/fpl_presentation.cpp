@@ -18,6 +18,9 @@ Author:
 	Torsten Spaete
 
 Changelog:
+	## 2021-02-28
+	- Updated all slices, written talks
+
 	## 2020-15-05
 	- Made it much more nicer looking
 
@@ -33,6 +36,10 @@ License:
 #define FPL_IMPLEMENTATION
 #define FPL_PRIVATE
 #include <final_platform_layer.h>
+
+#if !defined(FPL_IS_CPP)
+#	error "A C++ compiler is required to compile this application!"
+#endif
 
 #define FGL_IMPLEMENTATION
 #include <final_dynamic_opengl.h>
