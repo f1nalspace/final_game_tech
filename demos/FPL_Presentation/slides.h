@@ -203,6 +203,8 @@ namespace FPLPresentationData {
 
 	namespace WhatIsAPAL {
 		static const char* Talk = {
+			"Before i continue, i will first give a brief overview "
+
 			"Any operating system has special systems/functions to access certain things,"
 			"such as memory, files, threads, etc., or give you access to hardware devices,"
 			"such as graphics cards, audio devices, etc."
@@ -234,7 +236,7 @@ namespace FPLPresentationData {
 			"for working with low-level and hardware systems such as audio, video, memory, window, timing, input-systems and many more."
 			"Its main usage is multimedia and game development but can be used for writing any kind of application."
 			"'FPL' is designed to be fast in compile and run time and can be integrated however you like."
-			"You statically link it, you can dynamically link it as a library (.dll/.so) or you can include the full source."
+			"You statically link it, you can link it on runtime or you can include the full source."
 		};
 
 		static BlockDefinition Blocks[] = {
@@ -244,8 +246,8 @@ namespace FPLPresentationData {
 				"is an lightweight PAL written in C99,\n"
 				"providing a powerful and easy to use API,\n"
 				"for working with low-level and hardware systems\n"
-				"such as audio, video, memory, window, timing, input-systems\n"
-				"and many more.\n",
+				"such as audio, video, memory, window, timing,\n"
+				"input-systems and many more.\n",
 				HorizontalAlignment::Left
 			),
 		};
@@ -256,8 +258,8 @@ namespace FPLPresentationData {
 	namespace Motivation {
 		static const char* Talk = {
 			"C/C++ has very limited access to the underlying platform."
-			"You need to either use third-party libraries to access low-level systems or"
-			"write platform-specific codes for Win32, Linux, Mac, etc. directly."
+			"Even in modern C++, you still don't have direct access to a lot of systems."
+			"To access low-level systems, you either need to use third-party libraries or write platform-specific codes for Win32, Linux, Mac, etc. directly."
 			""
 			"Of course, there are existing PALs on the internet, but most of them have a lot of issues."
 			"- The source-codes contain dozens of translation units which slow down compile time enormously."
@@ -327,6 +329,7 @@ namespace FPLPresentationData {
 		static BlockDefinition Blocks[] = {
 			MakeTextDef(
 				V2f(0.0, 0.0),V2f(1.0, 1.0),MakeAlign(HorizontalAlignment::Center, VerticalAlignment::Middle),
+				"- You get access to low-level systems in a nice and clean API\n"
 				"- One file containing all the source code\n"
 				"- Written in pure C99 for simplicity and best portability\n"
 				"- Compiles very fast on all modern C99/C++ compilers\n"
@@ -421,12 +424,22 @@ namespace FPLPresentationData {
 			),
 			MakeTextDef(
 				V2f(0.25f, 0.3f), V2f(0.5f, 0.1f), MakeAlign(HorizontalAlignment::Left, VerticalAlignment::Middle),
-				"Github:",
+				"Github (sources, issue-tracker, project management):",
 				HorizontalAlignment::Left, FeaturesFontSize
 			),
 			MakeTextDef(
 				V2f(0.25f, 0.4f), V2f(0.5f, 0.1f), MakeAlign(HorizontalAlignment::Left, VerticalAlignment::Middle),
 				"https://github.com/f1nalspace/final_game_tech",
+				HorizontalAlignment::Left, FeaturesFontSize, V4f(0.0f, 0.8f, 0.2f, 1.0f)
+			),
+			MakeTextDef(
+				V2f(0.25f, 0.6f), V2f(0.5f, 0.1f), MakeAlign(HorizontalAlignment::Left, VerticalAlignment::Middle),
+				"Handmade-Network (community):",
+				HorizontalAlignment::Left, FeaturesFontSize
+			),
+			MakeTextDef(
+				V2f(0.25f, 0.7f), V2f(0.5f, 0.1f), MakeAlign(HorizontalAlignment::Left, VerticalAlignment::Middle),
+				"https://fpl.handmade.network",
 				HorizontalAlignment::Left, FeaturesFontSize, V4f(0.0f, 0.8f, 0.2f, 1.0f)
 			),
 		};
