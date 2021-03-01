@@ -804,6 +804,7 @@ static bool FillConversionBuffer(AudioSystem *audioSys, const AudioFrameIndex ma
 	AudioHertz outSampleRate = audioSys->targetFormat.sampleRate;
 	fplAudioFormatType outFormat = audioSys->targetFormat.format;
 
+	// @TODO(final): Rewrite mixing and output shit - we dont need a mixing buffer at all
 	AudioFrameIndex mixFrameCount = MixPlayItems(audioSys, maxFrameCount);
 
 	for (AudioFrameIndex i = 0; i < mixFrameCount; ++i) {

@@ -131,8 +131,8 @@ static uint32_t AudioPlayback(const fplAudioDeviceFormat* outFormat, const uint3
 	uint32_t frameSize = fplGetAudioFrameSizeInBytes(outFormat->type, outFormat->channels);
 
 	uint32_t availableBytes = 0;
-	TPCircularBufferData tail = TPCircularBufferTail(&audioDemo->decodeBuffer, &availableBytes);
-	if((availableBytes % frameSize) == 0) {
+	bool hasData = TPCircularBufferCanRead(&audioDemo->decodeBuffer, &availableBytes);
+	if(hasData && (availableBytes % frameSize) == 0) {
 		uint32_t availableFrames = fplMax(0, availableBytes / frameSize);
 		fplAssert(availableFrames >= maxFrameCount);
 
@@ -141,7 +141,8 @@ static uint32_t AudioPlayback(const fplAudioDeviceFormat* outFormat, const uint3
 		uint32_t totalCopySize = framesToCopy * frameSize;
 		fplAssert((totalCopySize % frameSize) == 0);
 
-		TPCircularBufferRead(&audioDemo->decodeBuffer, outputSamples, totalCopySize);
+		bool isRead = TPCircularBufferRead(&audioDemo->decodeBuffer, outputSamples, totalCopySize);
+		fplAssert(isRead);
 
 		result = framesToCopy;
 	}
@@ -156,14 +157,14 @@ static bool DecodeAudio(const uint32_t frameCount, const fplAudioDeviceFormat* f
 
 	TPCircularBuffer* circularBuffer = &demo->decodeBuffer;
 
-	uint32_t availableSpace = 0;
-	TPCircularBufferData bufferHead = TPCircularBufferHead(circularBuffer, &availableSpace);
-
 	AudioBuffer* tmpBuffer = &demo->tempBuffer;
 
-	if(availableSpace > 0) {
-		uint32_t frameSize = fplGetAudioFrameSizeInBytes(format->type, format->channels);
+	uint32_t frameSize = fplGetAudioFrameSizeInBytes(format->type, format->channels);
 
+	uint32_t availableSpace = 0;
+	bool canWrite = TPCircularBufferCanWrite(circularBuffer, &availableSpace);
+
+	if(canWrite && (availableSpace % frameSize) == 0) {
 		uint32_t numOfAvailableFrames = fplMax(0, availableSpace / frameSize);
 
 		uint32_t framesToWrite = fplMin(numOfAvailableFrames, frameCount);
@@ -190,14 +191,14 @@ static void AudioDecodeThread(const fplThreadHandle* thread, void* rawData) {
 
 	uint64_t pollDelay = 10;
 
-	AudioFrameIndex framesToDecode = fplGetAudioBufferSizeInFrames(demo->targetAudioFormat.sampleRate, 100);
+	AudioFrameIndex framesToDecode = fplGetAudioBufferSizeInFrames(demo->targetAudioFormat.sampleRate, 40);
 
 	uint64_t startTime = fplGetTimeInMillisecondsLP();
 	while(!demo->isDecodeThreadStopped) {
 		uint64_t deltaTime = fplGetTimeInMillisecondsLP() - startTime;
 		if(deltaTime >= pollDelay) {
 			startTime = fplGetTimeInMillisecondsLP();
-			DecodeAudio(1024, &demo->targetAudioFormat, demo);
+			DecodeAudio(framesToDecode, &demo->targetAudioFormat, demo);
 		} else {
 			fplThreadSleep(10);
 		}

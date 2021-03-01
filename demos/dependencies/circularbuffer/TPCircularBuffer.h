@@ -59,17 +59,7 @@ struct IUnknown;
 
 #endif
 
-#if defined(_MSC_VER)
-#	define tp_force_inline __forceinline
-#   define atomicFetchAdd(value, addend) InterlockedExchangeAdd((volatile LONG *)(value), (addend))
-#   define atomicRead(value) InterlockedCompareExchange((volatile LONG *)(value), 0, 0)
-#elif defined(__GNUC__) || defined(__clang__)
-#	define tp_force_inline __attribute__((__always_inline__)) inline
-#   define atomicFetchAdd(value, addend) __sync_fetch_and_add((volatile uint32_t *)(value), (addend))
-#   define atomicRead(value) __sync_add_and_fetch((volatile uint32_t *)(value), 0)
-#else
-#	error "Unsupported compiler/platform"
-#endif
+
 
 #ifdef __cplusplus
 extern "C" {
@@ -88,10 +78,10 @@ extern "C" {
 		uint32_t length;
 
 		uint8_t tailPadding[60];
-		volatile uint32_t tail;
+		uint32_t tail;
 
 		uint8_t headPadding[60];
-		volatile uint32_t head;
+		uint32_t head;
 
 		uint8_t fillCountPadding[60];
 		volatile int32_t fillCount;
@@ -108,75 +98,20 @@ extern "C" {
 		int32_t isDoubleBuffer;
 		int32_t padding;
 	} TPCircularBufferData;
-
-	/*!
-	 * Initialise buffer
-	 *
-	 *  Note that the length is advisory only: Because of the way the
-	 *  memory mirroring technique works, the true buffer length will
-	 *  be multiples of the device page size (e.g. 4096 bytes)
-	 *
-	 *  If you intend to use the AudioBufferList utilities, you should
-	 *  always allocate a bit more space than you need for pure audio
-	 *  data, so there's room for the metadata. How much extra is required
-	 *  depends on how many AudioBufferList structures are used, which is
-	 *  a function of how many audio frames each buffer holds. A good rule
-	 *  of thumb is to add 15%, or at least another 2048 bytes or so.
-	 *
-	 * @param buffer Circular buffer
-	 * @param length Length of buffer
-	 * @param allowMirror Is memory mirroring allowed or not
-	 */
+	
 	extern bool TPCircularBufferInit(TPCircularBuffer* buffer, uint32_t length, bool allowMirror);
 
-	/*!
-	 * Cleanup buffer
-	 *
-	 *  Releases buffer resources.
-	 */
 	extern void TPCircularBufferCleanup(TPCircularBuffer* buffer);
 
-	/*!
-	 * Clear buffer
-	 *
-	 *  Resets buffer to original, empty state.
-	 *
-	 *  This is safe for use by consumer while producer is accessing
-	 *  buffer.
-	 */
 	extern void TPCircularBufferClear(TPCircularBuffer* buffer);
 
-	// Reading (consuming)
+	extern bool TPCircularBufferCanRead(TPCircularBuffer* buffer, uint32_t* availableBytes);
 
-	/*!
-	 * Access end of buffer
-	 *
-	 *  This gives you a pointer to the end of the buffer, ready
-	 *  for reading, and the number of available bytes to read.
-	 *
-	 * @param buffer Circular buffer
-	 * @param availableBytes On output, the number of bytes ready for reading
-	 * @return Pointer to the first bytes ready for reading, or NULL if buffer is empty
-	 */
-	extern TPCircularBufferData TPCircularBufferTail(TPCircularBuffer* buffer, uint32_t* availableBytes);
-
-	
-
-	/*!
-	 * Access front of buffer
-	 *
-	 *  This gives you a pointer to the front of the buffer, ready
-	 *  for writing, and the number of available bytes to write.
-	 *
-	 * @param buffer Circular buffer
-	 * @param availableBytes On output, the number of bytes ready for writing
-	 * @return Pointer to the first bytes ready for writing, or NULL if buffer is full
-	 */
-	extern TPCircularBufferData TPCircularBufferHead(TPCircularBuffer* buffer, uint32_t* availableBytes);
+	extern bool TPCircularBufferCanWrite(TPCircularBuffer* buffer, uint32_t* availableBytes);
 
 	extern bool TPCircularBufferWrite(TPCircularBuffer* buffer, const void* src, uint32_t len);
 
-	extern bool TPCircularBufferRead(TPCircularBuffer* buffer, void *dst, const uint32_t len);
+	extern bool TPCircularBufferRead(TPCircularBuffer* buffer, void* dst, const uint32_t len);
 
 	extern void TPCircularBufferClear(TPCircularBuffer* buffer);
 
