@@ -77,8 +77,9 @@ License:
 #define OPT_PLAYBACK_NONE 0
 #define OPT_PLAYBACK_SINEWAVE_ONLY 1
 #define OPT_PLAYBACK_AUDIOSYSTEM_ONLY 2
+#define OPT_PLAYBACK_DECODEBUFFER_ONLY 3
 
-#define OPT_PLAYBACKMODE OPT_PLAYBACK_AUDIOSYSTEM_ONLY
+#define OPT_PLAYBACKMODE OPT_PLAYBACK_DECODEBUFFER_ONLY
 
 #define FPL_LOGGING
 #define FPL_IMPLEMENTATION
@@ -99,23 +100,23 @@ License:
 #include <final_math.h>
 
 #include <final_utils.h>
-typedef enum WavePlotType {
-	WavePlotType_None = 0,
-	WavePlotType_WaveForm,
-	WavePlotType_Lines,
-	WavePlotType_Count,
-} WavePlotType;
+
+#include <circularbuffer/TPCircularBuffer.h>
 
 typedef struct AudioDemo {
 	AudioSystem audioSys;
-	fplAudioFormatType sampleFormat;
 	AudioSineWaveData sineWave;
-	WavePlotType plotType;
-	int32_t plotCount;
+	AudioBuffer tempBuffer;
+	TPCircularBuffer decodeBuffer;
+	fplThreadHandle* decodeThread;
+	fplAudioDeviceFormat targetAudioFormat;
+	volatile fpl_b32 isDecodeThreadStopped;
 } AudioDemo;
 
-static uint32_t AudioPlayback(const fplAudioDeviceFormat *outFormat, const uint32_t maxFrameCount, void *outputSamples, void *userData) {
-	AudioDemo *audioDemo = (AudioDemo *)userData;
+static uint32_t AudioPlayback(const fplAudioDeviceFormat* outFormat, const uint32_t maxFrameCount, void* outputSamples, void* userData) {
+	fplDebugFormatOut("Requested %lu frames\n", maxFrameCount);
+
+	AudioDemo* audioDemo = (AudioDemo*)userData;
 
 	AudioFrameIndex result = 0;
 
@@ -125,25 +126,87 @@ static uint32_t AudioPlayback(const fplAudioDeviceFormat *outFormat, const uint3
 #elif OPT_PLAYBACKMODE == OPT_PLAYBACK_AUDIOSYSTEM_ONLY
 	// @FIXME(final): Fix hearable error, when the audio stream has finished playing and will repeat
 	result = AudioSystemWriteFrames(&audioDemo->audioSys, outputSamples, outFormat, maxFrameCount);
+#elif OPT_PLAYBACKMODE == OPT_PLAYBACK_DECODEBUFFER_ONLY
+
+	uint32_t frameSize = fplGetAudioFrameSizeInBytes(outFormat->type, outFormat->channels);
+
+	uint32_t availableBytes = 0;
+	TPCircularBufferData tail = TPCircularBufferTail(&audioDemo->decodeBuffer, &availableBytes);
+	if((availableBytes % frameSize) == 0) {
+		uint32_t availableFrames = fplMax(0, availableBytes / frameSize);
+		fplAssert(availableFrames >= maxFrameCount);
+
+		uint32_t framesToCopy = maxFrameCount;
+
+		uint32_t totalCopySize = framesToCopy * frameSize;
+		fplAssert((totalCopySize % frameSize) == 0);
+
+		TPCircularBufferRead(&audioDemo->decodeBuffer, outputSamples, totalCopySize);
+
+		result = framesToCopy;
+	}
+
 #endif // OPT_OUTPUT_SAMPLES_SINEWAVE_ONLY
 
 	return(result);
 }
 
-static const char *MapPlotTypeToString(WavePlotType plotType) {
-	switch (plotType) {
-		case WavePlotType_WaveForm:
-			return "Bars";
-		case WavePlotType_Lines:
-			return "Lines";
-		default:
-			return "None";
+static bool DecodeAudio(const uint32_t frameCount, const fplAudioDeviceFormat* format, AudioDemo* demo) {
+	if(frameCount == 0) return(false);
+
+	TPCircularBuffer* circularBuffer = &demo->decodeBuffer;
+
+	uint32_t availableSpace = 0;
+	TPCircularBufferData bufferHead = TPCircularBufferHead(circularBuffer, &availableSpace);
+
+	AudioBuffer* tmpBuffer = &demo->tempBuffer;
+
+	if(availableSpace > 0) {
+		uint32_t frameSize = fplGetAudioFrameSizeInBytes(format->type, format->channels);
+
+		uint32_t numOfAvailableFrames = fplMax(0, availableSpace / frameSize);
+
+		uint32_t framesToWrite = fplMin(numOfAvailableFrames, frameCount);
+
+		uint32_t totalFrameBytes = framesToWrite * frameSize;
+		fplAssert(totalFrameBytes <= tmpBuffer->bufferSize);
+
+		uint32_t writtenFrames = AudioSystemWriteFrames(&demo->audioSys, tmpBuffer->samples, format, framesToWrite);
+
+		// The amount of actual written frames may be less than the frames we want to get written
+		totalFrameBytes = writtenFrames * frameSize;
+
+		bool written = TPCircularBufferWrite(circularBuffer, tmpBuffer->samples, totalFrameBytes);
+		assert(written);
+
+		return(true);
+	}
+
+	return(false);
+}
+
+static void AudioDecodeThread(const fplThreadHandle* thread, void* rawData) {
+	AudioDemo* demo = (AudioDemo*)rawData;
+
+	uint64_t pollDelay = 10;
+
+	AudioFrameIndex framesToDecode = fplGetAudioBufferSizeInFrames(demo->targetAudioFormat.sampleRate, 100);
+
+	uint64_t startTime = fplGetTimeInMillisecondsLP();
+	while(!demo->isDecodeThreadStopped) {
+		uint64_t deltaTime = fplGetTimeInMillisecondsLP() - startTime;
+		if(deltaTime >= pollDelay) {
+			startTime = fplGetTimeInMillisecondsLP();
+			DecodeAudio(1024, &demo->targetAudioFormat, demo);
+		} else {
+			fplThreadSleep(10);
+		}
 	}
 }
 
-static void UpdateTitle(AudioDemo *demo) {
+static void UpdateTitle(AudioDemo* demo) {
 	char titleBuffer[256];
-	fplFormatString(titleBuffer, fplArrayCount(titleBuffer), "FPL Demo | Audio [Plot: %s, Points: %d]", MapPlotTypeToString(demo->plotType), demo->plotCount);
+	fplFormatString(titleBuffer, fplArrayCount(titleBuffer), "FPL Demo | Audio");
 	fplSetWindowTitle(titleBuffer);
 }
 
@@ -171,7 +234,7 @@ static void RenderLine(const float x0, const float y0, const float x1, const flo
 	glColor4f(1, 1, 1, 1);
 }
 
-static void Render(AudioDemo *demo, const int screenW, const int screenH) {
+static void Render(AudioDemo* demo, const int screenW, const int screenH) {
 	uint32_t channelCount = demo->audioSys.targetFormat.channels;
 
 	float w = (float)screenW;
@@ -197,21 +260,24 @@ static void Render(AudioDemo *demo, const int screenW, const int screenH) {
 	RenderRectangle(areaPos.x, areaPos.y, areaPos.x + areaDim.w, areaPos.y + areaDim.h, (Vec4f) { 1, 0, 0, 1 }, 1.0f);
 }
 
-int main(int argc, char **args) {
+int main(int argc, char** args) {
+	TPCircularBufferUnitTest();
+
+
+
+
 	size_t fileCount = argc >= 2 ? argc - 1 : 0;
-	const char **files = (fileCount > 0) ? (const char **)args + 1 : fpl_null;
+	const char** files = (fileCount > 0) ? (const char**)args + 1 : fpl_null;
 	bool forceSineWave = false;
 
 	// Always sine-wave
 	//fileCount = 0;
 	//forceSineWave = true;
 
-	AudioDemo *demo = (AudioDemo *)fplMemoryAllocate(sizeof(AudioDemo));
+	AudioDemo* demo = (AudioDemo*)fplMemoryAllocate(sizeof(AudioDemo));
 	demo->sineWave.frequency = 440;
 	demo->sineWave.toneVolume = 0.25f;
 	demo->sineWave.duration = 0.5;
-	demo->plotType = WavePlotType_WaveForm;
-	demo->plotCount = 512;
 
 	int result = -1;
 
@@ -240,16 +306,16 @@ int main(int argc, char **args) {
 	settings.audio.stopAuto = false;
 
 	// Find audio device
-	if (!fplPlatformInit(fplInitFlags_Audio, &settings)) {
+	if(!fplPlatformInit(fplInitFlags_Audio, &settings)) {
 		goto done;
 	}
 
 	const uint32_t targetFrameRateMs = (uint32_t)ceil(1000.0 / 60.0);
 
 	const uint32_t maxAudioDeviceCount = 64;
-	fplAudioDeviceInfo *audioDeviceInfos = fplMemoryAllocate(sizeof(fplAudioDeviceInfo) * maxAudioDeviceCount);
+	fplAudioDeviceInfo* audioDeviceInfos = fplMemoryAllocate(sizeof(fplAudioDeviceInfo) * maxAudioDeviceCount);
 	uint32_t deviceCount = fplGetAudioDevices(audioDeviceInfos, maxAudioDeviceCount);
-	if (deviceCount > 0) {
+	if(deviceCount > 0) {
 		// Use first audio device in settings
 		settings.audio.targetDevice = audioDeviceInfos[0];
 		// @TODO(final): Fix weird space after line break
@@ -259,12 +325,12 @@ int main(int argc, char **args) {
 	fplPlatformRelease();
 
 	// Initialize the platform with audio enabled and the settings
-	if (!fplPlatformInit(fplInitFlags_All, &settings)) {
+	if(!fplPlatformInit(fplInitFlags_All, &settings)) {
 		goto done;
 	}
 
 	// Initialize OpenGL
-	if (!fglLoadOpenGL(true))
+	if(!fglLoadOpenGL(true))
 		goto done;
 
 	glDisable(GL_DEPTH_TEST);
@@ -274,21 +340,47 @@ int main(int argc, char **args) {
 	glEnable(GL_BLEND);
 	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-	fplAudioDeviceFormat targetAudioFormat = fplZeroInit;
-	fplGetAudioHardwareFormat(&targetAudioFormat);
+	fplGetAudioHardwareFormat(&demo->targetAudioFormat);
 
 	// You can overwrite the client read callback and user data if you want to
 	fplSetAudioClientReadCallback(AudioPlayback, demo);
 
-	const fplSettings *currentSettings = fplGetCurrentSettings();
+	const fplSettings* currentSettings = fplGetCurrentSettings();
+
+	AudioFrameIndex decodeBufferFrames = fplGetAudioBufferSizeInFrames(demo->targetAudioFormat.sampleRate, 2000);
 
 	// Init audio data
-	if (InitAudioData(&targetAudioFormat, &demo->audioSys, files, fileCount, forceSineWave, &demo->sineWave)) {
+	if(InitAudioData(&demo->targetAudioFormat, decodeBufferFrames, &demo->audioSys, files, fileCount, forceSineWave, &demo->sineWave)) {
+		// Init decode buffer and read some frames at the very start
+		uint32_t decodeBufferSize = fplGetAudioBufferSizeInBytes(demo->targetAudioFormat.type, demo->targetAudioFormat.channels, decodeBufferFrames);
+		bool bufferInitRes = TPCircularBufferInit(&demo->decodeBuffer, decodeBufferSize, true);
+		if(!bufferInitRes) {
+			goto done;
+		}
+
+		// Allocate temporary audio buffer
+		AudioFormat tempBufferFormat = fplZeroInit;
+		tempBufferFormat.channels = demo->targetAudioFormat.channels;
+		tempBufferFormat.format = demo->targetAudioFormat.type;
+		tempBufferFormat.sampleRate = demo->targetAudioFormat.sampleRate;
+		bufferInitRes = AllocateAudioBuffer(&demo->audioSys, &demo->tempBuffer, &tempBufferFormat, decodeBufferFrames);
+		if(!bufferInitRes) {
+			goto done;
+		}
+
+		// Decode one buffer worth of frames at the very start
+		AudioFrameIndex initialFrameDecodeCount = fplGetAudioBufferSizeInFrames(demo->targetAudioFormat.sampleRate, 1000);
+		fplAssert(decodeBufferFrames >= initialFrameDecodeCount);
+		DecodeAudio(initialFrameDecodeCount, &demo->targetAudioFormat, demo);
+
+		// Start decoding thread
+		demo->decodeThread = fplThreadCreate(AudioDecodeThread, demo);
+
 		// Start audio playback (This will start calling clientReadCallback regulary)
-		if (fplPlayAudio() == fplAudioResultType_Success) {
+		if(fplPlayAudio() == fplAudioResultType_Success) {
 			// Print output infos
-			const char *outDriver = fplGetAudioDriverString(currentSettings->audio.driver);
-			const char *outFormat = fplGetAudioFormatTypeString(demo->audioSys.targetFormat.format);
+			const char* outDriver = fplGetAudioDriverString(currentSettings->audio.driver);
+			const char* outFormat = fplGetAudioFormatTypeString(demo->audioSys.targetFormat.format);
 			uint32_t outSampleRate = demo->audioSys.targetFormat.sampleRate;
 			uint32_t outChannels = demo->audioSys.targetFormat.channels;
 			fplConsoleFormatOut("Playing %lu audio sources (%s, %s, %lu Hz, %lu channels)\n",
@@ -302,26 +394,30 @@ int main(int argc, char **args) {
 
 			// Loop
 			double lastTime = fplGetTimeInSecondsHP();
-			while (fplWindowUpdate()) {
+			while(fplWindowUpdate()) {
 				fplEvent ev;
-				while (fplPollEvent(&ev)) {
-					if (ev.type == fplEventType_Keyboard) {
-						if (ev.keyboard.type == fplKeyboardEventType_Button) {
-							if (ev.keyboard.buttonState == fplButtonState_Release) {
+				while(fplPollEvent(&ev)) {
+					if(ev.type == fplEventType_Keyboard) {
+						if(ev.keyboard.type == fplKeyboardEventType_Button) {
+							if(ev.keyboard.buttonState == fplButtonState_Release) {
 								fplKey key = ev.keyboard.mappedKey;
-								if (key == fplKey_P) {
+
+#if 0
+								if(key == fplKey_P) {
 									demo->plotType = (demo->plotType + 1) % WavePlotType_Count;
-								} else if (key == fplKey_Add) {
+								} else if(key == fplKey_Add) {
 									demo->plotCount *= 2;
-									if (demo->plotCount > 2048) {
+									if(demo->plotCount > 2048) {
 										demo->plotCount = 2048;
 									}
-								} else if (key == fplKey_Substract) {
+								} else if(key == fplKey_Substract) {
 									demo->plotCount /= 2;
-									if (demo->plotCount < 8) {
+									if(demo->plotCount < 8) {
 										demo->plotCount = 8;
 									}
 								}
+#endif
+
 								UpdateTitle(demo);
 							}
 						}
@@ -342,21 +438,30 @@ int main(int argc, char **args) {
 
 			// Stop audio playback
 			fplStopAudio();
-		}
-
-		// Release audio data
-		AudioSystemShutdown(&demo->audioSys);
-	}
+					}
+				}
 
 	result = 0;
 
 done:
+	// Wait for decoding thread to stop
+	demo->isDecodeThreadStopped = 1;
+	fplThreadWaitForOne(demo->decodeThread, FPL_TIMEOUT_INFINITE);
+	fplThreadTerminate(demo->decodeThread);
+
+	// Release audio buffers
+	FreeAudioBuffer(&demo->audioSys, &demo->tempBuffer);
+	TPCircularBufferCleanup(&demo->decodeBuffer);
+
+	// Release audio system
+	AudioSystemShutdown(&demo->audioSys);
+
 	fglUnloadOpenGL();
 
 	fplPlatformRelease();
 
-	if (demo)
+	if(demo)
 		fplMemoryFree(demo);
 
 	return(result);
-}
+			}

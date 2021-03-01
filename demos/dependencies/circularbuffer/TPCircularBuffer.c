@@ -33,6 +33,9 @@
 #include <stdlib.h>
 #include <assert.h>
 
+#define TPMin(a, b) ((a) < (b) ? (a) : (b))
+#define TPMax(a, b) ((a) > (b) ? (a) : (b))
+
 #define _isPowerOfTwo(value) (((value) != 0) && (((value) & (~(value) + 1)) == (value)))
 
 static uint32_t _nextPowerOfTwo(const uint32_t input) {
@@ -61,79 +64,386 @@ static uint32_t _roundToPowerOfTwo(const uint32_t input) {
 #if defined(WIN32) || defined(_WIN32) || defined(__WIN32__) || defined(__NT__)
 
 
-extern bool _TPCircularBufferInit(TPCircularBuffer* buffer, uint32_t length, size_t structSize) {
+extern bool TPCircularBufferInit(TPCircularBuffer* buffer, uint32_t length, bool allowMirror) {
 	assert(length > 0);
-
-	if(structSize != sizeof(TPCircularBuffer)) {
-		fprintf(stderr, "TPCircularBuffer: Header version mismatch. Check for old versions of TPCircularBuffer in your project\n");
-		abort();
-	}
 
 	// Get length in multiple of page-sizes
 	SYSTEM_INFO sysInfo;
 	GetSystemInfo(&sysInfo);
-	uint32_t roundedSize = (length + sysInfo.dwPageSize - 1) / sysInfo.dwPageSize * sysInfo.dwPageSize;
+	uint32_t pageSize = sysInfo.dwPageSize;
 
-	uint8_t* blockAddress;
-	HANDLE fileHandle;
+	uint8_t* blockAddress = NULL;
+	HANDLE fileHandle = NULL;
+	uint32_t blockLength = length;
 
-	// Keep trying until we get our buffer, needed to handle race conditions
-	int retries = 3;
-	while(retries-- > 0) {
-		// Create mapped file with the length of the buffer
-		fileHandle = CreateFileMappingA(INVALID_HANDLE_VALUE, 0, PAGE_READWRITE, 0, roundedSize * 2, NULL);
-		if(fileHandle == INVALID_HANDLE_VALUE) {
-			// Failed, we cannot continue
-			break;
-		}
+	if(allowMirror) {
+		uint32_t roundedSize = (length + pageSize - 1) / pageSize * pageSize;
 
-		// Reserve two memory of twice the length of the buffer
-		blockAddress = (uint8_t*)VirtualAlloc(NULL, roundedSize * 2, MEM_RESERVE, PAGE_NOACCESS);
-		if(blockAddress == NULL) {
-			// Failed, try again
+		// Keep trying until we get our buffer, needed to handle race conditions
+		int retries = 10;
+		while(retries-- > 0) {
+			// Create mapped file with the length of the buffer
+			fileHandle = CreateFileMappingA(INVALID_HANDLE_VALUE, 0, PAGE_READWRITE, 0, roundedSize * 2, NULL);
+			if(fileHandle == INVALID_HANDLE_VALUE) {
+				// Failed, we cannot continue
+				break;
+			}
+
+			// Reserve two memory of twice the length of the buffer
+			blockAddress = (uint8_t*)VirtualAlloc(NULL, roundedSize * 2, MEM_RESERVE, PAGE_NOACCESS);
+			if(blockAddress == NULL) {
+				// Failed, try again
+				CloseHandle(fileHandle);
+				continue;
+			}
+
+			// Release the full range immediately, but retain the address for the re-mapping
+			VirtualFree(blockAddress, 0, MEM_FREE);
+
+			// Re-map both buffers to both buffers (these may fail, when the OS already used our memory elsewhere)
+			if((MapViewOfFileEx(fileHandle, FILE_MAP_ALL_ACCESS, 0, 0, roundedSize, blockAddress) == blockAddress) &&
+				(MapViewOfFileEx(fileHandle, FILE_MAP_ALL_ACCESS, 0, 0, roundedSize, blockAddress + roundedSize) == blockAddress + roundedSize)) {
+				 // Success, we can use the blockAddress as our base-ptr
+				blockLength = roundedSize;
+				break;
+			}
+
+			// Failed cleanup and try again
 			CloseHandle(fileHandle);
-			continue;
+			fileHandle = NULL;
+			blockAddress = NULL;
 		}
-
-		// Release the full range immediately, but retain the address for the re-mapping
-		VirtualFree(blockAddress, 0, MEM_FREE);
-
-		// Re-map both buffers to both buffers (these may fail, when the OS already used our memory elsewhere)
-		if((MapViewOfFileEx(fileHandle, FILE_MAP_ALL_ACCESS, 0, 0, roundedSize, blockAddress) == blockAddress) ||
-		   (MapViewOfFileEx(fileHandle, FILE_MAP_ALL_ACCESS, 0, 0, roundedSize, (blockAddress + roundedSize))) == (blockAddress + roundedSize)) {
-			// Success, we can use the blockAddress as our base-ptr
-			break;
-		}
-
-		// Failed cleanup and try again
-		CloseHandle(fileHandle);
-		fileHandle = NULL;
-		blockAddress = NULL;
 	}
+
+	ZeroMemory(buffer, sizeof(TPCircularBuffer));
 
 	if(blockAddress != NULL) {
-		ZeroMemory(buffer, sizeof(TPCircularBuffer));
-		buffer->length = roundedSize;
+		// Got a mirror block address
+		buffer->isMirror = 1;
+		buffer->length = blockLength;
 		buffer->buffer = (void*)blockAddress;
-		buffer->fillCount = 0;
-		buffer->head = buffer->tail = 0;
 		buffer->fileHandle = fileHandle;
 		return(true);
-	} else {
-		return(false);
 	}
+
+	// Requires wrapping
+	void* wrapMemory = VirtualAlloc(NULL, blockLength, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+	buffer->isMirror = 0;
+	buffer->length = blockLength;
+	buffer->buffer = wrapMemory;
+
+	return(true);
 }
 
 extern void TPCircularBufferCleanup(TPCircularBuffer* buffer) {
-	if(buffer->buffer != NULL) {
-		UnmapViewOfFile(buffer->buffer);
-		UnmapViewOfFile((uint8_t *)buffer->buffer + buffer->length);
-		VirtualFree(buffer->buffer, buffer->length * 2, MEM_RELEASE);
-	}
-	if(buffer->fileHandle != NULL) {
-		CloseHandle(buffer->fileHandle);
+	if(buffer->isMirror) {
+		if(buffer->buffer != NULL) {
+			UnmapViewOfFile(buffer->buffer);
+			UnmapViewOfFile((uint8_t*)buffer->buffer + buffer->length);
+			VirtualFree(buffer->buffer, buffer->length * 2, MEM_RELEASE);
+		}
+		if(buffer->fileHandle != NULL) {
+			CloseHandle(buffer->fileHandle);
+		}
+	} else {
+		if(buffer->buffer != NULL)
+			VirtualFree(buffer->buffer, 0, MEM_RELEASE);
 	}
 	ZeroMemory(buffer, sizeof(TPCircularBuffer));
+}
+
+extern TPCircularBufferData TPCircularBufferTail(TPCircularBuffer* buffer, uint32_t* availableBytes) {
+	TPCircularBufferData result;
+	ZeroMemory(&result, sizeof(result));
+
+	uint32_t fillCount = atomicRead(&buffer->fillCount);
+
+	if(fillCount > 0) {
+		if((buffer->tail + fillCount) > buffer->length) {
+			result.lengthOfFirst = buffer->length - buffer->tail;
+			result.first = (uint8_t*)buffer->buffer + buffer->tail;
+			result.lengthOfSecond = fillCount - result.lengthOfFirst;
+			result.second = (uint8_t*)buffer->buffer + ((buffer->tail + result.lengthOfFirst) % buffer->length);
+			result.isDoubleBuffer = 1;
+		} else {
+			result.lengthOfFirst = fillCount;
+			result.first = (uint8_t*)buffer->buffer + buffer->tail;
+			result.isDoubleBuffer = 0;
+		}
+	}
+
+	*availableBytes = fillCount;
+	return(result);
+}
+
+extern TPCircularBufferData TPCircularBufferHead(TPCircularBuffer* buffer, uint32_t* availableBytes) {
+	TPCircularBufferData result;
+	ZeroMemory(&result, sizeof(result));
+
+	uint32_t available = (buffer->length - atomicRead(&buffer->fillCount));
+
+	if(available > 0) {
+		result.lengthOfFirst = TPMin(available, buffer->length - buffer->head);
+		result.first = (uint8_t*)buffer->buffer + buffer->head;
+		if(result.lengthOfFirst < available) {
+			result.lengthOfSecond = TPMax(0, available - result.lengthOfFirst);
+			result.second = (uint8_t*)buffer->buffer;
+			result.isDoubleBuffer = 1;
+		}
+	}
+
+	*availableBytes = available;
+	return(result);
+}
+
+inline void TPCircularBufferProduce(TPCircularBuffer* buffer, uint32_t amount) {
+	buffer->head = (buffer->head + amount) % buffer->length;
+	atomicFetchAdd(&buffer->fillCount, (int)amount);
+	assert(buffer->fillCount <= (int32_t)buffer->length);
+}
+
+
+inline void TPCircularBufferConsume(TPCircularBuffer* buffer, uint32_t amount) {
+	buffer->tail = (buffer->tail + amount) % buffer->length;
+	atomicFetchAdd(&buffer->fillCount, -(int)amount);
+	assert(buffer->fillCount >= 0);
+}
+
+extern bool TPCircularBufferWrite(TPCircularBuffer* buffer, const void* src, uint32_t len) {
+	uint32_t space;
+	TPCircularBufferData headData = TPCircularBufferHead(buffer, &space);
+	if(space < len) return false;
+
+	if(!headData.isDoubleBuffer) {
+		assert(headData.lengthOfFirst >= len);
+		memcpy(headData.first, src, len);
+	} else {
+		uint32_t r = len;
+		uint32_t leftCopy = TPMin(r, headData.lengthOfFirst);
+		if(leftCopy > 0) {
+			memcpy(headData.first, src, leftCopy);
+			r -= leftCopy;
+		}
+		uint32_t rightCopy = TPMin(r, headData.lengthOfSecond);
+		if(rightCopy > 0) {
+			memcpy(headData.second, (uint8_t*)src + leftCopy, rightCopy);
+			r -= rightCopy;
+		}
+		assert(r == 0);
+	}
+
+	TPCircularBufferProduce(buffer, len);
+
+	return(true);
+}
+
+extern bool TPCircularBufferRead(TPCircularBuffer* buffer, void* dst, const uint32_t len) {
+	uint32_t fillCount;
+	TPCircularBufferData tail = TPCircularBufferTail(buffer, &fillCount);
+	if(fillCount < len) return(false);
+
+	if(!tail.isDoubleBuffer) {
+		memcpy(dst, tail.first, len);
+	} else {
+		uint32_t x = len;
+		uint32_t left = TPMin(x, tail.lengthOfFirst);
+		if(left > 0) {
+			assert((left % 4) == 0);
+			memcpy((uint8_t*)dst, tail.first, left);
+			x -= left;
+		}
+		uint32_t right = TPMin(x, tail.lengthOfSecond);
+		if(right > 0) {
+			assert((right % 4) == 0);
+			memcpy((uint8_t*)dst + left, tail.second, right);
+			x -= right;
+		}
+		assert(x == 0);
+	}
+
+	TPCircularBufferConsume(buffer, len);
+}
+
+extern void TPCircularBufferClear(TPCircularBuffer* buffer) {
+	uint32_t fillCount;
+	TPCircularBufferTail(buffer, &fillCount);
+	if(fillCount > 0) {
+		TPCircularBufferConsume(buffer, fillCount);
+	}
+}
+
+void assertBytes(const uint8_t* data, const uint8_t test, const uint32_t offset, const uint32_t len) {
+	for(uint32_t i = 0; i < len; ++i) {
+		uint32_t p = offset + i;
+		assert(data[p] == test);
+	}
+}
+
+extern void TPCircularBufferUnitTest() {
+	TPCircularBuffer buffer;
+	bool res = TPCircularBufferInit(&buffer, 128, true);
+	assert(res);
+
+	// Validate initial buffer
+	assert(buffer.length == 128);
+	assert(buffer.head == 0);
+	assert(buffer.tail == 0);
+	assert(buffer.fillCount == 0);
+	assert(!buffer.isMirror);
+
+	// Validate initial head
+	uint32_t writeAvailable = 0;
+	TPCircularBufferData head = TPCircularBufferHead(&buffer, &writeAvailable);
+	assert(writeAvailable == 128);
+	assert(!head.isDoubleBuffer);
+	assert(head.first == buffer.buffer);
+	assert(head.lengthOfFirst == buffer.length);
+
+	// Validate initial tail
+	uint32_t readAvailable = 0;
+	TPCircularBufferData tail = TPCircularBufferTail(&buffer, &readAvailable);
+	assert(readAvailable == 0);
+	assert(!tail.isDoubleBuffer);
+	assert(tail.first == NULL);
+	assert(tail.lengthOfFirst == 0);
+
+	uint8_t data[1024];
+
+	// Write 32-bytes 0xAA
+	memset(data, 0xAA, 1024);
+	res = TPCircularBufferWrite(&buffer, &data, 32);
+	assert(res);
+	assertBytes(buffer.buffer, 0xAA, 0, 32);
+
+	// Validate buffer (0xAA)
+	assert(buffer.head == 32);
+	assert(buffer.tail == 0);
+	assert(buffer.fillCount == 32);
+
+	// Validate head (0xAA)
+	head = TPCircularBufferHead(&buffer, &writeAvailable);
+	assert(writeAvailable == 32 + 64);
+	assert(!head.isDoubleBuffer);
+	assert(head.first == (uint8_t*)buffer.buffer + 32);
+	assert(head.lengthOfFirst == (buffer.length - 32));
+
+	// Write 64-bytes 0xBB
+	memset(data, 0xBB, 1024);
+	res = TPCircularBufferWrite(&buffer, &data, 64);
+	assert(res);
+	assertBytes(buffer.buffer, 0xAA, 0, 32);
+	assertBytes(buffer.buffer, 0xBB, 32, 64);
+
+	// Validate buffer (0xBB)
+	assert(buffer.head == (32 + 64));
+	assert(buffer.tail == 0);
+	assert(buffer.fillCount == (32 + 64));
+
+	// Validate head (0xBB)
+	head = TPCircularBufferHead(&buffer, &writeAvailable);
+	assert(writeAvailable == 32);
+	assert(!head.isDoubleBuffer);
+	assert(head.first == (uint8_t*)buffer.buffer + 32 + 64);
+	assert(head.lengthOfFirst == (buffer.length - 32 - 64));
+
+	// Write 16-bytes 0xCC
+	memset(data, 0xCC, 1024);
+	res = TPCircularBufferWrite(&buffer, &data, 16);
+	assert(res);
+	assertBytes(buffer.buffer, 0xAA, 0, 32);
+	assertBytes(buffer.buffer, 0xBB, 32, 64);
+	assertBytes(buffer.buffer, 0xCC, 32 + 64, 16);
+
+	// Validate buffer (0xCC)
+	assert(buffer.head == (32 + 64 + 16));
+	assert(buffer.tail == 0);
+	assert(buffer.fillCount == (32 + 64 + 16));
+
+	// Validate head (0xCC)
+	head = TPCircularBufferHead(&buffer, &writeAvailable);
+	assert(writeAvailable == 16);
+	assert(!head.isDoubleBuffer);
+	assert(head.first == (uint8_t*)buffer.buffer + 32 + 64 + 16);
+	assert(head.lengthOfFirst == (buffer.length - 32 - 64 - 16));
+
+	// Try to write 32-bytes 0xDD
+	memset(data, 0xCC, 1024);
+	res = TPCircularBufferWrite(&buffer, &data, 32);
+	assert(!res);
+
+	// Validate tail (96 bytes available)
+	tail = TPCircularBufferTail(&buffer, &readAvailable);
+	assert(readAvailable == 32 + 64 + 16);
+	assert(!tail.isDoubleBuffer);
+	assert(tail.first == buffer.buffer);
+	assert(tail.lengthOfFirst == 32 + 64 + 16);
+
+	// Validate buffer
+	assert(buffer.head == 64 + 32 + 16);
+	assert(buffer.tail == 0);
+	assert(buffer.fillCount == 64 + 32 + 16);
+
+	// Consume 16 bytes
+	tail = TPCircularBufferTail(&buffer, &readAvailable);
+	TPCircularBufferConsume(&buffer, 16);
+
+	// Validate tail (96 bytes available)
+	tail = TPCircularBufferTail(&buffer, &readAvailable);
+	assert(readAvailable == 96);
+	assert(!tail.isDoubleBuffer);
+	assert(tail.first == (uint8_t*)buffer.buffer + 16);
+	assert(tail.lengthOfFirst == 96);
+
+	// Write 32-bytes 0xDD
+	memset(data, 0xDD, 1024);
+	res = TPCircularBufferWrite(&buffer, &data, 32);
+	assert(res);
+	assertBytes(buffer.buffer, 0xDD, 0, 16); // Data is overidden
+	assertBytes(buffer.buffer, 0xAA, 16, 16);
+	assertBytes(buffer.buffer, 0xBB, 32, 64);
+	assertBytes(buffer.buffer, 0xCC, 32 + 64, 16);
+	assertBytes(buffer.buffer, 0xDD, 32 + 64 + 16, 16); // Written to the very end
+
+	// Validate buffer
+	assert(buffer.head == 16); // Head is wrapped
+	assert(buffer.tail == 16);
+	assert(buffer.fillCount == 64 + 32 + 32);
+
+	// Validate head (0xDD)
+	head = TPCircularBufferHead(&buffer, &writeAvailable);
+	assert(writeAvailable == 0);
+	assert(!head.isDoubleBuffer);
+	assert(head.first == NULL);
+	assert(head.lengthOfFirst == 0);
+
+	// Validate tail (128 bytes available)
+	tail = TPCircularBufferTail(&buffer, &readAvailable);
+	assert(readAvailable == 128);
+	assert(tail.isDoubleBuffer);
+	assert(tail.first == (uint8_t*)buffer.buffer + 16);
+	assert(tail.lengthOfFirst == 32 + 64 + 16);
+	assert(tail.lengthOfSecond == 16);
+
+	// Consume 64 bytes
+	tail = TPCircularBufferTail(&buffer, &readAvailable);
+	TPCircularBufferConsume(&buffer, 64);
+
+	// Validate head (64 bytes available)
+	head = TPCircularBufferHead(&buffer, &writeAvailable);
+	assert(writeAvailable == 64);
+	assert(!head.isDoubleBuffer);
+	assert(head.first == (uint8_t*)buffer.buffer + 16);
+	assert(head.lengthOfFirst == 64);
+
+	// Validate tail (64 bytes available)
+	tail = TPCircularBufferTail(&buffer, &readAvailable);
+	assert(readAvailable == 64);
+	assert(tail.isDoubleBuffer);
+	assert(tail.first == (uint8_t*)buffer.buffer + 16 + 64);
+	assert(tail.lengthOfFirst == 32 + 16);
+	assert(tail.lengthOfSecond == 16);
+
+	TPCircularBufferCleanup(&buffer);
 }
 
 #elif __APPLE__

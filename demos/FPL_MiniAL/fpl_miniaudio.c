@@ -274,7 +274,7 @@ int main(int argc, char **args) {
 	fplAudioDeviceFormat targetDeviceFormat;
 	fplConvertAudioTargetFormatToDeviceFormat(&targetFormat, &targetDeviceFormat);
 	
-	if (!InitAudioData(&targetDeviceFormat, &audioContext->system, files, fileCount, forceSineWave, &audioContext->sineWave)){
+	if (!InitAudioData(&targetDeviceFormat, MAX_AUDIO_STATIC_BUFFER_FRAME_COUNT, &audioContext->system, files, fileCount, forceSineWave, &audioContext->sineWave)){
 		fplConsoleFormatError("Failed initializing audio system!\n");
 		goto releaseResources;
 	}

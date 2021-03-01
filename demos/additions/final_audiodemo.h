@@ -5,8 +5,8 @@
 #include "final_audio.h"
 #include "final_audiosystem.h"
 
-static bool InitAudioData(const fplAudioDeviceFormat *targetFormat, AudioSystem *audioSys, const char **files, const size_t fileCount, const bool forceSineWave, const AudioSineWaveData *sineWave) {
-	if (!AudioSystemInit(audioSys, targetFormat)) {
+static bool InitAudioData(const fplAudioDeviceFormat *targetFormat, const AudioFrameIndex maxFrameCount, AudioSystem *audioSys, const char **files, const size_t fileCount, const bool forceSineWave, const AudioSineWaveData *sineWave) {
+	if (!AudioSystemInit(audioSys, targetFormat, maxFrameCount)) {
 		return false;
 	}
 

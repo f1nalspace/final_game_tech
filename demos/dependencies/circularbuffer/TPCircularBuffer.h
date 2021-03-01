@@ -71,160 +71,116 @@ struct IUnknown;
 #	error "Unsupported compiler/platform"
 #endif
 
-
-
 #ifdef __cplusplus
 extern "C" {
 #endif
-    
-typedef struct {
+
+	typedef struct {
 #if defined(_WIN32)
-	uint8_t filePadding[56];
-    void* fileHandle;
+		uint8_t filePadding[56];
+		void* fileHandle;
 #endif
-	uint8_t bufferPadding[56];
-    void  *buffer;
 
-    uint8_t lengthPadding[60];
-    uint32_t length;
+		uint8_t bufferPadding[56];
+		void* buffer;
 
-    uint8_t tailPadding[60];
-    volatile uint32_t tail;
+		uint8_t lengthPadding[60];
+		uint32_t length;
 
-    uint8_t headPadding[60];
-    volatile uint32_t head;
+		uint8_t tailPadding[60];
+		volatile uint32_t tail;
 
-    uint8_t fillCountPadding[60];
-    volatile int32_t fillCount;
-} TPCircularBuffer;
+		uint8_t headPadding[60];
+		volatile uint32_t head;
 
-/*!
- * Initialise buffer
- *
- *  Note that the length is advisory only: Because of the way the
- *  memory mirroring technique works, the true buffer length will
- *  be multiples of the device page size (e.g. 4096 bytes)
- *
- *  If you intend to use the AudioBufferList utilities, you should
- *  always allocate a bit more space than you need for pure audio
- *  data, so there's room for the metadata. How much extra is required
- *  depends on how many AudioBufferList structures are used, which is
- *  a function of how many audio frames each buffer holds. A good rule
- *  of thumb is to add 15%, or at least another 2048 bytes or so.
- *
- * @param buffer Circular buffer
- * @param length Length of buffer
- */
-#define TPCircularBufferInit(buffer, length) \
-    _TPCircularBufferInit(buffer, length, sizeof(*buffer))
-extern bool _TPCircularBufferInit(TPCircularBuffer *buffer, uint32_t length, size_t structSize);
+		uint8_t fillCountPadding[60];
+		volatile int32_t fillCount;
 
-/*!
- * Cleanup buffer
- *
- *  Releases buffer resources.
- */
-extern void TPCircularBufferCleanup(TPCircularBuffer *buffer);
+		uint8_t flagsPadding[60];
+		int32_t isMirror;
+	} TPCircularBuffer;
 
-/*!
- * Clear buffer
- *
- *  Resets buffer to original, empty state.
- *
- *  This is safe for use by consumer while producer is accessing 
- *  buffer.
- */
-extern void TPCircularBufferClear(TPCircularBuffer *buffer);
-    
-// Reading (consuming)
+	typedef struct {
+		uint8_t* first;
+		uint8_t* second;
+		uint32_t lengthOfFirst;
+		uint32_t lengthOfSecond;
+		int32_t isDoubleBuffer;
+		int32_t padding;
+	} TPCircularBufferData;
 
-/*!
- * Access end of buffer
- *
- *  This gives you a pointer to the end of the buffer, ready
- *  for reading, and the number of available bytes to read.
- *
- * @param buffer Circular buffer
- * @param availableBytes On output, the number of bytes ready for reading
- * @return Pointer to the first bytes ready for reading, or NULL if buffer is empty
- */
-inline void* TPCircularBufferTail(TPCircularBuffer *buffer, uint32_t* availableBytes) {
-    *availableBytes = atomicRead(&buffer->fillCount);
-    if ( *availableBytes == 0 ) return NULL;
-    return (void*)((char*)buffer->buffer + buffer->tail);
-}
+	/*!
+	 * Initialise buffer
+	 *
+	 *  Note that the length is advisory only: Because of the way the
+	 *  memory mirroring technique works, the true buffer length will
+	 *  be multiples of the device page size (e.g. 4096 bytes)
+	 *
+	 *  If you intend to use the AudioBufferList utilities, you should
+	 *  always allocate a bit more space than you need for pure audio
+	 *  data, so there's room for the metadata. How much extra is required
+	 *  depends on how many AudioBufferList structures are used, which is
+	 *  a function of how many audio frames each buffer holds. A good rule
+	 *  of thumb is to add 15%, or at least another 2048 bytes or so.
+	 *
+	 * @param buffer Circular buffer
+	 * @param length Length of buffer
+	 * @param allowMirror Is memory mirroring allowed or not
+	 */
+	extern bool TPCircularBufferInit(TPCircularBuffer* buffer, uint32_t length, bool allowMirror);
 
-/*!
- * Consume bytes in buffer
- *
- *  This frees up the just-read bytes, ready for writing again.
- *
- * @param buffer Circular buffer
- * @param amount Number of bytes to consume
- */
-inline void TPCircularBufferConsume(TPCircularBuffer *buffer, uint32_t amount) {
-    buffer->tail = (buffer->tail + amount) % buffer->length;
-    atomicFetchAdd(&buffer->fillCount, -(int)amount);
-    assert(buffer->fillCount >= 0);
-}
+	/*!
+	 * Cleanup buffer
+	 *
+	 *  Releases buffer resources.
+	 */
+	extern void TPCircularBufferCleanup(TPCircularBuffer* buffer);
 
-/*!
- * Access front of buffer
- *
- *  This gives you a pointer to the front of the buffer, ready
- *  for writing, and the number of available bytes to write.
- *
- * @param buffer Circular buffer
- * @param availableBytes On output, the number of bytes ready for writing
- * @return Pointer to the first bytes ready for writing, or NULL if buffer is full
- */
-inline void* TPCircularBufferHead(TPCircularBuffer *buffer, uint32_t* availableBytes) {
-    *availableBytes = (buffer->length - atomicRead(&buffer->fillCount));
-    if ( *availableBytes == 0 ) return NULL;
-    return (void*)((char*)buffer->buffer + buffer->head);
-}
-    
-// Writing (producing)
+	/*!
+	 * Clear buffer
+	 *
+	 *  Resets buffer to original, empty state.
+	 *
+	 *  This is safe for use by consumer while producer is accessing
+	 *  buffer.
+	 */
+	extern void TPCircularBufferClear(TPCircularBuffer* buffer);
 
-/*!
- * Produce bytes in buffer
- *
- *  This marks the given section of the buffer ready for reading.
- *
- * @param buffer Circular buffer
- * @param amount Number of bytes to produce
- */
-inline void TPCircularBufferProduce(TPCircularBuffer *buffer, uint32_t amount) {
-    buffer->head = (buffer->head + amount) % buffer->length;
-    atomicFetchAdd(&buffer->fillCount, (int)amount);
-    assert(buffer->fillCount <= (int32_t)buffer->length);
-}
+	// Reading (consuming)
 
-/*!
- * Helper routine to copy bytes to buffer
- *
- *  This copies the given bytes to the buffer, and marks them ready for reading.
- *
- * @param buffer Circular buffer
- * @param src Source buffer
- * @param len Number of bytes in source buffer
- * @return true if bytes copied, false if there was insufficient space
- */
-inline bool TPCircularBufferProduceBytes(TPCircularBuffer *buffer, const void* src, uint32_t len) {
-    uint32_t space;
-    void *ptr = TPCircularBufferHead(buffer, &space);
-    if ( space < len ) return false;
-    memcpy(ptr, src, len);
-    TPCircularBufferProduce(buffer, len);
-    return true;
-}
+	/*!
+	 * Access end of buffer
+	 *
+	 *  This gives you a pointer to the end of the buffer, ready
+	 *  for reading, and the number of available bytes to read.
+	 *
+	 * @param buffer Circular buffer
+	 * @param availableBytes On output, the number of bytes ready for reading
+	 * @return Pointer to the first bytes ready for reading, or NULL if buffer is empty
+	 */
+	extern TPCircularBufferData TPCircularBufferTail(TPCircularBuffer* buffer, uint32_t* availableBytes);
 
-inline void TPCircularBufferClear(TPCircularBuffer* buffer) {
-	uint32_t fillCount;
-	if(TPCircularBufferTail(buffer, &fillCount)) {
-		TPCircularBufferConsume(buffer, fillCount);
-	}
-}
+	
+
+	/*!
+	 * Access front of buffer
+	 *
+	 *  This gives you a pointer to the front of the buffer, ready
+	 *  for writing, and the number of available bytes to write.
+	 *
+	 * @param buffer Circular buffer
+	 * @param availableBytes On output, the number of bytes ready for writing
+	 * @return Pointer to the first bytes ready for writing, or NULL if buffer is full
+	 */
+	extern TPCircularBufferData TPCircularBufferHead(TPCircularBuffer* buffer, uint32_t* availableBytes);
+
+	extern bool TPCircularBufferWrite(TPCircularBuffer* buffer, const void* src, uint32_t len);
+
+	extern bool TPCircularBufferRead(TPCircularBuffer* buffer, void *dst, const uint32_t len);
+
+	extern void TPCircularBufferClear(TPCircularBuffer* buffer);
+
+	extern void TPCircularBufferUnitTest();
 
 #ifdef __cplusplus
 }
