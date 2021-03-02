@@ -16,6 +16,10 @@ Author:
 	Torsten Spaete
 
 Changelog:
+	## 2021-03-02
+	- Removed all broken sample rendering
+	- Introduced audio buffering in preparation for real FFT
+
 	## 2020-02-15
 	- Basic FFT & spectrum rendering
 
@@ -111,7 +115,7 @@ typedef struct AudioDemo {
 	LockFreeRingBuffer decodeBuffer;
 	fplThreadHandle *decodeThread;
 	fplAudioDeviceFormat targetAudioFormat;
-	volatile uint32_t maxPlaybackLatency;
+	volatile uint32_t maxPlaybackFrameLatency;
 	volatile fpl_b32 isDecodeThreadStopped;
 } AudioDemo;
 
@@ -184,12 +188,6 @@ static void Render(AudioDemo *demo, const int screenW, const int screenH) {
 	RenderRectangle(areaPos.x, areaPos.y, areaPos.x + areaDim.w, areaPos.y + areaDim.h, (Vec4f) { 1, 0, 0, 1 }, 1.0f);
 
 #if OPT_PLAYBACKMODE == OPT_PLAYBACK_DECODEBUFFER_ONLY
-	AudioFrameIndex latencyInFrames = fplAtomicLoadU32(&demo->maxPlaybackLatency);
-
-	size_t latencyInBytes = latencyInFrames * fplGetAudioFrameSizeInBytes(demo->targetAudioFormat.type, demo->targetAudioFormat.channels);
-
-	float latencyScale = latencyInBytes / (float)demo->decodeBuffer.length;
-
 	float bufferScale = areaDim.w / (float)demo->decodeBuffer.length;
 
 	uint64_t fillCount = fplAtomicLoadS64(&demo->decodeBuffer.fillCount);
@@ -214,44 +212,42 @@ static void Render(AudioDemo *demo, const int screenW, const int screenH) {
 
 	RenderLine(headPos, areaPos.y - areaDim.h * 0.5f, headPos, areaPos.y + areaDim.h * 1.5f, V4fInit(0.0f, 0.0f, 1.0f, 1.0f), 2.0f);
 	RenderLine(tailPos, areaPos.y - areaDim.h * 0.5f, tailPos, areaPos.y + areaDim.h * 1.5f, V4fInit(0.0f, 1.0f, 0.0f, 1.0f), 2.0f);
-
-	if(!tailWouldWrap) {
-		float latencyOffset = latencyScale * areaDim.w;
-		RenderLine(tailPos, areaPos.y + areaDim.h * 0.5f, tailPos + latencyOffset, areaPos.y + areaDim.h * 0.5f, V4fInit(1.0f, 0.0f, 0.0f, 1.0f), 4.0f);
-	}
 #endif
 }
 
 static uint32_t AudioPlayback(const fplAudioDeviceFormat *outFormat, const uint32_t maxFrameCount, void *outputSamples, void *userData) {
-	fplDebugFormatOut("Requested %lu frames\n", maxFrameCount);
+	//fplDebugFormatOut("Requested %lu frames\n", maxFrameCount);
 
-	AudioDemo *audioDemo = (AudioDemo *)userData;
+	AudioDemo *demo = (AudioDemo *)userData;
 
 	AudioFrameIndex result = 0;
 
 #if OPT_PLAYBACKMODE == OPT_PLAYBACK_SINEWAVE_ONLY
 	result = maxFrameCount;
-	AudioGenerateSineWave(&audioDemo->sineWave, outputSamples, outFormat->type, outFormat->sampleRate, outFormat->channels, maxFrameCount);
+	AudioGenerateSineWave(&demo->sineWave, outputSamples, outFormat->type, outFormat->sampleRate, outFormat->channels, maxFrameCount);
 #elif OPT_PLAYBACKMODE == OPT_PLAYBACK_AUDIOSYSTEM_ONLY
 	// @FIXME(final): Fix hearable error, when the audio stream has finished playing and will repeat
-	result = AudioSystemWriteFrames(&audioDemo->audioSys, outputSamples, outFormat, maxFrameCount);
+	result = AudioSystemWriteFrames(&demo->audioSys, outputSamples, outFormat, maxFrameCount);
 #elif OPT_PLAYBACKMODE == OPT_PLAYBACK_DECODEBUFFER_ONLY
-	fplAtomicExchangeU32(&audioDemo->maxPlaybackLatency, fplMax(fplAtomicLoadU32(&audioDemo->maxPlaybackLatency), maxFrameCount));
+	uint32_t currentPlaybackLatency = fplAtomicLoadU32(&demo->maxPlaybackFrameLatency);
+	fplAtomicExchangeU32(&demo->maxPlaybackFrameLatency, fplMax(currentPlaybackLatency, maxFrameCount));
 
 	size_t frameSize = fplGetAudioFrameSizeInBytes(outFormat->type, outFormat->channels);
 
 	size_t availableBytes = 0;
-	bool hasData = LockFreeRingBufferCanRead(&audioDemo->decodeBuffer, &availableBytes);
+	bool hasData = LockFreeRingBufferCanRead(&demo->decodeBuffer, &availableBytes);
 	if(hasData && (availableBytes % frameSize) == 0) {
 		AudioFrameIndex availableFrames = (AudioFrameIndex)fplMax(0, availableBytes / frameSize);
-		fplAssert(availableFrames >= maxFrameCount);
 
-		AudioFrameIndex framesToCopy = maxFrameCount;
+		// Enable this assert to fire when the decoding is too slow
+		//fplAssert(availableFrames >= maxFrameCount);
+
+		AudioFrameIndex framesToCopy = fplMin(maxFrameCount, availableFrames);
 
 		size_t totalCopySize = framesToCopy * frameSize;
 		fplAssert((totalCopySize % frameSize) == 0);
 
-		bool isRead = LockFreeRingBufferRead(&audioDemo->decodeBuffer, outputSamples, totalCopySize);
+		bool isRead = LockFreeRingBufferRead(&demo->decodeBuffer, outputSamples, totalCopySize);
 		fplAssert(isRead);
 
 		result = framesToCopy;
@@ -276,10 +272,12 @@ static bool DecodeAudio(const uint32_t maxFrameCount, const fplAudioDeviceFormat
 
 	if(canWrite && (availableSpace % frameSize) == 0) {
 		AudioFrameIndex numOfAvailableFrames = (AudioFrameIndex)fplMax(0, availableSpace / frameSize);
-		if(numOfAvailableFrames < maxFrameCount)
-			return(false);
 
-		AudioFrameIndex framesToWrite = maxFrameCount;
+		// Disable this condition to always 100% fill the buffer
+		//if(numOfAvailableFrames < maxFrameCount)
+		//	return(false);
+
+		AudioFrameIndex framesToWrite = fplMin(maxFrameCount, numOfAvailableFrames);
 
 		size_t totalFrameBytes = framesToWrite * frameSize;
 		fplAssert(totalFrameBytes <= tmpBuffer->bufferSize);
@@ -301,22 +299,32 @@ static bool DecodeAudio(const uint32_t maxFrameCount, const fplAudioDeviceFormat
 static void AudioDecodeThread(const fplThreadHandle *thread, void *rawData) {
 	AudioDemo *demo = (AudioDemo *)rawData;
 
-	uint32_t framesDecodeMSecs = 500;
+#if 0
+	AudioFrameIndex framesToDecode = RoundToPowerOfTwo(demo->targetAudioFormat.bufferSizeInFrames);
 
-	AudioFrameIndex framesToDecode = fplGetAudioBufferSizeInFrames(demo->targetAudioFormat.sampleRate, framesDecodeMSecs);
+	// @TODO(final): Compute the delay
+	uint32_t decodeDelayMSecs = 40;
+#else
+	AudioFrameIndex framesToDecode = fplGetAudioBufferSizeInFrames(demo->targetAudioFormat.sampleRate, 250); // A quarter of a second worth of buffer
+	uint32_t decodeDelayMSecs = 250;
+#endif
 
-	LockFreeRingBuffer *circularBuffer = &demo->decodeBuffer;
+#if 0
+	uint32_t currentPlaybackLatency = fplAtomicLoadU32(&demo->maxPlaybackFrameLatency);
+#endif
+
+	LockFreeRingBuffer *circularBuffer = &demo->decodeBuffer;	
 
 	uint64_t startTime = fplGetTimeInMillisecondsLP();
 	while(!demo->isDecodeThreadStopped) {
 		uint64_t deltaTime = fplGetTimeInMillisecondsLP() - startTime;
-		if(deltaTime < framesDecodeMSecs) {
-			fplThreadSleep(10);
+		if(deltaTime < decodeDelayMSecs) {
+			fplThreadYield();
 			continue;
 		}
 		startTime = fplGetTimeInMillisecondsLP();
 		if(!DecodeAudio(framesToDecode, &demo->targetAudioFormat, demo)) {
-			fplThreadSleep(10);
+			fplThreadYield();
 		}
 	}
 }
@@ -407,10 +415,10 @@ int main(int argc, char **args) {
 
 	// Init audio data
 	if(InitAudioData(&demo->targetAudioFormat, &demo->audioSys, files, fileCount, forceSineWave, &demo->sineWave)) {
-		demo->maxPlaybackLatency = demo->targetAudioFormat.bufferSizeInFrames / demo->targetAudioFormat.periods;
+		demo->maxPlaybackFrameLatency = demo->targetAudioFormat.bufferSizeInFrames / demo->targetAudioFormat.periods;
 
 #if OPT_PLAYBACKMODE == OPT_PLAYBACK_DECODEBUFFER_ONLY
-		AudioFrameIndex decodeBufferFrames = fplGetAudioBufferSizeInFrames(demo->targetAudioFormat.sampleRate, 10000);
+		AudioFrameIndex decodeBufferFrames = fplGetAudioBufferSizeInFrames(demo->targetAudioFormat.sampleRate, 5000);
 
 		// Init decode buffer and read some frames at the very start
 		uint32_t decodeBufferSize = fplGetAudioBufferSizeInBytes(demo->targetAudioFormat.type, demo->targetAudioFormat.channels, decodeBufferFrames);
