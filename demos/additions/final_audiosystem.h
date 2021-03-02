@@ -858,11 +858,12 @@ extern AudioFrameIndex AudioSystemWriteFrames(AudioSystem *audioSys, void *outSa
 
 		// Conversion buffer is empty, fill it with new data
 		if (audioSys->conversionBuffer.framesRemaining == 0) {
-			if (!FillConversionBuffer(audioSys, remainingFrames)) {
+			AudioFrameIndex framesToFill = fplMin(audioSys->conversionBuffer.buffer.frameCount, remainingFrames);
+			if (!FillConversionBuffer(audioSys, framesToFill)) {
 				// @NOTE(final): No data available, clear remaining samples to zero (Silent)
 				AudioFrameIndex framesToClear = remainingFrames;
-				size_t destPosition = (frameCount - remainingFrames) * outputSampleStride;
-				size_t clearSize = remainingFrames * outputSampleStride;
+				size_t destPosition = (frameCount - framesToFill) * outputSampleStride;
+				size_t clearSize = framesToFill * outputSampleStride;
 				fplMemoryClear((uint8_t *)outSamples + destPosition, clearSize);
 				remainingFrames -= framesToClear;
 				result += framesToClear;
