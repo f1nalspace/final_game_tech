@@ -25,18 +25,15 @@
     <ClInclude Include="..\additions\final_debug.h">
       <Filter>additions</Filter>
     </ClInclude>
-    <ClInclude Include="..\dependencies\circularbuffer\TPCircularBuffer.h">
-      <Filter>dependencies</Filter>
-    </ClInclude>
     <ClInclude Include="..\additions\final_math.h">
+      <Filter>additions</Filter>
+    </ClInclude>
+    <ClInclude Include="..\additions\final_buffer.h">
       <Filter>additions</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="fpl_audio.c" />
-    <ClCompile Include="..\dependencies\circularbuffer\TPCircularBuffer.c">
-      <Filter>dependencies</Filter>
-    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="additions">
