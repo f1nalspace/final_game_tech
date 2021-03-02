@@ -328,7 +328,7 @@ extern int GameMain(const GameConfiguration &config) {
 	if (!fplGetAudioHardwareFormat(&targetAudioFormat)) {
 		wasError = true;
 	}
-	if(!AudioSystemInit(&audioSys, &targetAudioFormat, MAX_AUDIO_STATIC_BUFFER_FRAME_COUNT)) {
+	if(!AudioSystemInit(&audioSys, &targetAudioFormat)) {
 		wasError = true;
 	}
 

@@ -134,9 +134,9 @@ typedef struct AudioSineWaveData {
 typedef struct AudioSystem {
 	AudioFormat targetFormat;
 	AudioStream conversionBuffer;
-	AudioBuffer dspInBuffer;
-	AudioBuffer dspOutBuffer;
-	AudioBuffer mixingBuffer;
+	AudioStaticBuffer dspInBuffer;
+	AudioStaticBuffer dspOutBuffer;
+	AudioStaticBuffer mixingBuffer;
 	AudioSineWaveData tempWaveData;
 	AudioSources sources;
 	AudioPlayItems playItems;
@@ -144,7 +144,7 @@ typedef struct AudioSystem {
 	bool isShutdown;
 } AudioSystem;
 
-extern bool AudioSystemInit(AudioSystem *audioSys, const fplAudioDeviceFormat *targetFormat, const AudioFrameIndex maxFrameCount);
+extern bool AudioSystemInit(AudioSystem *audioSys, const fplAudioDeviceFormat *targetFormat);
 extern void AudioSystemShutdown(AudioSystem *audioSys);
 
 extern void AudioSystemSetMasterVolume(AudioSystem *audioSys, const float newMasterVolume);
@@ -217,7 +217,7 @@ static void FreeAudioStream(AudioSystem *audioSys, AudioStream *audioStream) {
 	fplClearStruct(audioStream);
 }
 
-extern bool AudioSystemInit(AudioSystem *audioSys, const fplAudioDeviceFormat *targetFormat, const AudioFrameIndex maxFrameCount) {
+extern bool AudioSystemInit(AudioSystem *audioSys, const fplAudioDeviceFormat *targetFormat) {
 	if (audioSys == fpl_null) {
 		return false;
 	}
@@ -232,12 +232,10 @@ extern bool AudioSystemInit(AudioSystem *audioSys, const fplAudioDeviceFormat *t
 	if (!fplMutexInit(&audioSys->playItems.lock)) {
 		return false;
 	}
-	AllocateAudioStream(audioSys, &audioSys->conversionBuffer, &audioSys->targetFormat, maxFrameCount);
-
-	AllocateAudioBuffer(audioSys, &audioSys->mixingBuffer, &audioSys->targetFormat, maxFrameCount);
-	AllocateAudioBuffer(audioSys, &audioSys->dspInBuffer, &audioSys->targetFormat, maxFrameCount);
-	AllocateAudioBuffer(audioSys, &audioSys->dspOutBuffer, &audioSys->targetFormat, maxFrameCount);
-
+	AllocateAudioStream(audioSys, &audioSys->conversionBuffer, &audioSys->targetFormat, MAX_AUDIO_STATIC_BUFFER_FRAME_COUNT);
+	audioSys->mixingBuffer.maxFrameCount = MAX_AUDIO_STATIC_BUFFER_FRAME_COUNT;
+	audioSys->dspInBuffer.maxFrameCount = MAX_AUDIO_STATIC_BUFFER_FRAME_COUNT;
+	audioSys->dspOutBuffer.maxFrameCount = MAX_AUDIO_STATIC_BUFFER_FRAME_COUNT;
 	audioSys->tempWaveData.frequency = 440;
 	audioSys->tempWaveData.toneVolume = 0.25;
 	audioSys->tempWaveData.duration = 0.5;
@@ -804,7 +802,6 @@ static bool FillConversionBuffer(AudioSystem *audioSys, const AudioFrameIndex ma
 	AudioHertz outSampleRate = audioSys->targetFormat.sampleRate;
 	fplAudioFormatType outFormat = audioSys->targetFormat.format;
 
-	// @TODO(final): Rewrite mixing and output shit - we dont need a mixing buffer at all
 	AudioFrameIndex mixFrameCount = MixPlayItems(audioSys, maxFrameCount);
 
 	for (AudioFrameIndex i = 0; i < mixFrameCount; ++i) {
@@ -905,10 +902,6 @@ extern void AudioSystemShutdown(AudioSystem *audioSys) {
 
 		ClearPlayItems(&audioSys->playItems);
 		ReleaseSources(&audioSys->sources);
-
-		FreeAudioBuffer(audioSys, &audioSys->mixingBuffer);
-		FreeAudioBuffer(audioSys, &audioSys->dspInBuffer);
-		FreeAudioBuffer(audioSys, &audioSys->dspOutBuffer);
 
 		FreeAudioStream(audioSys, &audioSys->conversionBuffer);
 
