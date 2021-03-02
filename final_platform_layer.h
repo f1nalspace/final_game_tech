@@ -133,12 +133,14 @@ SOFTWARE.
 	@tableofcontents
 
 	## v0.9.6-beta
-	- New: Added fplAsm macro to handle different inline assembler keywords (clang, gcc, msvc)
-	- New: Added fplAlignAs macro for aligning structures to N-bytes
-	- Fixed: FPL__ERROR, FPL__WARNING, FPL__INFO was not passing the correct function name and line number in some cases
+	[Core]
+	- New[#73]: Added fplAsm macro to handle different inline assembler keywords (clang, gcc, msvc)
+	- New[#75]: Added fplAlignAs macro for aligning structures to N-bytes (clang, gcc, msvc, c++/11)
+	- Fixed[#76]: FPL__ERROR, FPL__WARNING, FPL__INFO was not passing the correct function name and line number in some cases
 
-	- Changed: [Win32] Query QueryPerformanceFrequency for every High-Precision timer calls instead of once per app start
-	- Fixed: [Win32] Removed the manual handling of ALT + F4 shut down of event handling
+	[Win32]
+	- Fixed[#69]: Removed the manual handling of ALT + F4 shut down of event handling
+	- Changed[#72]: Query QueryPerformanceFrequency for every High-Precision timer calls instead of once per app start
 
 	## v0.9.5-beta
 	- New: Added enum fplAudioDefaultFields
