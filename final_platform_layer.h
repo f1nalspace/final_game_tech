@@ -134,6 +134,7 @@ SOFTWARE.
 
 	## v0.9.6-beta
 	- New: Added fplAsm macro to handle different inline assembler keywords (clang, gcc, msvc)
+	- Fixed: FPL__ERROR, FPL__WARNING, FPL__INFO was not passing the correct function name and line number in some cases
 
 	- Changed: [Win32] Query QueryPerformanceFrequency for every High-Precision timer calls instead of once per app start
 	- Fixed: [Win32] Removed the manual handling of ALT + F4 shut down of event handling
@@ -6470,9 +6471,13 @@ fpl_internal void fpl__LogWriteVarArgs(const char *funcName, const int lineNumbe
 // Error handling
 //
 
-#define FPL__CRITICAL(mod, format, ...)  fpl__HandleError(FPL_FUNCTION_NAME, __LINE__, fplLogLevel_Critical, FPL__MODULE_CONCAT(mod, format), ## __VA_ARGS__)
-#define FPL__ERROR(mod, format, ...) fpl__HandleError(FPL_FUNCTION_NAME, __LINE__, fplLogLevel_Error, FPL__MODULE_CONCAT(mod, format), ## __VA_ARGS__)
-#define FPL__WARNING(mod, format, ...) fpl__HandleError(FPL_FUNCTION_NAME, __LINE__, fplLogLevel_Warning, FPL__MODULE_CONCAT(mod, format), ## __VA_ARGS__)
+#define FPL__M_CRITICAL(funcName, line, mod, format, ...)  fpl__HandleError(funcName, line, fplLogLevel_Critical, FPL__MODULE_CONCAT(mod, format), ## __VA_ARGS__)
+#define FPL__M_ERROR(funcName, line, mod, format, ...) fpl__HandleError(funcName, line, fplLogLevel_Error, FPL__MODULE_CONCAT(mod, format), ## __VA_ARGS__)
+#define FPL__M_WARNING(funcName, line, mod, format, ...) fpl__HandleError(funcName, line, fplLogLevel_Warning, FPL__MODULE_CONCAT(mod, format), ## __VA_ARGS__)
+
+#define FPL__CRITICAL(mod, format, ...)  FPL__M_CRITICAL(FPL_FUNCTION_NAME, __LINE__, mod, format, ## __VA_ARGS__)
+#define FPL__ERROR(mod, format, ...) FPL__M_ERROR(FPL_FUNCTION_NAME, __LINE__, mod, format, ## __VA_ARGS__)
+#define FPL__WARNING(mod, format, ...) FPL__M_WARNING(FPL_FUNCTION_NAME, __LINE__, mod, format, ## __VA_ARGS__)
 
 //
 // Debug out
@@ -8364,63 +8369,67 @@ fpl_internal void fpl__HandleError(const char* funcName, const int lineNumber, c
 // Argument Errors
 //
 
-fpl_internal void fpl__ArgumentInvalidError(const char *paramName) {
-	FPL__ERROR(FPL__MODULE_ARGS, "%s parameter are not valid", paramName);
+// 
+
+
+fpl_internal void fpl__ArgumentInvalidError(const char *funcName, const int line, const char *paramName) {
+	FPL__M_ERROR(funcName, line, FPL__MODULE_ARGS, "%s parameter are not valid", paramName);
 }
-fpl_internal void fpl__ArgumentNullError(const char *paramName) {
-	FPL__ERROR(FPL__MODULE_ARGS, "%s parameter are not allowed to be null", paramName);
+fpl_internal void fpl__ArgumentNullError(const char *funcName, const int line, const char *paramName) {
+	FPL__M_ERROR(funcName, line, FPL__MODULE_ARGS, "%s parameter are not allowed to be null", paramName);
 }
-fpl_internal void fpl__ArgumentZeroError(const char *paramName) {
-	FPL__ERROR(FPL__MODULE_ARGS, "%s parameter must be greater than zero", paramName);
+fpl_internal void fpl__ArgumentZeroError(const char *funcName, const int line, const char *paramName) {
+	FPL__M_ERROR(funcName, line, FPL__MODULE_ARGS, "%s parameter must be greater than zero", paramName);
 }
-fpl_internal void fpl__ArgumentMinError(const char *paramName, const size_t value, const size_t minValue) {
-	FPL__ERROR(FPL__MODULE_ARGS, "%s parameter '%zu' must be greater or equal than '%zu'", paramName, value, minValue);
+fpl_internal void fpl__ArgumentMinError(const char *funcName, const int line, const char *paramName, const size_t value, const size_t minValue) {
+	FPL__M_ERROR(funcName, line, FPL__MODULE_ARGS, "%s parameter '%zu' must be greater or equal than '%zu'", paramName, value, minValue);
 }
-fpl_internal void fpl__ArgumentMaxError(const char *paramName, const size_t value, const size_t maxValue) {
-	FPL__ERROR(FPL__MODULE_ARGS, "%s parameter '%zu' must be less or equal than '%zu'", paramName, value, maxValue);
+fpl_internal void fpl__ArgumentMaxError(const char *funcName, const int line, const char *paramName, const size_t value, const size_t maxValue) {
+	FPL__M_ERROR(funcName, line, FPL__MODULE_ARGS, "%s parameter '%zu' must be less or equal than '%zu'", paramName, value, maxValue);
 }
-fpl_internal void fpl__ArgumentRangeError(const char *paramName, const size_t value, const size_t minValue, const size_t maxValue) {
-	FPL__ERROR(FPL__MODULE_ARGS, "%s parameter '%zu' must be in range of '%zu' to '%zu'", paramName, value, minValue, maxValue);
+fpl_internal void fpl__ArgumentRangeError(const char *funcName, const int line, const char *paramName, const size_t value, const size_t minValue, const size_t maxValue) {
+	FPL__M_ERROR(funcName, line, FPL__MODULE_ARGS, "%s parameter '%zu' must be in range of '%zu' to '%zu'", paramName, value, minValue, maxValue);
 }
 
 #define FPL__CheckArgumentInvalid(arg, cond, ret) \
 	if((cond)) { \
-		fpl__ArgumentInvalidError(#arg); \
+		fpl__ArgumentInvalidError(FPL_FUNCTION_NAME, __LINE__, #arg); \
 		return (ret); \
 	}
+
 #define FPL__CheckArgumentInvalidNoRet(arg, cond) \
 	if((cond)) { \
-		fpl__ArgumentInvalidError(#arg); \
+		fpl__ArgumentInvalidError(FPL_FUNCTION_NAME, __LINE__, #arg); \
 		return; \
 	}
 #define FPL__CheckArgumentNull(arg, ret) \
 	if((arg) == fpl_null) { \
-		fpl__ArgumentNullError(#arg); \
+		fpl__ArgumentNullError(FPL_FUNCTION_NAME, __LINE__, #arg); \
 		return (ret); \
 	}
 #define FPL__CheckArgumentNullNoRet(arg) \
 	if((arg) == fpl_null) { \
-		fpl__ArgumentNullError(#arg); \
+		fpl__ArgumentNullError(FPL_FUNCTION_NAME, __LINE__, #arg); \
 		return; \
 	}
 #define FPL__CheckArgumentZero(arg, ret) \
 	if((arg) == 0) { \
-		fpl__ArgumentZeroError(#arg); \
+		fpl__ArgumentZeroError(FPL_FUNCTION_NAME, __LINE__, #arg); \
 		return (ret); \
 	}
 #define FPL__CheckArgumentZeroNoRet(arg) \
 	if((arg) == 0) { \
-		fpl__ArgumentZeroError(#arg); \
+		fpl__ArgumentZeroError(FPL_FUNCTION_NAME, __LINE__, #arg); \
 		return; \
 	}
 #define FPL__CheckArgumentMin(arg, minValue, ret) \
 	if((arg) < (minValue)) { \
-		fpl__ArgumentMinError(#arg, arg, minValue); \
+		fpl__ArgumentMinError(FPL_FUNCTION_NAME, __LINE__, #arg, arg, minValue); \
 		return (ret); \
 	}
 #define FPL__CheckArgumentMax(arg, maxValue, ret) \
 	if((arg) > (maxValue)) { \
-		fpl__ArgumentMaxError(#arg, arg, maxValue); \
+		fpl__ArgumentMaxError(FPL_FUNCTION_NAME, __LINE__, #arg, arg, maxValue); \
 		return (ret); \
 	}
 #define FPL__CheckPlatform(ret) \
