@@ -283,7 +283,7 @@ extern bool LockFreeRingBufferRead(LockFreeRingBuffer *buffer, void *dst, const 
 
 extern void LockFreeRingBufferClear(LockFreeRingBuffer *buffer) {
 	if(buffer == fpl_null) return;
-	uint64_t fillCount;
+	size_t fillCount;
 	LockFreeRingBufferCanRead(buffer, &fillCount);
 	if(fillCount > 0) {
 		f_LockFreeRingBufferConsume(buffer, fillCount);
@@ -310,7 +310,7 @@ extern void LockFreeRingBufferUnitTest() {
 	assert(!buffer.isMirror);
 
 	bool canWrite, canRead;
-	uint64_t writeAvailable, readAvailable;
+	size_t writeAvailable, readAvailable;
 
 	// Validate initial head
 	canWrite = LockFreeRingBufferCanWrite(&buffer, &writeAvailable);
