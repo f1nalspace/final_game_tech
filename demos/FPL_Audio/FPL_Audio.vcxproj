@@ -162,7 +162,6 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="..\dependencies\circularbuffer\TPCircularBuffer.c" />
     <ClCompile Include="fpl_audio.c" />
   </ItemGroup>
   <ItemGroup>
@@ -175,7 +174,6 @@
     <ClInclude Include="..\additions\final_mp3loader.h" />
     <ClInclude Include="..\additions\final_vorbisloader.h" />
     <ClInclude Include="..\additions\final_waveloader.h" />
-    <ClInclude Include="..\dependencies\circularbuffer\TPCircularBuffer.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
