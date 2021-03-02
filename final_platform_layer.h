@@ -134,6 +134,7 @@ SOFTWARE.
 
 	## v0.9.6-beta
 	- New: Added fplAsm macro to handle different inline assembler keywords (clang, gcc, msvc)
+	- New: Added fplAlignAs macro for aligning structures to N-bytes
 	- Fixed: FPL__ERROR, FPL__WARNING, FPL__INFO was not passing the correct function name and line number in some cases
 
 	- Changed: [Win32] Query QueryPerformanceFrequency for every High-Precision timer calls instead of once per app start
@@ -1460,6 +1461,20 @@ SOFTWARE.
 
 //! A assembler compiler instruction (asm)
 #define fplAsm fpl__m_Asm
+
+// Alignment keyword
+#if defined(FPL_COMPILER_MSVC)
+#define fpl__m_AlignAs(N) __declspec(align(N))
+#elif defined(FPL_COMPILER_GCC) || defined(FPL_COMPILER_CLANG)
+#define fpl__m_AlignAs(N) __attribute__((aligned(N)))
+#elif defined(FPL_IS_CPP11)
+#define fpl__m_AlignAs(N) alignas(N)
+#else
+#define fpl__m_AlignAs(N)
+#endif
+
+//! Structure alignment in bytes
+#define fplAlignAs(N) fpl__m_AlignAs(N)
 
 //
 // Defines required for POSIX (mmap, 64-bit file io, etc.)

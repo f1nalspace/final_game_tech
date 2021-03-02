@@ -247,14 +247,12 @@ static void TestMacros() {
 	//
 	ftMsg("[fplOffsetOf] Test alignment of 4 (High to low)\n");
 	{
-#	pragma pack(push, 4)
-		struct TestStruct {
+		fplAlignAs(4) struct TestStruct {
 			uint64_t a;
 			uint32_t b;
 			uint16_t c;
 			uint8_t d;
 		};
-#	pragma pack(pop)
 		ftExpects(0, fplOffsetOf(TestStruct, a));
 		ftExpects(8, fplOffsetOf(TestStruct, b));
 		ftExpects(12, fplOffsetOf(TestStruct, c));
@@ -263,14 +261,12 @@ static void TestMacros() {
 
 	ftMsg("[fplOffsetOf] Test alignment of 4 (Low to High)\n");
 	{
-#	pragma pack(push, 4)
-		struct TestStruct {
+		fplAlignAs(4) struct TestStruct {
 			uint8_t a;
 			uint16_t b;
 			uint32_t c;
 			uint64_t d;
 		};
-#	pragma pack(pop)
 		ftExpects(0, fplOffsetOf(TestStruct, a));
 		ftExpects(2, fplOffsetOf(TestStruct, b));
 		ftExpects(4, fplOffsetOf(TestStruct, c));
@@ -279,14 +275,12 @@ static void TestMacros() {
 
 	ftMsg("[fplOffsetOf] Test alignment of 8 (Low to High)\n");
 	{
-#	pragma pack(push, 8)
-		struct TestStruct {
+		fplAlignAs(8) struct TestStruct {
 			uint8_t a;
 			uint16_t b;
 			uint8_t c[3];
 			uint64_t d;
 		};
-#	pragma pack(pop)
 		ftExpects(0, fplOffsetOf(TestStruct, a));
 		ftExpects(2, fplOffsetOf(TestStruct, b));
 		ftExpects(4, fplOffsetOf(TestStruct, c));
