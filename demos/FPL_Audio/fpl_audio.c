@@ -307,42 +307,129 @@ static bool StreamAudio(const fplAudioDeviceFormat *format, const uint32_t maxFr
 	return(false);
 }
 
+typedef struct {
+	AudioFrameIndex frames;
+	AudioMilliseconds delay;
+	bool canIgnoreWait;
+} AudioFrameDelayEntry;
+
 static void AudioStreamingThread(const fplThreadHandle *thread, void *rawData) {
 	AudioDemo *demo = (AudioDemo *)rawData;
 
-	// Compute this dynamically
-	AudioFrameIndex framesToStream = 256 * 32; // * 60 is too much
-	
 	// This thing has a few issues on slow machines:
 	// - Too much frames per loop is too much to handle on my linux machine (8192 frames seems to be just fine)
 	// - Delay is bad when streaming is too slow, so we need stop it entirely -> Sleep seems to be very expensive on linux (Scheduler granularity?)
-	
+
 	// On fast machines we want:
 	// - High delay when we are too fast
 	// - Increase frames to stream in more data per loop
 
 	// Audio characteristics table
-	// Number of frames to stream | Delay
-	// ----------------------------------
-	//   4192                     | 2
-	//   8192                     | 4
-	//  16384                     | 6
-	//  32768                     | 8
-	//  65536                     | 10
-	// 131072                     | 20
-	// 262144                     | 30
-	//
+	// Number of frames to stream | Delay | Ignore wait
+	// ------------------------------------------------
+	//   2048                     | 1     | YES
+	//   2048                     | 1     | YES
+	//   4192                     | 1     | YES
+	//   4192                     | 2     | YES
+	//   8192                     | 2     | YES
+	//   8192                     | 4     | YES
+	//  16384                     | 4     | NO
+	//  16384                     | 6     | NO
+	//  32768                     | 6     | NO
+	//  32768                     | 8     | NO
+	//  65536                     | 8     | NO
+	//  65536                     | 10    | NO
+	// 131072                     | 10    | NO
+	// 131072                     | 15    | NO
+	// 262144                     | 15    | NO
+	// 262144                     | 20    | NO
+
+	const AudioFrameDelayEntry entries[] = {
+		fplStructInit(AudioFrameDelayEntry, 2048, 1, true),
+		fplStructInit(AudioFrameDelayEntry, 2048, 2, true),
+		fplStructInit(AudioFrameDelayEntry, 2048, 4, true),
+		fplStructInit(AudioFrameDelayEntry, 2048, 6, true),
+		fplStructInit(AudioFrameDelayEntry, 2048, 8, true),
+		fplStructInit(AudioFrameDelayEntry, 4192, 1, true),
+		fplStructInit(AudioFrameDelayEntry, 4192, 2, true),
+		fplStructInit(AudioFrameDelayEntry, 4192, 4, true),
+		fplStructInit(AudioFrameDelayEntry, 4192, 6, true),
+		fplStructInit(AudioFrameDelayEntry, 4192, 8, true),
+		fplStructInit(AudioFrameDelayEntry, 8192, 2, true),
+		fplStructInit(AudioFrameDelayEntry, 8192, 4, true),
+		fplStructInit(AudioFrameDelayEntry, 8192, 6, true),
+		fplStructInit(AudioFrameDelayEntry, 8192, 8, true),
+		fplStructInit(AudioFrameDelayEntry, 8192, 10, false),
+		fplStructInit(AudioFrameDelayEntry, 8192, 12, false),
+		fplStructInit(AudioFrameDelayEntry, 8192, 15, false),
+		fplStructInit(AudioFrameDelayEntry, 8192, 20, false),
+		fplStructInit(AudioFrameDelayEntry, 8192, 25, false),
+		fplStructInit(AudioFrameDelayEntry, 16384, 4, false),
+		fplStructInit(AudioFrameDelayEntry, 16384, 6, false),
+		fplStructInit(AudioFrameDelayEntry, 16384, 8, false),
+		fplStructInit(AudioFrameDelayEntry, 16384, 10, false),
+		fplStructInit(AudioFrameDelayEntry, 16384, 12, false),
+		fplStructInit(AudioFrameDelayEntry, 16384, 15, false),
+		fplStructInit(AudioFrameDelayEntry, 16384, 20, false),
+		fplStructInit(AudioFrameDelayEntry, 16384, 25, false),
+		fplStructInit(AudioFrameDelayEntry, 16384, 50, false),
+		fplStructInit(AudioFrameDelayEntry, 16384, 75, false),
+		fplStructInit(AudioFrameDelayEntry, 16384, 100, false),
+		fplStructInit(AudioFrameDelayEntry, 16384, 150, false),
+		fplStructInit(AudioFrameDelayEntry, 16384, 200, false),
+		fplStructInit(AudioFrameDelayEntry, 32768, 4, false),
+		fplStructInit(AudioFrameDelayEntry, 32768, 6, false),
+		fplStructInit(AudioFrameDelayEntry, 32768, 8, false),
+		fplStructInit(AudioFrameDelayEntry, 32768, 10, false),
+		fplStructInit(AudioFrameDelayEntry, 32768, 12, false),
+		fplStructInit(AudioFrameDelayEntry, 32768, 15, false),
+		fplStructInit(AudioFrameDelayEntry, 32768, 20, false),
+		fplStructInit(AudioFrameDelayEntry, 32768, 25, false),
+		fplStructInit(AudioFrameDelayEntry, 32768, 50, false),
+		fplStructInit(AudioFrameDelayEntry, 32768, 75, false),
+		fplStructInit(AudioFrameDelayEntry, 32768, 100, false),
+		fplStructInit(AudioFrameDelayEntry, 32768, 150, false),
+		fplStructInit(AudioFrameDelayEntry, 32768, 200, false),
+		fplStructInit(AudioFrameDelayEntry, 65536, 6, false),
+		fplStructInit(AudioFrameDelayEntry, 65536, 8, false),
+		fplStructInit(AudioFrameDelayEntry, 65536, 10, false),
+		fplStructInit(AudioFrameDelayEntry, 65536, 12, false),
+		fplStructInit(AudioFrameDelayEntry, 65536, 15, false),
+		fplStructInit(AudioFrameDelayEntry, 65536, 20, false),
+		fplStructInit(AudioFrameDelayEntry, 65536, 25, false),
+		fplStructInit(AudioFrameDelayEntry, 65536, 50, false),
+		fplStructInit(AudioFrameDelayEntry, 65536, 75, false),
+		fplStructInit(AudioFrameDelayEntry, 65536, 100, false),
+		fplStructInit(AudioFrameDelayEntry, 65536, 150, false),
+		fplStructInit(AudioFrameDelayEntry, 65536, 200, false),
+		fplStructInit(AudioFrameDelayEntry, 131072, 10, false),
+		fplStructInit(AudioFrameDelayEntry, 131072, 15, false),
+		fplStructInit(AudioFrameDelayEntry, 131072, 20, false),
+		fplStructInit(AudioFrameDelayEntry, 131072, 25, false),
+		fplStructInit(AudioFrameDelayEntry, 131072, 50, false),
+		fplStructInit(AudioFrameDelayEntry, 131072, 75, false),
+		fplStructInit(AudioFrameDelayEntry, 131072, 100, false),
+		fplStructInit(AudioFrameDelayEntry, 131072, 150, false),
+		fplStructInit(AudioFrameDelayEntry, 131072, 200, false),
+		fplStructInit(AudioFrameDelayEntry, 262144, 15, false),
+		fplStructInit(AudioFrameDelayEntry, 262144, 20, false),
+		fplStructInit(AudioFrameDelayEntry, 262144, 25, false),
+		fplStructInit(AudioFrameDelayEntry, 262144, 50, false),
+		fplStructInit(AudioFrameDelayEntry, 262144, 100, false),
+		fplStructInit(AudioFrameDelayEntry, 262144, 150, false),
+		fplStructInit(AudioFrameDelayEntry, 262144, 200, false),
+		fplStructInit(AudioFrameDelayEntry, 262144, 300, false),
+		fplStructInit(AudioFrameDelayEntry, 262144, 400, false),
+		fplStructInit(AudioFrameDelayEntry, 262144, 500, false),
+		fplStructInit(AudioFrameDelayEntry, 262144, 1000, false),
+	};
+
+	const uint32_t intitialIndex = 0;
+
+	uint32_t entryIndex = intitialIndex;
+	AudioFrameDelayEntry currentEntry = entries[entryIndex];
+
 	// Depending on the performance we can jump in table rows instead of dynamically computing stuff?
-	
-	
-	// How milliseconds worth of frames, silly, but works somehow
-	AudioMilliseconds maxDelay = fplGetAudioBufferSizeInMilliseconds(demo->targetAudioFormat.sampleRate, framesToStream);
-
-	// Round it nicer delays
-	maxDelay = (maxDelay / 25 * 25);
-	
-	AudioMilliseconds currentDelay = maxDelay;
-
 	LockFreeRingBuffer *circularBuffer = &demo->streamRingBuffer;
 
 	const AudioFrameIndex bufferFrameCount = demo->streamTempBuffer.frameCount;
@@ -351,15 +438,13 @@ static void AudioStreamingThread(const fplThreadHandle *thread, void *rawData) {
 	const float minBufferThreshold = 0.25f; // In percentage range of 0 to 1
 	const float maxBufferThreshold = 0.75f; // In percentage range of 0 to 1
 
-	const AudioMilliseconds minDelay = 5;
-
 	bool ignoreWait = false;
 	uint64_t startTime = fplGetTimeInMillisecondsLP();
 	while(!demo->isStreamingThreadStopped) {
 		// Wait if needed
-		if (!ignoreWait){
+		if(!ignoreWait || !currentEntry.canIgnoreWait) {
 			uint64_t deltaTime = fplGetTimeInMillisecondsLP() - startTime;
-			if(deltaTime < currentDelay) {
+			if(deltaTime < currentEntry.delay) {
 				fplThreadSleep(1);
 				continue;
 			}
@@ -368,32 +453,35 @@ static void AudioStreamingThread(const fplThreadHandle *thread, void *rawData) {
 
 		// Stream in audio to a ring buffer (Too slow on linux)
 		uint64_t streamDuration = 0;
-		if(StreamAudio(&demo->targetAudioFormat, framesToStream, demo, &streamDuration)) {
-			if(streamDuration > currentDelay) {
+		if(StreamAudio(&demo->targetAudioFormat, currentEntry.frames, demo, &streamDuration)) {
+			if(streamDuration > currentEntry.delay) {
 				// @TODO(final): We are taking too long to stream, stop any waiting
 				ignoreWait = true;
 			}
 		}
 
-		// Get playback latency (Max of frames the audio card has requested so far)
-		AudioFrameIndex latencyInFrames = fplAtomicLoadU32(&demo->maxPlaybackFrameLatency);
-		AudioMilliseconds latencyInMs = fplGetAudioBufferSizeInMilliseconds(demo->targetAudioFormat.sampleRate, latencyInFrames);
-
-		// Minimum delay is either latency in the smallest possible delay
-		AudioMilliseconds currentMinDelay = fplMax(minDelay, latencyInMs); 
-
 		uint64_t fillCount = (uint64_t)fplAtomicLoadS64(&circularBuffer->fillCount);
 		float percentageFilled = (1.0f / (float)totalBufferLength) * (float)fillCount;
 		if(percentageFilled < minBufferThreshold) {
-			// We are playing back too fast or streaming in too slow -> Decrease delay by a scale factor and ignore wait
-			float x = 1.0f / minBufferThreshold * percentageFilled;
-			uint32_t desiredDelay = (uint32_t)((float)maxDelay * x);
-			currentDelay = fplMax(currentMinDelay, fplMin(desiredDelay, maxDelay));
-			ignoreWait = true;
+			// We are too slow, go one entry in the table backward
+			if(entryIndex > 0) {
+				currentEntry = entries[--entryIndex];
+				if(currentEntry.canIgnoreWait) {
+					ignoreWait = true;
+				}
+			} else {
+				ignoreWait = true; // We are the worst entry, ignore any waiting
+			}
 		} else if(percentageFilled > maxBufferThreshold) {
-			// We are playing back slower or we are streaming in faster -> Increase delay and start waiting again
-			currentDelay = maxDelay = maxDelay + 5;
-			ignoreWait = false;
+			// We are too fast, go one entry in the table forward
+			if(entryIndex < (fplArrayCount(entries) - 1)) {
+				currentEntry = entries[++entryIndex];
+				if(!currentEntry.canIgnoreWait) {
+					ignoreWait = false;
+				}
+			} else {
+				ignoreWait = false; // We are the max entry, start waiting
+			}
 		}
 	}
 }
@@ -487,7 +575,7 @@ int main(int argc, char **args) {
 		demo->maxPlaybackFrameLatency = demo->targetAudioFormat.bufferSizeInFrames / demo->targetAudioFormat.periods;
 
 #if OPT_PLAYBACKMODE == OPT_PLAYBACK_STREAMBUFFER_ONLY
-		AudioFrameIndex streamBufferFrames = fplGetAudioBufferSizeInFrames(demo->targetAudioFormat.sampleRate, 5000);
+		AudioFrameIndex streamBufferFrames = fplGetAudioBufferSizeInFrames(demo->targetAudioFormat.sampleRate, 10000);
 
 		// Init streaming buffer and read some frames at the very start
 		size_t streamBufferSize = fplGetAudioBufferSizeInBytes(demo->targetAudioFormat.type, demo->targetAudioFormat.channels, streamBufferFrames);
