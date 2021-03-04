@@ -136,7 +136,8 @@ SOFTWARE.
 	[Core]
 	- New[#73]: Added fplAsm macro to handle different inline assembler keywords (clang, gcc, msvc)
 	- New[#75]: Added fplAlignAs macro for aligning structures to N-bytes (clang, gcc, msvc, c++/11)
-	- New[#79]: Added function fplGetAudioDriver();
+	- New[#79]: Added function fplGetAudioDriver()
+	- New[#81]: Added function fplGetAudioBufferSizeInMilliseconds() to compute milliseconds from number of frames
 	- Fixed[#76]: FPL__ERROR, FPL__WARNING, FPL__INFO was not passing the correct function name and line number in some cases
 
 	[Win32]
@@ -6159,6 +6160,13 @@ fpl_common_api const char *fplGetAudioDriverString(fplAudioDriverType driver);
 * @return Returns the total number of frames for given sample rate and buffer size
 */
 fpl_common_api uint32_t fplGetAudioBufferSizeInFrames(uint32_t sampleRate, uint32_t bufferSizeInMilliSeconds);
+/**
+* @brief Computes the duration in milliseconds for the given sample rate and frame count
+* @param sampleRate The sample rate in Hz
+* @param frameCount The number of frames
+* @return Returns the duration in milliseconds
+*/
+fpl_common_api uint32_t fplGetAudioBufferSizeInMilliseconds(uint32_t sampleRate, uint32_t frameCount);
 /**
 * @brief Computes the number of bytes required for one interleaved audio frame - containing all the channels.
 * @param format The audio format
@@ -20264,10 +20272,17 @@ fpl_common_api uint32_t fplGetAudioBufferSizeInFrames(uint32_t sampleRate, uint3
 	uint32_t result = (sampleRate / 1000) * bufferSizeInMilliSeconds;
 	return(result);
 }
+
+fpl_common_api uint32_t fplGetAudioBufferSizeInMilliseconds(uint32_t sampleRate, uint32_t frameCount) {
+	uint32_t result = frameCount / (sampleRate / 1000);
+	return(result);
+}
+
 fpl_common_api uint32_t fplGetAudioFrameSizeInBytes(const fplAudioFormatType format, const uint32_t channelCount) {
 	uint32_t result = fplGetAudioSampleSizeInBytes(format) * channelCount;
 	return(result);
 }
+
 fpl_common_api uint32_t fplGetAudioBufferSizeInBytes(const fplAudioFormatType format, const uint32_t channelCount, const uint32_t frameCount) {
 	uint32_t frameSize = fplGetAudioFrameSizeInBytes(format, channelCount);
 	uint32_t result = frameSize * frameCount;
