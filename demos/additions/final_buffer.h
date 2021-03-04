@@ -203,7 +203,21 @@ extern void LockFreeRingBufferRelease(LockFreeRingBuffer *buffer) {
 			fplMemoryFree(buffer->buffer);
 		}
 	}
-	ZeroMemory(buffer, sizeof(LockFreeRingBuffer));
+	fplClearStruct(buffer);
+}
+
+fpl_force_inline void f_LockFreeRingBufferProduce(LockFreeRingBuffer *buffer, uint64_t amount) {
+	fplAssert(buffer != fpl_null);
+	buffer->head = (buffer->head + amount) % buffer->length;
+	fplAtomicFetchAndAddS64(&buffer->fillCount, (int64_t)amount);
+	assert(buffer->fillCount <= (int64_t)buffer->length);
+}
+
+fpl_force_inline void f_LockFreeRingBufferConsume(LockFreeRingBuffer *buffer, uint64_t amount) {
+	fplAssert(buffer != fpl_null);
+	buffer->tail = (buffer->tail + amount) % buffer->length;
+	fplAtomicFetchAndAddS64(&buffer->fillCount, -(int64_t)amount);
+	assert(buffer->fillCount >= 0);
 }
 
 extern bool LockFreeRingBufferCanRead(LockFreeRingBuffer *buffer, size_t *availableBytes) {
@@ -226,19 +240,7 @@ extern bool LockFreeRingBufferCanWrite(LockFreeRingBuffer *buffer, size_t *avail
 	return(false);
 }
 
-inline void f_LockFreeRingBufferProduce(LockFreeRingBuffer *buffer, uint64_t amount) {
-	fplAssert(buffer != fpl_null);
-	buffer->head = (buffer->head + amount) % buffer->length;
-	fplAtomicFetchAndAddS64(&buffer->fillCount, (int64_t)amount);
-	assert(buffer->fillCount <= (int64_t)buffer->length);
-}
 
-inline void f_LockFreeRingBufferConsume(LockFreeRingBuffer *buffer, uint64_t amount) {
-	fplAssert(buffer != fpl_null);
-	buffer->tail = (buffer->tail + amount) % buffer->length;
-	fplAtomicFetchAndAddS64(&buffer->fillCount, -(int64_t)amount);
-	assert(buffer->fillCount >= 0);
-}
 
 extern bool LockFreeRingBufferWrite(LockFreeRingBuffer *buffer, const void *src, const size_t len) {
 	if(buffer == fpl_null) return(false);
