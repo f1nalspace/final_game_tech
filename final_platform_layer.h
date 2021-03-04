@@ -136,6 +136,7 @@ SOFTWARE.
 	[Core]
 	- New[#73]: Added fplAsm macro to handle different inline assembler keywords (clang, gcc, msvc)
 	- New[#75]: Added fplAlignAs macro for aligning structures to N-bytes (clang, gcc, msvc, c++/11)
+	- New[#79]: Added function fplGetAudioDriver();
 	- Fixed[#76]: FPL__ERROR, FPL__WARNING, FPL__INFO was not passing the correct function name and line number in some cases
 
 	[Win32]
@@ -6029,6 +6030,11 @@ typedef struct fplVideoBackBuffer {
 } fplVideoBackBuffer;
 
 /**
+* @brief Gets the current video driver
+* @return Returns the current video driver type @ref fplVideoDriverType
+*/
+fpl_common_api fplVideoDriverType fplGetVideoDriver();
+/**
 * @brief Gets a string which represents the given video driver
 * @param driver The video driver type @ref fplVideoDriverType
 * @return Returns a string for the given video driver type
@@ -6047,11 +6053,6 @@ fpl_common_api fplVideoBackBuffer *fplGetVideoBackBuffer();
 * @return Returns true when video back buffer could be resized, false otherwise.
 */
 fpl_common_api bool fplResizeVideoBackBuffer(const uint32_t width, const uint32_t height);
-/**
-* @brief Gets the current video driver
-* @return Returns the current video driver type @ref fplVideoDriverType
-*/
-fpl_common_api fplVideoDriverType fplGetVideoDriver();
 
 /**
 * @brief Forces the window to be redrawn or to swap the back/front buffer.
@@ -6094,6 +6095,11 @@ typedef enum fplAudioResultType {
 //! Defines the last @ref fplAudioResultType value
 #define FPL_LAST_AUDIO_RESULT_TYPE fplAudioResultType_Failed
 
+/**
+* @brief Gets the current audio driver
+* @return Returns the current audio driver type @ref fplAudioDriverType
+*/
+fpl_common_api fplAudioDriverType fplGetAudioDriver();
 /**
 * @brief Start playing asyncronous audio.
 * @return Returns the audio result @ref fplAudioResultType
@@ -20238,6 +20244,13 @@ fpl_globalvar const char *fpl__globalAudioDriverStringTable[] = {
 };
 fplStaticAssert(fplArrayCount(fpl__globalAudioDriverStringTable) == FPL__AUDIODRIVERTYPE_COUNT);
 
+fpl_common_api fplAudioDriverType fplGetAudioDriver() {
+	FPL__CheckPlatform(fplAudioDriverType_None);
+	const fpl__PlatformAppState *appState = fpl__global__AppState;
+	fplAudioDriverType result = appState->currentSettings.audio.driver;
+	return(result);
+}
+
 fpl_common_api const char *fplGetAudioDriverString(fplAudioDriverType driver) {
 	uint32_t index = FPL__ENUM_VALUE_TO_ARRAY_INDEX(driver, FPL_FIRST_AUDIODRIVERTYPE, FPL_LAST_AUDIODRIVERTYPE);
 	const char *result = fpl__globalAudioDriverStringTable[index];
@@ -20509,25 +20522,25 @@ fpl_common_api const char *fplGetVideoDriverString(fplVideoDriverType driver) {
 	return(result);
 }
 
-fpl_common_api fplVideoBackBuffer *fplGetVideoBackBuffer() {
-	FPL__CheckPlatform(fpl_null);
-	fpl__PlatformAppState *appState = fpl__global__AppState;
-	fplVideoBackBuffer *result = fpl_null;
-	if (appState->video.mem != fpl_null) {
-		fpl__VideoState *videoState = fpl__GetVideoState(appState);
-#	if defined(FPL__ENABLE_VIDEO_SOFTWARE)
-		if (appState->currentSettings.video.driver == fplVideoDriverType_Software) {
-			result = &videoState->softwareBackbuffer;
-		}
-#	endif
-	}
-	return(result);
-}
-
 fpl_common_api fplVideoDriverType fplGetVideoDriver() {
 	FPL__CheckPlatform(fplVideoDriverType_None);
 	const fpl__PlatformAppState *appState = fpl__global__AppState;
 	fplVideoDriverType result = appState->currentSettings.video.driver;
+	return(result);
+}
+
+fpl_common_api fplVideoBackBuffer *fplGetVideoBackBuffer() {
+	FPL__CheckPlatform(fpl_null);
+	fpl__PlatformAppState *appState = fpl__global__AppState;
+	fplVideoBackBuffer *result = fpl_null;
+	if(appState->video.mem != fpl_null) {
+		fpl__VideoState *videoState = fpl__GetVideoState(appState);
+#	if defined(FPL__ENABLE_VIDEO_SOFTWARE)
+		if(appState->currentSettings.video.driver == fplVideoDriverType_Software) {
+			result = &videoState->softwareBackbuffer;
+		}
+#	endif
+	}
 	return(result);
 }
 
