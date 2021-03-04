@@ -16,6 +16,9 @@ Author:
 	Torsten Spaete
 
 Changelog:
+	## 2021-03-04
+	- Dynamic streaming delay based on latency and buffer percentage
+
 	## 2021-03-02
 	- Removed all broken sample rendering
 	- Introduced audio buffering in preparation for real FFT
@@ -306,22 +309,26 @@ static bool StreamAudio(const fplAudioDeviceFormat *format, const uint32_t maxFr
 static void AudioStreamingThread(const fplThreadHandle *thread, void *rawData) {
 	AudioDemo *demo = (AudioDemo *)rawData;
 
-	AudioFrameIndex framesToStream = fplGetAudioBufferSizeInFrames(demo->targetAudioFormat.sampleRate, 250); // A quarter of a second worth of buffer
+	AudioFrameIndex framesToStream = 256 * 60;
 
-	// @TODO(final): Take playback latency into account (More frames means higher latency)
-	AudioFrameIndex currentPlaybackLatencyInFrames = fplAtomicLoadU32(&demo->maxPlaybackFrameLatency);
+	AudioMilliseconds maxDelay = fplGetAudioBufferSizeInMilliseconds(demo->targetAudioFormat.sampleRate, framesToStream);
+	maxDelay = (maxDelay / 100 * 100);
 
-	AudioMilliseconds maxDelay = 250;
 	AudioMilliseconds currentDelay = maxDelay;
 
-	LockFreeRingBuffer *circularBuffer = &demo->streamRingBuffer;	
+	LockFreeRingBuffer *circularBuffer = &demo->streamRingBuffer;
+
+	float minBufferPercentage = 0.25f;
+	float maxBufferPercentage = 0.75f;
+
+	size_t frameSize = fplGetAudioFrameSizeInBytes(demo->targetAudioFormat.type, demo->targetAudioFormat.channels);
 
 	uint64_t startTime = fplGetTimeInMillisecondsLP();
 	while(!demo->isStreamingThreadStopped) {
 		// Wait if needed
 		uint64_t deltaTime = fplGetTimeInMillisecondsLP() - startTime;
 		if(deltaTime < currentDelay) {
-			fplThreadYield();
+			fplThreadSleep(1);
 			continue;
 		}
 		startTime = fplGetTimeInMillisecondsLP();
@@ -332,6 +339,25 @@ static void AudioStreamingThread(const fplThreadHandle *thread, void *rawData) {
 			if(streamDuration > currentDelay) {
 				// @TODO(final): We are taking too long to stream, do we want to adjust the delay (slow platform/device)
 			}
+		}
+
+		// Get playback latency (Max of frames the audio card has requested so far)
+		AudioFrameIndex latencyInFrames = fplAtomicLoadU32(&demo->maxPlaybackFrameLatency);
+		AudioMilliseconds latencyInMs = fplGetAudioBufferSizeInMilliseconds(demo->targetAudioFormat.sampleRate, latencyInFrames);
+
+		// Minimum delay is either latency in ms or 10 ms
+		AudioMilliseconds minDelay = fplMax(10, latencyInMs); 
+
+		// Adjust delay when we are playing back too fast (buffering too slow, buffer too small -> results in lower wait delay)
+		// Adjust delay when we are stream too fast (buffering too fast -> good case -> results in higher wait delay)
+		uint64_t fillCount = fplAtomicLoadS64(&circularBuffer->fillCount);
+		AudioFrameIndex filledFrames = (AudioFrameIndex)(fillCount / frameSize);
+		float percentageFilled = (1.0f / (float)circularBuffer->length) * (float)fillCount;
+		if(percentageFilled < minBufferPercentage) {
+			float x = 1.0f / minBufferPercentage * percentageFilled;
+			currentDelay = fplMax(minDelay, fplMin((uint32_t)(maxDelay * x), maxDelay));
+		} else if(percentageFilled > maxBufferPercentage) {
+			currentDelay = (uint32_t)((float)currentDelay * 1.25f);
 		}
 	}
 }
@@ -492,14 +518,14 @@ int main(int argc, char **args) {
 									if(demo->plotCount < 8) {
 										demo->plotCount = 8;
 									}
-					}
+								}
 #endif
 
 								UpdateTitle(demo);
+							}
+						}
+					}
 				}
-			}
-		}
-	}
 
 				fplWindowSize winSize = fplZeroInit;
 				fplGetWindowSize(&winSize);
@@ -511,9 +537,9 @@ int main(int argc, char **args) {
 				//AudioFrameIndex videoFrameCount = (AudioFrameIndex)(targetAudioFormat.sampleRate * frameTime);
 				//demo->currentVideoFrameIndex = (demo->currentVideoFrameIndex + videoFrameCount) % demo->totalBufferFrameCount;
 				lastTime = newTime;
-}
+			}
 
-// Stop audio playback
+			// Stop audio playback
 			fplStopAudio();
 		}
 	}
