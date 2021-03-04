@@ -311,7 +311,7 @@ static void AudioStreamingThread(const fplThreadHandle *thread, void *rawData) {
 	AudioDemo *demo = (AudioDemo *)rawData;
 
 	// Compute this dynamically
-	AudioFrameIndex framesToStream = 256* 32; // * 60 is too much
+	AudioFrameIndex framesToStream = 256 * 32; // * 60 is too much
 	
 	// This thing has a few issues on slow machines:
 	// - Too much frames per loop is too much to handle on my linux machine (8192 frames seems to be just fine)
@@ -320,21 +320,38 @@ static void AudioStreamingThread(const fplThreadHandle *thread, void *rawData) {
 	// On fast machines we want:
 	// - High delay when we are too fast
 	// - Increase frames to stream in more data per loop
+
+	// Audio characteristics table
+	// Number of frames to stream | Delay
+	// ----------------------------------
+	//   4192                     | 2
+	//   8192                     | 4
+	//  16384                     | 6
+	//  32768                     | 8
+	//  65536                     | 10
+	// 131072                     | 20
+	// 262144                     | 30
+	//
+	// Depending on the performance we can jump in table rows instead of dynamically computing stuff?
 	
-	AudioFrameIndex bufferFrameCount = demo->streamTempBuffer.frameCount;
-		
-	// This is not correct...
+	
+	// How milliseconds worth of frames, silly, but works somehow
 	AudioMilliseconds maxDelay = fplGetAudioBufferSizeInMilliseconds(demo->targetAudioFormat.sampleRate, framesToStream);
-	maxDelay = (maxDelay / 100 * 100);
+
+	// Round it nicer delays
+	maxDelay = (maxDelay / 25 * 25);
 	
 	AudioMilliseconds currentDelay = maxDelay;
 
 	LockFreeRingBuffer *circularBuffer = &demo->streamRingBuffer;
 
-	float minBufferPercentage = 0.25f;
-	float maxBufferPercentage = 0.75f;
+	const AudioFrameIndex bufferFrameCount = demo->streamTempBuffer.frameCount;
+	const uint64_t totalBufferLength = circularBuffer->length;
 
-	size_t frameSize = fplGetAudioFrameSizeInBytes(demo->targetAudioFormat.type, demo->targetAudioFormat.channels);
+	const float minBufferThreshold = 0.25f; // In percentage range of 0 to 1
+	const float maxBufferThreshold = 0.75f; // In percentage range of 0 to 1
+
+	const AudioMilliseconds minDelay = 5;
 
 	bool ignoreWait = false;
 	uint64_t startTime = fplGetTimeInMillisecondsLP();
@@ -362,19 +379,20 @@ static void AudioStreamingThread(const fplThreadHandle *thread, void *rawData) {
 		AudioFrameIndex latencyInFrames = fplAtomicLoadU32(&demo->maxPlaybackFrameLatency);
 		AudioMilliseconds latencyInMs = fplGetAudioBufferSizeInMilliseconds(demo->targetAudioFormat.sampleRate, latencyInFrames);
 
-		// Minimum delay is either latency in ms or 10 ms
-		AudioMilliseconds minDelay = fplMax(10, latencyInMs); 
+		// Minimum delay is either latency in the smallest possible delay
+		AudioMilliseconds currentMinDelay = fplMax(minDelay, latencyInMs); 
 
-		// Adjust delay when we are playing back too fast (buffering too slow, buffer too small -> results in lower wait delay)
-		// Adjust delay when we are streaming in too fast (buffering too fast -> good case -> results in higher wait delay)
 		uint64_t fillCount = (uint64_t)fplAtomicLoadS64(&circularBuffer->fillCount);
-		float percentageFilled = (1.0f / (float)circularBuffer->length) * (float)fillCount;
-		if(percentageFilled < minBufferPercentage) {
-			float x = 1.0f / minBufferPercentage * percentageFilled;
-			currentDelay = fplMax(minDelay, fplMin((uint32_t)((float)maxDelay * x), maxDelay));
+		float percentageFilled = (1.0f / (float)totalBufferLength) * (float)fillCount;
+		if(percentageFilled < minBufferThreshold) {
+			// We are playing back too fast or streaming in too slow -> Decrease delay by a scale factor and ignore wait
+			float x = 1.0f / minBufferThreshold * percentageFilled;
+			uint32_t desiredDelay = (uint32_t)((float)maxDelay * x);
+			currentDelay = fplMax(currentMinDelay, fplMin(desiredDelay, maxDelay));
 			ignoreWait = true;
-		} else if(percentageFilled > maxBufferPercentage) {
-			currentDelay = maxDelay;
+		} else if(percentageFilled > maxBufferThreshold) {
+			// We are playing back slower or we are streaming in faster -> Increase delay and start waiting again
+			currentDelay = maxDelay = maxDelay + 5;
 			ignoreWait = false;
 		}
 	}
