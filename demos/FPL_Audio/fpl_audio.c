@@ -359,11 +359,11 @@ static void AudioStreamingThread(const fplThreadHandle *thread, void *rawData) {
 		fplStructInit(AudioFrameDelayEntry, 8192, 4, true),
 		fplStructInit(AudioFrameDelayEntry, 8192, 6, true),
 		fplStructInit(AudioFrameDelayEntry, 8192, 8, true),
-		fplStructInit(AudioFrameDelayEntry, 8192, 10, false),
-		fplStructInit(AudioFrameDelayEntry, 8192, 12, false),
-		fplStructInit(AudioFrameDelayEntry, 8192, 15, false),
-		fplStructInit(AudioFrameDelayEntry, 8192, 20, false),
-		fplStructInit(AudioFrameDelayEntry, 8192, 25, false),
+		fplStructInit(AudioFrameDelayEntry, 8192, 10, true),
+		fplStructInit(AudioFrameDelayEntry, 8192, 12, true),
+		fplStructInit(AudioFrameDelayEntry, 8192, 15, true),
+		fplStructInit(AudioFrameDelayEntry, 8192, 20, true),
+		fplStructInit(AudioFrameDelayEntry, 8192, 25, true),
 		fplStructInit(AudioFrameDelayEntry, 16384, 4, false),
 		fplStructInit(AudioFrameDelayEntry, 16384, 6, false),
 		fplStructInit(AudioFrameDelayEntry, 16384, 8, false),
@@ -457,6 +457,10 @@ static void AudioStreamingThread(const fplThreadHandle *thread, void *rawData) {
 			if(streamDuration > currentEntry.delay) {
 				// @TODO(final): We are taking too long to stream, stop any waiting
 				ignoreWait = true;
+				
+				if(entryIndex > 0) {
+					currentEntry = entries[--entryIndex];
+				}
 			}
 		}
 
