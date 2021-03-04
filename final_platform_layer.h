@@ -2958,19 +2958,22 @@ typedef union fplCPUIDLeaf {
 } fplCPUIDLeaf;
 
 /**
-* @brief Returns the x86 CPUID registers (EAX, EBX, ECX, EDX) for the given function id
-* @param outLeaf The targt pointer to a @ref fplCPUIDLeaf structure
-* @param functionId The function id
+* @brief Queries the x86 CPUID leaf register (EAX, EBX, ECX, EDX) for the given function id
+* @param outLeaf The target fplCPUIDLeaf reference
+* @param functionId The CPUID function id
+* @warning This function works on X86 architectures only
 */
 fpl_common_api void fplCPUID(fplCPUIDLeaf *outLeaf, const uint32_t functionId);
 /**
 * @brief Gets the x86 extended control register for index zero.
-* @return Returns the extended control register on x86, or zero non-x86 archtectures.
+* @return Returns the extended control register on x86 or zero for non-x86 archtectures.
+* @warning This function works on X86 architectures only
 */
 fpl_common_api uint64_t fplGetXCR0();
 /**
-* @brief Reads the current time stamp counter (RDTSC), which is only available on x86 processors.
-* @return Returns the number of cycles since the system start or returns zero on a non-x86 processor.
+* @brief Reads the current time stamp counter (RDTSC)
+* @return Returns the number of cycles since the system start or zero for non-x86 archtectures.
+* @warning This function works on X86 architectures only
 */
 fpl_common_api uint64_t fplRDTSC();
 /**
@@ -2981,13 +2984,13 @@ fpl_common_api uint64_t fplRDTSC();
 */
 fpl_common_api const char *fplGetArchTypeString(const fplArchType type);
 /**
-* @brief Retrieves the total number of processor cores.
+* @brief Retrieves the total number of processor cores
 * @return Returns the total number of processor cores.
 * @see @ref section_category_hardware_corecount
 */
 fpl_platform_api size_t fplGetProcessorCoreCount();
 /**
-* @brief Retrieves the name of the processor.
+* @brief Retrieves the name of the processor
 * @param destBuffer The destination buffer
 * @param maxDestBufferLen The max length of the destination buffer
 * @return Returns a pointer to the last written character or @ref fpl_null otherwise.
@@ -2995,7 +2998,7 @@ fpl_platform_api size_t fplGetProcessorCoreCount();
 */
 fpl_common_api char *fplGetProcessorName(char *destBuffer, const size_t maxDestBufferLen);
 /**
-* @brief Gets the capabilities of the processor.
+* @brief Gets the capabilities of the processor
 * @param outCaps Pointer to the output @ref fplProcessorCapabilities
 * @return Returns true when the capabilities could be retrieved, false otherwise.
 * @see @ref section_category_hardware_cpucaps
