@@ -297,7 +297,8 @@ static bool StreamAudio(const fplAudioDeviceFormat *format, const uint32_t maxFr
 		fplAssert(written);
 
 		if(outDuration != fpl_null) {
-			*outDuration = fplGetTimeInMillisecondsLP() - timeStart;
+			uint64_t delta = fplGetTimeInMilliseconds() - timeStart;
+			*outDuration = (uint32_t)delta;
 		}
 
 		return(true);
@@ -309,11 +310,23 @@ static bool StreamAudio(const fplAudioDeviceFormat *format, const uint32_t maxFr
 static void AudioStreamingThread(const fplThreadHandle *thread, void *rawData) {
 	AudioDemo *demo = (AudioDemo *)rawData;
 
-	AudioFrameIndex framesToStream = 256 * 60;
-
+	// Compute this dynamically
+	AudioFrameIndex framesToStream = 256* 32; // * 60 is too much
+	
+	// This thing has a few issues on slow machines:
+	// - Too much frames per loop is too much to handle on my linux machine (8192 frames seems to be just fine)
+	// - Delay is bad when streaming is too slow, so we need stop it entirely -> Sleep seems to be very expensive on linux (Scheduler granularity?)
+	
+	// On fast machines we want:
+	// - High delay when we are too fast
+	// - Increase frames to stream in more data per loop
+	
+	AudioFrameIndex bufferFrameCount = demo->streamTempBuffer.frameCount;
+		
+	// This is not correct...
 	AudioMilliseconds maxDelay = fplGetAudioBufferSizeInMilliseconds(demo->targetAudioFormat.sampleRate, framesToStream);
 	maxDelay = (maxDelay / 100 * 100);
-
+	
 	AudioMilliseconds currentDelay = maxDelay;
 
 	LockFreeRingBuffer *circularBuffer = &demo->streamRingBuffer;
@@ -323,21 +336,25 @@ static void AudioStreamingThread(const fplThreadHandle *thread, void *rawData) {
 
 	size_t frameSize = fplGetAudioFrameSizeInBytes(demo->targetAudioFormat.type, demo->targetAudioFormat.channels);
 
+	bool ignoreWait = false;
 	uint64_t startTime = fplGetTimeInMillisecondsLP();
 	while(!demo->isStreamingThreadStopped) {
 		// Wait if needed
-		uint64_t deltaTime = fplGetTimeInMillisecondsLP() - startTime;
-		if(deltaTime < currentDelay) {
-			fplThreadSleep(1);
-			continue;
+		if (!ignoreWait){
+			uint64_t deltaTime = fplGetTimeInMillisecondsLP() - startTime;
+			if(deltaTime < currentDelay) {
+				fplThreadSleep(1);
+				continue;
+			}
+			startTime = fplGetTimeInMillisecondsLP();
 		}
-		startTime = fplGetTimeInMillisecondsLP();
 
-		// Stream in audio to a ring buffer
+		// Stream in audio to a ring buffer (Too slow on linux)
 		uint64_t streamDuration = 0;
 		if(StreamAudio(&demo->targetAudioFormat, framesToStream, demo, &streamDuration)) {
 			if(streamDuration > currentDelay) {
-				// @TODO(final): We are taking too long to stream, do we want to adjust the delay (slow platform/device)
+				// @TODO(final): We are taking too long to stream, stop any waiting
+				ignoreWait = true;
 			}
 		}
 
@@ -349,15 +366,16 @@ static void AudioStreamingThread(const fplThreadHandle *thread, void *rawData) {
 		AudioMilliseconds minDelay = fplMax(10, latencyInMs); 
 
 		// Adjust delay when we are playing back too fast (buffering too slow, buffer too small -> results in lower wait delay)
-		// Adjust delay when we are stream too fast (buffering too fast -> good case -> results in higher wait delay)
-		uint64_t fillCount = fplAtomicLoadS64(&circularBuffer->fillCount);
-		AudioFrameIndex filledFrames = (AudioFrameIndex)(fillCount / frameSize);
+		// Adjust delay when we are streaming in too fast (buffering too fast -> good case -> results in higher wait delay)
+		uint64_t fillCount = (uint64_t)fplAtomicLoadS64(&circularBuffer->fillCount);
 		float percentageFilled = (1.0f / (float)circularBuffer->length) * (float)fillCount;
 		if(percentageFilled < minBufferPercentage) {
 			float x = 1.0f / minBufferPercentage * percentageFilled;
-			currentDelay = fplMax(minDelay, fplMin((uint32_t)(maxDelay * x), maxDelay));
+			currentDelay = fplMax(minDelay, fplMin((uint32_t)((float)maxDelay * x), maxDelay));
+			ignoreWait = true;
 		} else if(percentageFilled > maxBufferPercentage) {
-			currentDelay = (uint32_t)((float)currentDelay * 1.25f);
+			currentDelay = maxDelay;
+			ignoreWait = false;
 		}
 	}
 }
