@@ -9,25 +9,40 @@
 #include <math.h> // sin, cos, M_PI
 #include <float.h> // EPSILON
 
-typedef uint32_t AudioFrameIndex; // The number or index of frames
-typedef uint32_t AudioSampleIndex; // The number or index of samples
-typedef uint32_t AudioChannelIndex; // The number or index of channels
-typedef uint32_t AudioHertz; // The number or index of Hz
-typedef size_t AudioSize; // The size in bytes
+/// The number of audio frames or index (32-bit)
+typedef uint32_t AudioFrameIndex;
+
+/// The number of audio samples or index (32-bit)
+typedef uint32_t AudioSampleIndex;
+
+/// The number of audio channels or index (32-bit)
+typedef uint32_t AudioChannelIndex;
+
+/// The audio frequency in Hertz (Hz) (32-bit)
+typedef uint32_t AudioHertz;
+
+/// The number of milliseconds for audio (32-bit)
+typedef uint32_t AudioMilliseconds;
+
+/// The duration in seconds for audio (64-bit)
+typedef double AudioDuration;
+
+/// The size of a audio buffer in bytes (32-bit or 64-bit)
+typedef size_t AudioBufferSize; // The size in bytes
 
 typedef struct PCMWaveData {
 	//! Total frame count
 	AudioFrameIndex frameCount;
-	//! Samples per second (Frequency in Hz)
-	AudioSampleIndex samplesPerSecond;
+	//! Samples per second
+	AudioHertz samplesPerSecond;
 	//! Bytes per sample
-	AudioSize bytesPerSample;
+	AudioBufferSize bytesPerSample;
 	//! Format type
 	fplAudioFormatType formatType;
 	//! Number of channels
 	AudioChannelIndex channelCount;
 	//! Size of samples in bytes
-	AudioSize samplesSize;
+	AudioBufferSize samplesSize;
 	//! Samples (Interleaved)
 	void* isamples;
 	//! Last error string

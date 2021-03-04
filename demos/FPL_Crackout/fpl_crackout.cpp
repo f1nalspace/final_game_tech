@@ -305,7 +305,7 @@ struct Assets {
 	FontAsset fontHud;
 	AudioSource *ballHitSound;
 	AudioSource *music;
-	uint64_t musicPlayId;
+	AudioPlayItemID musicPlayId;
 };
 
 enum class GameMode {

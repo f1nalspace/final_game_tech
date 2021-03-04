@@ -71,7 +71,7 @@ fplStaticAssert(sizeof(AudioFormat) % 16 == 0);
 
 typedef struct AudioBuffer {
 	uint8_t *samples;
-	size_t bufferSize;
+	AudioBufferSize bufferSize;
 	AudioFrameIndex frameCount;
 	fpl_b32 isAllocated;
 } AudioBuffer;
@@ -82,9 +82,9 @@ typedef struct AudioStream {
 	AudioFrameIndex framesRemaining;
 } AudioStream;
 
-#define MAX_AUDIO_STATIC_BUFFER_CHANNEL_COUNT 2
-#define MAX_AUDIO_STATIC_BUFFER_FRAME_COUNT 4096
-#define MAX_AUDIO_STATIC_BUFFER_MAX_TYPE_SIZE 4
+#define MAX_AUDIO_STATIC_BUFFER_CHANNEL_COUNT (AudioChannelIndex)2
+#define MAX_AUDIO_STATIC_BUFFER_FRAME_COUNT (AudioFrameIndex)4096
+#define MAX_AUDIO_STATIC_BUFFER_MAX_TYPE_SIZE (size_t)4
 typedef struct AudioStaticBuffer {
 	uint8_t samples[MAX_AUDIO_STATIC_BUFFER_CHANNEL_COUNT * MAX_AUDIO_STATIC_BUFFER_FRAME_COUNT * MAX_AUDIO_STATIC_BUFFER_MAX_TYPE_SIZE];
 	AudioFrameIndex maxFrameCount;
@@ -97,11 +97,15 @@ typedef struct AudioSource {
 	uint64_t id;
 } AudioSource;
 
+typedef struct AudioPlayItemID {
+	uint64_t id;
+} AudioPlayItemID;
+
 typedef struct AudioPlayItem {
 	const AudioSource *source;
 	struct AudioPlayItem *next;
 	struct AudioPlayItem *prev;
-	uint64_t id;
+	AudioPlayItemID id;
 	float volume;
 	AudioFrameIndex framesPlayed;
 	bool isRepeat;
@@ -125,7 +129,7 @@ typedef struct AudioPlayItems {
 } AudioPlayItems;
 
 typedef struct AudioSineWaveData {
-	double duration;
+	AudioDuration duration;
 	double toneVolume;
 	AudioHertz frequency;
 	AudioFrameIndex frameIndex;
@@ -154,8 +158,8 @@ extern AudioSource *AudioSystemLoadFileSource(AudioSystem *audioSys, const char 
 
 extern AudioFrameIndex AudioSystemWriteFrames(AudioSystem *audioSys, void *outSamples, const fplAudioDeviceFormat *outFormat, const AudioFrameIndex frameCount);
 
-extern uint64_t AudioSystemPlaySource(AudioSystem *audioSys, const AudioSource *source, const bool repeat, const float volume);
-extern void AudioSystemStopSource(AudioSystem *audioSys, const uint64_t playId);
+extern AudioPlayItemID AudioSystemPlaySource(AudioSystem *audioSys, const AudioSource *source, const bool repeat, const float volume);
+extern bool AudioSystemStopSource(AudioSystem *audioSys, const AudioPlayItemID playId);
 
 extern void AudioGenerateSineWave(AudioSineWaveData *waveData, void *outSamples, const fplAudioFormatType outFormat, const AudioHertz outSampleRate, const AudioChannelIndex channels, const AudioFrameIndex frameCount);
 
@@ -418,11 +422,11 @@ static void RemovePlayItem(AudioPlayItems *playItems, AudioPlayItem *playItem) {
 	--playItems->count;
 }
 
-extern void AudioSystemStopSource(AudioSystem *audioSys, const uint64_t playId) {
+extern bool AudioSystemStopSource(AudioSystem *audioSys, const AudioPlayItemID playId) {
 	AudioPlayItem *playItem = audioSys->playItems.first;
 	AudioPlayItem *foundPlayItem = fpl_null;
 	while (playItem != fpl_null) {
-		if (playItem->id == playId) {
+		if (playItem->id.id == playId.id) {
 			foundPlayItem = playItem;
 			break;
 		}
@@ -432,20 +436,24 @@ extern void AudioSystemStopSource(AudioSystem *audioSys, const uint64_t playId) 
 		fplMutexLock(&audioSys->playItems.lock);
 		RemovePlayItem(&audioSys->playItems, foundPlayItem);
 		fplMutexUnlock(&audioSys->playItems.lock);
+		return(true);
 	}
+	return(false);
 }
 
-extern uint64_t AudioSystemPlaySource(AudioSystem *audioSys, const AudioSource *source, const bool repeat, const float volume) {
+extern AudioPlayItemID AudioSystemPlaySource(AudioSystem *audioSys, const AudioSource *source, const bool repeat, const float volume) {
 	if ((audioSys == fpl_null) || (source == fpl_null)) {
-		return(0);
+		AudioPlayItemID empty = fplZeroInit;
+		return(empty);
 	}
 
 	AudioPlayItem *playItem = (AudioPlayItem *)AllocateAudioMemory(audioSys, sizeof(AudioPlayItem));
 	if (playItem == fpl_null) {
-		return(0);
+		AudioPlayItemID empty = fplZeroInit;
+		return(empty);
 	}
 
-	playItem->id = fplAtomicIncrementU64(&audioSys->playItems.idCounter);
+	playItem->id.id = fplAtomicIncrementU64(&audioSys->playItems.idCounter);
 	playItem->next = playItem->prev = fpl_null;
 	playItem->framesPlayed = 0;
 	playItem->source = source;
