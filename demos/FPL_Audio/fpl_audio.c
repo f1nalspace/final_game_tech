@@ -318,14 +318,6 @@ static void AudioStreamingThread(const fplThreadHandle *thread, void *rawData) {
 
 	uint64_t startTime = fplGetTimeInMillisecondsLP();
 	while(!demo->isStreamingThreadStopped) {
-		// Stream in audio to a ring buffer
-		uint64_t streamDuration = 0;
-		if(StreamAudio(&demo->targetAudioFormat, framesToStream, demo, &streamDuration)) {
-			if(streamDuration > currentDelay) {
-				// @TODO(final): We are taking too long to stream, do we want to adjust the delay (slow platform/device)
-			}
-		}
-
 		// Wait if needed
 		uint64_t deltaTime = fplGetTimeInMillisecondsLP() - startTime;
 		if(deltaTime < currentDelay) {
@@ -333,6 +325,14 @@ static void AudioStreamingThread(const fplThreadHandle *thread, void *rawData) {
 			continue;
 		}
 		startTime = fplGetTimeInMillisecondsLP();
+
+		// Stream in audio to a ring buffer
+		uint64_t streamDuration = 0;
+		if(StreamAudio(&demo->targetAudioFormat, framesToStream, demo, &streamDuration)) {
+			if(streamDuration > currentDelay) {
+				// @TODO(final): We are taking too long to stream, do we want to adjust the delay (slow platform/device)
+			}
+		}
 	}
 }
 
