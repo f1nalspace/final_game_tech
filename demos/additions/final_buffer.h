@@ -51,6 +51,7 @@ extern void LockFreeRingBufferRelease(LockFreeRingBuffer *buffer);
 
 extern bool LockFreeRingBufferCanRead(LockFreeRingBuffer *buffer, size_t *availableBytes);
 extern bool LockFreeRingBufferRead(LockFreeRingBuffer *buffer, void *dst, const size_t len);
+extern bool LockFreeRingBufferSkip(LockFreeRingBuffer *buffer, const size_t length);
 
 extern bool LockFreeRingBufferCanWrite(LockFreeRingBuffer *buffer, size_t *availableBytes);
 extern bool LockFreeRingBufferWrite(LockFreeRingBuffer *buffer, const void *src, const size_t len);
@@ -240,8 +241,6 @@ extern bool LockFreeRingBufferCanWrite(LockFreeRingBuffer *buffer, size_t *avail
 	return(false);
 }
 
-
-
 extern bool LockFreeRingBufferWrite(LockFreeRingBuffer *buffer, const void *src, const size_t len) {
 	if(buffer == fpl_null) return(false);
 	uint64_t available = buffer->length - fplAtomicLoadS64(&buffer->fillCount);
@@ -283,13 +282,51 @@ extern bool LockFreeRingBufferRead(LockFreeRingBuffer *buffer, void *dst, const 
 	return(true);
 }
 
+extern bool LockFreeRingBufferPeek(LockFreeRingBuffer *buffer, void *dst, const size_t offset, const size_t len) {
+	if(buffer == fpl_null) return(false);
+	uint64_t fillCount = fplAtomicLoadS64(&buffer->fillCount);
+	if((offset + len) > fillCount) return(false);
+	uint8_t *srcAddr = (uint8_t *)buffer->buffer;
+	uint8_t *dstAddr = (uint8_t *)dst;
+	if(dst != fpl_null) {
+		if(buffer->isMirror || (buffer->tail + offset + len) <= buffer->length) {
+			memcpy(dstAddr, srcAddr + buffer->tail + offset, len);
+		} else {
+			uint64_t tail = (buffer->tail + offset) % buffer->length;
+
+			uint64_t bytesLeft = fplMin(fplMin(len, fillCount - offset), buffer->length - tail);
+			memcpy(dstAddr, srcAddr + tail, bytesLeft);
+
+			uint64_t bytesRight = len - bytesLeft;
+			memcpy(dstAddr + bytesLeft, srcAddr, bytesRight);
+		}
+	}
+	return(true);
+}
+
 extern void LockFreeRingBufferClear(LockFreeRingBuffer *buffer) {
 	if(buffer == fpl_null) return;
-	size_t fillCount;
+	size_t fillCount = 0;
 	LockFreeRingBufferCanRead(buffer, &fillCount);
 	if(fillCount > 0) {
 		f_LockFreeRingBufferConsume(buffer, fillCount);
 	}
+}
+
+extern bool LockFreeRingBufferSkip(LockFreeRingBuffer *buffer, const size_t length) {
+	if(buffer == fpl_null)
+		return(false);
+
+	size_t fillCount = 0;
+	if(!LockFreeRingBufferCanRead(buffer, &fillCount))
+		return(false);
+
+	if(fillCount < length)
+		return(false);
+
+	f_LockFreeRingBufferConsume(buffer, length);
+
+	return(true);
 }
 
 void assertBytes(const uint8_t *data, const uint8_t test, const size_t offset, const size_t len) {
