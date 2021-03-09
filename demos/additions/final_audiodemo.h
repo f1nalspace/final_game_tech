@@ -21,7 +21,7 @@ static bool InitAudioData(const fplAudioDeviceFormat *targetFormat, AudioSystem 
 			fplConsoleFormatOut("Loading audio file '%s\n", filePath);
 			AudioSource *source = AudioSystemLoadFileSource(audioSys, filePath);
 			if (source != fpl_null) {
-				AudioSystemPlaySource(audioSys, source, true, 1.0f);
+				AudioSystemPlaySource(audioSys, source, false, 1.0f);
 				hadFiles = true;
 			}
 		}
