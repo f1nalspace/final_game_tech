@@ -51,6 +51,8 @@ typedef struct PCMWaveData {
 	bool isValid;
 } PCMWaveData;
 
+#define AUDIO_MAX_CHANNEL_COUNT (AudioChannelIndex)16
+
 static void FreeWaveData(PCMWaveData* wave) {
 	if (wave != fpl_null) {
 		if (wave->isamples != fpl_null) {
