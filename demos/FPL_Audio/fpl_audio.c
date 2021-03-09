@@ -359,11 +359,11 @@ static void AudioStreamingThread(const fplThreadHandle *thread, void *rawData) {
 		fplStructInit(AudioFrameDelayEntry, 8192, 4, true),
 		fplStructInit(AudioFrameDelayEntry, 8192, 6, true),
 		fplStructInit(AudioFrameDelayEntry, 8192, 8, true),
-		fplStructInit(AudioFrameDelayEntry, 8192, 10, false),
-		fplStructInit(AudioFrameDelayEntry, 8192, 12, false),
-		fplStructInit(AudioFrameDelayEntry, 8192, 15, false),
-		fplStructInit(AudioFrameDelayEntry, 8192, 20, false),
-		fplStructInit(AudioFrameDelayEntry, 8192, 25, false),
+		fplStructInit(AudioFrameDelayEntry, 8192, 10, true),
+		fplStructInit(AudioFrameDelayEntry, 8192, 12, true),
+		fplStructInit(AudioFrameDelayEntry, 8192, 15, true),
+		fplStructInit(AudioFrameDelayEntry, 8192, 20, true),
+		fplStructInit(AudioFrameDelayEntry, 8192, 25, true),
 		fplStructInit(AudioFrameDelayEntry, 16384, 4, false),
 		fplStructInit(AudioFrameDelayEntry, 16384, 6, false),
 		fplStructInit(AudioFrameDelayEntry, 16384, 8, false),
@@ -442,7 +442,8 @@ static void AudioStreamingThread(const fplThreadHandle *thread, void *rawData) {
 	uint64_t startTime = fplGetTimeInMillisecondsLP();
 	while(!demo->isStreamingThreadStopped) {
 		// Wait if needed
-		if(!ignoreWait || !currentEntry.canIgnoreWait) {
+		bool wait = !ignoreWait;
+		if(wait || !currentEntry.canIgnoreWait) {
 			uint64_t deltaTime = fplGetTimeInMillisecondsLP() - startTime;
 			if(deltaTime < currentEntry.delay) {
 				fplThreadSleep(1);
@@ -450,20 +451,35 @@ static void AudioStreamingThread(const fplThreadHandle *thread, void *rawData) {
 			}
 			startTime = fplGetTimeInMillisecondsLP();
 		}
+		
+		if (ignoreWait) {
+			// We just want to ignore waiting once
+			ignoreWait = true;
+		}
 
-		// Stream in audio to a ring buffer (Too slow on linux)
+		bool tooSlow = false;
+		bool tooFast = false;
+		
 		uint64_t streamDuration = 0;
 		if(StreamAudio(&demo->targetAudioFormat, currentEntry.frames, demo, &streamDuration)) {
 			if(streamDuration > currentEntry.delay) {
-				// @TODO(final): We are taking too long to stream, stop any waiting
-				ignoreWait = true;
+				// We are taking too slow to stream in new audio samples
+				tooSlow = true;
 			}
 		}
 
 		uint64_t fillCount = (uint64_t)fplAtomicLoadS64(&circularBuffer->fillCount);
 		float percentageFilled = (1.0f / (float)totalBufferLength) * (float)fillCount;
 		if(percentageFilled < minBufferThreshold) {
-			// We are too slow, go one entry in the table backward
+			// We are not filling the buffer fast enough, maybe due to streaming slowness
+			tooSlow = true;
+		} else if(percentageFilled > maxBufferThreshold) {
+			// We are too fast
+			tooFast = true;
+		}
+		
+		if (tooSlow) {
+			// Go back one characteristics entry
 			if(entryIndex > 0) {
 				currentEntry = entries[--entryIndex];
 				if(currentEntry.canIgnoreWait) {
@@ -472,15 +488,15 @@ static void AudioStreamingThread(const fplThreadHandle *thread, void *rawData) {
 			} else {
 				ignoreWait = true; // We are the worst entry, ignore any waiting
 			}
-		} else if(percentageFilled > maxBufferThreshold) {
-			// We are too fast, go one entry in the table forward
+		} else if (tooFast){
+			// Go forward one characteristics entry
 			if(entryIndex < (fplArrayCount(entries) - 1)) {
 				currentEntry = entries[++entryIndex];
 				if(!currentEntry.canIgnoreWait) {
 					ignoreWait = false;
 				}
 			} else {
-				ignoreWait = false; // We are the max entry, start waiting
+				ignoreWait = false; // We are the max entry, never ignore waiting
 			}
 		}
 	}
