@@ -52,6 +52,7 @@ typedef struct PCMWaveData {
 } PCMWaveData;
 
 #define AUDIO_MAX_CHANNEL_COUNT (AudioChannelIndex)16
+#define AUDIO_MAX_SAMPLESIZE 4
 
 static void FreeWaveData(PCMWaveData* wave) {
 	if (wave != fpl_null) {
@@ -198,12 +199,12 @@ static void FFTTest() {
 
 }
 
-fpl_inline float AmplitudeToDecibel(const float amplitude) {
-	return 20.0f * log10f(amplitude);
+fpl_inline double AmplitudeToDecibel(const double amplitude) {
+	return 20.0 * log10(amplitude);
 }
 
-fpl_inline float DecibelToAmplitude(const float dB) {
-	return powf(10.0f, dB / 20.0f);
+fpl_inline double DecibelToAmplitude(const double dB) {
+	return pow(10.0, dB / 20.0);
 }
 
 static void WindowFunctionCore(double* output, const size_t length, const double a0, const double a1, const double a2, const double a3, const double a4) {
@@ -238,7 +239,7 @@ static void HannWindowFunction(double* output, const size_t length) {
 	WindowFunctionCore(output, length, a0, a1, a2, a3, a4);
 }
 
-static void HammingWindowFunction(const size_t length, double* output) {
+static void HammingWindowFunction(double* output, const size_t length) {
 	double a0 = 0.53836; // 25 / 46
 	double a1 = 0.46164; // a1 = 1 - a0 = 21 / 46
 	double a2 = 0.0;
@@ -247,7 +248,7 @@ static void HammingWindowFunction(const size_t length, double* output) {
 	WindowFunctionCore(output, length, a0, a1, a2, a3, a4);
 }
 
-static void BlackmanWindowFunction(const size_t length, double* output) {
+static void BlackmanWindowFunction(double* output, const size_t length) {
 	double a0 = 0.42; // 21 / 50
 	double a1 = 0.50; // 25 / 50
 	double a2 = 0.08; //  4 / 50
