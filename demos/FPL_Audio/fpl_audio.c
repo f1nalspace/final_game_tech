@@ -81,6 +81,22 @@ License:
 	MIT License (See LICENSE file)
 -------------------------------------------------------------------------------
 */
+
+
+/*
+Ideas:
+
+Visualize the samples:
+
+- Define a struct chunk which contains 128, 256, 512 samples + a frame counter, so we can convert it to a time
+- Define a ringbuffer with a multiple of N-chunks with a total length of one second
+- In the AudioStreamingThread convert the streamed samples to N-chunks and push it into the ring buffer
+- In the rendering code we track the current time, regardless if audio is played or not or if window is visible or not
+- Now for each frame, we look for one chunk which fits exactly in the current time, copy it and discard the chunk and all other chunks which are older (No need to keep chunks from previous frames)
+- Use the copied chunk as FFT input and display the spectrum for it
+*/
+
+
 #define OPT_PLAYBACK_NONE 0
 #define OPT_PLAYBACK_SINEWAVE_ONLY 1
 #define OPT_PLAYBACK_AUDIOSYSTEM_ONLY 2
@@ -111,18 +127,42 @@ License:
 #define FINAL_BUFFER_IMPLEMENTATION
 #include <final_buffer.h>
 
+#define MAX_AUDIO_FRAMES_CHUNK_FRAMES 128
+typedef struct AudioFramesChunk {
+	uint8_t samples[MAX_AUDIO_FRAMES_CHUNK_FRAMES * AUDIO_MAX_CHANNEL_COUNT * AUDIO_MAX_SAMPLESIZE];
+	AudioFrameIndex index;
+	AudioFrameIndex count;
+} AudioFramesChunk;
+
+#define MAX_AUDIO_BIN_COUNT 128
+
+typedef struct AudioSpectrum {
+	FFTDouble input[MAX_AUDIO_FRAMES_CHUNK_FRAMES];
+	FFTDouble output[MAX_AUDIO_FRAMES_CHUNK_FRAMES];
+	double magnitudes[MAX_AUDIO_FRAMES_CHUNK_FRAMES];
+	double windowCoeffs[MAX_AUDIO_FRAMES_CHUNK_FRAMES];
+	double maxPeaks[MAX_AUDIO_BIN_COUNT];
+	double bins[MAX_AUDIO_BIN_COUNT + 1];
+} AudioSpectrum;
+
 typedef struct AudioDemo {
 	AudioSystem audioSys;
 	AudioSineWaveData sineWave;
 	AudioBuffer streamTempBuffer;
 	LockFreeRingBuffer streamRingBuffer;
+	LockFreeRingBuffer chunkRingBuffer;
+	AudioFramesChunk videoAudioChunks[2]; // 0 = Render, 1 = New
+	AudioSpectrum spectrum;
+	void *chunkTempBuffer;
 	fplThreadHandle *streamingThread;
 	fplAudioDeviceFormat targetAudioFormat;
+	uint64_t lastVideoAudioChunkUpdateTime;
+	volatile uint32_t hasVideoAudioChunk;
+	volatile uint32_t numFramesPlayed;
+	volatile uint32_t numFramesStreamed;
 	volatile uint32_t maxPlaybackFrameLatency;
 	volatile fpl_b32 isStreamingThreadStopped;
 } AudioDemo;
-
-
 
 static void UpdateTitle(AudioDemo *demo) {
 	char titleBuffer[256];
@@ -165,7 +205,41 @@ static void RenderLine(const float x0, const float y0, const float x1, const flo
 	glColor4f(1, 1, 1, 1);
 }
 
-static void Render(AudioDemo *demo, const int screenW, const int screenH) {
+static void RenderRingBuffer(const Vec2f pos, const Vec2f dim, LockFreeRingBuffer *buffer) {
+	RenderRectangle(pos.x, pos.y, pos.x + dim.w, pos.y + dim.h, (Vec4f) { 1, 0, 0, 1 }, 1.0f);
+
+	uint64_t bufferLen = buffer->length;
+
+	float bufferScale = dim.w / (float)bufferLen;
+
+	uint64_t fillCount = fplAtomicLoadS64(&buffer->fillCount);
+
+	uint64_t remaining = bufferLen - fillCount;
+
+	uint64_t tail = buffer->tail;
+	uint64_t head = buffer->head;
+
+	float tailPos = pos.x + (float)tail * bufferScale;
+	float headPos = pos.x + (float)head * bufferScale;
+
+	bool tailWouldWrap = (tail + fillCount) > bufferLen;
+	if(tailWouldWrap) {
+		// Double
+		RenderQuad(tailPos, pos.y, pos.x + dim.w, pos.y + dim.h, V4fInit(1.0f, 1.0f, 1.0f, 0.5f));
+		uint64_t wrapPos = (tail + fillCount) % bufferLen;
+		float fillEnd = wrapPos * bufferScale;
+		RenderQuad(pos.x, pos.y, pos.x + fillEnd, pos.y + dim.h, V4fInit(1.0f, 1.0f, 1.0f, 0.5f));
+	} else {
+		// Single
+		float fillOffset = fillCount * bufferScale;
+		RenderQuad(tailPos, pos.y, tailPos + fillOffset, pos.y + dim.h, V4fInit(1.0f, 1.0f, 1.0f, 0.5f));
+	}
+
+	RenderLine(headPos, pos.y - dim.h * 0.5f, headPos, pos.y + dim.h * 1.5f, V4fInit(0.0f, 0.0f, 1.0f, 1.0f), 2.0f);
+	RenderLine(tailPos, pos.y - dim.h * 0.5f, tailPos, pos.y + dim.h * 1.5f, V4fInit(0.0f, 1.0f, 0.0f, 1.0f), 2.0f);
+}
+
+static void Render(AudioDemo *demo, const int screenW, const int screenH, const double currentRenderTime) {
 	uint32_t channelCount = demo->audioSys.targetFormat.channels;
 
 	float w = (float)screenW;
@@ -182,39 +256,199 @@ static void Render(AudioDemo *demo, const int screenW, const int screenH) {
 
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-	Vec2f areaDim = V2fInit(w * 0.9f, h * 0.25f);
-	Vec2f areaPos = V2fInit((w - areaDim.w) * 0.5f, (h - areaDim.h) * 0.5f);
-
 	RenderLine(0.0f, h * 0.5f, w, h * 0.5f, V4fInit(1.0f, 1.0f, 1.0f, 0.25f), 1.0f);
 	RenderLine(w * 0.5f, 0, w * 0.5f, h, V4fInit(1.0f, 1.0f, 1.0f, 0.25f), 1.0f);
 
-	RenderRectangle(areaPos.x, areaPos.y, areaPos.x + areaDim.w, areaPos.y + areaDim.h, (Vec4f) { 1, 0, 0, 1 }, 1.0f);
-
 #if OPT_PLAYBACKMODE == OPT_PLAYBACK_STREAMBUFFER_ONLY
-	float bufferScale = areaDim.w / (float)demo->streamRingBuffer.length;
+	Vec2f streamBufferDim = V2fInit(w * 0.9f, h * 0.1f);
+	Vec2f streamBufferPos = V2fInit((w - streamBufferDim.w) * 0.5f, h * 0.1f);
+	RenderRingBuffer(streamBufferPos, streamBufferDim, &demo->streamRingBuffer);
 
-	uint64_t fillCount = fplAtomicLoadS64(&demo->streamRingBuffer.fillCount);
+#if 0
+	Vec2f chunkBufferDim = V2fInit(w * 0.9f, h * 0.1f);
+	Vec2f chunkBufferPos = V2fInit((w - chunkBufferDim.w) * 0.5f, (h - chunkBufferDim.h) * 0.9f);
+	RenderRingBuffer(chunkBufferPos, chunkBufferDim, &demo->chunkRingBuffer);
+#endif
 
-	uint64_t remaining = demo->streamRingBuffer.length - fillCount;
+	Vec2f spectrumDim = V2fInit(w * 0.9f, h * 0.6f);
+	Vec2f spectrumPos = V2fInit((w - spectrumDim.w) * 0.5f, h * 0.3f);
+	RenderRectangle(spectrumPos.x, spectrumPos.y, spectrumPos.x + spectrumDim.w, spectrumPos.y + spectrumDim.h, (Vec4f) { 1, 1, 1, 1 }, 1.0f);
 
-	float tailPos = areaPos.x + (float)demo->streamRingBuffer.tail * bufferScale;
-	float headPos = areaPos.x + (float)demo->streamRingBuffer.head * bufferScale;
-
-	bool tailWouldWrap = (demo->streamRingBuffer.tail + fillCount) > demo->streamRingBuffer.length;
-	if(tailWouldWrap) {
-		// Double
-		RenderQuad(tailPos, areaPos.y, areaPos.x + areaDim.w, areaPos.y + areaDim.h, V4fInit(1.0f, 1.0f, 1.0f, 0.5f));
-		uint64_t wrapPos = (demo->streamRingBuffer.tail + fillCount) % demo->streamRingBuffer.length;
-		float fillEnd = wrapPos * bufferScale;
-		RenderQuad(areaPos.x, areaPos.y, areaPos.x + fillEnd, areaPos.y + areaDim.h, V4fInit(1.0f, 1.0f, 1.0f, 0.5f));
-	} else {
-		// Single
-		float fillOffset = fillCount * bufferScale;
-		RenderQuad(tailPos, areaPos.y, tailPos + fillOffset, areaPos.y + areaDim.h, V4fInit(1.0f, 1.0f, 1.0f, 0.5f));
+	if(fplIsAtomicCompareAndSwapU32(&demo->hasVideoAudioChunk, 2, 3)) {
+		demo->videoAudioChunks[0] = demo->videoAudioChunks[1];
+		fplAtomicExchangeU32(&demo->hasVideoAudioChunk, 0);
 	}
 
-	RenderLine(headPos, areaPos.y - areaDim.h * 0.5f, headPos, areaPos.y + areaDim.h * 1.5f, V4fInit(0.0f, 0.0f, 1.0f, 1.0f), 2.0f);
-	RenderLine(tailPos, areaPos.y - areaDim.h * 0.5f, tailPos, areaPos.y + areaDim.h * 1.5f, V4fInit(0.0f, 1.0f, 0.0f, 1.0f), 2.0f);
+	uint32_t frameCount = demo->videoAudioChunks[0].count;
+	if(frameCount > 0) {
+		//
+		// Compute FFT
+		//
+		const uint32_t channel = 0;
+		fplAudioFormatType format = demo->targetAudioFormat.type;
+		size_t sampleSize = fplGetAudioSampleSizeInBytes(format);
+		size_t frameSize = sampleSize * demo->targetAudioFormat.channels;
+		for(uint32_t i = 0; i < frameCount; ++i) {
+			double sampleValue = 0.0;
+			switch(format) {
+				case fplAudioFormatType_F32:
+				{
+					float *pF32 = (float *)(demo->videoAudioChunks[0].samples + i * frameSize + channel * sampleSize);
+					float sampleF32 = *pF32;
+					sampleValue = (double)sampleF32;
+				} break;
+
+				case fplAudioFormatType_S32:
+				{
+					int32_t *pS32 = (int32_t *)(demo->videoAudioChunks[0].samples + i * frameSize + channel * sampleSize);
+					int32_t sampleS32 = *pS32;
+					sampleValue = (double)sampleS32 / (double)INT32_MAX;
+				} break;
+
+				case fplAudioFormatType_S16:
+				{
+					int16_t *pS16 = (int16_t *)(demo->videoAudioChunks[0].samples + i * frameSize + channel * sampleSize);
+					int16_t sampleS16 = *pS16;
+					sampleValue = (double)sampleS16 / (double)INT16_MAX;
+				} break;
+			}
+
+			// Window multiplier (Hamming for smoother visualization)
+			double windowMultiplier = demo->spectrum.windowCoeffs[i];
+
+			demo->spectrum.input[i].real = sampleValue * windowMultiplier;
+			demo->spectrum.input[i].imag = 0;
+		}
+
+		ForwardFFT(demo->spectrum.input, frameCount, false, demo->spectrum.output);
+
+		// Save magnitudes for FFT output
+		for(uint32_t frameIndex = 0; frameIndex < frameCount; ++frameIndex) {
+			double re = fabs(demo->spectrum.output[frameIndex].real);
+			double im = fabs(demo->spectrum.output[frameIndex].imag);
+			double magnitude = sqrt(re * re + im * im) * 2.0 / (double)frameCount;
+			demo->spectrum.magnitudes[frameIndex] = magnitude;
+		}
+
+		// Reset and evaluate max peaks
+		uint32_t binCount = MAX_AUDIO_BIN_COUNT;
+		for(uint32_t i = 0; i < binCount; ++i) {
+			demo->spectrum.maxPeaks[i] = -INFINITY;
+		}
+		double sampleRatePerFrame = (double)demo->targetAudioFormat.sampleRate / (double)frameCount;
+		for(uint32_t frameIndex = 0; frameIndex < frameCount / 2; ++frameIndex) {
+			double magnitude = demo->spectrum.magnitudes[frameIndex];
+			double freq = frameIndex * sampleRatePerFrame;
+			for(uint32_t binIndex = 0; binIndex < (binCount + 1); ++binIndex) {
+				if((freq > demo->spectrum.bins[binIndex]) && (freq <= demo->spectrum.bins[binIndex + 1])) {
+					if(magnitude > demo->spectrum.maxPeaks[binIndex]) {
+						demo->spectrum.maxPeaks[binIndex] = magnitude;
+					}
+				}
+			}
+		}
+
+
+#if 1
+		// Draw samples
+		{
+			float spacing = 3.0f;
+			float totalSpacing = spacing * (frameCount - 1);
+			float barMaxWidth = spectrumDim.w / (float)frameCount;
+			float barWidth = (spectrumDim.w - totalSpacing) / (float)frameCount;
+
+			for(uint32_t i = 0; i < frameCount; ++i) {
+				float sampleValue = 0.0;
+				switch(format) {
+					case fplAudioFormatType_F32:
+					{
+						float *pF32 = (float *)(demo->videoAudioChunks[0].samples + i * frameSize + channel * sampleSize);
+						float sampleF32 = *pF32;
+						sampleValue = sampleF32;
+					} break;
+
+					case fplAudioFormatType_S32:
+					{
+						int32_t *pS32 = (int32_t *)(demo->videoAudioChunks[0].samples + i * frameSize + channel * sampleSize);
+						int32_t sampleS32 = *pS32;
+						sampleValue = (float)sampleS32 / (float)INT32_MAX;
+					} break;
+
+					case fplAudioFormatType_S16:
+					{
+						int16_t *pS16 = (int16_t *)(demo->videoAudioChunks[0].samples + i * frameSize + channel * sampleSize);
+						int16_t sampleS16 = *pS16;
+						sampleValue = (float)sampleS16 / (float)INT16_MAX;
+					} break;
+				}
+
+				// Normalize sample value
+				sampleValue = sqrtf(sampleValue * sampleValue);
+
+				float barMaxHeight = spectrumDim.h * 0.5f;
+				float barHeight = sampleValue * barMaxHeight;
+				float barX = spectrumPos.x + i * barWidth + i * spacing;
+				float barY = spectrumPos.y + spectrumDim.h * 0.5f;
+				RenderRectangle(barX, barY + barHeight * 0.5f, barX + barWidth, barY - barHeight * 0.5f, (Vec4f) { 1, 1, 0, 1 }, 1.0f);
+			}
+		}
+#endif
+
+
+#if 0
+		// Draw FFT bins/peaks (Is incorrect)
+		{
+			float fitFactor = 1.0f;
+			float spacing = 4.0f;
+			float totalSpacing = spacing * (binCount - 1);
+			float barMaxWidth = spectrumDim.w / (float)binCount;
+			float barMaxHeight = spectrumDim.h;
+			float barWidth = (spectrumDim.w - totalSpacing) / (float)binCount;
+			float barY = spectrumPos.y + barMaxHeight;
+
+			for(uint32_t binIndex = 0; binIndex < binCount; ++binIndex) {
+				double maxPeak = demo->spectrum.maxPeaks[binIndex];
+				double db = AmplitudeToDecibel(maxPeak);
+				double minDB = -90.0;
+				if(db < minDB) db = minDB;
+				float sampleValue = (float)(db / minDB);
+
+				// https://dsp.stackexchange.com/questions/32076/fft-to-spectrum-in-decibel
+
+				float barX = spectrumPos.x + binIndex * barWidth + binIndex * spacing;
+				float barHeight = sampleValue * barMaxHeight;
+				RenderQuad(barX, barY, barX + barWidth, barY - barHeight, (Vec4f) { 0, 1, 0, 0.1f });
+			}
+		}
+#endif
+
+#if 1
+		// Draw raw FFT
+		{
+			uint32_t fftCount = frameCount;
+			float spacing = 6.0f;
+			float totalSpacing = spacing * (fftCount - 1);
+			float barMaxWidth = spectrumDim.w / (float)fftCount;
+			float barMaxHeight = spectrumDim.h;
+			float barWidth = (spectrumDim.w - totalSpacing) / (float)fftCount;
+			float barY = spectrumPos.y + barMaxHeight;
+
+			float magScale = 4.0f;
+
+			// https://dsp.stackexchange.com/questions/32076/fft-to-spectrum-in-decibel
+
+			for(uint32_t frameIndex = 0; frameIndex < fftCount; ++frameIndex) {
+				double magnitude = demo->spectrum.magnitudes[frameIndex];
+				float sampleValue = magnitude * magScale;
+				float barX = spectrumPos.x + frameIndex * barWidth + frameIndex * spacing;
+				float barHeight = sampleValue * barMaxHeight;
+				RenderQuad(barX, barY, barX + barWidth, barY - barHeight, (Vec4f) { 0, 1, 0, 1 });
+			}
+		}
+#endif
+	}  // chunkFrameCount > 0
+
+//fplDebugFormatOut("Current render/play time: [%f, %f], played/streamed frames: [%lu, %lu], chunks: %zu\n", currentRenderTime, currentPlayTime, playedFrames, streamedFrames, numChunks);
 #endif
 }
 
@@ -254,6 +488,20 @@ static uint32_t AudioPlayback(const fplAudioDeviceFormat *outFormat, const uint3
 		fplAssert(isRead);
 
 		result = framesToCopy;
+		uint32_t numFramesPlayed = fplAtomicFetchAndAddU32(&demo->numFramesPlayed, result);
+
+		const uint32_t updateInterval = 1000 / 60;
+
+		if((framesToCopy >= MAX_AUDIO_FRAMES_CHUNK_FRAMES) && ((fplGetTimeInMillisecondsLP() - demo->lastVideoAudioChunkUpdateTime) >= updateInterval)) {
+			if(fplIsAtomicCompareAndSwapU32(&demo->hasVideoAudioChunk, 0, 1)) {
+				demo->videoAudioChunks[1].index = numFramesPlayed;
+				demo->videoAudioChunks[1].count = MAX_AUDIO_FRAMES_CHUNK_FRAMES;
+				size_t chunkSamplesSize = frameSize * MAX_AUDIO_FRAMES_CHUNK_FRAMES;
+				fplMemoryCopy(outputSamples, chunkSamplesSize, demo->videoAudioChunks[1].samples);
+				fplAtomicExchangeU32(&demo->hasVideoAudioChunk, 2);
+			}
+			demo->lastVideoAudioChunkUpdateTime = fplGetTimeInMillisecondsLP();
+		}
 	}
 
 #endif // OPT_OUTPUT_SAMPLES_SINEWAVE_ONLY
@@ -265,19 +513,20 @@ static bool StreamAudio(const fplAudioDeviceFormat *format, const uint32_t maxFr
 	if(format == fpl_null || demo == fpl_null) return(false);
 	if(maxFrameCount == 0) return(false);
 
-	LockFreeRingBuffer *circularBuffer = &demo->streamRingBuffer;
+	LockFreeRingBuffer *streamRingBuffer = &demo->streamRingBuffer;
+	LockFreeRingBuffer *chunkRingBuffer = &demo->chunkRingBuffer;
 
 	AudioBuffer *tmpBuffer = &demo->streamTempBuffer;
 
 	size_t frameSize = fplGetAudioFrameSizeInBytes(format->type, format->channels);
 
-	size_t availableSpace = 0;
-	bool canWrite = LockFreeRingBufferCanWrite(circularBuffer, &availableSpace);
+	size_t availableStreamSpace = 0;
+	bool canStreamWrite = LockFreeRingBufferCanWrite(streamRingBuffer, &availableStreamSpace);
 
-	if(canWrite && (availableSpace % frameSize) == 0) {
+	if(canStreamWrite && (availableStreamSpace % frameSize) == 0) {
 		uint64_t timeStart = fplGetTimeInMillisecondsLP();
 
-		AudioFrameIndex numOfAvailableFrames = (AudioFrameIndex)fplMax(0, availableSpace / frameSize);
+		AudioFrameIndex numOfAvailableFrames = (AudioFrameIndex)fplMax(0, availableStreamSpace / frameSize);
 
 		// Disable this condition to always 100% fill the buffer
 		//if(numOfAvailableFrames < maxFrameCount)
@@ -293,8 +542,59 @@ static bool StreamAudio(const fplAudioDeviceFormat *format, const uint32_t maxFr
 		fplAssert(writtenFrames == framesToWrite);
 		totalFrameBytes = writtenFrames * frameSize;
 
-		bool written = LockFreeRingBufferWrite(circularBuffer, tmpBuffer->samples, totalFrameBytes);
-		fplAssert(written);
+		// Write samples from temporary buffer to stream ring buffer
+		bool streamWritten = LockFreeRingBufferWrite(streamRingBuffer, tmpBuffer->samples, totalFrameBytes);
+		fplAssert(streamWritten);
+
+		uint32_t lastNumFramesStreamed = fplAtomicFetchAndAddU32(&demo->numFramesStreamed, writtenFrames);
+
+		//
+		// Fill chunks for visualization
+		//
+#if 0
+		size_t chunkSize = sizeof(AudioFramesChunk);
+		size_t availableChunkSpace = 0;
+		bool canChunkWrite = LockFreeRingBufferCanWrite(chunkRingBuffer, &availableChunkSpace);
+		if(canChunkWrite && availableChunkSpace >= chunkSize && totalFrameBytes >= chunkSize) {
+			AudioFrameIndex remainingChunkFrames = writtenFrames;
+
+			size_t nbytes = fplMin(availableChunkSpace, totalFrameBytes);
+
+			size_t numChunks = nbytes / chunkSize;
+
+			size_t totalChunksSize = numChunks * chunkSize;
+
+			AudioFramesChunk tempChunk;
+			AudioFrameIndex maxFramesPerChunk = MAX_AUDIO_FRAMES_CHUNK_FRAMES;
+
+			AudioFrameIndex chunkFrameStartTime = lastNumFramesStreamed;
+
+			void *chunkTempMemory = demo->chunkTempBuffer;
+
+			size_t sourceOffset = 0;
+			for(size_t chunkIndex = 0; chunkIndex < numChunks; ++chunkIndex) {
+				AudioFrameIndex framesForChunk = fplMin(maxFramesPerChunk, remainingChunkFrames);
+				size_t chunkSamplesSize = framesForChunk * frameSize;
+
+				AudioFramesChunk *chunk = (AudioFramesChunk *)((uint8_t *)chunkTempMemory + (chunkSize * chunkIndex));
+
+				double chunkTime = fplGetAudioBufferSizeInMilliseconds(demo->targetAudioFormat.sampleRate, chunkFrameStartTime);
+
+				fplClearStruct(chunk);
+				chunk->index = chunkFrameStartTime;
+				chunk->count = framesForChunk;
+				fplAssert(chunkSamplesSize <= sizeof(chunk->samples));
+				fplMemoryCopy(tmpBuffer->samples + sourceOffset, chunkSamplesSize, chunk->samples);
+
+				remainingChunkFrames -= framesForChunk;
+				chunkFrameStartTime += framesForChunk;
+				sourceOffset += chunkSamplesSize;
+			}
+
+			bool chunksWritten = LockFreeRingBufferWrite(chunkRingBuffer, chunkTempMemory, totalChunksSize);
+			fplAssert(chunksWritten);
+		}
+#endif
 
 		if(outDuration != fpl_null) {
 			uint64_t delta = fplGetTimeInMilliseconds() - timeStart;
@@ -451,15 +751,15 @@ static void AudioStreamingThread(const fplThreadHandle *thread, void *rawData) {
 			}
 			startTime = fplGetTimeInMillisecondsLP();
 		}
-		
-		if (ignoreWait) {
+
+		if(ignoreWait) {
 			// We just want to ignore waiting once
 			ignoreWait = true;
 		}
 
 		bool tooSlow = false;
 		bool tooFast = false;
-		
+
 		uint64_t streamDuration = 0;
 		if(StreamAudio(&demo->targetAudioFormat, currentEntry.frames, demo, &streamDuration)) {
 			if(streamDuration > currentEntry.delay) {
@@ -477,8 +777,8 @@ static void AudioStreamingThread(const fplThreadHandle *thread, void *rawData) {
 			// We are too fast
 			tooFast = true;
 		}
-		
-		if (tooSlow) {
+
+		if(tooSlow) {
 			// Go back one characteristics entry
 			if(entryIndex > 0) {
 				currentEntry = entries[--entryIndex];
@@ -488,7 +788,7 @@ static void AudioStreamingThread(const fplThreadHandle *thread, void *rawData) {
 			} else {
 				ignoreWait = true; // We are the worst entry, ignore any waiting
 			}
-		} else if (tooFast){
+		} else if(tooFast) {
 			// Go forward one characteristics entry
 			if(entryIndex < (fplArrayCount(entries) - 1)) {
 				currentEntry = entries[++entryIndex];
@@ -600,7 +900,16 @@ int main(int argc, char **args) {
 			goto done;
 		}
 
-		// Allocate temporary audio buffer
+		// Init chunk buffer
+		size_t numChunks = fplMax(1, streamBufferSize / sizeof(AudioFramesChunk));
+		size_t chunkBufferSize = numChunks * sizeof(AudioFramesChunk);
+		fplAssert(chunkBufferSize % 16 == 0);
+		bufferInitRes = LockFreeRingBufferInit(&demo->chunkRingBuffer, chunkBufferSize, true);
+		if(!bufferInitRes) {
+			goto done;
+		}
+
+		// Allocate temporary stream buffer
 		AudioFormat streamTempBufferFormat = fplZeroInit;
 		streamTempBufferFormat.channels = demo->targetAudioFormat.channels;
 		streamTempBufferFormat.format = demo->targetAudioFormat.type;
@@ -609,6 +918,21 @@ int main(int argc, char **args) {
 		if(!bufferInitRes) {
 			goto done;
 		}
+
+		// Allocate temporary chunk buffer
+		size_t tempChunkTempBufferSize = (numChunks + 2) * sizeof(AudioFramesChunk);
+		demo->chunkTempBuffer = fplMemoryAlignedAllocate(tempChunkTempBufferSize, 16);
+
+		// Initialize frequency bins
+		uint32_t frequencyBinCount = fplArrayCount(demo->spectrum.bins);
+		for(uint32_t i = 0; i < frequencyBinCount; ++i) {
+			double freq = i * (double)demo->targetAudioFormat.sampleRate / (double)frequencyBinCount;
+			demo->spectrum.maxPeaks[i] = 0;
+			demo->spectrum.bins[i] = freq;
+		}
+
+		// Init window coefficients
+		HammingWindowFunction(demo->spectrum.windowCoeffs, fplArrayCount(demo->spectrum.input));
 
 		// Stream in initial frames
 		AudioFrameIndex initialFrameStreamCount = streamBufferFrames / 4;
@@ -636,7 +960,8 @@ int main(int argc, char **args) {
 			UpdateTitle(demo);
 
 			// Loop
-			double lastTime = fplGetTimeInSecondsHP();
+			double totalTime = 0.0;
+			fplWallClock lastTime = fplGetWallClock();
 			while(fplWindowUpdate()) {
 				fplEvent ev;
 				while(fplPollEvent(&ev)) {
@@ -669,14 +994,13 @@ int main(int argc, char **args) {
 
 				fplWindowSize winSize = fplZeroInit;
 				fplGetWindowSize(&winSize);
-				Render(demo, winSize.width, winSize.height);
+				Render(demo, winSize.width, winSize.height, totalTime);
 				fplVideoFlip();
 
-				double newTime = fplGetTimeInSecondsHP();
-				double frameTime = newTime - lastTime;
-				//AudioFrameIndex videoFrameCount = (AudioFrameIndex)(targetAudioFormat.sampleRate * frameTime);
-				//demo->currentVideoFrameIndex = (demo->currentVideoFrameIndex + videoFrameCount) % demo->totalBufferFrameCount;
-				lastTime = newTime;
+				fplWallClock curTime = fplGetWallClock();
+				double frameTime = fplGetWallDelta(lastTime, curTime);
+				totalTime += frameTime;
+				lastTime = curTime;
 			}
 
 			// Stop audio playback
@@ -694,7 +1018,9 @@ done:
 	fplThreadTerminate(demo->streamingThread);
 
 	// Release audio buffers
+	fplMemoryAlignedFree(demo->chunkTempBuffer);
 	FreeAudioBuffer(&demo->audioSys, &demo->streamTempBuffer);
+	LockFreeRingBufferRelease(&demo->chunkRingBuffer);
 	LockFreeRingBufferRelease(&demo->streamRingBuffer);
 #endif
 
