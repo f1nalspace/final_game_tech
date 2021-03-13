@@ -140,7 +140,7 @@ SOFTWARE.
 	- New[#81]: Added function fplGetAudioBufferSizeInMilliseconds() to compute milliseconds from frame-count + sample-rate
 	- New[#85]: Added fpl*_First and fpl*_Last to every enum
 	
-	- New: [X11] Implemented fplEnableWindowFullscreen() and fplDisableWindowFullscreen()
+	- New[#86]: [X11] Implemented fplEnableWindowFullscreen() and fplDisableWindowFullscreen()
 
 	### Improvements
 	- Changed: New Changelog format with categories (Features, bugfixes, improvements, breaking changes, internal changes)
@@ -168,8 +168,9 @@ SOFTWARE.
 	- Fixed[#76]: FPL__ERROR, FPL__WARNING, FPL__INFO was not passing the correct function name and line number in some cases
 	- Fixed[#83]: fplGetAudioBufferSizeInFrames() does not return correct values always
 	- Fixed[#83]: fplGetAudioBufferSizeInMilliseconds() does not return correct values always
+
 	- Fixed[#69]: [Win32] Removed the manual handling of ALT + F4 shut down of event handling
-	- Fixed: [POSIX] fplGetWallDelta() was returning incorrect values
+	- Fixed[#87]: [POSIX] fplGetWallDelta() was returning incorrect values
 
 	### Internal changes
 	- Renamed a lot of internal FPL_ defines to FPL__
