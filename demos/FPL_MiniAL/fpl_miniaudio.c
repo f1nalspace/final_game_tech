@@ -287,7 +287,7 @@ int main(int argc, char **args) {
 	
 	// Print output infos
 	PlaybackAudioFormat *playbackFormat = &audioContext->playbackFormat;
-	const char *formatName = fplGetAudioFormatTypeName(playbackFormat->deviceFormat.type);
+	const char *formatName = fplGetAudioFormatName(playbackFormat->deviceFormat.type);
 	const char *systemName;
 #if OPT_USE_MINIAUDIO
 	systemName = "MiniAudio";

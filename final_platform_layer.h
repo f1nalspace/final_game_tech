@@ -139,6 +139,8 @@ SOFTWARE.
 	- New[#79]: Added function fplGetAudioDriver()
 	- New[#81]: Added function fplGetAudioBufferSizeInMilliseconds() to compute milliseconds from frame-count + sample-rate
 
+	
+
 	### Improvements
 	- Changed: New Changelog format with categories (Features, bugfixes, improvements, breaking changes, internal changes)
 	- Changed[#74]: fplGetAudioDevices() allows to pass null-pointer as devices argument to return the number of audio devices only
@@ -170,12 +172,12 @@ SOFTWARE.
 	- Renamed a lot of internal FPL_ defines to FPL__
 
 	### Breaking changes
-	- Renamed[#78]: fplGetArchTypeString to fplGetArchTypeName
+	- Renamed[#78]: fplGetAudioResultTypeString to fplGetAudioResultName
+	- Renamed[#78]: fplGetArchTypeString to fplGetArchName
 	- Renamed[#78]: fplGetVideoDriverString to fplGetVideoDriverName
-	- Renamed[#78]: fplGetPlatformResultTypeString to fplGetPlatformResultTypeName
 	- Renamed[#78]: fplGetAudioDriverString to fplGetAudioDriverName
-	- Renamed[#78]: fplGetAudioFormatTypeString to fplGetAudioFormatTypeName
-	- Renamed[#78]: fplGetAudioResultTypeString to fplGetAudioResultTypeName
+	- Renamed[#78]: fplGetAudioFormatTypeString to fplGetAudioFormatName
+	- Renamed[#78]: fplGetPlatformResultTypeString to fplGetPlatformResultName
 	- Changed[#74]: fplWideStringToUTF8String() returns the number of characters instead of a char-pointer
 	- Changed[#74]: fplUTF8StringToWideString() returns the number of characters instead of a char-pointer
 	- Changed[#74]: fplGetExecutableFilePath() returns the number of characters instead of a char-pointer
@@ -3033,7 +3035,7 @@ fpl_common_api uint64_t fplRDTSC();
 * @return Returns a string for the given architecture type
 * @see @ref section_category_hardware_cpuarch
 */
-fpl_common_api const char *fplGetArchTypeName(const fplArchType type);
+fpl_common_api const char *fplGetArchName(const fplArchType type);
 /**
 * @brief Retrieves the total number of processor cores
 * @return Returns the total number of processor cores.
@@ -3147,7 +3149,7 @@ typedef enum fplPlatformResultType {
 * @return Returns the string representation of a platform result type.
 * @see @ref section_category_initialization_result
 */
-fpl_common_api const char *fplGetPlatformResultTypeName(const fplPlatformResultType type);
+fpl_common_api const char *fplGetPlatformResultName(const fplPlatformResultType type);
 
 //! An enumeration of video driver types
 typedef enum fplVideoDriverType {
@@ -6190,7 +6192,7 @@ fpl_common_api uint32_t fplGetAudioSampleSizeInBytes(const fplAudioFormatType fo
 * @param format The audio format type @ref fplAudioFormatType
 * @return Returns a string for the given audio format type
 */
-fpl_common_api const char *fplGetAudioFormatTypeName(const fplAudioFormatType format);
+fpl_common_api const char *fplGetAudioFormatName(const fplAudioFormatType format);
 /**
 * @brief Gets the string which represents the given audio driver type.
 * @param driver The audio driver type @ref fplAudioDriverType
@@ -6238,7 +6240,7 @@ fpl_common_api void fplConvertAudioTargetFormatToDeviceFormat(const fplAudioTarg
 
 // ----------------------------------------------------------------------------
 /**
-* @defgroup Internationalisation Internationalisation functions
+* @defgroup Localization Localization functions
 * @brief This category contains functions for getting informations about current locale
 * @{
 */
@@ -9850,7 +9852,7 @@ fpl_globalvar const char *fpl__global_platformResultTypeNameTable[] = {
 };
 fplStaticAssert(fplArrayCount(fpl__global_platformResultTypeNameTable) == FPL__PLATFORMRESULTTYPE_COUNT);
 
-fpl_common_api const char *fplGetPlatformResultTypeName(const fplPlatformResultType type) {
+fpl_common_api const char *fplGetPlatformResultName(const fplPlatformResultType type) {
 	uint32_t index = FPL__ENUM_VALUE_TO_ARRAY_INDEX(type, FPL_FIRST_PLATFORM_RESULT_TYPE, FPL_LAST_PLATFORM_RESULT_TYPE);
 	const char *result = fpl__global_platformResultTypeNameTable[index];
 	return(result);
@@ -9867,7 +9869,7 @@ fpl_globalvar const char *fpl__global_ArchTypeNameTable[] = {
 };
 fplStaticAssert(fplArrayCount(fpl__global_ArchTypeNameTable) == FPL__ARCHTYPE_COUNT);
 
-fpl_common_api const char *fplGetArchTypeName(const fplArchType type) {
+fpl_common_api const char *fplGetArchName(const fplArchType type) {
 	uint32_t index = FPL__ENUM_VALUE_TO_ARRAY_INDEX(type, FPL_FIRST_ARCHTYPE, FPL_LAST_ARCHTYPE);
 	const char *result = fpl__global_ArchTypeNameTable[index];
 	return(result);
@@ -18251,7 +18253,7 @@ fpl_internal fplAudioResultType fpl__AudioInitDirectSound(const fplAudioSettings
 
 	commonAudio->internalFormat = internalFormat;
 
-	const char *internalFormatTypeName = fplGetAudioFormatTypeName(internalFormat.type);
+	const char *internalFormatTypeName = fplGetAudioFormatName(internalFormat.type);
 	FPL_LOG(fplLogLevel_Info, FPL__MODULE_AUDIO_DIRECTSOUND,
 		"Using internal format (Channels: %u, Samplerate: %u, Type: %s, Periods: %u, Buffer size frames/bytes: %u/%u)",
 		internalFormat.channels,
@@ -19287,7 +19289,7 @@ fpl_internal fplAudioResultType fpl__AudioInitAlsa(const fplAudioSettings *audio
 	}
 
 	if(alsaApi->snd_pcm_hw_params_set_format(alsaState->pcmDevice, hardwareParams, foundFormat) < 0) {
-		FPL__ALSA_INIT_ERROR(fplAudioResultType_Failed, "Failed setting PCM format '%s' for device '%s'!", fplGetAudioFormatTypeName(fpl__MapAlsaFormatToAudioFormat(foundFormat)), deviceName);
+		FPL__ALSA_INIT_ERROR(fplAudioResultType_Failed, "Failed setting PCM format '%s' for device '%s'!", fplGetAudioFormatName(fpl__MapAlsaFormatToAudioFormat(foundFormat)), deviceName);
 	}
 	internalFormat.type = fpl__MapAlsaFormatToAudioFormat(foundFormat);
 
@@ -19474,7 +19476,7 @@ fpl_globalvar const char *fpl__global_audioResultTypeNameTable[] = {
 };
 fplStaticAssert(fplArrayCount(fpl__global_audioResultTypeNameTable) == FPL__AUDIO_RESULT_TYPE_COUNT);
 
-fpl_common_api const char *fplGetAudioResultTypeName(const fplAudioResultType type) {
+fpl_common_api const char *fplGetAudioResultName(const fplAudioResultType type) {
 	uint32_t index = FPL__ENUM_VALUE_TO_ARRAY_INDEX(type, FPL_FIRST_AUDIO_RESULT_TYPE, FPL_LAST_AUDIO_RESULT_TYPE);
 	const char *result = fpl__global_audioResultTypeNameTable[index];
 	return(result);
@@ -20290,7 +20292,7 @@ fpl_common_api uint32_t fplGetAudioSampleSizeInBytes(const fplAudioFormatType fo
 	return(result);
 }
 
-fpl_common_api const char *fplGetAudioFormatTypeName(const fplAudioFormatType format) {
+fpl_common_api const char *fplGetAudioFormatName(const fplAudioFormatType format) {
 	uint32_t index = FPL__ENUM_VALUE_TO_ARRAY_INDEX(format, FPL_FIRST_AUDIOFORMATTYPE, FPL_LAST_AUDIOFORMATTYPE);
 	const char *result = fpl__globalAudioFormatNameTable[index];
 	return(result);
@@ -21031,8 +21033,8 @@ fpl_common_api bool fplPlatformInit(const fplInitFlags initFlags, const fplSetti
 		fplAssert(audioState != fpl_null);
 		fplAudioResultType initAudioResult = fpl__InitAudio(&appState->initSettings.audio, audioState);
 		if(initAudioResult != fplAudioResultType_Success) {
-			const char *initAudioResultName = fplGetAudioResultTypeName(initAudioResult);
-			const char *audioFormatName = fplGetAudioFormatTypeName(initSettings->audio.targetFormat.type);
+			const char *initAudioResultName = fplGetAudioResultName(initAudioResult);
+			const char *audioFormatName = fplGetAudioFormatName(initSettings->audio.targetFormat.type);
 			FPL__CRITICAL("Core", "Failed initialization audio with settings (Driver=%s, Format=%s, SampleRate=%d, Channels=%d) -> %s",
 				audioDriverName,
 				audioFormatName,

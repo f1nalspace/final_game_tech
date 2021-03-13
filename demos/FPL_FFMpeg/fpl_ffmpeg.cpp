@@ -2833,7 +2833,7 @@ static void RenderOSD(PlayerState *state, const Mat4f &proj, const float w, cons
 		osdPos += V2f(0, -osdFontSize);
 
 		const char* audioDriverName = fplGetAudioDriverName(state->audio.audioTarget.driver);
-		const char* audioFormatName = fplGetAudioFormatTypeName(state->audio.audioTarget.type);
+		const char* audioFormatName = fplGetAudioFormatName(state->audio.audioTarget.type);
 
 		uint32_t bufferSize = state->audio.audioTarget.bufferSizeInBytes;
 		uint32_t frameSize = fplGetAudioFrameSizeInBytes(state->audio.audioTarget.type, state->audio.audioTarget.channels);

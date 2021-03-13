@@ -530,7 +530,7 @@ static void TestHardware() {
     }
 
     fplArchType archType = fplGetProcessorArchitecture();
-	const char* archStr = fplGetArchTypeName(archType);
+	const char* archStr = fplGetArchName(archType);
 	ftMsg("Processor archicture: %s\n", archStr);
 }
 
