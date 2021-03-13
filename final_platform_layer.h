@@ -141,7 +141,6 @@ SOFTWARE.
 
 	### Improvements
 	- Changed: New Changelog format with categories (Features, bugfixes, improvements, breaking changes, internal changes)
-	- Changed[#72]: [Win32] Query QueryPerformanceFrequency for every High-Precision timer calls instead of once per app start
 	- Changed[#74]: fplGetAudioDevices() allows to pass null-pointer as devices argument to return the number of audio devices only
 	- Changed[#74]: fplWideStringToUTF8String() allows to pass null-pointer as output argument to return the number of characters only
 	- Changed[#74]: fplUTF8StringToWideString() allows to pass null-pointer as output argument to return the number of characters only
@@ -153,6 +152,12 @@ SOFTWARE.
 	- Changed[#74]: fplFormatStringArgs() allows to pass null-pointer as output argument to return the number of characters only
 	- Changed[#74]: fplFormatString() allows to pass null-pointer as output argument to return the number of characters only
 	- Changed[#74]: fplGetCurrentUsername() allows to pass null-pointer as output argument to return the number of characters only
+	- Changed[#74]: fplGetDisplayModes() allows to pass null-pointer as output argument to return the number of modes only
+	- Changed[#74]: fplGetInputLocale() allows to pass null-pointer as output argument to return the number of characters only
+	- Changed[#74]: fplGetUserLocale() allows to pass null-pointer as output argument to return the number of characters only
+	- Changed[#74]: fplGetSystemLocale() allows to pass null-pointer as output argument to return the number of characters only
+
+	- Changed[#72]: [Win32] Query QueryPerformanceFrequency for every High-Precision timer calls instead of once per app start
 
 	### Bugfixes
 	- Fixed[#76]: FPL__ERROR, FPL__WARNING, FPL__INFO was not passing the correct function name and line number in some cases
@@ -164,24 +169,28 @@ SOFTWARE.
 	- Renamed a lot of internal FPL_ defines to FPL__
 
 	### Breaking changes
-	- API[#78]: Renamed fplGetArchTypeString to fplGetArchTypeName
-	- API[#78]: Renamed fplGetVideoDriverString to fplGetVideoDriverName
-	- API[#78]: Renamed fplGetPlatformResultTypeString to fplGetPlatformResultTypeName
-	- API[#78]: Renamed fplGetAudioDriverString to fplGetAudioDriverName
-	- API[#78]: Renamed fplGetAudioFormatTypeString to fplGetAudioFormatTypeName
-	- API[#78]: Renamed fplGetAudioResultTypeString to fplGetAudioResultTypeName
-	- API[#74]: fplWideStringToUTF8String() returns the number of characters instead of a char-pointer
-	- API[#74]: fplUTF8StringToWideString() returns the number of characters instead of a char-pointer
-	- API[#74]: fplGetExecutableFilePath() returns the number of characters instead of a char-pointer
-	- API[#74]: fplGetHomePath() returns the number of characters instead of a char-pointer
-	- API[#74]: fplExtractFilePath() returns the number of characters instead of a char-pointer
-	- API[#74]: fplChangeFileExtension() returns the number of characters instead of a char-pointer
-	- API[#74]: fplCopyString() returns the number of characters instead of a char-pointer
-	- API[#74]: fplCopyStringLen() returns the number of characters instead of a char-pointer
-	- API[#74]: fplPathCombine() returns the number of characters instead of a char-pointer
-	- API[#74]: fplFormatStringArgs() returns the number of characters instead of a char-pointer
-	- API[#74]: fplFormatString() returns the number of characters instead of a char-pointer
-	- API[#74]: fplGetCurrentUsername() returns the number of characters instead of a char-pointer
+	- Renamed[#78]: fplGetArchTypeString to fplGetArchTypeName
+	- Renamed[#78]: fplGetVideoDriverString to fplGetVideoDriverName
+	- Renamed[#78]: fplGetPlatformResultTypeString to fplGetPlatformResultTypeName
+	- Renamed[#78]: fplGetAudioDriverString to fplGetAudioDriverName
+	- Renamed[#78]: fplGetAudioFormatTypeString to fplGetAudioFormatTypeName
+	- Renamed[#78]: fplGetAudioResultTypeString to fplGetAudioResultTypeName
+	- Changed[#74]: fplWideStringToUTF8String() returns the number of characters instead of a char-pointer
+	- Changed[#74]: fplUTF8StringToWideString() returns the number of characters instead of a char-pointer
+	- Changed[#74]: fplGetExecutableFilePath() returns the number of characters instead of a char-pointer
+	- Changed[#74]: fplGetHomePath() returns the number of characters instead of a char-pointer
+	- Changed[#74]: fplExtractFilePath() returns the number of characters instead of a char-pointer
+	- Changed[#74]: fplChangeFileExtension() returns the number of characters instead of a char-pointer
+	- Changed[#74]: fplCopyString() returns the number of characters instead of a char-pointer
+	- Changed[#74]: fplCopyStringLen() returns the number of characters instead of a char-pointer
+	- Changed[#74]: fplPathCombine() returns the number of characters instead of a char-pointer
+	- Changed[#74]: fplFormatStringArgs() returns the number of characters instead of a char-pointer
+	- Changed[#74]: fplFormatString() returns the number of characters instead of a char-pointer
+	- Changed[#74]: fplGetCurrentUsername() returns the number of characters instead of a char-pointer
+	- Changed[#74]: fplGetInputLocale() returns the number of characters instead of a char-pointer
+	- Changed[#74]: fplGetUserLocale() returns the number of characters instead of a char-pointer
+	- Changed[#74]: fplGetSystemLocale() returns the number of characters instead of a char-pointer
+	- Changed[#74]: fplGetDisplayModeCount() -> Use fplGetDisplayModes() with null-pointer instead
 
 	## v0.9.5-beta
 	- New: Added enum fplAudioDefaultFields
@@ -5979,12 +5988,6 @@ fpl_platform_api bool fplGetPrimaryDisplay(fplDisplayInfo *outInfo);
 */
 fpl_platform_api bool fplGetDisplayFromPosition(const int32_t x, const int32_t y, fplDisplayInfo *outInfo);
 /**
-* @brief Gets the number of available display modes for the given display id
-* @param id The display id
-* @return Returns the total number of available display modes
-*/
-fpl_platform_api size_t fplGetDisplayModeCount(const char *id);
-/**
 * @brief Gets the information about the available display modes for the given display id
 * @param id The display id
 * @param outModes The array of @ref fplDisplayMode
@@ -6252,27 +6255,27 @@ typedef enum fplLocaleFormat {
 * @param targetFormat Target @ref fplLocaleFormat
 * @param buffer Target string buffer for writing the locale into
 * @param maxBufferLen The maximum length of the buffer
-* @return Returns true when the function succeeds, false otherwise
+* @return Returns the number of required/written characters, excluding the null-terminator
 */
-fpl_platform_api bool fplGetUserLocale(const fplLocaleFormat targetFormat, char *buffer, const size_t maxBufferLen);
+fpl_platform_api size_t fplGetUserLocale(const fplLocaleFormat targetFormat, char *buffer, const size_t maxBufferLen);
 
 /**
 * @brief Gets the system locale in the given target format
 * @param targetFormat Target @ref fplLocaleFormat
 * @param buffer Target string buffer for writing the locale into
 * @param maxBufferLen The maximum length of the buffer
-* @return Returns true when the function succeeds, false otherwise
+* @return Returns the number of required/written characters, excluding the null-terminator
 */
-fpl_platform_api bool fplGetSystemLocale(const fplLocaleFormat targetFormat, char *buffer, const size_t maxBufferLen);
+fpl_platform_api size_t fplGetSystemLocale(const fplLocaleFormat targetFormat, char *buffer, const size_t maxBufferLen);
 
 /**
 * @brief Gets the input locale in the given target format
 * @param targetFormat Target @ref fplLocaleFormat
 * @param buffer Target string buffer for writing the locale into
 * @param maxBufferLen The maximum length of the buffer
-* @return Returns true when the function succeeds, false otherwise
+* @return Returns the number of required/written characters, excluding the null-terminator
 */
-fpl_platform_api bool fplGetInputLocale(const fplLocaleFormat targetFormat, char *buffer, const size_t maxBufferLen);
+fpl_platform_api size_t fplGetInputLocale(const fplLocaleFormat targetFormat, char *buffer, const size_t maxBufferLen);
 
 /** @} */
 
@@ -13440,23 +13443,6 @@ fpl_platform_api bool fplGetDisplayFromPosition(const int32_t x, const int32_t y
 	return(result);
 }
 
-fpl_platform_api size_t fplGetDisplayModeCount(const char *id) {
-	FPL__CheckArgumentNull(id, 0);
-	FPL__CheckPlatform(0);
-	const fpl__Win32AppState *appState = &fpl__global__AppState->win32;
-	const fpl__Win32WindowState *windowState = &fpl__global__AppState->window.win32;
-	const fpl__Win32Api *wapi = &appState->winApi;
-	wchar_t deviceName[CCHDEVICENAME + 1];
-	fplUTF8StringToWideString(id, fplGetStringLength(id), deviceName, fplArrayCount(deviceName));
-	int deviceIndex = 0;
-	DEVMODEW devMode;
-	while(wapi->user.EnumDisplaySettingsW(deviceName, deviceIndex, &devMode)) {
-		++deviceIndex;
-	}
-	size_t result = (size_t)deviceIndex;
-	return(result);
-}
-
 fpl_platform_api size_t fplGetDisplayModes(const char *id, fplDisplayMode *modes, const size_t maxDisplayModeCount) {
 	FPL__CheckArgumentNull(id, 0);
 	FPL__CheckPlatform(0);
@@ -13468,15 +13454,17 @@ fpl_platform_api size_t fplGetDisplayModes(const char *id, fplDisplayMode *modes
 	size_t result = 0;
 	DEVMODEW devMode;
 	while(wapi->user.EnumDisplaySettingsW(deviceName, (DWORD)result, &devMode)) {
-		if(result == maxDisplayModeCount) {
-			break;
+		if(modes != fpl_null) {
+			if(result == maxDisplayModeCount) {
+				break;
+			}
+			fplDisplayMode *outMode = modes + result;
+			fplClearStruct(outMode);
+			outMode->width = devMode.dmPelsWidth;
+			outMode->height = devMode.dmPelsHeight;
+			outMode->colorBits = devMode.dmBitsPerPel;
+			outMode->refreshRate = devMode.dmDisplayFrequency;
 		}
-		fplDisplayMode *outMode = modes + result;
-		fplClearStruct(outMode);
-		outMode->width = devMode.dmPelsWidth;
-		outMode->height = devMode.dmPelsHeight;
-		outMode->colorBits = devMode.dmBitsPerPel;
-		outMode->refreshRate = devMode.dmDisplayFrequency;
 		++result;
 	}
 	return(result);
@@ -13493,28 +13481,26 @@ fpl_internal LCTYPE fpl__Win32GetLocaleLCIDFromFormat(const fplLocaleFormat form
 	}
 }
 
-fpl_platform_api bool fplGetSystemLocale(const fplLocaleFormat targetFormat, char *buffer, const size_t maxBufferLen) {
-	FPL__CheckArgumentInvalid(targetFormat, targetFormat == fplLocaleFormat_None, false);
+fpl_platform_api size_t fplGetSystemLocale(const fplLocaleFormat targetFormat, char *buffer, const size_t maxBufferLen) {
+	FPL__CheckArgumentInvalid(targetFormat, targetFormat == fplLocaleFormat_None, 0);
 	LCTYPE lcType = fpl__Win32GetLocaleLCIDFromFormat(targetFormat);
 	wchar_t bufferWide[FPL_MAX_BUFFER_LENGTH];
 	int r = GetLocaleInfoW(LOCALE_SYSTEM_DEFAULT, lcType, bufferWide, fplArrayCount(bufferWide));
-	fplWideStringToUTF8String(bufferWide, lstrlenW(bufferWide), buffer, maxBufferLen);
-	bool result = r > 0;
+	size_t result = fplWideStringToUTF8String(bufferWide, lstrlenW(bufferWide), buffer, maxBufferLen);
 	return(result);
 }
 
-fpl_platform_api bool fplGetUserLocale(const fplLocaleFormat targetFormat, char *buffer, const size_t maxBufferLen) {
-	FPL__CheckArgumentInvalid(targetFormat, targetFormat == fplLocaleFormat_None, false);
+fpl_platform_api size_t fplGetUserLocale(const fplLocaleFormat targetFormat, char *buffer, const size_t maxBufferLen) {
+	FPL__CheckArgumentInvalid(targetFormat, targetFormat == fplLocaleFormat_None, 0);
 	LCTYPE lcType = fpl__Win32GetLocaleLCIDFromFormat(targetFormat);
 	wchar_t bufferWide[FPL_MAX_BUFFER_LENGTH];
 	int r = GetLocaleInfoW(LOCALE_USER_DEFAULT, lcType, bufferWide, fplArrayCount(bufferWide));
-	fplWideStringToUTF8String(bufferWide, lstrlenW(bufferWide), buffer, maxBufferLen);
-	bool result = r > 0;
+	size_t result = fplWideStringToUTF8String(bufferWide, lstrlenW(bufferWide), buffer, maxBufferLen);
 	return(result);
 }
 
-fpl_platform_api bool fplGetInputLocale(const fplLocaleFormat targetFormat, char *buffer, const size_t maxBufferLen) {
-	FPL__CheckArgumentInvalid(targetFormat, targetFormat == fplLocaleFormat_None, false);
+fpl_platform_api size_t fplGetInputLocale(const fplLocaleFormat targetFormat, char *buffer, const size_t maxBufferLen) {
+	FPL__CheckArgumentInvalid(targetFormat, targetFormat == fplLocaleFormat_None, 0);
 	FPL__CheckPlatform(false);
 	const fpl__Win32AppState *appState = &fpl__global__AppState->win32;
 	const fpl__Win32Api *wapi = &appState->winApi;
@@ -13523,8 +13509,7 @@ fpl_platform_api bool fplGetInputLocale(const fplLocaleFormat targetFormat, char
 	LCTYPE lcType = fpl__Win32GetLocaleLCIDFromFormat(targetFormat);
 	wchar_t bufferWide[FPL_MAX_BUFFER_LENGTH];
 	int r = GetLocaleInfoW(langId, lcType, bufferWide, fplArrayCount(bufferWide));
-	fplWideStringToUTF8String(bufferWide, lstrlenW(bufferWide), buffer, maxBufferLen);
-	bool result = r > 0;
+	size_t result = fplWideStringToUTF8String(bufferWide, lstrlenW(bufferWide), buffer, maxBufferLen);
 	return(result);
 }
 #endif // FPL_PLATFORM_WINDOWS
@@ -16291,11 +16276,6 @@ fpl_platform_api bool fplGetDisplayFromPosition(const int32_t x, const int32_t y
 	return(false);
 }
 
-fpl_platform_api size_t fplGetDisplayModeCount(const char *id) {
-	// @IMPLEMENT(final/X11): fplGetDisplayModeCount
-	return(0);
-}
-
 fpl_platform_api size_t fplGetDisplayModes(const char *id, fplDisplayMode *modes, const size_t maxDisplayModeCount) {
 	// @IMPLEMENT(final/X11): fplGetDisplayModes
 	return(0);
@@ -16930,44 +16910,6 @@ fpl_platform_api bool fplSignalSet(fplSignalHandle *signal) {
 //
 // Linux Hardware
 //
-// @TODO(final/Linux): fplGetProcessorName is obsolete on linux?
-#if 0
-fpl_platform_api char *fplGetProcessorName(char *destBuffer, const size_t maxDestBufferLen) {
-	FPL__CheckArgumentNull(destBuffer, fpl_null);
-	FPL__CheckArgumentZero(maxDestBufferLen, fpl_null);
-	char *result = fpl_null;
-	const char *wildcards[] = {
-		"model name*:",
-	};
-	const size_t maxLineCount = 1;
-	const size_t maxLineSize = 256;
-	char lines[maxLineCount][maxLineSize];
-	char **linesPtr = (char **)fplStackAllocate(sizeof(char *) * maxLineCount);
-	for(size_t i = 0; i < maxLineCount; ++i) {
-		linesPtr[i] = lines[i];
-	}
-	size_t foundCount = fpl__ParseTextFile("/proc/cpuinfo", wildcards, fplArrayCount(wildcards), maxLineSize, maxLineCount, linesPtr);
-	if(foundCount > 0) {
-		char *p = lines[0];
-		while(*p) {
-			if(*p == ':') {
-				++p;
-				while(*p && isspace(*p)) {
-					++p;
-				}
-				break;
-			}
-			++p;
-		}
-		if(p != lines[0]) {
-			fplCopyString(p, destBuffer, maxDestBufferLen);
-			result = destBuffer;
-		}
-	}
-	return(result);
-}
-#endif
-
 fpl_platform_api bool fplGetRunningMemoryInfos(fplMemoryInfos *outInfos) {
 	FPL__CheckArgumentNull(outInfos, false);
 	bool result = false;
@@ -16980,42 +16922,45 @@ fpl_platform_api bool fplGetRunningMemoryInfos(fplMemoryInfos *outInfos) {
 //
 // Linux Paths
 //
-fpl_internal void fpl__LinuxLocaleToISO639(const char *source, char *target, const size_t maxTargetLen) {
-	fplCopyString(source, target, maxTargetLen);
-	char *p = target;
-	while(*p) {
-		if(*p == '_') {
-			*p = '-';
-		} else if(*p == '.') {
-			*p = '\0';
-			break;
+fpl_internal size_t fpl__LinuxLocaleToISO639(const char *source, char *target, const size_t maxTargetLen) {
+	size_t result = fplGetStringLength(source);
+	if(target != fpl_null) {
+		fplCopyStringLen(source, result, target, maxTargetLen);
+		char *p = target;
+		while(*p) {
+			if(*p == '_') {
+				*p = '-'; // Replace underscore with minus
+			} else if(*p == '.') {
+				*p = '\0'; // Replace dot with zero char
+				break;
+			}
+			++p;
 		}
-		++p;
 	}
+	return(result);
 }
 
-// Linux internationalisation
-fpl_platform_api bool fplGetSystemLocale(const fplLocaleFormat targetFormat, char *buffer, const size_t maxBufferLen) {
-	FPL__CheckArgumentInvalid(targetFormat, targetFormat == fplLocaleFormat_None, false);
-	bool result = true;
+//
+// Linux Localization
+//
+fpl_platform_api size_t fplGetSystemLocale(const fplLocaleFormat targetFormat, char *buffer, const size_t maxBufferLen) {
+	FPL__CheckArgumentInvalid(targetFormat, targetFormat == fplLocaleFormat_None, 0);
 	char *locale = setlocale(LC_CTYPE, NULL);
-	fpl__LinuxLocaleToISO639(locale, buffer, maxBufferLen);
+	size_t result = fpl__LinuxLocaleToISO639(locale, buffer, maxBufferLen);
 	return(result);
 }
 
-fpl_platform_api bool fplGetUserLocale(const fplLocaleFormat targetFormat, char *buffer, const size_t maxBufferLen) {
-	FPL__CheckArgumentInvalid(targetFormat, targetFormat == fplLocaleFormat_None, false);
-	bool result = true;
+fpl_platform_api size_t fplGetUserLocale(const fplLocaleFormat targetFormat, char *buffer, const size_t maxBufferLen) {
+	FPL__CheckArgumentInvalid(targetFormat, targetFormat == fplLocaleFormat_None, 0);
 	char *locale = setlocale(LC_ALL, NULL);
-	fpl__LinuxLocaleToISO639(locale, buffer, maxBufferLen);
+	size_t result = fpl__LinuxLocaleToISO639(locale, buffer, maxBufferLen);
 	return(result);
-	}
+}
 
-fpl_platform_api bool fplGetInputLocale(const fplLocaleFormat targetFormat, char *buffer, const size_t maxBufferLen) {
-	FPL__CheckArgumentInvalid(targetFormat, targetFormat == fplLocaleFormat_None, false);
-	bool result = true;
+fpl_platform_api size_t fplGetInputLocale(const fplLocaleFormat targetFormat, char *buffer, const size_t maxBufferLen) {
+	FPL__CheckArgumentInvalid(targetFormat, targetFormat == fplLocaleFormat_None, 0);
 	char *locale = setlocale(LC_ALL, NULL);
-	fpl__LinuxLocaleToISO639(locale, buffer, maxBufferLen);
+	size_t result = fpl__LinuxLocaleToISO639(locale, buffer, maxBufferLen);
 	return(result);
 }
 
@@ -17037,19 +16982,27 @@ fpl_internal bool fpl__UnixInitPlatform(const fplInitFlags initFlags, const fplS
 //
 // Unix Hardware
 //
-#if 0
-// @TODO(final/Linux): fplGetProcessorName is obsolete on unix?
-fpl_platform_api char *fplGetProcessorName(char *destBuffer, const size_t maxDestBufferLen) {
-	FPL__CheckArgumentNull(destBuffer, fpl_null);
-	FPL__CheckArgumentZero(maxDestBufferLen, fpl_null);
-	// @IMPLEMENT(final/Unix): fplGetProcessorName
-	return(fpl_null);
-}
-#endif
-
 fpl_platform_api bool fplGetRunningMemoryInfos(fplMemoryInfos *outInfos) {
 	// @IMPLEMENT(final/Unix): fplGetRunningMemoryInfos
 	return(false);
+}
+
+//
+// Unix Localization
+//
+fpl_platform_api size_t fplGetSystemLocale(const fplLocaleFormat targetFormat, char *buffer, const size_t maxBufferLen) {
+	// @IMPLEMENT(final/Unix): fplGetSystemLocale
+	return(0);
+}
+
+fpl_platform_api size_t fplGetUserLocale(const fplLocaleFormat targetFormat, char *buffer, const size_t maxBufferLen) {
+	// @IMPLEMENT(final/Unix): fplGetUserLocale
+	return(0);
+}
+
+fpl_platform_api size_t fplGetInputLocale(const fplLocaleFormat targetFormat, char *buffer, const size_t maxBufferLen) {
+	// @IMPLEMENT(final/Unix): fplGetInputLocale
+	return(0);
 }
 #endif // FPL_PLATFORM_UNIX
 
@@ -20279,7 +20232,7 @@ fpl_internal bool fpl__InitWindow(const fplSettings *initSettings, fplWindowSett
 #	endif
 }
 	return (result);
-	}
+}
 
 fpl_internal void fpl__ReleaseWindow(const fpl__PlatformInitState *initState, fpl__PlatformAppState *appState) {
 	if(appState != fpl_null) {
@@ -20317,12 +20270,12 @@ fpl_globalvar uint32_t fpl__globalAudioFormatSampleSizeTable[] = {
 fplStaticAssert(fplArrayCount(fpl__globalAudioFormatSampleSizeTable) == FPL__AUDIOFORMATTYPE_COUNT);
 
 fpl_globalvar const char *fpl__globalAudioFormatNameTable[] = {
-	"None",  // 0 = No audio format
+	"None", // 0 = No audio format
 	"U8",	// = Unsigned 8-bit integer PCM
 	"S16",	// = Signed 16-bit integer PCM
 	"S24",	// = Signed 24-bit integer PCM
 	"S32",	// = Signed 32-bit integer PCM
-	"S64CM", // = Signed 64-bit integer PCM
+	"S64",  // = Signed 64-bit integer PCM
 	"F32",	// = 32-bit IEEE_FLOAT
 	"F64",	// = 64-bit IEEE_FLOAT
 };
@@ -20343,7 +20296,7 @@ fpl_common_api const char *fplGetAudioFormatTypeName(const fplAudioFormatType fo
 #define FPL__AUDIODRIVERTYPE_COUNT FPL__ENUM_COUNT(FPL_FIRST_AUDIODRIVERTYPE, FPL_LAST_AUDIODRIVERTYPE)
 fpl_globalvar const char *fpl__globalAudioDriverNameTable[] = {
 	"None", // No audio driver
-	"Auto", // Automatic driver detection
+	"Automatic", // Automatic driver detection
 	"DirectSound", // DirectSound
 	"ALSA", // Alsa
 };
