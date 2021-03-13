@@ -291,9 +291,12 @@ static void Render(AudioDemo *demo, const int screenW, const int screenH, const 
 			fplAtomicExchangeU32(&demo->hasVideoAudioChunk, 0);
 		}
 	} else {
+#if 0
 		AudioFrameIndex framesPlayed = fplAtomicLoadU32(&demo->numFramesPlayed);
-
-		//double framesPlayedTime = (double)framesPlayed / ((double)demo->targetAudioFormat.sampleRate / 1000.0);
+#else
+		double renderMsecs = currentRenderTime * 1000.0;
+		AudioFrameIndex framesPlayed = (AudioFrameIndex)(((double)demo->targetAudioFormat.sampleRate / 1000.0) * renderMsecs);
+#endif
 
 		size_t chunkSamplesOffset = framesPlayed * frameSize;
 		
