@@ -1758,8 +1758,8 @@
 
 	- @ref fplGetAudioHardwareFormat()
 	- @ref fplGetAudioBufferSizeInFrames()
-	- @ref fplGetAudioDriverString()
-	- @ref fplGetAudioFormatTypeString()
+	- @ref fplGetAudioDriverName()
+	- @ref fplGetAudioFormatName()
 	- @ref fplGetAudioSampleSizeInBytes()
 	- @ref fplGetAudioFrameSizeInBytes()
 	- @ref fplGetAudioBufferSizeInBytes()
@@ -1963,7 +1963,7 @@
 
 	You can query the CPU architecture type by calling @ref fplGetProcessorArchitecture() . This will return a @ref fplArchType value, which you can use test for different architecture types.<br>
 	<br>
-	Use @ref fplGetArchTypeString() to convert a @ref fplArchType into a string.<br>
+	Use @ref fplGetArchName() to convert a @ref fplArchType into a string.<br>
 
 	@code{.c}
 	fplArchType cpuArch = fplGetProcessorArchitecture();
