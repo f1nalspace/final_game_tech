@@ -1674,6 +1674,36 @@ static void TestInlining() {
 	NoInlineTest();
 }
 
+static void TestTimes() {
+	ftMsg("Test fplWallClock and fplGetWallDelta\n");
+	// 0.5 secs
+	{
+		fplWallClock start = fplGetWallClock();
+		fplThreadSleep(500);
+		fplWallClock ende = fplGetWallClock();
+		double delta = fplGetWallDelta(start, ende);
+		ftAssert(delta >= 0.5 && delta < 0.75);
+	}
+
+	// 1.0 secs
+	{
+		fplWallClock start = fplGetWallClock();
+		fplThreadSleep(750);
+		fplWallClock ende = fplGetWallClock();
+		double delta = fplGetWallDelta(start, ende);
+		ftAssert(delta >= 0.75 && delta < 1.0);
+	}
+
+	// 1.5 secs
+	{
+		fplWallClock start = fplGetWallClock();
+		fplThreadSleep(1500);
+		fplWallClock ende = fplGetWallClock();
+		double delta = fplGetWallDelta(start, ende);
+		ftAssert(delta >= 1.5 && delta < 1.75);
+	}
+}
+
 int main(int argc, char* args[]) {
 	TestColdInit();
 	TestInit();
@@ -1682,6 +1712,7 @@ int main(int argc, char* args[]) {
 	TestOSInfos();
 	TestHardware();
 	TestSizes();
+	TestTimes();
 	TestMacros();
 	TestAtomics();
 	TestPaths();
