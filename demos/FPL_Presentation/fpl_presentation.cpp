@@ -1388,15 +1388,13 @@ static const char* ResolveText(const SlideVariables& vars, const char* source, c
 						size_t remainingBufLen = maxBufferLen - bufIndex;
 						char* remainingStart = &buffer[bufIndex];
 						if(strncmp("SLIDE_NUM", varName, varLen) == 0) {
-							const char* t = fplS32ToString(vars.slideNum, remainingStart, remainingBufLen);
-							if(t != nullptr) {
-								size_t addedCount = fplGetStringLength(remainingStart);
+							size_t addedCount = fplS32ToString(vars.slideNum, remainingStart, remainingBufLen);
+							if(addedCount > 0) {
 								bufIndex += addedCount;
 							}
 						} else if(strncmp("SLIDE_COUNT", varName, varLen) == 0) {
-							const char* t = fplS32ToString(vars.slideCount, remainingStart, remainingBufLen);
-							if(t != nullptr) {
-								size_t addedCount = fplGetStringLength(remainingStart);
+							size_t addedCount = fplS32ToString(vars.slideCount, remainingStart, remainingBufLen);
+							if(addedCount > 0) {
 								bufIndex += addedCount;
 							}
 						} else if(strncmp("SLIDE_NAME", varName, varLen) == 0) {

@@ -1541,54 +1541,54 @@ static void TestStrings() {
 
 	ftMsg("Test format ansi string\n");
 	{
-		char* res = fplFormatString(nullptr, 0, nullptr);
-		ftExpects(nullptr, res);
+		size_t res = fplFormatString(nullptr, 0, nullptr);
+		ftExpects(0, res);
 	}
 	{
 		char buffer[1];
-		char* res = fplFormatString(buffer, 0, "");
-		ftExpects(nullptr, res);
+		size_t res = fplFormatString(buffer, 0, "");
+		ftExpects(0, res);
 	}
 	{
 		char buffer[1];
-		char* res = fplFormatString(buffer, fplArrayCount(buffer), "A");
-		ftExpects(nullptr, res);
+		size_t res = fplFormatString(buffer, fplArrayCount(buffer), "A");
+		ftExpects(0, res);
 	}
 	{
 		char buffer[2];
-		char* res = fplFormatString(buffer, fplArrayCount(buffer), "A");
-		ftIsNotNull(res);
+		size_t res = fplFormatString(buffer, fplArrayCount(buffer), "A");
+		ftExpects(1, res);
 		bool matches = fplIsStringEqualLen("A", 1, buffer, 1);
 		ftExpects(true, matches);
 	}
 	{
 		char buffer[5];
-		char* res = fplFormatString(buffer, fplArrayCount(buffer), "Hello");
-		ftExpects(nullptr, res);
+		size_t res = fplFormatString(buffer, fplArrayCount(buffer), "Hello");
+		ftExpects(0, res);
 	}
 	{
 		char buffer[6];
-		char* res = fplFormatString(buffer, fplArrayCount(buffer), "Hello");
-		ftIsNotNull(res);
+		size_t res = fplFormatString(buffer, fplArrayCount(buffer), "Hello");
+		ftExpects(5, res);
 		bool r = fplIsStringEqualLen("Hello", 5, buffer, 5);
 		ftExpects(true, r);
 	}
 	{
 		char buffer[6];
-		char* res = fplFormatString(buffer, fplArrayCount(buffer), "%s", "Hello");
-		ftIsNotNull(res);
+		size_t res = fplFormatString(buffer, fplArrayCount(buffer), "%s", "Hello");
+		ftExpects(5, res);
 		bool r = fplIsStringEqualLen("Hello", 5, buffer, 5);
 		ftExpects(true, r);
 	}
 	{
 		char buffer[20];
-		char* res = fplFormatString(buffer, fplArrayCount(buffer), "%4xd-%2d-%2d %2d:%2d:%2d", 2009, 11, 17, 13, 47, 25);
-		ftExpects(nullptr, res);
+		size_t res = fplFormatString(buffer, fplArrayCount(buffer), "%4xd-%2d-%2d %2d:%2d:%2d", 2009, 11, 17, 13, 47, 25);
+		ftExpects(0, res);
 	}
 	{
 		char buffer[20];
-		char* res = fplFormatString(buffer, fplArrayCount(buffer), "%4d-%2d-%2d %2d:%2d:%2d", 2009, 11, 17, 13, 47, 25);
-		ftIsNotNull(res);
+		size_t res = fplFormatString(buffer, fplArrayCount(buffer), "%4d-%2d-%2d %2d:%2d:%2d", 2009, 11, 17, 13, 47, 25);
+		ftExpects(19, res);
 		bool r = fplIsStringEqual("2009-11-17 13:47:25", buffer);
 		ftExpects(true, r);
 	}
@@ -1597,16 +1597,21 @@ static void TestStrings() {
 	{
 		char smallBuffer[2];
 		char bigBuffer[16];
-		ftIsNull(fplS32ToString(0, nullptr, 0));
-		ftIsNull(fplS32ToString(0, nullptr, 4));
-		ftIsNull(fplS32ToString(11, smallBuffer, fplArrayCount(smallBuffer)));
-		ftIsNotNull(fplS32ToString(7, smallBuffer, fplArrayCount(smallBuffer)));
+
+		ftExpects(1, fplS32ToString(0, nullptr, 0));
+		ftExpects(1, fplS32ToString(0, nullptr, 4));
+		ftExpects(0, fplS32ToString(11, smallBuffer, fplArrayCount(smallBuffer)));
+
+		ftExpects(1, fplS32ToString(7, smallBuffer, fplArrayCount(smallBuffer)));
 		ftAssertStringEquals("7", smallBuffer);
-		ftIsNotNull(fplS32ToString(129, bigBuffer, fplArrayCount(bigBuffer)));
+
+		ftExpects(3, fplS32ToString(129, bigBuffer, fplArrayCount(bigBuffer)));
 		ftAssertStringEquals("129", bigBuffer);
-		ftIsNotNull(fplS32ToString(1337, bigBuffer, fplArrayCount(bigBuffer)));
+
+		ftExpects(4, fplS32ToString(1337, bigBuffer, fplArrayCount(bigBuffer)));
 		ftAssertStringEquals("1337", bigBuffer);
-		ftIsNotNull(fplS32ToString(-1234567, bigBuffer, fplArrayCount(bigBuffer)));
+
+		ftExpects(8, fplS32ToString(-1234567, bigBuffer, fplArrayCount(bigBuffer)));
 		ftAssertStringEquals("-1234567", bigBuffer);
 	}
 

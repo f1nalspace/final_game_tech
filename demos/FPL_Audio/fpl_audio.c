@@ -439,7 +439,7 @@ static void Render(AudioDemo *demo, const int screenW, const int screenH, const 
 
 			for(uint32_t frameIndex = 0; frameIndex < fftCount; ++frameIndex) {
 				double magnitude = demo->spectrum.magnitudes[frameIndex];
-				float sampleValue = magnitude * magScale;
+				float sampleValue = (float)magnitude * magScale;
 				float barX = spectrumPos.x + frameIndex * barWidth + frameIndex * spacing;
 				float barHeight = sampleValue * barMaxHeight;
 				RenderQuad(barX, barY, barX + barWidth, barY - barHeight, (Vec4f) { 0, 1, 0, 1 });
@@ -832,33 +832,41 @@ int main(int argc, char **args) {
 
 	// Set audio device format
 	settings.audio.targetFormat.type = fplAudioFormatType_S16;
+
+	// Set number of channels
 	settings.audio.targetFormat.channels = 2;
 
+	// Set samplerate in Hz
 	//settings.audio.targetFormat.sampleRate = 11025;
 	//settings.audio.targetFormat.sampleRate = 22050;
 	settings.audio.targetFormat.sampleRate = 44100;
-	//settings.audio.targetFormat.bufferSizeInMilliseconds = 16;
 	//settings.audio.targetFormat.sampleRate = 48000;
 
-	// Disable start/stop of audio playback
+	// Optionally set buffer size in milliseconds or in frames
+	//settings.audio.targetFormat.bufferSizeInMilliseconds = 16;
+	//settings.audio.targetFormat.bufferSizeInFrames = 512;
+
+	// Disable auto start/stop of audio playback
 	settings.audio.startAuto = false;
 	settings.audio.stopAuto = false;
 
+	//
 	// Find audio device
+	//
 	if(!fplPlatformInit(fplInitFlags_Audio, &settings)) {
 		goto done;
 	}
 
-	const uint32_t targetFrameRateMs = (uint32_t)ceil(1000.0 / 60.0);
+	// Get number of audio devices
+	uint32_t deviceCount = fplGetAudioDevices(fpl_null, 0);
 
-	const uint32_t maxAudioDeviceCount = 64;
-	fplAudioDeviceInfo *audioDeviceInfos = fplMemoryAllocate(sizeof(fplAudioDeviceInfo) * maxAudioDeviceCount);
-	uint32_t deviceCount = fplGetAudioDevices(audioDeviceInfos, maxAudioDeviceCount);
-	if(deviceCount > 0) {
-		// Use first audio device in settings
+	// Allocate memory for audio devices and fill it
+	fplAudioDeviceInfo *audioDeviceInfos = fplMemoryAllocate(sizeof(fplAudioDeviceInfo) * deviceCount);
+	uint32_t loadedDeviceCount = fplGetAudioDevices(audioDeviceInfos, deviceCount);
+	fplAssert(loadedDeviceCount == deviceCount);
+	// Use first audio device
+	if(loadedDeviceCount > 0) {
 		settings.audio.targetDevice = audioDeviceInfos[0];
-		// @TODO(final): Fix weird space after line break
-		fplConsoleFormatOut("Using audio device: '%s'\n", settings.audio.targetDevice.name);
 	}
 	fplMemoryFree(audioDeviceInfos);
 	fplPlatformRelease();
@@ -903,7 +911,6 @@ int main(int argc, char **args) {
 		// Init chunk buffer
 		size_t numChunks = fplMax(1, streamBufferSize / sizeof(AudioFramesChunk));
 		size_t chunkBufferSize = numChunks * sizeof(AudioFramesChunk);
-		fplAssert(chunkBufferSize % 16 == 0);
 		bufferInitRes = LockFreeRingBufferInit(&demo->chunkRingBuffer, chunkBufferSize, true);
 		if(!bufferInitRes) {
 			goto done;
