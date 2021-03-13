@@ -3669,12 +3669,12 @@ typedef enum fplLogLevel {
 	fplLogLevel_Debug = 5,
 	//! Trace
 	fplLogLevel_Trace = 6,
-} fplLogLevel;
 
-//! Defines the first @ref fplLogLevel value
-#define FPL_FIRST_LOGLEVEL fplLogLevel_All
-//! Defines the last @ref fplLogLevel value
-#define FPL_LAST_LOGLEVEL fplLogLevel_Trace
+	//! First @ref fplLogLevel
+	fplLogLevel_First = fplLogLevel_All,
+	//! Last @ref fplLogLevel
+	fplLogLevel_Last = fplLogLevel_Trace,
+} fplLogLevel;
 
 #if defined(FPL__ENABLE_LOGGING)
 /**
@@ -6123,27 +6123,42 @@ fpl_common_api void fplVideoFlip();
 
 //! An enumeration of audio results
 typedef enum fplAudioResultType {
+	//! No result
 	fplAudioResultType_None = 0,
+	//! Success
 	fplAudioResultType_Success,
+	//! The audio device is not initialized
 	fplAudioResultType_DeviceNotInitialized,
+	//! The audio device is already stopped
 	fplAudioResultType_DeviceAlreadyStopped,
+	//! The audio device is already started
 	fplAudioResultType_DeviceAlreadyStarted,
+	//! The audio device is busy/waiting
 	fplAudioResultType_DeviceBusy,
+	//! No audio device is found
 	fplAudioResultType_NoDeviceFound,
+	//! Failed to load the audio api
 	fplAudioResultType_ApiFailed,
+	//! The platform is not initialized
 	fplAudioResultType_PlatformNotInitialized,
+	//! The audio driver is already initialized
 	fplAudioResultType_DriverAlreadyInitialized,
+	//! The @ref fplAudioFormatType is not set
 	fplAudioResultType_UnsetAudioFormat,
+	//! The number of audio channels is not set
 	fplAudioResultType_UnsetAudioChannels,
+	//! The sample rate is not set
 	fplAudioResultType_UnsetAudioSampleRate,
+	//! The audio buffer size is not set
 	fplAudioResultType_UnsetAudioBufferSize,
+	//! Unknown error
 	fplAudioResultType_Failed,
-} fplAudioResultType;
 
-//! Defines the first @ref fplAudioResultType value
-#define FPL_FIRST_AUDIO_RESULT_TYPE fplAudioResultType_None
-//! Defines the last @ref fplAudioResultType value
-#define FPL_LAST_AUDIO_RESULT_TYPE fplAudioResultType_Failed
+	//! First @ref fplAudioResultType
+	fplAudioResultType_First = fplAudioResultType_None,
+	//! Last @ref fplAudioResultType
+	fplAudioResultType_Last = fplAudioResultType_Failed,
+} fplAudioResultType;
 
 /**
 * @brief Gets the current audio driver
@@ -6446,7 +6461,7 @@ fpl_main int main(int argc, char **args);
 #if defined(FPL__ENABLE_LOGGING)
 fpl_globalvar fplLogSettings fpl__global__LogSettings = fplZeroInit;
 
-#define FPL__LOGLEVEL_COUNT FPL__ENUM_COUNT(FPL_FIRST_LOGLEVEL, FPL_LAST_LOGLEVEL)
+#define FPL__LOGLEVEL_COUNT FPL__ENUM_COUNT(fplLogLevel_First, fplLogLevel_Last)
 fpl_globalvar const char *fpl__LogLevelNameTable[] = {
 	"All", // fplLogLevel_All (-1)
 	"Critical", // fplLogLevel_Critical (0)
@@ -6460,7 +6475,7 @@ fpl_globalvar const char *fpl__LogLevelNameTable[] = {
 fplStaticAssert(fplArrayCount(fpl__LogLevelNameTable) == FPL__LOGLEVEL_COUNT);
 
 fpl_internal const char *fpl__LogLevelToString(const fplLogLevel level) {
-	uint32_t index = FPL__ENUM_VALUE_TO_ARRAY_INDEX(level, FPL_FIRST_LOGLEVEL, FPL_LAST_LOGLEVEL);
+	uint32_t index = FPL__ENUM_VALUE_TO_ARRAY_INDEX(level, fplLogLevel_First, fplLogLevel_Last);
 	const char *result = fpl__LogLevelNameTable[index];
 	return(result);
 }
@@ -19456,7 +19471,7 @@ fpl_internal uint32_t fpl__GetAudioDevicesAlsa(fpl__AlsaAudioState *alsaState, f
 // %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 #if defined(FPL__ENABLE_AUDIO)
 
-#define FPL__AUDIO_RESULT_TYPE_COUNT FPL__ENUM_COUNT(FPL_FIRST_AUDIO_RESULT_TYPE, FPL_LAST_AUDIO_RESULT_TYPE)
+#define FPL__AUDIO_RESULT_TYPE_COUNT FPL__ENUM_COUNT(fplAudioResultType_First, fplAudioResultType_Last)
 fpl_globalvar const char *fpl__global_audioResultTypeNameTable[] = {
 	"None", // fplAudioResultType_None = 0,
 	"Success", // fplAudioResultType_Success,
@@ -19477,7 +19492,7 @@ fpl_globalvar const char *fpl__global_audioResultTypeNameTable[] = {
 fplStaticAssert(fplArrayCount(fpl__global_audioResultTypeNameTable) == FPL__AUDIO_RESULT_TYPE_COUNT);
 
 fpl_common_api const char *fplGetAudioResultName(const fplAudioResultType type) {
-	uint32_t index = FPL__ENUM_VALUE_TO_ARRAY_INDEX(type, FPL_FIRST_AUDIO_RESULT_TYPE, FPL_LAST_AUDIO_RESULT_TYPE);
+	uint32_t index = FPL__ENUM_VALUE_TO_ARRAY_INDEX(type, fplAudioResultType_First, fplAudioResultType_Last);
 	const char *result = fpl__global_audioResultTypeNameTable[index];
 	return(result);
 }
