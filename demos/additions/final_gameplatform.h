@@ -270,7 +270,7 @@ static void ProcessEvents(Input *currentInput, Input *prevInput, GameWindowActiv
 
 static uint32_t GameAudioPlayback(const fplAudioDeviceFormat *outFormat, const uint32_t frameCount, void *outputSamples, void *userData) {
 	AudioSystem *audioSys = (AudioSystem *)userData;
-	uint32_t result = AudioSystemWriteFrames(audioSys, outputSamples, outFormat, frameCount);
+	uint32_t result = AudioSystemWriteFrames(audioSys, outputSamples, outFormat, frameCount, true);
 	return(result);
 }
 

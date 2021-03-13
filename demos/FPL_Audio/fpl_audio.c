@@ -149,13 +149,14 @@ typedef struct AudioDemo {
 	AudioSystem audioSys;
 	AudioSineWaveData sineWave;
 	AudioBuffer streamTempBuffer;
+	AudioBuffer fullAudioBuffer;
 	LockFreeRingBuffer streamRingBuffer;
 	LockFreeRingBuffer chunkRingBuffer;
 	AudioFramesChunk videoAudioChunks[2]; // 0 = Render, 1 = New
 	AudioSpectrum spectrum;
+	fplAudioDeviceFormat targetAudioFormat;
 	void *chunkTempBuffer;
 	fplThreadHandle *streamingThread;
-	fplAudioDeviceFormat targetAudioFormat;
 	uint64_t lastVideoAudioChunkUpdateTime;
 	volatile uint32_t hasVideoAudioChunk;
 	volatile uint32_t numFramesPlayed;
@@ -538,7 +539,7 @@ static bool StreamAudio(const fplAudioDeviceFormat *format, const uint32_t maxFr
 		fplAssert(totalFrameBytes <= tmpBuffer->bufferSize);
 
 		// The amount of actual written frames may be less than the frames we want to get written
-		AudioFrameIndex writtenFrames = AudioSystemWriteFrames(&demo->audioSys, tmpBuffer->samples, format, framesToWrite);
+		AudioFrameIndex writtenFrames = AudioSystemWriteFrames(&demo->audioSys, tmpBuffer->samples, format, framesToWrite, true);
 		fplAssert(writtenFrames == framesToWrite);
 		totalFrameBytes = writtenFrames * frameSize;
 
@@ -899,10 +900,11 @@ int main(int argc, char **args) {
 		// Initialze playback latency
 		demo->maxPlaybackFrameLatency = demo->targetAudioFormat.bufferSizeInFrames / demo->targetAudioFormat.periods;
 
-		size_t maxPlayItemsFrameCount = 0;
 		size_t playitemCount = AudioSystemGetPlayItems(&demo->audioSys, fpl_null, 0);
 		AudioPlayItem *playItems = fplMemoryAllocate(sizeof(AudioPlayItem) * playitemCount);
 		AudioSystemGetPlayItems(&demo->audioSys, playItems, playitemCount);
+
+		AudioFrameIndex maxPlayItemsFrameCount = 0;
 		for(size_t audioSourceIndex = 0; audioSourceIndex < playitemCount; ++audioSourceIndex) {
 			const AudioPlayItem *playItem = playItems + audioSourceIndex;
 			const AudioSource *audioSource = playItem->source;
@@ -910,12 +912,28 @@ int main(int argc, char **args) {
 			maxPlayItemsFrameCount = fplMax(maxPlayItemsFrameCount, sourceFrameCount);
 		}
 
+		bool bufferInitRes;
+
+		// Allocate direct stream buffer
+		AudioFormat fullAudioBufferFormat = fplZeroInit;
+		fullAudioBufferFormat.channels = demo->targetAudioFormat.channels;
+		fullAudioBufferFormat.format = demo->targetAudioFormat.type;
+		fullAudioBufferFormat.sampleRate = demo->targetAudioFormat.sampleRate;
+		bufferInitRes = AllocateAudioBuffer(&demo->audioSys.memory, &demo->fullAudioBuffer, &fullAudioBufferFormat, maxPlayItemsFrameCount);
+		if(!bufferInitRes) {
+			goto done;
+		}
+
+		// Stream in the entire files in the pipeline, but dont advance it, because we want to use the samples for the smoother FFT visualization
+		AudioFrameIndex allFrames = AudioSystemWriteFrames(&demo->audioSys, demo->fullAudioBuffer.samples, &demo->targetAudioFormat, maxPlayItemsFrameCount, false);
+		fplAssert(allFrames == maxPlayItemsFrameCount);
+
 #if OPT_PLAYBACKMODE == OPT_PLAYBACK_STREAMBUFFER_ONLY
 		AudioFrameIndex streamBufferFrames = fplGetAudioBufferSizeInFrames(demo->targetAudioFormat.sampleRate, 10000);
 
 		// Init streaming buffer and read some frames at the very start
 		size_t streamBufferSize = fplGetAudioBufferSizeInBytes(demo->targetAudioFormat.type, demo->targetAudioFormat.channels, streamBufferFrames);
-		bool bufferInitRes = LockFreeRingBufferInit(&demo->streamRingBuffer, streamBufferSize, true);
+		bufferInitRes = LockFreeRingBufferInit(&demo->streamRingBuffer, streamBufferSize, true);
 		if(!bufferInitRes) {
 			goto done;
 		}
@@ -933,7 +951,7 @@ int main(int argc, char **args) {
 		streamTempBufferFormat.channels = demo->targetAudioFormat.channels;
 		streamTempBufferFormat.format = demo->targetAudioFormat.type;
 		streamTempBufferFormat.sampleRate = demo->targetAudioFormat.sampleRate;
-		bufferInitRes = AllocateAudioBuffer(&demo->audioSys, &demo->streamTempBuffer, &streamTempBufferFormat, streamBufferFrames);
+		bufferInitRes = AllocateAudioBuffer(&demo->audioSys.memory, &demo->streamTempBuffer, &streamTempBufferFormat, streamBufferFrames);
 		if(!bufferInitRes) {
 			goto done;
 		}
@@ -1038,7 +1056,7 @@ done:
 
 	// Release audio buffers
 	fplMemoryAlignedFree(demo->chunkTempBuffer);
-	FreeAudioBuffer(&demo->audioSys, &demo->streamTempBuffer);
+	FreeAudioBuffer(&demo->audioSys.memory, &demo->streamTempBuffer);
 	LockFreeRingBufferRelease(&demo->chunkRingBuffer);
 	LockFreeRingBufferRelease(&demo->streamRingBuffer);
 #endif

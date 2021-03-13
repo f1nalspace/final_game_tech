@@ -121,7 +121,7 @@ static ma_format MapFPLFormatToMALFormat(const fplAudioFormatType format) {
 static void AudioPlayback_MiniAudio(ma_device* pDevice, void* pOutput, const void* pInput, ma_uint32 frameCount) {
 	AudioContext *audioCtx = (AudioContext *)pDevice->pUserData;
 	AudioSystem *audioSys = &audioCtx->system;
-	AudioSystemWriteFrames(audioSys, pOutput, &audioCtx->playbackFormat.deviceFormat, frameCount);
+	AudioSystemWriteFrames(audioSys, pOutput, &audioCtx->playbackFormat.deviceFormat, frameCount, true);
 }
 #else
 static uint32_t AudioPlayback_FPL(const fplAudioDeviceFormat *outFormat, const uint32_t maxFrameCount, void *outputSamples, void *userData) {
