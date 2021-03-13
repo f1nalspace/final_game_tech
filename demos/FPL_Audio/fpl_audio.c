@@ -896,7 +896,19 @@ int main(int argc, char **args) {
 
 	// Init audio data
 	if(InitAudioData(&demo->targetAudioFormat, &demo->audioSys, files, fileCount, forceSineWave, &demo->sineWave)) {
+		// Initialze playback latency
 		demo->maxPlaybackFrameLatency = demo->targetAudioFormat.bufferSizeInFrames / demo->targetAudioFormat.periods;
+
+		size_t maxPlayItemsFrameCount = 0;
+		size_t playitemCount = AudioSystemGetPlayItems(&demo->audioSys, fpl_null, 0);
+		AudioPlayItem *playItems = fplMemoryAllocate(sizeof(AudioPlayItem) * playitemCount);
+		AudioSystemGetPlayItems(&demo->audioSys, playItems, playitemCount);
+		for(size_t audioSourceIndex = 0; audioSourceIndex < playitemCount; ++audioSourceIndex) {
+			const AudioPlayItem *playItem = playItems + audioSourceIndex;
+			const AudioSource *audioSource = playItem->source;
+			AudioFrameIndex sourceFrameCount = audioSource->buffer.frameCount;
+			maxPlayItemsFrameCount = fplMax(maxPlayItemsFrameCount, sourceFrameCount);
+		}
 
 #if OPT_PLAYBACKMODE == OPT_PLAYBACK_STREAMBUFFER_ONLY
 		AudioFrameIndex streamBufferFrames = fplGetAudioBufferSizeInFrames(demo->targetAudioFormat.sampleRate, 10000);

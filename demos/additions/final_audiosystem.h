@@ -160,6 +160,8 @@ extern AudioFrameIndex AudioSystemWriteFrames(AudioSystem *audioSys, void *outSa
 
 extern AudioPlayItemID AudioSystemPlaySource(AudioSystem *audioSys, const AudioSource *source, const bool repeat, const float volume);
 extern bool AudioSystemStopSource(AudioSystem *audioSys, const AudioPlayItemID playId);
+extern size_t AudioSystemGetSources(AudioSystem *audioSys, AudioSource *dest, const size_t maxDestCount);
+extern size_t AudioSystemGetPlayItems(AudioSystem *audioSys, AudioPlayItem *dest, const size_t maxDestCount);
 
 extern void AudioGenerateSineWave(AudioSineWaveData *waveData, void *outSamples, const fplAudioFormatType outFormat, const AudioHertz outSampleRate, const AudioChannelIndex channels, const AudioFrameIndex frameCount);
 
@@ -226,20 +228,25 @@ extern bool AudioSystemInit(AudioSystem *audioSys, const fplAudioDeviceFormat *t
 		return false;
 	}
 	fplClearStruct(audioSys);
+
 	audioSys->masterVolume = 1.0f;
+
 	audioSys->targetFormat.channels = targetFormat->channels;
 	audioSys->targetFormat.format = targetFormat->type;
 	audioSys->targetFormat.sampleRate = targetFormat->sampleRate;
+
 	if (!fplMutexInit(&audioSys->sources.lock)) {
 		return false;
 	}
 	if (!fplMutexInit(&audioSys->playItems.lock)) {
 		return false;
 	}
+
 	AllocateAudioStream(audioSys, &audioSys->conversionBuffer, &audioSys->targetFormat, MAX_AUDIO_STATIC_BUFFER_FRAME_COUNT);
 	audioSys->mixingBuffer.maxFrameCount = MAX_AUDIO_STATIC_BUFFER_FRAME_COUNT;
 	audioSys->dspInBuffer.maxFrameCount = MAX_AUDIO_STATIC_BUFFER_FRAME_COUNT;
 	audioSys->dspOutBuffer.maxFrameCount = MAX_AUDIO_STATIC_BUFFER_FRAME_COUNT;
+
 	audioSys->tempWaveData.frequency = 440;
 	audioSys->tempWaveData.toneVolume = 0.25;
 	audioSys->tempWaveData.duration = 0.5;
@@ -420,6 +427,44 @@ static void RemovePlayItem(AudioPlayItems *playItems, AudioPlayItem *playItem) {
 	}
 	FreeAudioMemory(playItem);
 	--playItems->count;
+}
+
+extern size_t AudioSystemGetSources(AudioSystem *audioSys, AudioSource *dest, const size_t maxDestCount) {
+	size_t count = audioSys->sources.count;
+	if(dest != fpl_null) {
+		if(count > maxDestCount) {
+			return(0); // Error, destination array to small
+		}
+		fplMutexLock(&audioSys->sources.lock);
+		const AudioSource *src = audioSys->sources.first;
+		AudioSource *dst = dest;
+		while(src != fpl_null) {
+			*dst = *src;
+			src = src->next;
+			++dst;
+		}
+		fplMutexUnlock(&audioSys->sources.lock);
+	}
+	return(count);
+}
+
+extern size_t AudioSystemGetPlayItems(AudioSystem *audioSys, AudioPlayItem *dest, const size_t maxDestCount) {
+	size_t count = audioSys->playItems.count;
+	if(dest != fpl_null) {
+		if(count > maxDestCount) {
+			return(0); // Error, destination array to small
+		}
+		fplMutexLock(&audioSys->playItems.lock);
+		const AudioPlayItem *src = audioSys->playItems.first;
+		AudioPlayItem *dst = dest;
+		while(src != fpl_null) {
+			*dst = *src;
+			src = src->next;
+			++dst;
+		}
+		fplMutexUnlock(&audioSys->playItems.lock);
+	}
+	return(count);
 }
 
 extern bool AudioSystemStopSource(AudioSystem *audioSys, const AudioPlayItemID playId) {
@@ -701,7 +746,9 @@ static AudioFrameIndex MixPlayItems(AudioSystem *audioSys, const AudioFrameIndex
 		const AudioSource *source = item->source;
 		const AudioFormat *format = &item->source->format;
 		const AudioBuffer *buffer = &item->source->buffer;
-		fplAssert(item->framesPlayed < buffer->frameCount);
+
+		AudioFrameIndex itemStartFrame = item->framesPlayed;
+		fplAssert(itemStartFrame < buffer->frameCount);
 
 		AudioHertz inSampleRate = format->sampleRate;
 		AudioFrameIndex inTotalFrameCount = buffer->frameCount;
@@ -709,9 +756,12 @@ static AudioFrameIndex MixPlayItems(AudioSystem *audioSys, const AudioFrameIndex
 		fplAudioFormatType inFormat = format->format;
 		size_t inBytesPerSample = fplGetAudioSampleSizeInBytes(inFormat);
 
-		uint8_t *inSamples = source->buffer.samples + item->framesPlayed * (inChannelCount * inBytesPerSample);
-		AudioFrameIndex inRemainingFrameCount = inTotalFrameCount - item->framesPlayed;
+		// @TODO(final): When item start frame would wrap (in case of repeating, then this would crash)
+		uint8_t *inSamples = source->buffer.samples + itemStartFrame * (inChannelCount * inBytesPerSample);
 
+		AudioFrameIndex inRemainingFrameCount = inTotalFrameCount - itemStartFrame;
+
+		AudioFrameIndex playedFrameCount = 0;
 		if (inSampleRate == outSampleRate) {
 			// Sample rates are equal, just write out the samples
 			const AudioFrameIndex minFrameCount = fplMin(targetFrameCount, inRemainingFrameCount);
@@ -720,7 +770,7 @@ static AudioFrameIndex MixPlayItems(AudioSystem *audioSys, const AudioFrameIndex
 					*dspOutSamples++ = ConvertToF32(inSamples, inChannelIndex, inFormat) * volume;
 				}
 				inSamples += inBytesPerSample * inChannelCount;
-				++item->framesPlayed;
+				++playedFrameCount;
 			}
 		} else if (outSampleRate > 0 && inSampleRate > 0 && inTotalFrameCount > 0) {
 			bool isEven = (outSampleRate > inSampleRate) ? ((outSampleRate % inSampleRate) == 0) : ((inSampleRate % outSampleRate) == 0);
@@ -730,13 +780,13 @@ static AudioFrameIndex MixPlayItems(AudioSystem *audioSys, const AudioFrameIndex
 					AudioUpsampleResult upsampledResult = AudioSimpleUpSampling(targetFrameCount, inRemainingFrameCount, inFormat, inChannelCount, inSampleRate, inSamples, outSampleRate, dspOutSamples, volume);
 					dspOutSamples += upsampledResult.upsampleCount * inChannelCount;
 					inSamples += upsampledResult.inputCount * inChannelCount * inBytesPerSample;
-					item->framesPlayed += upsampledResult.inputCount;
+					playedFrameCount += upsampledResult.inputCount;
 				} else {
 					// Simple Downsampling (1/2, 1/4, 1/6, 1/8, etc.)
 					AudioUpsampleResult downsamplesResult = AudioSimpleDownSampling(targetFrameCount, inRemainingFrameCount, inFormat, inChannelCount, inSampleRate, inSamples, outSampleRate, dspOutSamples, volume);
 					dspOutSamples += downsamplesResult.upsampleCount * inChannelCount;
 					inSamples += downsamplesResult.inputCount * inChannelCount * inBytesPerSample;
-					item->framesPlayed += downsamplesResult.inputCount;
+					playedFrameCount += downsamplesResult.inputCount;
 				}
 			} else {
 				if (inSampleRate > outSampleRate) {
@@ -746,6 +796,8 @@ static AudioFrameIndex MixPlayItems(AudioSystem *audioSys, const AudioFrameIndex
 				}
 			}
 		}
+
+		item->framesPlayed += playedFrameCount;
 
 		AudioSampleIndex dspOutFrameCount = (AudioSampleIndex)(dspOutSamples - (float *)audioSys->dspOutBuffer.samples) / inChannelCount;
 
@@ -836,6 +888,8 @@ extern AudioFrameIndex AudioSystemWriteFrames(AudioSystem *audioSys, void *outSa
 
 	AudioStream *convBuffer = &audioSys->conversionBuffer;
 	size_t maxConversionAudioBufferSize = fplGetAudioBufferSizeInBytes(audioSys->targetFormat.format, audioSys->targetFormat.channels, convBuffer->buffer.frameCount);
+
+	fplAssert(convBuffer->framesRemaining == 0);
 
 	AudioFrameIndex remainingFrames = frameCount;
 	while (remainingFrames > 0) {
