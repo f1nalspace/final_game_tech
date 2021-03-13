@@ -284,7 +284,7 @@ static void Render(AudioDemo *demo, const int screenW, const int screenH, const 
 	size_t frameSize = sampleSize * demo->targetAudioFormat.channels;
 
 	AudioFrameIndex frameCount = demo->videoAudioChunks[0].count;
-	const uint8_t *chunkSamples = demo->videoAudioChunks[0].samples;
+	uint8_t *chunkSamples = demo->videoAudioChunks[0].samples;
 	if(demo->useRealTimeSamples) {
 		if(fplIsAtomicCompareAndSwapU32(&demo->hasVideoAudioChunk, 2, 3)) {
 			demo->videoAudioChunks[0] = demo->videoAudioChunks[1];
