@@ -296,6 +296,7 @@ static void Render(AudioDemo *demo, const int screenW, const int screenH, const 
 #else
 		double renderMsecs = currentRenderTime * 1000.0;
 		AudioFrameIndex framesPlayed = (AudioFrameIndex)(((double)demo->targetAudioFormat.sampleRate / 1000.0) * renderMsecs);
+		fplAssert(framesPlayed <= demo->fullAudioBuffer.frameCount);
 #endif
 
 		size_t chunkSamplesOffset = framesPlayed * frameSize;
