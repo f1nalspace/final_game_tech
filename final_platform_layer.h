@@ -160,6 +160,7 @@ SOFTWARE.
 	- Changed[#74]: fplGetProcessorName() allows to pass null-pointer as output argument to return the number of characters only
 
 	- Changed[#72]: [Win32] Query QueryPerformanceFrequency for every High-Precision timer calls instead of once per app start
+	- Changed[#84]: [Win32] Moved windows.h include to the implementation and entry point block (all handles are void* or have correct size)
 
 	### Bugfixes
 	- Fixed[#76]: FPL__ERROR, FPL__WARNING, FPL__INFO was not passing the correct function name and line number in some cases
@@ -2179,40 +2180,9 @@ fplStaticAssert(sizeof(size_t) >= sizeof(uint32_t));
 
 // ****************************************************************************
 //
-// Compiler Includes
-//
-// ****************************************************************************
-#if defined(FPL_COMPILER_MSVC)
-//#	include <immintrin.h> // _xgetbv
-#	include <intrin.h> // __cpuid, _Interlocked*
-#elif defined(FPL_COMPILER_GCC) || defined(FPL_COMPILER_CLANG)
-#	if defined(FPL_ARCH_X86) || defined(FPL_ARCH_X64)
-#		include <cpuid.h> // __cpuid_count
-#	endif // X86 or X64
-#endif
-
-// ****************************************************************************
-//
 // Platform Includes
 //
 // ****************************************************************************
-#if defined(FPL_PLATFORM_WINDOWS)
-	// @NOTE(final): windef.h defines min/max macros in lowerspace, this will break for example std::min/max so we have to tell the header we dont want this!
-#	if !defined(NOMINMAX)
-#		define NOMINMAX
-#	endif
-	// @NOTE(final): For now we dont want any network, com or gdi stuff at all, maybe later who knows.
-#	if !defined(WIN32_LEAN_AND_MEAN)
-#		define WIN32_LEAN_AND_MEAN 1
-#	endif
-	// @STUPID(final): Workaround for "combaseapi.h(229): error C2187: syntax error: 'identifier' was unexpected here"
-struct IUnknown;
-#	include <windows.h> // Win32 api
-#	if _WIN32_WINNT < 0x0600
-#		error "Windows Vista or higher required!"
-#	endif
-#endif // FPL_PLATFORM_WINDOWS
-
 #if defined(FPL_SUBPLATFORM_POSIX)
 #	include <pthread.h> // pthread_t, pthread_mutex_, pthread_cond_, pthread_barrier_
 #	include <semaphore.h> // sem_t
@@ -2237,8 +2207,8 @@ struct IUnknown;
 */
 
 #if defined(FPL_PLATFORM_WINDOWS)
-#	define FPL__M_MAX_FILENAME_LENGTH (MAX_PATH + 1)
-#	define FPL__M_MAX_PATH_LENGTH (MAX_PATH * 2 + 1)
+#	define FPL__M_MAX_FILENAME_LENGTH (260 + 1)
+#	define FPL__M_MAX_PATH_LENGTH (260 * 2 + 1)
 #	define FPL__M_PATH_SEPARATOR '\\'
 #	define FPL__M_FILE_EXT_SEPARATOR '.'
 #else
@@ -3334,7 +3304,7 @@ typedef struct fplAudioTargetFormat {
 typedef union fplAudioDeviceID {
 #if defined(FPL__ENABLE_AUDIO_DIRECTSOUND)
 	//! DirectShow Device GUID
-	GUID dshow;
+	uint8_t dshow[16];
 #endif
 #if defined(FPL__ENABLE_AUDIO_ALSA)
 	//! ALSA Device ID
@@ -3839,7 +3809,7 @@ fpl_common_api void fplClearErrors();
 typedef union fplInternalDynamicLibraryHandle {
 #if defined(FPL_PLATFORM_WINDOWS)
 	//! Win32 library handle
-	HMODULE win32LibraryHandle;
+	void *win32LibraryHandle;
 #elif defined(FPL_SUBPLATFORM_POSIX)
 	//! Posix library handle
 	void *posixLibraryHandle;
@@ -4085,7 +4055,7 @@ typedef void (fpl_run_thread_callback)(const fplThreadHandle *thread, void *data
 typedef union fplInternalThreadHandle {
 #if defined(FPL_PLATFORM_WINDOWS)
 	//! Win32 thread handle
-	HANDLE win32ThreadHandle;
+	void *win32ThreadHandle;
 #elif defined(FPL_SUBPLATFORM_POSIX)
 	//! POSIX thread handle
 	pthread_t posixThread;
@@ -4114,7 +4084,7 @@ typedef struct fplThreadHandle {
 //! A structure containing the semaphore handle and the value for win32
 typedef struct fplInternalSemaphoreHandleWin32 {
 	//! Semaphore handle
-	HANDLE handle;
+	void *handle;
 	//! Semaphore value
 	volatile int32_t value;
 } fplInternalSemaphoreHandleWin32;
@@ -4143,7 +4113,7 @@ typedef struct fplSemaphoreHandle {
 typedef union fplInternalMutexHandle {
 #if defined(FPL_PLATFORM_WINDOWS)
 	//! Win32 mutex handle
-	CRITICAL_SECTION win32CriticalSection;
+	uint8_t win32CriticalSection[96];
 #elif defined(FPL_SUBPLATFORM_POSIX)
 	//! Posix mutex handle
 	pthread_mutex_t posixMutex;
@@ -4162,7 +4132,7 @@ typedef struct fplMutexHandle {
 typedef union fplInternalSignalHandle {
 #if defined(FPL_PLATFORM_WINDOWS)
 	//! Win32 event handle
-	HANDLE win32EventHandle;
+	void *win32EventHandle;
 #elif defined(FPL_PLATFORM_LINUX)
 	//! Linux event handle
 	int linuxEventHandle;
@@ -4189,7 +4159,7 @@ typedef enum fplSignalValue {
 typedef union fplInternalConditionVariable {
 #if defined(FPL_PLATFORM_WINDOWS)
 	//! Win32 condition variable
-	CONDITION_VARIABLE win32Condition;
+	void *win32Condition;
 #elif defined(FPL_SUBPLATFORM_POSIX)
 	//! POSIX condition variable
 	pthread_cond_t posixCondition;
@@ -4643,7 +4613,7 @@ fpl_common_api size_t fplS32ToString(const int32_t value, char *buffer, const si
 typedef union fplInternalFileHandle {
 #if defined(FPL_PLATFORM_WINDOWS)
 	//! Win32 file handle
-	HANDLE win32FileHandle;
+	void *win32FileHandle;
 #elif defined(FPL_SUBPLATFORM_POSIX)
 	//! Posix file handle
 	int posixFileHandle;
@@ -4742,7 +4712,7 @@ FPL_ENUM_AS_FLAGS_OPERATORS(fplFileAttributeFlags);
 typedef union fplInternalFileEntryHandle {
 #if defined(FPL_PLATFORM_WINDOWS)
 	//! Win32 file handle
-	HANDLE win32FileHandle;
+	void *win32FileHandle;
 #elif defined(FPL_SUBPLATFORM_POSIX)
 	//! Posix directory handle
 	DIR *posixDirHandle;
@@ -6408,6 +6378,38 @@ fpl_main int main(int argc, char **args);
 #define FPL__MODULE_PTHREAD "pthread"
 #define FPL__MODULE_X11 "X11"
 #define FPL__MODULE_GLX "GLX"
+
+//
+// Platform includes
+//
+#if defined(FPL_PLATFORM_WINDOWS)
+	// @NOTE(final): windef.h defines min/max macros in lowerspace, this will break for example std::min/max so we have to tell the header we dont want this!
+#	if !defined(NOMINMAX)
+#		define NOMINMAX
+#	endif
+	// @NOTE(final): For now we dont want any network, com or gdi stuff at all, maybe later who knows.
+#	if !defined(WIN32_LEAN_AND_MEAN)
+#		define WIN32_LEAN_AND_MEAN 1
+#	endif
+	// @STUPID(final): Workaround for "combaseapi.h(229): error C2187: syntax error: 'identifier' was unexpected here"
+struct IUnknown;
+#	include <windows.h> // Win32 api
+#	if _WIN32_WINNT < 0x0600
+#		error "Windows Vista or higher required!"
+#	endif
+#endif // FPL_PLATFORM_WINDOWS
+
+//
+// Compiler Includes
+//
+#if defined(FPL_COMPILER_MSVC)
+//#	include <immintrin.h> // _xgetbv
+#	include <intrin.h> // __cpuid, _Interlocked*
+#elif defined(FPL_COMPILER_GCC) || defined(FPL_COMPILER_CLANG)
+#	if defined(FPL_ARCH_X86) || defined(FPL_ARCH_X64)
+#		include <cpuid.h> // __cpuid_count
+#	endif // X86 or X64
+#endif
 
 //
 // Compiler warnings
@@ -11785,7 +11787,9 @@ fpl_platform_api bool fplMutexInit(fplMutexHandle *mutex) {
 		return false;
 	}
 	fplClearStruct(mutex);
-	InitializeCriticalSection(&mutex->internalHandle.win32CriticalSection);
+	fplAssert(sizeof(mutex->internalHandle.win32CriticalSection) >= sizeof(CRITICAL_SECTION));
+	CRITICAL_SECTION *critSection = (CRITICAL_SECTION *)&mutex->internalHandle.win32CriticalSection[0];
+	InitializeCriticalSection(critSection);
 	mutex->isValid = true;
 	return true;
 }
@@ -11793,7 +11797,9 @@ fpl_platform_api bool fplMutexInit(fplMutexHandle *mutex) {
 fpl_platform_api void fplMutexDestroy(fplMutexHandle *mutex) {
 	FPL__CheckArgumentNullNoRet(mutex);
 	if(mutex->isValid) {
-		DeleteCriticalSection(&mutex->internalHandle.win32CriticalSection);
+		fplAssert(sizeof(mutex->internalHandle.win32CriticalSection) >= sizeof(CRITICAL_SECTION));
+		CRITICAL_SECTION *critSection = (CRITICAL_SECTION *)&mutex->internalHandle.win32CriticalSection[0];
+		DeleteCriticalSection(critSection);
 		fplClearStruct(mutex);
 	}
 }
@@ -11804,7 +11810,9 @@ fpl_platform_api bool fplMutexLock(fplMutexHandle *mutex) {
 		FPL__ERROR(FPL__MODULE_THREADING, "Mutex parameter must be valid");
 		return false;
 	}
-	EnterCriticalSection(&mutex->internalHandle.win32CriticalSection);
+	fplAssert(sizeof(mutex->internalHandle.win32CriticalSection) >= sizeof(CRITICAL_SECTION));
+	CRITICAL_SECTION *critSection = (CRITICAL_SECTION *)&mutex->internalHandle.win32CriticalSection[0];
+	EnterCriticalSection(critSection);
 	return true;
 }
 
@@ -11814,7 +11822,9 @@ fpl_platform_api bool fplMutexTryLock(fplMutexHandle *mutex) {
 		FPL__ERROR(FPL__MODULE_THREADING, "Mutex parameter must be valid");
 		return false;
 	}
-	bool result = TryEnterCriticalSection(&mutex->internalHandle.win32CriticalSection) == TRUE;
+	fplAssert(sizeof(mutex->internalHandle.win32CriticalSection) >= sizeof(CRITICAL_SECTION));
+	CRITICAL_SECTION *critSection = (CRITICAL_SECTION *)&mutex->internalHandle.win32CriticalSection[0];
+	bool result = TryEnterCriticalSection(critSection) == TRUE;
 	return(result);
 }
 
@@ -11824,7 +11834,9 @@ fpl_platform_api bool fplMutexUnlock(fplMutexHandle *mutex) {
 		FPL__ERROR(FPL__MODULE_THREADING, "Mutex parameter must be valid");
 		return false;
 	}
-	LeaveCriticalSection(&mutex->internalHandle.win32CriticalSection);
+	fplAssert(sizeof(mutex->internalHandle.win32CriticalSection) >= sizeof(CRITICAL_SECTION));
+	CRITICAL_SECTION *critSection = (CRITICAL_SECTION *)&mutex->internalHandle.win32CriticalSection[0];
+	LeaveCriticalSection(critSection);
 	return true;
 }
 
@@ -11901,7 +11913,9 @@ fpl_platform_api bool fplSignalReset(fplSignalHandle *signal) {
 fpl_platform_api bool fplConditionInit(fplConditionVariable *condition) {
 	FPL__CheckArgumentNull(condition, false);
 	fplClearStruct(condition);
-	InitializeConditionVariable(&condition->internalHandle.win32Condition);
+	fplAssert(sizeof(condition->internalHandle.win32Condition) == sizeof(CONDITION_VARIABLE));
+	CONDITION_VARIABLE *condVar = (CONDITION_VARIABLE *)&condition->internalHandle.win32Condition;
+	InitializeConditionVariable(condVar);
 	condition->isValid = true;
 	return true;
 }
@@ -11925,7 +11939,9 @@ fpl_platform_api bool fplConditionWait(fplConditionVariable *condition, fplMutex
 		return false;
 	}
 	DWORD t = timeout == FPL_TIMEOUT_INFINITE ? INFINITE : timeout;
-	bool result = SleepConditionVariableCS(&condition->internalHandle.win32Condition, &mutex->internalHandle.win32CriticalSection, t) != 0;
+	CRITICAL_SECTION *critSection = (CRITICAL_SECTION *)&mutex->internalHandle.win32CriticalSection[0];
+	CONDITION_VARIABLE *condVar = (CONDITION_VARIABLE *)&condition->internalHandle.win32Condition;
+	bool result = SleepConditionVariableCS(condVar, critSection, t) != 0;
 	return(result);
 }
 
@@ -11935,7 +11951,8 @@ fpl_platform_api bool fplConditionSignal(fplConditionVariable *condition) {
 		FPL__ERROR(FPL__MODULE_THREADING, "Condition '%p' is not valid", condition);
 		return false;
 	}
-	WakeConditionVariable(&condition->internalHandle.win32Condition);
+	CONDITION_VARIABLE *critSection = (CONDITION_VARIABLE *)&condition->internalHandle.win32Condition;
+	WakeConditionVariable(critSection);
 	return true;
 }
 
@@ -11945,7 +11962,8 @@ fpl_platform_api bool fplConditionBroadcast(fplConditionVariable *condition) {
 		FPL__ERROR(FPL__MODULE_THREADING, "Condition '%p' is not valid", condition);
 		return false;
 	}
-	WakeAllConditionVariable(&condition->internalHandle.win32Condition);
+	CONDITION_VARIABLE *critSection = (CONDITION_VARIABLE *)&condition->internalHandle.win32Condition;
+	WakeAllConditionVariable(critSection);
 	return true;
 }
 
@@ -12776,7 +12794,7 @@ fpl_platform_api bool fplDynamicLibraryLoad(const char *libraryFilePath, fplDyna
 }
 fpl_platform_api void *fplGetDynamicLibraryProc(const fplDynamicLibraryHandle *handle, const char *name) {
 	if((handle != fpl_null) && (handle->internalHandle.win32LibraryHandle != fpl_null) && (name != fpl_null)) {
-		HMODULE libModule = handle->internalHandle.win32LibraryHandle;
+		HMODULE libModule = (HMODULE)handle->internalHandle.win32LibraryHandle;
 		return (void *)GetProcAddress(libModule, name);
 	}
 	return fpl_null;
@@ -18162,7 +18180,8 @@ fpl_internal fplAudioResultType fpl__AudioInitDirectSound(const fplAudioSettings
 	const fplAudioDeviceInfo *targetDevice = &audioSettings->targetDevice;
 	const GUID *deviceId = fpl_null;
 	if(fplGetStringLength(targetDevice->name) > 0) {
-		deviceId = &targetDevice->id.dshow;
+		fplAssert(sizeof(GUID) == sizeof(targetDevice->id.dshow));
+		deviceId = (const GUID *)&targetDevice->id.dshow;
 	}
 	if(!SUCCEEDED(dsoundApi->DirectSoundCreate(deviceId, &dsoundState->directSound, fpl_null))) {
 		char idString[64];
@@ -21113,6 +21132,21 @@ fpl_common_api fplPlatformType fplGetPlatformType() {
 #	define FPL__ENTRYPOINT_IMPLEMENTED
 
 #	if defined(FPL_PLATFORM_WINDOWS)
+
+		// @NOTE(final): windef.h defines min/max macros in lowerspace, this will break for example std::min/max so we have to tell the header we dont want this!
+#		if !defined(NOMINMAX)
+#			define NOMINMAX
+#		endif
+		// @NOTE(final): For now we dont want any network, com or gdi stuff at all, maybe later who knows.
+#		if !defined(WIN32_LEAN_AND_MEAN)
+#			define WIN32_LEAN_AND_MEAN 1
+#		endif
+		// @STUPID(final): Workaround for "combaseapi.h(229): error C2187: syntax error: 'identifier' was unexpected here"
+struct IUnknown;
+#		include <windows.h> // Win32 api
+#		if _WIN32_WINNT < 0x0600
+#			error "Windows Vista or higher required!"
+#		endif
 
 #define FPL__FUNC_WIN32_CommandLineToArgvW(name) LPWSTR* WINAPI name(LPCWSTR lpCmdLine, int *pNumArgs)
 typedef FPL__FUNC_WIN32_CommandLineToArgvW(fpl__win32_func_CommandLineToArgvW);

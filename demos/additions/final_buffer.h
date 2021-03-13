@@ -193,7 +193,7 @@ extern void LockFreeRingBufferRelease(LockFreeRingBuffer *buffer) {
 	if(buffer->isMirror && buffer->buffer != fpl_null) {
 		MirroredMemory mirror;
 		mirror.buffer = buffer->buffer;
-		mirror.length = buffer->length;
+		mirror.length = (size_t)buffer->length;
 #if defined(FPL_PLATFORM_WINDOWS)
 		mirror.fileHandle = buffer->fileHandle;
 #endif
@@ -224,7 +224,7 @@ fpl_force_inline void f_LockFreeRingBufferConsume(LockFreeRingBuffer *buffer, ui
 extern bool LockFreeRingBufferCanRead(LockFreeRingBuffer *buffer, size_t *availableBytes) {
 	if(buffer == fpl_null) return(false);
 	uint64_t fillCount = fplAtomicLoadS64(&buffer->fillCount);
-	*availableBytes = fillCount;
+	*availableBytes = (size_t)fillCount;
 	if(fillCount > 0) {
 		return(true);
 	}
@@ -234,7 +234,7 @@ extern bool LockFreeRingBufferCanRead(LockFreeRingBuffer *buffer, size_t *availa
 extern bool LockFreeRingBufferCanWrite(LockFreeRingBuffer *buffer, size_t *availableBytes) {
 	if(buffer == fpl_null) return(false);
 	uint64_t available = (buffer->length - fplAtomicLoadS64(&buffer->fillCount));
-	*availableBytes = available;
+	*availableBytes = (size_t)available;
 	if(available > 0) {
 		return(true);
 	}
@@ -252,10 +252,10 @@ extern bool LockFreeRingBufferWrite(LockFreeRingBuffer *buffer, const void *src,
 		memcpy(dstAddr + buffer->head, srcAddr, len);
 	} else {
 		uint64_t bytesLeft = fplMin(fplMin(len, available), buffer->length - buffer->head);
-		memcpy(dstAddr + buffer->head, srcAddr, bytesLeft);
+		memcpy(dstAddr + buffer->head, srcAddr, (size_t)bytesLeft);
 
 		uint64_t bytesRight = len - bytesLeft;
-		memcpy(dstAddr, srcAddr + bytesLeft, bytesRight);
+		memcpy(dstAddr, srcAddr + bytesLeft, (size_t)bytesRight);
 	}
 	f_LockFreeRingBufferProduce(buffer, len);
 	return(true);
@@ -272,10 +272,10 @@ extern bool LockFreeRingBufferRead(LockFreeRingBuffer *buffer, void *dst, const 
 			memcpy(dstAddr, srcAddr + buffer->tail, len);
 		} else {
 			uint64_t bytesLeft = fplMin(fplMin(len, fillCount), buffer->length - buffer->tail);
-			memcpy(dstAddr, srcAddr + buffer->tail, bytesLeft);
+			memcpy(dstAddr, srcAddr + buffer->tail, (size_t)bytesLeft);
 
 			uint64_t bytesRight = len - bytesLeft;
-			memcpy(dstAddr + bytesLeft, srcAddr, bytesRight);
+			memcpy(dstAddr + bytesLeft, srcAddr, (size_t)bytesRight);
 		}
 	}
 	f_LockFreeRingBufferConsume(buffer, len);
@@ -295,10 +295,10 @@ extern bool LockFreeRingBufferPeek(LockFreeRingBuffer *buffer, void *dst, const 
 			uint64_t tail = (buffer->tail + offset) % buffer->length;
 
 			uint64_t bytesLeft = fplMin(fplMin(len, fillCount - offset), buffer->length - tail);
-			memcpy(dstAddr, srcAddr + tail, bytesLeft);
+			memcpy(dstAddr, srcAddr + tail, (size_t)bytesLeft);
 
 			uint64_t bytesRight = len - bytesLeft;
-			memcpy(dstAddr + bytesLeft, srcAddr, bytesRight);
+			memcpy(dstAddr + bytesLeft, srcAddr, (size_t)bytesRight);
 		}
 	}
 	return(true);
