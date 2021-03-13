@@ -946,8 +946,8 @@ int main(int argc, char **args) {
 		// Start audio playback (This will start calling clientReadCallback regulary)
 		if(fplPlayAudio() == fplAudioResultType_Success) {
 			// Print output infos
-			const char *outDriver = fplGetAudioDriverString(currentSettings->audio.driver);
-			const char *outFormat = fplGetAudioFormatTypeString(demo->audioSys.targetFormat.format);
+			const char *outDriver = fplGetAudioDriverName(currentSettings->audio.driver);
+			const char *outFormat = fplGetAudioFormatTypeName(demo->audioSys.targetFormat.format);
 			uint32_t outSampleRate = demo->audioSys.targetFormat.sampleRate;
 			uint32_t outChannels = demo->audioSys.targetFormat.channels;
 			fplConsoleFormatOut("Playing %lu audio sources (%s, %s, %lu Hz, %lu channels)\n",

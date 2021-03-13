@@ -133,17 +133,29 @@ SOFTWARE.
 	@tableofcontents
 
 	## v0.9.6-beta
-	[Core]
-	- New[#73]: Added fplAsm macro to handle different inline assembler keywords (clang, gcc, msvc)
-	- New[#75]: Added fplAlignAs macro for aligning structures to N-bytes (clang, gcc, msvc, c++/11)
+	### Features
+	- New[#73]: Added fplAsm macro to handle different inline assembler keywords (Clang, GCC, MSVC)
+	- New[#75]: Added fplAlignAs macro for aligning structures to N-bytes (Clang, GCC, MSVC, C++/11)
 	- New[#79]: Added function fplGetAudioDriver()
-	- New[#81]: Added function fplGetAudioBufferSizeInMilliseconds() to compute milliseconds from number of frames
+	- New[#81]: Added function fplGetAudioBufferSizeInMilliseconds() to compute milliseconds from frame-count + sample-rate
+
+	### Improvements
+	- Changed: New Changelog format with categories (Features, bugfixes, improvements, breaking changes, internal changes)
+	- Changed[#72]: [Win32] Query QueryPerformanceFrequency for every High-Precision timer calls instead of once per app start
+
+	### Breaking changes
+	- API[#78]: Renamed fplGetArchTypeString to fplGetArchTypeName
+	- API[#78]: Renamed fplGetVideoDriverString to fplGetVideoDriverName
+	- API[#78]: Renamed fplGetPlatformResultTypeString to fplGetPlatformResultTypeName
+	- API[#78]: Renamed fplGetAudioDriverString to fplGetAudioDriverName
+	- API[#78]: Renamed fplGetAudioFormatTypeString to fplGetAudioFormatTypeName
+	- API[#78]: Renamed fplGetAudioResultTypeString to fplGetAudioResultTypeName
+
+	### Bugfixes
 	- Fixed[#76]: FPL__ERROR, FPL__WARNING, FPL__INFO was not passing the correct function name and line number in some cases
 	- Fixed[#83]: fplGetAudioBufferSizeInFrames() does not return correct values always
-
-	[Win32]
-	- Fixed[#69]: Removed the manual handling of ALT + F4 shut down of event handling
-	- Changed[#72]: Query QueryPerformanceFrequency for every High-Precision timer calls instead of once per app start
+	- Fixed[#83]: fplGetAudioBufferSizeInMilliseconds() does not return correct values always
+	- Fixed[#69]: [Win32] Removed the manual handling of ALT + F4 shut down of event handling
 
 	## v0.9.5-beta
 	- New: Added enum fplAudioDefaultFields
@@ -2984,7 +2996,7 @@ fpl_common_api uint64_t fplRDTSC();
 * @return Returns a string for the given architecture type
 * @see @ref section_category_hardware_cpuarch
 */
-fpl_common_api const char *fplGetArchTypeString(const fplArchType type);
+fpl_common_api const char *fplGetArchTypeName(const fplArchType type);
 /**
 * @brief Retrieves the total number of processor cores
 * @return Returns the total number of processor cores.
@@ -3098,7 +3110,7 @@ typedef enum fplPlatformResultType {
 * @return Returns the string representation of a platform result type.
 * @see @ref section_category_initialization_result
 */
-fpl_common_api const char *fplGetPlatformResultTypeString(const fplPlatformResultType type);
+fpl_common_api const char *fplGetPlatformResultTypeName(const fplPlatformResultType type);
 
 //! An enumeration of video driver types
 typedef enum fplVideoDriverType {
@@ -6044,7 +6056,7 @@ fpl_common_api fplVideoDriverType fplGetVideoDriver();
 * @param driver The video driver type @ref fplVideoDriverType
 * @return Returns a string for the given video driver type
 */
-fpl_common_api const char *fplGetVideoDriverString(fplVideoDriverType driver);
+fpl_common_api const char *fplGetVideoDriverName(fplVideoDriverType driver);
 /**
 * @brief Retrieves the pointer to the current video backbuffer.
 * @return Returns the pointer to the current @ref fplVideoBackBuffer.
@@ -6147,13 +6159,13 @@ fpl_common_api uint32_t fplGetAudioSampleSizeInBytes(const fplAudioFormatType fo
 * @param format The audio format type @ref fplAudioFormatType
 * @return Returns a string for the given audio format type
 */
-fpl_common_api const char *fplGetAudioFormatTypeString(const fplAudioFormatType format);
+fpl_common_api const char *fplGetAudioFormatTypeName(const fplAudioFormatType format);
 /**
 * @brief Gets the string which represents the given audio driver type.
 * @param driver The audio driver type @ref fplAudioDriverType
 * @return Returns a string for the given audio driver type
 */
-fpl_common_api const char *fplGetAudioDriverString(fplAudioDriverType driver);
+fpl_common_api const char *fplGetAudioDriverName(fplAudioDriverType driver);
 /**
 * @brief Computes the total number of frames for given sample rate and buffer size.
 * @param sampleRate The sample rate in Hz
@@ -9767,7 +9779,7 @@ fpl_globalvar const char *fpl__global_platformResultTypeNameTable[] = {
 };
 fplStaticAssert(fplArrayCount(fpl__global_platformResultTypeNameTable) == FPL__PLATFORMRESULTTYPE_COUNT);
 
-fpl_common_api const char *fplGetPlatformResultTypeString(const fplPlatformResultType type) {
+fpl_common_api const char *fplGetPlatformResultTypeName(const fplPlatformResultType type) {
 	uint32_t index = FPL__ENUM_VALUE_TO_ARRAY_INDEX(type, FPL_FIRST_PLATFORM_RESULT_TYPE, FPL_LAST_PLATFORM_RESULT_TYPE);
 	const char *result = fpl__global_platformResultTypeNameTable[index];
 	return(result);
@@ -9784,7 +9796,7 @@ fpl_globalvar const char *fpl__global_ArchTypeNameTable[] = {
 };
 fplStaticAssert(fplArrayCount(fpl__global_ArchTypeNameTable) == FPL__ARCHTYPE_COUNT);
 
-fpl_common_api const char *fplGetArchTypeString(const fplArchType type) {
+fpl_common_api const char *fplGetArchTypeName(const fplArchType type) {
 	uint32_t index = FPL__ENUM_VALUE_TO_ARRAY_INDEX(type, FPL_FIRST_ARCHTYPE, FPL_LAST_ARCHTYPE);
 	const char *result = fpl__global_ArchTypeNameTable[index];
 	return(result);
@@ -18206,7 +18218,7 @@ fpl_internal fplAudioResultType fpl__AudioInitDirectSound(const fplAudioSettings
 
 	commonAudio->internalFormat = internalFormat;
 
-	const char *internalFormatTypeName = fplGetAudioFormatTypeString(internalFormat.type);
+	const char *internalFormatTypeName = fplGetAudioFormatTypeName(internalFormat.type);
 	FPL_LOG(fplLogLevel_Info, FPL__MODULE_AUDIO_DIRECTSOUND,
 		"Using internal format (Channels: %u, Samplerate: %u, Type: %s, Periods: %u, Buffer size frames/bytes: %u/%u)",
 		internalFormat.channels,
@@ -19242,7 +19254,7 @@ fpl_internal fplAudioResultType fpl__AudioInitAlsa(const fplAudioSettings *audio
 	}
 
 	if (alsaApi->snd_pcm_hw_params_set_format(alsaState->pcmDevice, hardwareParams, foundFormat) < 0) {
-		FPL__ALSA_INIT_ERROR(fplAudioResultType_Failed, "Failed setting PCM format '%s' for device '%s'!", fplGetAudioFormatTypeString(fpl__MapAlsaFormatToAudioFormat(foundFormat)), deviceName);
+		FPL__ALSA_INIT_ERROR(fplAudioResultType_Failed, "Failed setting PCM format '%s' for device '%s'!", fplGetAudioFormatTypeName(fpl__MapAlsaFormatToAudioFormat(foundFormat)), deviceName);
 	}
 	internalFormat.type = fpl__MapAlsaFormatToAudioFormat(foundFormat);
 
@@ -19425,7 +19437,7 @@ fpl_globalvar const char *fpl__global_audioResultTypeNameTable[] = {
 };
 fplStaticAssert(fplArrayCount(fpl__global_audioResultTypeNameTable) == FPL__AUDIO_RESULT_TYPE_COUNT);
 
-fpl_common_api const char *fplGetAudioResultTypeString(const fplAudioResultType type) {
+fpl_common_api const char *fplGetAudioResultTypeName(const fplAudioResultType type) {
 	uint32_t index = FPL__ENUM_VALUE_TO_ARRAY_INDEX(type, FPL_FIRST_AUDIO_RESULT_TYPE, FPL_LAST_AUDIO_RESULT_TYPE);
 	const char *result = fpl__global_audioResultTypeNameTable[index];
 	return(result);
@@ -20084,7 +20096,7 @@ fpl_internal bool fpl__InitVideo(const fplVideoDriverType driver, const fplVideo
 
 		default:
 		{
-			FPL__ERROR(FPL__MODULE_VIDEO, "Unsupported video driver '%s' for this platform", fplGetVideoDriverString(videoSettings->driver));
+			FPL__ERROR(FPL__MODULE_VIDEO, "Unsupported video driver '%s' for this platform", fplGetVideoDriverName(videoSettings->driver));
 		} break;
 	}
 	if (!videoInitResult) {
@@ -20241,20 +20253,20 @@ fpl_common_api uint32_t fplGetAudioSampleSizeInBytes(const fplAudioFormatType fo
 	return(result);
 }
 
-fpl_common_api const char *fplGetAudioFormatTypeString(const fplAudioFormatType format) {
+fpl_common_api const char *fplGetAudioFormatTypeName(const fplAudioFormatType format) {
 	uint32_t index = FPL__ENUM_VALUE_TO_ARRAY_INDEX(format, FPL_FIRST_AUDIOFORMATTYPE, FPL_LAST_AUDIOFORMATTYPE);
 	const char *result = fpl__globalAudioFormatNameTable[index];
 	return(result);
 }
 
 #define FPL__AUDIODRIVERTYPE_COUNT FPL__ENUM_COUNT(FPL_FIRST_AUDIODRIVERTYPE, FPL_LAST_AUDIODRIVERTYPE)
-fpl_globalvar const char *fpl__globalAudioDriverStringTable[] = {
+fpl_globalvar const char *fpl__globalAudioDriverNameTable[] = {
 	"None", // No audio driver
 	"Auto", // Automatic driver detection
 	"DirectSound", // DirectSound
 	"ALSA", // Alsa
 };
-fplStaticAssert(fplArrayCount(fpl__globalAudioDriverStringTable) == FPL__AUDIODRIVERTYPE_COUNT);
+fplStaticAssert(fplArrayCount(fpl__globalAudioDriverNameTable) == FPL__AUDIODRIVERTYPE_COUNT);
 
 fpl_common_api fplAudioDriverType fplGetAudioDriver() {
 	FPL__CheckPlatform(fplAudioDriverType_None);
@@ -20263,9 +20275,9 @@ fpl_common_api fplAudioDriverType fplGetAudioDriver() {
 	return(result);
 }
 
-fpl_common_api const char *fplGetAudioDriverString(fplAudioDriverType driver) {
+fpl_common_api const char *fplGetAudioDriverName(fplAudioDriverType driver) {
 	uint32_t index = FPL__ENUM_VALUE_TO_ARRAY_INDEX(driver, FPL_FIRST_AUDIODRIVERTYPE, FPL_LAST_AUDIODRIVERTYPE);
-	const char *result = fpl__globalAudioDriverStringTable[index];
+	const char *result = fpl__globalAudioDriverNameTable[index];
 	return(result);
 }
 
@@ -20535,7 +20547,7 @@ fpl_globalvar const char *fpl__globalVideoDriverTypeNameTable[] = {
 };
 fplStaticAssert(fplArrayCount(fpl__globalVideoDriverTypeNameTable) == FPL__VIDEODRIVERTYPE_COUNT);
 
-fpl_common_api const char *fplGetVideoDriverString(fplVideoDriverType driver) {
+fpl_common_api const char *fplGetVideoDriverName(fplVideoDriverType driver) {
 	uint32_t index = FPL__ENUM_VALUE_TO_ARRAY_INDEX(driver, FPL_FIRST_VIDEODRIVERTYPE, FPL_LAST_VIDEODRIVERTYPE);
 	const char *result = fpl__globalVideoDriverTypeNameTable[index];
 	return(result);
@@ -20694,7 +20706,7 @@ fpl_internal void fpl__ReleasePlatformStates(fpl__PlatformInitState *initState, 
 	{
 		fpl__VideoState *videoState = fpl__GetVideoState(appState);
 		if (videoState != fpl_null) {
-			FPL_LOG_DEBUG(FPL__MODULE_CORE, "Shutdown Video for Driver '%s'", fplGetVideoDriverString(videoState->activeDriver));
+			FPL_LOG_DEBUG(FPL__MODULE_CORE, "Shutdown Video for Driver '%s'", fplGetVideoDriverName(videoState->activeDriver));
 			fpl__ShutdownVideo(appState, videoState);
 		}
 	}
@@ -20714,7 +20726,7 @@ fpl_internal void fpl__ReleasePlatformStates(fpl__PlatformInitState *initState, 
 	{
 		fpl__VideoState *videoState = fpl__GetVideoState(appState);
 		if (videoState != fpl_null) {
-			FPL_LOG_DEBUG(FPL__MODULE_CORE, "Release Video for Driver '%s'", fplGetVideoDriverString(videoState->activeDriver));
+			FPL_LOG_DEBUG(FPL__MODULE_CORE, "Release Video for Driver '%s'", fplGetVideoDriverName(videoState->activeDriver));
 			fpl__ReleaseVideoState(appState, videoState);
 		}
 	}
@@ -20923,7 +20935,7 @@ fpl_common_api bool fplPlatformInit(const fplInitFlags initFlags, const fplSetti
 		fplAssert(videoState != fpl_null);
 
 		fplVideoDriverType videoDriver = appState->initSettings.video.driver;
-		const char *videoDriverString = fplGetVideoDriverString(videoDriver);
+		const char *videoDriverString = fplGetVideoDriverName(videoDriver);
 		FPL_LOG_DEBUG(FPL__MODULE_CORE, "Load Video API for Driver '%s':", videoDriverString);
 		{
 			if (!fpl__LoadVideoState(videoDriver, videoState)) {
@@ -20959,7 +20971,7 @@ fpl_common_api bool fplPlatformInit(const fplInitFlags initFlags, const fplSetti
 		fplAssert(videoState != fpl_null);
 		fplWindowSize windowSize = fplZeroInit;
 		fplGetWindowSize(&windowSize);
-		const char *videoDriverName = fplGetVideoDriverString(appState->initSettings.video.driver);
+		const char *videoDriverName = fplGetVideoDriverName(appState->initSettings.video.driver);
 		FPL_LOG_DEBUG(FPL__MODULE_CORE, "Init Video with Driver '%s':", videoDriverName);
 		if (!fpl__InitVideo(appState->initSettings.video.driver, &appState->initSettings.video, windowSize.width, windowSize.height, appState, videoState)) {
 			FPL__CRITICAL(FPL__MODULE_CORE, "Failed initialization video with settings (Driver=%s, Width=%d, Height=%d)", videoDriverName, windowSize.width, windowSize.height);
@@ -20975,14 +20987,14 @@ fpl_common_api bool fplPlatformInit(const fplInitFlags initFlags, const fplSetti
 	if (appState->initFlags & fplInitFlags_Audio) {
 		appState->audio.mem = (uint8_t *)platformAppStateMemory + audioMemoryOffset;
 		appState->audio.memSize = sizeof(fpl__AudioState);
-		const char *audioDriverName = fplGetAudioDriverString(appState->initSettings.audio.driver);
+		const char *audioDriverName = fplGetAudioDriverName(appState->initSettings.audio.driver);
 		FPL_LOG_DEBUG("Core", "Init Audio with Driver '%s':", audioDriverName);
 		fpl__AudioState *audioState = fpl__GetAudioState(appState);
 		fplAssert(audioState != fpl_null);
 		fplAudioResultType initAudioResult = fpl__InitAudio(&appState->initSettings.audio, audioState);
 		if (initAudioResult != fplAudioResultType_Success) {
-			const char *initAudioResultName = fplGetAudioResultTypeString(initAudioResult);
-			const char *audioFormatName = fplGetAudioFormatTypeString(initSettings->audio.targetFormat.type);
+			const char *initAudioResultName = fplGetAudioResultTypeName(initAudioResult);
+			const char *audioFormatName = fplGetAudioFormatTypeName(initSettings->audio.targetFormat.type);
 			FPL__CRITICAL("Core", "Failed initialization audio with settings (Driver=%s, Format=%s, SampleRate=%d, Channels=%d) -> %s",
 				audioDriverName,
 				audioFormatName,

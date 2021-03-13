@@ -218,7 +218,7 @@ static bool StartPlayback(AudioContext *context) {
 
 	fplGetAudioHardwareFormat(&playbackFormat->deviceFormat);
 	const fplSettings *settings = fplGetCurrentSettings();
-	const char *outDriver = fplGetAudioDriverString(settings->audio.driver);
+	const char *outDriver = fplGetAudioDriverName(settings->audio.driver);
 	fplCopyString(outDriver, playbackFormat->driverName, fplArrayCount(playbackFormat->driverName));
 #endif
 	
@@ -287,7 +287,7 @@ int main(int argc, char **args) {
 	
 	// Print output infos
 	PlaybackAudioFormat *playbackFormat = &audioContext->playbackFormat;
-	const char *formatName = fplGetAudioFormatTypeString(playbackFormat->deviceFormat.type);
+	const char *formatName = fplGetAudioFormatTypeName(playbackFormat->deviceFormat.type);
 	const char *systemName;
 #if OPT_USE_MINIAUDIO
 	systemName = "MiniAudio";
