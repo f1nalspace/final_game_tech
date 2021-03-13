@@ -138,7 +138,7 @@ SOFTWARE.
 	- New[#75]: Added fplAlignAs macro for aligning structures to N-bytes (Clang, GCC, MSVC, C++/11)
 	- New[#79]: Added function fplGetAudioDriver()
 	- New[#81]: Added function fplGetAudioBufferSizeInMilliseconds() to compute milliseconds from frame-count + sample-rate
-	- New: Added fpl*_First and fpl*_Last to every enum
+	- New[#85]: Added fpl*_First and fpl*_Last to every enum
 
 	### Improvements
 	- Changed: New Changelog format with categories (Features, bugfixes, improvements, breaking changes, internal changes)
@@ -171,7 +171,7 @@ SOFTWARE.
 	- Renamed a lot of internal FPL_ defines to FPL__
 
 	### Breaking changes
-	- Removed: Removed obsolete FPL_FIRST_* and FPL_LAST_* defines
+	- Removed[#85]: Removed obsolete FPL_FIRST_* and FPL_LAST_* defines
 	- Renamed[#78]: fplGetAudioResultTypeString to fplGetAudioResultName
 	- Renamed[#78]: fplGetArchTypeString to fplGetArchName
 	- Renamed[#78]: fplGetVideoDriverString to fplGetVideoDriverName
