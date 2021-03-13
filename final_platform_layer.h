@@ -156,6 +156,7 @@ SOFTWARE.
 	- Changed[#74]: fplGetInputLocale() allows to pass null-pointer as output argument to return the number of characters only
 	- Changed[#74]: fplGetUserLocale() allows to pass null-pointer as output argument to return the number of characters only
 	- Changed[#74]: fplGetSystemLocale() allows to pass null-pointer as output argument to return the number of characters only
+	- Changed[#74]: fplGetProcessorName() allows to pass null-pointer as output argument to return the number of characters only
 
 	- Changed[#72]: [Win32] Query QueryPerformanceFrequency for every High-Precision timer calls instead of once per app start
 
@@ -190,6 +191,7 @@ SOFTWARE.
 	- Changed[#74]: fplGetInputLocale() returns the number of characters instead of a char-pointer
 	- Changed[#74]: fplGetUserLocale() returns the number of characters instead of a char-pointer
 	- Changed[#74]: fplGetSystemLocale() returns the number of characters instead of a char-pointer
+	- Changed[#74]: fplGetProcessorName() returns the number of characters instead of a char-pointer
 	- Changed[#74]: fplGetDisplayModeCount() -> Use fplGetDisplayModes() with null-pointer instead
 
 	## v0.9.5-beta
@@ -3042,10 +3044,10 @@ fpl_platform_api size_t fplGetProcessorCoreCount();
 * @brief Retrieves the name of the processor
 * @param destBuffer The destination buffer
 * @param maxDestBufferLen The max length of the destination buffer
-* @return Returns a pointer to the last written character or @ref fpl_null otherwise.
+* @return Returns the number of required/written characters, excluding the null-terminator
 * @see @ref section_category_hardware_cpuname
 */
-fpl_common_api char *fplGetProcessorName(char *destBuffer, const size_t maxDestBufferLen);
+fpl_common_api size_t fplGetProcessorName(char *destBuffer, const size_t maxDestBufferLen);
 /**
 * @brief Gets the capabilities of the processor
 * @param outCaps Pointer to the output @ref fplProcessorCapabilities
@@ -9164,11 +9166,7 @@ fpl_common_api bool fplGetProcessorCapabilities(fplProcessorCapabilities *outCap
 	return(true);
 }
 
-fpl_common_api char *fplGetProcessorName(char *destBuffer, const size_t maxDestBufferLen) {
-	FPL__CheckArgumentNull(destBuffer, fpl_null);
-	size_t requiredDestBufferLen = FPL__CPU_BRAND_BUFFER_SIZE + 1;
-	FPL__CheckArgumentMin(maxDestBufferLen, requiredDestBufferLen, fpl_null);
-
+fpl_common_api size_t fplGetProcessorName(char *destBuffer, const size_t maxDestBufferLen) {
 	fplCPUIDLeaf cpuInfo = fplZeroInit;
 	fplCPUID(&cpuInfo, 0x80000000);
 	uint32_t extendedIds = cpuInfo.eax;
@@ -9181,9 +9179,14 @@ fpl_common_api char *fplGetProcessorName(char *destBuffer, const size_t maxDestB
 		uint32_t offset = (i - 0x80000002) << 4;
 		fplMemoryCopy(cpuInfo.raw, sizeof(cpuInfo), cpuBrandBuffer + offset);
 	}
-	// Copy result back to the dest buffer
-	size_t sourceLen = fplGetStringLength(cpuBrandBuffer);
-	char *result = fplCopyStringLen(cpuBrandBuffer, sourceLen, destBuffer, maxDestBufferLen);
+
+	size_t result = fplGetStringLength(cpuBrandBuffer);
+	if(destBuffer != fpl_null) {
+		// Copy result back to the dest buffer
+		size_t requiredDestBufferLen = result + 1;
+		FPL__CheckArgumentMin(maxDestBufferLen, requiredDestBufferLen, 0);
+		fplCopyStringLen(cpuBrandBuffer, result, destBuffer, maxDestBufferLen);
+	}
 
 	return(result);
 }
@@ -9232,9 +9235,9 @@ fpl_common_api bool fplGetProcessorCapabilities(fplProcessorCapabilities *outCap
 	return(false);
 }
 
-fpl_common_api char *fplGetProcessorName(char *destBuffer, const size_t maxDestBufferLen) {
+fpl_common_api size_t fplGetProcessorName(char *destBuffer, const size_t maxDestBufferLen) {
 	// @IMPLEMENT(final): fplGetProcessorName for non-x86 architectures
-	return(fpl_null);
+	return(0);
 }
 #endif
 
