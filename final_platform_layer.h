@@ -14918,7 +14918,7 @@ fpl_platform_api size_t fplGetExecutableFilePath(char *destPath, const size_t ma
 				result = len;
 				if(destPath != fpl_null) {
 					size_t requiredLen = len + 1;
-					FPL__CheckArgumentMin(maxDestLen, requiredLen, fpl_null);
+					FPL__CheckArgumentMin(maxDestLen, requiredLen, 0);
 					fplCopyStringLen(buf, len, destPath, maxDestLen);
 					break;
 				}
@@ -14937,8 +14937,9 @@ fpl_platform_api size_t fplGetHomePath(char *destPath, const size_t maxDestLen) 
 	}
 	size_t result = fplGetStringLength(homeDir);
 	if(destPath != fpl_null) {
-		size_t copyLen = fplCopyString(homeDir, destPath, maxDestLen);
-		fplAssert(copyLen == result);
+		size_t requiredLen = result + 1;
+		FPL__CheckArgumentMin(maxDestLen, requiredLen, 0);
+		fplCopyStringLen(homeDir, result, destPath, maxDestLen);
 	}
 	return(result);
 }
@@ -15028,7 +15029,7 @@ fpl_platform_api size_t fplUTF8StringToWideString(const char *utf8Source, const 
 		mbstowcs(wideDest, utf8Source, utf8SourceLen);
 		wideDest[result] = 0;
 	}
-	return(wideDest);
+	return(result);
 }
 #endif // FPL_SUBPLATFORM_STD_STRINGS
 
