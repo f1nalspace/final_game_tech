@@ -2757,7 +2757,7 @@ static void RenderOSD(PlayerState *state, const Mat4f &proj, const float w, cons
 
 	char osdTextBuffer[256];
 
-	float osdFontSize = (float)h / 30.0f;
+	float osdFontSize = (float)h / 40.0f;
 	float fontHeight = osdFontSize * (state->fontInfo.ascent + state->fontInfo.descent);
 	float fontBaseline = osdFontSize * state->fontInfo.ascent;
 	float fontLineHeight = fontHeight * 1.25f;
@@ -2839,6 +2839,19 @@ static void RenderOSD(PlayerState *state, const Mat4f &proj, const float w, cons
 		uint32_t frameSize = fplGetAudioFrameSizeInBytes(state->audio.audioTarget.type, state->audio.audioTarget.channels);
 
 		fplFormatString(osdTextBuffer, fplArrayCount(osdTextBuffer), "Audio: %s, %s, %u channels, %u Hz", audioDriverName, audioFormatName, state->audio.audioTarget.channels, state->audio.audioTarget.sampleRate);
+		PushTextToBuffer(state->fontBuffer, state->fontInfo, osdTextBuffer, osdFontSize, osdPos, V4f(1, 1, 1, 1), TextRenderMode::Baseline);
+		osdPos += V2f(0, -osdFontSize);
+	}
+
+	// Debug shit
+	{
+		osdPos = V2f(0, osdFontSize * 0.5f);
+		int32_t videoQueueCount = state->video.decoder.frameQueue.count;
+		int32_t audioQueueCount = state->audio.decoder.frameQueue.count;
+		int32_t allocatedPackets = globalMemStats.allocatedPackets;
+		int32_t usedPackets = globalMemStats.usedPackets;
+
+		fplFormatString(osdTextBuffer, fplArrayCount(osdTextBuffer), "Queue A/V: %d/%d, Packets U/A: %d/%d", audioQueueCount, videoQueueCount, usedPackets, allocatedPackets);
 		PushTextToBuffer(state->fontBuffer, state->fontInfo, osdTextBuffer, osdFontSize, osdPos, V4f(1, 1, 1, 1), TextRenderMode::Baseline);
 		osdPos += V2f(0, -osdFontSize);
 	}
