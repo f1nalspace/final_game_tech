@@ -57,6 +57,12 @@ extern "C" {
 		}
 	}
 
+	__declspec(naked) void _ftoui3() {
+		__asm
+		{
+		}
+	}
+
 	// 64-bit math for 32-bit
 	void __declspec(naked) _allmul() {
 		__asm {
