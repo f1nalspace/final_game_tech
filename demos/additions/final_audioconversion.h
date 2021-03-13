@@ -30,9 +30,9 @@ typedef struct AudioSampleConversionFunctions {
 	AudioSampleDeinterleaveFunc *deinterleaveS32;
 	AudioSampleDeinterleaveFunc *deinterleaveF32;
 
-	AudioSampleFormatConversionFunc *conversionTable[FPL_LAST_AUDIOFORMATTYPE][FPL_LAST_AUDIOFORMATTYPE];
-	AudioSampleInterleaveFunc *interleaveTable[FPL_LAST_AUDIOFORMATTYPE];
-	AudioSampleDeinterleaveFunc *deinterleaveTable[FPL_LAST_AUDIOFORMATTYPE];
+	AudioSampleFormatConversionFunc *conversionTable[fplAudioFormatType_Last][fplAudioFormatType_Last];
+	AudioSampleInterleaveFunc *interleaveTable[fplAudioFormatType_Last];
+	AudioSampleDeinterleaveFunc *deinterleaveTable[fplAudioFormatType_Last];
 } AudioSampleConversionFunctions;
 
 

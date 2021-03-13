@@ -138,8 +138,7 @@ SOFTWARE.
 	- New[#75]: Added fplAlignAs macro for aligning structures to N-bytes (Clang, GCC, MSVC, C++/11)
 	- New[#79]: Added function fplGetAudioDriver()
 	- New[#81]: Added function fplGetAudioBufferSizeInMilliseconds() to compute milliseconds from frame-count + sample-rate
-
-	
+	- New: Added fpl*_First and fpl*_Last to every enum
 
 	### Improvements
 	- Changed: New Changelog format with categories (Features, bugfixes, improvements, breaking changes, internal changes)
@@ -172,6 +171,7 @@ SOFTWARE.
 	- Renamed a lot of internal FPL_ defines to FPL__
 
 	### Breaking changes
+	- Removed: Removed obsolete FPL_FIRST_* and FPL_LAST_* defines
 	- Renamed[#78]: fplGetAudioResultTypeString to fplGetAudioResultName
 	- Renamed[#78]: fplGetArchTypeString to fplGetArchName
 	- Renamed[#78]: fplGetVideoDriverString to fplGetVideoDriverName
@@ -2961,12 +2961,12 @@ typedef enum fplArchType {
 	fplArchType_Arm32,
 	//! ARM64 architecture
 	fplArchType_Arm64,
-} fplArchType;
 
-//! Defines the first @ref fplArchType value
-#define FPL_FIRST_ARCHTYPE fplArchType_Unknown
-//! Defines the first @ref fplArchType value
-#define FPL_LAST_ARCHTYPE fplArchType_Arm64
+	//! First @ref fplArchType
+	fplArchType_First = fplArchType_Unknown,
+	//! Last @ref fplArchType
+	fplArchType_Last = fplArchType_Arm64,
+} fplArchType;
 
 //! A structure that containing the processor capabilities, like MMX,SSE,AVX etc.
 typedef struct fplProcessorCapabilities {
@@ -3111,12 +3111,12 @@ typedef enum fplPlatformType {
 	fplPlatformType_Linux,
 	//! Unix platform
 	fplPlatformType_Unix,
-} fplPlatformType;
 
-//! Defines the first @ref fplPlatformType value
-#define FPL_FIRST_PLATFORM_TYPE fplPlatformType_Unknown
-//! Defines the last @ref fplPlatformType value
-#define FPL_LAST_PLATFORM_TYPE fplPlatformType_Unix
+	//! First @ref fplPlatformType
+	fplPlatformType_First = fplPlatformType_Unknown,
+	//! Last @ref fplPlatformType
+	fplPlatformType_Last = fplPlatformType_Unix,
+} fplPlatformType;
 
 //! An emnumeration of platform result types
 typedef enum fplPlatformResultType {
@@ -3136,12 +3136,12 @@ typedef enum fplPlatformResultType {
 	fplPlatformResultType_NotInitialized = 0,
 	//! Everything is fine
 	fplPlatformResultType_Success = 1,
-} fplPlatformResultType;
 
-//! Defines the first @ref fplPlatformResultType value
-#define FPL_FIRST_PLATFORM_RESULT_TYPE fplPlatformResultType_FailedWindow
-//! Defines the last @ref fplPlatformResultType value
-#define FPL_LAST_PLATFORM_RESULT_TYPE fplPlatformResultType_Success
+	//! First @ref fplPlatformResultType
+	fplPlatformResultType_First = fplPlatformResultType_FailedWindow,
+	//! Last @ref fplPlatformResultType
+	fplPlatformResultType_Last = fplPlatformResultType_Success,
+} fplPlatformResultType;
 
 /**
 * @brief Gets the string representation of a platform result type.
@@ -3158,13 +3158,13 @@ typedef enum fplVideoDriverType {
 	//! OpenGL
 	fplVideoDriverType_OpenGL,
 	//! Software
-	fplVideoDriverType_Software
-} fplVideoDriverType;
+	fplVideoDriverType_Software,
 
-//! Defines the first @ref fplVideoDriverType value
-#define FPL_FIRST_VIDEODRIVERTYPE fplVideoDriverType_None
-//! Defines the last @ref fplVideoDriverType value
-#define FPL_LAST_VIDEODRIVERTYPE fplVideoDriverType_Software
+	//! First @ref fplVideoDriverType
+	fplVideoDriverType_First = fplVideoDriverType_None,
+	//! Last @ref fplVideoDriverType
+	fplVideoDriverType_Last = fplVideoDriverType_Software,
+} fplVideoDriverType;
 
 #if defined(FPL__ENABLE_VIDEO_OPENGL)
 //! An enumeration of OpenGL compability flags
@@ -3232,12 +3232,12 @@ typedef enum fplAudioDriverType {
 	fplAudioDriverType_DirectSound,
 	//! ALSA
 	fplAudioDriverType_Alsa,
-} fplAudioDriverType;
 
-//! Defines the first @ref fplAudioDriverType value
-#define FPL_FIRST_AUDIODRIVERTYPE fplAudioDriverType_None
-//! Defines the last @ref fplAudioDriverType value
-#define FPL_LAST_AUDIODRIVERTYPE fplAudioDriverType_Alsa
+	//! First @ref fplAudioDriverType
+	fplAudioDriverType_First = fplAudioDriverType_None,
+	//! Last @ref fplAudioDriverType
+	fplAudioDriverType_Last = fplAudioDriverType_Alsa,
+} fplAudioDriverType;
 
 //! An enumeration of audio format types
 typedef enum fplAudioFormatType {
@@ -3257,12 +3257,12 @@ typedef enum fplAudioFormatType {
 	fplAudioFormatType_F32,
 	//! 64-bit IEEE_FLOAT
 	fplAudioFormatType_F64,
-} fplAudioFormatType;
 
-//! Defines the first @ref fplAudioFormatType value
-#define FPL_FIRST_AUDIOFORMATTYPE fplAudioFormatType_None
-//! Defines the last @ref fplAudioFormatType value
-#define FPL_LAST_AUDIOFORMATTYPE fplAudioFormatType_F64
+	//! First @ref fplAudioFormatType
+	fplAudioFormatType_First = fplAudioFormatType_None,
+	//! Last @ref fplAudioFormatType
+	fplAudioFormatType_Last = fplAudioFormatType_F64,
+} fplAudioFormatType;
 
 //! An enumeration of audio default fields
 typedef enum fplAudioDefaultFields {
@@ -9839,7 +9839,7 @@ fpl_common_api fplSettings fplMakeDefaultSettings() {
 	return(result);
 }
 
-#define FPL__PLATFORMRESULTTYPE_COUNT FPL__ENUM_COUNT(FPL_FIRST_PLATFORM_RESULT_TYPE, FPL_LAST_PLATFORM_RESULT_TYPE)
+#define FPL__PLATFORMRESULTTYPE_COUNT FPL__ENUM_COUNT(fplPlatformResultType_First, fplPlatformResultType_Last)
 fpl_globalvar const char *fpl__global_platformResultTypeNameTable[] = {
 	"Failed Window", // fplPlatformResultType_FailedWindow (-6)
 	"Failed Audio", // fplPlatformResultType_FailedAudio (-5)
@@ -9853,12 +9853,12 @@ fpl_globalvar const char *fpl__global_platformResultTypeNameTable[] = {
 fplStaticAssert(fplArrayCount(fpl__global_platformResultTypeNameTable) == FPL__PLATFORMRESULTTYPE_COUNT);
 
 fpl_common_api const char *fplGetPlatformResultName(const fplPlatformResultType type) {
-	uint32_t index = FPL__ENUM_VALUE_TO_ARRAY_INDEX(type, FPL_FIRST_PLATFORM_RESULT_TYPE, FPL_LAST_PLATFORM_RESULT_TYPE);
+	uint32_t index = FPL__ENUM_VALUE_TO_ARRAY_INDEX(type, fplPlatformResultType_First, fplPlatformResultType_Last);
 	const char *result = fpl__global_platformResultTypeNameTable[index];
 	return(result);
 }
 
-#define FPL__ARCHTYPE_COUNT FPL__ENUM_COUNT(FPL_FIRST_ARCHTYPE, FPL_LAST_ARCHTYPE)
+#define FPL__ARCHTYPE_COUNT FPL__ENUM_COUNT(fplArchType_First, fplArchType_Last)
 fpl_globalvar const char *fpl__global_ArchTypeNameTable[] = {
 	"Unknown", // Unknown architecture
 	"x86", // X86 architecture
@@ -9870,7 +9870,7 @@ fpl_globalvar const char *fpl__global_ArchTypeNameTable[] = {
 fplStaticAssert(fplArrayCount(fpl__global_ArchTypeNameTable) == FPL__ARCHTYPE_COUNT);
 
 fpl_common_api const char *fplGetArchName(const fplArchType type) {
-	uint32_t index = FPL__ENUM_VALUE_TO_ARRAY_INDEX(type, FPL_FIRST_ARCHTYPE, FPL_LAST_ARCHTYPE);
+	uint32_t index = FPL__ENUM_VALUE_TO_ARRAY_INDEX(type, fplArchType_First, fplArchType_Last);
 	const char *result = fpl__global_ArchTypeNameTable[index];
 	return(result);
 }
@@ -20260,7 +20260,7 @@ fpl_internal void fpl__ReleaseWindow(const fpl__PlatformInitState *initState, fp
 // %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 #if defined(FPL__ENABLE_AUDIO)
 
-#define FPL__AUDIOFORMATTYPE_COUNT FPL__ENUM_COUNT(FPL_FIRST_AUDIOFORMATTYPE, FPL_LAST_AUDIOFORMATTYPE)
+#define FPL__AUDIOFORMATTYPE_COUNT FPL__ENUM_COUNT(fplAudioFormatType_First, fplAudioFormatType_Last)
 
 fpl_globalvar uint32_t fpl__globalAudioFormatSampleSizeTable[] = {
 	0, // No audio format
@@ -20287,18 +20287,18 @@ fpl_globalvar const char *fpl__globalAudioFormatNameTable[] = {
 fplStaticAssert(fplArrayCount(fpl__globalAudioFormatNameTable) == FPL__AUDIOFORMATTYPE_COUNT);
 
 fpl_common_api uint32_t fplGetAudioSampleSizeInBytes(const fplAudioFormatType format) {
-	uint32_t index = FPL__ENUM_VALUE_TO_ARRAY_INDEX(format, FPL_FIRST_AUDIOFORMATTYPE, FPL_LAST_AUDIOFORMATTYPE);
+	uint32_t index = FPL__ENUM_VALUE_TO_ARRAY_INDEX(format, fplAudioFormatType_First, fplAudioFormatType_Last);
 	uint32_t result = fpl__globalAudioFormatSampleSizeTable[index];
 	return(result);
 }
 
 fpl_common_api const char *fplGetAudioFormatName(const fplAudioFormatType format) {
-	uint32_t index = FPL__ENUM_VALUE_TO_ARRAY_INDEX(format, FPL_FIRST_AUDIOFORMATTYPE, FPL_LAST_AUDIOFORMATTYPE);
+	uint32_t index = FPL__ENUM_VALUE_TO_ARRAY_INDEX(format, fplAudioFormatType_First, fplAudioFormatType_Last);
 	const char *result = fpl__globalAudioFormatNameTable[index];
 	return(result);
 }
 
-#define FPL__AUDIODRIVERTYPE_COUNT FPL__ENUM_COUNT(FPL_FIRST_AUDIODRIVERTYPE, FPL_LAST_AUDIODRIVERTYPE)
+#define FPL__AUDIODRIVERTYPE_COUNT FPL__ENUM_COUNT(fplAudioDriverType_First, fplAudioDriverType_Last)
 fpl_globalvar const char *fpl__globalAudioDriverNameTable[] = {
 	"None", // No audio driver
 	"Automatic", // Automatic driver detection
@@ -20315,7 +20315,7 @@ fpl_common_api fplAudioDriverType fplGetAudioDriver() {
 }
 
 fpl_common_api const char *fplGetAudioDriverName(fplAudioDriverType driver) {
-	uint32_t index = FPL__ENUM_VALUE_TO_ARRAY_INDEX(driver, FPL_FIRST_AUDIODRIVERTYPE, FPL_LAST_AUDIODRIVERTYPE);
+	uint32_t index = FPL__ENUM_VALUE_TO_ARRAY_INDEX(driver, fplAudioDriverType_First, fplAudioDriverType_Last);
 	const char *result = fpl__globalAudioDriverNameTable[index];
 	return(result);
 }
@@ -20579,7 +20579,7 @@ fpl_common_api uint32_t fplGetAudioDevices(fplAudioDeviceInfo *devices, uint32_t
 //
 // %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 #if defined(FPL__ENABLE_VIDEO)
-#define FPL__VIDEODRIVERTYPE_COUNT FPL__ENUM_COUNT(FPL_FIRST_VIDEODRIVERTYPE, FPL_LAST_VIDEODRIVERTYPE)
+#define FPL__VIDEODRIVERTYPE_COUNT FPL__ENUM_COUNT(fplVideoDriverType_First, fplVideoDriverType_Last)
 fpl_globalvar const char *fpl__globalVideoDriverTypeNameTable[] = {
 	"None", // fplVideoDriverType_None
 	"OpenGL", // fplVideoDriverType_OpenGL
@@ -20588,7 +20588,7 @@ fpl_globalvar const char *fpl__globalVideoDriverTypeNameTable[] = {
 fplStaticAssert(fplArrayCount(fpl__globalVideoDriverTypeNameTable) == FPL__VIDEODRIVERTYPE_COUNT);
 
 fpl_common_api const char *fplGetVideoDriverName(fplVideoDriverType driver) {
-	uint32_t index = FPL__ENUM_VALUE_TO_ARRAY_INDEX(driver, FPL_FIRST_VIDEODRIVERTYPE, FPL_LAST_VIDEODRIVERTYPE);
+	uint32_t index = FPL__ENUM_VALUE_TO_ARRAY_INDEX(driver, fplVideoDriverType_First, fplVideoDriverType_Last);
 	const char *result = fpl__globalVideoDriverTypeNameTable[index];
 	return(result);
 }
@@ -20808,7 +20808,7 @@ fpl_internal void fpl__ReleasePlatformStates(fpl__PlatformInitState *initState, 
 	initState->isInitialized = false;
 }
 
-#define FPL__PLATFORMTYPE_COUNT FPL__ENUM_COUNT(FPL_FIRST_PLATFORM_TYPE, FPL_LAST_PLATFORM_TYPE)
+#define FPL__PLATFORMTYPE_COUNT FPL__ENUM_COUNT(fplPlatformType_First, fplPlatformType_Last)
 fpl_globalvar const char *fpl__globalPlatformTypeNameTable[] = {
 	"Unknown", // fplPlatformType_Unknown
 	"Windows", // fplPlatformType_Windows
@@ -20824,7 +20824,7 @@ fpl_common_api bool fplIsPlatformInitialized() {
 }
 
 fpl_common_api const char *fplGetPlatformName(const fplPlatformType type) {
-	uint32_t index = FPL__ENUM_VALUE_TO_ARRAY_INDEX(type, FPL_FIRST_PLATFORM_TYPE, FPL_LAST_PLATFORM_TYPE);
+	uint32_t index = FPL__ENUM_VALUE_TO_ARRAY_INDEX(type, fplPlatformType_First, fplPlatformType_Last);
 	const char *result = fpl__globalPlatformTypeNameTable[index];
 	return(result);
 }
