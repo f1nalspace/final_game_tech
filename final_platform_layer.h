@@ -139,6 +139,8 @@ SOFTWARE.
 	- New[#79]: Added function fplGetAudioDriver()
 	- New[#81]: Added function fplGetAudioBufferSizeInMilliseconds() to compute milliseconds from frame-count + sample-rate
 	- New[#85]: Added fpl*_First and fpl*_Last to every enum
+	
+	- New: [X11] Implemented fplEnableWindowFullscreen() and fplDisableWindowFullscreen()
 
 	### Improvements
 	- Changed: New Changelog format with categories (Features, bugfixes, improvements, breaking changes, internal changes)
@@ -167,6 +169,7 @@ SOFTWARE.
 	- Fixed[#83]: fplGetAudioBufferSizeInFrames() does not return correct values always
 	- Fixed[#83]: fplGetAudioBufferSizeInMilliseconds() does not return correct values always
 	- Fixed[#69]: [Win32] Removed the manual handling of ALT + F4 shut down of event handling
+	- Fixed: [POSIX] fplGetWallDelta() was returning incorrect values
 
 	### Internal changes
 	- Renamed a lot of internal FPL_ defines to FPL__
@@ -3940,7 +3943,7 @@ typedef union fplWallClock {
 		//! Number of seconds
 		uint64_t seconds;
 		//! Number of nano seconds
-		uint64_t nanoSeconds;
+		int64_t nanoSeconds;
 	} posix;
 #else
 	//! Unused
@@ -13869,13 +13872,17 @@ fpl_platform_api fplWallClock fplGetWallClock() {
 	struct timespec t;
 	clock_gettime(CLOCK_MONOTONIC, &t);
 	result.posix.seconds = (uint64_t)t.tv_sec;
-	result.posix.nanoSeconds = (uint64_t)t.tv_nsec;
+	result.posix.nanoSeconds = (int64_t)t.tv_nsec;
 	return(result);
 }
 
 fpl_platform_api double fplGetWallDelta(const fplWallClock start, const fplWallClock finish) {
 	uint64_t deltaSeconds = finish.posix.seconds - start.posix.seconds;
-	uint64_t deltaNanos = finish.posix.nanoSeconds - start.posix.nanoSeconds;
+	int64_t deltaNanos = finish.posix.nanoSeconds - start.posix.nanoSeconds;
+	if (deltaNanos < 0) {
+		--deltaSeconds;
+		deltaNanos += 1000000000L;
+	}
 	double result = (double)deltaSeconds + ((double)deltaNanos * 1e-9);
 	return(result);
 }
@@ -16351,13 +16358,13 @@ fpl_platform_api bool fplSetWindowFullscreenRect(const bool value, const int32_t
 }
 
 fpl_platform_api bool fplEnableWindowFullscreen() {
-	// @IMPLEMENT(final/X11): fplEnableWindowFullscreen
-	return(false);
+	bool result = fplSetWindowFullscreenSize(true, 0, 0, 0);
+	return(result);
 }
 
 fpl_platform_api bool fplDisableWindowFullscreen() {
-	// @IMPLEMENT(final/X11): fplDisableWindowFullscreen
-	return(false);
+	bool result = fplSetWindowFullscreenSize(false, 0, 0, 0);
+	return(result);
 }
 
 fpl_platform_api bool fplIsWindowFullscreen() {
