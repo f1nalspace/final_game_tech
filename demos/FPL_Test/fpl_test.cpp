@@ -1649,11 +1649,11 @@ static void TestStrings() {
 static void TestLocalization() {
 	fplPlatformInit(fplInitFlags_None, fpl_null);
 	char buffer[16];
-	ftIsTrue(fplGetSystemLocale(fplLocaleFormat_ISO639, buffer, fplArrayCount(buffer)));
+	ftAssert(fplGetSystemLocale(fplLocaleFormat_ISO639, buffer, fplArrayCount(buffer)) > 0);
 	fplConsoleFormatOut("System Locale (ISO-639): %s\n", buffer);
-	ftIsTrue(fplGetUserLocale(fplLocaleFormat_ISO639, buffer, fplArrayCount(buffer)));
+	ftAssert(fplGetUserLocale(fplLocaleFormat_ISO639, buffer, fplArrayCount(buffer)) > 0);
 	fplConsoleFormatOut("User Locale (ISO-639): %s\n", buffer);
-	ftIsTrue(fplGetInputLocale(fplLocaleFormat_ISO639, buffer, fplArrayCount(buffer)));
+	ftAssert(fplGetInputLocale(fplLocaleFormat_ISO639, buffer, fplArrayCount(buffer)) > 0);
 	fplConsoleFormatOut("Input Locale (ISO-639): %s\n", buffer);
 	fplPlatformRelease();
 }
