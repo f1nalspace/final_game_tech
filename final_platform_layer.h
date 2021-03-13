@@ -139,6 +139,7 @@ SOFTWARE.
 	- New[#79]: Added function fplGetAudioDriver()
 	- New[#81]: Added function fplGetAudioBufferSizeInMilliseconds() to compute milliseconds from number of frames
 	- Fixed[#76]: FPL__ERROR, FPL__WARNING, FPL__INFO was not passing the correct function name and line number in some cases
+	- Fixed[#83]: fplGetAudioBufferSizeInFrames() does not return correct values always
 
 	[Win32]
 	- Fixed[#69]: Removed the manual handling of ALT + F4 shut down of event handling
@@ -20269,12 +20270,12 @@ fpl_common_api const char *fplGetAudioDriverString(fplAudioDriverType driver) {
 }
 
 fpl_common_api uint32_t fplGetAudioBufferSizeInFrames(uint32_t sampleRate, uint32_t bufferSizeInMilliSeconds) {
-	uint32_t result = (sampleRate / 1000) * bufferSizeInMilliSeconds;
+	uint32_t result = (uint32_t)(((float)sampleRate / 1000.0f) * (float)bufferSizeInMilliSeconds);
 	return(result);
 }
 
 fpl_common_api uint32_t fplGetAudioBufferSizeInMilliseconds(uint32_t sampleRate, uint32_t frameCount) {
-	uint32_t result = frameCount / (sampleRate / 1000);
+	uint32_t result = (uint32_t)((float)frameCount / ((float)sampleRate/1000.0f));
 	return(result);
 }
 
