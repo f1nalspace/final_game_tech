@@ -143,6 +143,15 @@ SOFTWARE.
 	- Changed: New Changelog format with categories (Features, bugfixes, improvements, breaking changes, internal changes)
 	- Changed[#72]: [Win32] Query QueryPerformanceFrequency for every High-Precision timer calls instead of once per app start
 
+	### Bugfixes
+	- Fixed[#76]: FPL__ERROR, FPL__WARNING, FPL__INFO was not passing the correct function name and line number in some cases
+	- Fixed[#83]: fplGetAudioBufferSizeInFrames() does not return correct values always
+	- Fixed[#83]: fplGetAudioBufferSizeInMilliseconds() does not return correct values always
+	- Fixed[#69]: [Win32] Removed the manual handling of ALT + F4 shut down of event handling
+
+	### Internal changes
+	- Renamed a lot of internal FPL_ defines to FPL__
+
 	### Breaking changes
 	- API[#78]: Renamed fplGetArchTypeString to fplGetArchTypeName
 	- API[#78]: Renamed fplGetVideoDriverString to fplGetVideoDriverName
@@ -150,12 +159,6 @@ SOFTWARE.
 	- API[#78]: Renamed fplGetAudioDriverString to fplGetAudioDriverName
 	- API[#78]: Renamed fplGetAudioFormatTypeString to fplGetAudioFormatTypeName
 	- API[#78]: Renamed fplGetAudioResultTypeString to fplGetAudioResultTypeName
-
-	### Bugfixes
-	- Fixed[#76]: FPL__ERROR, FPL__WARNING, FPL__INFO was not passing the correct function name and line number in some cases
-	- Fixed[#83]: fplGetAudioBufferSizeInFrames() does not return correct values always
-	- Fixed[#83]: fplGetAudioBufferSizeInMilliseconds() does not return correct values always
-	- Fixed[#69]: [Win32] Removed the manual handling of ALT + F4 shut down of event handling
 
 	## v0.9.5-beta
 	- New: Added enum fplAudioDefaultFields
@@ -6327,8 +6330,8 @@ fpl_main int main(int argc, char **args);
 // > SYSTEM_INIT (Init & Release of the Platform)
 //
 // ****************************************************************************
-#if (defined(FPL_IMPLEMENTATION) || FPL_IS_IDE) && !defined(FPL_IMPLEMENTED)
-#define FPL_IMPLEMENTED
+#if (defined(FPL_IMPLEMENTATION) || FPL_IS_IDE) && !defined(FPL__IMPLEMENTED)
+#define FPL__IMPLEMENTED
 
 // Module constants used for logging
 #define FPL__MODULE_CORE "Core"
@@ -6558,8 +6561,8 @@ fpl_common_api void fplDebugFormatOut(const char *format, ...) {
 // > PLATFORM_CONSTANTS
 //
 // ############################################################################
-#if !defined(FPL_PLATFORM_CONSTANTS_DEFINED)
-#define FPL_PLATFORM_CONSTANTS_DEFINED
+#if !defined(FPL__PLATFORM_CONSTANTS_DEFINED)
+#define FPL__PLATFORM_CONSTANTS_DEFINED
 
 // One cacheline worth of padding
 #define FPL__ARBITARY_PADDING 64
@@ -6569,7 +6572,7 @@ fpl_common_api void fplDebugFormatOut(const char *format, ...) {
 fpl_globalvar struct fpl__PlatformAppState *fpl__global__AppState = fpl_null;
 
 fpl_internal void fpl__HandleError(const char *funcName, const int lineNumber, const fplLogLevel level, const char *format, ...);
-#endif // FPL_PLATFORM_CONSTANTS_DEFINED
+#endif // FPL__PLATFORM_CONSTANTS_DEFINED
 
 // ############################################################################
 //
@@ -7896,7 +7899,7 @@ typedef struct fpl__X11PreWindowSetupResult {
 	int colorDepth;
 } fpl__X11PreWindowSetupResult;
 
-#define FPL_XDND_VERSION 5
+#define FPL__XDND_VERSION 5
 
 #endif // FPL_SUBPLATFORM_X11
 
@@ -7908,8 +7911,8 @@ typedef struct fpl__X11PreWindowSetupResult {
 // - Declares all required global variables
 //
 // ****************************************************************************
-#if !defined(FPL_PLATFORM_STATES_DEFINED)
-#define FPL_PLATFORM_STATES_DEFINED
+#if !defined(FPL__PLATFORM_STATES_DEFINED)
+#define FPL__PLATFORM_STATES_DEFINED
 //
 // Platform initialization state
 //
@@ -8266,7 +8269,7 @@ typedef struct fpl__SetupWindowCallbacks {
 } fpl__SetupWindowCallbacks;
 #endif // FPL__ENABLE_WINDOW
 
-#endif // FPL_PLATFORM_STATES_DEFINED
+#endif // FPL__PLATFORM_STATES_DEFINED
 
 // ****************************************************************************
 //
@@ -8280,8 +8283,8 @@ typedef struct fpl__SetupWindowCallbacks {
 // - Common Implementations (Strings, Memory, Atomics, Path, etc.)
 //
 // ****************************************************************************
-#if !defined(FPL_COMMON_DEFINED)
-#define FPL_COMMON_DEFINED
+#if !defined(FPL__COMMON_DEFINED)
+#define FPL__COMMON_DEFINED
 
 //
 // Audio constants
@@ -9801,7 +9804,7 @@ fpl_common_api const char *fplGetArchTypeName(const fplArchType type) {
 	const char *result = fpl__global_ArchTypeNameTable[index];
 	return(result);
 }
-#endif // FPL_COMMON_DEFINED
+#endif // FPL__COMMON_DEFINED
 
 // ############################################################################
 //
@@ -15494,7 +15497,7 @@ fpl_internal bool fpl__X11InitWindow(const fplSettings *initSettings, fplWindowS
 
 	// Announce support for Xdnd (drag and drop)
 	{
-		const Atom version = FPL_XDND_VERSION;
+		const Atom version = FPL__XDND_VERSION;
 		x11Api->XChangeProperty(windowState->display, windowState->window, windowState->xdndAware, XA_ATOM, 32, PropModeReplace, (unsigned char *)&version, 1);
 	}
 
@@ -15727,7 +15730,7 @@ fpl_internal void fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatfor
 				x11WinState->xdnd.source = ev->xclient.data.l[0];
 				x11WinState->xdnd.version = ev->xclient.data.l[1] >> 24;
 				x11WinState->xdnd.format = None;
-				if (x11WinState->xdnd.version > FPL_XDND_VERSION) {
+				if (x11WinState->xdnd.version > FPL__XDND_VERSION) {
 					return;
 				}
 				if (list) {
@@ -15748,7 +15751,7 @@ fpl_internal void fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatfor
 			} else if (ev->xclient.message_type == x11WinState->xdndDrop) {
 				// The drag operation has finished by dropping on the window
 				Time time = CurrentTime;
-				if (x11WinState->xdnd.version > FPL_XDND_VERSION) {
+				if (x11WinState->xdnd.version > FPL__XDND_VERSION) {
 					return;
 				}
 				if (x11WinState->xdnd.format) {
@@ -15778,7 +15781,7 @@ fpl_internal void fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatfor
 				int xpos, ypos;
 				const int xabs = (ev->xclient.data.l[2] >> 16) & 0xffff;
 				const int yabs = (ev->xclient.data.l[2]) & 0xffff;
-				if (x11WinState->xdnd.version > FPL_XDND_VERSION) {
+				if (x11WinState->xdnd.version > FPL__XDND_VERSION) {
 					return;
 				}
 				XEvent reply;
@@ -16989,8 +16992,8 @@ fpl_platform_api bool fplGetRunningMemoryInfos(fplMemoryInfos *outInfos) {
 // > VIDEO_DRIVERS
 //
 // ****************************************************************************
-#if !defined(FPL_VIDEO_DRIVERS_IMPLEMENTED) && defined(FPL__ENABLE_VIDEO)
-#	define FPL_VIDEO_DRIVERS_IMPLEMENTED
+#if !defined(FPL__VIDEO_DRIVERS_IMPLEMENTED) && defined(FPL__ENABLE_VIDEO)
+#	define FPL__VIDEO_DRIVERS_IMPLEMENTED
 
 // ############################################################################
 //
@@ -16999,37 +17002,37 @@ fpl_platform_api bool fplGetRunningMemoryInfos(fplMemoryInfos *outInfos) {
 // ############################################################################
 #if defined(FPL__ENABLE_VIDEO_OPENGL) && defined(FPL_PLATFORM_WINDOWS)
 
-#define FPL_GL_CONTEXT_FLAG_FORWARD_COMPATIBLE_BIT 0x0001
-#define FPL_GL_CONTEXT_FLAG_DEBUG_BIT 0x00000002
-#define FPL_GL_CONTEXT_FLAG_ROBUST_ACCESS_BIT 0x00000004
-#define FPL_GL_CONTEXT_FLAG_NO_ERROR_BIT 0x00000008
-#define FPL_GL_CONTEXT_CORE_PROFILE_BIT 0x00000001
-#define FPL_GL_CONTEXT_COMPATIBILITY_PROFILE_BIT 0x00000002
+#define FPL__GL_CONTEXT_FLAG_FORWARD_COMPATIBLE_BIT 0x0001
+#define FPL__GL_CONTEXT_FLAG_DEBUG_BIT 0x00000002
+#define FPL__GL_CONTEXT_FLAG_ROBUST_ACCESS_BIT 0x00000004
+#define FPL__GL_CONTEXT_FLAG_NO_ERROR_BIT 0x00000008
+#define FPL__GL_CONTEXT_CORE_PROFILE_BIT 0x00000001
+#define FPL__GL_CONTEXT_COMPATIBILITY_PROFILE_BIT 0x00000002
 
-#define FPL_WGL_CONTEXT_DEBUG_BIT_ARB 0x0001
-#define FPL_WGL_CONTEXT_FORWARD_COMPATIBLE_BIT_ARB 0x0002
-#define FPL_WGL_CONTEXT_CORE_PROFILE_BIT_ARB 0x00000001
-#define FPL_WGL_CONTEXT_COMPATIBILITY_PROFILE_BIT_ARB 0x00000002
-#define FPL_WGL_CONTEXT_PROFILE_MASK_ARB 0x9126
-#define FPL_WGL_CONTEXT_MAJOR_VERSION_ARB 0x2091
-#define FPL_WGL_CONTEXT_MINOR_VERSION_ARB 0x2092
-#define FPL_WGL_CONTEXT_LAYER_PLANE_ARB 0x2093
-#define FPL_WGL_CONTEXT_FLAGS_ARB 0x2094
-#define FPL_WGL_DRAW_TO_WINDOW_ARB 0x2001
-#define FPL_WGL_ACCELERATION_ARB 0x2003
-#define FPL_WGL_SWAP_METHOD_ARB 0x2007
-#define FPL_WGL_SUPPORT_OPENGL_ARB 0x2010
-#define FPL_WGL_DOUBLE_BUFFER_ARB 0x2011
-#define FPL_WGL_PIXEL_TYPE_ARB 0x2013
-#define FPL_WGL_COLOR_BITS_ARB 0x2014
-#define FPL_WGL_ALPHA_BITS_ARB 0x201B
-#define FPL_WGL_DEPTH_BITS_ARB 0x2022
-#define FPL_WGL_STENCIL_BITS_ARB 0x2023
-#define FPL_WGL_FULL_ACCELERATION_ARB 0x2027
-#define FPL_WGL_SWAP_EXCHANGE_ARB 0x2028
-#define FPL_WGL_TYPE_RGBA_ARB 0x202B
-#define FPL_WGL_SAMPLE_BUFFERS_ARB 0x2041
-#define FPL_WGL_SAMPLES_ARB 0x2042
+#define FPL__WGL_CONTEXT_DEBUG_BIT_ARB 0x0001
+#define FPL__WGL_CONTEXT_FORWARD_COMPATIBLE_BIT_ARB 0x0002
+#define FPL__WGL_CONTEXT_CORE_PROFILE_BIT_ARB 0x00000001
+#define FPL__WGL_CONTEXT_COMPATIBILITY_PROFILE_BIT_ARB 0x00000002
+#define FPL__WGL_CONTEXT_PROFILE_MASK_ARB 0x9126
+#define FPL__WGL_CONTEXT_MAJOR_VERSION_ARB 0x2091
+#define FPL__WGL_CONTEXT_MINOR_VERSION_ARB 0x2092
+#define FPL__WGL_CONTEXT_LAYER_PLANE_ARB 0x2093
+#define FPL__WGL_CONTEXT_FLAGS_ARB 0x2094
+#define FPL__WGL_DRAW_TO_WINDOW_ARB 0x2001
+#define FPL__WGL_ACCELERATION_ARB 0x2003
+#define FPL__WGL_SWAP_METHOD_ARB 0x2007
+#define FPL__WGL_SUPPORT_OPENGL_ARB 0x2010
+#define FPL__WGL_DOUBLE_BUFFER_ARB 0x2011
+#define FPL__WGL_PIXEL_TYPE_ARB 0x2013
+#define FPL__WGL_COLOR_BITS_ARB 0x2014
+#define FPL__WGL_ALPHA_BITS_ARB 0x201B
+#define FPL__WGL_DEPTH_BITS_ARB 0x2022
+#define FPL__WGL_STENCIL_BITS_ARB 0x2023
+#define FPL__WGL_FULL_ACCELERATION_ARB 0x2027
+#define FPL__WGL_SWAP_EXCHANGE_ARB 0x2028
+#define FPL__WGL_TYPE_RGBA_ARB 0x202B
+#define FPL__WGL_SAMPLE_BUFFERS_ARB 0x2041
+#define FPL__WGL_SAMPLES_ARB 0x2042
 
 #define FPL__FUNC_WGL_wglMakeCurrent(name) BOOL WINAPI name(HDC deviceContext, HGLRC renderingContext)
 typedef FPL__FUNC_WGL_wglMakeCurrent(fpl__win32_func_wglMakeCurrent);
@@ -17146,17 +17149,17 @@ fpl_internal bool fpl__Win32PreSetupWindowForOpenGL(fpl__Win32AppState *appState
 										if (glApi.wglChoosePixelFormatARB != fpl_null) {
 											int multisampleCount = (int)videoSettings->graphics.opengl.multiSamplingCount;
 											const int pixelAttribs[] = {
-												FPL_WGL_DRAW_TO_WINDOW_ARB, 1,
-												FPL_WGL_SUPPORT_OPENGL_ARB, 1,
-												FPL_WGL_DOUBLE_BUFFER_ARB, 1,
-												FPL_WGL_PIXEL_TYPE_ARB, FPL_WGL_TYPE_RGBA_ARB,
-												FPL_WGL_ACCELERATION_ARB, FPL_WGL_FULL_ACCELERATION_ARB,
-												FPL_WGL_COLOR_BITS_ARB, 32,
-												FPL_WGL_ALPHA_BITS_ARB, 8,
-												FPL_WGL_DEPTH_BITS_ARB, 24,
-												FPL_WGL_STENCIL_BITS_ARB, 8,
-												FPL_WGL_SAMPLE_BUFFERS_ARB, (multisampleCount > 0) ? 1 : 0,
-												FPL_WGL_SAMPLES_ARB, multisampleCount,
+												FPL__WGL_DRAW_TO_WINDOW_ARB, 1,
+												FPL__WGL_SUPPORT_OPENGL_ARB, 1,
+												FPL__WGL_DOUBLE_BUFFER_ARB, 1,
+												FPL__WGL_PIXEL_TYPE_ARB, FPL__WGL_TYPE_RGBA_ARB,
+												FPL__WGL_ACCELERATION_ARB, FPL__WGL_FULL_ACCELERATION_ARB,
+												FPL__WGL_COLOR_BITS_ARB, 32,
+												FPL__WGL_ALPHA_BITS_ARB, 8,
+												FPL__WGL_DEPTH_BITS_ARB, 24,
+												FPL__WGL_STENCIL_BITS_ARB, 8,
+												FPL__WGL_SAMPLE_BUFFERS_ARB, (multisampleCount > 0) ? 1 : 0,
+												FPL__WGL_SAMPLES_ARB, multisampleCount,
 												0
 											};
 											int pixelFormat;
@@ -17272,27 +17275,27 @@ fpl_internal bool fpl__Win32InitVideoOpenGL(const fpl__Win32AppState *appState, 
 		int profile = 0;
 		int flags = 0;
 		if (videoSettings->graphics.opengl.compabilityFlags & fplOpenGLCompabilityFlags_Core) {
-			profile = FPL_WGL_CONTEXT_CORE_PROFILE_BIT_ARB;
+			profile = FPL__WGL_CONTEXT_CORE_PROFILE_BIT_ARB;
 		} else if (videoSettings->graphics.opengl.compabilityFlags & fplOpenGLCompabilityFlags_Compability) {
-			profile = FPL_WGL_CONTEXT_COMPATIBILITY_PROFILE_BIT_ARB;
+			profile = FPL__WGL_CONTEXT_COMPATIBILITY_PROFILE_BIT_ARB;
 		} else {
 			FPL__ERROR(FPL__MODULE_VIDEO_OPENGL, "No opengl compability profile selected, please specific Core fplOpenGLCompabilityFlags_Core or fplOpenGLCompabilityFlags_Compability");
 			return false;
 		}
 		if (videoSettings->graphics.opengl.compabilityFlags & fplOpenGLCompabilityFlags_Forward) {
-			flags = FPL_WGL_CONTEXT_FORWARD_COMPATIBLE_BIT_ARB;
+			flags = FPL__WGL_CONTEXT_FORWARD_COMPATIBLE_BIT_ARB;
 		}
 
 		int contextAttribIndex = 0;
 		int contextAttribList[20 + 1] = fplZeroInit;
-		contextAttribList[contextAttribIndex++] = FPL_WGL_CONTEXT_MAJOR_VERSION_ARB;
+		contextAttribList[contextAttribIndex++] = FPL__WGL_CONTEXT_MAJOR_VERSION_ARB;
 		contextAttribList[contextAttribIndex++] = (int)videoSettings->graphics.opengl.majorVersion;
-		contextAttribList[contextAttribIndex++] = FPL_WGL_CONTEXT_MINOR_VERSION_ARB;
+		contextAttribList[contextAttribIndex++] = FPL__WGL_CONTEXT_MINOR_VERSION_ARB;
 		contextAttribList[contextAttribIndex++] = (int)videoSettings->graphics.opengl.minorVersion;
-		contextAttribList[contextAttribIndex++] = FPL_WGL_CONTEXT_PROFILE_MASK_ARB;
+		contextAttribList[contextAttribIndex++] = FPL__WGL_CONTEXT_PROFILE_MASK_ARB;
 		contextAttribList[contextAttribIndex++] = profile;
 		if (flags > 0) {
-			contextAttribList[contextAttribIndex++] = FPL_WGL_CONTEXT_FLAGS_ARB;
+			contextAttribList[contextAttribIndex++] = FPL__WGL_CONTEXT_FLAGS_ARB;
 			contextAttribList[contextAttribIndex++] = flags;
 		}
 
@@ -17901,15 +17904,15 @@ fpl_internal void fpl__Win32ReleaseVideoSoftware(fpl__Win32VideoSoftwareState *s
 }
 #endif // FPL__ENABLE_VIDEO_SOFTWARE && FPL_PLATFORM_WINDOWS
 
-#endif // FPL_VIDEO_DRIVERS_IMPLEMENTED
+#endif // FPL__VIDEO_DRIVERS_IMPLEMENTED
 
 // ****************************************************************************
 //
 // > AUDIO_DRIVERS
 //
 // ****************************************************************************
-#if !defined(FPL_AUDIO_DRIVERS_IMPLEMENTED) && defined(FPL__ENABLE_AUDIO)
-#	define FPL_AUDIO_DRIVERS_IMPLEMENTED
+#if !defined(FPL__AUDIO_DRIVERS_IMPLEMENTED) && defined(FPL__ENABLE_AUDIO)
+#	define FPL__AUDIO_DRIVERS_IMPLEMENTED
 
 typedef enum fpl__AudioDeviceState {
 	fpl__AudioDeviceState_Uninitialized = 0,
@@ -19405,7 +19408,7 @@ fpl_internal uint32_t fpl__GetAudioDevicesAlsa(fpl__AlsaAudioState *alsaState, f
 
 #endif // FPL__ENABLE_AUDIO_ALSA
 
-#endif // FPL_AUDIO_DRIVERS_IMPLEMENTED
+#endif // FPL__AUDIO_DRIVERS_IMPLEMENTED
 
 // %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 //
@@ -20671,8 +20674,8 @@ fpl_common_api void fplVideoFlip() {
 // > SYSTEM_INIT
 //
 // %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-#if !defined(FPL_SYSTEM_INIT_DEFINED)
-#define FPL_SYSTEM_INIT_DEFINED
+#if !defined(FPL__SYSTEM_INIT_DEFINED)
+#define FPL__SYSTEM_INIT_DEFINED
 
 fpl_internal void fpl__ReleasePlatformStates(fpl__PlatformInitState *initState, fpl__PlatformAppState *appState) {
 	fplAssert(initState != fpl_null);
@@ -21037,7 +21040,7 @@ fpl_common_api fplPlatformType fplGetPlatformType() {
 	return(result);
 }
 
-#endif // FPL_SYSTEM_INIT_DEFINED
+#endif // FPL__SYSTEM_INIT_DEFINED
 
 #if defined(FPL_COMPILER_MSVC)
 //! Reset MSVC warning settings
@@ -21047,15 +21050,15 @@ fpl_common_api fplPlatformType fplGetPlatformType() {
 #	pragma clang diagnostic pop
 #endif
 
-#endif // FPL_IMPLEMENTATION && !FPL_IMPLEMENTED
+#endif // FPL_IMPLEMENTATION && !FPL__IMPLEMENTED
 
 // ****************************************************************************
 //
 // Entry-Points Implementation
 //
 // ****************************************************************************
-#if defined(FPL_ENTRYPOINT) && !defined(FPL_ENTRYPOINT_IMPLEMENTED)
-#	define FPL_ENTRYPOINT_IMPLEMENTED
+#if defined(FPL_ENTRYPOINT) && !defined(FPL__ENTRYPOINT_IMPLEMENTED)
+#	define FPL__ENTRYPOINT_IMPLEMENTED
 
 #	if defined(FPL_PLATFORM_WINDOWS)
 
@@ -21232,7 +21235,7 @@ int WINAPI WinMain(HINSTANCE appInstance, HINSTANCE prevInstance, LPSTR cmdLine,
 
 #	endif // FPL_PLATFORM_WINDOWS
 
-#endif // FPL_ENTRYPOINT && !FPL_ENTRYPOINT_IMPLEMENTED
+#endif // FPL_ENTRYPOINT && !FPL__ENTRYPOINT_IMPLEMENTED
 
 // Undef useless constants for callers
 #if !defined(FPL_NO_UNDEF)
