@@ -1,0 +1,35 @@
+// Old linux CPU info
+fpl_platform_api char *fplGetProcessorName(char *destBuffer, const size_t maxDestBufferLen) {
+	FPL__CheckArgumentNull(destBuffer, fpl_null);
+	FPL__CheckArgumentZero(maxDestBufferLen, fpl_null);
+	char *result = fpl_null;
+	const char *wildcards[] = {
+		"model name*:",
+	};
+	const size_t maxLineCount = 1;
+	const size_t maxLineSize = 256;
+	char lines[maxLineCount][maxLineSize];
+	char **linesPtr = (char **)fplStackAllocate(sizeof(char *) * maxLineCount);
+	for(size_t i = 0; i < maxLineCount; ++i) {
+		linesPtr[i] = lines[i];
+	}
+	size_t foundCount = fpl__ParseTextFile("/proc/cpuinfo", wildcards, fplArrayCount(wildcards), maxLineSize, maxLineCount, linesPtr);
+	if(foundCount > 0) {
+		char *p = lines[0];
+		while(*p) {
+			if(*p == ':') {
+				++p;
+				while(*p && isspace(*p)) {
+					++p;
+				}
+				break;
+			}
+			++p;
+		}
+		if(p != lines[0]) {
+			fplCopyString(p, destBuffer, maxDestBufferLen);
+			result = destBuffer;
+		}
+	}
+	return(result);
+}
