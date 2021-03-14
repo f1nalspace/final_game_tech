@@ -139,7 +139,9 @@ SOFTWARE.
 	- New[#79]: Added function fplGetAudioDriver()
 	- New[#81]: Added function fplGetAudioBufferSizeInMilliseconds() to compute milliseconds from frame-count + sample-rate
 	- New[#85]: Added fpl*_First and fpl*_Last to every enum
-	
+	- New[#84]: Added support for controlling the inclusion of platform includes with #define FPL_NO_PLATFORM_INCLUDES_IN_HEADER
+	- New[#84]: Added support for use opaque handles instead of OS handles with #define FPL_OPAQUE_HANDLES
+
 	- New[#86]: [X11] Implemented fplEnableWindowFullscreen() and fplDisableWindowFullscreen()
 
 	### Improvements
@@ -2097,11 +2099,11 @@ fplStaticAssert(sizeof(size_t) >= sizeof(uint32_t));
 #	define fpl__m_StructInit(type, ...) {__VA_ARGS__}
 #endif
 
-//! Initialize a struct to zero
+//! Initializes a struct to zero
 #define fplZeroInit fpl__m_ZeroInit
 //! Sets a struct pointer to the given value
 #define fplStructSet fpl__m_StructSet
-//! Inits a struct by the given type
+//! Initializes a struct by the given type
 #define fplStructInit fpl__m_StructInit
 
 //! Returns the offset for the value to satisfy the given alignment boundary
@@ -2187,18 +2189,148 @@ fplStaticAssert(sizeof(size_t) >= sizeof(uint32_t));
 // Platform Includes
 //
 // ****************************************************************************
-#if defined(FPL_SUBPLATFORM_POSIX)
-#	include <pthread.h> // pthread_t, pthread_mutex_, pthread_cond_, pthread_barrier_
-#	include <semaphore.h> // sem_t
-#	include <dirent.h> // DIR, dirent
-#endif // FPL_SUBPLATFORM_POSIX
+#if (!defined(FPL_NO_PLATFORM_INCLUDES_IN_HEADER) && !defined(FPL_OPAQUE_HANDLES)) && !defined(FPL__HAS_PLATFORM_INCLUDES)
+#	define FPL__HAS_PLATFORM_INCLUDES
 
-#if defined(FPL_SUBPLATFORM_X11)
-#	include <X11/X.h> // Window
-#	include <X11/Xlib.h> // Display
-#	include <X11/Xutil.h> // XVisualInfo
-#	include <X11/Xatom.h> // XA_CARDINAL
-#endif // FPL_SUBPLATFORM_X11
+#	if defined(FPL_PLATFORM_WINDOWS)
+		// @NOTE(final): windef.h defines min/max macros in lowerspace, this will break for example std::min/max so we have to tell the header we dont want this!
+#		if !defined(NOMINMAX)
+#			define NOMINMAX
+#		endif
+		// @NOTE(final): For now we dont want any network, com or gdi stuff at all, maybe later who knows.
+#		if !defined(WIN32_LEAN_AND_MEAN)
+#			define WIN32_LEAN_AND_MEAN 1
+#		endif
+		// @STUPID(final): Workaround for "combaseapi.h(229): error C2187: syntax error: 'identifier' was unexpected here"
+struct IUnknown;
+#		include <windows.h> // Win32 api
+#		if _WIN32_WINNT < 0x0600
+#			error "Windows Vista or higher required!"
+#		endif
+#	endif // FPL_PLATFORM_WINDOWS
+
+#	if defined(FPL_SUBPLATFORM_POSIX)
+#		include <pthread.h> // pthread_t, pthread_mutex_, pthread_cond_, pthread_barrier_
+#		include <semaphore.h> // sem_t
+#		include <dirent.h> // DIR, dirent
+#	endif // FPL_SUBPLATFORM_POSIX
+
+#	if defined(FPL_SUBPLATFORM_X11)
+#		include <X11/X.h> // Window
+#		include <X11/Xlib.h> // Display
+#		include <X11/Xutil.h> // XVisualInfo
+#		include <X11/Xatom.h> // XA_CARDINAL
+#	endif // FPL_SUBPLATFORM_X11
+
+#endif // !FPL_NO_PLATFORM_INCLUDES_IN_HEADER
+
+//
+// Platform handles
+//
+#if !defined(FPL__HAS_PLATFORM_INCLUDES) || defined(FPL_OPAQUE_HANDLES)
+
+#	if defined(FPL_PLATFORM_WINDOWS)
+
+//! A win32 GUID (Opaque)
+typedef uint8_t fpl__Win32Guid[16];
+//! A win32 handle (Opaque)
+typedef void *fpl__Win32Handle;
+//! A win32 library handle (Opaque)
+typedef fpl__Win32Handle fpl__Win32LibraryHandle;
+//! A win32 thread handle (Opaque)
+typedef fpl__Win32Handle fpl__Win32ThreadHandle;
+//! A win32 mutex handle (Opaque)
+typedef uint8_t fpl__Win32MutexHandle[96];
+//! A win32 signal handle (Opaque)
+typedef fpl__Win32Handle fpl__Win32SignalHandle;
+//! A win32 condition variable (Opaque)
+typedef void *fpl__Win32ConditionVariable;
+//! A win32 semaphore handle (Opaque)
+typedef struct fpl__Win32SemaphoreHandle {
+	//! Semaphore handle
+	fpl__Win32Handle handle;
+	//! Semaphore value
+	volatile int32_t value;
+} fpl__Win32SemaphoreHandle;
+
+#	endif // FPL_PLATFORM_WINDOWS
+
+#	if defined(FPL_SUBPLATFORM_POSIX)
+#		error "Opaque handles are not supported for POSIX right now"
+
+//! A POSIX thread handle (Opaque)
+typedef pthread_t fpl__POSIXThreadHandle;
+//! A POSIX library handle (Opaque)
+typedef void *fpl__POSIXLibraryHandle;
+//! A POSIX mutex handle (Opaque)
+typedef pthread_mutex_t fpl__POSIXMutexHandle;
+//! A POSIX semaphore handle (Opaque)
+typedef sem_t fpl__POSIXSemaphoreHandle;
+//! A POSIX condition variable (Opaque)
+typedef pthread_cond_t fpl__POSIXConditionVariable;
+
+#	endif // FPL_SUBPLATFORM_POSIX
+
+#	if defined(FPL_PLATFORM_LINUX)
+#		error "Opaque handles are not supported for linux right now"
+
+//! A linux signal handle (Opaque)
+typedef int fpl__LinuxSignalHandle;
+
+#	endif // FPL_PLATFORM_LINUX
+
+#else
+
+#	if defined(FPL_PLATFORM_WINDOWS)
+
+//! A win32 GUID
+typedef GUID fpl__Win32Guid;
+//! A win32 handle
+typedef HANDLE fpl__Win32Handle;
+//! A win32 library handle
+typedef HMODULE fpl__Win32LibraryHandle;
+//! A win32 thread handle
+typedef HANDLE fpl__Win32ThreadHandle;
+//! A win32 mutex handle
+typedef CRITICAL_SECTION fpl__Win32MutexHandle;
+//! A win32 signal handle
+typedef HANDLE fpl__Win32SignalHandle;
+//! A win32 condition variable
+typedef CONDITION_VARIABLE fpl__Win32ConditionVariable;
+//! A win32 semaphore handle
+typedef struct fpl__Win32SemaphoreHandle {
+	//! Semaphore handle
+	HANDLE handle;
+	//! Semaphore value
+	volatile int32_t value;
+} fpl__Win32SemaphoreHandle; 
+
+#	endif // FPL_PLATFORM_WINDOWS
+
+#	if defined(FPL_SUBPLATFORM_POSIX)
+
+//! A POSIX library handle
+typedef void *fpl__POSIXLibraryHandle;
+//! A POSIX thread handle
+typedef pthread_t fpl__POSIXThreadHandle;
+//! A POSIX mutex handle
+typedef pthread_mutex_t fpl__POSIXMutexHandle;
+//! A POSIX semaphore handle
+typedef sem_t fpl__POSIXSemaphoreHandle;
+//! A POSIX condition variable
+typedef pthread_cond_t fpl__POSIXConditionVariable;
+
+#	endif // FPL_SUBPLATFORM_POSIX
+
+#	if defined(FPL_PLATFORM_LINUX)
+
+//! A linux signal handle
+typedef int fpl__LinuxSignalHandle;
+
+#	endif // FPL_PLATFORM_LINUX
+
+
+#endif
 
 //
 // Constants
@@ -2209,7 +2341,6 @@ fplStaticAssert(sizeof(size_t) >= sizeof(uint32_t));
 * @brief This category contains constants
 * @{
 */
-
 #if defined(FPL_PLATFORM_WINDOWS)
 #	define FPL__M_MAX_FILENAME_LENGTH (260 + 1)
 #	define FPL__M_MAX_PATH_LENGTH (260 * 2 + 1)
@@ -2895,7 +3026,7 @@ fpl_platform_api size_t fplGetCurrentUsername(char *nameBuffer, const size_t max
 // ----------------------------------------------------------------------------
 /**
 * @defgroup Hardware Hardware infos
-* @brief This category contains functions for retrievement hardware informations such as memory usage, cpu infos, etc.
+* @brief This category contains functions for retrieving hardware informations such as memory usage, cpu infos, etc.
 * @{
 *
 */
@@ -3308,7 +3439,7 @@ typedef struct fplAudioTargetFormat {
 typedef union fplAudioDeviceID {
 #if defined(FPL__ENABLE_AUDIO_DIRECTSOUND)
 	//! DirectShow Device GUID
-	uint8_t dshow[16];
+	fpl__Win32Guid dshow;
 #endif
 #if defined(FPL__ENABLE_AUDIO_ALSA)
 	//! ALSA Device ID
@@ -3813,10 +3944,10 @@ fpl_common_api void fplClearErrors();
 typedef union fplInternalDynamicLibraryHandle {
 #if defined(FPL_PLATFORM_WINDOWS)
 	//! Win32 library handle
-	void *win32LibraryHandle;
+	fpl__Win32LibraryHandle win32LibraryHandle;
 #elif defined(FPL_SUBPLATFORM_POSIX)
 	//! Posix library handle
-	void *posixLibraryHandle;
+	fpl__POSIXLibraryHandle posixLibraryHandle;
 #endif
 } fplInternalDynamicLibraryHandle;
 
@@ -4046,8 +4177,9 @@ typedef enum fplThreadPriority {
 	fplThreadPriority_RealTime = 2,
 } fplThreadPriority;
 
-//! Forward declare thread handle
+//! Forward declared thread handle
 typedef struct fplThreadHandle fplThreadHandle;
+
 /**
 * @brief A callback to execute user code inside another thread
 * @param thread The thread handle
@@ -4059,10 +4191,10 @@ typedef void (fpl_run_thread_callback)(const fplThreadHandle *thread, void *data
 typedef union fplInternalThreadHandle {
 #if defined(FPL_PLATFORM_WINDOWS)
 	//! Win32 thread handle
-	void *win32ThreadHandle;
+	fpl__Win32ThreadHandle win32ThreadHandle;
 #elif defined(FPL_SUBPLATFORM_POSIX)
 	//! POSIX thread handle
-	pthread_t posixThread;
+	fpl__POSIXThreadHandle posixThread;
 #endif
 } fplInternalThreadHandle;
 
@@ -4084,24 +4216,14 @@ typedef struct fplThreadHandle {
 	volatile fpl_b32 isStopping;
 } fplThreadHandle;
 
-#if defined(FPL_PLATFORM_WINDOWS)
-//! A structure containing the semaphore handle and the value for win32
-typedef struct fplInternalSemaphoreHandleWin32 {
-	//! Semaphore handle
-	void *handle;
-	//! Semaphore value
-	volatile int32_t value;
-} fplInternalSemaphoreHandleWin32;
-#endif
-
 //! A union containing the internal semaphore handle for any platform
 typedef union fplInternalSemaphoreHandle {
 #if defined(FPL_PLATFORM_WINDOWS)
 	//! Win32 semaphore handle
-	fplInternalSemaphoreHandleWin32 win32;
+	fpl__Win32SemaphoreHandle win32;
 #elif defined(FPL_SUBPLATFORM_POSIX)
 	//! Posix semaphore handle
-	sem_t posixHandle;
+	fpl__POSIXSemaphoreHandle posixHandle;
 #endif
 } fplInternalSemaphoreHandle;
 
@@ -4117,10 +4239,10 @@ typedef struct fplSemaphoreHandle {
 typedef union fplInternalMutexHandle {
 #if defined(FPL_PLATFORM_WINDOWS)
 	//! Win32 mutex handle
-	uint8_t win32CriticalSection[96];
+	fpl__Win32MutexHandle win32CriticalSection;
 #elif defined(FPL_SUBPLATFORM_POSIX)
 	//! Posix mutex handle
-	pthread_mutex_t posixMutex;
+	fpl__POSIXMutexHandle posixMutex;
 #endif
 } fplInternalMutexHandle;
 
@@ -4136,10 +4258,10 @@ typedef struct fplMutexHandle {
 typedef union fplInternalSignalHandle {
 #if defined(FPL_PLATFORM_WINDOWS)
 	//! Win32 event handle
-	void *win32EventHandle;
+	fpl__Win32SignalHandle win32EventHandle;
 #elif defined(FPL_PLATFORM_LINUX)
 	//! Linux event handle
-	int linuxEventHandle;
+	fpl__LinuxSignalHandle linuxEventHandle;
 #endif
 } fplInternalSignalHandle;
 
@@ -4163,10 +4285,10 @@ typedef enum fplSignalValue {
 typedef union fplInternalConditionVariable {
 #if defined(FPL_PLATFORM_WINDOWS)
 	//! Win32 condition variable
-	void *win32Condition;
+	fpl__Win32ConditionVariable win32Condition;
 #elif defined(FPL_SUBPLATFORM_POSIX)
 	//! POSIX condition variable
-	pthread_cond_t posixCondition;
+	fpl__POSIXConditionVariable posixCondition;
 #endif	//! Dummy field
 } fplInternalConditionVariable;
 
@@ -6384,24 +6506,42 @@ fpl_main int main(int argc, char **args);
 #define FPL__MODULE_GLX "GLX"
 
 //
-// Platform includes
+// Platform includes (Implementation)
 //
-#if defined(FPL_PLATFORM_WINDOWS)
-	// @NOTE(final): windef.h defines min/max macros in lowerspace, this will break for example std::min/max so we have to tell the header we dont want this!
-#	if !defined(NOMINMAX)
-#		define NOMINMAX
-#	endif
-	// @NOTE(final): For now we dont want any network, com or gdi stuff at all, maybe later who knows.
-#	if !defined(WIN32_LEAN_AND_MEAN)
-#		define WIN32_LEAN_AND_MEAN 1
-#	endif
-	// @STUPID(final): Workaround for "combaseapi.h(229): error C2187: syntax error: 'identifier' was unexpected here"
+#if !defined(FPL__HAS_PLATFORM_INCLUDES)
+#	define FPL__HAS_PLATFORM_INCLUDES
+
+#	if defined(FPL_PLATFORM_WINDOWS)
+		// @NOTE(final): windef.h defines min/max macros in lowerspace, this will break for example std::min/max so we have to tell the header we dont want this!
+#		if !defined(NOMINMAX)
+#			define NOMINMAX
+#		endif
+		// @NOTE(final): For now we dont want any network, com or gdi stuff at all, maybe later who knows.
+#		if !defined(WIN32_LEAN_AND_MEAN)
+#			define WIN32_LEAN_AND_MEAN 1
+#		endif
+		// @STUPID(final): Workaround for "combaseapi.h(229): error C2187: syntax error: 'identifier' was unexpected here"
 struct IUnknown;
-#	include <windows.h> // Win32 api
-#	if _WIN32_WINNT < 0x0600
+#		include <windows.h> // Win32 api
+#		if _WIN32_WINNT < 0x0600
 #		error "Windows Vista or higher required!"
-#	endif
-#endif // FPL_PLATFORM_WINDOWS
+#		endif
+#	endif // FPL_PLATFORM_WINDOWS
+
+#	if defined(FPL_SUBPLATFORM_POSIX)
+#		include <pthread.h> // pthread_t, pthread_mutex_, pthread_cond_, pthread_barrier_
+#		include <semaphore.h> // sem_t
+#		include <dirent.h> // DIR, dirent
+#	endif // FPL_SUBPLATFORM_POSIX
+
+#	if defined(FPL_SUBPLATFORM_X11)
+#		include <X11/X.h> // Window
+#		include <X11/Xlib.h> // Display
+#		include <X11/Xutil.h> // XVisualInfo
+#		include <X11/Xatom.h> // XA_CARDINAL
+#	endif // FPL_SUBPLATFORM_X11
+
+#endif // !FPL__HAS_PLATFORM_INCLUDES
 
 //
 // Compiler Includes
@@ -11792,7 +11932,7 @@ fpl_platform_api bool fplMutexInit(fplMutexHandle *mutex) {
 	}
 	fplClearStruct(mutex);
 	fplAssert(sizeof(mutex->internalHandle.win32CriticalSection) >= sizeof(CRITICAL_SECTION));
-	CRITICAL_SECTION *critSection = (CRITICAL_SECTION *)&mutex->internalHandle.win32CriticalSection[0];
+	CRITICAL_SECTION *critSection = (CRITICAL_SECTION *)&mutex->internalHandle.win32CriticalSection;
 	InitializeCriticalSection(critSection);
 	mutex->isValid = true;
 	return true;
@@ -11802,7 +11942,7 @@ fpl_platform_api void fplMutexDestroy(fplMutexHandle *mutex) {
 	FPL__CheckArgumentNullNoRet(mutex);
 	if(mutex->isValid) {
 		fplAssert(sizeof(mutex->internalHandle.win32CriticalSection) >= sizeof(CRITICAL_SECTION));
-		CRITICAL_SECTION *critSection = (CRITICAL_SECTION *)&mutex->internalHandle.win32CriticalSection[0];
+		CRITICAL_SECTION *critSection = (CRITICAL_SECTION *)&mutex->internalHandle.win32CriticalSection;
 		DeleteCriticalSection(critSection);
 		fplClearStruct(mutex);
 	}
@@ -11815,7 +11955,7 @@ fpl_platform_api bool fplMutexLock(fplMutexHandle *mutex) {
 		return false;
 	}
 	fplAssert(sizeof(mutex->internalHandle.win32CriticalSection) >= sizeof(CRITICAL_SECTION));
-	CRITICAL_SECTION *critSection = (CRITICAL_SECTION *)&mutex->internalHandle.win32CriticalSection[0];
+	CRITICAL_SECTION *critSection = (CRITICAL_SECTION *)&mutex->internalHandle.win32CriticalSection;
 	EnterCriticalSection(critSection);
 	return true;
 }
@@ -11827,7 +11967,7 @@ fpl_platform_api bool fplMutexTryLock(fplMutexHandle *mutex) {
 		return false;
 	}
 	fplAssert(sizeof(mutex->internalHandle.win32CriticalSection) >= sizeof(CRITICAL_SECTION));
-	CRITICAL_SECTION *critSection = (CRITICAL_SECTION *)&mutex->internalHandle.win32CriticalSection[0];
+	CRITICAL_SECTION *critSection = (CRITICAL_SECTION *)&mutex->internalHandle.win32CriticalSection;
 	bool result = TryEnterCriticalSection(critSection) == TRUE;
 	return(result);
 }
@@ -11839,7 +11979,7 @@ fpl_platform_api bool fplMutexUnlock(fplMutexHandle *mutex) {
 		return false;
 	}
 	fplAssert(sizeof(mutex->internalHandle.win32CriticalSection) >= sizeof(CRITICAL_SECTION));
-	CRITICAL_SECTION *critSection = (CRITICAL_SECTION *)&mutex->internalHandle.win32CriticalSection[0];
+	CRITICAL_SECTION *critSection = (CRITICAL_SECTION *)&mutex->internalHandle.win32CriticalSection;
 	LeaveCriticalSection(critSection);
 	return true;
 }
@@ -11943,7 +12083,7 @@ fpl_platform_api bool fplConditionWait(fplConditionVariable *condition, fplMutex
 		return false;
 	}
 	DWORD t = timeout == FPL_TIMEOUT_INFINITE ? INFINITE : timeout;
-	CRITICAL_SECTION *critSection = (CRITICAL_SECTION *)&mutex->internalHandle.win32CriticalSection[0];
+	CRITICAL_SECTION *critSection = (CRITICAL_SECTION *)&mutex->internalHandle.win32CriticalSection;
 	CONDITION_VARIABLE *condVar = (CONDITION_VARIABLE *)&condition->internalHandle.win32Condition;
 	bool result = SleepConditionVariableCS(condVar, critSection, t) != 0;
 	return(result);
@@ -13312,7 +13452,7 @@ fpl_platform_api bool fplQueryCursorPosition(int32_t *outX, int32_t *outY) {
 #endif
 	}
 	return(false);
-		}
+}
 
 fpl_platform_api bool fplPollMouseState(fplMouseState *outState) {
 	FPL__CheckArgumentNull(outState, false);
@@ -13880,7 +14020,7 @@ fpl_platform_api fplWallClock fplGetWallClock() {
 fpl_platform_api double fplGetWallDelta(const fplWallClock start, const fplWallClock finish) {
 	uint64_t deltaSeconds = finish.posix.seconds - start.posix.seconds;
 	int64_t deltaNanos = finish.posix.nanoSeconds - start.posix.nanoSeconds;
-	if (deltaNanos < 0) {
+	if(deltaNanos < 0) {
 		--deltaSeconds;
 		deltaNanos += 1000000000L;
 	}
@@ -15048,7 +15188,7 @@ fpl_platform_api size_t fplWideStringToUTF8String(const wchar_t *wideSource, con
 		utf8Dest[result] = 0;
 	}
 	return(result);
-	}
+}
 fpl_platform_api size_t fplUTF8StringToWideString(const char *utf8Source, const size_t utf8SourceLen, wchar_t *wideDest, const size_t maxWideDestLen) {
 	// @NOTE(final): Expect locale to be UTF-8
 	FPL__CheckArgumentNull(utf8Source, 0);
@@ -18158,7 +18298,7 @@ fpl_internal bool fpl__AudioReleaseDirectSound(const fpl__CommonAudioState *comm
 	fplClearStruct(dsoundState);
 
 	return true;
-	}
+}
 
 fpl_internal fplAudioResultType fpl__AudioInitDirectSound(const fplAudioSettings *audioSettings, const fplAudioDeviceFormat *targetFormat, fpl__CommonAudioState *commonAudio, fpl__DirectSoundAudioState *dsoundState) {
 #ifdef __cplusplus
@@ -19476,13 +19616,13 @@ fpl_internal uint32_t fpl__GetAudioDevicesAlsa(fpl__AlsaAudioState *alsaState, f
 			free(name);
 		}
 		++ppNextDeviceHint;
-		}
+	}
 	alsaApi->snd_device_name_free_hint((void **)ppDeviceHints);
 	if(capacityOverflow > 0) {
 		FPL__ERROR(FPL__MODULE_AUDIO_ALSA, "Capacity of '%lu' for audio device infos has been reached. '%lu' audio devices are not included in the result", maxDeviceCount, capacityOverflow);
 	}
 	return(result);
-	}
+}
 
 #endif // FPL__ENABLE_AUDIO_ALSA
 
@@ -19714,7 +19854,7 @@ fpl_internal void fpl__RunAudioDeviceMainLoop(fpl__AudioState *audioState) {
 		default:
 			break;
 	}
-	}
+}
 
 fpl_internal bool fpl__IsAudioDriverAsync(fplAudioDriverType audioDriver) {
 	switch(audioDriver) {
@@ -19923,7 +20063,7 @@ fpl_internal fplAudioResultType fpl__InitAudio(const fplAudioSettings *audioSett
 				if(initResult != fplAudioResultType_Success) {
 					fpl__AudioReleaseDirectSound(&audioState->common, &audioState->dsound);
 				}
-	} break;
+			} break;
 #		endif
 
 #		if defined(FPL__ENABLE_AUDIO_ALSA)
@@ -19938,7 +20078,7 @@ fpl_internal fplAudioResultType fpl__InitAudio(const fplAudioSettings *audioSett
 
 			default:
 				break;
-}
+		}
 		if(initResult == fplAudioResultType_Success) {
 			audioState->activeDriver = propeDriver;
 			audioState->isAsyncDriver = fpl__IsAudioDriverAsync(propeDriver);
@@ -19969,7 +20109,7 @@ fpl_internal fplAudioResultType fpl__InitAudio(const fplAudioSettings *audioSett
 	fplAssert(fpl__AudioGetDeviceState(&audioState->common) == fpl__AudioDeviceState_Stopped);
 
 	return(fplAudioResultType_Success);
-	}
+}
 #endif // FPL__ENABLE_AUDIO
 
 // %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -20039,7 +20179,7 @@ fpl_internal void fpl__ShutdownVideo(fpl__PlatformAppState *appState, fpl__Video
 #			elif defined(FPL_SUBPLATFORM_X11)
 				fpl__X11ReleaseVideoOpenGL(&appState->x11, &appState->window.x11, &videoState->x11.opengl);
 #			endif
-		} break;
+			} break;
 #		endif // FPL__ENABLE_VIDEO_OPENGL
 
 #		if defined(FPL__ENABLE_VIDEO_SOFTWARE)
@@ -20056,7 +20196,7 @@ fpl_internal void fpl__ShutdownVideo(fpl__PlatformAppState *appState, fpl__Video
 			default:
 			{
 			} break;
-	}
+		}
 
 #	if defined(FPL__ENABLE_VIDEO_SOFTWARE)
 		fplVideoBackBuffer *backbuffer = &videoState->softwareBackbuffer;
@@ -20065,7 +20205,7 @@ fpl_internal void fpl__ShutdownVideo(fpl__PlatformAppState *appState, fpl__Video
 		}
 		fplClearStruct(backbuffer);
 #	endif
-}
+	}
 }
 
 fpl_internal void fpl__ReleaseVideoState(fpl__PlatformAppState *appState, fpl__VideoState *videoState) {
@@ -20146,9 +20286,9 @@ fpl_internal bool fpl__InitVideo(const fplVideoDriverType driver, const fplVideo
 			uint32_t color = 0xFF000000;
 			for(uint32_t x = 0; x < backbuffer->width; ++x) {
 				*p++ = color;
+			}
 		}
 	}
-}
 #	endif // FPL__ENABLE_VIDEO_SOFTWARE
 
 	bool videoInitResult = false;
@@ -20161,7 +20301,7 @@ fpl_internal bool fpl__InitVideo(const fplVideoDriverType driver, const fplVideo
 #		elif defined(FPL_SUBPLATFORM_X11)
 			videoInitResult = fpl__X11InitVideoOpenGL(&appState->x11, &appState->window.x11, videoSettings, &videoState->x11.opengl);
 #		endif
-	} break;
+		} break;
 #	endif // FPL__ENABLE_VIDEO_OPENGL
 
 #	if defined(FPL__ENABLE_VIDEO_SOFTWARE)
@@ -20179,7 +20319,7 @@ fpl_internal bool fpl__InitVideo(const fplVideoDriverType driver, const fplVideo
 		{
 			FPL__ERROR(FPL__MODULE_VIDEO, "Unsupported video driver '%s' for this platform", fplGetVideoDriverName(videoSettings->driver));
 		} break;
-}
+	}
 	if(!videoInitResult) {
 		fplAssert(fplGetErrorCount() > 0);
 		fpl__ShutdownVideo(appState, videoState);
@@ -20187,7 +20327,7 @@ fpl_internal bool fpl__InitVideo(const fplVideoDriverType driver, const fplVideo
 	}
 
 	return true;
-	}
+}
 #endif // FPL__ENABLE_VIDEO
 
 // %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -20213,14 +20353,14 @@ fpl_internal FPL__FUNC_PRE_SETUP_WINDOW(fpl__PreSetupWindowDefault) {
 #			if defined(FPL_PLATFORM_WINDOWS)
 				if(!fpl__Win32PreSetupWindowForOpenGL(&appState->win32, &appState->window.win32, &initSettings->video)) {
 					return false;
-			}
+				}
 #			endif
 #			if defined(FPL_SUBPLATFORM_X11)
 				if(fpl__X11InitFrameBufferConfigVideoOpenGL(&appState->x11.api, &appState->window.x11, &initSettings->video, &videoState->x11.opengl)) {
 					result = fpl__X11SetPreWindowSetupForOpenGL(&appState->x11.api, &appState->window.x11, &videoState->x11.opengl, &outResult->x11);
 				}
 #			endif
-		} break;
+			} break;
 #		endif // FPL__ENABLE_VIDEO_OPENGL
 
 #		if defined(FPL__ENABLE_VIDEO_SOFTWARE)
@@ -20235,8 +20375,8 @@ fpl_internal FPL__FUNC_PRE_SETUP_WINDOW(fpl__PreSetupWindowDefault) {
 			default:
 			{
 			} break;
+		}
 	}
-}
 #	endif // FPL__ENABLE_VIDEO
 
 	return(result);
@@ -20261,9 +20401,9 @@ fpl_internal FPL__FUNC_POST_SETUP_WINDOW(fpl__PostSetupWindowDefault) {
 
 			default:
 			{
-		} break;
+			} break;
+		}
 	}
-}
 #endif // FPL__ENABLE_VIDEO
 
 	return false;
@@ -20277,7 +20417,7 @@ fpl_internal bool fpl__InitWindow(const fplSettings *initSettings, fplWindowSett
 #	elif defined(FPL_SUBPLATFORM_X11)
 		result = fpl__X11InitWindow(initSettings, currentWindowSettings, appState, &appState->x11, &appState->window.x11, setupCallbacks);
 #	endif
-}
+	}
 	return (result);
 }
 
@@ -20742,10 +20882,10 @@ fpl_common_api void fplVideoFlip() {
 
 			default:
 				break;
-				}
-#	endif // FPL_PLATFORM || FPL_SUBPLATFORM
-			}
 		}
+#	endif // FPL_PLATFORM || FPL_SUBPLATFORM
+	}
+}
 #endif // FPL__ENABLE_VIDEO
 
 // %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -20811,7 +20951,7 @@ fpl_internal void fpl__ReleasePlatformStates(fpl__PlatformInitState *initState, 
 			FPL_LOG_DEBUG(FPL__MODULE_CORE, "Release Video for Driver '%s'", fplGetVideoDriverName(videoState->activeDriver));
 			fpl__ReleaseVideoState(appState, videoState);
 		}
-}
+	}
 #	endif
 
 	if(appState != fpl_null) {
@@ -20827,9 +20967,9 @@ fpl_internal void fpl__ReleasePlatformStates(fpl__PlatformInitState *initState, 
 			FPL_LOG_DEBUG(FPL__MODULE_CORE, "Release Unix Platform");
 			fpl__UnixReleasePlatform(initState, appState);
 #		endif
-	}
+		}
 
-	// Release sub platforms
+		// Release sub platforms
 		{
 #		if defined(FPL_SUBPLATFORM_X11)
 			FPL_LOG_DEBUG("Core", "Release X11 Subplatform");
@@ -20944,7 +21084,7 @@ fpl_common_api bool fplPlatformInit(const fplInitFlags initFlags, const fplSetti
 	appState->initFlags = initFlags;
 	if(initSettings != fpl_null) {
 		appState->initSettings = *initSettings;
-} else {
+	} else {
 		fplSetDefaultSettings(&appState->initSettings);
 	}
 	appState->currentSettings = appState->initSettings;
@@ -20972,9 +21112,9 @@ fpl_common_api bool fplPlatformInit(const fplInitFlags initFlags, const fplSetti
 			FPL__CRITICAL("Core", "Failed initializing POSIX Subplatform!");
 			fpl__ReleasePlatformStates(initState, appState);
 			return(fpl__SetPlatformResult(fplPlatformResultType_FailedPlatform));
-	}
+		}
 		FPL_LOG_DEBUG("Core", "Successfully initialized POSIX Subplatform");
-}
+	}
 #	endif // FPL_SUBPLATFORM_POSIX
 
 #	if defined(FPL_SUBPLATFORM_X11)
@@ -20984,7 +21124,7 @@ fpl_common_api bool fplPlatformInit(const fplInitFlags initFlags, const fplSetti
 			FPL__CRITICAL("Core", "Failed initializing X11 Subplatform!");
 			fpl__ReleasePlatformStates(initState, appState);
 			return(fpl__SetPlatformResult(fplPlatformResultType_FailedPlatform));
-	}
+		}
 		FPL_LOG_DEBUG("Core", "Successfully initialized X11 Subplatform");
 	}
 #	endif // FPL_SUBPLATFORM_X11
@@ -21103,7 +21243,7 @@ fpl_common_api bool fplPlatformInit(const fplInitFlags initFlags, const fplSetti
 
 	initState->isInitialized = true;
 	return(fpl__SetPlatformResult(fplPlatformResultType_Success));
-			}
+}
 
 fpl_common_api fplPlatformType fplGetPlatformType() {
 	fplPlatformType result;
@@ -21139,8 +21279,15 @@ fpl_common_api fplPlatformType fplGetPlatformType() {
 #if defined(FPL_ENTRYPOINT) && !defined(FPL__ENTRYPOINT_IMPLEMENTED)
 #	define FPL__ENTRYPOINT_IMPLEMENTED
 
-#	if defined(FPL_PLATFORM_WINDOWS)
+// ***************************************************************
+//
+// Platform includes for entry point
+//
+// ***************************************************************
+#if !defined(FPL__HAS_PLATFORM_INCLUDES)
+#	define FPL__HAS_PLATFORM_INCLUDES
 
+#	if defined(FPL_PLATFORM_WINDOWS)
 		// @NOTE(final): windef.h defines min/max macros in lowerspace, this will break for example std::min/max so we have to tell the header we dont want this!
 #		if !defined(NOMINMAX)
 #			define NOMINMAX
@@ -21155,6 +21302,16 @@ struct IUnknown;
 #		if _WIN32_WINNT < 0x0600
 #			error "Windows Vista or higher required!"
 #		endif
+#	endif // FPL_PLATFORM_WINDOWS
+
+#endif // !FPL__HAS_PLATFORM_INCLUDES
+
+// ***************************************************************
+//
+// Win32 Entry point
+//
+// ***************************************************************
+#	if defined(FPL_PLATFORM_WINDOWS)
 
 #define FPL__FUNC_WIN32_CommandLineToArgvW(name) LPWSTR* WINAPI name(LPCWSTR lpCmdLine, int *pNumArgs)
 typedef FPL__FUNC_WIN32_CommandLineToArgvW(fpl__win32_func_CommandLineToArgvW);
@@ -21300,7 +21457,7 @@ void __stdcall mainCRTStartup(void) {
 	int result = main(args.count, args.args);
 	fplMemoryFree(args.mem);
 	ExitProcess(result);
-	}
+}
 #			else
 #				error "Application type not set!"
 #			endif // FPL_APPTYPE
