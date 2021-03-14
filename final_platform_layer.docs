@@ -3531,6 +3531,22 @@
 			</td>
 			<td>Not set by default</td>
 		</tr>
+		<tr>
+			<td>System</td>
+			<td>FPL_NO_PLATFORM_INCLUDES_IN_HEADER</td>
+			<td>
+				Define this to disable the <includes> for the specific platform in the API.<br>
+			</td>
+			<td>Not set by default</td>
+		</tr>
+		<tr>
+			<td>System</td>
+			<td>FPL_OPAQUE_HANDLES</td>
+			<td>
+				Define this to force the use of opaque handles in the API.<br>
+			</td>
+			<td>Not set by default</td>
+		</tr>
 
 		<tr>
 			<td>Assertions</td>
