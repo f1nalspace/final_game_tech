@@ -8,7 +8,7 @@ Description:
 
 Requirements:
 	- C99 Compiler
-	- Win32 / MSVC
+	- Win32 / MSVC only
 	- Final Platform Layer
 
 Author:
@@ -31,18 +31,23 @@ License:
 -------------------------------------------------------------------------------
 */
 
-#define FPL_IMPLEMENTATION
-#define FPL_NO_CRT
-#define FPL_APPTYPE_CONSOLE
-
+// Define dummy vsnprintf (requires stdint.h and stdarg.h, before FPL is included)
 #include <stdint.h>
 #include <stdarg.h>
-
 int dummy_vsnprintf(char *buf, size_t bufLen, const char *format, va_list argList);
 #define FPL_USERFUNC_vsnprintf dummy_vsnprintf
 
+#define FPL_IMPLEMENTATION
+// We are a console application
+#define FPL_APPTYPE_CONSOLE
+// Disable C-RunTime Library
+#define FPL_NO_CRT
+// FPL header
 #include <final_platform_layer.h>
 
+// Include tinycrt.h which simulates a tiny-crt ()
+// Most of the asm instructions there are not implemented yet
+// The user is responsible to use their one "Tiny-CRT" and write intrinsics for _ltod3, _ftol2, _allmul
 #include "tinycrt.h"
 
 int dummy_vsnprintf(char *buf, size_t bufLen, const char *format, va_list argList) {
@@ -51,7 +56,7 @@ int dummy_vsnprintf(char *buf, size_t bufLen, const char *format, va_list argLis
 
 int main(int argc, char **argv) {
 	if(fplPlatformInit(fplInitFlags_All, fpl_null)) {
-		fplConsoleOut("Hello World!\n");
+		fplConsoleOut("Hello World with the CRT!\n");
 		char c = fplConsoleWaitForCharInput();
 		fplConsoleFormatOut("%c\n", c);
 		fplPlatformRelease();
