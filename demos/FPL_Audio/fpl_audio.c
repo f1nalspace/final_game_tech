@@ -309,7 +309,7 @@ static void Render(AudioDemo *demo, const int screenW, const int screenH, const 
 		}
 	} else {
 
-#if 0
+#if 1
 		AudioFrameIndex framesPlayed = fplAtomicLoadU32(&demo->numFramesPlayed);
 #else
 		double renderMsecs = currentRenderTime * 1000.0;
@@ -448,7 +448,7 @@ static void Render(AudioDemo *demo, const int screenW, const int screenH, const 
 #endif
 
 
-#if 1
+#if 0
 		// Draw FFT bins/peaks (Is incorrect)
 		{
 			float fitFactor = 1.0f;
@@ -486,7 +486,7 @@ static void Render(AudioDemo *demo, const int screenW, const int screenH, const 
 			float barWidth = (spectrumDim.w - totalSpacing) / (float)fftCount;
 			float barY = spectrumPos.y + barMaxHeight;
 
-			float magScale = 1.0f;
+			float magScale = 2.0f;
 
 			// https://dsp.stackexchange.com/questions/32076/fft-to-spectrum-in-decibel
 
@@ -813,7 +813,7 @@ static void AudioStreamingThread(const fplThreadHandle *thread, void *rawData) {
 
 		if(ignoreWait) {
 			// We just want to ignore waiting once
-			ignoreWait = true;
+			ignoreWait = false;
 		}
 
 		bool tooSlow = false;
@@ -975,6 +975,10 @@ int main(int argc, char **args) {
 	fplAssert(loadedDeviceCount == deviceCount);
 	// Use first audio device
 	if(loadedDeviceCount > 0) {
+		for (uint32_t deviceIndex = 0; deviceIndex < loadedDeviceCount; ++deviceIndex) {
+			fplAudioDeviceInfo *audioDeviceInfo = audioDeviceInfos + deviceIndex;
+			fplDebugFormatOut("AudioDevice[%lu] %s\n", deviceIndex, audioDeviceInfo->name);
+		}
 		settings.audio.targetDevice = audioDeviceInfos[0];
 	}
 	fplMemoryFree(audioDeviceInfos);
