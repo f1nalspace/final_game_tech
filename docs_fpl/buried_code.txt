@@ -33,3 +33,107 @@ fpl_platform_api char *fplGetProcessorName(char *destBuffer, const size_t maxDes
 	}
 	return(result);
 }
+
+//
+// Init chunks for visualization
+//
+
+// Init chunk buffer
+size_t numChunks = fplMax(1, streamBufferSize / sizeof(AudioFramesChunk));
+size_t chunkBufferSize = numChunks * sizeof(AudioFramesChunk);
+bufferInitRes = LockFreeRingBufferInit(&demo->chunkRingBuffer, chunkBufferSize, true);
+if(!bufferInitRes) {
+	goto done;
+}
+
+// Allocate temporary chunk buffer
+size_t tempChunkTempBufferSize = (numChunks + 2) * sizeof(AudioFramesChunk);
+demo->chunkTempBuffer = fplMemoryAlignedAllocate(tempChunkTempBufferSize, 16);
+
+//
+// Fill chunks for visualization
+//
+LockFreeRingBuffer *chunkRingBuffer = &demo->chunkRingBuffer;
+size_t chunkSize = sizeof(AudioFramesChunk);
+size_t availableChunkSpace = 0;
+bool canChunkWrite = LockFreeRingBufferCanWrite(chunkRingBuffer, &availableChunkSpace);
+if(canChunkWrite && availableChunkSpace >= chunkSize && totalFrameBytes >= chunkSize) {
+	AudioFrameIndex remainingChunkFrames = writtenFrames;
+
+	size_t nbytes = fplMin(availableChunkSpace, totalFrameBytes);
+
+	size_t numChunks = nbytes / chunkSize;
+
+	size_t totalChunksSize = numChunks * chunkSize;
+
+	AudioFramesChunk tempChunk;
+	AudioFrameIndex maxFramesPerChunk = MAX_AUDIO_FRAMES_CHUNK_FRAMES;
+
+	AudioFrameIndex chunkFrameStartTime = lastNumFramesStreamed;
+
+	void *chunkTempMemory = demo->chunkTempBuffer;
+
+	size_t sourceOffset = 0;
+	for(size_t chunkIndex = 0; chunkIndex < numChunks; ++chunkIndex) {
+		AudioFrameIndex framesForChunk = fplMin(maxFramesPerChunk, remainingChunkFrames);
+		size_t chunkSamplesSize = framesForChunk * frameSize;
+
+		AudioFramesChunk *chunk = (AudioFramesChunk *)((uint8_t *)chunkTempMemory + (chunkSize * chunkIndex));
+
+		double chunkTime = fplGetAudioBufferSizeInMilliseconds(demo->targetAudioFormat.sampleRate, chunkFrameStartTime);
+
+		fplClearStruct(chunk);
+		chunk->index = chunkFrameStartTime;
+		chunk->count = framesForChunk;
+		fplAssert(chunkSamplesSize <= sizeof(chunk->samples));
+		fplMemoryCopy(tmpBuffer->samples + sourceOffset, chunkSamplesSize, chunk->samples);
+
+		remainingChunkFrames -= framesForChunk;
+		chunkFrameStartTime += framesForChunk;
+		sourceOffset += chunkSamplesSize;
+	}
+
+	bool chunksWritten = LockFreeRingBufferWrite(chunkRingBuffer, chunkTempMemory, totalChunksSize);
+	fplAssert(chunksWritten);
+}
+
+
+
+static bool InitAudioData(const fplAudioDeviceFormat *targetFormat, AudioSystem *audioSys, const char **files, const size_t fileCount, const bool forceSineWave, const AudioSineWaveData *sineWave, AudioTrackList *outputTracks) {
+	if (!AudioSystemInit(audioSys, targetFormat)) {
+		return false;
+	}
+	fplClearStruct(outputTracks);
+	AudioSystemSetMasterVolume(audioSys, 0.5f);
+	return(true);
+}
+
+#if 0
+	bool bufferInitRes;
+
+	size_t playitemCount = AudioSystemGetPlayItems(&demo->audioSys, fpl_null, 0);
+	AudioPlayItem *playItems = fplMemoryAllocate(sizeof(AudioPlayItem) * playitemCount);
+	AudioSystemGetPlayItems(&demo->audioSys, playItems, playitemCount);
+
+	AudioFrameIndex maxPlayItemsFrameCount = 0;
+	for(size_t audioSourceIndex = 0; audioSourceIndex < playitemCount; ++audioSourceIndex) {
+		const AudioPlayItem *playItem = playItems + audioSourceIndex;
+		const AudioSource *audioSource = playItem->source;
+		AudioFrameIndex sourceFrameCount = audioSource->buffer.frameCount;
+		maxPlayItemsFrameCount = fplMax(maxPlayItemsFrameCount, sourceFrameCount);
+	}
+
+	// Allocate direct stream buffer
+	AudioFormat fullAudioBufferFormat = fplZeroInit;
+	fullAudioBufferFormat.channels = demo->targetAudioFormat.channels;
+	fullAudioBufferFormat.format = demo->targetAudioFormat.type;
+	fullAudioBufferFormat.sampleRate = demo->targetAudioFormat.sampleRate;
+	bufferInitRes = AllocateAudioBuffer(&demo->audioSys.memory, &demo->fullAudioBuffer, &fullAudioBufferFormat, maxPlayItemsFrameCount);
+	if(!bufferInitRes) {
+		goto done;
+	}
+
+	// @SLOW(final): Stream in the entire files in the pipeline, but dont advance it, because we want to use the samples for the smoother FFT visualization
+	AudioFrameIndex allFrames = AudioSystemWriteFrames(&demo->audioSys, demo->fullAudioBuffer.samples, &demo->targetAudioFormat, maxPlayItemsFrameCount, false);
+	fplAssert(allFrames == maxPlayItemsFrameCount);
+#endif

@@ -274,11 +274,18 @@ int main(int argc, char **args) {
 	fplAudioDeviceFormat targetDeviceFormat;
 	fplConvertAudioTargetFormatToDeviceFormat(&targetFormat, &targetDeviceFormat);
 	
-	if (!InitAudioData(&targetDeviceFormat, &audioContext->system, files, fileCount, forceSineWave, &audioContext->sineWave)){
+	AudioTrackList tracklist = fplZeroInit;
+
+	if(!AudioSystemInit(&audioContext->system, &targetDeviceFormat)) {
 		fplConsoleFormatError("Failed initializing audio system!\n");
 		goto releaseResources;
 	}
-	
+
+	if(!LoadAudioTrackList(&audioContext->system, files, fileCount, forceSineWave, &audioContext->sineWave, LoadAudioTrackFlags_AutoLoad | LoadAudioTrackFlags_AutoPlay, &tracklist)) {
+		fplConsoleFormatError("Failed loading tracklist for %zu files!\n", fileCount);
+		goto releaseResources;
+	}
+
 	// Start audio playback
 	if (!StartPlayback(audioContext)) {
 		fplConsoleFormatError("Failed starting audio playback!\n");
@@ -304,6 +311,7 @@ int main(int argc, char **args) {
 	StopPlayback(audioContext);
 		
 	// Release audio data
+	StopAllAudioTracks(&audioContext->system, &tracklist);
 	AudioSystemShutdown(&audioContext->system);
 
 	result = 0;

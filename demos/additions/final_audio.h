@@ -30,6 +30,44 @@ typedef double AudioDuration;
 /// The size of a audio buffer in bytes (32-bit or 64-bit)
 typedef size_t AudioBufferSize; // The size in bytes
 
+typedef enum AudioFileFormat {
+	AudioFileFormat_None = 0,
+	AudioFileFormat_Wave,
+	AudioFileFormat_Vorbis,
+	AudioFileFormat_MP3,
+} AudioFileFormat;
+
+typedef struct AudioFormat {
+	AudioHertz sampleRate;
+	AudioChannelIndex channels;
+	fplAudioFormatType format;
+	uint8_t padding;
+} AudioFormat;
+fplStaticAssert(sizeof(AudioFormat) % 16 == 0);
+
+typedef struct AudioBuffer {
+	uint8_t *samples;
+	AudioBufferSize bufferSize;
+	AudioFrameIndex frameCount;
+	fpl_b32 isAllocated;
+} AudioBuffer;
+
+typedef struct AudioStream {
+	AudioBuffer buffer;
+	AudioFrameIndex readFrameIndex;
+	AudioFrameIndex framesRemaining;
+} AudioStream;
+
+#define MAX_AUDIO_STATIC_BUFFER_CHANNEL_COUNT (AudioChannelIndex)2
+#define MAX_AUDIO_STATIC_BUFFER_FRAME_COUNT (AudioFrameIndex)4096
+#define MAX_AUDIO_STATIC_BUFFER_MAX_TYPE_SIZE (size_t)4
+typedef struct AudioStaticBuffer {
+	uint8_t samples[MAX_AUDIO_STATIC_BUFFER_CHANNEL_COUNT * MAX_AUDIO_STATIC_BUFFER_FRAME_COUNT * MAX_AUDIO_STATIC_BUFFER_MAX_TYPE_SIZE];
+	AudioFrameIndex maxFrameCount;
+} AudioStaticBuffer;
+
+
+
 typedef struct PCMWaveData {
 	//! Total frame count
 	AudioFrameIndex frameCount;

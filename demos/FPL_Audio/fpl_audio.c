@@ -15,6 +15,11 @@ Requirements:
 Author:
 	Torsten Spaete
 
+Todo:
+	- Smoother bars (Falling peaks, Max peak line -> https://www.youtube.com/watch?v=JU-uCytFvmI&list=UU56Qctnsu8wAyvzf4Yx6LIw&index=16)
+	- Audio streaming from HTTP (requires networking in FPL!)
+	- Multiple audio tracks
+
 Changelog:
 	## 2021-03-13
 	- Samples and FFT visualization for realtime audio
@@ -101,11 +106,11 @@ Visualize the samples:
 
 
 #define OPT_PLAYBACK_NONE 0
-#define OPT_PLAYBACK_SINEWAVE_ONLY 1
-#define OPT_PLAYBACK_AUDIOSYSTEM_ONLY 2
-#define OPT_PLAYBACK_STREAMBUFFER_ONLY 3
+#define OPT_PLAYBACK_SINEWAVE 1
+#define OPT_PLAYBACK_AUDIOSYSTEM 2
+#define OPT_PLAYBACK_STREAMBUFFER 3
 
-#define OPT_PLAYBACKMODE OPT_PLAYBACK_STREAMBUFFER_ONLY
+#define OPT_PLAYBACK OPT_PLAYBACK_STREAMBUFFER
 
 #define FPL_LOGGING
 #define FPL_IMPLEMENTATION
@@ -138,33 +143,34 @@ typedef struct AudioFramesChunk {
 } AudioFramesChunk;
 
 #define MAX_AUDIO_BIN_COUNT 128
-
-typedef struct AudioSpectrum {
-	FFTDouble input[MAX_AUDIO_FRAMES_CHUNK_FRAMES];
-	FFTDouble output[MAX_AUDIO_FRAMES_CHUNK_FRAMES];
+typedef struct AudioVisualization {
+	AudioFramesChunk videoAudioChunks[2]; // 0 = Render, 1 = New
+	FFTDouble fftInput[MAX_AUDIO_FRAMES_CHUNK_FRAMES];
+	FFTDouble fftOutput[MAX_AUDIO_FRAMES_CHUNK_FRAMES];
 	double magnitudes[MAX_AUDIO_FRAMES_CHUNK_FRAMES];
 	double windowCoeffs[MAX_AUDIO_FRAMES_CHUNK_FRAMES];
 	double maxPeaks[MAX_AUDIO_BIN_COUNT];
 	double bins[MAX_AUDIO_BIN_COUNT + 1];
-} AudioSpectrum;
+	volatile uint32_t hasVideoAudioChunk;
+} AudioVisualization;
 
 typedef struct AudioDemo {
+	AudioVisualization visualization;
+	AudioTrackList trackList;
 	AudioSystem audioSys;
+
+	LockFreeRingBuffer outputRingBuffer;	// The ring buffer for the audio output
+	AudioBuffer outputTempBuffer;			// Used for decoding the audio samples into, before its pushed to the output ring buffer
+
 	AudioSineWaveData sineWave;
-	AudioBuffer streamTempBuffer;
-	AudioBuffer fullAudioBuffer;
-	LockFreeRingBuffer streamRingBuffer;
-	LockFreeRingBuffer chunkRingBuffer;
-	AudioFramesChunk videoAudioChunks[2]; // 0 = Render, 1 = New
-	AudioSpectrum spectrum;
 	fplAudioDeviceFormat targetAudioFormat;
-	void *chunkTempBuffer;
 	fplThreadHandle *streamingThread;
+
 	uint64_t lastVideoAudioChunkUpdateTime;
-	volatile uint32_t hasVideoAudioChunk;
 	volatile uint32_t numFramesPlayed;
 	volatile uint32_t numFramesStreamed;
 	volatile uint32_t maxPlaybackFrameLatency;
+
 	volatile fpl_b32 isStreamingThreadStopped;
 	fpl_b32 useRealTimeSamples;
 } AudioDemo;
@@ -264,16 +270,25 @@ static void Render(AudioDemo *demo, const int screenW, const int screenH, const 
 	RenderLine(0.0f, h * 0.5f, w, h * 0.5f, V4fInit(1.0f, 1.0f, 1.0f, 0.25f), 1.0f);
 	RenderLine(w * 0.5f, 0, w * 0.5f, h, V4fInit(1.0f, 1.0f, 1.0f, 0.25f), 1.0f);
 
-#if OPT_PLAYBACKMODE == OPT_PLAYBACK_STREAMBUFFER_ONLY
+#if OPT_PLAYBACK == OPT_PLAYBACK_STREAMBUFFER
+	LockFreeRingBuffer *streamRingBuffer = &demo->outputRingBuffer;
+
+	static AudioBuffer zeroFullAudioBufferStub = fplZeroInit;
+	AudioBuffer *fullAudioBuffer = &zeroFullAudioBufferStub;
+
+	AudioTrackList *trackList = &demo->trackList;
+
+	if(HasAudioTrack(trackList)) {
+		fplAssert(trackList->currentIndex < (int32_t)trackList->count);
+		AudioTrack *track = trackList->tracks + trackList->currentIndex;
+		fullAudioBuffer = &track->outputFullBuffer;
+	}
+
+	AudioVisualization *visualization = &demo->visualization;
+
 	Vec2f streamBufferDim = V2fInit(w * 0.9f, h * 0.1f);
 	Vec2f streamBufferPos = V2fInit((w - streamBufferDim.w) * 0.5f, h * 0.1f);
-	RenderRingBuffer(streamBufferPos, streamBufferDim, &demo->streamRingBuffer);
-
-#if 0
-	Vec2f chunkBufferDim = V2fInit(w * 0.9f, h * 0.1f);
-	Vec2f chunkBufferPos = V2fInit((w - chunkBufferDim.w) * 0.5f, (h - chunkBufferDim.h) * 0.9f);
-	RenderRingBuffer(chunkBufferPos, chunkBufferDim, &demo->chunkRingBuffer);
-#endif
+	RenderRingBuffer(streamBufferPos, streamBufferDim, streamRingBuffer);
 
 	Vec2f spectrumDim = V2fInit(w * 0.9f, h * 0.6f);
 	Vec2f spectrumPos = V2fInit((w - spectrumDim.w) * 0.5f, h * 0.3f);
@@ -283,34 +298,38 @@ static void Render(AudioDemo *demo, const int screenW, const int screenH, const 
 	size_t sampleSize = fplGetAudioSampleSizeInBytes(format);
 	size_t frameSize = sampleSize * demo->targetAudioFormat.channels;
 
-	AudioFrameIndex frameCount = demo->videoAudioChunks[0].count;
-	uint8_t *chunkSamples = demo->videoAudioChunks[0].samples;
+	AudioFrameIndex frameCount = visualization->videoAudioChunks[0].count;
+
+	uint8_t *chunkSamples = visualization->videoAudioChunks[0].samples;
+
 	if(demo->useRealTimeSamples) {
-		if(fplIsAtomicCompareAndSwapU32(&demo->hasVideoAudioChunk, 2, 3)) {
-			demo->videoAudioChunks[0] = demo->videoAudioChunks[1];
-			fplAtomicExchangeU32(&demo->hasVideoAudioChunk, 0);
+		if(fplIsAtomicCompareAndSwapU32(&visualization->hasVideoAudioChunk, 2, 3)) {
+			visualization->videoAudioChunks[0] = visualization->videoAudioChunks[1];
+			fplAtomicExchangeU32(&visualization->hasVideoAudioChunk, 0);
 		}
 	} else {
+
 #if 0
 		AudioFrameIndex framesPlayed = fplAtomicLoadU32(&demo->numFramesPlayed);
 #else
 		double renderMsecs = currentRenderTime * 1000.0;
 		AudioFrameIndex framesPlayed = (AudioFrameIndex)(((double)demo->targetAudioFormat.sampleRate / 1000.0) * renderMsecs);
-		fplAssert(framesPlayed <= demo->fullAudioBuffer.frameCount);
+		if(framesPlayed > fullAudioBuffer->frameCount) {
+			framesPlayed = fullAudioBuffer->frameCount;
+		}
+		fplAssert(framesPlayed <= fullAudioBuffer->frameCount);
 #endif
-
-		size_t chunkSamplesOffset = framesPlayed * frameSize;
-		
-		AudioFrameIndex remainingChunkFrames = fplMin(MAX_AUDIO_FRAMES_CHUNK_FRAMES, demo->fullAudioBuffer.frameCount - framesPlayed);
-
-		size_t totalSizeToCopy = remainingChunkFrames * frameSize;
-
-		const uint8_t *p = demo->fullAudioBuffer.samples + chunkSamplesOffset;
-		fplMemoryCopy(p, totalSizeToCopy, chunkSamples);
+		AudioFrameIndex remainingChunkFrames = fplMin(MAX_AUDIO_FRAMES_CHUNK_FRAMES, fullAudioBuffer->frameCount - framesPlayed);
+		if(remainingChunkFrames > 0) {
+			size_t totalSizeToCopy = remainingChunkFrames * frameSize;
+			size_t chunkSamplesOffset = framesPlayed * frameSize;
+			const uint8_t *p = fullAudioBuffer->samples + chunkSamplesOffset;
+			fplMemoryCopy(p, totalSizeToCopy, chunkSamples);
+		}
 
 		if(remainingChunkFrames < MAX_AUDIO_FRAMES_CHUNK_FRAMES) {
-			// Fill rest with zero
-			fplAlwaysAssert(!"TODO");
+			size_t totalSizeToClear = MAX_AUDIO_FRAMES_CHUNK_FRAMES * frameSize;
+			fplMemoryClear(chunkSamples, totalSizeToClear);
 		}
 
 		frameCount = MAX_AUDIO_FRAMES_CHUNK_FRAMES;
@@ -347,35 +366,39 @@ static void Render(AudioDemo *demo, const int screenW, const int screenH, const 
 			}
 
 			// Window multiplier (Hamming for smoother visualization)
-			double windowMultiplier = demo->spectrum.windowCoeffs[i];
+			double windowMultiplier = visualization->windowCoeffs[i];
 
-			demo->spectrum.input[i].real = sampleValue * windowMultiplier;
-			demo->spectrum.input[i].imag = 0;
+			// Write samples to FFT input
+			visualization->fftInput[i].real = sampleValue * windowMultiplier;
+			visualization->fftInput[i].imag = 0;
 		}
 
-		ForwardFFT(demo->spectrum.input, frameCount, false, demo->spectrum.output);
+		// Forward FFT
+		ForwardFFT(visualization->fftInput, frameCount, false, visualization->fftOutput);
 
 		// Save magnitudes for FFT output
+		double invFrameCount = 1.0 / (double)frameCount;
 		for(uint32_t frameIndex = 0; frameIndex < frameCount; ++frameIndex) {
-			double re = fabs(demo->spectrum.output[frameIndex].real);
-			double im = fabs(demo->spectrum.output[frameIndex].imag);
-			double magnitude = sqrt(re * re + im * im) * 2.0 / (double)frameCount;
-			demo->spectrum.magnitudes[frameIndex] = magnitude;
+			double re = fabs(visualization->fftOutput[frameIndex].real);
+			double im = fabs(visualization->fftOutput[frameIndex].imag);
+			double magnitude = sqrt(re * re + im * im);
+			double normalized = magnitude * 2.0 * invFrameCount;
+			visualization->magnitudes[frameIndex] = normalized;
 		}
 
 		// Reset and evaluate max peaks
 		uint32_t binCount = MAX_AUDIO_BIN_COUNT;
 		for(uint32_t i = 0; i < binCount; ++i) {
-			demo->spectrum.maxPeaks[i] = -INFINITY;
+			visualization->maxPeaks[i] = -INFINITY;
 		}
 		double sampleRatePerFrame = (double)demo->targetAudioFormat.sampleRate / (double)frameCount;
 		for(uint32_t frameIndex = 0; frameIndex < frameCount / 2; ++frameIndex) {
-			double magnitude = demo->spectrum.magnitudes[frameIndex];
+			double magnitude = visualization->magnitudes[frameIndex];
 			double freq = frameIndex * sampleRatePerFrame;
 			for(uint32_t binIndex = 0; binIndex < (binCount + 1); ++binIndex) {
-				if((freq > demo->spectrum.bins[binIndex]) && (freq <= demo->spectrum.bins[binIndex + 1])) {
-					if(magnitude > demo->spectrum.maxPeaks[binIndex]) {
-						demo->spectrum.maxPeaks[binIndex] = magnitude;
+				if((freq > visualization->bins[binIndex]) && (freq <= visualization->bins[binIndex + 1])) {
+					if(magnitude > visualization->maxPeaks[binIndex]) {
+						visualization->maxPeaks[binIndex] = magnitude;
 					}
 				}
 			}
@@ -415,9 +438,6 @@ static void Render(AudioDemo *demo, const int screenW, const int screenH, const 
 					} break;
 				}
 
-				// Normalize sample value
-				sampleValue = sqrtf(sampleValue * sampleValue);
-
 				float barMaxHeight = spectrumDim.h * 0.5f;
 				float barHeight = sampleValue * barMaxHeight;
 				float barX = spectrumPos.x + i * barWidth + i * spacing;
@@ -428,7 +448,7 @@ static void Render(AudioDemo *demo, const int screenW, const int screenH, const 
 #endif
 
 
-#if 0
+#if 1
 		// Draw FFT bins/peaks (Is incorrect)
 		{
 			float fitFactor = 1.0f;
@@ -440,7 +460,7 @@ static void Render(AudioDemo *demo, const int screenW, const int screenH, const 
 			float barY = spectrumPos.y + barMaxHeight;
 
 			for(uint32_t binIndex = 0; binIndex < binCount; ++binIndex) {
-				double maxPeak = demo->spectrum.maxPeaks[binIndex];
+				double maxPeak = visualization->maxPeaks[binIndex];
 				double db = AmplitudeToDecibel(maxPeak);
 				double minDB = -90.0;
 				if(db < minDB) db = minDB;
@@ -466,12 +486,14 @@ static void Render(AudioDemo *demo, const int screenW, const int screenH, const 
 			float barWidth = (spectrumDim.w - totalSpacing) / (float)fftCount;
 			float barY = spectrumPos.y + barMaxHeight;
 
-			float magScale = 4.0f;
+			float magScale = 1.0f;
 
 			// https://dsp.stackexchange.com/questions/32076/fft-to-spectrum-in-decibel
 
 			for(uint32_t frameIndex = 0; frameIndex < fftCount; ++frameIndex) {
-				double magnitude = demo->spectrum.magnitudes[frameIndex];
+				//FFTDouble fft = visualization->fftOutput[frameIndex];
+				//double magnitude = sqrt(fft.real * fft.real + fft.imag * fft.imag);
+				double magnitude = visualization->magnitudes[frameIndex];
 				float sampleValue = (float)magnitude * magScale;
 				float barX = spectrumPos.x + frameIndex * barWidth + frameIndex * spacing;
 				float barHeight = sampleValue * barMaxHeight;
@@ -492,20 +514,31 @@ static uint32_t AudioPlayback(const fplAudioDeviceFormat *outFormat, const uint3
 
 	AudioFrameIndex result = 0;
 
-#if OPT_PLAYBACKMODE == OPT_PLAYBACK_SINEWAVE_ONLY
+#if OPT_PLAYBACK == OPT_PLAYBACK_SINEWAVE
 	result = maxFrameCount;
 	AudioGenerateSineWave(&demo->sineWave, outputSamples, outFormat->type, outFormat->sampleRate, outFormat->channels, maxFrameCount);
-#elif OPT_PLAYBACKMODE == OPT_PLAYBACK_AUDIOSYSTEM_ONLY
+#elif OPT_PLAYBACK == OPT_PLAYBACK_AUDIOSYSTEM
 	// @FIXME(final): Fix hearable error, when the audio stream has finished playing and will repeat
-	result = AudioSystemWriteFrames(&demo->audioSys, outputSamples, outFormat, maxFrameCount);
-#elif OPT_PLAYBACKMODE == OPT_PLAYBACK_STREAMBUFFER_ONLY
+	result = AudioSystemWriteFrames(&demo->audioSys, outputSamples, outFormat, maxFrameCount, true);
+#elif OPT_PLAYBACK == OPT_PLAYBACK_STREAMBUFFER
 	uint32_t currentPlaybackLatency = fplAtomicLoadU32(&demo->maxPlaybackFrameLatency);
 	fplAtomicExchangeU32(&demo->maxPlaybackFrameLatency, fplMax(currentPlaybackLatency, maxFrameCount));
 
 	size_t frameSize = fplGetAudioFrameSizeInBytes(outFormat->type, outFormat->channels);
 
+	LockFreeRingBuffer *ringBuffer = &demo->outputRingBuffer;
+
+	static AudioTrack zeroTrack = fplZeroInit;
+	AudioTrack *track = &zeroTrack;
+
+	AudioVisualization *visualization = &demo->visualization;
+
+	if(HasAudioTrack(&demo->trackList)) {
+		track = demo->trackList.tracks + demo->trackList.currentIndex;
+	}
+
 	size_t availableBytes = 0;
-	bool hasData = LockFreeRingBufferCanRead(&demo->streamRingBuffer, &availableBytes);
+	bool hasData = LockFreeRingBufferCanRead(ringBuffer, &availableBytes);
 	if(hasData && (availableBytes % frameSize) == 0) {
 		AudioFrameIndex availableFrames = (AudioFrameIndex)fplMax(0, availableBytes / frameSize);
 
@@ -517,21 +550,21 @@ static uint32_t AudioPlayback(const fplAudioDeviceFormat *outFormat, const uint3
 		size_t totalCopySize = framesToCopy * frameSize;
 		fplAssert((totalCopySize % frameSize) == 0);
 
-		bool isRead = LockFreeRingBufferRead(&demo->streamRingBuffer, outputSamples, totalCopySize);
+		bool isRead = LockFreeRingBufferRead(ringBuffer, outputSamples, totalCopySize);
 		fplAssert(isRead);
 
 		result = framesToCopy;
 		uint32_t numFramesPlayed = fplAtomicFetchAndAddU32(&demo->numFramesPlayed, result);
 
 		if(demo->useRealTimeSamples) {
-			const uint32_t updateInterval = 1000 / 30;
+			const uint32_t updateInterval = 1000 / 60;
 			if((framesToCopy >= MAX_AUDIO_FRAMES_CHUNK_FRAMES) && ((fplGetTimeInMillisecondsLP() - demo->lastVideoAudioChunkUpdateTime) >= updateInterval)) {
-				if(fplIsAtomicCompareAndSwapU32(&demo->hasVideoAudioChunk, 0, 1)) {
-					demo->videoAudioChunks[1].index = numFramesPlayed;
-					demo->videoAudioChunks[1].count = MAX_AUDIO_FRAMES_CHUNK_FRAMES;
+				if(fplIsAtomicCompareAndSwapU32(&visualization->hasVideoAudioChunk, 0, 1)) {
+					visualization->videoAudioChunks[1].index = numFramesPlayed;
+					visualization->videoAudioChunks[1].count = MAX_AUDIO_FRAMES_CHUNK_FRAMES;
 					size_t chunkSamplesSize = frameSize * MAX_AUDIO_FRAMES_CHUNK_FRAMES;
-					fplMemoryCopy(outputSamples, chunkSamplesSize, demo->videoAudioChunks[1].samples);
-					fplAtomicExchangeU32(&demo->hasVideoAudioChunk, 2);
+					fplMemoryCopy(outputSamples, chunkSamplesSize, visualization->videoAudioChunks[1].samples);
+					fplAtomicExchangeU32(&visualization->hasVideoAudioChunk, 2);
 				}
 				demo->lastVideoAudioChunkUpdateTime = fplGetTimeInMillisecondsLP();
 			}
@@ -547,9 +580,9 @@ static bool StreamAudio(const fplAudioDeviceFormat *format, const uint32_t maxFr
 	if(format == fpl_null || demo == fpl_null) return(false);
 	if(maxFrameCount == 0) return(false);
 
-	LockFreeRingBuffer *streamRingBuffer = &demo->streamRingBuffer;
+	LockFreeRingBuffer *streamRingBuffer = &demo->outputRingBuffer;
 
-	AudioBuffer *tmpBuffer = &demo->streamTempBuffer;
+	AudioBuffer *tmpBuffer = &demo->outputTempBuffer;
 
 	size_t frameSize = fplGetAudioFrameSizeInBytes(format->type, format->channels);
 
@@ -580,55 +613,6 @@ static bool StreamAudio(const fplAudioDeviceFormat *format, const uint32_t maxFr
 		fplAssert(streamWritten);
 
 		uint32_t lastNumFramesStreamed = fplAtomicFetchAndAddU32(&demo->numFramesStreamed, writtenFrames);
-
-		//
-		// Fill chunks for visualization
-		//
-#if 0
-		LockFreeRingBuffer *chunkRingBuffer = &demo->chunkRingBuffer;
-		size_t chunkSize = sizeof(AudioFramesChunk);
-		size_t availableChunkSpace = 0;
-		bool canChunkWrite = LockFreeRingBufferCanWrite(chunkRingBuffer, &availableChunkSpace);
-		if(canChunkWrite && availableChunkSpace >= chunkSize && totalFrameBytes >= chunkSize) {
-			AudioFrameIndex remainingChunkFrames = writtenFrames;
-
-			size_t nbytes = fplMin(availableChunkSpace, totalFrameBytes);
-
-			size_t numChunks = nbytes / chunkSize;
-
-			size_t totalChunksSize = numChunks * chunkSize;
-
-			AudioFramesChunk tempChunk;
-			AudioFrameIndex maxFramesPerChunk = MAX_AUDIO_FRAMES_CHUNK_FRAMES;
-
-			AudioFrameIndex chunkFrameStartTime = lastNumFramesStreamed;
-
-			void *chunkTempMemory = demo->chunkTempBuffer;
-
-			size_t sourceOffset = 0;
-			for(size_t chunkIndex = 0; chunkIndex < numChunks; ++chunkIndex) {
-				AudioFrameIndex framesForChunk = fplMin(maxFramesPerChunk, remainingChunkFrames);
-				size_t chunkSamplesSize = framesForChunk * frameSize;
-
-				AudioFramesChunk *chunk = (AudioFramesChunk *)((uint8_t *)chunkTempMemory + (chunkSize * chunkIndex));
-
-				double chunkTime = fplGetAudioBufferSizeInMilliseconds(demo->targetAudioFormat.sampleRate, chunkFrameStartTime);
-
-				fplClearStruct(chunk);
-				chunk->index = chunkFrameStartTime;
-				chunk->count = framesForChunk;
-				fplAssert(chunkSamplesSize <= sizeof(chunk->samples));
-				fplMemoryCopy(tmpBuffer->samples + sourceOffset, chunkSamplesSize, chunk->samples);
-
-				remainingChunkFrames -= framesForChunk;
-				chunkFrameStartTime += framesForChunk;
-				sourceOffset += chunkSamplesSize;
-			}
-
-			bool chunksWritten = LockFreeRingBufferWrite(chunkRingBuffer, chunkTempMemory, totalChunksSize);
-			fplAssert(chunksWritten);
-		}
-#endif
 
 		if(outDuration != fpl_null) {
 			uint64_t delta = fplGetTimeInMilliseconds() - timeStart;
@@ -763,10 +747,10 @@ static void AudioStreamingThread(const fplThreadHandle *thread, void *rawData) {
 	uint32_t entryIndex = intitialIndex;
 	AudioFrameDelayEntry currentEntry = entries[entryIndex];
 
-	// Depending on the performance we can jump in table rows instead of dynamically computing stuff?
-	LockFreeRingBuffer *circularBuffer = &demo->streamRingBuffer;
+	LockFreeRingBuffer *circularBuffer = &demo->outputRingBuffer;
 
-	const AudioFrameIndex bufferFrameCount = demo->streamTempBuffer.frameCount;
+	// Depending on the performance we can jump in table rows instead of dynamically computing stuff?
+
 	const uint64_t totalBufferLength = circularBuffer->length;
 
 	const float minBufferThreshold = 0.25f; // In percentage range of 0 to 1
@@ -775,6 +759,28 @@ static void AudioStreamingThread(const fplThreadHandle *thread, void *rawData) {
 	bool ignoreWait = false;
 	uint64_t startTime = fplGetTimeInMillisecondsLP();
 	while(!demo->isStreamingThreadStopped) {
+		// Load source and play it if needed
+		if(demo->trackList.changedPending) {
+			fplAssert(demo->trackList.currentIndex >= 0 && demo->trackList.currentIndex < (int32_t)demo->trackList.count);
+			AudioTrack *track = demo->trackList.tracks + demo->trackList.currentIndex;
+			AudioTrackState state = (AudioTrackState)fplAtomicLoadS32(&track->state);
+			if(state == AudioTrackState_AquireLoading) {
+				fplAtomicStoreS32(&track->state, AudioTrackState_Loading);
+				AudioSource *source = AudioSystemLoadFileSource(&demo->audioSys, track->urlOrFilePath);
+				if(source != fpl_null) {
+					track->sourceID = source->id;
+					fplAtomicStoreS32(&track->state, AudioTrackState_Ready);
+					track->playID = AudioSystemPlaySource(&demo->audioSys, source, false, 1.0f);
+				} else {
+					fplAtomicStoreS32(&track->state, AudioTrackState_Failed);
+				}
+				demo->trackList.changedPending = false;
+				startTime = fplGetTimeInMillisecondsLP();
+			} else {
+				fplAlwaysAssert(!"Invalid code path!");
+			}
+		}
+
 		// Wait if needed
 		bool wait = !ignoreWait;
 		if(wait || !currentEntry.canIgnoreWait) {
@@ -834,6 +840,56 @@ static void AudioStreamingThread(const fplThreadHandle *thread, void *rawData) {
 			}
 		}
 	}
+}
+
+static void ReleaseStreamBuffers(AudioDemo *demo) {
+	FreeAudioBuffer(&demo->audioSys.memory, &demo->outputTempBuffer);
+	LockFreeRingBufferRelease(&demo->outputRingBuffer);
+}
+
+static bool InitializeStreamBuffers(AudioDemo *demo, AudioFrameIndex *frameCount) {
+	bool bufferInitRes;
+
+	// Init streaming buffer and read some frames at the very start
+	AudioFrameIndex streamBufferFrames = fplGetAudioBufferSizeInFrames(demo->targetAudioFormat.sampleRate, 10000);
+	size_t streamBufferSize = fplGetAudioBufferSizeInBytes(demo->targetAudioFormat.type, demo->targetAudioFormat.channels, streamBufferFrames);
+	bufferInitRes = LockFreeRingBufferInit(&demo->outputRingBuffer, streamBufferSize, true);
+	if(!bufferInitRes) {
+		return(false);
+	}
+
+	// Allocate temporary stream buffer
+	AudioFormat streamTempBufferFormat = fplZeroInit;
+	streamTempBufferFormat.channels = demo->targetAudioFormat.channels;
+	streamTempBufferFormat.format = demo->targetAudioFormat.type;
+	streamTempBufferFormat.sampleRate = demo->targetAudioFormat.sampleRate;
+	bufferInitRes = AllocateAudioBuffer(&demo->audioSys.memory, &demo->outputTempBuffer, &streamTempBufferFormat, streamBufferFrames);
+	if(!bufferInitRes) {
+		return(false);
+	}
+
+	*frameCount = streamBufferFrames;
+
+	return(true);
+}
+
+static void ReleaseVisualization(AudioDemo *demo) {
+
+}
+
+static bool InitializeVisualization(AudioDemo *demo) {
+	// Initialize frequency bins
+	uint32_t frequencyBinCount = fplArrayCount(demo->visualization.bins);
+	for(uint32_t i = 0; i < frequencyBinCount; ++i) {
+		double freq = i * (double)demo->targetAudioFormat.sampleRate / (double)frequencyBinCount;
+		demo->visualization.maxPeaks[i] = 0;
+		demo->visualization.bins[i] = freq;
+	}
+
+	// Init window coefficients
+	HammingWindowFunction(demo->visualization.windowCoeffs, fplArrayCount(demo->visualization.fftInput));
+
+	return(true);
 }
 
 int main(int argc, char **args) {
@@ -928,199 +984,128 @@ int main(int argc, char **args) {
 
 	const fplSettings *currentSettings = fplGetCurrentSettings();
 
-	// Init audio data
-	if(InitAudioData(&demo->targetAudioFormat, &demo->audioSys, files, fileCount, forceSineWave, &demo->sineWave)) {
+	if(!AudioSystemInit(&demo->audioSys, &demo->targetAudioFormat)) {
+		goto done;
+	}
+
 		// Initialze playback latency
-		demo->maxPlaybackFrameLatency = demo->targetAudioFormat.bufferSizeInFrames / demo->targetAudioFormat.periods;
+	demo->maxPlaybackFrameLatency = demo->targetAudioFormat.bufferSizeInFrames / demo->targetAudioFormat.periods;	
 
-		size_t playitemCount = AudioSystemGetPlayItems(&demo->audioSys, fpl_null, 0);
-		AudioPlayItem *playItems = fplMemoryAllocate(sizeof(AudioPlayItem) * playitemCount);
-		AudioSystemGetPlayItems(&demo->audioSys, playItems, playitemCount);
+#if OPT_PLAYBACK == OPT_PLAYBACK_STREAMBUFFER
+	AudioFrameIndex streamBufferFrames = 0;
+	if(!InitializeStreamBuffers(demo, &streamBufferFrames)) {
+		goto done;
+	}
 
-		AudioFrameIndex maxPlayItemsFrameCount = 0;
-		for(size_t audioSourceIndex = 0; audioSourceIndex < playitemCount; ++audioSourceIndex) {
-			const AudioPlayItem *playItem = playItems + audioSourceIndex;
-			const AudioSource *audioSource = playItem->source;
-			AudioFrameIndex sourceFrameCount = audioSource->buffer.frameCount;
-			maxPlayItemsFrameCount = fplMax(maxPlayItemsFrameCount, sourceFrameCount);
-		}
+	if(!InitializeVisualization(demo)) {
+		goto done;
+	}
 
-		bool bufferInitRes;
+	if(!LoadAudioTrackList(&demo->audioSys, files, fileCount, forceSineWave, &demo->sineWave, LoadAudioTrackFlags_None, &demo->trackList)) {
+		goto done;
+	}
 
-#if OPT_PLAYBACKMODE == OPT_PLAYBACK_STREAMBUFFER_ONLY
-		// Allocate direct stream buffer
-		AudioFormat fullAudioBufferFormat = fplZeroInit;
-		fullAudioBufferFormat.channels = demo->targetAudioFormat.channels;
-		fullAudioBufferFormat.format = demo->targetAudioFormat.type;
-		fullAudioBufferFormat.sampleRate = demo->targetAudioFormat.sampleRate;
-		bufferInitRes = AllocateAudioBuffer(&demo->audioSys.memory, &demo->fullAudioBuffer, &fullAudioBufferFormat, maxPlayItemsFrameCount);
-		if(!bufferInitRes) {
-			goto done;
-		}
+	if(demo->trackList.count == 0) {
+		goto done;
+	}
 
-		// @SLOW(final): Stream in the entire files in the pipeline, but dont advance it, because we want to use the samples for the smoother FFT visualization
-		AudioFrameIndex allFrames = AudioSystemWriteFrames(&demo->audioSys, demo->fullAudioBuffer.samples, &demo->targetAudioFormat, maxPlayItemsFrameCount, false);
-		fplAssert(allFrames == maxPlayItemsFrameCount);
-
-		// Init streaming buffer and read some frames at the very start
-		AudioFrameIndex streamBufferFrames = fplGetAudioBufferSizeInFrames(demo->targetAudioFormat.sampleRate, 10000);
-		size_t streamBufferSize = fplGetAudioBufferSizeInBytes(demo->targetAudioFormat.type, demo->targetAudioFormat.channels, streamBufferFrames);
-		bufferInitRes = LockFreeRingBufferInit(&demo->streamRingBuffer, streamBufferSize, true);
-		if(!bufferInitRes) {
-			goto done;
-		}
+	PlayAudioTrack(&demo->audioSys, &demo->trackList, 0);
 
 #if 0
-		// Init chunk buffer
-		size_t numChunks = fplMax(1, streamBufferSize / sizeof(AudioFramesChunk));
-		size_t chunkBufferSize = numChunks * sizeof(AudioFramesChunk);
-		bufferInitRes = LockFreeRingBufferInit(&demo->chunkRingBuffer, chunkBufferSize, true);
-		if(!bufferInitRes) {
-			goto done;
-		}
-
-		// Allocate temporary chunk buffer
-		size_t tempChunkTempBufferSize = (numChunks + 2) * sizeof(AudioFramesChunk);
-		demo->chunkTempBuffer = fplMemoryAlignedAllocate(tempChunkTempBufferSize, 16);
-#endif
-
-		// Allocate temporary stream buffer
-		AudioFormat streamTempBufferFormat = fplZeroInit;
-		streamTempBufferFormat.channels = demo->targetAudioFormat.channels;
-		streamTempBufferFormat.format = demo->targetAudioFormat.type;
-		streamTempBufferFormat.sampleRate = demo->targetAudioFormat.sampleRate;
-		bufferInitRes = AllocateAudioBuffer(&demo->audioSys.memory, &demo->streamTempBuffer, &streamTempBufferFormat, streamBufferFrames);
-		if(!bufferInitRes) {
-			goto done;
-		}
-
-		// Initialize frequency bins
-		uint32_t frequencyBinCount = fplArrayCount(demo->spectrum.bins);
-		for(uint32_t i = 0; i < frequencyBinCount; ++i) {
-			double freq = i * (double)demo->targetAudioFormat.sampleRate / (double)frequencyBinCount;
-			demo->spectrum.maxPeaks[i] = 0;
-			demo->spectrum.bins[i] = freq;
-		}
-
-		// Init window coefficients
-		HammingWindowFunction(demo->spectrum.windowCoeffs, fplArrayCount(demo->spectrum.input));
-
 		// Stream in initial frames
-		AudioFrameIndex initialFrameStreamCount = streamBufferFrames / 4;
-		fplAssert(streamBufferFrames >= initialFrameStreamCount);
-		StreamAudio(&demo->targetAudioFormat, initialFrameStreamCount, demo, fpl_null);
+	AudioFrameIndex initialFrameStreamCount = streamBufferFrames / 4;
+	fplAssert(streamBufferFrames >= initialFrameStreamCount);
+	StreamAudio(&demo->targetAudioFormat, initialFrameStreamCount, demo, fpl_null);
+#endif
 
 		// Start streaming thread
-		demo->streamingThread = fplThreadCreate(AudioStreamingThread, demo);
+	demo->streamingThread = fplThreadCreate(AudioStreamingThread, demo);
 #endif
 
-		// Start audio playback (This will start calling clientReadCallback regulary)
-		if(fplPlayAudio() == fplAudioResultType_Success) {
-			// Print output infos
-			const char *outDriver = fplGetAudioDriverName(currentSettings->audio.driver);
-			const char *outFormat = fplGetAudioFormatName(demo->audioSys.targetFormat.format);
-			uint32_t outSampleRate = demo->audioSys.targetFormat.sampleRate;
-			uint32_t outChannels = demo->audioSys.targetFormat.channels;
-			fplConsoleFormatOut("Playing %lu audio sources (%s, %s, %lu Hz, %lu channels)\n",
-				demo->audioSys.playItems.count,
-				outDriver,
-				outFormat,
-				outSampleRate,
-				outChannels);
+		// Start audio playback (This will start calling clientReadCallback regularly)
+	if(fplPlayAudio() == fplAudioResultType_Success) {
+		// Print output infos
+		const char *outDriver = fplGetAudioDriverName(currentSettings->audio.driver);
+		const char *outFormat = fplGetAudioFormatName(demo->audioSys.targetFormat.format);
+		uint32_t outSampleRate = demo->audioSys.targetFormat.sampleRate;
+		uint32_t outChannels = demo->audioSys.targetFormat.channels;
+		fplConsoleFormatOut("Playing %lu audio sources (%s, %s, %lu Hz, %lu channels)\n",
+			demo->audioSys.playItems.count,
+			outDriver,
+			outFormat,
+			outSampleRate,
+			outChannels);
 
-			UpdateTitle(demo);
+		UpdateTitle(demo);
 
-			// Loop
-			double totalTime = 0.0;
-			fplWallClock lastTime = fplGetWallClock();
-			while(fplWindowUpdate()) {
-				fplEvent ev;
-				while(fplPollEvent(&ev)) {
-					if(ev.type == fplEventType_Keyboard) {
-						if(ev.keyboard.type == fplKeyboardEventType_Button) {
-							if(ev.keyboard.buttonState == fplButtonState_Release) {
-								fplKey key = ev.keyboard.mappedKey;
-								if(key == fplKey_F) {
-									if(!fplIsWindowFullscreen())
-										fplEnableWindowFullscreen();
-									else
-										fplDisableWindowFullscreen();
-								} else if(key == fplKey_F1) {
-									demo->useRealTimeSamples = !demo->useRealTimeSamples;
-								}
-
-#if 0
-								if(key == fplKey_P) {
-									demo->plotType = (demo->plotType + 1) % WavePlotType_Count;
-								} else if(key == fplKey_Add) {
-									demo->plotCount *= 2;
-									if(demo->plotCount > 2048) {
-										demo->plotCount = 2048;
-									}
-								} else if(key == fplKey_Substract) {
-									demo->plotCount /= 2;
-									if(demo->plotCount < 8) {
-										demo->plotCount = 8;
-									}
-								}
-#endif
-
-								UpdateTitle(demo);
+		// Loop
+		double totalTime = 0.0;
+		fplWallClock lastTime = fplGetWallClock();
+		while(fplWindowUpdate()) {
+			fplEvent ev;
+			while(fplPollEvent(&ev)) {
+				if(ev.type == fplEventType_Keyboard) {
+					if(ev.keyboard.type == fplKeyboardEventType_Button) {
+						if(ev.keyboard.buttonState == fplButtonState_Release) {
+							fplKey key = ev.keyboard.mappedKey;
+							if(key == fplKey_F) {
+								if(!fplIsWindowFullscreen())
+									fplEnableWindowFullscreen();
+								else
+									fplDisableWindowFullscreen();
+							} else if(key == fplKey_F1) {
+								demo->useRealTimeSamples = !demo->useRealTimeSamples;
 							}
+							UpdateTitle(demo);
 						}
 					}
 				}
-
-				fplWindowSize winSize = fplZeroInit;
-				fplGetWindowSize(&winSize);
-				Render(demo, winSize.width, winSize.height, totalTime);
-				fplVideoFlip();
-
-				fplWallClock curTime = fplGetWallClock();
-				double frameTime = fplGetWallDelta(lastTime, curTime);
-				totalTime += frameTime;
-				lastTime = curTime;
 			}
 
-			// Stop audio playback
-			fplStopAudio();
+			fplWindowSize winSize = fplZeroInit;
+			fplGetWindowSize(&winSize);
+			Render(demo, winSize.width, winSize.height, totalTime);
+			fplVideoFlip();
+
+			fplWallClock curTime = fplGetWallClock();
+			double frameTime = fplGetWallDelta(lastTime, curTime);
+			totalTime += frameTime;
+			lastTime = curTime;
 		}
+
+		// Stop audio playback
+		fplStopAudio();
 	}
 
 	result = 0;
 
 done:
-#if OPT_PLAYBACKMODE == OPT_PLAYBACK_STREAMBUFFER_ONLY
+#if OPT_PLAYBACK == OPT_PLAYBACK_STREAMBUFFER
 	// Wait for decoding thread to stop
 	demo->isStreamingThreadStopped = 1;
 	fplThreadWaitForOne(demo->streamingThread, FPL_TIMEOUT_INFINITE);
 	fplThreadTerminate(demo->streamingThread);
 
-	// Release audio buffers
-
-#if 0
-	fplMemoryAlignedFree(demo->chunkTempBuffer);
+	// Free and streaming buffers
+	ReleaseStreamBuffers(demo);
 #endif
 
-	FreeAudioBuffer(&demo->audioSys.memory, &demo->fullAudioBuffer);
-	FreeAudioBuffer(&demo->audioSys.memory, &demo->streamTempBuffer);
-
-#if 0
-	LockFreeRingBufferRelease(&demo->chunkRingBuffer);
-#endif
-
-	LockFreeRingBufferRelease(&demo->streamRingBuffer);
-#endif
+	// Release visualization
+	ReleaseVisualization(demo);
 
 	// Release audio system
+	StopAllAudioTracks(&demo->audioSys, &demo->trackList);
 	AudioSystemShutdown(&demo->audioSys);
 
+	// Shutdown OpenGL
 	fglUnloadOpenGL();
 
-	fplPlatformRelease();
-
-	if(demo)
+	// Free demo memory
+	if(demo) {
 		fplMemoryFree(demo);
+	}
+
+	fplPlatformRelease();
 
 	return(result);
 }
