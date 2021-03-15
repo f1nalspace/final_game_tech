@@ -2231,50 +2231,49 @@ struct IUnknown;
 
 #	if defined(FPL_PLATFORM_WINDOWS)
 
-//! A win32 GUID (Opaque)
+//! A win32 GUID (opaque, min 16 bytes)
 typedef uint8_t fpl__Win32Guid[16];
-//! A win32 handle (Opaque)
+//! A win32 handle (opaque, min 4/8 bytes)
 typedef void *fpl__Win32Handle;
-//! A win32 library handle (Opaque)
+//! A win32 library handle (opaque, min 4/8 bytes)
 typedef fpl__Win32Handle fpl__Win32LibraryHandle;
-//! A win32 thread handle (Opaque)
+//! A win32 file handle (opaque, min 4/8 bytes)
+typedef fpl__Win32Handle fpl__Win32FileHandle;
+//! A win32 thread handle (opaque, min 4/8 bytes)
 typedef fpl__Win32Handle fpl__Win32ThreadHandle;
-//! A win32 mutex handle (Opaque)
+//! A win32 mutex handle (opaque, min 80 bytes)
 typedef uint8_t fpl__Win32MutexHandle[96];
-//! A win32 signal handle (Opaque)
+//! A win32 signal handle (opaque, min 4/8 bytes)
 typedef fpl__Win32Handle fpl__Win32SignalHandle;
-//! A win32 condition variable (Opaque)
+//! A win32 condition variable (opaque, min 4/8 bytes)
 typedef void *fpl__Win32ConditionVariable;
-//! A win32 semaphore handle (Opaque)
-typedef struct fpl__Win32SemaphoreHandle {
-	//! Semaphore handle
-	fpl__Win32Handle handle;
-	//! Semaphore value
-	volatile int32_t value;
-} fpl__Win32SemaphoreHandle;
+//! A win32 semaphore handle (opaque, min 4/8 bytes)
+typedef fpl__Win32Handle fpl__Win32SemaphoreHandle;
 
 #	endif // FPL_PLATFORM_WINDOWS
 
 #	if defined(FPL_SUBPLATFORM_POSIX)
-#		error "Opaque handles are not supported for POSIX right now"
 
-//! A POSIX thread handle (Opaque)
-typedef pthread_t fpl__POSIXThreadHandle;
-//! A POSIX library handle (Opaque)
+//! A POSIX library handle (opaque, min 4/8 bytes)
 typedef void *fpl__POSIXLibraryHandle;
-//! A POSIX mutex handle (Opaque)
-typedef pthread_mutex_t fpl__POSIXMutexHandle;
-//! A POSIX semaphore handle (Opaque)
-typedef sem_t fpl__POSIXSemaphoreHandle;
-//! A POSIX condition variable (Opaque)
-typedef pthread_cond_t fpl__POSIXConditionVariable;
+//! A POSIX file handle (opaque, min 4 bytes)
+typedef int fpl__POSIXFileHandle;
+//! A POSIX directory handle (opaque, min 4/8 bytes)
+typedef void *fpl__POSIXDirHandle;
+//! A POSIX thread handle (opaque, min 8 bytes)
+typedef uint64_t fpl__POSIXThreadHandle;
+//! A POSIX mutex handle (opaque, min 40 bytes)
+typedef uint8_t fpl__POSIXMutexHandle[64];
+//! A POSIX semaphore handle (opaque, min 32 bytes)
+typedef uint8_t fpl__POSIXSemaphoreHandle[32];
+//! A POSIX condition variable (opaque, min: 48 bytes)
+typedef uint8_t fpl__POSIXConditionVariable[64];
 
 #	endif // FPL_SUBPLATFORM_POSIX
 
 #	if defined(FPL_PLATFORM_LINUX)
-#		error "Opaque handles are not supported for linux right now"
 
-//! A linux signal handle (Opaque)
+//! A linux signal handle (opaque, min 4 bytes)
 typedef int fpl__LinuxSignalHandle;
 
 #	endif // FPL_PLATFORM_LINUX
@@ -2291,6 +2290,8 @@ typedef HANDLE fpl__Win32Handle;
 typedef HMODULE fpl__Win32LibraryHandle;
 //! A win32 thread handle
 typedef HANDLE fpl__Win32ThreadHandle;
+//! A win32 file handle
+typedef HANDLE fpl__Win32FileHandle;
 //! A win32 mutex handle
 typedef CRITICAL_SECTION fpl__Win32MutexHandle;
 //! A win32 signal handle
@@ -2298,12 +2299,7 @@ typedef HANDLE fpl__Win32SignalHandle;
 //! A win32 condition variable
 typedef CONDITION_VARIABLE fpl__Win32ConditionVariable;
 //! A win32 semaphore handle
-typedef struct fpl__Win32SemaphoreHandle {
-	//! Semaphore handle
-	HANDLE handle;
-	//! Semaphore value
-	volatile int32_t value;
-} fpl__Win32SemaphoreHandle; 
+typedef HANDLE fpl__Win32SemaphoreHandle;
 
 #	endif // FPL_PLATFORM_WINDOWS
 
@@ -2311,6 +2307,10 @@ typedef struct fpl__Win32SemaphoreHandle {
 
 //! A POSIX library handle
 typedef void *fpl__POSIXLibraryHandle;
+//! A POSIX file handle
+typedef int fpl__POSIXFileHandle;
+//! A POSIX directory handle
+typedef DIR *fpl__POSIXDirHandle;
 //! A POSIX thread handle
 typedef pthread_t fpl__POSIXThreadHandle;
 //! A POSIX mutex handle
@@ -4216,11 +4216,20 @@ typedef struct fplThreadHandle {
 	volatile fpl_b32 isStopping;
 } fplThreadHandle;
 
+#if defined(FPL_PLATFORM_WINDOWS)
+typedef struct fpl__Win32InternalSemaphore {
+	//! Semaphore handle
+	fpl__Win32SemaphoreHandle handle;
+	//! Semaphore value
+	volatile int32_t value;
+} fpl__Win32InternalSemaphore;
+#endif
+
 //! A union containing the internal semaphore handle for any platform
 typedef union fplInternalSemaphoreHandle {
 #if defined(FPL_PLATFORM_WINDOWS)
 	//! Win32 semaphore handle
-	fpl__Win32SemaphoreHandle win32;
+	fpl__Win32InternalSemaphore win32;
 #elif defined(FPL_SUBPLATFORM_POSIX)
 	//! Posix semaphore handle
 	fpl__POSIXSemaphoreHandle posixHandle;
@@ -4739,10 +4748,10 @@ fpl_common_api size_t fplS32ToString(const int32_t value, char *buffer, const si
 typedef union fplInternalFileHandle {
 #if defined(FPL_PLATFORM_WINDOWS)
 	//! Win32 file handle
-	void *win32FileHandle;
+	fpl__Win32FileHandle win32FileHandle;
 #elif defined(FPL_SUBPLATFORM_POSIX)
 	//! Posix file handle
-	int posixFileHandle;
+	fpl__POSIXFileHandle posixFileHandle;
 #endif
 } fplInternalFileHandle;
 
@@ -4838,10 +4847,10 @@ FPL_ENUM_AS_FLAGS_OPERATORS(fplFileAttributeFlags);
 typedef union fplInternalFileEntryHandle {
 #if defined(FPL_PLATFORM_WINDOWS)
 	//! Win32 file handle
-	void *win32FileHandle;
+	fpl__Win32FileHandle win32FileHandle;
 #elif defined(FPL_SUBPLATFORM_POSIX)
 	//! Posix directory handle
-	DIR *posixDirHandle;
+	fpl__POSIXDirHandle posixDirHandle;
 #endif
 } fplInternalFileEntryHandle;
 
@@ -6542,6 +6551,33 @@ struct IUnknown;
 #	endif // FPL_SUBPLATFORM_X11
 
 #endif // !FPL__HAS_PLATFORM_INCLUDES
+
+//
+// Test OS handles
+//
+#if defined(FPL_PLATFORM_WINDOWS)
+fplStaticAssert(sizeof(fpl__Win32Handle) >= sizeof(HANDLE));
+fplStaticAssert(sizeof(fpl__Win32LibraryHandle) >= sizeof(HANDLE));
+fplStaticAssert(sizeof(fpl__Win32FileHandle) >= sizeof(HANDLE));
+fplStaticAssert(sizeof(fpl__Win32ThreadHandle) >= sizeof(HANDLE));
+fplStaticAssert(sizeof(fpl__Win32MutexHandle) >= sizeof(CRITICAL_SECTION));
+fplStaticAssert(sizeof(fpl__Win32SemaphoreHandle) >= sizeof(HANDLE));
+fplStaticAssert(sizeof(fpl__Win32ConditionVariable) >= sizeof(CONDITION_VARIABLE));
+#endif // FPL_PLATFORM_WINDOWS
+
+#if defined(FPL_SUBPLATFORM_POSIX)
+fplStaticAssert(sizeof(fpl__POSIXLibraryHandle) >= sizeof(void *));
+fplStaticAssert(sizeof(fpl__POSIXFileHandle) >= sizeof(int));
+fplStaticAssert(sizeof(fpl__POSIXDirHandle) >= sizeof(DIR *));
+fplStaticAssert(sizeof(fpl__POSIXThreadHandle) >= sizeof(pthread_t));
+fplStaticAssert(sizeof(fpl__POSIXMutexHandle) >= sizeof(pthread_mutex_t));
+fplStaticAssert(sizeof(fpl__POSIXSemaphoreHandle) >= sizeof(sem_t));
+fplStaticAssert(sizeof(fpl__POSIXConditionVariable) >= sizeof(pthread_cond_t));
+#endif // FPL_SUBPLATFORM_POSIX
+
+#if defined(FPL_PLATFORM_LINUX)
+fplStaticAssert(sizeof(fpl__LinuxSignalHandle) >= sizeof(int));
+#endif // FPL_PLATFORM_LINUX
 
 //
 // Compiler Includes
@@ -14143,7 +14179,7 @@ fpl_platform_api bool fplThreadWaitForOne(fplThreadHandle *thread, const fplTime
 	const fpl__PlatformAppState *appState = fpl__global__AppState;
 	const fpl__PThreadApi *pthreadApi = &appState->posix.pthreadApi;
 	bool result = false;
-	if((thread != fpl_null) && (fplGetThreadState(thread) != fplThreadState_Stopped)) {
+	if((thread != fpl_null) && (fplGetThreadState(thread) != fplThreadState_Stopped)) {	
 		pthread_t threadHandle = thread->internalHandle.posixThread;
 
 		// @NOTE(final): We optionally use the GNU extension "pthread_timedjoin_np" to support joining with a timeout.
@@ -14204,6 +14240,7 @@ fpl_platform_api bool fplMutexInit(fplMutexHandle *mutex) {
 	FPL__CheckPlatform(false);
 	const fpl__PlatformAppState *appState = fpl__global__AppState;
 	const fpl__PThreadApi *pthreadApi = &appState->posix.pthreadApi;
+	fplAssert(sizeof(fpl__POSIXMutexHandle) >= sizeof(pthread_mutex_t));
 	pthread_mutex_t mutexHandle;
 	int mutexRes = fpl__PosixMutexCreate(pthreadApi, &mutexHandle);
 	if(mutexRes != 0) {
@@ -14211,7 +14248,7 @@ fpl_platform_api bool fplMutexInit(fplMutexHandle *mutex) {
 		return false;
 	}
 	fplClearStruct(mutex);
-	mutex->internalHandle.posixMutex = mutexHandle;
+	fplMemoryCopy(&mutexHandle, sizeof(mutexHandle), &mutex->internalHandle.posixMutex);
 	mutex->isValid = true;
 	return(true);
 }
@@ -14221,7 +14258,7 @@ fpl_platform_api void fplMutexDestroy(fplMutexHandle *mutex) {
 	const fpl__PlatformAppState *appState = fpl__global__AppState;
 	const fpl__PThreadApi *pthreadApi = &appState->posix.pthreadApi;
 	if((mutex != fpl_null) && mutex->isValid) {
-		pthread_mutex_t *handle = &mutex->internalHandle.posixMutex;
+		pthread_mutex_t *handle = (pthread_mutex_t *)&mutex->internalHandle.posixMutex;
 		pthreadApi->pthread_mutex_destroy(handle);
 		fplClearStruct(mutex);
 	}
@@ -14234,7 +14271,7 @@ fpl_platform_api bool fplMutexLock(fplMutexHandle *mutex) {
 	const fpl__PThreadApi *pthreadApi = &appState->posix.pthreadApi;
 	bool result = false;
 	if(mutex->isValid) {
-		pthread_mutex_t *handle = &mutex->internalHandle.posixMutex;
+		pthread_mutex_t *handle = (pthread_mutex_t *)&mutex->internalHandle.posixMutex;
 		result = fpl__PosixMutexLock(pthreadApi, handle);
 	}
 	return (result);
@@ -14247,7 +14284,7 @@ fpl_platform_api bool fplMutexTryLock(fplMutexHandle *mutex) {
 	const fpl__PThreadApi *pthreadApi = &appState->posix.pthreadApi;
 	bool result = false;
 	if(mutex->isValid) {
-		pthread_mutex_t *handle = &mutex->internalHandle.posixMutex;
+		pthread_mutex_t *handle = (pthread_mutex_t *)&mutex->internalHandle.posixMutex;
 		result = fpl__PosixMutexTryLock(pthreadApi, handle);
 	}
 	return (result);
@@ -14260,7 +14297,7 @@ fpl_platform_api bool fplMutexUnlock(fplMutexHandle *mutex) {
 	const fpl__PThreadApi *pthreadApi = &appState->posix.pthreadApi;
 	bool result = false;
 	if(mutex->isValid) {
-		pthread_mutex_t *handle = &mutex->internalHandle.posixMutex;
+		pthread_mutex_t *handle = (pthread_mutex_t *)&mutex->internalHandle.posixMutex;
 		result = fpl__PosixMutexUnlock(pthreadApi, handle);
 	}
 	return (result);
@@ -14271,6 +14308,7 @@ fpl_platform_api bool fplConditionInit(fplConditionVariable *condition) {
 	FPL__CheckPlatform(false);
 	const fpl__PlatformAppState *appState = fpl__global__AppState;
 	const fpl__PThreadApi *pthreadApi = &appState->posix.pthreadApi;
+	fplAssert(sizeof(fpl__POSIXConditionVariable) >= sizeof(pthread_cond_t));
 	pthread_cond_t handle = PTHREAD_COND_INITIALIZER;
 	int condRes;
 	do {
@@ -14278,7 +14316,7 @@ fpl_platform_api bool fplConditionInit(fplConditionVariable *condition) {
 	} while(condRes == EAGAIN);
 	if(condRes == 0) {
 		fplClearStruct(condition);
-		condition->internalHandle.posixCondition = handle;
+		fplMemoryCopy(&handle, sizeof(handle), &condition->internalHandle.posixCondition);
 		condition->isValid = true;
 	}
 	return(condition->isValid);
@@ -14289,7 +14327,7 @@ fpl_platform_api void fplConditionDestroy(fplConditionVariable *condition) {
 	const fpl__PlatformAppState *appState = fpl__global__AppState;
 	const fpl__PThreadApi *pthreadApi = &appState->posix.pthreadApi;
 	if((condition != fpl_null) && condition->isValid) {
-		pthread_cond_t *handle = &condition->internalHandle.posixCondition;
+		pthread_cond_t *handle = (pthread_cond_t *)&condition->internalHandle.posixCondition;
 		pthreadApi->pthread_cond_destroy(handle);
 		fplClearStruct(condition);
 	}
@@ -14309,8 +14347,8 @@ fpl_platform_api bool fplConditionWait(fplConditionVariable *condition, fplMutex
 	FPL__CheckPlatform(false);
 	const fpl__PlatformAppState *appState = fpl__global__AppState;
 	const fpl__PThreadApi *pthreadApi = &appState->posix.pthreadApi;
-	pthread_cond_t *cond = &condition->internalHandle.posixCondition;
-	pthread_mutex_t *mut = &mutex->internalHandle.posixMutex;
+	pthread_cond_t *cond = (pthread_cond_t *)&condition->internalHandle.posixCondition;
+	pthread_mutex_t *mut = (pthread_mutex_t *)&mutex->internalHandle.posixMutex;
 	bool result;
 	if(timeout == FPL_TIMEOUT_INFINITE) {
 		result = pthreadApi->pthread_cond_wait(cond, mut) == 0;
@@ -14331,7 +14369,7 @@ fpl_platform_api bool fplConditionSignal(fplConditionVariable *condition) {
 	FPL__CheckPlatform(false);
 	const fpl__PlatformAppState *appState = fpl__global__AppState;
 	const fpl__PThreadApi *pthreadApi = &appState->posix.pthreadApi;
-	pthread_cond_t *handle = &condition->internalHandle.posixCondition;
+	pthread_cond_t *handle = (pthread_cond_t *)&condition->internalHandle.posixCondition;
 	bool result = pthreadApi->pthread_cond_signal(handle) == 0;
 	return(result);
 }
@@ -14345,7 +14383,7 @@ fpl_platform_api bool fplConditionBroadcast(fplConditionVariable *condition) {
 	FPL__CheckPlatform(false);
 	const fpl__PlatformAppState *appState = fpl__global__AppState;
 	const fpl__PThreadApi *pthreadApi = &appState->posix.pthreadApi;
-	pthread_cond_t *handle = &condition->internalHandle.posixCondition;
+	pthread_cond_t *handle = (pthread_cond_t *)&condition->internalHandle.posixCondition;
 	bool result = pthreadApi->pthread_cond_broadcast(handle) == 0;
 	return(result);
 }
@@ -14358,14 +14396,17 @@ fpl_platform_api bool fplSemaphoreInit(fplSemaphoreHandle *semaphore, const uint
 		return false;
 	}
 	FPL__CheckPlatform(false);
+	
 	const fpl__PlatformAppState *appState = fpl__global__AppState;
 	const fpl__PThreadApi *pthreadApi = &appState->posix.pthreadApi;
-	fplClearStruct(semaphore);
-	int res = pthreadApi->sem_init(&semaphore->internalHandle.posixHandle, 0, (int)initialValue);
+	sem_t handle;
+	int res = pthreadApi->sem_init(&handle, 0, (int)initialValue);
 	if(res < 0) {
 		FPL__ERROR(FPL__MODULE_THREADING, "Failed creating semaphore");
 		return false;
 	}
+	fplClearStruct(semaphore);
+	fplMemoryCopy(&handle, sizeof(handle), &semaphore->internalHandle.posixHandle);
 	semaphore->isValid = true;
 	return true;
 }
@@ -14376,7 +14417,8 @@ fpl_platform_api void fplSemaphoreDestroy(fplSemaphoreHandle *semaphore) {
 	const fpl__PThreadApi *pthreadApi = &appState->posix.pthreadApi;
 	if(semaphore != fpl_null) {
 		if(semaphore->isValid) {
-			pthreadApi->sem_destroy(&semaphore->internalHandle.posixHandle);
+			sem_t *handle = (sem_t *)&semaphore->internalHandle.posixHandle;
+			pthreadApi->sem_destroy(handle);
 		}
 		fplClearStruct(semaphore);
 	}
@@ -14391,13 +14433,14 @@ fpl_platform_api bool fplSemaphoreWait(fplSemaphoreHandle *semaphore, const fplT
 	FPL__CheckPlatform(false);
 	const fpl__PlatformAppState *appState = fpl__global__AppState;
 	const fpl__PThreadApi *pthreadApi = &appState->posix.pthreadApi;
+	sem_t *handle = (sem_t *)&semaphore->internalHandle.posixHandle;
 	int res;
 	if(timeout == FPL_TIMEOUT_INFINITE) {
-		res = pthreadApi->sem_wait(&semaphore->internalHandle.posixHandle);
+		res = pthreadApi->sem_wait(handle);
 	} else {
 		struct timespec t;
 		fpl__InitWaitTimeSpec(timeout, &t);
-		res = pthreadApi->sem_timedwait(&semaphore->internalHandle.posixHandle, &t);
+		res = pthreadApi->sem_timedwait(handle, &t);
 	}
 	bool result = res == 0;
 	return(result);
@@ -14412,7 +14455,8 @@ fpl_platform_api bool fplSemaphoreTryWait(fplSemaphoreHandle *semaphore) {
 	FPL__CheckPlatform(false);
 	const fpl__PlatformAppState *appState = fpl__global__AppState;
 	const fpl__PThreadApi *pthreadApi = &appState->posix.pthreadApi;
-	int res = pthreadApi->sem_trywait(&semaphore->internalHandle.posixHandle);
+	sem_t *handle = (sem_t *)&semaphore->internalHandle.posixHandle;
+	int res = pthreadApi->sem_trywait(handle);
 	bool result = (res == 0);
 	return(result);
 }
@@ -14426,8 +14470,9 @@ fpl_platform_api int32_t fplSemaphoreValue(fplSemaphoreHandle *semaphore) {
 	FPL__CheckPlatform(0);
 	const fpl__PlatformAppState *appState = fpl__global__AppState;
 	const fpl__PThreadApi *pthreadApi = &appState->posix.pthreadApi;
+	sem_t *handle = (sem_t *)&semaphore->internalHandle.posixHandle;
 	int value = 0;
-	int res = pthreadApi->sem_getvalue(&semaphore->internalHandle.posixHandle, &value);
+	int res = pthreadApi->sem_getvalue(handle, &value);
 	if(res < 0) {
 		return 0;
 	}
@@ -14443,7 +14488,8 @@ fpl_platform_api bool fplSemaphoreRelease(fplSemaphoreHandle *semaphore) {
 	FPL__CheckPlatform(0);
 	const fpl__PlatformAppState *appState = fpl__global__AppState;
 	const fpl__PThreadApi *pthreadApi = &appState->posix.pthreadApi;
-	int res = pthreadApi->sem_post(&semaphore->internalHandle.posixHandle);
+	sem_t *handle = (sem_t *)&semaphore->internalHandle.posixHandle;
+	int res = pthreadApi->sem_post(handle);
 	bool result = (res == 0);
 	return(result);
 }
@@ -15011,7 +15057,8 @@ fpl_platform_api bool fplListDirNext(fplFileEntry *entry) {
 	FPL__CheckArgumentNull(entry, false);
 	bool result = false;
 	if(entry->internalHandle.posixDirHandle != fpl_null) {
-		struct dirent *dp = readdir(entry->internalHandle.posixDirHandle);
+		DIR *dirHandle = (DIR *)entry->internalHandle.posixDirHandle;
+		struct dirent *dp = readdir(dirHandle);
 		do {
 			if(dp == fpl_null) {
 				break;
@@ -15020,10 +15067,10 @@ fpl_platform_api bool fplListDirNext(fplFileEntry *entry) {
 			if(isMatch) {
 				break;
 			}
-			dp = readdir(entry->internalHandle.posixDirHandle);
+			dp = readdir(dirHandle);
 		} while(dp != fpl_null);
 		if(dp == fpl_null) {
-			closedir(entry->internalHandle.posixDirHandle);
+			closedir(dirHandle);
 			fplClearStruct(entry);
 		} else {
 			fpl__PosixFillFileEntry(dp, entry);
@@ -15036,7 +15083,8 @@ fpl_platform_api bool fplListDirNext(fplFileEntry *entry) {
 fpl_platform_api void fplListDirEnd(fplFileEntry *entry) {
 	FPL__CheckArgumentNullNoRet(entry);
 	if(entry->internalHandle.posixDirHandle != fpl_null) {
-		closedir(entry->internalHandle.posixDirHandle);
+		DIR *dirHandle = (DIR *)entry->internalHandle.posixDirHandle;
+		closedir(dirHandle);
 		fplClearStruct(entry);
 	}
 }
