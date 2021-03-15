@@ -66,8 +66,6 @@ typedef struct AudioStaticBuffer {
 	AudioFrameIndex maxFrameCount;
 } AudioStaticBuffer;
 
-
-
 typedef struct PCMWaveData {
 	//! Total frame count
 	AudioFrameIndex frameCount;
@@ -91,6 +89,20 @@ typedef struct PCMWaveData {
 
 #define AUDIO_MAX_CHANNEL_COUNT (AudioChannelIndex)16
 #define AUDIO_MAX_SAMPLESIZE 4
+
+static bool AreAudioBuffersEqual(AudioBuffer *a, AudioBuffer *b) {
+	if(a == fpl_null || b == fpl_null)
+		return(false);
+	if(a->bufferSize != b->bufferSize)
+		return(false);
+	if(a->frameCount != b->frameCount)
+		return(false);
+	if(a->isAllocated != b->isAllocated)
+		return(false);
+	if(a->samples == fpl_null || b->samples == fpl_null)
+		return(false);
+	return(true);
+}
 
 static void FreeWaveData(PCMWaveData* wave) {
 	if (wave != fpl_null) {

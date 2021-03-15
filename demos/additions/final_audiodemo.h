@@ -77,11 +77,24 @@ static bool PlayAudioTrack(AudioSystem *audioSys, AudioTrackList *tracklist, con
 			StopAllAudioTracks(audioSys, tracklist);
 			fplAssert(track->sourceID.value > 0);
 			AudioSource *source = AudioSystemGetSourceByID(audioSys, track->sourceID);
-			track->playID = AudioSystemPlaySource(audioSys, source, false, 1.0f);
-			tracklist->currentIndex = tracklist->lastIndex = index;
-			tracklist->changedPending = false;
-			return(true);
+			if(source != fpl_null) {
+				track->playID = AudioSystemPlaySource(audioSys, source, false, 1.0f);
+
+				// We either have never initialized the full buffer or the buffer 
+				bool isSameBuffer = AreAudioBuffersEqual(&track->outputFullBuffer, &source->buffer);
+				fplAssert((track->outputFullBuffer.bufferSize == 0) || isSameBuffer);
+
+				tracklist->currentIndex = tracklist->lastIndex = index;
+			} else {
+				// Source not available anymore?
+				fplAlwaysAssert(!"Lost audio source???");
+			}
+		} else {
+			// Invalid state
+			fplAlwaysAssert(!"Invalid code path!");
 		}
+		tracklist->changedPending = true;
+		return(true);
 	}
 	return(false);
 }

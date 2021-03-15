@@ -765,12 +765,31 @@ static void AudioStreamingThread(const fplThreadHandle *thread, void *rawData) {
 			AudioTrack *track = demo->trackList.tracks + demo->trackList.currentIndex;
 			AudioTrackState state = (AudioTrackState)fplAtomicLoadS32(&track->state);
 			if(state == AudioTrackState_AquireLoading) {
+				fplAssert(track->outputFullBuffer.bufferSize == 0);
+				fplAssert(!track->outputFullBuffer.isAllocated);
+
 				fplAtomicStoreS32(&track->state, AudioTrackState_Loading);
 				AudioSource *source = AudioSystemLoadFileSource(&demo->audioSys, track->urlOrFilePath);
 				if(source != fpl_null) {
+					AudioBuffer *fullAudioBuffer = &track->outputFullBuffer;
+
+					// Mark as playing
 					track->sourceID = source->id;
 					fplAtomicStoreS32(&track->state, AudioTrackState_Ready);
 					track->playID = AudioSystemPlaySource(&demo->audioSys, source, false, 1.0f);
+
+					// Allocate full audio buffer and fully load the 
+					AudioFrameIndex trackFrameCount = source->buffer.frameCount;
+					AudioFormat fullAudioBufferFormat = fplZeroInit;
+					fullAudioBufferFormat.channels = demo->targetAudioFormat.channels;
+					fullAudioBufferFormat.format = demo->targetAudioFormat.type;
+					fullAudioBufferFormat.sampleRate = demo->targetAudioFormat.sampleRate;
+					AllocateAudioBuffer(&demo->audioSys.memory, fullAudioBuffer, &fullAudioBufferFormat, trackFrameCount);
+
+					if(fullAudioBuffer->bufferSize > 0) {
+						AudioFrameIndex writtenFrames = AudioSystemWriteFrames(&demo->audioSys, fullAudioBuffer->samples, &demo->targetAudioFormat, trackFrameCount, false);
+						fplAssert(writtenFrames == trackFrameCount);
+					}
 				} else {
 					fplAtomicStoreS32(&track->state, AudioTrackState_Failed);
 				}
