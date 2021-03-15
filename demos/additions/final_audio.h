@@ -249,11 +249,11 @@ static void FFTTest() {
 
 }
 
-fpl_inline double AmplitudeToDecibel(const double amplitude) {
+fpl_force_inline double AmplitudeToDecibel(const double amplitude) {
 	return 20.0 * log10(amplitude);
 }
 
-fpl_inline double DecibelToAmplitude(const double dB) {
+fpl_force_inline double DecibelToAmplitude(const double dB) {
 	return pow(10.0, dB / 20.0);
 }
 
