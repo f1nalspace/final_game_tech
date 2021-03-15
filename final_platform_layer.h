@@ -139,7 +139,7 @@ SOFTWARE.
 	- New[#79]: Added function fplGetAudioDriver()
 	- New[#81]: Added function fplGetAudioBufferSizeInMilliseconds() to compute milliseconds from frame-count + sample-rate
 	- New[#85]: Added fpl*_First and fpl*_Last to every enum
-	- New[#84]: Added support for controlling the inclusion of platform includes with #define FPL_NO_PLATFORM_INCLUDES_IN_HEADER
+	- New[#84]: Added support for controlling the inclusion of platform includes with #define FPL_NO_PLATFORM_INCLUDES
 	- New[#84]: Added support for use opaque handles instead of OS handles with #define FPL_OPAQUE_HANDLES
 
 	- New[#86]: [X11] Implemented fplEnableWindowFullscreen() and fplDisableWindowFullscreen()
@@ -2189,7 +2189,7 @@ fplStaticAssert(sizeof(size_t) >= sizeof(uint32_t));
 // Platform Includes
 //
 // ****************************************************************************
-#if (!defined(FPL_NO_PLATFORM_INCLUDES_IN_HEADER) && !defined(FPL_OPAQUE_HANDLES)) && !defined(FPL__HAS_PLATFORM_INCLUDES)
+#if !defined(FPL_NO_PLATFORM_INCLUDES) && !defined(FPL__HAS_PLATFORM_INCLUDES)
 #	define FPL__HAS_PLATFORM_INCLUDES
 
 #	if defined(FPL_PLATFORM_WINDOWS)
@@ -2222,7 +2222,7 @@ struct IUnknown;
 #		include <X11/Xatom.h> // XA_CARDINAL
 #	endif // FPL_SUBPLATFORM_X11
 
-#endif // !FPL_NO_PLATFORM_INCLUDES_IN_HEADER
+#endif // !FPL_NO_PLATFORM_INCLUDES
 
 //
 // Platform handles

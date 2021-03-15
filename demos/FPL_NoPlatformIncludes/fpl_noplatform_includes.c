@@ -29,7 +29,7 @@ License:
 // We are a console application
 #define FPL_APPTYPE_CONSOLE
 // Disable platform includes, such as windows.h, pthread.h, etc.
-#define FPL_NO_PLATFORM_INCLUDES_IN_HEADER
+#define FPL_NO_PLATFORM_INCLUDES
 // Use semi-opaque handles in the header
 #define FPL_OPAQUE_HANDLES
 // FPL header
