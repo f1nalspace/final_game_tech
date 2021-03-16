@@ -658,7 +658,7 @@ static void LoadLevel(GameState& state, int levelSeed) {
 	GlueBallOnPaddle(state, &state.ball.ball);
 
 	// Play music
-	AudioSystemStopSource(state.audioSys, state.assets.musicPlayId);
+	AudioSystemStopOne(state.audioSys, state.assets.musicPlayId);
 	state.assets.musicPlayId = AudioSystemPlaySource(state.audioSys, state.assets.music, true, 0.5f);
 }
 
