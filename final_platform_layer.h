@@ -2232,7 +2232,7 @@ struct IUnknown;
 #	if defined(FPL_PLATFORM_WINDOWS)
 
 //! A win32 GUID (opaque, min 16 bytes)
-typedef uint8_t fpl__Win32Guid[16];
+typedef uint64_t fpl__Win32Guid[4];
 //! A win32 handle (opaque, min 4/8 bytes)
 typedef void *fpl__Win32Handle;
 //! A win32 library handle (opaque, min 4/8 bytes)
@@ -2242,7 +2242,7 @@ typedef fpl__Win32Handle fpl__Win32FileHandle;
 //! A win32 thread handle (opaque, min 4/8 bytes)
 typedef fpl__Win32Handle fpl__Win32ThreadHandle;
 //! A win32 mutex handle (opaque, min 80 bytes)
-typedef uint8_t fpl__Win32MutexHandle[96];
+typedef uint64_t fpl__Win32MutexHandle[16];
 //! A win32 signal handle (opaque, min 4/8 bytes)
 typedef fpl__Win32Handle fpl__Win32SignalHandle;
 //! A win32 condition variable (opaque, min 4/8 bytes)
@@ -2263,11 +2263,11 @@ typedef void *fpl__POSIXDirHandle;
 //! A POSIX thread handle (opaque, min 8 bytes)
 typedef uint64_t fpl__POSIXThreadHandle;
 //! A POSIX mutex handle (opaque, min 40 bytes)
-typedef uint8_t fpl__POSIXMutexHandle[64];
+typedef uint64_t fpl__POSIXMutexHandle[16];
 //! A POSIX semaphore handle (opaque, min 32 bytes)
-typedef uint8_t fpl__POSIXSemaphoreHandle[32];
+typedef uint64_t fpl__POSIXSemaphoreHandle[8];
 //! A POSIX condition variable (opaque, min: 48 bytes)
-typedef uint8_t fpl__POSIXConditionVariable[64];
+typedef uint64_t fpl__POSIXConditionVariable[16];
 
 #	endif // FPL_SUBPLATFORM_POSIX
 
