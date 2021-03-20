@@ -183,6 +183,7 @@ static void CheckGLError() {
 	}
 }
 
+static char CompileShaderInfoBuffer[1024];
 static GLuint CompileShader(GLuint type, const char *source, const char *name) {
 	GLuint result = glCreateShader(type);
 	glShaderSource(result, 1, &source, nullptr);
@@ -192,15 +193,16 @@ static GLuint CompileShader(GLuint type, const char *source, const char *name) {
 	if (compileStatus == GL_FALSE) {
 		int length;
 		glGetShaderiv(result, GL_INFO_LOG_LENGTH, &length);
-		char *message = (char *)fplStackAllocate(length * sizeof(char));
-		glGetShaderInfoLog(result, length, &length, message);
-		FPL_LOG_ERROR("App", "Failed to compile %s shader '%s':\n%s\n", (type == GL_VERTEX_SHADER ? "vertex" : "fragment"), name, message);
+		CompileShaderInfoBuffer[0] = 0;
+		glGetShaderInfoLog(result, length, &length, CompileShaderInfoBuffer);
+		FPL_LOG_ERROR("App", "Failed to compile %s shader '%s':\n%s\n", (type == GL_VERTEX_SHADER ? "vertex" : "fragment"), name, CompileShaderInfoBuffer);
 		glDeleteShader(result);
 		return 0;
 	}
 	return(result);
 }
 
+static char LinkShaderInfoBuffer[1024];
 static GLuint CreateShader(const char *vertexShaderSource, const char *fragmentShaderSource, const char *name) {
 	GLuint result = glCreateProgram();
 	GLuint vs = CompileShader(GL_VERTEX_SHADER, vertexShaderSource, name);
@@ -220,9 +222,9 @@ static GLuint CreateShader(const char *vertexShaderSource, const char *fragmentS
 	if (GL_LINK_STATUS == GL_FALSE) {
 		int length;
 		glGetProgramiv(result, GL_INFO_LOG_LENGTH, &length);
-		char *message = (char *)fplStackAllocate(length * sizeof(char));
-		glGetProgramInfoLog(result, length, &length, message);
-		FPL_LOG_ERROR("App", "Failed to link %s shader program:\n%s\n", name, message);
+		LinkShaderInfoBuffer[0] = 0;
+		glGetProgramInfoLog(result, length, &length, LinkShaderInfoBuffer);
+		FPL_LOG_ERROR("App", "Failed to link %s shader program:\n%s\n", name, LinkShaderInfoBuffer);
 		glDeleteProgram(result);
 		return 0;
 	}
