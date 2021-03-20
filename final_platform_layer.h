@@ -6636,6 +6636,12 @@ fplStaticAssert(sizeof(fpl__LinuxSignalHandle) >= sizeof(int));
 #define FPL__ENUM_VALUE_TO_ARRAY_INDEX(value, first, last) (((value) >= (first) && (value) <= (last)) ? ((value) - (first)) : 0)
 
 //
+// Internal memory
+//
+fpl_internal void *fpl__AllocateMemory(const fplMemoryAllocationSettings *allocSettings, const size_t size, const size_t alignment);
+fpl_internal void fpl__ReleaseMemory(const fplMemoryAllocationSettings * allocSettings, void *ptr); 
+
+//
 // Internal logging system
 //
 #define FPL__MODULE_CONCAT(mod, format) "[" mod "] " format
@@ -6806,6 +6812,31 @@ fpl_internal void fpl__HandleError(const char *funcName, const int lineNumber, c
 // > UTILITY_FUNCTIONS
 //
 // ############################################################################
+fpl_internal void *fpl__AllocateMemory(const fplMemoryAllocationSettings *allocSettings, const size_t size, const size_t alignment) {
+	if(allocSettings->mode == fplMemoryAllocationMode_Custom) {
+		if(allocSettings->allocateCallback != fpl_null && allocSettings->releaseCallback != fpl_null) {
+			return allocSettings->allocateCallback(allocSettings->userData, size, alignment);
+		}
+	}
+	return fplMemoryAlignedAllocate(size, alignment);
+}
+
+fpl_internal void fpl__ReleaseMemory(const fplMemoryAllocationSettings *allocSettings, void *ptr) {
+	if(allocSettings->mode == fplMemoryAllocationMode_Custom) {
+		if(allocSettings->allocateCallback != fpl_null && allocSettings->releaseCallback != fpl_null) {
+			allocSettings->releaseCallback(allocSettings->userData, ptr);
+			return;
+		}
+	}
+	fplMemoryAlignedFree(ptr);
+}
+
+// Forward declarations of internal memory
+fpl_internal void *fpl__AllocateDynamicMemory(const size_t size, const size_t alignment);
+fpl_internal void fpl__ReleaseDynamicMemory(void *ptr);
+fpl_internal void *fpl__AllocateTemporaryMemory(const size_t size, const size_t alignment);
+fpl_internal void fpl__ReleaseTemporaryMemory(void *ptr);
+
 fpl_internal uint32_t fpl__NextPowerOfTwo(const uint32_t input) {
 	uint32_t x = input;
 	x--;
@@ -6857,7 +6888,7 @@ fpl_internal size_t fpl__ParseTextFile(const char *filePath, const char **wildca
 	size_t result = 0;
 	fplFileHandle fileHandle = fplZeroInit;
 	if(fplOpenBinaryFile(filePath, &fileHandle)) {
-		char *line = (char *)fplStackAllocate(maxLineSize);
+		char *line = (char *)fpl__AllocateTemporaryMemory(maxLineSize, 8);
 		char buffer[FPL_MAX_BUFFER_LENGTH];
 		const size_t maxBufferSize = fplArrayCount(buffer) - 1;
 		size_t bytesRead = 0;
@@ -6917,6 +6948,7 @@ fpl_internal size_t fpl__ParseTextFile(const char *filePath, const char **wildca
 				}
 			}
 		}
+		fpl__ReleaseTemporaryMemory(line);
 		fplCloseFile(&fileHandle);
 	}
 	return(result);
@@ -8250,34 +8282,6 @@ struct fpl__PlatformAppState {
 };
 
 //
-// Internal memory allocation
-//
-fpl_internal void *fpl__AllocateMemory(const fplMemoryAllocationSettings *allocSettings, const size_t size, const size_t alignment) {
-	if(allocSettings->mode == fplMemoryAllocationMode_Custom) {
-		if(allocSettings->allocateCallback != fpl_null && allocSettings->releaseCallback != fpl_null) {
-			return allocSettings->allocateCallback(allocSettings->userData, size, alignment);
-		}
-	}
-	return fplMemoryAlignedAllocate(size, alignment);
-}
-
-fpl_internal void fpl__ReleaseMemory(const fplMemoryAllocationSettings *allocSettings, void *ptr) {
-	if(allocSettings->mode == fplMemoryAllocationMode_Custom) {
-		if(allocSettings->allocateCallback != fpl_null && allocSettings->releaseCallback != fpl_null) {
-			allocSettings->releaseCallback(allocSettings->userData, ptr);
-			return;
-		}
-	}
-	fplMemoryAlignedFree(ptr);
-}
-
-#define fpl__AllocateDynamicMemory(size, alignment) fpl__AllocateMemory(&fpl__global__InitState.initSettings.memorySettings.dynamic, size, alignment)
-#define fpl__ReleaseDynamicMemory(ptr) fpl__ReleaseMemory(&fpl__global__InitState.initSettings.memorySettings.dynamic, ptr)
-
-#define fpl__AllocateTemporaryMemory(size, alignment) fpl__AllocateMemory(&fpl__global__InitState.initSettings.memorySettings.temporary, size, alignment)
-#define fpl__ReleaseTemporaryMemory(ptr) fpl__ReleaseMemory(&fpl__global__InitState.initSettings.memorySettings.temporary, ptr)
-
-//
 // Internal window
 //
 #if defined(FPL__ENABLE_WINDOW)
@@ -8512,6 +8516,27 @@ typedef struct fpl__SetupWindowCallbacks {
 // ****************************************************************************
 #if !defined(FPL__COMMON_DEFINED)
 #define FPL__COMMON_DEFINED
+
+//
+// Internal memory
+//
+fpl_internal void *fpl__AllocateDynamicMemory(const size_t size, const size_t alignment) {
+	void *result = fpl__AllocateMemory(&fpl__global__InitState.initSettings.memorySettings.dynamic, size, alignment);
+	return(result);
+}
+
+fpl_internal void fpl__ReleaseDynamicMemory(void *ptr) {
+	fpl__ReleaseMemory(&fpl__global__InitState.initSettings.memorySettings.dynamic, ptr);
+}
+
+fpl_internal void *fpl__AllocateTemporaryMemory(const size_t size, const size_t alignment) {
+	void *result = fpl__AllocateMemory(&fpl__global__InitState.initSettings.memorySettings.temporary, size, alignment);
+	return(result);
+}
+
+fpl_internal void fpl__ReleaseTemporaryMemory(void *ptr) {
+	fpl__ReleaseMemory(&fpl__global__InitState.initSettings.memorySettings.temporary, ptr);
+}
 
 //
 // Audio constants
