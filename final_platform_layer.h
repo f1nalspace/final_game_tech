@@ -166,6 +166,7 @@ SOFTWARE.
 	- Changed[#74]: fplGetSystemLocale() allows to pass null-pointer as output argument to return the number of characters only
 	- Changed[#74]: fplGetProcessorName() allows to pass null-pointer as output argument to return the number of characters only
 	- Changed[#63]: Replaced usage of fplStackAllocate() with fpl__AllocateTemporaryMemory()
+	- Changed[#92]: Use _offsetof() and ARRAY_SIZE() for fplArrayCount() instead
 
 	- Changed[#72]: [Win32] Query QueryPerformanceFrequency for every High-Precision timer calls instead of once per app start
 	- Changed[#84]: [Win32] Moved windows.h include to the implementation and entry point block (all handles are void* or have correct size)
@@ -2155,12 +2156,26 @@ fplStaticAssert(sizeof(size_t) >= sizeof(uint32_t));
 #define fplClearStruct(ptr) fplMemoryClear((void *)(ptr), sizeof(*(ptr)))
 //! Copies the given source struct into the destination struct
 #define fplCopyStruct(src, dst) fplMemoryCopy(src, sizeof(*(src)), dst);
-//! Returns the element count from a static array,
-#define fplArrayCount(arr) (sizeof(arr) / sizeof((arr)[0]))
+
+// Array count
+#if defined(FPL_COMPILER_MSVC) && !defined(FPL_NO_CRT) // @TODO(final): Find a better way to detect no-crt inclusion!
+#	define fpl__m_ArrayCount(arr) _countof(arr)
+#elif defined(ARRAY_SIZE)
+#	define fpl__m_ArrayCount(arr) ARRAY_SIZE(arr)
+#else
+	//! The @ref fplArrayCount() validation is disabled
+#	define fplNoArrayCountValidation
+#	define fpl__m_ArrayCount(arr) (sizeof(arr) / sizeof((arr)[0]))
+#endif
+//! Returns the element count from a static array. This should ideally produce a compile error when passing a pointer to it.
+#define fplArrayCount(arr) fpl__m_ArrayCount(arr)
+
 //! Returns the offset in bytes to a field in a structure
 #define fplOffsetOf(type, field) ((size_t)(&(((type*)(0))->field)))
+
 //! Returns the smallest value
 #define fplMin(a, b) ((a) < (b) ? (a) : (b))
+
 //! Returns the biggest value
 #define fplMax(a, b) ((a) > (b) ? (a) : (b))
 

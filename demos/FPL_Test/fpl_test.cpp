@@ -225,7 +225,8 @@ static void TestMacros() {
 		ftExpects(35, actual);
 	}
 
-	// @NOTE(final): This is a simple/stupid macro, so when you pass a pointer, you basically get 2 always
+	// @NOTE(final): We now use _countof() or ARRAY_SIZE() so it is expected to produce a compile error when passing a raw pointer to it
+#if defined(fplNoArrayCountValidation)
 	ftMsg("[fplArrayCount] Test nullptr\n");
 	{
 		int* emptyArray = nullptr;
@@ -241,6 +242,7 @@ static void TestMacros() {
 		uint32_t expected = sizeof(int*) / sizeof(int);
 		ftExpects(expected, actual);
 	}
+#endif
 
 	//
 	// fplOffsetOf
