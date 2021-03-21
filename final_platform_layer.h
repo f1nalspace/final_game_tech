@@ -141,6 +141,7 @@ SOFTWARE.
 	- New[#85]: Added fpl*_First and fpl*_Last to every enum
 	- New[#84]: Added support for controlling the inclusion of platform includes with #define FPL_NO_PLATFORM_INCLUDES
 	- New[#84]: Added support for use opaque handles instead of OS handles with #define FPL_OPAQUE_HANDLES
+	- New[#75]: Added fplMinAlignment macro to get the minimum required alignment
 
 	- New[#86]: [X11] Implemented fplEnableWindowFullscreen() and fplDisableWindowFullscreen()
 
@@ -1527,6 +1528,21 @@ SOFTWARE.
 //! A assembler compiler instruction (asm)
 #define fplAsm fpl__m_Asm
 
+// Minimum alignment
+#if defined(FPL_COMPILER_MSVC)
+#	define fpl__MinAlignment 8
+#elif defined(FPL_COMPILER_GCC) || defined(FPL_COMPILER_CLANG)
+#	if defined(FPL_CPU_64BIT)
+#		define fpl__MinAlignment 8
+#	else
+#		define fpl__MinAlignment 4
+#	endif
+#else
+#	define fpl__MinAlignment 8
+#endif
+//! Minimum structure alignment
+#define fplMinAlignment fpl__MinAlignment
+
 // Alignment keyword
 #if defined(FPL_IS_CPP11)
 #define fpl__m_AlignAs(N) alignas(N)
@@ -1537,9 +1553,10 @@ SOFTWARE.
 #else
 #define fpl__m_AlignAs(N)
 #endif
+#define fpl__m_AlignAsAuto(N) fpl__m_AlignAs(((N) < fplMinAlignment ? fplMinAlignment : (N)))
 
 //! Structure alignment in bytes
-#define fplAlignAs(N) fpl__m_AlignAs(N)
+#define fplAlignAs(N) fpl__m_AlignAsAuto(N)
 
 //
 // Defines required for POSIX (mmap, 64-bit file io, etc.)
