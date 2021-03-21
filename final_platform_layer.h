@@ -170,6 +170,7 @@ SOFTWARE.
 	- Fixed[#76]: FPL__ERROR, FPL__WARNING, FPL__INFO was not passing the correct function name and line number in some cases
 	- Fixed[#83]: fplGetAudioBufferSizeInFrames() does not return correct values always
 	- Fixed[#83]: fplGetAudioBufferSizeInMilliseconds() does not return correct values always
+	- Fixed: Corrected a few code documentation translation bugs
 
 	- Fixed[#69]: [Win32] Removed the manual handling of ALT + F4 shut down of event handling
 	- Fixed[#87]: [POSIX] fplGetWallDelta() was returning incorrect values
@@ -1526,12 +1527,12 @@ SOFTWARE.
 #define fplAsm fpl__m_Asm
 
 // Alignment keyword
-#if defined(FPL_COMPILER_MSVC)
+#if defined(FPL_IS_CPP11)
+#define fpl__m_AlignAs(N) alignas(N)
+#elif defined(FPL_COMPILER_MSVC)
 #define fpl__m_AlignAs(N) __declspec(align(N))
 #elif defined(FPL_COMPILER_GCC) || defined(FPL_COMPILER_CLANG)
 #define fpl__m_AlignAs(N) __attribute__((aligned(N)))
-#elif defined(FPL_IS_CPP11)
-#define fpl__m_AlignAs(N) alignas(N)
 #else
 #define fpl__m_AlignAs(N)
 #endif
@@ -3196,7 +3197,7 @@ typedef enum fplInitFlags {
 	fplInitFlags_Window = 1 << 1,
 	//! Use a video backbuffer (This flag ensures that @ref fplInitFlags_Window is included always)
 	fplInitFlags_Video = 1 << 2,
-	//! Use asyncronous audio playback
+	//! Use asynchronous audio playback
 	fplInitFlags_Audio = 1 << 3,
 	//! Support for game controllers
 	fplInitFlags_GameController = 1 << 4,
@@ -3223,7 +3224,7 @@ typedef enum fplPlatformType {
 	fplPlatformType_Last = fplPlatformType_Unix,
 } fplPlatformType;
 
-//! An emnumeration of platform result types
+//! An enumeration of platform result types
 typedef enum fplPlatformResultType {
 	//! Window creation failed
 	fplPlatformResultType_FailedWindow = -6,
@@ -3309,13 +3310,13 @@ typedef union fplGraphicsApiSettings {
 
 //! A structure that contains video settings such as driver, vsync, api-settings etc.
 typedef struct fplVideoSettings {
-	//! Graphics Api settings
+	//! Graphics API settings
 	fplGraphicsApiSettings graphics;
 	//! Video driver type
 	fplVideoDriverType driver;
-	//! Is vertical syncronisation enabled. Useable only for hardware rendering!
+	//! Is vertical synchronizations enabled. Usable only for hardware rendering!
 	fpl_b32 isVSync;
-	//! Is backbuffer automatically resized. Useable only for software rendering!
+	//! Is backbuffer automatically resized. Usable only for software rendering!
 	fpl_b32 isAutoSize;
 } fplVideoSettings;
 
@@ -3431,7 +3432,7 @@ typedef struct fplAudioTargetFormat {
 	fplAudioFormatType type;
 	//! Latency mode
 	fplAudioLatencyMode latencyMode;
-	//! Is exclusive mode prefered
+	//! Is exclusive mode preferred
 	fpl_b32 preferExclusiveMode;
 } fplAudioTargetFormat;
 
@@ -3547,8 +3548,8 @@ typedef bool (fpl_window_event_callback)(const fplPlatformType platformType, voi
 /**
 * @brief A callback executed when the window needs to be exposed/repainted
 * @param platformType The current @ref fplPlatformType
-* @param windowState The opaque window state, mapping to fpl internal window state
-* @param rawEventData The raw event data structure for the current OS (XEvent for Posix, MSG for Win32, etc.)
+* @param windowState The opaque window state, mapping to internal window state
+* @param rawEventData The raw event data structure for the current OS (XEvent for POSIX, MSG for Win32, etc.)
 * @param userData The pointer to the specific user data specified in @ref fplWindowCallbacks
 * @return Needs to return true, if the event is handled
 */
@@ -3663,7 +3664,7 @@ typedef struct fplMemorySettings {
 	fplMemoryAllocationSettings temporary;
 } fplMemorySettings;
 
-//! A structure containg settings, such as window, video, etc.
+//! A structure containing settings, such as window, video, etc.
 typedef struct fplSettings {
 	//! Window settings
 	fplWindowSettings window;
@@ -3946,7 +3947,7 @@ typedef union fplInternalDynamicLibraryHandle {
 	//! Win32 library handle
 	fpl__Win32LibraryHandle win32LibraryHandle;
 #elif defined(FPL_SUBPLATFORM_POSIX)
-	//! Posix library handle
+	//! POSIX library handle
 	fpl__POSIXLibraryHandle posixLibraryHandle;
 #endif
 } fplInternalDynamicLibraryHandle;
@@ -4135,7 +4136,7 @@ fpl_platform_api uint64_t fplGetTimeInMilliseconds();
 
 // ----------------------------------------------------------------------------
 /**
-* @defgroup Threading Threading and syncronisation routines
+* @defgroup Threading Threading and synchronizations routines
 * @brief This category contains functions/types for dealing with concurrent programming, such as threads, mutexes, conditions, etc.
 * @{
 */
@@ -4231,7 +4232,7 @@ typedef union fplInternalSemaphoreHandle {
 	//! Win32 semaphore handle
 	fpl__Win32InternalSemaphore win32;
 #elif defined(FPL_SUBPLATFORM_POSIX)
-	//! Posix semaphore handle
+	//! POSIX semaphore handle
 	fpl__POSIXSemaphoreHandle posixHandle;
 #endif
 } fplInternalSemaphoreHandle;
@@ -4250,7 +4251,7 @@ typedef union fplInternalMutexHandle {
 	//! Win32 mutex handle
 	fpl__Win32MutexHandle win32CriticalSection;
 #elif defined(FPL_SUBPLATFORM_POSIX)
-	//! Posix mutex handle
+	//! POSIX mutex handle
 	fpl__POSIXMutexHandle posixMutex;
 #endif
 } fplInternalMutexHandle;
@@ -4373,7 +4374,7 @@ fpl_platform_api bool fplThreadTerminate(fplThreadHandle *thread);
 /**
 * @brief Wait until the given thread is done running or the given timeout has been reached.
 * @param thread The pointer to the @ref fplThreadHandle structure
-* @param timeout The number of milliseconds to wait. When this is set to @ref FPL_TIMEOUT_INFINITE it will wait infinitly.
+* @param timeout The number of milliseconds to wait. When this is set to @ref FPL_TIMEOUT_INFINITE it will wait infinitely.
 * @return Returns true when the thread completes or when the timeout has been reached, false otherwise.
 * @see @ref subsection_category_threading_threads_wait_single
 */
@@ -4383,7 +4384,7 @@ fpl_platform_api bool fplThreadWaitForOne(fplThreadHandle *thread, const fplTime
 * @param threads The pointer to the first @ref fplThreadHandle pointer
 * @param count The number of threads
 * @param stride The size in bytes to the next thread handle. When this is set to zero, the array default is used.
-* @param timeout The number of milliseconds to wait. When this is set to @ref FPL_TIMEOUT_INFINITE it will wait infinitly.
+* @param timeout The number of milliseconds to wait. When this is set to @ref FPL_TIMEOUT_INFINITE it will wait infinitely.
 * @return Returns true when all threads completes or when the timeout has been reached, false otherwise.
 * @see @ref subsection_category_threading_threads_wait_all
 */
@@ -4393,7 +4394,7 @@ fpl_platform_api bool fplThreadWaitForAll(fplThreadHandle **threads, const size_
 * @param threads The pointer to the first @ref fplThreadHandle pointer
 * @param count The number of threads
 * @param stride The size in bytes to the next thread handle. When this is set to zero, the array default is used.
-* @param timeout The number of milliseconds to wait. When this is set to @ref FPL_TIMEOUT_INFINITE it will wait infinitly.
+* @param timeout The number of milliseconds to wait. When this is set to @ref FPL_TIMEOUT_INFINITE it will wait infinitely.
 * @return Returns true when one thread completes or when the timeout has been reached, false otherwise.
 * @see @ref subsection_category_threading_threads_wait_any
 */
@@ -4453,8 +4454,8 @@ fpl_platform_api void fplSignalDestroy(fplSignalHandle *signal);
 /**
 * @brief Waits until the given signal are waked up.
 * @param signal The pointer to the @ref fplSignalHandle structure
-* @param timeout The number of milliseconds to wait. When this is set to @ref FPL_TIMEOUT_INFINITE it will wait infinitly.
-* @return Retrns true when the signal woke up or the timeout has been reached, false otherwise.
+* @param timeout The number of milliseconds to wait. When this is set to @ref FPL_TIMEOUT_INFINITE it will wait infinitely.
+* @return Returns true when the signal woke up or the timeout has been reached, false otherwise.
 * @see @ref subsection_category_threading_signals_wait_single
 */
 fpl_platform_api bool fplSignalWaitForOne(fplSignalHandle *signal, const fplTimeoutValue timeout);
@@ -4463,7 +4464,7 @@ fpl_platform_api bool fplSignalWaitForOne(fplSignalHandle *signal, const fplTime
 * @param signals The pointer to the first @ref fplSignalHandle pointer
 * @param count The number of signals
 * @param stride The size in bytes to the next signal handle. When this is set to zero, the array default is used.
-* @param timeout The number of milliseconds to wait. When this is set to @ref FPL_TIMEOUT_INFINITE it will wait infinitly.
+* @param timeout The number of milliseconds to wait. When this is set to @ref FPL_TIMEOUT_INFINITE it will wait infinitely.
 * @return Returns true when all signals woke up or the timeout has been reached, false otherwise.
 * @see @ref subsection_category_threading_signals_wait_all
 */
@@ -4473,7 +4474,7 @@ fpl_platform_api bool fplSignalWaitForAll(fplSignalHandle **signals, const size_
 * @param signals The pointer to the first @ref fplSignalHandle pointer
 * @param count The number of signals
 * @param stride The size in bytes to the next signal handle. When this is set to zero, the array default is used.
-* @param timeout The number of milliseconds to wait. When this is set to @ref FPL_TIMEOUT_INFINITE it will wait infinitly.
+* @param timeout The number of milliseconds to wait. When this is set to @ref FPL_TIMEOUT_INFINITE it will wait infinitely.
 * @return Returns true when any of the signals woke up or the timeout has been reached, false otherwise.
 * @see @ref subsection_category_threading_signals_wait_any
 */
@@ -4481,7 +4482,7 @@ fpl_platform_api bool fplSignalWaitForAny(fplSignalHandle **signals, const size_
 /**
 * @brief Sets the signal and wakes up the given signal.
 * @param signal The pointer to the @ref fplSignalHandle structure
-* @return Returns true when the signal was set and broadcasted or false otherwise.
+* @return Returns true when the signal was set and broad casted or false otherwise.
 * @see @ref section_category_threading_signals_set
 */
 fpl_platform_api bool fplSignalSet(fplSignalHandle *signal);
@@ -4512,7 +4513,7 @@ fpl_platform_api void fplConditionDestroy(fplConditionVariable *condition);
 * @brief Sleeps on the given condition and releases the mutex when done.
 * @param condition The pointer to the @ref fplConditionVariable structure
 * @param mutex The pointer to the mutex handle @ref fplMutexHandle structure
-* @param timeout The number of milliseconds to wait. When this is set to @ref FPL_TIMEOUT_INFINITE it will wait infinitly.
+* @param timeout The number of milliseconds to wait. When this is set to @ref FPL_TIMEOUT_INFINITE it will wait infinitely.
 * @return Returns true when the function succeeds, false otherwise.
 * @see @ref category_threading_conditions_wait_single
 */
@@ -4550,14 +4551,14 @@ fpl_platform_api void fplSemaphoreDestroy(fplSemaphoreHandle *semaphore);
 /**
 * @brief Waits for the semaphore until it get signaled or the timeout has been reached.
 * @param semaphore The pointer to the @ref fplSemaphoreHandle structure
-* @param timeout The number of milliseconds to wait. When this is set to @ref FPL_TIMEOUT_INFINITE it will wait infinitly.
+* @param timeout The number of milliseconds to wait. When this is set to @ref FPL_TIMEOUT_INFINITE it will wait infinitely.
 * @return Returns true when the semaphore got signaled, false otherwise.
 * @note When a semaphore got signaled, the semaphore value is decreased by one.
 * @see @ref category_threading_semaphores_wait
 */
 fpl_platform_api bool fplSemaphoreWait(fplSemaphoreHandle *semaphore, const fplTimeoutValue timeout);
 /**
-* @brief Tries to wait for the semaphore until it get signaled or return immediatly.
+* @brief Tries to wait for the semaphore until it get signaled or return immediately.
 * @param semaphore The pointer to the @ref fplSemaphoreHandle structure
 * @return Returns true when the semaphore got signaled, false otherwise.
 * @note When a semaphore got signaled, the semaphore value is decreased by one.
@@ -4750,7 +4751,7 @@ typedef union fplInternalFileHandle {
 	//! Win32 file handle
 	fpl__Win32FileHandle win32FileHandle;
 #elif defined(FPL_SUBPLATFORM_POSIX)
-	//! Posix file handle
+	//! POSIX file handle
 	fpl__POSIXFileHandle posixFileHandle;
 #endif
 } fplInternalFileHandle;
@@ -4862,7 +4863,7 @@ typedef struct fplInternalFileRootInfo {
 	const char *filter;
 } fplInternalFileRootInfo;
 
-//! The elapsed seconds since the unix epoch (1970-01-01 00:00:00)
+//! The elapsed seconds since the UNIX epoch (1970-01-01 00:00:00)
 typedef uint64_t fplFileTimeStamp;
 
 //! A structure containing filestamps for creation/access/modify date
@@ -5102,7 +5103,7 @@ fpl_platform_api bool fplGetFileTimestampsFromHandle(const fplFileHandle *fileHa
 */
 fpl_platform_api bool fplSetFileTimestamps(const char *filePath, const fplFileTimeStamps *timeStamps);
 /**
-* @brief Checks if the file exists and returns a boolean indicating the existance.
+* @brief Checks if the file exists and returns a boolean indicating the existence.
 * @param filePath The path to the file
 * @return Returns true when the file exists, false otherwise.
 */
@@ -5877,7 +5878,7 @@ typedef enum fplWindowState {
 	fplWindowState_Fullscreen,
 } fplWindowState;
 
-//! An enumeration containg the visibility state of a window
+//! An enumeration containing the visibility state of a window
 typedef enum fplWindowVisibilityState {
 	//! Unknown state
 	fplWindowVisibilityState_Unknown = 0,
@@ -5993,7 +5994,7 @@ fpl_platform_api bool fplIsWindowFullscreen();
 */
 fpl_platform_api bool fplGetWindowPosition(fplWindowPosition *outPos);
 /**
-* @brief Changes the window absolut position to the given coordinates.
+* @brief Changes the window absolute position to the given coordinates.
 * @param left The left position in screen units
 * @param top The top position in screen units
 */
@@ -6271,12 +6272,12 @@ typedef enum fplAudioResultType {
 */
 fpl_common_api fplAudioDriverType fplGetAudioDriver();
 /**
-* @brief Start playing asyncronous audio.
+* @brief Start playing asynchronous audio.
 * @return Returns the audio result @ref fplAudioResultType
 */
 fpl_common_api fplAudioResultType fplPlayAudio();
 /**
-* @brief Stop playing asyncronous audio.
+* @brief Stop playing asynchronous audio.
 * @return Returns the audio result @ref fplAudioResultType
 */
 fpl_common_api fplAudioResultType fplStopAudio();
