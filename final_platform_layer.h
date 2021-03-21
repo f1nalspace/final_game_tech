@@ -143,6 +143,8 @@ SOFTWARE.
 	- New[#84]: Added support for use opaque handles instead of OS handles with #define FPL_OPAQUE_HANDLES
 	- New[#75]: Added fplMinAlignment macro to get the minimum required alignment
 
+	- New[#51]: [POSIX] Implemented fplGetThreadPriority() and fplSetThreadPriority()
+	- New[#60]: [POSIX] Implemented fplGetCurrentThreadId()
 	- New[#86]: [X11] Implemented fplEnableWindowFullscreen() and fplDisableWindowFullscreen()
 
 	### Improvements
