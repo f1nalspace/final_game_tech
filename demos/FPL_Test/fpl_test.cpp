@@ -247,7 +247,7 @@ static void TestMacros() {
 	//
 	ftMsg("[fplOffsetOf] Test alignment of 4 (High to low)\n");
 	{
-		fplAlignAs(4) struct TestStruct {
+		struct fplAlignAs(4) TestStruct {
 			uint64_t a;
 			uint32_t b;
 			uint16_t c;
@@ -261,7 +261,7 @@ static void TestMacros() {
 
 	ftMsg("[fplOffsetOf] Test alignment of 4 (Low to High)\n");
 	{
-		fplAlignAs(4) struct TestStruct {
+		struct fplAlignAs(4) TestStruct {
 			uint8_t a;
 			uint16_t b;
 			uint32_t c;
@@ -275,7 +275,7 @@ static void TestMacros() {
 
 	ftMsg("[fplOffsetOf] Test alignment of 8 (Low to High)\n");
 	{
-		fplAlignAs(8) struct TestStruct {
+		struct fplAlignAs(8) TestStruct {
 			uint8_t a;
 			uint16_t b;
 			uint8_t c[3];
