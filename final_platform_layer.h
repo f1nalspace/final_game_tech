@@ -20576,21 +20576,25 @@ fpl_common_api const char *fplGetAudioDriverName(fplAudioDriverType driver) {
 }
 
 fpl_common_api uint32_t fplGetAudioBufferSizeInFrames(uint32_t sampleRate, uint32_t bufferSizeInMilliSeconds) {
-	uint32_t result = (uint32_t)(((float)sampleRate / 1000.0f) * (float)bufferSizeInMilliSeconds);
+	if(sampleRate == 0 || bufferSizeInMilliSeconds == 0) return(0);
+	uint32_t result = bufferSizeInMilliSeconds * sampleRate / 1000UL;
 	return(result);
 }
 
 fpl_common_api uint32_t fplGetAudioBufferSizeInMilliseconds(uint32_t sampleRate, uint32_t frameCount) {
-	uint32_t result = (uint32_t)((float)frameCount / ((float)sampleRate / 1000.0f));
+	if(sampleRate == 0 || frameCount == 0) return(0);
+	uint32_t result = frameCount * 1000UL / sampleRate;
 	return(result);
 }
 
 fpl_common_api uint32_t fplGetAudioFrameSizeInBytes(const fplAudioFormatType format, const uint32_t channelCount) {
+	if(channelCount == 0) return(0);
 	uint32_t result = fplGetAudioSampleSizeInBytes(format) * channelCount;
 	return(result);
 }
 
 fpl_common_api uint32_t fplGetAudioBufferSizeInBytes(const fplAudioFormatType format, const uint32_t channelCount, const uint32_t frameCount) {
+	if(channelCount == 0 || frameCount == 0) return(0);
 	uint32_t frameSize = fplGetAudioFrameSizeInBytes(format, channelCount);
 	uint32_t result = frameSize * frameCount;
 	return(result);

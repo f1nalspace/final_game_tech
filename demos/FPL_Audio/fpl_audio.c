@@ -911,8 +911,25 @@ static bool InitializeVisualization(AudioDemo *demo) {
 	return(true);
 }
 
+static void TestAudioMath() {
+	fplAlwaysAssert(fplGetAudioBufferSizeInFrames(0, 0) == 0);
+	fplAlwaysAssert(fplGetAudioBufferSizeInFrames(22050, 0) == 0);
+	fplAlwaysAssert(fplGetAudioBufferSizeInFrames(0, 1000) == 0);
+	fplAlwaysAssert(fplGetAudioBufferSizeInFrames(22050, 1000) == 22050);
+	fplAlwaysAssert(fplGetAudioBufferSizeInFrames(44100, 1000) == 44100);
+	fplAlwaysAssert(fplGetAudioBufferSizeInFrames(48000, 1000) == 48000);
+
+	fplAlwaysAssert(fplGetAudioBufferSizeInMilliseconds(0, 0) == 0);
+	fplAlwaysAssert(fplGetAudioBufferSizeInMilliseconds(0, 22050) == 0);
+	fplAlwaysAssert(fplGetAudioBufferSizeInMilliseconds(22050, 0) == 0);
+	fplAlwaysAssert(fplGetAudioBufferSizeInMilliseconds(22050, 22050) == 1000);
+	fplAlwaysAssert(fplGetAudioBufferSizeInMilliseconds(44100, 44100) == 1000);
+	fplAlwaysAssert(fplGetAudioBufferSizeInMilliseconds(48000, 48000) == 1000);
+}
+
 int main(int argc, char **args) {
-	//LockFreeRingBufferUnitTest();
+	TestAudioMath();
+	LockFreeRingBufferUnitTest();
 
 	size_t fileCount = argc >= 2 ? argc - 1 : 0;
 	const char **files = (fileCount > 0) ? (const char **)args + 1 : fpl_null;
