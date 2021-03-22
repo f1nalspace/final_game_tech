@@ -142,6 +142,8 @@ SOFTWARE.
 	- New[#84]: Added support for controlling the inclusion of platform includes with #define FPL_NO_PLATFORM_INCLUDES
 	- New[#84]: Added support for use opaque handles instead of OS handles with #define FPL_OPAQUE_HANDLES
 	- New[#75]: Added fplMinAlignment macro to get the minimum required alignment
+	- New[#90]: Added struct fplThreadParameters
+	- New[#90]: Added function fplThreadCreateWithParameters() which allows to set the stack size and the priority in the creation directly
 
 	- New[#51]: [POSIX] Implemented fplGetThreadPriority() and fplSetThreadPriority()
 	- New[#60]: [POSIX] Implemented fplGetCurrentThreadId()
@@ -4246,14 +4248,24 @@ typedef union fplInternalThreadHandle {
 #endif
 } fplInternalThreadHandle;
 
+//! Contains creation parameters for @ref fplThreadCreateWithParameters()
+typedef struct fplThreadParameters {
+	//! The user data passed to the run callback
+	void *userData;
+	//! The @ref fpl_run_thread_callback
+	fpl_run_thread_callback *runFunc;
+	//! The stack size in bytes or zero for using the default size
+	size_t stackSize;
+	//! The @ref fplThreadPriority
+	fplThreadPriority priority;
+} fplThreadParameters;
+
 //! The thread handle structure
 typedef struct fplThreadHandle {
 	//! The internal thread handle
 	fplInternalThreadHandle internalHandle;
-	//! The stored run callback
-	fpl_run_thread_callback *runFunc;
-	//! The user data passed to the run callback
-	void *data;
+	// The initial @ref fplThreadParameters
+	fplThreadParameters parameters;
 	//! Thread state
 	volatile fplThreadState currentState;
 	//! The identifier of the thread
@@ -4384,6 +4396,14 @@ fpl_platform_api uint32_t fplGetCurrentThreadId();
 * @see @ref section_category_threading_threads_create
 */
 fpl_platform_api fplThreadHandle *fplThreadCreate(fpl_run_thread_callback *runFunc, void *data);
+/**
+* @brief Creates and starts a thread from the specified @ref fplThreadParameters and returns the handle to it.
+* @param parameters The pointer to the @ref fplThreadParameters
+* @return Returns a pointer to the @ref fplThreadHandle structure or @ref fpl_null when the limit of active threads has been reached.
+* @warning Do not free this thread context directly!
+* @note The resources are automatically cleaned up when the thread terminates.
+*/
+fpl_platform_api fplThreadHandle *fplThreadCreateWithParameters(fplThreadParameters *parameters);
 /**
 * @brief Retrieves the current thread priority from the OS from the given @ref fplThreadHandle .
 * @param thread The pointer to the @ref fplThreadHandle structure
@@ -11890,9 +11910,15 @@ fpl_internal DWORD WINAPI fpl__Win32ThreadProc(void *data) {
 	fplThreadHandle *thread = (fplThreadHandle *)data;
 	fplAssert(thread != fpl_null);
 	fplAtomicStoreU32((volatile uint32_t *)&thread->currentState, (uint32_t)fplThreadState_Running);
-	if(thread->runFunc != fpl_null) {
-		thread->runFunc(thread, thread->data);
+
+	fplThreadParameters parameters = thread->parameters;
+
+	
+
+	if(parameters.runFunc != fpl_null) {
+		parameters.runFunc(thread, parameters.userData);
 	}
+
 	fplAtomicStoreU32((volatile uint32_t *)&thread->currentState, (uint32_t)fplThreadState_Stopping);
 	HANDLE handle = thread->internalHandle.win32ThreadHandle;
 	if(handle != fpl_null) {
@@ -11909,18 +11935,46 @@ fpl_platform_api uint32_t fplGetCurrentThreadId() {
 	return(result);
 }
 
-fpl_platform_api fplThreadHandle *fplThreadCreate(fpl_run_thread_callback *runFunc, void *data) {
-	FPL__CheckArgumentNull(runFunc, fpl_null);
+fpl_internal bool fpl__Win32SetThreadPriority(HANDLE threadHandle, const fplThreadPriority newPriority) {
+	int win32Priority = 0;
+	switch(newPriority) {
+		case fplThreadPriority_Idle:
+			win32Priority = THREAD_PRIORITY_IDLE;
+			break;
+		case fplThreadPriority_Low:
+			win32Priority = THREAD_PRIORITY_LOWEST;
+			break;
+		case fplThreadPriority_Normal:
+			win32Priority = THREAD_PRIORITY_NORMAL;
+			break;
+		case fplThreadPriority_High:
+			win32Priority = THREAD_PRIORITY_HIGHEST;
+			break;
+		case fplThreadPriority_RealTime:
+			win32Priority = THREAD_PRIORITY_TIME_CRITICAL;
+			break;
+		default:
+			FPL__ERROR("Threading", "The thread priority %d is not supported", newPriority);
+			return(false);
+	}
+	bool result = SetThreadPriority(threadHandle, win32Priority) == TRUE;
+	return(result);
+}
+
+fpl_platform_api fplThreadHandle *fplThreadCreateWithParameters(fplThreadParameters *parameters) {
+	FPL__CheckArgumentNull(parameters, fpl_null);
+	FPL__CheckArgumentNull(parameters->runFunc, fpl_null);
 	fplThreadHandle *result = fpl_null;
 	fplThreadHandle *thread = fpl__GetFreeThread();
 	if(thread != fpl_null) {
 		DWORD creationFlags = 0;
 		DWORD threadId = 0;
-		thread->data = data;
-		thread->runFunc = runFunc;
+		SIZE_T stackSize = parameters->stackSize;
+		thread->parameters = *parameters;
 		thread->currentState = fplThreadState_Starting;
-		HANDLE handle = CreateThread(fpl_null, 0, fpl__Win32ThreadProc, thread, creationFlags, &threadId);
+		HANDLE handle = CreateThread(fpl_null, stackSize, fpl__Win32ThreadProc, thread, creationFlags, &threadId);
 		if(handle != fpl_null) {
+			fpl__Win32SetThreadPriority(handle, thread->parameters.priority);
 			thread->isValid = true;
 			thread->id = threadId;
 			thread->internalHandle.win32ThreadHandle = handle;
@@ -11931,6 +11985,16 @@ fpl_platform_api fplThreadHandle *fplThreadCreate(fpl_run_thread_callback *runFu
 	} else {
 		FPL__ERROR(FPL__MODULE_THREADING, "All %d threads are in use, you cannot create until you free one", FPL_MAX_THREAD_COUNT);
 	}
+	return(result);
+}
+
+fpl_platform_api fplThreadHandle *fplThreadCreate(fpl_run_thread_callback *runFunc, void *data) {
+	FPL__CheckArgumentNull(runFunc, fpl_null);
+	fplThreadParameters parameters = fplZeroInit;
+	parameters.priority = fplThreadPriority_Normal;
+	parameters.runFunc = runFunc;
+	parameters.userData = data;
+	fplThreadHandle *result = fplThreadCreateWithParameters(&parameters);
 	return(result);
 }
 
@@ -11951,7 +12015,6 @@ fpl_internal fplThreadPriority fpl__Win32MapNativeThreadPriority(const int win32
 		default:
 			return fplThreadPriority_Unknown;
 	}
-
 }
 
 fpl_platform_api fplThreadPriority fplGetThreadPriority(fplThreadHandle *thread) {
@@ -11970,28 +12033,7 @@ fpl_platform_api bool fplSetThreadPriority(fplThreadHandle *thread, const fplThr
 	bool result = false;
 	if(thread->isValid && thread->internalHandle.win32ThreadHandle != fpl_null) {
 		HANDLE threadHandle = thread->internalHandle.win32ThreadHandle;
-		int win32Priority = 0;
-		switch(newPriority) {
-			case fplThreadPriority_Idle:
-				win32Priority = THREAD_PRIORITY_IDLE;
-				break;
-			case fplThreadPriority_Low:
-				win32Priority = THREAD_PRIORITY_LOWEST;
-				break;
-			case fplThreadPriority_Normal:
-				win32Priority = THREAD_PRIORITY_NORMAL;
-				break;
-			case fplThreadPriority_High:
-				win32Priority = THREAD_PRIORITY_HIGHEST;
-				break;
-			case fplThreadPriority_RealTime:
-				win32Priority = THREAD_PRIORITY_TIME_CRITICAL;
-				break;
-			default:
-				FPL__ERROR("Threading", "The thread priority %d is not supported", newPriority);
-				break;
-		}
-		result = SetThreadPriority(threadHandle, win32Priority) == TRUE;
+		result = fpl__Win32SetThreadPriority(threadHandle, newPriority);
 	}
 	return(result);
 }
@@ -13859,12 +13901,16 @@ void *fpl__PosixThreadProc(void *data) {
 	fplThreadHandle *thread = (fplThreadHandle *)data;
 	fplAssert(thread != fpl_null);
 	fplAtomicStoreU32((volatile uint32_t *)&thread->currentState, (uint32_t)fplThreadState_Running);
-	if(thread->runFunc != fpl_null) {
-		thread->runFunc(thread, thread->data);
+
+	fplThreadParameters parameters = thread->parameters;
+	if(parameters.runFunc != fpl_null) {
+		parameters.runFunc(thread, parameters.userData);
 	}
+
 	fplAtomicStoreU32((volatile uint32_t *)&thread->currentState, (uint32_t)fplThreadState_Stopping);
 	thread->isValid = false;
 	fplAtomicStoreU32((volatile uint32_t *)&thread->currentState, (uint32_t)fplThreadState_Stopped);
+
 	pthreadApi->pthread_exit(data);
 	return 0;
 }
@@ -14223,7 +14269,8 @@ fpl_platform_api uint32_t fplGetCurrentThreadId() {
 	return(result);
 }
 
-fpl_platform_api fplThreadHandle *fplThreadCreate(fpl_run_thread_callback *runFunc, void *data) {
+fpl_platform_api fplThreadHandle *fplThreadCreateWithParameters(fplThreadParameters *parameters) {
+	FPL__CheckArgumentNull(parameters, fpl_null);
 	FPL__CheckPlatform(fpl_null);
 	const fpl__PlatformAppState *appState = fpl__global__AppState;
 	const fpl__PThreadApi *pthreadApi = &appState->posix.pthreadApi;
@@ -14231,16 +14278,27 @@ fpl_platform_api fplThreadHandle *fplThreadCreate(fpl_run_thread_callback *runFu
 	fplThreadHandle *thread = fpl__GetFreeThread();
 	if(thread != fpl_null) {
 		thread->currentState = fplThreadState_Stopped;
-		thread->data = data;
-		thread->runFunc = runFunc;
+		thread->parameters = *parameters;
 		thread->isValid = false;
 		thread->isStopping = false;
+
+		// Setup attributes
+		pthread_attr_t attr;
+		pthreadApi->pthread_attr_init(&attr);
+
+		// Get scheduler parameters (No need to check here, its safe always)
+		struct sched_param params;
+		pthreadApi->pthread_attr_getschedparam(&attr, &params);
+
+		// @TODO(final): Set the thread priority in the pthread_attr_t
+
+		// @TODO(final): Set the stack size for pthread!
 
 		// Create thread
 		thread->currentState = fplThreadState_Starting;
 		int threadRes;
 		do {
-			threadRes = pthreadApi->pthread_create(&thread->internalHandle.posixThread, fpl_null, fpl__PosixThreadProc, (void *)thread);
+			threadRes = pthreadApi->pthread_create(&thread->internalHandle.posixThread, &attr, fpl__PosixThreadProc, (void *)thread);
 		} while(threadRes == EAGAIN);
 		if(threadRes != 0) {
 			FPL__ERROR(FPL__MODULE_THREADING, "Failed creating thread, error code: %d", threadRes);
@@ -14255,6 +14313,15 @@ fpl_platform_api fplThreadHandle *fplThreadCreate(fpl_run_thread_callback *runFu
 	} else {
 		FPL__ERROR(FPL__MODULE_THREADING, "All %d threads are in use, you cannot create until you free one", FPL_MAX_THREAD_COUNT);
 	}
+	return(result);
+}
+
+fpl_platform_api fplThreadHandle *fplThreadCreate(fpl_run_thread_callback *runFunc, void *data) {
+	FPL__CheckArgumentNull(runFunc, fpl_null);
+	fplThreadParameters parameters = fplZeroInit;
+	parameters.runFunc = runFunc;
+	parameters.userData = data;
+	fplThreadHandle *result = fplThreadCreateWithParameters(&parameters);
 	return(result);
 }
 
