@@ -2048,7 +2048,7 @@ fpl_internal fpl_force_inline void fpl__m_DebugBreak() { __asm__ __volatile__(".
 #	endif
 #endif
 
-//! Stop on a line in the debugger
+//! Stops the debugger on this line always
 #define fplDebugBreak() fpl__m_DebugBreak()
 
 /** @} */
@@ -2074,9 +2074,9 @@ fpl_internal fpl_force_inline void fpl__m_DebugBreak() { __asm__ __volatile__(".
 #	include <alloca.h>
 #endif
 
-// On android or older posix versions there is no UINT32_MAX
 /// @cond FPL_INTERNALS
 #if !defined(UINT32_MAX)
+	// On android or older posix versions there is no UINT32_MAX
 #	define UINT32_MAX ((uint32_t)-1)
 #endif
 /// @endcond
@@ -2117,7 +2117,7 @@ fplStaticAssert(sizeof(size_t) >= sizeof(uint32_t));
 * @{
 */
 
-//! This will full-on crash when something is not implemented always.
+//! This will full-on crash when something is not implemented always
 #define FPL_NOT_IMPLEMENTED {*(int *)0 = 0xBAD;}
 
 #if defined(FPL_IS_C99)
@@ -2173,19 +2173,19 @@ fplStaticAssert(sizeof(size_t) >= sizeof(uint32_t));
 #	define fpl__m_ArrayCount(arr) ARRAY_SIZE(arr)
 #else
 	//! The @ref fplArrayCount() validation is disabled
-#	define fplNoArrayCountValidation
+#	define FPL__NO_ARRAYCOUNT_VALIDATION
 #	define fpl__m_ArrayCount(arr) (sizeof(arr) / sizeof((arr)[0]))
 #endif
 //! Returns the element count from a static array. This should ideally produce a compile error when passing a pointer to it.
 #define fplArrayCount(arr) fpl__m_ArrayCount(arr)
 
-//! Returns the offset in bytes to a field in a structure
+//! Returns the offset in bytes for the specified structure type and field name
 #define fplOffsetOf(type, field) ((size_t)(&(((type*)(0))->field)))
 
-//! Returns the smallest value
+//! Returns the smallest value of A and B
 #define fplMin(a, b) ((a) < (b) ? (a) : (b))
 
-//! Returns the biggest value
+//! Returns the biggest value of A and B
 #define fplMax(a, b) ((a) > (b) ? (a) : (b))
 
 #if defined(FPL_PLATFORM_WINDOWS)
@@ -2194,7 +2194,7 @@ fplStaticAssert(sizeof(size_t) >= sizeof(uint32_t));
 #	define fpl__m_StackAllocate(size) alloca(size)
 #endif
 
-//! Manually allocate memory on the stack
+//! Manually allocate the number of specified bytes of memory on the stack
 #define fplStackAllocate(size) fpl__m_StackAllocate(size)
 
 /** @} */
@@ -2226,7 +2226,7 @@ fplStaticAssert(sizeof(size_t) >= sizeof(uint32_t));
 #	define FPL__M_ENUM_AS_FLAGS_OPERATORS(etype)
 #endif
 
-//! Macro for overloading enum operators
+//! Macro for optionally adding enum operators for bitwise and/or/xor
 #define FPL_ENUM_AS_FLAGS_OPERATORS(type) FPL__M_ENUM_AS_FLAGS_OPERATORS(type)
 
 // ****************************************************************************
@@ -2238,7 +2238,7 @@ fplStaticAssert(sizeof(size_t) >= sizeof(uint32_t));
 #	define FPL__HAS_PLATFORM_INCLUDES
 
 #	if defined(FPL_PLATFORM_WINDOWS)
-		// @NOTE(final): windef.h defines min/max macros in lowerspace, this will break for example std::min/max so we have to tell the header we dont want this!
+		// @NOTE(final): windef.h defines min/max macros in lowerspace, this will break for example std::min/max, so we have to tell the header we dont want this!
 #		if !defined(NOMINMAX)
 #			define NOMINMAX
 #		endif
@@ -2388,13 +2388,18 @@ typedef int fpl__LinuxSignalHandle;
 * @{
 */
 #if defined(FPL_PLATFORM_WINDOWS)
-#	define FPL__M_MAX_FILENAME_LENGTH (260 + 1)
-#	define FPL__M_MAX_PATH_LENGTH (260 * 2 + 1)
+#	if defined(MAX_PATH)
+#		define FPL__M_MAX_FILENAME_LENGTH (MAX_PATH)
+#		define FPL__M_MAX_PATH_LENGTH (MAX_PATH * 2)
+#	else
+#		define FPL__M_MAX_FILENAME_LENGTH (260)
+#		define FPL__M_MAX_PATH_LENGTH (260 * 2)
+#	endif
 #	define FPL__M_PATH_SEPARATOR '\\'
 #	define FPL__M_FILE_EXT_SEPARATOR '.'
 #else
-#	define FPL__M_MAX_FILENAME_LENGTH (511 + 1)
-#	define FPL__M_MAX_PATH_LENGTH (2047 + 1)
+#	define FPL__M_MAX_FILENAME_LENGTH (512)
+#	define FPL__M_MAX_PATH_LENGTH (2048)
 #	define FPL__M_PATH_SEPARATOR '/'
 #	define FPL__M_FILE_EXT_SEPARATOR '.'
 #endif
@@ -2408,9 +2413,9 @@ typedef int fpl__LinuxSignalHandle;
 //! File extension character
 #define FPL_FILE_EXT_SEPARATOR FPL__M_FILE_EXT_SEPARATOR
 //! Maximum length of a name (in characters)
-#define FPL_MAX_NAME_LENGTH (255 + 1)
+#define FPL_MAX_NAME_LENGTH (256)
 //! Maximum length of a internal buffer (in bytes)
-#define FPL_MAX_BUFFER_LENGTH (2047 + 1)
+#define FPL_MAX_BUFFER_LENGTH (2048)
 
 /** @} */
 

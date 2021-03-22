@@ -226,7 +226,7 @@ static void TestMacros() {
 	}
 
 	// @NOTE(final): We now use _countof() or ARRAY_SIZE() so it is expected to produce a compile error when passing a raw pointer to it
-#if defined(fplNoArrayCountValidation)
+#if defined(FPL__NO_ARRAYCOUNT_VALIDATION)
 	ftMsg("[fplArrayCount] Test nullptr\n");
 	{
 		int* emptyArray = nullptr;
