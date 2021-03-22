@@ -76,13 +76,11 @@
 	- Takes ages to compile because of its hundreds of translation units
 
 	@subsection subsection_intro_supported_platforms Which platforms are supported by FPL?
-	Right now FPL supports just a couple of x86/x64 platforms, but some are already in progress and more are planned:
-
 	- Windows (x86/x64)
-	- Linux (x86/x64)
-	- Unix (x86/x64, Partially)
+	- Linux (x86/x64/arm)
+	- Unix/BSD (x86/x64, partially)
 
-	For more details see the page: @subpage page_platform_status
+	For more details see the page: @subpage page_support_status
 	
 	@subsection subsection_intro_supported_compilers Which compilers are supported by FPL?
 	FPL should compile on any C99 or C++/11 complaint compiler, such as MSVC 2015+, GCC, Clang, etc.

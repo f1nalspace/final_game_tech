@@ -1343,25 +1343,37 @@ SOFTWARE.
 */
 
 /*!
-	@page page_platform_status Platform Status
+	@page page_support_status Support/Platform Status
 	@tableofcontents
 
-	@section section_platform_status_supported_archs Supported Architectures
+	@section section_support_status_supported_archs Supported Architectures
 
 	- x86
 	- x86_64
-	- x64 (Untested)
-	- Arm32 (Partially)
-	- Arm64 (Untested)
+	- x64 (untested)
+	- Arm32 (partially)
+	- Arm64 (untested)
 
-	@section section_platform_status_supported_platforms Supported Platforms
+	@section section_support_status_supported_platforms Supported Platforms
 
 	- Windows 7 or higher
 	- Linux 2.6 or higher
 	- Unix/BSD (Partially)
 	- Raspberry Pi (Partially)
 
-	@section section_platform_status_included_subplatforms Included Sub-Platforms
+	@section section_support_status_supported_compilers Supported Compilers
+
+	- MSVC
+	- GCC
+	- CLANG
+	- Intel (untested)
+	- MingW32 (untested)
+	- MingW32 (untested)
+	- CC ARM (untested)
+
+	@section section_support_status_supported_subplatforms Supported Sub-Platforms
+
+	FPL contains special code blocks which may be shared across platforms.
 
 	- STD Strings
 	- STD Console
