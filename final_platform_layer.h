@@ -171,6 +171,7 @@ SOFTWARE.
 	- Changed[#74]: fplGetProcessorName() allows to pass null-pointer as output argument to return the number of characters only
 	- Changed[#63]: Replaced usage of fplStackAllocate() with fpl__AllocateTemporaryMemory()
 	- Changed[#92]: Use _offsetof() and ARRAY_SIZE() for fplArrayCount() instead
+	- Updated: Better documentation for fplAssert*
 
 	- Changed[#72]: [Win32] Query QueryPerformanceFrequency for every High-Precision timer calls instead of once per app start
 	- Changed[#84]: [Win32] Moved windows.h include to the implementation and entry point block (all handles are void* or have correct size)
@@ -2004,11 +2005,11 @@ SOFTWARE.
 #	define fpl__m_StaticAssert(exp)
 #endif // FPL__ENABLE_ASSERTIONS
 
-//! Runtime assertion
+//! Breaks with an runtime assertion, when the specified expression evaluates to @ref false
 #define fplAssert(exp) fpl__m_Assert(exp)
-//! Compile time assertion
+//! Breaks the compilation, when the specified expression evaluates to @ref false
 #define fplStaticAssert(exp) fpl__m_StaticAssert(exp)
-//! Always runtime assertion
+//! Always crashes the application with a null-pointer assignment, when the specified expression evaluates to @ref false
 #define fplAlwaysAssert(exp) if(!(exp)) {*(int *)0 = 0;}
 
 //
