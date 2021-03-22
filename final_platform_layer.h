@@ -179,6 +179,7 @@ SOFTWARE.
 	- Fixed[#76]: FPL__ERROR, FPL__WARNING, FPL__INFO was not passing the correct function name and line number in some cases
 	- Fixed[#83]: fplGetAudioBufferSizeInFrames() does not return correct values always
 	- Fixed[#83]: fplGetAudioBufferSizeInMilliseconds() does not return correct values always
+	- Fixed[#94]: Fixed MINGW compile error for typo FPL_SUBPLATFORM_WINDOWS vs FPL_PLATFORM_WINDOWS (_WIN32_WINNT 0x0600)
 	- Fixed: Corrected a few code documentation translation bugs
 
 	- Fixed[#69]: [Win32] Removed the manual handling of ALT + F4 shut down of event handling
@@ -1583,7 +1584,7 @@ SOFTWARE.
 #endif
 
 // MingW compiler hack
-#if defined(FPL_SUBPLATFORM_WINDOWS) && defined(FPL_COMPILER_MINGW)
+#if defined(FPL_PLATFORM_WINDOWS) && defined(FPL_COMPILER_MINGW)
 #	if !defined(_WIN32_WINNT)
 #		define _WIN32_WINNT 0x0600
 #	endif //!_WIN32_WINNT
