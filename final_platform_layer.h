@@ -147,6 +147,8 @@ SOFTWARE.
 
 	- New[#51]: [POSIX] Implemented fplGetThreadPriority() and fplSetThreadPriority()
 	- New[#60]: [POSIX] Implemented fplGetCurrentThreadId()
+	- New[#90]: [POSIX] Implemented fplThreadCreateWithParameters()
+	- New[#90]: [Win32] Implemented fplThreadCreateWithParameters()
 	- New[#86]: [X11] Implemented fplEnableWindowFullscreen() and fplDisableWindowFullscreen()
 
 	### Improvements
