@@ -1361,22 +1361,6 @@ SOFTWARE.
 	- Unix (Partially)
 */
 
-/*!
-	@page page_knownissues Known Issues / Limitations
-	@tableofcontents
-
-	This is the list of known limitations and issues which hopefully gets solved sometime:
-
-	@section section_knownissues_limitations Limitations
-
-	- [Linux] Gamepad detection is locked to /dev/input/js0 for now, so only one controller at a time is supported
-
-	@section section_knownissues_issues Issues
-
-	- [X11] Icon and Title on gnome 3 window-manager does not show up at all, only KDE/XFCE works
-	- [Win32] There may be some flickering issues when using software rendering (FPL_FFMpeg demo has this flickering issues)
-*/
-
 // ****************************************************************************
 //
 // > HEADER

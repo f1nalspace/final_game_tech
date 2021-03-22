@@ -28,7 +28,6 @@
 	- @subpage page_faq
 	- @subpage page_contribute
 	- @subpage page_changelog
-	- @subpage page_knownissues
 	- @subpage page_license
 
 	I hope you find all the informations you need. If not please drop a issue on the github project page and it will be addressed as soon as possible!
