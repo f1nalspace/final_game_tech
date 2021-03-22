@@ -3535,7 +3535,7 @@
 			<td>System</td>
 			<td>FPL_NO_PLATFORM_INCLUDES</td>
 			<td>
-				Define this to disable the <includes> for the specific platform in the API.<br>
+				Define this to disable the includes for the specific platform in the API.<br>
 			</td>
 			<td>Not set by default</td>
 		</tr>

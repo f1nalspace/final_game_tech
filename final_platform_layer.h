@@ -139,8 +139,8 @@ SOFTWARE.
 	- New[#79]: Added function fplGetAudioDriver()
 	- New[#81]: Added function fplGetAudioBufferSizeInMilliseconds() to compute milliseconds from frame-count + sample-rate
 	- New[#85]: Added fpl*_First and fpl*_Last to every enum
-	- New[#84]: Added support for controlling the inclusion of platform includes with #define FPL_NO_PLATFORM_INCLUDES
-	- New[#84]: Added support for use opaque handles instead of OS handles with #define FPL_OPAQUE_HANDLES
+	- New[#84]: Added support for controlling the inclusion of platform includes with define FPL_NO_PLATFORM_INCLUDES
+	- New[#84]: Added support for use opaque handles instead of OS handles with define FPL_OPAQUE_HANDLES
 	- New[#75]: Added fplMinAlignment macro to get the minimum required alignment
 	- New[#90]: Added struct fplThreadParameters
 	- New[#90]: Added function fplThreadCreateWithParameters() which allows to set the stack size and the priority in the creation directly
@@ -4266,7 +4266,7 @@ typedef struct fplThreadParameters {
 typedef struct fplThreadHandle {
 	//! The internal thread handle
 	fplInternalThreadHandle internalHandle;
-	// The initial @ref fplThreadParameters
+	//! The initial @ref fplThreadParameters
 	fplThreadParameters parameters;
 	//! Thread state
 	volatile fplThreadState currentState;
