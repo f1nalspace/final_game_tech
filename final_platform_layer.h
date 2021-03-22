@@ -215,7 +215,7 @@ SOFTWARE.
 	- Changed[#74]: fplGetProcessorName() returns the number of characters instead of a char-pointer
 	- Changed[#74]: fplGetDisplayModeCount() -> Use fplGetDisplayModes() with null-pointer instead
 	- Changed: Renamed fplGetCurrentUsername() to fplSessionGetUsername()
-	- Changed: Renamed fplGetOperatingSystemInfos() to fplOSGetVersionInfo()
+	- Changed: Renamed fplGetOperatingSystemInfos() to fplOSGetVersionInfos()
 	- Changed: Renamed struct fplOSInfos to fplOSVersionInfos
 
 	## v0.9.5-beta
@@ -3064,7 +3064,7 @@ typedef struct fplOSVersionInfos {
 * @note This may be called without initializing the platform
 * @see @ref section_category_platform_os_version
 */
-fpl_platform_api bool fplOSGetVersionInfo(fplOSVersionInfos *outInfos);
+fpl_platform_api bool fplOSGetVersionInfos(fplOSVersionInfos *outInfos);
 
 /** @} */
 
@@ -11776,7 +11776,7 @@ typedef FPL__FUNC_NTDLL_RtlGetVersion(fpl__func_ntdll_RtlGetVersionProc);
 typedef FPL__FUNC_KERNEL32_GetVersion(fpl__func_kernel32_GetVersion);
 #define FPL__FUNC_KERNEL32_GetVersionExW(name) BOOL WINAPI name(LPOSVERSIONINFOEXW lpVersionInfo)
 typedef FPL__FUNC_KERNEL32_GetVersionExW(fpl__func_kernel32_GetVersionExW);
-fpl_platform_api bool fplOSGetVersionInfo(fplOSVersionInfos *outInfos) {
+fpl_platform_api bool fplOSGetVersionInfos(fplOSVersionInfos *outInfos) {
 	FPL__CheckArgumentNull(outInfos, false);
 
 	fplClearStruct(outInfos);
@@ -15577,7 +15577,7 @@ fpl_platform_api fplArchType fplGetProcessorArchitecture() {
 	return(result);
 }
 
-fpl_platform_api bool fplOSGetVersionInfo(fplOSVersionInfos *outInfos) {
+fpl_platform_api bool fplOSGetVersionInfos(fplOSVersionInfos *outInfos) {
 	bool result = false;
 	struct utsname nameInfos;
 	if(uname(&nameInfos) == 0) {

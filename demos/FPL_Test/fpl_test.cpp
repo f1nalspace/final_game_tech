@@ -159,7 +159,7 @@ static void TestOSInfos() {
 	ftMsg("Get OS Type:\n");
 	{
 		fplOSVersionInfos osInfos = {};
-		bool r = fplOSGetVersionInfo(&osInfos);
+		bool r = fplOSGetVersionInfos(&osInfos);
 		ftIsTrue(r);
 		fplConsoleFormatOut("\tName: %s\n", osInfos.osName);
 		fplConsoleFormatOut("\tVersion: %s.%s.%s.%s\n", osInfos.osVersion.major, osInfos.osVersion.minor, osInfos.osVersion.fix, osInfos.osVersion.build);

@@ -2030,12 +2030,12 @@
 	
 	@section section_category_platform_os_version Query OS Version, Kernel, Distribution etc.
 
-	You can retrieve the version/name of your operating system by calling @ref fplOSGetVersionInfo() .<br>
+	You can retrieve the version/name of your operating system by calling @ref fplOSGetVersionInfos() .<br>
 	See @ref fplOSVersionInfos for more details.<br>
 
 	@code{.c}
 	fplOSVersionInfos infos = fplZeroInit;
-	if (fplOSGetVersionInfo(&infos)) {
+	if (fplOSGetVersionInfos(&infos)) {
 		fplConsoleFormatOut("Operating system name: %s\n", infos.osName);
 		fplConsoleFormatOut("Operating system version: %s.%s.%s.%s\n", infos.osName.major, infos.osName.minor, infos.osName.fix, infos.osName.build);
 	}
