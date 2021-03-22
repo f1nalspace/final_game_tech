@@ -7721,6 +7721,20 @@ typedef FPL__FUNC_PTHREAD_pthread_setschedparam(fpl__pthread_func_pthread_setsch
 typedef FPL__FUNC_PTHREAD_pthread_getschedparam(fpl__pthread_func_pthread_getschedparam);
 #define FPL__FUNC_PTHREAD_pthread_setschedprio(name) int name(pthread_t thread, int prio)
 typedef FPL__FUNC_PTHREAD_pthread_setschedprio(fpl__pthread_func_pthread_setschedprio);
+
+#define FPL__FUNC_PTHREAD_pthread_attr_init(name) int name(pthread_attr_t *attr)
+typedef FPL__FUNC_PTHREAD_pthread_attr_init(fpl__pthread_func_pthread_attr_init);
+#define FPL__FUNC_PTHREAD_pthread_attr_getschedparam(name) int name(const pthread_attr_t *__restrict__ attr, struct sched_param *__restrict__ param)
+typedef FPL__FUNC_PTHREAD_pthread_attr_getschedparam(fpl__pthread_func_pthread_attr_getschedparam);
+#define FPL__FUNC_PTHREAD_pthread_attr_setschedparam(name) int name(pthread_attr_t *__restrict__ attr, const struct sched_param *__restrict__ param)
+typedef FPL__FUNC_PTHREAD_pthread_attr_setschedparam(fpl__pthread_func_pthread_attr_setschedparam);
+#define FPL__FUNC_PTHREAD_pthread_attr_setstacksize(name) int name(pthread_attr_t *attr, size_t stacksize)
+typedef FPL__FUNC_PTHREAD_pthread_attr_setstacksize(fpl__pthread_func_pthread_attr_setstacksize);
+#define FPL__FUNC_PTHREAD_pthread_attr_setdetachstate(name) int name(pthread_attr_t *attr, int detachstate);
+typedef FPL__FUNC_PTHREAD_pthread_attr_setdetachstate(fpl__pthread_func_pthread_attr_setdetachstate);
+#define FPL__FUNC_PTHREAD_pthread_attr_setschedpolicy(name) int name(pthread_attr_t *__attr, int __policy)
+typedef FPL__FUNC_PTHREAD_pthread_attr_setschedpolicy(fpl__pthread_func_pthread_attr_setschedpolicy);
+
 #define FPL__FUNC_PTHREAD_pthread_create(name) int name(pthread_t *, const pthread_attr_t *, void *(*__start_routine) (void *), void *)
 typedef FPL__FUNC_PTHREAD_pthread_create(fpl__pthread_func_pthread_create);
 #define FPL__FUNC_PTHREAD_pthread_kill(name) int name(pthread_t thread, int sig)
@@ -7775,23 +7789,36 @@ typedef FPL__FUNC_PTHREAD_sem_getvalue(fpl__pthread_func_sem_getvalue);
 
 typedef struct fpl__PThreadApi {
 	void *libHandle;
+	
+	// pthread_t
 	fpl__pthread_func_pthread_self *pthread_self;
 	fpl__pthread_func_pthread_setschedparam *pthread_setschedparam;
 	fpl__pthread_func_pthread_getschedparam *pthread_getschedparam;
 	fpl__pthread_func_pthread_setschedprio *pthread_setschedprio;
+	
 	fpl__pthread_func_pthread_create *pthread_create;
 	fpl__pthread_func_pthread_kill *pthread_kill;
 	fpl__pthread_func_pthread_join *pthread_join;
 	fpl__pthread_func_pthread_exit *pthread_exit;
 	fpl__pthread_func_pthread_yield *pthread_yield;
 	fpl__pthread_func_pthread_timedjoin_np *pthread_timedjoin_np;
+	
+	// pthread_attr_t
+	fpl__pthread_func_pthread_attr_init *pthread_attr_init;
+	fpl__pthread_func_pthread_attr_getschedparam *pthread_attr_getschedparam;
+	fpl__pthread_func_pthread_attr_setschedparam *pthread_attr_setschedparam;
+	fpl__pthread_func_pthread_attr_setstacksize *pthread_attr_setstacksize;
+	fpl__pthread_func_pthread_attr_setdetachstate *pthread_attr_setdetachstate;
+	fpl__pthread_func_pthread_attr_setschedpolicy *pthread_attr_setschedpolicy;
 
+	// pthread_mutex_t
 	fpl__pthread_func_pthread_mutex_init *pthread_mutex_init;
 	fpl__pthread_func_pthread_mutex_destroy *pthread_mutex_destroy;
 	fpl__pthread_func_pthread_mutex_lock *pthread_mutex_lock;
 	fpl__pthread_func_pthread_mutex_trylock *pthread_mutex_trylock;
 	fpl__pthread_func_pthread_mutex_unlock *pthread_mutex_unlock;
 
+	// pthread_cond_t
 	fpl__pthread_func_pthread_cond_init *pthread_cond_init;
 	fpl__pthread_func_pthread_cond_destroy *pthread_cond_destroy;
 	fpl__pthread_func_pthread_cond_timedwait *pthread_cond_timedwait;
@@ -7799,6 +7826,7 @@ typedef struct fpl__PThreadApi {
 	fpl__pthread_func_pthread_cond_broadcast *pthread_cond_broadcast;
 	fpl__pthread_func_pthread_cond_signal *pthread_cond_signal;
 
+	// sem_t
 	fpl__pthread_func_sem_init *sem_init;
 	fpl__pthread_func_sem_destroy *sem_destroy;
 	fpl__pthread_func_sem_wait *sem_wait;
@@ -7836,12 +7864,21 @@ fpl_internal bool fpl__PThreadLoadApi(fpl__PThreadApi *pthreadApi) {
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_setschedparam, pthread_setschedparam);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_getschedparam, pthread_getschedparam);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_setschedprio, pthread_setschedprio);
+
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_create, pthread_create);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_kill, pthread_kill);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_join, pthread_join);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_exit, pthread_exit);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_yield, pthread_yield);
 			FPL__POSIX_GET_FUNCTION_ADDRESS_OPTIONAL(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_timedjoin_np, pthread_timedjoin_np);
+			
+			// pthread_attr_t
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_attr_init, pthread_attr_init);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_attr_getschedparam, pthread_attr_getschedparam);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_attr_setschedparam, pthread_attr_setschedparam);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_attr_setstacksize, pthread_attr_setstacksize);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_attr_setdetachstate, pthread_attr_setdetachstate);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_attr_setschedpolicy, pthread_attr_setschedpolicy);
 
 			// pthread_mutex_t
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_mutex_init, pthread_mutex_init);
@@ -14281,24 +14318,82 @@ fpl_platform_api fplThreadHandle *fplThreadCreateWithParameters(fplThreadParamet
 		thread->parameters = *parameters;
 		thread->isValid = false;
 		thread->isStopping = false;
+		
+		fplThreadPriority initialPriority = parameters->priority;
 
 		// Setup attributes
+		pthread_attr_t *attrPtr = fpl_null;
 		pthread_attr_t attr;
-		pthreadApi->pthread_attr_init(&attr);
+		if (pthreadApi->pthread_attr_init(&attr) == 0) {
+			// Scheduler policy
+			int scheduler = -1;
+			if (initialPriority == fplThreadPriority_Idle) {
+#if defined(SCHED_IDLE)
+				if (pthreadApi->pthread_attr_setschedpolicy(&attr, SCHED_IDLE) == 0) {
+					scheduler = SCHED_IDLE;
+				}
+#endif
+			} else if (initialPriority >= fplThreadPriority_High){
+#if defined(SCHED_FIFO)
+				if ((scheduler == -1) && (pthreadApi->pthread_attr_setschedpolicy(&attr, SCHED_FIFO) == 0)) {
+					scheduler = SCHED_FIFO;
+				}
+#endif
+#if defined(SCHED_RR)
+				if ((scheduler == -1) && (pthreadApi->pthread_attr_setschedpolicy(&attr, SCHED_RR) == 0)) {
+					scheduler = SCHED_RR;
+				}
+#endif
+			} else {
+				// @TODO(final): Is sched_getscheduler supported for all POSIX standards?
+				scheduler = sched_getscheduler(0);
+			}
+			
+			// Stack size
+			if (parameters->stackSize > 0) {
+				pthreadApi->pthread_attr_setstacksize(&attr, parameters->stackSize);
+			}
+			
+			// Priority
+			if (scheduler != -1) {
+				struct sched_param sched;
+				if (pthreadApi->pthread_attr_getschedparam(&attr, &sched) == 0) {
+					int maxThreadPrioCount = (fplThreadPriority_Last - fplThreadPriority_First) + 1;
+					fplAssert(maxThreadPrioCount > 0);
+					
+					int minPrio = sched_get_priority_min(scheduler);
+					int maxPrio = sched_get_priority_max(scheduler);
+					int range = maxPrio - minPrio;
+					int step = range / maxThreadPrioCount;
+					
+					int priority;
+					if (initialPriority == fplThreadPriority_Lowest) {
+						priority = minPrio;
+					} else if (initialPriority == fplThreadPriority_Highest) {
+						priority = maxPrio;
+					} else {
+						int threadPrioNumber = (int)(initialPriority - fplThreadPriority_First) + 1;
+						priority = minPrio + threadPrioNumber * step;
+						if (priority < minPrio){
+							priority = minPrio;
+						} else if (priority > maxPrio){
+							priority = maxPrio;
+						}
+					}
 
-		// Get scheduler parameters (No need to check here, its safe always)
-		struct sched_param params;
-		pthreadApi->pthread_attr_getschedparam(&attr, &params);
-
-		// @TODO(final): Set the thread priority in the pthread_attr_t
-
-		// @TODO(final): Set the stack size for pthread!
-
+					sched.sched_priority = priority;
+					pthreadApi->pthread_attr_setschedparam(&attr, &sched);
+				}
+			}
+			
+			attrPtr = &attr;
+		}
+			
 		// Create thread
 		thread->currentState = fplThreadState_Starting;
 		int threadRes;
 		do {
-			threadRes = pthreadApi->pthread_create(&thread->internalHandle.posixThread, &attr, fpl__PosixThreadProc, (void *)thread);
+			threadRes = pthreadApi->pthread_create(&thread->internalHandle.posixThread, attrPtr, fpl__PosixThreadProc, (void *)thread);
 		} while(threadRes == EAGAIN);
 		if(threadRes != 0) {
 			FPL__ERROR(FPL__MODULE_THREADING, "Failed creating thread, error code: %d", threadRes);
@@ -14326,7 +14421,7 @@ fpl_platform_api fplThreadHandle *fplThreadCreate(fpl_run_thread_callback *runFu
 }
 
 fpl_platform_api fplThreadPriority fplGetThreadPriority(fplThreadHandle *thread) {
-	FPL__CheckPlatform(false);	
+	FPL__CheckPlatform(fplThreadPriority_Unknown);
 	const fpl__PlatformAppState *appState = fpl__global__AppState;
 	const fpl__PThreadApi *pthreadApi = &appState->posix.pthreadApi;
 
@@ -14336,7 +14431,7 @@ fpl_platform_api fplThreadPriority fplGetThreadPriority(fplThreadHandle *thread)
 	struct sched_param params;
 	if (pthreadApi->pthread_getschedparam(curThread, &currentSchedulerPolicy, &params) != 0) {
 		FPL__ERROR(FPL__MODULE_THREADING, "Failed getting scheduler parameters for pthread '%d'", curThread);
-		return(false);
+		return(fplThreadPriority_Unknown);
 	}
 	
 	int maxThreadPrioCount = (fplThreadPriority_Last - fplThreadPriority_First) + 1;
@@ -20383,7 +20478,6 @@ fpl_internal fplAudioResultType fpl__InitAudio(const fplAudioSettings *audioSett
 
 		initResult = fplAudioResultType_Failed;
 		switch(propeDriver) {
-
 #		if defined(FPL__ENABLE_AUDIO_DIRECTSOUND)
 			case fplAudioDriverType_DirectSound:
 			{
@@ -20421,7 +20515,11 @@ fpl_internal fplAudioResultType fpl__InitAudio(const fplAudioSettings *audioSett
 
 	if(!audioState->isAsyncDriver) {
 		// Create and start worker thread
-		audioState->workerThread = fplThreadCreate(fpl__AudioWorkerThread, audioState);
+		fplThreadParameters audioThreadParams = fplZeroInit;
+		audioThreadParams.priority = fplThreadPriority_RealTime;
+		audioThreadParams.runFunc = fpl__AudioWorkerThread;
+		audioThreadParams.userData = audioState;
+		audioState->workerThread = fplThreadCreateWithParameters(&audioThreadParams);
 		if(audioState->workerThread == fpl_null) {
 			fpl__ReleaseAudio(audioState);
 			return fplAudioResultType_Failed;
