@@ -6619,9 +6619,7 @@ fplStaticAssert(sizeof(fpl__Win32ThreadHandle) >= sizeof(HANDLE));
 fplStaticAssert(sizeof(fpl__Win32MutexHandle) >= sizeof(CRITICAL_SECTION));
 fplStaticAssert(sizeof(fpl__Win32SemaphoreHandle) >= sizeof(HANDLE));
 fplStaticAssert(sizeof(fpl__Win32ConditionVariable) >= sizeof(CONDITION_VARIABLE));
-#endif // FPL_PLATFORM_WINDOWS
-
-#if defined(FPL_SUBPLATFORM_POSIX)
+#elif defined(FPL_SUBPLATFORM_POSIX)
 fplStaticAssert(sizeof(fpl__POSIXLibraryHandle) >= sizeof(void *));
 fplStaticAssert(sizeof(fpl__POSIXFileHandle) >= sizeof(int));
 fplStaticAssert(sizeof(fpl__POSIXDirHandle) >= sizeof(DIR *));
@@ -6629,8 +6627,7 @@ fplStaticAssert(sizeof(fpl__POSIXThreadHandle) >= sizeof(pthread_t));
 fplStaticAssert(sizeof(fpl__POSIXMutexHandle) >= sizeof(pthread_mutex_t));
 fplStaticAssert(sizeof(fpl__POSIXSemaphoreHandle) >= sizeof(sem_t));
 fplStaticAssert(sizeof(fpl__POSIXConditionVariable) >= sizeof(pthread_cond_t));
-#endif // FPL_SUBPLATFORM_POSIX
-
+#endif // FPL_PLATFORM_WINDOWS / FPL_SUBPLATFORM_POSIX
 #if defined(FPL_PLATFORM_LINUX)
 fplStaticAssert(sizeof(fpl__LinuxSignalHandle) >= sizeof(int));
 #endif // FPL_PLATFORM_LINUX
