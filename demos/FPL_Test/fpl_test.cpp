@@ -158,18 +158,18 @@ static void TestOSInfos() {
 	}
 	ftMsg("Get OS Type:\n");
 	{
-		fplOSInfos osInfos = {};
-		bool r = fplGetOperatingSystemInfos(&osInfos);
+		fplOSVersionInfos osInfos = {};
+		bool r = fplOSGetVersionInfo(&osInfos);
 		ftIsTrue(r);
 		fplConsoleFormatOut("\tName: %s\n", osInfos.osName);
 		fplConsoleFormatOut("\tVersion: %s.%s.%s.%s\n", osInfos.osVersion.major, osInfos.osVersion.minor, osInfos.osVersion.fix, osInfos.osVersion.build);
 		fplConsoleFormatOut("\tDistribution Name: %s\n", osInfos.distributionName);
 		fplConsoleFormatOut("\tDistribution Version: %s.%s.%s.%s\n", osInfos.distributionVersion.major, osInfos.distributionVersion.minor, osInfos.distributionVersion.fix, osInfos.distributionVersion.build);
 	}
-	ftMsg("Get User Infos:\n");
+	ftMsg("Get Session User name:\n");
 	{
 		char nameBuffer[256] = {};
-		bool r = fplGetCurrentUsername(nameBuffer, fplArrayCount(nameBuffer));
+		bool r = fplSessionGetUsername(nameBuffer, fplArrayCount(nameBuffer));
 		ftIsTrue(r);
 		fplConsoleFormatOut("\tCurrent Username: %s\n", nameBuffer);
 	}

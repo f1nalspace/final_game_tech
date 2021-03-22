@@ -214,6 +214,9 @@ SOFTWARE.
 	- Changed[#74]: fplGetSystemLocale() returns the number of characters instead of a char-pointer
 	- Changed[#74]: fplGetProcessorName() returns the number of characters instead of a char-pointer
 	- Changed[#74]: fplGetDisplayModeCount() -> Use fplGetDisplayModes() with null-pointer instead
+	- Changed: Renamed fplGetCurrentUsername() to fplSessionGetUsername()
+	- Changed: Renamed fplGetOperatingSystemInfos() to fplOSGetVersionInfo()
+	- Changed: Renamed struct fplOSInfos to fplOSVersionInfos
 
 	## v0.9.5-beta
 	- New: Added enum fplAudioDefaultFields
@@ -3013,7 +3016,7 @@ fpl_common_api void fplMemoryAlignedFree(void *ptr);
 
 // ----------------------------------------------------------------------------
 /**
-* @defgroup OS Operating system infos
+* @defgroup PlatformOS Operating system infos
 * @brief This category contains functions for retrieve several operating system informations such as version, name etc.
 * @{
 */
@@ -3042,8 +3045,8 @@ typedef struct fplVersionInfo {
 	};
 } fplVersionInfo;
 
-//! A structure that contains operating system infos
-typedef struct fplOSInfos {
+//! A structure that contains the version information for the operating system
+typedef struct fplOSVersionInfos {
 	//! Name of the operating system
 	char osName[FPL_MAX_NAME_LENGTH];
 	//! Name of the distribution (May be empty)
@@ -3052,25 +3055,35 @@ typedef struct fplOSInfos {
 	fplVersionInfo osVersion;
 	//! Version of the distribution (May be empty)
 	fplVersionInfo distributionVersion;
-} fplOSInfos;
+} fplOSVersionInfos;
 
 /**
-* @brief Gets system informations from the operating system
+* @brief Gets version informations from the operating system
 * @param outInfos The target @ref fplOSInfos structure
 * @return Returns true when the infos could be retrieved, false otherwise.
 * @note This may be called without initializing the platform
 * @see @ref section_category_platform_os_version
 */
-fpl_platform_api bool fplGetOperatingSystemInfos(fplOSInfos *outInfos);
+fpl_platform_api bool fplOSGetVersionInfo(fplOSVersionInfos *outInfos);
+
+/** @} */
+
+// ----------------------------------------------------------------------------
+/**
+* @defgroup OSSession Session infos
+* @brief This category contains functions for retrieving current session informations, such as username, etc.
+* @{
+*/
+// ----------------------------------------------------------------------------
 
 /**
-* @brief Gets the username of the current logged-in user
+* @brief Gets the username of the current logged-in user from the session
 * @param nameBuffer The target buffer
 * @param maxNameBufferLen The max length of the target buffer
 * @return Returns the number of required/written characters, excluding the null-terminator
 * @see @ref section_category_platform_os_username
 */
-fpl_platform_api size_t fplGetCurrentUsername(char *nameBuffer, const size_t maxNameBufferLen);
+fpl_platform_api size_t fplSessionGetUsername(char *nameBuffer, const size_t maxNameBufferLen);
 
 /** @} */
 
@@ -11763,7 +11776,7 @@ typedef FPL__FUNC_NTDLL_RtlGetVersion(fpl__func_ntdll_RtlGetVersionProc);
 typedef FPL__FUNC_KERNEL32_GetVersion(fpl__func_kernel32_GetVersion);
 #define FPL__FUNC_KERNEL32_GetVersionExW(name) BOOL WINAPI name(LPOSVERSIONINFOEXW lpVersionInfo)
 typedef FPL__FUNC_KERNEL32_GetVersionExW(fpl__func_kernel32_GetVersionExW);
-fpl_platform_api bool fplGetOperatingSystemInfos(fplOSInfos *outInfos) {
+fpl_platform_api bool fplOSGetVersionInfo(fplOSVersionInfos *outInfos) {
 	FPL__CheckArgumentNull(outInfos, false);
 
 	fplClearStruct(outInfos);
@@ -11836,7 +11849,7 @@ fpl_platform_api bool fplGetOperatingSystemInfos(fplOSInfos *outInfos) {
 
 #define FPL__FUNC_ADV32_GetUserNameW(name) BOOL WINAPI name(LPWSTR lpBuffer, LPDWORD pcbBuffer)
 typedef FPL__FUNC_ADV32_GetUserNameW(fpl__func_adv32_GetUserNameW);
-fpl_platform_api size_t fplGetCurrentUsername(char *nameBuffer, const size_t maxNameBufferLen) {
+fpl_platform_api size_t fplSessionGetUsername(char *nameBuffer, const size_t maxNameBufferLen) {
 	const char *libName = "advapi32.dll";
 	HMODULE adv32Lib = LoadLibraryA(libName);
 	if(adv32Lib == fpl_null) {
@@ -15461,7 +15474,7 @@ fpl_platform_api void fplListDirEnd(fplFileEntry *entry) {
 //
 // POSIX Operating System
 //
-fpl_platform_api size_t fplGetCurrentUsername(char *nameBuffer, const size_t maxNameBufferLen) {
+fpl_platform_api size_t fplSessionGetUsername(char *nameBuffer, const size_t maxNameBufferLen) {
 	uid_t uid = geteuid();
 	struct passwd *pw = getpwuid(uid);
 	size_t result = 0;
@@ -15564,7 +15577,7 @@ fpl_platform_api fplArchType fplGetProcessorArchitecture() {
 	return(result);
 }
 
-fpl_platform_api bool fplGetOperatingSystemInfos(fplOSInfos *outInfos) {
+fpl_platform_api bool fplOSGetVersionInfo(fplOSVersionInfos *outInfos) {
 	bool result = false;
 	struct utsname nameInfos;
 	if(uname(&nameInfos) == 0) {

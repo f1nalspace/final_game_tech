@@ -2030,12 +2030,12 @@
 	
 	@section section_category_platform_os_version Query OS Version, Kernel, Distribution etc.
 
-	You can retrieve the version/name of your operating system by calling @ref fplGetOperatingSystemInfos() .<br>
-	See @ref fplOSInfos for more details.<br>
+	You can retrieve the version/name of your operating system by calling @ref fplOSGetVersionInfo() .<br>
+	See @ref fplOSVersionInfos for more details.<br>
 
 	@code{.c}
-	fplOSInfos infos = fplZeroInit;
-	if (fplGetOperatingSystemInfos(&infos)) {
+	fplOSVersionInfos infos = fplZeroInit;
+	if (fplOSGetVersionInfo(&infos)) {
 		fplConsoleFormatOut("Operating system name: %s\n", infos.osName);
 		fplConsoleFormatOut("Operating system version: %s.%s.%s.%s\n", infos.osName.major, infos.osName.minor, infos.osName.fix, infos.osName.build);
 	}
@@ -2043,11 +2043,11 @@
 
 	@section section_category_platform_os_username Get current username
 
-	Use @ref fplGetCurrentUsername() to get the username for the current session.
+	Use @ref fplSessionGetUsername() to get the username for the current session.
 
 	@code{.c}
 	char usernameBuffer[256];
-	if (fplGetCurrentUsername(usernameBuffer, fplArrayCount(usernameBuffer))) {
+	if (fplSessionGetUsername(usernameBuffer, fplArrayCount(usernameBuffer))) {
 		fplConsoleFormatOut("Current username: %s\n", usernameBuffer);
 	}
 	@endcode
