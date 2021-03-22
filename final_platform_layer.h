@@ -8680,72 +8680,6 @@ static const uint32_t FPL__DEFAULT_AUDIO_BUFFERSIZE_LOWLATENCY_IN_MSECS = 10;
 static const uint32_t FPL__DEFAULT_AUDIO_BUFFERSIZE_CONSERVATIVE_IN_MSECS = 25;
 
 //
-// Macros
-//
-
-// Clearing memory in chunks
-#define FPL__MEMORY_SET(T, memory, size, shift, mask, value) \
-	do { \
-		size_t setBytes = 0; \
-		if (sizeof(T) > sizeof(uint8_t)) { \
-			T setValue = 0; \
-			for (int bytesIncrement = 0; bytesIncrement < sizeof(T); ++bytesIncrement) { \
-				int bitShift = bytesIncrement * 8; \
-				setValue |= ((T)value << bitShift); \
-			} \
-			T *dataBlock = (T *)(memory); \
-			T *dataBlockEnd = (T *)(memory) + (size >> shift); \
-			while (dataBlock != dataBlockEnd) { \
-				*dataBlock++ = setValue; \
-				setBytes += sizeof(T); \
-			} \
-		} \
-		uint8_t *data8 = (uint8_t *)memory + setBytes; \
-		uint8_t *data8End = (uint8_t *)memory + size; \
-		while (data8 != data8End) { \
-			*data8++ = value; \
-		} \
-	} while (0);
-
-#define FPL__MEMORY_CLEAR(T, memory, size, shift, mask) \
-	do { \
-		size_t clearBytes = 0; \
-		if (sizeof(T) > sizeof(uint8_t)) { \
-			T *dataBlock = (T *)(memory); \
-			T *dataBlockEnd = (T *)(memory) + (size >> shift); \
-			while (dataBlock != dataBlockEnd) { \
-				*dataBlock++ = 0; \
-				clearBytes += sizeof(T); \
-			} \
-		} \
-		uint8_t *data8 = (uint8_t *)memory + clearBytes; \
-		uint8_t *data8End = (uint8_t *)memory + size; \
-		while (data8 != data8End) { \
-			*data8++ = 0; \
-		} \
-	} while (0);
-
-#define FPL__MEMORY_COPY(T, source, sourceSize, dest, shift, mask) \
-	do { \
-		size_t copiedBytes = 0; \
-		if (sizeof(T) > sizeof(uint8_t)) { \
-			const T *sourceDataBlock = (const T *)(source); \
-			const T *sourceDataBlockEnd = (const T *)(source) + (sourceSize >> shift); \
-			T *destDataBlock = (T *)(dest); \
-			while (sourceDataBlock != sourceDataBlockEnd) { \
-				*destDataBlock++ = *sourceDataBlock++; \
-				copiedBytes += sizeof(T); \
-			} \
-		} \
-		const uint8_t *sourceData8 = (const uint8_t *)source + copiedBytes; \
-		const uint8_t *sourceData8End = (const uint8_t *)source + sourceSize; \
-		uint8_t *destData8 = (uint8_t *)dest + copiedBytes; \
-		while (sourceData8 != sourceData8End) { \
-			*destData8++ = *sourceData8++; \
-		} \
-	} while (0);
-
-//
 // Internal types and functions
 //
 #define FPL__MAX_LAST_ERROR_STRING_LENGTH 256
@@ -9332,6 +9266,68 @@ fpl_common_api void fplMemoryAlignedFree(void *ptr) {
 #define FPL__MEM_MASK_32 0x00000003
 #define FPL__MEM_SHIFT_16 1
 #define FPL__MEM_MASK_16 0x0000000
+
+// Clearing memory in chunks
+#define FPL__MEMORY_SET(T, memory, size, shift, mask, value) \
+	do { \
+		size_t setBytes = 0; \
+		if (sizeof(T) > sizeof(uint8_t)) { \
+			T setValue = 0; \
+			for (int bytesIncrement = 0; bytesIncrement < sizeof(T); ++bytesIncrement) { \
+				int bitShift = bytesIncrement * 8; \
+				setValue |= ((T)value << bitShift); \
+			} \
+			T *dataBlock = (T *)(memory); \
+			T *dataBlockEnd = (T *)(memory) + (size >> shift); \
+			while (dataBlock != dataBlockEnd) { \
+				*dataBlock++ = setValue; \
+				setBytes += sizeof(T); \
+			} \
+		} \
+		uint8_t *data8 = (uint8_t *)memory + setBytes; \
+		uint8_t *data8End = (uint8_t *)memory + size; \
+		while (data8 != data8End) { \
+			*data8++ = value; \
+		} \
+	} while (0);
+
+#define FPL__MEMORY_CLEAR(T, memory, size, shift, mask) \
+	do { \
+		size_t clearBytes = 0; \
+		if (sizeof(T) > sizeof(uint8_t)) { \
+			T *dataBlock = (T *)(memory); \
+			T *dataBlockEnd = (T *)(memory) + (size >> shift); \
+			while (dataBlock != dataBlockEnd) { \
+				*dataBlock++ = 0; \
+				clearBytes += sizeof(T); \
+			} \
+		} \
+		uint8_t *data8 = (uint8_t *)memory + clearBytes; \
+		uint8_t *data8End = (uint8_t *)memory + size; \
+		while (data8 != data8End) { \
+			*data8++ = 0; \
+		} \
+	} while (0);
+
+#define FPL__MEMORY_COPY(T, source, sourceSize, dest, shift, mask) \
+	do { \
+		size_t copiedBytes = 0; \
+		if (sizeof(T) > sizeof(uint8_t)) { \
+			const T *sourceDataBlock = (const T *)(source); \
+			const T *sourceDataBlockEnd = (const T *)(source) + (sourceSize >> shift); \
+			T *destDataBlock = (T *)(dest); \
+			while (sourceDataBlock != sourceDataBlockEnd) { \
+				*destDataBlock++ = *sourceDataBlock++; \
+				copiedBytes += sizeof(T); \
+			} \
+		} \
+		const uint8_t *sourceData8 = (const uint8_t *)source + copiedBytes; \
+		const uint8_t *sourceData8End = (const uint8_t *)source + sourceSize; \
+		uint8_t *destData8 = (uint8_t *)dest + copiedBytes; \
+		while (sourceData8 != sourceData8End) { \
+			*destData8++ = *sourceData8++; \
+		} \
+	} while (0);
 
 fpl_common_api void fplMemorySet(void *mem, const uint8_t value, const size_t size) {
 	FPL__CheckArgumentNullNoRet(mem);
