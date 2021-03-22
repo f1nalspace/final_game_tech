@@ -1350,16 +1350,23 @@ SOFTWARE.
 
 	- x86
 	- x86_64
-	- x64
+	- x64 (Untested)
 	- Arm32 (Partially)
 	- Arm64 (Untested)
 
 	@section section_platform_status_supported_platforms Supported Platforms
 
-	- Windows
-	- Linux
+	- Windows 7 or higher
+	- Linux 2.6 or higher
+	- Unix/BSD (Partially)
 	- Raspberry Pi (Partially)
-	- Unix (Partially)
+
+	@section section_platform_status_included_subplatforms Included Sub-Platforms
+
+	- STD Strings
+	- STD Console
+	- POSIX
+	- X11
 */
 
 // ****************************************************************************
