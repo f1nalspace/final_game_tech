@@ -8740,7 +8740,7 @@ fpl_internal void fpl__HandleError(const char *funcName, const int lineNumber, c
 #	endif
 	if(level >= minErrorLevel) {
 		// @NOTE(final): Force a null pointer assignment crash here
-		*(int *) = 0;
+		*(int *)0 = 0;
 	}
 #endif
 }
