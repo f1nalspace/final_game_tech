@@ -456,7 +456,7 @@
 		fplPlatformRelease();
 	} else {
 		fplPlatformResultType initResult = fplGetPlatformResult();
-		const char *initResultStr = fplGetPlatformResultTypeString(initResult);
+		const char *initResultStr = fplGetPlatformResultName(initResult);
 		const char *errStr = fplGetLastError();
 		fplConsoleFormatError("FPL-ERROR[%s]: %s\n", initResultStr, errStr);
 	}
@@ -1969,7 +1969,7 @@
 	}
 
 	// or just print it out
-	const char *cpuArchString = fplGetArchTypeString(cpuArch);
+	const char *cpuArchString = fplGetArchName(cpuArch);
 	fplConsoleFormatOut("CPU Architecture: %s\n", cpuArchString);
 	@endcode
 	
