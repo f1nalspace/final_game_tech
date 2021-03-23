@@ -3787,7 +3787,7 @@
 		#include <final_platform_layer.h>
 
 		// You have to include GL.h yourself or use any other OpenGL loader you want.
-		// FPL just creates a OpenGL rendering context for you, but nothing more.
+		// FPL just creates an OpenGL rendering context for you, but nothing more.
 		#include <GL/gl.h>
 
 		#ifndef APIENTRY
