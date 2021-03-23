@@ -11,7 +11,7 @@ The main focus is game/media/simulation development, so the default settings wil
 
 It is written in C99 for simplicity and best portability but is C++ compatible as well.
 
-FPL supports the platforms Windows/Linux/Unix for the architectures x86/x64.
+FPL supports the platforms Windows/Linux/Unix for the architectures x86/x64/arm.
 
 The only dependencies are built-in operating system libraries and a C99 compliant compiler.
 
