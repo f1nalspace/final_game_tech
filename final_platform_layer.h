@@ -2008,11 +2008,11 @@ SOFTWARE.
 #	define fpl__m_StaticAssert(exp)
 #endif // FPL__ENABLE_ASSERTIONS
 
-//! Breaks with an runtime assertion, when the specified expression evaluates to @ref false
+//! Breaks with an runtime assertion, when the specified expression evaluates to @c false
 #define fplAssert(exp) fpl__m_Assert(exp)
-//! Breaks the compilation, when the specified expression evaluates to @ref false
+//! Breaks the compilation, when the specified expression evaluates to @c false
 #define fplStaticAssert(exp) fpl__m_StaticAssert(exp)
-//! Always crashes the application with a null-pointer assignment, when the specified expression evaluates to @ref false
+//! Always crashes the application with a null-pointer assignment, when the specified expression evaluates to @c false
 #define fplAlwaysAssert(exp) if(!(exp)) {*(int *)0 = 0;}
 
 //
@@ -3059,7 +3059,7 @@ typedef struct fplOSVersionInfos {
 
 /**
 * @brief Gets version informations from the operating system
-* @param outInfos The target @ref fplOSInfos structure
+* @param outInfos The target @ref fplOSVersionInfos structure
 * @return Returns true when the infos could be retrieved, false otherwise.
 * @note This may be called without initializing the platform
 * @see @ref section_category_platform_os_version
