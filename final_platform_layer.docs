@@ -10,11 +10,12 @@
 	
 	@section section_overview Overview
 
-	Final Platform Layer is a Single-Header-File cross-platform C99/C++ development library, designed to abstract the underlying platform to a simple and easy-to-use API - providing low-level access to the operating system and hardware devices.<br>
+	Final Platform Layer is a Single-Header-File cross-platform <b>C99</b>/<b>C++</b> development library, designed to abstract the underlying platform to a simple and easy-to-use API - providing low-level access to the operating system and hardware devices.<br>
 	<br>
 	The main focus is rapid game/media/simulation development, so the default settings will create a window, set up an OpenGL rendering context, and initialize audio playback on any platform.<br>
 	<br>
 	FPL supports the platforms <b>Windows</b>/<b>Linux</b>/<b>Unix</b> for the architectures <b>x86</b>/<b>x64</b>/<b>arm</b>.<br>
+	<br>
 	The only dependencies are built-in operating system libraries and a <b>C99</b> or <b>C++/11</b> compliant compiler.<br>
 	<br>
 	It is released under the @subpage page_license "MIT License". This license allows you to use FPL freely in any software, for private or commercial usages.<br>
@@ -30,7 +31,7 @@
 	- @subpage page_changelog
 	- @subpage page_license
 
-	I hope you find all the information you need. If not please drop an issue on the GitHub project page and it will be addressed as soon as possible!
+	I hope you find all the information you need. If not please drop an issue on the <a href="https://github.com/f1nalspace/final_game_tech/issues">GitHub</a> project page and it will be addressed as soon as possible!
 
 	Thanks for using, have a great day!
 */
@@ -43,7 +44,7 @@
 
 	@subsection subsection_intro_whatisfpl What is FPL?
 
-	Final Platform Layer is a Single-Header-File cross-platform C99/C++ development library designed to abstract the underlying platform to a very simple and easy-to-use API - providing low level access to:<br>
+	Final Platform Layer is a Single-Header-File cross-platform <b>C99</b>/<b>C++</b> development library designed to abstract the underlying platform to a very simple and easy-to-use API - providing low level access to:<br>
 	- Single Window creation and handling
 	- Graphics Software or Hardware Rendering initialization.
 	- Playback of raw Audio Samples
@@ -83,7 +84,7 @@
 	For more details see the page: @subpage page_support_status
 	
 	@subsection subsection_intro_supported_compilers Which compilers are supported by FPL?
-	FPL should compile on any C99 or C++/11 compliant compiler, such as MSVC 2015+, GCC, Clang, etc.
+	FPL should compile on any <b>C99</b> or <b>C++/11</b> compliant compiler, such as <b>MSVC</b>, <b>GCC</b>, <b>Clang</b>, etc.
 	
 	@subsection section_intro_features What can FPL do?
 	Read below a detailed feature overview of FPL:
@@ -197,7 +198,7 @@
 
 	@section section_usage_requirements Requirements
 
-	FPL uses built-in operating system libraries and requires a C99 or C++/11 compliant compiler.<br>
+	FPL uses built-in operating system libraries and requires a <b>C99</b> or <b>C++/11</b> compliant compiler.<br>
 	Depending on the compiler and platform - linking to one system library may be needed:
 
 	@subsection usage_requirements_win32 Win32
@@ -206,7 +207,7 @@
 	@subsection usage_requirements_unix Unix/Linux
 	- Link against "libld.so"
 
-	@subsection usage_requirements_crt C-Runtime
+	@subsection usage_requirements_crt C-Runtime optional
 	By default, FPL uses the CRT (C-Runtime-Library) for functions such as vsnprintf(), but its usage is optional.<br>
 	To learn how to use FPL without the CRT more details, see the page @subpage page_nocrt
 
