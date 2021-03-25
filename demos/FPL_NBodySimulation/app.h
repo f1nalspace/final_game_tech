@@ -24,8 +24,8 @@ const char *kAppVersion = "1.4.3";
 const size_t kBenchmarkFrameCount = 50;
 const size_t kBenchmarkIterationCount = 10;
 #else
-const size_t kBenchmarkFrameCount = 2;
-const size_t kBenchmarkIterationCount = 2;
+const size_t kBenchmarkFrameCount = 4;
+const size_t kBenchmarkIterationCount = 8;
 #endif
 const size_t kDemoCount = 4;
 
