@@ -1,0 +1,30 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <ClCompile Include="main.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="vecmath.h" />
+    <ClInclude Include="demo1.h" />
+    <ClInclude Include="demo2.h" />
+    <ClInclude Include="demo3.h" />
+    <ClInclude Include="demo3.cpp" />
+    <ClInclude Include="demo4.h" />
+    <ClInclude Include="demo4.cpp" />
+    <ClInclude Include="sph.h" />
+    <ClInclude Include="app.h" />
+    <ClInclude Include="render.h" />
+    <ClInclude Include="demo1.cpp" />
+    <ClInclude Include="app.cpp" />
+    <ClInclude Include="base.h" />
+    <ClInclude Include="pseudorandom.h" />
+    <ClInclude Include="utils.h" />
+    <ClInclude Include="chart.h" />
+    <ClInclude Include="font.h" />
+    <ClInclude Include="threading.h" />
+    <ClInclude Include="memory.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="demo2.cpp" />
+  </ItemGroup>
+</Project>
