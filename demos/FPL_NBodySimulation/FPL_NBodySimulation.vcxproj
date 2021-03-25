@@ -174,7 +174,7 @@
     <ClInclude Include="demo3.cpp" />
     <ClInclude Include="demo4.cpp" />
     <ClInclude Include="app.cpp" />
-    <ClCompile Include="main.cpp" />
+    <ClCompile Include="fpl_nbodysimulation.cpp" />
     <ClInclude Include="demo1.cpp" />
   </ItemGroup>
   <ItemGroup>

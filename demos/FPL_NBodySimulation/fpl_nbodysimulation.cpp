@@ -1,82 +1,79 @@
 /*
--------------------------------------------------------------------------------------------------------------------
-Multi-Threaded N-Body 2D Smoothed Particle Hydrodynamics Fluid Simulation based on paper "Particle-based Viscoelastic Fluid Simulation" by Simon Clavet, Philippe Beaudoin, and Pierre Poulin.
+-------------------------------------------------------------------------------
+Name:
+	FPL-Demo | NBodySimulation
 
-Version 1.4
+Description:
+	Multi-Threaded N-Body 2D Smoothed Particle Hydrodynamics Fluid Simulation based on paper "Particle-based Viscoelastic Fluid Simulation" by Simon Clavet, Philippe Beaudoin, and Pierre Poulin.
+	A experiment about creating a two-way particle simulation in 4 different programming styles to see the difference in performance and maintainability. The core math is same for all implementations, including rendering and threading.
+	The core math is same for all implementations, including rendering and threading.
 
-A experiment about creating a two-way particle simulation in 4 different programming styles to see the difference in performance and maintainability.
-The core math is same for all implementations, including rendering and threading.
+	Demos:
+		1. Object oriented style 1 (Naive)
+		2. Object oriented style 2 (Public, reserved vectors, fixed grid, no unneccesary classes or pointers)
+		3. Object oriented style 3 (Structs only, no virtual function calls, reserved vectors, fixed grid)
+		4. Data oriented style with 8/16 byte aligned structures
 
-Demos:
+	Benchmark:
+		There is a benchmark recording and rendering built-in.
 
-1. Object oriented style 1 (Naive)
-2. Object oriented style 2 (Public, reserved vectors, fixed grid, no unneccesary classes or pointers)
-3. Object oriented style 3 (Structs only, no virtual function calls, reserved vectors, fixed grid)
-4. Data oriented style with 8/16 byte aligned structures
+		To start a benchmark hit "B" key.
+		To stop a benchmark hit "Escape" key.
 
-How to compile:
+	Notes:
+		Collision detection is discrete, therefore particles may pass through bodies when they are too thin and particles too fast.
 
-Compile main.cpp only and link with opengl and glew.
+Requirements:
+	- C++/11 Compiler
+	- Final Platform Layer
 
-Benchmark:
-
-There is a benchmark recording and rendering built-in.
-
-To start a benchmark hit "B" key.
-To stop a benchmark hit "Escape" key.
-
-Notes:
-
-- Collision detection is discrete, therefore particles may pass through bodies when they are too thin and particles too fast.
+Author:
+	Torsten Spaete
 
 Todo:
+	- Migrate all GUI/Text rendering to imGUI
+	- External particle forces
+	- Add bar value labels on benchmark chart
+	- Migrate to modern opengl 3.3+
 
-- Migrate all GUI/Text rendering to imGUI
-- External particle forces
-- Add bar value labels on benchmark chart
-- Migrate to modern opengl 3.3+
+Changelog:
+	#1.4.3:
+	- Migrated to FPL 0.9.2.0 beta
 
-Version History:
+	#1.4.2:
+	- Migrated to FPL 0.8.3.0 beta
 
-1.4.3:
-- Migrated to FPL 0.9.2.0 beta
+	#1.4.1:
 
-1.4.2:
-- Migrated to FPL 0.8.3.0 beta
+	- Migrated to FPL 0.8.0.0 beta
+	- Migrated to FGL 0.3.2.0 beta
+	- Use fplThreadYield() instead of fplThreadSleep()
 
-1.4.1:
+	#1.4:
+	- Migrated to FPL 0.7.8.0 beta
+	- Replaced GLEW with final_dynamic_opengl.h
+	- Replaced all std threading stuff with FPL equivalents
+	- Replaced sprintf_s to fplFormatAnsiString
 
-- Migrated to FPL 0.8.0.0 beta
-- Migrated to FGL 0.3.2.0 beta
-- Use fplThreadYield() instead of fplThreadSleep()
+	#1.3:
+	- Migrated to FPL 0.3.3 alpha
 
-1.4:
-- Migrated to FPL 0.7.8.0 beta
-- Replaced GLEW with final_dynamic_opengl.h
-- Replaced all std threading stuff with FPL equivalents
-- Replaced sprintf_s to fplFormatAnsiString
+	#1.2:
+	- Using command buffer instead of immediate rendering, so we render only in main.cpp
+	- Rendering text using stb_truetype
 
-1.3:
-- Migrated to FPL 0.3.3 alpha
+	#1.1:
+	- Improved benchmark functionality and rendering
 
-1.2:
-- Using command buffer instead of immediate rendering, so we render only in main.cpp
-- Rendering text using stb_truetype
+	#1.0:
+	- Added integrated benchmark functionality
 
-1.1:
-- Improved benchmark functionality and rendering
-
-1.0:
-- Added integrated benchmark functionality
-
-0.9:
-- Initial version
+	#0.9:
+	- Initial version
 
 License:
-
-MIT License
-Copyright (c) 2017 Torsten Spaete
--------------------------------------------------------------------------------------------------------------------
+	Copyright (c) 2017-2021 Torsten Spaete
+	MIT License (See LICENSE file)
 */
 #define FPL_IMPLEMENTATION
 #define FPL_NO_AUDIO
