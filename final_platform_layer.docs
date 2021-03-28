@@ -1948,10 +1948,10 @@
 
 	@section section_category_hardware_corecount Get number of CPU-Cores
 
-	You can retrieve the number of processor cores by calling @ref fplGetProcessorCoreCount() .<br>
+	You can retrieve the number of processor cores by calling @ref fplCPUGetCoreCount() .<br>
 
 	@code{.c}
-	size_t coreCount = fplGetProcessorCoreCount();
+	size_t coreCount = fplCPUGetCoreCount();
 	// Do something with the core count
 	@endcode
 
@@ -1959,13 +1959,13 @@
 
 	@section section_category_hardware_cpuarch Get CPU architecture
 
-	You can query the CPU architecture type by calling @ref fplGetProcessorArchitecture() . This will return a @ref fplArchType value, which you can use test for different architecture types.<br>
+	You can query the CPU architecture type by calling @ref fplCPUGetArchitecture() . This will return a @ref fplCPUArchType value, which you can use test for different architecture types.<br>
 	<br>
-	Use @ref fplGetArchName() to convert a @ref fplArchType into a string.<br>
+	Use @ref fplCPUGetArchName() to convert a @ref fplCPUArchType into a string.<br>
 
 	@code{.c}
-	fplArchType cpuArch = fplGetProcessorArchitecture();
-	if (cpuArch == fplArchType_fplArchType_Arm64) {
+	fplCPUArchType cpuArch = fplCPUGetArchitecture();
+	if (cpuArch == fplCPUArchType_Arm64) {
 		// Do something on a ARM-64 CPU
 	}
 
@@ -1976,35 +1976,35 @@
 	
 	@section section_category_hardware_cpuname Get the CPU Name
 
-	You can query the CPU name by calling @ref fplGetProcessorName() .
+	You can query the CPU name by calling @ref fplCPUGetName() .
 
 	@code{.c}
 	// Print out the CPU-Name
 	char nameBuffer[1024];
-	fplGetProcessorName(nameBuffer, fplArrayCount(nameBuffer));
+	fplCPUGetName(nameBuffer, fplArrayCount(nameBuffer));
 	fplConsoleFormatOut("CPU Name: %s\n", nameBuffer);
 	@endcode
 
 	@section section_category_hardware_memstate Query memory state
 
-	With @ref fplGetRunningMemoryInfos() you can query the current memory state.<br>
+	With @ref fplMemoryGetInfos() you can query the current memory state.<br>
 	This includes the size of the physical memory, the current memory usage, and more.<br>
 	See @ref fplMemoryInfos for more details.<br>
 
 	@code{.c}
 	fplMemoryInfos memInfos = fplZeroInit;
-	if (fplGetRunningMemoryInfos(&memInfos)) {
+	if (fplMemoryGetInfos(&memInfos)) {
 		fplConsoleFormatOut("%llu of %llu physical memory is available.\n", memInfos.freePhysicalSize, memInfos.totalPhysicalSize);
 	}
 	@endcode
 
 	@section section_category_hardware_cpucaps Query CPU Capabilities
 	
-	Use the @ref fplGetProcessorCapabilities() to retrieve a full set of available processor capabilities, like MMX/SSE/AVX support, etc.
+	Use the @ref fplCPUGetCapabilities() to retrieve a full set of available processor capabilities, like MMX/SSE/AVX support, etc.
 
 	@code{.c}
-	fplProcessorCapabilities caps = fplZeroInit;
-	if (fplGetProcessorCapabilities(&caps)) {
+	fplCPUCapabilities caps = fplZeroInit;
+	if (fplCPUGetCapabilities(&caps)) {
 		if (caps.x86.hasSSE2) {
 			// Do something when the x86 CPU supports SSE2 - this should be true, on most modern x86 CPUs.
 		}
@@ -3168,12 +3168,12 @@
 	- @ref fplAtomicCompareAndSwapS64()
 	- @ref fplAtomicCompareAndSwapSize()
 	- @ref fplAtomicCompareAndSwapPtr()
-	- @ref fplIsAtomicCompareAndSwapU32()
-	- @ref fplIsAtomicCompareAndSwapU64()
-	- @ref fplIsAtomicCompareAndSwapS32()
-	- @ref fplIsAtomicCompareAndSwapS64()
-	- @ref fplIsAtomicCompareAndSwapSize()
-	- @ref fplIsAtomicCompareAndSwapPtr()
+	- @ref fplAtomicIsCompareAndSwapU32()
+	- @ref fplAtomicIsCompareAndSwapU64()
+	- @ref fplAtomicIsCompareAndSwapS32()
+	- @ref fplAtomicIsCompareAndSwapS64()
+	- @ref fplAtomicIsCompareAndSwapSize()
+	- @ref fplAtomicIsCompareAndSwapPtr()
 
 	Usage:
 	@code{.c}
@@ -3183,7 +3183,7 @@
 
 	// or
 	volatile uint32_t storageValue = 0;
-	if (fplIsAtomicCompareAndSwapU32(&storageValue, 0, 1337)) {
+	if (fplAtomicIsCompareAndSwapU32(&storageValue, 0, 1337)) {
 		// The first thread executing this to 1337 will get here
 	} else {
 		// All other threads gets here

@@ -116,7 +116,7 @@ static void RecordDebugEvent(DebugType type, char* guid) {
 	uint32_t eventIndex = arrayIndex_EventIndex & 0xFFFFFFFF;
 	fplAssert(eventIndex < fplArrayCount(globalDebugTable->events[0]));
 	DebugEvent *ev = globalDebugTable->events[arrayIndex_EventIndex >> 32] + eventIndex;
-	ev->cycles = fplRDTSC();
+	ev->cycles = fplCPURDTSC();
 	ev->time = fplGetTimeInSecondsHP();
 	ev->type = (uint8_t)type;
 	ev->coreIndex = 0;

@@ -303,7 +303,7 @@ static void Render(AudioDemo *demo, const int screenW, const int screenH, const 
 	uint8_t *chunkSamples = visualization->videoAudioChunks[0].samples;
 
 	if(demo->useRealTimeSamples) {
-		if(fplIsAtomicCompareAndSwapU32(&visualization->hasVideoAudioChunk, 2, 3)) {
+		if(fplAtomicIsCompareAndSwapU32(&visualization->hasVideoAudioChunk, 2, 3)) {
 			visualization->videoAudioChunks[0] = visualization->videoAudioChunks[1];
 			fplAtomicExchangeU32(&visualization->hasVideoAudioChunk, 0);
 		}
@@ -559,7 +559,7 @@ static uint32_t AudioPlayback(const fplAudioDeviceFormat *outFormat, const uint3
 		if(demo->useRealTimeSamples) {
 			const uint32_t updateInterval = 1000 / 60;
 			if((framesToCopy >= MAX_AUDIO_FRAMES_CHUNK_FRAMES) && ((fplGetTimeInMillisecondsLP() - demo->lastVideoAudioChunkUpdateTime) >= updateInterval)) {
-				if(fplIsAtomicCompareAndSwapU32(&visualization->hasVideoAudioChunk, 0, 1)) {
+				if(fplAtomicIsCompareAndSwapU32(&visualization->hasVideoAudioChunk, 0, 1)) {
 					visualization->videoAudioChunks[1].index = numFramesPlayed;
 					visualization->videoAudioChunks[1].count = MAX_AUDIO_FRAMES_CHUNK_FRAMES;
 					size_t chunkSamplesSize = frameSize * MAX_AUDIO_FRAMES_CHUNK_FRAMES;

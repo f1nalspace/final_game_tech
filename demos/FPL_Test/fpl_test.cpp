@@ -488,15 +488,15 @@ static void TestPaths() {
 
 static void TestHardware() {
 	char cpuNameBuffer[1024] = {};
-	fplGetProcessorName(cpuNameBuffer, fplArrayCount(cpuNameBuffer));
+	fplCPUGetName(cpuNameBuffer, fplArrayCount(cpuNameBuffer));
 	ftMsg("Processor name: %s\n", cpuNameBuffer);
 
-	size_t coreCount = fplGetProcessorCoreCount();
+	size_t coreCount = fplCPUGetCoreCount();
 	ftAssert(coreCount > 0);
 	ftMsg("Processor cores: %zu\n", coreCount);
 
-	fplProcessorCapabilities cpuCaps = {};
-	fplGetProcessorCapabilities(&cpuCaps);
+	fplCPUCapabilities cpuCaps = {};
+	fplCPUGetCapabilities(&cpuCaps);
 	ftMsg("Processor capabilities:\n");
 	ftMsg("\tMMX: %s\n", (cpuCaps.hasMMX ? "yes" : "no"));
 	ftMsg("\tSSE: %s\n", (cpuCaps.hasSSE ? "yes" : "no"));
@@ -511,7 +511,7 @@ static void TestHardware() {
 	ftMsg("\tFMA3: %s\n", (cpuCaps.hasFMA3 ? "yes" : "no"));
 
 	fplMemoryInfos memInfos = {};
-	fplGetRunningMemoryInfos(&memInfos);
+	fplMemoryGetInfos(&memInfos);
 	ftMsg("Installed physical memory (bytes): %llu\n", memInfos.totalPhysicalSize);
 	ftMsg("Total physical memory (bytes): %llu\n", memInfos.totalPhysicalSize);
 	ftMsg("Available physical memory (bytes): %llu\n", memInfos.freePhysicalSize);
@@ -527,12 +527,12 @@ static void TestHardware() {
         tmp *= 2 + 1;
         tmp /= (double)i*4;
 		tmp = sqrt(tmp);
-        uint64_t cycles = fplRDTSC();
+        uint64_t cycles = fplCPURDTSC();
         ftMsg("\tRun[%d]: %f, %llu\n", i, tmp, cycles);
     }
 
-    fplArchType archType = fplGetProcessorArchitecture();
-	const char* archStr = fplGetArchName(archType);
+    fplCPUArchType archType = fplCPUGetArchitecture();
+	const char* archStr = fplCPUGetArchName(archType);
 	ftMsg("Processor archicture: %s\n", archStr);
 }
 
@@ -847,7 +847,7 @@ static void TestThreading() {
 		//
 		// Multi threads test
 		//
-		size_t coreCount = fplGetProcessorCoreCount();
+		size_t coreCount = fplCPUGetCoreCount();
 		size_t threadCountForCores = coreCount > 2 ? coreCount - 1 : 1;
 		{
 			SimpleMultiThreadTest(2);

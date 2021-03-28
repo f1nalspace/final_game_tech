@@ -493,7 +493,7 @@ static bool TryQueueEnqueue(volatile LoadQueue* queue, const volatile LoadQueueV
 		size_t entrySeq = fplAtomicLoadSize(&entry->seq);
 		intptr_t dif = (intptr_t)entrySeq - (intptr_t)headSeq;
 		if (dif == 0) {
-			if (fplIsAtomicCompareAndSwapSize(&queue->headSeq, headSeq, headSeq + 1)) {
+			if (fplAtomicIsCompareAndSwapSize(&queue->headSeq, headSeq, headSeq + 1)) {
 				fplMemoryCopy((const void*)&value, sizeof(value), (void*)&entry->value);
 				fplAtomicStoreSize(&entry->seq, headSeq + 1);
 				return(true);
@@ -515,7 +515,7 @@ static bool TryQueueDequeue(volatile LoadQueue* queue, volatile LoadQueueValue* 
 		size_t entrySeq = fplAtomicLoadSize(&entry->seq);
 		intptr_t dif = (intptr_t)entrySeq - (intptr_t)(tailSeq + 1);
 		if (dif == 0) {
-			if (fplIsAtomicCompareAndSwapSize(&queue->tailSeq, tailSeq, tailSeq + 1)) {
+			if (fplAtomicIsCompareAndSwapSize(&queue->tailSeq, tailSeq, tailSeq + 1)) {
 				fplMemoryCopy((const void*)&entry->value, sizeof(*value), (void*)value);
 				fplAtomicStoreSize(&entry->seq, tailSeq + queue->mask + 1);
 				return(true);
@@ -1267,7 +1267,7 @@ static bool Init(ViewerState* state) {
 	if (state->params.threadCount > 0) {
 		threadCount = fplMax(fplMin(state->params.threadCount, MAX_LOAD_THREAD_COUNT), 1);
 	} else {
-		threadCount = fplMax(fplMin(fplGetProcessorCoreCount(), MAX_LOAD_THREAD_COUNT), 1);
+		threadCount = fplMax(fplMin(fplCPUGetCoreCount(), MAX_LOAD_THREAD_COUNT), 1);
 	}
 	InitLoadThreads(state, threadCount);
 

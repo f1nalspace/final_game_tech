@@ -121,7 +121,7 @@ public:
 	}
 
 	static size_t GetConcurrencyThreadCount() {
-		size_t count = fplGetProcessorCoreCount();
+		size_t count = fplCPUGetCoreCount();
 		return fplMax(count, 1);
 	}
 };

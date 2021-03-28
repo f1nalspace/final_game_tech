@@ -28,7 +28,7 @@ Application::Application() {
 	window = new Window();
 	commandBuffer = new Render::CommandBuffer();
 	char buffer[1024];
-	fplGetProcessorName(buffer, fplArrayCount(buffer));
+	fplCPUGetName(buffer, fplArrayCount(buffer));
 	cpuName = buffer;
 }
 

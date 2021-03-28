@@ -191,12 +191,35 @@ SOFTWARE.
 
 	### Breaking changes
 	- Removed[#85]: Removed obsolete FPL_FIRST_* and FPL_LAST_* defines
+
 	- Renamed[#78]: fplGetAudioResultTypeString to fplGetAudioResultName
-	- Renamed[#78]: fplGetArchTypeString to fplGetArchName
+	- Renamed[#78]: fplGetArchTypeString to fplCPUGetArchName
 	- Renamed[#78]: fplGetVideoDriverString to fplGetVideoDriverName
 	- Renamed[#78]: fplGetAudioDriverString to fplGetAudioDriverName
 	- Renamed[#78]: fplGetAudioFormatTypeString to fplGetAudioFormatName
 	- Renamed[#78]: fplGetPlatformResultTypeString to fplGetPlatformResultName
+
+	- Renamed[#50]: struct fplOSInfos to fplOSVersionInfos
+	- Renamed[#50]: fplGetCurrentUsername() to fplSessionGetUsername()
+	- Renamed[#50]: fplGetOperatingSystemInfos() to fplOSGetVersionInfos()
+	- Renamed[#50]: fplIsAtomicCompareAndSwapPtr() to fplAtomicIsCompareAndSwapPtr()
+	- Renamed[#50]: fplIsAtomicCompareAndSwapSize() to fplAtomicIsCompareAndSwapSize()
+	- Renamed[#50]: fplIsAtomicCompareAndSwapS64() to fplAtomicIsCompareAndSwapS64()
+	- Renamed[#50]: fplIsAtomicCompareAndSwapS32() to fplAtomicIsCompareAndSwapS32()
+	- Renamed[#50]: fplIsAtomicCompareAndSwapU64() to fplAtomicIsCompareAndSwapU64()
+	- Renamed[#50]: fplIsAtomicCompareAndSwapU32() to fplAtomicIsCompareAndSwapU32()
+	- Renamed[#50]: fplXCR0() to fplCPUXCR0()
+	- Renamed[#50]: fplRDTSC() to fplCPURDTSC()
+	- Renamed[#50]: fplGetArchName() to fplCPUGetArchName()
+	- Renamed[#50]: fplGetProcessorCoreCount() to fplCPUGetCoreCount()
+	- Renamed[#50]: fplGetProcessorName() to fplCPUGetName()
+	- Renamed[#50]: fplGetProcessorCapabilities() to fplCPUGetCapabilities()
+	- Renamed[#50]: fplGetProcessorArchitecture() to fplCPUGetArchitecture()
+	- Renamed[#50]: fplGetRunningMemoryInfos() to fplMemoryGetInfos()
+	- Renamed[#50]: struct fplProcessorCapabilities to fplCPUCapabilities
+	- Renamed[#50]: enum fplArchType to fplCPUArchType
+	- Renamed[#50]: enum values fplArchType_* to fplCPUArchType_
+
 	- Changed[#74]: fplWideStringToUTF8String() returns the number of characters instead of a char-pointer
 	- Changed[#74]: fplUTF8StringToWideString() returns the number of characters instead of a char-pointer
 	- Changed[#74]: fplGetExecutableFilePath() returns the number of characters instead of a char-pointer
@@ -214,9 +237,6 @@ SOFTWARE.
 	- Changed[#74]: fplGetSystemLocale() returns the number of characters instead of a char-pointer
 	- Changed[#74]: fplGetProcessorName() returns the number of characters instead of a char-pointer
 	- Changed[#74]: fplGetDisplayModeCount() -> Use fplGetDisplayModes() with null-pointer instead
-	- Changed: Renamed fplGetCurrentUsername() to fplSessionGetUsername()
-	- Changed: Renamed fplGetOperatingSystemInfos() to fplOSGetVersionInfos()
-	- Changed: Renamed struct fplOSInfos to fplOSVersionInfos
 
 	## v0.9.5-beta
 	- New: Added enum fplAudioDefaultFields
@@ -2424,7 +2444,7 @@ typedef int fpl__LinuxSignalHandle;
 
 // ****************************************************************************
 //
-// API
+// > API
 //
 // ****************************************************************************
 
@@ -2701,7 +2721,7 @@ fpl_common_api void *fplAtomicIncrementPtr(volatile void **dest);
 * @param exchange The value to exchange with
 * @return Returns the value of the destination before the swap, regardless of the result.
 * @note Ensures that memory operations are completed in order.
-* @note Use @ref fplIsAtomicCompareAndSwapU32() when you want to check if the exchange has happened or not.
+* @note Use @ref fplAtomicIsCompareAndSwapU32() when you want to check if the exchange has happened or not.
 * @see @ref category_threading_atomics_cas
 */
 fpl_platform_api uint32_t fplAtomicCompareAndSwapU32(volatile uint32_t *dest, const uint32_t comparand, const uint32_t exchange);
@@ -2712,7 +2732,7 @@ fpl_platform_api uint32_t fplAtomicCompareAndSwapU32(volatile uint32_t *dest, co
 * @param exchange The value to exchange with
 * @return Returns the value of the destination before the swap, regardless of the result.
 * @note Ensures that memory operations are completed in order.
-* @note Use @ref fplIsAtomicCompareAndSwapU64() when you want to check if the exchange has happened or not.
+* @note Use @ref fplAtomicIsCompareAndSwapU64() when you want to check if the exchange has happened or not.
 * @see @ref category_threading_atomics_cas
 */
 fpl_platform_api uint64_t fplAtomicCompareAndSwapU64(volatile uint64_t *dest, const uint64_t comparand, const uint64_t exchange);
@@ -2723,7 +2743,7 @@ fpl_platform_api uint64_t fplAtomicCompareAndSwapU64(volatile uint64_t *dest, co
 * @param exchange The value to exchange with
 * @return Returns the value of the destination before the swap, regardless of the result.
 * @note Ensures that memory operations are completed in order.
-* @note Use @ref fplIsAtomicCompareAndSwapS32() when you want to check if the exchange has happened or not.
+* @note Use @ref fplAtomicIsCompareAndSwapS32() when you want to check if the exchange has happened or not.
 * @see @ref category_threading_atomics_cas
 */
 fpl_platform_api int32_t fplAtomicCompareAndSwapS32(volatile int32_t *dest, const int32_t comparand, const int32_t exchange);
@@ -2734,7 +2754,7 @@ fpl_platform_api int32_t fplAtomicCompareAndSwapS32(volatile int32_t *dest, cons
 * @param exchange The value to exchange with
 * @return Returns the value of the destination before the swap, regardless of the result.
 * @note Ensures that memory operations are completed in order.
-* @note Use @ref fplIsAtomicCompareAndSwapS64() when you want to check if the exchange has happened or not.
+* @note Use @ref fplAtomicIsCompareAndSwapS64() when you want to check if the exchange has happened or not.
 * @see @ref category_threading_atomics_cas
 */
 fpl_platform_api int64_t fplAtomicCompareAndSwapS64(volatile int64_t *dest, const int64_t comparand, const int64_t exchange);
@@ -2745,7 +2765,7 @@ fpl_platform_api int64_t fplAtomicCompareAndSwapS64(volatile int64_t *dest, cons
 * @param exchange The value to exchange with
 * @return Returns the value of the destination before the swap, regardless of the result.
 * @note Ensures that memory operations are completed in order.
-* @note Use @ref fplIsAtomicCompareAndSwapPtr() when you want to check if the exchange has happened or not.
+* @note Use @ref fplAtomicIsCompareAndSwapPtr() when you want to check if the exchange has happened or not.
 * @see @ref category_threading_atomics_cas
 */
 fpl_common_api size_t fplAtomicCompareAndSwapSize(volatile size_t *dest, const size_t comparand, const size_t exchange);
@@ -2756,7 +2776,7 @@ fpl_common_api size_t fplAtomicCompareAndSwapSize(volatile size_t *dest, const s
 * @param exchange The value to exchange with
 * @return Returns the value of the destination before the swap, regardless of the result.
 * @note Ensures that memory operations are completed in order.
-* @note Use @ref fplIsAtomicCompareAndSwapPtr() when you want to check if the exchange has happened or not.
+* @note Use @ref fplAtomicIsCompareAndSwapPtr() when you want to check if the exchange has happened or not.
 * @see @ref category_threading_atomics_cas
 */
 fpl_common_api void *fplAtomicCompareAndSwapPtr(volatile void **dest, const void *comparand, const void *exchange);
@@ -2770,7 +2790,7 @@ fpl_common_api void *fplAtomicCompareAndSwapPtr(volatile void **dest, const void
 * @note Ensures that memory operations are completed in order.
 * @see @ref category_threading_atomics_cas
 */
-fpl_platform_api bool fplIsAtomicCompareAndSwapU32(volatile uint32_t *dest, const uint32_t comparand, const uint32_t exchange);
+fpl_platform_api bool fplAtomicIsCompareAndSwapU32(volatile uint32_t *dest, const uint32_t comparand, const uint32_t exchange);
 /**
 * @brief Compares a 64-bit unsigned integer with a comparand and swaps it when comparand matches the destination and returns a bool indicating the result.
 * @param dest The target value to write into
@@ -2780,7 +2800,7 @@ fpl_platform_api bool fplIsAtomicCompareAndSwapU32(volatile uint32_t *dest, cons
 * @note Ensures that memory operations are completed in order.
 * @see @ref category_threading_atomics_cas
 */
-fpl_platform_api bool fplIsAtomicCompareAndSwapU64(volatile uint64_t *dest, const uint64_t comparand, const uint64_t exchange);
+fpl_platform_api bool fplAtomicIsCompareAndSwapU64(volatile uint64_t *dest, const uint64_t comparand, const uint64_t exchange);
 /**
 * @brief Compares a 32-bit signed integer with a comparand and swaps it when comparand matches the destination and returns a bool indicating the result.
 * @param dest The target value to write into
@@ -2790,7 +2810,7 @@ fpl_platform_api bool fplIsAtomicCompareAndSwapU64(volatile uint64_t *dest, cons
 * @note Ensures that memory operations are completed in order.
 * @see @ref category_threading_atomics_cas
 */
-fpl_platform_api bool fplIsAtomicCompareAndSwapS32(volatile int32_t *dest, const int32_t comparand, const int32_t exchange);
+fpl_platform_api bool fplAtomicIsCompareAndSwapS32(volatile int32_t *dest, const int32_t comparand, const int32_t exchange);
 /**
 * @brief Compares a 64-bit signed integer with a comparand and swaps it when comparand matches the destination and returns a bool indicating the result.
 * @param dest The target value to write into
@@ -2800,7 +2820,7 @@ fpl_platform_api bool fplIsAtomicCompareAndSwapS32(volatile int32_t *dest, const
 * @note Ensures that memory operations are completed in order.
 * @see @ref category_threading_atomics_cas
 */
-fpl_platform_api bool fplIsAtomicCompareAndSwapS64(volatile int64_t *dest, const int64_t comparand, const int64_t exchange);
+fpl_platform_api bool fplAtomicIsCompareAndSwapS64(volatile int64_t *dest, const int64_t comparand, const int64_t exchange);
 /**
 * @brief Compares a size with a comparand and swaps it when comparand matches the destination and returns a bool indicating the result.
 * @param dest The target value to write into
@@ -2810,7 +2830,7 @@ fpl_platform_api bool fplIsAtomicCompareAndSwapS64(volatile int64_t *dest, const
 * @note Ensures that memory operations are completed in order.
 * @see @ref category_threading_atomics_cas
 */
-fpl_common_api bool fplIsAtomicCompareAndSwapSize(volatile size_t *dest, const size_t comparand, const size_t exchange);
+fpl_common_api bool fplAtomicIsCompareAndSwapSize(volatile size_t *dest, const size_t comparand, const size_t exchange);
 /**
 * @brief Compares a pointer with a comparand and swaps it when comparand matches the destination and returns a bool indicating the result.
 * @param dest The target value to write into
@@ -2820,7 +2840,7 @@ fpl_common_api bool fplIsAtomicCompareAndSwapSize(volatile size_t *dest, const s
 * @note Ensures that memory operations are completed in order.
 * @see @ref category_threading_atomics_cas
 */
-fpl_common_api bool fplIsAtomicCompareAndSwapPtr(volatile void **dest, const void *comparand, const void *exchange);
+fpl_common_api bool fplAtomicIsCompareAndSwapPtr(volatile void **dest, const void *comparand, const void *exchange);
 
 //
 // Load
@@ -2952,6 +2972,26 @@ typedef struct fplMemoryBlock {
 	size_t size;
 } fplMemoryBlock;
 
+//! A structure that contains informations about current memory usage
+typedef struct fplMemoryInfos {
+	//! Size of physical installed memory in bytes
+	uint64_t installedPhysicalSize;
+	//! Total size of physical memory in bytes (May be less than size of installed physical memory, due to shared memory stuff)
+	uint64_t totalPhysicalSize;
+	//! Available physical memory in bytes
+	uint64_t freePhysicalSize;
+	//! Total size of memory cache in bytes
+	uint64_t totalCacheSize;
+	//! Available size of the memory cache in bytes
+	uint64_t freeCacheSize;
+	//! Total number of memory pages
+	uint64_t totalPageCount;
+	//! Number of available memory pages
+	uint64_t freePageCount;
+	//! Page size in bytes
+	uint64_t pageSize;
+} fplMemoryInfos;
+
 /**
 * @brief Clears the given memory by the given size to zero.
 * @param mem The pointer to the memory
@@ -3011,6 +3051,13 @@ fpl_common_api void *fplMemoryAlignedAllocate(const size_t size, const size_t al
 * @see @ref subsection_category_memory_handling_aligned_free
 */
 fpl_common_api void fplMemoryAlignedFree(void *ptr);
+/**
+* @brief Retrieves the current system memory usage.
+* @param outInfos The target @ref fplMemoryInfos structure
+* @return Returns true when the memory infos was retrieved, false otherwise.
+* @see @ref section_category_hardware_memstate
+*/
+fpl_platform_api bool fplMemoryGetInfos(fplMemoryInfos *outInfos);
 
 /** @} */
 
@@ -3096,49 +3143,29 @@ fpl_platform_api size_t fplSessionGetUsername(char *nameBuffer, const size_t max
 */
 // ----------------------------------------------------------------------------
 
-//! A structure that contains informations about current memory usage
-typedef struct fplMemoryInfos {
-	//! Size of physical installed memory in bytes
-	uint64_t installedPhysicalSize;
-	//! Total size of physical memory in bytes (May be less than size of installed physical memory, due to shared memory stuff)
-	uint64_t totalPhysicalSize;
-	//! Available physical memory in bytes
-	uint64_t freePhysicalSize;
-	//! Total size of memory cache in bytes
-	uint64_t totalCacheSize;
-	//! Available size of the memory cache in bytes
-	uint64_t freeCacheSize;
-	//! Total number of memory pages
-	uint64_t totalPageCount;
-	//! Number of available memory pages
-	uint64_t freePageCount;
-	//! Page size in bytes
-	uint64_t pageSize;
-} fplMemoryInfos;
-
 //! An enumeration of architecture types
-typedef enum fplArchType {
+typedef enum fplCPUArchType {
 	//! Unknown architecture
-	fplArchType_Unknown = 0,
+	fplCPUArchType_Unknown = 0,
 	//! X86 architecture
-	fplArchType_x86,
+	fplCPUArchType_x86,
 	//! X86 with 64-bit architecture
-	fplArchType_x86_64,
+	fplCPUArchType_x86_64,
 	//! X64 only architecture
-	fplArchType_x64,
+	fplCPUArchType_x64,
 	//! ARM32 architecture
-	fplArchType_Arm32,
+	fplCPUArchType_Arm32,
 	//! ARM64 architecture
-	fplArchType_Arm64,
+	fplCPUArchType_Arm64,
 
-	//! First @ref fplArchType
-	fplArchType_First = fplArchType_Unknown,
-	//! Last @ref fplArchType
-	fplArchType_Last = fplArchType_Arm64,
-} fplArchType;
+	//! First @ref fplCPUArchType
+	fplCPUArchType_First = fplCPUArchType_Unknown,
+	//! Last @ref fplCPUArchType
+	fplCPUArchType_Last = fplCPUArchType_Arm64,
+} fplCPUArchType;
 
 //! A structure that containing the processor capabilities, like MMX,SSE,AVX etc.
-typedef struct fplProcessorCapabilities {
+typedef struct fplCPUCapabilities {
 	//! Is MMX supported
 	fpl_b32 hasMMX;
 	//! Is SSE supported
@@ -3161,7 +3188,7 @@ typedef struct fplProcessorCapabilities {
 	fpl_b32 hasAVX512;
 	//! Is FMA-3 supported
 	fpl_b32 hasFMA3;
-} fplProcessorCapabilities;
+} fplCPUCapabilities;
 
 //! A structure containing the 4-registers (EAX, EBX, ECX, EDX) for a CPU-Leaf.
 typedef union fplCPUIDLeaf {
@@ -3191,26 +3218,26 @@ fpl_common_api void fplCPUID(fplCPUIDLeaf *outLeaf, const uint32_t functionId);
 * @return Returns the extended control register on x86 or zero for non-x86 architectures.
 * @warning This function works on X86 architectures only
 */
-fpl_common_api uint64_t fplGetXCR0();
+fpl_common_api uint64_t fplCPUXCR0();
 /**
 * @brief Reads the current time stamp counter (RDTSC)
 * @return Returns the number of cycles since the system start or zero for non-x86 architectures.
 * @warning This function works on X86 architectures only
 */
-fpl_common_api uint64_t fplRDTSC();
+fpl_common_api uint64_t fplCPURDTSC();
 /**
 * @brief Gets the string representation of the given architecture type
-* @param type The @ref fplArchType enumeration value
+* @param type The @ref fplCPUArchType enumeration value
 * @return Returns a string for the given architecture type
 * @see @ref section_category_hardware_cpuarch
 */
-fpl_common_api const char *fplGetArchName(const fplArchType type);
+fpl_common_api const char *fplCPUGetArchName(const fplCPUArchType type);
 /**
 * @brief Retrieves the total number of processor cores
 * @return Returns the total number of processor cores.
 * @see @ref section_category_hardware_corecount
 */
-fpl_platform_api size_t fplGetProcessorCoreCount();
+fpl_platform_api size_t fplCPUGetCoreCount();
 /**
 * @brief Retrieves the name of the processor
 * @param destBuffer The destination buffer
@@ -3218,27 +3245,20 @@ fpl_platform_api size_t fplGetProcessorCoreCount();
 * @return Returns the number of required/written characters, excluding the null-terminator
 * @see @ref section_category_hardware_cpuname
 */
-fpl_common_api size_t fplGetProcessorName(char *destBuffer, const size_t maxDestBufferLen);
+fpl_common_api size_t fplCPUGetName(char *destBuffer, const size_t maxDestBufferLen);
 /**
 * @brief Gets the capabilities of the processor
-* @param outCaps Pointer to the output @ref fplProcessorCapabilities
+* @param outCaps Pointer to the output @ref fplCPUCapabilities
 * @return Returns true when the capabilities could be retrieved, false otherwise.
 * @see @ref section_category_hardware_cpucaps
 */
-fpl_common_api bool fplGetProcessorCapabilities(fplProcessorCapabilities *outCaps);
+fpl_common_api bool fplCPUGetCapabilities(fplCPUCapabilities *outCaps);
 /**
 * @brief Gets the processor architecture type
 * @return Returns the processor architecture type
 * @see @ref section_category_hardware_cpuarch
 */
-fpl_platform_api fplArchType fplGetProcessorArchitecture();
-/**
-* @brief Retrieves the current system memory usage.
-* @param outInfos The target @ref fplMemoryInfos structure
-* @return Returns true when the memory infos was retrieved, false otherwise.
-* @see @ref section_category_hardware_memstate
-*/
-fpl_platform_api bool fplGetRunningMemoryInfos(fplMemoryInfos *outInfos);
+fpl_platform_api fplCPUArchType fplCPUGetArchitecture();
 
 /** @} */
 
@@ -9453,7 +9473,7 @@ fpl_common_api void fplCPUID(fplCPUIDLeaf *outLeaf, const uint32_t functionId) {
 #endif
 }
 
-fpl_common_api uint64_t fplGetXCR0() {
+fpl_common_api uint64_t fplCPUXCR0() {
 #if defined(fpl__m_GetXCR0)
 	uint64_t result = fpl__m_GetXCR0();
 	return(result);
@@ -9462,7 +9482,7 @@ fpl_common_api uint64_t fplGetXCR0() {
 #endif
 }
 
-fpl_common_api uint64_t fplRDTSC() {
+fpl_common_api uint64_t fplCPURDTSC() {
 #if defined(fpl__m_RDTSC)
 	uint64_t result = fpl__m_RDTSC();
 	return(result);
@@ -9471,7 +9491,7 @@ fpl_common_api uint64_t fplRDTSC() {
 #endif
 }
 
-fpl_common_api bool fplGetProcessorCapabilities(fplProcessorCapabilities *outCaps) {
+fpl_common_api bool fplCPUGetCapabilities(fplCPUCapabilities *outCaps) {
 	fplClearStruct(outCaps);
 
 	fplCPUIDLeaf info0 = fplZeroInit;
@@ -9490,7 +9510,7 @@ fpl_common_api bool fplGetProcessorCapabilities(fplProcessorCapabilities *outCap
 	}
 
 	bool hasXSave = fplIsBitSet(info1.ecx, 26) && fplIsBitSet(info1.ecx, 27);
-	uint64_t xcr0 = hasXSave ? fplGetXCR0() : 0;
+	uint64_t xcr0 = hasXSave ? fplCPUXCR0() : 0;
 
 	const uint32_t MASK_XMM = 0x2;
 	const uint32_t MASK_YMM = 0x4;
@@ -9530,7 +9550,7 @@ fpl_common_api bool fplGetProcessorCapabilities(fplProcessorCapabilities *outCap
 	return(true);
 }
 
-fpl_common_api size_t fplGetProcessorName(char *destBuffer, const size_t maxDestBufferLen) {
+fpl_common_api size_t fplCPUGetName(char *destBuffer, const size_t maxDestBufferLen) {
 	fplCPUIDLeaf cpuInfo = fplZeroInit;
 	fplCPUID(&cpuInfo, 0x80000000);
 	uint32_t extendedIds = cpuInfo.eax;
@@ -9556,7 +9576,7 @@ fpl_common_api size_t fplGetProcessorName(char *destBuffer, const size_t maxDest
 }
 #else
 
-fpl_common_api uint64_t fplRDTSC() {
+fpl_common_api uint64_t fplCPURDTSC() {
 	// Based on: https://github.com/google/benchmark/blob/v1.1.0/src/cycleclock.h
 #if defined(FPL_ARCH_ARM64)
 	int64_t virtual_timer_value;
@@ -9584,7 +9604,7 @@ fpl_common_api uint64_t fplRDTSC() {
 	return (uint64_t)tv.tv_sec * 1000000ULL + (uint64_t)tv.tv_usec;
 }
 
-fpl_common_api uint64_t fplGetXCR0() {
+fpl_common_api uint64_t fplCPUXCR0() {
 	// Not supported on non-x86 platforms
 	return(0);
 }
@@ -9594,13 +9614,13 @@ fpl_common_api void fplCPUID(fplCPUIDLeaf *outLeaf, const uint32_t functionId) {
 	fplStructInit(outLeaf);
 }
 
-fpl_common_api bool fplGetProcessorCapabilities(fplProcessorCapabilities *outCaps) {
-	// @IMPLEMENT(final): fplGetProcessorCapabilities for non-x86 architectures
+fpl_common_api bool fplCPUGetCapabilities(fplCPUCapabilities *outCaps) {
+	// @IMPLEMENT(final): fplCPUGetCapabilities for non-x86 architectures
 	return(false);
 }
 
-fpl_common_api size_t fplGetProcessorName(char *destBuffer, const size_t maxDestBufferLen) {
-	// @IMPLEMENT(final): fplGetProcessorName for non-x86 architectures
+fpl_common_api size_t fplCPUGetName(char *destBuffer, const size_t maxDestBufferLen) {
+	// @IMPLEMENT(final): fplCPUGetName for non-x86 architectures
 	return(0);
 }
 #endif
@@ -9729,23 +9749,23 @@ fpl_common_api void *fplAtomicCompareAndSwapPtr(volatile void **dest, const void
 	return (result);
 }
 
-fpl_common_api bool fplIsAtomicCompareAndSwapSize(volatile size_t *dest, const size_t comparand, const size_t exchange) {
+fpl_common_api bool fplAtomicIsCompareAndSwapSize(volatile size_t *dest, const size_t comparand, const size_t exchange) {
 	fplAssert(dest != fpl_null);
 #if defined(FPL_CPU_64BIT)
-	bool result = fplIsAtomicCompareAndSwapU64((volatile uint64_t *)dest, (uint64_t)comparand, (uint64_t)exchange);
+	bool result = fplAtomicIsCompareAndSwapU64((volatile uint64_t *)dest, (uint64_t)comparand, (uint64_t)exchange);
 #elif defined(FPL_CPU_32BIT)
-	bool result = fplIsAtomicCompareAndSwapU32((volatile uint32_t *)dest, (uint32_t)comparand, (uint32_t)exchange);
+	bool result = fplAtomicIsCompareAndSwapU32((volatile uint32_t *)dest, (uint32_t)comparand, (uint32_t)exchange);
 #else
 #	error "Unsupported architecture/platform!"
 #endif // FPL_ARCH
 	return (result);
 }
-fpl_common_api bool fplIsAtomicCompareAndSwapPtr(volatile void **dest, const void *comparand, const void *exchange) {
+fpl_common_api bool fplAtomicIsCompareAndSwapPtr(volatile void **dest, const void *comparand, const void *exchange) {
 	fplAssert(dest != fpl_null);
 #if defined(FPL_CPU_64BIT)
-	bool result = fplIsAtomicCompareAndSwapU64((volatile uint64_t *)dest, (uint64_t)comparand, (uint64_t)exchange);
+	bool result = fplAtomicIsCompareAndSwapU64((volatile uint64_t *)dest, (uint64_t)comparand, (uint64_t)exchange);
 #elif defined(FPL_CPU_32BIT)
-	bool result = fplIsAtomicCompareAndSwapU32((volatile uint32_t *)dest, (uint32_t)comparand, (uint32_t)exchange);
+	bool result = fplAtomicIsCompareAndSwapU32((volatile uint32_t *)dest, (uint32_t)comparand, (uint32_t)exchange);
 #else
 #	error "Unsupported architecture/platform!"
 #endif // FPL_ARCH
@@ -10220,7 +10240,7 @@ fpl_common_api const char *fplGetPlatformResultName(const fplPlatformResultType 
 	return(result);
 }
 
-#define FPL__ARCHTYPE_COUNT FPL__ENUM_COUNT(fplArchType_First, fplArchType_Last)
+#define FPL__ARCHTYPE_COUNT FPL__ENUM_COUNT(fplCPUArchType_First, fplCPUArchType_Last)
 fpl_globalvar const char *fpl__global_ArchTypeNameTable[] = {
 	"Unknown", // Unknown architecture
 	"x86", // X86 architecture
@@ -10231,8 +10251,8 @@ fpl_globalvar const char *fpl__global_ArchTypeNameTable[] = {
 };
 fplStaticAssert(fplArrayCount(fpl__global_ArchTypeNameTable) == FPL__ARCHTYPE_COUNT);
 
-fpl_common_api const char *fplGetArchName(const fplArchType type) {
-	uint32_t index = FPL__ENUM_VALUE_TO_ARRAY_INDEX(type, fplArchType_First, fplArchType_Last);
+fpl_common_api const char *fplCPUGetArchName(const fplCPUArchType type) {
+	uint32_t index = FPL__ENUM_VALUE_TO_ARRAY_INDEX(type, fplCPUArchType_First, fplCPUArchType_Last);
 	const char *result = fpl__global_ArchTypeNameTable[index];
 	return(result);
 }
@@ -11688,25 +11708,25 @@ fpl_platform_api int64_t fplAtomicCompareAndSwapS64(volatile int64_t *dest, cons
 	return (result);
 }
 
-fpl_platform_api bool fplIsAtomicCompareAndSwapU32(volatile uint32_t *dest, const uint32_t comparand, const uint32_t exchange) {
+fpl_platform_api bool fplAtomicIsCompareAndSwapU32(volatile uint32_t *dest, const uint32_t comparand, const uint32_t exchange) {
 	fplAssert(dest != fpl_null);
 	uint32_t value = InterlockedCompareExchange((volatile LONG *)dest, exchange, comparand);
 	bool result = (value == comparand);
 	return (result);
 }
-fpl_platform_api bool fplIsAtomicCompareAndSwapS32(volatile int32_t *dest, const int32_t comparand, const int32_t exchange) {
+fpl_platform_api bool fplAtomicIsCompareAndSwapS32(volatile int32_t *dest, const int32_t comparand, const int32_t exchange) {
 	fplAssert(dest != fpl_null);
 	int32_t value = InterlockedCompareExchange((volatile LONG *)dest, exchange, comparand);
 	bool result = (value == comparand);
 	return (result);
 }
-fpl_platform_api bool fplIsAtomicCompareAndSwapU64(volatile uint64_t *dest, const uint64_t comparand, const uint64_t exchange) {
+fpl_platform_api bool fplAtomicIsCompareAndSwapU64(volatile uint64_t *dest, const uint64_t comparand, const uint64_t exchange) {
 	fplAssert(dest != fpl_null);
 	uint64_t value = InterlockedCompareExchange64((volatile LONG64 *)dest, exchange, comparand);
 	bool result = (value == comparand);
 	return (result);
 }
-fpl_platform_api bool fplIsAtomicCompareAndSwapS64(volatile int64_t *dest, const int64_t comparand, const int64_t exchange) {
+fpl_platform_api bool fplAtomicIsCompareAndSwapS64(volatile int64_t *dest, const int64_t comparand, const int64_t exchange) {
 	fplAssert(dest != fpl_null);
 	int64_t value = InterlockedCompareExchange64((volatile LONG64 *)dest, exchange, comparand);
 	bool result = (value == comparand);
@@ -11872,7 +11892,7 @@ fpl_platform_api size_t fplSessionGetUsername(char *nameBuffer, const size_t max
 //
 // Win32 Hardware
 //
-fpl_platform_api size_t fplGetProcessorCoreCount() {
+fpl_platform_api size_t fplCPUGetCoreCount() {
 	SYSTEM_INFO sysInfo = fplZeroInit;
 	GetSystemInfo(&sysInfo);
 	// @NOTE(final): For now this returns the number of logical processors, which is the actual core count in most cases.
@@ -11881,8 +11901,8 @@ fpl_platform_api size_t fplGetProcessorCoreCount() {
 }
 
 #define FPL__WIN32_PROCESSOR_ARCHITECTURE_ARM64 12
-fpl_platform_api fplArchType fplGetProcessorArchitecture() {
-	fplArchType result;
+fpl_platform_api fplCPUArchType fplCPUGetArchitecture() {
+	fplCPUArchType result;
 	SYSTEM_INFO sysInfo = fplZeroInit;
 	BOOL isWow64;
 	if(IsWow64Process(GetCurrentProcess(), &isWow64)) {
@@ -11895,23 +11915,23 @@ fpl_platform_api fplArchType fplGetProcessorArchitecture() {
 	}
 	switch(sysInfo.wProcessorArchitecture) {
 		case PROCESSOR_ARCHITECTURE_AMD64:
-			result = fplArchType_x86_64;
+			result = fplCPUArchType_x86_64;
 			break;
 		case PROCESSOR_ARCHITECTURE_IA64:
-			result = fplArchType_x64;
+			result = fplCPUArchType_x64;
 			break;
 		case PROCESSOR_ARCHITECTURE_ARM:
-			result = fplArchType_Arm32;
+			result = fplCPUArchType_Arm32;
 			break;
 		case FPL__WIN32_PROCESSOR_ARCHITECTURE_ARM64:
-			result = fplArchType_Arm64;
+			result = fplCPUArchType_Arm64;
 			break;
 		case PROCESSOR_ARCHITECTURE_UNKNOWN:
-			result = fplArchType_Unknown;
+			result = fplCPUArchType_Unknown;
 			break;
 		case PROCESSOR_ARCHITECTURE_INTEL:
 		default:
-			result = fplArchType_x86;
+			result = fplCPUArchType_x86;
 			break;
 	}
 	return(result);
@@ -11919,7 +11939,7 @@ fpl_platform_api fplArchType fplGetProcessorArchitecture() {
 
 #define FPL__FUNC_WIN32_KERNEL32_GetPhysicallyInstalledSystemMemory(name) BOOL WINAPI name(PULONGLONG TotalMemoryInKilobytes)
 typedef FPL__FUNC_WIN32_KERNEL32_GetPhysicallyInstalledSystemMemory(fpl__win32_kernel_func_GetPhysicallyInstalledSystemMemory);
-fpl_platform_api bool fplGetRunningMemoryInfos(fplMemoryInfos *outInfos) {
+fpl_platform_api bool fplMemoryGetInfos(fplMemoryInfos *outInfos) {
 	FPL__CheckArgumentNull(outInfos, false);
 	bool result = false;
 
@@ -14174,22 +14194,22 @@ fpl_platform_api int64_t fplAtomicCompareAndSwapS64(volatile int64_t *dest, cons
 	return (result);
 }
 
-fpl_platform_api bool fplIsAtomicCompareAndSwapU32(volatile uint32_t *dest, const uint32_t comparand, const uint32_t exchange) {
+fpl_platform_api bool fplAtomicIsCompareAndSwapU32(volatile uint32_t *dest, const uint32_t comparand, const uint32_t exchange) {
 	fplAssert(dest != fpl_null);
 	bool result = __sync_bool_compare_and_swap(dest, comparand, exchange);
 	return (result);
 }
-fpl_platform_api bool fplIsAtomicCompareAndSwapU64(volatile uint64_t *dest, const uint64_t comparand, const uint64_t exchange) {
+fpl_platform_api bool fplAtomicIsCompareAndSwapU64(volatile uint64_t *dest, const uint64_t comparand, const uint64_t exchange) {
 	fplAssert(dest != fpl_null);
 	bool result = __sync_bool_compare_and_swap(dest, comparand, exchange);
 	return (result);
 }
-fpl_platform_api bool fplIsAtomicCompareAndSwapS32(volatile int32_t *dest, const int32_t comparand, const int32_t exchange) {
+fpl_platform_api bool fplAtomicIsCompareAndSwapS32(volatile int32_t *dest, const int32_t comparand, const int32_t exchange) {
 	fplAssert(dest != fpl_null);
 	bool result = __sync_bool_compare_and_swap(dest, comparand, exchange);
 	return (result);
 }
-fpl_platform_api bool fplIsAtomicCompareAndSwapS64(volatile int64_t *dest, const int64_t comparand, const int64_t exchange) {
+fpl_platform_api bool fplAtomicIsCompareAndSwapS64(volatile int64_t *dest, const int64_t comparand, const int64_t exchange) {
 	fplAssert(dest != fpl_null);
 	bool result = __sync_bool_compare_and_swap(dest, comparand, exchange);
 	return (result);
@@ -15489,7 +15509,7 @@ fpl_platform_api size_t fplSessionGetUsername(char *nameBuffer, const size_t max
 	return(result);
 }
 
-fpl_platform_api size_t fplGetProcessorCoreCount() {
+fpl_platform_api size_t fplCPUGetCoreCount() {
 	size_t result = sysconf(_SC_NPROCESSORS_ONLN);
 	return(result);
 }
@@ -15546,17 +15566,17 @@ fpl_platform_api size_t fplGetHomePath(char *destPath, const size_t maxDestLen) 
 }
 
 
-fpl_platform_api fplArchType fplGetProcessorArchitecture() {
-	fplArchType result = fplArchType_Unknown;
+fpl_platform_api fplCPUArchType fplCPUGetArchitecture() {
+	fplCPUArchType result = fplCPUArchType_Unknown;
 	struct utsname nameInfos;
 	if(uname(&nameInfos) == 0) {
 		const char *machineName = nameInfos.machine;
 		if(fplIsStringEqual("x86_64", machineName) || fplIsStringEqual("amd64", machineName)) {
-			result = fplArchType_x86_64;
+			result = fplCPUArchType_x86_64;
 		} else if(fplIsStringEqual("x86", machineName) || fplIsStringEqual("i386", machineName) || fplIsStringEqual("i686", machineName)) {
-			result = fplArchType_x86;
+			result = fplCPUArchType_x86;
 		} else if(fplIsStringEqual("ia64", machineName) || fplIsStringEqual("i686-64", machineName)) {
-			result = fplArchType_x64;
+			result = fplCPUArchType_x64;
 		} else {
 			if(fplIsStringEqualLen("armv", 4, machineName, 4)) {
 				const char *m = machineName + 4;
@@ -15567,9 +15587,9 @@ fpl_platform_api fplArchType fplGetProcessorArchitecture() {
 				size_t l = p - m;
 				int32_t version = fplStringToS32Len(m, l);
 				if(version == 6) {
-					result = fplArchType_Arm32;
+					result = fplCPUArchType_Arm32;
 				} else if(version >= 7) {
-					result = fplArchType_Arm64;
+					result = fplCPUArchType_Arm64;
 				}
 			}
 		}
@@ -17526,7 +17546,7 @@ fpl_platform_api bool fplSignalSet(fplSignalHandle *signal) {
 //
 // Linux Hardware
 //
-fpl_platform_api bool fplGetRunningMemoryInfos(fplMemoryInfos *outInfos) {
+fpl_platform_api bool fplMemoryGetInfos(fplMemoryInfos *outInfos) {
 	FPL__CheckArgumentNull(outInfos, false);
 	bool result = false;
 
@@ -17598,8 +17618,8 @@ fpl_internal bool fpl__UnixInitPlatform(const fplInitFlags initFlags, const fplS
 //
 // Unix Hardware
 //
-fpl_platform_api bool fplGetRunningMemoryInfos(fplMemoryInfos *outInfos) {
-	// @IMPLEMENT(final/Unix): fplGetRunningMemoryInfos
+fpl_platform_api bool fplMemoryGetInfos(fplMemoryInfos *outInfos) {
+	// @IMPLEMENT(final/Unix): fplMemoryGetInfos
 	return(false);
 }
 
