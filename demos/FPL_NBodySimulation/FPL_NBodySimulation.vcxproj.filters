@@ -26,5 +26,6 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="fpl_nbodysimulation.cpp" />
+    <ClCompile Include="final_platform_layer.cpp" />
   </ItemGroup>
 </Project>

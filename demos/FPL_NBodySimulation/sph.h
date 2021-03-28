@@ -1,10 +1,11 @@
 #ifndef SPH_H
 #define SPH_H
 
+#include <final_platform_layer.h>
+
 #include <stdio.h>
 #include <inttypes.h>
 #include <vector>
-#include <assert.h>
 #include <algorithm>
 #define _USE_MATH_DEFINES
 #include <math.h>
@@ -15,12 +16,12 @@
 //
 // Boundary condition
 //
-const float kSPHBoundaryAspect = 16.0f / 9.0f;
-const float kSPHBoundaryWidth = 10.0f;
-const float kSPHBoundaryHeight = kSPHBoundaryWidth / kSPHBoundaryAspect;
-const float kSPHBoundaryHalfWidth = kSPHBoundaryWidth * 0.5f;
-const float kSPHBoundaryHalfHeight = kSPHBoundaryHeight * 0.5f;
-const static Vec2f kSPHGridOrigin = Vec2f(-kSPHBoundaryHalfWidth, -kSPHBoundaryHalfHeight);
+constexpr float kSPHBoundaryAspect = 16.0f / 9.0f;
+constexpr float kSPHBoundaryWidth = 10.0f;
+constexpr float kSPHBoundaryHeight = kSPHBoundaryWidth / kSPHBoundaryAspect;
+constexpr float kSPHBoundaryHalfWidth = kSPHBoundaryWidth * 0.5f;
+constexpr float kSPHBoundaryHalfHeight = kSPHBoundaryHeight * 0.5f;
+static const Vec2f kSPHGridOrigin = Vec2f(-kSPHBoundaryHalfWidth, -kSPHBoundaryHalfHeight);
 
 //
 // Default constants
@@ -29,30 +30,31 @@ const static Vec2f kSPHGridOrigin = Vec2f(-kSPHBoundaryHalfWidth, -kSPHBoundaryH
 // @NOTE: Particle spacing must be smaller than kH, otherwise there will be no interaction, smaller = more particles, greater = less particles
 // @NOTE: Near Stiffness must be greater than stiffness, smaller = more sticking, greater = less sticking
 //
-const int kSPHSubsteps = 1;
-const float kSPHDeltaTime = 1.0f / 60.0f;
-const float kSPHSubstepDeltaTime = kSPHDeltaTime / (float)kSPHSubsteps;
-const float kSPHParticleRadius = 0.05f;
-const float kSPHKernelHeight = 6.0f * kSPHParticleRadius;
-const float kSPHParticleSpacing = kSPHKernelHeight * 0.5f;
-const float kSPHParticleCollisionRadius = kSPHParticleRadius;
+constexpr float kSPHDeltaTime = 1.0f / 60.0f;
+constexpr int kSPHSubsteps = 1;
+constexpr float kSPHSubstepDeltaTime = kSPHDeltaTime / (float)kSPHSubsteps;
 
-const float kSPHRestDensity = 20.0f;
-const float kSPHStiffness = 0.6f;
-const float kSPHNearStiffness = kSPHStiffness * 10.0f;
-const float kSPHLinearViscosity = 0.5f;
-const float kSPHQuadraticViscosity = 0.3f;
+constexpr float kSPHParticleRadius = 0.05f;
+constexpr float kSPHKernelHeight = 6.0f * kSPHParticleRadius;
+constexpr float kSPHParticleSpacing = kSPHKernelHeight * 0.5f;
+constexpr float kSPHParticleCollisionRadius = kSPHParticleRadius;
+
+constexpr float kSPHRestDensity = 20.0f;
+constexpr float kSPHStiffness = 0.6f;
+constexpr float kSPHNearStiffness = kSPHStiffness * 10.0f;
+constexpr float kSPHLinearViscosity = 0.5f;
+constexpr float kSPHQuadraticViscosity = 0.3f;
 
 //
 // Other constants
 //
-const float kSPHParticleRenderRadius = kSPHParticleRadius * 1.0f;
-const float kSPHVisualPlaneLength = kSPHBoundaryHalfWidth;
-const float kSPHVolumeParticleDistributionScale = 0.01f;
+constexpr float kSPHParticleRenderRadius = kSPHParticleRadius * 1.0f;
+constexpr float kSPHVisualPlaneLength = kSPHBoundaryHalfWidth;
+constexpr float kSPHVolumeParticleDistributionScale = 0.01f;
 
-// @NOTE: Collision margin must be choosen to be numerical significant, but visually insignificant
-const float kSPHCollisionMargin = 0.005f * 2.0f;
-const float kSPHCollisionEpsilon = FLT_EPSILON;
+// @NOTE: Collision margin must be chosen to be numerical significant, but visually insignificant
+constexpr float kSPHCollisionMargin = 0.005f * 2.0f;
+constexpr float kSPHCollisionEpsilon = FLT_EPSILON;
 
 //
 // Uniform grid
@@ -65,11 +67,11 @@ const float kSPHGridWidth = kSPHGridCountX * kSPHGridCellSize;
 const float kSPHGridHeight = kSPHGridCountY * kSPHGridCellSize;
 
 // Max constants
-const uint32_t kSPHMaxCellParticleCount = 500;
-const uint32_t kSPHMaxParticleNeighborCount = 1000;
-const uint32_t kSPHMaxParticleCount = 10000;
-const uint32_t kSPHMaxBodyCount = 100;
-const uint32_t kSPHMaxEmitterCount = 8;
+constexpr uint32_t kSPHMaxCellParticleCount = 500;
+constexpr uint32_t kSPHMaxParticleNeighborCount = 1000;
+constexpr uint32_t kSPHMaxParticleCount = 10000;
+constexpr uint32_t kSPHMaxBodyCount = 100;
+constexpr uint32_t kSPHMaxEmitterCount = 8;
 
 // @NOTE: Particle radius must never be smaller collision margin
 fplStaticAssert(kSPHParticleRadius > kSPHCollisionMargin);

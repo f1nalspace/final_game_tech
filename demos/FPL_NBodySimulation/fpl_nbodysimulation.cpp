@@ -75,7 +75,7 @@ License:
 	Copyright (c) 2017-2021 Torsten Spaete
 	MIT License (See LICENSE file)
 */
-#define FPL_IMPLEMENTATION
+#define FPL_ENTRYPOINT
 #define FPL_NO_AUDIO
 #include <final_platform_layer.h>
 
