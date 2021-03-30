@@ -362,7 +362,7 @@ namespace Render {
 		result->pointSize = pointSize;
 	}
 
-	inline void PushText(CommandBuffer *commandBuffer, const Vec2f &bottomLeft, const char *text, Font *font, TextureHandle texture, const float maxCharHeight, const Vec4f &textColor) {
+	inline void PushText(CommandBuffer *commandBuffer, const Vec2f &bottomLeft, const char *text, FontAtlas *font, TextureHandle texture, const float maxCharHeight, const Vec4f &textColor) {
 		if (font == nullptr) {
 			return;
 		}

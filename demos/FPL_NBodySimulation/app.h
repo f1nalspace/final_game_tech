@@ -108,7 +108,7 @@ struct OSDState {
 	float x;
 	float y;
 	float fontHeight;
-	Font *font;
+	FontAtlas *font;
 	Render::TextureHandle texture;
 };
 
@@ -132,9 +132,9 @@ struct DemoApplication : public Application {
 
 	bool multiThreadingActive;
 
-	Font osdFont;
+	FontAtlas osdFont;
 	Render::TextureHandle osdFontTexture;
-	Font chartFont;
+	FontAtlas chartFont;
 	Render::TextureHandle chartFontTexture;
 
 	void LoadDemo(const size_t demoIndex);

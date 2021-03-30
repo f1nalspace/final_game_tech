@@ -23,7 +23,7 @@ struct FontInfo {
 	float spaceAdvance;
 };
 
-struct Font {
+struct FontAtlas {
 	uint8_t *atlasAlphaBitmap;
 	FontGlyph *glyphs;
 	uint32_t atlasWidth;
@@ -55,7 +55,7 @@ inline float GetFontLineAdvance(FontInfo *fontInfo) {
 	return(result);
 }
 
-inline float GetFontCharacterAdvance(Font *font, uint32_t *codePoint, uint32_t *nextCodePoint) {
+inline float GetFontCharacterAdvance(FontAtlas *font, uint32_t *codePoint, uint32_t *nextCodePoint) {
 	float result = 0;
 	if (codePoint) {
 		FontGlyph *glyph = font->glyphs + *codePoint;
@@ -68,7 +68,7 @@ inline float GetFontCharacterAdvance(Font *font, uint32_t *codePoint, uint32_t *
 	return(result);
 }
 
-inline float GetTextWidth(const char *text, const uint32_t textLen, Font *font, const float maxCharHeight) {
+inline float GetTextWidth(const char *text, const uint32_t textLen, FontAtlas *font, const float maxCharHeight) {
 	float result = 0;
 	uint32_t textPos = 0;
 	if (font != nullptr) {
@@ -90,10 +90,10 @@ inline float GetTextWidth(const char *text, const uint32_t textLen, Font *font, 
 	return(result);
 }
 
-static Font LoadFont(const char *filename, const uint32_t fontIndex, const float fontSize, uint32_t firstChar, uint32_t lastChar, uint32_t atlasWidth, uint32_t atlasHeight) {
+static FontAtlas LoadFont(const char *filename, const uint32_t fontIndex, const float fontSize, uint32_t firstChar, uint32_t lastChar, uint32_t atlasWidth, uint32_t atlasHeight) {
 #define BETTER_QUALITY 0
 
-	Font result = {};
+	FontAtlas result = {};
 
 	uint8_t *ttfBuffer = LoadFileContent(filename);
 	if (ttfBuffer != nullptr) {
@@ -253,7 +253,7 @@ static Font LoadFont(const char *filename, const uint32_t fontIndex, const float
 	return(result);
 }
 
-static void ReleaseFont(Font *font) {
+static void ReleaseFont(FontAtlas *font) {
 	fplMemoryFree(font->kerningTable);
 	fplMemoryFree(font->glyphs);
 	fplMemoryFree(font->atlasAlphaBitmap);

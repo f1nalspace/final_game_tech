@@ -157,7 +157,7 @@ void DemoApplication::PushDemoStatistics() {
 }
 
 void DemoApplication::RenderBenchmark(OSDState *osdState, const float left, float bottom, const float width, const float height) {
-	Font *font = &chartFont;
+	FontAtlas *font = &chartFont;
 	Render::TextureHandle fontTexture = chartFontTexture;
 	float fontHeight = 16.0f;
 

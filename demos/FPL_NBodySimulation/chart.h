@@ -88,7 +88,7 @@ struct Chart {
 		this->sampleLabels.push_back(sampleLabel);
 	}
 
-	void RenderBars(Render::CommandBuffer *commandBuffer, const float viewportLBWH[4], Font *font, Render::TextureHandle fontTexture, const float fontHeight) {
+	void RenderBars(Render::CommandBuffer *commandBuffer, const float viewportLBWH[4], FontAtlas *font, Render::TextureHandle fontTexture, const float fontHeight) {
 		float viewportLeft = viewportLBWH[0];
 		float viewportBottom = viewportLBWH[1];
 		float viewportWidth = viewportLBWH[2];
