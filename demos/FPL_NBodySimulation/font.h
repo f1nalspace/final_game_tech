@@ -1,10 +1,9 @@
 #ifndef FONT_H
 #define FONT_H
 
+#define FPL_NO_PLATFORM_INCLUDES
 #include <final_platform_layer.h>
-#include <stdint.h>
-#include <stdio.h>
-#include <assert.h>
+
 #include <stb/stb_truetype.h>
 
 #include "vecmath.h"

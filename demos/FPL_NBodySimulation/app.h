@@ -1,7 +1,9 @@
 #ifndef APP_H
 #define APP_H
 
+#define FPL_NO_PLATFORM_INCLUDES
 #include <final_platform_layer.h>
+
 #include <string>
 #include <vector>
 

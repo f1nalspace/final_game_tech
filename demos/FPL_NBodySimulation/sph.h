@@ -1,10 +1,10 @@
 #ifndef SPH_H
 #define SPH_H
 
+#define FPL_NO_PLATFORM_INCLUDES
 #include <final_platform_layer.h>
 
 #include <stdio.h>
-#include <inttypes.h>
 #include <vector>
 #include <algorithm>
 #define _USE_MATH_DEFINES

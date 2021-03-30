@@ -1,8 +1,8 @@
 #ifndef PSEUDORANDOM_H
 #define PSEUDORANDOM_H
 
+#define FPL_NO_PLATFORM_INCLUDES
 #include <final_platform_layer.h>
-#include <stdint.h>
 
 #include "vecmath.h"
 #include "utils.h"

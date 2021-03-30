@@ -77,6 +77,7 @@ License:
 */
 #define FPL_ENTRYPOINT
 #define FPL_NO_AUDIO
+#define FPL_NO_PLATFORM_INCLUDES
 #include <final_platform_layer.h>
 
 #define FGL_IMPLEMENTATION

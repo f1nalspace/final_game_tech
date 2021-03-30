@@ -1,10 +1,12 @@
 #ifndef THREADING_H
 #define THREADING_H
 
+#define FPL_NO_PLATFORM_INCLUDES
+#include <final_platform_layer.h>
+
 #include <assert.h>
 #include <functional>
 #include <deque> // @TODO(final): Replace std::deque
-#include <final_platform_layer.h>
 
 // @TODO(final): Allow non-lambda functions as well
 typedef std::function<void(const size_t startIndex, const size_t endIndex, const float deltaTime)> thread_pool_task_function;

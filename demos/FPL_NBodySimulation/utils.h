@@ -1,12 +1,13 @@
 #ifndef UTILS_H
 #define UTILS_H
 
+#define FPL_NO_PLATFORM_INCLUDES
 #include <final_platform_layer.h>
-#include <assert.h>
+
 #include <stdio.h>
 #include <algorithm>
 #include <intrin.h>
-#include <varargs.h>
+#include <stdarg.h>
 
 #define force_inline fpl_force_inline
 

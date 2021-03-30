@@ -1,9 +1,9 @@
 #ifndef MEMORY_H
 #define MEMORY_H
 
+#define FPL_NO_PLATFORM_INCLUDES
 #include <final_platform_layer.h>
-#include <assert.h>
-#include <inttypes.h>
+
 #include <string.h>
 
 struct MemoryBlock {
