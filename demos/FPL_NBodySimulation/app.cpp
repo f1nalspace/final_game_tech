@@ -17,7 +17,7 @@
 #include "demo3.cpp"
 #include "demo4.cpp"
 
-Window::Window() :
+ApplicationWindow::ApplicationWindow() :
 	left(0),
 	top(0),
 	width(kWindowWidth),
@@ -25,7 +25,7 @@ Window::Window() :
 }
 
 Application::Application() {
-	window = new Window();
+	window = new ApplicationWindow();
 	commandBuffer = new Render::CommandBuffer();
 	char buffer[1024];
 	fplCPUGetName(buffer, fplArrayCount(buffer));

@@ -489,7 +489,7 @@ int main(int argc, char **args) {
 	if (fplPlatformInit(fplInitFlags_Video, &settings)) {
 		if (fglLoadOpenGL(true)) {
 			Application *app = globalApp = new DemoApplication();
-			Window *window = app->GetWindow();
+			ApplicationWindow *window = app->GetWindow();
 
 			// @NOTE(final): Get window area at startup, because the titlebar and borders takes up space too.
 			fplWindowSize windowArea;

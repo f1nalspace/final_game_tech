@@ -29,11 +29,11 @@ const size_t kBenchmarkIterationCount = 8;
 #endif
 const size_t kDemoCount = 4;
 
-struct Window {
+struct ApplicationWindow {
 	int left, top;
 	int width, height;
 
-	Window();
+	ApplicationWindow();
 
 	inline int GetLeft() {
 		return left;
@@ -51,13 +51,13 @@ struct Window {
 
 struct Application {
 	std::string cpuName;
-	Window  *window;
+	ApplicationWindow  *window;
 	Render::CommandBuffer *commandBuffer;
 
 	Application();
 	virtual ~Application();
 
-	inline Window *GetWindow() {
+	inline ApplicationWindow *GetWindow() {
 		return window;
 	}
 
