@@ -10,7 +10,7 @@
 
 namespace Demo2 {
 	ParticleSimulation::ParticleSimulation() :
-		_gravity(Vec2f(0, 0)) {
+		_gravity(V2f(0, 0)) {
 		_particles.reserve(kSPHMaxParticleCount);
 		_isMultiThreading = _workerPool.GetThreadCount() > 1;
 		_cells.resize(kSPHGridTotalCount);
@@ -30,7 +30,7 @@ namespace Demo2 {
 	}
 
 	void ParticleSimulation::ClearExternalForce() {
-		_externalForce = Vec2f(0.0f, 0.0f);
+		_externalForce = V2f(0.0f, 0.0f);
 	}
 
 	void ParticleSimulation::InsertParticleIntoGrid(Particle &particle, const size_t particleIndex) {
@@ -121,11 +121,11 @@ namespace Demo2 {
 	}
 
 	void ParticleSimulation::AddVolume(const Vec2f &center, const Vec2f &force, const int countX, const int countY, const float spacing) {
-		Vec2f offset = Vec2f(countX * spacing, countY * spacing) * 0.5f;
+		Vec2f offset = V2f(countX * spacing, countY * spacing) * 0.5f;
 		for (int yIndex = 0; yIndex < countY; ++yIndex) {
 			for (int xIndex = 0; xIndex < countX; ++xIndex) {
-				Vec2f p = Vec2f((float)xIndex, (float)yIndex) * spacing;
-				p += Vec2f(spacing * 0.5f, spacing * 0.5f);
+				Vec2f p = V2f((float)xIndex, (float)yIndex) * spacing;
+				p += V2f(spacing * 0.5f, spacing * 0.5f);
 				p += center - offset;
 				Vec2f jitter = Vec2RandomDirection() * kSPHKernelHeight * kSPHVolumeParticleDistributionScale;
 				p += jitter;
@@ -185,7 +185,7 @@ namespace Demo2 {
 			for (size_t index = 0; index < neighborCount; ++index) {
 				size_t neighborIndex = particle.neighbors[index];
 				Particle &neighbor = _particles[neighborIndex];
-				Vec2f force = Vec2f(0,0);
+				Vec2f force = V2f(0,0);
 				SPHComputeViscosityForce(_params, particle.curPosition, neighbor.curPosition, particle.velocity, neighbor.velocity, &force);
 				particle.velocity -= force * deltaTime * 0.5f;
 				neighbor.velocity += force * deltaTime * 0.5f;
@@ -196,12 +196,12 @@ namespace Demo2 {
 	void ParticleSimulation::DeltaPositions(const size_t startIndex, const size_t endIndex, const float deltaTime) {
 		for (size_t particleIndex = startIndex; particleIndex <= endIndex; ++particleIndex) {
 			Particle &particle = _particles[particleIndex];
-			Vec2f dx = Vec2f(0,0);
+			Vec2f dx = V2f(0,0);
 			size_t neighborCount = particle.neighbors.size();
 			for (size_t index = 0; index < neighborCount; ++index) {
 				size_t neighborIndex = particle.neighbors[index];
 				Particle &neighbor = _particles[neighborIndex];
-				Vec2f delta = Vec2f(0,0);
+				Vec2f delta = V2f(0,0);
 				SPHComputeDelta(_params, particle.curPosition, neighbor.curPosition, &particle.pressure, deltaTime, &delta);
 				neighbor.curPosition += delta * 0.5f;
 				dx -= delta * 0.5f;
@@ -261,7 +261,7 @@ namespace Demo2 {
 				Particle &particle = _particles[particleIndex];
 				particle.acceleration += _gravity + _externalForce;
 				particle.velocity += particle.acceleration * deltaTime;
-				particle.acceleration = Vec2f(0,0);
+				particle.acceleration = V2f(0,0);
 			}
 			auto deltaClock = std::chrono::high_resolution_clock::now() - startClock;
 			_stats.time.integration = std::chrono::duration_cast<std::chrono::nanoseconds>(deltaClock).count() * nanosToMilliseconds;
@@ -387,15 +387,15 @@ namespace Demo2 {
 	void ParticleSimulation::Render(Render::CommandBuffer *commandBuffer, const float worldToScreenScale) {
 		// Domain
 		Vec4f domainColor = Vec4f(1.0f, 0.0f, 1.0f, 1.0f);
-		Render::PushRectangle(commandBuffer, Vec2f(-kSPHBoundaryHalfWidth, -kSPHBoundaryHalfHeight), Vec2f(kSPHBoundaryHalfWidth, kSPHBoundaryHalfHeight) * 2.0f, domainColor, false, 1.0f);
+		Render::PushRectangle(commandBuffer, V2f(-kSPHBoundaryHalfWidth, -kSPHBoundaryHalfHeight), V2f(kSPHBoundaryHalfWidth, kSPHBoundaryHalfHeight) * 2.0f, domainColor, false, 1.0f);
 
 		// Grid fill
 		for (int yIndexInner = 0; yIndexInner < kSPHGridCountY; ++yIndexInner) {
 			for (int xIndexInner = 0; xIndexInner < kSPHGridCountX; ++xIndexInner) {
 				size_t cellOffset = SPHComputeCellOffset(xIndexInner, yIndexInner);
 				Cell *cell = &_cells[cellOffset];
-				Vec2f innerP = kSPHGridOrigin + Vec2f((float)xIndexInner, (float)yIndexInner) * kSPHGridCellSize;
-				Vec2f innerSize = Vec2f(kSPHGridCellSize, kSPHGridCellSize);
+				Vec2f innerP = kSPHGridOrigin + V2f((float)xIndexInner, (float)yIndexInner) * kSPHGridCellSize;
+				Vec2f innerSize = V2f(kSPHGridCellSize, kSPHGridCellSize);
 				if (cell->indices.size() > 0) {
 					Render::PushRectangle(commandBuffer, innerP, innerSize, ColorLightGray, true);
 				}
@@ -404,13 +404,13 @@ namespace Demo2 {
 
 		// Grid lines
 		for (int yIndex = 0; yIndex < kSPHGridCountY; ++yIndex) {
-			Vec2f startP = kSPHGridOrigin + Vec2f(0, (float)yIndex) * kSPHGridCellSize;
-			Vec2f endP = kSPHGridOrigin + Vec2f((float)kSPHGridCountX, (float)yIndex) * kSPHGridCellSize;
+			Vec2f startP = kSPHGridOrigin + V2f(0, (float)yIndex) * kSPHGridCellSize;
+			Vec2f endP = kSPHGridOrigin + V2f((float)kSPHGridCountX, (float)yIndex) * kSPHGridCellSize;
 			Render::PushLine(commandBuffer, startP, endP, ColorDarkGray, 1.0f);
 		}
 		for (int xIndex = 0; xIndex < kSPHGridCountX; ++xIndex) {
-			Vec2f startP = kSPHGridOrigin + Vec2f((float)xIndex, 0) * kSPHGridCellSize;
-			Vec2f endP = kSPHGridOrigin + Vec2f((float)xIndex, (float)kSPHGridCountY) * kSPHGridCellSize;
+			Vec2f startP = kSPHGridOrigin + V2f((float)xIndex, 0) * kSPHGridCellSize;
+			Vec2f endP = kSPHGridOrigin + V2f((float)xIndex, (float)kSPHGridCountY) * kSPHGridCellSize;
 			Render::PushLine(commandBuffer, startP, endP, ColorDarkGray, 1.0f);
 		}
 
@@ -452,10 +452,10 @@ namespace Demo2 {
 
 	void Plane::Render(Render::CommandBuffer *commandBuffer) {
 		Vec2f p = normal * distance;
-		Vec2f t = Vec2f(normal.y, -normal.x);
+		Vec2f t = V2f(normal.y, -normal.x);
 		Vec4f color = ColorBlue;
-		Vec2f a = Vec2f(p.x + t.x * kSPHVisualPlaneLength, p.y + t.y * kSPHVisualPlaneLength);
-		Vec2f b = Vec2f(p.x - t.x * kSPHVisualPlaneLength, p.y - t.y * kSPHVisualPlaneLength);
+		Vec2f a = V2f(p.x + t.x * kSPHVisualPlaneLength, p.y + t.y * kSPHVisualPlaneLength);
+		Vec2f b = V2f(p.x - t.x * kSPHVisualPlaneLength, p.y - t.y * kSPHVisualPlaneLength);
 		Render::PushLine(commandBuffer, a, b, color, 1.0f);
 	}
 
