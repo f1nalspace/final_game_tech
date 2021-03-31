@@ -9,6 +9,7 @@
 #include <algorithm>
 #define _USE_MATH_DEFINES
 #include <math.h>
+#include <float.h>
 
 #include "vecmath.h"
 #include "utils.h"
@@ -283,7 +284,7 @@ struct SPHScenario {
 	SPHParameters parameters;
 
 	inline SPHScenario(const char *name, const Vec2f &gravity, const std::vector<SPHScenarioVolume> &volumes, const std::vector<SPHScenarioEmitter> &emitters, const std::vector<SPHScenarioBody> &bodies, const SPHParameters &params) {
-		strcpy_s(this->name, 100, name);
+		fplCopyString(name, this->name, fplArrayCount(this->name));
 
 		this->parameters = params;
 		this->gravity = gravity;

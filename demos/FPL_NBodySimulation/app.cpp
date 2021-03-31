@@ -3,7 +3,6 @@
 #ifndef APP_IMPLEMENTATION
 #define APP_IMPLEMENTATION
 
-#include <filesystem>
 #include <iostream>
 #include <fstream>
 
@@ -16,6 +15,8 @@
 #include "demo2.cpp"
 #include "demo3.cpp"
 #include "demo4.cpp"
+
+#include "fonts.h"
 
 ApplicationWindow::ApplicationWindow() :
 	left(0),
@@ -66,9 +67,12 @@ void DemoApplication::Init() {
 	uint32_t atlasSize[2] = { 512, 256 };
 	bool isPremultiplied = false;
 	bool isTopDown = true;
-	char *fontFile = "C:/Windows/Fonts/arial.ttf.";
-	osdFont = LoadFont(fontFile, 0, 50.0f, charRange[0], charRange[1], atlasSize[0], atlasSize[1]);
-	chartFont = LoadFont(fontFile, 0, 24.0f, charRange[0], charRange[1], atlasSize[0], atlasSize[1]);
+	
+	FontResource fontResource = FontResources::Arimo;
+	
+	osdFont = LoadFontByData(fontResource.data, 0, 0, 50.0f, charRange[0], charRange[1], atlasSize[0], atlasSize[1]);
+	chartFont = LoadFontByData(fontResource.data, 0, 0, 24.0f, charRange[0], charRange[1], atlasSize[0], atlasSize[1]);
+	
 	Render::AllocateTexture(commandBuffer, osdFont.atlasWidth, osdFont.atlasHeight, 1, osdFont.atlasAlphaBitmap, isTopDown, isPremultiplied, &osdFontTexture);
 	Render::AllocateTexture(commandBuffer, chartFont.atlasWidth, chartFont.atlasHeight, 1, chartFont.atlasAlphaBitmap, isTopDown, isPremultiplied, &chartFontTexture);
 
@@ -212,6 +216,10 @@ void DemoApplication::UpdateAndRender(const float frameTime, const uint64_t cycl
 	int w = window->width;
 	int h = window->height;
 	Render::PushViewport(commandBuffer, 0, 0, w, h);
+	
+	if (demo == nullptr) {
+		return;
+	}
 
 	if (simulationActive) {
 		float strenth = 10.0f;
@@ -376,6 +384,7 @@ void DemoApplication::UpdateAndRender(const float frameTime, const uint64_t cycl
 void DemoApplication::LoadDemo(const size_t demoIndex) {
 	if (demo != nullptr) {
 		delete demo;
+		demo = nullptr;
 	}
 	switch (demoIndex) {
 		case 0:

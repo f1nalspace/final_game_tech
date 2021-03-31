@@ -96,7 +96,7 @@ static Application *globalApp = nullptr;
 static float lastFrameTime = 0.0f;
 static uint64_t lastFrameCycles = 0;
 static uint64_t lastCycles = 0;
-static std::chrono::time_point<std::chrono::steady_clock> lastFrameClock;
+static fplWallClock lastFrameClock;
 
 static void OpenGLPopVertexIndexArray(std::stack<Render::VertexIndexArrayHeader *> &stack) {
 	if (stack.size() > 0) {
@@ -500,6 +500,8 @@ int main(int argc, char **args) {
 			}
 
 			app->Init();
+			
+			lastFrameClock = fplGetWallClock();
 
 			while (fplWindowUpdate()) {
 				fplEvent ev;
@@ -536,13 +538,11 @@ int main(int argc, char **args) {
 
 				fplVideoFlip();
 
-				auto endFrameClock = std::chrono::high_resolution_clock::now();
-				auto durationClock = endFrameClock - lastFrameClock;
+				fplWallClock endFrameClock = fplGetWallClock();
+				lastFrameTime = fplGetWallDelta(lastFrameClock, endFrameClock);
 				lastFrameClock = endFrameClock;
-				uint64_t frameTimeInNanos = std::chrono::duration_cast<std::chrono::nanoseconds>(durationClock).count();
-				lastFrameTime = frameTimeInNanos / (float)1000000000;
 
-				uint64_t endCycles = __rdtsc();
+				uint64_t endCycles = fplCPURDTSC();
 				lastFrameCycles = endCycles - lastCycles;
 				lastCycles = endCycles;
 			}

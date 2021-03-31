@@ -1,8 +1,6 @@
 #ifndef VECMATH_H
 #define VECMATH_H
 
-#define USE_CTORS
-
 #define _USE_MATH_DEFINES
 #include <math.h>
 
@@ -30,20 +28,6 @@ union Vec2f {
 		float w, h;
 	};
 	float m[2];
-
-#if defined(USE_CTORS)
-	inline Vec2f() {
-		x = y = 0;
-	}
-	inline Vec2f(const Vec2f &v) {
-		x = v.x;
-		y = v.y;
-	}
-	inline Vec2f(const float initX, const float initY) {
-		x = initX;
-		y = initY;
-	}
-#endif
 };
 
 inline Vec2f V2f(const float initX, const float initY) {
@@ -57,18 +41,6 @@ union Mat2f {
 		Vec2f col2;
 	};
 	float m[4];
-
-#if defined(USE_CTORS)
-	inline Mat2f() {
-		col1 = V2f(1, 0);
-		col2 = V2f(0, 1);
-	}
-
-	inline Mat2f(const Mat2f &other) {
-		col1 = other.col1;
-		col2 = other.col2;
-	}
-#endif
 };
 
 inline Mat2f Mat2Identity() {
@@ -105,24 +77,6 @@ union Vec3f {
 		Vec2f vw;
 	};
 	float m[3];
-
-#if defined(USE_CTORS)
-	Vec3f() {
-		x = y = z = 0.0f;
-	}
-
-	Vec3f(const Vec3f &other) {
-		x = other.x;
-		y = other.y;
-		z = other.z;
-	}
-
-	Vec3f(const float initX, const float initY, const float initZ) {
-		x = initX;
-		y = initY;
-		z = initZ;
-	}
-#endif
 };
 
 inline Vec3f V3f(const float initX, const float initY, const float initZ) {
@@ -150,10 +104,6 @@ union Vec4f {
 		float a;
 	};
 	struct {
-		Vec3f xyz;
-		float w;
-	};
-	struct {
 		Vec2f xy;
 		float ignored0;
 		float ignored1;
@@ -169,25 +119,6 @@ union Vec4f {
 		Vec2f zw;
 	};
 	float m[4];
-
-#if defined(USE_CTORS)
-	inline Vec4f() {
-		x = y = z = 0;
-		w = 1;
-	}
-	inline Vec4f(const Vec4f &other) {
-		x = other.x;
-		y = other.y;
-		z = other.z;
-		w = other.w;
-	}
-	inline Vec4f(const float initX, const float initY, const float initZ, const float initW) {
-		x = initX;
-		y = initY;
-		z = initZ;
-		w = initW;
-	}
-#endif
 };
 
 inline Vec4f V4f(const float initX, const float initY, const float initZ, const float initW) {
@@ -203,38 +134,6 @@ union Mat4f {
 		Vec4f col4;
 	};
 	float m[16];
-
-#if defined(USE_CTORS)
-	inline Mat4f() {
-		col1 = V4f(1.0f, 0.0f, 0.0f, 0.0f);
-		col2 = V4f(0.0f, 1.0f, 0.0f, 0.0f);
-		col3 = V4f(0.0f, 0.0f, 1.0f, 0.0f);
-		col4 = V4f(0.0f, 0.0f, 0.0f, 1.0f);
-	}
-
-	inline Mat4f(const Mat4f &other) {
-		col1 = other.col1;
-		col2 = other.col2;
-		col3 = other.col3;
-		col4 = other.col4;
-	}
-
-	inline static Mat4f TransformationFromVec2(const Vec2f &p) {
-		Mat4f result = Mat4f();
-		result.col4.x = p.x;
-		result.col4.y = p.y;
-		result.col4.z = 0.0f;
-		return (result);
-	}
-
-	inline static Mat4f ScaleFromVec2(const Vec2f &s) {
-		Mat4f result = Mat4f();
-		result.col1.x = s.x;
-		result.col2.y = s.y;
-		result.col3.z = 0.0f;
-		return (result);
-	}
-#endif
 };
 
 inline Mat4f M4fIdentity() {

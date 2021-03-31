@@ -90,12 +90,11 @@ inline float GetTextWidth(const char *text, const uint32_t textLen, FontAtlas *f
 	return(result);
 }
 
-static FontAtlas LoadFont(const char *filename, const uint32_t fontIndex, const float fontSize, uint32_t firstChar, uint32_t lastChar, uint32_t atlasWidth, uint32_t atlasHeight) {
+static FontAtlas LoadFontByData(const uint8_t *ttfBuffer, size_t ttfBufferSize, const uint32_t fontIndex, const float fontSize, uint32_t firstChar, uint32_t lastChar, uint32_t atlasWidth, uint32_t atlasHeight) {
 #define BETTER_QUALITY 0
 
 	FontAtlas result = {};
 
-	uint8_t *ttfBuffer = LoadFileContent(filename);
 	if (ttfBuffer != nullptr) {
 
 		stbtt_fontinfo fontInfo = {};
@@ -246,10 +245,20 @@ static FontAtlas LoadFont(const char *filename, const uint32_t fontIndex, const 
 			result.atlasWidth = atlasWidth;
 			result.atlasHeight = atlasHeight;
 		}
-
-		fplMemoryFree(ttfBuffer);
 	}
 
+	return(result);
+}
+
+static FontAtlas LoadFont(const char *filename, const uint32_t fontIndex, const float fontSize, uint32_t firstChar, uint32_t lastChar, uint32_t atlasWidth, uint32_t atlasHeight) {
+	FontAtlas result = {};
+
+	uint8_t *ttfBuffer = LoadFileContent(filename);
+	if (ttfBuffer != nullptr) {
+		result = LoadFontByData(ttfBuffer, 0, fontIndex, fontSize, firstChar, lastChar, atlasWidth, atlasHeight);
+		fplMemoryFree(ttfBuffer);
+	}
+	
 	return(result);
 }
 
