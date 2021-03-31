@@ -11,7 +11,7 @@
 
 #define VER_COMPANYNAME_STR			""
 #define VER_FILEDESCRIPTION_STR		"A simple OpenGL based image viewer"
-#define VER_LEGALCOPYRIGHT_STR		"Copyright (C) 2018-2020 Torsten Spaete"
+#define VER_LEGALCOPYRIGHT_STR		"Copyright (C) 2017-2021 Torsten Spaete"
 #define VER_LEGALTRADEMARKS1_STR	""
 #define VER_LEGALTRADEMARKS2_STR	""
 #define VER_ORIGINALFILENAME_STR	VER_INTERNALNAME_STR ".exe"

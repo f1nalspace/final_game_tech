@@ -37,7 +37,7 @@ Changelog:
 	- Initial version
 
 License:
-	Copyright (c) 2017-2020 Torsten Spaete
+	Copyright (c) 2017-2021 Torsten Spaete
 	MIT License (See LICENSE file)
 -------------------------------------------------------------------------------
 */
@@ -121,7 +121,7 @@ static ma_format MapFPLFormatToMALFormat(const fplAudioFormatType format) {
 static void AudioPlayback_MiniAudio(ma_device* pDevice, void* pOutput, const void* pInput, ma_uint32 frameCount) {
 	AudioContext *audioCtx = (AudioContext *)pDevice->pUserData;
 	AudioSystem *audioSys = &audioCtx->system;
-	AudioSystemWriteFrames(audioSys, pOutput, &audioCtx->playbackFormat.deviceFormat, frameCount);
+	AudioSystemWriteFrames(audioSys, pOutput, &audioCtx->playbackFormat.deviceFormat, frameCount, true);
 }
 #else
 static uint32_t AudioPlayback_FPL(const fplAudioDeviceFormat *outFormat, const uint32_t maxFrameCount, void *outputSamples, void *userData) {
@@ -218,7 +218,7 @@ static bool StartPlayback(AudioContext *context) {
 
 	fplGetAudioHardwareFormat(&playbackFormat->deviceFormat);
 	const fplSettings *settings = fplGetCurrentSettings();
-	const char *outDriver = fplGetAudioDriverString(settings->audio.driver);
+	const char *outDriver = fplGetAudioDriverName(settings->audio.driver);
 	fplCopyString(outDriver, playbackFormat->driverName, fplArrayCount(playbackFormat->driverName));
 #endif
 	
@@ -274,11 +274,18 @@ int main(int argc, char **args) {
 	fplAudioDeviceFormat targetDeviceFormat;
 	fplConvertAudioTargetFormatToDeviceFormat(&targetFormat, &targetDeviceFormat);
 	
-	if (!InitAudioData(&targetDeviceFormat, &audioContext->system, files, fileCount, forceSineWave, &audioContext->sineWave)){
+	AudioTrackList tracklist = fplZeroInit;
+
+	if(!AudioSystemInit(&audioContext->system, &targetDeviceFormat)) {
 		fplConsoleFormatError("Failed initializing audio system!\n");
 		goto releaseResources;
 	}
-	
+
+	if(!LoadAudioTrackList(&audioContext->system, files, fileCount, forceSineWave, &audioContext->sineWave, LoadAudioTrackFlags_AutoLoad | LoadAudioTrackFlags_AutoPlay, &tracklist)) {
+		fplConsoleFormatError("Failed loading tracklist for %zu files!\n", fileCount);
+		goto releaseResources;
+	}
+
 	// Start audio playback
 	if (!StartPlayback(audioContext)) {
 		fplConsoleFormatError("Failed starting audio playback!\n");
@@ -287,7 +294,7 @@ int main(int argc, char **args) {
 	
 	// Print output infos
 	PlaybackAudioFormat *playbackFormat = &audioContext->playbackFormat;
-	const char *formatName = fplGetAudioFormatTypeString(playbackFormat->deviceFormat.type);
+	const char *formatName = fplGetAudioFormatName(playbackFormat->deviceFormat.type);
 	const char *systemName;
 #if OPT_USE_MINIAUDIO
 	systemName = "MiniAudio";
@@ -304,6 +311,7 @@ int main(int argc, char **args) {
 	StopPlayback(audioContext);
 		
 	// Release audio data
+	StopAllAudioTracks(&audioContext->system, &tracklist);
 	AudioSystemShutdown(&audioContext->system);
 
 	result = 0;

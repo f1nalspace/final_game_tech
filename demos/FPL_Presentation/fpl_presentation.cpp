@@ -18,6 +18,9 @@ Author:
 	Torsten Spaete
 
 Changelog:
+	## 2021-02-28
+	- Updated all slices, written talks
+
 	## 2020-15-05
 	- Made it much more nicer looking
 
@@ -25,7 +28,7 @@ Changelog:
 	- Initial version
 
 License:
-	Copyright (c) 2017-2020 Torsten Spaete
+	Copyright (c) 2017-2021 Torsten Spaete
 	MIT License (See LICENSE file)
 -------------------------------------------------------------------------------
 */
@@ -33,6 +36,10 @@ License:
 #define FPL_IMPLEMENTATION
 #define FPL_PRIVATE
 #include <final_platform_layer.h>
+
+#if !defined(FPL_IS_CPP)
+#	error "A C++ compiler is required to compile this application!"
+#endif
 
 #define FGL_IMPLEMENTATION
 #include <final_dynamic_opengl.h>
@@ -557,6 +564,7 @@ struct LoadedFont {
 
 enum class ImageResourceType {
 	FPLLogo128x128 = 0,
+	FPLLogo512x512,
 	FPLFeaturesImage,
 };
 
@@ -569,6 +577,7 @@ struct ImageResource {
 
 namespace ImageResources {
 	static ImageResource FPLLogo128x128 = { fplLogo128x128ImageData, "FPL Logo 128x128", fplLogo128x128ImageDataSize, ImageResourceType::FPLLogo128x128 };
+	static ImageResource FPLLogo512x512 = { fplLogo512x512ImageData, "FPL Logo 512x512", fplLogo512x512ImageDataSize, ImageResourceType::FPLLogo512x512 };
 	static ImageResource FPLFeaturesImage = { fplFeaturesImageData, "FPL Features", fplFeaturesImageDataSize, ImageResourceType::FPLFeaturesImage };
 }
 
@@ -1166,7 +1175,7 @@ constexpr float CubeRotationDelay = 3.0f; // Delay in seconds
 constexpr float CubeRadius = 0.5f;
 constexpr float PointRadius = 10.0f;
 constexpr float PointDistance = CubeRadius * 1.5f;
-constexpr float PointRotationSpeed = 3.0f; // Radians in seconds
+constexpr float PointRotationSpeed = 1.0f; // Radians in seconds
 
 constexpr int SpacesForTabstop = 2;
 
@@ -1379,15 +1388,13 @@ static const char* ResolveText(const SlideVariables& vars, const char* source, c
 						size_t remainingBufLen = maxBufferLen - bufIndex;
 						char* remainingStart = &buffer[bufIndex];
 						if(strncmp("SLIDE_NUM", varName, varLen) == 0) {
-							const char* t = fplS32ToString(vars.slideNum, remainingStart, remainingBufLen);
-							if(t != nullptr) {
-								size_t addedCount = fplGetStringLength(remainingStart);
+							size_t addedCount = fplS32ToString(vars.slideNum, remainingStart, remainingBufLen);
+							if(addedCount > 0) {
 								bufIndex += addedCount;
 							}
 						} else if(strncmp("SLIDE_COUNT", varName, varLen) == 0) {
-							const char* t = fplS32ToString(vars.slideCount, remainingStart, remainingBufLen);
-							if(t != nullptr) {
-								size_t addedCount = fplGetStringLength(remainingStart);
+							size_t addedCount = fplS32ToString(vars.slideCount, remainingStart, remainingBufLen);
+							if(addedCount > 0) {
 								bufIndex += addedCount;
 							}
 						} else if(strncmp("SLIDE_NAME", varName, varLen) == 0) {
@@ -1495,10 +1502,6 @@ static void RenderTextureQuad(const GLuint texture, const Vec2f& pos, const Vec2
 	glDisable(GL_TEXTURE_2D);
 }
 
-static void RenderImageQuad(const LoadedImage& renderImage, const Vec2f& pos, const Vec2f& size, const Vec4f& color) {
-	RenderTextureQuad(renderImage.textureId, pos, size, color);
-}
-
 static void RenderPoint(const Vec3f& pos, const float radius, const Vec4f color) {
 	glPointSize(radius * 2.0f);
 	glColor4fv(&color.m[0]);
@@ -1508,7 +1511,7 @@ static void RenderPoint(const Vec3f& pos, const float radius, const Vec4f color)
 	glPointSize(1.0f);
 }
 
-static void RenderCube(const float rw, const float rh, const float rd, const Vec4f colors[3]) {
+static void RenderCube(const float rw, const float rh, const float rd, const Vec4f colors[3], const GLuint texture) {
 	float left = -rw;
 	float right = rw;
 
@@ -1518,55 +1521,72 @@ static void RenderCube(const float rw, const float rh, const float rd, const Vec
 	float far = -rd;
 	float near = rd;
 
+	bool hasTexture = texture > 0;
+	Vec4f faceColors[4];
+
+	if(hasTexture) {
+		glEnable(GL_TEXTURE_2D);
+		glBindTexture(GL_TEXTURE_2D, texture);
+		faceColors[0] = V4f(1, 1, 1, 1);
+		faceColors[1] = V4f(1, 1, 1, 1);
+		faceColors[2] = V4f(1, 1, 1, 1);
+	} else {
+		faceColors[0] = colors[0];
+		faceColors[1] = colors[1];
+		faceColors[2] = colors[2];
+	}
+
 	glBegin(GL_QUADS);
 	// Top face (y = 1.0f)
 	// Green
-	glColor4fv(&colors[0].m[0]);
+	glColor4fv(&faceColors[0].m[0]);
 	glVertex3f(right, top, far);
 	glVertex3f(left, top, far);
 	glVertex3f(left, top, near);
 	glVertex3f(right, top, near);
 
 	// Bottom face (y = -1.0f)
-	// Orange
-	glColor4fv(&colors[0].m[0]);
+	glColor4fv(&faceColors[0].m[0]);
 	glVertex3f(right, bottom, near);
 	glVertex3f(left, bottom, near);
 	glVertex3f(left, bottom, far);
 	glVertex3f(right, bottom, far);
 
 	// Front face  (z = 1.0f)
-	// Red
-	glColor4fv(&colors[1].m[0]);
-	glVertex3f(right, top, near);
-	glVertex3f(left, top, near);
-	glVertex3f(left, bottom, near);
-	glVertex3f(right, bottom, near);
+	glColor4fv(&faceColors[1].m[0]);
+	glTexCoord2f(1.0f, 1.0f); glVertex3f(right, top, near);
+	glTexCoord2f(0.0f, 1.0f); glVertex3f(left, top, near);
+	glTexCoord2f(0.0f, 0.0f); glVertex3f(left, bottom, near);
+	glTexCoord2f(1.0f, 0.0f); glVertex3f(right, bottom, near);
 
 	// Back face (z = -1.0f)
-	// Yellow
-	glColor4fv(&colors[1].m[0]);
-	glVertex3f(right, bottom, far);
-	glVertex3f(left, bottom, far);
-	glVertex3f(left, top, far);
-	glVertex3f(right, top, far);
+	glColor4fv(&faceColors[1].m[0]);
+	glTexCoord2f(1.0f, 1.0f); glVertex3f(right, bottom, far);
+	glTexCoord2f(0.0f, 1.0f); glVertex3f(left, bottom, far);
+	glTexCoord2f(0.0f, 0.0f); glVertex3f(left, top, far);
+	glTexCoord2f(1.0f, 0.0f); glVertex3f(right, top, far);
 
 	// Left face (x = -1.0f)
-	// Blue
-	glColor4fv(&colors[2].m[0]);
-	glVertex3f(left, top, near);
-	glVertex3f(left, top, far);
-	glVertex3f(left, bottom, far);
-	glVertex3f(left, bottom, near);
+	glColor4fv(&faceColors[2].m[0]);
+	glTexCoord2f(1.0f, 1.0f); glVertex3f(left, top, near);
+	glTexCoord2f(0.0f, 1.0f); glVertex3f(left, top, far);
+	glTexCoord2f(0.0f, 0.0f); glVertex3f(left, bottom, far);
+	glTexCoord2f(1.0f, 0.0f); glVertex3f(left, bottom, near);
 
 	// Right face (x = 1.0f)
-	// Magenta
-	glColor4fv(&colors[2].m[0]);
-	glVertex3f(right, top, far);
-	glVertex3f(right, top, near);
-	glVertex3f(right, bottom, near);
-	glVertex3f(right, bottom, far);
+	glColor4fv(&faceColors[2].m[0]);
+	glColor4f(1, 1, 1, 1);
+	glTexCoord2f(1.0f, 1.0f); glVertex3f(right, top, far);
+	glTexCoord2f(0.0f, 1.0f); glVertex3f(right, top, near);
+	glTexCoord2f(0.0f, 0.0f); glVertex3f(right, bottom, near);
+	glTexCoord2f(1.0f, 0.0f); glVertex3f(right, bottom, far);
+
 	glEnd();
+
+	if(hasTexture) {
+		glBindTexture(GL_TEXTURE_2D, 0);
+		glDisable(GL_TEXTURE_2D);
+	}
 }
 
 static void RenderImage(const LoadedImage& renderImage, const Image& image) {
@@ -1581,7 +1601,7 @@ static void RenderImage(const LoadedImage& renderImage, const Image& image) {
 	RenderRectangle(boxPos, size, style.background, {});
 
 	// Foreground
-	RenderImageQuad(renderImage, imagePos, size, V4f(1, 1, 1, 1));
+	RenderTextureQuad(renderImage.textureId, imagePos, size, V4f(1, 1, 1, 1));
 
 #if DRAW_IMAGE_BOUNDS
 	// Draw bounds
@@ -1740,6 +1760,8 @@ static void RenderFrame(App& app, const Vec2i& winSize) {
 		//
 #if DRAW_ROTATING_CUBE
 		{
+			const LoadedImage* cubeImage = renderer.FindImage(ImageResources::FPLLogo512x512.name);
+
 			fplAssert(winSize.w > 0 && winSize.h > 0);
 			renderer.cubeFramebuffer.Bind();
 
@@ -1753,12 +1775,12 @@ static void RenderFrame(App& app, const Vec2i& winSize) {
 			glLoadMatrixf(&cubeMVP.m[0]);
 
 			Vec4f colors[3] = { V4f(1.0f, 0.0f, 0.0f, 1.0f), V4f(0.0f, 1.0f, 0.0f, 1.0f), V4f(0.0f, 0.0f, 1.0f, 1.0f) };
-			RenderCube(CubeRadius, CubeRadius, CubeRadius, colors);
+			RenderCube(CubeRadius, CubeRadius, CubeRadius, colors, cubeImage->textureId);
 
 			glDisable(GL_CULL_FACE);
 			glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
 			glLineWidth(3.0f);
-			RenderCube(CubeRadius * 1.25f, CubeRadius * 1.25f, CubeRadius * 1.25f, colors);
+			RenderCube(CubeRadius * 1.25f, CubeRadius * 1.25f, CubeRadius * 1.25f, colors, 0);
 			glLineWidth(1.0f);
 			glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
 			glEnable(GL_CULL_FACE);
@@ -1826,10 +1848,10 @@ static void RenderFrame(App& app, const Vec2i& winSize) {
 			size_t textLen = fplGetStringLength(buffer);
 			const char* text = buffer;
 			RenderTextQuads(0.0f, 0.0f, text, textLen, 20.0f, *debugFont, V4f(1, 1, 1, 1));
-		}
+	}
 #endif
 
-	}
+}
 
 	CheckGLError();
 	glFlush();
@@ -1990,7 +2012,7 @@ static void AddTextBlock(Renderer& renderer, Slide& slide, const Vec2f& offset, 
 	}
 }
 
-static void AddImageBlock(Renderer& renderer, Slide& slide, const Vec2f& offset, const Vec2f &size, const char *name) {
+static void AddImageBlock(Renderer& renderer, Slide& slide, const Vec2f& offset, const Vec2f& size, const char* name) {
 	slide.AddImage(offset, size, name);
 }
 
@@ -1999,7 +2021,7 @@ struct Letterbox {
 	Vec2f size;
 };
 
-static Letterbox ComputeLetterbox(const Vec2f &screenSize, const float targetAspect) {
+static Letterbox ComputeLetterbox(const Vec2f& screenSize, const float targetAspect) {
 	float targetHeight = screenSize.w / targetAspect;
 	Vec2f viewSize = V2f(screenSize.w, screenSize.h);
 	Vec2f viewOffset = V2f(0, 0);
@@ -2082,22 +2104,25 @@ static void AddSlideFromDefinition(Renderer& renderer, Presentation& presentatio
 				}
 				if(block.contentAlignment.v == VerticalAlignment::Middle) {
 					textPos += V2fHadamard(V2f(0, 0.5f), blockSize) - V2fHadamard(V2f(0, 0.5f), textSize);
-				} else if(block.contentAlignment.v == VerticalAlignment::Bottom) {
-					textPos += V2fHadamard(V2f(0, 1.0f), blockSize) - V2fHadamard(V2f(0, 1.0f), textSize);
-				}
+			} else if(block.contentAlignment.v == VerticalAlignment::Bottom) {
+				textPos += V2fHadamard(V2f(0, 1.0f), blockSize) - V2fHadamard(V2f(0, 1.0f), textSize);
+			}
 
 #if DRAW_BOX_DEFINITIONS
-				slide->AddStrokedRect(textPos, textSize, V4f(1, 1, 0, 1), 1.0f);
+			slide->AddStrokedRect(textPos, textSize, V4f(1, 1, 0, 1), 1.0f);
 #endif
 
 				// Adjust for content alignment
-				if(textAlign == HorizontalAlignment::Center) {
-					textPos += V2fHadamard(V2f(1, 0), textSize * 0.5f);
-				} else if(textAlign == HorizontalAlignment::Right) {
-					textPos += V2fHadamard(V2f(1, 0), textSize);
-				}
-				AddTextBlock(renderer, *slide, textPos, text, normalFontName, textFontSize, textLineHeight, normalStyle, textAlign, VerticalAlignment::Top);
-			} break;
+			if(textAlign == HorizontalAlignment::Center) {
+				textPos += V2fHadamard(V2f(1, 0), textSize * 0.5f);
+			} else if(textAlign == HorizontalAlignment::Right) {
+				textPos += V2fHadamard(V2f(1, 0), textSize);
+			}
+
+			TextStyle textStyle = normalStyle;
+			textStyle.foregroundColor = V4f((normalStyle.foregroundColor.r + textBlock.color.r) * 0.5f, (normalStyle.foregroundColor.g + textBlock.color.g) * 0.5f, (normalStyle.foregroundColor.b + textBlock.color.b) * 0.5f, 1.0f);
+			AddTextBlock(renderer, *slide, textPos, text, normalFontName, textFontSize, textLineHeight, textStyle, textAlign, VerticalAlignment::Top);
+		} break;
 
 			case BlockType::Image:
 			{
@@ -2127,21 +2152,21 @@ static void AddSlideFromDefinition(Renderer& renderer, Presentation& presentatio
 					}
 					if(block.contentAlignment.v == VerticalAlignment::Middle) {
 						imagePos += V2fHadamard(V2f(0, 0.5f), blockSize) - V2fHadamard(V2f(0, 0.5f), imageSize);
-					} else if(block.contentAlignment.v == VerticalAlignment::Bottom) {
-						imagePos += V2fHadamard(V2f(0, 1.0f), blockSize) - V2fHadamard(V2f(0, 1.0f), imageSize);
-					}
+				} else if(block.contentAlignment.v == VerticalAlignment::Bottom) {
+					imagePos += V2fHadamard(V2f(0, 1.0f), blockSize) - V2fHadamard(V2f(0, 1.0f), imageSize);
+				}
 
 #if DRAW_BOX_DEFINITIONS
-					slide->AddStrokedRect(imagePos, imageSize, V4f(1, 1, 0, 1), 1.0f);
+				slide->AddStrokedRect(imagePos, imageSize, V4f(1, 1, 0, 1), 1.0f);
 #endif
 
-					AddImageBlock(renderer, *slide, imagePos, imageSize, imageBlock.name);
-				}
-			} break;
+				AddImageBlock(renderer, *slide, imagePos, imageSize, imageBlock.name);
+			}
+	} break;
 
 			default:
 				break;
-		}
+}
 
 	}
 }
@@ -2213,8 +2238,10 @@ int main(int argc, char** argv) {
 			app.renderer.AddFontFromResource(FontResources::Arimo, 84.0f);
 			app.renderer.AddFontFromResource(FontResources::Arimo, 96.0f);
 			app.renderer.AddFontFromResource(FontResources::Arimo, 108.0f);
+			app.renderer.AddFontFromResource(FontResources::Arimo, 132.0f);
 
 			app.renderer.AddImageFromResource(ImageResources::FPLLogo128x128);
+			app.renderer.AddImageFromResource(ImageResources::FPLLogo512x512);
 
 			app.renderer.AddImageFromResource(ImageResources::FPLFeaturesImage);
 

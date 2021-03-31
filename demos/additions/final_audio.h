@@ -9,25 +9,76 @@
 #include <math.h> // sin, cos, M_PI
 #include <float.h> // EPSILON
 
-typedef uint32_t AudioFrameIndex; // The number or index of frames
-typedef uint32_t AudioSampleIndex; // The number or index of samples
-typedef uint32_t AudioChannelIndex; // The number or index of channels
-typedef uint32_t AudioHertz; // The number or index of Hz
-typedef size_t AudioSize; // The size in bytes
+/// The number of audio frames or index (32-bit)
+typedef uint32_t AudioFrameIndex;
+
+/// The number of audio samples or index (32-bit)
+typedef uint32_t AudioSampleIndex;
+
+/// The number of audio channels or index (32-bit)
+typedef uint32_t AudioChannelIndex;
+
+/// The audio frequency in Hertz (Hz) (32-bit)
+typedef uint32_t AudioHertz;
+
+/// The number of milliseconds for audio (32-bit)
+typedef uint32_t AudioMilliseconds;
+
+/// The duration in seconds for audio (64-bit)
+typedef double AudioDuration;
+
+/// The size of a audio buffer in bytes (32-bit or 64-bit)
+typedef size_t AudioBufferSize; // The size in bytes
+
+typedef enum AudioFileFormat {
+	AudioFileFormat_None = 0,
+	AudioFileFormat_Wave,
+	AudioFileFormat_Vorbis,
+	AudioFileFormat_MP3,
+} AudioFileFormat;
+
+typedef struct AudioFormat {
+	AudioHertz sampleRate;
+	AudioChannelIndex channels;
+	fplAudioFormatType format;
+	uint8_t padding;
+} AudioFormat;
+fplStaticAssert(sizeof(AudioFormat) % 16 == 0);
+
+typedef struct AudioBuffer {
+	uint8_t *samples;
+	AudioBufferSize bufferSize;
+	AudioFrameIndex frameCount;
+	fpl_b32 isAllocated;
+} AudioBuffer;
+
+typedef struct AudioStream {
+	AudioBuffer buffer;
+	AudioFrameIndex readFrameIndex;
+	AudioFrameIndex framesRemaining;
+} AudioStream;
+
+#define MAX_AUDIO_STATIC_BUFFER_CHANNEL_COUNT (AudioChannelIndex)2
+#define MAX_AUDIO_STATIC_BUFFER_FRAME_COUNT (AudioFrameIndex)4096
+#define MAX_AUDIO_STATIC_BUFFER_MAX_TYPE_SIZE (size_t)4
+typedef struct AudioStaticBuffer {
+	uint8_t samples[MAX_AUDIO_STATIC_BUFFER_CHANNEL_COUNT * MAX_AUDIO_STATIC_BUFFER_FRAME_COUNT * MAX_AUDIO_STATIC_BUFFER_MAX_TYPE_SIZE];
+	AudioFrameIndex maxFrameCount;
+} AudioStaticBuffer;
 
 typedef struct PCMWaveData {
 	//! Total frame count
 	AudioFrameIndex frameCount;
-	//! Samples per second (Frequency in Hz)
-	AudioSampleIndex samplesPerSecond;
+	//! Samples per second
+	AudioHertz samplesPerSecond;
 	//! Bytes per sample
-	AudioSize bytesPerSample;
+	AudioBufferSize bytesPerSample;
 	//! Format type
 	fplAudioFormatType formatType;
 	//! Number of channels
 	AudioChannelIndex channelCount;
 	//! Size of samples in bytes
-	AudioSize samplesSize;
+	AudioBufferSize samplesSize;
 	//! Samples (Interleaved)
 	void* isamples;
 	//! Last error string
@@ -35,6 +86,23 @@ typedef struct PCMWaveData {
 	//! Is valid boolean flag
 	bool isValid;
 } PCMWaveData;
+
+#define AUDIO_MAX_CHANNEL_COUNT (AudioChannelIndex)16
+#define AUDIO_MAX_SAMPLESIZE 4
+
+static bool AreAudioBuffersEqual(AudioBuffer *a, AudioBuffer *b) {
+	if(a == fpl_null || b == fpl_null)
+		return(false);
+	if(a->bufferSize != b->bufferSize)
+		return(false);
+	if(a->frameCount != b->frameCount)
+		return(false);
+	if(a->isAllocated != b->isAllocated)
+		return(false);
+	if(a->samples == fpl_null || b->samples == fpl_null)
+		return(false);
+	return(true);
+}
 
 static void FreeWaveData(PCMWaveData* wave) {
 	if (wave != fpl_null) {
@@ -181,12 +249,12 @@ static void FFTTest() {
 
 }
 
-fpl_inline float AmplitudeToDecibel(const float amplitude) {
-	return 20.0f * log10f(amplitude);
+fpl_force_inline double AmplitudeToDecibel(const double amplitude) {
+	return 20.0 * log10(amplitude);
 }
 
-fpl_inline float DecibelToAmplitude(const float dB) {
-	return powf(10.0f, dB / 20.0f);
+fpl_force_inline double DecibelToAmplitude(const double dB) {
+	return pow(10.0, dB / 20.0);
 }
 
 static void WindowFunctionCore(double* output, const size_t length, const double a0, const double a1, const double a2, const double a3, const double a4) {
@@ -196,7 +264,7 @@ static void WindowFunctionCore(double* output, const size_t length, const double
 		output[0] = 1.0;
 		return;
 	}
-	for (int index = 0; index <= N - 1; index++)
+	for (size_t index = 0; index <= N - 1; index++)
 	{
 		double k = 2.0 * M_PI * index / (double)N;
 		output[index] = a0 - a1 * cos(k) + a2 * cos(2.0 * k) - a3 * cos(3.0 * k) + a4 * cos(4.0 * k);
@@ -221,7 +289,7 @@ static void HannWindowFunction(double* output, const size_t length) {
 	WindowFunctionCore(output, length, a0, a1, a2, a3, a4);
 }
 
-static void HammingWindowFunction(const size_t length, double* output) {
+static void HammingWindowFunction(double* output, const size_t length) {
 	double a0 = 0.53836; // 25 / 46
 	double a1 = 0.46164; // a1 = 1 - a0 = 21 / 46
 	double a2 = 0.0;
@@ -230,7 +298,7 @@ static void HammingWindowFunction(const size_t length, double* output) {
 	WindowFunctionCore(output, length, a0, a1, a2, a3, a4);
 }
 
-static void BlackmanWindowFunction(const size_t length, double* output) {
+static void BlackmanWindowFunction(double* output, const size_t length) {
 	double a0 = 0.42; // 21 / 50
 	double a1 = 0.50; // 25 / 50
 	double a2 = 0.08; //  4 / 50

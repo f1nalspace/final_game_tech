@@ -8,14 +8,19 @@ Description:
 
 Requirements:
 	- C++/11 Compiler
-	- Platform x64 / Win32
+	- Platform x64 or x86_64
 	- Final Platform Layer
-	- FFmpeg-4.3.1 (Release, Full, Shared, Win64: https://www.gyan.dev/ffmpeg/builds/)
+	- FFmpeg-4.3.1 or higher (Release, Full, Shared, Win64: https://www.gyan.dev/ffmpeg/builds/)
 
 Author:
 	Torsten Spaete
 
 Changelog:
+	## 2021-02-24
+	- Support for non win32 platforms by loading to .so libraries instead
+	- No more fixed ffmpeg library names anymore, use the AV_MAJOR
+	- Disabled arch test to support x86 as well
+
 	## 2020-10-12
 	- Renamed old FPL functions calls to new ones
 	- Print useful informations to the osd
@@ -111,7 +116,7 @@ Resources:
 	- https://www.codeproject.com/tips/489450/creating-custom-ffmpeg-io-context
 
 License:
-	Copyright (c) 2017-2020 Torsten Spaete
+	Copyright (c) 2017-2021 Torsten Spaete
 	MIT License (See LICENSE file)
 -------------------------------------------------------------------------------
 */
@@ -123,9 +128,10 @@ License:
 
 #include <assert.h> // assert
 
+#include <final_math.h>
+
 #include "defines.h"
 #include "utils.h"
-#include "maths.h"
 #include "ffmpeg.h"
 
 #include "fontdata.h" // sulphur-point-regular font
@@ -133,7 +139,7 @@ License:
 typedef int32_t bool32;
 
 #define STB_TRUETYPE_IMPLEMENTATION
-#include <stb_truetype.h>
+#include <stb/stb_truetype.h>
 
 #if USE_HARDWARE_RENDERING
 #	define FGL_IMPLEMENTATION
@@ -164,10 +170,8 @@ static const char *GetGLErrorString(const GLenum err) {
 		case GL_OUT_OF_MEMORY:
 			return "GL_OUT_OF_MEMORY";
 		default:
-			if (_itoa_s(err, glErrorCodeBuffer, fplArrayCount(glErrorCodeBuffer), 10) == 0)
-				return (const char *)glErrorCodeBuffer;
-			else
-				return "";
+			fplFormatString(glErrorCodeBuffer, fplArrayCount(glErrorCodeBuffer), "%u", err);
+			return (const char *)glErrorCodeBuffer;
 	}
 }
 
@@ -179,6 +183,7 @@ static void CheckGLError() {
 	}
 }
 
+static char CompileShaderInfoBuffer[1024];
 static GLuint CompileShader(GLuint type, const char *source, const char *name) {
 	GLuint result = glCreateShader(type);
 	glShaderSource(result, 1, &source, nullptr);
@@ -188,15 +193,16 @@ static GLuint CompileShader(GLuint type, const char *source, const char *name) {
 	if (compileStatus == GL_FALSE) {
 		int length;
 		glGetShaderiv(result, GL_INFO_LOG_LENGTH, &length);
-		char *message = (char *)fplStackAllocate(length * sizeof(char));
-		glGetShaderInfoLog(result, length, &length, message);
-		FPL_LOG_ERROR("App", "Failed to compile %s shader '%s':\n%s\n", (type == GL_VERTEX_SHADER ? "vertex" : "fragment"), name, message);
+		CompileShaderInfoBuffer[0] = 0;
+		glGetShaderInfoLog(result, length, &length, CompileShaderInfoBuffer);
+		FPL_LOG_ERROR("App", "Failed to compile %s shader '%s':\n%s\n", (type == GL_VERTEX_SHADER ? "vertex" : "fragment"), name, CompileShaderInfoBuffer);
 		glDeleteShader(result);
 		return 0;
 	}
 	return(result);
 }
 
+static char LinkShaderInfoBuffer[1024];
 static GLuint CreateShader(const char *vertexShaderSource, const char *fragmentShaderSource, const char *name) {
 	GLuint result = glCreateProgram();
 	GLuint vs = CompileShader(GL_VERTEX_SHADER, vertexShaderSource, name);
@@ -216,9 +222,9 @@ static GLuint CreateShader(const char *vertexShaderSource, const char *fragmentS
 	if (GL_LINK_STATUS == GL_FALSE) {
 		int length;
 		glGetProgramiv(result, GL_INFO_LOG_LENGTH, &length);
-		char *message = (char *)fplStackAllocate(length * sizeof(char));
-		glGetProgramInfoLog(result, length, &length, message);
-		FPL_LOG_ERROR("App", "Failed to link %s shader program:\n%s\n", name, message);
+		LinkShaderInfoBuffer[0] = 0;
+		glGetProgramInfoLog(result, length, &length, LinkShaderInfoBuffer);
+		FPL_LOG_ERROR("App", "Failed to link %s shader program:\n%s\n", name, LinkShaderInfoBuffer);
 		glDeleteProgram(result);
 		return 0;
 	}
@@ -473,9 +479,9 @@ static bool PushFlushPacket(PacketQueue &queue) {
 }
 
 static void StartPacketQueue(PacketQueue &queue) {
-	fplMutexLock(&queue.lock);
+	//fplMutexLock(&queue.lock);
 	assert(PushFlushPacket(queue));
-	fplMutexUnlock(&queue.lock);
+	//fplMutexUnlock(&queue.lock);
 }
 
 //
@@ -1305,15 +1311,15 @@ static bool LoadFontInfo(const uint8_t *data, const size_t dataSize, const uint3
 		float y1 = b->yoff2 * -pixelScale;
 
 		// Y must be inverted, to flip letter (Cartesian conversion)
-		outChar->offset[0] = Vec2f(x1, y0); // Top-right
-		outChar->offset[1] = Vec2f(x0, y0); // Top-left
-		outChar->offset[2] = Vec2f(x0, y1); // Bottom-left
-		outChar->offset[3] = Vec2f(x1, y1); // Bottom-right
+		outChar->offset[0] = V2f(x1, y0); // Top-right
+		outChar->offset[1] = V2f(x0, y0); // Top-left
+		outChar->offset[2] = V2f(x0, y1); // Bottom-left
+		outChar->offset[3] = V2f(x1, y1); // Bottom-right
 
-		outChar->uv[0] = Vec2f(s1, t0);
-		outChar->uv[1] = Vec2f(s0, t0);
-		outChar->uv[2] = Vec2f(s0, t1);
-		outChar->uv[3] = Vec2f(s1, t1);
+		outChar->uv[0] = V2f(s1, t0);
+		outChar->uv[1] = V2f(s0, t0);
+		outChar->uv[2] = V2f(s0, t1);
+		outChar->uv[3] = V2f(s1, t1);
 
 		outChar->advance = b->xadvance * pixelScale;
 	}
@@ -1545,21 +1551,21 @@ static void PushQuadToBuffer(FontBuffer &buffer, const Vec2f &position, const Ve
 	uint32_t vertexStart = buffer.vb.count;
 	uint32_t indexStart = buffer.ib.count;
 
-	Vec3f p0 = Vec3f(position.x + size.w, position.y + size.h, 0.0f);
-	Vec3f p1 = Vec3f(position.x, position.y + size.h, 0.0f);
-	Vec3f p2 = Vec3f(position.x, position.y, 0.0f);
-	Vec3f p3 = Vec3f(position.x + size.w, position.y, 0.0f);
+	Vec3f p0 = V3f(position.x + size.w, position.y + size.h, 0.0f);
+	Vec3f p1 = V3f(position.x, position.y + size.h, 0.0f);
+	Vec3f p2 = V3f(position.x, position.y, 0.0f);
+	Vec3f p3 = V3f(position.x + size.w, position.y, 0.0f);
 
-	Vec2f uv0 = Vec2f(1.0f, 1.0f); // Top-right
-	Vec2f uv1 = Vec2f(0.0f, 1.0f); // Top-left
-	Vec2f uv2 = Vec2f(0.0f, 0.0f); // Bottom-left
-	Vec2f uv3 = Vec2f(1.0f, 0.0f); // Bottom-right
+	Vec2f uv0 = V2f(1.0f, 1.0f); // Top-right
+	Vec2f uv1 = V2f(0.0f, 1.0f); // Top-left
+	Vec2f uv2 = V2f(0.0f, 0.0f); // Bottom-left
+	Vec2f uv3 = V2f(1.0f, 0.0f); // Bottom-right
 
 	uint32_t vertexIndex = vertexStart;
-	verts[vertexIndex++] = { Vec4f(p0, 1.0f), color, uv0 }; // Top-right
-	verts[vertexIndex++] = { Vec4f(p1, 1.0f), color, uv1 }; // Top-left
-	verts[vertexIndex++] = { Vec4f(p2, 1.0f), color, uv2 }; // Bottom-left
-	verts[vertexIndex++] = { Vec4f(p3, 1.0f), color, uv3 }; // Bottom-right
+	verts[vertexIndex++] = { V4f(p0, 1.0f), color, uv0 }; // Top-right
+	verts[vertexIndex++] = { V4f(p1, 1.0f), color, uv1 }; // Top-left
+	verts[vertexIndex++] = { V4f(p2, 1.0f), color, uv2 }; // Bottom-left
+	verts[vertexIndex++] = { V4f(p3, 1.0f), color, uv3 }; // Bottom-right
 
 	uint32_t elementIndex = indexStart;
 	indices[elementIndex++] = buffer.ib.lastIndex + 0;
@@ -1586,7 +1592,7 @@ static void PushQuadToBuffer(FontBuffer &buffer, const Vec2f &position, const Ve
 
 static Vec2f ComputeTextSize(const FontInfo &info, const char *text, const float scale) {
 	const char *s = text;
-	Vec2f result = Vec2f(0, 0);
+	Vec2f result = V2f(0, 0);
 	while (*s) {
 		FontChar glyph = GetFontChar(info, *s);
 
@@ -1598,7 +1604,7 @@ static Vec2f ComputeTextSize(const FontInfo &info, const char *text, const float
 		// TODO(final): Compute actual text rectangle
 		//Vec2f charSize = 
 
-		result += Vec2f(glyph.advance * scale, 0.0f);
+		result += V2f(glyph.advance * scale, 0.0f);
 		++s;
 	}
 }
@@ -1631,15 +1637,15 @@ static void PushTextToBuffer(FontBuffer &buffer, const FontInfo &info, const cha
 		while (*s) {
 			FontChar glyph = GetFontChar(info, *s);
 
-			Vec3f p0 = Vec3f(offset + glyph.offset[0] * scale, 0.0f);
-			Vec3f p1 = Vec3f(offset + glyph.offset[1] * scale, 0.0f);
-			Vec3f p2 = Vec3f(offset + glyph.offset[2] * scale, 0.0f);
-			Vec3f p3 = Vec3f(offset + glyph.offset[3] * scale, 0.0f);
+			Vec3f p0 = V3f(offset + glyph.offset[0] * scale, 0.0f);
+			Vec3f p1 = V3f(offset + glyph.offset[1] * scale, 0.0f);
+			Vec3f p2 = V3f(offset + glyph.offset[2] * scale, 0.0f);
+			Vec3f p3 = V3f(offset + glyph.offset[3] * scale, 0.0f);
 
-			verts[vertexIndex++] = { Vec4f(p0, 1.0f), color, glyph.uv[0] }; // Top-right
-			verts[vertexIndex++] = { Vec4f(p1, 1.0f), color, glyph.uv[1] }; // Top-left
-			verts[vertexIndex++] = { Vec4f(p2, 1.0f), color, glyph.uv[2] }; // Bottom-left
-			verts[vertexIndex++] = { Vec4f(p3, 1.0f), color, glyph.uv[3] }; // Bottom-right
+			verts[vertexIndex++] = { V4f(p0, 1.0f), color, glyph.uv[0] }; // Top-right
+			verts[vertexIndex++] = { V4f(p1, 1.0f), color, glyph.uv[1] }; // Top-left
+			verts[vertexIndex++] = { V4f(p2, 1.0f), color, glyph.uv[2] }; // Bottom-left
+			verts[vertexIndex++] = { V4f(p3, 1.0f), color, glyph.uv[3] }; // Bottom-right
 
 			indices[elementIndex++] = buffer.ib.lastIndex + 0;
 			indices[elementIndex++] = buffer.ib.lastIndex + 1;
@@ -1650,7 +1656,7 @@ static void PushTextToBuffer(FontBuffer &buffer, const FontInfo &info, const cha
 
 			buffer.ib.lastIndex += 4;
 
-			offset += Vec2f(glyph.advance * scale, 0.0f);
+			offset += V2f(glyph.advance * scale, 0.0f);
 
 			++s;
 		}
@@ -2700,7 +2706,14 @@ static bool IsRealTime(AVFormatContext *s) {
 		!strcmp(s->iformat->name, "sdp")) {
 		return true;
 	}
-	if (s->pb && (!strncmp(s->url, "rtp:", 4) || !strncmp(s->url, "udp:", 4))) {
+
+#if !FF_API_FORMAT_FILENAME
+	const char* filename = s->filename;
+#else
+	const char* filename = s->url;
+#endif
+
+	if (s->pb && (!strncmp(filename, "rtp:", 4) || !strncmp(filename, "udp:", 4))) {
 		return true;
 	}
 	return false;
@@ -2746,11 +2759,11 @@ static void RenderOSD(PlayerState *state, const Mat4f &proj, const float w, cons
 
 	char osdTextBuffer[256];
 
-	float osdFontSize = (float)h / 30.0f;
+	float osdFontSize = (float)h / 40.0f;
 	float fontHeight = osdFontSize * (state->fontInfo.ascent + state->fontInfo.descent);
 	float fontBaseline = osdFontSize * state->fontInfo.ascent;
 	float fontLineHeight = fontHeight * 1.25f;
-	Vec2f osdPos = Vec2f(0.0f, h - fontBaseline);
+	Vec2f osdPos = V2f(0.0f, h - fontBaseline);
 
 	const char *stateMsg = "Playing";
 	double frameRate = fplMax(0.0, GetMasterFrameRate(state));
@@ -2773,8 +2786,8 @@ static void RenderOSD(PlayerState *state, const Mat4f &proj, const float w, cons
 
 	// [State: Filename]
 	fplFormatString(osdTextBuffer, fplArrayCount(osdTextBuffer), "%s: %s", stateMsg, filename);
-	PushTextToBuffer(state->fontBuffer, state->fontInfo, osdTextBuffer, osdFontSize, osdPos, Vec4f(1, 1, 1, 1), TextRenderMode::Baseline);
-	osdPos += Vec2f(0, -osdFontSize);
+	PushTextToBuffer(state->fontBuffer, state->fontInfo, osdTextBuffer, osdFontSize, osdPos, V4f(1, 1, 1, 1), TextRenderMode::Baseline);
+	osdPos += V2f(0, -osdFontSize);
 
 	// Round to milliseconds, we dont care about nanoseconds
 	double clockCurrentSecondsRoundAsMillis = round(clockCurrent * 1000.0) / 1000.0;
@@ -2791,16 +2804,16 @@ static void RenderOSD(PlayerState *state, const Mat4f &proj, const float w, cons
 		int totalHours = (int)(clockLength / 60.0 / 60.0);
 
 		fplFormatString(osdTextBuffer, fplArrayCount(osdTextBuffer), "Time: %02d:%02d:%02d:%03d", currentHours, currentMinutes, currentSeconds, currentMillis);
-		PushTextToBuffer(state->fontBuffer, state->fontInfo, osdTextBuffer, osdFontSize, osdPos, Vec4f(1, 1, 1, 1), TextRenderMode::Baseline);
-		osdPos += Vec2f(0, -osdFontSize);
+		PushTextToBuffer(state->fontBuffer, state->fontInfo, osdTextBuffer, osdFontSize, osdPos, V4f(1, 1, 1, 1), TextRenderMode::Baseline);
+		osdPos += V2f(0, -osdFontSize);
 
 		fplFormatString(osdTextBuffer, fplArrayCount(osdTextBuffer), "Frames: %d", numFrames);
-		PushTextToBuffer(state->fontBuffer, state->fontInfo, osdTextBuffer, osdFontSize, osdPos, Vec4f(1, 1, 1, 1), TextRenderMode::Baseline);
-		osdPos += Vec2f(0, -osdFontSize);
+		PushTextToBuffer(state->fontBuffer, state->fontInfo, osdTextBuffer, osdFontSize, osdPos, V4f(1, 1, 1, 1), TextRenderMode::Baseline);
+		osdPos += V2f(0, -osdFontSize);
 
 		fplFormatString(osdTextBuffer, fplArrayCount(osdTextBuffer), "Length: %02d:%02d:%02d:%03d", totalHours, totalMinutes, totalSeconds, totalMillis);
-		PushTextToBuffer(state->fontBuffer, state->fontInfo, osdTextBuffer, osdFontSize, osdPos, Vec4f(1, 1, 1, 1), TextRenderMode::Baseline);
-		osdPos += Vec2f(0, -osdFontSize);
+		PushTextToBuffer(state->fontBuffer, state->fontInfo, osdTextBuffer, osdFontSize, osdPos, V4f(1, 1, 1, 1), TextRenderMode::Baseline);
+		osdPos += V2f(0, -osdFontSize);
 	}
 
 	// States
@@ -2816,20 +2829,33 @@ static void RenderOSD(PlayerState *state, const Mat4f &proj, const float w, cons
 		uint32_t height = state->video.stream.codecContext->height;
 		AVPixelFormat pixFormat  = state->video.stream.codecContext->pix_fmt;
 		const char *pixelFormatName = ffmpeg.av_get_pix_fmt_name(pixFormat);
-
+			
 		fplFormatString(osdTextBuffer, fplArrayCount(osdTextBuffer), "Video: %s, %ux%u, %s, %.2f frames/s", videoInfos, width, height, pixelFormatName, frameRate);
-		PushTextToBuffer(state->fontBuffer, state->fontInfo, osdTextBuffer, osdFontSize, osdPos, Vec4f(1, 1, 1, 1), TextRenderMode::Baseline);
-		osdPos += Vec2f(0, -osdFontSize);
+		PushTextToBuffer(state->fontBuffer, state->fontInfo, osdTextBuffer, osdFontSize, osdPos, V4f(1, 1, 1, 1), TextRenderMode::Baseline);
+		osdPos += V2f(0, -osdFontSize);
 
-		const char* audioDriverName = fplGetAudioDriverString(state->audio.audioTarget.driver);
-		const char* audioFormatName = fplGetAudioFormatTypeString(state->audio.audioTarget.type);
+		const char* audioDriverName = fplGetAudioDriverName(state->audio.audioTarget.driver);
+		const char* audioFormatName = fplGetAudioFormatName(state->audio.audioTarget.type);
 
 		uint32_t bufferSize = state->audio.audioTarget.bufferSizeInBytes;
 		uint32_t frameSize = fplGetAudioFrameSizeInBytes(state->audio.audioTarget.type, state->audio.audioTarget.channels);
 
 		fplFormatString(osdTextBuffer, fplArrayCount(osdTextBuffer), "Audio: %s, %s, %u channels, %u Hz", audioDriverName, audioFormatName, state->audio.audioTarget.channels, state->audio.audioTarget.sampleRate);
-		PushTextToBuffer(state->fontBuffer, state->fontInfo, osdTextBuffer, osdFontSize, osdPos, Vec4f(1, 1, 1, 1), TextRenderMode::Baseline);
-		osdPos += Vec2f(0, -osdFontSize);
+		PushTextToBuffer(state->fontBuffer, state->fontInfo, osdTextBuffer, osdFontSize, osdPos, V4f(1, 1, 1, 1), TextRenderMode::Baseline);
+		osdPos += V2f(0, -osdFontSize);
+	}
+
+	// Debug shit
+	{
+		osdPos = V2f(0, osdFontSize * 0.5f);
+		int32_t videoQueueCount = state->video.decoder.frameQueue.count;
+		int32_t audioQueueCount = state->audio.decoder.frameQueue.count;
+		int32_t allocatedPackets = globalMemStats.allocatedPackets;
+		int32_t usedPackets = globalMemStats.usedPackets;
+
+		fplFormatString(osdTextBuffer, fplArrayCount(osdTextBuffer), "Queue A/V: %d/%d, Packets U/A: %d/%d", audioQueueCount, videoQueueCount, usedPackets, allocatedPackets);
+		PushTextToBuffer(state->fontBuffer, state->fontInfo, osdTextBuffer, osdFontSize, osdPos, V4f(1, 1, 1, 1), TextRenderMode::Baseline);
+		osdPos += V2f(0, -osdFontSize);
 	}
 
 #if USE_HARDWARE_RENDERING
@@ -2880,7 +2906,7 @@ static void RenderVideoFrame(PlayerState *state) {
 	DisplayRect rect = CalculateDisplayRect(0, 0, w, h, vp->width, vp->height, vp->sar);
 
 #if USE_HARDWARE_RENDERING
-	Mat4f proj = Mat4f::CreateOrthoRH(0.0f, (float)w, 0.0f, (float)h, 0.0f, 1.0f);
+	Mat4f proj = Mat4OrthoRH(0.0f, (float)w, 0.0f, (float)h, 0.0f, 1.0f);
 
 	glViewport(0, 0, w, h);
 	glClear(GL_COLOR_BUFFER_BIT);
@@ -3379,6 +3405,11 @@ static void ReleaseMedia(PlayerState &state) {
 
 static bool LoadMedia(PlayerState &state, const char *mediaFilePath, const fplAudioDeviceFormat &nativeAudioFormat) {
 	// @TODO(final): Custom IO!
+	
+	if (!fplFileExists(mediaFilePath)){
+		FPL_LOG_ERROR("App", "Media file '%s' does not exists!\n", mediaFilePath);
+		return(false);
+	}
 
 	// Open media file
 	if (ffmpeg.avformat_open_input(&state.formatCtx, mediaFilePath, nullptr, nullptr) != 0) {
@@ -3498,12 +3529,6 @@ int main(int argc, char **argv) {
 		return -1;
 	}
 
-	fplArchType arch = fplGetProcessorArchitecture();
-	if (!(arch == fplArchType_x64 || arch == fplArchType_x86_64)) {
-		FPL_LOG_CRITICAL("App", "x64 architecture is required to run this demo!");
-		return -1;
-	}
-
 	const char *mediaFilePath = argv[1];
 
 	fplSettings settings = fplMakeDefaultSettings();
@@ -3519,6 +3544,11 @@ int main(int argc, char **argv) {
 #endif
 	settings.video.isAutoSize = false;
 	settings.video.isVSync = false;
+	
+	fplLogSettings log = fplZeroInit;
+	log.maxLevel = fplLogLevel_All;
+	log.writers[0].flags = fplLogWriterFlags_StandardConsole;
+	fplSetLogSettings(&log);
 
 	if (!fplPlatformInit(fplInitFlags_All, &settings)) {
 		return -1;
@@ -3532,6 +3562,11 @@ int main(int argc, char **argv) {
 #endif
 
 	PlayerState state = {};
+
+	int refreshCount = 0;
+	double lastTime = 0;
+	double remainingTime = 0;
+	double lastRefreshTime = 0;
 
 	// Init
 	if (!InitPlayer(state)) {
@@ -3548,6 +3583,9 @@ int main(int argc, char **argv) {
 	if (!LoadFFMPEG(ffmpeg)) {
 		goto release;
 	}
+	
+	// Register all codecs and formats
+	ffmpeg.av_register_all();
 
 	// Init flush packet
 	ffmpeg.av_init_packet(&globalFlushPacket);
@@ -3577,10 +3615,11 @@ int main(int argc, char **argv) {
 	// App loop
 	//
 	fplGetWindowSize(&state.viewport);
-	double lastTime = fplGetTimeInSecondsHP();
-	double remainingTime = 0.0;
-	double lastRefreshTime = fplGetTimeInSecondsHP();
-	int refreshCount = 0;
+
+	lastTime = fplGetTimeInSecondsHP();
+	remainingTime = 0.0;
+	lastRefreshTime = fplGetTimeInSecondsHP();
+	refreshCount = 0;
 	while (fplWindowUpdate()) {
 		//
 		// Handle events

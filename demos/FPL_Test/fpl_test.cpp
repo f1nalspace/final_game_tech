@@ -53,7 +53,7 @@ Changelog:
 	- Forced Visual-Studio-Project to compile in C++ always
 
 License:
-	Copyright (c) 2017-2020 Torsten Spaete
+	Copyright (c) 2017-2021 Torsten Spaete
 	MIT License (See LICENSE file)
 -------------------------------------------------------------------------------
 */
@@ -158,18 +158,18 @@ static void TestOSInfos() {
 	}
 	ftMsg("Get OS Type:\n");
 	{
-		fplOSInfos osInfos = {};
-		bool r = fplGetOperatingSystemInfos(&osInfos);
+		fplOSVersionInfos osInfos = {};
+		bool r = fplOSGetVersionInfos(&osInfos);
 		ftIsTrue(r);
 		fplConsoleFormatOut("\tName: %s\n", osInfos.osName);
 		fplConsoleFormatOut("\tVersion: %s.%s.%s.%s\n", osInfos.osVersion.major, osInfos.osVersion.minor, osInfos.osVersion.fix, osInfos.osVersion.build);
 		fplConsoleFormatOut("\tDistribution Name: %s\n", osInfos.distributionName);
 		fplConsoleFormatOut("\tDistribution Version: %s.%s.%s.%s\n", osInfos.distributionVersion.major, osInfos.distributionVersion.minor, osInfos.distributionVersion.fix, osInfos.distributionVersion.build);
 	}
-	ftMsg("Get User Infos:\n");
+	ftMsg("Get Session User name:\n");
 	{
 		char nameBuffer[256] = {};
-		bool r = fplGetCurrentUsername(nameBuffer, fplArrayCount(nameBuffer));
+		bool r = fplSessionGetUsername(nameBuffer, fplArrayCount(nameBuffer));
 		ftIsTrue(r);
 		fplConsoleFormatOut("\tCurrent Username: %s\n", nameBuffer);
 	}
@@ -225,7 +225,8 @@ static void TestMacros() {
 		ftExpects(35, actual);
 	}
 
-	// @NOTE(final): This is a simple/stupid macro, so when you pass a pointer, you basically get 2 always
+	// @NOTE(final): We now use _countof() or ARRAY_SIZE() so it is expected to produce a compile error when passing a raw pointer to it
+#if defined(FPL__NO_ARRAYCOUNT_VALIDATION)
 	ftMsg("[fplArrayCount] Test nullptr\n");
 	{
 		int* emptyArray = nullptr;
@@ -241,20 +242,19 @@ static void TestMacros() {
 		uint32_t expected = sizeof(int*) / sizeof(int);
 		ftExpects(expected, actual);
 	}
+#endif
 
 	//
 	// fplOffsetOf
 	//
 	ftMsg("[fplOffsetOf] Test alignment of 4 (High to low)\n");
 	{
-#	pragma pack(push, 4)
-		struct TestStruct {
+		struct fplAlignAs(4) TestStruct {
 			uint64_t a;
 			uint32_t b;
 			uint16_t c;
 			uint8_t d;
 		};
-#	pragma pack(pop)
 		ftExpects(0, fplOffsetOf(TestStruct, a));
 		ftExpects(8, fplOffsetOf(TestStruct, b));
 		ftExpects(12, fplOffsetOf(TestStruct, c));
@@ -263,14 +263,12 @@ static void TestMacros() {
 
 	ftMsg("[fplOffsetOf] Test alignment of 4 (Low to High)\n");
 	{
-#	pragma pack(push, 4)
-		struct TestStruct {
+		struct fplAlignAs(4) TestStruct {
 			uint8_t a;
 			uint16_t b;
 			uint32_t c;
 			uint64_t d;
 		};
-#	pragma pack(pop)
 		ftExpects(0, fplOffsetOf(TestStruct, a));
 		ftExpects(2, fplOffsetOf(TestStruct, b));
 		ftExpects(4, fplOffsetOf(TestStruct, c));
@@ -279,14 +277,12 @@ static void TestMacros() {
 
 	ftMsg("[fplOffsetOf] Test alignment of 8 (Low to High)\n");
 	{
-#	pragma pack(push, 8)
-		struct TestStruct {
+		struct fplAlignAs(8) TestStruct {
 			uint8_t a;
 			uint16_t b;
 			uint8_t c[3];
 			uint64_t d;
 		};
-#	pragma pack(pop)
 		ftExpects(0, fplOffsetOf(TestStruct, a));
 		ftExpects(2, fplOffsetOf(TestStruct, b));
 		ftExpects(4, fplOffsetOf(TestStruct, c));
@@ -492,15 +488,15 @@ static void TestPaths() {
 
 static void TestHardware() {
 	char cpuNameBuffer[1024] = {};
-	fplGetProcessorName(cpuNameBuffer, fplArrayCount(cpuNameBuffer));
+	fplCPUGetName(cpuNameBuffer, fplArrayCount(cpuNameBuffer));
 	ftMsg("Processor name: %s\n", cpuNameBuffer);
 
-	size_t coreCount = fplGetProcessorCoreCount();
+	size_t coreCount = fplCPUGetCoreCount();
 	ftAssert(coreCount > 0);
 	ftMsg("Processor cores: %zu\n", coreCount);
 
-	fplProcessorCapabilities cpuCaps = {};
-	fplGetProcessorCapabilities(&cpuCaps);
+	fplCPUCapabilities cpuCaps = {};
+	fplCPUGetCapabilities(&cpuCaps);
 	ftMsg("Processor capabilities:\n");
 	ftMsg("\tMMX: %s\n", (cpuCaps.hasMMX ? "yes" : "no"));
 	ftMsg("\tSSE: %s\n", (cpuCaps.hasSSE ? "yes" : "no"));
@@ -515,7 +511,7 @@ static void TestHardware() {
 	ftMsg("\tFMA3: %s\n", (cpuCaps.hasFMA3 ? "yes" : "no"));
 
 	fplMemoryInfos memInfos = {};
-	fplGetRunningMemoryInfos(&memInfos);
+	fplMemoryGetInfos(&memInfos);
 	ftMsg("Installed physical memory (bytes): %llu\n", memInfos.totalPhysicalSize);
 	ftMsg("Total physical memory (bytes): %llu\n", memInfos.totalPhysicalSize);
 	ftMsg("Available physical memory (bytes): %llu\n", memInfos.freePhysicalSize);
@@ -531,12 +527,12 @@ static void TestHardware() {
         tmp *= 2 + 1;
         tmp /= (double)i*4;
 		tmp = sqrt(tmp);
-        uint64_t cycles = fplRDTSC();
+        uint64_t cycles = fplCPURDTSC();
         ftMsg("\tRun[%d]: %f, %llu\n", i, tmp, cycles);
     }
 
-    fplArchType archType = fplGetProcessorArchitecture();
-	const char* archStr = fplGetArchTypeString(archType);
+    fplCPUArchType archType = fplCPUGetArchitecture();
+	const char* archStr = fplCPUGetArchName(archType);
 	ftMsg("Processor archicture: %s\n", archStr);
 }
 
@@ -851,7 +847,7 @@ static void TestThreading() {
 		//
 		// Multi threads test
 		//
-		size_t coreCount = fplGetProcessorCoreCount();
+		size_t coreCount = fplCPUGetCoreCount();
 		size_t threadCountForCores = coreCount > 2 ? coreCount - 1 : 1;
 		{
 			SimpleMultiThreadTest(2);
@@ -1547,54 +1543,54 @@ static void TestStrings() {
 
 	ftMsg("Test format ansi string\n");
 	{
-		char* res = fplFormatString(nullptr, 0, nullptr);
-		ftExpects(nullptr, res);
+		size_t res = fplFormatString(nullptr, 0, nullptr);
+		ftExpects(0, res);
 	}
 	{
 		char buffer[1];
-		char* res = fplFormatString(buffer, 0, "");
-		ftExpects(nullptr, res);
+		size_t res = fplFormatString(buffer, 0, "");
+		ftExpects(0, res);
 	}
 	{
 		char buffer[1];
-		char* res = fplFormatString(buffer, fplArrayCount(buffer), "A");
-		ftExpects(nullptr, res);
+		size_t res = fplFormatString(buffer, fplArrayCount(buffer), "A");
+		ftExpects(0, res);
 	}
 	{
 		char buffer[2];
-		char* res = fplFormatString(buffer, fplArrayCount(buffer), "A");
-		ftIsNotNull(res);
+		size_t res = fplFormatString(buffer, fplArrayCount(buffer), "A");
+		ftExpects(1, res);
 		bool matches = fplIsStringEqualLen("A", 1, buffer, 1);
 		ftExpects(true, matches);
 	}
 	{
 		char buffer[5];
-		char* res = fplFormatString(buffer, fplArrayCount(buffer), "Hello");
-		ftExpects(nullptr, res);
+		size_t res = fplFormatString(buffer, fplArrayCount(buffer), "Hello");
+		ftExpects(0, res);
 	}
 	{
 		char buffer[6];
-		char* res = fplFormatString(buffer, fplArrayCount(buffer), "Hello");
-		ftIsNotNull(res);
+		size_t res = fplFormatString(buffer, fplArrayCount(buffer), "Hello");
+		ftExpects(5, res);
 		bool r = fplIsStringEqualLen("Hello", 5, buffer, 5);
 		ftExpects(true, r);
 	}
 	{
 		char buffer[6];
-		char* res = fplFormatString(buffer, fplArrayCount(buffer), "%s", "Hello");
-		ftIsNotNull(res);
+		size_t res = fplFormatString(buffer, fplArrayCount(buffer), "%s", "Hello");
+		ftExpects(5, res);
 		bool r = fplIsStringEqualLen("Hello", 5, buffer, 5);
 		ftExpects(true, r);
 	}
 	{
 		char buffer[20];
-		char* res = fplFormatString(buffer, fplArrayCount(buffer), "%4xd-%2d-%2d %2d:%2d:%2d", 2009, 11, 17, 13, 47, 25);
-		ftExpects(nullptr, res);
+		size_t res = fplFormatString(buffer, fplArrayCount(buffer), "%4xd-%2d-%2d %2d:%2d:%2d", 2009, 11, 17, 13, 47, 25);
+		ftExpects(0, res);
 	}
 	{
 		char buffer[20];
-		char* res = fplFormatString(buffer, fplArrayCount(buffer), "%4d-%2d-%2d %2d:%2d:%2d", 2009, 11, 17, 13, 47, 25);
-		ftIsNotNull(res);
+		size_t res = fplFormatString(buffer, fplArrayCount(buffer), "%4d-%2d-%2d %2d:%2d:%2d", 2009, 11, 17, 13, 47, 25);
+		ftExpects(19, res);
 		bool r = fplIsStringEqual("2009-11-17 13:47:25", buffer);
 		ftExpects(true, r);
 	}
@@ -1603,16 +1599,21 @@ static void TestStrings() {
 	{
 		char smallBuffer[2];
 		char bigBuffer[16];
-		ftIsNull(fplS32ToString(0, nullptr, 0));
-		ftIsNull(fplS32ToString(0, nullptr, 4));
-		ftIsNull(fplS32ToString(11, smallBuffer, fplArrayCount(smallBuffer)));
-		ftIsNotNull(fplS32ToString(7, smallBuffer, fplArrayCount(smallBuffer)));
+
+		ftExpects(1, fplS32ToString(0, nullptr, 0));
+		ftExpects(1, fplS32ToString(0, nullptr, 4));
+		ftExpects(0, fplS32ToString(11, smallBuffer, fplArrayCount(smallBuffer)));
+
+		ftExpects(1, fplS32ToString(7, smallBuffer, fplArrayCount(smallBuffer)));
 		ftAssertStringEquals("7", smallBuffer);
-		ftIsNotNull(fplS32ToString(129, bigBuffer, fplArrayCount(bigBuffer)));
+
+		ftExpects(3, fplS32ToString(129, bigBuffer, fplArrayCount(bigBuffer)));
 		ftAssertStringEquals("129", bigBuffer);
-		ftIsNotNull(fplS32ToString(1337, bigBuffer, fplArrayCount(bigBuffer)));
+
+		ftExpects(4, fplS32ToString(1337, bigBuffer, fplArrayCount(bigBuffer)));
 		ftAssertStringEquals("1337", bigBuffer);
-		ftIsNotNull(fplS32ToString(-1234567, bigBuffer, fplArrayCount(bigBuffer)));
+
+		ftExpects(8, fplS32ToString(-1234567, bigBuffer, fplArrayCount(bigBuffer)));
 		ftAssertStringEquals("-1234567", bigBuffer);
 	}
 
@@ -1650,11 +1651,11 @@ static void TestStrings() {
 static void TestLocalization() {
 	fplPlatformInit(fplInitFlags_None, fpl_null);
 	char buffer[16];
-	ftIsTrue(fplGetSystemLocale(fplLocaleFormat_ISO639, buffer, fplArrayCount(buffer)));
+	ftAssert(fplGetSystemLocale(fplLocaleFormat_ISO639, buffer, fplArrayCount(buffer)) > 0);
 	fplConsoleFormatOut("System Locale (ISO-639): %s\n", buffer);
-	ftIsTrue(fplGetUserLocale(fplLocaleFormat_ISO639, buffer, fplArrayCount(buffer)));
+	ftAssert(fplGetUserLocale(fplLocaleFormat_ISO639, buffer, fplArrayCount(buffer)) > 0);
 	fplConsoleFormatOut("User Locale (ISO-639): %s\n", buffer);
-	ftIsTrue(fplGetInputLocale(fplLocaleFormat_ISO639, buffer, fplArrayCount(buffer)));
+	ftAssert(fplGetInputLocale(fplLocaleFormat_ISO639, buffer, fplArrayCount(buffer)) > 0);
 	fplConsoleFormatOut("Input Locale (ISO-639): %s\n", buffer);
 	fplPlatformRelease();
 }
@@ -1675,6 +1676,36 @@ static void TestInlining() {
 	NoInlineTest();
 }
 
+static void TestTimes() {
+	ftMsg("Test fplWallClock and fplGetWallDelta\n");
+	// 0.5 secs
+	{
+		fplWallClock start = fplGetWallClock();
+		fplThreadSleep(500);
+		fplWallClock ende = fplGetWallClock();
+		double delta = fplGetWallDelta(start, ende);
+		ftAssert(delta >= 0.5 && delta < 0.75);
+	}
+
+	// 1.0 secs
+	{
+		fplWallClock start = fplGetWallClock();
+		fplThreadSleep(750);
+		fplWallClock ende = fplGetWallClock();
+		double delta = fplGetWallDelta(start, ende);
+		ftAssert(delta >= 0.75 && delta < 1.0);
+	}
+
+	// 1.5 secs
+	{
+		fplWallClock start = fplGetWallClock();
+		fplThreadSleep(1500);
+		fplWallClock ende = fplGetWallClock();
+		double delta = fplGetWallDelta(start, ende);
+		ftAssert(delta >= 1.5 && delta < 1.75);
+	}
+}
+
 int main(int argc, char* args[]) {
 	TestColdInit();
 	TestInit();
@@ -1683,6 +1714,7 @@ int main(int argc, char* args[]) {
 	TestOSInfos();
 	TestHardware();
 	TestSizes();
+	TestTimes();
 	TestMacros();
 	TestAtomics();
 	TestPaths();

@@ -39,7 +39,7 @@ Changelog:
 	- Initial version
 
 License:
-	Copyright (c) 2017-2020 Torsten Spaete
+	Copyright (c) 2017-2021 Torsten Spaete
 	MIT License (See LICENSE file)
 -------------------------------------------------------------------------------
 */
@@ -927,7 +927,7 @@ int main(int argc, char **argv) {
 		queue.Init(maxTileCount);
 
 		// Init worker
-		u32 cpuCoreCount = (u32)fplGetProcessorCoreCount();
+		u32 cpuCoreCount = (u32)fplCPUGetCoreCount();
 		fplAssert(cpuCoreCount > 0);
 		u32 workerCount = (u32)cpuCoreCount - 1;
 		Worker *workers = new Worker[workerCount];

@@ -130,7 +130,7 @@ Todo:
 	- Manual reload of XMLs and update all data dynamically
 
 License:
-	Copyright (c) 2017-2020 Torsten Spaete
+	Copyright (c) 2017-2021 Torsten Spaete
 	MIT License (See LICENSE file)
 -------------------------------------------------------------------------------
 */

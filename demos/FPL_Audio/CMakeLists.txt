@@ -36,6 +36,7 @@ set(MY_DEFINES
 	-DFINAL_GRAPHICS_IMPLEMENTATION
 	-DFINAL_WAVELOADER_IMPLEMENTATION
 	-DFINAL_DEBUG_IMPLEMENTATION
+	-DFINAL_BUFFER_IMPLEMENTATION
 	)
 
 # -----------------------------------------------------------------------------

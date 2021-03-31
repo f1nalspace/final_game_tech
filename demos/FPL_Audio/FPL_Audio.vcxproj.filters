@@ -25,6 +25,15 @@
     <ClInclude Include="..\additions\final_debug.h">
       <Filter>additions</Filter>
     </ClInclude>
+    <ClInclude Include="..\additions\final_math.h">
+      <Filter>additions</Filter>
+    </ClInclude>
+    <ClInclude Include="..\additions\final_buffer.h">
+      <Filter>additions</Filter>
+    </ClInclude>
+    <ClInclude Include="..\additions\final_audiodemo.h">
+      <Filter>additions</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="fpl_audio.c" />

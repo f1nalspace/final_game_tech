@@ -65,7 +65,7 @@ Todo:
 	- Re-create sprites in HD
 
 License:
-	Copyright (c) 2017-2020 Torsten Spaete
+	Copyright (c) 2017-2021 Torsten Spaete
 	MIT License (See LICENSE file)
 -------------------------------------------------------------------------------
 */
@@ -305,7 +305,7 @@ struct Assets {
 	FontAsset fontHud;
 	AudioSource *ballHitSound;
 	AudioSource *music;
-	uint64_t musicPlayId;
+	AudioPlayItemID musicPlayId;
 };
 
 enum class GameMode {
@@ -658,7 +658,7 @@ static void LoadLevel(GameState& state, int levelSeed) {
 	GlueBallOnPaddle(state, &state.ball.ball);
 
 	// Play music
-	AudioSystemStopSource(state.audioSys, state.assets.musicPlayId);
+	AudioSystemStopOne(state.audioSys, state.assets.musicPlayId);
 	state.assets.musicPlayId = AudioSystemPlaySource(state.audioSys, state.assets.music, true, 0.5f);
 }
 
