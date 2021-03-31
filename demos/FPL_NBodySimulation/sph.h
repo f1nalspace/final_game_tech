@@ -492,7 +492,7 @@ force_inline void SPHComputeDelta(const SPHParameters &params, const Vec2f &posi
 		Vec2f n = Vec2Normalize(Rij);
 		float term = 1.0f - rij * params.invKernelHeight;
 		float d = (deltaTime * deltaTime) * (pressure[0] * term + pressure[1] * (term * term));
-		*outDelta = Vec2Hadamard(d, n);
+		*outDelta = Vec2MultScalar(n, d);
 	}
 }
 
@@ -508,7 +508,7 @@ force_inline void SPHComputeViscosityForce(const SPHParameters &params, const Ve
 		float u = Vec2Dot(velocity - neighborVelocity, n);
 		if (u > 0.0f) {
 			float f = (1.0f - q) * (params.linearViscosity * u + params.quadraticViscosity * (u * u));
-			*outForce = Vec2Hadamard(f, n);
+			*outForce = Vec2MultScalar(n, f);
 		}
 	}
 }

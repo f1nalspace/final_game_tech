@@ -43,10 +43,6 @@ union Vec2f {
 		x = v.x;
 		y = v.y;
 	}
-	inline Vec2f(const float value) {
-		x = value;
-		y = value;
-	}
 	inline Vec2f(const float initX, const float initY) {
 		x = initX;
 		y = initY;
@@ -101,10 +97,6 @@ union Vec3f {
 
 	Vec3f() {
 		x = y = z = 0.0f;
-	}
-
-	Vec3f(const float scalar) {
-		x = y = z = scalar;
 	}
 
 	Vec3f(const Vec3f &other) {
@@ -281,6 +273,11 @@ inline Vec2f Vec2Normalize(const Vec2f &v) {
 
 inline Vec2f Vec2Hadamard(const Vec2f &a, const Vec2f &b) {
 	Vec2f result = Vec2f(a.x * b.x, a.y * b.y);
+	return(result);
+}
+
+inline Vec2f Vec2MultScalar(const Vec2f &v, const float scalar) {
+	Vec2f result = Vec2f(v.x * scalar, v.y * scalar);
 	return(result);
 }
 

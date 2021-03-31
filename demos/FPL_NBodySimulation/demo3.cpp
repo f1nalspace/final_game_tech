@@ -116,7 +116,7 @@ namespace Demo3 {
 		for (int yIndex = 0; yIndex < countY; ++yIndex) {
 			for (int xIndex = 0; xIndex < countX; ++xIndex) {
 				Vec2f p = Vec2f((float)xIndex, (float)yIndex) * spacing;
-				p += Vec2f(spacing * 0.5f);
+				p += Vec2f(spacing * 0.5f, spacing * 0.5f);
 				p += center - offset;
 				Vec2f jitter = Vec2RandomDirection() * kSPHKernelHeight * kSPHVolumeParticleDistributionScale;
 				p += jitter;
@@ -407,7 +407,7 @@ namespace Demo3 {
 				size_t cellOffset = SPHComputeCellOffset(xIndexInner, yIndexInner);
 				Cell *cell = &cells[cellOffset];
 				Vec2f innerP = kSPHGridOrigin + Vec2f((float)xIndexInner, (float)yIndexInner) * kSPHGridCellSize;
-				Vec2f innerSize = Vec2f(kSPHGridCellSize);
+				Vec2f innerSize = Vec2f(kSPHGridCellSize, kSPHGridCellSize);
 				if (cell->indices.size() > 0) {
 					Render::PushRectangle(commandBuffer, innerP, innerSize, ColorLightGray, true);
 				}

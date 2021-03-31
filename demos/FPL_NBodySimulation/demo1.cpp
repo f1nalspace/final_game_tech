@@ -106,7 +106,7 @@ namespace Demo1 {
 	}
 
 	void ParticleSimulation::ClearExternalForce() {
-		_externalForce = Vec2f(0.0f);
+		_externalForce = Vec2f(0.0f, 0.0f);
 	}
 
 	void ParticleSimulation::AddPlane(const Vec2f & normal, const float distance) {
@@ -157,7 +157,7 @@ namespace Demo1 {
 		for (int yIndex = 0; yIndex < countY; ++yIndex) {
 			for (int xIndex = 0; xIndex < countX; ++xIndex) {
 				Vec2f p = Vec2f((float)xIndex, (float)yIndex) * spacing;
-				p += Vec2f(spacing * 0.5f);
+				p += Vec2f(spacing * 0.5f, spacing * 0.5f);
 				p += center - offset;
 				Vec2f jitter = Vec2RandomDirection() * kSPHKernelHeight * kSPHVolumeParticleDistributionScale;
 				p += jitter;
@@ -494,7 +494,7 @@ namespace Demo1 {
 		Render::PushRectangle(commandBuffer, Vec2f(-kSPHBoundaryHalfWidth, -kSPHBoundaryHalfHeight), Vec2f(kSPHBoundaryHalfWidth, kSPHBoundaryHalfHeight) * 2.0f, domainColor, false, 1.0f);
 
 		// Grid fill
-		const Vec2f innerSize = Vec2f(kSPHGridCellSize);
+		const Vec2f innerSize = Vec2f(kSPHGridCellSize, kSPHGridCellSize);
 		for (int yIndexInner = 0; yIndexInner < kSPHGridCountY; ++yIndexInner) {
 			for (int xIndexInner = 0; xIndexInner < kSPHGridCountX; ++xIndexInner) {
 				size_t cellOffset = SPHComputeCellOffset(xIndexInner, yIndexInner);
