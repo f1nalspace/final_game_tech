@@ -21,7 +21,7 @@ constexpr float kSPHBoundaryWidth = 10.0f;
 constexpr float kSPHBoundaryHeight = kSPHBoundaryWidth / kSPHBoundaryAspect;
 constexpr float kSPHBoundaryHalfWidth = kSPHBoundaryWidth * 0.5f;
 constexpr float kSPHBoundaryHalfHeight = kSPHBoundaryHeight * 0.5f;
-static const Vec2f kSPHGridOrigin = Vec2f(-kSPHBoundaryHalfWidth, -kSPHBoundaryHalfHeight);
+static const Vec2f kSPHGridOrigin = V2f(-kSPHBoundaryHalfWidth, -kSPHBoundaryHalfHeight);
 
 //
 // Default constants
@@ -210,10 +210,10 @@ struct SPHScenarioBody {
 		result.position = position;
 		result.orientation = Mat2FromAngle(rotation);
 		result.vertexCount = 4;
-		result.localVerts[0] = Vec2f(ext.x, ext.y);
-		result.localVerts[1] = Vec2f(-ext.x, ext.y);
-		result.localVerts[2] = Vec2f(-ext.x, -ext.y);
-		result.localVerts[3] = Vec2f(ext.x, -ext.y);
+		result.localVerts[0] = V2f(ext.x, ext.y);
+		result.localVerts[1] = V2f(-ext.x, ext.y);
+		result.localVerts[2] = V2f(-ext.x, -ext.y);
+		result.localVerts[3] = V2f(ext.x, -ext.y);
 		return(result);
 	}
 };
@@ -247,7 +247,7 @@ struct SPHScenarioEmitter {
 	float duration;
 
 	SPHScenarioEmitter() {
-		position = direction = Vec2f(0,0);
+		position = direction = V2f(0,0);
 		radius = speed = rate = duration = 0.0f;
 	}
 
@@ -315,125 +315,125 @@ const float kSPHBlobVolumeWidth = kSPHBoundaryWidth * 0.5f;
 const float kSPHBlobVolumeHeight = kSPHBoundaryHeight * 0.5f;
 
 static SPHScenario SPHScenarios[] = {
-	SPHScenario("Dambreak", Vec2f(0, -10),
+	SPHScenario("Dambreak", V2f(0, -10),
 	{
-		SPHScenarioVolume(Vec2f(-kSPHBoundaryHalfWidth + kSPHDambreakVolumeWidth * 0.5f, 0), Vec2f(kSPHDambreakVolumeWidth, kSPHDambreakVolumeHeight), Vec2f(0,0)),
+		SPHScenarioVolume(V2f(-kSPHBoundaryHalfWidth + kSPHDambreakVolumeWidth * 0.5f, 0), V2f(kSPHDambreakVolumeWidth, kSPHDambreakVolumeHeight), V2f(0,0)),
 	},
 	{
 	},
 	{
-		SPHScenarioBody::CreatePlane(Vec2f(0, -kSPHBoundaryHalfHeight), Vec2f(0, 1)),
-		SPHScenarioBody::CreatePlane(Vec2f(0, kSPHBoundaryHalfHeight), Vec2f(0, -1)),
-		SPHScenarioBody::CreatePlane(Vec2f(-kSPHBoundaryHalfWidth, 0), Vec2f(1, 0)),
-		SPHScenarioBody::CreatePlane(Vec2f(kSPHBoundaryHalfWidth, 0), Vec2f(-1, 0)),
-		SPHScenarioBody::CreateBox(Vec2f(-kSPHBoundaryHalfWidth + kSPHDambreakVolumeWidth + kSPHDambreakWallWidth * 0.5f + kSPHParticleCollisionRadius, kSPHBoundaryHeight * 0.1f), 0.0f, Vec2f(kSPHDambreakWallWidth * 0.5f, kSPHDambreakWallHeight * 0.5f)),
+		SPHScenarioBody::CreatePlane(V2f(0, -kSPHBoundaryHalfHeight), V2f(0, 1)),
+		SPHScenarioBody::CreatePlane(V2f(0, kSPHBoundaryHalfHeight), V2f(0, -1)),
+		SPHScenarioBody::CreatePlane(V2f(-kSPHBoundaryHalfWidth, 0), V2f(1, 0)),
+		SPHScenarioBody::CreatePlane(V2f(kSPHBoundaryHalfWidth, 0), V2f(-1, 0)),
+		SPHScenarioBody::CreateBox(V2f(-kSPHBoundaryHalfWidth + kSPHDambreakVolumeWidth + kSPHDambreakWallWidth * 0.5f + kSPHParticleCollisionRadius, kSPHBoundaryHeight * 0.1f), 0.0f, V2f(kSPHDambreakWallWidth * 0.5f, kSPHDambreakWallHeight * 0.5f)),
 	},
 	SPHParameters(kSPHKernelHeight, kSPHGridCellSize, kSPHKernelHeight / 6.0f, kSPHRestDensity, kSPHStiffness, kSPHNearStiffness, kSPHLinearViscosity, kSPHQuadraticViscosity)),
 
-	SPHScenario("Dambreak x 2", Vec2f(0, -10),
+	SPHScenario("Dambreak x 2", V2f(0, -10),
 	{
-		SPHScenarioVolume(Vec2f(-kSPHBoundaryHalfWidth + kSPHDambreakVolumeWidth * 0.5f, 0), Vec2f(kSPHDambreakVolumeWidth, kSPHDambreakVolumeHeight), Vec2f(0,0)),
-		SPHScenarioVolume(Vec2f(kSPHBoundaryHalfWidth - kSPHDambreakVolumeWidth * 0.5f, 0), Vec2f(kSPHDambreakVolumeWidth, kSPHDambreakVolumeHeight), Vec2f(0,0)),
+		SPHScenarioVolume(V2f(-kSPHBoundaryHalfWidth + kSPHDambreakVolumeWidth * 0.5f, 0), V2f(kSPHDambreakVolumeWidth, kSPHDambreakVolumeHeight), V2f(0,0)),
+		SPHScenarioVolume(V2f(kSPHBoundaryHalfWidth - kSPHDambreakVolumeWidth * 0.5f, 0), V2f(kSPHDambreakVolumeWidth, kSPHDambreakVolumeHeight), V2f(0,0)),
 	},
 	{
 	},
 	{
-		SPHScenarioBody::CreatePlane(Vec2f(0, -kSPHBoundaryHalfHeight), Vec2f(0, 1)),
-		SPHScenarioBody::CreatePlane(Vec2f(0, kSPHBoundaryHalfHeight), Vec2f(0, -1)),
-		SPHScenarioBody::CreatePlane(Vec2f(-kSPHBoundaryHalfWidth, 0), Vec2f(1, 0)),
-		SPHScenarioBody::CreatePlane(Vec2f(kSPHBoundaryHalfWidth, 0), Vec2f(-1, 0)),
+		SPHScenarioBody::CreatePlane(V2f(0, -kSPHBoundaryHalfHeight), V2f(0, 1)),
+		SPHScenarioBody::CreatePlane(V2f(0, kSPHBoundaryHalfHeight), V2f(0, -1)),
+		SPHScenarioBody::CreatePlane(V2f(-kSPHBoundaryHalfWidth, 0), V2f(1, 0)),
+		SPHScenarioBody::CreatePlane(V2f(kSPHBoundaryHalfWidth, 0), V2f(-1, 0)),
 	},
 	SPHParameters(kSPHKernelHeight, kSPHGridCellSize, kSPHKernelHeight / 3.0f, kSPHRestDensity, kSPHStiffness, kSPHStiffness * 20.0f, kSPHLinearViscosity, kSPHQuadraticViscosity)),
 
-	SPHScenario("Blob", Vec2f(0, 0),
+	SPHScenario("Blob", V2f(0, 0),
 	{
-		SPHScenarioVolume(Vec2f(0, 0), Vec2f(kSPHBlobVolumeWidth, kSPHBlobVolumeHeight), Vec2f(0,0)),
+		SPHScenarioVolume(V2f(0, 0), V2f(kSPHBlobVolumeWidth, kSPHBlobVolumeHeight), V2f(0,0)),
 	},
 	{
 	},
 	{
-		SPHScenarioBody::CreatePlane(Vec2f(0, -kSPHBoundaryHalfHeight), Vec2f(0, 1)),
-		SPHScenarioBody::CreatePlane(Vec2f(0, kSPHBoundaryHalfHeight), Vec2f(0, -1)),
-		SPHScenarioBody::CreatePlane(Vec2f(-kSPHBoundaryHalfWidth, 0), Vec2f(1, 0)),
-		SPHScenarioBody::CreatePlane(Vec2f(kSPHBoundaryHalfWidth, 0), Vec2f(-1, 0)),
-	},
-	SPHParameters(kSPHKernelHeight, kSPHGridCellSize, kSPHKernelHeight / 3.0f, kSPHRestDensity, kSPHStiffness, kSPHNearStiffness, kSPHLinearViscosity, kSPHQuadraticViscosity)),
-
-	SPHScenario("Blob x 2", Vec2f(0, 0),
-	{
-		SPHScenarioVolume(Vec2f(-kSPHBlobVolumeHeight * 0.75f, 0), Vec2f(kSPHBlobVolumeHeight * 0.75f, kSPHBlobVolumeHeight * 0.75f), Vec2f(10, 0)),
-		SPHScenarioVolume(Vec2f(kSPHBlobVolumeHeight * 0.75f, 0), Vec2f(kSPHBlobVolumeHeight * 0.75f, kSPHBlobVolumeHeight * 0.75f), Vec2f(-10, 0)),
-	},
-	{
-	},
-	{
-		SPHScenarioBody::CreatePlane(Vec2f(0, -kSPHBoundaryHalfHeight), Vec2f(0, 1)),
-		SPHScenarioBody::CreatePlane(Vec2f(0, kSPHBoundaryHalfHeight), Vec2f(0, -1)),
-		SPHScenarioBody::CreatePlane(Vec2f(-kSPHBoundaryHalfWidth, 0), Vec2f(1, 0)),
-		SPHScenarioBody::CreatePlane(Vec2f(kSPHBoundaryHalfWidth, 0), Vec2f(-1, 0)),
+		SPHScenarioBody::CreatePlane(V2f(0, -kSPHBoundaryHalfHeight), V2f(0, 1)),
+		SPHScenarioBody::CreatePlane(V2f(0, kSPHBoundaryHalfHeight), V2f(0, -1)),
+		SPHScenarioBody::CreatePlane(V2f(-kSPHBoundaryHalfWidth, 0), V2f(1, 0)),
+		SPHScenarioBody::CreatePlane(V2f(kSPHBoundaryHalfWidth, 0), V2f(-1, 0)),
 	},
 	SPHParameters(kSPHKernelHeight, kSPHGridCellSize, kSPHKernelHeight / 3.0f, kSPHRestDensity, kSPHStiffness, kSPHNearStiffness, kSPHLinearViscosity, kSPHQuadraticViscosity)),
 
-	SPHScenario("Liquid", Vec2f(0, -2),
+	SPHScenario("Blob x 2", V2f(0, 0),
+	{
+		SPHScenarioVolume(V2f(-kSPHBlobVolumeHeight * 0.75f, 0), V2f(kSPHBlobVolumeHeight * 0.75f, kSPHBlobVolumeHeight * 0.75f), V2f(10, 0)),
+		SPHScenarioVolume(V2f(kSPHBlobVolumeHeight * 0.75f, 0), V2f(kSPHBlobVolumeHeight * 0.75f, kSPHBlobVolumeHeight * 0.75f), V2f(-10, 0)),
+	},
 	{
 	},
 	{
-		SPHScenarioEmitter(Vec2f(-3.5f, 0.0f), Vec2f(1, 0), kSPHKernelHeight * 3, 2.5f, 15.0f, 30.0f),
+		SPHScenarioBody::CreatePlane(V2f(0, -kSPHBoundaryHalfHeight), V2f(0, 1)),
+		SPHScenarioBody::CreatePlane(V2f(0, kSPHBoundaryHalfHeight), V2f(0, -1)),
+		SPHScenarioBody::CreatePlane(V2f(-kSPHBoundaryHalfWidth, 0), V2f(1, 0)),
+		SPHScenarioBody::CreatePlane(V2f(kSPHBoundaryHalfWidth, 0), V2f(-1, 0)),
+	},
+	SPHParameters(kSPHKernelHeight, kSPHGridCellSize, kSPHKernelHeight / 3.0f, kSPHRestDensity, kSPHStiffness, kSPHNearStiffness, kSPHLinearViscosity, kSPHQuadraticViscosity)),
+
+	SPHScenario("Liquid", V2f(0, -2),
+	{
 	},
 	{
-		SPHScenarioBody::CreatePlane(Vec2f(0, -kSPHBoundaryHalfHeight), Vec2f(0, 1)),
-		SPHScenarioBody::CreatePlane(Vec2f(0, kSPHBoundaryHalfHeight), Vec2f(0, -1)),
-		SPHScenarioBody::CreatePlane(Vec2f(-kSPHBoundaryHalfWidth, 0), Vec2f(1, 0)),
-		SPHScenarioBody::CreatePlane(Vec2f(kSPHBoundaryHalfWidth, 0), Vec2f(-1, 0)),
+		SPHScenarioEmitter(V2f(-3.5f, 0.0f), V2f(1, 0), kSPHKernelHeight * 3, 2.5f, 15.0f, 30.0f),
+	},
+	{
+		SPHScenarioBody::CreatePlane(V2f(0, -kSPHBoundaryHalfHeight), V2f(0, 1)),
+		SPHScenarioBody::CreatePlane(V2f(0, kSPHBoundaryHalfHeight), V2f(0, -1)),
+		SPHScenarioBody::CreatePlane(V2f(-kSPHBoundaryHalfWidth, 0), V2f(1, 0)),
+		SPHScenarioBody::CreatePlane(V2f(kSPHBoundaryHalfWidth, 0), V2f(-1, 0)),
 	},
 	SPHParameters(kSPHKernelHeight, kSPHGridCellSize, kSPHKernelHeight / 4.0f, kSPHRestDensity, kSPHStiffness, kSPHStiffness * 10.0f, kSPHLinearViscosity, kSPHQuadraticViscosity)),
 
-	SPHScenario("Glass", Vec2f(0, -10),
+	SPHScenario("Glass", V2f(0, -10),
 	{
 	},
 	{
-		SPHScenarioEmitter(Vec2f(-1.5f, 2.0f), Vec2f(1, 0), kSPHKernelHeight * 3, 2.5f, 15.0f, 25.0f),
+		SPHScenarioEmitter(V2f(-1.5f, 2.0f), V2f(1, 0), kSPHKernelHeight * 3, 2.5f, 15.0f, 25.0f),
 	},
 	{
-		SPHScenarioBody::CreatePlane(Vec2f(0, -kSPHBoundaryHalfHeight), Vec2f(0, 1)),
-		SPHScenarioBody::CreatePlane(Vec2f(0, kSPHBoundaryHalfHeight), Vec2f(0, -1)),
-		SPHScenarioBody::CreatePlane(Vec2f(-kSPHBoundaryHalfWidth, 0), Vec2f(1, 0)),
-		SPHScenarioBody::CreatePlane(Vec2f(kSPHBoundaryHalfWidth, 0), Vec2f(-1, 0)),
-		SPHScenarioBody::CreateBox(Vec2f(0.0f, -2.0f), 0.0f, Vec2f(1.0f, 0.2f)),
-		SPHScenarioBody::CreateBox(Vec2f(-1.0f, -0.5f), 0.0f, Vec2f(0.2f, 1.5f)),
-		SPHScenarioBody::CreateBox(Vec2f(1.0f, -0.5f), 0.0f, Vec2f(0.2f, 1.5f)),
+		SPHScenarioBody::CreatePlane(V2f(0, -kSPHBoundaryHalfHeight), V2f(0, 1)),
+		SPHScenarioBody::CreatePlane(V2f(0, kSPHBoundaryHalfHeight), V2f(0, -1)),
+		SPHScenarioBody::CreatePlane(V2f(-kSPHBoundaryHalfWidth, 0), V2f(1, 0)),
+		SPHScenarioBody::CreatePlane(V2f(kSPHBoundaryHalfWidth, 0), V2f(-1, 0)),
+		SPHScenarioBody::CreateBox(V2f(0.0f, -2.0f), 0.0f, V2f(1.0f, 0.2f)),
+		SPHScenarioBody::CreateBox(V2f(-1.0f, -0.5f), 0.0f, V2f(0.2f, 1.5f)),
+		SPHScenarioBody::CreateBox(V2f(1.0f, -0.5f), 0.0f, V2f(0.2f, 1.5f)),
 	},
 	SPHParameters(kSPHKernelHeight, kSPHGridCellSize, kSPHKernelHeight / 4.0f, kSPHRestDensity, kSPHStiffness, kSPHStiffness * 6.0f, kSPHLinearViscosity, kSPHQuadraticViscosity)),
 
-	SPHScenario("Fontain", Vec2f(0, -10),
+	SPHScenario("Fontain", V2f(0, -10),
 	{
 	},
 	{
-		SPHScenarioEmitter(Vec2f(0, -kSPHBoundaryHalfHeight + 1.0f), Vec2f(0, 1), kSPHKernelHeight * 4, 8.0f, 15.0f, 25.0f),
+		SPHScenarioEmitter(V2f(0, -kSPHBoundaryHalfHeight + 1.0f), V2f(0, 1), kSPHKernelHeight * 4, 8.0f, 15.0f, 25.0f),
 	},
 	{
-		SPHScenarioBody::CreatePlane(Vec2f(0, -kSPHBoundaryHalfHeight), Vec2f(0, 1)),
-		SPHScenarioBody::CreatePlane(Vec2f(0, kSPHBoundaryHalfHeight), Vec2f(0, -1)),
-		SPHScenarioBody::CreatePlane(Vec2f(-kSPHBoundaryHalfWidth, 0), Vec2f(1, 0)),
-		SPHScenarioBody::CreatePlane(Vec2f(kSPHBoundaryHalfWidth, 0), Vec2f(-1, 0)),
+		SPHScenarioBody::CreatePlane(V2f(0, -kSPHBoundaryHalfHeight), V2f(0, 1)),
+		SPHScenarioBody::CreatePlane(V2f(0, kSPHBoundaryHalfHeight), V2f(0, -1)),
+		SPHScenarioBody::CreatePlane(V2f(-kSPHBoundaryHalfWidth, 0), V2f(1, 0)),
+		SPHScenarioBody::CreatePlane(V2f(kSPHBoundaryHalfWidth, 0), V2f(-1, 0)),
 	},
 	SPHParameters(kSPHKernelHeight, kSPHGridCellSize, kSPHKernelHeight / 4.0f, kSPHRestDensity, kSPHStiffness, kSPHStiffness * 2.0f, kSPHLinearViscosity, kSPHQuadraticViscosity)),
 
-	SPHScenario("Fun", Vec2f(0, -10),
+	SPHScenario("Fun", V2f(0, -10),
 	{
 	},
 	{
-		SPHScenarioEmitter(Vec2f(-4, 2), Vec2f(1, 0), kSPHKernelHeight * 4, 3.5f, 15.0f, 20.0f),
+		SPHScenarioEmitter(V2f(-4, 2), V2f(1, 0), kSPHKernelHeight * 4, 3.5f, 15.0f, 20.0f),
 	},
 	{
-		SPHScenarioBody::CreatePlane(Vec2f(0, -kSPHBoundaryHalfHeight), Vec2f(0, 1)),
-		//SPHScenarioBody::CreatePlane(Vec2f(0, kSPHBoundaryHalfHeight), Vec2f(0, -1)),
-		SPHScenarioBody::CreatePlane(Vec2f(-kSPHBoundaryHalfWidth, 0), Vec2f(1, 0)),
-		SPHScenarioBody::CreatePlane(Vec2f(kSPHBoundaryHalfWidth, 0), Vec2f(-1, 0)),
-		SPHScenarioBody::CreateBox(Vec2f(-1.5f, 1.0f), kDeg2Rad * -2.5f, Vec2f(3.5f, 0.1f)),
-		SPHScenarioBody::CreateBox(Vec2f(1.5f, -0.25f), kDeg2Rad * 2.5f, Vec2f(3.5f, 0.1f)),
-		SPHScenarioBody::CreateCircle(Vec2f(-4.0f, -1.5f), 0.5f),
-		SPHScenarioBody::CreateBox(Vec2f(0, -kSPHBoundaryHalfHeight + 0.5f), 0, Vec2f(0.3f, 1.0f)),
+		SPHScenarioBody::CreatePlane(V2f(0, -kSPHBoundaryHalfHeight), V2f(0, 1)),
+		//SPHScenarioBody::CreatePlane(V2f(0, kSPHBoundaryHalfHeight), V2f(0, -1)),
+		SPHScenarioBody::CreatePlane(V2f(-kSPHBoundaryHalfWidth, 0), V2f(1, 0)),
+		SPHScenarioBody::CreatePlane(V2f(kSPHBoundaryHalfWidth, 0), V2f(-1, 0)),
+		SPHScenarioBody::CreateBox(V2f(-1.5f, 1.0f), kDeg2Rad * -2.5f, V2f(3.5f, 0.1f)),
+		SPHScenarioBody::CreateBox(V2f(1.5f, -0.25f), kDeg2Rad * 2.5f, V2f(3.5f, 0.1f)),
+		SPHScenarioBody::CreateCircle(V2f(-4.0f, -1.5f), 0.5f),
+		SPHScenarioBody::CreateBox(V2f(0, -kSPHBoundaryHalfHeight + 0.5f), 0, V2f(0.3f, 1.0f)),
 	},
 	SPHParameters(kSPHKernelHeight, kSPHGridCellSize, kSPHKernelHeight / 4.0f, kSPHRestDensity, kSPHStiffness, kSPHStiffness * 6.0f, kSPHLinearViscosity, kSPHQuadraticViscosity)),
 };
@@ -456,7 +456,7 @@ force_inline Vec2i SPHComputeCellPos(const Vec2f &p, const Vec2f &center, const 
 }
 
 force_inline Vec2i SPHComputeCellIndex(const Vec2f & p) {
-	Vec2f center = Vec2f(kSPHBoundaryHalfWidth, kSPHBoundaryHalfHeight);
+	Vec2f center = V2f(kSPHBoundaryHalfWidth, kSPHBoundaryHalfHeight);
 	Vec2i cellPos = SPHComputeCellPos(p, center, kSPHGridCellSize);
 	cellPos.x = std::min(std::max(cellPos.x, 0), (int)kSPHGridCountX - 1);
 	cellPos.y = std::min(std::max(cellPos.y, 0), (int)kSPHGridCountY - 1);
@@ -531,7 +531,7 @@ force_inline void SPHSolveCircleCollision(Vec2f *particlePosition, const Vec2f &
 	Vec2f deltaPos = particlePos - circlePos;
 	float distanceSquared = Vec2Dot(deltaPos, deltaPos);
 	if (distanceSquared <= bothRadius * bothRadius) {
-		Vec2f normal = Vec2f(0, -1);
+		Vec2f normal = V2f(0, -1);
 		float penetration = bothRadius;
 		if (abs(distanceSquared) > 0) {
 			float distance = sqrtf(distanceSquared);
@@ -551,8 +551,8 @@ static void SPHSolveLineSegmentCollision(Vec2f *particlePosition, const Vec2f &a
 	float u = Vec2Dot(e, b - particlePos);
 	float v = Vec2Dot(e, particlePos - a);
 
-	Vec2f closest = Vec2f(0,0);
-	Vec2f normal = Vec2f(0,0);
+	Vec2f closest = V2f(0,0);
+	Vec2f normal = V2f(0,0);
 
 	if (v <= 0.0f) {
 		// Region A
@@ -583,7 +583,7 @@ static void SPHSolveLineSegmentCollision(Vec2f *particlePosition, const Vec2f &a
 			return;
 		}
 
-		normal = Vec2f(-e.y, e.x);
+		normal = V2f(-e.y, e.x);
 
 		// Swap normal when on other side
 		if (Vec2Dot(normal, particlePos - a) < 0.0f) {
@@ -601,7 +601,7 @@ static void SPHSolveLineSegmentCollision(Vec2f *particlePosition, const Vec2f &a
 
 static bool FindMTVCirclePolygon(const Vec2f &circlePosition, const size_t vertexCount, const Vec2f *verts, Vec2f *mtv) {
 	size_t edgeIndex = 0;
-	Vec2f normal = Vec2f(0, 0);
+	Vec2f normal = V2f(0, 0);
 	float separation = -FLT_MAX;
 	float radius = kSPHCollisionMargin + kSPHParticleCollisionRadius;
 
@@ -675,7 +675,7 @@ static bool FindMTVCirclePolygon(const Vec2f &circlePosition, const size_t verte
 
 force_inline void SPHSolvePolygonCollision(Vec2f *particlePosition, const size_t vertexCount, const Vec2f *verts) {
 	Vec2f particlePos = *particlePosition;
-	Vec2f mtv = Vec2f(0,0);
+	Vec2f mtv = V2f(0,0);
 	if (FindMTVCirclePolygon(particlePos, vertexCount, verts, &mtv)) {
 		particlePos += mtv;
 		*particlePosition = particlePos;

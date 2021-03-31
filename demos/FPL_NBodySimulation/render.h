@@ -226,7 +226,7 @@ namespace Render {
 		rectangle->isFilled = isFilled;
 	}
 
-	inline void PushSprite(CommandBuffer *commandBuffer, const Vec2f &pos, const Vec2f &size, TextureHandle texture, const Vec4f &color, const Vec2f &uvMin = Vec2f(0, 0), const Vec2f &uvMax = Vec2f(1.0f, 1.0f)) {
+	inline void PushSprite(CommandBuffer *commandBuffer, const Vec2f &pos, const Vec2f &size, TextureHandle texture, const Vec4f &color, const Vec2f &uvMin = V2f(0, 0), const Vec2f &uvMax = V2f(1.0f, 1.0f)) {
 		CommandHeader *header = PushHeader(commandBuffer, CommandType::Sprite);
 		Sprite *sprite = PushTypes<Sprite>(commandBuffer, header);
 		sprite->position = pos;
@@ -402,11 +402,11 @@ namespace Render {
 			if ((codePointTest >= 0) && (codePointTest < (int32_t)font->charCount)) {
 				uint32_t codePoint = at - font->firstChar;
 				FontGlyph *glyph = font->glyphs + codePoint;
-				Vec2f offset = Vec2f(x, y);
+				Vec2f offset = V2f(x, y);
 				offset += Vec2Hadamard(glyph->charSize, glyph->alignPercentage) * maxCharHeight;
-				offset -= Vec2f(glyph->charSize.x, glyph->charSize.y) * 0.5f * maxCharHeight;
-				offset += Vec2f(0, maxCharHeight * 0.5f);
-				Vec2f size = Vec2f(glyph->charSize.x, glyph->charSize.y) * maxCharHeight;
+				offset -= V2f(glyph->charSize.x, glyph->charSize.y) * 0.5f * maxCharHeight;
+				offset += V2f(0, maxCharHeight * 0.5f);
+				Vec2f size = V2f(glyph->charSize.x, glyph->charSize.y) * maxCharHeight;
 
 				uint32_t nextCodePoint = (atNext > 0) ? atNext - font->firstChar : 0;
 				advance = GetFontCharacterAdvance(font, &codePoint, (atNext > 0) ? &nextCodePoint : nullptr) * maxCharHeight;
@@ -426,26 +426,26 @@ namespace Render {
 				// Top-
 				*v0 = {};
 				v0->color = textColor;
-				v0->texcoord = Vec2f(glyph->uvMax.x, glyph->uvMax.y);
-				v0->position = Vec2f(offset.x + size.w, offset.y + size.h);
+				v0->texcoord = V2f(glyph->uvMax.x, glyph->uvMax.y);
+				v0->position = V2f(offset.x + size.w, offset.y + size.h);
 
 				// Top-Left
 				*v1 = {};
 				v1->color = textColor;
-				v1->texcoord = Vec2f(glyph->uvMin.x, glyph->uvMax.y);
-				v1->position = Vec2f(offset.x, offset.y + size.h);
+				v1->texcoord = V2f(glyph->uvMin.x, glyph->uvMax.y);
+				v1->position = V2f(offset.x, offset.y + size.h);
 
 				// Bottom-Left
 				*v2 = {};
 				v2->color = textColor;
-				v2->texcoord = Vec2f(glyph->uvMin.x, glyph->uvMin.y);
-				v2->position = Vec2f(offset.x, offset.y);
+				v2->texcoord = V2f(glyph->uvMin.x, glyph->uvMin.y);
+				v2->position = V2f(offset.x, offset.y);
 
 				// Bottom-Right
 				*v3 = {};
 				v3->color = textColor;
-				v3->texcoord = Vec2f(glyph->uvMax.x, glyph->uvMin.y);
-				v3->position = Vec2f(offset.x + size.w, offset.y);
+				v3->texcoord = V2f(glyph->uvMax.x, glyph->uvMin.y);
+				v3->position = V2f(offset.x + size.w, offset.y);
 
 				// Indices for two triangles
 				*i0 = vertexCount + 0;

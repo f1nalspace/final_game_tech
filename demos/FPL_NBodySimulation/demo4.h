@@ -100,11 +100,11 @@ namespace Demo4 {
 
 		inline ParticleData(const Vec2f &pos) {
 			prevPosition = curPosition = pos;
-			acceleration = velocity = Vec2f(0,0);
+			acceleration = velocity = V2f(0,0);
 			density = nearDensity = 0;
 			pressure = nearPressure = 0;
 		}
-		inline ParticleData() : ParticleData(Vec2f(0,0)) {
+		inline ParticleData() : ParticleData(V2f(0,0)) {
 		}
 	};
 
@@ -190,7 +190,7 @@ namespace Demo4 {
 			externalForce += force;
 		}
 		inline void ClearExternalForce() {
-			externalForce = Vec2f(0, 0);
+			externalForce = V2f(0, 0);
 		}
 
 		inline size_t GetParticleCount() {

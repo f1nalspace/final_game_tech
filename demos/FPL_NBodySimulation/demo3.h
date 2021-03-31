@@ -184,7 +184,7 @@ namespace Demo3 {
 			externalForce += force;
 		}
 		inline void ClearExternalForce() {
-			externalForce = Vec2f(0,0);
+			externalForce = V2f(0,0);
 		}
 
 		inline void SetGravity(const Vec2f &gravity) {

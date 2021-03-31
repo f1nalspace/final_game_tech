@@ -179,13 +179,13 @@ static FontAtlas LoadFont(const char *filename, const uint32_t fontIndex, const 
 				float uMax = sourceInfo->x1 * texelU;
 				float vMin = sourceInfo->y1 * texelV;
 				float vMax = sourceInfo->y0 * texelV;
-				destInfo->uvMin = Vec2f(uMin, vMin);
-				destInfo->uvMax = Vec2f(uMax, vMax);
+				destInfo->uvMin = V2f(uMin, vMin);
+				destInfo->uvMax = V2f(uMax, vMax);
 
 				// Compute character size
 				int charWidthInPixels = (sourceInfo->x1 - sourceInfo->x0) + 1;
 				int charHeightInPixels = (sourceInfo->y1 - sourceInfo->y0) + 1;
-				destInfo->charSize = Vec2f((float)charWidthInPixels, (float)charHeightInPixels) * fontScale;
+				destInfo->charSize = V2f((float)charWidthInPixels, (float)charHeightInPixels) * fontScale;
 
 				// Move the character half the size to the right - so we are left aligned
 				float xoffset = destInfo->charSize.w * 0.5f;

@@ -27,6 +27,11 @@ union Vec2i {
 	}
 };
 
+inline Vec2i V2i(const int initX, const int initY) {
+	Vec2i result = {initX, initY};
+	return(result);
+}
+
 union Vec2f {
 	struct {
 		float x, y;
@@ -48,6 +53,11 @@ union Vec2f {
 		y = initY;
 	}
 };
+
+inline Vec2f V2f(const float initX, const float initY) {
+	Vec2f result = { initX, initY };
+	return(result);
+}
 
 union Mat2f {
 	struct {
@@ -112,6 +122,11 @@ union Vec3f {
 	}
 };
 
+inline Vec3f V3f(const float initX, const float initY, const float initZ) {
+	Vec3f result = { initX, initY, initZ };
+	return(result);
+}
+
 union Vec4f {
 	struct {
 		union {
@@ -169,6 +184,11 @@ union Vec4f {
 		w = initW;
 	}
 };
+
+inline Vec4f V4f(const float initX, const float initY, const float initZ, const float initW) {
+	Vec4f result = { initX, initY, initZ, initW };
+	return(result);
+}
 
 union Mat4f {
 	struct {

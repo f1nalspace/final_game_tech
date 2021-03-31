@@ -204,7 +204,7 @@ void DemoApplication::RenderBenchmark(OSDState *osdState, const float left, floa
 }
 
 void DemoApplication::DrawOSDLine(OSDState *osdState, const char *str) {
-	Render::PushText(commandBuffer, Vec2f(osdState->x, osdState->y), str, osdState->font, osdState->texture, osdState->fontHeight, Vec4f(1, 1, 1, 1));
+	Render::PushText(commandBuffer, V2f(osdState->x, osdState->y), str, osdState->font, osdState->texture, osdState->fontHeight, Vec4f(1, 1, 1, 1));
 	osdState->y -= osdState->fontHeight;
 };
 
@@ -216,7 +216,7 @@ void DemoApplication::UpdateAndRender(const float frameTime, const uint64_t cycl
 	if (simulationActive) {
 		float strenth = 10.0f;
 		bool externalForcesApplying = false;
-		Vec2f applyForceDirection = Vec2f(0,0);
+		Vec2f applyForceDirection = V2f(0,0);
 		if (externalForcesApplying) {
 			demo->AddExternalForces(applyForceDirection * strenth);
 		}
@@ -360,7 +360,7 @@ void DemoApplication::UpdateAndRender(const float frameTime, const uint64_t cycl
 		float bigTextWidth = GetTextWidth(bigText, (uint32_t)strlen(bigText), &osdFont, bigTextSize);
 		float bigTextX = w * 0.5f - bigTextWidth * 0.5f;
 		float bigTextY = h * 0.5f - bigTextSize * 0.5f;
-		Render::PushText(commandBuffer, Vec2f(bigTextX, h * 0.5f), bigText, &osdFont, osdFontTexture, bigTextSize, Vec4f(1, 1, 1, 1));
+		Render::PushText(commandBuffer, V2f(bigTextX, h * 0.5f), bigText, &osdFont, osdFontTexture, bigTextSize, Vec4f(1, 1, 1, 1));
 
 		float progressWidth = bigTextWidth;
 		float progressHeight = bigTextSize * 0.5f;
@@ -368,8 +368,8 @@ void DemoApplication::UpdateAndRender(const float frameTime, const uint64_t cycl
 		float progressBottom = bigTextY - progressHeight;
 		size_t totalFrames = kBenchmarkFrameCount * kBenchmarkIterationCount * kDemoCount;
 		float framesPercentage = benchmarkFrameCount / (float)totalFrames;
-		Render::PushRectangle(commandBuffer, Vec2f(progressLeft, progressBottom), Vec2f(progressWidth * framesPercentage, progressHeight), Vec4f(0.1f, 0.1f, 0.6f, 1), true);
-		Render::PushRectangle(commandBuffer, Vec2f(progressLeft, progressBottom), Vec2f(progressWidth, progressHeight), Vec4f(1, 1, 1, 1), false, 2.0f);
+		Render::PushRectangle(commandBuffer, V2f(progressLeft, progressBottom), V2f(progressWidth * framesPercentage, progressHeight), Vec4f(0.1f, 0.1f, 0.6f, 1), true);
+		Render::PushRectangle(commandBuffer, V2f(progressLeft, progressBottom), V2f(progressWidth, progressHeight), Vec4f(1, 1, 1, 1), false, 2.0f);
 	}
 }
 
