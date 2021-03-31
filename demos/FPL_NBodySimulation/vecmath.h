@@ -55,8 +55,8 @@ union Mat2f {
 	float m[4];
 
 	inline Mat2f() {
-		col1 = Vec2f(1, 0);
-		col2 = Vec2f(0, 1);
+		col1 = V2f(1, 0);
+		col2 = V2f(0, 1);
 	}
 
 	inline Mat2f(const Mat2f &other) {
@@ -188,10 +188,10 @@ union Mat4f {
 	float m[16];
 
 	inline Mat4f() {
-		col1 = Vec4f(1.0f, 0.0f, 0.0f, 0.0f);
-		col2 = Vec4f(0.0f, 1.0f, 0.0f, 0.0f);
-		col3 = Vec4f(0.0f, 0.0f, 1.0f, 0.0f);
-		col4 = Vec4f(0.0f, 0.0f, 0.0f, 1.0f);
+		col1 = V4f(1.0f, 0.0f, 0.0f, 0.0f);
+		col2 = V4f(0.0f, 1.0f, 0.0f, 0.0f);
+		col3 = V4f(0.0f, 0.0f, 1.0f, 0.0f);
+		col4 = V4f(0.0f, 0.0f, 0.0f, 1.0f);
 	}
 
 	inline Mat4f(const Mat4f &other) {
@@ -231,7 +231,7 @@ inline float ScalarLerp(float a, float t, float b) {
 }
 
 inline Vec2f operator*(const Vec2f &a, float b) {
-	Vec2f result = Vec2f(a.x * b, a.y * b);
+	Vec2f result = V2f(a.x * b, a.y * b);
 	return(result);
 }
 inline Vec2f& operator*=(Vec2f &a, float value) {
@@ -239,11 +239,11 @@ inline Vec2f& operator*=(Vec2f &a, float value) {
 	return(a);
 }
 inline Vec2f operator-(const Vec2f &a) {
-	Vec2f result = Vec2f(-a.x, -a.y);
+	Vec2f result = V2f(-a.x, -a.y);
 	return(result);
 }
 inline Vec2f operator+(const Vec2f &a, const Vec2f &b) {
-	Vec2f result = Vec2f(a.x + b.x, a.y + b.y);
+	Vec2f result = V2f(a.x + b.x, a.y + b.y);
 	return(result);
 }
 inline Vec2f& operator+=(Vec2f &a, const Vec2f &b) {
@@ -251,7 +251,7 @@ inline Vec2f& operator+=(Vec2f &a, const Vec2f &b) {
 	return(a);
 }
 inline Vec2f operator-(const Vec2f &a, const Vec2f &b) {
-	Vec2f result = Vec2f(a.x - b.x, a.y - b.y);
+	Vec2f result = V2f(a.x - b.x, a.y - b.y);
 	return(result);
 }
 inline Vec2f& operator-=(Vec2f &a, const Vec2f &b) {
@@ -275,22 +275,22 @@ inline Vec2f Vec2Normalize(const Vec2f &v) {
 		l = 1;
 	}
 	float invL = 1.0f / l;
-	Vec2f result = Vec2f(v) * invL;
+	Vec2f result = V2f(v.x, v.y) * invL;
 	return(result);
 }
 
 inline Vec2f Vec2Hadamard(const Vec2f &a, const Vec2f &b) {
-	Vec2f result = Vec2f(a.x * b.x, a.y * b.y);
+	Vec2f result = V2f(a.x * b.x, a.y * b.y);
 	return(result);
 }
 
 inline Vec2f Vec2MultScalar(const Vec2f &v, const float scalar) {
-	Vec2f result = Vec2f(v.x * scalar, v.y * scalar);
+	Vec2f result = V2f(v.x * scalar, v.y * scalar);
 	return(result);
 }
 
 inline Vec2f Vec2MultMat2(const Mat2f &A, const Vec2f &v) {
-	Vec2f result = Vec2f(A.col1.x * v.x + A.col2.x * v.y, A.col1.y * v.x + A.col2.y * v.y);
+	Vec2f result = V2f(A.col1.x * v.x + A.col2.x * v.y, A.col1.y * v.x + A.col2.y * v.y);
 	return(result);
 }
 
@@ -302,12 +302,12 @@ inline float Vec2DistanceSquared(const Vec2f &a, const Vec2f &b) {
 
 /* Returns the right perpendicular vector */
 inline Vec2f Vec2Cross(const Vec2f &a, float s) {
-	return Vec2f(s * a.y, -s * a.x);
+	return V2f(s * a.y, -s * a.x);
 }
 
 /* Returns the left perpendicular vector */
 inline Vec2f Vec2Cross(float s, const Vec2f &a) {
-	return Vec2f(-s * a.y, s * a.x);
+	return V2f(-s * a.y, s * a.x);
 }
 
 inline float Vec2Cross(const Vec2f &a, const Vec2f &b) {
@@ -322,7 +322,7 @@ inline float Vec2AxisToAngle(const Vec2f &axis) {
 inline Vec2f Vec2RandomDirection() {
 	float d = rand() / (float)RAND_MAX;
 	float angle = d * ((float)M_PI * 2.0f);
-	Vec2f result = Vec2f(cosf(angle), sinf(angle));
+	Vec2f result = V2f(cosf(angle), sinf(angle));
 	return(result);
 }
 
@@ -364,8 +364,8 @@ inline Mat2f Mat2FromAngle(float angle) {
 	float s = sinf(angle);
 	float c = cosf(angle);
 	Mat2f result;
-	result.col1 = Vec2f(c, s);
-	result.col2 = Vec2f(-s, c);
+	result.col1 = V2f(c, s);
+	result.col2 = V2f(-s, c);
 	return(result);
 }
 
@@ -378,8 +378,8 @@ inline Mat2f Mat2FromAxis(const Vec2f &axis) {
 
 inline Mat2f Mat2Transpose(const Mat2f &m) {
 	Mat2f result;
-	result.col1 = Vec2f(m.col1.x, m.col2.x);
-	result.col2 = Vec2f(m.col1.y, m.col2.y);
+	result.col1 = V2f(m.col1.x, m.col2.x);
+	result.col2 = V2f(m.col1.y, m.col2.y);
 	return(result);
 }
 
@@ -398,8 +398,8 @@ inline float Mat2ToAngle(const Mat2f &mat) {
 /* Generates a 2x2 matrix for doing B to A conversion */
 inline Mat2f Mat2MultTranspose(const Mat2f &a, const Mat2f &b) {
 	Mat2f result;
-	result.col1 = Vec2f(Vec2Dot(a.col1, b.col1), Vec2Dot(a.col2, b.col1));
-	result.col2 = Vec2f(Vec2Dot(a.col1, b.col2), Vec2Dot(a.col2, b.col2));
+	result.col1 = V2f(Vec2Dot(a.col1, b.col1), Vec2Dot(a.col2, b.col1));
+	result.col2 = V2f(Vec2Dot(a.col1, b.col2), Vec2Dot(a.col2, b.col2));
 	return(result);
 }
 
