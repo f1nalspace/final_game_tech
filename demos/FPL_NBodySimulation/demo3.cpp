@@ -398,7 +398,7 @@ namespace Demo3 {
 
 	void ParticleSimulation::Render(Render::CommandBuffer *commandBuffer, const float worldToScreenScale) {
 		// Domain
-		Vec4f domainColor = Vec4f(1.0f, 0.0f, 1.0f, 1.0f);
+		Vec4f domainColor = V4f(1.0f, 0.0f, 1.0f, 1.0f);
 		Render::PushRectangle(commandBuffer, V2f(-kSPHBoundaryHalfWidth, -kSPHBoundaryHalfHeight), V2f(kSPHBoundaryHalfWidth, kSPHBoundaryHalfHeight) * 2.0f, domainColor, false, 1.0f);
 
 		// Grid fill

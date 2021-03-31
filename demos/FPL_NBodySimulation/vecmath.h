@@ -1,6 +1,8 @@
 #ifndef VECMATH_H
 #define VECMATH_H
 
+#define USE_CTORS
+
 #define _USE_MATH_DEFINES
 #include <math.h>
 
@@ -16,7 +18,7 @@ union Vec2i {
 };
 
 inline Vec2i V2i(const int initX, const int initY) {
-	Vec2i result = {initX, initY};
+	Vec2i result = { initX, initY };
 	return(result);
 }
 
@@ -29,6 +31,7 @@ union Vec2f {
 	};
 	float m[2];
 
+#if defined(USE_CTORS)
 	inline Vec2f() {
 		x = y = 0;
 	}
@@ -40,6 +43,7 @@ union Vec2f {
 		x = initX;
 		y = initY;
 	}
+#endif
 };
 
 inline Vec2f V2f(const float initX, const float initY) {
@@ -54,6 +58,7 @@ union Mat2f {
 	};
 	float m[4];
 
+#if defined(USE_CTORS)
 	inline Mat2f() {
 		col1 = V2f(1, 0);
 		col2 = V2f(0, 1);
@@ -63,7 +68,15 @@ union Mat2f {
 		col1 = other.col1;
 		col2 = other.col2;
 	}
+#endif
 };
+
+inline Mat2f Mat2Identity() {
+	Mat2f result;
+	result.col1 = V2f(1, 0);
+	result.col2 = V2f(0, 1);
+	return (result);
+}
 
 union Vec3f {
 	struct {
@@ -93,6 +106,7 @@ union Vec3f {
 	};
 	float m[3];
 
+#if defined(USE_CTORS)
 	Vec3f() {
 		x = y = z = 0.0f;
 	}
@@ -108,6 +122,7 @@ union Vec3f {
 		y = initY;
 		z = initZ;
 	}
+#endif
 };
 
 inline Vec3f V3f(const float initX, const float initY, const float initZ) {
@@ -155,6 +170,7 @@ union Vec4f {
 	};
 	float m[4];
 
+#if defined(USE_CTORS)
 	inline Vec4f() {
 		x = y = z = 0;
 		w = 1;
@@ -171,6 +187,7 @@ union Vec4f {
 		z = initZ;
 		w = initW;
 	}
+#endif
 };
 
 inline Vec4f V4f(const float initX, const float initY, const float initZ, const float initW) {
@@ -187,6 +204,7 @@ union Mat4f {
 	};
 	float m[16];
 
+#if defined(USE_CTORS)
 	inline Mat4f() {
 		col1 = V4f(1.0f, 0.0f, 0.0f, 0.0f);
 		col2 = V4f(0.0f, 1.0f, 0.0f, 0.0f);
@@ -216,7 +234,17 @@ union Mat4f {
 		result.col3.z = 0.0f;
 		return (result);
 	}
+#endif
 };
+
+inline Mat4f M4fIdentity() {
+	Mat4f result;
+	result.col1 = V4f(1.0f, 0.0f, 0.0f, 0.0f);
+	result.col2 = V4f(0.0f, 1.0f, 0.0f, 0.0f);
+	result.col3 = V4f(0.0f, 0.0f, 1.0f, 0.0f);
+	result.col4 = V4f(0.0f, 0.0f, 0.0f, 1.0f);
+	return(result);
+}
 
 union Pixel {
 	struct {
@@ -234,7 +262,7 @@ inline Vec2f operator*(const Vec2f &a, float b) {
 	Vec2f result = V2f(a.x * b, a.y * b);
 	return(result);
 }
-inline Vec2f& operator*=(Vec2f &a, float value) {
+inline Vec2f &operator*=(Vec2f &a, float value) {
 	a = a * value;
 	return(a);
 }
@@ -246,7 +274,7 @@ inline Vec2f operator+(const Vec2f &a, const Vec2f &b) {
 	Vec2f result = V2f(a.x + b.x, a.y + b.y);
 	return(result);
 }
-inline Vec2f& operator+=(Vec2f &a, const Vec2f &b) {
+inline Vec2f &operator+=(Vec2f &a, const Vec2f &b) {
 	a = b + a;
 	return(a);
 }
@@ -254,7 +282,7 @@ inline Vec2f operator-(const Vec2f &a, const Vec2f &b) {
 	Vec2f result = V2f(a.x - b.x, a.y - b.y);
 	return(result);
 }
-inline Vec2f& operator-=(Vec2f &a, const Vec2f &b) {
+inline Vec2f &operator-=(Vec2f &a, const Vec2f &b) {
 	a = a - b;
 	return(a);
 }
@@ -271,7 +299,7 @@ inline float Vec2Length(const Vec2f &v) {
 
 inline Vec2f Vec2Normalize(const Vec2f &v) {
 	float l = Vec2Length(v);
-	if (l == 0) {
+	if(l == 0) {
 		l = 1;
 	}
 	float invL = 1.0f / l;
@@ -347,7 +375,7 @@ inline Vec3f operator*(const Vec3f &a, float b) {
 	Vec3f result = b * a;
 	return(result);
 }
-inline Vec3f& operator*=(Vec3f &a, float value) {
+inline Vec3f &operator*=(Vec3f &a, float value) {
 	a = value * a;
 	return(a);
 }
@@ -355,11 +383,6 @@ inline Vec3f& operator*=(Vec3f &a, float value) {
 //
 // Mat2f
 //
-inline Mat2f Mat2Identity() {
-	Mat2f result = Mat2f();
-	return (result);
-}
-
 inline Mat2f Mat2FromAngle(float angle) {
 	float s = sinf(angle);
 	float c = cosf(angle);
@@ -403,12 +426,10 @@ inline Mat2f Mat2MultTranspose(const Mat2f &a, const Mat2f &b) {
 	return(result);
 }
 
-
-
 inline Mat4f &operator *(const Mat4f &a, const Mat4f &b) {
 	Mat4f result;
-	for (int i = 0; i < 16; i += 4) {
-		for (int j = 0; j < 4; ++j) {
+	for(int i = 0; i < 16; i += 4) {
+		for(int j = 0; j < 4; ++j) {
 			result.m[i + j] =
 				(b.m[i + 0] * a.m[j + 0])
 				+ (b.m[i + 1] * a.m[j + 4])
@@ -419,12 +440,12 @@ inline Mat4f &operator *(const Mat4f &a, const Mat4f &b) {
 	return(result);
 }
 
-const static Vec4f ColorWhite = Vec4f(1.0f, 1.0f, 1.0f, 1.0f);
-const static Vec4f ColorRed = Vec4f(1.0f, 0.0f, 0.0f, 1.0f);
-const static Vec4f ColorGreen = Vec4f(0.0f, 1.0f, 0.0f, 1.0f);
-const static Vec4f ColorBlue = Vec4f(0.0f, 0.0f, 1.0f, 1.0f);
-const static Vec4f ColorLightGray = Vec4f(0.3f, 0.3f, 0.3f, 1.0f);
-const static Vec4f ColorDarkGray = Vec4f(0.2f, 0.2f, 0.2f, 1.0f);
+const static Vec4f ColorWhite = V4f(1.0f, 1.0f, 1.0f, 1.0f);
+const static Vec4f ColorRed = V4f(1.0f, 0.0f, 0.0f, 1.0f);
+const static Vec4f ColorGreen = V4f(0.0f, 1.0f, 0.0f, 1.0f);
+const static Vec4f ColorBlue = V4f(0.0f, 0.0f, 1.0f, 1.0f);
+const static Vec4f ColorLightGray = V4f(0.3f, 0.3f, 0.3f, 1.0f);
+const static Vec4f ColorDarkGray = V4f(0.2f, 0.2f, 0.2f, 1.0f);
 
 inline Pixel RGBA32ToPixel(const uint32_t rgba) {
 	Pixel result = { (rgba >> 0) & 0xFF, (rgba >> 8) & 0xFF, (rgba >> 16) & 0xFF, (rgba >> 24) & 0xFF };
@@ -439,7 +460,7 @@ inline uint32_t RGBA32(const uint8_t r, const uint8_t g, const uint8_t b, const 
 const static float INV255 = 1.0f / 255.0f;
 
 inline Vec4f PixelToLinear(const Pixel &pixel) {
-	Vec4f result = Vec4f(pixel.r * INV255, pixel.g * INV255, pixel.b * INV255, pixel.a * INV255);
+	Vec4f result = V4f(pixel.r * INV255, pixel.g * INV255, pixel.b * INV255, pixel.a * INV255);
 	return(result);
 }
 
@@ -451,7 +472,7 @@ inline Vec4f RGBA32ToLinear(const uint32_t rgba) {
 
 inline Vec4f AlphaToLinear(const uint8_t alpha) {
 	float a = alpha * INV255;
-	Vec4f result = Vec4f(1, 1, 1, a);
+	Vec4f result = V4f(1, 1, 1, a);
 	return(result);
 }
 
