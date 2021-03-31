@@ -22,6 +22,8 @@ constexpr float kSPHBoundaryHeight = kSPHBoundaryWidth / kSPHBoundaryAspect;
 constexpr float kSPHBoundaryHalfWidth = kSPHBoundaryWidth * 0.5f;
 constexpr float kSPHBoundaryHalfHeight = kSPHBoundaryHeight * 0.5f;
 static const Vec2f kSPHGridOrigin = V2f(-kSPHBoundaryHalfWidth, -kSPHBoundaryHalfHeight);
+static const Vec2f kSPHGridMin = kSPHGridOrigin;
+static const Vec2f kSPHGridMax = kSPHGridOrigin + V2f(kSPHBoundaryWidth, kSPHBoundaryHeight);
 
 //
 // Default constants

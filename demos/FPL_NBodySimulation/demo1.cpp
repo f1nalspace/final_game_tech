@@ -282,7 +282,7 @@ namespace Demo1 {
 		size_t neighborCount = GetNeighborCount();
 		for (size_t index = 0; index < neighborCount; ++index) {
 			Particle *neighbor = GetNeighbor(index);
-			Vec2f force;
+			Vec2f force = V2f(0, 0);
 			SPHComputeViscosityForce(params, _curPosition, neighbor->GetPosition(), _velocity, neighbor->GetVelocity(), &force);
 			_velocity += -force * deltaTime * 0.5f;
 			neighbor->SetVelocity(neighbor->GetVelocity() + force * deltaTime * 0.5f);
