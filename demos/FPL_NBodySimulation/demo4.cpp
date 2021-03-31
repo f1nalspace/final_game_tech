@@ -556,7 +556,6 @@ namespace Demo4 {
 	}
 
 	void ParticleEmitter::Render(Render::CommandBuffer *commandBuffer) {
-		Render::PushCircle(commandBuffer, position, radius * 0.25f, ColorRed, 1.0f, false);
 	}
 }
 
