@@ -13,18 +13,6 @@ union Vec2i {
 		int x, y;
 	};
 	int m[2];
-
-	inline Vec2i() {
-		x = y = 0;
-	}
-	inline Vec2i(const Vec2i &v) {
-		x = v.x;
-		y = v.y;
-	}
-	inline Vec2i(const int initX, const int initY) {
-		x = initX;
-		y = initY;
-	}
 };
 
 inline Vec2i V2i(const int initX, const int initY) {

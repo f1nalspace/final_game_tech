@@ -452,7 +452,7 @@ force_inline size_t SPHComputeCellOffset(const int x, const int y) {
 force_inline Vec2i SPHComputeCellPos(const Vec2f &p, const Vec2f &center, const float cellSize) {
 	int x = (int)((p.x + center.x) / cellSize);
 	int y = (int)((p.y + center.y) / cellSize);
-	return Vec2i(x, y);
+	return V2i(x, y);
 }
 
 force_inline Vec2i SPHComputeCellIndex(const Vec2f & p) {
@@ -460,7 +460,7 @@ force_inline Vec2i SPHComputeCellIndex(const Vec2f & p) {
 	Vec2i cellPos = SPHComputeCellPos(p, center, kSPHGridCellSize);
 	cellPos.x = std::min(std::max(cellPos.x, 0), (int)kSPHGridCountX - 1);
 	cellPos.y = std::min(std::max(cellPos.y, 0), (int)kSPHGridCountY - 1);
-	Vec2i result = Vec2i(cellPos.x, cellPos.y);
+	Vec2i result = V2i(cellPos.x, cellPos.y);
 	return (result);
 }
 
