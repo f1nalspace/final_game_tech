@@ -11,7 +11,7 @@
 #include "render.h"
 
 namespace Demo4 {
-	ParticleSimulation::ParticleSimulation() :
+	ParticleSimulation::ParticleSimulation():
 		gravity(Vec2f(0, 0)),
 		particleCount(0),
 		bodyCount(0),
@@ -63,7 +63,7 @@ namespace Demo4 {
 		assert(particleIndexes[particleIndex].indexInCell < cell->count);
 		size_t removalIndex = particleIndexes[particleIndex].indexInCell;
 		size_t lastIndex = cell->count - 1;
-		if (removalIndex != lastIndex) {
+		if(removalIndex != lastIndex) {
 			cell->indices[removalIndex] = cell->indices[lastIndex];
 			cell->indices[lastIndex] = particleIndex;
 			particleIndexes[cell->indices[removalIndex]].indexInCell = removalIndex;
@@ -79,7 +79,7 @@ namespace Demo4 {
 		bodyCount = 0;
 	}
 
-	void ParticleSimulation::AddPlane(const Vec2f & normal, const float distance) {
+	void ParticleSimulation::AddPlane(const Vec2f &normal, const float distance) {
 		Body body = Body();
 		body.type = BodyType::BodyType_Plane;
 		body.plane.normal = normal;
@@ -89,7 +89,7 @@ namespace Demo4 {
 		bodies[bodyIndex] = body;
 	}
 
-	void ParticleSimulation::AddCircle(const Vec2f & pos, const float radius) {
+	void ParticleSimulation::AddCircle(const Vec2f &pos, const float radius) {
 		Body body = Body();
 		body.type = BodyType::BodyType_Circle;
 		body.circle.pos = pos;
@@ -99,7 +99,7 @@ namespace Demo4 {
 		bodies[bodyIndex] = body;
 	}
 
-	void ParticleSimulation::AddLineSegment(const Vec2f & a, const Vec2f & b) {
+	void ParticleSimulation::AddLineSegment(const Vec2f &a, const Vec2f &b) {
 		Body body = Body();
 		body.type = BodyType::BodyType_LineSegment;
 		body.lineSegment.a = a;
@@ -113,7 +113,7 @@ namespace Demo4 {
 		Body body = Body();
 		body.type = BodyType::BodyType_Polygon;
 		assert(vertexCount <= kMaxScenarioPolygonCount);
-		for (size_t vertexIndex = 0; vertexIndex < vertexCount; ++vertexIndex) {
+		for(size_t vertexIndex = 0; vertexIndex < vertexCount; ++vertexIndex) {
 			body.polygon.verts[vertexIndex] = verts[vertexIndex];
 		}
 		body.polygon.vertexCount = vertexCount;
@@ -123,7 +123,7 @@ namespace Demo4 {
 	}
 
 	void ParticleSimulation::ClearParticles() {
-		for (size_t cellIndex = 0; cellIndex < kSPHGridTotalCount; ++cellIndex) {
+		for(size_t cellIndex = 0; cellIndex < kSPHGridTotalCount; ++cellIndex) {
 			Cell *cell = &cells[cellIndex];
 			assert(cell != nullptr);
 			cell->count = 0;
@@ -146,7 +146,7 @@ namespace Demo4 {
 		particleDatas[particleIndex].acceleration = acceleration;
 
 		particleIndexes[particleIndex] = ParticleIndex();
-		particleColors[particleIndex] = Vec4f();
+		particleColors[particleIndex] = Vec4f(0, 0, 0, 1);
 
 		InsertParticleIntoGrid(particleIndex);
 		return particleIndex;
@@ -168,8 +168,8 @@ namespace Demo4 {
 
 	void ParticleSimulation::AddVolume(const Vec2f &center, const Vec2f &force, const int countX, const int countY, const float spacing) {
 		Vec2f offset = Vec2f(countX * spacing, countY * spacing) * 0.5f;
-		for (int yIndex = 0; yIndex < countY; ++yIndex) {
-			for (int xIndex = 0; xIndex < countX; ++xIndex) {
+		for(int yIndex = 0; yIndex < countY; ++yIndex) {
+			for(int xIndex = 0; xIndex < countX; ++xIndex) {
 				Vec2f p = Vec2f((float)xIndex, (float)yIndex) * spacing;
 				p += Vec2f(spacing * 0.5f, spacing * 0.5f);
 				p += center - offset;
@@ -181,20 +181,20 @@ namespace Demo4 {
 	}
 
 	void ParticleSimulation::NeighborSearch(const int64_t startIndex, const int64_t endIndex, const float deltaTime) {
-		for (int64_t particleIndexA = startIndex; particleIndexA <= endIndex; ++particleIndexA) {
+		for(int64_t particleIndexA = startIndex; particleIndexA <= endIndex; ++particleIndexA) {
 			ParticleIndex *particleIndexContainerA = &particleIndexes[particleIndexA];
 			particleIndexContainerA->neighborCount = 0;
 			Vec2i cellIndex = particleIndexContainerA->cellIndex;
-			for (int y = -1; y <= 1; ++y) {
-				for (int x = -1; x <= 1; ++x) {
+			for(int y = -1; y <= 1; ++y) {
+				for(int x = -1; x <= 1; ++x) {
 					int cellPosX = cellIndex.x + x;
 					int cellPosY = cellIndex.y + y;
-					if (SPHIsPositionInGrid(cellPosX, cellPosY)) {
+					if(SPHIsPositionInGrid(cellPosX, cellPosY)) {
 						size_t cellOffset = SPHComputeCellOffset(cellPosX, cellPosY);
 						Cell *cell = &cells[cellOffset];
 						assert(cell != nullptr);
 						size_t particleCountInCell = cell->count;
-						for (size_t index = 0; index < particleCountInCell; ++index) {
+						for(size_t index = 0; index < particleCountInCell; ++index) {
 							size_t particleIndexB = cell->indices[index];
 							assert(particleIndexContainerA->neighborCount < kSPHMaxParticleNeighborCount);
 							particleIndexContainerA->neighbors[particleIndexContainerA->neighborCount++] = particleIndexB;
@@ -206,12 +206,12 @@ namespace Demo4 {
 	}
 
 	void ParticleSimulation::DensityAndPressure(const int64_t startIndex, const int64_t endIndex, const float deltaTime) {
-		for (int64_t particleIndex = startIndex; particleIndex <= endIndex; ++particleIndex) {
+		for(int64_t particleIndex = startIndex; particleIndex <= endIndex; ++particleIndex) {
 			ParticleData *particleDataContainer = &particleDatas[particleIndex];
 			ParticleIndex *particleIndexContainer = &particleIndexes[particleIndex];
 			particleDataContainer->density = particleDataContainer->nearDensity = 0;
 			size_t neighborCount = particleIndexContainer->neighborCount;
-			for (size_t index = 0; index < neighborCount; ++index) {
+			for(size_t index = 0; index < neighborCount; ++index) {
 				size_t neighborIndex = particleIndexContainer->neighbors[index];
 				ParticleData *neighborDataContainer = &particleDatas[neighborIndex];
 				SPHComputeDensity(params, particleDataContainer->curPosition, neighborDataContainer->curPosition, particleDataContainer->densities);
@@ -221,14 +221,14 @@ namespace Demo4 {
 	}
 
 	void ParticleSimulation::ViscosityForces(const int64_t startIndex, const int64_t endIndex, const float deltaTime) {
-		for (int64_t particleIndex = startIndex; particleIndex <= endIndex; ++particleIndex) {
+		for(int64_t particleIndex = startIndex; particleIndex <= endIndex; ++particleIndex) {
 			ParticleData *particleDataContainer = &particleDatas[particleIndex];
 			ParticleIndex *particleIndexContainer = &particleIndexes[particleIndex];
 			size_t neighborCount = particleIndexContainer->neighborCount;
-			for (size_t index = 0; index < neighborCount; ++index) {
+			for(size_t index = 0; index < neighborCount; ++index) {
 				size_t neighborIndex = particleIndexContainer->neighbors[index];
 				ParticleData *neighborDataContainer = &particleDatas[neighborIndex];
-				Vec2f force = Vec2f();
+				Vec2f force = Vec2f(0, 0);
 				SPHComputeViscosityForce(params, particleDataContainer->curPosition, neighborDataContainer->curPosition, particleDataContainer->velocity, neighborDataContainer->velocity, &force);
 				particleDataContainer->velocity -= force * 0.5f * deltaTime;
 				neighborDataContainer->velocity += force * 0.5f * deltaTime;
@@ -237,15 +237,15 @@ namespace Demo4 {
 	}
 
 	void ParticleSimulation::DeltaPositions(const int64_t startIndex, const int64_t endIndex, const float deltaTime) {
-		for (int64_t particleIndex = startIndex; particleIndex <= endIndex; ++particleIndex) {
+		for(int64_t particleIndex = startIndex; particleIndex <= endIndex; ++particleIndex) {
 			ParticleData *particleDataContainer = &particleDatas[particleIndex];
 			ParticleIndex *particleIndexContainer = &particleIndexes[particleIndex];
-			Vec2f dx = Vec2f();
+			Vec2f dx = Vec2f(0, 0);
 			size_t neighborCount = particleIndexContainer->neighborCount;
-			for (size_t index = 0; index < neighborCount; ++index) {
+			for(size_t index = 0; index < neighborCount; ++index) {
 				size_t neighborIndex = particleIndexContainer->neighbors[index];
 				ParticleData *neighborDataContainer = &particleDatas[neighborIndex];
-				Vec2f delta = Vec2f();
+				Vec2f delta = Vec2f(0, 0);
 				SPHComputeDelta(params, particleDataContainer->curPosition, neighborDataContainer->curPosition, particleDataContainer->pressures, deltaTime, &delta);
 				neighborDataContainer->curPosition += delta * 0.5f;
 				dx -= delta * 0.5f;
@@ -257,18 +257,18 @@ namespace Demo4 {
 	void ParticleSimulation::UpdateEmitter(ParticleEmitter *emitter, const float deltaTime) {
 		const float spacing = params.particleSpacing;
 		const float invDeltaTime = 1.0f / deltaTime;
-		if (emitter->isActive) {
+		if(emitter->isActive) {
 			const float rate = 1.0f / emitter->rate;
 			emitter->elapsed += deltaTime;
 			emitter->totalElapsed += deltaTime;
-			if (emitter->elapsed >= rate) {
+			if(emitter->elapsed >= rate) {
 				emitter->elapsed = 0;
 				Vec2f acceleration = emitter->direction * emitter->speed * invDeltaTime;
 				Vec2f dir = Vec2Cross(1.0f, emitter->direction);
 				int count = (int)floor(emitter->radius / spacing);
 				float halfSize = (float)count * spacing * 0.5f;
 				Vec2f offset = dir * (float)count * spacing * 0.5f;
-				for (int index = 0; index < count; ++index) {
+				for(int index = 0; index < count; ++index) {
 					Vec2f p = dir * (float)index * spacing;
 					p += dir * spacing * 0.5f;
 					p += emitter->position - offset;
@@ -277,7 +277,7 @@ namespace Demo4 {
 					AddParticle(p, acceleration);
 				}
 			}
-			if (emitter->totalElapsed >= emitter->duration) {
+			if(emitter->totalElapsed >= emitter->duration) {
 				emitter->isActive = false;
 			}
 		}
@@ -290,7 +290,7 @@ namespace Demo4 {
 		// Emitters
 		{
 			auto startClock = std::chrono::high_resolution_clock::now();
-			for (size_t emitterIndex = 0; emitterIndex < emitterCount; ++emitterIndex) {
+			for(size_t emitterIndex = 0; emitterIndex < emitterCount; ++emitterIndex) {
 				ParticleEmitter *emitter = &emitters[emitterIndex];
 				UpdateEmitter(emitter, deltaTime);
 			}
@@ -301,11 +301,11 @@ namespace Demo4 {
 		// Integrate forces
 		{
 			auto startClock = std::chrono::high_resolution_clock::now();
-			for (size_t particleIndex = 0; particleIndex < particleCount; ++particleIndex) {
+			for(size_t particleIndex = 0; particleIndex < particleCount; ++particleIndex) {
 				ParticleData *dataContainer = &particleDatas[particleIndex];
 				dataContainer->acceleration += gravity + externalForce;
 				dataContainer->velocity += dataContainer->acceleration * deltaTime;
-				dataContainer->acceleration = Vec2f();
+				dataContainer->acceleration = Vec2f(0, 0);
 			}
 			auto deltaClock = std::chrono::high_resolution_clock::now() - startClock;
 			stats.time.integration = std::chrono::duration_cast<std::chrono::nanoseconds>(deltaClock).count() * nanosToMilliseconds;
@@ -314,7 +314,7 @@ namespace Demo4 {
 		// Viscosity force
 		{
 			auto startClock = std::chrono::high_resolution_clock::now();
-			if (useMultiThreading) {
+			if(useMultiThreading) {
 				workerPool.CreateTasks(particleCount, [=](const size_t startIndex, const size_t endIndex, const float deltaTime) {
 					this->ViscosityForces(startIndex, endIndex, deltaTime);
 				}, deltaTime);
@@ -329,7 +329,7 @@ namespace Demo4 {
 		// Predict
 		{
 			auto startClock = std::chrono::high_resolution_clock::now();
-			for (size_t particleIndex = 0; particleIndex < particleCount; ++particleIndex) {
+			for(size_t particleIndex = 0; particleIndex < particleCount; ++particleIndex) {
 				ParticleData *dataContainer = &particleDatas[particleIndex];
 				dataContainer->prevPosition = dataContainer->curPosition;
 				dataContainer->curPosition += dataContainer->velocity * deltaTime;
@@ -341,12 +341,12 @@ namespace Demo4 {
 		// Update grid
 		{
 			auto startClock = std::chrono::high_resolution_clock::now();
-			for (size_t particleIndex = 0; particleIndex < particleCount; ++particleIndex) {
+			for(size_t particleIndex = 0; particleIndex < particleCount; ++particleIndex) {
 				ParticleData *dataContainer = &particleDatas[particleIndex];
 				ParticleIndex *indexContainer = &particleIndexes[particleIndex];
 				Vec2i newCellIndex = SPHComputeCellIndex(dataContainer->curPosition);
 				Vec2i *oldCellIndex = &indexContainer->cellIndex;
-				if (newCellIndex.x != oldCellIndex->x || newCellIndex.y != oldCellIndex->y) {
+				if(newCellIndex.x != oldCellIndex->x || newCellIndex.y != oldCellIndex->y) {
 					RemoveParticleFromGrid(particleIndex);
 					InsertParticleIntoGrid(particleIndex);
 				}
@@ -358,7 +358,7 @@ namespace Demo4 {
 		// Neighbor search
 		{
 			auto startClock = std::chrono::high_resolution_clock::now();
-			if (useMultiThreading) {
+			if(useMultiThreading) {
 				workerPool.CreateTasks(particleCount, [=](const size_t startIndex, const size_t endIndex, const float deltaTime) {
 					this->NeighborSearch(startIndex, endIndex, deltaTime);
 				}, deltaTime);
@@ -368,7 +368,7 @@ namespace Demo4 {
 			}
 			stats.minParticleNeighborCount = kSPHMaxParticleNeighborCount;
 			stats.maxParticleNeighborCount = 0;
-			for (size_t particleIndex = 0; particleIndex < particleCount; ++particleIndex) {
+			for(size_t particleIndex = 0; particleIndex < particleCount; ++particleIndex) {
 				ParticleIndex *particleIndexContainer = &particleIndexes[particleIndex];
 				size_t neighborCount = particleIndexContainer->neighborCount;
 				stats.minParticleNeighborCount = std::min(neighborCount, stats.minParticleNeighborCount);
@@ -381,7 +381,7 @@ namespace Demo4 {
 		// Density and pressure
 		{
 			auto startClock = std::chrono::high_resolution_clock::now();
-			if (useMultiThreading) {
+			if(useMultiThreading) {
 				workerPool.CreateTasks(particleCount, [=](const size_t startIndex, const size_t endIndex, const float deltaTime) {
 					this->DensityAndPressure(startIndex, endIndex, deltaTime);
 				}, deltaTime);
@@ -396,7 +396,7 @@ namespace Demo4 {
 		// Calculate delta position
 		{
 			auto startClock = std::chrono::high_resolution_clock::now();
-			if (useMultiThreading) {
+			if(useMultiThreading) {
 				workerPool.CreateTasks(particleCount, [=](const size_t startIndex, const size_t endIndex, const float deltaTime) {
 					this->DeltaPositions(startIndex, endIndex, deltaTime);
 				}, deltaTime);
@@ -411,11 +411,11 @@ namespace Demo4 {
 		// Solve collisions
 		{
 			auto startClock = std::chrono::high_resolution_clock::now();
-			for (size_t particleIndex = 0; particleIndex < particleCount; ++particleIndex) {
+			for(size_t particleIndex = 0; particleIndex < particleCount; ++particleIndex) {
 				ParticleData *dataContainer = &particleDatas[particleIndex];
-				for (size_t bodyIndex = 0; bodyIndex < bodyCount; ++bodyIndex) {
+				for(size_t bodyIndex = 0; bodyIndex < bodyCount; ++bodyIndex) {
 					Body *body = &bodies[bodyIndex];
-					switch (body->type) {
+					switch(body->type) {
 						case BodyType::BodyType_Plane:
 						{
 							Plane *plane = &body->plane;
@@ -444,7 +444,7 @@ namespace Demo4 {
 		}
 
 		// Recalculate velocity for next frame
-		for (size_t particleIndex = 0; particleIndex < particleCount; ++particleIndex) {
+		for(size_t particleIndex = 0; particleIndex < particleCount; ++particleIndex) {
 			ParticleData *dataContainer = &particleDatas[particleIndex];
 			dataContainer->velocity = (dataContainer->curPosition - dataContainer->prevPosition) * invDt;
 		}
@@ -456,34 +456,34 @@ namespace Demo4 {
 		Render::PushRectangle(commandBuffer, Vec2f(-kSPHBoundaryHalfWidth, -kSPHBoundaryHalfHeight), Vec2f(kSPHBoundaryHalfWidth, kSPHBoundaryHalfHeight) * 2.0f, domainColor, false, 1.0f);
 
 		// Grid fill
-		for (int yIndexInner = 0; yIndexInner < kSPHGridCountY; ++yIndexInner) {
-			for (int xIndexInner = 0; xIndexInner < kSPHGridCountX; ++xIndexInner) {
+		for(int yIndexInner = 0; yIndexInner < kSPHGridCountY; ++yIndexInner) {
+			for(int xIndexInner = 0; xIndexInner < kSPHGridCountX; ++xIndexInner) {
 				size_t cellOffset = SPHComputeCellOffset(xIndexInner, yIndexInner);
 				Cell *cell = &cells[cellOffset];
 				Vec2f innerP = kSPHGridOrigin + Vec2f((float)xIndexInner, (float)yIndexInner) * kSPHGridCellSize;
 				Vec2f innerSize = Vec2f(kSPHGridCellSize, kSPHGridCellSize);
-				if (cell->count > 0) {
+				if(cell->count > 0) {
 					Render::PushRectangle(commandBuffer, innerP, innerSize, ColorLightGray, true);
 				}
 			}
 		}
 
 		// Grid lines
-		for (int yIndex = 0; yIndex < kSPHGridCountY; ++yIndex) {
+		for(int yIndex = 0; yIndex < kSPHGridCountY; ++yIndex) {
 			Vec2f startP = kSPHGridOrigin + Vec2f(0, (float)yIndex) * kSPHGridCellSize;
 			Vec2f endP = kSPHGridOrigin + Vec2f((float)kSPHGridCountX, (float)yIndex) * kSPHGridCellSize;
 			Render::PushLine(commandBuffer, startP, endP, ColorDarkGray, 1.0f);
 		}
-		for (int xIndex = 0; xIndex < kSPHGridCountX; ++xIndex) {
+		for(int xIndex = 0; xIndex < kSPHGridCountX; ++xIndex) {
 			Vec2f startP = kSPHGridOrigin + Vec2f((float)xIndex, 0) * kSPHGridCellSize;
 			Vec2f endP = kSPHGridOrigin + Vec2f((float)xIndex, (float)kSPHGridCountY) * kSPHGridCellSize;
 			Render::PushLine(commandBuffer, startP, endP, ColorDarkGray, 1.0f);
 		}
 
 		// Bodies
-		for (int bodyIndex = 0; bodyIndex < bodyCount; ++bodyIndex) {
+		for(int bodyIndex = 0; bodyIndex < bodyCount; ++bodyIndex) {
 			Body *body = &bodies[bodyIndex];
-			switch (body->type) {
+			switch(body->type) {
 				case BodyType::BodyType_Plane:
 				{
 					Plane *plane = &body->plane;
@@ -512,13 +512,13 @@ namespace Demo4 {
 		}
 
 		// Emitters
-		for (int emitterIndex = 0; emitterIndex < emitterCount; ++emitterIndex) {
+		for(int emitterIndex = 0; emitterIndex < emitterCount; ++emitterIndex) {
 			ParticleEmitter *emitter = &emitters[emitterIndex];
 			emitter->Render(commandBuffer);
 		}
 
 		// Particles
-		for (int particleIndex = 0; particleIndex < particleCount; ++particleIndex) {
+		for(int particleIndex = 0; particleIndex < particleCount; ++particleIndex) {
 			ParticleData &dataContainer = particleDatas[particleIndex];
 			particleColors[particleIndex] = SPHGetParticleColor(params.restDensity, dataContainer.density, dataContainer.pressure, dataContainer.velocity);
 		}

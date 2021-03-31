@@ -216,7 +216,7 @@ void DemoApplication::UpdateAndRender(const float frameTime, const uint64_t cycl
 	if (simulationActive) {
 		float strenth = 10.0f;
 		bool externalForcesApplying = false;
-		Vec2f applyForceDirection = Vec2f();
+		Vec2f applyForceDirection = Vec2f(0,0);
 		if (externalForcesApplying) {
 			demo->AddExternalForces(applyForceDirection * strenth);
 		}

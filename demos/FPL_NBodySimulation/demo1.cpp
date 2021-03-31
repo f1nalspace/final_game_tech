@@ -265,12 +265,12 @@ namespace Demo1 {
 	}
 
 	void Particle::ComputeDeltaPosition(const SPHParameters &params, const float deltaTime, SPHStatistics &stats) {
-		Vec2f dx = Vec2f();
+		Vec2f dx = Vec2f(0,0);
 		size_t neighborCount = GetNeighborCount();
 		float pressure[2] = { _pressure, _nearPressure };
 		for (size_t index = 0; index < neighborCount; ++index) {
 			Particle *neighbor = GetNeighbor(index);
-			Vec2f delta = Vec2f();
+			Vec2f delta = Vec2f(0,0);
 			SPHComputeDelta(params, _curPosition, neighbor->GetPosition(), pressure, deltaTime, &delta);
 			neighbor->SetPosition(neighbor->GetPosition() + delta * 0.5f);
 			dx -= delta * 0.5f;
@@ -556,7 +556,7 @@ namespace Demo1 {
 	}
 	void Particle::IntegrateForces(const float deltaTime) {
 		_velocity += _acceleration * deltaTime;
-		_acceleration = Vec2f();
+		_acceleration = Vec2f(0,0);
 	}
 
 	void Particle::Predict(const float deltaTime) {

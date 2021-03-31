@@ -247,7 +247,7 @@ struct SPHScenarioEmitter {
 	float duration;
 
 	SPHScenarioEmitter() {
-		position = direction = Vec2f();
+		position = direction = Vec2f(0,0);
 		radius = speed = rate = duration = 0.0f;
 	}
 
@@ -317,7 +317,7 @@ const float kSPHBlobVolumeHeight = kSPHBoundaryHeight * 0.5f;
 static SPHScenario SPHScenarios[] = {
 	SPHScenario("Dambreak", Vec2f(0, -10),
 	{
-		SPHScenarioVolume(Vec2f(-kSPHBoundaryHalfWidth + kSPHDambreakVolumeWidth * 0.5f, 0), Vec2f(kSPHDambreakVolumeWidth, kSPHDambreakVolumeHeight), Vec2f()),
+		SPHScenarioVolume(Vec2f(-kSPHBoundaryHalfWidth + kSPHDambreakVolumeWidth * 0.5f, 0), Vec2f(kSPHDambreakVolumeWidth, kSPHDambreakVolumeHeight), Vec2f(0,0)),
 	},
 	{
 	},
@@ -332,8 +332,8 @@ static SPHScenario SPHScenarios[] = {
 
 	SPHScenario("Dambreak x 2", Vec2f(0, -10),
 	{
-		SPHScenarioVolume(Vec2f(-kSPHBoundaryHalfWidth + kSPHDambreakVolumeWidth * 0.5f, 0), Vec2f(kSPHDambreakVolumeWidth, kSPHDambreakVolumeHeight), Vec2f()),
-		SPHScenarioVolume(Vec2f(kSPHBoundaryHalfWidth - kSPHDambreakVolumeWidth * 0.5f, 0), Vec2f(kSPHDambreakVolumeWidth, kSPHDambreakVolumeHeight), Vec2f()),
+		SPHScenarioVolume(Vec2f(-kSPHBoundaryHalfWidth + kSPHDambreakVolumeWidth * 0.5f, 0), Vec2f(kSPHDambreakVolumeWidth, kSPHDambreakVolumeHeight), Vec2f(0,0)),
+		SPHScenarioVolume(Vec2f(kSPHBoundaryHalfWidth - kSPHDambreakVolumeWidth * 0.5f, 0), Vec2f(kSPHDambreakVolumeWidth, kSPHDambreakVolumeHeight), Vec2f(0,0)),
 	},
 	{
 	},
@@ -347,7 +347,7 @@ static SPHScenario SPHScenarios[] = {
 
 	SPHScenario("Blob", Vec2f(0, 0),
 	{
-		SPHScenarioVolume(Vec2f(0, 0), Vec2f(kSPHBlobVolumeWidth, kSPHBlobVolumeHeight), Vec2f()),
+		SPHScenarioVolume(Vec2f(0, 0), Vec2f(kSPHBlobVolumeWidth, kSPHBlobVolumeHeight), Vec2f(0,0)),
 	},
 	{
 	},
@@ -551,8 +551,8 @@ static void SPHSolveLineSegmentCollision(Vec2f *particlePosition, const Vec2f &a
 	float u = Vec2Dot(e, b - particlePos);
 	float v = Vec2Dot(e, particlePos - a);
 
-	Vec2f closest = Vec2f();
-	Vec2f normal = Vec2f();
+	Vec2f closest = Vec2f(0,0);
+	Vec2f normal = Vec2f(0,0);
 
 	if (v <= 0.0f) {
 		// Region A
@@ -675,7 +675,7 @@ static bool FindMTVCirclePolygon(const Vec2f &circlePosition, const size_t verte
 
 force_inline void SPHSolvePolygonCollision(Vec2f *particlePosition, const size_t vertexCount, const Vec2f *verts) {
 	Vec2f particlePos = *particlePosition;
-	Vec2f mtv = Vec2f();
+	Vec2f mtv = Vec2f(0,0);
 	if (FindMTVCirclePolygon(particlePos, vertexCount, verts, &mtv)) {
 		particlePos += mtv;
 		*particlePosition = particlePos;

@@ -100,11 +100,11 @@ namespace Demo4 {
 
 		inline ParticleData(const Vec2f &pos) {
 			prevPosition = curPosition = pos;
-			acceleration = velocity = Vec2f();
+			acceleration = velocity = Vec2f(0,0);
 			density = nearDensity = 0;
 			pressure = nearPressure = 0;
 		}
-		inline ParticleData() : ParticleData(Vec2f()) {
+		inline ParticleData() : ParticleData(Vec2f(0,0)) {
 		}
 	};
 

@@ -176,7 +176,7 @@ namespace Demo3 {
 			for (size_t index = 0; index < neighborCount; ++index) {
 				size_t neighborIndex = particle.neighbors[index];
 				Particle &neighbor = particles[neighborIndex];
-				Vec2f force = Vec2f();
+				Vec2f force = Vec2f(0,0);
 				SPHComputeViscosityForce(params, particle.curPosition, neighbor.curPosition, particle.velocity, neighbor.velocity, &force);
 				particle.velocity -= force * deltaTime * 0.5f;
 				neighbor.velocity += force * deltaTime * 0.5f;
@@ -187,12 +187,12 @@ namespace Demo3 {
 	void ParticleSimulation::DeltaPositions(const size_t startIndex, const size_t endIndex, const float deltaTime) {
 		for (size_t particleIndex = startIndex; particleIndex <= endIndex; ++particleIndex) {
 			Particle &particle = particles[particleIndex];
-			Vec2f accumulatedDelta = Vec2f();
+			Vec2f accumulatedDelta = Vec2f(0,0);
 			size_t neighborCount = particle.neighbors.size();
 			for (size_t index = 0; index < neighborCount; ++index) {
 				size_t neighborIndex = particle.neighbors[index];
 				Particle &neighbor = particles[neighborIndex];
-				Vec2f delta = Vec2f();
+				Vec2f delta = Vec2f(0,0);
 				SPHComputeDelta(params, particle.curPosition, neighbor.curPosition, &particle.pressure, deltaTime, &delta);
 				neighbor.curPosition += delta * 0.5f;
 				accumulatedDelta -= delta * 0.5f;
@@ -252,7 +252,7 @@ namespace Demo3 {
 				Particle &particle = particles[particleIndex];
 				particle.acceleration += gravity + externalForce;
 				particle.velocity += particle.acceleration * deltaTime;
-				particle.acceleration = Vec2f();
+				particle.acceleration = Vec2f(0,0);
 			}
 			auto deltaClock = std::chrono::high_resolution_clock::now() - startClock;
 			stats.time.integration = std::chrono::duration_cast<std::chrono::nanoseconds>(deltaClock).count() * nanosToMilliseconds;
