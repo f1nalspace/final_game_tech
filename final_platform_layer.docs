@@ -1456,9 +1456,9 @@
 
 	// Forcing the video driver to be modern OpenGL with Core profile and for GL version 3.3
 	videoSettings.driver = fplVideoDriverType_OpenGL;
-	videoSettings.opengl.compabilityFlags = fplOpenGLCompabilityFlags_Core;
-	videoSettings.opengl.majorVersion = 3;
-	videoSettings.opengl.minorVersion = 3;
+	videoSettings.graphics.opengl.compabilityFlags = fplOpenGLCompabilityFlags_Core;
+	videoSettings.graphics.opengl.majorVersion = 3;
+	videoSettings.graphics.opengl.minorVersion = 3;
 
 	if (fplPlatformInit(fplInitFlags_Video, &settings)) {
 		// ... modern context is ready
@@ -1493,9 +1493,9 @@
 
 	// Forcing the video driver to be modern OpenGL with Core profile and for GL version 3.3
 	videoSettings.driver = fplVideoDriverType_OpenGL;
-	videoSettings.opengl.compabilityFlags = fplOpenGLCompabilityFlags_Core;
-	videoSettings.opengl.majorVersion = 3;
-	videoSettings.opengl.minorVersion = 3;
+	videoSettings.graphics.opengl.compabilityFlags = fplOpenGLCompabilityFlags_Core;
+	videoSettings.graphics.opengl.majorVersion = 3;
+	videoSettings.graphics.opengl.minorVersion = 3;
 
 	// Use 4x MSAA
 	videoSettings.opengl.multiSamplingCount = 4;
@@ -2019,9 +2019,9 @@
 	FPL provides a couple of functions for query operating system or platform information.
 
 	@section section_category_platform_type Get Current Platform Type/Name
-			Use @ref fplGetPlatformType() to get the current @ref fplPlatformType .<br>
+			Use @ref fplGetPlatformType() to get the current @ref fplPlatformType .<br>
 	This can be useful to do different operations on different platforms.<br>
-	<br>	Use @ref fplGetPlatformName() to get a string representation for the given @ref fplPlatformType .<br>
+	<br>	Use @ref fplGetPlatformName() to get a string representation for the given @ref fplPlatformType .<br>
 	
 	@code{.c}
 	fplPlatformType currentPlatform = fplGetPlatformType();
