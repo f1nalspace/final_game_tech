@@ -539,7 +539,7 @@ int main(int argc, char **args) {
 				fplVideoFlip();
 
 				fplWallClock endFrameClock = fplGetWallClock();
-				lastFrameTime = fplGetWallDelta(lastFrameClock, endFrameClock);
+				lastFrameTime = (float)fplGetWallDelta(lastFrameClock, endFrameClock);
 				lastFrameClock = endFrameClock;
 
 				uint64_t endCycles = fplCPURDTSC();
