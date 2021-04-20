@@ -75,7 +75,7 @@ SOFTWARE.
 
 /*!
 	\file final_xml.h
-	\version v0.2.0 alpha
+	\version v0.3.0 alpha
 	\author Torsten Spaete
 	\brief Final XML (FXML) - A open source C99 single file header xml parser library.
 */
@@ -83,6 +83,12 @@ SOFTWARE.
 /*!
 	\page page_changelog Changelog
 	\tableofcontents
+
+	## v0.3.0 alpha:
+	- Fixed missing const for fxmlFindTagByName
+	- Fixed missing const for fxmlFindAttributeByName
+	- Fixed missing const for fxmlGetAttributeValue
+	- Fixed missing const for fxmlGetTagValue
 
 	## v0.2.0 alpha:
 	- Fixed critical crash when allocating memory (Wrong capacity)
@@ -181,8 +187,8 @@ extern "C" {
 	} fxmlMemory;
 
 	typedef struct fxmlTag {
-		char *name;
-		char *value;
+		const char *name;
+		const char *value;
 		struct fxmlTag *parent;
 		struct fxmlTag *nextSibling;
 		struct fxmlTag *prevSibling;
@@ -208,10 +214,10 @@ extern "C" {
 	fxml_api bool fxmlInitFromMemory(const void *data, const size_t dataSize, fxmlContext *outContext);
 	fxml_api bool fxmlParse(fxmlContext *context, fxmlTag *outRoot);
 	fxml_api void fxmlFree(fxmlContext *context);
-	fxml_api fxmlTag *fxmlFindTagByName(fxmlTag *tag, const char *name);
-	fxml_api fxmlTag *fxmlFindAttributeByName(fxmlTag *tag, const char *name);
-	fxml_api const char *fxmlGetAttributeValue(fxmlTag *tag, const char *attrName);
-	fxml_api const char *fxmlGetTagValue(fxmlTag *tag, const char *tagName);
+	fxml_api const fxmlTag *fxmlFindTagByName(const fxmlTag *tag, const char *name);
+	fxml_api const fxmlTag *fxmlFindAttributeByName(const fxmlTag *tag, const char *name);
+	fxml_api const char *fxmlGetAttributeValue(const fxmlTag *tag, const char *attrName);
+	fxml_api const char *fxmlGetTagValue(const fxmlTag *tag, const char *tagName);
 
 #ifdef __cplusplus
 }
@@ -344,7 +350,7 @@ extern "C" {
 		return(mem);
 	}
 
-	static char *fxml__AllocString(fxmlContext *context, const fxmlString *str) {
+	static const char *fxml__AllocString(fxmlContext *context, const fxmlString *str) {
 		size_t requiredLen = str->len + 1;
 		size_t requiredSize = sizeof(char) * requiredLen;
 		char *mem = (char *)fxml__AllocMemory(context, requiredSize, 1);
@@ -353,7 +359,7 @@ extern "C" {
 		return(mem);
 	}
 
-	static char *fxml__AllocStringDecode(fxmlContext *context, const fxmlString *str) {
+	static const char *fxml__AllocStringDecode(fxmlContext *context, const fxmlString *str) {
 		size_t requiredLen = (str->len * 1) + 1;
 		size_t requiredSize = sizeof(char) * requiredLen;
 		char *mem = (char *)fxml__AllocMemory(context, requiredSize, 1);
@@ -784,10 +790,10 @@ extern "C" {
 		fxml__FreeMemory(context);
 	}
 
-	fxml_api fxmlTag *fxmlFindTagByName(fxmlTag *tag, const char *name) {
-		fxmlTag *result = fxml_null;
+	fxml_api const fxmlTag *fxmlFindTagByName(const fxmlTag *tag, const char *name) {
+		const fxmlTag *result = fxml_null;
 		if (tag != fxml_null) {
-			fxmlTag *searchTag = tag->firstChild;
+			const fxmlTag *searchTag = tag->firstChild;
 			while (searchTag != fxml_null) {
 				if (searchTag->type == fxmlTagType_Element && fxml__IsEqualString(searchTag->name, name)) {
 					result = searchTag;
@@ -799,10 +805,10 @@ extern "C" {
 		return(result);
 	}
 
-	fxml_api fxmlTag *fxmlFindAttributeByName(fxmlTag *tag, const char *name) {
-		fxmlTag *result = fxml_null;
+	fxml_api const fxmlTag *fxmlFindAttributeByName(const fxmlTag *tag, const char *name) {
+		const fxmlTag *result = fxml_null;
 		if (tag != fxml_null) {
-			fxmlTag *searchAttr = tag->firstAttribute;
+			const fxmlTag *searchAttr = tag->firstAttribute;
 			while (searchAttr != fxml_null) {
 				if (searchAttr->type == fxmlTagType_Attribute && fxml__IsEqualString(searchAttr->name, name)) {
 					result = searchAttr;
@@ -814,16 +820,16 @@ extern "C" {
 		return(result);
 	}
 
-	fxml_api const char *fxmlGetAttributeValue(fxmlTag *tag, const char *attrName) {
-		fxmlTag *foundAttr = fxmlFindAttributeByName(tag, attrName);
+	fxml_api const char *fxmlGetAttributeValue(const fxmlTag *tag, const char *attrName) {
+		const fxmlTag *foundAttr = fxmlFindAttributeByName(tag, attrName);
 		if (foundAttr != fxml_null) {
 			return foundAttr->value;
 		}
 		return fxml_null;
 	}
 
-	fxml_api const char *fxmlGetTagValue(fxmlTag *tag, const char *tagName) {
-		fxmlTag *foundTag = fxmlFindTagByName(tag, tagName);
+	fxml_api const char *fxmlGetTagValue(const fxmlTag *tag, const char *tagName) {
+		const fxmlTag *foundTag = fxmlFindTagByName(tag, tagName);
 		if (foundTag != fxml_null) {
 			return foundTag->value;
 		}
