@@ -133,7 +133,7 @@ SOFTWARE.
 	@tableofcontents
 
 	## v0.9.7-beta
-	- XXX
+	- New[ #105]: [Win32] Added support for creating and using a console in addition to a window
 
 	## v0.9.6-beta
 	### Features
@@ -4252,7 +4252,7 @@ typedef uint32_t fplThreadState;
 typedef enum fplThreadPriority {
 	//! Unknown priority
 	fplThreadPriority_Unknown = -10,
-	
+
 	//! Idle priority (Only when nothing is going on)
 	fplThreadPriority_Idle = -2,
 	//! Low priority
@@ -6753,7 +6753,7 @@ fplStaticAssert(sizeof(fpl__LinuxSignalHandle) >= sizeof(int));
 // Internal memory
 //
 fpl_internal void *fpl__AllocateMemory(const fplMemoryAllocationSettings *allocSettings, const size_t size, const size_t alignment);
-fpl_internal void fpl__ReleaseMemory(const fplMemoryAllocationSettings * allocSettings, void *ptr); 
+fpl_internal void fpl__ReleaseMemory(const fplMemoryAllocationSettings *allocSettings, void *ptr);
 
 //
 // Internal logging system
@@ -7834,20 +7834,20 @@ typedef FPL__FUNC_PTHREAD_sem_getvalue(fpl__pthread_func_sem_getvalue);
 
 typedef struct fpl__PThreadApi {
 	void *libHandle;
-	
+
 	// pthread_t
 	fpl__pthread_func_pthread_self *pthread_self;
 	fpl__pthread_func_pthread_setschedparam *pthread_setschedparam;
 	fpl__pthread_func_pthread_getschedparam *pthread_getschedparam;
 	fpl__pthread_func_pthread_setschedprio *pthread_setschedprio;
-	
+
 	fpl__pthread_func_pthread_create *pthread_create;
 	fpl__pthread_func_pthread_kill *pthread_kill;
 	fpl__pthread_func_pthread_join *pthread_join;
 	fpl__pthread_func_pthread_exit *pthread_exit;
 	fpl__pthread_func_pthread_yield *pthread_yield;
 	fpl__pthread_func_pthread_timedjoin_np *pthread_timedjoin_np;
-	
+
 	// pthread_attr_t
 	fpl__pthread_func_pthread_attr_init *pthread_attr_init;
 	fpl__pthread_func_pthread_attr_getschedparam *pthread_attr_getschedparam;
@@ -7916,7 +7916,7 @@ fpl_internal bool fpl__PThreadLoadApi(fpl__PThreadApi *pthreadApi) {
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_exit, pthread_exit);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_yield, pthread_yield);
 			FPL__POSIX_GET_FUNCTION_ADDRESS_OPTIONAL(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_timedjoin_np, pthread_timedjoin_np);
-			
+
 			// pthread_attr_t
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_attr_init, pthread_attr_init);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_attr_getschedparam, pthread_attr_getschedparam);
@@ -11567,10 +11567,20 @@ fpl_internal bool fpl__Win32InitPlatform(const fplInitFlags initFlags, const fpl
 	}
 
 	// Init console
-	if(!(initFlags & fplInitFlags_Window) && (initFlags & fplInitFlags_Console)) {
+	if(initFlags & fplInitFlags_Console) {
 		HWND consoleHandle = GetConsoleWindow();
 		if(consoleHandle == fpl_null) {
+			// Create or attach console
 			AllocConsole();
+			AttachConsole(GetCurrentProcessId());
+
+			// Redirect out/in/err to console
+			HANDLE hConOut = CreateFile(L"CONOUT$", GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+			HANDLE hConIn = CreateFile(L"CONIN$", GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+			SetStdHandle(STD_OUTPUT_HANDLE, hConOut);
+			SetStdHandle(STD_ERROR_HANDLE, hConOut);
+			SetStdHandle(STD_INPUT_HANDLE, hConIn);
+
 			win32AppState->console.isAllocated = true;
 		}
 	}
@@ -11991,7 +12001,7 @@ fpl_internal DWORD WINAPI fpl__Win32ThreadProc(void *data) {
 
 	fplThreadParameters parameters = thread->parameters;
 
-	
+
 
 	if(parameters.runFunc != fpl_null) {
 		parameters.runFunc(thread, parameters.userData);
@@ -13689,7 +13699,7 @@ fpl_platform_api bool fplQueryCursorPosition(int32_t *outX, int32_t *outY) {
 				*outX = p.x - info.rcMonitor.left;
 				*outY = p.y - info.rcMonitor.top;
 				return(true);
-			}
+}
 		}
 #else
 		*outX = p.x;
@@ -14359,29 +14369,29 @@ fpl_platform_api fplThreadHandle *fplThreadCreateWithParameters(fplThreadParamet
 		thread->parameters = *parameters;
 		thread->isValid = false;
 		thread->isStopping = false;
-		
+
 		fplThreadPriority initialPriority = parameters->priority;
 
 		// Setup attributes
 		pthread_attr_t *attrPtr = fpl_null;
 		pthread_attr_t attr;
-		if (pthreadApi->pthread_attr_init(&attr) == 0) {
+		if(pthreadApi->pthread_attr_init(&attr) == 0) {
 			// Scheduler policy
 			int scheduler = -1;
-			if (initialPriority == fplThreadPriority_Idle) {
+			if(initialPriority == fplThreadPriority_Idle) {
 #if defined(SCHED_IDLE)
-				if (pthreadApi->pthread_attr_setschedpolicy(&attr, SCHED_IDLE) == 0) {
+				if(pthreadApi->pthread_attr_setschedpolicy(&attr, SCHED_IDLE) == 0) {
 					scheduler = SCHED_IDLE;
 				}
 #endif
-			} else if (initialPriority >= fplThreadPriority_High){
+			} else if(initialPriority >= fplThreadPriority_High) {
 #if defined(SCHED_FIFO)
-				if ((scheduler == -1) && (pthreadApi->pthread_attr_setschedpolicy(&attr, SCHED_FIFO) == 0)) {
+				if((scheduler == -1) && (pthreadApi->pthread_attr_setschedpolicy(&attr, SCHED_FIFO) == 0)) {
 					scheduler = SCHED_FIFO;
 				}
 #endif
 #if defined(SCHED_RR)
-				if ((scheduler == -1) && (pthreadApi->pthread_attr_setschedpolicy(&attr, SCHED_RR) == 0)) {
+				if((scheduler == -1) && (pthreadApi->pthread_attr_setschedpolicy(&attr, SCHED_RR) == 0)) {
 					scheduler = SCHED_RR;
 				}
 #endif
@@ -14389,35 +14399,35 @@ fpl_platform_api fplThreadHandle *fplThreadCreateWithParameters(fplThreadParamet
 				// @TODO(final): Is sched_getscheduler supported for all POSIX standards?
 				scheduler = sched_getscheduler(0);
 			}
-			
+
 			// Stack size
-			if (parameters->stackSize > 0) {
+			if(parameters->stackSize > 0) {
 				pthreadApi->pthread_attr_setstacksize(&attr, parameters->stackSize);
 			}
-			
+
 			// Priority
-			if (scheduler != -1) {
+			if(scheduler != -1) {
 				struct sched_param sched;
-				if (pthreadApi->pthread_attr_getschedparam(&attr, &sched) == 0) {
+				if(pthreadApi->pthread_attr_getschedparam(&attr, &sched) == 0) {
 					int maxThreadPrioCount = (fplThreadPriority_Last - fplThreadPriority_First) + 1;
 					fplAssert(maxThreadPrioCount > 0);
-					
+
 					int minPrio = sched_get_priority_min(scheduler);
 					int maxPrio = sched_get_priority_max(scheduler);
 					int range = maxPrio - minPrio;
 					int step = range / maxThreadPrioCount;
-					
+
 					int priority;
-					if (initialPriority == fplThreadPriority_Lowest) {
+					if(initialPriority == fplThreadPriority_Lowest) {
 						priority = minPrio;
-					} else if (initialPriority == fplThreadPriority_Highest) {
+					} else if(initialPriority == fplThreadPriority_Highest) {
 						priority = maxPrio;
 					} else {
 						int threadPrioNumber = (int)(initialPriority - fplThreadPriority_First) + 1;
 						priority = minPrio + threadPrioNumber * step;
-						if (priority < minPrio){
+						if(priority < minPrio) {
 							priority = minPrio;
-						} else if (priority > maxPrio){
+						} else if(priority > maxPrio) {
 							priority = maxPrio;
 						}
 					}
@@ -14426,10 +14436,10 @@ fpl_platform_api fplThreadHandle *fplThreadCreateWithParameters(fplThreadParamet
 					pthreadApi->pthread_attr_setschedparam(&attr, &sched);
 				}
 			}
-			
+
 			attrPtr = &attr;
 		}
-			
+
 		// Create thread
 		thread->currentState = fplThreadState_Starting;
 		int threadRes;
@@ -14467,57 +14477,57 @@ fpl_platform_api fplThreadPriority fplGetThreadPriority(fplThreadHandle *thread)
 	const fpl__PThreadApi *pthreadApi = &appState->posix.pthreadApi;
 
 	pthread_t curThread = pthreadApi->pthread_self();
-	
+
 	int currentSchedulerPolicy;
 	struct sched_param params;
-	if (pthreadApi->pthread_getschedparam(curThread, &currentSchedulerPolicy, &params) != 0) {
+	if(pthreadApi->pthread_getschedparam(curThread, &currentSchedulerPolicy, &params) != 0) {
 		FPL__ERROR(FPL__MODULE_THREADING, "Failed getting scheduler parameters for pthread '%d'", curThread);
 		return(fplThreadPriority_Unknown);
 	}
-	
+
 	int maxThreadPrioCount = (fplThreadPriority_Last - fplThreadPriority_First) + 1;
 	fplAssert(maxThreadPrioCount > 0);
-	
+
 	int minPrio = sched_get_priority_min(currentSchedulerPolicy);
 	int maxPrio = sched_get_priority_max(currentSchedulerPolicy);
 	int range = maxPrio - minPrio;
 	int step = range / maxThreadPrioCount;
-	
+
 	int currentPrio = params.sched_priority;
-	
+
 	fplThreadPriority result;
-	if (minPrio == maxPrio || currentPrio == minPrio) {
+	if(minPrio == maxPrio || currentPrio == minPrio) {
 		result = fplThreadPriority_Lowest;
-	} else if (currentPrio == maxPrio) {
+	} else if(currentPrio == maxPrio) {
 		result = fplThreadPriority_Highest;
 	} else {
 		int index = (currentPrio - minPrio) / step;
 		fplAssert(index >= 0 && index < maxThreadPrioCount);
 		result = (fplThreadPriority)index;
 	}
-	
+
 	return(result);
 }
 
 fpl_platform_api bool fplSetThreadPriority(fplThreadHandle *thread, const fplThreadPriority newPriority) {
-	if (newPriority == fplThreadPriority_Unknown) return(false);
+	if(newPriority == fplThreadPriority_Unknown) return(false);
 	FPL__CheckPlatform(false);
 	const fpl__PlatformAppState *appState = fpl__global__AppState;
 	const fpl__PThreadApi *pthreadApi = &appState->posix.pthreadApi;
 
 	pthread_t curThread = pthreadApi->pthread_self();
-	
+
 	int currentSchedulerPolicy;
 	struct sched_param params;
-	if (pthreadApi->pthread_getschedparam(curThread, &currentSchedulerPolicy, &params) != 0) {
+	if(pthreadApi->pthread_getschedparam(curThread, &currentSchedulerPolicy, &params) != 0) {
 		FPL__ERROR(FPL__MODULE_THREADING, "Failed getting scheduler parameters for pthread '%d'", curThread);
 		return(false);
 	}
-	
+
 	// Build policy table
 	int newSchedulerPolicies[3];
 	int schedulerPolicyCount = 0;
-	switch (newPriority){
+	switch(newPriority) {
 		case fplThreadPriority_Idle:
 		case fplThreadPriority_Low:
 		case fplThreadPriority_Normal:
@@ -14541,41 +14551,41 @@ fpl_platform_api bool fplSetThreadPriority(fplThreadHandle *thread, const fplThr
 		default:
 			break;
 	}
-	
+
 	int maxThreadPrioCount = (fplThreadPriority_Last - fplThreadPriority_First) + 1;
 	fplAssert(maxThreadPrioCount > 0);
-	
+
 	// Bring priority in range of 1-N
 	int threadPrioNumber = (int)(newPriority - fplThreadPriority_First) + 1;
-	
-	for (int i = 0; i < schedulerPolicyCount; ++i) {
+
+	for(int i = 0; i < schedulerPolicyCount; ++i) {
 		int policy = newSchedulerPolicies[i];
 		int minPrio = sched_get_priority_min(policy);
 		int maxPrio = sched_get_priority_max(policy);
 		int range = maxPrio - minPrio;
 		int step = range / maxThreadPrioCount;
-		
+
 		int priority;
-		if (newPriority == fplThreadPriority_Lowest) {
+		if(newPriority == fplThreadPriority_Lowest) {
 			priority = minPrio;
-		} else if (newPriority == fplThreadPriority_Highest) {
+		} else if(newPriority == fplThreadPriority_Highest) {
 			priority = maxPrio;
 		} else {
 			priority = minPrio + threadPrioNumber * step;
-			if (priority < minPrio){
+			if(priority < minPrio) {
 				priority = minPrio;
-			} else if (priority > maxPrio){
+			} else if(priority > maxPrio) {
 				priority = maxPrio;
 			}
 		}
 		params.sched_priority = priority;
-		if (pthreadApi->pthread_setschedparam(curThread, policy, &params) == 0) {
+		if(pthreadApi->pthread_setschedparam(curThread, policy, &params) == 0) {
 			return(true); // Finally we found a policy and priority which is supported		
 		} else {
 			FPL__WARNING(FPL__MODULE_THREADING, "Failed to set thread priority '%d' with policy '%d'", priority, policy);
 		}
 	}
-	
+
 	return(false);
 }
 
@@ -14584,7 +14594,7 @@ fpl_platform_api bool fplThreadWaitForOne(fplThreadHandle *thread, const fplTime
 	const fpl__PlatformAppState *appState = fpl__global__AppState;
 	const fpl__PThreadApi *pthreadApi = &appState->posix.pthreadApi;
 	bool result = false;
-	if((thread != fpl_null) && (fplGetThreadState(thread) != fplThreadState_Stopped)) {	
+	if((thread != fpl_null) && (fplGetThreadState(thread) != fplThreadState_Stopped)) {
 		pthread_t threadHandle = thread->internalHandle.posixThread;
 
 		// @NOTE(final): We optionally use the GNU extension "pthread_timedjoin_np" to support joining with a timeout.
@@ -14801,7 +14811,7 @@ fpl_platform_api bool fplSemaphoreInit(fplSemaphoreHandle *semaphore, const uint
 		return false;
 	}
 	FPL__CheckPlatform(false);
-	
+
 	const fpl__PlatformAppState *appState = fpl__global__AppState;
 	const fpl__PThreadApi *pthreadApi = &appState->posix.pthreadApi;
 	sem_t handle;
@@ -19733,7 +19743,7 @@ fpl_internal fplAudioFormatType fpl__MapAlsaFormatToAudioFormat(snd_pcm_format_t
 fpl_internal fplAudioResultType fpl__AudioInitAlsa(const fplAudioSettings *audioSettings, const fplAudioDeviceFormat *targetFormat, fpl__CommonAudioState *commonAudio, fpl__AlsaAudioState *alsaState) {
 	snd_pcm_hw_params_t *hardwareParams = fpl_null;
 	snd_pcm_sw_params_t *softwareParams = fpl_null;
-	
+
 #	define FPL__ALSA_INIT_ERROR(ret, format, ...) do { \
 		if (softwareParams != fpl_null) fpl__ReleaseTemporaryMemory(softwareParams); \
 		if (hardwareParams != fpl_null) fpl__ReleaseTemporaryMemory(hardwareParams); \
@@ -19878,7 +19888,7 @@ fpl_internal fplAudioResultType fpl__AudioInitAlsa(const fplAudioSettings *audio
 	if(!audioSettings->specific.alsa.noMMap) {
 		if(alsaApi->snd_pcm_hw_params_set_access(alsaState->pcmDevice, hardwareParams, SND_PCM_ACCESS_MMAP_INTERLEAVED) == 0) {
 			alsaState->isUsingMMap = true;
-		} else {		
+		} else {
 			FPL_LOG_ERROR("ALSA", "Failed setting MMap access mode for device '%s', trying fallback to standard mode!", deviceName);
 		}
 	}
@@ -19924,9 +19934,9 @@ fpl_internal fplAudioResultType fpl__AudioInitAlsa(const fplAudioSettings *audio
 	} else {
 		foundFormat = preferredFormat;
 	}
-	
+
 	fpl__ReleaseTemporaryMemory(formatMask);
-	
+
 	if(foundFormat == SND_PCM_FORMAT_UNKNOWN) {
 		FPL__ALSA_INIT_ERROR(fplAudioResultType_Failed, "No supported audio format for device '%s' found!", deviceName);
 	}
@@ -20030,7 +20040,7 @@ fpl_internal fplAudioResultType fpl__AudioInitAlsa(const fplAudioSettings *audio
 	fplAssert(internalFormat.channels <= 2);
 
 #undef FPL__ALSA_INIT_ERROR
-	
+
 	fpl__ReleaseTemporaryMemory(softwareParams);
 	fpl__ReleaseTemporaryMemory(hardwareParams);
 
@@ -20657,7 +20667,7 @@ fpl_internal void fpl__ShutdownVideo(fpl__PlatformAppState *appState, fpl__Video
 #			elif defined(FPL_SUBPLATFORM_X11)
 				fpl__X11ReleaseVideoSoftware(&appState->x11, &appState->window.x11, &videoState->x11.software);
 #			endif
-			} break;
+		} break;
 #		endif // FPL__ENABLE_VIDEO_SOFTWARE
 
 			default:
@@ -20669,10 +20679,10 @@ fpl_internal void fpl__ShutdownVideo(fpl__PlatformAppState *appState, fpl__Video
 		fplVideoBackBuffer *backbuffer = &videoState->softwareBackbuffer;
 		if(backbuffer->pixels != fpl_null) {
 			fpl__ReleaseDynamicMemory(backbuffer->pixels);
-		}
+	}
 		fplClearStruct(backbuffer);
 #	endif
-	}
+}
 }
 
 fpl_internal void fpl__ReleaseVideoState(fpl__PlatformAppState *appState, fpl__VideoState *videoState) {
@@ -20693,12 +20703,12 @@ fpl_internal void fpl__ReleaseVideoState(fpl__PlatformAppState *appState, fpl__V
 		case fplVideoDriverType_Software:
 		{
 			// Nothing todo
-		}; break;
+	}; break;
 #	endif
 
 		default:
 			break;
-	}
+}
 	fplClearStruct(videoState);
 }
 
@@ -20754,7 +20764,7 @@ fpl_internal bool fpl__InitVideo(const fplVideoDriverType driver, const fplVideo
 			for(uint32_t x = 0; x < backbuffer->width; ++x) {
 				*p++ = color;
 			}
-		}
+}
 	}
 #	endif // FPL__ENABLE_VIDEO_SOFTWARE
 
@@ -20779,7 +20789,7 @@ fpl_internal bool fpl__InitVideo(const fplVideoDriverType driver, const fplVideo
 #		elif defined(FPL_SUBPLATFORM_X11)
 			videoInitResult = fpl__X11InitVideoSoftware(&appState->x11, &appState->window.x11, videoSettings, &videoState->softwareBackbuffer, &videoState->x11.software);
 #		endif
-		} break;
+	} break;
 #	endif // FPL__ENABLE_VIDEO_SOFTWARE
 
 		default:
@@ -20836,14 +20846,14 @@ fpl_internal FPL__FUNC_PRE_SETUP_WINDOW(fpl__PreSetupWindowDefault) {
 #			if defined(FPL_SUBPLATFORM_X11) && 0
 				result = fpl__X11SetPreWindowSetupForSoftware(&appState->x11.api, &appState->window.x11, &videoState->x11.software, &outResult->x11);
 #			endif
-			} break;
+		} break;
 #		endif // FPL__ENABLE_VIDEO_OPENGL
 
 			default:
 			{
 			} break;
-		}
 	}
+}
 #	endif // FPL__ENABLE_VIDEO
 
 	return(result);
@@ -21262,7 +21272,7 @@ fpl_common_api fplVideoBackBuffer *fplGetVideoBackBuffer() {
 #	if defined(FPL__ENABLE_VIDEO_SOFTWARE)
 		if(appState->currentSettings.video.driver == fplVideoDriverType_Software) {
 			result = &videoState->softwareBackbuffer;
-		}
+}
 #	endif
 	}
 	return(result);
@@ -21278,7 +21288,7 @@ fpl_common_api bool fplResizeVideoBackBuffer(const uint32_t width, const uint32_
 		if(videoState->activeDriver == fplVideoDriverType_Software) {
 			fpl__ShutdownVideo(appState, videoState);
 			result = fpl__InitVideo(fplVideoDriverType_Software, &appState->currentSettings.video, width, height, appState, videoState);
-		}
+}
 #	endif
 	}
 	return (result);
@@ -21315,8 +21325,8 @@ fpl_common_api void fplVideoFlip() {
 						wapi->gdi.StretchDIBits(win32WindowState->deviceContext, 0, 0, area.width, area.height, 0, 0, 0, 0, fpl_null, fpl_null, DIB_RGB_COLORS, BLACKNESS);
 					}
 					wapi->gdi.StretchDIBits(win32WindowState->deviceContext, targetX, targetY, targetWidth, targetHeight, 0, 0, sourceWidth, sourceHeight, backbuffer->pixels, &software->bitmapInfo, DIB_RGB_COLORS, SRCCOPY);
-				}
-			} break;
+	}
+} break;
 #		endif
 
 #		if defined(FPL__ENABLE_VIDEO_OPENGL)
@@ -21390,7 +21400,7 @@ fpl_internal void fpl__ReleasePlatformStates(fpl__PlatformInitState *initState, 
 		fpl__AudioState *audioState = fpl__GetAudioState(appState);
 		if(audioState != fpl_null) {
 			fpl__ReleaseAudio(audioState);
-		}
+}
 	}
 #	endif
 
@@ -21450,9 +21460,9 @@ fpl_internal void fpl__ReleasePlatformStates(fpl__PlatformInitState *initState, 
 			FPL_LOG_DEBUG("Core", "Release POSIX Subplatform");
 			fpl__PosixReleaseSubplatform(&appState->posix);
 #		endif
-		}
+	}
 
-		// Release platform applicatiom state memory
+	// Release platform applicatiom state memory
 		FPL_LOG_DEBUG(FPL__MODULE_CORE, "Release allocated Platform App State Memory");
 		fplMemoryAlignedFree(appState);
 		fpl__global__AppState = fpl_null;
@@ -21540,7 +21550,7 @@ fpl_common_api bool fplPlatformInit(const fplInitFlags initFlags, const fplSetti
 		platformAppStateSize += FPL__ARBITARY_PADDING;
 		audioMemoryOffset = platformAppStateSize;
 		platformAppStateSize += sizeof(fpl__AudioState);
-	}
+}
 #endif
 
 	FPL_LOG_DEBUG(FPL__MODULE_CORE, "Allocate Platform App State Memory of size '%zu':", platformAppStateSize);
@@ -21562,17 +21572,25 @@ fpl_common_api bool fplPlatformInit(const fplInitFlags initFlags, const fplSetti
 
 	FPL_LOG_DEBUG(FPL__MODULE_CORE, "Successfully allocated Platform App State Memory of size '%zu'", platformAppStateSize);
 
-	// Window is required for video always
+	// Application types
+#	if defined(FPL_APPTYPE_WINDOW)
+	appState->initFlags |= fplInitFlags_Window;
+#	elif defined(FPL_APPTYPE_CONSOLE)
+	appState->initFlags |= fplInitFlags_Console;
+#	endif
+
+	// Force the inclusion of window when Video flags is set or remove the video flags when video is disabled
 #	if defined(FPL__ENABLE_VIDEO)
 	if(appState->initFlags & fplInitFlags_Video) {
 		appState->initFlags |= fplInitFlags_Window;
 	}
+#	else
+	appState->initFlags = (fplInitFlags)(appState->initFlags & ~fplInitFlags_Video);
 #	endif
+
+	// Window flag are removed when windowing is disabled
 #	if !defined(FPL__ENABLE_WINDOW)
 	appState->initFlags = (fplInitFlags)(appState->initFlags & ~fplInitFlags_Window);
-#	endif
-#	if defined(FPL_APPTYPE_CONSOLE)
-	appState->initFlags |= fplInitFlags_Console;
 #	endif
 
 	// Initialize sub-platforms
