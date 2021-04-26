@@ -133,7 +133,8 @@ SOFTWARE.
 	@tableofcontents
 
 	## v0.9.7-beta
-	- New[ #105]: [Win32] Added support for creating and using a console in addition to a window
+	- New[#105]: [Win32] Added support for creating and using a console in addition to a window
+	- Fixed[#98]: [Win32] Fixed fplThreadYield was not using YieldProcessor()
 
 	## v0.9.6-beta
 	### Features
@@ -12131,8 +12132,8 @@ fpl_platform_api void fplThreadSleep(const uint32_t milliseconds) {
 }
 
 fpl_platform_api bool fplThreadYield() {
-	bool result = SwitchToThread() == TRUE;
-	return(result);
+	YieldProcessor();
+	return(true);
 }
 
 fpl_platform_api bool fplThreadTerminate(fplThreadHandle *thread) {
