@@ -538,7 +538,7 @@ int main(int argc, char **args) {
 	fplCopyString("FPL Legacy OpenGL", settings.window.title, fplArrayCount(settings.window.title));
 	settings.video.graphics.opengl.compabilityFlags = fplOpenGLCompabilityFlags_Legacy;
 #endif
-	if (fplPlatformInit(fplInitFlags_Video, &settings)) {
+	if (fplPlatformInit(fplInitFlags_Video | fplInitFlags_Console, &settings)) {
 		const char *version = (const char *)glGetString(GL_VERSION);
 		const char *vendor = (const char *)glGetString(GL_VENDOR);
 		const char *renderer = (const char *)glGetString(GL_RENDERER);
