@@ -13700,7 +13700,7 @@ fpl_platform_api bool fplQueryCursorPosition(int32_t *outX, int32_t *outY) {
 				*outX = p.x - info.rcMonitor.left;
 				*outY = p.y - info.rcMonitor.top;
 				return(true);
-}
+			}
 		}
 #else
 		*outX = p.x;
@@ -20668,7 +20668,7 @@ fpl_internal void fpl__ShutdownVideo(fpl__PlatformAppState *appState, fpl__Video
 #			elif defined(FPL_SUBPLATFORM_X11)
 				fpl__X11ReleaseVideoSoftware(&appState->x11, &appState->window.x11, &videoState->x11.software);
 #			endif
-		} break;
+			} break;
 #		endif // FPL__ENABLE_VIDEO_SOFTWARE
 
 			default:
@@ -20680,10 +20680,10 @@ fpl_internal void fpl__ShutdownVideo(fpl__PlatformAppState *appState, fpl__Video
 		fplVideoBackBuffer *backbuffer = &videoState->softwareBackbuffer;
 		if(backbuffer->pixels != fpl_null) {
 			fpl__ReleaseDynamicMemory(backbuffer->pixels);
-	}
+		}
 		fplClearStruct(backbuffer);
 #	endif
-}
+	}
 }
 
 fpl_internal void fpl__ReleaseVideoState(fpl__PlatformAppState *appState, fpl__VideoState *videoState) {
@@ -20704,12 +20704,12 @@ fpl_internal void fpl__ReleaseVideoState(fpl__PlatformAppState *appState, fpl__V
 		case fplVideoDriverType_Software:
 		{
 			// Nothing todo
-	}; break;
+		}; break;
 #	endif
 
 		default:
 			break;
-}
+	}
 	fplClearStruct(videoState);
 }
 
@@ -20765,7 +20765,7 @@ fpl_internal bool fpl__InitVideo(const fplVideoDriverType driver, const fplVideo
 			for(uint32_t x = 0; x < backbuffer->width; ++x) {
 				*p++ = color;
 			}
-}
+		}
 	}
 #	endif // FPL__ENABLE_VIDEO_SOFTWARE
 
@@ -20790,7 +20790,7 @@ fpl_internal bool fpl__InitVideo(const fplVideoDriverType driver, const fplVideo
 #		elif defined(FPL_SUBPLATFORM_X11)
 			videoInitResult = fpl__X11InitVideoSoftware(&appState->x11, &appState->window.x11, videoSettings, &videoState->softwareBackbuffer, &videoState->x11.software);
 #		endif
-	} break;
+		} break;
 #	endif // FPL__ENABLE_VIDEO_SOFTWARE
 
 		default:
@@ -20847,14 +20847,14 @@ fpl_internal FPL__FUNC_PRE_SETUP_WINDOW(fpl__PreSetupWindowDefault) {
 #			if defined(FPL_SUBPLATFORM_X11) && 0
 				result = fpl__X11SetPreWindowSetupForSoftware(&appState->x11.api, &appState->window.x11, &videoState->x11.software, &outResult->x11);
 #			endif
-		} break;
+			} break;
 #		endif // FPL__ENABLE_VIDEO_OPENGL
 
 			default:
 			{
 			} break;
+		}
 	}
-}
 #	endif // FPL__ENABLE_VIDEO
 
 	return(result);
@@ -21273,7 +21273,7 @@ fpl_common_api fplVideoBackBuffer *fplGetVideoBackBuffer() {
 #	if defined(FPL__ENABLE_VIDEO_SOFTWARE)
 		if(appState->currentSettings.video.driver == fplVideoDriverType_Software) {
 			result = &videoState->softwareBackbuffer;
-}
+		}
 #	endif
 	}
 	return(result);
@@ -21289,7 +21289,7 @@ fpl_common_api bool fplResizeVideoBackBuffer(const uint32_t width, const uint32_
 		if(videoState->activeDriver == fplVideoDriverType_Software) {
 			fpl__ShutdownVideo(appState, videoState);
 			result = fpl__InitVideo(fplVideoDriverType_Software, &appState->currentSettings.video, width, height, appState, videoState);
-}
+		}
 #	endif
 	}
 	return (result);
@@ -21326,8 +21326,8 @@ fpl_common_api void fplVideoFlip() {
 						wapi->gdi.StretchDIBits(win32WindowState->deviceContext, 0, 0, area.width, area.height, 0, 0, 0, 0, fpl_null, fpl_null, DIB_RGB_COLORS, BLACKNESS);
 					}
 					wapi->gdi.StretchDIBits(win32WindowState->deviceContext, targetX, targetY, targetWidth, targetHeight, 0, 0, sourceWidth, sourceHeight, backbuffer->pixels, &software->bitmapInfo, DIB_RGB_COLORS, SRCCOPY);
-	}
-} break;
+				}
+			} break;
 #		endif
 
 #		if defined(FPL__ENABLE_VIDEO_OPENGL)
@@ -21401,7 +21401,7 @@ fpl_internal void fpl__ReleasePlatformStates(fpl__PlatformInitState *initState, 
 		fpl__AudioState *audioState = fpl__GetAudioState(appState);
 		if(audioState != fpl_null) {
 			fpl__ReleaseAudio(audioState);
-}
+		}
 	}
 #	endif
 
@@ -21461,9 +21461,9 @@ fpl_internal void fpl__ReleasePlatformStates(fpl__PlatformInitState *initState, 
 			FPL_LOG_DEBUG("Core", "Release POSIX Subplatform");
 			fpl__PosixReleaseSubplatform(&appState->posix);
 #		endif
-	}
+		}
 
-	// Release platform applicatiom state memory
+		// Release platform applicatiom state memory
 		FPL_LOG_DEBUG(FPL__MODULE_CORE, "Release allocated Platform App State Memory");
 		fplMemoryAlignedFree(appState);
 		fpl__global__AppState = fpl_null;
@@ -21551,7 +21551,7 @@ fpl_common_api bool fplPlatformInit(const fplInitFlags initFlags, const fplSetti
 		platformAppStateSize += FPL__ARBITARY_PADDING;
 		audioMemoryOffset = platformAppStateSize;
 		platformAppStateSize += sizeof(fpl__AudioState);
-}
+	}
 #endif
 
 	FPL_LOG_DEBUG(FPL__MODULE_CORE, "Allocate Platform App State Memory of size '%zu':", platformAppStateSize);
