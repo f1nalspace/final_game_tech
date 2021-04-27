@@ -1,3 +1,29 @@
+/*
+-------------------------------------------------------------------------------
+# Name
+	OpenGL Header Parser/Generator.	For internal usage only!
+	Version 1.1
+
+# Author
+	Torsten Spaete
+	Copyright (C) 
+
+# Requirements
+	- C++/11 Compiler
+
+# Changelog
+	## v1.1
+	- Generating better output to support extern
+
+	## v1.0:
+	- Initial creation
+
+# License:
+	Copyright (c) 2017-2021 Torsten Spaete
+	MIT License (See LICENSE file)
+-------------------------------------------------------------------------------
+*/
+
 #include <fstream>
 #include <iostream>
 #include <string>
@@ -9,31 +35,35 @@
 #include <assert.h>
 #include <algorithm> 
 
-using namespace std;
+static const int HeaderIdent = 1;
+static const int LoaderIdent = 1;
+static const int VariablesIdent = 2;
 
-static const string HeaderIdent = "\t";
-static const string BodyIdent = "\t";
-static const string StaticDefineName = "FGL_STATIC";
-static const string GLApiDefineName = "FGL_GLAPI";
-static const string APIEntryDefineName = "FGL_APIENTRY";
-static const string GetProcAddressName = "GetOpenGLProcAddress_Internal";
+// Defines for final_dynamic_opengl.h
+static const char *OneTab = "\t";
+static const char *ApiName = "fgl_api";
+static const char *FunctionPrefix = "fgl_";
+static const char *GLApiDefineName = "FGL_GLAPI";
+static const char *APIEntryDefineName = "FGL_APIENTRY";
+static const char *GetProcAddressName = "fgl__GetOpenGLProcAddress";
+static const char *NullName = "fgl_null";
 
 struct GLConstant {
-	string name;
-	string value;
+	std::string name;
+	std::string value;
 };
 
 struct GLTypeDefinition {
-	vector<string> returns;
-	vector<string> arguments;
-	string functionOrName;
+	std::vector<std::string> returns;
+	std::vector<std::string> arguments;
+	std::string functionOrName;
 	bool isFunctionPtr;
 };
 
 struct GLPrototype {
-	string name;
-	vector<string> returns;
-	vector<string> arguments;
+	std::string name;
+	std::vector<std::string> returns;
+	std::vector<std::string> arguments;
 };
 
 struct GLString {
@@ -47,40 +77,40 @@ inline size_t ArrayCount(T(&arr)[N]) {
 	return(result);
 }
 
-inline string Trim(const string& str) {
+inline std::string Trim(const std::string &str) {
 	size_t first = str.find_first_not_of(' ');
-	if (string::npos == first) {
+	if(std::string::npos == first) {
 		return str;
 	}
 	size_t last = str.find_last_not_of(' ');
 	return str.substr(first, (last - first + 1));
 }
 
-inline string ToUpperCase(const string &str) {
-	string result = str;
+inline std::string ToUpperCase(const std::string &str) {
+	std::string result = str;
 	std::transform(result.begin(), result.end(), result.begin(), ::toupper);
 	return(result);
 }
 
-inline string ParseHex(const string &str) {
-	string result = "";
-	for (const char c : str) {
-		if (isdigit(c) || ((int)tolower(c) >= 97 && (int)tolower(c) <= 102)) {
+inline std::string ParseHex(const std::string &str) {
+	std::string result = "";
+	for(const char c : str) {
+		if(isdigit(c) || ((int)tolower(c) >= 97 && (int)tolower(c) <= 102)) {
 			result += c;
 		}
 	}
 	return(result);
 }
 
-inline string Join(const vector<string> &list, const char *joinStr, const bool trimValue = false) {
-	string result = "";
+inline std::string Join(const std::vector<std::string> &list, const char *joinStr, const bool trimValue = false) {
+	std::string result = "";
 	size_t idx = 0;
 	size_t count = list.size();
-	for (const string &str : list) {
-		if (idx > 0) {
+	for(const std::string &str : list) {
+		if(idx > 0) {
 			result += joinStr;
 		}
-		if (trimValue)
+		if(trimValue)
 			result += Trim(str);
 		else
 			result += str;
@@ -89,25 +119,14 @@ inline string Join(const vector<string> &list, const char *joinStr, const bool t
 	return(result);
 }
 
-inline string MakeFunctionPtrName(const string &name) {
-	string result = "";
-	size_t i = 0;
-	size_t count = name.size();
-	while (i < count) {
-		char c = name[i];
-		if (isupper(c) && i < (count - 1)) {
-			result += '_';
-		}
-		result += tolower(c);
-		++i;
-	}
-	result += "_func";
+inline std::string MakeFunctionPtrName(const std::string &prefix, const std::string &name) {
+	std::string result = prefix + "func_" + name;
 	return(result);
 }
 
 inline void SkipWhitespaces(char *&value) {
-	if (value != nullptr) {
-		while (*value && isspace(*value)) {
+	if(value != nullptr) {
+		while(*value && isspace(*value)) {
 			++value;
 		}
 	}
@@ -116,8 +135,8 @@ inline void SkipWhitespaces(char *&value) {
 inline GLString ReadIdentifier(char *&value) {
 	GLString result = {};
 	result.ptr = value;
-	if (value != nullptr) {
-		while (*value && (isalnum(*value) || (*value == '_'))) {
+	if(value != nullptr) {
+		while(*value && (isalnum(*value) || (*value == '_'))) {
 			result.len++;
 			++value;
 		}
@@ -128,8 +147,8 @@ inline GLString ReadIdentifier(char *&value) {
 inline GLString ReadUntilNonWhitespace(char *&value) {
 	GLString result = {};
 	result.ptr = value;
-	if (value != nullptr) {
-		while (*value && !isspace(*value)) {
+	if(value != nullptr) {
+		while(*value && !isspace(*value)) {
 			result.len++;
 			++value;
 		}
@@ -140,8 +159,8 @@ inline GLString ReadUntilNonWhitespace(char *&value) {
 inline GLString ReadUntilChar(char *&value, const char search) {
 	GLString result = {};
 	result.ptr = value;
-	if (value != nullptr) {
-		while (*value && (*value != search)) {
+	if(value != nullptr) {
+		while(*value && (*value != search)) {
 			result.len++;
 			++value;
 		}
@@ -149,21 +168,21 @@ inline GLString ReadUntilChar(char *&value, const char search) {
 	return(result);
 }
 
-inline GLString ReadUntilChars(char *&value, const vector<char> &search) {
+inline GLString ReadUntilChars(char *&value, const std::vector<char> &search) {
 	GLString result = {};
 	result.ptr = value;
-	if (value != nullptr) {
+	if(value != nullptr) {
 		size_t searchCount = search.size();
-		while (*value) {
+		while(*value) {
 			bool found = false;
-			for (size_t searchIndex = 0; searchIndex < searchCount; ++searchIndex) {
+			for(size_t searchIndex = 0; searchIndex < searchCount; ++searchIndex) {
 				const char c = search[searchIndex];
-				if (*value == c) {
+				if(*value == c) {
 					found = true;
 					break;
 				}
 			}
-			if (found) {
+			if(found) {
 				break;
 			}
 			result.len++;
@@ -173,7 +192,7 @@ inline GLString ReadUntilChars(char *&value, const vector<char> &search) {
 	return(result);
 }
 
-static void ParseArguments(char *&ptr, vector<string> &args) {
+static void ParseArguments(char *&ptr, std::vector<std::string> &args) {
 	// Expect ( = Argument brace start
 	assert(*ptr == '(');
 	++ptr;
@@ -181,12 +200,12 @@ static void ParseArguments(char *&ptr, vector<string> &args) {
 	SkipWhitespaces(ptr);
 
 	// Parse arguments
-	while (*ptr) {
+	while(*ptr) {
 		std::vector<char> argChars = { ',', ')' };
 		GLString argNameIdent = ReadUntilChars(ptr, argChars);
-		if (argNameIdent.len == 0) break;
-		args.emplace_back(string(argNameIdent.ptr, argNameIdent.len));
-		if (*ptr && *ptr == ',')
+		if(argNameIdent.len == 0) break;
+		args.emplace_back(std::string(argNameIdent.ptr, argNameIdent.len));
+		if(*ptr && *ptr == ',')
 			++ptr;
 	}
 
@@ -195,19 +214,19 @@ static void ParseArguments(char *&ptr, vector<string> &args) {
 	++ptr;
 }
 
-static void ParseResults(char *&ptr, vector<string> &results) {
-	vector<char> charList = { ' ', '(' };
-	while (*ptr && *ptr != '(') {
+static void ParseResults(char *&ptr, std::vector<std::string> &results) {
+	std::vector<char> charList = { ' ', '(' };
+	while(*ptr && *ptr != '(') {
 		GLString ident = ReadUntilChars(ptr, charList);
-		if (ident.len == 0) break;
-		results.emplace_back(string(ident.ptr, ident.len));
-		if (*ptr == 0) break;
-		if (*ptr == '(') break;
+		if(ident.len == 0) break;
+		results.emplace_back(std::string(ident.ptr, ident.len));
+		if(*ptr == 0) break;
+		if(*ptr == '(') break;
 		ptr++;
 	}
 }
 
-static GLConstant ParseConstant(const string &line) {
+static GLConstant ParseConstant(const std::string &line) {
 	GLConstant result = GLConstant();
 
 	char *ptr = const_cast<char *>(line.c_str());
@@ -218,18 +237,18 @@ static GLConstant ParseConstant(const string &line) {
 
 	// Skip name but compute name length
 	GLString nameIdent = ReadIdentifier(ptr);
-	result.name = string(nameIdent.ptr, nameIdent.len);
+	result.name = std::string(nameIdent.ptr, nameIdent.len);
 
 	SkipWhitespaces(ptr);
 
 	// Parse value
 	GLString valueIdent = ReadUntilNonWhitespace(ptr);
-	result.value = string(valueIdent.ptr, valueIdent.len);
+	result.value = std::string(valueIdent.ptr, valueIdent.len);
 
 	return(result);
 }
 
-static GLTypeDefinition ParseTypeDefinition(const string &line) {
+static GLTypeDefinition ParseTypeDefinition(const std::string &line) {
 	GLTypeDefinition result = GLTypeDefinition();
 
 	char *ptr = const_cast<char *>(line.c_str());
@@ -241,17 +260,17 @@ static GLTypeDefinition ParseTypeDefinition(const string &line) {
 
 	GLString untilSemiliconIdent = ReadUntilChar(ptr, ';');
 
-	string untilSemilicon = string(untilSemiliconIdent.ptr, untilSemiliconIdent.len);
+	std::string untilSemilicon = std::string(untilSemiliconIdent.ptr, untilSemiliconIdent.len);
 	ptr = const_cast<char *>(untilSemilicon.c_str());
 
-	if ((untilSemilicon.find("(") != string::npos) && (untilSemilicon.find(")") != string::npos)) {
+	if((untilSemilicon.find("(") != std::string::npos) && (untilSemilicon.find(")") != std::string::npos)) {
 		// Function pointer declaration
 		ParseResults(ptr, result.returns);
 
 		assert(*ptr == '(');
 		++ptr;
 		GLString functionNameIdent = ReadUntilChar(ptr, ')');
-		result.functionOrName = string(functionNameIdent.ptr, functionNameIdent.len);
+		result.functionOrName = std::string(functionNameIdent.ptr, functionNameIdent.len);
 		assert(*ptr == ')');
 		++ptr;
 		SkipWhitespaces(ptr);
@@ -261,13 +280,13 @@ static GLTypeDefinition ParseTypeDefinition(const string &line) {
 		result.isFunctionPtr = true;
 	} else {
 		// Normal typedef
-		vector<string> tmp;
+		std::vector<std::string> tmp;
 		ParseResults(ptr, tmp);
 		assert(tmp.size() >= 2);
 
 		result.functionOrName = tmp[tmp.size() - 1];
-		result.returns = vector<string>();
-		for (int i = 0; i < tmp.size() - 1; ++i) {
+		result.returns = std::vector<std::string>();
+		for(int i = 0; i < tmp.size() - 1; ++i) {
 			result.returns.emplace_back(tmp[i]);
 		}
 
@@ -277,7 +296,7 @@ static GLTypeDefinition ParseTypeDefinition(const string &line) {
 	return(result);
 }
 
-static GLPrototype ParsePrototype(const string &line, const char *FuncDeclString) {
+static GLPrototype ParsePrototype(const std::string &line, const char *FuncDeclString) {
 	GLPrototype result = GLPrototype();
 
 	char *ptr = const_cast<char *>(line.c_str());
@@ -290,27 +309,27 @@ static GLPrototype ParsePrototype(const string &line, const char *FuncDeclString
 	// const GLubyte *APIENTRY glGetStringi(GLenum name, GLuint index);
 	// const GLubyte * APIENTRY glGetString (GLenum name);
 
-	vector<char> prototypeChars = { ' ', '(' };
-	while (*ptr) {
+	std::vector<char> prototypeChars = { ' ', '(' };
+	while(*ptr) {
 		GLString ident = ReadUntilChars(ptr, prototypeChars);
-		if (ident.len == 0) break;
+		if(ident.len == 0) break;
 		bool incPtr = true;
-		if (isspace(*ptr)) {
-			if (*(ptr + 1) == '(') {
+		if(isspace(*ptr)) {
+			if(*(ptr + 1) == '(') {
 				ptr++;
-			} else if (*(ptr + 1) == '*') {
+			} else if(*(ptr + 1) == '*') {
 				ident.len += 2;
 				ptr += 2;
 				incPtr = false;
 			}
 		}
-		if (*ptr == '(') {
-			result.name = string(ident.ptr, ident.len);
+		if(*ptr == '(') {
+			result.name = std::string(ident.ptr, ident.len);
 			break;
 		} else {
-			result.returns.emplace_back(string(ident.ptr, ident.len));
+			result.returns.emplace_back(std::string(ident.ptr, ident.len));
 		}
-		if (incPtr) {
+		if(incPtr) {
 			ptr++;
 		} else {
 			SkipWhitespaces(ptr);
@@ -326,132 +345,140 @@ static GLPrototype ParsePrototype(const string &line, const char *FuncDeclString
 	return(result);
 }
 
-string ExtractFilenameWithoutExtension(const string &source) {
-	string result = "";
+std::string ExtractFilenameWithoutExtension(const std::string &source) {
+	std::string result = "";
 	size_t lastIndex = source.find_last_of('.');
-	if (lastIndex != string::npos) {
+	if(lastIndex != std::string::npos) {
 		result = source.substr(0, lastIndex - 1);
 	}
 	return(result);
 }
 
-static vector<string> InitGLVersionTypes(const string &version) {
-	vector<string> result;
-	if (version.compare("GL_VERSION_1_1") == 0) {
-		result.push_back(string("typedef unsigned int GLenum;"));
-		result.push_back(string("typedef unsigned int GLbitfield;"));
-		result.push_back(string("typedef unsigned int GLuint;"));
-		result.push_back(string("typedef int GLint;"));
-		result.push_back(string("typedef int GLsizei;"));
-		result.push_back(string("typedef unsigned char GLboolean;"));
-		result.push_back(string("typedef signed char GLbyte;"));
-		result.push_back(string("typedef short GLshort;"));
-		result.push_back(string("typedef unsigned char GLubyte;"));
-		result.push_back(string("typedef unsigned short GLushort;"));
-		result.push_back(string("typedef unsigned long GLulong;"));
-		result.push_back(string("typedef float GLfloat;"));
-		result.push_back(string("typedef float GLclampf;"));
-		result.push_back(string("typedef double GLdouble;"));
-		result.push_back(string("typedef double GLclampd;"));
-		result.push_back(string("typedef void GLvoid;"));
-	} else if (version.compare("GL_VERSION_1_5") == 0) {
-		result.push_back(string("typedef ptrdiff_t GLsizeiptr;"));
-		result.push_back(string("typedef ptrdiff_t GLintptr;"));
-	} else if (version.compare("GL_VERSION_2_0") == 0) {
-		result.push_back(string("typedef char GLchar;"));
-	} else if (version.compare("GL_VERSION_3_2") == 0) {
-		result.push_back(string("typedef struct __GLsync *GLsync;"));
-		result.push_back(string("typedef uint64_t GLuint64;"));
-		result.push_back(string("typedef int64_t GLint64;"));
-	} else if (version.compare("GL_VERSION_4_3") == 0) {
-		result.push_back(string("typedef void (" + APIEntryDefineName + " *GLDEBUGPROC)(GLenum source, GLenum type, GLuint id, GLenum severity, GLsizei length, const GLchar *message, const void *userParam);"));
+static std::vector<std::string> InitGLVersionTypes(const std::string &version) {
+	std::vector<std::string> result;
+	if(version.compare("GL_VERSION_1_1") == 0) {
+		result.push_back(std::string("typedef unsigned int GLenum;"));
+		result.push_back(std::string("typedef unsigned int GLbitfield;"));
+		result.push_back(std::string("typedef unsigned int GLuint;"));
+		result.push_back(std::string("typedef int GLint;"));
+		result.push_back(std::string("typedef int GLsizei;"));
+		result.push_back(std::string("typedef unsigned char GLboolean;"));
+		result.push_back(std::string("typedef signed char GLbyte;"));
+		result.push_back(std::string("typedef short GLshort;"));
+		result.push_back(std::string("typedef unsigned char GLubyte;"));
+		result.push_back(std::string("typedef unsigned short GLushort;"));
+		result.push_back(std::string("typedef unsigned long GLulong;"));
+		result.push_back(std::string("typedef float GLfloat;"));
+		result.push_back(std::string("typedef float GLclampf;"));
+		result.push_back(std::string("typedef double GLdouble;"));
+		result.push_back(std::string("typedef double GLclampd;"));
+		result.push_back(std::string("typedef void GLvoid;"));
+	} else if(version.compare("GL_VERSION_1_5") == 0) {
+		result.push_back(std::string("typedef ptrdiff_t GLsizeiptr;"));
+		result.push_back(std::string("typedef ptrdiff_t GLintptr;"));
+	} else if(version.compare("GL_VERSION_2_0") == 0) {
+		result.push_back(std::string("typedef char GLchar;"));
+	} else if(version.compare("GL_VERSION_3_2") == 0) {
+		result.push_back(std::string("typedef struct __GLsync *GLsync;"));
+		result.push_back(std::string("typedef uint64_t GLuint64;"));
+		result.push_back(std::string("typedef int64_t GLint64;"));
+	} else if(version.compare("GL_VERSION_4_3") == 0) {
+		result.push_back(std::string("typedef void (" + std::string(APIEntryDefineName) + " *GLDEBUGPROC)(GLenum source, GLenum type, GLuint id, GLenum severity, GLsizei length, const GLchar *message, const void *userParam);"));
+	}
+	return(result);
+}
+
+std::string GetTabbedString(const int count) {
+	std::string result = "";
+	for(int i = 0; i < count; ++i) {
+		result += OneTab;
 	}
 	return(result);
 }
 
 int main(int argc, char *args[]) {
-	if (argc < 2) {
-		cerr << "File (glext) argument is missing!" << endl;
+	if(argc < 3) {
+		std::cerr << "Files (gl.h and glext.h) arguments are missing!" << std::endl;
 		return -1;
 	}
 
 	int inputFileCount = argc - 1;
 
-	std::vector<string> inputFilePaths;
-	for (int inputFileIndex = 1; inputFileIndex < argc; ++inputFileIndex) {
-		inputFilePaths.push_back(string(args[inputFileIndex]));
+	std::vector<std::string> inputFilePaths;
+	for(int inputFileIndex = 1; inputFileIndex < argc; ++inputFileIndex) {
+		inputFilePaths.push_back(std::string(args[inputFileIndex]));
 	}
 
-	vector<string> lines;
+	std::vector<std::string> lines;
 
-	for (int inputFileIndex = 0; inputFileIndex < inputFilePaths.size(); ++inputFileIndex) {
-		const string &inputFilePath = inputFilePaths[inputFileIndex];
-		cout << "Load '" << inputFilePath << "'" << endl;
-		ifstream fileStream = ifstream(inputFilePath, std::ios::in | std::ios::binary);
-		if (fileStream.is_open()) {
-			for (std::string line; getline(fileStream, line); ) {
+	for(int inputFileIndex = 0; inputFileIndex < inputFilePaths.size(); ++inputFileIndex) {
+		const std::string &inputFilePath = inputFilePaths[inputFileIndex];
+		std::cout << "Load '" << inputFilePath << "'" << std::endl;
+		std::ifstream fileStream = std::ifstream(inputFilePath, std::ios::in | std::ios::binary);
+		if(fileStream.is_open()) {
+			for(std::string line; getline(fileStream, line); ) {
 				lines.emplace_back(line);
 			}
 			fileStream.close();
 		} else {
-			cerr << "File '" << inputFilePath << "' not found!" << endl;
+			std::cerr << "File '" << inputFilePath << "' not found!" << std::endl;
 			return -1;
 			return -1;
 		}
 	}
 
-	string headerOutputFilePath = "header.txt";
-	string bodyOutputFilePath = "body.txt";
+	std::string headerOutputFilePath = "header.txt";
+	std::string bodyOutputFilePath = "body.txt";
 
-	cout << "Parse " << inputFileCount << " files with a total of " << lines.size() << " lines" << endl;
+	std::cout << "Parse " << inputFileCount << " files with a total of " << lines.size() << " lines" << std::endl;
 
-	const string ifndefString = "#ifndef ";
-	const string endifString = "#endif /* ";
+	const std::string ifndefString = "#ifndef ";
+	const std::string endifString = "#endif /* ";
 
-	map<string, vector<GLPrototype>> prototypes;
-	map<string, vector<GLConstant>> constants;
-	map<string, vector<string>> initTypes;
+	std::map<std::string, std::vector<GLPrototype>> prototypes;
+	std::map<std::string, std::vector<GLConstant>> constants;
+	std::map<std::string, std::vector<std::string>> initTypes;
 
 	size_t lineIndex = 0;
 	size_t lineCount = lines.size();
 	int64_t glextPrototypesLineIndex = -1;
 	int64_t glVersionStartLineIndex = -1;
-	string glVersionString = "";
-	while (lineIndex < lineCount) {
-		string line = lines[lineIndex];
+	std::string glVersionString = "";
+	while(lineIndex < lineCount) {
+		std::string line = lines[lineIndex];
 
-		if (glVersionStartLineIndex == -1) {
+		if(glVersionStartLineIndex == -1) {
 			size_t startIndex;
-			if ((startIndex = line.find("#ifndef GL_VERSION_", 0)) != string::npos) {
+			if((startIndex = line.find("#ifndef GL_VERSION_", 0)) != std::string::npos) {
 				glVersionStartLineIndex = lineIndex;
 				size_t stringIndex = line.find(ifndefString, 0);
 				glVersionString = line.substr(stringIndex + ifndefString.size());
-				prototypes[glVersionString] = vector<GLPrototype>();
-				constants[glVersionString] = vector<GLConstant>();
+				prototypes[glVersionString] = std::vector<GLPrototype>();
+				constants[glVersionString] = std::vector<GLConstant>();
 				initTypes[glVersionString] = InitGLVersionTypes(glVersionString);
-			} else if ((startIndex = line.find("#define __gl_h_", 0)) != string::npos) {
+			} else if((startIndex = line.find("#define __gl_h_", 0)) != std::string::npos) {
 				glVersionStartLineIndex = lineIndex;
 				glVersionString = "GL_VERSION_1_1";
-				prototypes[glVersionString] = vector<GLPrototype>();
-				constants[glVersionString] = vector<GLConstant>();
+				prototypes[glVersionString] = std::vector<GLPrototype>();
+				constants[glVersionString] = std::vector<GLConstant>();
 				initTypes[glVersionString] = InitGLVersionTypes(glVersionString);
 			}
 		} else {
 			size_t endIndex;
-			if ((endIndex = line.find("#endif /* GL_VERSION_", 0)) != string::npos) {
+			if((endIndex = line.find("#endif /* GL_VERSION_", 0)) != std::string::npos) {
 				glVersionStartLineIndex = -1;
 				glVersionString = "";
-			} else if ((endIndex = line.find("#endif /* __gl_h_ */", 0)) != string::npos) {
+			} else if((endIndex = line.find("#endif /* __gl_h_ */", 0)) != std::string::npos) {
 				glVersionStartLineIndex = -1;
 				glVersionString = "";
 			} else {
-				if (line.find("GLAPI ") != string::npos) {
+				if(line.find("GLAPI ") != std::string::npos) {
 					GLPrototype proto = ParsePrototype(line, "GLAPI");
 					prototypes[glVersionString].emplace_back(proto);
-				} else if (line.find("WINGDIAPI ") != string::npos) {
+				} else if(line.find("WINGDIAPI ") != std::string::npos) {
 					GLPrototype proto = ParsePrototype(line, "WINGDIAPI");
 					prototypes[glVersionString].emplace_back(proto);
-				} else if (line.find("#define ") != string::npos) {
+				} else if(line.find("#define ") != std::string::npos) {
 					GLConstant constant = ParseConstant(line);
 					constants[glVersionString].emplace_back(constant);
 				}
@@ -460,108 +487,144 @@ int main(int argc, char *args[]) {
 		++lineIndex;
 	}
 
-	cout << "Write header '" << headerOutputFilePath << "'" << endl;
+	//
+	// Write Header
+	//
+	std::string hident0 = GetTabbedString(HeaderIdent);
+	std::cout << "Write header '" << headerOutputFilePath << "'" << std::endl;
+	std::ofstream headerOutStream = std::ofstream(headerOutputFilePath, std::ios::out | std::ios::binary);
+	headerOutStream << hident0 << "// *******************************************************************************" << std::endl;
+	headerOutStream << hident0 << "//" << std::endl;
+	headerOutStream << hident0 << "// > OpenGL Header" << std::endl;
+	headerOutStream << hident0 << "//" << std::endl;
+	headerOutStream << hident0 << "// Automatically generated. Do not modify by hand!" << std::endl;
+	headerOutStream << hident0 << "//" << std::endl;
+	headerOutStream << hident0 << "// *******************************************************************************" << std::endl;
+	for(auto it : prototypes) {
+		std::string version = Trim(it.first);
 
+		std::string ident0 = GetTabbedString(HeaderIdent);
+		std::string ident1 = GetTabbedString(HeaderIdent + 1);
 
-	ofstream headerOutStream = ofstream(headerOutputFilePath, std::ios::out | std::ios::binary);
+		headerOutStream << "#" << ident0 << "ifndef " << version << std::endl;
 
-#define OUTPUT_EXPORT_AS_WELL 0
-
-	for (auto it : prototypes) {
-		string version = Trim(it.first);
-
-		headerOutStream << "#" << HeaderIdent << "ifndef " << version << endl;
-		headerOutStream << "#" << HeaderIdent << "\tdefine " << version << " 1" << endl;
-		headerOutStream << HeaderIdent << "\tstatic bool is" << version << ";" << endl;
+		headerOutStream << "#" << ident1 << "define " << version << " 1" << std::endl;
+		headerOutStream << ident1 << ApiName << " bool is" << version << ";" << std::endl;
+		headerOutStream << std::endl;
 
 		// Typedefs
-		const vector<string> initTypeList = initTypes[it.first];
-		for (auto initType : initTypeList) {
-			headerOutStream << HeaderIdent << "\t" << initType << endl;
+		const std::vector<std::string> initTypeList = initTypes[it.first];
+		for(auto initType : initTypeList) {
+			headerOutStream << ident1 << initType << std::endl;
+		}
+		if(initTypeList.size() > 0) {
+			headerOutStream << std::endl;
 		}
 
 		// Constants
-		const vector<GLConstant> constantList = constants[it.first];
-		for (auto constant : constantList) {
-			if (Trim(constant.name) != version && constant.value.size() > 0) {
-				headerOutStream << HeaderIdent << "#\tdefine " << constant.name << " " << constant.value << endl;
+		const std::vector<GLConstant> constantList = constants[it.first];
+		for(auto constant : constantList) {
+			if(Trim(constant.name) != version && constant.value.size() > 0) {
+				headerOutStream << "#" << ident1 << "define " << constant.name << " " << constant.value << std::endl;
 			}
 		}
+		if(constantList.size() > 0) {
+			headerOutStream << std::endl;
+		}
 
-#if OUTPUT_EXPORT_AS_WELL
-		headerOutStream << "#" << HeaderIdent << "\tifdef " << StaticDefineName << endl;
-#endif
-
-		const vector<GLPrototype> prototypeList = it.second;
-		for (auto prototype : prototypeList) {
-			string name = Trim(prototype.name);
-			string funcPtrName = MakeFunctionPtrName(name);
-			string returnString = "";
-			for (auto r : prototype.returns) {
-				if (r.find("APIENTRY") != string::npos) {
+		const std::vector<GLPrototype> prototypeList = it.second;
+		for(auto prototype : prototypeList) {
+			const std::string originalName = Trim(prototype.name);
+			std::string returnString = "";
+			for(auto r : prototype.returns) {
+				if(r.find("APIENTRY") != std::string::npos) {
 					break;
 				}
-				if (returnString.size() > 0) {
+				if(returnString.size() > 0) {
 					returnString += " ";
 				}
 				returnString += r;
 			}
-			string argString = Join(prototype.arguments, ", ", true);
-			headerOutStream << HeaderIdent << "\t\ttypedef " << returnString << " (" << APIEntryDefineName << " " << funcPtrName << ")(" << argString << ");" << endl;
-			headerOutStream << HeaderIdent << "\t\tstatic " << funcPtrName << "* " << name << ";" << endl;
-		}
-#if OUTPUT_EXPORT_AS_WELL
-		headerOutStream << "#" << HeaderIdent << "\telse" << endl;
-		for (auto prototype : prototypeList) {
-			string name = Trim(prototype.name);
-			string funcPtrName = MakeFunctionPtrName(name);
-			string returnString = "";
-			for (auto r : prototype.returns) {
-				if (r.find("APIENTRY") != string::npos) {
-					break;
-				}
-				if (returnString.size() > 0) {
-					returnString += " ";
-				}
-				returnString += r;
-			}
-			string argString = Join(prototype.arguments, ", ", true);
-			headerOutStream << HeaderIdent << "\t\t" << GLApiDefineName << " " << returnString << " " << APIEntryDefineName << " " << name << "(" << argString << ");" << endl;
-		}
-		headerOutStream << "#" << HeaderIdent << "\tendif // " << StaticDefineName << endl;
-#endif
 
-		headerOutStream << "#" << HeaderIdent << "endif // " << version << endl;
+			std::string typedefName = MakeFunctionPtrName(FunctionPrefix, originalName);
+			std::string staticFunctionName = FunctionPrefix + originalName;
+			std::string defineFunctionName = originalName;
+
+			std::string argString = Join(prototype.arguments, ", ", true);
+			headerOutStream << ident1 << "typedef " << returnString << " (" << APIEntryDefineName << " " << typedefName << ")(" << argString << ");" << std::endl;
+			headerOutStream << ident1 << ApiName << " " << typedefName << "* " << staticFunctionName << ";" << std::endl;
+			headerOutStream << "#" << ident1 << "define " << defineFunctionName << " " << staticFunctionName << std::endl;
 		}
 
+		headerOutStream << "#" << ident0 << "endif // " << version << std::endl;
+		headerOutStream << std::endl;
+	}
 	headerOutStream.flush();
 	headerOutStream.close();
 
-	cout << "Write body '" << bodyOutputFilePath << "'" << endl;
+	//
+	// Write Body
+	//
+	std::string vident0 = GetTabbedString(VariablesIdent);
+	std::cout << "Write body '" << bodyOutputFilePath << "'" << std::endl;
+	std::ofstream bodyOutStream = std::ofstream(bodyOutputFilePath, std::ios::out | std::ios::binary);
+	bodyOutStream << vident0 << "// *******************************************************************************" << std::endl;
+	bodyOutStream << vident0 << "//" << std::endl;
+	bodyOutStream << vident0 << "// > OpenGL Function Variables" << std::endl;
+	bodyOutStream << vident0 << "//" << std::endl;
+	bodyOutStream << vident0 << "// Automatically generated. Do not modify by hand!" << std::endl;
+	bodyOutStream << vident0 << "//" << std::endl;
+	bodyOutStream << vident0 << "// *******************************************************************************" << std::endl;
+	bodyOutStream << std::endl;
+	for(auto it : prototypes) {
+		const std::string version = Trim(it.first);
+		const std::vector<GLPrototype> prototypeList = it.second;
 
-	ofstream bodyOutStream = ofstream(bodyOutputFilePath, std::ios::out | std::ios::binary);
+		std::string ident0 = GetTabbedString(VariablesIdent);
+		std::string ident1 = GetTabbedString(VariablesIdent + 1);
 
-	for (auto it : prototypes) {
-		string version = Trim(it.first);
+		bodyOutStream << "#" << ident0 << "if " << version << std::endl;
 
-		bodyOutStream << "#" << BodyIdent << "if " << version << endl;
-
-		const string VersionString = "GL_VERSION_";
-		string versionNumber = version.substr(VersionString.size());
-
-		const vector<GLPrototype> prototypeList = it.second;
-		for (auto prototype : prototypeList) {
-			string name = Trim(prototype.name);
-			string funcPtrName = MakeFunctionPtrName(name);
-			bodyOutStream << BodyIdent << "\t" << name << " = (" << funcPtrName << " *)" << GetProcAddressName << "(state, \"" << name << "\");" << endl;
+		for(auto prototype : prototypeList) {
+			std::string originalName = Trim(prototype.name);
+			std::string typedefName = MakeFunctionPtrName(FunctionPrefix, originalName);
+			std::string staticFunctionName = FunctionPrefix + originalName;
+			bodyOutStream << ident1 << ApiName << " " << typedefName << "* " << staticFunctionName << " = " << NullName << ";" << std::endl;
 		}
 
-		bodyOutStream << "#" << BodyIdent << "endif //" << version << endl;
-		bodyOutStream << endl;
+		bodyOutStream << "#" << ident0 << "endif //" << version << std::endl;
+		bodyOutStream << std::endl;
 	}
 
+	std::string bident0 = GetTabbedString(LoaderIdent);
+	bodyOutStream << bident0 << "// *******************************************************************************" << std::endl;
+	bodyOutStream << bident0 << "//" << std::endl;
+	bodyOutStream << bident0 << "// > OpenGL Function Loader" << std::endl;
+	bodyOutStream << bident0 << "//" << std::endl;
+	bodyOutStream << bident0 << "// Automatically generated. Do not modify by hand!" << std::endl;
+	bodyOutStream << bident0 << "//" << std::endl;
+	bodyOutStream << bident0 << "// *******************************************************************************" << std::endl;
+	for(auto it : prototypes) {
+		const std::string version = Trim(it.first);
+		const std::vector<GLPrototype> prototypeList = it.second;
+
+		std::string ident0 = GetTabbedString(LoaderIdent);
+		std::string ident1 = GetTabbedString(LoaderIdent + 1);
+
+		bodyOutStream << "#" << ident0 << "if " << version << std::endl;
+
+		for(auto prototype : prototypeList) {
+			std::string originalName = Trim(prototype.name);
+			std::string funcPtrName = MakeFunctionPtrName(FunctionPrefix, originalName);
+			std::string staticFunctionName = FunctionPrefix + originalName;
+			bodyOutStream << ident1 << staticFunctionName << " = (" << funcPtrName << " *)" << GetProcAddressName << "(state, \"" << originalName << "\");" << std::endl;
+		}
+
+		bodyOutStream << "#" << ident0 << "endif //" << version << std::endl;
+		bodyOutStream << std::endl;
+	}
 	bodyOutStream.flush();
 	bodyOutStream.close();
 
 	return 0;
-	}
+}
