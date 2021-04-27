@@ -48,6 +48,7 @@ License:
 #include <final_platform_layer.h>
 
 #define FGL_IMPLEMENTATION
+#define FGL_AS_PRIVATE
 #include <final_dynamic_opengl.h>
 
 static GLuint CreateShaderType(GLenum type, const char *source) {
