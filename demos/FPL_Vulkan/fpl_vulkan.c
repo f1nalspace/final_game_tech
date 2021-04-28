@@ -77,6 +77,96 @@ static void VersionToString(const uint32_t versionNumber, const size_t outNameCa
 	fplS32ToString(patch, outName + lenMajor + 1 + lenMinor + 1, lenPatch + 1);
 }
 
+typedef struct VulkanLayerName {
+	char name[256];
+} VulkanLayerName;
+
+typedef struct VulkanExtensionName {
+	char name[256];
+} VulkanExtensionName;
+
+typedef struct VulkanInstanceProperties {
+	VulkanLayerName *layers;
+	VulkanExtensionName *extensions;
+	uint32_t layerCount;
+	uint32_t extensionCount;
+} VulkanInstanceProperties;
+
+static void ReleaseVulkanInstanceProperties(VulkanInstanceProperties *instanceProperties) {
+	if(instanceProperties->layers != fpl_null)
+		free(instanceProperties->layers);
+	if(instanceProperties->extensions != fpl_null)
+		free(instanceProperties->extensions);
+}
+
+static bool LoadVulkanInstanceProperties(VulkanApi *vapi, VulkanInstanceProperties *outInstanceProperties) {
+	VulkanInstanceProperties instanceProperties = fplZeroInit;
+
+	VkResult res;
+
+	//
+	// Extensions
+	//
+	fplConsoleFormatOut("Enumerate instance extension properties...\n");
+	uint32_t instanceExtensionCount = 0;
+	res = vapi->vkEnumerateInstanceExtensionProperties(fpl_null, &instanceExtensionCount, fpl_null);
+	if(res != VK_SUCCESS) {
+		return(false);
+	}
+
+	VkExtensionProperties *tempInstanceExtensions = (VkExtensionProperties *)malloc(sizeof(VkExtensionProperties) * instanceExtensionCount);
+	if(tempInstanceExtensions == fpl_null) {
+		return(false);
+	}
+	res = vapi->vkEnumerateInstanceExtensionProperties(fpl_null, &instanceExtensionCount, tempInstanceExtensions);
+	if(res != VK_SUCCESS) {
+		free(tempInstanceExtensions);
+		return(false);
+	}
+
+	instanceProperties.extensionCount = instanceExtensionCount;
+	instanceProperties.extensions = (VulkanExtensionName *)malloc(sizeof(VulkanExtensionName) * instanceExtensionCount);
+
+	fplConsoleFormatOut("Successfully got instance extension properties of %lu\n", instanceExtensionCount);
+	for(uint32_t extensionIndex = 0; extensionIndex < instanceExtensionCount; ++extensionIndex) {
+		const VkExtensionProperties *extProp = tempInstanceExtensions + extensionIndex;
+		fplCopyString(extProp->extensionName, instanceProperties.extensions[extensionIndex].name, fplArrayCount(instanceProperties.extensions[extensionIndex].name));
+		fplConsoleFormatOut("- %s\n", extProp->extensionName);
+	}
+
+	free(tempInstanceExtensions);
+
+	fplConsoleOut("\n");
+
+	//
+	// Layers
+	//
+	fplConsoleFormatOut("Enumerate instance layer properties...\n");
+	uint32_t instanceLayerCount = 0;
+	res = vapi->vkEnumerateInstanceLayerProperties(&instanceLayerCount, fpl_null);
+	if(res == VK_SUCCESS) {
+		VkLayerProperties *tempInstanceLayers = (VkLayerProperties *)malloc(sizeof(VkLayerProperties) * instanceLayerCount);
+		if(tempInstanceLayers != fpl_null) {
+			res = vapi->vkEnumerateInstanceLayerProperties(&instanceLayerCount, tempInstanceLayers);
+
+			if(res == VK_SUCCESS) {
+				fplConsoleFormatOut("Successfully got instance layer properties of %lu\n", instanceLayerCount);
+				instanceProperties.layerCount = instanceLayerCount;
+				instanceProperties.layers = (VulkanLayerName *)malloc(sizeof(VulkanLayerName) * instanceLayerCount);
+				for(uint32_t layerIndex = 0; layerIndex < instanceLayerCount; ++layerIndex) {
+					VkLayerProperties *layerProp = tempInstanceLayers + layerIndex;
+					fplCopyString(layerProp->layerName, instanceProperties.layers[layerIndex].name, fplArrayCount(instanceProperties.layers[layerIndex].name));
+					fplConsoleFormatOut("- %s\n", layerProp->layerName);
+				}
+			}
+			free(tempInstanceLayers);
+		}
+	}
+
+	*outInstanceProperties = instanceProperties;
+	return(true);
+}
+
 int main(int argc, char **argv) {
 	fplSettings settings = fplMakeDefaultSettings();
 	settings.video.driver = fplVideoDriverType_None;
@@ -88,6 +178,16 @@ int main(int argc, char **argv) {
 	VulkanApi vapi = fplZeroInit;
 
 	VkInstance instance = VK_NULL_HANDLE;
+
+	const char *validationLayerName = "VK_LAYER_KHRONOS_validation";
+	const char *khrSurfaceName = "VK_KHR_surface";
+
+	const char *khrPlatformSurfaceName = fpl_null;
+#if defined(FPL_PLATFORM_WINDOWS)
+	khrPlatformSurfaceName = "VK_KHR_win32_surface";
+#elif defined(FPL_SUBPLATFORM_X11)
+	khrPlatformSurfaceName = "VK_KHR_xlib_surface";
+#endif
 
 	fplConsoleFormatOut("Initialize Platform\n");
 	if(!fplPlatformInit(fplInitFlags_Window | fplInitFlags_GameController | fplInitFlags_Console, &settings)) {
@@ -114,58 +214,52 @@ int main(int argc, char **argv) {
 	VkResult functionResult;
 
 	//
-	// Instance extensions
+	// Load properties
+	//
+	VulkanInstanceProperties instanceProperties = fplZeroInit;
+	if(!LoadVulkanInstanceProperties(&vapi, &instanceProperties)) {
+		fplConsoleFormatError("Failed loading instance properties!\n");
+		goto cleanup;
+	}
+
+	//
+	// Check and validate extensions and layers
 	//
 	bool supportsKHRSurface = false;
 	bool supportsKHRPlatformSurface = false;
-	const char *platformKHRExtensionName = fpl_null;
-
-	fplConsoleFormatOut("Query instance extension count\n");
-	uint32_t instanceExtensionCount = 0;
-	functionResult = vapi.vkEnumerateInstanceExtensionProperties(fpl_null, &instanceExtensionCount, fpl_null);
-	VK_CHECK(functionResult, "Failed getting the instance extension count!\n");
-	fplConsoleFormatOut("Got instance extension count of %lu\n\n", instanceExtensionCount);
-
-	fplConsoleFormatOut("Get %lu instance extensions\n", instanceExtensionCount);
-	VkExtensionProperties *availableInstanceExtensions = (VkExtensionProperties *)malloc(sizeof(VkExtensionProperties) * instanceExtensionCount);
-	if(availableInstanceExtensions == fpl_null) {
-		fplConsoleFormatError("Failed to allocate memory for %lu instance extensions!\n", instanceExtensionCount);
-		goto cleanup;
-	}
-	functionResult = vapi.vkEnumerateInstanceExtensionProperties(fpl_null, &instanceExtensionCount, availableInstanceExtensions);
-	VK_CHECK(functionResult, "Failed getting %lu instance extensions!\n", instanceExtensionCount);
-	fplConsoleFormatOut("Successfully got %lu instance extensions\n", instanceExtensionCount);
-
-	for(uint32_t i = 0; i < instanceExtensionCount; ++i) {
-		const VkExtensionProperties *p = availableInstanceExtensions + i;
-		fplConsoleFormatOut("- %s\n", p->extensionName);
-		if(fplIsStringEqual("VK_KHR_surface", p->extensionName)) {
+	for(uint32_t extensionIndex = 0; extensionIndex < instanceProperties.extensionCount; ++extensionIndex) {
+		const char *extensionName = instanceProperties.extensions[extensionIndex].name;
+		if(fplIsStringEqual(khrSurfaceName, extensionName)) {
 			supportsKHRSurface = true;
 		}
-#if defined(FPL_PLATFORM_WINDOWS)
-		if(fplIsStringEqual("VK_KHR_win32_surface", p->extensionName)) {
-			platformKHRExtensionName = "VK_KHR_win32_surface";
+		if(fplIsStringEqual(khrPlatformSurfaceName, extensionName)) {
 			supportsKHRPlatformSurface = true;
 		}
-#elif defined(FPL_SUBPLATFORM_X11)
-		if(fplIsStringEqual("VK_KHR_xlib_surface", p->extensionName)) {
-			platformKHRExtensionName = "VK_KHR_xlib_surface";
-			supportsKHRPlatformSurface = true;
-		}
-#endif
 	}
 
-	free(availableInstanceExtensions);
+	bool supportsValidationLayer = false;
+	for(uint32_t layerIndex = 0; layerIndex < instanceProperties.layerCount; ++layerIndex) {
+		const char *layerName = instanceProperties.layers[layerIndex].name;
+		if(fplIsStringEqual(layerName, validationLayerName)) {
+			supportsValidationLayer = true;
+		}
+	}
+
+	ReleaseVulkanInstanceProperties(&instanceProperties);	
+
+	fplConsoleFormatOut("\n");
 
 	//
 	// Check Extensions
 	//
-	if(!supportsKHRSurface || !supportsKHRPlatformSurface) {
-		fplConsoleFormatError("No supported KHR platform found!\n");
+	fplConsoleFormatOut("Validate extensions:\n");
+	fplConsoleFormatOut("- Supported %s: %s\n", khrSurfaceName, (supportsKHRSurface ? "yes" : "no"));
+	fplConsoleFormatOut("- Supported %s: %s\n", khrPlatformSurfaceName, (supportsKHRPlatformSurface ? "yes" : "no"));
+
+	if(!supportsKHRSurface || !supportsKHRPlatformSurface || khrPlatformSurfaceName == fpl_null) {
+		fplConsoleFormatError("Not supported KHR platform!\n");
 		goto cleanup;
 	}
-
-	assert(platformKHRExtensionName != fpl_null);
 
 	fplConsoleFormatOut("\n");
 
@@ -184,8 +278,8 @@ int main(int argc, char **argv) {
 
 	uint32_t enabledInstanceExtensionCount = 0;
 	const char *enabledInstanceExtensions[8] = { 0 };
-	enabledInstanceExtensions[enabledInstanceExtensionCount++] = "VK_KHR_surface"; // This is always supported
-	enabledInstanceExtensions[enabledInstanceExtensionCount++] = platformKHRExtensionName;
+	enabledInstanceExtensions[enabledInstanceExtensionCount++] = khrSurfaceName; // This is always supported
+	enabledInstanceExtensions[enabledInstanceExtensionCount++] = khrPlatformSurfaceName;
 	if(useValidation) {
 		enabledInstanceExtensions[enabledInstanceExtensionCount++] = VK_EXT_DEBUG_UTILS_EXTENSION_NAME;
 	}
@@ -193,37 +287,11 @@ int main(int argc, char **argv) {
 	uint32_t enabledInstanceLayerCount = 0;
 	const char *enabledInstanceLayers[8] = { 0 };
 	if(useValidation) {
-		const char *validationLayerName = "VK_LAYER_KHRONOS_validation";
-
-		bool supportsValidationLayer = false;
-
-		fplConsoleFormatOut("Query instance layer count\n");
-		uint32_t availableInstanceLayerCount = 0;
-		functionResult = vapi.vkEnumerateInstanceLayerProperties(&availableInstanceLayerCount, fpl_null);
-		if(functionResult == VK_SUCCESS) {
-			VkLayerProperties *availableInstanceLayers = (VkLayerProperties *)malloc(sizeof(VkLayerProperties) * availableInstanceLayerCount);
-			if(availableInstanceLayers != fpl_null) {
-				functionResult = vapi.vkEnumerateInstanceLayerProperties(&availableInstanceLayerCount, availableInstanceLayers);
-				if(functionResult == VK_SUCCESS) {
-					fplConsoleFormatOut("Successfully got %lu instance layers\n", availableInstanceLayerCount);
-					for(uint32_t layerIndex = 0; layerIndex < availableInstanceLayerCount; ++layerIndex) {
-						VkLayerProperties *layer = availableInstanceLayers + layerIndex;
-						fplConsoleFormatOut("- %s\n", layer->layerName);
-						if(fplIsStringEqual(layer->layerName, validationLayerName)) {
-							supportsValidationLayer = true;
-						}
-					}
-				}
-				free(availableInstanceLayers);
-			}
-		}
-
 		if(supportsValidationLayer) {
 			enabledInstanceLayers[enabledInstanceLayerCount++] = validationLayerName;
 		} else {
 			fplConsoleFormatError("The validation layer '%s' is not available at instance level!\n", validationLayerName);
 		}
-		fplConsoleFormatOut("\n");
 	}
 
 	VkInstanceCreateInfo instanceCreateInfo = fplZeroInit;
@@ -241,7 +309,8 @@ int main(int argc, char **argv) {
 	VersionToString(appInfo.engineVersion, fplArrayCount(engineVersionName), engineVersionName);
 	VersionToString(appInfo.apiVersion, fplArrayCount(vulkanVersionName), vulkanVersionName);
 
-	fplConsoleFormatOut("Creating Vulkan instance for application '%s' v%s and engine '%s' v%s for Vulkan v%s\n", appInfo.pApplicationName, appVersionName, appInfo.pEngineName, engineVersionName, vulkanVersionName);
+	fplConsoleFormatOut("Creating Vulkan instance for application '%s' v%s and engine '%s' v%s for Vulkan v%s...\n", appInfo.pApplicationName, appVersionName, appInfo.pEngineName, engineVersionName, vulkanVersionName);
+	fplConsoleFormatOut("With %lu enabled extensions & %lu layers\n", instanceCreateInfo.enabledExtensionCount, instanceCreateInfo.enabledLayerCount);
 	functionResult = vapi.vkCreateInstance(&instanceCreateInfo, fpl_null, &instance);
 	VK_CHECK(functionResult, "Failed creating Vulkan instance for application '%s'!", appInfo.pApplicationName);
 	fplConsoleFormatOut("Successfully created instance\n", instance);
