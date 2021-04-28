@@ -136,6 +136,8 @@ SOFTWARE.
 	- New[#105]: [Win32] Added support for creating and using a console in addition to a window
 	- Fixed[#98]: [Win32] Fixed fplThreadYield was not using YieldProcessor()
 
+	- Fixed[#109]: fplS32ToString is not working anymore
+
 	## v0.9.6-beta
 	### Features
 	- New[#73]: Added fplAsm macro to handle different inline assembler keywords (Clang, GCC, MSVC)
@@ -9179,6 +9181,7 @@ fpl_common_api size_t fplS32ToString(const int32_t value, char *buffer, const si
 			*p++ = '-';
 		}
 		p += digitCount;// Go back to the very end, because we are writing the digits back in reverse order
+		char *lastP = p;
 
 		const char *digits = "0123456789";
 		tmp = value;
@@ -9187,7 +9190,7 @@ fpl_common_api size_t fplS32ToString(const int32_t value, char *buffer, const si
 			tmp /= 10;
 		} while(tmp != 0);
 
-		*p = 0;
+		*lastP = 0;
 	}
 
 	return (result);
