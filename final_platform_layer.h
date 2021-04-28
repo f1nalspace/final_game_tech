@@ -135,9 +135,9 @@ SOFTWARE.
 	## v0.9.7-beta
 	- New[#105]: [Win32] Added support for creating and using a console in addition to a window
 	- Fixed[#98]: [Win32] Fixed fplThreadYield was not using YieldProcessor()
-	- Fixed[#110]: [Win32] Fixed erasing of background when no video driver hides window always
+	- Fixed[#110]: [Win32] Fixed preventing of erasing the background for non-video systems hides window always
 
-	- Fixed[#109]: fplS32ToString is not working anymore
+	- Fixed[#109]: Fixed fplS32ToString was not working anymore
 
 	## v0.9.6-beta
 	### Features
