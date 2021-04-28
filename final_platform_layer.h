@@ -135,6 +135,7 @@ SOFTWARE.
 	## v0.9.7-beta
 	- New[#105]: [Win32] Added support for creating and using a console in addition to a window
 	- Fixed[#98]: [Win32] Fixed fplThreadYield was not using YieldProcessor()
+	- Fixed[#110]: [Win32] Fixed erasing of background when no video driver hides window always
 
 	- Fixed[#109]: fplS32ToString is not working anymore
 
@@ -7372,6 +7373,10 @@ typedef FPL__FUNC_WIN32_SetCapture(fpl__win32_func_SetCapture);
 typedef FPL__FUNC_WIN32_ReleaseCapture(fpl__win32_func_ReleaseCapture);
 #define FPL__FUNC_WIN32_ScreenToClient(name) BOOL WINAPI name(HWND hWnd, LPPOINT lpPoint)
 typedef FPL__FUNC_WIN32_ScreenToClient(fpl__win32_func_ScreenToClient);
+#define FPL__FUNC_WIN32_BeginPaint(name) HDC WINAPI name(_In_ HWND hWnd, _Out_ LPPAINTSTRUCT lpPaint)
+typedef FPL__FUNC_WIN32_BeginPaint(fpl__win32_func_BeginPaint);
+#define FPL__FUNC_WIN32_EndPaint(name) BOOL WINAPI name(_In_ HWND hWnd, _In_ CONST PAINTSTRUCT *lpPaint)
+typedef FPL__FUNC_WIN32_EndPaint(fpl__win32_func_EndPaint);
 
 // OLE32
 #define FPL__FUNC_WIN32_CoInitializeEx(name) HRESULT WINAPI name(LPVOID pvReserved, DWORD  dwCoInit)
@@ -7472,6 +7477,8 @@ typedef struct fpl__Win32UserApi {
 	fpl__win32_func_SetCapture *SetCapture;
 	fpl__win32_func_ReleaseCapture *ReleaseCapture;
 	fpl__win32_func_ScreenToClient *ScreenToClient;
+	fpl__win32_func_BeginPaint *BeginPaint;
+	fpl__win32_func_EndPaint *EndPaint;
 } fpl__Win32UserApi;
 
 typedef struct fpl__Win32OleApi {
@@ -7597,6 +7604,8 @@ fpl_internal bool fpl__Win32LoadApi(fpl__Win32Api *wapi) {
 		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_SetCapture, SetCapture);
 		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_ReleaseCapture, ReleaseCapture);
 		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_ScreenToClient, ScreenToClient);
+		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_BeginPaint, BeginPaint);
+		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_EndPaint, EndPaint);
 
 		// GDI32
 		const char *gdiLibraryName = "gdi32.dll";
@@ -10958,13 +10967,22 @@ LRESULT CALLBACK fpl__Win32MessageProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 				msgData.wParam = wParam;
 				msgData.lParam = lParam;
 				appState->currentSettings.window.callbacks.exposedCallback(fplGetPlatformType(), win32Window, &msgData, appState->currentSettings.window.callbacks.exposedUserData);
+			} else {
+				if(appState->currentSettings.video.driver == fplVideoDriverType_None) {
+					PAINTSTRUCT ps;
+					HDC hdc = wapi->user.BeginPaint(hwnd, &ps);
+					wapi->user.EndPaint(hwnd, &ps);
+					return(0);
+				}
 			}
 		} break;
 
 		case WM_ERASEBKGND:
 		{
-			// Prevent erasing of the background always
-			return 1;
+			// Prevent erasing of the background always, but only if a video driver is being used
+			if(appState->currentSettings.video.driver != fplVideoDriverType_None) {
+				return 1;
+			}
 		} break;
 
 		default:
