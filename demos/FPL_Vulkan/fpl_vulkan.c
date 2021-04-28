@@ -1,64 +1,19 @@
 #define FPL_IMPLEMENTATION
 #include <final_platform_layer.h>
 
+#if defined(FPL_PLATFORM_WINDOWS)
+#define VK_USE_PLATFORM_WIN32_KHR
+#endif
+
 //#define VK_NO_PROTOTYPES
 #include <vulkan/vulkan.h>
 
 #include <malloc.h>
 
-typedef struct VulkanApi {
-	fplDynamicLibraryHandle libHandle;
-	PFN_vkCreateInstance vkCreateInstance;
-	PFN_vkDestroyInstance vkDestroyInstance;
-	PFN_vkEnumerateInstanceExtensionProperties vkEnumerateInstanceExtensionProperties;
-	PFN_vkEnumerateInstanceLayerProperties vkEnumerateInstanceLayerProperties;
-	fpl_b32 isInitialized;
-} VulkanApi;
-
-void UnloadVulkanAPI(VulkanApi *api) {
-	if(api->isInitialized) {
-		fplConsoleFormatOut("Unload Vulkan API\n");
-		fplDynamicLibraryUnload(&api->libHandle);
-	}
-	fplClearStruct(api);
-}
-
-bool LoadVulkanAPI(VulkanApi *api) {
-	const char *vulkanLibraryFileName = "vulkan-1.dll";
-
-	fplConsoleFormatOut("Load Vulkan API '%s'\n", vulkanLibraryFileName);
-	if(!fplDynamicLibraryLoad(vulkanLibraryFileName, &api->libHandle)) {
-		return(false);
-	}
-
-	fplDynamicLibraryHandle *handle = &api->libHandle;
-
-#define VULKAN_GET_PROC_ADDRESS_BREAK(mod, libHandle, libName, target, type, name) \
-	(target)->name = (type)fplGetDynamicLibraryProc(libHandle, #name); \
-	if ((target)->name == fpl_null) { \
-		FPL__WARNING(mod, "Failed getting procedure address '%s' from library '%s'", #name, libName); \
-		break; \
-	}
-
-	bool result = false;
-	do {
-
-		VULKAN_GET_PROC_ADDRESS_BREAK("Vulkan", handle, vulkanLibraryFileName, api, PFN_vkCreateInstance, vkCreateInstance);
-		VULKAN_GET_PROC_ADDRESS_BREAK("Vulkan", handle, vulkanLibraryFileName, api, PFN_vkDestroyInstance, vkDestroyInstance);
-		VULKAN_GET_PROC_ADDRESS_BREAK("Vulkan", handle, vulkanLibraryFileName, api, PFN_vkEnumerateInstanceExtensionProperties, vkEnumerateInstanceExtensionProperties);
-		VULKAN_GET_PROC_ADDRESS_BREAK("Vulkan", handle, vulkanLibraryFileName, api, PFN_vkEnumerateInstanceLayerProperties, vkEnumerateInstanceLayerProperties);
-
-		result = true;
-	} while(0);
-
-	if(!result) {
-		UnloadVulkanAPI(api);
-	}
-	api->isInitialized = true;
-	return(result);
-}
-
-static void VersionToString(const uint32_t versionNumber, const size_t outNameCapacity, char *outName) {
+//
+// Utils
+//
+static void VulkanVersionToString(const uint32_t versionNumber, const size_t outNameCapacity, char *outName) {
 	int32_t major = VK_VERSION_MAJOR(versionNumber);
 	int32_t minor = VK_VERSION_MINOR(versionNumber);
 	int32_t patch = VK_VERSION_PATCH(versionNumber);
@@ -77,6 +32,120 @@ static void VersionToString(const uint32_t versionNumber, const size_t outNameCa
 	fplS32ToString(patch, outName + lenMajor + 1 + lenMinor + 1, lenPatch + 1);
 }
 
+//
+// Vulkan API
+//
+typedef struct VulkanCoreApi {
+	fplDynamicLibraryHandle libHandle;
+	PFN_vkCreateInstance vkCreateInstance;
+	PFN_vkDestroyInstance vkDestroyInstance;
+	PFN_vkEnumerateInstanceExtensionProperties vkEnumerateInstanceExtensionProperties;
+	PFN_vkEnumerateInstanceLayerProperties vkEnumerateInstanceLayerProperties;
+	PFN_vkGetInstanceProcAddr vkGetInstanceProcAddr;
+
+	fpl_b32 isInitialized;
+} VulkanCoreApi;
+
+void UnloadVulkanCoreAPI(VulkanCoreApi *api) {
+	if(api->isInitialized) {
+		fplConsoleFormatOut("Unload Vulkan API\n");
+		fplDynamicLibraryUnload(&api->libHandle);
+	}
+	fplClearStruct(api);
+}
+
+bool LoadVulkanCoreAPI(VulkanCoreApi *api) {
+	const char *vulkanLibraryFileName = "vulkan-1.dll";
+
+	fplConsoleFormatOut("Load Vulkan API '%s'\n", vulkanLibraryFileName);
+	if(!fplDynamicLibraryLoad(vulkanLibraryFileName, &api->libHandle)) {
+		return(false);
+	}
+
+	fplDynamicLibraryHandle *handle = &api->libHandle;
+
+#define VULKAN_LIBRARY_GET_PROC_ADDRESS(libHandle, libName, target, type, name) \
+	(target)->name = (type)fplGetDynamicLibraryProc(libHandle, #name); \
+	if ((target)->name == fpl_null) { \
+		FPL__WARNING("Vulkan", "Failed getting procedure address '%s' from library '%s'", #name, libName); \
+		break; \
+	}
+
+	bool result = false;
+	do {
+
+		VULKAN_LIBRARY_GET_PROC_ADDRESS(handle, vulkanLibraryFileName, api, PFN_vkCreateInstance, vkCreateInstance);
+		VULKAN_LIBRARY_GET_PROC_ADDRESS(handle, vulkanLibraryFileName, api, PFN_vkDestroyInstance, vkDestroyInstance);
+		VULKAN_LIBRARY_GET_PROC_ADDRESS(handle, vulkanLibraryFileName, api, PFN_vkEnumerateInstanceExtensionProperties, vkEnumerateInstanceExtensionProperties);
+		VULKAN_LIBRARY_GET_PROC_ADDRESS(handle, vulkanLibraryFileName, api, PFN_vkEnumerateInstanceLayerProperties, vkEnumerateInstanceLayerProperties);
+		VULKAN_LIBRARY_GET_PROC_ADDRESS(handle, vulkanLibraryFileName, api, PFN_vkGetInstanceProcAddr, vkGetInstanceProcAddr);
+
+		result = true;
+	} while(0);
+
+#undef VULKAN_LIBRARY_GET_PROC_ADDRESS
+
+	if(!result) {
+		UnloadVulkanCoreAPI(api);
+	}
+	api->isInitialized = true;
+	return(result);
+}
+
+typedef struct VulkanInstanceApi {
+	VkInstance instance;
+
+	PFN_vkDestroySurfaceKHR vkDestroySurfaceKHR;
+
+#if defined(FPL_PLATFORM_WINDOWS)
+	PFN_vkCreateWin32SurfaceKHR vkCreateWin32SurfaceKHR;
+	PFN_vkGetPhysicalDeviceWin32PresentationSupportKHR vkGetPhysicalDeviceWin32PresentationSupportKHR;
+#endif
+
+} VulkanInstanceApi;
+
+bool LoadVulkanInstanceAPI(const VulkanCoreApi *coreApi, VkInstance instance, VulkanInstanceApi *outInstanceApi) {
+	if(instance == VK_NULL_HANDLE)
+		return(false);
+	if(coreApi == fpl_null || coreApi->vkGetInstanceProcAddr == fpl_null)
+		return(false);
+	fplClearStruct(outInstanceApi);
+
+#define VULKAN_INSTANCE_GET_PROC_ADDRESS(target, type, name) \
+	(target)->name = (type)coreApi->vkGetInstanceProcAddr(instance, #name); \
+	if ((target)->name == fpl_null) { \
+		FPL__WARNING("Vulkan", "Failed getting instance procedure address '%s'", #name); \
+		break; \
+	}
+
+	bool result = false;
+	do {
+
+		VULKAN_INSTANCE_GET_PROC_ADDRESS(outInstanceApi, PFN_vkDestroySurfaceKHR, vkDestroySurfaceKHR);
+
+#if defined(FPL_PLATFORM_WINDOWS)
+		VULKAN_INSTANCE_GET_PROC_ADDRESS(outInstanceApi, PFN_vkCreateWin32SurfaceKHR, vkCreateWin32SurfaceKHR);
+		VULKAN_INSTANCE_GET_PROC_ADDRESS(outInstanceApi, PFN_vkGetPhysicalDeviceWin32PresentationSupportKHR, vkGetPhysicalDeviceWin32PresentationSupportKHR);
+#endif
+
+		result = true;
+	} while(0);
+
+#undef VULKAN_INSTANCE_GET_PROC_ADDRESS
+
+	if(!result) {
+		fplClearStruct(outInstanceApi);
+	}
+
+	outInstanceApi->instance = instance;
+
+	return(result);
+}
+
+void UnloadVulkanInstanceAPI(VulkanInstanceApi *api) {
+	fplClearStruct(api);
+}
+
 typedef struct VulkanLayerName {
 	char name[256];
 } VulkanLayerName;
@@ -84,6 +153,14 @@ typedef struct VulkanLayerName {
 typedef struct VulkanExtensionName {
 	char name[256];
 } VulkanExtensionName;
+
+typedef struct VulkanState {
+	VulkanCoreApi coreApi;
+	VulkanInstanceApi instanceApi;
+	VkInstance instance;
+	VkSurfaceKHR surface;
+	fpl_b32 isInitialized;
+} VulkanState;
 
 typedef struct VulkanInstanceProperties {
 	VulkanLayerName *layers;
@@ -99,7 +176,7 @@ static void ReleaseVulkanInstanceProperties(VulkanInstanceProperties *instancePr
 		free(instanceProperties->extensions);
 }
 
-static bool LoadVulkanInstanceProperties(VulkanApi *vapi, VulkanInstanceProperties *outInstanceProperties) {
+static bool LoadVulkanInstanceProperties(VulkanCoreApi *coreApi, VulkanInstanceProperties *outInstanceProperties) {
 	VulkanInstanceProperties instanceProperties = fplZeroInit;
 
 	VkResult res;
@@ -109,7 +186,7 @@ static bool LoadVulkanInstanceProperties(VulkanApi *vapi, VulkanInstanceProperti
 	//
 	fplConsoleFormatOut("Enumerate instance extension properties...\n");
 	uint32_t instanceExtensionCount = 0;
-	res = vapi->vkEnumerateInstanceExtensionProperties(fpl_null, &instanceExtensionCount, fpl_null);
+	res = coreApi->vkEnumerateInstanceExtensionProperties(fpl_null, &instanceExtensionCount, fpl_null);
 	if(res != VK_SUCCESS) {
 		return(false);
 	}
@@ -118,7 +195,7 @@ static bool LoadVulkanInstanceProperties(VulkanApi *vapi, VulkanInstanceProperti
 	if(tempInstanceExtensions == fpl_null) {
 		return(false);
 	}
-	res = vapi->vkEnumerateInstanceExtensionProperties(fpl_null, &instanceExtensionCount, tempInstanceExtensions);
+	res = coreApi->vkEnumerateInstanceExtensionProperties(fpl_null, &instanceExtensionCount, tempInstanceExtensions);
 	if(res != VK_SUCCESS) {
 		free(tempInstanceExtensions);
 		return(false);
@@ -143,11 +220,11 @@ static bool LoadVulkanInstanceProperties(VulkanApi *vapi, VulkanInstanceProperti
 	//
 	fplConsoleFormatOut("Enumerate instance layer properties...\n");
 	uint32_t instanceLayerCount = 0;
-	res = vapi->vkEnumerateInstanceLayerProperties(&instanceLayerCount, fpl_null);
+	res = coreApi->vkEnumerateInstanceLayerProperties(&instanceLayerCount, fpl_null);
 	if(res == VK_SUCCESS) {
 		VkLayerProperties *tempInstanceLayers = (VkLayerProperties *)malloc(sizeof(VkLayerProperties) * instanceLayerCount);
 		if(tempInstanceLayers != fpl_null) {
-			res = vapi->vkEnumerateInstanceLayerProperties(&instanceLayerCount, tempInstanceLayers);
+			res = coreApi->vkEnumerateInstanceLayerProperties(&instanceLayerCount, tempInstanceLayers);
 
 			if(res == VK_SUCCESS) {
 				fplConsoleFormatOut("Successfully got instance layer properties of %lu\n", instanceLayerCount);
@@ -167,17 +244,39 @@ static bool LoadVulkanInstanceProperties(VulkanApi *vapi, VulkanInstanceProperti
 	return(true);
 }
 
-int main(int argc, char **argv) {
-	fplSettings settings = fplMakeDefaultSettings();
-	settings.video.driver = fplVideoDriverType_None;
+static void ShutdownVulkan(VulkanState *state) {
+	if(state == fpl_null) return;
 
-	int appResult = -1;
+	if(state->surface != VK_NULL_HANDLE) {
+		fplConsoleFormatOut("Destroy Vulkan surface '%p'\n", state->surface);
+		state->instanceApi.vkDestroySurfaceKHR(state->instance, state->surface, fpl_null);
+	}
 
-	bool isPlatformInitialized = false;
+	UnloadVulkanInstanceAPI(&state->instanceApi);
 
-	VulkanApi vapi = fplZeroInit;
+	if(state->instance != VK_NULL_HANDLE) {
+		fplConsoleFormatOut("Destroy Vulkan instance\n");
+		state->coreApi.vkDestroyInstance(state->instance, fpl_null);
+	}
 
-	VkInstance instance = VK_NULL_HANDLE;
+	UnloadVulkanCoreAPI(&state->coreApi);
+
+	fplClearStruct(state);
+}
+
+static bool InitializeVulkan(VulkanState *state) {
+	if(state == fpl_null) 
+		return(false);
+
+	if(state->isInitialized) {
+		fplConsoleError("Vulkan is already initialized!\n");
+		return(false);
+	}
+
+	fplClearStruct(state);
+
+	VulkanCoreApi *coreApi = &state->coreApi;
+	VulkanInstanceApi *instanceApi = &state->instanceApi;
 
 	const char *validationLayerName = "VK_LAYER_KHRONOS_validation";
 	const char *khrSurfaceName = "VK_KHR_surface";
@@ -189,37 +288,27 @@ int main(int argc, char **argv) {
 	khrPlatformSurfaceName = "VK_KHR_xlib_surface";
 #endif
 
-	fplConsoleFormatOut("Initialize Platform\n");
-	if(!fplPlatformInit(fplInitFlags_Window | fplInitFlags_GameController | fplInitFlags_Console, &settings)) {
-		fplPlatformResultType resultType = fplGetPlatformResult();
-		const char *resultName = fplGetPlatformResultName(resultType);
-		fplConsoleFormatError("Failed to initialize FPL '%s'!\n", resultName);
-		goto cleanup;
-	}
-
-	isPlatformInitialized = true;
-
-	if(!LoadVulkanAPI(&vapi)) {
+	if(!LoadVulkanCoreAPI(coreApi)) {
 		fplConsoleFormatError("Failed to load the Vulkan API!\n");
-		goto cleanup;
+		goto failed;
 	}
 	fplConsoleFormatOut("\n");
+
+	VkResult res;
 
 #define VK_CHECK(res, emsg, ...) if(res != VK_SUCCESS) \
 	{ \
 		fplConsoleFormatError(emsg, __VA_ARGS__);\
-		goto cleanup; \
+		goto failed; \
 	}
-
-	VkResult functionResult;
 
 	//
 	// Load properties
 	//
 	VulkanInstanceProperties instanceProperties = fplZeroInit;
-	if(!LoadVulkanInstanceProperties(&vapi, &instanceProperties)) {
+	if(!LoadVulkanInstanceProperties(coreApi, &instanceProperties)) {
 		fplConsoleFormatError("Failed loading instance properties!\n");
-		goto cleanup;
+		goto failed;
 	}
 
 	//
@@ -245,20 +334,23 @@ int main(int argc, char **argv) {
 		}
 	}
 
-	ReleaseVulkanInstanceProperties(&instanceProperties);	
+	ReleaseVulkanInstanceProperties(&instanceProperties);
 
 	fplConsoleFormatOut("\n");
 
 	//
 	// Check Extensions
 	//
-	fplConsoleFormatOut("Validate extensions:\n");
+	fplConsoleFormatOut("Validate instance extensions:\n");
 	fplConsoleFormatOut("- Supported %s: %s\n", khrSurfaceName, (supportsKHRSurface ? "yes" : "no"));
 	fplConsoleFormatOut("- Supported %s: %s\n", khrPlatformSurfaceName, (supportsKHRPlatformSurface ? "yes" : "no"));
 
+	fplConsoleFormatOut("Validate instance layers:\n");
+	fplConsoleFormatOut("- Supported %s: %s\n", validationLayerName, (supportsValidationLayer ? "yes" : "no"));
+
 	if(!supportsKHRSurface || !supportsKHRPlatformSurface || khrPlatformSurfaceName == fpl_null) {
 		fplConsoleFormatError("Not supported KHR platform!\n");
-		goto cleanup;
+		goto failed;
 	}
 
 	fplConsoleFormatOut("\n");
@@ -289,8 +381,6 @@ int main(int argc, char **argv) {
 	if(useValidation) {
 		if(supportsValidationLayer) {
 			enabledInstanceLayers[enabledInstanceLayerCount++] = validationLayerName;
-		} else {
-			fplConsoleFormatError("The validation layer '%s' is not available at instance level!\n", validationLayerName);
 		}
 	}
 
@@ -305,16 +395,86 @@ int main(int argc, char **argv) {
 	char appVersionName[100] = { 0 };
 	char engineVersionName[100] = { 0 };
 	char vulkanVersionName[100] = { 0 };
-	VersionToString(appInfo.applicationVersion, fplArrayCount(appVersionName), appVersionName);
-	VersionToString(appInfo.engineVersion, fplArrayCount(engineVersionName), engineVersionName);
-	VersionToString(appInfo.apiVersion, fplArrayCount(vulkanVersionName), vulkanVersionName);
+	VulkanVersionToString(appInfo.applicationVersion, fplArrayCount(appVersionName), appVersionName);
+	VulkanVersionToString(appInfo.engineVersion, fplArrayCount(engineVersionName), engineVersionName);
+	VulkanVersionToString(appInfo.apiVersion, fplArrayCount(vulkanVersionName), vulkanVersionName);
 
 	fplConsoleFormatOut("Creating Vulkan instance for application '%s' v%s and engine '%s' v%s for Vulkan v%s...\n", appInfo.pApplicationName, appVersionName, appInfo.pEngineName, engineVersionName, vulkanVersionName);
 	fplConsoleFormatOut("With %lu enabled extensions & %lu layers\n", instanceCreateInfo.enabledExtensionCount, instanceCreateInfo.enabledLayerCount);
-	functionResult = vapi.vkCreateInstance(&instanceCreateInfo, fpl_null, &instance);
-	VK_CHECK(functionResult, "Failed creating Vulkan instance for application '%s'!", appInfo.pApplicationName);
-	fplConsoleFormatOut("Successfully created instance\n", instance);
+	res = coreApi->vkCreateInstance(&instanceCreateInfo, fpl_null, &state->instance);
+	VK_CHECK(res, "Failed creating Vulkan instance for application '%s'!\n", appInfo.pApplicationName);
+	fplConsoleFormatOut("Successfully created instance\n");
 	fplConsoleFormatOut("\n");
+
+	//
+	// Load instance API
+	//
+	if(!LoadVulkanInstanceAPI(coreApi, state->instance, instanceApi)) {
+		fplConsoleFormatError("Failed to load the Vulkan instance API for instance '%p'!\n", state->instance);
+		goto failed;
+	}
+
+#if defined(FPL_PLATFORM_WINDOWS)
+	// TODO(final): This is just temporary, until we can query the platform window informations from FPL
+	HWND windowHandle = fpl__global__AppState->window.win32.windowHandle;
+	HINSTANCE appHandle = GetModuleHandle(fpl_null);
+
+	VkWin32SurfaceCreateInfoKHR createInfo = fplZeroInit;
+	createInfo.sType = VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR;
+	createInfo.hwnd = windowHandle;
+	createInfo.hinstance = appHandle;
+
+	fplConsoleFormatOut("Creating win32 surface KHR from window handle '%p'\n", createInfo.hwnd);
+	res = instanceApi->vkCreateWin32SurfaceKHR(state->instance, &createInfo, fpl_null, &state->surface);
+	VK_CHECK(res, "Failed creating win32 surface KHR!\n");
+	fplConsoleFormatOut("Successfully created win32 surface KHR\n");
+	fplConsoleFormatOut("\n");
+#endif
+
+	goto success;
+
+failed:
+	ShutdownVulkan(state);
+	return(false);
+
+success:
+	return(true);
+}
+
+int main(int argc, char **argv) {
+	fplSettings settings = fplMakeDefaultSettings();
+	settings.video.driver = fplVideoDriverType_None;
+
+	int appResult = -1;
+
+	bool isPlatformInitialized = false;
+
+	VulkanState *state = fpl_null;
+
+	fplConsoleFormatOut("Initialize Platform\n");
+	if(!fplPlatformInit(fplInitFlags_Window | fplInitFlags_GameController | fplInitFlags_Console, &settings)) {
+		fplPlatformResultType resultType = fplGetPlatformResult();
+		const char *resultName = fplGetPlatformResultName(resultType);
+		fplConsoleFormatError("Failed to initialize FPL '%s'!\n", resultName);
+		goto cleanup;
+	}
+	fplConsoleFormatOut("Successfully initialized Platform\n");
+
+	isPlatformInitialized = true;
+
+	size_t stateState = sizeof(VulkanState);
+	state = (VulkanState *)fplMemoryAllocate(stateState);
+	if(state == fpl_null) {
+		fplConsoleFormatError("Failed to allocate memory of size '%zu' for vulkan state!", stateState);
+		goto cleanup;
+	}
+
+	fplConsoleFormatOut("Initialize Vulkan\n");
+	if(!InitializeVulkan(state)) {
+		fplConsoleFormatError("Failed to initialize Vulkan!\n");
+		goto cleanup;
+	}
+	fplConsoleFormatOut("Successfully initialized Vulkan\n");
 
 	appResult = 0;
 
@@ -333,14 +493,18 @@ int main(int argc, char **argv) {
 	}
 
 cleanup:
-	if(isPlatformInitialized) {
-		if(instance != VK_NULL_HANDLE) {
-			fplConsoleFormatOut("Destroy Vulkan instance\n");
-			vapi.vkDestroyInstance(instance, fpl_null);
-		}
-		UnloadVulkanAPI(&vapi);
+	fplConsoleOut("\n");
+	fplConsoleOut("Clean up\n");
+	fplConsoleOut("\n");
 
-		fplConsoleFormatOut("Shutdown platform\n");
+	if(isPlatformInitialized) {
+		if(state != fpl_null) {
+			fplConsoleFormatOut("Shutdown Vulkan\n");
+			ShutdownVulkan(state);
+			fplMemoryFree(state);
+		}
+
+		fplConsoleFormatOut("Shutdown Platform\n");
 		fplPlatformRelease();
 	}
 	return(appResult);
