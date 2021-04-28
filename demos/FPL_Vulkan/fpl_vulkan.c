@@ -13,6 +13,21 @@
 //
 // Utils
 //
+static const char *VulkanPhysicalDeviceTypeToStríng(const VkPhysicalDeviceType type) {
+	switch(type) {
+		case VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU:
+			return "Integrated GPU";
+		case VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU:
+			return "Discrete GPU";
+		case VK_PHYSICAL_DEVICE_TYPE_VIRTUAL_GPU:
+			return "Virtual GPU";
+		case VK_PHYSICAL_DEVICE_TYPE_CPU:
+			return "CPU";
+		default:
+			return "Other";
+	}
+}
+
 static void VulkanVersionToString(const uint32_t versionNumber, const size_t outNameCapacity, char *outName) {
 	int32_t major = VK_VERSION_MAJOR(versionNumber);
 	int32_t minor = VK_VERSION_MINOR(versionNumber);
@@ -55,6 +70,7 @@ void UnloadVulkanCoreAPI(VulkanCoreApi *api) {
 }
 
 bool LoadVulkanCoreAPI(VulkanCoreApi *api) {
+	//const char *vulkanLibraryFileName = "libvulkan.so";
 	const char *vulkanLibraryFileName = "vulkan-1.dll";
 
 	fplConsoleFormatOut("Load Vulkan API '%s'\n", vulkanLibraryFileName);
@@ -96,6 +112,9 @@ typedef struct VulkanInstanceApi {
 	VkInstance instance;
 
 	PFN_vkDestroySurfaceKHR vkDestroySurfaceKHR;
+	PFN_vkEnumeratePhysicalDevices vkEnumeratePhysicalDevices;
+	PFN_vkGetPhysicalDeviceProperties vkGetPhysicalDeviceProperties;
+	PFN_vkGetPhysicalDeviceFeatures vkGetPhysicalDeviceFeatures;
 
 #if defined(FPL_PLATFORM_WINDOWS)
 	PFN_vkCreateWin32SurfaceKHR vkCreateWin32SurfaceKHR;
@@ -122,6 +141,9 @@ bool LoadVulkanInstanceAPI(const VulkanCoreApi *coreApi, VkInstance instance, Vu
 	do {
 
 		VULKAN_INSTANCE_GET_PROC_ADDRESS(outInstanceApi, PFN_vkDestroySurfaceKHR, vkDestroySurfaceKHR);
+		VULKAN_INSTANCE_GET_PROC_ADDRESS(outInstanceApi, PFN_vkEnumeratePhysicalDevices, vkEnumeratePhysicalDevices);
+		VULKAN_INSTANCE_GET_PROC_ADDRESS(outInstanceApi, PFN_vkGetPhysicalDeviceProperties, vkGetPhysicalDeviceProperties);
+		VULKAN_INSTANCE_GET_PROC_ADDRESS(outInstanceApi, PFN_vkGetPhysicalDeviceFeatures, vkGetPhysicalDeviceFeatures);
 
 #if defined(FPL_PLATFORM_WINDOWS)
 		VULKAN_INSTANCE_GET_PROC_ADDRESS(outInstanceApi, PFN_vkCreateWin32SurfaceKHR, vkCreateWin32SurfaceKHR);
@@ -159,6 +181,7 @@ typedef struct VulkanState {
 	VulkanInstanceApi instanceApi;
 	VkInstance instance;
 	VkSurfaceKHR surface;
+	VkPhysicalDevice gpu;
 	fpl_b32 isInitialized;
 } VulkanState;
 
@@ -236,6 +259,7 @@ static bool LoadVulkanInstanceProperties(VulkanCoreApi *coreApi, VulkanInstanceP
 					fplConsoleFormatOut("- %s\n", layerProp->layerName);
 				}
 			}
+
 			free(tempInstanceLayers);
 		}
 	}
@@ -265,7 +289,7 @@ static void ShutdownVulkan(VulkanState *state) {
 }
 
 static bool InitializeVulkan(VulkanState *state) {
-	if(state == fpl_null) 
+	if(state == fpl_null)
 		return(false);
 
 	if(state->isInitialized) {
@@ -356,7 +380,7 @@ static bool InitializeVulkan(VulkanState *state) {
 	fplConsoleFormatOut("\n");
 
 	//
-	// Vulkan Instance
+	// Vulkan Instance (vkInstance)
 	//
 	VkApplicationInfo appInfo = fplZeroInit;
 	appInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
@@ -430,6 +454,98 @@ static bool InitializeVulkan(VulkanState *state) {
 	fplConsoleFormatOut("Successfully created win32 surface KHR\n");
 	fplConsoleFormatOut("\n");
 #endif
+
+	//
+	// Physical Device (vkPhysicalDevice)
+	//
+	fplConsoleFormatOut("Enumerate physical devices for instance '%p'\n", state->instance);
+	uint32_t physicalDeviceCount = 0;
+	res = instanceApi->vkEnumeratePhysicalDevices(state->instance, &physicalDeviceCount, fpl_null);
+	VK_CHECK(res, "Failed enumerating physical instances for instance '%p'!\n", state->instance);
+	VkPhysicalDevice *physicalDevices = (VkPhysicalDevice *)malloc(sizeof(VkPhysicalDevice) * physicalDeviceCount);
+	if(physicalDevices == fpl_null) {
+		VK_CHECK(res, "Failed allocating memory for %lu physical devices!\n", physicalDeviceCount);
+		goto failed;
+	}
+	res = instanceApi->vkEnumeratePhysicalDevices(state->instance, &physicalDeviceCount, physicalDevices);
+	if(res != VK_SUCCESS) free(physicalDevices);
+	VK_CHECK(res, "Failed enumerating physical instances for instance '%p'!\n", state->instance);
+	fplConsoleFormatOut("Successfully enumerated physical devices, got %lu physics devices\n", physicalDeviceCount);
+	fplConsoleFormatOut("\n");
+
+	// Find physical device (Discrete GPU is prefered over integrated GPU)
+	VkPhysicalDevice foundGpu = VK_NULL_HANDLE;
+	uint32_t gpuMatchDistance = 0;
+	uint32_t foundGPUIndex = 0;
+	for(uint32_t physicalDeviceIndex = 0; physicalDeviceIndex < physicalDeviceCount; ++physicalDeviceIndex) {
+		VkPhysicalDevice physicalDevice = physicalDevices[physicalDeviceIndex];
+
+		VkPhysicalDeviceProperties props;
+		instanceApi->vkGetPhysicalDeviceProperties(physicalDevice, &props);
+
+		uint32_t matchDistance = 0;
+		if(props.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU) {
+			matchDistance = 100; // Prefer discrete GPU over integrated
+		} else if(props.deviceType == VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU) {
+			matchDistance = 10;
+		}
+
+		if(matchDistance > gpuMatchDistance) {
+			gpuMatchDistance = matchDistance;
+			foundGpu = physicalDevice;
+			foundGPUIndex = physicalDeviceIndex;
+		}
+	}
+
+	for(uint32_t physicalDeviceIndex = 0; physicalDeviceIndex < physicalDeviceCount; ++physicalDeviceIndex) {
+		VkPhysicalDevice physicalDevice = physicalDevices[physicalDeviceIndex];
+
+		bool isActive = physicalDevice == foundGpu;
+
+		VkPhysicalDeviceProperties physicalDeviceProps = fplZeroInit;
+		instanceApi->vkGetPhysicalDeviceProperties(physicalDevice, &physicalDeviceProps);
+		fplConsoleFormatOut("Physical Device[%lu]\n", physicalDeviceIndex);
+		fplConsoleFormatOut("\tName: %s\n", physicalDeviceProps.deviceName);
+		fplConsoleFormatOut("\tType: %s\n", VulkanPhysicalDeviceTypeToStríng(physicalDeviceProps.deviceType));
+
+		char apiVersionName[100];
+		char driverVersionName[100];
+		VulkanVersionToString(physicalDeviceProps.apiVersion, fplArrayCount(apiVersionName), apiVersionName);
+		VulkanVersionToString(physicalDeviceProps.driverVersion, fplArrayCount(driverVersionName), driverVersionName);
+		fplConsoleFormatOut("\tVersion Driver/API: %s / %s\n", driverVersionName, apiVersionName);
+
+		VkPhysicalDeviceFeatures physicalDeviceFeatures = fplZeroInit;
+		instanceApi->vkGetPhysicalDeviceFeatures(physicalDevice, &physicalDeviceFeatures);
+		fplConsoleFormatOut("\tGeometry shader supported: %s\n", (physicalDeviceFeatures.geometryShader ? "yes" : "no"));
+		fplConsoleFormatOut("\tTesselation shader supported: %s\n", (physicalDeviceFeatures.tessellationShader ? "yes" : "no"));
+
+		// TODO(final): Print out VkPhysicalDeviceMemoryProperties
+	}
+
+	free(physicalDevices);
+
+	if(foundGpu == VK_NULL_HANDLE) {
+		fplConsoleFormatError("No discrete or integrated GPU found. Please upgrade your Vulkan Driver!\n");
+		goto failed;
+	}
+
+	fplConsoleOut("\n");
+
+	VkPhysicalDeviceProperties gpuDeviceProps = fplZeroInit;
+	instanceApi->vkGetPhysicalDeviceProperties(foundGpu, &gpuDeviceProps);
+	fplConsoleFormatOut("Using Physical Device[%lu]: %s (%s)\n", foundGPUIndex, gpuDeviceProps.deviceName, VulkanPhysicalDeviceTypeToStríng(gpuDeviceProps.deviceType));
+	fplConsoleOut("\n");
+
+	//
+	// Queue Family
+	//
+
+	// TODO(final): Get queue families and find the best one for graphics/transfer/compute
+	// > See Sascha Willems example how to find the best queue family
+
+	//
+	// Logical Device (vkDevice)
+	//
 
 	goto success;
 
