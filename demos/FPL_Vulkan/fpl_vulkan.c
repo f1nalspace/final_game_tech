@@ -13,7 +13,7 @@
 #include "containers.h"
 
 //
-// Utils
+// Vulkan Utils
 //
 static const char *VulkanPhysicalDeviceTypeToStríng(const VkPhysicalDeviceType type) {
 	switch(type) {
@@ -47,6 +47,37 @@ static void VulkanVersionToString(const uint32_t versionNumber, const size_t out
 	fplS32ToString(minor, outName + lenMajor + 1, lenMinor + 1);
 	outName[lenMajor + 1 + lenMinor] = '.';
 	fplS32ToString(patch, outName + lenMajor + 1 + lenMinor + 1, lenPatch + 1);
+}
+
+static int32_t GetVulkanQueueFamilyIndex(const VkQueueFlagBits flags, const VkQueueFamilyProperties *families, const uint32_t familyCount) {
+	// Find a dedicated queue for compute (Not graphics)
+	if((flags & VK_QUEUE_COMPUTE_BIT) > 0) {
+		for(uint32_t i = 0; i < familyCount; ++i) {
+			VkQueueFlagBits familyFlags = families[i].queueFlags;
+			if(((familyFlags & VK_QUEUE_COMPUTE_BIT) == VK_QUEUE_COMPUTE_BIT) && ((familyFlags & VK_QUEUE_GRAPHICS_BIT) == 0)) {
+				return(i);
+			}
+		}
+	}
+
+	// Find a dedicated queue for transfer (Not graphics and not compute)
+	if((flags & VK_QUEUE_TRANSFER_BIT) > 0) {
+		for(uint32_t i = 0; i < familyCount; ++i) {
+			VkQueueFlagBits familyFlags = families[i].queueFlags;
+			if(((familyFlags & VK_QUEUE_TRANSFER_BIT) == VK_QUEUE_TRANSFER_BIT) && ((familyFlags & VK_QUEUE_GRAPHICS_BIT) == 0)&& ((familyFlags & VK_QUEUE_COMPUTE_BIT) == 0)) {
+				return(i);
+			}
+		}
+	}
+
+	// For all other queues
+	for(uint32_t i = 0; i < familyCount; ++i) {
+		if((families[i].queueFlags & flags) > 0) {
+			return(i);
+		}
+	}
+
+	return(-1);
 }
 
 //
@@ -187,13 +218,17 @@ typedef struct VulkanState {
 	VulkanCoreApi coreApi;
 	VulkanInstanceApi instanceApi;
 
+	FIXED_TYPED_ARRAY(VkQueueFamilyProperties, queueFamiliesProperties);
+	StringTable supportedPhysicalDeviceExtensions;
+
 	VkInstance instance;
 	VkSurfaceKHR surface;
 	VkPhysicalDevice physicalDevice;
 	const char *physicalDeviceName;
 
-	FIXED_TYPED_ARRAY(VkQueueFamilyProperties, queueFamiliesProperties);
-	StringTable supportedPhysicalDeviceExtensions;
+	int32_t computeFamilyIndex;
+	int32_t transferFamilyIndex;
+	int32_t graphicsFamilyIndex;
 
 	fpl_b32 isInitialized;
 } VulkanState;
@@ -298,6 +333,9 @@ static void ShutdownVulkan(VulkanState *state) {
 	UnloadVulkanCoreAPI(&state->coreApi);
 
 	fplClearStruct(state);
+	state->computeFamilyIndex = -1;
+	state->graphicsFamilyIndex = -1;
+	state->transferFamilyIndex = -1;
 }
 
 static bool InitializeVulkan(VulkanState *state) {
@@ -310,6 +348,9 @@ static bool InitializeVulkan(VulkanState *state) {
 	}
 
 	fplClearStruct(state);
+	state->computeFamilyIndex = -1;
+	state->graphicsFamilyIndex = -1;
+	state->transferFamilyIndex = -1;
 
 	VulkanCoreApi *coreApi = &state->coreApi;
 	VulkanInstanceApi *instanceApi = &state->instanceApi;
@@ -553,7 +594,7 @@ static bool InitializeVulkan(VulkanState *state) {
 	//
 	// Queue Families
 	//
-	
+
 	// TODO(final): Make a function for getting the queue family properties
 
 	fplConsoleFormatOut("Get queue family properties for Physical Device '%s'\n", state->physicalDeviceName);
@@ -612,8 +653,32 @@ static bool InitializeVulkan(VulkanState *state) {
 	}
 	fplConsoleOut("\n");
 
-	// TODO(final): Get queue families and find the best one for graphics/transfer/compute
-	// > See Sascha Willems example how to find the best queue family
+	//
+	// Find queue families
+	//
+	fplConsoleFormatOut("Detect queue families...\n");
+	state->graphicsFamilyIndex = GetVulkanQueueFamilyIndex(VK_QUEUE_GRAPHICS_BIT, state->queueFamiliesProperties.items, state->queueFamiliesProperties.itemCount);
+	state->computeFamilyIndex = GetVulkanQueueFamilyIndex(VK_QUEUE_COMPUTE_BIT, state->queueFamiliesProperties.items, state->queueFamiliesProperties.itemCount);
+	state->transferFamilyIndex = GetVulkanQueueFamilyIndex(VK_QUEUE_TRANSFER_BIT, state->queueFamiliesProperties.items, state->queueFamiliesProperties.itemCount);
+	if(state->graphicsFamilyIndex == -1) {
+		fplConsoleFormatError("No queue family for graphics found!\n");
+		goto failed;
+	}
+	if(state->computeFamilyIndex == -1) {
+		// Use graphics queue for compute queue
+		state->computeFamilyIndex = state->graphicsFamilyIndex;
+	}
+	if(state->transferFamilyIndex == -1) {
+		// Use graphics queue for transfer queue
+		state->transferFamilyIndex = state->graphicsFamilyIndex;
+	}
+	assert(state->graphicsFamilyIndex > -1 && state->computeFamilyIndex > -1 && state->transferFamilyIndex > -1);
+
+	fplConsoleFormatOut("Successfully detected all queue families:\n");
+	fplConsoleFormatOut("\tGraphics queue family: %d\n", state->graphicsFamilyIndex);
+	fplConsoleFormatOut("\tCompute queue family: %d\n", state->computeFamilyIndex);
+	fplConsoleFormatOut("\tTransfer queue family: %d\n", state->transferFamilyIndex);
+	fplConsoleOut("\n");
 
 	//
 	// Logical Device (vkDevice)
