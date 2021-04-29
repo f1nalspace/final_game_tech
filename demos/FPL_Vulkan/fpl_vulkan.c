@@ -210,41 +210,18 @@ void UnloadVulkanInstanceAPI(VulkanInstanceApi *api) {
 	fplClearStruct(api);
 }
 
-typedef struct VulkanState {
-	VkPhysicalDeviceProperties physicalDeviceProperties;
-	VkPhysicalDeviceFeatures physicalDeviceFeatures;
-	VkPhysicalDeviceMemoryProperties physicalDeviceMemoryProperties;
-
-	VulkanCoreApi coreApi;
-	VulkanInstanceApi instanceApi;
-
-	FIXED_TYPED_ARRAY(VkQueueFamilyProperties, queueFamiliesProperties);
-	StringTable supportedPhysicalDeviceExtensions;
-
-	VkInstance instance;
-	VkSurfaceKHR surface;
-	VkPhysicalDevice physicalDevice;
-	const char *physicalDeviceName;
-
-	int32_t computeFamilyIndex;
-	int32_t transferFamilyIndex;
-	int32_t graphicsFamilyIndex;
-
-	fpl_b32 isInitialized;
-} VulkanState;
-
 typedef struct VulkanInstanceProperties {
-	StringTable layers;
-	StringTable extensions;
+	StringTable supportedLayers;
+	StringTable supportedExtensions;
 } VulkanInstanceProperties;
 
 static void DestroyVulkanInstanceProperties(VulkanInstanceProperties *instanceProperties) {
-	FreeStringTable(&instanceProperties->extensions);
-	FreeStringTable(&instanceProperties->layers);
+	FreeStringTable(&instanceProperties->supportedExtensions);
+	FreeStringTable(&instanceProperties->supportedLayers);
 	fplClearStruct(instanceProperties);
 }
 
-static bool LoadVulkanInstanceProperties(VulkanCoreApi *coreApi, VulkanInstanceProperties *outInstanceProperties) {
+static bool LoadVulkanInstanceProperties(const VulkanCoreApi *coreApi, VulkanInstanceProperties *outInstanceProperties) {
 	VulkanInstanceProperties instanceProperties = fplZeroInit;
 
 	VkResult res;
@@ -268,12 +245,12 @@ static bool LoadVulkanInstanceProperties(VulkanCoreApi *coreApi, VulkanInstanceP
 		return(false);
 	}
 
-	instanceProperties.extensions = AllocStringTable(instanceExtensionCount);
+	instanceProperties.supportedExtensions = AllocStringTable(instanceExtensionCount);
 	fplConsoleFormatOut("Successfully got instance extension properties of %lu\n", instanceExtensionCount);
 	for(uint32_t extensionIndex = 0; extensionIndex < instanceExtensionCount; ++extensionIndex) {
 		const VkExtensionProperties *extProp = tempInstanceExtensions + extensionIndex;
 		const char *extName = extProp->extensionName;
-		PushStringToTable(&instanceProperties.extensions, extName);
+		PushStringToTable(&instanceProperties.supportedExtensions, extName);
 		fplConsoleFormatOut("- %s\n", extName);
 	}
 
@@ -294,11 +271,11 @@ static bool LoadVulkanInstanceProperties(VulkanCoreApi *coreApi, VulkanInstanceP
 
 			if(res == VK_SUCCESS) {
 				fplConsoleFormatOut("Successfully got instance layer properties of %lu\n", instanceLayerCount);
-				instanceProperties.layers = AllocStringTable(instanceLayerCount);
+				instanceProperties.supportedLayers = AllocStringTable(instanceLayerCount);
 				for(uint32_t layerIndex = 0; layerIndex < instanceLayerCount; ++layerIndex) {
 					VkLayerProperties *layerProp = tempInstanceLayers + layerIndex;
 					const char *layerName = layerProp->layerName;
-					PushStringToTable(&instanceProperties.layers, layerName);
+					PushStringToTable(&instanceProperties.supportedLayers, layerName);
 					fplConsoleFormatOut("- %s\n", layerName);
 				}
 			}
@@ -311,50 +288,32 @@ static bool LoadVulkanInstanceProperties(VulkanCoreApi *coreApi, VulkanInstanceP
 	return(true);
 }
 
-static void ShutdownVulkan(VulkanState *state) {
-	if(state == fpl_null) return;
+typedef struct VulkanInstance {
+	VulkanInstanceProperties properties;
+	VulkanInstanceApi instanceApi;
+	VkApplicationInfo appInfo;
+	VkInstance instance;
+} VulkanInstance;
 
-	if(state->surface != VK_NULL_HANDLE) {
-		fplConsoleFormatOut("Destroy Vulkan surface '%p'\n", state->surface);
-		state->instanceApi.vkDestroySurfaceKHR(state->instance, state->surface, fpl_null);
-	}
+static void DestroyVulkanInstance(const VulkanCoreApi *coreApi, VulkanInstance *instance) {
+	if(coreApi == fpl_null || instance == fpl_null) return;
 
-	FreeStringTable(&state->supportedPhysicalDeviceExtensions);
+	// Unload Instance API
+	UnloadVulkanInstanceAPI(&instance->instanceApi);
 
-	FREE_FIXED_TYPED_ARRAY(&state->queueFamiliesProperties);
-
-	UnloadVulkanInstanceAPI(&state->instanceApi);
-
-	if(state->instance != VK_NULL_HANDLE) {
+	// Destroy Vulkan instance
+	if(instance->instance != VK_NULL_HANDLE) {
 		fplConsoleFormatOut("Destroy Vulkan instance\n");
-		state->coreApi.vkDestroyInstance(state->instance, fpl_null);
+		coreApi->vkDestroyInstance(instance->instance, fpl_null);
 	}
 
-	UnloadVulkanCoreAPI(&state->coreApi);
+	// Destroy instance properties
+	DestroyVulkanInstanceProperties(&instance->properties);
 
-	fplClearStruct(state);
-	state->computeFamilyIndex = -1;
-	state->graphicsFamilyIndex = -1;
-	state->transferFamilyIndex = -1;
+	fplClearStruct(instance);
 }
 
-static bool InitializeVulkan(VulkanState *state) {
-	if(state == fpl_null)
-		return(false);
-
-	if(state->isInitialized) {
-		fplConsoleError("Vulkan is already initialized!\n");
-		return(false);
-	}
-
-	fplClearStruct(state);
-	state->computeFamilyIndex = -1;
-	state->graphicsFamilyIndex = -1;
-	state->transferFamilyIndex = -1;
-
-	VulkanCoreApi *coreApi = &state->coreApi;
-	VulkanInstanceApi *instanceApi = &state->instanceApi;
-
+static bool CreateVulkanInstance(const VulkanCoreApi *coreApi, VulkanInstance *instance) {
 	const char *validationLayerName = "VK_LAYER_KHRONOS_validation";
 	const char *khrSurfaceName = "VK_KHR_surface";
 
@@ -365,27 +324,17 @@ static bool InitializeVulkan(VulkanState *state) {
 	khrPlatformSurfaceName = "VK_KHR_xlib_surface";
 #endif
 
-	if(!LoadVulkanCoreAPI(coreApi)) {
-		fplConsoleFormatError("Failed to load the Vulkan API!\n");
-		goto failed;
-	}
-	fplConsoleFormatOut("\n");
+	fplClearStruct(instance);
 
 	VkResult res;
-
-#define VK_CHECK(res, emsg, ...) if(res != VK_SUCCESS) \
-	{ \
-		fplConsoleFormatError(emsg, __VA_ARGS__);\
-		goto failed; \
-	}
 
 	//
 	// Load properties
 	//
-	VulkanInstanceProperties instanceProperties = fplZeroInit;
-	if(!LoadVulkanInstanceProperties(coreApi, &instanceProperties)) {
+	VulkanInstanceProperties *instanceProperties = &instance->properties;
+	if(!LoadVulkanInstanceProperties(coreApi, instanceProperties)) {
 		fplConsoleFormatError("Failed loading instance properties!\n");
-		goto failed;
+		return(false);
 	}
 
 	//
@@ -393,8 +342,8 @@ static bool InitializeVulkan(VulkanState *state) {
 	//
 	bool supportsKHRSurface = false;
 	bool supportsKHRPlatformSurface = false;
-	for(uint32_t extensionIndex = 0; extensionIndex < instanceProperties.extensions.count; ++extensionIndex) {
-		const char *extensionName = instanceProperties.extensions.items[extensionIndex];
+	for(uint32_t extensionIndex = 0; extensionIndex < instanceProperties->supportedExtensions.count; ++extensionIndex) {
+		const char *extensionName = instanceProperties->supportedExtensions.items[extensionIndex];
 		if(fplIsStringEqual(khrSurfaceName, extensionName)) {
 			supportsKHRSurface = true;
 		}
@@ -404,14 +353,12 @@ static bool InitializeVulkan(VulkanState *state) {
 	}
 
 	bool supportsValidationLayer = false;
-	for(uint32_t layerIndex = 0; layerIndex < instanceProperties.layers.count; ++layerIndex) {
-		const char *layerName = instanceProperties.layers.items[layerIndex];
+	for(uint32_t layerIndex = 0; layerIndex < instanceProperties->supportedLayers.count; ++layerIndex) {
+		const char *layerName = instanceProperties->supportedLayers.items[layerIndex];
 		if(fplIsStringEqual(layerName, validationLayerName)) {
 			supportsValidationLayer = true;
 		}
 	}
-
-	DestroyVulkanInstanceProperties(&instanceProperties);
 
 	fplConsoleFormatOut("\n");
 
@@ -427,7 +374,8 @@ static bool InitializeVulkan(VulkanState *state) {
 
 	if(!supportsKHRSurface || !supportsKHRPlatformSurface || khrPlatformSurfaceName == fpl_null) {
 		fplConsoleFormatError("Not supported KHR platform!\n");
-		goto failed;
+		DestroyVulkanInstance(coreApi, instance);
+		return(false);
 	}
 
 	fplConsoleFormatOut("\n");
@@ -435,13 +383,13 @@ static bool InitializeVulkan(VulkanState *state) {
 	//
 	// Vulkan Instance (vkInstance)
 	//
-	VkApplicationInfo appInfo = fplZeroInit;
-	appInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
-	appInfo.pApplicationName = "FPL_Vulkan";
-	appInfo.pEngineName = "FPL_Vulkan";
-	appInfo.applicationVersion = VK_MAKE_VERSION(1, 0, 0);
-	appInfo.engineVersion = VK_MAKE_VERSION(1, 0, 0);
-	appInfo.apiVersion = VK_API_VERSION_1_2;
+	VkApplicationInfo *appInfo = &instance->appInfo;
+	appInfo->sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
+	appInfo->pApplicationName = "FPL_Vulkan";
+	appInfo->pEngineName = "FPL_Vulkan";
+	appInfo->applicationVersion = VK_MAKE_VERSION(1, 0, 0);
+	appInfo->engineVersion = VK_MAKE_VERSION(1, 0, 0);
+	appInfo->apiVersion = VK_API_VERSION_1_2;
 
 	bool useValidation = true;
 
@@ -463,7 +411,7 @@ static bool InitializeVulkan(VulkanState *state) {
 
 	VkInstanceCreateInfo instanceCreateInfo = fplZeroInit;
 	instanceCreateInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
-	instanceCreateInfo.pApplicationInfo = &appInfo;
+	instanceCreateInfo.pApplicationInfo = appInfo;
 	instanceCreateInfo.enabledExtensionCount = enabledInstanceExtensionCount;
 	instanceCreateInfo.enabledLayerCount = enabledInstanceLayerCount;
 	instanceCreateInfo.ppEnabledExtensionNames = enabledInstanceExtensions;
@@ -472,61 +420,102 @@ static bool InitializeVulkan(VulkanState *state) {
 	char appVersionName[100] = { 0 };
 	char engineVersionName[100] = { 0 };
 	char vulkanVersionName[100] = { 0 };
-	VulkanVersionToString(appInfo.applicationVersion, fplArrayCount(appVersionName), appVersionName);
-	VulkanVersionToString(appInfo.engineVersion, fplArrayCount(engineVersionName), engineVersionName);
-	VulkanVersionToString(appInfo.apiVersion, fplArrayCount(vulkanVersionName), vulkanVersionName);
+	VulkanVersionToString(appInfo->applicationVersion, fplArrayCount(appVersionName), appVersionName);
+	VulkanVersionToString(appInfo->engineVersion, fplArrayCount(engineVersionName), engineVersionName);
+	VulkanVersionToString(appInfo->apiVersion, fplArrayCount(vulkanVersionName), vulkanVersionName);
 
-	fplConsoleFormatOut("Creating Vulkan instance for application '%s' v%s and engine '%s' v%s for Vulkan v%s...\n", appInfo.pApplicationName, appVersionName, appInfo.pEngineName, engineVersionName, vulkanVersionName);
+	fplConsoleFormatOut("Creating Vulkan instance for application '%s' v%s and engine '%s' v%s for Vulkan v%s...\n", appInfo->pApplicationName, appVersionName, appInfo->pEngineName, engineVersionName, vulkanVersionName);
 	fplConsoleFormatOut("With %lu enabled extensions & %lu layers\n", instanceCreateInfo.enabledExtensionCount, instanceCreateInfo.enabledLayerCount);
-	res = coreApi->vkCreateInstance(&instanceCreateInfo, fpl_null, &state->instance);
-	VK_CHECK(res, "Failed creating Vulkan instance for application '%s'!\n", appInfo.pApplicationName);
+	res = coreApi->vkCreateInstance(&instanceCreateInfo, fpl_null, &instance->instance);
+	if(res != VK_SUCCESS) {
+		fplConsoleFormatError("Failed creating Vulkan instance for application '%s'!\n", appInfo->pApplicationName);
+		DestroyVulkanInstance(coreApi, instance);
+		return(false);
+	}
 	fplConsoleFormatOut("Successfully created instance\n");
 	fplConsoleFormatOut("\n");
 
 	//
 	// Load instance API
 	//
-	if(!LoadVulkanInstanceAPI(coreApi, state->instance, instanceApi)) {
-		fplConsoleFormatError("Failed to load the Vulkan instance API for instance '%p'!\n", state->instance);
-		goto failed;
+	if(!LoadVulkanInstanceAPI(coreApi, instance->instance, &instance->instanceApi)) {
+		fplConsoleFormatError("Failed to load the Vulkan instance API for instance '%p'!\n", instance->instance);
+		DestroyVulkanInstance(coreApi, instance);
+		return(false);
 	}
 
-#if defined(FPL_PLATFORM_WINDOWS)
-	// TODO(final): This is just temporary, until we can query the platform window informations from FPL
-	HWND windowHandle = fpl__global__AppState->window.win32.windowHandle;
-	HINSTANCE appHandle = GetModuleHandle(fpl_null);
+	return(true);
+}
 
-	VkWin32SurfaceCreateInfoKHR createInfo = fplZeroInit;
-	createInfo.sType = VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR;
-	createInfo.hwnd = windowHandle;
-	createInfo.hinstance = appHandle;
+typedef struct VulkanLogicalDevice {
+	VkDevice logicalDevice;
+	int32_t computeFamilyIndex;
+	int32_t transferFamilyIndex;
+	int32_t graphicsFamilyIndex;
+} VulkanLogicalDevice;
 
-	fplConsoleFormatOut("Creating win32 surface KHR from window handle '%p'\n", createInfo.hwnd);
-	res = instanceApi->vkCreateWin32SurfaceKHR(state->instance, &createInfo, fpl_null, &state->surface);
-	VK_CHECK(res, "Failed creating win32 surface KHR!\n");
-	fplConsoleFormatOut("Successfully created win32 surface KHR\n");
-	fplConsoleFormatOut("\n");
-#endif
+bool CreateVulkanLogicalDevice(VkPhysicalDevice physicalDevice, VulkanLogicalDevice *outLogicalDevice) {
+	return(false);
+}
+
+void DestroyVulkanLogicalDevice(VulkanLogicalDevice *logicalDevice) {
+	fplClearStruct(logicalDevice);
+	logicalDevice->computeFamilyIndex = -1;
+	logicalDevice->graphicsFamilyIndex = -1;
+	logicalDevice->transferFamilyIndex = -1;
+}
+
+typedef struct VulkanPhysicalDevice {
+	VkPhysicalDeviceProperties properties;
+	VkPhysicalDeviceFeatures features;
+	VkPhysicalDeviceMemoryProperties memoryProperties;
+
+	FIXED_TYPED_ARRAY(VkQueueFamilyProperties, queueFamilies);
+	StringTable supportedExtensions;
+
+	VkPhysicalDevice physicalDevice;
+	const char *name;
+} VulkanPhysicalDevice;
+
+void DestroyVulkanPhysicalDevice(const VulkanCoreApi *coreApi, VulkanPhysicalDevice *physicalDevice) {
+	if(coreApi == fpl_null || physicalDevice == fpl_null) return;
+	FreeStringTable(&physicalDevice->supportedExtensions);
+	FREE_FIXED_TYPED_ARRAY(&physicalDevice->queueFamilies);
+	fplClearStruct(physicalDevice);
+}
+
+bool CreateVulkanPhysicalDevice(const VulkanCoreApi *coreApi, const VulkanInstanceApi *instanceApi, VkInstance instance, VulkanPhysicalDevice *physicalDevice) {
+	VkResult res;
 
 	//
-	// Physical Device (vkPhysicalDevice)
+	// Get Physical Devices
 	//
-	fplConsoleFormatOut("Enumerate physical devices for instance '%p'\n", state->instance);
+	fplConsoleFormatOut("Enumerate physical devices for instance '%p'\n", instance);
 	uint32_t physicalDeviceCount = 0;
-	res = instanceApi->vkEnumeratePhysicalDevices(state->instance, &physicalDeviceCount, fpl_null);
-	VK_CHECK(res, "Failed enumerating physical instances for instance '%p'!\n", state->instance);
+	res = instanceApi->vkEnumeratePhysicalDevices(instance, &physicalDeviceCount, fpl_null);
+	if(res != VK_SUCCESS) {
+		fplConsoleFormatError("Failed enumerating physical instances for instance '%p'!\n", instance);
+		DestroyVulkanPhysicalDevice(coreApi, physicalDevice);
+		return(false);
+	}
 	VkPhysicalDevice *physicalDevices = (VkPhysicalDevice *)malloc(sizeof(VkPhysicalDevice) * physicalDeviceCount);
 	if(physicalDevices == fpl_null) {
-		VK_CHECK(res, "Failed allocating memory for %lu physical devices!\n", physicalDeviceCount);
-		goto failed;
+		fplConsoleFormatError("Failed allocating memory for %lu physical devices!\n", physicalDeviceCount);
+		DestroyVulkanPhysicalDevice(coreApi, physicalDevice);
+		return(false);
 	}
-	res = instanceApi->vkEnumeratePhysicalDevices(state->instance, &physicalDeviceCount, physicalDevices);
-	if(res != VK_SUCCESS) free(physicalDevices);
-	VK_CHECK(res, "Failed enumerating physical instances for instance '%p'!\n", state->instance);
+	res = instanceApi->vkEnumeratePhysicalDevices(instance, &physicalDeviceCount, physicalDevices);
+	if(res != VK_SUCCESS) {
+		fplConsoleFormatError("Failed enumerating physical instances for instance '%p'!\n", instance);
+		DestroyVulkanPhysicalDevice(coreApi, physicalDevice);
+		free(physicalDevices);
+	}
 	fplConsoleFormatOut("Successfully enumerated physical devices, got %lu physics devices\n", physicalDeviceCount);
 	fplConsoleFormatOut("\n");
 
-	// Find physical device (Discrete GPU is prefered over integrated GPU)
+	//
+	// Find physical device (Discrete GPU is preferred over integrated GPU)
+	//
 	VkPhysicalDevice foundGpu = VK_NULL_HANDLE;
 	uint32_t gpuMatchDistance = 0;
 	uint32_t foundGPUIndex = 0;
@@ -577,18 +566,19 @@ static bool InitializeVulkan(VulkanState *state) {
 
 	if(foundGpu == VK_NULL_HANDLE) {
 		fplConsoleFormatError("No discrete or integrated GPU found. Please upgrade your Vulkan Driver!\n");
-		goto failed;
+		DestroyVulkanPhysicalDevice(coreApi, physicalDevice);
+		return(false);
 	}
 
 	fplConsoleOut("\n");
 
-	state->physicalDevice = foundGpu;
-	instanceApi->vkGetPhysicalDeviceProperties(state->physicalDevice, &state->physicalDeviceProperties);
-	instanceApi->vkGetPhysicalDeviceFeatures(state->physicalDevice, &state->physicalDeviceFeatures);
-	instanceApi->vkGetPhysicalDeviceMemoryProperties(state->physicalDevice, &state->physicalDeviceMemoryProperties);
-	state->physicalDeviceName = state->physicalDeviceProperties.deviceName;
+	instanceApi->vkGetPhysicalDeviceProperties(foundGpu, &physicalDevice->properties);
+	instanceApi->vkGetPhysicalDeviceFeatures(foundGpu, &physicalDevice->features);
+	instanceApi->vkGetPhysicalDeviceMemoryProperties(foundGpu, &physicalDevice->memoryProperties);
+	physicalDevice->physicalDevice = foundGpu;
+	physicalDevice->name = physicalDevice->properties.deviceName;
 
-	fplConsoleFormatOut("Using [%lu] Physical Device '%s' (%s)\n", foundGPUIndex, state->physicalDeviceName, VulkanPhysicalDeviceTypeToStríng(state->physicalDeviceProperties.deviceType));
+	fplConsoleFormatOut("Using [%lu] Physical Device '%s' (%s)\n", foundGPUIndex, physicalDevice->name, VulkanPhysicalDeviceTypeToStríng(physicalDevice->properties.deviceType));
 	fplConsoleOut("\n");
 
 	//
@@ -597,16 +587,16 @@ static bool InitializeVulkan(VulkanState *state) {
 
 	// TODO(final): Make a function for getting the queue family properties
 
-	fplConsoleFormatOut("Get queue family properties for Physical Device '%s'\n", state->physicalDeviceName);
+	fplConsoleFormatOut("Get queue family properties for Physical Device '%s'\n", physicalDevice->name);
 	uint32_t queueFamilyPropertiesCount = 0;
-	instanceApi->vkGetPhysicalDeviceQueueFamilyProperties(state->physicalDevice, &queueFamilyPropertiesCount, fpl_null);
+	instanceApi->vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice->physicalDevice, &queueFamilyPropertiesCount, fpl_null);
 	assert(queueFamilyPropertiesCount > 0);
 
-	ALLOC_FIXED_TYPED_ARRAY(&state->queueFamiliesProperties, VkQueueFamilyProperties, queueFamilyPropertiesCount);
-	instanceApi->vkGetPhysicalDeviceQueueFamilyProperties(state->physicalDevice, &queueFamilyPropertiesCount, state->queueFamiliesProperties.items);
-	fplConsoleFormatOut("Successfully got %lu queue family properties for Physical Device '%s'\n", queueFamilyPropertiesCount, state->physicalDeviceName);
+	ALLOC_FIXED_TYPED_ARRAY(&physicalDevice->queueFamilies, VkQueueFamilyProperties, queueFamilyPropertiesCount);
+	instanceApi->vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice->physicalDevice, &queueFamilyPropertiesCount, physicalDevice->queueFamilies.items);
+	fplConsoleFormatOut("Successfully got %lu queue family properties for Physical Device '%s'\n", queueFamilyPropertiesCount, physicalDevice->name);
 	for(uint32_t queueFamilyPropertiesIndex = 0; queueFamilyPropertiesIndex < queueFamilyPropertiesCount; ++queueFamilyPropertiesIndex) {
-		const VkQueueFamilyProperties *queueFamilyProps = state->queueFamiliesProperties.items + queueFamilyPropertiesIndex;
+		const VkQueueFamilyProperties *queueFamilyProps = physicalDevice->queueFamilies.items + queueFamilyPropertiesIndex;
 		fplConsoleFormatOut("[%lu] Count: %lu, Flags: ", queueFamilyPropertiesIndex, queueFamilyProps->queueCount);
 		int c = 0;
 		if((queueFamilyProps->queueFlags & VK_QUEUE_GRAPHICS_BIT) == VK_QUEUE_GRAPHICS_BIT) {
@@ -636,52 +626,158 @@ static bool InitializeVulkan(VulkanState *state) {
 	//
 	// Device Extensions
 	//
-	fplConsoleFormatOut("Enumerate device extensions for Physical Device '%s'\n", state->physicalDeviceName);
+	fplConsoleFormatOut("Enumerate device extensions for Physical Device '%s'\n", physicalDevice->name);
 	uint32_t deviceExtensionCount = 0;
-	instanceApi->vkEnumerateDeviceExtensionProperties(state->physicalDevice, fpl_null, &deviceExtensionCount, fpl_null);
+	instanceApi->vkEnumerateDeviceExtensionProperties(physicalDevice->physicalDevice, fpl_null, &deviceExtensionCount, fpl_null);
 	if(deviceExtensionCount > 0) {
 		VkExtensionProperties *extensionProperties = (VkExtensionProperties *)malloc(sizeof(VkExtensionProperties) * deviceExtensionCount);
-		instanceApi->vkEnumerateDeviceExtensionProperties(state->physicalDevice, fpl_null, &deviceExtensionCount, extensionProperties);
-		fplConsoleFormatOut("Successfully enumerated device extensions for Physical Device '%s', got %lu extensions\n", state->physicalDeviceName, deviceExtensionCount);
-		state->supportedPhysicalDeviceExtensions = AllocStringTable(deviceExtensionCount);
+		instanceApi->vkEnumerateDeviceExtensionProperties(physicalDevice->physicalDevice, fpl_null, &deviceExtensionCount, extensionProperties);
+		fplConsoleFormatOut("Successfully enumerated device extensions for Physical Device '%s', got %lu extensions\n", physicalDevice->name, deviceExtensionCount);
+		physicalDevice->supportedExtensions = AllocStringTable(deviceExtensionCount);
 		for(uint32_t extIndex = 0; extIndex < deviceExtensionCount; ++extIndex) {
 			const char *extName = extensionProperties[extIndex].extensionName;
-			PushStringToTable(&state->supportedPhysicalDeviceExtensions, extName);
+			PushStringToTable(&physicalDevice->supportedExtensions, extName);
 			fplConsoleFormatOut("- %s\n", extName);
 		}
 		free(extensionProperties);
 	}
 	fplConsoleOut("\n");
 
+	return(true);
+}
+
+typedef struct VulkanState {
+	VulkanPhysicalDevice physicalDevice;
+
+	VulkanCoreApi coreApi;
+
+	VulkanLogicalDevice logicalDevice;
+
+	VulkanInstance instance;
+
+	VkSurfaceKHR surface;
+
+	fpl_b32 isInitialized;
+} VulkanState;
+
+static void ShutdownVulkan(VulkanState *state) {
+	if(state == fpl_null) return;
+
+	// Destroy Logical Device
+	DestroyVulkanLogicalDevice(&state->logicalDevice);
+	
+	// Destroy Physical device
+	DestroyVulkanPhysicalDevice(&state->coreApi, &state->physicalDevice);
+
+	// Destroy Surface KHR
+	if(state->surface != VK_NULL_HANDLE) {
+		fplConsoleFormatOut("Destroy Vulkan surface '%p'\n", state->surface);
+		state->instance.instanceApi.vkDestroySurfaceKHR(state->instance.instance, state->surface, fpl_null);
+	}
+
+	// Destroy Instance
+	DestroyVulkanInstance(&state->coreApi, &state->instance);
+
+	// Unload Core API
+	UnloadVulkanCoreAPI(&state->coreApi);
+
+	fplClearStruct(state);
+}
+
+static bool InitializeVulkan(VulkanState *state) {
+	if(state == fpl_null)
+		return(false);
+
+	if(state->isInitialized) {
+		fplConsoleError("Vulkan is already initialized!\n");
+		return(false);
+	}
+
+	fplClearStruct(state);
+
+	VulkanCoreApi *coreApi = &state->coreApi;
+	VulkanInstanceApi *instanceApi = &state->instance.instanceApi;
+
+
+	if(!LoadVulkanCoreAPI(coreApi)) {
+		fplConsoleFormatError("Failed to load the Vulkan API!\n");
+		goto failed;
+	}
+	fplConsoleFormatOut("\n");
+
+	VkResult res;
+
+#define VK_CHECK(res, emsg, ...) if(res != VK_SUCCESS) \
+	{ \
+		fplConsoleFormatError(emsg, __VA_ARGS__);\
+		goto failed; \
+	}
+
+	//
+	// Create instance
+	//
+	if(!CreateVulkanInstance(coreApi, &state->instance)) {
+		fplConsoleFormatError("Failed to create a Vulkan instance!\n");
+		goto failed;
+	}
+
+	//
+	// Create Surface KHR
+	//
+#if defined(FPL_PLATFORM_WINDOWS)
+	// TODO(final): This is just temporary, until we can query the platform window informations from FPL
+	HWND windowHandle = fpl__global__AppState->window.win32.windowHandle;
+	HINSTANCE appHandle = GetModuleHandle(fpl_null);
+
+	VkWin32SurfaceCreateInfoKHR createInfo = fplZeroInit;
+	createInfo.sType = VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR;
+	createInfo.hwnd = windowHandle;
+	createInfo.hinstance = appHandle;
+
+	fplConsoleFormatOut("Creating win32 surface KHR from window handle '%p'\n", createInfo.hwnd);
+	res = instanceApi->vkCreateWin32SurfaceKHR(state->instance.instance, &createInfo, fpl_null, &state->surface);
+	VK_CHECK(res, "Failed creating win32 surface KHR!\n");
+	fplConsoleFormatOut("Successfully created win32 surface KHR\n");
+	fplConsoleFormatOut("\n");
+#endif
+
+	//
+	// Physical Device
+	//
+	if(!CreateVulkanPhysicalDevice(coreApi, instanceApi, state->instance.instance, &state->physicalDevice)) {
+		fplConsoleFormatError("Failed to find a physical device from instance '%p'!\n", state->instance.instance);
+		goto failed;
+	}
+
 	//
 	// Find queue families
 	//
 	fplConsoleFormatOut("Detect queue families...\n");
-	state->graphicsFamilyIndex = GetVulkanQueueFamilyIndex(VK_QUEUE_GRAPHICS_BIT, state->queueFamiliesProperties.items, state->queueFamiliesProperties.itemCount);
-	state->computeFamilyIndex = GetVulkanQueueFamilyIndex(VK_QUEUE_COMPUTE_BIT, state->queueFamiliesProperties.items, state->queueFamiliesProperties.itemCount);
-	state->transferFamilyIndex = GetVulkanQueueFamilyIndex(VK_QUEUE_TRANSFER_BIT, state->queueFamiliesProperties.items, state->queueFamiliesProperties.itemCount);
-	if(state->graphicsFamilyIndex == -1) {
+	state->logicalDevice.graphicsFamilyIndex = GetVulkanQueueFamilyIndex(VK_QUEUE_GRAPHICS_BIT, state->physicalDevice.queueFamilies.items, state->physicalDevice.queueFamilies.itemCount);
+	state->logicalDevice.computeFamilyIndex = GetVulkanQueueFamilyIndex(VK_QUEUE_COMPUTE_BIT, state->physicalDevice.queueFamilies.items, state->physicalDevice.queueFamilies.itemCount);
+	state->logicalDevice.transferFamilyIndex = GetVulkanQueueFamilyIndex(VK_QUEUE_TRANSFER_BIT, state->physicalDevice.queueFamilies.items, state->physicalDevice.queueFamilies.itemCount);
+	if(state->logicalDevice.graphicsFamilyIndex == -1) {
 		fplConsoleFormatError("No queue family for graphics found!\n");
 		goto failed;
 	}
-	if(state->computeFamilyIndex == -1) {
+	if(state->logicalDevice.computeFamilyIndex == -1) {
 		// Use graphics queue for compute queue
-		state->computeFamilyIndex = state->graphicsFamilyIndex;
+		state->logicalDevice.computeFamilyIndex = state->logicalDevice.graphicsFamilyIndex;
 	}
-	if(state->transferFamilyIndex == -1) {
+	if(state->logicalDevice.transferFamilyIndex == -1) {
 		// Use graphics queue for transfer queue
-		state->transferFamilyIndex = state->graphicsFamilyIndex;
+		state->logicalDevice.transferFamilyIndex = state->logicalDevice.graphicsFamilyIndex;
 	}
-	assert(state->graphicsFamilyIndex > -1 && state->computeFamilyIndex > -1 && state->transferFamilyIndex > -1);
+	assert(state->logicalDevice.graphicsFamilyIndex > -1 && state->logicalDevice.computeFamilyIndex > -1 && state->logicalDevice.transferFamilyIndex > -1);
 
 	fplConsoleFormatOut("Successfully detected all queue families:\n");
-	fplConsoleFormatOut("\tGraphics queue family: %d\n", state->graphicsFamilyIndex);
-	fplConsoleFormatOut("\tCompute queue family: %d\n", state->computeFamilyIndex);
-	fplConsoleFormatOut("\tTransfer queue family: %d\n", state->transferFamilyIndex);
+	fplConsoleFormatOut("\tGraphics queue family: %d\n", state->logicalDevice.graphicsFamilyIndex);
+	fplConsoleFormatOut("\tCompute queue family: %d\n", state->logicalDevice.computeFamilyIndex);
+	fplConsoleFormatOut("\tTransfer queue family: %d\n", state->logicalDevice.transferFamilyIndex);
 	fplConsoleOut("\n");
 
 	//
-	// Logical Device (vkDevice)
+	// TODO(final): Logical Device (vkDevice)
 	//
 
 	goto success;
@@ -756,6 +852,11 @@ cleanup:
 			ShutdownVulkan(state);
 			fplMemoryFree(state);
 		}
+
+#if 0
+		fplConsoleFormatOut("Press any key to exit\n");
+		fplConsoleWaitForCharInput();
+#endif
 
 		fplConsoleFormatOut("Shutdown Platform\n");
 		fplPlatformRelease();
