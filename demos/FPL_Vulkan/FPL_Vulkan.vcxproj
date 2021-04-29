@@ -157,6 +157,9 @@
   <ItemGroup>
     <ClCompile Include="fpl_vulkan.c" />
   </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="containers.h" />
+  </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
   </ImportGroup>

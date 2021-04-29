@@ -10,6 +10,8 @@
 
 #include <malloc.h>
 
+#include "containers.h"
+
 //
 // Utils
 //
@@ -115,6 +117,11 @@ typedef struct VulkanInstanceApi {
 	PFN_vkEnumeratePhysicalDevices vkEnumeratePhysicalDevices;
 	PFN_vkGetPhysicalDeviceProperties vkGetPhysicalDeviceProperties;
 	PFN_vkGetPhysicalDeviceFeatures vkGetPhysicalDeviceFeatures;
+	PFN_vkGetPhysicalDeviceMemoryProperties vkGetPhysicalDeviceMemoryProperties;
+	PFN_vkGetPhysicalDeviceQueueFamilyProperties vkGetPhysicalDeviceQueueFamilyProperties;
+	PFN_vkEnumerateDeviceExtensionProperties vkEnumerateDeviceExtensionProperties;
+	PFN_vkEnumerateDeviceLayerProperties vkEnumerateDeviceLayerProperties;
+
 
 #if defined(FPL_PLATFORM_WINDOWS)
 	PFN_vkCreateWin32SurfaceKHR vkCreateWin32SurfaceKHR;
@@ -144,6 +151,10 @@ bool LoadVulkanInstanceAPI(const VulkanCoreApi *coreApi, VkInstance instance, Vu
 		VULKAN_INSTANCE_GET_PROC_ADDRESS(outInstanceApi, PFN_vkEnumeratePhysicalDevices, vkEnumeratePhysicalDevices);
 		VULKAN_INSTANCE_GET_PROC_ADDRESS(outInstanceApi, PFN_vkGetPhysicalDeviceProperties, vkGetPhysicalDeviceProperties);
 		VULKAN_INSTANCE_GET_PROC_ADDRESS(outInstanceApi, PFN_vkGetPhysicalDeviceFeatures, vkGetPhysicalDeviceFeatures);
+		VULKAN_INSTANCE_GET_PROC_ADDRESS(outInstanceApi, PFN_vkGetPhysicalDeviceMemoryProperties, vkGetPhysicalDeviceMemoryProperties);
+		VULKAN_INSTANCE_GET_PROC_ADDRESS(outInstanceApi, PFN_vkGetPhysicalDeviceQueueFamilyProperties, vkGetPhysicalDeviceQueueFamilyProperties);
+		VULKAN_INSTANCE_GET_PROC_ADDRESS(outInstanceApi, PFN_vkEnumerateDeviceExtensionProperties, vkEnumerateDeviceExtensionProperties);
+		VULKAN_INSTANCE_GET_PROC_ADDRESS(outInstanceApi, PFN_vkEnumerateDeviceLayerProperties, vkEnumerateDeviceLayerProperties);
 
 #if defined(FPL_PLATFORM_WINDOWS)
 		VULKAN_INSTANCE_GET_PROC_ADDRESS(outInstanceApi, PFN_vkCreateWin32SurfaceKHR, vkCreateWin32SurfaceKHR);
@@ -168,35 +179,34 @@ void UnloadVulkanInstanceAPI(VulkanInstanceApi *api) {
 	fplClearStruct(api);
 }
 
-typedef struct VulkanLayerName {
-	char name[256];
-} VulkanLayerName;
-
-typedef struct VulkanExtensionName {
-	char name[256];
-} VulkanExtensionName;
-
 typedef struct VulkanState {
+	VkPhysicalDeviceProperties physicalDeviceProperties;
+	VkPhysicalDeviceFeatures physicalDeviceFeatures;
+	VkPhysicalDeviceMemoryProperties physicalDeviceMemoryProperties;
+
 	VulkanCoreApi coreApi;
 	VulkanInstanceApi instanceApi;
+
 	VkInstance instance;
 	VkSurfaceKHR surface;
-	VkPhysicalDevice gpu;
+	VkPhysicalDevice physicalDevice;
+	const char *physicalDeviceName;
+
+	FIXED_TYPED_ARRAY(VkQueueFamilyProperties, queueFamiliesProperties);
+	StringTable supportedPhysicalDeviceExtensions;
+
 	fpl_b32 isInitialized;
 } VulkanState;
 
 typedef struct VulkanInstanceProperties {
-	VulkanLayerName *layers;
-	VulkanExtensionName *extensions;
-	uint32_t layerCount;
-	uint32_t extensionCount;
+	StringTable layers;
+	StringTable extensions;
 } VulkanInstanceProperties;
 
-static void ReleaseVulkanInstanceProperties(VulkanInstanceProperties *instanceProperties) {
-	if(instanceProperties->layers != fpl_null)
-		free(instanceProperties->layers);
-	if(instanceProperties->extensions != fpl_null)
-		free(instanceProperties->extensions);
+static void DestroyVulkanInstanceProperties(VulkanInstanceProperties *instanceProperties) {
+	FreeStringTable(&instanceProperties->extensions);
+	FreeStringTable(&instanceProperties->layers);
+	fplClearStruct(instanceProperties);
 }
 
 static bool LoadVulkanInstanceProperties(VulkanCoreApi *coreApi, VulkanInstanceProperties *outInstanceProperties) {
@@ -213,7 +223,6 @@ static bool LoadVulkanInstanceProperties(VulkanCoreApi *coreApi, VulkanInstanceP
 	if(res != VK_SUCCESS) {
 		return(false);
 	}
-
 	VkExtensionProperties *tempInstanceExtensions = (VkExtensionProperties *)malloc(sizeof(VkExtensionProperties) * instanceExtensionCount);
 	if(tempInstanceExtensions == fpl_null) {
 		return(false);
@@ -224,14 +233,13 @@ static bool LoadVulkanInstanceProperties(VulkanCoreApi *coreApi, VulkanInstanceP
 		return(false);
 	}
 
-	instanceProperties.extensionCount = instanceExtensionCount;
-	instanceProperties.extensions = (VulkanExtensionName *)malloc(sizeof(VulkanExtensionName) * instanceExtensionCount);
-
+	instanceProperties.extensions = AllocStringTable(instanceExtensionCount);
 	fplConsoleFormatOut("Successfully got instance extension properties of %lu\n", instanceExtensionCount);
 	for(uint32_t extensionIndex = 0; extensionIndex < instanceExtensionCount; ++extensionIndex) {
 		const VkExtensionProperties *extProp = tempInstanceExtensions + extensionIndex;
-		fplCopyString(extProp->extensionName, instanceProperties.extensions[extensionIndex].name, fplArrayCount(instanceProperties.extensions[extensionIndex].name));
-		fplConsoleFormatOut("- %s\n", extProp->extensionName);
+		const char *extName = extProp->extensionName;
+		PushStringToTable(&instanceProperties.extensions, extName);
+		fplConsoleFormatOut("- %s\n", extName);
 	}
 
 	free(tempInstanceExtensions);
@@ -251,12 +259,12 @@ static bool LoadVulkanInstanceProperties(VulkanCoreApi *coreApi, VulkanInstanceP
 
 			if(res == VK_SUCCESS) {
 				fplConsoleFormatOut("Successfully got instance layer properties of %lu\n", instanceLayerCount);
-				instanceProperties.layerCount = instanceLayerCount;
-				instanceProperties.layers = (VulkanLayerName *)malloc(sizeof(VulkanLayerName) * instanceLayerCount);
+				instanceProperties.layers = AllocStringTable(instanceLayerCount);
 				for(uint32_t layerIndex = 0; layerIndex < instanceLayerCount; ++layerIndex) {
 					VkLayerProperties *layerProp = tempInstanceLayers + layerIndex;
-					fplCopyString(layerProp->layerName, instanceProperties.layers[layerIndex].name, fplArrayCount(instanceProperties.layers[layerIndex].name));
-					fplConsoleFormatOut("- %s\n", layerProp->layerName);
+					const char *layerName = layerProp->layerName;
+					PushStringToTable(&instanceProperties.layers, layerName);
+					fplConsoleFormatOut("- %s\n", layerName);
 				}
 			}
 
@@ -275,6 +283,10 @@ static void ShutdownVulkan(VulkanState *state) {
 		fplConsoleFormatOut("Destroy Vulkan surface '%p'\n", state->surface);
 		state->instanceApi.vkDestroySurfaceKHR(state->instance, state->surface, fpl_null);
 	}
+
+	FreeStringTable(&state->supportedPhysicalDeviceExtensions);
+
+	FREE_FIXED_TYPED_ARRAY(&state->queueFamiliesProperties);
 
 	UnloadVulkanInstanceAPI(&state->instanceApi);
 
@@ -340,8 +352,8 @@ static bool InitializeVulkan(VulkanState *state) {
 	//
 	bool supportsKHRSurface = false;
 	bool supportsKHRPlatformSurface = false;
-	for(uint32_t extensionIndex = 0; extensionIndex < instanceProperties.extensionCount; ++extensionIndex) {
-		const char *extensionName = instanceProperties.extensions[extensionIndex].name;
+	for(uint32_t extensionIndex = 0; extensionIndex < instanceProperties.extensions.count; ++extensionIndex) {
+		const char *extensionName = instanceProperties.extensions.items[extensionIndex];
 		if(fplIsStringEqual(khrSurfaceName, extensionName)) {
 			supportsKHRSurface = true;
 		}
@@ -351,14 +363,14 @@ static bool InitializeVulkan(VulkanState *state) {
 	}
 
 	bool supportsValidationLayer = false;
-	for(uint32_t layerIndex = 0; layerIndex < instanceProperties.layerCount; ++layerIndex) {
-		const char *layerName = instanceProperties.layers[layerIndex].name;
+	for(uint32_t layerIndex = 0; layerIndex < instanceProperties.layers.count; ++layerIndex) {
+		const char *layerName = instanceProperties.layers.items[layerIndex];
 		if(fplIsStringEqual(layerName, validationLayerName)) {
 			supportsValidationLayer = true;
 		}
 	}
 
-	ReleaseVulkanInstanceProperties(&instanceProperties);
+	DestroyVulkanInstanceProperties(&instanceProperties);
 
 	fplConsoleFormatOut("\n");
 
@@ -504,9 +516,7 @@ static bool InitializeVulkan(VulkanState *state) {
 
 		VkPhysicalDeviceProperties physicalDeviceProps = fplZeroInit;
 		instanceApi->vkGetPhysicalDeviceProperties(physicalDevice, &physicalDeviceProps);
-		fplConsoleFormatOut("Physical Device[%lu]\n", physicalDeviceIndex);
-		fplConsoleFormatOut("\tName: %s\n", physicalDeviceProps.deviceName);
-		fplConsoleFormatOut("\tType: %s\n", VulkanPhysicalDeviceTypeToStríng(physicalDeviceProps.deviceType));
+		fplConsoleFormatOut("[%lu] Physical Device '%s' (%s)\n", physicalDeviceIndex, physicalDeviceProps.deviceName, VulkanPhysicalDeviceTypeToStríng(physicalDeviceProps.deviceType));
 
 		char apiVersionName[100];
 		char driverVersionName[100];
@@ -531,14 +541,76 @@ static bool InitializeVulkan(VulkanState *state) {
 
 	fplConsoleOut("\n");
 
-	VkPhysicalDeviceProperties gpuDeviceProps = fplZeroInit;
-	instanceApi->vkGetPhysicalDeviceProperties(foundGpu, &gpuDeviceProps);
-	fplConsoleFormatOut("Using Physical Device[%lu]: %s (%s)\n", foundGPUIndex, gpuDeviceProps.deviceName, VulkanPhysicalDeviceTypeToStríng(gpuDeviceProps.deviceType));
+	state->physicalDevice = foundGpu;
+	instanceApi->vkGetPhysicalDeviceProperties(state->physicalDevice, &state->physicalDeviceProperties);
+	instanceApi->vkGetPhysicalDeviceFeatures(state->physicalDevice, &state->physicalDeviceFeatures);
+	instanceApi->vkGetPhysicalDeviceMemoryProperties(state->physicalDevice, &state->physicalDeviceMemoryProperties);
+	state->physicalDeviceName = state->physicalDeviceProperties.deviceName;
+
+	fplConsoleFormatOut("Using [%lu] Physical Device '%s' (%s)\n", foundGPUIndex, state->physicalDeviceName, VulkanPhysicalDeviceTypeToStríng(state->physicalDeviceProperties.deviceType));
 	fplConsoleOut("\n");
 
 	//
-	// Queue Family
+	// Queue Families
 	//
+	
+	// TODO(final): Make a function for getting the queue family properties
+
+	fplConsoleFormatOut("Get queue family properties for Physical Device '%s'\n", state->physicalDeviceName);
+	uint32_t queueFamilyPropertiesCount = 0;
+	instanceApi->vkGetPhysicalDeviceQueueFamilyProperties(state->physicalDevice, &queueFamilyPropertiesCount, fpl_null);
+	assert(queueFamilyPropertiesCount > 0);
+
+	ALLOC_FIXED_TYPED_ARRAY(&state->queueFamiliesProperties, VkQueueFamilyProperties, queueFamilyPropertiesCount);
+	instanceApi->vkGetPhysicalDeviceQueueFamilyProperties(state->physicalDevice, &queueFamilyPropertiesCount, state->queueFamiliesProperties.items);
+	fplConsoleFormatOut("Successfully got %lu queue family properties for Physical Device '%s'\n", queueFamilyPropertiesCount, state->physicalDeviceName);
+	for(uint32_t queueFamilyPropertiesIndex = 0; queueFamilyPropertiesIndex < queueFamilyPropertiesCount; ++queueFamilyPropertiesIndex) {
+		const VkQueueFamilyProperties *queueFamilyProps = state->queueFamiliesProperties.items + queueFamilyPropertiesIndex;
+		fplConsoleFormatOut("[%lu] Count: %lu, Flags: ", queueFamilyPropertiesIndex, queueFamilyProps->queueCount);
+		int c = 0;
+		if((queueFamilyProps->queueFlags & VK_QUEUE_GRAPHICS_BIT) == VK_QUEUE_GRAPHICS_BIT) {
+			if(c++ > 0) fplConsoleOut(", ");
+			fplConsoleOut("VK_QUEUE_GRAPHICS_BIT");
+		}
+		if((queueFamilyProps->queueFlags & VK_QUEUE_COMPUTE_BIT) == VK_QUEUE_COMPUTE_BIT) {
+			if(c++ > 0) fplConsoleOut(", ");
+			fplConsoleOut("VK_QUEUE_COMPUTE_BIT");
+		}
+		if((queueFamilyProps->queueFlags & VK_QUEUE_TRANSFER_BIT) == VK_QUEUE_TRANSFER_BIT) {
+			if(c++ > 0) fplConsoleOut(", ");
+			fplConsoleOut("VK_QUEUE_TRANSFER_BIT");
+		}
+		if((queueFamilyProps->queueFlags & VK_QUEUE_SPARSE_BINDING_BIT) == VK_QUEUE_SPARSE_BINDING_BIT) {
+			if(c++ > 0) fplConsoleOut(", ");
+			fplConsoleOut("VK_QUEUE_SPARSE_BINDING_BIT");
+		}
+		if((queueFamilyProps->queueFlags & VK_QUEUE_PROTECTED_BIT) == VK_QUEUE_PROTECTED_BIT) {
+			if(c++ > 0) fplConsoleOut(", ");
+			fplConsoleOut("VK_QUEUE_PROTECTED_BIT");
+		}
+		fplConsoleOut("\n");
+	}
+	fplConsoleOut("\n");
+
+	//
+	// Device Extensions
+	//
+	fplConsoleFormatOut("Enumerate device extensions for Physical Device '%s'\n", state->physicalDeviceName);
+	uint32_t deviceExtensionCount = 0;
+	instanceApi->vkEnumerateDeviceExtensionProperties(state->physicalDevice, fpl_null, &deviceExtensionCount, fpl_null);
+	if(deviceExtensionCount > 0) {
+		VkExtensionProperties *extensionProperties = (VkExtensionProperties *)malloc(sizeof(VkExtensionProperties) * deviceExtensionCount);
+		instanceApi->vkEnumerateDeviceExtensionProperties(state->physicalDevice, fpl_null, &deviceExtensionCount, extensionProperties);
+		fplConsoleFormatOut("Successfully enumerated device extensions for Physical Device '%s', got %lu extensions\n", state->physicalDeviceName, deviceExtensionCount);
+		state->supportedPhysicalDeviceExtensions = AllocStringTable(deviceExtensionCount);
+		for(uint32_t extIndex = 0; extIndex < deviceExtensionCount; ++extIndex) {
+			const char *extName = extensionProperties[extIndex].extensionName;
+			PushStringToTable(&state->supportedPhysicalDeviceExtensions, extName);
+			fplConsoleFormatOut("- %s\n", extName);
+		}
+		free(extensionProperties);
+	}
+	fplConsoleOut("\n");
 
 	// TODO(final): Get queue families and find the best one for graphics/transfer/compute
 	// > See Sascha Willems example how to find the best queue family
@@ -578,10 +650,10 @@ int main(int argc, char **argv) {
 
 	isPlatformInitialized = true;
 
-	size_t stateState = sizeof(VulkanState);
-	state = (VulkanState *)fplMemoryAllocate(stateState);
+	size_t stateSize = sizeof(VulkanState);
+	state = (VulkanState *)fplMemoryAllocate(stateSize);
 	if(state == fpl_null) {
-		fplConsoleFormatError("Failed to allocate memory of size '%zu' for vulkan state!", stateState);
+		fplConsoleFormatError("Failed to allocate memory of size '%zu' for Vulkan state!", stateSize);
 		goto cleanup;
 	}
 
