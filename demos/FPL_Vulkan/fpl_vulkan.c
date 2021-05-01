@@ -1429,6 +1429,8 @@ bool VulkanCreateLogicalDevice(
 			}
 		}
 		fplConsoleFormatOut("\n");
+		deviceCreateInfo.enabledExtensionCount = enabledDeviceExtensionCount;
+		deviceCreateInfo.ppEnabledExtensionNames = enabledDeviceExtensions;
 	}
 
 	fplConsoleFormatOut("Creating Logical Device from physical device '%s'\n", physicalDevice->name);
