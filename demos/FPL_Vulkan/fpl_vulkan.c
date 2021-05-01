@@ -624,27 +624,32 @@ typedef struct VulkanCoreApi {
 	PFN_vkEnumerateInstanceLayerProperties vkEnumerateInstanceLayerProperties;
 	PFN_vkGetInstanceProcAddr vkGetInstanceProcAddr;
 
-	fpl_b32 isInitialized;
+	fpl_b32 isValid;
 } VulkanCoreApi;
 
-void VulkanUnloadCoreAPI(VulkanCoreApi *api) {
-	if(api->isInitialized) {
+void VulkanUnloadCoreAPI(VulkanCoreApi *coreApi) {
+	assert(coreApi != fpl_null);
+	if(coreApi->isValid) {
 		fplConsoleFormatOut("Unload Vulkan API\n");
-		fplDynamicLibraryUnload(&api->libHandle);
+		fplDynamicLibraryUnload(&coreApi->libHandle);
 	}
-	fplClearStruct(api);
+	fplClearStruct(coreApi);
 }
 
-bool VulkanLoadCoreAPI(VulkanCoreApi *api) {
+bool VulkanLoadCoreAPI(VulkanCoreApi *coreApi) {
+	assert(coreApi != fpl_null);
+
 	//const char *vulkanLibraryFileName = "libvulkan.so";
 	const char *vulkanLibraryFileName = "vulkan-1.dll";
 
+	fplClearStruct(coreApi);
+
 	fplConsoleFormatOut("Load Vulkan API '%s'\n", vulkanLibraryFileName);
-	if(!fplDynamicLibraryLoad(vulkanLibraryFileName, &api->libHandle)) {
+	if(!fplDynamicLibraryLoad(vulkanLibraryFileName, &coreApi->libHandle)) {
 		return(false);
 	}
 
-	fplDynamicLibraryHandle *handle = &api->libHandle;
+	fplDynamicLibraryHandle *handle = &coreApi->libHandle;
 
 #define VULKAN_LIBRARY_GET_PROC_ADDRESS(libHandle, libName, target, type, name) \
 	(target)->name = (type)fplGetDynamicLibraryProc(libHandle, #name); \
@@ -653,28 +658,31 @@ bool VulkanLoadCoreAPI(VulkanCoreApi *api) {
 		break; \
 	}
 
-	bool result = false;
+	bool success = false;
 	do {
 
-		VULKAN_LIBRARY_GET_PROC_ADDRESS(handle, vulkanLibraryFileName, api, PFN_vkCreateInstance, vkCreateInstance);
-		VULKAN_LIBRARY_GET_PROC_ADDRESS(handle, vulkanLibraryFileName, api, PFN_vkDestroyInstance, vkDestroyInstance);
-		VULKAN_LIBRARY_GET_PROC_ADDRESS(handle, vulkanLibraryFileName, api, PFN_vkEnumerateInstanceExtensionProperties, vkEnumerateInstanceExtensionProperties);
-		VULKAN_LIBRARY_GET_PROC_ADDRESS(handle, vulkanLibraryFileName, api, PFN_vkEnumerateInstanceLayerProperties, vkEnumerateInstanceLayerProperties);
-		VULKAN_LIBRARY_GET_PROC_ADDRESS(handle, vulkanLibraryFileName, api, PFN_vkGetInstanceProcAddr, vkGetInstanceProcAddr);
+		VULKAN_LIBRARY_GET_PROC_ADDRESS(handle, vulkanLibraryFileName, coreApi, PFN_vkCreateInstance, vkCreateInstance);
+		VULKAN_LIBRARY_GET_PROC_ADDRESS(handle, vulkanLibraryFileName, coreApi, PFN_vkDestroyInstance, vkDestroyInstance);
+		VULKAN_LIBRARY_GET_PROC_ADDRESS(handle, vulkanLibraryFileName, coreApi, PFN_vkEnumerateInstanceExtensionProperties, vkEnumerateInstanceExtensionProperties);
+		VULKAN_LIBRARY_GET_PROC_ADDRESS(handle, vulkanLibraryFileName, coreApi, PFN_vkEnumerateInstanceLayerProperties, vkEnumerateInstanceLayerProperties);
+		VULKAN_LIBRARY_GET_PROC_ADDRESS(handle, vulkanLibraryFileName, coreApi, PFN_vkGetInstanceProcAddr, vkGetInstanceProcAddr);
 
-		result = true;
+		success = true;
 	} while(0);
 
 #undef VULKAN_LIBRARY_GET_PROC_ADDRESS
 
-	if(!result) {
-		VulkanUnloadCoreAPI(api);
+	if(!success) {
+		VulkanUnloadCoreAPI(coreApi);
+		return(false);
 	}
-	api->isInitialized = true;
-	return(result);
+
+	coreApi->isValid = true;
+	return(true);
 }
 
 typedef struct VulkanInstanceApi {
+	PFN_vkGetDeviceProcAddr vkGetDeviceProcAddr;
 	PFN_vkEnumeratePhysicalDevices vkEnumeratePhysicalDevices;
 	PFN_vkGetPhysicalDeviceProperties vkGetPhysicalDeviceProperties;
 	PFN_vkGetPhysicalDeviceFeatures vkGetPhysicalDeviceFeatures;
@@ -689,65 +697,125 @@ typedef struct VulkanInstanceApi {
 	PFN_vkDestroySurfaceKHR vkDestroySurfaceKHR;
 	PFN_vkGetPhysicalDeviceSurfaceSupportKHR vkGetPhysicalDeviceSurfaceSupportKHR;
 	PFN_vkGetPhysicalDeviceSurfaceFormatsKHR vkGetPhysicalDeviceSurfaceFormatsKHR;
+	PFN_vkGetPhysicalDeviceSurfaceCapabilitiesKHR vkGetPhysicalDeviceSurfaceCapabilitiesKHR;
+	PFN_vkGetPhysicalDeviceSurfacePresentModesKHR vkGetPhysicalDeviceSurfacePresentModesKHR;
 
 #if defined(FPL_PLATFORM_WINDOWS)
 	PFN_vkCreateWin32SurfaceKHR vkCreateWin32SurfaceKHR;
 	PFN_vkGetPhysicalDeviceWin32PresentationSupportKHR vkGetPhysicalDeviceWin32PresentationSupportKHR;
 #endif
 
+	fpl_b32 isValid;
 } VulkanInstanceApi;
 
-bool LoadVulkanInstanceAPI(const VulkanCoreApi *coreApi, VkInstance instance, VulkanInstanceApi *outInstanceApi) {
-	if(instance == VK_NULL_HANDLE)
+void UnloadVulkanInstanceAPI(VulkanInstanceApi *instanceApi) {
+	assert(instanceApi != fpl_null);
+	fplClearStruct(instanceApi);
+}
+
+bool LoadVulkanInstanceAPI(const VulkanCoreApi *coreApi, VkInstance instanceHandle, VulkanInstanceApi *instanceApi) {
+	assert(coreApi != fpl_null && instanceApi != fpl_null);
+	if(instanceHandle == VK_NULL_HANDLE)
 		return(false);
-	if(coreApi == fpl_null || coreApi->vkGetInstanceProcAddr == fpl_null)
+	if(!coreApi->isValid)
 		return(false);
-	fplClearStruct(outInstanceApi);
+
+	fplClearStruct(instanceApi);
 
 #define VULKAN_INSTANCE_GET_PROC_ADDRESS(target, type, name) \
-	(target)->name = (type)coreApi->vkGetInstanceProcAddr(instance, #name); \
+	(target)->name = (type)coreApi->vkGetInstanceProcAddr(instanceHandle, #name); \
 	if ((target)->name == fpl_null) { \
 		FPL__WARNING("Vulkan", "Failed getting instance procedure address '%s'", #name); \
 		break; \
 	}
 
-	bool result = false;
+	bool success = false;
 	do {
 
-		VULKAN_INSTANCE_GET_PROC_ADDRESS(outInstanceApi, PFN_vkEnumeratePhysicalDevices, vkEnumeratePhysicalDevices);
-		VULKAN_INSTANCE_GET_PROC_ADDRESS(outInstanceApi, PFN_vkGetPhysicalDeviceProperties, vkGetPhysicalDeviceProperties);
-		VULKAN_INSTANCE_GET_PROC_ADDRESS(outInstanceApi, PFN_vkGetPhysicalDeviceFeatures, vkGetPhysicalDeviceFeatures);
-		VULKAN_INSTANCE_GET_PROC_ADDRESS(outInstanceApi, PFN_vkGetPhysicalDeviceMemoryProperties, vkGetPhysicalDeviceMemoryProperties);
-		VULKAN_INSTANCE_GET_PROC_ADDRESS(outInstanceApi, PFN_vkGetPhysicalDeviceQueueFamilyProperties, vkGetPhysicalDeviceQueueFamilyProperties);
-		VULKAN_INSTANCE_GET_PROC_ADDRESS(outInstanceApi, PFN_vkEnumerateDeviceExtensionProperties, vkEnumerateDeviceExtensionProperties);
-		VULKAN_INSTANCE_GET_PROC_ADDRESS(outInstanceApi, PFN_vkEnumerateDeviceLayerProperties, vkEnumerateDeviceLayerProperties);
-		VULKAN_INSTANCE_GET_PROC_ADDRESS(outInstanceApi, PFN_vkCreateDevice, vkCreateDevice);
-		VULKAN_INSTANCE_GET_PROC_ADDRESS(outInstanceApi, PFN_vkDestroyDevice, vkDestroyDevice);
-		VULKAN_INSTANCE_GET_PROC_ADDRESS(outInstanceApi, PFN_vkCreateCommandPool, vkCreateCommandPool);
-		VULKAN_INSTANCE_GET_PROC_ADDRESS(outInstanceApi, PFN_vkDestroyCommandPool, vkDestroyCommandPool);
-		VULKAN_INSTANCE_GET_PROC_ADDRESS(outInstanceApi, PFN_vkDestroySurfaceKHR, vkDestroySurfaceKHR);
-		VULKAN_INSTANCE_GET_PROC_ADDRESS(outInstanceApi, PFN_vkGetPhysicalDeviceSurfaceSupportKHR, vkGetPhysicalDeviceSurfaceSupportKHR);
-		VULKAN_INSTANCE_GET_PROC_ADDRESS(outInstanceApi, PFN_vkGetPhysicalDeviceSurfaceFormatsKHR, vkGetPhysicalDeviceSurfaceFormatsKHR);
+		VULKAN_INSTANCE_GET_PROC_ADDRESS(instanceApi, PFN_vkGetDeviceProcAddr, vkGetDeviceProcAddr);
+		VULKAN_INSTANCE_GET_PROC_ADDRESS(instanceApi, PFN_vkEnumeratePhysicalDevices, vkEnumeratePhysicalDevices);
+		VULKAN_INSTANCE_GET_PROC_ADDRESS(instanceApi, PFN_vkGetPhysicalDeviceProperties, vkGetPhysicalDeviceProperties);
+		VULKAN_INSTANCE_GET_PROC_ADDRESS(instanceApi, PFN_vkGetPhysicalDeviceFeatures, vkGetPhysicalDeviceFeatures);
+		VULKAN_INSTANCE_GET_PROC_ADDRESS(instanceApi, PFN_vkGetPhysicalDeviceMemoryProperties, vkGetPhysicalDeviceMemoryProperties);
+		VULKAN_INSTANCE_GET_PROC_ADDRESS(instanceApi, PFN_vkGetPhysicalDeviceQueueFamilyProperties, vkGetPhysicalDeviceQueueFamilyProperties);
+		VULKAN_INSTANCE_GET_PROC_ADDRESS(instanceApi, PFN_vkEnumerateDeviceExtensionProperties, vkEnumerateDeviceExtensionProperties);
+		VULKAN_INSTANCE_GET_PROC_ADDRESS(instanceApi, PFN_vkEnumerateDeviceLayerProperties, vkEnumerateDeviceLayerProperties);
+		VULKAN_INSTANCE_GET_PROC_ADDRESS(instanceApi, PFN_vkCreateDevice, vkCreateDevice);
+		VULKAN_INSTANCE_GET_PROC_ADDRESS(instanceApi, PFN_vkDestroyDevice, vkDestroyDevice);
+		VULKAN_INSTANCE_GET_PROC_ADDRESS(instanceApi, PFN_vkCreateCommandPool, vkCreateCommandPool);
+		VULKAN_INSTANCE_GET_PROC_ADDRESS(instanceApi, PFN_vkDestroyCommandPool, vkDestroyCommandPool);
+		VULKAN_INSTANCE_GET_PROC_ADDRESS(instanceApi, PFN_vkDestroySurfaceKHR, vkDestroySurfaceKHR);
+		VULKAN_INSTANCE_GET_PROC_ADDRESS(instanceApi, PFN_vkGetPhysicalDeviceSurfaceSupportKHR, vkGetPhysicalDeviceSurfaceSupportKHR);
+		VULKAN_INSTANCE_GET_PROC_ADDRESS(instanceApi, PFN_vkGetPhysicalDeviceSurfaceFormatsKHR, vkGetPhysicalDeviceSurfaceFormatsKHR);
+		VULKAN_INSTANCE_GET_PROC_ADDRESS(instanceApi, PFN_vkGetPhysicalDeviceSurfaceCapabilitiesKHR, vkGetPhysicalDeviceSurfaceCapabilitiesKHR);
+		VULKAN_INSTANCE_GET_PROC_ADDRESS(instanceApi, PFN_vkGetPhysicalDeviceSurfacePresentModesKHR, vkGetPhysicalDeviceSurfacePresentModesKHR);
 
 #if defined(FPL_PLATFORM_WINDOWS)
-		VULKAN_INSTANCE_GET_PROC_ADDRESS(outInstanceApi, PFN_vkCreateWin32SurfaceKHR, vkCreateWin32SurfaceKHR);
-		VULKAN_INSTANCE_GET_PROC_ADDRESS(outInstanceApi, PFN_vkGetPhysicalDeviceWin32PresentationSupportKHR, vkGetPhysicalDeviceWin32PresentationSupportKHR);
+		VULKAN_INSTANCE_GET_PROC_ADDRESS(instanceApi, PFN_vkCreateWin32SurfaceKHR, vkCreateWin32SurfaceKHR);
+		VULKAN_INSTANCE_GET_PROC_ADDRESS(instanceApi, PFN_vkGetPhysicalDeviceWin32PresentationSupportKHR, vkGetPhysicalDeviceWin32PresentationSupportKHR);
 #endif
 
-		result = true;
+		success = true;
 	} while(0);
 
 #undef VULKAN_INSTANCE_GET_PROC_ADDRESS
 
-	if(!result) {
-		fplClearStruct(outInstanceApi);
+	if(!success) {
+		UnloadVulkanInstanceAPI(instanceApi);
+		return(false);
 	}
 
-	return(result);
+	instanceApi->isValid = true;
+	return(true);
 }
 
-void UnloadVulkanInstanceAPI(VulkanInstanceApi *api) {
-	fplClearStruct(api);
+typedef struct VulkanDeviceApi {
+	PFN_vkCreateSwapchainKHR vkCreateSwapchainKHR;
+	PFN_vkDestroySwapchainKHR vkDestroySwapchainKHR;
+	PFN_vkGetSwapchainImagesKHR vkGetSwapchainImagesKHR;
+	PFN_vkAcquireNextImageKHR vkAcquireNextImageKHR;
+	PFN_vkQueuePresentKHR vkQueuePresentKHR;
+
+	fpl_b32 isValid;
+} VulkanDeviceApi;
+
+void VulkanUnloadDeviceApi(VulkanDeviceApi *deviceApi) {
+	assert(deviceApi != fpl_null);
+	fplClearStruct(deviceApi);
+}
+
+bool VulkanLoadDeviceApi(const VulkanInstanceApi *instanceApi, VkDevice deviceHandle, VulkanDeviceApi *deviceApi) {
+	assert(instanceApi != fpl_null && deviceApi != fpl_null);
+
+	fplClearStruct(deviceApi);
+
+#define VULKAN_DEVICE_GET_PROC_ADDRESS(target, type, name) \
+	(target)->name = (type)instanceApi->vkGetDeviceProcAddr(deviceHandle, #name); \
+	if ((target)->name == fpl_null) { \
+		FPL__WARNING("Vulkan", "Failed getting device procedure address '%s'", #name); \
+		break; \
+	}
+
+	bool success = false;
+	do {
+		VULKAN_DEVICE_GET_PROC_ADDRESS(deviceApi, PFN_vkCreateSwapchainKHR, vkCreateSwapchainKHR);
+		VULKAN_DEVICE_GET_PROC_ADDRESS(deviceApi, PFN_vkDestroySwapchainKHR, vkDestroySwapchainKHR);
+		VULKAN_DEVICE_GET_PROC_ADDRESS(deviceApi, PFN_vkGetSwapchainImagesKHR, vkGetSwapchainImagesKHR);
+		VULKAN_DEVICE_GET_PROC_ADDRESS(deviceApi, PFN_vkAcquireNextImageKHR, vkAcquireNextImageKHR);
+		VULKAN_DEVICE_GET_PROC_ADDRESS(deviceApi, PFN_vkQueuePresentKHR, vkQueuePresentKHR);
+
+		success = true;
+	} while(0);
+
+#undef VULKAN_DEVICE_GET_PROC_ADDRESS
+
+	if(!success) {
+		VulkanUnloadDeviceApi(deviceApi);
+		return(false);
+	}
+
+	deviceApi->isValid = true;
+	return(true);
 }
 
 typedef struct VulkanInstanceProperties {
@@ -1180,6 +1248,7 @@ bool VulkanCreatePhysicalDevice(const VulkanCoreApi *coreApi, const VulkanInstan
 
 typedef struct VulkanLogicalDevice {
 	VkPhysicalDeviceFeatures enabledFeatures;
+	VulkanDeviceApi deviceApi;
 	VkDevice logicalDeviceHandle;
 	VkCommandPool graphicsCommandPoolHandle;
 	uint32_t computeFamilyIndex;
@@ -1188,7 +1257,9 @@ typedef struct VulkanLogicalDevice {
 } VulkanLogicalDevice;
 
 void VulkanDestroyLogicalDevice(const VulkanInstanceApi *instanceApi, VulkanLogicalDevice *logicalDevice) {
-	if(logicalDevice == fpl_null) return;
+	assert(instanceApi != fpl_null && logicalDevice != fpl_null);
+
+	VulkanUnloadDeviceApi(&logicalDevice->deviceApi);
 
 	if(logicalDevice->graphicsCommandPoolHandle != fpl_null) {
 		instanceApi->vkDestroyCommandPool(logicalDevice->logicalDeviceHandle, logicalDevice->graphicsCommandPoolHandle, fpl_null);
@@ -1226,9 +1297,11 @@ bool VulkanCreateCommandPool(
 }
 
 bool VulkanCreateLogicalDevice(
+	const VulkanCoreApi *coreApi,
 	const VulkanInstanceApi *instanceApi,
 	const VulkanPhysicalDevice *physicalDevice,
 	const VkPhysicalDeviceFeatures *enabledFeatures,
+	const VkInstance instanceHandle,
 	const char **reqExtensions,
 	const uint32_t reqExtensionCount,
 	const bool useSwapChain,
@@ -1381,6 +1454,17 @@ bool VulkanCreateLogicalDevice(
 	}
 	fplConsoleFormatOut("Successfully created graphics command pool for logical device '%p' with queue %d\n", logicalDevice->logicalDeviceHandle, logicalDevice->graphicsFamilyIndex);
 	fplConsoleOut("\n");
+
+	//
+	// Load Device Api
+	//
+	fplConsoleFormatOut("Loading device API for device '%p'\n", logicalDevice->logicalDeviceHandle);
+	if(!VulkanLoadDeviceApi(instanceApi, logicalDevice->logicalDeviceHandle, &logicalDevice->deviceApi)) {
+		fplConsoleFormatError("Failed loading device API for device '%p'!\n", logicalDevice->logicalDeviceHandle);
+		VulkanDestroyLogicalDevice(instanceApi, logicalDevice);
+		return(false);
+	}
+	fplConsoleFormatOut("Successfully loaded device API for device '%p'\n", logicalDevice->logicalDeviceHandle);
 
 	return(true);
 }
@@ -1648,7 +1732,7 @@ static bool VulkanInitialize(VulkanState *state) {
 	// Logical Device (vkDevice)
 	//
 	VkPhysicalDeviceFeatures enabledFeatures = fplZeroInit;
-	if(!VulkanCreateLogicalDevice(instanceApi, &state->physicalDevice, &enabledFeatures, fpl_null, 0, true, fpl_null, &state->logicalDevice)) {
+	if(!VulkanCreateLogicalDevice(coreApi, instanceApi, &state->physicalDevice, &enabledFeatures, state->instance.instanceHandle, fpl_null, 0, true, fpl_null, &state->logicalDevice)) {
 		fplConsoleFormatError("Failed to create a logical device from physical device '%s'!\n", state->physicalDevice.name);
 		goto failed;
 	}
@@ -1660,6 +1744,8 @@ static bool VulkanInitialize(VulkanState *state) {
 		fplConsoleFormatError("Failed to create surface for instance '%p' and physical device '%s'!\n", state->instance.instanceHandle, state->physicalDevice.name);
 		goto failed;
 	}
+
+	// TODO(final): Find a suitable depth format
 
 	// TODO(final): Swap-Chain!
 
