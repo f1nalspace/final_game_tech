@@ -15,7 +15,7 @@
 //
 // Vulkan Utils
 //
-static const char *VulkanPhysicalDeviceTypeToStríng(const VkPhysicalDeviceType type) {
+static const char *GetVulkanPhysicalDeviceTypeName(const VkPhysicalDeviceType type) {
 	switch(type) {
 		case VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU:
 			return "Integrated GPU";
@@ -27,6 +27,539 @@ static const char *VulkanPhysicalDeviceTypeToStríng(const VkPhysicalDeviceType t
 			return "CPU";
 		default:
 			return "Other";
+	}
+}
+
+static const char *GetVulkanFormatName(const VkFormat value) {
+	switch(value) {
+		case VK_FORMAT_UNDEFINED:
+			return "VK_FORMAT_UNDEFINED";
+		case VK_FORMAT_R4G4_UNORM_PACK8:
+			return "VK_FORMAT_R4G4_UNORM_PACK8";
+		case VK_FORMAT_R4G4B4A4_UNORM_PACK16:
+			return "VK_FORMAT_R4G4B4A4_UNORM_PACK16";
+		case VK_FORMAT_B4G4R4A4_UNORM_PACK16:
+			return "VK_FORMAT_B4G4R4A4_UNORM_PACK16";
+		case VK_FORMAT_R5G6B5_UNORM_PACK16:
+			return "VK_FORMAT_R5G6B5_UNORM_PACK16";
+		case VK_FORMAT_B5G6R5_UNORM_PACK16:
+			return "VK_FORMAT_B5G6R5_UNORM_PACK16";
+		case VK_FORMAT_R5G5B5A1_UNORM_PACK16:
+			return "VK_FORMAT_R5G5B5A1_UNORM_PACK16";
+		case VK_FORMAT_B5G5R5A1_UNORM_PACK16:
+			return "VK_FORMAT_B5G5R5A1_UNORM_PACK16";
+		case VK_FORMAT_A1R5G5B5_UNORM_PACK16:
+			return "VK_FORMAT_A1R5G5B5_UNORM_PACK16";
+		case VK_FORMAT_R8_UNORM:
+			return "VK_FORMAT_R8_UNORM";
+		case VK_FORMAT_R8_SNORM:
+			return "VK_FORMAT_R8_SNORM";
+		case VK_FORMAT_R8_USCALED:
+			return "VK_FORMAT_R8_USCALED";
+		case VK_FORMAT_R8_SSCALED:
+			return "VK_FORMAT_R8_SSCALED";
+		case VK_FORMAT_R8_UINT:
+			return "VK_FORMAT_R8_UINT";
+		case VK_FORMAT_R8_SINT:
+			return "VK_FORMAT_R8_SINT";
+		case VK_FORMAT_R8_SRGB:
+			return "VK_FORMAT_R8_SRGB";
+		case VK_FORMAT_R8G8_UNORM:
+			return "VK_FORMAT_R8G8_UNORM";
+		case VK_FORMAT_R8G8_SNORM:
+			return "VK_FORMAT_R8G8_SNORM";
+		case VK_FORMAT_R8G8_USCALED:
+			return "VK_FORMAT_R8G8_USCALED";
+		case VK_FORMAT_R8G8_SSCALED:
+			return "VK_FORMAT_R8G8_SSCALED";
+		case VK_FORMAT_R8G8_UINT:
+			return "VK_FORMAT_R8G8_UINT";
+		case VK_FORMAT_R8G8_SINT:
+			return "VK_FORMAT_R8G8_SINT";
+		case VK_FORMAT_R8G8_SRGB:
+			return "VK_FORMAT_R8G8_SRGB";
+		case VK_FORMAT_R8G8B8_UNORM:
+			return "VK_FORMAT_R8G8B8_UNORM";
+		case VK_FORMAT_R8G8B8_SNORM:
+			return "VK_FORMAT_R8G8B8_SNORM";
+		case VK_FORMAT_R8G8B8_USCALED:
+			return "VK_FORMAT_R8G8B8_USCALED";
+		case VK_FORMAT_R8G8B8_SSCALED:
+			return "VK_FORMAT_R8G8B8_SSCALED";
+		case VK_FORMAT_R8G8B8_UINT:
+			return "VK_FORMAT_R8G8B8_UINT";
+		case VK_FORMAT_R8G8B8_SINT:
+			return "VK_FORMAT_R8G8B8_SINT";
+		case VK_FORMAT_R8G8B8_SRGB:
+			return "VK_FORMAT_R8G8B8_SRGB";
+		case VK_FORMAT_B8G8R8_UNORM:
+			return "VK_FORMAT_B8G8R8_UNORM";
+		case VK_FORMAT_B8G8R8_SNORM:
+			return "VK_FORMAT_B8G8R8_SNORM";
+		case VK_FORMAT_B8G8R8_USCALED:
+			return "VK_FORMAT_B8G8R8_USCALED";
+		case VK_FORMAT_B8G8R8_SSCALED:
+			return "VK_FORMAT_B8G8R8_SSCALED";
+		case VK_FORMAT_B8G8R8_UINT:
+			return "VK_FORMAT_B8G8R8_UINT";
+		case VK_FORMAT_B8G8R8_SINT:
+			return "VK_FORMAT_B8G8R8_SINT";
+		case VK_FORMAT_B8G8R8_SRGB:
+			return "VK_FORMAT_B8G8R8_SRGB";
+		case VK_FORMAT_R8G8B8A8_UNORM:
+			return "VK_FORMAT_R8G8B8A8_UNORM";
+		case VK_FORMAT_R8G8B8A8_SNORM:
+			return "VK_FORMAT_R8G8B8A8_SNORM";
+		case VK_FORMAT_R8G8B8A8_USCALED:
+			return "VK_FORMAT_R8G8B8A8_USCALED";
+		case VK_FORMAT_R8G8B8A8_SSCALED:
+			return "VK_FORMAT_R8G8B8A8_SSCALED";
+		case VK_FORMAT_R8G8B8A8_UINT:
+			return "VK_FORMAT_R8G8B8A8_UINT";
+		case VK_FORMAT_R8G8B8A8_SINT:
+			return "VK_FORMAT_R8G8B8A8_SINT";
+		case VK_FORMAT_R8G8B8A8_SRGB:
+			return "VK_FORMAT_R8G8B8A8_SRGB";
+		case VK_FORMAT_B8G8R8A8_UNORM:
+			return "VK_FORMAT_B8G8R8A8_UNORM";
+		case VK_FORMAT_B8G8R8A8_SNORM:
+			return "VK_FORMAT_B8G8R8A8_SNORM";
+		case VK_FORMAT_B8G8R8A8_USCALED:
+			return "VK_FORMAT_B8G8R8A8_USCALED";
+		case VK_FORMAT_B8G8R8A8_SSCALED:
+			return "VK_FORMAT_B8G8R8A8_SSCALED";
+		case VK_FORMAT_B8G8R8A8_UINT:
+			return "VK_FORMAT_B8G8R8A8_UINT";
+		case VK_FORMAT_B8G8R8A8_SINT:
+			return "VK_FORMAT_B8G8R8A8_SINT";
+		case VK_FORMAT_B8G8R8A8_SRGB:
+			return "VK_FORMAT_B8G8R8A8_SRGB";
+		case VK_FORMAT_A8B8G8R8_UNORM_PACK32:
+			return "VK_FORMAT_A8B8G8R8_UNORM_PACK32";
+		case VK_FORMAT_A8B8G8R8_SNORM_PACK32:
+			return "VK_FORMAT_A8B8G8R8_SNORM_PACK32";
+		case VK_FORMAT_A8B8G8R8_USCALED_PACK32:
+			return "VK_FORMAT_A8B8G8R8_USCALED_PACK32";
+		case VK_FORMAT_A8B8G8R8_SSCALED_PACK32:
+			return "VK_FORMAT_A8B8G8R8_SSCALED_PACK32";
+		case VK_FORMAT_A8B8G8R8_UINT_PACK32:
+			return "VK_FORMAT_A8B8G8R8_UINT_PACK32";
+		case VK_FORMAT_A8B8G8R8_SINT_PACK32:
+			return "VK_FORMAT_A8B8G8R8_SINT_PACK32";
+		case VK_FORMAT_A8B8G8R8_SRGB_PACK32:
+			return "VK_FORMAT_A8B8G8R8_SRGB_PACK32";
+		case VK_FORMAT_A2R10G10B10_UNORM_PACK32:
+			return "VK_FORMAT_A2R10G10B10_UNORM_PACK32";
+		case VK_FORMAT_A2R10G10B10_SNORM_PACK32:
+			return "VK_FORMAT_A2R10G10B10_SNORM_PACK32";
+		case VK_FORMAT_A2R10G10B10_USCALED_PACK32:
+			return "VK_FORMAT_A2R10G10B10_USCALED_PACK32";
+		case VK_FORMAT_A2R10G10B10_SSCALED_PACK32:
+			return "VK_FORMAT_A2R10G10B10_SSCALED_PACK32";
+		case VK_FORMAT_A2R10G10B10_UINT_PACK32:
+			return "VK_FORMAT_A2R10G10B10_UINT_PACK32";
+		case VK_FORMAT_A2R10G10B10_SINT_PACK32:
+			return "VK_FORMAT_A2R10G10B10_SINT_PACK32";
+		case VK_FORMAT_A2B10G10R10_UNORM_PACK32:
+			return "VK_FORMAT_A2B10G10R10_UNORM_PACK32";
+		case VK_FORMAT_A2B10G10R10_SNORM_PACK32:
+			return "VK_FORMAT_A2B10G10R10_SNORM_PACK32";
+		case VK_FORMAT_A2B10G10R10_USCALED_PACK32:
+			return "VK_FORMAT_A2B10G10R10_USCALED_PACK32";
+		case VK_FORMAT_A2B10G10R10_SSCALED_PACK32:
+			return "VK_FORMAT_A2B10G10R10_SSCALED_PACK32";
+		case VK_FORMAT_A2B10G10R10_UINT_PACK32:
+			return "VK_FORMAT_A2B10G10R10_UINT_PACK32";
+		case VK_FORMAT_A2B10G10R10_SINT_PACK32:
+			return "VK_FORMAT_A2B10G10R10_SINT_PACK32";
+		case VK_FORMAT_R16_UNORM:
+			return "VK_FORMAT_R16_UNORM";
+		case VK_FORMAT_R16_SNORM:
+			return "VK_FORMAT_R16_SNORM";
+		case VK_FORMAT_R16_USCALED:
+			return "VK_FORMAT_R16_USCALED";
+		case VK_FORMAT_R16_SSCALED:
+			return "VK_FORMAT_R16_SSCALED";
+		case VK_FORMAT_R16_UINT:
+			return "VK_FORMAT_R16_UINT";
+		case VK_FORMAT_R16_SINT:
+			return "VK_FORMAT_R16_SINT";
+		case VK_FORMAT_R16_SFLOAT:
+			return "VK_FORMAT_R16_SFLOAT";
+		case VK_FORMAT_R16G16_UNORM:
+			return "VK_FORMAT_R16G16_UNORM";
+		case VK_FORMAT_R16G16_SNORM:
+			return "VK_FORMAT_R16G16_SNORM";
+		case VK_FORMAT_R16G16_USCALED:
+			return "VK_FORMAT_R16G16_USCALED";
+		case VK_FORMAT_R16G16_SSCALED:
+			return "VK_FORMAT_R16G16_SSCALED";
+		case VK_FORMAT_R16G16_UINT:
+			return "VK_FORMAT_R16G16_UINT";
+		case VK_FORMAT_R16G16_SINT:
+			return "VK_FORMAT_R16G16_SINT";
+		case VK_FORMAT_R16G16_SFLOAT:
+			return "VK_FORMAT_R16G16_SFLOAT";
+		case VK_FORMAT_R16G16B16_UNORM:
+			return "VK_FORMAT_R16G16B16_UNORM";
+		case VK_FORMAT_R16G16B16_SNORM:
+			return "VK_FORMAT_R16G16B16_SNORM";
+		case VK_FORMAT_R16G16B16_USCALED:
+			return "VK_FORMAT_R16G16B16_USCALED";
+		case VK_FORMAT_R16G16B16_SSCALED:
+			return "VK_FORMAT_R16G16B16_SSCALED";
+		case VK_FORMAT_R16G16B16_UINT:
+			return "VK_FORMAT_R16G16B16_UINT";
+		case VK_FORMAT_R16G16B16_SINT:
+			return "VK_FORMAT_R16G16B16_SINT";
+		case VK_FORMAT_R16G16B16_SFLOAT:
+			return "VK_FORMAT_R16G16B16_SFLOAT";
+		case VK_FORMAT_R16G16B16A16_UNORM:
+			return "VK_FORMAT_R16G16B16A16_UNORM";
+		case VK_FORMAT_R16G16B16A16_SNORM:
+			return "VK_FORMAT_R16G16B16A16_SNORM";
+		case VK_FORMAT_R16G16B16A16_USCALED:
+			return "VK_FORMAT_R16G16B16A16_USCALED";
+		case VK_FORMAT_R16G16B16A16_SSCALED:
+			return "VK_FORMAT_R16G16B16A16_SSCALED";
+		case VK_FORMAT_R16G16B16A16_UINT:
+			return "VK_FORMAT_R16G16B16A16_UINT";
+		case VK_FORMAT_R16G16B16A16_SINT:
+			return "VK_FORMAT_R16G16B16A16_SINT";
+		case VK_FORMAT_R16G16B16A16_SFLOAT:
+			return "VK_FORMAT_R16G16B16A16_SFLOAT";
+		case VK_FORMAT_R32_UINT:
+			return "VK_FORMAT_R32_UINT";
+		case VK_FORMAT_R32_SINT:
+			return "VK_FORMAT_R32_SINT";
+		case VK_FORMAT_R32_SFLOAT:
+			return "VK_FORMAT_R32_SFLOAT";
+		case VK_FORMAT_R32G32_UINT:
+			return "VK_FORMAT_R32G32_UINT";
+		case VK_FORMAT_R32G32_SINT:
+			return "VK_FORMAT_R32G32_SINT";
+		case VK_FORMAT_R32G32_SFLOAT:
+			return "VK_FORMAT_R32G32_SFLOAT";
+		case VK_FORMAT_R32G32B32_UINT:
+			return "VK_FORMAT_R32G32B32_UINT";
+		case VK_FORMAT_R32G32B32_SINT:
+			return "VK_FORMAT_R32G32B32_SINT";
+		case VK_FORMAT_R32G32B32_SFLOAT:
+			return "VK_FORMAT_R32G32B32_SFLOAT";
+		case VK_FORMAT_R32G32B32A32_UINT:
+			return "VK_FORMAT_R32G32B32A32_UINT";
+		case VK_FORMAT_R32G32B32A32_SINT:
+			return "VK_FORMAT_R32G32B32A32_SINT";
+		case VK_FORMAT_R32G32B32A32_SFLOAT:
+			return "VK_FORMAT_R32G32B32A32_SFLOAT";
+		case VK_FORMAT_R64_UINT:
+			return "VK_FORMAT_R64_UINT";
+		case VK_FORMAT_R64_SINT:
+			return "VK_FORMAT_R64_SINT";
+		case VK_FORMAT_R64_SFLOAT:
+			return "VK_FORMAT_R64_SFLOAT";
+		case VK_FORMAT_R64G64_UINT:
+			return "VK_FORMAT_R64G64_UINT";
+		case VK_FORMAT_R64G64_SINT:
+			return "VK_FORMAT_R64G64_SINT";
+		case VK_FORMAT_R64G64_SFLOAT:
+			return "VK_FORMAT_R64G64_SFLOAT";
+		case VK_FORMAT_R64G64B64_UINT:
+			return "VK_FORMAT_R64G64B64_UINT";
+		case VK_FORMAT_R64G64B64_SINT:
+			return "VK_FORMAT_R64G64B64_SINT";
+		case VK_FORMAT_R64G64B64_SFLOAT:
+			return "VK_FORMAT_R64G64B64_SFLOAT";
+		case VK_FORMAT_R64G64B64A64_UINT:
+			return "VK_FORMAT_R64G64B64A64_UINT";
+		case VK_FORMAT_R64G64B64A64_SINT:
+			return "VK_FORMAT_R64G64B64A64_SINT";
+		case VK_FORMAT_R64G64B64A64_SFLOAT:
+			return "VK_FORMAT_R64G64B64A64_SFLOAT";
+		case VK_FORMAT_B10G11R11_UFLOAT_PACK32:
+			return "VK_FORMAT_B10G11R11_UFLOAT_PACK32";
+		case VK_FORMAT_E5B9G9R9_UFLOAT_PACK32:
+			return "VK_FORMAT_E5B9G9R9_UFLOAT_PACK32";
+		case VK_FORMAT_D16_UNORM:
+			return "VK_FORMAT_D16_UNORM";
+		case VK_FORMAT_X8_D24_UNORM_PACK32:
+			return "VK_FORMAT_X8_D24_UNORM_PACK32";
+		case VK_FORMAT_D32_SFLOAT:
+			return "VK_FORMAT_D32_SFLOAT";
+		case VK_FORMAT_S8_UINT:
+			return "VK_FORMAT_S8_UINT";
+		case VK_FORMAT_D16_UNORM_S8_UINT:
+			return "VK_FORMAT_D16_UNORM_S8_UINT";
+		case VK_FORMAT_D24_UNORM_S8_UINT:
+			return "VK_FORMAT_D24_UNORM_S8_UINT";
+		case VK_FORMAT_D32_SFLOAT_S8_UINT:
+			return "VK_FORMAT_D32_SFLOAT_S8_UINT";
+		case VK_FORMAT_BC1_RGB_UNORM_BLOCK:
+			return "VK_FORMAT_BC1_RGB_UNORM_BLOCK";
+		case VK_FORMAT_BC1_RGB_SRGB_BLOCK:
+			return "VK_FORMAT_BC1_RGB_SRGB_BLOCK";
+		case VK_FORMAT_BC1_RGBA_UNORM_BLOCK:
+			return "VK_FORMAT_BC1_RGBA_UNORM_BLOCK";
+		case VK_FORMAT_BC1_RGBA_SRGB_BLOCK:
+			return "VK_FORMAT_BC1_RGBA_SRGB_BLOCK";
+		case VK_FORMAT_BC2_UNORM_BLOCK:
+			return "VK_FORMAT_BC2_UNORM_BLOCK";
+		case VK_FORMAT_BC2_SRGB_BLOCK:
+			return "VK_FORMAT_BC2_SRGB_BLOCK";
+		case VK_FORMAT_BC3_UNORM_BLOCK:
+			return "VK_FORMAT_BC3_UNORM_BLOCK";
+		case VK_FORMAT_BC3_SRGB_BLOCK:
+			return "VK_FORMAT_BC3_SRGB_BLOCK";
+		case VK_FORMAT_BC4_UNORM_BLOCK:
+			return "VK_FORMAT_BC4_UNORM_BLOCK";
+		case VK_FORMAT_BC4_SNORM_BLOCK:
+			return "VK_FORMAT_BC4_SNORM_BLOCK";
+		case VK_FORMAT_BC5_UNORM_BLOCK:
+			return "VK_FORMAT_BC5_UNORM_BLOCK";
+		case VK_FORMAT_BC5_SNORM_BLOCK:
+			return "VK_FORMAT_BC5_SNORM_BLOCK";
+		case VK_FORMAT_BC6H_UFLOAT_BLOCK:
+			return "VK_FORMAT_BC6H_UFLOAT_BLOCK";
+		case VK_FORMAT_BC6H_SFLOAT_BLOCK:
+			return "VK_FORMAT_BC6H_SFLOAT_BLOCK";
+		case VK_FORMAT_BC7_UNORM_BLOCK:
+			return "VK_FORMAT_BC7_UNORM_BLOCK";
+		case VK_FORMAT_BC7_SRGB_BLOCK:
+			return "VK_FORMAT_BC7_SRGB_BLOCK";
+		case VK_FORMAT_ETC2_R8G8B8_UNORM_BLOCK:
+			return "VK_FORMAT_ETC2_R8G8B8_UNORM_BLOCK";
+		case VK_FORMAT_ETC2_R8G8B8_SRGB_BLOCK:
+			return "VK_FORMAT_ETC2_R8G8B8_SRGB_BLOCK";
+		case VK_FORMAT_ETC2_R8G8B8A1_UNORM_BLOCK:
+			return "VK_FORMAT_ETC2_R8G8B8A1_UNORM_BLOCK";
+		case VK_FORMAT_ETC2_R8G8B8A1_SRGB_BLOCK:
+			return "VK_FORMAT_ETC2_R8G8B8A1_SRGB_BLOCK";
+		case VK_FORMAT_ETC2_R8G8B8A8_UNORM_BLOCK:
+			return "VK_FORMAT_ETC2_R8G8B8A8_UNORM_BLOCK";
+		case VK_FORMAT_ETC2_R8G8B8A8_SRGB_BLOCK:
+			return "VK_FORMAT_ETC2_R8G8B8A8_SRGB_BLOCK";
+		case VK_FORMAT_EAC_R11_UNORM_BLOCK:
+			return "VK_FORMAT_EAC_R11_UNORM_BLOCK";
+		case VK_FORMAT_EAC_R11_SNORM_BLOCK:
+			return "VK_FORMAT_EAC_R11_SNORM_BLOCK";
+		case VK_FORMAT_EAC_R11G11_UNORM_BLOCK:
+			return "VK_FORMAT_EAC_R11G11_UNORM_BLOCK";
+		case VK_FORMAT_EAC_R11G11_SNORM_BLOCK:
+			return "VK_FORMAT_EAC_R11G11_SNORM_BLOCK";
+		case VK_FORMAT_ASTC_4x4_UNORM_BLOCK:
+			return "VK_FORMAT_ASTC_4x4_UNORM_BLOCK";
+		case VK_FORMAT_ASTC_4x4_SRGB_BLOCK:
+			return "VK_FORMAT_ASTC_4x4_SRGB_BLOCK";
+		case VK_FORMAT_ASTC_5x4_UNORM_BLOCK:
+			return "VK_FORMAT_ASTC_5x4_UNORM_BLOCK";
+		case VK_FORMAT_ASTC_5x4_SRGB_BLOCK:
+			return "VK_FORMAT_ASTC_5x4_SRGB_BLOCK";
+		case VK_FORMAT_ASTC_5x5_UNORM_BLOCK:
+			return "VK_FORMAT_ASTC_5x5_UNORM_BLOCK";
+		case VK_FORMAT_ASTC_5x5_SRGB_BLOCK:
+			return "VK_FORMAT_ASTC_5x5_SRGB_BLOCK";
+		case VK_FORMAT_ASTC_6x5_UNORM_BLOCK:
+			return "VK_FORMAT_ASTC_6x5_UNORM_BLOCK";
+		case VK_FORMAT_ASTC_6x5_SRGB_BLOCK:
+			return "VK_FORMAT_ASTC_6x5_SRGB_BLOCK";
+		case VK_FORMAT_ASTC_6x6_UNORM_BLOCK:
+			return "VK_FORMAT_ASTC_6x6_UNORM_BLOCK";
+		case VK_FORMAT_ASTC_6x6_SRGB_BLOCK:
+			return "VK_FORMAT_ASTC_6x6_SRGB_BLOCK";
+		case VK_FORMAT_ASTC_8x5_UNORM_BLOCK:
+			return "VK_FORMAT_ASTC_8x5_UNORM_BLOCK";
+		case VK_FORMAT_ASTC_8x5_SRGB_BLOCK:
+			return "VK_FORMAT_ASTC_8x5_SRGB_BLOCK";
+		case VK_FORMAT_ASTC_8x6_UNORM_BLOCK:
+			return "VK_FORMAT_ASTC_8x6_UNORM_BLOCK";
+		case VK_FORMAT_ASTC_8x6_SRGB_BLOCK:
+			return "VK_FORMAT_ASTC_8x6_SRGB_BLOCK";
+		case VK_FORMAT_ASTC_8x8_UNORM_BLOCK:
+			return "VK_FORMAT_ASTC_8x8_UNORM_BLOCK";
+		case VK_FORMAT_ASTC_8x8_SRGB_BLOCK:
+			return "VK_FORMAT_ASTC_8x8_SRGB_BLOCK";
+		case VK_FORMAT_ASTC_10x5_UNORM_BLOCK:
+			return "VK_FORMAT_ASTC_10x5_UNORM_BLOCK";
+		case VK_FORMAT_ASTC_10x5_SRGB_BLOCK:
+			return "VK_FORMAT_ASTC_10x5_SRGB_BLOCK";
+		case VK_FORMAT_ASTC_10x6_UNORM_BLOCK:
+			return "VK_FORMAT_ASTC_10x6_UNORM_BLOCK";
+		case VK_FORMAT_ASTC_10x6_SRGB_BLOCK:
+			return "VK_FORMAT_ASTC_10x6_SRGB_BLOCK";
+		case VK_FORMAT_ASTC_10x8_UNORM_BLOCK:
+			return "VK_FORMAT_ASTC_10x8_UNORM_BLOCK";
+		case VK_FORMAT_ASTC_10x8_SRGB_BLOCK:
+			return "VK_FORMAT_ASTC_10x8_SRGB_BLOCK";
+		case VK_FORMAT_ASTC_10x10_UNORM_BLOCK:
+			return "VK_FORMAT_ASTC_10x10_UNORM_BLOCK";
+		case VK_FORMAT_ASTC_10x10_SRGB_BLOCK:
+			return "VK_FORMAT_ASTC_10x10_SRGB_BLOCK";
+		case VK_FORMAT_ASTC_12x10_UNORM_BLOCK:
+			return "VK_FORMAT_ASTC_12x10_UNORM_BLOCK";
+		case VK_FORMAT_ASTC_12x10_SRGB_BLOCK:
+			return "VK_FORMAT_ASTC_12x10_SRGB_BLOCK";
+		case VK_FORMAT_ASTC_12x12_UNORM_BLOCK:
+			return "VK_FORMAT_ASTC_12x12_UNORM_BLOCK";
+		case VK_FORMAT_ASTC_12x12_SRGB_BLOCK:
+			return "VK_FORMAT_ASTC_12x12_SRGB_BLOCK";
+		case VK_FORMAT_G8B8G8R8_422_UNORM:
+			return "VK_FORMAT_G8B8G8R8_422_UNORM";
+		case VK_FORMAT_B8G8R8G8_422_UNORM:
+			return "VK_FORMAT_B8G8R8G8_422_UNORM";
+		case VK_FORMAT_G8_B8_R8_3PLANE_420_UNORM:
+			return "VK_FORMAT_G8_B8_R8_3PLANE_420_UNORM";
+		case VK_FORMAT_G8_B8R8_2PLANE_420_UNORM:
+			return "VK_FORMAT_G8_B8R8_2PLANE_420_UNORM";
+		case VK_FORMAT_G8_B8_R8_3PLANE_422_UNORM:
+			return "VK_FORMAT_G8_B8_R8_3PLANE_422_UNORM";
+		case VK_FORMAT_G8_B8R8_2PLANE_422_UNORM:
+			return "VK_FORMAT_G8_B8R8_2PLANE_422_UNORM";
+		case VK_FORMAT_G8_B8_R8_3PLANE_444_UNORM:
+			return "VK_FORMAT_G8_B8_R8_3PLANE_444_UNORM";
+		case VK_FORMAT_R10X6_UNORM_PACK16:
+			return "VK_FORMAT_R10X6_UNORM_PACK16";
+		case VK_FORMAT_R10X6G10X6_UNORM_2PACK16:
+			return "VK_FORMAT_R10X6G10X6_UNORM_2PACK16";
+		case VK_FORMAT_R10X6G10X6B10X6A10X6_UNORM_4PACK16:
+			return "VK_FORMAT_R10X6G10X6B10X6A10X6_UNORM_4PACK16";
+		case VK_FORMAT_G10X6B10X6G10X6R10X6_422_UNORM_4PACK16:
+			return "VK_FORMAT_G10X6B10X6G10X6R10X6_422_UNORM_4PACK16";
+		case VK_FORMAT_B10X6G10X6R10X6G10X6_422_UNORM_4PACK16:
+			return "VK_FORMAT_B10X6G10X6R10X6G10X6_422_UNORM_4PACK16";
+		case VK_FORMAT_G10X6_B10X6_R10X6_3PLANE_420_UNORM_3PACK16:
+			return "VK_FORMAT_G10X6_B10X6_R10X6_3PLANE_420_UNORM_3PACK16";
+		case VK_FORMAT_G10X6_B10X6R10X6_2PLANE_420_UNORM_3PACK16:
+			return "VK_FORMAT_G10X6_B10X6R10X6_2PLANE_420_UNORM_3PACK16";
+		case VK_FORMAT_G10X6_B10X6_R10X6_3PLANE_422_UNORM_3PACK16:
+			return "VK_FORMAT_G10X6_B10X6_R10X6_3PLANE_422_UNORM_3PACK16";
+		case VK_FORMAT_G10X6_B10X6R10X6_2PLANE_422_UNORM_3PACK16:
+			return "VK_FORMAT_G10X6_B10X6R10X6_2PLANE_422_UNORM_3PACK16";
+		case VK_FORMAT_G10X6_B10X6_R10X6_3PLANE_444_UNORM_3PACK16:
+			return "VK_FORMAT_G10X6_B10X6_R10X6_3PLANE_444_UNORM_3PACK16";
+		case VK_FORMAT_R12X4_UNORM_PACK16:
+			return "VK_FORMAT_R12X4_UNORM_PACK16";
+		case VK_FORMAT_R12X4G12X4_UNORM_2PACK16:
+			return "VK_FORMAT_R12X4G12X4_UNORM_2PACK16";
+		case VK_FORMAT_R12X4G12X4B12X4A12X4_UNORM_4PACK16:
+			return "VK_FORMAT_R12X4G12X4B12X4A12X4_UNORM_4PACK16";
+		case VK_FORMAT_G12X4B12X4G12X4R12X4_422_UNORM_4PACK16:
+			return "VK_FORMAT_G12X4B12X4G12X4R12X4_422_UNORM_4PACK16";
+		case VK_FORMAT_B12X4G12X4R12X4G12X4_422_UNORM_4PACK16:
+			return "VK_FORMAT_B12X4G12X4R12X4G12X4_422_UNORM_4PACK16";
+		case VK_FORMAT_G12X4_B12X4_R12X4_3PLANE_420_UNORM_3PACK16:
+			return "VK_FORMAT_G12X4_B12X4_R12X4_3PLANE_420_UNORM_3PACK16";
+		case VK_FORMAT_G12X4_B12X4R12X4_2PLANE_420_UNORM_3PACK16:
+			return "VK_FORMAT_G12X4_B12X4R12X4_2PLANE_420_UNORM_3PACK16";
+		case VK_FORMAT_G12X4_B12X4_R12X4_3PLANE_422_UNORM_3PACK16:
+			return "VK_FORMAT_G12X4_B12X4_R12X4_3PLANE_422_UNORM_3PACK16";
+		case VK_FORMAT_G12X4_B12X4R12X4_2PLANE_422_UNORM_3PACK16:
+			return "VK_FORMAT_G12X4_B12X4R12X4_2PLANE_422_UNORM_3PACK16";
+		case VK_FORMAT_G12X4_B12X4_R12X4_3PLANE_444_UNORM_3PACK16:
+			return "VK_FORMAT_G12X4_B12X4_R12X4_3PLANE_444_UNORM_3PACK16";
+		case VK_FORMAT_G16B16G16R16_422_UNORM:
+			return "VK_FORMAT_G16B16G16R16_422_UNORM";
+		case VK_FORMAT_B16G16R16G16_422_UNORM:
+			return "VK_FORMAT_B16G16R16G16_422_UNORM";
+		case VK_FORMAT_G16_B16_R16_3PLANE_420_UNORM:
+			return "VK_FORMAT_G16_B16_R16_3PLANE_420_UNORM";
+		case VK_FORMAT_G16_B16R16_2PLANE_420_UNORM:
+			return "VK_FORMAT_G16_B16R16_2PLANE_420_UNORM";
+		case VK_FORMAT_G16_B16_R16_3PLANE_422_UNORM:
+			return "VK_FORMAT_G16_B16_R16_3PLANE_422_UNORM";
+		case VK_FORMAT_G16_B16R16_2PLANE_422_UNORM:
+			return "VK_FORMAT_G16_B16R16_2PLANE_422_UNORM";
+		case VK_FORMAT_G16_B16_R16_3PLANE_444_UNORM:
+			return "VK_FORMAT_G16_B16_R16_3PLANE_444_UNORM";
+		case VK_FORMAT_PVRTC1_2BPP_UNORM_BLOCK_IMG:
+			return "VK_FORMAT_PVRTC1_2BPP_UNORM_BLOCK_IMG";
+		case VK_FORMAT_PVRTC1_4BPP_UNORM_BLOCK_IMG:
+			return "VK_FORMAT_PVRTC1_4BPP_UNORM_BLOCK_IMG";
+		case VK_FORMAT_PVRTC2_2BPP_UNORM_BLOCK_IMG:
+			return "VK_FORMAT_PVRTC2_2BPP_UNORM_BLOCK_IMG";
+		case VK_FORMAT_PVRTC2_4BPP_UNORM_BLOCK_IMG:
+			return "VK_FORMAT_PVRTC2_4BPP_UNORM_BLOCK_IMG";
+		case VK_FORMAT_PVRTC1_2BPP_SRGB_BLOCK_IMG:
+			return "VK_FORMAT_PVRTC1_2BPP_SRGB_BLOCK_IMG";
+		case VK_FORMAT_PVRTC1_4BPP_SRGB_BLOCK_IMG:
+			return "VK_FORMAT_PVRTC1_4BPP_SRGB_BLOCK_IMG";
+		case VK_FORMAT_PVRTC2_2BPP_SRGB_BLOCK_IMG:
+			return "VK_FORMAT_PVRTC2_2BPP_SRGB_BLOCK_IMG";
+		case VK_FORMAT_PVRTC2_4BPP_SRGB_BLOCK_IMG:
+			return "VK_FORMAT_PVRTC2_4BPP_SRGB_BLOCK_IMG";
+		case VK_FORMAT_ASTC_4x4_SFLOAT_BLOCK_EXT:
+			return "VK_FORMAT_ASTC_4x4_SFLOAT_BLOCK_EXT";
+		case VK_FORMAT_ASTC_5x4_SFLOAT_BLOCK_EXT:
+			return "VK_FORMAT_ASTC_5x4_SFLOAT_BLOCK_EXT";
+		case VK_FORMAT_ASTC_5x5_SFLOAT_BLOCK_EXT:
+			return "VK_FORMAT_ASTC_5x5_SFLOAT_BLOCK_EXT";
+		case VK_FORMAT_ASTC_6x5_SFLOAT_BLOCK_EXT:
+			return "VK_FORMAT_ASTC_6x5_SFLOAT_BLOCK_EXT";
+		case VK_FORMAT_ASTC_6x6_SFLOAT_BLOCK_EXT:
+			return "VK_FORMAT_ASTC_6x6_SFLOAT_BLOCK_EXT";
+		case VK_FORMAT_ASTC_8x5_SFLOAT_BLOCK_EXT:
+			return "VK_FORMAT_ASTC_8x5_SFLOAT_BLOCK_EXT";
+		case VK_FORMAT_ASTC_8x6_SFLOAT_BLOCK_EXT:
+			return "VK_FORMAT_ASTC_8x6_SFLOAT_BLOCK_EXT";
+		case VK_FORMAT_ASTC_8x8_SFLOAT_BLOCK_EXT:
+			return "VK_FORMAT_ASTC_8x8_SFLOAT_BLOCK_EXT";
+		case VK_FORMAT_ASTC_10x5_SFLOAT_BLOCK_EXT:
+			return "VK_FORMAT_ASTC_10x5_SFLOAT_BLOCK_EXT";
+		case VK_FORMAT_ASTC_10x6_SFLOAT_BLOCK_EXT:
+			return "VK_FORMAT_ASTC_10x6_SFLOAT_BLOCK_EXT";
+		case VK_FORMAT_ASTC_10x8_SFLOAT_BLOCK_EXT:
+			return "VK_FORMAT_ASTC_10x8_SFLOAT_BLOCK_EXT";
+		case VK_FORMAT_ASTC_10x10_SFLOAT_BLOCK_EXT:
+			return "VK_FORMAT_ASTC_10x10_SFLOAT_BLOCK_EXT";
+		case VK_FORMAT_ASTC_12x10_SFLOAT_BLOCK_EXT:
+			return "VK_FORMAT_ASTC_12x10_SFLOAT_BLOCK_EXT";
+		case VK_FORMAT_ASTC_12x12_SFLOAT_BLOCK_EXT:
+			return "VK_FORMAT_ASTC_12x12_SFLOAT_BLOCK_EXT";
+		case VK_FORMAT_A4R4G4B4_UNORM_PACK16_EXT:
+			return "VK_FORMAT_A4R4G4B4_UNORM_PACK16_EXT";
+		case VK_FORMAT_A4B4G4R4_UNORM_PACK16_EXT:
+			return "VK_FORMAT_A4B4G4R4_UNORM_PACK16_EXT";
+		default:
+			return "Unknown";
+	}
+
+}
+
+static const char *GetVulkanColorSpaceName(const VkColorSpaceKHR value) {
+	switch(value) {
+		case VK_COLOR_SPACE_SRGB_NONLINEAR_KHR:
+			return "VK_COLOR_SPACE_SRGB_NONLINEAR_KHR";
+		case VK_COLOR_SPACE_DISPLAY_P3_NONLINEAR_EXT:
+			return "VK_COLOR_SPACE_DISPLAY_P3_NONLINEAR_EXT";
+		case VK_COLOR_SPACE_EXTENDED_SRGB_LINEAR_EXT:
+			return "VK_COLOR_SPACE_EXTENDED_SRGB_LINEAR_EXT";
+		case VK_COLOR_SPACE_DISPLAY_P3_LINEAR_EXT:
+			return "VK_COLOR_SPACE_DISPLAY_P3_LINEAR_EXT";
+		case VK_COLOR_SPACE_DCI_P3_NONLINEAR_EXT:
+			return "VK_COLOR_SPACE_DCI_P3_NONLINEAR_EXT";
+		case VK_COLOR_SPACE_BT709_LINEAR_EXT:
+			return "VK_COLOR_SPACE_BT709_LINEAR_EXT";
+		case VK_COLOR_SPACE_BT709_NONLINEAR_EXT:
+			return "VK_COLOR_SPACE_BT709_NONLINEAR_EXT";
+		case VK_COLOR_SPACE_BT2020_LINEAR_EXT:
+			return "VK_COLOR_SPACE_BT2020_LINEAR_EXT";
+		case VK_COLOR_SPACE_HDR10_ST2084_EXT:
+			return "VK_COLOR_SPACE_HDR10_ST2084_EXT";
+		case VK_COLOR_SPACE_DOLBYVISION_EXT:
+			return "VK_COLOR_SPACE_DOLBYVISION_EXT";
+		case VK_COLOR_SPACE_HDR10_HLG_EXT:
+			return "VK_COLOR_SPACE_HDR10_HLG_EXT";
+		case VK_COLOR_SPACE_ADOBERGB_LINEAR_EXT:
+			return "VK_COLOR_SPACE_ADOBERGB_LINEAR_EXT";
+		case VK_COLOR_SPACE_ADOBERGB_NONLINEAR_EXT:
+			return "VK_COLOR_SPACE_ADOBERGB_NONLINEAR_EXT";
+		case VK_COLOR_SPACE_PASS_THROUGH_EXT:
+			return "VK_COLOR_SPACE_PASS_THROUGH_EXT";
+		case VK_COLOR_SPACE_EXTENDED_SRGB_NONLINEAR_EXT:
+			return "VK_COLOR_SPACE_EXTENDED_SRGB_NONLINEAR_EXT";
+		case VK_COLOR_SPACE_DISPLAY_NATIVE_AMD:
+			return "VK_COLOR_SPACE_DISPLAY_NATIVE_AMD";
+		default:
+			return "Unknown";
 	}
 }
 
@@ -49,7 +582,7 @@ static void VulkanVersionToString(const uint32_t versionNumber, const size_t out
 	fplS32ToString(patch, outName + lenMajor + 1 + lenMinor + 1, lenPatch + 1);
 }
 
-static int32_t GetVulkanQueueFamilyIndex(const VkQueueFlagBits flags, const VkQueueFamilyProperties *families, const uint32_t familyCount) {
+static uint32_t GetVulkanQueueFamilyIndex(const VkQueueFlagBits flags, const VkQueueFamilyProperties *families, const uint32_t familyCount) {
 	// Find a dedicated queue for compute (Not graphics)
 	if((flags & VK_QUEUE_COMPUTE_BIT) > 0) {
 		for(uint32_t i = 0; i < familyCount; ++i) {
@@ -77,7 +610,7 @@ static int32_t GetVulkanQueueFamilyIndex(const VkQueueFlagBits flags, const VkQu
 		}
 	}
 
-	return(-1);
+	return(UINT32_MAX);
 }
 
 //
@@ -142,9 +675,6 @@ bool VulkanLoadCoreAPI(VulkanCoreApi *api) {
 }
 
 typedef struct VulkanInstanceApi {
-	VkInstance instance;
-
-	PFN_vkDestroySurfaceKHR vkDestroySurfaceKHR;
 	PFN_vkEnumeratePhysicalDevices vkEnumeratePhysicalDevices;
 	PFN_vkGetPhysicalDeviceProperties vkGetPhysicalDeviceProperties;
 	PFN_vkGetPhysicalDeviceFeatures vkGetPhysicalDeviceFeatures;
@@ -156,6 +686,9 @@ typedef struct VulkanInstanceApi {
 	PFN_vkDestroyDevice vkDestroyDevice;
 	PFN_vkCreateCommandPool vkCreateCommandPool;
 	PFN_vkDestroyCommandPool vkDestroyCommandPool;
+	PFN_vkDestroySurfaceKHR vkDestroySurfaceKHR;
+	PFN_vkGetPhysicalDeviceSurfaceSupportKHR vkGetPhysicalDeviceSurfaceSupportKHR;
+	PFN_vkGetPhysicalDeviceSurfaceFormatsKHR vkGetPhysicalDeviceSurfaceFormatsKHR;
 
 #if defined(FPL_PLATFORM_WINDOWS)
 	PFN_vkCreateWin32SurfaceKHR vkCreateWin32SurfaceKHR;
@@ -181,7 +714,6 @@ bool LoadVulkanInstanceAPI(const VulkanCoreApi *coreApi, VkInstance instance, Vu
 	bool result = false;
 	do {
 
-		VULKAN_INSTANCE_GET_PROC_ADDRESS(outInstanceApi, PFN_vkDestroySurfaceKHR, vkDestroySurfaceKHR);
 		VULKAN_INSTANCE_GET_PROC_ADDRESS(outInstanceApi, PFN_vkEnumeratePhysicalDevices, vkEnumeratePhysicalDevices);
 		VULKAN_INSTANCE_GET_PROC_ADDRESS(outInstanceApi, PFN_vkGetPhysicalDeviceProperties, vkGetPhysicalDeviceProperties);
 		VULKAN_INSTANCE_GET_PROC_ADDRESS(outInstanceApi, PFN_vkGetPhysicalDeviceFeatures, vkGetPhysicalDeviceFeatures);
@@ -193,6 +725,9 @@ bool LoadVulkanInstanceAPI(const VulkanCoreApi *coreApi, VkInstance instance, Vu
 		VULKAN_INSTANCE_GET_PROC_ADDRESS(outInstanceApi, PFN_vkDestroyDevice, vkDestroyDevice);
 		VULKAN_INSTANCE_GET_PROC_ADDRESS(outInstanceApi, PFN_vkCreateCommandPool, vkCreateCommandPool);
 		VULKAN_INSTANCE_GET_PROC_ADDRESS(outInstanceApi, PFN_vkDestroyCommandPool, vkDestroyCommandPool);
+		VULKAN_INSTANCE_GET_PROC_ADDRESS(outInstanceApi, PFN_vkDestroySurfaceKHR, vkDestroySurfaceKHR);
+		VULKAN_INSTANCE_GET_PROC_ADDRESS(outInstanceApi, PFN_vkGetPhysicalDeviceSurfaceSupportKHR, vkGetPhysicalDeviceSurfaceSupportKHR);
+		VULKAN_INSTANCE_GET_PROC_ADDRESS(outInstanceApi, PFN_vkGetPhysicalDeviceSurfaceFormatsKHR, vkGetPhysicalDeviceSurfaceFormatsKHR);
 
 #if defined(FPL_PLATFORM_WINDOWS)
 		VULKAN_INSTANCE_GET_PROC_ADDRESS(outInstanceApi, PFN_vkCreateWin32SurfaceKHR, vkCreateWin32SurfaceKHR);
@@ -207,8 +742,6 @@ bool LoadVulkanInstanceAPI(const VulkanCoreApi *coreApi, VkInstance instance, Vu
 	if(!result) {
 		fplClearStruct(outInstanceApi);
 	}
-
-	outInstanceApi->instance = instance;
 
 	return(result);
 }
@@ -299,7 +832,7 @@ typedef struct VulkanInstance {
 	VulkanInstanceProperties properties;
 	VulkanInstanceApi instanceApi;
 	VkApplicationInfo appInfo;
-	VkInstance instance;
+	VkInstance instanceHandle;
 } VulkanInstance;
 
 static void VulkanDestroyInstance(const VulkanCoreApi *coreApi, VulkanInstance *instance) {
@@ -309,9 +842,9 @@ static void VulkanDestroyInstance(const VulkanCoreApi *coreApi, VulkanInstance *
 	UnloadVulkanInstanceAPI(&instance->instanceApi);
 
 	// Destroy Vulkan instance
-	if(instance->instance != VK_NULL_HANDLE) {
+	if(instance->instanceHandle != VK_NULL_HANDLE) {
 		fplConsoleFormatOut("Destroy Vulkan instance\n");
-		coreApi->vkDestroyInstance(instance->instance, fpl_null);
+		coreApi->vkDestroyInstance(instance->instanceHandle, fpl_null);
 	}
 
 	// Destroy instance properties
@@ -433,7 +966,7 @@ static bool VulkanCreateInstance(const VulkanCoreApi *coreApi, VulkanInstance *i
 
 	fplConsoleFormatOut("Creating Vulkan instance for application '%s' v%s and engine '%s' v%s for Vulkan v%s...\n", appInfo->pApplicationName, appVersionName, appInfo->pEngineName, engineVersionName, vulkanVersionName);
 	fplConsoleFormatOut("With %lu enabled extensions & %lu layers\n", instanceCreateInfo.enabledExtensionCount, instanceCreateInfo.enabledLayerCount);
-	res = coreApi->vkCreateInstance(&instanceCreateInfo, fpl_null, &instance->instance);
+	res = coreApi->vkCreateInstance(&instanceCreateInfo, fpl_null, &instance->instanceHandle);
 	if(res != VK_SUCCESS) {
 		fplConsoleFormatError("Failed creating Vulkan instance for application '%s'!\n", appInfo->pApplicationName);
 		VulkanDestroyInstance(coreApi, instance);
@@ -445,8 +978,8 @@ static bool VulkanCreateInstance(const VulkanCoreApi *coreApi, VulkanInstance *i
 	//
 	// Load instance API
 	//
-	if(!LoadVulkanInstanceAPI(coreApi, instance->instance, &instance->instanceApi)) {
-		fplConsoleFormatError("Failed to load the Vulkan instance API for instance '%p'!\n", instance->instance);
+	if(!LoadVulkanInstanceAPI(coreApi, instance->instanceHandle, &instance->instanceApi)) {
+		fplConsoleFormatError("Failed to load the Vulkan instance API for instance '%p'!\n", instance->instanceHandle);
 		VulkanDestroyInstance(coreApi, instance);
 		return(false);
 	}
@@ -472,7 +1005,7 @@ typedef struct VulkanPhysicalDevice {
 	FIXED_TYPED_ARRAY(VkQueueFamilyProperties, queueFamilies);
 	StringTable supportedExtensions;
 
-	VkPhysicalDevice physicalDevice;
+	VkPhysicalDevice physicalDeviceHandle;
 	const char *name;
 } VulkanPhysicalDevice;
 
@@ -545,7 +1078,7 @@ bool VulkanCreatePhysicalDevice(const VulkanCoreApi *coreApi, const VulkanInstan
 
 		VkPhysicalDeviceProperties physicalDeviceProps = fplZeroInit;
 		instanceApi->vkGetPhysicalDeviceProperties(physicalDevice, &physicalDeviceProps);
-		fplConsoleFormatOut("[%lu] Physical Device '%s' (%s)\n", physicalDeviceIndex, physicalDeviceProps.deviceName, VulkanPhysicalDeviceTypeToStríng(physicalDeviceProps.deviceType));
+		fplConsoleFormatOut("[%lu] Physical Device '%s' (%s)\n", physicalDeviceIndex, physicalDeviceProps.deviceName, GetVulkanPhysicalDeviceTypeName(physicalDeviceProps.deviceType));
 
 		char apiVersionName[100];
 		char driverVersionName[100];
@@ -574,10 +1107,10 @@ bool VulkanCreatePhysicalDevice(const VulkanCoreApi *coreApi, const VulkanInstan
 	instanceApi->vkGetPhysicalDeviceProperties(foundGpu, &physicalDevice->properties);
 	instanceApi->vkGetPhysicalDeviceFeatures(foundGpu, &physicalDevice->features);
 	instanceApi->vkGetPhysicalDeviceMemoryProperties(foundGpu, &physicalDevice->memoryProperties);
-	physicalDevice->physicalDevice = foundGpu;
+	physicalDevice->physicalDeviceHandle = foundGpu;
 	physicalDevice->name = physicalDevice->properties.deviceName;
 
-	fplConsoleFormatOut("Using [%lu] Physical Device '%s' (%s)\n", foundGPUIndex, physicalDevice->name, VulkanPhysicalDeviceTypeToStríng(physicalDevice->properties.deviceType));
+	fplConsoleFormatOut("Using [%lu] Physical Device '%s' (%s)\n", foundGPUIndex, physicalDevice->name, GetVulkanPhysicalDeviceTypeName(physicalDevice->properties.deviceType));
 	fplConsoleOut("\n");
 
 	//
@@ -588,11 +1121,11 @@ bool VulkanCreatePhysicalDevice(const VulkanCoreApi *coreApi, const VulkanInstan
 
 	fplConsoleFormatOut("Get queue family properties for Physical Device '%s'\n", physicalDevice->name);
 	uint32_t queueFamilyPropertiesCount = 0;
-	instanceApi->vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice->physicalDevice, &queueFamilyPropertiesCount, fpl_null);
+	instanceApi->vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice->physicalDeviceHandle, &queueFamilyPropertiesCount, fpl_null);
 	assert(queueFamilyPropertiesCount > 0);
 
 	ALLOC_FIXED_TYPED_ARRAY(&physicalDevice->queueFamilies, VkQueueFamilyProperties, queueFamilyPropertiesCount);
-	instanceApi->vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice->physicalDevice, &queueFamilyPropertiesCount, physicalDevice->queueFamilies.items);
+	instanceApi->vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice->physicalDeviceHandle, &queueFamilyPropertiesCount, physicalDevice->queueFamilies.items);
 	fplConsoleFormatOut("Successfully got %lu queue family properties for Physical Device '%s'\n", queueFamilyPropertiesCount, physicalDevice->name);
 	for(uint32_t queueFamilyPropertiesIndex = 0; queueFamilyPropertiesIndex < queueFamilyPropertiesCount; ++queueFamilyPropertiesIndex) {
 		const VkQueueFamilyProperties *queueFamilyProps = physicalDevice->queueFamilies.items + queueFamilyPropertiesIndex;
@@ -627,10 +1160,10 @@ bool VulkanCreatePhysicalDevice(const VulkanCoreApi *coreApi, const VulkanInstan
 	//
 	fplConsoleFormatOut("Enumerate device extensions for Physical Device '%s'\n", physicalDevice->name);
 	uint32_t deviceExtensionCount = 0;
-	instanceApi->vkEnumerateDeviceExtensionProperties(physicalDevice->physicalDevice, fpl_null, &deviceExtensionCount, fpl_null);
+	instanceApi->vkEnumerateDeviceExtensionProperties(physicalDevice->physicalDeviceHandle, fpl_null, &deviceExtensionCount, fpl_null);
 	if(deviceExtensionCount > 0) {
 		VkExtensionProperties *extensionProperties = (VkExtensionProperties *)malloc(sizeof(VkExtensionProperties) * deviceExtensionCount);
-		instanceApi->vkEnumerateDeviceExtensionProperties(physicalDevice->physicalDevice, fpl_null, &deviceExtensionCount, extensionProperties);
+		instanceApi->vkEnumerateDeviceExtensionProperties(physicalDevice->physicalDeviceHandle, fpl_null, &deviceExtensionCount, extensionProperties);
 		fplConsoleFormatOut("Successfully enumerated device extensions for Physical Device '%s', got %lu extensions\n", physicalDevice->name, deviceExtensionCount);
 		physicalDevice->supportedExtensions = AllocStringTable(deviceExtensionCount);
 		for(uint32_t extIndex = 0; extIndex < deviceExtensionCount; ++extIndex) {
@@ -647,28 +1180,28 @@ bool VulkanCreatePhysicalDevice(const VulkanCoreApi *coreApi, const VulkanInstan
 
 typedef struct VulkanLogicalDevice {
 	VkPhysicalDeviceFeatures enabledFeatures;
-	VkDevice logicalDevice;
-	VkCommandPool graphicsCommandPool;
-	int32_t computeFamilyIndex;
-	int32_t transferFamilyIndex;
-	int32_t graphicsFamilyIndex;
+	VkDevice logicalDeviceHandle;
+	VkCommandPool graphicsCommandPoolHandle;
+	uint32_t computeFamilyIndex;
+	uint32_t transferFamilyIndex;
+	uint32_t graphicsFamilyIndex;
 } VulkanLogicalDevice;
 
 void VulkanDestroyLogicalDevice(const VulkanInstanceApi *instanceApi, VulkanLogicalDevice *logicalDevice) {
 	if(logicalDevice == fpl_null) return;
 
-	if(logicalDevice->graphicsCommandPool != fpl_null) {
-		instanceApi->vkDestroyCommandPool(logicalDevice->logicalDevice, logicalDevice->graphicsCommandPool, fpl_null);
+	if(logicalDevice->graphicsCommandPoolHandle != fpl_null) {
+		instanceApi->vkDestroyCommandPool(logicalDevice->logicalDeviceHandle, logicalDevice->graphicsCommandPoolHandle, fpl_null);
 	}
 
-	if(logicalDevice->logicalDevice != fpl_null) {
-		instanceApi->vkDestroyDevice(logicalDevice->logicalDevice, fpl_null);
+	if(logicalDevice->logicalDeviceHandle != fpl_null) {
+		instanceApi->vkDestroyDevice(logicalDevice->logicalDeviceHandle, fpl_null);
 	}
 
 	fplClearStruct(logicalDevice);
-	logicalDevice->computeFamilyIndex = -1;
-	logicalDevice->graphicsFamilyIndex = -1;
-	logicalDevice->transferFamilyIndex = -1;
+	logicalDevice->computeFamilyIndex = UINT32_MAX;
+	logicalDevice->graphicsFamilyIndex = UINT32_MAX;
+	logicalDevice->transferFamilyIndex = UINT32_MAX;
 }
 
 bool VulkanCreateCommandPool(
@@ -710,6 +1243,9 @@ bool VulkanCreateLogicalDevice(
 	const float defaultQueuePriority = 0.0f;
 
 	fplClearStruct(logicalDevice);
+	logicalDevice->computeFamilyIndex = UINT32_MAX;
+	logicalDevice->graphicsFamilyIndex = UINT32_MAX;
+	logicalDevice->transferFamilyIndex = UINT32_MAX;
 
 	//
 	// Graphics queue
@@ -718,20 +1254,20 @@ bool VulkanCreateLogicalDevice(
 	logicalDevice->graphicsFamilyIndex = GetVulkanQueueFamilyIndex(VK_QUEUE_GRAPHICS_BIT, physicalDevice->queueFamilies.items, physicalDevice->queueFamilies.itemCount);
 	logicalDevice->computeFamilyIndex = GetVulkanQueueFamilyIndex(VK_QUEUE_COMPUTE_BIT, physicalDevice->queueFamilies.items, physicalDevice->queueFamilies.itemCount);
 	logicalDevice->transferFamilyIndex = GetVulkanQueueFamilyIndex(VK_QUEUE_TRANSFER_BIT, physicalDevice->queueFamilies.items, physicalDevice->queueFamilies.itemCount);
-	if(logicalDevice->graphicsFamilyIndex == -1) {
+	if(logicalDevice->graphicsFamilyIndex == UINT32_MAX) {
 		fplConsoleFormatError("No graphics queue family for physical device '%s' found!\n", physicalDevice->name);
 		VulkanDestroyLogicalDevice(instanceApi, logicalDevice);
 		return(false);
 	}
-	if(logicalDevice->computeFamilyIndex == -1) {
+	if(logicalDevice->computeFamilyIndex == UINT32_MAX) {
 		// Use graphics queue for compute queue
 		logicalDevice->computeFamilyIndex = logicalDevice->graphicsFamilyIndex;
 	}
-	if(logicalDevice->transferFamilyIndex == -1) {
+	if(logicalDevice->transferFamilyIndex == UINT32_MAX) {
 		// Use graphics queue for transfer queue
 		logicalDevice->transferFamilyIndex = logicalDevice->graphicsFamilyIndex;
 	}
-	assert(logicalDevice->graphicsFamilyIndex > -1 && logicalDevice->computeFamilyIndex > -1 && logicalDevice->transferFamilyIndex > -1);
+	assert(logicalDevice->graphicsFamilyIndex != UINT32_MAX && logicalDevice->computeFamilyIndex != UINT32_MAX && logicalDevice->transferFamilyIndex != UINT32_MAX);
 	fplConsoleFormatOut("Successfully detected required queue families:\n");
 	fplConsoleFormatOut("\tGraphics queue family: %d\n", logicalDevice->graphicsFamilyIndex);
 	fplConsoleFormatOut("\tCompute queue family: %d\n", logicalDevice->computeFamilyIndex);
@@ -823,7 +1359,7 @@ bool VulkanCreateLogicalDevice(
 	}
 
 	fplConsoleFormatOut("Creating Logical Device from physical device '%s'\n", physicalDevice->name);
-	VkResult res = instanceApi->vkCreateDevice(physicalDevice->physicalDevice, &deviceCreateInfo, fpl_null, &logicalDevice->logicalDevice);
+	VkResult res = instanceApi->vkCreateDevice(physicalDevice->physicalDeviceHandle, &deviceCreateInfo, fpl_null, &logicalDevice->logicalDeviceHandle);
 	if(res != VK_SUCCESS) {
 		fplConsoleFormatError("Failed creating the logical device from physical device '%s'!\n", physicalDevice->name);
 		VulkanDestroyLogicalDevice(instanceApi, logicalDevice);
@@ -837,13 +1373,196 @@ bool VulkanCreateLogicalDevice(
 	//
 	// Command Pool
 	// 
-	fplConsoleFormatOut("Creating graphics command pool for logical device '%p' with queue %d...\n", logicalDevice->logicalDevice, logicalDevice->graphicsFamilyIndex);
-	if(!VulkanCreateCommandPool(instanceApi, logicalDevice->logicalDevice, logicalDevice->graphicsFamilyIndex, VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT, &logicalDevice->graphicsCommandPool)) {
-		fplConsoleFormatOut("Failed creating graphics command pool for logical device '%p' with queue %d!\n", logicalDevice->logicalDevice, logicalDevice->graphicsFamilyIndex);
+	fplConsoleFormatOut("Creating graphics command pool for logical device '%p' with queue %d...\n", logicalDevice->logicalDeviceHandle, logicalDevice->graphicsFamilyIndex);
+	if(!VulkanCreateCommandPool(instanceApi, logicalDevice->logicalDeviceHandle, logicalDevice->graphicsFamilyIndex, VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT, &logicalDevice->graphicsCommandPoolHandle)) {
+		fplConsoleFormatError("Failed creating graphics command pool for logical device '%p' with queue %d!\n", logicalDevice->logicalDeviceHandle, logicalDevice->graphicsFamilyIndex);
 		VulkanDestroyLogicalDevice(instanceApi, logicalDevice);
 		return(false);
 	}
-	fplConsoleFormatOut("Successfully created graphics command pool for logical device '%p' with queue %d\n", logicalDevice->logicalDevice, logicalDevice->graphicsFamilyIndex);
+	fplConsoleFormatOut("Successfully created graphics command pool for logical device '%p' with queue %d\n", logicalDevice->logicalDeviceHandle, logicalDevice->graphicsFamilyIndex);
+	fplConsoleOut("\n");
+
+	return(true);
+}
+
+typedef struct VulkanSwapChain {
+	int bla;
+} VulkanSwapChain;
+
+void VulkanDestroySwapChain(VulkanSwapChain *swapChain) {
+
+}
+
+bool VulkanCreateSwapChain(VulkanSwapChain *swapChain, const VulkanPhysicalDevice *physicalDevice, const VkSurfaceKHR surface) {
+	return(false);
+}
+
+typedef struct VulkanSurface {
+	FIXED_TYPED_ARRAY(VkBool32, supportedQueuesForPresent);
+	uint32_t graphicsQueueFamilyIndex;
+	uint32_t presentationQueueFamilyIndex;
+	VkSurfaceKHR surfaceHandle;
+	VkFormat colorFormat;
+	VkColorSpaceKHR colorSpace;
+} VulkanSurface;
+
+void VulkanDestroySurface(const VulkanInstanceApi *instanceApi, const VkInstance instance, VulkanSurface *surface) {
+	if(surface == fpl_null) return;
+	FREE_FIXED_TYPED_ARRAY(&surface->supportedQueuesForPresent);
+	if(surface->surfaceHandle != VK_NULL_HANDLE) {
+		fplConsoleFormatOut("Destroy Vulkan surface '%p'\n", surface->surfaceHandle);
+		instanceApi->vkDestroySurfaceKHR(instance, surface->surfaceHandle, fpl_null);
+	}
+
+	fplClearStruct(surface);
+	surface->graphicsQueueFamilyIndex = UINT32_MAX;
+	surface->presentationQueueFamilyIndex = UINT32_MAX;
+}
+
+bool VulkanCreateSurface(const VulkanInstanceApi *instanceApi, const VkInstance instanceHandle, const VulkanPhysicalDevice *physicalDevice, VulkanSurface *surface) {
+	if(instanceApi == fpl_null || instanceHandle == fpl_null || physicalDevice == fpl_null || surface == fpl_null)
+		return(false);
+
+	fplClearStruct(surface);
+	surface->graphicsQueueFamilyIndex = UINT32_MAX;
+	surface->presentationQueueFamilyIndex = UINT32_MAX;
+
+	//
+	// Create Surface KHR
+	//
+#if defined(FPL_PLATFORM_WINDOWS)
+	// TODO(final): This is just temporary, until we can query the platform window informations from FPL
+	HWND windowHandle = fpl__global__AppState->window.win32.windowHandle;
+	HINSTANCE appHandle = GetModuleHandle(fpl_null);
+
+	VkWin32SurfaceCreateInfoKHR createInfo = fplZeroInit;
+	createInfo.sType = VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR;
+	createInfo.hwnd = windowHandle;
+	createInfo.hinstance = appHandle;
+
+	fplConsoleFormatOut("Creating win32 surface KHR from window handle '%p'\n", createInfo.hwnd);
+	VkResult res = instanceApi->vkCreateWin32SurfaceKHR(instanceHandle, &createInfo, fpl_null, &surface->surfaceHandle);
+	if(res != VK_SUCCESS) {
+		fplConsoleFormatError("Failed creating win32 surface KHR!\n");
+		VulkanDestroySurface(instanceApi, instanceHandle, surface);
+		return(false);
+	}
+	fplConsoleFormatOut("Successfully created win32 surface KHR -> '%p'\n", surface->surfaceHandle);
+	fplConsoleFormatOut("\n");
+#else
+	fplConsoleFormatError("Unsupported Platform!\n");
+	VulkanDestroySurface(instanceApi, instanceHandle, surface);
+	return(false);
+#endif
+
+	//
+	// Check for presentation support in queues
+	//
+	fplConsoleFormatOut("Get present supports for surface '%p' and physical device '%s'\n", surface->surfaceHandle, physicalDevice->name);
+	const uint32_t queueFamilyCount = physicalDevice->queueFamilies.itemCount;
+	ALLOC_FIXED_TYPED_ARRAY(&surface->supportedQueuesForPresent, VkBool32, queueFamilyCount);
+	for(uint32_t queueFamilyIndex = 0; queueFamilyIndex < queueFamilyCount; ++queueFamilyIndex) {
+
+		VkBool32 supported = false;
+		instanceApi->vkGetPhysicalDeviceSurfaceSupportKHR(physicalDevice->physicalDeviceHandle, queueFamilyIndex, surface->surfaceHandle, &supported);
+		surface->supportedQueuesForPresent.items[queueFamilyIndex] = supported;
+		fplConsoleFormatOut("[%lu] supported: %s\n", queueFamilyIndex, (supported ? "yes" : "no"));
+	}
+	fplConsoleOut("\n");
+
+	// Search for a graphics and a present queue in the array of queue families, try to find one that supports both
+	fplConsoleFormatOut("Search graphics and presentation queue family\n");
+	uint32_t graphicsQueueFamilyIndex = UINT32_MAX;
+	uint32_t presentQueueFamilyIndex = UINT32_MAX;
+	for(uint32_t queueFamilyIndex = 0; queueFamilyIndex < queueFamilyCount; ++queueFamilyIndex) {
+		const VkQueueFamilyProperties *queueProps = physicalDevice->queueFamilies.items + queueFamilyIndex;
+		if((queueProps[queueFamilyIndex].queueFlags & VK_QUEUE_GRAPHICS_BIT) != 0) {
+			if(graphicsQueueFamilyIndex == UINT32_MAX) {
+				graphicsQueueFamilyIndex = queueFamilyIndex;
+			}
+			if(surface->supportedQueuesForPresent.items[queueFamilyIndex]) {
+				graphicsQueueFamilyIndex = queueFamilyIndex;
+				presentQueueFamilyIndex = queueFamilyIndex;
+				break;
+			}
+		}
+	}
+
+	if(presentQueueFamilyIndex == UINT32_MAX) {
+		// If there's no queue that supports both present and graphics, try to find a separate present queue
+		for(uint32_t queueFamilyIndex = 0; queueFamilyIndex < queueFamilyCount; ++queueFamilyIndex) {
+			if(surface->supportedQueuesForPresent.items[queueFamilyIndex]) {
+				presentQueueFamilyIndex = queueFamilyIndex;
+				break;
+			}
+		}
+	}
+
+	fplConsoleFormatOut("Graphics queue family: %lu\n", graphicsQueueFamilyIndex);
+	fplConsoleFormatOut("Presentation queue family: %lu\n", presentQueueFamilyIndex);
+
+	if(graphicsQueueFamilyIndex == UINT32_MAX || presentQueueFamilyIndex == UINT32_MAX) {
+		fplConsoleFormatError("Could not find queue families for graphics or presentation!\n");
+		VulkanDestroySurface(instanceApi, instanceHandle, surface);
+		return(false);
+	}
+	if(graphicsQueueFamilyIndex != presentQueueFamilyIndex) {
+		fplConsoleFormatError("Separate presentation queues are not supported!\n");
+		VulkanDestroySurface(instanceApi, instanceHandle, surface);
+		return(false);
+	}
+
+	fplConsoleOut("\n");
+
+	surface->graphicsQueueFamilyIndex = graphicsQueueFamilyIndex;
+	surface->presentationQueueFamilyIndex = presentQueueFamilyIndex;
+
+	//
+	// Find supported formats
+	//
+	fplConsoleFormatOut("Get surface formats for physical device '%s' and surface '%p'...\n", physicalDevice->name, surface->surfaceHandle);
+	uint32_t formatCount = 0;
+	res = instanceApi->vkGetPhysicalDeviceSurfaceFormatsKHR(physicalDevice->physicalDeviceHandle, surface->surfaceHandle, &formatCount, fpl_null);
+	if(res != VK_SUCCESS) {
+		fplConsoleFormatError("Failed to get surface format count for physical device '%s' and surface '%p'!\n", physicalDevice->name, surface->surfaceHandle);
+		VulkanDestroySurface(instanceApi, instanceHandle, surface);
+		return(false);
+	}
+	assert(formatCount > 0);
+	VkSurfaceFormatKHR *formats = (VkSurfaceFormatKHR *)malloc(sizeof(VkSurfaceFormatKHR) * formatCount);
+	res = instanceApi->vkGetPhysicalDeviceSurfaceFormatsKHR(physicalDevice->physicalDeviceHandle, surface->surfaceHandle, &formatCount, formats);
+	if(res != VK_SUCCESS) {
+		fplConsoleFormatError("Failed to get %lu surface formats for physical device '%s' and surface '%p'!\n", formatCount, physicalDevice->name, surface->surfaceHandle);
+		free(formats);
+		VulkanDestroySurface(instanceApi, instanceHandle, surface);
+		return(false);
+	}
+
+	// Use first format initially (Worst case)
+	surface->colorFormat = formats[0].format;
+	surface->colorSpace = formats[0].colorSpace;
+
+	bool found = false;
+	for(uint32_t formatIndex = 0; formatIndex < formatCount; ++formatIndex) {
+		const VkSurfaceFormatKHR *format = formats + formatIndex;
+		if(!found && format->format == VK_FORMAT_B8G8R8A8_UNORM) {
+			surface->colorFormat = format->format;
+			surface->colorSpace = format->colorSpace;
+			found = true;
+		}
+		if(!found && formatCount == 1 && format->format == VK_FORMAT_UNDEFINED) {
+			// Special case when format is not preferred
+			surface->colorFormat = VK_FORMAT_B8G8R8A8_UNORM;
+			surface->colorSpace = format->colorSpace;
+			found = true;
+		}
+		const char *formatName = GetVulkanFormatName(format->format);
+		const char *colorspaceName = GetVulkanColorSpaceName(format->colorSpace);
+		fplConsoleFormatOut("[%lu] '%s' with color-space of '%s'\n", formatIndex, formatName, colorspaceName);
+	}
+	
+	free(formats);
+	fplConsoleFormatOut("Successfully got surface formats for physical device '%s' and surface '%p', got %lu formats\n", physicalDevice->name, surface->surfaceHandle, formatCount);
 	fplConsoleOut("\n");
 
 	return(true);
@@ -852,13 +1571,17 @@ bool VulkanCreateLogicalDevice(
 typedef struct VulkanState {
 	VulkanPhysicalDevice physicalDevice;
 
-	VulkanCoreApi coreApi;
-
 	VulkanLogicalDevice logicalDevice;
+
+	VulkanCoreApi coreApi;
 
 	VulkanInstance instance;
 
-	VkSurfaceKHR surface;
+	VulkanSurface surface;
+
+	VkQueue graphicsQueueHandle;
+	VkSemaphore presentCompleteSemaphoreHandle;
+	VkSemaphore renderCompleteSemaphoreHandle;
 
 	fpl_b32 isInitialized;
 } VulkanState;
@@ -866,17 +1589,14 @@ typedef struct VulkanState {
 static void VulkanShutdown(VulkanState *state) {
 	if(state == fpl_null) return;
 
+	// Destroy Surface
+	VulkanDestroySurface(&state->instance.instanceApi, state->instance.instanceHandle, &state->surface);
+
 	// Destroy Logical Device
 	VulkanDestroyLogicalDevice(&state->instance.instanceApi, &state->logicalDevice);
 
 	// Destroy Physical device
 	VulkanDestroyPhysicalDevice(&state->coreApi, &state->physicalDevice);
-
-	// Destroy Surface KHR
-	if(state->surface != VK_NULL_HANDLE) {
-		fplConsoleFormatOut("Destroy Vulkan surface '%p'\n", state->surface);
-		state->instance.instanceApi.vkDestroySurfaceKHR(state->instance.instance, state->surface, fpl_null);
-	}
 
 	// Destroy Instance
 	VulkanDestroyInstance(&state->coreApi, &state->instance);
@@ -908,14 +1628,6 @@ static bool VulkanInitialize(VulkanState *state) {
 	}
 	fplConsoleFormatOut("\n");
 
-	VkResult res;
-
-#define VK_CHECK(res, emsg, ...) if(res != VK_SUCCESS) \
-	{ \
-		fplConsoleFormatError(emsg, __VA_ARGS__);\
-		goto failed; \
-	}
-
 	//
 	// Create instance
 	//
@@ -925,30 +1637,10 @@ static bool VulkanInitialize(VulkanState *state) {
 	}
 
 	//
-	// Create Surface KHR
-	//
-#if defined(FPL_PLATFORM_WINDOWS)
-	// TODO(final): This is just temporary, until we can query the platform window informations from FPL
-	HWND windowHandle = fpl__global__AppState->window.win32.windowHandle;
-	HINSTANCE appHandle = GetModuleHandle(fpl_null);
-
-	VkWin32SurfaceCreateInfoKHR createInfo = fplZeroInit;
-	createInfo.sType = VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR;
-	createInfo.hwnd = windowHandle;
-	createInfo.hinstance = appHandle;
-
-	fplConsoleFormatOut("Creating win32 surface KHR from window handle '%p'\n", createInfo.hwnd);
-	res = instanceApi->vkCreateWin32SurfaceKHR(state->instance.instance, &createInfo, fpl_null, &state->surface);
-	VK_CHECK(res, "Failed creating win32 surface KHR!\n");
-	fplConsoleFormatOut("Successfully created win32 surface KHR\n");
-	fplConsoleFormatOut("\n");
-#endif
-
-	//
 	// Physical Device (vkPhysicalDevice)
 	//
-	if(!VulkanCreatePhysicalDevice(coreApi, instanceApi, state->instance.instance, &state->physicalDevice)) {
-		fplConsoleFormatError("Failed to find a physical device from instance '%p'!\n", state->instance.instance);
+	if(!VulkanCreatePhysicalDevice(coreApi, instanceApi, state->instance.instanceHandle, &state->physicalDevice)) {
+		fplConsoleFormatError("Failed to find a physical device from instance '%p'!\n", state->instance.instanceHandle);
 		goto failed;
 	}
 
@@ -960,6 +1652,18 @@ static bool VulkanInitialize(VulkanState *state) {
 		fplConsoleFormatError("Failed to create a logical device from physical device '%s'!\n", state->physicalDevice.name);
 		goto failed;
 	}
+
+	//
+	// Surface
+	//
+	if(!VulkanCreateSurface(instanceApi, state->instance.instanceHandle, &state->physicalDevice, &state->surface)) {
+		fplConsoleFormatError("Failed to create surface for instance '%p' and physical device '%s'!\n", state->instance.instanceHandle, state->physicalDevice.name);
+		goto failed;
+	}
+
+	// TODO(final): Swap-Chain!
+
+	// TODO(final): Create synchronization objects
 
 	goto success;
 
@@ -1017,8 +1721,8 @@ int main(int argc, char **argv) {
 			if(ev.type == fplEventType_Window) {
 				if(ev.window.type == fplWindowEventType_Exposed) {
 
-				}
-			}
+	}
+}
 		}
 		fplVideoFlip();
 	}
@@ -1042,6 +1746,6 @@ cleanup:
 
 		fplConsoleFormatOut("Shutdown Platform\n");
 		fplPlatformRelease();
-		}
-	return(appResult);
 	}
+	return(appResult);
+}
