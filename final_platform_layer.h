@@ -134,10 +134,13 @@ SOFTWARE.
 
 	## v0.9.7-beta
 	- New[#105]: [Win32] Added support for creating and using a console in addition to a window
+
+	- Fixed[#109]: Fixed fplS32ToString was not working anymore
+
 	- Fixed[#98]: [Win32] Fixed fplThreadYield was not using YieldProcessor()
 	- Fixed[#110]: [Win32] Fixed preventing of erasing the background for non-video systems hides window always
 
-	- Fixed[#109]: Fixed fplS32ToString was not working anymore
+	- Changed[#113]: [Win32] Properly show window on initialize (Foreground, Focus)
 
 	## v0.9.6-beta
 	### Features
@@ -7377,6 +7380,10 @@ typedef FPL__FUNC_WIN32_ScreenToClient(fpl__win32_func_ScreenToClient);
 typedef FPL__FUNC_WIN32_BeginPaint(fpl__win32_func_BeginPaint);
 #define FPL__FUNC_WIN32_EndPaint(name) BOOL WINAPI name(_In_ HWND hWnd, _In_ CONST PAINTSTRUCT *lpPaint)
 typedef FPL__FUNC_WIN32_EndPaint(fpl__win32_func_EndPaint);
+#define FPL__FUNC_WIN32_SetForegroundWindow(name) BOOL WINAPI name(_In_ HWND hWnd)
+typedef FPL__FUNC_WIN32_SetForegroundWindow(fpl__win32_func_SetForegroundWindow);
+#define FPL__FUNC_WIN32_SetFocus(name) HWND WINAPI name(_In_opt_ HWND hWnd)
+typedef FPL__FUNC_WIN32_SetFocus(fpl__win32_func_SetFocus);
 
 // OLE32
 #define FPL__FUNC_WIN32_CoInitializeEx(name) HRESULT WINAPI name(LPVOID pvReserved, DWORD  dwCoInit)
@@ -7479,6 +7486,8 @@ typedef struct fpl__Win32UserApi {
 	fpl__win32_func_ScreenToClient *ScreenToClient;
 	fpl__win32_func_BeginPaint *BeginPaint;
 	fpl__win32_func_EndPaint *EndPaint;
+	fpl__win32_func_SetForegroundWindow *SetForegroundWindow;
+	fpl__win32_func_SetFocus *SetFocus;
 } fpl__Win32UserApi;
 
 typedef struct fpl__Win32OleApi {
@@ -7606,6 +7615,8 @@ fpl_internal bool fpl__Win32LoadApi(fpl__Win32Api *wapi) {
 		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_ScreenToClient, ScreenToClient);
 		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_BeginPaint, BeginPaint);
 		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_EndPaint, EndPaint);
+		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_SetForegroundWindow, SetForegroundWindow);
+		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_SetFocus, SetFocus);
 
 		// GDI32
 		const char *gdiLibraryName = "gdi32.dll";
@@ -11164,7 +11175,8 @@ fpl_internal bool fpl__Win32InitWindow(const fplSettings *initSettings, fplWindo
 
 	// Show window
 	wapi->user.ShowWindow(windowState->windowHandle, SW_SHOW);
-	wapi->user.UpdateWindow(windowState->windowHandle);
+	wapi->user.SetForegroundWindow(windowState->windowHandle);
+	wapi->user.SetFocus(windowState->windowHandle);
 
 	// Cursor is visible at start
 	windowState->defaultCursor = windowClass.hCursor;
