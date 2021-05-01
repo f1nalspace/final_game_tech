@@ -447,24 +447,6 @@ static bool CreateVulkanInstance(const VulkanCoreApi *coreApi, VulkanInstance *i
 	return(true);
 }
 
-typedef struct VulkanLogicalDevice {
-	VkDevice logicalDevice;
-	int32_t computeFamilyIndex;
-	int32_t transferFamilyIndex;
-	int32_t graphicsFamilyIndex;
-} VulkanLogicalDevice;
-
-bool CreateVulkanLogicalDevice(VkPhysicalDevice physicalDevice, VulkanLogicalDevice *outLogicalDevice) {
-	return(false);
-}
-
-void DestroyVulkanLogicalDevice(VulkanLogicalDevice *logicalDevice) {
-	fplClearStruct(logicalDevice);
-	logicalDevice->computeFamilyIndex = -1;
-	logicalDevice->graphicsFamilyIndex = -1;
-	logicalDevice->transferFamilyIndex = -1;
-}
-
 typedef struct VulkanPhysicalDevice {
 	VkPhysicalDeviceProperties properties;
 	VkPhysicalDeviceFeatures features;
@@ -645,6 +627,27 @@ bool CreateVulkanPhysicalDevice(const VulkanCoreApi *coreApi, const VulkanInstan
 
 	return(true);
 }
+
+typedef struct VulkanLogicalDevice {
+	VkDevice logicalDevice;
+	int32_t computeFamilyIndex;
+	int32_t transferFamilyIndex;
+	int32_t graphicsFamilyIndex;
+} VulkanLogicalDevice;
+
+bool CreateVulkanLogicalDevice(VkPhysicalDevice physicalDevice, VulkanLogicalDevice *outLogicalDevice, const VkPhysicalDeviceFeatures *features, const char **extensions, const uint32_t extensionCount) {
+
+
+	return(false);
+}
+
+void DestroyVulkanLogicalDevice(VulkanLogicalDevice *logicalDevice) {
+	fplClearStruct(logicalDevice);
+	logicalDevice->computeFamilyIndex = -1;
+	logicalDevice->graphicsFamilyIndex = -1;
+	logicalDevice->transferFamilyIndex = -1;
+}
+
 
 typedef struct VulkanState {
 	VulkanPhysicalDevice physicalDevice;
