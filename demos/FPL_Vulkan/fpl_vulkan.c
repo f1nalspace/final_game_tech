@@ -64,7 +64,7 @@ static int32_t GetVulkanQueueFamilyIndex(const VkQueueFlagBits flags, const VkQu
 	if((flags & VK_QUEUE_TRANSFER_BIT) > 0) {
 		for(uint32_t i = 0; i < familyCount; ++i) {
 			VkQueueFlagBits familyFlags = families[i].queueFlags;
-			if(((familyFlags & VK_QUEUE_TRANSFER_BIT) == VK_QUEUE_TRANSFER_BIT) && ((familyFlags & VK_QUEUE_GRAPHICS_BIT) == 0)&& ((familyFlags & VK_QUEUE_COMPUTE_BIT) == 0)) {
+			if(((familyFlags & VK_QUEUE_TRANSFER_BIT) == VK_QUEUE_TRANSFER_BIT) && ((familyFlags & VK_QUEUE_GRAPHICS_BIT) == 0) && ((familyFlags & VK_QUEUE_COMPUTE_BIT) == 0)) {
 				return(i);
 			}
 		}
@@ -94,7 +94,7 @@ typedef struct VulkanCoreApi {
 	fpl_b32 isInitialized;
 } VulkanCoreApi;
 
-void UnloadVulkanCoreAPI(VulkanCoreApi *api) {
+void VulkanUnloadCoreAPI(VulkanCoreApi *api) {
 	if(api->isInitialized) {
 		fplConsoleFormatOut("Unload Vulkan API\n");
 		fplDynamicLibraryUnload(&api->libHandle);
@@ -102,7 +102,7 @@ void UnloadVulkanCoreAPI(VulkanCoreApi *api) {
 	fplClearStruct(api);
 }
 
-bool LoadVulkanCoreAPI(VulkanCoreApi *api) {
+bool VulkanLoadCoreAPI(VulkanCoreApi *api) {
 	//const char *vulkanLibraryFileName = "libvulkan.so";
 	const char *vulkanLibraryFileName = "vulkan-1.dll";
 
@@ -135,7 +135,7 @@ bool LoadVulkanCoreAPI(VulkanCoreApi *api) {
 #undef VULKAN_LIBRARY_GET_PROC_ADDRESS
 
 	if(!result) {
-		UnloadVulkanCoreAPI(api);
+		VulkanUnloadCoreAPI(api);
 	}
 	api->isInitialized = true;
 	return(result);
@@ -152,7 +152,10 @@ typedef struct VulkanInstanceApi {
 	PFN_vkGetPhysicalDeviceQueueFamilyProperties vkGetPhysicalDeviceQueueFamilyProperties;
 	PFN_vkEnumerateDeviceExtensionProperties vkEnumerateDeviceExtensionProperties;
 	PFN_vkEnumerateDeviceLayerProperties vkEnumerateDeviceLayerProperties;
-
+	PFN_vkCreateDevice vkCreateDevice;
+	PFN_vkDestroyDevice vkDestroyDevice;
+	PFN_vkCreateCommandPool vkCreateCommandPool;
+	PFN_vkDestroyCommandPool vkDestroyCommandPool;
 
 #if defined(FPL_PLATFORM_WINDOWS)
 	PFN_vkCreateWin32SurfaceKHR vkCreateWin32SurfaceKHR;
@@ -186,6 +189,10 @@ bool LoadVulkanInstanceAPI(const VulkanCoreApi *coreApi, VkInstance instance, Vu
 		VULKAN_INSTANCE_GET_PROC_ADDRESS(outInstanceApi, PFN_vkGetPhysicalDeviceQueueFamilyProperties, vkGetPhysicalDeviceQueueFamilyProperties);
 		VULKAN_INSTANCE_GET_PROC_ADDRESS(outInstanceApi, PFN_vkEnumerateDeviceExtensionProperties, vkEnumerateDeviceExtensionProperties);
 		VULKAN_INSTANCE_GET_PROC_ADDRESS(outInstanceApi, PFN_vkEnumerateDeviceLayerProperties, vkEnumerateDeviceLayerProperties);
+		VULKAN_INSTANCE_GET_PROC_ADDRESS(outInstanceApi, PFN_vkCreateDevice, vkCreateDevice);
+		VULKAN_INSTANCE_GET_PROC_ADDRESS(outInstanceApi, PFN_vkDestroyDevice, vkDestroyDevice);
+		VULKAN_INSTANCE_GET_PROC_ADDRESS(outInstanceApi, PFN_vkCreateCommandPool, vkCreateCommandPool);
+		VULKAN_INSTANCE_GET_PROC_ADDRESS(outInstanceApi, PFN_vkDestroyCommandPool, vkDestroyCommandPool);
 
 #if defined(FPL_PLATFORM_WINDOWS)
 		VULKAN_INSTANCE_GET_PROC_ADDRESS(outInstanceApi, PFN_vkCreateWin32SurfaceKHR, vkCreateWin32SurfaceKHR);
@@ -295,7 +302,7 @@ typedef struct VulkanInstance {
 	VkInstance instance;
 } VulkanInstance;
 
-static void DestroyVulkanInstance(const VulkanCoreApi *coreApi, VulkanInstance *instance) {
+static void VulkanDestroyInstance(const VulkanCoreApi *coreApi, VulkanInstance *instance) {
 	if(coreApi == fpl_null || instance == fpl_null) return;
 
 	// Unload Instance API
@@ -313,7 +320,7 @@ static void DestroyVulkanInstance(const VulkanCoreApi *coreApi, VulkanInstance *
 	fplClearStruct(instance);
 }
 
-static bool CreateVulkanInstance(const VulkanCoreApi *coreApi, VulkanInstance *instance) {
+static bool VulkanCreateInstance(const VulkanCoreApi *coreApi, VulkanInstance *instance) {
 	const char *validationLayerName = "VK_LAYER_KHRONOS_validation";
 	const char *khrSurfaceName = "VK_KHR_surface";
 
@@ -374,7 +381,7 @@ static bool CreateVulkanInstance(const VulkanCoreApi *coreApi, VulkanInstance *i
 
 	if(!supportsKHRSurface || !supportsKHRPlatformSurface || khrPlatformSurfaceName == fpl_null) {
 		fplConsoleFormatError("Not supported KHR platform!\n");
-		DestroyVulkanInstance(coreApi, instance);
+		VulkanDestroyInstance(coreApi, instance);
 		return(false);
 	}
 
@@ -429,7 +436,7 @@ static bool CreateVulkanInstance(const VulkanCoreApi *coreApi, VulkanInstance *i
 	res = coreApi->vkCreateInstance(&instanceCreateInfo, fpl_null, &instance->instance);
 	if(res != VK_SUCCESS) {
 		fplConsoleFormatError("Failed creating Vulkan instance for application '%s'!\n", appInfo->pApplicationName);
-		DestroyVulkanInstance(coreApi, instance);
+		VulkanDestroyInstance(coreApi, instance);
 		return(false);
 	}
 	fplConsoleFormatOut("Successfully created instance\n");
@@ -440,11 +447,21 @@ static bool CreateVulkanInstance(const VulkanCoreApi *coreApi, VulkanInstance *i
 	//
 	if(!LoadVulkanInstanceAPI(coreApi, instance->instance, &instance->instanceApi)) {
 		fplConsoleFormatError("Failed to load the Vulkan instance API for instance '%p'!\n", instance->instance);
-		DestroyVulkanInstance(coreApi, instance);
+		VulkanDestroyInstance(coreApi, instance);
 		return(false);
 	}
 
 	return(true);
+}
+
+bool IsVulkanExtensionSupported(const char **supportedExtensions, const uint32_t supportedExtensionCount, const char *extension) {
+	for(uint32_t i = 0; i < supportedExtensionCount; ++i) {
+		const char *supportedExt = supportedExtensions[i];
+		if(fplIsStringEqual(supportedExt, extension)) {
+			return(true);
+		}
+	}
+	return(false);
 }
 
 typedef struct VulkanPhysicalDevice {
@@ -459,14 +476,14 @@ typedef struct VulkanPhysicalDevice {
 	const char *name;
 } VulkanPhysicalDevice;
 
-void DestroyVulkanPhysicalDevice(const VulkanCoreApi *coreApi, VulkanPhysicalDevice *physicalDevice) {
+void VulkanDestroyPhysicalDevice(const VulkanCoreApi *coreApi, VulkanPhysicalDevice *physicalDevice) {
 	if(coreApi == fpl_null || physicalDevice == fpl_null) return;
 	FreeStringTable(&physicalDevice->supportedExtensions);
 	FREE_FIXED_TYPED_ARRAY(&physicalDevice->queueFamilies);
 	fplClearStruct(physicalDevice);
 }
 
-bool CreateVulkanPhysicalDevice(const VulkanCoreApi *coreApi, const VulkanInstanceApi *instanceApi, VkInstance instance, VulkanPhysicalDevice *physicalDevice) {
+bool VulkanCreatePhysicalDevice(const VulkanCoreApi *coreApi, const VulkanInstanceApi *instanceApi, VkInstance instance, VulkanPhysicalDevice *physicalDevice) {
 	VkResult res;
 
 	//
@@ -477,19 +494,19 @@ bool CreateVulkanPhysicalDevice(const VulkanCoreApi *coreApi, const VulkanInstan
 	res = instanceApi->vkEnumeratePhysicalDevices(instance, &physicalDeviceCount, fpl_null);
 	if(res != VK_SUCCESS) {
 		fplConsoleFormatError("Failed enumerating physical instances for instance '%p'!\n", instance);
-		DestroyVulkanPhysicalDevice(coreApi, physicalDevice);
+		VulkanDestroyPhysicalDevice(coreApi, physicalDevice);
 		return(false);
 	}
 	VkPhysicalDevice *physicalDevices = (VkPhysicalDevice *)malloc(sizeof(VkPhysicalDevice) * physicalDeviceCount);
 	if(physicalDevices == fpl_null) {
 		fplConsoleFormatError("Failed allocating memory for %lu physical devices!\n", physicalDeviceCount);
-		DestroyVulkanPhysicalDevice(coreApi, physicalDevice);
+		VulkanDestroyPhysicalDevice(coreApi, physicalDevice);
 		return(false);
 	}
 	res = instanceApi->vkEnumeratePhysicalDevices(instance, &physicalDeviceCount, physicalDevices);
 	if(res != VK_SUCCESS) {
 		fplConsoleFormatError("Failed enumerating physical instances for instance '%p'!\n", instance);
-		DestroyVulkanPhysicalDevice(coreApi, physicalDevice);
+		VulkanDestroyPhysicalDevice(coreApi, physicalDevice);
 		free(physicalDevices);
 	}
 	fplConsoleFormatOut("Successfully enumerated physical devices, got %lu physics devices\n", physicalDeviceCount);
@@ -548,7 +565,7 @@ bool CreateVulkanPhysicalDevice(const VulkanCoreApi *coreApi, const VulkanInstan
 
 	if(foundGpu == VK_NULL_HANDLE) {
 		fplConsoleFormatError("No discrete or integrated GPU found. Please upgrade your Vulkan Driver!\n");
-		DestroyVulkanPhysicalDevice(coreApi, physicalDevice);
+		VulkanDestroyPhysicalDevice(coreApi, physicalDevice);
 		return(false);
 	}
 
@@ -629,25 +646,208 @@ bool CreateVulkanPhysicalDevice(const VulkanCoreApi *coreApi, const VulkanInstan
 }
 
 typedef struct VulkanLogicalDevice {
+	VkPhysicalDeviceFeatures enabledFeatures;
 	VkDevice logicalDevice;
+	VkCommandPool graphicsCommandPool;
 	int32_t computeFamilyIndex;
 	int32_t transferFamilyIndex;
 	int32_t graphicsFamilyIndex;
 } VulkanLogicalDevice;
 
-bool CreateVulkanLogicalDevice(VkPhysicalDevice physicalDevice, VulkanLogicalDevice *outLogicalDevice, const VkPhysicalDeviceFeatures *features, const char **extensions, const uint32_t extensionCount) {
+void VulkanDestroyLogicalDevice(const VulkanInstanceApi *instanceApi, VulkanLogicalDevice *logicalDevice) {
+	if(logicalDevice == fpl_null) return;
 
+	if(logicalDevice->graphicsCommandPool != fpl_null) {
+		instanceApi->vkDestroyCommandPool(logicalDevice->logicalDevice, logicalDevice->graphicsCommandPool, fpl_null);
+	}
 
-	return(false);
-}
+	if(logicalDevice->logicalDevice != fpl_null) {
+		instanceApi->vkDestroyDevice(logicalDevice->logicalDevice, fpl_null);
+	}
 
-void DestroyVulkanLogicalDevice(VulkanLogicalDevice *logicalDevice) {
 	fplClearStruct(logicalDevice);
 	logicalDevice->computeFamilyIndex = -1;
 	logicalDevice->graphicsFamilyIndex = -1;
 	logicalDevice->transferFamilyIndex = -1;
 }
 
+bool VulkanCreateCommandPool(
+	const VulkanInstanceApi *instanceApi,
+	const VkDevice logicalDevice,
+	const int32_t queueFamilyIndex,
+	const VkCommandPoolCreateFlags createFlags,
+	VkCommandPool *outCommandPool) {
+
+	VkCommandPoolCreateInfo cmdPoolInfo = fplZeroInit;
+	cmdPoolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+	cmdPoolInfo.queueFamilyIndex = queueFamilyIndex;
+	cmdPoolInfo.flags = createFlags;
+
+	VkCommandPool pool;
+	VkResult res = instanceApi->vkCreateCommandPool(logicalDevice, &cmdPoolInfo, fpl_null, &pool);
+	if(res != VK_SUCCESS) {
+		return(false);
+	}
+	*outCommandPool = pool;
+	return(true);
+}
+
+bool VulkanCreateLogicalDevice(
+	const VulkanInstanceApi *instanceApi,
+	const VulkanPhysicalDevice *physicalDevice,
+	const VkPhysicalDeviceFeatures *enabledFeatures,
+	const char **reqExtensions,
+	const uint32_t reqExtensionCount,
+	const bool useSwapChain,
+	void *pNextChain,
+	VulkanLogicalDevice *logicalDevice) {
+	if(logicalDevice == fpl_null || physicalDevice == fpl_null)
+		return(false);
+
+	uint32_t queueCreationInfoCount = 0;
+	VkDeviceQueueCreateInfo queueCreationInfos[4] = fplZeroInit;
+
+	const float defaultQueuePriority = 0.0f;
+
+	fplClearStruct(logicalDevice);
+
+	//
+	// Graphics queue
+	//
+	fplConsoleFormatOut("Detect queue families...\n");
+	logicalDevice->graphicsFamilyIndex = GetVulkanQueueFamilyIndex(VK_QUEUE_GRAPHICS_BIT, physicalDevice->queueFamilies.items, physicalDevice->queueFamilies.itemCount);
+	logicalDevice->computeFamilyIndex = GetVulkanQueueFamilyIndex(VK_QUEUE_COMPUTE_BIT, physicalDevice->queueFamilies.items, physicalDevice->queueFamilies.itemCount);
+	logicalDevice->transferFamilyIndex = GetVulkanQueueFamilyIndex(VK_QUEUE_TRANSFER_BIT, physicalDevice->queueFamilies.items, physicalDevice->queueFamilies.itemCount);
+	if(logicalDevice->graphicsFamilyIndex == -1) {
+		fplConsoleFormatError("No graphics queue family for physical device '%s' found!\n", physicalDevice->name);
+		VulkanDestroyLogicalDevice(instanceApi, logicalDevice);
+		return(false);
+	}
+	if(logicalDevice->computeFamilyIndex == -1) {
+		// Use graphics queue for compute queue
+		logicalDevice->computeFamilyIndex = logicalDevice->graphicsFamilyIndex;
+	}
+	if(logicalDevice->transferFamilyIndex == -1) {
+		// Use graphics queue for transfer queue
+		logicalDevice->transferFamilyIndex = logicalDevice->graphicsFamilyIndex;
+	}
+	assert(logicalDevice->graphicsFamilyIndex > -1 && logicalDevice->computeFamilyIndex > -1 && logicalDevice->transferFamilyIndex > -1);
+	fplConsoleFormatOut("Successfully detected required queue families:\n");
+	fplConsoleFormatOut("\tGraphics queue family: %d\n", logicalDevice->graphicsFamilyIndex);
+	fplConsoleFormatOut("\tCompute queue family: %d\n", logicalDevice->computeFamilyIndex);
+	fplConsoleFormatOut("\tTransfer queue family: %d\n", logicalDevice->transferFamilyIndex);
+	fplConsoleOut("\n");
+
+	// Add graphics queue family
+	{
+		assert(queueCreationInfoCount < fplArrayCount(queueCreationInfos));
+		VkDeviceQueueCreateInfo *queueCreateInfo = &queueCreationInfos[queueCreationInfoCount++];
+		queueCreateInfo->sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+		queueCreateInfo->queueFamilyIndex = logicalDevice->graphicsFamilyIndex;
+		queueCreateInfo->queueCount = 1;
+		queueCreateInfo->pQueuePriorities = &defaultQueuePriority;
+	}
+
+	//
+	// Add dedicated compute queue
+	//
+	if(logicalDevice->computeFamilyIndex != logicalDevice->graphicsFamilyIndex) {
+		assert(queueCreationInfoCount < fplArrayCount(queueCreationInfos));
+		VkDeviceQueueCreateInfo *createInfo = &queueCreationInfos[queueCreationInfoCount++];
+		createInfo->sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+		createInfo->queueFamilyIndex = logicalDevice->computeFamilyIndex;
+		createInfo->queueCount = 1;
+		createInfo->pQueuePriorities = &defaultQueuePriority;
+	}
+
+	//
+	// Add dedicated transfer queue
+	//
+	if(logicalDevice->transferFamilyIndex != logicalDevice->graphicsFamilyIndex) {
+		assert(queueCreationInfoCount < fplArrayCount(queueCreationInfos));
+		VkDeviceQueueCreateInfo *createInfo = &queueCreationInfos[queueCreationInfoCount++];
+		createInfo->sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+		createInfo->queueFamilyIndex = logicalDevice->transferFamilyIndex;
+		createInfo->queueCount = 1;
+		createInfo->pQueuePriorities = &defaultQueuePriority;
+	}
+
+	// We don't allow more than 16 extensions for now
+	uint32_t enabledDeviceExtensionCount = 0;
+	const char *enabledDeviceExtensions[16] = fplZeroInit;
+	const uint32_t maxEnableDeviceExtensionCount = fplArrayCount(enabledDeviceExtensions);
+	for(uint32_t i = 0; i < reqExtensionCount; ++i) {
+		assert(enabledDeviceExtensionCount < maxEnableDeviceExtensionCount);
+		enabledDeviceExtensions[enabledDeviceExtensionCount++] = reqExtensions[i];
+	}
+
+	// Add SwapChain KHR extension when logical device will be used for a swap chain
+	if(useSwapChain) {
+		assert(enabledDeviceExtensionCount < maxEnableDeviceExtensionCount);
+		enabledDeviceExtensions[enabledDeviceExtensionCount++] = VK_KHR_SWAPCHAIN_EXTENSION_NAME;
+	}
+
+	VkDeviceCreateInfo deviceCreateInfo = fplZeroInit;
+	deviceCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
+	deviceCreateInfo.queueCreateInfoCount = queueCreationInfoCount;
+	deviceCreateInfo.pQueueCreateInfos = queueCreationInfos;
+	deviceCreateInfo.pEnabledFeatures = enabledFeatures;
+
+	// If a pNext(Chain) has been passed, we need to add it to the device creation info
+	VkPhysicalDeviceFeatures2 physicalDeviceFeatures2 = fplZeroInit;
+	if(pNextChain != fpl_null) {
+		physicalDeviceFeatures2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
+		physicalDeviceFeatures2.features = *enabledFeatures;
+		physicalDeviceFeatures2.pNext = pNextChain;
+		deviceCreateInfo.pEnabledFeatures = fpl_null;
+		deviceCreateInfo.pNext = &physicalDeviceFeatures2;
+	}
+
+	// Enable the debug marker extension if it is present (likely meaning a debugging tool is present)
+	if(IsVulkanExtensionSupported(physicalDevice->supportedExtensions.items, physicalDevice->supportedExtensions.count, VK_EXT_DEBUG_MARKER_EXTENSION_NAME)) {
+		assert(enabledDeviceExtensionCount < maxEnableDeviceExtensionCount);
+		enabledDeviceExtensions[enabledDeviceExtensionCount++] = VK_EXT_DEBUG_MARKER_EXTENSION_NAME;
+	}
+
+	if(enabledDeviceExtensionCount > 0) {
+		fplConsoleFormatOut("Test %lu device extensions\n", enabledDeviceExtensionCount);
+		for(uint32_t i = 0; i < enabledDeviceExtensionCount; ++i) {
+			const char *enabledExt = enabledDeviceExtensions[i];
+			if(IsVulkanExtensionSupported(physicalDevice->supportedExtensions.items, physicalDevice->supportedExtensions.count, enabledExt)) {
+				fplConsoleFormatOut("[%lu] %s supported: yes\n", i, enabledExt);
+			} else {
+				fplConsoleFormatError("[%lu] %s supported: no (Warning!)\n", i, enabledExt);
+			}
+		}
+		fplConsoleFormatOut("\n");
+	}
+
+	fplConsoleFormatOut("Creating Logical Device from physical device '%s'\n", physicalDevice->name);
+	VkResult res = instanceApi->vkCreateDevice(physicalDevice->physicalDevice, &deviceCreateInfo, fpl_null, &logicalDevice->logicalDevice);
+	if(res != VK_SUCCESS) {
+		fplConsoleFormatError("Failed creating the logical device from physical device '%s'!\n", physicalDevice->name);
+		VulkanDestroyLogicalDevice(instanceApi, logicalDevice);
+		return(false);
+	}
+	fplConsoleFormatOut("Successfully created logical device from physical device '%s'\n", physicalDevice->name);
+	fplConsoleOut("\n");
+
+	logicalDevice->enabledFeatures = *enabledFeatures;
+
+	//
+	// Command Pool
+	// 
+	fplConsoleFormatOut("Creating graphics command pool for logical device '%p' with queue %d...\n", logicalDevice->logicalDevice, logicalDevice->graphicsFamilyIndex);
+	if(!VulkanCreateCommandPool(instanceApi, logicalDevice->logicalDevice, logicalDevice->graphicsFamilyIndex, VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT, &logicalDevice->graphicsCommandPool)) {
+		fplConsoleFormatOut("Failed creating graphics command pool for logical device '%p' with queue %d!\n", logicalDevice->logicalDevice, logicalDevice->graphicsFamilyIndex);
+		VulkanDestroyLogicalDevice(instanceApi, logicalDevice);
+		return(false);
+	}
+	fplConsoleFormatOut("Successfully created graphics command pool for logical device '%p' with queue %d\n", logicalDevice->logicalDevice, logicalDevice->graphicsFamilyIndex);
+	fplConsoleOut("\n");
+
+	return(true);
+}
 
 typedef struct VulkanState {
 	VulkanPhysicalDevice physicalDevice;
@@ -663,14 +863,14 @@ typedef struct VulkanState {
 	fpl_b32 isInitialized;
 } VulkanState;
 
-static void ShutdownVulkan(VulkanState *state) {
+static void VulkanShutdown(VulkanState *state) {
 	if(state == fpl_null) return;
 
 	// Destroy Logical Device
-	DestroyVulkanLogicalDevice(&state->logicalDevice);
-	
+	VulkanDestroyLogicalDevice(&state->instance.instanceApi, &state->logicalDevice);
+
 	// Destroy Physical device
-	DestroyVulkanPhysicalDevice(&state->coreApi, &state->physicalDevice);
+	VulkanDestroyPhysicalDevice(&state->coreApi, &state->physicalDevice);
 
 	// Destroy Surface KHR
 	if(state->surface != VK_NULL_HANDLE) {
@@ -679,15 +879,15 @@ static void ShutdownVulkan(VulkanState *state) {
 	}
 
 	// Destroy Instance
-	DestroyVulkanInstance(&state->coreApi, &state->instance);
+	VulkanDestroyInstance(&state->coreApi, &state->instance);
 
 	// Unload Core API
-	UnloadVulkanCoreAPI(&state->coreApi);
+	VulkanUnloadCoreAPI(&state->coreApi);
 
 	fplClearStruct(state);
 }
 
-static bool InitializeVulkan(VulkanState *state) {
+static bool VulkanInitialize(VulkanState *state) {
 	if(state == fpl_null)
 		return(false);
 
@@ -702,7 +902,7 @@ static bool InitializeVulkan(VulkanState *state) {
 	VulkanInstanceApi *instanceApi = &state->instance.instanceApi;
 
 
-	if(!LoadVulkanCoreAPI(coreApi)) {
+	if(!VulkanLoadCoreAPI(coreApi)) {
 		fplConsoleFormatError("Failed to load the Vulkan API!\n");
 		goto failed;
 	}
@@ -719,7 +919,7 @@ static bool InitializeVulkan(VulkanState *state) {
 	//
 	// Create instance
 	//
-	if(!CreateVulkanInstance(coreApi, &state->instance)) {
+	if(!VulkanCreateInstance(coreApi, &state->instance)) {
 		fplConsoleFormatError("Failed to create a Vulkan instance!\n");
 		goto failed;
 	}
@@ -745,48 +945,26 @@ static bool InitializeVulkan(VulkanState *state) {
 #endif
 
 	//
-	// Physical Device
+	// Physical Device (vkPhysicalDevice)
 	//
-	if(!CreateVulkanPhysicalDevice(coreApi, instanceApi, state->instance.instance, &state->physicalDevice)) {
+	if(!VulkanCreatePhysicalDevice(coreApi, instanceApi, state->instance.instance, &state->physicalDevice)) {
 		fplConsoleFormatError("Failed to find a physical device from instance '%p'!\n", state->instance.instance);
 		goto failed;
 	}
 
 	//
-	// Find queue families
+	// Logical Device (vkDevice)
 	//
-	fplConsoleFormatOut("Detect queue families...\n");
-	state->logicalDevice.graphicsFamilyIndex = GetVulkanQueueFamilyIndex(VK_QUEUE_GRAPHICS_BIT, state->physicalDevice.queueFamilies.items, state->physicalDevice.queueFamilies.itemCount);
-	state->logicalDevice.computeFamilyIndex = GetVulkanQueueFamilyIndex(VK_QUEUE_COMPUTE_BIT, state->physicalDevice.queueFamilies.items, state->physicalDevice.queueFamilies.itemCount);
-	state->logicalDevice.transferFamilyIndex = GetVulkanQueueFamilyIndex(VK_QUEUE_TRANSFER_BIT, state->physicalDevice.queueFamilies.items, state->physicalDevice.queueFamilies.itemCount);
-	if(state->logicalDevice.graphicsFamilyIndex == -1) {
-		fplConsoleFormatError("No queue family for graphics found!\n");
+	VkPhysicalDeviceFeatures enabledFeatures = fplZeroInit;
+	if(!VulkanCreateLogicalDevice(instanceApi, &state->physicalDevice, &enabledFeatures, fpl_null, 0, true, fpl_null, &state->logicalDevice)) {
+		fplConsoleFormatError("Failed to create a logical device from physical device '%s'!\n", state->physicalDevice.name);
 		goto failed;
 	}
-	if(state->logicalDevice.computeFamilyIndex == -1) {
-		// Use graphics queue for compute queue
-		state->logicalDevice.computeFamilyIndex = state->logicalDevice.graphicsFamilyIndex;
-	}
-	if(state->logicalDevice.transferFamilyIndex == -1) {
-		// Use graphics queue for transfer queue
-		state->logicalDevice.transferFamilyIndex = state->logicalDevice.graphicsFamilyIndex;
-	}
-	assert(state->logicalDevice.graphicsFamilyIndex > -1 && state->logicalDevice.computeFamilyIndex > -1 && state->logicalDevice.transferFamilyIndex > -1);
-
-	fplConsoleFormatOut("Successfully detected all queue families:\n");
-	fplConsoleFormatOut("\tGraphics queue family: %d\n", state->logicalDevice.graphicsFamilyIndex);
-	fplConsoleFormatOut("\tCompute queue family: %d\n", state->logicalDevice.computeFamilyIndex);
-	fplConsoleFormatOut("\tTransfer queue family: %d\n", state->logicalDevice.transferFamilyIndex);
-	fplConsoleOut("\n");
-
-	//
-	// TODO(final): Logical Device (vkDevice)
-	//
 
 	goto success;
 
 failed:
-	ShutdownVulkan(state);
+	VulkanShutdown(state);
 	return(false);
 
 success:
@@ -822,11 +1000,12 @@ int main(int argc, char **argv) {
 	}
 
 	fplConsoleFormatOut("Initialize Vulkan\n");
-	if(!InitializeVulkan(state)) {
+	if(!VulkanInitialize(state)) {
 		fplConsoleFormatError("Failed to initialize Vulkan!\n");
 		goto cleanup;
 	}
 	fplConsoleFormatOut("Successfully initialized Vulkan\n");
+	fplConsoleOut("\n");
 
 	appResult = 0;
 
@@ -852,7 +1031,7 @@ cleanup:
 	if(isPlatformInitialized) {
 		if(state != fpl_null) {
 			fplConsoleFormatOut("Shutdown Vulkan\n");
-			ShutdownVulkan(state);
+			VulkanShutdown(state);
 			fplMemoryFree(state);
 		}
 
@@ -863,6 +1042,6 @@ cleanup:
 
 		fplConsoleFormatOut("Shutdown Platform\n");
 		fplPlatformRelease();
-	}
+		}
 	return(appResult);
-}
+	}
