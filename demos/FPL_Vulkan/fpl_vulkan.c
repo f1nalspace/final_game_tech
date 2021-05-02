@@ -15,6 +15,50 @@
 //
 // Vulkan Utils
 //
+typedef enum VulkanVendorID {
+	VulkanVendorID_Unknown = 0,
+	VulkanVendorID_AMD = 0x1002,
+	VulkanVendorID_ImgTec = 0x1010,
+	VulkanVendorID_NVIDIA = 0x10DE,
+	VulkanVendorID_ARM = 0x13B5,
+	VulkanVendorID_Qualcomm = 0x5143,
+	VulkanVendorID_Intel = 0x8086
+} VulkanVendorID;
+
+static const char *GetVulkanVendorName(const VulkanVendorID pci) {
+	switch(pci) {
+		case VulkanVendorID_AMD:
+			return "AMD";
+		case VulkanVendorID_ImgTec:
+			return "ImgTec";
+		case VulkanVendorID_NVIDIA:
+			return "NVIDIA";
+		case VulkanVendorID_ARM:
+			return "ARM";
+		case VulkanVendorID_Qualcomm:
+			return "Qualcomm";
+		case VulkanVendorID_Intel:
+			return "Intel";
+		default:
+			return "Unknown Vendor";
+	}
+}
+
+static const char *GetVulkanMessageSeverityName(VkDebugUtilsMessageSeverityFlagBitsEXT value) {
+	switch(value) {
+		case VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT:
+			return "WARNING";
+		case VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT:
+			return "ERROR";
+		case VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT:
+			return "INFO";
+		case VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT:
+			return "VERBOSE";
+		default: 
+			return "UNKNOWN";
+	}
+}
+
 static const char *GetVulkanPhysicalDeviceTypeName(const VkPhysicalDeviceType type) {
 	switch(type) {
 		case VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU:
@@ -521,7 +565,25 @@ static const char *GetVulkanFormatName(const VkFormat value) {
 		default:
 			return "Unknown";
 	}
+}
 
+static const char *GetVulkanPresentModeKHRName(VkPresentModeKHR mode) {
+	switch(mode) {
+		case VK_PRESENT_MODE_IMMEDIATE_KHR:
+			return "VK_PRESENT_MODE_IMMEDIATE_KHR";
+		case VK_PRESENT_MODE_MAILBOX_KHR:
+			return "VK_PRESENT_MODE_MAILBOX_KHR";
+		case VK_PRESENT_MODE_FIFO_KHR:
+			return "VK_PRESENT_MODE_FIFO_KHR";
+		case VK_PRESENT_MODE_FIFO_RELAXED_KHR:
+			return "VK_PRESENT_MODE_FIFO_RELAXED_KHR";
+		case VK_PRESENT_MODE_SHARED_DEMAND_REFRESH_KHR:
+			return "VK_PRESENT_MODE_SHARED_DEMAND_REFRESH_KHR";
+		case VK_PRESENT_MODE_SHARED_CONTINUOUS_REFRESH_KHR:
+			return "VK_PRESENT_MODE_SHARED_CONTINUOUS_REFRESH_KHR";
+		default:
+			return "Unknown Presentation Mode";
+	}
 }
 
 static const char *GetVulkanColorSpaceName(const VkColorSpaceKHR value) {
@@ -639,8 +701,13 @@ void VulkanUnloadCoreAPI(VulkanCoreApi *coreApi) {
 bool VulkanLoadCoreAPI(VulkanCoreApi *coreApi) {
 	assert(coreApi != fpl_null);
 
-	//const char *vulkanLibraryFileName = "libvulkan.so";
+#if defined(FPL_PLATFORM_WINDOWS)
 	const char *vulkanLibraryFileName = "vulkan-1.dll";
+#elif defined(FPL_SUBPLATFORM_POSIX)
+	const char *vulkanLibraryFileName = "libvulkan.so";
+#else
+#	error "Unsupported Platform!"
+#endif
 
 	fplClearStruct(coreApi);
 
@@ -896,11 +963,55 @@ static bool LoadVulkanInstanceProperties(const VulkanCoreApi *coreApi, VulkanIns
 	return(true);
 }
 
+static VKAPI_ATTR VkBool32 VKAPI_CALL VulkanDebugCallback(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity, VkDebugUtilsMessageTypeFlagsEXT messageType, const VkDebugUtilsMessengerCallbackDataEXT *pCallbackData, void *pUserData) {
+	const char *severityName = GetVulkanMessageSeverityName(messageSeverity);
+	if(messageSeverity >= VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT) {
+		fplConsoleFormatError("[%s] Validation layer: %s\n", severityName, pCallbackData->pMessage);
+	}
+	return VK_FALSE;
+}
+
+static void VulkanDestroyDebugMessenger(const VulkanCoreApi *coreApi, VkInstance instanceHandle, VkDebugUtilsMessengerEXT debugMessenger) {
+	assert(coreApi != fpl_null);
+	if(instanceHandle == VK_NULL_HANDLE) return;
+	if(debugMessenger != VK_NULL_HANDLE) {
+		PFN_vkDestroyDebugUtilsMessengerEXT func = (PFN_vkDestroyDebugUtilsMessengerEXT)coreApi->vkGetInstanceProcAddr(instanceHandle, "vkDestroyDebugUtilsMessengerEXT");
+		if(func != fpl_null) {
+			func(instanceHandle, debugMessenger, fpl_null);
+		}
+	}
+}
+
+static VkDebugUtilsMessengerCreateInfoEXT MakeVulkanDebugMessengerCreateInfo() {
+	VkDebugUtilsMessengerCreateInfoEXT createInfo = fplZeroInit;
+	createInfo.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT;
+	createInfo.messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
+	createInfo.messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT;
+	createInfo.pfnUserCallback = VulkanDebugCallback;
+	createInfo.pUserData = fpl_null;
+	return(createInfo);
+}
+
+static bool VulkanCreateDebugMessenger(const VulkanCoreApi *coreApi, const VkInstance instanceHandle, const VkDebugUtilsMessengerCreateInfoEXT *createInfo, VkDebugUtilsMessengerEXT *outDebugMessenger) {
+	PFN_vkCreateDebugUtilsMessengerEXT func = (PFN_vkCreateDebugUtilsMessengerEXT)coreApi->vkGetInstanceProcAddr(instanceHandle, "vkCreateDebugUtilsMessengerEXT");
+	if(func != fpl_null) {
+		VkResult res = func(instanceHandle, createInfo, fpl_null, outDebugMessenger);
+		if(res != VK_SUCCESS) {
+			return(false);
+		}
+	} else {
+		return(false);
+	}
+
+	return(true);
+}
+
 typedef struct VulkanInstance {
 	VulkanInstanceProperties properties;
 	VulkanInstanceApi instanceApi;
 	VkApplicationInfo appInfo;
 	VkInstance instanceHandle;
+	fpl_b32 hasValidationLayer;
 } VulkanInstance;
 
 static void VulkanDestroyInstance(const VulkanCoreApi *coreApi, VulkanInstance *instance) {
@@ -921,7 +1032,7 @@ static void VulkanDestroyInstance(const VulkanCoreApi *coreApi, VulkanInstance *
 	fplClearStruct(instance);
 }
 
-static bool VulkanCreateInstance(const VulkanCoreApi *coreApi, VulkanInstance *instance) {
+static bool VulkanCreateInstance(const VulkanCoreApi *coreApi, const bool useValidation, VulkanInstance *instance) {
 	const char *validationLayerName = "VK_LAYER_KHRONOS_validation";
 	const char *khrSurfaceName = "VK_KHR_surface";
 
@@ -999,23 +1110,22 @@ static bool VulkanCreateInstance(const VulkanCoreApi *coreApi, VulkanInstance *i
 	appInfo->engineVersion = VK_MAKE_VERSION(1, 0, 0);
 	appInfo->apiVersion = VK_API_VERSION_1_2;
 
-	bool useValidation = true;
-
 	uint32_t enabledInstanceExtensionCount = 0;
 	const char *enabledInstanceExtensions[8] = { 0 };
 	enabledInstanceExtensions[enabledInstanceExtensionCount++] = khrSurfaceName; // This is always supported
 	enabledInstanceExtensions[enabledInstanceExtensionCount++] = khrPlatformSurfaceName;
 	if(useValidation) {
-		enabledInstanceExtensions[enabledInstanceExtensionCount++] = VK_EXT_DEBUG_UTILS_EXTENSION_NAME;
+		enabledInstanceExtensions[enabledInstanceExtensionCount++] = VK_EXT_DEBUG_UTILS_EXTENSION_NAME; // VK_EXT_debug_utils is always supported
 	}
 
 	uint32_t enabledInstanceLayerCount = 0;
 	const char *enabledInstanceLayers[8] = { 0 };
-	if(useValidation) {
-		if(supportsValidationLayer) {
-			enabledInstanceLayers[enabledInstanceLayerCount++] = validationLayerName;
-		}
+	if(useValidation && supportsValidationLayer) {
+		instance->hasValidationLayer = true;
+		enabledInstanceLayers[enabledInstanceLayerCount++] = validationLayerName;
 	}
+
+	VkDebugUtilsMessengerCreateInfoEXT debugCreateInfo = fplZeroInit;
 
 	VkInstanceCreateInfo instanceCreateInfo = fplZeroInit;
 	instanceCreateInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
@@ -1024,6 +1134,10 @@ static bool VulkanCreateInstance(const VulkanCoreApi *coreApi, VulkanInstance *i
 	instanceCreateInfo.enabledLayerCount = enabledInstanceLayerCount;
 	instanceCreateInfo.ppEnabledExtensionNames = enabledInstanceExtensions;
 	instanceCreateInfo.ppEnabledLayerNames = enabledInstanceLayers;
+	if(useValidation && supportsValidationLayer) {
+		debugCreateInfo = MakeVulkanDebugMessengerCreateInfo();
+		instanceCreateInfo.pNext = (VkDebugUtilsMessengerCreateInfoEXT *)&debugCreateInfo;
+	}
 
 	char appVersionName[100] = { 0 };
 	char engineVersionName[100] = { 0 };
@@ -1146,7 +1260,7 @@ bool VulkanCreatePhysicalDevice(const VulkanCoreApi *coreApi, const VulkanInstan
 
 		VkPhysicalDeviceProperties physicalDeviceProps = fplZeroInit;
 		instanceApi->vkGetPhysicalDeviceProperties(physicalDevice, &physicalDeviceProps);
-		fplConsoleFormatOut("[%lu] Physical Device '%s' (%s)\n", physicalDeviceIndex, physicalDeviceProps.deviceName, GetVulkanPhysicalDeviceTypeName(physicalDeviceProps.deviceType));
+		fplConsoleFormatOut("[%lu] Physical Device %s '%s' (%s)\n", physicalDeviceIndex, GetVulkanVendorName(physicalDeviceProps.vendorID), physicalDeviceProps.deviceName, GetVulkanPhysicalDeviceTypeName(physicalDeviceProps.deviceType));
 
 		char apiVersionName[100];
 		char driverVersionName[100];
@@ -1178,7 +1292,7 @@ bool VulkanCreatePhysicalDevice(const VulkanCoreApi *coreApi, const VulkanInstan
 	physicalDevice->physicalDeviceHandle = foundGpu;
 	physicalDevice->name = physicalDevice->properties.deviceName;
 
-	fplConsoleFormatOut("Using [%lu] Physical Device '%s' (%s)\n", foundGPUIndex, physicalDevice->name, GetVulkanPhysicalDeviceTypeName(physicalDevice->properties.deviceType));
+	fplConsoleFormatOut("Using [%lu] Physical Device %s '%s' (%s)\n", foundGPUIndex, GetVulkanVendorName(physicalDevice->properties.vendorID), physicalDevice->name, GetVulkanPhysicalDeviceTypeName(physicalDevice->properties.deviceType));
 	fplConsoleOut("\n");
 
 	//
@@ -1471,33 +1585,24 @@ bool VulkanCreateLogicalDevice(
 	return(true);
 }
 
-typedef struct VulkanSwapChain {
-	int bla;
-} VulkanSwapChain;
-
-void VulkanDestroySwapChain(VulkanSwapChain *swapChain) {
-
-}
-
-bool VulkanCreateSwapChain(VulkanSwapChain *swapChain, const VulkanPhysicalDevice *physicalDevice, const VkSurfaceKHR surface) {
-	return(false);
-}
-
 typedef struct VulkanSurface {
 	FIXED_TYPED_ARRAY(VkBool32, supportedQueuesForPresent);
-	uint32_t graphicsQueueFamilyIndex;
-	uint32_t presentationQueueFamilyIndex;
+	FIXED_TYPED_ARRAY(VkPresentModeKHR, presentationModes);
+	VkSurfaceCapabilitiesKHR capabilities;
 	VkSurfaceKHR surfaceHandle;
 	VkFormat colorFormat;
 	VkColorSpaceKHR colorSpace;
+	uint32_t graphicsQueueFamilyIndex;
+	uint32_t presentationQueueFamilyIndex;
 } VulkanSurface;
 
-void VulkanDestroySurface(const VulkanInstanceApi *instanceApi, const VkInstance instance, VulkanSurface *surface) {
+void VulkanDestroySurface(const VulkanInstanceApi *instanceApi, const VkInstance instanceHandle, VulkanSurface *surface) {
 	if(surface == fpl_null) return;
+	FREE_FIXED_TYPED_ARRAY(&surface->presentationModes);
 	FREE_FIXED_TYPED_ARRAY(&surface->supportedQueuesForPresent);
 	if(surface->surfaceHandle != VK_NULL_HANDLE) {
 		fplConsoleFormatOut("Destroy Vulkan surface '%p'\n", surface->surfaceHandle);
-		instanceApi->vkDestroySurfaceKHR(instance, surface->surfaceHandle, fpl_null);
+		instanceApi->vkDestroySurfaceKHR(instanceHandle, surface->surfaceHandle, fpl_null);
 	}
 
 	fplClearStruct(surface);
@@ -1646,12 +1751,67 @@ bool VulkanCreateSurface(const VulkanInstanceApi *instanceApi, const VkInstance 
 		const char *colorspaceName = GetVulkanColorSpaceName(format->colorSpace);
 		fplConsoleFormatOut("[%lu] '%s' with color-space of '%s'\n", formatIndex, formatName, colorspaceName);
 	}
-	
+
 	free(formats);
-	fplConsoleFormatOut("Successfully got surface formats for physical device '%s' and surface '%p', got %lu formats\n", physicalDevice->name, surface->surfaceHandle, formatCount);
+	fplConsoleFormatOut("Successfully got %lu surface formats for physical device '%s' and surface '%p'\n", formatCount, physicalDevice->name, surface->surfaceHandle);
+	fplConsoleOut("\n");
+
+	//
+	// Get Surface Capabilties
+	//
+	fplConsoleFormatOut("Get surface capabilities for surface '%p' and physical device '%s'\n", surface->surfaceHandle, physicalDevice->name);
+	res = instanceApi->vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physicalDevice->physicalDeviceHandle, surface->surfaceHandle, &surface->capabilities);
+	if(res != VK_SUCCESS) {
+		fplConsoleFormatError("Failed to get surface capabilities for physical device '%s' and surface '%p'!\n", physicalDevice->name, surface->surfaceHandle);
+		VulkanDestroySurface(instanceApi, instanceHandle, surface);
+		return(false);
+	}
+	fplConsoleFormatOut("Successfully got surface capabilities for surface '%p' and physical device '%s'\n", surface->surfaceHandle, physicalDevice->name);
+	fplConsoleOut("\n");
+
+	//
+	// Get Presentation Modes
+	//
+	fplConsoleFormatOut("Get surface presentation modes for surface '%p' and physical device '%s'\n", surface->surfaceHandle, physicalDevice->name);
+	uint32_t presentationModeCount = 0;
+	res = instanceApi->vkGetPhysicalDeviceSurfacePresentModesKHR(physicalDevice->physicalDeviceHandle, surface->surfaceHandle, &presentationModeCount, fpl_null);
+	if(res != VK_SUCCESS) {
+		fplConsoleFormatError("Failed to get surface presentation mode count for physical device '%s' and surface '%p'!\n", physicalDevice->name, surface->surfaceHandle);
+		VulkanDestroySurface(instanceApi, instanceHandle, surface);
+		return(false);
+	}
+	ALLOC_FIXED_TYPED_ARRAY(&surface->presentationModes, VkPresentModeKHR, presentationModeCount);
+	res = instanceApi->vkGetPhysicalDeviceSurfacePresentModesKHR(physicalDevice->physicalDeviceHandle, surface->surfaceHandle, &presentationModeCount, surface->presentationModes.items);
+	if(res != VK_SUCCESS) {
+		fplConsoleFormatError("Failed to get %lu surface presentation modes for physical device '%s' and surface '%p'!\n", presentationModeCount, physicalDevice->name, surface->surfaceHandle);
+		VulkanDestroySurface(instanceApi, instanceHandle, surface);
+		return(false);
+	}
+	for(uint32_t presentationModeIndex = 0; presentationModeIndex < presentationModeCount; ++presentationModeIndex) {
+		VkPresentModeKHR presentMode = surface->presentationModes.items[presentationModeIndex];
+		const char *presentationModeName = GetVulkanPresentModeKHRName(presentMode);
+		fplConsoleFormatOut("[%lu] %s\n", presentationModeIndex, presentationModeName);
+	}
+	fplConsoleFormatOut("Successfully got %lu surface presentation modes for surface '%p' and physical device '%s'\n", presentationModeCount, surface->surfaceHandle, physicalDevice->name);
 	fplConsoleOut("\n");
 
 	return(true);
+}
+
+typedef struct VulkanSwapChain {
+	int bla;
+} VulkanSwapChain;
+
+void VulkanDestroySwapChain(VulkanSwapChain *swapChain) {
+
+}
+
+bool VulkanCreateSwapChain(const VulkanDeviceApi *deviceApi, const VkDevice deviceHandle, const VulkanSurface *surface, VulkanSwapChain *swapChain) {
+	// Get physical device surface properties and formats
+	//deviceApi->
+	//fpGetPhysicalDeviceSurfaceCapabilitiesKHR();
+	//deviceApi->vkGetPhysicalDeviceSurfaceCapabilitiesKHR()
+	return(false);
 }
 
 typedef struct VulkanState {
@@ -1665,6 +1825,7 @@ typedef struct VulkanState {
 
 	VulkanSurface surface;
 
+	VkDebugUtilsMessengerEXT debugMessenger;
 	VkQueue graphicsQueueHandle;
 	VkSemaphore presentCompleteSemaphoreHandle;
 	VkSemaphore renderCompleteSemaphoreHandle;
@@ -1683,6 +1844,11 @@ static void VulkanShutdown(VulkanState *state) {
 
 	// Destroy Physical device
 	VulkanDestroyPhysicalDevice(&state->coreApi, &state->physicalDevice);
+
+	// Destroy debug messenger
+	if(state->instance.hasValidationLayer) {
+		VulkanDestroyDebugMessenger(&state->coreApi, state->instance.instanceHandle, state->debugMessenger);
+	}
 
 	// Destroy Instance
 	VulkanDestroyInstance(&state->coreApi, &state->instance);
@@ -1717,9 +1883,19 @@ static bool VulkanInitialize(VulkanState *state) {
 	//
 	// Create instance
 	//
-	if(!VulkanCreateInstance(coreApi, &state->instance)) {
+	if(!VulkanCreateInstance(coreApi, true, &state->instance)) {
 		fplConsoleFormatError("Failed to create a Vulkan instance!\n");
 		goto failed;
+	}
+
+	//
+	// Debug messenger
+	//
+	if(state->instance.hasValidationLayer) {
+		VkDebugUtilsMessengerCreateInfoEXT createInfo = MakeVulkanDebugMessengerCreateInfo();
+		if(!VulkanCreateDebugMessenger(coreApi, state->instance.instanceHandle, &createInfo, &state->debugMessenger)) {
+			fplConsoleFormatError("Failed to create the Vulkan debug messenger!\n");
+		}
 	}
 
 	//
@@ -1773,14 +1949,18 @@ int main(int argc, char **argv) {
 
 	VulkanState *state = fpl_null;
 
-	fplConsoleFormatOut("Initialize Platform\n");
+	fplPlatformType platformType = fplGetPlatformType();
+	const char *platformName = fplGetPlatformName(platformType);
+
+	fplConsoleFormatOut("Initialize %s Platform\n", platformName);
 	if(!fplPlatformInit(fplInitFlags_Window | fplInitFlags_GameController | fplInitFlags_Console, &settings)) {
 		fplPlatformResultType resultType = fplGetPlatformResult();
 		const char *resultName = fplGetPlatformResultName(resultType);
 		fplConsoleFormatError("Failed to initialize FPL '%s'!\n", resultName);
 		goto cleanup;
 	}
-	fplConsoleFormatOut("Successfully initialized Platform\n");
+	fplConsoleFormatOut("Successfully initialized %s Platform\n", platformName);
+	fplConsoleOut("\n");
 
 	isPlatformInitialized = true;
 
@@ -1809,8 +1989,8 @@ int main(int argc, char **argv) {
 			if(ev.type == fplEventType_Window) {
 				if(ev.window.type == fplWindowEventType_Exposed) {
 
-	}
-}
+				}
+			}
 		}
 		fplVideoFlip();
 	}
