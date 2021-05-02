@@ -15,6 +15,9 @@
 //
 // Vulkan Utils
 //
+const char *VulkanValidationLayerName = "VK_LAYER_KHRONOS_validation";
+const char *VulkanKHRSurfaceName = "VK_KHR_surface";
+
 typedef enum VulkanVendorID {
 	VulkanVendorID_Unknown = 0,
 	VulkanVendorID_AMD = 0x1002,
@@ -675,6 +678,16 @@ static uint32_t GetVulkanQueueFamilyIndex(const VkQueueFlagBits flags, const VkQ
 	return(UINT32_MAX);
 }
 
+bool IsVulkanFeatureSupported(const char **supportedExtensions, const uint32_t supportedExtensionCount, const char *extension) {
+	for(uint32_t i = 0; i < supportedExtensionCount; ++i) {
+		const char *supportedExt = supportedExtensions[i];
+		if(fplIsStringEqual(supportedExt, extension)) {
+			return(true);
+		}
+	}
+	return(false);
+}
+
 //
 // Vulkan API
 //
@@ -1033,9 +1046,6 @@ static void VulkanDestroyInstance(const VulkanCoreApi *coreApi, VulkanInstance *
 }
 
 static bool VulkanCreateInstance(const VulkanCoreApi *coreApi, const bool useValidation, VulkanInstance *instance) {
-	const char *validationLayerName = "VK_LAYER_KHRONOS_validation";
-	const char *khrSurfaceName = "VK_KHR_surface";
-
 	const char *khrPlatformSurfaceName = fpl_null;
 #if defined(FPL_PLATFORM_WINDOWS)
 	khrPlatformSurfaceName = "VK_KHR_win32_surface";
@@ -1059,37 +1069,19 @@ static bool VulkanCreateInstance(const VulkanCoreApi *coreApi, const bool useVal
 	//
 	// Check and validate extensions and layers
 	//
-	bool supportsKHRSurface = false;
-	bool supportsKHRPlatformSurface = false;
-	for(uint32_t extensionIndex = 0; extensionIndex < instanceProperties->supportedExtensions.count; ++extensionIndex) {
-		const char *extensionName = instanceProperties->supportedExtensions.items[extensionIndex];
-		if(fplIsStringEqual(khrSurfaceName, extensionName)) {
-			supportsKHRSurface = true;
-		}
-		if(fplIsStringEqual(khrPlatformSurfaceName, extensionName)) {
-			supportsKHRPlatformSurface = true;
-		}
-	}
-
-	bool supportsValidationLayer = false;
-	for(uint32_t layerIndex = 0; layerIndex < instanceProperties->supportedLayers.count; ++layerIndex) {
-		const char *layerName = instanceProperties->supportedLayers.items[layerIndex];
-		if(fplIsStringEqual(layerName, validationLayerName)) {
-			supportsValidationLayer = true;
-		}
-	}
-
-	fplConsoleFormatOut("\n");
+	bool supportsKHRSurface = IsVulkanFeatureSupported(instanceProperties->supportedExtensions.items, instanceProperties->supportedExtensions.count, VulkanKHRSurfaceName);
+	bool supportsKHRPlatformSurface = IsVulkanFeatureSupported(instanceProperties->supportedExtensions.items, instanceProperties->supportedExtensions.count, khrPlatformSurfaceName);
+	bool supportsValidationLayer = IsVulkanFeatureSupported(instanceProperties->supportedLayers.items, instanceProperties->supportedLayers.count, VulkanValidationLayerName);
 
 	//
 	// Check Extensions
 	//
 	fplConsoleFormatOut("Validate instance extensions:\n");
-	fplConsoleFormatOut("- Supported %s: %s\n", khrSurfaceName, (supportsKHRSurface ? "yes" : "no"));
+	fplConsoleFormatOut("- Supported %s: %s\n", VulkanKHRSurfaceName, (supportsKHRSurface ? "yes" : "no"));
 	fplConsoleFormatOut("- Supported %s: %s\n", khrPlatformSurfaceName, (supportsKHRPlatformSurface ? "yes" : "no"));
 
 	fplConsoleFormatOut("Validate instance layers:\n");
-	fplConsoleFormatOut("- Supported %s: %s\n", validationLayerName, (supportsValidationLayer ? "yes" : "no"));
+	fplConsoleFormatOut("- Supported %s: %s\n", VulkanValidationLayerName, (supportsValidationLayer ? "yes" : "no"));
 
 	if(!supportsKHRSurface || !supportsKHRPlatformSurface || khrPlatformSurfaceName == fpl_null) {
 		fplConsoleFormatError("Not supported KHR platform!\n");
@@ -1112,7 +1104,7 @@ static bool VulkanCreateInstance(const VulkanCoreApi *coreApi, const bool useVal
 
 	uint32_t enabledInstanceExtensionCount = 0;
 	const char *enabledInstanceExtensions[8] = { 0 };
-	enabledInstanceExtensions[enabledInstanceExtensionCount++] = khrSurfaceName; // This is always supported
+	enabledInstanceExtensions[enabledInstanceExtensionCount++] = VulkanKHRSurfaceName;
 	enabledInstanceExtensions[enabledInstanceExtensionCount++] = khrPlatformSurfaceName;
 	if(useValidation) {
 		enabledInstanceExtensions[enabledInstanceExtensionCount++] = VK_EXT_DEBUG_UTILS_EXTENSION_NAME; // VK_EXT_debug_utils is always supported
@@ -1122,7 +1114,7 @@ static bool VulkanCreateInstance(const VulkanCoreApi *coreApi, const bool useVal
 	const char *enabledInstanceLayers[8] = { 0 };
 	if(useValidation && supportsValidationLayer) {
 		instance->hasValidationLayer = true;
-		enabledInstanceLayers[enabledInstanceLayerCount++] = validationLayerName;
+		enabledInstanceLayers[enabledInstanceLayerCount++] = VulkanValidationLayerName;
 	}
 
 	VkDebugUtilsMessengerCreateInfoEXT debugCreateInfo = fplZeroInit;
@@ -1169,16 +1161,6 @@ static bool VulkanCreateInstance(const VulkanCoreApi *coreApi, const bool useVal
 	return(true);
 }
 
-bool IsVulkanExtensionSupported(const char **supportedExtensions, const uint32_t supportedExtensionCount, const char *extension) {
-	for(uint32_t i = 0; i < supportedExtensionCount; ++i) {
-		const char *supportedExt = supportedExtensions[i];
-		if(fplIsStringEqual(supportedExt, extension)) {
-			return(true);
-		}
-	}
-	return(false);
-}
-
 typedef struct VulkanPhysicalDevice {
 	VkPhysicalDeviceProperties properties;
 	VkPhysicalDeviceFeatures features;
@@ -1186,6 +1168,7 @@ typedef struct VulkanPhysicalDevice {
 
 	FIXED_TYPED_ARRAY(VkQueueFamilyProperties, queueFamilies);
 	StringTable supportedExtensions;
+	StringTable supportedLayers;
 
 	VkPhysicalDevice physicalDeviceHandle;
 	const char *name;
@@ -1193,6 +1176,7 @@ typedef struct VulkanPhysicalDevice {
 
 void VulkanDestroyPhysicalDevice(const VulkanCoreApi *coreApi, VulkanPhysicalDevice *physicalDevice) {
 	if(coreApi == fpl_null || physicalDevice == fpl_null) return;
+	FreeStringTable(&physicalDevice->supportedLayers);
 	FreeStringTable(&physicalDevice->supportedExtensions);
 	FREE_FIXED_TYPED_ARRAY(&physicalDevice->queueFamilies);
 	fplClearStruct(physicalDevice);
@@ -1231,7 +1215,7 @@ bool VulkanCreatePhysicalDevice(const VulkanCoreApi *coreApi, const VulkanInstan
 	// Find physical device (Discrete GPU is preferred over integrated GPU)
 	//
 	VkPhysicalDevice foundGpu = VK_NULL_HANDLE;
-	uint32_t gpuMatchDistance = 0;
+	uint32_t bestScore = 0;
 	uint32_t foundGPUIndex = 0;
 	for(uint32_t physicalDeviceIndex = 0; physicalDeviceIndex < physicalDeviceCount; ++physicalDeviceIndex) {
 		VkPhysicalDevice physicalDevice = physicalDevices[physicalDeviceIndex];
@@ -1239,15 +1223,20 @@ bool VulkanCreatePhysicalDevice(const VulkanCoreApi *coreApi, const VulkanInstan
 		VkPhysicalDeviceProperties props;
 		instanceApi->vkGetPhysicalDeviceProperties(physicalDevice, &props);
 
-		uint32_t matchDistance = 0;
+		uint32_t score = 0;
+
+		// Prefer discrete GPU
 		if(props.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU) {
-			matchDistance = 100; // Prefer discrete GPU over integrated
-		} else if(props.deviceType == VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU) {
-			matchDistance = 10;
+			score += 1000;
 		}
 
-		if(matchDistance > gpuMatchDistance) {
-			gpuMatchDistance = matchDistance;
+		// Maximum possible size of textures affects graphics quality
+		score += props.limits.maxImageDimension2D;
+
+		// TODO(final): Rate by features?
+
+		if(score > bestScore) {
+			bestScore = score;
 			foundGpu = physicalDevice;
 			foundGPUIndex = physicalDeviceIndex;
 		}
@@ -1340,22 +1329,46 @@ bool VulkanCreatePhysicalDevice(const VulkanCoreApi *coreApi, const VulkanInstan
 	//
 	// Device Extensions
 	//
-	fplConsoleFormatOut("Enumerate device extensions for Physical Device '%s'\n", physicalDevice->name);
-	uint32_t deviceExtensionCount = 0;
-	instanceApi->vkEnumerateDeviceExtensionProperties(physicalDevice->physicalDeviceHandle, fpl_null, &deviceExtensionCount, fpl_null);
-	if(deviceExtensionCount > 0) {
-		VkExtensionProperties *extensionProperties = (VkExtensionProperties *)malloc(sizeof(VkExtensionProperties) * deviceExtensionCount);
-		instanceApi->vkEnumerateDeviceExtensionProperties(physicalDevice->physicalDeviceHandle, fpl_null, &deviceExtensionCount, extensionProperties);
-		fplConsoleFormatOut("Successfully enumerated device extensions for Physical Device '%s', got %lu extensions\n", physicalDevice->name, deviceExtensionCount);
-		physicalDevice->supportedExtensions = AllocStringTable(deviceExtensionCount);
-		for(uint32_t extIndex = 0; extIndex < deviceExtensionCount; ++extIndex) {
-			const char *extName = extensionProperties[extIndex].extensionName;
-			PushStringToTable(&physicalDevice->supportedExtensions, extName);
-			fplConsoleFormatOut("- %s\n", extName);
+	{
+		fplConsoleFormatOut("Enumerate device extensions for Physical Device '%s'\n", physicalDevice->name);
+		uint32_t deviceExtensionCount = 0;
+		instanceApi->vkEnumerateDeviceExtensionProperties(physicalDevice->physicalDeviceHandle, fpl_null, &deviceExtensionCount, fpl_null);
+		if(deviceExtensionCount > 0) {
+			VkExtensionProperties *extensionProperties = (VkExtensionProperties *)malloc(sizeof(VkExtensionProperties) * deviceExtensionCount);
+			instanceApi->vkEnumerateDeviceExtensionProperties(physicalDevice->physicalDeviceHandle, fpl_null, &deviceExtensionCount, extensionProperties);
+			fplConsoleFormatOut("Successfully enumerated device extensions for Physical Device '%s', got %lu extensions\n", physicalDevice->name, deviceExtensionCount);
+			physicalDevice->supportedExtensions = AllocStringTable(deviceExtensionCount);
+			for(uint32_t extIndex = 0; extIndex < deviceExtensionCount; ++extIndex) {
+				const char *extName = extensionProperties[extIndex].extensionName;
+				PushStringToTable(&physicalDevice->supportedExtensions, extName);
+				fplConsoleFormatOut("- %s\n", extName);
+			}
+			free(extensionProperties);
 		}
-		free(extensionProperties);
+		fplConsoleOut("\n");
 	}
-	fplConsoleOut("\n");
+
+	//
+	// Device Layers
+	//
+	{
+		fplConsoleFormatOut("Enumerate device layers for Physical Device '%s'\n", physicalDevice->name);
+		uint32_t deviceLayerCount = 0;
+		instanceApi->vkEnumerateDeviceLayerProperties(physicalDevice->physicalDeviceHandle, &deviceLayerCount, fpl_null);
+		if(deviceLayerCount > 0) {
+			VkLayerProperties *layerProperties = (VkLayerProperties *)malloc(sizeof(VkLayerProperties) * deviceLayerCount);
+			instanceApi->vkEnumerateDeviceLayerProperties(physicalDevice->physicalDeviceHandle, &deviceLayerCount, layerProperties);
+			fplConsoleFormatOut("Successfully %lu enumerated device layers for Physical Device '%s'\n", deviceLayerCount, physicalDevice->name);
+			physicalDevice->supportedLayers = AllocStringTable(deviceLayerCount);
+			for(uint32_t extIndex = 0; extIndex < deviceLayerCount; ++extIndex) {
+				const char *layerName = layerProperties[extIndex].layerName;
+				PushStringToTable(&physicalDevice->supportedLayers, layerName);
+				fplConsoleFormatOut("- %s\n", layerName);
+			}
+			free(layerProperties);
+		}
+		fplConsoleOut("\n");
+	}
 
 	return(true);
 }
@@ -1419,15 +1432,18 @@ bool VulkanCreateLogicalDevice(
 	const char **reqExtensions,
 	const uint32_t reqExtensionCount,
 	const bool useSwapChain,
+	const bool useValidations,
 	void *pNextChain,
 	VulkanLogicalDevice *logicalDevice) {
-	if(logicalDevice == fpl_null || physicalDevice == fpl_null)
+	if(logicalDevice == fpl_null || physicalDevice == fpl_null || enabledFeatures == fpl_null)
+		return(false);
+	if(instanceHandle == VK_NULL_HANDLE) 
 		return(false);
 
 	uint32_t queueCreationInfoCount = 0;
 	VkDeviceQueueCreateInfo queueCreationInfos[4] = fplZeroInit;
 
-	const float defaultQueuePriority = 0.0f;
+	const float defaultQueuePriority = 1.0f;
 
 	fplClearStruct(logicalDevice);
 	logicalDevice->computeFamilyIndex = UINT32_MAX;
@@ -1500,9 +1516,22 @@ bool VulkanCreateLogicalDevice(
 	const char *enabledDeviceExtensions[16] = fplZeroInit;
 	const uint32_t maxEnableDeviceExtensionCount = fplArrayCount(enabledDeviceExtensions);
 	for(uint32_t i = 0; i < reqExtensionCount; ++i) {
-		assert(enabledDeviceExtensionCount < maxEnableDeviceExtensionCount);
-		enabledDeviceExtensions[enabledDeviceExtensionCount++] = reqExtensions[i];
+		const char *reqExtensionName = reqExtensions[i];
+		if(IsVulkanFeatureSupported(physicalDevice->supportedExtensions.items, physicalDevice->supportedExtensions.count, reqExtensionName)) {
+			assert(enabledDeviceExtensionCount < maxEnableDeviceExtensionCount);
+			enabledDeviceExtensions[enabledDeviceExtensionCount++] = reqExtensions[i];
+		} else {
+			fplConsoleFormatError("Extension %s is not supported for the device '%s'\n", physicalDevice->name, reqExtensionName);
+		}
 	}
+
+	// Validation layers for device
+	uint32_t enabledDeviceLayerCount = 0;
+	const char *enabledDeviceLayers[8] = fplZeroInit;
+	if(useValidations && IsVulkanFeatureSupported(physicalDevice->supportedLayers.items, physicalDevice->supportedLayers.count, VulkanValidationLayerName)) {
+		enabledDeviceLayers[enabledDeviceLayerCount++] = VulkanValidationLayerName;
+	}
+
 
 	// Add SwapChain KHR extension when logical device will be used for a swap chain
 	if(useSwapChain) {
@@ -1527,24 +1556,19 @@ bool VulkanCreateLogicalDevice(
 	}
 
 	// Enable the debug marker extension if it is present (likely meaning a debugging tool is present)
-	if(IsVulkanExtensionSupported(physicalDevice->supportedExtensions.items, physicalDevice->supportedExtensions.count, VK_EXT_DEBUG_MARKER_EXTENSION_NAME)) {
+	if(IsVulkanFeatureSupported(physicalDevice->supportedExtensions.items, physicalDevice->supportedExtensions.count, VK_EXT_DEBUG_MARKER_EXTENSION_NAME)) {
 		assert(enabledDeviceExtensionCount < maxEnableDeviceExtensionCount);
 		enabledDeviceExtensions[enabledDeviceExtensionCount++] = VK_EXT_DEBUG_MARKER_EXTENSION_NAME;
 	}
 
+	// Set extensions and layers
 	if(enabledDeviceExtensionCount > 0) {
-		fplConsoleFormatOut("Test %lu device extensions\n", enabledDeviceExtensionCount);
-		for(uint32_t i = 0; i < enabledDeviceExtensionCount; ++i) {
-			const char *enabledExt = enabledDeviceExtensions[i];
-			if(IsVulkanExtensionSupported(physicalDevice->supportedExtensions.items, physicalDevice->supportedExtensions.count, enabledExt)) {
-				fplConsoleFormatOut("[%lu] %s supported: yes\n", i, enabledExt);
-			} else {
-				fplConsoleFormatError("[%lu] %s supported: no (Warning!)\n", i, enabledExt);
-			}
-		}
-		fplConsoleFormatOut("\n");
 		deviceCreateInfo.enabledExtensionCount = enabledDeviceExtensionCount;
 		deviceCreateInfo.ppEnabledExtensionNames = enabledDeviceExtensions;
+	}
+	if(enabledDeviceLayerCount > 0) {
+		deviceCreateInfo.enabledLayerCount = enabledDeviceLayerCount;
+		deviceCreateInfo.ppEnabledLayerNames = enabledDeviceLayers;
 	}
 
 	fplConsoleFormatOut("Creating Logical Device from physical device '%s'\n", physicalDevice->name);
@@ -1880,10 +1904,12 @@ static bool VulkanInitialize(VulkanState *state) {
 	}
 	fplConsoleFormatOut("\n");
 
+	bool useValidations = true;
+
 	//
 	// Create instance
 	//
-	if(!VulkanCreateInstance(coreApi, true, &state->instance)) {
+	if(!VulkanCreateInstance(coreApi, useValidations, &state->instance)) {
 		fplConsoleFormatError("Failed to create a Vulkan instance!\n");
 		goto failed;
 	}
@@ -1910,7 +1936,8 @@ static bool VulkanInitialize(VulkanState *state) {
 	// Logical Device (vkDevice)
 	//
 	VkPhysicalDeviceFeatures enabledFeatures = fplZeroInit;
-	if(!VulkanCreateLogicalDevice(coreApi, instanceApi, &state->physicalDevice, &enabledFeatures, state->instance.instanceHandle, fpl_null, 0, true, fpl_null, &state->logicalDevice)) {
+	bool isSwapChain = true;
+	if(!VulkanCreateLogicalDevice(coreApi, instanceApi, &state->physicalDevice, &enabledFeatures, state->instance.instanceHandle, fpl_null, 0, isSwapChain, useValidations, fpl_null, &state->logicalDevice)) {
 		fplConsoleFormatError("Failed to create a logical device from physical device '%s'!\n", state->physicalDevice.name);
 		goto failed;
 	}
