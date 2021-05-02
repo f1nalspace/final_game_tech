@@ -71,14 +71,14 @@ struct { \
 //
 // Static Memory
 //
-#define MAX_STATIC_MEMORY_CHUNK_SIZE 2048UL
-
+#define MAX_STATIC_MEMORY_CHUNK_SIZE 4064UL // A bit less than one 4k page worth
 typedef struct StaticMemoryChunk {
 	uint8_t data[MAX_STATIC_MEMORY_CHUNK_SIZE];
 	struct StaticMemoryChunk *next;
 	void *base; // Need to remember the base pointer because we allocate more than one chunk at once, but we dont want to free it once
 	uint32_t used;
 } StaticMemoryChunk;
+fplStaticAssert(sizeof(StaticMemoryChunk) <= 4096);
 
 void FreeStaticMemoryChunks(StaticMemoryChunk *firstChunk) {
 	void *lastBase = fpl_null;
