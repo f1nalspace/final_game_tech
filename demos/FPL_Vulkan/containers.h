@@ -54,7 +54,7 @@ struct { \
 
 #define ALLOC_FIXED_TYPED_ARRAY(ptr, type, count) \
 { \
-	assert(ptr != fpl_null); \
+	assert((ptr) != fpl_null); \
 	(ptr)->__arr = AllocFixedArray(count, sizeof(type)); \
 	(ptr)->itemCount = count; \
 	(ptr)->items = (type *)(ptr)->__arr.memory; \
@@ -62,7 +62,7 @@ struct { \
 
 #define FREE_FIXED_TYPED_ARRAY(ptr) \
 { \
-	assert(ptr != fpl_null); \
+	assert((ptr) != fpl_null); \
 	FreeFixedArray(&(ptr)->__arr); \
 	(ptr)->items = fpl_null; \
 	(ptr)->itemCount = 0; \
@@ -76,7 +76,7 @@ typedef struct StaticMemoryChunk {
 	uint8_t data[MAX_STATIC_MEMORY_CHUNK_SIZE];
 	struct StaticMemoryChunk *next;
 	void *base; // Need to remember the base pointer because we allocate more than one chunk at once, but we dont want to free it once
-	uint32_t used;
+	size_t used;
 } StaticMemoryChunk;
 fplStaticAssert(sizeof(StaticMemoryChunk) <= 4096);
 
@@ -85,7 +85,7 @@ void FreeStaticMemoryChunks(StaticMemoryChunk *firstChunk) {
 	StaticMemoryChunk *chunk = firstChunk;
 	while(chunk != fpl_null && chunk->base != lastBase) {
 		void *base = lastBase = chunk->base;
-	
+
 		// Find next chunk with a different base
 		StaticMemoryChunk *next = chunk->next;
 		while(next != fpl_null) {
@@ -107,25 +107,94 @@ StaticMemoryChunk *AllocStaticMemoryChunks(const uint32_t count) {
 		result[i].next = (i < count - 1) ? &result[i + 1] : fpl_null;
 		result[i].base = result;
 	}
-return(result);
+	return(result);
+}
+
+// Growable Array (Inspired by stretchy buffers)
+typedef struct GrowableArray {
+	size_t count;
+	size_t capacity;
+	size_t elementSize;
+	void *base;
+} GrowableArray;
+
+// Example int array
+typedef struct IntGrowableArray {
+	union {
+		GrowableArray arr;
+		struct {
+			size_t count;
+			size_t capacity;
+			size_t elementSize;
+			int *items;
+		};
+	};
+} IntGrowableArray;
+
+#define MIN_GROWABLE_ARRAY_CAPACITY 8
+
+static void FreeGrowableArray(GrowableArray *arr) {
+	assert(arr != fpl_null);
+	if(arr->base != fpl_null) {
+		free(arr->base);
+	}
+	fplClearStruct(arr);
+}
+
+static void ResizeGrowableArray(GrowableArray *arr) {
+	assert(arr != fpl_null);
+	assert(arr->elementSize > 0);
+	size_t newCapacity = fplMax(MIN_GROWABLE_ARRAY_CAPACITY, arr->capacity * 2);
+	if(arr->base == fpl_null) {
+		arr->capacity = newCapacity;
+		arr->base = malloc(arr->elementSize * arr->capacity);
+	} else {
+		void *oldBase = arr->base;
+		arr->capacity = newCapacity;
+		arr->base = realloc(oldBase, arr->elementSize * arr->capacity);
+	}
+}
+
+#define INIT_GROWABLE_ARRAY(arr, type) \
+	(arr)->elementSize = sizeof(type);
+
+
+static size_t IncGrowableArray(GrowableArray *arr) {
+	if(arr->count == arr->capacity) {
+		ResizeGrowableArray(arr);
+	}
+	assert(arr->count < arr->capacity);
+	size_t result = arr->count;
+	++arr->count;
+	return(result);
+}
+
+#define PUSH_TO_GROWABLE_ARRAY(ptr, value) \
+{ \
+	size_t index = IncGrowableArray(&(ptr)->arr); \
+	(ptr)->items[index] = value; \
 }
 
 typedef struct StringTable {
-	const char **items; // Each item points to a memory offset inside a StaticMemoryChunk
+	union {
+		GrowableArray arr;
+		struct {
+			size_t count;
+			size_t capacity;
+			size_t elementSize;
+			const char **items;
+		};
+	};
 	StaticMemoryChunk *__allChunks;
 	StaticMemoryChunk *firstEmpty;
 	StaticMemoryChunk *firstUsed;
-	uint32_t count;
-	uint32_t capacity;
 } StringTable;
 
-StringTable AllocStringTable(const uint32_t initialCapacity) {
-	assert(initialCapacity > 0);
+StringTable AllocStringTable() {
 	StringTable result = fplZeroInit;
-	result.capacity = NextPowerOfTwoU32(initialCapacity);
-	result.items = (const char **)malloc(sizeof(const char *) * result.capacity);
 	result.__allChunks = AllocStaticMemoryChunks(4);
 	result.firstEmpty = result.__allChunks;
+	INIT_GROWABLE_ARRAY(&result.arr, const char *);
 	return(result);
 }
 
@@ -133,33 +202,17 @@ void FreeStringTable(StringTable *table) {
 	if(table->__allChunks != fpl_null) {
 		FreeStaticMemoryChunks(table->__allChunks);
 	}
-	free((void *)table->items);
+	FreeGrowableArray(&table->arr);
 	fplClearStruct(table);
 }
 
-int32_t PushStringToTable(StringTable *table, const char *sourceString) {
-	if(table == fpl_null) return(-1);
-
-	assert(table->capacity > 0);
-
-	// First grow the items when too small
-	if(table->count == table->capacity) {
-		const char *oldFirst = table->items[0];
-		uint32_t newCapacity = table->capacity * 2;
-		const char **newItems = realloc((void *)table->items, sizeof(char *) * newCapacity);
-		const char *newFirst = newItems[0];
-		assert(newFirst == oldFirst);
-
-		table->items = newItems;
-		table->capacity = newCapacity;
-	}
-	
-	assert(table->count < table->capacity);
+size_t PushStringToTable(StringTable *table, const char *sourceString) {
+	if(table == fpl_null) return(UINT32_MAX);
 
 	char *destString = fpl_null;
 	bool sourceCopied = false;
 	if(sourceString != fpl_null) {
-		uint32_t requiredLen = (uint32_t)strlen(sourceString) + 1;
+		size_t requiredLen = strlen(sourceString) + 1;
 		assert(requiredLen <= MAX_STATIC_MEMORY_CHUNK_SIZE); // We dont allow more than 2048 bytes of contiguous memory
 
 		StaticMemoryChunk *foundChunk = fpl_null;
@@ -198,12 +251,9 @@ int32_t PushStringToTable(StringTable *table, const char *sourceString) {
 		foundChunk->used += requiredLen;
 		sourceCopied = true;
 	}
-
-	int32_t result = table->count;
-	table->items[result] = destString;
-	++table->count;
-
-	return(result);
+	size_t index = table->count;
+	PUSH_TO_GROWABLE_ARRAY(table, destString);
+	return(index);
 }
 
 #endif // CONTAINERS_H

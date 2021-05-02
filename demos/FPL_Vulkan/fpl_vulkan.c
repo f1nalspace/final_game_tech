@@ -678,10 +678,10 @@ static uint32_t GetVulkanQueueFamilyIndex(const VkQueueFlagBits flags, const VkQ
 	return(UINT32_MAX);
 }
 
-bool IsVulkanFeatureSupported(const char **supportedExtensions, const uint32_t supportedExtensionCount, const char *extension) {
-	for(uint32_t i = 0; i < supportedExtensionCount; ++i) {
-		const char *supportedExt = supportedExtensions[i];
-		if(fplIsStringEqual(supportedExt, extension)) {
+bool IsVulkanFeatureSupported(const char **features, const size_t supportedExtensionCount, const char *search) {
+	for(size_t i = 0; i < supportedExtensionCount; ++i) {
+		const char *feature = features[i];
+		if(fplIsStringEqual(feature, search)) {
 			return(true);
 		}
 	}
