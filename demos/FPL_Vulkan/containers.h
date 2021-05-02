@@ -6,6 +6,10 @@
 #include <malloc.h>
 #include <string.h>
 
+// Some ideas taken from:
+// https://ourmachinery.com/post/minimalist-container-library-in-c-part-1/
+// https://ourmachinery.com/post/minimalist-container-library-in-c-part-2/
+
 uint32_t NextPowerOfTwoU32(uint32_t n) {
 	--n;
 
@@ -110,7 +114,7 @@ StaticMemoryChunk *AllocStaticMemoryChunks(const uint32_t count) {
 	return(result);
 }
 
-// Growable Array (Inspired by stretchy buffers)
+// Growable Array (Inspired by stretchy buffers (c) Sean Barret)
 typedef struct GrowableArray {
 	size_t count;
 	size_t capacity;
@@ -175,6 +179,62 @@ static size_t IncGrowableArray(GrowableArray *arr) {
 	(ptr)->items[index] = value; \
 }
 
+//
+// Static Memory Pool, (Max of 4kb of one contiguous block of memory)
+//
+typedef struct StaticMemoryPool {
+	StaticMemoryChunk *base;  // First base chunk
+	StaticMemoryChunk *empty; // First empty chunk
+	StaticMemoryChunk *used;  // First used chunk
+} StaticMemoryPool;
+
+static StaticMemoryPool AllocStaticMemoryPool(const uint32_t initialChunkCount) {
+	StaticMemoryPool result = fplZeroInit;
+	result.base = AllocStaticMemoryChunks(initialChunkCount);
+	result.empty = result.base;
+	return(result);
+}
+
+static void FreeStaticMemoryPool(StaticMemoryPool *pool) {
+	if(pool == fpl_null) return;
+	if(pool->base == fpl_null) return;
+	FreeStaticMemoryChunks(pool->base);
+	fplClearStruct(pool);
+}
+
+static StaticMemoryChunk *GetAvailableStaticMemoryChunk(StaticMemoryPool *pool, const size_t size) {
+	StaticMemoryChunk *foundChunk = fpl_null;
+
+	// Second find a used chunk which have enough memory left
+	{
+		StaticMemoryChunk *chunk = pool->used;
+		while(chunk != fpl_null) {
+			StaticMemoryChunk *next = chunk->next;
+			if((chunk->used + size) <= MAX_STATIC_MEMORY_CHUNK_SIZE) {
+				foundChunk = chunk;
+				break;
+			}
+			chunk = next;
+		}
+	}
+
+	// Third find a free chunk
+	if(foundChunk == fpl_null) {
+		if(pool->empty == fpl_null) {
+			StaticMemoryChunk *newChunk = AllocStaticMemoryChunks(4);
+			pool->empty = newChunk;
+		}
+		assert(pool->empty != fpl_null);
+		StaticMemoryChunk *empty = pool->empty;
+		pool->empty = empty->next;
+		empty->next = pool->used;
+		pool->used = empty;
+		foundChunk = empty;
+	}
+
+	return(foundChunk);
+}
+
 typedef struct StringTable {
 	union {
 		GrowableArray arr;
@@ -185,23 +245,18 @@ typedef struct StringTable {
 			const char **items;
 		};
 	};
-	StaticMemoryChunk *__allChunks;
-	StaticMemoryChunk *firstEmpty;
-	StaticMemoryChunk *firstUsed;
+	StaticMemoryPool pool;
 } StringTable;
 
 StringTable AllocStringTable() {
 	StringTable result = fplZeroInit;
-	result.__allChunks = AllocStaticMemoryChunks(4);
-	result.firstEmpty = result.__allChunks;
+	result.pool = AllocStaticMemoryPool(4);
 	INIT_GROWABLE_ARRAY(&result.arr, const char *);
 	return(result);
 }
 
 void FreeStringTable(StringTable *table) {
-	if(table->__allChunks != fpl_null) {
-		FreeStaticMemoryChunks(table->__allChunks);
-	}
+	FreeStaticMemoryPool(&table->pool);
 	FreeGrowableArray(&table->arr);
 	fplClearStruct(table);
 }
@@ -215,35 +270,7 @@ size_t PushStringToTable(StringTable *table, const char *sourceString) {
 		size_t requiredLen = strlen(sourceString) + 1;
 		assert(requiredLen <= MAX_STATIC_MEMORY_CHUNK_SIZE); // We dont allow more than 2048 bytes of contiguous memory
 
-		StaticMemoryChunk *foundChunk = fpl_null;
-
-		// Second find a used chunk which have enough memory left
-		{
-			StaticMemoryChunk *chunk = table->firstUsed;
-			while(chunk != fpl_null) {
-				StaticMemoryChunk *next = chunk->next;
-				if((chunk->used + requiredLen) <= MAX_STATIC_MEMORY_CHUNK_SIZE) {
-					foundChunk = chunk;
-					break;
-				}
-				chunk = next;
-			}
-		}
-
-		// Third find a free chunk
-		if(foundChunk == fpl_null) {
-			if(table->firstEmpty == fpl_null) {
-				StaticMemoryChunk *newChunk = AllocStaticMemoryChunks(4);
-				table->firstEmpty = newChunk;
-			}
-			assert(table->firstEmpty != fpl_null);
-			StaticMemoryChunk *empty = table->firstEmpty;
-			table->firstEmpty = empty->next;
-			empty->next = table->firstUsed;
-			table->firstUsed = empty;
-			foundChunk = empty;
-		}
-
+		StaticMemoryChunk *foundChunk = GetAvailableStaticMemoryChunk(&table->pool, requiredLen);
 		assert(foundChunk != fpl_null);
 
 		destString = (uint8_t *)foundChunk->data + foundChunk->used;
