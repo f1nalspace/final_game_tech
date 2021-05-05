@@ -6,7 +6,7 @@
 #include <malloc.h>
 #include <string.h>
 
-// Some ideas taken from:
+// Resources:
 // https://ourmachinery.com/post/minimalist-container-library-in-c-part-1/
 // https://ourmachinery.com/post/minimalist-container-library-in-c-part-2/
 
