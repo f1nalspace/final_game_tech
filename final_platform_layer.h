@@ -139,6 +139,7 @@ SOFTWARE.
 
 	- Fixed[#98]: [Win32] Fixed fplThreadYield was not using YieldProcessor()
 	- Fixed[#110]: [Win32] Fixed preventing of erasing the background for non-video systems hides window always
+	- Fixed[#114]: [Win32] Fixed console window does not appear at the very first
 
 	- Changed[#113]: [Win32] Properly show window on initialize (Foreground, Focus)
 
@@ -3708,6 +3709,19 @@ typedef struct fplWindowSettings {
 */
 fpl_common_api void fplSetDefaultWindowSettings(fplWindowSettings *window);
 
+//! A structure containing the title and options for the console
+typedef struct fplConsoleSettings {
+	//! Console title
+	char title[FPL_MAX_NAME_LENGTH];
+} fplConsoleSettings;
+
+/**
+* @brief Resets the given console settings container to default settings
+* @param console The target @ref fplConsoleSettings structure
+* @note This will not change any console settings! To change the actual settings you have to pass the entire @ref fplSettings container to an argument in @ref fplPlatformInit().
+*/
+fpl_common_api void fplSetDefaultConsoleSettings(fplConsoleSettings *console);
+
 //! A structure containing input settings
 typedef struct fplInputSettings {
 	//! Frequency in ms for detecting new or removed controllers (Default: 200)
@@ -3767,6 +3781,8 @@ typedef struct fplSettings {
 	fplAudioSettings audio;
 	//! Input settings
 	fplInputSettings input;
+	//! Console settings
+	fplConsoleSettings console;
 	//! Memory settings
 	fplMemorySettings memory;
 } fplSettings;
@@ -7656,6 +7672,7 @@ fpl_internal bool fpl__Win32LoadApi(fpl__Win32Api *wapi) {
 // Win32 unicode dependend stuff
 #define FPL__WIN32_CLASSNAME L"FPLWindowClassW"
 #define FPL__WIN32_UNNAMED_WINDOW L"Unnamed FPL Unicode Window"
+#define FPL__WIN32_UNNAMED_CONSOLE L"Unnamed FPL Unicode Console"
 #if defined(FPL_ARCH_X64)
 #	define fpl__win32_SetWindowLongPtr fpl__global__AppState->win32.winApi.user.SetWindowLongPtrW
 #else
@@ -7680,10 +7697,6 @@ typedef struct fpl__Win32XInputState {
 	LARGE_INTEGER lastDeviceSearchTime;
 } fpl__Win32XInputState;
 
-typedef struct fpl__Win32ConsoleState {
-	fpl_b32 isAllocated;
-} fpl__Win32ConsoleState;
-
 typedef struct fpl__Win32InitState {
 	HINSTANCE appInstance;
 } fpl__Win32InitState;
@@ -7691,7 +7704,6 @@ typedef struct fpl__Win32InitState {
 typedef struct fpl__Win32AppState {
 	fpl__Win32XInputState xinput;
 	fpl__Win32Api winApi;
-	fpl__Win32ConsoleState console;
 } fpl__Win32AppState;
 
 #if defined(FPL__ENABLE_WINDOW)
@@ -10227,6 +10239,12 @@ fpl_common_api void fplSetDefaultWindowSettings(fplWindowSettings *window) {
 	window->isFloating = false;
 }
 
+fpl_common_api void fplSetDefaultConsoleSettings(fplConsoleSettings *console) {
+	FPL__CheckArgumentNullNoRet(console);
+	fplClearStruct(console);
+	console->title[0] = 0;
+}
+
 fpl_common_api void fplSetDefaultInputSettings(fplInputSettings *input) {
 	FPL__CheckArgumentNullNoRet(input);
 	fplClearStruct(input);
@@ -11276,10 +11294,6 @@ fpl_internal void fpl__Win32ReleasePlatform(fpl__PlatformInitState *initState, f
 	fplAssert(appState != fpl_null);
 	fpl__Win32AppState *win32AppState = &appState->win32;
 	fpl__Win32InitState *win32InitState = &initState->win32;
-	if(win32AppState->console.isAllocated) {
-		FreeConsole();
-		win32AppState->console.isAllocated = false;
-	}
 	if(appState->initFlags & fplInitFlags_GameController) {
 		fpl__Win32UnloadXInputApi(&win32AppState->xinput.xinputApi);
 	}
@@ -11601,22 +11615,28 @@ fpl_internal bool fpl__Win32InitPlatform(const fplInitFlags initFlags, const fpl
 	}
 
 	// Init console
-	if(initFlags & fplInitFlags_Console) {
-		HWND consoleHandle = GetConsoleWindow();
-		if(consoleHandle == fpl_null) {
-			// Create or attach console
-			AllocConsole();
-			AttachConsole(GetCurrentProcessId());
-
-			// Redirect out/in/err to console
-			HANDLE hConOut = CreateFileW(L"CONOUT$", GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
-			HANDLE hConIn = CreateFileW(L"CONIN$", GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
-			SetStdHandle(STD_OUTPUT_HANDLE, hConOut);
-			SetStdHandle(STD_ERROR_HANDLE, hConOut);
-			SetStdHandle(STD_INPUT_HANDLE, hConIn);
-
-			win32AppState->console.isAllocated = true;
+	if(!(initFlags & fplInitFlags_Console)) {
+		// Hide console
+		HWND consoleWindow = GetConsoleWindow();
+		if(consoleWindow != fpl_null) {
+			win32AppState->winApi.user.ShowWindow(consoleWindow, SW_HIDE);
+			FreeConsole();
 		}
+	} else {
+		const fplConsoleSettings *initConsoleSettings = &initSettings->console;
+		fplConsoleSettings *currentConsoleSettings = &appState->currentSettings.console;
+
+		// Setup a console title
+		wchar_t consoleTitleBuffer[FPL_MAX_NAME_LENGTH];
+		if(fplGetStringLength(initConsoleSettings->title) > 0) {
+			fplUTF8StringToWideString(initConsoleSettings->title, fplGetStringLength(initConsoleSettings->title), consoleTitleBuffer, fplArrayCount(consoleTitleBuffer));
+		} else {
+			const wchar_t *defaultTitle = FPL__WIN32_UNNAMED_CONSOLE;
+			lstrcpynW(consoleTitleBuffer, defaultTitle, fplArrayCount(consoleTitleBuffer));
+		}
+		wchar_t *windowTitle = consoleTitleBuffer;
+		fplWideStringToUTF8String(windowTitle, lstrlenW(windowTitle), currentConsoleSettings->title, fplArrayCount(currentConsoleSettings->title));
+		SetConsoleTitleW(windowTitle);
 	}
 
 	// Init keymap
@@ -21949,6 +21969,40 @@ fpl_internal fpl__Win32CommandLineUTF8Arguments fpl__Win32ParseAnsiArguments(LPS
 	return(result);
 }
 
+#if !defined(FPL_NO_CRT)
+#	include <stdio.h>
+#endif
+
+fpl_internal void fpl__Win32FreeConsole() {
+	HWND consoleHandle = GetConsoleWindow();
+	if(consoleHandle != fpl_null) {
+		FreeConsole();
+	}
+}
+
+fpl_internal void fpl__Win32InitConsole() {
+	HWND consoleHandle = GetConsoleWindow();
+	if(consoleHandle == fpl_null) {
+		// Create or attach console
+		AllocConsole();
+		AttachConsole(GetCurrentProcessId());
+
+		// Redirect out/in/err to console
+		HANDLE hConOut = CreateFileW(L"CONOUT$", GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+		HANDLE hConIn = CreateFileW(L"CONIN$", GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+		SetStdHandle(STD_OUTPUT_HANDLE, hConOut);
+		SetStdHandle(STD_ERROR_HANDLE, hConOut);
+		SetStdHandle(STD_INPUT_HANDLE, hConIn);
+
+#if !defined(FPL_NO_CRT)
+		FILE *dummy;
+		freopen_s(&dummy, "CONIN$", "r", stdin);
+		freopen_s(&dummy, "CONOUT$", "w", stderr);
+		freopen_s(&dummy, "CONOUT$", "w", stdout);
+#endif
+	}
+}
+
 #		if defined(FPL_NO_CRT)
 //
 // Win32 without CRT
@@ -21956,19 +22010,24 @@ fpl_internal fpl__Win32CommandLineUTF8Arguments fpl__Win32ParseAnsiArguments(LPS
 #			if defined(FPL_APPTYPE_WINDOW)
 #				if defined(UNICODE)
 void __stdcall wWinMainCRTStartup(void) {
+	fpl__Win32InitConsole();
 	LPWSTR argsW = GetCommandLineW();
 	int result = wWinMain(GetModuleHandleW(fpl_null), fpl_null, argsW, SW_SHOW);
+	fpl__Win32FreeConsole();
 	ExitProcess(result);
 }
 #				else
 void __stdcall WinMainCRTStartup(void) {
+	fpl__Win32InitConsole();
 	LPSTR argsA = GetCommandLineA();
 	int result = WinMain(GetModuleHandleA(fpl_null), fpl_null, argsA, SW_SHOW);
+	fpl__Win32FreeConsole();
 	ExitProcess(result);
 }
 #				endif // UNICODE
 #			elif defined(FPL_APPTYPE_CONSOLE)
 void __stdcall mainCRTStartup(void) {
+	fpl__Win32InitConsole();
 	fpl__Win32CommandLineUTF8Arguments args;
 #	if defined(UNICODE)
 	LPWSTR argsW = GetCommandLineW();
@@ -21979,6 +22038,7 @@ void __stdcall mainCRTStartup(void) {
 #	endif
 	int result = main(args.count, args.args);
 	fplMemoryFree(args.mem);
+	fpl__Win32FreeConsole();
 	ExitProcess(result);
 }
 #			else
@@ -21991,16 +22051,20 @@ void __stdcall mainCRTStartup(void) {
 //
 #			if defined(UNICODE)
 int WINAPI wWinMain(HINSTANCE appInstance, HINSTANCE prevInstance, LPWSTR cmdLine, int cmdShow) {
+	fpl__Win32InitConsole();
 	fpl__Win32CommandLineUTF8Arguments args = fpl__Win32ParseWideArguments(cmdLine);
 	int result = main(args.count, args.args);
 	fplMemoryFree(args.mem);
+	fpl__Win32FreeConsole();
 	return(result);
 }
 #			else
 int WINAPI WinMain(HINSTANCE appInstance, HINSTANCE prevInstance, LPSTR cmdLine, int cmdShow) {
+	fpl__Win32InitConsole();
 	fpl__Win32CommandLineUTF8Arguments args = fpl__Win32ParseAnsiArguments(cmdLine);
 	int result = main(args.count, args.args);
 	fplMemoryFree(args.mem);
+	fpl__Win32FreeConsole();
 	return(result);
 }
 #			endif // UNICODE
