@@ -1427,6 +1427,7 @@ bool VulkanCreateCommandPool(
 	const VulkanQueueFamilyIndex queueFamilyIndex,
 	const VkCommandPoolCreateFlags createFlags,
 	VkCommandPool *outCommandPool) {
+	assert(instanceApi != fpl_null && logicalDevice != VK_NULL_HANDLE && outCommandPool != fpl_null);
 
 	VkCommandPoolCreateInfo cmdPoolInfo = fplZeroInit;
 	cmdPoolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
@@ -1491,11 +1492,11 @@ bool VulkanCreateLogicalDevice(
 	}
 	assert(IsVulkanValidQueueFamilyIndex(logicalDevice->graphicsQueueFamilyIndex) && IsVulkanValidQueueFamilyIndex(logicalDevice->computeQueueFamilyIndex) && IsVulkanValidQueueFamilyIndex(logicalDevice->transferQueueFamilyIndex));
 	fplConsoleFormatOut("Successfully detected required queue families:\n");
-	fplConsoleFormatOut("\tGraphics queue family: %d\n", logicalDevice->graphicsQueueFamilyIndex);
-	fplConsoleFormatOut("\tCompute queue family: %d\n", logicalDevice->computeQueueFamilyIndex);
-	fplConsoleFormatOut("\tTransfer queue family: %d\n", logicalDevice->transferQueueFamilyIndex);
+	fplConsoleFormatOut("\tGraphics queue family: %lu (%lu)\n", logicalDevice->graphicsQueueFamilyIndex.index, logicalDevice->graphicsQueueFamilyIndex.maxCount);
+	fplConsoleFormatOut("\tCompute queue family: %lu (%lu)\n", logicalDevice->computeQueueFamilyIndex.index, logicalDevice->computeQueueFamilyIndex.maxCount);
+	fplConsoleFormatOut("\tTransfer queue family: %lu (%lu)\n", logicalDevice->transferQueueFamilyIndex.index, logicalDevice->transferQueueFamilyIndex.maxCount);
 	fplConsoleOut("\n");
-
+	
 	// Add graphics queue family
 	{
 		assert(queueCreationInfoCount < fplArrayCount(queueCreationInfos));
@@ -1635,6 +1636,8 @@ typedef struct VulkanSurface {
 	VulkanQueueFamilyIndex graphicsQueueFamilyIndex;
 	VulkanQueueFamilyIndex presentationQueueFamilyIndex;
 	VkSurfaceKHR surfaceHandle;
+	VkQueue graphicsQueueHandle;
+	VkQueue presentationQueueHandle;
 	VkFormat colorFormat;
 	VkColorSpaceKHR colorSpace;
 } VulkanSurface;
@@ -1691,7 +1694,9 @@ bool VulkanCreateSurface(const VulkanInstanceApi *instanceApi, const VkInstance 
 	return(true);
 }
 
-static bool QueryVulkanSurfaceProperties(const VulkanInstanceApi *instanceApi, const VkInstance instanceHandle, const VulkanPhysicalDevice *physicalDevice, VulkanSurface *surface) {
+static bool QueryVulkanSurfaceProperties(const VulkanInstanceApi *instanceApi, const VkInstance instanceHandle, const VulkanPhysicalDevice *physicalDevice, const VulkanLogicalDevice *logicalDevice, VulkanSurface *surface) {
+	fplAssert(instanceApi != fpl_null && instanceHandle != VK_NULL_HANDLE && physicalDevice != fpl_null && logicalDevice != fpl_null && surface != fpl_null);
+
 	VkResult res;
 
 	//
@@ -1760,6 +1765,20 @@ static bool QueryVulkanSurfaceProperties(const VulkanInstanceApi *instanceApi, c
 
 	surface->graphicsQueueFamilyIndex = graphicsQueueFamilyIndex;
 	surface->presentationQueueFamilyIndex = presentQueueFamilyIndex;
+
+	//
+	// Queues Handles
+	//
+	assert(IsVulkanValidQueueFamilyIndex(surface->graphicsQueueFamilyIndex));
+	assert(IsVulkanValidQueueFamilyIndex(surface->presentationQueueFamilyIndex));
+	uint32_t graphicsQueueIndex = 0; // We use the first graphics queue
+	uint32_t presentationQueueIndex = 0; // We use the first presentation queue
+	surface->graphicsQueueHandle = VK_NULL_HANDLE;
+	surface->presentationQueueHandle = VK_NULL_HANDLE;
+	instanceApi->vkGetDeviceQueue(logicalDevice->logicalDeviceHandle, surface->graphicsQueueFamilyIndex.index, graphicsQueueIndex, &surface->graphicsQueueHandle);
+	instanceApi->vkGetDeviceQueue(logicalDevice->logicalDeviceHandle, surface->presentationQueueFamilyIndex.index, graphicsQueueIndex, &surface->presentationQueueHandle);
+	assert(surface->graphicsQueueHandle != VK_NULL_HANDLE);
+	assert(surface->presentationQueueHandle != VK_NULL_HANDLE);
 
 	//
 	// Find supported formats
@@ -1879,7 +1898,6 @@ typedef struct VulkanState {
 	VulkanSurface surface;
 
 	VkDebugUtilsMessengerEXT debugMessenger;
-	VkQueue graphicsQueueHandle;
 	VkSemaphore presentCompleteSemaphoreHandle;
 	VkSemaphore renderCompleteSemaphoreHandle;
 
@@ -1980,20 +1998,10 @@ static bool VulkanInitialize(VulkanState *state) {
 	//
 	// Surface Properties
 	//
-	if (!QueryVulkanSurfaceProperties(instanceApi, state->instance.instanceHandle, &state->physicalDevice, &state->surface)) {
+	if (!QueryVulkanSurfaceProperties(instanceApi, state->instance.instanceHandle, &state->physicalDevice, &state->logicalDevice, &state->surface)) {
 		fplConsoleFormatError("Failed to query surface properties for instance '%p', physical device '%s' and surface '%p'!\n", state->instance.instanceHandle, state->physicalDevice.name, state->surface.surfaceHandle);
 		goto failed;
 	}	
-
-	//
-	// Queues
-	//
-	assert(IsVulkanValidQueueFamilyIndex(state->logicalDevice.graphicsQueueFamilyIndex));
-	uint32_t graphicsQueueFamilyIndex = state->logicalDevice.graphicsQueueFamilyIndex.index;
-	uint32_t graphicsQueueIndex = 0; // We use the first queue
-	state->graphicsQueueHandle = VK_NULL_HANDLE;
-	state->instance.instanceApi.vkGetDeviceQueue(state->logicalDevice.logicalDeviceHandle, graphicsQueueFamilyIndex, graphicsQueueIndex, &state->graphicsQueueHandle);
-	assert(state->graphicsQueueHandle != VK_NULL_HANDLE);
 
 	// TODO(final): Find a suitable depth format
 
