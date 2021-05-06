@@ -2008,8 +2008,18 @@ bool VulkanCreateSwapChain(
 	swapchainCI.preTransform = (VkSurfaceTransformFlagBitsKHR)preTransform;
 	swapchainCI.imageArrayLayers = 1;
 	swapchainCI.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
-	swapchainCI.queueFamilyIndexCount = 0;
 	swapchainCI.presentMode = bestPresentationMode;
+
+	// Queue families
+	uint32_t queueIndices[] = { surface->graphicsQueueFamilyIndex.index,  surface->presentationQueueFamilyIndex.index };
+	if (queueIndices[0] != queueIndices[1]) {
+		swapchainCI.imageSharingMode = VK_SHARING_MODE_CONCURRENT;
+		swapchainCI.queueFamilyIndexCount = 2;
+	} else {
+		swapchainCI.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
+		swapchainCI.queueFamilyIndexCount = 1;
+	}
+	swapchainCI.pQueueFamilyIndices = queueIndices;
 
 	// Setting oldSwapChain to the saved handle of the previous swapchain aids in resource reuse and makes sure that we can still present already acquired images
 	swapchainCI.oldSwapchain = oldSwapchainHandle;
