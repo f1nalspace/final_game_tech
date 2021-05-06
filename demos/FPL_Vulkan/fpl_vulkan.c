@@ -2206,9 +2206,6 @@ success:
 }
 
 int main(int argc, char **argv) {
-	fplSettings settings = fplMakeDefaultSettings();
-	settings.video.driver = fplVideoDriverType_None;
-
 	int appResult = -1;
 
 	bool isPlatformInitialized = false;
@@ -2217,8 +2214,10 @@ int main(int argc, char **argv) {
 
 	fplPlatformType platformType = fplGetPlatformType();
 	const char *platformName = fplGetPlatformName(platformType);
+	fplConsoleFormatOut("-> Initialize %s Platform\n", platformName);
 
-	fplConsoleFormatOut("Initialize %s Platform\n", platformName);
+	fplSettings settings = fplMakeDefaultSettings();
+	settings.video.driver = fplVideoDriverType_None;
 	if (!fplPlatformInit(fplInitFlags_Window | fplInitFlags_GameController | fplInitFlags_Console, &settings)) {
 		fplPlatformResultType resultType = fplGetPlatformResult();
 		const char *resultName = fplGetPlatformResultName(resultType);
@@ -2240,7 +2239,8 @@ int main(int argc, char **argv) {
 	fplWindowSize initialWinSize = fplZeroInit;
 	fplGetWindowSize(&initialWinSize);
 
-	fplConsoleFormatOut("Initialize Vulkan\n");
+	fplConsoleFormatOut("-> Initialize Vulkan\n");
+	fplConsoleFormatOut("\n");
 	if (!VulkanInitialize(state, initialWinSize.width, initialWinSize.height)) {
 		fplConsoleFormatError("Failed to initialize Vulkan!\n");
 		goto cleanup;
@@ -2250,7 +2250,8 @@ int main(int argc, char **argv) {
 
 	appResult = 0;
 
-	fplConsoleFormatOut("Run main loop\n");
+	fplConsoleFormatOut("-> Run main loop\n");
+	fplConsoleFormatOut("\n");
 
 	while (fplWindowUpdate()) {
 		fplEvent ev;
@@ -2265,9 +2266,8 @@ int main(int argc, char **argv) {
 	}
 
 cleanup:
-	fplConsoleOut("\n");
-	fplConsoleOut("Clean up\n");
-	fplConsoleOut("\n");
+	fplConsoleOut("-> Shut down\n");
+	fplConsoleFormatOut("\n");
 
 	if (isPlatformInitialized) {
 		if (state != fpl_null) {
@@ -2283,6 +2283,6 @@ cleanup:
 
 		fplConsoleFormatOut("Shutdown Platform\n");
 		fplPlatformRelease();
-		}
-	return(appResult);
 	}
+	return(appResult);
+}
