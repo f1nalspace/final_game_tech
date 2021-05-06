@@ -1304,48 +1304,6 @@ bool VulkanCreatePhysicalDevice(const VulkanCoreApi *coreApi, const VulkanInstan
 	fplConsoleOut("\n");
 
 	//
-	// Queue Families
-	//
-
-	// TODO(final): Make a function for getting the queue family properties
-
-	fplConsoleFormatOut("Get queue family properties for Physical Device '%s'\n", physicalDevice->name);
-	uint32_t queueFamilyPropertiesCount = 0;
-	instanceApi->vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice->physicalDeviceHandle, &queueFamilyPropertiesCount, fpl_null);
-	assert(queueFamilyPropertiesCount > 0);
-
-	ALLOC_FIXED_TYPED_ARRAY(&physicalDevice->queueFamilies, VkQueueFamilyProperties, queueFamilyPropertiesCount);
-	instanceApi->vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice->physicalDeviceHandle, &queueFamilyPropertiesCount, physicalDevice->queueFamilies.items);
-	fplConsoleFormatOut("Successfully got %lu queue family properties for Physical Device '%s'\n", queueFamilyPropertiesCount, physicalDevice->name);
-	for (uint32_t queueFamilyPropertiesIndex = 0; queueFamilyPropertiesIndex < queueFamilyPropertiesCount; ++queueFamilyPropertiesIndex) {
-		const VkQueueFamilyProperties *queueFamilyProps = physicalDevice->queueFamilies.items + queueFamilyPropertiesIndex;
-		fplConsoleFormatOut("[%lu] Count: %lu, Flags: ", queueFamilyPropertiesIndex, queueFamilyProps->queueCount);
-		int c = 0;
-		if ((queueFamilyProps->queueFlags & VK_QUEUE_GRAPHICS_BIT) == VK_QUEUE_GRAPHICS_BIT) {
-			if (c++ > 0) fplConsoleOut(", ");
-			fplConsoleOut("VK_QUEUE_GRAPHICS_BIT");
-		}
-		if ((queueFamilyProps->queueFlags & VK_QUEUE_COMPUTE_BIT) == VK_QUEUE_COMPUTE_BIT) {
-			if (c++ > 0) fplConsoleOut(", ");
-			fplConsoleOut("VK_QUEUE_COMPUTE_BIT");
-		}
-		if ((queueFamilyProps->queueFlags & VK_QUEUE_TRANSFER_BIT) == VK_QUEUE_TRANSFER_BIT) {
-			if (c++ > 0) fplConsoleOut(", ");
-			fplConsoleOut("VK_QUEUE_TRANSFER_BIT");
-		}
-		if ((queueFamilyProps->queueFlags & VK_QUEUE_SPARSE_BINDING_BIT) == VK_QUEUE_SPARSE_BINDING_BIT) {
-			if (c++ > 0) fplConsoleOut(", ");
-			fplConsoleOut("VK_QUEUE_SPARSE_BINDING_BIT");
-		}
-		if ((queueFamilyProps->queueFlags & VK_QUEUE_PROTECTED_BIT) == VK_QUEUE_PROTECTED_BIT) {
-			if (c++ > 0) fplConsoleOut(", ");
-			fplConsoleOut("VK_QUEUE_PROTECTED_BIT");
-		}
-		fplConsoleOut("\n");
-	}
-	fplConsoleOut("\n");
-
-	//
 	// Device Extensions
 	//
 	{
@@ -1388,6 +1346,46 @@ bool VulkanCreatePhysicalDevice(const VulkanCoreApi *coreApi, const VulkanInstan
 		}
 		fplConsoleOut("\n");
 	}
+
+	//
+	// Queue Families
+	//
+
+	fplConsoleFormatOut("Get queue family properties for Physical Device '%s'\n", physicalDevice->name);
+	uint32_t queueFamilyPropertiesCount = 0;
+	instanceApi->vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice->physicalDeviceHandle, &queueFamilyPropertiesCount, fpl_null);
+	assert(queueFamilyPropertiesCount > 0);
+
+	ALLOC_FIXED_TYPED_ARRAY(&physicalDevice->queueFamilies, VkQueueFamilyProperties, queueFamilyPropertiesCount);
+	instanceApi->vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice->physicalDeviceHandle, &queueFamilyPropertiesCount, physicalDevice->queueFamilies.items);
+	fplConsoleFormatOut("Successfully got %lu queue family properties for Physical Device '%s'\n", queueFamilyPropertiesCount, physicalDevice->name);
+	for (uint32_t queueFamilyPropertiesIndex = 0; queueFamilyPropertiesIndex < queueFamilyPropertiesCount; ++queueFamilyPropertiesIndex) {
+		const VkQueueFamilyProperties *queueFamilyProps = physicalDevice->queueFamilies.items + queueFamilyPropertiesIndex;
+		fplConsoleFormatOut("[%lu] Count: %lu, Flags: ", queueFamilyPropertiesIndex, queueFamilyProps->queueCount);
+		int c = 0;
+		if ((queueFamilyProps->queueFlags & VK_QUEUE_GRAPHICS_BIT) == VK_QUEUE_GRAPHICS_BIT) {
+			if (c++ > 0) fplConsoleOut(", ");
+			fplConsoleOut("VK_QUEUE_GRAPHICS_BIT");
+		}
+		if ((queueFamilyProps->queueFlags & VK_QUEUE_COMPUTE_BIT) == VK_QUEUE_COMPUTE_BIT) {
+			if (c++ > 0) fplConsoleOut(", ");
+			fplConsoleOut("VK_QUEUE_COMPUTE_BIT");
+		}
+		if ((queueFamilyProps->queueFlags & VK_QUEUE_TRANSFER_BIT) == VK_QUEUE_TRANSFER_BIT) {
+			if (c++ > 0) fplConsoleOut(", ");
+			fplConsoleOut("VK_QUEUE_TRANSFER_BIT");
+		}
+		if ((queueFamilyProps->queueFlags & VK_QUEUE_SPARSE_BINDING_BIT) == VK_QUEUE_SPARSE_BINDING_BIT) {
+			if (c++ > 0) fplConsoleOut(", ");
+			fplConsoleOut("VK_QUEUE_SPARSE_BINDING_BIT");
+		}
+		if ((queueFamilyProps->queueFlags & VK_QUEUE_PROTECTED_BIT) == VK_QUEUE_PROTECTED_BIT) {
+			if (c++ > 0) fplConsoleOut(", ");
+			fplConsoleOut("VK_QUEUE_PROTECTED_BIT");
+		}
+		fplConsoleOut("\n");
+	}
+	fplConsoleOut("\n");
 
 	return(true);
 }
@@ -1496,7 +1494,7 @@ bool VulkanCreateLogicalDevice(
 	fplConsoleFormatOut("\tCompute queue family: %lu (%lu)\n", logicalDevice->computeQueueFamilyIndex.index, logicalDevice->computeQueueFamilyIndex.maxCount);
 	fplConsoleFormatOut("\tTransfer queue family: %lu (%lu)\n", logicalDevice->transferQueueFamilyIndex.index, logicalDevice->transferQueueFamilyIndex.maxCount);
 	fplConsoleOut("\n");
-	
+
 	// Add graphics queue family
 	{
 		assert(queueCreationInfoCount < fplArrayCount(queueCreationInfos));
@@ -1581,6 +1579,18 @@ bool VulkanCreateLogicalDevice(
 		enabledDeviceExtensions[enabledDeviceExtensionCount++] = VK_EXT_DEBUG_MARKER_EXTENSION_NAME;
 	}
 
+	//
+	// Add Swap-Chain support
+	//
+	bool hasSwapChainSupport = IsVulkanFeatureSupported(physicalDevice->supportedExtensions.items, physicalDevice->supportedExtensions.count, VK_KHR_SWAPCHAIN_EXTENSION_NAME);
+	if (!hasSwapChainSupport) {
+		fplConsoleFormatError("The device '%s' has no support for %s. Please select a physical device which can render graphics to the screen!\n", physicalDevice->name, VK_KHR_SWAPCHAIN_EXTENSION_NAME);
+		VulkanDestroyLogicalDevice(instanceApi, logicalDevice);
+		return(false);
+	}
+	assert(enabledDeviceExtensionCount < maxEnableDeviceExtensionCount);
+	enabledDeviceExtensions[enabledDeviceExtensionCount++] = VK_KHR_SWAPCHAIN_EXTENSION_NAME;
+
 	// Set extensions and layers
 	if (enabledDeviceExtensionCount > 0) {
 		deviceCreateInfo.enabledExtensionCount = enabledDeviceExtensionCount;
@@ -1632,6 +1642,7 @@ bool VulkanCreateLogicalDevice(
 typedef struct VulkanSurface {
 	FIXED_TYPED_ARRAY(VkBool32, supportedQueuesForPresent);
 	FIXED_TYPED_ARRAY(VkPresentModeKHR, presentationModes);
+	FIXED_TYPED_ARRAY(VkSurfaceFormatKHR, surfaceFormats);
 	VkSurfaceCapabilitiesKHR capabilities;
 	VulkanQueueFamilyIndex graphicsQueueFamilyIndex;
 	VulkanQueueFamilyIndex presentationQueueFamilyIndex;
@@ -1644,6 +1655,7 @@ typedef struct VulkanSurface {
 
 void VulkanDestroySurface(const VulkanInstanceApi *instanceApi, const VkInstance instanceHandle, VulkanSurface *surface) {
 	if (surface == fpl_null) return;
+	FREE_FIXED_TYPED_ARRAY(&surface->surfaceFormats);
 	FREE_FIXED_TYPED_ARRAY(&surface->presentationModes);
 	FREE_FIXED_TYPED_ARRAY(&surface->supportedQueuesForPresent);
 	if (surface->surfaceHandle != VK_NULL_HANDLE) {
@@ -1792,41 +1804,13 @@ static bool QueryVulkanSurfaceProperties(const VulkanInstanceApi *instanceApi, c
 		return(false);
 	}
 	assert(formatCount > 0);
-	VkSurfaceFormatKHR *formats = (VkSurfaceFormatKHR *)malloc(sizeof(VkSurfaceFormatKHR) * formatCount);
-	res = instanceApi->vkGetPhysicalDeviceSurfaceFormatsKHR(physicalDevice->physicalDeviceHandle, surface->surfaceHandle, &formatCount, formats);
+	ALLOC_FIXED_TYPED_ARRAY(&surface->surfaceFormats, VkSurfaceFormatKHR, formatCount);
+	res = instanceApi->vkGetPhysicalDeviceSurfaceFormatsKHR(physicalDevice->physicalDeviceHandle, surface->surfaceHandle, &formatCount, surface->surfaceFormats.items);
 	if (res != VK_SUCCESS) {
 		fplConsoleFormatError("Failed to get %lu surface formats for physical device '%s' and surface '%p'!\n", formatCount, physicalDevice->name, surface->surfaceHandle);
-		free(formats);
 		VulkanDestroySurface(instanceApi, instanceHandle, surface);
 		return(false);
 	}
-
-	// Use first format initially (Worst case)
-	surface->colorFormat = formats[0].format;
-	surface->colorSpace = formats[0].colorSpace;
-
-	bool found = false;
-	for (uint32_t formatIndex = 0; formatIndex < formatCount; ++formatIndex) {
-		const VkSurfaceFormatKHR *format = formats + formatIndex;
-		if (!found && format->format == VK_FORMAT_B8G8R8A8_UNORM) {
-			surface->colorFormat = format->format;
-			surface->colorSpace = format->colorSpace;
-			found = true;
-		}
-		if (!found && formatCount == 1 && format->format == VK_FORMAT_UNDEFINED) {
-			// Special case when format is not preferred
-			surface->colorFormat = VK_FORMAT_B8G8R8A8_UNORM;
-			surface->colorSpace = format->colorSpace;
-			found = true;
-		}
-		const char *formatName = GetVulkanFormatName(format->format);
-		const char *colorspaceName = GetVulkanColorSpaceName(format->colorSpace);
-		fplConsoleFormatOut("[%lu] '%s' with color-space of '%s'\n", formatIndex, formatName, colorspaceName);
-	}
-
-	free(formats);
-	fplConsoleFormatOut("Successfully got %lu surface formats for physical device '%s' and surface '%p'\n", formatCount, physicalDevice->name, surface->surfaceHandle);
-	fplConsoleOut("\n");
 
 	//
 	// Get Surface Capabilties
@@ -1859,31 +1843,201 @@ static bool QueryVulkanSurfaceProperties(const VulkanInstanceApi *instanceApi, c
 		VulkanDestroySurface(instanceApi, instanceHandle, surface);
 		return(false);
 	}
-	for (uint32_t presentationModeIndex = 0; presentationModeIndex < presentationModeCount; ++presentationModeIndex) {
-		VkPresentModeKHR presentMode = surface->presentationModes.items[presentationModeIndex];
-		const char *presentationModeName = GetVulkanPresentModeKHRName(presentMode);
-		fplConsoleFormatOut("[%lu] %s\n", presentationModeIndex, presentationModeName);
+
+	// Use first format initially (Worst case)
+	surface->colorFormat = surface->surfaceFormats.items[0].format;
+	surface->colorSpace = surface->surfaceFormats.items[0].colorSpace;
+
+	bool found = false;
+	for (uint32_t formatIndex = 0; formatIndex < formatCount; ++formatIndex) {
+		const VkSurfaceFormatKHR *format = surface->surfaceFormats.items + formatIndex;
+		if (!found && format->format == VK_FORMAT_B8G8R8A8_UNORM) {
+			surface->colorFormat = format->format;
+			surface->colorSpace = format->colorSpace;
+			found = true;
+		}
+		if (!found && formatCount == 1 && format->format == VK_FORMAT_UNDEFINED) {
+			// Special case when format is not preferred
+			surface->colorFormat = VK_FORMAT_B8G8R8A8_UNORM;
+			surface->colorSpace = format->colorSpace;
+			found = true;
+		}
+		const char *formatName = GetVulkanFormatName(format->format);
+		const char *colorspaceName = GetVulkanColorSpaceName(format->colorSpace);
+		fplConsoleFormatOut("[%lu] '%s' with color-space of '%s'\n", formatIndex, formatName, colorspaceName);
 	}
-	fplConsoleFormatOut("Successfully got %lu surface presentation modes for surface '%p' and physical device '%s'\n", presentationModeCount, surface->surfaceHandle, physicalDevice->name);
+	fplConsoleFormatOut("Successfully got %lu surface formats for physical device '%s' and surface '%p'\n", formatCount, physicalDevice->name, surface->surfaceHandle);
 	fplConsoleOut("\n");
 
 	return(true);
 }
 
 typedef struct VulkanSwapChain {
-	int bla;
+	VkSwapchainKHR swapChainHandle;
+	VkExtent2D extent;
 } VulkanSwapChain;
 
-void VulkanDestroySwapChain(VulkanSwapChain *swapChain) {
+void VulkanDestroySwapChain(const VulkanLogicalDevice *logicalDevice, VulkanSwapChain *swapChain) {
+	assert(logicalDevice != fpl_null);
+	assert(swapChain != fpl_null);
 
+	const VulkanDeviceApi *deviceApi = &logicalDevice->deviceApi;
+
+	if (swapChain->swapChainHandle != VK_NULL_HANDLE) {
+		deviceApi->vkDestroySwapchainKHR(logicalDevice->logicalDeviceHandle, swapChain->swapChainHandle, fpl_null);
+	}
+	fplClearStruct(swapChain);
 }
 
-bool VulkanCreateSwapChain(const VulkanDeviceApi *deviceApi, const VkDevice deviceHandle, const VulkanSurface *surface, VulkanSwapChain *swapChain) {
-	// Get physical device surface properties and formats
-	//deviceApi->
-	//fpGetPhysicalDeviceSurfaceCapabilitiesKHR();
-	//deviceApi->vkGetPhysicalDeviceSurfaceCapabilitiesKHR()
-	return(false);
+bool VulkanCreateSwapChain(
+	const VulkanLogicalDevice *logicalDevice,
+	const bool isVSync,
+	const VkExtent2D requestedSize,
+	VulkanSurface *surface,
+	VkSwapchainKHR oldSwapchainHandle,
+	VulkanSwapChain *swapChain) {
+
+	assert(logicalDevice != fpl_null);
+	assert(surface != fpl_null);
+	assert(swapChain != fpl_null);
+
+	const VulkanDeviceApi *deviceApi = &logicalDevice->deviceApi;
+
+	// Determine the number of images
+	const VkSurfaceCapabilitiesKHR *caps = &surface->capabilities;
+	uint32_t desiredNumberOfSwapchainImages = caps->minImageCount + 1;
+	uint32_t actualNumberOfSwapchainImages = fplMin(desiredNumberOfSwapchainImages, caps->maxImageCount);
+
+	VkExtent2D swapchainExtent = fplZeroInit;
+
+#if 0
+	// Sascha Willems way how to set the extent
+
+	// If width (and height) equals the special value 0xFFFFFFFF, the size of the surface will be set by the swapchain
+	if (caps->currentExtent.width == UINT32_MAX) {
+		// If the surface size is undefined, the size is set to the size of the images requested.
+		swapchainExtent = requestedSize;
+	} else {
+		// If the surface size is defined, the swap chain size must match
+		swapchainExtent = caps->currentExtent;
+	}
+#else
+	// https://vulkan-tutorial.com/en/Drawing_a_triangle/Presentation/Swap_chain
+	swapchainExtent.width = fplMax(caps->minImageExtent.width, fplMin(caps->maxImageExtent.width, requestedSize.width));
+	swapchainExtent.height = fplMax(caps->minImageExtent.height, fplMin(caps->maxImageExtent.height, requestedSize.height));
+#endif
+
+	swapChain->extent = swapchainExtent;
+
+	// Create suface format from found color space and format
+	VkColorSpaceKHR colorSpace = surface->colorSpace;
+	VkFormat format = surface->colorFormat;
+	fplConsoleFormatOut("Use color space: %s\n", GetVulkanColorSpaceName(colorSpace));
+	fplConsoleFormatOut("Use color format: %s\n", GetVulkanFormatName(format));
+
+	//
+	// Find presentation mode
+	//
+	uint32_t bestPresentationModeScore = 0;
+	VkPresentModeKHR bestPresentationMode = VK_PRESENT_MODE_MAX_ENUM_KHR;
+	for (uint32_t presentationModeIndex = 0; presentationModeIndex < surface->presentationModes.itemCount; ++presentationModeIndex) {
+		VkPresentModeKHR presentMode = surface->presentationModes.items[presentationModeIndex];
+
+		uint32_t score = 0;
+		if (isVSync) {
+			if (presentMode == VK_PRESENT_MODE_FIFO_KHR) {
+				score += 10;
+			} else if (presentMode == VK_PRESENT_MODE_MAILBOX_KHR) {
+				score += 1000;
+			}
+		} else {
+			if (presentMode == VK_PRESENT_MODE_IMMEDIATE_KHR) {
+				score += 1000;
+			}
+		}
+
+		if (score > bestPresentationModeScore) {
+			bestPresentationModeScore = score;
+			bestPresentationMode = presentMode;
+		}
+	}
+
+	if (bestPresentationMode == VK_PRESENT_MODE_MAX_ENUM_KHR) {
+		fplConsoleFormatOut("Warning: No presentation mode found, use VK_PRESENT_MODE_FIFO_KHR as fallback!");
+		bestPresentationMode = VK_PRESENT_MODE_FIFO_KHR;
+	}
+
+	fplConsoleFormatOut("Use presentation mode: %s\n", GetVulkanPresentModeKHRName(bestPresentationMode));
+	fplConsoleFormatOut("\n");
+
+	// Find the transformation of the surface
+	VkSurfaceTransformFlagsKHR preTransform;
+	if (caps->supportedTransforms & VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR) {
+		// We prefer a non-rotated transform
+		preTransform = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR;
+	} else {
+		preTransform = caps->currentTransform;
+	}
+
+	// Find a supported composite alpha format (not all devices support alpha opaque)
+	VkCompositeAlphaFlagBitsKHR compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
+	{
+		VkCompositeAlphaFlagBitsKHR testFlagBits[] = {
+			VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR,
+			VK_COMPOSITE_ALPHA_PRE_MULTIPLIED_BIT_KHR,
+			VK_COMPOSITE_ALPHA_POST_MULTIPLIED_BIT_KHR,
+			VK_COMPOSITE_ALPHA_INHERIT_BIT_KHR
+		};
+		for (uint32_t i = 0; i < fplArrayCount(testFlagBits); ++i) {
+			VkCompositeAlphaFlagBitsKHR testFlagBit = testFlagBits[i];
+			if ((caps->supportedCompositeAlpha & testFlagBit) == testFlagBit) {
+				compositeAlpha = caps->supportedCompositeAlpha;
+				break;
+			}
+		}
+	}
+
+	VkSwapchainCreateInfoKHR swapchainCI = fplZeroInit;
+	swapchainCI.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
+	swapchainCI.surface = surface->surfaceHandle;
+	swapchainCI.minImageCount = actualNumberOfSwapchainImages;
+	swapchainCI.imageFormat = format;
+	swapchainCI.imageColorSpace = colorSpace;
+	swapchainCI.imageExtent = swapchainExtent;
+	swapchainCI.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+	swapchainCI.preTransform = (VkSurfaceTransformFlagBitsKHR)preTransform;
+	swapchainCI.imageArrayLayers = 1;
+	swapchainCI.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
+	swapchainCI.queueFamilyIndexCount = 0;
+	swapchainCI.presentMode = bestPresentationMode;
+
+	// Setting oldSwapChain to the saved handle of the previous swapchain aids in resource reuse and makes sure that we can still present already acquired images
+	swapchainCI.oldSwapchain = oldSwapchainHandle;
+
+	// Setting clipped to VK_TRUE allows the implementation to discard rendering outside of the surface area
+	swapchainCI.clipped = VK_TRUE;
+	swapchainCI.compositeAlpha = compositeAlpha;
+
+	// Enable transfer source on swap chain images if supported
+	if (caps->supportedUsageFlags & VK_IMAGE_USAGE_TRANSFER_SRC_BIT) {
+		swapchainCI.imageUsage |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+	}
+
+	// Enable transfer destination on swap chain images if supported
+	if (caps->supportedUsageFlags & VK_IMAGE_USAGE_TRANSFER_DST_BIT) {
+		swapchainCI.imageUsage |= VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+	}
+
+	fplConsoleFormatOut("Creating Swap-Chain for device '%p' with size of %lu x %lu\n", logicalDevice->logicalDeviceHandle, swapchainExtent.width, swapchainExtent.height);
+	VkResult res = deviceApi->vkCreateSwapchainKHR(logicalDevice->logicalDeviceHandle, &swapchainCI, fpl_null, &swapChain->swapChainHandle);
+	if (res != VK_SUCCESS) {
+		fplConsoleFormatError("Failed creating Swap-Chain for device '%p' with size of %lu x %lu!\n", logicalDevice->logicalDeviceHandle, swapchainExtent.width, swapchainExtent.height);
+		VulkanDestroySwapChain(logicalDevice, swapChain);
+		return(false);
+	}
+	fplConsoleFormatOut("Successfully created Swap-Chain for device '%p' with size of %lu x %lu -> %p\n", logicalDevice->logicalDeviceHandle, swapchainExtent.width, swapchainExtent.height, swapChain->swapChainHandle);
+
+	return(true);
 }
 
 typedef struct VulkanState {
@@ -1897,6 +2051,8 @@ typedef struct VulkanState {
 
 	VulkanSurface surface;
 
+	VulkanSwapChain swapChain;
+
 	VkDebugUtilsMessengerEXT debugMessenger;
 	VkSemaphore presentCompleteSemaphoreHandle;
 	VkSemaphore renderCompleteSemaphoreHandle;
@@ -1906,6 +2062,9 @@ typedef struct VulkanState {
 
 static void VulkanShutdown(VulkanState *state) {
 	if (state == fpl_null) return;
+
+	// Destroy Swap-Chain
+	VulkanDestroySwapChain(&state->logicalDevice, &state->swapChain);
 
 	// Destroy Logical Device
 	VulkanDestroyLogicalDevice(&state->instance.instanceApi, &state->logicalDevice);
@@ -1930,7 +2089,7 @@ static void VulkanShutdown(VulkanState *state) {
 	fplClearStruct(state);
 }
 
-static bool VulkanInitialize(VulkanState *state) {
+static bool VulkanInitialize(VulkanState *state, const uint32_t winWidth, const uint32_t winHeight) {
 	if (state == fpl_null)
 		return(false);
 
@@ -1944,7 +2103,9 @@ static bool VulkanInitialize(VulkanState *state) {
 	VulkanCoreApi *coreApi = &state->coreApi;
 	VulkanInstanceApi *instanceApi = &state->instance.instanceApi;
 
-
+	fplConsoleFormatOut("*************************************************************************\n");
+	fplConsoleFormatOut("Core API\n");
+	fplConsoleFormatOut("*************************************************************************\n");
 	if (!VulkanLoadCoreAPI(coreApi)) {
 		fplConsoleFormatError("Failed to load the Vulkan API!\n");
 		goto failed;
@@ -1956,6 +2117,9 @@ static bool VulkanInitialize(VulkanState *state) {
 	//
 	// Create instance
 	//
+	fplConsoleFormatOut("*************************************************************************\n");
+	fplConsoleFormatOut("Instance\n");
+	fplConsoleFormatOut("*************************************************************************\n");
 	if (!VulkanCreateInstance(coreApi, useValidations, &state->instance)) {
 		fplConsoleFormatError("Failed to create a Vulkan instance!\n");
 		goto failed;
@@ -1965,6 +2129,9 @@ static bool VulkanInitialize(VulkanState *state) {
 	// Debug messenger
 	//
 	if (state->instance.hasValidationLayer) {
+		fplConsoleFormatOut("*************************************************************************\n");
+		fplConsoleFormatOut("Debug Messenger\n");
+		fplConsoleFormatOut("*************************************************************************\n");
 		VkDebugUtilsMessengerCreateInfoEXT createInfo = MakeVulkanDebugMessengerCreateInfo();
 		if (!VulkanCreateDebugMessenger(coreApi, state->instance.instanceHandle, &createInfo, &state->debugMessenger)) {
 			fplConsoleFormatError("Failed to create the Vulkan debug messenger!\n");
@@ -1972,6 +2139,9 @@ static bool VulkanInitialize(VulkanState *state) {
 	}
 
 	// Create surface
+	fplConsoleFormatOut("*************************************************************************\n");
+	fplConsoleFormatOut("Surface Step 1/2\n");
+	fplConsoleFormatOut("*************************************************************************\n");
 	if (!VulkanCreateSurface(instanceApi, state->instance.instanceHandle, &state->surface)) {
 		fplConsoleFormatError("Failed to create surface for instance '%p'!\n", state->instance.instanceHandle);
 		goto failed;
@@ -1980,6 +2150,9 @@ static bool VulkanInitialize(VulkanState *state) {
 	//
 	// Physical Device (vkPhysicalDevice)
 	//
+	fplConsoleFormatOut("*************************************************************************\n");
+	fplConsoleFormatOut("Physical Device\n");
+	fplConsoleFormatOut("*************************************************************************\n");
 	if (!VulkanCreatePhysicalDevice(coreApi, instanceApi, state->instance.instanceHandle, &state->physicalDevice)) {
 		fplConsoleFormatError("Failed to find a physical device from instance '%p'!\n", state->instance.instanceHandle);
 		goto failed;
@@ -1988,6 +2161,9 @@ static bool VulkanInitialize(VulkanState *state) {
 	//
 	// Logical Device (vkDevice)
 	//
+	fplConsoleFormatOut("*************************************************************************\n");
+	fplConsoleFormatOut("Logical Device\n");
+	fplConsoleFormatOut("*************************************************************************\n");
 	VkPhysicalDeviceFeatures enabledFeatures = fplZeroInit;
 	bool isSwapChain = true;
 	if (!VulkanCreateLogicalDevice(coreApi, instanceApi, &state->physicalDevice, &enabledFeatures, state->instance.instanceHandle, fpl_null, 0, isSwapChain, useValidations, fpl_null, &state->logicalDevice)) {
@@ -1998,16 +2174,26 @@ static bool VulkanInitialize(VulkanState *state) {
 	//
 	// Surface Properties
 	//
+	fplConsoleFormatOut("*************************************************************************\n");
+	fplConsoleFormatOut("Surface Step 2/2\n");
+	fplConsoleFormatOut("*************************************************************************\n");
 	if (!QueryVulkanSurfaceProperties(instanceApi, state->instance.instanceHandle, &state->physicalDevice, &state->logicalDevice, &state->surface)) {
 		fplConsoleFormatError("Failed to query surface properties for instance '%p', physical device '%s' and surface '%p'!\n", state->instance.instanceHandle, state->physicalDevice.name, state->surface.surfaceHandle);
 		goto failed;
-	}	
+	}
 
-	// TODO(final): Find a suitable depth format
-
-	// TODO(final): Swap-Chain!
-
-	// TODO(final): Create synchronization objects
+	//
+	// Swap-Chain
+	//
+	fplConsoleFormatOut("*************************************************************************\n");
+	fplConsoleFormatOut("Swap-Chain\n");
+	fplConsoleFormatOut("*************************************************************************\n");
+	bool vsync = true;
+	VkExtent2D size = fplStructInit(VkExtent2D, winWidth, winHeight);
+	if (!VulkanCreateSwapChain(&state->logicalDevice, vsync, size, &state->surface, fpl_null, &state->swapChain)) {
+		fplConsoleFormatError("Failed to create a swap-chain for device '%p' with size of %lu x %lu'!\n", state->logicalDevice.logicalDeviceHandle, size.width, size.height);
+		goto failed;
+	}
 
 	goto success;
 
@@ -2051,8 +2237,11 @@ int main(int argc, char **argv) {
 		goto cleanup;
 	}
 
+	fplWindowSize initialWinSize = fplZeroInit;
+	fplGetWindowSize(&initialWinSize);
+
 	fplConsoleFormatOut("Initialize Vulkan\n");
-	if (!VulkanInitialize(state)) {
+	if (!VulkanInitialize(state, initialWinSize.width, initialWinSize.height)) {
 		fplConsoleFormatError("Failed to initialize Vulkan!\n");
 		goto cleanup;
 	}
@@ -2094,6 +2283,6 @@ cleanup:
 
 		fplConsoleFormatOut("Shutdown Platform\n");
 		fplPlatformRelease();
-	}
+		}
 	return(appResult);
-}
+	}
