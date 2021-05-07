@@ -1917,8 +1917,8 @@ static bool QueryVulkanSurfaceProperties(const VulkanInstanceApi *instanceApi, c
 }
 
 typedef struct VulkanSwapChain {
-	VkSwapchainKHR swapChainHandle;
 	VkExtent2D extent;
+	VkSwapchainKHR swapChainHandle;
 } VulkanSwapChain;
 
 void VulkanDestroySwapChain(VkAllocationCallbacks *allocator, const VulkanLogicalDevice *logicalDevice, VulkanSwapChain *swapChain) {
@@ -1930,13 +1930,14 @@ void VulkanDestroySwapChain(VkAllocationCallbacks *allocator, const VulkanLogica
 	if (swapChain->swapChainHandle != VK_NULL_HANDLE) {
 		deviceApi->vkDestroySwapchainKHR(logicalDevice->logicalDeviceHandle, swapChain->swapChainHandle, allocator);
 	}
+
 	fplClearStruct(swapChain);
 }
 
 bool VulkanCreateSwapChain(
 	VkAllocationCallbacks *allocator,
 	const VulkanLogicalDevice *logicalDevice,
-	VulkanSurface *surface,
+	const VulkanSurface *surface,
 	VulkanSwapChain *swapChain,
 	VkSwapchainKHR oldSwapchainHandle,
 	const VkExtent2D requestedSize,
@@ -1946,7 +1947,15 @@ bool VulkanCreateSwapChain(
 	assert(surface != fpl_null);
 	assert(swapChain != fpl_null);
 
+	if (logicalDevice->logicalDeviceHandle == VK_NULL_HANDLE)
+		return(false);
+	if (surface->surfaceHandle == VK_NULL_HANDLE)
+		return(false);
+
 	const VulkanDeviceApi *deviceApi = &logicalDevice->deviceApi;
+
+	// Wait for device to be ready
+	deviceApi->vkDeviceWaitIdle(logicalDevice->logicalDeviceHandle);
 
 	// Determine the number of images
 	const VkSurfaceCapabilitiesKHR *caps = &surface->capabilities;
@@ -2077,6 +2086,81 @@ bool VulkanCreateSwapChain(
 	}
 	fplConsoleFormatOut("Successfully created Swap-Chain for device '%p' with size of %lu x %lu -> %p\n", logicalDevice->logicalDeviceHandle, swapchainExtent.width, swapchainExtent.height, swapChain->swapChainHandle);
 
+	if (oldSwapchainHandle != VK_NULL_HANDLE) {
+		fplConsoleFormatOut("Destroy previous Swap-Chain '%p' for device '%p'\n", oldSwapchainHandle, logicalDevice->logicalDeviceHandle);
+		deviceApi->vkDestroySwapchainKHR(logicalDevice->logicalDeviceHandle, oldSwapchainHandle, allocator);
+	}
+
+	return(true);
+}
+
+typedef struct VulkanFrame {
+	VulkanSwapChain swapChain;
+	VkSemaphore imageAvailableSemaphoreHandle;
+	VkSemaphore renderCompleteSemaphoreHandle;
+} VulkanFrame;
+
+void VulkanDestroyFrame(VkAllocationCallbacks *allocator, const VulkanLogicalDevice *logicalDevice, VulkanFrame *frame) {
+	const VulkanDeviceApi *deviceApi = &logicalDevice->deviceApi;
+
+	// Destroy Swap Chain
+	VulkanDestroySwapChain(allocator, logicalDevice, &frame->swapChain);
+
+	// Destroy Semaphores
+	if (frame->imageAvailableSemaphoreHandle != VK_NULL_HANDLE) {
+		deviceApi->vkDestroySemaphore(logicalDevice->logicalDeviceHandle, frame->imageAvailableSemaphoreHandle, allocator);
+	}
+	if (frame->renderCompleteSemaphoreHandle != VK_NULL_HANDLE) {
+		deviceApi->vkDestroySemaphore(logicalDevice->logicalDeviceHandle, frame->renderCompleteSemaphoreHandle, allocator);
+	}
+
+	fplClearStruct(frame);
+}
+
+bool VulkanCreateFrame(VkAllocationCallbacks *allocator, const VulkanLogicalDevice *logicalDevice, const VulkanSurface *surface, VulkanFrame *frame, const VkExtent2D size, const bool vsync) {
+	assert(logicalDevice != fpl_null);
+	assert(frame != fpl_null);
+
+	if (logicalDevice->logicalDeviceHandle == VK_NULL_HANDLE)
+		return(false);
+
+	const VulkanDeviceApi *deviceApi = &logicalDevice->deviceApi;
+
+	//
+	// Create Semaphores
+	//
+	VkSemaphoreCreateInfo semaphoreCreateInfo = fplZeroInit;
+	semaphoreCreateInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
+
+	VkResult res;
+
+	fplConsoleFormatOut("Creating required semaphores for device '%p'\n", logicalDevice->logicalDeviceHandle);
+	res = deviceApi->vkCreateSemaphore(logicalDevice->logicalDeviceHandle, &semaphoreCreateInfo, allocator, &frame->imageAvailableSemaphoreHandle);
+	if (res != VK_SUCCESS) {
+		fplConsoleFormatError("Failed to create the image available semaphore for device '%p'!\n", logicalDevice->logicalDeviceHandle);
+		VulkanDestroyFrame(allocator, logicalDevice, frame);
+		return(false);
+	}
+	res = deviceApi->vkCreateSemaphore(logicalDevice->logicalDeviceHandle, &semaphoreCreateInfo, allocator, &frame->renderCompleteSemaphoreHandle);
+	if (res != VK_SUCCESS) {
+		fplConsoleFormatError("Failed to create the render completion semaphore for device '%p'!\n", logicalDevice->logicalDeviceHandle);
+		VulkanDestroyFrame(allocator, logicalDevice, frame);
+		return(false);
+	}
+	fplConsoleFormatOut("Successfully created required semaphores for device '%p'\n", logicalDevice->logicalDeviceHandle);
+	fplConsoleFormatOut("\n");
+
+	//
+	// Create swap chain
+	//
+	VkSwapchainKHR oldSwapChain = VK_NULL_HANDLE; // Initially we dont have a previous swap-chain
+	if (!VulkanCreateSwapChain(allocator, logicalDevice, surface, &frame->swapChain, oldSwapChain, size, vsync)) {
+		fplConsoleFormatError("Failed to create a swap-chain for device '%p' with size of %lu x %lu'!\n", logicalDevice->logicalDeviceHandle, size.width, size.height);
+		VulkanDestroyFrame(allocator, logicalDevice, frame);
+		return(false);
+	}
+	fplConsoleFormatOut("\n");
+
 	return(true);
 }
 
@@ -2094,11 +2178,9 @@ typedef struct VulkanState {
 
 	VulkanSurface surface;
 
-	VulkanSwapChain swapChain;
+	VulkanFrame frame;
 
 	VkDebugUtilsMessengerEXT debugMessenger;
-	VkSemaphore presentCompleteSemaphoreHandle;
-	VkSemaphore renderCompleteSemaphoreHandle;
 
 	fpl_b32 isInitialized;
 } VulkanState;
@@ -2108,16 +2190,8 @@ static void VulkanShutdown(VulkanState *state) {
 
 	VkAllocationCallbacks *allocator = state->allocator;
 
-	// Destroy Swap-Chain
-	VulkanDestroySwapChain(allocator, &state->logicalDevice, &state->swapChain);
-
-	// Destroy Semaphores
-	if (state->presentCompleteSemaphoreHandle != VK_NULL_HANDLE) {
-		state->logicalDevice.deviceApi.vkDestroySemaphore(state->logicalDevice.logicalDeviceHandle, state->presentCompleteSemaphoreHandle, state->allocator);
-	}
-	if (state->renderCompleteSemaphoreHandle != VK_NULL_HANDLE) {
-		state->logicalDevice.deviceApi.vkDestroySemaphore(state->logicalDevice.logicalDeviceHandle, state->renderCompleteSemaphoreHandle, state->allocator);
-	}
+	// Destroy Frame
+	VulkanDestroyFrame(allocator, &state->logicalDevice, &state->frame);
 
 	// Destroy Logical Device
 	VulkanDestroyLogicalDevice(allocator, &state->instance.instanceApi, &state->logicalDevice);
@@ -2261,45 +2335,15 @@ static bool VulkanInitialize(VulkanState *state, const uint32_t winWidth, const 
 	}
 
 	//
-	// Create Semaphores
+	// Frame (Semaphores, Swap-Chain, Command-Buffer)
 	//
 	fplConsoleFormatOut("*************************************************************************\n");
-	fplConsoleFormatOut("Semaphores\n");
-	fplConsoleFormatOut("*************************************************************************\n");
-	{
-		VkResult res;
-		VkSemaphoreCreateInfo semaphoreCreateInfo = fplZeroInit;
-		semaphoreCreateInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
-
-		fplConsoleFormatOut("Create presentation-complete semaphore for device '%p'\n", state->logicalDevice.logicalDeviceHandle);
-		res = deviceApi->vkCreateSemaphore(state->logicalDevice.logicalDeviceHandle, &semaphoreCreateInfo, allocator, &state->presentCompleteSemaphoreHandle);;
-		if (res != VK_SUCCESS) {
-			fplConsoleFormatError("Failed creating presentation-complete semaphore for device '%p'\n", state->logicalDevice.logicalDeviceHandle);
-			goto failed;
-		}
-		fplConsoleFormatOut("Successfully created presentation-complete semaphore for device '%p' -> %p\n", state->logicalDevice.logicalDeviceHandle, state->presentCompleteSemaphoreHandle);
-
-		fplConsoleFormatOut("Create render-complete semaphore for device '%p'\n", state->logicalDevice.logicalDeviceHandle);
-		res = deviceApi->vkCreateSemaphore(state->logicalDevice.logicalDeviceHandle, &semaphoreCreateInfo, allocator, &state->renderCompleteSemaphoreHandle);;
-		if (res != VK_SUCCESS) {
-			fplConsoleFormatError("Failed creating render-complete semaphore for device '%p'\n", state->logicalDevice.logicalDeviceHandle);
-			goto failed;
-		}
-		fplConsoleFormatOut("Successfully created render-complete semaphore for device '%p' -> %p\n", state->logicalDevice.logicalDeviceHandle, state->renderCompleteSemaphoreHandle);
-		fplConsoleFormatOut("\n");
-	}
-
-	//
-	// Swap-Chain
-	//
-	fplConsoleFormatOut("*************************************************************************\n");
-	fplConsoleFormatOut("Swap-Chain\n");
+	fplConsoleFormatOut("Frame\n");
 	fplConsoleFormatOut("*************************************************************************\n");
 	bool vsync = true;
 	VkExtent2D size = fplStructInit(VkExtent2D, winWidth, winHeight);
-	VkSwapchainKHR oldSwapChain = VK_NULL_HANDLE;
-	if (!VulkanCreateSwapChain(allocator, &state->logicalDevice, &state->surface, &state->swapChain, oldSwapChain, size, vsync)) {
-		fplConsoleFormatError("Failed to create a swap-chain for device '%p' with size of %lu x %lu'!\n", state->logicalDevice.logicalDeviceHandle, size.width, size.height);
+	if (!VulkanCreateFrame(allocator, &state->logicalDevice, &state->surface, &state->frame, size, vsync)) {
+		fplConsoleFormatError("Failed to create a frame for device '%p' and surface '%p' with size of %lu x %lu!\n", state->logicalDevice.logicalDeviceHandle, state->surface.surfaceHandle, size.width, size.height);
 		goto failed;
 	}
 
@@ -2393,4 +2437,4 @@ cleanup:
 		fplPlatformRelease();
 	}
 	return(appResult);
-}
+	}
