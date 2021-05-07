@@ -17,7 +17,7 @@
 //
 // Vulkan Utils
 //
-const char *VulkanValidationLayerName = "VK_LAYER_KHRONOS_validation";
+const char *VulkanValidationLayerNames[] = {"VK_LAYER_KHRONOS_validation", "VK_LAYER_LUNARG_standard_validation"};
 const char *VulkanKHRSurfaceName = "VK_KHR_surface";
 
 typedef enum VulkanVendorID {
@@ -1147,7 +1147,6 @@ static bool VulkanCreateInstance(VkAllocationCallbacks *allocator, const VulkanC
 	//
 	bool supportsKHRSurface = IsVulkanFeatureSupported(instanceProperties->supportedExtensions.items, instanceProperties->supportedExtensions.count, VulkanKHRSurfaceName);
 	bool supportsKHRPlatformSurface = IsVulkanFeatureSupported(instanceProperties->supportedExtensions.items, instanceProperties->supportedExtensions.count, khrPlatformSurfaceName);
-	bool supportsValidationLayer = IsVulkanFeatureSupported(instanceProperties->supportedLayers.items, instanceProperties->supportedLayers.count, VulkanValidationLayerName);
 
 	//
 	// Check Extensions
@@ -1157,7 +1156,16 @@ static bool VulkanCreateInstance(VkAllocationCallbacks *allocator, const VulkanC
 	fplConsoleFormatOut("- Supported %s: %s\n", khrPlatformSurfaceName, (supportsKHRPlatformSurface ? "yes" : "no"));
 
 	fplConsoleFormatOut("Validate instance layers:\n");
-	fplConsoleFormatOut("- Supported %s: %s\n", VulkanValidationLayerName, (supportsValidationLayer ? "yes" : "no"));
+	const char *supportedValidationLayerName = fpl_null;
+	for (uint32_t i = 0; i < fplArrayCount(VulkanValidationLayerNames); ++i) {
+		const char *validationLayerName = VulkanValidationLayerNames[i];
+		bool isSupported = IsVulkanFeatureSupported(instanceProperties->supportedLayers.items, instanceProperties->supportedLayers.count, validationLayerName);
+		fplConsoleFormatOut("- Supported %s: %s\n", validationLayerName, (isSupported ? "yes" : "no"));
+		if (isSupported) {
+			supportedValidationLayerName = validationLayerName;
+			break;
+		}
+	}
 
 	if (!supportsKHRSurface || !supportsKHRPlatformSurface || khrPlatformSurfaceName == fpl_null) {
 		fplConsoleFormatError("Not supported KHR platform!\n");
@@ -1176,7 +1184,7 @@ static bool VulkanCreateInstance(VkAllocationCallbacks *allocator, const VulkanC
 	appInfo->pEngineName = "FPL_Vulkan";
 	appInfo->applicationVersion = VK_MAKE_VERSION(1, 0, 0);
 	appInfo->engineVersion = VK_MAKE_VERSION(1, 0, 0);
-	appInfo->apiVersion = VK_API_VERSION_1_2;
+	appInfo->apiVersion = VK_API_VERSION_1_1;
 
 	uint32_t enabledInstanceExtensionCount = 0;
 	const char *enabledInstanceExtensions[8] = { 0 };
@@ -1188,9 +1196,9 @@ static bool VulkanCreateInstance(VkAllocationCallbacks *allocator, const VulkanC
 
 	uint32_t enabledInstanceLayerCount = 0;
 	const char *enabledInstanceLayers[8] = { 0 };
-	if (useValidation && supportsValidationLayer) {
+	if (useValidation && fplGetStringLength(supportedValidationLayerName) > 0) {
 		instance->hasValidationLayer = true;
-		enabledInstanceLayers[enabledInstanceLayerCount++] = VulkanValidationLayerName;
+		enabledInstanceLayers[enabledInstanceLayerCount++] = supportedValidationLayerName;
 	}
 
 	VkDebugUtilsMessengerCreateInfoEXT debugCreateInfo = fplZeroInit;
@@ -1202,7 +1210,7 @@ static bool VulkanCreateInstance(VkAllocationCallbacks *allocator, const VulkanC
 	instanceCreateInfo.enabledLayerCount = enabledInstanceLayerCount;
 	instanceCreateInfo.ppEnabledExtensionNames = enabledInstanceExtensions;
 	instanceCreateInfo.ppEnabledLayerNames = enabledInstanceLayers;
-	if (useValidation && supportsValidationLayer) {
+	if (useValidation && fplGetStringLength(supportedValidationLayerName) > 0) {
 		debugCreateInfo = MakeVulkanDebugMessengerCreateInfo();
 		instanceCreateInfo.pNext = (VkDebugUtilsMessengerCreateInfoEXT *)&debugCreateInfo;
 	}
@@ -1595,12 +1603,22 @@ bool VulkanCreateLogicalDevice(
 	}
 
 	// Validation layers for device
-	uint32_t enabledDeviceLayerCount = 0;
-	const char *enabledDeviceLayers[8] = fplZeroInit;
-	if (useValidations && IsVulkanFeatureSupported(physicalDevice->supportedLayers.items, physicalDevice->supportedLayers.count, VulkanValidationLayerName)) {
-		enabledDeviceLayers[enabledDeviceLayerCount++] = VulkanValidationLayerName;
+	const char *supportedValidationLayerName = fpl_null;
+	if (useValidations) {
+		for (uint32_t i = 0; i < fplArrayCount(VulkanValidationLayerNames); ++i) {
+			const char *validationLayerName = VulkanValidationLayerNames[i];
+			if (IsVulkanFeatureSupported(physicalDevice->supportedLayers.items, physicalDevice->supportedLayers.count, validationLayerName)) {
+				supportedValidationLayerName = validationLayerName;
+				break;
+			}
+		}
 	}
 
+	uint32_t enabledDeviceLayerCount = 0;
+	const char *enabledDeviceLayers[8] = fplZeroInit;
+	if (useValidations && fplGetStringLength(supportedValidationLayerName) > 0) {
+		enabledDeviceLayers[enabledDeviceLayerCount++] = supportedValidationLayerName;
+	}
 
 	// Add SwapChain KHR extension when logical device will be used for a swap chain
 	if (useSwapChain) {
