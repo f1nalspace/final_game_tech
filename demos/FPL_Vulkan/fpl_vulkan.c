@@ -2229,7 +2229,7 @@ static void VulkanTemporaryRecordBuffer(const VulkanLogicalDevice *logicalDevice
 			cmdBuffer,
 			VK_PIPELINE_STAGE_TRANSFER_BIT,
 			VK_PIPELINE_STAGE_TRANSFER_BIT,
-			0, 
+			0,
 			0,
 			fpl_null,
 			0,
@@ -2244,7 +2244,7 @@ static void VulkanTemporaryRecordBuffer(const VulkanLogicalDevice *logicalDevice
 			cmdBuffer,
 			VK_PIPELINE_STAGE_TRANSFER_BIT,
 			VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
-			0, 
+			0,
 			0,
 			fpl_null,
 			0,
@@ -2264,10 +2264,10 @@ void VulkanDestroyFrame(VkAllocationCallbacks *allocator, const VulkanLogicalDev
 	const VulkanDeviceApi *deviceApi = &logicalDevice->deviceApi;
 
 	// Destroy Semaphores
-	if(frame->imageAvailableSemaphoreHandle != VK_NULL_HANDLE) {
+	if (frame->imageAvailableSemaphoreHandle != VK_NULL_HANDLE) {
 		deviceApi->vkDestroySemaphore(logicalDevice->logicalDeviceHandle, frame->imageAvailableSemaphoreHandle, allocator);
 	}
-	if(frame->renderCompleteSemaphoreHandle != VK_NULL_HANDLE) {
+	if (frame->renderCompleteSemaphoreHandle != VK_NULL_HANDLE) {
 		deviceApi->vkDestroySemaphore(logicalDevice->logicalDeviceHandle, frame->renderCompleteSemaphoreHandle, allocator);
 	}
 
@@ -2644,7 +2644,16 @@ int main(int argc, char **argv) {
 
 	fplSettings settings = fplMakeDefaultSettings();
 	settings.video.driver = fplVideoDriverType_None;
-	if (!fplPlatformInit(fplInitFlags_Window | fplInitFlags_GameController | fplInitFlags_Console, &settings)) {
+
+	fplInitFlags initFlags = fplInitFlags_Window | fplInitFlags_GameController | fplInitFlags_Console;
+
+	// Enable this to test FPL integration
+#if 0
+	initFlags |= fplInitFlags_Video;
+	settings.video.driver = fplVideoDriverType_Vulkan;
+#endif
+
+	if (!fplPlatformInit(initFlags, &settings)) {
 		fplPlatformResultType resultType = fplGetPlatformResult();
 		const char *resultName = fplGetPlatformResultName(resultType);
 		fplConsoleFormatError("Failed to initialize FPL '%s'!\n", resultName);
@@ -2715,6 +2724,6 @@ cleanup:
 
 		fplConsoleFormatOut("Shutdown Platform\n");
 		fplPlatformRelease();
-}
+	}
 	return(appResult);
 }
