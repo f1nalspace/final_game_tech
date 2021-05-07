@@ -2187,8 +2187,8 @@ static void VulkanTemporaryRecordBuffer(const VulkanLogicalDevice *logicalDevice
 	VkCommandBufferBeginInfo cmdBufferBeginInfo = fplZeroInit;
 	cmdBufferBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
 	cmdBufferBeginInfo.flags = VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT;
-	
-	VkClearColorValue clearColor = fplStructInit(VkClearColorValue, 1.0f, 0.8f, 0.4f, 0.0f);
+
+	VkClearColorValue clearColor = fplStructInit(VkClearColorValue, 0.392f, 0.584f, 0.929f, 1.0f);
 
 	VkImageSubresourceRange imageSubresourceRange = fplZeroInit;
 	imageSubresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
