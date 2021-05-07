@@ -3,6 +3,8 @@
 
 #if defined(FPL_PLATFORM_WINDOWS)
 #define VK_USE_PLATFORM_WIN32_KHR
+#elif defined(FPL_SUBPLATFORM_X11)
+#define VK_USE_PLATFORM_XLIB_KHR
 #endif
 
 //#define VK_NO_PROTOTYPES
@@ -635,17 +637,17 @@ typedef struct VulkanQueueFamilyIndex {
 
 #define INVALID_VULKAN_QUEUE_FAMILY_INDEX fplStructInit(VulkanQueueFamilyIndex, UINT32_MAX, 0)
 
-fpl_inline bool IsVulkanValidQueueFamilyIndex(const VulkanQueueFamilyIndex index) {
+bool IsVulkanValidQueueFamilyIndex(const VulkanQueueFamilyIndex index) {
 	bool result = (index.index < index.maxCount) && (index.index != UINT32_MAX);
 	return(result);
 }
 
-fpl_inline bool AreVulkanQueueFamiliesEqual(const VulkanQueueFamilyIndex a, const VulkanQueueFamilyIndex b) {
+bool AreVulkanQueueFamiliesEqual(const VulkanQueueFamilyIndex a, const VulkanQueueFamilyIndex b) {
 	bool result = (a.maxCount == b.maxCount) && (a.index == b.index);
 	return(result);
 }
 
-static void VulkanVersionToString(const uint32_t versionNumber, const size_t outNameCapacity, char *outName) {
+void VulkanVersionToString(const uint32_t versionNumber, const size_t outNameCapacity, char *outName) {
 	int32_t major = VK_VERSION_MAJOR(versionNumber);
 	int32_t minor = VK_VERSION_MINOR(versionNumber);
 	int32_t patch = VK_VERSION_PATCH(versionNumber);
@@ -732,31 +734,37 @@ bool VulkanLoadCoreAPI(VulkanCoreApi *coreApi) {
 	assert(coreApi != fpl_null);
 
 #if defined(VK_USE_PLATFORM_WIN32_KHR)
-	const char *vulkanLibraryFileName = "vulkan-1.dll";
+	const char *libraryNames[] = {
+		"vulkan-1.dll"
+	};
 #elif defined(VK_USE_PLATFORM_XCB_KHR) || defined(VK_USE_PLATFORM_XLIB_KHR)
-	const char *vulkanLibraryFileName = "libvulkan.so";
+	const char *libraryNames[] = {
+		"libvulkan.so", 
+		"libvulkan.so.1"
+	};
 #else
-#	error "Unsupported Platform!"
+	return(false);
 #endif
 
 	fplClearStruct(coreApi);
-
-	fplConsoleFormatOut("Load Vulkan API '%s'\n", vulkanLibraryFileName);
-	if (!fplDynamicLibraryLoad(vulkanLibraryFileName, &coreApi->libHandle)) {
-		return(false);
-	}
 
 	fplDynamicLibraryHandle *handle = &coreApi->libHandle;
 
 #define VULKAN_LIBRARY_GET_PROC_ADDRESS(libHandle, libName, target, type, name) \
 	(target)->name = (type)fplGetDynamicLibraryProc(libHandle, #name); \
 	if ((target)->name == fpl_null) { \
+		VulkanUnloadCoreAPI(coreApi); \
 		FPL__WARNING("Vulkan", "Failed getting procedure address '%s' from library '%s'", #name, libName); \
-		break; \
+		continue; \
 	}
 
 	bool success = false;
-	do {
+	for (uint32_t i = 0; i < fplArrayCount(libraryNames); ++i) {
+		const char *vulkanLibraryFileName = libraryNames[i];
+		fplConsoleFormatOut("Load Vulkan API '%s'\n", vulkanLibraryFileName);
+		if (!fplDynamicLibraryLoad(vulkanLibraryFileName, &coreApi->libHandle)) {
+			continue;
+		}
 
 		VULKAN_LIBRARY_GET_PROC_ADDRESS(handle, vulkanLibraryFileName, coreApi, PFN_vkCreateInstance, vkCreateInstance);
 		VULKAN_LIBRARY_GET_PROC_ADDRESS(handle, vulkanLibraryFileName, coreApi, PFN_vkDestroyInstance, vkDestroyInstance);
@@ -765,7 +773,8 @@ bool VulkanLoadCoreAPI(VulkanCoreApi *coreApi) {
 		VULKAN_LIBRARY_GET_PROC_ADDRESS(handle, vulkanLibraryFileName, coreApi, PFN_vkGetInstanceProcAddr, vkGetInstanceProcAddr);
 
 		success = true;
-	} while (0);
+		break;
+	}
 
 #undef VULKAN_LIBRARY_GET_PROC_ADDRESS
 
@@ -794,9 +803,12 @@ typedef struct VulkanInstanceApi {
 	PFN_vkGetPhysicalDeviceSurfaceCapabilitiesKHR vkGetPhysicalDeviceSurfaceCapabilitiesKHR;
 	PFN_vkGetPhysicalDeviceSurfacePresentModesKHR vkGetPhysicalDeviceSurfacePresentModesKHR;
 
-#if defined(FPL_PLATFORM_WINDOWS)
+#if defined(VK_USE_PLATFORM_WIN32_KHR)
 	PFN_vkCreateWin32SurfaceKHR vkCreateWin32SurfaceKHR;
 	PFN_vkGetPhysicalDeviceWin32PresentationSupportKHR vkGetPhysicalDeviceWin32PresentationSupportKHR;
+#elif defined(VK_USE_PLATFORM_XLIB_KHR)
+	PFN_vkCreateXlibSurfaceKHR vkCreateXlibSurfaceKHR;
+	PFN_vkGetPhysicalDeviceXlibPresentationSupportKHR vkGetPhysicalDeviceXlibPresentationSupportKHR;
 #endif
 
 	fpl_b32 isValid;
@@ -843,9 +855,12 @@ bool LoadVulkanInstanceAPI(const VulkanCoreApi *coreApi, VulkanInstanceApi *inst
 		VULKAN_INSTANCE_GET_PROC_ADDRESS(instanceApi, PFN_vkGetPhysicalDeviceSurfaceCapabilitiesKHR, vkGetPhysicalDeviceSurfaceCapabilitiesKHR);
 		VULKAN_INSTANCE_GET_PROC_ADDRESS(instanceApi, PFN_vkGetPhysicalDeviceSurfacePresentModesKHR, vkGetPhysicalDeviceSurfacePresentModesKHR);
 
-#if defined(FPL_PLATFORM_WINDOWS)
+#if defined(VK_USE_PLATFORM_WIN32_KHR)
 		VULKAN_INSTANCE_GET_PROC_ADDRESS(instanceApi, PFN_vkCreateWin32SurfaceKHR, vkCreateWin32SurfaceKHR);
 		VULKAN_INSTANCE_GET_PROC_ADDRESS(instanceApi, PFN_vkGetPhysicalDeviceWin32PresentationSupportKHR, vkGetPhysicalDeviceWin32PresentationSupportKHR);
+#elif defined(VK_USE_PLATFORM_XLIB_KHR)
+		VULKAN_INSTANCE_GET_PROC_ADDRESS(instanceApi, PFN_vkCreateXlibSurfaceKHR, vkCreateXlibSurfaceKHR);
+		VULKAN_INSTANCE_GET_PROC_ADDRESS(instanceApi, PFN_vkGetPhysicalDeviceXlibPresentationSupportKHR, vkGetPhysicalDeviceXlibPresentationSupportKHR);
 #endif
 
 		success = true;
@@ -1222,12 +1237,16 @@ static bool VulkanCreateInstance(VkAllocationCallbacks *allocator, const VulkanC
 	return(true);
 }
 
+typedef struct VulkanQueueFamilyList {
+	FIXED_TYPED_ARRAY_INNER(VkQueueFamilyProperties)
+} VulkanQueueFamilyList;
+
 typedef struct VulkanPhysicalDevice {
 	VkPhysicalDeviceProperties properties;
 	VkPhysicalDeviceFeatures features;
 	VkPhysicalDeviceMemoryProperties memoryProperties;
 
-	FIXED_TYPED_ARRAY(VkQueueFamilyProperties, queueFamilies);
+	VulkanQueueFamilyList queueFamilies;
 	StringTable supportedExtensions;
 	StringTable supportedLayers;
 
@@ -1659,10 +1678,22 @@ bool VulkanCreateLogicalDevice(
 	return(true);
 }
 
+typedef struct VulkanSurfacePresentationModeList {
+	FIXED_TYPED_ARRAY_INNER(VkPresentModeKHR)
+} VulkanSurfacePresentationModeList;
+
+typedef struct VulkanSurfaceFormatList {
+	FIXED_TYPED_ARRAY_INNER(VkSurfaceFormatKHR)
+} VulkanSurfaceFormatList;
+
+typedef struct VulkanSurfaceQueuesForPresentList {
+	FIXED_TYPED_ARRAY_INNER(VkBool32)
+} VulkanSurfaceQueuesForPresentList;
+
 typedef struct VulkanSurface {
-	FIXED_TYPED_ARRAY(VkBool32, supportedQueuesForPresent);
-	FIXED_TYPED_ARRAY(VkPresentModeKHR, presentationModes);
-	FIXED_TYPED_ARRAY(VkSurfaceFormatKHR, surfaceFormats);
+	VulkanSurfaceQueuesForPresentList supportedQueuesForPresent;
+	VulkanSurfacePresentationModeList presentationModes;
+	VulkanSurfaceFormatList surfaceFormats;
 	VulkanQueueFamilyIndex graphicsQueueFamilyIndex;
 	VulkanQueueFamilyIndex presentationQueueFamilyIndex;
 	VkSurfaceKHR surfaceHandle;
@@ -1701,7 +1732,7 @@ bool VulkanCreateSurface(VkAllocationCallbacks *allocator, const VulkanInstanceA
 	//
 	// Create Surface KHR
 	//
-#if defined(FPL_PLATFORM_WINDOWS)
+#if defined(VK_USE_PLATFORM_WIN32_KHR)
 	// TODO(final): This is just temporary, until we can query the platform window informations from FPL
 	HWND windowHandle = fpl__global__AppState->window.win32.windowHandle;
 	HINSTANCE appHandle = GetModuleHandle(fpl_null);
@@ -1718,8 +1749,25 @@ bool VulkanCreateSurface(VkAllocationCallbacks *allocator, const VulkanInstanceA
 		VulkanDestroySurface(allocator, instanceApi, surface, instanceHandle);
 		return(false);
 	}
-	fplConsoleFormatOut("Successfully created win32 surface KHR for window handle '%p' and instance '%p' -> '%p'\n", createInfo.hwnd, instanceHandle, surface->surfaceHandle);
-	fplConsoleFormatOut("\n");
+	fplConsoleFormatOut("Successfully created win32 surface KHR for window handle '%p' and instance '%p' -> '%p'\n\n", createInfo.hwnd, instanceHandle, surface->surfaceHandle);
+#elif defined(VK_USE_PLATFORM_XLIB_KHR)
+	// TODO(final): This is just temporary, until we can query the platform window informations from FPL
+	Window window = fpl__global__AppState->window.x11.window;
+	Display *display = fpl__global__AppState->window.x11.display;
+	
+	VkXlibSurfaceCreateInfoKHR createInfo = fplZeroInit;
+	createInfo.sType = VK_STRUCTURE_TYPE_XLIB_SURFACE_CREATE_INFO_KHR;
+	createInfo.dpy = display;
+	createInfo.window = window;
+	
+	fplConsoleFormatOut("Creating X11 surface KHR for window '%UL', display '%p' and instance '%p'\n", window, display, instanceHandle);
+	VkResult res = instanceApi->vkCreateXlibSurfaceKHR(instanceHandle, &createInfo, allocator, &surface->surfaceHandle);
+	if (res != VK_SUCCESS) {
+		fplConsoleFormatError("Failed creating X11 surface KHR for window '%UL', display '%p' and instance '%p'!\n", window, display, instanceHandle);
+		VulkanDestroySurface(allocator, instanceApi, surface, instanceHandle);
+		return(false);
+	}
+	fplConsoleFormatOut("Successfully created X11 surface KHR for window '%UL', display '%p' and instance '%p' -> '%p'\n\n", window, display, instanceHandle, surface->surfaceHandle);
 #else
 	fplConsoleFormatError("Unsupported Platform!\n");
 	return(false);

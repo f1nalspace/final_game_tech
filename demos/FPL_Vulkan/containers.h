@@ -49,11 +49,14 @@ FixedArray AllocFixedArray(const size_t count, const size_t elementSize) {
 	return(result);
 }
 
-#define FIXED_TYPED_ARRAY(type, name) \
-struct { \
+#define FIXED_TYPED_ARRAY_INNER(type) \
 	FixedArray __arr; \
 	type *items; \
-	uint32_t itemCount; \
+	uint32_t itemCount;
+
+#define FIXED_TYPED_ARRAY(type, name) \
+struct { \
+	FIXED_TYPED_ARRAY_INNER(type) \
 } ##name
 
 #define ALLOC_FIXED_TYPED_ARRAY(ptr, type, count) \
