@@ -17863,7 +17863,7 @@ typedef struct fpl__X11VideoVulkanState {
 	fpl__VulkanApi api;
 } fpl__X11VideoVulkanState;
 
-fpl_internal bool fpl__X11InitVideoVulkan(fpl__X11AppState *appState, fpl__X11WindowState *windowState, const fplVideoSettings *videoSettings, fpl__X11VideoVulkanState *vulkanState) {
+fpl_internal bool fpl__X11InitVideoVulkan(fpl__X11SubplatformState *appState, fpl__X11WindowState *windowState, const fplVideoSettings *videoSettings, fpl__X11VideoVulkanState *vulkanState) {
 	return(false);
 }
 
@@ -20880,7 +20880,7 @@ fpl_internal void fpl__ShutdownVideo(fpl__PlatformAppState *appState, fpl__Video
 #			if defined(FPL_PLATFORM_WINDOWS)
 				fpl__Win32ReleaseVideoVulkan(&videoState->win32.vulkan);
 #			elif defined(FPL_SUBPLATFORM_X11)
-				fpl__X11ReleaseVideoVulkan(&appState->x11, &appState->window.x11, &videoState->x11.vulkan);
+				fpl__X11ReleaseVideoVulkan(&videoState->x11.vulkan);
 #			endif
 		} break;
 #		endif // FPL__ENABLE_VIDEO_VULKAN
