@@ -882,6 +882,7 @@ typedef struct VulkanDeviceApi {
 	PFN_vkBeginCommandBuffer vkBeginCommandBuffer;
 	PFN_vkEndCommandBuffer vkEndCommandBuffer;
 	PFN_vkResetCommandBuffer vkResetCommandBuffer;
+	PFN_vkQueueSubmit vkQueueSubmit;
 
 	PFN_vkCreateSemaphore vkCreateSemaphore;
 	PFN_vkDestroySemaphore vkDestroySemaphore;
@@ -929,6 +930,7 @@ bool VulkanLoadDeviceApi(const VulkanInstanceApi *instanceApi, VulkanDeviceApi *
 		VULKAN_DEVICE_GET_PROC_ADDRESS(deviceApi, PFN_vkBeginCommandBuffer, vkBeginCommandBuffer);
 		VULKAN_DEVICE_GET_PROC_ADDRESS(deviceApi, PFN_vkEndCommandBuffer, vkEndCommandBuffer);
 		VULKAN_DEVICE_GET_PROC_ADDRESS(deviceApi, PFN_vkResetCommandBuffer, vkResetCommandBuffer);
+		VULKAN_DEVICE_GET_PROC_ADDRESS(deviceApi, PFN_vkQueueSubmit, vkQueueSubmit);
 
 		VULKAN_DEVICE_GET_PROC_ADDRESS(deviceApi, PFN_vkCreateSemaphore, vkCreateSemaphore);
 		VULKAN_DEVICE_GET_PROC_ADDRESS(deviceApi, PFN_vkDestroySemaphore, vkDestroySemaphore);
@@ -1450,7 +1452,6 @@ void VulkanDestroyLogicalDevice(VkAllocationCallbacks *allocator, const VulkanIn
 	VulkanUnloadDeviceApi(&logicalDevice->deviceApi);
 
 	if (logicalDevice->logicalDeviceHandle != fpl_null) {
-		deviceApi->vkDeviceWaitIdle(logicalDevice->logicalDeviceHandle);
 		deviceApi->vkDestroyDevice(logicalDevice->logicalDeviceHandle, allocator);
 	}
 
@@ -1895,10 +1896,12 @@ typedef struct VulkanSwapChain {
 	VkSwapchainKHR swapChainHandle;
 	VkCommandPool presentationCommandPoolHandle;
 	VkCommandBuffer presentationCommandBuffers[MAX_SWAPCHAIN_IMAGE_COUNT];
+	VkImage images[MAX_SWAPCHAIN_IMAGE_COUNT];
 	uint32_t imageCount;
+	fpl_b32 isVSync;
 } VulkanSwapChain;
 
-void VulkanDestroySwapChain(VkAllocationCallbacks *allocator, const VulkanLogicalDevice *logicalDevice, VulkanSwapChain *swapChain) {
+static void VulkanClearSwapChain(VkAllocationCallbacks *allocator, const VulkanLogicalDevice *logicalDevice, VulkanSwapChain *swapChain) {
 	assert(logicalDevice != fpl_null);
 	assert(swapChain != fpl_null);
 
@@ -1911,11 +1914,25 @@ void VulkanDestroySwapChain(VkAllocationCallbacks *allocator, const VulkanLogica
 
 	if (swapChain->imageCount > 0 && swapChain->presentationCommandBuffers[0] != VK_NULL_HANDLE) {
 		deviceApi->vkFreeCommandBuffers(logicalDevice->logicalDeviceHandle, swapChain->presentationCommandPoolHandle, swapChain->imageCount, swapChain->presentationCommandBuffers);
+		fplClearStruct(swapChain->presentationCommandBuffers);
 	}
 
 	if (swapChain->presentationCommandPoolHandle != fpl_null) {
 		deviceApi->vkDestroyCommandPool(logicalDevice->logicalDeviceHandle, swapChain->presentationCommandPoolHandle, allocator);
+		swapChain->presentationCommandPoolHandle = VK_NULL_HANDLE;
 	}
+}
+
+void VulkanDestroySwapChain(VkAllocationCallbacks *allocator, const VulkanLogicalDevice *logicalDevice, VulkanSwapChain *swapChain) {
+	assert(logicalDevice != fpl_null);
+	assert(swapChain != fpl_null);
+
+	if (logicalDevice->logicalDeviceHandle == VK_NULL_HANDLE) return;
+	if (swapChain->swapChainHandle == VK_NULL_HANDLE) return;
+
+	const VulkanDeviceApi *deviceApi = &logicalDevice->deviceApi;
+
+	VulkanClearSwapChain(allocator, logicalDevice, swapChain);
 
 	if (swapChain->swapChainHandle != VK_NULL_HANDLE) {
 		deviceApi->vkDestroySwapchainKHR(logicalDevice->logicalDeviceHandle, swapChain->swapChainHandle, allocator);
@@ -1944,7 +1961,7 @@ bool VulkanCreateSwapChain(
 
 	const VulkanDeviceApi *deviceApi = &logicalDevice->deviceApi;
 
-	// Wait for device to be ready
+	// We may need to wait until the device is idle
 	deviceApi->vkDeviceWaitIdle(logicalDevice->logicalDeviceHandle);
 
 	// Determine the number of images
@@ -2077,14 +2094,27 @@ bool VulkanCreateSwapChain(
 	}
 	fplConsoleFormatOut("Successfully created Swap-Chain for device '%p' with size of %lu x %lu -> %p\n\n", logicalDevice->logicalDeviceHandle, swapchainExtent.width, swapchainExtent.height, swapChain->swapChainHandle);
 
+	// Destroy old swap chain
+	if (oldSwapchainHandle != VK_NULL_HANDLE) {
+		fplConsoleFormatOut("Destroy previous Swap-Chain '%p' for device '%p'\n", oldSwapchainHandle, logicalDevice->logicalDeviceHandle);
+		deviceApi->vkDestroySwapchainKHR(logicalDevice->logicalDeviceHandle, oldSwapchainHandle, allocator);
+	}
+
 	//
-	// Get image count
+	// Get images
 	//
-	fplConsoleFormatOut("Get the number of swap-chain images for device '%p' and swap-chain '%p'\n", logicalDevice->logicalDeviceHandle, swapChain->swapChainHandle);
+	fplConsoleFormatOut("Get swap-chain images for device '%p' and swap-chain '%p'\n", logicalDevice->logicalDeviceHandle, swapChain->swapChainHandle);
 	swapChain->imageCount = 0;
+	fplClearStruct(swapChain->images);
 	res = deviceApi->vkGetSwapchainImagesKHR(logicalDevice->logicalDeviceHandle, swapChain->swapChainHandle, &swapChain->imageCount, fpl_null);
 	if (res != VK_SUCCESS || swapChain->imageCount > MAX_SWAPCHAIN_IMAGE_COUNT) {
-		fplConsoleFormatError("Failed to get the number of swap-chain images for device '%p' and swap-chain '%p' or the image-count of '&%lu' exceeds the maximum available count of %lu!\n", logicalDevice->logicalDeviceHandle, swapChain->swapChainHandle, swapChain->imageCount, MAX_SWAPCHAIN_IMAGE_COUNT);
+		fplConsoleFormatError("Failed to get swap-chain images for device '%p' and swap-chain '%p' or the image-count of '&%lu' exceeds the maximum available count of %lu!\n", logicalDevice->logicalDeviceHandle, swapChain->swapChainHandle, swapChain->imageCount, MAX_SWAPCHAIN_IMAGE_COUNT);
+		VulkanDestroySwapChain(allocator, logicalDevice, swapChain);
+		return(false);
+	}
+	res = deviceApi->vkGetSwapchainImagesKHR(logicalDevice->logicalDeviceHandle, swapChain->swapChainHandle, &swapChain->imageCount, swapChain->images);
+	if (res != VK_SUCCESS) {
+		fplConsoleFormatError("Failed to get swap-chain images for device '%p' and swap-chain '%p' or the image-count of '&%lu' exceeds the maximum available count of %lu!\n", logicalDevice->logicalDeviceHandle, swapChain->swapChainHandle, swapChain->imageCount, MAX_SWAPCHAIN_IMAGE_COUNT);
 		VulkanDestroySwapChain(allocator, logicalDevice, swapChain);
 		return(false);
 	}
@@ -2093,18 +2123,18 @@ bool VulkanCreateSwapChain(
 	//
 	// Presentation Command Pool
 	// 
-	VkCommandPoolCreateInfo presentationCommandPoolCreateInfo = fplZeroInit;
-	presentationCommandPoolCreateInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
-	presentationCommandPoolCreateInfo.queueFamilyIndex = surface->presentationQueueFamilyIndex.index;
-	presentationCommandPoolCreateInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
-	fplConsoleFormatOut("Create presentation command pool for device '%p' and queue family '%lu'\n", logicalDevice->logicalDeviceHandle, presentationCommandPoolCreateInfo.queueFamilyIndex);
-	res = deviceApi->vkCreateCommandPool(logicalDevice->logicalDeviceHandle, &presentationCommandPoolCreateInfo, allocator, &swapChain->presentationCommandPoolHandle);
+	VkCommandPoolCreateInfo cmdPoolCreateInfo = fplZeroInit;
+	cmdPoolCreateInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+	cmdPoolCreateInfo.queueFamilyIndex = surface->presentationQueueFamilyIndex.index;
+	cmdPoolCreateInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+	fplConsoleFormatOut("Create presentation command pool for device '%p' and queue family '%lu'\n", logicalDevice->logicalDeviceHandle, cmdPoolCreateInfo.queueFamilyIndex);
+	res = deviceApi->vkCreateCommandPool(logicalDevice->logicalDeviceHandle, &cmdPoolCreateInfo, allocator, &swapChain->presentationCommandPoolHandle);
 	if (res != VK_SUCCESS) {
-		fplConsoleFormatError("Failed to create the presentation command pool for device '%p' and queue family '%lu'!\n\n", logicalDevice->logicalDeviceHandle, presentationCommandPoolCreateInfo.queueFamilyIndex);
+		fplConsoleFormatError("Failed to create the presentation command pool for device '%p' and queue family '%lu'!\n\n", logicalDevice->logicalDeviceHandle, cmdPoolCreateInfo.queueFamilyIndex);
 		VulkanDestroySwapChain(allocator, logicalDevice, swapChain);
 		return(false);
 	}
-	fplConsoleFormatOut("Successfully created presentation command pool for device '%p' and queue family '%lu'\n\n", logicalDevice->logicalDeviceHandle, presentationCommandPoolCreateInfo.queueFamilyIndex);
+	fplConsoleFormatOut("Successfully created presentation command pool for device '%p' and queue family '%lu'\n\n", logicalDevice->logicalDeviceHandle, cmdPoolCreateInfo.queueFamilyIndex);
 
 	//
 	// Command Buffers
@@ -2124,11 +2154,7 @@ bool VulkanCreateSwapChain(
 	}
 	fplConsoleFormatOut("Successfully created %lu command buffers for device '%p' and swap chain '%p'\n\n", swapChain->imageCount, logicalDevice->logicalDeviceHandle, swapChain->swapChainHandle);
 
-	// Destroy old swap chain
-	if (oldSwapchainHandle != VK_NULL_HANDLE) {
-		fplConsoleFormatOut("Destroy previous Swap-Chain '%p' for device '%p'\n", oldSwapchainHandle, logicalDevice->logicalDeviceHandle);
-		deviceApi->vkDestroySwapchainKHR(logicalDevice->logicalDeviceHandle, oldSwapchainHandle, allocator);
-	}
+	swapChain->isVSync = isVSync;
 
 	return(true);
 }
@@ -2227,6 +2253,12 @@ static void VulkanShutdown(VulkanState *state) {
 	assert(state != fpl_null);
 
 	VkAllocationCallbacks *allocator = state->allocator;
+	const VulkanDeviceApi *deviceApi = &state->logicalDevice.deviceApi;
+
+	// We may need to wait until the device is idle
+	if (state->logicalDevice.logicalDeviceHandle != VK_NULL_HANDLE) {
+		deviceApi->vkDeviceWaitIdle(state->logicalDevice.logicalDeviceHandle);
+	}
 
 	// Destroy Frame
 	VulkanDestroyFrame(allocator, &state->logicalDevice, &state->frame);
@@ -2385,6 +2417,10 @@ static bool VulkanInitialize(VulkanState *state, const uint32_t winWidth, const 
 		goto failed;
 	}
 
+	//
+	// Temporary fill the command buffer
+	//
+
 	goto success;
 
 failed:
@@ -2396,23 +2432,91 @@ success:
 }
 
 // Swap-Chain images are not compatible with the window surface anymore (Resized)
-static void InvalidateFrame(VulkanFrame *frame) {
-	// Clear and wipe command buffers
+static bool InvalidateFrame(VulkanState *state, const VkExtent2D size) {
+	assert(state != fpl_null);
 
-	// Re-Create swap chain (oldSwapChain!!!)
+	VulkanLogicalDevice *logicalDevice = &state->logicalDevice;
+	VulkanFrame *frame = &state->frame;
+	VulkanSwapChain *swapChain = &frame->swapChain;
+	VulkanSurface *surface = &state->surface;
 
-	// Create command pool & buffers
+	if (logicalDevice->logicalDeviceHandle == VK_NULL_HANDLE)
+		return(false);
+	if (frame->swapChain.swapChainHandle == VK_NULL_HANDLE)
+		return(false);
+
+	const VulkanDeviceApi *deviceApi = &logicalDevice->deviceApi;
+
+	// Clear swap chain
+	VkSwapchainKHR oldSwapChain = swapChain->swapChainHandle;
+	VulkanClearSwapChain(state->allocator, logicalDevice, swapChain);
+
+	// Re-create swap chain (Old will be removed)
+	bool isVsync = swapChain->isVSync;
+	if (!VulkanCreateSwapChain(state->allocator, logicalDevice, surface, swapChain, oldSwapChain, size, isVsync)) {
+		return(false);
+	}
+
+	return(true);
 }
 
-static bool Draw(VulkanState *state) {
+static bool Draw(VulkanState *state, const VkExtent2D size) {
+	if (!state->isInitialized) return(false);
+
+	VkResult res;
+
+	VkDevice device = state->logicalDevice.logicalDeviceHandle;
+	VkSwapchainKHR swapChain = state->frame.swapChain.swapChainHandle;
+
+	const VulkanDeviceApi *deviceApi = &state->logicalDevice.deviceApi;
+
 	// Aquire next image, we it fails call InvalidateFrame() and exit out
+	VkFence fence = VK_NULL_HANDLE;
+	uint32_t imageIndex;
+	res = deviceApi->vkAcquireNextImageKHR(device, swapChain, UINT64_MAX, state->frame.imageAvailableSemaphoreHandle, fence, &imageIndex);
+	switch (res) {
+		case VK_SUCCESS:
+		case VK_SUBOPTIMAL_KHR:
+			break;
+		case VK_ERROR_OUT_OF_DATE_KHR:
+			return InvalidateFrame(state, size);
+		default:
+			return false;
+	}
 
-	// Submit Present Request (vkQueueSubmit)
+	VkPipelineStageFlags waitDstStageMask = VK_PIPELINE_STAGE_TRANSFER_BIT;
+	VkSubmitInfo submitInfo = fplZeroInit;
+	submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+	submitInfo.waitSemaphoreCount = 1;
+	submitInfo.pWaitSemaphores = &state->frame.imageAvailableSemaphoreHandle;
+	submitInfo.pWaitDstStageMask = &waitDstStageMask;
+	submitInfo.commandBufferCount = 1;
+	submitInfo.pCommandBuffers = &state->frame.swapChain.presentationCommandBuffers[imageIndex];
+	submitInfo.signalSemaphoreCount = 1;
+	submitInfo.pSignalSemaphores = &state->frame.renderCompleteSemaphoreHandle;
 
-	// Wait untilt he present has been finished or fails (vkQueuePresentKHR)
-	// On failure, call InvalidateFrame() and exit out
+	res = deviceApi->vkQueueSubmit(state->surface.presentationQueueHandle, 1, &submitInfo, fence);
+	if (res != VK_SUCCESS) {
+		return(false);
+	}
 
-	// Done we can do something with the image
+	VkPresentInfoKHR presentInfo = fplZeroInit;
+	presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
+	presentInfo.waitSemaphoreCount = 1;
+	presentInfo.pWaitSemaphores = &state->frame.renderCompleteSemaphoreHandle;
+	presentInfo.swapchainCount = 1;
+	presentInfo.pSwapchains = &state->frame.swapChain.swapChainHandle;
+	presentInfo.pImageIndices = &imageIndex;
+	res = deviceApi->vkQueuePresentKHR(state->surface.presentationQueueHandle, &presentInfo);
+	switch (res) {
+		case VK_SUCCESS:
+			break;
+		case VK_ERROR_OUT_OF_DATE_KHR:
+		case VK_SUBOPTIMAL_KHR:
+			return InvalidateFrame(state, size);
+		default:
+			return false;
+	}
 
 	return(true);
 }
@@ -2465,16 +2569,21 @@ int main(int argc, char **argv) {
 	fplConsoleFormatOut("-> Run main loop\n");
 	fplConsoleFormatOut("\n");
 
+	VkExtent2D drawSize = fplStructInit(VkExtent2D, initialWinSize.width, initialWinSize.height);
 	while (fplWindowUpdate()) {
 		fplEvent ev;
 		while (fplPollEvent(&ev)) {
 			if (ev.type == fplEventType_Window) {
-				if (ev.window.type == fplWindowEventType_Exposed) {
-
+				if (ev.window.type == fplWindowEventType_Resized) {
+					drawSize.width = ev.window.size.width;
+					drawSize.height = ev.window.size.height;
+					InvalidateFrame(state, drawSize);
 				}
 			}
 		}
-		Draw(state);
+
+		Draw(state, drawSize);
+
 		//fplVideoFlip();
 	}
 
@@ -2487,7 +2596,7 @@ cleanup:
 			fplConsoleFormatOut("Shutdown Vulkan\n");
 			VulkanShutdown(state);
 			fplMemoryFree(state);
-}
+		}
 
 #if 0
 		fplConsoleFormatOut("Press any key to exit\n");
