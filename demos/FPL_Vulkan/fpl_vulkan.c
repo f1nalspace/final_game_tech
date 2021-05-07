@@ -2180,7 +2180,7 @@ static void VulkanTemporaryRecordBuffer(const VulkanLogicalDevice *logicalDevice
 	VkCommandBufferBeginInfo cmdBufferBeginInfo = fplZeroInit;
 	cmdBufferBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
 	cmdBufferBeginInfo.flags = VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT;
-
+	
 	VkClearColorValue clearColor = fplStructInit(VkClearColorValue, 1.0f, 0.8f, 0.4f, 0.0f);
 
 	VkImageSubresourceRange imageSubresourceRange = fplZeroInit;
@@ -2191,6 +2191,9 @@ static void VulkanTemporaryRecordBuffer(const VulkanLogicalDevice *logicalDevice
 	imageSubresourceRange.layerCount = 1;
 
 	for (uint32_t imageIndex = 0; imageIndex < frame->swapChain.imageCount; ++imageIndex) {
+		VkCommandBuffer cmdBuffer = frame->swapChain.presentationCommandBuffers[imageIndex];
+		VkImage image = frame->swapChain.images[imageIndex];
+
 		VkImageMemoryBarrier barrierFromPresentToClear = fplZeroInit;
 		barrierFromPresentToClear.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
 		barrierFromPresentToClear.srcAccessMask = VK_ACCESS_MEMORY_READ_BIT;
@@ -2199,22 +2202,19 @@ static void VulkanTemporaryRecordBuffer(const VulkanLogicalDevice *logicalDevice
 		barrierFromPresentToClear.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
 		barrierFromPresentToClear.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
 		barrierFromPresentToClear.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-		barrierFromPresentToClear.image = frame->swapChain.images[imageIndex];
+		barrierFromPresentToClear.image = image;
 		barrierFromPresentToClear.subresourceRange = imageSubresourceRange;
 
 		VkImageMemoryBarrier barrierFromClearToPresent = fplZeroInit;
-		barrierFromPresentToClear.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-		barrierFromPresentToClear.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-		barrierFromPresentToClear.dstAccessMask = VK_ACCESS_MEMORY_READ_BIT;
-		barrierFromPresentToClear.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-		barrierFromPresentToClear.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
-		barrierFromPresentToClear.srcQueueFamilyIndex = 0;
-		barrierFromPresentToClear.dstQueueFamilyIndex = 0;
-		barrierFromPresentToClear.image = frame->swapChain.images[imageIndex];
-		barrierFromPresentToClear.subresourceRange = imageSubresourceRange;
-
-		VkCommandBuffer cmdBuffer = frame->swapChain.presentationCommandBuffers[imageIndex];
-		VkImage image = frame->swapChain.images[imageIndex];
+		barrierFromClearToPresent.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+		barrierFromClearToPresent.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+		barrierFromClearToPresent.dstAccessMask = VK_ACCESS_MEMORY_READ_BIT;
+		barrierFromClearToPresent.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+		barrierFromClearToPresent.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+		barrierFromClearToPresent.srcQueueFamilyIndex = 0;
+		barrierFromClearToPresent.dstQueueFamilyIndex = 0;
+		barrierFromClearToPresent.image = image;
+		barrierFromClearToPresent.subresourceRange = imageSubresourceRange;
 
 		deviceApi->vkBeginCommandBuffer(cmdBuffer, &cmdBufferBeginInfo);
 
