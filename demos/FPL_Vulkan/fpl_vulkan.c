@@ -1663,7 +1663,6 @@ typedef struct VulkanSurface {
 	FIXED_TYPED_ARRAY(VkBool32, supportedQueuesForPresent);
 	FIXED_TYPED_ARRAY(VkPresentModeKHR, presentationModes);
 	FIXED_TYPED_ARRAY(VkSurfaceFormatKHR, surfaceFormats);
-	VkSurfaceCapabilitiesKHR capabilities;
 	VulkanQueueFamilyIndex graphicsQueueFamilyIndex;
 	VulkanQueueFamilyIndex presentationQueueFamilyIndex;
 	VkSurfaceKHR surfaceHandle;
@@ -1839,18 +1838,6 @@ static bool QueryVulkanSurfaceProperties(const VulkanInstanceApi *instanceApi, c
 	}
 
 	//
-	// Get Surface Capabilties
-	//
-	fplConsoleFormatOut("Get surface capabilities for surface '%p' and physical device '%s'\n", surface->surfaceHandle, physicalDevice->name);
-	res = instanceApi->vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physicalDevice->physicalDeviceHandle, surface->surfaceHandle, &surface->capabilities);
-	if (res != VK_SUCCESS) {
-		fplConsoleFormatError("Failed to get surface capabilities for physical device '%s' and surface '%p'!\n", physicalDevice->name, surface->surfaceHandle);
-		return(false);
-	}
-	fplConsoleFormatOut("Successfully got surface capabilities for surface '%p' and physical device '%s'\n", surface->surfaceHandle, physicalDevice->name);
-	fplConsoleOut("\n");
-
-	//
 	// Get Presentation Modes
 	//
 	fplConsoleFormatOut("Get surface presentation modes for surface '%p' and physical device '%s'\n", surface->surfaceHandle, physicalDevice->name);
@@ -1898,6 +1885,7 @@ static bool QueryVulkanSurfaceProperties(const VulkanInstanceApi *instanceApi, c
 #define MAX_SWAPCHAIN_IMAGE_COUNT 8
 
 typedef struct VulkanSwapChain {
+	VkSurfaceCapabilitiesKHR capabilities;
 	VkExtent2D extent;
 	VkSwapchainKHR swapChainHandle;
 	VkCommandPool presentationCommandPoolHandle;
@@ -1949,6 +1937,8 @@ void VulkanDestroySwapChain(VkAllocationCallbacks *allocator, const VulkanLogica
 
 bool VulkanCreateSwapChain(
 	VkAllocationCallbacks *allocator,
+	const VulkanInstance *instance,
+	const VulkanPhysicalDevice *physicalDevice,
 	const VulkanLogicalDevice *logicalDevice,
 	const VulkanSurface *surface,
 	VulkanSwapChain *swapChain,
@@ -1956,6 +1946,8 @@ bool VulkanCreateSwapChain(
 	const VkExtent2D requestedSize,
 	const bool isVSync) {
 
+	assert(instance != fpl_null);
+	assert(physicalDevice != fpl_null);
 	assert(logicalDevice != fpl_null);
 	assert(surface != fpl_null);
 	assert(swapChain != fpl_null);
@@ -1965,13 +1957,28 @@ bool VulkanCreateSwapChain(
 	if (surface->surfaceHandle == VK_NULL_HANDLE)
 		return(false);
 
+	VkResult res;
+
+	const VulkanInstanceApi *instanceApi = &instance->instanceApi;
 	const VulkanDeviceApi *deviceApi = &logicalDevice->deviceApi;
 
 	// We may need to wait until the device is idle
 	deviceApi->vkDeviceWaitIdle(logicalDevice->logicalDeviceHandle);
 
+	//
+	// Get Surface Capabilties
+	//
+	fplConsoleFormatOut("Get surface capabilities for surface '%p' and physical device '%s'\n", surface->surfaceHandle, physicalDevice->name);
+	res = instanceApi->vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physicalDevice->physicalDeviceHandle, surface->surfaceHandle, &swapChain->capabilities);
+	if (res != VK_SUCCESS) {
+		fplConsoleFormatError("Failed to get surface capabilities for physical device '%s' and surface '%p'!\n", physicalDevice->name, surface->surfaceHandle);
+		return(false);
+	}
+	fplConsoleFormatOut("Successfully got surface capabilities for surface '%p' and physical device '%s'\n", surface->surfaceHandle, physicalDevice->name);
+	fplConsoleOut("\n");
+
 	// Determine the number of images
-	const VkSurfaceCapabilitiesKHR *caps = &surface->capabilities;
+	const VkSurfaceCapabilitiesKHR *caps = &swapChain->capabilities;
 	uint32_t desiredNumberOfSwapchainImages = caps->minImageCount + 1;
 	uint32_t actualNumberOfSwapchainImages = fplMin(desiredNumberOfSwapchainImages, caps->maxImageCount);
 
@@ -2092,7 +2099,7 @@ bool VulkanCreateSwapChain(
 	}
 
 	fplConsoleFormatOut("Creating Swap-Chain for device '%p' with size of %lu x %lu\n", logicalDevice->logicalDeviceHandle, swapchainExtent.width, swapchainExtent.height);
-	VkResult res = deviceApi->vkCreateSwapchainKHR(logicalDevice->logicalDeviceHandle, &swapChainCreateInfo, allocator, &swapChain->swapChainHandle);
+	res = deviceApi->vkCreateSwapchainKHR(logicalDevice->logicalDeviceHandle, &swapChainCreateInfo, allocator, &swapChain->swapChainHandle);
 	if (res != VK_SUCCESS) {
 		fplConsoleFormatError("Failed creating Swap-Chain for device '%p' with size of %lu x %lu!\n", logicalDevice->logicalDeviceHandle, swapchainExtent.width, swapchainExtent.height);
 		VulkanDestroySwapChain(allocator, logicalDevice, swapChain);
@@ -2270,7 +2277,9 @@ void VulkanDestroyFrame(VkAllocationCallbacks *allocator, const VulkanLogicalDev
 	fplClearStruct(frame);
 }
 
-bool VulkanCreateFrame(VkAllocationCallbacks *allocator, const VulkanLogicalDevice *logicalDevice, const VulkanSurface *surface, VulkanFrame *frame, const VkExtent2D size, const bool vsync) {
+bool VulkanCreateFrame(VkAllocationCallbacks *allocator, const VulkanInstance *instance, const VulkanPhysicalDevice *physicalDevice, const VulkanLogicalDevice *logicalDevice, const VulkanSurface *surface, VulkanFrame *frame, const VkExtent2D size, const bool vsync) {
+	assert(instance != fpl_null);
+	assert(physicalDevice != fpl_null);
 	assert(logicalDevice != fpl_null);
 	assert(surface != fpl_null);
 	assert(frame != fpl_null);
@@ -2308,7 +2317,7 @@ bool VulkanCreateFrame(VkAllocationCallbacks *allocator, const VulkanLogicalDevi
 	// Create swap chain
 	//
 	VkSwapchainKHR oldSwapChain = VK_NULL_HANDLE; // Initially we dont have a previous swap-chain
-	if (!VulkanCreateSwapChain(allocator, logicalDevice, surface, &frame->swapChain, oldSwapChain, size, vsync)) {
+	if (!VulkanCreateSwapChain(allocator, instance, physicalDevice, logicalDevice, surface, &frame->swapChain, oldSwapChain, size, vsync)) {
 		fplConsoleFormatError("Failed to create a swap-chain for device '%p' with size of %lu x %lu'!\n", logicalDevice->logicalDeviceHandle, size.width, size.height);
 		VulkanDestroyFrame(allocator, logicalDevice, frame);
 		return(false);
@@ -2507,7 +2516,7 @@ static bool VulkanInitialize(VulkanState *state, const uint32_t winWidth, const 
 	fplConsoleFormatOut("*************************************************************************\n");
 	bool vsync = true;
 	VkExtent2D size = fplStructInit(VkExtent2D, winWidth, winHeight);
-	if (!VulkanCreateFrame(allocator, &state->logicalDevice, &state->surface, &state->frame, size, vsync)) {
+	if (!VulkanCreateFrame(allocator, &state->instance, &state->physicalDevice, &state->logicalDevice, &state->surface, &state->frame, size, vsync)) {
 		fplConsoleFormatError("Failed to create a frame for device '%p' and surface '%p' with size of %lu x %lu!\n", state->logicalDevice.logicalDeviceHandle, state->surface.surfaceHandle, size.width, size.height);
 		goto failed;
 	}
@@ -2531,6 +2540,8 @@ success:
 static bool InvalidateFrame(VulkanState *state, const VkExtent2D size) {
 	assert(state != fpl_null);
 
+	VulkanInstance *instance = &state->instance;
+	VulkanPhysicalDevice *physicalDevice = &state->physicalDevice;
 	VulkanLogicalDevice *logicalDevice = &state->logicalDevice;
 	VulkanFrame *frame = &state->frame;
 	VulkanSwapChain *swapChain = &frame->swapChain;
@@ -2549,9 +2560,12 @@ static bool InvalidateFrame(VulkanState *state, const VkExtent2D size) {
 
 	// Re-create swap chain (Old will be removed)
 	bool isVsync = swapChain->isVSync;
-	if (!VulkanCreateSwapChain(state->allocator, logicalDevice, surface, swapChain, oldSwapChain, size, isVsync)) {
+	if (!VulkanCreateSwapChain(state->allocator, instance, physicalDevice, logicalDevice, surface, swapChain, oldSwapChain, size, isVsync)) {
 		return(false);
 	}
+
+	// Re-build command buffer
+	VulkanTemporaryRecordBuffer(logicalDevice, frame);
 
 	return(true);
 }
