@@ -2523,6 +2523,7 @@ failed:
 	return(false);
 
 success:
+	state->isInitialized = true;
 	return(true);
 }
 
@@ -2551,9 +2552,6 @@ static bool InvalidateFrame(VulkanState *state, const VkExtent2D size) {
 	if (!VulkanCreateSwapChain(state->allocator, logicalDevice, surface, swapChain, oldSwapChain, size, isVsync)) {
 		return(false);
 	}
-
-	// Temporary Record buffer (Clear only)
-	VulkanTemporaryRecordBuffer(logicalDevice, frame);
 
 	return(true);
 }
