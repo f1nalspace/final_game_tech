@@ -27,7 +27,7 @@ prepare:
 	mkdir -p $(BUILD_DIR)
 
 build:
-	gcc -std=c99 $(CFLAGS) $(INCLUDES) $(SOURCE_FILES) $(LIBS) -E -o $(BUILD_DIR)/$(EXECUTABLE).i
+	gcc -std=c99 $(CFLAGS) $(INCLUDES) $(SOURCE_FILES) $(LIBS) -o $(BUILD_DIR)/$(EXECUTABLE)
 
 clean:
 	rm -rf $(BUILD_DIR)
