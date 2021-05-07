@@ -884,6 +884,9 @@ typedef struct VulkanDeviceApi {
 	PFN_vkResetCommandBuffer vkResetCommandBuffer;
 	PFN_vkQueueSubmit vkQueueSubmit;
 
+	PFN_vkCmdPipelineBarrier vkCmdPipelineBarrier;
+	PFN_vkCmdClearColorImage vkCmdClearColorImage;
+
 	PFN_vkCreateSemaphore vkCreateSemaphore;
 	PFN_vkDestroySemaphore vkDestroySemaphore;
 
@@ -931,6 +934,9 @@ bool VulkanLoadDeviceApi(const VulkanInstanceApi *instanceApi, VulkanDeviceApi *
 		VULKAN_DEVICE_GET_PROC_ADDRESS(deviceApi, PFN_vkEndCommandBuffer, vkEndCommandBuffer);
 		VULKAN_DEVICE_GET_PROC_ADDRESS(deviceApi, PFN_vkResetCommandBuffer, vkResetCommandBuffer);
 		VULKAN_DEVICE_GET_PROC_ADDRESS(deviceApi, PFN_vkQueueSubmit, vkQueueSubmit);
+
+		VULKAN_DEVICE_GET_PROC_ADDRESS(deviceApi, PFN_vkCmdPipelineBarrier, vkCmdPipelineBarrier);
+		VULKAN_DEVICE_GET_PROC_ADDRESS(deviceApi, PFN_vkCmdClearColorImage, vkCmdClearColorImage);
 
 		VULKAN_DEVICE_GET_PROC_ADDRESS(deviceApi, PFN_vkCreateSemaphore, vkCreateSemaphore);
 		VULKAN_DEVICE_GET_PROC_ADDRESS(deviceApi, PFN_vkDestroySemaphore, vkDestroySemaphore);
@@ -2165,6 +2171,85 @@ typedef struct VulkanFrame {
 	VkSemaphore renderCompleteSemaphoreHandle;
 } VulkanFrame;
 
+static void VulkanTemporaryRecordBuffer(const VulkanLogicalDevice *logicalDevice, VulkanFrame *frame) {
+	assert(logicalDevice != fpl_null);
+	assert(frame != fpl_null);
+
+	const VulkanDeviceApi *deviceApi = &logicalDevice->deviceApi;
+
+	VkCommandBufferBeginInfo cmdBufferBeginInfo = fplZeroInit;
+	cmdBufferBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+	cmdBufferBeginInfo.flags = VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT;
+
+	VkClearColorValue clearColor = fplStructInit(VkClearColorValue, 1.0f, 0.8f, 0.4f, 0.0f);
+
+	VkImageSubresourceRange imageSubresourceRange = fplZeroInit;
+	imageSubresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+	imageSubresourceRange.baseMipLevel = 0;
+	imageSubresourceRange.levelCount = 1;
+	imageSubresourceRange.baseArrayLayer = 0;
+	imageSubresourceRange.layerCount = 1;
+
+	for (uint32_t imageIndex = 0; imageIndex < frame->swapChain.imageCount; ++imageIndex) {
+		VkImageMemoryBarrier barrierFromPresentToClear = fplZeroInit;
+		barrierFromPresentToClear.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+		barrierFromPresentToClear.srcAccessMask = VK_ACCESS_MEMORY_READ_BIT;
+		barrierFromPresentToClear.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+		barrierFromPresentToClear.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+		barrierFromPresentToClear.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+		barrierFromPresentToClear.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+		barrierFromPresentToClear.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+		barrierFromPresentToClear.image = frame->swapChain.images[imageIndex];
+		barrierFromPresentToClear.subresourceRange = imageSubresourceRange;
+
+		VkImageMemoryBarrier barrierFromClearToPresent = fplZeroInit;
+		barrierFromPresentToClear.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+		barrierFromPresentToClear.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+		barrierFromPresentToClear.dstAccessMask = VK_ACCESS_MEMORY_READ_BIT;
+		barrierFromPresentToClear.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+		barrierFromPresentToClear.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+		barrierFromPresentToClear.srcQueueFamilyIndex = 0;
+		barrierFromPresentToClear.dstQueueFamilyIndex = 0;
+		barrierFromPresentToClear.image = frame->swapChain.images[imageIndex];
+		barrierFromPresentToClear.subresourceRange = imageSubresourceRange;
+
+		VkCommandBuffer cmdBuffer = frame->swapChain.presentationCommandBuffers[imageIndex];
+		VkImage image = frame->swapChain.images[imageIndex];
+
+		deviceApi->vkBeginCommandBuffer(cmdBuffer, &cmdBufferBeginInfo);
+
+		deviceApi->vkCmdPipelineBarrier(
+			cmdBuffer,
+			VK_PIPELINE_STAGE_TRANSFER_BIT,
+			VK_PIPELINE_STAGE_TRANSFER_BIT,
+			0, 
+			0,
+			fpl_null,
+			0,
+			fpl_null,
+			1,
+			&barrierFromPresentToClear
+		);
+
+		deviceApi->vkCmdClearColorImage(cmdBuffer, image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &clearColor, 1, &imageSubresourceRange);
+
+		deviceApi->vkCmdPipelineBarrier(
+			cmdBuffer,
+			VK_PIPELINE_STAGE_TRANSFER_BIT,
+			VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+			0, 
+			0,
+			fpl_null,
+			0,
+			fpl_null,
+			1,
+			&barrierFromClearToPresent
+		);
+
+		deviceApi->vkEndCommandBuffer(cmdBuffer);
+	}
+}
+
 void VulkanDestroyFrame(VkAllocationCallbacks *allocator, const VulkanLogicalDevice *logicalDevice, VulkanFrame *frame) {
 	const VulkanDeviceApi *deviceApi = &logicalDevice->deviceApi;
 
@@ -2224,6 +2309,9 @@ bool VulkanCreateFrame(VkAllocationCallbacks *allocator, const VulkanLogicalDevi
 		VulkanDestroyFrame(allocator, logicalDevice, frame);
 		return(false);
 	}
+
+	// Temporary Record buffer (Clear only)
+	VulkanTemporaryRecordBuffer(logicalDevice, frame);
 
 	return(true);
 }
@@ -2456,6 +2544,9 @@ static bool InvalidateFrame(VulkanState *state, const VkExtent2D size) {
 	if (!VulkanCreateSwapChain(state->allocator, logicalDevice, surface, swapChain, oldSwapChain, size, isVsync)) {
 		return(false);
 	}
+
+	// Temporary Record buffer (Clear only)
+	VulkanTemporaryRecordBuffer(logicalDevice, frame);
 
 	return(true);
 }
