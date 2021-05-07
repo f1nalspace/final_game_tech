@@ -1980,6 +1980,9 @@ SOFTWARE.
 #	if defined(FPL__SUPPORT_VIDEO_OPENGL)
 #		undef FPL__SUPPORT_VIDEO_OPENGL
 #	endif
+#	if defined(FPL__SUPPORT_VIDEO_VULKAN)
+#		undef FPL__SUPPORT_VIDEO_VULKAN
+#	endif
 #	if defined(FPL__SUPPORT_VIDEO_SOFTWARE)
 #		undef FPL__SUPPORT_VIDEO_SOFTWARE
 #	endif
@@ -10184,21 +10187,6 @@ fpl_common_api void fplSetWindowInputEvents(const bool enabled) {
 	FPL__CheckPlatformNoRet();
 	fpl__PlatformAppState *appState = fpl__global__AppState;
 	appState->currentSettings.input.disabledEvents = !enabled;
-}
-
-fpl_common_api bool fplGetWindowHandle(fplWindowHandle *outHandle) {
-	FPL__CheckPlatform(false);
-	FPL__CheckArgumentNull(outHandle, false);
-	fplClearStruct(outHandle);
-	fpl__PlatformAppState *appState = fpl__global__AppState;
-#if defined(FPL_PLATFORM_WINDOWS)
-	outHandle->win32Handle = appState->window.win32.windowHandle;
-#elif defined(FPL_SUBPLATFORM_X11)
-	outHandle->x11Handle = appState->window.x11.window;
-#else
-	return(false);
-#endif
-	return(true);
 }
 #endif // FPL__COMMON_WINDOW_DEFINED
 
@@ -21166,6 +21154,21 @@ fpl_internal void fpl__ReleaseWindow(const fpl__PlatformInitState *initState, fp
 		fpl__X11ReleaseWindow(&appState->x11, &appState->window.x11);
 #	endif
 }
+}
+
+fpl_common_api bool fplGetWindowHandle(fplWindowHandle *outHandle) {
+	FPL__CheckPlatform(false);
+	FPL__CheckArgumentNull(outHandle, false);
+	fplClearStruct(outHandle);
+	fpl__PlatformAppState *appState = fpl__global__AppState;
+#if defined(FPL_PLATFORM_WINDOWS)
+	outHandle->win32Handle = appState->window.win32.windowHandle;
+#elif defined(FPL_SUBPLATFORM_X11)
+	outHandle->x11Handle = appState->window.x11.window;
+#else
+	return(false);
+#endif
+	return(true);
 }
 #endif // FPL__ENABLE_WINDOW
 
