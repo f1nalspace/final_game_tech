@@ -1455,11 +1455,11 @@ void VulkanDestroyLogicalDevice(VkAllocationCallbacks *allocator, const VulkanIn
 
 	const VulkanDeviceApi *deviceApi = &logicalDevice->deviceApi;
 
-	VulkanUnloadDeviceApi(&logicalDevice->deviceApi);
-
 	if (logicalDevice->logicalDeviceHandle != fpl_null) {
 		deviceApi->vkDestroyDevice(logicalDevice->logicalDeviceHandle, allocator);
 	}
+
+	VulkanUnloadDeviceApi(&logicalDevice->deviceApi);
 
 	fplClearStruct(logicalDevice);
 	logicalDevice->computeQueueFamilyIndex = fplStructInit(VulkanQueueFamilyIndex, UINT32_MAX);
@@ -2251,24 +2251,28 @@ static void VulkanTemporaryRecordBuffer(const VulkanLogicalDevice *logicalDevice
 }
 
 void VulkanDestroyFrame(VkAllocationCallbacks *allocator, const VulkanLogicalDevice *logicalDevice, VulkanFrame *frame) {
+	assert(logicalDevice != fpl_null);
+	assert(frame != fpl_null);
+
 	const VulkanDeviceApi *deviceApi = &logicalDevice->deviceApi;
+
+	// Destroy Semaphores
+	if(frame->imageAvailableSemaphoreHandle != VK_NULL_HANDLE) {
+		deviceApi->vkDestroySemaphore(logicalDevice->logicalDeviceHandle, frame->imageAvailableSemaphoreHandle, allocator);
+	}
+	if(frame->renderCompleteSemaphoreHandle != VK_NULL_HANDLE) {
+		deviceApi->vkDestroySemaphore(logicalDevice->logicalDeviceHandle, frame->renderCompleteSemaphoreHandle, allocator);
+	}
 
 	// Destroy Swap Chain
 	VulkanDestroySwapChain(allocator, logicalDevice, &frame->swapChain);
-
-	// Destroy Semaphores
-	if (frame->imageAvailableSemaphoreHandle != VK_NULL_HANDLE) {
-		deviceApi->vkDestroySemaphore(logicalDevice->logicalDeviceHandle, frame->imageAvailableSemaphoreHandle, allocator);
-	}
-	if (frame->renderCompleteSemaphoreHandle != VK_NULL_HANDLE) {
-		deviceApi->vkDestroySemaphore(logicalDevice->logicalDeviceHandle, frame->renderCompleteSemaphoreHandle, allocator);
-	}
 
 	fplClearStruct(frame);
 }
 
 bool VulkanCreateFrame(VkAllocationCallbacks *allocator, const VulkanLogicalDevice *logicalDevice, const VulkanSurface *surface, VulkanFrame *frame, const VkExtent2D size, const bool vsync) {
 	assert(logicalDevice != fpl_null);
+	assert(surface != fpl_null);
 	assert(frame != fpl_null);
 
 	if (logicalDevice->logicalDeviceHandle == VK_NULL_HANDLE)
@@ -2342,6 +2346,9 @@ static void VulkanShutdown(VulkanState *state) {
 
 	VkAllocationCallbacks *allocator = state->allocator;
 	const VulkanDeviceApi *deviceApi = &state->logicalDevice.deviceApi;
+
+	// Clear any commands
+	VulkanClearSwapChain(allocator, &state->logicalDevice, &state->frame.swapChain);
 
 	// We may need to wait until the device is idle
 	if (state->logicalDevice.logicalDeviceHandle != VK_NULL_HANDLE) {
