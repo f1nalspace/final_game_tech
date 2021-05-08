@@ -1,5 +1,5 @@
 # final_game_tech
-MIT-Licensed game related libraries and utilities written in C/C++.
+MIT-Licensed game related libraries and utilities written in C / C++.
 
 | Name                     | Description                                 | Platforms        | Language | Latest Version | State       |
 |--------------------------|---------------------------------------------|------------------|----------|----------------|-------------|
