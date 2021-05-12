@@ -5,3 +5,5 @@
 *.bmp binary
 *.pdn binary
 *.otf binary
+*.dll binary
+*.lib binary
