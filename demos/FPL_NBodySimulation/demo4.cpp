@@ -11,8 +11,31 @@
 #include "render.h"
 
 namespace Demo4 {
+#if PARTICLE_VALIDATION
+	static void ValidateParticles(const ParticleData *particles, const ParticleIndex *cellIndices, const size_t count) {
+		for(size_t particleIndex = 0; particleIndex < count; ++particleIndex) {
+			const ParticleData &particle = particles[particleIndex];
+			const ParticleIndex &index = cellIndices[particleIndex];
+
+			bool isInGrid = SPHIsPositionInGrid(index.cellIndex.x, index.cellIndex.y);
+			fplAssert(isInGrid);
+
+			float l = Vec2Length(particle.velocity);
+			fplAssert(l < 1000);
+
+			Vec2f cur = particle.curPosition;
+
+			fplAssert(cur.x > -kSPHBoundaryHalfWidth && cur.x < kSPHBoundaryHalfWidth);
+			fplAssert(cur.y > -kSPHBoundaryHalfHeight && cur.y < kSPHBoundaryHalfHeight);
+		}
+	}
+#else
+#define ValidateParticles(particles, indices, count)
+#endif
+
 	ParticleSimulation::ParticleSimulation():
 		gravity(V2f(0, 0)),
+		externalForce(V2f(0, 0)),
 		particleCount(0),
 		bodyCount(0),
 		emitterCount(0) {
@@ -298,6 +321,8 @@ namespace Demo4 {
 			stats.time.emitters = std::chrono::duration_cast<std::chrono::nanoseconds>(deltaClock).count() * nanosToMilliseconds;
 		}
 
+		ValidateParticles(particleDatas, particleIndexes, particleCount);
+
 		// Integrate forces
 		{
 			auto startClock = std::chrono::high_resolution_clock::now();
@@ -310,6 +335,8 @@ namespace Demo4 {
 			auto deltaClock = std::chrono::high_resolution_clock::now() - startClock;
 			stats.time.integration = std::chrono::duration_cast<std::chrono::nanoseconds>(deltaClock).count() * nanosToMilliseconds;
 		}
+
+		ValidateParticles(particleDatas, particleIndexes, particleCount);
 
 		// Viscosity force
 		{
@@ -326,6 +353,8 @@ namespace Demo4 {
 			stats.time.viscosityForces = std::chrono::duration_cast<std::chrono::nanoseconds>(deltaClock).count() * nanosToMilliseconds;
 		}
 
+		ValidateParticles(particleDatas, particleIndexes, particleCount);
+
 		// Predict
 		{
 			auto startClock = std::chrono::high_resolution_clock::now();
@@ -337,6 +366,8 @@ namespace Demo4 {
 			auto deltaClock = std::chrono::high_resolution_clock::now() - startClock;
 			stats.time.predict = std::chrono::duration_cast<std::chrono::nanoseconds>(deltaClock).count() * nanosToMilliseconds;
 		}
+
+		ValidateParticles(particleDatas, particleIndexes, particleCount);
 
 		// Update grid
 		{
@@ -354,6 +385,8 @@ namespace Demo4 {
 			auto deltaClock = std::chrono::high_resolution_clock::now() - startClock;
 			stats.time.updateGrid = std::chrono::duration_cast<std::chrono::nanoseconds>(deltaClock).count() * nanosToMilliseconds;
 		}
+
+		ValidateParticles(particleDatas, particleIndexes, particleCount);
 
 		// Neighbor search
 		{
@@ -378,6 +411,8 @@ namespace Demo4 {
 			stats.time.neighborSearch = std::chrono::duration_cast<std::chrono::nanoseconds>(deltaClock).count() * nanosToMilliseconds;
 		}
 
+		ValidateParticles(particleDatas, particleIndexes, particleCount);
+
 		// Density and pressure
 		{
 			auto startClock = std::chrono::high_resolution_clock::now();
@@ -393,6 +428,8 @@ namespace Demo4 {
 			stats.time.densityAndPressure = std::chrono::duration_cast<std::chrono::nanoseconds>(deltaClock).count() * nanosToMilliseconds;
 		}
 
+		ValidateParticles(particleDatas, particleIndexes, particleCount);
+
 		// Calculate delta position
 		{
 			auto startClock = std::chrono::high_resolution_clock::now();
@@ -407,6 +444,8 @@ namespace Demo4 {
 			auto deltaClock = std::chrono::high_resolution_clock::now() - startClock;
 			stats.time.deltaPositions = std::chrono::duration_cast<std::chrono::nanoseconds>(deltaClock).count() * nanosToMilliseconds;
 		}
+
+		ValidateParticles(particleDatas, particleIndexes, particleCount);
 
 		// Solve collisions
 		{
@@ -443,11 +482,15 @@ namespace Demo4 {
 			stats.time.collisions = std::chrono::duration_cast<std::chrono::nanoseconds>(deltaClock).count() * nanosToMilliseconds;
 		}
 
+		ValidateParticles(particleDatas, particleIndexes, particleCount);
+
 		// Recalculate velocity for next frame
 		for(size_t particleIndex = 0; particleIndex < particleCount; ++particleIndex) {
 			ParticleData *dataContainer = &particleDatas[particleIndex];
 			dataContainer->velocity = (dataContainer->curPosition - dataContainer->prevPosition) * invDt;
 		}
+
+		ValidateParticles(particleDatas, particleIndexes, particleCount);
 	}
 
 	void ParticleSimulation::Render(Render::CommandBuffer *commandBuffer, const float worldToScreenScale) {
