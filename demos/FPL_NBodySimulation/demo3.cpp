@@ -23,8 +23,12 @@ namespace Demo3 {
 
 			Vec2f cur = particle.curPosition;
 
-			fplAssert(cur.x > -kSPHBoundaryHalfWidth && cur.x < kSPHBoundaryHalfWidth);
-			fplAssert(cur.y > -kSPHBoundaryHalfHeight && cur.y < kSPHBoundaryHalfHeight);
+			float apron = 1.0f;
+			float halfW = kSPHBoundaryHalfWidth + apron;
+			float halfH = kSPHBoundaryHalfHeight + apron;
+
+			fplAssert(cur.x > -halfW && cur.x < halfW);
+			fplAssert(cur.y > -halfH && cur.y < halfH);
 		}
 	}
 #else
