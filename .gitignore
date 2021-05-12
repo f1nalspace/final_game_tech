@@ -26,13 +26,9 @@
 /docs_fpl/html
 
 /.gitconfig
-/apps/bin/fontrendering/x64-Release
-/apps/bin/OpenGLExtParser/x64-Release
-/apps/bin/ProtParser/x64-Release
-/apps/bin/staticdatamaker/x64-Release
-/apps/immediates
-/apps/ProtParser/obj/x64/Release
-apps/data/body.txt
-apps/data/header.txt
-apps/bin/
-apps/EnumToSwitchConverter/obj/
+/apps/immediates/
+/apps/data/body.txt
+/apps/data/header.txt
+/apps/bin/
+/apps/ProtParser/obj/
+/apps/EnumToSwitchConverter/obj/
