@@ -136,6 +136,7 @@ SOFTWARE.
 	- New[#105]: [Win32] Added support for creating and using a console in addition to a window
 
 	- Fixed[#109]: Fixed fplS32ToString was not working anymore
+	- Fixed: fplMutexHandle isValid flag was invalid, moved it to above the internal handle and now it works O_o
 
 	- Fixed[#98]: [Win32] Fixed fplThreadYield was not using YieldProcessor()
 	- Fixed[#110]: [Win32] Fixed preventing of erasing the background for non-video systems hides window always
@@ -4388,10 +4389,10 @@ typedef union fplInternalMutexHandle {
 
 //! The mutex handle structure
 typedef struct fplMutexHandle {
-	//! The internal mutex handle
-	fplInternalMutexHandle internalHandle;
 	//! Is it valid
 	fpl_b32 isValid;
+	//! The internal mutex handle
+	fplInternalMutexHandle internalHandle;
 } fplMutexHandle;
 
 //! A union containing the internal signal handle for any platform
@@ -12241,10 +12242,10 @@ fpl_platform_api bool fplMutexInit(fplMutexHandle *mutex) {
 		return false;
 	}
 	fplClearStruct(mutex);
+	mutex->isValid = true;
 	fplAssert(sizeof(mutex->internalHandle.win32CriticalSection) >= sizeof(CRITICAL_SECTION));
 	CRITICAL_SECTION *critSection = (CRITICAL_SECTION *)&mutex->internalHandle.win32CriticalSection;
 	InitializeCriticalSection(critSection);
-	mutex->isValid = true;
 	return true;
 }
 
