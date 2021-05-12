@@ -61,7 +61,7 @@ struct { \
 
 #define ALLOC_FIXED_TYPED_ARRAY(ptr, type, count) \
 { \
-	assert((ptr) != fpl_null); \
+	fplAssert((ptr) != fpl_null); \
 	(ptr)->__arr = AllocFixedArray(count, sizeof(type)); \
 	(ptr)->itemCount = count; \
 	(ptr)->items = (type *)(ptr)->__arr.memory; \
@@ -69,7 +69,7 @@ struct { \
 
 #define FREE_FIXED_TYPED_ARRAY(ptr) \
 { \
-	assert((ptr) != fpl_null); \
+	fplAssert((ptr) != fpl_null); \
 	FreeFixedArray(&(ptr)->__arr); \
 	(ptr)->items = fpl_null; \
 	(ptr)->itemCount = 0; \
@@ -141,7 +141,7 @@ typedef struct IntGrowableArray {
 #define MIN_GROWABLE_ARRAY_CAPACITY 8
 
 static void FreeGrowableArray(GrowableArray *arr) {
-	assert(arr != fpl_null);
+	fplAssert(arr != fpl_null);
 	if(arr->base != fpl_null) {
 		free(arr->base);
 	}
@@ -149,8 +149,8 @@ static void FreeGrowableArray(GrowableArray *arr) {
 }
 
 static void ResizeGrowableArray(GrowableArray *arr) {
-	assert(arr != fpl_null);
-	assert(arr->elementSize > 0);
+	fplAssert(arr != fpl_null);
+	fplAssert(arr->elementSize > 0);
 	size_t newCapacity = fplMax(MIN_GROWABLE_ARRAY_CAPACITY, arr->capacity * 2);
 	if(arr->base == fpl_null) {
 		arr->capacity = newCapacity;
@@ -170,7 +170,7 @@ static size_t IncGrowableArray(GrowableArray *arr) {
 	if(arr->count == arr->capacity) {
 		ResizeGrowableArray(arr);
 	}
-	assert(arr->count < arr->capacity);
+	fplAssert(arr->count < arr->capacity);
 	size_t result = arr->count;
 	++arr->count;
 	return(result);
@@ -227,7 +227,7 @@ static StaticMemoryChunk *GetAvailableStaticMemoryChunk(StaticMemoryPool *pool, 
 			StaticMemoryChunk *newChunk = AllocStaticMemoryChunks(4);
 			pool->empty = newChunk;
 		}
-		assert(pool->empty != fpl_null);
+		fplAssert(pool->empty != fpl_null);
 		StaticMemoryChunk *empty = pool->empty;
 		pool->empty = empty->next;
 		empty->next = pool->used;
@@ -271,10 +271,10 @@ size_t PushStringToTable(StringTable *table, const char *sourceString) {
 	bool sourceCopied = false;
 	if(sourceString != fpl_null) {
 		size_t requiredLen = strlen(sourceString) + 1;
-		assert(requiredLen <= MAX_STATIC_MEMORY_CHUNK_SIZE); // We dont allow more than 2048 bytes of contiguous memory
+		fplAssert(requiredLen <= MAX_STATIC_MEMORY_CHUNK_SIZE); // We dont allow more than 2048 bytes of contiguous memory
 
 		StaticMemoryChunk *foundChunk = GetAvailableStaticMemoryChunk(&table->pool, requiredLen);
-		assert(foundChunk != fpl_null);
+		fplAssert(foundChunk != fpl_null);
 
 		destString = (uint8_t *)foundChunk->data + foundChunk->used;
 		fplCopyString(sourceString, destString, requiredLen);
