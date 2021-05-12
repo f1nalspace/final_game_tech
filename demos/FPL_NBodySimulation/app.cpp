@@ -524,7 +524,7 @@ void DemoApplication::LoadScenario(size_t scenarioIndex) {
 	// Volumes
 	const SPHParameters &params = demo->GetParams();
 	const float spacing = params.particleSpacing;
-	for (size_t volumeIndex = 0; volumeIndex < scenario->bodyCount; ++volumeIndex) {
+	for (size_t volumeIndex = 0; volumeIndex < scenario->volumeCount; ++volumeIndex) {
 		SPHScenarioVolume *volume = &scenario->volumes[volumeIndex];
 		int numX = (int)floor((volume->size.w / spacing));
 		int numY = (int)floor((volume->size.h / spacing));
