@@ -7,7 +7,7 @@
 #define VK_USE_PLATFORM_XLIB_KHR
 #endif
 
-//#define VK_NO_PROTOTYPES
+#define VK_NO_PROTOTYPES
 #include <vulkan/vulkan.h>
 
 #include <malloc.h>
@@ -17,7 +17,7 @@
 //
 // Vulkan Utils
 //
-const char *VulkanValidationLayerNames[] = { "VK_LAYER_KHRONOS_validation", "VK_LAYER_LUNARG_standard_validation" };
+const char *VulkanValidationLayerNames[] = { "VK_LAYER_KHRONOS_validation" };
 const char *VulkanKHRSurfaceName = "VK_KHR_surface";
 
 typedef enum VulkanVendorID {
