@@ -86,6 +86,8 @@ License:
 #include <chrono>
 #include <stack>
 
+#define PARTICLE_VALIDATION 0
+
 #include "app.cpp"
 #include "utils.h"
 

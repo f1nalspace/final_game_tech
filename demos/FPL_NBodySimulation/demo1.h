@@ -43,19 +43,19 @@ namespace Demo1 {
 		void ClearDensity();
 
 		void SetVelocity(const Vec2f &v);
-		const Vec2f &GetVelocity();
+		const Vec2f &GetVelocity() const;
 
-		const Vec2f &GetPosition();
 		void SetPosition(const Vec2f &position);
+		const Vec2f &GetPosition() const;
 
-		const Vec2f &GetPrevPosition();
 		void SetPrevPosition(const Vec2f &prevPosition);
+		const Vec2f &GetPrevPosition() const;
 
 		void SetAcceleration(const Vec2f &acceleration);
-		const Vec2f &GetAcceleration();
+		const Vec2f &GetAcceleration() const;
 
-		const Vec2i &GetCellIndex();
 		void SetCellIndex(const Vec2i &cellIndex);
+		const Vec2i &GetCellIndex() const;
 
 		Particle *GetNeighbor(size_t index);
 		size_t GetNeighborCount();
