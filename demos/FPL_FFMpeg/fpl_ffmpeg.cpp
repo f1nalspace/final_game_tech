@@ -10,7 +10,7 @@ Requirements:
 	- C++/11 Compiler
 	- Platform x64 or x86_64
 	- Final Platform Layer
-	- FFmpeg-4.3.1 or higher (Release, Full, Shared, Win64: https://www.gyan.dev/ffmpeg/builds/)
+	- FFmpeg-4.4 or higher (Release, Full, Shared, Win64: https://www.gyan.dev/ffmpeg/builds/)
 
 Author:
 	Torsten Spaete
