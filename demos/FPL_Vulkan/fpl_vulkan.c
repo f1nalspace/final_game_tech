@@ -1052,9 +1052,9 @@ static bool LoadVulkanInstanceProperties(const VulkanCoreApi *coreApi, VulkanIns
 
 static VKAPI_ATTR VkBool32 VKAPI_CALL VulkanDebugCallback(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity, VkDebugUtilsMessageTypeFlagsEXT messageType, const VkDebugUtilsMessengerCallbackDataEXT *pCallbackData, void *pUserData) {
 	const char *severityName = GetVulkanMessageSeverityName(messageSeverity);
-	if(messageSeverity >= VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT) {
+	//if(messageSeverity >= VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT) {
 		fplConsoleFormatError("[%s] Validation layer: %s\n", severityName, pCallbackData->pMessage);
-	}
+	//}
 	return VK_FALSE;
 }
 
