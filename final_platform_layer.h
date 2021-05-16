@@ -134,6 +134,7 @@ SOFTWARE.
 
 	## v0.9.7-beta
 	- New[#105]: [Win32] Added support for creating and using a console in addition to a window
+	- New[#18]: [Win32] Support for message proc fibers to support seamless window resize -> works only with fplPollEvents()
 
 	- Fixed[#109]: Fixed fplS32ToString was not working anymore
 	- Fixed: fplMutexHandle isValid flag was invalid, moved it to above the internal handle and now it works O_o
@@ -7401,6 +7402,8 @@ typedef FPL__FUNC_WIN32_EndPaint(fpl__win32_func_EndPaint);
 typedef FPL__FUNC_WIN32_SetForegroundWindow(fpl__win32_func_SetForegroundWindow);
 #define FPL__FUNC_WIN32_SetFocus(name) HWND WINAPI name(_In_opt_ HWND hWnd)
 typedef FPL__FUNC_WIN32_SetFocus(fpl__win32_func_SetFocus);
+#define FPL__FUNC_WIN32_SetTimer(name) UINT_PTR WINAPI name(_In_opt_ HWND hWnd, _In_ UINT_PTR nIDEvent, _In_ UINT uElapse, _In_opt_ TIMERPROC lpTimerFunc)
+typedef FPL__FUNC_WIN32_SetTimer(fpl__win32_func_SetTimer);
 
 // OLE32
 #define FPL__FUNC_WIN32_CoInitializeEx(name) HRESULT WINAPI name(LPVOID pvReserved, DWORD  dwCoInit)
@@ -7505,6 +7508,7 @@ typedef struct fpl__Win32UserApi {
 	fpl__win32_func_EndPaint *EndPaint;
 	fpl__win32_func_SetForegroundWindow *SetForegroundWindow;
 	fpl__win32_func_SetFocus *SetFocus;
+	fpl__win32_func_SetTimer *SetTimer;
 } fpl__Win32UserApi;
 
 typedef struct fpl__Win32OleApi {
@@ -7634,6 +7638,7 @@ fpl_internal bool fpl__Win32LoadApi(fpl__Win32Api *wapi) {
 		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_EndPaint, EndPaint);
 		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_SetForegroundWindow, SetForegroundWindow);
 		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_SetFocus, SetFocus);
+		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_SetTimer, SetTimer);
 
 		// GDI32
 		const char *gdiLibraryName = "gdi32.dll";
@@ -7720,6 +7725,8 @@ typedef struct fpl__Win32LastWindowInfo {
 typedef struct fpl__Win32WindowState {
 	wchar_t windowClass[256];
 	fpl__Win32LastWindowInfo lastFullscreenInfo;
+	void *mainFiber;
+	void *messageFiber;
 	HWND windowHandle;
 	HDC deviceContext;
 	HCURSOR defaultCursor;
@@ -10757,6 +10764,28 @@ fpl_internal fplKeyboardModifierFlags fpl__Win32GetKeyboardModifiers(const fpl__
 	return(modifiers);
 }
 
+fpl_internal void fpl__Win32HandleMessage(const fpl__Win32Api *wapi, fpl__PlatformAppState *appState, fpl__Win32WindowState *windowState, MSG *msg) {
+	if(appState->currentSettings.window.callbacks.eventCallback != fpl_null) {
+		appState->currentSettings.window.callbacks.eventCallback(fplGetPlatformType(), windowState, &msg, appState->currentSettings.window.callbacks.eventUserData);
+	}
+	wapi->user.TranslateMessage(msg);
+	wapi->user.DispatchMessageW(msg);
+}
+
+fpl_internal void CALLBACK fpl__Win32MessageFiberProc(struct fpl__PlatformAppState *appState) {
+	fpl__Win32AppState *win32State = &appState->win32;
+	fpl__Win32WindowState *windowState = &appState->window.win32;
+	const fpl__Win32Api *wapi = &win32State->winApi;
+	wapi->user.SetTimer(appState->window.win32.windowHandle, 1, 1, 0);
+	for(;;) {
+		MSG message;
+		while(wapi->user.PeekMessageW(&message, 0, 0, 0, PM_REMOVE)) {
+			fpl__Win32HandleMessage(wapi, appState, windowState, &message);
+		}
+		SwitchToFiber(appState->window.win32.mainFiber);
+	}
+}
+
 LRESULT CALLBACK fpl__Win32MessageProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 	fpl__PlatformAppState *appState = fpl__global__AppState;
 	fplAssert(appState != fpl_null);
@@ -10771,6 +10800,13 @@ LRESULT CALLBACK fpl__Win32MessageProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 
 	LRESULT result = 0;
 	switch(msg) {
+		case WM_TIMER:
+		{
+			if(win32Window->mainFiber != fpl_null) {
+				SwitchToFiber(win32Window->mainFiber);
+			}
+		} break;
+
 		case WM_DESTROY:
 		case WM_CLOSE:
 		{
@@ -11128,6 +11164,10 @@ fpl_internal bool fpl__Win32InitWindow(const fplSettings *initSettings, fplWindo
 	wchar_t *windowTitle = windowTitleBuffer;
 	fplWideStringToUTF8String(windowTitle, lstrlenW(windowTitle), currentWindowSettings->title, fplArrayCount(currentWindowSettings->title));
 
+	// Create Fibers
+	windowState->mainFiber = ConvertThreadToFiber(0);
+	windowState->messageFiber = CreateFiber(0, (PFIBER_START_ROUTINE)fpl__Win32MessageFiberProc, platAppState);
+
 	// Prepare window style, size and position
 	DWORD style = fpl__Win32MakeWindowStyle(&initSettings->window);
 	DWORD exStyle = fpl__Win32MakeWindowExStyle(&initSettings->window);
@@ -11215,6 +11255,10 @@ fpl_internal void fpl__Win32ReleaseWindow(const fpl__Win32InitState *initState, 
 		wapi->user.DestroyWindow(windowState->windowHandle);
 		windowState->windowHandle = fpl_null;
 		wapi->user.UnregisterClassW(windowState->windowClass, initState->appInstance);
+	}
+	if(windowState->messageFiber != fpl_null) {
+		DeleteFiber(windowState->messageFiber);
+		windowState->messageFiber = fpl_null;
 	}
 }
 
@@ -13538,14 +13582,6 @@ fpl_platform_api void fplSetWindowCursorEnabled(const bool value) {
 	windowState->isCursorActive = value;
 }
 
-fpl_internal void fpl__Win32HandleMessage(const fpl__Win32Api *wapi, fpl__PlatformAppState *appState, fpl__Win32WindowState *windowState, MSG *msg) {
-	if(appState->currentSettings.window.callbacks.eventCallback != fpl_null) {
-		appState->currentSettings.window.callbacks.eventCallback(fplGetPlatformType(), windowState, &msg, appState->currentSettings.window.callbacks.eventUserData);
-	}
-	wapi->user.TranslateMessage(msg);
-	wapi->user.DispatchMessageW(msg);
-}
-
 fpl_internal bool fpl__Win32ProcessNextEvent(const fpl__Win32Api *wapi, fpl__PlatformAppState *appState, fpl__Win32WindowState *windowState) {
 	bool result = false;
 	if(windowState->windowHandle != 0) {
@@ -13593,9 +13629,13 @@ fpl_platform_api void fplPollEvents() {
 	const fpl__Win32InitState *win32InitState = &fpl__global__InitState.win32;
 	const fpl__Win32Api *wapi = &win32AppState->winApi;
 	if(windowState->windowHandle != 0) {
-		MSG msg;
-		while(wapi->user.PeekMessageW(&msg, windowState->windowHandle, 0, 0, PM_REMOVE)) {
-			fpl__Win32HandleMessage(wapi, appState, windowState, &msg);
+		if(windowState->messageFiber != fpl_null) {
+			SwitchToFiber(windowState->messageFiber);
+		} else {
+			MSG msg;
+			while(wapi->user.PeekMessageW(&msg, windowState->windowHandle, 0, 0, PM_REMOVE)) {
+				fpl__Win32HandleMessage(wapi, appState, windowState, &msg);
+			}
 		}
 	}
 	fpl__ClearInternalEvents();

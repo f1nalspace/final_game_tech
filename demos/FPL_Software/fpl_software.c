@@ -14,6 +14,9 @@ Author:
 	Torsten Spaete
 
 Changelog:
+	## 2021-05-16
+	- Use fplPollEvents() instead
+
 	## 2020-04-20
 	- Much better rendering
 
@@ -75,8 +78,8 @@ int main(int argc, char **args) {
 		Vec2f rectVel = V2fInit(200.0f, 200.0f);
 		Vec2f rectPos = V2fInit(rectRadius.w, rectRadius.h);
 		while (fplWindowUpdate()) {
-			fplEvent ev;
-			while (fplPollEvent(&ev)) {}
+			fplPollEvents();
+
 			fplVideoBackBuffer *backBuffer = fplGetVideoBackBuffer();
 
 			// World
