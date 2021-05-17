@@ -1,3 +1,37 @@
+/*
+-------------------------------------------------------------------------------
+Name:
+	FPL-Demo | Vulkan
+
+Description:
+	This demo showcases the initialization and usage of the Vulkan graphics API.
+
+	NOTE: Demo is incomplete -> No real rendering for now until its settled in FPL.
+
+Requirements:
+	- C99 Compiler
+	- Final Platform Layer
+
+Author:
+	Torsten Spaete
+
+Changelog:
+	## 2021-05-17
+	- Initial version
+
+License:
+	Copyright (c) 2017-2021 Torsten Spaete
+	MIT License (See LICENSE file)
+-------------------------------------------------------------------------------
+*/
+
+//
+// Config
+//
+#define VULKANDEMO_USE_FPL_VIDEO 1
+#define VULKANDEMO_USE_VALIDATION_LAYER 0
+#define VULKANDEMO_VALIDATION_LAYER_SEVERITY VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT
+
 #define FPL_IMPLEMENTATION
 #include <final_platform_layer.h>
 
@@ -1052,9 +1086,7 @@ static bool LoadVulkanInstanceProperties(const VulkanCoreApi *coreApi, VulkanIns
 
 static VKAPI_ATTR VkBool32 VKAPI_CALL VulkanDebugCallback(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity, VkDebugUtilsMessageTypeFlagsEXT messageType, const VkDebugUtilsMessengerCallbackDataEXT *pCallbackData, void *pUserData) {
 	const char *severityName = GetVulkanMessageSeverityName(messageSeverity);
-	//if(messageSeverity >= VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT) {
-		fplConsoleFormatError("[%s] Validation layer: %s\n", severityName, pCallbackData->pMessage);
-	//}
+	fplConsoleFormatError("[%s] Validation layer: %s\n", severityName, pCallbackData->pMessage);
 	return VK_FALSE;
 }
 
@@ -1071,7 +1103,7 @@ static void VulkanDestroyDebugMessenger(const VulkanCoreApi *coreApi, VkInstance
 static VkDebugUtilsMessengerCreateInfoEXT MakeVulkanDebugMessengerCreateInfo() {
 	VkDebugUtilsMessengerCreateInfoEXT createInfo = fplZeroInit;
 	createInfo.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT;
-	createInfo.messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
+	createInfo.messageSeverity = VULKANDEMO_VALIDATION_LAYER_SEVERITY;
 	createInfo.messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT;
 	createInfo.pfnUserCallback = VulkanDebugCallback;
 	createInfo.pUserData = fpl_null;
@@ -2486,7 +2518,11 @@ static bool VulkanInitialize(VulkanState *state, const uint32_t winWidth, const 
 
 	fplAssert(coreApi->isValid);
 
+#if VULKANDEMO_USE_VALIDATION_LAYER
 	bool useValidations = true;
+#else
+	bool useValidations = false;
+#endif
 
 	//
 	// Create instance
@@ -2728,7 +2764,7 @@ int main(int argc, char **argv) {
 	fplInitFlags initFlags = fplInitFlags_Window | fplInitFlags_GameController | fplInitFlags_Console;
 
 	// Enable this to test FPL integration
-#if 0
+#if VULKANDEMO_USE_FPL_VIDEO
 	initFlags |= fplInitFlags_Video;
 	settings.video.driver = fplVideoDriverType_Vulkan;
 #endif
@@ -2776,7 +2812,9 @@ int main(int argc, char **argv) {
 
 		Draw(state, drawSize);
 
-		//fplVideoFlip();
+#if VULKANDEMO_USE_FPL_VIDEO
+		fplVideoFlip();
+#endif
 	}
 
 cleanup:
@@ -2796,7 +2834,7 @@ cleanup:
 
 		fplConsoleFormatOut("Shutdown Platform\n");
 		fplPlatformRelease();
-	}
+		}
 
 	if(state != fpl_null) {
 		// Unload Core API
@@ -2809,4 +2847,4 @@ cleanup:
 	}
 
 	return(appResult);
-}
+	}
