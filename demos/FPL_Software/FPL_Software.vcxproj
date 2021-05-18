@@ -163,7 +163,6 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="final_platform_layer.c" />
     <ClCompile Include="fpl_software.c" />
   </ItemGroup>
   <ItemGroup>
