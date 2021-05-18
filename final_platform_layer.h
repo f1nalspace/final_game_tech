@@ -17767,13 +17767,33 @@ typedef FPL__FUNC_VIDEO_BACKEND_INITIALIZE(fpl__func_VideoBackendInitialize);
 #define FPL__FUNC_VIDEO_BACKEND_SHUTDOWN(name) void name(const fpl__PlatformAppState *appState, const fpl__PlatformWindowState *windowState, struct fpl__VideoBackend *backend)
 typedef FPL__FUNC_VIDEO_BACKEND_SHUTDOWN(fpl__func_VideoBackendShutdown);
 
-typedef struct fpl__VideoBackend {
+typedef struct fpl__VideoContext {
 	fpl__func_VideoBackendLoad *loadFunc;
 	fpl__func_VideoBackendUnload *unloadFunc;
 	fpl__func_VideoBackendInitialize *initializeFunc;
 	fpl__func_VideoBackendShutdown *shutdownFunc;
 	fpl__func_VideoBackendPrepareWindow *prepareWindow;
 	fpl__func_VideoBackendFinalizeWindow *finalizeWindow;
+} fpl__VideoContext;
+
+// Video context stubs
+fpl_internal FPL__FUNC_VIDEO_BACKEND_LOAD(fpl__VideoBackend_Load_Stub) { return(true); }
+fpl_internal FPL__FUNC_VIDEO_BACKEND_UNLOAD(fpl__VideoBackend_Unload_Stub) { }
+fpl_internal FPL__FUNC_VIDEO_BACKEND_PREPAREWINDOW(fpl__VideoBackend_PrepareWindow_Stub) { return(true); }
+fpl_internal FPL__FUNC_VIDEO_BACKEND_FINALIZEWINDOW(fpl__VideoBackend_FinalizeWindow_Stub) { return(true); }
+fpl_internal FPL__FUNC_VIDEO_BACKEND_INITIALIZE(fpl__VideoBackend_Initialize_Stub) { return(false); }
+fpl_internal FPL__FUNC_VIDEO_BACKEND_SHUTDOWN(fpl__VideoBackend_Shutdown_Stub) { }
+
+fpl_internal void fpl__InitVideoContext(fpl__VideoContext *ctx) {
+	ctx->loadFunc = fpl__VideoBackend_Load_Stub;
+	ctx->unloadFunc = fpl__VideoBackend_Unload_Stub;
+	ctx->prepareWindow = fpl__VideoBackend_PrepareWindow_Stub;
+	ctx->finalizeWindow = fpl__VideoBackend_FinalizeWindow_Stub;
+	ctx->initializeFunc = fpl__VideoBackend_Initialize_Stub;
+	ctx->shutdownFunc = fpl__VideoBackend_Shutdown_Stub;
+}
+
+typedef struct fpl__VideoBackend {
 	uint64_t id;
 } fpl__VideoBackend;
 
@@ -18160,6 +18180,17 @@ fpl_internal FPL__FUNC_VIDEO_BACKEND_LOAD(fpl__VideoBackend_Win32OpenGL_Load) {
 		return(false);
 	}
 	return(true);
+}
+
+fpl_internal fpl__VideoContext fpl__VideoBackend_Win32OpenGL_Construct() {
+	fpl__VideoContext result = fplZeroInit;
+	result.loadFunc = fpl__VideoBackend_Win32OpenGL_Load;
+	result.unloadFunc = fpl__VideoBackend_Win32OpenGL_Unload;
+	result.initializeFunc = fpl__VideoBackend_Win32OpenGL_Initialize;
+	result.shutdownFunc = fpl__VideoBackend_Win32OpenGL_Shutdown;
+	result.prepareWindow = fpl__VideoBackend_Win32OpenGL_PrepareWindow;
+	result.finalizeWindow = fpl__VideoBackend_Win32OpenGL_FinalizeWindow;
+	return(result);
 }
 #endif // FPL__ENABLE_VIDEO_OPENGL && FPL_PLATFORM_WINDOWS
 
@@ -18650,6 +18681,17 @@ fpl_internal FPL__FUNC_VIDEO_BACKEND_LOAD(fpl__VideoBackend_X11OpenGL_Load) {
 	}
 	return(true);
 }
+
+fpl_internal fpl__VideoContext fpl__VideoBackend_X11OpenGL_Construct() {
+	fpl__VideoContext result = fplZeroInit;
+	result.loadFunc = fpl__VideoBackend_X11OpenGL_Load;
+	result.unloadFunc = fpl__VideoBackend_X11OpenGL_Unload;
+	result.initializeFunc = fpl__VideoBackend_X11OpenGL_Initialize;
+	result.shutdownFunc = fpl__VideoBackend_X11OpenGL_Shutdown;
+	result.prepareWindow = fpl__VideoBackend_X11OpenGL_PrepareWindow;
+	result.finalizeWindow = fpl__VideoBackend_X11OpenGL_FinalizeWindow;
+	return(result);
+}
 #endif // FPL__ENABLE_VIDEO_OPENGL && FPL_SUBPLATFORM_X11
 
 // ############################################################################
@@ -18718,6 +18760,17 @@ fpl_internal FPL__FUNC_VIDEO_BACKEND_UNLOAD(fpl__VideoBackend_X11Software_Load) 
 	fpl__VideoBackendX11Software *nativeBackend = (fpl__VideoBackendX11Software *)backend;
 	fplClearStruct(nativeBackend);
 	return(true);
+}
+
+fpl_internal fpl__VideoContext fpl__VideoBackend_X11Software_Construct() {
+	fpl__VideoContext result = fplZeroInit;
+	result.loadFunc = fpl__VideoBackend_X11Software_Load;
+	result.unloadFunc = fpl__VideoBackend_X11Software_Unload;
+	result.initializeFunc = fpl__VideoBackend_X11Software_Initialize;
+	result.shutdownFunc = fpl__VideoBackend_X11Software_Shutdown;
+	result.prepareWindow = fpl__VideoBackend_X11Software_PrepareWindow;
+	result.finalizeWindow = fpl__VideoBackend_X11Software_FinalizeWindow;
+	return(result);
 }
 #endif // FPL__ENABLE_VIDEO_SOFTWARE && FPL_SUBPLATFORM_X11
 
