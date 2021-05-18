@@ -17844,66 +17844,6 @@ fpl_platform_api size_t fplGetInputLocale(const fplLocaleFormat targetFormat, ch
 
 // ############################################################################
 //
-// > VIDEO_DRIVER_OPENGL_VULKAN
-// 
-// ############################################################################
-#if defined(FPL__ENABLE_VIDEO_VULKAN)
-
-typedef struct fpl__VulkanApi {
-	fplDynamicLibraryHandle libHandle;
-} fpl__VulkanApi;
-
-fpl_internal void fpl__UnloadVideoVulkanApi(fpl__VulkanApi *api) {
-	fplDynamicLibraryUnload(&api->libHandle);
-	fplClearStruct(api);
-}
-
-fpl_internal bool fpl__LoadVideoVulkanApi(fpl__VulkanApi *api) {
-#if defined(FPL_PLATFORM_WINDOWS)
-	const char *libraryName = "vulkan-1.dll";
-#elif defined(FPL_SUBPLATFORM_POSIX)
-	const char *libraryName = "libvulkan.so";
-#else
-	return(false); // Unsupported platform
-#endif
-
-	if (!fplDynamicLibraryLoad(libraryName, &api->libHandle)) {
-		return(false);
-	}
-
-	return(true);
-}
-
-#	if defined(FPL_PLATFORM_WINDOWS)
-typedef struct fpl__Win32VideoVulkanState {
-	fpl__VulkanApi api;
-} fpl__Win32VideoVulkanState;
-
-fpl_internal bool fpl__Win32InitVideoVulkan(fpl__Win32AppState *appState, fpl__Win32WindowState *windowState, const fplVideoSettings *videoSettings, fpl__Win32VideoVulkanState *vulkanState) {
-	return(false);
-}
-
-fpl_internal void fpl__Win32ReleaseVideoVulkan(fpl__Win32VideoVulkanState *vulkanState) {
-}
-#endif // FPL_PLATFORM_WINDOWS
-
-#if defined(FPL_SUBPLATFORM_X11)
-typedef struct fpl__X11VideoVulkanState {
-	fpl__VulkanApi api;
-} fpl__X11VideoVulkanState;
-
-fpl_internal bool fpl__X11InitVideoVulkan(fpl__X11SubplatformState *appState, fpl__X11WindowState *windowState, const fplVideoSettings *videoSettings, fpl__X11VideoVulkanState *vulkanState) {
-	return(false);
-}
-
-fpl_internal void fpl__X11ReleaseVideoVulkan(fpl__X11VideoVulkanState *vulkanState) {
-}
-#	endif // FPL_SUBPLATFORM_X11
-
-#endif // FPL__ENABLE_VIDEO_VULKAN
-
-// ############################################################################
-//
 // > VIDEO_DRIVER_OPENGL_WIN32
 //
 // ############################################################################
@@ -20843,9 +20783,6 @@ typedef union fpl__Win32VideoState {
 #	if defined(FPL__ENABLE_VIDEO_OPENGL)
 	fpl__Win32VideoOpenGLState opengl;
 #	endif
-#	if defined(FPL__ENABLE_VIDEO_VULKAN)
-	fpl__Win32VideoVulkanState vulkan;
-#	endif
 #	if defined(FPL__ENABLE_VIDEO_SOFTWARE)
 	fpl__Win32VideoSoftwareState software;
 #	endif
@@ -20856,9 +20793,6 @@ typedef union fpl__Win32VideoState {
 typedef union fpl__X11VideoState {
 #	if defined(FPL__ENABLE_VIDEO_OPENGL)
 	fpl__X11VideoOpenGLState opengl;
-#	endif
-#	if defined(FPL__ENABLE_VIDEO_OPENGL)
-	fpl__X11VideoVulkanState vulkan;
 #	endif
 #	if defined(FPL__ENABLE_VIDEO_SOFTWARE)
 	fpl__X11VideoSoftwareState software;
@@ -20903,17 +20837,6 @@ fpl_internal void fpl__ShutdownVideo(fpl__PlatformAppState *appState, fpl__Video
 		} break;
 #		endif // FPL__ENABLE_VIDEO_OPENGL
 
-#		if defined(FPL__ENABLE_VIDEO_VULKAN)
-			case fplVideoDriverType_Vulkan:
-			{
-#			if defined(FPL_PLATFORM_WINDOWS)
-				fpl__Win32ReleaseVideoVulkan(&videoState->win32.vulkan);
-#			elif defined(FPL_SUBPLATFORM_X11)
-				fpl__X11ReleaseVideoVulkan(&videoState->x11.vulkan);
-#			endif
-		} break;
-#		endif // FPL__ENABLE_VIDEO_VULKAN
-
 #		if defined(FPL__ENABLE_VIDEO_SOFTWARE)
 			case fplVideoDriverType_Software:
 			{
@@ -20955,17 +20878,6 @@ fpl_internal void fpl__ReleaseVideoState(fpl__PlatformAppState *appState, fpl__V
 	}; break;
 #	endif // FPL__ENABLE_VIDEO_OPENGL
 
-#	if defined(FPL__ENABLE_VIDEO_VULKAN)
-		case fplVideoDriverType_Vulkan:
-		{
-#		if defined(FPL_PLATFORM_WINDOWS)
-			fpl__UnloadVideoVulkanApi(&videoState->win32.vulkan.api);
-#		elif defined(FPL_SUBPLATFORM_X11)
-			fpl__UnloadVideoVulkanApi(&videoState->x11.vulkan.api);
-#		endif
-	}; break;
-#	endif // FPL__ENABLE_VIDEO_VULKAN
-
 #	if defined(FPL__ENABLE_VIDEO_SOFTWARE)
 		case fplVideoDriverType_Software:
 		{
@@ -20993,17 +20905,6 @@ fpl_internal bool fpl__LoadVideoState(const fplVideoDriverType driver, fpl__Vide
 #		endif
 	}; break;
 #	endif // FPL__ENABLE_VIDEO_OPENGL
-
-#	if defined(FPL__ENABLE_VIDEO_VULKAN)
-		case fplVideoDriverType_Vulkan:
-		{
-#		if defined(FPL_PLATFORM_WINDOWS)
-			result = fpl__LoadVideoVulkanApi(&videoState->win32.vulkan.api);
-#		elif defined(FPL_SUBPLATFORM_X11)
-			result = fpl__LoadVideoVulkanApi(&videoState->x11.vulkan.api);
-#		endif
-	}; break;
-#	endif // FPL__ENABLE_VIDEO_VULKAN
 
 		default:
 			break;
@@ -21058,17 +20959,6 @@ fpl_internal bool fpl__InitVideo(const fplVideoDriverType driver, const fplVideo
 #		endif
 	} break;
 #	endif // FPL__ENABLE_VIDEO_OPENGL
-
-#	if defined(FPL__ENABLE_VIDEO_VULKAN)
-		case fplVideoDriverType_Vulkan:
-		{
-#		if defined(FPL_PLATFORM_WINDOWS)
-			videoInitResult = fpl__Win32InitVideoVulkan(&appState->win32, &appState->window.win32, videoSettings, &videoState->win32.vulkan);
-#		elif defined(FPL_SUBPLATFORM_X11)
-			videoInitResult = fpl__X11InitVideoVulkan(&appState->x11, &appState->window.x11, videoSettings, &videoState->x11.vulkan);
-#		endif
-	} break;
-#	endif // FPL__ENABLE_VIDEO_VULKAN
 
 #	if defined(FPL__ENABLE_VIDEO_SOFTWARE)
 		case fplVideoDriverType_Software:
