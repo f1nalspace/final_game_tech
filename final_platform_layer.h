@@ -11117,9 +11117,8 @@ fpl_internal bool fpl__Win32InitWindow(const fplSettings *initSettings, fplWindo
 	const fplWindowSettings *initWindowSettings = &initSettings->window;
 
 	// Presetup window
-	fpl__PrepareVideoWindowResult preSetupResult = fplZeroInit;
 	if(setupCallbacks->preSetup != fpl_null) {
-		setupCallbacks->preSetup(platAppState, platAppState->initFlags, &platAppState->initSettings, &preSetupResult);
+		setupCallbacks->preSetup(platAppState, platAppState->initFlags, &platAppState->initSettings);
 	}
 
 	// Register window class
