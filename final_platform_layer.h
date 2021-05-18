@@ -8326,14 +8326,13 @@ typedef struct fpl__X11Xdnd {
 } fpl__X11Xdnd;
 
 typedef struct fpl__X11WindowState {
-	Display *display;
 	fpl__X11WindowStateInfo lastWindowStateInfo;
-	int screen;
-	Window root;
 	Colormap colorMap;
+	Display *display;
+	fpl__X11Xdnd xdnd;
+	Window root;
 	Window window;
 	Visual *visual;
-	fpl__X11Xdnd xdnd;
 	Atom wmProtocols;
 	Atom wmDeleteWindow;
 	Atom wmState;
@@ -8361,12 +8360,9 @@ typedef struct fpl__X11WindowState {
 	Atom xdndSelection;
 	Atom xdndTypeList;
 	Atom textUriList;
-} fpl__X11WindowState;
-
-typedef struct fpl__X11PreWindowSetupResult {
-	Visual *visual;
+	int screen;
 	int colorDepth;
-} fpl__X11PreWindowSetupResult;
+} fpl__X11WindowState;
 
 #define FPL__XDND_VERSION 5
 
@@ -8688,16 +8684,8 @@ fpl_internal void fpl__HandleMouseWheelEvent(fpl__PlatformWindowState *windowSta
 	fpl__PushMouseWheelEvent(x, y, wheelDelta);
 }
 
-typedef union fpl__PreSetupWindowResult {
-#if defined(FPL_SUBPLATFORM_X11)
-	fpl__X11PreWindowSetupResult x11;
-#endif
-	//! Dummy field
-	int dummy;
-} fpl__PreSetupWindowResult;
-
 // @NOTE(final): Callback used for setup a window before it is created
-#define FPL__FUNC_PREPARE_VIDEO_WINDOW(name) bool name(fpl__PlatformAppState *appState, const fplInitFlags initFlags, const fplSettings *initSettings, fpl__PreSetupWindowResult *outResult)
+#define FPL__FUNC_PREPARE_VIDEO_WINDOW(name) bool name(fpl__PlatformAppState *appState, const fplInitFlags initFlags, const fplSettings *initSettings)
 typedef FPL__FUNC_PREPARE_VIDEO_WINDOW(callback_PreSetupWindow);
 
 // @NOTE(final): Callback used for setup a window after it was created
@@ -11129,7 +11117,7 @@ fpl_internal bool fpl__Win32InitWindow(const fplSettings *initSettings, fplWindo
 	const fplWindowSettings *initWindowSettings = &initSettings->window;
 
 	// Presetup window
-	fpl__PreSetupWindowResult preSetupResult = fplZeroInit;
+	fpl__PrepareVideoWindowResult preSetupResult = fplZeroInit;
 	if(setupCallbacks->preSetup != fpl_null) {
 		setupCallbacks->preSetup(platAppState, platAppState->initFlags, &platAppState->initSettings, &preSetupResult);
 	}
@@ -16132,34 +16120,32 @@ fpl_internal bool fpl__X11InitWindow(const fplSettings *initSettings, fplWindowS
 	FPL_LOG_DEBUG(FPL__MODULE_X11, "Got root window from display '%p' and screen '%d': %d", windowState->display, windowState->screen, (int)windowState->root);
 
 	bool usePreSetupWindow = false;
-	fpl__PreSetupWindowResult setupResult = fplZeroInit;
 	if(setupCallbacks->preSetup != fpl_null) {
 		FPL_LOG_DEBUG(FPL__MODULE_X11, "Call Pre-Setup for Window");
-		usePreSetupWindow = setupCallbacks->preSetup(appState, appState->initFlags, initSettings, &setupResult);
+		usePreSetupWindow = setupCallbacks->preSetup(appState, appState->initFlags, initSettings);
 	}
 
 	Visual *visual = fpl_null;
 	int colorDepth = 0;
 	Colormap colormap;
 	if(usePreSetupWindow) {
-		FPL_LOG_DEBUG(FPL__MODULE_X11, "Got visual '%p' and color depth '%d' from pre-setup", setupResult.x11.visual, setupResult.x11.colorDepth);
-		fplAssert(setupResult.x11.visual != fpl_null);
-		visual = setupResult.x11.visual;
-		colorDepth = setupResult.x11.colorDepth;
-		colormap = x11Api->XCreateColormap(windowState->display, windowState->root, visual, AllocNone);
+		FPL_LOG_DEBUG(FPL__MODULE_X11, "Got visual '%p' and color depth '%d' from pre-setup", windowState->visual, windowState->colorDepth);
+		fplAssert(windowState->visual != fpl_null);
+		fplAssert(windowState->colorDepth > 0);
+		visual = windowState->visual;
+		colorDepth = windowState->colorDepth;
+		colormap = windowState->colorMap = x11Api->XCreateColormap(windowState->display, windowState->root, visual, AllocNone);
 	} else {
 		FPL_LOG_DEBUG(FPL__MODULE_X11, "Using default colormap, visual, color depth");
-		visual = x11Api->XDefaultVisual(windowState->display, windowState->screen);
-		colorDepth = x11Api->XDefaultDepth(windowState->display, windowState->screen);
-		colormap = x11Api->XDefaultColormap(windowState->display, windowState->screen);
+		windowState->visual = visual = x11Api->XDefaultVisual(windowState->display, windowState->screen);
+		windowState->colorDepth = colorDepth = x11Api->XDefaultDepth(windowState->display, windowState->screen);
+		windowState->colorMap = x11Api->XDefaultColormap(windowState->display, windowState->screen);
 	}
 	int flags = CWColormap | CWBackPixel | CWBorderPixel | CWEventMask | CWBitGravity | CWWinGravity;
 
 	FPL_LOG_DEBUG(FPL__MODULE_X11, "Using visual: %p", visual);
 	FPL_LOG_DEBUG(FPL__MODULE_X11, "Using color depth: %d", colorDepth);
 	FPL_LOG_DEBUG(FPL__MODULE_X11, "Using color map: %d", (int)colormap);
-
-	windowState->colorMap = colormap;
 
 	XSetWindowAttributes swa = fplZeroInit;
 	swa.colormap = colormap;
@@ -16211,8 +16197,6 @@ fpl_internal bool fpl__X11InitWindow(const fplSettings *initSettings, fplWindowS
 		return false;
 	}
 	FPL_LOG_DEBUG(FPL__MODULE_X11, "Successfully created window with (Display='%p', Root='%d', Size=%dx%d, Colordepth='%d', visual='%p', colormap='%d': %d", windowState->display, (int)windowState->root, windowWidth, windowHeight, colorDepth, visual, (int)swa.colormap, (int)windowState->window);
-
-	windowState->visual = visual;
 
 	// Type atoms
 	windowState->utf8String = x11Api->XInternAtom(windowState->display, "UTF8_STRING", False);
@@ -18324,7 +18308,7 @@ typedef struct fpl__VideoBackendX11OpenGL {
 } fpl__VideoBackendX11OpenGL;
 
 fpl_internal bool fpl__VideoBackend_X11OpenGL_PrepareWindow(const fpl__X11SubplatformState *appState, const fplVideoSettings *videoSettings, struct fpl__VideoBackendX11OpenGL *backend, fpl__X11WindowState *windowState) {
-	const fpl__X11Api *x11Api = &appState->x11.api;
+	const fpl__X11Api *x11Api = &appState->api;
 
 	const fpl__X11VideoOpenGLApi *glApi = &backend->api;
 
@@ -18434,8 +18418,8 @@ fpl_internal bool fpl__VideoBackend_X11OpenGL_PrepareWindow(const fpl__X11Subpla
 		FPL_LOG_DEBUG(FPL__MODULE_GLX, "Using visual: %p", visualInfo->visual);
 		FPL_LOG_DEBUG(FPL__MODULE_GLX, "Using color depth: %d", visualInfo->depth);
 
-		outResult->visual = visualInfo->visual;
-		outResult->colorDepth = visualInfo->depth;
+		windowState->visual = visualInfo->visual;
+		windowState->colorDepth = visualInfo->depth;
 
 		FPL_LOG_DEBUG(FPL__MODULE_GLX, "Release visual info '%p'", visualInfo);
 		x11Api->XFree(visualInfo);
@@ -18443,8 +18427,8 @@ fpl_internal bool fpl__VideoBackend_X11OpenGL_PrepareWindow(const fpl__X11Subpla
 		FPL_LOG_DEBUG(FPL__MODULE_GLX, "Using existing visual info: %p", backend->visualInfo);
 		FPL_LOG_DEBUG(FPL__MODULE_GLX, "Using visual: %p", backend->visualInfo->visual);
 		FPL_LOG_DEBUG(FPL__MODULE_GLX, "Using color depth: %d", backend->visualInfo->depth);
-		outResult->visual = backend->visualInfo->visual;
-		outResult->colorDepth = backend->visualInfo->depth;
+		windowState->visual = backend->visualInfo->visual;
+		windowState->colorDepth = backend->visualInfo->depth;
 	} else {
 		FPL__ERROR(FPL__MODULE_GLX, "No visual info or frame buffer config defined!");
 		return false;
@@ -20815,7 +20799,7 @@ fpl_internal void fpl__UnloadVideoBackend(fpl__PlatformAppState *appState, fpl__
 #		if defined(FPL_PLATFORM_WINDOWS)
 			fpl__VideoBackend_Win32OpenGL_Unload(&videoState->win32.opengl);
 #		elif defined(FPL_SUBPLATFORM_X11)
-			fpl__VideoBackend_Win32OpenGL_Unload(&videoState->x11.opengl);
+			fpl__VideoBackend_X11OpenGL_Unload(&videoState->x11.opengl);
 #		endif
 		} break;
 #	endif
@@ -20995,7 +20979,6 @@ fpl_internal bool fpl__InitializeVideoBackend(const fplVideoDriverType driver, c
 #if defined(FPL__ENABLE_WINDOW)
 fpl_internal FPL__FUNC_PREPARE_VIDEO_WINDOW(fpl__PrepareVideoWindowDefault) {
 	fplAssert(appState != fpl_null);
-	bool result = false;
 
 #	if defined(FPL__ENABLE_VIDEO)
 	if(initFlags & fplInitFlags_Video) {
@@ -21010,7 +20993,7 @@ fpl_internal FPL__FUNC_PREPARE_VIDEO_WINDOW(fpl__PrepareVideoWindowDefault) {
 				}
 #			endif
 #			if defined(FPL_SUBPLATFORM_X11)
-				if(fpl__VideoBackend_X11OpenGL_PrepareWindow(&appState->x11, &initSettings->video, &videoState->x11.opengl, &appState->window.x11)) {
+				if(!fpl__VideoBackend_X11OpenGL_PrepareWindow(&appState->x11, &initSettings->video, &videoState->x11.opengl, &appState->window.x11)) {
 					return false;
 				}
 #			endif
@@ -21024,7 +21007,7 @@ fpl_internal FPL__FUNC_PREPARE_VIDEO_WINDOW(fpl__PrepareVideoWindowDefault) {
 	}
 #	endif // FPL__ENABLE_VIDEO
 
-	return(result);
+	return(true);
 }
 
 fpl_internal FPL__FUNC_FINALIZE_VIDEO_WINDOW(fpl__FinalizeVideoWindowDefault) {
@@ -21052,7 +21035,7 @@ fpl_internal FPL__FUNC_FINALIZE_VIDEO_WINDOW(fpl__FinalizeVideoWindowDefault) {
 	}
 #endif // FPL__ENABLE_VIDEO
 
-	return false;
+	return true;
 }
 
 fpl_internal void fpl__ReleaseWindow(const fpl__PlatformInitState *initState, fpl__PlatformAppState *appState) {
