@@ -17845,7 +17845,7 @@ typedef FPL__FUNC_WGL_wglCreateContextAttribsARB(fpl__win32_func_wglCreateContex
 #define FPL__FUNC_WGL_wglSwapIntervalEXT(name) BOOL WINAPI name(int interval)
 typedef FPL__FUNC_WGL_wglSwapIntervalEXT(fpl__win32_func_wglSwapIntervalEXT);
 
-typedef struct fpl__VideoBackendWin32OpenGLApi {
+typedef struct fpl__Win32OpenGLApi {
 	HMODULE openglLibrary;
 	fpl__win32_func_wglMakeCurrent *wglMakeCurrent;
 	fpl__win32_func_wglGetProcAddress *wglGetProcAddress;
@@ -17854,16 +17854,16 @@ typedef struct fpl__VideoBackendWin32OpenGLApi {
 	fpl__win32_func_wglChoosePixelFormatARB *wglChoosePixelFormatARB;
 	fpl__win32_func_wglCreateContextAttribsARB *wglCreateContextAttribsARB;
 	fpl__win32_func_wglSwapIntervalEXT *wglSwapIntervalEXT;
-} fpl__VideoBackendWin32OpenGLApi;
+} fpl__Win32OpenGLApi;
 
-fpl_internal void fpl__UnloadWin32OpenGLApi(fpl__VideoBackendWin32OpenGLApi *api) {
+fpl_internal void fpl__UnloadWin32OpenGLApi(fpl__Win32OpenGLApi *api) {
 	if(api->openglLibrary != fpl_null) {
 		FreeLibrary(api->openglLibrary);
 	}
 	fplClearStruct(api);
 }
 
-fpl_internal bool fpl__LoadWin32OpenGLApi(fpl__VideoBackendWin32OpenGLApi *api) {
+fpl_internal bool fpl__LoadWin32OpenGLApi(fpl__Win32OpenGLApi *api) {
 	const char *openglLibraryName = "opengl32.dll";
 	bool result = false;
 	fplClearStruct(api);
@@ -17885,7 +17885,7 @@ fpl_internal bool fpl__LoadWin32OpenGLApi(fpl__VideoBackendWin32OpenGLApi *api) 
 
 typedef struct fpl__VideoBackendWin32OpenGL {
 	fpl__VideoBackend base;
-	fpl__VideoBackendWin32OpenGLApi api;
+	fpl__Win32OpenGLApi api;
 	HGLRC renderingContext;
 } fpl__VideoBackendWin32OpenGL;
 
@@ -17908,7 +17908,7 @@ fpl_internal bool fpl__VideoBackend_Win32OpenGL_PrepareWindow(const fpl__Win32Ap
 	windowState->pixelFormat = 0;
 
 	if(videoSettings->graphics.opengl.compabilityFlags != fplOpenGLCompabilityFlags_Legacy) {
-		fpl__VideoBackendWin32OpenGLApi glApi;
+		fpl__Win32OpenGLApi glApi;
 		if(fpl__LoadWin32OpenGLApi(&glApi)) {
 			// Register temporary window class
 			WNDCLASSEXW windowClass = fplZeroInit;
@@ -18026,7 +18026,7 @@ fpl_internal bool fpl__VideoBackend_Win32OpenGL_FinalizeWindow(const fpl__Win32A
 }
 
 fpl_internal void fpl__VideoBackend_Win32OpenGL_Shutdown(fpl__VideoBackendWin32OpenGL *backend) {
-	const fpl__VideoBackendWin32OpenGLApi *glapi = &backend->api;
+	const fpl__Win32OpenGLApi *glapi = &backend->api;
 	if(backend->renderingContext) {
 		glapi->wglMakeCurrent(fpl_null, fpl_null);
 		glapi->wglDeleteContext(backend->renderingContext);
@@ -18036,7 +18036,7 @@ fpl_internal void fpl__VideoBackend_Win32OpenGL_Shutdown(fpl__VideoBackendWin32O
 
 fpl_internal bool fpl__VideoBackend_Win32OpenGL_Initialize(const fpl__Win32AppState *appState, const fpl__Win32WindowState *windowState, const fplVideoSettings *videoSettings, fpl__VideoBackendWin32OpenGL *backend) {
 	const fpl__Win32Api *wapi = &appState->winApi;
-	fpl__VideoBackendWin32OpenGLApi *glapi = &backend->api;
+	fpl__Win32OpenGLApi *glapi = &backend->api;
 
 	//
 	// Create opengl rendering context
