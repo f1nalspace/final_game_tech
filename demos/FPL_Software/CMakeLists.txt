@@ -11,9 +11,22 @@ set(CMAKE_C_FLAGS "-std=c99")
 
 set(MY_EXTERNAL_LIBS "")
 
-set(MY_HEADER_FILES ../../final_platform_layer.h)
+set(MY_INCLUDE_DIRS
+	"../additions/"
+	)
 
-set(MY_SOURCE_FILES fpl_software.c final_platform_layer.c )
+set(MY_HEADER_FILES 
+	"../../final_platform_layer.h"
+	)
+
+set(MY_SOURCE_FILES
+	"fpl_software.c"
+	)
+
+set(MY_DEFINES
+	-DFPL_IMPLEMENTATION
+	-DFPL_LOGGING
+	)
 
 # -----------------------------------------------------------------------------
 #
@@ -27,6 +40,8 @@ set(MY_EXECUTABLE_PATH ../../${CMAKE_SYSTEM_NAME}-${CMAKE_SYSTEM_PROCESSOR}-${CM
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${MY_EXECUTABLE_PATH})
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${MY_EXECUTABLE_PATH})
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${MY_EXECUTABLE_PATH})
+
+add_definitions(${MY_DEFINES})
 
 include_directories(../../ ${MY_INCLUDE_DIRS})
 
