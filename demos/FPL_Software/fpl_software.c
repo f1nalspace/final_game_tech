@@ -41,7 +41,7 @@ License:
 -------------------------------------------------------------------------------
 */
 
-#define FPL_ENTRYPOINT // Force the inclusion of the entry point
+#define FPL_IMPLEMENTATION
 #include <final_platform_layer.h>
 
 #include <final_math.h>

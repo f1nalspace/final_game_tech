@@ -16121,24 +16121,20 @@ fpl_internal bool fpl__X11InitWindow(const fplSettings *initSettings, fplWindowS
 	bool usePreSetupWindow = false;
 	if(setupCallbacks->preSetup != fpl_null) {
 		FPL_LOG_DEBUG(FPL__MODULE_X11, "Call Pre-Setup for Window");
-		usePreSetupWindow = setupCallbacks->preSetup(appState, appState->initFlags, initSettings);
+		setupCallbacks->preSetup(appState, appState->initFlags, initSettings);
 	}
 
-	Visual *visual = fpl_null;
-	int colorDepth = 0;
+	Visual *visual = windowState->visual;
+	int colorDepth = windowState->colorDepth;
 	Colormap colormap;
-	if(usePreSetupWindow) {
-		FPL_LOG_DEBUG(FPL__MODULE_X11, "Got visual '%p' and color depth '%d' from pre-setup", windowState->visual, windowState->colorDepth);
-		fplAssert(windowState->visual != fpl_null);
-		fplAssert(windowState->colorDepth > 0);
-		visual = windowState->visual;
-		colorDepth = windowState->colorDepth;
-		colormap = windowState->colorMap = x11Api->XCreateColormap(windowState->display, windowState->root, visual, AllocNone);
+	if(visual != fpl_null && colorDepth > 0) {
+		FPL_LOG_DEBUG(FPL__MODULE_X11, "Got visual '%p' and color depth '%d' from pre-setup", visual, colorDepth);
+		windowState->colorMap = colormap = x11Api->XCreateColormap(windowState->display, windowState->root, visual, AllocNone);
 	} else {
-		FPL_LOG_DEBUG(FPL__MODULE_X11, "Using default colormap, visual, color depth");
+		FPL_LOG_DEBUG(FPL__MODULE_X11, "Using default visual, color depth, colormap");
 		windowState->visual = visual = x11Api->XDefaultVisual(windowState->display, windowState->screen);
 		windowState->colorDepth = colorDepth = x11Api->XDefaultDepth(windowState->display, windowState->screen);
-		windowState->colorMap = x11Api->XDefaultColormap(windowState->display, windowState->screen);
+		windowState->colorMap = colormap = x11Api->XDefaultColormap(windowState->display, windowState->screen);
 	}
 	int flags = CWColormap | CWBackPixel | CWBorderPixel | CWEventMask | CWBitGravity | CWWinGravity;
 
@@ -18321,28 +18317,35 @@ typedef struct fpl__VideoBackendX11OpenGL {
 	bool isActiveContext;
 } fpl__VideoBackendX11OpenGL;
 
-fpl_internal bool fpl__VideoBackend_X11OpenGL_PrepareWindow(const fpl__X11SubplatformState *appState, const fplVideoSettings *videoSettings, struct fpl__VideoBackendX11OpenGL *backend, fpl__X11WindowState *windowState) {
-	const fpl__X11Api *x11Api = &appState->api;
+fpl_internal FPL__FUNC_VIDEO_BACKEND_PREPAREWINDOW(fpl__VideoBackend_X11OpenGL_PrepareWindow) {
+	const fpl__X11SubplatformState *nativeAppState = &appState->x11;
+	const fpl__X11Api *x11Api = &nativeAppState->api;
 
-	const fpl__X11VideoOpenGLApi *glApi = &backend->api;
+	fpl__X11WindowState *nativeWindowState = &windowState->x11;
+	fpl__VideoBackendX11OpenGL *nativeBackend = (fpl__VideoBackendX11OpenGL *)backend;
+	fpl__X11VideoOpenGLApi *glApi = &nativeBackend->api;
 
-	FPL_LOG_DEBUG(FPL__MODULE_GLX, "Query GLX version for display '%p'", windowState->display);
+	Display *display = nativeWindowState->display;
+	Window window = nativeWindowState->window;
+	int screen = nativeWindowState->screen;
+
+	FPL_LOG_DEBUG(FPL__MODULE_GLX, "Query GLX version for display '%p'", display);
 	int major = 0, minor = 0;
-	if(!glApi->glXQueryVersion(windowState->display, &major, &minor)) {
-		FPL_LOG_ERROR(FPL__MODULE_GLX, "Failed querying GLX version for display '%p'", windowState->display);
+	if(!glApi->glXQueryVersion(display, &major, &minor)) {
+		FPL_LOG_ERROR(FPL__MODULE_GLX, "Failed querying GLX version for display '%p'", display);
 		return false;
 	}
-	FPL_LOG_DEBUG(FPL__MODULE_GLX, "Successfully queried GLX version for display '%p': %d.%d", windowState->display, major, minor);
+	FPL_LOG_DEBUG(FPL__MODULE_GLX, "Successfully queried GLX version for display '%p': %d.%d", display, major, minor);
 
 	// @NOTE(final): Required for AMD Drivers?
 
-	FPL_LOG_DEBUG(FPL__MODULE_GLX, "Query OpenGL extension on display '%p'", windowState->display);
-	if(!glApi->glXQueryExtension(windowState->display, fpl_null, fpl_null)) {
-		FPL__ERROR(FPL__MODULE_GLX, "OpenGL GLX Extension is not supported by the active display '%p'", windowState->display);
+	FPL_LOG_DEBUG(FPL__MODULE_GLX, "Query OpenGL extension on display '%p'", display);
+	if(!glApi->glXQueryExtension(display, fpl_null, fpl_null)) {
+		FPL__ERROR(FPL__MODULE_GLX, "OpenGL GLX Extension is not supported by the active display '%p'", display);
 		return false;
 	}
 
-	const char *extensionString = glApi->glXQueryExtensionsString(windowState->display, windowState->screen);
+	const char *extensionString = glApi->glXQueryExtensionsString(display, screen);
 	if(extensionString != fpl_null) {
 		FPL_LOG_DEBUG(FPL__MODULE_GLX, "OpenGL GLX extensions: %s", extensionString);
 	}
@@ -18393,56 +18396,56 @@ fpl_internal bool fpl__VideoBackend_X11OpenGL_PrepareWindow(const fpl__X11Subpla
 
 	if(isModern) {
 		// Use frame buffer config approach (GLX >= 1.3)
-		FPL_LOG_DEBUG(FPL__MODULE_GLX, "Get framebuffer configuration from display '%p' and screen '%d'", windowState->display, windowState->screen);
+		FPL_LOG_DEBUG(FPL__MODULE_GLX, "Get framebuffer configuration from display '%p' and screen '%d'", display, screen);
 		int configCount = 0;
-		GLXFBConfig *configs = glApi->glXChooseFBConfig(windowState->display, windowState->screen, attr, &configCount);
+		GLXFBConfig *configs = glApi->glXChooseFBConfig(display, screen, attr, &configCount);
 		if(configs == fpl_null || !configCount) {
-			FPL__ERROR(FPL__MODULE_GLX, "No framebuffer configuration from display '%p' and screen '%d' found!", windowState->display, windowState->screen);
-			backend->fbConfig = fpl_null;
+			FPL__ERROR(FPL__MODULE_GLX, "No framebuffer configuration from display '%p' and screen '%d' found!", display, screen);
+			nativeBackend->fbConfig = fpl_null;
 			return false;
 		}
-		backend->fbConfig = configs[0];
-		backend->visualInfo = fpl_null;
-		FPL_LOG_DEBUG(FPL__MODULE_GLX, "Successfully got framebuffer configuration from display '%p' and screen '%d': %p", windowState->display, windowState->screen, backend->fbConfig);
+		nativeBackend->fbConfig = configs[0];
+		nativeBackend->visualInfo = fpl_null;
+		FPL_LOG_DEBUG(FPL__MODULE_GLX, "Successfully got framebuffer configuration from display '%p' and screen '%d': %p", display, screen, nativeBackend->fbConfig);
 
 		FPL_LOG_DEBUG(FPL__MODULE_GLX, "Release %d framebuffer configurations", configCount);
 		x11Api->XFree(configs);
 	} else {
 		// Use choose visual (Old way)
-		FPL_LOG_DEBUG(FPL__MODULE_GLX, "Choose visual from display '%p' and screen '%d'", windowState->display, windowState->screen);
-		XVisualInfo *visualInfo = glApi->glXChooseVisual(windowState->display, windowState->screen, attr);
+		FPL_LOG_DEBUG(FPL__MODULE_GLX, "Choose visual from display '%p' and screen '%d'", display, screen);
+		XVisualInfo *visualInfo = glApi->glXChooseVisual(display, screen, attr);
 		if(visualInfo == fpl_null) {
-			FPL__ERROR(FPL__MODULE_GLX, "No visual info for display '%p' and screen '%d' found!", windowState->display, windowState->screen);
+			FPL__ERROR(FPL__MODULE_GLX, "No visual info for display '%p' and screen '%d' found!", display, screen);
 			return false;
 		}
-		backend->visualInfo = visualInfo;
-		backend->fbConfig = fpl_null;
-		FPL_LOG_DEBUG(FPL__MODULE_GLX, "Successfully got visual info from display '%p' and screen '%d': %p", windowState->display, windowState->screen, backend->visualInfo);
+		nativeBackend->visualInfo = visualInfo;
+		nativeBackend->fbConfig = fpl_null;
+		FPL_LOG_DEBUG(FPL__MODULE_GLX, "Successfully got visual info from display '%p' and screen '%d': %p", display, screen, nativeBackend->visualInfo);
 	}
 
-	if(backend->fbConfig != fpl_null) {
-		FPL_LOG_DEBUG(FPL__MODULE_GLX, "Get visual info from display '%p' and frame buffer config '%p'", windowState->display, backend->fbConfig);
-		XVisualInfo *visualInfo = glApi->glXGetVisualFromFBConfig(windowState->display, backend->fbConfig);
+	if(nativeBackend->fbConfig != fpl_null) {
+		FPL_LOG_DEBUG(FPL__MODULE_GLX, "Get visual info from display '%p' and frame buffer config '%p'", display, nativeBackend->fbConfig);
+		XVisualInfo *visualInfo = glApi->glXGetVisualFromFBConfig(display, nativeBackend->fbConfig);
 		if(visualInfo == fpl_null) {
-			FPL__ERROR(FPL__MODULE_GLX, "Failed getting visual info from display '%p' and frame buffer config '%p'", windowState->display, backend->fbConfig);
+			FPL__ERROR(FPL__MODULE_GLX, "Failed getting visual info from display '%p' and frame buffer config '%p'", display, nativeBackend->fbConfig);
 			return false;
 		}
-		FPL_LOG_DEBUG(FPL__MODULE_GLX, "Successfully got visual info from display '%p' and frame buffer config '%p': %p", windowState->display, backend->fbConfig, visualInfo);
+		FPL_LOG_DEBUG(FPL__MODULE_GLX, "Successfully got visual info from display '%p' and frame buffer config '%p': %p", display, nativeBackend->fbConfig, visualInfo);
 
 		FPL_LOG_DEBUG(FPL__MODULE_GLX, "Using visual: %p", visualInfo->visual);
 		FPL_LOG_DEBUG(FPL__MODULE_GLX, "Using color depth: %d", visualInfo->depth);
 
-		windowState->visual = visualInfo->visual;
-		windowState->colorDepth = visualInfo->depth;
+		nativeWindowState->visual = visualInfo->visual;
+		nativeWindowState->colorDepth = visualInfo->depth;
 
 		FPL_LOG_DEBUG(FPL__MODULE_GLX, "Release visual info '%p'", visualInfo);
 		x11Api->XFree(visualInfo);
-	} else if(backend->visualInfo != fpl_null) {
-		FPL_LOG_DEBUG(FPL__MODULE_GLX, "Using existing visual info: %p", backend->visualInfo);
-		FPL_LOG_DEBUG(FPL__MODULE_GLX, "Using visual: %p", backend->visualInfo->visual);
-		FPL_LOG_DEBUG(FPL__MODULE_GLX, "Using color depth: %d", backend->visualInfo->depth);
-		windowState->visual = backend->visualInfo->visual;
-		windowState->colorDepth = backend->visualInfo->depth;
+	} else if(nativeBackend->visualInfo != fpl_null) {
+		FPL_LOG_DEBUG(FPL__MODULE_GLX, "Using existing visual info: %p", nativeBackend->visualInfo);
+		FPL_LOG_DEBUG(FPL__MODULE_GLX, "Using visual: %p", nativeBackend->visualInfo->visual);
+		FPL_LOG_DEBUG(FPL__MODULE_GLX, "Using color depth: %d", nativeBackend->visualInfo->depth);
+		nativeWindowState->visual = nativeBackend->visualInfo->visual;
+		nativeWindowState->colorDepth = nativeBackend->visualInfo->depth;
 	} else {
 		FPL__ERROR(FPL__MODULE_GLX, "No visual info or frame buffer config defined!");
 		return false;
@@ -18451,50 +18454,61 @@ fpl_internal bool fpl__VideoBackend_X11OpenGL_PrepareWindow(const fpl__X11Subpla
 	return true;
 }
 
-fpl_internal void fpl__VideoBackend_X11OpenGL_Shutdown(const fpl__X11SubplatformState *subplatform, const fpl__X11WindowState *windowState, fpl__VideoBackendX11OpenGL *backend) {
-	const fpl__X11Api *x11Api = &subplatform->api;
-	const fpl__X11VideoOpenGLApi *glApi = &backend->api;
+fpl_internal FPL__FUNC_VIDEO_BACKEND_SHUTDOWN(fpl__VideoBackend_X11OpenGL_Shutdown) {
+	const fpl__X11SubplatformState *nativeAppState = &appState->x11;
+	const fpl__X11Api *x11Api = &nativeAppState->api;
+	const fpl__X11WindowState *nativeWindowState = &windowState->x11;
 
-	if(backend->isActiveContext) {
-		FPL_LOG_DEBUG(FPL__MODULE_GLX, "Deactivate GLX rendering context for display '%p'", windowState->display);
-		glApi->glXMakeCurrent(windowState->display, 0, fpl_null);
-		backend->isActiveContext = false;
+	fpl__VideoBackendX11OpenGL *nativeBackend = (fpl__VideoBackendX11OpenGL *)backend;
+	fpl__X11VideoOpenGLApi *glApi = &nativeBackend->api;
+
+	if(nativeBackend->isActiveContext) {
+		FPL_LOG_DEBUG(FPL__MODULE_GLX, "Deactivate GLX rendering context for display '%p'", nativeWindowState->display);
+		glApi->glXMakeCurrent(nativeWindowState->display, 0, fpl_null);
+		nativeBackend->isActiveContext = false;
 	}
 
-	if(backend->context != fpl_null) {
-		FPL_LOG_DEBUG(FPL__MODULE_GLX, "Destroy GLX rendering context '%p' for display '%p'", backend->context, windowState->display);
-		glApi->glXDestroyContext(windowState->display, backend->context);
-		backend->context = fpl_null;
+	if(nativeBackend->context != fpl_null) {
+		FPL_LOG_DEBUG(FPL__MODULE_GLX, "Destroy GLX rendering context '%p' for display '%p'", nativeBackend->context, nativeWindowState->display);
+		glApi->glXDestroyContext(nativeWindowState->display, nativeBackend->context);
+		nativeBackend->context = fpl_null;
 	}
 
-	if(backend->visualInfo != fpl_null) {
-		FPL_LOG_DEBUG(FPL__MODULE_GLX, "Destroy visual info '%p' (Fallback)", backend->visualInfo);
-		x11Api->XFree(backend->visualInfo);
-		backend->visualInfo = fpl_null;
+	if(nativeBackend->visualInfo != fpl_null) {
+		FPL_LOG_DEBUG(FPL__MODULE_GLX, "Destroy visual info '%p' (Fallback)", nativeBackend->visualInfo);
+		x11Api->XFree(nativeBackend->visualInfo);
+		nativeBackend->visualInfo = fpl_null;
 	}
 }
 
-fpl_internal bool fpl__VideoBackend_X11OpenGL_Initialize(const fpl__X11SubplatformState *subplatform, const fpl__X11WindowState *windowState, const fplVideoSettings *videoSettings, fpl__VideoBackendX11OpenGL *backend) {
-	const fpl__X11Api *x11Api = &subplatform->api;
-	fpl__X11VideoOpenGLApi *glApi = &backend->api;
+fpl_internal FPL__FUNC_VIDEO_BACKEND_INITIALIZE(fpl__VideoBackend_X11OpenGL_Initialize) {
+	const fpl__X11SubplatformState *nativeAppState = &appState->x11;
+	const fpl__X11Api *x11Api = &nativeAppState->api;
+	const fpl__X11WindowState *nativeWindowState = &windowState->x11;
+
+	fpl__VideoBackendX11OpenGL *nativeBackend = (fpl__VideoBackendX11OpenGL *)backend;
+	fpl__X11VideoOpenGLApi *glApi = &nativeBackend->api;
+	
+	Display *display = nativeWindowState->display;
+	Window window = nativeWindowState->window;
 
 	//
 	// Create legacy context
 	//
 	GLXContext legacyRenderingContext;
-	if(backend->fbConfig != fpl_null) {
-		FPL_LOG_DEBUG(FPL__MODULE_GLX, "Create GLX legacy rendering context on display '%p' and frame buffer config '%p'", windowState->display, backend->fbConfig);
-		legacyRenderingContext = glApi->glXCreateNewContext(windowState->display, backend->fbConfig, GLX_RGBA_TYPE, fpl_null, 1);
+	if(nativeBackend->fbConfig != fpl_null) {
+		FPL_LOG_DEBUG(FPL__MODULE_GLX, "Create GLX legacy rendering context on display '%p' and frame buffer config '%p'", display, nativeBackend->fbConfig);
+		legacyRenderingContext = glApi->glXCreateNewContext(display, nativeBackend->fbConfig, GLX_RGBA_TYPE, fpl_null, 1);
 		if(!legacyRenderingContext) {
-			FPL__ERROR(FPL__MODULE_GLX, "Failed creating GLX legacy rendering context on display '%p' and frame buffer config '%p'", windowState->display, backend->fbConfig);
+			FPL__ERROR(FPL__MODULE_GLX, "Failed creating GLX legacy rendering context on display '%p' and frame buffer config '%p'", display, nativeBackend->fbConfig);
 			goto failed_x11_glx;
 		}
-		FPL_LOG_DEBUG(FPL__MODULE_GLX, "Successfully created GLX legacy rendering context '%p' on display '%p' and frame buffer config '%p'", legacyRenderingContext, windowState->display, backend->fbConfig);
-	} else if(backend->visualInfo != fpl_null) {
-		FPL_LOG_DEBUG(FPL__MODULE_GLX, "Create GLX legacy rendering context on display '%p' and visual info '%p'", windowState->display, backend->visualInfo);
-		legacyRenderingContext = glApi->glXCreateContext(windowState->display, backend->visualInfo, fpl_null, 1);
+		FPL_LOG_DEBUG(FPL__MODULE_GLX, "Successfully created GLX legacy rendering context '%p' on display '%p' and frame buffer config '%p'", legacyRenderingContext, display, nativeBackend->fbConfig);
+	} else if(nativeBackend->visualInfo != fpl_null) {
+		FPL_LOG_DEBUG(FPL__MODULE_GLX, "Create GLX legacy rendering context on display '%p' and visual info '%p'", display, nativeBackend->visualInfo);
+		legacyRenderingContext = glApi->glXCreateContext(display, nativeBackend->visualInfo, fpl_null, 1);
 		if(!legacyRenderingContext) {
-			FPL__ERROR(FPL__MODULE_GLX, "Failed creating GLX legacy rendering context on display '%p' and visual info '%p'", windowState->display, backend->visualInfo);
+			FPL__ERROR(FPL__MODULE_GLX, "Failed creating GLX legacy rendering context on display '%p' and visual info '%p'", display, nativeBackend->visualInfo);
 			goto failed_x11_glx;
 		}
 	} else {
@@ -18505,12 +18519,12 @@ fpl_internal bool fpl__VideoBackend_X11OpenGL_Initialize(const fpl__X11Subplatfo
 	//
 	// Activate legacy context
 	//
-	FPL_LOG_DEBUG(FPL__MODULE_GLX, "Activate GLX legacy rendering context '%p' on display '%p' and window '%d'", legacyRenderingContext, windowState->display, (int)windowState->window);
-	if(!glApi->glXMakeCurrent(windowState->display, windowState->window, legacyRenderingContext)) {
-		FPL__ERROR(FPL__MODULE_GLX, "Failed activating GLX legacy rendering context '%p' on display '%p' and window '%d'", legacyRenderingContext, windowState->display, (int)windowState->window);
+	FPL_LOG_DEBUG(FPL__MODULE_GLX, "Activate GLX legacy rendering context '%p' on display '%p' and window '%d'", legacyRenderingContext, display, (int)window);
+	if(!glApi->glXMakeCurrent(display, window, legacyRenderingContext)) {
+		FPL__ERROR(FPL__MODULE_GLX, "Failed activating GLX legacy rendering context '%p' on display '%p' and window '%d'", legacyRenderingContext, display, (int)window);
 		goto failed_x11_glx;
 	} else {
-		FPL_LOG_DEBUG(FPL__MODULE_GLX, "Successfully activated GLX legacy rendering context '%p' on display '%p' and window '%d'", legacyRenderingContext, windowState->display, (int)windowState->window);
+		FPL_LOG_DEBUG(FPL__MODULE_GLX, "Successfully activated GLX legacy rendering context '%p' on display '%p' and window '%d'", legacyRenderingContext, display, (int)window);
 	}
 
 	//
@@ -18519,11 +18533,11 @@ fpl_internal bool fpl__VideoBackend_X11OpenGL_Initialize(const fpl__X11Subplatfo
 	glApi->glXCreateContextAttribsARB = (fpl__func_glx_glXCreateContextAttribsARB *)glApi->glXGetProcAddress((const GLubyte *)"glXCreateContextAttribsARB");
 
 	// Disable legacy rendering context
-	glApi->glXMakeCurrent(windowState->display, 0, fpl_null);
+	glApi->glXMakeCurrent(display, 0, fpl_null);
 
 	GLXContext activeRenderingContext;
 
-	if((videoSettings->graphics.opengl.compabilityFlags != fplOpenGLCompabilityFlags_Legacy) && (backend->fbConfig != fpl_null)) {
+	if((videoSettings->graphics.opengl.compabilityFlags != fplOpenGLCompabilityFlags_Legacy) && (nativeBackend->fbConfig != fpl_null)) {
 		// @NOTE(final): This is only available in OpenGL 3.0+
 		if(!(videoSettings->graphics.opengl.majorVersion >= 3 && videoSettings->graphics.opengl.minorVersion >= 0)) {
 			FPL__ERROR(FPL__MODULE_GLX, "You have not specified the 'majorVersion' and 'minorVersion' in the VideoSettings");
@@ -18563,41 +18577,41 @@ fpl_internal bool fpl__VideoBackend_X11OpenGL_Initialize(const fpl__X11Subplatfo
 		}
 		contextAttribList[contextAttribIndex] = 0;
 
-		GLXContext modernRenderingContext = glApi->glXCreateContextAttribsARB(windowState->display, backend->fbConfig, fpl_null, True, contextAttribList);
+		GLXContext modernRenderingContext = glApi->glXCreateContextAttribsARB(display, nativeBackend->fbConfig, fpl_null, True, contextAttribList);
 		if(!modernRenderingContext) {
 			FPL__ERROR(FPL__MODULE_GLX, "Warning: Failed creating Modern OpenGL Rendering Context for version (%d.%d) and compability flags (%d) -> Fallback to legacy context", videoSettings->graphics.opengl.majorVersion, videoSettings->graphics.opengl.minorVersion, videoSettings->graphics.opengl.compabilityFlags);
 
 			// Fallback to legacy rendering context
-			glApi->glXMakeCurrent(windowState->display, windowState->window, legacyRenderingContext);
+			glApi->glXMakeCurrent(display, window, legacyRenderingContext);
 			activeRenderingContext = legacyRenderingContext;
 		} else {
-			if(!glApi->glXMakeCurrent(windowState->display, windowState->window, modernRenderingContext)) {
+			if(!glApi->glXMakeCurrent(display, window, modernRenderingContext)) {
 				FPL__ERROR(FPL__MODULE_GLX, "Warning: Failed activating Modern OpenGL Rendering Context for version (%d.%d) and compability flags (%d) -> Fallback to legacy context", videoSettings->graphics.opengl.majorVersion, videoSettings->graphics.opengl.minorVersion, videoSettings->graphics.opengl.compabilityFlags);
 
 				// Destroy modern rendering context
-				glApi->glXDestroyContext(windowState->display, modernRenderingContext);
+				glApi->glXDestroyContext(display, modernRenderingContext);
 
 				// Fallback to legacy rendering context
-				glApi->glXMakeCurrent(windowState->display, windowState->window, legacyRenderingContext);
+				glApi->glXMakeCurrent(display, window, legacyRenderingContext);
 				activeRenderingContext = legacyRenderingContext;
 			} else {
 				// Destroy legacy rendering context
-				glApi->glXDestroyContext(windowState->display, legacyRenderingContext);
+				glApi->glXDestroyContext(display, legacyRenderingContext);
 				legacyRenderingContext = fpl_null;
 				activeRenderingContext = modernRenderingContext;
 			}
 		}
 	} else {
 		// Caller wants legacy context
-		glApi->glXMakeCurrent(windowState->display, windowState->window, legacyRenderingContext);
+		glApi->glXMakeCurrent(display, window, legacyRenderingContext);
 		activeRenderingContext = legacyRenderingContext;
 	}
 
 	bool result;
 
 	fplAssert(activeRenderingContext != fpl_null);
-	backend->context = activeRenderingContext;
-	backend->isActiveContext = true;
+	nativeBackend->context = activeRenderingContext;
+	nativeBackend->isActiveContext = true;
 	result = true;
 	goto done_x11_glx;
 
@@ -18605,18 +18619,18 @@ failed_x11_glx:
 	result = false;
 
 done_x11_glx:
-	if(backend->visualInfo != fpl_null) {
+	if(nativeBackend->visualInfo != fpl_null) {
 		// If there is a cached visual info, get rid of it now - regardless of its result
-		FPL_LOG_DEBUG(FPL__MODULE_GLX, "Destroy visual info '%p'", backend->visualInfo);
-		x11Api->XFree(backend->visualInfo);
-		backend->visualInfo = fpl_null;
+		FPL_LOG_DEBUG(FPL__MODULE_GLX, "Destroy visual info '%p'", nativeBackend->visualInfo);
+		x11Api->XFree(nativeBackend->visualInfo);
+		nativeBackend->visualInfo = fpl_null;
 	}
 
 	if(!result) {
 		if(legacyRenderingContext) {
-			glApi->glXDestroyContext(windowState->display, legacyRenderingContext);
+			glApi->glXDestroyContext(display, legacyRenderingContext);
 		}
-		fpl__VideoBackend_X11OpenGL_Shutdown(subplatform, windowState, backend);
+		fpl__VideoBackend_X11OpenGL_Shutdown(appState, windowState, backend);
 	}
 
 	return (result);
