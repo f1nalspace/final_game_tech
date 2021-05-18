@@ -17758,6 +17758,38 @@ fpl_platform_api size_t fplGetInputLocale(const fplLocaleFormat targetFormat, ch
 #if !defined(FPL__VIDEO_DRIVERS_IMPLEMENTED) && defined(FPL__ENABLE_VIDEO)
 #	define FPL__VIDEO_DRIVERS_IMPLEMENTED
 
+//
+// Video Backend Abstraction
+//
+
+// Video data used for every backend (Software backbuffer for now)
+typedef struct fpl__VideoData {
+#if defined(FPL__ENABLE_VIDEO_SOFTWARE)
+	fplVideoBackBuffer backbuffer;
+#endif
+	uint64_t unused;
+} fpl__VideoData;
+
+#define FPL__FUNC_VIDEO_BACKEND_LOAD(name) bool name(struct fpl__VideoBackend *backend)
+typedef FPL__FUNC_VIDEO_BACKEND_LOAD(fpl__func_VideoBackendLoad);
+
+#define FPL__FUNC_VIDEO_BACKEND_UNLOAD(name) bool name(struct fpl__VideoBackend *backend)
+typedef FPL__FUNC_VIDEO_BACKEND_UNLOAD(fpl__func_VideoBackendUnload);
+
+#define FPL__FUNC_VIDEO_BACKEND_INITIALIZE(name) bool name(const fplVideoSettings *videoSettings, const fpl__VideoData *data, struct fpl__VideoBackend *backend)
+typedef FPL__FUNC_VIDEO_BACKEND_INITIALIZE(fpl__func_VideoBackendInitialize);
+
+#define FPL__FUNC_VIDEO_BACKEND_SHUTDOWN(name) void name(struct fpl__VideoBackend *backend)
+typedef FPL__FUNC_VIDEO_BACKEND_SHUTDOWN(fpl__func_VideoBackendShutdown);
+
+typedef struct fpl__VideoBackend {
+	fpl__func_VideoBackendLoad *loadFunc;
+	fpl__func_VideoBackendUnload *unloadFunc;
+	fpl__func_VideoBackendInitialize *initializeFunc;
+	fpl__func_VideoBackendShutdown *shutdownFunc;
+	uint64_t id;
+} fpl__VideoBackend;
+
 // ############################################################################
 //
 // > VIDEO_DRIVER_OPENGL_WIN32
