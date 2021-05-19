@@ -138,6 +138,8 @@ SOFTWARE.
 
 	- New: Refactored video system to use jump tables instead, to support more backends in the future
 	- New: Added function fplGetVideoProcedure() for query functions from the active video backend
+	- New: Added struct fplVideoSurface
+	- New: Added function fplGetVideoSurface() for query the current fplVideoSurface
 	- Fixed[#109]: Fixed fplS32ToString was not working anymore
 	- Fixed: fplMutexHandle isValid flag was invalid, moved it to above the internal handle and now it works O_o
 
@@ -2333,6 +2335,12 @@ typedef fpl__Win32Handle fpl__Win32SignalHandle;
 typedef void *fpl__Win32ConditionVariable;
 //! A win32 semaphore handle (opaque, min 4/8 bytes)
 typedef fpl__Win32Handle fpl__Win32SemaphoreHandle;
+//! A win32 window handle (opaque, min 4/8 bytes)
+typedef fpl__Win32Handle fpl__Win32WindowHandle;
+//! A win32 device context (opaque, min 4/8 bytes)
+typedef fpl__Win32Handle fpl__Win32DeviceContext;
+//! A win32 rendering context (opaque, min 4/8 bytes)
+typedef fpl__Win32Handle fpl__Win32RenderingContext;
 
 #	endif // FPL_PLATFORM_WINDOWS
 
@@ -2354,6 +2362,23 @@ typedef uint64_t fpl__POSIXSemaphoreHandle[8];
 typedef uint64_t fpl__POSIXConditionVariable[16];
 
 #	endif // FPL_SUBPLATFORM_POSIX
+
+#	if defined(FPL_SUBPLATFORM_X11)
+
+//! A X11 Display (opaque, 4/8 bytes)
+typedef void *fpl__X11Display;
+//! A X11 window (opaque, 4 bytes)
+typedef int fpl__X11Window;
+//! A X11 Visual (opaque, 4/8 bytes)
+typedef void *fpl__X11Visual;
+//! A X11 GC (opaque, 4/8 bytes)
+typedef void *fpl__X11GC;
+//! A X11 Image (opaque, 4/8 bytes)
+typedef void *fpl__X11Image;
+//! A GLX Context (opaque, 4/8 bytes)
+typedef void *fpl__GLXContext;
+
+#	endif // FPL_SUBPLATFORM_X11
 
 #	if defined(FPL_PLATFORM_LINUX)
 
@@ -2384,6 +2409,12 @@ typedef HANDLE fpl__Win32SignalHandle;
 typedef CONDITION_VARIABLE fpl__Win32ConditionVariable;
 //! A win32 semaphore handle
 typedef HANDLE fpl__Win32SemaphoreHandle;
+//! A win32 window handle
+typedef HWND fpl__Win32WindowHandle;
+//! A win32 device context
+typedef HDC fpl__Win32DeviceContext;
+//! A win32 rendering context
+typedef HGLRC fpl__Win32RenderingContext;
 
 #	endif // FPL_PLATFORM_WINDOWS
 
@@ -2405,6 +2436,24 @@ typedef sem_t fpl__POSIXSemaphoreHandle;
 typedef pthread_cond_t fpl__POSIXConditionVariable;
 
 #	endif // FPL_SUBPLATFORM_POSIX
+
+#	if defined(FPL_SUBPLATFORM_X11)
+
+//! A X11 Display
+typedef Display *fpl__X11Display;
+//! A X11 window
+typedef Window fpl__X11Window;
+//! A X11 Visual
+typedef Visual *fpl__X11Visual;
+//! A X11 GC
+typedef GC fpl__X11GC;
+//! A X11 Image
+typedef XImage *fpl__X11Image;
+//! A GLX Context (opaque, 4/8 bytes)
+typedef void *fpl__GLXContext;
+
+#	endif // FPL_SUBPLATFORM_X11
+
 
 #	if defined(FPL_PLATFORM_LINUX)
 
@@ -6327,6 +6376,63 @@ typedef struct fplVideoBackBuffer {
 	fpl_b32 useOutputRect;
 } fplVideoBackBuffer;
 
+#if defined(FPL_PLATFORM_WINDOWS)
+#	if defined(FPL__ENABLE_VIDEO_OPENGL)
+typedef struct fplWin32OpenGLVideoSurface {
+	fpl__Win32WindowHandle windowHandle;
+	fpl__Win32DeviceContext deviceContext;
+	fpl__Win32RenderingContext renderingContext;
+} fplWin32OpenGLVideoSurface;
+#	endif
+#	if defined(FPL__ENABLE_VIDEO_SOFTWARE)
+typedef struct fplWin32SoftwareVideoSurface {
+	fpl__Win32WindowHandle windowHandle;
+	fpl__Win32DeviceContext deviceContext;
+} fplWin32SoftwareVideoSurface;
+#	endif
+#endif // FPL_PLATFORM_WINDOWS
+
+#if defined(FPL_SUBPLATFORM_X11)
+#	if defined(FPL__ENABLE_VIDEO_OPENGL)
+typedef struct fplX11OpenGLVideoSurface {
+	fpl__X11Window window;
+	fpl__X11Display display;
+	fpl__X11Visual visual;
+	fpl__GLXContext renderingContext;
+	int screen;
+} fplX11OpenGLVideoSurface;
+#	endif
+#	if defined(FPL__ENABLE_VIDEO_SOFTWARE)
+typedef struct fplX11SoftwareVideoSurface {
+	fpl__X11Window window;
+	fpl__X11Display display;
+	fpl__X11Visual visual;
+	fpl__X11GC graphicsContext;
+	fpl__X11Image buffer;
+	int screen;
+} fplX11SoftwareVideoSurface;
+#	endif
+#endif // FPL_SUBPLATFORM_X11
+
+typedef union fplVideoSurface {
+#if defined(FPL_PLATFORM_WINDOWS)
+#	if defined(FPL__ENABLE_VIDEO_OPENGL)
+	fplWin32OpenGLVideoSurface win32_opengl;
+#	endif
+#	if defined(FPL__ENABLE_VIDEO_SOFTWARE)
+	fplWin32SoftwareVideoSurface win32_software;
+#	endif
+#endif
+#if defined(FPL_SUBPLATFORM_X11)
+#	if defined(FPL__ENABLE_VIDEO_OPENGL)
+	fplX11OpenGLVideoSurface x11_opengl;
+#	endif
+#	if defined(FPL__ENABLE_VIDEO_SOFTWARE)
+	fplX11SoftwareVideoSurface x11_software;
+#	endif
+#endif
+} fplVideoSurface;
+
 /**
 * @brief Gets the current video driver
 * @return Returns the current video driver type @ref fplVideoDriverType
@@ -6359,10 +6465,16 @@ fpl_common_api void fplVideoFlip();
 
 /**
 * @brief Gets the procedure by the specified name from the active video backend
-* @param procName The width name of the procedure
+* @param procName The name of the procedure.
 * @return Returns the function pointer of the procedure.
 */
 fpl_common_api void *fplGetVideoProcedure(const char *procName);
+
+/**
+* @brief Gets the current @ref fplVideoSurface that stores all handles used for the active video backend.
+* @return The resulting @ref fplVideoSurface reference.
+*/
+fpl_common_api const fplVideoSurface *fplGetVideoSurface();
 
 /** @} */
 #endif // FPL__ENABLE_VIDEO
@@ -17821,6 +17933,7 @@ fpl_internal fpl__VideoContext fpl__StubVideoContext() {
 #define FPL__VIDEOBACKEND_MAGIC (uint64_t)0x564944454f535953
 
 typedef struct fpl__VideoBackend {
+	fplVideoSurface surface;
 	uint64_t magic;
 } fpl__VideoBackend;
 
@@ -18196,6 +18309,10 @@ fpl_internal FPL__FUNC_VIDEO_BACKEND_INITIALIZE(fpl__VideoBackend_Win32OpenGL_In
 		int swapInterval = videoSettings->isVSync ? 1 : 0;
 		glapi->wglSwapIntervalEXT(swapInterval);
 	}
+
+	backend->surface.win32_opengl.deviceContext = deviceContext;
+	backend->surface.win32_opengl.renderingContext = activeRenderingContext;
+	backend->surface.win32_opengl.windowHandle = nativeWindowState->windowHandle;
 
 	return true;
 }
@@ -18694,7 +18811,15 @@ fpl_internal FPL__FUNC_VIDEO_BACKEND_INITIALIZE(fpl__VideoBackend_X11OpenGL_Init
 	fplAssert(activeRenderingContext != fpl_null);
 	nativeBackend->context = activeRenderingContext;
 	nativeBackend->isActiveContext = true;
+
+	backend->surface.x11_opengl.display = display;
+	backend->surface.x11_opengl.window = window;
+	backend->surface.x11_opengl.visual = nativeWindowState->visual;
+	backend->surface.x11_opengl.screen = nativeWindowState->screen;
+	backend->surface.x11_opengl.renderingContext = activeRenderingContext;
+
 	result = true;
+
 	goto done_x11_glx;
 
 failed_x11_glx:
@@ -18807,6 +18932,13 @@ fpl_internal FPL__FUNC_VIDEO_BACKEND_INITIALIZE(fpl__VideoBackend_X11Software_In
 	// Initial draw pixels to the window
 	x11Api->XPutImage(nativeWindowState->display, nativeWindowState->window, nativeBackend->graphicsContext, nativeBackend->buffer, 0, 0, 0, 0, backbuffer->width, backbuffer->height);
 	x11Api->XSync(nativeWindowState->display, False);
+
+	backend->surface.x11_software.display = nativeWindowState->display;
+	backend->surface.x11_software.window = nativeWindowState->window;
+	backend->surface.x11_software.visual = nativeWindowState->visual;
+	backend->surface.x11_software.screen = nativeWindowState->screen;
+	backend->surface.x11_software.graphicsContext = nativeBackend->graphicsContext;
+	backend->surface.x11_software.buffer = nativeBackend->buffer;
 
 	return (true);
 }
@@ -21593,6 +21725,17 @@ fpl_common_api void *fplGetVideoProcedure(const char *procName) {
 	if(videoState != fpl_null && videoState->activeDriver != fplVideoDriverType_None) {
 		fplAssert(videoState->context.getProcedureFunc != fpl_null);
 		result = videoState->context.getProcedureFunc(&videoState->backend.base, procName);
+	}
+	return(result);
+}
+
+fpl_common_api const fplVideoSurface *fplGetVideoSurface() {
+	FPL__CheckPlatform(fpl_null);
+	fpl__PlatformAppState *appState = fpl__global__AppState;
+	const fpl__VideoState *videoState = fpl__GetVideoState(appState);
+	const fplVideoSurface *result = fpl_null;
+	if(videoState != fpl_null && videoState->activeDriver != fplVideoDriverType_None) {
+
 	}
 	return(result);
 }
