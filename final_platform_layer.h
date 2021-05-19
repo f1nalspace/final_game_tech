@@ -21030,12 +21030,13 @@ fpl_internal bool fpl__LoadVideoBackend(fpl__PlatformAppState *appState, const f
 	return(result);
 }
 
-fpl_internal void fpl__ShutdownVideo(fpl__PlatformAppState *appState, fpl__VideoState *videoState) {
+fpl_internal void fpl__ShutdownVideoBackend(fpl__PlatformAppState *appState, fpl__VideoState *videoState) {
 	fplAssert(appState != fpl_null);
 	if(videoState != fpl_null) {
 		const fpl__VideoContext *ctx = &videoState->context;
 		fplAssert(ctx->shutdownFunc != fpl_null);
 		ctx->shutdownFunc(appState, &appState->window, &videoState->backend.base);
+
 #	if defined(FPL__ENABLE_VIDEO_SOFTWARE)
 		fplVideoBackBuffer *backbuffer = &videoState->data.backbuffer;
 		if(backbuffer->pixels != fpl_null) {
@@ -21068,7 +21069,7 @@ fpl_internal bool fpl__InitializeVideoBackend(const fplVideoDriverType driver, c
 		backbuffer->pixels = (uint32_t *)fpl__AllocateDynamicMemory(size, 4);
 		if(backbuffer->pixels == fpl_null) {
 			FPL__ERROR(FPL__MODULE_VIDEO_SOFTWARE, "Failed allocating video software backbuffer of size %xu bytes", size);
-			fpl__ShutdownVideo(appState, videoState);
+			fpl__ShutdownVideoBackend(appState, videoState);
 			return false;
 		}
 
@@ -21087,7 +21088,7 @@ fpl_internal bool fpl__InitializeVideoBackend(const fplVideoDriverType driver, c
 	bool videoInitResult = ctx->initializeFunc(appState, &appState->window, videoSettings, &videoState->data, &videoState->backend.base);
 	if(!videoInitResult) {
 		fplAssert(fplGetErrorCount() > 0);
-		fpl__ShutdownVideo(appState, videoState);
+		fpl__ShutdownVideoBackend(appState, videoState);
 		return false;
 	}
 
@@ -21121,7 +21122,7 @@ fpl_internal fpl__VideoContext fpl__ConstructVideoContext(const fplVideoDriverTy
 		default:
 		{
 			// No driver found, just return a stub
-			FPL__ERROR(FPL__MODULE_VIDEO, "Unsupported video driver '%s' for this platform", fplGetVideoDriverName(driver));
+			FPL__ERROR(FPL__MODULE_VIDEO, "The video backend '%s' is not supported for this platform", fplGetVideoDriverName(driver));
 			return(fpl__StubVideoContext());
 		} break;
 	}
@@ -21143,26 +21144,9 @@ fpl_internal FPL__FUNC_PREPARE_VIDEO_WINDOW(fpl__PrepareVideoWindowDefault) {
 #	if defined(FPL__ENABLE_VIDEO)
 	if(initFlags & fplInitFlags_Video) {
 		fpl__VideoState *videoState = fpl__GetVideoState(appState);
-		switch(initSettings->video.driver) {
-#		if defined(FPL__ENABLE_VIDEO_OPENGL)
-			case fplVideoDriverType_OpenGL:
-			{
-#			if defined(FPL_PLATFORM_WINDOWS)
-				if(!fpl__VideoBackend_Win32OpenGL_PrepareWindow(appState, &initSettings->video, &appState->window, &videoState->backend.base)) {
-					return false;
-				}
-#			endif
-#			if defined(FPL_SUBPLATFORM_X11)
-				if(!fpl__VideoBackend_X11OpenGL_PrepareWindow(appState, &initSettings->video, &appState->window, &videoState->backend.base)) {
-					return false;
-				}
-#			endif
-			} break;
-#		endif // FPL__ENABLE_VIDEO_OPENGL
-
-			default:
-			{
-			} break;
+		if(videoState->context.prepareWindowFunc != fpl_null) {
+			bool result = videoState->context.prepareWindowFunc(appState, &initSettings->video, &appState->window, &videoState->backend.base);
+			return(result);
 		}
 	}
 #	endif // FPL__ENABLE_VIDEO
@@ -21176,21 +21160,9 @@ fpl_internal FPL__FUNC_FINALIZE_VIDEO_WINDOW(fpl__FinalizeVideoWindowDefault) {
 #if defined(FPL__ENABLE_VIDEO)
 	if(initFlags & fplInitFlags_Video) {
 		fpl__VideoState *videoState = fpl__GetVideoState(appState);
-		switch(initSettings->video.driver) {
-#		if defined(FPL__ENABLE_VIDEO_OPENGL)
-			case fplVideoDriverType_OpenGL:
-			{
-#			if defined(FPL_PLATFORM_WINDOWS)
-				if(!fpl__VideoBackend_Win32OpenGL_FinalizeWindow(appState, &initSettings->video, &appState->window, &videoState->backend.base)) {
-					return false;
-				}
-#			endif
-			} break;
-#		endif // FPL__ENABLE_VIDEO_OPENGL
-
-			default:
-			{
-			} break;
+		if(videoState->context.finalizeWindowFunc != fpl_null) {
+			bool result = videoState->context.finalizeWindowFunc(appState, &initSettings->video, &appState->window, &videoState->backend.base);
+			return(result);
 		}
 	}
 #endif // FPL__ENABLE_VIDEO
@@ -21598,7 +21570,7 @@ fpl_common_api bool fplResizeVideoBackBuffer(const uint32_t width, const uint32_
 	if(videoState != fpl_null) {
 		fplVideoDriverType driver = videoState->activeDriver;
 		if(driver != fplVideoDriverType_None && videoState->context.recreateOnResize) {
-			fpl__ShutdownVideo(appState, videoState);
+			fpl__ShutdownVideoBackend(appState, videoState);
 			result = fpl__InitializeVideoBackend(videoState->activeDriver, &appState->currentSettings.video, width, height, appState, videoState);
 		}
 	}
@@ -21663,13 +21635,13 @@ fpl_internal void fpl__ReleasePlatformStates(fpl__PlatformInitState *initState, 
 	}
 #	endif
 
-	// Shutdown video (Release context only)
+	// Shutdown video backend
 #	if defined(FPL__ENABLE_VIDEO)
 	{
 		fpl__VideoState *videoState = fpl__GetVideoState(appState);
 		if(videoState != fpl_null) {
-			FPL_LOG_DEBUG(FPL__MODULE_CORE, "Shutdown Video for Driver '%s'", fplGetVideoDriverName(videoState->activeDriver));
-			fpl__ShutdownVideo(appState, videoState);
+			FPL_LOG_DEBUG(FPL__MODULE_CORE, "Shutdown Video Backend '%s'", fplGetVideoDriverName(videoState->activeDriver));
+			fpl__ShutdownVideoBackend(appState, videoState);
 		}
 	}
 #	endif
@@ -21683,12 +21655,12 @@ fpl_internal void fpl__ReleasePlatformStates(fpl__PlatformInitState *initState, 
 	}
 #	endif
 
-	// Release video state
+	// Release video backend
 #	if defined(FPL__ENABLE_VIDEO)
 	{
 		fpl__VideoState *videoState = fpl__GetVideoState(appState);
 		if(videoState != fpl_null) {
-			FPL_LOG_DEBUG(FPL__MODULE_CORE, "Release Video for Driver '%s'", fplGetVideoDriverName(videoState->activeDriver));
+			FPL_LOG_DEBUG(FPL__MODULE_CORE, "Release Video Backend '%s'", fplGetVideoDriverName(videoState->activeDriver));
 			fpl__UnloadVideoBackend(appState, videoState);
 		}
 	}
