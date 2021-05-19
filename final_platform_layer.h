@@ -6380,15 +6380,23 @@ typedef struct fplVideoBackBuffer {
 
 #if defined(FPL_PLATFORM_WINDOWS)
 #	if defined(FPL__ENABLE_VIDEO_OPENGL)
+//! Stores the surface properties for the win32 OpenGL video backend
 typedef struct fplWin32OpenGLVideoSurface {
+	//! The window handle
 	fpl__Win32WindowHandle windowHandle;
+	//! Thw device context
 	fpl__Win32DeviceContext deviceContext;
+	//! The WGL rendering context
 	fpl__Win32RenderingContext renderingContext;
 } fplWin32OpenGLVideoSurface;
 #	endif
+
 #	if defined(FPL__ENABLE_VIDEO_SOFTWARE)
+//! Stores the surface properties for the win32 software video backend
 typedef struct fplWin32SoftwareVideoSurface {
+	//! The window handle
 	fpl__Win32WindowHandle windowHandle;
+	//! The device context
 	fpl__Win32DeviceContext deviceContext;
 } fplWin32SoftwareVideoSurface;
 #	endif
@@ -6396,43 +6404,64 @@ typedef struct fplWin32SoftwareVideoSurface {
 
 #if defined(FPL_SUBPLATFORM_X11)
 #	if defined(FPL__ENABLE_VIDEO_OPENGL)
+//! Stores the surface properties for the X11 OpenGL video backend
 typedef struct fplX11OpenGLVideoSurface {
+	//! The window handle
 	fpl__X11Window window;
+	//! The display handle
 	fpl__X11Display display;
+	//! The visual handle
 	fpl__X11Visual visual;
+	//! The GLX rendering context
 	fpl__GLXContext renderingContext;
+	//! The screen id
 	int screen;
 } fplX11OpenGLVideoSurface;
 #	endif
+
 #	if defined(FPL__ENABLE_VIDEO_SOFTWARE)
+//! Stores the surface properties for the X11 software video backend
 typedef struct fplX11SoftwareVideoSurface {
+	//! The window handle
 	fpl__X11Window window;
+	//! The display handle
 	fpl__X11Display display;
+	//! The visual handle
 	fpl__X11Visual visual;
+	//! The graphics context
 	fpl__X11GC graphicsContext;
+	//! The image buffer
 	fpl__X11Image buffer;
+	//! The screen id
 	int screen;
 } fplX11SoftwareVideoSurface;
 #	endif
 #endif // FPL_SUBPLATFORM_X11
 
+//! Stores the surface properties for the active video backend
 typedef union fplVideoSurface {
 #if defined(FPL_PLATFORM_WINDOWS)
 #	if defined(FPL__ENABLE_VIDEO_OPENGL)
+	//! The win32 OpenGL surface properties
 	fplWin32OpenGLVideoSurface win32_opengl;
 #	endif
 #	if defined(FPL__ENABLE_VIDEO_SOFTWARE)
+	//! The win32 software surface properties
 	fplWin32SoftwareVideoSurface win32_software;
 #	endif
 #endif
 #if defined(FPL_SUBPLATFORM_X11)
 #	if defined(FPL__ENABLE_VIDEO_OPENGL)
+	//! The X11 OpenGL surface properties
 	fplX11OpenGLVideoSurface x11_opengl;
 #	endif
 #	if defined(FPL__ENABLE_VIDEO_SOFTWARE)
+	//! The X11 software surface properties
 	fplX11SoftwareVideoSurface x11_software;
 #	endif
 #endif
+	//! Dummy field for empty union
+	int dummy;
 } fplVideoSurface;
 
 /**
