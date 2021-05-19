@@ -1887,8 +1887,8 @@ static bool QueryVulkanSurfaceProperties(const VulkanInstanceApi *instanceApi, c
 		}
 	}
 
-	fplConsoleFormatOut("Graphics queue family: %lu\n", graphicsQueueFamilyIndex);
-	fplConsoleFormatOut("Presentation queue family: %lu\n", presentQueueFamilyIndex);
+	fplConsoleFormatOut("Graphics queue family: %lu (%lu)\n", graphicsQueueFamilyIndex.index, graphicsQueueFamilyIndex.maxCount);
+	fplConsoleFormatOut("Presentation queue family: %lu (%lu)\n", presentQueueFamilyIndex.index, graphicsQueueFamilyIndex.maxCount);
 
 	if(!IsVulkanValidQueueFamilyIndex(graphicsQueueFamilyIndex) || !IsVulkanValidQueueFamilyIndex(presentQueueFamilyIndex)) {
 		fplConsoleFormatError("Could not find queue families for graphics or presentation!\n");
@@ -2475,6 +2475,14 @@ static void VulkanShutdownStep1(VulkanState *state) {
 	// Destroy Surface
 	VulkanDestroySurface(allocator, &state->instance.instanceApi, &state->surface, state->instance.instanceHandle);
 
+	// @NOTE(final): Do not destroy the instance or unload the api here, because we must never unload the vulkan library, while any windowing system is active
+}
+
+static void VulkanShutdownStep2(VulkanState *state) {
+	fplAssert(state != fpl_null);
+
+	VkAllocationCallbacks *allocator = state->allocator;
+	
 	// Destroy debug messenger
 	if(state->instance.hasValidationLayer) {
 		VulkanDestroyDebugMessenger(&state->coreApi, state->instance.instanceHandle, state->debugMessenger);
@@ -2482,12 +2490,8 @@ static void VulkanShutdownStep1(VulkanState *state) {
 
 	// Destroy Instance
 	VulkanDestroyInstance(allocator, &state->coreApi, &state->instance);
-
-	// @NOTE(final): Do not unload the api here, because we must never unload the vulkan library, while any windowing system is active
-}
-
-static void VulkanShutdownStep2(VulkanState *state) {
-	// @NOTE(final): We must never unload the vulkan library, while any windowing system is active
+	
+	VulkanUnloadCoreAPI(&state->coreApi);
 
 	fplClearStruct(state);
 }
@@ -2497,7 +2501,15 @@ static void VulkanShutdownAll(VulkanState *state) {
 	VulkanShutdownStep2(state);
 }
 
-static bool VulkanInitialize(VulkanState *state, const uint32_t winWidth, const uint32_t winHeight) {
+static bool VulkanInitializeStep1(VulkanState *state) {
+	fplClearStruct(state);
+	if (!VulkanLoadCoreAPI(&state->coreApi)) {
+		return(false);
+	}
+	return(true);
+}
+
+static bool VulkanInitializeStep2(VulkanState *state, const uint32_t winWidth, const uint32_t winHeight) {
 	fplAssert(state != fpl_null);
 
 	if(state->isInitialized) {
@@ -2622,10 +2634,6 @@ static bool VulkanInitialize(VulkanState *state, const uint32_t winWidth, const 
 		fplConsoleFormatError("Failed to create a frame for device '%p' and surface '%p' with size of %lu x %lu!\n", state->logicalDevice.logicalDeviceHandle, state->surface.surfaceHandle, size.width, size.height);
 		goto failed;
 	}
-
-	//
-	// Temporary fill the command buffer
-	//
 
 	goto success;
 
@@ -2754,10 +2762,14 @@ int main(int argc, char **argv) {
 	//
 	// Load Vulkan API
 	//
-	if(!VulkanLoadCoreAPI(&state->coreApi)) {
-		fplConsoleFormatError("Failed to load Vulkan Core API!\n");
+	fplConsoleFormatOut("-> Initialize Vulkan Step (1/2)\n");
+	fplConsoleFormatOut("\n");
+	if(!VulkanInitializeStep1(state)) {
+		fplConsoleFormatError("Failed to initialize Vulkan (Step 1/2)!\n");
 		goto cleanup;
 	}
+	fplConsoleFormatOut("Successfully initialized Vulkan (Step 1/2)\n");
+	fplConsoleOut("\n");
 
 	fplSettings settings = fplMakeDefaultSettings();
 	settings.video.driver = fplVideoDriverType_None;
@@ -2784,13 +2796,13 @@ int main(int argc, char **argv) {
 	fplWindowSize initialWinSize = fplZeroInit;
 	fplGetWindowSize(&initialWinSize);
 
-	fplConsoleFormatOut("-> Initialize Vulkan\n");
+	fplConsoleFormatOut("-> Initialize Vulkan (Step 2/2)\n");
 	fplConsoleFormatOut("\n");
-	if(!VulkanInitialize(state, initialWinSize.width, initialWinSize.height)) {
-		fplConsoleFormatError("Failed to initialize Vulkan!\n");
+	if(!VulkanInitializeStep2(state, initialWinSize.width, initialWinSize.height)) {
+		fplConsoleFormatError("Failed to initialize Vulkan (Step 2/2)!\n");
 		goto cleanup;
 	}
-	fplConsoleFormatOut("Successfully initialized Vulkan\n");
+	fplConsoleFormatOut("Successfully initialized Vulkan (Step 2/2)\n");
 	fplConsoleOut("\n");
 
 	appResult = 0;
@@ -2824,19 +2836,18 @@ cleanup:
 
 	if(isPlatformInitialized) {
 		if(state != fpl_null) {
+			// Shutdown Vulkan (Destroy swap-chain, logical/physical devices, buffers and surface)
 			fplConsoleFormatOut("Shutdown Vulkan (Step 1/2)\n");
 			VulkanShutdownStep1(state);
 		}
 
+		// Release platform
 		fplConsoleFormatOut("Shutdown Platform\n");
 		fplPlatformRelease();
 	}
 
 	if(state != fpl_null) {
-		// Unload Core API
-		VulkanUnloadCoreAPI(&state->coreApi);
-
-		// Remove state memory
+		// Shutdown Vulkan (Destroy instance and unload library)
 		fplConsoleFormatOut("Shutdown Vulkan (Step 2/2)\n");
 		VulkanShutdownStep2(state);
 		fplMemoryFree(state);
