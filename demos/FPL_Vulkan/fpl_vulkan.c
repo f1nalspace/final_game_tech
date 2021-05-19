@@ -34,6 +34,8 @@ License:
 
 #define FPL_IMPLEMENTATION
 #define FPL_LOGGING
+#define FPL_NO_VIDEO_SOFTWARE
+#define FPL_NO_VIDEO_OPENGL
 #include <final_platform_layer.h>
 
 #if defined(FPL_PLATFORM_WINDOWS)
