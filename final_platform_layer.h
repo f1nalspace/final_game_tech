@@ -6412,6 +6412,7 @@ typedef struct fplVideoBackBuffer {
 } fplVideoBackBuffer;
 
 #if defined(FPL_PLATFORM_WINDOWS)
+
 #	if defined(FPL__ENABLE_VIDEO_OPENGL)
 //! Stores the surface properties for the win32 OpenGL video backend
 typedef struct fplWin32OpenGLVideoSurface {
@@ -6424,6 +6425,20 @@ typedef struct fplWin32OpenGLVideoSurface {
 } fplWin32OpenGLVideoSurface;
 #	endif
 
+#	if defined(FPL__ENABLE_VIDEO_VULKAN)
+//! Stores the surface properties for the win32 Vulkan video backend
+typedef struct fplWin32VulkanVideoSurface {
+	//! The window handle
+	fpl__Win32WindowHandle windowHandle;
+	//! Thw device context
+	fpl__Win32DeviceContext deviceContext;
+	//! The Vulkan Instance (VkInstance)
+	void *instance;
+	//! The Vulkan Surface KHR (VkSurfaceKHR)
+	void *surfaceKHR;
+} fplWin32VulkanVideoSurface;
+#	endif // FPL__ENABLE_VIDEO_VULKAN
+
 #	if defined(FPL__ENABLE_VIDEO_SOFTWARE)
 //! Stores the surface properties for the win32 software video backend
 typedef struct fplWin32SoftwareVideoSurface {
@@ -6432,10 +6447,12 @@ typedef struct fplWin32SoftwareVideoSurface {
 	//! The device context
 	fpl__Win32DeviceContext deviceContext;
 } fplWin32SoftwareVideoSurface;
-#	endif
+#	endif // FPL__ENABLE_VIDEO_SOFTWARE
+
 #endif // FPL_PLATFORM_WINDOWS
 
 #if defined(FPL_SUBPLATFORM_X11)
+
 #	if defined(FPL__ENABLE_VIDEO_OPENGL)
 //! Stores the surface properties for the X11 OpenGL video backend
 typedef struct fplX11OpenGLVideoSurface {
@@ -6450,7 +6467,25 @@ typedef struct fplX11OpenGLVideoSurface {
 	//! The screen id
 	int screen;
 } fplX11OpenGLVideoSurface;
-#	endif
+#	endif // FPL__ENABLE_VIDEO_OPENGL
+
+#	if defined(FPL__ENABLE_VIDEO_VULKAN)
+//! Stores the surface properties for the X11 OpenGL video backend
+typedef struct fplX11VulkanVideoSurface {
+	//! The window handle
+	fpl__X11Window window;
+	//! The display handle
+	fpl__X11Display display;
+	//! The visual handle
+	fpl__X11Visual visual;
+	//! The Vulkan Instance (VkInstance)
+	void *instance;
+	//! The Vulkan Surface KHR (VkSurfaceKHR)
+	void *surfaceKHR;
+	//! The screen id
+	int screen;
+} fplX11VulkanVideoSurface;
+#	endif // FPL__ENABLE_VIDEO_VULKAN
 
 #	if defined(FPL__ENABLE_VIDEO_SOFTWARE)
 //! Stores the surface properties for the X11 software video backend
@@ -6468,7 +6503,8 @@ typedef struct fplX11SoftwareVideoSurface {
 	//! The screen id
 	int screen;
 } fplX11SoftwareVideoSurface;
-#	endif
+#	endif // FPL__ENABLE_VIDEO_SOFTWARE
+
 #endif // FPL_SUBPLATFORM_X11
 
 //! Stores the surface properties for the active video backend
@@ -6477,6 +6513,10 @@ typedef union fplVideoSurface {
 #	if defined(FPL__ENABLE_VIDEO_OPENGL)
 	//! The win32 OpenGL surface properties
 	fplWin32OpenGLVideoSurface win32_opengl;
+#	endif
+#	if defined(FPL__ENABLE_VIDEO_VULKAN)
+	//! The win32 Vulkan surface properties
+	fplWin32VulkanVideoSurface win32_vulkan;
 #	endif
 #	if defined(FPL__ENABLE_VIDEO_SOFTWARE)
 	//! The win32 software surface properties
@@ -6487,6 +6527,10 @@ typedef union fplVideoSurface {
 #	if defined(FPL__ENABLE_VIDEO_OPENGL)
 	//! The X11 OpenGL surface properties
 	fplX11OpenGLVideoSurface x11_opengl;
+#	endif
+#	if defined(FPL__ENABLE_VIDEO_VULKAN)
+	//! The X11 Vulkan surface properties
+	fplX11VulkanVideoSurface x11_vulkan;
 #	endif
 #	if defined(FPL__ENABLE_VIDEO_SOFTWARE)
 	//! The X11 software surface properties
