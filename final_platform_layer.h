@@ -17767,13 +17767,35 @@ typedef FPL__FUNC_VIDEO_BACKEND_INITIALIZE(fpl__func_VideoBackendInitialize);
 #define FPL__FUNC_VIDEO_BACKEND_SHUTDOWN(name) void name(const fpl__PlatformAppState *appState, const fpl__PlatformWindowState *windowState, struct fpl__VideoBackend *backend)
 typedef FPL__FUNC_VIDEO_BACKEND_SHUTDOWN(fpl__func_VideoBackendShutdown);
 
-typedef struct fpl__VideoBackend {
+typedef struct fpl__VideoContext {
 	fpl__func_VideoBackendLoad *loadFunc;
 	fpl__func_VideoBackendUnload *unloadFunc;
 	fpl__func_VideoBackendInitialize *initializeFunc;
 	fpl__func_VideoBackendShutdown *shutdownFunc;
 	fpl__func_VideoBackendPrepareWindow *prepareWindow;
 	fpl__func_VideoBackendFinalizeWindow *finalizeWindow;
+} fpl__VideoContext;
+
+// Video context stubs
+fpl_internal FPL__FUNC_VIDEO_BACKEND_LOAD(fpl__VideoBackend_Load_Stub) { return(true); }
+fpl_internal FPL__FUNC_VIDEO_BACKEND_UNLOAD(fpl__VideoBackend_Unload_Stub) { }
+fpl_internal FPL__FUNC_VIDEO_BACKEND_PREPAREWINDOW(fpl__VideoBackend_PrepareWindow_Stub) { return(true); }
+fpl_internal FPL__FUNC_VIDEO_BACKEND_FINALIZEWINDOW(fpl__VideoBackend_FinalizeWindow_Stub) { return(true); }
+fpl_internal FPL__FUNC_VIDEO_BACKEND_INITIALIZE(fpl__VideoBackend_Initialize_Stub) { return(false); }
+fpl_internal FPL__FUNC_VIDEO_BACKEND_SHUTDOWN(fpl__VideoBackend_Shutdown_Stub) { }
+
+fpl_internal fpl__VideoContext fpl__StubVideoContext() {
+	fpl__VideoContext result = fplZeroInit;
+	result.loadFunc = fpl__VideoBackend_Load_Stub;
+	result.unloadFunc = fpl__VideoBackend_Unload_Stub;
+	result.prepareWindow = fpl__VideoBackend_PrepareWindow_Stub;
+	result.finalizeWindow = fpl__VideoBackend_FinalizeWindow_Stub;
+	result.initializeFunc = fpl__VideoBackend_Initialize_Stub;
+	result.shutdownFunc = fpl__VideoBackend_Shutdown_Stub;
+	return(result);
+}
+
+typedef struct fpl__VideoBackend {
 	uint64_t id;
 } fpl__VideoBackend;
 
@@ -18160,6 +18182,17 @@ fpl_internal FPL__FUNC_VIDEO_BACKEND_LOAD(fpl__VideoBackend_Win32OpenGL_Load) {
 		return(false);
 	}
 	return(true);
+}
+
+fpl_internal fpl__VideoContext fpl__VideoBackend_Win32OpenGL_Construct() {
+	fpl__VideoContext result = fpl__StubVideoContext();
+	result.loadFunc = fpl__VideoBackend_Win32OpenGL_Load;
+	result.unloadFunc = fpl__VideoBackend_Win32OpenGL_Unload;
+	result.initializeFunc = fpl__VideoBackend_Win32OpenGL_Initialize;
+	result.shutdownFunc = fpl__VideoBackend_Win32OpenGL_Shutdown;
+	result.prepareWindow = fpl__VideoBackend_Win32OpenGL_PrepareWindow;
+	result.finalizeWindow = fpl__VideoBackend_Win32OpenGL_FinalizeWindow;
+	return(result);
 }
 #endif // FPL__ENABLE_VIDEO_OPENGL && FPL_PLATFORM_WINDOWS
 
@@ -18650,6 +18683,16 @@ fpl_internal FPL__FUNC_VIDEO_BACKEND_LOAD(fpl__VideoBackend_X11OpenGL_Load) {
 	}
 	return(true);
 }
+
+fpl_internal fpl__VideoContext fpl__VideoBackend_X11OpenGL_Construct() {
+	fpl__VideoContext result = fpl__StubVideoContext();
+	result.loadFunc = fpl__VideoBackend_X11OpenGL_Load;
+	result.unloadFunc = fpl__VideoBackend_X11OpenGL_Unload;
+	result.initializeFunc = fpl__VideoBackend_X11OpenGL_Initialize;
+	result.shutdownFunc = fpl__VideoBackend_X11OpenGL_Shutdown;
+	result.prepareWindow = fpl__VideoBackend_X11OpenGL_PrepareWindow;
+	return(result);
+}
 #endif // FPL__ENABLE_VIDEO_OPENGL && FPL_SUBPLATFORM_X11
 
 // ############################################################################
@@ -18719,6 +18762,15 @@ fpl_internal FPL__FUNC_VIDEO_BACKEND_UNLOAD(fpl__VideoBackend_X11Software_Load) 
 	fplClearStruct(nativeBackend);
 	return(true);
 }
+
+fpl_internal fpl__VideoContext fpl__VideoBackend_X11Software_Construct() {
+	fpl__VideoContext result = fpl__StubVideoContext();
+	result.loadFunc = fpl__VideoBackend_X11Software_Load;
+	result.unloadFunc = fpl__VideoBackend_X11Software_Unload;
+	result.initializeFunc = fpl__VideoBackend_X11Software_Initialize;
+	result.shutdownFunc = fpl__VideoBackend_X11Software_Shutdown;
+	return(result);
+}
 #endif // FPL__ENABLE_VIDEO_SOFTWARE && FPL_SUBPLATFORM_X11
 
 // ############################################################################
@@ -18763,6 +18815,15 @@ fpl_internal FPL__FUNC_VIDEO_BACKEND_LOAD(fpl__VideoBackend_Win32Software_Load) 
 	fpl__VideoBackendWin32Software *nativeBackend = (fpl__VideoBackendWin32Software *)backend;
 	fplClearStruct(nativeBackend);
 	return(true);
+}
+
+fpl_internal fpl__VideoContext fpl__VideoBackend_Win32Software_Construct() {
+	fpl__VideoContext result = fpl__StubVideoContext();
+	result.loadFunc = fpl__VideoBackend_Win32Software_Load;
+	result.unloadFunc = fpl__VideoBackend_Win32Software_Unload;
+	result.initializeFunc = fpl__VideoBackend_Win32Software_Initialize;
+	result.shutdownFunc = fpl__VideoBackend_Win32Software_Shutdown;
+	return(result);
 }
 #endif // FPL__ENABLE_VIDEO_SOFTWARE && FPL_PLATFORM_WINDOWS
 
@@ -20817,6 +20878,7 @@ typedef union fpl__ActiveVideoBackend {
 
 typedef struct fpl__VideoState {
 	fpl__ActiveVideoBackend backend;
+	fpl__VideoContext context;
 	fpl__VideoData data;
 	fplVideoDriverType activeDriver;
 } fpl__VideoState;
@@ -20861,68 +20923,18 @@ fpl_internal void fpl__UnloadVideoBackend(fpl__PlatformAppState *appState, fpl__
 }
 
 fpl_internal bool fpl__LoadVideoBackend(fpl__PlatformAppState *appState, const fplVideoDriverType driver, fpl__VideoState *videoState) {
-	bool result = true;
-
-	switch(driver) {
-#	if defined(FPL__ENABLE_VIDEO_OPENGL)
-		case fplVideoDriverType_OpenGL:
-		{
-#		if defined(FPL_PLATFORM_WINDOWS)
-			result = fpl__VideoBackend_Win32OpenGL_Load(appState, &videoState->backend.base);
-#		elif defined(FPL_SUBPLATFORM_X11)
-			result = fpl__VideoBackend_X11OpenGL_Load(appState, &videoState->backend.base);
-#		endif
-		} break;
-#	endif
-
-#	if defined(FPL__ENABLE_VIDEO_SOFTWARE)
-		case fplVideoDriverType_Software:
-		{
-#		if defined(FPL_PLATFORM_WINDOWS)
-			fpl__VideoBackend_Win32Software_Load(appState, &videoState->backend.base);
-#		elif defined(FPL_SUBPLATFORM_X11)
-			fpl__VideoBackend_X11Software_Load(appState, &videoState->backend.base);
-#		endif
-		} break;
-#	endif
-
-		default:
-			break;
-	}
+	const fpl__VideoContext *ctx = &videoState->context;
+	fplAssert(ctx->loadFunc != fpl_null);
+	bool result = ctx->loadFunc(appState, &videoState->backend.base);
 	return(result);
 }
 
 fpl_internal void fpl__ShutdownVideo(fpl__PlatformAppState *appState, fpl__VideoState *videoState) {
 	fplAssert(appState != fpl_null);
 	if(videoState != fpl_null) {
-		switch(videoState->activeDriver) {
-#		if defined(FPL__ENABLE_VIDEO_OPENGL)
-			case fplVideoDriverType_OpenGL:
-			{
-#			if defined(FPL_PLATFORM_WINDOWS)
-				fpl__VideoBackend_Win32OpenGL_Shutdown(appState, &appState->window, &videoState->backend.base);
-#			elif defined(FPL_SUBPLATFORM_X11)
-				fpl__VideoBackend_X11OpenGL_Shutdown(appState, &appState->window, &videoState->backend.base);
-#			endif
-			} break;
-#		endif // FPL__ENABLE_VIDEO_OPENGL
-
-#		if defined(FPL__ENABLE_VIDEO_SOFTWARE)
-			case fplVideoDriverType_Software:
-			{
-#			if defined(FPL_PLATFORM_WINDOWS)
-				fpl__VideoBackend_Win32Software_Shutdown(appState, &appState->window, &videoState->backend.base);
-#			elif defined(FPL_SUBPLATFORM_X11)
-				fpl__VideoBackend_X11Software_Shutdown(appState, &appState->window, &videoState->backend.base);
-#			endif
-			} break;
-#		endif // FPL__ENABLE_VIDEO_SOFTWARE
-
-			default:
-			{
-			} break;
-		}
-
+		const fpl__VideoContext *ctx = &videoState->context;
+		fplAssert(ctx->shutdownFunc != fpl_null);
+		ctx->shutdownFunc(appState, &appState->window, &videoState->backend.base);
 #	if defined(FPL__ENABLE_VIDEO_SOFTWARE)
 		fplVideoBackBuffer *backbuffer = &videoState->data.backbuffer;
 		if(backbuffer->pixels != fpl_null) {
@@ -20937,6 +20949,9 @@ fpl_internal bool fpl__InitializeVideoBackend(const fplVideoDriverType driver, c
 	// @NOTE(final): Video drivers are platform independent, so we cannot have to same system as audio.
 	fplAssert(appState != fpl_null);
 	fplAssert(videoState != fpl_null);
+
+	const fpl__VideoContext *ctx = &videoState->context;
+	fplAssert(ctx->initializeFunc != fpl_null);
 
 	videoState->activeDriver = driver;
 
@@ -20968,35 +20983,7 @@ fpl_internal bool fpl__InitializeVideoBackend(const fplVideoDriverType driver, c
 	}
 #	endif // FPL__ENABLE_VIDEO_SOFTWARE
 
-	bool videoInitResult = false;
-	switch(driver) {
-#	if defined(FPL__ENABLE_VIDEO_OPENGL)
-		case fplVideoDriverType_OpenGL:
-		{
-#		if defined(FPL_PLATFORM_WINDOWS)
-			videoInitResult = fpl__VideoBackend_Win32OpenGL_Initialize(appState, &appState->window, videoSettings, &videoState->data, &videoState->backend.base);
-#		elif defined(FPL_SUBPLATFORM_X11)
-			videoInitResult = fpl__VideoBackend_X11OpenGL_Initialize(appState, &appState->window, videoSettings, &videoState->data, &videoState->backend.base);
-#		endif
-		} break;
-#	endif // FPL__ENABLE_VIDEO_OPENGL
-
-#	if defined(FPL__ENABLE_VIDEO_SOFTWARE)
-		case fplVideoDriverType_Software:
-		{
-#		if defined(FPL_PLATFORM_WINDOWS)
-			videoInitResult = fpl__VideoBackend_Win32Software_Initialize(appState, &appState->window, videoSettings, &videoState->data, &videoState->backend.base);
-#		elif defined(FPL_SUBPLATFORM_X11)
-			videoInitResult = fpl__VideoBackend_X11Software_Initialize(appState, &appState->window, videoSettings, &videoState->data, &videoState->backend.base);
-#		endif
-		} break;
-#	endif // FPL__ENABLE_VIDEO_SOFTWARE
-
-		default:
-		{
-			FPL__ERROR(FPL__MODULE_VIDEO, "Unsupported video driver '%s' for this platform", fplGetVideoDriverName(videoSettings->driver));
-		} break;
-	}
+	bool videoInitResult = ctx->initializeFunc(appState, &appState->window, videoSettings, &videoState->data, &videoState->backend.base);
 	if(!videoInitResult) {
 		fplAssert(fplGetErrorCount() > 0);
 		fpl__ShutdownVideo(appState, videoState);
@@ -21004,6 +20991,39 @@ fpl_internal bool fpl__InitializeVideoBackend(const fplVideoDriverType driver, c
 	}
 
 	return true;
+}
+
+fpl_internal fpl__VideoContext fpl__ConstructVideoContext(const fplVideoDriverType driver) {
+	switch(driver) {
+#if defined(FPL__ENABLE_VIDEO_OPENGL)
+		case fplVideoDriverType_OpenGL:
+		{
+#	if defined(FPL_PLATFORM_WINDOWS)
+			return fpl__VideoBackend_Win32OpenGL_Construct();
+#	elif defined(FPL_SUBPLATFORM_X11)
+			return fpl__VideoBackend_X11OpenGL_Construct();
+#	endif
+		} break;
+#endif
+
+#if defined(FPL__ENABLE_VIDEO_SOFTWARE)
+		case fplVideoDriverType_Software:
+		{
+#	if defined(FPL_PLATFORM_WINDOWS)
+			return fpl__VideoBackend_Win32Software_Construct();
+#	elif defined(FPL_SUBPLATFORM_X11)
+			return fpl__VideoBackend_X11Software_Construct();
+#	endif
+		} break;
+#endif
+
+		default:
+		{
+			// No driver found, just return a stub
+			FPL__ERROR(FPL__MODULE_VIDEO, "Unsupported video driver '%s' for this platform", fplGetVideoDriverName(driver));
+			return(fpl__StubVideoContext());
+		} break;
+	}
 }
 #endif // FPL__ENABLE_VIDEO
 
@@ -21837,6 +21857,11 @@ fpl_common_api bool fplPlatformInit(const fplInitFlags initFlags, const fplSetti
 		fplAssert(videoState != fpl_null);
 
 		fplVideoDriverType videoDriver = appState->initSettings.video.driver;
+
+		// Construct video context (Function table)
+		videoState->context = fpl__ConstructVideoContext(videoDriver);
+
+		// Load video backend (API)
 		const char *videoDriverString = fplGetVideoDriverName(videoDriver);
 		FPL_LOG_DEBUG(FPL__MODULE_CORE, "Load Video API for Driver '%s':", videoDriverString);
 		{
