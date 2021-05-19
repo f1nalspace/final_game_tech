@@ -3359,15 +3359,17 @@ fpl_common_api const char *fplGetPlatformResultName(const fplPlatformResultType 
 typedef enum fplVideoDriverType {
 	//! No video driver
 	fplVideoDriverType_None = 0,
-	//! OpenGL
-	fplVideoDriverType_OpenGL,
 	//! Software
 	fplVideoDriverType_Software,
+	//! OpenGL
+	fplVideoDriverType_OpenGL,
+	//! Vulkan
+	fplVideoDriverType_Vulkan,
 
 	//! First @ref fplVideoDriverType
 	fplVideoDriverType_First = fplVideoDriverType_None,
 	//! Last @ref fplVideoDriverType
-	fplVideoDriverType_Last = fplVideoDriverType_Software,
+	fplVideoDriverType_Last = fplVideoDriverType_Vulkan,
 } fplVideoDriverType;
 
 #if defined(FPL__ENABLE_VIDEO_OPENGL)
@@ -21553,12 +21555,12 @@ fpl_common_api uint32_t fplGetAudioDevices(fplAudioDeviceInfo *devices, uint32_t
 // %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 #if defined(FPL__ENABLE_VIDEO)
 #define FPL__VIDEODRIVERTYPE_COUNT FPL__ENUM_COUNT(fplVideoDriverType_First, fplVideoDriverType_Last)
-fpl_globalvar const char *fpl__globalVideoDriverTypeNameTable[] = {
+fpl_globalvar const char *fpl__globalVideoDriverTypeNameTable[FPL__VIDEODRIVERTYPE_COUNT] = {
 	"None", // fplVideoDriverType_None
-	"OpenGL", // fplVideoDriverType_OpenGL
 	"Software", // fplVideoDriverType_Software
+	"OpenGL", // fplVideoDriverType_OpenGL
+	"Vulkan", // fplVideoDriverType_Vulkan
 };
-fplStaticAssert(fplArrayCount(fpl__globalVideoDriverTypeNameTable) == FPL__VIDEODRIVERTYPE_COUNT);
 
 fpl_common_api const char *fplGetVideoDriverName(fplVideoDriverType driver) {
 	uint32_t index = FPL__ENUM_VALUE_TO_ARRAY_INDEX(driver, fplVideoDriverType_First, fplVideoDriverType_Last);

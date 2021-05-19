@@ -33,6 +33,7 @@ License:
 #define VULKANDEMO_VALIDATION_LAYER_SEVERITY VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT
 
 #define FPL_IMPLEMENTATION
+#define FPL_LOGGING
 #include <final_platform_layer.h>
 
 #if defined(FPL_PLATFORM_WINDOWS)
@@ -2827,14 +2828,9 @@ cleanup:
 			VulkanShutdownStep1(state);
 		}
 
-#if 0
-		fplConsoleFormatOut("Press any key to exit\n");
-		fplConsoleWaitForCharInput();
-#endif
-
 		fplConsoleFormatOut("Shutdown Platform\n");
 		fplPlatformRelease();
-		}
+	}
 
 	if(state != fpl_null) {
 		// Unload Core API
@@ -2846,5 +2842,10 @@ cleanup:
 		fplMemoryFree(state);
 	}
 
+#if 0
+	fplConsoleFormatOut("Press any key to exit\n");
+	fplConsoleWaitForCharInput();
+#endif
+
 	return(appResult);
-	}
+}
