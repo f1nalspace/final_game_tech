@@ -8188,6 +8188,10 @@ typedef FPL__FUNC_X11_XQueryKeymap(fpl__func_x11_XQueryKeymap);
 typedef FPL__FUNC_X11_XQueryPointer(fpl__func_x11_XQueryPointer);
 #define FPL__FUNC_X11_XConvertSelection(name) int name(Display *display, Atom selection, Atom target, Atom property, Window requestor, Time time)
 typedef FPL__FUNC_X11_XConvertSelection(fpl__func_x11_XConvertSelection);
+#define FPL__FUNC_X11_XInitThreads(name) Status name(void)
+typedef FPL__FUNC_X11_XInitThreads(fpl__func_x11_XInitThreads);
+#define FPL__FUNC_X11_XSetErrorHandler(name) XErrorHandler name(XErrorHandler *handler)
+typedef FPL__FUNC_X11_XSetErrorHandler(fpl__func_x11_XSetErrorHandler);
 
 typedef struct fpl__X11Api {
 	void *libHandle;
@@ -8237,6 +8241,8 @@ typedef struct fpl__X11Api {
 	fpl__func_x11_XQueryKeymap *XQueryKeymap;
 	fpl__func_x11_XQueryPointer *XQueryPointer;
 	fpl__func_x11_XConvertSelection *XConvertSelection;
+	fpl__func_x11_XInitThreads *XInitThreads;
+	fpl__func_x11_XSetErrorHandler *XSetErrorHandler;
 } fpl__X11Api;
 
 fpl_internal void fpl__UnloadX11Api(fpl__X11Api *x11Api) {
@@ -8308,6 +8314,8 @@ fpl_internal bool fpl__LoadX11Api(fpl__X11Api *x11Api) {
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XQueryKeymap, XQueryKeymap);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XQueryPointer, XQueryPointer);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XConvertSelection, XConvertSelection);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XInitThreads, XInitThreads);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XSetErrorHandler, XSetErrorHandler);		
 			x11Api->libHandle = libHandle;
 			result = true;
 		} while(0);
@@ -8336,10 +8344,14 @@ typedef struct fpl__X11Xdnd {
 	Atom format;
 } fpl__X11Xdnd;
 
+#define FPL__FUNC_X11_ErrorHandlerCallback(name) int name(Display *display, XErrorEvent *ev)
+typedef FPL__FUNC_X11_ErrorHandlerCallback(fpl__func_X11ErrorHandlerCallback);
+
 typedef struct fpl__X11WindowState {
 	fpl__X11WindowStateInfo lastWindowStateInfo;
 	Colormap colorMap;
 	Display *display;
+	fpl__func_X11ErrorHandlerCallback *lastErrorHandler;
 	fpl__X11Xdnd xdnd;
 	Window root;
 	Window window;
@@ -15818,6 +15830,7 @@ fpl_internal void fpl__X11ReleaseWindow(const fpl__X11SubplatformState *subplatf
 		x11Api->XUnmapWindow(windowState->display, windowState->window);
 		FPL_LOG_DEBUG("X11", "Destroy window '%d' on display '%p'", (int)windowState->window, windowState->display);
 		x11Api->XDestroyWindow(windowState->display, windowState->window);
+		x11Api->XFlush(windowState->display);
 		windowState->window = 0;
 	}
 	if(windowState->colorMap) {
@@ -15829,6 +15842,12 @@ fpl_internal void fpl__X11ReleaseWindow(const fpl__X11SubplatformState *subplatf
 		FPL_LOG_DEBUG("X11", "Close display '%p'", windowState->display);
 		x11Api->XCloseDisplay(windowState->display);
 		windowState->display = fpl_null;
+
+#if 0
+		FPL_LOG_DEBUG("X11", "Restore previous error handler '%p'", windowState->lastErrorHandler);
+		x11Api->XSetErrorHandler(windowState->lastErrorHandler);
+#endif
+		
 	}
 	fplClearStruct(windowState);
 }
@@ -16109,9 +16128,33 @@ fpl_internal void fpl__X11LoadWindowIcon(const fpl__X11Api *x11Api, fpl__X11Wind
 	x11Api->XFlush(x11WinState->display);
 }
 
+#if 0
+fpl_internal int fpl__X11ErrorHandler(Display *display, XErrorEvent *ev) {
+	FPL__CheckPlatform(0);
+	fpl__PlatformAppState *appState = fpl__global__AppState;
+	const fpl__X11SubplatformState *subplatform = &appState->x11;
+	const fpl__X11Api *x11Api = &subplatform->api;
+	const fpl__X11WindowState *windowState = &appState->window.x11;
+	
+	if (windowState->lastErrorHandler != fpl_null)  {
+		return windowState->lastErrorHandler(display, ev);
+	}
+	
+	return(0);
+}
+#endif
+
 fpl_internal bool fpl__X11InitWindow(const fplSettings *initSettings, fplWindowSettings *currentWindowSettings, fpl__PlatformAppState *appState, fpl__X11SubplatformState *subplatform, fpl__X11WindowState *windowState, const fpl__SetupWindowCallbacks *setupCallbacks) {
 	fplAssert((initSettings != fpl_null) && (currentWindowSettings != fpl_null) && (appState != fpl_null) && (subplatform != fpl_null) && (windowState != fpl_null) && (setupCallbacks != fpl_null));
 	const fpl__X11Api *x11Api = &subplatform->api;
+	
+	FPL_LOG_DEBUG(FPL__MODULE_X11, "Set init threads");
+	x11Api->XInitThreads();
+
+#if 0
+	FPL_LOG_DEBUG("X11", "Enable error handler");
+	windowState->lastErrorHandler = x11Api->XSetErrorHandler(fpl__X11ErrorHandler);	
+#endif
 
 	FPL_LOG_DEBUG(FPL__MODULE_X11, "Open default Display");
 	windowState->display = x11Api->XOpenDisplay(fpl_null);
@@ -16120,7 +16163,7 @@ fpl_internal bool fpl__X11InitWindow(const fplSettings *initSettings, fplWindowS
 		return false;
 	}
 	FPL_LOG_DEBUG(FPL__MODULE_X11, "Successfully opened default Display: %p", windowState->display);
-
+	
 	FPL_LOG_DEBUG(FPL__MODULE_X11, "Get default screen from display '%p'", windowState->display);
 	windowState->screen = x11Api->XDefaultScreen(windowState->display);
 	FPL_LOG_DEBUG(FPL__MODULE_X11, "Got default screen from display '%p': %d", windowState->display, windowState->screen);
