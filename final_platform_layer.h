@@ -6430,8 +6430,6 @@ typedef struct fplWin32OpenGLVideoSurface {
 typedef struct fplWin32VulkanVideoSurface {
 	//! The window handle
 	fpl__Win32WindowHandle windowHandle;
-	//! Thw device context
-	fpl__Win32DeviceContext deviceContext;
 	//! The Vulkan Instance (VkInstance)
 	void *instance;
 	//! The Vulkan Surface KHR (VkSurfaceKHR)
@@ -6872,6 +6870,7 @@ fpl_main int main(int argc, char **args);
 
 #define FPL__MODULE_VIDEO "Video"
 #define FPL__MODULE_VIDEO_OPENGL "OpenGL"
+#define FPL__MODULE_VIDEO_VULKAN "Vulkan"
 #define FPL__MODULE_VIDEO_SOFTWARE "Software"
 
 #define FPL__MODULE_WIN32 "Win32"
@@ -19204,6 +19203,200 @@ fpl_internal fpl__VideoContext fpl__VideoBackend_Win32Software_Construct() {
 	return(result);
 }
 #endif // FPL__ENABLE_VIDEO_SOFTWARE && FPL_PLATFORM_WINDOWS
+
+// ############################################################################
+//
+// > VIDEO_DRIVER_VULKAN_WIN32
+// > VIDEO_DRIVER_VULKAN_X11
+//
+// ############################################################################
+#if defined(FPL__ENABLE_VIDEO_VULKAN)
+
+#if defined(FPL_PLATFORM_WINDOWS)
+#define VK_USE_PLATFORM_WIN32_KHR
+#elif defined(FPL_SUBPLATFORM_X11)
+#define VK_USE_PLATFORM_XLIB_KHR
+#endif
+
+#if defined(FPL_PLATFORM_WINDOWS)
+#	define fpl__VKAPI __stdcall
+#else
+#	define fpl__VKAPI
+#endif
+
+typedef int fpl__VkResult;
+typedef void fpl__VkAllocationCallbacks;
+typedef void *fpl__VkInstance;
+
+typedef struct fpl__VkApplicationInfo {
+	int sType;
+	const void *pNext;
+	const char *pApplicationName;
+	uint32_t applicationVersion;
+	const char *pEngineName;
+	uint32_t engineVersion;
+	uint32_t apiVersion;
+} fpl__VkApplicationInfo;
+
+typedef struct fpl__VkInstanceCreateInfo {
+	int sType; // VkStructureType
+	const void *pNext;
+	int flags; // VkInstanceCreateFlags
+	const fpl__VkApplicationInfo *pApplicationInfo;
+	uint32_t enabledLayerCount;
+	const char *const *ppEnabledLayerNames;
+	uint32_t enabledExtensionCount;
+	const char *const *ppEnabledExtensionNames;
+} fpl__VkInstanceCreateInfo;
+
+typedef fpl__VkResult(fpl__VKAPI fpl__func_vkCreateInstance)(const fpl__VkInstanceCreateInfo *pCreateInfo, const fpl__VkAllocationCallbacks *pAllocator, fpl__VkInstance *pInstance);
+
+typedef struct fpl__VulkanApi {
+	fplDynamicLibraryHandle libraryHandle;
+	fpl__func_vkCreateInstance *vkCreateInstance;
+} fpl__VulkanApi;
+
+fpl_internal void fpl__UnloadVulkanApi(fpl__VulkanApi *api) {
+	if(api->libraryHandle.isValid) {
+		fplDynamicLibraryUnload(&api->libraryHandle);
+	}
+	fplClearStruct(api);
+}
+
+fpl_internal bool fpl__LoadVulkanApi(fpl__VulkanApi *api) {
+#if defined(FPL_PLATFORM_WINDOWS)
+	const char *libraryNames[] = {
+		"vulkan-1.dll"
+	};
+#elif defined(FPL_SUBPLATFORM_POSIX)
+	const char *libraryNames[] = {
+		"libvulkan.so",
+		"libvulkan.so.1"
+	};
+#else
+	return(false);
+#endif
+
+#define FPL__VULKAN_GET_FUNCTION_ADDRESS_CONTINUE(libHandle, libName, target, type, name) \
+	(target)->name = (type *)fplGetDynamicLibraryProc(&libHandle, #name); \
+	if ((target)->name == fpl_null) { \
+		FPL__WARNING(FPL__MODULE_VIDEO_VULKAN, "Failed getting procedure address '%s' from library '%s'", #name, libName); \
+		continue; \
+	}
+
+	fplClearStruct(api);
+
+	bool result = false;
+	int libraryCount = fplArrayCount(libraryNames);
+	for(int i = 0; i < libraryCount; ++i) {
+		const char *libraryName = libraryNames[i];
+
+		if(api->libraryHandle.isValid) {
+			fplDynamicLibraryUnload(&api->libraryHandle);
+		}
+		fplClearStruct(api);
+
+		fplDynamicLibraryHandle libHandle = fplZeroInit;
+		if(!fplDynamicLibraryLoad(libraryName, &libHandle)) {
+			continue;
+		}
+		api->libraryHandle = libHandle;
+
+		FPL__VULKAN_GET_FUNCTION_ADDRESS_CONTINUE(libHandle, libraryName, api, fpl__func_vkCreateInstance, vkCreateInstance);
+
+		result = true;
+		break;
+	}
+
+	if(!result) {
+		fpl__UnloadVulkanApi(api);
+	}
+
+	return(result);
+}
+
+typedef struct fpl__VideoBackendVulkan {
+	fpl__VideoBackend base;
+	fpl__VulkanApi api;
+} fpl__VideoBackendVulkan;
+
+fpl_internal FPL__FUNC_VIDEO_BACKEND_GETPROCEDURE(fpl__VideoBackend_Vulkan_GetProcedure) {
+	const fpl__VideoBackendVulkan *nativeBackend = (const fpl__VideoBackendVulkan *)backend;
+	return(fpl_null);
+}
+
+fpl_internal FPL__FUNC_VIDEO_BACKEND_PREPAREWINDOW(fpl__VideoBackend_Vulkan_PrepareWindow) {
+	return(true);
+}
+
+fpl_internal FPL__FUNC_VIDEO_BACKEND_FINALIZEWINDOW(fpl__VideoBackend_Vulkan_FinalizeWindow) {
+	return(true);
+}
+
+fpl_internal FPL__FUNC_VIDEO_BACKEND_SHUTDOWN(fpl__VideoBackend_Vulkan_Shutdown) {
+	fpl__VideoBackendVulkan *nativeBackend = (fpl__VideoBackendVulkan *)backend;
+}
+
+fpl_internal FPL__FUNC_VIDEO_BACKEND_INITIALIZE(fpl__VideoBackend_Vulkan_Initialize) {
+	fpl__VideoBackendVulkan *nativeBackend = (fpl__VideoBackendVulkan *)backend;
+
+	// @TODO(final): Create Surface KHR
+
+	return true;
+}
+
+fpl_internal FPL__FUNC_VIDEO_BACKEND_UNLOAD(fpl__VideoBackend_Vulkan_Unload) {
+	fpl__VideoBackendVulkan *nativeBackend = (fpl__VideoBackendVulkan *)backend;
+
+	// @TODO(final) Destroy Vulkan instance
+
+	// Unload core api
+	fpl__UnloadVulkanApi(&nativeBackend->api);
+
+	// Clear everything
+	fplClearStruct(nativeBackend);
+}
+
+fpl_internal FPL__FUNC_VIDEO_BACKEND_LOAD(fpl__VideoBackend_Vulkan_Load) {
+	fpl__VideoBackendVulkan *nativeBackend = (fpl__VideoBackendVulkan *)backend;
+
+	// Clear and set magic id
+	fplClearStruct(nativeBackend);
+	nativeBackend->base.magic = FPL__VIDEOBACKEND_MAGIC;
+
+	// Load core api
+	if(!fpl__LoadVulkanApi(&nativeBackend->api)) {
+		return(false);
+	}
+
+	// @TODO(final): Create Vulkan instance
+	// - Validation Layer
+	// - Surface KHR support
+	// - Instance layers
+
+	return(true);
+}
+
+fpl_internal FPL__FUNC_VIDEO_BACKEND_PRESENT(fpl__VideoBackend_Vulkan_Present)
+{
+	const fpl__VideoBackendVulkan *nativeBackend = (const fpl__VideoBackendVulkan *)backend;
+}
+
+fpl_internal fpl__VideoContext fpl__VideoBackend_Vulkan_Construct() {
+	fpl__VideoContext result = fpl__StubVideoContext();
+	result.loadFunc = fpl__VideoBackend_Vulkan_Load;
+	result.unloadFunc = fpl__VideoBackend_Vulkan_Unload;
+	result.getProcedureFunc = fpl__VideoBackend_Vulkan_GetProcedure;
+	result.initializeFunc = fpl__VideoBackend_Vulkan_Initialize;
+	result.shutdownFunc = fpl__VideoBackend_Vulkan_Shutdown;
+	result.prepareWindowFunc = fpl__VideoBackend_Vulkan_PrepareWindow;
+	result.finalizeWindowFunc = fpl__VideoBackend_Vulkan_FinalizeWindow;
+	result.presentFunc = fpl__VideoBackend_Vulkan_Present;
+	return(result);
+}
+
+#endif // FPL__ENABLE_VIDEO_VULKAN
+
 
 #endif // FPL__VIDEO_DRIVERS_IMPLEMENTED
 
