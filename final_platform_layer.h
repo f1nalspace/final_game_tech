@@ -18811,16 +18811,16 @@ fpl_internal FPL__FUNC_VIDEO_BACKEND_INITIALIZE(fpl__VideoBackend_X11Software_In
 	return (true);
 }
 
-fpl_internal FPL__FUNC_VIDEO_BACKEND_LOAD(fpl__VideoBackend_X11Software_Unload) {
+fpl_internal FPL__FUNC_VIDEO_BACKEND_LOAD(fpl__VideoBackend_X11Software_Load) {
 	fpl__VideoBackendX11Software *nativeBackend = (fpl__VideoBackendX11Software *)backend;
 	fplClearStruct(nativeBackend);
 	nativeBackend->base.magic = FPL__VIDEOBACKEND_MAGIC;
+	return(true);
 }
 
-fpl_internal FPL__FUNC_VIDEO_BACKEND_UNLOAD(fpl__VideoBackend_X11Software_Load) {
+fpl_internal FPL__FUNC_VIDEO_BACKEND_UNLOAD(fpl__VideoBackend_X11Software_Unload) {
 	fpl__VideoBackendX11Software *nativeBackend = (fpl__VideoBackendX11Software *)backend;
 	fplClearStruct(nativeBackend);
-	return(true);
 }
 
 fpl_internal FPL__FUNC_VIDEO_BACKEND_PRESENT(fpl__VideoBackend_X11Software_Present) {
@@ -18838,6 +18838,7 @@ fpl_internal fpl__VideoContext fpl__VideoBackend_X11Software_Construct() {
 	result.unloadFunc = fpl__VideoBackend_X11Software_Unload;
 	result.initializeFunc = fpl__VideoBackend_X11Software_Initialize;
 	result.shutdownFunc = fpl__VideoBackend_X11Software_Shutdown;
+	result.presentFunc = fpl__VideoBackend_X11Software_Present;
 	result.recreateOnResize = true;
 	return(result);
 }
