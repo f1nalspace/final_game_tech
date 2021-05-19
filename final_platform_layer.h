@@ -1936,6 +1936,9 @@ SOFTWARE.
 #	if !defined(FPL_NO_VIDEO_OPENGL)
 #		define FPL__SUPPORT_VIDEO_OPENGL
 #	endif
+#	if !defined(FPL_NO_VIDEO_VULKAN)
+#		define FPL__SUPPORT_VIDEO_VULKAN
+#	endif
 #	if !defined(FPL_NO_VIDEO_SOFTWARE)
 #		define FPL__SUPPORT_VIDEO_SOFTWARE
 #	endif
@@ -1975,6 +1978,9 @@ SOFTWARE.
 #	if defined(FPL__SUPPORT_VIDEO_OPENGL)
 #		undef FPL__SUPPORT_VIDEO_OPENGL
 #	endif
+#	if defined(FPL__SUPPORT_VIDEO_VULKAN)
+#		undef FPL__SUPPORT_VIDEO_VULKAN
+#	endif
 #	if defined(FPL__SUPPORT_VIDEO_SOFTWARE)
 #		undef FPL__SUPPORT_VIDEO_SOFTWARE
 #	endif
@@ -1991,6 +1997,9 @@ SOFTWARE.
 #	define FPL__ENABLE_VIDEO
 #	if defined(FPL__SUPPORT_VIDEO_OPENGL)
 #		define FPL__ENABLE_VIDEO_OPENGL
+#	endif
+#	if defined(FPL__SUPPORT_VIDEO_VULKAN)
+#		define FPL__ENABLE_VIDEO_VULKAN
 #	endif
 #	if defined(FPL__SUPPORT_VIDEO_SOFTWARE)
 #		define FPL__ENABLE_VIDEO_SOFTWARE
@@ -3447,13 +3456,35 @@ typedef struct fplOpenGLVideoSettings {
 } fplOpenGLVideoSettings;
 #endif // FPL__ENABLE_VIDEO_OPENGL
 
+#if defined(FPL__ENABLE_VIDEO_VULKAN)
+//! A structure that contains Vulkan video settings
+typedef struct fplVulkanVideoSettings {
+	//! The application name
+	const char *appName;
+	//! The engine name
+	const char *engineName;
+	//! The application version
+	fplVersionInfo appVersion;
+	//! The engine version
+	fplVersionInfo engineVersion;
+	//! The preferred Vulkan api version
+	fplVersionInfo apiVersion;
+	//! A bool for controlling of the validation should be enabled or not
+	fpl_b32 enableValidationLayer;
+} fplVulkanVideoSettings;
+#endif // FPL__ENABLE_VIDEO_VULKAN
+
 //! A union that contains graphics api settings
 typedef union fplGraphicsApiSettings {
 #if defined(FPL__ENABLE_VIDEO_OPENGL)
 	//! OpenGL settings
 	fplOpenGLVideoSettings opengl;
 #endif
-	//! Dummy field when no graphics drivers are available
+#if defined(FPL__ENABLE_VIDEO_VULKAN)
+	//! Vulkan settings
+	fplVulkanVideoSettings vulkan;
+#endif
+	//! Field for preventing union to be empty
 	int dummy;
 } fplGraphicsApiSettings;
 
@@ -3595,7 +3626,7 @@ typedef union fplAudioDeviceID {
 	//! ALSA Device ID
 	char alsa[256];
 #endif
-	//! Dummy field (When no drivers are available)
+	//! Field for preventing union to be empty
 	int dummy;
 } fplAudioDeviceID;
 
@@ -3621,7 +3652,7 @@ typedef union fplSpecificAudioSettings {
 	//! Alsa specific settings
 	fplAlsaAudioSettings alsa;
 #endif
-	//! Dummy field (When no drivers are available)
+	//! Field for preventing union to be empty
 	int dummy;
 } fplSpecificAudioSettings;
 
@@ -3975,7 +4006,7 @@ FPL_ENUM_AS_FLAGS_OPERATORS(fplLogWriterFlags);
 
 //! A structure containing console logging properties
 typedef struct fplLogWriterConsole {
-	//! Dummy field
+	//! Field for preventing struct to be empty
 	int dummy;
 } fplLogWriterConsole;
 
@@ -4234,7 +4265,8 @@ typedef union fplWallClock {
 		//! Query performance count
 		uint64_t qpc;
 	} win32;
-#elif defined(FPL_SUBPLATFORM_POSIX)
+#endif
+#if defined(FPL_SUBPLATFORM_POSIX)
 	//! POSIX specifics
 	struct {
 		//! Number of seconds
@@ -4242,10 +4274,9 @@ typedef union fplWallClock {
 		//! Number of nanoseconds
 		int64_t nanoSeconds;
 	} posix;
-#else
-	//! Unused
-	uint64_t unused;
 #endif
+	//! Field for preventing union to be empty
+	uint64_t unused;
 } fplWallClock;
 
 /**
@@ -4484,7 +4515,9 @@ typedef union fplInternalConditionVariable {
 #elif defined(FPL_SUBPLATFORM_POSIX)
 	//! POSIX condition variable
 	fpl__POSIXConditionVariable posixCondition;
-#endif	//! Dummy field
+#endif
+	//! Field for preventing union to be empty
+	int dummy;
 } fplInternalConditionVariable;
 
 //! The condition variable structure
@@ -6460,7 +6493,7 @@ typedef union fplVideoSurface {
 	fplX11SoftwareVideoSurface x11_software;
 #	endif
 #endif
-	//! Dummy field for empty union
+	//! Field for preventing union to be empty
 	int dummy;
 } fplVideoSurface;
 
@@ -8156,7 +8189,6 @@ fpl_internal bool fpl__PThreadLoadApi(fpl__PThreadApi *pthreadApi) {
 }
 
 typedef struct fpl__PosixInitState {
-	//! Dummy field
 	int dummy;
 } fpl__PosixInitState;
 
@@ -8172,7 +8204,6 @@ typedef struct fpl__PosixAppState {
 // ############################################################################
 #if defined(FPL_PLATFORM_LINUX)
 typedef struct fpl__LinuxInitState {
-	//! Dummy field
 	int dummy;
 } fpl__LinuxInitState;
 
@@ -8215,12 +8246,10 @@ fpl_internal void fpl__LinuxPollGameControllers(const fplSettings *settings, fpl
 // ############################################################################
 #if defined(FPL_PLATFORM_UNIX)
 typedef struct fpl__UnixInitState {
-	//! Dummy field
 	int dummy;
 } fpl__UnixInitState;
 
 typedef struct fpl__UnixAppState {
-	//! Dummy field
 	int dummy;
 } fpl__UnixAppState;
 #endif // FPL_PLATFORM_UNIX
