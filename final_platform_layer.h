@@ -136,6 +136,8 @@ SOFTWARE.
 	- New[#105]: [Win32] Added support for creating and using a console in addition to a window
 	- New[#18]: [Win32] Support for message proc fibers to support seamless window resize -> works only with fplPollEvents()
 
+	- New: Refactored video system to use jump tables instead, to support more backends in the future
+	- New: Added function fplGetVideoProcedure() for query functions from the active video backend
 	- Fixed[#109]: Fixed fplS32ToString was not working anymore
 	- Fixed: fplMutexHandle isValid flag was invalid, moved it to above the internal handle and now it works O_o
 
@@ -6354,6 +6356,13 @@ fpl_common_api bool fplResizeVideoBackBuffer(const uint32_t width, const uint32_
 * @brief Forces the window to be redrawn or to swap the back/front buffer.
 */
 fpl_common_api void fplVideoFlip();
+
+/**
+* @brief Gets the procedure by the specified name from the active video backend
+* @param procName The width name of the procedure
+* @return Returns the function pointer of the procedure.
+*/
+fpl_common_api void *fplGetVideoProcedure(const char *procName);
 
 /** @} */
 #endif // FPL__ENABLE_VIDEO
@@ -17770,6 +17779,9 @@ typedef FPL__FUNC_VIDEO_BACKEND_SHUTDOWN(fpl__func_VideoBackendShutdown);
 #define FPL__FUNC_VIDEO_BACKEND_PRESENT(name) void name(const fpl__PlatformAppState *appState, const fpl__PlatformWindowState *windowState, const fpl__VideoData *data, const struct fpl__VideoBackend *backend)
 typedef FPL__FUNC_VIDEO_BACKEND_PRESENT(fpl__func_VideoBackendPresent);
 
+#define FPL__FUNC_VIDEO_BACKEND_GETPROCEDURE(name) void *name(const struct fpl__VideoBackend *backend, const char *procName)
+typedef FPL__FUNC_VIDEO_BACKEND_GETPROCEDURE(fpl__func_VideoBackendGetProcedure);
+
 typedef struct fpl__VideoContext {
 	fpl__func_VideoBackendLoad *loadFunc;
 	fpl__func_VideoBackendUnload *unloadFunc;
@@ -17778,6 +17790,7 @@ typedef struct fpl__VideoContext {
 	fpl__func_VideoBackendPrepareWindow *prepareWindowFunc;
 	fpl__func_VideoBackendFinalizeWindow *finalizeWindowFunc;
 	fpl__func_VideoBackendPresent *presentFunc;
+	fpl__func_VideoBackendGetProcedure *getProcedureFunc;
 	fpl_b32 recreateOnResize;
 } fpl__VideoContext;
 
@@ -17789,6 +17802,7 @@ fpl_internal FPL__FUNC_VIDEO_BACKEND_FINALIZEWINDOW(fpl__VideoBackend_FinalizeWi
 fpl_internal FPL__FUNC_VIDEO_BACKEND_INITIALIZE(fpl__VideoBackend_Initialize_Stub) { return(false); }
 fpl_internal FPL__FUNC_VIDEO_BACKEND_SHUTDOWN(fpl__VideoBackend_Shutdown_Stub) { }
 fpl_internal FPL__FUNC_VIDEO_BACKEND_PRESENT(fpl__VideoBackend_Present_Stub) { }
+fpl_internal FPL__FUNC_VIDEO_BACKEND_GETPROCEDURE(fpl__VideoBackend_GetProcedure_Stub) { return(fpl_null); }
 
 fpl_internal fpl__VideoContext fpl__StubVideoContext() {
 	fpl__VideoContext result = fplZeroInit;
@@ -17799,6 +17813,7 @@ fpl_internal fpl__VideoContext fpl__StubVideoContext() {
 	result.initializeFunc = fpl__VideoBackend_Initialize_Stub;
 	result.shutdownFunc = fpl__VideoBackend_Shutdown_Stub;
 	result.presentFunc = fpl__VideoBackend_Present_Stub;
+	result.getProcedureFunc = fpl__VideoBackend_GetProcedure_Stub;
 	return(result);
 }
 
@@ -17907,6 +17922,12 @@ typedef struct fpl__VideoBackendWin32OpenGL {
 	fpl__Win32OpenGLApi api;
 	HGLRC renderingContext;
 } fpl__VideoBackendWin32OpenGL;
+
+fpl_internal FPL__FUNC_VIDEO_BACKEND_GETPROCEDURE(fpl__VideoBackend_Win32OpenGL_GetProcedure) {
+	const fpl__VideoBackendWin32OpenGL *nativeBackend = (const fpl__VideoBackendWin32OpenGL *)backend;
+	void *result = (void *)GetProcAddress(nativeBackend->api.openglLibrary, procName);
+	return(result);
+}
 
 fpl_internal LRESULT CALLBACK fpl__Win32OpenGLTemporaryWindowProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) {
 	fpl__Win32AppState *appState = &fpl__global__AppState->win32;
@@ -18208,6 +18229,7 @@ fpl_internal fpl__VideoContext fpl__VideoBackend_Win32OpenGL_Construct() {
 	fpl__VideoContext result = fpl__StubVideoContext();
 	result.loadFunc = fpl__VideoBackend_Win32OpenGL_Load;
 	result.unloadFunc = fpl__VideoBackend_Win32OpenGL_Unload;
+	result.getProcedureFunc = fpl__VideoBackend_Win32OpenGL_GetProcedure;
 	result.initializeFunc = fpl__VideoBackend_Win32OpenGL_Initialize;
 	result.shutdownFunc = fpl__VideoBackend_Win32OpenGL_Shutdown;
 	result.prepareWindowFunc = fpl__VideoBackend_Win32OpenGL_PrepareWindow;
@@ -18370,6 +18392,12 @@ typedef struct fpl__VideoBackendX11OpenGL {
 	GLXContext context;
 	bool isActiveContext;
 } fpl__VideoBackendX11OpenGL;
+
+fpl_internal FPL__FUNC_VIDEO_BACKEND_GETPROCEDURE(fpl__VideoBackend_X11OpenGL_GetProcedure) {
+	const fpl__VideoBackendX11OpenGL *nativeBackend = (const fpl__VideoBackendX11OpenGL *)backend;
+	void *result = dlsym(nativeBackend->api.libHandle, procName);
+	return(result);
+}
 
 fpl_internal FPL__FUNC_VIDEO_BACKEND_PREPAREWINDOW(fpl__VideoBackend_X11OpenGL_PrepareWindow) {
 	const fpl__X11SubplatformState *nativeAppState = &appState->x11;
@@ -18717,6 +18745,7 @@ fpl_internal fpl__VideoContext fpl__VideoBackend_X11OpenGL_Construct() {
 	fpl__VideoContext result = fpl__StubVideoContext();
 	result.loadFunc = fpl__VideoBackend_X11OpenGL_Load;
 	result.unloadFunc = fpl__VideoBackend_X11OpenGL_Unload;
+	result.getProcedureFunc = fpl__VideoBackend_X11OpenGL_GetProcedure;
 	result.initializeFunc = fpl__VideoBackend_X11OpenGL_Initialize;
 	result.shutdownFunc = fpl__VideoBackend_X11OpenGL_Shutdown;
 	result.prepareWindowFunc = fpl__VideoBackend_X11OpenGL_PrepareWindow;
@@ -21581,6 +21610,18 @@ fpl_common_api void fplVideoFlip() {
 		fplAssert(videoState->context.presentFunc != fpl_null);
 		videoState->context.presentFunc(appState, &appState->window, &videoState->data, &videoState->backend.base);
 	}
+}
+
+fpl_common_api void *fplGetVideoProcedure(const char *procName) {
+	FPL__CheckPlatform(fpl_null);
+	fpl__PlatformAppState *appState = fpl__global__AppState;
+	const fpl__VideoState *videoState = fpl__GetVideoState(appState);
+	void *result = fpl_null;
+	if(videoState != fpl_null && videoState->activeDriver != fplVideoDriverType_None) {
+		fplAssert(videoState->context.getProcedureFunc != fpl_null);
+		result = videoState->context.getProcedureFunc(&videoState->backend.base, procName);
+	}
+	return(result);
 }
 #endif // FPL__ENABLE_VIDEO
 
