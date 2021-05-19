@@ -138,6 +138,8 @@ SOFTWARE.
 
 	- New: Refactored video system to use jump tables instead, to support more backends in the future
 	- New: Added function fplGetVideoProcedure() for query functions from the active video backend
+	- New: Added struct fplVideoSurface
+	- New: Added function fplGetVideoSurface() for query the current fplVideoSurface
 	- Fixed[#109]: Fixed fplS32ToString was not working anymore
 	- Fixed: fplMutexHandle isValid flag was invalid, moved it to above the internal handle and now it works O_o
 
@@ -6463,7 +6465,7 @@ fpl_common_api void fplVideoFlip();
 
 /**
 * @brief Gets the procedure by the specified name from the active video backend
-* @param procName The width name of the procedure
+* @param procName The name of the procedure.
 * @return Returns the function pointer of the procedure.
 */
 fpl_common_api void *fplGetVideoProcedure(const char *procName);
