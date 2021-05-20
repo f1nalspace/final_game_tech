@@ -42,6 +42,7 @@ License:
 #define FPL_LOGGING
 #define FPL_NO_VIDEO_SOFTWARE
 #define FPL_NO_VIDEO_OPENGL
+#define FPL_NO_PLATFORM_INCLUDES
 #include <final_platform_layer.h>
 
 #if defined(FPL_PLATFORM_WINDOWS)
@@ -2523,13 +2524,13 @@ static void VulkanShutdownStepInit(VulkanState *state) {
 
 	VkAllocationCallbacks *allocator = state->allocator;
 
-	// Destroy debug messenger
-	if(state->instance.hasValidationLayer) {
-		VulkanDestroyDebugMessenger(&state->coreApi, state->instance.instanceHandle, state->debugMessenger);
-	}
-
 	// Destroy Instance (Only when not passed by user)
 	if(!state->instance.isUserDefined) {
+		// Destroy debug messenger
+		if(state->instance.hasValidationLayer) {
+			VulkanDestroyDebugMessenger(&state->coreApi, state->instance.instanceHandle, state->debugMessenger);
+		}
+
 		VulkanDestroyInstance(allocator, &state->coreApi, &state->instance);
 	}
 
@@ -2889,7 +2890,7 @@ int main(int argc, char **argv) {
 
 	isPlatformInitialized = true;
 
-#if VULKANDEMO_FPL_VIDEO_MODE == VULKANDEMO_FPL_VIDEO_MODE_SURFACE_ONLY
+#if VULKANDEMO_FPL_VIDEO_MODE == VULKANDEMO_FPL_VIDEO_MODE_SURFACE_ONLY || VULKANDEMO_FPL_VIDEO_MODE == VULKANDEMO_FPL_VIDEO_MODE_FULL
 	const fplVideoSurface *videoSurface = fplGetVideoSurface();
 	fplAssert(videoSurface != fpl_null);
 
@@ -2902,6 +2903,15 @@ int main(int argc, char **argv) {
 #else
 #	error "Unsupported Platform!"
 #endif
+
+#if VULKANDEMO_FPL_VIDEO_MODE == VULKANDEMO_FPL_VIDEO_MODE_SURFACE_ONLY
+	state->surface.isUserDefined = true;
+	state->instance.isUserDefined = false;
+#elif VULKANDEMO_FPL_VIDEO_MODE == VULKANDEMO_FPL_VIDEO_MODE_FULL
+	state->surface.isUserDefined = true;
+	state->instance.isUserDefined = true;
+#endif
+
 	fplAssert(state->instance.instanceHandle != VK_NULL_HANDLE);
 	fplAssert(state->surface.surfaceHandle != VK_NULL_HANDLE);
 #endif

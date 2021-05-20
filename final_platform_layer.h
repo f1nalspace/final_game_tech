@@ -2330,6 +2330,8 @@ struct IUnknown;
 typedef uint64_t fpl__Win32Guid[4];
 //! A win32 handle (opaque, min 4/8 bytes)
 typedef void *fpl__Win32Handle;
+//! A win32 instance handle (opaque, min 4/8 bytes)
+typedef fpl__Win32Handle fpl__Win32InstanceHandle;
 //! A win32 library handle (opaque, min 4/8 bytes)
 typedef fpl__Win32Handle fpl__Win32LibraryHandle;
 //! A win32 filehandle (opaque, min 4/8 bytes)
@@ -2404,6 +2406,8 @@ typedef int fpl__LinuxSignalHandle;
 typedef GUID fpl__Win32Guid;
 //! A win32 handle
 typedef HANDLE fpl__Win32Handle;
+//! A win32 instance handle
+typedef HINSTANCE fpl__Win32InstanceHandle;
 //! A win32 library handle
 typedef HMODULE fpl__Win32LibraryHandle;
 //! A win32 thread handle
@@ -19255,7 +19259,7 @@ fpl_internal fpl__VideoContext fpl__VideoBackend_Win32Software_Construct() {
 // ############################################################################
 #if defined(FPL__ENABLE_VIDEO_VULKAN)
 
-#if !fplHasInclude(<vulkan/vulkan.h>)
+#if !fplHasInclude(<vulkan/vulkan.h>) || defined(FPL_NO_PLATFORM_INCLUDES)
 
 #if defined(FPL_PLATFORM_WINDOWS)
 #	define fpl__VKAPI_CALL __stdcall
@@ -19277,14 +19281,20 @@ typedef enum fpl__VkResult {
 	FPL__VK_SUCCESS = 0,
 	FPL__VK_RESULT_MAX_ENUM = 0x7FFFFFFF
 } fpl__VkResult;
+typedef uint32_t fpl__VkFlags;
+typedef uint32_t fpl__VkBool32;
 
 typedef void fpl__VkAllocationCallbacks;
+
 typedef void *fpl__VkInstance;
-typedef uint32_t fpl__VkFlags;
+typedef void *fpl__VkSurfaceKHR;
+typedef void *fpl__VkPhysicalDevice;
 
 typedef enum fpl__VkStructureType {
 	FPL__VK_STRUCTURE_TYPE_APPLICATION_INFO = 0,
 	FPL__VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO = 1,
+	FPL__VK_STRUCTURE_TYPE_XLIB_SURFACE_CREATE_INFO_KHR = 1000004000,
+	FPL__VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR = 1000009000,
 	FPL__VK_STRUCTURE_TYPE_MAX_ENUM = 0x7FFFFFFF
 } fpl__VkStructureType;
 
@@ -19323,11 +19333,46 @@ typedef struct fpl__VkLayerProperties {
 	char description[FPL__VK_MAX_DESCRIPTION_SIZE];
 } fpl__VkLayerProperties;
 
+// Core procs (opaque)
 typedef fpl__VkResult(fpl__VKAPI_PTR *fpl__func_vkCreateInstance)(const fpl__VkInstanceCreateInfo *pCreateInfo, const fpl__VkAllocationCallbacks *pAllocator, fpl__VkInstance *pInstance);
 typedef void (fpl__VKAPI_PTR *fpl__func_vkDestroyInstance)(fpl__VkInstance instance, const fpl__VkAllocationCallbacks *pAllocator);
-typedef void (fpl__VKAPI_PTR *fpl__func_vkGetInstanceProcAddr)(fpl__VkInstance instance, const char *pName);
+typedef void *(fpl__VKAPI_PTR *fpl__func_vkGetInstanceProcAddr)(fpl__VkInstance instance, const char *pName);
 typedef fpl__VkResult(fpl__VKAPI_PTR *fpl__func_vkEnumerateInstanceExtensionProperties)(const char *pLayerName, uint32_t *pPropertyCount, fpl__VkExtensionProperties *pProperties);
 typedef fpl__VkResult(fpl__VKAPI_PTR *fpl__func_vkEnumerateInstanceLayerProperties)(uint32_t *pPropertyCount, fpl__VkLayerProperties *pProperties);
+
+// Surface KHR procs (opaque)
+typedef void (fpl__VKAPI_PTR *fpl__func_vkDestroySurfaceKHR)(fpl__VkInstance instance, fpl__VkSurfaceKHR surface, const fpl__VkAllocationCallbacks *pAllocator);
+
+#if defined(FPL_PLATFORM_WINDOWS)
+
+typedef fpl__VkFlags fpl__VkWin32SurfaceCreateFlagsKHR;
+typedef struct fpl__VkWin32SurfaceCreateInfoKHR {
+	fpl__VkStructureType sType;
+	const void *pNext;
+	fpl__VkWin32SurfaceCreateFlagsKHR flags;
+	fpl__Win32InstanceHandle hinstance;
+	fpl__Win32WindowHandle hwnd;
+} fpl__VkWin32SurfaceCreateInfoKHR;
+
+typedef fpl__VkResult(fpl__VKAPI_PTR *fpl__func_vkCreateWin32SurfaceKHR)(fpl__VkInstance instance, const fpl__VkWin32SurfaceCreateInfoKHR *pCreateInfo, const fpl__VkAllocationCallbacks *pAllocator, fpl__VkSurfaceKHR *pSurface);
+typedef fpl__VkBool32(fpl__VKAPI_PTR *fpl__func_vkGetPhysicalDeviceWin32PresentationSupportKHR)(fpl__VkPhysicalDevice physicalDevice, uint32_t queueFamilyIndex);
+
+#elif defined(FPL_SUBPLATFORM_X11)
+
+typedef fpl__VkFlags fpl__VkXlibSurfaceCreateFlagsKHR;
+typedef struct fpl__VkXlibSurfaceCreateInfoKHR {
+	fpl__VkStructureType sType;
+	const void *pNext;
+	fpl__VkXlibSurfaceCreateFlagsKHR flags;
+	fpl__X11Display *dpy;
+	fpl__X11Window window;
+} fpl__VkXlibSurfaceCreateInfoKHR;
+
+typedef fpl__VkResult(fpl__VKAPI_PTR *fpl__func_vkCreateXlibSurfaceKHR)(fpl__VkInstance instance, const fpl__VkXlibSurfaceCreateInfoKHR *pCreateInfo, const fpl__VkAllocationCallbacks *pAllocator, fpl__VkSurfaceKHR *pSurface);
+typedef fpl__VkBool32(fpl__VKAPI_PTR *fpl__func_vkGetPhysicalDeviceXlibPresentationSupportKHR)(fpl__VkPhysicalDevice physicalDevice, uint32_t queueFamilyIndex);
+
+#endif
+
 
 #else
 
@@ -19344,24 +19389,46 @@ typedef fpl__VkResult(fpl__VKAPI_PTR *fpl__func_vkEnumerateInstanceLayerProperti
 
 #define FPL__VK_STRUCTURE_TYPE_APPLICATION_INFO VK_STRUCTURE_TYPE_APPLICATION_INFO
 #define FPL__VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO
+#define FPL__VK_STRUCTURE_TYPE_XLIB_SURFACE_CREATE_INFO_KHR VK_STRUCTURE_TYPE_XLIB_SURFACE_CREATE_INFO_KHR
+#define FPL__VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR
 #define FPL__VK_SUCCESS VK_SUCCESS
+#define FPL__VK_NULL_HANDLE VK_NULL_HANDLE
 
 typedef VkResult fpl__VkResult;
-typedef VkAllocationCallbacks fpl__VkAllocationCallbacks;
-typedef VkInstance fpl__VkInstance;
 typedef VkFlags fpl__VkFlags;
+typedef VkBool32 fpl__VkBool32;
+
+typedef VkAllocationCallbacks fpl__VkAllocationCallbacks;
+
+typedef VkInstance fpl__VkInstance;
+typedef VkSurfaceKHR fpl__VkSurfaceKHR;
+typedef VkPhysicalDevice fpl__VkPhysicalDevice;
+
 typedef VkApplicationInfo fpl__VkApplicationInfo;
 typedef VkInstanceCreateInfo fpl__VkInstanceCreateInfo;
 
+// Core procs
 typedef PFN_vkCreateInstance fpl__func_vkCreateInstance;
 typedef PFN_vkDestroyInstance fpl__func_vkDestroyInstance;
 typedef PFN_vkGetInstanceProcAddr fpl__func_vkGetInstanceProcAddr;
 typedef PFN_vkEnumerateInstanceExtensionProperties fpl__func_vkEnumerateInstanceExtensionProperties;
 typedef PFN_vkEnumerateInstanceLayerProperties fpl__func_vkEnumerateInstanceLayerProperties;
 
+// Instance procs
+typedef PFN_vkDestroySurfaceKHR fpl__func_vkDestroySurfaceKHR;
+#if defined(FPL_PLATFORM_WINDOWS)
+typedef VkWin32SurfaceCreateInfoKHR fpl__VkWin32SurfaceCreateInfoKHR;
+typedef PFN_vkCreateWin32SurfaceKHR fpl__func_vkCreateWin32SurfaceKHR;
+typedef PFN_vkGetPhysicalDeviceWin32PresentationSupportKHR fpl__func_vkGetPhysicalDeviceWin32PresentationSupportKHR;
+#elif defined(FPL_SUBPLATFORM_X11)
+typedef VkXlibSurfaceCreateInfoKHR fpl__VkXlibSurfaceCreateInfoKHR;
+typedef PFN_vkCreateXlibSurfaceKHR fpl__func_vkCreateXlibSurfaceKHR;
+typedef PFN_vkGetPhysicalDeviceXlibPresentationSupportKHR fpl__func_vkGetPhysicalDeviceXlibPresentationSupportKHR;
+#endif
+
 #define FPL__VK_MAKE_VERSION(major, minor, patch) VK_MAKE_VERSION(major, minor, patch)
 
-#endif
+#endif // !fplHasInclude(<vulkan/vulkan.h>) || defined(FPL_NO_PLATFORM_INCLUDES)
 
 typedef struct fpl__VulkanApi {
 	fplDynamicLibraryHandle libraryHandle;
@@ -19393,26 +19460,26 @@ fpl_internal bool fpl__LoadVulkanApi(fpl__VulkanApi *api) {
 	return(true);
 #else
 
-#if defined(FPL_PLATFORM_WINDOWS)
+#	if defined(FPL_PLATFORM_WINDOWS)
 	const char *libraryNames[] = {
 		"vulkan-1.dll"
 	};
-#elif defined(FPL_SUBPLATFORM_POSIX)
+#	elif defined(FPL_SUBPLATFORM_POSIX)
 	const char *libraryNames[] = {
 		"libvulkan.so",
 		"libvulkan.so.1"
 	};
-#else
+#	else
 	FPL__WARNING(FPL__MODULE_VIDEO_VULKAN, "Unsupported Platform!"); \
 	return(false);
-#endif
+#	endif
 
-#define FPL__VULKAN_GET_FUNCTION_ADDRESS_CONTINUE(libHandle, libName, target, type, name) \
-	(target)->name = (type)fplGetDynamicLibraryProc(&libHandle, #name); \
-	if ((target)->name == fpl_null) { \
-		FPL__WARNING(FPL__MODULE_VIDEO_VULKAN, "Failed getting procedure address '%s' from library '%s'", #name, libName); \
-		continue; \
-	}
+#	define FPL__VULKAN_GET_FUNCTION_ADDRESS_CONTINUE(libHandle, libName, target, type, name) \
+		(target)->name = (type)fplGetDynamicLibraryProc(&libHandle, #name); \
+		if ((target)->name == fpl_null) { \
+			FPL__WARNING(FPL__MODULE_VIDEO_VULKAN, "Failed getting procedure address '%s' from library '%s'", #name, libName); \
+			continue; \
+		}
 
 	bool result = false;
 	int libraryCount = fplArrayCount(libraryNames);
@@ -19444,7 +19511,7 @@ fpl_internal bool fpl__LoadVulkanApi(fpl__VulkanApi *api) {
 		fpl__UnloadVulkanApi(api);
 	}
 
-#undef FPL__VULKAN_GET_FUNCTION_ADDRESS_CONTINUE
+#	undef FPL__VULKAN_GET_FUNCTION_ADDRESS_CONTINUE
 
 	return(result);
 #endif // FPL_NO_RUNTIME_LINKING
@@ -19455,6 +19522,7 @@ typedef struct fpl__VideoBackendVulkan {
 	fpl__VideoBackend base;
 	fpl__VulkanApi api;
 	fpl__VkInstance instanceHandle;
+	fpl__VkSurfaceKHR surfaceHandle;
 	const fpl__VkAllocationCallbacks *allocator;
 	fpl_b32 isInstanceUserDefined;
 } fpl__VideoBackendVulkan;
@@ -19561,15 +19629,92 @@ fpl_internal FPL__FUNC_VIDEO_BACKEND_FINALIZEWINDOW(fpl__VideoBackend_Vulkan_Fin
 
 fpl_internal FPL__FUNC_VIDEO_BACKEND_SHUTDOWN(fpl__VideoBackend_Vulkan_Shutdown) {
 	fpl__VideoBackendVulkan *nativeBackend = (fpl__VideoBackendVulkan *)backend;
+
+	const fpl__VulkanApi *api = &nativeBackend->api;
+
+	if(nativeBackend->surfaceHandle != FPL__VK_NULL_HANDLE) {
+		fpl__func_vkDestroySurfaceKHR destroyProc = (fpl__func_vkDestroySurfaceKHR)api->vkGetInstanceProcAddr(nativeBackend->instanceHandle, "vkDestroySurfaceKHR");
+		fplAssert(destroyProc != fpl_null);
+
+		FPL_LOG_INFO(FPL__MODULE_VIDEO_VULKAN, "Destroy Vulkan Surface '%p'", nativeBackend->surfaceHandle);
+		destroyProc(nativeBackend->instanceHandle, nativeBackend->surfaceHandle, nativeBackend->allocator);
+		
+		nativeBackend->surfaceHandle = FPL__VK_NULL_HANDLE;
+	}
 }
 
 fpl_internal FPL__FUNC_VIDEO_BACKEND_INITIALIZE(fpl__VideoBackend_Vulkan_Initialize) {
 	fpl__VideoBackendVulkan *nativeBackend = (fpl__VideoBackendVulkan *)backend;
 
-	// @TODO(final): Create Surface KHR
-	FPL__ERROR(FPL__MODULE_VIDEO_VULKAN, "Not implemented yet!");
+	const fpl__VulkanApi *api = &nativeBackend->api;
 
+	if(nativeBackend->instanceHandle == FPL__VK_NULL_HANDLE) {
+		FPL__ERROR(FPL__MODULE_VIDEO_VULKAN, "Cannot create a Vulkan surface without a Vulkan instance!");
+		return(false);
+	}
+
+	fpl__VkSurfaceKHR surfaceHandle = FPL__VK_NULL_HANDLE;
+
+#if defined(FPL_PLATFORM_WINDOWS)
+	FPL_LOG_DEBUG(FPL__MODULE_VIDEO_VULKAN, "Query Vulkan Instance Proc 'vkCreateWin32SurfaceKHR' for instance '%p'", nativeBackend->instanceHandle);
+	fpl__func_vkCreateWin32SurfaceKHR createProc = (fpl__func_vkCreateWin32SurfaceKHR)api->vkGetInstanceProcAddr(nativeBackend->instanceHandle, "vkCreateWin32SurfaceKHR");
+	if(createProc == fpl_null) {
+		FPL__ERROR(FPL__MODULE_VIDEO_VULKAN, "Vulkan instance proc 'vkCreateWin32SurfaceKHR' not found! Maybe the instance extension 'VK_KHR_win32_surface' was not set?");
+		return(false);
+	}
+
+	fpl__VkWin32SurfaceCreateInfoKHR creationInfo = fplZeroInit;
+	creationInfo.sType = FPL__VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR;
+	creationInfo.hinstance = fpl__global__InitState.win32.appInstance;
+	creationInfo.hwnd = windowState->win32.windowHandle;
+
+	FPL_LOG_INFO(FPL__MODULE_VIDEO_VULKAN, "Create Vulkan Win32 Surface for hwnd '%p', hinstance '%p' and Vulkan instance '%p'", creationInfo.hwnd, creationInfo.hinstance, nativeBackend->instanceHandle);
+	fpl__VkResult creationResult = createProc(nativeBackend->instanceHandle, &creationInfo, nativeBackend->allocator, &surfaceHandle);
+	if(creationResult != FPL__VK_SUCCESS) {
+		FPL__ERROR(FPL__MODULE_VIDEO_VULKAN, "Failed creating vulkan surface KHR for Win32 -> (VkResult: %d)!", creationResult);
+		return(false);
+	}
+#elif defined(FPL_SUBPLATFORM_X11)
+	FPL_LOG_DEBUG(FPL__MODULE_VIDEO_VULKAN, "Query Vulkan Instance Proc 'vkCreateXlibSurfaceKHR' for instance '%p'", nativeBackend->instanceHandle);
+	fpl__func_vkCreateXlibSurfaceKHR createProc = (fpl__func_vkCreateXlibSurfaceKHR)api->vkGetInstanceProcAddr(nativeBackend->instanceHandle, "vkCreateXlibSurfaceKHR");
+	if(createProc == fpl_null) {
+		FPL__ERROR(FPL__MODULE_VIDEO_VULKAN, "Vulkan instance proc 'vkCreateXlibSurfaceKHR' not found! Maybe the instance extension 'VK_KHR_xlib_surface' was not set?");
+		return(false);
+	}
+
+	fpl__VkXlibSurfaceCreateInfoKHR creationInfo = fplZeroInit;
+	creationInfo.sType = FPL__VK_STRUCTURE_TYPE_XLIB_SURFACE_CREATE_INFO_KHR;
+	creationInfo.dpy = windowState->x11.display;
+	creationInfo.window = windowState->x11.window;
+
+	FPL_LOG_INFO(FPL__MODULE_VIDEO_VULKAN, "Create Vulkan X11 Surface for display '%p', window '%d' and Vulkan instance '%p'", creationInfo.dpy, creationInfo.window, nativeBackend->instanceHandle);
+	fpl__VkResult creationResult = createProc(nativeBackend->instanceHandle, &creationInfo, nativeBackend->allocator, &surfaceHandle);
+	if(creationResult != FPL__VK_SUCCESS) {
+		FPL__ERROR(FPL__MODULE_VIDEO_VULKAN, "Failed creating vulkan surface KHR for X11 -> (VkResult: %d)!", creationResult);
+		return(false);
+	}
+#else
+	FPL__ERROR(FPL__MODULE_VIDEO_VULKAN, "Unsupported Platform!");
 	return(false);
+#endif
+
+	fplAssert(surfaceHandle != FPL__VK_NULL_HANDLE);
+	nativeBackend->surfaceHandle = surfaceHandle;
+
+#if defined(FPL_PLATFORM_WINDOWS)
+	backend->surface.win32_vulkan.instance = nativeBackend->instanceHandle;
+	backend->surface.win32_vulkan.surfaceKHR = nativeBackend->surfaceHandle;
+	backend->surface.win32_vulkan.windowHandle = windowState->win32.windowHandle;
+#elif defined(FPL_SUBPLATFORM_X11)
+	backend->surface.x11_vulkan.instance = nativeBackend->instanceHandle;
+	backend->surface.x11_vulkan.surfaceKHR = nativeBackend->surfaceHandle;
+	backend->surface.x11_vulkan.display = windowState->x11.display;
+	backend->surface.x11_vulkan.window = windowState->x11.window;
+	backend->surface.x11_vulkan.screen = windowState->x11.screen;
+	backend->surface.x11_vulkan.visual = windowState->x11.visual;
+#endif
+	
+	return(true);
 }
 
 fpl_internal FPL__FUNC_VIDEO_BACKEND_DESTROYEDWINDOW(fpl__VideoBackend_Vulkan_DestroyedWindow) {
@@ -19603,12 +19748,7 @@ fpl_internal FPL__FUNC_VIDEO_BACKEND_LOAD(fpl__VideoBackend_Vulkan_Load) {
 	// Load core api
 	if(!fpl__LoadVulkanApi(&nativeBackend->api)) {
 		return(false);
-	}
-
-	// @TODO(final): Create Vulkan instance
-	// - Validation Layer
-	// - Surface KHR support
-	// - Instance layers
+	}	
 
 	return(true);
 }
