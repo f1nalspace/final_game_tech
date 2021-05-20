@@ -19255,11 +19255,7 @@ fpl_internal fpl__VideoContext fpl__VideoBackend_Win32Software_Construct() {
 // ############################################################################
 #if defined(FPL__ENABLE_VIDEO_VULKAN)
 
-#if defined(FPL_PLATFORM_WINDOWS)
-#define VK_USE_PLATFORM_WIN32_KHR
-#elif defined(FPL_SUBPLATFORM_X11)
-#define VK_USE_PLATFORM_XLIB_KHR
-#endif
+#if !fplHasInclude(<vulkan/vulkan.h>)
 
 #if defined(FPL_PLATFORM_WINDOWS)
 #	define fpl__VKAPI_CALL __stdcall
@@ -19268,6 +19264,14 @@ fpl_internal fpl__VideoContext fpl__VideoBackend_Win32Software_Construct() {
 #	define fpl__VKAPI_CALL
 #	define fpl__VKAPI_PTR fpl__VKAPI_CALL
 #endif
+
+#define FPL__VK_NULL_HANDLE fpl_null
+
+#define FPL__VK_MAX_EXTENSION_NAME_SIZE 256
+#define FPL__VK_MAX_DESCRIPTION_SIZE 256
+
+#define FPL__VK_MAKE_VERSION(major, minor, patch) \
+    ((((uint32_t)(major)) << 22) | (((uint32_t)(minor)) << 12) | ((uint32_t)(patch)))
 
 typedef enum fpl__VkResult {
 	FPL__VK_SUCCESS = 0,
@@ -19307,16 +19311,62 @@ typedef struct fpl__VkInstanceCreateInfo {
 	const char *const *ppEnabledExtensionNames;
 } fpl__VkInstanceCreateInfo;
 
-#define FPL__VK_MAKE_VERSION(major, minor, patch) \
-    ((((uint32_t)(major)) << 22) | (((uint32_t)(minor)) << 12) | ((uint32_t)(patch)))
+typedef struct fpl__VkExtensionProperties {
+	char extensionName[FPL__VK_MAX_EXTENSION_NAME_SIZE];
+	uint32_t specVersion;
+} fpl__VkExtensionProperties;
 
-typedef fpl__VkResult(fpl__VKAPI_PTR fpl__func_vkCreateInstance)(const fpl__VkInstanceCreateInfo *pCreateInfo, const fpl__VkAllocationCallbacks *pAllocator, fpl__VkInstance *pInstance);
-typedef void (fpl__VKAPI_PTR fpl__func_vkDestroyInstance)(fpl__VkInstance instance, const fpl__VkAllocationCallbacks *pAllocator);
+typedef struct fpl__VkLayerProperties {
+	char layerName[FPL__VK_MAX_EXTENSION_NAME_SIZE];
+	uint32_t specVersion;
+	uint32_t implementationVersion;
+	char description[FPL__VK_MAX_DESCRIPTION_SIZE];
+} fpl__VkLayerProperties;
+
+typedef fpl__VkResult(fpl__VKAPI_PTR *fpl__func_vkCreateInstance)(const fpl__VkInstanceCreateInfo *pCreateInfo, const fpl__VkAllocationCallbacks *pAllocator, fpl__VkInstance *pInstance);
+typedef void (fpl__VKAPI_PTR *fpl__func_vkDestroyInstance)(fpl__VkInstance instance, const fpl__VkAllocationCallbacks *pAllocator);
+typedef void (fpl__VKAPI_PTR *fpl__func_vkGetInstanceProcAddr)(fpl__VkInstance instance, const char *pName);
+typedef VkResult(fpl__VKAPI_PTR *fpl__func_vkEnumerateInstanceExtensionProperties)(const char *pLayerName, uint32_t *pPropertyCount, fpl__VkExtensionProperties *pProperties);
+typedef VkResult(fpl__VKAPI_PTR *fpl__func_vkEnumerateInstanceLayerProperties)(uint32_t *pPropertyCount, fpl__VkLayerProperties *pProperties);
+
+#else
+
+#	if defined(FPL_PLATFORM_WINDOWS)
+#		define VK_USE_PLATFORM_WIN32_KHR
+#	elif defined(FPL_SUBPLATFORM_X11)
+#		define VK_USE_PLATFORM_XLIB_KHR
+#	endif
+#	define VK_NO_PROTOTYPES
+#	include <vulkan/vulkan.h>
+
+#define FPL__VK_STRUCTURE_TYPE_APPLICATION_INFO VK_STRUCTURE_TYPE_APPLICATION_INFO
+#define FPL__VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO
+#define FPL__VK_SUCCESS VK_SUCCESS
+
+typedef VkResult fpl__VkResult;
+typedef VkAllocationCallbacks fpl__VkAllocationCallbacks;
+typedef VkInstance fpl__VkInstance;
+typedef VkFlags fpl__VkFlags;
+typedef VkApplicationInfo fpl__VkApplicationInfo;
+typedef VkInstanceCreateInfo fpl__VkInstanceCreateInfo;
+
+typedef PFN_vkCreateInstance fpl__func_vkCreateInstance;
+typedef PFN_vkDestroyInstance fpl__func_vkDestroyInstance;
+typedef PFN_vkGetInstanceProcAddr fpl__func_vkGetInstanceProcAddr;
+typedef PFN_vkEnumerateInstanceExtensionProperties fpl__func_vkEnumerateInstanceExtensionProperties;
+typedef PFN_vkEnumerateInstanceLayerProperties fpl__func_vkEnumerateInstanceLayerProperties;
+
+#define FPL__VK_MAKE_VERSION(major, minor, patch) VK_MAKE_VERSION(major, minor, patch)
+
+#endif
 
 typedef struct fpl__VulkanApi {
 	fplDynamicLibraryHandle libraryHandle;
-	fpl__func_vkCreateInstance *vkCreateInstance;
-	fpl__func_vkDestroyInstance *vkDestroyInstance;
+	fpl__func_vkCreateInstance vkCreateInstance;
+	fpl__func_vkDestroyInstance vkDestroyInstance;
+	fpl__func_vkGetInstanceProcAddr vkGetInstanceProcAddr;
+	fpl__func_vkEnumerateInstanceExtensionProperties vkEnumerateInstanceExtensionProperties;
+	fpl__func_vkEnumerateInstanceLayerProperties vkEnumerateInstanceLayerProperties;
 } fpl__VulkanApi;
 
 fpl_internal void fpl__UnloadVulkanApi(fpl__VulkanApi *api) {
@@ -19327,6 +19377,17 @@ fpl_internal void fpl__UnloadVulkanApi(fpl__VulkanApi *api) {
 }
 
 fpl_internal bool fpl__LoadVulkanApi(fpl__VulkanApi *api) {
+
+	fplClearStruct(api);
+
+#if defined(FPL_NO_RUNTIME_LINKING)
+	api->vkCreateInstance = vkCreateInstance;
+	api->vkDestroyInstance = vkDestroyInstance;
+	api->vkGetInstanceProcAddr = vkGetInstanceProcAddr;
+	api->vkEnumerateInstanceExtensionProperties = vkEnumerateInstanceExtensionProperties;
+	api->vkEnumerateInstanceLayerProperties = vkEnumerateInstanceLayerProperties;
+#else
+
 #if defined(FPL_PLATFORM_WINDOWS)
 	const char *libraryNames[] = {
 		"vulkan-1.dll"
@@ -19337,17 +19398,16 @@ fpl_internal bool fpl__LoadVulkanApi(fpl__VulkanApi *api) {
 		"libvulkan.so.1"
 	};
 #else
+	FPL__WARNING(FPL__MODULE_VIDEO_VULKAN, "Unsupported Platform!"); \
 	return(false);
 #endif
 
 #define FPL__VULKAN_GET_FUNCTION_ADDRESS_CONTINUE(libHandle, libName, target, type, name) \
-	(target)->name = (type *)fplGetDynamicLibraryProc(&libHandle, #name); \
+	(target)->name = (type)fplGetDynamicLibraryProc(&libHandle, #name); \
 	if ((target)->name == fpl_null) { \
 		FPL__WARNING(FPL__MODULE_VIDEO_VULKAN, "Failed getting procedure address '%s' from library '%s'", #name, libName); \
 		continue; \
 	}
-
-	fplClearStruct(api);
 
 	bool result = false;
 	int libraryCount = fplArrayCount(libraryNames);
@@ -19367,6 +19427,9 @@ fpl_internal bool fpl__LoadVulkanApi(fpl__VulkanApi *api) {
 
 		FPL__VULKAN_GET_FUNCTION_ADDRESS_CONTINUE(libHandle, libraryName, api, fpl__func_vkCreateInstance, vkCreateInstance);
 		FPL__VULKAN_GET_FUNCTION_ADDRESS_CONTINUE(libHandle, libraryName, api, fpl__func_vkDestroyInstance, vkDestroyInstance);
+		FPL__VULKAN_GET_FUNCTION_ADDRESS_CONTINUE(libHandle, libraryName, api, fpl__func_vkGetInstanceProcAddr, vkGetInstanceProcAddr);
+		FPL__VULKAN_GET_FUNCTION_ADDRESS_CONTINUE(libHandle, libraryName, api, fpl__func_vkEnumerateInstanceExtensionProperties, vkEnumerateInstanceExtensionProperties);
+		FPL__VULKAN_GET_FUNCTION_ADDRESS_CONTINUE(libHandle, libraryName, api, fpl__func_vkEnumerateInstanceLayerProperties, vkEnumerateInstanceLayerProperties);
 
 		result = true;
 		break;
@@ -19379,6 +19442,8 @@ fpl_internal bool fpl__LoadVulkanApi(fpl__VulkanApi *api) {
 #undef FPL__VULKAN_GET_FUNCTION_ADDRESS_CONTINUE
 
 	return(result);
+#endif // FPL_NO_RUNTIME_LINKING
+
 }
 
 typedef struct fpl__VideoBackendVulkan {
