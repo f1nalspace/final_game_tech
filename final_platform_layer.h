@@ -3472,7 +3472,7 @@ typedef struct fplVulkanVideoSettings {
 	//! The vulkan instance (VkInstance), when null it will be automatically created
 	void *instanceHandle;
 	// The vulkan allocator (VkAllocationCallbacks)
-	void *allocator;
+	const void *allocator;
 	//! Is validation layer enabled or not (Only required if @ref instanceHandle is @ref fpl_null)
 	fpl_b32 enableValidationLayer;
 } fplVulkanVideoSettings;
@@ -19326,8 +19326,8 @@ typedef struct fpl__VkLayerProperties {
 typedef fpl__VkResult(fpl__VKAPI_PTR *fpl__func_vkCreateInstance)(const fpl__VkInstanceCreateInfo *pCreateInfo, const fpl__VkAllocationCallbacks *pAllocator, fpl__VkInstance *pInstance);
 typedef void (fpl__VKAPI_PTR *fpl__func_vkDestroyInstance)(fpl__VkInstance instance, const fpl__VkAllocationCallbacks *pAllocator);
 typedef void (fpl__VKAPI_PTR *fpl__func_vkGetInstanceProcAddr)(fpl__VkInstance instance, const char *pName);
-typedef VkResult(fpl__VKAPI_PTR *fpl__func_vkEnumerateInstanceExtensionProperties)(const char *pLayerName, uint32_t *pPropertyCount, fpl__VkExtensionProperties *pProperties);
-typedef VkResult(fpl__VKAPI_PTR *fpl__func_vkEnumerateInstanceLayerProperties)(uint32_t *pPropertyCount, fpl__VkLayerProperties *pProperties);
+typedef fpl__VkResult(fpl__VKAPI_PTR *fpl__func_vkEnumerateInstanceExtensionProperties)(const char *pLayerName, uint32_t *pPropertyCount, fpl__VkExtensionProperties *pProperties);
+typedef fpl__VkResult(fpl__VKAPI_PTR *fpl__func_vkEnumerateInstanceLayerProperties)(uint32_t *pPropertyCount, fpl__VkLayerProperties *pProperties);
 
 #else
 
@@ -19336,7 +19336,10 @@ typedef VkResult(fpl__VKAPI_PTR *fpl__func_vkEnumerateInstanceLayerProperties)(u
 #	elif defined(FPL_SUBPLATFORM_X11)
 #		define VK_USE_PLATFORM_XLIB_KHR
 #	endif
-#	define VK_NO_PROTOTYPES
+
+#	if !defined(FPL_NO_RUNTIME_LINKING)
+#		define VK_NO_PROTOTYPES
+#	endif
 #	include <vulkan/vulkan.h>
 
 #define FPL__VK_STRUCTURE_TYPE_APPLICATION_INFO VK_STRUCTURE_TYPE_APPLICATION_INFO
@@ -19386,6 +19389,8 @@ fpl_internal bool fpl__LoadVulkanApi(fpl__VulkanApi *api) {
 	api->vkGetInstanceProcAddr = vkGetInstanceProcAddr;
 	api->vkEnumerateInstanceExtensionProperties = vkEnumerateInstanceExtensionProperties;
 	api->vkEnumerateInstanceLayerProperties = vkEnumerateInstanceLayerProperties;
+
+	return(true);
 #else
 
 #if defined(FPL_PLATFORM_WINDOWS)
@@ -19450,7 +19455,7 @@ typedef struct fpl__VideoBackendVulkan {
 	fpl__VideoBackend base;
 	fpl__VulkanApi api;
 	fpl__VkInstance instanceHandle;
-	fpl__VkAllocationCallbacks *allocator;
+	const fpl__VkAllocationCallbacks *allocator;
 	fpl_b32 isInstanceUserDefined;
 } fpl__VideoBackendVulkan;
 
@@ -19527,7 +19532,7 @@ fpl_internal FPL__FUNC_VIDEO_BACKEND_PREPAREWINDOW(fpl__VideoBackend_Vulkan_Prep
 		instanceCreateInfo.enabledLayerCount = validationLayerCount;
 		instanceCreateInfo.ppEnabledLayerNames = validationLayers;
 
-		fpl__VkAllocationCallbacks *allocator = videoSettings->graphics.vulkan.allocator;
+		const fpl__VkAllocationCallbacks *allocator = (const fpl__VkAllocationCallbacks *)videoSettings->graphics.vulkan.allocator;
 		
 		fpl__VkInstance instance = fpl_null;
 		fpl__VkResult creationResult = api->vkCreateInstance(&instanceCreateInfo, allocator, &instance);
@@ -19543,8 +19548,8 @@ fpl_internal FPL__FUNC_VIDEO_BACKEND_PREPAREWINDOW(fpl__VideoBackend_Vulkan_Prep
 		return(true);
 	} else {
 		// Instance passed by user
-		nativeBackend->allocator = videoSettings->graphics.vulkan.allocator;
-		nativeBackend->instanceHandle = videoSettings->graphics.vulkan.instanceHandle;
+		nativeBackend->allocator = (const fpl__VkAllocationCallbacks *)videoSettings->graphics.vulkan.allocator;
+		nativeBackend->instanceHandle = (fpl__VkInstance)videoSettings->graphics.vulkan.instanceHandle;
 		nativeBackend->isInstanceUserDefined = true;
 		return(true);
 	}
