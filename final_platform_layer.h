@@ -3459,17 +3459,19 @@ typedef struct fplOpenGLVideoSettings {
 #if defined(FPL__ENABLE_VIDEO_VULKAN)
 //! A structure that contains Vulkan video settings
 typedef struct fplVulkanVideoSettings {
-	//! The application name
-	const char *appName;
-	//! The engine name
-	const char *engineName;
-	//! The application version
+	//! The application version (Only required if @ref instanceHandle is @ref fpl_null)
 	fplVersionInfo appVersion;
-	//! The engine version
+	//! The engine version (Only required if @ref instanceHandle is @ref fpl_null)
 	fplVersionInfo engineVersion;
-	//! The preferred Vulkan api version
+	//! The preferred Vulkan api version (Only required if @ref instanceHandle is @ref fpl_null)
 	fplVersionInfo apiVersion;
-	//! A bool for controlling of the validation should be enabled or not
+	//! The application name (Only required if @ref instanceHandle is @ref fpl_null)
+	const char *appName;
+	//! The engine name (Only required if @ref instanceHandle is @ref fpl_null)
+	const char *engineName;
+	//! The vulkan instance (VkInstance), when null it will be automatically created
+	void *instanceHandle;
+	//! Is validation layer enabled or not (Only required if @ref instanceHandle is @ref fpl_null)
 	fpl_b32 enableValidationLayer;
 } fplVulkanVideoSettings;
 #endif // FPL__ENABLE_VIDEO_VULKAN
@@ -6539,6 +6541,27 @@ typedef union fplVideoSurface {
 	int dummy;
 } fplVideoSurface;
 
+#if defined(FPL__ENABLE_VIDEO_VULKAN)
+//! Stores the requirements for the Vulkan video backend
+typedef struct fplVulkanVideoRequirements {
+	//! The required instance extensions
+	const char *instanceExtensions[2];
+	//! The number of required instance extensions
+	uint32_t instanceExtensionCount;
+} fplVulkanVideoRequirements;
+#endif // FPL__ENABLE_VIDEO_VULKAN
+
+
+//! Stores the video requirements for the desired video backend
+typedef union fplVideoRequirements {
+#if defined(FPL__ENABLE_VIDEO_VULKAN)
+	//! The requirements for Vulkan backend
+	fplVulkanVideoRequirements vulkan;
+#endif // FPL__ENABLE_VIDEO_VULKAN
+	//! Field for preventing union to be empty
+	int dummy;
+} fplVideoRequirements;
+
 /**
 * @brief Gets the current video driver
 * @return Returns the current video driver type @ref fplVideoDriverType
@@ -6574,13 +6597,21 @@ fpl_common_api void fplVideoFlip();
 * @param procName The name of the procedure.
 * @return Returns the function pointer of the procedure.
 */
-fpl_common_api void *fplGetVideoProcedure(const char *procName);
+fpl_common_api const void *fplGetVideoProcedure(const char *procName);
 
 /**
 * @brief Gets the current @ref fplVideoSurface that stores all handles used for the active video backend.
 * @return The resulting @ref fplVideoSurface reference.
 */
 fpl_common_api const fplVideoSurface *fplGetVideoSurface();
+
+/**
+* @brief Gets the video requirements for the specified video backend.
+* @param driver The @ref fplVideoDriverType
+* @param requirements The reference to the @ref fplVideoRequirements
+* @return Returns true when the @ref fplVideoRequirements are filled out, false otherwise.
+*/
+fpl_common_api bool fplGetVideoRequirements(const fplVideoDriverType driver, fplVideoRequirements *requirements);
 
 /** @} */
 #endif // FPL__ENABLE_VIDEO
@@ -18037,8 +18068,11 @@ typedef FPL__FUNC_VIDEO_BACKEND_SHUTDOWN(fpl__func_VideoBackendShutdown);
 #define FPL__FUNC_VIDEO_BACKEND_PRESENT(name) void name(const fpl__PlatformAppState *appState, const fpl__PlatformWindowState *windowState, const fpl__VideoData *data, const struct fpl__VideoBackend *backend)
 typedef FPL__FUNC_VIDEO_BACKEND_PRESENT(fpl__func_VideoBackendPresent);
 
-#define FPL__FUNC_VIDEO_BACKEND_GETPROCEDURE(name) void *name(const struct fpl__VideoBackend *backend, const char *procName)
+#define FPL__FUNC_VIDEO_BACKEND_GETPROCEDURE(name) const void *name(const struct fpl__VideoBackend *backend, const char *procName)
 typedef FPL__FUNC_VIDEO_BACKEND_GETPROCEDURE(fpl__func_VideoBackendGetProcedure);
+
+#define FPL__FUNC_VIDEO_BACKEND_GETREQUIREMENTS(name) bool name(fplVideoRequirements *requirements)
+typedef FPL__FUNC_VIDEO_BACKEND_GETREQUIREMENTS(fpl__func_VideoBackendGetRequirements);
 
 typedef struct fpl__VideoContext {
 	fpl__func_VideoBackendLoad *loadFunc;
@@ -18049,6 +18083,7 @@ typedef struct fpl__VideoContext {
 	fpl__func_VideoBackendFinalizeWindow *finalizeWindowFunc;
 	fpl__func_VideoBackendPresent *presentFunc;
 	fpl__func_VideoBackendGetProcedure *getProcedureFunc;
+	fpl__func_VideoBackendGetRequirements *getRequirementsFunc;
 	fpl_b32 recreateOnResize;
 } fpl__VideoContext;
 
@@ -18061,6 +18096,7 @@ fpl_internal FPL__FUNC_VIDEO_BACKEND_INITIALIZE(fpl__VideoBackend_Initialize_Stu
 fpl_internal FPL__FUNC_VIDEO_BACKEND_SHUTDOWN(fpl__VideoBackend_Shutdown_Stub) { }
 fpl_internal FPL__FUNC_VIDEO_BACKEND_PRESENT(fpl__VideoBackend_Present_Stub) { }
 fpl_internal FPL__FUNC_VIDEO_BACKEND_GETPROCEDURE(fpl__VideoBackend_GetProcedure_Stub) { return(fpl_null); }
+fpl_internal FPL__FUNC_VIDEO_BACKEND_GETREQUIREMENTS(fpl__VideoBackend_GetRequirements_Stub) { return(false); }
 
 fpl_internal fpl__VideoContext fpl__StubVideoContext() {
 	fpl__VideoContext result = fplZeroInit;
@@ -18072,6 +18108,7 @@ fpl_internal fpl__VideoContext fpl__StubVideoContext() {
 	result.shutdownFunc = fpl__VideoBackend_Shutdown_Stub;
 	result.presentFunc = fpl__VideoBackend_Present_Stub;
 	result.getProcedureFunc = fpl__VideoBackend_GetProcedure_Stub;
+	result.getRequirementsFunc = fpl__VideoBackend_GetRequirements_Stub;
 	return(result);
 }
 
@@ -18079,8 +18116,8 @@ fpl_internal fpl__VideoContext fpl__StubVideoContext() {
 #define FPL__VIDEOBACKEND_MAGIC (uint64_t)0x564944454f535953
 
 typedef struct fpl__VideoBackend {
-	fplVideoSurface surface;
 	uint64_t magic;
+	fplVideoSurface surface;
 } fpl__VideoBackend;
 
 // ############################################################################
@@ -19206,8 +19243,7 @@ fpl_internal fpl__VideoContext fpl__VideoBackend_Win32Software_Construct() {
 
 // ############################################################################
 //
-// > VIDEO_DRIVER_VULKAN_WIN32
-// > VIDEO_DRIVER_VULKAN_X11
+// > VIDEO_DRIVER_VULKAN (Win32, X11)
 //
 // ############################################################################
 #if defined(FPL__ENABLE_VIDEO_VULKAN)
@@ -19224,12 +19260,23 @@ fpl_internal fpl__VideoContext fpl__VideoBackend_Win32Software_Construct() {
 #	define fpl__VKAPI
 #endif
 
-typedef int fpl__VkResult;
+typedef enum fpl__VkResult {
+	FPL__VK_SUCCESS = 0,
+	FPL__VK_RESULT_MAX_ENUM = 0x7FFFFFFF
+} fpl__VkResult;
+
 typedef void fpl__VkAllocationCallbacks;
 typedef void *fpl__VkInstance;
+typedef uint32_t fpl__VkFlags;
+
+typedef enum fpl__VkStructureType {
+	FPL__VK_STRUCTURE_TYPE_APPLICATION_INFO = 0,
+	FPL__VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO = 1,
+	FPL__VK_STRUCTURE_TYPE_MAX_ENUM = 0x7FFFFFFF
+} fpl__VkStructureType;
 
 typedef struct fpl__VkApplicationInfo {
-	int sType;
+	fpl__VkStructureType sType;
 	const void *pNext;
 	const char *pApplicationName;
 	uint32_t applicationVersion;
@@ -19238,10 +19285,12 @@ typedef struct fpl__VkApplicationInfo {
 	uint32_t apiVersion;
 } fpl__VkApplicationInfo;
 
+typedef fpl__VkFlags fpl__VkInstanceCreateFlags;
+
 typedef struct fpl__VkInstanceCreateInfo {
-	int sType; // VkStructureType
+	fpl__VkStructureType sType;
 	const void *pNext;
-	int flags; // VkInstanceCreateFlags
+	fpl__VkInstanceCreateFlags flags;
 	const fpl__VkApplicationInfo *pApplicationInfo;
 	uint32_t enabledLayerCount;
 	const char *const *ppEnabledLayerNames;
@@ -19382,6 +19431,24 @@ fpl_internal FPL__FUNC_VIDEO_BACKEND_PRESENT(fpl__VideoBackend_Vulkan_Present)
 	const fpl__VideoBackendVulkan *nativeBackend = (const fpl__VideoBackendVulkan *)backend;
 }
 
+fpl_internal FPL__FUNC_VIDEO_BACKEND_GETREQUIREMENTS(fpl__VideoBackend_Vulkan_GetRequirements) {
+	FPL__CheckArgumentNull(requirements, false);
+	fplClearStruct(requirements);
+
+	fplAssert(requirements->vulkan.instanceExtensionCount < fplArrayCount(requirements->vulkan.instanceExtensions));
+	requirements->vulkan.instanceExtensions[requirements->vulkan.instanceExtensionCount++] = "VK_KHR_surface";
+#if defined(FPL_PLATFORM_WINDOWS)
+	fplAssert(requirements->vulkan.instanceExtensionCount < fplArrayCount(requirements->vulkan.instanceExtensions));
+	requirements->vulkan.instanceExtensions[requirements->vulkan.instanceExtensionCount++] = "VK_KHR_win32_surface";
+#elif defined(FPL_SUBPLATFORM_X11)
+	fplAssert(requirements->vulkan.instanceExtensionCount < fplArrayCount(requirements->vulkan.instanceExtensions));
+	requirements->vulkan.instanceExtensions[requirements->vulkan.instanceExtensionCount++] = "VK_KHR_xlib_surface";
+#else
+	return(false);
+#endif
+	return(true);
+}
+
 fpl_internal fpl__VideoContext fpl__VideoBackend_Vulkan_Construct() {
 	fpl__VideoContext result = fpl__StubVideoContext();
 	result.loadFunc = fpl__VideoBackend_Vulkan_Load;
@@ -19392,6 +19459,7 @@ fpl_internal fpl__VideoContext fpl__VideoBackend_Vulkan_Construct() {
 	result.prepareWindowFunc = fpl__VideoBackend_Vulkan_PrepareWindow;
 	result.finalizeWindowFunc = fpl__VideoBackend_Vulkan_FinalizeWindow;
 	result.presentFunc = fpl__VideoBackend_Vulkan_Present;
+	result.getRequirementsFunc = fpl__VideoBackend_Vulkan_GetRequirements;
 	return(result);
 }
 
@@ -21445,10 +21513,14 @@ typedef union fpl__ActiveVideoBackend {
 	fpl__VideoBackendX11Software x11_software;
 #	endif
 #endif
+
+#if defined(FPL__ENABLE_VIDEO_VULKAN)
+	fpl__VideoBackendVulkan vulkan;
+#endif
 } fpl__ActiveVideoBackend;
 
 typedef struct fpl__VideoState {
-	fpl__ActiveVideoBackend backend;
+	fpl__ActiveVideoBackend backend; // All video backends must be stored there, otherwise we will corrupt the fpl__VideoContext
 	fpl__VideoContext context;
 	fpl__VideoData data;
 	fplVideoDriverType activeDriver;
@@ -21523,7 +21595,6 @@ fpl_internal bool fpl__InitializeVideoBackend(const fplVideoDriverType driver, c
 	fplAssert(videoState != fpl_null);
 
 	const fpl__VideoContext *ctx = &videoState->context;
-	fplAssert(ctx->initializeFunc != fpl_null);
 
 	videoState->activeDriver = driver;
 
@@ -21555,6 +21626,7 @@ fpl_internal bool fpl__InitializeVideoBackend(const fplVideoDriverType driver, c
 	}
 #	endif // FPL__ENABLE_VIDEO_SOFTWARE
 
+	fplAssert(ctx->initializeFunc != fpl_null);
 	bool videoInitResult = ctx->initializeFunc(appState, &appState->window, videoSettings, &videoState->data, &videoState->backend.base);
 	if(!videoInitResult) {
 		fplAssert(fplGetErrorCount() > 0);
@@ -21575,6 +21647,13 @@ fpl_internal fpl__VideoContext fpl__ConstructVideoContext(const fplVideoDriverTy
 #	elif defined(FPL_SUBPLATFORM_X11)
 			return fpl__VideoBackend_X11OpenGL_Construct();
 #	endif
+		} break;
+#endif
+
+#if defined(FPL__ENABLE_VIDEO_VULKAN)
+		case fplVideoDriverType_Vulkan:
+		{
+			return fpl__VideoBackend_Vulkan_Construct();
 		} break;
 #endif
 
@@ -22057,11 +22136,11 @@ fpl_common_api void fplVideoFlip() {
 	}
 }
 
-fpl_common_api void *fplGetVideoProcedure(const char *procName) {
+fpl_common_api const void *fplGetVideoProcedure(const char *procName) {
 	FPL__CheckPlatform(fpl_null);
 	fpl__PlatformAppState *appState = fpl__global__AppState;
 	const fpl__VideoState *videoState = fpl__GetVideoState(appState);
-	void *result = fpl_null;
+	const void *result = fpl_null;
 	if(videoState != fpl_null && videoState->activeDriver != fplVideoDriverType_None) {
 		fplAssert(videoState->context.getProcedureFunc != fpl_null);
 		result = videoState->context.getProcedureFunc(&videoState->backend.base, procName);
@@ -22075,7 +22154,16 @@ fpl_common_api const fplVideoSurface *fplGetVideoSurface() {
 	const fpl__VideoState *videoState = fpl__GetVideoState(appState);
 	const fplVideoSurface *result = fpl_null;
 	if(videoState != fpl_null && videoState->activeDriver != fplVideoDriverType_None) {
+		result = &videoState->backend.base.surface;
+	}
+	return(result);
+}
 
+fpl_common_api bool fplGetVideoRequirements(const fplVideoDriverType driver, fplVideoRequirements *requirements) {
+	fpl__VideoContext context = fpl__ConstructVideoContext(driver);
+	bool result = false;
+	if(context.getRequirementsFunc != fpl_null) {
+		result = context.getRequirementsFunc(requirements);
 	}
 	return(result);
 }

@@ -28,8 +28,14 @@ License:
 //
 // Config
 //
-#define VULKANDEMO_USE_FPL_VIDEO 0
+#define VULKANDEMO_FPL_VIDEO_MODE_NONE 0 // Do not use FPL at all
+#define VULKANDEMO_FPL_VIDEO_MODE_SURFACE_ONLY 1 // Let FPL only create the VkSurfaceKHR
+#define VULKANDEMO_FPL_VIDEO_MODE_FULL 2 // Let FPL create the instance and the VkSurfaceKHR
+
+#define VULKANDEMO_FPL_VIDEO_MODE VULKANDEMO_FPL_VIDEO_MODE_SURFACE_ONLY
+
 #define VULKANDEMO_USE_VALIDATION_LAYER 1
+
 #define VULKANDEMO_VALIDATION_LAYER_SEVERITY VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT
 
 #define FPL_IMPLEMENTATION
@@ -42,6 +48,14 @@ License:
 #define VK_USE_PLATFORM_WIN32_KHR
 #elif defined(FPL_SUBPLATFORM_X11)
 #define VK_USE_PLATFORM_XLIB_KHR
+#endif
+
+#if defined(FPL_PLATFORM_WINDOWS)
+const char *khrPlatformSurfaceName = "VK_KHR_win32_surface";
+#elif defined(FPL_SUBPLATFORM_X11)
+const char *khrPlatformSurfaceName = "VK_KHR_xlib_surface";
+#else
+const char *khrPlatformSurfaceName = fpl_null;
 #endif
 
 #define VK_NO_PROTOTYPES
@@ -1133,6 +1147,7 @@ typedef struct VulkanInstance {
 	VkApplicationInfo appInfo;
 	VkInstance instanceHandle;
 	fpl_b32 hasValidationLayer;
+	fpl_b32 isUserDefined;
 } VulkanInstance;
 
 static void VulkanDestroyInstance(VkAllocationCallbacks *allocator, const VulkanCoreApi *coreApi, VulkanInstance *instance) {
@@ -1143,7 +1158,7 @@ static void VulkanDestroyInstance(VkAllocationCallbacks *allocator, const Vulkan
 
 	// Destroy Vulkan instance
 	if(instance->instanceHandle != VK_NULL_HANDLE) {
-		fplConsoleFormatOut("Destroy Vulkan instance\n");
+		fplConsoleFormatOut("Destroy Vulkan instance '%p'\n", instance->instanceHandle);
 		coreApi->vkDestroyInstance(instance->instanceHandle, allocator);
 	}
 
@@ -1153,24 +1168,14 @@ static void VulkanDestroyInstance(VkAllocationCallbacks *allocator, const Vulkan
 	fplClearStruct(instance);
 }
 
-static bool VulkanCreateInstance(VkAllocationCallbacks *allocator, const VulkanCoreApi *coreApi, const bool useValidation, VulkanInstance *instance) {
+static bool VulkanCreateInstance(VkAllocationCallbacks *allocator, const VulkanCoreApi *coreApi, const bool useValidation, const char **requiredExtensions, const uint32_t requiredExtensionCount, VulkanInstance *instance) {
 	fplAssert(coreApi != fpl_null);
 	fplAssert(instance != fpl_null);
-
-	const char *khrPlatformSurfaceName = fpl_null;
-#if defined(FPL_PLATFORM_WINDOWS)
-	khrPlatformSurfaceName = "VK_KHR_win32_surface";
-#elif defined(FPL_SUBPLATFORM_X11)
-	khrPlatformSurfaceName = "VK_KHR_xlib_surface";
-#endif
 
 	fplClearStruct(instance);
 
 	VkResult res;
 
-	//
-	// Load properties
-	//
 	VulkanInstanceProperties *instanceProperties = &instance->properties;
 	if(!LoadVulkanInstanceProperties(coreApi, instanceProperties)) {
 		fplConsoleFormatError("Failed loading instance properties!\n");
@@ -1180,18 +1185,8 @@ static bool VulkanCreateInstance(VkAllocationCallbacks *allocator, const VulkanC
 	//
 	// Check and validate extensions and layers
 	//
-	bool supportsKHRSurface = IsVulkanFeatureSupported(instanceProperties->supportedExtensions.items, instanceProperties->supportedExtensions.count, VulkanKHRSurfaceName);
-	bool supportsKHRPlatformSurface = IsVulkanFeatureSupported(instanceProperties->supportedExtensions.items, instanceProperties->supportedExtensions.count, khrPlatformSurfaceName);
-
-	//
-	// Check Extensions
-	//
-	fplConsoleFormatOut("Validate instance extensions:\n");
-	fplConsoleFormatOut("- Supported %s: %s\n", VulkanKHRSurfaceName, (supportsKHRSurface ? "yes" : "no"));
-	fplConsoleFormatOut("- Supported %s: %s\n", khrPlatformSurfaceName, (supportsKHRPlatformSurface ? "yes" : "no"));
-
-	fplConsoleFormatOut("Validate instance layers:\n");
 	const char *supportedValidationLayerName = fpl_null;
+	fplConsoleFormatOut("Validate instance layers:\n");
 	for(uint32_t i = 0; i < fplArrayCount(VulkanValidationLayerNames); ++i) {
 		const char *validationLayerName = VulkanValidationLayerNames[i];
 		bool isSupported = IsVulkanFeatureSupported(instanceProperties->supportedLayers.items, instanceProperties->supportedLayers.count, validationLayerName);
@@ -1202,7 +1197,32 @@ static bool VulkanCreateInstance(VkAllocationCallbacks *allocator, const VulkanC
 		}
 	}
 
-	if(!supportsKHRSurface || !supportsKHRPlatformSurface || khrPlatformSurfaceName == fpl_null) {
+	bool supportsKHRSurface = IsVulkanFeatureSupported(instanceProperties->supportedExtensions.items, instanceProperties->supportedExtensions.count, VulkanKHRSurfaceName);
+	bool supportsKHRPlatformSurface = IsVulkanFeatureSupported(instanceProperties->supportedExtensions.items, instanceProperties->supportedExtensions.count, khrPlatformSurfaceName);
+
+	if(requiredExtensions != fpl_null && requiredExtensionCount > 0) {
+		fplConsoleFormatOut("Validate %lu instance extensions:\n", requiredExtensionCount);
+		bool missing = false;
+		for(uint32_t i = 0; i < requiredExtensionCount; ++i) {
+			const char *ext = requiredExtensions[i];
+			bool isSupported = IsVulkanFeatureSupported(instanceProperties->supportedExtensions.items, instanceProperties->supportedExtensions.count, ext);
+			fplConsoleFormatOut("- Supported %s: %s\n", ext, (isSupported ? "yes" : "no"));
+			if(!isSupported) {
+				missing = true;
+			}
+		}
+		if(missing) {
+			fplConsoleFormatError("At least one from %lu instance extension are not supported!\n", requiredExtensionCount);
+			VulkanDestroyInstance(allocator, coreApi, instance);
+			return(false);
+		}
+	} else {
+		fplConsoleFormatOut("Validate instance extensions:\n");
+		fplConsoleFormatOut("- Supported %s: %s\n", VulkanKHRSurfaceName, (supportsKHRSurface ? "yes" : "no"));
+		fplConsoleFormatOut("- Supported %s: %s\n", khrPlatformSurfaceName, (supportsKHRPlatformSurface ? "yes" : "no"));
+	}
+
+	if(!supportsKHRSurface || !supportsKHRPlatformSurface) {
 		fplConsoleFormatError("Not supported KHR platform!\n");
 		VulkanDestroyInstance(allocator, coreApi, instance);
 		return(false);
@@ -1221,13 +1241,44 @@ static bool VulkanCreateInstance(VkAllocationCallbacks *allocator, const VulkanC
 	appInfo->engineVersion = VK_MAKE_VERSION(1, 0, 0);
 	appInfo->apiVersion = VK_API_VERSION_1_1;
 
+	//
+	// Extensions
+	//
 	uint32_t enabledInstanceExtensionCount = 0;
-	const char *enabledInstanceExtensions[8] = { 0 };
-	enabledInstanceExtensions[enabledInstanceExtensionCount++] = VulkanKHRSurfaceName;
-	enabledInstanceExtensions[enabledInstanceExtensionCount++] = khrPlatformSurfaceName;
+	const char *enabledInstanceExtensions[16] = { 0 };
+
 	if(useValidation) {
 		enabledInstanceExtensions[enabledInstanceExtensionCount++] = VK_EXT_DEBUG_UTILS_EXTENSION_NAME; // VK_EXT_debug_utils is always supported
 	}
+
+	if(requiredExtensions != fpl_null && requiredExtensionCount > 0) {
+		bool hasKHRSurface = false;
+		bool hasKHRPlatformSurface = false;
+		for(uint32_t i = 0; i < requiredExtensionCount; ++i) {
+			const char *extName = requiredExtensions[i];
+			if(fplIsStringEqual(extName, VulkanKHRSurfaceName)) {
+				hasKHRSurface = true;
+			}
+			if(fplIsStringEqual(extName, khrPlatformSurfaceName)) {
+				hasKHRPlatformSurface = true;
+			}
+		}
+		if(!hasKHRSurface)
+			enabledInstanceExtensions[enabledInstanceExtensionCount++] = VulkanKHRSurfaceName;
+		if(!hasKHRPlatformSurface)
+			enabledInstanceExtensions[enabledInstanceExtensionCount++] = khrPlatformSurfaceName;
+
+		for(uint32_t i = 0; i < requiredExtensionCount; ++i) {
+			const char *extName = requiredExtensions[i];
+			fplAssert(enabledInstanceExtensionCount < fplArrayCount(enabledInstanceExtensions));
+			enabledInstanceExtensions[enabledInstanceExtensionCount++] = extName;
+		}
+
+	} else {
+		enabledInstanceExtensions[enabledInstanceExtensionCount++] = VulkanKHRSurfaceName;
+		enabledInstanceExtensions[enabledInstanceExtensionCount++] = khrPlatformSurfaceName;
+	}
+
 
 	uint32_t enabledInstanceLayerCount = 0;
 	const char *enabledInstanceLayers[8] = { 0 };
@@ -1540,7 +1591,6 @@ bool VulkanCreateLogicalDevice(
 	const char **reqExtensions,
 	const uint32_t reqExtensionCount,
 	const bool useSwapChain,
-	const bool useValidations,
 	void *pNextChain) {
 
 	fplAssert(coreApi != fpl_null);
@@ -1637,23 +1687,8 @@ bool VulkanCreateLogicalDevice(
 		}
 	}
 
-	// Validation layers for device
-	const char *supportedValidationLayerName = fpl_null;
-	if(useValidations) {
-		for(uint32_t i = 0; i < fplArrayCount(VulkanValidationLayerNames); ++i) {
-			const char *validationLayerName = VulkanValidationLayerNames[i];
-			if(IsVulkanFeatureSupported(physicalDevice->supportedLayers.items, physicalDevice->supportedLayers.count, validationLayerName)) {
-				supportedValidationLayerName = validationLayerName;
-				break;
-			}
-		}
-	}
-
 	uint32_t enabledDeviceLayerCount = 0;
 	const char *enabledDeviceLayers[8] = fplZeroInit;
-	if(useValidations && fplGetStringLength(supportedValidationLayerName) > 0) {
-		enabledDeviceLayers[enabledDeviceLayerCount++] = supportedValidationLayerName;
-	}
 
 	// Add SwapChain KHR extension when logical device will be used for a swap chain
 	if(useSwapChain) {
@@ -1754,6 +1789,7 @@ typedef struct VulkanSurface {
 	VkQueue presentationQueueHandle;
 	VkFormat colorFormat;
 	VkColorSpaceKHR colorSpace;
+	fpl_b32 isUserDefined;
 } VulkanSurface;
 
 void VulkanDestroySurface(VkAllocationCallbacks *allocator, const VulkanInstanceApi *instanceApi, VulkanSurface *surface, const VkInstance instanceHandle) {
@@ -2451,7 +2487,7 @@ typedef struct VulkanState {
 	fpl_b32 isInitialized;
 } VulkanState;
 
-static void VulkanShutdownStep1(VulkanState *state) {
+static void VulkanShutdownStepRest(VulkanState *state) {
 	fplAssert(state != fpl_null);
 
 	VkAllocationCallbacks *allocator = state->allocator;
@@ -2474,48 +2510,42 @@ static void VulkanShutdownStep1(VulkanState *state) {
 	// Destroy Physical device
 	VulkanDestroyPhysicalDevice(&state->coreApi, &state->physicalDevice);
 
-	// Destroy Surface
-	VulkanDestroySurface(allocator, &state->instance.instanceApi, &state->surface, state->instance.instanceHandle);
+	// Destroy Surface, but only when not used defined
+	if(!state->surface.isUserDefined) {
+		VulkanDestroySurface(allocator, &state->instance.instanceApi, &state->surface, state->instance.instanceHandle);
+	}
 
-	// @NOTE(final): Do not destroy the instance or unload the api here, because we must never unload the vulkan library, while any windowing system is active
+	// @NOTE(final): Do not destroy the instance or unload the api here, because it will crash while the windowing system is still active
 }
 
-static void VulkanShutdownStep2(VulkanState *state) {
+static void VulkanShutdownStepInit(VulkanState *state) {
 	fplAssert(state != fpl_null);
 
 	VkAllocationCallbacks *allocator = state->allocator;
-	
+
 	// Destroy debug messenger
 	if(state->instance.hasValidationLayer) {
 		VulkanDestroyDebugMessenger(&state->coreApi, state->instance.instanceHandle, state->debugMessenger);
 	}
 
-	// Destroy Instance
-	VulkanDestroyInstance(allocator, &state->coreApi, &state->instance);
-	
+	// Destroy Instance (Only when not passed by user)
+	if(!state->instance.isUserDefined) {
+		VulkanDestroyInstance(allocator, &state->coreApi, &state->instance);
+	}
+
 	VulkanUnloadCoreAPI(&state->coreApi);
 
 	fplClearStruct(state);
 }
 
 static void VulkanShutdownAll(VulkanState *state) {
-	VulkanShutdownStep1(state);
-	VulkanShutdownStep2(state);
+	VulkanShutdownStepRest(state);
+	VulkanShutdownStepInit(state);
 }
 
-static bool VulkanInitializeStep1(VulkanState *state) {
+static bool VulkanInitializeStepInit(VulkanState *state, const bool createInstance, const char **instanceExtensions, const uint32_t instanceExtensionCount) {
 	fplClearStruct(state);
-	if (!VulkanLoadCoreAPI(&state->coreApi)) {
-		return(false);
-	}
-	return(true);
-}
-
-static bool VulkanInitializeStep2(VulkanState *state, const uint32_t winWidth, const uint32_t winHeight) {
-	fplAssert(state != fpl_null);
-
-	if(state->isInitialized) {
-		fplConsoleError("Vulkan is already initialized!\n");
+	if(!VulkanLoadCoreAPI(&state->coreApi)) {
 		return(false);
 	}
 
@@ -2524,6 +2554,48 @@ static bool VulkanInitializeStep2(VulkanState *state, const uint32_t winWidth, c
 
 	VkAllocationCallbacks *allocator = state->allocator = fpl_null;
 
+	if(createInstance) {
+#if VULKANDEMO_USE_VALIDATION_LAYER
+		bool useValidations = true;
+#else
+		bool useValidations = false;
+#endif
+
+		VulkanCoreApi *coreApi = &state->coreApi;
+
+		//
+		// Create instance
+		//
+		fplConsoleFormatOut("*************************************************************************\n");
+		fplConsoleFormatOut("Instance\n");
+		fplConsoleFormatOut("*************************************************************************\n");
+		if(!VulkanCreateInstance(allocator, coreApi, useValidations, instanceExtensions, instanceExtensionCount, &state->instance)) {
+			fplConsoleFormatError("Failed to create a Vulkan instance!\n");
+			VulkanShutdownStepInit(state);
+			return(false);
+		}
+
+		//
+		// Debug messenger
+		//
+		if(state->instance.hasValidationLayer) {
+			fplConsoleFormatOut("*************************************************************************\n");
+			fplConsoleFormatOut("Debug Messenger\n");
+			fplConsoleFormatOut("*************************************************************************\n");
+			VkDebugUtilsMessengerCreateInfoEXT createInfo = MakeVulkanDebugMessengerCreateInfo();
+			if(!VulkanCreateDebugMessenger(allocator, coreApi, state->instance.instanceHandle, &createInfo, &state->debugMessenger)) {
+				fplConsoleFormatError("Failed to create the Vulkan debug messenger!\n");
+			}
+		}
+	}
+
+	return(true);
+}
+
+static bool VulkanInitializeStepRest(VulkanState *state, const uint32_t winWidth, const uint32_t winHeight) {
+	fplAssert(state != fpl_null);
+
+	VkAllocationCallbacks *allocator = state->allocator;
 	VulkanCoreApi *coreApi = &state->coreApi;
 	VulkanInstanceApi *instanceApi = &state->instance.instanceApi;
 	VulkanDeviceApi *deviceApi = &state->logicalDevice.deviceApi;
@@ -2533,43 +2605,25 @@ static bool VulkanInitializeStep2(VulkanState *state, const uint32_t winWidth, c
 
 	fplAssert(coreApi->isValid);
 
-#if VULKANDEMO_USE_VALIDATION_LAYER
-	bool useValidations = true;
-#else
-	bool useValidations = false;
-#endif
-
-	//
-	// Create instance
-	//
-	fplConsoleFormatOut("*************************************************************************\n");
-	fplConsoleFormatOut("Instance\n");
-	fplConsoleFormatOut("*************************************************************************\n");
-	if(!VulkanCreateInstance(allocator, coreApi, useValidations, &state->instance)) {
-		fplConsoleFormatError("Failed to create a Vulkan instance!\n");
-		goto failed;
-	}
-
-	//
-	// Debug messenger
-	//
-	if(state->instance.hasValidationLayer) {
-		fplConsoleFormatOut("*************************************************************************\n");
-		fplConsoleFormatOut("Debug Messenger\n");
-		fplConsoleFormatOut("*************************************************************************\n");
-		VkDebugUtilsMessengerCreateInfoEXT createInfo = MakeVulkanDebugMessengerCreateInfo();
-		if(!VulkanCreateDebugMessenger(allocator, coreApi, state->instance.instanceHandle, &createInfo, &state->debugMessenger)) {
-			fplConsoleFormatError("Failed to create the Vulkan debug messenger!\n");
+	if(state->instance.instanceHandle != VK_NULL_HANDLE) {
+		// We have an existing instance, just the load the instance API
+		if(!LoadVulkanInstanceAPI(coreApi, &state->instance.instanceApi, state->instance.instanceHandle)) {
+			fplConsoleFormatError("Failed to load the Vulkan instance API for instance '%p'!\n", state->instance.instanceHandle);
+			goto failed;
 		}
 	}
 
 	// Create surface
-	fplConsoleFormatOut("*************************************************************************\n");
-	fplConsoleFormatOut("Surface Step 1/2\n");
-	fplConsoleFormatOut("*************************************************************************\n");
-	if(!VulkanCreateSurface(allocator, instanceApi, &state->surface, state->instance.instanceHandle)) {
-		fplConsoleFormatError("Failed to create surface for instance '%p'!\n", state->instance.instanceHandle);
-		goto failed;
+	if(state->surface.surfaceHandle == VK_NULL_HANDLE) {
+		fplConsoleFormatOut("*************************************************************************\n");
+		fplConsoleFormatOut("Surface Step 1/2\n");
+		fplConsoleFormatOut("*************************************************************************\n");
+		if(!VulkanCreateSurface(allocator, instanceApi, &state->surface, state->instance.instanceHandle)) {
+			fplConsoleFormatError("Failed to create surface for instance '%p'!\n", state->instance.instanceHandle);
+			goto failed;
+		}
+	} else {
+		state->surface.isUserDefined = true;
 	}
 
 	//
@@ -2606,7 +2660,6 @@ static bool VulkanInitializeStep2(VulkanState *state, const uint32_t winWidth, c
 			reqExtensions,
 			requiredExtensionCount,
 			isSwapChain,
-			useValidations,
 			pNextChain)) {
 			fplConsoleFormatError("Failed to create a logical device from physical device '%s'!\n", state->physicalDevice.name);
 			goto failed;
@@ -2762,11 +2815,35 @@ int main(int argc, char **argv) {
 	}
 
 	//
-	// Load Vulkan API
+	// Get Vulkan Requirements for FPL
+	//
+	fplVideoRequirements videoRequirements = fplZeroInit;
+	bool createInstance;
+	const char **requiredExtensions = fpl_null;
+	uint32_t requiredExtensionCount = 0;
+#if VULKANDEMO_FPL_VIDEO_MODE == VULKANDEMO_FPL_VIDEO_MODE_SURFACE_ONLY
+	if(fplGetVideoRequirements(fplVideoDriverType_Vulkan, &videoRequirements)) {
+		fplConsoleFormatOut("%lu required instance extensions:\n", videoRequirements.vulkan.instanceExtensionCount);
+		for(uint32_t i = 0; i < videoRequirements.vulkan.instanceExtensionCount; ++i) {
+			fplConsoleFormatOut("- [%lu] %s\n", i, videoRequirements.vulkan.instanceExtensions[i]);
+		}
+	}
+	createInstance = true;
+	requiredExtensions = videoRequirements.vulkan.instanceExtensions;
+	requiredExtensionCount = videoRequirements.vulkan.instanceExtensionCount;
+	fplAssert(requiredExtensionCount > 0);
+#elif VULKANDEMO_FPL_VIDEO_MODE == VULKANDEMO_FPL_VIDEO_MODE_FULL
+	createInstance = false;
+#else
+	createInstance = true;
+#endif
+
+	//
+	// Initialize Vulkan (Step 1/2) -> API only
 	//
 	fplConsoleFormatOut("-> Initialize Vulkan Step (1/2)\n");
 	fplConsoleFormatOut("\n");
-	if(!VulkanInitializeStep1(state)) {
+	if(!VulkanInitializeStepInit(state, createInstance, requiredExtensions, requiredExtensionCount)) {
 		fplConsoleFormatError("Failed to initialize Vulkan (Step 1/2)!\n");
 		goto cleanup;
 	}
@@ -2778,11 +2855,28 @@ int main(int argc, char **argv) {
 
 	fplInitFlags initFlags = fplInitFlags_Window | fplInitFlags_GameController | fplInitFlags_Console;
 
-	// Enable this to test FPL integration
-#if VULKANDEMO_USE_FPL_VIDEO
+#if VULKANDEMO_FPL_VIDEO_MODE != VULKANDEMO_FPL_VIDEO_MODE_NONE
 	initFlags |= fplInitFlags_Video;
 	settings.video.driver = fplVideoDriverType_Vulkan;
+
+#if VULKANDEMO_FPL_VIDEO_MODE == VULKANDEMO_FPL_VIDEO_MODE_FULL
+	// We want FPL to create the instance and the surface for us
+	fplVersionInfo *apiVer = &settings.video.graphics.vulkan.apiVersion;
+	settings.video.graphics.vulkan.apiVersion.major[0] = '1';
+	settings.video.graphics.vulkan.apiVersion.minor[0] = '1';
+	settings.video.graphics.vulkan.engineVersion.major[0] = '1';
+	settings.video.graphics.vulkan.engineVersion.minor[0] = '0';
+	settings.video.graphics.vulkan.appVersion.major[0] = '1';
+	settings.video.graphics.vulkan.appVersion.minor[0] = '0';
+	settings.video.graphics.vulkan.appName = "FPL-Vulkan-Demo";
+	settings.video.graphics.vulkan.engineName = "FPL-Vulkan-Demo";
+#elif VULKANDEMO_FPL_VIDEO_MODE == VULKANDEMO_FPL_VIDEO_MODE_SURFACE_ONLY
+	// We want FPL only to create the surface for us
+	settings.video.graphics.vulkan.instanceHandle = state->instance.instanceHandle;
+	state->instance.isUserDefined = true;
 #endif
+
+#endif // VULKANDEMO_FPL_VIDEO_MODE != VULKANDEMO_FPL_VIDEO_MODE_NONE
 
 	if(!fplPlatformInit(initFlags, &settings)) {
 		fplPlatformResultType resultType = fplGetPlatformResult();
@@ -2795,12 +2889,29 @@ int main(int argc, char **argv) {
 
 	isPlatformInitialized = true;
 
+#if VULKANDEMO_FPL_VIDEO_MODE == VULKANDEMO_FPL_VIDEO_MODE_SURFACE_ONLY
+	const fplVideoSurface *videoSurface = fplGetVideoSurface();
+	fplAssert(videoSurface != fpl_null);
+
+#if defined(FPL_PLATFORM_WINDOWS)
+	state->instance.instanceHandle = videoSurface->win32_vulkan.instance;
+	state->surface.surfaceHandle = videoSurface->win32_vulkan.surfaceKHR;
+#elif defined(FPL_SUBPLATFORM_X11)
+	state->instance.instanceHandle = videoSurface->x11_vulkan.instance;
+	state->surface.surfaceHandle = videoSurface->x11_vulkan.surfaceKHR;
+#else
+#	error "Unsupported Platform!"
+#endif
+	fplAssert(state->instance.instanceHandle != VK_NULL_HANDLE);
+	fplAssert(state->surface.surfaceHandle != VK_NULL_HANDLE);
+#endif
+
 	fplWindowSize initialWinSize = fplZeroInit;
 	fplGetWindowSize(&initialWinSize);
 
 	fplConsoleFormatOut("-> Initialize Vulkan (Step 2/2)\n");
 	fplConsoleFormatOut("\n");
-	if(!VulkanInitializeStep2(state, initialWinSize.width, initialWinSize.height)) {
+	if(!VulkanInitializeStepRest(state, initialWinSize.width, initialWinSize.height)) {
 		fplConsoleFormatError("Failed to initialize Vulkan (Step 2/2)!\n");
 		goto cleanup;
 	}
@@ -2840,7 +2951,7 @@ cleanup:
 		if(state != fpl_null) {
 			// Shutdown Vulkan (Destroy swap-chain, logical/physical devices, buffers and surface)
 			fplConsoleFormatOut("Shutdown Vulkan (Step 1/2)\n");
-			VulkanShutdownStep1(state);
+			VulkanShutdownStepRest(state);
 		}
 
 		// Release platform
@@ -2851,7 +2962,7 @@ cleanup:
 	if(state != fpl_null) {
 		// Shutdown Vulkan (Destroy instance and unload library)
 		fplConsoleFormatOut("Shutdown Vulkan (Step 2/2)\n");
-		VulkanShutdownStep2(state);
+		VulkanShutdownStepInit(state);
 		fplMemoryFree(state);
 	}
 
