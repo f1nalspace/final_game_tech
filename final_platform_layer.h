@@ -6999,31 +6999,39 @@ fplStaticAssert(sizeof(fpl__LinuxSignalHandle) >= sizeof(int));
 // Compiler warnings
 //
 #if defined(FPL_COMPILER_MSVC)
-	//! Start to overwrite warning settings (MSVC)
+	// Start to overwrite warning settings (MSVC)
 #	pragma warning( push )
 
-	//! Disable noexcept compiler warning for C++
+	// Disable noexcept compiler warning for C++
 #	pragma warning( disable : 4577 )
-	//! Disable "switch statement contains 'default' but no 'case' labels" compiler warning for C++
+	// Disable "switch statement contains 'default' but no 'case' labels" compiler warning for C++
 #	pragma warning( disable : 4065 )
-	//! Disable "conditional expression is constant" warning
+	// Disable "conditional expression is constant" warning
 #	pragma warning( disable : 4127 )
-	//! Disable "unreferenced formal parameter" warning
+	// Disable "unreferenced formal parameter" warning
 #	pragma warning( disable : 4100 )
-	//! Disable "nonstandard extension used: nameless struct/union" warning
+	// Disable "nonstandard extension used: nameless struct/union" warning
 #	pragma warning( disable : 4201 )
-	//! Disable "local variable is initialized but not referenced" warning
+	// Disable "local variable is initialized but not referenced" warning
 #	pragma warning( disable : 4189 )
-	//! Disable "nonstandard extension used: non-constant aggregate initializer" warning
+	// Disable "nonstandard extension used: non-constant aggregate initializer" warning
 #	pragma warning( disable : 4204 )
+#elif defined(FPL_COMPILER_GCC)
+	// Start to overwrite warning settings (GCC)
+#	pragma GCC diagnostic push
+// Disable warning -Wunused-variable
+#	pragma GCC diagnostic ignored "-Wunused-variable"
+// Disable warning -Wunused-function
+#	pragma GCC diagnostic ignored "-Wunused-function"
 #elif defined(FPL_COMPILER_CLANG)
-	//! Start to overwrite warning settings (Clang)
+	// Start to overwrite warning settings (Clang)
 #	pragma clang diagnostic push
 
 // Disable warning -Wunused-variable
 #	pragma clang diagnostic ignored "-Wunused-variable"
 // Disable warning -Wunused-function
 #	pragma clang diagnostic ignored "-Wunused-function"
+
 #endif // FPL_COMPILER
 
 // Only include C-Runtime functions when CRT is enabled
@@ -18053,6 +18061,8 @@ typedef struct fpl__VideoData {
 	uint64_t dummy;
 } fpl__VideoData;
 
+struct fpl__VideoBackend;
+
 #define FPL__FUNC_VIDEO_BACKEND_LOAD(name) bool name(const fpl__PlatformAppState *appState, struct fpl__VideoBackend *backend)
 typedef FPL__FUNC_VIDEO_BACKEND_LOAD(fpl__func_VideoBackendLoad);
 
@@ -19578,12 +19588,19 @@ fpl_internal FPL__FUNC_VIDEO_BACKEND_PREPAREWINDOW(fpl__VideoBackend_Vulkan_Prep
 
 		// @TODO(final): Validate required instance extensions and layers
 
-		const char *validationLayers[4] = fplZeroInit;
-		uint32_t validationLayerCount = 0;
+		const char *enabledValidationLayers[4] = fplZeroInit;
+		const char *enabledInstanceExtensions[8] = fplZeroInit;
+		uint32_t enabledValidationLayerCount = 0;
+		uint32_t enabledInstanceExtensionCount = 0;
 		if(videoSettings->graphics.vulkan.enableValidationLayer) {
-			validationLayers[validationLayerCount++] = "VK_LAYER_KHRONOS_validation";
+			enabledValidationLayers[enabledValidationLayerCount++] = "VK_LAYER_KHRONOS_validation";
+			enabledInstanceExtensions[enabledInstanceExtensionCount++] = "VK_EXT_debug_utils"; // VK_EXT_debug_utils is always supported
 		}
-
+		for (uint32_t i = 0; i < requirements.vulkan.instanceExtensionCount; ++i) {
+			fplAssert(enabledInstanceExtensionCount < fplArrayCount(enabledInstanceExtensions));
+			enabledInstanceExtensions[enabledInstanceExtensionCount++] = requirements.vulkan.instanceExtensions[i];
+		}
+		
 		fpl__VkApplicationInfo applicationInfo = fplZeroInit;
 		applicationInfo.sType = FPL__VK_STRUCTURE_TYPE_APPLICATION_INFO;
 		applicationInfo.pApplicationName = videoSettings->graphics.vulkan.appName;
@@ -19595,10 +19612,10 @@ fpl_internal FPL__FUNC_VIDEO_BACKEND_PREPAREWINDOW(fpl__VideoBackend_Vulkan_Prep
 		fpl__VkInstanceCreateInfo instanceCreateInfo = fplZeroInit;
 		instanceCreateInfo.sType = FPL__VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
 		instanceCreateInfo.pApplicationInfo = &applicationInfo;
-		instanceCreateInfo.enabledExtensionCount = requirements.vulkan.instanceExtensionCount;
-		instanceCreateInfo.ppEnabledExtensionNames = requirements.vulkan.instanceExtensions;
-		instanceCreateInfo.enabledLayerCount = validationLayerCount;
-		instanceCreateInfo.ppEnabledLayerNames = validationLayers;
+		instanceCreateInfo.enabledExtensionCount = enabledInstanceExtensionCount;
+		instanceCreateInfo.ppEnabledExtensionNames = enabledInstanceExtensions;
+		instanceCreateInfo.enabledLayerCount = enabledValidationLayerCount;
+		instanceCreateInfo.ppEnabledLayerNames = enabledValidationLayers;
 
 		const fpl__VkAllocationCallbacks *allocator = (const fpl__VkAllocationCallbacks *)videoSettings->graphics.vulkan.allocator;
 		
@@ -19684,7 +19701,7 @@ fpl_internal FPL__FUNC_VIDEO_BACKEND_INITIALIZE(fpl__VideoBackend_Vulkan_Initial
 
 	fpl__VkXlibSurfaceCreateInfoKHR creationInfo = fplZeroInit;
 	creationInfo.sType = FPL__VK_STRUCTURE_TYPE_XLIB_SURFACE_CREATE_INFO_KHR;
-	creationInfo.dpy = windowState->x11.display;
+	creationInfo.dpy = (fpl__X11Display *)windowState->x11.display;
 	creationInfo.window = windowState->x11.window;
 
 	FPL_LOG_INFO(FPL__MODULE_VIDEO_VULKAN, "Create Vulkan X11 Surface for display '%p', window '%d' and Vulkan instance '%p'", creationInfo.dpy, creationInfo.window, nativeBackend->instanceHandle);
