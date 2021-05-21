@@ -3510,21 +3510,21 @@ typedef enum fplVulkanValidationSeverity {
 
 //! A structure that contains Vulkan video settings
 typedef struct fplVulkanSettings {
-	//! The application version (Only required if @ref instanceHandle is @ref fpl_null)
+	//! The application version (Only required if @ref fplVulkanSettings.instanceHandle is @ref fpl_null)
 	fplVersionInfo appVersion;
-	//! The engine version (Only required if @ref instanceHandle is @ref fpl_null)
+	//! The engine version (Only required if @ref fplVulkanSettings.instanceHandle is @ref fpl_null)
 	fplVersionInfo engineVersion;
-	//! The preferred Vulkan api version (Only required if @ref instanceHandle is @ref fpl_null)
+	//! The preferred Vulkan api version (Only required if @ref fplVulkanSettings.instanceHandle is @ref fpl_null)
 	fplVersionInfo apiVersion;
-	//! The application name (Only required if @ref instanceHandle is @ref fpl_null)
+	//! The application name (Only required if @ref fplVulkanSettings.instanceHandle is @ref fpl_null)
 	const char *appName;
-	//! The engine name (Only required if @ref instanceHandle is @ref fpl_null)
+	//! The engine name (Only required if @ref fplVulkanSettings.instanceHandle is @ref fpl_null)
 	const char *engineName;
 	//! The vulkan instance (VkInstance), when null it will be automatically created
 	void *instanceHandle;
-	// The vulkan allocator (VkAllocationCallbacks)
+	//! The vulkan allocator (VkAllocationCallbacks)
 	const void *allocator;
-	//! The validation layer callback (Only used when @ref validationLayerMode is set to @ref fplVulkanValidationLayerMode_User and FPL created the VkInstance)
+	//! The validation layer callback (Only used when @ref fplVulkanSettings.validationLayerMode is set to @ref fplVulkanValidationLayerMode_User and FPL created the VkInstance)
 	fplVulkanValidationLayerCallback *validationLayerCallback;
 	//! User data passed to any callbacks
 	void *userData;
@@ -6527,6 +6527,7 @@ typedef union fplVideoWindow {
 
 //! Stores the surface properties for the active video backend
 typedef struct fplVideoSurface {
+	//! The video window
 	fplVideoWindow window;
 
 #if defined(FPL__ENABLE_VIDEO_VULKAN)
@@ -6571,7 +6572,7 @@ typedef union fplVideoRequirements {
 fpl_common_api fplVideoBackendType fplGetVideoBackendType();
 /**
 * @brief Gets a string that represents the given video backend
-* @param driver The video backend type @ref fplVideoBackendType
+* @param backendType The video backend type @ref fplVideoBackendType
 * @return Returns a string for the given video backend type
 */
 fpl_common_api const char *fplGetVideoBackendName(fplVideoBackendType backendType);
@@ -6609,7 +6610,7 @@ fpl_common_api const fplVideoSurface *fplGetVideoSurface();
 
 /**
 * @brief Gets the video requirements for the specified video backend.
-* @param driver The @ref fplVideoBackendType
+* @param backendType The @ref fplVideoBackendType
 * @param requirements The reference to the @ref fplVideoRequirements
 * @return Returns true when the @ref fplVideoRequirements are filled out, false otherwise.
 */
@@ -6716,7 +6717,7 @@ fpl_common_api uint32_t fplGetAudioSampleSizeInBytes(const fplAudioFormatType fo
 fpl_common_api const char *fplGetAudioFormatName(const fplAudioFormatType format);
 /**
 * @brief Gets the string that represents the given audio backend type.
-* @param driver The audio backend type @ref fplAudioBackendType
+* @param backendType The audio backend type @ref fplAudioBackendType
 * @return Returns a string for the given audio backend type
 */
 fpl_common_api const char *fplGetAudioBackendName(fplAudioBackendType backendType);

@@ -1406,7 +1406,7 @@
 
 	@section section_category_video_legacy_opengl_init Initialize Legacy OpenGL
 
-	To initialize a legacy OpenGL (up to GL version 2.1) rendering context you simply set the @ref fplInitFlags_Video flag in the @ref fplPlatformInit() call and change the video backend type to @ref fplVideoBackendType_OpenGL and set the @ref fplOpenGLVideoSettings.compabilityFlags to @ref fplOpenGLCompabilityFlags_Legacy .<br>
+	To initialize a legacy OpenGL (up to GL version 2.1) rendering context you simply set the @ref fplInitFlags_Video flag in the @ref fplPlatformInit() call and change the video backend type to @ref fplVideoBackendType_OpenGL and set the @ref fplOpenGLSettings.compabilityFlags to @ref fplOpenGLCompabilityFlags_Legacy .<br>
 	<br>
 	This will work in ~99% on all supported platforms - if not please post an issue for that platform/configuration/video-card ;-)
 
@@ -1444,9 +1444,9 @@
 	@section section_category_video_modern_opengl_init Initialize a modern OpenGL Rendering Context
 
 	To initialize a modern OpenGL (3.0+) rendering context, you simply set the @ref fplInitFlags_Video flag in the @ref fplPlatformInit() call and change the video backend type to @ref fplVideoBackendType_OpenGL and setup the following parameters:<br>
-	- Set the @ref fplOpenGLVideoSettings.majorVersion to 3 or higher
-	- Set the @ref fplOpenGLVideoSettings.minorVersion to 0 or higher
-	- Set the @ref fplOpenGLVideoSettings.compabilityFlags to either a @ref fplOpenGLCompabilityFlags_Core or @ref fplOpenGLCompabilityFlags_Compability
+	- Set the @ref fplOpenGLSettings.majorVersion to 3 or higher
+	- Set the @ref fplOpenGLSettings.minorVersion to 0 or higher
+	- Set the @ref fplOpenGLSettings.compabilityFlags to either a @ref fplOpenGLCompabilityFlags_Core or @ref fplOpenGLCompabilityFlags_Compability
 	- Optionally add the @ref fplOpenGLCompabilityFlags_Forward flag for removing obsolete functions
 
 	@code{.c}
@@ -1484,7 +1484,7 @@
 	@subsection subsection_category_video_modern_opengl_multisampling Multisample anti-aliasing (MSAA)
 
 	In a modern OpenGL context, you can activate multi-sampling-antialiasing (MSAA) to get smooth edges with few performance costs out-of-the-box.<br>
-	By default, multisampling is disabled. To enable it, you simply set your desired multi-sampling count in @ref fplOpenGLVideoSettings.multiSamplingCount .<br>
+	By default, multisampling is disabled. To enable it, you simply set your desired multi-sampling count in @ref fplOpenGLSettings.multiSamplingCount .<br>
 
 	@code{.c}
 	fplSettings settings;
