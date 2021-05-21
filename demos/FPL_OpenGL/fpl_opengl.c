@@ -44,6 +44,7 @@ License:
 
 #define FPL_IMPLEMENTATION
 #define FPL_NO_VIDEO_SOFTWARE
+#define FPL_NO_VIDEO_VULKAN
 #define FPL_NO_AUDIO
 #include <final_platform_layer.h>
 

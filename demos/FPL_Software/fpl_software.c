@@ -42,6 +42,8 @@ License:
 */
 
 #define FPL_IMPLEMENTATION
+#define FPL_NO_VIDEO_OPENGL
+#define FPL_NO_VIDEO_VULKAN
 #include <final_platform_layer.h>
 
 #include <final_math.h>
