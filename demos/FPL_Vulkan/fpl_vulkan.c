@@ -5,8 +5,8 @@ Name:
 
 Description:
 	This demo showcases the initialization and usage of the Vulkan graphics API.
-
-	NOTE: Demo is incomplete -> No real rendering for now until its settled in FPL.
+	Yes it has a few thousands lines of code, but thats normal for Vulkan.
+	Also there are switches how FPL should handle the creation of Instance or Surface.
 
 Requirements:
 	- C99 Compiler
@@ -14,6 +14,9 @@ Requirements:
 
 Author:
 	Torsten Spaete
+
+Todo:
+	- Let it at least draw something, because clearing to blue is boring
 
 Changelog:
 	## 2021-05-17
@@ -35,9 +38,11 @@ License:
 #define VULKANDEMO_FPL_VIDEO_MODE VULKANDEMO_FPL_VIDEO_MODE_FULL
 
 #define VULKANDEMO_USE_VALIDATION_LAYER 1
-
 #define VULKANDEMO_VALIDATION_LAYER_SEVERITY VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT
 
+//
+// FPL Header
+//
 #define FPL_IMPLEMENTATION
 #define FPL_LOGGING
 #define FPL_NO_VIDEO_SOFTWARE
@@ -45,29 +50,37 @@ License:
 #define FPL_NO_PLATFORM_INCLUDES
 #include <final_platform_layer.h>
 
+//
+// Vulkan Header
+//
 #if defined(FPL_PLATFORM_WINDOWS)
 #define VK_USE_PLATFORM_WIN32_KHR
 #elif defined(FPL_SUBPLATFORM_X11)
 #define VK_USE_PLATFORM_XLIB_KHR
 #endif
 
-#if defined(FPL_PLATFORM_WINDOWS)
-const char *khrPlatformSurfaceName = "VK_KHR_win32_surface";
-#elif defined(FPL_SUBPLATFORM_X11)
-const char *khrPlatformSurfaceName = "VK_KHR_xlib_surface";
-#else
-const char *khrPlatformSurfaceName = fpl_null;
-#endif
-
 #define VK_NO_PROTOTYPES
 #include <vulkan/vulkan.h>
 
+#if defined(FPL_PLATFORM_WINDOWS)
+#	define VULKAN_PLATFORM_SURFACE_NAME "VK_KHR_win32_surface"
+#elif defined(FPL_SUBPLATFORM_X11)
+#	define VULKAN_PLATFORM_SURFACE_NAME "VK_KHR_xlib_surface"
+#else
+#	define VULKAN_PLATFORM_SURFACE_NAME fpl_null
+#endif
+
 #include <malloc.h>
 
+//
+// Dynamic Arrays, String-Pools, etc.
+//
 #include "containers.h"
 
 //
 // Vulkan Utils
+// - Enums to Strings
+// - Queue Family Lookup
 //
 const char *VulkanValidationLayerNames[] = { "VK_LAYER_KHRONOS_validation" };
 const char *VulkanKHRSurfaceName = "VK_KHR_surface";
@@ -1163,7 +1176,7 @@ static bool VulkanCreateInstance(VkAllocationCallbacks *allocator, const VulkanC
 	}
 
 	bool supportsKHRSurface = IsVulkanFeatureSupported(instanceProperties->supportedExtensions.items, instanceProperties->supportedExtensions.count, VulkanKHRSurfaceName);
-	bool supportsKHRPlatformSurface = IsVulkanFeatureSupported(instanceProperties->supportedExtensions.items, instanceProperties->supportedExtensions.count, khrPlatformSurfaceName);
+	bool supportsKHRPlatformSurface = IsVulkanFeatureSupported(instanceProperties->supportedExtensions.items, instanceProperties->supportedExtensions.count, VULKAN_PLATFORM_SURFACE_NAME);
 
 	if(requiredExtensions != fpl_null && requiredExtensionCount > 0) {
 		fplConsoleFormatOut("Validate %lu instance extensions:\n", requiredExtensionCount);
@@ -1184,7 +1197,7 @@ static bool VulkanCreateInstance(VkAllocationCallbacks *allocator, const VulkanC
 	} else {
 		fplConsoleFormatOut("Validate instance extensions:\n");
 		fplConsoleFormatOut("- Supported %s: %s\n", VulkanKHRSurfaceName, (supportsKHRSurface ? "yes" : "no"));
-		fplConsoleFormatOut("- Supported %s: %s\n", khrPlatformSurfaceName, (supportsKHRPlatformSurface ? "yes" : "no"));
+		fplConsoleFormatOut("- Supported %s: %s\n", VULKAN_PLATFORM_SURFACE_NAME, (supportsKHRPlatformSurface ? "yes" : "no"));
 	}
 
 	if(!supportsKHRSurface || !supportsKHRPlatformSurface) {
@@ -1224,14 +1237,14 @@ static bool VulkanCreateInstance(VkAllocationCallbacks *allocator, const VulkanC
 			if(fplIsStringEqual(extName, VulkanKHRSurfaceName)) {
 				hasKHRSurface = true;
 			}
-			if(fplIsStringEqual(extName, khrPlatformSurfaceName)) {
+			if(fplIsStringEqual(extName, VULKAN_PLATFORM_SURFACE_NAME)) {
 				hasKHRPlatformSurface = true;
 			}
 		}
 		if(!hasKHRSurface)
 			enabledInstanceExtensions[enabledInstanceExtensionCount++] = VulkanKHRSurfaceName;
 		if(!hasKHRPlatformSurface)
-			enabledInstanceExtensions[enabledInstanceExtensionCount++] = khrPlatformSurfaceName;
+			enabledInstanceExtensions[enabledInstanceExtensionCount++] = VULKAN_PLATFORM_SURFACE_NAME;
 
 		for(uint32_t i = 0; i < requiredExtensionCount; ++i) {
 			const char *extName = requiredExtensions[i];
@@ -1241,7 +1254,7 @@ static bool VulkanCreateInstance(VkAllocationCallbacks *allocator, const VulkanC
 
 	} else {
 		enabledInstanceExtensions[enabledInstanceExtensionCount++] = VulkanKHRSurfaceName;
-		enabledInstanceExtensions[enabledInstanceExtensionCount++] = khrPlatformSurfaceName;
+		enabledInstanceExtensions[enabledInstanceExtensionCount++] = VULKAN_PLATFORM_SURFACE_NAME;
 	}
 
 
@@ -2815,8 +2828,14 @@ int main(int argc, char **argv) {
 	fplConsoleFormatOut("Successfully initialized Vulkan (Step 1/2)\n");
 	fplConsoleOut("\n");
 
+	fplLogSettings logSettings = fplZeroInit;
+	logSettings.maxLevel = fplLogLevel_All;
+	logSettings.writers[0].flags = fplLogWriterFlags_StandardConsole;
+	fplSetLogSettings(&logSettings);
+
 	fplSettings settings = fplMakeDefaultSettings();
-	settings.video.driver = fplVideoDriverType_None;
+	fplCopyString("FPL Demo | Vulkan", settings.window.title, fplArrayCount(settings.window.title));
+	fplCopyString("FPL Demo | Vulkan", settings.console.title, fplArrayCount(settings.console.title));
 
 	fplInitFlags initFlags = fplInitFlags_Window | fplInitFlags_GameController | fplInitFlags_Console;
 
@@ -2835,14 +2854,19 @@ int main(int argc, char **argv) {
 	settings.video.graphics.vulkan.appVersion.minor[0] = '0';
 	settings.video.graphics.vulkan.appName = "FPL-Vulkan-Demo";
 	settings.video.graphics.vulkan.engineName = "FPL-Vulkan-Demo";
+	settings.video.graphics.vulkan.validationLayerMode = fplVulkanValidationLayerMode_Logging;
+	settings.video.graphics.vulkan.validationSeverity = fplVulkanValidationSeverity_All;
 #elif VULKANDEMO_FPL_VIDEO_MODE == VULKANDEMO_FPL_VIDEO_MODE_SURFACE_ONLY
 	// We want FPL only to create the surface for us
 	settings.video.graphics.vulkan.instanceHandle = state->instance.instanceHandle;
 	state->instance.isUserDefined = true;
 #endif
 
+#else
+	settings.video.driver = fplVideoDriverType_None;
 #endif // VULKANDEMO_FPL_VIDEO_MODE != VULKANDEMO_FPL_VIDEO_MODE_NONE
 
+	fplConsoleFormatOut("-> Initialize %s Platform\n", platformName);
 	if(!fplPlatformInit(initFlags, &settings)) {
 		fplPlatformResultType resultType = fplGetPlatformResult();
 		const char *resultName = fplGetPlatformResultName(resultType);
@@ -2858,20 +2882,12 @@ int main(int argc, char **argv) {
 	const fplVideoSurface *videoSurface = fplGetVideoSurface();
 	fplAssert(videoSurface != fpl_null);
 
-#if defined(FPL_PLATFORM_WINDOWS)
-	state->instance.instanceHandle = videoSurface->win32_vulkan.instance;
-	state->surface.surfaceHandle = videoSurface->win32_vulkan.surfaceKHR;
-#elif defined(FPL_SUBPLATFORM_X11)
-	state->instance.instanceHandle = videoSurface->x11_vulkan.instance;
-	state->surface.surfaceHandle = videoSurface->x11_vulkan.surfaceKHR;
-#else
-#	error "Unsupported Platform!"
-#endif
-
 #if VULKANDEMO_FPL_VIDEO_MODE == VULKANDEMO_FPL_VIDEO_MODE_SURFACE_ONLY
+	state->surface.surfaceHandle = (VkSurfaceKHR)videoSurface->vulkan.surfaceKHR;
 	state->surface.isUserDefined = true;
-	state->instance.isUserDefined = false;
 #elif VULKANDEMO_FPL_VIDEO_MODE == VULKANDEMO_FPL_VIDEO_MODE_FULL
+	state->instance.instanceHandle = (VkInstance)videoSurface->vulkan.instance;
+	state->surface.surfaceHandle = (VkSurfaceKHR)videoSurface->vulkan.surfaceKHR;
 	state->surface.isUserDefined = true;
 	state->instance.isUserDefined = true;
 #endif
@@ -2918,7 +2934,6 @@ int main(int argc, char **argv) {
 	}
 
 cleanup:
-	fplConsoleOut("-> Shut down\n");
 	fplConsoleFormatOut("\n");
 
 	if(isPlatformInitialized) {
@@ -2929,7 +2944,7 @@ cleanup:
 		}
 
 		// Release platform
-		fplConsoleFormatOut("Shutdown Platform\n");
+		fplConsoleFormatOut("Shutdown %s Platform\n", platformName);
 		fplPlatformRelease();
 	}
 

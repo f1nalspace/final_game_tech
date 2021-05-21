@@ -133,20 +133,35 @@ SOFTWARE.
 	@tableofcontents
 
 	## v0.9.7-beta
+
+	### Short
+	- Added Vulkan support
+	- Added seamless window resizing for Win32
+	- Improved video system stability
+	- Improved console window handling for Win32
+	- Fixed some minor bugs
+
+	### Detail
+	- New: Added structs fplVideoWindow, fplVideoWindowWin32, fplVideoWindowX11
+	- New: Added structs fplVideoSurface, fplVideoSurfaceOpenGL, fplVideoSurfaceVulkan
+	- New: Added structs fplVideoRequirements, fplVideoRequirementsVulkan
+	- New: Added function fplGetVideoSurface() for query the current @ref fplVideoSurface
+	- New: Added function fplGetVideoProcedure() for query functions from the active video backend
+	- New: Added function fplGetVideoRequirements() to query any requirements for a particular video backend
+	- New: Added macro fplAssertPtr() for simply (exp != fpl_null) assertions
+	- New: Added typedef fplVulkanValidationLayerCallback
+	- New: Added enums fplVulkanValidationLayerMode, fplVulkanValidationSeverity
+	- New: Added struct fplVulkanSettings
+	- Fixed: fplMutexHandle isValid flag was invalid, moved it to above the internal handle and now it works O_o
+	- Fixed[#109]: Fixed fplS32ToString was not working anymore
+	- Changed: Changed video system to use jump tables instead, to support more backends in the future
+	- Changed: Added field @ref fplVulkanSettings to @ref fplGraphicsApiSettings
+
 	- New[#105]: [Win32] Added support for creating and using a console in addition to a window
 	- New[#18]: [Win32] Support for message proc fibers to support seamless window resize -> works only with fplPollEvents()
-
-	- New: Refactored video system to use jump tables instead, to support more backends in the future
-	- New: Added function fplGetVideoProcedure() for query functions from the active video backend
-	- New: Added struct fplVideoSurface
-	- New: Added function fplGetVideoSurface() for query the current fplVideoSurface
-	- Fixed[#109]: Fixed fplS32ToString was not working anymore
-	- Fixed: fplMutexHandle isValid flag was invalid, moved it to above the internal handle and now it works O_o
-
 	- Fixed[#98]: [Win32] Fixed fplThreadYield was not using YieldProcessor()
 	- Fixed[#110]: [Win32] Fixed preventing of erasing the background for non-video systems hides window always
 	- Fixed[#114]: [Win32] Fixed console window does not appear at the very first
-
 	- Changed[#113]: [Win32] Properly show window on initialize (Foreground, Focus)
 
 	## v0.9.6-beta
@@ -2060,6 +2075,8 @@ SOFTWARE.
 #define fplStaticAssert(exp) fpl__m_StaticAssert(exp)
 //! Always crashes the application with a null-pointer assignment, when the specified expression evaluates to @c false
 #define fplAlwaysAssert(exp) if(!(exp)) {*(int *)0 = 0;}
+//! Breaks when the specified pointer is @ref fpl_null
+#define fplAssertPtr(ptr) fpl__m_Assert((ptr) != fpl_null)
 
 //
 // Debug-Break
@@ -3448,7 +3465,7 @@ typedef enum fplOpenGLCompabilityFlags {
 } fplOpenGLCompabilityFlags;
 
 //! A structure that contains OpenGL video settings
-typedef struct fplOpenGLVideoSettings {
+typedef struct fplOpenGLSettings {
 	//! Compability flags
 	fplOpenGLCompabilityFlags compabilityFlags;
 	//! Desired major version
@@ -3457,12 +3474,42 @@ typedef struct fplOpenGLVideoSettings {
 	uint32_t minorVersion;
 	//! Multisampling count
 	uint8_t multiSamplingCount;
-} fplOpenGLVideoSettings;
+} fplOpenGLSettings;
 #endif // FPL__ENABLE_VIDEO_OPENGL
 
 #if defined(FPL__ENABLE_VIDEO_VULKAN)
+
+//! The debug callback called when the validation layer writes something
+typedef void (fplVulkanValidationLayerCallback)(void *userData, const char *message, const uint32_t messageSeverity, const uint32_t messageType, const void *debugUtilsMessengerCallbackData);
+
+//! The validation layer modes for Vulkan
+typedef enum fplVulkanValidationLayerMode {
+	//! Do not use the validation
+	fplVulkanValidationLayerMode_Disabled = 0,
+	//! Enable validations and print out validations to the FPL logging system
+	fplVulkanValidationLayerMode_Logging,
+	//! Enable validations and use @ref fplVulkanValidationLayerCallback to call back to to the user
+	fplVulkanValidationLayerMode_User,
+} fplVulkanValidationLayerMode;
+
+//! The validation layer logging severity for Vulkan
+typedef enum fplVulkanValidationSeverity {
+	//! Log nothing
+	fplVulkanValidationSeverity_Off = 0,
+	//! Log error only
+	fplVulkanValidationSeverity_Error = 1,
+	//! Log warning and error
+	fplVulkanValidationSeverity_Warning = 2,
+	//! Log warning, error, infos
+	fplVulkanValidationSeverity_Info = 3,
+	//! Log warning, error, info, verbose
+	fplVulkanValidationSeverity_Verbose = 4,
+	//! Log out everything
+	fplVulkanValidationSeverity_All = INT32_MAX,
+} fplVulkanValidationSeverity;
+
 //! A structure that contains Vulkan video settings
-typedef struct fplVulkanVideoSettings {
+typedef struct fplVulkanSettings {
 	//! The application version (Only required if @ref instanceHandle is @ref fpl_null)
 	fplVersionInfo appVersion;
 	//! The engine version (Only required if @ref instanceHandle is @ref fpl_null)
@@ -3477,20 +3524,26 @@ typedef struct fplVulkanVideoSettings {
 	void *instanceHandle;
 	// The vulkan allocator (VkAllocationCallbacks)
 	const void *allocator;
-	//! Is validation layer enabled or not (Only required if @ref instanceHandle is @ref fpl_null)
-	fpl_b32 enableValidationLayer;
-} fplVulkanVideoSettings;
+	//! The validation layer callback (Only used when @ref validationLayerMode is set to @ref fplVulkanValidationLayerMode_User and FPL created the VkInstance)
+	fplVulkanValidationLayerCallback *validationLayerCallback;
+	//! User data passed to any callbacks
+	void *userData;
+	//! The @ref fplVulkanValidationLayerMode
+	fplVulkanValidationLayerMode validationLayerMode;
+	//! The @ref fplVulkanValidationSeverity
+	fplVulkanValidationSeverity validationSeverity;
+} fplVulkanSettings;
 #endif // FPL__ENABLE_VIDEO_VULKAN
 
 //! A union that contains graphics api settings
 typedef union fplGraphicsApiSettings {
 #if defined(FPL__ENABLE_VIDEO_OPENGL)
 	//! OpenGL settings
-	fplOpenGLVideoSettings opengl;
+	fplOpenGLSettings opengl;
 #endif
 #if defined(FPL__ENABLE_VIDEO_VULKAN)
 	//! Vulkan settings
-	fplVulkanVideoSettings vulkan;
+	fplVulkanSettings vulkan;
 #endif
 	//! Field for preventing union to be empty
 	int dummy;
@@ -6419,142 +6472,85 @@ typedef struct fplVideoBackBuffer {
 	fpl_b32 useOutputRect;
 } fplVideoBackBuffer;
 
-#if defined(FPL_PLATFORM_WINDOWS)
-
-#	if defined(FPL__ENABLE_VIDEO_OPENGL)
-//! Stores the surface properties for the win32 OpenGL video backend
-typedef struct fplWin32OpenGLVideoSurface {
-	//! The window handle
-	fpl__Win32WindowHandle windowHandle;
-	//! Thw device context
-	fpl__Win32DeviceContext deviceContext;
-	//! The WGL rendering context
-	fpl__Win32RenderingContext renderingContext;
-} fplWin32OpenGLVideoSurface;
-#	endif
-
-#	if defined(FPL__ENABLE_VIDEO_VULKAN)
-//! Stores the surface properties for the win32 Vulkan video backend
-typedef struct fplWin32VulkanVideoSurface {
-	//! The window handle
-	fpl__Win32WindowHandle windowHandle;
+#if defined(FPL__ENABLE_VIDEO_VULKAN)
+//! Stores the surface properties for the Vulkan video backend
+typedef struct fplVideoSurfaceVulkan {
 	//! The Vulkan Instance (VkInstance)
 	void *instance;
 	//! The Vulkan Surface KHR (VkSurfaceKHR)
 	void *surfaceKHR;
-} fplWin32VulkanVideoSurface;
-#	endif // FPL__ENABLE_VIDEO_VULKAN
+} fplVideoSurfaceVulkan;
+#endif
 
-#	if defined(FPL__ENABLE_VIDEO_SOFTWARE)
-//! Stores the surface properties for the win32 software video backend
-typedef struct fplWin32SoftwareVideoSurface {
+#if defined(FPL__ENABLE_VIDEO_OPENGL)
+//! Stores the surface properties for the OpenGL video backend
+typedef struct fplVideoSurfaceOpenGL {
+	//! The OpenGL rendering context (HGLRC or XRC)
+	void *renderingContext;
+} fplVideoSurfaceOpenGL;
+#endif
+
+#if defined(FPL_PLATFORM_WINDOWS)
+//! Stores the window properties for Win32
+typedef struct fplVideoWindowWin32 {
 	//! The window handle
 	fpl__Win32WindowHandle windowHandle;
 	//! The device context
 	fpl__Win32DeviceContext deviceContext;
-} fplWin32SoftwareVideoSurface;
-#	endif // FPL__ENABLE_VIDEO_SOFTWARE
-
-#endif // FPL_PLATFORM_WINDOWS
+} fplVideoWindowWin32;
+#endif
 
 #if defined(FPL_SUBPLATFORM_X11)
-
-#	if defined(FPL__ENABLE_VIDEO_OPENGL)
-//! Stores the surface properties for the X11 OpenGL video backend
-typedef struct fplX11OpenGLVideoSurface {
+//! Stores the window properties X11
+typedef struct fplVideoWindowX11 {
 	//! The window handle
 	fpl__X11Window window;
 	//! The display handle
 	fpl__X11Display display;
 	//! The visual handle
 	fpl__X11Visual visual;
-	//! The GLX rendering context
-	fpl__GLXContext renderingContext;
 	//! The screen id
 	int screen;
-} fplX11OpenGLVideoSurface;
-#	endif // FPL__ENABLE_VIDEO_OPENGL
-
-#	if defined(FPL__ENABLE_VIDEO_VULKAN)
-//! Stores the surface properties for the X11 OpenGL video backend
-typedef struct fplX11VulkanVideoSurface {
-	//! The window handle
-	fpl__X11Window window;
-	//! The display handle
-	fpl__X11Display display;
-	//! The visual handle
-	fpl__X11Visual visual;
-	//! The Vulkan Instance (VkInstance)
-	void *instance;
-	//! The Vulkan Surface KHR (VkSurfaceKHR)
-	void *surfaceKHR;
-	//! The screen id
-	int screen;
-} fplX11VulkanVideoSurface;
-#	endif // FPL__ENABLE_VIDEO_VULKAN
-
-#	if defined(FPL__ENABLE_VIDEO_SOFTWARE)
-//! Stores the surface properties for the X11 software video backend
-typedef struct fplX11SoftwareVideoSurface {
-	//! The window handle
-	fpl__X11Window window;
-	//! The display handle
-	fpl__X11Display display;
-	//! The visual handle
-	fpl__X11Visual visual;
-	//! The graphics context
-	fpl__X11GC graphicsContext;
-	//! The image buffer
-	fpl__X11Image buffer;
-	//! The screen id
-	int screen;
-} fplX11SoftwareVideoSurface;
-#	endif // FPL__ENABLE_VIDEO_SOFTWARE
-
+} fplVideoWindowX11;
 #endif // FPL_SUBPLATFORM_X11
 
-//! Stores the surface properties for the active video backend
-typedef union fplVideoSurface {
+//! Stores the video window handles
+typedef union fplVideoWindow {
 #if defined(FPL_PLATFORM_WINDOWS)
-#	if defined(FPL__ENABLE_VIDEO_OPENGL)
-	//! The win32 OpenGL surface properties
-	fplWin32OpenGLVideoSurface win32_opengl;
-#	endif
-#	if defined(FPL__ENABLE_VIDEO_VULKAN)
-	//! The win32 Vulkan surface properties
-	fplWin32VulkanVideoSurface win32_vulkan;
-#	endif
-#	if defined(FPL__ENABLE_VIDEO_SOFTWARE)
-	//! The win32 software surface properties
-	fplWin32SoftwareVideoSurface win32_software;
-#	endif
+	fplVideoWindowWin32 win32;
+#elif defined(FPL_SUBPLATFORM_X11)
+	fplVideoWindowX11 x11;
 #endif
-#if defined(FPL_SUBPLATFORM_X11)
-#	if defined(FPL__ENABLE_VIDEO_OPENGL)
-	//! The X11 OpenGL surface properties
-	fplX11OpenGLVideoSurface x11_opengl;
-#	endif
-#	if defined(FPL__ENABLE_VIDEO_VULKAN)
-	//! The X11 Vulkan surface properties
-	fplX11VulkanVideoSurface x11_vulkan;
-#	endif
-#	if defined(FPL__ENABLE_VIDEO_SOFTWARE)
-	//! The X11 software surface properties
-	fplX11SoftwareVideoSurface x11_software;
-#	endif
+	//! Field for preventing union to be empty
+	int dummy;
+} fplVideoWindow;
+
+//! Stores the surface properties for the active video backend
+typedef struct fplVideoSurface {
+	fplVideoWindow window;
+
+#if defined(FPL__ENABLE_VIDEO_VULKAN)
+	//! The Vulkan surface properties
+	fplVideoSurfaceVulkan vulkan;
 #endif
+
+#if defined(FPL__ENABLE_VIDEO_OPENGL)
+	//! The OpenGL surface properties
+	fplVideoSurfaceOpenGL opengl;
+#endif
+
 	//! Field for preventing union to be empty
 	int dummy;
 } fplVideoSurface;
 
 #if defined(FPL__ENABLE_VIDEO_VULKAN)
 //! Stores the requirements for the Vulkan video backend
-typedef struct fplVulkanVideoRequirements {
+typedef struct fplVideoRequirementsVulkan {
 	//! The required instance extensions
 	const char *instanceExtensions[2];
 	//! The number of required instance extensions
 	uint32_t instanceExtensionCount;
-} fplVulkanVideoRequirements;
+} fplVideoRequirementsVulkan;
 #endif // FPL__ENABLE_VIDEO_VULKAN
 
 
@@ -6562,7 +6558,7 @@ typedef struct fplVulkanVideoRequirements {
 typedef union fplVideoRequirements {
 #if defined(FPL__ENABLE_VIDEO_VULKAN)
 	//! The requirements for Vulkan backend
-	fplVulkanVideoRequirements vulkan;
+	fplVideoRequirementsVulkan vulkan;
 #endif // FPL__ENABLE_VIDEO_VULKAN
 	//! Field for preventing union to be empty
 	int dummy;
@@ -18519,9 +18515,9 @@ fpl_internal FPL__FUNC_VIDEO_BACKEND_INITIALIZE(fpl__VideoBackend_Win32OpenGL_In
 		glapi->wglSwapIntervalEXT(swapInterval);
 	}
 
-	backend->surface.win32_opengl.deviceContext = deviceContext;
-	backend->surface.win32_opengl.renderingContext = activeRenderingContext;
-	backend->surface.win32_opengl.windowHandle = nativeWindowState->windowHandle;
+	backend->surface.window.win32.deviceContext = deviceContext;
+	backend->surface.window.win32.windowHandle = nativeWindowState->windowHandle;
+	backend->surface.opengl.renderingContext = (void *)activeRenderingContext;
 
 	return true;
 }
@@ -19020,11 +19016,11 @@ fpl_internal FPL__FUNC_VIDEO_BACKEND_INITIALIZE(fpl__VideoBackend_X11OpenGL_Init
 	nativeBackend->context = activeRenderingContext;
 	nativeBackend->isActiveContext = true;
 
-	backend->surface.x11_opengl.display = display;
-	backend->surface.x11_opengl.window = window;
-	backend->surface.x11_opengl.visual = nativeWindowState->visual;
-	backend->surface.x11_opengl.screen = nativeWindowState->screen;
-	backend->surface.x11_opengl.renderingContext = activeRenderingContext;
+	backend->surface.window.x11.display = display;
+	backend->surface.window.x11.window = window;
+	backend->surface.window.x11.visual = nativeWindowState->visual;
+	backend->surface.window.x11.screen = nativeWindowState->screen;
+	backend->surface.opengl.renderingContext = (void *)activeRenderingContext;
 
 	result = true;
 
@@ -19278,9 +19274,11 @@ fpl_internal fpl__VideoContext fpl__VideoBackend_Win32Software_Construct() {
 #if defined(FPL_PLATFORM_WINDOWS)
 #	define fpl__VKAPI_CALL __stdcall
 #	define fpl__VKAPI_PTR fpl__VKAPI_CALL
+#	define fpl__VKAPI_ATTR
 #else
 #	define fpl__VKAPI_CALL
 #	define fpl__VKAPI_PTR fpl__VKAPI_CALL
+#	define fpl__VKAPI_ATTR
 #endif
 
 #define FPL__VK_NULL_HANDLE fpl_null
@@ -19309,6 +19307,8 @@ typedef enum fpl__VkStructureType {
 	FPL__VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO = 1,
 	FPL__VK_STRUCTURE_TYPE_XLIB_SURFACE_CREATE_INFO_KHR = 1000004000,
 	FPL__VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR = 1000009000,
+	FPL__VK_STRUCTURE_TYPE_DEBUG_UTILS_LABEL_EXT = 1000128002,
+	FPL__VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT = 1000128004,
 	FPL__VK_STRUCTURE_TYPE_MAX_ENUM = 0x7FFFFFFF
 } fpl__VkStructureType;
 
@@ -19387,6 +19387,69 @@ typedef fpl__VkBool32(fpl__VKAPI_PTR *fpl__func_vkGetPhysicalDeviceXlibPresentat
 
 #endif
 
+typedef void *fpl__VkDebugUtilsMessengerEXT;
+
+typedef enum fpl__VkDebugUtilsMessageSeverityFlagBitsEXT {
+	FPL__VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT = 0x00000001,
+	FPL__VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT = 0x00000010,
+	FPL__VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT = 0x00000100,
+	FPL__VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT = 0x00001000,
+	FPL__VK_DEBUG_UTILS_MESSAGE_SEVERITY_FLAG_BITS_MAX_ENUM_EXT = 0x7FFFFFFF
+} fpl__VkDebugUtilsMessageSeverityFlagBitsEXT;
+typedef fpl__VkFlags fpl__VkDebugUtilsMessageSeverityFlagsEXT;
+
+typedef enum fpl__VkDebugUtilsMessageTypeFlagBitsEXT {
+	FPL__VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT = 0x00000001,
+	FPL__VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT = 0x00000002,
+	FPL__VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT = 0x00000004,
+	FPL__VK_DEBUG_UTILS_MESSAGE_TYPE_FLAG_BITS_MAX_ENUM_EXT = 0x7FFFFFFF
+} fpl__VkDebugUtilsMessageTypeFlagBitsEXT;
+typedef fpl__VkFlags fpl__VkDebugUtilsMessageTypeFlagsEXT;
+
+typedef struct fpl__VkDebugUtilsLabelEXT {
+	fpl__VkStructureType sType;
+	const void *pNext;
+	const char *pLabelName;
+	float color[4];
+} fpl__VkDebugUtilsLabelEXT;
+
+typedef void fpl__VkDebugUtilsObjectNameInfoEXT;
+typedef fpl__VkFlags fpl__VkDebugUtilsMessengerCallbackDataFlagsEXT;
+typedef struct fpl__VkDebugUtilsMessengerCallbackDataEXT {
+	fpl__VkStructureType sType;
+	const void *pNext;
+	fpl__VkDebugUtilsMessengerCallbackDataFlagsEXT flags;
+	const char *pMessageIdName;
+	int32_t messageIdNumber;
+	const char *pMessage;
+	uint32_t queueLabelCount;
+	const fpl__VkDebugUtilsLabelEXT *pQueueLabels;
+	uint32_t cmdBufLabelCount;
+	const fpl__VkDebugUtilsLabelEXT *pCmdBufLabels;
+	uint32_t objectCount;
+	const fpl__VkDebugUtilsObjectNameInfoEXT *pObjects;
+} fpl__VkDebugUtilsMessengerCallbackDataEXT;
+
+typedef fpl__VkFlags fpl__VkDebugUtilsMessengerCreateFlagsEXT;
+
+typedef fpl__VkBool32(fpl__VKAPI_PTR *fpl__func_vkDebugUtilsMessengerCallbackEXT) (
+	fpl__VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
+	fpl__VkDebugUtilsMessageTypeFlagsEXT messageTypes,
+	const fpl__VkDebugUtilsMessengerCallbackDataEXT *pCallbackData,
+	void *pUserData);
+
+typedef struct fpl__VkDebugUtilsMessengerCreateInfoEXT {
+	fpl__VkStructureType sType;
+	const void *pNext;
+	fpl__VkDebugUtilsMessengerCreateFlagsEXT flags;
+	fpl__VkDebugUtilsMessageSeverityFlagsEXT messageSeverity;
+	fpl__VkDebugUtilsMessageTypeFlagsEXT messageType;
+	fpl__func_vkDebugUtilsMessengerCallbackEXT pfnUserCallback;
+	void *pUserData;
+} fpl__VkDebugUtilsMessengerCreateInfoEXT;
+
+typedef fpl__VkResult(fpl__VKAPI_PTR *fpl__func_vkCreateDebugUtilsMessengerEXT)(fpl__VkInstance instance, const fpl__VkDebugUtilsMessengerCreateInfoEXT *pCreateInfo, const fpl__VkAllocationCallbacks *pAllocator, fpl__VkDebugUtilsMessengerEXT *pMessenger);
+typedef void (fpl__VKAPI_PTR *fpl__func_vkDestroyDebugUtilsMessengerEXT)(fpl__VkInstance instance, fpl__VkDebugUtilsMessengerEXT messenger, const fpl__VkAllocationCallbacks *pAllocator);
 
 #else
 
@@ -19401,12 +19464,20 @@ typedef fpl__VkBool32(fpl__VKAPI_PTR *fpl__func_vkGetPhysicalDeviceXlibPresentat
 #	endif
 #	include <vulkan/vulkan.h>
 
-#define FPL__VK_STRUCTURE_TYPE_APPLICATION_INFO VK_STRUCTURE_TYPE_APPLICATION_INFO
-#define FPL__VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO
-#define FPL__VK_STRUCTURE_TYPE_XLIB_SURFACE_CREATE_INFO_KHR VK_STRUCTURE_TYPE_XLIB_SURFACE_CREATE_INFO_KHR
-#define FPL__VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR
-#define FPL__VK_SUCCESS VK_SUCCESS
-#define FPL__VK_NULL_HANDLE VK_NULL_HANDLE
+#	define fpl__VKAPI_CALL VKAPI_CALL
+#	define fpl__VKAPI_PTR VKAPI_PTR
+#	define fpl__VKAPI_ATTR VKAPI_ATTR
+
+#	define FPL__VK_STRUCTURE_TYPE_APPLICATION_INFO VK_STRUCTURE_TYPE_APPLICATION_INFO
+#	define FPL__VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO
+#	define FPL__VK_STRUCTURE_TYPE_XLIB_SURFACE_CREATE_INFO_KHR VK_STRUCTURE_TYPE_XLIB_SURFACE_CREATE_INFO_KHR
+#	define FPL__VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR
+#	define FPL__VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT
+
+#	define FPL__VK_SUCCESS VK_SUCCESS
+#	define FPL__VK_NULL_HANDLE VK_NULL_HANDLE
+
+#	define FPL__VK_MAKE_VERSION(major, minor, patch) VK_MAKE_VERSION(major, minor, patch)
 
 typedef VkResult fpl__VkResult;
 typedef VkFlags fpl__VkFlags;
@@ -19440,7 +19511,26 @@ typedef PFN_vkCreateXlibSurfaceKHR fpl__func_vkCreateXlibSurfaceKHR;
 typedef PFN_vkGetPhysicalDeviceXlibPresentationSupportKHR fpl__func_vkGetPhysicalDeviceXlibPresentationSupportKHR;
 #endif
 
-#define FPL__VK_MAKE_VERSION(major, minor, patch) VK_MAKE_VERSION(major, minor, patch)
+typedef VkDebugUtilsMessageSeverityFlagBitsEXT fpl__VkDebugUtilsMessageSeverityFlagBitsEXT;
+typedef VkDebugUtilsMessageSeverityFlagsEXT fpl__VkDebugUtilsMessageSeverityFlagsEXT;
+#	define FPL__VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT
+#	define FPL__VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT
+#	define FPL__VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT
+#	define FPL__VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT
+#	define FPL__VK_DEBUG_UTILS_MESSAGE_SEVERITY_FLAG_BITS_MAX_ENUM_EXT VK_DEBUG_UTILS_MESSAGE_SEVERITY_FLAG_BITS_MAX_ENUM_EXT
+typedef VkDebugUtilsMessageTypeFlagBitsEXT fpl__VkDebugUtilsMessageTypeFlagBitsEXT;
+typedef VkDebugUtilsMessageTypeFlagsEXT fpl__VkDebugUtilsMessageTypeFlagsEXT;
+#	define	FPL__VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT
+#	define	FPL__VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT
+#	define	FPL__VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT
+#	define	FPL__VK_DEBUG_UTILS_MESSAGE_TYPE_FLAG_BITS_MAX_ENUM_EXT VK_DEBUG_UTILS_MESSAGE_TYPE_FLAG_BITS_MAX_ENUM_EXT
+typedef VkDebugUtilsMessengerCallbackDataEXT fpl__VkDebugUtilsMessengerCallbackDataEXT;
+typedef VkDebugUtilsMessengerEXT fpl__VkDebugUtilsMessengerEXT;
+typedef PFN_vkDebugUtilsMessengerCallbackEXT fpl__func_vkDebugUtilsMessengerCallbackEXT;
+typedef VkDebugUtilsMessengerCreateInfoEXT fpl__VkDebugUtilsMessengerCreateInfoEXT;
+
+typedef PFN_vkCreateDebugUtilsMessengerEXT fpl__func_vkCreateDebugUtilsMessengerEXT;
+typedef PFN_vkDestroyDebugUtilsMessengerEXT fpl__func_vkDestroyDebugUtilsMessengerEXT;
 
 #endif // !fplHasInclude(<vulkan/vulkan.h>) || defined(FPL_NO_PLATFORM_INCLUDES)
 
@@ -19485,7 +19575,7 @@ fpl_internal bool fpl__LoadVulkanApi(fpl__VulkanApi *api) {
 	};
 #	else
 	FPL__WARNING(FPL__MODULE_VIDEO_VULKAN, "Unsupported Platform!"); \
-	return(false);
+		return(false);
 #	endif
 
 #	define FPL__VULKAN_GET_FUNCTION_ADDRESS_CONTINUE(libHandle, libName, target, type, name) \
@@ -19513,12 +19603,12 @@ fpl_internal bool fpl__LoadVulkanApi(fpl__VulkanApi *api) {
 
 		FPL__VULKAN_GET_FUNCTION_ADDRESS_CONTINUE(libHandle, libraryName, api, fpl__func_vkCreateInstance, vkCreateInstance);
 		FPL__VULKAN_GET_FUNCTION_ADDRESS_CONTINUE(libHandle, libraryName, api, fpl__func_vkDestroyInstance, vkDestroyInstance);
-		FPL__VULKAN_GET_FUNCTION_ADDRESS_CONTINUE(libHandle, libraryName, api, fpl__func_vkGetInstanceProcAddr, vkGetInstanceProcAddr);
-		FPL__VULKAN_GET_FUNCTION_ADDRESS_CONTINUE(libHandle, libraryName, api, fpl__func_vkEnumerateInstanceExtensionProperties, vkEnumerateInstanceExtensionProperties);
-		FPL__VULKAN_GET_FUNCTION_ADDRESS_CONTINUE(libHandle, libraryName, api, fpl__func_vkEnumerateInstanceLayerProperties, vkEnumerateInstanceLayerProperties);
+FPL__VULKAN_GET_FUNCTION_ADDRESS_CONTINUE(libHandle, libraryName, api, fpl__func_vkGetInstanceProcAddr, vkGetInstanceProcAddr);
+FPL__VULKAN_GET_FUNCTION_ADDRESS_CONTINUE(libHandle, libraryName, api, fpl__func_vkEnumerateInstanceExtensionProperties, vkEnumerateInstanceExtensionProperties);
+FPL__VULKAN_GET_FUNCTION_ADDRESS_CONTINUE(libHandle, libraryName, api, fpl__func_vkEnumerateInstanceLayerProperties, vkEnumerateInstanceLayerProperties);
 
-		result = true;
-		break;
+result = true;
+break;
 	}
 
 	if(!result) {
@@ -19529,14 +19619,21 @@ fpl_internal bool fpl__LoadVulkanApi(fpl__VulkanApi *api) {
 
 	return(result);
 #endif // FPL_NO_RUNTIME_LINKING
-
 }
+
+typedef struct fpl__VulkanDebugMessengerUserData {
+	fplVulkanValidationLayerCallback *userCallback;
+	fplVulkanValidationLayerMode validationMode;
+	void *userData;
+} fpl__VulkanDebugMessengerUserData;
 
 typedef struct fpl__VideoBackendVulkan {
 	fpl__VideoBackend base;
 	fpl__VulkanApi api;
 	fpl__VkInstance instanceHandle;
 	fpl__VkSurfaceKHR surfaceHandle;
+	fpl__VkDebugUtilsMessengerEXT debugMessenger;
+	fpl__VulkanDebugMessengerUserData debugMessengerUserData;
 	const fpl__VkAllocationCallbacks *allocator;
 	fpl_b32 isInstanceUserDefined;
 } fpl__VideoBackendVulkan;
@@ -19572,6 +19669,107 @@ fpl_internal uint32_t fpl__VersionInfoToVulkanVersion(const fplVersionInfo *vers
 	return(result);
 }
 
+fpl_internal const char *fpl__GetVulkanMessageSeverityName(const fpl__VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity) {
+	switch(messageSeverity) {
+		case FPL__VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT: return "ERROR";
+		case FPL__VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT: return "WARNING";
+		case FPL__VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT: return "INFO";
+		case FPL__VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT: return "VERBOSE";
+		default: return "Unknown";
+	}
+}
+
+fpl_internal fpl__VKAPI_ATTR fpl__VkBool32 fpl__VKAPI_CALL fpl__VulkanDebugCallback(fpl__VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity, fpl__VkDebugUtilsMessageTypeFlagsEXT messageType, const fpl__VkDebugUtilsMessengerCallbackDataEXT *pCallbackData, void *pUserData) {
+	fpl__VulkanDebugMessengerUserData *data = (fpl__VulkanDebugMessengerUserData *)pUserData;
+	const char *message = pCallbackData->pMessage;
+	if(data->validationMode == fplVulkanValidationLayerMode_Logging) {
+		if(messageSeverity == FPL__VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT)
+			FPL_LOG_ERROR(FPL__MODULE_VIDEO_VULKAN, "Validation: %s", message);
+		else if(messageSeverity == FPL__VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT)
+			FPL_LOG_WARN(FPL__MODULE_VIDEO_VULKAN, "Validation: %s", message);
+		else if(messageSeverity == FPL__VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT)
+			FPL_LOG_INFO(FPL__MODULE_VIDEO_VULKAN, "Validation: %s", message);
+		else if(messageSeverity == FPL__VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT)
+			FPL_LOG_DEBUG(FPL__MODULE_VIDEO_VULKAN, "Validation: %s", message);
+		else {
+			FPL_LOG_DEBUG(FPL__MODULE_VIDEO_VULKAN, "Validation: %s", message);
+		}
+	} else if(data->validationMode == fplVulkanValidationLayerMode_User) {
+		fplAssert(data->userCallback != fpl_null);
+		data->userCallback(data->userData, message, messageSeverity, messageType, pCallbackData);
+	}
+	return 0;
+}
+
+fpl_internal void fpl__VulkanDestroyDebugMessenger(fpl__VideoBackendVulkan *nativeBackend) {
+	if(nativeBackend->debugMessenger != fpl_null) {
+		FPL_LOG_INFO(FPL__MODULE_VIDEO_VULKAN, "Destroy Vulkan Debug Messenger '%p'", nativeBackend->debugMessenger);
+		const fpl__VulkanApi *api = &nativeBackend->api;
+		fpl__func_vkDestroyDebugUtilsMessengerEXT destroyFunc = (fpl__func_vkDestroyDebugUtilsMessengerEXT)api->vkGetInstanceProcAddr(nativeBackend->instanceHandle, "vkDestroyDebugUtilsMessengerEXT");
+		fplAssert(destroyFunc != fpl_null);
+		destroyFunc(nativeBackend->instanceHandle, nativeBackend->debugMessenger, nativeBackend->allocator);
+		nativeBackend->debugMessenger = fpl_null;
+	}
+	fplClearStruct(&nativeBackend->debugMessengerUserData);
+}
+
+fpl_internal bool fpl__VulkanCreateDebugMessenger(const fplVulkanSettings *settings, fpl__VideoBackendVulkan *nativeBackend) {
+	fpl__VkDebugUtilsMessageSeverityFlagsEXT severities = 0;
+	switch(settings->validationSeverity) {
+		case fplVulkanValidationSeverity_Error:
+			severities = FPL__VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
+			break;
+		case fplVulkanValidationSeverity_Warning:
+			severities = FPL__VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT | FPL__VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT;
+			break;
+		case fplVulkanValidationSeverity_Info:
+			severities = FPL__VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT | FPL__VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT | FPL__VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT;
+			break;
+		case fplVulkanValidationSeverity_Verbose:
+		case fplVulkanValidationSeverity_All:
+			severities = FPL__VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT | FPL__VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT | FPL__VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT | FPL__VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT;
+			break;
+		case fplVulkanValidationSeverity_Off:
+		default:
+			return(false);
+	}
+
+	fpl__VulkanDebugMessengerUserData *userData = &nativeBackend->debugMessengerUserData;
+	userData->userCallback = settings->validationLayerCallback;
+	userData->userData = settings->userData;
+	userData->validationMode = settings->validationLayerMode;
+
+	// @TODO(final): Message type filtering in fplVulkanSettings
+	fpl__VkDebugUtilsMessageTypeFlagsEXT messageTypes =
+		FPL__VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT |
+		FPL__VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT |
+		FPL__VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT;
+
+	fpl__VkDebugUtilsMessengerCreateInfoEXT createInfo = fplZeroInit;
+	createInfo.sType = FPL__VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT;
+	createInfo.messageSeverity = severities;
+	createInfo.messageType = messageTypes;
+	createInfo.pfnUserCallback = fpl__VulkanDebugCallback;
+	createInfo.pUserData = userData;
+
+	const fpl__VulkanApi *api = &nativeBackend->api;
+
+	fpl__func_vkCreateDebugUtilsMessengerEXT createFunc = (fpl__func_vkCreateDebugUtilsMessengerEXT)api->vkGetInstanceProcAddr(nativeBackend->instanceHandle, "vkCreateDebugUtilsMessengerEXT");
+	if(createFunc == fpl_null) {
+		FPL__ERROR(FPL__MODULE_VIDEO_VULKAN, "Vulkan instance proc 'vkCreateDebugUtilsMessengerEXT' not found! Maybe the instance extension 'VK_EXT_debug_utils' was not set?");
+		return(false);
+	}
+
+	FPL_LOG_INFO(FPL__MODULE_VIDEO_VULKAN, "Create Vulkan Debug Messenger for Instance '%p' with severity flags of '%lu'", nativeBackend->instanceHandle, severities);
+	fpl__VkResult creationResult = createFunc(nativeBackend->instanceHandle, &createInfo, nativeBackend->allocator, &nativeBackend->debugMessenger);
+	if(creationResult != FPL__VK_SUCCESS) {
+		FPL__ERROR(FPL__MODULE_VIDEO_VULKAN, "Failed creating Vulkan Debug Messenger for Instance '%p' with severity flags of '%lu' -> (VkResult: %d)!", nativeBackend->instanceHandle, severities, creationResult);
+		return(false);
+	}
+
+	return(true);
+}
+
 fpl_internal FPL__FUNC_VIDEO_BACKEND_PREPAREWINDOW(fpl__VideoBackend_Vulkan_PrepareWindow) {
 	fpl__VideoBackendVulkan *nativeBackend = (fpl__VideoBackendVulkan *)backend;
 	if(videoSettings->graphics.vulkan.instanceHandle == fpl_null) {
@@ -19596,15 +19794,15 @@ fpl_internal FPL__FUNC_VIDEO_BACKEND_PREPAREWINDOW(fpl__VideoBackend_Vulkan_Prep
 		const char *enabledInstanceExtensions[8] = fplZeroInit;
 		uint32_t enabledValidationLayerCount = 0;
 		uint32_t enabledInstanceExtensionCount = 0;
-		if(videoSettings->graphics.vulkan.enableValidationLayer) {
+		if(videoSettings->graphics.vulkan.validationLayerMode != fplVulkanValidationLayerMode_Disabled) {
 			enabledValidationLayers[enabledValidationLayerCount++] = "VK_LAYER_KHRONOS_validation";
 			enabledInstanceExtensions[enabledInstanceExtensionCount++] = "VK_EXT_debug_utils"; // VK_EXT_debug_utils is always supported
 		}
-		for (uint32_t i = 0; i < requirements.vulkan.instanceExtensionCount; ++i) {
+		for(uint32_t i = 0; i < requirements.vulkan.instanceExtensionCount; ++i) {
 			fplAssert(enabledInstanceExtensionCount < fplArrayCount(enabledInstanceExtensions));
 			enabledInstanceExtensions[enabledInstanceExtensionCount++] = requirements.vulkan.instanceExtensions[i];
 		}
-		
+
 		fpl__VkApplicationInfo applicationInfo = fplZeroInit;
 		applicationInfo.sType = FPL__VK_STRUCTURE_TYPE_APPLICATION_INFO;
 		applicationInfo.pApplicationName = videoSettings->graphics.vulkan.appName;
@@ -19622,17 +19820,25 @@ fpl_internal FPL__FUNC_VIDEO_BACKEND_PREPAREWINDOW(fpl__VideoBackend_Vulkan_Prep
 		instanceCreateInfo.ppEnabledLayerNames = enabledValidationLayers;
 
 		const fpl__VkAllocationCallbacks *allocator = (const fpl__VkAllocationCallbacks *)videoSettings->graphics.vulkan.allocator;
-		
+
+		FPL_LOG_INFO(FPL__MODULE_VIDEO_VULKAN, "Create Vulkan Instance with %lu extensions and %lu layers", instanceCreateInfo.enabledExtensionCount, instanceCreateInfo.enabledLayerCount);
 		fpl__VkInstance instance = fpl_null;
 		fpl__VkResult creationResult = api->vkCreateInstance(&instanceCreateInfo, allocator, &instance);
 		if(creationResult != FPL__VK_SUCCESS) {
-			FPL__ERROR(FPL__MODULE_VIDEO_VULKAN, "Failed creating vulkan instance with %lu extensions and %lu layers -> (VkResult: %d)!", instanceCreateInfo.enabledExtensionCount, instanceCreateInfo.enabledLayerCount, creationResult);
+			FPL__ERROR(FPL__MODULE_VIDEO_VULKAN, "Failed creating Vulkan Instance with %lu extensions and %lu layers -> (VkResult: %d)!", instanceCreateInfo.enabledExtensionCount, instanceCreateInfo.enabledLayerCount, creationResult);
 			return(false);
 		}
 
 		nativeBackend->allocator = allocator;
 		nativeBackend->instanceHandle = instance;
 		nativeBackend->isInstanceUserDefined = false;
+
+		// Debug utils
+		if(videoSettings->graphics.vulkan.validationLayerMode != fplVulkanValidationLayerMode_Disabled) {
+			if(!fpl__VulkanCreateDebugMessenger(&videoSettings->graphics.vulkan, nativeBackend)) {
+				FPL__WARNING(FPL__MODULE_VIDEO_VULKAN, "The debug messenger could not be created, no validation message are printed");
+			}
+		}
 
 		return(true);
 	} else {
@@ -19659,7 +19865,7 @@ fpl_internal FPL__FUNC_VIDEO_BACKEND_SHUTDOWN(fpl__VideoBackend_Vulkan_Shutdown)
 
 		FPL_LOG_INFO(FPL__MODULE_VIDEO_VULKAN, "Destroy Vulkan Surface '%p'", nativeBackend->surfaceHandle);
 		destroyProc(nativeBackend->instanceHandle, nativeBackend->surfaceHandle, nativeBackend->allocator);
-		
+
 		nativeBackend->surfaceHandle = FPL__VK_NULL_HANDLE;
 	}
 }
@@ -19722,28 +19928,34 @@ fpl_internal FPL__FUNC_VIDEO_BACKEND_INITIALIZE(fpl__VideoBackend_Vulkan_Initial
 	fplAssert(surfaceHandle != FPL__VK_NULL_HANDLE);
 	nativeBackend->surfaceHandle = surfaceHandle;
 
+	backend->surface.vulkan.instance = nativeBackend->instanceHandle;
+	backend->surface.vulkan.surfaceKHR = nativeBackend->surfaceHandle;
+
 #if defined(FPL_PLATFORM_WINDOWS)
-	backend->surface.win32_vulkan.instance = nativeBackend->instanceHandle;
-	backend->surface.win32_vulkan.surfaceKHR = nativeBackend->surfaceHandle;
-	backend->surface.win32_vulkan.windowHandle = windowState->win32.windowHandle;
+	backend->surface.window.win32.windowHandle = windowState->win32.windowHandle;
+	backend->surface.window.win32.deviceContext = windowState->win32.deviceContext;
 #elif defined(FPL_SUBPLATFORM_X11)
-	backend->surface.x11_vulkan.instance = nativeBackend->instanceHandle;
-	backend->surface.x11_vulkan.surfaceKHR = nativeBackend->surfaceHandle;
-	backend->surface.x11_vulkan.display = windowState->x11.display;
-	backend->surface.x11_vulkan.window = windowState->x11.window;
-	backend->surface.x11_vulkan.screen = windowState->x11.screen;
-	backend->surface.x11_vulkan.visual = windowState->x11.visual;
+	backend->surface.window.x11.display = windowState->x11.display;
+	backend->surface.window.x11.window = windowState->x11.window;
+	backend->surface.window.x11.screen = windowState->x11.screen;
+	backend->surface.window.x11.visual = windowState->x11.visual;
 #endif
-	
+
 	return(true);
 }
 
 fpl_internal FPL__FUNC_VIDEO_BACKEND_DESTROYEDWINDOW(fpl__VideoBackend_Vulkan_DestroyedWindow) {
 	fpl__VideoBackendVulkan *nativeBackend = (fpl__VideoBackendVulkan *)backend;
 
+	// Destroy Vulkan Debug Messenger
+	if(!nativeBackend->isInstanceUserDefined && nativeBackend->instanceHandle != fpl_null && nativeBackend->debugMessenger != fpl_null) {
+		fpl__VulkanDestroyDebugMessenger(nativeBackend);
+	}
+
 	// Destroy Vulkan instance
 	const fpl__VulkanApi *api = &nativeBackend->api;
 	if(!nativeBackend->isInstanceUserDefined && nativeBackend->instanceHandle != fpl_null) {
+		FPL_LOG_INFO(FPL__MODULE_VIDEO_VULKAN, "Destroy Vulkan Instance '%p'", nativeBackend->instanceHandle);
 		api->vkDestroyInstance(nativeBackend->instanceHandle, nativeBackend->allocator);
 		nativeBackend->instanceHandle = fpl_null;
 	}
@@ -19769,7 +19981,7 @@ fpl_internal FPL__FUNC_VIDEO_BACKEND_LOAD(fpl__VideoBackend_Vulkan_Load) {
 	// Load core api
 	if(!fpl__LoadVulkanApi(&nativeBackend->api)) {
 		return(false);
-	}	
+	}
 
 	return(true);
 }
@@ -19978,7 +20190,7 @@ fpl_internal bool fpl__AudioReleaseDirectSound(const fpl__CommonAudioState *comm
 
 	if(dsoundState->directSound != fpl_null) {
 		IDirectSound_Release(dsoundState->directSound);
-	}
+}
 
 	fpl__UnloadDirectSoundApi(&dsoundState->api);
 
@@ -21314,13 +21526,13 @@ fpl_internal uint32_t fpl__GetAudioDevicesAlsa(fpl__AlsaAudioState *alsaState, f
 			free(name);
 		}
 		++ppNextDeviceHint;
-	}
+		}
 	alsaApi->snd_device_name_free_hint((void **)ppDeviceHints);
 	if(capacityOverflow > 0) {
 		FPL__ERROR(FPL__MODULE_AUDIO_ALSA, "Capacity of '%lu' for audio device infos has been reached. '%lu' audio devices are not included in the result", maxDeviceCount, capacityOverflow);
 	}
 	return(result);
-}
+	}
 
 #endif // FPL__ENABLE_AUDIO_ALSA
 
@@ -21448,7 +21660,7 @@ fpl_internal void fpl__StopAudioDeviceMainLoop(fpl__AudioState *audioState) {
 		case fplAudioDriverType_Alsa:
 		{
 			fpl__AudioStopMainLoopAlsa(&audioState->alsa);
-	} break;
+		} break;
 #	endif
 
 		default:
@@ -21472,12 +21684,12 @@ fpl_internal bool fpl__ReleaseAudioDevice(fpl__AudioState *audioState) {
 		case fplAudioDriverType_Alsa:
 		{
 			result = fpl__AudioReleaseAlsa(&audioState->common, &audioState->alsa);
-	} break;
+		} break;
 #	endif
 
 		default:
 			break;
-}
+	}
 	return (result);
 }
 
@@ -21497,12 +21709,12 @@ fpl_internal bool fpl__StopAudioDevice(fpl__AudioState *audioState) {
 		case fplAudioDriverType_Alsa:
 		{
 			result = fpl__AudioStopAlsa(&audioState->alsa);
-	} break;
+		} break;
 #	endif
 
 		default:
 			break;
-}
+	}
 	return (result);
 }
 
@@ -21522,12 +21734,12 @@ fpl_internal fplAudioResultType fpl__StartAudioDevice(fpl__AudioState *audioStat
 		case fplAudioDriverType_Alsa:
 		{
 			result = fpl__AudioStartAlsa(&audioState->common, &audioState->alsa);
-	} break;
+		} break;
 #	endif
 
 		default:
 			break;
-}
+	}
 	return (result);
 }
 
@@ -21546,12 +21758,12 @@ fpl_internal void fpl__RunAudioDeviceMainLoop(fpl__AudioState *audioState) {
 		case fplAudioDriverType_Alsa:
 		{
 			fpl__AudioRunMainLoopAlsa(&audioState->common, &audioState->alsa);
-	} break;
+		} break;
 #	endif
 
 		default:
 			break;
-}
+	}
 }
 
 fpl_internal bool fpl__IsAudioDriverAsync(fplAudioDriverType audioDriver) {
@@ -21759,8 +21971,8 @@ fpl_internal fplAudioResultType fpl__InitAudio(const fplAudioSettings *audioSett
 				initResult = fpl__AudioInitDirectSound(audioSettings, &actualTargetFormat, &audioState->common, &audioState->dsound);
 				if(initResult != fplAudioResultType_Success) {
 					fpl__AudioReleaseDirectSound(&audioState->common, &audioState->dsound);
-				}
-			} break;
+	}
+} break;
 #		endif
 
 #		if defined(FPL__ENABLE_AUDIO_ALSA)
@@ -21770,18 +21982,18 @@ fpl_internal fplAudioResultType fpl__InitAudio(const fplAudioSettings *audioSett
 				if(initResult != fplAudioResultType_Success) {
 					fpl__AudioReleaseAlsa(&audioState->common, &audioState->alsa);
 				}
-		} break;
+			} break;
 #		endif
 
 			default:
 				break;
-	}
+		}
 		if(initResult == fplAudioResultType_Success) {
 			audioState->activeDriver = propeDriver;
 			audioState->isAsyncDriver = fpl__IsAudioDriverAsync(propeDriver);
 			break;
 		}
-}
+	}
 
 	if(initResult != fplAudioResultType_Success) {
 		fpl__ReleaseAudio(audioState);
@@ -21926,10 +22138,10 @@ fpl_internal bool fpl__InitializeVideoBackend(const fplVideoDriverType driver, c
 			FPL__ERROR(FPL__MODULE_VIDEO_SOFTWARE, "Failed allocating video software backbuffer of size %xu bytes", size);
 			fpl__ShutdownVideoBackend(appState, videoState);
 			return false;
-		}
+}
 
-		// Clear to black by default
-		// @NOTE(final): Bitmap is top-down, 0xAABBGGRR
+// Clear to black by default
+// @NOTE(final): Bitmap is top-down, 0xAABBGGRR
 		uint32_t *p = backbuffer->pixels;
 		for(uint32_t y = 0; y < backbuffer->height; ++y) {
 			uint32_t color = 0xFF000000;
@@ -21937,7 +22149,7 @@ fpl_internal bool fpl__InitializeVideoBackend(const fplVideoDriverType driver, c
 				*p++ = color;
 			}
 		}
-}
+	}
 #	endif // FPL__ENABLE_VIDEO_SOFTWARE
 
 	fplAssert(ctx->initializeFunc != fpl_null);
@@ -21961,7 +22173,7 @@ fpl_internal fpl__VideoContext fpl__ConstructVideoContext(const fplVideoDriverTy
 #	elif defined(FPL_SUBPLATFORM_X11)
 			return fpl__VideoBackend_X11OpenGL_Construct();
 #	endif
-} break;
+		} break;
 #endif
 
 #if defined(FPL__ENABLE_VIDEO_VULKAN)
@@ -22027,11 +22239,11 @@ fpl_internal FPL__FUNC_FINALIZE_VIDEO_WINDOW(fpl__FinalizeVideoWindowDefault) {
 			bool result = videoState->context.finalizeWindowFunc(appState, &initSettings->video, &appState->window, &videoState->backend.base);
 			return(result);
 		}
-	}
+		}
 #endif // FPL__ENABLE_VIDEO
 
 	return true;
-}
+	}
 
 fpl_internal void fpl__ReleaseWindow(const fpl__PlatformInitState *initState, fpl__PlatformAppState *appState) {
 	if(appState != fpl_null) {
@@ -22368,7 +22580,7 @@ fpl_common_api uint32_t fplGetAudioDevices(fplAudioDeviceInfo *devices, uint32_t
 			case fplAudioDriverType_Alsa:
 			{
 				result = fpl__GetAudioDevicesAlsa(&audioState->alsa, devices, maxDeviceCount);
-		} break;
+			} break;
 #		endif
 
 			default:
@@ -22419,9 +22631,9 @@ fpl_common_api fplVideoBackBuffer *fplGetVideoBackBuffer() {
 #if defined(FPL__ENABLE_VIDEO_SOFTWARE)
 		if(appState->currentSettings.video.driver == fplVideoDriverType_Software) {
 			result = &videoState->data.backbuffer;
-	}
+		}
 #endif
-}
+	}
 	return(result);
 }
 
@@ -22577,16 +22789,16 @@ fpl_internal void fpl__ReleasePlatformStates(fpl__PlatformInitState *initState, 
 			FPL_LOG_DEBUG("Core", "Release POSIX Subplatform");
 			fpl__PosixReleaseSubplatform(&appState->posix);
 #		endif
-	}
+		}
 
-	// Release platform applicatiom state memory
+		// Release platform applicatiom state memory
 		FPL_LOG_DEBUG(FPL__MODULE_CORE, "Release allocated Platform App State Memory");
 		fplMemoryAlignedFree(appState);
 		fpl__global__AppState = fpl_null;
-}
+	}
 	initState->initResult = fplPlatformResultType_NotInitialized;
 	initState->isInitialized = false;
-}
+		}
 
 #define FPL__PLATFORMTYPE_COUNT FPL__ENUM_COUNT(fplPlatformType_First, fplPlatformType_Last)
 fpl_globalvar const char *fpl__globalPlatformTypeNameTable[] = {
@@ -22682,7 +22894,7 @@ fpl_common_api bool fplPlatformInit(const fplInitFlags initFlags, const fplSetti
 	appState->initFlags = initFlags;
 	if(initSettings != fpl_null) {
 		appState->initSettings = *initSettings;
-	} else {
+} else {
 		fplSetDefaultSettings(&appState->initSettings);
 	}
 	appState->currentSettings = appState->initSettings;
@@ -22732,7 +22944,7 @@ fpl_common_api bool fplPlatformInit(const fplInitFlags initFlags, const fplSetti
 			return(fpl__SetPlatformResult(fplPlatformResultType_FailedPlatform));
 		}
 		FPL_LOG_DEBUG("Core", "Successfully initialized X11 Subplatform");
-}
+		}
 #	endif // FPL_SUBPLATFORM_X11
 
 	// Initialize the actual platform (There can only be one at a time!)
@@ -22854,7 +23066,7 @@ fpl_common_api bool fplPlatformInit(const fplInitFlags initFlags, const fplSetti
 
 	initState->isInitialized = true;
 	return(fpl__SetPlatformResult(fplPlatformResultType_Success));
-}
+		}
 
 fpl_common_api fplPlatformType fplGetPlatformType() {
 	fplPlatformType result;
@@ -23111,7 +23323,7 @@ void __stdcall mainCRTStartup(void) {
 	fplMemoryFree(args.mem);
 	fpl__Win32FreeConsole();
 	ExitProcess(result);
-}
+	}
 #			else
 #				error "Application type not set!"
 #			endif // FPL_APPTYPE
