@@ -147,16 +147,16 @@ static PFNGLUNIFORMMATRIX4FV glUniformMatrix4fv = NULL;
 static void *GLProcAddress(const char *name) {
 	fpl__VideoState *videoState = (fpl__VideoState *)fpl__global__AppState->video.mem;
 	fplAssert(videoState != NULL);
-	fplAssert(videoState->backend.win32_opengl.api.wglGetProcAddress != NULL);
-	void *result = videoState->backend.win32_opengl.api.wglGetProcAddress(name);
+	fplAssert(videoState->activeBackend.win32_opengl.api.wglGetProcAddress != NULL);
+	void *result = videoState->activeBackend.win32_opengl.api.wglGetProcAddress(name);
 	return(result);
 }
 #else
 static void *GLProcAddress(const char *name) {
 	fpl__VideoState *videoState = (fpl__VideoState *)fpl__global__AppState->video.mem;
 	fplAssert(videoState != NULL);
-	fplAssert(videoState->backend.x11_opengl.api.glXGetProcAddress != NULL);
-	void *result = videoState->backend.x11_opengl.api.glXGetProcAddress((const GLubyte *)name);
+	fplAssert(videoState->activeBackend.x11_opengl.api.glXGetProcAddress != NULL);
+	void *result = videoState->activeBackend.x11_opengl.api.glXGetProcAddress((const GLubyte *)name);
 	return(result);
 }
 #endif

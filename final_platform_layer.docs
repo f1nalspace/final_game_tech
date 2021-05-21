@@ -1342,7 +1342,7 @@
 
 	@subsection category_video_general_init_setting_driver Setting the video backend
 
-	It is recommended to set at least the video backend manually, to ensure that you get either initialized with that driver properly or an error when your configuration is not supported.<br>
+	It is recommended to set at least the video backend manually, to ensure that you get either initialized with that backend properly or an error when your configuration is not supported.<br>
 	<br>
 	You do that by simply setting the @ref fplVideoBackendType field in your @ref fplVideoSettings structure which is included in the @ref fplSettings structure to the @ref fplPlatformInit() call.
 	
@@ -1363,7 +1363,7 @@
 
 	If you want to enable/disable vertical synchronization you simply set the fplVideoSettings.isVSync field respectively.
 	<br>
-	@note There is no guarantee that vertical synchronization is supported by your video device or selected driver.
+	@note There is no guarantee that vertical synchronization is supported by your video device or selected backend.
 	@note Software video output does not support vertical synchronisation!
 
 	@section category_video_general_disable Disable unneeded video backends
@@ -1394,8 +1394,8 @@
 
 	@section category_video_general_notes Notes
 
-	Driver types stored in the @ref fplVideoBackendType enumeration are not filtered away, even when you disable it by a preprocessor directive!<br>
-	Keep that in mind when you initialize the video device.<br>
+	Backend types stored in the @ref fplVideoBackendType enumeration are not filtered away, even when you disable it by a preprocessor directive!<br>
+	Keep that in mind when you initialize the video backend.<br>
 	<br>
 	If needed you can use @ref fplSetDefaultVideoSettings() to fill in just the default video settings inside the @ref fplVideoSettings structure.<br>
 */
@@ -1687,27 +1687,27 @@
 
 	@note Please see the @ref section_category_audio_general_notes for possible limitations!
 
-	@section section_category_audio_general_choosing_driver Choosing the audio driver
+	@section section_category_audio_general_choosing_driver Choosing the audio backend
 
-	By default, FPL uses the first available audio driver which is supported on your platform.<br>
-	If you want to force FPL to use a certain audio driver, you can do this by changing the @ref fplAudioSettings.driver field in the @ref fplAudioSettings structure:<br>
+	By default, FPL uses the first available audio backend which is supported on your platform.<br>
+	If you want to force FPL to use a certain audio backend, you can do this by changing the @ref fplAudioSettings.backend field in the @ref fplAudioSettings structure:<br>
 
 	@code{.c}
 	fplSettings settings;
 	fplSetDefaultSettings(&settings);
 	fplAudioSettings &audioSettings = settings.audio;
 
-	// Forcing to use the DirectSound audio driver
-	audioSettings.driver = fplAudioBackendType_DirectSound;
+	// Forcing to use the DirectSound audio backend
+	audioSettings.backend = fplAudioBackendType_DirectSound;
 
 	if (fplPlatformInit(fplInitFlags_Audio, &settings)) {
 		// ... your code here
 	}
 	@endcode
 
-	It is recommended to use the default @ref fplAudioBackendType_Auto which uses the first supported audio driver.
+	It is recommended to use the default @ref fplAudioBackendType_Auto which uses the first supported audio backend.
 
-	@warning If your platform/system does not support the desired driver the audio and platform initialization will fail!
+	@warning If your platform/system does not support the desired backend, the audio and platform initialization will fail!
 
 	@section section_category_audio_general_autoplay Automatic play/stop of audio samples playback
 

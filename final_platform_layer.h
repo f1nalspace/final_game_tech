@@ -6568,13 +6568,13 @@ typedef union fplVideoRequirements {
 * @brief Gets the current video backend
 * @return Returns the current video backend type @ref fplVideoBackendType
 */
-fpl_common_api fplVideoBackendType fplGetVideoDriver();
+fpl_common_api fplVideoBackendType fplGetVideoBackendType();
 /**
 * @brief Gets a string that represents the given video backend
 * @param driver The video backend type @ref fplVideoBackendType
 * @return Returns a string for the given video backend type
 */
-fpl_common_api const char *fplGetVideoDriverName(fplVideoBackendType driver);
+fpl_common_api const char *fplGetVideoBackendName(fplVideoBackendType backendType);
 /**
 * @brief Retrieves the pointer to the current video backbuffer.
 * @return Returns the pointer to the current @ref fplVideoBackBuffer.
@@ -6613,7 +6613,7 @@ fpl_common_api const fplVideoSurface *fplGetVideoSurface();
 * @param requirements The reference to the @ref fplVideoRequirements
 * @return Returns true when the @ref fplVideoRequirements are filled out, false otherwise.
 */
-fpl_common_api bool fplGetVideoRequirements(const fplVideoBackendType driver, fplVideoRequirements *requirements);
+fpl_common_api bool fplGetVideoRequirements(const fplVideoBackendType backendType, fplVideoRequirements *requirements);
 
 /** @} */
 #endif // FPL__ENABLE_VIDEO
@@ -6647,8 +6647,8 @@ typedef enum fplAudioResultType {
 	fplAudioResultType_ApiFailed,
 	//! The platform is not initialized
 	fplAudioResultType_PlatformNotInitialized,
-	//! The audio driver is already initialized
-	fplAudioResultType_DriverAlreadyInitialized,
+	//! The audio backend is already initialized
+	fplAudioResultType_BackendAlreadyInitialized,
 	//! The @ref fplAudioFormatType is not set
 	fplAudioResultType_UnsetAudioFormat,
 	//! The number of audio channels is not set
@@ -6667,10 +6667,10 @@ typedef enum fplAudioResultType {
 } fplAudioResultType;
 
 /**
-* @brief Gets the current audio driver
-* @return Returns the current audio driver type @ref fplAudioBackendType
+* @brief Gets the current audio backend type
+* @return Returns the current audio backend type @ref fplAudioBackendType
 */
-fpl_common_api fplAudioBackendType fplGetAudioDriver();
+fpl_common_api fplAudioBackendType fplGetAudioBackendType();
 /**
 * @brief Start playing asynchronous audio.
 * @return Returns the audio result @ref fplAudioResultType
@@ -6715,11 +6715,11 @@ fpl_common_api uint32_t fplGetAudioSampleSizeInBytes(const fplAudioFormatType fo
 */
 fpl_common_api const char *fplGetAudioFormatName(const fplAudioFormatType format);
 /**
-* @brief Gets the string that represents the given audio driver type.
-* @param driver The audio driver type @ref fplAudioBackendType
-* @return Returns a string for the given audio driver type
+* @brief Gets the string that represents the given audio backend type.
+* @param driver The audio backend type @ref fplAudioBackendType
+* @return Returns a string for the given audio backend type
 */
-fpl_common_api const char *fplGetAudioBackendName(fplAudioBackendType driver);
+fpl_common_api const char *fplGetAudioBackendName(fplAudioBackendType backendType);
 /**
 * @brief Computes the total number of frames for given sample rate and buffer size.
 * @param sampleRate The sample rate in Hz
@@ -6830,20 +6830,26 @@ fpl_main int main(int argc, char **args);
 //
 // FPL uses several implementation blocks to structure things in categories.
 // Each block has its own ifdef definition to collapse it down if needed.
-// But the baseline structure is the follow:
+// But the baseline structure is the following:
 //
+// - Compiler settings (Disable warnings, etc.)
 // - Platform Constants & Types (All required structs, Constants, Global variables, etc.)
 // - Common implementations
 // - Actual platform implementations (Win32, Linux)
 // - Sub platform implementations (X11, POSIX, STD)
-// - Driver implementations (Video: OpenGL/Software, Audio: DirectSound/Alsa)
+// - Backend implementations (Video: OpenGL/Software/Vulkan, Audio: DirectSound/Alsa)
 // - Systems (Audio, Video, Window systems)
 // - Core (Init & Release of the specific platform by selection)
 //
 // You can use the following strings to search for implementation blocks - including the > prefix:
 //
-// > PLATFORM_CONSTANTS
+// > COMPILER_CONFIG
+// > PLATFORM_INCLUDES
 //
+// > INTERNAL_TOP
+// > INTERNAL_LOGGING
+//
+// > PLATFORM_CONSTANTS
 // > UTILITY_FUNCTIONS
 //
 // > TYPES
@@ -6857,21 +6863,23 @@ fpl_main int main(int argc, char **args);
 // > COMMON
 //
 // > WIN32_PLATFORM
-// > LINUX_PLATFORM
-//
-// > POSIX_SUBPLATFORM
-// > X11_SUBPLATFORM
-//
+// > POSIX_SUBPLATFORM (Linux, Unix)
 // > STD_STRINGS_SUBPLATFORM
 // > STD_CONSOLE_SUBPLATFORM
+// > X11_SUBPLATFORM
+// > LINUX_PLATFORM
+// > UNIX_PLATFORM
 //
-// > VIDEO_DRIVERS
-// > VIDEO_DRIVER_OPENGL_WIN32
-// > VIDEO_DRIVER_OPENGL_X11
-// > VIDEO_DRIVER_SOFTWARE_WIN32
+// > VIDEO_BACKENDS
+// > VIDEO_BACKEND_OPENGL_WIN32
+// > VIDEO_BACKEND_OPENGL_X11
+// > VIDEO_BACKEND_SOFTWARE_WIN32
+// > VIDEO_BACKEND_SOFTWARE_X11
+// > VIDEO_BACKEND_VULKAN
 //
-// > AUDIO_DRIVERS
-// > AUDIO_DRIVER_DIRECTSOUND
+// > AUDIO_BACKENDS
+// > AUDIO_BACKEND_DIRECTSOUND
+// > AUDIO_BACKEND_ALSA
 //
 // > SYSTEM_AUDIO_L1
 // > SYSTEM_VIDEO_L1
@@ -6883,6 +6891,14 @@ fpl_main int main(int argc, char **args);
 // ****************************************************************************
 #if (defined(FPL_IMPLEMENTATION) || FPL_IS_IDE) && !defined(FPL__IMPLEMENTED)
 #define FPL__IMPLEMENTED
+
+// ############################################################################
+//
+// > COMPILER_CONFIG
+//
+// ############################################################################
+#if !defined(FPL__COMPILER_CONFIG_DEFINED)
+#define FPL__COMPILER_CONFIG_DEFINED
 
 //
 // Compiler warnings
@@ -6928,41 +6944,16 @@ fpl_main int main(int argc, char **args);
 
 #endif // FPL_COMPILER
 
-// Module constants used for logging
-#define FPL__MODULE_CORE "Core"
-#define FPL__MODULE_FILES "Files"
-#define FPL__MODULE_THREADING "Threading"
-#define FPL__MODULE_MEMORY "Memory"
-#define FPL__MODULE_WINDOW "Window"
-#define FPL__MODULE_LIBRARIES "Libraries"
-#define FPL__MODULE_OS "OS"
-#define FPL__MODULE_HARDWARE "Hardware"
-#define FPL__MODULE_STRINGS "Strings"
-#define FPL__MODULE_PATHS "Paths"
-#define FPL__MODULE_ARGS "Arguments"
+#endif // FPL__COMPILER_CONFIG_DEFINED
 
-#define FPL__MODULE_AUDIO "Audio"
-#define FPL__MODULE_AUDIO_DIRECTSOUND "DirectSound"
-#define FPL__MODULE_AUDIO_ALSA "ALSA"
-
-#define FPL__MODULE_VIDEO "Video"
-#define FPL__MODULE_VIDEO_OPENGL "OpenGL"
-#define FPL__MODULE_VIDEO_VULKAN "Vulkan"
-#define FPL__MODULE_VIDEO_SOFTWARE "Software"
-
-#define FPL__MODULE_WIN32 "Win32"
-#define FPL__MODULE_XINPUT "XInput"
-
-#define FPL__MODULE_LINUX "Linux"
-#define FPL__MODULE_UNIX "Unix"
-#define FPL__MODULE_POSIX "POSIX"
-#define FPL__MODULE_PTHREAD "pthread"
-#define FPL__MODULE_X11 "X11"
-#define FPL__MODULE_GLX "GLX"
-
+// ############################################################################
 //
-// Platform includes (Implementation)
+// > PLATFORM_INCLUDES
 //
+// ############################################################################
+#if !defined(FPL__PLATFORM_INCLUDES_DEFINED)
+#define FPL__PLATFORM_INCLUDES_DEFINED
+
 #if !defined(FPL__HAS_PLATFORM_INCLUDES)
 #	define FPL__HAS_PLATFORM_INCLUDES
 
@@ -7041,6 +7032,48 @@ fplStaticAssert(sizeof(fpl__LinuxSignalHandle) >= sizeof(int));
 #	include <locale.h> // setlocale, struct lconv, localeconv
 #endif
 
+#endif // FPL__PLATFORM_INCLUDES_DEFINED
+
+// ############################################################################
+//
+// > INTERNAL_TOP
+//
+// ############################################################################
+#if !defined(FPL__INTERNAL_TOP_DEFINED)
+#define FPL__INTERNAL_TOP_DEFINED
+
+// Module constants used for logging
+#define FPL__MODULE_CORE "Core"
+#define FPL__MODULE_FILES "Files"
+#define FPL__MODULE_THREADING "Threading"
+#define FPL__MODULE_MEMORY "Memory"
+#define FPL__MODULE_WINDOW "Window"
+#define FPL__MODULE_LIBRARIES "Libraries"
+#define FPL__MODULE_OS "OS"
+#define FPL__MODULE_HARDWARE "Hardware"
+#define FPL__MODULE_STRINGS "Strings"
+#define FPL__MODULE_PATHS "Paths"
+#define FPL__MODULE_ARGS "Arguments"
+
+#define FPL__MODULE_AUDIO "Audio"
+#define FPL__MODULE_AUDIO_DIRECTSOUND "DirectSound"
+#define FPL__MODULE_AUDIO_ALSA "ALSA"
+
+#define FPL__MODULE_VIDEO "Video"
+#define FPL__MODULE_VIDEO_OPENGL "OpenGL"
+#define FPL__MODULE_VIDEO_VULKAN "Vulkan"
+#define FPL__MODULE_VIDEO_SOFTWARE "Software"
+
+#define FPL__MODULE_WIN32 "Win32"
+#define FPL__MODULE_XINPUT "XInput"
+
+#define FPL__MODULE_LINUX "Linux"
+#define FPL__MODULE_UNIX "Unix"
+#define FPL__MODULE_POSIX "POSIX"
+#define FPL__MODULE_PTHREAD "pthread"
+#define FPL__MODULE_X11 "X11"
+#define FPL__MODULE_GLX "GLX"
+
 //
 // Enum macros
 //
@@ -7053,9 +7086,16 @@ fplStaticAssert(sizeof(fpl__LinuxSignalHandle) >= sizeof(int));
 fpl_internal void *fpl__AllocateMemory(const fplMemoryAllocationSettings *allocSettings, const size_t size, const size_t alignment);
 fpl_internal void fpl__ReleaseMemory(const fplMemoryAllocationSettings *allocSettings, void *ptr);
 
+#endif // FPL__INTERNAL_TOP_DEFINED
+
+// ############################################################################
 //
-// Internal logging system
+// > INTERNAL_LOGGING
 //
+// ############################################################################
+#if !defined(FPL__INTERNAL_LOGGING_DEFINED)
+#define FPL__INTERNAL_LOGGING_DEFINED
+
 #define FPL__MODULE_CONCAT(mod, format) "[" mod "] " format
 
 #if defined(FPL__ENABLE_LOGGING)
@@ -7174,32 +7214,7 @@ fpl_internal void fpl__LogWriteVarArgs(const char *funcName, const int lineNumbe
 #define FPL__ERROR(mod, format, ...) FPL__M_ERROR(FPL_FUNCTION_NAME, __LINE__, mod, format, ## __VA_ARGS__)
 #define FPL__WARNING(mod, format, ...) FPL__M_WARNING(FPL_FUNCTION_NAME, __LINE__, mod, format, ## __VA_ARGS__)
 
-//
-// Debug out
-//
-
-#if defined(FPL_PLATFORM_WINDOWS)
-fpl_platform_api void fplDebugOut(const char *text) {
-	wchar_t buffer[FPL_MAX_BUFFER_LENGTH];
-	fplUTF8StringToWideString(text, fplGetStringLength(text), buffer, fplArrayCount(buffer));
-	OutputDebugStringW(buffer);
-}
-#else
-fpl_platform_api void fplDebugOut(const char *text) {
-	fplConsoleOut(text);
-}
-#endif
-
-fpl_common_api void fplDebugFormatOut(const char *format, ...) {
-	if(format != fpl_null) {
-		char buffer[FPL_MAX_BUFFER_LENGTH];
-		va_list argList;
-		va_start(argList, format);
-		fplFormatStringArgs(buffer, fplArrayCount(buffer), format, argList);
-		va_end(argList);
-		fplDebugOut(buffer);
-	}
-}
+#endif // FPL__INTERNAL_LOGGING_DEFINED
 
 // ############################################################################
 //
@@ -10577,6 +10592,32 @@ fpl_common_api const char *fplCPUGetArchName(const fplCPUArchType type) {
 	uint32_t index = FPL__ENUM_VALUE_TO_ARRAY_INDEX(type, fplCPUArchType_First, fplCPUArchType_Last);
 	const char *result = fpl__global_ArchTypeNameTable[index];
 	return(result);
+}
+
+//
+// Debug out
+//
+#if defined(FPL_PLATFORM_WINDOWS)
+fpl_platform_api void fplDebugOut(const char *text) {
+	wchar_t buffer[FPL_MAX_BUFFER_LENGTH];
+	fplUTF8StringToWideString(text, fplGetStringLength(text), buffer, fplArrayCount(buffer));
+	OutputDebugStringW(buffer);
+}
+#else
+fpl_platform_api void fplDebugOut(const char *text) {
+	fplConsoleOut(text);
+}
+#endif
+
+fpl_common_api void fplDebugFormatOut(const char *format, ...) {
+	if(format != fpl_null) {
+		char buffer[FPL_MAX_BUFFER_LENGTH];
+		va_list argList;
+		va_start(argList, format);
+		fplFormatStringArgs(buffer, fplArrayCount(buffer), format, argList);
+		va_end(argList);
+		fplDebugOut(buffer);
+	}
 }
 #endif // FPL__COMMON_DEFINED
 
@@ -18043,11 +18084,11 @@ fpl_platform_api size_t fplGetInputLocale(const fplLocaleFormat targetFormat, ch
 
 // ****************************************************************************
 //
-// > VIDEO_DRIVERS
+// > VIDEO_BACKENDS
 //
 // ****************************************************************************
-#if !defined(FPL__VIDEO_DRIVERS_IMPLEMENTED) && defined(FPL__ENABLE_VIDEO)
-#	define FPL__VIDEO_DRIVERS_IMPLEMENTED
+#if !defined(FPL__VIDEO_BACKENDS_IMPLEMENTED) && defined(FPL__ENABLE_VIDEO)
+#	define FPL__VIDEO_BACKENDS_IMPLEMENTED
 
 //
 // Video Backend Abstraction
@@ -18144,7 +18185,7 @@ typedef struct fpl__VideoBackend {
 
 // ############################################################################
 //
-// > VIDEO_DRIVER_OPENGL_WIN32
+// > VIDEO_BACKEND_OPENGL_WIN32
 //
 // ############################################################################
 #if defined(FPL__ENABLE_VIDEO_OPENGL) && defined(FPL_PLATFORM_WINDOWS)
@@ -18562,7 +18603,7 @@ fpl_internal fpl__VideoContext fpl__VideoBackend_Win32OpenGL_Construct() {
 
 // ############################################################################
 //
-// > VIDEO_DRIVER_OPENGL_X11
+// > VIDEO_BACKEND_OPENGL_X11
 //
 // ############################################################################
 #if defined(FPL__ENABLE_VIDEO_OPENGL) && defined(FPL_SUBPLATFORM_X11)
@@ -19085,7 +19126,7 @@ fpl_internal fpl__VideoContext fpl__VideoBackend_X11OpenGL_Construct() {
 
 // ############################################################################
 //
-// > VIDEO_DRIVER_SOFTWARE_X11
+// > VIDEO_BACKEND_SOFTWARE_X11
 //
 // ############################################################################
 #if defined(FPL__ENABLE_VIDEO_SOFTWARE) && defined(FPL_SUBPLATFORM_X11)
@@ -19182,7 +19223,7 @@ fpl_internal fpl__VideoContext fpl__VideoBackend_X11Software_Construct() {
 
 // ############################################################################
 //
-// > VIDEO_DRIVER_SOFTWARE_WIN32
+// > VIDEO_BACKEND_SOFTWARE_WIN32
 //
 // ############################################################################
 #if defined(FPL__ENABLE_VIDEO_SOFTWARE) && defined(FPL_PLATFORM_WINDOWS)
@@ -19264,7 +19305,7 @@ fpl_internal fpl__VideoContext fpl__VideoBackend_Win32Software_Construct() {
 
 // ############################################################################
 //
-// > VIDEO_DRIVER_VULKAN (Win32, X11)
+// > VIDEO_BACKEND_VULKAN (Win32, X11)
 //
 // ############################################################################
 #if defined(FPL__ENABLE_VIDEO_VULKAN)
@@ -19640,6 +19681,10 @@ typedef struct fpl__VideoBackendVulkan {
 
 fpl_internal FPL__FUNC_VIDEO_BACKEND_GETPROCEDURE(fpl__VideoBackend_Vulkan_GetProcedure) {
 	const fpl__VideoBackendVulkan *nativeBackend = (const fpl__VideoBackendVulkan *)backend;
+	const fpl__VulkanApi *api = &nativeBackend->api;
+	if(api->libraryHandle.isValid) {
+		return fplGetDynamicLibraryProc(&api->libraryHandle, procName);
+	}
 	return(fpl_null);
 }
 
@@ -20008,15 +20053,15 @@ fpl_internal fpl__VideoContext fpl__VideoBackend_Vulkan_Construct() {
 #endif // FPL__ENABLE_VIDEO_VULKAN
 
 
-#endif // FPL__VIDEO_DRIVERS_IMPLEMENTED
+#endif // FPL__VIDEO_BACKENDS_IMPLEMENTED
 
 // ****************************************************************************
 //
-// > AUDIO_DRIVERS
+// > AUDIO_BACKENDS
 //
 // ****************************************************************************
-#if !defined(FPL__AUDIO_DRIVERS_IMPLEMENTED) && defined(FPL__ENABLE_AUDIO)
-#	define FPL__AUDIO_DRIVERS_IMPLEMENTED
+#if !defined(FPL__AUDIO_BACKENDS_IMPLEMENTED) && defined(FPL__ENABLE_AUDIO)
+#	define FPL__AUDIO_BACKENDS_IMPLEMENTED
 
 typedef enum fpl__AudioDeviceState {
 	fpl__AudioDeviceState_Uninitialized = 0,
@@ -20062,7 +20107,7 @@ fpl_internal bool fpl__IsAudioDeviceStarted(fpl__CommonAudioState *audioState);
 
 // ############################################################################
 //
-// > AUDIO_DRIVER_DIRECTSOUND
+// > AUDIO_BACKEND_DIRECTSOUND
 //
 // ############################################################################
 #if defined(FPL__ENABLE_AUDIO_DIRECTSOUND)
@@ -20548,7 +20593,7 @@ fpl_internal void fpl__AudioRunMainLoopDirectSound(const fpl__CommonAudioState *
 
 // ############################################################################
 //
-// > AUDIO_DRIVER_ALSA
+// > AUDIO_BACKEND_ALSA
 //
 // ############################################################################
 #if defined(FPL__ENABLE_AUDIO_ALSA)
@@ -21536,7 +21581,7 @@ fpl_internal uint32_t fpl__GetAudioDevicesAlsa(fpl__AlsaAudioState *alsaState, f
 
 #endif // FPL__ENABLE_AUDIO_ALSA
 
-#endif // FPL__AUDIO_DRIVERS_IMPLEMENTED
+#endif // FPL__AUDIO_BACKENDS_IMPLEMENTED
 
 // %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 //
@@ -21559,7 +21604,7 @@ fpl_globalvar const char *fpl__global_audioResultTypeNameTable[] = {
 	"No Audio-Device found", // fplAudioResultType_NoDeviceFound,
 	"Api failure", // fplAudioResultType_ApiFailed,
 	"Platform not initialized", // fplAudioResultType_PlatformNotInitialized,
-	"Driver already initialized", // fplAudioResultType_DriverAlreadyInitialized,
+	"Backend already initialized", // fplAudioResultType_BackendAlreadyInitialized,
 	"Audio format was not set", // fplAudioResultType_UnsetAudioFormat,
 	"Number of audio channels was not set", // fplAudioResultType_UnsetAudioChannels,
 	"Audio sample rate was not set", // fplAudioResultType_UnsetAudioSampleRate,
@@ -21623,8 +21668,8 @@ typedef struct fpl__AudioState {
 	fpl__AudioEvent wakeupEvent;
 	volatile fplAudioResultType workResult;
 
-	fplAudioBackendType activeDriver;
-	bool isAsyncDriver;
+	fplAudioBackendType backendType;
+	bool isAsyncBackend;
 
 	union {
 #	if defined(FPL__ENABLE_AUDIO_DIRECTSOUND)
@@ -21646,8 +21691,8 @@ fpl_internal fpl__AudioState *fpl__GetAudioState(fpl__PlatformAppState *appState
 }
 
 fpl_internal void fpl__StopAudioDeviceMainLoop(fpl__AudioState *audioState) {
-	fplAssert(audioState->activeDriver > fplAudioBackendType_Auto);
-	switch(audioState->activeDriver) {
+	fplAssert(audioState->backendType > fplAudioBackendType_Auto);
+	switch(audioState->backendType) {
 
 #	if defined(FPL__ENABLE_AUDIO_DIRECTSOUND)
 		case fplAudioBackendType_DirectSound:
@@ -21669,9 +21714,9 @@ fpl_internal void fpl__StopAudioDeviceMainLoop(fpl__AudioState *audioState) {
 }
 
 fpl_internal bool fpl__ReleaseAudioDevice(fpl__AudioState *audioState) {
-	fplAssert(audioState->activeDriver > fplAudioBackendType_Auto);
+	fplAssert(audioState->backendType > fplAudioBackendType_Auto);
 	bool result = false;
-	switch(audioState->activeDriver) {
+	switch(audioState->backendType) {
 
 #	if defined(FPL__ENABLE_AUDIO_DIRECTSOUND)
 		case fplAudioBackendType_DirectSound:
@@ -21694,9 +21739,9 @@ fpl_internal bool fpl__ReleaseAudioDevice(fpl__AudioState *audioState) {
 }
 
 fpl_internal bool fpl__StopAudioDevice(fpl__AudioState *audioState) {
-	fplAssert(audioState->activeDriver > fplAudioBackendType_Auto);
+	fplAssert(audioState->backendType > fplAudioBackendType_Auto);
 	bool result = false;
-	switch(audioState->activeDriver) {
+	switch(audioState->backendType) {
 
 #	if defined(FPL__ENABLE_AUDIO_DIRECTSOUND)
 		case fplAudioBackendType_DirectSound:
@@ -21719,9 +21764,9 @@ fpl_internal bool fpl__StopAudioDevice(fpl__AudioState *audioState) {
 }
 
 fpl_internal fplAudioResultType fpl__StartAudioDevice(fpl__AudioState *audioState) {
-	fplAssert(audioState->activeDriver > fplAudioBackendType_Auto);
+	fplAssert(audioState->backendType > fplAudioBackendType_Auto);
 	fplAudioResultType result = fplAudioResultType_Failed;
-	switch(audioState->activeDriver) {
+	switch(audioState->backendType) {
 
 #	if defined(FPL__ENABLE_AUDIO_DIRECTSOUND)
 		case fplAudioBackendType_DirectSound:
@@ -21744,8 +21789,8 @@ fpl_internal fplAudioResultType fpl__StartAudioDevice(fpl__AudioState *audioStat
 }
 
 fpl_internal void fpl__RunAudioDeviceMainLoop(fpl__AudioState *audioState) {
-	fplAssert(audioState->activeDriver > fplAudioBackendType_Auto);
-	switch(audioState->activeDriver) {
+	fplAssert(audioState->backendType > fplAudioBackendType_Auto);
+	switch(audioState->backendType) {
 
 #	if defined(FPL__ENABLE_AUDIO_DIRECTSOUND)
 		case fplAudioBackendType_DirectSound:
@@ -21766,8 +21811,8 @@ fpl_internal void fpl__RunAudioDeviceMainLoop(fpl__AudioState *audioState) {
 	}
 }
 
-fpl_internal bool fpl__IsAudioDriverAsync(fplAudioBackendType audioDriver) {
-	switch(audioDriver) {
+fpl_internal bool fpl__IsAudioBackendAsync(const fplAudioBackendType backendType) {
+	switch(backendType) {
 		case fplAudioBackendType_DirectSound:
 		case fplAudioBackendType_Alsa:
 			return false;
@@ -21810,7 +21855,7 @@ fpl_internal void fpl__AudioWorkerThread(const fplThreadHandle *thread, void *da
 	fpl__AudioState *audioState = (fpl__AudioState *)data;
 	fpl__CommonAudioState *commonAudioState = &audioState->common;
 	fplAssert(audioState != fpl_null);
-	fplAssert(audioState->activeDriver != fplAudioBackendType_None);
+	fplAssert(audioState->backendType != fplAudioBackendType_None);
 
 #if defined(FPL_PLATFORM_WINDOWS)
 	wapi->ole.CoInitializeEx(fpl_null, 0);
@@ -21915,9 +21960,9 @@ fpl_internal fplAudioResultType fpl__InitAudio(const fplAudioSettings *audioSett
 	const fpl__Win32Api *wapi = &fpl__global__AppState->win32.winApi;
 #endif
 
-	if(audioState->activeDriver != fplAudioBackendType_None) {
+	if(audioState->backendType != fplAudioBackendType_None) {
 		fpl__ReleaseAudio(audioState);
-		return fplAudioResultType_DriverAlreadyInitialized;
+		return fplAudioResultType_BackendAlreadyInitialized;
 	}
 
 	fplAudioDeviceFormat actualTargetFormat = fplZeroInit;
@@ -21948,23 +21993,23 @@ fpl_internal fplAudioResultType fpl__InitAudio(const fplAudioSettings *audioSett
 		return fplAudioResultType_Failed;
 	}
 
-	// Prope drivers
-	fplAudioBackendType propeDrivers[16];
-	uint32_t driverCount = 0;
+	// Prope backends
+	fplAudioBackendType propeBackendTypes[16];
+	uint32_t backendCount = 0;
 	if(audioSettings->backend == fplAudioBackendType_Auto) {
-		// @NOTE(final): Add all audio drivers here, regardless of the platform.
-		propeDrivers[driverCount++] = fplAudioBackendType_DirectSound;
-		propeDrivers[driverCount++] = fplAudioBackendType_Alsa;
+		// @NOTE(final): Add all audio backends here, regardless of the platform.
+		propeBackendTypes[backendCount++] = fplAudioBackendType_DirectSound;
+		propeBackendTypes[backendCount++] = fplAudioBackendType_Alsa;
 	} else {
 		// @NOTE(final): Forced audio backend
-		propeDrivers[driverCount++] = audioSettings->backend;
+		propeBackendTypes[backendCount++] = audioSettings->backend;
 	}
 	fplAudioResultType initResult = fplAudioResultType_Failed;
-	for(uint32_t driverIndex = 0; driverIndex < driverCount; ++driverIndex) {
-		fplAudioBackendType propeDriver = propeDrivers[driverIndex];
+	for(uint32_t backendIndex = 0; backendIndex < backendCount; ++backendIndex) {
+		fplAudioBackendType propeBackendType = propeBackendTypes[backendIndex];
 
 		initResult = fplAudioResultType_Failed;
-		switch(propeDriver) {
+		switch(propeBackendType) {
 #		if defined(FPL__ENABLE_AUDIO_DIRECTSOUND)
 			case fplAudioBackendType_DirectSound:
 			{
@@ -21989,8 +22034,8 @@ fpl_internal fplAudioResultType fpl__InitAudio(const fplAudioSettings *audioSett
 				break;
 		}
 		if(initResult == fplAudioResultType_Success) {
-			audioState->activeDriver = propeDriver;
-			audioState->isAsyncDriver = fpl__IsAudioDriverAsync(propeDriver);
+			audioState->backendType = propeBackendType;
+			audioState->isAsyncBackend = fpl__IsAudioBackendAsync(propeBackendType);
 			break;
 		}
 	}
@@ -22000,7 +22045,7 @@ fpl_internal fplAudioResultType fpl__InitAudio(const fplAudioSettings *audioSett
 		return initResult;
 	}
 
-	if(!audioState->isAsyncDriver) {
+	if(!audioState->isAsyncBackend) {
 		// Create and start worker thread
 		fplThreadParameters audioThreadParams = fplZeroInit;
 		audioThreadParams.priority = fplThreadPriority_RealTime;
@@ -22063,10 +22108,10 @@ typedef union fpl__ActiveVideoBackend {
 } fpl__ActiveVideoBackend;
 
 typedef struct fpl__VideoState {
-	fpl__ActiveVideoBackend backend; // All video backends must be stored there, otherwise we will corrupt the fpl__VideoContext
 	fpl__VideoContext context;
 	fpl__VideoData data;
-	fplVideoBackendType activeDriver;
+	fplVideoBackendType backendType;
+	fpl__ActiveVideoBackend activeBackend;
 } fpl__VideoState;
 
 fpl_internal fpl__VideoState *fpl__GetVideoState(fpl__PlatformAppState *appState) {
@@ -22081,20 +22126,20 @@ fpl_internal fpl__VideoState *fpl__GetVideoState(fpl__PlatformAppState *appState
 fpl_internal void fpl__DestroySurfaceBackend(fpl__PlatformAppState *appState, fpl__VideoState *videoState) {
 	const fpl__VideoContext *ctx = &videoState->context;
 	fplAssert(ctx->destroyedWindowFunc != fpl_null);
-	ctx->destroyedWindowFunc(appState, &videoState->backend.base);
+	ctx->destroyedWindowFunc(appState, &videoState->activeBackend.base);
 }
 
 fpl_internal void fpl__UnloadVideoBackend(fpl__PlatformAppState *appState, fpl__VideoState *videoState) {
 	const fpl__VideoContext *ctx = &videoState->context;
 	fplAssert(ctx->unloadFunc != fpl_null);
-	ctx->unloadFunc(appState, &videoState->backend.base);
+	ctx->unloadFunc(appState, &videoState->activeBackend.base);
 	fplClearStruct(videoState);
 }
 
-fpl_internal bool fpl__LoadVideoBackend(fpl__PlatformAppState *appState, const fplVideoBackendType driver, fpl__VideoState *videoState) {
+fpl_internal bool fpl__LoadVideoBackend(fpl__PlatformAppState *appState, fpl__VideoState *videoState) {
 	const fpl__VideoContext *ctx = &videoState->context;
 	fplAssert(ctx->loadFunc != fpl_null);
-	bool result = ctx->loadFunc(appState, &videoState->backend.base);
+	bool result = ctx->loadFunc(appState, &videoState->activeBackend.base);
 	return(result);
 }
 
@@ -22103,7 +22148,7 @@ fpl_internal void fpl__ShutdownVideoBackend(fpl__PlatformAppState *appState, fpl
 	if(videoState != fpl_null) {
 		const fpl__VideoContext *ctx = &videoState->context;
 		fplAssert(ctx->shutdownFunc != fpl_null);
-		ctx->shutdownFunc(appState, &appState->window, &videoState->backend.base);
+		ctx->shutdownFunc(appState, &appState->window, &videoState->activeBackend.base);
 
 #	if defined(FPL__ENABLE_VIDEO_SOFTWARE)
 		fplVideoBackBuffer *backbuffer = &videoState->data.backbuffer;
@@ -22115,18 +22160,16 @@ fpl_internal void fpl__ShutdownVideoBackend(fpl__PlatformAppState *appState, fpl
 	}
 }
 
-fpl_internal bool fpl__InitializeVideoBackend(const fplVideoBackendType driver, const fplVideoSettings *videoSettings, const uint32_t windowWidth, const uint32_t windowHeight, fpl__PlatformAppState *appState, fpl__VideoState *videoState) {
+fpl_internal bool fpl__InitializeVideoBackend(const fplVideoBackendType backendType, const fplVideoSettings *videoSettings, const uint32_t windowWidth, const uint32_t windowHeight, fpl__PlatformAppState *appState, fpl__VideoState *videoState) {
 	// @NOTE(final): video backends are platform independent, so we cannot have to same system as audio.
 	fplAssert(appState != fpl_null);
 	fplAssert(videoState != fpl_null);
 
 	const fpl__VideoContext *ctx = &videoState->context;
 
-	videoState->activeDriver = driver;
-
 	// Allocate backbuffer context if needed
 #	if defined(FPL__ENABLE_VIDEO_SOFTWARE)
-	if(driver == fplVideoBackendType_Software) {
+	if(backendType == fplVideoBackendType_Software) {
 		fplVideoBackBuffer *backbuffer = &videoState->data.backbuffer;
 		backbuffer->width = windowWidth;
 		backbuffer->height = windowHeight;
@@ -22153,7 +22196,7 @@ fpl_internal bool fpl__InitializeVideoBackend(const fplVideoBackendType driver, 
 #	endif // FPL__ENABLE_VIDEO_SOFTWARE
 
 	fplAssert(ctx->initializeFunc != fpl_null);
-	bool videoInitResult = ctx->initializeFunc(appState, &appState->window, videoSettings, &videoState->data, &videoState->backend.base);
+	bool videoInitResult = ctx->initializeFunc(appState, &appState->window, videoSettings, &videoState->data, &videoState->activeBackend.base);
 	if(!videoInitResult) {
 		fplAssert(fplGetErrorCount() > 0);
 		fpl__ShutdownVideoBackend(appState, videoState);
@@ -22163,8 +22206,8 @@ fpl_internal bool fpl__InitializeVideoBackend(const fplVideoBackendType driver, 
 	return true;
 }
 
-fpl_internal fpl__VideoContext fpl__ConstructVideoContext(const fplVideoBackendType driver) {
-	switch(driver) {
+fpl_internal fpl__VideoContext fpl__ConstructVideoContext(const fplVideoBackendType backendType) {
+	switch(backendType) {
 #if defined(FPL__ENABLE_VIDEO_OPENGL)
 		case fplVideoBackendType_OpenGL:
 		{
@@ -22196,8 +22239,8 @@ fpl_internal fpl__VideoContext fpl__ConstructVideoContext(const fplVideoBackendT
 
 		default:
 		{
-			// No driver found, just return a stub
-			FPL__ERROR(FPL__MODULE_VIDEO, "The video backend '%s' is not supported for this platform", fplGetVideoDriverName(driver));
+			// No backend found, just return a stub
+			FPL__ERROR(FPL__MODULE_VIDEO, "The video backend '%s' is not supported for this platform", fplGetVideoBackendName(backendType));
 			return(fpl__StubVideoContext());
 		} break;
 	}
@@ -22220,7 +22263,7 @@ fpl_internal FPL__FUNC_PREPARE_VIDEO_WINDOW(fpl__PrepareVideoWindowDefault) {
 	if(initFlags & fplInitFlags_Video) {
 		fpl__VideoState *videoState = fpl__GetVideoState(appState);
 		if(videoState->context.prepareWindowFunc != fpl_null) {
-			bool result = videoState->context.prepareWindowFunc(appState, &initSettings->video, &appState->window, &videoState->backend.base);
+			bool result = videoState->context.prepareWindowFunc(appState, &initSettings->video, &appState->window, &videoState->activeBackend.base);
 			return(result);
 		}
 	}
@@ -22236,7 +22279,7 @@ fpl_internal FPL__FUNC_FINALIZE_VIDEO_WINDOW(fpl__FinalizeVideoWindowDefault) {
 	if(initFlags & fplInitFlags_Video) {
 		fpl__VideoState *videoState = fpl__GetVideoState(appState);
 		if(videoState->context.finalizeWindowFunc != fpl_null) {
-			bool result = videoState->context.finalizeWindowFunc(appState, &initSettings->video, &appState->window, &videoState->backend.base);
+			bool result = videoState->context.finalizeWindowFunc(appState, &initSettings->video, &appState->window, &videoState->activeBackend.base);
 			return(result);
 		}
 		}
@@ -22316,25 +22359,25 @@ fpl_common_api const char *fplGetAudioFormatName(const fplAudioFormatType format
 	return(result);
 }
 
-#define FPL__AUDIODRIVERTYPE_COUNT FPL__ENUM_COUNT(fplAudioBackendType_First, fplAudioBackendType_Last)
-fpl_globalvar const char *fpl__globalAudioDriverNameTable[] = {
+#define FPL__AUDIOBACKENDTYPE_COUNT FPL__ENUM_COUNT(fplAudioBackendType_First, fplAudioBackendType_Last)
+fpl_globalvar const char *fpl__globalAudioBackendNameTable[] = {
 	"None", // No audio backend
 	"Automatic", // Automatic backend detection
 	"DirectSound", // DirectSound
 	"ALSA", // Alsa
 };
-fplStaticAssert(fplArrayCount(fpl__globalAudioDriverNameTable) == FPL__AUDIODRIVERTYPE_COUNT);
+fplStaticAssert(fplArrayCount(fpl__globalAudioBackendNameTable) == FPL__AUDIOBACKENDTYPE_COUNT);
 
-fpl_common_api fplAudioBackendType fplGetAudioDriver() {
+fpl_common_api fplAudioBackendType fplGetAudioBackendType() {
 	FPL__CheckPlatform(fplAudioBackendType_None);
 	const fpl__PlatformAppState *appState = fpl__global__AppState;
 	fplAudioBackendType result = appState->currentSettings.audio.backend;
 	return(result);
 }
 
-fpl_common_api const char *fplGetAudioBackendName(fplAudioBackendType driver) {
-	uint32_t index = FPL__ENUM_VALUE_TO_ARRAY_INDEX(driver, fplAudioBackendType_First, fplAudioBackendType_Last);
-	const char *result = fpl__globalAudioDriverNameTable[index];
+fpl_common_api const char *fplGetAudioBackendName(fplAudioBackendType backendType) {
+	uint32_t index = FPL__ENUM_VALUE_TO_ARRAY_INDEX(backendType, fplAudioBackendType_First, fplAudioBackendType_Last);
+	const char *result = fpl__globalAudioBackendNameTable[index];
 	return(result);
 }
 
@@ -22455,11 +22498,11 @@ fpl_common_api fplAudioResultType fplStopAudio() {
 
 		fpl__AudioSetDeviceState(commonAudioState, fpl__AudioDeviceState_Stopping);
 
-		if(audioState->isAsyncDriver) {
-			// Asynchronous drivers (Has their own thread)
+		if(audioState->isAsyncBackend) {
+			// Asynchronous backends (Has their own thread)
 			fpl__StopAudioDevice(audioState);
 		} else {
-			// Synchronous drivers
+			// Synchronous backends
 
 			// The audio worker thread is most likely in a wait state, so let it stop properly.
 			fpl__StopAudioDeviceMainLoop(audioState);
@@ -22513,12 +22556,12 @@ fpl_common_api fplAudioResultType fplPlayAudio() {
 
 		fpl__AudioSetDeviceState(commonAudioState, fpl__AudioDeviceState_Starting);
 
-		if(audioState->isAsyncDriver) {
-			// Asynchronous drivers (Has their own thread)
+		if(audioState->isAsyncBackend) {
+			// Asynchronous backends (Has their own thread)
 			fpl__StartAudioDevice(audioState);
 			fpl__AudioSetDeviceState(commonAudioState, fpl__AudioDeviceState_Started);
 		} else {
-			// Synchronous drivers
+			// Synchronous backends
 			fpl__SetAudioEvent(&audioState->wakeupEvent);
 
 			// Wait for the worker thread to finish starting the device.
@@ -22547,7 +22590,7 @@ fpl_common_api bool fplGetAudioHardwareFormat(fplAudioDeviceFormat *outFormat) {
 fpl_common_api bool fplSetAudioClientReadCallback(fpl_audio_client_read_callback *newCallback, void *userData) {
 	FPL__CheckPlatform(false);
 	fpl__AudioState *audioState = fpl__GetAudioState(fpl__global__AppState);
-	if((audioState != fpl_null) && (audioState->activeDriver > fplAudioBackendType_Auto)) {
+	if((audioState != fpl_null) && (audioState->backendType > fplAudioBackendType_Auto)) {
 		if(fpl__AudioGetDeviceState(&audioState->common) == fpl__AudioDeviceState_Stopped) {
 			audioState->common.clientReadCallback = newCallback;
 			audioState->common.clientUserData = userData;
@@ -22567,8 +22610,8 @@ fpl_common_api uint32_t fplGetAudioDevices(fplAudioDeviceInfo *devices, uint32_t
 		return 0;
 	}
 	uint32_t result = 0;
-	if(audioState->activeDriver > fplAudioBackendType_Auto) {
-		switch(audioState->activeDriver) {
+	if(audioState->backendType > fplAudioBackendType_Auto) {
+		switch(audioState->backendType) {
 #		if defined(FPL__ENABLE_AUDIO_DIRECTSOUND)
 			case fplAudioBackendType_DirectSound:
 			{
@@ -22601,33 +22644,36 @@ fpl_common_api uint32_t fplGetAudioDevices(fplAudioDeviceInfo *devices, uint32_t
 //
 // %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 #if defined(FPL__ENABLE_VIDEO)
-#define FPL__VIDEODRIVERTYPE_COUNT FPL__ENUM_COUNT(fplVideoBackendType_First, fplVideoBackendType_Last)
-fpl_globalvar const char *fpl__globalVideoDriverTypeNameTable[FPL__VIDEODRIVERTYPE_COUNT] = {
+#define FPL__VIDEOBACKENDTYPE_COUNT FPL__ENUM_COUNT(fplVideoBackendType_First, fplVideoBackendType_Last)
+fpl_globalvar const char *fpl__globalVideoBackendNameTable[FPL__VIDEOBACKENDTYPE_COUNT] = {
 	"None", // fplVideoBackendType_None
 	"Software", // fplVideoBackendType_Software
 	"OpenGL", // fplVideoBackendType_OpenGL
 	"Vulkan", // fplVideoBackendType_Vulkan
 };
 
-fpl_common_api const char *fplGetVideoDriverName(fplVideoBackendType driver) {
-	uint32_t index = FPL__ENUM_VALUE_TO_ARRAY_INDEX(driver, fplVideoBackendType_First, fplVideoBackendType_Last);
-	const char *result = fpl__globalVideoDriverTypeNameTable[index];
+fpl_common_api const char *fplGetVideoBackendName(fplVideoBackendType backendType) {
+	uint32_t index = FPL__ENUM_VALUE_TO_ARRAY_INDEX(backendType, fplVideoBackendType_First, fplVideoBackendType_Last);
+	const char *result = fpl__globalVideoBackendNameTable[index];
 	return(result);
 }
 
-fpl_common_api fplVideoBackendType fplGetVideoDriver() {
+fpl_common_api fplVideoBackendType fplGetVideoBackendType() {
 	FPL__CheckPlatform(fplVideoBackendType_None);
-	const fpl__PlatformAppState *appState = fpl__global__AppState;
-	fplVideoBackendType result = appState->currentSettings.video.backend;
-	return(result);
+	fpl__PlatformAppState *appState = fpl__global__AppState;
+	fpl__VideoState *videoState = fpl__GetVideoState(appState);
+	if(videoState != fpl_null) {
+		return(videoState->backendType);
+	}
+	return(fplVideoBackendType_None);
 }
 
 fpl_common_api fplVideoBackBuffer *fplGetVideoBackBuffer() {
 	FPL__CheckPlatform(fpl_null);
 	fpl__PlatformAppState *appState = fpl__global__AppState;
+	fpl__VideoState *videoState = fpl__GetVideoState(appState);
 	fplVideoBackBuffer *result = fpl_null;
-	if(appState->video.mem != fpl_null) {
-		fpl__VideoState *videoState = fpl__GetVideoState(appState);
+	if(videoState != fpl_null) {
 #if defined(FPL__ENABLE_VIDEO_SOFTWARE)
 		if(appState->currentSettings.video.backend == fplVideoBackendType_Software) {
 			result = &videoState->data.backbuffer;
@@ -22643,10 +22689,10 @@ fpl_common_api bool fplResizeVideoBackBuffer(const uint32_t width, const uint32_
 	fpl__VideoState *videoState = fpl__GetVideoState(appState);
 	bool result = false;
 	if(videoState != fpl_null) {
-		fplVideoBackendType driver = videoState->activeDriver;
-		if(driver != fplVideoBackendType_None && videoState->context.recreateOnResize) {
+		fplVideoBackendType backendType = videoState->backendType;
+		if(backendType != fplVideoBackendType_None && videoState->context.recreateOnResize) {
 			fpl__ShutdownVideoBackend(appState, videoState);
-			result = fpl__InitializeVideoBackend(videoState->activeDriver, &appState->currentSettings.video, width, height, appState, videoState);
+			result = fpl__InitializeVideoBackend(videoState->backendType, &appState->currentSettings.video, width, height, appState, videoState);
 		}
 	}
 	return (result);
@@ -22656,9 +22702,9 @@ fpl_common_api void fplVideoFlip() {
 	FPL__CheckPlatformNoRet();
 	fpl__PlatformAppState *appState = fpl__global__AppState;
 	const fpl__VideoState *videoState = fpl__GetVideoState(appState);
-	if(videoState != fpl_null && videoState->activeDriver != fplVideoBackendType_None) {
+	if(videoState != fpl_null && videoState->backendType != fplVideoBackendType_None) {
 		fplAssert(videoState->context.presentFunc != fpl_null);
-		videoState->context.presentFunc(appState, &appState->window, &videoState->data, &videoState->backend.base);
+		videoState->context.presentFunc(appState, &appState->window, &videoState->data, &videoState->activeBackend.base);
 	}
 }
 
@@ -22667,9 +22713,9 @@ fpl_common_api const void *fplGetVideoProcedure(const char *procName) {
 	fpl__PlatformAppState *appState = fpl__global__AppState;
 	const fpl__VideoState *videoState = fpl__GetVideoState(appState);
 	const void *result = fpl_null;
-	if(videoState != fpl_null && videoState->activeDriver != fplVideoBackendType_None) {
+	if(videoState != fpl_null && videoState->backendType != fplVideoBackendType_None) {
 		fplAssert(videoState->context.getProcedureFunc != fpl_null);
-		result = videoState->context.getProcedureFunc(&videoState->backend.base, procName);
+		result = videoState->context.getProcedureFunc(&videoState->activeBackend.base, procName);
 	}
 	return(result);
 }
@@ -22679,14 +22725,14 @@ fpl_common_api const fplVideoSurface *fplGetVideoSurface() {
 	fpl__PlatformAppState *appState = fpl__global__AppState;
 	const fpl__VideoState *videoState = fpl__GetVideoState(appState);
 	const fplVideoSurface *result = fpl_null;
-	if(videoState != fpl_null && videoState->activeDriver != fplVideoBackendType_None) {
-		result = &videoState->backend.base.surface;
+	if(videoState != fpl_null && videoState->backendType != fplVideoBackendType_None) {
+		result = &videoState->activeBackend.base.surface;
 	}
 	return(result);
 }
 
-fpl_common_api bool fplGetVideoRequirements(const fplVideoBackendType driver, fplVideoRequirements *requirements) {
-	fpl__VideoContext context = fpl__ConstructVideoContext(driver);
+fpl_common_api bool fplGetVideoRequirements(const fplVideoBackendType backendType, fplVideoRequirements *requirements) {
+	fpl__VideoContext context = fpl__ConstructVideoContext(backendType);
 	bool result = false;
 	if(context.getRequirementsFunc != fpl_null) {
 		result = context.getRequirementsFunc(requirements);
@@ -22735,7 +22781,7 @@ fpl_internal void fpl__ReleasePlatformStates(fpl__PlatformInitState *initState, 
 	{
 		fpl__VideoState *videoState = fpl__GetVideoState(appState);
 		if(videoState != fpl_null) {
-			FPL_LOG_DEBUG(FPL__MODULE_CORE, "Shutdown Video Backend '%s'", fplGetVideoDriverName(videoState->activeDriver));
+			FPL_LOG_DEBUG(FPL__MODULE_CORE, "Shutdown Video Backend '%s'", fplGetVideoBackendName(videoState->backendType));
 			fpl__ShutdownVideoBackend(appState, videoState);
 		}
 	}
@@ -22755,10 +22801,10 @@ fpl_internal void fpl__ReleasePlatformStates(fpl__PlatformInitState *initState, 
 	{
 		fpl__VideoState *videoState = fpl__GetVideoState(appState);
 		if(videoState != fpl_null) {
-			FPL_LOG_DEBUG(FPL__MODULE_CORE, "Destroy surface for Video Backend '%s'", fplGetVideoDriverName(videoState->activeDriver));
+			FPL_LOG_DEBUG(FPL__MODULE_CORE, "Destroy surface for Video Backend '%s'", fplGetVideoBackendName(videoState->backendType));
 			fpl__DestroySurfaceBackend(appState, videoState);
 
-			FPL_LOG_DEBUG(FPL__MODULE_CORE, "Release Video Backend '%s'", fplGetVideoDriverName(videoState->activeDriver));
+			FPL_LOG_DEBUG(FPL__MODULE_CORE, "Release Video Backend '%s'", fplGetVideoBackendName(videoState->backendType));
 			fpl__UnloadVideoBackend(appState, videoState);
 		}
 	}
@@ -22968,28 +23014,30 @@ fpl_common_api bool fplPlatformInit(const fplInitFlags initFlags, const fplSetti
 	// Init video state
 #	if defined(FPL__ENABLE_VIDEO)
 	if(appState->initFlags & fplInitFlags_Video) {
-		FPL_LOG_DEBUG(FPL__MODULE_CORE, "Init video state:");
+		FPL_LOG_DEBUG(FPL__MODULE_CORE, "Init Video State");
 		appState->video.mem = (uint8_t *)platformAppStateMemory + videoMemoryOffset;
 		appState->video.memSize = sizeof(fpl__VideoState);
 		fpl__VideoState *videoState = fpl__GetVideoState(appState);
 		fplAssert(videoState != fpl_null);
 
-		fplVideoBackendType videoDriver = appState->initSettings.video.backend;
+		fplVideoBackendType videoBackendType = appState->initSettings.video.backend;
 
 		// Construct video context (Function table)
-		videoState->context = fpl__ConstructVideoContext(videoDriver);
+		FPL_LOG_DEBUG(FPL__MODULE_CORE, "Construct Video Context:");
+		videoState->context = fpl__ConstructVideoContext(videoBackendType);
+		videoState->backendType = videoBackendType;
 
 		// Load video backend (API)
-		const char *videoDriverString = fplGetVideoDriverName(videoDriver);
-		FPL_LOG_DEBUG(FPL__MODULE_CORE, "Load Video API for Driver '%s':", videoDriverString);
+		const char *videoBackendName = fplGetVideoBackendName(videoBackendType);
+		FPL_LOG_DEBUG(FPL__MODULE_CORE, "Load Video API for Backend '%s':", videoBackendName);
 		{
-			if(!fpl__LoadVideoBackend(appState, videoDriver, videoState)) {
-				FPL__CRITICAL(FPL__MODULE_CORE, "Failed loading Video API for Driver '%s'!", videoDriverString);
+			if(!fpl__LoadVideoBackend(appState, videoState)) {
+				FPL__CRITICAL(FPL__MODULE_CORE, "Failed loading Video API for Backend '%s'!", videoBackendName);
 				fpl__ReleasePlatformStates(initState, appState);
 				return(fpl__SetPlatformResult(fplPlatformResultType_FailedVideo));
 			}
 		}
-		FPL_LOG_DEBUG(FPL__MODULE_CORE, "Successfully loaded Video API for Driver '%s'", videoDriverString);
+		FPL_LOG_DEBUG(FPL__MODULE_CORE, "Successfully loaded Video API for Backend '%s'", videoBackendName);
 	}
 #	endif // FPL__ENABLE_VIDEO
 
@@ -23016,14 +23064,14 @@ fpl_common_api bool fplPlatformInit(const fplInitFlags initFlags, const fplSetti
 		fplAssert(videoState != fpl_null);
 		fplWindowSize windowSize = fplZeroInit;
 		fplGetWindowSize(&windowSize);
-		const char *videoDriverName = fplGetVideoDriverName(appState->initSettings.video.backend);
-		FPL_LOG_DEBUG(FPL__MODULE_CORE, "Init Video with Driver '%s':", videoDriverName);
+		const char *videoBackendName = fplGetVideoBackendName(appState->initSettings.video.backend);
+		FPL_LOG_DEBUG(FPL__MODULE_CORE, "Init Video with Backend '%s':", videoBackendName);
 		if(!fpl__InitializeVideoBackend(appState->initSettings.video.backend, &appState->initSettings.video, windowSize.width, windowSize.height, appState, videoState)) {
-			FPL__CRITICAL(FPL__MODULE_CORE, "Failed initialization video with settings (Driver=%s, Width=%d, Height=%d)", videoDriverName, windowSize.width, windowSize.height);
+			FPL__CRITICAL(FPL__MODULE_CORE, "Failed initialization Video with Backend '%s' with settings (Width=%d, Height=%d)", videoBackendName, windowSize.width, windowSize.height);
 			fpl__ReleasePlatformStates(initState, appState);
 			return(fpl__SetPlatformResult(fplPlatformResultType_FailedVideo));
 		}
-		FPL_LOG_DEBUG(FPL__MODULE_CORE, "Successfully initialized video backend '%s'", videoDriverName);
+		FPL_LOG_DEBUG(FPL__MODULE_CORE, "Successfully initialized Video with Backend '%s'", videoBackendName);
 	}
 #	endif // FPL__ENABLE_VIDEO
 
@@ -23032,16 +23080,16 @@ fpl_common_api bool fplPlatformInit(const fplInitFlags initFlags, const fplSetti
 	if(appState->initFlags & fplInitFlags_Audio) {
 		appState->audio.mem = (uint8_t *)platformAppStateMemory + audioMemoryOffset;
 		appState->audio.memSize = sizeof(fpl__AudioState);
-		const char *audioDriverName = fplGetAudioBackendName(appState->initSettings.audio.backend);
-		FPL_LOG_DEBUG("Core", "Init Audio with Driver '%s':", audioDriverName);
+		const char *audioBackendName = fplGetAudioBackendName(appState->initSettings.audio.backend);
+		FPL_LOG_DEBUG(FPL__MODULE_CORE, "Init Audio with Backend '%s':", audioBackendName);
 		fpl__AudioState *audioState = fpl__GetAudioState(appState);
 		fplAssert(audioState != fpl_null);
 		fplAudioResultType initAudioResult = fpl__InitAudio(&appState->initSettings.audio, audioState);
 		if(initAudioResult != fplAudioResultType_Success) {
 			const char *initAudioResultName = fplGetAudioResultName(initAudioResult);
 			const char *audioFormatName = fplGetAudioFormatName(initSettings->audio.targetFormat.type);
-			FPL__CRITICAL("Core", "Failed initialization audio with settings (Driver=%s, Format=%s, SampleRate=%d, Channels=%d) -> %s",
-				audioDriverName,
+			FPL__CRITICAL(FPL__MODULE_CORE, "Failed initialization audio with Backend '%s' settings (Format=%s, SampleRate=%d, Channels=%d) -> %s",
+				audioBackendName,
 				audioFormatName,
 				initSettings->audio.targetFormat.sampleRate,
 				initSettings->audio.targetFormat.channels,
@@ -23049,14 +23097,14 @@ fpl_common_api bool fplPlatformInit(const fplInitFlags initFlags, const fplSetti
 			fpl__ReleasePlatformStates(initState, appState);
 			return(fpl__SetPlatformResult(fplPlatformResultType_FailedAudio));
 		}
-		FPL_LOG_DEBUG("Core", "Successfully initialized Audio Driver '%s'", audioDriverName);
+		FPL_LOG_DEBUG(FPL__MODULE_CORE, "Successfully initialized Audio with Backend '%s'", audioBackendName);
 
 		// Auto play audio if needed
 		if(appState->initSettings.audio.startAuto && (appState->initSettings.audio.clientReadCallback != fpl_null)) {
-			FPL_LOG_DEBUG("Core", "Play Audio (Auto)");
+			FPL_LOG_DEBUG(FPL__MODULE_CORE, "Play Audio (Auto)");
 			fplAudioResultType playResult = fplPlayAudio();
 			if(playResult != fplAudioResultType_Success) {
-				FPL__CRITICAL("Core", "Failed auto-play of audio, code: %d!", playResult);
+				FPL__CRITICAL(FPL__MODULE_CORE, "Failed auto-play of audio, code: %d!", playResult);
 				fpl__ReleasePlatformStates(initState, appState);
 				return(fpl__SetPlatformResult(fplPlatformResultType_FailedAudio));
 			}
