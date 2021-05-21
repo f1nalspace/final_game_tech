@@ -952,7 +952,7 @@ int main(int argc, char **args) {
 	fplSettings settings = fplMakeDefaultSettings();
 	fplCopyString("FPL Demo | Audio", settings.window.title, fplArrayCount(settings.window.title));
 
-	settings.video.driver = fplVideoDriverType_OpenGL;
+	settings.video.backend = fplVideoBackendType_OpenGL;
 	settings.video.graphics.opengl.compabilityFlags = fplOpenGLCompabilityFlags_Legacy;
 	settings.video.isVSync = true;
 

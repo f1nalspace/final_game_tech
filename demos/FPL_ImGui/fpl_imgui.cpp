@@ -316,7 +316,7 @@ int main(int argc, char **args) {
 	fplCopyString("ImGUI Example", settings.window.title, fplArrayCount(settings.window.title));
 	settings.window.windowSize.width = 1280;
 	settings.window.windowSize.height = 720;
-	settings.video.driver = fplVideoDriverType_OpenGL;
+	settings.video.backend = fplVideoBackendType_OpenGL;
 	if(fplPlatformInit(fplInitFlags_Video, &settings)) {
 		displayCount = fplGetDisplays(displays, fplArrayCount(displays));
 

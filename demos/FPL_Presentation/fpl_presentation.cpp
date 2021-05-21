@@ -2244,7 +2244,7 @@ static void QuaternionTests() {
 int main(int argc, char **argv) {
 	fplSettings settings = fplMakeDefaultSettings();
 	fplCopyString("FPL Demo | Presentation", settings.window.title, fplArrayCount(settings.window.title));
-	settings.video.driver = fplVideoDriverType_OpenGL;
+	settings.video.backend = fplVideoBackendType_OpenGL;
 	settings.video.isVSync = true;
 	settings.video.graphics.opengl.compabilityFlags = fplOpenGLCompabilityFlags_Legacy;
 	settings.video.graphics.opengl.multiSamplingCount = 16;

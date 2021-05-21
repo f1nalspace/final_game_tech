@@ -1855,7 +1855,7 @@ int main(int argc, char** argv) {
 	fplSettings settings;
 	fplSetDefaultSettings(&settings);
 	settings.video.isVSync = true;
-	settings.video.driver = fplVideoDriverType_OpenGL;
+	settings.video.backend = fplVideoBackendType_OpenGL;
 #if FORCE_LEGACY_OPENGL
 	settings.video.graphics.opengl.compabilityFlags = fplOpenGLCompabilityFlags_Legacy;
 #else

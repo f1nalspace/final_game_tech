@@ -1329,7 +1329,7 @@
 
 	@subsection category_video_general_init_default Default video output
 
-	If you don't specify any settings then the video driver is automatically detected, depending on your operating system and supported hardware and software.<br>
+	If you don't specify any settings then the video backend is automatically detected, depending on your operating system and supported hardware and software.<br>
 	By default, this is most likely be legacy OpenGL - which is supported on almost every video card on any OS.<br>
 	<br>
 	But this is not the recommended way to initialize video output, because you are responsible for handling any video output yourself.<br>
@@ -1340,19 +1340,19 @@
 	}
 	@endcode
 
-	@subsection category_video_general_init_setting_driver Setting the video driver
+	@subsection category_video_general_init_setting_driver Setting the video backend
 
-	It is recommended to set at least the video driver manually, to ensure that you get either initialized with that driver properly or an error when your configuration is not supported.<br>
+	It is recommended to set at least the video backend manually, to ensure that you get either initialized with that driver properly or an error when your configuration is not supported.<br>
 	<br>
-	You do that by simply setting the @ref fplVideoDriverType field in your @ref fplVideoSettings structure which is included in the @ref fplSettings structure to the @ref fplPlatformInit() call.
+	You do that by simply setting the @ref fplVideoBackendType field in your @ref fplVideoSettings structure which is included in the @ref fplSettings structure to the @ref fplPlatformInit() call.
 	
 	@code{.c}
 	fplSettings settings;
 	fplSetDefaultSettings(&settings);
 	fplVideoSettings &videoSettings = settings.video;
 
-	// Forcing the video driver to be OpenGL
-	videoSettings.driver = fplVideoDriverType_OpenGL;
+	// Forcing the video backend to be OpenGL
+	videoSettings.backend = fplVideoBackendType_OpenGL;
 
 	if (fplPlatformInit(fplInitFlags_Video, &settings)) {
 		// ... your code here
@@ -1366,12 +1366,12 @@
 	@note There is no guarantee that vertical synchronization is supported by your video device or selected driver.
 	@note Software video output does not support vertical synchronisation!
 
-	@section category_video_general_disable Disable unneeded Video Drivers
+	@section category_video_general_disable Disable unneeded video backends
 
-	To compile out certain video drivers, you simply specify the **FPL_NO_VIDEO_[Name of the video driver]** preprocessor directive.<br>
-	But the @ref fplVideoDriverType in question is never removed from the enumeration - keep that in mind!<br>
+	To compile out certain video backends, you simply specify the **FPL_NO_VIDEO_[Name of the video backend]** preprocessor directive.<br>
+	But the @ref fplVideoBackendType in question is never removed from the enumeration - keep that in mind!<br>
 
-	Example (Disable OpenGL Video Driver):
+	Example (Disable OpenGL video backend):
 
 	@code{.c}
 	#define FPL_NO_VIDEO_OPENGL
@@ -1394,7 +1394,7 @@
 
 	@section category_video_general_notes Notes
 
-	Driver types stored in the @ref fplVideoDriverType enumeration are not filtered away, even when you disable it by a preprocessor directive!<br>
+	Driver types stored in the @ref fplVideoBackendType enumeration are not filtered away, even when you disable it by a preprocessor directive!<br>
 	Keep that in mind when you initialize the video device.<br>
 	<br>
 	If needed you can use @ref fplSetDefaultVideoSettings() to fill in just the default video settings inside the @ref fplVideoSettings structure.<br>
@@ -1406,7 +1406,7 @@
 
 	@section section_category_video_legacy_opengl_init Initialize Legacy OpenGL
 
-	To initialize a legacy OpenGL (up to GL version 2.1) rendering context you simply set the @ref fplInitFlags_Video flag in the @ref fplPlatformInit() call and change the video driver type to @ref fplVideoDriverType_OpenGL and set the @ref fplOpenGLVideoSettings.compabilityFlags to @ref fplOpenGLCompabilityFlags_Legacy .<br>
+	To initialize a legacy OpenGL (up to GL version 2.1) rendering context you simply set the @ref fplInitFlags_Video flag in the @ref fplPlatformInit() call and change the video backend type to @ref fplVideoBackendType_OpenGL and set the @ref fplOpenGLVideoSettings.compabilityFlags to @ref fplOpenGLCompabilityFlags_Legacy .<br>
 	<br>
 	This will work in ~99% on all supported platforms - if not please post an issue for that platform/configuration/video-card ;-)
 
@@ -1415,8 +1415,8 @@
 	fplSetDefaultSettings(&settings);
 	fplVideoSettings &videoSettings = settings.video;
 
-	// Forcing the video driver to be legacy OpenGL
-	videoSettings.driver = fplVideoDriverType_OpenGL;
+	// Forcing the video backend to be legacy OpenGL
+	videoSettings.backend = fplVideoBackendType_OpenGL;
 	videoSettings.opengl.compabilityFlags = fplOpenGLCompabilityFlags_Legacy;
 
 	if (fplPlatformInit(fplInitFlags_Video, &settings)) {
@@ -1443,7 +1443,7 @@
 
 	@section section_category_video_modern_opengl_init Initialize a modern OpenGL Rendering Context
 
-	To initialize a modern OpenGL (3.0+) rendering context, you simply set the @ref fplInitFlags_Video flag in the @ref fplPlatformInit() call and change the video driver type to @ref fplVideoDriverType_OpenGL and setup the following parameters:<br>
+	To initialize a modern OpenGL (3.0+) rendering context, you simply set the @ref fplInitFlags_Video flag in the @ref fplPlatformInit() call and change the video backend type to @ref fplVideoBackendType_OpenGL and setup the following parameters:<br>
 	- Set the @ref fplOpenGLVideoSettings.majorVersion to 3 or higher
 	- Set the @ref fplOpenGLVideoSettings.minorVersion to 0 or higher
 	- Set the @ref fplOpenGLVideoSettings.compabilityFlags to either a @ref fplOpenGLCompabilityFlags_Core or @ref fplOpenGLCompabilityFlags_Compability
@@ -1454,8 +1454,8 @@
 	fplSetDefaultSettings(&settings);
 	fplVideoSettings &videoSettings = settings.video;
 
-	// Forcing the video driver to be modern OpenGL with Core profile and for GL version 3.3
-	videoSettings.driver = fplVideoDriverType_OpenGL;
+	// Forcing the video backend to be modern OpenGL with Core profile and for GL version 3.3
+	videoSettings.backend = fplVideoBackendType_OpenGL;
 	videoSettings.graphics.opengl.compabilityFlags = fplOpenGLCompabilityFlags_Core;
 	videoSettings.graphics.opengl.majorVersion = 3;
 	videoSettings.graphics.opengl.minorVersion = 3;
@@ -1491,8 +1491,8 @@
 	fplSetDefaultSettings(&settings);
 	fplVideoSettings &videoSettings = settings.video;
 
-	// Forcing the video driver to be modern OpenGL with Core profile and for GL version 3.3
-	videoSettings.driver = fplVideoDriverType_OpenGL;
+	// Forcing the video backend to be modern OpenGL with Core profile and for GL version 3.3
+	videoSettings.backend = fplVideoBackendType_OpenGL;
 	videoSettings.graphics.opengl.compabilityFlags = fplOpenGLCompabilityFlags_Core;
 	videoSettings.graphics.opengl.majorVersion = 3;
 	videoSettings.graphics.opengl.minorVersion = 3;
@@ -1517,7 +1517,7 @@
 
 	@section section_category_video_software_init Initialize a software backbuffer
 
-	To initialize software rendering output, you simply set the @ref fplInitFlags_Video flag in the @ref fplPlatformInit() call and change the video driver type to @ref fplVideoDriverType_Software.<br>
+	To initialize software rendering output, you simply set the @ref fplInitFlags_Video flag in the @ref fplPlatformInit() call and change the video backend type to @ref fplVideoBackendType_Software.<br>
 	Call @ref fplGetVideoBackBuffer() to get access to the pixel data.
 
 	@code{.c}
@@ -1525,8 +1525,8 @@
 	fplSetDefaultSettings(&settings);
 	fplVideoSettings &videoSettings = settings.video;
 
-	// Forcing the video driver to be software
-	videoSettings.driver = fplVideoDriverType_Software;
+	// Forcing the video backend to be software
+	videoSettings.backend = fplVideoBackendType_Software;
 
 	if (fplPlatformInit(fplInitFlags_Video, &settings)) {
 		// Video software backbuffer is ready
@@ -1626,7 +1626,7 @@
 	@section section_category_video_software_notes Notes
 
 	- There is no software rendering functions built-in! If you want to draw for example a circle, you have to roll out your drawCircle() function - which may use Bresenham as its base or something.<br>
-	- Vertical synchronization is not supported for software video drivers!
+	- Vertical synchronization is not supported for software video backends!
 */
 
 /*!
@@ -3301,7 +3301,7 @@
 	For example, Linux is a POSIX-based platform so it uses POSIX libraries, such as pthread / X11, etc.
 	The pthread and X11 implementation are separated, so other Unix-based platforms can use that implementation without any problem.
 	<br>
-	On top of that FPL implements multiple audio and video drivers, so that all platforms can playback audio and render using a supported graphics API.<br>
+	On top of that FPL implements multiple audio and video backends, so that all platforms can playback audio and render using a supported graphics API.<br>
 
 	@subsection subsection_faq_limitations Does FPL have some limitations?
 	Yes, it does have some limitations, because it cannot do everything for you:
@@ -3587,13 +3587,13 @@
 		<tr>
 			<td>Video</td>
 			<td>FPL_NO_VIDEO_OPENGL</td>
-			<td>Define this to disable the OpenGL Video Driver.</td>
+			<td>Define this to disable the OpenGL video backend.</td>
 			<td>Not set by default</td>
 		</tr>
 		<tr>
 			<td>Video</td>
 			<td>FPL_NO_VIDEO_SOFTWARE</td>
-			<td>Define this to disable the Software Video Driver.</td>
+			<td>Define this to disable the Software video backend.</td>
 			<td>Not set by default</td>
 		</tr>
 
@@ -4058,7 +4058,7 @@
 		int main(int argc, char **args) {
 			int result = 0;
 			fplSettings settings = fplMakeDefaultSettings();
-			settings.video.driver = fplVideoDriverType_OpenGL;
+			settings.video.backend = fplVideoBackendType_OpenGL;
 			fplCopyString("FPL Modern OpenGL", settings.window.title, fplArrayCount(settings.window.title));
 			settings.video.graphics.opengl.compabilityFlags = fplOpenGLCompabilityFlags_Core;
 			settings.video.graphics.opengl.majorVersion = 3;

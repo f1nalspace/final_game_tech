@@ -2800,7 +2800,7 @@ int main(int argc, char **argv) {
 	const char **requiredExtensions = fpl_null;
 	uint32_t requiredExtensionCount = 0;
 #if VULKANDEMO_FPL_VIDEO_MODE == VULKANDEMO_FPL_VIDEO_MODE_SURFACE_ONLY
-	if(fplGetVideoRequirements(fplVideoDriverType_Vulkan, &videoRequirements)) {
+	if(fplGetVideoRequirements(fplVideoBackendType_Vulkan, &videoRequirements)) {
 		fplConsoleFormatOut("%lu required instance extensions:\n", videoRequirements.vulkan.instanceExtensionCount);
 		for(uint32_t i = 0; i < videoRequirements.vulkan.instanceExtensionCount; ++i) {
 			fplConsoleFormatOut("- [%lu] %s\n", i, videoRequirements.vulkan.instanceExtensions[i]);
@@ -2841,7 +2841,7 @@ int main(int argc, char **argv) {
 
 #if VULKANDEMO_FPL_VIDEO_MODE != VULKANDEMO_FPL_VIDEO_MODE_NONE
 	initFlags |= fplInitFlags_Video;
-	settings.video.driver = fplVideoDriverType_Vulkan;
+	settings.video.backend = fplVideoBackendType_Vulkan;
 
 #if VULKANDEMO_FPL_VIDEO_MODE == VULKANDEMO_FPL_VIDEO_MODE_FULL
 	// We want FPL to create the instance and the surface for us
@@ -2863,7 +2863,7 @@ int main(int argc, char **argv) {
 #endif
 
 #else
-	settings.video.driver = fplVideoDriverType_None;
+	settings.video.backend = fplVideoBackendType_None;
 #endif // VULKANDEMO_FPL_VIDEO_MODE != VULKANDEMO_FPL_VIDEO_MODE_NONE
 
 	fplConsoleFormatOut("-> Initialize %s Platform\n", platformName);

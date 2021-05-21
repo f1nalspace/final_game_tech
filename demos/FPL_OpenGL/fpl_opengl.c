@@ -142,7 +142,7 @@ static PFNGLGETUNIFORMLOCATIONPROC glGetUniformLocation = NULL;
 static PFNGLUNIFORM1IPROC glUniform1i = NULL;
 static PFNGLUNIFORMMATRIX4FV glUniformMatrix4fv = NULL;
 
-// @TODO(final): Add a FPL function for retrieving a proc from the current video driver
+// @TODO(final): Add a FPL function for retrieving a proc from the current video backend
 #if defined(FPL_PLATFORM_WINDOWS)
 static void *GLProcAddress(const char *name) {
 	fpl__VideoState *videoState = (fpl__VideoState *)fpl__global__AppState->video.mem;
@@ -527,7 +527,7 @@ static bool RunModern() {
 int main(int argc, char **args) {
 	int result = 0;
 	fplSettings settings = fplMakeDefaultSettings();
-	settings.video.driver = fplVideoDriverType_OpenGL;
+	settings.video.backend = fplVideoBackendType_OpenGL;
 #if MODERN_OPENGL
 	fplCopyString("FPL Modern OpenGL", settings.window.title, fplArrayCount(settings.window.title));
 	settings.video.graphics.opengl.compabilityFlags = fplOpenGLCompabilityFlags_Core;

@@ -70,7 +70,7 @@ static uint8_t RandomByte(RandomSeries *series) {
 int main(int argc, char **args) {
 	fplSettings settings = fplMakeDefaultSettings();
 	fplCopyString("Software Rendering Example", settings.window.title, fplArrayCount(settings.window.title));
-	settings.video.driver = fplVideoDriverType_Software;
+	settings.video.backend = fplVideoBackendType_Software;
 	settings.video.isAutoSize = true;
 	if (fplPlatformInit(fplInitFlags_Video, &settings)) {
 		RandomSeries series = { 1337 };

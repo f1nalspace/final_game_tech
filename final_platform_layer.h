@@ -56,8 +56,8 @@ int main(int argc, char **args){
 	// Create default settings
 	fplSettings settings = fplMakeDefaultSettings();
 
-	// Overwrite the video driver
-	settings.video.driver = fplVideoDriverType_OpenGL;
+	// Overwrite the video backend
+	settings.video.backend = fplVideoBackendType_OpenGL;
 
 	// Legacy OpenGL
 	settings.video.graphics.opengl.compabilityFlags = fplOpenGLCompabilityFlags_Legacy;
@@ -3434,22 +3434,22 @@ typedef enum fplPlatformResultType {
 */
 fpl_common_api const char *fplGetPlatformResultName(const fplPlatformResultType type);
 
-//! An enumeration of video driver types
-typedef enum fplVideoDriverType {
-	//! No video driver
-	fplVideoDriverType_None = 0,
+//! An enumeration of video backend types
+typedef enum fplVideoBackendType {
+	//! No video backend
+	fplVideoBackendType_None = 0,
 	//! Software
-	fplVideoDriverType_Software,
+	fplVideoBackendType_Software,
 	//! OpenGL
-	fplVideoDriverType_OpenGL,
+	fplVideoBackendType_OpenGL,
 	//! Vulkan
-	fplVideoDriverType_Vulkan,
+	fplVideoBackendType_Vulkan,
 
-	//! First @ref fplVideoDriverType
-	fplVideoDriverType_First = fplVideoDriverType_None,
-	//! Last @ref fplVideoDriverType
-	fplVideoDriverType_Last = fplVideoDriverType_Vulkan,
-} fplVideoDriverType;
+	//! First @ref fplVideoBackendType
+	fplVideoBackendType_First = fplVideoBackendType_None,
+	//! Last @ref fplVideoBackendType
+	fplVideoBackendType_Last = fplVideoBackendType_Vulkan,
+} fplVideoBackendType;
 
 #if defined(FPL__ENABLE_VIDEO_OPENGL)
 //! An enumeration of OpenGL compability flags
@@ -3549,12 +3549,12 @@ typedef union fplGraphicsApiSettings {
 	int dummy;
 } fplGraphicsApiSettings;
 
-//! A structure that contains video settings such as driver, v-sync, API-settings, etc.
+//! A structure that contains video settings such as backend, v-sync, API-settings, etc.
 typedef struct fplVideoSettings {
 	//! Graphics API settings
 	fplGraphicsApiSettings graphics;
-	//! Video driver type
-	fplVideoDriverType driver;
+	//! video backend type
+	fplVideoBackendType backend;
 	//! Is vertical synchronization enabled. Usable only for hardware rendering!
 	fpl_b32 isVSync;
 	//! Is backbuffer automatically resized. Usable only for software rendering!
@@ -6565,16 +6565,16 @@ typedef union fplVideoRequirements {
 } fplVideoRequirements;
 
 /**
-* @brief Gets the current video driver
-* @return Returns the current video driver type @ref fplVideoDriverType
+* @brief Gets the current video backend
+* @return Returns the current video backend type @ref fplVideoBackendType
 */
-fpl_common_api fplVideoDriverType fplGetVideoDriver();
+fpl_common_api fplVideoBackendType fplGetVideoDriver();
 /**
-* @brief Gets a string that represents the given video driver
-* @param driver The video driver type @ref fplVideoDriverType
-* @return Returns a string for the given video driver type
+* @brief Gets a string that represents the given video backend
+* @param driver The video backend type @ref fplVideoBackendType
+* @return Returns a string for the given video backend type
 */
-fpl_common_api const char *fplGetVideoDriverName(fplVideoDriverType driver);
+fpl_common_api const char *fplGetVideoDriverName(fplVideoBackendType driver);
 /**
 * @brief Retrieves the pointer to the current video backbuffer.
 * @return Returns the pointer to the current @ref fplVideoBackBuffer.
@@ -6609,11 +6609,11 @@ fpl_common_api const fplVideoSurface *fplGetVideoSurface();
 
 /**
 * @brief Gets the video requirements for the specified video backend.
-* @param driver The @ref fplVideoDriverType
+* @param driver The @ref fplVideoBackendType
 * @param requirements The reference to the @ref fplVideoRequirements
 * @return Returns true when the @ref fplVideoRequirements are filled out, false otherwise.
 */
-fpl_common_api bool fplGetVideoRequirements(const fplVideoDriverType driver, fplVideoRequirements *requirements);
+fpl_common_api bool fplGetVideoRequirements(const fplVideoBackendType driver, fplVideoRequirements *requirements);
 
 /** @} */
 #endif // FPL__ENABLE_VIDEO
@@ -10456,14 +10456,14 @@ fpl_common_api void fplSetDefaultVideoSettings(fplVideoSettings *video) {
 	fplClearStruct(video);
 	video->isVSync = false;
 	video->isAutoSize = true;
-	// @NOTE(final): Auto detect video driver
+	// @NOTE(final): Auto detect video backend
 #if defined(FPL__ENABLE_VIDEO_OPENGL)
-	video->driver = fplVideoDriverType_OpenGL;
+	video->backend = fplVideoBackendType_OpenGL;
 	video->graphics.opengl.compabilityFlags = fplOpenGLCompabilityFlags_Legacy;
 #elif defined(FPL__ENABLE_VIDEO_SOFTWARE)
-	video->driver = fplVideoDriverType_Software;
+	video->backend = fplVideoBackendType_Software;
 #else
-	video->driver = fplVideoDriverType_None;
+	video->backend = fplVideoBackendType_None;
 #endif
 }
 
@@ -11095,7 +11095,7 @@ LRESULT CALLBACK fpl__Win32MessageProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 			}
 
 #			if defined(FPL__ENABLE_VIDEO_SOFTWARE)
-			if(appState->currentSettings.video.driver == fplVideoDriverType_Software) {
+			if(appState->currentSettings.video.backend == fplVideoBackendType_Software) {
 				if(appState->initSettings.video.isAutoSize) {
 					fplResizeVideoBackBuffer(newWidth, newHeight);
 				}
@@ -11303,7 +11303,7 @@ LRESULT CALLBACK fpl__Win32MessageProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 				msgData.lParam = lParam;
 				appState->currentSettings.window.callbacks.exposedCallback(fplGetPlatformType(), win32Window, &msgData, appState->currentSettings.window.callbacks.exposedUserData);
 			} else {
-				if(appState->currentSettings.video.driver == fplVideoDriverType_None) {
+				if(appState->currentSettings.video.backend == fplVideoBackendType_None) {
 					PAINTSTRUCT ps;
 					HDC hdc = wapi->user.BeginPaint(hwnd, &ps);
 					wapi->user.EndPaint(hwnd, &ps);
@@ -11314,8 +11314,8 @@ LRESULT CALLBACK fpl__Win32MessageProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 
 		case WM_ERASEBKGND:
 		{
-			// Prevent erasing of the background always, but only if a video driver is being used
-			if(appState->currentSettings.video.driver != fplVideoDriverType_None) {
+			// Prevent erasing of the background always, but only if a video backend is being used
+			if(appState->currentSettings.video.backend != fplVideoBackendType_None) {
 				return 1;
 			}
 		} break;
@@ -16769,7 +16769,7 @@ fpl_internal void fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatfor
 		case ConfigureNotify:
 		{
 #		if defined(FPL__ENABLE_VIDEO_SOFTWARE)
-			if(appState->currentSettings.video.driver == fplVideoDriverType_Software) {
+			if(appState->currentSettings.video.backend == fplVideoBackendType_Software) {
 				if(appState->initSettings.video.isAutoSize) {
 					uint32_t w = (uint32_t)ev->xconfigure.width;
 					uint32_t h = (uint32_t)ev->xconfigure.height;
@@ -22066,7 +22066,7 @@ typedef struct fpl__VideoState {
 	fpl__ActiveVideoBackend backend; // All video backends must be stored there, otherwise we will corrupt the fpl__VideoContext
 	fpl__VideoContext context;
 	fpl__VideoData data;
-	fplVideoDriverType activeDriver;
+	fplVideoBackendType activeDriver;
 } fpl__VideoState;
 
 fpl_internal fpl__VideoState *fpl__GetVideoState(fpl__PlatformAppState *appState) {
@@ -22091,7 +22091,7 @@ fpl_internal void fpl__UnloadVideoBackend(fpl__PlatformAppState *appState, fpl__
 	fplClearStruct(videoState);
 }
 
-fpl_internal bool fpl__LoadVideoBackend(fpl__PlatformAppState *appState, const fplVideoDriverType driver, fpl__VideoState *videoState) {
+fpl_internal bool fpl__LoadVideoBackend(fpl__PlatformAppState *appState, const fplVideoBackendType driver, fpl__VideoState *videoState) {
 	const fpl__VideoContext *ctx = &videoState->context;
 	fplAssert(ctx->loadFunc != fpl_null);
 	bool result = ctx->loadFunc(appState, &videoState->backend.base);
@@ -22115,8 +22115,8 @@ fpl_internal void fpl__ShutdownVideoBackend(fpl__PlatformAppState *appState, fpl
 	}
 }
 
-fpl_internal bool fpl__InitializeVideoBackend(const fplVideoDriverType driver, const fplVideoSettings *videoSettings, const uint32_t windowWidth, const uint32_t windowHeight, fpl__PlatformAppState *appState, fpl__VideoState *videoState) {
-	// @NOTE(final): Video drivers are platform independent, so we cannot have to same system as audio.
+fpl_internal bool fpl__InitializeVideoBackend(const fplVideoBackendType driver, const fplVideoSettings *videoSettings, const uint32_t windowWidth, const uint32_t windowHeight, fpl__PlatformAppState *appState, fpl__VideoState *videoState) {
+	// @NOTE(final): video backends are platform independent, so we cannot have to same system as audio.
 	fplAssert(appState != fpl_null);
 	fplAssert(videoState != fpl_null);
 
@@ -22126,7 +22126,7 @@ fpl_internal bool fpl__InitializeVideoBackend(const fplVideoDriverType driver, c
 
 	// Allocate backbuffer context if needed
 #	if defined(FPL__ENABLE_VIDEO_SOFTWARE)
-	if(driver == fplVideoDriverType_Software) {
+	if(driver == fplVideoBackendType_Software) {
 		fplVideoBackBuffer *backbuffer = &videoState->data.backbuffer;
 		backbuffer->width = windowWidth;
 		backbuffer->height = windowHeight;
@@ -22163,10 +22163,10 @@ fpl_internal bool fpl__InitializeVideoBackend(const fplVideoDriverType driver, c
 	return true;
 }
 
-fpl_internal fpl__VideoContext fpl__ConstructVideoContext(const fplVideoDriverType driver) {
+fpl_internal fpl__VideoContext fpl__ConstructVideoContext(const fplVideoBackendType driver) {
 	switch(driver) {
 #if defined(FPL__ENABLE_VIDEO_OPENGL)
-		case fplVideoDriverType_OpenGL:
+		case fplVideoBackendType_OpenGL:
 		{
 #	if defined(FPL_PLATFORM_WINDOWS)
 			return fpl__VideoBackend_Win32OpenGL_Construct();
@@ -22177,14 +22177,14 @@ fpl_internal fpl__VideoContext fpl__ConstructVideoContext(const fplVideoDriverTy
 #endif
 
 #if defined(FPL__ENABLE_VIDEO_VULKAN)
-		case fplVideoDriverType_Vulkan:
+		case fplVideoBackendType_Vulkan:
 		{
 			return fpl__VideoBackend_Vulkan_Construct();
 		} break;
 #endif
 
 #if defined(FPL__ENABLE_VIDEO_SOFTWARE)
-		case fplVideoDriverType_Software:
+		case fplVideoBackendType_Software:
 		{
 #	if defined(FPL_PLATFORM_WINDOWS)
 			return fpl__VideoBackend_Win32Software_Construct();
@@ -22601,24 +22601,24 @@ fpl_common_api uint32_t fplGetAudioDevices(fplAudioDeviceInfo *devices, uint32_t
 //
 // %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 #if defined(FPL__ENABLE_VIDEO)
-#define FPL__VIDEODRIVERTYPE_COUNT FPL__ENUM_COUNT(fplVideoDriverType_First, fplVideoDriverType_Last)
+#define FPL__VIDEODRIVERTYPE_COUNT FPL__ENUM_COUNT(fplVideoBackendType_First, fplVideoBackendType_Last)
 fpl_globalvar const char *fpl__globalVideoDriverTypeNameTable[FPL__VIDEODRIVERTYPE_COUNT] = {
-	"None", // fplVideoDriverType_None
-	"Software", // fplVideoDriverType_Software
-	"OpenGL", // fplVideoDriverType_OpenGL
-	"Vulkan", // fplVideoDriverType_Vulkan
+	"None", // fplVideoBackendType_None
+	"Software", // fplVideoBackendType_Software
+	"OpenGL", // fplVideoBackendType_OpenGL
+	"Vulkan", // fplVideoBackendType_Vulkan
 };
 
-fpl_common_api const char *fplGetVideoDriverName(fplVideoDriverType driver) {
-	uint32_t index = FPL__ENUM_VALUE_TO_ARRAY_INDEX(driver, fplVideoDriverType_First, fplVideoDriverType_Last);
+fpl_common_api const char *fplGetVideoDriverName(fplVideoBackendType driver) {
+	uint32_t index = FPL__ENUM_VALUE_TO_ARRAY_INDEX(driver, fplVideoBackendType_First, fplVideoBackendType_Last);
 	const char *result = fpl__globalVideoDriverTypeNameTable[index];
 	return(result);
 }
 
-fpl_common_api fplVideoDriverType fplGetVideoDriver() {
-	FPL__CheckPlatform(fplVideoDriverType_None);
+fpl_common_api fplVideoBackendType fplGetVideoDriver() {
+	FPL__CheckPlatform(fplVideoBackendType_None);
 	const fpl__PlatformAppState *appState = fpl__global__AppState;
-	fplVideoDriverType result = appState->currentSettings.video.driver;
+	fplVideoBackendType result = appState->currentSettings.video.backend;
 	return(result);
 }
 
@@ -22629,7 +22629,7 @@ fpl_common_api fplVideoBackBuffer *fplGetVideoBackBuffer() {
 	if(appState->video.mem != fpl_null) {
 		fpl__VideoState *videoState = fpl__GetVideoState(appState);
 #if defined(FPL__ENABLE_VIDEO_SOFTWARE)
-		if(appState->currentSettings.video.driver == fplVideoDriverType_Software) {
+		if(appState->currentSettings.video.backend == fplVideoBackendType_Software) {
 			result = &videoState->data.backbuffer;
 		}
 #endif
@@ -22643,8 +22643,8 @@ fpl_common_api bool fplResizeVideoBackBuffer(const uint32_t width, const uint32_
 	fpl__VideoState *videoState = fpl__GetVideoState(appState);
 	bool result = false;
 	if(videoState != fpl_null) {
-		fplVideoDriverType driver = videoState->activeDriver;
-		if(driver != fplVideoDriverType_None && videoState->context.recreateOnResize) {
+		fplVideoBackendType driver = videoState->activeDriver;
+		if(driver != fplVideoBackendType_None && videoState->context.recreateOnResize) {
 			fpl__ShutdownVideoBackend(appState, videoState);
 			result = fpl__InitializeVideoBackend(videoState->activeDriver, &appState->currentSettings.video, width, height, appState, videoState);
 		}
@@ -22656,7 +22656,7 @@ fpl_common_api void fplVideoFlip() {
 	FPL__CheckPlatformNoRet();
 	fpl__PlatformAppState *appState = fpl__global__AppState;
 	const fpl__VideoState *videoState = fpl__GetVideoState(appState);
-	if(videoState != fpl_null && videoState->activeDriver != fplVideoDriverType_None) {
+	if(videoState != fpl_null && videoState->activeDriver != fplVideoBackendType_None) {
 		fplAssert(videoState->context.presentFunc != fpl_null);
 		videoState->context.presentFunc(appState, &appState->window, &videoState->data, &videoState->backend.base);
 	}
@@ -22667,7 +22667,7 @@ fpl_common_api const void *fplGetVideoProcedure(const char *procName) {
 	fpl__PlatformAppState *appState = fpl__global__AppState;
 	const fpl__VideoState *videoState = fpl__GetVideoState(appState);
 	const void *result = fpl_null;
-	if(videoState != fpl_null && videoState->activeDriver != fplVideoDriverType_None) {
+	if(videoState != fpl_null && videoState->activeDriver != fplVideoBackendType_None) {
 		fplAssert(videoState->context.getProcedureFunc != fpl_null);
 		result = videoState->context.getProcedureFunc(&videoState->backend.base, procName);
 	}
@@ -22679,13 +22679,13 @@ fpl_common_api const fplVideoSurface *fplGetVideoSurface() {
 	fpl__PlatformAppState *appState = fpl__global__AppState;
 	const fpl__VideoState *videoState = fpl__GetVideoState(appState);
 	const fplVideoSurface *result = fpl_null;
-	if(videoState != fpl_null && videoState->activeDriver != fplVideoDriverType_None) {
+	if(videoState != fpl_null && videoState->activeDriver != fplVideoBackendType_None) {
 		result = &videoState->backend.base.surface;
 	}
 	return(result);
 }
 
-fpl_common_api bool fplGetVideoRequirements(const fplVideoDriverType driver, fplVideoRequirements *requirements) {
+fpl_common_api bool fplGetVideoRequirements(const fplVideoBackendType driver, fplVideoRequirements *requirements) {
 	fpl__VideoContext context = fpl__ConstructVideoContext(driver);
 	bool result = false;
 	if(context.getRequirementsFunc != fpl_null) {
@@ -22974,7 +22974,7 @@ fpl_common_api bool fplPlatformInit(const fplInitFlags initFlags, const fplSetti
 		fpl__VideoState *videoState = fpl__GetVideoState(appState);
 		fplAssert(videoState != fpl_null);
 
-		fplVideoDriverType videoDriver = appState->initSettings.video.driver;
+		fplVideoBackendType videoDriver = appState->initSettings.video.backend;
 
 		// Construct video context (Function table)
 		videoState->context = fpl__ConstructVideoContext(videoDriver);
@@ -23016,14 +23016,14 @@ fpl_common_api bool fplPlatformInit(const fplInitFlags initFlags, const fplSetti
 		fplAssert(videoState != fpl_null);
 		fplWindowSize windowSize = fplZeroInit;
 		fplGetWindowSize(&windowSize);
-		const char *videoDriverName = fplGetVideoDriverName(appState->initSettings.video.driver);
+		const char *videoDriverName = fplGetVideoDriverName(appState->initSettings.video.backend);
 		FPL_LOG_DEBUG(FPL__MODULE_CORE, "Init Video with Driver '%s':", videoDriverName);
-		if(!fpl__InitializeVideoBackend(appState->initSettings.video.driver, &appState->initSettings.video, windowSize.width, windowSize.height, appState, videoState)) {
+		if(!fpl__InitializeVideoBackend(appState->initSettings.video.backend, &appState->initSettings.video, windowSize.width, windowSize.height, appState, videoState)) {
 			FPL__CRITICAL(FPL__MODULE_CORE, "Failed initialization video with settings (Driver=%s, Width=%d, Height=%d)", videoDriverName, windowSize.width, windowSize.height);
 			fpl__ReleasePlatformStates(initState, appState);
 			return(fpl__SetPlatformResult(fplPlatformResultType_FailedVideo));
 		}
-		FPL_LOG_DEBUG(FPL__MODULE_CORE, "Successfully initialized Video Driver '%s'", videoDriverName);
+		FPL_LOG_DEBUG(FPL__MODULE_CORE, "Successfully initialized video backend '%s'", videoDriverName);
 	}
 #	endif // FPL__ENABLE_VIDEO
 
