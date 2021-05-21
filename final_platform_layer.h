@@ -6888,6 +6888,50 @@ fpl_main int main(int argc, char **args);
 #if (defined(FPL_IMPLEMENTATION) || FPL_IS_IDE) && !defined(FPL__IMPLEMENTED)
 #define FPL__IMPLEMENTED
 
+//
+// Compiler warnings
+//
+#if defined(FPL_COMPILER_MSVC)
+
+	// Start to overwrite warning settings (MSVC)
+#	pragma warning( push )
+
+	// Disable noexcept compiler warning for C++
+#	pragma warning( disable : 4577 )
+	// Disable "switch statement contains 'default' but no 'case' labels" compiler warning for C++
+#	pragma warning( disable : 4065 )
+	// Disable "conditional expression is constant" warning
+#	pragma warning( disable : 4127 )
+	// Disable "unreferenced formal parameter" warning
+#	pragma warning( disable : 4100 )
+	// Disable "nonstandard extension used: nameless struct/union" warning
+#	pragma warning( disable : 4201 )
+	// Disable "local variable is initialized but not referenced" warning
+#	pragma warning( disable : 4189 )
+	// Disable "nonstandard extension used: non-constant aggregate initializer" warning
+#	pragma warning( disable : 4204 )
+
+#elif defined(FPL_COMPILER_GCC)
+
+	// Start to overwrite warning settings (GCC)
+#	pragma GCC diagnostic push
+// Disable warning -Wunused-variable
+#	pragma GCC diagnostic ignored "-Wunused-variable"
+// Disable warning -Wunused-function
+#	pragma GCC diagnostic ignored "-Wunused-function"
+
+#elif defined(FPL_COMPILER_CLANG)
+
+	// Start to overwrite warning settings (Clang)
+#	pragma clang diagnostic push
+
+// Disable warning -Wunused-variable
+#	pragma clang diagnostic ignored "-Wunused-variable"
+// Disable warning -Wunused-function
+#	pragma clang diagnostic ignored "-Wunused-function"
+
+#endif // FPL_COMPILER
+
 // Module constants used for logging
 #define FPL__MODULE_CORE "Core"
 #define FPL__MODULE_FILES "Files"
@@ -6987,52 +7031,12 @@ fplStaticAssert(sizeof(fpl__LinuxSignalHandle) >= sizeof(int));
 // Compiler Includes
 //
 #if defined(FPL_COMPILER_MSVC)
-//#	include <immintrin.h> // _xgetbv
 #	include <intrin.h> // __cpuid, _Interlocked*
 #elif defined(FPL_COMPILER_GCC) || defined(FPL_COMPILER_CLANG)
 #	if defined(FPL_ARCH_X86) || defined(FPL_ARCH_X64)
 #		include <cpuid.h> // __cpuid_count
 #	endif // X86 or X64
 #endif
-
-//
-// Compiler warnings
-//
-#if defined(FPL_COMPILER_MSVC)
-	// Start to overwrite warning settings (MSVC)
-#	pragma warning( push )
-
-	// Disable noexcept compiler warning for C++
-#	pragma warning( disable : 4577 )
-	// Disable "switch statement contains 'default' but no 'case' labels" compiler warning for C++
-#	pragma warning( disable : 4065 )
-	// Disable "conditional expression is constant" warning
-#	pragma warning( disable : 4127 )
-	// Disable "unreferenced formal parameter" warning
-#	pragma warning( disable : 4100 )
-	// Disable "nonstandard extension used: nameless struct/union" warning
-#	pragma warning( disable : 4201 )
-	// Disable "local variable is initialized but not referenced" warning
-#	pragma warning( disable : 4189 )
-	// Disable "nonstandard extension used: non-constant aggregate initializer" warning
-#	pragma warning( disable : 4204 )
-#elif defined(FPL_COMPILER_GCC)
-	// Start to overwrite warning settings (GCC)
-#	pragma GCC diagnostic push
-// Disable warning -Wunused-variable
-#	pragma GCC diagnostic ignored "-Wunused-variable"
-// Disable warning -Wunused-function
-#	pragma GCC diagnostic ignored "-Wunused-function"
-#elif defined(FPL_COMPILER_CLANG)
-	// Start to overwrite warning settings (Clang)
-#	pragma clang diagnostic push
-
-// Disable warning -Wunused-variable
-#	pragma clang diagnostic ignored "-Wunused-variable"
-// Disable warning -Wunused-function
-#	pragma clang diagnostic ignored "-Wunused-function"
-
-#endif // FPL_COMPILER
 
 // Only include C-Runtime functions when CRT is enabled
 #if !defined(FPL_NO_CRT)
@@ -22871,6 +22875,9 @@ fpl_common_api fplPlatformType fplGetPlatformType() {
 #if defined(FPL_COMPILER_MSVC)
 //! Reset MSVC warning settings
 #	pragma warning( pop )
+#elif defined(FPL_COMPILER_GCC)
+//! Reset GCC warning settings
+#	pragma GCC diagnostic pop
 #elif defined(FPL_COMPILER_CLANG)
 //! Reset Clang warning settings
 #	pragma clang diagnostic pop
