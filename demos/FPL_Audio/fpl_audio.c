@@ -1052,27 +1052,27 @@ int main(int argc, char **args) {
 	PlayAudioTrack(&demo->audioSys, &demo->trackList, 0);
 
 #if 0
-		// Stream in initial frames
+	// Stream in initial frames
 	AudioFrameIndex initialFrameStreamCount = streamBufferFrames / 4;
 	fplAssert(streamBufferFrames >= initialFrameStreamCount);
 	StreamAudio(&demo->targetAudioFormat, initialFrameStreamCount, demo, fpl_null);
 #endif
 
-		// Start streaming thread
+	// Start streaming thread
 	demo->streamingThread = fplThreadCreate(AudioStreamingThread, demo);
 #endif
 
-		// Start audio playback (This will start calling clientReadCallback regularly)
+	// Start audio playback (This will start calling clientReadCallback regularly)
 	if(fplPlayAudio() == fplAudioResultType_Success) {
 		// Print output infos
-		const char *outDriver = fplGetAudioDriverName(currentSettings->audio.driver);
-		const char *outFormat = fplGetAudioFormatName(demo->audioSys.targetFormat.format);
+		const char *outBackendName = fplGetAudioBackendName(currentSettings->audio.backend);
+		const char *outFormatName = fplGetAudioFormatName(demo->audioSys.targetFormat.format);
 		uint32_t outSampleRate = demo->audioSys.targetFormat.sampleRate;
 		uint32_t outChannels = demo->audioSys.targetFormat.channels;
 		fplConsoleFormatOut("Playing %lu audio sources (%s, %s, %lu Hz, %lu channels)\n",
 			demo->audioSys.playItems.count,
-			outDriver,
-			outFormat,
+			outBackendName,
+			outFormatName,
 			outSampleRate,
 			outChannels);
 

@@ -1082,8 +1082,8 @@ struct AudioFormat {
 	uint32_t periods;
 	//! Format
 	fplAudioFormatType type;
-	//! Driver
-	fplAudioDriverType driver;
+	//! Backend
+	fplAudioBackendType backend;
 };
 
 struct AudioContext {
@@ -1099,7 +1099,7 @@ struct AudioContext {
 	double audioDiffAbgCoef;
 	double audioDiffThreshold;
 
-	fplAudioDriverType driver;
+	fplAudioBackendType backend;
 
 	SwrContext *softwareResampleCtx;
 	Frame *pendingAudioFrame;
@@ -2837,13 +2837,13 @@ static void RenderOSD(PlayerState *state, const Mat4f &proj, const float w, cons
 		PushTextToBuffer(state->fontBuffer, state->fontInfo, osdTextBuffer, osdFontSize, osdPos, V4f(1, 1, 1, 1), TextRenderMode::Baseline);
 		osdPos += V2f(0, -osdFontSize);
 
-		const char* audioDriverName = fplGetAudioDriverName(state->audio.audioTarget.driver);
+		const char* audioBackendName = fplGetAudioBackendName(state->audio.audioTarget.backend);
 		const char* audioFormatName = fplGetAudioFormatName(state->audio.audioTarget.type);
 
 		uint32_t bufferSize = state->audio.audioTarget.bufferSizeInBytes;
 		uint32_t frameSize = fplGetAudioFrameSizeInBytes(state->audio.audioTarget.type, state->audio.audioTarget.channels);
 
-		fplFormatString(osdTextBuffer, fplArrayCount(osdTextBuffer), "Audio: %s, %s, %u channels, %u Hz", audioDriverName, audioFormatName, state->audio.audioTarget.channels, state->audio.audioTarget.sampleRate);
+		fplFormatString(osdTextBuffer, fplArrayCount(osdTextBuffer), "Audio: %s, %s, %u channels, %u Hz", audioBackendName, audioFormatName, state->audio.audioTarget.channels, state->audio.audioTarget.sampleRate);
 		PushTextToBuffer(state->fontBuffer, state->fontInfo, osdTextBuffer, osdFontSize, osdPos, V4f(1, 1, 1, 1), TextRenderMode::Baseline);
 		osdPos += V2f(0, -osdFontSize);
 	}
@@ -3351,7 +3351,7 @@ static bool InitializeAudio(PlayerState &state, const char *mediaFilePath, const
 	audio.audioTarget.channels = targetChannelCount;
 	audio.audioTarget.sampleRate = targetSampleRate;
 	audio.audioTarget.type = nativeAudioFormat.type;
-	audio.audioTarget.driver = nativeAudioFormat.driver;
+	audio.audioTarget.backend = nativeAudioFormat.backend;
 	audio.audioTarget.bufferSizeInBytes = ffmpeg.av_samples_get_buffer_size(nullptr, audio.audioTarget.channels, audio.audioTarget.sampleRate, targetSampleFormat, 1);
 
 	AVSampleFormat inputSampleFormat = audioCodexCtx->sample_fmt;

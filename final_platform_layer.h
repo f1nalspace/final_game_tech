@@ -3569,22 +3569,22 @@ typedef struct fplVideoSettings {
 */
 fpl_common_api void fplSetDefaultVideoSettings(fplVideoSettings *video);
 
-//! An enumeration of audio driver types
-typedef enum fplAudioDriverType {
-	//! No audio driver
-	fplAudioDriverType_None = 0,
-	//! Auto detection
-	fplAudioDriverType_Auto,
+//! An enumeration of audio backend types
+typedef enum fplAudioBackendType {
+	//! No audio backend
+	fplAudioBackendType_None = 0,
+	//! Auto detect
+	fplAudioBackendType_Auto,
 	//! DirectSound
-	fplAudioDriverType_DirectSound,
+	fplAudioBackendType_DirectSound,
 	//! ALSA
-	fplAudioDriverType_Alsa,
+	fplAudioBackendType_Alsa,
 
-	//! First @ref fplAudioDriverType
-	fplAudioDriverType_First = fplAudioDriverType_None,
-	//! Last @ref fplAudioDriverType
-	fplAudioDriverType_Last = fplAudioDriverType_Alsa,
-} fplAudioDriverType;
+	//! First @ref fplAudioBackendType
+	fplAudioBackendType_First = fplAudioBackendType_None,
+	//! Last @ref fplAudioBackendType
+	fplAudioBackendType_Last = fplAudioBackendType_Alsa,
+} fplAudioBackendType;
 
 //! An enumeration of audio format types
 typedef enum fplAudioFormatType {
@@ -3653,8 +3653,8 @@ typedef struct fplAudioDeviceFormat {
 	fpl_b32 preferExclusiveMode;
 	//! Default fields
 	fplAudioDefaultFields defaultFields;
-	//! Audio driver
-	fplAudioDriverType driver;
+	//! Audio backend
+	fplAudioBackendType backend;
 } fplAudioDeviceFormat;
 
 //! A structure containing audio target format configurations, such as type, sample rate, channels, etc.
@@ -3677,7 +3677,7 @@ typedef struct fplAudioTargetFormat {
 	fpl_b32 preferExclusiveMode;
 } fplAudioTargetFormat;
 
-//! A union containing a id of the underlying driver
+//! A union containing a id of the underlying backend
 typedef union fplAudioDeviceID {
 #if defined(FPL__ENABLE_AUDIO_DIRECTSOUND)
 	//! DirectShow Device GUID
@@ -3700,14 +3700,14 @@ typedef struct fplAudioDeviceInfo {
 } fplAudioDeviceInfo;
 
 #if defined(FPL__ENABLE_AUDIO_ALSA)
-//! A structure containing settings for the ALSA audio driver
+//! A structure containing settings for the ALSA audio backend
 typedef struct fplAlsaAudioSettings {
 	//! Disable the usage of MMap in ALSA
 	fpl_b32 noMMap;
 } fplAlsaAudioSettings;
 #endif
 
-//! A union containing driver specific audio settings
+//! A union containing backend specific audio settings
 typedef union fplSpecificAudioSettings {
 #if defined(FPL__ENABLE_AUDIO_ALSA)
 	//! Alsa specific settings
@@ -3728,7 +3728,7 @@ typedef union fplSpecificAudioSettings {
 */
 typedef uint32_t(fpl_audio_client_read_callback)(const fplAudioDeviceFormat *deviceFormat, const uint32_t frameCount, void *outputSamples, void *userData);
 
-//! A structure containing audio settings, such as format, device info, callbacks, driver, etc.
+//! A structure containing audio settings, such as format, device info, callbacks, backend, etc.
 typedef struct fplAudioSettings {
 	//! The target format
 	fplAudioTargetFormat targetFormat;
@@ -3740,8 +3740,8 @@ typedef struct fplAudioSettings {
 	fpl_audio_client_read_callback *clientReadCallback;
 	//! User data pointer for client read callback
 	void *userData;
-	//! The targeted driver
-	fplAudioDriverType driver;
+	//! The targeted backend
+	fplAudioBackendType backend;
 	//! Start playing of audio samples after platform initialization automatically
 	fpl_b32 startAuto;
 	//! Stop playing of audio samples before platform release automatically
@@ -6668,9 +6668,9 @@ typedef enum fplAudioResultType {
 
 /**
 * @brief Gets the current audio driver
-* @return Returns the current audio driver type @ref fplAudioDriverType
+* @return Returns the current audio driver type @ref fplAudioBackendType
 */
-fpl_common_api fplAudioDriverType fplGetAudioDriver();
+fpl_common_api fplAudioBackendType fplGetAudioDriver();
 /**
 * @brief Start playing asynchronous audio.
 * @return Returns the audio result @ref fplAudioResultType
@@ -6716,10 +6716,10 @@ fpl_common_api uint32_t fplGetAudioSampleSizeInBytes(const fplAudioFormatType fo
 fpl_common_api const char *fplGetAudioFormatName(const fplAudioFormatType format);
 /**
 * @brief Gets the string that represents the given audio driver type.
-* @param driver The audio driver type @ref fplAudioDriverType
+* @param driver The audio driver type @ref fplAudioBackendType
 * @return Returns a string for the given audio driver type
 */
-fpl_common_api const char *fplGetAudioDriverName(fplAudioDriverType driver);
+fpl_common_api const char *fplGetAudioBackendName(fplAudioBackendType driver);
 /**
 * @brief Computes the total number of frames for given sample rate and buffer size.
 * @param sampleRate The sample rate in Hz
@@ -10490,12 +10490,12 @@ fpl_common_api void fplSetDefaultAudioSettings(fplAudioSettings *audio) {
 	fplClearStruct(audio);
 	fplSetDefaultAudioTargetFormat(&audio->targetFormat);
 
-	audio->driver = fplAudioDriverType_None;
+	audio->backend = fplAudioBackendType_None;
 #	if defined(FPL_PLATFORM_WINDOWS) && defined(FPL__ENABLE_AUDIO_DIRECTSOUND)
-	audio->driver = fplAudioDriverType_DirectSound;
+	audio->backend = fplAudioBackendType_DirectSound;
 #	endif
 #	if defined(FPL_PLATFORM_LINUX) && defined(FPL__ENABLE_AUDIO_ALSA)
-	audio->driver = fplAudioDriverType_Alsa;
+	audio->backend = fplAudioBackendType_Alsa;
 #	endif
 
 	audio->startAuto = true;
@@ -20298,7 +20298,7 @@ fpl_internal fplAudioResultType fpl__AudioInitDirectSound(const fplAudioSettings
 
 	// Set internal format
 	fplAudioDeviceFormat internalFormat = fplZeroInit;
-	internalFormat.driver = fplAudioDriverType_DirectSound;
+	internalFormat.backend = fplAudioBackendType_DirectSound;
 	if(fpl__Win32IsEqualGuid(actualFormat->SubFormat, FPL__GUID_KSDATAFORMAT_SUBTYPE_IEEE_FLOAT)) {
 		if(actualFormat->Format.wBitsPerSample == 64) {
 			internalFormat.type = fplAudioFormatType_F64;
@@ -21335,7 +21335,7 @@ fpl_internal fplAudioResultType fpl__AudioInitAlsa(const fplAudioSettings *audio
 	}
 
 	fplAudioDeviceFormat internalFormat = fplZeroInit;
-	internalFormat.driver = fplAudioDriverType_Alsa;
+	internalFormat.backend = fplAudioBackendType_Alsa;
 
 	//
 	// Format
@@ -21623,7 +21623,7 @@ typedef struct fpl__AudioState {
 	fpl__AudioEvent wakeupEvent;
 	volatile fplAudioResultType workResult;
 
-	fplAudioDriverType activeDriver;
+	fplAudioBackendType activeDriver;
 	bool isAsyncDriver;
 
 	union {
@@ -21646,18 +21646,18 @@ fpl_internal fpl__AudioState *fpl__GetAudioState(fpl__PlatformAppState *appState
 }
 
 fpl_internal void fpl__StopAudioDeviceMainLoop(fpl__AudioState *audioState) {
-	fplAssert(audioState->activeDriver > fplAudioDriverType_Auto);
+	fplAssert(audioState->activeDriver > fplAudioBackendType_Auto);
 	switch(audioState->activeDriver) {
 
 #	if defined(FPL__ENABLE_AUDIO_DIRECTSOUND)
-		case fplAudioDriverType_DirectSound:
+		case fplAudioBackendType_DirectSound:
 		{
 			fpl__AudioStopMainLoopDirectSound(&audioState->dsound);
 		} break;
 #	endif
 
 #	if defined(FPL__ENABLE_AUDIO_ALSA)
-		case fplAudioDriverType_Alsa:
+		case fplAudioBackendType_Alsa:
 		{
 			fpl__AudioStopMainLoopAlsa(&audioState->alsa);
 		} break;
@@ -21669,19 +21669,19 @@ fpl_internal void fpl__StopAudioDeviceMainLoop(fpl__AudioState *audioState) {
 }
 
 fpl_internal bool fpl__ReleaseAudioDevice(fpl__AudioState *audioState) {
-	fplAssert(audioState->activeDriver > fplAudioDriverType_Auto);
+	fplAssert(audioState->activeDriver > fplAudioBackendType_Auto);
 	bool result = false;
 	switch(audioState->activeDriver) {
 
 #	if defined(FPL__ENABLE_AUDIO_DIRECTSOUND)
-		case fplAudioDriverType_DirectSound:
+		case fplAudioBackendType_DirectSound:
 		{
 			result = fpl__AudioReleaseDirectSound(&audioState->common, &audioState->dsound);
 		} break;
 #	endif
 
 #	if defined(FPL__ENABLE_AUDIO_ALSA)
-		case fplAudioDriverType_Alsa:
+		case fplAudioBackendType_Alsa:
 		{
 			result = fpl__AudioReleaseAlsa(&audioState->common, &audioState->alsa);
 		} break;
@@ -21694,19 +21694,19 @@ fpl_internal bool fpl__ReleaseAudioDevice(fpl__AudioState *audioState) {
 }
 
 fpl_internal bool fpl__StopAudioDevice(fpl__AudioState *audioState) {
-	fplAssert(audioState->activeDriver > fplAudioDriverType_Auto);
+	fplAssert(audioState->activeDriver > fplAudioBackendType_Auto);
 	bool result = false;
 	switch(audioState->activeDriver) {
 
 #	if defined(FPL__ENABLE_AUDIO_DIRECTSOUND)
-		case fplAudioDriverType_DirectSound:
+		case fplAudioBackendType_DirectSound:
 		{
 			result = fpl__AudioStopDirectSound(&audioState->dsound);
 		} break;
 #	endif
 
 #	if defined(FPL__ENABLE_AUDIO_ALSA)
-		case fplAudioDriverType_Alsa:
+		case fplAudioBackendType_Alsa:
 		{
 			result = fpl__AudioStopAlsa(&audioState->alsa);
 		} break;
@@ -21719,19 +21719,19 @@ fpl_internal bool fpl__StopAudioDevice(fpl__AudioState *audioState) {
 }
 
 fpl_internal fplAudioResultType fpl__StartAudioDevice(fpl__AudioState *audioState) {
-	fplAssert(audioState->activeDriver > fplAudioDriverType_Auto);
+	fplAssert(audioState->activeDriver > fplAudioBackendType_Auto);
 	fplAudioResultType result = fplAudioResultType_Failed;
 	switch(audioState->activeDriver) {
 
 #	if defined(FPL__ENABLE_AUDIO_DIRECTSOUND)
-		case fplAudioDriverType_DirectSound:
+		case fplAudioBackendType_DirectSound:
 		{
 			result = fpl__AudioStartDirectSound(&audioState->common, &audioState->dsound);
 		} break;
 #	endif
 
 #	if defined(FPL__ENABLE_AUDIO_ALSA)
-		case fplAudioDriverType_Alsa:
+		case fplAudioBackendType_Alsa:
 		{
 			result = fpl__AudioStartAlsa(&audioState->common, &audioState->alsa);
 		} break;
@@ -21744,18 +21744,18 @@ fpl_internal fplAudioResultType fpl__StartAudioDevice(fpl__AudioState *audioStat
 }
 
 fpl_internal void fpl__RunAudioDeviceMainLoop(fpl__AudioState *audioState) {
-	fplAssert(audioState->activeDriver > fplAudioDriverType_Auto);
+	fplAssert(audioState->activeDriver > fplAudioBackendType_Auto);
 	switch(audioState->activeDriver) {
 
 #	if defined(FPL__ENABLE_AUDIO_DIRECTSOUND)
-		case fplAudioDriverType_DirectSound:
+		case fplAudioBackendType_DirectSound:
 		{
 			fpl__AudioRunMainLoopDirectSound(&audioState->common, &audioState->dsound);
 		} break;
 #	endif
 
 #	if defined(FPL__ENABLE_AUDIO_ALSA)
-		case fplAudioDriverType_Alsa:
+		case fplAudioBackendType_Alsa:
 		{
 			fpl__AudioRunMainLoopAlsa(&audioState->common, &audioState->alsa);
 		} break;
@@ -21766,10 +21766,10 @@ fpl_internal void fpl__RunAudioDeviceMainLoop(fpl__AudioState *audioState) {
 	}
 }
 
-fpl_internal bool fpl__IsAudioDriverAsync(fplAudioDriverType audioDriver) {
+fpl_internal bool fpl__IsAudioDriverAsync(fplAudioBackendType audioDriver) {
 	switch(audioDriver) {
-		case fplAudioDriverType_DirectSound:
-		case fplAudioDriverType_Alsa:
+		case fplAudioBackendType_DirectSound:
+		case fplAudioBackendType_Alsa:
 			return false;
 		default:
 			return false;
@@ -21810,7 +21810,7 @@ fpl_internal void fpl__AudioWorkerThread(const fplThreadHandle *thread, void *da
 	fpl__AudioState *audioState = (fpl__AudioState *)data;
 	fpl__CommonAudioState *commonAudioState = &audioState->common;
 	fplAssert(audioState != fpl_null);
-	fplAssert(audioState->activeDriver != fplAudioDriverType_None);
+	fplAssert(audioState->activeDriver != fplAudioBackendType_None);
 
 #if defined(FPL_PLATFORM_WINDOWS)
 	wapi->ole.CoInitializeEx(fpl_null, 0);
@@ -21915,7 +21915,7 @@ fpl_internal fplAudioResultType fpl__InitAudio(const fplAudioSettings *audioSett
 	const fpl__Win32Api *wapi = &fpl__global__AppState->win32.winApi;
 #endif
 
-	if(audioState->activeDriver != fplAudioDriverType_None) {
+	if(audioState->activeDriver != fplAudioBackendType_None) {
 		fpl__ReleaseAudio(audioState);
 		return fplAudioResultType_DriverAlreadyInitialized;
 	}
@@ -21949,24 +21949,24 @@ fpl_internal fplAudioResultType fpl__InitAudio(const fplAudioSettings *audioSett
 	}
 
 	// Prope drivers
-	fplAudioDriverType propeDrivers[16];
+	fplAudioBackendType propeDrivers[16];
 	uint32_t driverCount = 0;
-	if(audioSettings->driver == fplAudioDriverType_Auto) {
+	if(audioSettings->backend == fplAudioBackendType_Auto) {
 		// @NOTE(final): Add all audio drivers here, regardless of the platform.
-		propeDrivers[driverCount++] = fplAudioDriverType_DirectSound;
-		propeDrivers[driverCount++] = fplAudioDriverType_Alsa;
+		propeDrivers[driverCount++] = fplAudioBackendType_DirectSound;
+		propeDrivers[driverCount++] = fplAudioBackendType_Alsa;
 	} else {
-		// @NOTE(final): Forced audio driver
-		propeDrivers[driverCount++] = audioSettings->driver;
+		// @NOTE(final): Forced audio backend
+		propeDrivers[driverCount++] = audioSettings->backend;
 	}
 	fplAudioResultType initResult = fplAudioResultType_Failed;
 	for(uint32_t driverIndex = 0; driverIndex < driverCount; ++driverIndex) {
-		fplAudioDriverType propeDriver = propeDrivers[driverIndex];
+		fplAudioBackendType propeDriver = propeDrivers[driverIndex];
 
 		initResult = fplAudioResultType_Failed;
 		switch(propeDriver) {
 #		if defined(FPL__ENABLE_AUDIO_DIRECTSOUND)
-			case fplAudioDriverType_DirectSound:
+			case fplAudioBackendType_DirectSound:
 			{
 				initResult = fpl__AudioInitDirectSound(audioSettings, &actualTargetFormat, &audioState->common, &audioState->dsound);
 				if(initResult != fplAudioResultType_Success) {
@@ -21976,7 +21976,7 @@ fpl_internal fplAudioResultType fpl__InitAudio(const fplAudioSettings *audioSett
 #		endif
 
 #		if defined(FPL__ENABLE_AUDIO_ALSA)
-			case fplAudioDriverType_Alsa:
+			case fplAudioBackendType_Alsa:
 			{
 				initResult = fpl__AudioInitAlsa(audioSettings, &actualTargetFormat, &audioState->common, &audioState->alsa);
 				if(initResult != fplAudioResultType_Success) {
@@ -22316,24 +22316,24 @@ fpl_common_api const char *fplGetAudioFormatName(const fplAudioFormatType format
 	return(result);
 }
 
-#define FPL__AUDIODRIVERTYPE_COUNT FPL__ENUM_COUNT(fplAudioDriverType_First, fplAudioDriverType_Last)
+#define FPL__AUDIODRIVERTYPE_COUNT FPL__ENUM_COUNT(fplAudioBackendType_First, fplAudioBackendType_Last)
 fpl_globalvar const char *fpl__globalAudioDriverNameTable[] = {
-	"None", // No audio driver
-	"Automatic", // Automatic driver detection
+	"None", // No audio backend
+	"Automatic", // Automatic backend detection
 	"DirectSound", // DirectSound
 	"ALSA", // Alsa
 };
 fplStaticAssert(fplArrayCount(fpl__globalAudioDriverNameTable) == FPL__AUDIODRIVERTYPE_COUNT);
 
-fpl_common_api fplAudioDriverType fplGetAudioDriver() {
-	FPL__CheckPlatform(fplAudioDriverType_None);
+fpl_common_api fplAudioBackendType fplGetAudioDriver() {
+	FPL__CheckPlatform(fplAudioBackendType_None);
 	const fpl__PlatformAppState *appState = fpl__global__AppState;
-	fplAudioDriverType result = appState->currentSettings.audio.driver;
+	fplAudioBackendType result = appState->currentSettings.audio.backend;
 	return(result);
 }
 
-fpl_common_api const char *fplGetAudioDriverName(fplAudioDriverType driver) {
-	uint32_t index = FPL__ENUM_VALUE_TO_ARRAY_INDEX(driver, fplAudioDriverType_First, fplAudioDriverType_Last);
+fpl_common_api const char *fplGetAudioBackendName(fplAudioBackendType driver) {
+	uint32_t index = FPL__ENUM_VALUE_TO_ARRAY_INDEX(driver, fplAudioBackendType_First, fplAudioBackendType_Last);
 	const char *result = fpl__globalAudioDriverNameTable[index];
 	return(result);
 }
@@ -22547,7 +22547,7 @@ fpl_common_api bool fplGetAudioHardwareFormat(fplAudioDeviceFormat *outFormat) {
 fpl_common_api bool fplSetAudioClientReadCallback(fpl_audio_client_read_callback *newCallback, void *userData) {
 	FPL__CheckPlatform(false);
 	fpl__AudioState *audioState = fpl__GetAudioState(fpl__global__AppState);
-	if((audioState != fpl_null) && (audioState->activeDriver > fplAudioDriverType_Auto)) {
+	if((audioState != fpl_null) && (audioState->activeDriver > fplAudioBackendType_Auto)) {
 		if(fpl__AudioGetDeviceState(&audioState->common) == fpl__AudioDeviceState_Stopped) {
 			audioState->common.clientReadCallback = newCallback;
 			audioState->common.clientUserData = userData;
@@ -22567,17 +22567,17 @@ fpl_common_api uint32_t fplGetAudioDevices(fplAudioDeviceInfo *devices, uint32_t
 		return 0;
 	}
 	uint32_t result = 0;
-	if(audioState->activeDriver > fplAudioDriverType_Auto) {
+	if(audioState->activeDriver > fplAudioBackendType_Auto) {
 		switch(audioState->activeDriver) {
 #		if defined(FPL__ENABLE_AUDIO_DIRECTSOUND)
-			case fplAudioDriverType_DirectSound:
+			case fplAudioBackendType_DirectSound:
 			{
 				result = fpl__GetAudioDevicesDirectSound(&audioState->dsound, devices, maxDeviceCount);
 			} break;
 #		endif
 
 #		if defined(FPL__ENABLE_AUDIO_ALSA)
-			case fplAudioDriverType_Alsa:
+			case fplAudioBackendType_Alsa:
 			{
 				result = fpl__GetAudioDevicesAlsa(&audioState->alsa, devices, maxDeviceCount);
 			} break;
@@ -23032,7 +23032,7 @@ fpl_common_api bool fplPlatformInit(const fplInitFlags initFlags, const fplSetti
 	if(appState->initFlags & fplInitFlags_Audio) {
 		appState->audio.mem = (uint8_t *)platformAppStateMemory + audioMemoryOffset;
 		appState->audio.memSize = sizeof(fpl__AudioState);
-		const char *audioDriverName = fplGetAudioDriverName(appState->initSettings.audio.driver);
+		const char *audioDriverName = fplGetAudioBackendName(appState->initSettings.audio.backend);
 		FPL_LOG_DEBUG("Core", "Init Audio with Driver '%s':", audioDriverName);
 		fpl__AudioState *audioState = fpl__GetAudioState(appState);
 		fplAssert(audioState != fpl_null);

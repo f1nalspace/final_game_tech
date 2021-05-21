@@ -1698,14 +1698,14 @@
 	fplAudioSettings &audioSettings = settings.audio;
 
 	// Forcing to use the DirectSound audio driver
-	audioSettings.driver = fplAudioDriverType_DirectSound;
+	audioSettings.driver = fplAudioBackendType_DirectSound;
 
 	if (fplPlatformInit(fplInitFlags_Audio, &settings)) {
 		// ... your code here
 	}
 	@endcode
 
-	It is recommended to use the default @ref fplAudioDriverType_Auto which uses the first supported audio driver.
+	It is recommended to use the default @ref fplAudioBackendType_Auto which uses the first supported audio driver.
 
 	@warning If your platform/system does not support the desired driver the audio and platform initialization will fail!
 
@@ -1756,7 +1756,7 @@
 
 	- @ref fplGetAudioHardwareFormat()
 	- @ref fplGetAudioBufferSizeInFrames()
-	- @ref fplGetAudioDriverName()
+	- @ref fplGetAudioBackendName()
 	- @ref fplGetAudioFormatName()
 	- @ref fplGetAudioSampleSizeInBytes()
 	- @ref fplGetAudioFrameSizeInBytes()
