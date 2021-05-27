@@ -154,6 +154,7 @@ SOFTWARE.
 	- New: Added struct fplVulkanSettings
 	- Fixed: fplMutexHandle isValid flag was invalid, moved it to above the internal handle and now it works O_o
 	- Fixed[#109]: Fixed fplS32ToString was not working anymore
+	- Fixed: Fixed fplAsm compile error in GCC when compiling with C99
 	- Changed: Changed video system to use jump tables instead, to support more backends in the future
 	- Changed: Added field @ref fplVulkanSettings to @ref fplGraphicsApiSettings
 
@@ -1584,7 +1585,7 @@ SOFTWARE.
 #endif // FPL_PLATFORM
 
 // Assembler keyword is compiler specific
-#if defined(FPL_COMPILER_CLANG)
+#if defined(FPL_COMPILER_CLANG) || defined(FPL_COMPILER_GCC)
 #define fpl__m_Asm __asm__
 #elif defined(FPL_COMPILER_MSVC)
 #define fpl__m_Asm __asm
@@ -9912,20 +9913,20 @@ fpl_common_api uint64_t fplCPURDTSC() {
 	// Based on: https://github.com/google/benchmark/blob/v1.1.0/src/cycleclock.h
 #if defined(FPL_ARCH_ARM64)
 	int64_t virtual_timer_value;
-	asm volatile("mrs %0, cntvct_el0" : "=r"(virtual_timer_value));
+	fplAsm volatile("mrs %0, cntvct_el0" : "=r"(virtual_timer_value));
 	return (uint64_t)virtual_timer_value;
 #elif defined(FPL_ARCH_ARM32) && (__ARM_ARCH >= 6)
 	uint32_t pmccntr;
 	uint32_t pmuseren;
 	uint32_t pmcntenset;
 	// Read the user mode perf monitor counter access permissions.
-	asm volatile("mrc p15, 0, %0, c9, c14, 0" : "=r"(pmuseren));
+	fplAsm volatile("mrc p15, 0, %0, c9, c14, 0" : "=r"(pmuseren));
 	if(pmuseren & 1) {
 		// Allows reading perfmon counters for user mode code.
-		asm volatile("mrc p15, 0, %0, c9, c12, 1" : "=r"(pmcntenset));
+		fplAsm volatile("mrc p15, 0, %0, c9, c12, 1" : "=r"(pmcntenset));
 		if(pmcntenset & 0x80000000ul) {
 			// Is it counting?
-			asm volatile("mrc p15, 0, %0, c9, c13, 0" : "=r"(pmccntr));
+			fplAsm volatile("mrc p15, 0, %0, c9, c13, 0" : "=r"(pmccntr));
 			// The counter is set up to count every 64th cycle
 			return (uint64_t)pmccntr * 64ULL;  // Should optimize to << 6
 		}
