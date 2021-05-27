@@ -43,6 +43,7 @@ License:
 #define MODERN_OPENGL 1 // Enable this to use OpenGL 3.3+
 
 #define FPL_IMPLEMENTATION
+#define FPL_LOGGING
 #define FPL_NO_VIDEO_SOFTWARE
 #define FPL_NO_VIDEO_VULKAN
 #define FPL_NO_AUDIO
@@ -526,6 +527,12 @@ static bool RunModern() {
 
 int main(int argc, char **args) {
 	int result = 0;
+
+	fplLogSettings logSettings = fplZeroInit;
+	logSettings.maxLevel = fplLogLevel_All;
+	logSettings.writers[0].flags = fplLogWriterFlags_StandardConsole;
+	fplSetLogSettings(&logSettings);
+
 	fplSettings settings = fplMakeDefaultSettings();
 	settings.video.backend = fplVideoBackendType_OpenGL;
 #if MODERN_OPENGL
