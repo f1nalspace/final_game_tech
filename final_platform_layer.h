@@ -10472,12 +10472,25 @@ fpl_common_api void fplSetDefaultVideoSettings(fplVideoSettings *video) {
 	fplClearStruct(video);
 	video->isVSync = false;
 	video->isAutoSize = true;
+
+#if defined(FPL__ENABLE_VIDEO_OPENGL)
+	video->graphics.opengl.compabilityFlags = fplOpenGLCompabilityFlags_Legacy;
+#endif
+
+#if defined(FPL__ENABLE_VIDEO_VULKAN)
+	video->graphics.vulkan.appVersion = fplStructInit(fplVersionInfo, "1.0.0", "1", "0", "0");
+	video->graphics.vulkan.engineVersion = fplStructInit(fplVersionInfo, "1.0.0", "1", "0", "0");
+	video->graphics.vulkan.apiVersion = fplStructInit(fplVersionInfo, "1.1.0", "1", "1", "0");
+	video->graphics.vulkan.validationLayerMode = fplVulkanValidationLayerMode_Logging;
+#endif
+
 	// @NOTE(final): Auto detect video backend
 #if defined(FPL__ENABLE_VIDEO_OPENGL)
 	video->backend = fplVideoBackendType_OpenGL;
-	video->graphics.opengl.compabilityFlags = fplOpenGLCompabilityFlags_Legacy;
 #elif defined(FPL__ENABLE_VIDEO_SOFTWARE)
 	video->backend = fplVideoBackendType_Software;
+#elif defined(FPL__ENABLE_VIDEO_VULKAN)
+	video->backend = fplVideoBackendType_Vulkan;
 #else
 	video->backend = fplVideoBackendType_None;
 #endif
