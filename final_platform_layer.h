@@ -155,6 +155,7 @@ SOFTWARE.
 	- Fixed: fplMutexHandle isValid flag was invalid, moved it to above the internal handle and now it works O_o
 	- Fixed[#109]: Fixed fplS32ToString was not working anymore
 	- Fixed: Fixed fplAsm compile error in GCC when compiling with C99
+	- Fixed: Fixed compile error for non-x86 architectures (fplCPUID)
 	- Changed: Changed video system to use jump tables instead, to support more backends in the future
 	- Changed: Added field @ref fplVulkanSettings to @ref fplGraphicsApiSettings
 
@@ -9944,7 +9945,7 @@ fpl_common_api uint64_t fplCPUXCR0() {
 
 fpl_common_api void fplCPUID(fplCPUIDLeaf *outLeaf, const uint32_t functionId) {
 	// Not supported on non-x86 platforms
-	fplStructInit(outLeaf);
+	fplClearStruct(outLeaf);
 }
 
 fpl_common_api bool fplCPUGetCapabilities(fplCPUCapabilities *outCaps) {
