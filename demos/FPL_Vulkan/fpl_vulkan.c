@@ -2846,12 +2846,9 @@ int main(int argc, char **argv) {
 #if VULKANDEMO_FPL_VIDEO_MODE == VULKANDEMO_FPL_VIDEO_MODE_FULL
 	// We want FPL to create the instance and the surface for us
 	fplVersionInfo *apiVer = &settings.video.graphics.vulkan.apiVersion;
-	settings.video.graphics.vulkan.apiVersion.major[0] = '1';
-	settings.video.graphics.vulkan.apiVersion.minor[0] = '1';
-	settings.video.graphics.vulkan.engineVersion.major[0] = '1';
-	settings.video.graphics.vulkan.engineVersion.minor[0] = '0';
-	settings.video.graphics.vulkan.appVersion.major[0] = '1';
-	settings.video.graphics.vulkan.appVersion.minor[0] = '0';
+	settings.video.graphics.vulkan.apiVersion = fplStructInit(fplVersionInfo, "", "1", "1", "0");
+	settings.video.graphics.vulkan.engineVersion = fplStructInit(fplVersionInfo, "", "1", "0", "0");
+	settings.video.graphics.vulkan.appVersion = fplStructInit(fplVersionInfo, "", "1", "0", "0");
 	settings.video.graphics.vulkan.appName = "FPL-Vulkan-Demo";
 	settings.video.graphics.vulkan.engineName = "FPL-Vulkan-Demo";
 	settings.video.graphics.vulkan.validationLayerMode = fplVulkanValidationLayerMode_Logging;
