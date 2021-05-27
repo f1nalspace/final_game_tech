@@ -78,6 +78,7 @@ License:
 #define FPL_ENTRYPOINT
 #define FPL_NO_AUDIO
 #define FPL_NO_PLATFORM_INCLUDES
+#define FPL_NO_VIDEO_VULKAN
 #include <final_platform_layer.h>
 
 #define FGL_IMPLEMENTATION

@@ -52,6 +52,7 @@ License:
 #define FPL_IMPLEMENTATION
 #define FPL_NO_AUDIO
 #define FPL_LOGGING
+#define FPL_NO_VIDEO_VULKAN
 #include <final_platform_layer.h>
 
 // @TODO(final): Use final_dynamic_opengl here, so we dont need any linking like any other opengl demo

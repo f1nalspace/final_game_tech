@@ -58,6 +58,8 @@ License:
 
 #define FPL_IMPLEMENTATION
 #define FPL_NO_AUDIO
+#define FPL_NO_VIDEO_VULKAN
+#define FPL_NO_VIDEO_OPENGL
 #include <final_platform_layer.h>
 
 // Custom types to save a bit of typing :D

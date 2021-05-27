@@ -27,7 +27,11 @@ License:
 -------------------------------------------------------------------------------
 */
 
-#define FPL_ENTRYPOINT // Force the inclusion of the entry point
+ // Force the inclusion of the entry point
+#define FPL_ENTRYPOINT
+// Disable video and audio
+#define FPL_NO_VIDEO
+#define FPL_NO_AUDIO
 #include <final_platform_layer.h>
 
 int main(int argc, char **argv) {

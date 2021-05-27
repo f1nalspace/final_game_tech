@@ -42,6 +42,9 @@ int dummy_vsnprintf(char *buf, size_t bufLen, const char *format, va_list argLis
 #define FPL_APPTYPE_CONSOLE
 // Disable C-RunTime Library
 #define FPL_NO_CRT
+// Disable video and audio
+#define FPL_NO_VIDEO
+#define FPL_NO_AUDIO
 // FPL header
 #include <final_platform_layer.h>
 

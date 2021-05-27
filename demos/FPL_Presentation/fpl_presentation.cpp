@@ -35,6 +35,7 @@ License:
 
 #define FPL_IMPLEMENTATION
 #define FPL_PRIVATE
+#define FPL_NO_VIDEO_VULKAN
 #include <final_platform_layer.h>
 
 #if !defined(FPL_IS_CPP)
