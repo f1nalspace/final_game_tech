@@ -323,6 +323,7 @@
 	@subpage page_category_video_general <br>
 	@subpage page_category_video_legacy_opengl <br>
 	@subpage page_category_video_modern_opengl <br>
+	@subpage page_category_video_vulkan <br>
 	@subpage page_category_video_software <br>
 
 	@section section_category_audio Audio
@@ -1512,6 +1513,143 @@
 */
 
 /*!
+	@page page_category_video_vulkan Vulkan
+	@tableofcontents
+	
+	@section section_category_video_vulkan_init Initialize Vulkan
+	
+	Initializing Vulkan is different than initializing other graphics APIs such as OpenGL, but FPL helps you in the first steps.
+	
+	The very first thing you need is a Vulkan Instance (<a href="https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VkInstance.html">VkInstance</a>).
+	
+	Secondly you require a Vulkan Surface (<a href="https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VkSurfaceKHR.html">VkSurfaceKHR</a>) to present the graphical result to the screen.
+	
+	FPL can create the Instance and the Surface for you.
+	
+	The surface creation is mandatory, but an exiting instance can optionally be passed to the @ref fplSettings structure if needed.
+	
+	- @ref section_category_video_vulkan_init_full
+	- @ref section_category_video_vulkan_init_surfaceonly
+	
+	@section section_category_video_vulkan_init_full Create a Vulkan Instance and a Surface
+	
+	First you have to create a @ref fplSettings structure and initialize it with default settings using @ref fplSetDefaultSettings().
+	
+	Second you set the @ref fplVideoSettings.backend to @ref fplVideoBackendType_Vulkan .
+
+	We can reference the @ref fplVulkanSettings type stored in @ref fplGraphicsApiSettings.vulkan for convenience usage later.
+	
+	@code{.c}
+	fplSettings settings;
+	fplSetDefaultSettings(&settings);
+	
+	// Reference of the video settings
+	fplVideoSettings *videoSettings = &settings.video;
+
+	// Forcing the video backend to Vulkan
+	videoSettings->backend = fplVideoBackendType_Vulkan;
+	
+	// Reference of the vulkan settings for later usage
+	fplVulkanSettings *vulkanSettings = &videoSettings.graphics.vulkan;
+	@endcode
+	
+	@subsection subsection_category_video_vulkan_init_full_versions Fill in the application, engine and api versions
+	
+	@code{.c}
+	fplVulkanSettings *vulkanSettings = &videoSettings.graphics.vulkan;
+
+	vulkanSettings->appName = "The name of your application";
+	vulkanSettings->appVersion = fplStructInit(fplVersionInfo, "1.0.0", "1", "0", "0"); // Version of your application
+
+	vulkanSettings->engineName = "The name of your engine";
+	vulkanSettings->engineVersion = fplStructInit(fplVersionInfo, "1.0.0", "1", "0", "0"); // Version of your engine
+
+	vulkanSettings->apiVersion = fplStructInit(fplVersionInfo, "1.1.0", "1", "1", "0"); // Preferred Vulkan API version (should be greater or equal than 1.1.0)
+	@endcode
+	
+	@subsection subsection_category_video_vulkan_init_full_validationmode Choose a Vulkan validation mode
+	
+	@code{.c}
+	static void VulkanValidationLayerCallback(void *userData, const char *message, const VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity, const VkDebugUtilsMessageTypeFlagsEXT messageType, const VkDebugUtilsMessengerCallbackDataEXT *debugUtilsMessengerCallbackData) {
+		fplConsoleFormatOut("Vulkan Validation: %s\n", message);
+	}
+	
+	fplVulkanSettings *vulkanSettings = &videoSettings.graphics.vulkan;
+
+	vulkanSettings->validationLayerMode = fplVulkanValidationLayerMode_Disabled; // Do not use the Vulkan Validation Layer as an instance extension
+	
+	// or
+	vulkanSettings->validationLayerMode = fplVulkanValidationLayerMode_Logging; // Enable Vulkan Validation Layer as an instance extension and log everything to FPL directly, using the FPL logging system
+
+	// or
+	vulkanSettings->validationLayerMode = fplVulkanValidationLayerMode_User; // Enable Vulkan Validation Layer as an instance extension and let the user handle the logging
+	vulkanSettings->validationLayerCallback = VulkanValidationLayerCallback; // The user callback
+	vulkanSettings->userData = (void *)YourUserData; // The user data passed to the callback
+	@endcode
+	
+	Continue with @ref section_category_video_vulkan_usage
+	
+	@section section_category_video_vulkan_init_surfaceonly Create a Vulkan Surface from an existing Instance
+	
+	If you already have a Vulkan Instance (VkInstance), you can simply pass that to the @ref fplVulkanSettings.instanceHandle field and initialize FPL with @ref fplPlatformInit():
+	
+	@code{.c}
+	VkInstance yourVulkanInstance;
+	
+	fplVulkanSettings *vulkanSettings = &videoSettings.graphics.vulkan;
+
+	vulkanSettings->instance = yourVulkanInstance; // Pass in your vulkan instance to FPL
+	
+	if (fplPlatformInit(fplInitFlags_Video, &settings)) {
+		// ... Vulkan Surface is created now and are ready to use
+	}
+	@endcode
+	
+	Continue with @ref section_category_video_vulkan_usage
+	
+	@section section_category_video_vulkan_usage Vulkan Usage
+	
+	After you have created a Vulkan Instance and a Surface, you can query it by calling @ref fplGetVideoSurface() directly after @ref fplPlatformInit():
+	
+	@code{.c}
+	if (fplPlatformInit(fplInitFlags_All, &settings)) {
+		// Get video surface
+		const fplVideoSurface *surface = fplGetVideoSurface();
+		fplAssert(surface != fpl_null);
+		
+		// Get the VkInstance and VkSurfaceKHR
+		VkInstance instanceHandle = (VkInstance)surface->vulkan.instanceHandle;
+		VkSurfaceKHR surfaceHandle = (VkSurfaceKHR)surface->vulkan.surfaceKHR;
+		fplAssert(instanceHandle != VK_NULL_HANDLE);
+		fplAssert(surfaceHandle != VK_NULL_HANDLE);
+
+		// ... continue the Vulkan initialization process
+	}
+	@endcode
+
+	After that, the typical Vulkan process continues:
+	- Finding the physical device (<a href="https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VkPhysicalDevice.html">VkPhysicalDevice</a>)
+	- Creating a logical device (<a href="https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VkDevice.html">VkDevice</a>)
+	- Find the right queue families, surface formats, frame buffer formats, etc.
+	- Creating a <a href="https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VkSwapchainKHR.html">VkSwapChainKHR</a> with <a href="https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VkImageView.html">VkImageView</a>, etc.
+	- Creating the full pipeline with <a href="https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VkCommandPool.html">VkCommandPool</a>, <a href="https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VkCommandBuffer.html">VkCommandBuffer</a>, etc.
+	
+	See the FPL_Vulkan demo for more details or learn more about Vulkan: <a href="https://vulkan-tutorial.com/">Vulkan-Tutorials</a>
+	
+	@section section_category_video_vulkan_allocator Memory Allocator
+	
+	If you have an existing memory allocator for Vulkan, you can pass that to FPL before calling @ref fplPlatformInit():
+	
+	@code{.c}
+	VkAllocationCallbacks *yourMemoryAllocator;
+	
+	fplVulkanSettings *vulkanSettings = &videoSettings.graphics.vulkan;
+
+	vulkanSettings->allocator = (void *)yourMemoryAllocator; // Pass in your memory allocator
+	@endcode
+*/
+
+/*!
 	@page page_category_video_software Software Output
 	@tableofcontents
 
@@ -1970,7 +2108,7 @@
 	}
 
 	// or just print it out
-	const char *cpuArchString = fplGetArchName(cpuArch);
+	const char *cpuArchString = fplCPUGetArchName(cpuArch);
 	fplConsoleFormatOut("CPU Architecture: %s\n", cpuArchString);
 	@endcode
 	
