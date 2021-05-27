@@ -14,6 +14,10 @@ Author:
 	Torsten Spaete
 
 Changelog:
+	## 2021-05-27
+	- Enabled logging by default
+	- Do not typedef GLchar and GLsizeiptr, GLintptr when already included
+
 	## 2020-04-20
 	- Rotating example for legacy and modern
 
@@ -61,9 +65,17 @@ License:
 #define APIENTRYP APIENTRY *
 
 #include <stddef.h>
+
+// In GL.h there might be already a GLsizeiptr
+#if !defined(GL_VERSION_1_5)
 typedef ptrdiff_t GLsizeiptr;
 typedef ptrdiff_t GLintptr;
+#endif
+
+// In GL.h there might be already a GLchar
+#if !defined(GL_VERSION_2_0)
 typedef char GLchar;
+#endif
 
 #ifndef GL_CONTEXT_PROFILE_MASK
 
