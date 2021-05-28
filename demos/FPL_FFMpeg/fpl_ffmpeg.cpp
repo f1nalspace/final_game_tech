@@ -16,9 +16,6 @@ Author:
 	Torsten Spaete
 
 Changelog:
-	## 2021-04-04
-	- Fixed wrong packet usage counter when seeking
-
 	## 2021-02-24
 	- Support for non win32 platforms by loading to .so libraries instead
 	- No more fixed ffmpeg library names anymore, use the AV_MAJOR
@@ -385,7 +382,6 @@ static void FlushPacketQueue(PacketQueue &queue) {
 	queue.packetCount = 0;
 	queue.size = 0;
 	queue.duration = 0;
-	fplAtomicExchangeS32(&globalMemStats.usedPackets, 0);
 	fplMutexUnlock(&queue.lock);
 }
 
@@ -484,8 +480,9 @@ static bool PushFlushPacket(PacketQueue &queue) {
 }
 
 static void StartPacketQueue(PacketQueue &queue) {
-	bool r = PushFlushPacket(queue);
-	fplAssert(r);
+	//fplMutexLock(&queue.lock);
+	assert(PushFlushPacket(queue));
+	//fplMutexUnlock(&queue.lock);
 }
 
 //
