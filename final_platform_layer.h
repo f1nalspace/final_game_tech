@@ -136,35 +136,41 @@ SOFTWARE.
 
 	### Short
 	- Added Vulkan support
-	- Added seamless window resizing for Win32
+	- Added seamless window resizing support for Win32
+	- Added query functions for accessing video backend handles
 	- Improved video system stability
 	- Improved console window handling for Win32
-	- Fixed some minor bugs
+	- Fixed some major & minor bugs
 
 	### Detail
-	- New: Added structs fplVideoWindow, fplVideoWindowWin32, fplVideoWindowX11
-	- New: Added structs fplVideoSurface, fplVideoSurfaceOpenGL, fplVideoSurfaceVulkan
 	- New: Added structs fplVideoRequirements, fplVideoRequirementsVulkan
-	- New: Added function fplGetVideoSurface() for query the current @ref fplVideoSurface
-	- New: Added function fplGetVideoProcedure() for query functions from the active video backend
 	- New: Added function fplGetVideoRequirements() to query any requirements for a particular video backend
 	- New: Added macro fplAssertPtr() for simply (exp != fpl_null) assertions
 	- New: Added typedef fplVulkanValidationLayerCallback
 	- New: Added enums fplVulkanValidationLayerMode, fplVulkanValidationSeverity
 	- New: Added struct fplVulkanSettings
-	- Fixed: fplMutexHandle isValid flag was invalid, moved it to above the internal handle and now it works O_o
-	- Fixed[#109]: Fixed fplS32ToString was not working anymore
-	- Fixed: Fixed fplAsm compile error in GCC when compiling with C99
-	- Fixed: Fixed compile error for non-x86 architectures (fplCPUID)
+	- New: Added structs fplVideoWindow, fplVideoWindowWin32, fplVideoWindowX11
+	- New: Added structs fplVideoSurface, fplVideoSurfaceOpenGL, fplVideoSurfaceVulkan
+	- New: Added function fplGetVideoSurface() for query the current @ref fplVideoSurface
+	- New[#48]: Added function fplGetVideoProcedure() for query functions from the active video backend
+	- New[#18]: [Win32] Support for message proc fibers to support seamless window resize -> works only with fplPollEvents()
+	- New[#105]: [Win32] Added support for creating and using a console in addition to a window
+	- New[#31]: [Win32] Added support for Vulkan
+	- New[#32]: [X11] Added support for Vulkan
+
 	- Changed: Changed video system to use jump tables instead, to support more backends in the future
 	- Changed: Added field @ref fplVulkanSettings to @ref fplGraphicsApiSettings
-
-	- New[#105]: [Win32] Added support for creating and using a console in addition to a window
-	- New[#18]: [Win32] Support for message proc fibers to support seamless window resize -> works only with fplPollEvents()
-	- Fixed[#98]: [Win32] Fixed fplThreadYield was not using YieldProcessor()
-	- Fixed[#110]: [Win32] Fixed preventing of erasing the background for non-video systems hides window always
-	- Fixed[#114]: [Win32] Fixed console window does not appear at the very first
+	- Changed[#116]: AudioDriver/VideoDriver renamed to AudioBackend/VideoBackend
+	- Changed[#98]: [Win32] Use YieldProcessor instead of SwitchToThread for fplThreadYield()
+	- Changed[#111]: [Win32] Use SetConsoleTitle with @ref fplConsoleSettings.title
 	- Changed[#113]: [Win32] Properly show window on initialize (Foreground, Focus)
+
+	- Fixed[#109]: fplS32ToString is not working anymore
+	- Fixed[#121]: fplMutexHandle isValid flag was never working properly
+	- Fixed[#122]: Compile errors on Arm32/C99 for "asm volatile"
+	- Fixed[#123]: Compile error for wrong usage of fplStructInit in fplCPUID() for non-x86 architectures
+	- Fixed[#110]: [Win32] Erasing of background when no video driver hides window always
+	- Fixed[#114]: [Win32] Console window does not appear at the very first
 
 	## v0.9.6-beta
 	### Features
